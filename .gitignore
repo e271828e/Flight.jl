@@ -1,1 +1,46 @@
 /Manifest.toml
+
+#Project specific
+examples/
+
+# Editors
+.vscode/
+.VSCodeCounter
+
+# Windows
+Thumbs.db
+
+#Julia
+/*.tar.gz
+/tmp
+/dist
+/dist-extras
+/julia
+/julia.bat
+/usr
+/oprofile_data
+/usr-staging
+/Make.user
+/julia-*
+/source-dist.tmp
+/source-dist.tmp1
+
+*.exe
+*.dll
+*.dwo
+*.do
+*.o
+*.o.tmp
+*.obj
+*.so
+*.dylib
+*.dSYM
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+*.jl.*.mem
+*.ji
+
+/perf*
+.DS_Store
+.idea/*
