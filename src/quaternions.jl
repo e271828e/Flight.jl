@@ -59,22 +59,20 @@ function Base.setproperty!(q::AbstractQuat, s::Symbol, v)
 end
 
 #norm
-function norm_sqr(q::AbstractQuat)
-    println("Called custom norm squared")
-    sum(abs2.(q))
-end
+norm_sqr(q::AbstractQuat) = sum(abs2.(q))
 LinearAlgebra.norm(q::AbstractQuat) = norm(q[:]) #uses StaticArrays implementation
 
 ######################## Quat #############################
+
+#new() implicitly tries to convert() its inputs to the declared field types.
+#maybe it's clearer to do it explicitly upstream: require the inner
+#constructor to accept only arguments of the exact declared type and let the
+#outer constructors handle conversion explicitly.
 
 QData{T} = MVector{4, T}
 
 struct Quat{T} <: AbstractQuat{T}
     data::QData{T}
-    #new() implicitly tries to convert() its inputs to the declared field types,
-    #maybe it's clearer to do it explicitly upstream. thus, require the inner
-    #constructor to accept only arguments of the exact declared type and let the
-    #outer constructors handle conversion explicitly.
     Quat{T}(data::QData{T}) where {T} = new{T}(data)
 end
 
@@ -137,9 +135,7 @@ LinearAlgebra.normalize!(q::Quat) = (normalize!(getfield(q, :data)); return q)
 #### Operators
 Base.:+(q::Quat) = q
 Base.:-(q::T) where {T<:Quat} = T(-q[:])
-#not needed, inherited from AbstractVector
-# Base.:(==)(q1::T, q2::T) where {T<:AbstractQuat} = (q1[:] == q2[:])
-# Base.:(==)(q1::AbstractQuat, q2::AbstractQuat) = ==(promote(q1, q2)...)
+#(==)not needed, inherited from AbstractVector
 
 Base.:+(q1::T, q2::T) where {T<:Quat} = T(q1[:] + q2[:])
 Base.:+(q1::Quat, q2::Quat) = +(promote(q1, q2)...)
@@ -150,6 +146,10 @@ Base.:-(q1::T, q2::T) where {T<:Quat} = T(q1[:] - q2[:])
 Base.:-(q1::Quat, q2::Quat) = -(promote(q1, q2)...)
 Base.:-(q::Quat, a::Real) = -(promote(q, a)...)
 Base.:-(a::Real, q::Quat) = -(promote(a, q)...)
+
+#multiplication and division by scalar could be implemented more efficiently
+#without promotion to Quat, but that makes the outcome when Number != eltype(q)
+#harder to control
 
 function Base.:*(q1::T, q2::T) where {T<:Quat}
     p_real = q1.real * q2.real - dot(q1.imag, q2.imag)
@@ -165,13 +165,9 @@ Base.:/(q1::Quat, q2::Quat) = /(promote(q1, q2)...)
 Base.:/(a::Real, q::Quat) = /(promote(a, q)...)
 Base.:/(q::Quat, a::Real) = /(promote(q, a)...)
 
-Base.:\(q1::Quat, q2::Quat) = /(q2, q1)
-Base.:\(a::Real, q::Quat) = /(q, a)
-Base.:\(q::Quat, a::Real) = /(a, q)
-
-#multiplication and division by scalar could be implemented more efficiently
-#without promotion to Quat, but that makes the outcome when Number != eltype(q)
-#harder to control
+Base.:\(q1::Quat, q2::Quat) = inv(q1) * q2 #!= /(q2, q1) == q2 * inv(q1)
+Base.:\(a::Real, q::Quat) = \(promote(a, q)...)
+Base.:\(q::Quat, a::Real) = \(promote(a, q)...)
 
 ######################## UnitQuat #############################
 
@@ -241,8 +237,8 @@ Base.:/(u1::UnitQuat, u2::UnitQuat) = /(promote(u1, u2)...)
 Base.:/(u::UnitQuat, q::Quat) = /(promote(u, q)...)
 Base.:/(q::Quat, u::UnitQuat) = /(promote(q, u)...)
 
-Base.:\(u1::UnitQuat, u2::UnitQuat) = /(u2, u1)
-Base.:\(u::UnitQuat, q::Quat) = /(q, u)
-Base.:\(q::Quat, u::UnitQuat) = /(u, q)
+Base.:\(u1::UnitQuat, u2::UnitQuat) = inv(u1) * u2 #!= /(u2, u1) == u2 * inv(u1)
+Base.:\(u::UnitQuat, q::Quat) = \(promote(u, q)...)
+Base.:\(q::Quat, u::UnitQuat) = \(promote(q, u)...)
 
 end #module
