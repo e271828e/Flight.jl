@@ -138,6 +138,7 @@ Base.:-(q::T) where {T<:Quat} = T(-q[:])
 #(==)not needed, inherited from AbstractVector
 
 Base.:+(q1::T, q2::T) where {T<:Quat} = T(q1[:] + q2[:])
+# Base.:+(q1::Quat{T}, q2::Quat{T}) where {T} = Quat{T}(q1[:] + q2[:]) #same
 Base.:+(q1::Quat, q2::Quat) = +(promote(q1, q2)...)
 Base.:+(q::Quat, a::Real) = +(promote(q, a)...)
 Base.:+(a::Real, q::Quat) = +(promote(a, q)...)
@@ -175,6 +176,7 @@ struct UnitQuat{T} <: AbstractQuat{T}
     quat::Quat{T}
     #restrict inner constructor to the declared field types
     function UnitQuat{T}(quat::Quat{T}; enforce_norm::Bool = true) where {T}
+        # println("Normalization $enforce_norm")
         enforce_norm && normalize!(quat)
         return new{T}(quat)
     end
@@ -187,12 +189,14 @@ UnitQuat64 = UnitQuat{Float64}
 #explicit type parameter
 UnitQuat{T}(v::AbstractVector) where {T} = UnitQuat{T}(Quat{T}(v))
 UnitQuat{T}(q::AbstractQuat) where {T} = UnitQuat{T}(Quat{T}(q))
-UnitQuat{T}(args...; kwargs...) where {T} = UnitQuat(Quat{T}(args...; kwargs...))
+UnitQuat{T}(s::Real) where {T} = UnitQuat{T}(Quat{T}(s))
 
-#implicit type parameter; let the Quat constructor infer it...
-UnitQuat(args...; kwargs...) = UnitQuat(Quat(args...; kwargs...))
-#... then dispatch to the UnitQuat inner constructor using the inferred parameter
-UnitQuat(quat::Quat{T}) where {T} = UnitQuat{T}(quat)
+#inferred type parameter
+UnitQuat(x::Union{AbstractVector{T}, AbstractQuat{T}, T}) where {T<:AbstractFloat} = UnitQuat{T}(x)
+
+#keyword constructors... let the Quat constructor handle it
+UnitQuat{T}(; kwargs...) where {T} = UnitQuat(Quat{T}(; kwargs...))
+UnitQuat(; kwargs...) = UnitQuat(Quat(; kwargs...))
 
 #handle the zero-argument case explicitly, because Quat defaults to the null
 #quaternion, for which normalization yields NaNs
@@ -218,7 +222,7 @@ Base.convert(::Type{Quat{T}}, u::UnitQuat{S}) where {T, S}  = Quat{T}(UnitQuat{T
 
 #functions
 Base.copy(u::UnitQuat{T}) where{T} = UnitQuat{T}(Quat{T}(u), enforce_norm = false)
-Base.conj(u::UnitQuat{T}) where {T} = UnitQuat{T}(Quat{T}([u.real, -u.imag...]))
+Base.conj(u::UnitQuat{T}) where {T} = UnitQuat{T}(Quat{T}([u.real, -u.imag...]), enforce_norm = false)
 Base.adjoint(u::UnitQuat) = conj(u)
 Base.inv(u::UnitQuat) = u'
 LinearAlgebra.normalize!(u::UnitQuat) = (normalize!(getfield(u, :quat)))
@@ -227,7 +231,7 @@ LinearAlgebra.normalize!(u::UnitQuat) = (normalize!(getfield(u, :quat)))
 Base.:+(q::UnitQuat) = q
 Base.:-(q::T) where {T<:UnitQuat} = T(-q[:])
 
-Base.:*(u1::T, u2::T) where {T<:UnitQuat} = T(getfield(u1, :quat) * getfield(u2, :quat))
+Base.:*(u1::T, u2::T) where {T<:UnitQuat} = T(getfield(u1, :quat) * getfield(u2, :quat), enforce_norm = false)
 Base.:*(u1::UnitQuat, u2::UnitQuat) = *(promote(u1, u2)...)
 Base.:*(u::UnitQuat, q::Quat) = *(promote(u, q)...)
 Base.:*(q::Quat, u::UnitQuat) = *(promote(q, u)...)
