@@ -17,7 +17,7 @@ using StaticArrays: MVector #this form of using does not allow method extension
 #paths to keep them distinct and avoid ambiguity
 
 #instead...
-using ..Quaternions: UnitQuat, UnitQuat64
+# using ..Quaternions: UnitQuat, UnitQuat64
 
 export Rotation
 
@@ -71,8 +71,11 @@ abstract type Rotation end
 #always enforced by applying QR factorization. if it comes from a conversion, it
 #is not necessary
 
+#create normalize! and normalize methods for RMat
+
 #i can admit * of rotation matrices without converting to RQuat, and also
 #transforming vectors! only use promote when absolutely required!
+#define promote_rule(R, q) = q (always prefer q)
 
 #Euler can be a struct with fields upsi, utheta, uphi
 

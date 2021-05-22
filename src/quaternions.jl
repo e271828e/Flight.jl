@@ -1,25 +1,13 @@
-
-#TODO: write missing unit tests for operators, read up on testing facilities
-#TODO: prettify functions with subindices and symbols
-# q₁.re * q₂.re - q₁.im · q.im
-# q₁⊙q₂
-# × q1.imag
-#TODO: generate getproperty with code generation from a simple macro that receives
-# properties and their associated expressions and expands into an if sequence
-# properties = Dict(:real => argname[1], :imag => argname[2:4])
-
 module Quaternions
 
 using StaticArrays: MVector #this form of using does not allow method extension
 using LinearAlgebra #this form does, with LinearAlgebra.method
 
-export Quat, UnitQuat, AbstractQuat
-export Quat16, Quat32, Quat64
-export UnitQuat16, UnitQuat32, UnitQuat64
+export AbstractQuat, Quat, UnitQuat
 
 ######################## AbstractQuat #############################
 
-abstract type AbstractQuat{T<:AbstractFloat} <: AbstractVector{T} end
+abstract type AbstractQuat <: AbstractVector{Float64} end
 
 #indexing and iterable interfaces; see https://docs.julialang.org/en/v1/manual/interfaces/
 Base.size(::AbstractQuat) = (4,)
@@ -30,7 +18,7 @@ Base.getindex(::AbstractQuat, i) = error("AbstractQuat: getindex not implemented
 Base.setindex!(::AbstractQuat, v, i) = error("AbstractQuat: setindex! not implemented")
 #not needed, inherited from AbstractVector
 # Base.iterate(q::AbstractQuat, state = 1) = (state > 4 ? nothing : (q[state], state + 1))
-Base.eltype(::AbstractQuat{T}) where {T} = T #helps with allocation efficiency
+Base.eltype(::AbstractQuat) = Float64 #helps with allocation efficiency
 
 #display functions
 Base.show(io::IO, ::MIME"text/plain", q::AbstractQuat) = print(io, "$(typeof(q)): $(q[:])")
@@ -62,182 +50,145 @@ end
 norm_sqr(q::AbstractQuat) = sum(abs2.(q))
 LinearAlgebra.norm(q::AbstractQuat) = norm(q[:]) #uses StaticArrays implementation
 
+
 ######################## Quat #############################
 
-#new() implicitly tries to convert() its inputs to the declared field types.
-#maybe it's clearer to do it explicitly upstream: require the inner
-#constructor to accept only arguments of the exact declared type and let the
-#outer constructors handle conversion explicitly.
+#notes:
+#the implicit, automatically generated inner constructor has the form:
+#Quat(input) = new(data).
 
-QData{T} = MVector{4, T}
+#whenever typeof(input) != QData, new will call convert(QData, input). as long
+#as QData provides a convert method that can handle typeof(input), then we do
+#not need to handle it explicitly in an outer constructor.
 
-struct Quat{T} <: AbstractQuat{T}
-    data::QData{T}
-    Quat{T}(data::QData{T}) where {T} = new{T}(data)
+# in this case, QData is a StaticVector: MVector{Float64,4}, and it can handle
+#basically any AbstractVector{T} where {T<:Real} of length 4. this includes any
+#AbstractQuat subtype. but not a real scalar
+
+#Julia does NOT dispatch on keyword arguments:
+# https://discourse.julialang.org/t/keyword-argument-constructor-breaks-incomplete-constructor/34198/3
+# https://docs.julialang.org/en/v1/manual/methods/#Note-on-Optional-and-keyword-Arguments-1
+# this means that we cannot define methods with keyword arguments of the same
+# types but different names and expect Julia to choose the right one
+
+QData = MVector{4, Float64}
+
+struct Quat <: AbstractQuat
+    data::QData
+    Quat(data) = new(copy(data))
 end
 
-Quat16 = Quat{Float16}
-Quat32 = Quat{Float32}
-Quat64 = Quat{Float64}
+#outer constructors
+Quat(s::Real) = Quat([s, 0, 0, 0])
+Quat() = Quat(zeros(4))
+Quat(; real = 0.0, imag = zeros(3)) = Quat([real, imag...])
 
-#main outer constructor. it would be generated automatically if no explicit
-#inner constructor were provided
-Quat(data::QData{T}) where {T} = Quat{T}(data)
-
-#explicit type parameter
-Quat{T}(v::AbstractVector) where {T} = Quat{T}(QData{T}(v))
-Quat{T}(q::AbstractQuat) where {T} = Quat{T}(QData{T}(q[:]))
-Quat{T}(s::Real) where {T} = Quat{T}(QData{T}(s, 0, 0, 0))
-
-#inferred type parameter
-Quat(x::Union{AbstractVector{T}, AbstractQuat{T}, T}) where {T<:AbstractFloat} = Quat{T}(x)
-
-#real and imaginary kwargs
-function Quat{T}(; kwargs...) where {T}
-    # println("Called kwargs const")
-    kwargs = Dict(kwargs)
-    if haskey(kwargs, :real) && !haskey(kwargs, :imag)
-        data = QData{T}(kwargs[:real], 0, 0, 0)
-    elseif !haskey(kwargs, :real) && haskey(kwargs, :imag)
-        data = QData{T}(0, kwargs[:imag]...)
-    elseif haskey(kwargs, :real) && haskey(kwargs, :imag)
-        data = QData{T}(kwargs[:real], kwargs[:imag]...)
-    else
-        data = QData{T}(zeros(T,4))
-    end
-    return Quat{T}(data)
-end
-#if no type parameter is provided with keyword constructor, default to Float64
-Quat(; kwargs...) = Quat{Float64}(; kwargs...) #semicolon is essential here!
-
-#basics
+Base.copy(q::Quat) = Quat(copy(getfield(q, :data)))
 Base.getindex(q::Quat, i) = (getfield(q, :data)[i])
 Base.setindex!(q::Quat, v, i) = (getfield(q, :data)[i] = v)
 
-#### Promotion
-Base.promote_rule(::Type{Quat{T}}, ::Type{Quat{S}}) where {T, S} = Quat{promote_type(T,S)}
-#prioritize quaternion type parameter
-Base.promote_rule(::Type{Quat{T}}, ::Type{S}) where {T, S<:Real} = Quat{T}
-#prioritize better precision between quaternion type parameter and real subtype
-# Base.promote_rule(::Type{Quat{T}}, ::Type{S}) where {T, S<:Real} = Quat{promote_type(T,S)}
-
-#### Conversion
-Base.convert(::Type{Quat{T}}, q::Quat) where {T} = Quat{T}(q)
-Base.convert(::Type{Quat{T}}, a::Real) where {T} = Quat{T}(a)
-
-#### Functions
-Base.copy(q::T) where{T<:Quat} = T(q)
-Base.conj(q::T) where {T<:Quat} = T([q.real, -q.imag...])
-Base.adjoint(q::T) where {T<:Quat} = Base.conj(q)
-Base.inv(q::T) where {T<:Quat} = T(q'[:] / norm_sqr(q))
+#more efficient than the general normalization for AbstractVector
 LinearAlgebra.normalize!(q::Quat) = (normalize!(getfield(q, :data)); return q)
+LinearAlgebra.normalize(q::Quat) = Quat(normalize(getfield(q, :data)))
+
+Base.promote_rule(::Type{Quat}, ::Type{S}) where {S<:Real} = Quat
+Base.convert(::Type{Quat}, a::Real) = Quat(a)
+Base.convert(::Type{Quat}, a::AbstractVector) = Quat(a)
+
+#### Adjoint & Inverse
+Base.conj(q::Quat)= Quat([q.real, -q.imag...])
+Base.adjoint(q::Quat) = conj(q)
+Base.inv(q::Quat) = Quat(q'[:] / norm_sqr(q))
 
 #### Operators
 Base.:+(q::Quat) = q
-Base.:-(q::T) where {T<:Quat} = T(-q[:])
-#(==)not needed, inherited from AbstractVector
+Base.:-(q::Quat) = Quat(-q[:])
 
-Base.:+(q1::T, q2::T) where {T<:Quat} = T(q1[:] + q2[:])
-# Base.:+(q1::Quat{T}, q2::Quat{T}) where {T} = Quat{T}(q1[:] + q2[:]) #same
-Base.:+(q1::Quat, q2::Quat) = +(promote(q1, q2)...)
+#(==) is inherited from AbstractVector, but will return true for any
+#AbstractVector as long as it matches q[:], to avoid it we need to define these:
+Base.:(==)(q1::AbstractVector, q2::Quat) = false
+Base.:(==)(q1::Quat, q2::AbstractVector) = false
+Base.:(==)(q1::Quat, q2::Quat) = q1[:] == q2[:]
+
+Base.:+(q1::Quat, q2::Quat) = Quat(q1[:] + q2[:])
 Base.:+(q::Quat, a::Real) = +(promote(q, a)...)
 Base.:+(a::Real, q::Quat) = +(promote(a, q)...)
 
-Base.:-(q1::T, q2::T) where {T<:Quat} = T(q1[:] - q2[:])
-Base.:-(q1::Quat, q2::Quat) = -(promote(q1, q2)...)
+Base.:-(q1::Quat, q2::Quat) = Quat(q1[:] - q2[:])
 Base.:-(q::Quat, a::Real) = -(promote(q, a)...)
 Base.:-(a::Real, q::Quat) = -(promote(a, q)...)
 
-#multiplication and division by scalar could be implemented more efficiently
-#without promotion to Quat, but that makes the outcome when Number != eltype(q)
-#harder to control
-
-function Base.:*(q1::T, q2::T) where {T<:Quat}
+function Base.:*(q1::Quat, q2::Quat)
     p_real = q1.real * q2.real - dot(q1.imag, q2.imag)
     p_imag = q1.real * q2.imag + q2.real * q1.imag + cross(q1.imag, q2.imag)
-    T([p_real, p_imag...])
+    Quat([p_real, p_imag...])
 end
-Base.:*(q1::Quat, q2::Quat) = *(promote(q1, q2)...)
-Base.:*(a::Real, q::Quat) = *(promote(a, q)...)
-Base.:*(q::Quat, a::Real) = *(promote(q, a)...)
+Base.:*(q::Quat, a::Real) = a * q
+Base.:*(a::Real, q::Quat) = Quat(a * q[:])
 
-Base.:/(q1::T, q2::T) where {T<:Quat} = q1 * inv(q2)
-Base.:/(q1::Quat, q2::Quat) = /(promote(q1, q2)...)
+Base.:/(q1::Quat, q2::Quat) = q1 * inv(q2)
+Base.:/(q::Quat, a::Real) = Quat(q[:] / a)
 Base.:/(a::Real, q::Quat) = /(promote(a, q)...)
-Base.:/(q::Quat, a::Real) = /(promote(q, a)...)
 
 Base.:\(q1::Quat, q2::Quat) = inv(q1) * q2 #!= /(q2, q1) == q2 * inv(q1)
-Base.:\(a::Real, q::Quat) = \(promote(a, q)...)
-Base.:\(q::Quat, a::Real) = \(promote(a, q)...)
+Base.:\(q::Quat, a::Real) = \(promote(q, a)...)
+Base.:\(a::Real, q::Quat) = q / a
+
 
 ######################## UnitQuat #############################
 
-struct UnitQuat{T} <: AbstractQuat{T}
-    quat::Quat{T}
+struct UnitQuat <: AbstractQuat
+    quat::Quat
     #restrict inner constructor to the declared field types
-    function UnitQuat{T}(quat::Quat{T}; enforce_norm::Bool = true) where {T}
+    function UnitQuat(quat::AbstractVector; enforce_norm::Bool = true)
         # println("Normalization $enforce_norm")
-        enforce_norm && normalize!(quat)
-        return new{T}(quat)
+        quat_copy = copy(quat)
+        enforce_norm && normalize!(quat_copy)
+        return new(quat_copy) #tries to convert quat to Quat using Quat convert methods
     end
 end
 
-UnitQuat16 = UnitQuat{Float16}
-UnitQuat32 = UnitQuat{Float32}
-UnitQuat64 = UnitQuat{Float64}
+#outer constructors
+UnitQuat(s::Real) = UnitQuat([s, 0, 0, 0])
+UnitQuat() = UnitQuat([1, 0, 0, 0], enforce_norm = false)
+UnitQuat(; real::Real, imag::AbstractVector{T}) where {T<:Real} = UnitQuat([real, imag...])
 
-#explicit type parameter
-UnitQuat{T}(v::AbstractVector) where {T} = UnitQuat{T}(Quat{T}(v))
-UnitQuat{T}(q::AbstractQuat) where {T} = UnitQuat{T}(Quat{T}(q))
-UnitQuat{T}(s::Real) where {T} = UnitQuat{T}(Quat{T}(s))
-
-#inferred type parameter
-UnitQuat(x::Union{AbstractVector{T}, AbstractQuat{T}, T}) where {T<:AbstractFloat} = UnitQuat{T}(x)
-
-#keyword constructors... let the Quat constructor handle it
-UnitQuat{T}(; kwargs...) where {T} = UnitQuat(Quat{T}(; kwargs...))
-UnitQuat(; kwargs...) = UnitQuat(Quat(; kwargs...))
-
-#handle the zero-argument case explicitly, because Quat defaults to the null
-#quaternion, for which normalization yields NaNs
-UnitQuat{T}(::Vararg{Any,0}) where {T} = UnitQuat{T}(Quat{T}(1.0), enforce_norm = false)
-UnitQuat(::Vararg{Any,0}) = UnitQuat{Float64}(Quat{Float64}(1.0), enforce_norm = false)
-
-#basics
 #bypass normalization on copy
+Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :quat)), enforce_norm = false)
 Base.getindex(u::UnitQuat, i) = (getfield(u, :quat)[i])
 Base.setindex!(::UnitQuat, v, i) = error(
     "UnitQuat: Directly setting components not allowed, cast to Quat first")
 Base.setproperty!(::UnitQuat, ::Symbol, v) = error(
     "UnitQuat: Directly setting real and imaginary parts not allowed, cast to Quat first")
 
-Base.promote_rule(::Type{UnitQuat{T}}, ::Type{UnitQuat{S}}) where {T, S} = UnitQuat{promote_type(T,S)}
-Base.promote_rule(::Type{UnitQuat{T}}, ::Type{Quat{S}}) where {T, S} = Quat{promote_type(T,S)}
-# another option, which may downcast UnitQuat's type parameter to that of Quat:
-#Base.promote_rule(::Type{UnitQuat{T}}, ::Type{Quat{S}}) where {T, S} = Quat{S}
+LinearAlgebra.normalize!(u::UnitQuat) = (normalize!(getfield(u, :quat)), return u)
+LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :quat)))
 
-#the inner constructor normalizes when downcasting or upcasting from another UnitQuat
-Base.convert(::Type{UnitQuat{T}}, u::UnitQuat) where {T} = UnitQuat{T}(u)
-Base.convert(::Type{Quat{T}}, u::UnitQuat{S}) where {T, S}  = Quat{T}(UnitQuat{T}(u))
+Base.promote_rule(::Type{UnitQuat}, ::Type{Quat}) = Quat
+Base.convert(::Type{UnitQuat}, a::AbstractVector) = UnitQuat(a)
 
-#functions
-Base.copy(u::UnitQuat{T}) where{T} = UnitQuat{T}(Quat{T}(u), enforce_norm = false)
-Base.conj(u::UnitQuat{T}) where {T} = UnitQuat{T}(Quat{T}([u.real, -u.imag...]), enforce_norm = false)
+#### Adjoint & Inverse
+Base.conj(u::UnitQuat)= UnitQuat([u.real, -u.imag...])
 Base.adjoint(u::UnitQuat) = conj(u)
 Base.inv(u::UnitQuat) = u'
-LinearAlgebra.normalize!(u::UnitQuat) = (normalize!(getfield(u, :quat)))
 
-#operators
-Base.:+(q::UnitQuat) = q
-Base.:-(q::T) where {T<:UnitQuat} = T(-q[:])
+#### Operators
+Base.:+(u::UnitQuat) = u
+Base.:-(u::UnitQuat) = UnitQuat(-u[:])
 
-Base.:*(u1::T, u2::T) where {T<:UnitQuat} = T(getfield(u1, :quat) * getfield(u2, :quat), enforce_norm = false)
-Base.:*(u1::UnitQuat, u2::UnitQuat) = *(promote(u1, u2)...)
+#(==) is inherited from AbstractVector, but will return true for any
+#AbstractVector as long as it matches u[:], to avoid it we need to define these:
+Base.:(==)(v1::AbstractVector, u2::UnitQuat) = false
+Base.:(==)(u1::UnitQuat, v2::AbstractVector) = false
+Base.:(==)(u1::UnitQuat, q2::Quat) = ==(promote(u1, q2)...)
+Base.:(==)(q1::Quat, u2::UnitQuat) = ==(promote(q1, u2)...)
+Base.:(==)(u1::UnitQuat, u2::UnitQuat) = u1[:] == u2[:]
+
+Base.:*(u1::UnitQuat, u2::UnitQuat) = UnitQuat(getfield(u1, :quat) * getfield(u2, :quat), enforce_norm = false)
 Base.:*(u::UnitQuat, q::Quat) = *(promote(u, q)...)
 Base.:*(q::Quat, u::UnitQuat) = *(promote(q, u)...)
 
-Base.:/(u1::T, u2::T) where {T<:UnitQuat} = u1 * inv(u2)
-Base.:/(u1::UnitQuat, u2::UnitQuat) = /(promote(u1, u2)...)
+Base.:/(u1::UnitQuat, u2::UnitQuat) = u1 * inv(u2)
 Base.:/(u::UnitQuat, q::Quat) = /(promote(u, q)...)
 Base.:/(q::Quat, u::UnitQuat) = /(promote(q, u)...)
 
