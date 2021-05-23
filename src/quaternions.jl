@@ -71,16 +71,31 @@ LinearAlgebra.norm(q::AbstractQuat) = norm(q[:]) #uses StaticArrays implementati
 # this means that we cannot define methods with keyword arguments of the same
 # types but different names and expect Julia to choose the right one
 
+#Julia cannot distinguish either between Quat(data, copy_data = true) and
+#Quat(data)
+
 QData = MVector{4, Float64}
 
 struct Quat <: AbstractQuat
     data::QData
-    Quat(data) = new(copy(data))
+    # Quat(input) = new(input)
+
+    #new always calls convert(QData, input). unless typeof(input)!=QData, this
+    #in turn produces a new instance of input, so what will be stored in the
+    #data field will not be a reference to input but a copy. however, when a
+    #QData input is passed to the constructor, then convert() is trivial, will
+    #return input itself, and a reference to input will be stored instead. this
+    #is acceptable behaviour.
+
+    #all the methods below that call the inner constructor with Vectors as input
+    #will therefore trigger a conversion to QData. however, nothing would be
+    #gained by making them pass a QData explicitly, because this would mean that
+    #a call to the QData constructor is performed in advance, and within it a
+    #copy of the passed Vector would be made anyway. conclusion: keep it simple!
 end
 
 #outer constructors
 Quat(s::Real) = Quat([s, 0, 0, 0])
-Quat() = Quat(zeros(4))
 Quat(; real = 0.0, imag = zeros(3)) = Quat([real, imag...])
 
 Base.copy(q::Quat) = Quat(copy(getfield(q, :data)))
@@ -93,7 +108,8 @@ LinearAlgebra.normalize(q::Quat) = Quat(normalize(getfield(q, :data)))
 
 Base.promote_rule(::Type{Quat}, ::Type{S}) where {S<:Real} = Quat
 Base.convert(::Type{Quat}, a::Real) = Quat(a)
-Base.convert(::Type{Quat}, a::AbstractVector) = Quat(a)
+Base.convert(::Type{Quat}, v::AbstractVector) = Quat(v)
+Base.convert(::Type{Quat}, q::Quat) = q #if already a Quat, don't do anything
 
 #### Adjoint & Inverse
 Base.conj(q::Quat)= Quat([q.real, -q.imag...])
@@ -139,22 +155,30 @@ Base.:\(a::Real, q::Quat) = q / a
 
 struct UnitQuat <: AbstractQuat
     quat::Quat
-    #restrict inner constructor to the declared field types
-    function UnitQuat(quat::AbstractVector; enforce_norm::Bool = true)
-        # println("Normalization $enforce_norm")
-        quat_copy = copy(quat)
-        enforce_norm && normalize!(quat_copy)
-        return new(quat_copy) #tries to convert quat to Quat using Quat convert methods
+    function UnitQuat(input::AbstractVector; enforce_norm::Bool = true)
+        return enforce_norm ? new(normalize(input)) : new(input)
+        #if input is already a Quat, convert(Quat, input) returns input itself.
+        #therefore, a reference to input will be stored directly in the quat
+        #field. however, if it is not a Quat, convert(Quat, input) will return a
+        #new instance. this also happens if enforce_norm == true
     end
 end
 
 #outer constructors
-UnitQuat(s::Real) = UnitQuat([s, 0, 0, 0])
-UnitQuat() = UnitQuat([1, 0, 0, 0], enforce_norm = false)
-UnitQuat(; real::Real, imag::AbstractVector{T}) where {T<:Real} = UnitQuat([real, imag...])
+UnitQuat(::Real) = UnitQuat([1, 0, 0, 0], enforce_norm = false)
+function UnitQuat(; real::Union{Real, Nothing} = nothing,
+                    imag::Union{AbstractVector{T} where {T<:Real}, Nothing} = nothing)
+    if imag === nothing
+        return UnitQuat(1)
+    elseif real === nothing
+        return UnitQuat([0, imag...]) #unsafe, needs normalization
+    else
+        return UnitQuat([real, imag...]) #idem
+    end
+end
 
 #bypass normalization on copy
-Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :quat)), enforce_norm = false)
+Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :quat)), enforce_norm = false) #saves normalization
 Base.getindex(u::UnitQuat, i) = (getfield(u, :quat)[i])
 Base.setindex!(::UnitQuat, v, i) = error(
     "UnitQuat: Directly setting components not allowed, cast to Quat first")
@@ -162,19 +186,21 @@ Base.setproperty!(::UnitQuat, ::Symbol, v) = error(
     "UnitQuat: Directly setting real and imaginary parts not allowed, cast to Quat first")
 
 LinearAlgebra.normalize!(u::UnitQuat) = (normalize!(getfield(u, :quat)), return u)
-LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :quat)))
+LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :quat)), enforce_norm = false)
 
 Base.promote_rule(::Type{UnitQuat}, ::Type{Quat}) = Quat
 Base.convert(::Type{UnitQuat}, a::AbstractVector) = UnitQuat(a)
+# Base.convert(::Type{UnitQuat}, u::UnitQuat) = (u) #do not normalize on convert
+Base.convert(::Type{UnitQuat}, u::UnitQuat) = normalize!(u) #normalize on convert
 
 #### Adjoint & Inverse
-Base.conj(u::UnitQuat)= UnitQuat([u.real, -u.imag...])
+Base.conj(u::UnitQuat)= UnitQuat([u.real, -u.imag...], enforce_norm = false)
 Base.adjoint(u::UnitQuat) = conj(u)
 Base.inv(u::UnitQuat) = u'
 
 #### Operators
 Base.:+(u::UnitQuat) = u
-Base.:-(u::UnitQuat) = UnitQuat(-u[:])
+Base.:-(u::UnitQuat) = UnitQuat(-u[:], enforce_norm = false)
 
 #(==) is inherited from AbstractVector, but will return true for any
 #AbstractVector as long as it matches u[:], to avoid it we need to define these:

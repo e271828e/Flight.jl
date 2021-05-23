@@ -1,59 +1,71 @@
 module Attitude
 
-using StaticArrays: MVector #this form of using does not allow method extension
-
 # https://discourse.julialang.org/t/writing-functions-for-types-defined-in-another-module/31895
 # https://discourse.julialang.org/t/what-is-the-preferred-way-to-use-multiple-files/30687/6
 
-#do not do this:
-# include("quaternions.jl")
-# import .Quaternions
-#This pastes the complete quaternions.jl, including the Quaternions module, in
-#this file. But Flight.jl includes both quaternions.jl and attitude.jl.
-#Therefore, in Flight.jl there will be two conflicting definitions of module
-#Quaternions, one from the direct inclusion of quaternions.jl, and another
-#through the inclusion of quaternions.jl in attitude.jl. this forces Julia to
-#qualify all the types exported by the Quaternions module with their complete
-#paths to keep them distinct and avoid ambiguity
+using StaticArrays: MVector #this form of using does not allow method extension
+using ..Quaternions: UnitQuat
 
-#instead...
-# using ..Quaternions: UnitQuat, UnitQuat64
+export Rotation, RQuat
 
-export Rotation
+#########################
 
 #implements a passive (alias) rotation, that is, a rotation describing the
 #relative attitude between two reference frames.
 
-#outer constructors must take their input arguments, generate the field values
-#required by the type, and then pass them to the inner constructor
-#rmat, rvec, axisangle
-
-
-#Attitude(UnitQuat64()) #calls the inner constructor directly
-
-# Attitude(UnitQuat32()) #also. here, the inner constructor automatically tries
-#to convert() the input into a UnitQuat64. since this conversion is provided by
-#the Quaternion module, it works silently. obviously, something like
-#Rotation("Hello") fails, because there is no convert() defined from string to
-#UnitQuat64.
-
-#enables keyword argument "quat" and doubles as a zero argument constructor
-# Rotation(; quat::UnitQuat = UnitQuat64()) = Rotation(quat)
-
-#Julia DOES NOT dispatch on keyword argument names. that is, creating outer
-#constructor with rmat, rvec, euler, etc as keyword arguments and expecting
-#Julia to choose the right one will fail. it follows that for this purpose, a
-#single keyword constructor is required which handles all possible keyword
-#combinations. this might not be efficient, because the keywords must first be
-#captured in a Dict and then checked to decide which actual constructor to call
-
-#https://discourse.julialang.org/t/keyword-argument-constructor-breaks-incomplete-constructor/34198/3
-
-#########################
 abstract type Rotation end
 
+############################# RQuat ###############################
+
+struct RQuat <: Rotation
+    quat::UnitQuat
+    #if input is already a UnitQuat, new will not call convert, and therefore a
+    #reference instead of a copy will be assigned to field quat. however, this
+    #is no concern, since UnitQuats are virtually immutable (except for
+    #normalize!), and there is garbage collection
+end
+
+RQuat() = RQuat(UnitQuat())
+
+# Base.:*(::Rotation, ::AbstractVector) = transform(r, v)
+# Base.:*(::Rotation, ::Rotation) = compose(r1, r2)
+
+
 # declare RMat, RVec, RQuat, AxAng, Euler types and work with them, providing
-# convert() methods
+# convert() methods between them as required. in general, only to and from
+# quaternion will be required.
+
+#AxAng, RVec and Euler should all promote to Quat.
+
+#conversions to provide:
+# RMat, AxAng, RVec and Euler to and from RQuat
+# RMat to and from Quat
+# with that, can provide two-step conversion to and from RMat to AxAng, RVec and
+# Euler. maybe Euler could be direct.
+
+
+#RQuat is the center. every RotationType subtype must provide a:
+#convert(::Type{RotationType}, input::RQuat)
+#convert(::Type{RQuat}, input::RotationType)
+
+#for example:
+# convert(::Type{AxAng}, input::RQuat) = ...
+
+#with this, any conversion is possible in two steps as:
+# convert(::Type{AxAng}, input::Euler) = convert(AxAng, convert(RQuat, input))
+#more generally:
+# convert(::Type{T}, input::Rotation) where {T<:Rotation}= convert(T, convert(RQuat, input))
+#in the specific case in which input is already a RQuat, the conversion output
+#is itself, it will be bypassed
+
+#in some cases, we can override the convert method and replace it with a direct
+#conversion. for example, from axis-angle to rotation vector it is
+#straightforward, makes little sense to go through quaternion. or maybe i could
+#provide direct conversions to and from RMat and Euler
+
+#put println statements in each conversion method to know when it's been called
+
+
 
 #Rotation is an abstract type, of which these are concrete subtypes. not all
 #operations are defined for every one of them.
@@ -82,24 +94,11 @@ abstract type Rotation end
 #replace argument types with StaticArrays to fix lengths. also, allow different
 #Real subtypes
 
-
-#DO NOT TRY TO DISPATCH ON KEYWORDS, DISPATCH ON TYPES. JESUS CHRIST!
-# Rotation(rmat::SVector33)
-# Rotation(axis::SVector3, angle::Real)
-# Rotation(rvec::SVector3, angle::Real)
-
-#NOW create a keyword constructor for clarity, which then dispatchs to the
-#previous ones
-
 #go to Flight folder
 #enter package manager
 #activate .
 #do not do activate Flight. in that case, the test and using commands do not
 #work. they expect to be run from Flight's parent folder. why??
-
-#Attitude(quat = qtest)
-#Attitude(axis = [0, 0, 0], angle = 0)
-    #conver to quaternion and then call the quaternion constructor
 
 #must fail when passed a 1D array of size other than 3
 #how do we do this? by defining StaticArrays types

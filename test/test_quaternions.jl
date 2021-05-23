@@ -8,8 +8,10 @@ using Flight.Quaternions: QData
 export test_quaternions
 
 function test_quaternions()
-    @testset "Quat" begin test_Quat() end
-    @testset "UnitQuat" begin test_UnitQuat() end
+    @testset verbose = true "Quaternions" begin
+        @testset verbose = true "Quat" begin test_Quat() end
+        @testset verbose = true "UnitQuat" begin test_UnitQuat() end
+    end
 end
 
 function test_Quat()
@@ -27,8 +29,13 @@ function test_Quat()
         @test q.real == data[1]
         @test q.imag == data[2:end]
 
-        #q must hold copy of the original data, not a reference
-        data[2] = 432980
+        #if q was constructed from QData it holds a reference
+        data[2] = data[2] + 1
+        @test q[:] == data[:]
+
+        #otherwise (default), it holds a copy
+        q = Quat([1,2,3,4])
+        data[2] = data[2] + 1
         @test q[:] != data[:]
 
         #setindex
@@ -70,6 +77,8 @@ function test_Quat()
         @test Quat(real = 2, imag = [4,3,-2])[:] == [2, 4, 3, -2] #keyword
         @test Quat(real = 2)[:] == [2, 0, 0, 0] #keyword
         @test Quat(imag = [3,4,5])[:] == [0, 3, 4, 5] #keyword
+        @test_throws DimensionMismatch Quat([1, 3, 2, 5, 0])
+        @test_throws DimensionMismatch Quat([1, 5, 0])
 
     end
 
@@ -123,38 +132,39 @@ function test_UnitQuat()
 
     @testset "Basics" begin
 
-        quat = Quat([-3, 2, 4, 1])
-        u_not1 = UnitQuat(quat, enforce_norm = false)
-        u = UnitQuat(quat)
+        q = Quat([-3, 2, 4, 1])
+        u_badnorm = UnitQuat(q, enforce_norm = false)
+        u = UnitQuat(q)
+
+        #built-in normalization
+        @test abs(norm(u_badnorm) - 1) > 0.5 #check normalization has been bypassed
+        @test norm(u) ≈ 1
 
         #getindex
-        @test u_not1[:] == quat[:]
+        @test u_badnorm[:] == q[:]
 
         #getproperty
-        @test u_not1.real == quat[1]
-        @test u_not1.imag == quat[2:end]
+        @test u_badnorm.real == q[1]
+        @test u_badnorm.imag == q[2:end]
 
-        #u must hold copy of the original data, not a reference
-        quat[2] = 432980
-        @test u_not1[:] != quat[:]
+        #unlike u, u_badnorm was constructed from a non-normalized Quat,
+        #so it holds a reference, not a copy
+        q[2] = q[2] + 1
+        @test u_badnorm[:] == q[:]
 
         #setindex & setproperty disallowed to avoid breaking unit norm constraint
         @test_throws ErrorException u[4] = -5
         @test_throws ErrorException u.real = 0
         @test_throws ErrorException u.imag = [1, 2, 3]
 
-        #built-in normalization
-        @test abs(norm(u_not1) - 1) > 0.5 #check normalization has been bypassed
-        @test norm(u) ≈ 1
-
         #copy & normalization
-        u_not1_copy = copy(u_not1)
-        @test isa(u_not1_copy, UnitQuat)
-        @test abs(norm(u_not1_copy) - 1) > 0.5 #check normalization is bypassed on copy
-        @test norm(normalize(u_not1)) ≈ 1 #returns a normalized copy of u
-        @test u_not1_copy[:] == u_not1[:] #shouldn't have changed
-        @test norm(normalize!(u_not1)) ≈ 1 #returns u_not1 normalized
-        @test u_not1[:] != u_not1_copy[:] #now u_not1 is normalized
+        u_badnorm_copy = copy(u_badnorm)
+        @test isa(u_badnorm_copy, UnitQuat)
+        @test abs(norm(u_badnorm_copy) - 1) > 0.5 #check normalization is bypassed on copy
+        @test norm(normalize(u_badnorm)) ≈ 1 #returns a normalized copy of u
+        @test u_badnorm_copy[:] == u_badnorm[:] #shouldn't have changed
+        @test norm(normalize!(u_badnorm)) ≈ 1 #returns u_badnorm normalized
+        @test u_badnorm[:] != u_badnorm_copy[:] #now u_badnorm is normalized
 
     end
 
@@ -210,7 +220,6 @@ function test_UnitQuat()
         @test u1 \ q ≈ Quat(u1) \ q
 
     end
-
 
 end
 
