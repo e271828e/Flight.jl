@@ -74,7 +74,7 @@ LinearAlgebra.norm(q::AbstractQuat) = norm(q[:]) #uses StaticArrays implementati
 #Julia cannot distinguish either between Quat(data, copy_data = true) and
 #Quat(data)
 
-QData = MVector{4, Float64}
+const QData = MVector{4, Float64}
 
 struct Quat <: AbstractQuat
     data::QData

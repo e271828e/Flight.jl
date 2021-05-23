@@ -65,7 +65,10 @@ RQuat() = RQuat(UnitQuat())
 
 #put println statements in each conversion method to know when it's been called
 
-
+# struct AxAng <: Rotation
+#     axis::Float64
+#     angle::SVector{3, Float64}
+# end
 
 #Rotation is an abstract type, of which these are concrete subtypes. not all
 #operations are defined for every one of them.
