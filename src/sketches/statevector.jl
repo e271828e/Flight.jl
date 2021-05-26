@@ -1,7 +1,7 @@
 module StateVector
 
 using BlockArrays, StaticArrays
-import BlockArrays: axes, viewblock, getblock
+import BlockArrays: axes, viewblock, getblock, setblock!
 
 #additions to export are not tracked by Revise!
 export LBV, lbv_demo
@@ -18,15 +18,6 @@ export LBV, lbv_demo
 #inferred directly from some type parameter:
 #https://docs.julialang.org/en/v1/manual/performance-tips/#man-performance-value-type
 
-#with all those pieces in place, it may be time to return to...
-# http://www.stochasticlifestyle.com/zero-cost-abstractions-in-julia-indexing-vectors-by-name-with-labelledarrays/
-#... adapting it for my  own case
-# i would only need LVector{Syms}, because T is always Float64 and A is always
-# BlockVector. no need to parameterize anything else. with this approach, i
-# would have to define an LVector{Syms} specific to each Node or Leaf. it may be
-# more efficient, but it is more cumbersome and less flexible
-
-#DO NOT USE StaticArrays as blocks! their data cannot be referenced inside BlockVector
 
 #so, the first question is... what the fuck do i need to implement for a
 #concrete subtype of the AbstractBlockArray interface? by wading through the
@@ -39,8 +30,7 @@ export LBV, lbv_demo
 #BlockVector field, all should be fine turns out the rest of methods are already
 #implemented either by AbstractBlockArray or AbstractArray and do what they need
 
-
-
+#####################################################
 # about integrating both Labels and BlockTypes in the type parameter itself...
 # it is not possible. Julia doc says:
 
@@ -51,27 +41,42 @@ export LBV, lbv_demo
 # thereof. Type parameters may be omitted when they do not need to be referenced
 # or restricted.
 
-# so, i can use a tuple of symbols representing the labels for the different
-# blocks. but nothing more. so, maybe a cleaner solution would be to simply use
-# a Symbol identifier for the LBV that helps with dispatch. and then do what i
-# was doing: define a block descriptor for each LBV i want to define. then
-# dispatch to the correct getblocktype and getblocknumber using that Symbol
-# identifier
-# what i can do is:
-#for Aircraft:
-# getblockdescriptor(::LBV{:Aircraft}) = (:rbd = LBV{:Rbd}, :ldg = LBV{:Ldg})
-#and now, generic functions:
-# getblocknumber(T, s::Symbol) = findfirst(i->i==s, keys(getblockdescriptor(T)))
-# getblocktype(T, s::Symbol) = getblockdescriptor(T)[s]
+# #o quiza:
+# function LBV{:Aircraft}(blocks::values(getdescriptor(LBV{:Aircraft})))
+#     LBV{:Aircraft}(blocks)
+# end
+# #o genericamente:
+# function LBV{S}(blocks::values(getdescriptor(LBV{S}))) where {S<:Symbol}
+#     LBV{S}(blocks)
+# end
+# #y el siguiente inner:
+# function LBV{S}(blocks) where {S<:Symbol}
+#     println("Called block assembly constructor with $(typeof(blocks))")
+#     data = mortar(collect(blocks))
+#     new{S}(data)
+# end
 
-struct LBV{Labels} <: AbstractBlockVector{Float64}
+#llegados a este punto, la cosa empieza a oler a que seria interesante generar
+#los constructors con metaprogramming. yo defino una macro a la que le paso el
+#LBV Identifier, los BlockLabels y los BlockTypes, y el me genera un outer
+#constructor adecuado al que enchufarle un Tuple de blocks. ese a su vez se los
+#pasa al inner constructor
+
+
+#CUSTOMIZAR LA REPRESENTACION PARA QUE APAREZCAN LOS NOMBRES DE LOS CHILD BLOCKS
+
+
+
+struct LBV{S} <: AbstractBlockVector{Float64}
     data::BlockVector{Float64}
-    #this should never be called with a single element. the raison d'etre for
-    #a LBV is assembling multiple blocks of other LBV or Vector{Float64}s!
-    function LBV{Labels}(blocks::NTuple{N, Union{LBV, MVector{K, Float64} where {K}, Vector{Float64}}} where{N}) where {Labels}
+    function LBV{S}(blocks::NTuple{N, Union{LBV, MVector{K, Float64} where {K}, Vector{Float64}}} where{N}) where {S}
         println("Called block assembly constructor with $(typeof(blocks))")
+        #ensure the input block types match exactly those prescribed by the
+        #parametric type descriptor. TRY TO DO THIS IN COMPILE TIME. USE MACROS
+        #TO GENERATE OUTER CONSTRUCTOR
+        @assert typeof.(blocks) == values(getdescriptor(LBV{S}))
         data = mortar(collect(blocks))
-        new{Labels}(data)
+        new{S}(data)
     end
 end
 
@@ -82,78 +87,51 @@ viewblock(x::LBV, block) = viewblock(getfield(x, :data), block)
 #AbstractArray interface
 Base.getindex(x::LBV, i::Integer)::Float64 = getindex(getfield(x,:data), i)
 Base.getindex(x::LBV, i::Colon)::Vector{Float64} = getindex(getfield(x,:data),  i)
-Base.getindex(x::LBV, i::UnitRange{Int})::Vector{Float64} = getindex(getfield(x,:data),  i)
+Base.getindex(x::LBV, i::AbstractUnitRange)::Vector{Float64} = getindex(getfield(x,:data),  i)
 # Base.getindex(x::LBV, blockindex::BlockIndex{1})::Float64 = getindex(getfield(x,:data), blockindex) #not essential
 
 Base.setindex!(x::LBV, v, i::Integer) = setindex!(getfield(x,:data), v, i)
 Base.setindex!(x::LBV, v, i::Colon) = setindex!(getfield(x,:data), v, i)
-Base.setindex!(x::LBV, v, i::UnitRange{Int}) = setindex!(getfield(x,:data), v, i)
+Base.setindex!(x::LBV, v, i::AbstractUnitRange) = setindex!(getfield(x,:data), v, i)
 # Base.setindex!(x::LBV, v, i::Union{Integer, UnitRange{Int}, Colon}) = setindex!(getfield(x,:data), v, i)
 
-getblock(x::LBV, k::Integer) = getfield(x,:data)[Block(k)]
+#new
+getdescriptor(::Type{LBV}) = error("To be implemented by each LBV parametric type")
+getblocknumber(T::Type{LBV{S}} where{S}, s::Symbol) = findfirst(i->i==s, keys(getdescriptor(T)))
+getblocktype(T::Type{LBV{S}} where{S}, s::Symbol) = getdescriptor(T)[s]
 
-
-const RbdLabels = (:att, :vel, :pos)
-const LBVRbd = LBV{RbdLabels}
-
-const LdgLabels = (:nlg, :mlg)
-const LBVLdg = LBV{LdgLabels}
-
-const AircraftLabels = (:rbd, :ldg)
-const LBVAircraft = LBV{AircraftLabels}
-
-# #all these need to be replaced by generated functions. from the value type S,
-# which is a #Symbol, it needs to find: which block number corresponds to it
-# (this can be #done with findfirst on the tuple of AircraftLabels), and which
-# LBV specific subtype corresponds to it (for example, to :rbd #corresponds
-# LBV_Rbd = LBV{RbdLabels}, to :ldg corresponds LBV_Ldg, etc
-
-#the key to type stability is that these functions are called at compile time,
-# not at runtime, if they were called at runtime, since their output determines
-# the types of the extracted blocks... type instability!
-
-
-# Base.getindex(x::LBVAircraft, ::Val{:rbd})::LBVRbd = getblock(x, 1)
-# Base.getindex(x::LBVAircraft, ::Val{:ldg})::LBVLdg = getblock(x, 2)
-# Base.getproperty(x::LBVAircraft, s::Symbol) = getindex(x, Val(s))
-
-# Base.getindex(x::LBVRbd, ::Val{:att})::Vector{Float64} = getblock(x, 1)
-# Base.getindex(x::LBVRbd, ::Val{:vel})::Vector{Float64} = getblock(x, 2)
-# Base.getproperty(x::LBVRbd, s::Symbol) = getindex(x, Val(s))
-
-# Base.getindex(x::LBVLdg, ::Val{:nlg})::Vector{Float64} = getblock(x, 1)
-# Base.getindex(x::LBVLdg, ::Val{:mlg})::Vector{Float64} = getblock(x, 2)
-# Base.getproperty(x::LBVLdg, s::Symbol) = getindex(x, Val(s))
-
-#these aren't necessary! once the slices or the complete block are retrieved,
-#the assignment changes them. but, since they are actually a reference to the
-#data held by the parent, this changes that as well.
-# Base.setindex!(x::LBVAircraft, v, ::Val{:rbd}) = setindex!(getblock(x, 1), v, :)
-# Base.setproperty!(x::LBVAircraft, v, s::Symbol) = setindex!(x, v, Val(s))
-
-Aircraft_block_descriptor = (rbd = LBVRbd, ldg = LBVLdg)
-getblocknumber(::Type{LBVAircraft}, s::Symbol) = findfirst(i->i==s, keys(Aircraft_block_descriptor))
-getblocktype(::Type{LBVAircraft}, s::Symbol) = Aircraft_block_descriptor[s]
-
-Rbd_block_descriptor = (att = MVector{4, Float64}, vel = MVector{3, Float64}, pos = MVector{3, Float64})
-getblocknumber(::Type{LBVRbd}, s::Symbol) = findfirst(i->i==s, keys(Rbd_block_descriptor))
-getblocktype(::Type{LBVRbd}, s::Symbol) = Rbd_block_descriptor[s]
-
-Ldg_block_descriptor = (nlg = Vector{Float64}, mlg = Vector{Float64})
-getblocknumber(::Type{LBVLdg}, s::Symbol) = findfirst(i->i==s, keys(Ldg_block_descriptor))
-getblocktype(::Type{LBVLdg}, s::Symbol) = Ldg_block_descriptor[s]
-
+#within the @generated function body, x is a type, and s is a Symbol (it is
+#extracted from a type parameter). we could do LBV{T} where {T} and T would
+#be also a Symbol type parameter, but we can dispatch directly on typeof(x)
 @generated function Base.getindex(x::LBV, ::Val{s}) where {s}
-    #within the @generated function body, x is a type, and s is a Symbol (it is
-    #extracted from a type parameter). we could do LBV{T} where {T} and T would
-    #be also a Symbol type parameter, but we can dispatch directly on typeof(x)
     Core.println("Generated function getindex parsed for type $x")
     blocknumber = getblocknumber(x, s) #this is a generated function so x is a type!
     blocktype = getblocktype(x, s)
-    :(getblock(getfield(x,:data), $blocknumber)::$blocktype) #return it and enforce type
+    #getblock dispatches to BlockArrays
+    :(getblock(getfield(x,:data), $blocknumber)::$blocktype) #enforce return type for stability
 end
-Base.getproperty(x::LBV, s::Symbol) = getindex(x, Val(s))
+#the block may be either a MVector or a LBV. therefore, we cannot access the
+#data field for the latter. instead, we need to use the implementation agnostic
+#colon notation (we want to set the whole block). first, we leverage the already
+#available @generated getindex to get a reference to the block
+Base.setindex!(x::LBV, v, ::Val{s}) where {s} = (x[Val(s)][:] = v)
 
+Base.getproperty(x::LBV, s::Symbol) = getindex(x, Val(s))
+Base.setproperty!(x::LBV, s::Symbol, v) = setindex!(x, v, Val(s))
+
+
+################ THIS GOES IN A TEST MODULE ###########################
+
+
+#maybe slurp input blocks to LBV constructor, more convenient for the caller
+
+const LBVRbd = LBV{:rbd}
+const LBVLdg = LBV{:ldg}
+const LBVAircraft = LBV{:aircraft}
+
+getdescriptor(::Type{LBVRbd}) = (att = MVector{4, Float64}, vel = MVector{3, Float64}, pos = MVector{3, Float64})
+getdescriptor(::Type{LBVLdg}) = (nlg = Vector{Float64}, mlg = Vector{Float64})
+getdescriptor(::Type{LBVAircraft}) = (rbd = LBVRbd, ldg = LBVLdg)
 
 function lbv_demo()
     att = MVector{4, Float64}(rand(4))
@@ -179,11 +157,31 @@ function lbv_demo()
         x_aircraft[1:4],
         x_aircraft.rbd.att,
         x_aircraft.ldg[:],
-        # x_aircraft.ldg.nlg,
+        x_aircraft.ldg.nlg,
     )
 
 
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #ahora, la cuestion es, si yo parametrizo LBV solo con el type parameter Labels,
 #puedo tener algun conflicto si yo por ejemplo defino un LBV para LandingGear
 #que sea LBV{(:right, :left)} y otro para PowerPlant que tambien sea
