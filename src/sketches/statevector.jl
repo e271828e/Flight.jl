@@ -4,7 +4,7 @@ using BlockArrays, StaticArrays
 import BlockArrays: axes, viewblock, getblock, setblock!
 
 #additions to export are not tracked by Revise!
-export LBV, lbv_demo
+export Node, lbv_demo
 
 #setting default values directly:
 # https://mauro3.github.io/Parameters.jl/v0.9/manual.html
@@ -17,7 +17,6 @@ export LBV, lbv_demo
 #apparently, Val will work as long as it is hardcoded somewhere or can be
 #inferred directly from some type parameter:
 #https://docs.julialang.org/en/v1/manual/performance-tips/#man-performance-value-type
-
 
 #so, the first question is... what the fuck do i need to implement for a
 #concrete subtype of the AbstractBlockArray interface? by wading through the
@@ -41,109 +40,130 @@ export LBV, lbv_demo
 # thereof. Type parameters may be omitted when they do not need to be referenced
 # or restricted.
 
-# #o quiza:
-# function LBV{:Aircraft}(blocks::values(getdescriptor(LBV{:Aircraft})))
-#     LBV{:Aircraft}(blocks)
-# end
-# #o genericamente:
-# function LBV{S}(blocks::values(getdescriptor(LBV{S}))) where {S<:Symbol}
-#     LBV{S}(blocks)
-# end
-# #y el siguiente inner:
-# function LBV{S}(blocks) where {S<:Symbol}
-#     println("Called block assembly constructor with $(typeof(blocks))")
-#     data = mortar(collect(blocks))
-#     new{S}(data)
-# end
 
-#llegados a este punto, la cosa empieza a oler a que seria interesante generar
-#los constructors con metaprogramming. yo defino una macro a la que le paso el
-#LBV Identifier, los BlockLabels y los BlockTypes, y el me genera un outer
-#constructor adecuado al que enchufarle un Tuple de blocks. ese a su vez se los
-#pasa al inner constructor
+#customizar la representacion para que aparezcan los nombres de los child blocks
+
+#when operating with a complete Node, use [:] to output a Vector{Float64} view
+#and ensure type stability.
+
+#in Julia, x[:] =... should be replaced by x .= ...
+#https://julialang.org/blog/2017/01/moredots/
+
+#todo: need a way to restrict the specification of the descriptor. ONLY CAN HAVE
+#Node OR LEAF!! Maybe create a new type called NodeDescriptor, whose constructor
+#only accepts Symbols and Union{Node, Leaf}
+#only if i do this can i relax the constructor argument types from Union{Leaf,
+#Node} to AbstractVector. otherwise, someone could call the block assembly
+#constructor with a regular Vector{Float64}, which has no similar() method
 
 
-#CUSTOMIZAR LA REPRESENTACION PARA QUE APAREZCAN LOS NOMBRES DE LOS CHILD BLOCKS
+#TODO: currently, broadcasting externally breaks the types
+#investigate:
+#https://docs.julialang.org/en/v1/manual/interfaces/#man-interface-array
+#i may find that after implementing that BroadcastStyle stuff i no longer need
+#to call similar() inside operator overloads
 
+Leaf{K} = MVector{K, Float64} where {K}
 
-
-struct LBV{S} <: AbstractBlockVector{Float64}
+struct Node{S} <: AbstractBlockVector{Float64}
     data::BlockVector{Float64}
-    function LBV{S}(blocks::NTuple{N, Union{LBV, MVector{K, Float64} where {K}, Vector{Float64}}} where{N}) where {S}
-        println("Called block assembly constructor with $(typeof(blocks))")
-        #ensure the input block types match exactly those prescribed by the
-        #parametric type descriptor. TRY TO DO THIS IN COMPILE TIME. USE MACROS
-        #TO GENERATE OUTER CONSTRUCTOR
-        @assert typeof.(blocks) == values(getdescriptor(LBV{S}))
-        data = mortar(collect(blocks))
+    function Node{S}(blocks::NTuple{N, Union{Node, Leaf}} where {N}) where {S}
+        println("Called block assembly constructor for $S")
+        properblocktypes=getblocktypes(Node{S})
+        println("Converting inputs of type $(typeof.(blocks)) to $properblocktypes")
+        converted_blocks = Tuple(convert(T, b) for (T, b) in zip(properblocktypes, blocks))
+        data = mortar(collect(converted_blocks))
         new{S}(data)
     end
 end
 
+getdescriptor(::Type{Node}) = error("To be implemented by each Node type")
+getblocktypes(T::Type{Node{S}} where{S}) = values(getdescriptor(T))
+
+#the goal is to construct a new Node instance that respects the specific types at
+#each node of the Node hierarchy. we do this recursively from top to bottom, by
+#assemblying new instances of the types indicated by the Node descriptor at each
+#level. a way to do this is have a similar() method that dispatches on type
+#rather than on an instance, and call it recursively from the top. any Node
+#hierarchy will be made of Node nodes and MVectors at the leafs. MVectors already
+#have a similar() method dispatching on type. to achieve the above, we need
+#another one for Node, which will implement the recursion
+Base.similar(::Type{Node{S}}) where {S} = Node{S}(similar.(getblocktypes(Node{S})))
+Base.similar(::Node{S}) where {S} = similar(Node{S})
+
+Node{S}(v::AbstractVector) where {S} = (x = similar(Node{S}) ; x .= v)
+Node{S}() where {S} = (x = similar(Node{S}) ; x .= 0)
+
+Base.convert(::Type{Node{S}}, v::Node{S}) where{S} = (println("No need to convert $S"); v) #do nothing!
+Base.convert(::Type{Node{S}}, v::AbstractVector) where {S} = (println("Converting $(typeof(v)) to Node{$S}"); Node{S}(v))
+
+#TO COMPUTE AT COMPILE TIME!!!!!!!!!!!!!!!!!!!
+Base.length(::Type{Node{S}}) where {S} = sum(length.(getblocktypes(Node{S})))
+Base.copy(x::Node{S}) where {S} = Node{S}(Tuple(copy.(blocks(getfield(x,:data)))))
+#Base.length(::Node{S}) where {S} = length(Node{S})
+
 #AbstractBlockArray interface
-axes(x::LBV) = axes(getfield(x,:data))
-viewblock(x::LBV, block) = viewblock(getfield(x, :data), block)
+axes(x::Node) = axes(getfield(x,:data))
+viewblock(x::Node, block) = viewblock(getfield(x, :data), block)
 
 #AbstractArray interface
-Base.getindex(x::LBV, i::Integer)::Float64 = getindex(getfield(x,:data), i)
-Base.getindex(x::LBV, i::Colon)::Vector{Float64} = getindex(getfield(x,:data),  i)
-Base.getindex(x::LBV, i::AbstractUnitRange)::Vector{Float64} = getindex(getfield(x,:data),  i)
-# Base.getindex(x::LBV, blockindex::BlockIndex{1})::Float64 = getindex(getfield(x,:data), blockindex) #not essential
-
-Base.setindex!(x::LBV, v, i::Integer) = setindex!(getfield(x,:data), v, i)
-Base.setindex!(x::LBV, v, i::Colon) = setindex!(getfield(x,:data), v, i)
-Base.setindex!(x::LBV, v, i::AbstractUnitRange) = setindex!(getfield(x,:data), v, i)
-# Base.setindex!(x::LBV, v, i::Union{Integer, UnitRange{Int}, Colon}) = setindex!(getfield(x,:data), v, i)
-
-#new
-getdescriptor(::Type{LBV}) = error("To be implemented by each LBV parametric type")
-getblocknumber(T::Type{LBV{S}} where{S}, s::Symbol) = findfirst(i->i==s, keys(getdescriptor(T)))
-getblocktype(T::Type{LBV{S}} where{S}, s::Symbol) = getdescriptor(T)[s]
+Base.getindex(x::Node, i::Integer)::Float64 = getindex(getfield(x,:data), i)
+Base.getindex(x::Node, i::Colon)::Vector{Float64} = getindex(getfield(x,:data),  i)
+Base.getindex(x::Node, i::AbstractUnitRange)::Vector{Float64} = getindex(getfield(x,:data),  i)
 
 #within the @generated function body, x is a type, and s is a Symbol (it is
-#extracted from a type parameter). we could do LBV{T} where {T} and T would
+#extracted from a type parameter). we could do Node{T} where {T} and T would
 #be also a Symbol type parameter, but we can dispatch directly on typeof(x)
-@generated function Base.getindex(x::LBV, ::Val{s}) where {s}
+@generated function Base.getindex(x::Node, ::Val{s}) where {s}
     Core.println("Generated function getindex parsed for type $x")
-    blocknumber = getblocknumber(x, s) #this is a generated function so x is a type!
-    blocktype = getblocktype(x, s)
+    blocknumber = findfirst(i->i==s, keys(getdescriptor(x)))
+    blocktype = getdescriptor(x)[s]
     #getblock dispatches to BlockArrays
     :(getblock(getfield(x,:data), $blocknumber)::$blocktype) #enforce return type for stability
 end
-#the block may be either a MVector or a LBV. therefore, we cannot access the
-#data field for the latter. instead, we need to use the implementation agnostic
-#colon notation (we want to set the whole block). first, we leverage the already
-#available @generated getindex to get a reference to the block
-Base.setindex!(x::LBV, v, ::Val{s}) where {s} = (x[Val(s)][:] = v)
 
-Base.getproperty(x::LBV, s::Symbol) = getindex(x, Val(s))
-Base.setproperty!(x::LBV, s::Symbol, v) = setindex!(x, v, Val(s))
+Base.setindex!(x::Node, v, i::Integer) = setindex!(getfield(x,:data), v, i)
+Base.setindex!(x::Node, v, i::Colon) = setindex!(getfield(x,:data), v, i)
+Base.setindex!(x::Node, v, i::AbstractUnitRange) = setindex!(getfield(x,:data), v, i)
+Base.setindex!(x::Node, v, ::Val{s}) where {s} = (x[Val(s)] .= v)
+
+Base.getproperty(x::Node, s::Symbol) = getindex(x, Val(s))
+Base.setproperty!(x::Node, s::Symbol, v) = setindex!(x, v, Val(s))
+
+#these non-broadcast operators preserve the Node hierarchy
+Base.:(+)(x1::Node{S}, x2::Union{Real, Node{S}}) where {S} = (y = similar(Node{S}) ; y .= x1 .+ x2)
+Base.:(-)(x1::Node{S}, x2::Union{Real, Node{S}}) where {S} = (y = similar(Node{S}) ; y .= x1 .- x2)
+Base.:(*)(x1::Node{S}, a::Real) where {S} = (y = similar(Node{S}) ; y .= x1 .* a)
+Base.:(*)(a::Real, x1::Node{S}) where {S} = x1 * a
+Base.:(/)(x1::Node{S}, a::Real) where {S} = (y = similar(Node{S}) ; y .= x1 ./ a)
 
 
 ################ THIS GOES IN A TEST MODULE ###########################
 
+const NodeRbd = Node{:rbd}
+const NodeLdg = Node{:ldg}
+const NodePwp = Node{:pwp}
+const NodeAircraft = Node{:aircraft}
 
-#maybe slurp input blocks to LBV constructor, more convenient for the caller
-
-const LBVRbd = LBV{:rbd}
-const LBVLdg = LBV{:ldg}
-const LBVAircraft = LBV{:aircraft}
-
-getdescriptor(::Type{LBVRbd}) = (att = MVector{4, Float64}, vel = MVector{3, Float64}, pos = MVector{3, Float64})
-getdescriptor(::Type{LBVLdg}) = (nlg = Vector{Float64}, mlg = Vector{Float64})
-getdescriptor(::Type{LBVAircraft}) = (rbd = LBVRbd, ldg = LBVLdg)
+getdescriptor(::Type{NodeRbd}) = (att = Leaf{4}, vel = Leaf{3}, pos = Leaf{3})
+getdescriptor(::Type{NodeLdg}) = (nlg = Leaf{3}, mlg = Leaf{3})
+getdescriptor(::Type{NodePwp}) = (left = Leaf{2}, right = Leaf{2})
+getdescriptor(::Type{NodeAircraft}) = (rbd = NodeRbd, ldg = NodeLdg, pwp = NodePwp)
 
 function lbv_demo()
-    att = MVector{4, Float64}(rand(4))
-    vel = MVector{3, Float64}(2ones(3))
-    pos = MVector{3, Float64}(3ones(3))
-    x_rbd = LBVRbd((att, vel, pos))
+    att = Leaf{4}(rand(4))
+    vel = Leaf{3}(2ones(3))
+    pos = Leaf{3}(3ones(3))
+    pos = Leaf{3}(3ones(3))
+    x_rbd = NodeRbd((att, vel, pos))
 
-    nlg = 5ones(3)
-    mlg = 2ones(3)
-    x_ldg = LBVLdg((nlg, mlg))
+    nlg = Leaf{3}(5ones(3))
+    mlg = Leaf{3}(2ones(3))
+    x_ldg = NodeLdg((nlg, mlg))
 
-    x_aircraft = LBVAircraft((x_rbd, x_ldg))
+    x_pwp = NodePwp(rand(4))
+
+    x_aircraft = NodeAircraft((x_rbd, x_ldg, x_pwp))
     display(x_aircraft)
     x_rbd_retrieved = x_aircraft[Val(:rbd)]
     x_rbd_retrieved[:] .= 111
@@ -182,17 +202,17 @@ end
 
 
 
-#ahora, la cuestion es, si yo parametrizo LBV solo con el type parameter Labels,
-#puedo tener algun conflicto si yo por ejemplo defino un LBV para LandingGear
-#que sea LBV{(:right, :left)} y otro para PowerPlant que tambien sea
-#LBV{(:right, left)}, pero que cada uno tenga bloques de tamano distinto? En
+#ahora, la cuestion es, si yo parametrizo Node solo con el type parameter Labels,
+#puedo tener algun conflicto si yo por ejemplo defino un Node para LandingGear
+#que sea Node{(:right, :left)} y otro para PowerPlant que tambien sea
+#Node{(:right, left)}, pero que cada uno tenga bloques de tamano distinto? En
 #teoria podria ser un problema, porque siendo los mismos tipos, pero teniendo
 #los mismos tamanos, la funcion getindex(x,:right) deberia ser distinta en ambos
 #casos, porque los bloques son de distintos tamanos.
 
 #Pero no deberia. Porque si tengo dos tipos con el mismo nombre en dos modulos,
 #cada uno estara cualificado con su #modulo, si no Julia declarara ambiguedad. O
-#sea, yo tendre Ldg.LBV{...} y Pwp.LBV{...}. Para cada uno, en sus respectivos
+#sea, yo tendre Ldg.Node{...} y Pwp.Node{...}. Para cada uno, en sus respectivos
 #modulos, se habran generado localmente funciones distintas. Pero hacer un toy
 #example por si acaso, con dos tipos triviales del mismo nombre en dos modulos
 #distintos, importar los modulos en un cierto codigo y ver que pasa
@@ -202,7 +222,7 @@ end
 #extraigo. un arreglo es contener el type instability declarando los tipos tras
 #un getindex
 
-#y es que es normal!!! si yo tengo un LBV que esta formado por blocks, cada uno
+#y es que es normal!!! si yo tengo un Node que esta formado por blocks, cada uno
 #de los cuales es un tipo, y por tanto cada vez que llamo a setindex con un
 #Symbol como argumento devuelvo un block de tipo distinto, el compilador no
 #puede saber exactamente que tipo de retorno se va a encontrar en cada caso. es
@@ -221,12 +241,12 @@ end
 # el return type real (y con el la estructura anidada de todo lo que hay por
 # debajo) para get_property y forzar el return type a Vector{Float64} para
 # getindex, de manera que entonces se podria hacer algo como x[:rbd] para
-# obtener un LBV{(:att, :vel)} y algo como x.rbd[:att] para obtener el
+# obtener un Node{(:att, :vel)} y algo como x.rbd[:att] para obtener el
 # Vector{Float64} subyacente, y que como la ultima llamada es a getindex, el
 # compilador sabria que el resultado es un Vector{Float64}. pero no funciona,
 # porque lo que el compilador no puede saber es que la primera llamada x[:rbd]
-# realmente va a devolver un LBV, por lo que no sabe que la getindex a la que se
-# invoca despues corresponde realmente a LBV, y por tanto podria no ser esa a la
+# realmente va a devolver un Node, por lo que no sabe que la getindex a la que se
+# invoca despues corresponde realmente a Node, y por tanto podria no ser esa a la
 # que le hemos restringido el return type
 
 
