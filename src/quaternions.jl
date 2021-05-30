@@ -1,6 +1,6 @@
 module Quaternions
 
-using StaticArrays: MVector #this form of using does not allow method extension
+using StaticArrays: SVector, MVector #this form of using does not allow method extension
 using LinearAlgebra #this form does, with LinearAlgebra.method
 
 export AbstractQuat, Quat, UnitQuat
@@ -25,30 +25,10 @@ Base.show(io::IO, ::MIME"text/plain", q::AbstractQuat) = print(io, "$(typeof(q))
 Base.show(io::IO, q::AbstractQuat) = print(io, "$(typeof(q)): $(q[:])")
 
 #real and imaginary parts
-Base.propertynames(::Type{AbstractQuat}) = (:real, :imag)
-function Base.getproperty(q::AbstractQuat, s::Symbol)
-    if s == :real
-        return q[1]
-    elseif s == :imag
-        return q[2:4]
-    else
-        error("No property $s defined for AbstractQuat types")
-    end
-end
-
-function Base.setproperty!(q::AbstractQuat, s::Symbol, v)
-    if s == :real
-        q[1] = v
-    elseif s == :imag
-        q[2:4] = v
-    else
-        error("No property $s defined for Quat")
-    end
-end
-
-#norm
-norm_sqr(q::AbstractQuat) = sum(abs2.(q))
-LinearAlgebra.norm(q::AbstractQuat) = norm(q[:]) #uses StaticArrays implementation
+# Base.propertynames(::Type{AbstractQuat}) = (:real, :imag)
+Base.getindex(q::AbstractQuat, s::Symbol) = getindex(q, Val(s))
+Base.getproperty(q::AbstractQuat, s::Symbol) = getindex(q, Val(s))
+Base.setproperty!(q::AbstractQuat, s::Symbol, v) = setindex!(q, v, Val(s))
 
 
 ######################## Quat #############################
@@ -74,10 +54,10 @@ LinearAlgebra.norm(q::AbstractQuat) = norm(q[:]) #uses StaticArrays implementati
 #Julia cannot distinguish either between Quat(data, copy_data = true) and
 #Quat(data)
 
-const QData = MVector{4, Float64}
+const QData = SVector{4, Float64}
 
 struct Quat <: AbstractQuat
-    data::QData
+    __data::QData
     # Quat(input) = new(input)
 
     #new always calls convert(QData, input). unless typeof(input)!=QData, this
@@ -98,13 +78,14 @@ end
 Quat(s::Real) = Quat([s, 0, 0, 0])
 Quat(; real = 0.0, imag = zeros(3)) = Quat([real, imag...])
 
-Base.copy(q::Quat) = Quat(copy(getfield(q, :data)))
-Base.getindex(q::Quat, i) = (getfield(q, :data)[i])
-Base.setindex!(q::Quat, v, i) = (getfield(q, :data)[i] = v)
+Base.copy(q::Quat) = Quat(copy(getfield(q, :__data)))
+Base.getindex(q::Quat, i) = getfield(q, :__data)[i]
+Base.getindex(q::Quat, ::Val{:real}) = q[1]
+Base.getindex(q::Quat, ::Val{:imag}) = SVector{3, Float64}(q[2:4])
 
-#more efficient than the general normalization for AbstractVector
-LinearAlgebra.normalize!(q::Quat) = (normalize!(getfield(q, :data)); return q)
-LinearAlgebra.normalize(q::Quat) = Quat(normalize(getfield(q, :data)))
+LinearAlgebra.norm(q::Quat) = norm(getfield(q, :__data)) #uses StaticArrays implementation
+LinearAlgebra.normalize(q::Quat) = Quat(normalize(getfield(q, :__data)))
+norm_sqr(q::Quat) = (data = getfield(q,:__data); sum(data.*data))
 
 Base.promote_rule(::Type{Quat}, ::Type{S}) where {S<:Real} = Quat
 Base.convert(::Type{Quat}, a::Real) = Quat(a)
@@ -114,27 +95,29 @@ Base.convert(::Type{Quat}, q::Quat) = q #if already a Quat, don't do anything
 #### Adjoint & Inverse
 Base.conj(q::Quat)= Quat([q.real, -q.imag...])
 Base.adjoint(q::Quat) = conj(q)
-Base.inv(q::Quat) = Quat(q'[:] / norm_sqr(q))
+Base.inv(q::Quat) = Quat(getfield(q', :__data) / norm_sqr(q))
 
 #### Operators
 Base.:+(q::Quat) = q
-Base.:-(q::Quat) = Quat(-q[:])
+Base.:-(q::Quat) = Quat(-getfield(q, :__data))
 
 #(==) is inherited from AbstractVector, but will return true for any
 #AbstractVector as long as it matches q[:], to avoid it we need to define these:
 Base.:(==)(q1::AbstractVector, q2::Quat) = false
 Base.:(==)(q1::Quat, q2::AbstractVector) = false
-Base.:(==)(q1::Quat, q2::Quat) = q1[:] == q2[:]
+Base.:(==)(q1::Quat, q2::Quat) = getfield(q1,:__data) == getfield(q2,:__data)
 
-Base.:+(q1::Quat, q2::Quat) = Quat(q1[:] + q2[:])
+Base.:+(q1::Quat, q2::Quat) = Quat(getfield(q1,:__data) + getfield(q2,:__data))
 Base.:+(q::Quat, a::Real) = +(promote(q, a)...)
 Base.:+(a::Real, q::Quat) = +(promote(a, q)...)
 
-Base.:-(q1::Quat, q2::Quat) = Quat(q1[:] - q2[:])
+Base.:-(q1::Quat, q2::Quat) = Quat(getfield(q1,:__data) - getfield(q2,:__data))
 Base.:-(q::Quat, a::Real) = -(promote(q, a)...)
 Base.:-(a::Real, q::Quat) = -(promote(a, q)...)
 
 function Base.:*(q1::Quat, q2::Quat)
+    # q1_real = q1[Val(real)]
+    # q2_real = q2[Val(real)]
     p_real = q1.real * q2.real - dot(q1.imag, q2.imag)
     p_imag = q1.real * q2.imag + q2.real * q1.imag + cross(q1.imag, q2.imag)
     Quat([p_real, p_imag...])
@@ -154,11 +137,11 @@ Base.:\(a::Real, q::Quat) = q / a
 ######################## UnitQuat #############################
 
 struct UnitQuat <: AbstractQuat
-    quat::Quat
+    __quat::Quat
     function UnitQuat(input::AbstractVector; enforce_norm::Bool = true)
         return enforce_norm ? new(normalize(input)) : new(input)
         #if input is already a Quat, convert(Quat, input) returns input itself.
-        #therefore, a reference to input will be stored directly in the quat
+        #therefore, a reference to input will be stored directly in the __quat
         #field. however, if it is not a Quat, convert(Quat, input) will return a
         #new instance. this also happens if enforce_norm == true
     end
@@ -178,20 +161,18 @@ function UnitQuat(; real::Union{Real, Nothing} = nothing,
 end
 
 #bypass normalization on copy
-Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :quat)), enforce_norm = false) #saves normalization
-Base.getindex(u::UnitQuat, i) = (getfield(u, :quat)[i])
-Base.setindex!(::UnitQuat, v, i) = error(
-    "UnitQuat: Directly setting components not allowed, cast to Quat first")
-Base.setproperty!(::UnitQuat, ::Symbol, v) = error(
-    "UnitQuat: Directly setting real and imaginary parts not allowed, cast to Quat first")
+Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :__quat)), enforce_norm = false) #saves normalization
+Base.getindex(u::UnitQuat, i) = (getfield(u, :__quat)[i])
+Base.getindex(u::UnitQuat, ::Val{:real}) = getindex(getfield(u, :__quat), Val(:real))
+Base.getindex(u::UnitQuat, ::Val{:imag}) = getindex(getfield(u, :__quat), Val(:imag))
 
-LinearAlgebra.normalize!(u::UnitQuat) = (normalize!(getfield(u, :quat)), return u)
-LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :quat)), enforce_norm = false)
+LinearAlgebra.norm(q::UnitQuat) = norm(getfield(q, :__quat)) #uses StaticArrays implementation
+LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :__quat)), enforce_norm = false)
 
 Base.promote_rule(::Type{UnitQuat}, ::Type{Quat}) = Quat
 Base.convert(::Type{UnitQuat}, a::AbstractVector) = UnitQuat(a)
 # Base.convert(::Type{UnitQuat}, u::UnitQuat) = (u) #do not normalize on convert
-Base.convert(::Type{UnitQuat}, u::UnitQuat) = normalize!(u) #normalize on convert
+Base.convert(::Type{UnitQuat}, u::UnitQuat) = normalize(u) #normalize on convert
 
 #### Adjoint & Inverse
 Base.conj(u::UnitQuat)= UnitQuat([u.real, -u.imag...], enforce_norm = false)
@@ -200,7 +181,7 @@ Base.inv(u::UnitQuat) = u'
 
 #### Operators
 Base.:+(u::UnitQuat) = u
-Base.:-(u::UnitQuat) = UnitQuat(-u[:], enforce_norm = false)
+Base.:-(u::UnitQuat) = UnitQuat(-getfield(u, :__quat), enforce_norm = false)
 
 #(==) is inherited from AbstractVector, but will return true for any
 #AbstractVector as long as it matches u[:], to avoid it we need to define these:
@@ -208,9 +189,9 @@ Base.:(==)(v1::AbstractVector, u2::UnitQuat) = false
 Base.:(==)(u1::UnitQuat, v2::AbstractVector) = false
 Base.:(==)(u1::UnitQuat, q2::Quat) = ==(promote(u1, q2)...)
 Base.:(==)(q1::Quat, u2::UnitQuat) = ==(promote(q1, u2)...)
-Base.:(==)(u1::UnitQuat, u2::UnitQuat) = u1[:] == u2[:]
+Base.:(==)(u1::UnitQuat, u2::UnitQuat) = getfield(u1,:__quat) == getfield(u2,:__quat)
 
-Base.:*(u1::UnitQuat, u2::UnitQuat) = UnitQuat(getfield(u1, :quat) * getfield(u2, :quat), enforce_norm = false)
+Base.:*(u1::UnitQuat, u2::UnitQuat) = UnitQuat(getfield(u1, :__quat) * getfield(u2, :__quat), enforce_norm = false)
 Base.:*(u::UnitQuat, q::Quat) = *(promote(u, q)...)
 Base.:*(q::Quat, u::UnitQuat) = *(promote(q, u)...)
 

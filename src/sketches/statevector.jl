@@ -41,6 +41,7 @@ end
 #function and constructor are generated in that scope. but what about the
 #generic type Node itself? will it be visible to the macro? yes if both Node and
 #the macro are exported together by the StateVector module
+
 function Node{S}(blocks::NTuple{N, Union{Node, Leaf}} where {N}) where {S}
     # println("Called block assembly constructor for $S")
     # println("Converting inputs of type $(typeof.(blocks)) to $properblocktypes")
@@ -61,15 +62,15 @@ childtypes(T::Type{Node{S}} where{S}) = values(descriptor(T))
 #the leafs. MVectors already have a similar() method dispatching on type. to
 #achieve the above, we need another one for Node, which will implement the
 #recursion
-makechildren(::Type{Node{S}}) where {S} = (println("Creating children for Node{:$S}..."); similar.(childtypes(Node{S})))
+makechildren(::Type{Node{S}}) where {S} = (#=println("Creating children for Node{:$S}..."); =#similar.(childtypes(Node{S})))
 Base.similar(::Type{Node{S}}) where {S} = Node{S}(makechildren(Node{S}))
 Base.similar(::Node{S}) where {S} = similar(Node{S})
 
-Node{S}(v::AbstractVector) where {S} = (x = similar(Node{S}) ; x .= v)
+Node{S}(v::AbstractVector) where {S} = (println("Converting $(typeof(v)) to Node{$S}"); x = similar(Node{S}) ; x .= v)
 Node{S}() where {S} = (x = similar(Node{S}) ; x .= 0)
 
-Base.convert(::Type{Node{S}}, x::Node{S}) where {S} = (println("Conversion unnecessary for $(typeof(x))"); x)
-Base.convert(::Type{Node{S}}, v::AbstractVector) where {S} = (println("Converting $(typeof(v)) to Node{$S}"); Node{S}(v))
+Base.convert(::Type{Node{S}}, x::Node{S}) where {S} = (#=println("Conversion unnecessary for $(typeof(x))"); =#x)
+Base.convert(::Type{Node{S}}, v::AbstractVector) where {S} = (#=println("Converting $(typeof(v)) to Node{$S}");=# Node{S}(v))
 Base.copy(x::Node{S}) where {S} = Node{S}(Tuple(copy.(blocks(getfield(x,:data)))))
 
 #AbstractBlockArray interface
@@ -100,70 +101,15 @@ Base.setproperty!(x::Node, s::Symbol, v) = setindex!(x, v, Val(s))
 
 ########### BROADCASTING #############
 
-#if implemented, generate at compile time
-# Base.length(::Type{Node{S}}) where {S} = sum(length.(childtypes(Node{S})))
-#Base.length(::Node{S}) where {S} = length(Node{S})
-
-# broadcast con un solo argumento
-# al efectuar la llamada a broadcast, como solo tengo un argumento, se llama a
-# BroadcastStyle() con el tipo de ese argumento.
-
-# Julia coge una broadcasted expression y genera un arbol donde cada nodo es un
-# objeto de tipo Broadcasted que contiene la operacion y los operandos. por
-# defecto, lo que hace a continuacion es recorrer el arbol determinando el
-# BroadcastStyle resultante de cada nodo. Esto lo hace examinando cogiendo por
-# ejemplo dos tipos que operan entre si, y llamando a Base.BroadcastStyle(t1,
-# t2). el resultado de esta llamada es el tipo Base.Broadcast.BroadcastStyle
-# dominante entre ambas expresiones. asi
-
-#como determina Julia el BroadcastStyle resultante de una determinada expresion?
-#va recorriendo
-
-#cuando acaba, el resultado es una variable de tipo Broadcasted{WinningStyle}
-# de ese  , tengo un veredicto sobre cual debe
-#ser el output de la operacion. ese veredicto es un style. cuando se ha
-#determinado el ResultingStyle a partir del argumento o argumentos, se hace
-#dispatch a similar() con ResultingStyle como argumento. Y ese similar en
-#principio debe devolver Y en mi caso, si el
-#veredicto es que el ResultingStyle es mi NodeBlockStyle, pues
-
-#como hacer que mi NodeBlockStyle gane frente a otros como AbstractArrayStyle
-#cuando la operacion es binaria? pues me defino methods con dos argumentos para
-#BroadcastStyle()
-
-
-#sidenote: writing an expression will all operators dotted, such as x .= x .+ 1,
-#means that broadcast! will be called instead of broadcast. as a result, the
-#operation will be done in place: instead of allocating a new temporary array
-#x_tmp (via a call to similar()) to operate on and copying the result to x,
-#Julia reuses the original memory for x. for Node{S}, this is very, very
-#interesting, because similar(::Type{Node{S}}) is not efficient: it is a
-#recursive procedure, which builds each sub-block from top to bottom. if we can
-#spare that work on state vector operations, much better! this will not work if
-#any of the operators are not dotted. for example, x .= 3 * x will not be done
-#in place. it must be x .= 3.*x
-
 struct NodeBlockStyle{S} <: Broadcast.AbstractArrayStyle{1} end
+
 NodeBlockStyle{S}(::Val{1}) where {S} = NodeBlockStyle{S}()
-
-#as a result of this definition, when a Node{S} is cast together with any other
-#AbstractArray, the winning BroadcastStyle is always NodeBlockStyle{S}. it also
-#handles the case of broadcast unary operations (see binary broadcasting rules
-#in doc to see why), and binary operations with the same Node type parameter.
-#however, it pleasantly fails to determine a winner when two Nodes with
-#different type parameters are broadcast together in a binary operation
 Base.BroadcastStyle(::Type{Node{S}}) where {S} = NodeBlockStyle{S}()
-
-
-#once the winning BroadcastStyle is determined to be a NodeBlockStyle{S}, this
-#defines the resulting data structure that must be produced
 Base.similar(::Broadcast.Broadcasted{NodeBlockStyle{S}}, ::Type{ElType}) where {S, ElType} = similar(Node{S})
 
 
 ################ THIS GOES IN A TEST MODULE ###########################
 
-#create a macro that, given a type parameter, generates the descriptor
-#function dynamically
 const NodeRbd = Node{:rbd}
 const NodeLdg = Node{:ldg}
 const NodePwp = Node{:pwp}
@@ -195,6 +141,14 @@ function lbv_demo()
     x_rbd_retrieved[:] .= 111
     x_aircraft.ldg .= 222
     display(x_aircraft)
+
+    #all these should work and preserve the type
+    x_pwp .= x_pwp .+ x_pwp
+    x_pwp .= x_pwp + x_pwp #fallback to broadcasting
+    x_pwp .+= 2
+    x_pwp .= 2x_pwp
+    # x_rbd + NodeFakeRbd() #this should fail due to broadcast outcome ambiguity
+
 
     return (
         x_aircraft,

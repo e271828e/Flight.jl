@@ -29,39 +29,13 @@ function test_Quat()
         @test q.real == data[1]
         @test q.imag == data[2:end]
 
-        #if q was constructed from QData it holds a reference
-        data[2] = data[2] + 1
-        @test q[:] == data[:]
-
-        #otherwise (default), it holds a copy
-        q = Quat([1,2,3,4])
-        data[2] = data[2] + 1
-        @test q[:] != data[:]
-
-        #setindex
-        q[4] = -5
-        @test q[4] == -5
-
-        #setproperty
-        q_real = 7
-        q_imag = [4,3,2]
-        q.real = q_real
-        q.imag = q_imag
-        @test q.real == q_real
-        @test q.imag == q_imag
-
         #copy
         q_copy = copy(q)
         @test isa(q_copy, Quat)
-        q.real = -q_real
-        @test q_copy.real == q_real #the copy should be unchanged
 
         #normalization
         q_copy = copy(q)
         @test norm(normalize(q)) ≈ 1 #returns a normalized copy of q
-        @test q_copy[:] == q[:]
-        @test norm(normalize!(q)) ≈ 1 #returns q normalized
-        @test q_copy[:] != q[:]
 
     end
 
@@ -147,12 +121,7 @@ function test_UnitQuat()
         @test u_badnorm.real == q[1]
         @test u_badnorm.imag == q[2:end]
 
-        #unlike u, u_badnorm was constructed from a non-normalized Quat,
-        #so it holds a reference, not a copy
-        q[2] = q[2] + 1
-        @test u_badnorm[:] == q[:]
-
-        #setindex & setproperty disallowed to avoid breaking unit norm constraint
+        #setindex & setproperty disallowed
         @test_throws ErrorException u[4] = -5
         @test_throws ErrorException u.real = 0
         @test_throws ErrorException u.imag = [1, 2, 3]
@@ -162,9 +131,6 @@ function test_UnitQuat()
         @test isa(u_badnorm_copy, UnitQuat)
         @test abs(norm(u_badnorm_copy) - 1) > 0.5 #check normalization is bypassed on copy
         @test norm(normalize(u_badnorm)) ≈ 1 #returns a normalized copy of u
-        @test u_badnorm_copy[:] == u_badnorm[:] #shouldn't have changed
-        @test norm(normalize!(u_badnorm)) ≈ 1 #returns u_badnorm normalized
-        @test u_badnorm[:] != u_badnorm_copy[:] #now u_badnorm is normalized
 
     end
 
