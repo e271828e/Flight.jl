@@ -3,11 +3,11 @@ module Attitude
 # https://discourse.julialang.org/t/writing-functions-for-types-defined-in-another-module/31895
 # https://discourse.julialang.org/t/what-is-the-preferred-way-to-use-multiple-files/30687/6
 
-using StaticArrays: MVector
+using StaticArrays: SVector
 using LinearAlgebra
-using ..Quaternions: UnitQuat
+using ..Quaternions: UnitQuat, Quat
 
-export Rotation, RQuat, invert, compose, transform
+export Rotation, RQuat, AxAng, invert, compose, transform, dt
 
 #########################
 
@@ -34,21 +34,45 @@ end
 
 RQuat() = RQuat(UnitQuat())
 
-Base.:(==)(r1::RQuat, r2::RQuat) = (r1._quat == r2._quat || r1._quat == -r2._quat)
-Base.:(≈)(r1::RQuat, r2::RQuat) = (r1._quat ≈ r2._quat || r1._quat ≈ -r2._quat)
+Base.:(==)(q1::RQuat, q2::RQuat) = (q1._quat == q2._quat || q1._quat == -q2._quat)
+Base.:(≈)(q1::RQuat, q2::RQuat) = (q1._quat ≈ q2._quat || q1._quat ≈ -q2._quat)
 
-LinearAlgebra.norm(r::RQuat) = norm(r._quat) #uses StaticArrays implementation
-LinearAlgebra.normalize(r::RQuat) = RQuat(normalize(r._quat))
-LinearAlgebra.normalize!(r::RQuat) = (r._quat = normalize(r._quat))
+LinearAlgebra.norm(q::RQuat) = norm(q._quat) #uses StaticArrays implementation
+LinearAlgebra.normalize(q::RQuat) = RQuat(normalize(q._quat))
+LinearAlgebra.normalize!(q::RQuat) = (q._quat = normalize(q._quat))
 
-invert(r::RQuat) = RQuat(r._quat')
-compose(r1::RQuat, r2::RQuat) = RQuat(r1._quat * r2._quat)
-function transform(r_ab::RQuat, v_b::AbstractVector{T} where {T<:Real})
-    q_ab = r_ab._quat; q_ab_imag = q_ab.imag
+invert(q::RQuat) = RQuat(q._quat')
+
+compose(q1::RQuat, q2::RQuat) = RQuat(q1._quat * q2._quat)
+
+function transform(q_ab::RQuat, v_b::AbstractVector{T} where {T<:Real})
+    q_ab = q_ab._quat; q_ab_imag = q_ab.imag
     v_a = v_b + 2 * cross(q_ab_imag, q_ab.real * v_b + cross(q_ab_imag, v_b))
     return v_a
 end
 
+dt(q_ab::RQuat, ω_ab_b::AbstractVector{T} where {T<:Real}) = 0.5 * (q_ab._quat * Quat(imag=ω_ab_b))
+
+
+############################# RQuat ###############################
+
+const RAxis = SVector{3, Float64}
+
+struct AxAng <: Rotation
+
+    axis::RAxis
+    angle::Float64
+
+    function AxAng(axis::AbstractVector{T} where {T<:Real}, angle::Real; enforce_norm::Bool = true)
+        return enforce_norm ? new(normalize(axis), angle) : new(axis, angle)
+    end
+
+end
+
+AxAng(input::Tuple{AbstractVector{S}, T} where {S, T <: Real}) = AxAng(input[1], input[2])
+AxAng() = AxAng(RAxis([1, 0, 0]), 0, enforce_norm = false)
+
+#MAKE SURE ENFORCE NORM IS ONLY CALLED WHEN NECESSARY!
 
 # declare RMat, RVec, RQuat, AxAng, Euler types and work with them, providing
 # convert() methods between them as required. in general, only to and from

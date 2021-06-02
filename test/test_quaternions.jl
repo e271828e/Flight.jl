@@ -66,6 +66,10 @@ function test_Quat()
         @test q1 != Quat(-v1)
         @test q1 == q1
 
+        #approximate equality
+        @test q1 ≈ Quat(v1 + [1e-9, 0, 0, 0])
+        @test !(q1 ≈ q2)
+
         #promotion and conversion from real scalar and AbstractVector
         @test promote(q1, 3.213)[2] == Quat(3.213)
         @test convert(Quat, [1, 2, 3, 4]) == Quat([1,2,3,4])
@@ -161,6 +165,10 @@ function test_UnitQuat()
         @test u1 != UnitQuat(-v1)
         @test u1 == UnitQuat(v1)
         @test u1 == Quat(u1) #equal to a Quat with the same components
+
+        #approximate equality
+        @test u1 ≈ UnitQuat(Quat(v1 + [1e-9, 0, 0, 0]), enforce_norm = false)
+        @test !(u1 ≈ u2)
 
         #promotion and conversion to Quat
         @test promote(u1, Quat())[1] == Quat(u1)

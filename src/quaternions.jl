@@ -7,7 +7,7 @@ export AbstractQuat, Quat, UnitQuat
 
 ######################## AbstractQuat #############################
 
-abstract type AbstractQuat <: AbstractVector{Float64} end
+abstract type AbstractQuat end
 
 #indexing and iterable interfaces; see https://docs.julialang.org/en/v1/manual/interfaces/
 Base.size(::AbstractQuat) = (4,)
@@ -16,8 +16,7 @@ Base.firstindex(::AbstractQuat) = 1
 Base.lastindex(::AbstractQuat) = 4
 Base.getindex(::AbstractQuat, i) = error("AbstractQuat: getindex not implemented")
 Base.setindex!(::AbstractQuat, v, i) = error("AbstractQuat: setindex! not implemented")
-#not needed, inherited from AbstractVector
-# Base.iterate(q::AbstractQuat, state = 1) = (state > 4 ? nothing : (q[state], state + 1))
+Base.iterate(q::AbstractQuat, state = 1) = (state > 4 ? nothing : (q[state], state + 1))
 Base.eltype(::AbstractQuat) = Float64 #helps with allocation efficiency
 
 #display functions
@@ -31,50 +30,19 @@ Base.setproperty!(q::AbstractQuat, s::Symbol, v) = setindex!(q, v, Val(s))
 
 ######################## Quat #############################
 
-#notes:
-#the implicit, automatically generated inner constructor has the form:
-#Quat(input) = new(data).
-
-#whenever typeof(input) != QData, new will call convert(QData, input). as long
-#as QData provides a convert method that can handle typeof(input), then we do
-#not need to handle it explicitly in an outer constructor.
-
-# in this case, QData is a StaticVector: MVector{Float64,4}, and it can handle
-#basically any AbstractVector{T} where {T<:Real} of length 4. this includes any
-#AbstractQuat subtype. but not a real scalar
-
-#Julia does NOT dispatch on keyword arguments:
-# https://discourse.julialang.org/t/keyword-argument-constructor-breaks-incomplete-constructor/34198/3
-# https://docs.julialang.org/en/v1/manual/methods/#Note-on-Optional-and-keyword-Arguments-1
-# this means that we cannot define methods with keyword arguments of the same
-# types but different names and expect Julia to choose the right one
-
-#Julia cannot distinguish either between Quat(data, copy_data = true) and
-#Quat(data)
-
 const QData = SVector{4, Float64}
 
 struct Quat <: AbstractQuat
     __data::QData
-    # Quat(input) = new(input)
-
-    #new always calls convert(QData, input). unless typeof(input)!=QData, this
-    #in turn produces a new instance of input, so what will be stored in the
-    #data field will not be a reference to input but a copy. however, when a
-    #QData input is passed to the constructor, then convert() is trivial, will
-    #return input itself, and a reference to input will be stored instead. this
-    #is acceptable behaviour.
-
-    #all the methods below that call the inner constructor with Vectors as input
-    #will therefore trigger a conversion to QData. however, nothing would be
-    #gained by making them pass a QData explicitly, because this would mean that
-    #a call to the QData constructor is performed in advance, and within it a
-    #copy of the passed Vector would be made anyway. conclusion: keep it simple!
+    #whenever typeof(input) != QData, new will call convert(QData, input). as long
+    #as QData provides a convert method that can handle typeof(input), then we do
+    #not need to handle it explicitly in an outer constructor.
 end
 
 #outer constructors
 Quat(s::Real) = Quat([s, 0, 0, 0])
 Quat(; real = 0.0, imag = zeros(3)) = Quat([real, imag...])
+Quat(q::AbstractQuat) = Quat(q[:])
 
 Base.copy(q::Quat) = Quat(copy(getfield(q, :__data)))
 Base.getindex(q::Quat, i) = getfield(q, :__data)[i]
@@ -87,7 +55,7 @@ norm_sqr(q::Quat) = (data = getfield(q,:__data); sum(data.*data))
 
 Base.promote_rule(::Type{Quat}, ::Type{S}) where {S<:Real} = Quat
 Base.convert(::Type{Quat}, a::Real) = Quat(a)
-Base.convert(::Type{Quat}, v::AbstractVector) = Quat(v)
+Base.convert(::Type{Quat}, v::Union{AbstractQuat, AbstractVector}) = Quat(v[:])
 Base.convert(::Type{Quat}, q::Quat) = q #if already a Quat, don't do anything
 
 #### Adjoint & Inverse
@@ -99,11 +67,8 @@ Base.inv(q::Quat) = Quat(getfield(q', :__data) / norm_sqr(q))
 Base.:+(q::Quat) = q
 Base.:-(q::Quat) = Quat(-getfield(q, :__data))
 
-#(==) is inherited from AbstractVector, but will return true for any
-#AbstractVector as long as it matches q[:], to avoid it we need to define these:
-Base.:(==)(q1::AbstractVector, q2::Quat) = false
-Base.:(==)(q1::Quat, q2::AbstractVector) = false
 Base.:(==)(q1::Quat, q2::Quat) = getfield(q1,:__data) == getfield(q2,:__data)
+Base.:(≈)(q1::Quat, q2::Quat) = getfield(q1,:__data) ≈ getfield(q2,:__data)
 
 Base.:+(q1::Quat, q2::Quat) = Quat(getfield(q1,:__data) + getfield(q2,:__data))
 Base.:+(q::Quat, a::Real) = +(promote(q, a)...)
@@ -140,12 +105,8 @@ Base.:\(a::Real, q::Quat) = q / a
 
 mutable struct UnitQuat <: AbstractQuat
     _quat::Quat
-    function UnitQuat(input::AbstractVector; enforce_norm::Bool = true)
+    function UnitQuat(input::Union{AbstractQuat, AbstractVector}; enforce_norm::Bool = true)
         return enforce_norm ? new(normalize(input)) : new(input)
-        #if input is already a Quat, convert(Quat, input) returns input itself.
-        #therefore, a reference to input will be stored directly in the _quat
-        #field. however, if it is not a Quat, convert(Quat, input) will return a
-        #new instance. this also happens if enforce_norm == true
     end
 end
 
@@ -161,6 +122,7 @@ function UnitQuat(; real::Union{Real, Nothing} = nothing,
         return UnitQuat([real, imag...]) #idem
     end
 end
+UnitQuat(q::AbstractQuat) = UnitQuat(q[:])
 
 #bypass normalization on copy
 Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :_quat)), enforce_norm = false) #saves normalization
@@ -173,9 +135,8 @@ LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :_quat)), 
 LinearAlgebra.normalize!(u::UnitQuat) = (setfield!(u, :_quat, normalize(getfield(u, :_quat))); return u)
 
 Base.promote_rule(::Type{UnitQuat}, ::Type{Quat}) = Quat
-Base.convert(::Type{UnitQuat}, a::AbstractVector) = UnitQuat(a)
-# Base.convert(::Type{UnitQuat}, u::UnitQuat) = (u) #do not normalize on convert
-Base.convert(::Type{UnitQuat}, u::UnitQuat) = normalize(u) #normalize on convert
+Base.convert(::Type{UnitQuat}, u::UnitQuat) = u #do not normalize on convert
+Base.convert(::Type{UnitQuat}, v::Union{AbstractQuat, AbstractVector}) = UnitQuat(v[:])
 
 #### Adjoint & Inverse
 Base.conj(u::UnitQuat)= UnitQuat([u.real, -u.imag...], enforce_norm = false)
@@ -186,13 +147,13 @@ Base.inv(u::UnitQuat) = u'
 Base.:+(u::UnitQuat) = u
 Base.:-(u::UnitQuat) = UnitQuat(-getfield(u, :_quat), enforce_norm = false)
 
-#(==) is inherited from AbstractVector, but will return true for any
-#AbstractVector as long as it matches u[:], to avoid it we need to define these:
-Base.:(==)(v1::AbstractVector, u2::UnitQuat) = false
-Base.:(==)(u1::UnitQuat, v2::AbstractVector) = false
 Base.:(==)(u1::UnitQuat, q2::Quat) = ==(promote(u1, q2)...)
 Base.:(==)(q1::Quat, u2::UnitQuat) = ==(promote(q1, u2)...)
 Base.:(==)(u1::UnitQuat, u2::UnitQuat) = getfield(u1,:_quat) == getfield(u2,:_quat)
+
+Base.:(≈)(u1::UnitQuat, q2::Quat) = ≈(promote(u1, q2)...)
+Base.:(≈)(q1::Quat, u2::UnitQuat) = ≈(promote(q1, u2)...)
+Base.:(≈)(u1::UnitQuat, u2::UnitQuat) = getfield(u1,:_quat) ≈ getfield(u2,:_quat)
 
 Base.:*(u1::UnitQuat, u2::UnitQuat) = UnitQuat(getfield(u1, :_quat) * getfield(u2, :_quat), enforce_norm = false)
 Base.:*(u::UnitQuat, q::Quat) = *(promote(u, q)...)
