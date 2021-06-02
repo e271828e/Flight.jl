@@ -25,11 +25,9 @@ Base.show(io::IO, ::MIME"text/plain", q::AbstractQuat) = print(io, "$(typeof(q))
 Base.show(io::IO, q::AbstractQuat) = print(io, "$(typeof(q)): $(q[:])")
 
 #real and imaginary parts
-# Base.propertynames(::Type{AbstractQuat}) = (:real, :imag)
 Base.getindex(q::AbstractQuat, s::Symbol) = getindex(q, Val(s))
 Base.getproperty(q::AbstractQuat, s::Symbol) = getindex(q, Val(s))
 Base.setproperty!(q::AbstractQuat, s::Symbol, v) = setindex!(q, v, Val(s))
-
 
 ######################## Quat #############################
 
@@ -116,12 +114,16 @@ Base.:-(q::Quat, a::Real) = -(promote(q, a)...)
 Base.:-(a::Real, q::Quat) = -(promote(a, q)...)
 
 function Base.:*(q1::Quat, q2::Quat)
-    # q1_real = q1[Val(real)]
-    # q2_real = q2[Val(real)]
-    p_real = q1.real * q2.real - dot(q1.imag, q2.imag)
-    p_imag = q1.real * q2.imag + q2.real * q1.imag + cross(q1.imag, q2.imag)
-    Quat([p_real, p_imag...])
+
+    q1_re = q1[Val(:real)]; q2_re = q2[Val(:real)]
+    q1_im = q1[Val(:imag)]; q2_im = q2[Val(:imag)]
+
+    p_re = q1_re * q2_re - q1_im ⋅ q2_im
+    p_im = q1_re * q2_im + q2_re * q1_im + q1_im × q2_im
+
+    Quat([p_re, p_im...])
 end
+
 Base.:*(q::Quat, a::Real) = a * q
 Base.:*(a::Real, q::Quat) = Quat(a * q[:])
 
@@ -136,12 +138,12 @@ Base.:\(a::Real, q::Quat) = q / a
 
 ######################## UnitQuat #############################
 
-struct UnitQuat <: AbstractQuat
-    __quat::Quat
+mutable struct UnitQuat <: AbstractQuat
+    _quat::Quat
     function UnitQuat(input::AbstractVector; enforce_norm::Bool = true)
         return enforce_norm ? new(normalize(input)) : new(input)
         #if input is already a Quat, convert(Quat, input) returns input itself.
-        #therefore, a reference to input will be stored directly in the __quat
+        #therefore, a reference to input will be stored directly in the _quat
         #field. however, if it is not a Quat, convert(Quat, input) will return a
         #new instance. this also happens if enforce_norm == true
     end
@@ -161,13 +163,14 @@ function UnitQuat(; real::Union{Real, Nothing} = nothing,
 end
 
 #bypass normalization on copy
-Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :__quat)), enforce_norm = false) #saves normalization
-Base.getindex(u::UnitQuat, i) = (getfield(u, :__quat)[i])
-Base.getindex(u::UnitQuat, ::Val{:real}) = getindex(getfield(u, :__quat), Val(:real))
-Base.getindex(u::UnitQuat, ::Val{:imag}) = getindex(getfield(u, :__quat), Val(:imag))
+Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :_quat)), enforce_norm = false) #saves normalization
+Base.getindex(u::UnitQuat, i) = (getfield(u, :_quat)[i])
+Base.getindex(u::UnitQuat, ::Val{:real}) = getindex(getfield(u, :_quat), Val(:real))
+Base.getindex(u::UnitQuat, ::Val{:imag}) = getindex(getfield(u, :_quat), Val(:imag))
 
-LinearAlgebra.norm(q::UnitQuat) = norm(getfield(q, :__quat)) #uses StaticArrays implementation
-LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :__quat)), enforce_norm = false)
+LinearAlgebra.norm(u::UnitQuat) = norm(getfield(u, :_quat)) #uses StaticArrays implementation
+LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :_quat)), enforce_norm = false)
+LinearAlgebra.normalize!(u::UnitQuat) = (setfield!(u, :_quat, normalize(getfield(u, :_quat))); return u)
 
 Base.promote_rule(::Type{UnitQuat}, ::Type{Quat}) = Quat
 Base.convert(::Type{UnitQuat}, a::AbstractVector) = UnitQuat(a)
@@ -181,7 +184,7 @@ Base.inv(u::UnitQuat) = u'
 
 #### Operators
 Base.:+(u::UnitQuat) = u
-Base.:-(u::UnitQuat) = UnitQuat(-getfield(u, :__quat), enforce_norm = false)
+Base.:-(u::UnitQuat) = UnitQuat(-getfield(u, :_quat), enforce_norm = false)
 
 #(==) is inherited from AbstractVector, but will return true for any
 #AbstractVector as long as it matches u[:], to avoid it we need to define these:
@@ -189,9 +192,9 @@ Base.:(==)(v1::AbstractVector, u2::UnitQuat) = false
 Base.:(==)(u1::UnitQuat, v2::AbstractVector) = false
 Base.:(==)(u1::UnitQuat, q2::Quat) = ==(promote(u1, q2)...)
 Base.:(==)(q1::Quat, u2::UnitQuat) = ==(promote(q1, u2)...)
-Base.:(==)(u1::UnitQuat, u2::UnitQuat) = getfield(u1,:__quat) == getfield(u2,:__quat)
+Base.:(==)(u1::UnitQuat, u2::UnitQuat) = getfield(u1,:_quat) == getfield(u2,:_quat)
 
-Base.:*(u1::UnitQuat, u2::UnitQuat) = UnitQuat(getfield(u1, :__quat) * getfield(u2, :__quat), enforce_norm = false)
+Base.:*(u1::UnitQuat, u2::UnitQuat) = UnitQuat(getfield(u1, :_quat) * getfield(u2, :_quat), enforce_norm = false)
 Base.:*(u::UnitQuat, q::Quat) = *(promote(u, q)...)
 Base.:*(q::Quat, u::UnitQuat) = *(promote(q, u)...)
 

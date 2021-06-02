@@ -11,11 +11,10 @@ export Node, Leaf
 
 #customizar la representacion para que aparezcan los nombres de los child blocks
 
-#a pesar de todo esto, sigue siendo 20 veces mas lento que el PseudoBlockArray
-#desnudo. no entiendo por que. en cualquier caso... importa tanto? es decir, si
-#incluso aunque opere con mis arrays ineficientes en la integracion numerica, la
-#mayor parte del tiempo de calculo se va a ir internamente en la evaluacion de
-#las f's. que van a devolver x_dots.
+#since Leaf is only a dummy type for dispatching and computing lengths, every
+#system must have a Node as its StateVector.
+#if it has only one Leaf, the descriptor will be descriptor(Node{:simplesys}) =
+#(singleleaf = Leaf{3})
 
 # Leaf{K} = MVector{K, Float64} where {K}
 struct Leaf{S} end
@@ -95,7 +94,7 @@ struct NodeStyle{S} <: Broadcast.AbstractArrayStyle{1} end
 NodeStyle{S}(::Val{1}) where {S} = NodeStyle{S}()
 Base.BroadcastStyle(::Type{Node{S}}) where {S} = NodeStyle{S}()
 function Base.similar(bc::Broadcast.Broadcasted{NodeStyle{S}}, ::Type{ElType}) where {S, ElType}
-    println("Called similar bc")
+    # println("Called similar bc")
     pbv = PseudoBlockVector{Float64}(undef, axes(bc))
     Node{S}(pbv)
 end

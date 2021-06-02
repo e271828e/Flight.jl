@@ -35,7 +35,11 @@ Base.length(::Type{Leaf{S}}) where {S} = S
 
 struct Node{L} <: AbstractVector{Float64}
     data::SubArray{Float64, 1}
-    Node{L}(data::SubArray{Float64, 1}) where {L} = (#=println("Inner const");=# new{L}(data))
+    function Node{L}(data::SubArray{Float64, 1}) where {L}
+        #=println("Inner const");=#
+        @assert length(data) == length(Node{L})
+        new{L}(data)
+    end
 end
 
 Node{L}(data::Vector{Float64}) where {L} = Node{L}(view(data, :))

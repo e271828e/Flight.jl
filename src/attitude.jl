@@ -3,10 +3,11 @@ module Attitude
 # https://discourse.julialang.org/t/writing-functions-for-types-defined-in-another-module/31895
 # https://discourse.julialang.org/t/what-is-the-preferred-way-to-use-multiple-files/30687/6
 
-using StaticArrays: MVector #this form of using does not allow method extension
+using StaticArrays: MVector
+using LinearAlgebra
 using ..Quaternions: UnitQuat
 
-export Rotation, RQuat
+export Rotation, RQuat, invert, compose, transform
 
 #########################
 
@@ -15,10 +16,16 @@ export Rotation, RQuat
 
 abstract type Rotation end
 
+Base.adjoint(r::Rotation) = invert(r)
+Base.:∘(r1::Rotation, r2::Rotation) = compose(r1, r2)
+Base.:∘(r::Rotation, x::Any) = error("$(typeof(r)) ∘ $(typeof(x)) composition not allowed")
+Base.:∘(x::Any, r::Rotation) = error("$(typeof(x)) ∘ $(typeof(r)) composition not allowed")
+Base.:*(r::Rotation, v::AbstractVector{T} where {T<:Real})  = transform(r, v)
+
 ############################# RQuat ###############################
 
-struct RQuat <: Rotation
-    quat::UnitQuat
+mutable struct RQuat <: Rotation
+    _quat::UnitQuat
     #if input is already a UnitQuat, new will not call convert, and therefore a
     #reference instead of a copy will be assigned to field quat. however, this
     #is no concern, since UnitQuats are virtually immutable (except for
@@ -27,8 +34,20 @@ end
 
 RQuat() = RQuat(UnitQuat())
 
-# Base.:*(::Rotation, ::AbstractVector) = transform(r, v)
-# Base.:*(::Rotation, ::Rotation) = compose(r1, r2)
+Base.:(==)(r1::RQuat, r2::RQuat) = (r1._quat == r2._quat || r1._quat == -r2._quat)
+Base.:(≈)(r1::RQuat, r2::RQuat) = (r1._quat ≈ r2._quat || r1._quat ≈ -r2._quat)
+
+LinearAlgebra.norm(r::RQuat) = norm(r._quat) #uses StaticArrays implementation
+LinearAlgebra.normalize(r::RQuat) = RQuat(normalize(r._quat))
+LinearAlgebra.normalize!(r::RQuat) = (r._quat = normalize(r._quat))
+
+invert(r::RQuat) = RQuat(r._quat')
+compose(r1::RQuat, r2::RQuat) = RQuat(r1._quat * r2._quat)
+function transform(r_ab::RQuat, v_b::AbstractVector{T} where {T<:Real})
+    q_ab = r_ab._quat; q_ab_imag = q_ab.imag
+    v_a = v_b + 2 * cross(q_ab_imag, q_ab.real * v_b + cross(q_ab_imag, v_b))
+    return v_a
+end
 
 
 # declare RMat, RVec, RQuat, AxAng, Euler types and work with them, providing

@@ -131,6 +131,8 @@ function test_UnitQuat()
         @test isa(u_badnorm_copy, UnitQuat)
         @test abs(norm(u_badnorm_copy) - 1) > 0.5 #check normalization is bypassed on copy
         @test norm(normalize(u_badnorm)) ≈ 1 #returns a normalized copy of u
+        normalize!(u_badnorm)
+        @test norm(u_badnorm) ≈ 1 #returns a normalized copy of u
 
     end
 

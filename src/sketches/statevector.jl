@@ -66,7 +66,7 @@ makechildren(::Type{Node{S}}) where {S} = (#=println("Creating children for Node
 Base.similar(::Type{Node{S}}) where {S} = Node{S}(makechildren(Node{S}))
 Base.similar(::Node{S}) where {S} = similar(Node{S})
 
-Node{S}(v::AbstractVector) where {S} = (println("Converting $(typeof(v)) to Node{$S}"); x = similar(Node{S}) ; x .= v)
+Node{S}(v::AbstractVector) where {S} = (#=println("Converting $(typeof(v)) to Node{$S}");=# x = similar(Node{S}) ; x .= v)
 Node{S}() where {S} = (x = similar(Node{S}) ; x .= 0)
 
 Base.convert(::Type{Node{S}}, x::Node{S}) where {S} = (#=println("Conversion unnecessary for $(typeof(x))"); =#x)
