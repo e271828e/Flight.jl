@@ -26,12 +26,12 @@ end
 
 function test_RQuat()
 
-    v_ab = [0.7, -1, 0.1, 1]
-    v_bc = [1.7, 2, -1, 1]
-    q_ab = RQuat(v_ab)
-    q_bc = RQuat(v_bc)
-    q_ab_neg = RQuat(-v_ab)
-    x_c = [2, 3, -1.1]
+        v_ab = [0.7, -1, 0.1, 1]
+        v_bc = [1.7, 2, -1, 1]
+        q_ab = RQuat(v_ab)
+        q_bc = RQuat(v_bc)
+        q_ab_neg = RQuat(-v_ab)
+        x_c = [2, 3, -1.1]
 
     @testset "Constructors" begin
         #RQuat accepts any AbstractVector of length 4 and normalizes it, no need to
@@ -74,14 +74,14 @@ end
 
 function test_RAxAng()
 
-    u_ab_bad = [5, -2, 1]
-    u_ab = normalize(u_ab_bad)
-    μ_ab = 1.214
-    u_μ_ab = (u_ab, μ_ab)
+        u_ab_bad = [5, -2, 1]
+        u_ab = normalize(u_ab_bad)
+        μ_ab = 1.214
+        u_μ_ab = (u_ab, μ_ab)
 
-    r_ab = RAxAng(u_ab, μ_ab)
-    r_bc = RAxAng([-2,-3, -1], 0.72)
-    x_c = [-1, 2, 3]
+        r_ab = RAxAng(u_ab, μ_ab)
+        r_bc = RAxAng([-2,-3, -1], 0.72)
+        x_c = [-1, 2, 3]
 
     @testset "Constructors" begin
 
@@ -233,56 +233,5 @@ function test_REuler()
     end
 
 end
-
-# function test_RMatrix()
-
-#     @testset "Constructors" begin
-
-#         A_rand = rand(3,3)
-#         A_orth = qr(A_rand).Q
-#         A_err = A_orth + 1e-7*rand(3,3)
-#         A_renorm = qr(A_err).Q
-#         println(A_orth * A_renorm')
-#         # r_orth = RMatrix(A_orth, normalization = false)
-#         # r_err = RMatrix(A_err, normalization = true)
-
-#     end
-
-# end
-
-
-# function test_indirect_conversions()
-
-#     #cover Euler angle ranges including bounds but avoiding gimbal lock
-#     ψ_range = range(-π, π, length = 5)
-#     θ_range = range(-(π/2 - 0.001), π/2 - 0.001, length = 5)
-#     φ_range = range(-π, π, length = 5)
-#     r_array = vec([REuler(i) for i in Iterators.product(ψ_range, θ_range, φ_range)])
-
-#     all_equal = true
-#     for r in r_array
-#         r ≈ r |> RAxAng |> REuler
-#         println((T1, T2))
-#     end
-
-
-# end
-
-
-#RAxAng: to and from Quat
-#REuler: to and from Quat
-#RMatrix: to and from RQuat #to be tested in test_RMatrix
-
-#indirect equality!!
-#RQuat == RAxAng(r) == REuler(r) == RMatrix(r)
-
-#indirect conversions, in an ad_hoc test method. create torture test from RAxAng
-#then do: RAxAng |> REuler |> RAxAng |> RMatrix |> REuler |> RMatrix |> RAxAng
-#and test equality
-#RAxAng <-> REuler OK
-#RAxAng <-> RMatrix OK
-#RMatrix <-> REuler OK
-
-
 
 end #module

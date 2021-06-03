@@ -1,12 +1,11 @@
 module Attitude
 
-using StaticArrays: SVector, SMatrix
+using StaticArrays: SVector
 using LinearAlgebra
 using ..Quaternions: UnitQuat, Quat
 
-export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, invert, compose, transform, dt
+export Rotation, RQuat, RAxAng, REuler, Rx, Ry, Rz, invert, compose, transform, dt
 
-const ε_small = 1e-8 #threshold for small angle approximation
 const ε_null = 1e-10 #threshold for null rotation
 const half_π = π/2
 
@@ -58,9 +57,8 @@ Base.adjoint(r::R) where {R<:Rotation} = convert(R, RQuat(r)')
 Base.:(≈)(r1::Rotation, r2::Rotation) = RQuat(r1) ≈ RQuat(r2)
 Base.:*(r::Rotation, v::AbstractVector{T} where {T<:Real}) = RQuat(r) * v
 Base.:∘(r1::Rotation, r2::Rotation) = RQuat(r1) ∘ RQuat(r2)
-#cannot define equality in general between two Rotation subtype, because
-#comparison requires promotion to RQuat, which itself is inaccurate
-#Base.:(==)(r1::Rotation, r2::Rotation) = RQuat(r1) == RQuat(r2)
+#cannot define absolute equality between two Rotation subtypes other than RQuat,
+#because it requires promotion to RQuat, which itself is inaccurate
 
 #only allow composition of Rotations
 Base.:∘(r::Rotation, x::Any) = error("$(typeof(r)) ∘ $(typeof(x)) composition not allowed")
@@ -138,61 +136,6 @@ end
 function Base.convert(::Type{RQuat}, r::REuler)
     Rz(r.ψ) ∘ Ry(r.θ) ∘ Rx(r.φ)
 end
-
-######################### RMatrix ########################
-
-# mutable struct RMatrix <: Rotation
-#     _mat::SMatrix{3, 3, Float64}
-#     function RMatrix(input::AbstractArray{T, 2} where {T<:Real}; normalization::Bool = true)
-#         return normalization ? new(qr(input).Q) : new(input)
-#     end
-# end
-
-# RMatrix(r::Rotation) = convert(RMatrix, r)
-
-# function Base.convert(::Type{RMatrix}, r::RQuat)
-# error("adn")
-# end
-
-# function Base.convert(::Type{RQuat}, r::RMatrix)
-# error("adn")
-# end
-# #MAKE SURE ENFORCE NORM IS ONLY CALLED WHEN NECESSARY!
-
-# #create an orthogonal matrix using qr factorization
-# #add some noise to it
-# #renormalize
-# #check that the resulting matrices are almost equal
-
-# LinearAlgebra.normalize(r::RMatrix) = RMatrix(r._mat, normalization = true)
-# LinearAlgebra.normalize!(r::RMatrix) = (r._mat = qr(r._mat).Q; return r)
-# LinearAlgebra.det(r::RMatrix) = det(r._mat)
-
-# dt(r_ab::RQuat, ω_ab_b::AbstractVector{T} where {T<:Real}) = 0.5 * (r_ab._quat
-# * Quat(imag=ω_ab_b))
-
-#conversions to provide:
-# RMat, RAxAng, RVec and Euler to and from RQuat
-# RMat to and from Quat
-# with that, can provide two-step conversion to and from RMat to RAxAng, RVec and
-# Euler. maybe Euler could be direct.
-
-
-
-#create normalize! and normalize methods for RMat
-
-#i can admit * of rotation matrices without converting to RQuat, and also
-#transforming vectors! only use promote when absolutely required!
-#define promote_rule(R, q) = q (always prefer q)
-
-#go to Flight folder
-#enter package manager
-#activate .
-#do not do activate Flight. in that case, the test and using commands do not
-#work. they expect to be run from Flight's parent folder. why??
-
-#must fail when passed a 1D array of size other than 3
-#how do we do this? by defining StaticArrays types
 
 
 end
