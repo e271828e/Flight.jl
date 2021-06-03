@@ -111,7 +111,7 @@ function test_UnitQuat()
     @testset "Basics" begin
 
         q = Quat([-3, 2, 4, 1])
-        u_badnorm = UnitQuat(q, enforce_norm = false)
+        u_badnorm = UnitQuat(q, normalization = false)
         u = UnitQuat(q)
 
         #built-in normalization
@@ -167,7 +167,7 @@ function test_UnitQuat()
         @test u1 == Quat(u1) #equal to a Quat with the same components
 
         #approximate equality
-        @test u1 ≈ UnitQuat(Quat(v1 + [1e-9, 0, 0, 0]), enforce_norm = false)
+        @test u1 ≈ UnitQuat(Quat(v1 + [1e-9, 0, 0, 0]), normalization = false)
         @test !(u1 ≈ u2)
 
         #promotion and conversion to Quat

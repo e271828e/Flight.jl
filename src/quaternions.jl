@@ -105,33 +105,34 @@ Base.:\(a::Real, q::Quat) = q / a
 
 mutable struct UnitQuat <: AbstractQuat
     _quat::Quat
-    function UnitQuat(input::Union{AbstractQuat, AbstractVector}; enforce_norm::Bool = true)
-        return enforce_norm ? new(normalize(input)) : new(input)
+    function UnitQuat(input::Union{AbstractQuat, AbstractVector}; normalization::Bool = true)
+        return normalization ? new(normalize(input)) : new(input)
     end
 end
 
 #outer constructors
-UnitQuat(::Real) = UnitQuat([1, 0, 0, 0], enforce_norm = false)
+UnitQuat(::Real) = UnitQuat([1, 0, 0, 0], normalization = false)
 function UnitQuat(; real::Union{Real, Nothing} = nothing,
-                    imag::Union{AbstractVector{T} where {T<:Real}, Nothing} = nothing)
+                    imag::Union{AbstractVector{T} where {T<:Real}, Nothing} = nothing,
+                    normalization::Bool = true)
     if imag === nothing
         return UnitQuat(1)
     elseif real === nothing
-        return UnitQuat([0, imag...]) #unsafe, needs normalization
+        return UnitQuat([0, imag...], normalization = normalization)
     else
-        return UnitQuat([real, imag...]) #idem
+        return UnitQuat([real, imag...], normalization = normalization)
     end
 end
 UnitQuat(q::AbstractQuat) = UnitQuat(q[:])
 
 #bypass normalization on copy
-Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :_quat)), enforce_norm = false) #saves normalization
+Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :_quat)), normalization = false) #saves normalization
 Base.getindex(u::UnitQuat, i) = (getfield(u, :_quat)[i])
 Base.getindex(u::UnitQuat, ::Val{:real}) = getindex(getfield(u, :_quat), Val(:real))
 Base.getindex(u::UnitQuat, ::Val{:imag}) = getindex(getfield(u, :_quat), Val(:imag))
 
 LinearAlgebra.norm(u::UnitQuat) = norm(getfield(u, :_quat)) #uses StaticArrays implementation
-LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :_quat)), enforce_norm = false)
+LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :_quat)), normalization = false)
 LinearAlgebra.normalize!(u::UnitQuat) = (setfield!(u, :_quat, normalize(getfield(u, :_quat))); return u)
 
 Base.promote_rule(::Type{UnitQuat}, ::Type{Quat}) = Quat
@@ -139,13 +140,13 @@ Base.convert(::Type{UnitQuat}, u::UnitQuat) = u #do not normalize on convert
 Base.convert(::Type{UnitQuat}, v::Union{AbstractQuat, AbstractVector}) = UnitQuat(v[:])
 
 #### Adjoint & Inverse
-Base.conj(u::UnitQuat)= UnitQuat([u.real, -u.imag...], enforce_norm = false)
+Base.conj(u::UnitQuat)= UnitQuat([u.real, -u.imag...], normalization = false)
 Base.adjoint(u::UnitQuat) = conj(u)
 Base.inv(u::UnitQuat) = u'
 
 #### Operators
 Base.:+(u::UnitQuat) = u
-Base.:-(u::UnitQuat) = UnitQuat(-getfield(u, :_quat), enforce_norm = false)
+Base.:-(u::UnitQuat) = UnitQuat(-getfield(u, :_quat), normalization = false)
 
 Base.:(==)(u1::UnitQuat, q2::Quat) = ==(promote(u1, q2)...)
 Base.:(==)(q1::Quat, u2::UnitQuat) = ==(promote(q1, u2)...)
@@ -155,7 +156,7 @@ Base.:(≈)(u1::UnitQuat, q2::Quat) = ≈(promote(u1, q2)...)
 Base.:(≈)(q1::Quat, u2::UnitQuat) = ≈(promote(q1, u2)...)
 Base.:(≈)(u1::UnitQuat, u2::UnitQuat) = getfield(u1,:_quat) ≈ getfield(u2,:_quat)
 
-Base.:*(u1::UnitQuat, u2::UnitQuat) = UnitQuat(getfield(u1, :_quat) * getfield(u2, :_quat), enforce_norm = false)
+Base.:*(u1::UnitQuat, u2::UnitQuat) = UnitQuat(getfield(u1, :_quat) * getfield(u2, :_quat), normalization = false)
 Base.:*(u::UnitQuat, q::Quat) = *(promote(u, q)...)
 Base.:*(q::Quat, u::UnitQuat) = *(promote(q, u)...)
 

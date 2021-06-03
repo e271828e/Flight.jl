@@ -7,5 +7,5 @@ include("test_attitude.jl")
 using .TestQuaternions
 using .TestAttitude
 
-test_quaternions()
+# test_quaternions()
 test_attitude()
