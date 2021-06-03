@@ -1,10 +1,10 @@
 module Attitude
 
-using StaticArrays: SVector
+using StaticArrays: SVector, SMatrix
 using LinearAlgebra
 using ..Quaternions: UnitQuat, Quat
 
-export Rotation, RQuat, RAxAng, REuler, invert, compose, transform, dt
+export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, invert, compose, transform, dt
 
 const ε_small = 1e-8 #threshold for small angle approximation
 const ε_null = 1e-10 #threshold for null rotation
@@ -27,22 +27,22 @@ end
 RQuat(r::Rotation) = convert(RQuat, r)
 RQuat() = RQuat(UnitQuat())
 
-Base.:(==)(q1::RQuat, q2::RQuat) = (q1._quat == q2._quat || q1._quat == -q2._quat)
-Base.:(≈)(q1::RQuat, q2::RQuat) = (q1._quat ≈ q2._quat || q1._quat ≈ -q2._quat)
-Base.:∘(q1::RQuat, q2::RQuat) = RQuat(q1._quat * q2._quat)
-Base.adjoint(q::RQuat) = RQuat(q._quat')
+Base.:(==)(r1::RQuat, r2::RQuat) = (r1._quat == r2._quat || r1._quat == -r2._quat)
+Base.:(≈)(r1::RQuat, r2::RQuat) = (r1._quat ≈ r2._quat || r1._quat ≈ -r2._quat)
+Base.:∘(r1::RQuat, r2::RQuat) = RQuat(r1._quat * r2._quat)
+Base.adjoint(r::RQuat) = RQuat(r._quat')
 
-function Base.:*(q_ab::RQuat, v_b::AbstractVector{T} where {T<:Real})
-    q = q_ab._quat; q_re = q.real; q_im = q.imag
+function Base.:*(r_ab::RQuat, v_b::AbstractVector{T} where {T<:Real})
+    q = r_ab._quat; q_re = q.real; q_im = q.imag
     v_a = v_b + 2q_im × (q_re * v_b + q_im × v_b)
     return v_a
 end
 
-LinearAlgebra.norm(q::RQuat) = norm(q._quat)
-LinearAlgebra.normalize(q::RQuat) = RQuat(normalize(q._quat))
-LinearAlgebra.normalize!(q::RQuat) = (q._quat = normalize(q._quat))
+LinearAlgebra.norm(r::RQuat) = norm(r._quat)
+LinearAlgebra.normalize(r::RQuat) = RQuat(normalize(r._quat))
+LinearAlgebra.normalize!(r::RQuat) = (r._quat = normalize(r._quat))
 
-dt(q_ab::RQuat, ω_ab_b::AbstractVector{T} where {T<:Real}) = 0.5 * (q_ab._quat * Quat(imag=ω_ab_b))
+dt(r_ab::RQuat, ω_ab_b::AbstractVector{T} where {T<:Real}) = 0.5 * (r_ab._quat * Quat(imag=ω_ab_b))
 
 #require each Rotation subtype to implement conversions to and from RQuat
 Base.convert(::Type{RQuat}, r::R) where {R<:Rotation} = error("Implement RQuat to $R conversion")
@@ -56,9 +56,11 @@ Base.convert(::Type{RQuat}, r::RQuat) = r
 #unless the representation defines its own methods, fall back to RQuat
 Base.adjoint(r::R) where {R<:Rotation} = convert(R, RQuat(r)')
 Base.:(≈)(r1::Rotation, r2::Rotation) = RQuat(r1) ≈ RQuat(r2)
-Base.:(==)(r1::Rotation, r2::Rotation) = RQuat(r1) == RQuat(r2)
 Base.:*(r::Rotation, v::AbstractVector{T} where {T<:Real}) = RQuat(r) * v
 Base.:∘(r1::Rotation, r2::Rotation) = RQuat(r1) ∘ RQuat(r2)
+#cannot define equality in general between two Rotation subtype, because
+#comparison requires promotion to RQuat, which itself is inaccurate
+#Base.:(==)(r1::Rotation, r2::Rotation) = RQuat(r1) == RQuat(r2)
 
 #only allow composition of Rotations
 Base.:∘(r::Rotation, x::Any) = error("$(typeof(r)) ∘ $(typeof(x)) composition not allowed")
@@ -67,10 +69,8 @@ Base.:∘(x::Any, r::Rotation) = error("$(typeof(x)) ∘ $(typeof(r)) compositio
 
 ############################# RAxAng ###############################
 
-const RAxis = SVector{3, Float64}
-
 struct RAxAng <: Rotation
-    axis::RAxis
+    axis::SVector{3, Float64}
     angle::Float64
     function RAxAng(axis::AbstractVector{T} where {T<:Real}, angle::Real; normalization::Bool = true)
         return normalization ? new(normalize(axis), angle) : new(axis, angle)
@@ -80,11 +80,16 @@ end
 RAxAng(r::Rotation) = convert(RAxAng, r)
 RAxAng(input::Tuple{Union{Nothing, AbstractVector{T} where T<:Real}, Real}) = RAxAng(input...)
 RAxAng(::Nothing, ::Real; normalization::Bool = false) = RAxAng()
-RAxAng() = RAxAng(RAxis([1, 0, 0]), 0, normalization = false)
 
-function Base.convert(::Type{RAxAng}, q::RQuat)
-    q_re = q._quat.real
-    q_im = q._quat.imag
+Rz(ψ::Real) = RAxAng([0,0,1], ψ, normalization = false)
+Ry(θ::Real) = RAxAng([0,1,0], θ, normalization = false)
+Rx(φ::Real) = RAxAng([1,0,0], φ, normalization = false)
+
+RAxAng() = Rx(0)
+
+function Base.convert(::Type{RAxAng}, r::RQuat)
+    q_re = r._quat.real
+    q_im = r._quat.imag
     norm_im = norm(q_im)
     μ = 2atan(norm_im, q_re)
     u = (norm_im > ε_null ? q_im / norm_im : nothing)
@@ -104,9 +109,9 @@ Base.adjoint(r::RAxAng) = RAxAng(r.axis, -r.angle)
 ############################# REuler #############################
 
 struct REuler <: Rotation
-    ψ::Float64
-    θ::Float64
-    φ::Float64
+    ψ::Float64 #heading
+    θ::Float64 #inclination
+    φ::Float64 #bank
     function REuler(ψ, θ, φ)
         @assert abs(ψ<=π) "Heading must be within [-π, π]"
         @assert abs(θ<=half_π) "Inclination must be within [-π/2, π/2]"
@@ -117,23 +122,54 @@ end
 
 REuler(r::Rotation) = convert(REuler, r)
 REuler(input::Tuple{Real, Real, Real}) = REuler(input...)
-REuler() = REuler(0, 0, 0)
+REuler(; ψ = 0, θ = 0, φ = 0) = REuler(ψ, θ, φ)
 
-function Base.getproperty(r::REuler, s::Symbol)
-    if s == :heading
-        return r.ψ
-    elseif s == :inclination
-        return r.θ
-    elseif s == :bank
-        return r.φ
-    else
-        return getfield(r, s)
-    end
+function Base.convert(::Type{REuler}, r::RQuat)
+        q = r._quat
+        q_sq = q[:] .* q[:]
+
+        ψ = atan( 2*(q[1]*q[4] + q[2]*q[3]), 1 - 2*(q_sq[3] + q_sq[4]))
+        θ = asin( clamp(2*(q[1]*q[3] - q[2]*q[4]), -1, 1) )
+        φ = atan( 2*(q[1]*q[2] + q[3]*q[4]), 1 - 2*(q_sq[2] + q_sq[3]))
+
+        return REuler(ψ, θ, φ)
 end
 
-#MAKE SURE ENFORCE NORM IS ONLY CALLED WHEN NECESSARY!
+function Base.convert(::Type{RQuat}, r::REuler)
+    Rz(r.ψ) ∘ Ry(r.θ) ∘ Rx(r.φ)
+end
 
-#RAxAng, RVec and Euler should all promote to Quat.
+######################### RMatrix ########################
+
+# mutable struct RMatrix <: Rotation
+#     _mat::SMatrix{3, 3, Float64}
+#     function RMatrix(input::AbstractArray{T, 2} where {T<:Real}; normalization::Bool = true)
+#         return normalization ? new(qr(input).Q) : new(input)
+#     end
+# end
+
+# RMatrix(r::Rotation) = convert(RMatrix, r)
+
+# function Base.convert(::Type{RMatrix}, r::RQuat)
+# error("adn")
+# end
+
+# function Base.convert(::Type{RQuat}, r::RMatrix)
+# error("adn")
+# end
+# #MAKE SURE ENFORCE NORM IS ONLY CALLED WHEN NECESSARY!
+
+# #create an orthogonal matrix using qr factorization
+# #add some noise to it
+# #renormalize
+# #check that the resulting matrices are almost equal
+
+# LinearAlgebra.normalize(r::RMatrix) = RMatrix(r._mat, normalization = true)
+# LinearAlgebra.normalize!(r::RMatrix) = (r._mat = qr(r._mat).Q; return r)
+# LinearAlgebra.det(r::RMatrix) = det(r._mat)
+
+# dt(r_ab::RQuat, ω_ab_b::AbstractVector{T} where {T<:Real}) = 0.5 * (r_ab._quat
+# * Quat(imag=ω_ab_b))
 
 #conversions to provide:
 # RMat, RAxAng, RVec and Euler to and from RQuat
@@ -142,11 +178,6 @@ end
 # Euler. maybe Euler could be direct.
 
 
-#put println statements in each conversion method to know when it's been called
-
-#a RMat can be constructed from a 3x3 Matrix. in that case, orthonormality is
-#always enforced by applying QR factorization. if it comes from a conversion, it
-#is not necessary
 
 #create normalize! and normalize methods for RMat
 
