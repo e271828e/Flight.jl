@@ -1,18 +1,29 @@
 module Attitude
 
-using StaticArrays: SVector
+using StaticArrays: SVector, SMatrix
 using LinearAlgebra
 using ..Quaternions: UnitQuat, Quat
 
-export Rotation, RQuat, RAxAng, REuler, Rx, Ry, Rz, invert, compose, transform, dt
+export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, invert, compose, transform, dt
 
 const ε_null = 1e-10 #threshold for null rotation
 const half_π = π/2
+
+function skew(v::AbstractVector{T} where T<:Real)
+    v = SVector{3,Float64}(v)
+    vx = SMatrix{3,3,Float64}([
+        0      -v[3]    v[2];
+        v[3]    0      -v[1];
+       -v[2]    v[1]    0])
+    return vx
+end
 
 ######################### Rotation ###########################
 
 #implements a passive (alias) rotation, that is, a rotation describing the
 #relative attitude between two reference frames.
+
+#TODO: Add display methods
 
 abstract type Rotation end
 
@@ -30,7 +41,6 @@ Base.:(==)(r1::RQuat, r2::RQuat) = (r1._quat == r2._quat || r1._quat == -r2._qua
 Base.:(≈)(r1::RQuat, r2::RQuat) = (r1._quat ≈ r2._quat || r1._quat ≈ -r2._quat)
 Base.:∘(r1::RQuat, r2::RQuat) = RQuat(r1._quat * r2._quat)
 Base.adjoint(r::RQuat) = RQuat(r._quat')
-
 function Base.:*(r_ab::RQuat, v_b::AbstractVector{T} where {T<:Real})
     q = r_ab._quat; q_re = q.real; q_im = q.imag
     v_a = v_b + 2q_im × (q_re * v_b + q_im × v_b)
@@ -63,6 +73,95 @@ Base.:∘(r1::Rotation, r2::Rotation) = RQuat(r1) ∘ RQuat(r2)
 #only allow composition of Rotations
 Base.:∘(r::Rotation, x::Any) = error("$(typeof(r)) ∘ $(typeof(x)) composition not allowed")
 Base.:∘(x::Any, r::Rotation) = error("$(typeof(x)) ∘ $(typeof(r)) composition not allowed")
+
+
+######################### RMatrix #######################
+
+mutable struct RMatrix <: Rotation
+    _mat::SMatrix{3, 3, Float64}
+    function RMatrix(input::AbstractArray{T, 2} where {T<:Real}; normalization::Bool = true)
+        return normalization ? new(qr(input).Q) : new(input)
+    end
+end
+
+RMatrix(r::Rotation) = convert(RMatrix, r)
+RMatrix() = RMatrix(SMatrix{3,3,Float64}(I), normalization = false)
+
+Base.convert(::Type{RMatrix}, r::RMatrix) = r
+
+function Base.convert(::Type{RMatrix}, r::RQuat)
+
+    q = normalize(r._quat) #cheap
+    q_sq = q[:] .* q[:]
+    dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]; dq14 = 2*q[1]*q[4];
+    dq23 = 2*q[2]*q[3]; dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4];
+
+    RMatrix([
+    1 - 2*(q_sq[3]+q_sq[4])  dq23 - dq14                dq24 + dq13;
+    dq23 + dq14              1 - 2*(q_sq[2]+q_sq[4])    dq34 - dq12;
+    dq24 - dq13              dq34 + dq12                1 - 2*(q_sq[2]+q_sq[3])
+    ], normalization = false)
+
+end
+
+function Base.convert(::Type{RQuat}, r::RMatrix)
+
+    #find the maximum amongst the absolute values of quaternion components
+    R = r._mat
+    tr_R = tr(R)
+    i_max = findmax([tr_R; diag(R)])[2]
+
+    if i_max == 1
+        return RQuat([
+            1 + tr_R,
+            R[3,2] - R[2,3],
+            R[1,3] - R[3,1],
+            R[2,1] - R[1,2]
+        ])
+    elseif i_max == 2
+        return RQuat([
+            R[3,2] - R[2,3],
+            1 + 2R[1,1] - tr_R,
+            R[1,2] + R[2,1],
+            R[3,1] + R[1,3]
+        ])
+    elseif i_max == 3
+        return RQuat([
+            R[1,3] - R[3,1],
+            R[1,2] + R[2,1],
+            1 + 2R[2,2] - tr_R,
+            R[2,3] + R[3,2]
+        ])
+    else #i_max == 4
+        return RQuat([
+            R[2,1] - R[1,2],
+            R[3,1] + R[1,3],
+            R[2,3] + R[3,2],
+            1 + 2R[3,3] - tr_R
+        ])
+    end
+end
+
+#a rotation matrix can define its own equality, composition and inversion
+#operators without relying on RQuat
+Base.:(==)(r1::RMatrix, r2::RMatrix) = (r1._mat == r2._mat)
+Base.:(≈)(r1::RMatrix, r2::RMatrix) = r1._mat ≈ r2._mat
+Base.:*(r::RMatrix, v::AbstractVector{T} where {T<:Real}) = r._mat * v
+Base.:∘(r1::RMatrix, r2::RMatrix) = RMatrix(r1._mat * r2._mat, normalization = false)
+Base.:*(r1::RMatrix, r2::RMatrix) = r1 ∘ r2 #allow overload of * for composition
+Base.adjoint(r::RMatrix) = RMatrix(r._mat', normalization = false)
+
+#using StaticArrays, a QR factorization takes ~25 ns. it is basically free!
+# assembling the RMatrix object adds 240 ns.
+#normalizing a RQuat takes ~15ns.
+LinearAlgebra.normalize(r::RMatrix) = RMatrix(r._mat, normalization = true)
+LinearAlgebra.normalize!(r::RMatrix) = (r._mat = qr(r._mat).Q; return r)
+LinearAlgebra.det(r::RMatrix) = det(r._mat)
+
+function dt(r_ab::RMatrix, ω_ab_b::AbstractVector{T} where {T<:Real})
+    Ω_ab_b = skew(ω_ab_b)
+    return r_ab._mat * Ω_ab_b
+end
 
 
 ############################# RAxAng ###############################
@@ -136,6 +235,5 @@ end
 function Base.convert(::Type{RQuat}, r::REuler)
     Rz(r.ψ) ∘ Ry(r.θ) ∘ Rx(r.φ)
 end
-
 
 end

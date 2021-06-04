@@ -9,7 +9,7 @@ export test_attitude
 
 logrange(x1, x2, n) = (10^y for y in range(log10(x1), log10(x2), length=n))
 
-function logsym(x1, x2, n)
+function lograngesym(x1, x2, n)
     log_semi = collect(logrange(x1, x2, n))
     log_sym = [-reverse(log_semi); log_semi]
     return (i for i in log_sym)
@@ -19,6 +19,7 @@ end
 function test_attitude()
     @testset verbose = true "Attitude" begin
         @testset verbose = true "RQuat" begin test_RQuat() end
+        @testset verbose = true "RMatrix" begin test_RMatrix() end
         @testset verbose = true "RAxAng" begin test_RAxAng() end
         @testset verbose = true "REuler" begin test_REuler() end
     end
@@ -131,7 +132,7 @@ function test_RAxAng()
 
         #complete [-2π, 2π] angle range focusing on  small angles
         u = normalize([7, -5, 2])
-        μ_array = logsym(Attitude.ε_null, 2π, 5)
+        μ_array = lograngesym(Attitude.ε_null, 2π, 10)
         r_array = collect(RAxAng(u, μ) for μ in μ_array)
         r_array_test = collect(r |> RQuat |> RAxAng for r in r_array)
         @test all(r_array .≈ r_array_test)
@@ -202,12 +203,11 @@ function test_REuler()
         @test RQuat(REuler()) ≈ RQuat([1,0,0,0])
 
         #cover Euler angle ranges including interval bounds but avoiding gimbal lock
-        ψ_range = range(-π, π, length = 5)
-        θ_range = range(-(π/2 - 0.001), π/2 - 0.001, length = 5)
-        φ_range = range(-π, π, length = 5)
+        ψ_range = range(-π, π, length = 10)
+        θ_range = range(-(π/2 - 0.001), π/2 - 0.001, length = 10)
+        φ_range = range(-π, π, length = 10)
         r_array = vec([REuler(i) for i in Iterators.product(ψ_range, θ_range, φ_range)])
 
-        #
         r_array_test = [r |> RQuat |> REuler |> RAxAng |> REuler for r in r_array]
         # r_failed = r_array[r_array .≈ r_array_test]
         # r_test_failed = r_array_test[r_array .≈ r_array_test]
@@ -231,6 +231,88 @@ function test_REuler()
         @test (q_ab ∘ r_bc) * x_c ≈ (r_ab ∘ q_bc) * x_c
         @test r_ab' ≈ q_ab'
     end
+
+end
+
+function test_RMatrix()
+
+    A = [0.590969 0.288519 0.902137;
+        0.657604 0.927693 0.218535;
+        0.370707  0.481724  0.10268]
+
+    A_orth = qr(A).Q
+    r_ab = RMatrix(A_orth)
+    r_bc = RMatrix(sin.(A_orth)) #generate a different matrix and let the constructor normalize
+    x_c = [-1, 2, 3]
+
+    @testset "Constructors" begin
+
+        A_dist = A_orth + 1e-6*sin.(A)
+        r_orth = RMatrix(A_orth, normalization = false)
+        r_dist = RMatrix(A_dist, normalization = false)
+        @test det(r_orth) ≈ 1
+        @test !(det(r_dist) ≈ 1)
+        @test det(RMatrix(A_dist)) ≈ 1 #automatic normalization on construction
+
+        r_norm = normalize(r_dist)
+        @test det(r_norm) ≈ 1
+        r_norm_copy = RMatrix(A_dist, normalization = false)
+        normalize!(r_norm_copy)
+        @test det(r_norm_copy) ≈ 1
+
+        #error after renormalization
+        r_err = r_orth ∘ r_norm'
+        @test RAxAng(r_err).angle < 1e-7
+
+    end
+
+    @testset "Operators" begin
+
+        #equality
+        @test r_ab == r_ab
+        @test r_ab != r_bc
+
+        #approximate equality
+        @test r_ab ≈ RMatrix(r_ab._mat .+ 1e-10, normalization = false)
+        @test !(r_ab ≈ r_bc)
+
+        #transformation, composition & inversion
+        @test r_ab * (r_bc * x_c) ≈ (r_ab ∘ r_bc) * x_c
+        @test r_ab * (r_bc * x_c) ≈ (r_ab * r_bc) * x_c
+        @test x_c ≈ r_bc' * (r_bc * x_c)
+
+    end
+
+    @testset "Conversions" begin
+
+        #cover Euler angle ranges including interval bounds but avoiding gimbal lock
+        ψ_range = range(-π, π, length = 10)
+        θ_range = range(-(π/2 - 0.001), π/2 - 0.001, length = 10)
+        φ_range = range(-π, π, length = 10)
+        r_array = vec([REuler(i) for i in Iterators.product(ψ_range, θ_range, φ_range)])
+
+        #this should exercise all cases of RMatrix -> RQuat conversion
+        r_array_test = [r |> RMatrix |> RQuat |> RMatrix |> REuler |> RMatrix |> RAxAng |> RMatrix for r in r_array]
+        @test all(r_array .≈ r_array_test)
+
+    end
+
+    @testset "Mixed Operators" begin
+
+        #equality
+        q_ab = RQuat(r_ab)
+        q_bc = RQuat(r_bc)
+
+        #approximate equality
+        @test r_ab ≈ q_ab #some loss of precision should be expected
+        @test !(r_ab ≈ q_bc) #some loss of precision should be expected
+
+        #transformation, composition & inversion
+        @test q_ab * (r_bc * x_c) ≈ r_ab * (q_bc * x_c)
+        @test (q_ab ∘ r_bc) * x_c ≈ (r_ab ∘ q_bc) * x_c
+        @test r_ab' ≈ q_ab'
+    end
+
 
 end
 
