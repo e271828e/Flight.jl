@@ -4,7 +4,7 @@ using StaticArrays: SVector, SMatrix
 using LinearAlgebra
 using ..Quaternions: UnitQuat, Quat
 
-export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, invert, compose, transform, dt
+export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dt
 
 const ε_null = 1e-10 #threshold for null rotation
 const half_π = π/2
@@ -170,6 +170,7 @@ struct RAxAng <: Rotation
     axis::SVector{3, Float64}
     angle::Float64
     function RAxAng(axis::AbstractVector{T} where {T<:Real}, angle::Real; normalization::Bool = true)
+        axis = SVector{3,Float64}(axis) #normalization will be faster for an SVector
         return normalization ? new(normalize(axis), angle) : new(axis, angle)
     end
 end
