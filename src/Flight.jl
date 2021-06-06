@@ -3,6 +3,7 @@ module Flight
 include("quaternions.jl")
 include("attitude.jl")
 include("wgs84.jl")
+include("lbv.jl")
 # include("sketches/statevector.jl")
 # include("sketches/statevectorpbv.jl")
 

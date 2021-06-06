@@ -1,10 +1,10 @@
-module StateVectorPBV
+module LabelledBlockVector
 
 using BlockArrays, StaticArrays
 import BlockArrays: axes, viewblock, getblock
 
 #additions to export are not tracked by Revise!
-export Node, Leaf
+export Node, Leaf, descriptor
 
 #setting default values directly:
 # https://mauro3.github.io/Parameters.jl/v0.9/manual.html
@@ -32,7 +32,10 @@ function Node{S}(data::AbstractVector{Float64}) where {S}
     Node{S}(PseudoBlockVector(data, blocklengths(Node{S})))
 end
 
-Node{S}() where {S} = Node{S}(PseudoBlockVector{Float64}(undef, blocklengths(Node{S})))
+function Node{S}() where {S}
+    println("Calling zero arg constructor")
+    Node{S}(PseudoBlockVector{Float64}(undef, blocklengths(Node{S})))
+end
 
 #AbstractBlockArray interface
 axes(x::Node) = axes(getfield(x,:data))
@@ -40,18 +43,58 @@ viewblock(x::Node, block) = viewblock(getfield(x, :data), block)
 
 descriptor(::Type{Node}) = error("To be implemented by each Node type")
 
+#could do away with PseudoBlockVectors for the underlying data and replace them
+#with plain SubArrays, by simply defining methods that return the blockranges
+#for each block given the lengths of each block
+#blockranges =
 
+#now, see if the requested block is a leaf. if it is a leaf, simply extract the
+#requested block number and output a view. if it is a node, we need to pass that
+#view to the constructor of a Node of the corresponding parametric type.
+# @generated function Base.getindex(x::Node, ::Val{s}) where {s}
+# #within the @generated function body, x is a type, but s is a Symbol (since it
+# #is extracted from a type parameter).
+#     Core.println("Generated function getindex parsed for type $x")
+#     blocknumber = findfirst(i->i==s, keys(descriptor(x)))
+#     blocktype = descriptor(x)[s]
+#     #getblock is called on the data field and thus dispatches to the BlockArrays
+#     #method
+#     if blocktype <: Node
+#         return :($blocktype(view(getfield(x,:data), Block($blocknumber)))) #enforce return type for stability
+#     else #Leaf
+#         return :(view(getfield(x,:data), Block($blocknumber)))
+#     end
+# end
 
 #Array Interface ###############
 
-# blocklengths(::Type{NodeRbd}) = [4, 3, 3]
-# Base.length(::Type{NodeRbd}) = 10
-
 ######################### MAKE GENERATED #############################
 blocklengths(::Type{Node{S}}) where {S} = collect(length.(values(descriptor(Node{S}))))
+# function blockoffsets(::Type{Node{S}}) where {S}
+#     lengths = blocklengths(Node{S})
+#     offsets = similar(lengths)
+#     current_offset = 1
+#     for (i, l) in enumerate(lengths)
+#         offsets[i] = current_offset
+#         current_offset += l
+#     end
+#     return offsets
+# end
+
+function blockoffsets(::Type{Node{S}}) where {S}
+    offsets = Vector{Int}([])
+    current_offset = 1
+    for l in blocklengths(Node{S})
+        append!(offsets, current_offset)
+        current_offset += l
+    end
+    return offsets
+end
+
 Base.length(::Type{Node{S}}) where {S} = sum(blocklengths(Node{S}))
 
 #AbstractArray interface
+#add Base.@propagate_inbounds
 Base.@propagate_inbounds Base.getindex(x::Node, i::Integer)::Float64 = getindex(getfield(x,:data), i)
 Base.@propagate_inbounds Base.getindex(x::Node, i::Colon)::Vector{Float64} = getindex(getfield(x,:data),  i)
 Base.@propagate_inbounds Base.getindex(x::Node, i::AbstractUnitRange)::Vector{Float64} = getindex(getfield(x,:data),  i)
@@ -70,42 +113,26 @@ Base.:(*)(a::Real, x::Node{S}) where {S} = (#=println("No broadcast");=# x * a)
 #=
 Base.@propagate_inbounds Base.setindex!(x::Node, v, ::Val{s}) where {s} = (x[Val(s)] .= v)
 
-@generated function Base.getindex(x::Node, ::Val{s}) where {s}
-#within the @generated function body, x is a type, but s is a Symbol (since it
-#is extracted from a type parameter).
-    Core.println("Generated function getindex parsed for type $x")
-    blocknumber = findfirst(i->i==s, keys(descriptor(x)))
-    blocktype = descriptor(x)[s]
-    #getblock is called on the data field and thus dispatches to the BlockArrays
-    #method
-    if blocktype <: Node
-        return :($blocktype(view(getfield(x,:data), Block($blocknumber)))) #enforce return type for stability
-    else #Leaf
-        return :(view(getfield(x,:data), Block($blocknumber)))
-    end
-end
 
 Base.getproperty(x::Node, s::Symbol) = getindex(x, Val(s))
 Base.setproperty!(x::Node, s::Symbol, v) = setindex!(x, v, Val(s))
 
 =#
 
-struct NodeStyle{S} <: Broadcast.AbstractArrayStyle{1} end
-NodeStyle{S}(::Val{1}) where {S} = NodeStyle{S}()
-Base.BroadcastStyle(::Type{Node{S}}) where {S} = NodeStyle{S}()
-function Base.similar(bc::Broadcast.Broadcasted{NodeStyle{S}}, ::Type{ElType}) where {S, ElType}
-    # println("Called similar bc")
-    pbv = PseudoBlockVector{Float64}(undef, axes(bc))
-    Node{S}(pbv)
-end
-Base.similar(::Type{Node{S}}) where {S} = Node{S}(PseudoBlockVector{Float64}(undef, blocklengths(Node{S})))
-#
-Base.dataids(x::Node{S}) where {S} = Base.dataids(x.data)
+# struct NodeStyle{S} <: Broadcast.AbstractArrayStyle{1} end
+# NodeStyle{S}(::Val{1}) where {S} = NodeStyle{S}()
+# Base.BroadcastStyle(::Type{Node{S}}) where {S} = NodeStyle{S}()
+# function Base.similar(bc::Broadcast.Broadcasted{NodeStyle{S}}, ::Type{ElType}) where {S, ElType}
+#     # println("Called similar bc")
+#     pbv = PseudoBlockVector{Float64}(undef, axes(bc))
+#     Node{S}(pbv)
+# end
+# Base.similar(::Type{Node{S}}) where {S} = Node{S}(PseudoBlockVector{Float64}(undef, blocklengths(Node{S})))
+# #
+# Base.dataids(x::Node{S}) where {S} = Base.dataids(x.data)
 
 
 
-const NodeRbd = Node{:rbd}
-descriptor(::Type{NodeRbd}) = (att = Leaf{4}, vel = Leaf{3}, pos = Leaf{3})
 
 
 
