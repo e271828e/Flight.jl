@@ -4,7 +4,7 @@ using BlockArrays, StaticArrays
 import BlockArrays: axes, viewblock, getblock
 
 #additions to export are not tracked by Revise!
-export Node, Leaf, descriptor
+export Node, Leaf, descriptor, generate_getindex_sym
 
 #setting default values directly:
 # https://mauro3.github.io/Parameters.jl/v0.9/manual.html
@@ -20,67 +20,26 @@ export Node, Leaf, descriptor
 struct Leaf{S} end
 Base.length(::Type{Leaf{S}}) where {S} = S
 
-struct Node{S} <: AbstractBlockVector{Float64}
-    data::PseudoBlockVector{Float64}
-    Node{S}(data::PseudoBlockVector{Float64}) where {S} = (#=println("Inner const");=# new{S}(data))
-end
+# struct Node{S} <: AbstractBlockVector{Float64}
+#     data::PseudoBlockVector{Float64}
+#     Node{S}(data::PseudoBlockVector{Float64}) where {S} = (#=println("Inner const");=# new{S}(data))
+# end
 
-function Node{S}(data::AbstractVector{Float64}) where {S}
-    # println("Abstract Vector const")
-    # println(collect(blocklengths(Node{S})))
-    # @assert length(data) == length(Node{S})
-    Node{S}(PseudoBlockVector(data, blocklengths(Node{S})))
+# alternative definition, which enables different data types (vectors and views)
+struct Node{L, D<:AbstractVector{Float64}} <: AbstractVector{Float64}
+    data::D
 end
-
-function Node{S}() where {S}
-    println("Calling zero arg constructor")
-    Node{S}(PseudoBlockVector{Float64}(undef, blocklengths(Node{S})))
-end
-
-#AbstractBlockArray interface
-axes(x::Node) = axes(getfield(x,:data))
-viewblock(x::Node, block) = viewblock(getfield(x, :data), block)
+Node{L}(data::D) where {L, D<:AbstractVector{Float64}} = Node{L,D}(data)
 
 descriptor(::Type{Node}) = error("To be implemented by each Node type")
 
-#could do away with PseudoBlockVectors for the underlying data and replace them
-#with plain SubArrays, by simply defining methods that return the blockranges
-#for each block given the lengths of each block
-#blockranges =
-
-#now, see if the requested block is a leaf. if it is a leaf, simply extract the
-#requested block number and output a view. if it is a node, we need to pass that
-#view to the constructor of a Node of the corresponding parametric type.
-# @generated function Base.getindex(x::Node, ::Val{s}) where {s}
-# #within the @generated function body, x is a type, but s is a Symbol (since it
-# #is extracted from a type parameter).
-#     Core.println("Generated function getindex parsed for type $x")
-#     blocknumber = findfirst(i->i==s, keys(descriptor(x)))
-#     blocktype = descriptor(x)[s]
-#     #getblock is called on the data field and thus dispatches to the BlockArrays
-#     #method
-#     if blocktype <: Node
-#         return :($blocktype(view(getfield(x,:data), Block($blocknumber)))) #enforce return type for stability
-#     else #Leaf
-#         return :(view(getfield(x,:data), Block($blocknumber)))
-#     end
-# end
 
 #Array Interface ###############
 
 ######################### MAKE GENERATED #############################
 blocklengths(::Type{Node{S}}) where {S} = collect(length.(values(descriptor(Node{S}))))
-# function blockoffsets(::Type{Node{S}}) where {S}
-#     lengths = blocklengths(Node{S})
-#     offsets = similar(lengths)
-#     current_offset = 1
-#     for (i, l) in enumerate(lengths)
-#         offsets[i] = current_offset
-#         current_offset += l
-#     end
-#     return offsets
-# end
 
+#probably unnecessary
 function blockoffsets(::Type{Node{S}}) where {S}
     offsets = Vector{Int}([])
     current_offset = 1
@@ -91,17 +50,44 @@ function blockoffsets(::Type{Node{S}}) where {S}
     return offsets
 end
 
+function blockranges(::Type{Node{L}}) where {L}
+    lengths = blocklengths(Node{L})
+    blockranges = Vector{UnitRange{Int}}(undef, length(lengths))
+    offset = 0
+    for (i,l) in enumerate(lengths)
+        blockranges[i] = (1 + offset) : (l + offset)
+        offset += l
+    end
+    return blockranges
+end
+
+#GENERATE AT PARSE TIME
 Base.length(::Type{Node{S}}) where {S} = sum(blocklengths(Node{S}))
+Base.size(x::Node) = size(x.data)
+
+#aqui devolvere una llamada a Node{blocktype}(view(getfield(x,:data)),
+#blockrange), donde blocktype y blockrange los obtengo del descriptor,
+#recursivamente si hace falta! si !blocktype <: Node, entonces es Leaf. y
+#entonces devuelvo una view sin mas. probar. pensar si blockranges debe devolver
+#directamente un NamedTuple para no tener que andar buscando aqui el blocknumber
+#en realidad, esta funcion debe devolver un Vector{Expr}, cada uno
+#correspondiente a un getindex. despues, hago for ex in v eval(ex) end
+function generate_getindex_sym(::Type{Node{L}}, s::Symbol) where L
+    d = descriptor(Node{L})
+    block_length = length(d[s])
+    println("Generating getindex for type Node{$L}, Val($s)")
+    println("Replace this with a true")
+    type_par = QuoteNode(L)
+    sym = QuoteNode(s)
+    return :(Base.getindex(x::Node{$type_par}, ::Val{$sym}) = getindex(getfield(x,:data), 1:$block_length))
+end
+
+#anadir despues getproperty(x, s) = getindex(x, Val(s))
 
 #AbstractArray interface
-#add Base.@propagate_inbounds
-Base.@propagate_inbounds Base.getindex(x::Node, i::Integer)::Float64 = getindex(getfield(x,:data), i)
-Base.@propagate_inbounds Base.getindex(x::Node, i::Colon)::Vector{Float64} = getindex(getfield(x,:data),  i)
-Base.@propagate_inbounds Base.getindex(x::Node, i::AbstractUnitRange)::Vector{Float64} = getindex(getfield(x,:data),  i)
-
-Base.@propagate_inbounds Base.setindex!(x::Node, v, i::Integer) = setindex!(getfield(x,:data), v, i)
-Base.@propagate_inbounds Base.setindex!(x::Node, v, i::Colon) = setindex!(getfield(x,:data), v, i)
-Base.@propagate_inbounds Base.setindex!(x::Node, v, i::AbstractUnitRange) = setindex!(getfield(x,:data), v, i)
+#add Base.@propagate_inbounds!!!!!!!
+Base.@propagate_inbounds Base.getindex(x::Node, i) = getindex(getfield(x,:data), i)
+Base.@propagate_inbounds Base.setindex!(x::Node, v, i) = setindex!(getfield(x,:data), v, i)
 
 #it is much faster to perform basic operations on the underlying PBV than
 #broadcasting them. Broadcasting should be used only as a fallback for generic

@@ -20,45 +20,14 @@ LabelledBlockVector.descriptor(::Type{Node{:aircraft}}) = (rbd = Node{:rbd}, ldg
 #READ HANDS ON DESIGN PATTERNS and understand how to interpolate symbols into
 #expressions. either a macro or eval could work. no, IT MUST BE EVAL!
 
-macro make_constructor(nodetype)
-    println(typeof(nodetype))
-    println(:($nodetype))
-    d = descriptor(Node{:($nodetype)})
-    println(d)
-    return quote
-        $(esc(Node)){$nodetype}() = println("Dummy function")
-    end
-end
+eval(generate_getindex_sym(Node{:rbd}, :att))
+eval(generate_getindex_sym(Node{:rbd}, :vel))
 
-
-
-function generate_getindex(::Type{Node{:rbd}}, s::Symbol)
-    d = descriptor(Node{:rbd})
-    block_length = length(d[s])
-    println("Generating getindex for Val($s)")
-    sym = QuoteNode(s)
-    return :(Base.getindex(x::Node{:rbd}, ::Val{$sym}) = getindex(getfield(x,:data), 1:$block_length))
-end
-
-eval(generate_getindex(Node{:rbd}, :att))
-eval(generate_getindex(Node{:rbd}, :vel))
-
-
-
-
-# function Base.getindex(x::Node, ::Val{:att})
-#     return view(getfield(x,:data), Block(1))
-# end
-
-# function Base.getindex(x::Node, ::Val{:vel})
-#     return view(getfield(x,:data), Block(2))
-# end
 
 function test_lbv()
-    x_rbd = Node{:rbd}()
-    x_ldg = Node{:ldg}()
-    x_aircraft = Node{:aircraft}()
-    return x_aircraft
+    data = rand(length(Node{:rbd}))
+    x = Node{:rbd}(view(data, :))
+    x[Val(:att)]
 end
 
 # end #module
