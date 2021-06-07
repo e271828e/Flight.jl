@@ -20,51 +20,66 @@ export Node, Leaf, descriptor, generate_getindex_sym
 struct Leaf{S} end
 Base.length(::Type{Leaf{S}}) where {S} = S
 
-# struct Node{S} <: AbstractBlockVector{Float64}
-#     data::PseudoBlockVector{Float64}
-#     Node{S}(data::PseudoBlockVector{Float64}) where {S} = (#=println("Inner const");=# new{S}(data))
-# end
-
 # alternative definition, which enables different data types (vectors and views)
-struct Node{L, D<:AbstractVector{Float64}} <: AbstractVector{Float64}
-    data::D
-end
-Node{L}(data::D) where {L, D<:AbstractVector{Float64}} = Node{L,D}(data)
+abstract type Node{D<:AbstractVector{Float64}} <: AbstractVector{Float64} end
 
-descriptor(::Type{Node}) = error("To be implemented by each Node type")
+Node(data::D) where {D<:AbstractVector{Float64}} = Node{D}(data)
 
 
 #Array Interface ###############
 
-######################### MAKE GENERATED #############################
-blocklengths(::Type{Node{S}}) where {S} = collect(length.(values(descriptor(Node{S}))))
-
-#probably unnecessary
-function blockoffsets(::Type{Node{S}}) where {S}
-    offsets = Vector{Int}([])
-    current_offset = 1
-    for l in blocklengths(Node{S})
-        append!(offsets, current_offset)
-        current_offset += l
-    end
-    return offsets
+function precompute_length(desc::NamedTuple)
+    sum(length.(values(desc)))
 end
 
-function blockranges(::Type{Node{L}}) where {L}
-    lengths = blocklengths(Node{L})
-    blockranges = Vector{UnitRange{Int}}(undef, length(lengths))
+function precompute_block_ranges(desc::NamedTuple)
+    block_lengths = length.(values(desc))
+    block_ranges = Vector{UnitRange{Int}}(undef, length(desc))
     offset = 0
-    for (i,l) in enumerate(lengths)
-        blockranges[i] = (1 + offset) : (l + offset)
+    for (i,l) in enumerate(block_lengths)
+        block_ranges[i] = (1 + offset) : (l + offset)
         offset += l
     end
-    return blockranges
+    return NamedTuple{keys(desc)}(Tuple(block_ranges))
 end
 
-#GENERATE AT PARSE TIME
+# function precompute_blockranges(::Type{T}) where {D, T <: Node{D}}
+#     # println("Called blockranges with $T")
+#     lengths = blocklengths(T)
+#     blockranges = Vector{UnitRange{Int}}(undef, length(lengths))
+#     offset = 0
+#     for (i,l) in enumerate(lengths)
+#         blockranges[i] = (1 + offset) : (l + offset)
+#         offset += l
+#     end
+#     return blockranges
+# end
+
+# function precompute_blocklengths(desc::NamedTuple)
+#     length.(values(desc))
+# end
+
+#GENERATE AT PARSE TIME for each Node subtype. replace with a constant output
+#for each subtype.
 #ASSERT THE DATA PASSED TO THE CONSTRUCTOR IS OF THE APPROPRIATE LENGTH
-Base.length(::Type{Node{S}}) where {S} = sum(blocklengths(Node{S}))
-Base.size(x::Node) = size(getfield(x,:data))
+# function Base.length(::Type{T}) where {D, T<:Node{D}}
+#     println("Called length with $T")
+#     sum(blocklengths(T))
+# end
+# Base.size(x::Node) = size(getfield(x,:data))
+
+#probably unnecessary
+# function blockoffsets(::Type{Node{S}}) where {S}
+#     offsets = Vector{Int}([])
+#     current_offset = 1
+#     for l in blocklengths(Node{S})
+#         append!(offsets, current_offset)
+#         current_offset += l
+#     end
+#     return offsets
+# end
+
+
 
 #aqui devolvere una llamada a Node{blocktype}(view(getfield(x,:data)),
 #blockrange), donde blocktype y blockrange los obtengo del descriptor,
@@ -73,17 +88,19 @@ Base.size(x::Node) = size(getfield(x,:data))
 #directamente un NamedTuple para no tener que andar buscando aqui el blocknumber
 #en realidad, esta funcion debe devolver un Vector{Expr}, cada uno
 #correspondiente a un getindex. despues, hago for ex in v eval(ex) end
-function generate_getindex_sym(::Type{Node{L}}, s::Symbol) where L
-    println("Getting descriptor for Node{:$L}")
-    d = descriptor(Node{L})
-    block_length = length(d[s])
-    println("Generating getindex for type Node{$L}, Val($s)")
-    println("Replace this with a true")
-    type_par = QuoteNode(L)
-    sym = QuoteNode(s)
-    return :(Base.getindex(x::Node{$type_par}, ::Val{$sym}) = getindex(getfield(x,:data), 1:$block_length))
-end
+# function generate_getindex_sym(::Type{Node{L}}, s::Symbol) where L
+#     println("Getting descriptor for Node{:$L}")
+#     d = descriptor(Node{L})
+#     block_length = length(d[s])
+#     println("Generating getindex for type Node{$L}, Val($s)")
+#     println("Replace this with a true")
+#     type_par = QuoteNode(L)
+#     sym = QuoteNode(s)
+#     return :(Base.getindex(x::Node{$type_par}, ::Val{$sym}) = getindex(getfield(x,:data), 1:$block_length))
+# end
 
+# https://stackoverflow.com/questions/48675081/is-it-possible-to-implement-a-type-factory-in-julia-without-using-eval
+# https://stackoverflow.com/questions/39385408/julia-macros-with-multiple-return-expressions
 #anadir despues getproperty(x, s) = getindex(x, Val(s))
 
 #AbstractArray interface
@@ -94,10 +111,10 @@ Base.@propagate_inbounds Base.setindex!(x::Node, v, i) = setindex!(getfield(x,:d
 #it is much faster to perform basic operations on the underlying PBV than
 #broadcasting them. Broadcasting should be used only as a fallback for generic
 #functions
-Base.:(+)(x1::Node{S}, x2::Node{S}) where {S} = (#=println("No broadcast");=# Node{S}(getfield(x1,:data) + getfield(x2,:data)))
-Base.:(-)(x1::Node{S}, x2::Node{S}) where {S} = (#=println("No broadcast");=# Node{S}(getfield(x1,:data) - getfield(x2,:data)))
-Base.:(*)(x::Node{S}, a::Real) where {S} = (#=println("No broadcast");=# Node{S}(a * getfield(x,:data)))
-Base.:(*)(a::Real, x::Node{S}) where {S} = (#=println("No broadcast");=# x * a)
+Base.:(+)(x1::T, x2::T) where {T<:Node} = (#=println("No broadcast");=# T(getfield(x1,:data) + getfield(x2,:data)))
+Base.:(-)(x1::T, x2::T) where {T<:Node} = (#=println("No broadcast");=# T(getfield(x1,:data) - getfield(x2,:data)))
+Base.:(*)(x::T, a::Real) where {T<:Node} = (#=println("No broadcast");=# T(a * getfield(x,:data)))
+Base.:(*)(a::Real, x::T) where {T<:Node} = (#=println("No broadcast");=# x * a)
 #=
 Base.@propagate_inbounds Base.setindex!(x::Node, v, ::Val{s}) where {s} = (x[Val(s)] .= v)
 

@@ -55,53 +55,140 @@
 #be exported. what I need to do is pass the descriptor itself to the functions
 #in LBV
 
-# Pero cuidado: me estoy preocupando mucho de los conflicting names con los
-# descriptors, cuando en última instancia voy a tener extensions a getindex y
-# setindex en Base para los diferentes type parameters o concrete LBV subtypes.
-# El problema NO es sólo conflicto en LBV, sino en Base! Y esto no voy a poder
-# evitarlo! Sólo puedo asegurarme de que no se ha definido otro Node con el
-# mismo type parameter. Comprobar methods.
+#customizar la representacion para que aparezcan los nombres de los child blocks
 
-# En LabelledArrays no es posible definir LArrays con el mismo type parameter y
-# distinto comportamiento porque realmente el type parameter contiene toda la
-# especificidad de ese subtipo. Si el type parameter es igual, el subtipo es por
-# definicion igual. Aqui no es el caso.
+#crear un type Descriptor que contiene un NTuple{Symbol} y un NTuple{DataType}
+
 module TestLBV
 
 module Rbd
 using Flight.LabelledBlockVector
 
+#supongamos que yo tengo un descriptor DescRbd
 
-LabelledBlockVector.descriptor(::Type{Node{:rbd}}) = (att = Leaf{4}, vel = Leaf{3}, pos = Leaf{3})
-eval(generate_getindex_sym(Node{:rbd}, :att))
-eval(generate_getindex_sym(Node{:rbd}, :vel))
-eval(generate_getindex_sym(Node{:rbd}, :pos))
+#Leaf es distinto cualitativamente de Node. Leaf no puede alojar data. Es solo
+#un descriptor. Necesito un equivalente para Node. Basicamente, me defino un
+#AbstractDescriptor, del que Leaf{S} es un subtype y NodeDescriptor{L} es otro.
+#L sera el nombre que queremos que tenga el Node subtype. Dentro, tendra 2
+#Tuples, uno de
+
+#Node subtype must be defined from a macro as follows
+@LBV NodeRbd (att = Leaf{4}, vel = Leaf{3}, pos = Leaf{4})
+
+#
+#bueno, en realidad para lo anterior tengo que haber elegido un nombre para el
+#Node subtype. pero eso para mas adelante, cuando genere una macro. tendra una
+#pinta como:
+
+#primero, definir el descriptor, que NO tiene que ser un method, sino un
+#NamedTuple de Symbols a Union{Leaf, Node} (probar como restringir esto, y si
+#acaso definir un alias const NodeDescriptor). suponiendo que existen funciones
+#Base.length() para todos los types que forman parte del descriptor, basta una
+#llamada a precompute_lengths para obtener la longitud de antemano
+const rbd_descriptor = (att = Leaf{4}, vel = Leaf{3}, pos = Leaf{4})
+const rbd_length = LabelledBlockVector.precompute_length(rbd_descriptor)
+const rbd_block_ranges = LabelledBlockVector.precompute_block_ranges(rbd_descriptor)
+println(rbd_length)
+println(rbd_block_ranges)
+
+#ahora, con este valor numerico ya conocido, puedo definir directamente el Node
+#subtype con un inner constructor que haga un assert de longitud al input data:
+struct NodeRbd{D} <: Node{D}
+    data::D
+    function NodeRbd{D}(data::D) where {D}
+        @assert length(data) == rbd_length "Expected an input of length $rbd_length"
+        new{D}(data)
+    end
+end
+#un outer constructor para comodidad
+NodeRbd(data::D) where {D<:AbstractVector{Float64}} = NodeRbd{D}(data)
+
+#before extending anything make sure this node subtype has not been defined already
+if !hasmethod(Base.length, (Type{NodeRbd},))
+    println("OK, NodeRbd has not been defined yet")
+end
+
+#this syntax takes care of all NodeRbd subtypes, which include
+#NodeRbd{Vector{Float64}}, NodeRbd{SubArray{Float64,...}}, etc, but also the
+#unqualified NodeRbd itself! the essential purpose of this method is to allow
+#other Nodes to include this Node type in their own descriptors and precompute
+#their lengths. make sure the let block is required, it probably isn't
+Base.length(::Type{T}) where {T <: NodeRbd} = rbd_length
+
+if hasmethod(Base.length, (Type{NodeRbd},))
+    println("NodeRbd registered")
+end
+#this syntax does not accomodate NodeRbd without type parameters, only those
+#parametric subtypes that are qualified with ANY parameter. but SOME parameter.
+# function Base.length(::Type{NodeRbd{D}}) where {D}
+#     let rbd_length = rbd_length
+#         return rbd_length
+#     end
+# end
+
+#y esto, que me lo pide el AbstractArray interface, y tambien es conocido de
+#antemano.
+Base.size(::NodeRbd) = (rbd_length,)
+#aunque haria falta un Base.length(::NodeRbd{D} where {D}), pero eso me lo da
+#indirectamente Base.size
+
+@generated function Base.getindex(x::NodeRbd, ::Val{s}) where {s}
+    #within the @generated function body, x is a type, but s is a Symbol, since
+    #it is extracted from a type parameter.
+    Core.println("Generated function getindex parsed for type $x, symbol $s")
+    block_type = rbd_descriptor[s]
+    block_range = rbd_block_ranges[s]
+    if block_type <: Leaf
+        return :(view(getfield(x,:data), $block_range))
+    else #<: Node
+        return :($block_type(view(getfield(x,:data), $block_range)))
+    end
+end
+
+Base.setindex!(x::NodeRbd, v, ::Val{s}) where {s} = (x[Val(s)] .= v)
+
+#despues definir los getindex[Val(s)] y setindex, getproperty y setproperty
+
+#TERMINAR ESTO Y REPETIRLO PARA LOS OTROS
+#SOLO CUANDO TENGA LOS TRES PROBADOS introducir las generating functions
+
+#
+# eval(generate_getindex_sym(NodeRbd, :att))
+# eval(generate_getindex_sym(NodeRbd, :vel))
+# eval(generate_getindex_sym(NodeRbd, :pos))
+
+#pero claro, si defino Base.length para un NodeRbd{D}, eso me obliga a definirlo
+#con un parametro D en cualquier descriptor que haga uso de el. aunque puesto
+#que esto lo va a procesar una macro, podria prescindir de ello
+
+
 
 end
 
 module Ldg
 using Flight.LabelledBlockVector
-export descriptor
 
-LabelledBlockVector.descriptor(::Type{Node{:ldg}}) = (mlg = Leaf{3}, nlg = Leaf{3})
-# LabelledBlockVector.descriptor(::Type{Node{:rbd}}) = (mlg = Leaf{3}, nlg = Leaf{3})
+struct NodeLdg{D} <: Node{D}
+    data::D
+end
+
 
 end
 
 module Aircraft
 using Flight.LabelledBlockVector
+using ..Rbd #needed to access NodeRbd
+using ..Ldg #needed to access
 
-#this module should not redefine LabelledBlockVector.descriptor(Node{:rbd}).
-#that is the definition of type piracy. the problem is i cannot know if another
-#module has extended LabelledBV with the descriptor for the same type parameter
-#that i am extending as well. alternativa: definir Node como abstract type (casi
-#todos los metodos son agnosticos respecto de los datos), y definir un
-#AircraftNode{D}, donde data::D y D<:AV{F64}es el unico type parameter. lo que
-#si deberia definir es un method getdata para sustituir a getfield(x,:data).
-#este getdata debe ser overloaded por cada concrete subtype. con una macro puedo
-#generar la definicion struct, el descriptor la funcion getdata y ya esta. no
-#necesito mas
-LabelledBlockVector.descriptor(::Type{Node{:aircraft}}) = (rbd = Node{:rbd}, ldg = Node{:ldg})
+struct NodeAircraft{D} <: Node{D}
+    data::D
+end
+#need to specify type parameters so that parameter. pero en
+#realidad, puesto que
+aircraft_desc = (rbd = Rbd.NodeRbd{Vector{Float64}}, ldg = Ldg.NodeLdg{Vector{Float64}})
+# function LabelledBlockVector.descriptor(::Type{NodeAircraft{D}}) where {D}
+#     (rbd = Rbd.NodeRbd{D}, ldg = Ldg.NodeLdg{D})
+# end
 
 end
 #
@@ -110,15 +197,25 @@ end
 #expressions. either a macro or eval could work. no, IT MUST BE EVAL!
 
 using Flight.LabelledBlockVector
-using .Aircraft
+using .Rbd, .Ldg, .Aircraft
 export test_lbv
 
 function test_lbv()
-    data = rand(length(Node{:rbd}))
-    x = Node{:rbd}(view(data, :))
-    # y = Node{:aicraft}(view(rand(16), :))
-    @show x[Val(:att)]
-    # y[Val(:)]
+    # println(Rbd.NodeRbd <: Node{D} where {D})
+    # LabelledBlockVector.blockranges(Rbd.NodeRbd{Vector{Float64}})
+    # rbd_data = rand(length(Rbd.NodeRbd{Vector{Float64}}))
+    # x_rbd = Rbd.NodeRbd(view(rbd_data, :))
+    # y_rbd = Rbd.NodeRbd(rbd_data)
+    # println(typeof(x_rbd))
+    # println(typeof(y_rbd))
+
+    # aircraft_data = rand(length(Aircraft.NodeAircraft{Vector{Float64}}))
+    # x_aircraft = Aircraft.NodeAircraft(aircraft_data)
+    # @show x_aircraft
+    # # @show x
+    # # y = Node{:aicraft}(view(rand(16), :))
+    # # @show x[Val(:att)]
+    # # y[Val(:)]
 end
 
 end #module
