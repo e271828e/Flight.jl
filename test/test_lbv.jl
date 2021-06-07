@@ -111,13 +111,14 @@ end
 
 using Flight.LabelledBlockVector
 using .Aircraft
+export test_lbv
 
 function test_lbv()
     data = rand(length(Node{:rbd}))
     x = Node{:rbd}(view(data, :))
-    y = Node{:aicraft}(view(rand(16), :))
-    x[Val(:att)]
-    y[Val(:)]
+    # y = Node{:aicraft}(view(rand(16), :))
+    @show x[Val(:att)]
+    # y[Val(:)]
 end
 
 end #module
