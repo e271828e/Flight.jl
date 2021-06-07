@@ -24,14 +24,41 @@
 #of descriptor(::Type{MyNodeSubtype}), because both think that MyNodeSubtype is
 #being defined by nobody else.
 
-#an alternative would be to export a macro that generates and executes a
-#function that does everything locally: define the descriptor, from the
-# @LBV :rbd (att = Leaf{4}, vel = Leaf{3}, pos = Leaf{3})
-# @LBV :aircract (rbd = Node{:rbd}, ldg = Node{:ldg})
+#OPTION 1: create and export a macro from LBV that generates code function that
+#does everything locally. for example, in module Aircraft I would do:
+# @LBV :aircraft (rbd = Node{:rbd}, ldg = Node{:ldg})
 # #this generates the following code
-# descriptor(::)
+# descriptor(::Type{Node{:aircraft}}) = (rbd = Node{:rbd}, ldg = Node{:ldg})
+# blocklengths(::Type{Node{:aircraft}}) = length.(values(descriptor(Node{:aircraft})))
+# totallength(::Type{Node{:aircraft}}) = sum(blocklengths(Node{:aircraft}))
+# function get_methods(::Type{Node{:aircraft}})
+#     #getindex and setindex from block identifiers
+# end
+#now, for the above code to run, it needs access to
+#descriptor(::Type{Node{:rbd}}) and descriptor(::Type{Node{:ldg}}). unless these
+#are explictly requested by the Aircraft module by writing "using Rbd" and
+#"using Ldg", they will not be available. this requires in turn that Rbd and Ldg
+#export their respective descriptor() methods.
 
-#descriptor compute the block lengths (this requires )
+#OPTION 2: extend the descriptor method in LabelledBlockVector, but do so with a
+#macro that checks if a method with the same signature already exists, and if
+#so, raise an error. this is the simplest one, and the most secure. each module
+#can then export its descriptor method
+
+#OPTION 3: use a macro to define an alias const MyNodeType for Node{:T}. Then
+#create a unique type parameter (mangled) T to avoid clashes. if some other
+#module creates the same MyNodeType, hopefully the constants will clash. the
+#problem is that behind the scenes, we have Node{:Tmangled}, so we will need to
+#also define show methods that display MyNodeType. each module exports its own
+#NodeType, so that I can do
+# @LBV XAircraft (rbd = XRbd, ldg = XLdg)
+
+#OPTION 4: define Node as an abstract type. use "global" to prevent multiple
+#definitions of the same method
+
+#OPTION 5: the descriptor should not be methods, but types!! that is what should
+#be exported. what I need to do is pass the descriptor itself to the functions
+#in LBV
 
 module Rbd
 using Flight.LabelledBlockVector
