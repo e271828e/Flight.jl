@@ -4,156 +4,95 @@ using BlockArrays, StaticArrays
 import BlockArrays: axes, viewblock, getblock
 
 #additions to export are not tracked by Revise!
-export Node, Leaf, descriptor, generate_getindex_sym
+export Node, Leaf, LBlock, block_type, block_length, block_ranges
 
 #setting default values directly:
 # https://mauro3.github.io/Parameters.jl/v0.9/manual.html
 
-#customizar la representacion para que aparezcan los nombres de los child blocks
 
 #since Leaf is only a dummy type for dispatching and computing lengths, every
 #system must have a Node as its StateVector.
 #if it has only one Leaf, the descriptor will be descriptor(Node{:simplesys}) =
 #(singleleaf = Leaf{3})
 
-# Leaf{K} = MVector{K, Float64} where {K}
-struct Leaf{S} end
-Base.length(::Type{Leaf{S}}) where {S} = S
+abstract type LBVDescriptor end
 
-# alternative definition, which enables different data types (vectors and views)
-abstract type Node{D<:AbstractVector{Float64}} <: AbstractVector{Float64} end
+#a Leaf only holds length information. since labels are contained in each
+#Descriptor's parent, and Leaf is parent to no other Descriptor, it does not
+#need to hold a label. the question is: should be a Leaf a valid generator for a
+#standalone LBVBlock?
+struct Leaf{S} <: LBVDescriptor end
+Leaf(S::Integer) = Leaf{S}()
+block_length(::Leaf{S}) where {S} = S
 
-Node(data::D) where {D<:AbstractVector{Float64}} = Node{D}(data)
+struct Node{T} <: LBVDescriptor #T: type of the associated block, N: number of children
+    children::NamedTuple
+end
 
+Node(label:: Symbol, nt) = Node{label}(nt)
+block_type(::Node{T}) where {T} = T
+block_length(n::Node) = sum(block_length.(values(n.children)))
+function block_ranges(n::Node)
+    child_lengths = block_length.(values(n.children))
+    blk_ranges = Vector{UnitRange{Int}}(undef, length(n.children))
+    offset = 0
+    for (i,l) in enumerate(child_lengths)
+        blk_ranges[i] = (1 + offset) : (l + offset)
+        offset += l
+    end
+    return NamedTuple{keys(n.children)}(Tuple(blk_ranges))
+end
+
+Base.getindex(n::Node, s::Symbol) = getindex(n.children, s)
+
+
+#D enables different underlying data types (vectors and views)
+abstract type LBlock{D<:AbstractVector{Float64}} <: AbstractVector{Float64} end
+
+LBlock(data::D) where {D<:AbstractVector{Float64}} = LBlock{D}(data)
 
 #Array Interface ###############
 
-function precompute_length(desc::NamedTuple)
-    sum(length.(values(desc)))
-end
-
-function precompute_block_ranges(desc::NamedTuple)
-    block_lengths = length.(values(desc))
-    block_ranges = Vector{UnitRange{Int}}(undef, length(desc))
-    offset = 0
-    for (i,l) in enumerate(block_lengths)
-        block_ranges[i] = (1 + offset) : (l + offset)
-        offset += l
-    end
-    return NamedTuple{keys(desc)}(Tuple(block_ranges))
-end
-
-# function precompute_blockranges(::Type{T}) where {D, T <: Node{D}}
-#     # println("Called blockranges with $T")
-#     lengths = blocklengths(T)
-#     blockranges = Vector{UnitRange{Int}}(undef, length(lengths))
-#     offset = 0
-#     for (i,l) in enumerate(lengths)
-#         blockranges[i] = (1 + offset) : (l + offset)
-#         offset += l
-#     end
-#     return blockranges
-# end
-
-# function precompute_blocklengths(desc::NamedTuple)
-#     length.(values(desc))
-# end
-
-#GENERATE AT PARSE TIME for each Node subtype. replace with a constant output
-#for each subtype.
-#ASSERT THE DATA PASSED TO THE CONSTRUCTOR IS OF THE APPROPRIATE LENGTH
-# function Base.length(::Type{T}) where {D, T<:Node{D}}
-#     println("Called length with $T")
-#     sum(blocklengths(T))
-# end
-# Base.size(x::Node) = size(getfield(x,:data))
-
-#probably unnecessary
-# function blockoffsets(::Type{Node{S}}) where {S}
-#     offsets = Vector{Int}([])
-#     current_offset = 1
-#     for l in blocklengths(Node{S})
-#         append!(offsets, current_offset)
-#         current_offset += l
-#     end
-#     return offsets
-# end
-
-
-
-#aqui devolvere una llamada a Node{blocktype}(view(getfield(x,:data)),
-#blockrange), donde blocktype y blockrange los obtengo del descriptor,
-#recursivamente si hace falta! si !blocktype <: Node, entonces es Leaf. y
-#entonces devuelvo una view sin mas. probar. pensar si blockranges debe devolver
-#directamente un NamedTuple para no tener que andar buscando aqui el blocknumber
-#en realidad, esta funcion debe devolver un Vector{Expr}, cada uno
-#correspondiente a un getindex. despues, hago for ex in v eval(ex) end
-# function generate_getindex_sym(::Type{Node{L}}, s::Symbol) where L
-#     println("Getting descriptor for Node{:$L}")
-#     d = descriptor(Node{L})
-#     block_length = length(d[s])
-#     println("Generating getindex for type Node{$L}, Val($s)")
-#     println("Replace this with a true")
-#     type_par = QuoteNode(L)
-#     sym = QuoteNode(s)
-#     return :(Base.getindex(x::Node{$type_par}, ::Val{$sym}) = getindex(getfield(x,:data), 1:$block_length))
-# end
-
 # https://stackoverflow.com/questions/48675081/is-it-possible-to-implement-a-type-factory-in-julia-without-using-eval
 # https://stackoverflow.com/questions/39385408/julia-macros-with-multiple-return-expressions
-#anadir despues getproperty(x, s) = getindex(x, Val(s))
-
-#AbstractArray interface
-#add Base.@propagate_inbounds!!!!!!!
-Base.@propagate_inbounds Base.getindex(x::Node, i) = getindex(getfield(x,:data), i)
-Base.@propagate_inbounds Base.setindex!(x::Node, v, i) = setindex!(getfield(x,:data), v, i)
-
-#it is much faster to perform basic operations on the underlying PBV than
-#broadcasting them. Broadcasting should be used only as a fallback for generic
-#functions
-Base.:(+)(x1::T, x2::T) where {T<:Node} = (#=println("No broadcast");=# T(getfield(x1,:data) + getfield(x2,:data)))
-Base.:(-)(x1::T, x2::T) where {T<:Node} = (#=println("No broadcast");=# T(getfield(x1,:data) - getfield(x2,:data)))
-Base.:(*)(x::T, a::Real) where {T<:Node} = (#=println("No broadcast");=# T(a * getfield(x,:data)))
-Base.:(*)(a::Real, x::T) where {T<:Node} = (#=println("No broadcast");=# x * a)
-#=
-Base.@propagate_inbounds Base.setindex!(x::Node, v, ::Val{s}) where {s} = (x[Val(s)] .= v)
 
 
-Base.getproperty(x::Node, s::Symbol) = getindex(x, Val(s))
-Base.setproperty!(x::Node, s::Symbol, v) = setindex!(x, v, Val(s))
+#Abstract types must not make any assumptions about data fields. either define
+#getdata methods, or move these to each specific
 
-=#
+Base.@propagate_inbounds Base.getindex(x::LBlock, i) = getindex(getfield(x,:data), i)
+Base.@propagate_inbounds Base.setindex!(x::LBlock, v, i) = setindex!(getfield(x,:data), v, i)
+Base.@propagate_inbounds Base.getindex(::LBlock, ::Val{s}) where {s} = error("Must be defined by concrete subtype")
+Base.@propagate_inbounds Base.setindex!(::LBlock, v, ::Val{s}) where {s} = error("Must be defined by concrete subtype")
+Base.@propagate_inbounds Base.getproperty(x::LBlock, s::Symbol) = getindex(x, Val(s))
+Base.@propagate_inbounds Base.setproperty!(x::LBlock, s::Symbol, v) = setindex!(x, v, Val(s))
 
-# struct NodeStyle{S} <: Broadcast.AbstractArrayStyle{1} end
-# NodeStyle{S}(::Val{1}) where {S} = NodeStyle{S}()
-# Base.BroadcastStyle(::Type{Node{S}}) where {S} = NodeStyle{S}()
-# function Base.similar(bc::Broadcast.Broadcasted{NodeStyle{S}}, ::Type{ElType}) where {S, ElType}
-#     # println("Called similar bc")
-#     pbv = PseudoBlockVector{Float64}(undef, axes(bc))
-#     Node{S}(pbv)
-# end
-# Base.similar(::Type{Node{S}}) where {S} = Node{S}(PseudoBlockVector{Float64}(undef, blocklengths(Node{S})))
-# #
-# Base.dataids(x::Node{S}) where {S} = Base.dataids(x.data)
-
-
-
-
-
+function generate_constructor(d::LBVDescriptor) #just a demo
+    fname = :getindex
+    lbv_type = block_type(d)
+    println(lbv_type)
+    ex = quote
+        @generated function Base.getindex(x::$(lbv_type), ::Val{s}) where {s}
+            #within the @generated function body, x is a type, but s is a Symbol, since
+            #it is extracted from a type parameter.
+            Core.println("Generated function $($fname) parsed for type $x, symbol $s")
+            child = rbd_descriptor[s]
+            brange = rbd_block_ranges[s]
+            if isa(child, Leaf)
+                return :(view(getfield(x,:data), $brange))
+            else #<: Node
+                btype = block_type(child)
+                return :($btype(view(getfield(x,:data), $brange)))
+            end
+        end
+    end
+    return Base.remove_linenums!(ex)
+end
 
 
 end
 
 
-# #CONVERT TO @GENERATED
-# function allocate_x!(sys::NodeSystem{S}, x::AbstractVector)
-#     children_xlengths = [xlength(child) for child in sys.children]
-#     #@assert lengths are correct
-#     sys.x = PseudoBlockArray(x, children_xlengths)
-#     for (i, child) in enumerate(sys.children)
-#         allocate_x!(child, view(sys.x, Block(i)))
-#     end
-# end
 
 # function allocate_x!(sys::LeafSystem{S}, x::AbstractVector)
 #     sys.x = x
