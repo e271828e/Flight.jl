@@ -62,8 +62,9 @@ function blockranges(::Type{Node{L}}) where {L}
 end
 
 #GENERATE AT PARSE TIME
+#ASSERT THE DATA PASSED TO THE CONSTRUCTOR IS OF THE APPROPRIATE LENGTH
 Base.length(::Type{Node{S}}) where {S} = sum(blocklengths(Node{S}))
-Base.size(x::Node) = size(x.data)
+Base.size(x::Node) = size(getfield(x,:data))
 
 #aqui devolvere una llamada a Node{blocktype}(view(getfield(x,:data)),
 #blockrange), donde blocktype y blockrange los obtengo del descriptor,
@@ -73,6 +74,7 @@ Base.size(x::Node) = size(x.data)
 #en realidad, esta funcion debe devolver un Vector{Expr}, cada uno
 #correspondiente a un getindex. despues, hago for ex in v eval(ex) end
 function generate_getindex_sym(::Type{Node{L}}, s::Symbol) where L
+    println("Getting descriptor for Node{:$L}")
     d = descriptor(Node{L})
     block_length = length(d[s])
     println("Generating getindex for type Node{$L}, Val($s)")
