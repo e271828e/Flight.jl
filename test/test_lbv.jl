@@ -91,6 +91,16 @@ end
 module Aircraft
 using Flight.LabelledBlockVector
 
+#this module should not redefine LabelledBlockVector.descriptor(Node{:rbd}).
+#that is the definition of type piracy. the problem is i cannot know if another
+#module has extended LabelledBV with the descriptor for the same type parameter
+#that i am extending as well. alternativa: definir Node como abstract type (casi
+#todos los metodos son agnosticos respecto de los datos), y definir un
+#AircraftNode{D}, donde data::D y D<:AV{F64}es el unico type parameter. lo que
+#si deberia definir es un method getdata para sustituir a getfield(x,:data).
+#este getdata debe ser overloaded por cada concrete subtype. con una macro puedo
+#generar la definicion struct, el descriptor la funcion getdata y ya esta. no
+#necesito mas
 LabelledBlockVector.descriptor(::Type{Node{:aircraft}}) = (rbd = Node{:rbd}, ldg = Node{:ldg})
 
 end
