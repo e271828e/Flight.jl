@@ -2,7 +2,10 @@ module Attitude
 
 using StaticArrays: SVector, SMatrix
 using LinearAlgebra
-using ..Quaternions: UnitQuat, Quat
+using Flight.Quaternions: UnitQuat, Quat
+#if we didn't want to rely on Flight using Quaternions, we could do simply:
+#using ..Quaternions: UnitQuat, Quat
+#however, assumes a specific hierarchy
 
 export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dt
 

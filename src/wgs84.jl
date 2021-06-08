@@ -2,7 +2,7 @@ module WGS84
 
 using LinearAlgebra
 using StaticArrays: SVector
-using ..Attitude
+using Flight.Attitude
 
 export WGS84Pos, NVectorAlt, Cartesian
 

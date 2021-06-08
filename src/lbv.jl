@@ -1,44 +1,45 @@
 module LabelledBlockVector
 
+using Base: Unsigned
 using BlockArrays, StaticArrays
 import BlockArrays: axes, viewblock, getblock
 
 #additions to export are not tracked by Revise!
-export Node, Leaf, LBlock, block_type, block_length, block_ranges
+export Node, Leaf, Empty, LBlock, descriptor, block_type, block_length, block_ranges
+
+#ONCE THE CODE GENERATING FUNCTIONS ARE HERE, block_type, block_length,
+#block_ranges will not have to be exported
 
 #setting default values directly:
 # https://mauro3.github.io/Parameters.jl/v0.9/manual.html
 
 
-#since Leaf is only a dummy type for dispatching and computing lengths, every
-#system must have a Node as its StateVector.
-#if it has only one Leaf, the descriptor will be descriptor(Node{:simplesys}) =
-#(singleleaf = Leaf{3})
-
 abstract type LBVDescriptor end
 
+struct Leaf{S} <: LBVDescriptor end
 #a Leaf only holds length information. since labels are contained in each
 #Descriptor's parent, and Leaf is parent to no other Descriptor, it does not
-#need to hold a label. the question is: should be a Leaf a valid generator for a
-#standalone LBVBlock?
-struct Leaf{S} <: LBVDescriptor end
-Leaf(S::Integer) = Leaf{S}()
-block_length(::Leaf{S}) where {S} = S
+#need to hold a label
+Leaf(S::Integer) = (@assert S>=0; Leaf{S}())
+block_length(::Leaf{S}) where {S} =  S
+const Empty = Leaf(0)
 
 struct Node{T} <: LBVDescriptor #T: type of the associated block, N: number of children
     children::NamedTuple
 end
-
 Node(label:: Symbol, nt) = Node{label}(nt)
+
 block_type(::Node{T}) where {T} = T
+
 block_length(n::Node) = sum(block_length.(values(n.children)))
+
 function block_ranges(n::Node)
     child_lengths = block_length.(values(n.children))
-    blk_ranges = Vector{UnitRange{Int}}(undef, length(n.children))
+    blk_ranges = Vector{Union{Nothing, UnitRange{Int}}}(undef, length(n.children))
     offset = 0
-    for (i,l) in enumerate(child_lengths)
-        blk_ranges[i] = (1 + offset) : (l + offset)
-        offset += l
+    for (i, l) in enumerate(child_lengths)
+        blk_ranges[i] = (l > 0 ? ((1 + offset):(l + offset)) : nothing)
+        offset += 0
     end
     return NamedTuple{keys(n.children)}(Tuple(blk_ranges))
 end
@@ -46,10 +47,13 @@ end
 Base.getindex(n::Node, s::Symbol) = getindex(n.children, s)
 
 
-#D enables different underlying data types (vectors and views)
+#type parameter D enables different underlying data types (vectors and views)
 abstract type LBlock{D<:AbstractVector{Float64}} <: AbstractVector{Float64} end
 
-LBlock(data::D) where {D<:AbstractVector{Float64}} = LBlock{D}(data)
+descriptor(::Type{T}) where {T<:LBlock} = error("Must be implemented by concrete subtypes")
+
+#create custom show methods. these can use the descriptor to know which blocks
+#we have, their block ranges, etc!
 
 #Array Interface ###############
 
@@ -58,7 +62,7 @@ LBlock(data::D) where {D<:AbstractVector{Float64}} = LBlock{D}(data)
 
 
 #Abstract types must not make any assumptions about data fields. either define
-#getdata methods, or move these to each specific
+#getdata methods, or move these to each specific subtype
 
 Base.@propagate_inbounds Base.getindex(x::LBlock, i) = getindex(getfield(x,:data), i)
 Base.@propagate_inbounds Base.setindex!(x::LBlock, v, i) = setindex!(getfield(x,:data), v, i)
