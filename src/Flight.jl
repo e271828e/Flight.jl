@@ -4,6 +4,7 @@ include("quaternions.jl")
 include("attitude.jl")
 include("wgs84.jl")
 include("lbv.jl")
+# include("../test/test_lbv.jl")
 # include("sketches/statevector.jl")
 # include("sketches/statevectorpbv.jl")
 
@@ -12,6 +13,7 @@ using Reexport
 @reexport using .Attitude
 @reexport using .WGS84
 @reexport using .LabelledBlockVector
+# @reexport using .TestLBV
 # @reexport using .StateVector
 # @reexport using .StateVectorPBV
 

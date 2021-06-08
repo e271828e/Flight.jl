@@ -5,7 +5,10 @@ using BlockArrays, StaticArrays
 import BlockArrays: axes, viewblock, getblock
 
 #additions to export are not tracked by Revise!
-export Node, Leaf, Empty, LBlock, descriptor, block_type, block_length, block_ranges
+export Node, Leaf, Empty, LBlock#, descriptor
+export block_type, block_length, block_ranges
+export descriptor, is_registered, register_type, generate_constructors, generate_array_basics
+# export @LBV
 
 #ONCE THE CODE GENERATING FUNCTIONS ARE HERE, block_type, block_length,
 #block_ranges will not have to be exported
@@ -33,6 +36,9 @@ block_type(::Node{T}) where {T} = T
 
 block_length(n::Node) = sum(block_length.(values(n.children)))
 
+is_registered(::Val{S} where {S}) = false
+
+
 function block_ranges(n::Node)
     child_lengths = block_length.(values(n.children))
     blk_ranges = Vector{Union{Nothing, UnitRange{Int}}}(undef, length(n.children))
@@ -50,7 +56,9 @@ Base.getindex(n::Node, s::Symbol) = getindex(n.children, s)
 #type parameter D enables different underlying data types (vectors and views)
 abstract type LBlock{D<:AbstractVector{Float64}} <: AbstractVector{Float64} end
 
-descriptor(::Type{T}) where {T<:LBlock} = error("Must be implemented by concrete subtypes")
+descriptor(::Type{T}) where {T<:LBlock} = error("Must be implemented by concrete LBlock subtypes")
+#not needed for now, availability of the descriptor is only required locally
+# descriptor(::Type{T}) where {T<:LBlock} = error("Must be implemented by concrete subtypes")
 
 #create custom show methods. these can use the descriptor to know which blocks
 #we have, their block ranges, etc!
@@ -64,35 +72,99 @@ descriptor(::Type{T}) where {T<:LBlock} = error("Must be implemented by concrete
 #Abstract types must not make any assumptions about data fields. either define
 #getdata methods, or move these to each specific subtype
 
-Base.@propagate_inbounds Base.getindex(x::LBlock, i) = getindex(getfield(x,:data), i)
-Base.@propagate_inbounds Base.setindex!(x::LBlock, v, i) = setindex!(getfield(x,:data), v, i)
 Base.@propagate_inbounds Base.getindex(::LBlock, ::Val{s}) where {s} = error("Must be defined by concrete subtype")
 Base.@propagate_inbounds Base.setindex!(::LBlock, v, ::Val{s}) where {s} = error("Must be defined by concrete subtype")
-Base.@propagate_inbounds Base.getproperty(x::LBlock, s::Symbol) = getindex(x, Val(s))
-Base.@propagate_inbounds Base.setproperty!(x::LBlock, s::Symbol, v) = setindex!(x, v, Val(s))
 
-function generate_constructor(d::LBVDescriptor) #just a demo
-    fname = :getindex
-    lbv_type = block_type(d)
-    println(lbv_type)
-    ex = quote
-        @generated function Base.getindex(x::$(lbv_type), ::Val{s}) where {s}
-            #within the @generated function body, x is a type, but s is a Symbol, since
-            #it is extracted from a type parameter.
-            Core.println("Generated function $($fname) parsed for type $x, symbol $s")
-            child = rbd_descriptor[s]
-            brange = rbd_block_ranges[s]
-            if isa(child, Leaf)
-                return :(view(getfield(x,:data), $brange))
-            else #<: Node
-                btype = block_type(child)
-                return :($btype(view(getfield(x,:data), $brange)))
-            end
-        end
+
+register_type(::Leaf) = :()
+
+function register_type(desc::Node)
+    btype = block_type(desc)
+    if is_registered(Val(btype))
+        println("WARNING: LBV type :$btype already registered")
     end
-    return Base.remove_linenums!(ex)
+    btype_qn = QuoteNode(btype)
+    #DEFER THIS UNTIL ALL METHODS HAVE BEEN CREATED
+    ex = quote
+        LabelledBlockVector.is_registered(::Val{$btype_qn}) = true
+        println("Registered LBV subtype ", string($btype_qn))
+        # println("Registered LBV subtype ", string($btype))
+    end
+    return ex
 end
 
+
+generate_constructors(::Leaf) = :() #a leaf does not require
+function generate_constructors(desc::Node) #just a demo
+    btype = block_type(desc)
+    blength = block_length(desc)
+    btype_qn = QuoteNode(btype)
+    # println("Generating constructor for LBV type $btype of length $blength")
+    blength == 0 && return :() #ignore zero-length blocks
+    ex = quote
+        struct $btype{D} <: LBlock{D}
+            data::D
+            function $btype{D}(data::D) where {D}
+                @assert length(data) == $blength "Expected an input of length "*string($blength)
+                new{D}(data)
+            end
+        end
+        $btype(data::D) where {D<:AbstractVector{Float64}} = $btype{D}(data)
+        $btype() = $btype(Vector{Float64}(undef, $blength))
+        LabelledBlockVector.descriptor(::Type{T} where {T<:$btype}) = Node{$btype_qn}($(desc.children))
+        println("Generated constructors for type :", string($btype_qn))
+    end
+    return Base.remove_linenums!(ex)
+    # return ex
+end
+
+generate_array_basics(::Leaf) = :() #a leaf does not require
+function generate_array_basics(desc::Node)
+    btype = block_type(desc)
+    blength = block_length(desc)
+    btype_qn = QuoteNode(btype)
+    # println("Registering array basics for LBV type $btype")
+    ex = quote
+        # @assert !hasmethod(Base.size, ($btype,)) "Type "*string($btype)*" already registered"
+        #this syntax accomodates all XRbd subtypes, which include
+        #XRbd{Vector{Float64}}, XRbd{SubArray{Float64,...}}, etc, but also the
+        #unqualified XRbd itself! it is useful for similar(::Type{LBlock})
+        # Base.length(::Type{T}) where {T <: $btype} = $blength
+        Base.similar(::Type{T}) where {T <: $btype} = $btype(Vector{Float64}(undef, $blength))
+        Base.similar(::$btype) = similar($btype)
+        Base.size(::$btype) = ($blength,)
+        Base.getindex(x::$btype, i) = getindex(getfield(x,:data), i)
+        Base.setindex!(x::$btype, v, i) = setindex!(getfield(x,:data), v, i)
+        # @assert hasmethod(Base.size, ($btype,)) "Failed to register type" * string($btype)
+        println("Generated array basics for type ", string($btype_qn))
+        println("Generated array basics for type ", string($btype))
+    end
+    return Base.remove_linenums!(ex)
+    # return ex
+end
+
+#=
+macro LBV(descriptor_symbol)
+    # return :(generate_constructors)
+    println(typeof(descriptor_symbol))
+    println("$descriptor_symbol")
+    println("$descriptor_symbol")
+    #this inserts an expression in the source code to be evaluated later, after
+    #macro parsing time. this expression is a call to a function that itself
+    #returns an expression, and the evaluation of that expression
+
+    #this returns an expression within an expression. when evaluated on macro
+    #execution, the result is an expression! it will then be executed when the
+    #module is compiled
+    # ex = QuoteNode(:(eval(generate_constructors($descriptor_symbol))))
+    ex = :(eval(generate_constructors($descriptor_symbol)))
+    #if this works, i can also generate code to register the descriptor method
+    #in LabelledBlockVector as before
+    return ex
+
+    # return :( :( eval(sin($($(esc(descriptor_symbol))))) ) )
+end
+=#
 
 end
 

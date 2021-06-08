@@ -5,7 +5,7 @@ module TestLBV
 
 module Rbd
 using Flight.LabelledBlockVector
-export XRbd
+export NodeXRbd, XRbd
 
 #VERY IMPORTANT: here, we are extending the descriptor() function originally
 #defined in the Flight.LabelledBlockVector module (by the way, this syntax works
@@ -17,7 +17,7 @@ export XRbd
 #will not be part of it!!
 #
 
-const XRbd_descriptor = Node{:XRbd}((att = Leaf(4), vel = Leaf(3), pos = Leaf(4)))
+const NodeXRbd = Node{:XRbd}((att = Leaf(4), vel = Leaf(3), pos = Leaf(4)))
 #otros ejemplos
 # const XStatelessSystem_desc = Empty
 # const XAnotherSystem_descriptor = Node{:XAnotherSystem}((a = Leaf{3}, b = XStatelessSystem_desc))
@@ -33,42 +33,53 @@ const XRbd_descriptor = Node{:XRbd}((att = Leaf(4), vel = Leaf(3), pos = Leaf(4)
 #function accepts simply a LBVDescriptor as its only input.
 
 #these stay inside the generating function
-const XRbd_block_length = block_length(XRbd_descriptor)
-const XRbd_block_ranges = block_ranges(XRbd_descriptor)
+const XRbd_block_length = block_length(NodeXRbd)
+const XRbd_block_ranges = block_ranges(NodeXRbd)
 println(XRbd_block_length)
 println(XRbd_block_ranges)
 
+# #now we know the name of the LBlock subtype from the Node label, its length and
+# #the block_ranges
+# struct XRbd{D} <: LBlock{D}
+#     data::D
+#     function XRbd{D}(data::D) where {D}
+#         @assert length(data) == XRbd_block_length "Expected an input of length $XRbd_block_length"
+#         new{D}(data)
+#     end
+# end
 
-#now we know the name of the LBlock subtype from the Node label, its length and
-#the block_ranges
-struct XRbd{D} <: LBlock{D}
-    data::D
-    function XRbd{D}(data::D) where {D}
-        @assert length(data) == XRbd_block_length "Expected an input of length $XRbd_block_length"
-        new{D}(data)
-    end
-end
+# XRbd(data::D) where {D<:AbstractVector{Float64}} = XRbd{D}(data)
 
-XRbd(data::D) where {D<:AbstractVector{Float64}} = XRbd{D}(data)
+eval(register_type(NodeXRbd))
+eval(generate_constructors(NodeXRbd))
+
+#problema: no puedo extender
 
 #before extending anything make sure this node subtype has not been defined already
-@assert !hasmethod(LabelledBlockVector.descriptor, (Type{XRbd},)) "XRbd subtype already defined"
+# @assert !hasmethod(LabelledBlockVector.descriptor, (Type{XRbd},)) "Type XRbd already registered"
 #with "using", we need the LabelledBlockVector qualifier to extend. see:
-LabelledBlockVector.descriptor(::Type{T}) where {T <: XRbd} = XRbd_descriptor
+# LabelledBlockVector.descriptor(::Type{T}) where {T <: XRbd} = NodeXRbd
 #this descriptor method extension allows us to simply export XRbd and access its
 #descriptor from another module without explicitly exporting the descriptor as
 #well. anyone who is using both Rbd and Flight.LabelledBlockArrays can get the
-#XRbd_descriptor by simply calling descriptor(XRbd). this will not work if
+#NodeXRbd by simply calling descriptor(XRbd). this will not work if
 #lbv.jl is included locally with then "using .LabelledBlockArrays"
+# @assert hasmethod(LabelledBlockVector.descriptor, (Type{XRbd},)) "Failed to register XRbd type"
 
-@assert hasmethod(LabelledBlockVector.descriptor, (Type{XRbd},)) "XRbd failed"
 
-#this syntax accomodates all XRbd subtypes, which include
-#XRbd{Vector{Float64}}, XRbd{SubArray{Float64,...}}, etc, but also the
-#unqualified XRbd itself! it is useful for similar(::Type{LBlock})
-Base.length(::Type{T}) where {T <: XRbd} = XRbd_block_length
-Base.similar(::Type{T}) where {T <: XRbd} = XRbd(Vector{Float64}(undef, XRbd_block_length))
-Base.size(::XRbd) = (XRbd_block_length,)
+
+# @assert !hasmethod(Base.size, (XRbd,)) "Type XRbd already registered"
+# #this syntax accomodates all XRbd subtypes, which include
+# #XRbd{Vector{Float64}}, XRbd{SubArray{Float64,...}}, etc, but also the
+# #unqualified XRbd itself! it is useful for similar(::Type{LBlock})
+# # Base.length(::Type{T}) where {T <: XRbd} = XRbd_block_length
+# Base.similar(::Type{T}) where {T <: XRbd} = XRbd(Vector{Float64}(undef, XRbd_block_length))
+# Base.size(::XRbd) = (XRbd_block_length,)
+# Base.getindex(x::XRbd, i) = getindex(getfield(x,:data), i)
+# Base.setindex!(x::XRbd, v, i) = setindex!(getfield(x,:data), v, i)
+# @assert hasmethod(Base.size, (XRbd,)) "Failed to register XRbd type"
+
+eval(generate_array_basics(NodeXRbd))
 
 #this syntax does not accomodate XRbd without type parameters, only those
 #parametric subtypes that are qualified with ANY parameter. but SOME parameter.
@@ -84,7 +95,7 @@ Base.size(::XRbd) = (XRbd_block_length,)
 #             #within the @generated function body, x is a type, but s is a Symbol, since
 #             #it is extracted from a type parameter.
 #             Core.println("Generated function getindex parsed for type $x, symbol $s")
-#             child = XRbd_descriptor[s]
+#             child = NodeXRbd[s]
 #             brange = XRbd_block_ranges[s]
 #             if isa(child, Leaf)
 #                 return :(view(getfield(x,:data), $brange))
@@ -102,10 +113,13 @@ Base.size(::XRbd) = (XRbd_block_length,)
     #within the @generated function body, x is a type, but s is a Symbol, since
     #it is extracted from a type parameter.
     Core.println("Generated function getindex parsed for type $x, symbol $s")
-    child = XRbd_descriptor[s]
+    child = NodeXRbd[s]
     brange = XRbd_block_ranges[s]
     # error("Consider the case where brange is nothing, no method should be
     # generated in that case")
+    if brange === nothing #zero-length child
+        return :(Vector{eltype(getfield(x,:data))}[])
+    end
     if isa(child, Leaf)
         return :(view(getfield(x,:data), $brange))
     else #<: Node
@@ -129,6 +143,9 @@ function Base.similar(::Broadcast.Broadcasted{XRbdStyle{D}}, ::Type{ElType}) whe
     # println("Called similar for XRbd with type parameter $D")
     similar(XRbd{D})
 end
+
+Base.@propagate_inbounds Base.getproperty(x::XRbd, s::Symbol) = getindex(x, Val(s))
+Base.@propagate_inbounds Base.setproperty!(x::XRbd, s::Symbol, v) = setindex!(x, v, Val(s))
 
 # #it is much faster to perform basic operations on the underlying data than
 # #broadcasting. Broadcasting should be used only as a fallback for generic
@@ -163,13 +180,13 @@ using ..Rbd #needed to access XRbd
 using ..Ldg #needed to access XLdg
 export XAircraft
 
-const XAircraft_descriptor = Node{:XAircraft}((rbd = descriptor(XRbd), ldg = Leaf(4), pwp = Empty))
-if hasmethod(LabelledBlockVector.descriptor, (Type{XRbd},))
+const NodeXAircraft = Node{:XAircraft}((rbd = NodeXRbd, ldg = Leaf(4), pwp = Empty))
+if hasmethod(Base.length, (Type{XRbd},))
     println("Good, XRbd subtype already defined")
 end
 
-const XAircraft_block_length = block_length(XAircraft_descriptor)
-const XAircraft_block_ranges = block_ranges(XAircraft_descriptor)
+const XAircraft_block_length = block_length(NodeXAircraft)
+const XAircraft_block_ranges = block_ranges(NodeXAircraft)
 println(XAircraft_block_length)
 println(XAircraft_block_ranges)
 
@@ -178,15 +195,20 @@ println(XAircraft_block_ranges)
 
 #now we know the name of the LBlock subtype from the Node label, its length and
 #the block_ranges
-struct XAircraft{D} <: LBlock{D}
-    data::D
-    function XAircraft{D}(data::D) where {D}
-        @assert length(data) == XAircraft_block_length "Expected an input of length $XAircraft_block_length"
-        new{D}(data)
-    end
-end
+# struct XAircraft{D} <: LBlock{D}
+#     data::D
+#     function XAircraft{D}(data::D) where {D}
+#         @assert length(data) == XAircraft_block_length "Expected an input of length $XAircraft_block_length"
+#         new{D}(data)
+#     end
+# end
 
-XAircraft(data::D) where {D<:AbstractVector{Float64}} = XAircraft{D}(data)
+# XAircraft(data::D) where {D<:AbstractVector{Float64}} = XAircraft{D}(data)
+
+eval(register_type(NodeXAircraft))
+eval(generate_constructors(NodeXAircraft))
+
+eval(generate_array_basics(NodeXAircraft))
 
 end #submodule
 
@@ -200,9 +222,9 @@ using Reexport
 export test_lbv
 
 function test_lbv()
-    println(methods(descriptor))
-    descriptor(XRbd)
+    # println(methods(descriptor))
     x = XRbd(rand(11))
+    println(x)
     return x
     # println(Rbd.XRbd <: LBlock{D} where {D})
     # LabelledBlockVector.blockranges(Rbd.XRbd{Vector{Float64}})
