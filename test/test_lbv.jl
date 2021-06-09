@@ -34,56 +34,10 @@ const NodeXRbd = Node{:XRbd}((att = Leaf(4), vel = Leaf(3), pos = Leaf(4)))
 
 #these stay inside the generating function
 const XRbd_block_length = block_length(NodeXRbd)
-const XRbd_block_ranges = block_ranges(NodeXRbd)
-println(XRbd_block_length)
-println(XRbd_block_ranges)
+const XRbd_child_ranges = child_ranges(NodeXRbd)
 
-# #now we know the name of the LBlock subtype from the Node label, its length and
-# #the block_ranges
-# struct XRbd{D} <: LBlock{D}
-#     data::D
-#     function XRbd{D}(data::D) where {D}
-#         @assert length(data) == XRbd_block_length "Expected an input of length $XRbd_block_length"
-#         new{D}(data)
-#     end
-# end
-
-# XRbd(data::D) where {D<:AbstractVector{Float64}} = XRbd{D}(data)
 
 eval(register_type(NodeXRbd))
-eval(generate_constructors(NodeXRbd))
-
-#problema: no puedo extender
-
-#before extending anything make sure this node subtype has not been defined already
-# @assert !hasmethod(LabelledBlockVector.descriptor, (Type{XRbd},)) "Type XRbd already registered"
-#with "using", we need the LabelledBlockVector qualifier to extend. see:
-# LabelledBlockVector.descriptor(::Type{T}) where {T <: XRbd} = NodeXRbd
-#this descriptor method extension allows us to simply export XRbd and access its
-#descriptor from another module without explicitly exporting the descriptor as
-#well. anyone who is using both Rbd and Flight.LabelledBlockArrays can get the
-#NodeXRbd by simply calling descriptor(XRbd). this will not work if
-#lbv.jl is included locally with then "using .LabelledBlockArrays"
-# @assert hasmethod(LabelledBlockVector.descriptor, (Type{XRbd},)) "Failed to register XRbd type"
-
-
-
-# @assert !hasmethod(Base.size, (XRbd,)) "Type XRbd already registered"
-# #this syntax accomodates all XRbd subtypes, which include
-# #XRbd{Vector{Float64}}, XRbd{SubArray{Float64,...}}, etc, but also the
-# #unqualified XRbd itself! it is useful for similar(::Type{LBlock})
-# # Base.length(::Type{T}) where {T <: XRbd} = XRbd_block_length
-# Base.similar(::Type{T}) where {T <: XRbd} = XRbd(Vector{Float64}(undef, XRbd_block_length))
-# Base.size(::XRbd) = (XRbd_block_length,)
-# Base.getindex(x::XRbd, i) = getindex(getfield(x,:data), i)
-# Base.setindex!(x::XRbd, v, i) = setindex!(getfield(x,:data), v, i)
-# @assert hasmethod(Base.size, (XRbd,)) "Failed to register XRbd type"
-
-eval(generate_array_basics(NodeXRbd))
-
-#this syntax does not accomodate XRbd without type parameters, only those
-#parametric subtypes that are qualified with ANY parameter. but SOME parameter.
-# Base.length(::Type{XRbd{D}}) where {D} = XRbd_block_length
 
 #para no hacerlo demasiado complicado, quiza seria mejor construir estas
 #directamente como expresiones, en vez de generated functions. porque un quote
@@ -96,7 +50,7 @@ eval(generate_array_basics(NodeXRbd))
 #             #it is extracted from a type parameter.
 #             Core.println("Generated function getindex parsed for type $x, symbol $s")
 #             child = NodeXRbd[s]
-#             brange = XRbd_block_ranges[s]
+#             brange = XRbd_child_ranges[s]
 #             if isa(child, Leaf)
 #                 return :(view(getfield(x,:data), $brange))
 #             else #<: Node
@@ -109,30 +63,30 @@ eval(generate_array_basics(NodeXRbd))
 # end
 # eval(generate_getindex())
 
-@generated function Base.getindex(x::XRbd, ::Val{s}) where {s}
-    #within the @generated function body, x is a type, but s is a Symbol, since
-    #it is extracted from a type parameter.
-    Core.println("Generated function getindex parsed for type $x, symbol $s")
-    child = NodeXRbd[s]
-    brange = XRbd_block_ranges[s]
-    # error("Consider the case where brange is nothing, no method should be
-    # generated in that case")
-    if brange === nothing #zero-length child
-        return :(Vector{eltype(getfield(x,:data))}[])
-    end
-    if isa(child, Leaf)
-        return :(view(getfield(x,:data), $brange))
-    else #<: Node
-        btype = block_type(child)
-        return :($btype(view(getfield(x,:data), $brange)))
-    end
-end
+# @generated function Base.getindex(x::XRbd, ::Val{s}) where {s}
+#     #within the @generated function body, x is a type, but s is a Symbol, since
+#     #it is extracted from a type parameter.
+#     Core.println("Generated function getindex parsed for type $x, symbol $s")
+#     child = NodeXRbd[s]
+#     brange = XRbd_child_ranges[s]
+#     # error("Consider the case where brange is nothing, no method should be
+#     # generated in that case")
+#     if brange === nothing #zero-length child
+#         return :(Vector{eltype(getfield(x,:data))}[])
+#     end
+#     if isa(child, Leaf)
+#         return :(view(getfield(x,:data), $brange))
+#     else #<: Node
+#         btype = block_type(child)
+#         return :($btype(view(getfield(x,:data), $brange)))
+#     end
+# end
 
 #the notation x.att .= 4 calls getindex, but x.att = ones(4) calls setindex!, so
 #we need both.
 @generated function Base.setindex!(x::XRbd, v, ::Val{s}) where {s}
     Core.println("Generated function setindex! parsed for type $x, symbol $s")
-    brange = XRbd_block_ranges[s]
+    brange = XRbd_child_ranges[s]
     :(setindex!(getfield(x, :data), v, $brange))
 end
 
@@ -180,35 +134,14 @@ using ..Rbd #needed to access XRbd
 using ..Ldg #needed to access XLdg
 export XAircraft
 
-const NodeXAircraft = Node{:XAircraft}((rbd = NodeXRbd, ldg = Leaf(4), pwp = Empty))
-if hasmethod(Base.length, (Type{XRbd},))
-    println("Good, XRbd subtype already defined")
-end
+const NodeXAircraft = Node{:XAircraft}((rbd = NodeXRbd, ldg = Leaf(4)))
 
 const XAircraft_block_length = block_length(NodeXAircraft)
-const XAircraft_block_ranges = block_ranges(NodeXAircraft)
-println(XAircraft_block_length)
-println(XAircraft_block_ranges)
-
+const XAircraft_child_ranges = child_ranges(NodeXAircraft)
 
 #customizar la representacion para que aparezcan los nombres de los child blocks
 
-#now we know the name of the LBlock subtype from the Node label, its length and
-#the block_ranges
-# struct XAircraft{D} <: LBlock{D}
-#     data::D
-#     function XAircraft{D}(data::D) where {D}
-#         @assert length(data) == XAircraft_block_length "Expected an input of length $XAircraft_block_length"
-#         new{D}(data)
-#     end
-# end
-
-# XAircraft(data::D) where {D<:AbstractVector{Float64}} = XAircraft{D}(data)
-
 eval(register_type(NodeXAircraft))
-eval(generate_constructors(NodeXAircraft))
-
-eval(generate_array_basics(NodeXAircraft))
 
 end #submodule
 
