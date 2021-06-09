@@ -1,21 +1,11 @@
 module LabelledBlockVector
 
-using Base: Unsigned
-using BlockArrays, StaticArrays
-import BlockArrays: axes, viewblock, getblock
+export Node, Leaf, Empty, LBlock
+export descriptor, is_registered, register_type
 
-#additions to export are not tracked by Revise!
-export Node, Leaf, Empty, LBlock#, descriptor
-export block_type, block_length, child_ranges
-export descriptor, is_registered, register_type, generate_constructors, generate_array_basics
-# export @LBV
 
-#ONCE THE CODE GENERATING FUNCTIONS ARE HERE, block_type, block_length,
-#child_ranges will not have to be exported
 
-#setting default values directly:
-# https://mauro3.github.io/Parameters.jl/v0.9/manual.html
-
+########################## LBV Descriptor #################
 
 abstract type LBVDescriptor end
 
@@ -47,6 +37,8 @@ end
 
 Base.getindex(n::Node, s::Symbol) = getindex(n.children, s)
 
+
+
 ######################## LBlock ############################
 
 #type parameter D enables different underlying data types (vectors and views)
@@ -57,7 +49,6 @@ descriptor(::Type{<:Any}) = error("Must be implemented by concrete LBlock subtyp
 
 #create custom show methods. these can use the descriptor to know which blocks
 #we have, their block ranges, etc!
-
 
 register_type(::Leaf) = :() #a leaf does not require specific code
 function register_type(desc::Node)
@@ -94,7 +85,6 @@ function register_type(desc::Node)
 
     end
 
-
     ex_array = quote
 
         println("Generating AbstractArray interface for type $($(QuoteNode(btype)))... ")
@@ -125,8 +115,8 @@ function register_type(desc::Node)
                 Base.getindex(x::$btype, ::Val{$(QuoteNode(child_label))}) = $(block_type(child_desc))(view(getfield(x,:data), $_range))
                 Base.setindex!(x::$btype, v, ::Val{$(QuoteNode(child_label))}) = setindex!(getfield(x, :data), v, $_range)
             end)
-
         end
+
     end
 
     ex_getsetproperty = quote
