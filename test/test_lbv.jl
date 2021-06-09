@@ -5,7 +5,7 @@ module TestLBV
 
 module Rbd
 using Flight.LabelledBlockVector
-export NodeXRbd, XRbd
+export XRbd_desc, XRbd
 
 #VERY IMPORTANT: here, we are extending the descriptor() function originally
 #defined in the Flight.LabelledBlockVector module (by the way, this syntax works
@@ -17,27 +17,12 @@ export NodeXRbd, XRbd
 #will not be part of it!!
 #
 
-const NodeXRbd = Node{:XRbd}((att = Leaf(4), vel = Leaf(3), pos = Leaf(4)))
-#otros ejemplos
-# const XStatelessSystem_desc = Empty
-# const XAnotherSystem_descriptor = Node{:XAnotherSystem}((a = Leaf{3}, b = XStatelessSystem_desc))
+const XRbd_desc = Node{:XRbd}((att = Leaf(4), vel = Leaf(3), pos = Leaf(4)))
 
-#this could be helped by these macros
-# @LBV XRbd (att = Leaf(4), vel = Leaf(3), pos = Leaf(4))
-# @LBV XStatelessSystem ()
-# @LBV XStatelessSystem
-# @LBV XAnotherSystem (a = Leaf(3), b = XStatelessSystem_desc)
-#the macros call the code generation functions
+const XRbd_block_length = block_length(XRbd_desc)
+const XRbd_child_ranges = child_ranges(XRbd_desc)
 
-#now all that follows is generated as an expression within a function. this
-#function accepts simply a LBVDescriptor as its only input.
-
-#these stay inside the generating function
-const XRbd_block_length = block_length(NodeXRbd)
-const XRbd_child_ranges = child_ranges(NodeXRbd)
-
-
-eval(register_type(NodeXRbd))
+eval(register_type(XRbd_desc))
 
 #para no hacerlo demasiado complicado, quiza seria mejor construir estas
 #directamente como expresiones, en vez de generated functions. porque un quote
@@ -49,7 +34,7 @@ eval(register_type(NodeXRbd))
 #             #within the @generated function body, x is a type, but s is a Symbol, since
 #             #it is extracted from a type parameter.
 #             Core.println("Generated function getindex parsed for type $x, symbol $s")
-#             child = NodeXRbd[s]
+#             child = XRbd_desc[s]
 #             brange = XRbd_child_ranges[s]
 #             if isa(child, Leaf)
 #                 return :(view(getfield(x,:data), $brange))
@@ -67,7 +52,7 @@ eval(register_type(NodeXRbd))
 #     #within the @generated function body, x is a type, but s is a Symbol, since
 #     #it is extracted from a type parameter.
 #     Core.println("Generated function getindex parsed for type $x, symbol $s")
-#     child = NodeXRbd[s]
+#     child = XRbd_desc[s]
 #     brange = XRbd_child_ranges[s]
 #     # error("Consider the case where brange is nothing, no method should be
 #     # generated in that case")
@@ -84,30 +69,20 @@ eval(register_type(NodeXRbd))
 
 #the notation x.att .= 4 calls getindex, but x.att = ones(4) calls setindex!, so
 #we need both.
-@generated function Base.setindex!(x::XRbd, v, ::Val{s}) where {s}
-    Core.println("Generated function setindex! parsed for type $x, symbol $s")
-    brange = XRbd_child_ranges[s]
-    :(setindex!(getfield(x, :data), v, $brange))
-end
+# @generated function Base.setindex!(x::XRbd, v, ::Val{s}) where {s}
+#     Core.println("Generated function setindex! parsed for type $x, symbol $s")
+#     brange = XRbd_child_ranges[s]
+#     :(setindex!(getfield(x, :data), v, $brange))
+# end
 
-struct XRbdStyle{D} <: Broadcast.AbstractArrayStyle{1} end
-XRbdStyle{D}(::Val{1}) where {D} = XRbdStyle{D}()
-Base.BroadcastStyle(::Type{XRbd{D}}) where {D} = XRbdStyle{D}()
-function Base.similar(::Broadcast.Broadcasted{XRbdStyle{D}}, ::Type{ElType}) where {D, ElType}
-    # println("Called similar for XRbd with type parameter $D")
-    similar(XRbd{D})
-end
+# struct XRbdStyle{D} <: Broadcast.AbstractArrayStyle{1} end
+# XRbdStyle{D}(::Val{1}) where {D} = XRbdStyle{D}()
+# Base.BroadcastStyle(::Type{XRbd{D}}) where {D} = XRbdStyle{D}()
+# function Base.similar(::Broadcast.Broadcasted{XRbdStyle{D}}, ::Type{ElType}) where {D, ElType}
+#     # println("Called similar for XRbd with type parameter $D")
+#     similar(XRbd{D})
+# end
 
-Base.@propagate_inbounds Base.getproperty(x::XRbd, s::Symbol) = getindex(x, Val(s))
-Base.@propagate_inbounds Base.setproperty!(x::XRbd, s::Symbol, v) = setindex!(x, v, Val(s))
-
-# #it is much faster to perform basic operations on the underlying data than
-# #broadcasting. Broadcasting should be used only as a fallback for generic
-# #functions
-Base.@propagate_inbounds Base.:(+)(x1::XRbd, x2::XRbd) = XRbd(getfield(x1,:data) + getfield(x2,:data))
-Base.@propagate_inbounds Base.:(-)(x1::XRbd, x2::XRbd) = XRbd(getfield(x1,:data) + getfield(x2,:data))
-Base.@propagate_inbounds Base.:(*)(x::XRbd, a::Real) = XRbd(a * getfield(x,:data))
-Base.@propagate_inbounds Base.:(*)(a::Real, x::XRbd) = x * a
 
 end
 
@@ -117,10 +92,10 @@ end
 
 module Ldg
 using Flight.LabelledBlockVector
+export XLdg_desc
 
-struct LBlockLdg{D} <: LBlock{D}
-    data::D
-end
+const XLdg_desc = Leaf(4)
+eval(register_type(XLdg_desc))
 
 end
 
@@ -132,16 +107,13 @@ module Aircraft
 using Flight.LabelledBlockVector
 using ..Rbd #needed to access XRbd
 using ..Ldg #needed to access XLdg
-export XAircraft
+export XAircraft, XAircraft_desc
 
-const NodeXAircraft = Node{:XAircraft}((rbd = NodeXRbd, ldg = Leaf(4)))
-
-const XAircraft_block_length = block_length(NodeXAircraft)
-const XAircraft_child_ranges = child_ranges(NodeXAircraft)
+const XAircraft_desc = Node{:XAircraft}((rbd = XRbd_desc, ldg = XLdg_desc))
 
 #customizar la representacion para que aparezcan los nombres de los child blocks
 
-eval(register_type(NodeXAircraft))
+eval(register_type(XAircraft_desc))
 
 end #submodule
 
@@ -156,24 +128,14 @@ export test_lbv
 
 function test_lbv()
     # println(methods(descriptor))
-    x = XRbd(rand(11))
-    println(x)
-    return x
-    # println(Rbd.XRbd <: LBlock{D} where {D})
-    # LabelledBlockVector.blockranges(Rbd.XRbd{Vector{Float64}})
-    # XRbd_data = rand(length(Rbd.XRbd{Vector{Float64}}))
-    # x_rbd = Rbd.XRbd(view(XRbd_data, :))
-    # y_rbd = Rbd.XRbd(XRbd_data)
-    # println(typeof(x_rbd))
-    # println(typeof(y_rbd))
-
-    # aircraft_data = rand(length(Aircraft.LBlockAircraft{Vector{Float64}}))
-    # x_aircraft = Aircraft.LBlockAircraft(aircraft_data)
-    # @show x_aircraft
-    # # @show x
-    # # y = LBlock{:aicraft}(view(rand(16), :))
-    # # @show x[Val(:att)]
-    # # y[Val(:)]
+    x_rbd = XRbd(rand(11))
+    @show x_rbd
+    x_aircraft = XAircraft(rand(length(XAircraft)))
+    @show x_aircraft
+    x_rbd_view = XRbd(x_aircraft.rbd)
+    @show x_rbd_view
+    x_rbd_view .= 0
+    @show x_aircraft
 end
 
 
