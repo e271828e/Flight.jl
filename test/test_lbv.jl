@@ -1,4 +1,4 @@
-module TestLBV2
+module TestLBV
 
 
 ########################### submodule Rbd ###################
@@ -57,9 +57,9 @@ using Reexport
 @reexport using .Ldg
 @reexport using .Aircraft
 
-export test_lbv2
+export test_lbv
 
-function test_lbv2()
+function test_lbv()
     x = XAircraft()
     x_rbd = x.rbd
     x_rbd[4] = 0
@@ -67,6 +67,9 @@ function test_lbv2()
     v = XAircraft(view(x,:))
     v.pwp .= 3
     @show x
+    y = similar(x)
+    @. y = x + sin(x) + 2x
+    @show y
 
 
 end
