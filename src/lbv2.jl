@@ -8,6 +8,12 @@ abstract type AbstractLBV{D<:AbstractVector{Float64}} <: AbstractVector{Float64}
 
 struct LBVLeaf{S,D} <: AbstractLBV{D}
     data::D
+    function LBVLeaf{S,D}(data) where {S,D}
+        data_length = length(data)
+        block_length = length(length(LBVLeaf{S,D}))
+        @assert length(data) == length(LBVLeaf{S,D}) "Got input array of length $data_length, expected $block_length"
+        new{L,D}(data)
+    end
 end
 #convenience constructor
 ##################### AVOID FOR GETINDEX, call inner constructor directly with
@@ -30,7 +36,7 @@ struct LBVNode{L,D} <: AbstractLBV{D}
     function LBVNode{L,D}(data) where {L,D}
         data_length = length(data)
         block_length = length(LBVNode{L,D})
-        @assert length(data) == length(LBVNode{L,D}) "Got input array of length $data_length, expected $block_length"
+        @assert data_length == block_length "Got input array of length $data_length, expected $block_length"
         new{L,D}(data)
     end
 end
