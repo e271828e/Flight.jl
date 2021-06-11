@@ -19,7 +19,7 @@ export XRbd
 #     return sum(length.(values(descriptor(LBVNode{:XRbd}))))
 # # end
 
-register_node(:XRbd, (:att, :vel, :pos), (LBVLeaf{4}, LBVLeaf{3}, LBVLeaf{4})) |> eval
+register_LBVNode(:XRbd, (:att, :vel, :pos), (LBVLeaf{4}, LBVLeaf{3}, LBVLeaf{4})) |> eval
 
 end
 
@@ -31,7 +31,7 @@ module Ldg
 using Flight.LBV
 export XLdg
 
-register_node(:XLdg, (:μReg,), (LBVLeaf{2},)) |> eval
+register_LBVNode(:XLdg, (:μReg,), (LBVLeaf{2},)) |> eval
 
 end
 
@@ -45,7 +45,7 @@ using ..Rbd #needed to access XRbd
 using ..Ldg #needed to access XLdg
 export XAircraft
 
-register_node(:XAircraft, (:rbd, :ldg, :pwp), (XRbd, XLdg, LBVLeaf{4})) |> eval
+register_LBVNode(:XAircraft, (:rbd, :ldg, :pwp), (XRbd, XLdg, LBVLeaf{4})) |> eval
 
 end #submodule
 
