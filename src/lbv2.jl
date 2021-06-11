@@ -4,6 +4,7 @@ export LBVLeaf, LBVNode
 export is_registered, descriptor
 export register_node
 
+### Support any AbstractVector
 abstract type AbstractLBV{D<:AbstractVector{Float64}} <: AbstractVector{Float64} end
 
 struct LBVLeaf{S,D} <: AbstractLBV{D}
@@ -28,6 +29,13 @@ Base.setindex!(x::LBVLeaf, v, i) = setindex!(getfield(x,:data), v, i)
 Base.similar(::Type{LBVLeaf{S,D}}) where {S,D} = LBVLeaf(Vector{eltype(D)}(undef, S))
 Base.similar(::LBVLeaf{S,D}) where {S,D} = similar(LBVLeaf{S,D})
 
+struct LBVLeafStyle{S,D} <: Broadcast.AbstractArrayStyle{1} end
+LBVLeafStyle{S,D}(::Val{1}) where {S,D} = LBVLeafStyle{S,D}()
+Base.BroadcastStyle(::Type{LBVLeaf{S,D}}) where {S,D} = LBVLeafStyle{S,D}()
+function Base.similar(::Broadcast.Broadcasted{LBVLeafStyle{S,D}}, ::Type{ElType}) where {S, D, ElType}
+    similar(LBVLeaf{S,D})
+end
+
 struct LBVNode{L,D} <: AbstractLBV{D} #L: identifier
     data::D
     function LBVNode{L}(data::D) where {L, D} #for some reason, you can't restrict type parameters here
@@ -39,7 +47,7 @@ struct LBVNode{L,D} <: AbstractLBV{D} #L: identifier
     end
 end
 @generated assert_symbol(x) = x<:Symbol ? nothing : :(throw(TypeError(:LBVNode, "inner constructor", Symbol, $x)))
-LBVNode{L}(input::LBVNode) where {L} = LBVNode{L}(input.data) #conversion between equal length LBVNodes
+LBVNode{L}(x::LBVNode) where {L} = LBVNode{L}(getfield(x,:data)) #conversion between equal length LBVNodes
 LBVNode{L}() where {L} = LBVNode{L}(Vector{Float64}(undef, length(LBVNode{L})))
 
 is_registered(::Type{<:LBVNode}) = false
@@ -52,6 +60,15 @@ Base.setindex!(x::LBVNode, v, i) = setindex!(getfield(x,:data), v, i)
 Base.similar(::Type{LBVNode{L,D}}) where {L,D} = LBVNode{L}(Vector{eltype(D)}(undef, length(LBVNode{L,D})))
 Base.similar(::LBVNode{L,D}) where {L,D} = similar(LBVNode{L,D})
 
+Base.getproperty(x::LBVNode, s::Symbol) = getindex(x, Val(s))
+Base.setproperty!(x::LBVNode, s::Symbol, v) = setindex!(x, v, Val(s))
+
+struct LBVNodeStyle{S,D} <: Broadcast.AbstractArrayStyle{1} end
+LBVNodeStyle{S,D}(::Val{1}) where {S,D} = LBVNodeStyle{S,D}()
+Base.BroadcastStyle(::Type{LBVNode{S,D}}) where {S,D} = LBVNodeStyle{S,D}()
+function Base.similar(::Broadcast.Broadcasted{LBVNodeStyle{S,D}}, ::Type{ElType}) where {S, D, ElType}
+    similar(LBVNode{S,D})
+end
 
 #code_generation
 function register_node(typepar::Symbol, child_labels::NTuple{N, Symbol},
@@ -65,23 +82,39 @@ function register_node(typepar::Symbol, child_labels::NTuple{N, Symbol},
     desc = NamedTuple{child_labels}(child_types)
     node_length = sum(length.(values(desc)))
     println("Generating code for $typepar = LBVNode{$(QuoteNode(typepar))}...")
-    println("Node length: $node_length")
 
     ex = Expr(:block) #equivalent to ex = quote end
 
-    ex = quote
+    push!(ex.args, quote
 
         if is_registered(LBVNode{$(QuoteNode(typepar))})
-            println("\nWARNING: Type $($(QuoteNode(typepar))) already registered")
+            println("WARNING: Type $($(QuoteNode(typepar))) already registered")
         end
 
-        #define a convenient shorthand for exporting and method signatures
+        #shorthand for exporting and more convenient method signatures
         const $typepar = LBVNode{$(QuoteNode(typepar))}
 
         LBV.is_registered(::Type{<:$typepar}) = true
         LBV.descriptor(::Type{<:$typepar}) = NamedTuple{$child_labels}($child_types)
-
         Base.length(::Type{<:$typepar}) = $node_length
+
+    end)
+
+    offset = 0
+    for (child_label, child_type) in zip(keys(desc), values(desc))
+
+        child_length = length(child_type)
+        child_range = (1 + offset):(child_length + offset)
+        offset += child_length
+
+        push!(ex.args, quote
+
+            println("Generating getindex and setindex Symbol methods for child "*
+            ":$($(QuoteNode(child_label))), range $($child_range)... ")
+            Base.getindex(x::$typepar, ::Val{$(QuoteNode(child_label))}) = ($child_type)(view(getfield(x,:data), $child_range))
+            Base.setindex!(x::$typepar, v, ::Val{$(QuoteNode(child_label))}) = setindex!(getfield(x, :data), v, $child_range)
+
+        end)
 
     end
 
@@ -91,17 +124,6 @@ end
 
 
 
-#to be called only at code generation, not at runtime
-function child_ranges(::Type{<:LBVNode{L}}) where {L}
-    desc = descriptor(LBVNode{L})
-    ranges = Vector{UnitRange{Int}}(undef, length(desc))
-    offset = 0
-    for (i, l) in enumerate(length.(values(desc)))
-        ranges[i] = (1 + offset):(l + offset)
-        offset += l
-    end
-    return NamedTuple{keys(desc)}(Tuple(ranges))
-end
 
 
 # macro register_descriptor(typepar, desc)

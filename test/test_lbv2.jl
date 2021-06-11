@@ -60,6 +60,15 @@ using Reexport
 export test_lbv2
 
 function test_lbv2()
+    x = XAircraft()
+    x_rbd = x.rbd
+    x_rbd[4] = 0
+    @show x
+    v = XAircraft(view(x,:))
+    v.pwp .= 3
+    @show x
+
+
 end
 
 
