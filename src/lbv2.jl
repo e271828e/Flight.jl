@@ -8,54 +8,49 @@ abstract type AbstractLBV{D<:AbstractVector{Float64}} <: AbstractVector{Float64}
 
 struct LBVLeaf{S,D} <: AbstractLBV{D}
     data::D
-    function LBVLeaf{S,D}(data) where {S,D}
-        data_length = length(data)
-        block_length = length(length(LBVLeaf{S,D}))
-        @assert length(data) == length(LBVLeaf{S,D}) "Got input array of length $data_length, expected $block_length"
-        new{L,D}(data)
+    #need to implement a constructor with explicit type parameter for extracting
+    #and reconstructing Leaf children blocks from the types stored in the
+    #descriptor
+    function LBVLeaf{S}(data::D) where {S, D} #for some reason, you can't restrict type parameters here!
+        if length(data) != length(LBVLeaf{S,D})
+            throw(ArgumentError("Got input length $(length(data)), expected $(length(LBVLeaf{S,D}))"))
+        end
+        new{length(data), D}(data)
     end
 end
-#convenience constructor
-##################### AVOID FOR GETINDEX, call inner constructor directly with
-#the known size
-LBVLeaf(data::D) where {D} = LBVLeaf{length(data),D}(data)
+LBVLeaf{S}() where {S} = LBVLeaf{S}(Vector{Float64}(undef, S))
+LBVLeaf(data::D) where {D} = LBVLeaf{length(data)}(data)
 
 Base.length(::Type{<:LBVLeaf{S}}) where {S} = S
-#########################THESE ARE PENDING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-# Base.similar(::btype) = similar($btype)
 Base.size(::LBVLeaf{S}) where {S} = (S,)
 Base.getindex(x::LBVLeaf, i) = getindex(getfield(x,:data), i)
 Base.setindex!(x::LBVLeaf, v, i) = setindex!(getfield(x,:data), v, i)
-# Base.similar(::Type{<:$btype}) = $btype(Vector{Float64}(undef, $blength))
-# Base.length(::Type{<:$btype}) = $blength
+Base.similar(::Type{LBVLeaf{S,D}}) where {S,D} = LBVLeaf(Vector{eltype(D)}(undef, S))
+Base.similar(::LBVLeaf{S,D}) where {S,D} = similar(LBVLeaf{S,D})
 
-
-
-struct LBVNode{L,D} <: AbstractLBV{D}
+struct LBVNode{L,D} <: AbstractLBV{D} #L: identifier
     data::D
-    function LBVNode{L,D}(data) where {L,D}
-        data_length = length(data)
-        block_length = length(LBVNode{L,D})
-        @assert data_length == block_length "Got input array of length $data_length, expected $block_length"
+    function LBVNode{L}(data::D) where {L, D} #for some reason, you can't restrict type parameters here
+        assert_symbol(L)
+        if length(data) != length(LBVNode{L,D})
+            throw(ArgumentError("Got input length $(length(data)), expected $(length(LBVNode{L,D}))"))
+        end
         new{L,D}(data)
     end
 end
-LBVNode{L}(data::D) where {L,D} = LBVNode{L,D}(data)
+@generated assert_symbol(x) = x<:Symbol ? nothing : :(throw(TypeError(:LBVNode, "inner constructor", Symbol, $x)))
 LBVNode{L}(input::LBVNode) where {L} = LBVNode{L}(input.data) #conversion between equal length LBVNodes
 LBVNode{L}() where {L} = LBVNode{L}(Vector{Float64}(undef, length(LBVNode{L})))
 
-# is_registered(::Type{LBVNode{T,D}} where {T,D}) = false
 is_registered(::Type{<:LBVNode}) = false
 descriptor(::Type{<:LBVNode}) = error("To be implemented for each type parameter")
 descriptor(::T) where {T<:LBVNode}= descriptor(T)
 
-#########################THESE ARE PENDING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-# Base.similar(::btype) = similar($btype)
 Base.size(x::LBVNode) = size(getfield(x,:data))
 Base.getindex(x::LBVNode, i) = getindex(getfield(x,:data), i)
 Base.setindex!(x::LBVNode, v, i) = setindex!(getfield(x,:data), v, i)
-# Base.similar(::Type{<:$btype}) = $btype(Vector{Float64}(undef, $blength))
-# Base.length(::Type{<:$btype}) = $blength
+Base.similar(::Type{LBVNode{L,D}}) where {L,D} = LBVNode{L}(Vector{eltype(D)}(undef, length(LBVNode{L,D})))
+Base.similar(::LBVNode{L,D}) where {L,D} = similar(LBVNode{L,D})
 
 
 #code_generation
@@ -71,6 +66,8 @@ function register_node(typepar::Symbol, child_labels::NTuple{N, Symbol},
     node_length = sum(length.(values(desc)))
     println("Generating code for $typepar = LBVNode{$(QuoteNode(typepar))}...")
     println("Node length: $node_length")
+
+    ex = Expr(:block) #equivalent to ex = quote end
 
     ex = quote
 

@@ -31,18 +31,7 @@ module Ldg
 using Flight.LBV
 export XLdg
 
-const XLdg = LBVNode{:XLdg}
-LBV.descriptor(::Type{<:LBVNode{:XLdg}}) = (μReg = LBVLeaf{2},)
-#register_LBVNode(:XLdg) |> eval
-#this accesses the descriptor internally, and runs from there
-
-#generated code
-function Base.length(::Type{<:LBVNode{:XLdg}})
-    #queries the descriptor with the UnionAll as input
-    return sum(length.(values(descriptor(LBVNode{:XLdg}))))
-end
-
-# eval(register_type(XLdg_desc))
+register_node(:XLdg, (:μReg,), (LBVLeaf{2},)) |> eval
 
 end
 
@@ -56,14 +45,7 @@ using ..Rbd #needed to access XRbd
 using ..Ldg #needed to access XLdg
 export XAircraft
 
-const XAircraft = LBVNode{:XAircraft}
-LBV.descriptor(::Type{<:LBVNode{:XAircraft}}) = (rbd = XRbd, ldg = XLdg, pwp = LBVLeaf{4})
-function Base.length(::Type{<:LBVNode{:XAircraft}})
-    #queries the descriptor with the UnionAll as input
-    return sum(length.(values(descriptor(LBVNode{:XAircraft}))))
-end
-
-# eval(register_type(XAircraft_desc))
+register_node(:XAircraft, (:rbd, :ldg, :pwp), (XRbd, XLdg, LBVLeaf{4})) |> eval
 
 end #submodule
 
