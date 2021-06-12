@@ -4,29 +4,31 @@ export LBVLeaf, LBVNode
 export is_registered, descriptor
 export register_LBVNode
 
-abstract type AbstractLBV{D<:AbstractVector{Float64}} <: AbstractVector{Float64} end
+abstract type AbstractLBV{T, D<:AbstractVector{T}} <: AbstractVector{T} end
 
 ########################### LBVLeaf ############################
 
-struct LBVLeaf{L, D <: AbstractVector{Float64}} <: AbstractLBV{D}
+struct LBVLeaf{L, T, D <: AbstractVector{T}} <: AbstractLBV{T, D}
     data::D
-    #need to implement a constructor with explicit type parameter for extracting
-    #and reconstructing Leaf children blocks from the types stored in the
-    #descriptor
-    function LBVLeaf{L}(data::D) where {L, D} #for some reason, you can't restrict type parameters here!
+    function LBVLeaf{L,T,D}(data) where {L,T,D} #for some reason, you can't restrict type parameters here!
         if !(L > 0)
             throw(ArgumentError("LBVLeaf length must be positive"))
         end
-        if length(data) != length(LBVLeaf{L,D})
-            throw(ArgumentError("Got input length $(length(data)), expected $(length(LBVLeaf{L,D}))"))
+        if length(data) != length(LBVLeaf{L,T,D})
+            throw(ArgumentError("Got input length $(length(data)), expected $(length(LBVLeaf{L,T,D}))"))
         end
-        new{L, D}(data)
+        new{L,T,D}(data)
     end
 end
-LBVLeaf{L}() where {L} = LBVLeaf{L}(Vector{Float64}(undef, L))
-LBVLeaf{L}(x::LBVLeaf{L}) where {L} = x
-LBVLeaf(x::LBVLeaf) = x
-LBVLeaf(data::D) where {D} = LBVLeaf{length(data)}(data)
+LBVLeaf{L,T}(data::D) where {L,T,D} = LBVLeaf{L,T,D}(data) #T/D inconsistencies caught by the inner const
+LBVLeaf{L}(data::D) where {L,D} = LBVLeaf{L,eltype(D),D}(data)
+LBVLeaf{L,T}() where {L,T} = LBVLeaf{L,T}(Vector{T}(undef, L))
+LBVLeaf{L}() where {L} = LBVLeaf{L,Float64}()
+LBVLeaf(data::D) where {D} = LBVLeaf{length(data),eltype(data),typeof(data)}(data) #avoid for efficiency
+
+Base.similar(::Type{<:LBVLeaf{L,T}}) where {L,T} = LBVLeaf{L,T}(Vector{T}(undef, L))
+Base.similar(::LBVLeaf{L,T}) where {L,T} = similar(LBVLeaf{L,T})
+Base.copy(x::LBVLeaf{L}) where {L} = LBVLeaf{L}(copy(getfield(x, :data)))
 
 ###### Abstract Array #######
 
@@ -34,76 +36,76 @@ Base.length(::Type{<:LBVLeaf{L}}) where {L} = L
 Base.size(::LBVLeaf{L}) where {L} = (L,)
 Base.getindex(x::LBVLeaf, i) = getindex(getfield(x,:data), i)
 Base.setindex!(x::LBVLeaf, v, i) = setindex!(getfield(x,:data), v, i)
-Base.similar(::Type{LBVLeaf{L,D}}) where {L,D} = LBVLeaf{L}(Vector{eltype(D)}(undef, L))
-Base.similar(::LBVLeaf{L,D}) where {L,D} = similar(LBVLeaf{L,D})
-Base.copy(x::LBVLeaf) = LBVLeaf(copy(getfield(x, :data)))
 
 ####### Custom Broadcasting #######
 
-struct LBVLeafStyle{L,D} <: Broadcast.AbstractArrayStyle{1} end
+struct LBVLeafStyle{L,T} <: Broadcast.AbstractArrayStyle{1} end
 
-LBVLeafStyle{L,D}(::Val{1}) where {L,D} = LBVLeafStyle{L,D}()
-Base.BroadcastStyle(::Type{LBVLeaf{L,D}}) where {L,D} = LBVLeafStyle{L,D}()
+LBVLeafStyle{L,T}(::Val{1}) where {L,T} = LBVLeafStyle{L,T}()
+Base.BroadcastStyle(::Type{LBVLeaf{L,T,D}}) where {L,T,D} = LBVLeafStyle{L,T}()
 
-function Base.similar(::Broadcast.Broadcasted{LBVLeafStyle{L, D}}, ::Type{ElType}) where {L, D, ElType}
-    similar(LBVLeaf{L, D})
+function Base.similar(::Broadcast.Broadcasted{LBVLeafStyle{L,T}}, ::Type{ElType}) where {L,T,ElType}
+    similar(LBVLeaf{L,T})
 end
 
-function Base.BroadcastStyle(::LBVLeafStyle{L,D1}, ::LBVLeafStyle{L,D2}) where {L,D1,D2}
-    LBVLeafStyle{L,Vector{promote_type(eltype(D1), eltype(D2))}}()
+function Base.BroadcastStyle(::LBVLeafStyle{L,T1}, ::LBVLeafStyle{L,T2}) where {L,T1,T2}
+    LBVLeafStyle{L,promote_type(T1, T2)}()
 end
-
 
 ########################### LBVNode ############################
 
-struct LBVNode{S, D <: AbstractVector{Float64}} <: AbstractLBV{D} #S: identifier
+struct LBVNode{S, T, D <: AbstractVector{T}} <: AbstractLBV{T, D} #S: identifier
     data::D
-    function LBVNode{S}(data::D) where {S, D} #for some reason, you can't restrict type parameters here
+    function LBVNode{S,T,D}(data::D) where {S,T,D} #for some reason, you can't restrict type parameters here
         assert_symbol(S)
-        if length(data) != length(LBVNode{S,D})
-            throw(ArgumentError("Got input length $(length(data)), expected $(length(LBVNode{S,D}))"))
+        if length(data) != length(LBVNode{S,T,D})
+            throw(ArgumentError("Got input length $(length(data)), expected $(length(LBVNode{S,T,D}))"))
         end
-        new{S,D}(data)
+        new{S,T,D}(data)
     end
 end
 @generated assert_symbol(x) = x<:Symbol ? nothing : :(throw(TypeError(:LBVNode, "inner constructor", Symbol, $x)))
-LBVNode{S}(x::LBVNode{S}) where {S} = x
-LBVNode{S}(x::LBVNode) where {S} = LBVNode{S}(getfield(x,:data)) #from a LBVNode with different label but equal length
-LBVNode{S}() where {S} = LBVNode{S}(Vector{Float64}(undef, length(LBVNode{S})))
-LBVNode(x::LBVNode) = x
+
+LBVNode{S,T}(data::D) where {S,T,D} = LBVNode{S,T,D}(data) #T/D inconsistencies caught by the inner const
+LBVNode{S}(data::D) where {S,D} = LBVNode{S,eltype(D),D}(data)
+LBVNode{S,T}() where {S,T} = LBVNode{S,T}(Vector{T}(undef, length(LBVNode{S,T})))
+LBVNode{S}() where {S} = LBVNode{S,Float64}()
 
 is_registered(::Type{<:LBVNode}) = false
 descriptor(::Type{<:LBVNode}) = error("To be implemented for each type parameter")
 descriptor(::T) where {T<:LBVNode}= descriptor(T)
 
 ####### Abstract Array #############
-################################### Base.@propagate_inbounds for Val(s methods)
-###and @_propagate_inbounds_meta aand getindex for array of symbols
+
 Base.size(x::LBVNode) = size(getfield(x,:data))
 Base.getindex(x::LBVNode, i) = getindex(getfield(x,:data), i)
 Base.setindex!(x::LBVNode, v, i) = setindex!(getfield(x,:data), v, i)
-Base.similar(::Type{LBVNode{S, D}}) where {S, D} = LBVNode{S}(Vector{eltype(D)}(undef, length(LBVNode{S, D})))
-Base.similar(::LBVNode{S, D}) where {S, D} = similar(LBVNode{S, D})
+
+Base.similar(::Type{<:LBVNode{S,T}}) where {S,T} = LBVNode{S,T}(Vector{T}(undef, length(LBVNode{S,T})))
+Base.similar(::LBVNode{S,T}) where {S,T} = similar(LBVNode{S,T})
 Base.copy(x::LBVNode{S}) where {S} = LBVNode{S}(copy(getfield(x, :data)))
 
-Base.getproperty(x::LBVNode, s::Symbol) = getindex(x, Val(s))
-Base.setproperty!(x::LBVNode, s::Symbol, v) = setindex!(x, v, Val(s))
 
 ####### Custom Broadcasting #######
 
-struct LBVNodeStyle{S,D} <: Broadcast.AbstractArrayStyle{1} end
-LBVNodeStyle{S, D}(::Val{1}) where {S, D} = LBVNodeStyle{S, D}()
-Base.BroadcastStyle(::Type{LBVNode{S, D}}) where {S, D} = LBVNodeStyle{S, D}()
+struct LBVNodeStyle{S,T} <: Broadcast.AbstractArrayStyle{1} end
 
-function Base.similar(::Broadcast.Broadcasted{LBVNodeStyle{S, D}}, ::Type{ElType}) where {S, D, ElType}
-    similar(LBVNode{S, D})
+LBVNodeStyle{S,T}(::Val{1}) where {S,T} = LBVNodeStyle{S,T}()
+Base.BroadcastStyle(::Type{LBVNode{S,T,D}}) where {S,T,D} = LBVNodeStyle{S,T}()
+
+function Base.similar(::Broadcast.Broadcasted{LBVNodeStyle{S,T}}, ::Type{ElType}) where {S,T,ElType}
+    similar(LBVNode{S,T})
 end
 
-function Base.BroadcastStyle(::LBVNodeStyle{S,D1}, ::LBVNodeStyle{S,D2}) where {S,D1,D2}
-    LBVNodeStyle{S,Vector{promote_type(eltype(D1), eltype(D2))}}()
+function Base.BroadcastStyle(::LBVNodeStyle{S,T1}, ::LBVNodeStyle{S,T2}) where {S,T1,T2}
+    LBVNodeStyle{S,promote_type(T1, T2)}()
 end
+
 
 ######### Code Generation #########
+
+Base.getproperty(x::LBVNode, s::Symbol) = getindex(x, Val(s))
+Base.setproperty!(x::LBVNode, s::Symbol, v) = setindex!(x, v, Val(s))
 
 function register_LBVNode(typepar::Symbol, child_labels::NTuple{N, Symbol},
     child_types::NTuple{N, Any}) where {N}

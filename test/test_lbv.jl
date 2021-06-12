@@ -9,9 +9,7 @@ export XRbd
 
 register_LBVNode(:XRbd, (:att, :vel, :pos), (LBVLeaf{4}, LBVLeaf{3}, LBVLeaf{4})) |> eval
 
-end
-
-#################### end submodule Rbd ########################
+end #submodule
 
 #################### submodule Ldg ########################
 
@@ -21,9 +19,7 @@ export XLdg
 
 register_LBVNode(:XLdg, (:μReg,), (LBVLeaf{2},)) |> eval
 
-end
-
-#################### end submodule Ldg ########################
+end #submodule
 
 #################### submodule Aircraft ########################
 
@@ -37,7 +33,7 @@ register_LBVNode(:XAircraft, (:rbd, :ldg, :pwp), (XRbd, XLdg, LBVLeaf{4})) |> ev
 
 end #submodule
 
-#################### end submodule Aircraft ########################
+#################### Tests ########################
 
 using Flight.LBV
 using Reexport
@@ -62,6 +58,13 @@ function test_lbv()
     y = similar(x)
     @. y = x + sin(x) + 2x
     @show y
+
+    # z1 = XAircraft{Complex}() #this yields undefs, which break operations,
+    # need to initialize to zeros
+    z1 = XAircraft(zeros(Complex, length(XAircraft)))
+    z2 = XAircraft(ones(Int64, length(XAircraft)))
+    z = exp.(z1) + z2
+    @show z
 
 
 end
