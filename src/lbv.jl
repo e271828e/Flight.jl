@@ -49,9 +49,9 @@ function Base.similar(::Broadcast.Broadcasted{LBVLeafStyle{L, D}}, ::Type{ElType
     similar(LBVLeaf{L, D})
 end
 
-# function Base.BroadcastStyle(::LBVLeafStyle{L,D1}, ::LBVLeafStyle{L,D2}) where {L,D1,D2}
-#     LBVLeafStyle{L,Vector{promote_type(eltype(D1), eltype(D2))}}()
-# end
+function Base.BroadcastStyle(::LBVLeafStyle{L,D1}, ::LBVLeafStyle{L,D2}) where {L,D1,D2}
+    LBVLeafStyle{L,Vector{promote_type(eltype(D1), eltype(D2))}}()
+end
 
 
 ########################### LBVNode ############################
@@ -68,16 +68,17 @@ struct LBVNode{S, D <: AbstractVector{Float64}} <: AbstractLBV{D} #S: identifier
 end
 @generated assert_symbol(x) = x<:Symbol ? nothing : :(throw(TypeError(:LBVNode, "inner constructor", Symbol, $x)))
 LBVNode{S}(x::LBVNode{S}) where {S} = x
-LBVNode{S}(x::LBVNode) where {S} = LBVNode{S}(getfield(x,:data)) #conversion between equal length LBVNodes
-LBVNode(x::LBVNode) = x
+LBVNode{S}(x::LBVNode) where {S} = LBVNode{S}(getfield(x,:data)) #from a LBVNode with different label but equal length
 LBVNode{S}() where {S} = LBVNode{S}(Vector{Float64}(undef, length(LBVNode{S})))
+LBVNode(x::LBVNode) = x
 
 is_registered(::Type{<:LBVNode}) = false
 descriptor(::Type{<:LBVNode}) = error("To be implemented for each type parameter")
 descriptor(::T) where {T<:LBVNode}= descriptor(T)
 
 ####### Abstract Array #############
-
+################################### Base.@propagate_inbounds for Val(s methods)
+###and @_propagate_inbounds_meta aand getindex for array of symbols
 Base.size(x::LBVNode) = size(getfield(x,:data))
 Base.getindex(x::LBVNode, i) = getindex(getfield(x,:data), i)
 Base.setindex!(x::LBVNode, v, i) = setindex!(getfield(x,:data), v, i)
@@ -98,6 +99,9 @@ function Base.similar(::Broadcast.Broadcasted{LBVNodeStyle{S, D}}, ::Type{ElType
     similar(LBVNode{S, D})
 end
 
+function Base.BroadcastStyle(::LBVNodeStyle{S,D1}, ::LBVNodeStyle{S,D2}) where {S,D1,D2}
+    LBVNodeStyle{S,Vector{promote_type(eltype(D1), eltype(D2))}}()
+end
 
 ######### Code Generation #########
 

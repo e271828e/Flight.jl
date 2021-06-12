@@ -55,6 +55,10 @@ function test_lbv()
     v = XAircraft(view(x,:))
     v.pwp .= 3
     @show x
+    #broadcasting with LBVLeafs of mixed parametric subtypes
+    xv_rbd = x.pwp .+ v.pwp
+    #broadcasting with LBVNodes of mixed parametric subtypes
+    xv = x .+ v
     y = similar(x)
     @. y = x + sin(x) + 2x
     @show y
