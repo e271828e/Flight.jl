@@ -8,7 +8,7 @@ export WGS84Pos, NVectorAlt, Cartesian
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
-const a = 6378137 #Equatorial radius
+const a = 6378137.0 #Equatorial radius
 const f = 1/298.257223563 #Ellipsoid flattening
 const ω_ie = 7.292115e-05 #Earth's angular velocity with respect to the ECI frame
 
@@ -30,6 +30,8 @@ const m = ω_ie^2 * a^2 * b / GM #[Hof06] 2-70
 const γ_a = GM / (a * b) * (1 - m - m/6 * eʹ * q₀ʹ/q₀) #Normal gravity at the equator, [Hof06] 2-141
 const γ_b = GM / a² * (1 + m/3 * eʹ * q₀ʹ/q₀) #Normal gravity at the poles, [Hof06] 2-142
 
+#distance tolerance (unit in last place of a)
+const ε_a = eps(a)
 
 abstract type WGS84Pos end
 
@@ -56,6 +58,15 @@ Base.:(≈)(p1::NVectorAlt, p2::NVectorAlt) = (p1.n_e ≈ p2.n_e && p1.h ≈ p2.
 
 #any fallback methods go here
 
+#require each Rotation subtype to implement conversions to and from RQuat
+Base.convert(::Type{NVectorAlt}, p::P) where {P<:WGS84Pos} = error("Implement $P to NVectorAlt conversion")
+Base.convert(::Type{P}, p::NVectorAlt) where {P<:WGS84Pos} = error("Implement NVectorAlt to $P conversion")
+#this enables a two-step conversion via NVectorAlt as a fallback
+Base.convert(::Type{P}, p::WGS84Pos) where {P<:WGS84Pos} = convert(P, NVectorAlt(p))
+#trivial conversions
+Base.convert(::Type{P}, p::P) where {P<:WGS84Pos} = p
+Base.convert(::Type{NVectorAlt}, p::NVectorAlt) = p
+
 ########################### Cartesian ##############################
 
 struct Cartesian <: WGS84Pos
@@ -80,69 +91,11 @@ function Base.convert(::Type{Cartesian}, p::NVectorAlt)
 
 end
 
-# function Base.convert(::Type{NVectorAlt}, p::Cartesian)
-
-#     #a let block explicitly tells the compiler that the r_z and l_xy inside
-#     #these functions will never be changed, because they are new bindings which
-#     #live only within the block. but since the closure is not returned from this
-#     #function, so apparently no let block is required to stabilize the types
-
-#     ε_n = 1e-10
-#     ε_h = 1e-7
-#     max_iter = 10
-
-#     r_OeP_e = p.r_OeP_e
-#     r_x, r_y, r_z = r_OeP_e[1], r_OeP_e[2], r_OeP_e[3]
-#     l_xy = norm(r_OeP_e[1:2])
-
-#     #if abs(φ) closer to 0, use tan_φ as iteration variable
-#     function step_tan(tan_φ::Float64)::NTuple{3,Float64}
-#         cos_φ = 1 / √(1 + tan_φ^2) #positive within [-π/2, π/2]
-#         N = a / √(1 - e² * (1 - cos_φ^2))
-#         h = l_xy / cos_φ - N
-#         tan_φ = r_z / (l_xy * (1 - e² * N / (N + h)))
-#         return tan_φ, h, N
-#     end
-
-#     #if abs(φ) closer to π/2, use cot_φ as iteration variable
-#     function step_cot(cot_φ::Float64)::NTuple{3,Float64}
-#         sin_φ = sign(cot_φ) / √(1 + cot_φ^2) #within [-π/2, π/2] sign(sin_φ) = sign(cot_φ)
-#         N = a / √(1 - e² * sin_φ^2)
-#         h = r_z / sin_φ - (1 - e²) * N
-#         cot_φ = l_xy * (1 - e² * N / (N + h)) / r_z
-#         return cot_φ, h, N
-#     end
-
-#     h0 = 0.0
-#     if l_xy > abs(r_z)
-#         x0 = r_z / (l_xy * (1 - e²))
-#         step = step_tan
-#     else
-#         x0 = l_xy * (1 - e²) / r_z
-#         step = step_cot
-#     end
-
-#     for _ in 1:max_iter
-#         x, h, N = step(x0)
-#         if abs(x - x0) < ε_n && abs(h - h0) < ε_h
-#             n_e = [ r_x / (N + h),
-#                     r_y / (N + h),
-#                     r_z / ((1 - e²) * N + h)]
-#             return NVectorAlt(n_e, h)
-#         end
-#         x0 = x; h0 = h
-#     end
-#     error("Iteration terminated without convergence")
-
-# end
-
 function Base.convert(::Type{NVectorAlt}, r::Cartesian)
 
     #see Fukushima: Transformation_from_Cartesian_to_Geodetic_Coordinates_Accelerated_by_Halley's_Method
 
-    r_OeP_e = r.r_OeP_e
-
-    x, y, z = r_OeP_e
+    x, y, z = r.r_OeP_e
     p = √(x^2 + y^2)
 
     c = a*e²
@@ -150,36 +103,39 @@ function Base.convert(::Type{NVectorAlt}, r::Cartesian)
     ec = √ec²
     zc = ec * abs(z)
 
-    S0 = z
-    C0 = ec*p
-    A0 = √(S0^2 + C0^2)
-    A0³ = A0^3
-    B0 = 1.5 * c * S0 * C0 * ((p * S0 - zc * C0) * A0 - c * S0 * C0)
-    S1 = (zc * A0³ + c * S0^3) * A0³ - B0 * S0
-    C1 = (p * A0³ - c * C0^3) * A0³ - B0 * C0
+    s0 = abs(z)
+    c0 = ec*p
+    a0 = √(s0^2 + c0^2)
+    a0³ = a0^3
+    b0 = 1.5 * c * s0 * c0 * ((p * s0 - zc * c0) * a0 - c * s0 * c0)
+    s1 = (zc * a0³ + c * s0^3) * a0³ - b0 * s0
+    c1 = (p * a0³ - c * c0^3) * a0³ - b0 * c0
 
-    Cc = ec*C1
-    S1² = S1^2
-    Cc² = Cc^2
-    h = (p*Cc + S0*S1 - a*√(ec² * S1² + Cc²)) / √(S1² + Cc²)
-    #LatLonAlt
-    # ϕ = atan(S1, Cc)
-    # λ = atan(y, x)
+    cc = ec*c1
+    s1² = s1^2
+    cc² = cc^2
+    h = (p*cc + s0*s1 - a*√(ec² * s1² + cc²)) / √(s1² + cc²)
 
-    #NVectorAlt
-    tan_ϕ = S1 / Cc
-    cos_ϕ = 1 / √(1 + tan_ϕ^2) #cos_ϕ >=0
-    sin_ϕ = tan_ϕ * cos_ϕ
-    cos_λ = x / p
-    sin_λ = y / p
+    if s1 < cc #|ϕ < π/4|
+        abs_tan_ϕ = s1 / cc
+        cos_ϕ = 1 / √(1 + abs_tan_ϕ^2) #cos_ϕ >=0
+        abs_sin_ϕ = abs_tan_ϕ * cos_ϕ
+        sin_ϕ = abs_sin_ϕ * sign(z)
+    else #|ϕ > π/4|
+        abs_cot_ϕ = cc / s1
+        abs_sin_ϕ = 1 / √(1 + abs_cot_ϕ^2)
+        cos_ϕ = abs_cot_ϕ * abs_sin_ϕ
+        sin_ϕ = abs_sin_ϕ * sign(z)
+    end
+
+    cos_λ = p > 0 ? (x / p) : 1
+    sin_λ = p > 0 ? (y / p) : 0
 
     n_e = [cos_ϕ*cos_λ, cos_ϕ*sin_λ, sin_ϕ]
 
     return NVectorAlt(n_e, h)
 
 end
-
-
 
 
 

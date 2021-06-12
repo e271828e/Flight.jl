@@ -57,8 +57,8 @@ LinearAlgebra.normalize!(r::RQuat) = (r._quat = normalize(r._quat))
 dt(r_ab::RQuat, ω_ab_b::AbstractVector{T} where {T<:Real}) = 0.5 * (r_ab._quat * Quat(imag=ω_ab_b))
 
 #require each Rotation subtype to implement conversions to and from RQuat
-Base.convert(::Type{RQuat}, r::R) where {R<:Rotation} = error("Implement RQuat to $R conversion")
-Base.convert(::Type{R}, r::RQuat) where {R<:Rotation} = error("Implement $R to RQuat conversion")
+Base.convert(::Type{RQuat}, r::R) where {R<:Rotation} = error("Implement $R to RQuat conversion")
+Base.convert(::Type{R}, r::RQuat) where {R<:Rotation} = error("Implement RQuat to $R conversion")
 #this enables a two-step conversion via RQuat as a fallback
 Base.convert(::Type{R}, r::Rotation) where {R<:Rotation} = convert(R, RQuat(r))
 #trivial conversions

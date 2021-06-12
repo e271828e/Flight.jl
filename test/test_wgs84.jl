@@ -9,7 +9,7 @@ export test_wgs84
 function test_wgs84()
     @testset verbose = true "WGS84" begin
         @testset verbose = true "WGS84Pos Essentials" begin test_essentials() end
-        # @testset verbose = true "WGS84Pos Conversions" begin test_conversions() end
+        @testset verbose = true "WGS84Pos Conversions" begin test_conversions() end
         # @testset verbose = true "WGS84 Models" begin test_models() end #ellipsoid, angular velocity, gravity, gravitation
     end
 end
@@ -38,6 +38,19 @@ function test_essentials()
     @test NVectorAlt(h = 324).n_e == [1, 0, 0] && NVectorAlt(n_e = n_e).h == 0
     @test NVectorAlt() == NVectorAlt(n_e = [1, 0, 0], h = 0)
     @test_throws AssertionError NVectorAlt(h = -500) #ADJUST THE LOWER ALT THRESHOLD
+
+end
+
+function test_conversions()
+
+    @show pN = NVectorAlt([1e-16, 1e-16, 1], 10000)
+    @show NVectorAlt(Cartesian(pN))
+    # @show pS = NVectorAlt([0.1, 0.2, -100], 10000)
+    # @show NVectorAlt(Cartesian(pS))
+    # @show pEqN = NVectorAlt([1, 2, 0.001], 10000)
+    # @show NVectorAlt(Cartesian(pEqN))
+    # @show pEqS = NVectorAlt([1, 2, -0.001], 10000)
+    # @show NVectorAlt(Cartesian(pEqS))
 
 end
 
