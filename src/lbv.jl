@@ -8,16 +8,19 @@ abstract type AbstractLBV{D<:AbstractVector{Float64}} <: AbstractVector{Float64}
 
 ########################### LBVLeaf ############################
 
-struct LBVLeaf{S, D <: AbstractVector{<:Real}} <: AbstractLBV{D}
+struct LBVLeaf{S, D <: AbstractVector{Float64}} <: AbstractLBV{D}
     data::D
     #need to implement a constructor with explicit type parameter for extracting
     #and reconstructing Leaf children blocks from the types stored in the
     #descriptor
     function LBVLeaf{S}(data::D) where {S, D} #for some reason, you can't restrict type parameters here!
+        if !(S > 0)
+            throw(ArgumentError("LBVLeaf length must be positive"))
+        end
         if length(data) != length(LBVLeaf{S,D})
             throw(ArgumentError("Got input length $(length(data)), expected $(length(LBVLeaf{S,D}))"))
         end
-        new{length(data), D}(data)
+        new{S, D}(data)
     end
 end
 LBVLeaf{S}() where {S} = LBVLeaf{S}(Vector{Float64}(undef, S))
@@ -29,8 +32,9 @@ Base.length(::Type{<:LBVLeaf{S}}) where {S} = S
 Base.size(::LBVLeaf{S}) where {S} = (S,)
 Base.getindex(x::LBVLeaf, i) = getindex(getfield(x,:data), i)
 Base.setindex!(x::LBVLeaf, v, i) = setindex!(getfield(x,:data), v, i)
-Base.similar(::Type{LBVLeaf{S,D}}) where {S,D} = LBVLeaf(Vector{eltype(D)}(undef, S))
+Base.similar(::Type{LBVLeaf{S,D}}) where {S,D} = LBVLeaf{S}(Vector{eltype(D)}(undef, S))
 Base.similar(::LBVLeaf{S,D}) where {S,D} = similar(LBVLeaf{S,D})
+# Base.copy(x::LBVLeaf{S}) where {S} = LBVLeaf{S}(getfield(x, :data))
 
 ####### Custom Broadcasting #######
 
@@ -39,14 +43,18 @@ struct LBVLeafStyle{S,D} <: Broadcast.AbstractArrayStyle{1} end
 LBVLeafStyle{S,D}(::Val{1}) where {S,D} = LBVLeafStyle{S,D}()
 Base.BroadcastStyle(::Type{LBVLeaf{S,D}}) where {S,D} = LBVLeafStyle{S,D}()
 
-function Base.BroadcastStyle(::LBVLeafStyle{S,D1}, ::LBVLeafStyle{S,D2}) where {S,D1,D2}
-    LBVLeafStyle{S,Vector{promote_type(eltype(D1), eltype(D2))}}()
+function Base.similar(::Broadcast.Broadcasted{LBVLeafStyle{S, D}}, ::Type{ElType}) where {S, D, ElType}
+    similar(LBVLeaf{S, D})
 end
+
+# function Base.BroadcastStyle(::LBVLeafStyle{S,D1}, ::LBVLeafStyle{S,D2}) where {S,D1,D2}
+#     LBVLeafStyle{S,Vector{promote_type(eltype(D1), eltype(D2))}}()
+# end
 
 
 ########################### LBVNode ############################
 
-struct LBVNode{L, D <: AbstractVector{<:Real}} <: AbstractLBV{D} #L: identifier
+struct LBVNode{L, D <: AbstractVector{Float64}} <: AbstractLBV{D} #L: identifier
     data::D
     function LBVNode{L}(data::D) where {L, D} #for some reason, you can't restrict type parameters here
         assert_symbol(L)
