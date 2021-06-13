@@ -14,17 +14,44 @@ function test_wgs84()
     end
 end
 
-function test_essentials()
-
-    #constructors for the implemented WGS84Pos subtypes
+function test_NVectorAlt()
 
     n_e = [1, 2, -3]
     h = 1000
-    P1 = NVectorAlt(n_e, h)
+    p1 = NVectorAlt(n_e, h)
 
     #inner constructor
-    @test P1.n_e ≈ normalize(n_e) #normalizes by default
+    @test p1.n_e ≈ normalize(n_e) #normalizes by default
     @test NVectorAlt(n_e, h, normalization = false).n_e == n_e
+    @test p1 === NVectorAlt(p1)
+
+    #equality and isapprox
+    @test p1 == p1
+    @test p1 != NVectorAlt(-n_e, h)
+    @test p1 ≈ NVectorAlt(n_e, h+1e-10)
+    @test !(p1 ≈ NVectorAlt(-n_e, h))
+
+    #outer constructors
+    @test p1 == NVectorAlt((n_e, h))  #accept also a tuple
+    @test NVectorAlt(n_e).n_e ≈ normalize(n_e) #accept also a single unit vector
+    @test NVectorAlt(h = 324).n_e == [1, 0, 0] && NVectorAlt(n_e = n_e).h == 0
+    @test NVectorAlt() == NVectorAlt(n_e = [1, 0, 0], h = 0)
+    @test_throws AssertionError NVectorAlt(h = -500) #ADJUST THE LOWER ALT THRESHOLD
+
+end
+
+function test_Cartesian()
+
+    n_e = [1, 2, -3]
+    h = 1000
+
+    #constructors and equality
+    p1 = Cartesian(NVectorAlt(n_e, h))
+    @test p1 == Cartesian(p1.r)
+    @test p1 === Cartesian(p1)
+
+    #AbstractArray interface
+
 
     #equality and isapprox
     @test P1 == P1

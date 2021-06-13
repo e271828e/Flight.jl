@@ -90,6 +90,9 @@ end
 RMatrix(r::Rotation) = convert(RMatrix, r)
 RMatrix() = RMatrix(SMatrix{3,3,Float64}(I), normalization = false)
 
+Base.size(r::RMatrix) = size(getfield(r,:_mat))
+Base.getindex(r::RMatrix, i...) = getindex(getfield(r,:_mat), i...)
+
 Base.convert(::Type{RMatrix}, r::RMatrix) = r
 
 function Base.convert(::Type{RMatrix}, r::RQuat)
