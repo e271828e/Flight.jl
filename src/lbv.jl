@@ -104,8 +104,8 @@ end
 
 ######### Code Generation #########
 
-Base.getproperty(x::LBVNode, s::Symbol) = getindex(x, Val(s))
-Base.setproperty!(x::LBVNode, s::Symbol, v) = setindex!(x, v, Val(s))
+Base.getproperty(x::LBVNode, s::Symbol) = getproperty(x, Val(s))
+Base.setproperty!(x::LBVNode, s::Symbol, v) = getproperty!(x, Val(s), v)
 
 function register_LBVNode(typepar::Symbol, child_labels::NTuple{N, Symbol},
     child_types::NTuple{N, Any}) where {N}
@@ -132,6 +132,7 @@ function register_LBVNode(typepar::Symbol, child_labels::NTuple{N, Symbol},
         LBV.is_registered(::Type{<:$typepar}) = true
         LBV.descriptor(::Type{<:$typepar}) = NamedTuple{$child_labels}($child_types)
         Base.length(::Type{<:$typepar}) = $node_length
+        Base.propertynames(::$typepar, private::Bool = false) = $child_labels
 
     end)
 
@@ -146,8 +147,8 @@ function register_LBVNode(typepar::Symbol, child_labels::NTuple{N, Symbol},
 
             println("Generating getindex and setindex Symbol methods for child "*
             ":$($(QuoteNode(child_label))), range $($child_range)... ")
-            Base.getindex(x::$typepar, ::Val{$(QuoteNode(child_label))}) = ($child_type)(view(getfield(x,:data), $child_range))
-            Base.setindex!(x::$typepar, v, ::Val{$(QuoteNode(child_label))}) = setindex!(getfield(x, :data), v, $child_range)
+            Base.getproperty(x::$typepar, ::Val{$(QuoteNode(child_label))}) = ($child_type)(view(getfield(x,:data), $child_range))
+            Base.setproperty!(x::$typepar, ::Val{$(QuoteNode(child_label))}, v) = setindex!(getfield(x, :data), v, $child_range)
 
         end)
 

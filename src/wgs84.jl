@@ -1,10 +1,11 @@
 module WGS84
 
+using Base: Real, Symbol
 using LinearAlgebra
 using StaticArrays: SVector
 using Flight.Attitude
 
-export NVector, NVectorAlt, Cartesian
+export NVector, WGS84Pos, Cartesian
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -30,12 +31,7 @@ const m = ω_ie^2 * a^2 * b / GM #[Hof06] 2-70
 const γ_a = GM / (a * b) * (1 - m - m/6 * eʹ * q₀ʹ/q₀) #Normal gravity at the equator, [Hof06] 2-141
 const γ_b = GM / a² * (1 + m/3 * eʹ * q₀ʹ/q₀) #Normal gravity at the poles, [Hof06] 2-142
 
-# #distance tolerance (unit in last place of a)
-# const ε_a = eps(a)
-
-# abstract type WGS84Pos end
-
-########################### NVectorAlt #####################################
+########################### NVector ##################################
 
 struct NVector <: AbstractVector{Float64}
     data::SVector{3,Float64}
@@ -45,7 +41,7 @@ struct NVector <: AbstractVector{Float64}
     end
 end
 
-function NVector(; ϕ::Real = 0, λ::Real = 0)
+function NVector(; ϕ::Real = 0., λ::Real = 0.)
     cos_ϕ = cos(ϕ)
     NVector([cos_ϕ * cos(λ), cos_ϕ * sin(λ), sin(ϕ)], normalization = false)
 end
@@ -71,114 +67,134 @@ end
 
 NVector(r_el::Rotation) = NVector(RQuat(r_el))
 
+Base.:(==)(n1::NVector, n2::NVector) = n1.data == n2.data
+Base.:(≈)(n1::NVector, n2::NVector) = n1.data ≈ n2.data
+
 #AbstractArray
 Base.size(x::NVector) = size(getfield(x,:data))
 Base.getindex(x::NVector, i) = getindex(getfield(x,:data), i)
 
 lat(n_e::NVector) = atan(n_e[3], √(n_e[1]^2 + n_e[2]^2))
 lon(n_e::NVector) = atan(n_e[2], n_e[1])
-LTF(n_e::NVector, ψ_nl::Real = 0) = Rz( lon(n_e) ) ∘ Ry( -(lat(n_e) + 0.5π) ) ∘ Rz(ψ_nl)
-LTF(nt::NamedTuple{(:n_e, :ψ_nl), Tuple{NVector, Float64}}) = LTF(nt[:n_e], nt[:ψ_nl])
+ltf(n_e::NVector, ψ_nl::Real = 0.) = Rz( lon(n_e) ) ∘ Ry( -(lat(n_e) + 0.5π) ) ∘ Rz(ψ_nl)
+ltf(nt::NamedTuple{(:n_e, :ψ_nl), Tuple{NVector, Float64}}) = ltf(nt[:n_e], nt[:ψ_nl])
 
-# Ahora, las conversiones pueden hacerse sobrecargando getproperty
-# digo getproperty(::NVector, ::Symbol) = getproperty(p, Val(s))
-# getproperty(::NVectorAlt, ::Val{s}), y asi saco directamente lat, lon,
-# psi, lambda, LTF
+function radii(n_e::NVector)
+    f_den = √(1 - e² * n_e[3]^2)
+    return ( M = a * (1 - e²) / f_den^3, N = a / f_den ) #(R_N, R_E)
+end
 
+#as long as s has an explicit value at compile time (which it will), the if will
+#be optimized out by the compiler. no need to dispatch on Val(s) for efficiency.
+Base.propertynames(::NVector, private::Bool = false) = (:lat, :lon, :ϕ, :λ, :ltf, :r_el)
+function Base.getproperty(n_e::NVector, s::Symbol)
+    if s == :lat || s == :ϕ
+        return lat(n_e)
+    elseif s == :lon || s == :λ
+        return lon(n_e)
+    elseif s == :ltf || s == :r_el
+        return ltf(n_e)
+    else
+        error("NVector has no property $s")
+    end
+end
 
+########################### WGS84Pos ##########################
 
-# struct NVectorAlt <: WGS84Pos
-#     n_e::SVector{3,Float64}
-#     h::Float64
-#     function NVectorAlt(n_e::NVector, h::Real; normalization::Bool = true)
-#         n_e = SVector{3,Float64}(n_e) #normalization will be faster for an SVector
-#         @assert h>-200 "Altitude must be larger than -200 m"
-#         return normalization ? new(normalize(n_e), h) : new(n_e, h)
-#     end
-# end
+const h_min = -20000
 
-# function NVectorAlt(r::AbstractVector{Float64})
-#     length(r) || throw(ArgumentError("Constructor from Cartesian ECEF position
-#     expected a 3-element vector, got length $(length(r))"))
-# end
+struct WGS84Pos
+    n_e::NVector
+    h::Float64
+    function WGS84Pos(n_e::NVector, h::Real)
+        h > h_min || throw(ArgumentError("Minimum altitude is $h_min m"))
+        return new(n_e, h)
+    end
+end
 
+WGS84Pos(; ϕ::Real = 0., λ::Real = 0., h::Real = 0.) = WGS84Pos(NVector(ϕ = ϕ, λ = λ), h)
 
-# Base.:(==)(p1::NVectorAlt, p2::NVectorAlt) = (p1.n_e == p2.n_e && p1.h == p2.h)
-# Base.:(≈)(p1::NVectorAlt, p2::NVectorAlt) = (p1.n_e ≈ p2.n_e && p1.h ≈ p2.h)
+function WGS84Pos(r::AbstractVector{<:Real})
 
+    #NVector + Alt from ECEF Cartesian position vector. See Fukushima:
+    #Transformation_from_Cartesian_to_Geodetic_Coordinates_Accelerated_by_Halley's_Method
 
-# Base.:(≈)(p1::WGS84Pos, p2::WGS84Pos) = NVectorAlt(p1) ≈ NVectorAlt(p2)
+    if length(r)!=3
+        throw(ArgumentError("Constructor from Cartesian ECEF position expected a
+        3-element vector, got length $(length(r))"))
+    end
 
-# ########################### Cartesian ##############################
+    x, y, z = r
+    p = √(x^2 + y^2)
 
+    c = a*e²
+    ec² = 1 - e²
+    ec = √ec²
+    zc = ec * abs(z)
 
-# function cart_ECEF(p::NVectorAlt)
+    s0 = abs(z)
+    c0 = ec*p
+    a0 = √(s0^2 + c0^2)
+    a0³ = a0^3
+    b0 = 1.5 * c * s0 * c0 * ((p * s0 - zc * c0) * a0 - c * s0 * c0)
+    s1 = (zc * a0³ + c * s0^3) * a0³ - b0 * s0
+    c1 = (p * a0³ - c * c0^3) * a0³ - b0 * c0
 
-#     n_e = p.n_e; h = p.h
-#     _, N = radii(p)
+    cc = ec*c1
+    s1² = s1^2
+    cc² = cc^2
+    h = (p*cc + s0*s1 - a*√(ec² * s1² + cc²)) / √(s1² + cc²)
 
-#     return SVector{3, Float64}([
-#         (N + h) * n_e[1],
-#         (N + h) * n_e[2],
-#         (N * (1 - e²) + h) * n_e[3] ])
+    if s1 < cc #|ϕ < π/4|
+        abs_tan_ϕ = s1 / cc
+        cos_ϕ = 1 / √(1 + abs_tan_ϕ^2) #cos_ϕ >=0
+        abs_sin_ϕ = abs_tan_ϕ * cos_ϕ
+        sin_ϕ = abs_sin_ϕ * sign(z)
+    else #|ϕ > π/4|
+        abs_cot_ϕ = cc / s1
+        abs_sin_ϕ = 1 / √(1 + abs_cot_ϕ^2)
+        cos_ϕ = abs_cot_ϕ * abs_sin_ϕ
+        sin_ϕ = abs_sin_ϕ * sign(z)
+    end
 
-# end
+    cos_λ = p > 0 ? (x / p) : 1
+    sin_λ = p > 0 ? (y / p) : 0
 
-# function NVectorAlt(r::AbstractVector{Float64})
+    n_e = NVector([cos_ϕ*cos_λ, cos_ϕ*sin_λ, sin_ϕ])
 
-#     #see Fukushima: Transformation_from_Cartesian_to_Geodetic_Coordinates_Accelerated_by_Halley's_Method
+    return WGS84Pos(n_e, h)
 
-#     error("Check length here")
-#     x, y, z = r
-#     p = √(x^2 + y^2)
+end
 
-#     c = a*e²
-#     ec² = 1 - e²
-#     ec = √ec²
-#     zc = ec * abs(z)
+function cart_ECEF(p::WGS84Pos)
 
-#     s0 = abs(z)
-#     c0 = ec*p
-#     a0 = √(s0^2 + c0^2)
-#     a0³ = a0^3
-#     b0 = 1.5 * c * s0 * c0 * ((p * s0 - zc * c0) * a0 - c * s0 * c0)
-#     s1 = (zc * a0³ + c * s0^3) * a0³ - b0 * s0
-#     c1 = (p * a0³ - c * c0^3) * a0³ - b0 * c0
+    n_e = p.n_e; h = p.h
+    _, N = radii(p.n_e)
 
-#     cc = ec*c1
-#     s1² = s1^2
-#     cc² = cc^2
-#     h = (p*cc + s0*s1 - a*√(ec² * s1² + cc²)) / √(s1² + cc²)
+    return SVector{3, Float64}([
+        (N + h) * n_e[1],
+        (N + h) * n_e[2],
+        (N * (1 - e²) + h) * n_e[3] ])
 
-#     if s1 < cc #|ϕ < π/4|
-#         abs_tan_ϕ = s1 / cc
-#         cos_ϕ = 1 / √(1 + abs_tan_ϕ^2) #cos_ϕ >=0
-#         abs_sin_ϕ = abs_tan_ϕ * cos_ϕ
-#         sin_ϕ = abs_sin_ϕ * sign(z)
-#     else #|ϕ > π/4|
-#         abs_cot_ϕ = cc / s1
-#         abs_sin_ϕ = 1 / √(1 + abs_cot_ϕ^2)
-#         cos_ϕ = abs_cot_ϕ * abs_sin_ϕ
-#         sin_ϕ = abs_sin_ϕ * sign(z)
-#     end
+end
 
-#     cos_λ = p > 0 ? (x / p) : 1
-#     sin_λ = p > 0 ? (y / p) : 0
+radii(p::WGS84Pos) = radii(p.n_e)
 
-#     n_e = [cos_ϕ*cos_λ, cos_ϕ*sin_λ, sin_ϕ]
+Base.:(==)(p1::WGS84Pos, p2::WGS84Pos) = (p1.n_e == p2.n_e && p1.h == p2.h)
+Base.:(≈)(p1::WGS84Pos, p2::WGS84Pos) = (p1.n_e ≈ p2.n_e && p1.h ≈ p2.h)
 
-#     return NVectorAlt(n_e, h)
+Base.propertynames(p::WGS84Pos, private::Bool = false) = (:n_e, :h, :alt,
+    propertynames(getfield(p, :n_e), private)...)
 
-# end
-
-
-
-# function radii(p::NVectorAlt)
-
-#     f_den = √(1 - e² * p.n_e[3]^2)
-#     return ( M = a * (1 - e²) / f_den^3, N = a / f_den ) #(R_N, R_E)
-
-# end
+function Base.getproperty(p::WGS84Pos, s::Symbol)
+    if s == :n_e
+        return getfield(p, :n_e)
+    elseif s == :h || s == :alt
+        return getfield(p, :h)
+    else #delegate to n_e
+        return getproperty(getfield(p, :n_e), s)
+    end
+end
 
 
 end
