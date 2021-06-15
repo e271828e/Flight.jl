@@ -111,6 +111,8 @@ macro define_node(name, descriptor)
 
     s_descr = :descriptor
 
+    println(descriptor)
+
     ex = quote
         # by escaping the LBVNode name, we are defining it as a local variable
         # in the macro caller scope, rather than in the LBV module. this means
@@ -138,7 +140,7 @@ macro define_node(name, descriptor)
 
         # println($(esc(descriptor)))
         # desc = NamedTuple{child_labels}(child_types)
-        # node_length = sum(length.(child_types))
+        node_length = sum(length.(child_types))
         # println(child_labels)
         # println(child_types)
         # println(desc)
@@ -151,7 +153,53 @@ macro define_node(name, descriptor)
         $(esc(s_descr))(::Type{<:$(esc(name))}) = NamedTuple{child_labels}(child_types)
         $(esc(s_descr))(::($(esc(name)))) = NamedTuple{child_labels}(child_types)
 
-        Base.length(::Type{<:$(esc(name))}) = sum(length.(child_types))
+        #VERY IMPORTANT: once we have computed the node length for this type by
+        #traversing the LBV hierarchy recursively, we can use the numerical
+        #result to define a Base.length() method for the type. this length
+        #method is used by the inner constructor to ensure input length
+        #consistency (see above).
+
+        # however, since the resulting node_length is only known after the
+        #previous lines of the returned expression are executed, we cannot
+        #substitute its numerical value in advance within the quote itself! we
+        #need to assign node_length to the right hand side of the function,
+        #knowing that at this point in the macro execution it will have been
+        #already assigned.
+
+        #however, by doing this we are literally telling the compiler "the
+        #return value of this function is equal to a variable that has been
+        #defined in the global scope of this module". we are, in practice,
+        #defining the length function as a closure. therefore, the compiler
+        #cannot assume that node_length might not change during program
+        #execution, because it is required to make sure that the return value of
+        #the length function remains equal to the current value of node_length
+        #at all times. therefore cannot optimize it out by replacing it with
+        #its numerical value. in fact, it cannot even assume that it will even
+        #remain a numerical value!
+
+        #since length() is used in the similar() method, which in turn is
+        #used in broadcasting, this uncertainty propagates down the broadcasting
+        #operation, which becomes horribly inefficient (20 times slower). what's
+        #the solution? there are at least two:
+        #a) declare node_length as a const
+        #b) enclose the function declaration in a let block (see Performance
+        #of captured variables in the Documentation)
+
+        #both alternatives provide the compiler with the assurance that
+        #node_length, despite being a global
+
+        #but why isn't this a problem in the getproperty and setproperty
+        #methods? why don't child_label, child_type and child_range subject to
+        #the same problem as node_length? because they are defined within a for
+        #loop, and therefore their scope is local and limited to within the.
+        #once the for loop terminates, these variables disappear. consequently,
+        #the compiler doesn't have to worry about keeping the values inside
+        #these methods consistent with any external variable. it can simply plug
+        #their instantaneous values into the method definitions
+
+        let l = node_length
+            Base.length(::Type{<:$(esc(name))}) = l
+        end
 
         offset = 0
         for (child_label, child_type) in zip(child_labels, child_types)

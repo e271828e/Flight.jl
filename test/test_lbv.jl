@@ -67,7 +67,7 @@ function test_lbv()
     z = exp.(z1) + z2
     @show z
 
-    println(Aircraft.descriptor(z))
+    # println(Aircraft.descriptor(z))
 
 end
 
