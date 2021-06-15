@@ -3,11 +3,11 @@ module TestLBV
 
 ########################### submodule Rbd ###################
 
-module Airframe
+module Rbd
 using Flight.LBV
-export XAirframe
+export XRbd
 
-@define_node XAirframe (att = LBVLeaf{4}, vel = LBVLeaf{3}, pos = LBVLeaf{4})
+register_LBVNode(:XRbd, (:att, :vel, :pos), (LBVLeaf{4}, LBVLeaf{3}, LBVLeaf{4})) |> eval
 
 end #submodule
 
@@ -17,7 +17,7 @@ module Ldg
 using Flight.LBV
 export XLdg
 
-@define_node XLdg (nlg = LBVLeaf{2}, mlg = LBVLeaf{2})
+register_LBVNode(:XLdg, (:μReg,), (LBVLeaf{2},)) |> eval
 
 end #submodule
 
@@ -25,11 +25,11 @@ end #submodule
 
 module Aircraft
 using Flight.LBV
-using ..Airframe #needed to access XAirframe
+using ..Rbd #needed to access XRbd
 using ..Ldg #needed to access XLdg
 export XAircraft
 
-@define_node XAircraft (rbd = XAirframe, ldg = XLdg, pwp = LBVLeaf{4})
+register_LBVNode(:XAircraft, (:rbd, :ldg, :pwp), (XRbd, XLdg, LBVLeaf{4})) |> eval
 
 end #submodule
 
@@ -37,14 +37,13 @@ end #submodule
 
 using Flight.LBV
 using Reexport
-@reexport using .Airframe
+@reexport using .Rbd
 @reexport using .Ldg
 @reexport using .Aircraft
 
 export test_lbv
 
 function test_lbv()
-
     x = XAircraft()
     x_rbd = x.rbd
     x_rbd[4] = 0
@@ -67,7 +66,6 @@ function test_lbv()
     z = exp.(z1) + z2
     @show z
 
-    println(Aircraft.descriptor(z))
 
 end
 

@@ -1,7 +1,9 @@
 module LBV
 
 export LBVLeaf, LBVNode
-export @define_node
+export is_registered, descriptor
+export register_LBVNode
+export @lbv_macro
 
 abstract type AbstractLBV{T, D<:AbstractVector{T}} <: AbstractVector{T} end
 
@@ -70,9 +72,9 @@ LBVNode{S}(data::D) where {S,D} = LBVNode{S,eltype(D),D}(data)
 LBVNode{S,T}() where {S,T} = LBVNode{S,T}(Vector{T}(undef, length(LBVNode{S,T})))
 LBVNode{S}() where {S} = LBVNode{S,Float64}()
 
-# is_registered(::Type{<:LBVNode}) = false
-# descriptor(::Type{<:LBVNode}) = error("To be implemented for each type parameter")
-# descriptor(::T) where {T<:LBVNode}= descriptor(T)
+is_registered(::Type{<:LBVNode}) = false
+descriptor(::Type{<:LBVNode}) = error("To be implemented for each type parameter")
+descriptor(::T) where {T<:LBVNode}= descriptor(T)
 
 ####### Abstract Array #############
 
@@ -106,11 +108,62 @@ end
 Base.getproperty(x::LBVNode, s::Symbol) = getproperty(x, Val(s))
 Base.setproperty!(x::LBVNode, s::Symbol, v) = getproperty!(x, Val(s), v)
 
-#define and register a LBVNode
-macro define_node(name, descriptor)
+function register_LBVNode(typepar::Symbol, child_labels::NTuple{N, Symbol},
+    child_types::NTuple{N, Any}) where {N}
 
-    s_descr = :descriptor
+    @assert all([t <: Union{LBVLeaf, LBVNode} for t in child_types]) "Invalid child type"
 
+    #the descriptor is also constructed as the right hand side of the descriptor
+    #method in the generated code, but as an expression
+    desc = NamedTuple{child_labels}(child_types)
+    node_length = sum(length.(values(desc)))
+    println("Generating code for $typepar = LBVNode{$(QuoteNode(typepar))}...")
+
+    ex = Expr(:block) #equivalent to ex = quote end
+
+    push!(ex.args, quote
+
+        if is_registered(LBVNode{$(QuoteNode(typepar))})
+            println("WARNING: Type $($(QuoteNode(typepar))) already registered")
+        end
+
+        #shorthand for exporting and more convenient method signatures
+        const $typepar = LBVNode{$(QuoteNode(typepar))}
+
+        LBV.is_registered(::Type{<:$typepar}) = true
+        LBV.descriptor(::Type{<:$typepar}) = NamedTuple{$child_labels}($child_types)
+        Base.length(::Type{<:$typepar}) = $node_length
+        Base.propertynames(::$typepar, private::Bool = false) = $child_labels
+
+    end)
+
+    offset = 0
+    for (child_label, child_type) in zip(keys(desc), values(desc))
+
+        child_length = length(child_type)
+        child_range = (1 + offset):(child_length + offset)
+        offset += child_length
+
+        push!(ex.args, quote
+
+            println("Generating getindex and setindex Symbol methods for child "*
+            ":$($(QuoteNode(child_label))), range $($child_range)... ")
+            Base.getproperty(x::$typepar, ::Val{$(QuoteNode(child_label))}) = ($child_type)(view(getfield(x,:data), $child_range))
+            Base.setproperty!(x::$typepar, ::Val{$(QuoteNode(child_label))}, v) = setindex!(getfield(x, :data), v, $child_range)
+
+        end)
+
+    end
+
+    # return Base.remove_linenums!(ex)
+    return ex
+end
+
+#register a LBVNode
+macro lbv_macro(node_name, descriptor)
+    println(typeof(node_name))
+    println(typeof(descriptor))
+    # println(is_registered(LBVNode{child}))
     ex = quote
         # by escaping the LBVNode name, we are defining it as a local variable
         # in the macro caller scope, rather than in the LBV module. this means
@@ -119,14 +172,14 @@ macro define_node(name, descriptor)
         #    the macro
         # 2) the interested module must import the defining module with "using"
 
-        println("Generating code for $($(QuoteNode(name))) = ",
-                "LBVNode{:$($(QuoteNode(name)))}...")
+        println("Generating code for $($(QuoteNode(node_name))) = ",
+                "LBVNode{:$($(QuoteNode(node_name)))}...")
 
-        if isdefined($__module__, $(QuoteNode(name)))
-            println("WARNING: Type $($(QuoteNode(name))) already defined in module $($(QuoteNode(__module__)))")
+        const $(esc(node_name)) = LBVNode{$(QuoteNode(node_name))}
+
+        if is_registered($(esc(node_name)))
+            println("WARNING: Type $($(QuoteNode(node_name))) already defined in this scope")
         end
-
-        const $(esc(name)) = LBVNode{$(QuoteNode(name))}
 
         #because the LBVNode names in the descriptor are defined in their
         #respective modules, not in LBV, we must escape the descriptor to
@@ -143,15 +196,9 @@ macro define_node(name, descriptor)
         # println(child_types)
         # println(desc)
         # println(node_length)
-
-        #descriptor is no longer a method defined in and exported from LBV to be
-        #extended by modules, it is a local method defined in each module. this
-        #avoids potential name clashes between LBVNodes with the same type
-        #parameter defined in different modules.
-        $(esc(s_descr))(::Type{<:$(esc(name))}) = NamedTuple{child_labels}(child_types)
-        $(esc(s_descr))(::($(esc(name)))) = NamedTuple{child_labels}(child_types)
-
-        Base.length(::Type{<:$(esc(name))}) = sum(length.(child_types))
+        LBV.descriptor(::Type{<:$(esc(node_name))}) = NamedTuple{child_labels}(child_types)
+        LBV.is_registered(::Type{<:$(esc(node_name))}) = true
+        Base.length(::Type{<:$(esc(node_name))}) = sum(length.(child_types))
 
         offset = 0
         for (child_label, child_type) in zip(child_labels, child_types)
@@ -161,8 +208,8 @@ macro define_node(name, descriptor)
             global offset += child_length
 
             println("Generating helper methods for child $child_label, range $child_range")
-            Base.getproperty(x::$(esc(name)), ::Val{child_label}) = (child_type)(view(getfield(x,:data), child_range))
-            Base.setproperty!(x::$(esc(name)), ::Val{child_label}, v) = setindex!(getfield(x, :data), v, child_range)
+            Base.getproperty(x::$(esc(node_name)), ::Val{child_label}) = (child_type)(view(getfield(x,:data), child_range))
+            Base.setproperty!(x::$(esc(node_name)), ::Val{child_label}, v) = setindex!(getfield(x, :data), v, child_range)
 
         end
 
