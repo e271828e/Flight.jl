@@ -45,6 +45,17 @@ export test_lbv
 
 function test_lbv()
 
+    #test that when broadcasting, the result is of the same type and numerically
+    #correct
+    #test that when broadcasting, numbers are promoted to the appropriate type
+    #test that we can construct from a vector or from a view
+    #when we extract a field, it is a view and it is equal to the appropriate
+    #indices
+    #when we change the field, it changes the original
+    #when we extract a LBVLeaf, it is a Leaf
+    #reject inappropriate length
+    #test copy
+    #test similar
     x = XAircraft()
     x_rbd = x.rbd
     x_rbd[4] = 0

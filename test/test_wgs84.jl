@@ -2,96 +2,102 @@ module TestWGS84
 
 using Test
 using LinearAlgebra
-using Flight.WGS84
+using Flight.WGS84, Flight.Attitude
 
 export test_wgs84
 
 function test_wgs84()
     @testset verbose = true "WGS84" begin
-        @testset verbose = true "WGS84Pos Essentials" begin test_essentials() end
-        @testset verbose = true "WGS84Pos Conversions" begin test_conversions() end
-        # @testset verbose = true "WGS84 Models" begin test_models() end #ellipsoid, angular velocity, gravity, gravitation
+        @testset verbose = true "NVector" begin test_NVector() end
+        @testset verbose = true "WGS84Pos" begin test_WGS84Pos() end
     end
 end
 
-function test_NVectorAlt()
-
-    n_e = [1, 2, -3]
-    h = 1000
-    p1 = NVectorAlt(n_e, h)
+function test_NVector()
 
     #inner constructor
-    @test p1.n_e ≈ normalize(n_e) #normalizes by default
-    @test NVectorAlt(n_e, h, normalization = false).n_e == n_e
-    @test p1 === NVectorAlt(p1)
+    v = [1, 2, -3]
+    n_e = NVector(v)
+    @test n_e.data ≈ normalize(v) #normalizes by default
 
-    #equality and isapprox
-    @test p1 == p1
-    @test p1 != NVectorAlt(-n_e, h)
-    @test p1 ≈ NVectorAlt(n_e, h+1e-10)
-    @test !(p1 ≈ NVectorAlt(-n_e, h))
+    #keyword constructor and latitude & longitude conversions
+    @test NVector(; ϕ = 1.2).ϕ ≈ 1.2
+    @test NVector(; ϕ = 1.2).λ == 0
+    @test NVector(; λ = 0.2).ϕ == 0
+    @test NVector(; λ = 0.2).λ ≈ 0.2
+    @test NVector(; ϕ = .3, λ = -1.5).ϕ ≈ .3
+    @test NVector(; ϕ = .3, λ = -1.5).λ ≈ -1.5
 
-    #outer constructors
-    @test p1 == NVectorAlt((n_e, h))  #accept also a tuple
-    @test NVectorAlt(n_e).n_e ≈ normalize(n_e) #accept also a single unit vector
-    @test NVectorAlt(h = 324).n_e == [1, 0, 0] && NVectorAlt(n_e = n_e).h == 0
-    @test NVectorAlt() == NVectorAlt(n_e = [1, 0, 0], h = 0)
-    @test_throws AssertionError NVectorAlt(h = -500) #ADJUST THE LOWER ALT THRESHOLD
+    #LTF constructors and LTF conversion
+    r_en = WGS84.ltf(n_e, 0)
+    @test r_en == n_e.ltf
+    @test WGS84.ψ_nl(r_en) ≈ 0
+
+    ψ_nl = π/3
+    r_nl = Rz(ψ_nl)
+    r_el = r_en ∘ r_nl
+    @test WGS84.ψ_nl(r_el) ≈ ψ_nl
+    @test WGS84.ψ_nl(RMatrix(r_el)) ≈ ψ_nl
+    @test WGS84.ψ_nl(RAxAng(r_el)) ≈ ψ_nl
+
+    #r_en and r_el should return the same NVector
+    @test NVector(r_el) ≈ n_e
+    @test NVector(RMatrix(r_el)) ≈ n_e
+    @test NVector(RAxAng(r_el)) ≈ n_e
+
+    #equality, unary minus and isapprox
+    @test (-n_e).data == -(n_e.data)
+    @test n_e == n_e
+    @test n_e != -n_e
+    @test n_e ≈ NVector(v + [0, 0, 1e-10])
+
+    #torture test: from lat, lon to NVector, to r_en, then r_el, back to NVector
+    ϕ_range = range(-π/2, π/2, length = 10)
+    λ_range = range(-π, π, length = 10)
+    ψ_nl_range = range(-π, π, length = 10)
+
+    n_array = [NVector(; ϕ, λ) for (ϕ, λ, _) in Iterators.product(ϕ_range, λ_range, ψ_nl_range)]
+    ψ_array = [ψ_nl for (_, _, ψ_nl) in Iterators.product(ϕ_range, λ_range, ψ_nl_range)]
+    n_array_test = [NVector(NVector(; n0.ϕ, n0.λ).ltf ∘ Rz(ψ_nl)) for (n0, ψ_nl) in zip(n_array, ψ_array)]
+
+    @test all(n_array .≈ n_array_test)
+
+    @test WGS84.radii(NVector(ϕ = 0)).N ≈ WGS84.a
+    @test WGS84.radii(NVector(ϕ = π/2)).M ≈ WGS84.radii(NVector(ϕ = π/2)).N
 
 end
 
-function test_Cartesian()
+function test_WGS84Pos()
 
-    n_e = [1, 2, -3]
+    v = [1, 2, -3]
     h = 1000
+    n_e = NVector(v)
 
-    #constructors and equality
-    p1 = Cartesian(NVectorAlt(n_e, h))
-    @test p1 == Cartesian(p1.r)
-    @test p1 === Cartesian(p1)
-
-    #AbstractArray interface
-
+    #inner constructor
+    p = WGS84Pos(n_e, h)
+    @test p.n_e == n_e
+    @test p.h == h
 
     #equality and isapprox
-    @test P1 == P1
-    @test P1 != NVectorAlt(-n_e, h)
-    @test P1 ≈ NVectorAlt(n_e, h+1e-10)
-    @test !(P1 ≈ NVectorAlt(-n_e, h))
+    @test p == p
+    @test p != WGS84Pos(-n_e, h)
+    @test p ≈ WGS84Pos(n_e, h+1e-10)
+    @test !(p ≈ WGS84Pos(-n_e, h))
 
-    #outer constructors
-    @test P1 == NVectorAlt((n_e, h))  #accept also a tuple
-    @test NVectorAlt(n_e).n_e ≈ normalize(n_e) #accept also a single unit vector
-    @test NVectorAlt(h = 324).n_e == [1, 0, 0] && NVectorAlt(n_e = n_e).h == 0
-    @test NVectorAlt() == NVectorAlt(n_e = [1, 0, 0], h = 0)
-    @test_throws AssertionError NVectorAlt(h = -500) #ADJUST THE LOWER ALT THRESHOLD
+    # #outer constructors
+    @test p ≈ WGS84Pos(; n_e.ϕ, n_e.λ, h)
 
-end
+    ϕ_range = range(-π/2, π/2, length = 10)
+    λ_range = range(-π, π, length = 10)
+    h_range = range(-1000, 10000, length = 10)
 
-function test_conversions()
+    p_array = [WGS84Pos(NVector(; ϕ, λ), h) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
+    p_array_test = [WGS84Pos(rECEF(p)) for p in p_array]
 
-    @show pN = NVectorAlt([1e-16, 1e-16, 1], 10000)
-    @show NVectorAlt(Cartesian(pN))
-    # @show pS = NVectorAlt([0.1, 0.2, -100], 10000)
-    # @show NVectorAlt(Cartesian(pS))
-    # @show pEqN = NVectorAlt([1, 2, 0.001], 10000)
-    # @show NVectorAlt(Cartesian(pEqN))
-    # @show pEqS = NVectorAlt([1, 2, -0.001], 10000)
-    # @show NVectorAlt(Cartesian(pEqS))
-
-end
+    @test all(p_array .≈ p_array_test)
 
 end
 
 
-#CHECK VALUES AGAINST PYTHON!
 
-    # @test
-    # r_nl = RQuat([1,-2,4,3]) #ECEF to LTF (e)
-    # LTF(r_nl)._r_nl ≈ LTF(RAxAng(r_nl)) ≈ LTF(REuler(r_nl)) ≈
-    # P3 = Geodetic(1, 2, 1000)
-
-
-    #only allow to construct R from other Location subtypes
-
-    #test convergence for low altitudes
+end

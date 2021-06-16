@@ -5,6 +5,7 @@ export @define_node
 
 abstract type AbstractLBV{T, D<:AbstractVector{T}} <: AbstractVector{T} end
 
+
 ########################### LBVLeaf ############################
 
 struct LBVLeaf{L, T, D <: AbstractVector{T}} <: AbstractLBV{T, D}
@@ -51,6 +52,7 @@ function Base.BroadcastStyle(::LBVLeafStyle{L,T1}, ::LBVLeafStyle{L,T2}) where {
     LBVLeafStyle{L,promote_type(T1, T2)}()
 end
 
+
 ########################### LBVNode ############################
 
 struct LBVNode{S, T, D <: AbstractVector{T}} <: AbstractLBV{T, D} #S: identifier
@@ -70,10 +72,6 @@ LBVNode{S}(data::D) where {S,D} = LBVNode{S,eltype(D),D}(data)
 LBVNode{S,T}() where {S,T} = LBVNode{S,T}(Vector{T}(undef, length(LBVNode{S,T})))
 LBVNode{S}() where {S} = LBVNode{S,Float64}()
 
-# is_registered(::Type{<:LBVNode}) = false
-# descriptor(::Type{<:LBVNode}) = error("To be implemented for each type parameter")
-# descriptor(::T) where {T<:LBVNode}= descriptor(T)
-
 ####### Abstract Array #############
 
 Base.size(x::LBVNode) = size(getfield(x,:data))
@@ -83,7 +81,6 @@ Base.setindex!(x::LBVNode, v, i) = setindex!(getfield(x,:data), v, i)
 Base.similar(::Type{<:LBVNode{S,T}}) where {S,T} = LBVNode{S,T}(Vector{T}(undef, length(LBVNode{S,T})))
 Base.similar(::LBVNode{S,T}) where {S,T} = similar(LBVNode{S,T})
 Base.copy(x::LBVNode{S}) where {S} = LBVNode{S}(copy(getfield(x, :data)))
-
 
 ####### Custom Broadcasting #######
 
@@ -115,17 +112,19 @@ macro define_node(name, descriptor)
 
     ex = quote
         # by escaping the LBVNode name, we are defining it as a local variable
-        # in the macro caller scope, rather than in the LBV module. this means
-        # that, for this name to be used in a macro call in another module:
-        # 1) the defining module must export the name in addition to calling
-        #    the macro
+        # in the macro caller scope, rather than in the LBV module itself. this
+        # means that, for this name to be used in a macro call in another
+        # module:
+        # 1) the defining module must export the name in addition to calling the
+        #    macro
         # 2) the interested module must import the defining module with "using"
 
         println("Generating code for $($(QuoteNode(name))) = ",
                 "LBVNode{:$($(QuoteNode(name)))}...")
 
         if isdefined($__module__, $(QuoteNode(name)))
-            println("WARNING: Type $($(QuoteNode(name))) already defined in module $($(QuoteNode(__module__)))")
+            println("WARNING: Type $($(QuoteNode(name))) already defined ",
+            "in module $($(QuoteNode(__module__)))")
         end
 
         const $(esc(name)) = LBVNode{$(QuoteNode(name))}
@@ -138,65 +137,15 @@ macro define_node(name, descriptor)
         child_types = values($(esc(descriptor)))
         @assert all([t <: Union{LBVLeaf, LBVNode} for t in child_types]) "Invalid child type"
 
-        # println($(esc(descriptor)))
-        # desc = NamedTuple{child_labels}(child_types)
-        node_length = sum(length.(child_types))
-        # println(child_labels)
-        # println(child_types)
-        # println(desc)
-        # println(node_length)
-
-        #descriptor is no longer a method defined in and exported from LBV to be
-        #extended by modules, it is a local method defined in each module. this
-        #avoids potential name clashes between LBVNodes with the same type
-        #parameter defined in different modules.
+        #descriptor is now a local method defined in each module. this avoids
+        #potential name clashes between LBVNodes with the same type parameter
+        #defined in different modules
         $(esc(s_descr))(::Type{<:$(esc(name))}) = NamedTuple{child_labels}(child_types)
         $(esc(s_descr))(::($(esc(name)))) = NamedTuple{child_labels}(child_types)
 
-        #VERY IMPORTANT: once we have computed the node length for this type by
-        #traversing the LBV hierarchy recursively, we can use the numerical
-        #result to define a Base.length() method for the type. this length
-        #method is used by the inner constructor to ensure input length
-        #consistency (see above).
-
-        # however, since the resulting node_length is only known after the
-        #previous lines of the returned expression are executed, we cannot
-        #substitute its numerical value in advance within the quote itself! we
-        #need to assign node_length to the right hand side of the function,
-        #knowing that at this point in the macro execution it will have been
-        #already assigned.
-
-        #however, by doing this we are literally telling the compiler "the
-        #return value of this function is equal to a variable that has been
-        #defined in the global scope of this module". we are, in practice,
-        #defining the length function as a closure. therefore, the compiler
-        #cannot assume that node_length might not change during program
-        #execution, because it is required to make sure that the return value of
-        #the length function remains equal to the current value of node_length
-        #at all times. therefore cannot optimize it out by replacing it with
-        #its numerical value. in fact, it cannot even assume that it will even
-        #remain a numerical value!
-
-        #since length() is used in the similar() method, which in turn is
-        #used in broadcasting, this uncertainty propagates down the broadcasting
-        #operation, which becomes horribly inefficient (20 times slower). what's
-        #the solution? there are at least two:
-        #a) declare node_length as a const
-        #b) enclose the function declaration in a let block (see Performance
-        #of captured variables in the Documentation)
-
-        #both alternatives provide the compiler with the assurance that
-        #node_length, despite being a global
-
-        #but why isn't this a problem in the getproperty and setproperty
-        #methods? why don't child_label, child_type and child_range subject to
-        #the same problem as node_length? because they are defined within a for
-        #loop, and therefore their scope is local and limited to within the.
-        #once the for loop terminates, these variables disappear. consequently,
-        #the compiler doesn't have to worry about keeping the values inside
-        #these methods consistent with any external variable. it can simply plug
-        #their instantaneous values into the method definitions
-
+        #capture the value of the LBVNode's length in a local scope to avoid
+        #using a global scope variable in a closure
+        node_length = sum(length.(child_types))
         let l = node_length
             Base.length(::Type{<:$(esc(name))}) = l
         end

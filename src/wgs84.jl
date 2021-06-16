@@ -5,7 +5,7 @@ using LinearAlgebra
 using StaticArrays: SVector
 using Flight.Attitude
 
-export NVector, WGS84Pos, Cartesian
+export NVector, WGS84Pos, rECEF
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -47,42 +47,24 @@ function NVector(; ϕ::Real = 0., λ::Real = 0.)
 end
 
 #extract NVector and Wander Angle from ECEF to Local Tangent Frame rotation
-function NVector(r_el::RMatrix)
-    n_e = NVector( -r_el[:,3], normalization = false)
-    ψ_nl = atan( -r_el[3,2], r_el[3,1] )
-    return (n_e = n_e, ψ_nl = ψ_nl)
-end
-
+NVector(r_el::Rotation) = NVector(RMatrix(r_el))
+NVector(r_el::RMatrix) = NVector( -r_el[:,3], normalization = false)
 function NVector(r_el::RQuat)
     #n_e is the third column of the R_el matrix. we don't need the complete
     #RQuat to RMatrix conversion
     q = r_el._quat
     dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]
     dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4]
-
-    n_e = NVector(-[dq24 + dq13, dq34 - dq12, 1 - 2*(q[2]^2 + q[3]^2)], normalization = false)
-    ψ_nl = atan(-(dq34 + dq12), dq24 - dq13)
-    return (n_e = n_e, ψ_nl = ψ_nl)
+    NVector(-[dq24 + dq13, dq34 - dq12, 1 - 2*(q[2]^2 + q[3]^2)], normalization = false)
 end
-
-NVector(r_el::Rotation) = NVector(RQuat(r_el))
 
 Base.:(==)(n1::NVector, n2::NVector) = n1.data == n2.data
 Base.:(≈)(n1::NVector, n2::NVector) = n1.data ≈ n2.data
+Base.:(-)(n::NVector) = NVector(-n.data)
 
 #AbstractArray
-Base.size(x::NVector) = size(getfield(x,:data))
-Base.getindex(x::NVector, i) = getindex(getfield(x,:data), i)
-
-lat(n_e::NVector) = atan(n_e[3], √(n_e[1]^2 + n_e[2]^2))
-lon(n_e::NVector) = atan(n_e[2], n_e[1])
-ltf(n_e::NVector, ψ_nl::Real = 0.) = Rz( lon(n_e) ) ∘ Ry( -(lat(n_e) + 0.5π) ) ∘ Rz(ψ_nl)
-ltf(nt::NamedTuple{(:n_e, :ψ_nl), Tuple{NVector, Float64}}) = ltf(nt[:n_e], nt[:ψ_nl])
-
-function radii(n_e::NVector)
-    f_den = √(1 - e² * n_e[3]^2)
-    return ( M = a * (1 - e²) / f_den^3, N = a / f_den ) #(R_N, R_E)
-end
+Base.size(::NVector) = (3,)
+Base.getindex(n::NVector, i) = getindex(n.data, i)
 
 #as long as s has an explicit value at compile time (which it will), the if will
 #be optimized out by the compiler. no need to dispatch on Val(s) for efficiency.
@@ -94,10 +76,34 @@ function Base.getproperty(n_e::NVector, s::Symbol)
         return lon(n_e)
     elseif s == :ltf || s == :r_el
         return ltf(n_e)
+    elseif s == :data
+        return getfield(n_e, :data)
     else
         error("NVector has no property $s")
     end
 end
+
+lat(n_e::NVector) = atan(n_e[3], √(n_e[1]^2 + n_e[2]^2))
+lon(n_e::NVector) = atan(n_e[2], n_e[1])
+ltf(; n_e::NVector, ψ_nl::Real = 0.) = Rz( lon(n_e) ) ∘ Ry( -(lat(n_e) + 0.5π) ) ∘ Rz(ψ_nl)
+ltf(n_e::NVector, ψ_nl::Real = 0.) = ltf(; n_e, ψ_nl)
+
+ψ_nl(r_el::Rotation) = ψ_nl(RMatrix(r_el))
+ψ_nl(r_el::RMatrix) = atan( -r_el[3,2], r_el[3,1] )
+function ψ_nl(r_el::RQuat)
+    #n_e is the third column of the R_el matrix. we don't need the complete
+    #RQuat to RMatrix conversion
+    q = r_el._quat
+    dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]
+    dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4]
+    atan(-(dq34 + dq12), dq24 - dq13)
+end
+
+function radii(n_e::NVector)
+    f_den = √(1 - e² * n_e[3]^2)
+    return ( M = a * (1 - e²) / f_den^3, N = a / f_den ) #(R_N, R_E)
+end
+
 
 ########################### WGS84Pos ##########################
 
@@ -107,7 +113,7 @@ struct WGS84Pos
     n_e::NVector
     h::Float64
     function WGS84Pos(n_e::NVector, h::Real)
-        h > h_min || throw(ArgumentError("Minimum altitude is $h_min m"))
+        h >= h_min || throw(ArgumentError("Minimum altitude is $h_min m"))
         return new(n_e, h)
     end
 end
@@ -166,7 +172,7 @@ function WGS84Pos(r::AbstractVector{<:Real})
 
 end
 
-function cart_ECEF(p::WGS84Pos)
+function rECEF(p::WGS84Pos)
 
     n_e = p.n_e; h = p.h
     _, N = radii(p.n_e)
