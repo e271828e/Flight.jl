@@ -108,16 +108,7 @@ macro define_node(name, descriptor)
 
     s_descr = :descriptor
 
-    println(descriptor)
-
     ex = quote
-        # by escaping the LBVNode name, we are defining it as a local variable
-        # in the macro caller scope, rather than in the LBV module itself. this
-        # means that, for this name to be used in a macro call in another
-        # module:
-        # 1) the defining module must export the name in addition to calling the
-        #    macro
-        # 2) the interested module must import the defining module with "using"
 
         println("Generating code for $($(QuoteNode(name))) = ",
                 "LBVNode{:$($(QuoteNode(name)))}...")
@@ -127,39 +118,50 @@ macro define_node(name, descriptor)
             "in module $($(QuoteNode(__module__)))")
         end
 
+        # by escaping the LBVNode name, we are defining it as a local variable
+        # in the macro caller scope, rather than in the LBV module itself. this
+        # means that, for this name to be used in a macro call in another
+        # module:
+        # 1) the defining module must export the name in addition to calling the
+        #    macro
+        # 2) the interested module must import the defining module with "using"
         const $(esc(name)) = LBVNode{$(QuoteNode(name))}
 
-        #because the LBVNode names in the descriptor are defined in their
-        #respective modules, not in LBV, we must escape the descriptor to
-        #protect them from being qualified with the LBV module path (where they
-        #cannot be found)
-        child_labels = keys($(esc(descriptor)))
-        child_types = values($(esc(descriptor)))
-        @assert all([t <: Union{LBVLeaf, LBVNode} for t in child_types]) "Invalid child type"
+        #create a local scope so that variables captured in methods do not
+        #inhabit the global module scope. this avoids the performance hit from
+        #capturing global variables in a closure. the global keyword is required
+        #to make these methods visible in the global module scope. and the
+        #function...end syntax is needed with global so that macro hygiene
+        #works as expected with function signatures.
+        let desc = $(esc(descriptor))
 
-        #descriptor is now a local method defined in each module. this avoids
-        #potential name clashes between LBVNodes with the same type parameter
-        #defined in different modules
-        $(esc(s_descr))(::Type{<:$(esc(name))}) = NamedTuple{child_labels}(child_types)
-        $(esc(s_descr))(::($(esc(name)))) = NamedTuple{child_labels}(child_types)
+            println(desc)
+            child_labels = keys(desc)
+            child_types = values(desc)
+            @assert all([t <: Union{LBVLeaf, LBVNode} for t in child_types]) "Invalid child type"
+            node_length = sum(length.(child_types))
 
-        #capture the value of the LBVNode's length in a local scope to avoid
-        #using a global scope variable in a closure
-        node_length = sum(length.(child_types))
-        let l = node_length
-            Base.length(::Type{<:$(esc(name))}) = l
-        end
+            global function Base.propertynames(::$(esc(name)), private::Bool = false) child_labels end
+            global function Base.length(::Type{<:$(esc(name))}) node_length end
+            global function $(esc(s_descr))(::Type{<:$(esc(name))}) desc end
+            global function $(esc(s_descr))(::($(esc(name)))) desc end
 
-        offset = 0
-        for (child_label, child_type) in zip(child_labels, child_types)
+            #the for block already creates a local scope, so no let block is needed
+            offset = 0
+            for (child_label, child_type) in zip(child_labels, child_types)
 
-            child_length = length(child_type)
-            child_range = (1 + offset):(child_length + offset)
-            global offset += child_length
+                child_length = length(child_type)
+                child_range = (1 + offset):(child_length + offset)
+                offset += child_length
 
-            println("Generating helper methods for child $child_label, range $child_range")
-            Base.getproperty(x::$(esc(name)), ::Val{child_label}) = (child_type)(view(getfield(x,:data), child_range))
-            Base.setproperty!(x::$(esc(name)), ::Val{child_label}, v) = setindex!(getfield(x, :data), v, child_range)
+                println("Generating helper methods for child $child_label, range $child_range")
+                global function Base.getproperty(x::$(esc(name)), ::Val{child_label})
+                    return (child_type)(view(getfield(x,:data), child_range))
+                end
+                global function Base.setproperty!(x::$(esc(name)), ::Val{child_label}, v)
+                    return setindex!(getfield(x, :data), v, child_range)
+                end
+            end
 
         end
 
