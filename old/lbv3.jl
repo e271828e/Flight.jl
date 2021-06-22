@@ -11,9 +11,9 @@ abstract type AbstractLBV{T, D<:AbstractVector{T}} <: AbstractVector{T} end
 struct LBVLeaf{L, T, D <: AbstractVector{T}} <: AbstractLBV{T, D}
     data::D
     function LBVLeaf{L,T,D}(data) where {L,T,D} #for some reason, you can't restrict type parameters here!
-        # if !(L > 0)
-        #     throw(ArgumentError("LBVLeaf length must be positive"))
-        # end
+        if !(L > 0)
+            throw(ArgumentError("LBVLeaf length must be positive"))
+        end
         if length(data) != length(LBVLeaf{L,T,D})
             throw(ArgumentError("Got input length $(length(data)), expected $(length(LBVLeaf{L,T,D}))"))
         end
@@ -29,7 +29,6 @@ LBVLeaf(data::D) where {D} = LBVLeaf{length(data),eltype(data),typeof(data)}(dat
 Base.similar(::Type{<:LBVLeaf{L,T}}) where {L,T} = LBVLeaf{L,T}(Vector{T}(undef, L))
 Base.similar(::LBVLeaf{L,T}) where {L,T} = similar(LBVLeaf{L,T})
 Base.copy(x::LBVLeaf{L}) where {L} = LBVLeaf{L}(copy(getfield(x, :data)))
-# Base.convert(::Type{<:LBVLeaf{L}}, v::AbstractVector) where {L} = LBVLeaf{L}(v)
 
 ###### Abstract Array #######
 
@@ -82,7 +81,6 @@ Base.setindex!(x::LBVNode, v, i) = setindex!(getfield(x,:data), v, i)
 Base.similar(::Type{<:LBVNode{S,T}}) where {S,T} = LBVNode{S,T}(Vector{T}(undef, length(LBVNode{S,T})))
 Base.similar(::LBVNode{S,T}) where {S,T} = similar(LBVNode{S,T})
 Base.copy(x::LBVNode{S}) where {S} = LBVNode{S}(copy(getfield(x, :data)))
-# Base.convert(::Type{<:LBVNode{S}}, v::AbstractVector) where {S} = LBVNode{S}(v)
 
 ####### Custom Broadcasting #######
 
@@ -108,6 +106,8 @@ Base.setproperty!(x::LBVNode, s::Symbol, v) = getproperty!(x, Val(s), v)
 #define and register a LBVNode
 macro define_node(name, descriptor)
 
+    s_descr = :descriptor
+
     ex = quote
 
         println("Generating code for $($(QuoteNode(name))) = ",
@@ -118,19 +118,22 @@ macro define_node(name, descriptor)
             "in module $($(QuoteNode(__module__)))")
         end
 
-        #use a let block to create a local scope so that:
+        # by escaping the LBVNode name, we are defining it as a local variable
+        # in the macro caller scope, rather than in the LBV module itself. this
+        # means that, for this name to be used in a macro call in another
+        # module:
+        # 1) the defining module must export the name in addition to calling the
+        #    macro
+        # 2) the interested module must import the defining module with "using"
+        global const $(esc(name)) = LBVNode{$(QuoteNode(name))}
 
-        #1) variables captured in methods do not inhabit the global module
-        #   scope. this avoids the performance hit from capturing global
-        #   variables in a closure. the global keyword is required to make
-        #   methods and variables defined within the let block visible in the
-        #   global module scope.
-
-        #2) macro hygiene is respected (we have escaped the whole quote)
-
-        let desc = $(descriptor)
-
-            global const $(name) = LBVNode{$(QuoteNode(name))}
+        #create a local scope so that variables captured in methods do not
+        #inhabit the global module scope. this avoids the performance hit from
+        #capturing global variables in a closure. the global keyword is required
+        #to make these methods visible in the global module scope. and the
+        #function...end syntax is needed with global so that macro hygiene
+        #works as expected with function signatures.
+        let desc = $(esc(descriptor))
 
             println(desc)
             child_labels = keys(desc)
@@ -138,39 +141,33 @@ macro define_node(name, descriptor)
             @assert all([t <: Union{LBVLeaf, LBVNode} for t in child_types]) "Invalid child type"
             node_length = sum(length.(child_types))
 
-            global Base.propertynames(::$(name), private::Bool = false) = child_label
-            global Base.length(::Type{<:$(name)}) = node_length
-            global descriptor(::Type{<:$(name)}) = desc
-            global descriptor(::($(name))) = desc
+            global function Base.propertynames(::$(esc(name)), private::Bool = false) child_labels end
+            global function Base.length(::Type{<:$(esc(name))}) node_length end
+            global function $(esc(s_descr))(::Type{<:$(esc(name))}) desc end
+            global function $(esc(s_descr))(::($(esc(name)))) desc end
 
             #the for block already creates a local scope, so no let block is needed
             offset = 0
             for (child_label, child_type) in zip(child_labels, child_types)
 
                 child_length = length(child_type)
+                child_range = (1 + offset):(child_length + offset)
+                offset += child_length
 
-                if child_length != 0
-
-                    child_range = (1 + offset):(child_length + offset)
-                    offset += child_length
-                    println("Generating helper methods for child $child_label, range $child_range")
-
-                    global function Base.getproperty(x::$(name), ::Val{child_label})
-                        return (child_type)(view(getfield(x,:data), child_range))
-                    end
-                    global function Base.setproperty!(x::$(name), ::Val{child_label}, v)
-                        return setindex!(getfield(x, :data), v, child_range)
-                    end
-
+                println("Generating helper methods for child $child_label, range $child_range")
+                global function Base.getproperty(x::$(esc(name)), ::Val{child_label})
+                    return (child_type)(view(getfield(x,:data), child_range))
                 end
-
+                global function Base.setproperty!(x::$(esc(name)), ::Val{child_label}, v)
+                    return setindex!(getfield(x, :data), v, child_range)
+                end
             end
 
         end
 
     end
-    return Base.remove_linenums!(esc(ex))
-    # return esc(ex)
+    return Base.remove_linenums!(ex)
+    # return ex
 end
 
 

@@ -29,7 +29,7 @@ using ..Airframe #needed to access XAirframe
 using ..Ldg #needed to access XLdg
 export XAircraft
 
-@define_node XAircraft (rbd = XAirframe, ldg = XLdg, pwp = LBVLeaf{4})
+@define_node XAircraft (rbd = XAirframe, ldg = XLdg, pwp = LBVLeaf{4}, null = LBVLeaf{0})
 
 end #submodule
 
