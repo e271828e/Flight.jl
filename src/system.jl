@@ -1,6 +1,17 @@
 module System
 
+using Flight.LBV
 
+export AbstractContinuousSystem, get_x_type, get_u_type
+
+abstract type AbstractSystem end
+
+abstract type AbstractContinuousSystem{X, U <: Union{Nothing, AbstractLBV}} <: AbstractSystem end
+
+# get_x_type(::Type{<:AbstractContinuousSystem{X, U}}) where {X, U} = X
+# get_u_type(::Type{<:AbstractContinuousSystem{X, U}}) where {X, U} = U
+# get_x_type(::AbstractContinuousSystem{X, U}) where {X, U} = get_x_type(AbstractContinuousSystem{X,U})
+# get_u_type(::AbstractContinuousSystem{X, U}) where {X, U} = get_u_type(AbstractContinuousSystem{X,U})
 
 end
 

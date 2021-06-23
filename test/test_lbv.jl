@@ -71,9 +71,7 @@ function test_lbv()
     @. y = x + sin(x) + 2x
     @show y
 
-    # z1 = XAircraft{Complex}() #this yields undefs, which break operations,
-    # need to initialize to zeros
-    z1 = XAircraft(zeros(Complex, length(XAircraft)))
+    z1 = XAircraft(zeros(Int32, length(XAircraft)))
     z2 = XAircraft(ones(Int64, length(XAircraft)))
     z = exp.(z1) + z2
     @show z

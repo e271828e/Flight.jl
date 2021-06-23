@@ -1,41 +1,40 @@
 module TestSystem
 
 using Flight.LBV
-# using Flight.System
+using Flight.System
 
-export XSystem1, XSystem2, USystem1, USystem2, System1, System2, get_x_type, get_u_type
+export XPwp, UPwp, PwpSystem, XLdg, ULdg, LdgSystem, get_x_type, get_u_type
 export @testmacro, test_macro
 
-@define_node XSystem1 (a1 = LBVLeaf{2}, b1 = LBVLeaf{3})
-@define_node USystem1 (u1 = LBVLeaf{2},)
+const SA_Float64 = SubArray{Float64, 1, Vector{Float64}, Tuple{UnitRange{Int64}}, true}
 
-struct System1
-	x::XSystem1
-	x_dot::XSystem1
-	u::USystem1
+@define_node XPwp (ω = LBVLeaf{1}, β = LBVLeaf{1})
+@define_node UPwp (throttle = LBVLeaf{1}, prop_pitch = LBVLeaf{1})
+
+struct PwpSystem{X<:XPwp{Float64}, U<:UPwp{Float64}} <: AbstractContinuousSystem{X, U}
+	x::X
+	u::U
+	J::Vector{Float64}
 end
-System1() = System1(XSystem1(), XSystem1(), USystem1())
 
-get_x_type(::Type{<:System1}) = XSystem1
-get_u_type(::Type{<:System1}) = USystem1
-get_x_type(::System1) = get_x_type(System1)
-get_u_type(::System1) = get_u_type(System1)
+get_x_type(::Type{<:PwpSystem}) = XPwp{Float64}
+get_u_type(::Type{<:PwpSystem}) = UPwp{Float64}
+get_x_type(::PwpSystem) = get_x_type(PwpSystem)
+get_u_type(::PwpSystem) = get_u_type(PwpSystem)
 
+@define_node XLdg NamedTuple{(:a2, :b2)}((LBVLeaf{4}, LBVLeaf{2}))
+@define_node ULdg NamedTuple{(:u2,)}((LBVLeaf{4},))
 
-@define_node XSystem2 NamedTuple{(:a2, :b2)}((LBVLeaf{4}, LBVLeaf{2}))
-@define_node USystem2 NamedTuple{(:u2,)}((LBVLeaf{4},))
-
-struct System2
-	x::XSystem2
-	x_dot::XSystem2
-	u::USystem2
+struct LdgSystem{X<:XLdg{Float64}, U<:ULdg{Float64}} <: AbstractContinuousSystem{X, U}
+	x::X
+	u::U
+	ξ::Float64
 end
-System2() = System2(XSystem2(), XSystem2(), USystem2())
 
-get_x_type(::Type{<:System2}) = XSystem2
-get_u_type(::Type{<:System2}) = USystem2
-get_x_type(::System2) = get_x_type(System2)
-get_u_type(::System2) = get_u_type(System2)
+get_x_type(::Type{<:LdgSystem}) = XLdg{Float64}
+get_u_type(::Type{<:LdgSystem}) = ULdg{Float64}
+get_x_type(::LdgSystem) = get_x_type(LdgSystem)
+get_u_type(::LdgSystem) = get_u_type(LdgSystem)
 
 macro testmacro(sys_name, subsystems)
 

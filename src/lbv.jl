@@ -1,6 +1,8 @@
 module LBV
 
-export LBVLeaf, LBVNode
+using StaticArrays
+
+export AbstractLBV, LBVLeaf, LBVNode
 export @define_node
 
 abstract type AbstractLBV{T, D<:AbstractVector{T}} <: AbstractVector{T} end
@@ -22,11 +24,11 @@ struct LBVLeaf{L, T, D <: AbstractVector{T}} <: AbstractLBV{T, D}
 end
 LBVLeaf{L,T}(data::D) where {L,T,D} = LBVLeaf{L,T,D}(data) #T/D inconsistencies caught by the inner const
 LBVLeaf{L}(data::D) where {L,D} = LBVLeaf{L,eltype(D),D}(data)
-LBVLeaf{L,T}() where {L,T} = LBVLeaf{L,T}(Vector{T}(undef, L))
+LBVLeaf{L,T}() where {L,T} = LBVLeaf{L,T}(MVector{L,T}(undef))
 LBVLeaf{L}() where {L} = LBVLeaf{L,Float64}()
 LBVLeaf(data::D) where {D} = LBVLeaf{length(data),eltype(data),typeof(data)}(data) #avoid for efficiency
 
-Base.similar(::Type{<:LBVLeaf{L,T}}) where {L,T} = LBVLeaf{L,T}(Vector{T}(undef, L))
+Base.similar(::Type{<:LBVLeaf{L,T}}) where {L,T} = LBVLeaf{L,T}(MVector{L,T}(undef))
 Base.similar(::LBVLeaf{L,T}) where {L,T} = similar(LBVLeaf{L,T})
 Base.copy(x::LBVLeaf{L}) where {L} = LBVLeaf{L}(copy(getfield(x, :data)))
 # Base.convert(::Type{<:LBVLeaf{L}}, v::AbstractVector) where {L} = LBVLeaf{L}(v)
@@ -70,7 +72,7 @@ end
 
 LBVNode{S,T}(data::D) where {S,T,D} = LBVNode{S,T,D}(data) #T/D inconsistencies caught by the inner const
 LBVNode{S}(data::D) where {S,D} = LBVNode{S,eltype(D),D}(data)
-LBVNode{S,T}() where {S,T} = LBVNode{S,T}(Vector{T}(undef, length(LBVNode{S,T})))
+LBVNode{S,T}() where {S,T} = LBVNode{S,T}(MVector{length(LBVNode{S,T}) ,T}(undef))
 LBVNode{S}() where {S} = LBVNode{S,Float64}()
 
 ####### Abstract Array #############
@@ -79,7 +81,7 @@ Base.size(x::LBVNode) = size(getfield(x,:data))
 Base.getindex(x::LBVNode, i) = getindex(getfield(x,:data), i)
 Base.setindex!(x::LBVNode, v, i) = setindex!(getfield(x,:data), v, i)
 
-Base.similar(::Type{<:LBVNode{S,T}}) where {S,T} = LBVNode{S,T}(Vector{T}(undef, length(LBVNode{S,T})))
+Base.similar(::Type{<:LBVNode{S,T}}) where {S,T} = LBVNode{S,T}(MVector{length(LBVNode{S,T}),T}(undef))
 Base.similar(::LBVNode{S,T}) where {S,T} = similar(LBVNode{S,T})
 Base.copy(x::LBVNode{S}) where {S} = LBVNode{S}(copy(getfield(x, :data)))
 # Base.convert(::Type{<:LBVNode{S}}, v::AbstractVector) where {S} = LBVNode{S}(v)
