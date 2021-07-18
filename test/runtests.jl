@@ -11,7 +11,7 @@ using .TestAttitude
 using .TestWGS84
 using .TestLBV
 
-# test_quaternions()
-# test_attitude()
-# test_wgs84()
+test_quaternions()
+test_attitude()
+test_wgs84()
 test_lbv()

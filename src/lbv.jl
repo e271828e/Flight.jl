@@ -143,9 +143,8 @@ macro define_node(name, descriptor)
             global Base.propertynames(::$(name), private::Bool = false) = child_label
             global Base.length(::Type{<:$(name)}) = node_length
             global descriptor(::Type{<:$(name)}) = desc
-            global descriptor(::($(name))) = desc
+            global descriptor(::$(name)) = desc
 
-            #the for block already creates a local scope, so no let block is needed
             offset = 0
             for (child_label, child_type) in zip(child_labels, child_types)
 
@@ -167,6 +166,14 @@ macro define_node(name, descriptor)
                 end
 
             end
+
+            global function Base.show(io::IO, x::$(name))
+                println(io, "$node_length-element ", typeof(x), " with blocks:")
+                for child_label in keys(desc)
+                    println(io, child_label, ": ", getproperty(x, child_label)[:])
+                end
+            end
+            global Base.show(io::IO, ::MIME"text/plain", x::$(name)) = show(io, x)
 
         end
 
