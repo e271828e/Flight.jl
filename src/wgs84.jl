@@ -5,7 +5,9 @@ using LinearAlgebra
 using StaticArrays: SVector
 using Flight.Attitude
 
+export ω_ie
 export NVector, WGS84Pos, rECEF
+export ltf, radii, ψ_nl
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -185,6 +187,7 @@ function rECEF(p::WGS84Pos)
 end
 
 radii(p::WGS84Pos) = radii(p.n_e)
+ltf(p::WGS84Pos) = ltf(p.n_e)
 
 Base.:(==)(p1::WGS84Pos, p2::WGS84Pos) = (p1.n_e == p2.n_e && p1.h == p2.h)
 Base.:(≈)(p1::WGS84Pos, p2::WGS84Pos) = (p1.n_e ≈ p2.n_e && p1.h ≈ p2.h)

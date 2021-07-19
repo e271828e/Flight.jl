@@ -86,7 +86,8 @@ function Base.:*(q1::Quat, q2::Quat)
     p_re = q1_re * q2_re - q1_im ⋅ q2_im
     p_im = q1_re * q2_im + q2_re * q1_im + q1_im × q2_im
 
-    Quat([p_re, p_im...])
+    # Quat([p_re, p_im...]) #much slower!
+    Quat(vcat(p_re, p_im))
 end
 
 Base.:*(q::Quat, a::Real) = a * q

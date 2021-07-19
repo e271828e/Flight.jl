@@ -7,12 +7,17 @@ export @define_node
 
 abstract type AbstractLBV{T, D<:AbstractVector{T}} <: AbstractVector{T} end
 
+#note: it is still unclear whether there is any benefit in allowing zero-length
+#blocks. it may allow treating systems more homogeneously, regardless of whether
+#they have inputs/states or not. when this becomes clear, remove support for
+#zero length blocks if it does not afford anything
 
 ########################### LBVLeaf ############################
 
 struct LBVLeaf{L, T, D <: AbstractVector{T}} <: AbstractLBV{T, D}
     data::D
     function LBVLeaf{L,T,D}(data) where {L,T,D} #for some reason, you can't restrict type parameters here!
+        ##uncomment the following to disable zero length blocks #######################
         # if !(L > 0)
         #     throw(ArgumentError("LBVLeaf length must be positive"))
         # end
@@ -105,7 +110,7 @@ end
 ######### Code Generation #########
 
 Base.getproperty(x::LBVNode, s::Symbol) = getproperty(x, Val(s))
-Base.setproperty!(x::LBVNode, s::Symbol, v) = getproperty!(x, Val(s), v)
+Base.setproperty!(x::LBVNode, s::Symbol, v) = setproperty!(x, Val(s), v)
 
 #define and register a LBVNode
 macro define_node(name, descriptor)
@@ -150,7 +155,7 @@ macro define_node(name, descriptor)
 
                 child_length = length(child_type)
 
-                if child_length != 0
+                if child_length != 0 #remove this surrounding if to disable zero length blocks ##############
 
                     child_range = (1 + offset):(child_length + offset)
                     offset += child_length
@@ -169,8 +174,13 @@ macro define_node(name, descriptor)
 
             global function Base.show(io::IO, x::$(name))
                 println(io, "$node_length-element ", typeof(x), " with blocks:")
-                for child_label in keys(desc)
-                    println(io, child_label, ": ", getproperty(x, child_label)[:])
+                for (child_label, child_type) in zip(keys(desc), values(desc))
+                    #remove this surrounding if to disable zero length blocks #####################
+                    if length(child_type) != 0
+                        println(io, child_label, ": ", getproperty(x, child_label)[:])
+                    else
+                        println(io, child_label, ": Empty block")
+                    end
                 end
             end
             global Base.show(io::IO, ::MIME"text/plain", x::$(name)) = show(io, x)

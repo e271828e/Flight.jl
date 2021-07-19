@@ -10,22 +10,19 @@ using Flight.Kinematics
 
 export XAirframe, Wrench, MassData
 
-SV3 = SVector{3, Float64}
-SM3 = SMatrix{3, 3, Float64}
-
 @define_node XAirframe (kin = XKinWGS84,)
 
 struct Wrench
-    F::SV3
-    T::SV3
+    F::SVector{3,Float64}
+    T::SVector{3,Float64}
 end
 Wrench(; F = zeros(3), T = zeros(3)) = Wrench(F, T)
 Base.show(io::IO, wr::Wrench) = print(io, "Wrench(F = $(wr.F), T = $(wr.T))")
 
 struct MassData
     m::Float64
-    J_Ob_b::SM3
-    r_ObG_b::SV3
+    J_Ob_b::SMatrix{3, 3, Float64}
+    r_ObG_b::SMatrix{3, 3, Float64}
 end
 MassData(; m = 1.0, J_Ob_b = SM3(I), r_ObG_b = zeros(3)) = MassData(m, J_Ob_b, r_ObG_b)
 
