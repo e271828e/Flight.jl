@@ -1,6 +1,7 @@
 module Airframe
 
 # using Base: Float64
+using Base: Float64
 using StaticArrays: SVector, SMatrix
 using LinearAlgebra
 using UnPack
@@ -10,8 +11,25 @@ using Flight.WGS84
 using Flight.Attitude
 using Flight.Kinematics
 
+export v2skew
 export XAirframe, Wrench, FrameTransform, MassData
-export inertia_wrench, gravity_wrench
+export inertia_wrench, gravity_wrench, x_vel_dot
+
+"""
+Computes the skew-symmetric matrix corresponding to 3-element vector v.
+"""
+# function v2skew(v::AbstractVector{T} where {T<:Real})
+function v2skew(v::AbstractVector{T}) where {T<:Real}
+    #much slower, each indexing operation yields an allocation
+    # [0. -v[3] v[2]; v[3] 0. -v[1]; -v[2] v[1] 0.]
+    M = zeros(T, 3, 3)
+                    M[1,2] = -v[3];  M[1,3] = v[2]
+    M[2,1] = v[3];                   M[2,3] = -v[1]
+    M[3,1] = -v[2]; M[3,2] = v[1]
+
+    SMatrix{3,3}(M)
+end
+
 
 @define_node XAirframe (kin = XKinWGS84,)
 
@@ -87,7 +105,6 @@ function inertia_wrench(mass::MassData, vel::VelDataWGS84, h_add_b::AbstractVect
 
 end
 
-    # q_bl = q_be * q_el
 function gravity_wrench(mass::MassData, pos::PosDataWGS84)
 
     #strictly, the gravity vector should be evaluated at G, with its direction
@@ -105,7 +122,7 @@ function gravity_wrench(mass::MassData, pos::PosDataWGS84)
     #with the previous assumption, the transformation from body frame to local
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
-    f_bc = FrameTransform(r_ObOc_b = mass.r_ObG_b, q_bc = pos.l_b')
+    f_bc = FrameTransform(r_ObOc_b = mass.r_ObG_b, q_bc = pos.q_lb')
     wr_Oc_c = wr_G_l
     wr_Ob_b = f_bc * wr_Oc_c
 
@@ -114,14 +131,29 @@ function gravity_wrench(mass::MassData, pos::PosDataWGS84)
 end
 
 
-function x_vel_dot(wr_Ob_b::Wrench, mass::MassData, kin::PVDataWGS84)::XVel
-    return XVel()
+function x_vel_dot(wr_Ob_b::Wrench, mass::MassData)
+
+    #clearly, r_ObG_b cannot be arbitrarily large, because J_Ob_b is larger than
+    #J_G_b (Steiner). therefore, at some point J_G_b would become zero (or at
+    #least singular)!
+
+    @unpack m, J_Ob_b, r_ObG_b = mass
+
+    #preallocating is faster than directly concatenating the blocks
+    A = Array{Float64}(undef, (6,6))
+
+    r_ObG_b_sk = v2skew(r_ObG_b)
+    A[1:3, 1:3] .= J_Ob_b
+    A[1:3, 4:6] .= m * r_ObG_b_sk
+    A[4:6, 1:3] .= -m * r_ObG_b_sk
+    A[4:6, 4:6] .= m * SMatrix{3,3,Float64}(I)
+
+    A = SMatrix{6,6}(A)
+    b = [wr_Ob_b.T ; wr_Ob_b.F]
+
+    XVel(A\b)
+
 end
-
-# function x_vel_dot(wr_Ob_b::Wrench, mass::MassData, kin::KinDataFlat)::XVel
-#     return XVel()
-# end
-
 
 
 end #module

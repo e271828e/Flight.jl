@@ -8,13 +8,13 @@ using Flight.LBV
 using Flight.WGS84
 using Flight.Attitude
 
-export XKinWGS84, KinInit, VelDataWGS84, PosDataWGS84, PVDataWGS84, AccDataWGS84
+export XVel, XPosWGS84, XKinWGS84, KinInit, VelDataWGS84, PosDataWGS84, PVDataWGS84, AccDataWGS84
 export x_pos_dot
 
 #for some reason, defining and using using the type alias SV3 =
 #SVector{3,Float64} yields type instability
 
-@define_node XPosWGS84 (l_b = LBVLeaf{4}, e_l = LBVLeaf{4}, h = LBVLeaf{1})
+@define_node XPosWGS84 (q_lb = LBVLeaf{4}, q_el = LBVLeaf{4}, h = LBVLeaf{1})
 @define_node XVel (ω_eb_b = LBVLeaf{3}, v_eOb_b = LBVLeaf{3})
 @define_node XKinWGS84 (pos = XPosWGS84, vel = XVel)
 
@@ -42,48 +42,18 @@ Base.show(io::IO, data::KinematicData) = print_data_oneline(data, io)
 Base.show(io::IO, ::MIME"text/plain", data::KinematicData) = print_data_multiline(data, io)
 
 Base.@kwdef struct KinInit <: KinematicData
-    n_b::RQuat = RQuat()
+    q_nb::RQuat = RQuat()
     Ob::WGS84Pos = WGS84Pos()
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
     v_eOb_b::SVector{3, Float64} = zeros(SVector{3})
 end
 
-function XKinWGS84(init::KinInit)
-
-    @unpack n_b, Ob, ω_lb_b, v_eOb_b = init
-
-    h = Ob.h[1]
-    (R_N, R_E) = radii(Ob)
-    v_eOb_n = n_b * v_eOb_b
-    ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + h),
-        -v_eOb_n[1] / (R_N + h),
-        0.0)
-
-    ω_el_b = n_b' * ω_el_n
-    ω_eb_b = ω_el_b + ω_lb_b
-
-    l_b = n_b #arbitrarily initialize ψ_nl to -1
-
-    x = XKinWGS84(zeros(length(XKinWGS84))) #avoid infinite recursion
-    x.pos.l_b .= l_b #assignment without colon slicing courtesy of RQuat iterability
-    x.pos.e_l .= ltf(Ob) #assignment without colon slicing courtesy of RQuat iterability
-    x.pos.h .= h
-    x.vel.ω_eb_b .= ω_eb_b
-    x.vel.v_eOb_b .= v_eOb_b
-
-    return x
-
-end
-
-XKinWGS84() = XKinWGS84(KinInit())
-
 Base.@kwdef struct PosDataWGS84 <: KinematicData
-    l_b::RQuat
-    n_l::RQuat
-    n_b::RQuat
-    e_b::RQuat
-    e_l::RQuat
+    q_lb::RQuat
+    q_nl::RQuat
+    q_nb::RQuat
+    q_eb::RQuat
+    q_el::RQuat
     Ob::WGS84Pos
 end
 
@@ -102,52 +72,6 @@ Base.@kwdef struct PVDataWGS84 <: KinematicData
     vel::VelDataWGS84
 end
 
-function PVDataWGS84(x::XKinWGS84)
-
-    #careful here: x.pos.h, x.vel.ω_eb_b and x.vel.v_eOb_b create views (this is
-    #how LBV behaves by design). to copy the data, we can extract their
-    #components using slices
-    l_b = RQuat(x.pos.l_b)
-    e_l = RQuat(x.pos.e_l)
-    h = x.pos.h[1]
-    ω_eb_b = SVector{3}(x.vel.ω_eb_b)
-    v_eOb_b = SVector{3}(x.vel.v_eOb_b)
-
-    Ob = WGS84Pos(NVector(e_l), h)
-    n_l = Rz(ψ_nl(e_l))
-    n_b = n_l ∘ l_b
-    e_b = e_l ∘ l_b
-
-    (R_N, R_E) = radii(Ob)
-    v_eOb_n = n_b * v_eOb_b
-    ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + h),
-        -v_eOb_n[1] / (R_N + h),
-        0.0)
-
-    ω_el_l = n_l' * ω_el_n
-    ω_el_b = l_b' * ω_el_l
-    ω_lb_b = ω_eb_b - ω_el_b
-
-    ω_ie_e = SVector{3}(0, 0, ω_ie)
-    ω_ie_b = e_b' * ω_ie_e
-    ω_ib_b = ω_ie_b + ω_eb_b
-
-    pos = PosDataWGS84(l_b, n_l, n_b, e_b, e_l, Ob)
-    vel = VelDataWGS84(ω_eb_b, ω_lb_b, ω_el_l, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
-
-    PVDataWGS84(pos, vel)
-
-end
-
-function x_pos_dot(pv::PVDataWGS84)::XPosWGS84
-    x_dot = XPosWGS84()
-    x_dot.l_b .= dt(pv.pos.l_b, pv.vel.ω_lb_b)
-    x_dot.e_l .= dt(pv.pos.e_l, pv.vel.ω_el_l)
-    x_dot.h .= -pv.vel.v_eOb_n[3]
-    return x_dot
-end
-
 Base.@kwdef struct AccDataWGS84 <: KinematicData
     α_eb_b::SVector{3,Float64}
     α_ib_b::SVector{3,Float64}
@@ -155,16 +79,85 @@ Base.@kwdef struct AccDataWGS84 <: KinematicData
     a_iOb_b::SVector{3,Float64}
 end
 
+
+function XKinWGS84(init::KinInit)
+
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_b = init
+
+    h = Ob.h[1]
+    (R_N, R_E) = radii(Ob)
+    v_eOb_n = q_nb * v_eOb_b
+    ω_el_n = SVector{3}(
+        v_eOb_n[2] / (R_E + h),
+        -v_eOb_n[1] / (R_N + h),
+        0.0)
+
+    ω_el_b = q_nb' * ω_el_n
+    ω_eb_b = ω_el_b + ω_lb_b
+
+    q_lb = q_nb #arbitrarily initialize ψ_nl to -1
+
+    x = XKinWGS84(zeros(length(XKinWGS84))) #avoid infinite recursion
+    x.pos.q_lb .= q_lb #assignment without colon slicing courtesy of RQuat iterability
+    x.pos.q_el .= ltf(Ob) #assignment without colon slicing courtesy of RQuat iterability
+    x.pos.h .= h
+    x.vel.ω_eb_b .= ω_eb_b
+    x.vel.v_eOb_b .= v_eOb_b
+
+    return x
+
+end
+
+XKinWGS84() = XKinWGS84(KinInit())
+
+function PVDataWGS84(x::XKinWGS84)
+
+    #careful here: x.pos.h, x.vel.ω_eb_b and x.vel.v_eOb_b create views (this is
+    #how LBV behaves by design). to copy the data, we can extract their
+    #components using slices
+    q_lb = RQuat(x.pos.q_lb)
+    q_el = RQuat(x.pos.q_el)
+    h = x.pos.h[1]
+    ω_eb_b = SVector{3}(x.vel.ω_eb_b)
+    v_eOb_b = SVector{3}(x.vel.v_eOb_b)
+
+    Ob = WGS84Pos(NVector(q_el), h)
+    q_nl = Rz(ψ_nl(q_el))
+    q_nb = q_nl ∘ q_lb
+    q_eb = q_el ∘ q_lb
+
+    (R_N, R_E) = radii(Ob)
+    v_eOb_n = q_nb * v_eOb_b
+    ω_el_n = SVector{3}(
+        v_eOb_n[2] / (R_E + h),
+        -v_eOb_n[1] / (R_N + h),
+        0.0)
+
+    ω_el_l = q_nl' * ω_el_n
+    ω_el_b = q_lb' * ω_el_l
+    ω_lb_b = ω_eb_b - ω_el_b
+
+    ω_ie_e = SVector{3}(0, 0, ω_ie)
+    ω_ie_b = q_eb' * ω_ie_e
+    ω_ib_b = ω_ie_b + ω_eb_b
+
+    pos = PosDataWGS84(q_lb, q_nl, q_nb, q_eb, q_el, Ob)
+    vel = VelDataWGS84(ω_eb_b, ω_lb_b, ω_el_l, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
+
+    PVDataWGS84(pos, vel)
+
+end
+
 function AccDataWGS84(x_vel_dot::XVel, pv::PVDataWGS84)
 
     @unpack ω_eb_b, ω_ie_b, v_eOb_b = pv.vel
-    @unpack Ob, e_b = pv.pos
+    @unpack Ob, q_eb = pv.pos
 
     ω_eb_b_dot = SVector{3}(x_vel_dot.ω_eb_b)
     v_eOb_b_dot = SVector{3}(x_vel_dot.v_eOb_b)
 
     r_eO_e = rECEF(Ob)
-    r_eO_b = e_b' * r_eO_e
+    r_eO_b = q_eb' * r_eO_e
 
     α_eb_b = ω_eb_b_dot
     α_ib_b = ω_eb_b_dot - ω_eb_b × ω_ie_b
@@ -174,6 +167,14 @@ function AccDataWGS84(x_vel_dot::XVel, pv::PVDataWGS84)
 
     AccDataWGS84(α_eb_b, α_ib_b, a_eOb_b, a_iOb_b)
 
+end
+
+function x_pos_dot(pv::PVDataWGS84)::XPosWGS84
+    x_dot = XPosWGS84()
+    x_dot.q_lb .= dt(pv.pos.q_lb, pv.vel.ω_lb_b)
+    x_dot.q_el .= dt(pv.pos.q_el, pv.vel.ω_el_l)
+    x_dot.h .= -pv.vel.v_eOb_n[3]
+    return x_dot
 end
 
 
