@@ -43,6 +43,7 @@ RQuat() = RQuat(UnitQuat())
 Base.getindex(r::RQuat, i) = getindex(r._quat, i)
 Base.length(r::RQuat) = length(r._quat)
 Base.iterate(r::RQuat, state = 1) = iterate(r._quat, state)
+Base.show(io::IO, r::RQuat) = print(io, "$(typeof(r))($(r[:]))")
 
 Base.:(==)(r1::RQuat, r2::RQuat) = (r1._quat == r2._quat || r1._quat == -r2._quat)
 Base.:(≈)(r1::RQuat, r2::RQuat) = (r1._quat ≈ r2._quat || r1._quat ≈ -r2._quat)

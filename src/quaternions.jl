@@ -18,10 +18,7 @@ Base.getindex(::AbstractQuat, i) = error("AbstractQuat: getindex not implemented
 Base.setindex!(::AbstractQuat, v, i) = error("AbstractQuat: setindex! not implemented")
 Base.iterate(q::AbstractQuat, state = 1) = (state > 4 ? nothing : (q[state], state + 1))
 Base.eltype(::AbstractQuat) = Float64 #helps with allocation efficiency
-
-#display functions
-Base.show(io::IO, ::MIME"text/plain", q::AbstractQuat) = print(io, "$(typeof(q)): $(q[:])")
-Base.show(io::IO, q::AbstractQuat) = print(io, "$(typeof(q)): $(q[:])")
+Base.show(io::IO, q::AbstractQuat) = print(io, "$(typeof(q))($(q[:]))")
 
 #real and imaginary parts
 Base.getindex(q::AbstractQuat, s::Symbol) = getindex(q, Val(s))

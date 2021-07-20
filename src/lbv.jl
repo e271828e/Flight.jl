@@ -17,10 +17,9 @@ abstract type AbstractLBV{T, D<:AbstractVector{T}} <: AbstractVector{T} end
 struct LBVLeaf{L, T, D <: AbstractVector{T}} <: AbstractLBV{T, D}
     data::D
     function LBVLeaf{L,T,D}(data) where {L,T,D} #for some reason, you can't restrict type parameters here!
-        ##uncomment the following to disable zero length blocks #######################
-        # if !(L > 0)
-        #     throw(ArgumentError("LBVLeaf length must be positive"))
-        # end
+        if !(L > 0)
+            throw(ArgumentError("LBVLeaf length must be positive"))
+        end
         if length(data) != length(LBVLeaf{L,T,D})
             throw(ArgumentError("Got input length $(length(data)), expected $(length(LBVLeaf{L,T,D}))"))
         end
@@ -154,33 +153,25 @@ macro define_node(name, descriptor)
             for (child_label, child_type) in zip(child_labels, child_types)
 
                 child_length = length(child_type)
+                child_range = (1 + offset):(child_length + offset)
+                offset += child_length
+                println("Generating helper methods for child $child_label, range $child_range")
 
-                if child_length != 0 #remove this surrounding if to disable zero length blocks ##############
-
-                    child_range = (1 + offset):(child_length + offset)
-                    offset += child_length
-                    println("Generating helper methods for child $child_label, range $child_range")
-
-                    global function Base.getproperty(x::$(name), ::Val{child_label})
-                        return (child_type)(view(getfield(x,:data), child_range))
-                    end
-                    global function Base.setproperty!(x::$(name), ::Val{child_label}, v)
-                        return setindex!(getfield(x, :data), v, child_range)
-                    end
-
+                global function Base.getproperty(x::$(name), ::Val{child_label})
+                    return (child_type)(view(getfield(x,:data), child_range))
+                end
+                global function Base.setproperty!(x::$(name), ::Val{child_label}, v)
+                    return setindex!(getfield(x, :data), v, child_range)
                 end
 
             end
 
             global function Base.show(io::IO, x::$(name))
+
                 println(io, "$node_length-element ", typeof(x), " with blocks:")
                 for (child_label, child_type) in zip(keys(desc), values(desc))
-                    #remove this surrounding if to disable zero length blocks #####################
-                    if length(child_type) != 0
-                        println(io, child_label, ": ", getproperty(x, child_label)[:])
-                    else
-                        println(io, child_label, ": Empty block")
-                    end
+                    println()
+                    print(io, child_label, ": ", getproperty(x, child_label)[:])
                 end
             end
             global Base.show(io::IO, ::MIME"text/plain", x::$(name)) = show(io, x)

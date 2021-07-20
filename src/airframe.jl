@@ -26,7 +26,7 @@ struct MassData
 end
 MassData(; m = 1.0, J_Ob_b = SM3(I), r_ObG_b = zeros(3)) = MassData(m, J_Ob_b, r_ObG_b)
 
-function x_vel_dot(wr_Ob_b::Wrench, mass::MassData, kin::KinDataWGS84)::XVel
+function x_vel_dot(wr_Ob_b::Wrench, mass::MassData, kin::AttPosVelWGS84)::XVel
     return XVel()
 end
 
