@@ -7,7 +7,7 @@ using Flight.Attitude
 
 export ω_ie
 export NVector, WGS84Pos, rECEF
-export ltf, radii, ψ_nl
+export gravity, ltf, radii, ψ_nl
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -122,6 +122,22 @@ end
 
 WGS84Pos(; ϕ::Real = 0., λ::Real = 0., h::Real = 0.) = WGS84Pos(NVector(ϕ = ϕ, λ = λ), h)
 
+Base.propertynames(p::WGS84Pos, private::Bool = false) = (:n_e, :h, :alt,
+    propertynames(getfield(p, :n_e), private)...)
+
+function Base.getproperty(p::WGS84Pos, s::Symbol)
+    if s == :n_e
+        return getfield(p, :n_e)
+    elseif s == :h || s == :alt
+        return getfield(p, :h)
+    else #delegate to n_e
+        return getproperty(getfield(p, :n_e), s)
+    end
+end
+
+Base.:(==)(p1::WGS84Pos, p2::WGS84Pos) = (p1.n_e == p2.n_e && p1.h == p2.h)
+Base.:(≈)(p1::WGS84Pos, p2::WGS84Pos) = (p1.n_e ≈ p2.n_e && p1.h ≈ p2.h)
+
 function WGS84Pos(r::AbstractVector{<:Real})
 
     #NVector + Alt from ECEF Cartesian position vector. See Fukushima:
@@ -186,24 +202,35 @@ function rECEF(p::WGS84Pos)
 
 end
 
+
 radii(p::WGS84Pos) = radii(p.n_e)
 ltf(p::WGS84Pos) = ltf(p.n_e)
 
-Base.:(==)(p1::WGS84Pos, p2::WGS84Pos) = (p1.n_e == p2.n_e && p1.h == p2.h)
-Base.:(≈)(p1::WGS84Pos, p2::WGS84Pos) = (p1.n_e ≈ p2.n_e && p1.h ≈ p2.h)
+"""
+    gravity(p::WGS84Pos)
 
-Base.propertynames(p::WGS84Pos, private::Bool = false) = (:n_e, :h, :alt,
-    propertynames(getfield(p, :n_e), private)...)
+Compute gravity vector resolved in the local tangent frame.
 
-function Base.getproperty(p::WGS84Pos, s::Symbol)
-    if s == :n_e
-        return getfield(p, :n_e)
-    elseif s == :h || s == :alt
-        return getfield(p, :h)
-    else #delegate to n_e
-        return getproperty(getfield(p, :n_e), s)
-    end
+Computation is based on Somigliana's formula for gravity at the ellipsoid
+surface, with a second order altitude correction, accurate for small altitudes
+above the WGS84 ellipsoid (h<<a). Direction is assumed normal to the WGS84
+ellipsoid, a good enough approximation for most navigation applications. See
+Hoffmann & Moritz.
+"""
+function gravity(p::WGS84Pos)
+
+    sin²ϕ = p.n_e[3]^2
+    cos²ϕ = p.n_e[1]^2 + p.n_e[2]^2
+    h = p.h
+
+    #gravity at the ellipsoid surface (Somigliana)
+    γ_0 = (a * γ_a * cos²ϕ + b * γ_b * sin²ϕ) / √(a² * cos²ϕ + b² * sin²ϕ) #[Hof06] 2-146
+
+    #altitude correction
+    γ = γ_0 * (1 - 2/a * (1 + f + m - 2f * sin²ϕ) * h + 3/a² * h^2)
+
+    SVector{3}(0, 0, γ)
+
 end
-
 
 end

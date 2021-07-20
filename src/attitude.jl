@@ -52,6 +52,8 @@ Base.adjoint(r::RQuat) = RQuat(r._quat')
 function Base.:*(r_ab::RQuat, v_b::AbstractVector{T} where {T<:Real})::SVector{3,Float64}
     #this conversion yields a threefold speed gain
     v_b = SVector{3, Float64}(v_b)
+    # v_b = SVector{3, Float64}(v_b) #this causes type instability between SV3
+    # and Vector, but does not hurt performance
     q = r_ab._quat; q_re = q.real; q_im = q.imag
     v_a = v_b + 2q_im × (q_re * v_b + q_im × v_b)
     return v_a

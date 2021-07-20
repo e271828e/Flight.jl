@@ -166,15 +166,14 @@ macro define_node(name, descriptor)
 
             end
 
-            global function Base.show(io::IO, x::$(name))
+            global function Base.show(io::IO, ::MIME"text/plain", x::$(name))
 
                 println(io, "$node_length-element ", typeof(x), " with blocks:")
-                for (child_label, child_type) in zip(keys(desc), values(desc))
-                    println()
-                    print(io, child_label, ": ", getproperty(x, child_label)[:])
+                for (child_label, child_type) in zip(child_labels, child_types)
+                    print(io, "\t", child_label, ": ", getproperty(x, child_label)[:])
+                    child_label == child_labels[end] ? break : println()
                 end
             end
-            global Base.show(io::IO, ::MIME"text/plain", x::$(name)) = show(io, x)
 
         end
 
