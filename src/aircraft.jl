@@ -9,6 +9,8 @@ using Flight.LBV
 # using Flight.Attitude
 using Flight.Kinematics
 
+export XTestAircraft
+export dt
 
 #1) gathers all wrenches and additional angular momentum from all aircraft
 #components, adds them up
@@ -43,9 +45,63 @@ end
 #pwp, srf models, etc, without making the aircraft abstract, and therefore reuse
 #the same x_dot function, which assumes the existence of these fields. this
 #requires LdgGroup, etc. to be isbits types. they can only hold numbers,
-#StaticVectors, etc. no dicts, no lists, no generic arrays, etc. it seems doable!
+#StaticVectors, etc. no dicts, no lists, no generic arrays, etc. it seems
+#doable! however, come to think of it, there is no actual need to store the
+#different models as type parameters! well, because each
+
+#the principle is that, regardless of any model's complexity, anything that can
+#change during operation will be stored separately in its corresponding state
+#and input vectors. and these will not be stored in the structs themselves. not
+#only that,
+
+#on the other hand, it seems desirable to store references to each state and
+#input vector sub block as part of its owner subsystem struct.
+#so what do we do?
+
+#option 1)
+#lets assume we want to compute x_ldg_dot. in our aircraft we have a TricycleLdg
+#<: LdgGroup. for this TricycleLdg we will have a dt!(x_dot::XTricycleLdg,
+#x::XTricycleLdg, u::UTricycleLdg, ::PVDataWGS84, ::TricycleLdg, ::TerrainModel) which updates
+#x_dot::XTricycleLdg and also returns a TricycleLdgData. the reason to pass
+#x_dot is that it will be a subblock view of a previously allocated overall
+#aircraft state vector. this avoids having to allocate each block and sub-block
+#down the hierarchy to finally assemble them in an upstream process. this way,
+#the flow is only top to bottom.
+
+#option 2) the alternative is the Python way: when the aircraft is created, we
+#store the whole state vector LBV in a struct field x::XTestAircraft. we also
+#define x::XTricycleLdg within aircraft.ldg::TricycleLdg. we define an
+#assign_state_vector method that recursively assigns state vector sub blocks
+#down the hierarchy. for example, when we call
+#assign_state_vector(x::XTestAircraft, a::TestAircraft)), this method calls
+#assign_state_vector(x.ldg, a.ldg), which is defined by TricycleLdg with the
+#appropriate signature. this method in turn calls assign_state_vector(x.nlg,
+#l.nlg), etc. we do the same for xdot, x and u. once this process is finished,
+#we no longer need to pass the xdot, x and u vectors along the dot methods,
+#because their corresponding sub blocks will be available as views in each of
+#the subsystems down the hierarchy. this cleans up the dt method signature. now
+#it would look like dt!(sys::TricycleLdg, ::PVDataWGS84, ::TerrainModel) but
+#in exchange requires defining those recursive initialization methods for each
+#subsystem. also, systems are no longer of isbits types. the advantage of having
+#isbits types was that we could use them as type parameters, which in turn
+#allows Aircraft not to be an abstract type. does this really matter that much?
+#the only disadvantage of having an abstract type is the difficulty in reusing
+#the main dt(::Aircraft) function, which is similar for every aircraft and has
+
+#option 1a) this is a variation of 1) in which we define a mutable struct
+#TricycleLdg with fields: x::XTricycleLdg{Float64}, u::UTricycleLdg{Float64},
+#p::TricycleLdgParams, just to simplify the method argument list for dt!, which
+#would look like dt!(x_dot::XTricycleLdg, sys::TricycleLdg, ::PVDataWGS84,
+#::TerrainModel). middle of nowhere.
+
+#Let's try first option 1. See if it does not get too ugly.
+
+#now, it could be argued that if we stored references to
 
 @define_node XTestAircraft (kin = XKinWGS84, )
+
+#do we put the aircraft state and input vectors INSIDE the struct? Note that
+#this will cause it to lose its itsbitstype condition
 
 struct TestAircraft
     mass::ConstantMassModel
@@ -54,6 +110,10 @@ struct TestAircraft
     # srf_group::SrfGroup
 end
 
+function dt(x::XTestAircraft, t::Real)
+    x_kin = x.kin
+
+end
 #TerrainModel does not belong to the Aircraft itself. it must be defined
 #separately, and passed as an argument
 #the same goes for Atmosphere

@@ -8,7 +8,8 @@ using Flight.LBV
 using Flight.WGS84
 using Flight.Attitude
 
-export XVel, XPosWGS84, XKinWGS84, KinInit, VelDataWGS84, PosDataWGS84, PVDataWGS84, AccDataWGS84
+export KinInit, XVel
+export XPosWGS84, XKinWGS84, VelDataWGS84, PosDataWGS84, PVDataWGS84, AccDataWGS84
 export x_pos_dot
 
 #for some reason, defining and using using the type alias SV3 =

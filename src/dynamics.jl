@@ -9,9 +9,8 @@ using Flight.WGS84
 using Flight.Attitude
 using Flight.Kinematics
 
-export v2skew
 export XAirframe, Wrench, FrameTransform, MassData
-export inertia_wrench, gravity_wrench, x_vel_dot
+export v2skew, inertia_wrench, gravity_wrench, x_vel_dot
 
 """
 Computes the skew-symmetric matrix corresponding to 3-element vector v.
