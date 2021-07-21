@@ -5,7 +5,7 @@ include("attitude.jl")
 include("wgs84.jl")
 include("lbv.jl")
 include("kinematics.jl")
-include("airframe.jl")
+include("dynamics.jl")
 # include("system.jl")
 
 using Reexport
@@ -14,7 +14,7 @@ using Reexport
 @reexport using .WGS84
 @reexport using .LBV
 @reexport using .Kinematics
-@reexport using .Airframe
+@reexport using .Dynamics
 # @reexport using .System
 
 export ftest

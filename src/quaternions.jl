@@ -27,10 +27,8 @@ Base.setproperty!(q::AbstractQuat, s::Symbol, v) = setindex!(q, v, Val(s))
 
 ######################## Quat #############################
 
-const QData = SVector{4, Float64}
-
 struct Quat <: AbstractQuat
-    __data::QData
+    __data::SVector{4, Float64}
     #whenever typeof(input) != QData, new will call convert(QData, input). as long
     #as QData provides a convert method that can handle typeof(input), then we do
     #not need to handle it explicitly in an outer constructor.
@@ -101,7 +99,7 @@ Base.:\(a::Real, q::Quat) = q / a
 
 ######################## UnitQuat #############################
 
-mutable struct UnitQuat <: AbstractQuat
+struct UnitQuat <: AbstractQuat
     _quat::Quat
     function UnitQuat(input::Union{AbstractQuat, AbstractVector}; normalization::Bool = true)
         return normalization ? new(normalize(input)) : new(input)
@@ -131,7 +129,7 @@ Base.getindex(u::UnitQuat, ::Val{:imag}) = getindex(getfield(u, :_quat), Val(:im
 
 LinearAlgebra.norm(u::UnitQuat) = norm(getfield(u, :_quat)) #uses StaticArrays implementation
 LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :_quat)), normalization = false)
-LinearAlgebra.normalize!(u::UnitQuat) = (setfield!(u, :_quat, normalize(getfield(u, :_quat))); return u)
+# LinearAlgebra.normalize!(u::UnitQuat) = (setfield!(u, :_quat, normalize(getfield(u, :_quat))); return u)
 
 Base.promote_rule(::Type{UnitQuat}, ::Type{Quat}) = Quat
 Base.convert(::Type{UnitQuat}, u::UnitQuat) = u #do not normalize on convert

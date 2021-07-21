@@ -46,8 +46,8 @@ function test_RQuat()
         r_bad = RQuat(UnitQuat([1,2,3,4], normalization = false))
         @test abs(norm(r_bad._quat)-1) > 1e-2
         @test norm(normalize(r_bad)) ≈ 1
-        normalize!(r_bad)
-        @test norm(r_bad) ≈ 1
+        # normalize!(r_bad)
+        # @test norm(r_bad) ≈ 1
     end
 
     @testset "Operators" begin
@@ -256,9 +256,9 @@ function test_RMatrix()
 
         r_norm = normalize(r_dist)
         @test det(r_norm) ≈ 1
-        r_norm_copy = RMatrix(A_dist, normalization = false)
-        normalize!(r_norm_copy)
-        @test det(r_norm_copy) ≈ 1
+        # r_norm_copy = RMatrix(A_dist, normalization = false)
+        # normalize!(r_norm_copy)
+        # @test det(r_norm_copy) ≈ 1
 
         #error after renormalization
         r_err = r_orth ∘ r_norm'

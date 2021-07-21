@@ -33,7 +33,7 @@ abstract type Rotation end
 
 ############################# RQuat ###############################
 
-mutable struct RQuat <: Rotation
+struct RQuat <: Rotation
     _quat::UnitQuat
 end
 
@@ -61,7 +61,7 @@ end
 
 LinearAlgebra.norm(r::RQuat) = norm(r._quat)
 LinearAlgebra.normalize(r::RQuat) = RQuat(normalize(r._quat))
-LinearAlgebra.normalize!(r::RQuat) = (r._quat = normalize(r._quat))
+# LinearAlgebra.normalize!(r::RQuat) = (r._quat = normalize(r._quat))
 
 dt(r_ab::RQuat, ω_ab_b::AbstractVector{T} where {T<:Real}) = 0.5 * (r_ab._quat * Quat(imag=ω_ab_b))
 
@@ -89,7 +89,7 @@ Base.:∘(x::Any, r::Rotation) = error("$(typeof(x)) ∘ $(typeof(r)) compositio
 
 ######################### RMatrix #######################
 
-mutable struct RMatrix <: Rotation
+struct RMatrix <: Rotation
     _mat::SMatrix{3, 3, Float64}
     function RMatrix(input::AbstractArray{T, 2} where {T<:Real}; normalization::Bool = true)
         return normalization ? new(qr(input).Q) : new(input)
@@ -170,7 +170,7 @@ Base.adjoint(r::RMatrix) = RMatrix(r._mat', normalization = false)
 # assembling the RMatrix object adds 240 ns.
 #normalizing a RQuat takes ~15ns.
 LinearAlgebra.normalize(r::RMatrix) = RMatrix(r._mat, normalization = true)
-LinearAlgebra.normalize!(r::RMatrix) = (r._mat = qr(r._mat).Q; return r)
+# LinearAlgebra.normalize!(r::RMatrix) = (r._mat = qr(r._mat).Q; return r)
 LinearAlgebra.det(r::RMatrix) = det(r._mat)
 
 function dt(r_ab::RMatrix, ω_ab_b::AbstractVector{T} where {T<:Real})

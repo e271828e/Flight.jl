@@ -1,7 +1,5 @@
-module Airframe
+module Dynamics
 
-# using Base: Float64
-using Base: Float64
 using StaticArrays: SVector, SMatrix
 using LinearAlgebra
 using UnPack
@@ -31,14 +29,12 @@ function v2skew(v::AbstractVector{T}) where {T<:Real}
 end
 
 
-@define_node XAirframe (kin = XKinWGS84,)
-
 Base.@kwdef struct Wrench
     T::SVector{3,Float64} = zeros(SVector{3})
     F::SVector{3,Float64} = zeros(SVector{3})
 end
 Base.show(io::IO, wr::Wrench) = print(io, "Wrench(T = $(wr.T), F = $(wr.F))")
-
+Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(T = wr1.T + wr2.T, F = wr1.F + wr2.F)
 
 #defines the transform f_bc from the airframe reference frame Fb(Ob, Ɛb) to a
 #local component frame Fc(Oc, Ɛc) by:
@@ -51,6 +47,7 @@ Base.@kwdef struct FrameTransform
     r_ObOc_b::SVector{3,Float64} = zeros(SVector{3})
     q_bc::RQuat = RQuat()
 end
+
 
 function Base.:*(f_bc::FrameTransform, wr_Oc_c::Wrench)
 
@@ -81,9 +78,6 @@ Base.@kwdef struct MassData
 end
 
 function inertia_wrench(mass::MassData, vel::VelDataWGS84, h_add_b::AbstractVector{T} where {T<:Real})
-
-    #h_add_b: angular momentum due to rotating airframe components (computed using
-    #their angular velocity wrt the airframe, not the inertial frame)
 
     @unpack m, J_Ob_b, r_ObG_b = mass
     @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = vel #these are already SVectors
@@ -130,8 +124,24 @@ function gravity_wrench(mass::MassData, pos::PosDataWGS84)
 
 end
 
+#maybe define abstract type PVData
+#then PVDataWGS84 <: PVData. then we can define different gravity_wrench and
+#inertia_wrench methods for PVDataWGS84 and PVDataFlatEarth
 
-function x_vel_dot(wr_Ob_b::Wrench, mass::MassData)
+#maybe consider splitting
+
+function x_vel_dot(wr_ext_Ob_b::Wrench, h_ext_b::AbstractVector{T} where {T<:Real}, mass::MassData, pv::PVDataWGS84)
+
+    #wr_ext_Ob_b: Wrench due to aircraft components
+
+    #h_ext_b: Additional angular momentum due to rotating aircraft components
+    #(computed using their angular velocity wrt the airframe, not the inertial
+    #frame)
+
+    #wr_ext_Ob_b and h_ext_b, as well as mass data, are produced by aircraft
+    #components, so they must be computed by the aircraft's x_dot method. and,
+    #since pv is needed by those components, it must be called from the
+    #aircraft's kinematic state vector
 
     #clearly, r_ObG_b cannot be arbitrarily large, because J_Ob_b is larger than
     #J_G_b (Steiner). therefore, at some point J_G_b would become zero (or at
@@ -149,6 +159,10 @@ function x_vel_dot(wr_Ob_b::Wrench, mass::MassData)
     A[4:6, 4:6] .= m * SMatrix{3,3,Float64}(I)
 
     A = SMatrix{6,6}(A)
+
+    wr_g_Ob_b = gravity_wrench(mass, pv.pos)
+    wr_in_Ob_b = inertia_wrench(mass, pv.vel, h_ext_b)
+    wr_Ob_b = wr_ext_Ob_b + wr_g_Ob_b + wr_in_Ob_b
     b = [wr_Ob_b.T ; wr_Ob_b.F]
 
     XVel(A\b)
