@@ -49,6 +49,35 @@ Base.@kwdef struct KinInit <: KinematicData
     v_eOb_b::SVector{3, Float64} = zeros(SVector{3})
 end
 
+function initialize!(x::XKinWGS84, init::KinInit)
+
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_b = init
+
+    h = Ob.h[1]
+    (R_N, R_E) = radii(Ob)
+    v_eOb_n = q_nb * v_eOb_b
+    ω_el_n = SVector{3}(
+        v_eOb_n[2] / (R_E + h),
+        -v_eOb_n[1] / (R_N + h),
+        0.0)
+
+    ω_el_b = q_nb' * ω_el_n
+    ω_eb_b = ω_el_b + ω_lb_b
+
+    q_lb = q_nb #arbitrarily initialize ψ_nl to -1
+
+    x.pos.q_lb .= q_lb #assignment without colon slicing courtesy of RQuat iterability
+    x.pos.q_el .= ltf(Ob) #assignment without colon slicing courtesy of RQuat iterability
+    x.pos.h .= h
+    x.vel.ω_eb_b .= ω_eb_b
+    x.vel.v_eOb_b .= v_eOb_b
+
+end
+
+XKinWGS84(init::KinInit) = (x = XKinWGS84(undef); initialize!(x, init); return x)
+XKinWGS84() = XKinWGS84(KinInit())
+
+
 Base.@kwdef struct PosDataWGS84 <: KinematicData
     q_lb::RQuat
     q_nl::RQuat
@@ -79,37 +108,6 @@ Base.@kwdef struct AccDataWGS84 <: KinematicData
     a_eOb_b::SVector{3,Float64}
     a_iOb_b::SVector{3,Float64}
 end
-
-
-function XKinWGS84(init::KinInit)
-
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_b = init
-
-    h = Ob.h[1]
-    (R_N, R_E) = radii(Ob)
-    v_eOb_n = q_nb * v_eOb_b
-    ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + h),
-        -v_eOb_n[1] / (R_N + h),
-        0.0)
-
-    ω_el_b = q_nb' * ω_el_n
-    ω_eb_b = ω_el_b + ω_lb_b
-
-    q_lb = q_nb #arbitrarily initialize ψ_nl to -1
-
-    x = XKinWGS84(zeros(length(XKinWGS84))) #avoid infinite recursion
-    x.pos.q_lb .= q_lb #assignment without colon slicing courtesy of RQuat iterability
-    x.pos.q_el .= ltf(Ob) #assignment without colon slicing courtesy of RQuat iterability
-    x.pos.h .= h
-    x.vel.ω_eb_b .= ω_eb_b
-    x.vel.v_eOb_b .= v_eOb_b
-
-    return x
-
-end
-
-XKinWGS84() = XKinWGS84(KinInit())
 
 function PVDataWGS84(x::XKinWGS84)
 
@@ -172,8 +170,8 @@ end
 
 function x_pos_dot(pv::PVDataWGS84)::XPosWGS84
     x_dot = XPosWGS84()
-    x_dot.q_lb .= dt(pv.pos.q_lb, pv.vel.ω_lb_b)
-    x_dot.q_el .= dt(pv.pos.q_el, pv.vel.ω_el_l)
+    x_dot.q_lb .= dot(pv.pos.q_lb, pv.vel.ω_lb_b)
+    x_dot.q_el .= dot(pv.pos.q_el, pv.vel.ω_el_l)
     x_dot.h .= -pv.vel.v_eOb_n[3]
     return x_dot
 end

@@ -28,9 +28,13 @@ struct LBVLeaf{L, T, D <: AbstractVector{T}} <: AbstractLBV{T, D}
 end
 LBVLeaf{L,T}(data::D) where {L,T,D} = LBVLeaf{L,T,D}(data) #T/D inconsistencies caught by the inner const
 LBVLeaf{L}(data::D) where {L,D} = LBVLeaf{L,eltype(D),D}(data)
-LBVLeaf{L,T}() where {L,T} = LBVLeaf{L,T}(MVector{L,T}(undef))
-LBVLeaf{L}() where {L} = LBVLeaf{L,Float64}()
 LBVLeaf(data::D) where {D} = LBVLeaf{length(data),eltype(data),typeof(data)}(data) #avoid for efficiency
+
+LBVLeaf{L,T}(::UndefInitializer) where {L,T} = LBVLeaf{L,T}(MVector{L,T}(undef))
+LBVLeaf{L}(::UndefInitializer) where {L} = LBVLeaf{L,Float64}(undef)
+
+LBVLeaf{L,T}() where {L,T} = LBVLeaf{L,T}(undef)
+LBVLeaf{L}() where {L} = LBVLeaf{L,Float64}()
 
 Base.similar(::Type{<:LBVLeaf{L,T}}) where {L,T} = LBVLeaf{L,T}(MVector{L,T}(undef))
 Base.similar(::LBVLeaf{L,T}) where {L,T} = similar(LBVLeaf{L,T})
@@ -76,7 +80,11 @@ end
 
 LBVNode{S,T}(data::D) where {S,T,D} = LBVNode{S,T,D}(data) #T/D inconsistencies caught by the inner const
 LBVNode{S}(data::D) where {S,D} = LBVNode{S,eltype(D),D}(data)
-LBVNode{S,T}() where {S,T} = LBVNode{S,T}(MVector{length(LBVNode{S,T}) ,T}(undef))
+
+LBVNode{S,T}(::UndefInitializer) where {S,T} = LBVNode{S,T}(MVector{length(LBVNode{S,T}) ,T}(undef))
+LBVNode{S}(::UndefInitializer) where {S} = LBVNode{S,Float64}(undef)
+
+LBVNode{S,T}() where {S,T} = LBVNode{S,T}(undef)
 LBVNode{S}() where {S} = LBVNode{S,Float64}()
 
 ####### Abstract Array #############
@@ -112,7 +120,7 @@ Base.getproperty(x::LBVNode, s::Symbol) = getproperty(x, Val(s))
 Base.setproperty!(x::LBVNode, s::Symbol, v) = setproperty!(x, Val(s), v)
 
 #define and register a LBVNode
-macro define_node(name, descriptor)
+macro define_node(name, children)
 
     ex = quote
 
@@ -134,20 +142,20 @@ macro define_node(name, descriptor)
 
         #2) macro hygiene is respected (we have escaped the whole quote)
 
-        let desc = $(descriptor)
+        let children = $(children)
 
             global const $(name) = LBVNode{$(QuoteNode(name))}
 
-            println(desc)
-            child_labels = keys(desc)
-            child_types = values(desc)
+            println(children)
+            child_labels = keys(children)
+            child_types = values(children)
             @assert all([t <: Union{LBVLeaf, LBVNode} for t in child_types]) "Invalid child type"
             node_length = sum(length.(child_types))
 
             global Base.propertynames(::$(name), private::Bool = false) = child_label
             global Base.length(::Type{<:$(name)}) = node_length
-            global descriptor(::Type{<:$(name)}) = desc
-            global descriptor(::$(name)) = desc
+            global get_children(::Type{<:$(name)}) = children
+            global get_children(::$(name)) = children
 
             offset = 0
             for (child_label, child_type) in zip(child_labels, child_types)

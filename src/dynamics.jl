@@ -76,18 +76,18 @@ Base.@kwdef struct MassData
     r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
 end
 
-function inertia_wrench(mass::MassData, vel::VelDataWGS84, h_add_b::AbstractVector{T} where {T<:Real})
+function inertia_wrench(mass::MassData, vel::VelDataWGS84, h_ext_b::AbstractVector{T} where {T<:Real})
 
     @unpack m, J_Ob_b, r_ObG_b = mass
     @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = vel #these are already SVectors
 
-    h_add_b = SVector{3,Float64}(h_add_b)
+    h_ext_b = SVector{3,Float64}(h_ext_b)
 
     #angular momentum of the overall airframe as a rigid body
     h_rbd_b = J_Ob_b * ω_ib_b
 
     #total angular momentum
-    h_all_b = h_rbd_b + h_add_b
+    h_all_b = h_rbd_b + h_ext_b
 
     #exact
     a_1_b = (ω_eb_b + 2 * ω_ie_b) × v_eOb_b

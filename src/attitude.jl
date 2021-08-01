@@ -7,7 +7,7 @@ using Flight.Quaternions: UnitQuat, Quat
 #using ..Quaternions: UnitQuat, Quat
 #however, assumes a specific hierarchy
 
-export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dt
+export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dot
 
 const ε_null = 1e-10 #threshold for null rotation
 const half_π = π/2
@@ -63,7 +63,7 @@ LinearAlgebra.norm(r::RQuat) = norm(r._quat)
 LinearAlgebra.normalize(r::RQuat) = RQuat(normalize(r._quat))
 # LinearAlgebra.normalize!(r::RQuat) = (r._quat = normalize(r._quat))
 
-dt(r_ab::RQuat, ω_ab_b::AbstractVector{T} where {T<:Real}) = 0.5 * (r_ab._quat * Quat(imag=ω_ab_b))
+dot(r_ab::RQuat, ω_ab_b::AbstractVector{T} where {T<:Real}) = 0.5 * (r_ab._quat * Quat(imag=ω_ab_b))
 
 #require each Rotation subtype to implement conversions to and from RQuat
 Base.convert(::Type{RQuat}, r::R) where {R<:Rotation} = error("Implement $R to RQuat conversion")
@@ -173,7 +173,7 @@ LinearAlgebra.normalize(r::RMatrix) = RMatrix(r._mat, normalization = true)
 # LinearAlgebra.normalize!(r::RMatrix) = (r._mat = qr(r._mat).Q; return r)
 LinearAlgebra.det(r::RMatrix) = det(r._mat)
 
-function dt(r_ab::RMatrix, ω_ab_b::AbstractVector{T} where {T<:Real})
+function dot(r_ab::RMatrix, ω_ab_b::AbstractVector{T} where {T<:Real})
     Ω_ab_b = skew(ω_ab_b)
     return r_ab._mat * Ω_ab_b
 end
