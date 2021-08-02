@@ -29,11 +29,11 @@ end
 
 
 Base.@kwdef struct Wrench
-    T::SVector{3,Float64} = zeros(SVector{3})
     F::SVector{3,Float64} = zeros(SVector{3})
+    M::SVector{3,Float64} = zeros(SVector{3})
 end
-Base.show(io::IO, wr::Wrench) = print(io, "Wrench(T = $(wr.T), F = $(wr.F))")
-Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(T = wr1.T + wr2.T, F = wr1.F + wr2.F)
+Base.show(io::IO, wr::Wrench) = print(io, "Wrench(F = $(wr.F), M = $(wr.M))")
+Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(F = wr1.F + wr2.F, M = wr1.M + wr2.M)
 
 #defines the transform f_bc from the airframe reference frame Fb(Ob, Ɛb) to a
 #local component frame Fc(Oc, Ɛc) by:
@@ -53,18 +53,18 @@ function Base.:*(f_bc::FrameTransform, wr_Oc_c::Wrench)
     #translates a wrench specified on a local frame f2(O2, ε2) to a
     #reference frame f1(O1, ε1) given the frame transform from 1 to 2
 
-    T_Oc_c = wr_Oc_c.T
     F_Oc_c = wr_Oc_c.F
+    M_Oc_c = wr_Oc_c.M
 
     #project on the reference axes
-    T_Oc_b = f_bc.q_bc * T_Oc_c
     F_Oc_b = f_bc.q_bc * F_Oc_c
+    M_Oc_b = f_bc.q_bc * M_Oc_c
 
     #translate them to airframe origin
     F_Ob_b = F_Oc_b
-    T_Ob_b = T_Oc_b + f_bc.r_ObOc_b × F_Oc_b
+    M_Ob_b = M_Oc_b + f_bc.r_ObOc_b × F_Oc_b
 
-    wr_Ob_b = Wrench(T = T_Ob_b, F = F_Ob_b)
+    wr_Ob_b = Wrench(F = F_Ob_b, M = M_Ob_b)
 
     return wr_Ob_b
 
@@ -91,10 +91,10 @@ function inertia_wrench(mass::MassData, vel::VelDataWGS84, h_ext_b::AbstractVect
 
     #exact
     a_1_b = (ω_eb_b + 2 * ω_ie_b) × v_eOb_b
-    T_in_Ob_b = - ( J_Ob_b * (ω_ie_b × ω_eb_b) + ω_ib_b × h_all_b + m * r_ObG_b × a_1_b)
     F_in_Ob_b = -m * (a_1_b + ω_ib_b × (ω_ib_b × r_ObG_b) + r_ObG_b × (ω_eb_b × ω_ie_b ))
+    M_in_Ob_b = - ( J_Ob_b * (ω_ie_b × ω_eb_b) + ω_ib_b × h_all_b + m * r_ObG_b × a_1_b)
 
-    Wrench(T = T_in_Ob_b, F = F_in_Ob_b)
+    Wrench(F = F_in_Ob_b, M = M_in_Ob_b)
 
 end
 
@@ -109,8 +109,8 @@ function gravity_wrench(mass::MassData, pos::PosDataWGS84)
     #the resultant consists of the force of gravity acting on G along the local
     #vertical and a null torque
     F_G_l = mass.m * g_G_l
-    T_G_l = zeros(SVector{3})
-    wr_G_l = Wrench(T = T_G_l, F = F_G_l)
+    M_G_l = zeros(SVector{3})
+    wr_G_l = Wrench(F = F_G_l, M = M_G_l)
 
     #with the previous assumption, the transformation from body frame to local
     #gravity frame is given by the translation r_ObG_b and the (passive)
@@ -162,7 +162,7 @@ function x_vel_dot(wr_ext_Ob_b::Wrench, h_ext_b::AbstractVector{T} where {T<:Rea
     wr_g_Ob_b = gravity_wrench(mass, pv.pos)
     wr_in_Ob_b = inertia_wrench(mass, pv.vel, h_ext_b)
     wr_Ob_b = wr_ext_Ob_b + wr_g_Ob_b + wr_in_Ob_b
-    b = [wr_Ob_b.T ; wr_Ob_b.F]
+    b = [wr_Ob_b.M ; wr_Ob_b.F]
 
     XVel(A\b)
 
