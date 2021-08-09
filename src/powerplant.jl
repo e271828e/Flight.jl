@@ -23,25 +23,22 @@ abstract type SystemDescriptor end
 struct System{D}
 
     integrator::OrdinaryDiffEq.ODEIntegrator #in fact everything is stored within the integrator!
+    log::SavedValues
 
-    function System(desc::D, x₀::X, u₀::U, method, kwargs...) where {D<:SystemDescriptor, X, U}
-        @assert X <: XType(D)
-        @assert U <: UType(D)
+    function System(desc::D, x₀, u₀, method, kwargs...) where {D<:SystemDescriptor}
+
+        @assert typeof(x₀) <: x_type(D)
+        @assert typeof(u₀) <: u_type(D)
+
         params = (u = u₀, d = desc)
-        problem = ODEProblem{true}(f!, x₀, (0, Inf), params)
-        integrator = init(problem, method; save_everystep = false, kwargs...)
-        new{D}(integrator)
+        log = SavedValues(Float64, save_type(D))
+        scb = SavingCallback(f_output, log)
+
+        problem = ODEProblem{true}(f_update!, x₀, (0, Inf), params)
+        integrator = init(problem, method; callback = scb, save_everystep = false, kwargs...)
+        new{D}(integrator, log)
     end
 
-# if construction of the integrator needs knowledge of a particular function for
-#that concrete System, we can always define a method that dispatches on the
-#System type parameter and returns the function that it needs. for example, to
-#provide the saving function for the saving callback, we can do
-#get_output_function(System{ElectricPwp})
-
-        #need to add saving callbacks!!!
-
-        ### REMEMBER TO call U_MODIFIED!!!!!!!!!!!!!!
 
         # makes sense to disable save_everystep.
         #many of the state vector variables themselves (q_el, q_lb...) aren't
@@ -53,21 +50,24 @@ struct System{D}
 
 end
 
-System(desc::D; x = XTemplate(D), u = UTemplate(D), method = Tsit5(), kwargs...) where {D} =
+System(desc::D; x = x₀(D), u = u₀(D), method = Tsit5(), kwargs...) where {D} =
     System(desc, x, u, method, kwargs...)
 
 Base.getproperty(sys::System, s::Symbol) = getproperty(sys, Val(s))
 
-#forward everything to the integrator...
-Base.getproperty(sys::System, ::Val{S}) where {S} = getproperty(getfield(sys, :integrator), S)
-Base.getproperty(sys::System, ::Val{:integrator}) = getfield(sys, :integrator)
 Base.getproperty(sys::System, ::Val{:descriptor}) = sys.integrator.p.descriptor
+Base.getproperty(sys::System, ::Val{:integrator}) = getfield(sys, :integrator)
+Base.getproperty(sys::System, ::Val{:log}) = getfield(sys, :log)
+
+#forward everything else to the integrator...
+Base.getproperty(sys::System, ::Val{S}) where {S} = getproperty(getfield(sys, :integrator), S)
 
 #...except for x and u (because DiffEqs calls the state u, instead of x)
 Base.getproperty(sys::System, ::Val{:u}) = sys.integrator.p.u #input vector
 Base.getproperty(sys::System, ::Val{:x}) = sys.integrator.u #state vector
 
-#need to forward everything to integrator except x and u
+f_update!(ẋ, x, p, t) = f!(ẋ, x, p.u, t, p.d)
+f_output(x, t, integrator) = h(x, integrator.p.u, t, integrator.p.d)
 
 #this is the signature required by the integrator. it will call the specific
 #method defined by each System subtype
@@ -84,18 +84,16 @@ DifferentialEquations.step!(sys::System, dt::Real) = step!(sys.integrator, dt, s
 end
 
 Base.@kwdef struct SimpleProp
-    sense::TurnSense = CW
-    Jxx::Float64 = 1.0
-    kF::Float64 = 1
+    kF::Float64 = 0.1
     kM::Float64 = 0.01
+    J::Float64 = 1.0
 end
 
-h_Gc_xc(prop::SimpleProp, ω::Real) = prop.Jxx * ω
 
 function Dynamics.Wrench(prop::SimpleProp, ω::Real) # airdata should also be an input
-    @unpack sense, kF, kM = prop
+    @unpack kF, kM = prop
     F_ext_Os_s = kF * ω^2 * SVector(1,0,0)
-    M_ext_Os_s = -Int(sense) * kM * ω^2 * SVector(1,0,0)
+    M_ext_Os_s = -sign(ω) * kM * ω^2 * SVector(1,0,0)
     Wrench(F = F_ext_Os_s, M = M_ext_Os_s)
 end
 
@@ -105,55 +103,83 @@ Base.@kwdef struct ElectricMotor #defaults from Hacker Motors Q150-4M-V2
     kV::Float64 = 13.09 #rad/s/V
     Vb::Float64 = 48
     J::Float64 = 0.003 #kg*m^2 #ballpark figure, assuming a cylinder
+    s::TurnSense = CW
 end
 
 function torque(eng::ElectricMotor, throttle::Real, ω::Real)
-    @unpack i₀, R, kV, Vb = eng
-    return ((throttle * Vb - ω / kV) / R - i₀) / kV
+    @unpack i₀, R, kV, Vb, s = eng
+    V = i₀ * R + throttle * Vb
+    return Int(s) * ((V - Int(s)*ω/kV) / R - i₀) / kV
+end
+
+Base.@kwdef struct Gearbox
+    n::Float64 = 1.0 #gear ratio
+    η::Float64 = 1.0 #efficiency
 end
 
 Base.@kwdef struct ElectricPwp <: SystemDescriptor
     frame::FrameTransform = FrameTransform()
     engine::ElectricMotor = ElectricMotor()
     propeller::SimpleProp = SimpleProp()
-    gear_ratio::Float64 = 1.0 #propRPM / engRPM, typically <=1
+    gearbox::Gearbox = Gearbox()
 end
 
 #the parametric type definition is useful to allow a ComponentVector holding
 #either a view or an actual array as a method argument. this is in turn required
 #if we want to pass block views from a parent component array to a method
 #operating on it
-const XElectricPwpTemplate = ComponentVector(ω = 0.0)
+const XElectricPwpTemplate = ComponentVector(ω_shaft = 0.0)
 const XElectricPwpAxes = typeof(getaxes(XElectricPwpTemplate))
 const XElectricPwp = ComponentVector{Float64, D, XElectricPwpAxes} where {D <: AbstractVector{Float64}}
-# XElectricPwpType() = similar(XElectricPwpTemplate)
 
 const UElectricPwpTemplate = ComponentVector(throttle = 0.0)
 const UElectricPwpAxes = typeof(getaxes(UElectricPwpTemplate))
 const UElectricPwp = ComponentVector{Float64, D, UElectricPwpAxes} where {D <: AbstractVector{Float64}}
 
-XType(::Type{ElectricPwp}) = XElectricPwp
-UType(::Type{ElectricPwp}) = UElectricPwp
-XTemplate(::Type{ElectricPwp}) = XElectricPwpTemplate
-UTemplate(::Type{ElectricPwp}) = UElectricPwpTemplate
-# get_update_function(::Type{ElectricPwp}) = update!
-# get_output_function(::Type{ElectricPwp}) = output
+x_type(::Type{ElectricPwp}) = XElectricPwp
+u_type(::Type{ElectricPwp}) = UElectricPwp
+x₀(::Type{ElectricPwp}) = XElectricPwpTemplate
+u₀(::Type{ElectricPwp}) = UElectricPwpTemplate
+save_type(::Type{ElectricPwp}) = YElectricPwp
 
-#this is the signature required by the integrator. it will call the specific
-#method defined by each System subtype
+#a descriptor only has to provide its x template. then, system must construct
 
-# update!(ẋ, x, p, t) = f!(ẋ, x, p.u, p.d, t)
-f!(ẋ, x, p, t) = f!(ẋ, x, p.u, t, p.d)
-
-# saving callback method signature
-h(x, t, integrator) = h(x, integrator.p.u, t, integrator.p.d)
+struct YElectricPwp
+    throttle::Float64
+    ω_shaft_dot::Float64
+    ω_shaft::Float64
+    ω_prop::Float64
+    wr_Oc_c::Wrench
+    wr_Ob_b::Wrench
+    h_Gc_b::SVector{3, Float64}
+end
 
 function f!(ẋ::XElectricPwp, x::XElectricPwp, u::UElectricPwp, t, desc::ElectricPwp)
-    ẋ.ω = 0.1
-    # println(u, desc)
+    out = h(x, u, t, desc)
+    ẋ.ω_shaft = out.ω_shaft_dot
 end
+
 function h(x::XElectricPwp, u::UElectricPwp, t, desc::ElectricPwp) #output function dispatch
-    println(x,u,t)
+
+    @unpack frame, engine, propeller, gearbox = desc
+    @unpack n, η = gearbox
+
+    ω_shaft = x.ω_shaft
+    ω_prop = ω_shaft / n
+
+    wr_Oc_c = Wrench(propeller, ω_prop)
+    wr_Ob_b = frame * wr_Oc_c
+
+    M_eng_shaft = torque(engine, u.throttle, ω_shaft)
+    M_air_prop = wr_Oc_c.M[1]
+
+    ω_shaft_dot = (M_eng_shaft + M_air_prop/(η*n)) / (engine.J + propeller.J/(η*n^2))
+
+    h_Gc_c = SVector(engine.J * ω_shaft + propeller.J * ω_prop, 0, 0)
+    h_Gc_b = frame.q_bc * h_Gc_c
+
+    YElectricPwp(u.throttle, ω_shaft_dot, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b)
+
 end
 
 #TRY UNITFUL OUT, EVALUATE PERFORMANCE.
