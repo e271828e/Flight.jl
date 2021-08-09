@@ -1,54 +1,45 @@
 module System
 
-using Flight.LBV
+using DifferentialEquations
 
-export AbstractContinuousSystem, get_x_type, get_u_type
+export SystemDescriptor, ContinuousSystem
 
-abstract type AbstractSystem end
+abstract type SystemDescriptor end
 
-abstract type AbstractContinuousSystem{X, U <: Union{Nothing, AbstractLBV}} <: AbstractSystem end
+struct ContinuousSystem{D}
 
-# get_x_type(::Type{<:AbstractContinuousSystem{X, U}}) where {X, U} = X
-# get_u_type(::Type{<:AbstractContinuousSystem{X, U}}) where {X, U} = U
-# get_x_type(::AbstractContinuousSystem{X, U}) where {X, U} = get_x_type(AbstractContinuousSystem{X,U})
-# get_u_type(::AbstractContinuousSystem{X, U}) where {X, U} = get_u_type(AbstractContinuousSystem{X,U})
+    integrator::OrdinaryDiffEq.ODEIntegrator #just for annotation purposes
+    log::SavedValues
+    function ContinuousSystem(d::D, x₀, u₀, f_update!, f_output; method = Tsit5(), kwargs...) where {D<:SystemDescriptor}
 
+        f_step!(ẋ, x, p, t) = f_update!(ẋ, x, p.u, t, p.d)
+        f_save(x, t, integrator) = f_output(x, integrator.p.u, t, integrator.p.d)
+
+        params = (u = u₀, d = d)
+        y₀ = f_output(x₀, u₀, 0, d)
+        log = SavedValues(Float64, typeof(y₀))
+        scb = SavingCallback(f_save, log) #ADD A FLAG TO DISABLE SAVING OPTIONALLY, IT REDUCES ALLOCATIONS
+
+        problem = ODEProblem{true}(f_step!, x₀, (0, Inf), params)
+        integrator = init(problem, method; callback = scb, save_everystep = false, kwargs...)
+        new{D}(integrator, log)
+    end
 end
 
+Base.getproperty(sys::ContinuousSystem, s::Symbol) = getproperty(sys, Val(s))
 
+Base.getproperty(sys::ContinuousSystem, ::Val{:descriptor}) = sys.integrator.p.d
+Base.getproperty(sys::ContinuousSystem, ::Val{:integrator}) = getfield(sys, :integrator)
+Base.getproperty(sys::ContinuousSystem, ::Val{:log}) = getfield(sys, :log)
 
+#forward everything else to the integrator...
+Base.getproperty(sys::ContinuousSystem, ::Val{S}) where {S} = getproperty(getfield(sys, :integrator), S)
 
+#...except for x and u (because DiffEqs calls the state u, instead of x)
+Base.getproperty(sys::ContinuousSystem, ::Val{:u}) = sys.integrator.p.u #input vector
+Base.getproperty(sys::ContinuousSystem, ::Val{:x}) = sys.integrator.u #state vector
 
+DifferentialEquations.step!(sys::ContinuousSystem, args...) = step!(sys.integrator, args...)
+# DifferentialEquations.step!(sys::ContinuousSystem, dt::Real) = step!(sys.integrator, dt, true)
 
-
-
-
-# ejemplo: un Subsystem muReg contiene un x::Leaf{2}. cuando vaya a ensamblar el
-# descriptor XLdg del parent system Ldg, defino n campo reg=typeof(sys.reg.x).
-
-# Seria interesante que un System pudiera tener: x_disc x_cont
-
-# x_disc puede representar estados discretos del sistema (por ejemplo, una
-# maquina de estados) y tipicamente respondera a una ecuacion en diferencias.
-# Podria definir por ejemplo un LBV AircraftXStateMachine con fields act, pwp,
-# etc.
-
-# Ahora, en step hace dos cosas: x_disc = f_disc(x_disc, x_cont, u) x_cont =
-# integrate(f_cont(x_cont, x_disc, u))
-
-# Todo sistema manejado por el scheduler deberá ser discreto. Un sistema
-# discreto tendrá al menos un method init, otro step, otro shutdown. Si dentro
-# contiene un Continuous System, lógicamente estará discretizado en un numerical
-# method para exponer esos methods discretos.
-
-# Y si tengo un hybrid system? Pues entonces necesitaré un subtype de Discrete
-# Sys que además de integrar numéricamente el Continuous que envuelve, le puede
-# hacer cosas en cada llamada a step
-
-#para un Aircraft <: System, que deberia ser Aircraft? abstract type no,
-#claramente. entre diferentes tipos de Aircraft no hay solo afinidad en cuanto a
-#methods, sino tambien en cuanto a datos e implementacion. la duda es si definir
-#solo un tipo Aircraft, y que la unica particularidad de cada subtipo este en
-#los fields, o (y esta parece la opcion mas recomendable) un parametric type,
-#que permite hacer dispatch para definir pwp_group, ldg_group, etc, con los
-#dispatches correspondientes. p. ej, Aircraft{:Cessna172}
+end

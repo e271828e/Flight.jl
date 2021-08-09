@@ -1,21 +1,34 @@
 module Flight
 
-include("quaternions.jl")
-include("attitude.jl")
-include("wgs84.jl")
-include("lbv.jl")
-include("kinematics.jl")
-include("dynamics.jl")
-# include("system.jl")
-
 using Reexport
+
+#(sub) modules
+include("quaternions.jl")
 @reexport using .Quaternions
+
+include("attitude.jl")
 @reexport using .Attitude
+
+include("wgs84.jl") #there are many, many constants here. should keep it a module
 @reexport using .WGS84
+
+include("lbv.jl")
 @reexport using .LBV
+
+include("kinematics.jl")
 @reexport using .Kinematics
+
+include("dynamics.jl")
 @reexport using .Dynamics
-# @reexport using .System
+
+# #plain files
+include("system.jl")
+@reexport using .System
+
+include("powerplant.jl")
+@reexport using .Powerplant
+
+
 
 export ftest
 
