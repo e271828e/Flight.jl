@@ -7,12 +7,15 @@ using UnPack
 
 using Flight.Dynamics
 using Flight.System
-import Flight.System: init_x, init_u
+import Flight.System: init_x, init_u, init_y
 
 export SimpleProp, ElectricMotor, ElectricThruster, ElectricPowerplant
 export ElectricThrusterOutput
 export init_x, init_u, init_y, f_update!, f_output!, step!
 export ElectricThrusterSystem, ElectricPowerplantSystem
+
+#COULD I EXTEND init_x and let System see the new methods? if so, could also
+#define init_x within the Continuous constructor
 
 @enum TurnSense begin
     CW = 1
@@ -74,7 +77,7 @@ init_u(::ElectricThruster) = ComponentVector(throttle = 0.0)
 init_y(::ElectricThruster) = ElectricThrusterOutput()
 
 #interface required by DifferentialEquations
-f_update!(ẋ, x, p, t) = f_update!(p.y, ẋ, x, p.u, t, p.d)
+# f_update!(ẋ, x, p, t) = f_update!(p.y, ẋ, x, p.u, t, p.d)
 # f_output(x, t, integrator) = f_output(x, integrator.p.u, t, integrator.p.d)
 
 function f_update!(y, ẋ, x, u, t, desc::ElectricThruster)
@@ -111,8 +114,9 @@ function f_output!(y, x, u, t, desc::ElectricThruster)
 
 end
 
+
 ElectricThrusterSystem(d = ElectricThruster(); kwargs...) =
-    System.Continuous(d, init_x(d), init_u(d), f_update!, f_output; kwargs...)
+    System.Continuous(d, init_x(d), init_u(d), init_y(d), f_update!, f_output!; kwargs...)
 
 
 
@@ -156,24 +160,18 @@ end
 #es capaz de inferir de antemano cuales van a ser esos names, asi que no tiene
 #los symbols pre-allocated
 function f_update!(y, ẋ, x, u, t, pwp::ElectricPowerplant{N}) where {N}
-    # println("Called f_update for Powerplant")
-    for i=1:N
-        name = pwp.labels[i]
-        thruster = pwp.thrusters[i]
+    for (name, thruster) in zip(pwp.labels, pwp.thrusters)
         f_update!(getproperty(y, name), getproperty(ẋ, name), getproperty(x, name), getproperty(u, name), t, thruster)
     end
 end
 
 function f_output!(y, x, u, t, pwp::ElectricPowerplant{N}) where {N}
-    # println("Called f_output! for Powerplant")
-    for i=1:N
-        name = pwp.labels[i]
-        thruster = pwp.thrusters[i]
+    for (name, thruster) in zip(pwp.labels, pwp.thrusters)
         f_output!(getproperty(y, name), getproperty(x, name), getproperty(u, name), t, thruster)
     end
 end
 
 ElectricPowerplantSystem(d = ElectricPowerplant(); kwargs...) =
-    System.Continuous(d, init_x(d), init_u(d), f_update!, f_output; kwargs...)
+    System.Continuous(d, init_x(d), init_u(d), init_y(d), f_update!, f_output!; kwargs...)
 
 end #module

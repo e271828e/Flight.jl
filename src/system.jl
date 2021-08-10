@@ -1,30 +1,38 @@
 module System
 
 using DifferentialEquations
+using UnPack
 
-export init_x, init_u
+export init_x, init_u, init_y
 
 abstract type Descriptor end
 
 init_x(::Descriptor) = nothing
 init_u(::Descriptor) = nothing
+init_y(::Descriptor) = nothing
 
 struct Continuous{D}
 
     integrator::OrdinaryDiffEq.ODEIntegrator #just for annotation purposes
     log::SavedValues
-    function Continuous(d::D, x₀, u₀, f_update!, f_output;
+    function Continuous(d::D, x₀, u₀, y₀, f_update!, f_output!;
                             t_start = 0.0,
                             t_end = 10.0,
                             method = Tsit5(),
                             output_saveat = Float64[],
                             kwargs...) where {D<:Descriptor}
 
-        f_step!(ẋ, x, p, t) = f_update!(ẋ, x, p.u, t, p.d)
-        f_save(x, t, integrator) = f_output(x, integrator.p.u, t, integrator.p.d)
+        f_step!(ẋ, x, p, t) = f_update!(p.y, ẋ, x, p.u, t, p.d)
+        function f_save(x, t, integrator)
+            # @unpack y, x, u, d = integrator.p
+            f_output!(integrator.p.y, x, integrator.p.u, t, integrator.p.d)
+            return deepcopy(integrator.p.y)
+        end
 
-        params = (u = u₀, d = d)
-        y₀ = f_output(x₀, u₀, t_start, d)
+        x_test = init_x(d)
+        println(x_test)
+
+        params = (u = u₀, y = y₀, d = d)
         log = SavedValues(Float64, typeof(y₀))
         scb = SavingCallback(f_save, log, saveat = output_saveat) #ADD A FLAG TO DISABLE SAVING OPTIONALLY, IT REDUCES ALLOCATIONS
 
