@@ -7,11 +7,10 @@ using UnPack
 
 using Flight.Dynamics
 using Flight.System
-import Flight.System: init_x, init_u
+import Flight.System: init_x, init_u, init_y, f_output!, f_update!
 
 export SimpleProp, ElectricMotor, ElectricThruster, ElectricPowerplant
 export ElectricThrusterOutput
-export init_x, init_u, f_update!, f_output, step!
 export ElectricThrusterSystem, ElectricPowerplantSystem
 
 @enum TurnSense begin
@@ -59,40 +58,40 @@ function torque(eng::ElectricMotor, throttle::Real, ω::Real)
     return Int(s) * ((V - Int(s)*ω/kV) / R - i₀) / kV
 end
 
-struct ElectricThrusterOutput
-    throttle::Float64
-    ω_shaft_dot::Float64
-    ω_shaft::Float64
-    ω_prop::Float64
-    wr_Oc_c::Wrench
-    wr_Ob_b::Wrench
-    h_Gc_b::SVector{3, Float64}
+Base.@kwdef mutable struct ElectricThrusterOutput
+    throttle::Float64 = 0.0
+    ω_shaft_dot::Float64 = 0.0
+    ω_shaft::Float64 = 0.0
+    ω_prop::Float64 = 0.0
+    wr_Oc_c::Wrench = Wrench()
+    wr_Ob_b::Wrench = Wrench()
+    h_Gc_b::SVector{3, Float64} = SVector{3}(0,0,0)
 end
 
 init_x(::ElectricThruster) = ComponentVector(ω_shaft = 0.0)
 init_u(::ElectricThruster) = ComponentVector(throttle = 0.0)
+init_y(::ElectricThruster) = ElectricThrusterOutput()
 
-#interface required by DifferentialEquations
-f_update!(ẋ, x, p, t) = f_update!(ẋ, x, p.u, t, p.d)
-f_output(x, t, integrator) = f_output(x, integrator.p.u, t, integrator.p.d)
 
-function f_update!(ẋ, x, u, t, desc::ElectricThruster)
-    out = f_output(x, u, t, desc)
-    ẋ.ω_shaft = out.ω_shaft_dot
+function f_update!(y, ẋ, x, u, t, desc::ElectricThruster)
+    #updates both ẋ and y in place (y is just a cache to avoid allocation)
+    f_output!(y, x, u, t, desc)
+    ẋ.ω_shaft = y.ω_shaft_dot
 end
 
-function f_output(x, u, t, desc::ElectricThruster)
+function f_output!(y, x, u, t, desc::ElectricThruster)
 
     @unpack frame, motor, propeller, gearbox = desc
     @unpack n, η = gearbox
 
+    throttle = u.throttle
     ω_shaft = x.ω_shaft
     ω_prop = ω_shaft / n
 
     wr_Oc_c = wrench(propeller, ω_prop)
     wr_Ob_b = frame * wr_Oc_c
 
-    M_eng_shaft = torque(motor, u.throttle, ω_shaft)
+    M_eng_shaft = torque(motor, throttle, ω_shaft)
     M_air_prop = wr_Oc_c.M[1]
 
     ω_shaft_dot = (M_eng_shaft + M_air_prop/(η*n)) / (motor.J + propeller.J/(η*n^2))
@@ -100,13 +99,30 @@ function f_output(x, u, t, desc::ElectricThruster)
     h_Gc_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
     h_Gc_b = frame.q_bc * h_Gc_c
 
-    ElectricThrusterOutput(u.throttle, ω_shaft_dot, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b)
+    @pack! y = throttle, ω_shaft_dot, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b
 
 end
 
-ElectricThrusterSystem(d = ElectricThruster(); kwargs...) =
-    System.Continuous(d, init_x(d), init_u(d), f_update!, f_output; kwargs...)
 
+ElectricThrusterSystem(d::ElectricThruster = ElectricThruster(); kwargs...) =
+    System.Continuous(d; kwargs...)
+
+
+#################### ElectricPowerplant #######################
+
+#TO DO: consider including the complete named tuple of thruster descriptors in
+#the type parameter itself, instead of the size. it may help with type stability
+#if and when heterogeneous thrusters are allowed and fields become Unions or
+#abstract subtypes (which is not good).
+
+#TO DO: the same goes for ElectricThruster. why not include the descriptors for
+#Electric Motor, Gearbox and Propeller in a type parameter?
+
+#TO DO: hell, the complete aircraft hierarchy could be stored in this manner:
+#Aircraft{LandingGear, Powerplant, Actuation}
+
+#LandingGear can be composed of a number of LandingGearLeg or LandingGearUnit,
+#which could have multiple type parameters: Steerable, Braking, Castoring, etc
 
 struct ElectricPowerplant{N} <: System.Descriptor
     labels::NTuple{N, Symbol}
@@ -117,46 +133,34 @@ struct ElectricPowerplant{N} <: System.Descriptor
         new{N}(keys(nt), values(nt))
     end
 end
-ElectricPowerplant() = ElectricPowerplant((main = ElectricThruster(),))
+ElectricPowerplant() = ElectricPowerplant((left = ElectricThruster(), right = ElectricThruster()))
 
-function init_x(p::ElectricPowerplant)
-    #we know that x is non-empty for all NamedTuple components, but this allows
-    #us to generalize to the case of an heterogeneous powerplant where some
-    #elements have a state and others don't
-    # labels = p.labels
-    # blocks = init_x.(p.thrusters)
-    # with_x = collect(blocks.!=nothing)
-    # nt = NamedTuple{names[with_x]}(blocks[with_x])
-    ComponentVector(NamedTuple{p.labels}(init_x.(p.thrusters)))
-end
+init_x(p::ElectricPowerplant) = ComponentVector(NamedTuple{p.labels}(init_x.(p.thrusters)))
+init_u(p::ElectricPowerplant) = ComponentVector(NamedTuple{p.labels}(init_u.(p.thrusters)))
+init_y(p::ElectricPowerplant) = NamedTuple{p.labels}(init_y.(p.thrusters))
 
-function init_u(p::ElectricPowerplant)
-    # names = keys(p.thrusters)
-    # blocks = init_u.(values(p.thrusters))
-    # with_u = collect(blocks.!=nothing)
-    # nt = NamedTuple{names[with_u]}(blocks[with_u])
-    # ComponentVector(nt)
-    ComponentVector(NamedTuple{p.labels}(init_u.(p.thrusters)))
-end
-
-function f_update!(ẋ, x, u, t, pwp::ElectricPowerplant)
+function f_update!(y, ẋ, x, u, t, pwp::ElectricPowerplant)
     for (name, thruster) in zip(pwp.labels, pwp.thrusters)
-        f_update!(getproperty(ẋ, name), getproperty(x, name), getproperty(u, name), t, thruster)
+        f_update!(map(input->getproperty(input,name), (y, ẋ, x, u))..., t, thruster)
     end
 end
 
-function f_output(x, u, t, pwp::ElectricPowerplant{N}) where {N}
-    # v = Vector{ElectricThrusterOutput}(undef, N)
-    v = ElectricThrusterOutput[]
+function f_output!(y, x, u, t, pwp::ElectricPowerplant)
     for (name, thruster) in zip(pwp.labels, pwp.thrusters)
-        push!(v, f_output(getproperty(x, name), getproperty(u, name), t, thruster))
-        # v[1] = f_output(getproperty(x, name), getproperty(u, name), t, thruster)
+        f_output!(map(input->getproperty(input,name), (y, x, u))..., t, thruster)
     end
-    return NamedTuple{pwp.labels}(tuple(v...))
-    # return v
 end
 
-ElectricPowerplantSystem(d = ElectricPowerplant(); kwargs...) =
-    System.Continuous(d, init_x(d), init_u(d), f_update!, f_output; kwargs...)
+ElectricPowerplantSystem(d::ElectricPowerplant = ElectricPowerplant(); kwargs...) =
+    System.Continuous(d; kwargs...)
+
+#this allows us to generalize to the case of an heterogeneous powerplant where
+#some elements have a state and others don't
+
+# names = keys(p.thrusters)
+# blocks = init_u.(values(p.thrusters))
+# with_u = collect(blocks.!=nothing)
+# nt = NamedTuple{names[with_u]}(blocks[with_u])
+# ComponentVector(nt)
 
 end #module
