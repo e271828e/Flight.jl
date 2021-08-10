@@ -7,10 +7,12 @@ using UnPack
 
 using Flight.Dynamics
 using Flight.System
+import Flight.System: init_x, init_u
 
-export SimpleProp, ElectricMotor, ElectricThruster, ElectricThrusterOutput
+export SimpleProp, ElectricMotor, ElectricThruster, ElectricPowerplant
+export ElectricThrusterOutput
 export init_x, init_u, f_update!, f_output, step!
-export ElectricThrusterSystem
+export ElectricThrusterSystem, ElectricPowerplantSystem
 
 @enum TurnSense begin
     CW = 1
@@ -37,7 +39,7 @@ Base.@kwdef struct ElectricMotor #defaults from Hacker Motors Q150-4M-V2
     s::TurnSense = CW
 end
 
-Base.@kwdef struct ElectricThruster <: SystemDescriptor
+Base.@kwdef struct ElectricThruster <: System.Descriptor
     frame::FrameTransform = FrameTransform()
     motor::ElectricMotor = ElectricMotor()
     gearbox::Gearbox = Gearbox()
@@ -103,6 +105,58 @@ function f_output(x, u, t, desc::ElectricThruster)
 end
 
 ElectricThrusterSystem(d = ElectricThruster(); kwargs...) =
-    ContinuousSystem(d, init_x(d), init_u(d), f_update!, f_output; kwargs...)
+    System.Continuous(d, init_x(d), init_u(d), f_update!, f_output; kwargs...)
+
+
+struct ElectricPowerplant{N} <: System.Descriptor
+    labels::NTuple{N, Symbol}
+    thrusters::NTuple{N, ElectricThruster}
+    function ElectricPowerplant(nt::NamedTuple) #Dicts are not ordered, so they won't do
+        N = length(nt)
+        @assert eltype(nt) == ElectricThruster
+        new{N}(keys(nt), values(nt))
+    end
+end
+ElectricPowerplant() = ElectricPowerplant((main = ElectricThruster(),))
+
+function init_x(p::ElectricPowerplant)
+    #we know that x is non-empty for all NamedTuple components, but this allows
+    #us to generalize to the case of an heterogeneous powerplant where some
+    #elements have a state and others don't
+    # labels = p.labels
+    # blocks = init_x.(p.thrusters)
+    # with_x = collect(blocks.!=nothing)
+    # nt = NamedTuple{names[with_x]}(blocks[with_x])
+    ComponentVector(NamedTuple{p.labels}(init_x.(p.thrusters)))
+end
+
+function init_u(p::ElectricPowerplant)
+    # names = keys(p.thrusters)
+    # blocks = init_u.(values(p.thrusters))
+    # with_u = collect(blocks.!=nothing)
+    # nt = NamedTuple{names[with_u]}(blocks[with_u])
+    # ComponentVector(nt)
+    ComponentVector(NamedTuple{p.labels}(init_u.(p.thrusters)))
+end
+
+function f_update!(ẋ, x, u, t, pwp::ElectricPowerplant)
+    for (name, thruster) in zip(pwp.labels, pwp.thrusters)
+        f_update!(getproperty(ẋ, name), getproperty(x, name), getproperty(u, name), t, thruster)
+    end
+end
+
+function f_output(x, u, t, pwp::ElectricPowerplant{N}) where {N}
+    # v = Vector{ElectricThrusterOutput}(undef, N)
+    v = ElectricThrusterOutput[]
+    for (name, thruster) in zip(pwp.labels, pwp.thrusters)
+        push!(v, f_output(getproperty(x, name), getproperty(u, name), t, thruster))
+        # v[1] = f_output(getproperty(x, name), getproperty(u, name), t, thruster)
+    end
+    return NamedTuple{pwp.labels}(tuple(v...))
+    # return v
+end
+
+ElectricPowerplantSystem(d = ElectricPowerplant(); kwargs...) =
+    System.Continuous(d, init_x(d), init_u(d), f_update!, f_output; kwargs...)
 
 end #module
