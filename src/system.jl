@@ -3,34 +3,30 @@ module System
 using DifferentialEquations
 using UnPack
 
-export init_x, init_u, init_y
-
 abstract type Descriptor end
 
-init_x(::Descriptor) = nothing
-init_u(::Descriptor) = nothing
-init_y(::Descriptor) = nothing
+init_x(::Descriptor) = nothing #assume stateless System
+init_u(::Descriptor) = nothing #assume inputless System
+init_y(::Descriptor) = nothing #assume outputless System
+f_update!(y, ẋ, x, u, t, ::Descriptor) = error("To be extended by each Descriptor subtype")
+f_output!(y, x, u, t, ::Descriptor) = error("To be extended by each Descriptor subtype")
 
 struct Continuous{D}
 
     integrator::OrdinaryDiffEq.ODEIntegrator #just for annotation purposes
     log::SavedValues
-    function Continuous(d::D, x₀, u₀, y₀, f_update!, f_output!;
-                            t_start = 0.0,
-                            t_end = 10.0,
-                            method = Tsit5(),
-                            output_saveat = Float64[],
-                            kwargs...) where {D<:Descriptor}
+    function Continuous(d::D; x₀ = init_x(d), u₀ = init_u(d), y₀ = init_y(d),
+                        t_start = 0.0, t_end = 10.0, method = Tsit5(),
+                        output_saveat = Float64[],
+                        kwargs...) where {D<:Descriptor}
 
         f_step!(ẋ, x, p, t) = f_update!(p.y, ẋ, x, p.u, t, p.d)
-        function f_save(x, t, integrator)
-            # @unpack y, x, u, d = integrator.p
-            f_output!(integrator.p.y, x, integrator.p.u, t, integrator.p.d)
-            return deepcopy(integrator.p.y)
-        end
 
-        x_test = init_x(d)
-        println(x_test)
+        function f_save(x, t, integrator)
+            @unpack y, u, d = integrator.p
+            f_output!(y, x, u, t, d)
+            return deepcopy(y)
+        end
 
         params = (u = u₀, y = y₀, d = d)
         log = SavedValues(Float64, typeof(y₀))
