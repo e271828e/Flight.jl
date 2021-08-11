@@ -3,33 +3,42 @@ module System
 using DifferentialEquations
 using UnPack
 
+export x_template, u_template, init_output, f_output!
+
 abstract type Descriptor end
 
-init_x(::Descriptor) = nothing #assume stateless System
-init_u(::Descriptor) = nothing #assume inputless System
-init_y(::Descriptor) = nothing #assume outputless System
-f_update!(y, ẋ, x, u, t, ::Descriptor) = error("To be extended by each Descriptor subtype")
-f_output!(y, x, u, t, ::Descriptor) = error("To be extended by each Descriptor subtype")
+x_template(::Type{<:Descriptor}) = error("To be overridden by each Descriptor subtype")
+u_template(::Type{<:Descriptor}) = error("To be overridden by each Descriptor subtype")
+x_template(::D) where {D<:Descriptor} = x_template(D)
+u_template(::D) where {D<:Descriptor} = u_template(D)
+init_output(x, u, t, ::Descriptor) = error("To be extended by each Descriptor subtype")
+f_output!(out, x, u, t, ::Descriptor) = error("To be extended by each Descriptor subtype")
 
 struct Continuous{D}
 
     integrator::OrdinaryDiffEq.ODEIntegrator #just for annotation purposes
     log::SavedValues
-    function Continuous(d::D; x₀ = init_x(d), u₀ = init_u(d), y₀ = init_y(d),
+    function Continuous(d::D; x₀ = x_template(d), u₀ = u_template(d),
                         t_start = 0.0, t_end = 10.0, method = Tsit5(),
                         output_saveat = Float64[],
                         kwargs...) where {D<:Descriptor}
 
-        f_step!(ẋ, x, p, t) = f_update!(p.y, ẋ, x, p.u, t, p.d)
-
-        function f_save(x, t, integrator)
-            @unpack y, u, d = integrator.p
-            f_output!(y, x, u, t, d)
-            return deepcopy(y)
+        function f_step!(ẋ, x, p, t)
+            @unpack out, u, d = p
+            f_output!(out, x, u, t, d)
+            ẋ .= out.ẋ
         end
 
-        params = (u = u₀, y = y₀, d = d)
-        log = SavedValues(Float64, typeof(y₀))
+        function f_save(x, t, integrator)
+            @unpack out, u, d = integrator.p
+            f_output!(out, x, u, t, d)
+            return deepcopy(out.y)
+        end
+
+        out₀ = init_output(x₀, u₀, t_start, d)
+
+        params = (u = u₀, out = out₀, d = d)
+        log = SavedValues(Float64, typeof(out₀.y))
         scb = SavingCallback(f_save, log, saveat = output_saveat) #ADD A FLAG TO DISABLE SAVING OPTIONALLY, IT REDUCES ALLOCATIONS
 
         problem = ODEProblem{true}(f_step!, x₀, (t_start, t_end), params)

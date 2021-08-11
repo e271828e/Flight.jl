@@ -7,10 +7,11 @@ using UnPack
 
 using Flight.Dynamics
 using Flight.System
-import Flight.System: init_x, init_u, init_y, f_output!, f_update!
+import Flight.System: x_template, u_template, init_output, f_output!
 
 export SimpleProp, ElectricMotor, ElectricThruster, ElectricPowerplant
-export ElectricThrusterOutput
+export XElectricThruster, UElectricThruster, YElectricThruster, OutputElectricThruster
+
 export ElectricThrusterSystem, ElectricPowerplantSystem
 
 @enum TurnSense begin
@@ -58,9 +59,16 @@ function torque(eng::ElectricMotor, throttle::Real, ω::Real)
     return Int(s) * ((V - Int(s)*ω/kV) / R - i₀) / kV
 end
 
-Base.@kwdef mutable struct ElectricThrusterOutput
+x_template(::Type{ElectricThruster}) = ComponentVector(ω_shaft = 0.0)
+const XAxesElectricThruster = typeof(getaxes(x_template(ElectricThruster)))
+const XElectricThruster{D} = ComponentVector{Float64, D, XAxesElectricThruster} where {D<:AbstractVector{Float64}}
+
+u_template(::Type{ElectricThruster}) = ComponentVector(throttle = 0.0)
+const UAxesElectricThruster = typeof(getaxes(u_template(ElectricThruster)))
+const UElectricThruster{D} = ComponentVector{Float64, D, UAxesElectricThruster} where {D<:AbstractVector{Float64}}
+
+Base.@kwdef mutable struct YElectricThruster
     throttle::Float64 = 0.0
-    ω_shaft_dot::Float64 = 0.0
     ω_shaft::Float64 = 0.0
     ω_prop::Float64 = 0.0
     wr_Oc_c::Wrench = Wrench()
@@ -68,10 +76,20 @@ Base.@kwdef mutable struct ElectricThrusterOutput
     h_Gc_b::SVector{3, Float64} = SVector{3}(0,0,0)
 end
 
-init_x(::ElectricThruster) = ComponentVector(ω_shaft = 0.0)
-init_u(::ElectricThruster) = ComponentVector(throttle = 0.0)
-init_y(::ElectricThruster) = ElectricThrusterOutput()
+Base.@kwdef struct OutputElectricThruster
+    ẋ::XElectricThruster = x_template(ElectricThruster)
+    y::YElectricThruster = YElectricThruster()
+end
 
+function init_output(x, u, t, d::ElectricThruster)
+    out = OutputElectricThruster()
+    f_output!(out, x, u, t, d)
+    return out
+end
+
+    #rule: a Component should NOT use anoother component's x_dot directly,
+    #because it will not be updated in general by the time it is called. it
+    #should use only y
 
 function f_update!(y, ẋ, x, u, t, desc::ElectricThruster)
     #updates both ẋ and y in place (y is just a cache to avoid allocation)
@@ -79,8 +97,9 @@ function f_update!(y, ẋ, x, u, t, desc::ElectricThruster)
     ẋ.ω_shaft = y.ω_shaft_dot
 end
 
-function f_output!(y, x, u, t, desc::ElectricThruster)
+function f_output!(out, x, u, t, desc::ElectricThruster)
 
+    @unpack ẋ, y = out
     @unpack frame, motor, propeller, gearbox = desc
     @unpack n, η = gearbox
 
@@ -99,7 +118,11 @@ function f_output!(y, x, u, t, desc::ElectricThruster)
     h_Gc_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
     h_Gc_b = frame.q_bc * h_Gc_c
 
-    @pack! y = throttle, ω_shaft_dot, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b
+    #update out.ẋ (will be assigned to the integrator's ẋ later)
+    ẋ.ω_shaft = ω_shaft_dot
+
+    #update out.y
+    @pack! y = throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b
 
 end
 
@@ -107,7 +130,7 @@ end
 ElectricThrusterSystem(d::ElectricThruster = ElectricThruster(); kwargs...) =
     System.Continuous(d; kwargs...)
 
-
+#=
 #################### ElectricPowerplant #######################
 
 #TO DO: consider including the complete named tuple of thruster descriptors in
@@ -163,4 +186,5 @@ ElectricPowerplantSystem(d::ElectricPowerplant = ElectricPowerplant(); kwargs...
 # nt = NamedTuple{names[with_u]}(blocks[with_u])
 # ComponentVector(nt)
 
+=#
 end #module
