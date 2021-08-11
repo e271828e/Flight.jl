@@ -11,8 +11,10 @@ x_template(::Type{<:Descriptor}) = error("To be overridden by each Descriptor su
 u_template(::Type{<:Descriptor}) = error("To be overridden by each Descriptor subtype")
 x_template(::D) where {D<:Descriptor} = x_template(D)
 u_template(::D) where {D<:Descriptor} = u_template(D)
-init_output(x, u, t, ::Descriptor) = error("To be extended by each Descriptor subtype")
-f_output!(out, x, u, t, ::Descriptor) = error("To be extended by each Descriptor subtype")
+# init_output(x, u, t, ::Descriptor) = error("To be extended by each Descriptor subtype")
+# f_output!(out, x, u, t, ::Descriptor) = error("To be extended by each Descriptor subtype")
+init_output(::Any, ::Any, ::Real, ::Descriptor) = error("To be extended by each Descriptor subtype")
+f_output!(::Any, ::Any, ::Any, ::Real, ::Descriptor) = error("To be extended by each Descriptor subtype")
 
 struct Continuous{D}
 

@@ -81,23 +81,17 @@ Base.@kwdef struct OutputElectricThruster
     y::YElectricThruster = YElectricThruster()
 end
 
-function init_output(x, u, t, d::ElectricThruster)
+function init_output(x::XElectricThruster, u::UElectricThruster, t::Real, d::ElectricThruster)
     out = OutputElectricThruster()
     f_output!(out, x, u, t, d)
     return out
 end
 
-    #rule: a Component should NOT use anoother component's x_dot directly,
-    #because it will not be updated in general by the time it is called. it
-    #should use only y
+#IMPORTANT INSIGHT: for some reason, annotating method arguments
+#(XElectricThruster, YElectricThruster, UElectricThruster) causes allocations,
+#but not annotating struct fields!
 
-function f_update!(y, ẋ, x, u, t, desc::ElectricThruster)
-    #updates both ẋ and y in place (y is just a cache to avoid allocation)
-    f_output!(y, x, u, t, desc)
-    ẋ.ω_shaft = y.ω_shaft_dot
-end
-
-function f_output!(out, x, u, t, desc::ElectricThruster)
+function f_output!(out::OutputElectricThruster, x::XElectricThruster, u::UElectricThruster, ::Real, desc::ElectricThruster)
 
     @unpack ẋ, y = out
     @unpack frame, motor, propeller, gearbox = desc
