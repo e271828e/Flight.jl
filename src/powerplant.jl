@@ -39,7 +39,7 @@ Base.@kwdef struct ElectricMotor #defaults from Hacker Motors Q150-4M-V2
     s::TurnSense = CW
 end
 
-Base.@kwdef struct ElectricThruster <: System.Descriptor
+Base.@kwdef struct ElectricThruster <: System.Component
     frame::FrameTransform = FrameTransform()
     motor::ElectricMotor = ElectricMotor()
     gearbox::Gearbox = Gearbox()
@@ -76,25 +76,16 @@ Base.@kwdef mutable struct YElectricThruster
     h_Gc_b::SVector{3, Float64} = SVector{3}(0,0,0)
 end
 
-Base.@kwdef struct OutputElectricThruster
-    ẋ::XElectricThruster = x_template(ElectricThruster)
-    y::YElectricThruster = YElectricThruster()
+function init_output(x::XElectricThruster, u::UElectricThruster, t::Real, c::ElectricThruster)
+    ẋ = x_template(c)
+    y = YElectricThruster()
+    f_output!(y, ẋ, x, u, t, c)
+    return y, ẋ
 end
 
-function init_output(x::XElectricThruster, u::UElectricThruster, t::Real, d::ElectricThruster)
-    out = OutputElectricThruster()
-    f_output!(out, x, u, t, d)
-    return out
-end
+function f_output!(y::YElectricThruster, ẋ::XElectricThruster, x::XElectricThruster, u::UElectricThruster, ::Real, c::ElectricThruster)
 
-#IMPORTANT INSIGHT: for some reason, annotating method arguments
-#(XElectricThruster, YElectricThruster, UElectricThruster) causes allocations,
-#but not annotating struct fields!
-
-function f_output!(out::OutputElectricThruster, x::XElectricThruster, u::UElectricThruster, ::Real, desc::ElectricThruster)
-
-    @unpack ẋ, y = out
-    @unpack frame, motor, propeller, gearbox = desc
+    @unpack frame, motor, propeller, gearbox = c
     @unpack n, η = gearbox
 
     throttle = u.throttle
@@ -118,11 +109,13 @@ function f_output!(out::OutputElectricThruster, x::XElectricThruster, u::UElectr
     #update out.y
     @pack! y = throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b
 
+    return nothing
+
 end
 
 
-ElectricThrusterSystem(d::ElectricThruster = ElectricThruster(); kwargs...) =
-    System.Continuous(d; kwargs...)
+ElectricThrusterSystem(c::ElectricThruster = ElectricThruster(); kwargs...) =
+    System.Continuous(c; kwargs...)
 
 #=
 #################### ElectricPowerplant #######################
@@ -141,35 +134,32 @@ ElectricThrusterSystem(d::ElectricThruster = ElectricThruster(); kwargs...) =
 #LandingGear can be composed of a number of LandingGearLeg or LandingGearUnit,
 #which could have multiple type parameters: Steerable, Braking, Castoring, etc
 
-struct ElectricPowerplant{N} <: System.Descriptor
-    labels::NTuple{N, Symbol}
-    thrusters::NTuple{N, ElectricThruster}
+struct ElectricPowerplant{T} <: System.Component
     function ElectricPowerplant(nt::NamedTuple) #Dicts are not ordered, so they won't do
-        N = length(nt)
         @assert eltype(nt) == ElectricThruster
-        new{N}(keys(nt), values(nt))
+        new{nt}()
     end
 end
 ElectricPowerplant() = ElectricPowerplant((left = ElectricThruster(), right = ElectricThruster()))
 
-init_x(p::ElectricPowerplant) = ComponentVector(NamedTuple{p.labels}(init_x.(p.thrusters)))
-init_u(p::ElectricPowerplant) = ComponentVector(NamedTuple{p.labels}(init_u.(p.thrusters)))
-init_y(p::ElectricPowerplant) = NamedTuple{p.labels}(init_y.(p.thrusters))
+# init_x(p::ElectricPowerplant) = ComponentVector(NamedTuple{p.labels}(init_x.(p.thrusters)))
+# init_u(p::ElectricPowerplant) = ComponentVector(NamedTuple{p.labels}(init_u.(p.thrusters)))
+# init_y(p::ElectricPowerplant) = NamedTuple{p.labels}(init_y.(p.thrusters))
 
-function f_update!(y, ẋ, x, u, t, pwp::ElectricPowerplant)
-    for (name, thruster) in zip(pwp.labels, pwp.thrusters)
-        f_update!(map(input->getproperty(input,name), (y, ẋ, x, u))..., t, thruster)
-    end
-end
+# function f_update!(y, ẋ, x, u, t, pwp::ElectricPowerplant)
+#     for (name, thruster) in zip(pwp.labels, pwp.thrusters)
+#         f_update!(map(input->getproperty(input,name), (y, ẋ, x, u))..., t, thruster)
+#     end
+# end
 
-function f_output!(y, x, u, t, pwp::ElectricPowerplant)
-    for (name, thruster) in zip(pwp.labels, pwp.thrusters)
-        f_output!(map(input->getproperty(input,name), (y, x, u))..., t, thruster)
-    end
-end
+# function f_output!(y, x, u, t, pwp::ElectricPowerplant)
+#     for (name, thruster) in zip(pwp.labels, pwp.thrusters)
+#         f_output!(map(input->getproperty(input,name), (y, x, u))..., t, thruster)
+#     end
+# end
 
-ElectricPowerplantSystem(d::ElectricPowerplant = ElectricPowerplant(); kwargs...) =
-    System.Continuous(d; kwargs...)
+# ElectricPowerplantSystem(d::ElectricPowerplant = ElectricPowerplant(); kwargs...) =
+#     System.Continuous(d; kwargs...)
 
 #this allows us to generalize to the case of an heterogeneous powerplant where
 #some elements have a state and others don't
