@@ -8,12 +8,15 @@ using UnPack
 using Flight.Dynamics
 using Flight.AirData
 using Flight.System
-import Flight.System: x_template, u_template, init_data, init_output, f_output!
+import Flight.System: x_template, u_template, d_template, f_output!
+import Flight.System: y_type
 
 export SimpleProp, Gearbox, ElectricMotor
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
 
 export EPowerplant, EPowerplantSys
+
+export Group
 
 @enum TurnSense begin
     CW = 1
@@ -40,7 +43,7 @@ Base.@kwdef struct ElectricMotor #defaults from Hacker Motors Q150-4M-V2
     s::TurnSense = CW
 end
 
-Base.@kwdef struct EThruster <: System.Component
+Base.@kwdef struct EThruster <: AbstractComponent
     frame::FrameTransform = FrameTransform()
     motor::ElectricMotor = ElectricMotor()
     gearbox::Gearbox = Gearbox()
@@ -60,15 +63,7 @@ function torque(eng::ElectricMotor, throttle::Real, ω::Real)
     return Int(s) * ((V - Int(s)*ω/kV) / R - i₀) / kV
 end
 
-x_template(::Type{EThruster}) = ComponentVector(ω_shaft = 0.0)
-const EThrusterXAxes = typeof(getaxes(x_template(EThruster)))
-const EThrusterX{D} = ComponentVector{Float64, D, EThrusterXAxes} where {D<:AbstractVector{Float64}}
-
-u_template(::Type{EThruster}) = ComponentVector(throttle = 0.0)
-const EThrusterUAxes = typeof(getaxes(u_template(EThruster)))
-const EThrusterU{D} = ComponentVector{Float64, D, EThrusterUAxes} where {D<:AbstractVector{Float64}}
-
-Base.@kwdef mutable struct EThrusterY
+Base.@kwdef struct EThrusterY
     throttle::Float64 = 0.0
     ω_shaft::Float64 = 0.0
     ω_prop::Float64 = 0.0
@@ -77,25 +72,21 @@ Base.@kwdef mutable struct EThrusterY
     h_Gc_b::SVector{3, Float64} = SVector{3}(0,0,0)
 end
 
-#external data sources required by the update function
-Base.@kwdef mutable struct EThrusterD
+Base.@kwdef struct EThrusterD #external data sources (other than control inputs)
     air::AirDataSensed = AirDataSensed()
 end
-#this is only called by the System constructor when the component is simulated
-#as a standalone System. when it is part of a hierarchy, the nodes above will
-#hold the required input data and pass it to f_output!
-init_data(::EThrusterX, ::EThrusterU, ::Real, ::EThruster) = EThrusterD()
 
-function init_output(x::EThrusterX, u::EThrusterU, t::Real, data::EThrusterD, thr::EThruster)
-    ẋ = x_template(thr)
-    y = EThrusterY()
-    f_output!(y, ẋ, x, u, t, data, thr)
-    return y, ẋ
-end
+x_template(::Type{EThruster}) = ComponentVector(ω_shaft = 0.0)
+u_template(::Type{EThruster}) = ComponentVector(throttle = 0.0)
+d_template(::Type{EThruster}) = EThrusterD() #only called by the System constructor when the component is simulated alone
+y_type(::Type{EThruster}) = EThrusterY
 
-function f_output!(y::EThrusterY, ẋ::EThrusterX,
-    x::EThrusterX, u::EThrusterU, ::Real,
-    data::EThrusterD, thr::EThruster)
+const EThrusterXAxes = typeof(getaxes(x_template(EThruster)))
+const EThrusterUAxes = typeof(getaxes(u_template(EThruster)))
+const EThrusterX{D} = ComponentVector{Float64, D, EThrusterXAxes} where {D<:AbstractVector{Float64}}
+const EThrusterU{D} = ComponentVector{Float64, D, EThrusterUAxes} where {D<:AbstractVector{Float64}}
+
+function f_output!(ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
 
     @unpack frame, motor, propeller, gearbox = thr
     @unpack n, η = gearbox
@@ -115,72 +106,14 @@ function f_output!(y::EThrusterY, ẋ::EThrusterX,
     h_Gc_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
     h_Gc_b = frame.q_bc * h_Gc_c
 
-    #update out.ẋ (will be assigned to the integrator's ẋ later)
+    #update out.ẋ
     ẋ.ω_shaft = ω_shaft_dot
 
-    #update out.y
-    @pack! y = throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b
-
-    return nothing
+    EThrusterY(throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b)
 
 end
-
 
 EThrusterSys(thr::EThruster = EThruster(); kwargs...) =
     System.Continuous(thr; kwargs...)
 
-
-#################### ElectricPowerplant #######################
-
-#TO DO: consider including the complete named tuple of thruster descriptors in
-#the type parameter itself, instead of the size. it may help with type stability
-#if and when heterogeneous thrusters are allowed and fields become Unions or
-#abstract subtypes (which is not good).
-
-#TO DO: the same goes for EThruster. why not include the descriptors for
-#Electric Motor, Gearbox and Propeller in a type parameter?
-
-#TO DO: hell, the complete aircraft hierarchy could be stored in this manner:
-#Aircraft{LandingGear, Powerplant, Actuation}
-
-#LandingGear can be composed of a number of LandingGearLeg or LandingGearUnit,
-#which could have multiple type parameters: Steerable, Braking, Castoring, etc
-
-struct EPowerplant{T} <: System.Component
-    function ElectricPowerplant(nt::NamedTuple) #Dicts are not ordered, so they won't do
-        @assert eltype(nt) == EThruster
-        new{nt}()
-    end
-end
-EPowerplant() = EPowerplant((left = EThruster(), right = EThruster()))
-
-# init_x(p::ElectricPowerplant) = ComponentVector(NamedTuple{p.labels}(init_x.(p.thrusters)))
-# init_u(p::ElectricPowerplant) = ComponentVector(NamedTuple{p.labels}(init_u.(p.thrusters)))
-# init_y(p::ElectricPowerplant) = NamedTuple{p.labels}(init_y.(p.thrusters))
-
-# function f_update!(y, ẋ, x, u, t, pwp::ElectricPowerplant)
-#     for (name, thruster) in zip(pwp.labels, pwp.thrusters)
-#         f_update!(map(input->getproperty(input,name), (y, ẋ, x, u))..., t, thruster)
-#     end
-# end
-
-# function f_output!(y, x, u, t, pwp::ElectricPowerplant)
-#     for (name, thruster) in zip(pwp.labels, pwp.thrusters)
-#         f_output!(map(input->getproperty(input,name), (y, x, u))..., t, thruster)
-#     end
-# end
-
-# ElectricPowerplantSystem(d::ElectricPowerplant = ElectricPowerplant(); kwargs...) =
-#     System.Continuous(d; kwargs...)
-
-#this allows us to generalize to the case of an heterogeneous powerplant where
-#some elements have a state and others don't
-
-# names = keys(p.thrusters)
-# blocks = init_u.(values(p.thrusters))
-# with_u = collect(blocks.!=nothing)
-# nt = NamedTuple{names[with_u]}(blocks[with_u])
-# ComponentVector(nt)
-
-#
 end #module
