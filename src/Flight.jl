@@ -3,6 +3,9 @@ module Flight
 using Reexport
 
 #(sub) modules
+include("lbv.jl")
+@reexport using .LBV
+
 include("quaternions.jl")
 @reexport using .Quaternions
 
@@ -12,8 +15,8 @@ include("attitude.jl")
 include("wgs84.jl") #there are many, many constants here. should keep it a module
 @reexport using .WGS84
 
-include("lbv.jl")
-@reexport using .LBV
+include("airdata.jl")
+@reexport using .AirData
 
 include("kinematics.jl")
 @reexport using .Kinematics
