@@ -2,13 +2,18 @@ module Airframe
 
 using StaticArrays: SVector, SMatrix
 using LinearAlgebra
+using ComponentArrays
 using UnPack
 
 using Flight.WGS84
 using Flight.Attitude
 using Flight.Kinematics
+using Flight.Airdata
 
-export Wrench, MassData, ComponentFrame, ComponentGroup
+using Flight.System: AbstractSystem
+import Flight.System: X, U, D, typeof_y, f_output!
+
+export Wrench, MassData, AbstractComponent, ComponentFrame, ComponentGroup
 export v2skew, inertia_wrench, gravity_wrench, f_vel!
 
 Base.@kwdef struct MassData
@@ -25,13 +30,16 @@ Base.show(io::IO, wr::Wrench) = print(io, "Wrench(F = $(wr.F), M = $(wr.M))")
 Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(F = wr1.F + wr2.F, M = wr1.M + wr2.M)
 
 
+abstract type AbstractComponent <: AbstractSystem end
+
+
 """
-#Defines a local component frame Fc(Oc, Ɛc) related to the airframe reference
-frame Fb(Ob, Ɛb) by:
+#Specifies a local ComponentFrame fc(Oc, Ɛc) relative to the airframe reference
+frame fb(Ob, Ɛb) by:
 #a) the position vector of the local frame origin Oc relative to the reference
 #frame origin Ob, projected in the reference frame axes
 # b) the attitude of the local frame axes relative to the reference
-#frame axes, given by rotation b_c
+#frame axes, given by rotation quaternion q_bc
 """
 Base.@kwdef struct ComponentFrame
     r_ObOc_b::SVector{3,Float64} = zeros(SVector{3})
@@ -39,8 +47,9 @@ Base.@kwdef struct ComponentFrame
 end
 
 """
-translates a wrench specified on a local frame f2(O2, ε2) to a
-reference frame f1(O1, ε1) given the frame transform from 1 to 2
+Translate a Wrench specified on a local ComponentFrame fc(Oc, εc) to the
+airframe reference frame fb(Ob, εb) given the relative ComponentFrame
+specification f_bc
 """
 function Base.:*(f_bc::ComponentFrame, wr_Oc_c::Wrench)
 
@@ -58,19 +67,40 @@ function Base.:*(f_bc::ComponentFrame, wr_Oc_c::Wrench)
 
 end
 
+struct ComponentGroup{N,T,L,C} <: AbstractComponent
+    function ComponentGroup(nt::NamedTuple{L, NTuple{N, T}}) where {L, N, T <: AbstractComponent} #Dicts are not ordered, so they won't do
+        new{N,T,L,values(nt)}()
+    end
+end
 
-function inertia_wrench(mass::MassData, vel::VelY, h_ext_b::AbstractVector{<:Real})
+X(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(X.(C)))
+U(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(U.(C)))
+D(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = NamedTuple{L}(D.(C))
+typeof_y(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = NamedTuple{L, NTuple{N, typeof_y(T)}}
+
+@inline function f_output!(ẋ::Any, x::Any, u::Any, t::Real, data::Any, ::ComponentGroup{N,T,L,C}) where {N,T,L,C}
+
+    v = Vector{typeof_y(T)}(undef, N)
+    for (i, k) in enumerate(valkeys(x)) #valkeys is the only way to avoid allocations
+        v[i] = f_output!(getproperty(ẋ, k), getproperty(x, k), getproperty(u, k), t, data[i], C[i])
+    end
+    tup = Tuple(v)::NTuple{N, typeof_y(T)}
+    return NamedTuple{L}(tup)::NamedTuple{L, NTuple{N, typeof_y(T)}}
+end
+
+
+function inertia_wrench(mass::MassData, vel::VelY, h_rot_b::AbstractVector{<:Real})
 
     @unpack m, J_Ob_b, r_ObG_b = mass
     @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = vel #these are already SVectors
 
-    h_ext_b = SVector{3,Float64}(h_ext_b)
+    h_rot_b = SVector{3,Float64}(h_rot_b)
 
     #angular momentum of the overall airframe as a rigid body
     h_rbd_b = J_Ob_b * ω_ib_b
 
     #total angular momentum
-    h_all_b = h_rbd_b + h_ext_b
+    h_all_b = h_rbd_b + h_rot_b
 
     #exact
     a_1_b = (ω_eb_b + 2 * ω_ie_b) × v_eOb_b
@@ -104,18 +134,18 @@ function gravity_wrench(mass::MassData, pos::PosY)
 
 end
 
-function f_vel!(ẋ_vel, wr_ext_Ob_b::Wrench, h_ext_b::AbstractVector{<:Real},
-                mass::MassData, pv::PosVelY)
+function f_vel!(ẋ_vel, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Real},
+                mass::MassData, y_pv::PosVelY)
 
     #wr_ext_Ob_b: External Wrench on the airframe due to aircraft components
 
-    #h_ext_b: Additional angular momentum due to rotating aircraft components
+    #h_rot_b: Additional angular momentum due to rotating aircraft components
     #(computed using their angular velocity wrt the airframe, not the inertial
     #frame)
 
-    #wr_ext_Ob_b and h_ext_b, as well as mass data, are produced by aircraft
+    #wr_ext_Ob_b and h_rot_b, as well as mass data, are produced by aircraft
     #components, so they must be computed by the aircraft's x_dot method. and,
-    #since pv is needed by those components, it must be called from the
+    #since y_pv is needed by those components, it must be called from the
     #aircraft's kinematic state vector
 
     #clearly, r_ObG_b cannot be arbitrarily large, because J_Ob_b is larger than
@@ -123,8 +153,8 @@ function f_vel!(ẋ_vel, wr_ext_Ob_b::Wrench, h_ext_b::AbstractVector{<:Real},
     #least singular)!
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-    @unpack ω_eb_b, ω_ie_b, v_eOb_b = pv.vel
-    @unpack Ob, q_eb = pv.pos
+    @unpack ω_eb_b, ω_ie_b, v_eOb_b = y_pv.vel
+    @unpack Ob, q_eb = y_pv.pos
 
     #preallocating is faster than directly concatenating the blocks
     A = Array{Float64}(undef, (6,6))
@@ -137,8 +167,8 @@ function f_vel!(ẋ_vel, wr_ext_Ob_b::Wrench, h_ext_b::AbstractVector{<:Real},
 
     A = SMatrix{6,6}(A)
 
-    wr_g_Ob_b = gravity_wrench(mass, pv.pos)
-    wr_in_Ob_b = inertia_wrench(mass, pv.vel, h_ext_b)
+    wr_g_Ob_b = gravity_wrench(mass, y_pv.pos)
+    wr_in_Ob_b = inertia_wrench(mass, y_pv.vel, h_rot_b)
     wr_Ob_b = wr_ext_Ob_b + wr_g_Ob_b + wr_in_Ob_b
     b = SVector{6}([wr_Ob_b.M ; wr_Ob_b.F])
 
@@ -153,7 +183,7 @@ function f_vel!(ẋ_vel, wr_ext_Ob_b::Wrench, h_ext_b::AbstractVector{<:Real},
     a_eOb_b = v̇_eOb_b + ω_eb_b × v_eOb_b
     a_iOb_b = v̇_eOb_b + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eO_b)
 
-    AccelY(α_eb_b, α_ib_b, a_eOb_b, a_iOb_b)
+    AccY(α_eb_b, α_ib_b, a_eOb_b, a_iOb_b)
 
 end
 

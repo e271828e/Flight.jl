@@ -7,36 +7,29 @@ using Reexport
 # @reexport using .LBV
 
 include("quaternions.jl")
-@reexport using .Quaternions
-
 include("attitude.jl")
-@reexport using .Attitude
-
-include("wgs84.jl") #there are many, many constants here. should keep it a module
-@reexport using .WGS84
-
+include("wgs84.jl") #many, many constants here. should keep it a module
 include("system.jl")
-@reexport using .System
-
+include("model.jl")
 include("airdata.jl")
-@reexport using .AirData
-
 include("kinematics.jl")
-@reexport using .Kinematics
-
 include("airframe.jl")
-@reexport using .Airframe
-
 include("powerplant.jl")
+include("aircraft.jl")
+
+@reexport using .Quaternions
+@reexport using .Attitude
+@reexport using .WGS84
+@reexport using .System
+@reexport using .Model
+@reexport using .Airdata
+@reexport using .Kinematics
+@reexport using .Airframe
 @reexport using .Powerplant
-
-
+@reexport using .Aircraft
 
 export ftest
 
-function ftest()
-    println("Welcome to Flight")
-end
-# Write your package code here.
+ftest() = println("Welcome to Flight")
 
 end

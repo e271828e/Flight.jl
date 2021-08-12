@@ -6,14 +6,13 @@ using ComponentArrays
 using UnPack
 
 using Flight.Airframe
-using Flight.AirData
-using Flight.System
-import Flight.System: x_init, u_init, d_init, y_type, f_output!
+using Flight.Airdata
+
+# import ComponentArrays: ComponentVector
+import Flight.System: X, U, D, typeof_y, f_output!
 
 export SimpleProp, Gearbox, ElectricMotor
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
-
-export EPowerplant, EPowerplantSys
 
 @enum TurnSense begin
     CW = 1
@@ -55,26 +54,20 @@ end
 
 ################ Electric Thruster ###################
 
-Base.@kwdef struct EThruster <: AbstractSystemDescriptor
+abstract type AbstractThruster <: AbstractComponent end
+
+Base.@kwdef struct EThruster <: AbstractThruster
     frame::ComponentFrame = ComponentFrame()
     motor::ElectricMotor = ElectricMotor()
     gearbox::Gearbox = Gearbox()
     propeller::SimpleProp = SimpleProp()
 end
 
-#AbstractSystemDescriptor interface
-x_template(::Type{EThruster}) = ComponentVector(ω_shaft = 0.0)
-u_template(::Type{EThruster}) = ComponentVector(throttle = 0.0)
-const EThrusterXAxes = typeof(getaxes(x_template(EThruster)))
-const EThrusterUAxes = typeof(getaxes(u_template(EThruster)))
-const EThrusterX{D} = ComponentVector{Float64, D, EThrusterXAxes} where {D<:AbstractVector{Float64}}
-const EThrusterU{D} = ComponentVector{Float64, D, EThrusterUAxes} where {D<:AbstractVector{Float64}}
+const EThrusterXTemplate = ComponentVector(ω_shaft = 0.0)
+const EThrusterUTemplate = ComponentVector(throttle = 0.0)
 
-x_init(::EThruster) = x_template(EThruster)
-u_init(::EThruster) = u_template(EThruster)
-d_init(::EThruster) = EThrusterD()
-y_type(::Type{EThruster}) = EThrusterY
-
+const EThrusterX{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterXTemplate))} where {D<:AbstractVector{Float64}}
+const EThrusterU{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterUTemplate))} where {D<:AbstractVector{Float64}}
 
 Base.@kwdef struct EThrusterY
     throttle::Float64 = 0.0
@@ -82,37 +75,41 @@ Base.@kwdef struct EThrusterY
     ω_prop::Float64 = 0.0
     wr_Oc_c::Wrench = Wrench()
     wr_Ob_b::Wrench = Wrench()
-    h_Gc_b::SVector{3, Float64} = SVector{3}(0,0,0)
+    h_rot_b::SVector{3, Float64} = SVector{3}(0,0,0)
 end
 
 Base.@kwdef struct EThrusterD #external data sources (other than control inputs)
     air::AirDataSensed = AirDataSensed()
 end
 
+#AbstractSystem interface
+X(::EThruster) = copy(EThrusterXTemplate)
+U(::EThruster) = copy(EThrusterUTemplate)
+D(::EThruster) = EThrusterD()
+typeof_y(::Type{EThruster}) = EThrusterY
+
 function f_output!(ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
 
     @unpack frame, motor, propeller, gearbox = thr
     @unpack n, η = gearbox
 
-    throttle = u.throttle
     ω_shaft = x.ω_shaft
-    ω_prop = ω_shaft / n
+    throttle = u.throttle
+    M_eng_shaft = torque(motor, throttle, ω_shaft)
 
+    ω_prop = ω_shaft / n
     wr_Oc_c = wrench(propeller, ω_prop, data.air)
     wr_Ob_b = frame * wr_Oc_c
-
-    M_eng_shaft = torque(motor, throttle, ω_shaft)
     M_air_prop = wr_Oc_c.M[1]
 
-    ω_shaft_dot = (M_eng_shaft + M_air_prop/(η*n)) / (motor.J + propeller.J/(η*n^2))
+    h_rot_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
+    h_rot_b = frame.q_bc * h_rot_c
 
-    h_Gc_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
-    h_Gc_b = frame.q_bc * h_Gc_c
+    ω_shaft = (M_eng_shaft + M_air_prop/(η*n)) / (motor.J + propeller.J/(η*n^2))
 
-    #update out.ẋ
-    ẋ.ω_shaft = ω_shaft_dot
+    ẋ.ω_shaft = ω_shaft
 
-    EThrusterY(throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b)
+    EThrusterY(throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_rot_b)
 
 end
 

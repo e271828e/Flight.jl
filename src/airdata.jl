@@ -1,4 +1,4 @@
-module AirData
+module Airdata
 
 export AirDataSensed
 

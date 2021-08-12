@@ -7,27 +7,26 @@ using UnPack
 
 using Flight.WGS84
 using Flight.Attitude
-import Flight.System: x_init
+import Flight.System: X
 
 export Pos, Vel, PosVel, PosVelInit
 export PosX, VelX, PosVelX
-export PosY, VelY, PosVelY, AccelY
+export PosY, VelY, PosVelY, AccY, KinY
 export init!, f_pos!
 
-
 abstract type KinematicStruct end
+
 struct Pos end
 struct Vel end
 struct PosVel end
 
-x_template(::Type{Pos}) = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h = 0.0)
-x_template(::Type{Vel}) = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
-x_template(::Type{PosVel}) = ComponentVector(pos = x_template(Pos), vel = x_template(Vel))
+const PosXTemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h = 0.0)
+const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
+const PosVelXTemplate = ComponentVector(pos = PosXTemplate, vel = VelXTemplate)
 
-const PosX{D} = ComponentVector{Float64, D, typeof(getaxes(x_template(Pos)))} where {D<:AbstractVector{Float64}}
-const VelX{D} = ComponentVector{Float64, D, typeof(getaxes(x_template(Vel)))} where {D<:AbstractVector{Float64}}
-const PosVelX{D} = ComponentVector{Float64, D, typeof(getaxes(x_template(PosVel)))} where {D<:AbstractVector{Float64}}
-
+const PosX{D} = ComponentVector{Float64, D, typeof(getaxes(PosXTemplate))} where {D<:AbstractVector{Float64}}
+const VelX{D} = ComponentVector{Float64, D, typeof(getaxes(VelXTemplate))} where {D<:AbstractVector{Float64}}
+const PosVelX{D} = ComponentVector{Float64, D, typeof(getaxes(PosVelXTemplate))} where {D<:AbstractVector{Float64}}
 
 Base.@kwdef struct PosVelInit <: KinematicStruct
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
@@ -38,7 +37,7 @@ Base.@kwdef struct PosVelInit <: KinematicStruct
     Δy::Float64 = 0.0
 end
 
-Base.@kwdef struct PosY <: KinematicStruct
+struct PosY <: KinematicStruct
     q_lb::RQuat
     q_nl::RQuat
     q_nb::RQuat
@@ -49,7 +48,7 @@ Base.@kwdef struct PosY <: KinematicStruct
     Δy::Float64
 end
 
-Base.@kwdef struct VelY <: KinematicStruct
+struct VelY <: KinematicStruct
     ω_eb_b::SVector{3,Float64}
     ω_lb_b::SVector{3,Float64}
     ω_el_l::SVector{3,Float64}
@@ -59,22 +58,26 @@ Base.@kwdef struct VelY <: KinematicStruct
     v_eOb_n::SVector{3,Float64}
 end
 
-Base.@kwdef struct PosVelY <: KinematicStruct
+struct PosVelY <: KinematicStruct
     pos::PosY
     vel::VelY
 end
 
-Base.@kwdef struct AccelY <: KinematicStruct
+struct AccY <: KinematicStruct
     α_eb_b::SVector{3,Float64}
     α_ib_b::SVector{3,Float64}
     a_eOb_b::SVector{3,Float64}
     a_iOb_b::SVector{3,Float64}
 end
 
-#we are never going to simulate this standalone, so we don't need to provide
-#extensions for x_init, u_init or d_unit, but x_init is convenient
-x_init(::PosVel) = x_init(PosVelInit())
-x_init(init::PosVelInit) = (x=x_template(PosVel); init!(x, init); return x)
+struct KinY <: KinematicStruct
+    pos::PosY
+    vel::VelY
+    acc::AccY
+end
+
+X(::PosVel) = X(PosVelInit())
+X(init::PosVelInit) = (x=similar(PosVelXTemplate); init!(x, init); return x)
 
 function init!(x::PosVelX, init::PosVelInit)
 
