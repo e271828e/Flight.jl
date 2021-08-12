@@ -5,7 +5,8 @@ using ComponentArrays
 using UnPack
 
 export AbstractComponent, ComponentGroup, ContinuousSystem
-export x_template, u_template, y_template, d_template, init_output, f_output!
+export x_template, u_template, d_template, init_output, f_output!
+export y_type
 
 ################## AbstractComponent Interface ###################
 
@@ -13,20 +14,19 @@ abstract type AbstractComponent end
 
 x_template(::C) where {C<:AbstractComponent} = x_template(C)
 u_template(::C) where {C<:AbstractComponent} = u_template(C)
-y_template(::C) where {C<:AbstractComponent} = y_template(C)
 d_template(::C) where {C<:AbstractComponent} = d_template(C)
+y_type(::C) where {C<:AbstractComponent} = y_type(C)
 
 x_template(::Type{<:AbstractComponent}) = error("To be overridden by each subtype")
 u_template(::Type{<:AbstractComponent}) = error("To be overridden by each subtype")
-y_template(::Type{<:AbstractComponent}) = error("To be overridden by each subtype")
 d_template(::Type{<:AbstractComponent}) = error("To be overridden by each subtype")
+y_type(::Type{<:AbstractComponent}) = error("To be overridden by each subtype")
 
-f_output!(::Any, ::Any, ::Any, ::Any, ::Real, ::Any, ::AbstractComponent) = error("To be extended by each subtype")
+f_output!(::Any, ::Any, ::Any, ::Real, ::Any, ::AbstractComponent) = error("To be extended by each subtype")
 
 function init_output(x::Any, u::Any, t::Real, data::Any, comp::AbstractComponent)
     ẋ = x_template(comp)
-    y = y_template(comp)
-    f_output!(y, ẋ, x, u, t, data, comp)
+    y = f_output!(ẋ, x, u, t, data, comp)
     return y, ẋ
 end
 
@@ -57,23 +57,23 @@ struct ContinuousSystem{C}
         #throw it away. what matters in this call is the update to the ẋ passed
         #by the integrator
         function f_step!(ẋ, x, p, t)
-            @unpack y, u, data, comp = p
-            f_output!(y, ẋ, x, u, t, data, comp)
+            @unpack u, data, comp = p
+            f_output!(ẋ, x, u, t, data, comp) #throw away y
         end
 
         #the dummy ẋ cache is passed for f_update! to have somewhere to write
         #to without cloberring the integrator's du, then it is thrown away. copy
         #and output the updated y
         function f_save(x, t, integrator)
-            @unpack y, ẋ, u, data, comp = integrator.p
-            f_output!(y, ẋ, x, u, t, data, comp)
-            return deepcopy(y)
+            @unpack ẋ_dummy, u, data, comp = integrator.p
+            y = f_output!(ẋ_dummy, x, u, t, data, comp)
+            return y
         end
 
         data = d_template(comp)
-        (y₀, ẋ₀) = init_output(x₀, u₀, t_start, data, comp)
+        y₀, ẋ₀ = init_output(x₀, u₀, t_start, data, comp)
 
-        params = (u = u₀, y = y₀, ẋ = ẋ₀, data = data, comp = comp)
+        params = (u = u₀, ẋ_dummy = ẋ₀, data = data, comp = comp)
         log = SavedValues(Float64, typeof(y₀))
         scb = SavingCallback(f_save, log, saveat = y_saveat) #ADD A FLAG TO DISABLE SAVING OPTIONALLY, IT REDUCES ALLOCATIONS
 
@@ -104,28 +104,32 @@ DifferentialEquations.step!(sys::ContinuousSystem, args...) = step!(sys.integrat
 DifferentialEquations.reinit!(sys::ContinuousSystem, args...) = reinit!(sys.integrator, args...)
 
 
-#mostly useless
 ################## Generic Component Group ###################
 
-struct ComponentGroup{T, L, C} <: AbstractComponent
+#see if the efficiency due to allocations in f_output! is diluted when the
+#function itself becomes more costly
+
+struct ComponentGroup{N,T,L,C} <: AbstractComponent
     function ComponentGroup(nt::NamedTuple{L, NTuple{N, T}}) where {L, N, T <: AbstractComponent} #Dicts are not ordered, so they won't do
-        new{T, L, values(nt)}()
+        new{N,T,L,values(nt)}()
     end
 end
 
-x_template(::ComponentGroup{T,L,C}) where {T,L,C} = ComponentVector(NamedTuple{L}(x_template.(C)))
-u_template(::ComponentGroup{T,L,C}) where {T,L,C} = ComponentVector(NamedTuple{L}(u_template.(C)))
-y_template(::ComponentGroup{T,L,C}) where {T,L,C} = NamedTuple{L}(y_template.(C))
-d_template(::ComponentGroup{T,L,C}) where {T,L,C} = d_template(T)
-
+x_template(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(x_template.(C)))
+u_template(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(u_template.(C)))
+d_template(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = d_template(T)
+y_type(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = NamedTuple{L, NTuple{N, y_type(T)}}
 #a single, shared data source is assumed, but this could be easily changed to:
 # d_template(g::ComponentGroup{T,L,C}) where {T,L,C} = NamedTuple{L}(d_template.(C))
 
-function f_output!(y::Any, ẋ::Any, x::Any, u::Any, t::Real, data::Any, ::ComponentGroup{T,L,C}) where{T,L,C}
-    for (label, component) in zip(L, C)
-        #could use map here on (y,ẋ, x, u) but it allocates and harms performance
-        f_output!(getproperty(y,label), getproperty(ẋ, label), getproperty(x,label), getproperty(u,label), t, data, component)
+@inline function f_output!(ẋ::Any, x::Any, u::Any, t::Real, data::Any, ::ComponentGroup{N,T,L,C}) where {N,T,L,C}
+
+    v = Vector{y_type(T)}(undef, N)
+    for (i, k) in enumerate(valkeys(x)) #valkeys is the only way to avoid allocations
+        v[i] = f_output!(getproperty(ẋ, k), getproperty(x, k), getproperty(u, k), t, data, C[i])
     end
+    tup = Tuple(v)::NTuple{N, y_type(T)}
+    return NamedTuple{L}(tup)::NamedTuple{L, NTuple{N, y_type(T)}}
 end
 
 end

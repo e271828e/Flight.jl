@@ -18,11 +18,11 @@ include("wgs84.jl") #there are many, many constants here. should keep it a modul
 include("airdata.jl")
 @reexport using .AirData
 
-include("kinematics.jl")
-@reexport using .Kinematics
+# include("kinematics.jl")
+# @reexport using .Kinematics
 
-include("dynamics.jl")
-@reexport using .Dynamics
+# include("dynamics.jl")
+# @reexport using .Dynamics
 
 # #plain files
 include("system.jl")

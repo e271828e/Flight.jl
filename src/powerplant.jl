@@ -8,7 +8,8 @@ using UnPack
 using Flight.Dynamics
 using Flight.AirData
 using Flight.System
-import Flight.System: x_template, u_template, y_template, d_template, f_output!
+import Flight.System: x_template, u_template, d_template, f_output!
+import Flight.System: y_type
 
 export SimpleProp, Gearbox, ElectricMotor
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
@@ -62,7 +63,7 @@ function torque(eng::ElectricMotor, throttle::Real, ω::Real)
     return Int(s) * ((V - Int(s)*ω/kV) / R - i₀) / kV
 end
 
-Base.@kwdef mutable struct EThrusterY
+Base.@kwdef struct EThrusterY
     throttle::Float64 = 0.0
     ω_shaft::Float64 = 0.0
     ω_prop::Float64 = 0.0
@@ -71,23 +72,21 @@ Base.@kwdef mutable struct EThrusterY
     h_Gc_b::SVector{3, Float64} = SVector{3}(0,0,0)
 end
 
-Base.@kwdef mutable struct EThrusterD #external data sources (other than control inputs)
+Base.@kwdef struct EThrusterD #external data sources (other than control inputs)
     air::AirDataSensed = AirDataSensed()
 end
 
 x_template(::Type{EThruster}) = ComponentVector(ω_shaft = 0.0)
 u_template(::Type{EThruster}) = ComponentVector(throttle = 0.0)
-y_template(::Type{EThruster}) = EThrusterY()
 d_template(::Type{EThruster}) = EThrusterD() #only called by the System constructor when the component is simulated alone
+y_type(::Type{EThruster}) = EThrusterY
 
 const EThrusterXAxes = typeof(getaxes(x_template(EThruster)))
 const EThrusterUAxes = typeof(getaxes(u_template(EThruster)))
 const EThrusterX{D} = ComponentVector{Float64, D, EThrusterXAxes} where {D<:AbstractVector{Float64}}
 const EThrusterU{D} = ComponentVector{Float64, D, EThrusterUAxes} where {D<:AbstractVector{Float64}}
 
-function f_output!(y::EThrusterY, ẋ::EThrusterX,
-    x::EThrusterX, u::EThrusterU, ::Real,
-    data::EThrusterD, thr::EThruster)
+function f_output!(ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
 
     @unpack frame, motor, propeller, gearbox = thr
     @unpack n, η = gearbox
@@ -107,14 +106,10 @@ function f_output!(y::EThrusterY, ẋ::EThrusterX,
     h_Gc_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
     h_Gc_b = frame.q_bc * h_Gc_c
 
-    #update out.ẋ (will be assigned to the integrator's ẋ later)
+    #update out.ẋ
     ẋ.ω_shaft = ω_shaft_dot
 
-    #update out.y
-    @pack! y = throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b
-
-    return nothing
-    # return EThrusterY(throttle = 1.2)
+    EThrusterY(throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b)
 
 end
 
