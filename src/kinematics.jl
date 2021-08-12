@@ -2,56 +2,83 @@ module Kinematics
 
 using LinearAlgebra
 using StaticArrays: SVector
+using ComponentArrays
 using UnPack
 
-using Flight.LBV
 using Flight.WGS84
 using Flight.Attitude
+import Flight.System: x_init
 
-export KinInit, XVel
-export XPosWGS84, XKinWGS84, VelDataWGS84, PosDataWGS84, PVDataWGS84, AccDataWGS84
-export x_pos_dot
+export Pos, Vel, PosVel, PosVelInit
+export PosX, VelX, PosVelX
+export PosY, VelY, PosVelY, AccelY
+export init!, f_pos!
 
-#for some reason, defining and using using the type alias SV3 =
-#SVector{3,Float64} yields type instability
 
-@define_node XPosWGS84 (q_lb = LBVLeaf{4}, q_el = LBVLeaf{4}, h = LBVLeaf{1})
-@define_node XVel (ω_eb_b = LBVLeaf{3}, v_eOb_b = LBVLeaf{3})
-@define_node XKinWGS84 (pos = XPosWGS84, vel = XVel)
+abstract type KinematicStruct end
+struct Pos end
+struct Vel end
+struct PosVel end
 
-abstract type KinematicData end
+x_template(::Type{Pos}) = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h = 0.0)
+x_template(::Type{Vel}) = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
+x_template(::Type{PosVel}) = ComponentVector(pos = x_template(Pos), vel = x_template(Vel))
 
-function print_data_oneline(data::KinematicData, io::IO)
-    fnames = fieldnames(typeof(data))
-    print(io, typeof(data), "(")
-    for f in fnames
-        print(io, f, " = ", getproperty(data, f))
-        f == fnames[end] ? print(io, ")") : print(io, ", ")
-    end
-end
+const PosX{D} = ComponentVector{Float64, D, typeof(getaxes(x_template(Pos)))} where {D<:AbstractVector{Float64}}
+const VelX{D} = ComponentVector{Float64, D, typeof(getaxes(x_template(Vel)))} where {D<:AbstractVector{Float64}}
+const PosVelX{D} = ComponentVector{Float64, D, typeof(getaxes(x_template(PosVel)))} where {D<:AbstractVector{Float64}}
 
-function print_data_multiline(data::KinematicData, io::IO)
-    fnames = fieldnames(typeof(data))
-    print(io, typeof(data), " with fields:\n")
-    for f in fnames
-        print(io, "\t", f, ": ", getproperty(data, f))
-        f == fnames[end] ? break : println(io)
-    end
-end
 
-Base.show(io::IO, data::KinematicData) = print_data_oneline(data, io)
-Base.show(io::IO, ::MIME"text/plain", data::KinematicData) = print_data_multiline(data, io)
-
-Base.@kwdef struct KinInit <: KinematicData
-    q_nb::RQuat = RQuat()
-    Ob::WGS84Pos = WGS84Pos()
+Base.@kwdef struct PosVelInit <: KinematicStruct
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
     v_eOb_b::SVector{3, Float64} = zeros(SVector{3})
+    q_nb::RQuat = RQuat()
+    Ob::WGS84Pos = WGS84Pos()
+    Δx::Float64 = 0.0
+    Δy::Float64 = 0.0
 end
 
-function initialize!(x::XKinWGS84, init::KinInit)
+Base.@kwdef struct PosY <: KinematicStruct
+    q_lb::RQuat
+    q_nl::RQuat
+    q_nb::RQuat
+    q_eb::RQuat
+    q_el::RQuat
+    Ob::WGS84Pos
+    Δx::Float64
+    Δy::Float64
+end
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_b = init
+Base.@kwdef struct VelY <: KinematicStruct
+    ω_eb_b::SVector{3,Float64}
+    ω_lb_b::SVector{3,Float64}
+    ω_el_l::SVector{3,Float64}
+    ω_ie_b::SVector{3,Float64}
+    ω_ib_b::SVector{3,Float64}
+    v_eOb_b::SVector{3,Float64}
+    v_eOb_n::SVector{3,Float64}
+end
+
+Base.@kwdef struct PosVelY <: KinematicStruct
+    pos::PosY
+    vel::VelY
+end
+
+Base.@kwdef struct AccelY <: KinematicStruct
+    α_eb_b::SVector{3,Float64}
+    α_ib_b::SVector{3,Float64}
+    a_eOb_b::SVector{3,Float64}
+    a_iOb_b::SVector{3,Float64}
+end
+
+#we are never going to simulate this standalone, so we don't need to provide
+#extensions for x_init, u_init or d_unit, but x_init is convenient
+x_init(::PosVel) = x_init(PosVelInit())
+x_init(init::PosVelInit) = (x=x_template(PosVel); init!(x, init); return x)
+
+function init!(x::PosVelX, init::PosVelInit)
+
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
 
     h = Ob.h[1]
     (R_N, R_E) = radii(Ob)
@@ -68,48 +95,15 @@ function initialize!(x::XKinWGS84, init::KinInit)
 
     x.pos.q_lb .= q_lb #assignment without colon slicing courtesy of RQuat iterability
     x.pos.q_el .= ltf(Ob) #assignment without colon slicing courtesy of RQuat iterability
-    x.pos.h .= h
+    x.pos.h = h
+    x.pos.Δx = Δx
+    x.pos.Δy = Δy
     x.vel.ω_eb_b .= ω_eb_b
     x.vel.v_eOb_b .= v_eOb_b
 
 end
 
-XKinWGS84(init::KinInit) = (x = XKinWGS84(undef); initialize!(x, init); return x)
-XKinWGS84() = XKinWGS84(KinInit())
-
-
-Base.@kwdef struct PosDataWGS84 <: KinematicData
-    q_lb::RQuat
-    q_nl::RQuat
-    q_nb::RQuat
-    q_eb::RQuat
-    q_el::RQuat
-    Ob::WGS84Pos
-end
-
-Base.@kwdef struct VelDataWGS84 <: KinematicData
-    ω_eb_b::SVector{3,Float64}
-    ω_lb_b::SVector{3,Float64}
-    ω_el_l::SVector{3,Float64}
-    ω_ie_b::SVector{3,Float64}
-    ω_ib_b::SVector{3,Float64}
-    v_eOb_b::SVector{3,Float64}
-    v_eOb_n::SVector{3,Float64}
-end
-
-Base.@kwdef struct PVDataWGS84 <: KinematicData
-    pos::PosDataWGS84
-    vel::VelDataWGS84
-end
-
-Base.@kwdef struct AccDataWGS84 <: KinematicData
-    α_eb_b::SVector{3,Float64}
-    α_ib_b::SVector{3,Float64}
-    a_eOb_b::SVector{3,Float64}
-    a_iOb_b::SVector{3,Float64}
-end
-
-function PVDataWGS84(x::XKinWGS84)
+function f_pos!(ẋ_pos::PosX, x::PosVelX)::PosVelY
 
     #careful here: x.pos.h, x.vel.ω_eb_b and x.vel.v_eOb_b create views (this is
     #how LBV behaves by design). to copy the data, we can extract their
@@ -119,6 +113,8 @@ function PVDataWGS84(x::XKinWGS84)
     h = x.pos.h[1]
     ω_eb_b = SVector{3}(x.vel.ω_eb_b)
     v_eOb_b = SVector{3}(x.vel.v_eOb_b)
+    Δx = x.pos.Δx
+    Δy = x.pos.Δy
 
     Ob = WGS84Pos(NVector(q_el), h)
     q_nl = Rz(ψ_nl(q_el))
@@ -140,41 +136,40 @@ function PVDataWGS84(x::XKinWGS84)
     ω_ie_b = q_eb' * ω_ie_e
     ω_ib_b = ω_ie_b + ω_eb_b
 
-    pos = PosDataWGS84(q_lb, q_nl, q_nb, q_eb, q_el, Ob)
-    vel = VelDataWGS84(ω_eb_b, ω_lb_b, ω_el_l, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
+    #update ẋ_pos
+    ẋ_pos.q_lb .= Attitude.dot(q_lb, ω_lb_b)
+    ẋ_pos.q_el .= Attitude.dot(q_el, ω_el_l)
+    ẋ_pos.Δx = v_eOb_n[1]
+    ẋ_pos.Δy = v_eOb_n[2]
+    ẋ_pos.h = -v_eOb_n[3]
 
-    PVDataWGS84(pos, vel)
+    #build outputs
+    pos = PosY(q_lb, q_nl, q_nb, q_eb, q_el, Ob, Δx, Δy)
+    vel = VelY(ω_eb_b, ω_lb_b, ω_el_l, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
 
-end
-
-function AccDataWGS84(x_vel_dot::XVel, pv::PVDataWGS84)
-
-    @unpack ω_eb_b, ω_ie_b, v_eOb_b = pv.vel
-    @unpack Ob, q_eb = pv.pos
-
-    ω_eb_b_dot = SVector{3}(x_vel_dot.ω_eb_b)
-    v_eOb_b_dot = SVector{3}(x_vel_dot.v_eOb_b)
-
-    r_eO_e = rECEF(Ob)
-    r_eO_b = q_eb' * r_eO_e
-
-    α_eb_b = ω_eb_b_dot
-    α_ib_b = ω_eb_b_dot - ω_eb_b × ω_ie_b
-
-    a_eOb_b = v_eOb_b_dot + ω_eb_b × v_eOb_b
-    a_iOb_b = v_eOb_b_dot + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eO_b)
-
-    AccDataWGS84(α_eb_b, α_ib_b, a_eOb_b, a_iOb_b)
+    return PosVelY(pos, vel)
 
 end
 
-function x_pos_dot(pv::PVDataWGS84)::XPosWGS84
-    x_dot = XPosWGS84()
-    x_dot.q_lb .= dot(pv.pos.q_lb, pv.vel.ω_lb_b)
-    x_dot.q_el .= dot(pv.pos.q_el, pv.vel.ω_el_l)
-    x_dot.h .= -pv.vel.v_eOb_n[3]
-    return x_dot
+function print_data_oneline(data::KinematicStruct, io::IO)
+    fnames = fieldnames(typeof(data))
+    print(io, typeof(data), "(")
+    for f in fnames
+        print(io, f, " = ", getproperty(data, f))
+        f == fnames[end] ? print(io, ")") : print(io, ", ")
+    end
 end
 
+function print_data_multiline(data::KinematicStruct, io::IO)
+    fnames = fieldnames(typeof(data))
+    print(io, typeof(data), " with fields:\n")
+    for f in fnames
+        print(io, "\t", f, ": ", getproperty(data, f))
+        f == fnames[end] ? break : println(io)
+    end
+end
+
+Base.show(io::IO, data::KinematicStruct) = print_data_oneline(data, io)
+Base.show(io::IO, ::MIME"text/plain", data::KinematicStruct) = print_data_multiline(data, io)
 
 end #module

@@ -8,43 +8,10 @@ using Flight.LBV
 # using Flight.WGS84
 # using Flight.Attitude
 using Flight.Kinematics
-using Flight.Airframe
+using Flight.Dynamics
 
-
-"""
-#Defines a local component frame Fc(Oc, Ɛc) related to the airframe reference
-frame Fb(Ob, Ɛb) by:
-#a) the position vector of the local frame origin Oc relative to the reference
-#frame origin Ob, projected in the reference frame axes
-# b) the attitude of the local frame axes relative to the reference
-#frame axes, given by rotation b_c
-"""
-Base.@kwdef struct ComponentFrame
-    r_ObOc_b::SVector{3,Float64} = zeros(SVector{3})
-    q_bc::RQuat = RQuat()
-end
-
-function Base.:*(f_bc::ComponentFrame, wr_Oc_c::Wrench)
-
-    #translates a wrench specified on a local frame f2(O2, ε2) to a
-    #reference frame f1(O1, ε1) given the frame transform from 1 to 2
-
-    F_Oc_c = wr_Oc_c.F
-    M_Oc_c = wr_Oc_c.M
-
-    #project on the reference axes
-    F_Oc_b = f_bc.q_bc * F_Oc_c
-    M_Oc_b = f_bc.q_bc * M_Oc_c
-
-    #translate them to airframe origin
-    F_Ob_b = F_Oc_b
-    M_Ob_b = M_Oc_b + f_bc.r_ObOc_b × F_Oc_b
-
-    wr_Ob_b = Wrench(F = F_Ob_b, M = M_Ob_b)
-
-    return wr_Ob_b
-
-end
+export XTestAircraft
+export dt
 
 #1) gathers all wrenches and additional angular momentum from all aircraft
 #components, adds them up
@@ -59,23 +26,8 @@ end
 #takes care of the appropriate method of x_vel_dot that will be called
 
 
-abstract type AbstractTerrainModel end
-abstract type AbstractAtmosphericModel end
-
-#si necesito simulacion dinamica para atm, por ejemplo, tambien tengo que
-#integrar esa ecuacion diferencial. puedo pasar sus outputs como parametros a la
-#funcion de aircraft, junto con terrain. o almacenar referencias a atmospheric
-#model y terrain model dentro del propio aircraft, evolucionarlos por separado y
-#que se vayn actualizando dentro. ojo si lo hago en otros threads!! necesito
-#locks alternativa: Channels
-
-#TerrainModel does not belong to the Aircraft itself. it must be defined
-#separately, and passed as an external data source. the same goes for Atmosphere
-#there must be a level above the Aircraft, which will typically be the
-#simulation, that defines the terrain and atmospheric models, and holds all the
-#aircraft participating in the simulation. this may be a block based simulation
-#or a custom made one. but it must exist in some form
-
+abstract type TerrainModelClient end
+abstract type AtmosphericModelClient end
 #AtmosphericModel should contain a Channel to the actual AtmosphericModel
 #through which the evolving atmospheric model can be queried for the values at
 #the current aircraft location. it should behave like a client
@@ -86,17 +38,20 @@ abstract type AbstractAtmosphericModel end
 #constant, simple and shared with no one else
 
 struct Environment
-    trn::AbstractTerrainModel
-    atm::AbstractAtmosphericModel
+    trn::TerrainModelClient
+    atm::AtmosphericModelClient
 end
 
-#given some inputs (typically state of the fuel system and external payloads),
-#an AbstractMassModel returns a MassData struct (defined in the Dynamics
-#module). for now, we can simply define a ConstantMassModel
+abstract type LdgGroup end
+abstract type PwpGroup end
+abstract type SrfGroup end
+abstract type MassModel end
 
-abstract type AbstractMassModel end
+#MassModel is an abstract type that, given some inputs (typically state of the
+#fuel system and external payloads), returns a MassData struct. but for now, we
+#can simply define a ConstantMassModel
 
-struct ConstantMassModel <: AbstractMassModel
+struct ConstantMassModel <: MassModel
     m::Float64 = 1.0
     J_Ob_b::SMatrix{3, 3, Float64, 9} = SMatrix{3,3,Float64}(I)
     r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
@@ -108,17 +63,18 @@ get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.
 @define_node XTestAircraft (kin = XKinWGS84, )
 
 struct TestAircraft
+    x_dot::XTestAircraft{Float64}
+    x::XTestAircraft{Float64}
     mass_model::ConstantMassModel
-    landing_gear::Nothing
-    power_plant::Nothing
-    control_surfaces::Nothing
+    # ldg_group::LdgGroup
+    # pwp_group::PwpGroup
+    # srf_group::SrfGroup
     # inner constructor goes here. however, since there is no kinematics
     # subsystem to which the x.kin block belongs, we don't need to call any
     # constructor with that block as input argument. we only need to do that for
     # actual subsystems (LdgGroups, PwpGroup...)
 end
 
-function f_output!(ẋ::TestAircraftX, x::TestAircraftX, u::TestAircraftU)
 #updates aircraft's x_dot from the current values of x and u
 function update_x_dot!(aircraft::TestAircraft, env::Environment, t::Real)
 
@@ -188,6 +144,21 @@ end
 
 
 
+#si necesito simulacion dinamica para atm, por ejemplo, tambien tengo que
+#integrar esa ecuacion diferencial. puedo pasar sus outputs como parametros a la
+#funcion de aircraft, junto con terrain. o almacenar referencias a atmospheric
+#model y terrain model dentro del propio aircraft, evolucionarlos por separado y
+#que se vayn actualizando dentro.
+#ojo si lo hago en otros threads!! necesito locks
+#alternativa: Channels
 
+
+#TerrainModel does not belong to the Aircraft itself. it must be defined
+#separately, and passed as an argument
+#the same goes for Atmosphere
+#there must be a level above the Aircraft, which will typically be the
+#simulation, that defines the terrain and atmospheric models, and holds all the
+#aircraft participating in the simulation. this may be a block based simulation
+#or a custom made one. but it must exist in some form
 
 end

@@ -5,18 +5,15 @@ using StaticArrays
 using ComponentArrays
 using UnPack
 
-using Flight.Dynamics
+using Flight.Airframe
 using Flight.AirData
 using Flight.System
-import Flight.System: x_template, u_template, d_template, f_output!
-import Flight.System: y_type
+import Flight.System: x_init, u_init, d_init, y_type, f_output!
 
 export SimpleProp, Gearbox, ElectricMotor
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
 
 export EPowerplant, EPowerplantSys
-
-export Group
 
 @enum TurnSense begin
     CW = 1
@@ -27,6 +24,13 @@ Base.@kwdef struct SimpleProp
     kF::Float64 = 0.1
     kM::Float64 = 0.01
     J::Float64 = 1.0
+end
+
+function wrench(prop::SimpleProp, ω::Real, ::AirDataSensed) #air data just for interface demo
+    @unpack kF, kM = prop
+    F_ext_Os_s = kF * ω^2 * SVector(1,0,0)
+    M_ext_Os_s = -sign(ω) * kM * ω^2 * SVector(1,0,0)
+    Wrench(F = F_ext_Os_s, M = M_ext_Os_s)
 end
 
 Base.@kwdef struct Gearbox
@@ -43,25 +47,34 @@ Base.@kwdef struct ElectricMotor #defaults from Hacker Motors Q150-4M-V2
     s::TurnSense = CW
 end
 
-Base.@kwdef struct EThruster <: AbstractComponent
-    frame::FrameTransform = FrameTransform()
-    motor::ElectricMotor = ElectricMotor()
-    gearbox::Gearbox = Gearbox()
-    propeller::SimpleProp = SimpleProp()
-end
-
-function wrench(prop::SimpleProp, ω::Real, ::AirDataSensed) #air data just for interface demo
-    @unpack kF, kM = prop
-    F_ext_Os_s = kF * ω^2 * SVector(1,0,0)
-    M_ext_Os_s = -sign(ω) * kM * ω^2 * SVector(1,0,0)
-    Wrench(F = F_ext_Os_s, M = M_ext_Os_s)
-end
-
 function torque(eng::ElectricMotor, throttle::Real, ω::Real)
     @unpack i₀, R, kV, Vb, s = eng
     V = i₀ * R + throttle * Vb
     return Int(s) * ((V - Int(s)*ω/kV) / R - i₀) / kV
 end
+
+################ Electric Thruster ###################
+
+Base.@kwdef struct EThruster <: AbstractSystemDescriptor
+    frame::ComponentFrame = ComponentFrame()
+    motor::ElectricMotor = ElectricMotor()
+    gearbox::Gearbox = Gearbox()
+    propeller::SimpleProp = SimpleProp()
+end
+
+#AbstractSystemDescriptor interface
+x_template(::Type{EThruster}) = ComponentVector(ω_shaft = 0.0)
+u_template(::Type{EThruster}) = ComponentVector(throttle = 0.0)
+const EThrusterXAxes = typeof(getaxes(x_template(EThruster)))
+const EThrusterUAxes = typeof(getaxes(u_template(EThruster)))
+const EThrusterX{D} = ComponentVector{Float64, D, EThrusterXAxes} where {D<:AbstractVector{Float64}}
+const EThrusterU{D} = ComponentVector{Float64, D, EThrusterUAxes} where {D<:AbstractVector{Float64}}
+
+x_init(::EThruster) = x_template(EThruster)
+u_init(::EThruster) = u_template(EThruster)
+d_init(::EThruster) = EThrusterD()
+y_type(::Type{EThruster}) = EThrusterY
+
 
 Base.@kwdef struct EThrusterY
     throttle::Float64 = 0.0
@@ -75,16 +88,6 @@ end
 Base.@kwdef struct EThrusterD #external data sources (other than control inputs)
     air::AirDataSensed = AirDataSensed()
 end
-
-x_template(::Type{EThruster}) = ComponentVector(ω_shaft = 0.0)
-u_template(::Type{EThruster}) = ComponentVector(throttle = 0.0)
-d_template(::Type{EThruster}) = EThrusterD() #only called by the System constructor when the component is simulated alone
-y_type(::Type{EThruster}) = EThrusterY
-
-const EThrusterXAxes = typeof(getaxes(x_template(EThruster)))
-const EThrusterUAxes = typeof(getaxes(u_template(EThruster)))
-const EThrusterX{D} = ComponentVector{Float64, D, EThrusterXAxes} where {D<:AbstractVector{Float64}}
-const EThrusterU{D} = ComponentVector{Float64, D, EThrusterUAxes} where {D<:AbstractVector{Float64}}
 
 function f_output!(ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
 

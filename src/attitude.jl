@@ -7,7 +7,7 @@ using Flight.Quaternions: UnitQuat, Quat
 #using ..Quaternions: UnitQuat, Quat
 #however, assumes a specific hierarchy
 
-export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dot
+export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz
 
 const ε_null = 1e-10 #threshold for null rotation
 const half_π = π/2

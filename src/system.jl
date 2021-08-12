@@ -4,29 +4,29 @@ using DifferentialEquations
 using ComponentArrays
 using UnPack
 
-export AbstractComponent, ComponentGroup, ContinuousSystem
-export x_template, u_template, d_template, init_output, f_output!
-export y_type
+export AbstractSystemDescriptor, SystemDescriptorGroup, ContinuousSystem
+export x_init, u_init, y_type, init_output, f_output!
 
-################## AbstractComponent Interface ###################
+################## AbstractSystemDescriptor Interface ###################
 
-abstract type AbstractComponent end
+abstract type AbstractSystemDescriptor end
 
-x_template(::C) where {C<:AbstractComponent} = x_template(C)
-u_template(::C) where {C<:AbstractComponent} = u_template(C)
-d_template(::C) where {C<:AbstractComponent} = d_template(C)
-y_type(::C) where {C<:AbstractComponent} = y_type(C)
+const ASD = AbstractSystemDescriptor
 
-x_template(::Type{<:AbstractComponent}) = error("To be overridden by each subtype")
-u_template(::Type{<:AbstractComponent}) = error("To be overridden by each subtype")
-d_template(::Type{<:AbstractComponent}) = error("To be overridden by each subtype")
-y_type(::Type{<:AbstractComponent}) = error("To be overridden by each subtype")
+extend_error(::Type{C}) where {C} = error("You must extend this method for subtype $C")
 
-f_output!(::Any, ::Any, ::Any, ::Real, ::Any, ::AbstractComponent) = error("To be extended by each subtype")
+x_init(::C) where {C<:ASD} = extend_error(C)
+u_init(::C) where {C<:ASD} = extend_error(C)
+d_init(::C) where {C<:ASD} = extend_error(C)
 
-function init_output(x::Any, u::Any, t::Real, data::Any, comp::AbstractComponent)
-    ẋ = x_template(comp)
-    y = f_output!(ẋ, x, u, t, data, comp)
+y_type(::C) where {C<:ASD} = y_type(C)
+y_type(::Type{C}) where {C<:ASD} = extend_error(C)
+
+f_output!(::Any, ::Any, ::Any, ::Real, ::Any, ::C) where {C<:ASD} = extend_error(C)
+
+function init_output(x::Any, u::Any, t::Real, data::Any, desc::AbstractSystemDescriptor)
+    ẋ = x_init(desc)
+    y = f_output!(ẋ, x, u, t, data, desc)
     return y, ẋ
 end
 
@@ -48,32 +48,31 @@ struct ContinuousSystem{C}
     integrator::OrdinaryDiffEq.ODEIntegrator #just for annotation purposes
     log::SavedValues
 
-    function ContinuousSystem(comp::C;
-        x₀ = x_template(comp), u₀ = u_template(comp),
+    function ContinuousSystem(desc::C;
+        x₀ = x_init(desc), u₀ = u_init(desc), data = d_init(desc),
         t_start = 0.0, t_end = 10.0, method = Tsit5(), y_saveat = Float64[],
-        kwargs...) where {C<:AbstractComponent}
+        kwargs...) where {C<:ASD}
 
         #pass the y cache for f_update! to have somewhere to write to, then
         #throw it away. what matters in this call is the update to the ẋ passed
         #by the integrator
         function f_step!(ẋ, x, p, t)
-            @unpack u, data, comp = p
-            f_output!(ẋ, x, u, t, data, comp) #throw away y
+            @unpack u, data, desc = p
+            f_output!(ẋ, x, u, t, data, desc) #throw away y
         end
 
         #the dummy ẋ cache is passed for f_update! to have somewhere to write
         #to without cloberring the integrator's du, then it is thrown away. copy
         #and output the updated y
         function f_save(x, t, integrator)
-            @unpack ẋ_dummy, u, data, comp = integrator.p
-            y = f_output!(ẋ_dummy, x, u, t, data, comp)
+            @unpack ẋ_dummy, u, data, desc = integrator.p
+            y = f_output!(ẋ_dummy, x, u, t, data, desc)
             return y
         end
 
-        data = d_template(comp)
-        y₀, ẋ₀ = init_output(x₀, u₀, t_start, data, comp)
+        y₀, ẋ₀ = init_output(x₀, u₀, t_start, data, desc)
 
-        params = (u = u₀, ẋ_dummy = ẋ₀, data = data, comp = comp)
+        params = (u = u₀, ẋ_dummy = ẋ₀, data = data, desc = desc)
         log = SavedValues(Float64, typeof(y₀))
         scb = SavingCallback(f_save, log, saveat = y_saveat) #ADD A FLAG TO DISABLE SAVING OPTIONALLY, IT REDUCES ALLOCATIONS
 
@@ -85,7 +84,7 @@ end
 
 Base.getproperty(sys::ContinuousSystem, s::Symbol) = getproperty(sys, Val(s))
 
-Base.getproperty(sys::ContinuousSystem, ::Val{:component}) = sys.integrator.p.comp
+Base.getproperty(sys::ContinuousSystem, ::Val{:descriptor}) = sys.integrator.p.desc
 Base.getproperty(sys::ContinuousSystem, ::Val{:integrator}) = getfield(sys, :integrator)
 Base.getproperty(sys::ContinuousSystem, ::Val{:log}) = getfield(sys, :log)
 
@@ -103,26 +102,25 @@ Base.getproperty(sys::ContinuousSystem, ::Val{:data}) = sys.integrator.p.data #e
 DifferentialEquations.step!(sys::ContinuousSystem, args...) = step!(sys.integrator, args...)
 DifferentialEquations.reinit!(sys::ContinuousSystem, args...) = reinit!(sys.integrator, args...)
 
-
-################## Generic Component Group ###################
+################## Generic Descriptor Group ###################
 
 #see if the efficiency due to allocations in f_output! is diluted when the
 #function itself becomes more costly
 
-struct ComponentGroup{N,T,L,C} <: AbstractComponent
-    function ComponentGroup(nt::NamedTuple{L, NTuple{N, T}}) where {L, N, T <: AbstractComponent} #Dicts are not ordered, so they won't do
+struct SystemDescriptorGroup{N,T,L,C} <: ASD
+    function SystemDescriptorGroup(nt::NamedTuple{L, NTuple{N, T}}) where {L, N, T <: ASD} #Dicts are not ordered, so they won't do
         new{N,T,L,values(nt)}()
     end
 end
 
-x_template(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(x_template.(C)))
-u_template(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(u_template.(C)))
-d_template(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = d_template(T)
-y_type(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = NamedTuple{L, NTuple{N, y_type(T)}}
+x_init(::SystemDescriptorGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(x_init.(C)))
+u_init(::SystemDescriptorGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(u_init.(C)))
+d_init(::SystemDescriptorGroup{N,T,L,C}) where {N,T,L,C} = d_init(T)
+y_type(::SystemDescriptorGroup{N,T,L,C}) where {N,T,L,C} = NamedTuple{L, NTuple{N, y_type(T)}}
 #a single, shared data source is assumed, but this could be easily changed to:
-# d_template(g::ComponentGroup{T,L,C}) where {T,L,C} = NamedTuple{L}(d_template.(C))
+# d_template(g::SystemDescriptorGroup{T,L,C}) where {T,L,C} = NamedTuple{L}(d_template.(C))
 
-@inline function f_output!(ẋ::Any, x::Any, u::Any, t::Real, data::Any, ::ComponentGroup{N,T,L,C}) where {N,T,L,C}
+@inline function f_output!(ẋ::Any, x::Any, u::Any, t::Real, data::Any, ::SystemDescriptorGroup{N,T,L,C}) where {N,T,L,C}
 
     v = Vector{y_type(T)}(undef, N)
     for (i, k) in enumerate(valkeys(x)) #valkeys is the only way to avoid allocations
