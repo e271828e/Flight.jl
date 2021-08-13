@@ -98,9 +98,9 @@ function init!(x::PosVelX, init::PosVelInit)
 
     x.pos.q_lb .= q_lb #assignment without colon slicing courtesy of RQuat iterability
     x.pos.q_el .= ltf(Ob) #assignment without colon slicing courtesy of RQuat iterability
-    x.pos.h = h
     x.pos.Δx = Δx
     x.pos.Δy = Δy
+    x.pos.h = h
     x.vel.ω_eb_b .= ω_eb_b
     x.vel.v_eOb_b .= v_eOb_b
 
@@ -113,11 +113,11 @@ function f_pos!(ẋ_pos::PosX, x::PosVelX)::PosVelY
     #components using slices
     q_lb = RQuat(x.pos.q_lb)
     q_el = RQuat(x.pos.q_el)
+    Δx = x.pos.Δx
+    Δy = x.pos.Δy
     h = x.pos.h[1]
     ω_eb_b = SVector{3}(x.vel.ω_eb_b)
     v_eOb_b = SVector{3}(x.vel.v_eOb_b)
-    Δx = x.pos.Δx
-    Δy = x.pos.Δy
 
     Ob = WGS84Pos(NVector(q_el), h)
     q_nl = Rz(ψ_nl(q_el))

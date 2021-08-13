@@ -1,6 +1,6 @@
 module Model
 
-using DifferentialEquations
+using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks
 using UnPack
 
 using Flight.System
@@ -77,8 +77,8 @@ Base.getproperty(m::ContinuousModel, ::Val{:ẋ}) = m.integrator.p.ẋ #ẋ cach
 Base.getproperty(m::ContinuousModel, ::Val{:y}) = m.integrator.p.y #y cache
 Base.getproperty(m::ContinuousModel, ::Val{:data}) = m.integrator.p.data #external data cache
 
-DifferentialEquations.step!(m::ContinuousModel, args...) = step!(m.integrator, args...)
-DifferentialEquations.reinit!(m::ContinuousModel, args...) = reinit!(m.integrator, args...)
+SciMLBase.step!(m::ContinuousModel, args...) = step!(m.integrator, args...)
+SciMLBase.reinit!(m::ContinuousModel, args...) = reinit!(m.integrator, args...)
 
 
 end

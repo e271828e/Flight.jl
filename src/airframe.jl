@@ -32,7 +32,6 @@ Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(F = wr1.F + wr2.F, M = wr1.M + wr2.M)
 
 abstract type AbstractComponent <: AbstractSystem end
 
-
 """
 #Specifies a local ComponentFrame fc(Oc, Ɛc) relative to the airframe reference
 frame fb(Ob, Ɛb) by:

@@ -9,8 +9,9 @@ using Flight.Kinematics
 using Flight.Airframe
 using Flight.Powerplant
 using Flight.Airdata
+using Flight.System
 
-import Flight.System: X, U, D, typeof_y, f_output!
+import Flight.System: X, U, D, typeof_y, f_output! #these we need to extend
 
 export TestAircraft
 
@@ -72,7 +73,7 @@ end
 
 get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.r_ObG_b)
 
-Base.@kwdef struct TestAircraft
+Base.@kwdef struct TestAircraft <: AbstractSystem
     mass_model::ConstantMassModel = ConstantMassModel()
     power_plant::EThruster = EThruster()
     landing_gear::Nothing = nothing
@@ -89,7 +90,10 @@ const TestAircraftU{D} = ComponentVector{Float64, D, typeof(getaxes(TestAircraft
 
 const TestAircraftD = Environment
 
-struct TestAircraftY end
+struct TestAircraftY
+    kin::KinY
+    pwp::EThrusterY
+end
 
 X(::TestAircraft) = copy(TestAircraftXTemplate)
 U(::TestAircraft) = copy(TestAircraftUTemplate)
@@ -116,12 +120,7 @@ function f_output!(ẋ::TestAircraftX, x::TestAircraftX, u::TestAircraftU, t::Re
 
     y_kin = KinY(y_pv.pos, y_pv.vel, y_ac)
 
-    return y_kin, y_pwp
-    error("to do... define TestAircraftY and return it, test it as a Model")
-    #assemble YKin from YPos, YVel, YAcc
-    #assemble YPwp
-    #assemble TestAircraftY from these
-
+    return TestAircraftY(y_kin, y_pwp)
 end
 
 end
