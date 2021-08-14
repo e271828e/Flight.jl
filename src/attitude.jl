@@ -38,11 +38,18 @@ struct RQuat <: Rotation
 end
 
 RQuat(r::Rotation) = convert(RQuat, r)
+function RQuat(v::AbstractVector{<:Real}; normalization::Bool = true)
+    RQuat(UnitQuat(v, normalization = normalization))
+end
 RQuat() = RQuat(UnitQuat())
 
 Base.getindex(r::RQuat, i) = getindex(r._quat, i)
 Base.length(r::RQuat) = length(r._quat)
-Base.iterate(r::RQuat, state = 1) = iterate(r._quat, state)
+# Base.iterate(r::RQuat, state = 1) = iterate(r._quat, state)
+#disallow direct iteration, which allocates. instead of x .= r, doing x.=r[:]
+#gets the underlying SVector through getindex forwarding, then iterates on
+#the StateVector itself, which is fast
+
 Base.show(io::IO, r::RQuat) = print(io, "$(typeof(r))($(r[:]))")
 
 Base.:(==)(r1::RQuat, r2::RQuat) = (r1._quat == r2._quat || r1._quat == -r2._quat)

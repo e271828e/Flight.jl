@@ -28,6 +28,8 @@ include("powerplant.jl")
 @reexport using .Powerplant
 # @reexport using .Aircraft
 
+println("REMINDER: Set normalization = false")
+
 export ftest
 
 ftest() = println("Welcome to Flight")

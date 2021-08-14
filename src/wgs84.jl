@@ -7,7 +7,7 @@ using Flight.Attitude
 
 export ω_ie
 export NVector, WGS84Pos, rECEF
-export gravity, ltf, radii, ψ_nl
+export gravity, ltf, radii, ψ_nl, lat, lon
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -205,6 +205,8 @@ end
 
 radii(p::WGS84Pos) = radii(p.n_e)
 ltf(p::WGS84Pos) = ltf(p.n_e)
+lat(p::WGS84Pos) = lat(p.n_e)
+lon(p::WGS84Pos) = lon(p.n_e)
 
 """
     gravity(p::WGS84Pos)

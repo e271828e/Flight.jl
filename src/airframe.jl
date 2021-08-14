@@ -124,6 +124,7 @@ function Base.:*(f_bc::ComponentFrame, wr_Oc_c::Wrench)
 
 end
 
+#TO REDO!!!!!!!!!
 struct ComponentGroup{N,T,L,C} <: AbstractComponent
     function ComponentGroup(nt::NamedTuple{L, NTuple{N, T}}) where {L, N, T <: AbstractComponent} #Dicts are not ordered, so they won't do
         new{N,T,L,values(nt)}()
@@ -142,10 +143,14 @@ D(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = NamedTuple{L}(D.(C))
 end
 
 
-function inertia_wrench(mass::MassData, vel::VelY, h_rot_b::AbstractVector{<:Real})
+function inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:Real})
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-    @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = vel #these are already SVectors
+
+    ω_ie_b = SVector{3,Float64}(y_vel.ω_ie_b)
+    ω_eb_b = SVector{3,Float64}(y_vel.ω_eb_b)
+    ω_ib_b = SVector{3,Float64}(y_vel.ω_ib_b)
+    v_eOb_b = SVector{3,Float64}(y_vel.v_eOb_b)
 
     h_rot_b = SVector{3,Float64}(h_rot_b)
 
@@ -164,13 +169,17 @@ function inertia_wrench(mass::MassData, vel::VelY, h_rot_b::AbstractVector{<:Rea
 
 end
 
-function gravity_wrench(mass::MassData, pos::PosY)
+function gravity_wrench(mass::MassData, y_pos::PosY)
 
     #strictly, the gravity vector should be evaluated at G, with its direction
     #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
     #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
     #LTF(Ob), and then apply it at G.
-    g_G_l = gravity(pos.Ob)
+    q_el = RQuat(y_pos.q_el, normalization = false)
+    q_lb = RQuat(y_pos.q_lb, normalization = false)
+    Ob = WGS84Pos(NVector(q_el), y_pos.h)
+
+    g_G_l = gravity(Ob)
 
     #the resultant consists of the force of gravity acting on G along the local
     #vertical and a null torque
@@ -182,13 +191,13 @@ function gravity_wrench(mass::MassData, pos::PosY)
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
     wr_Oc_c = wr_G_l
-    f_bc = ComponentFrame(r_ObOc_b = mass.r_ObG_b, q_bc = pos.q_lb')
+    f_bc = ComponentFrame(r_ObOc_b = mass.r_ObG_b, q_bc = q_lb')
     return f_bc * wr_Oc_c #wr_Ob_b
 
 end
 
-function f_vel!(ẋ_vel, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Real},
-                mass::MassData, y_pv::PosVelY)
+function f_vel!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
+    h_rot_b::AbstractVector{<:Real}, mass::MassData, y_pv::PosVelY)
 
     #wr_ext_Ob_b: External Wrench on the airframe due to aircraft components
 
@@ -206,8 +215,13 @@ function f_vel!(ẋ_vel, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Real},
     #least singular)!
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-    @unpack ω_eb_b, ω_ie_b, v_eOb_b = y_pv.vel
-    @unpack Ob, q_eb = y_pv.pos
+
+    ω_eb_b = SVector{3,Float64}(y_pv.vel.ω_eb_b)
+    ω_ie_b = SVector{3,Float64}(y_pv.vel.ω_ie_b)
+    v_eOb_b = SVector{3,Float64}(y_pv.vel.v_eOb_b)
+    q_el = RQuat(y_pv.pos.q_el, normalization = false)
+    q_eb = RQuat(y_pv.pos.q_eb, normalization = false)
+    Ob = WGS84Pos(NVector(q_el), y_pv.pos.h)
 
     #preallocating is faster than directly concatenating the blocks
     A = Array{Float64}(undef, (6,6))
@@ -227,16 +241,22 @@ function f_vel!(ẋ_vel, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Real},
 
     ẋ_vel .= A\b
 
-    α_eb_b = SVector{3}(ẋ_vel.ω_eb_b) #α_eb_b == ω_eb_b_dot
-    α_ib_b = α_eb_b - ω_eb_b × ω_ie_b
-
+    #update y_acc
     v̇_eOb_b = SVector{3}(ẋ_vel.v_eOb_b)
     r_eO_e = rECEF(Ob)
     r_eO_b = q_eb' * r_eO_e
+
+    α_eb_b = SVector{3}(ẋ_vel.ω_eb_b) #α_eb_b == ω_eb_b_dot
+    α_ib_b = α_eb_b - ω_eb_b × ω_ie_b
     a_eOb_b = v̇_eOb_b + ω_eb_b × v_eOb_b
     a_iOb_b = v̇_eOb_b + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eO_b)
 
-    AccY(α_eb_b, α_ib_b, a_eOb_b, a_iOb_b)
+    y_acc.α_eb_b .= α_eb_b #α_eb_b == ω_eb_b_dot
+    y_acc.α_ib_b .= α_ib_b
+    y_acc.a_eOb_b .= a_eOb_b
+    y_acc.a_iOb_b .= a_iOb_b
+
+    return nothing
 
 end
 

@@ -7,7 +7,7 @@ export AbstractQuat, Quat, UnitQuat
 
 ######################## AbstractQuat #############################
 
-abstract type AbstractQuat end
+abstract type AbstractQuat <: AbstractVector{Float64} end
 
 #indexing and iterable interfaces; see https://docs.julialang.org/en/v1/manual/interfaces/
 Base.size(::AbstractQuat) = (4,)
@@ -16,9 +16,10 @@ Base.firstindex(::AbstractQuat) = 1
 Base.lastindex(::AbstractQuat) = 4
 Base.getindex(::AbstractQuat, i) = error("AbstractQuat: getindex not implemented")
 Base.setindex!(::AbstractQuat, v, i) = error("AbstractQuat: setindex! not implemented")
-Base.iterate(q::AbstractQuat, state = 1) = (state > 4 ? nothing : (q[state], state + 1))
-Base.eltype(::AbstractQuat) = Float64 #helps with allocation efficiency
+# Base.iterate(q::AbstractQuat, state = 1) = (state > 4 ? nothing : (q[state], state + 1))
+Base.eltype(::AbstractQuat) = Float64
 Base.show(io::IO, q::AbstractQuat) = print(io, "$(typeof(q))($(q[:]))")
+Base.show(io::IO, ::MIME"text/plain", q::AbstractQuat) = print(io, "$(typeof(q))($(q[:]))")
 
 #real and imaginary parts
 Base.getindex(q::AbstractQuat, s::Symbol) = getindex(q, Val(s))
@@ -103,7 +104,7 @@ Base.:\(a::Real, q::Quat) = q / a
 
 struct UnitQuat <: AbstractQuat
     _quat::Quat
-    function UnitQuat(input::Union{AbstractQuat, AbstractVector}; normalization::Bool = true)
+    function UnitQuat(input::AbstractVector{<:Real}; normalization::Bool = true)
         return normalization ? new(normalize(input)) : new(input)
     end
 end
