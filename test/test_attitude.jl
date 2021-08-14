@@ -281,6 +281,9 @@ function test_RMatrix()
         @test r_ab * (r_bc * x_c) ≈ (r_ab * r_bc) * x_c
         @test x_c ≈ r_bc' * (r_bc * x_c)
 
+        #time derivative
+        ω_ab_b = [10, -4, 2]
+        @test dt(r_ab, ω_ab_b) == r_ab._mat * Attitude.skew(ω_ab_b)
     end
 
     @testset "Conversions" begin

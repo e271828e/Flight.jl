@@ -35,23 +35,23 @@ struct ContinuousModel{S} <: AbstractModel
         #throw it away. what matters in this call is the update to the ẋ passed
         #by the integrator
         function f_step!(ẋ, x, p, t)
-            @unpack u, data, sys = p
-            f_output!(ẋ, x, u, t, data, sys) #throw away y
+            @unpack y_tmp, u, data, sys = p
+            f_output!(y_tmp, ẋ, x, u, t, data, sys) #throw away y
         end
 
         #the dummy ẋ cache is passed for f_update! to have somewhere to write
         #to without clobbering the integrator's du, then it is thrown away. copy
         #and output the updated y
         function f_save(x, t, integrator)
-            @unpack ẋ_dummy, u, data, sys = integrator.p
-            y = f_output!(ẋ_dummy, x, u, t, data, sys)
-            return y
+            @unpack y_tmp, ẋ_tmp, u, data, sys = integrator.p
+            f_output!(y_tmp, ẋ_tmp, x, u, t, data, sys)
+            return copy(y_tmp)
         end
 
-        y₀, ẋ₀ = output_init(x₀, u₀, t_start, data, sys)
+        # y₀, ẋ₀ = output_init(x₀, u₀, t_start, data, sys)
 
-        params = (u = u₀, ẋ_dummy = ẋ₀, data = data, sys = sys)
-        log = SavedValues(Float64, typeof(y₀))
+        params = (u = u₀, y_tmp = Y(sys), ẋ_tmp = X(sys), data = data, sys = sys)
+        log = SavedValues(Float64, typeof(params.y_tmp))
         scb = SavingCallback(f_save, log, saveat = y_saveat)
 
         problem = ODEProblem{true}(f_step!, x₀, (t_start, t_end), params)

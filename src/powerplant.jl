@@ -9,7 +9,7 @@ using Flight.Airframe
 using Flight.Airdata
 
 # import ComponentArrays: ComponentVector
-import Flight.System: X, U, D, typeof_y, f_output!
+import Flight.System: X, Y, U, D, f_output!
 
 export SimpleProp, Gearbox, ElectricMotor
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
@@ -65,26 +65,23 @@ end
 
 const EThrusterXTemplate = ComponentVector(ω_shaft = 0.0)
 const EThrusterUTemplate = ComponentVector(throttle = 0.0)
-# const EThrusterYTemplate = ComponentVector(
-#     throttle = 0.0,
-#     ω_shaft = 0.0,
-#     ω_prop = 0.0,
-#     wr_Oc_c = Wrench(),
-#     wr_Ob_b = Wrench(),
-#     h_rot_b = zeros(3)
-#     )
+const EThrusterYTemplate = ComponentVector(
+    throttle = 0.0, ω_shaft = 0.0, ω_prop = 0.0,
+    wr_Oc_c = ComponentVector(Wrench()), wr_Ob_b = ComponentVector(Wrench()),
+    h_rot_b = zeros(3))
 
 const EThrusterX{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterXTemplate))} where {D<:AbstractVector{Float64}}
 const EThrusterU{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterUTemplate))} where {D<:AbstractVector{Float64}}
+const EThrusterY{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterYTemplate))} where {D<:AbstractVector{Float64}}
 
-Base.@kwdef struct EThrusterY
-    throttle::Float64 = 0.0
-    ω_shaft::Float64 = 0.0
-    ω_prop::Float64 = 0.0
-    wr_Oc_c::Wrench = Wrench()
-    wr_Ob_b::Wrench = Wrench()
-    h_rot_b::SVector{3, Float64} = SVector{3}(0,0,0)
-end
+# Base.@kwdef struct EThrusterY
+#     throttle::Float64 = 0.0
+#     ω_shaft::Float64 = 0.0
+#     ω_prop::Float64 = 0.0
+#     wr_Oc_c::Wrench = Wrench()
+#     wr_Ob_b::Wrench = Wrench()
+#     h_rot_b::SVector{3, Float64} = SVector{3}(0,0,0)
+# end
 
 Base.@kwdef struct EThrusterD #external data sources (other than control inputs)
     air::AirDataSensed = AirDataSensed()
@@ -93,19 +90,19 @@ end
 #AbstractSystem interface
 X(::EThruster) = copy(EThrusterXTemplate)
 U(::EThruster) = copy(EThrusterUTemplate)
+Y(::EThruster) = copy(EThrusterYTemplate)
 D(::EThruster) = EThrusterD()
-typeof_y(::Type{EThruster}) = EThrusterY
 
-function f_output!(ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
+function f_output!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
 
     @unpack frame, motor, propeller, gearbox = thr
     @unpack n, η = gearbox
 
     ω_shaft = x.ω_shaft
+    ω_prop = ω_shaft / n
     throttle = u.throttle
     M_eng_shaft = torque(motor, throttle, ω_shaft)
 
-    ω_prop = ω_shaft / n
     wr_Oc_c = wrench(propeller, ω_prop, data.air)
     wr_Ob_b = frame * wr_Oc_c
     M_air_prop = wr_Oc_c.M[1]
@@ -113,13 +110,15 @@ function f_output!(ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::
     h_rot_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
     h_rot_b = frame.q_bc * h_rot_c
 
-    ω_shaft = (M_eng_shaft + M_air_prop/(η*n)) / (motor.J + propeller.J/(η*n^2))
+    ω_shaft_dot = (M_eng_shaft + M_air_prop/(η*n)) / (motor.J + propeller.J/(η*n^2))
+    ẋ.ω_shaft = ω_shaft_dot
 
-    ẋ.ω_shaft = ω_shaft
+    @pack! y = throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_rot_b
 
-    EThrusterY(throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_rot_b)
+    return nothing
 
 end
+
 
 EThrusterSys(thr::EThruster = EThruster(); kwargs...) =
     System.Continuous(thr; kwargs...)

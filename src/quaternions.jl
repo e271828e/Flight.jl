@@ -41,8 +41,10 @@ Quat(q::AbstractQuat) = Quat(q[:])
 
 Base.copy(q::Quat) = Quat(copy(getfield(q, :__data)))
 Base.getindex(q::Quat, i) = getfield(q, :__data)[i]
-Base.getindex(q::Quat, ::Val{:real}) = q[1]
-Base.getindex(q::Quat, ::Val{:imag}) = SVector{3, Float64}(q[2:4])
+Base.getindex(q::Quat, ::Val{:real}) = getfield(q, :__data)[1]
+Base.getindex(q::Quat, ::Val{:imag}) = SVector{3, Float64}(@view getfield(q, :__data)[2:4])
+#to avoid allocation, use @view instead of:
+# Base.getindex(q::Quat, ::Val{:imag}) = SVector{3, Float64}(q[2:4])
 
 LinearAlgebra.norm(q::Quat) = norm(getfield(q, :__data)) #uses StaticArrays implementation
 LinearAlgebra.normalize(q::Quat) = Quat(normalize(getfield(q, :__data)))

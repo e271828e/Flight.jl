@@ -186,7 +186,7 @@ macro define_node(name, children)
         end
 
     end
-    return Base.remove_linenums!(esc(ex))
+    return Base.remove_linenums!(esc(ex)) #esc: escapes the whole expression
     # return esc(ex)
 end
 

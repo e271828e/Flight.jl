@@ -11,7 +11,7 @@ using Flight.Powerplant
 using Flight.Airdata
 using Flight.System
 
-import Flight.System: X, U, D, typeof_y, f_output! #these we need to extend
+import Flight.System: X, U, D, f_output! #these we need to extend
 
 export TestAircraft
 
@@ -97,8 +97,8 @@ end
 
 X(::TestAircraft) = copy(TestAircraftXTemplate)
 U(::TestAircraft) = copy(TestAircraftUTemplate)
+U(::TestAircraft) = copy(TestAircraftYTemplate)
 D(::TestAircraft) = TestAircraftD()
-typeof_y(::Type{TestAircraft}) = TestAircraftY
 
 function f_output!(ẋ::TestAircraftX, x::TestAircraftX, u::TestAircraftU, t::Real,
                    data::TestAircraftD, aircraft::TestAircraft)

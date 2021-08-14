@@ -10,7 +10,7 @@ using Flight.Attitude
 using Flight.Kinematics
 using Flight.Airdata
 using Flight.System
-import Flight.System: X, U, D, typeof_y, f_output!
+import Flight.System: X, U, D, f_output!
 
 export Wrench, MassData, AbstractComponent, ComponentFrame, ComponentGroup
 export v2skew, inertia_wrench, gravity_wrench, f_vel!
@@ -46,21 +46,23 @@ function Wrench(; F = SVector(0,0,0), M = SVector(0,0,0))
     data.F = F; data.M = M
     Wrench(data)
 end
-ComponentArrays.ComponentVector(wr::Wrench) = copy(wr.data)
+ComponentArrays.ComponentVector(wr::Wrench) = copy(getfield(wr,:data))
 
 Base.size(::Wrench) = (6,)
 Base.length(::Wrench) = 6
 
-Base.getproperty(wr::Wrench, i::Symbol) = getproperty(wr, Val(i))
-Base.getproperty(wr::Wrench, ::Val{:data}) = getfield(wr, :data)
-Base.getproperty(wr::Wrench, i::Val{S} where {S}) = getproperty(wr.data, i)
+#this is type unstable! it returns ::Any (?!!!)
+# Base.getproperty(wr::Wrench, i::Symbol) = getproperty(wr, Val(i))
+# Base.getproperty(wr::Wrench, ::Val{:data}) = getfield(wr, :data)
+# Base.getproperty(wr::Wrench, i::Val{S} where {S}) = getproperty(wr.data, i)
 
+Base.getproperty(wr::Wrench, i::Symbol) = getproperty(getfield(wr,:data), i)
 Base.setproperty!(wr::Wrench, i::Symbol, v) = setproperty!(wr, Val(i), v)
 Base.setproperty!(wr::Wrench, ::Val{:F}, v) = (wr.F .= v) #gets the F block, then broadcasts
 Base.setproperty!(wr::Wrench, ::Val{:M}, v) = (wr.M .= v) #gets the M block, then broadcasts
 
-Base.getindex(wr::Wrench, i) = getindex(wr.data, i)
-Base.setindex!(wr::Wrench, v, i) = setindex!(wr.data, v, i)
+Base.getindex(wr::Wrench, i) = getindex(getfield(wr,:data), i)
+Base.setindex!(wr::Wrench, v, i) = setindex!(getfield(wr,:data), v, i)
 
 Base.eltype(::Wrench) = Float64 #helps with allocation efficiency
 Base.similar(::Wrench) = Wrench(ComponentVector{Float64}(undef, WrenchAxes))
@@ -130,17 +132,13 @@ end
 
 X(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(X.(C)))
 U(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(U.(C)))
+Y(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(Y.(C)))
 D(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = NamedTuple{L}(D.(C))
-typeof_y(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = NamedTuple{L, NTuple{N, typeof_y(T)}}
 
-@inline function f_output!(ẋ::Any, x::Any, u::Any, t::Real, data::Any, ::ComponentGroup{N,T,L,C}) where {N,T,L,C}
-
-    v = Vector{typeof_y(T)}(undef, N)
+@inline function f_output!(y::Any, ẋ::Any, x::Any, u::Any, t::Real, data::Any, ::ComponentGroup{N,T,L,C}) where {N,T,L,C}
     for (i, k) in enumerate(valkeys(x)) #valkeys is the only way to avoid allocations
-        v[i] = f_output!(getproperty(ẋ, k), getproperty(x, k), getproperty(u, k), t, data[i], C[i])
+        @inbounds v[i] = f_output!(getproperty(y,k), getproperty(ẋ, k), getproperty(x, k), getproperty(u, k), t, data[i], C[i])
     end
-    tup = Tuple(v)::NTuple{N, typeof_y(T)}
-    return NamedTuple{L}(tup)::NamedTuple{L, NTuple{N, typeof_y(T)}}
 end
 
 
