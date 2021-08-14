@@ -65,6 +65,14 @@ end
 
 const EThrusterXTemplate = ComponentVector(ω_shaft = 0.0)
 const EThrusterUTemplate = ComponentVector(throttle = 0.0)
+# const EThrusterYTemplate = ComponentVector(
+#     throttle = 0.0,
+#     ω_shaft = 0.0,
+#     ω_prop = 0.0,
+#     wr_Oc_c = Wrench(),
+#     wr_Ob_b = Wrench(),
+#     h_rot_b = zeros(3)
+#     )
 
 const EThrusterX{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterXTemplate))} where {D<:AbstractVector{Float64}}
 const EThrusterU{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterUTemplate))} where {D<:AbstractVector{Float64}}

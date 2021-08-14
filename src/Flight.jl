@@ -15,7 +15,7 @@ include("airdata.jl")
 include("kinematics.jl")
 include("airframe.jl")
 include("powerplant.jl")
-include("aircraft.jl")
+# include("aircraft.jl")
 
 @reexport using .Quaternions
 @reexport using .Attitude
@@ -26,7 +26,7 @@ include("aircraft.jl")
 @reexport using .Kinematics
 @reexport using .Airframe
 @reexport using .Powerplant
-@reexport using .Aircraft
+# @reexport using .Aircraft
 
 export ftest
 
