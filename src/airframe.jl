@@ -1,6 +1,6 @@
 module Airframe
 
-using StaticArrays: SVector, SMatrix
+using StaticArrays
 using LinearAlgebra
 using UnPack
 using ComponentArrays
@@ -13,8 +13,8 @@ using Flight.System
 import Flight.System: X, Y, U, D, f_output!
 
 export Acc, AccY
-export Wrench, MassData, AbstractComponent, ComponentFrame, ComponentGroup, NewWrench
-export v2skew, get_wr_Ob_b, get_h_Ob_b, inertia_wrench, gravity_wrench, f_vel!
+export Wrench, MassData, AbstractComponent, ComponentFrame, ComponentGroup, Wrench
+export get_wr_Ob_b, get_h_Gc_b, inertia_wrench, gravity_wrench, f_vel!
 
 struct Acc end
 
@@ -23,72 +23,6 @@ const AccYTemplate = ComponentVector(
 
 const AccY{D} = ComponentVector{Float64, D, typeof(getaxes(AccYTemplate))} where {D<:AbstractVector{Float64}}
 Y(::Acc) = similar(AccYTemplate)
-
-const WrenchAxes = getaxes(ComponentVector(F = zeros(3), M = zeros(3)))
-
-struct Wrench{D <: AbstractVector{Float64}} <: AbstractVector{Float64}
-    data::ComponentVector{Float64, D, typeof(WrenchAxes)}
-end
-
-#avoid ComponentVector(F = F, M = M), which forwards to ComponentArray{T}
-#(::NamedTuple), which needs to create the axes from scratch and is very slow.
-#much faster to provide the axes directly
-
-function Wrench(input::AbstractVector{<:Real})
-    if length(input) != 6
-        throw(ArgumentError("Got input length $(length(input)), expected 6"))
-    end
-    data = ComponentVector{Float64}(undef, WrenchAxes)
-    data .= input
-    Wrench(data)
-end
-
-function Wrench(; F = SVector(0,0,0), M = SVector(0,0,0))
-    data = ComponentVector{Float64}(undef, WrenchAxes)
-    data.F = F; data.M = M
-    Wrench(data)
-end
-ComponentArrays.ComponentVector(wr::Wrench) = copy(getfield(wr,:data))
-
-Base.size(::Wrench) = (6,)
-Base.length(::Wrench) = 6
-
-#this is type unstable! it returns ::Any (?!!!)
-# Base.getproperty(wr::Wrench, i::Symbol) = getproperty(wr, Val(i))
-# Base.getproperty(wr::Wrench, ::Val{:data}) = getfield(wr, :data)
-# Base.getproperty(wr::Wrench, i::Val{S} where {S}) = getproperty(wr.data, i)
-
-Base.getproperty(wr::Wrench, i::Symbol) = getproperty(getfield(wr,:data), i)
-Base.setproperty!(wr::Wrench, i::Symbol, v) = setproperty!(wr, Val(i), v)
-Base.setproperty!(wr::Wrench, ::Val{:F}, v) = (wr.F .= v) #gets the F block, then broadcasts
-Base.setproperty!(wr::Wrench, ::Val{:M}, v) = (wr.M .= v) #gets the M block, then broadcasts
-
-Base.getindex(wr::Wrench, i) = getindex(getfield(wr,:data), i)
-Base.setindex!(wr::Wrench, v, i) = setindex!(getfield(wr,:data), v, i)
-
-Base.eltype(::Wrench) = Float64 #helps with allocation efficiency
-Base.similar(::Wrench) = Wrench(ComponentVector{Float64}(undef, WrenchAxes))
-Base.similar(::Type{<:Wrench}) = Wrench(ComponentVector{Float64}(undef, WrenchAxes))
-
-Base.show(io::IO, wr::Wrench) = print(io, "Wrench(F = $(wr.F), M = $(wr.M))")
-Base.show(io::IO, ::MIME"text/plain", wr::Wrench) = print(io, "Wrench(F = $(wr.F), M = $(wr.M))")
-
-#since Wrench <: AbstractVector, broadcasting works out of the box (and with
-#it the non-broadcast operators +, -, etc), but it falls back to the default
-#broadcast implementation in Base, which returns a generic Vector. we want
-#broadcasted operations to return a Wrench. so we do this:
-
-struct WrenchStyle{D} <: Broadcast.AbstractArrayStyle{1} end
-
-WrenchStyle{D}(::Val{1}) where {D} = WrenchStyle{D}()
-Base.BroadcastStyle(::Type{Wrench{D}}) where {D} = WrenchStyle{D}()
-function Base.similar(::Broadcast.Broadcasted{WrenchStyle{D}}, ::Type{ElType}) where {D,ElType}
-    similar(Wrench{D})
-end
-function Base.BroadcastStyle(::WrenchStyle{D1}, ::WrenchStyle{D2}) where {D1,D2}
-    WrenchStyle{promote_type(D1, D2)}()
-end
-
 
 Base.@kwdef struct MassData
     m::Float64 = 1.0
@@ -101,7 +35,21 @@ end
 abstract type AbstractComponent <: AbstractSystem end
 
 get_wr_Ob_b(::Any, comp::AbstractComponent) = error("Method not implemented for subtype $comp or incorrect call signature")
-get_h_Ob_b(::Any, comp::AbstractComponent) = error("Method not implemented for subtype $comp or incorrect call signature")
+get_h_Gc_b(::Any, comp::AbstractComponent) = error("Method not implemented for subtype $comp or incorrect call signature")
+
+################# Wrench ########################
+
+const WrenchAxes = getaxes(ComponentVector(F = zeros(3), M = zeros(3)))
+# const WrenchAxes = WrenchAxes
+const WrenchCV{D} = ComponentVector{Float64, D, typeof(WrenchAxes)} where {D <: AbstractVector{Float64}}
+const Wrench(v::AbstractVector{Float64}) = (@assert length(v) == 6; ComponentVector(v, WrenchAxes))
+function Wrench(; F = SVector(0.0,0,0), M = SVector(0.0,0,0))
+    wr = ComponentVector{Float64}(undef, WrenchAxes)
+    wr.F = F; wr.M = M
+    return wr
+end
+
+####################### ComponentFrame ###############
 
 """
 #Specifies a local ComponentFrame fc(Oc, Ɛc) relative to the airframe reference
@@ -121,7 +69,8 @@ Translate a Wrench specified on a local ComponentFrame fc(Oc, εc) to the
 airframe reference frame fb(Ob, εb) given the relative ComponentFrame
 specification f_bc
 """
-function Base.:*(f_bc::ComponentFrame, wr_Oc_c::Wrench)
+
+function Base.:*(f_bc::ComponentFrame, wr_Oc_c::WrenchCV)
 
     F_Oc_c = wr_Oc_c.F
     M_Oc_c = wr_Oc_c.M
@@ -136,6 +85,8 @@ function Base.:*(f_bc::ComponentFrame, wr_Oc_c::Wrench)
     Wrench(F = F_Ob_b, M = M_Ob_b) #wr_Ob_b
 
 end
+
+################# ComponentGroup ###############
 
 struct ComponentGroup{T <: AbstractComponent, C} <: AbstractComponent
     function ComponentGroup(nt::NamedTuple{L, NTuple{N, T}}) where {L, N, T <: AbstractComponent} #Dicts are not ordered, so they won't do
@@ -185,34 +136,22 @@ end
     return ex
 end
 
-const NewWrenchAxes = getaxes(ComponentVector(F = zeros(3), M = zeros(3)))
-# const NewWrenchAxes = WrenchAxes
-const NewWrenchCV{D} = ComponentVector{Float64, D, typeof(NewWrenchAxes)} where {D <: AbstractVector{Float64}}
-const NewWrench(v::AbstractVector{Float64}) = (@assert length(v) == 6; ComponentVector(v, NewWrenchAxes))
-function NewWrench(; F = SVector(0.0,0,0), M = SVector(0.0,0,0))
-    wr = ComponentVector{Float64}(undef, NewWrenchAxes)
-    wr.F = F; wr.M = M
-    return wr
+@inline @generated function get_h_Gc_b(y::Any, ::ComponentGroup{T,C}) where {T,C}
+
+    ex = Expr(:block)
+    push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate
+
+    for label in keys(C)
+        label = QuoteNode(label)
+        ex_comp = quote
+            h += get_h_Gc_b(view(y,$label), C[$label])
+        end
+        push!(ex.args, ex_comp)
+    end
+    return ex
 end
 
-function Base.:*(f_bc::ComponentFrame, wr_Oc_c::NewWrenchCV)
-
-    F_Oc_c = wr_Oc_c.F
-    M_Oc_c = wr_Oc_c.M
-
-    #project on the reference axes
-    F_Oc_b = f_bc.q_bc * F_Oc_c
-    M_Oc_b = f_bc.q_bc * M_Oc_c
-
-    #translate them to airframe origin
-    F_Ob_b = F_Oc_b
-    M_Ob_b = M_Oc_b + f_bc.r_ObOc_b × F_Oc_b
-    NewWrench(F = F_Ob_b, M = M_Ob_b) #wr_Ob_b
-
-end
-
-
-#######################################################
+################## f_vel! and helper functions ####################
 
 function inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:Real})
 
@@ -223,6 +162,8 @@ function inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:R
     ω_ib_b = SVector{3,Float64}(y_vel.ω_ib_b)
     v_eOb_b = SVector{3,Float64}(y_vel.v_eOb_b)
 
+    #additional angular momentum due to the angular velocity of the rotating
+    #elements with respect to the airframe
     h_rot_b = SVector{3,Float64}(h_rot_b)
 
     #angular momentum of the overall airframe as a rigid body
@@ -267,14 +208,15 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
 
 end
 
-function f_vel!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
+function f_vel!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::WrenchCV,
     h_rot_b::AbstractVector{<:Real}, mass::MassData, y_kin::KinY)
 
     #wr_ext_Ob_b: External Wrench on the airframe due to aircraft components
 
-    #h_rot_b: Additional angular momentum due to rotating aircraft components
-    #(computed using their angular velocity wrt the airframe, not the inertial
-    #frame)
+    #h_rot_b: Additional angular momentum due to the angular velocity of the
+    #rotating aircraft components with respect to the airframe. these are
+    #computed individually by each component relative to its center of mass and
+    #then summed
 
     #wr_ext_Ob_b and h_rot_b, as well as mass data, are produced by aircraft
     #components, so they must be computed by the aircraft's x_dot method. and,
@@ -297,7 +239,7 @@ function f_vel!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
     #preallocating is faster than directly concatenating the blocks
     A = Array{Float64}(undef, (6,6))
 
-    r_ObG_b_sk = v2skew(r_ObG_b)
+    r_ObG_b_sk = Attitude.skew(r_ObG_b)
     A[1:3, 1:3] .= J_Ob_b
     A[1:3, 4:6] .= m * r_ObG_b_sk
     A[4:6, 1:3] .= -m * r_ObG_b_sk
@@ -330,21 +272,5 @@ function f_vel!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
     return nothing
 
 end
-
-
-"""
-Computes the skew-symmetric matrix corresponding to 3-element vector v.
-"""
-function v2skew(v::AbstractVector{T}) where {T<:Real}
-    #much slower, each indexing operation yields an allocation
-    # [0. -v[3] v[2]; v[3] 0. -v[1]; -v[2] v[1] 0.]
-    M = zeros(T, 3, 3)
-                    M[1,2] = -v[3];  M[1,3] = v[2]
-    M[2,1] = v[3];                   M[2,3] = -v[1]
-    M[3,1] = -v[2]; M[3,2] = v[1]
-
-    SMatrix{3,3}(M)
-end
-
 
 end #module

@@ -13,7 +13,7 @@ using Flight.System
 
 import Flight.System: X, Y, U, D, f_output! #these we need to extend
 
-export TestAircraft, ParametricAircraft
+export ParametricAircraft
 
 
 abstract type AbstractTerrainModel end
@@ -73,53 +73,6 @@ end
 
 get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.r_ObG_b)
 
-Base.@kwdef struct TestAircraft <: AbstractSystem
-    mass_model::ConstantMassModel = ConstantMassModel()
-    power_plant::EThruster = EThruster()
-    landing_gear::Nothing = nothing
-    control_surfaces::Nothing = nothing
-end
-
-#primero definir a mano el AircraftTEmplate, ver que todo funciona OK
-
-#despues commit e intentar generalizar con type parameter
-
-const TestAircraftXTemplate = ComponentVector( kin = X(Kin()), pwp = X(EThruster()))
-const TestAircraftUTemplate = ComponentVector( pwp = U(EThruster()))
-const TestAircraftYTemplate = ComponentVector( kin = Y(Kin()), acc = Y(Acc()), pwp = Y(EThruster()), air = Y(AirData()))
-
-const TestAircraftX{D} = ComponentVector{Float64, D, typeof(getaxes(TestAircraftXTemplate))} where {D<:AbstractVector{Float64}}
-const TestAircraftU{D} = ComponentVector{Float64, D, typeof(getaxes(TestAircraftUTemplate))} where {D<:AbstractVector{Float64}}
-const TestAircraftY{D} = ComponentVector{Float64, D, typeof(getaxes(TestAircraftYTemplate))} where {D<:AbstractVector{Float64}}
-const TestAircraftD = Environment
-
-X(::TestAircraft) = copy(TestAircraftXTemplate)
-U(::TestAircraft) = copy(TestAircraftUTemplate)
-Y(::TestAircraft) = copy(TestAircraftYTemplate)
-D(::TestAircraft) = Environment()
-
-function f_output!(y::TestAircraftY, ẋ::TestAircraftX, x::TestAircraftX, u::TestAircraftU, t::Real,
-                   data::TestAircraftD, aircraft::TestAircraft)
-
-    @unpack trn, atm = data
-
-    f_pos!(y.kin, ẋ.kin.pos, x.kin) #y.kin & ẋ.kin.pos updated
-
-    mass_data = get_mass_data(aircraft.mass_model)
-    # y.air = ... #call air data system here to update air data, passing also as
-    # argument data.atmospheric_model
-
-    # pwp_data = EThrusterD(air_data)
-
-    f_output!(y.pwp, ẋ.pwp, x.pwp, u.pwp, t, y.air, aircraft.power_plant) #ẋ.pwp updated
-    wr_ext_Ob_b = Wrench(y.pwp.wr_Ob_b)
-    h_rot_b = y.pwp.h_rot_b
-
-    f_vel!(y.acc, ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y.kin) #ẋ.kin.vel updated
-    return nothing
-
-end
-
 
 ################# SKETCH
 #ver si esto ofrece alguna ventaja en cuanto a type stability respecto de
@@ -142,32 +95,29 @@ function f_output!(y, ẋ, x, u, t::Real,
                    data, aircraft::ParametricAircraft{Pwp}) where {Pwp}
     @unpack trn, atm = data
 
-    f_pos!(y.kin, ẋ.kin.pos, x.kin) #y.kin & ẋ.kin.pos updated
+    #update kinematics
+    f_pos!(y.kin, ẋ.kin.pos, x.kin)
 
     mass_data = get_mass_data(aircraft.mass_model)
-    # y.air = ... #call air data system here to update air data, passing also as
+    # y.air .= get_air_data(). #call air data system here to update air data, passing also as
     # argument data.atmospheric_model
 
-    f_output!(y.pwp, ẋ.pwp, x.pwp, u.pwp, t, y.air, Pwp) #ẋ.pwp updated and y.pwp too
-    # f_output!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, LdgD(y.kin, d.terrain), Ldg) #ẋ.pwp updated and y.pwp too
+    #update powerplant
+    f_output!(y.pwp, ẋ.pwp, x.pwp, u.pwp, t, y.air, Pwp)
+    #update landing gear
+    # f_output!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, LdgD(y.kin, d.terrain), Ldg)
 
+    #initialize external Wrench and additional angular momentum
     wr_ext_Ob_b = Wrench()
-    #SUSTITUIR ESTO POR UN METHOD GENERICO wr_Ob_b(y_comp, comp), que TODO, TODO
-    #AbstractComponent debe implementar. si es un ComponentGroup, sera una
-    #generated function, como la propia f_output!, que extraera el wr_Ob_b de
-    #cada bloque de y, y los sumara, devolviendo un Wrench (hacer esto de forma
-    #eficiente, evitando allocation de Wrench hasta el final). en cambio, si es
-    #un unico componente, lo definira su modulo correspondiente.
+    h_rot_b = SVector(0.,0.,0.)
 
-    #lo mismo para h_rot_b(y_comp, comp). ahora bien, lo que esta claro es que
-    #solo ciertos components van a dar h_rot_b. por tanto, lo suyo es definir
-    #h_rot_b(::AbstractComponent) = SVector(0,0,0). si algun componente concreto
-    #aporta h_rot_b, tiene la responsabilidad de hacer override. y para
-    #component groups, simplemente delegamos en el method de cada uno de sus
-    #constituyentes individuales. y luego sumamos
-    h_rot_b = SVector(0,0,0.0)
+    #add powerplant contributions
+    wr_ext_Ob_b .+= get_wr_Ob_b(y.pwp, Pwp)
+    h_rot_b += get_h_Gc_b(y.pwp, Pwp)
 
-    f_vel!(y.acc, ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y.kin) #ẋ.kin.vel updated
+    #update dynamics
+    f_vel!(y.acc, ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y.kin)
+
     return nothing
 end
 

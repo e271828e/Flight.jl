@@ -12,13 +12,18 @@ export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dt
 const ε_null = 1e-10 #threshold for null rotation
 const half_π = π/2
 
-function skew(v::AbstractVector{T} where T<:Real)
-    v = SVector{3,Float64}(v)
-    vx = SMatrix{3,3,Float64}([
-        0      -v[3]    v[2];
-        v[3]    0      -v[1];
-       -v[2]    v[1]    0])
-    return vx
+"""
+Computes the skew-symmetric matrix corresponding to 3-element vector v.
+"""
+function skew(v::AbstractVector{T}) where {T<:Real}
+    #much slower, each indexing operation yields an allocation
+    # [0. -v[3] v[2]; v[3] 0. -v[1]; -v[2] v[1] 0.]
+    M = zeros(T, 3, 3)
+                    M[1,2] = -v[3];  M[1,3] = v[2]
+    M[2,1] = v[3];                   M[2,3] = -v[1]
+    M[3,1] = -v[2]; M[3,2] = v[1]
+
+    SMatrix{3,3}(M)
 end
 
 ######################### Rotation ###########################

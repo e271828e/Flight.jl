@@ -10,7 +10,7 @@ using Flight.Airdata
 
 # import ComponentArrays: ComponentVector
 import Flight.System: X, Y, U, D, f_output!
-import Flight.Airframe: get_wr_Ob_b, get_h_Ob_b
+import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
 
 export SimpleProp, Gearbox, ElectricMotor
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
@@ -22,7 +22,7 @@ end
 
 Base.@kwdef struct SimpleProp
     kF::Float64 = 0.1
-    kM::Float64 = 0.01
+    kM::Float64 = 0.1
     J::Float64 = 1.0
 end
 
@@ -56,7 +56,7 @@ const EThrusterUTemplate = ComponentVector(throttle = 0.0)
 const EThrusterYTemplate = ComponentVector(
     throttle = 0.0, ω_shaft = 0.0, ω_prop = 0.0,
     wr_Oc_c = ComponentVector(Wrench()), wr_Ob_b = ComponentVector(Wrench()),
-    h_rot_b = zeros(3))
+    h_Gc_b = zeros(3))
 
 const EThrusterX{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterXTemplate))} where {D<:AbstractVector{Float64}}
 const EThrusterU{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterUTemplate))} where {D<:AbstractVector{Float64}}
@@ -83,7 +83,7 @@ function torque(eng::ElectricMotor, throttle::Real, ω::Real)
 end
 
 get_wr_Ob_b(y::EThrusterY, ::EThruster) = y.wr_Ob_b
-get_h_Ob_b(y::EThrusterY, ::EThruster) = y.h_Ob_b
+get_h_Gc_b(y::EThrusterY, ::EThruster) = y.h_Gc_b
 
 function f_output!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
 
@@ -99,13 +99,13 @@ function f_output!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU,
     wr_Ob_b = frame * wr_Oc_c
     M_air_prop = wr_Oc_c.M[1]
 
-    h_rot_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
-    h_rot_b = frame.q_bc * h_rot_c
+    h_Gc_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
+    h_Gc_b = frame.q_bc * h_Gc_c
 
     ω_shaft_dot = (M_eng_shaft + M_air_prop/(η*n)) / (motor.J + propeller.J/(η*n^2))
     ẋ.ω_shaft = ω_shaft_dot
 
-    @pack! y = throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_rot_b
+    @pack! y = throttle, ω_shaft, ω_prop, wr_Oc_c, wr_Ob_b, h_Gc_b
 
     return nothing
 
