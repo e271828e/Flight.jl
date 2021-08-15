@@ -10,7 +10,7 @@ using Flight.Attitude
 using Flight.Kinematics
 using Flight.Airdata
 using Flight.System
-import Flight.System: X, U, D, f_output!
+import Flight.System: X, Y, U, D, f_output!
 
 export Wrench, MassData, AbstractComponent, ComponentFrame, ComponentGroup
 export v2skew, inertia_wrench, gravity_wrench, f_vel!
@@ -124,7 +124,6 @@ function Base.:*(f_bc::ComponentFrame, wr_Oc_c::Wrench)
 
 end
 
-#TO REDO!!!!!!!!!
 struct ComponentGroup{N,T,L,C} <: AbstractComponent
     function ComponentGroup(nt::NamedTuple{L, NTuple{N, T}}) where {L, N, T <: AbstractComponent} #Dicts are not ordered, so they won't do
         new{N,T,L,values(nt)}()
@@ -136,12 +135,20 @@ U(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(U.(
 Y(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(Y.(C)))
 D(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = NamedTuple{L}(D.(C))
 
-@inline function f_output!(y::Any, ẋ::Any, x::Any, u::Any, t::Real, data::Any, ::ComponentGroup{N,T,L,C}) where {N,T,L,C}
-    for (i, k) in enumerate(valkeys(x)) #valkeys is the only way to avoid allocations
-        @inbounds v[i] = f_output!(getproperty(y,k), getproperty(ẋ, k), getproperty(x, k), getproperty(u, k), t, data[i], C[i])
+@inline @generated function f_output!(y::Any, ẋ::Any, x::Any, u::Any, t::Real, data::Any, g::ComponentGroup{N,T,L,C}) where {N,T,L,C}
+    ex = Expr(:block)
+    for (label, component) in zip(L, C)
+        label = QuoteNode(label)
+        ex_comp = quote
+            y_cmp = @view y[$label]; ẋ_cmp = @view ẋ[$label]
+            x_cmp = @view x[$label]; u_cmp = @view u[$label]
+            d_cmp = data[$label]
+            f_output!(y_cmp, ẋ_cmp, x_cmp, u_cmp, t, d_cmp, $component)
+        end
+        push!(ex.args, ex_comp)
     end
+    return ex
 end
-
 
 function inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:Real})
 

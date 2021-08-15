@@ -2,6 +2,8 @@ module TestKinematics
 
 using Test
 using LinearAlgebra
+using BenchmarkTools
+
 using Flight.Kinematics
 using Flight.Attitude
 using Flight.WGS84
@@ -11,25 +13,23 @@ export test_kinematics
 function test_kinematics()
     @testset verbose = true "WGS84 Kinematics" begin
         @testset verbose = true "Initialization" begin test_init() end
+        @testset verbose = true "Position Update" begin test_init() end
     end
 end
 
 function test_init()
 
-    init = KinInit()
-    x = XKinWGS84(init)
-
-    init = KinInit(
+    init = PosVelInit(
         q_nb = RQuat([1, 2, 3, -2]),
         Ob = WGS84Pos(ϕ = π/3, λ = -π/6, h = 1500),
         ω_lb_b = [0.1, 0.01, -0.4],
         v_eOb_b = [100, 5, -10])
-    x = XKinWGS84(init)
 
+    x = X(init)
     #now rebuild the initializer from the kinematic state vector and check it
     #against the original
-    q_lb = RQuat(x.pos.q_lb)
-    q_el = RQuat(x.pos.q_el)
+    q_lb = RQuat(x.pos.q_lb, normalization = false)
+    q_el = RQuat(x.pos.q_el, normalization = false)
     h = x.pos.h[1]
     ω_eb_b = x.vel.ω_eb_b
     v_eOb_b = x.vel.v_eOb_b
@@ -45,7 +45,7 @@ function test_init()
     ω_el_b = q_nb' * ω_el_n
     ω_lb_b = ω_eb_b - ω_el_b
 
-    init_test = KinInit(q_nb = q_lb, Ob = Ob, ω_lb_b = ω_lb_b, v_eOb_b = v_eOb_b )
+    init_test = PosVelInit(q_nb = q_lb, Ob = Ob, ω_lb_b = ω_lb_b, v_eOb_b = v_eOb_b )
 
     @test init.q_nb ≈ init_test.q_nb
     @test init.Ob ≈ init_test.Ob
@@ -55,5 +55,21 @@ function test_init()
 end
 
 
+function test_fpos()
+
+    init = KinInit(
+        q_nb = RQuat([1, 2, 3, -2]),
+        Ob = WGS84Pos(ϕ = π/3, λ = -π/6, h = 1500),
+        ω_lb_b = [0.1, 0.01, -0.4],
+        v_eOb_b = [100, 5, -10])
+
+    x_posvel = X(init)
+
+    y_posvel = Y(PosVel())
+    ẋ_pos = X(Pos())
+
+    @btime f_pos!($y_posvel, $ẋ_pos, $x_posvel)
+
+end
 
 end #module
