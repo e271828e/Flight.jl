@@ -13,8 +13,8 @@ using Flight.System
 import Flight.System: X, Y, U, D, f_output!
 
 export Acc, AccY
-export Wrench, MassData, AbstractComponent, ComponentFrame, ComponentGroup
-export v2skew, inertia_wrench, gravity_wrench, f_vel!
+export Wrench, MassData, AbstractComponent, ComponentFrame, ComponentGroup, NewWrench
+export v2skew, get_wr_Ob_b, get_h_Ob_b, inertia_wrench, gravity_wrench, f_vel!
 
 struct Acc end
 
@@ -96,7 +96,12 @@ Base.@kwdef struct MassData
     r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
 end
 
+################ AbstractComponent Interface ################
+
 abstract type AbstractComponent <: AbstractSystem end
+
+get_wr_Ob_b(::Any, comp::AbstractComponent) = error("Method not implemented for subtype $comp or incorrect call signature")
+get_h_Ob_b(::Any, comp::AbstractComponent) = error("Method not implemented for subtype $comp or incorrect call signature")
 
 """
 #Specifies a local ComponentFrame fc(Oc, Ɛc) relative to the airframe reference
@@ -137,10 +142,10 @@ struct ComponentGroup{T <: AbstractComponent, C} <: AbstractComponent
         new{T,nt}()
     end
 end
-Base.getindex(g::ComponentGroup{T, C}, i::Integer) where {T, C} = getindex(C, i)
-Base.getproperty(g::ComponentGroup{T, C}, i::Symbol) where {T, C} = getproperty(C, i)
-labels(g::ComponentGroup{T, C}) where {T, C} = keys(C)
-components(g::ComponentGroup{T, C}) where {T, C} = values(C)
+Base.getindex(::ComponentGroup{T, C}, i::Integer) where {T, C} = getindex(C, i)
+Base.getproperty(::ComponentGroup{T, C}, i::Symbol) where {T, C} = getproperty(C, i)
+labels(::ComponentGroup{T, C}) where {T, C} = keys(C)
+components(::ComponentGroup{T, C}) where {T, C} = values(C)
 
 X(::ComponentGroup{T, C}) where {T, C} = ComponentVector(NamedTuple{keys(C)}(X.(values(C))))
 U(::ComponentGroup{T, C}) where {T, C} = ComponentVector(NamedTuple{keys(C)}(U.(values(C))))
@@ -149,19 +154,65 @@ D(::ComponentGroup{T, C}) where {T, C} = D(C[1]) #assume all components use the 
 # D(::ComponentGroup{T, C}) where {T, C} = NamedTuple{L}(D.(C))
 
 @inline @generated function f_output!(y::Any, ẋ::Any, x::Any, u::Any, t::Real,
-                                      data::Any, g::ComponentGroup{T,C}) where {T,C}
+                                      data::Any, ::ComponentGroup{T,C}) where {T,C}
     ex = Expr(:block)
-    for (label, component) in zip(keys(C), values(C))
+    for label in keys(C)
         label = QuoteNode(label)
         ex_comp = quote
             y_cmp = @view y[$label]; ẋ_cmp = @view ẋ[$label]
             x_cmp = @view x[$label]; u_cmp = @view u[$label]
-            f_output!(y_cmp, ẋ_cmp, x_cmp, u_cmp, t, data, $component)
+            f_output!(y_cmp, ẋ_cmp, x_cmp, u_cmp, t, data, C[$label])
         end
         push!(ex.args, ex_comp)
     end
     return ex
 end
+
+@inline @generated function get_wr_Ob_b(y::Any, ::ComponentGroup{T,C}) where {T,C}
+
+    ex = Expr(:block)
+    push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
+
+    for label in keys(C)
+        label = QuoteNode(label)
+        ex_comp = quote
+            #extract and perform in-place broadcasted addition of each
+            #component's wrench
+            wr .+= get_wr_Ob_b(view(y,$label), C[$label])
+        end
+        push!(ex.args, ex_comp)
+    end
+    return ex
+end
+
+const NewWrenchAxes = getaxes(ComponentVector(F = zeros(3), M = zeros(3)))
+# const NewWrenchAxes = WrenchAxes
+const NewWrenchCV{D} = ComponentVector{Float64, D, typeof(NewWrenchAxes)} where {D <: AbstractVector{Float64}}
+const NewWrench(v::AbstractVector{Float64}) = (@assert length(v) == 6; ComponentVector(v, NewWrenchAxes))
+function NewWrench(; F = SVector(0.0,0,0), M = SVector(0.0,0,0))
+    wr = ComponentVector{Float64}(undef, NewWrenchAxes)
+    wr.F = F; wr.M = M
+    return wr
+end
+
+function Base.:*(f_bc::ComponentFrame, wr_Oc_c::NewWrenchCV)
+
+    F_Oc_c = wr_Oc_c.F
+    M_Oc_c = wr_Oc_c.M
+
+    #project on the reference axes
+    F_Oc_b = f_bc.q_bc * F_Oc_c
+    M_Oc_b = f_bc.q_bc * M_Oc_c
+
+    #translate them to airframe origin
+    F_Ob_b = F_Oc_b
+    M_Ob_b = M_Oc_b + f_bc.r_ObOc_b × F_Oc_b
+    NewWrench(F = F_Ob_b, M = M_Ob_b) #wr_Ob_b
+
+end
+
+
+#######################################################
 
 function inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:Real})
 

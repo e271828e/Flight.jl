@@ -10,6 +10,7 @@ using Flight.Airdata
 
 # import ComponentArrays: ComponentVector
 import Flight.System: X, Y, U, D, f_output!
+import Flight.Airframe: get_wr_Ob_b, get_h_Ob_b
 
 export SimpleProp, Gearbox, ElectricMotor
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
@@ -80,6 +81,9 @@ function torque(eng::ElectricMotor, throttle::Real, ω::Real)
     V = i₀ * R + throttle * Vb
     return Int(s) * ((V - Int(s)*ω/kV) / R - i₀) / kV
 end
+
+get_wr_Ob_b(y::EThrusterY, ::EThruster) = y.wr_Ob_b
+get_h_Ob_b(y::EThrusterY, ::EThruster) = y.h_Ob_b
 
 function f_output!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
 

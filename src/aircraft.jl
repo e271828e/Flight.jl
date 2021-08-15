@@ -133,6 +133,11 @@ function ParametricAircraft()
     ParametricAircraft(ConstantMassModel(), pwp)
 end
 
+X(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = X(Kin()), pwp = X(Pwp))
+U(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(pwp = U(Pwp))
+Y(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), pwp = Y(Pwp), air = Y(AirData()))
+D(::ParametricAircraft) = Environment()
+
 function f_output!(y, ẋ, x, u, t::Real,
                    data, aircraft::ParametricAircraft{Pwp}) where {Pwp}
     @unpack trn, atm = data
@@ -144,7 +149,7 @@ function f_output!(y, ẋ, x, u, t::Real,
     # argument data.atmospheric_model
 
     f_output!(y.pwp, ẋ.pwp, x.pwp, u.pwp, t, y.air, Pwp) #ẋ.pwp updated and y.pwp too
-    # f_output!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, d.terrain, Ldg) #ẋ.pwp updated and y.pwp too
+    # f_output!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, LdgD(y.kin, d.terrain), Ldg) #ẋ.pwp updated and y.pwp too
 
     wr_ext_Ob_b = Wrench()
     #SUSTITUIR ESTO POR UN METHOD GENERICO wr_Ob_b(y_comp, comp), que TODO, TODO
@@ -166,11 +171,5 @@ function f_output!(y, ẋ, x, u, t::Real,
     return nothing
 end
 
-error("See comments above")
-
-X(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = X(Kin()), pwp = X(Pwp))
-U(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(pwp = U(Pwp))
-Y(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), pwp = Y(Pwp), air = Y(AirData()))
-D(::ParametricAircraft) = Environment()
 
 end
