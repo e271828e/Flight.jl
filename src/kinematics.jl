@@ -9,19 +9,17 @@ using Flight.WGS84
 using Flight.Attitude
 import Flight.System: X, Y
 
-export Pos, Vel, Acc, PosVel, Kin, PosVelInit
-export PosX, PosY, VelX, VelY, PosVelX, PosVelY, AccY, KinY
+export Pos, Vel, Kin, KinInit
+export PosX, PosY, VelX, VelY, KinX, KinY
 export init!, f_pos!
 
 abstract type KinematicStruct end
 
 struct Pos end
 struct Vel end
-struct Acc end
-struct PosVel end
 struct Kin end
 
-Base.@kwdef struct PosVelInit <: KinematicStruct
+Base.@kwdef struct KinInit <: KinematicStruct
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
     v_eOb_b::SVector{3, Float64} = zeros(SVector{3})
     q_nb::RQuat = RQuat()
@@ -39,35 +37,27 @@ const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
 const VelYTemplate = ComponentVector(
     ω_eb_b = zeros(3), ω_lb_b = zeros(3), ω_el_l = zeros(3), ω_ie_b = zeros(3),
     ω_ib_b = zeros(3), v_eOb_b = zeros(3), v_eOb_n = zeros(3))
-const AccYTemplate = ComponentVector(
-    α_eb_b = zeros(3), α_ib_b = zeros(3), a_eOb_b = zeros(3), a_iOb_b = zeros(3))
-
-const PosVelXTemplate = ComponentVector(pos = PosXTemplate, vel = VelXTemplate)
-const PosVelYTemplate = ComponentVector(pos = PosYTemplate, vel = VelYTemplate)
-const KinYTemplate = ComponentVector(pos = PosYTemplate, vel = VelYTemplate, acc = AccYTemplate)
+const KinXTemplate = ComponentVector(pos = PosXTemplate, vel = VelXTemplate)
+const KinYTemplate = ComponentVector(pos = PosYTemplate, vel = VelYTemplate)
 
 const PosX{D} = ComponentVector{Float64, D, typeof(getaxes(PosXTemplate))} where {D<:AbstractVector{Float64}}
 const PosY{D} = ComponentVector{Float64, D, typeof(getaxes(PosYTemplate))} where {D<:AbstractVector{Float64}}
 const VelX{D} = ComponentVector{Float64, D, typeof(getaxes(VelXTemplate))} where {D<:AbstractVector{Float64}}
 const VelY{D} = ComponentVector{Float64, D, typeof(getaxes(VelYTemplate))} where {D<:AbstractVector{Float64}}
-const AccY{D} = ComponentVector{Float64, D, typeof(getaxes(AccYTemplate))} where {D<:AbstractVector{Float64}}
 
-const PosVelX{D} = ComponentVector{Float64, D, typeof(getaxes(PosVelXTemplate))} where {D<:AbstractVector{Float64}}
-const PosVelY{D} = ComponentVector{Float64, D, typeof(getaxes(PosVelYTemplate))} where {D<:AbstractVector{Float64}}
+const KinX{D} = ComponentVector{Float64, D, typeof(getaxes(KinXTemplate))} where {D<:AbstractVector{Float64}}
 const KinY{D} = ComponentVector{Float64, D, typeof(getaxes(KinYTemplate))} where {D<:AbstractVector{Float64}}
 
-#PosVel is not a System, so we do not really need to define Y, U and D to comply
+#Kin is not a System, so we do not really need to define Y, U and D to comply
 #with the System interface. however, these are convenient for testing, and to
 #ensure AircraftXTemplate has its kinematic block initialized to reasonable values
-X(::PosVel) = X(PosVelInit())
-X(init::PosVelInit) = (x=similar(PosVelXTemplate); init!(x, init); return x)
+X(::Kin) = X(KinInit())
+X(init::KinInit) = (x=similar(KinXTemplate); init!(x, init); return x)
 Y(::Pos) = similar(PosYTemplate)
 Y(::Vel) = similar(VelYTemplate)
-Y(::Acc) = similar(AccYTemplate)
-Y(::PosVel) = similar(PosVelYTemplate)
 Y(::Kin) = similar(KinYTemplate)
 
-function init!(x::PosVelX, init::PosVelInit)
+function init!(x::KinX, init::KinInit)
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
 
@@ -94,7 +84,7 @@ function init!(x::PosVelX, init::PosVelInit)
 
 end
 
-function f_pos!(y::PosVelY, ẋ_pos::PosX, x::PosVelX)
+function f_pos!(y::KinY, ẋ_pos::PosX, x::KinX)
 
     #careful here: x.pos.h, x.vel.ω_eb_b and x.vel.v_eOb_b create views (this is
     #how LBV behaves by design). to copy the data, we can extract their

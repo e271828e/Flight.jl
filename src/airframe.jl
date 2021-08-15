@@ -12,15 +12,17 @@ using Flight.Airdata
 using Flight.System
 import Flight.System: X, Y, U, D, f_output!
 
+export Acc, AccY
 export Wrench, MassData, AbstractComponent, ComponentFrame, ComponentGroup
 export v2skew, inertia_wrench, gravity_wrench, f_vel!
 
-Base.@kwdef struct MassData
-    m::Float64 = 1.0
-    J_Ob_b::SMatrix{3, 3, Float64, 9} = SMatrix{3,3,Float64}(I)
-    r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
-end
+struct Acc end
 
+const AccYTemplate = ComponentVector(
+    α_eb_b = zeros(3), α_ib_b = zeros(3), a_eOb_b = zeros(3), a_iOb_b = zeros(3))
+
+const AccY{D} = ComponentVector{Float64, D, typeof(getaxes(AccYTemplate))} where {D<:AbstractVector{Float64}}
+Y(::Acc) = similar(AccYTemplate)
 
 const WrenchAxes = getaxes(ComponentVector(F = zeros(3), M = zeros(3)))
 
@@ -88,6 +90,12 @@ function Base.BroadcastStyle(::WrenchStyle{D1}, ::WrenchStyle{D2}) where {D1,D2}
 end
 
 
+Base.@kwdef struct MassData
+    m::Float64 = 1.0
+    J_Ob_b::SMatrix{3, 3, Float64, 9} = SMatrix{3,3,Float64}(I)
+    r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
+end
+
 abstract type AbstractComponent <: AbstractSystem end
 
 """
@@ -124,26 +132,31 @@ function Base.:*(f_bc::ComponentFrame, wr_Oc_c::Wrench)
 
 end
 
-struct ComponentGroup{N,T,L,C} <: AbstractComponent
+struct ComponentGroup{T <: AbstractComponent, C} <: AbstractComponent
     function ComponentGroup(nt::NamedTuple{L, NTuple{N, T}}) where {L, N, T <: AbstractComponent} #Dicts are not ordered, so they won't do
-        new{N,T,L,values(nt)}()
+        new{T,nt}()
     end
 end
+Base.getindex(g::ComponentGroup{T, C}, i::Integer) where {T, C} = getindex(C, i)
+Base.getproperty(g::ComponentGroup{T, C}, i::Symbol) where {T, C} = getproperty(C, i)
+labels(g::ComponentGroup{T, C}) where {T, C} = keys(C)
+components(g::ComponentGroup{T, C}) where {T, C} = values(C)
 
-X(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(X.(C)))
-U(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(U.(C)))
-Y(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = ComponentVector(NamedTuple{L}(Y.(C)))
-D(::ComponentGroup{N,T,L,C}) where {N,T,L,C} = NamedTuple{L}(D.(C))
+X(::ComponentGroup{T, C}) where {T, C} = ComponentVector(NamedTuple{keys(C)}(X.(values(C))))
+U(::ComponentGroup{T, C}) where {T, C} = ComponentVector(NamedTuple{keys(C)}(U.(values(C))))
+Y(::ComponentGroup{T, C}) where {T, C} = ComponentVector(NamedTuple{keys(C)}(Y.(values(C))))
+D(::ComponentGroup{T, C}) where {T, C} = D(C[1]) #assume all components use the same external data sources
+# D(::ComponentGroup{T, C}) where {T, C} = NamedTuple{L}(D.(C))
 
-@inline @generated function f_output!(y::Any, ẋ::Any, x::Any, u::Any, t::Real, data::Any, g::ComponentGroup{N,T,L,C}) where {N,T,L,C}
+@inline @generated function f_output!(y::Any, ẋ::Any, x::Any, u::Any, t::Real,
+                                      data::Any, g::ComponentGroup{T,C}) where {T,C}
     ex = Expr(:block)
-    for (label, component) in zip(L, C)
+    for (label, component) in zip(keys(C), values(C))
         label = QuoteNode(label)
         ex_comp = quote
             y_cmp = @view y[$label]; ẋ_cmp = @view ẋ[$label]
             x_cmp = @view x[$label]; u_cmp = @view u[$label]
-            d_cmp = data[$label]
-            f_output!(y_cmp, ẋ_cmp, x_cmp, u_cmp, t, d_cmp, $component)
+            f_output!(y_cmp, ẋ_cmp, x_cmp, u_cmp, t, data, $component)
         end
         push!(ex.args, ex_comp)
     end
@@ -204,7 +217,7 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
 end
 
 function f_vel!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
-    h_rot_b::AbstractVector{<:Real}, mass::MassData, y_pv::PosVelY)
+    h_rot_b::AbstractVector{<:Real}, mass::MassData, y_kin::KinY)
 
     #wr_ext_Ob_b: External Wrench on the airframe due to aircraft components
 
@@ -214,7 +227,7 @@ function f_vel!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
 
     #wr_ext_Ob_b and h_rot_b, as well as mass data, are produced by aircraft
     #components, so they must be computed by the aircraft's x_dot method. and,
-    #since y_pv is needed by those components, it must be called from the
+    #since y_kin is needed by those components, it must be called from the
     #aircraft's kinematic state vector
 
     #clearly, r_ObG_b cannot be arbitrarily large, because J_Ob_b is larger than
@@ -223,12 +236,12 @@ function f_vel!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
 
     @unpack m, J_Ob_b, r_ObG_b = mass
 
-    ω_eb_b = SVector{3,Float64}(y_pv.vel.ω_eb_b)
-    ω_ie_b = SVector{3,Float64}(y_pv.vel.ω_ie_b)
-    v_eOb_b = SVector{3,Float64}(y_pv.vel.v_eOb_b)
-    q_el = RQuat(y_pv.pos.q_el, normalization = false)
-    q_eb = RQuat(y_pv.pos.q_eb, normalization = false)
-    Ob = WGS84Pos(NVector(q_el), y_pv.pos.h)
+    ω_eb_b = SVector{3,Float64}(y_kin.vel.ω_eb_b)
+    ω_ie_b = SVector{3,Float64}(y_kin.vel.ω_ie_b)
+    v_eOb_b = SVector{3,Float64}(y_kin.vel.v_eOb_b)
+    q_el = RQuat(y_kin.pos.q_el, normalization = false)
+    q_eb = RQuat(y_kin.pos.q_eb, normalization = false)
+    Ob = WGS84Pos(NVector(q_el), y_kin.pos.h)
 
     #preallocating is faster than directly concatenating the blocks
     A = Array{Float64}(undef, (6,6))
@@ -241,8 +254,8 @@ function f_vel!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
 
     A = SMatrix{6,6}(A)
 
-    wr_g_Ob_b = gravity_wrench(mass, y_pv.pos)
-    wr_in_Ob_b = inertia_wrench(mass, y_pv.vel, h_rot_b)
+    wr_g_Ob_b = gravity_wrench(mass, y_kin.pos)
+    wr_in_Ob_b = inertia_wrench(mass, y_kin.vel, h_rot_b)
     wr_Ob_b = wr_ext_Ob_b + wr_g_Ob_b + wr_in_Ob_b
     b = SVector{6}([wr_Ob_b.M ; wr_Ob_b.F])
 

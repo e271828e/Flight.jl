@@ -19,7 +19,7 @@ end
 
 function test_init()
 
-    init = PosVelInit(
+    init = KinInit(
         q_nb = RQuat([1, 2, 3, -2]),
         Ob = WGS84Pos(ϕ = π/3, λ = -π/6, h = 1500),
         ω_lb_b = [0.1, 0.01, -0.4],
@@ -45,7 +45,7 @@ function test_init()
     ω_el_b = q_nb' * ω_el_n
     ω_lb_b = ω_eb_b - ω_el_b
 
-    init_test = PosVelInit(q_nb = q_lb, Ob = Ob, ω_lb_b = ω_lb_b, v_eOb_b = v_eOb_b )
+    init_test = KinInit(q_nb = q_lb, Ob = Ob, ω_lb_b = ω_lb_b, v_eOb_b = v_eOb_b )
 
     @test init.q_nb ≈ init_test.q_nb
     @test init.Ob ≈ init_test.Ob
@@ -63,12 +63,12 @@ function test_fpos()
         ω_lb_b = [0.1, 0.01, -0.4],
         v_eOb_b = [100, 5, -10])
 
-    x_posvel = X(init)
+    x_kin = X(init)
 
-    y_posvel = Y(PosVel())
+    y_kin = Y(Kin())
     ẋ_pos = X(Pos())
 
-    @btime f_pos!($y_posvel, $ẋ_pos, $x_posvel)
+    @btime f_pos!($y_kin, $ẋ_pos, $x_kin)
 
 end
 

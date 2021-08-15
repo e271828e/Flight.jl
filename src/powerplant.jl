@@ -25,13 +25,6 @@ Base.@kwdef struct SimpleProp
     J::Float64 = 1.0
 end
 
-function wrench(prop::SimpleProp, ω::Real, ::AirDataSensed) #air data just for interface demo
-    @unpack kF, kM = prop
-    F_ext_Os_s = kF * ω^2 * SVector(1,0,0)
-    M_ext_Os_s = -sign(ω) * kM * ω^2 * SVector(1,0,0)
-    Wrench(F = F_ext_Os_s, M = M_ext_Os_s)
-end
-
 Base.@kwdef struct Gearbox
     n::Float64 = 1.0 #gear ratio
     η::Float64 = 1.0 #efficiency
@@ -44,12 +37,6 @@ Base.@kwdef struct ElectricMotor #defaults from Hacker Motors Q150-4M-V2
     Vb::Float64 = 48
     J::Float64 = 0.003 #kg*m^2 #ballpark figure, assuming a cylinder
     s::TurnSense = CW
-end
-
-function torque(eng::ElectricMotor, throttle::Real, ω::Real)
-    @unpack i₀, R, kV, Vb, s = eng
-    V = i₀ * R + throttle * Vb
-    return Int(s) * ((V - Int(s)*ω/kV) / R - i₀) / kV
 end
 
 ################ Electric Thruster ###################
@@ -73,25 +60,26 @@ const EThrusterYTemplate = ComponentVector(
 const EThrusterX{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterXTemplate))} where {D<:AbstractVector{Float64}}
 const EThrusterU{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterUTemplate))} where {D<:AbstractVector{Float64}}
 const EThrusterY{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterYTemplate))} where {D<:AbstractVector{Float64}}
-
-# Base.@kwdef struct EThrusterY
-#     throttle::Float64 = 0.0
-#     ω_shaft::Float64 = 0.0
-#     ω_prop::Float64 = 0.0
-#     wr_Oc_c::Wrench = Wrench()
-#     wr_Ob_b::Wrench = Wrench()
-#     h_rot_b::SVector{3, Float64} = SVector{3}(0,0,0)
-# end
-
-Base.@kwdef struct EThrusterD #external data sources (other than control inputs)
-    air::AirDataSensed = AirDataSensed()
-end
+const EThrusterD{D} = AirDataY{D} where {D}
 
 #AbstractSystem interface
 X(::EThruster) = copy(EThrusterXTemplate)
 U(::EThruster) = copy(EThrusterUTemplate)
 Y(::EThruster) = copy(EThrusterYTemplate)
-D(::EThruster) = EThrusterD()
+D(::EThruster) = Y(AirData())
+
+function wrench(prop::SimpleProp, ω::Real, ::EThrusterD) #air data just for interface demo
+    @unpack kF, kM = prop
+    F_ext_Os_s = kF * ω^2 * SVector(1,0,0)
+    M_ext_Os_s = -sign(ω) * kM * ω^2 * SVector(1,0,0)
+    Wrench(F = F_ext_Os_s, M = M_ext_Os_s)
+end
+
+function torque(eng::ElectricMotor, throttle::Real, ω::Real)
+    @unpack i₀, R, kV, Vb, s = eng
+    V = i₀ * R + throttle * Vb
+    return Int(s) * ((V - Int(s)*ω/kV) / R - i₀) / kV
+end
 
 function f_output!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
 
@@ -103,7 +91,7 @@ function f_output!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU,
     throttle = u.throttle
     M_eng_shaft = torque(motor, throttle, ω_shaft)
 
-    wr_Oc_c = wrench(propeller, ω_prop, data.air)
+    wr_Oc_c = wrench(propeller, ω_prop, data)
     wr_Ob_b = frame * wr_Oc_c
     M_air_prop = wr_Oc_c.M[1]
 
