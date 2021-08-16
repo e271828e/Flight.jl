@@ -3,6 +3,7 @@ module Aircraft
 using StaticArrays: SVector, SMatrix
 using LinearAlgebra
 using ComponentArrays
+using RecursiveArrayTools
 using UnPack
 
 using Flight.Kinematics
@@ -11,7 +12,7 @@ using Flight.Powerplant
 using Flight.Airdata
 using Flight.System
 
-import Flight.System: X, Y, U, D, f_output! #these we need to extend
+import Flight.System: X, Y, U, D, f_cont!, f_disc!, plotlog
 
 export ParametricAircraft
 
@@ -75,14 +76,14 @@ get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.
 
 
 ################# SKETCH
-#ver si esto ofrece alguna ventaja en cuanto a type stability respecto de
-#definir pwp como campo de la immutable struct
 struct ParametricAircraft{Pwp} <: AbstractSystem
     mass_model::AbstractMassModel
 end
 ParametricAircraft(mass_model, pwp) = ParametricAircraft{pwp}(mass_model)
 function ParametricAircraft()
-    pwp = ComponentGroup((left = EThruster(), right = EThruster(), back = EThruster(), front = EThruster()))
+    pwp = ComponentGroup(
+        left = EThruster(motor = ElectricMotor(s = CW)),
+        right = EThruster(motor = ElectricMotor(s = CCW)))
     ParametricAircraft(ConstantMassModel(), pwp)
 end
 
@@ -91,7 +92,7 @@ U(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(pwp = U(Pwp))
 Y(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), pwp = Y(Pwp), air = Y(AirData()))
 D(::ParametricAircraft) = Environment()
 
-function f_output!(y, ẋ, x, u, t::Real,
+function f_cont!(y, ẋ, x, u, t::Real,
                    data, aircraft::ParametricAircraft{Pwp}) where {Pwp}
     @unpack trn, atm = data
 
@@ -103,9 +104,9 @@ function f_output!(y, ẋ, x, u, t::Real,
     # argument data.atmospheric_model
 
     #update powerplant
-    f_output!(y.pwp, ẋ.pwp, x.pwp, u.pwp, t, y.air, Pwp)
+    f_cont!(y.pwp, ẋ.pwp, x.pwp, u.pwp, t, y.air, Pwp)
     #update landing gear
-    # f_output!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, LdgD(y.kin, d.terrain), Ldg)
+    # f_cont!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, LdgD(y.kin, d.terrain), Ldg)
 
     #initialize external Wrench and additional angular momentum
     wr_ext_Ob_b = Wrench()
@@ -119,6 +120,41 @@ function f_output!(y, ẋ, x, u, t::Real,
     f_vel!(y.acc, ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y.kin)
 
     return nothing
+end
+
+degraded(nrm) = (abs(nrm - 1.0) > 1e-9)
+
+function f_disc!(x, u, t::Real, data, aircraft::ParametricAircraft)
+
+    norm_q_lb = norm(x.kin.pos.q_lb)
+    norm_q_el = norm(x.kin.pos.q_el)
+    if degraded(norm_q_lb) || degraded(norm_q_el)
+        x.kin.pos.q_lb ./= norm_q_lb
+        x.kin.pos.q_el ./= norm_q_el
+        return true #x modified
+    else
+        return false #x not modified
+    end
+
+end
+
+function plotlog(log, aircraft::ParametricAircraft)
+
+    y = log.y
+
+    #this could all be delegated to kin, which can return a handle to each plot
+    #it produces
+    #who saves the plots? how is the folder hierarchy generated?
+    kin = y[:kin, :]
+    pos = kin[:pos, :]
+    Δx = pos[:Δx, :]
+    Δy = pos[:Δy, :]
+    h = pos[:h, :]
+
+    #the only thing we ask of the log type is that it has fields :t and :saveval
+    #now we would construct a NamedTuple to delegate
+    return((log.t, h))
+
 end
 
 

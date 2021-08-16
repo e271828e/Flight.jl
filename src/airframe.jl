@@ -10,7 +10,7 @@ using Flight.Attitude
 using Flight.Kinematics
 using Flight.Airdata
 using Flight.System
-import Flight.System: X, Y, U, D, f_output!
+import Flight.System: X, Y, U, D, f_cont!
 
 export Acc, AccY
 export Wrench, MassData, AbstractComponent, ComponentFrame, ComponentGroup, Wrench
@@ -93,6 +93,7 @@ struct ComponentGroup{T <: AbstractComponent, C} <: AbstractComponent
         new{T,nt}()
     end
 end
+ComponentGroup(;kwargs...) = ComponentGroup((;kwargs...))
 Base.getindex(::ComponentGroup{T, C}, i::Integer) where {T, C} = getindex(C, i)
 Base.getproperty(::ComponentGroup{T, C}, i::Symbol) where {T, C} = getproperty(C, i)
 labels(::ComponentGroup{T, C}) where {T, C} = keys(C)
@@ -104,7 +105,7 @@ Y(::ComponentGroup{T, C}) where {T, C} = ComponentVector(NamedTuple{keys(C)}(Y.(
 D(::ComponentGroup{T, C}) where {T, C} = D(C[1]) #assume all components use the same external data sources
 # D(::ComponentGroup{T, C}) where {T, C} = NamedTuple{L}(D.(C))
 
-@inline @generated function f_output!(y::Any, ẋ::Any, x::Any, u::Any, t::Real,
+@inline @generated function f_cont!(y::Any, ẋ::Any, x::Any, u::Any, t::Real,
                                       data::Any, ::ComponentGroup{T,C}) where {T,C}
     ex = Expr(:block)
     for label in keys(C)
@@ -112,7 +113,7 @@ D(::ComponentGroup{T, C}) where {T, C} = D(C[1]) #assume all components use the 
         ex_comp = quote
             y_cmp = @view y[$label]; ẋ_cmp = @view ẋ[$label]
             x_cmp = @view x[$label]; u_cmp = @view u[$label]
-            f_output!(y_cmp, ẋ_cmp, x_cmp, u_cmp, t, data, C[$label])
+            f_cont!(y_cmp, ẋ_cmp, x_cmp, u_cmp, t, data, C[$label])
         end
         push!(ex.args, ex_comp)
     end

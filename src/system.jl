@@ -1,18 +1,23 @@
 module System
 
-export AbstractSystem, X, U, Y, D, f_output!
+# using DiffEqCallbacks: SavedValues
+export AbstractSystem, X, U, Y, D, f_cont!, f_disc!, plotlog
 
 ################## AbstractSystem Interface ###################
 
 abstract type AbstractSystem end
 
-extend_error(::Type{C}) where {C} = error("Method not implemented for subtype $C or incorrect call signature")
+extend_error(::Type{S}) where {S} = error("Method not implemented for subtype $S or incorrect call signature")
 
-X(::C) where {C<:AbstractSystem} = extend_error(C)
-U(::C) where {C<:AbstractSystem} = extend_error(C)
-Y(::C) where {C<:AbstractSystem} = extend_error(C)
-D(::C) where {C<:AbstractSystem} = extend_error(C)
+X(::AbstractSystem) = extend_error(S)
+U(::AbstractSystem) = extend_error(S)
+Y(::AbstractSystem) = extend_error(S)
+D(::AbstractSystem) = extend_error(S)
 
-f_output!(::Any, ::Any, ::Any, ::Any, ::Real, ::Any, ::C) where {C<:AbstractSystem} = extend_error(C)
+f_cont!(y::Any, ẋ::Any, x::Any, u::Any, t::Any, data::Any, s::AbstractSystem) = extend_error(S)
+(f_disc!(x::Any, u::Any, t::Any, data::Any, s::AbstractSystem)::Bool) = false #return true if u is modified
+
+#replace this with the appropriate overloads, Plot recipes, whatever
+plotlog(log, sys::AbstractSystem) = extend_error(S)
 
 end

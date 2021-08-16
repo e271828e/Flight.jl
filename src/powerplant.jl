@@ -9,10 +9,10 @@ using Flight.Airframe
 using Flight.Airdata
 
 # import ComponentArrays: ComponentVector
-import Flight.System: X, Y, U, D, f_output!
+import Flight.System: X, Y, U, D, f_cont!, f_disc!
 import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
 
-export SimpleProp, Gearbox, ElectricMotor
+export SimpleProp, Gearbox, ElectricMotor, CW, CCW
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
 
 @enum TurnSense begin
@@ -85,7 +85,7 @@ end
 get_wr_Ob_b(y::EThrusterY, ::EThruster) = y.wr_Ob_b
 get_h_Gc_b(y::EThrusterY, ::EThruster) = y.h_Gc_b
 
-function f_output!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
+function f_cont!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
 
     @unpack frame, motor, propeller, gearbox = thr
     @unpack n, η = gearbox
