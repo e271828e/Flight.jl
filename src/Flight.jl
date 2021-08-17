@@ -11,9 +11,10 @@ include("attitude.jl")
 include("wgs84.jl") #many, many constants here. should keep it a module
 include("system.jl")
 include("model.jl")
+include("component.jl")
 include("airdata.jl")
 include("kinematics.jl")
-include("airframe.jl")
+include("dynamics.jl")
 include("powerplant.jl")
 include("aircraft.jl")
 
@@ -22,9 +23,10 @@ include("aircraft.jl")
 @reexport using .WGS84
 @reexport using .System
 @reexport using .Model
+@reexport using .Component
 @reexport using .Airdata
 @reexport using .Kinematics
-@reexport using .Airframe
+@reexport using .Dynamics
 @reexport using .Powerplant
 @reexport using .Aircraft
 

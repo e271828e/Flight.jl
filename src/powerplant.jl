@@ -6,12 +6,11 @@ using ComponentArrays
 using Unitful
 using UnPack
 
-using Flight.Airframe
+using Flight.Component
+import Flight.Component: get_wr_Ob_b, get_h_Gc_b
 using Flight.Airdata
 
-# import ComponentArrays: ComponentVector
 import Flight.System: X, Y, U, D, f_cont!, f_disc!
-import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
@@ -68,7 +67,7 @@ ċ(b::Battery, i::Real) = -i/b.Cmax
 abstract type AbstractThruster <: AbstractComponent end
 
 Base.@kwdef struct EThruster <: AbstractThruster
-    frame::ComponentFrame = ComponentFrame()
+    frame::Frame = Frame()
     battery::Battery = Battery()
     motor::ElectricMotor = ElectricMotor()
     gearbox::Gearbox = Gearbox()

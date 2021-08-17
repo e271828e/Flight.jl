@@ -68,7 +68,7 @@ function test_fpos()
     y_kin = Y(Kin())
     ẋ_pos = X(Pos())
 
-    @btime f_pos!($y_kin, $ẋ_pos, $x_kin)
+    @btime f_kin!($y_kin, $ẋ_pos, $x_kin)
 
 end
 

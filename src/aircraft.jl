@@ -7,7 +7,8 @@ using RecursiveArrayTools
 using UnPack
 
 using Flight.Kinematics
-using Flight.Airframe
+using Flight.Dynamics
+using Flight.Component
 using Flight.Powerplant
 using Flight.Airdata
 using Flight.System
@@ -97,7 +98,7 @@ function f_cont!(y, ẋ, x, u, t::Real,
     @unpack trn, atm = data
 
     #update kinematics
-    f_pos!(y.kin, ẋ.kin.pos, x.kin)
+    f_kin!(y.kin, ẋ.kin.pos, x.kin)
 
     mass_data = get_mass_data(aircraft.mass_model)
     # y.air .= get_air_data(). #call air data system here to update air data, passing also as
@@ -117,7 +118,7 @@ function f_cont!(y, ẋ, x, u, t::Real,
     h_rot_b += get_h_Gc_b(y.pwp, Pwp)
 
     #update dynamics
-    f_vel!(y.acc, ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y.kin)
+    f_dyn!(y.acc, ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y.kin)
 
     return nothing
 end

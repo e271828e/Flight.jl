@@ -11,7 +11,7 @@ import Flight.System: X, Y
 
 export Pos, Vel, Kin, KinInit
 export PosX, PosY, VelX, VelY, KinX, KinY
-export init!, f_pos!
+export init!, f_kin!
 
 abstract type KinematicStruct end
 
@@ -84,7 +84,7 @@ function init!(x::KinX, init::KinInit)
 
 end
 
-function f_pos!(y::KinY, ẋ_pos::PosX, x::KinX)
+function f_kin!(y::KinY, ẋ_pos::PosX, x::KinX)
 
     #careful here: x.pos.h, x.vel.ω_eb_b and x.vel.v_eOb_b create views (this is
     #how LBV behaves by design). to copy the data, we can extract their
@@ -131,11 +131,11 @@ function f_pos!(y::KinY, ẋ_pos::PosX, x::KinX)
     y_pos.q_lb .= q_lb[:]
     y_pos.q_nb .= q_nb[:]
     y_pos.q_eb .= q_eb[:]
+    y_pos.q_el .= q_el[:]
     y_pos.ψ_nl = ψ_nl_tmp
     y_pos.ψ_nb = euler_nb.ψ
     y_pos.θ_nb = euler_nb.θ
     y_pos.φ_nb = euler_nb.φ
-    y_pos.q_el .= q_el[:]
     y_pos.ϕ = lat(Ob)
     y_pos.λ = lon(Ob)
     y_pos.h = h
