@@ -82,8 +82,8 @@ end
 ParametricAircraft(mass_model, pwp) = ParametricAircraft{pwp}(mass_model)
 function ParametricAircraft()
     pwp = ComponentGroup(
-        left = EThruster(motor = ElectricMotor(s = CW)),
-        right = EThruster(motor = ElectricMotor(s = CCW)))
+        left = EThruster(motor = ElectricMotor(α = CW)),
+        right = EThruster(motor = ElectricMotor(α = CCW)))
     ParametricAircraft(ConstantMassModel(), pwp)
 end
 
