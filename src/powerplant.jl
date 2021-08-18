@@ -14,6 +14,7 @@ import Flight.System: X, Y, U, D, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
+export PowerplantGroup
 
 @enum TurnSense begin
     CW = 1
@@ -128,8 +129,19 @@ function f_cont!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, :
 
 end
 
+struct PowerplantGroup{C} <: AbstractComponentGroup{C} end
 
-EThrusterSys(thr::EThruster = EThruster(); kwargs...) =
-    System.Continuous(thr; kwargs...)
+function PowerplantGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
+    PowerplantGroup{nt}()
+end
+#= #interestingly, this does not work:
+PowerplantGroup(nt::NamedTuple{L, NTuple{N, T}  where {L,N,T<:NTuple{N,
+Powerplant.AbstractThruster}}) = PowerplantGroup{nt}()
 
+#the reason is probably that NamedTuple, unlike Tuple (and therefore NTuple) is
+#NOT covariant. that is:
+#(EThruster(), EThruster()) isa NTuple{N, AbstractThruster} where {N} = true
+#however:
+#(a=EThruster(), b=NThruster) isa NamedTuple{L, NTuple{N, AbstractThruster} where {N} = false
+=#
 end #module

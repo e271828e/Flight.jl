@@ -8,7 +8,7 @@ using Flight.Attitude
 using Flight.System
 import Flight.System: X, Y, U, D, f_cont!, f_disc!
 
-export WrenchCV, Wrench, Frame, AbstractComponent, ComponentGroup
+export WrenchCV, Wrench, Frame, AbstractComponent, AbstractComponentGroup
 export get_wr_Ob_b, get_h_Gc_b
 
 
@@ -71,32 +71,36 @@ get_h_Gc_b(::Any, comp::AbstractComponent) = error("Method not implemented for s
 
 ################ ComponentGroup ###########################
 
-struct ComponentGroup{T <: AbstractComponent, C} <: AbstractComponent
-    function ComponentGroup(nt::NamedTuple{L, NTuple{N, T}}) where {L, N, T <: AbstractComponent} #Dicts are not ordered, so they won't do
-        new{T,nt}()
-    end
-end
-ComponentGroup(;kwargs...) = ComponentGroup((;kwargs...))
-Base.getindex(::ComponentGroup{T, C}, i::Integer) where {T, C} = getindex(C, i)
-Base.getproperty(::ComponentGroup{T, C}, i::Symbol) where {T, C} = getproperty(C, i)
-labels(::ComponentGroup{T, C}) where {T, C} = keys(C)
-components(::ComponentGroup{T, C}) where {T, C} = values(C)
+abstract type AbstractComponentGroup{C} <: AbstractComponent end
 
-X(::ComponentGroup{T, C}) where {T, C} = ComponentVector(NamedTuple{keys(C)}(X.(values(C))))
-U(::ComponentGroup{T, C}) where {T, C} = ComponentVector(NamedTuple{keys(C)}(U.(values(C))))
-Y(::ComponentGroup{T, C}) where {T, C} = ComponentVector(NamedTuple{keys(C)}(Y.(values(C))))
-D(::ComponentGroup{T, C}) where {T, C} = D(C[1]) #assume all components use the same external data sources
-# D(::ComponentGroup{T, C}) where {T, C} = NamedTuple{L}(D.(C))
+(G::Type{<:AbstractComponentGroup})(;kwargs...) = G((; kwargs...))
+Base.getindex(::AbstractComponentGroup{C}, i::Integer) where {C} = getindex(C, i)
+Base.getproperty(::AbstractComponentGroup{C}, i::Symbol) where {C} = getproperty(C, i)
+labels(::AbstractComponentGroup{C}) where {C} = keys(C)
+components(::AbstractComponentGroup{C}) where {C} = values(C)
+
+X(::AbstractComponentGroup{C}) where {C} = ComponentVector(NamedTuple{keys(C)}(X.(values(C))))
+U(::AbstractComponentGroup{C}) where {C} = ComponentVector(NamedTuple{keys(C)}(U.(values(C))))
+Y(::AbstractComponentGroup{C}) where {C} = ComponentVector(NamedTuple{keys(C)}(Y.(values(C))))
+D(::AbstractComponentGroup{C}) where {C} = NamedTuple{keys(C)}(D.(values(C)))
+#a method D(::ACG{C}, ::NamedTuple) where we specify a NamedTuple of data
+#sources, one for each component in the group is not very useful, because if we
+#are specifying a different data source for each component it means we intend to
+#deal with them individually. but what do we do if we want to automatically
+#create the NamedTuple that the ComponentGroup requires with all its values
+#pointing to the same data source, but without dealing with components
+#individually?
 
 @inline @generated function f_cont!(y::Any, ẋ::Any, x::Any, u::Any, t::Any,
-                                    data::Any, ::ComponentGroup{T,C}) where {T,C}
+                                    d::Any, ::AbstractComponentGroup{C}) where {C}
     ex = Expr(:block)
     for label in keys(C)
         label = QuoteNode(label)
         ex_comp = quote
             y_cmp = @view y[$label]; ẋ_cmp = @view ẋ[$label]
             x_cmp = @view x[$label]; u_cmp = @view u[$label]
-            f_cont!(y_cmp, ẋ_cmp, x_cmp, u_cmp, t, data, C[$label])
+            d_cmp = d[$label]; cmp = C[$label]
+            f_cont!(y_cmp, ẋ_cmp, x_cmp, u_cmp, t, d_cmp, cmp)
         end
         push!(ex.args, ex_comp)
     end
@@ -104,14 +108,15 @@ D(::ComponentGroup{T, C}) where {T, C} = D(C[1]) #assume all components use the 
 end
 
 @inline @generated function (f_disc!(x::Any, u::Any, t::Any,
-                                    data::Any, ::ComponentGroup{T,C})::Bool) where {T,C}
+                                    d::Any, ::AbstractComponentGroup{C})::Bool) where {C}
     ex = Expr(:block)
     push!(ex.args, :(modified_x = false))
     for label in keys(C)
         label = QuoteNode(label)
         ex_comp = quote
             x_cmp = @view x[$label]; u_cmp = @view u[$label]
-            modified_x_cmp = f_disc!(x_cmp, u_cmp, t, data, C[$label])
+            d_cmp = d[$label]; cmp = C[$label]
+            modified_x_cmp = f_disc!(x_cmp, u_cmp, t, d_cmp, cmp)
             modified_x = modified_x || modified_x_cmp
         end
         push!(ex.args, ex_comp)
@@ -119,7 +124,7 @@ end
     return ex
 end
 
-@inline @generated function get_wr_Ob_b(y::Any, ::ComponentGroup{T,C}) where {T,C}
+@inline @generated function get_wr_Ob_b(y::Any, ::AbstractComponentGroup{C}) where {C}
 
     ex = Expr(:block)
     push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
@@ -136,7 +141,7 @@ end
     return ex
 end
 
-@inline @generated function get_h_Gc_b(y::Any, ::ComponentGroup{T,C}) where {T,C}
+@inline @generated function get_h_Gc_b(y::Any, ::AbstractComponentGroup{C}) where {C}
 
     ex = Expr(:block)
     push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate

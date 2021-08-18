@@ -77,12 +77,12 @@ get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.
 
 
 ################# SKETCH
-struct ParametricAircraft{Pwp} <: AbstractSystem
+struct ParametricAircraft{Pwp <: PowerplantGroup} <: AbstractSystem
     mass_model::AbstractMassModel
 end
 ParametricAircraft(mass_model, pwp) = ParametricAircraft{pwp}(mass_model)
 function ParametricAircraft()
-    pwp = ComponentGroup(
+    pwp = PowerplantGroup(
         left = EThruster(motor = ElectricMotor(α = CW)),
         right = EThruster(motor = ElectricMotor(α = CCW)))
     ParametricAircraft(ConstantMassModel(), pwp)
@@ -91,7 +91,7 @@ end
 X(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = X(Kin()), pwp = X(Pwp))
 U(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(pwp = U(Pwp))
 Y(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), pwp = Y(Pwp), air = Y(AirData()))
-D(::ParametricAircraft) = Environment()
+D(::ParametricAircraft{Pwp}) where {Pwp} = Environment()
 
 function f_cont!(y, ẋ, x, u, t::Real,
                    data, aircraft::ParametricAircraft{Pwp}) where {Pwp}
