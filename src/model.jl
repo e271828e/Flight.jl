@@ -33,23 +33,23 @@ struct ContinuousModel{S, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <
     integrator::I#just for annotation purposes
     log::L
 
-    function ContinuousModel(sys::S; x₀ = X(sys), u₀ = U(sys), data = D(sys),
+    function ContinuousModel(sys::S, sys_args...; x₀ = X(sys), u₀ = U(sys),
         method = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
-        kwargs...) where {S<:AbstractSystem}
+        int_kwargs...) where {S<:AbstractSystem}
 
         #pass the y cache for f_update! to have somewhere to write to, then
         #throw it away. what matters in this call is the update to the ẋ passed
         #by the integrator
         function f_update!(ẋ, x, p, t)
-            @unpack y_tmp, u, data, sys = p
-            f_cont!(y_tmp, ẋ, x, u, t, data, sys) #throw away y
+            @unpack y_tmp, u, sys, args = p
+            f_cont!(y_tmp, ẋ, x, u, t, sys, args...) #throw away y
         end
 
         function f_dcb!(integrator)
-            @unpack u, data, sys = integrator.p
+            @unpack u, sys, args = integrator.p
             t = integrator.t
             x = integrator.u
-            modified_x = f_disc!(x, u, t, data, sys)
+            modified_x = f_disc!(x, u, t, sys, args...)
             u_modified!(integrator, modified_x)
         end
 
@@ -57,12 +57,12 @@ struct ContinuousModel{S, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <
         #to without clobbering the integrator's du, then it is thrown away. copy
         #and output the updated y
         function f_save(x, t, integrator)
-            @unpack y_tmp, ẋ_tmp, u, data, sys = integrator.p
-            f_cont!(y_tmp, ẋ_tmp, x, u, t, data, sys)
+            @unpack y_tmp, ẋ_tmp, u, sys, args = integrator.p
+            f_cont!(y_tmp, ẋ_tmp, x, u, t, sys, args...)
             return copy(y_tmp)
         end
 
-        params = (u = u₀, y_tmp = Y(sys), ẋ_tmp = X(sys), data = data, sys = sys)
+        params = (u = u₀, sys = sys, args = sys_args, y_tmp = Y(sys), ẋ_tmp = X(sys))
         log = SavedValues(Float64, typeof(params.y_tmp))
 
         dcb = DiscreteCallback((u, t, integrator)->true, f_dcb!)
@@ -70,7 +70,7 @@ struct ContinuousModel{S, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <
         cb_set = CallbackSet(dcb, scb)
 
         problem = ODEProblem{true}(f_update!, x₀, (t_start, t_end), params)
-        integrator = init(problem, method; callback = cb_set, save_everystep = false, kwargs...)
+        integrator = init(problem, method; callback = cb_set, save_everystep = false, int_kwargs...)
         new{S, typeof(integrator), typeof(log)}(integrator, log)
     end
 end

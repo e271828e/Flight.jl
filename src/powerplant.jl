@@ -10,7 +10,7 @@ using Flight.Component
 import Flight.Component: get_wr_Ob_b, get_h_Gc_b
 using Flight.Airdata
 
-import Flight.System: X, Y, U, D, f_cont!, f_disc!
+import Flight.System: X, Y, U, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
@@ -27,7 +27,7 @@ Base.@kwdef struct SimpleProp
     J::Float64 = 1.0
 end
 
-function wrench(prop::SimpleProp, ω::Real, data::AirDataY) #air data just for interface demo
+function wrench(prop::SimpleProp, ω::Real, air::AirDataY) #air data just for interface demo
     @unpack kF, kM = prop
     F_ext_Os_s = kF * ω^2 * SVector(1,0,0)
     M_ext_Os_s = -tanh(ω/1.0) * kM * ω^2 * SVector(1,0,0) #choose ω_ref = 1.0
@@ -85,18 +85,16 @@ const EThrusterYTemplate = ComponentVector(
 const EThrusterX{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterXTemplate))} where {D<:AbstractVector{Float64}}
 const EThrusterU{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterUTemplate))} where {D<:AbstractVector{Float64}}
 const EThrusterY{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterYTemplate))} where {D<:AbstractVector{Float64}}
-const EThrusterD{D} = AirDataY{D} where {D}
 
 #AbstractSystem interface
 X(::EThruster) = copy(EThrusterXTemplate)
 U(::EThruster) = copy(EThrusterUTemplate)
 Y(::EThruster) = copy(EThrusterYTemplate)
-D(::EThruster) = Y(AirData())
 
 get_wr_Ob_b(y::EThrusterY, ::EThruster) = y.wr_Ob_b
 get_h_Gc_b(y::EThrusterY, ::EThruster) = y.h_Gc_b
 
-function f_cont!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, data::EThrusterD, thr::EThruster)
+function f_cont!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, thr::EThruster, air::AirDataY = Y(AirData()))
 
     @unpack frame, battery, motor, propeller, gearbox = thr
     @unpack n, η = gearbox
@@ -107,7 +105,7 @@ function f_cont!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, :
     throttle = u.throttle
 
     ω_prop = ω_shaft / n
-    wr_Oc_c = wrench(propeller, ω_prop, data)
+    wr_Oc_c = wrench(propeller, ω_prop, air)
     wr_Ob_b = frame * wr_Oc_c
 
     i = (throttle * voltage_open(battery, c_bat) - back_emf(motor, ω_shaft)) /

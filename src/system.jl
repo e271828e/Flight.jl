@@ -12,10 +12,9 @@ extend_error(::Type{S}) where {S} = error("Method not implemented for subtype $S
 X(::S) where {S<:AbstractSystem} = extend_error(S)
 U(::S) where {S<:AbstractSystem} = extend_error(S)
 Y(::S) where {S<:AbstractSystem} = extend_error(S)
-D(::S) where {S<:AbstractSystem} = extend_error(S)
 
-f_cont!(y::Any, ẋ::Any, x::Any, u::Any, t::Any, data::Any, s::S) where {S<:AbstractSystem} = extend_error(S)
-(f_disc!(x::Any, u::Any, t::Any, data::Any, s::S)::Bool) where {S<:AbstractSystem} = false #return true if u is modified
+f_cont!(y, ẋ, x, u, t, s::S, args...) where {S<:AbstractSystem} = extend_error(S)
+(f_disc!(x, u, t, s::S, args...)::Bool) where {S<:AbstractSystem} = false #return true if u is modified
 
 #replace this with the appropriate overloads, Plot recipes, whatever
 plotlog(log, sys::AbstractSystem) = extend_error(S)

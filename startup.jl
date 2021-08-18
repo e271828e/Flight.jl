@@ -4,13 +4,15 @@ using LinearAlgebra
 
 
 pa = ParametricAircraft();
+trn = Aircraft.DummyTerrainModel();
+atm = Aircraft.DummyAtmosphericModel();
 # mdl = ContinuousModel(pa);
 
-mdl = Model.ContinuousModel(pa; dt = 0.01, adaptive = false, method = Heun(),
+mdl = Model.ContinuousModel(pa, trn, atm; dt = 0.01, adaptive = false, method = Heun(),
 y_saveat = 0:0.1:100);
 
-mdl.u.pwp.left.throttle = 0.1
-mdl.u.pwp.right.throttle = 0.1
+mdl.u.pwp.left.throttle = 0
+mdl.u.pwp.right.throttle = 1
 # step!(mdl)
 
 b = @benchmarkable step!($mdl,1, true) setup=(reinit!($mdl)); run(b)

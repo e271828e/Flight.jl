@@ -13,7 +13,7 @@ using Flight.Powerplant
 using Flight.Airdata
 using Flight.System
 
-import Flight.System: X, Y, U, D, f_cont!, f_disc!, plotlog
+import Flight.System: X, Y, U, f_cont!, f_disc!, plotlog
 
 export ParametricAircraft
 
@@ -77,10 +77,15 @@ get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.
 
 
 ################# SKETCH
-struct ParametricAircraft{Pwp <: PowerplantGroup} <: AbstractSystem
+struct ParametricAircraft{Pwp} <: AbstractSystem
     mass_model::AbstractMassModel
 end
 ParametricAircraft(mass_model, pwp) = ParametricAircraft{pwp}(mass_model)
+
+#for some reason, we cannot strip PowerplantGroup{C} to PowerplantGroup in the
+#struct declaration, so in order to avoid having to add C as a type parammeter,
+#we leave Pwp's supertype unspecified in the struct declaration and enforce it
+#in the constructor
 function ParametricAircraft()
     pwp = PowerplantGroup(
         left = EThruster(motor = ElectricMotor(α = CW)),
@@ -91,11 +96,10 @@ end
 X(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = X(Kin()), pwp = X(Pwp))
 U(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(pwp = U(Pwp))
 Y(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), pwp = Y(Pwp), air = Y(AirData()))
-D(::ParametricAircraft{Pwp}) where {Pwp} = Environment()
 
-function f_cont!(y, ẋ, x, u, t::Real,
-                   data, aircraft::ParametricAircraft{Pwp}) where {Pwp}
-    @unpack trn, atm = data
+function f_cont!(y, ẋ, x, u, t, aircraft::ParametricAircraft{Pwp},
+    trn::AbstractTerrainModel = DummyTerrainModel(),
+    atm::AbstractAtmosphericModel = DummyAtmosphericModel()) where {Pwp}
 
     #update kinematics
     f_kin!(y.kin, ẋ.kin.pos, x.kin)
@@ -105,9 +109,12 @@ function f_cont!(y, ẋ, x, u, t::Real,
     # argument data.atmospheric_model
 
     #update powerplant
-    f_cont!(y.pwp, ẋ.pwp, x.pwp, u.pwp, t, y.air, Pwp)
+    f_cont!(y.pwp, ẋ.pwp, x.pwp, u.pwp, t, Pwp, y.air)
     #update landing gear
-    # f_cont!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, LdgD(y.kin, d.terrain), Ldg)
+    # f_cont!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, Ldg, trn)
+
+    #get aerodynamics Wrench
+    # y_aero = get_wr_Ob_b(Aero, y.air, y.srf, y.ldg, trn)
 
     #initialize external Wrench and additional angular momentum
     wr_ext_Ob_b = Wrench()
@@ -125,7 +132,7 @@ end
 
 degraded(nrm) = (abs(nrm - 1.0) > 1e-9)
 
-function f_disc!(x, u, t::Real, data, aircraft::ParametricAircraft)
+function f_disc!(x, u, t, aircraft::ParametricAircraft)
 
     norm_q_lb = norm(x.kin.pos.q_lb)
     norm_q_el = norm(x.kin.pos.q_el)
