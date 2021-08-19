@@ -90,7 +90,7 @@ function ParametricAircraft()
     pwp = PowerplantGroup(
         left = EThruster(motor = ElectricMotor(α = CW)),
         right = EThruster(motor = ElectricMotor(α = CCW)))
-    ParametricAircraft(ConstantMassModel(), pwp)
+    ParametricAircraft(ConstantMassModel(m = 1, J_Ob_b = 1*Matrix{Float64}(I,3,3)), pwp)
 end
 
 X(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = X(Kin()), pwp = X(Pwp))
@@ -100,6 +100,7 @@ Y(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = Y(Kin()), acc =
 function f_cont!(y, ẋ, x, u, t, aircraft::ParametricAircraft{Pwp},
     trn::AbstractTerrainModel = DummyTerrainModel(),
     atm::AbstractAtmosphericModel = DummyAtmosphericModel()) where {Pwp}
+
 
     #update kinematics
     f_kin!(y.kin, ẋ.kin.pos, x.kin)
@@ -130,13 +131,14 @@ function f_cont!(y, ẋ, x, u, t, aircraft::ParametricAircraft{Pwp},
     return nothing
 end
 
-degraded(nrm) = (abs(nrm - 1.0) > 1e-9)
+degraded(nrm) = (abs(nrm - 1.0) > 1e-10)
 
 function f_disc!(x, u, t, aircraft::ParametricAircraft)
 
     norm_q_lb = norm(x.kin.pos.q_lb)
     norm_q_el = norm(x.kin.pos.q_el)
     if degraded(norm_q_lb) || degraded(norm_q_el)
+        # println("Renormalized")
         x.kin.pos.q_lb ./= norm_q_lb
         x.kin.pos.q_el ./= norm_q_el
         return true #x modified

@@ -13,8 +13,7 @@ using Flight.Airdata
 import Flight.System: X, Y, U, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
-export EThruster, EThrusterX, EThrusterU, EThrusterY, EThrusterD, EThrusterSys
-export PowerplantGroup
+export EThruster, PowerplantGroup
 
 @enum TurnSense begin
     CW = 1
@@ -82,19 +81,22 @@ const EThrusterYTemplate = ComponentVector(
     wr_Oc_c = ComponentVector(Wrench()), wr_Ob_b = ComponentVector(Wrench()),
     h_Gc_b = zeros(3))
 
-const EThrusterX{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterXTemplate))} where {D<:AbstractVector{Float64}}
-const EThrusterU{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterUTemplate))} where {D<:AbstractVector{Float64}}
-const EThrusterY{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterYTemplate))} where {D<:AbstractVector{Float64}}
+#if we wanted to dispatch on the specific ComponentVector subtype...
+# const EThrusterX{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterXTemplate))} where {D<:AbstractVector{Float64}}
+# const EThrusterU{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterUTemplate))} where {D<:AbstractVector{Float64}}
+# const EThrusterY{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterYTemplate))} where {D<:AbstractVector{Float64}}
 
 #AbstractSystem interface
 X(::EThruster) = copy(EThrusterXTemplate)
 U(::EThruster) = copy(EThrusterUTemplate)
 Y(::EThruster) = copy(EThrusterYTemplate)
 
-get_wr_Ob_b(y::EThrusterY, ::EThruster) = y.wr_Ob_b
-get_h_Gc_b(y::EThrusterY, ::EThruster) = y.h_Gc_b
+get_wr_Ob_b(y, ::EThruster) = y.wr_Ob_b
+get_h_Gc_b(y, ::EThruster) = y.h_Gc_b
 
-function f_cont!(y::EThrusterY, ẋ::EThrusterX, x::EThrusterX, u::EThrusterU, ::Real, thr::EThruster, air::AirDataY = Y(AirData()))
+f_disc!(x, u, t, thr::EThruster) = false
+
+function f_cont!(y, ẋ, x, u, t, thr::EThruster, air::AirDataY = Y(AirData()))
 
     @unpack frame, battery, motor, propeller, gearbox = thr
     @unpack n, η = gearbox

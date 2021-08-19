@@ -33,36 +33,44 @@ struct ContinuousModel{S, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <
     integrator::I#just for annotation purposes
     log::L
 
-    function ContinuousModel(sys::S, sys_args...; x₀ = X(sys), u₀ = U(sys),
-        method = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
+    function ContinuousModel(sys::S,
+        f_cont_args::Tuple = (), f_disc_args::Tuple = ();
+        x₀ = X(sys), u₀ = U(sys), method = Tsit5(),
+        t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
         int_kwargs...) where {S<:AbstractSystem}
+
+        #note: this interface requires that the System's f_cont! and f_disc!
+        #both accept sys_args. if we wanted to have different optional trailing
+        #arguments in both functions, we would need to define more
+        #ContinuousModel input arguments. for now, it should do
 
         #pass the y cache for f_update! to have somewhere to write to, then
         #throw it away. what matters in this call is the update to the ẋ passed
         #by the integrator
         function f_update!(ẋ, x, p, t)
-            @unpack y_tmp, u, sys, args = p
-            f_cont!(y_tmp, ẋ, x, u, t, sys, args...) #throw away y
-        end
-
-        function f_dcb!(integrator)
-            @unpack u, sys, args = integrator.p
-            t = integrator.t
-            x = integrator.u
-            modified_x = f_disc!(x, u, t, sys, args...)
-            u_modified!(integrator, modified_x)
+            @unpack y_tmp, u, sys, f_cont_args = p
+            f_cont!(y_tmp, ẋ, x, u, t, sys, f_cont_args...) #throw away y
         end
 
         #the dummy ẋ cache is passed for f_update! to have somewhere to write
         #to without clobbering the integrator's du, then it is thrown away. copy
         #and output the updated y
         function f_save(x, t, integrator)
-            @unpack y_tmp, ẋ_tmp, u, sys, args = integrator.p
-            f_cont!(y_tmp, ẋ_tmp, x, u, t, sys, args...)
+            @unpack y_tmp, ẋ_tmp, u, sys, f_cont_args = integrator.p
+            f_cont!(y_tmp, ẋ_tmp, x, u, t, sys, f_cont_args...)
             return copy(y_tmp)
         end
 
-        params = (u = u₀, sys = sys, args = sys_args, y_tmp = Y(sys), ẋ_tmp = X(sys))
+        function f_dcb!(integrator)
+            @unpack u, sys, f_disc_args = integrator.p
+            t = integrator.t
+            x = integrator.u
+            modified_x = f_disc!(x, u, t, sys, f_disc_args...)
+            u_modified!(integrator, modified_x)
+        end
+
+        params = (u = u₀, sys = sys, f_cont_args = f_cont_args, f_disc_args = f_disc_args,
+                  y_tmp = Y(sys), ẋ_tmp = X(sys))
         log = SavedValues(Float64, typeof(params.y_tmp))
 
         dcb = DiscreteCallback((u, t, integrator)->true, f_dcb!)
