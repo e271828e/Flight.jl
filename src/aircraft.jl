@@ -16,7 +16,8 @@ using Flight.LandingGear
 using Flight.Terrain
 using Flight.Atmosphere
 
-import Flight.System: X, Y, U, f_cont!, f_disc!, plotlog
+import Flight.System: X, Y, U, f_cont!, f_disc!
+import Flight.System: plotlog
 
 export ParametricAircraft
 

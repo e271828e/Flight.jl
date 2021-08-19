@@ -31,7 +31,6 @@ Base.getproperty(::AbstractComponentGroup{C}, i::Symbol) where {C} = getproperty
 labels(::AbstractComponentGroup{C}) where {C} = keys(C)
 components(::AbstractComponentGroup{C}) where {C} = values(C)
 
-#ONLY CREATE BLOCKS FOR THOSE THAT RETURN != nothing
 X(::AbstractComponentGroup{C}) where {C} = ComponentVector(NamedTuple{keys(C)}(X.(values(C))))
 U(::AbstractComponentGroup{C}) where {C} = ComponentVector(NamedTuple{keys(C)}(U.(values(C))))
 Y(::AbstractComponentGroup{C}) where {C} = ComponentVector(NamedTuple{keys(C)}(Y.(values(C))))

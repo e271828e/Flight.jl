@@ -1,7 +1,8 @@
 module System
 
 # using DiffEqCallbacks: SavedValues
-export AbstractSystem, X, U, Y, D, f_cont!, f_disc!, plotlog
+export AbstractSystem, X, U, Y, D, f_cont!, f_disc!
+export plotlog
 
 ################## AbstractSystem Interface ###################
 
