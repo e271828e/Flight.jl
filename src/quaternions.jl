@@ -36,8 +36,8 @@ struct Quat <: AbstractQuat
 end
 
 #outer constructors
-Quat(s::Real) = Quat([s, 0, 0, 0])
-Quat(; real = 0.0, imag = zeros(3)) = Quat([real, imag...])
+Quat(s::Real) = Quat(SVector{4,Float64}(s, 0, 0, 0))
+Quat(; real = 0.0, imag = zeros(3)) = Quat(SVector{4,Float64}(real, imag[1], imag[2], imag[3]))
 Quat(q::AbstractQuat) = Quat(q[:])
 
 Base.copy(q::Quat) = Quat(copy(getfield(q, :__data)))
@@ -104,7 +104,7 @@ Base.:\(a::Real, q::Quat) = q / a
 
 struct UnitQuat <: AbstractQuat
     _quat::Quat
-    function UnitQuat(input::AbstractVector{<:Real}; normalization::Bool = true)
+    function UnitQuat(input::AbstractVector; normalization::Bool = true)
         return normalization ? new(normalize(input)) : new(input)
     end
 end

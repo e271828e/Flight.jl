@@ -6,60 +6,19 @@ using ComponentArrays
 using RecursiveArrayTools
 using UnPack
 
+using Flight.System
 using Flight.Kinematics
 using Flight.Dynamics
-using Flight.Component
-using Flight.Powerplant
 using Flight.Airdata
-using Flight.System
+using Flight.Component
+using Flight.Propulsion
+using Flight.LandingGear
+using Flight.Terrain
+using Flight.Atmosphere
 
 import Flight.System: X, Y, U, f_cont!, f_disc!, plotlog
 
 export ParametricAircraft
-
-
-abstract type AbstractTerrainModel end
-abstract type AbstractAtmosphericModel end
-
-#TerrainModel does not belong to the Aircraft itself. it must be defined
-#separately, and passed as an external data source. the same goes for
-#AtmosphereModel. there must be a level above the Aircraft, which will typically
-#be the simulation scheduler, that defines both the environmental models and all
-#the aircraft participating in the simulation. this may be a block based
-#simulation engine or a custom made one.
-
-#the AtmosphericModel contained in the Aircraft should behave as a gateway to
-#the actual AtmosphericModel, through which the evolving atmospheric model can
-#be queried by the Aircraft for the values at its current location. the
-#TerrainModel can be handled similarly, because even if it is not evolving in
-#time, it may be an arbitrarily complex terrain database which must serve all
-#vehicles. initially, these Model "clients" will be simply references to the
-#models themselves, because these will be constant, simple and shared with no
-#one else
-
-#an alternative approach, instead of querying the models in a client-server
-#architecture, would be simply to provide access references to the environment
-#model data and methods and store them in the external data source fields of the
-#Aircraft System being simulated. then, the Aircraft can locally evaluate those
-#methods for their particular position. in that case, the exchanged information
-#is not the product of model evaluation at the Aircraft location, but the data
-#required to perform those evaluations within the Aircraft model.
-
-#both scenarios could be realized with an Observer model (or even Reactive
-#programming, see Rocket.jl), with any vehicle in the simulation subscribing to
-#the AtmosphericModel simulation and the TerrainModel. each time these update,
-#they notify all their subscribers so they can also be evolved by the scheduler.
-#if this communication occurs through Channels, each Model (Atmospheric,
-#Terrain, Vehicle...) can run on separate Tasks, and each of these in a
-#different thread. Thread safety.
-
-struct DummyTerrainModel <: AbstractTerrainModel end
-struct DummyAtmosphericModel <: AbstractAtmosphericModel end
-
-Base.@kwdef struct Environment
-    trn::AbstractTerrainModel = DummyTerrainModel()
-    atm::AbstractAtmosphericModel = DummyAtmosphericModel()
-end
 
 abstract type AbstractMassModel end
 
@@ -76,43 +35,49 @@ end
 get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.r_ObG_b)
 
 
-################# SKETCH
-struct ParametricAircraft{Pwp} <: AbstractSystem
-    mass_model::AbstractMassModel
-end
-ParametricAircraft(mass_model, pwp) = ParametricAircraft{pwp}(mass_model)
+struct ParametricAircraft{Mass, Pwp, Ldg} <: AbstractSystem end
+ParametricAircraft(mass::AbstractMassModel, pwp::PropulsionGroup, ldg::LandingGearGroup) = ParametricAircraft{mass,pwp,ldg}()
 
-#for some reason, we cannot strip PowerplantGroup{C} to PowerplantGroup in the
+#for some reason, we cannot strip PropulsionGroup{C} to PropulsionGroup in the
 #struct declaration, so in order to avoid having to add C as a type parammeter,
 #we leave Pwp's supertype unspecified in the struct declaration and enforce it
 #in the constructor
 function ParametricAircraft()
-    pwp = PowerplantGroup(
+
+    mass = ConstantMassModel(m = 1, J_Ob_b = 1*Matrix{Float64}(I,3,3))
+    pwp = PropulsionGroup((
         left = EThruster(motor = ElectricMotor(α = CW)),
-        right = EThruster(motor = ElectricMotor(α = CCW)))
-    ParametricAircraft(ConstantMassModel(m = 1, J_Ob_b = 1*Matrix{Float64}(I,3,3)), pwp)
+        right = EThruster(motor = ElectricMotor(α = CCW))))
+    ldg = LandingGearGroup((
+        lmain = LandingGearLeg(),
+        rmain = LandingGearLeg(),
+        nlg = LandingGearLeg()))
+
+    ParametricAircraft(mass, pwp, ldg)
 end
 
-X(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = X(Kin()), pwp = X(Pwp))
-U(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(pwp = U(Pwp))
-Y(::ParametricAircraft{Pwp}) where {Pwp} = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), pwp = Y(Pwp), air = Y(AirData()))
+X(::ParametricAircraft{Mass, Pwp,Ldg}) where {Mass, Pwp,Ldg} = ComponentVector(kin = X(Kin()), pwp = X(Pwp), ldg = X(Ldg))
+U(::ParametricAircraft{Mass, Pwp,Ldg}) where {Mass, Pwp,Ldg} = ComponentVector(pwp = U(Pwp), ldg = U(Ldg))
+Y(::ParametricAircraft{Mass, Pwp,Ldg}) where {Mass, Pwp,Ldg} = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), air = Y(AirData()), pwp = Y(Pwp), ldg = Y(Ldg))
 
-function f_cont!(y, ẋ, x, u, t, aircraft::ParametricAircraft{Pwp},
+pwp(::ParametricAircraft{Mass,Pwp,Ldg}) where {Mass,Pwp,Ldg} = Pwp
+
+function f_cont!(y, ẋ, x, u, t, ::ParametricAircraft{Mass,Pwp,Ldg},
     trn::AbstractTerrainModel = DummyTerrainModel(),
-    atm::AbstractAtmosphericModel = DummyAtmosphericModel()) where {Pwp}
+    atm::AbstractAtmosphericModel = DummyAtmosphericModel()) where {Mass,Pwp,Ldg}
 
 
     #update kinematics
     f_kin!(y.kin, ẋ.kin.pos, x.kin)
 
-    mass_data = get_mass_data(aircraft.mass_model)
+    mass_data = get_mass_data(Mass)
     # y.air .= get_air_data(). #call air data system here to update air data, passing also as
     # argument data.atmospheric_model
 
     #update powerplant
     f_cont!(y.pwp, ẋ.pwp, x.pwp, u.pwp, t, Pwp, y.air)
     #update landing gear
-    # f_cont!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, Ldg, trn)
+    f_cont!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, Ldg, trn)
 
     #get aerodynamics Wrench
     # y_aero = get_wr_Ob_b(Aero, y.air, y.srf, y.ldg, trn)
@@ -124,6 +89,10 @@ function f_cont!(y, ẋ, x, u, t, aircraft::ParametricAircraft{Pwp},
     #add powerplant contributions
     wr_ext_Ob_b .+= get_wr_Ob_b(y.pwp, Pwp)
     h_rot_b += get_h_Gc_b(y.pwp, Pwp)
+
+    #add landing gear contributions
+    wr_ext_Ob_b .+= get_wr_Ob_b(y.ldg, Ldg)
+    h_rot_b += get_h_Gc_b(y.ldg, Ldg)
 
     #update dynamics
     f_dyn!(y.acc, ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y.kin)

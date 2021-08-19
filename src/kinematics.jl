@@ -40,13 +40,13 @@ const VelYTemplate = ComponentVector(
 const KinXTemplate = ComponentVector(pos = PosXTemplate, vel = VelXTemplate)
 const KinYTemplate = ComponentVector(pos = PosYTemplate, vel = VelYTemplate)
 
-const PosX{D} = ComponentVector{Float64, D, typeof(getaxes(PosXTemplate))} where {D<:AbstractVector{Float64}}
-const PosY{D} = ComponentVector{Float64, D, typeof(getaxes(PosYTemplate))} where {D<:AbstractVector{Float64}}
-const VelX{D} = ComponentVector{Float64, D, typeof(getaxes(VelXTemplate))} where {D<:AbstractVector{Float64}}
-const VelY{D} = ComponentVector{Float64, D, typeof(getaxes(VelYTemplate))} where {D<:AbstractVector{Float64}}
+const PosX{T, D} = ComponentVector{T, D, typeof(getaxes(PosXTemplate))} where {T, D}
+const PosY{T, D} = ComponentVector{T, D, typeof(getaxes(PosYTemplate))} where {T, D}
+const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T, D}
+const VelY{T, D} = ComponentVector{T, D, typeof(getaxes(VelYTemplate))} where {T, D}
 
-const KinX{D} = ComponentVector{Float64, D, typeof(getaxes(KinXTemplate))} where {D<:AbstractVector{Float64}}
-const KinY{D} = ComponentVector{Float64, D, typeof(getaxes(KinYTemplate))} where {D<:AbstractVector{Float64}}
+const KinX{T, D} = ComponentVector{T, D, typeof(getaxes(KinXTemplate))} where {T, D}
+const KinY{T, D} = ComponentVector{T, D, typeof(getaxes(KinYTemplate))} where {T, D}
 
 #Kin is not a System, so we do not really need to define Y, U and D to comply
 #with the System interface. however, these are convenient for testing, and to

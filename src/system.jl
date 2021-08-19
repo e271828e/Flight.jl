@@ -9,12 +9,34 @@ abstract type AbstractSystem end
 
 extend_error(::Type{S}) where {S} = error("Method not implemented for subtype $S or incorrect call signature")
 
-X(::S) where {S<:AbstractSystem} = extend_error(S)
-U(::S) where {S<:AbstractSystem} = extend_error(S)
-Y(::S) where {S<:AbstractSystem} = extend_error(S)
+#the AbstractSystem requires defining at least a continuous state vector, which
+#should be a ComponentVector returned by method X. to main reasons:
+#1) DifferentialEquations seems to fail when the state vector is an array of
+#   Union{Float64, Missing}. on the other hand, since the input and output
+#   vectors are parameters from the integrator's perspective, it does not handle
+#   them explicitly and they are no problem.
+#2) If a continuous dynamical system has no continuous states, it is not a
+#   continuous dynamical system, so it should not be defined at such. if it is
+#   part of a parent system which does have states, it can be handled within the
+#   parent System.
 
-f_cont!(y, ẋ, x, u, t, s::S, args...) where {S<:AbstractSystem} = extend_error(S)
-(f_disc!(x, u, t, s::S, args...)::Bool) where {S<:AbstractSystem} = extend_error(S)
+#an output vector is also required, because:
+#1) Dealing with Union{Float64,Missing} is slower for some methods used by
+#   Kinematics and Dynamics (RQuat() for example)
+#2) A continuous dynamical system should have some observable output. if nothing
+#   else, the state itself
+X(::S) where {S<:AbstractSystem} = error("System subtype $S has not defined its X method")
+Y(::S) where {S<:AbstractSystem} = error("System subtype $S has not defined its X method")
+U(::S) where {S<:AbstractSystem} = missing
+
+function f_cont!(y, ẋ, x, u, t, s::S, args...) where {S<:AbstractSystem}
+    println("Called f_cont!")
+    extend_error(S)
+end
+function (f_disc!(x, u, t, s::S, args...)::Bool) where {S<:AbstractSystem}
+    println("Called f_disc!")
+    extend_error(S)
+end
 #this should return true if x was modified, false otherwise.
 
 # it is dangerous to provide a default fallback for f_disc!, because if the

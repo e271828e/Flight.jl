@@ -1,6 +1,6 @@
 using Test
 using DifferentialEquations
-using Flight.Powerplant
+using Flight.Propulsion
 using Flight.Model
 
 export test_pwp

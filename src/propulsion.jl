@@ -1,4 +1,4 @@
-module Powerplant
+module Propulsion
 
 using LinearAlgebra
 using StaticArrays
@@ -6,14 +6,15 @@ using ComponentArrays
 using Unitful
 using UnPack
 
+using Flight.Airdata
+using Flight.Dynamics
 using Flight.Component
 import Flight.Component: get_wr_Ob_b, get_h_Gc_b
-using Flight.Airdata
 
 import Flight.System: X, Y, U, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
-export EThruster, PowerplantGroup
+export EThruster, PropulsionGroup
 
 @enum TurnSense begin
     CW = 1
@@ -82,13 +83,15 @@ const EThrusterYTemplate = ComponentVector(
     h_Gc_b = zeros(3))
 
 #if we wanted to dispatch on the specific ComponentVector subtype...
-# const EThrusterX{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterXTemplate))} where {D<:AbstractVector{Float64}}
-# const EThrusterU{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterUTemplate))} where {D<:AbstractVector{Float64}}
-# const EThrusterY{D} = ComponentVector{Float64, D, typeof(getaxes(EThrusterYTemplate))} where {D<:AbstractVector{Float64}}
+# const EThrusterX{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterXTemplate))} where {T,D}
+# const EThrusterU{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterUTemplate))} where {T,D}
+# const EThrusterY{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterYTemplate))} where {T,D}
 
 #AbstractSystem interface
 X(::EThruster) = copy(EThrusterXTemplate)
 U(::EThruster) = copy(EThrusterUTemplate)
+# U(::EThruster) = mponentVector(throttle = 0.0, null = missing)
+# U(::EThruster) = ComponentVector(throttle = 0.0)
 Y(::EThruster) = copy(EThrusterYTemplate)
 
 get_wr_Ob_b(y, ::EThruster) = y.wr_Ob_b
@@ -129,14 +132,14 @@ function f_cont!(y, ẋ, x, u, t, thr::EThruster, air::AirDataY = Y(AirData()))
 
 end
 
-struct PowerplantGroup{C} <: AbstractComponentGroup{C} end
+struct PropulsionGroup{C} <: AbstractComponentGroup{C} end
 
-function PowerplantGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
-    PowerplantGroup{nt}()
+function PropulsionGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
+    PropulsionGroup{nt}()
 end
 #= #interestingly, this does not work:
-PowerplantGroup(nt::NamedTuple{L, NTuple{N, T}  where {L,N,T<:NTuple{N,
-Powerplant.AbstractThruster}}) = PowerplantGroup{nt}()
+PropulsionGroup(nt::NamedTuple{L, NTuple{N, T}  where {L,N,T<:NTuple{N,
+Propulsion.AbstractThruster}}) = PropulsionGroup{nt}()
 
 #the reason is probably that NamedTuple, unlike Tuple (and therefore NTuple) is
 #NOT covariant. that is:

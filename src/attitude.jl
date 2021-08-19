@@ -43,7 +43,7 @@ struct RQuat <: Rotation
 end
 
 RQuat(r::Rotation) = convert(RQuat, r)
-function RQuat(v::AbstractVector{<:Real}; normalization::Bool = true)
+function RQuat(v::AbstractVector; normalization::Bool = true)
     RQuat(UnitQuat(v, normalization = normalization))
 end
 RQuat() = RQuat(UnitQuat())

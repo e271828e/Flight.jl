@@ -8,13 +8,11 @@ using ComponentArrays
 using Flight.WGS84
 using Flight.Attitude
 using Flight.Kinematics
-using Flight.Component
-using Flight.Airdata
 using Flight.System
 import Flight.System: Y
 
 export Acc, AccY
-export MassData
+export MassData, WrenchCV, Wrench, Frame
 export inertia_wrench, gravity_wrench, f_dyn!
 
 
@@ -25,7 +23,7 @@ struct Acc end
 const AccYTemplate = ComponentVector(
     α_eb_b = zeros(3), α_ib_b = zeros(3), a_eOb_b = zeros(3), a_iOb_b = zeros(3))
 
-const AccY{D} = ComponentVector{Float64, D, typeof(getaxes(AccYTemplate))} where {D<:AbstractVector{Float64}}
+const AccY{T, D} = ComponentVector{T, D, typeof(getaxes(AccYTemplate))} where {T, D}
 Y(::Acc) = similar(AccYTemplate)
 
 
@@ -37,6 +35,54 @@ Base.@kwdef struct MassData
     r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
 end
 
+
+################# Wrench ########################
+
+const WrenchAxes = getaxes(ComponentVector(F = zeros(3), M = zeros(3)))
+const WrenchCV{T, D} = ComponentVector{T, D, typeof(WrenchAxes)} where {T, D}
+const Wrench(v::AbstractVector{Float64}) = (@assert length(v) == 6; ComponentVector(v, WrenchAxes))
+function Wrench(; F = SVector(0.0,0,0), M = SVector(0.0,0,0))
+    wr = ComponentVector{Float64}(undef, WrenchAxes)
+    wr.F = F; wr.M = M
+    return wr
+end
+
+####################### Frame ###############
+
+"""
+#Specifies a local Frame fc(Oc, Ɛc) relative to the airframe reference
+frame fb(Ob, Ɛb) by:
+#a) the position vector of the local frame origin Oc relative to the reference
+#frame origin Ob, projected in the reference frame axes
+# b) the attitude of the local frame axes relative to the reference
+#frame axes, given by rotation quaternion q_bc
+"""
+Base.@kwdef struct Frame
+    r_ObOc_b::SVector{3,Float64} = zeros(SVector{3})
+    q_bc::RQuat = RQuat()
+end
+
+"""
+Translate a Wrench specified on a local Frame fc(Oc, εc) to the
+airframe reference frame fb(Ob, εb) given the relative Frame
+specification f_bc
+"""
+
+function Base.:*(f_bc::Frame, wr_Oc_c::WrenchCV)
+
+    F_Oc_c = wr_Oc_c.F
+    M_Oc_c = wr_Oc_c.M
+
+    #project on the reference axes
+    F_Oc_b = f_bc.q_bc * F_Oc_c
+    M_Oc_b = f_bc.q_bc * M_Oc_c
+
+    #translate them to airframe origin
+    F_Ob_b = F_Oc_b
+    M_Ob_b = M_Oc_b + f_bc.r_ObOc_b × F_Oc_b
+    Wrench(F = F_Ob_b, M = M_Ob_b) #wr_Ob_b
+
+end
 
 ################## f_dyn! and helper functions ####################
 
