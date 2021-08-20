@@ -71,14 +71,16 @@ function f_cont!(y, ẋ, x, u, t, ::ParametricAircraft{Mass,Pwp,Ldg},
     #update kinematics
     f_kin!(y.kin, ẋ.kin.pos, x.kin)
 
-    mass_data = get_mass_data(Mass)
-    # y.air .= get_air_data(). #call air data system here to update air data, passing also as
-    # argument data.atmospheric_model
-
     #update powerplant
     f_cont!(y.pwp, ẋ.pwp, x.pwp, u.pwp, t, Pwp, y.air)
     #update landing gear
     f_cont!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, Ldg, trn)
+
+    #mass data depends on the state of the systems, we need updated y to compute
+    #it, so it should go after the systems
+    mass_data = get_mass_data(Mass)
+    # y.air .= get_air_data(). #call air data system here to update air data, passing also as
+    # argument data.atmospheric_model
 
     #get aerodynamics Wrench
     # y_aero = get_wr_Ob_b(Aero, y.air, y.srf, y.ldg, trn)
