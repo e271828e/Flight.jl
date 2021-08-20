@@ -29,7 +29,7 @@ Base.setproperty!(q::AbstractQuat, s::Symbol, v) = setindex!(q, v, Val(s))
 ######################## Quat #############################
 
 struct Quat <: AbstractQuat
-    __data::SVector{4, Float64}
+    _sv::SVector{4, Float64}
     #whenever typeof(input) != QData, new will call convert(QData, input). as long
     #as QData provides a convert method that can handle typeof(input), then we do
     #not need to handle it explicitly in an outer constructor.
@@ -40,16 +40,16 @@ Quat(s::Real) = Quat(SVector{4,Float64}(s, 0, 0, 0))
 Quat(; real = 0.0, imag = zeros(3)) = Quat(SVector{4,Float64}(real, imag[1], imag[2], imag[3]))
 Quat(q::AbstractQuat) = Quat(q[:])
 
-Base.copy(q::Quat) = Quat(copy(getfield(q, :__data)))
-Base.getindex(q::Quat, i) = getfield(q, :__data)[i]
-Base.getindex(q::Quat, ::Val{:real}) = getfield(q, :__data)[1]
-Base.getindex(q::Quat, ::Val{:imag}) = SVector{3, Float64}(@view getfield(q, :__data)[2:4])
+Base.copy(q::Quat) = Quat(copy(getfield(q, :_sv)))
+Base.getindex(q::Quat, i) = getfield(q, :_sv)[i]
+Base.getindex(q::Quat, ::Val{:real}) = getfield(q, :_sv)[1]
+Base.getindex(q::Quat, ::Val{:imag}) = SVector{3, Float64}(@view getfield(q, :_sv)[2:4])
 #to avoid allocation, use @view instead of:
 # Base.getindex(q::Quat, ::Val{:imag}) = SVector{3, Float64}(q[2:4])
 
-LinearAlgebra.norm(q::Quat) = norm(getfield(q, :__data)) #uses StaticArrays implementation
-LinearAlgebra.normalize(q::Quat) = Quat(normalize(getfield(q, :__data)))
-norm_sqr(q::Quat) = (data = getfield(q,:__data); sum(data.*data))
+LinearAlgebra.norm(q::Quat) = norm(getfield(q, :_sv)) #uses StaticArrays implementation
+LinearAlgebra.normalize(q::Quat) = Quat(normalize(getfield(q, :_sv)))
+norm_sqr(q::Quat) = (data = getfield(q,:_sv); sum(data.*data))
 
 Base.promote_rule(::Type{Quat}, ::Type{S}) where {S<:Real} = Quat
 Base.convert(::Type{Quat}, a::Real) = Quat(a)
@@ -59,20 +59,20 @@ Base.convert(::Type{Quat}, q::Quat) = q #if already a Quat, don't do anything
 #### Adjoint & Inverse
 Base.conj(q::Quat)= Quat([q.real, -q.imag...])
 Base.adjoint(q::Quat) = conj(q)
-Base.inv(q::Quat) = Quat(getfield(q', :__data) / norm_sqr(q))
+Base.inv(q::Quat) = Quat(getfield(q', :_sv) / norm_sqr(q))
 
 #### Operators
 Base.:+(q::Quat) = q
-Base.:-(q::Quat) = Quat(-getfield(q, :__data))
+Base.:-(q::Quat) = Quat(-getfield(q, :_sv))
 
-Base.:(==)(q1::Quat, q2::Quat) = getfield(q1,:__data) == getfield(q2,:__data)
-Base.:(≈)(q1::Quat, q2::Quat) = getfield(q1,:__data) ≈ getfield(q2,:__data)
+Base.:(==)(q1::Quat, q2::Quat) = getfield(q1,:_sv) == getfield(q2,:_sv)
+Base.:(≈)(q1::Quat, q2::Quat) = getfield(q1,:_sv) ≈ getfield(q2,:_sv)
 
-Base.:+(q1::Quat, q2::Quat) = Quat(getfield(q1,:__data) + getfield(q2,:__data))
+Base.:+(q1::Quat, q2::Quat) = Quat(getfield(q1,:_sv) + getfield(q2,:_sv))
 Base.:+(q::Quat, a::Real) = +(promote(q, a)...)
 Base.:+(a::Real, q::Quat) = +(promote(a, q)...)
 
-Base.:-(q1::Quat, q2::Quat) = Quat(getfield(q1,:__data) - getfield(q2,:__data))
+Base.:-(q1::Quat, q2::Quat) = Quat(getfield(q1,:_sv) - getfield(q2,:_sv))
 Base.:-(q::Quat, a::Real) = -(promote(q, a)...)
 Base.:-(a::Real, q::Quat) = -(promote(a, q)...)
 
@@ -103,7 +103,7 @@ Base.:\(a::Real, q::Quat) = q / a
 ######################## UnitQuat #############################
 
 struct UnitQuat <: AbstractQuat
-    _quat::Quat
+    _q::Quat
     function UnitQuat(input::AbstractVector; normalization::Bool = true)
         v = SVector{4,Float64}(input)
         return normalization ? new(normalize(v)) : new(v)
@@ -126,14 +126,14 @@ end
 UnitQuat(q::AbstractQuat) = UnitQuat(q[:])
 
 #bypass normalization on copy
-Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :_quat)), normalization = false) #saves normalization
-Base.getindex(u::UnitQuat, i) = (getfield(u, :_quat)[i])
-Base.getindex(u::UnitQuat, ::Val{:real}) = getindex(getfield(u, :_quat), Val(:real))
-Base.getindex(u::UnitQuat, ::Val{:imag}) = getindex(getfield(u, :_quat), Val(:imag))
+Base.copy(u::UnitQuat) = UnitQuat(copy(getfield(u, :_q)), normalization = false) #saves normalization
+Base.getindex(u::UnitQuat, i) = (getfield(u, :_q)[i])
+Base.getindex(u::UnitQuat, ::Val{:real}) = getindex(getfield(u, :_q), Val(:real))
+Base.getindex(u::UnitQuat, ::Val{:imag}) = getindex(getfield(u, :_q), Val(:imag))
 
-LinearAlgebra.norm(u::UnitQuat) = norm(getfield(u, :_quat)) #uses StaticArrays implementation
-LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :_quat)), normalization = false)
-# LinearAlgebra.normalize!(u::UnitQuat) = (setfield!(u, :_quat, normalize(getfield(u, :_quat))); return u)
+LinearAlgebra.norm(u::UnitQuat) = norm(getfield(u, :_q)) #uses StaticArrays implementation
+LinearAlgebra.normalize(u::UnitQuat) = UnitQuat(normalize(getfield(u, :_q)), normalization = false)
+# LinearAlgebra.normalize!(u::UnitQuat) = (setfield!(u, :_q, normalize(getfield(u, :_q))); return u)
 
 Base.promote_rule(::Type{UnitQuat}, ::Type{Quat}) = Quat
 Base.convert(::Type{UnitQuat}, u::UnitQuat) = u #do not normalize on convert
@@ -146,17 +146,17 @@ Base.inv(u::UnitQuat) = u'
 
 #### Operators
 Base.:+(u::UnitQuat) = u
-Base.:-(u::UnitQuat) = UnitQuat(-getfield(u, :_quat), normalization = false)
+Base.:-(u::UnitQuat) = UnitQuat(-getfield(u, :_q), normalization = false)
 
 Base.:(==)(u1::UnitQuat, q2::Quat) = ==(promote(u1, q2)...)
 Base.:(==)(q1::Quat, u2::UnitQuat) = ==(promote(q1, u2)...)
-Base.:(==)(u1::UnitQuat, u2::UnitQuat) = getfield(u1,:_quat) == getfield(u2,:_quat)
+Base.:(==)(u1::UnitQuat, u2::UnitQuat) = getfield(u1,:_q) == getfield(u2,:_q)
 
 Base.:(≈)(u1::UnitQuat, q2::Quat) = ≈(promote(u1, q2)...)
 Base.:(≈)(q1::Quat, u2::UnitQuat) = ≈(promote(q1, u2)...)
-Base.:(≈)(u1::UnitQuat, u2::UnitQuat) = getfield(u1,:_quat) ≈ getfield(u2,:_quat)
+Base.:(≈)(u1::UnitQuat, u2::UnitQuat) = getfield(u1,:_q) ≈ getfield(u2,:_q)
 
-Base.:*(u1::UnitQuat, u2::UnitQuat) = UnitQuat(getfield(u1, :_quat) * getfield(u2, :_quat), normalization = false)
+Base.:*(u1::UnitQuat, u2::UnitQuat) = UnitQuat(getfield(u1, :_q) * getfield(u2, :_q), normalization = false)
 Base.:*(u::UnitQuat, q::Quat) = *(promote(u, q)...)
 Base.:*(q::Quat, u::UnitQuat) = *(promote(q, u)...)
 

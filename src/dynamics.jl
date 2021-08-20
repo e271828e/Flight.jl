@@ -38,6 +38,9 @@ end
 
 ################# Wrench ########################
 
+#THIS SHOULD BE MADE AN IMMUTABLE STRUCT AGAIN IF WE SWITCH TO STRUCTS FOR Y. it
+#will save ~25 ns per Wrench allocation, of which there are a lot
+
 const WrenchAxes = getaxes(ComponentVector(F = zeros(3), M = zeros(3)))
 const WrenchCV{T, D} = ComponentVector{T, D, typeof(WrenchAxes)} where {T, D}
 const Wrench(v::AbstractVector{Float64}) = (@assert length(v) == 6; ComponentVector(v, WrenchAxes))

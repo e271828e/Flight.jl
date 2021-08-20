@@ -37,14 +37,14 @@ function test_RQuat()
     @testset "Constructors" begin
         #RQuat accepts any AbstractVector of length 4 and normalizes it, no need to
         #pass a UnitQuat instance
-        @test q_ab._quat ≈ RQuat(UnitQuat(v_ab))._quat
+        @test q_ab._u ≈ RQuat(UnitQuat(v_ab))._u
         @test_throws DimensionMismatch RQuat([1,2,3])
-        @test RQuat()._quat[:] == [1,0,0,0]
+        @test RQuat()._u[:] == [1,0,0,0]
     end
 
     @testset "Normalization" begin
         r_bad = RQuat(UnitQuat([1,2,3,4], normalization = false))
-        @test abs(norm(r_bad._quat)-1) > 1e-2
+        @test abs(norm(r_bad._u)-1) > 1e-2
         @test norm(normalize(r_bad)) ≈ 1
         # normalize!(r_bad)
         # @test norm(r_bad) ≈ 1
@@ -67,7 +67,7 @@ function test_RQuat()
 
         #time derivative
         ω_ab_b = [10, -4, 2]
-        @test dt(q_ab, ω_ab_b) == 0.5 * (q_ab._quat * Quat(imag = ω_ab_b))
+        @test dt(q_ab, ω_ab_b) == 0.5 * (q_ab._u * Quat(imag = ω_ab_b))
 
     end
 
