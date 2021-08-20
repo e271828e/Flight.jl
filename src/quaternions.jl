@@ -105,12 +105,13 @@ Base.:\(a::Real, q::Quat) = q / a
 struct UnitQuat <: AbstractQuat
     _quat::Quat
     function UnitQuat(input::AbstractVector; normalization::Bool = true)
-        return normalization ? new(normalize(input)) : new(input)
+        v = SVector{4,Float64}(input)
+        return normalization ? new(normalize(v)) : new(v)
     end
 end
 
 #outer constructors
-UnitQuat(::Real) = UnitQuat([1, 0, 0, 0], normalization = false)
+UnitQuat(::Real) = UnitQuat(SVector{4,Float64}(1.0, 0, 0, 0), normalization = false)
 function UnitQuat(; real::Union{Real, Nothing} = nothing,
                     imag::Union{AbstractVector{T} where {T<:Real}, Nothing} = nothing,
                     normalization::Bool = true)
