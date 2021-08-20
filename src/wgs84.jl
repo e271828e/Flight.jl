@@ -45,7 +45,7 @@ end
 
 function NVector(; ϕ::Real = 0., λ::Real = 0.)
     cos_ϕ = cos(ϕ)
-    NVector([cos_ϕ * cos(λ), cos_ϕ * sin(λ), sin(ϕ)], normalization = false)
+    NVector(SVector{3,Float64}(cos_ϕ * cos(λ), cos_ϕ * sin(λ), sin(ϕ)), normalization = false)
 end
 
 #extract NVector and Wander Angle from ECEF to Local Tangent Frame rotation
@@ -54,10 +54,10 @@ NVector(r_el::RMatrix) = NVector( -r_el[:,3], normalization = false)
 function NVector(r_el::RQuat)
     #n_e is the third column of the R_el matrix. we don't need the complete
     #RQuat to RMatrix conversion
-    q = r_el._quat
+    q = r_el[:]
     dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]
     dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4]
-    NVector(-[dq24 + dq13, dq34 - dq12, 1 - 2*(q[2]^2 + q[3]^2)], normalization = false)
+    NVector(-SVector{3}(dq24 + dq13, dq34 - dq12, 1 - 2*(q[2]^2 + q[3]^2)), normalization = false)
 end
 
 Base.:(==)(n1::NVector, n2::NVector) = n1.data == n2.data
@@ -95,7 +95,7 @@ ltf(n_e::NVector, ψ_nl::Real = 0.) = ltf(; n_e, ψ_nl)
 function ψ_nl(r_el::RQuat)
     #n_e is the third column of the R_el matrix. we don't need the complete
     #RQuat to RMatrix conversion
-    q = r_el._quat
+    q = r_el[:]
     dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]
     dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4]
     atan(-(dq34 + dq12), dq24 - dq13)
