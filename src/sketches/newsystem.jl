@@ -1,6 +1,7 @@
 using Flight
 using OrdinaryDiffEq
 using ComponentArrays
+using StaticArrays
 
 #we need the Component type parameter for dispatch, and the rest for type stability
 struct NewSystem{C, X, Y, U, P, S}
@@ -12,7 +13,6 @@ struct NewSystem{C, X, Y, U, P, S}
     subsystems::S
 end
 
-abstract type NewAbstractComponent end
 
 abstract type NewAbstractThruster <: NewAbstractComponent end
 
@@ -54,16 +54,13 @@ function f_cont!(sys::NewSystem{NewEThruster})
     sys.y.ω_shaft = sys.x.ω_shaft
     sys.y.c_bat = sys.x.c_bat
 end
+f_disc!(sys::NewSystem{NewEThruster}) = false
 
 get_wr_Ob_b(sys::NewSystem{NewEThruster}) = sys.y.wr_Ob_b
 get_h_Gc_b(sys::NewSystem{NewEThruster}) = sys.y.h_Gc_b
 
 ####################### Dual Thruster #######################
 
-#NEXT STEPS:
-#1) Generalize to any NewAbstractComponent. maybe add the Component type as a
-#   type parameter (not really necessary)
-#2) Change ComponentGroup methods to @generated
 #3) comment out everything affected by Component, System and Model, and update
 #   their implementations with the new one. replace the propulsion module with
 #   the new one. test the new Model and System with ComponentGroup containing
@@ -74,54 +71,111 @@ get_h_Gc_b(sys::NewSystem{NewEThruster}) = sys.y.h_Gc_b
 #   account for all this. benchmark and compare with the committed
 #   implementation
 
-EThrusterGroup{L} = NamedTuple{L, T} where {L, T <: NTuple{N, NewEThruster} where {N}}
-#now generalize this, but restricting it to New AbstractComponent
+abstract type NewAbstractComponent end
 
-X(g::EThrusterGroup) = ComponentVector(NamedTuple{keys(g)}(X.(values(g))))
-Y(g::EThrusterGroup) = ComponentVector(NamedTuple{keys(g)}(Y.(values(g))))
-U(g::EThrusterGroup) = NamedTuple{keys(g)}(U.(values(g)))
+get_wr_Ob_b(y, comp::NewAbstractComponent, args...) = error("Method get_wr_Ob_b not implemented for subtype $comp or incorrect call signature")
+get_h_Gc_b(y, comp::NewAbstractComponent, args...) = error("Method get_h_Gc_b not implemented for subtype $comp or incorrect call signature")
 
-function NewSystem(g::EThrusterGroup{L}, dx = X(g), x = X(g), y = Y(g), u = U(g)) where {L}
+
+struct NewComponentGroup{T<:NewAbstractComponent,N,L} <: NewAbstractComponent
+    components::NamedTuple{L, M} where {L, M <: NTuple{N, T} where {N, T<:NewAbstractComponent}}
+    function NewComponentGroup(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, T}} where {N, T<:NewAbstractComponent}
+        new{T,N,L}(nt)
+    end
+end
+# (G::Type{<:AbstractComponentGroup})(;kwargs...) = G((; kwargs...))
+NewComponentGroup(;kwargs...) = NewComponentGroup((; kwargs...))
+Base.length(::NewComponentGroup{T,N,L}) where {T,N,L} = N
+Base.getindex(g::NewComponentGroup, i::Integer) = getindex(getfield(g,:components), i)
+Base.getproperty(g::NewComponentGroup, i::Symbol) = getproperty(getfield(g,:components), i)
+keys(::NewComponentGroup{T,N,L}) where {T,N,L} = L
+values(::NewComponentGroup) = values(getfield(g,:components))
+
+X(g::NewComponentGroup{T,N,L}) where {T,N,L} = ComponentVector(NamedTuple{L}(X.(values(g.components))))
+Y(g::NewComponentGroup{T,N,L}) where {T,N,L} = ComponentVector(NamedTuple{L}(Y.(values(g.components))))
+U(g::NewComponentGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(U.(values(g.components)))
+
+function NewSystem(g::NewComponentGroup{T,N,L}, dx = X(g), x = X(g), y = Y(g), u = U(g)) where {T,N,L}
     #having L allows us to know the length of g and therefore the number of
     #expressions we need to generate
-    subs = Dict{Symbol, NewSystem}()
+    s_list = Vector{NewSystem}()
     for label in L
-        sys_comp = NewSystem(map((λ)->getproperty(λ, label), (g, dx, x, y, u))...)
-        push!(subs, label => sys_comp)
+        s_cmp = NewSystem(map((λ)->getproperty(λ, label), (g.components, dx, x, y, u))...)
+        push!(s_list, s_cmp)
     end
     params = nothing #everything is already stored in the subsystem's parameters
-    subsystems = NamedTuple{Tuple(keys(subs))}(values(subs))
+    subsystems = NamedTuple{L}(s_list)
     NewSystem{map(typeof, (g, x, y, u, params, subsystems))...}(dx, x, y, u, params, subsystems)
 end
 
-
-#sys::NewSystem{EThrusterGroup} would not work here due to the non-covariance of
+#sys::NewSystem{NewComponentGroup} would not work here due to the non-covariance of
 #the type system
-function get_wr_Ob_b(sys::NewSystem{T}) where {T<:EThrusterGroup{L}} where {L}
-    #to generate the unrolled expressions for the @generated function, we only
-    #have access to the type, not the values. so we can't do length(g). we must
-    #keep the length or the labels as a type parameter
-    wr_Ob_b = Wrench()
-    for label in L #having L allows us to know the length of g and therefore the number of expressions we need to generate
-        wr_Ob_b .+= sys.subsystems[label] |> get_wr_Ob_b
-    end
-    return wr_Ob_b
-end
+@inline @generated function get_wr_Ob_b(sys::NewSystem{C}, args...) where {C<:NewComponentGroup{T,N,L}} where {T,N,L}
 
-function get_h_Gc_b(sys::NewSystem{T}) where {T<:EThrusterGroup{L}} where {L}
-    h_Gc_b = SVector{3,Float64}(0,0,0)
+    ex = Expr(:block)
+    push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
+
     for label in L
-        h_Gc_b .+= sys.subsystems[label] |> get_h_Gc_b
+        label = QuoteNode(label)
+        ex_ss = quote
+            wr .+= get_wr_Ob_b(sys.subsystems[$label], args...)
+        end
+        push!(ex.args, ex_ss)
     end
-    return h_Gc_b
+    return ex
 end
 
-function f_cont!(sys::NewSystem{T}) where {T<:EThrusterGroup{L}} where {L}
-    for label in L #having L allows us to know the length of g and therefore the number of expressions we need to generate
-        f_cont!(getproperty(sys.subsystems, label))
+# #sys::NewSystem{NewComponentGroup} would not work here due to the non-covariance of
+# #the type system
+# function get_wr_Ob_b(sys::NewSystem{C}) where {C<:NewComponentGroup{T,N,L}} where {T,N,L}
+#     #to generate the unrolled expressions for the @generated function, we only
+#     #have access to the type, not the values. so we can't do length(g). we must
+#     #keep the length or the labels as a type parameter
+#     wr_Ob_b = Wrench()
+#     for label in L #having L allows us to know the length of g and therefore the number of expressions we need to generate
+#         wr_Ob_b .+= sys.subsystems[label] |> get_wr_Ob_b
+#     end
+#     return wr_Ob_b
+# end
+
+@inline @generated function get_h_Gc_b(sys::NewSystem{C}, args...) where {C<:NewComponentGroup{T,N,L}} where {T,N,L}
+    ex = Expr(:block)
+    push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate
+
+    for label in L
+        label = QuoteNode(label)
+        ex_ss = quote
+            h += get_h_Gc_b(sys.subsystems[$label], args...)
+        end
+        push!(ex.args, ex_ss)
     end
+    return ex
 end
 
+@inline @generated function f_cont!(sys::NewSystem{C}, args...) where {C<:NewComponentGroup{T,N,L}} where {T,N,L}
+    ex = Expr(:block)
+    for label in L
+        label = QuoteNode(label)
+        ex_ss = quote
+            f_cont!(sys.subsystems[$label], args...)
+        end
+        push!(ex.args, ex_ss)
+    end
+    return ex
+end
+
+@inline @generated function (f_disc!(sys::NewSystem{C}, args...)::Bool) where {C<:NewComponentGroup{T,N,L}} where {T,N,L}
+    ex = Expr(:block)
+    push!(ex.args, :(x_mod = false))
+    for label in L
+        label = QuoteNode(label)
+        ex_ss = quote
+            x_mod = x_mod || f_disc!(sys.subsystems[$label], args...)
+        end
+        push!(ex.args, ex_ss)
+    end
+    return ex
+end
 
 
 ################### MORE INSIGHT #################
