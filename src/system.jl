@@ -1,14 +1,29 @@
 module System
 
-# using DiffEqCallbacks: SavedValues
-export AbstractSystem, X, U, Y, D, f_cont!, f_disc!
-export plotlog
+export AbstractComponent, ContinuousSystem, X, U, Y, f_cont!, f_disc!
+# export plotlog
 
-################## AbstractSystem Interface ###################
+abstract type AbstractComponent end #anything that can go in a ContinuousSystem
 
-abstract type AbstractSystem end
+no_extend_error(f::Function, ::Type{S}) where {S} = error("Function $f not implemented for subtype $S or incorrect call signature")
 
-extend_error(::Type{S}) where {S} = error("Method not implemented for subtype $S or incorrect call signature")
+X(::C) where {C<:AbstractComponent} = no_extend_error(X, C)
+Y(::C) where {C<:AbstractComponent} = no_extend_error(Y, C)
+U(::C) where {C<:AbstractComponent} = no_extend_error(U, C)
+
+#need the C type parameter for dispatch, the rest for type stability
+struct ContinuousSystem{C<:AbstractComponent, X, Y, U, P, S}
+    ẋ::X
+    x::X
+    y::Y
+    u::U
+    t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
+    params::P
+    subsystems::S
+end
+
+f_cont!(::S, args...) where {S<:ContinuousSystem} = no_extend_error(f_cont!, C)
+(f_disc!(::S, args...)::Bool) where {S<:ContinuousSystem} = no_extend_error(f_cont!, C)
 
 #the AbstractSystem requires defining at least a continuous state vector, which
 #should be a ComponentVector returned by method X. to main reasons:
@@ -26,18 +41,6 @@ extend_error(::Type{S}) where {S} = error("Method not implemented for subtype $S
 #   Kinematics and Dynamics (RQuat() for example)
 #2) A continuous dynamical system should have some observable output. if nothing
 #   else, the state itself
-X(::S) where {S<:AbstractSystem} = error("System subtype $S has not defined its X method")
-Y(::S) where {S<:AbstractSystem} = error("System subtype $S has not defined its X method")
-U(::S) where {S<:AbstractSystem} = missing
-
-function f_cont!(y, ẋ, x, u, t, s::S, args...) where {S<:AbstractSystem}
-    println("Called f_cont!")
-    extend_error(S)
-end
-function (f_disc!(x, u, t, s::S, args...)::Bool) where {S<:AbstractSystem}
-    println("Called f_disc!")
-    extend_error(S)
-end
 #this should return true if x was modified, false otherwise.
 
 # it is dangerous to provide a default fallback for f_disc!, because if the
@@ -46,7 +49,7 @@ end
 #safer to force each concrete System that does not require an actual f_disc! to
 #implement a trivial f_disc! that returns false
 
-#replace this with the appropriate overloads, Plot recipes, whatever
-plotlog(log, sys::AbstractSystem) = extend_error(S)
+# #replace this with the appropriate overloads, Plot recipes, whatever
+# plotlog(log, sys::AbstractSystem) = extend_error(S)
 
 end

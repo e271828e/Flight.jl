@@ -49,6 +49,8 @@ struct ContinuousModel{S, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <
         #by the integrator
         function f_update!(ẋ, x, p, t)
             @unpack y_tmp, u, sys, f_cont_args = p
+            #MUST REMEMBER TO ASSIGN X, U and T to sys before calling f_cont!
+            #then retrieve its xdot and assign it in place to the integrators xdot
             f_cont!(y_tmp, ẋ, x, u, t, sys, f_cont_args...) #throw away y
         end
 

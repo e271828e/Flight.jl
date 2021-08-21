@@ -8,7 +8,6 @@ using ComponentArrays
 using Flight.WGS84
 using Flight.Attitude
 using Flight.Kinematics
-using Flight.System
 import Flight.System: Y
 
 export Acc, AccY

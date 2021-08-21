@@ -8,18 +8,21 @@ using UnPack
 
 using Flight.Airdata
 using Flight.Dynamics
-using Flight.Component
-import Flight.Component: get_wr_Ob_b, get_h_Gc_b
-
-import Flight.System: X, Y, U, f_cont!, f_disc!
+using Flight.Airframe: AbstractAirframeComponent
+import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
+import Flight.System: ContinuousSystem, X, Y, U, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, PropulsionGroup
+
+abstract type AbstractThruster <: AbstractAirframeComponent end
 
 @enum TurnSense begin
     CW = 1
     CCW = -1
 end
+
+################ EThruster Component ###################
 
 Base.@kwdef struct SimpleProp
     kF::Float64 = 2e-3
@@ -63,10 +66,6 @@ voltage_open(b::Battery, charge_ratio::Real) = b.n_cells * b.V_cell * voltage_cu
 R(b::Battery) = b.n_cells * b.R_cell
 ċ(b::Battery, i::Real) = -i/b.Cmax
 
-################ Electric Thruster ###################
-
-abstract type AbstractThruster <: AbstractComponent end
-
 Base.@kwdef struct EThruster <: AbstractThruster
     frame::Frame = Frame()
     battery::Battery = Battery()
@@ -76,37 +75,43 @@ Base.@kwdef struct EThruster <: AbstractThruster
 end
 
 const EThrusterXTemplate = ComponentVector(ω_shaft = 0.0, c_bat = 1.0)
-const EThrusterUTemplate = ComponentVector(throttle = 0.0)
 const EThrusterYTemplate = ComponentVector(
     throttle = 0.0, ω_shaft = 0.0, ω_prop = 0.0, i = 0.0, c_bat = 1.0,
     wr_Oc_c = ComponentVector(Wrench()), wr_Ob_b = ComponentVector(Wrench()),
     h_Gc_b = zeros(3))
 
-#if we wanted to dispatch on the specific ComponentVector subtype...
-# const EThrusterX{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterXTemplate))} where {T,D}
-# const EThrusterU{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterUTemplate))} where {T,D}
-# const EThrusterY{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterYTemplate))} where {T,D}
+const EThrusterX{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterXTemplate))} where {T,D}
+const EThrusterY{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterYTemplate))} where {T,D}
+Base.@kwdef mutable struct EThrusterU
+    throttle::Float64 = 0.0
+end
 
-#AbstractSystem interface
 X(::EThruster) = copy(EThrusterXTemplate)
-U(::EThruster) = copy(EThrusterUTemplate)
-# U(::EThruster) = mponentVector(throttle = 0.0, null = missing)
-# U(::EThruster) = ComponentVector(throttle = 0.0)
 Y(::EThruster) = copy(EThrusterYTemplate)
+U(::EThruster) = EThrusterU()
 
-get_wr_Ob_b(y, ::EThruster) = y.wr_Ob_b
-get_h_Gc_b(y, ::EThruster) = y.h_Gc_b
 
-f_disc!(x, u, t, thr::EThruster) = false
+################ EThruster ContinuousSystem ###################
 
-function f_cont!(y, ẋ, x, u, t, thr::EThruster, air::AirDataY = Y(AirData()))
+function ContinuousSystem(thr::EThruster, ẋ::EThrusterX = X(thr), x::EThrusterX = X(thr),
+    y::EThrusterY = Y(thr), u::EThrusterU = U(thr), t = Ref(0.0))
+    params = thr #params is the component itself
+    subsystems = nothing #no subsystems to define
+    ContinuousSystem{map(typeof, (thr, x, y, u, params, subsystems))...}(ẋ, x, y, u, t, params, subsystems)
+end
 
-    @unpack frame, battery, motor, propeller, gearbox = thr
+get_wr_Ob_b(sys::ContinuousSystem{EThruster}) = sys.y.wr_Ob_b
+get_h_Gc_b(sys::ContinuousSystem{EThruster}) = sys.y.h_Gc_b
+
+f_disc!(sys::ContinuousSystem{EThruster}) = false
+
+function f_cont!(sys::ContinuousSystem{EThruster}, air::AirDataY = Y(AirData()))
+
+    @unpack y, ẋ, x, u, params = sys #no need for subsystems
+    @unpack frame, battery, motor, propeller, gearbox = params
     @unpack n, η = gearbox
     @unpack ω_shaft, c_bat = x
 
-    # ω_shaft = x.ω_shaft
-    # c_bat = x.c_bat
     throttle = u.throttle
 
     ω_prop = ω_shaft / n
@@ -132,11 +137,9 @@ function f_cont!(y, ẋ, x, u, t, thr::EThruster, air::AirDataY = Y(AirData()))
 
 end
 
-struct PropulsionGroup{C} <: AbstractComponentGroup{C} end
-
-function PropulsionGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
-    PropulsionGroup{nt}()
-end
+# function PropulsionGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
+#     PropulsionGroup{nt}()
+# end
 #= #interestingly, this does not work:
 PropulsionGroup(nt::NamedTuple{L, NTuple{N, T}  where {L,N,T<:NTuple{N,
 Propulsion.AbstractThruster}}) = PropulsionGroup{nt}()
