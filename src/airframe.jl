@@ -6,6 +6,7 @@ using Flight.System
 import Flight.System: ContinuousSystem, X, Y, U, f_cont!, f_disc!
 
 export AbstractAirframeComponent, AirframeComponentGroup
+export get_wr_Ob_b, get_h_Gc_b
 
 
 abstract type AbstractAirframeComponent <: AbstractComponent end

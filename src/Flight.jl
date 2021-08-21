@@ -15,7 +15,7 @@ include("atmosphere.jl")
 
 #simulation
 include("system.jl")
-# include("model.jl")
+include("model.jl")
 
 #aircraft kinematics & dynamics
 include("kinematics.jl")
@@ -24,11 +24,10 @@ include("dynamics.jl")
 #aircraft elements
 include("airdata.jl")
 include("airframe.jl")
-# include("component.jl")
 include("propulsion.jl")
 # include("landinggear.jl")
 
-# include("aircraft.jl")
+include("aircraft.jl")
 
 @reexport using .Quaternions
 @reexport using .Attitude
@@ -37,18 +36,17 @@ include("propulsion.jl")
 @reexport using .Atmosphere
 
 @reexport using .System
-# @reexport using .Model
+@reexport using .Model
 
 @reexport using .Kinematics
 @reexport using .Dynamics
 
 @reexport using .Airdata
 @reexport using .Airframe
-# @reexport using .Component
 @reexport using .Propulsion
 # @reexport using .LandingGear
 
-# @reexport using .Aircraft
+@reexport using .Aircraft
 
 println("REMINDER: Set normalization = false")
 

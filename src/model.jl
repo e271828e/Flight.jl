@@ -4,7 +4,7 @@ using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks, RecursiveArrayTools
 using UnPack
 
 using Flight.System
-import Flight.System: plotlog
+# import Flight.System: plotlog
 
 export ContinuousModel
 
@@ -27,96 +27,77 @@ abstract type AbstractModel end
 #discrete input vector (ud), but it still provides a discrete function to be
 #called on each integration step for bookkeeping (for example, quaternion
 #renormalization, )
-struct ContinuousModel{S, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <: AbstractModel
+struct ContinuousModel{I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <: AbstractModel
 # <:OrdinaryDiffEq.ODEIntegrator
 # <:SavedValues
+    sys::ContinuousSystem
     integrator::I#just for annotation purposes
     log::L
 
-    function ContinuousModel(sys::S,
-        f_cont_args::Tuple = (), f_disc_args::Tuple = ();
-        x₀ = X(sys), u₀ = U(sys), method = Tsit5(),
-        t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
-        int_kwargs...) where {S<:AbstractSystem}
-
-        #note: this interface requires that the System's f_cont! and f_disc!
-        #both accept sys_args. if we wanted to have different optional trailing
-        #arguments in both functions, we would need to define more
-        #ContinuousModel input arguments. for now, it should do
+    function ContinuousModel(sys, args_c::Tuple = (), args_d::Tuple = ();
+        method = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
+        int_kwargs...)
 
         #pass the y cache for f_update! to have somewhere to write to, then
         #throw it away. what matters in this call is the update to the ẋ passed
         #by the integrator
         function f_update!(ẋ, x, p, t)
-            @unpack y_tmp, u, sys, f_cont_args = p
-            #MUST REMEMBER TO ASSIGN X, U and T to sys before calling f_cont!
-            #then retrieve its xdot and assign it in place to the integrators xdot
-            f_cont!(y_tmp, ẋ, x, u, t, sys, f_cont_args...) #throw away y
+            @unpack sys, args_c = p
+            sys.x .= x
+            sys.t[] = t
+            f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
+            ẋ .= sys.ẋ
+            return nothing
         end
 
         #the dummy ẋ cache is passed for f_update! to have somewhere to write
         #to without clobbering the integrator's du, then it is thrown away. copy
         #and output the updated y
         function f_save(x, t, integrator)
-            @unpack y_tmp, ẋ_tmp, u, sys, f_cont_args = integrator.p
-            f_cont!(y_tmp, ẋ_tmp, x, u, t, sys, f_cont_args...)
-            return copy(y_tmp)
+            @unpack sys, args_c = integrator.p
+            sys.x .= x
+            sys.t[] = t
+            f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
+            return copy(sys.y)
         end
 
         function f_dcb!(integrator)
-            @unpack u, sys, f_disc_args = integrator.p
-            t = integrator.t
-            x = integrator.u
-            modified_x = f_disc!(x, u, t, sys, f_disc_args...)
+            @unpack sys, args_d = integrator.p
+            modified_x = f_disc!(sys, args_d...)
             u_modified!(integrator, modified_x)
         end
 
-        params = (u = u₀, sys = sys, f_cont_args = f_cont_args, f_disc_args = f_disc_args,
-                  y_tmp = Y(sys), ẋ_tmp = X(sys))
-        log = SavedValues(Float64, typeof(params.y_tmp))
+        params = (sys = sys, args_c = args_c, args_d = args_d)
+        log = SavedValues(Float64, typeof(sys.y))
 
         dcb = DiscreteCallback((u, t, integrator)->true, f_dcb!)
         scb = SavingCallback(f_save, log, saveat = y_saveat)
         cb_set = CallbackSet(dcb, scb)
 
-        problem = ODEProblem{true}(f_update!, x₀, (t_start, t_end), params)
+        problem = ODEProblem{true}(f_update!, copy(sys.x), (t_start, t_end), params)
         integrator = init(problem, method; callback = cb_set, save_everystep = false, int_kwargs...)
-        new{S, typeof(integrator), typeof(log)}(integrator, log)
+        new{typeof(integrator), typeof(log)}(sys, integrator, log)
     end
 end
 
 
 function Base.getproperty(m::ContinuousModel, s::Symbol)
+    #sys also has stored t and x, but since they are written on every call to
+    #f_update! we have no guarantees about their status after a certain step
     if s === :t
         return m.integrator.t
     elseif s === :x
         return m.integrator.u
-    elseif s in (:integrator, :log)
+    elseif s === :u
+        return m.sys.u
+    elseif s === :y #should only retrieve this after a saving step
+        return m.sys.y
+    elseif s in (:sys, :integrator, :log)
         return getfield(m, s)
-    elseif s in (:u, :ẋ_tmp, :y_tmp, :data, :sys)
-        return getproperty(m.integrator.p, s)
     else
         return getproperty(m.integrator, s)
     end
 end
-
-# Base.getproperty(m::ContinuousModel, s::Symbol) = getproperty(m, Val(s))
-
-# Base.getproperty(m::ContinuousModel, ::Val{:integrator}) = getfield(m, :integrator)
-# Base.getproperty(m::ContinuousModel, ::Val{:log}) = getfield(m, :log)
-
-# #forward everything else to the integrator...
-# Base.getproperty(m::ContinuousModel, ::Val{S}) where {S} = getproperty(getfield(m, :integrator), S)
-
-# #...except for x (because DiffEqs calls the state u, instead of x)
-# Base.getproperty(m::ContinuousModel, ::Val{:x}) = m.integrator.u #state vector
-
-# Base.getproperty(m::ContinuousModel, ::Val{:u}) = m.integrator.p.u #input vector
-# Base.getproperty(m::ContinuousModel, ::Val{:ẋ}) = m.integrator.p.ẋ #ẋ cache
-# Base.getproperty(m::ContinuousModel, ::Val{:y}) = m.integrator.p.y #y cache
-# Base.getproperty(m::ContinuousModel, ::Val{:data}) = m.integrator.p.data #external data cache
-# Base.getproperty(m::ContinuousModel, ::Val{:sys}) = m.integrator.p.sys
-
 
 SciMLBase.step!(m::ContinuousModel, args...) = step!(m.integrator, args...)
 function SciMLBase.reinit!(m::ContinuousModel, args...)

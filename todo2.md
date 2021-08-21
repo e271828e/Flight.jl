@@ -1,4 +1,5 @@
 1. update Model for the new ContinuousSystem. test it both with EThruster and a group of EThrusters
+1. finish TestAircraft and test it in Simulation
 2. create a new branch new_arch_with_struct_y to change back to nested struct arrays for Y. Update
    Model and remove all Y methods. Remove field y from ContinuousSystem, and modify f_cont!() to
    return y. Modify NewContinuousModel to account for all this. benchmark and compare with the

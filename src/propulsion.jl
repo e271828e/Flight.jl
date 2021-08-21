@@ -93,8 +93,7 @@ U(::EThruster) = EThrusterU()
 
 ################ EThruster ContinuousSystem ###################
 
-function ContinuousSystem(thr::EThruster, ẋ::EThrusterX = X(thr), x::EThrusterX = X(thr),
-    y::EThrusterY = Y(thr), u::EThrusterU = U(thr), t = Ref(0.0))
+function ContinuousSystem(thr::EThruster, ẋ = X(thr), x = X(thr), y= Y(thr), u = U(thr), t = Ref(0.0))
     params = thr #params is the component itself
     subsystems = nothing #no subsystems to define
     ContinuousSystem{map(typeof, (thr, x, y, u, params, subsystems))...}(ẋ, x, y, u, t, params, subsystems)
@@ -105,7 +104,7 @@ get_h_Gc_b(sys::ContinuousSystem{EThruster}) = sys.y.h_Gc_b
 
 f_disc!(sys::ContinuousSystem{EThruster}) = false
 
-function f_cont!(sys::ContinuousSystem{EThruster}, air::AirDataY = Y(AirData()))
+function f_cont!(sys::ContinuousSystem{EThruster}, air::AirDataY)
 
     @unpack y, ẋ, x, u, params = sys #no need for subsystems
     @unpack frame, battery, motor, propeller, gearbox = params
