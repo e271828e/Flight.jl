@@ -108,8 +108,8 @@ function HybridSystem(thr::EThruster, ẋ = X(thr), x = X(thr), d = D(thr),
     HybridSystem{map(typeof, (thr, x, d, u, params, subsystems))...}(ẋ, x, d, u, t, params, subsystems)
 end
 
-get_wr_Ob_b(sys::HybridSystem{EThruster}) = sys.y.wr_Ob_b
-get_h_Gc_b(sys::HybridSystem{EThruster}) = sys.y.h_Gc_b
+get_wr_Ob_b(y::EThrusterY) = y.wr_Ob_b
+get_h_Gc_b(y::EThrusterY) = y.h_Gc_b
 
 f_disc!(sys::HybridSystem{EThruster}) = false
 

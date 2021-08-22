@@ -150,7 +150,6 @@ function test_UnitQuat()
         @test u[:] == normalize(v)[:] #Vector
         @test UnitQuat(q)[:] == normalize(q)[:] #AbstractQuat
         @test UnitQuat(2.0)[:] == [1, 0, 0, 0] #scalar
-        @test UnitQuat()[:] == [1, 0, 0, 0] #zero arguments
         @test UnitQuat(real = v[1], imag = v[2:4])[:] == normalize(v)[:]
 
     end
@@ -181,9 +180,9 @@ function test_UnitQuat()
         @test (-u1)[:] == -(u1[:])
 
         #multiplication, inverse and division by UnitQuat
-        @test u1 * UnitQuat() ≈ u1
+        @test u1 * UnitQuat(1) ≈ u1
         @test u1' == inv(u1)
-        @test u1 * u1' ≈ UnitQuat()
+        @test u1 * u1' ≈ UnitQuat(1)
         @test u1 / u2 ≈ u1 * u2'
         @test u1 \ u2 ≈ u1' * u2
         @test u1 \ u2 != u2 / u1 #inv(u1)*u2 != u2*inv(u1)

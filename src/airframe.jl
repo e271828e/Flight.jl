@@ -85,7 +85,7 @@ end
 
 #sys::HybridSystem{NewComponentGroup} would not work here due to the non-covariance of
 #the type system
-@inline @generated function get_wr_Ob_b(sys::HybridSystem{C}, args...) where {C<:AirframeComponentGroup{T,N,L}} where {T,N,L}
+@inline @generated function get_wr_Ob_b(y::NamedTuple{L}) where {L}
 
     ex = Expr(:block)
     push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
@@ -93,21 +93,22 @@ end
     for label in L
         label = QuoteNode(label)
         ex_ss = quote
-            wr .+= get_wr_Ob_b(sys.subsystems[$label], args...)
+            wr += get_wr_Ob_b(y[$label])
         end
         push!(ex.args, ex_ss)
     end
     return ex
 end
 
-@inline @generated function get_h_Gc_b(sys::HybridSystem{C}, args...) where {C<:AirframeComponentGroup{T,N,L}} where {T,N,L}
+@inline @generated function get_h_Gc_b(y::NamedTuple{L}) where {L}
+
     ex = Expr(:block)
     push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate
 
     for label in L
         label = QuoteNode(label)
         ex_ss = quote
-            h += get_h_Gc_b(sys.subsystems[$label], args...)
+            h += get_h_Gc_b(y[$label])
         end
         push!(ex.args, ex_ss)
     end

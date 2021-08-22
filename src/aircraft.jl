@@ -75,22 +75,11 @@ end
 X(ac::TestAircraft) = ComponentVector(kin = X(Kin()), pwp = X(ac.pwp))
 D(ac::TestAircraft) = (pwp = D(ac.pwp), )
 U(::TestAircraft{NoControlMapping,Mass,Pwp} where {Mass,Pwp}) = nothing
+
 #in a NoMapping aircraft, there are no aircraft controls! we act upon the
 #subsystem's controls directly! this allows testing multiple subsystem
 #configurations without the hassle of having to define a dedicated
 #assign_control_inputs! method for each one
-
-#for a direct mapping, we simply assemble the aircraft's u from each of its
-#component's u's
-# U(ac::TestAircraft{DirectMapping,Mass,Pwp} where {Mass,Pwp}) = (pwp = U(ac.pwp),)
-
-
-#for an aircraft with no specific mapping, the user is expected to act upon
-#the subsystems inputs directly, so this function has nothing to do
-#overriding this function for specific TestAircraft type parameter
-#combinations allows us to customize how the aircraft's control inputs map
-#into its subsystems's control inputs.
-assign_control_inputs!(::HybridSystem{TestAircraft{NoControlMapping,M,P}} where {M,P}) = nothing
 
 #=
 # example:
@@ -104,35 +93,44 @@ function assign_control_inputs!(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) whe
     ac.subsystems.pwp.right.throttle = ac.u.throttle
 end
 =#
-function HybridSystem(ac::TestAircraft, ẋ = X(ac), x = X(ac), d = D(ac), y = Y(ac), u = U(ac), t = Ref(0.0))
+
+const TestAircraftSys{C,M,P} = HybridSystem{TestAircraft{C,M,P}} where {C,M,P}
+
+function HybridSystem(ac::TestAircraft, ẋ = X(ac), x = X(ac), d = D(ac), u = U(ac), t = Ref(0.0))
     #each subsystem allocate its own u, then we can decide how the aircraft's u
     #should map onto it via assign_control_inputs!
-    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, d.pwp, y.pwp, U(ac.pwp), t)
-    # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, y.ldg, u.ldg, t)
+    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, d.pwp, U(ac.pwp), t)
+    # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, U(ac.ldg), t)
     params = (mass = ac.mass,)
     # subsystems = (pwp = pwp, ldg = ldg)
     subsystems = (pwp = pwp,)
-    HybridSystem{map(typeof, (ac, x, d, y, u, params, subsystems))...}(ẋ, x, d, y, u, t, params, subsystems)
+    HybridSystem{map(typeof, (ac, x, d, u, params, subsystems))...}(ẋ, x, d, u, t, params, subsystems)
 end
 
+#for an aircraft with no specific mapping, the user is expected to act upon
+#the subsystems inputs directly, so this function has nothing to do
+#overriding this function for specific TestAircraft type parameter
+#combinations allows us to customize how the aircraft's control inputs map
+#into its subsystems's control inputs.
+assign_control_inputs!(::TestAircraftSys{NoControlMapping,M,P} where {M,P}) = nothing
 
-function f_cont!(ac_sys::HybridSystem{TestAircraft{C,M,P}} where {C,M,P},
+
+function f_cont!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P},
                 trn::AbstractTerrainModel,
                 atm::AbstractAtmosphericModel)
 
 
-    #update kinematics
-    @unpack ẋ, x, y, u, params, subsystems = ac_sys
+    @unpack ẋ, x, u, params, subsystems = ac_sys
     @unpack pwp = subsystems
     @unpack mass = params
 
-    f_kin!(y.kin, ẋ.kin.pos, x.kin)
+    y_kin = f_kin!(ẋ.kin.pos, x.kin)
 
     #before updating the subsystems, assign their control inputs from the
     #aircraft's control input vector
     assign_control_inputs!(ac_sys)
 
-
+    y_air = AirDataY() #replacej
     # y.air .= get_air_data(). #call air data system here to update air data, passing also as
     # argument data.atmospheric_model
 
@@ -141,7 +139,7 @@ function f_cont!(ac_sys::HybridSystem{TestAircraft{C,M,P}} where {C,M,P},
 
     #we don't need to update or extract each subsystem's ẋ, x or y, because
     #they are either views or mutable fields
-    f_cont!(pwp, y.air)
+    y_pwp = f_cont!(pwp, y_air)
     # #update landing gear
     # f_cont!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, Ldg, trn)
 
@@ -150,8 +148,8 @@ function f_cont!(ac_sys::HybridSystem{TestAircraft{C,M,P}} where {C,M,P},
     h_rot_b = SVector(0.,0.,0.)
 
     #add powerplant contributions
-    wr_ext_Ob_b .+= get_wr_Ob_b(pwp)
-    h_rot_b += get_h_Gc_b(pwp)
+    wr_ext_Ob_b += get_wr_Ob_b(y_pwp)
+    h_rot_b += get_h_Gc_b(y_pwp)
 
     # #add landing gear contributions
     # wr_ext_Ob_b .+= get_wr_Ob_b(y.ldg, Ldg)
@@ -162,14 +160,15 @@ function f_cont!(ac_sys::HybridSystem{TestAircraft{C,M,P}} where {C,M,P},
     mass_data = get_mass_data(mass)
 
     #update dynamics
-    f_dyn!(y.acc, ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y.kin)
+    y_acc = f_dyn!(ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y_kin)
 
-# Y(ac::TestAircraft) = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), air = Y(AirData()), pwp = Y(ac.pwp))
-    return nothing
+# Y(ac::TestAircraft) = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), air =
+# Y(AirData()), pwp = Y(ac.pwp))
+    return (kin = y_kin, acc = y_acc, air = y_air, pwp = y_pwp)
 end
 
 
-function f_disc!(ac_sys::HybridSystem{TestAircraft{C,M,P}} where {C,M,P})
+function f_disc!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P})
     x_mod = renormalize!(ac_sys.x.kin, 1e-8)
     # println(x_mod)
     return x_mod

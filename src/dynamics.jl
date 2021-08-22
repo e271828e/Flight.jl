@@ -75,7 +75,8 @@ function Base.:*(f_bc::Frame, wr_Oc_c::Wrench)
     #translate them to airframe origin
     F_Ob_b = F_Oc_b
     M_Ob_b = M_Oc_b + f_bc.r_ObOc_b × F_Oc_b
-    Wrench(F = F_Ob_b, M = M_Ob_b) #wr_Ob_b
+
+    return Wrench(F = F_Ob_b, M = M_Ob_b) #wr_Ob_b
 
 end
 
@@ -101,7 +102,7 @@ function inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:R
     F_in_Ob_b = -m * (a_1_b + ω_ib_b × (ω_ib_b × r_ObG_b) + r_ObG_b × (ω_eb_b × ω_ie_b ))
     M_in_Ob_b = - ( J_Ob_b * (ω_ie_b × ω_eb_b) + ω_ib_b × h_all_b + m * r_ObG_b × a_1_b)
 
-    Wrench(F = F_in_Ob_b, M = M_in_Ob_b)
+    return Wrench(F = F_in_Ob_b, M = M_in_Ob_b)
 
 end
 
@@ -168,7 +169,7 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Re
 
     ẋ_vel .= A\b
 
-    # update y_acc
+    # update ẋ_vel
     v̇_eOb_b = SVector{3}(ẋ_vel.v_eOb_b)
     r_eO_e = rECEF(Ob)
     r_eO_b = q_eb' * r_eO_e
