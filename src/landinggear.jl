@@ -8,7 +8,7 @@ using Flight.Airdata
 using Flight.Dynamics
 using Flight.Component
 import Flight.Component: get_wr_Ob_b, get_h_Gc_b
-import Flight.System: X, Y, U, f_cont!, f_disc!
+import Flight.System: X, D, Y, U, f_cont!, f_disc!
 
 export LandingGearLeg, LandingGearGroup
 

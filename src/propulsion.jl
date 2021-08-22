@@ -10,7 +10,7 @@ using Flight.Airdata
 using Flight.Dynamics
 using Flight.Airframe: AbstractAirframeComponent
 import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
-import Flight.System: ContinuousSystem, X, Y, U, f_cont!, f_disc!
+import Flight.System: HybridSystem, X, D, Y, D, U, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, PropulsionGroup
@@ -87,24 +87,26 @@ Base.@kwdef mutable struct EThrusterU
 end
 
 X(::EThruster) = copy(EThrusterXTemplate)
+D(::EThruster) = nothing
 Y(::EThruster) = copy(EThrusterYTemplate)
 U(::EThruster) = EThrusterU()
 
 
-################ EThruster ContinuousSystem ###################
+################ EThruster HybridSystem ###################
 
-function ContinuousSystem(thr::EThruster, ẋ = X(thr), x = X(thr), y= Y(thr), u = U(thr), t = Ref(0.0))
+function HybridSystem(thr::EThruster, ẋ = X(thr), x = X(thr), d = D(thr),
+                          y= Y(thr), u = U(thr), t = Ref(0.0))
     params = thr #params is the component itself
     subsystems = nothing #no subsystems to define
-    ContinuousSystem{map(typeof, (thr, x, y, u, params, subsystems))...}(ẋ, x, y, u, t, params, subsystems)
+    HybridSystem{map(typeof, (thr, x, d, y, u, params, subsystems))...}(ẋ, x, d, y, u, t, params, subsystems)
 end
 
-get_wr_Ob_b(sys::ContinuousSystem{EThruster}) = sys.y.wr_Ob_b
-get_h_Gc_b(sys::ContinuousSystem{EThruster}) = sys.y.h_Gc_b
+get_wr_Ob_b(sys::HybridSystem{EThruster}) = sys.y.wr_Ob_b
+get_h_Gc_b(sys::HybridSystem{EThruster}) = sys.y.h_Gc_b
 
-f_disc!(sys::ContinuousSystem{EThruster}) = false
+f_disc!(sys::HybridSystem{EThruster}) = false
 
-function f_cont!(sys::ContinuousSystem{EThruster}, air::AirDataY)
+function f_cont!(sys::HybridSystem{EThruster}, air::AirDataY)
 
     @unpack y, ẋ, x, u, params = sys #no need for subsystems
     @unpack frame, battery, motor, propeller, gearbox = params

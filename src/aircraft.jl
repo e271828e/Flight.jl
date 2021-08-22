@@ -15,7 +15,7 @@ using Flight.Propulsion
 # using Flight.LandingGear
 using Flight.Terrain
 using Flight.Atmosphere
-import Flight.System: ContinuousSystem, X, Y, U, f_cont!, f_disc!
+import Flight.System: HybridSystem, X, D, Y, U, f_cont!, f_disc!
 # import Flight.System: plotlog
 
 export TestAircraft
@@ -65,10 +65,15 @@ function TestAircraft()
     TestAircraft(ctl, mass, pwp)
 end
 
-# X(ac::TestAircraft) = ComponentVector(kin = X(Kin()), pwp = X(ac.pwp), ldg = X(ac.ldg))
-# Y(ac::TestAircraft) = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), air = Y(AirData()), pwp = Y(ac.pwp), ldg = Y(ac.ldg))
-# U(ac::TestAircraft) = (pwp = U(ac.pwp), ldg = U(ac.ldg))
+#there are no aircraft's "own" continuous states (if there were, we could always
+#create a subsystem to accomodate them). however, we cannot say the same of
+#discrete states. there may be some discrete logic in the aircraft which has no
+#continuous states. and if it has no continuous states, we cannot store it
+#within any subsystem (all systems are required to have at least continuous
+#states). for these discrete states we can simply allocate a field in the NT
+#returned by D
 X(ac::TestAircraft) = ComponentVector(kin = X(Kin()), pwp = X(ac.pwp))
+D(ac::TestAircraft) = (pwp = D(ac.pwp), )
 Y(ac::TestAircraft) = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), air = Y(AirData()), pwp = Y(ac.pwp))
 U(::TestAircraft{NoControlMapping,Mass,Pwp} where {Mass,Pwp}) = nothing
 #in a NoMapping aircraft, there are no aircraft controls! we act upon the
@@ -86,7 +91,7 @@ U(::TestAircraft{NoControlMapping,Mass,Pwp} where {Mass,Pwp}) = nothing
 #overriding this function for specific TestAircraft type parameter
 #combinations allows us to customize how the aircraft's control inputs map
 #into its subsystems's control inputs.
-assign_control_inputs!(::ContinuousSystem{TestAircraft{NoControlMapping,M,P}} where {M,P}) = nothing
+assign_control_inputs!(::HybridSystem{TestAircraft{NoControlMapping,M,P}} where {M,P}) = nothing
 
 #=
 # example:
@@ -100,19 +105,19 @@ function assign_control_inputs!(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) whe
     ac.subsystems.pwp.right.throttle = ac.u.throttle
 end
 =#
-function ContinuousSystem(ac::TestAircraft, ẋ = X(ac), x = X(ac), y = Y(ac), u = U(ac), t = Ref(0.0))
+function HybridSystem(ac::TestAircraft, ẋ = X(ac), x = X(ac), d = D(ac), y = Y(ac), u = U(ac), t = Ref(0.0))
     #each subsystem allocate its own u, then we can decide how the aircraft's u
     #should map onto it via assign_control_inputs!
-    pwp = ContinuousSystem(ac.pwp, ẋ.pwp, x.pwp, y.pwp, U(ac.pwp), t)
-    # ldg = ContinuousSystem(ac.ldg, ẋ.ldg, x.ldg, y.ldg, u.ldg, t)
+    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, d.pwp, y.pwp, U(ac.pwp), t)
+    # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, y.ldg, u.ldg, t)
     params = (mass = ac.mass,)
     # subsystems = (pwp = pwp, ldg = ldg)
     subsystems = (pwp = pwp,)
-    ContinuousSystem{map(typeof, (ac, x, y, u, params, subsystems))...}(ẋ, x, y, u, t, params, subsystems)
+    HybridSystem{map(typeof, (ac, x, d, y, u, params, subsystems))...}(ẋ, x, d, y, u, t, params, subsystems)
 end
 
 
-function f_cont!(ac_sys::ContinuousSystem{TestAircraft{C,M,P}} where {C,M,P},
+function f_cont!(ac_sys::HybridSystem{TestAircraft{C,M,P}} where {C,M,P},
                 trn::AbstractTerrainModel,
                 atm::AbstractAtmosphericModel)
 
@@ -164,7 +169,7 @@ function f_cont!(ac_sys::ContinuousSystem{TestAircraft{C,M,P}} where {C,M,P},
 end
 
 
-function f_disc!(ac_sys::ContinuousSystem{TestAircraft{C,M,P}} where {C,M,P})
+function f_disc!(ac_sys::HybridSystem{TestAircraft{C,M,P}} where {C,M,P})
     x_mod = renormalize!(ac_sys.x.kin, 1e-8)
     # println(x_mod)
     return x_mod

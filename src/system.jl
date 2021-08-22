@@ -1,35 +1,40 @@
 module System
 
-export AbstractComponent, ContinuousSystem, X, U, Y, f_cont!, f_disc!
+export AbstractComponent, HybridSystem, X, U, Y, f_cont!, f_disc!
 # export plotlog
 
-abstract type AbstractComponent end #anything that can go in a ContinuousSystem
+abstract type AbstractComponent end #anything that can go in a HybridSystem
 
 no_extend_error(f::Function, ::Type{S}) where {S} = error("Function $f not implemented for subtype $S or incorrect call signature")
 
 X(::C) where {C<:AbstractComponent} = no_extend_error(X, C)
 Y(::C) where {C<:AbstractComponent} = no_extend_error(Y, C)
+D(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
 U(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
 
 #need the C type parameter for dispatch, the rest for type stability
-struct ContinuousSystem{C<:AbstractComponent, X, Y, U, P, S}
-    ẋ::X #continuous state derivative
-    x::X #continuous state (to be used as a buffer for f_cont! evaluation)
-    y::Y #output state (to be used as a buffer for f_cont! evaluation)
+struct HybridSystem{C<:AbstractComponent, X, D, Y, U, P, S}
+    ẋ::X #continuous state vector derivative
+    x::X #continuous state vector (to be used as a buffer for f_cont! evaluation)
+    d::D #discrete state vector
+    y::Y #output vector (to be used as a buffer for f_cont! evaluation)
     u::U #control inputs
     t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
     params::P
     subsystems::S
 end
 
-f_cont!(::S, args...) where {S<:ContinuousSystem} = no_extend_error(f_cont!, S)
-(f_disc!(::S, args...)::Bool) where {S<:ContinuousSystem} = no_extend_error(f_cont!, S)
+f_cont!(::S, args...) where {S<:HybridSystem} = no_extend_error(f_cont!, S)
 
-# it is dangerous to provide a default fallback for f_disc!, because if the
-#intended f_disc! implementation for the System has the wrong interface, the
-#dispatch will revert to the fallback, which may not be obvious at all. it is
-#safer to force each concrete System that does not require an actual f_disc! to
-#implement a trivial f_disc! that returns false
+#this method is free to modify the system's discrete state, control inputs and
+#continuous state. if it modifies the latter, it must return true, false
+#otherwise. it is dangerous to provide a default fallback for f_disc!, because
+#if the intended f_disc! implementation for the System has the wrong interface,
+#the dispatch will revert to the fallback, which may not be obvious at all. it
+#is safer to force each concrete System that does not require an actual f_disc!
+#to implement a trivial f_disc! that returns false
+(f_disc!(::S, args...)::Bool) where {S<:HybridSystem} = no_extend_error(f_cont!, S)
+
 
 # #replace this with the appropriate overloads, Plot recipes, whatever
 # plotlog(log, sys::AbstractSystem) = extend_error(S)

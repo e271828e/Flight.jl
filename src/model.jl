@@ -6,9 +6,9 @@ using UnPack
 using Flight.System
 # import Flight.System: plotlog
 
-export ContinuousModel
+export HybridModel
 
-#consider a HybridModel{C}, which generalizes ContinuousModel{C}, providing:
+#consider a HybridModel{C}, which generalizes HybridModel{C}, providing:
 #1) an array xd of discrete states
 #2) a Discrete callback called on every integration step, which implements the
 #   difference equation xd1 = f(xd0, x0, ud0, u0, t0). this callback should set
@@ -16,24 +16,19 @@ export ContinuousModel
 
 abstract type AbstractModel end
 
-############### ContinuousModel #####################
-
-#a ContinuousModel holds a System without a discrete state vector (xd) or
-#discrete input vector (ud), but it still provides a discrete function to be
-#called on each integration step for bookkeeping (for example, quaternion
-#renormalization, )
+############### HybridModel #####################
 
 #in this design, the t and x fields of m.sys behave only as temporary
 #storage for f_cont! and f_disc! calls, so we have no guarantees about their
 #status after a certain step. the only valid sources for t and x at any
 #given moment is the integrator's t and u
-struct ContinuousModel{S, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <: AbstractModel
+struct HybridModel{S <: HybridSystem, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <: AbstractModel
 
     sys::S
-    integrator::I#just for annotation purposes
+    integrator::I
     log::L
 
-    function ContinuousModel(sys, args_c::Tuple = (), args_d::Tuple = ();
+    function HybridModel(sys, args_c::Tuple = (), args_d::Tuple = ();
         method = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
         int_kwargs...)
 
@@ -54,9 +49,10 @@ end
 #these functions are better defined outside the constructor; apparently closures
 #are not as efficient
 
-#function barriers: the ContinuousSystem is first extracted from integrator.p,
+#function barriers: the HybridSystem is first extracted from integrator.p,
 #then used as an argument in the call to the actual update & callback functions,
-#forcing the compiler to specialize those
+#forcing the compiler to specialize for the specific HybridSystem subtype;
+#accesing sys.x and sys.ẋ directly without this causes type instability
 f_update!(ẋ, x, p, t) = f_update!(ẋ, x, t, p.sys, p.args_c)
 f_scb(x, t, integrator) = f_scb(x, t, integrator.p.sys, integrator.p.args_c)
 function f_dcb!(integrator)
@@ -66,7 +62,7 @@ function f_dcb!(integrator)
 end
 
 #in-place integrator update function
-function f_update!(ẋ::X, x::X, t::Real, sys::ContinuousSystem{C,X}, args_c) where {C, X}
+function f_update!(ẋ::X, x::X, t::Real, sys::HybridSystem{C,X}, args_c) where {C, X}
     sys.x .= x
     sys.t[] = t
     f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
@@ -74,7 +70,7 @@ function f_update!(ẋ::X, x::X, t::Real, sys::ContinuousSystem{C,X}, args_c) wh
 end
 
 #DiscreteCallback function (called on every integration step)
-function f_dcb!(x::X, t::Real, sys::ContinuousSystem{C,X}, args_d) where {C,X}
+function f_dcb!(x::X, t::Real, sys::HybridSystem{C,X}, args_d) where {C,X}
     sys.x .= x #assign the integrator's state to the system's local continuous state
     sys.t[] = t #ditto for time
     x_modified = f_disc!(sys, args_d...)
@@ -84,7 +80,7 @@ function f_dcb!(x::X, t::Real, sys::ContinuousSystem{C,X}, args_d) where {C,X}
 end
 
 #SavingCallback function
-function f_scb(x::X, t::Real, sys::ContinuousSystem{C,X}, args_c) where {C,X}
+function f_scb(x::X, t::Real, sys::HybridSystem{C,X}, args_c) where {C,X}
     sys.x .= x
     sys.t[] = t
     f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
@@ -92,7 +88,7 @@ function f_scb(x::X, t::Real, sys::ContinuousSystem{C,X}, args_c) where {C,X}
 end
 
 
-function Base.getproperty(m::ContinuousModel, s::Symbol)
+function Base.getproperty(m::HybridModel, s::Symbol)
     if s === :t
         return m.integrator.t
     elseif s === :x
@@ -108,12 +104,12 @@ function Base.getproperty(m::ContinuousModel, s::Symbol)
     end
 end
 
-SciMLBase.step!(m::ContinuousModel, args...) = step!(m.integrator, args...)
+SciMLBase.step!(m::HybridModel, args...) = step!(m.integrator, args...)
 
-function SciMLBase.reinit!(m::ContinuousModel, args...)
+function SciMLBase.reinit!(m::HybridModel, args...)
     reinit!(m.integrator, args...)
 
-    #restore ContinuousSystems internal time and state to their original values
+    #restore HybridSystems internal time and state to their original values
     #(which were stored by the integrator upon construction, and now supplied by
     #it)
     m.sys.t[] = m.integrator.t
@@ -127,7 +123,7 @@ end
 #replace this with the appropriate Plot recipes, etc
 #careful with overloading plot without importing. see how it is done properly in
 #Plots
-function plotlog(mdl::ContinuousModel)
+function plotlog(mdl::HybridModel)
 
     t = mdl
 
