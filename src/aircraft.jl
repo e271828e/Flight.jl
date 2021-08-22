@@ -174,7 +174,20 @@ function f_disc!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P})
     return x_mod
 end
 
+######### Example: extracting y fields for plotting
+
+# Base.@kwdef struct Output{Y, YD} #this is the type we pass to SavedValues
+# y::Y = ComponentVector(a = fill(1.0, 2), b = fill(2.0, 3))
+# yd::YD = ComponentVector(m = fill(4,3), n = fill(-2, 2))
+# end
+# log = collect(Output() for i in 1:5) #create some copies of it
+# sa = StructArray(log) #now all the y fields of log lie in a contiguous array
+# y = sa.y
+# y_voa = VectorOfArray(y) #now we have a vector of Y's that indexes like a matrix
+# y_mat = convert(Array, y_voa) #and a matrix of y's whose rows still preserve axis metadata
 # function plotlog(log, aircraft::ParametricAircraft)
+
+#############
 
 #     y = log.y
 

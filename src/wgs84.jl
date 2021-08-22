@@ -184,7 +184,7 @@ function WGS84Pos(r::AbstractVector{<:Real})
     cos_λ = p > 0 ? (x / p) : 1
     sin_λ = p > 0 ? (y / p) : 0
 
-    n_e = NVector([cos_ϕ*cos_λ, cos_ϕ*sin_λ, sin_ϕ])
+    n_e = NVector(SVector{3,Float64}(cos_ϕ*cos_λ, cos_ϕ*sin_λ, sin_ϕ))
 
     return WGS84Pos(n_e, h)
 

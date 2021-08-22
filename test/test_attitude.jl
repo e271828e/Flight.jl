@@ -65,6 +65,10 @@ function test_RQuat()
         @test q_ab * (q_bc * x_c) ≈ (q_ab ∘ q_bc) * x_c
         @test x_c ≈ q_bc' * (q_bc * x_c)
 
+        #callable notation
+        @test q_ab(q_bc(x_c)) == q_ab * (q_bc * x_c)
+        @test x_c ≈ q_bc'(q_bc(x_c))
+
         #time derivative
         ω_ab_b = [10, -4, 2]
         @test dt(q_ab, ω_ab_b) == 0.5 * (q_ab._u * Quat(imag = ω_ab_b))
@@ -148,8 +152,8 @@ function test_RAxAng()
         @test !(r_ab ≈ q_bc) #some loss of precision should be expected
 
         #transformation, composition & inversion
-        @test q_ab * (r_bc * x_c) ≈ r_ab * (q_bc * x_c)
-        @test (q_ab ∘ r_bc) * x_c ≈ (r_ab ∘ q_bc) * x_c
+        @test q_ab(r_bc(x_c)) ≈ r_ab(q_bc(x_c))
+        @test (q_ab ∘ r_bc)(x_c) ≈ (r_ab ∘ q_bc)(x_c)
         @test r_ab' ≈ q_ab'
     end
 end

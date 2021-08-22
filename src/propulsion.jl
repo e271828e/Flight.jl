@@ -30,7 +30,7 @@ Base.@kwdef struct SimpleProp
     J::Float64 = 1.0
 end
 
-function wrench(prop::SimpleProp, ω::Real, air::AirDataY) #air data just for interface demo
+function get_wrench(prop::SimpleProp, ω::Real, air::AirDataY) #air data just for interface demo
     @unpack kF, kM = prop
     F_ext_Os_s = kF * ω^2 * SVector(1,0,0)
     M_ext_Os_s = -tanh(ω/1.0) * kM * ω^2 * SVector(1,0,0) #choose ω_ref = 1.0
@@ -123,8 +123,8 @@ function f_cont!(sys::HybridSystem{EThruster}, air::AirDataY)
     throttle = u.throttle
 
     ω_prop = ω_shaft / n
-    wr_Oc_c = wrench(propeller, ω_prop, air)
-    wr_Ob_b = frame * wr_Oc_c
+    wr_Oc_c = get_wrench(propeller, ω_prop, air)
+    wr_Ob_b = frame(wr_Oc_c)
 
     i = (throttle * voltage_open(battery, c_bat) - back_emf(motor, ω_shaft)) /
         (R(battery) + R(motor))
@@ -133,7 +133,7 @@ function f_cont!(sys::HybridSystem{EThruster}, air::AirDataY)
     M_air_prop = wr_Oc_c.M[1]
 
     h_Gc_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
-    h_Gc_b = frame.q_bc * h_Gc_c
+    h_Gc_b = frame.q_bc(h_Gc_c)
 
     ω_shaft_dot = (M_eng_shaft + M_air_prop/(η*n)) / (motor.J + propeller.J/(η*n^2))
     ẋ.ω_shaft = ω_shaft_dot

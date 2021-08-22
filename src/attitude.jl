@@ -32,6 +32,8 @@ end
 
 abstract type Rotation end
 
+(r::Rotation)(v::AbstractVector{<:Real}) = r * v
+
 
 ############################# RQuat ###############################
 

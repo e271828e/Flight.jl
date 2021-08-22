@@ -63,18 +63,19 @@ airframe reference frame fb(Ob, εb) given the relative Frame
 specification f_bc
 """
 
-function Base.:*(f_bc::Frame, wr_Oc_c::Wrench)
+function (f_bc::Frame)(wr_Oc_c::Wrench)
 
+    @unpack q_bc, r_ObOc_b = f_bc
     F_Oc_c = wr_Oc_c.F
     M_Oc_c = wr_Oc_c.M
 
-    #project on the reference axes
-    F_Oc_b = f_bc.q_bc * F_Oc_c
-    M_Oc_b = f_bc.q_bc * M_Oc_c
+    #project onto airframe axes
+    F_Oc_b = q_bc(F_Oc_c)
+    M_Oc_b = q_bc(M_Oc_c)
 
-    #translate them to airframe origin
+    #translate to airframe origin
     F_Ob_b = F_Oc_b
-    M_Ob_b = M_Oc_b + f_bc.r_ObOc_b × F_Oc_b
+    M_Ob_b = M_Oc_b + r_ObOc_b × F_Oc_b
 
     return Wrench(F = F_Ob_b, M = M_Ob_b) #wr_Ob_b
 
@@ -87,17 +88,16 @@ function inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:R
     @unpack m, J_Ob_b, r_ObG_b = mass
     @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = y_vel
 
-    #additional angular momentum due to the angular velocity of the rotating
-    #elements with respect to the airframe
-    h_rot_b = SVector{3,Float64}(h_rot_b)
+    #h_rot_b: additional angular momentum due to the angular velocity of the
+    #rotating elements with respect to the airframe
 
     #angular momentum of the overall airframe as a rigid body
     h_rbd_b = J_Ob_b * ω_ib_b
 
     #total angular momentum
-    h_all_b = h_rbd_b + h_rot_b
+    h_all_b = h_rbd_b + SVector{3,Float64}(h_rot_b)
 
-    #exact
+    #exact inertia terms
     a_1_b = (ω_eb_b + 2 * ω_ie_b) × v_eOb_b
     F_in_Ob_b = -m * (a_1_b + ω_ib_b × (ω_ib_b × r_ObG_b) + r_ObG_b × (ω_eb_b × ω_ie_b ))
     M_in_Ob_b = - ( J_Ob_b * (ω_ie_b × ω_eb_b) + ω_ib_b × h_all_b + m * r_ObG_b × a_1_b)
@@ -127,7 +127,7 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
     wr_Oc_c = wr_G_l
     f_bc = Frame(r_ObOc_b = mass.r_ObG_b, q_bc = y_pos.q_lb')
-    return f_bc * wr_Oc_c #wr_Ob_b
+    return f_bc(wr_Oc_c) #wr_Ob_b
 
 end
 
@@ -172,7 +172,7 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Re
     # update ẋ_vel
     v̇_eOb_b = SVector{3}(ẋ_vel.v_eOb_b)
     r_eO_e = rECEF(Ob)
-    r_eO_b = q_eb' * r_eO_e
+    r_eO_b = q_eb'(r_eO_e)
 
     α_eb_b = SVector{3}(ẋ_vel.ω_eb_b) #α_eb_b == ω_eb_b_dot
     α_ib_b = α_eb_b - ω_eb_b × ω_ie_b
