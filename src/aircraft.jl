@@ -112,7 +112,7 @@ function ContinuousSystem(ac::TestAircraft, ẋ = X(ac), x = X(ac), y = Y(ac), u
 end
 
 
-function f_cont!(ac_sy::ContinuousSystem{TestAircraft{C,M,P}} where {C,M,P},
+function f_cont!(ac_sys::ContinuousSystem{TestAircraft{C,M,P}} where {C,M,P},
                 trn::AbstractTerrainModel,
                 atm::AbstractAtmosphericModel)
 
@@ -163,22 +163,12 @@ function f_cont!(ac_sy::ContinuousSystem{TestAircraft{C,M,P}} where {C,M,P},
     return nothing
 end
 
-# degraded(nrm) = (abs(nrm - 1.0) > 1e-10)
 
-# function f_disc!(x, u, t, aircraft::ParametricAircraft)
-
-#     norm_q_lb = norm(x.kin.pos.q_lb)
-#     norm_q_el = norm(x.kin.pos.q_el)
-#     if degraded(norm_q_lb) || degraded(norm_q_el)
-#         # println("Renormalized")
-#         x.kin.pos.q_lb ./= norm_q_lb
-#         x.kin.pos.q_el ./= norm_q_el
-#         return true #x modified
-#     else
-#         return false #x not modified
-#     end
-
-# end
+function f_disc!(ac_sys::ContinuousSystem{TestAircraft{C,M,P}} where {C,M,P})
+    x_mod = renormalize!(ac_sys.x.kin, 1e-8)
+    # println(x_mod)
+    return x_mod
+end
 
 # function plotlog(log, aircraft::ParametricAircraft)
 

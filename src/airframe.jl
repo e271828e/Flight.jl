@@ -1,7 +1,9 @@
 module Airframe
 
 using ComponentArrays
+using StaticArrays
 
+using Flight.Dynamics
 using Flight.System
 import Flight.System: ContinuousSystem, X, Y, U, f_cont!, f_disc!
 

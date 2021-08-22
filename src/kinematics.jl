@@ -11,7 +11,7 @@ import Flight.System: X, Y
 
 export Pos, Vel, Kin, KinInit
 export PosX, PosY, VelX, VelY, KinX, KinY
-export init!, f_kin!
+export init!, f_kin!, renormalize!
 
 abstract type KinematicStruct end
 
@@ -154,5 +154,16 @@ function f_kin!(y::KinY, ẋ_pos::PosX, x::KinX)
     return nothing
 
 end
+
+function renormalize!(x_kin::KinX, ε = 1e-10)
+    #we need both calls executed, so | must be used here instead of ||
+    renormalize_q!(x_kin.pos.q_lb, ε) | renormalize_q!(x_kin.pos.q_el, ε)
+end
+
+function renormalize_q!(x_q, ε) #returns true if norm restored, false otherwise
+    norm_q = norm(x_q)
+    abs(norm_q - 1.0) > ε ? (x_q ./= norm_q; return true) : return false
+end
+
 
 end #module

@@ -27,10 +27,10 @@ abstract type AbstractModel end
 #discrete input vector (ud), but it still provides a discrete function to be
 #called on each integration step for bookkeeping (for example, quaternion
 #renormalization, )
-struct ContinuousModel{I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <: AbstractModel
+struct ContinuousModel{S, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <: AbstractModel
 # <:OrdinaryDiffEq.ODEIntegrator
 # <:SavedValues
-    sys::ContinuousSystem
+    sys::S
     integrator::I#just for annotation purposes
     log::L
 
@@ -42,33 +42,39 @@ struct ContinuousModel{I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <: A
         #throw it away. what matters in this call is the update to the ẋ passed
         #by the integrator
         function f_update!(ẋ, x, p, t)
-            @unpack sys, args_c = p
-            sys.x .= x
-            sys.t[] = t
+            @unpack sys, ẋ_sys, x_sys, t_sys, args_c = p
+            x_sys .= x
+            t_sys[] = t
             f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
-            ẋ .= sys.ẋ
-            return nothing
+            ẋ .= ẋ_sys
         end
 
         #the dummy ẋ cache is passed for f_update! to have somewhere to write
         #to without clobbering the integrator's du, then it is thrown away. copy
         #and output the updated y
         function f_save(x, t, integrator)
-            @unpack sys, args_c = integrator.p
-            sys.x .= x
-            sys.t[] = t
+            @unpack sys, ẋ_sys, x_sys, t_sys, y_sys, args_c = integrator.p
+            x_sys .= x
+            t_sys[] = t
             f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
-            return copy(sys.y)
+            return copy(y_sys)
         end
 
         function f_dcb!(integrator)
             @unpack sys, args_d = integrator.p
             modified_x = f_disc!(sys, args_d...)
+            # println(modified_x)
             u_modified!(integrator, modified_x)
         end
 
-        params = (sys = sys, args_c = args_c, args_d = args_d)
-        log = SavedValues(Float64, typeof(sys.y))
+        #accessing sys.x, sys.xdot, sys.y directly in the update and save
+        #methods destroys performance. it is probably causing type instability,
+        #even if the type of sys is declared in its Model field, the compiler
+        #seems unable to propagate it. try moving the functions out of the closures?
+        params = (sys = sys, ẋ_sys = sys.ẋ, x_sys = sys.x, y_sys = sys.y,
+            t_sys = sys.t, args_c = args_c, args_d = args_d)
+
+        log = SavedValues(Float64, typeof(params.y_sys))
 
         dcb = DiscreteCallback((u, t, integrator)->true, f_dcb!)
         scb = SavingCallback(f_save, log, saveat = y_saveat)
@@ -76,7 +82,8 @@ struct ContinuousModel{I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <: A
 
         problem = ODEProblem{true}(f_update!, copy(sys.x), (t_start, t_end), params)
         integrator = init(problem, method; callback = cb_set, save_everystep = false, int_kwargs...)
-        new{typeof(integrator), typeof(log)}(sys, integrator, log)
+        # integrator = init(problem, method; save_everystep = false, int_kwargs...)
+        new{typeof(sys), typeof(integrator), typeof(log)}(sys, integrator, log)
     end
 end
 
@@ -102,6 +109,10 @@ end
 SciMLBase.step!(m::ContinuousModel, args...) = step!(m.integrator, args...)
 function SciMLBase.reinit!(m::ContinuousModel, args...)
     reinit!(m.integrator, args...)
+
+    m.sys.t[] = m.integrator.t
+    m.sys.x .= m.integrator.u
+
     resize!(m.log.t, 1)
     resize!(m.log.saveval, 1)
     return nothing
