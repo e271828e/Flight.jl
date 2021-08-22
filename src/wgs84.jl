@@ -195,10 +195,10 @@ function rECEF(p::WGS84Pos)
     n_e = p.n_e; h = p.h
     _, N = radii(p.n_e)
 
-    return SVector{3, Float64}([
+    return SVector{3, Float64}(
         (N + h) * n_e[1],
         (N + h) * n_e[2],
-        (N * (1 - e²) + h) * n_e[3] ])
+        (N * (1 - e²) + h) * n_e[3])
 
 end
 

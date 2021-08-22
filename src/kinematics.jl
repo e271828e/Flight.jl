@@ -7,7 +7,7 @@ using UnPack
 
 using Flight.WGS84
 using Flight.Attitude
-import Flight.System: X, Y
+import Flight.System: X
 
 export Pos, Vel, Kin, KinInit
 export PosX, PosY, VelX, VelY, KinX, KinY
@@ -29,33 +29,50 @@ Base.@kwdef struct KinInit <: KinematicStruct
 end
 
 const PosXTemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h = 0.0)
-const PosYTemplate = ComponentVector(
-    q_lb = zeros(4), q_nb = zeros(4), q_eb = zeros(4),
-    ψ_nl = 0, ψ_nb = 0, θ_nb = 0, φ_nb = 0,
-    q_el = zeros(4), ϕ = 0, λ = 0, h = 0, Δx = 0, Δy = 0)
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
-const VelYTemplate = ComponentVector(
-    ω_eb_b = zeros(3), ω_lb_b = zeros(3), ω_el_l = zeros(3), ω_ie_b = zeros(3),
-    ω_ib_b = zeros(3), v_eOb_b = zeros(3), v_eOb_n = zeros(3))
 const KinXTemplate = ComponentVector(pos = PosXTemplate, vel = VelXTemplate)
-const KinYTemplate = ComponentVector(pos = PosYTemplate, vel = VelYTemplate)
 
 const PosX{T, D} = ComponentVector{T, D, typeof(getaxes(PosXTemplate))} where {T, D}
-const PosY{T, D} = ComponentVector{T, D, typeof(getaxes(PosYTemplate))} where {T, D}
 const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T, D}
-const VelY{T, D} = ComponentVector{T, D, typeof(getaxes(VelYTemplate))} where {T, D}
-
 const KinX{T, D} = ComponentVector{T, D, typeof(getaxes(KinXTemplate))} where {T, D}
-const KinY{T, D} = ComponentVector{T, D, typeof(getaxes(KinYTemplate))} where {T, D}
 
-#Kin is not a System, so we do not really need to define Y, U and D to comply
-#with the System interface. however, these are convenient for testing, and to
-#ensure AircraftXTemplate has its kinematic block initialized to reasonable values
+Base.@kwdef struct PosY
+    q_lb::RQuat
+    q_nb::RQuat
+    q_eb::RQuat
+    ψ_nl::Float64
+    ψ_nb::Float64
+    θ_nb::Float64
+    φ_nb::Float64
+    q_el::RQuat
+    Ob::WGS84Pos
+    ϕ::Float64
+    λ::Float64
+    h::Float64
+    Δx::Float64
+    Δy::Float64
+end
+
+Base.@kwdef struct VelY
+    ω_eb_b::SVector{3,Float64}
+    ω_lb_b::SVector{3,Float64}
+    ω_el_l::SVector{3,Float64}
+    ω_ie_b::SVector{3,Float64}
+    ω_ib_b::SVector{3,Float64}
+    v_eOb_b::SVector{3,Float64}
+    v_eOb_n::SVector{3,Float64}
+end
+
+Base.@kwdef struct KinY
+    pos::PosY
+    vel::VelY
+end
+
+#Kin is not a System, so we do not really need to define X to comply with the
+#System interface. however, it is convenient for testing, and to ensure the
+#aircraft state has its kinematic block initialized to reasonable values
 X(::Kin) = X(KinInit())
 X(init::KinInit) = (x=similar(KinXTemplate); init!(x, init); return x)
-Y(::Pos) = similar(PosYTemplate)
-Y(::Vel) = similar(VelYTemplate)
-Y(::Kin) = similar(KinYTemplate)
 
 function init!(x::KinX, init::KinInit)
 
@@ -84,7 +101,7 @@ function init!(x::KinX, init::KinInit)
 
 end
 
-function f_kin!(y::KinY, ẋ_pos::PosX, x::KinX)
+function f_kin!(ẋ_pos::PosX, x::KinX)
 
     #careful here: x.pos.h, x.vel.ω_eb_b and x.vel.v_eOb_b create views (this is
     #how LBV behaves by design). to copy the data, we can extract their
@@ -98,8 +115,8 @@ function f_kin!(y::KinY, ẋ_pos::PosX, x::KinX)
     v_eOb_b = SVector{3}(x.vel.v_eOb_b)
 
     Ob = WGS84Pos(NVector(q_el), h)
-    ψ_nl_tmp = ψ_nl(q_el)
-    q_nl = Rz(ψ_nl_tmp)
+    _ψ_nl = ψ_nl(q_el)
+    q_nl = Rz(_ψ_nl)
     q_nb = q_nl ∘ q_lb
     q_eb = q_el ∘ q_lb
     euler_nb = REuler(q_nb)
@@ -126,32 +143,13 @@ function f_kin!(y::KinY, ẋ_pos::PosX, x::KinX)
     ẋ_pos.Δy = v_eOb_n[2]
     ẋ_pos.h = -v_eOb_n[3]
 
-    #update y
-    y_pos = y.pos
-    y_pos.q_lb .= q_lb[:]
-    y_pos.q_nb .= q_nb[:]
-    y_pos.q_eb .= q_eb[:]
-    y_pos.q_el .= q_el[:]
-    y_pos.ψ_nl = ψ_nl_tmp
-    y_pos.ψ_nb = euler_nb.ψ
-    y_pos.θ_nb = euler_nb.θ
-    y_pos.φ_nb = euler_nb.φ
-    y_pos.ϕ = lat(Ob)
-    y_pos.λ = lon(Ob)
-    y_pos.h = h
-    y_pos.Δx = Δx
-    y_pos.Δy = Δy
+    #build outputs
+    y_pos = PosY(q_lb, q_nb, q_eb, _ψ_nl, euler_nb.ψ, euler_nb.θ, euler_nb.φ,
+                 q_el, Ob, lat(Ob), lon(Ob), h, Δx, Δy)
 
-    y_vel = y.vel
-    y_vel.ω_eb_b .= ω_eb_b
-    y_vel.ω_lb_b .= ω_lb_b
-    y_vel.ω_el_l .= ω_el_l
-    y_vel.ω_ie_b .= ω_ie_b
-    y_vel.ω_ib_b .= ω_ib_b
-    y_vel.v_eOb_b .= v_eOb_b
-    y_vel.v_eOb_n .= v_eOb_n
+    y_vel = VelY(ω_eb_b, ω_lb_b, ω_el_l, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
 
-    return nothing
+    return KinY(y_pos, y_vel)
 
 end
 

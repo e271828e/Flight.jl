@@ -37,7 +37,7 @@ end
 
 #outer constructors
 Quat(s::Real) = Quat(SVector{4,Float64}(s, 0, 0, 0))
-Quat(; real = 0.0, imag = zeros(3)) = Quat(SVector{4,Float64}(real, imag[1], imag[2], imag[3]))
+Quat(; real = 0.0, imag = zeros(SVector{3})) = Quat(vcat(real, imag))
 Quat(q::AbstractQuat) = Quat(q[:])
 
 Base.copy(q::Quat) = Quat(copy(getfield(q, :_sv)))
@@ -57,7 +57,7 @@ Base.convert(::Type{Quat}, v::Union{AbstractQuat, AbstractVector}) = Quat(v[:])
 Base.convert(::Type{Quat}, q::Quat) = q #if already a Quat, don't do anything
 
 #### Adjoint & Inverse
-Base.conj(q::Quat)= Quat([q.real, -q.imag...])
+Base.conj(q::Quat)= Quat(vcat(q.real, -q.imag))
 Base.adjoint(q::Quat) = conj(q)
 Base.inv(q::Quat) = Quat(getfield(q', :_sv) / norm_sqr(q))
 
@@ -78,8 +78,8 @@ Base.:-(a::Real, q::Quat) = -(promote(a, q)...)
 
 function Base.:*(q1::Quat, q2::Quat)
 
-    q1_re = q1[Val(:real)]; q2_re = q2[Val(:real)]
-    q1_im = q1[Val(:imag)]; q2_im = q2[Val(:imag)]
+    q1_re = q1.real; q2_re = q2.real
+    q1_im = q1.imag; q2_im = q2.imag
 
     p_re = q1_re * q2_re - q1_im ⋅ q2_im
     p_im = q1_re * q2_im + q2_re * q1_im + q1_im × q2_im
@@ -112,16 +112,9 @@ end
 
 #outer constructors
 UnitQuat(::Real) = UnitQuat(SVector{4,Float64}(1.0, 0, 0, 0), normalization = false)
-function UnitQuat(; real::Union{Real, Nothing} = nothing,
-                    imag::Union{AbstractVector{T} where {T<:Real}, Nothing} = nothing,
-                    normalization::Bool = true)
-    if imag === nothing
-        return UnitQuat(1)
-    elseif real === nothing
-        return UnitQuat([0, imag...], normalization = normalization)
-    else
-        return UnitQuat([real, imag...], normalization = normalization)
-    end
+
+function UnitQuat(; real, imag, normalization::Bool = true)
+        UnitQuat(vcat(real, SVector{3,Float64}(imag)), normalization = normalization)
 end
 UnitQuat(q::AbstractQuat) = UnitQuat(q[:])
 
@@ -140,7 +133,7 @@ Base.convert(::Type{UnitQuat}, u::UnitQuat) = u #do not normalize on convert
 Base.convert(::Type{UnitQuat}, v::Union{AbstractQuat, AbstractVector}) = UnitQuat(v[:])
 
 #### Adjoint & Inverse
-Base.conj(u::UnitQuat)= UnitQuat([u.real, -u.imag...], normalization = false)
+Base.conj(u::UnitQuat)= UnitQuat(vcat(u.real, -u.imag), normalization = false)
 Base.adjoint(u::UnitQuat) = conj(u)
 Base.inv(u::UnitQuat) = u'
 

@@ -10,7 +10,7 @@ using Flight.Airdata
 using Flight.Dynamics
 using Flight.Airframe: AbstractAirframeComponent
 import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
-import Flight.System: HybridSystem, X, D, Y, D, U, f_cont!, f_disc!
+import Flight.System: HybridSystem, X, D, U, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, PropulsionGroup

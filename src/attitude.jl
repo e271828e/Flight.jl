@@ -1,6 +1,6 @@
 module Attitude
 
-using StaticArrays: SVector, SMatrix
+using StaticArrays
 using LinearAlgebra
 using Flight.Quaternions: UnitQuat, Quat
 #if we didn't want to rely on Flight using Quaternions, we could do simply:
@@ -15,15 +15,12 @@ const half_π = π/2
 """
 Computes the skew-symmetric matrix corresponding to 3-element vector v.
 """
-function skew(v::AbstractVector{T}) where {T<:Real}
-    #much slower, each indexing operation yields an allocation
-    # [0. -v[3] v[2]; v[3] 0. -v[1]; -v[2] v[1] 0.]
-    M = zeros(T, 3, 3)
-                    M[1,2] = -v[3];  M[1,3] = v[2]
-    M[2,1] = v[3];                   M[2,3] = -v[1]
-    M[3,1] = -v[2]; M[3,2] = v[1]
+function skew(v::AbstractVector)
 
-    SMatrix{3,3}(M)
+    @SMatrix [0 -v[3] v[2];
+            v[3] 0 -v[1];
+            -v[2] v[1] 0]
+
 end
 
 ######################### Rotation ###########################
@@ -39,14 +36,14 @@ abstract type Rotation end
 ############################# RQuat ###############################
 
 struct RQuat <: Rotation
-    _u::UnitQuat
+    _u::UnitQuat #if a UnitQuat is provided, no normalization is performed
 end
 
 RQuat(r::Rotation) = convert(RQuat, r)
 function RQuat(v::AbstractVector; normalization::Bool = true)
     RQuat(UnitQuat(SVector{4,Float64}(v), normalization = normalization))
 end
-RQuat() = RQuat(UnitQuat())
+RQuat() = RQuat(UnitQuat(1.0))
 
 Base.getindex(r::RQuat, i) = getindex(r._u, i)
 Base.length(r::RQuat) = length(r._u)
@@ -62,10 +59,10 @@ Base.show(io::IO, r::RQuat) = print(io, "$(typeof(r))($(r[:]))")
 Base.:(==)(r1::RQuat, r2::RQuat) = (r1._u == r2._u || r1._u == -r2._u)
 Base.:(≈)(r1::RQuat, r2::RQuat) = (r1._u ≈ r2._u || r1._u ≈ -r2._u)
 Base.:∘(r1::RQuat, r2::RQuat) = RQuat(r1._u * r2._u)
-Base.adjoint(r::RQuat) = RQuat(r._u')
-function Base.:*(r_ab::RQuat, v_b::AbstractVector{T} where {T<:Real})::SVector{3,Float64}
+Base.adjoint(r::RQuat) = RQuat(r._u', normalization = false)
+function Base.:*(r_ab::RQuat, v_b_in::AbstractVector{T} where {T<:Real})::SVector{3,Float64}
     #this conversion yields a threefold speed gain
-    v_b = SVector{3, Float64}(v_b)
+    v_b = SVector{3, Float64}(v_b_in)
     # v_b = SVector{3, Float64}(v_b) #this causes type instability between SV3
     # and Vector, but does not hurt performance
     q = r_ab._u; q_re = q.real; q_im = q.imag
@@ -208,9 +205,9 @@ RAxAng(r::Rotation) = convert(RAxAng, r)
 RAxAng(input::Tuple{Union{Nothing, AbstractVector{T} where T<:Real}, Real}) = RAxAng(input...)
 RAxAng(::Nothing, ::Real; normalization::Bool = false) = RAxAng()
 
-Rz(ψ::Real) = RAxAng([0,0,1], ψ, normalization = false)
-Ry(θ::Real) = RAxAng([0,1,0], θ, normalization = false)
-Rx(φ::Real) = RAxAng([1,0,0], φ, normalization = false)
+Rz(ψ::Real) = RAxAng(SVector{3}(0.0, 0.0, 1.0), ψ, normalization = false)
+Ry(θ::Real) = RAxAng(SVector{3}(0.0, 1.0, 0.0), θ, normalization = false)
+Rx(φ::Real) = RAxAng(SVector{3}(1.0, 0.0, 0.0), φ, normalization = false)
 
 RAxAng() = Rx(0)
 

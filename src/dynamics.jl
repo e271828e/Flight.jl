@@ -8,23 +8,20 @@ using ComponentArrays
 using Flight.WGS84
 using Flight.Attitude
 using Flight.Kinematics
-import Flight.System: Y
 
-export Acc, AccY
-export MassData, WrenchCV, Wrench, Frame
+export AccY
+export MassData, Wrench, Frame
 export inertia_wrench, gravity_wrench, f_dyn!
 
 
 ################ Acceleration Output Vector ##############
 
-struct Acc end
-
-const AccYTemplate = ComponentVector(
-    α_eb_b = zeros(3), α_ib_b = zeros(3), a_eOb_b = zeros(3), a_iOb_b = zeros(3))
-
-const AccY{T, D} = ComponentVector{T, D, typeof(getaxes(AccYTemplate))} where {T, D}
-Y(::Acc) = similar(AccYTemplate)
-
+Base.@kwdef struct AccY
+    α_eb_b::SVector{3,Float64}
+    α_ib_b::SVector{3,Float64}
+    a_eOb_b::SVector{3,Float64}
+    a_iOb_b::SVector{3,Float64}
+end
 
 ################ MassData ########################
 
@@ -41,6 +38,9 @@ Base.@kwdef struct Wrench
     F::SVector{3,Float64} = zeros(SVector{3})
     M::SVector{3,Float64} = zeros(SVector{3})
  end
+
+Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(F = wr1.F + wr2.F, M = wr1.M + wr2.M)
+
 
 ####################### Frame ###############
 
@@ -84,11 +84,7 @@ end
 function inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:Real})
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-
-    ω_ie_b = SVector{3,Float64}(y_vel.ω_ie_b)
-    ω_eb_b = SVector{3,Float64}(y_vel.ω_eb_b)
-    ω_ib_b = SVector{3,Float64}(y_vel.ω_ib_b)
-    v_eOb_b = SVector{3,Float64}(y_vel.v_eOb_b)
+    @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = y_vel
 
     #additional angular momentum due to the angular velocity of the rotating
     #elements with respect to the airframe
@@ -115,9 +111,7 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
     #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
     #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
     #LTF(Ob), and then apply it at G.
-    q_el = RQuat(y_pos.q_el, normalization = false)
-    q_lb = RQuat(y_pos.q_lb, normalization = false)
-    Ob = WGS84Pos(NVector(q_el), y_pos.h)
+    Ob = y_pos.Ob
 
     g_G_l = gravity(Ob)
 
@@ -131,13 +125,13 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
     wr_Oc_c = wr_G_l
-    f_bc = Frame(r_ObOc_b = mass.r_ObG_b, q_bc = q_lb')
+    f_bc = Frame(r_ObOc_b = mass.r_ObG_b, q_bc = y_pos.q_lb')
     return f_bc * wr_Oc_c #wr_Ob_b
 
 end
 
-function f_dyn!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
-    h_rot_b::AbstractVector{<:Real}, mass::MassData, y_kin::KinY)
+function f_dyn!(ẋ_vel::VelX, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Real},
+    mass::MassData, y_kin::KinY)
 
     #wr_ext_Ob_b: External wrench on the airframe due to aircraft components
 
@@ -156,33 +150,25 @@ function f_dyn!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
     #least singular)!
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-
-    ω_eb_b = SVector{3,Float64}(y_kin.vel.ω_eb_b)
-    ω_ie_b = SVector{3,Float64}(y_kin.vel.ω_ie_b)
-    v_eOb_b = SVector{3,Float64}(y_kin.vel.v_eOb_b)
-    q_el = RQuat(y_kin.pos.q_el, normalization = false)
-    q_eb = RQuat(y_kin.pos.q_eb, normalization = false)
-    Ob = WGS84Pos(NVector(q_el), y_kin.pos.h)
-
-    #preallocating is faster than directly concatenating the blocks
-    A = Array{Float64}(undef, (6,6))
+    @unpack q_el, q_eb, Ob = y_kin.pos
+    @unpack ω_eb_b, ω_ie_b, v_eOb_b = y_kin.vel
 
     r_ObG_b_sk = Attitude.skew(r_ObG_b)
-    A[1:3, 1:3] .= J_Ob_b
-    A[1:3, 4:6] .= m * r_ObG_b_sk
-    A[4:6, 1:3] .= -m * r_ObG_b_sk
-    A[4:6, 4:6] .= m * SMatrix{3,3,Float64}(I)
+    A11 = J_Ob_b
+    A12 = m * r_ObG_b_sk
+    A21 = -m * r_ObG_b_sk
+    A22 = m * SMatrix{3,3,Float64}(I)
 
-    A = SMatrix{6,6}(A)
+    A = vcat(hcat(A11, A12), hcat(A21, A22))
 
     wr_g_Ob_b = gravity_wrench(mass, y_kin.pos)
     wr_in_Ob_b = inertia_wrench(mass, y_kin.vel, h_rot_b)
     wr_Ob_b = wr_ext_Ob_b + wr_g_Ob_b + wr_in_Ob_b
-    b = SVector{6}([wr_Ob_b.M ; wr_Ob_b.F])
+    b = SVector{6}(vcat(wr_Ob_b.M, wr_Ob_b.F))
 
     ẋ_vel .= A\b
 
-    #update y_acc
+    # update y_acc
     v̇_eOb_b = SVector{3}(ẋ_vel.v_eOb_b)
     r_eO_e = rECEF(Ob)
     r_eO_b = q_eb' * r_eO_e
@@ -192,12 +178,7 @@ function f_dyn!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
     a_eOb_b = v̇_eOb_b + ω_eb_b × v_eOb_b
     a_iOb_b = v̇_eOb_b + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eO_b)
 
-    y_acc.α_eb_b .= α_eb_b #α_eb_b == ω_eb_b_dot
-    y_acc.α_ib_b .= α_ib_b
-    y_acc.a_eOb_b .= a_eOb_b
-    y_acc.a_iOb_b .= a_iOb_b
-
-    return nothing
+    return AccY(α_eb_b, α_ib_b, a_eOb_b, a_iOb_b)
 
 end
 

@@ -15,7 +15,7 @@ using Flight.Propulsion
 # using Flight.LandingGear
 using Flight.Terrain
 using Flight.Atmosphere
-import Flight.System: HybridSystem, X, D, Y, U, f_cont!, f_disc!
+import Flight.System: HybridSystem, X, D, U, f_cont!, f_disc!
 # import Flight.System: plotlog
 
 export TestAircraft
@@ -74,7 +74,6 @@ end
 #returned by D
 X(ac::TestAircraft) = ComponentVector(kin = X(Kin()), pwp = X(ac.pwp))
 D(ac::TestAircraft) = (pwp = D(ac.pwp), )
-Y(ac::TestAircraft) = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), air = Y(AirData()), pwp = Y(ac.pwp))
 U(::TestAircraft{NoControlMapping,Mass,Pwp} where {Mass,Pwp}) = nothing
 #in a NoMapping aircraft, there are no aircraft controls! we act upon the
 #subsystem's controls directly! this allows testing multiple subsystem
@@ -165,6 +164,7 @@ function f_cont!(ac_sys::HybridSystem{TestAircraft{C,M,P}} where {C,M,P},
     #update dynamics
     f_dyn!(y.acc, ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y.kin)
 
+# Y(ac::TestAircraft) = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), air = Y(AirData()), pwp = Y(ac.pwp))
     return nothing
 end
 
