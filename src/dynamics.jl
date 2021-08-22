@@ -37,17 +37,10 @@ end
 
 ################# Wrench ########################
 
-#THIS SHOULD BE MADE AN IMMUTABLE STRUCT AGAIN IF WE SWITCH TO STRUCTS FOR Y. it
-#will save ~25 ns per Wrench allocation, of which there are a lot
-
-const WrenchAxes = getaxes(ComponentVector(F = zeros(3), M = zeros(3)))
-const WrenchCV{T, D} = ComponentVector{T, D, typeof(WrenchAxes)} where {T, D}
-const Wrench(v::AbstractVector{Float64}) = (@assert length(v) == 6; ComponentVector(v, WrenchAxes))
-function Wrench(; F = SVector(0.0,0,0), M = SVector(0.0,0,0))
-    wr = ComponentVector{Float64}(undef, WrenchAxes)
-    wr.F = F; wr.M = M
-    return wr
-end
+Base.@kwdef struct Wrench
+    F::SVector{3,Float64} = zeros(SVector{3})
+    M::SVector{3,Float64} = zeros(SVector{3})
+ end
 
 ####################### Frame ###############
 
@@ -70,7 +63,7 @@ airframe reference frame fb(Ob, εb) given the relative Frame
 specification f_bc
 """
 
-function Base.:*(f_bc::Frame, wr_Oc_c::WrenchCV)
+function Base.:*(f_bc::Frame, wr_Oc_c::Wrench)
 
     F_Oc_c = wr_Oc_c.F
     M_Oc_c = wr_Oc_c.M
@@ -143,10 +136,10 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
 
 end
 
-function f_dyn!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::WrenchCV,
+function f_dyn!(y_acc::AccY, ẋ_vel::VelX, wr_ext_Ob_b::Wrench,
     h_rot_b::AbstractVector{<:Real}, mass::MassData, y_kin::KinY)
 
-    #wr_ext_Ob_b: External Wrench on the airframe due to aircraft components
+    #wr_ext_Ob_b: External wrench on the airframe due to aircraft components
 
     #h_rot_b: Additional angular momentum due to the angular velocity of the
     #rotating aircraft components with respect to the airframe. these are

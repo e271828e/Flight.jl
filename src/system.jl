@@ -1,6 +1,6 @@
 module System
 
-export AbstractComponent, HybridSystem, X, U, Y, f_cont!, f_disc!
+export AbstractComponent, HybridSystem, X, U, f_cont!, f_disc!
 # export plotlog
 
 abstract type AbstractComponent end #anything that can go in a HybridSystem
@@ -8,16 +8,14 @@ abstract type AbstractComponent end #anything that can go in a HybridSystem
 no_extend_error(f::Function, ::Type{S}) where {S} = error("Function $f not implemented for subtype $S or incorrect call signature")
 
 X(::C) where {C<:AbstractComponent} = no_extend_error(X, C)
-Y(::C) where {C<:AbstractComponent} = no_extend_error(Y, C)
 D(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
 U(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
 
 #need the C type parameter for dispatch, the rest for type stability
-struct HybridSystem{C<:AbstractComponent, X, D, Y, U, P, S}
+struct HybridSystem{C<:AbstractComponent, X, D, U, P, S}
     ẋ::X #continuous state vector derivative
     x::X #continuous state vector (to be used as a buffer for f_cont! evaluation)
     d::D #discrete state vector
-    y::Y #output vector (to be used as a buffer for f_cont! evaluation)
     u::U #control inputs
     t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
     params::P

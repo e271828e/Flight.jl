@@ -5,7 +5,7 @@ using StaticArrays
 
 using Flight.Dynamics
 using Flight.System
-import Flight.System: HybridSystem, X, D, Y, U, f_cont!, f_disc!
+import Flight.System: HybridSystem, X, D, U, f_cont!, f_disc!
 
 export AbstractAirframeComponent, AirframeComponentGroup
 export get_wr_Ob_b, get_h_Gc_b
@@ -39,33 +39,35 @@ Base.values(g::AirframeComponentGroup) = values(getfield(g,:components))
 
 X(g::AirframeComponentGroup{T,N,L}) where {T,N,L} = ComponentVector(NamedTuple{L}(X.(values(g))))
 D(g::AirframeComponentGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(D.(values(g)))
-Y(g::AirframeComponentGroup{T,N,L}) where {T,N,L} = ComponentVector(NamedTuple{L}(Y.(values(g))))
 U(g::AirframeComponentGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(U.(values(g)))
 
 function HybridSystem(g::AirframeComponentGroup{T,N,L},
-    ẋ = X(g), x = X(g), d = D(g), y = Y(g), u = U(g), t = Ref(0.0)) where {T,N,L}
+    ẋ = X(g), x = X(g), d = D(g), u = U(g), t = Ref(0.0)) where {T,N,L}
     #having L allows us to know the length of g and therefore the number of
     #expressions we need to generate
     s_list = Vector{HybridSystem}()
     for label in L
-        s_cmp = HybridSystem(map((λ)->getproperty(λ, label), (g, ẋ, x, d, y, u))..., t)
+        s_cmp = HybridSystem(map((λ)->getproperty(λ, label), (g, ẋ, x, d, u))..., t)
         push!(s_list, s_cmp)
     end
     params = nothing #everything is already stored in the subsystem's parameters
     subsystems = NamedTuple{L}(s_list)
-    HybridSystem{map(typeof, (g, x, d, y, u, params, subsystems))...}(ẋ, x, d, y, u, t, params, subsystems)
+    HybridSystem{map(typeof, (g, x, d, u, params, subsystems))...}(ẋ, x, d, u, t, params, subsystems)
 end
 
 @inline @generated function f_cont!(sys::HybridSystem{C}, args...) where {C<:AirframeComponentGroup{T,N,L}} where {T,N,L}
-    ex = Expr(:block)
+    ex_tuple = Expr(:tuple) #construct a tuple around all the individual function calls
     for label in L
         label = QuoteNode(label)
         ex_ss = quote
             f_cont!(sys.subsystems[$label], args...)
         end
-        push!(ex.args, ex_ss)
+        push!(ex_tuple.args, ex_ss)
     end
-    return ex
+    # Core.println(ex_tuple)
+    #construct a NamedTuple from the labels L and the constructed tuple
+    ex_all = Expr(:call, Expr(:curly, NamedTuple, L), ex_tuple)
+    return ex_all
 end
 
 @inline @generated function (f_disc!(sys::HybridSystem{C}, args...)::Bool) where {C<:AirframeComponentGroup{T,N,L}} where {T,N,L}

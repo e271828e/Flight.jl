@@ -8,12 +8,6 @@ using Flight.System
 
 export HybridModel
 
-#consider a HybridModel{C}, which generalizes HybridModel{C}, providing:
-#1) an array xd of discrete states
-#2) a Discrete callback called on every integration step, which implements the
-#   difference equation xd1 = f(xd0, x0, ud0, u0, t0). this callback should set
-#   u_modified! to false
-
 abstract type AbstractModel end
 
 ############### HybridModel #####################
@@ -34,13 +28,15 @@ struct HybridModel{S <: HybridSystem, I <: OrdinaryDiffEq.ODEIntegrator, L <: Sa
 
         params = (sys = sys, args_c = args_c, args_d = args_d)
 
-        log = SavedValues(Float64, typeof(sys.y))
+        y₀ = f_cont!(sys, args_c...)
+        log = SavedValues(Float64, typeof(y₀))
 
         dcb = DiscreteCallback((u, t, integrator)->true, f_dcb!)
         scb = SavingCallback(f_scb, log, saveat = y_saveat)
         cb_set = CallbackSet(dcb, scb)
 
-        problem = ODEProblem{true}(f_update!, copy(sys.x), (t_start, t_end), params)
+        x₀ = copy(sys.x)
+        problem = ODEProblem{true}(f_update!, x₀, (t_start, t_end), params)
         integrator = init(problem, method; callback = cb_set, save_everystep = false, int_kwargs...)
         new{typeof(sys), typeof(integrator), typeof(log)}(sys, integrator, log)
     end
@@ -67,6 +63,7 @@ function f_update!(ẋ::X, x::X, t::Real, sys::HybridSystem{C,X}, args_c) where 
     sys.t[] = t
     f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
     ẋ .= sys.ẋ
+    return nothing
 end
 
 #DiscreteCallback function (called on every integration step)
@@ -83,8 +80,7 @@ end
 function f_scb(x::X, t::Real, sys::HybridSystem{C,X}, args_c) where {C,X}
     sys.x .= x
     sys.t[] = t
-    f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
-    return copy(sys.y)
+    return f_cont!(sys, args_c...)
 end
 
 
@@ -95,8 +91,6 @@ function Base.getproperty(m::HybridModel, s::Symbol)
         return m.integrator.u
     elseif s === :u
         return m.sys.u
-    elseif s === :y #should only retrieve this after a saving step
-        return m.sys.y
     elseif s in (:sys, :integrator, :log)
         return getfield(m, s)
     else

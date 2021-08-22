@@ -4,7 +4,8 @@ using SciMLBase
 using LinearAlgebra
 
 
-air = Y(AirData())
+air = AirDataY()
+
 thr = EThruster();
 thr_sys = HybridSystem(thr);
 thr_mdl = HybridModel(thr_sys, (air,))
