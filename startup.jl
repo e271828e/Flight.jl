@@ -26,7 +26,7 @@ b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
 
 ac_sys = ContinuousSystem(ac);
 ac_mdl = ContinuousModel(ac_sys, (trn, atm); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0:0.1:100);
-# ac_mdl.sys.subsystems.pwp.u.left.throttle = 1 #the same
+ac_mdl.sys.subsystems.pwp.u.left.throttle = 1 #the same
 b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
 
 # mdl.u.pwp.left.throttle = 0

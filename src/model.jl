@@ -9,27 +9,26 @@ using Flight.System
 export ContinuousModel
 
 #consider a HybridModel{C}, which generalizes ContinuousModel{C}, providing:
-#1) an array xd of discrete states and an array ud of discrete inputs. these
-#   should be also stored in the integrator parameters. ud, like u, is modified
-#   externally
+#1) an array xd of discrete states
 #2) a Discrete callback called on every integration step, which implements the
 #   difference equation xd1 = f(xd0, x0, ud0, u0, t0). this callback should set
 #   u_modified! to false
-#3) an optional Iterative callback called periodically or after a certain number
-#   of integration steps to handle numerical errors (this is the way to
-#   implement quaternion renormalization)
-
-############### ContinuousModel #####################
 
 abstract type AbstractModel end
+
+############### ContinuousModel #####################
 
 #a ContinuousModel holds a System without a discrete state vector (xd) or
 #discrete input vector (ud), but it still provides a discrete function to be
 #called on each integration step for bookkeeping (for example, quaternion
 #renormalization, )
+
+#in this design, the t and x fields of m.sys behave only as temporary
+#storage for f_cont! and f_disc! calls, so we have no guarantees about their
+#status after a certain step. the only valid sources for t and x at any
+#given moment is the integrator's t and u
 struct ContinuousModel{S, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <: AbstractModel
-# <:OrdinaryDiffEq.ODEIntegrator
-# <:SavedValues
+
     sys::S
     integrator::I#just for annotation purposes
     log::L
@@ -38,59 +37,62 @@ struct ContinuousModel{S, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <
         method = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
         int_kwargs...)
 
-        #pass the y cache for f_update! to have somewhere to write to, then
-        #throw it away. what matters in this call is the update to the ẋ passed
-        #by the integrator
-        function f_update!(ẋ, x, p, t)
-            @unpack sys, ẋ_sys, x_sys, t_sys, args_c = p
-            x_sys .= x
-            t_sys[] = t
-            f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
-            ẋ .= ẋ_sys
-        end
+        params = (sys = sys, args_c = args_c, args_d = args_d)
 
-        #the dummy ẋ cache is passed for f_update! to have somewhere to write
-        #to without clobbering the integrator's du, then it is thrown away. copy
-        #and output the updated y
-        function f_save(x, t, integrator)
-            @unpack sys, ẋ_sys, x_sys, t_sys, y_sys, args_c = integrator.p
-            x_sys .= x
-            t_sys[] = t
-            f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
-            return copy(y_sys)
-        end
-
-        function f_dcb!(integrator)
-            @unpack sys, args_d = integrator.p
-            modified_x = f_disc!(sys, args_d...)
-            # println(modified_x)
-            u_modified!(integrator, modified_x)
-        end
-
-        #accessing sys.x, sys.xdot, sys.y directly in the update and save
-        #methods destroys performance. it is probably causing type instability,
-        #even if the type of sys is declared in its Model field, the compiler
-        #seems unable to propagate it. try moving the functions out of the closures?
-        params = (sys = sys, ẋ_sys = sys.ẋ, x_sys = sys.x, y_sys = sys.y,
-            t_sys = sys.t, args_c = args_c, args_d = args_d)
-
-        log = SavedValues(Float64, typeof(params.y_sys))
+        log = SavedValues(Float64, typeof(sys.y))
 
         dcb = DiscreteCallback((u, t, integrator)->true, f_dcb!)
-        scb = SavingCallback(f_save, log, saveat = y_saveat)
+        scb = SavingCallback(f_scb, log, saveat = y_saveat)
         cb_set = CallbackSet(dcb, scb)
 
         problem = ODEProblem{true}(f_update!, copy(sys.x), (t_start, t_end), params)
         integrator = init(problem, method; callback = cb_set, save_everystep = false, int_kwargs...)
-        # integrator = init(problem, method; save_everystep = false, int_kwargs...)
         new{typeof(sys), typeof(integrator), typeof(log)}(sys, integrator, log)
     end
 end
 
+#these functions are better defined outside the constructor; apparently closures
+#are not as efficient
+
+#function barriers: the ContinuousSystem is first extracted from integrator.p,
+#then used as an argument in the call to the actual update & callback functions,
+#forcing the compiler to specialize those
+f_update!(ẋ, x, p, t) = f_update!(ẋ, x, t, p.sys, p.args_c)
+f_scb(x, t, integrator) = f_scb(x, t, integrator.p.sys, integrator.p.args_c)
+function f_dcb!(integrator)
+    x = integrator.u; t = integrator.t; p = integrator.p
+    x_modified = f_dcb!(x, t, p.sys, p.args_d)
+    u_modified!(integrator, x_modified)
+end
+
+#in-place integrator update function
+function f_update!(ẋ::X, x::X, t::Real, sys::ContinuousSystem{C,X}, args_c) where {C, X}
+    sys.x .= x
+    sys.t[] = t
+    f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
+    ẋ .= sys.ẋ
+end
+
+#DiscreteCallback function (called on every integration step)
+function f_dcb!(x::X, t::Real, sys::ContinuousSystem{C,X}, args_d) where {C,X}
+    sys.x .= x #assign the integrator's state to the system's local continuous state
+    sys.t[] = t #ditto for time
+    x_modified = f_disc!(sys, args_d...)
+    x .= sys.x #assign the (potentially) modified continuous state back to the integrator
+    # println(x_modified)
+    return x_modified
+end
+
+#SavingCallback function
+function f_scb(x::X, t::Real, sys::ContinuousSystem{C,X}, args_c) where {C,X}
+    sys.x .= x
+    sys.t[] = t
+    f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
+    return copy(sys.y)
+end
+
 
 function Base.getproperty(m::ContinuousModel, s::Symbol)
-    #sys also has stored t and x, but since they are written on every call to
-    #f_update! we have no guarantees about their status after a certain step
     if s === :t
         return m.integrator.t
     elseif s === :x
@@ -107,9 +109,13 @@ function Base.getproperty(m::ContinuousModel, s::Symbol)
 end
 
 SciMLBase.step!(m::ContinuousModel, args...) = step!(m.integrator, args...)
+
 function SciMLBase.reinit!(m::ContinuousModel, args...)
     reinit!(m.integrator, args...)
 
+    #restore ContinuousSystems internal time and state to their original values
+    #(which were stored by the integrator upon construction, and now supplied by
+    #it)
     m.sys.t[] = m.integrator.t
     m.sys.x .= m.integrator.u
 
@@ -143,4 +149,30 @@ function plotlog(mdl::ContinuousModel)
 
 end
 
+#the following causes type instability and destroys performance:
+# function f_update!(ẋ, x, p, t)
+    # @unpack sys, args_c = p
+    # sys.x .= x
+    # sys.t[] = t
+    # f_cont!(sys, args_c...)
+    # ẋ = sys.ẋ
+# end
+
+#the reason seems to be that having sys stored in p obfuscates type
+#inference. when unpacking sys, the compiler can no longer tell its
+#type, and therefore has no knowledge of the types of sys.x, sys.dx,
+#sys.y and sys.t. since these are being assigned to and read from,
+#the type instability kills performance.
+
+#this can be fixed by storing the x, dx and y fields of sys directly
+#as entries of p. this probably fixes their types during
+#construction, so when they are accessed later in the closure, the
+#type instability is no longer an issue.
+
+#however, this is redundant! we already have x, dx, y and t inside
+#of sys. a more elegant alternative is simply to use a function
+#barrier, first extract sys, then call another function using it as
+#an argument. this forces the compiler to infer its type, and
+#therefore it specializes the time-critical assignment statements to
+#their actual types.
 end

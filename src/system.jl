@@ -9,14 +9,14 @@ no_extend_error(f::Function, ::Type{S}) where {S} = error("Function $f not imple
 
 X(::C) where {C<:AbstractComponent} = no_extend_error(X, C)
 Y(::C) where {C<:AbstractComponent} = no_extend_error(Y, C)
-U(::C) where {C<:AbstractComponent} = no_extend_error(U, C)
+U(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
 
 #need the C type parameter for dispatch, the rest for type stability
 struct ContinuousSystem{C<:AbstractComponent, X, Y, U, P, S}
-    ẋ::X
-    x::X
-    y::Y
-    u::U
+    ẋ::X #continuous state derivative
+    x::X #continuous state (to be used as a buffer for f_cont! evaluation)
+    y::Y #output state (to be used as a buffer for f_cont! evaluation)
+    u::U #control inputs
     t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
     params::P
     subsystems::S
