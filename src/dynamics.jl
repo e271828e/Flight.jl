@@ -11,19 +11,10 @@ using Flight.Kinematics
 
 export AccY
 export MassData, Wrench, FrameSpec
-export inertia_wrench, gravity_wrench, translate, f_dyn!
+export get_wr_Ob_b, get_h_Gc_b, inertia_wrench, gravity_wrench, translate, f_dyn!
 
 
-################ Acceleration Output Vector ##############
-
-Base.@kwdef struct AccY
-    α_eb_b::SVector{3,Float64}
-    α_ib_b::SVector{3,Float64}
-    a_eOb_b::SVector{3,Float64}
-    a_iOb_b::SVector{3,Float64}
-end
-
-####################### FrameSpec ###############
+############################# FrameSpec ###############################
 
 """
 Specifies a reference frame `fc(Oc, Ɛc)` relative to another `fb(Ob, Ɛb)`
@@ -38,7 +29,8 @@ Base.@kwdef struct FrameSpec
     q_bc::RQuat = RQuat()
 end
 
-################# Wrench ########################
+
+############################## Wrench #################################
 
 """
 Force and torque combination defined on a concrete reference frame
@@ -96,7 +88,7 @@ end
 (f_bc::FrameSpec)(wr_Oc_c::Wrench) = translate(f_bc, wr_Oc_c)
 
 
-################ MassData ########################
+############################## MassData #################################
 
 """
 Groups the mass properties required by the aircraft's dynamic equations
@@ -128,7 +120,52 @@ Base.@kwdef struct MassData
 end
 
 
-################## f_dyn! and helper functions ####################
+##################
+#every airframe component must output a struct that implements these methods for
+#retrieving wr_Ob_b and h_Gc_b
+function get_wr_Ob_b(::T, args...) where {T}
+    error("Method get_wr_Ob_b not implemented for type $T or incorrect call signature")
+end
+
+function get_h_Gc_b(::T, args...) where {T}
+    error("Method get_h_Gc_b not implemented for type $T or incorrect call signature")
+end
+
+#these automate wr_Ob_b and h_Gc_b retrieval for airframe component groups,
+#whose output structs are gathered in a NamedTuple (for example, HybridSystems
+#built from SystemDescriptorGroups)
+@inline @generated function get_wr_Ob_b(y::NamedTuple{L}) where {L}
+
+    ex = Expr(:block)
+    push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
+
+    for label in L
+        label = QuoteNode(label)
+        ex_ss = quote
+            wr += get_wr_Ob_b(y[$label])
+        end
+        push!(ex.args, ex_ss)
+    end
+    return ex
+end
+
+@inline @generated function get_h_Gc_b(y::NamedTuple{L}) where {L}
+
+    ex = Expr(:block)
+    push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate
+
+    for label in L
+        label = QuoteNode(label)
+        ex_ss = quote
+            h += get_h_Gc_b(y[$label])
+        end
+        push!(ex.args, ex_ss)
+    end
+    return ex
+end
+
+
+################## Dynamic Equations and helper functions ####################
 
 """
     inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:Real})
@@ -193,6 +230,16 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
     f_bc = FrameSpec(r_ObOc_b = mass.r_ObG_b, q_bc = y_pos.q_lb')
     return f_bc(wr_Oc_c) #wr_Ob_b
 
+end
+
+
+###################### Acceleration Outputs #####################
+
+Base.@kwdef struct AccY
+    α_eb_b::SVector{3,Float64}
+    α_ib_b::SVector{3,Float64}
+    a_eOb_b::SVector{3,Float64}
+    a_iOb_b::SVector{3,Float64}
 end
 
 function f_dyn!(ẋ_vel::VelX, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Real},

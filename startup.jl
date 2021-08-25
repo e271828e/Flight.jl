@@ -11,7 +11,7 @@ thr_sys = HybridSystem(thr);
 thr_mdl = HybridModel(thr_sys, (air,))
 step!(thr_mdl)
 
-g = AirframeComponentGroup(left = EThruster(), right = EThruster());
+g = SystemDescriptorGroup(left = EThruster(), right = EThruster());
 g_sys = HybridSystem(g);
 g_mdl = HybridModel(g_sys, (air,))
 step!(g_mdl)

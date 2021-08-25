@@ -7,6 +7,7 @@ using Reexport
 # @reexport using .LBV
 
 #math and environment
+include("utils.jl")
 include("quaternions.jl")
 include("rotations.jl")
 include("wgs84.jl") #many, many constants here. should keep it a module
@@ -21,14 +22,14 @@ include("model.jl")
 include("kinematics.jl")
 include("dynamics.jl")
 
-#aircraft elements
+#airframe components
 include("airdata.jl")
-include("airframe.jl")
 include("propulsion.jl")
 # include("landinggear.jl")
 
 include("aircraft.jl")
 
+@reexport using .Utils
 @reexport using .Quaternions
 @reexport using .Rotations
 @reexport using .WGS84
@@ -42,7 +43,6 @@ include("aircraft.jl")
 @reexport using .Dynamics
 
 @reexport using .Airdata
-@reexport using .Airframe
 @reexport using .Propulsion
 # @reexport using .LandingGear
 

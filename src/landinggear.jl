@@ -6,13 +6,12 @@ using ComponentArrays
 
 using Flight.Airdata
 using Flight.Dynamics
-using Flight.Component
-import Flight.Component: get_wr_Ob_b, get_h_Gc_b
+import Flight.Dynamics: get_wr_Ob_b, get_h_Gc_b
 import Flight.System: X, D, Y, U, f_cont!, f_disc!
 
 export LandingGearLeg, LandingGearGroup
 
-abstract type AbstractLandingGearLeg <: AbstractComponent end
+abstract type AbstractLandingGearLeg <: SystemDescriptor end
 
 Base.@kwdef struct LandingGearLeg <: AbstractLandingGearLeg
 end
@@ -113,13 +112,13 @@ U(::LandingGearLeg) = missing
 f_cont!(y, ẋ, x, u, t, ldg::LandingGearLeg, trn = nothing) = (ẋ.state = 0.001x.state)
 f_disc!(x, u, t, ldg::LandingGearLeg, trn = nothing) = false
 
-#################### AbstractComponent interface
+
 get_wr_Ob_b(y, comp::LandingGearLeg) = Wrench()
 get_h_Gc_b(y, comp::LandingGearLeg) = SVector(0.0, 0, 0)
 
 
 
-struct LandingGearGroup{C} <: AbstractComponentGroup{C} end
+struct LandingGearGroup{C} <: SystemDescriptorGroup{C} end
 
 function LandingGearGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractLandingGearLeg} where {N}})
     LandingGearGroup{nt}()

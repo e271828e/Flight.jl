@@ -8,14 +8,13 @@ using UnPack
 
 using Flight.Airdata
 using Flight.Dynamics
-using Flight.Airframe: AbstractAirframeComponent
-import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
-import Flight.System: HybridSystem, X, D, U, f_cont!, f_disc!
+import Flight.Dynamics: get_wr_Ob_b, get_h_Gc_b
+import Flight.System: SystemDescriptor, HybridSystem, X, D, U, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, PropulsionGroup
 
-abstract type AbstractThruster <: AbstractAirframeComponent end
+# abstract type AbstractThruster <: SystemDescriptor end
 
 @enum TurnSense begin
     CW = 1
@@ -66,7 +65,7 @@ voltage_open(b::Battery, charge_ratio::Real) = b.n_cells * b.V_cell * voltage_cu
 R(b::Battery) = b.n_cells * b.R_cell
 ċ(b::Battery, i::Real) = -i/b.Cmax
 
-Base.@kwdef struct EThruster <: AbstractThruster
+Base.@kwdef struct EThruster <: SystemDescriptor
     frame::FrameSpec = FrameSpec()
     battery::Battery = Battery()
     motor::ElectricMotor = ElectricMotor()

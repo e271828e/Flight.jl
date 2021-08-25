@@ -10,7 +10,6 @@ using Flight.System
 using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Airdata
-using Flight.Airframe
 using Flight.Propulsion
 # using Flight.LandingGear
 using Flight.Terrain
@@ -37,26 +36,22 @@ get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.
 abstract type AbstractControlMapping end
 struct NoControlMapping <: AbstractControlMapping end
 
-struct TestAircraft{
-    Ctl <: AbstractControlMapping,
-    Mass <: AbstractMassModel,
-    Pwp <: AbstractAirframeComponent} <: AbstractComponent
-    # Ldg <: AbstractAirframeComponent} <: AbstractComponent
-    # pwp::Pwp <: AbstractAirframeComponent
+struct TestAircraft{ Ctl <: AbstractControlMapping, Mass <: AbstractMassModel, Pwp} <: SystemDescriptor
+    # Ldg} <: SystemDescriptor
     ctl::Ctl
     mass::Mass
     pwp::Pwp
-    # ldg::Ldg <: AbstractAirframeComponent
+    # ldg::Ldg
 end
 
 function TestAircraft()
 
     ctl = NoControlMapping()
     mass = ConstantMassModel(m = 1, J_Ob_b = 1*Matrix{Float64}(I,3,3))
-    pwp = AirframeComponentGroup((
+    pwp = SystemDescriptorGroup((
         left = EThruster(motor = ElectricMotor(α = CW)),
         right = EThruster(motor = ElectricMotor(α = CCW))))
-    # ldg = AirframeComponentGroup((
+    # ldg = SystemDescriptorGroup((
     #     lmain = LandingGearLeg(),
     #     rmain = LandingGearLeg(),
     #     nlg = LandingGearLeg()))
@@ -83,7 +78,7 @@ U(::TestAircraft{NoControlMapping,Mass,Pwp} where {Mass,Pwp}) = nothing
 
 #=
 # example:
-const my_pwp = AirframeComponentGroup(left = EThruster(), right = EThruster())
+const my_pwp = SystemDescriptorGroup(left = EThruster(), right = EThruster())
 const MyPwp = typeof(my_pwp)
 struct MyMapping <: AbstractControlMapping
 U(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) where {Mass,Ldg} = ComponentVector(throttle = 0.0)
@@ -147,7 +142,7 @@ function f_cont!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P},
     wr_ext_Ob_b = Wrench()
     h_rot_b = SVector(0.,0.,0.)
 
-    #add the contributions from all sources
+    #add the contributions from all airframe components
 
     #add powerplant contributions
     wr_ext_Ob_b += get_wr_Ob_b(y_pwp)
