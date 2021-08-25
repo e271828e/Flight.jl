@@ -3,7 +3,7 @@ module WGS84
 using Base: Real, Symbol
 using LinearAlgebra
 using StaticArrays: SVector
-using Flight.Attitude
+using Flight.Rotations
 
 export ω_ie
 export NVector, WGS84Pos, rECEF
@@ -52,8 +52,8 @@ end
 NVector(r_el::Rotation) = NVector(RMatrix(r_el))
 NVector(r_el::RMatrix) = NVector( -r_el[:,3], normalization = false)
 function NVector(r_el::RQuat)
-    #n_e is the third column of the R_el matrix. we don't need the complete
-    #RQuat to RMatrix conversion
+    #n_e is simply the third column of the R_el rotation matrix. we don't need
+    #the complete RQuat to RMatrix conversion
     q = r_el[:]
     dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]
     dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4]
@@ -64,7 +64,7 @@ Base.:(==)(n1::NVector, n2::NVector) = n1.data == n2.data
 Base.:(≈)(n1::NVector, n2::NVector) = n1.data ≈ n2.data
 Base.:(-)(n::NVector) = NVector(-n.data)
 
-#AbstractArray
+#### AbstractArray interface
 Base.size(::NVector) = (3,)
 Base.getindex(n::NVector, i) = getindex(n.data, i)
 

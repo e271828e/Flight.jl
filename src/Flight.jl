@@ -8,7 +8,7 @@ using Reexport
 
 #math and environment
 include("quaternions.jl")
-include("attitude.jl")
+include("rotations.jl")
 include("wgs84.jl") #many, many constants here. should keep it a module
 include("terrain.jl")
 include("atmosphere.jl")
@@ -30,7 +30,7 @@ include("propulsion.jl")
 include("aircraft.jl")
 
 @reexport using .Quaternions
-@reexport using .Attitude
+@reexport using .Rotations
 @reexport using .WGS84
 @reexport using .Terrain
 @reexport using .Atmosphere

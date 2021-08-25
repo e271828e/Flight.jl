@@ -5,7 +5,7 @@ using LinearAlgebra
 using BenchmarkTools
 
 using Flight.Kinematics
-using Flight.Attitude
+using Flight.Rotations
 using Flight.WGS84
 
 export test_kinematics

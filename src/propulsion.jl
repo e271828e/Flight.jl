@@ -67,7 +67,7 @@ R(b::Battery) = b.n_cells * b.R_cell
 ċ(b::Battery, i::Real) = -i/b.Cmax
 
 Base.@kwdef struct EThruster <: AbstractThruster
-    frame::Frame = Frame()
+    frame::FrameSpec = FrameSpec()
     battery::Battery = Battery()
     motor::ElectricMotor = ElectricMotor()
     gearbox::Gearbox = Gearbox()

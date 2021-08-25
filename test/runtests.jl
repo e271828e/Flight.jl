@@ -8,7 +8,7 @@ include("test_wgs84.jl")
 # include("test_kinematics.jl")
 
 using .TestQuaternions
-using .TestAttitude
+using .TestRotations
 using .TestWGS84
 # using .TestLBV
 # using .TestKinematics

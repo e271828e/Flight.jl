@@ -23,7 +23,7 @@ end
 abstract type AbstractActuator end
 
 Base.@kwdef struct LandingGearLeg{A<:AbstractShockAbsorber, S <: AbstractSteering, B <: AbstractBraking}
-    frame::Frame
+    frame::FrameSpec
     contact::ContactModel #vRegulator goes here
     shock::A
     steering::S

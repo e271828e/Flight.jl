@@ -2,7 +2,7 @@ module TestWGS84
 
 using Test
 using LinearAlgebra
-using Flight.WGS84, Flight.Attitude
+using Flight.WGS84, Flight.Rotations
 
 export test_wgs84
 

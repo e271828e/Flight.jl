@@ -1,8 +1,8 @@
-module TestAttitude
+module TestRotations
 
 using Test
 using LinearAlgebra
-using Flight.Attitude
+using Flight.Rotations
 using Flight.Quaternions
 
 export test_attitude
@@ -17,7 +17,7 @@ end
 
 
 function test_attitude()
-    @testset verbose = true "Attitude" begin
+    @testset verbose = true "Rotations" begin
         @testset verbose = true "RQuat" begin test_RQuat() end
         @testset verbose = true "RMatrix" begin test_RMatrix() end
         @testset verbose = true "RAxAng" begin test_RAxAng() end
@@ -136,7 +136,7 @@ function test_RAxAng()
 
         #complete [-2π, 2π] angle range focusing on  small angles
         u = normalize([7, -5, 2])
-        μ_array = lograngesym(Attitude.ε_null, 2π, 10)
+        μ_array = lograngesym(1e-12, 2π, 10)
         r_array = collect(RAxAng(u, μ) for μ in μ_array)
         r_array_test = collect(r |> RQuat |> RAxAng for r in r_array)
         @test all(r_array .≈ r_array_test)
@@ -287,7 +287,7 @@ function test_RMatrix()
 
         #time derivative
         ω_ab_b = [10, -4, 2]
-        @test dt(r_ab, ω_ab_b) == r_ab._mat * Attitude.skew(ω_ab_b)
+        @test dt(r_ab, ω_ab_b) == r_ab._mat * Rotations.skew(ω_ab_b)
     end
 
     @testset "Conversions" begin

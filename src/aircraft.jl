@@ -147,6 +147,8 @@ function f_cont!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P},
     wr_ext_Ob_b = Wrench()
     h_rot_b = SVector(0.,0.,0.)
 
+    #add the contributions from all sources
+
     #add powerplant contributions
     wr_ext_Ob_b += get_wr_Ob_b(y_pwp)
     h_rot_b += get_h_Gc_b(y_pwp)

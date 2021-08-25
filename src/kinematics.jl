@@ -6,7 +6,7 @@ using ComponentArrays
 using UnPack
 
 using Flight.WGS84
-using Flight.Attitude
+using Flight.Rotations
 import Flight.System: X
 
 export Pos, Vel, Kin, KinInit
@@ -32,8 +32,14 @@ const PosXTemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
 const KinXTemplate = ComponentVector(pos = PosXTemplate, vel = VelXTemplate)
 
+"""
+Type definition for dispatching on position state vector instances"
+
+"""
 const PosX{T, D} = ComponentVector{T, D, typeof(getaxes(PosXTemplate))} where {T, D}
+"Type definition for dispatching on velocity state vector instances"
 const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T, D}
+"Type definition for dispatching on velocity state vector instances"
 const KinX{T, D} = ComponentVector{T, D, typeof(getaxes(KinXTemplate))} where {T, D}
 
 Base.@kwdef struct PosY
@@ -103,9 +109,6 @@ end
 
 function f_kin!(ẋ_pos::PosX, x::KinX)
 
-    #careful here: x.pos.h, x.vel.ω_eb_b and x.vel.v_eOb_b create views (this is
-    #how LBV behaves by design). to copy the data, we can extract their
-    #components using slices
     q_lb = RQuat(x.pos.q_lb, normalization = false)
     q_el = RQuat(x.pos.q_el, normalization = false)
     Δx = x.pos.Δx
@@ -122,18 +125,18 @@ function f_kin!(ẋ_pos::PosX, x::KinX)
     euler_nb = REuler(q_nb)
 
     (R_N, R_E) = radii(Ob)
-    v_eOb_n = q_nb * v_eOb_b
+    v_eOb_n = q_nb(v_eOb_b)
     ω_el_n = SVector{3}(
         v_eOb_n[2] / (R_E + h),
         -v_eOb_n[1] / (R_N + h),
         0.0)
 
-    ω_el_l = q_nl' * ω_el_n
-    ω_el_b = q_lb' * ω_el_l
+    ω_el_l = q_nl'(ω_el_n)
+    ω_el_b = q_lb'(ω_el_l)
     ω_lb_b = ω_eb_b - ω_el_b
 
     ω_ie_e = SVector{3}(0, 0, ω_ie)
-    ω_ie_b = q_eb' * ω_ie_e
+    ω_ie_b = q_eb'(ω_ie_e)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     #update ẋ_pos
