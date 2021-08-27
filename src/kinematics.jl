@@ -6,8 +6,8 @@ using ComponentArrays
 using UnPack
 
 using Flight.WGS84
-using Flight.Rotations
-import Flight.System: X
+using Flight.Attitude
+import Flight.System: x0
 
 export Pos, Vel, Kin, KinInit
 export PosX, PosY, VelX, VelY, KinX, KinY
@@ -74,11 +74,11 @@ Base.@kwdef struct KinY
     vel::VelY
 end
 
-#Kin is not a System, so we do not really need to define X to comply with the
+#Kin is not a System, so we do not really need to define x0 to comply with the
 #System interface. however, it is convenient for testing, and to ensure the
 #aircraft state has its kinematic block initialized to reasonable values
-X(::Kin) = X(KinInit())
-X(init::KinInit) = (x=similar(KinXTemplate); init!(x, init); return x)
+x0(::Kin) = x0(KinInit())
+x0(init::KinInit) = (x=similar(KinXTemplate); init!(x, init); return x)
 
 function init!(x::KinX, init::KinInit)
 

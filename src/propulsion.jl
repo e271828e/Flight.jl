@@ -7,12 +7,13 @@ using Unitful
 using UnPack
 
 using Flight.Airdata
-using Flight.Dynamics
-import Flight.Dynamics: get_wr_Ob_b, get_h_Gc_b
-import Flight.System: SystemDescriptor, HybridSystem, X, D, U, f_cont!, f_disc!
+using Flight.Airframe
+using Flight.System
+import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
+import Flight.System: HybridSystem, x0, d0, u0, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
-export EThruster, PropulsionGroup
+export EThruster, EThrusterU, EThrusterD, EThrusterY
 
 # abstract type AbstractThruster <: SystemDescriptor end
 
@@ -29,7 +30,7 @@ Base.@kwdef struct SimpleProp
     J::Float64 = 1.0
 end
 
-function get_wrench(prop::SimpleProp, ω::Real, air::AirDataY) #air data just for interface demo
+function get_wrench(prop::SimpleProp, ω::Real, air::AirY) #air data just for interface demo
     @unpack kF, kM = prop
     F_ext_Os_s = kF * ω^2 * SVector(1,0,0)
     M_ext_Os_s = -tanh(ω/1.0) * kM * ω^2 * SVector(1,0,0) #choose ω_ref = 1.0
@@ -65,7 +66,7 @@ voltage_open(b::Battery, charge_ratio::Real) = b.n_cells * b.V_cell * voltage_cu
 R(b::Battery) = b.n_cells * b.R_cell
 ċ(b::Battery, i::Real) = -i/b.Cmax
 
-Base.@kwdef struct EThruster <: SystemDescriptor
+Base.@kwdef struct EThruster <: AbstractAirframeComponent
     frame::FrameSpec = FrameSpec()
     battery::Battery = Battery()
     motor::ElectricMotor = ElectricMotor()
@@ -78,7 +79,7 @@ const EThrusterX{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterXTemplate
 
 #disallow default values to avoid subtle bugs when failing to change a
 #constructor call in user code after changing the struct definition
-Base.@kwdef struct EThrusterY
+Base.@kwdef struct EThrusterY <: AbstractY{EThruster}
     throttle::Float64
     ω_shaft::Float64
     ω_prop::Float64
@@ -89,19 +90,22 @@ Base.@kwdef struct EThrusterY
     h_Gc_b::SVector{3,Float64}
 end
 
-Base.@kwdef mutable struct EThrusterU
+Base.@kwdef mutable struct EThrusterU <: AbstractU{EThruster}
     throttle::Float64 = 0.0
 end
 
-X(::EThruster) = copy(EThrusterXTemplate)
-D(::EThruster) = nothing
-U(::EThruster) = EThrusterU()
+#required to make EThruster compatible with HybridSystem
+Base.@kwdef mutable struct EThrusterD <: AbstractD{EThruster} end
+
+x0(::EThruster) = copy(EThrusterXTemplate)
+d0(::EThruster) = EThrusterD()
+u0(::EThruster) = EThrusterU()
 
 
 ################ EThruster HybridSystem ###################
 
-function HybridSystem(thr::EThruster, ẋ = X(thr), x = X(thr), d = D(thr),
-                      u = U(thr), t = Ref(0.0))
+function HybridSystem(thr::EThruster, ẋ = x0(thr), x = x0(thr), d = d0(thr),
+                      u = u0(thr), t = Ref(0.0))
     params = thr #params is the component itself
     subsystems = nothing #no subsystems to define
     HybridSystem{map(typeof, (thr, x, d, u, params, subsystems))...}(ẋ, x, d, u, t, params, subsystems)
@@ -112,7 +116,7 @@ get_h_Gc_b(y::EThrusterY) = y.h_Gc_b
 
 f_disc!(sys::HybridSystem{EThruster}) = false
 
-function f_cont!(sys::HybridSystem{EThruster}, air::AirDataY)
+function f_cont!(sys::HybridSystem{EThruster}, air::AirY)
 
     @unpack ẋ, x, u, params = sys #no need for subsystems
     @unpack frame, battery, motor, propeller, gearbox = params

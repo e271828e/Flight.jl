@@ -4,21 +4,33 @@ using SciMLBase
 using LinearAlgebra
 
 
-air = AirDataY()
+air = AirY()
 
 thr = EThruster();
 thr_sys = HybridSystem(thr);
+y_thr = f_cont!(thr_sys, air);
 thr_mdl = HybridModel(thr_sys, (air,))
 step!(thr_mdl)
 
-g = SystemDescriptorGroup(left = EThruster(), right = EThruster());
+g = ComponentGroup(left = EThruster(), right = EThruster());
 g_sys = HybridSystem(g);
+y_g = f_cont!(g_sys, air);
 g_mdl = HybridModel(g_sys, (air,))
 step!(g_mdl)
 
 trn = DummyTerrainModel()
 atm = DummyAtmosphericModel()
 ac = TestAircraft();
+
+x_kin = x0(Kin())
+dx_pos = copy(x_kin.pos)
+y_kin = f_kin!(dx_pos, x_kin)
+y_acc = AccY()
+y_air = AirY()
+y_ta = Aircraft.TestAircraftY(y_kin, y_acc, y_air, y_g)
+
+d_pwp = d0(g)
+d_ta = Aircraft.TestAircraftD(y_pwp)
 
 ac_sys = HybridSystem(ac);
 ac_mdl = HybridModel(ac_sys, (trn, atm));

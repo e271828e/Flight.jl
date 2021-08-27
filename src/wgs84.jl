@@ -3,7 +3,7 @@ module WGS84
 using Base: Real, Symbol
 using LinearAlgebra
 using StaticArrays: SVector
-using Flight.Rotations
+using Flight.Attitude
 
 export ω_ie
 export NVector, WGS84Pos, rECEF

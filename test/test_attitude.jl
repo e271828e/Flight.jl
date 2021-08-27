@@ -1,8 +1,8 @@
-module TestRotations
+module TestAttitude
 
 using Test
 using LinearAlgebra
-using Flight.Rotations
+using Flight.Attitude
 using Flight.Quaternions
 
 export test_attitude
@@ -17,7 +17,7 @@ end
 
 
 function test_attitude()
-    @testset verbose = true "Rotations" begin
+    @testset verbose = true "Attitude" begin
         @testset verbose = true "RQuat" begin test_RQuat() end
         @testset verbose = true "RMatrix" begin test_RMatrix() end
         @testset verbose = true "RAxAng" begin test_RAxAng() end
@@ -287,7 +287,7 @@ function test_RMatrix()
 
         #time derivative
         ω_ab_b = [10, -4, 2]
-        @test dt(r_ab, ω_ab_b) == r_ab._mat * Rotations.skew(ω_ab_b)
+        @test dt(r_ab, ω_ab_b) == r_ab._mat * Attitude.skew(ω_ab_b)
     end
 
     @testset "Conversions" begin

@@ -23,7 +23,7 @@ conversions to and from `RQuat` to be fully compatible with all other subtypes
 and operations. However, for efficiency reasons, some direct methods are
 provided for the implemented subtypes.
 """
-module Rotations
+module Attitude
 
 using StaticArrays
 using LinearAlgebra

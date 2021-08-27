@@ -35,8 +35,8 @@ struct HybridModel{S <: HybridSystem, I <: OrdinaryDiffEq.ODEIntegrator, L <: Sa
         scb = SavingCallback(f_scb, log, saveat = y_saveat)
         cb_set = CallbackSet(dcb, scb)
 
-        x₀ = copy(sys.x)
-        problem = ODEProblem{true}(f_update!, x₀, (t_start, t_end), params)
+        x0 = copy(sys.x)
+        problem = ODEProblem{true}(f_update!, x0, (t_start, t_end), params)
         integrator = init(problem, method; callback = cb_set, save_everystep = false, int_kwargs...)
         new{typeof(sys), typeof(integrator), typeof(log)}(sys, integrator, log)
     end

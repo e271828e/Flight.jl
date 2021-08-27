@@ -5,9 +5,9 @@ using StaticArrays
 using ComponentArrays
 
 using Flight.Airdata
-using Flight.Dynamics
-import Flight.Dynamics: get_wr_Ob_b, get_h_Gc_b
-import Flight.System: X, D, Y, U, f_cont!, f_disc!
+using Flight.Airframe
+import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
+import Flight.System: x0, d0, Y, u0, f_cont!, f_disc!
 
 export LandingGearLeg, LandingGearGroup
 
@@ -35,53 +35,53 @@ struct ContactModel
     k_p::Float64
     k_i::Float64
 end
-X(::ContactModel) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
+x0(::ContactModel) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
 Y(::ContactModel) = ComponentVector(v = zeros(2), s = zeros(2), α_p = zeros(2), α_i = zeros(2),
                                     α_raw = zeros(2), α_sat = zeros(2), α = zeros(2))
-U(::ContactModel) = nothing
+u0(::ContactModel) = nothing
 
 abstract type AbstractSteering end
 
 struct NoSteering <: AbstractSteering end
-X(::NoSteering) = nothing
+x0(::NoSteering) = nothing
 Y(::NoSteering) = nothing
-U(::NoSteering) = nothing
+u0(::NoSteering) = nothing
 
 struct DirectSteering <: AbstractSteering
     limits::SVector{2,Float64}
 end
-X(::DirectSteering) = nothing
+x0(::DirectSteering) = nothing
 Y(::DirectSteering) = 0.0 #steering angle
-U(::DirectSteering) = 0.0 #steering angle input
+u0(::DirectSteering) = 0.0 #steering angle input
 
 struct ActuatedSteering{A <: AbstractActuator} <: AbstractSteering
     limits::SVector{2,Float64} #more generally, transmission kinematics could go here
     actuator::A #actuator model parameters go here
 end
-X(steering::ActuatedSteering) = X(steering.actuator)
+x0(steering::ActuatedSteering) = x0(steering.actuator)
 Y(steering::ActuatedSteering) = Y(steering.actuator)
-U(steering::ActuatedSteering) = U(steering.actuator) #typically, 1
+u0(steering::ActuatedSteering) = u0(steering.actuator) #typically, 1
 
 abstract type AbstractBraking end
 
 struct NoBraking <: AbstractBraking end
-X(::NoBraking) = nothing
+x0(::NoBraking) = nothing
 Y(::NoBraking) = nothing
-U(::NoBraking) = nothing
+u0(::NoBraking) = nothing
 
 struct DirectBraking <: AbstractBraking
     efficiency::Float64
 end
-X(::DirectBraking) = nothing
+x0(::DirectBraking) = nothing
 Y(::DirectBraking) = 0.0 #braking strength
-U(::DirectBraking) = 0.0 #braking strength input
+u0(::DirectBraking) = 0.0 #braking strength input
 
-function X(ldg::LandingGearLeg{A,S,B}) where {A,S,B}
+function x0(ldg::LandingGearLeg{A,S,B}) where {A,S,B}
     x_blocks = Dict(:Symbol, Any)
-    push!(x_blocks, :contact => X(ldg.contact))
-    push!(x_blocks, :shock => X(ldg.shock))
-    push!(x_blocks, :steering => X(ldg.steering))
-    push!(x_blocks, :braking => X(ldg.braking))
+    push!(x_blocks, :contact => x0(ldg.contact))
+    push!(x_blocks, :shock => x0(ldg.shock))
+    push!(x_blocks, :steering => x0(ldg.steering))
+    push!(x_blocks, :braking => x0(ldg.braking))
     #remove null blocks, then convert to named tuple, then pass to
     #ComponentVector and instantiate
 end
@@ -106,9 +106,9 @@ could #also #account for other braking model parameters
 
 
 #################### AbstractSystem interface
-X(::LandingGearLeg) = ComponentVector(state = 0.0)
+x0(::LandingGearLeg) = ComponentVector(state = 0.0)
 Y(::LandingGearLeg) = ComponentVector(output = 0.0) #both are valid, but not having missing elements in the overall Y vector is slightly faster for some operations
-U(::LandingGearLeg) = missing
+u0(::LandingGearLeg) = missing
 f_cont!(y, ẋ, x, u, t, ldg::LandingGearLeg, trn = nothing) = (ẋ.state = 0.001x.state)
 f_disc!(x, u, t, ldg::LandingGearLeg, trn = nothing) = false
 
@@ -118,7 +118,7 @@ get_h_Gc_b(y, comp::LandingGearLeg) = SVector(0.0, 0, 0)
 
 
 
-struct LandingGearGroup{C} <: SystemDescriptorGroup{C} end
+struct LandingGearGroup{C} <: ComponentGroup{C} end
 
 function LandingGearGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractLandingGearLeg} where {N}})
     LandingGearGroup{nt}()

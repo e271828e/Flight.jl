@@ -6,18 +6,22 @@ using ComponentArrays
 using RecursiveArrayTools
 using UnPack
 
+using Flight.Terrain
+using Flight.Atmosphere
+
 using Flight.System
-using Flight.Kinematics
-using Flight.Dynamics
+using Flight.Airframe
 using Flight.Airdata
 using Flight.Propulsion
 # using Flight.LandingGear
-using Flight.Terrain
-using Flight.Atmosphere
-import Flight.System: HybridSystem, X, D, U, f_cont!, f_disc!
+
+using Flight.Kinematics
+using Flight.Dynamics
+
+import Flight.System: HybridSystem, x0, d0, u0, f_cont!, f_disc!
 # import Flight.System: plotlog
 
-export TestAircraft
+export TestAircraft, TestAircraftD, TestAircraftY
 
 abstract type AbstractMassModel end
 
@@ -34,11 +38,23 @@ end
 get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.r_ObG_b)
 
 abstract type AbstractControlMapping end
-struct NoControlMapping <: AbstractControlMapping end
+struct NoMapping <: AbstractControlMapping end
 
-struct TestAircraft{ Ctl <: AbstractControlMapping, Mass <: AbstractMassModel, Pwp} <: SystemDescriptor
-    # Ldg} <: SystemDescriptor
+#a StateMachine is really a DiscreteSystem. therefore, it is described by an
+#AbstractComponent (but not an AirframeComponent)
+abstract type AbstractStateMachine <: AbstractComponent end
+struct NoStateMachine <: AbstractStateMachineEnd end
+
+struct NoStateMachineD <: AbstractD{NoStateMachine} end
+d0(::NoStateMachine) = NoStateMachineD()
+
+struct TestAircraft{Ctl <: AbstractControlMapping,
+                    StM <: AbstractStateMachine,
+                    Mass <: AbstractMassModel,
+                    Pwp <: AbstractComponent} <: AbstractComponent
+    # Ldg} <: AbstractComponent
     ctl::Ctl
+    stm::StM
     mass::Mass
     pwp::Pwp
     # ldg::Ldg
@@ -46,30 +62,51 @@ end
 
 function TestAircraft()
 
-    ctl = NoControlMapping()
+    ctl = NoMapping()
+    stm = NoStateMachine()
     mass = ConstantMassModel(m = 1, J_Ob_b = 1*Matrix{Float64}(I,3,3))
-    pwp = SystemDescriptorGroup((
+    pwp = ComponentGroup((
         left = EThruster(motor = ElectricMotor(α = CW)),
         right = EThruster(motor = ElectricMotor(α = CCW))))
-    # ldg = SystemDescriptorGroup((
+    # ldg = ComponentGroup((
     #     lmain = LandingGearLeg(),
     #     rmain = LandingGearLeg(),
     #     nlg = LandingGearLeg()))
 
     # TestAircraft(mass, pwp, ldg)
-    TestAircraft(ctl, mass, pwp)
+    TestAircraft(ctl, stm, mass, pwp)
 end
+
 
 #there are no aircraft's "own" continuous states (if there were, we could always
 #create a subsystem to accomodate them). however, we cannot say the same of
 #discrete states. there may be some discrete logic in the aircraft which has no
 #continuous states. and if it has no continuous states, we cannot store it
 #within any subsystem (all systems are required to have at least continuous
-#states). for these discrete states we can simply allocate a field in the NT
-#returned by D
-X(ac::TestAircraft) = ComponentVector(kin = X(Kin()), pwp = X(ac.pwp))
-D(ac::TestAircraft) = (pwp = D(ac.pwp), )
-U(::TestAircraft{NoControlMapping,Mass,Pwp} where {Mass,Pwp}) = nothing
+#states). for these discrete states we reserve a field own in TestAircraftD
+
+struct TestAircraftY{PwpY<:AbstractY} <: AbstractY{TestAircraft}
+    kin::KinY
+    acc::AccY
+    air::AirY
+    pwp::PwpY
+end
+
+
+struct TestAircraftD{StmD<:AbstractD, PwpD<:AbstractD} <: AbstractD{TestAircraft}
+    stm::StmD
+    pwp::PwpD
+end
+
+#the crucial different wrt X, D and Y is that U is chosen by ourselves, it is
+#not determined by the aircraft subsystems (although obviously it should be
+#defined taking them into account)
+struct EmptyU <: AbstractU{TestAircraft}
+end
+
+x0(ac::TestAircraft) = ComponentVector(kin = x0(Kin()), pwp = x0(ac.pwp))
+d0(ac::TestAircraft) = TestAircraftD(d0(ac.stm), d0(ac.pwp))
+u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyU()
 
 #in a NoMapping aircraft, there are no aircraft controls! we act upon the
 #subsystem's controls directly! this allows testing multiple subsystem
@@ -78,10 +115,10 @@ U(::TestAircraft{NoControlMapping,Mass,Pwp} where {Mass,Pwp}) = nothing
 
 #=
 # example:
-const my_pwp = SystemDescriptorGroup(left = EThruster(), right = EThruster())
+const my_pwp = ComponentGroup(left = EThruster(), right = EThruster())
 const MyPwp = typeof(my_pwp)
 struct MyMapping <: AbstractControlMapping
-U(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) where {Mass,Ldg} = ComponentVector(throttle = 0.0)
+u0(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) where {Mass,Ldg} = ComponentVector(throttle = 0.0)
 #and now we define: assign_control_method! dispatching on these type
 function assign_control_inputs!(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) where {Mass,Ldg}
     ac.subsystems.pwp.left.throttle = ac.u.throttle
@@ -91,11 +128,11 @@ end
 
 const TestAircraftSys{C,M,P} = HybridSystem{TestAircraft{C,M,P}} where {C,M,P}
 
-function HybridSystem(ac::TestAircraft, ẋ = X(ac), x = X(ac), d = D(ac), u = U(ac), t = Ref(0.0))
+function HybridSystem(ac::TestAircraft, ẋ = x0(ac), x = x0(ac), d = d0(ac), u = u0(ac), t = Ref(0.0))
     #each subsystem allocate its own u, then we can decide how the aircraft's u
     #should map onto it via assign_control_inputs!
-    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, d.pwp, U(ac.pwp), t)
-    # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, U(ac.ldg), t)
+    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, d.pwp, u0(ac.pwp), t)
+    # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, u0(ac.ldg), t)
     params = (mass = ac.mass,)
     # subsystems = (pwp = pwp, ldg = ldg)
     subsystems = (pwp = pwp,)
@@ -107,7 +144,7 @@ end
 #overriding this function for specific TestAircraft type parameter
 #combinations allows us to customize how the aircraft's control inputs map
 #into its subsystems's control inputs.
-assign_control_inputs!(::TestAircraftSys{NoControlMapping,M,P} where {M,P}) = nothing
+assign_control_inputs!(::TestAircraftSys{NoMapping,M,P} where {M,P}) = nothing
 
 
 function f_cont!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P},
@@ -125,7 +162,7 @@ function f_cont!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P},
     #aircraft's control input vector
     assign_control_inputs!(ac_sys)
 
-    y_air = AirDataY() #replacej
+    y_air = AirY() #replacej
     # y.air .= get_air_data(). #call air data system here to update air data, passing also as
     # argument data.atmospheric_model
 
@@ -159,9 +196,7 @@ function f_cont!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P},
     #update dynamics
     y_acc = f_dyn!(ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y_kin)
 
-# Y(ac::TestAircraft) = ComponentVector(kin = Y(Kin()), acc = Y(Acc()), air =
-# Y(AirData()), pwp = Y(ac.pwp))
-    return (kin = y_kin, acc = y_acc, air = y_air, pwp = y_pwp)
+    return TestAircraftY(y_kin, y_acc, y_air, y_pwp)
 end
 
 

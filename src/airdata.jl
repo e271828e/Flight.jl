@@ -1,11 +1,11 @@
 module Airdata
 
-export AirDataY
+export AirY
 
 const p0 = 101325
 const T0 = 288.15
 
-Base.@kwdef struct AirDataY
+Base.@kwdef struct AirY
     ps::Float64 = p0
     pt::Float64 = p0
     Tt::Float64 = T0
