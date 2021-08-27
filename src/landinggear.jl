@@ -118,7 +118,7 @@ get_h_Gc_b(y, comp::LandingGearLeg) = SVector(0.0, 0, 0)
 
 
 
-struct LandingGearGroup{C} <: ComponentGroup{C} end
+struct LandingGearGroup{C} <: ACGroup{C} end
 
 function LandingGearGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractLandingGearLeg} where {N}})
     LandingGearGroup{nt}()
@@ -135,7 +135,7 @@ end
 # f_cont!(::HasInput, y, dx, x ,u, t, sys, args...) = f_cont!(y, dx, x, u, t, sys, args...)
 # f_cont!(::HasNoInput, y, dx, x, u, t, sys, args...) = f_cont!(y, dx, x, t, sys, args...)
 
-# #for a ComponentGroup
+# #for a ACGroup
 # f_cont!(MaybeInput(S), MaybeOutput(S), y, dx, x, u, t, sys, args...)
 # f_cont!(::HasInput, ::HasOutput, y, dx, x ,u, t, sys, args...)
 # #now, this method needs to consider the possibility for each component that it

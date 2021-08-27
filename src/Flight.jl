@@ -17,6 +17,7 @@ include("atmosphere.jl")
 #systems and models
 include("system.jl")
 include("model.jl")
+include("statemachine.jl")
 
 #airframe components
 include("airframe.jl")
@@ -39,6 +40,7 @@ include("aircraft.jl")
 
 @reexport using .System
 @reexport using .Model
+@reexport using .StateMachine
 
 @reexport using .Airframe
 @reexport using .Airdata

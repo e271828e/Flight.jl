@@ -5,23 +5,8 @@ using ComponentArrays
 export x0, d0, u0, f_cont!, f_disc!
 export AbstractComponent, AbstractSystem, DiscreteSystem, HybridSystem, AlgebraicSystem
 export AbstractD, AbstractU, AbstractY
-export ComponentGroup, CGroupD, CGroupU, CGroupY
 
 # export plotlog
-
-
-#pregunta: necesito realmente subsystems? que me aporta? por ejemplo, supongamos
-#que me defino un tricycle landing gear. al final me tendre que hacer una
-#f_cont! que considere la estructura especifica del state vector y elinput
-#vector y reparta sus elementos a las distintas patas. si, pero en el momento en
-#que quiera llamar a la f_cont! de cada una de esas patas, al final esa f_cont!
-#acepta como argumento un sys. en algun sitio tendre que almacenar esos sys si
-#quiero llamar a sus f_cont!s desde la f_cont! del parent system. por tanto si,
-#si que aporta tener subsystems. de acuerdo. pero entonces eso significa que
-#el parent system no debe almacenar en su field params directamente el
-#AbstractComponent que lo genero, porque es de suponer que los distintos
-#sub-fields de ese AbstractComponents habran sido repartidos por los diferentes
-#subsystems. de hecho, ese es el caso por excelencia de ComponentGroup
 
 no_extend_error(f::Function, ::Type{S}) where {S} = error("Function $f not implemented for subtype $S or incorrect call signature")
 
@@ -78,95 +63,6 @@ f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 #is safer to force each concrete System that does not require an actual f_disc!
 #to implement a trivial f_disc! that returns false
 
-######################### ComponentGroup ##############################
-
-struct ComponentGroup{T<:AbstractComponent,L} <: AbstractComponent
-    components::NamedTuple{L, M} where {L, M <: NTuple{N, T} where {N, T<:AbstractComponent}}
-    function ComponentGroup(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, T}} where {N, T<:AbstractComponent}
-        new{T,L}(nt)
-    end
-end
-
-ComponentGroup(;kwargs...) = ComponentGroup((; kwargs...))
-
-Base.length(::ComponentGroup{T,L}) where {T,L} = length(L)
-Base.getindex(g::ComponentGroup, i) = getindex(getfield(g,:components), i)
-Base.getproperty(g::ComponentGroup, i::Symbol) = getproperty(getfield(g,:components), i)
-Base.keys(::ComponentGroup{T,L}) where {T,L} = L
-Base.values(g::ComponentGroup) = values(getfield(g,:components))
-
-
-struct CGroupU{U<:AbstractU,L} <: AbstractU{ComponentGroup}
-    nt::NamedTuple{L, NTuple{N,U}} where {N}
-    function CGroupU(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, U}} where {N, U<:AbstractU}
-        new{U,L}(nt)
-    end
-end
-
-struct CGroupD{D<:AbstractD,L} <: AbstractD{ComponentGroup}
-    nt::NamedTuple{L, NTuple{N,D}} where {N}
-    function CGroupD(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, D}} where {N, D<:AbstractD}
-        new{D,L}(nt)
-    end
-end
-
-struct CGroupY{Y<:AbstractY,L} <: AbstractY{ComponentGroup}
-    nt::NamedTuple{L, NTuple{N,Y}} where {N}
-    function CGroupY(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, Y}} where {N, Y<:AbstractY}
-        new{Y,L}(nt)
-    end
-end
-
-x0(g::ComponentGroup{T,L}) where {T,L} = ComponentVector(NamedTuple{L}(x0.(values(g))))
-d0(g::ComponentGroup{T,L}) where {T,L} = CGroupD(NamedTuple{L}(d0.(values(g))))
-u0(g::ComponentGroup{T,L}) where {T,L} = CGroupU(NamedTuple{L}(u0.(values(g))))
-
-Base.getproperty(y::Union{CGroupY, CGroupD, CGroupU}, s::Symbol) = getproperty(getfield(y,:nt), s)
-Base.getindex(y::Union{CGroupY, CGroupD, CGroupU}, s::Symbol) = getindex(getfield(y,:nt), s)
-
-function HybridSystem(g::ComponentGroup{T,L},
-    ẋ = x0(g), x = x0(g), d = d0(g), u = u0(g), t = Ref(0.0)) where {T,L}
-
-    s_list = Vector{HybridSystem}()
-    for label in L
-        s_cmp = HybridSystem(map((λ)->getproperty(λ, label), (g, ẋ, x, d, u))..., t)
-        push!(s_list, s_cmp)
-    end
-
-    params = nothing #everything is already stored in the subsystem's parameters
-    subsystems = NamedTuple{L}(s_list)
-
-    HybridSystem{map(typeof, (g, x, d, u, params, subsystems))...}(ẋ, x, d, u, t, params, subsystems)
-end
-
-@inline @generated function f_cont!(sys::HybridSystem{C}, args...) where {C<:ComponentGroup{T,L}} where {T,L}
-    ex_tuple = Expr(:tuple) #construct a tuple around all the individual function calls
-    for label in L
-        label = QuoteNode(label)
-        ex_ss = quote
-            f_cont!(sys.subsystems[$label], args...)
-        end
-        push!(ex_tuple.args, ex_ss)
-    end
-    #construct a NamedTuple from the labels L and the constructed tuple
-    ex_nt = Expr(:call, Expr(:curly, NamedTuple, L), ex_tuple)
-    ex_out = Expr(:call, CGroupY, ex_nt)
-    return ex_out
-end
-#
-
-@inline @generated function (f_disc!(sys::HybridSystem{C}, args...)::Bool) where {C<:ComponentGroup{T,L}} where {T,L}
-    ex = Expr(:block)
-    push!(ex.args, :(x_mod = false))
-    for label in L
-        label = QuoteNode(label)
-        ex_ss = quote
-            x_mod = x_mod || f_disc!(sys.subsystems[$label], args...)
-        end
-        push!(ex.args, ex_ss)
-    end
-    return ex
-end
 
 # #replace this with the appropriate overloads, Plot recipes, whatever
 # plotlog(log, sys::AbstractSystem) = extend_error(S)

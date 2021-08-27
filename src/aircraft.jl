@@ -10,6 +10,7 @@ using Flight.Terrain
 using Flight.Atmosphere
 
 using Flight.System
+using Flight.StateMachine
 using Flight.Airframe
 using Flight.Airdata
 using Flight.Propulsion
@@ -40,18 +41,10 @@ get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.
 abstract type AbstractControlMapping end
 struct NoMapping <: AbstractControlMapping end
 
-#a StateMachine is really a DiscreteSystem. therefore, it is described by an
-#AbstractComponent (but not an AirframeComponent)
-abstract type AbstractStateMachine <: AbstractComponent end
-struct NoStateMachine <: AbstractStateMachineEnd end
-
-struct NoStateMachineD <: AbstractD{NoStateMachine} end
-d0(::NoStateMachine) = NoStateMachineD()
-
 struct TestAircraft{Ctl <: AbstractControlMapping,
                     StM <: AbstractStateMachine,
                     Mass <: AbstractMassModel,
-                    Pwp <: AbstractComponent} <: AbstractComponent
+                    Pwp <: AbstractAirframeComponent} <: AbstractComponent
     # Ldg} <: AbstractComponent
     ctl::Ctl
     stm::StM
@@ -65,10 +58,10 @@ function TestAircraft()
     ctl = NoMapping()
     stm = NoStateMachine()
     mass = ConstantMassModel(m = 1, J_Ob_b = 1*Matrix{Float64}(I,3,3))
-    pwp = ComponentGroup((
+    pwp = ACGroup((
         left = EThruster(motor = ElectricMotor(α = CW)),
         right = EThruster(motor = ElectricMotor(α = CCW))))
-    # ldg = ComponentGroup((
+    # ldg = ACGroup((
     #     lmain = LandingGearLeg(),
     #     rmain = LandingGearLeg(),
     #     nlg = LandingGearLeg()))
@@ -80,10 +73,15 @@ end
 
 #there are no aircraft's "own" continuous states (if there were, we could always
 #create a subsystem to accomodate them). however, we cannot say the same of
-#discrete states. there may be some discrete logic in the aircraft which has no
-#continuous states. and if it has no continuous states, we cannot store it
-#within any subsystem (all systems are required to have at least continuous
-#states). for these discrete states we reserve a field own in TestAircraftD
+#discrete states. there may be some discrete logic (a state machine) in the
+#aircraft which has no continuous states. and if it has no continuous states, we
+#cannot store it within any subsystem (all systems are required to have at least
+#continuous states). we reserve a state machine field for this. the state
+#machine only has discrete states of its own, but every time its f_disc! is
+#called, it can (and should) accept the aircraft's continuous state (which it
+#should not modify) and its input vector (which it shouldn't modify either,
+#because if it is an internally modifiable input vector, it is not actually an
+#input vector). the state machine, like
 
 struct TestAircraftY{PwpY<:AbstractY} <: AbstractY{TestAircraft}
     kin::KinY
@@ -98,14 +96,15 @@ struct TestAircraftD{StmD<:AbstractD, PwpD<:AbstractD} <: AbstractD{TestAircraft
     pwp::PwpD
 end
 
-#the crucial different wrt X, D and Y is that U is chosen by ourselves, it is
-#not determined by the aircraft subsystems (although obviously it should be
-#defined taking them into account)
-struct EmptyU <: AbstractU{TestAircraft}
-end
+#the crucial different wrt X, D and Y is that U is arbitrarily defined by
+#ourselves, it is not determined by the aircraft subsystems (although obviously
+#it should be defined taking them into account)
 
 x0(ac::TestAircraft) = ComponentVector(kin = x0(Kin()), pwp = x0(ac.pwp))
 d0(ac::TestAircraft) = TestAircraftD(d0(ac.stm), d0(ac.pwp))
+
+
+struct EmptyU <: AbstractU{TestAircraft} end
 u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyU()
 
 #in a NoMapping aircraft, there are no aircraft controls! we act upon the
@@ -115,7 +114,7 @@ u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyU()
 
 #=
 # example:
-const my_pwp = ComponentGroup(left = EThruster(), right = EThruster())
+const my_pwp = ACGroup(left = EThruster(), right = EThruster())
 const MyPwp = typeof(my_pwp)
 struct MyMapping <: AbstractControlMapping
 u0(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) where {Mass,Ldg} = ComponentVector(throttle = 0.0)
@@ -126,16 +125,17 @@ function assign_control_inputs!(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) whe
 end
 =#
 
-const TestAircraftSys{C,M,P} = HybridSystem{TestAircraft{C,M,P}} where {C,M,P}
+const TestAircraftSys{C,S,M,P} = HybridSystem{TestAircraft{C,S,M,P}} where {C,S,M,P}
 
 function HybridSystem(ac::TestAircraft, ẋ = x0(ac), x = x0(ac), d = d0(ac), u = u0(ac), t = Ref(0.0))
     #each subsystem allocate its own u, then we can decide how the aircraft's u
     #should map onto it via assign_control_inputs!
+    stm = DiscreteSystem(ac.stm, d.stm, u0(ac.stm), t)
     pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, d.pwp, u0(ac.pwp), t)
     # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, u0(ac.ldg), t)
     params = (mass = ac.mass,)
     # subsystems = (pwp = pwp, ldg = ldg)
-    subsystems = (pwp = pwp,)
+    subsystems = (stm = stm, pwp = pwp,)
     HybridSystem{map(typeof, (ac, x, d, u, params, subsystems))...}(ẋ, x, d, u, t, params, subsystems)
 end
 
@@ -144,10 +144,10 @@ end
 #overriding this function for specific TestAircraft type parameter
 #combinations allows us to customize how the aircraft's control inputs map
 #into its subsystems's control inputs.
-assign_control_inputs!(::TestAircraftSys{NoMapping,M,P} where {M,P}) = nothing
+assign_control_inputs!(::TestAircraftSys{NoMapping,S,M,P} where {S,M,P}) = nothing
 
 
-function f_cont!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P},
+function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
                 trn::AbstractTerrainModel,
                 atm::AbstractAtmosphericModel)
 
