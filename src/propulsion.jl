@@ -3,8 +3,11 @@ module Propulsion
 using LinearAlgebra
 using StaticArrays
 using ComponentArrays
+using StructArrays
+using RecursiveArrayTools
 using Unitful
 using UnPack
+using Plots
 
 using Flight.Airdata
 using Flight.Airframe
@@ -27,7 +30,7 @@ end
 Base.@kwdef struct SimpleProp
     kF::Float64 = 2e-3
     kM::Float64 = 5e-5
-    J::Float64 = 1.0
+    J::Float64 = 0.5
 end
 
 function get_wrench(prop::SimpleProp, ω::Real, air::AirY) #air data just for interface demo
@@ -146,6 +149,72 @@ function f_cont!(sys::HybridSystem{EThruster}, air::AirY)
 
 end
 
+function System.rplot(t::AbstractVector{<:Real}, y::AbstractVector{EThrusterY}, args...)
+
+    y_sa = StructArray(y)
+    @unpack throttle, ω_shaft, i, c_bat, wr_Oc_c, wr_Ob_b, h_Gc_b = y_sa
+
+
+    #throttle,
+    #battery charge: same plot, two subplots
+    #wr_Ob_b: two subplots, one for F and another for M, all components
+
+    throttle_plot = plot(t, throttle, title = "Throttle", xlabel = "u")
+    # plot(t, ω_shaft)
+
+    display(throttle_plot)
+
+    h_Gc_b = convert(Array, VectorOfArray(h_Gc_b))
+
+    #my use case is not really "i have a weird custom type that i want plotted
+    #in a specific way" (this would be a User Recipe or a Type Recipe), but more
+    #like "i have multiple custom types. each of which consists of fields, and
+    #for each of these fields i want to generate a separate plot which will be
+    #one in a set of predefined layouts". this is more of a Plot Recipeo
+
+    #would like to have recipes to plot
+    #a) A n-element vector in a single subplot, provide legend and colors
+    #b) A n-element vector split in multiple subplots, vertical or horizontal
+    #c) Multiple scalars in multiple subplots, vertical or horizontal
+
+    #no, porque un Plot recipe supone que ya tiene como argumentos los datos
+    #x,y,z de una serie. y en el caso de un n-element vector no es una serie,
+    #son 3 realmente. y una User Recipe se puede usar para definir un cierto
+    #tipo de layout. defino ese layout como un nuevo data type con @userplot
+    #o a mano. o sea que si! SI QUE SON USER RECIPES lo que necesito.
+    #porque son varias series.
+
+    #ojo: A MENOS QUE dentro del plotattributes[:y] que recibe un Plot recipe si
+    #que llegue un array de 3 filas. no. un Plot recibe recibe una serie, y una
+    #serie es 1-D. http://docs.juliaplots.org/latest/input_data/#columns-are-series
+
+
+end
+"""
+quiza definir varios niveles de detalle como argumento de entrada a los rplot
+que me permita decidir si quiero TODAS las figuras para debugging o solo el set
+minimo
+"""
+
+"""
+necesito un recipe para Wrench tambien? depende, si voy a generar un solo plot
+con dos subplots, puedo hacerlo. si no, tengo que generar un rplot para Wrench
+que llame a la recipe Vector3DPlot(t, F) y Vector3DPlot(t, M). esto ultimo es lo
+mejor. o en su defecto, extraer a mano en cada rplot F y M y pintarlas como me
+venga mejor cada una. si no quiero ese control, puedo hacer que rplot(::Wrench)
+me genere ya dos figuras a Vector3DPlot. pero Wrench es omnipresente, seria
+bueno generar un rplot aunque sea a expensas de usar los mismos kwargs para
+ambas figuras.
+
+"""
+
+# https://daschw.github.io/recipes/
+# http://docs.juliaplots.org/latest/recipes/
+
+
+
+
+
 # function PropulsionGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
 #     PropulsionGroup{nt}()
 # end
@@ -153,10 +222,10 @@ end
 PropulsionGroup(nt::NamedTuple{L, NTuple{N, T}  where {L,N,T<:NTuple{N,
 Propulsion.AbstractThruster}}) = PropulsionGroup{nt}()
 
-#the reason is probably that NamedTuple, unlike Tuple (and therefore NTuple) is
+#the reason is that NamedTuple, unlike Tuple (and therefore NTuple) is
 #NOT covariant. that is:
-#(EThruster(), EThruster()) isa NTuple{N, AbstractThruster} where {N} = true
+#(EThruster(), EThruster()) isa NTuple{N, AbstractThruster} where {N} == true
 #however:
-#(a=EThruster(), b=NThruster) isa NamedTuple{L, NTuple{N, AbstractThruster} where {N} = false
+#(a=EThruster(), b=NThruster) isa NamedTuple{L, NTuple{N, AbstractThruster} where {N} == false
 =#
 end #module

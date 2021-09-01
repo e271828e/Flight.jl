@@ -5,6 +5,7 @@ using ComponentArrays
 export x0, d0, u0, f_cont!, f_disc!
 export AbstractComponent, AbstractSystem, DiscreteSystem, HybridSystem, AlgebraicSystem
 export AbstractD, AbstractU, AbstractY
+export rplot
 
 # export plotlog
 
@@ -12,6 +13,19 @@ no_extend_error(f::Function, ::Type{S}) where {S} = error("Function $f not imple
 
 #anything around which we can build a System
 abstract type AbstractComponent end #anything that can go in a HybridSystem
+
+#output struct produced by AbstractSystem{C}
+abstract type AbstractY{C<:AbstractComponent} end
+#discrete state vector struct required by AbstractSystem{C}
+abstract type AbstractD{C<:AbstractComponent} end
+#input struct required by AbstractSystem{C}
+abstract type AbstractU{C<:AbstractComponent} end
+
+x0(::C) where {C<:AbstractComponent} = no_extend_error(x0, C)
+d0(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
+u0(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
+
+rplot(::AbstractVector{<:Real}, ::AbstractVector{Y}, args...) where {Y<:AbstractY} = no_extend_error(rplot, Y)
 
 abstract type AbstractSystem{C<:AbstractComponent} end
 
@@ -41,16 +55,6 @@ struct AlgebraicSystem{C, U, P, S} <: AbstractSystem{C}
     subsystems::S
 end
 
-#output struct produced by AbstractSystem{C}
-abstract type AbstractY{C<:AbstractComponent} end
-#discrete state vector struct required by AbstractSystem{C}
-abstract type AbstractD{C<:AbstractComponent} end
-#input struct required by AbstractSystem{C}
-abstract type AbstractU{C<:AbstractComponent} end
-
-x0(::C) where {C<:AbstractComponent} = no_extend_error(x0, C)
-d0(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
-u0(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
 
 f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 (f_disc!(::S, args...)::Bool) where {S<:AbstractSystem} = no_extend_error(f_disc!, S)
@@ -64,8 +68,6 @@ f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 #to implement a trivial f_disc! that returns false
 
 
-# #replace this with the appropriate overloads, Plot recipes, whatever
-# plotlog(log, sys::AbstractSystem) = extend_error(S)
 
 
 

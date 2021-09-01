@@ -4,6 +4,13 @@ using SciMLBase
 using LinearAlgebra
 using BenchmarkTools
 
+using StructArrays
+using UnPack
+using RecursiveArrayTools
+using Plots
+using LaTeXStrings
+
+using Flight.Plotting
 
 air = AirY()
 
@@ -11,7 +18,12 @@ thr = EThruster();
 thr_sys = HybridSystem(thr);
 y_thr = f_cont!(thr_sys, air);
 thr_mdl = HybridModel(thr_sys, (air,))
-step!(thr_mdl)
+thr_mdl.u.throttle = 1
+step!(thr_mdl, 10, true)
+
+t = thr_mdl.log.t
+y_sa = StructArray(thr_mdl.log.saveval)
+thplot(t, y_sa.h_Gc_b)
 
 g = ACGroup(left = EThruster(), right = EThruster());
 g_sys = HybridSystem(g);

@@ -1,6 +1,7 @@
 module Flight
 
 using Reexport
+using BenchmarkTools
 
 #(sub) modules
 # include("lbv.jl")
@@ -8,6 +9,7 @@ using Reexport
 
 #math and environment
 include("utils.jl")
+include("plotting.jl")
 include("quaternions.jl")
 include("attitude.jl")
 include("wgs84.jl") #many, many constants here. should keep it a module
@@ -32,6 +34,7 @@ include("dynamics.jl")
 include("aircraft.jl")
 
 @reexport using .Utils
+@reexport using .Plotting
 @reexport using .Quaternions
 @reexport using .Attitude
 @reexport using .WGS84
