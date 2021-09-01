@@ -4,7 +4,6 @@ using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks, RecursiveArrayTools
 using UnPack
 
 using Flight.System
-# import Flight.System: rplot
 
 export HybridModel
 
@@ -114,12 +113,12 @@ function SciMLBase.reinit!(m::HybridModel, args...)
     return nothing
 end
 
-System.rplot(mdl::HybridModel, args...) = rplot(mdl.log, args...)
+# System.rplot(mdl::HybridModel, args...) = rplot(mdl.log, args...)
 
-#delegate recursive plotting to the simulated System's AbstractY rplot method
-function System.rplot(log::DiffEqCallbacks.SavedValues, args...)
-    isempty(log.t) ? error("Can't plot an empty log") : rplot(log.t, log.saveval, args...)
-end
+# #delegate recursive plotting to the simulated System's AbstractY rplot method
+# function System.rplot(log::DiffEqCallbacks.SavedValues, args...)
+#     isempty(log.t) ? error("Can't plot an empty log") : rplot(log.t, log.saveval, args...)
+# end
 
 #the following causes type instability and destroys performance:
 # function f_update!(ẋ, x, p, t)

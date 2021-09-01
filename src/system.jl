@@ -1,13 +1,11 @@
 module System
 
 using ComponentArrays
+using Flight.Plotting
 
 export x0, d0, u0, f_cont!, f_disc!
 export AbstractComponent, AbstractSystem, DiscreteSystem, HybridSystem, AlgebraicSystem
 export AbstractD, AbstractU, AbstractY
-export rplot
-
-# export plotlog
 
 no_extend_error(f::Function, ::Type{S}) where {S} = error("Function $f not implemented for subtype $S or incorrect call signature")
 
@@ -24,8 +22,6 @@ abstract type AbstractU{C<:AbstractComponent} end
 x0(::C) where {C<:AbstractComponent} = no_extend_error(x0, C)
 d0(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
 u0(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
-
-rplot(::AbstractVector{<:Real}, ::AbstractVector{Y}, args...) where {Y<:AbstractY} = no_extend_error(rplot, Y)
 
 abstract type AbstractSystem{C<:AbstractComponent} end
 
@@ -59,7 +55,7 @@ end
 f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 (f_disc!(::S, args...)::Bool) where {S<:AbstractSystem} = no_extend_error(f_disc!, S)
 
-#this method is free to modify the system's discrete state, control inputs and
+#f_disc! is free to modify a Hybrid system's discrete state, control inputs and
 #continuous state. if it modifies the latter, it must return true, false
 #otherwise. it is dangerous to provide a default fallback for f_disc!, because
 #if the intended f_disc! implementation for the System has the wrong interface,
@@ -68,6 +64,14 @@ f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 #to implement a trivial f_disc! that returns false
 
 
+function Plots.plot(::TimeHistory{Y}; mode = :basic) where {Y<:AbstractY}
+    no_extend_error(plot, Y)
+end
+#this must be a direct plot method extension, it cannot be a recipe. a recipe is
+#called within the pipeline for a SINGLE figure. but a TimeHistory{<:AbstractY}
+#will generally need to make not one but multiple plots. kwords don't
+#participate in dispatch, but this signature shows what extending methods need
+#to implement function
 
 
 

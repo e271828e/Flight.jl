@@ -1,7 +1,7 @@
 module Flight
 
 using Reexport
-using BenchmarkTools
+@reexport using BenchmarkTools
 
 #(sub) modules
 # include("lbv.jl")
@@ -30,8 +30,8 @@ include("propulsion.jl")
 #kinematics & dynamics
 include("kinematics.jl")
 include("dynamics.jl")
-
 include("aircraft.jl")
+
 
 @reexport using .Utils
 @reexport using .Plotting
@@ -53,6 +53,7 @@ include("aircraft.jl")
 @reexport using .Kinematics
 @reexport using .Dynamics
 @reexport using .Aircraft
+
 
 println("REMINDER: Set normalization = false")
 

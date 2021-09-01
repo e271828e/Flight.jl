@@ -149,6 +149,7 @@ function f_cont!(sys::HybridSystem{EThruster}, air::AirY)
 
 end
 
+"""
 function System.rplot(t::AbstractVector{<:Real}, y::AbstractVector{EThrusterY}, args...)
 
     y_sa = StructArray(y)
@@ -188,28 +189,9 @@ function System.rplot(t::AbstractVector{<:Real}, y::AbstractVector{EThrusterY}, 
     #que llegue un array de 3 filas. no. un Plot recibe recibe una serie, y una
     #serie es 1-D. http://docs.juliaplots.org/latest/input_data/#columns-are-series
 
-
 end
-"""
-quiza definir varios niveles de detalle como argumento de entrada a los rplot
-que me permita decidir si quiero TODAS las figuras para debugging o solo el set
-minimo
-"""
 
 """
-necesito un recipe para Wrench tambien? depende, si voy a generar un solo plot
-con dos subplots, puedo hacerlo. si no, tengo que generar un rplot para Wrench
-que llame a la recipe Vector3DPlot(t, F) y Vector3DPlot(t, M). esto ultimo es lo
-mejor. o en su defecto, extraer a mano en cada rplot F y M y pintarlas como me
-venga mejor cada una. si no quiero ese control, puedo hacer que rplot(::Wrench)
-me genere ya dos figuras a Vector3DPlot. pero Wrench es omnipresente, seria
-bueno generar un rplot aunque sea a expensas de usar los mismos kwargs para
-ambas figuras.
-
-"""
-
-# https://daschw.github.io/recipes/
-# http://docs.juliaplots.org/latest/recipes/
 
 
 

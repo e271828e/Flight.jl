@@ -5,10 +5,6 @@ using LinearAlgebra
 using BenchmarkTools
 
 using StructArrays
-using UnPack
-using RecursiveArrayTools
-using Plots
-using LaTeXStrings
 
 using Flight.Plotting
 

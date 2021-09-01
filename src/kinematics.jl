@@ -49,14 +49,7 @@ Base.@kwdef struct PosY
     e_nb::REuler
     ψ_nl::Float64
     q_el::RQuat
-<<<<<<< HEAD
     Ob::NVectorAlt #may need to add a LatLonAlt field
-=======
-    Ob::NVectorAlt
-    ϕ::Float64
-    λ::Float64
-    h::Float64
->>>>>>> 338417e (Updated WGS84 to an abstract type with subtypes NVectorAlt, LatLonAlt, CartECEF)
     Δx::Float64
     Δy::Float64
 end

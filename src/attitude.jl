@@ -26,8 +26,10 @@ provided for the implemented subtypes.
 module Attitude
 
 using StaticArrays
+using StructArrays
 using LinearAlgebra
-using Flight.Quaternions: UnitQuat, Quat
+using Flight.Quaternions
+using Flight.Plotting
 #using ..Quaternions: UnitQuat, Quat #also works (but relies on folder hierarchy)
 
 export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dt
@@ -326,5 +328,25 @@ end
 function Base.convert(::Type{RQuat}, r::REuler)
     Rz(r.ψ) ∘ Ry(r.θ) ∘ Rx(r.φ)
 end
+
+########################## Plotting #################################
+
+#unless a more specialized method is defined, a TimeHistory{Rotations} is
+#converted to REuler for plotting
+@recipe function f(th::TimeHistory{<:AbstractVector{<:Rotation}})
+
+    v_euler = Vector{REuler}(undef, length(th.data))
+    for i in 1:length(v_euler)
+        v_euler[i] = REuler(th.data[i])
+    end
+    sa = StructArray(v_euler)
+    data = hcat(sa.ψ, sa.θ, sa.φ)
+
+    label --> [L"$\psi$" L"$\theta$" L"$\varphi$"]
+
+    return TimeHistory(th.t, data)
+
+end
+
 
 end
