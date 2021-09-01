@@ -6,7 +6,7 @@ using StaticArrays: SVector
 using Flight.Attitude
 
 export ω_ie
-export NVector, WGS84Pos, rECEF
+export NVector, NVectorAlt, LatLonAlt, CartECEF
 export gravity, ltf, radii, ψ_nl, lat, lon
 
 #WGS84 fundamental constants, SI units
@@ -48,7 +48,7 @@ function NVector(; ϕ::Real = 0., λ::Real = 0.)
     NVector(SVector{3,Float64}(cos_ϕ * cos(λ), cos_ϕ * sin(λ), sin(ϕ)), normalization = false)
 end
 
-#extract NVector and Wander Angle from ECEF to Local Tangent Frame rotation
+#extract NVector from ECEF to Local Tangent Frame rotation
 NVector(r_el::Rotation) = NVector(RMatrix(r_el))
 NVector(r_el::RMatrix) = NVector( -r_el[:,3], normalization = false)
 function NVector(r_el::RQuat)
@@ -58,6 +58,18 @@ function NVector(r_el::RQuat)
     dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]
     dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4]
     NVector(-SVector{3}(dq24 + dq13, dq34 - dq12, 1 - 2*(q[2]^2 + q[3]^2)), normalization = false)
+end
+
+#extract Wander Angle from ECEF to Local Tangent Frame rotation
+ψ_nl(r_el::Rotation) = ψ_nl(RMatrix(r_el))
+ψ_nl(r_el::RMatrix) = atan( -r_el[3,2], r_el[3,1] )
+function ψ_nl(r_el::RQuat)
+    #n_e is the third column of the R_el matrix. we don't need the complete
+    #RQuat to RMatrix conversion
+    q = r_el[:]
+    dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]
+    dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4]
+    atan(-(dq34 + dq12), dq24 - dq13)
 end
 
 Base.:(==)(n1::NVector, n2::NVector) = n1.data == n2.data
@@ -85,21 +97,9 @@ function Base.getproperty(n_e::NVector, s::Symbol)
     end
 end
 
+ltf(n_e::NVector, ψ_nl::Real = 0.) = Rz( lon(n_e) ) ∘ Ry( -(lat(n_e) + 0.5π) ) ∘ Rz(ψ_nl)
 lat(n_e::NVector) = atan(n_e[3], √(n_e[1]^2 + n_e[2]^2))
 lon(n_e::NVector) = atan(n_e[2], n_e[1])
-ltf(; n_e::NVector, ψ_nl::Real = 0.) = Rz( lon(n_e) ) ∘ Ry( -(lat(n_e) + 0.5π) ) ∘ Rz(ψ_nl)
-ltf(n_e::NVector, ψ_nl::Real = 0.) = ltf(; n_e, ψ_nl)
-
-ψ_nl(r_el::Rotation) = ψ_nl(RMatrix(r_el))
-ψ_nl(r_el::RMatrix) = atan( -r_el[3,2], r_el[3,1] )
-function ψ_nl(r_el::RQuat)
-    #n_e is the third column of the R_el matrix. we don't need the complete
-    #RQuat to RMatrix conversion
-    q = r_el[:]
-    dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]
-    dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4]
-    atan(-(dq34 + dq12), dq24 - dq13)
-end
 
 function radii(n_e::NVector)
     f_den = √(1 - e² * n_e[3]^2)
@@ -107,25 +107,38 @@ function radii(n_e::NVector)
 end
 
 
-########################### WGS84Pos ##########################
 
-const h_min = -20000
+########################## WGS84Pos ##########################
 
-struct WGS84Pos
-    n_e::NVector
-    h::Float64
-    function WGS84Pos(n_e::NVector, h::Real)
-        h >= h_min || throw(ArgumentError("Minimum altitude is $h_min m"))
+const h_min = -1000
+
+abstract type WGS84Pos end
+
+ltf(p::WGS84Pos, ψ_nl::Real = 0.0) = ltf(NVectorAlt(p).n_e, ψ_nl)
+radii(p::WGS84Pos) = radii(NVectorAlt(p).n_e)
+gravity(p::WGS84Pos) = gravity(NVectorAlt(p))
+
+Base.:(≈)(p1::WGS84Pos, p2::WGS84Pos) = ≈(promote(p1, p2)...) #for heterogeneous comparisons
+function Base.:(==)(p1::WGS84Pos, p2::WGS84Pos)
+    error("Exact comparison between $(typeof(p1)) and $(typeof(p2)) not defined, use ≈ instead")
+end
+
+########################### NVectorAlt ##########################
+
+Base.@kwdef struct NVectorAlt <: WGS84Pos
+    n_e::NVector = NVector()
+    h::Float64 = 0.0
+    function NVectorAlt(n_e::NVector, h::Real)
+        h >= h_min || throw(ArgumentError("Minimum altitude is $h_min m, got $h"))
         return new(n_e, h)
     end
 end
+NVectorAlt(p::WGS84Pos) = convert(NVectorAlt, p)
 
-WGS84Pos(; ϕ::Real = 0., λ::Real = 0., h::Real = 0.) = WGS84Pos(NVector(ϕ = ϕ, λ = λ), h)
-
-Base.propertynames(p::WGS84Pos, private::Bool = false) = (:n_e, :h, :alt,
+Base.propertynames(p::NVectorAlt, private::Bool = false) = (:n_e, :h, :alt,
     propertynames(getfield(p, :n_e), private)...)
 
-function Base.getproperty(p::WGS84Pos, s::Symbol)
+function Base.getproperty(p::NVectorAlt, s::Symbol)
     if s == :n_e
         return getfield(p, :n_e)
     elseif s == :h || s == :alt
@@ -135,20 +148,88 @@ function Base.getproperty(p::WGS84Pos, s::Symbol)
     end
 end
 
-Base.:(==)(p1::WGS84Pos, p2::WGS84Pos) = (p1.n_e == p2.n_e && p1.h == p2.h)
-Base.:(≈)(p1::WGS84Pos, p2::WGS84Pos) = (p1.n_e ≈ p2.n_e && p1.h ≈ p2.h)
+Base.:(==)(p1::NVectorAlt, p2::NVectorAlt) = (p1.n_e == p2.n_e && p1.h == p2.h)
+Base.:(≈)(p1::NVectorAlt, p2::NVectorAlt) = (p1.n_e ≈ p2.n_e && p1.h ≈ p2.h)
+Base.:(-)(p::NVectorAlt) = NVectorAlt(-p.n_e, p.h)
 
-function WGS84Pos(r::AbstractVector{<:Real})
+#establishes NVector as the core subtype
+Base.convert(::Type{P}, p::WGS84Pos) where {P<:WGS84Pos} = convert(P, convert(NVectorAlt,p))
+Base.convert(::Type{P}, p::P) where {P<:WGS84Pos} = p
+Base.promote_rule(::Type{<:WGS84Pos}, ::Type{<:WGS84Pos}) = NVectorAlt
+
+"""
+    gravity(p::NVectorAlt)
+
+Compute gravity vector resolved in the local tangent frame.
+
+Computation is based on Somigliana's formula for gravity at the ellipsoid
+surface, with a second order altitude correction, accurate for small altitudes
+above the WGS84 ellipsoid (h<<a). Direction is assumed normal to the WGS84
+ellipsoid, a good enough approximation for most navigation applications. See
+Hoffmann & Moritz.
+"""
+function gravity(p::NVectorAlt)
+
+    sin²ϕ = p.n_e[3]^2
+    cos²ϕ = p.n_e[1]^2 + p.n_e[2]^2
+    h = p.h
+
+    #gravity at the ellipsoid surface (Somigliana)
+    γ_0 = (a * γ_a * cos²ϕ + b * γ_b * sin²ϕ) / √(a² * cos²ϕ + b² * sin²ϕ) #[Hof06] 2-146
+
+    #altitude correction
+    γ = γ_0 * (1 - 2/a * (1 + f + m - 2f * sin²ϕ) * h + 3/a² * h^2)
+
+    SVector{3}(0, 0, γ)
+
+end
+
+
+###################### LatLonAlt ##############################
+
+Base.@kwdef struct LatLonAlt <: WGS84Pos
+    ϕ::Float64 = 0.0
+    λ::Float64 = 0.0
+    h::Float64 = 0.0
+    function LatLonAlt(ϕ::Real, λ::Real, h::Real)
+        abs(ϕ) <= 0.5π || throw(ArgumentError("Latitude must be within [-π/2, π/2]"))
+        abs(λ) <= π || throw(ArgumentError("Longitude must be within [-π, π]"))
+        h >= h_min || throw(ArgumentError("Minimum altitude is $h_min m, got $h"))
+        return new(ϕ, λ, h)
+    end
+end
+LatLonAlt(p::WGS84Pos) = convert(LatLonAlt, p)
+
+#equality not supported because comparison requires conversion
+Base.:(≈)(p1::LatLonAlt, p2::LatLonAlt) = NVectorAlt(p1) ≈ NVectorAlt(p2)
+Base.:(-)(p::LatLonAlt) = LatLonAlt(-NVectorAlt(p))
+
+Base.convert(::Type{NVectorAlt}, p::LatLonAlt) = NVectorAlt(NVector(ϕ = p.ϕ, λ = p.λ), p.h)
+Base.convert(::Type{LatLonAlt}, p::NVectorAlt) = LatLonAlt(lat(p.n_e), lon(p.n_e), p.h)
+
+
+############################# CartECEF #############################
+
+struct CartECEF <: WGS84Pos
+    data::SVector{3,Float64}
+end
+CartECEF() = CartECEF(NVectorAlt())
+CartECEF(p::WGS84Pos) = convert(CartECEF, p)
+
+Base.:(==)(r1::CartECEF, r2::CartECEF) = r1.data == r2.data
+Base.:(≈)(r1::CartECEF, r2::CartECEF) = r1.data ≈ r2.data
+Base.:(-)(r::CartECEF) = CartECEF(-r.data)
+
+#### AbstractArray interface
+Base.size(::CartECEF) = (3,)
+Base.getindex(n::CartECEF, i) = getindex(n.data, i)
+
+function Base.convert(::Type{NVectorAlt}, r::CartECEF)
 
     #NVector + Alt from ECEF Cartesian position vector. See Fukushima:
     #Transformation_from_Cartesian_to_Geodetic_Coordinates_Accelerated_by_Halley's_Method
 
-    if length(r)!=3
-        throw(ArgumentError("Constructor from Cartesian ECEF position expected a
-        3-element vector, got length $(length(r))"))
-    end
-
-    x, y, z = r
+    x, y, z = r[:]
     p = √(x^2 + y^2)
 
     c = a*e²
@@ -186,53 +267,23 @@ function WGS84Pos(r::AbstractVector{<:Real})
 
     n_e = NVector(SVector{3,Float64}(cos_ϕ*cos_λ, cos_ϕ*sin_λ, sin_ϕ))
 
-    return WGS84Pos(n_e, h)
+    return NVectorAlt(n_e, h)
 
 end
 
-function rECEF(p::WGS84Pos)
+function Base.convert(::Type{CartECEF}, p::NVectorAlt)
 
     n_e = p.n_e; h = p.h
     _, N = radii(p.n_e)
 
-    return SVector{3, Float64}(
+    return CartECEF(SVector{3, Float64}(
         (N + h) * n_e[1],
         (N + h) * n_e[2],
-        (N * (1 - e²) + h) * n_e[3])
+        (N * (1 - e²) + h) * n_e[3]))
 
 end
 
 
-radii(p::WGS84Pos) = radii(p.n_e)
-ltf(p::WGS84Pos) = ltf(p.n_e)
-lat(p::WGS84Pos) = lat(p.n_e)
-lon(p::WGS84Pos) = lon(p.n_e)
 
-"""
-    gravity(p::WGS84Pos)
-
-Compute gravity vector resolved in the local tangent frame.
-
-Computation is based on Somigliana's formula for gravity at the ellipsoid
-surface, with a second order altitude correction, accurate for small altitudes
-above the WGS84 ellipsoid (h<<a). Direction is assumed normal to the WGS84
-ellipsoid, a good enough approximation for most navigation applications. See
-Hoffmann & Moritz.
-"""
-function gravity(p::WGS84Pos)
-
-    sin²ϕ = p.n_e[3]^2
-    cos²ϕ = p.n_e[1]^2 + p.n_e[2]^2
-    h = p.h
-
-    #gravity at the ellipsoid surface (Somigliana)
-    γ_0 = (a * γ_a * cos²ϕ + b * γ_b * sin²ϕ) / √(a² * cos²ϕ + b² * sin²ϕ) #[Hof06] 2-146
-
-    #altitude correction
-    γ = γ_0 * (1 - 2/a * (1 + f + m - 2f * sin²ϕ) * h + 3/a² * h^2)
-
-    SVector{3}(0, 0, γ)
-
-end
 
 end

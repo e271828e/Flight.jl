@@ -2,6 +2,7 @@ using Flight
 using OrdinaryDiffEq
 using SciMLBase
 using LinearAlgebra
+using BenchmarkTools
 
 
 air = AirY()
@@ -31,6 +32,7 @@ atm = DummyAtmosphericModel()
 ac = TestAircraft();
 
 ac_sys = HybridSystem(ac);
+y_ac = f_cont!(ac_sys, trn, atm);
 ac_mdl = HybridModel(ac_sys, (trn, atm));
 ac_mdl.sys.subsystems.pwp.u.left.throttle = 1 #the same
 b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)

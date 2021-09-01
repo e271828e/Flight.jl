@@ -118,17 +118,18 @@ dt(r_ab::RQuat, ω_ab_b::AbstractVector{<:Real}) = 0.5 * (r_ab._u * Quat(imag=ω
 Base.convert(::Type{RQuat}, r::R) where {R<:Rotation} = error("Implement $R to RQuat conversion")
 Base.convert(::Type{R}, r::RQuat) where {R<:Rotation} = error("Implement RQuat to $R conversion")
 
-#enables a two-step conversion via RQuat
+#this enables a two-step conversion via RQuat, but requires defining trivial
+#conversions to avoid stack overflow
 Base.convert(::Type{R}, r::Rotation) where {R<:Rotation} = convert(R, RQuat(r))
-
-#trivial conversions
 Base.convert(::Type{R}, r::R) where {R<:Rotation} = r
 Base.convert(::Type{RQuat}, r::RQuat) = r
 
-#unless the representation defines its own methods, fall back to RQuat
+#unless the representation defines its own methods, fall back to RQuat;
+#promote rules don't work here, because promoting two inputs of the same subtype
+#leaves them unchanged, and here we need them converted to RQuat
 Base.adjoint(r::R) where {R<:Rotation} = convert(R, RQuat(r)')
-Base.:(≈)(r1::Rotation, r2::Rotation) = RQuat(r1) ≈ RQuat(r2)
 Base.:*(r::Rotation, v::AbstractVector{<:Real}) = RQuat(r) * v
+Base.:(≈)(r1::Rotation, r2::Rotation) = RQuat(r1) ≈ RQuat(r2)
 Base.:∘(r1::Rotation, r2::Rotation) = RQuat(r1) ∘ RQuat(r2)
 
 #absolute equality is not defined in general, because comparing two different

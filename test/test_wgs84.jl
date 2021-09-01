@@ -9,7 +9,9 @@ export test_wgs84
 function test_wgs84()
     @testset verbose = true "WGS84" begin
         @testset verbose = true "NVector" begin test_NVector() end
-        @testset verbose = true "WGS84Pos" begin test_WGS84Pos() end
+        @testset verbose = true "NVectorAlt" begin test_NVectorAlt() end
+        @testset verbose = true "LatLonAlt" begin test_LatLonAlt() end
+        @testset verbose = true "CartECEF" begin test_CartECEF() end
     end
 end
 
@@ -67,37 +69,89 @@ function test_NVector()
 
 end
 
-function test_WGS84Pos()
+function test_NVectorAlt()
 
     v = [1, 2, -3]
     h = 1000
     n_e = NVector(v)
 
     #inner constructor
-    p = WGS84Pos(n_e, h)
+    p = NVectorAlt(n_e, h)
     @test p.n_e == n_e
     @test p.h == h
 
-    #equality and isapprox
+    #equality and approximate equality
     @test p == p
-    @test p != WGS84Pos(-n_e, h)
-    @test p ≈ WGS84Pos(n_e, h+1e-10)
-    @test !(p ≈ WGS84Pos(-n_e, h))
+    @test p != NVectorAlt(-n_e, h)
+    @test p ≈ NVectorAlt(n_e, h+1e-10)
+    @test !(p ≈ NVectorAlt(-n_e, h))
 
-    # #outer constructors
-    @test p ≈ WGS84Pos(; n_e.ϕ, n_e.λ, h)
-
-    ϕ_range = range(-π/2, π/2, length = 10)
-    λ_range = range(-π, π, length = 10)
-    h_range = range(-1000, 10000, length = 10)
-
-    p_array = [WGS84Pos(NVector(; ϕ, λ), h) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
-    p_array_test = [WGS84Pos(rECEF(p)) for p in p_array]
-
-    @test all(p_array .≈ p_array_test)
+    #inversion
+    @test -p == NVectorAlt(-n_e, h)
 
 end
 
+function test_LatLonAlt()
 
+    #keyword constructor
+    llh = LatLonAlt(ϕ = π/6, λ = -π/4, h = 15092.0)
+    nvh = NVectorAlt(llh)
+
+    #approximate equality
+    @test llh ≈ LatLonAlt(llh.ϕ+1e-12, llh.λ-1e-12, llh.h+1e-10)
+    @test !(llh ≈ LatLonAlt())
+    @test llh ≈ nvh #mixed types
+
+    #inversion
+    @test -llh ≈ -nvh
+
+    #general functions
+    @test gravity(llh) == gravity(nvh)
+    @test ltf(llh) == ltf(nvh)
+    @test radii(llh) == radii(nvh)
+
+    #conversion to and from NVectorAlt
+    ϕ_range = range(-π/2, π/2, length = 10)
+    λ_range = range(-π, π, length = 10)
+    h_range = range(WGS84.h_min + 1, 10000, length = 10)
+
+    llh_array = [LatLonAlt(ϕ, λ, h) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
+    llh_array_test = [llh |> NVectorAlt |> LatLonAlt for llh in llh_array]
+    @test all(llh_array .≈ llh_array_test)
+
+end
+
+function test_CartECEF()
+
+    #keyword constructor
+    llh = LatLonAlt(ϕ = π/6, λ = -π/4, h = 15092.0)
+    cart = CartECEF(llh)
+    nvh = NVectorAlt(cart)
+
+    #approximate equality
+    @test cart ≈ CartECEF(cart.data .+ 1e-9)
+    @test !(cart ≈ LatLonAlt())
+    @test cart ≈ nvh #mixed types
+    @test cart ≈ llh #mixed types
+
+    #inversion
+    @test -llh ≈ -nvh
+    @test -llh ≈ -cart
+
+    #general functions
+    @test gravity(cart) == gravity(nvh)
+    @test ltf(cart) == ltf(nvh)
+    @test radii(cart) == radii(nvh)
+
+    #conversion to and from NVectorAlt, LatLonAlt
+    ϕ_range = range(-π/2, π/2, length = 10)
+    λ_range = range(-π, π, length = 10)
+    h_range = range(WGS84.h_min + 1, 10000, length = 10)
+
+    cart_array = [CartECEF(LatLonAlt(ϕ, λ, h)) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
+    cart_array_test = [cart |> NVectorAlt |> CartECEF |> LatLonAlt |> CartECEF for cart in cart_array]
+    @test all(cart_array .≈ cart_array_test)
+
+end
 
 end

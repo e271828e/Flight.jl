@@ -21,7 +21,7 @@ function test_init()
 
     init = KinInit(
         q_nb = RQuat([1, 2, 3, -2]),
-        Ob = WGS84Pos(ϕ = π/3, λ = -π/6, h = 1500),
+        Ob = NVectorAlt(ϕ = π/3, λ = -π/6, h = 1500),
         ω_lb_b = [0.1, 0.01, -0.4],
         v_eOb_b = [100, 5, -10])
 
@@ -34,7 +34,7 @@ function test_init()
     ω_eb_b = x.vel.ω_eb_b
     v_eOb_b = x.vel.v_eOb_b
 
-    Ob = WGS84Pos(NVector(q_el), h)
+    Ob = NVectorAlt(NVector(q_el), h)
     (R_N, R_E) = radii(Ob)
     q_nb = q_lb
     v_eOb_n = q_nb * v_eOb_b
@@ -59,7 +59,7 @@ function test_fpos()
 
     init = KinInit(
         q_nb = RQuat([1, 2, 3, -2]),
-        Ob = WGS84Pos(ϕ = π/3, λ = -π/6, h = 1500),
+        Ob = NVectorAlt(ϕ = π/3, λ = -π/6, h = 1500),
         ω_lb_b = [0.1, 0.01, -0.4],
         v_eOb_b = [100, 5, -10])
 

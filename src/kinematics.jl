@@ -23,7 +23,7 @@ Base.@kwdef struct KinInit <: KinematicStruct
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
     v_eOb_b::SVector{3, Float64} = zeros(SVector{3})
     q_nb::RQuat = RQuat()
-    Ob::WGS84Pos = WGS84Pos()
+    Ob::NVectorAlt = NVectorAlt()
     Δx::Float64 = 0.0
     Δy::Float64 = 0.0
 end
@@ -46,15 +46,10 @@ Base.@kwdef struct PosY
     q_lb::RQuat
     q_nb::RQuat
     q_eb::RQuat
+    e_nb::REuler
     ψ_nl::Float64
-    ψ_nb::Float64
-    θ_nb::Float64
-    φ_nb::Float64
     q_el::RQuat
-    Ob::WGS84Pos
-    ϕ::Float64
-    λ::Float64
-    h::Float64
+    Ob::NVectorAlt
     Δx::Float64
     Δy::Float64
 end
@@ -117,12 +112,11 @@ function f_kin!(ẋ_pos::PosX, x::KinX)
     ω_eb_b = SVector{3}(x.vel.ω_eb_b)
     v_eOb_b = SVector{3}(x.vel.v_eOb_b)
 
-    Ob = WGS84Pos(NVector(q_el), h)
+    Ob = NVectorAlt(NVector(q_el), h)
     _ψ_nl = ψ_nl(q_el)
     q_nl = Rz(_ψ_nl)
     q_nb = q_nl ∘ q_lb
     q_eb = q_el ∘ q_lb
-    euler_nb = REuler(q_nb)
 
     (R_N, R_E) = radii(Ob)
     v_eOb_n = q_nb(v_eOb_b)
@@ -147,9 +141,7 @@ function f_kin!(ẋ_pos::PosX, x::KinX)
     ẋ_pos.h = -v_eOb_n[3]
 
     #build outputs
-    y_pos = PosY(q_lb, q_nb, q_eb, _ψ_nl, euler_nb.ψ, euler_nb.θ, euler_nb.φ,
-                 q_el, Ob, lat(Ob), lon(Ob), h, Δx, Δy)
-
+    y_pos = PosY(q_lb, q_nb, q_eb, REuler(q_nb), _ψ_nl, q_el, Ob, Δx, Δy)
     y_vel = VelY(ω_eb_b, ω_lb_b, ω_el_l, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
 
     return KinY(y_pos, y_vel)
