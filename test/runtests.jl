@@ -15,6 +15,6 @@ using .TestWGS84
 
 test_quaternions()
 test_attitude()
-test_wgs84()
+# test_wgs84()
 # test_lbv()
 # test_kinematics()

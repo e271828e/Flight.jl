@@ -4,7 +4,6 @@ using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks, RecursiveArrayTools
 using UnPack
 
 using Flight.System
-# import Flight.System: plotlog
 
 export HybridModel
 
@@ -114,30 +113,12 @@ function SciMLBase.reinit!(m::HybridModel, args...)
     return nothing
 end
 
-#replace this with the appropriate Plot recipes, etc
-#careful with overloading plot without importing. see how it is done properly in
-#Plots
-function plotlog(mdl::HybridModel)
+# System.rplot(mdl::HybridModel, args...) = rplot(mdl.log, args...)
 
-    t = mdl
-
-    #this produces a Vector of Y(aircraft) with length(saveval) which can be
-    #indexed as a matrix
-    v = VectorOfArray(mdl.log.saveval)
-
-    #this produces an actual ComponentMatrix of size [length(Y(aircraft)),
-    #length(saveval)] matrix. the awesome part is that its row dimension
-    #preserves the Axes metadata in the original Y(aircraft). its column
-    #dimension has a Flat Axis.
-    m = convert(Array, v)
-
-    #after this preprocessing the model's System and each sub-component in its
-    #hierarchy can recursively extract each block and delegate its plots to
-    #its children
-    log = (t = mdl.log.t, y = m)
-    plotlog(log, mdl.sys)
-
-end
+# #delegate recursive plotting to the simulated System's AbstractY rplot method
+# function System.rplot(log::DiffEqCallbacks.SavedValues, args...)
+#     isempty(log.t) ? error("Can't plot an empty log") : rplot(log.t, log.saveval, args...)
+# end
 
 #the following causes type instability and destroys performance:
 # function f_update!(ẋ, x, p, t)

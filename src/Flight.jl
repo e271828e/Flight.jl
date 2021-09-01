@@ -1,6 +1,7 @@
 module Flight
 
 using Reexport
+@reexport using BenchmarkTools
 
 #(sub) modules
 # include("lbv.jl")
@@ -8,6 +9,7 @@ using Reexport
 
 #math and environment
 include("utils.jl")
+include("plotting.jl")
 include("quaternions.jl")
 include("attitude.jl")
 include("wgs84.jl") #many, many constants here. should keep it a module
@@ -28,10 +30,11 @@ include("propulsion.jl")
 #kinematics & dynamics
 include("kinematics.jl")
 include("dynamics.jl")
-
 include("aircraft.jl")
 
+
 @reexport using .Utils
+@reexport using .Plotting
 @reexport using .Quaternions
 @reexport using .Attitude
 @reexport using .WGS84
@@ -50,6 +53,7 @@ include("aircraft.jl")
 @reexport using .Kinematics
 @reexport using .Dynamics
 @reexport using .Aircraft
+
 
 println("REMINDER: Set normalization = false")
 
