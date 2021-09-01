@@ -49,7 +49,7 @@ Base.@kwdef struct PosY
     e_nb::REuler
     ψ_nl::Float64
     q_el::RQuat
-    Ob::NVectorAlt
+    Ob::NVectorAlt #may need to add a LatLonAlt field
     Δx::Float64
     Δy::Float64
 end
