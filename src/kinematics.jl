@@ -42,16 +42,16 @@ const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T
 "Type definition for dispatching on velocity state vector instances"
 const KinX{T, D} = ComponentVector{T, D, typeof(getaxes(KinXTemplate))} where {T, D}
 
-Base.@kwdef struct PosY
+Base.@kwdef struct PosY #all magnitudes refer to Ob
     q_lb::RQuat
     q_nb::RQuat
     q_eb::RQuat
     e_nb::REuler
     ψ_nl::Float64
-    q_el::RQuat
-    Ob::NVectorAlt #may need to add a LatLonAlt field
-    Δx::Float64
-    Δy::Float64
+    q_el::RQuat #attitude of the local tangent frame at Ob
+    Ob_nvh::NVectorAlt #position of Ob, NVectorAlt descriptor
+    Ob_llh::LatLonAlt #position of Ob, LatLonAlt descriptor
+    Ob_xyh::SVector{3,Float64} #velocity integral
 end
 
 Base.@kwdef struct VelY
@@ -112,13 +112,13 @@ function f_kin!(ẋ_pos::PosX, x::KinX)
     ω_eb_b = SVector{3}(x.vel.ω_eb_b)
     v_eOb_b = SVector{3}(x.vel.v_eOb_b)
 
-    Ob = NVectorAlt(NVector(q_el), h)
+    Ob_nvh = NVectorAlt(NVector(q_el), h)
     _ψ_nl = ψ_nl(q_el)
     q_nl = Rz(_ψ_nl)
     q_nb = q_nl ∘ q_lb
     q_eb = q_el ∘ q_lb
 
-    (R_N, R_E) = radii(Ob)
+    (R_N, R_E) = radii(Ob_nvh)
     v_eOb_n = q_nb(v_eOb_b)
     ω_el_n = SVector{3}(
         v_eOb_n[2] / (R_E + h),
@@ -141,7 +141,8 @@ function f_kin!(ẋ_pos::PosX, x::KinX)
     ẋ_pos.h = -v_eOb_n[3]
 
     #build outputs
-    y_pos = PosY(q_lb, q_nb, q_eb, REuler(q_nb), _ψ_nl, q_el, Ob, Δx, Δy)
+    y_pos = PosY(q_lb, q_nb, q_eb, REuler(q_nb), _ψ_nl, q_el, Ob_nvh,
+                 LatLonAlt(Ob_nvh), SVector{3}(Δx, Δy, h))
     y_vel = VelY(ω_eb_b, ω_lb_b, ω_el_l, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
 
     return KinY(y_pos, y_vel)

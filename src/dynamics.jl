@@ -92,7 +92,7 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
     #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
     #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
     #LTF(Ob), and then apply it at G.
-    Ob = y_pos.Ob
+    Ob = y_pos.Ob_nvh
 
     g_G_l = gravity(Ob)
 
@@ -141,7 +141,7 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Re
     #least singular)!
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-    @unpack q_el, q_eb, Ob = y_kin.pos
+    @unpack q_el, q_eb, Ob_nvh = y_kin.pos
     @unpack ω_eb_b, ω_ie_b, v_eOb_b = y_kin.vel
 
     r_ObG_b_sk = Attitude.skew(r_ObG_b)
@@ -161,7 +161,7 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Re
 
     # update ẋ_vel
     v̇_eOb_b = SVector{3}(ẋ_vel.v_eOb_b)
-    r_eO_e = CartECEF(Ob).data
+    r_eO_e = CartECEF(Ob_nvh).data
     r_eO_b = q_eb'(r_eO_e)
 
     α_eb_b = SVector{3}(ẋ_vel.ω_eb_b) #α_eb_b == ω_eb_b_dot
