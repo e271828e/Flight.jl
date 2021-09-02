@@ -12,7 +12,7 @@ using Flight.System
 
 export AccY
 export MassData
-export inertia_wrench, gravity_wrench, f_dyn!
+export f_dyn!
 
 
 ############################## MassData #################################
@@ -88,16 +88,13 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
     #gravity can be viewed as an entity acting on a local frame with its origin
     #at G and its axes aligned with the local tangent frame
 
-
     #strictly, the gravity vector should be evaluated at G, with its direction
     #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
     #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
     #LTF(Ob), and then apply it at G.
-    Ob = y_pos.Ob_nvh
+    g_G_l = g_Ob_l = g_l(y_pos.Ob_nvh)
 
-    g_G_l = gravity(Ob)
-
-    #the resultant consists of the force of gravity acting on G along the local
+    #the resultant consists of the gravity force acting on G along the local
     #vertical and a null torque
     F_G_l = mass.m * g_G_l
     M_G_l = zeros(SVector{3})
@@ -118,10 +115,11 @@ end
 struct Acc <: AbstractComponent end
 
 Base.@kwdef struct AccY <: AbstractY{Acc}
-    α_eb_b::SVector{3,Float64} = zeros(SVector{3})
-    α_ib_b::SVector{3,Float64} = zeros(SVector{3})
-    a_eOb_b::SVector{3,Float64} = zeros(SVector{3})
-    a_iOb_b::SVector{3,Float64} = zeros(SVector{3})
+    α_eb_b::SVector{3,Float64}
+    α_ib_b::SVector{3,Float64}
+    a_eOb_b::SVector{3,Float64}
+    a_iOb_b::SVector{3,Float64}
+    f_Ob_b::SVector{3,Float64} #specific force
 end
 
 function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
@@ -144,7 +142,7 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
     #least singular)!
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-    @unpack q_el, q_eb, Ob_nvh = y_kin.pos
+    @unpack q_lb, q_el, q_eb, Ob_nvh = y_kin.pos
     @unpack ω_eb_b, ω_ie_b, v_eOb_b = y_kin.vel
 
     r_ObG_b_sk = Attitude.skew(r_ObG_b)
@@ -164,15 +162,22 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
 
     # update ẋ_vel
     v̇_eOb_b = SVector{3}(ẋ_vel.v_eOb_b)
-    r_eO_e = CartECEF(Ob_nvh).data
-    r_eO_b = q_eb'(r_eO_e)
+    r_eOb_e = CartECEF(Ob_nvh).data
+    r_eOb_b = q_eb'(r_eOb_e)
 
+    #angular accelerations
     α_eb_b = SVector{3}(ẋ_vel.ω_eb_b) #α_eb_b == ω_eb_b_dot
     α_ib_b = α_eb_b - ω_eb_b × ω_ie_b
-    a_eOb_b = v̇_eOb_b + ω_eb_b × v_eOb_b
-    a_iOb_b = v̇_eOb_b + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eO_b)
 
-    return AccY(α_eb_b, α_ib_b, a_eOb_b, a_iOb_b)
+    #linear accelerations and specific force
+    a_eOb_b = v̇_eOb_b + ω_eb_b × v_eOb_b
+    a_iOb_b = v̇_eOb_b + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eOb_b)
+
+    g_Ob_b = q_lb'(g_l(Ob_nvh))
+    G_Ob_b = g_Ob_b + ω_ie_b × (ω_ie_b × r_eOb_b)
+    f_Ob_b = a_iOb_b - G_Ob_b
+
+    return AccY(α_eb_b, α_ib_b, a_eOb_b, a_iOb_b, f_Ob_b)
 
 end
 

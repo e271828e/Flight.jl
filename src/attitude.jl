@@ -342,7 +342,8 @@ end
     sa = StructArray(v_euler)
     data = hcat(sa.ψ, sa.θ, sa.φ)
 
-    label --> [L"$\psi$" L"$\theta$" L"$\phi$"]
+    label --> ["Heading" "Inclination" "Bank"]
+    yguide --> [L"$\psi \quad (rad)$" L"$\theta \quad (rad)$" L"$\phi \quad (rad)$"]
 
     return TimeHistory(th.t, data)
 

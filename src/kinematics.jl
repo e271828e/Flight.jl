@@ -175,21 +175,67 @@ function plots(t, data::AbstractVector{<:PosY}; mode, save_path, kwargs...)
 
     @unpack e_nb, Ob_xyh = StructArray(data)
     # println(mode); println(save_path); println(kwargs)
-    plt_e_nb = thplot(t, e_nb; label = ["Heading" "Inclination" "Bank"], kwargs...)
+
+    #=
+    #basic mode plots
+
+    position plots:
+    e_nb: Attitude (Airframe/NED) (psi, theta, phi)
+    Ob_llh: Position (Geodetic) Latitude Longitude Altitude (phi, lambda, h)
+    Ob_xyh: Position (Local Cartesian)
+
+    velocity plots:
+    ω_lb_b: Angular Velocity (Airframe/LTF) [Airframe] yawrate pitchrate rollrate
+    ω_el_l: Transport Rate (LTF/ECEF) [LTF] automatic legend
+    v_eOb_n: Velocity (Airframe/ECEF) [NED] legend: North, East, Down
+    v_eOb_b: Velocity (Airframe/ECEF) [Airframe] automatic legend
+
+    acceleration:
+    α_eb_b: Angular Acceleration (Airframe/ECEF) [Airframe] (not much interest in α_lb_b, but could compute it)
+    a_eOb_b: Acceleration (Airframe/ECEF) [Airframe]
+    f_Ob_b: Specific Force [Airframe]
+
+    #debug mode plots
+
+    position:
+    wander angle
+
+    velocity:
+
+    =#
+
+
+
+    plt_e_nb = thplot(t, e_nb;
+        split = :h,
+        kwargs...)
+
     plt_Ob_xyh = thplot(t, Ob_xyh;
-        label = [L"$\int v_{eO_b}^{x_n} dt$" L"$\int v_{eO_b}^{y_n} dt$" L"$\mathrm{Altitude}$"],
-        plot_title = "Local Cartesian Coordinates",
+        plot_title = "Position (Local Cartesian)",
+        # label = [L"$\int v_{eO_b}^{x_n} dt$" L"$\int v_{eO_b}^{y_n} dt$" L"$\mathrm{Altitude}$"],
+        label = [L"$\int v_{eO_b}^{x_n} dt$" L"$\int v_{eO_b}^{y_n} dt$" "Altitude"],
         ylabel = [L"$\Delta x\quad (m)$" L"$\Delta y \quad (m)$" L"h \quad (m)"],
-        split = :h, link = :none, kwargs...)
+        split = :h, link = :none,
+        kwargs...)
+
+    #maybe add a Trajectory user recipe for Vectors of 3DVector so that i can
+    #pass it a Vector series directly.
+    #also trplot
+    Ob_xyh_voa = VectorOfArray(Ob_xyh)
+    plt_Ob_xyh_3D = plot(collect(view(Ob_xyh_voa,i,:) for i ∈ 1:3)...;
+        camera = (30, 45))
+    #no se puede poner el mismo aspect ratio en los 3 ejes para 3d plotting. asi
+    #un 3dplot no me aporta nada. es mejor un plot con 3 subplotsxvsy, xvsz, yvsz
 
     savefig(plt_e_nb, joinpath(save_path, "e_nb.png"))
     savefig(plt_Ob_xyh, joinpath(save_path, "Ob_xyh.png"))
+    savefig(plt_Ob_xyh_3D, joinpath(save_path, "Ob_xyh_3D.png"))
 end
 
 function plots(t, data::AbstractVector{<:VelY}; mode, save_path, kwargs...)
 
     @unpack v_eOb_b, v_eOb_n, ω_lb_b = StructArray(data)
-    plt_ω_lb_b = thplot(t, ω_lb_b; label = ["Yaw rate" "Pitch rate" "Roll rate"], kwargs...)
+    plt_ω_lb_b = thplot(t, ω_lb_b; label = ["Yaw Rate" "Pitch Rate" "Roll Rate"], kwargs...)
     savefig(plt_ω_lb_b, joinpath(save_path, "ω_lb_b.png"))
     # plot(t, pos_data; mode, save_path, kwargs...)
 end

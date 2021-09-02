@@ -106,8 +106,9 @@ function test_LatLonAlt()
     @test -llh ≈ -nvh
 
     #general functions
-    @test gravity(llh) == gravity(nvh)
-    @test ltf(llh) == ltf(nvh)
+    @test g_l(llh) ≈ g_l(nvh)
+    @test G_l(llh) ≈ G_l(nvh)
+    @test ltf(llh) ≈ ltf(nvh)
     @test radii(llh) == radii(nvh)
 
     #conversion to and from NVectorAlt
@@ -139,8 +140,9 @@ function test_CartECEF()
     @test -llh ≈ -cart
 
     #general functions
-    @test gravity(cart) == gravity(nvh)
-    @test ltf(cart) == ltf(nvh)
+    @test g_l(cart) ≈ g_l(nvh)
+    @test G_l(cart) ≈ G_l(nvh)
+    @test ltf(cart) ≈ ltf(nvh)
     @test radii(cart) == radii(nvh)
 
     #conversion to and from NVectorAlt, LatLonAlt

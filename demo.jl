@@ -28,13 +28,6 @@ get_wr_b(y_g)
 g_mdl = HybridModel(g_sys, (air,))
 step!(g_mdl)
 
-x_kin = x0(Kin())
-dx_pos = copy(x_kin.pos)
-y_kin = f_kin!(dx_pos, x_kin)
-y_acc = AccY()
-y_air = AirY()
-y_ac = Aircraft.TestAircraftY(y_kin, y_acc, y_air, y_g)
-
 trn = DummyTerrainModel()
 atm = DummyAtmosphericModel()
 ac = TestAircraft();
@@ -47,7 +40,9 @@ ac_mdl.sys.subsystems.pwp.u.left.throttle = 1 #the same
 b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
 
 #this could set at startup.jl
-plot_settings = (linewidth=2, plot_titlefontfamily="Times Roman", plot_titlefontsize = 20, legendfontsize=14, )
+plot_settings = (linewidth=2,
+                plot_titlefontfamily="Computer Modern", plot_titlefontsize = 20,
+                legendfontfamily="Computer Modern", legendfontsize=12, fg_legend = :match, bg_legend = :match,)
 plots(ac_mdl; plot_settings...)
 
 ac_mdl = HybridModel(ac_sys, (trn, atm); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0:0.1:100);

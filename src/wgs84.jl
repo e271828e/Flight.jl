@@ -7,7 +7,7 @@ using Flight.Attitude
 using Flight.Plotting
 
 export NVector, NVectorAlt, LatLonAlt, CartECEF
-export ω_ie, gravity, ltf, radii, ψ_nl, lat, lon
+export ω_ie, gravity, g_l, G_l, ltf, radii, ψ_nl, lat, lon
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -117,6 +117,8 @@ abstract type WGS84Pos end
 ltf(p::WGS84Pos, ψ_nl::Real = 0.0) = ltf(NVectorAlt(p).n_e, ψ_nl)
 radii(p::WGS84Pos) = radii(NVectorAlt(p).n_e)
 gravity(p::WGS84Pos) = gravity(NVectorAlt(p))
+g_l(p::WGS84Pos) = g_l(NVectorAlt(p))
+G_l(p::WGS84Pos) = G_l(NVectorAlt(p))
 
 Base.:(≈)(p1::WGS84Pos, p2::WGS84Pos) = ≈(promote(p1, p2)...) #for heterogeneous comparisons
 function Base.:(==)(p1::WGS84Pos, p2::WGS84Pos)
@@ -160,7 +162,7 @@ Base.promote_rule(::Type{<:WGS84Pos}, ::Type{<:WGS84Pos}) = NVectorAlt
 """
     gravity(p::NVectorAlt)
 
-Compute gravity vector resolved in the local tangent frame.
+Compute normal gravity.
 
 Computation is based on Somigliana's formula for gravity at the ellipsoid
 surface, with a second order altitude correction, accurate for small altitudes
@@ -180,7 +182,29 @@ function gravity(p::NVectorAlt)
     #altitude correction
     γ = γ_0 * (1 - 2/a * (1 + f + m - 2f * sin²ϕ) * h + 3/a² * h^2)
 
-    SVector{3}(0, 0, γ)
+    return γ
+
+end
+
+"""
+    g_l(p::NVectorAlt)
+
+Compute gravity vector resolved in the local tangent frame.
+"""
+g_l(p::NVectorAlt) = SVector{3}(0, 0, gravity(p))
+
+"""
+    G_l(p::NVectorAlt)
+
+Compute gravitational attraction resolved in the local tangent frame.
+"""
+function G_l(p::NVectorAlt)
+
+    q_el = ltf(p)
+    ω_ie_e = SVector{3, Float64}(0,0,ω_ie)
+    r_eP_e = CartECEF(p)[:]
+    G_l = g_l(p) + q_el'(ω_ie_e × (ω_ie_e × r_eP_e))
+    return G_l
 
 end
 
@@ -298,7 +322,8 @@ end
     data = hcat(sa.ϕ, sa.λ, sa.h)
 
     #maybe convert to degrees
-    label --> [L"$\varphi$" L"$\lambda$" L"$h$"]
+    label --> ["Latitude" "Longitude" "Altitude"]
+    yguide --> [L"$\varphi \quad (rad)$" L"$\lambda \quad (rad)$" L"$h \quad (m)$"]
     link --> :none #need different scales for h
 
     return TimeHistory(th.t, data)
