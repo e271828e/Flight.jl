@@ -47,7 +47,7 @@ end
 ################## Dynamic Equations and helper functions ####################
 
 """
-    inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:Real})
+    inertia_wrench(mass::MassData, y_vel::VelY, hr_b::AbstractVector{<:Real})
 
 Compute the equivalent `Wrench` arising from inertia terms in the dynamic
 equations
@@ -57,12 +57,12 @@ The resulting `Wrench` is defined on the airframe's reference frame.
 # Arguments:
 - `mass::MassData`: Current aircraft mass properties
 - `y_vel::VelY`: Velocity outputs
-- `h_rot_b::AbstractVector{<:Real}`: Additional angular momentum due to the
+- `hr_b::AbstractVector{<:Real}`: Additional angular momentum due to the
   angular velocity of any rotating elements with respect to the airframe,
   projected on the airframe axes
 
 """
-function inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:Real})
+function inertia_wrench(mass::MassData, y_vel::VelY, hr_b::AbstractVector{<:Real})
 
     @unpack m, J_Ob_b, r_ObG_b = mass
     @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = y_vel
@@ -71,7 +71,7 @@ function inertia_wrench(mass::MassData, y_vel::VelY, h_rot_b::AbstractVector{<:R
     h_rbd_b = J_Ob_b * ω_ib_b
 
     #total angular momentum
-    h_all_b = h_rbd_b + SVector{3,Float64}(h_rot_b)
+    h_all_b = h_rbd_b + SVector{3,Float64}(hr_b)
 
     #inertia terms (exact... overkill, but very cheap anyway)
     a_1_b = (ω_eb_b + 2 * ω_ie_b) × v_eOb_b
@@ -105,9 +105,9 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
     #with the previous assumption, the transformation from body frame to local
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
-    wr_Oc_c = wr_G_l
+    wr_c = wr_G_l
     f_bc = FrameSpec(r_ObOc_b = mass.r_ObG_b, q_bc = y_pos.q_lb')
-    return f_bc(wr_Oc_c) #wr_Ob_b
+    return f_bc(wr_c) #wr_b
 
 end
 
@@ -121,17 +121,17 @@ Base.@kwdef struct AccY
     a_iOb_b::SVector{3,Float64} = zeros(SVector{3})
 end
 
-function f_dyn!(ẋ_vel::VelX, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Real},
+function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
     mass::MassData, y_kin::KinY)
 
-    #wr_ext_Ob_b: Total external wrench on the airframe
+    #wr_ext_b: Total external wrench on the airframe
 
-    #h_rot_b: Additional angular momentum due to the angular velocity of the
+    #hr_b: Additional angular momentum due to the angular velocity of the
     #rotating aircraft components with respect to the airframe. these are
     #computed individually by each component relative to its center of mass and
     #then summed
 
-    #wr_ext_Ob_b and h_rot_b, as well as mass data, are produced by aircraft
+    #wr_ext_b and hr_b, as well as mass data, are produced by aircraft
     #components, so they must be computed by the aircraft's x_dot method. and,
     #since y_kin is needed by those components, it must be called from the
     #aircraft's kinematic state vector
@@ -152,10 +152,10 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_Ob_b::Wrench, h_rot_b::AbstractVector{<:Re
 
     A = vcat(hcat(A11, A12), hcat(A21, A22))
 
-    wr_g_Ob_b = gravity_wrench(mass, y_kin.pos)
-    wr_in_Ob_b = inertia_wrench(mass, y_kin.vel, h_rot_b)
-    wr_Ob_b = wr_ext_Ob_b + wr_g_Ob_b + wr_in_Ob_b
-    b = SVector{6}(vcat(wr_Ob_b.M, wr_Ob_b.F))
+    wr_g_b = gravity_wrench(mass, y_kin.pos)
+    wr_in_b = inertia_wrench(mass, y_kin.vel, hr_b)
+    wr_b = wr_ext_b + wr_g_b + wr_in_b
+    b = SVector{6}(vcat(wr_b.M, wr_b.F))
 
     ẋ_vel .= A\b
 

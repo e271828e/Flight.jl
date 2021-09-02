@@ -19,12 +19,12 @@ step!(thr_mdl, 10, true)
 
 t = thr_mdl.log.t
 y_sa = StructArray(thr_mdl.log.saveval)
-thplot(t, y_sa.h_Gc_b)
+thplot(t, y_sa.hr_b)
 
 g = ACGroup(left = EThruster(), right = EThruster());
 g_sys = HybridSystem(g);
 y_g = f_cont!(g_sys, air);
-get_wr_Ob_b(y_g)
+get_wr_b(y_g)
 g_mdl = HybridModel(g_sys, (air,))
 step!(g_mdl)
 

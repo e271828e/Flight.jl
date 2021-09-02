@@ -12,7 +12,7 @@ import Flight.System: HybridSystem, x0, d0, u0, f_cont!, f_disc!
 
 export AbstractAirframeComponent, FrameSpec, Wrench
 export ACGroup, ACGroupD, ACGroupU, ACGroupY
-export translate, get_wr_Ob_b, get_h_Gc_b
+export translate, get_wr_b, get_hr_b
 
 
 ############################# FrameSpec ###############################
@@ -57,22 +57,22 @@ Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(F = wr1.F + wr2.F, M = wr1.M + wr2.M)
 
 
 """
-    translate(f_bc::FrameSpec, wr_Oc_c::Wrench)
+    translate(f_bc::FrameSpec, wr_c::Wrench)
 
 Translate a Wrench from one reference frame to another.
 
 If `f_bc` is a `FrameSpec` specifying frame fc(Oc, εc) relative to fb(Ob, εb),
-and `wr_Oc_c` is a `Wrench` defined on fc, then `wr_Ob_b = translate(f_bc,
-wr_Oc_c)` is the equivalent `Wrench` defined on fb.
+and `wr_c` is a `Wrench` defined on fc, then `wr_b = translate(f_bc,
+wr_c)` is the equivalent `Wrench` defined on fb.
 
 An alternative function call notation is provided:
-`f_bc(wr_Oc_c) == translate(f_bc, wr_Oc_c)`
+`f_bc(wr_c) == translate(f_bc, wr_c)`
 """
-function translate(f_bc::FrameSpec, wr_Oc_c::Wrench)
+function translate(f_bc::FrameSpec, wr_c::Wrench)
 
     @unpack q_bc, r_ObOc_b = f_bc
-    F_Oc_c = wr_Oc_c.F
-    M_Oc_c = wr_Oc_c.M
+    F_Oc_c = wr_c.F
+    M_Oc_c = wr_c.M
 
     #project onto airframe axes
     F_Oc_b = q_bc(F_Oc_c)
@@ -82,23 +82,23 @@ function translate(f_bc::FrameSpec, wr_Oc_c::Wrench)
     F_Ob_b = F_Oc_b
     M_Ob_b = M_Oc_b + r_ObOc_b × F_Oc_b
 
-    return Wrench(F = F_Ob_b, M = M_Ob_b) #wr_Ob_b
+    return Wrench(F = F_Ob_b, M = M_Ob_b) #wr_b
 
 end
 
-(f_bc::FrameSpec)(wr_Oc_c::Wrench) = translate(f_bc, wr_Oc_c)
+(f_bc::FrameSpec)(wr_c::Wrench) = translate(f_bc, wr_c)
 
 
 
 abstract type AbstractAirframeComponent <: AbstractComponent end
 
 #every airframe component must output a struct that implements these methods for
-#retrieving wr_Ob_b and h_Gc_b
-function get_wr_Ob_b(::T) where {T<:AbstractY{<:AbstractAirframeComponent}}
-    error("Method get_wr_Ob_b not implemented for type $T or incorrect call signature")
+#retrieving wr_b and hr_b
+function get_wr_b(::T) where {T<:AbstractY{<:AbstractAirframeComponent}}
+    error("Method get_wr_b not implemented for type $T or incorrect call signature")
 end
-function get_h_Gc_b(::T) where {T<:AbstractY{<:AbstractAirframeComponent}}
-    error("Method h_Gc_b not implemented for type $T or incorrect call signature")
+function get_hr_b(::T) where {T<:AbstractY{<:AbstractAirframeComponent}}
+    error("Method hr_b not implemented for type $T or incorrect call signature")
 end
 
 
@@ -194,7 +194,7 @@ end
     return ex
 end
 
-@inline @generated function get_wr_Ob_b(y::ACGroupY{Y,N,L}) where {Y<:AbstractY{<:AbstractAirframeComponent},N,L}
+@inline @generated function get_wr_b(y::ACGroupY{Y,N,L}) where {Y<:AbstractY{<:AbstractAirframeComponent},N,L}
 
     ex = Expr(:block)
     push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
@@ -202,14 +202,14 @@ end
     for label in L
         label = QuoteNode(label)
         ex_ss = quote
-            wr += get_wr_Ob_b(y[$label])
+            wr += get_wr_b(y[$label])
         end
         push!(ex.args, ex_ss)
     end
     return ex
 end
 
-@inline @generated function get_h_Gc_b(y::ACGroupY{Y,N,L}) where {Y<:AbstractY{<:AbstractAirframeComponent},N,L}
+@inline @generated function get_hr_b(y::ACGroupY{Y,N,L}) where {Y<:AbstractY{<:AbstractAirframeComponent},N,L}
 
     ex = Expr(:block)
     push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate
@@ -217,7 +217,7 @@ end
     for label in L
         label = QuoteNode(label)
         ex_ss = quote
-            h += get_h_Gc_b(y[$label])
+            h += get_hr_b(y[$label])
         end
         push!(ex.args, ex_ss)
     end

@@ -12,7 +12,7 @@ using Plots
 using Flight.Airdata
 using Flight.Airframe
 using Flight.System
-import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
+import Flight.Airframe: get_wr_b, get_hr_b
 import Flight.System: HybridSystem, x0, d0, u0, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
@@ -88,9 +88,9 @@ Base.@kwdef struct EThrusterY <: AbstractY{EThruster}
     ω_prop::Float64
     i::Float64
     c_bat::Float64
-    wr_Oc_c::Wrench
-    wr_Ob_b::Wrench
-    h_Gc_b::SVector{3,Float64}
+    wr_c::Wrench
+    wr_b::Wrench
+    hr_b::SVector{3,Float64}
 end
 
 Base.@kwdef mutable struct EThrusterU <: AbstractU{EThruster}
@@ -114,8 +114,8 @@ function HybridSystem(thr::EThruster, ẋ = x0(thr), x = x0(thr), d = d0(thr),
     HybridSystem{map(typeof, (thr, x, d, u, params, subsystems))...}(ẋ, x, d, u, t, params, subsystems)
 end
 
-get_wr_Ob_b(y::EThrusterY) = y.wr_Ob_b
-get_h_Gc_b(y::EThrusterY) = y.h_Gc_b
+get_wr_b(y::EThrusterY) = y.wr_b
+get_hr_b(y::EThrusterY) = y.hr_b
 
 f_disc!(sys::HybridSystem{EThruster}) = false
 
@@ -129,23 +129,23 @@ function f_cont!(sys::HybridSystem{EThruster}, air::AirY)
     throttle = u.throttle
 
     ω_prop = ω_shaft / n
-    wr_Oc_c = get_wrench(propeller, ω_prop, air)
-    wr_Ob_b = frame(wr_Oc_c)
+    wr_c = get_wrench(propeller, ω_prop, air)
+    wr_b = frame(wr_c)
 
     i = (throttle * voltage_open(battery, c_bat) - back_emf(motor, ω_shaft)) /
         (R(battery) + R(motor))
 
     M_eng_shaft = torque(motor, i, ω_shaft)
-    M_air_prop = wr_Oc_c.M[1]
+    M_air_prop = wr_c.M[1]
 
-    h_Gc_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
-    h_Gc_b = frame.q_bc(h_Gc_c)
+    hr_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
+    hr_b = frame.q_bc(hr_c)
 
     ω_shaft_dot = (M_eng_shaft + M_air_prop/(η*n)) / (motor.J + propeller.J/(η*n^2))
     ẋ.ω_shaft = ω_shaft_dot
     ẋ.c_bat = ċ(battery, i)
 
-    return EThrusterY(throttle, ω_shaft, ω_prop, i, c_bat, wr_Oc_c, wr_Ob_b, h_Gc_b)
+    return EThrusterY(throttle, ω_shaft, ω_prop, i, c_bat, wr_c, wr_b, hr_b)
 
 end
 
@@ -153,19 +153,19 @@ end
 function System.rplot(t::AbstractVector{<:Real}, y::AbstractVector{EThrusterY}, args...)
 
     y_sa = StructArray(y)
-    @unpack throttle, ω_shaft, i, c_bat, wr_Oc_c, wr_Ob_b, h_Gc_b = y_sa
+    @unpack throttle, ω_shaft, i, c_bat, wr_c, wr_b, hr_b = y_sa
 
 
     #throttle,
     #battery charge: same plot, two subplots
-    #wr_Ob_b: two subplots, one for F and another for M, all components
+    #wr_b: two subplots, one for F and another for M, all components
 
     throttle_plot = plot(t, throttle, title = "Throttle", xlabel = "u")
     # plot(t, ω_shaft)
 
     display(throttle_plot)
 
-    h_Gc_b = convert(Array, VectorOfArray(h_Gc_b))
+    hr_b = convert(Array, VectorOfArray(hr_b))
 
     #my use case is not really "i have a weird custom type that i want plotted
     #in a specific way" (this would be a User Recipe or a Type Recipe), but more

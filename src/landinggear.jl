@@ -6,7 +6,7 @@ using ComponentArrays
 
 using Flight.Airdata
 using Flight.Airframe
-import Flight.Airframe: get_wr_Ob_b, get_h_Gc_b
+import Flight.Airframe: get_wr_b, get_hr_b
 import Flight.System: x0, d0, Y, u0, f_cont!, f_disc!
 
 export LandingGearLeg, LandingGearGroup
@@ -113,8 +113,8 @@ f_cont!(y, ẋ, x, u, t, ldg::LandingGearLeg, trn = nothing) = (ẋ.state = 0.00
 f_disc!(x, u, t, ldg::LandingGearLeg, trn = nothing) = false
 
 
-get_wr_Ob_b(y, comp::LandingGearLeg) = Wrench()
-get_h_Gc_b(y, comp::LandingGearLeg) = SVector(0.0, 0, 0)
+get_wr_b(y, comp::LandingGearLeg) = Wrench()
+get_hr_b(y, comp::LandingGearLeg) = SVector(0.0, 0, 0)
 
 
 

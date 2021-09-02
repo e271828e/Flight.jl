@@ -167,7 +167,7 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
     # argument data.atmospheric_model
 
     #get aerodynamics Wrench
-    # y_aero = get_wr_Ob_b(Aero, y.air, y.srf, y.ldg, trn)
+    # y_aero = get_wr_b(Aero, y.air, y.srf, y.ldg, trn)
 
     #we don't need to update or extract each subsystem's ẋ, x or y, because
     #they are either views or mutable fields
@@ -176,25 +176,25 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
     # f_cont!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, Ldg, trn)
 
     #initialize external Wrench and additional angular momentum
-    wr_ext_Ob_b = Wrench()
-    h_rot_b = SVector(0.,0.,0.)
+    wr_ext_b = Wrench()
+    hr_b = SVector(0.,0.,0.)
 
     #add the contributions from all airframe components
 
     #add powerplant contributions
-    wr_ext_Ob_b += get_wr_Ob_b(y_pwp)
-    h_rot_b += get_h_Gc_b(y_pwp)
+    wr_ext_b += get_wr_b(y_pwp)
+    hr_b += get_hr_b(y_pwp)
 
     # #add landing gear contributions
-    # wr_ext_Ob_b .+= get_wr_Ob_b(y.ldg, Ldg)
-    # h_rot_b += get_h_Gc_b(y.ldg, Ldg)
+    # wr_ext_b .+= get_wr_b(y.ldg, Ldg)
+    # hr_b += get_hr_b(y.ldg, Ldg)
 
     #mass data depends on the state of the systems, we need updated y to compute
     #it, so it should go after the systems
     mass_data = get_mass_data(mass)
 
     #update dynamics
-    y_acc = f_dyn!(ẋ.kin.vel, wr_ext_Ob_b, h_rot_b, mass_data, y_kin)
+    y_acc = f_dyn!(ẋ.kin.vel, wr_ext_b, hr_b, mass_data, y_kin)
 
     return TestAircraftY(y_kin, y_acc, y_air, y_pwp)
 end
