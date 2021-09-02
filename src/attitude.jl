@@ -333,7 +333,7 @@ end
 
 #unless a more specialized method is defined, a TimeHistory{Rotations} is
 #converted to REuler for plotting
-@recipe function f(th::TimeHistory{<:AbstractVector{<:Rotation}})
+@recipe function plot_rotation(th::TimeHistory{<:AbstractVector{<:Rotation}})
 
     v_euler = Vector{REuler}(undef, length(th.data))
     for i in 1:length(v_euler)
@@ -342,7 +342,7 @@ end
     sa = StructArray(v_euler)
     data = hcat(sa.ψ, sa.θ, sa.φ)
 
-    label --> [L"$\psi$" L"$\theta$" L"$\varphi$"]
+    label --> [L"$\psi$" L"$\theta$" L"$\phi$"]
 
     return TimeHistory(th.t, data)
 

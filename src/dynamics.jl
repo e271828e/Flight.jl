@@ -8,6 +8,7 @@ using Flight.WGS84
 using Flight.Attitude
 using Flight.Airframe
 using Flight.Kinematics
+using Flight.System
 
 export AccY
 export MassData
@@ -114,7 +115,9 @@ end
 
 ###################### Acceleration Outputs #####################
 
-Base.@kwdef struct AccY
+struct Acc <: AbstractComponent end
+
+Base.@kwdef struct AccY <: AbstractY{Acc}
     α_eb_b::SVector{3,Float64} = zeros(SVector{3})
     α_ib_b::SVector{3,Float64} = zeros(SVector{3})
     a_eOb_b::SVector{3,Float64} = zeros(SVector{3})

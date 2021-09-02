@@ -1,13 +1,14 @@
 module System
 
 using ComponentArrays
-using Flight.Plotting
+import Flight.Plotting: plots
 
 export x0, d0, u0, f_cont!, f_disc!
 export AbstractComponent, AbstractSystem, DiscreteSystem, HybridSystem, AlgebraicSystem
 export AbstractD, AbstractU, AbstractY
 
-no_extend_error(f::Function, ::Type{S}) where {S} = error("Function $f not implemented for subtype $S or incorrect call signature")
+no_extend_error(f::Function, ::Type{S}) where {S} = error(
+    "Function $f not implemented for type $S or incorrect call signature")
 
 #anything around which we can build a System
 abstract type AbstractComponent end #anything that can go in a HybridSystem
@@ -63,15 +64,9 @@ f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 #is safer to force each concrete System that does not require an actual f_disc!
 #to implement a trivial f_disc! that returns false
 
-
-function Plots.plot(::TimeHistory{Y}; mode = :basic) where {Y<:AbstractY}
-    no_extend_error(plot, Y)
+function plots(::AbstractVector{<:Real}, ::AbstractVector{T}) where {T<:AbstractY}
+    no_extend_error(plots, T)
 end
-#this must be a direct plot method extension, it cannot be a recipe. a recipe is
-#called within the pipeline for a SINGLE figure. but a TimeHistory{<:AbstractY}
-#will generally need to make not one but multiple plots. kwords don't
-#participate in dispatch, but this signature shows what extending methods need
-#to implement function
 
 
 

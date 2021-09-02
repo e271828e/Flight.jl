@@ -7,19 +7,21 @@ using UnPack
 
 using Flight.WGS84
 using Flight.Attitude
+using Flight.System
 import Flight.System: x0
+
+using Flight.Plotting
+import Flight.Plotting: plots
 
 export Pos, Vel, Kin, KinInit
 export PosX, PosY, VelX, VelY, KinX, KinY
 export init!, f_kin!, renormalize!
 
-abstract type KinematicStruct end
+struct Pos <: AbstractComponent end
+struct Vel <: AbstractComponent end
+struct Kin <: AbstractComponent end
 
-struct Pos end
-struct Vel end
-struct Kin end
-
-Base.@kwdef struct KinInit <: KinematicStruct
+Base.@kwdef struct KinInit
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
     v_eOb_b::SVector{3, Float64} = zeros(SVector{3})
     q_nb::RQuat = RQuat()
@@ -42,7 +44,7 @@ const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T
 "Type definition for dispatching on velocity state vector instances"
 const KinX{T, D} = ComponentVector{T, D, typeof(getaxes(KinXTemplate))} where {T, D}
 
-Base.@kwdef struct PosY #all magnitudes refer to Ob
+Base.@kwdef struct PosY <: AbstractY{Pos}
     q_lb::RQuat
     q_nb::RQuat
     q_eb::RQuat
@@ -54,7 +56,7 @@ Base.@kwdef struct PosY #all magnitudes refer to Ob
     Ob_xyh::SVector{3,Float64} #velocity integral
 end
 
-Base.@kwdef struct VelY
+Base.@kwdef struct VelY <: AbstractY{Vel}
     ω_eb_b::SVector{3,Float64}
     ω_lb_b::SVector{3,Float64}
     ω_el_l::SVector{3,Float64}
@@ -64,7 +66,7 @@ Base.@kwdef struct VelY
     v_eOb_n::SVector{3,Float64}
 end
 
-Base.@kwdef struct KinY
+Base.@kwdef struct KinY <: AbstractY{Kin}
     pos::PosY
     vel::VelY
 end
@@ -159,5 +161,37 @@ function renormalize_q!(x_q, ε) #returns true if norm restored, false otherwise
     abs(norm_q - 1.0) > ε ? (x_q ./= norm_q; return true) : return false
 end
 
+
+############################ Plotting ################################
+
+function plots(t, data::AbstractVector{<:KinY}; mode, save_path, kwargs...)
+
+    sa = StructArray(data)
+    plots(t, sa.pos; mode, save_path, kwargs...)
+    plots(t, sa.vel; mode, save_path, kwargs...)
+end
+
+function plots(t, data::AbstractVector{<:PosY}; mode, save_path, kwargs...)
+
+    @unpack e_nb, Ob_xyh = StructArray(data)
+    # println(mode); println(save_path); println(kwargs)
+    plt_e_nb = thplot(t, e_nb; label = ["Heading" "Inclination" "Bank"], kwargs...)
+    plt_Ob_xyh = thplot(t, Ob_xyh;
+        label = [L"$\int v_{eO_b}^{x_n} dt$" L"$\int v_{eO_b}^{y_n} dt$" L"$\mathrm{Altitude}$"],
+        plot_title = "Local Cartesian Coordinates",
+        ylabel = [L"$\Delta x\quad (m)$" L"$\Delta y \quad (m)$" L"h \quad (m)"],
+        split = :h, link = :none, kwargs...)
+
+    savefig(plt_e_nb, joinpath(save_path, "e_nb.png"))
+    savefig(plt_Ob_xyh, joinpath(save_path, "Ob_xyh.png"))
+end
+
+function plots(t, data::AbstractVector{<:VelY}; mode, save_path, kwargs...)
+
+    @unpack v_eOb_b, v_eOb_n, ω_lb_b = StructArray(data)
+    plt_ω_lb_b = thplot(t, ω_lb_b; label = ["Yaw rate" "Pitch rate" "Roll rate"], kwargs...)
+    savefig(plt_ω_lb_b, joinpath(save_path, "ω_lb_b.png"))
+    # plot(t, pos_data; mode, save_path, kwargs...)
+end
 
 end #module

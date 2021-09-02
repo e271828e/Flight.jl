@@ -20,7 +20,9 @@ using Flight.Kinematics
 using Flight.Dynamics
 
 import Flight.System: HybridSystem, x0, d0, u0, f_cont!, f_disc!
-# import Flight.System: plotlog
+
+using Flight.Plotting
+import Flight.Plotting: plots
 
 export TestAircraft, TestAircraftD, TestAircraftY
 
@@ -204,6 +206,14 @@ function f_disc!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P})
     x_mod = renormalize!(ac_sys.x.kin, 1e-8)
     # println(x_mod)
     return x_mod
+end
+
+function plots(t::AbstractVector{<:Real}, data::AbstractVector{<:TestAircraftY};
+    mode::Symbol, save_path::Union{String, Nothing}, kwargs...)
+
+    sa = StructArray(data)
+    kin_data = sa.kin
+    plots(t, kin_data; mode, save_path, kwargs...)
 end
 
 ######### Example: extracting y fields for plotting

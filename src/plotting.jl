@@ -1,11 +1,15 @@
 module Plotting
 
 using Reexport
+@reexport using Plots
+@reexport using StructArrays
 @reexport using RecursiveArrayTools
 @reexport using LaTeXStrings
-@reexport using Plots
 
+export plots
 export TimeHistory, thplot
+
+
 
 # https://daschw.github.io/recipes/
 # http://docs.juliaplots.org/latest/recipes/
@@ -39,8 +43,14 @@ mutable struct TimeHistory{D}
     data::D
 end
 
-thplot(t, data; kwargs...) = plot(TimeHistory(t, data); kwargs...)
+#our entry plotting entry point cannot be a recipe. a recipe is called within
+#the plot() pipeline, which creates a single figure. however,
+#TimeHistory{<:AbstractY} will generally need to generate not one but multiple
+#plots. for this we define a new method thplots()
+plots(args...; kwargs...) = error("Not implemented")
 
+#for all these type parameters, TimeHistory{D} needs to create only a single
+#figure, so they can be handled in recipes
 @recipe function f(th::TimeHistory{<:AbstractVector{<:Real}})
 
     xguide --> L"$t \: (s)$"
@@ -72,5 +82,7 @@ end
 @recipe function f(th::TimeHistory{<:AbstractVector{<:AbstractVector{<:Real}}})
     return TimeHistory(th.t, Array(VectorOfArray(th.data))')
 end
+
+thplot(t, data; kwargs...) = plot(TimeHistory(t, data); kwargs...)
 
 end

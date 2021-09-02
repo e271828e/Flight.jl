@@ -1,9 +1,11 @@
 module Model
 
+using Dates
 using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks, RecursiveArrayTools
 using UnPack
 
 using Flight.System
+import Flight.Plotting: plots
 
 export HybridModel
 
@@ -113,7 +115,12 @@ function SciMLBase.reinit!(m::HybridModel, args...)
     return nothing
 end
 
-# System.rplot(mdl::HybridModel, args...) = rplot(mdl.log, args...)
+function plots(mdl::HybridModel; mode::Symbol = :basic, save_path::Union{String,Nothing} = nothing, kwargs...)
+    #generate default path tmp/plots/current_date
+    save_path = (save_path === nothing ? joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_path)
+    mkpath(save_path)
+    plots(mdl.log.t, mdl.log.saveval; mode, save_path, kwargs...)
+end
 
 # #delegate recursive plotting to the simulated System's AbstractY rplot method
 # function System.rplot(log::DiffEqCallbacks.SavedValues, args...)

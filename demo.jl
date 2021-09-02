@@ -41,11 +41,15 @@ ac = TestAircraft();
 
 ac_sys = HybridSystem(ac);
 y_ac = f_cont!(ac_sys, trn, atm);
+
 ac_mdl = HybridModel(ac_sys, (trn, atm));
 ac_mdl.sys.subsystems.pwp.u.left.throttle = 1 #the same
 b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
 
-ac_sys = HybridSystem(ac);
+#this could set at startup.jl
+plot_settings = (linewidth=2, plot_titlefontfamily="Times Roman", plot_titlefontsize = 20, legendfontsize=14, )
+plots(ac_mdl; plot_settings...)
+
 ac_mdl = HybridModel(ac_sys, (trn, atm); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0:0.1:100);
 ac_mdl.sys.subsystems.pwp.u.left.throttle = 1 #the same
 b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)

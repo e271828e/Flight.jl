@@ -54,9 +54,6 @@ include("aircraft.jl")
 @reexport using .Dynamics
 @reexport using .Aircraft
 
-
-println("REMINDER: Set normalization = false")
-
 export ftest
 
 ftest() = println("Welcome to Flight")

@@ -16,6 +16,10 @@ abstract type AbstractLandingGearLeg <: SystemDescriptor end
 Base.@kwdef struct LandingGearLeg <: AbstractLandingGearLeg
 end
 
+"""
+SET NORMALIZATION TO false!!!!!!!
+"""
+
 #=
 
 #START BY REPLICATING PYTHON IMPLEMENTATION BUT WITHIN THIS FRAMEWORK

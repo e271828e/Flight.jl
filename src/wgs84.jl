@@ -4,10 +4,10 @@ using Base: Real, Symbol
 using LinearAlgebra
 using StaticArrays: SVector
 using Flight.Attitude
+using Flight.Plotting
 
-export ω_ie
 export NVector, NVectorAlt, LatLonAlt, CartECEF
-export gravity, ltf, radii, ψ_nl, lat, lon
+export ω_ie, gravity, ltf, radii, ψ_nl, lat, lon
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -283,6 +283,27 @@ function Base.convert(::Type{CartECEF}, p::NVectorAlt)
 
 end
 
+
+########################## Plotting #################################
+
+#unless a more specialized method is defined, a TimeHistory{<:WGS84Pos} is
+#converted to LatLonAlt for plotting
+@recipe function plot_wgs84pos(th::TimeHistory{<:AbstractVector{<:WGS84Pos}})
+
+    v_llh = Vector{LatLonAlt}(undef, length(th.data))
+    for i in 1:length(v_llh)
+        v_llh[i] = LatLonAlt(th.data[i])
+    end
+    sa = StructArray(v_llh)
+    data = hcat(sa.ϕ, sa.λ, sa.h)
+
+    #maybe convert to degrees
+    label --> [L"$\varphi$" L"$\lambda$" L"$h$"]
+    link --> :none #need different scales for h
+
+    return TimeHistory(th.t, data)
+
+end
 
 
 
