@@ -9,6 +9,8 @@ export AbstractD, AbstractU, AbstractY
 
 no_extend_error(f::Function, ::Type{S}) where {S} = error(
     "Function $f not implemented for type $S or incorrect call signature")
+no_extend_warning(f::Function, ::Type{S}) where {S} = println(
+    "Warning: Function $f not implemented for type $S or incorrect call signature")
 
 #anything around which we can build a System
 abstract type AbstractComponent end #anything that can go in a HybridSystem
@@ -65,7 +67,7 @@ f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 #to implement a trivial f_disc! that returns false
 
 function plots(::AbstractVector{<:Real}, ::AbstractVector{T}) where {T<:AbstractY}
-    no_extend_error(plots, T)
+    no_extend_warning(plots, T) #nothing to plot by default, warn about it
 end
 
 

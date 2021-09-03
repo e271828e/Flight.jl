@@ -58,21 +58,21 @@ plots(args...; kwargs...) = error("Not implemented")
 
 end
 
-@recipe function f(th::TimeHistory{<:AbstractMatrix{<:Real}}; split = :none)
+@recipe function f(th::TimeHistory{<:AbstractMatrix{<:Real}}; th_split = :none)
 
-    xguide --> L"$t \: (s)$"
+    xguide --> L"$t \quad (s)$"
 
     vlength = size(th.data)[2]
     label --> (vlength <= 3 ?  ["x" "y" "z"][:, 1:vlength] : (1:vlength)')
-    if split === :h
+    if th_split === :h
         layout --> (1, vlength)
         link --> :y #alternative: :none
-    elseif split === :v
+    elseif th_split === :v
         layout --> (vlength, 1)
     else
         layout --> 1
     end
-    delete!(plotattributes, :split)
+    delete!(plotattributes, :th_split)
 
     return th.t, th.data
 

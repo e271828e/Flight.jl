@@ -102,6 +102,8 @@ end
 #ourselves, it is not determined by the aircraft subsystems (although obviously
 #it should be defined taking them into account)
 
+#here we should check which subsystems are hybrid (stateful), and add only those
+#as x0 blocks
 x0(ac::TestAircraft) = ComponentVector(kin = x0(Kin()), pwp = x0(ac.pwp))
 d0(ac::TestAircraft) = TestAircraftD(d0(ac.stm), d0(ac.pwp))
 
@@ -213,7 +215,11 @@ function plots(t::AbstractVector{<:Real}, data::AbstractVector{<:TestAircraftY};
 
     sa = StructArray(data)
     kin_data = sa.kin
+    acc_data = sa.acc
+
+    #put kinematics and acceleration outputs all in a single airframe folder
     plots(t, kin_data; mode, save_path, kwargs...)
+    # plots(t, acc_data; mode, save_path, kwargs...)
 end
 
 ######### Example: extracting y fields for plotting

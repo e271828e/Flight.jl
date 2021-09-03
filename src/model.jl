@@ -25,7 +25,12 @@ struct HybridModel{S <: HybridSystem, I <: OrdinaryDiffEq.ODEIntegrator, L <: Sa
 
     function HybridModel(sys, args_c::Tuple = (), args_d::Tuple = ();
         method = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
-        int_kwargs...)
+        save_on = false, int_kwargs...)
+
+        #save_on is set to false because we are not usually interested in saving
+        #the naked state vector. the output saved by the SavingCallback is all
+        #we need for insight
+        saveat_arr = (y_saveat isa Real ? (t_start:y_saveat:t_end) : y_saveat)
 
         params = (sys = sys, args_c = args_c, args_d = args_d)
 
@@ -33,12 +38,12 @@ struct HybridModel{S <: HybridSystem, I <: OrdinaryDiffEq.ODEIntegrator, L <: Sa
         log = SavedValues(Float64, typeof(y₀))
 
         dcb = DiscreteCallback((u, t, integrator)->true, f_dcb!)
-        scb = SavingCallback(f_scb, log, saveat = y_saveat)
+        scb = SavingCallback(f_scb, log, saveat = saveat_arr)
         cb_set = CallbackSet(dcb, scb)
 
         x0 = copy(sys.x)
         problem = ODEProblem{true}(f_update!, x0, (t_start, t_end), params)
-        integrator = init(problem, method; callback = cb_set, save_everystep = false, int_kwargs...)
+        integrator = init(problem, method; callback = cb_set, save_on, int_kwargs...)
         new{typeof(sys), typeof(integrator), typeof(log)}(sys, integrator, log)
     end
 end
@@ -101,12 +106,17 @@ end
 
 SciMLBase.step!(m::HybridModel, args...) = step!(m.integrator, args...)
 
-function SciMLBase.reinit!(m::HybridModel, args...)
-    reinit!(m.integrator, args...)
+SciMLBase.solve!(m::HybridModel) = solve!(m.integrator)
 
-    #restore HybridSystems internal time and state to their original values
-    #(which were stored by the integrator upon construction, and now supplied by
-    #it)
+function SciMLBase.reinit!(m::HybridModel, args...; kwargs...)
+
+    #for an ODEIntegrator, the optional args... is simply a new initial
+    #condition. if not specified, the original initial condition is used
+    reinit!(m.integrator, args...; kwargs...)
+
+    #grab the updated t and x from the integrator (in case they were reset by
+    #the input arguments). this is not strictly necessary, since they are merely
+    #buffers. just for consistency.
     m.sys.t[] = m.integrator.t
     m.sys.x .= m.integrator.u
 

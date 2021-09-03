@@ -324,7 +324,9 @@ end
     #maybe convert to degrees
     label --> ["Latitude" "Longitude" "Altitude"]
     yguide --> [L"$\varphi \quad (rad)$" L"$\lambda \quad (rad)$" L"$h \quad (m)$"]
-    link --> :none #need different scales for h
+    th_split --> :h
+    link --> :none #when th_split link defaults to :y, but we need a different scale for h
+
 
     return TimeHistory(th.t, data)
 

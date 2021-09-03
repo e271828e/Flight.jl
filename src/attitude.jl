@@ -344,6 +344,7 @@ end
 
     label --> ["Heading" "Inclination" "Bank"]
     yguide --> [L"$\psi \quad (rad)$" L"$\theta \quad (rad)$" L"$\phi \quad (rad)$"]
+    th_split --> :h #custom TimeHistory attribute
 
     return TimeHistory(th.t, data)
 
