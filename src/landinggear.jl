@@ -7,7 +7,7 @@ using ComponentArrays
 using Flight.Airdata
 using Flight.Airframe
 import Flight.Airframe: get_wr_b, get_hr_b
-import Flight.System: x0, d0, Y, u0, f_cont!, f_disc!
+import Flight.System: get_x0, get_d0, Y, get_u0, f_cont!, f_disc!
 
 export LandingGearLeg, LandingGearGroup
 
@@ -22,7 +22,11 @@ SET NORMALIZATION TO false!!!!!!!
 
 #=
 
-#START BY REPLICATING PYTHON IMPLEMENTATION BUT WITHIN THIS FRAMEWORK
+#first implement a LandingGearLeg with a basic shock absorber, direct steering
+#and direct braking. then add the required generalizations to allow for
+#NoSteering, NoBraking, etc.
+
+
 abstract type AbstractActuator end
 
 Base.@kwdef struct LandingGearLeg{A<:AbstractShockAbsorber, S <: AbstractSteering, B <: AbstractBraking}
@@ -39,53 +43,53 @@ struct ContactModel
     k_p::Float64
     k_i::Float64
 end
-x0(::ContactModel) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
+get_x0(::ContactModel) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
 Y(::ContactModel) = ComponentVector(v = zeros(2), s = zeros(2), α_p = zeros(2), α_i = zeros(2),
                                     α_raw = zeros(2), α_sat = zeros(2), α = zeros(2))
-u0(::ContactModel) = nothing
+get_u0(::ContactModel) = nothing
 
 abstract type AbstractSteering end
 
 struct NoSteering <: AbstractSteering end
-x0(::NoSteering) = nothing
+get_x0(::NoSteering) = nothing
 Y(::NoSteering) = nothing
-u0(::NoSteering) = nothing
+get_u0(::NoSteering) = nothing
 
 struct DirectSteering <: AbstractSteering
     limits::SVector{2,Float64}
 end
-x0(::DirectSteering) = nothing
+get_x0(::DirectSteering) = nothing
 Y(::DirectSteering) = 0.0 #steering angle
-u0(::DirectSteering) = 0.0 #steering angle input
+get_u0(::DirectSteering) = 0.0 #steering angle input
 
 struct ActuatedSteering{A <: AbstractActuator} <: AbstractSteering
     limits::SVector{2,Float64} #more generally, transmission kinematics could go here
     actuator::A #actuator model parameters go here
 end
-x0(steering::ActuatedSteering) = x0(steering.actuator)
+get_x0(steering::ActuatedSteering) = get_x0(steering.actuator)
 Y(steering::ActuatedSteering) = Y(steering.actuator)
-u0(steering::ActuatedSteering) = u0(steering.actuator) #typically, 1
+get_u0(steering::ActuatedSteering) = get_u0(steering.actuator) #typically, 1
 
 abstract type AbstractBraking end
 
 struct NoBraking <: AbstractBraking end
-x0(::NoBraking) = nothing
+get_x0(::NoBraking) = nothing
 Y(::NoBraking) = nothing
-u0(::NoBraking) = nothing
+get_u0(::NoBraking) = nothing
 
 struct DirectBraking <: AbstractBraking
     efficiency::Float64
 end
-x0(::DirectBraking) = nothing
+get_x0(::DirectBraking) = nothing
 Y(::DirectBraking) = 0.0 #braking strength
-u0(::DirectBraking) = 0.0 #braking strength input
+get_u0(::DirectBraking) = 0.0 #braking strength input
 
-function x0(ldg::LandingGearLeg{A,S,B}) where {A,S,B}
+function get_x0(ldg::LandingGearLeg{A,S,B}) where {A,S,B}
     x_blocks = Dict(:Symbol, Any)
-    push!(x_blocks, :contact => x0(ldg.contact))
-    push!(x_blocks, :shock => x0(ldg.shock))
-    push!(x_blocks, :steering => x0(ldg.steering))
-    push!(x_blocks, :braking => x0(ldg.braking))
+    push!(x_blocks, :contact => get_x0(ldg.contact))
+    push!(x_blocks, :shock => get_x0(ldg.shock))
+    push!(x_blocks, :steering => get_x0(ldg.steering))
+    push!(x_blocks, :braking => get_x0(ldg.braking))
     #remove null blocks, then convert to named tuple, then pass to
     #ComponentVector and instantiate
 end
@@ -110,9 +114,9 @@ could #also #account for other braking model parameters
 
 
 #################### AbstractSystem interface
-x0(::LandingGearLeg) = ComponentVector(state = 0.0)
+get_x0(::LandingGearLeg) = ComponentVector(state = 0.0)
 Y(::LandingGearLeg) = ComponentVector(output = 0.0) #both are valid, but not having missing elements in the overall Y vector is slightly faster for some operations
-u0(::LandingGearLeg) = missing
+get_u0(::LandingGearLeg) = missing
 f_cont!(y, ẋ, x, u, t, ldg::LandingGearLeg, trn = nothing) = (ẋ.state = 0.001x.state)
 f_disc!(x, u, t, ldg::LandingGearLeg, trn = nothing) = false
 

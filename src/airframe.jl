@@ -8,7 +8,7 @@ using UnPack
 using Flight.Attitude
 using Flight.System
 
-import Flight.System: HybridSystem, x0, d0, u0, f_cont!, f_disc!
+import Flight.System: HybridSystem, get_x0, get_d0, get_u0, f_cont!, f_disc!
 
 export AbstractAirframeComponent, FrameSpec, Wrench
 export ACGroup, ACGroupD, ACGroupU, ACGroupY
@@ -143,15 +143,15 @@ struct ACGroupY{Y<:AbstractY,N,L} <: AbstractY{ACGroup}
     end
 end
 
-x0(g::ACGroup{T,N,L}) where {T,N,L} = ComponentVector(NamedTuple{L}(x0.(values(g))))
-d0(g::ACGroup{T,N,L}) where {T,N,L} = ACGroupD(NamedTuple{L}(d0.(values(g))))
-u0(g::ACGroup{T,N,L}) where {T,N,L} = ACGroupU(NamedTuple{L}(u0.(values(g))))
+get_x0(g::ACGroup{T,N,L}) where {T,N,L} = ComponentVector(NamedTuple{L}(get_x0.(values(g))))
+get_d0(g::ACGroup{T,N,L}) where {T,N,L} = ACGroupD(NamedTuple{L}(get_d0.(values(g))))
+get_u0(g::ACGroup{T,N,L}) where {T,N,L} = ACGroupU(NamedTuple{L}(get_u0.(values(g))))
 
 Base.getproperty(y::Union{ACGroupY, ACGroupD, ACGroupU}, s::Symbol) = getproperty(getfield(y,:nt), s)
 Base.getindex(y::Union{ACGroupY, ACGroupD, ACGroupU}, s::Symbol) = getindex(getfield(y,:nt), s)
 
 function HybridSystem(g::ACGroup{T,N,L},
-    ẋ = x0(g), x = x0(g), d = d0(g), u = u0(g), t = Ref(0.0)) where {T,N,L}
+    ẋ = get_x0(g), x = get_x0(g), d = get_d0(g), u = get_u0(g), t = Ref(0.0)) where {T,N,L}
 
     s_list = Vector{HybridSystem}()
     for label in L

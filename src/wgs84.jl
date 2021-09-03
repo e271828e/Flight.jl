@@ -319,11 +319,11 @@ end
         v_llh[i] = LatLonAlt(th.data[i])
     end
     sa = StructArray(v_llh)
-    data = hcat(sa.ϕ, sa.λ, sa.h)
+    data = hcat(sa.ϕ/π, sa.λ/π, sa.h)
 
     #maybe convert to degrees
     label --> ["Latitude" "Longitude" "Altitude"]
-    yguide --> [L"$\varphi \quad (rad)$" L"$\lambda \quad (rad)$" L"$h \quad (m)$"]
+    yguide --> [L"$\varphi \ (\pi \ rad)$" L"$\lambda \ (\pi \ rad)$" L"$h \ (m)$"]
     th_split --> :h
     link --> :none #when th_split link defaults to :y, but we need a different scale for h
 

@@ -3,7 +3,7 @@ module System
 using ComponentArrays
 import Flight.Plotting: plots
 
-export x0, d0, u0, f_cont!, f_disc!
+export get_x0, get_d0, get_u0, f_cont!, f_disc!
 export AbstractComponent, AbstractSystem, DiscreteSystem, HybridSystem, AlgebraicSystem
 export AbstractD, AbstractU, AbstractY
 
@@ -22,9 +22,9 @@ abstract type AbstractD{C<:AbstractComponent} end
 #input struct required by AbstractSystem{C}
 abstract type AbstractU{C<:AbstractComponent} end
 
-x0(::C) where {C<:AbstractComponent} = no_extend_error(x0, C)
-d0(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
-u0(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
+get_x0(::C) where {C<:AbstractComponent} = no_extend_error(get_x0, C)
+get_d0(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
+get_u0(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
 
 abstract type AbstractSystem{C<:AbstractComponent} end
 

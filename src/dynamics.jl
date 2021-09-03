@@ -181,4 +181,16 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
 
 end
 
+
+    #=
+    #basic mode plots
+
+
+    acceleration:
+    α_eb_b: Angular Acceleration (Airframe/ECEF) [Airframe] (not much interest in α_lb_b, but could compute it)
+    a_eOb_b: Acceleration (Airframe/ECEF) [Airframe]
+    f_Ob_b: Specific Force [Airframe]
+    =#
+
+
 end #module

@@ -13,7 +13,7 @@ using Flight.Airdata
 using Flight.Airframe
 using Flight.System
 import Flight.Airframe: get_wr_b, get_hr_b
-import Flight.System: HybridSystem, x0, d0, u0, f_cont!, f_disc!
+import Flight.System: HybridSystem, get_x0, get_d0, get_u0, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, EThrusterU, EThrusterD, EThrusterY
@@ -100,15 +100,15 @@ end
 #required to make EThruster compatible with HybridSystem
 Base.@kwdef mutable struct EThrusterD <: AbstractD{EThruster} end
 
-x0(::EThruster) = copy(EThrusterXTemplate)
-d0(::EThruster) = EThrusterD()
-u0(::EThruster) = EThrusterU()
+get_x0(::EThruster) = copy(EThrusterXTemplate)
+get_d0(::EThruster) = EThrusterD()
+get_u0(::EThruster) = EThrusterU()
 
 
 ################ EThruster HybridSystem ###################
 
-function HybridSystem(thr::EThruster, ẋ = x0(thr), x = x0(thr), d = d0(thr),
-                      u = u0(thr), t = Ref(0.0))
+function HybridSystem(thr::EThruster, ẋ = get_x0(thr), x = get_x0(thr),
+                        d = get_d0(thr), u = get_u0(thr), t = Ref(0.0))
     params = thr #params is the component itself
     subsystems = nothing #no subsystems to define
     HybridSystem{map(typeof, (thr, x, d, u, params, subsystems))...}(ẋ, x, d, u, t, params, subsystems)

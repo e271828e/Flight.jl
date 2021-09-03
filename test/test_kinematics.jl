@@ -25,7 +25,7 @@ function test_init()
         ω_lb_b = [0.1, 0.01, -0.4],
         v_eOb_b = [100, 5, -10])
 
-    x = x0(init)
+    x = get_x0(init)
     #now rebuild the initializer from the kinematic state vector and check it
     #against the original
     q_lb = RQuat(x.pos.q_lb, normalization = false)
@@ -63,10 +63,10 @@ function test_fpos()
         ω_lb_b = [0.1, 0.01, -0.4],
         v_eOb_b = [100, 5, -10])
 
-    x_kin = x0(init)
+    x_kin = get_x0(init)
 
     y_kin = Y(Kin())
-    ẋ_pos = x0(Pos())
+    ẋ_pos = get_x0(Pos())
 
     @btime f_kin!($y_kin, $ẋ_pos, $x_kin)
 

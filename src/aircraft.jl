@@ -19,7 +19,7 @@ using Flight.Propulsion
 using Flight.Kinematics
 using Flight.Dynamics
 
-import Flight.System: HybridSystem, x0, d0, u0, f_cont!, f_disc!
+import Flight.System: HybridSystem, get_x0, get_d0, get_u0, f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -104,12 +104,12 @@ end
 
 #here we should check which subsystems are hybrid (stateful), and add only those
 #as x0 blocks
-x0(ac::TestAircraft) = ComponentVector(kin = x0(Kin()), pwp = x0(ac.pwp))
-d0(ac::TestAircraft) = TestAircraftD(d0(ac.stm), d0(ac.pwp))
+get_x0(ac::TestAircraft) = ComponentVector(kin = get_x0(Kin()), pwp = get_x0(ac.pwp))
+get_d0(ac::TestAircraft) = TestAircraftD(get_d0(ac.stm), get_d0(ac.pwp))
 
 
 struct EmptyU <: AbstractU{TestAircraft} end
-u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyU()
+get_u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyU()
 
 #in a NoMapping aircraft, there are no aircraft controls! we act upon the
 #subsystem's controls directly! this allows testing multiple subsystem
@@ -121,7 +121,7 @@ u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyU()
 const my_pwp = ACGroup(left = EThruster(), right = EThruster())
 const MyPwp = typeof(my_pwp)
 struct MyMapping <: AbstractControlMapping
-u0(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) where {Mass,Ldg} = ComponentVector(throttle = 0.0)
+get_u0(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) where {Mass,Ldg} = ComponentVector(throttle = 0.0)
 #and now we define: assign_control_method! dispatching on these type
 function assign_control_inputs!(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) where {Mass,Ldg}
     ac.subsystems.pwp.left.throttle = ac.u.throttle
@@ -131,12 +131,13 @@ end
 
 const TestAircraftSys{C,S,M,P} = HybridSystem{TestAircraft{C,S,M,P}} where {C,S,M,P}
 
-function HybridSystem(ac::TestAircraft, ẋ = x0(ac), x = x0(ac), d = d0(ac), u = u0(ac), t = Ref(0.0))
+function HybridSystem(ac::TestAircraft, ẋ = get_x0(ac), x = get_x0(ac),
+                    d = get_d0(ac), u = get_u0(ac), t = Ref(0.0))
     #each subsystem allocate its own u, then we can decide how the aircraft's u
     #should map onto it via assign_control_inputs!
-    stm = DiscreteSystem(ac.stm, d.stm, u0(ac.stm), t)
-    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, d.pwp, u0(ac.pwp), t)
-    # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, u0(ac.ldg), t)
+    stm = DiscreteSystem(ac.stm, d.stm, get_u0(ac.stm), t)
+    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, d.pwp, get_u0(ac.pwp), t)
+    # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, get_u0(ac.ldg), t)
     params = (mass = ac.mass,)
     # subsystems = (pwp = pwp, ldg = ldg)
     subsystems = (stm = stm, pwp = pwp,)

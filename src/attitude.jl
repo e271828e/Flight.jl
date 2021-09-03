@@ -340,10 +340,10 @@ end
         v_euler[i] = REuler(th.data[i])
     end
     sa = StructArray(v_euler)
-    data = hcat(sa.ψ, sa.θ, sa.φ)
+    data = hcat(sa.ψ, sa.θ, sa.φ)./π #plot as π factors
 
     label --> ["Heading" "Inclination" "Bank"]
-    yguide --> [L"$\psi \quad (rad)$" L"$\theta \quad (rad)$" L"$\phi \quad (rad)$"]
+    yguide --> [L"$\psi \ (\pi \ rad)$" L"$\theta \ (\pi \ rad)$" L"$\phi \ (\pi \ rad)$"]
     th_split --> :h #custom TimeHistory attribute
 
     return TimeHistory(th.t, data)

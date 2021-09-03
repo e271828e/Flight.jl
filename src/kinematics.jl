@@ -8,7 +8,7 @@ using UnPack
 using Flight.WGS84
 using Flight.Attitude
 using Flight.System
-import Flight.System: x0
+import Flight.System: get_x0
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -71,11 +71,11 @@ Base.@kwdef struct KinY <: AbstractY{Kin}
     vel::VelY
 end
 
-#Kin is not a System, so we do not really need to define x0 to comply with the
+#Kin is not a System, so we do not really need to define get_x0 to comply with the
 #System interface. however, it is convenient for testing, and to ensure the
 #aircraft state has its kinematic block initialized to reasonable values
-x0(::Kin) = x0(KinInit())
-x0(init::KinInit) = (x=similar(KinXTemplate); init!(x, init); return x)
+get_x0(::Kin) = get_x0(KinInit())
+get_x0(init::KinInit) = (x=similar(KinXTemplate); init!(x, init); return x)
 
 function init!(x::KinX, init::KinInit)
 
@@ -186,7 +186,7 @@ function plots(t, data::AbstractVector{<:PosY}; mode, save_path, kwargs...)
     plt_Ob_xyh = thplot(t, Ob_xyh;
         plot_title = "Position (Local Cartesian)",
         label = [L"$\int v_{eO_b}^{x_n} dt$" L"$\int v_{eO_b}^{y_n} dt$" "Altitude"],
-        ylabel = [L"$\Delta x\quad (m)$" L"$\Delta y \quad (m)$" L"h \quad (m)"],
+        ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$" L"h \ (m)"],
         th_split = :h, link = :none,
         kwargs...)
 
@@ -203,8 +203,7 @@ function plots(t, data::AbstractVector{<:PosY}; mode, save_path, kwargs...)
     # Ob_xyh_voa = VectorOfArray(Ob_xyh)
     # plt_Ob_xyh_3D = plot(collect(view(Ob_xyh_voa,i,:) for i ∈ 1:3)...;
     #     camera = (30, 45))
-    #no se puede poner el mismo aspect ratio en los 3 ejes para 3d plotting. asi
-    #un 3dplot no me aporta nada. es mejor un plot con 3 subplotsxvsy, xvsz, yvsz
+    #aspect_ratio attribute does not work for 3d figures
 
     # savefig(plt_Ob_xyh_3D, joinpath(save_path, "Ob_xyh_3D.png"))
 end
@@ -213,37 +212,29 @@ function plots(t, data::AbstractVector{<:VelY}; mode, save_path, kwargs...)
 
     @unpack v_eOb_b, v_eOb_n, ω_lb_b, ω_el_l = StructArray(data)
 
-    #=
-    velocity plots:
-    ω_lb_b: Angular Velocity (Airframe/LTF) [Airframe] yawrate pitchrate rollrate
-    ω_el_l: Transport Rate (LTF/ECEF) [LTF] automatic legend
-    v_eOb_n: Velocity (Airframe/ECEF) [NED] legend: North, East, Down
-    v_eOb_b: Velocity (Airframe/ECEF) [Airframe] automatic legend
-    =#
-
     plt_ω_lb_b = thplot(t, ω_lb_b;
         plot_title = "Angular Velocity (Airframe/LTF) [Airframe]",
         label = ["Roll Rate" "Pitch Rate" "Yaw Rate"],
-        ylabel = [L"$p \quad (rad/s)$" L"$q \quad (rad/s)$" L"$r \quad (rad/s)$"],
+        ylabel = [L"$p \ (rad/s)$" L"$q \ (rad/s)$" L"$r \ (rad/s)$"],
         th_split = :h,
         kwargs...)
 
     plt_ω_el_l = thplot(t, ω_el_l;
-        plot_title = "Transport Rate (LTF/ECEF) [LTF]",
-        ylabel = L"$\omega_{el}^{l} \quad (rad/s)$",
+        plot_title = "LTF Transport Rate (LTF/ECEF) [LTF]",
+        ylabel = L"$\omega_{el}^{l} \ (rad/s)$",
         th_split = :h,
         kwargs...)
 
     plt_v_eOb_n = thplot(t, v_eOb_n;
         plot_title = "Velocity (Airframe/ECEF) [NED]",
         label = ["North" "East" "Down"],
-        ylabel = [L"$v_{eO_b}^{N} \quad (m/s)$" L"$v_{eO_b}^{E} \quad (m/s)$" L"$v_{eO_b}^{D} \quad (m/s)$"],
+        ylabel = [L"$v_{eO_b}^{N} \ (m/s)$" L"$v_{eO_b}^{E} \ (m/s)$" L"$v_{eO_b}^{D} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
     plt_v_eOb_b = thplot(t, v_eOb_b;
         plot_title = "Velocity (Airframe/ECEF) [Airframe]",
-        ylabel = [L"$v_{eO_b}^{x_b} \quad (m/s)$" L"$v_{eO_b}^{y_b} \quad (m/s)$" L"$v_{eO_b}^{z_b} \quad (m/s)$"],
+        ylabel = [L"$v_{eO_b}^{x_b} \ (m/s)$" L"$v_{eO_b}^{y_b} \ (m/s)$" L"$v_{eO_b}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
@@ -251,7 +242,7 @@ function plots(t, data::AbstractVector{<:VelY}; mode, save_path, kwargs...)
     savefig(plt_ω_el_l, joinpath(save_path, "ω_el_l.png"))
     savefig(plt_v_eOb_n, joinpath(save_path, "v_eOb_n.png"))
     savefig(plt_v_eOb_b, joinpath(save_path, "v_eOb_b.png"))
-    # plot(t, pos_data; mode, save_path, kwargs...)
+
 end
 
 end #module

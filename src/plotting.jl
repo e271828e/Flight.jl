@@ -60,7 +60,7 @@ end
 
 @recipe function f(th::TimeHistory{<:AbstractMatrix{<:Real}}; th_split = :none)
 
-    xguide --> L"$t \quad (s)$"
+    xguide --> L"$t \ (s)$"
 
     vlength = size(th.data)[2]
     label --> (vlength <= 3 ?  ["x" "y" "z"][:, 1:vlength] : (1:vlength)')
