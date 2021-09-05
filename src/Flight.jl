@@ -16,21 +16,21 @@ include("system.jl")
 include("model.jl")
 
 #environment & dynamics
-include("geodesy.jl")
-include("kinematics.jl")
-include("terrain.jl")
-include("atmosphere.jl")
-include("dynamics.jl")
+# include("geodesy.jl")
+# include("kinematics.jl")
+# include("terrain.jl")
+# include("atmosphere.jl")
+# include("dynamics.jl")
 
-#airframe
-include("airframe.jl")
-include("airdata.jl")
-include("propulsion.jl")
-# include("landinggear.jl")
-include("statemachine.jl")
+# #airframe
+# include("airframe.jl")
+# include("airdata.jl")
+# include("propulsion.jl")
+# # include("landinggear.jl")
+# include("statemachine.jl")
 
-#aircraft
-include("aircraft.jl")
+# #aircraft
+# include("aircraft.jl")
 
 
 @reexport using .Utils
@@ -42,19 +42,19 @@ include("aircraft.jl")
 @reexport using .System
 @reexport using .Model
 
-@reexport using .Geodesy
-@reexport using .Kinematics
-@reexport using .Terrain
-@reexport using .Atmosphere
-@reexport using .Dynamics
+# @reexport using .Geodesy
+# @reexport using .Kinematics
+# @reexport using .Terrain
+# @reexport using .Atmosphere
+# @reexport using .Dynamics
 
-@reexport using .Airframe
-@reexport using .Airdata
-@reexport using .Propulsion
-@reexport using .StateMachine
-# @reexport using .LandingGear
+# @reexport using .Airframe
+# @reexport using .Airdata
+# @reexport using .Propulsion
+# @reexport using .StateMachine
+# # @reexport using .LandingGear
 
-@reexport using .Aircraft
+# @reexport using .Aircraft
 
 export ftest
 

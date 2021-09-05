@@ -13,8 +13,8 @@ using .TestGeodesy
 # using .TestLBV
 # using .TestKinematics
 
-test_quaternions()
-test_attitude()
+# test_quaternions()
+# test_attitude()
 test_geodesy()
 # test_lbv()
 # test_kinematics()

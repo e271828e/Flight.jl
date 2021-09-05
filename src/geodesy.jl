@@ -38,7 +38,7 @@ const γ_a = GM / (a * b) * (1 - m - m/6 * eʹ * q₀ʹ/q₀) #Normal gravity at
 const γ_b = GM / a² * (1 + m/3 * eʹ * q₀ʹ/q₀) #Normal gravity at the poles, [Hof06] 2-142
 
 
-abstract type AbstractLocation2D end
+
 
 ########################### NVector ##################################
 

@@ -75,7 +75,7 @@ RQuat(r::Rotation) = convert(RQuat, r)
 Base.getindex(r::RQuat, i) = getindex(r._u, i)
 Base.length(r::RQuat) = length(r._u)
 Base.size(r::RQuat) = size(r._u)
-# Base.iterate(r::RQuat, state = 1) = iterate(r._u, state)
+# Base.iterate(r::RQuat, state = 1) = iterate(getfield(getfield(r._u, :_q), :_sv)[:], state)
 
 # direct iteration unsupported because it allocates. doing x.=r[:] instead of
 #x.=r gets the underlying SVector first by forwarding getindex, then iterates on
