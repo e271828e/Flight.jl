@@ -3,55 +3,57 @@ module Flight
 using Reexport
 @reexport using BenchmarkTools
 
-#(sub) modules
-# include("lbv.jl")
-# @reexport using .LBV
-
-#math and environment
+#general
 include("utils.jl")
 include("plotting.jl")
+
+#math
 include("quaternions.jl")
 include("attitude.jl")
-include("wgs84.jl") #many, many constants here. should keep it a module
-include("terrain.jl")
-include("atmosphere.jl")
 
 #systems and models
 include("system.jl")
 include("model.jl")
-include("statemachine.jl")
 
-#airframe components
+#environment & dynamics
+include("geodesy.jl")
+include("kinematics.jl")
+include("terrain.jl")
+include("atmosphere.jl")
+include("dynamics.jl")
+
+#airframe
 include("airframe.jl")
 include("airdata.jl")
 include("propulsion.jl")
 # include("landinggear.jl")
+include("statemachine.jl")
 
-#kinematics & dynamics
-include("kinematics.jl")
-include("dynamics.jl")
+#aircraft
 include("aircraft.jl")
 
 
 @reexport using .Utils
 @reexport using .Plotting
+
 @reexport using .Quaternions
 @reexport using .Attitude
-@reexport using .WGS84
-@reexport using .Terrain
-@reexport using .Atmosphere
 
 @reexport using .System
 @reexport using .Model
-@reexport using .StateMachine
+
+@reexport using .Geodesy
+@reexport using .Kinematics
+@reexport using .Terrain
+@reexport using .Atmosphere
+@reexport using .Dynamics
 
 @reexport using .Airframe
 @reexport using .Airdata
 @reexport using .Propulsion
+@reexport using .StateMachine
 # @reexport using .LandingGear
 
-@reexport using .Kinematics
-@reexport using .Dynamics
 @reexport using .Aircraft
 
 export ftest

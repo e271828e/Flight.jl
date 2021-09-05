@@ -10,9 +10,10 @@ using UnPack
 using Plots
 
 using Flight.Airdata
+using Flight.Dynamics
 using Flight.Airframe
 using Flight.System
-import Flight.Airframe: get_wr_b, get_hr_b
+import Flight.Dynamics: get_wr_b, get_hr_b
 import Flight.System: HybridSystem, get_x0, get_d0, get_u0, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW

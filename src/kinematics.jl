@@ -5,7 +5,7 @@ using StaticArrays: SVector
 using ComponentArrays
 using UnPack
 
-using Flight.WGS84
+using Flight.Geodesy
 using Flight.Attitude
 using Flight.System
 import Flight.System: get_x0

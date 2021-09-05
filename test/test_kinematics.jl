@@ -6,12 +6,12 @@ using BenchmarkTools
 
 using Flight.Kinematics
 using Flight.Attitude
-using Flight.WGS84
+using Flight.Geodesy
 
 export test_kinematics
 
 function test_kinematics()
-    @testset verbose = true "WGS84 Kinematics" begin
+    @testset verbose = true "Geodesy Kinematics" begin
         @testset verbose = true "Initialization" begin test_init() end
         @testset verbose = true "Position Update" begin test_init() end
     end
