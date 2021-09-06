@@ -6,12 +6,16 @@ module Geodesy
 
 using Base: Real, Symbol
 using LinearAlgebra
+using SHA
 using StaticArrays: SVector
+using UnPack
+using Interpolations
+
 using Flight.Attitude
 using Flight.Plotting
 
-export NVector, NVectorAlt, LatLonAlt, CartECEF, WGS84Pos
-export ω_ie, gravity, g_l, G_l, ltf, radii, ψ_nl, lat, lon
+export NVector, LatLon, Altitude, Ellipsoidal, Orthometric, H_Ellip, H_Orth, Geographic, CartECEF
+export ω_ie, gravity, g_l, G_l, ltf, radii, get_ψ_nl, get_geoid_offset
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -39,25 +43,31 @@ const γ_b = GM / a² * (1 + m/3 * eʹ * q₀ʹ/q₀) #Normal gravity at the pol
 
 
 
+######################### Abstract2DLocation ###########################
 
-########################### NVector ##################################
+abstract type Abstract2DLocation end
 
-struct NVector <: AbstractVector{Float64}
-    data::SVector{3,Float64}
+Base.convert(::Type{L}, loc::L) where {L<:Abstract2DLocation} = loc
+
+
+
+#### NVector ####
+
+Base.@kwdef struct NVector <: Abstract2DLocation
+    data::SVector{3,Float64} = SVector{3}(1.0, 0.0, 0.0)
     function NVector(data::AbstractVector{T} where {T<:Real}; normalization::Bool = true)
         data = SVector{3,Float64}(data) #normalization will be faster for an SVector
         return normalization ? new(normalize(data)) : new(data)
     end
 end
 
-function NVector(; ϕ::Real = 0., λ::Real = 0.)
-    cos_ϕ = cos(ϕ)
-    NVector(SVector{3,Float64}(cos_ϕ * cos(λ), cos_ϕ * sin(λ), sin(ϕ)), normalization = false)
-end
+NVector(loc::Abstract2DLocation) = convert(NVector, loc)
 
-#extract NVector from ECEF to Local Tangent Frame rotation
+#NVector from ECEF to Local Tangent Frame rotation
 NVector(r_el::Rotation) = NVector(RMatrix(r_el))
+
 NVector(r_el::RMatrix) = NVector( -r_el[:,3], normalization = false)
+
 function NVector(r_el::RQuat)
     #n_e is simply the third column of the R_el rotation matrix. we don't need
     #the complete RQuat to RMatrix conversion
@@ -67,10 +77,66 @@ function NVector(r_el::RQuat)
     NVector(-SVector{3}(dq24 + dq13, dq34 - dq12, 1 - 2*(q[2]^2 + q[3]^2)), normalization = false)
 end
 
+Base.:(==)(n1::NVector, n2::NVector) = n1.data == n2.data
+Base.:(≈)(n1::NVector, n2::NVector) = n1.data ≈ n2.data
+Base.:(-)(n::NVector) = NVector(-n.data)
+
+#### AbstractArray interface
+Base.size(::NVector) = (3,)
+Base.length(::NVector) = 3
+Base.getindex(n::NVector, i) = getindex(n.data, i)
+#this allocates
+# Base.iterate(n::NVector, state = 1) = (state > 3 ? nothing : (n.data[state], state + 1))
+
+
+#### LatLon ####
+
+Base.@kwdef struct LatLon <: Abstract2DLocation
+    ϕ::Float64 = 0.0
+    λ::Float64 = 0.0
+    function LatLon(ϕ::Real, λ::Real)
+        abs(ϕ) <= 0.5π || throw(ArgumentError("Latitude must be within [-π/2, π/2]"))
+        abs(λ) <= π || throw(ArgumentError("Longitude must be within [-π, π]"))
+        return new(ϕ, λ)
+    end
+end
+LatLon(loc::Abstract2DLocation) = convert(LatLon, loc)
+
+function Base.convert(::Type{NVector}, loc::LatLon)
+    @unpack ϕ, λ = loc
+    cos_ϕ = cos(ϕ)
+    NVector(SVector{3,Float64}(cos_ϕ * cos(λ), cos_ϕ * sin(λ), sin(ϕ)), normalization = false)
+end
+
+function Base.convert(::Type{LatLon}, n_e::NVector)
+    LatLon( ϕ = atan(n_e[3], √(n_e[1]^2 + n_e[2]^2)),
+            λ = atan(n_e[2], n_e[1]))
+end
+
+#strict equality not implemented because comparison requires conversion
+Base.:(≈)(loc1::LatLon, loc2::LatLon) = NVector(loc1) ≈ NVector(loc2)
+Base.:(-)(loc::LatLon) = LatLon(-NVector(loc))
+
+
+##### Generic Abstract2DLocation methods #####
+
+#ellipsoid's radii of curvature
+function radii(loc::Abstract2DLocation)
+    n_e = NVector(loc)
+    f_den = √(1 - e² * n_e[3]^2)
+    return ( M = a * (1 - e²) / f_den^3, N = a / f_den ) #(R_N, R_E)
+end
+
+#local tangent frame from Abstract2DLocation
+function ltf(loc::Abstract2DLocation, ψ_nl::Real = 0.)
+    @unpack ϕ, λ = LatLon(loc)
+    Rz(λ) ∘ Ry(-(ϕ + 0.5π)) ∘ Rz(ψ_nl)
+end
+
 #extract Wander Angle from ECEF to Local Tangent Frame rotation
-ψ_nl(r_el::Rotation) = ψ_nl(RMatrix(r_el))
-ψ_nl(r_el::RMatrix) = atan( -r_el[3,2], r_el[3,1] )
-function ψ_nl(r_el::RQuat)
+get_ψ_nl(r_el::Rotation) = get_ψ_nl(RMatrix(r_el))
+get_ψ_nl(r_el::RMatrix) = atan( -r_el[3,2], r_el[3,1] )
+function get_ψ_nl(r_el::RQuat)
     #n_e is the third column of the R_el matrix. we don't need the complete
     #RQuat to RMatrix conversion
     q = r_el[:]
@@ -79,173 +145,158 @@ function ψ_nl(r_el::RQuat)
     atan(-(dq34 + dq12), dq24 - dq13)
 end
 
-Base.:(==)(n1::NVector, n2::NVector) = n1.data == n2.data
-Base.:(≈)(n1::NVector, n2::NVector) = n1.data ≈ n2.data
-Base.:(-)(n::NVector) = NVector(-n.data)
 
-#### AbstractArray interface
-Base.size(::NVector) = (3,)
-Base.getindex(n::NVector, i) = getindex(n.data, i)
+#### AbstractAltitude ####
 
-#as long as s has an explicit value at compile time (which it will), the if will
-#be optimized out by the compiler. no need to dispatch on Val(s) for efficiency.
-Base.propertynames(::NVector, private::Bool = false) = (:lat, :lon, :ϕ, :λ, :ltf, :r_el)
-function Base.getproperty(n_e::NVector, s::Symbol)
-    if s == :lat || s == :ϕ
-        return lat(n_e)
-    elseif s == :lon || s == :λ
-        return lon(n_e)
-    elseif s == :ltf || s == :r_el
-        return ltf(n_e)
-    elseif s == :data
-        return getfield(n_e, :data)
-    else
-        error("NVector has no property $s")
+abstract type AbstractAltitudeDatum end
+struct Ellipsoidal <: AbstractAltitudeDatum end
+struct Orthometric <: AbstractAltitudeDatum end
+
+const h_min = -1000 #catches numerical catastrophes
+
+function load_geoid_offset_interp(file_path = "src/ww15mgh_le.bin")
+    #the target file stores a 721x1441 Matrix{Float32} in low-endian binary
+    #format. the matrix holds the data points for the EGM96 geoid height offset
+    #with respect to the WGS84 ellipsoid in 15 arc-minute resolution. latitude
+    #goes from -π/2 to π/2, longitude from 0 to 2π
+    tmp = Matrix{Float32}(undef, 721, 1441)
+    open(file_path) do file
+        if file |> sha2_256 |> bytes2hex != "9d190e021672769b508547021bcaebcc7d13558d66d215d019675a5f595f5cae"
+            throw(ArgumentError("Wrong file hash"))
+        else
+            seekstart(file) #the hash check has moved the IOStream to EOF, reset position
+            read!(file, tmp)
+        end
+    end
+    #convert matrix elements to host's endianness and cast to Matrix{Float64}
+    data = convert(Matrix{Float64}, ltoh.(tmp))
+    ϕ_range = LinRange(-π/2, π/2, size(data, 1))
+    λ_range = LinRange(0, 2π, size(data, 2))
+
+    #return interpolator with extrapolation enabled to avoid machine precision
+    #issues due to the boundaries being multiples of π
+    LinearInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
+    # CubicSplineInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
+end
+
+const geoid_offset_interp = load_geoid_offset_interp()
+
+function get_geoid_offset(loc::Abstract2DLocation)
+    #our longitude interval is [-π,π], but the table uses [0,2π], so we need to
+    #correct for that
+    latlon = LatLon(loc)
+    ϕ = latlon.ϕ
+    λ = mod(latlon.λ + 2π, 2π)
+    geoid_offset_interp(ϕ, λ)
+end
+
+Base.@kwdef struct Altitude{D<:AbstractAltitudeDatum}
+    _val::Float64 = 0.0
+    #this inner constructor prevents the user from passing an Altitude with a
+    #different datum, which would get implicitly converted to Float64 and its
+    #value directly assigned to _val. typically, this is not what we want: we
+    #want a change of altitude reference, and this requires a 2D location
+    function Altitude{D}(h::Real) where {D}
+        h >= h_min || throw(ArgumentError("Minimum altitude value is $h_min m, got $h"))
+        return new{D}(h)
     end
 end
 
-ltf(n_e::NVector, ψ_nl::Real = 0.) = Rz( lon(n_e) ) ∘ Ry( -(lat(n_e) + 0.5π) ) ∘ Rz(ψ_nl)
-lat(n_e::NVector) = atan(n_e[3], √(n_e[1]^2 + n_e[2]^2))
-lon(n_e::NVector) = atan(n_e[2], n_e[1])
+const H_Ellip = Altitude{Ellipsoidal}
+const H_Orth = Altitude{Orthometric}
 
-function radii(n_e::NVector)
-    f_den = √(1 - e² * n_e[3]^2)
-    return ( M = a * (1 - e²) / f_den^3, N = a / f_den ) #(R_N, R_E)
+# Altitude(h::Real) = Altitude{Ellipsoidal}(h)
+Altitude{D}(h::Altitude{D}, args...) where {D} = Altitude{D}(h._val)
+function Altitude{Ellipsoidal}(h::Altitude{Orthometric}, loc::Abstract2DLocation)
+    Altitude{Ellipsoidal}(h._val + get_geoid_offset(loc))
+end
+function Altitude{Orthometric}(h::Altitude{Ellipsoidal}, loc::Abstract2DLocation)
+    Altitude{Orthometric}(h._val - get_geoid_offset(loc))
+end
+
+Base.promote_rule(::Type{<:Altitude{D}}, ::Type{<:Real}) where {D} = Altitude{D}
+Base.convert(::Type{<:Altitude{D}}, h::Real) where {D} = Altitude{D}(h)
+Base.convert(::Type{T}, h::Altitude) where {T<:Real} = convert(T, h._val)
+(::Type{<:T})(h::Altitude) where {T<:Real} = convert(T, h)
+
+Base.:+(h::Altitude{D}, Δh::Real) where {D} = Altitude{D}(h._val + Δh)
+Base.:-(h::Altitude{D}, Δh::Real) where {D} = Altitude{D}(h._val - Δh)
+Base.:*(k::Real, h::Altitude{D}) where {D} = Altitude{D}(k*h._val)
+Base.:*(h::Altitude{D}, k::Real) where {D} = k*h
+Base.:/(h::Altitude{D}, k::Real) where {D} = Altitude{D}(h._val/k)
+
+# Base.:+(h1::Altitude{D}, h2::Altitude{D}) where {D} = Altitude{D}(h1._val + h2._val)
+Base.:-(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val - h2._val
+
+Base.:(==)(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val == h2._val
+Base.:≈(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val ≈ h2._val
+Base.:>(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val > h2._val
+Base.:<(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val < h2._val
+
+Base.:(==)(h1::Altitude{D}, h2::Real) where {D} = ==(promote(h1,h2)...)
+Base.:≈(h1::Altitude{D}, h2::Real) where {D} = ≈(promote(h1,h2)...)
+Base.:>(h1::Altitude{D}, h2::Real) where {D} = >(promote(h1,h2)...)
+Base.:<(h1::Altitude{D}, h2::Real) where {D} = <(promote(h1,h2)...)
+
+Base.:(==)(h1::Real, h2::Altitude{D}) where {D} = h2 == h1
+Base.:≈(h1::Real, h2::Altitude{D}) where {D} = h2 ≈ h1
+Base.:>(h1::Real, h2::Altitude{D}) where {D} = h2 < h1
+Base.:<(h1::Real, h2::Altitude{D}) where {D} = h2 > h1
+
+
+
+########################## Abstract3DPosition ##########################
+
+abstract type Abstract3DPosition end
+
+#avoid infinite recursion
+Base.convert(::Type{P}, p::P) where {P<:Abstract3DPosition} = p
+
+
+
+#### Geographic ####
+
+#the default constructor generates a Geographic{NVector, EllipsoidalAlt} instance
+Base.@kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DPosition
+    loc::L = NVector()
+    alt::Altitude{H} = H_Ellip()
+end
+Geographic(p::Abstract3DPosition) = Geographic{NVector,Ellipsoidal}(p)
+Geographic{L,H}(p::Abstract3DPosition) where {L,H} = convert(Geographic{L,H}, p)
+
+function Base.convert(::Type{Geographic{L,H}}, p::Geographic) where {L,H}
+    Geographic(convert(L, p.loc), Altitude{H}(p))
+end
+
+Altitude{D}(p::Geographic) where {D} = Altitude{D}(p.alt, p.loc)
+
+# Altitude{D}(p::Abstract3DPosition) = Altitude{D}(Geographic())
+
+function Base.:(==)(p1::Geographic{NVector,H}, p2::Geographic{NVector,H}) where {H}
+    return p1.alt == p2.alt && p1.loc == p2.loc
+end
+
+function Base.:(≈)(p1::Geographic{L,H}, p2::Geographic{L,H}) where {L,H}
+    return p1.alt ≈ p2.alt && p1.loc ≈ p2.loc
+end
+
+Base.:(≈)(p1::Abstract3DPosition, p2::Abstract3DPosition) = CartECEF(p1) ≈ CartECEF(p2)
+
+function Base.:(==)(p1::Abstract3DPosition, p2::Abstract3DPosition)
+    throw(ArgumentError("Exact comparison between $(typeof(p1)) and $(typeof(p2)) not defined, use ≈ instead"))
 end
 
 
+Base.:(-)(p::T) where {T<:Abstract3DPosition} = convert(T, -CartECEF(p))
 
-########################## WGS84Pos ##########################
-
-const h_min = -1000
-
-abstract type WGS84Pos end
-
-ltf(p::WGS84Pos, ψ_nl::Real = 0.0) = ltf(NVectorAlt(p).n_e, ψ_nl)
-radii(p::WGS84Pos) = radii(NVectorAlt(p).n_e)
-gravity(p::WGS84Pos) = gravity(NVectorAlt(p))
-g_l(p::WGS84Pos) = g_l(NVectorAlt(p))
-G_l(p::WGS84Pos) = G_l(NVectorAlt(p))
-
-Base.:(≈)(p1::WGS84Pos, p2::WGS84Pos) = ≈(promote(p1, p2)...) #for heterogeneous comparisons
-function Base.:(==)(p1::WGS84Pos, p2::WGS84Pos)
-    error("Exact comparison between $(typeof(p1)) and $(typeof(p2)) not defined, use ≈ instead")
-end
-
-########################### NVectorAlt ##########################
-
-Base.@kwdef struct NVectorAlt <: WGS84Pos
-    n_e::NVector = NVector()
-    h::Float64 = 0.0
-    function NVectorAlt(n_e::NVector, h::Real)
-        h >= h_min || throw(ArgumentError("Minimum altitude is $h_min m, got $h"))
-        return new(n_e, h)
-    end
-end
-NVectorAlt(p::WGS84Pos) = convert(NVectorAlt, p)
-
-Base.propertynames(p::NVectorAlt, private::Bool = false) = (:n_e, :h, :alt,
-    propertynames(getfield(p, :n_e), private)...)
-
-function Base.getproperty(p::NVectorAlt, s::Symbol)
-    if s == :n_e
-        return getfield(p, :n_e)
-    elseif s == :h || s == :alt
-        return getfield(p, :h)
-    else #delegate to n_e
-        return getproperty(getfield(p, :n_e), s)
-    end
-end
-
-Base.:(==)(p1::NVectorAlt, p2::NVectorAlt) = (p1.n_e == p2.n_e && p1.h == p2.h)
-Base.:(≈)(p1::NVectorAlt, p2::NVectorAlt) = (p1.n_e ≈ p2.n_e && p1.h ≈ p2.h)
-Base.:(-)(p::NVectorAlt) = NVectorAlt(-p.n_e, p.h)
-
-#establishes NVector as the core subtype
-Base.convert(::Type{P}, p::WGS84Pos) where {P<:WGS84Pos} = convert(P, convert(NVectorAlt,p))
-Base.convert(::Type{P}, p::P) where {P<:WGS84Pos} = p
-Base.promote_rule(::Type{<:WGS84Pos}, ::Type{<:WGS84Pos}) = NVectorAlt
-
-"""
-    gravity(p::NVectorAlt)
-
-Compute normal gravity.
-
-Computation is based on Somigliana's formula for gravity at the ellipsoid
-surface, with a second order altitude correction, accurate for small altitudes
-above the WGS84 ellipsoid (h<<a). Direction is assumed normal to the WGS84
-ellipsoid, a good enough approximation for most navigation applications. See
-Hoffmann & Moritz.
-"""
-function gravity(p::NVectorAlt)
-
-    sin²ϕ = p.n_e[3]^2
-    cos²ϕ = p.n_e[1]^2 + p.n_e[2]^2
-    h = p.h
-
-    #gravity at the ellipsoid surface (Somigliana)
-    γ_0 = (a * γ_a * cos²ϕ + b * γ_b * sin²ϕ) / √(a² * cos²ϕ + b² * sin²ϕ) #[Hof06] 2-146
-
-    #altitude correction
-    γ = γ_0 * (1 - 2/a * (1 + f + m - 2f * sin²ϕ) * h + 3/a² * h^2)
-
-    return γ
-
-end
-
-"""
-    g_l(p::NVectorAlt)
-
-Compute gravity vector resolved in the local tangent frame.
-"""
-g_l(p::NVectorAlt) = SVector{3}(0, 0, gravity(p))
-
-"""
-    G_l(p::NVectorAlt)
-
-Compute gravitational attraction resolved in the local tangent frame.
-"""
-function G_l(p::NVectorAlt)
-
-    q_el = ltf(p)
-    ω_ie_e = SVector{3, Float64}(0,0,ω_ie)
-    r_eP_e = CartECEF(p)[:]
-    G_l = g_l(p) + q_el'(ω_ie_e × (ω_ie_e × r_eP_e))
-    return G_l
-
-end
-
-
-###################### LatLonAlt ##############################
-
-Base.@kwdef struct LatLonAlt <: WGS84Pos
-    ϕ::Float64 = 0.0
-    λ::Float64 = 0.0
-    h::Float64 = 0.0
-    function LatLonAlt(ϕ::Real, λ::Real, h::Real)
-        abs(ϕ) <= 0.5π || throw(ArgumentError("Latitude must be within [-π/2, π/2]"))
-        abs(λ) <= π || throw(ArgumentError("Longitude must be within [-π, π]"))
-        h >= h_min || throw(ArgumentError("Minimum altitude is $h_min m, got $h"))
-        return new(ϕ, λ, h)
-    end
-end
-LatLonAlt(p::WGS84Pos) = convert(LatLonAlt, p)
-
-#equality not supported because comparison requires conversion
-Base.:(≈)(p1::LatLonAlt, p2::LatLonAlt) = NVectorAlt(p1) ≈ NVectorAlt(p2)
-Base.:(-)(p::LatLonAlt) = LatLonAlt(-NVectorAlt(p))
-
-Base.convert(::Type{NVectorAlt}, p::LatLonAlt) = NVectorAlt(NVector(ϕ = p.ϕ, λ = p.λ), p.h)
-Base.convert(::Type{LatLonAlt}, p::NVectorAlt) = LatLonAlt(lat(p.n_e), lon(p.n_e), p.h)
 
 
 ############################# CartECEF #############################
 
-struct CartECEF <: WGS84Pos
+struct CartECEF <: Abstract3DPosition
     data::SVector{3,Float64}
 end
-CartECEF() = CartECEF(NVectorAlt())
-CartECEF(p::WGS84Pos) = convert(CartECEF, p)
+CartECEF(p::Abstract3DPosition) = convert(CartECEF, p)
 
 Base.:(==)(r1::CartECEF, r2::CartECEF) = r1.data == r2.data
 Base.:(≈)(r1::CartECEF, r2::CartECEF) = r1.data ≈ r2.data
@@ -255,7 +306,11 @@ Base.:(-)(r::CartECEF) = CartECEF(-r.data)
 Base.size(::CartECEF) = (3,)
 Base.getindex(n::CartECEF, i) = getindex(n.data, i)
 
-function Base.convert(::Type{NVectorAlt}, r::CartECEF)
+function Base.convert(::Type{Geographic{L,H}}, r::CartECEF) where {L,H}
+    convert(Geographic{L,H}, convert(Geographic{NVector,Ellipsoidal}, r))
+end
+
+function Base.convert(::Type{Geographic{NVector,Ellipsoidal}}, r::CartECEF)
 
     #NVector + Alt from ECEF Cartesian position vector. See Fukushima:
     #Transformation_from_Cartesian_to_Geodetic_Coordinates_Accelerated_by_Halley's_Method
@@ -296,16 +351,20 @@ function Base.convert(::Type{NVectorAlt}, r::CartECEF)
     cos_λ = p > 0 ? (x / p) : 1
     sin_λ = p > 0 ? (y / p) : 0
 
-    n_e = NVector(SVector{3,Float64}(cos_ϕ*cos_λ, cos_ϕ*sin_λ, sin_ϕ))
-
-    return NVectorAlt(n_e, h)
+    return Geographic(
+        NVector(SVector{3,Float64}(cos_ϕ*cos_λ, cos_ϕ*sin_λ, sin_ϕ)),
+        Altitude{Ellipsoidal}(h))
 
 end
 
-function Base.convert(::Type{CartECEF}, p::NVectorAlt)
+function Base.convert(::Type{CartECEF}, p::Geographic)
+    convert(CartECEF, convert(Geographic{NVector,Ellipsoidal}, p))
+end
 
-    n_e = p.n_e; h = p.h
-    _, N = radii(p.n_e)
+function Base.convert(::Type{CartECEF}, p::Geographic{NVector, Ellipsoidal})
+
+    n_e = p.loc; h = Float64(p.alt)
+    _, N = radii(n_e)
 
     return CartECEF(SVector{3, Float64}(
         (N + h) * n_e[1],
@@ -314,19 +373,79 @@ function Base.convert(::Type{CartECEF}, p::NVectorAlt)
 
 end
 
+##### Generic Abstract3DPosition methods ####
 
+ltf(p::Abstract3DPosition, ψ_nl::Real = 0.0) = ltf(Geographic{NVector,Ellipsoidal}(p).loc, ψ_nl)
+radii(p::Abstract3DPosition) = radii(Geographic{NVector,Ellipsoidal}(p).loc)
+
+"""
+    gravity(p::Abstract3DPosition)
+
+Compute normal gravity.
+
+Computation is based on Somigliana's formula for gravity at the ellipsoid
+surface, with a second order altitude correction, accurate for small altitudes
+above the WGS84 ellipsoid (h<<a). Direction is assumed normal to the WGS84
+ellipsoid, a good enough approximation for most navigation applications. See
+Hoffmann & Moritz.
+"""
+function gravity(p::Abstract3DPosition)
+
+    p_nve = Geographic{NVector,Ellipsoidal}(p)
+    n_e = p_nve.loc
+    h = Float64(p_nve.alt)
+
+    sin²ϕ = n_e[3]^2
+    cos²ϕ = n_e[1]^2 + n_e[2]^2
+
+    #gravity at the ellipsoid surface (Somigliana)
+    γ_0 = (a * γ_a * cos²ϕ + b * γ_b * sin²ϕ) / √(a² * cos²ϕ + b² * sin²ϕ) #[Hof06] 2-146
+
+    #altitude correction
+    γ = γ_0 * (1 - 2/a * (1 + f + m - 2f * sin²ϕ) * h + 3/a² * h^2)
+
+    return γ
+
+end
+
+"""
+    g_l(p::Abstract3DPosition)
+
+Compute gravity vector resolved in the local tangent frame.
+"""
+g_l(p::Abstract3DPosition) = SVector{3}(0, 0, gravity(p))
+
+"""
+    G_l(p::Abstract3DPosition)
+
+Compute gravitational attraction resolved in the local tangent frame.
+"""
+function G_l(p::Abstract3DPosition)
+
+    q_el = ltf(p)
+    ω_ie_e = SVector{3, Float64}(0,0,ω_ie)
+    r_eP_e = CartECEF(p)[:]
+    G_l = g_l(p) + q_el'(ω_ie_e × (ω_ie_e × r_eP_e))
+    return G_l
+
+end
+
+
+#=
 ########################## Plotting #################################
 
-#unless a more specialized method is defined, a TimeHistory{<:WGS84Pos} is
-#converted to LatLonAlt for plotting
-@recipe function plot_geodesypos(th::TimeHistory{<:AbstractVector{<:WGS84Pos}})
+#unless a more specialized method is defined, a TimeHistory{<:Abstract3DPosition} is
+#converted to Geographic{} for plotting
+@recipe function plot_geodesypos(th::TimeHistory{<:AbstractVector{<:Abstract3DPosition}})
 
-    v_llh = Vector{LatLonAlt}(undef, length(th.data))
-    for i in 1:length(v_llh)
-        v_llh[i] = LatLonAlt(th.data[i])
+    v_geo = Vector{Geographic{LatLon,EllipsoidalAlt}}(undef, length(th.data))
+    for i in 1:length(v_geo)
+        v_geo[i] = Geographic{LatLon,EllipsoidalAlt}(th.data[i])
     end
-    sa = StructArray(v_llh)
-    data = hcat(sa.ϕ/π, sa.λ/π, sa.h)
+    geo_sa = StructArray(v_geo) #this is now a struct of two arrays: loc and alt
+    latlon_sa = StructArray(geo_sa.loc) #this is now a struct of two arrays: ϕ and λ
+    alt_sa = StructArray(geo_sa.alt) #this now has a struct of one array: _val
+    data = hcat(latlon_sa.ϕ/π, latlon_sa.λ/π, alt_sa._val)
 
     #maybe convert to degrees
     label --> ["Latitude" "Longitude" "Altitude"]
@@ -339,6 +458,6 @@ end
 
 end
 
+=#
 
-
-end
+end #module

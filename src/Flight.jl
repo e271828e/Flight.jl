@@ -16,7 +16,7 @@ include("system.jl")
 include("model.jl")
 
 #environment & dynamics
-# include("geodesy.jl")
+include("geodesy.jl")
 # include("kinematics.jl")
 # include("terrain.jl")
 # include("atmosphere.jl")
@@ -42,7 +42,7 @@ include("model.jl")
 @reexport using .System
 @reexport using .Model
 
-# @reexport using .Geodesy
+@reexport using .Geodesy
 # @reexport using .Kinematics
 # @reexport using .Terrain
 # @reexport using .Atmosphere

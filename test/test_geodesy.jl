@@ -9,151 +9,182 @@ export test_geodesy
 function test_geodesy()
     @testset verbose = true "Geodesy" begin
         @testset verbose = true "NVector" begin test_NVector() end
-        @testset verbose = true "NVectorAlt" begin test_NVectorAlt() end
-        @testset verbose = true "LatLonAlt" begin test_LatLonAlt() end
+        @testset verbose = true "LatLon" begin test_LatLon() end
+        @testset verbose = true "Altitude" begin test_Altitude() end
+        @testset verbose = true "Geographic" begin test_Geographic() end
         @testset verbose = true "CartECEF" begin test_CartECEF() end
     end
 end
 
 function test_NVector()
 
-    #inner constructor
-    v = [1, 2, -3]
-    n_e = NVector(v)
-    @test n_e.data ≈ normalize(v) #normalizes by default
+    @test NVector() isa NVector #no-argument constructor
 
-    #keyword constructor and latitude & longitude conversions
-    @test NVector(; ϕ = 1.2).ϕ ≈ 1.2
-    @test NVector(; ϕ = 1.2).λ == 0
-    @test NVector(; λ = 0.2).ϕ == 0
-    @test NVector(; λ = 0.2).λ ≈ 0.2
-    @test NVector(; ϕ = .3, λ = -1.5).ϕ ≈ .3
-    @test NVector(; ϕ = .3, λ = -1.5).λ ≈ -1.5
+    n_e = NVector([1,2,3]) #normalize by default
+    @test norm(n_e[:]) ≈ 1
+    @test !(norm(NVector([1,2,3], normalization = false)[:]) ≈ 1) #bypass normalization
+
+    #test basic operators
+    @test n_e == n_e
+    @test n_e ≈ n_e
+    @test n_e != -n_e
+    @test !(n_e ≈ -n_e)
+
+    q_el = RQuat([1,2,3,4])
+    m_el = RMatrix(q_el)
+    a_el = RAxAng(q_el)
+
+    #construction from ECEF to LTF rotation
+    @test NVector(q_el) ≈ NVector(m_el) ≈ NVector(a_el)
 
     #LTF constructors and LTF conversion
-    r_en = Geodesy.ltf(n_e, 0)
-    @test r_en == n_e.ltf
-    @test Geodesy.ψ_nl(r_en) ≈ 0
+    r_en = ltf(n_e, 0)
+    @test r_en == ltf(n_e)
+    @test get_ψ_nl(r_en) ≈ 0
 
     ψ_nl = π/3
     r_nl = Rz(ψ_nl)
     r_el = r_en ∘ r_nl
-    @test Geodesy.ψ_nl(r_el) ≈ ψ_nl
-    @test Geodesy.ψ_nl(RMatrix(r_el)) ≈ ψ_nl
-    @test Geodesy.ψ_nl(RAxAng(r_el)) ≈ ψ_nl
+    @test get_ψ_nl(r_el) ≈ ψ_nl
+    @test get_ψ_nl(RMatrix(r_el)) ≈ ψ_nl
+    @test get_ψ_nl(RAxAng(r_el)) ≈ ψ_nl
 
     #r_en and r_el should return the same NVector
     @test NVector(r_el) ≈ n_e
     @test NVector(RMatrix(r_el)) ≈ n_e
     @test NVector(RAxAng(r_el)) ≈ n_e
 
-    #equality, unary minus and isapprox
-    @test (-n_e).data == -(n_e.data)
-    @test n_e == n_e
-    @test n_e != -n_e
-    @test n_e ≈ NVector(v + [0, 0, 1e-10])
+    #radii
+    @test radii(n_e) isa NamedTuple
 
-    #torture test: from lat, lon to NVector, to r_en, then r_el, back to NVector
+end
+
+function test_LatLon()
+
+    @test LatLon() isa LatLon
+    @test LatLon(ϕ = π/4, λ = -π/3) isa LatLon
+    @test_throws ArgumentError LatLon(ϕ = 3π/2)
+    @test_throws ArgumentError LatLon(λ = -5π/2)
+
+    #test basic operators
+    latlon = LatLon(ϕ = π/3, λ = -π/6)
+    @test latlon ≈ latlon
+    @test !(latlon ≈ -latlon)
+
+    #ltf
+    @test ltf(latlon) ≈ ltf(NVector(latlon))
+    ψ_nl = π/3
+    r_el = ltf(latlon, 0) ∘ Rz(ψ_nl)
+    @test get_ψ_nl(r_el) ≈ ψ_nl
+
+    #conversion torture test: from LatLon to NVector, to r_en, then r_el, then
+    #NVector, back to LatLon
     ϕ_range = range(-π/2, π/2, length = 10)
     λ_range = range(-π, π, length = 10)
     ψ_nl_range = range(-π, π, length = 10)
 
-    n_array = [NVector(; ϕ, λ) for (ϕ, λ, _) in Iterators.product(ϕ_range, λ_range, ψ_nl_range)]
+    ll_array = [LatLon(ϕ, λ) for (ϕ, λ, _) in Iterators.product(ϕ_range, λ_range, ψ_nl_range)]
     ψ_array = [ψ_nl for (_, _, ψ_nl) in Iterators.product(ϕ_range, λ_range, ψ_nl_range)]
-    n_array_test = [NVector(NVector(; n0.ϕ, n0.λ).ltf ∘ Rz(ψ_nl)) for (n0, ψ_nl) in zip(n_array, ψ_array)]
+    ll_array_test = [ll |> NVector |> ltf |> (r -> r ∘ Rz(ψ_nl)) |> NVector |> LatLon for (ll, ψ_nl) in zip(ll_array, ψ_array)]
 
-    @test all(n_array .≈ n_array_test)
-
-    @test Geodesy.radii(NVector(ϕ = 0)).N ≈ Geodesy.a
-    @test Geodesy.radii(NVector(ϕ = π/2)).M ≈ Geodesy.radii(NVector(ϕ = π/2)).N
+    @test all(ll_array .≈ ll_array_test)
 
 end
 
-function test_NVectorAlt()
+function test_Altitude()
 
-    v = [1, 2, -3]
-    h = 1000
-    n_e = NVector(v)
+    h_ellip = Altitude{Ellipsoidal}(1500)
+    h_orth = Altitude{Orthometric}(1500)
+    Δh = 300
+    loc = NVector([3,1,-5])
 
-    #inner constructor
-    p = NVectorAlt(n_e, h)
-    @test p.n_e == n_e
-    @test p.h == h
+    #cannot convert from one datum to another without a 2D location
+    @test_throws MethodError Altitude{Ellipsoidal}(h_orth)
+    @test_throws MethodError Altitude{Orthometric}(h_ellip)
 
-    #equality and approximate equality
-    @test p == p
-    @test p != NVectorAlt(-n_e, h)
-    @test p ≈ NVectorAlt(n_e, h+1e-10)
-    @test !(p ≈ NVectorAlt(-n_e, h))
+    #however, with a 2D location we can convert back and forth
+    @test Altitude{Orthometric}(Altitude{Ellipsoidal}(h_orth, loc), loc) == h_orth
+    @test Altitude{Orthometric}(h_ellip, loc) isa Altitude{Orthometric}
+    @test Altitude{Ellipsoidal}(h_orth, loc) isa Altitude{Ellipsoidal}
 
-    #inversion
-    @test -p == NVectorAlt(-n_e, h)
+    #operations and conversions
+    @test (h_ellip + Δh) isa Altitude{Ellipsoidal}
+    @test (h_orth + Δh) isa Altitude{Orthometric}
+    @test Float64(h_ellip + Δh) == Float64(h_ellip) + Δh
+    @test Float64(h_orth + Δh) == Float64(h_orth) + Δh
+
+    @test h_ellip - h_ellip/2 isa Float64
+    @test h_ellip - h_ellip/2 == h_ellip/2
+    @test h_ellip + Float64(h_ellip/2) isa Altitude{Ellipsoidal}
+    @test 0.7h_ellip isa Altitude{Ellipsoidal}
+    @test h_ellip/2 isa Altitude{Ellipsoidal}
+
+    @test h_ellip + Float64(h_ellip/2) == 3h_ellip/2
+    @test h_ellip + Float64(h_ellip/2) ≈ 3h_ellip/2
+    @test h_ellip >= h_ellip
+    @test h_ellip <= h_ellip
+    @test !(h_ellip < h_ellip)
+    @test !(h_ellip > h_ellip)
+
+    @test h_orth == 1500
+    @test h_orth ≈ 1500
+    @test h_orth >= 1500
+    @test h_orth <= 1500
+    @test !(h_orth < 1500)
+    @test !(h_orth > 1500)
 
 end
 
-function test_LatLonAlt()
+function test_Geographic()
 
-    #keyword constructor
-    llh = LatLonAlt(ϕ = π/6, λ = -π/4, h = 15092.0)
-    nvh = NVectorAlt(llh)
+    p_nve = Geographic()
+    p_llo = Geographic{LatLon,Orthometric}(p_nve)
+    @test p_nve isa Geographic{NVector,Ellipsoidal}
+    @test Geographic(loc = LatLon(), alt = H_Orth()) isa Geographic{LatLon,Orthometric}
 
-    #approximate equality
-    @test llh ≈ LatLonAlt(llh.ϕ+1e-12, llh.λ-1e-12, llh.h+1e-10)
-    @test !(llh ≈ LatLonAlt())
-    @test llh ≈ nvh #mixed types
+    #conversion
+    @test Geographic{NVector,Ellipsoidal}(p_llo) isa Geographic{NVector,Ellipsoidal}
 
-    #inversion
-    @test -llh ≈ -nvh
+    @test_throws ArgumentError p_llo == p_llo
+    @test p_nve == p_nve #strict equality only defined for Geographic{NVector}
+    @test p_llo ≈ p_llo
+    @test p_llo ≈ p_nve
+    @test -(-p_llo) ≈ p_llo #requires CartECEF
+    @test -(-p_nve) ≈ p_nve #requires CartECEF
 
-    #general functions
-    @test g_l(llh) ≈ g_l(nvh)
-    @test G_l(llh) ≈ G_l(nvh)
-    @test ltf(llh) ≈ ltf(nvh)
-    @test radii(llh) == radii(nvh)
-
-    #conversion to and from NVectorAlt
-    ϕ_range = range(-π/2, π/2, length = 10)
-    λ_range = range(-π, π, length = 10)
-    h_range = range(Geodesy.h_min + 1, 10000, length = 10)
-
-    llh_array = [LatLonAlt(ϕ, λ, h) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
-    llh_array_test = [llh |> NVectorAlt |> LatLonAlt for llh in llh_array]
-    @test all(llh_array .≈ llh_array_test)
+    @test ltf(p_nve, π/3) == ltf(p_nve.loc, π/3)
+    @test radii(p_nve) == radii(p_nve.loc)
+    @test gravity(p_llo) ≈ gravity(p_nve)
+    @test g_l(p_llo) ≈ g_l(p_nve)
+    @test G_l(p_llo) ≈ G_l(p_nve)
 
 end
 
 function test_CartECEF()
 
-    #keyword constructor
-    llh = LatLonAlt(ϕ = π/6, λ = -π/4, h = 15092.0)
-    cart = CartECEF(llh)
-    nvh = NVectorAlt(cart)
+    #construction from Geographic
+    p_nvo = Geographic(NVector([3,1,-3]), H_Orth(10000))
+    p_lle = Geographic{LatLon,Ellipsoidal}(p_nvo)
+    r = CartECEF(p_nvo)
+    @test r ≈ CartECEF(p_lle)
 
-    #approximate equality
-    @test cart ≈ CartECEF(cart.data .+ 1e-9)
-    @test !(cart ≈ LatLonAlt())
-    @test cart ≈ nvh #mixed types
-    @test cart ≈ llh #mixed types
+    @test r == r
+    @test -(-r) == r
+    @test !(-r == r)
+    @test r ≈ r
 
-    #inversion
-    @test -llh ≈ -nvh
-    @test -llh ≈ -cart
+    #conversion torture test
+    ftest(p) = p |> CartECEF |> Geographic{NVector,Ellipsoidal} |> CartECEF |>
+                Geographic{NVector,Orthometric} |> CartECEF |> Geographic{LatLon, Ellipsoidal}
 
-    #general functions
-    @test g_l(cart) ≈ g_l(nvh)
-    @test G_l(cart) ≈ G_l(nvh)
-    @test ltf(cart) ≈ ltf(nvh)
-    @test radii(cart) == radii(nvh)
-
-    #conversion to and from NVectorAlt, LatLonAlt
     ϕ_range = range(-π/2, π/2, length = 10)
     λ_range = range(-π, π, length = 10)
-    h_range = range(Geodesy.h_min + 1, 10000, length = 10)
+    h_range = range(Geodesy.h_min + 200, 10000, length = 10)
 
-    cart_array = [CartECEF(LatLonAlt(ϕ, λ, h)) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
-    cart_array_test = [cart |> NVectorAlt |> CartECEF |> LatLonAlt |> CartECEF for cart in cart_array]
-    @test all(cart_array .≈ cart_array_test)
-
-end
+    p_array = [Geographic(LatLon(ϕ, λ), H_Orth(h)) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
+    p_array_test = [ftest(p) for p in p_array]
+    @test all(p_array .≈ p_array_test)
 
 end
+
+end #module
