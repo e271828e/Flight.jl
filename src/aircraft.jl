@@ -25,6 +25,7 @@ using Flight.Plotting
 import Flight.Plotting: plots
 
 export TestAircraft, TestAircraftD, TestAircraftY
+export NoMapping, ConstantMassModel
 
 abstract type AbstractMassModel end
 

@@ -7,7 +7,7 @@ using Reexport
 @reexport using LaTeXStrings
 
 export plots
-export TimeHistory, thplot
+export TimeHistory, thplot, thplot!
 
 
 
@@ -84,5 +84,6 @@ end
 end
 
 thplot(t, data; kwargs...) = plot(TimeHistory(t, data); kwargs...)
+thplot!(t, data; kwargs...) = plot!(TimeHistory(t, data); kwargs...)
 
 end

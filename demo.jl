@@ -51,15 +51,11 @@ b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
 
 #reinitialize at the North Pole, set end time and run to completion
 x0 = copy(ac_mdl.x)
-x0.kin .= get_x0(KinInit(Ob = LatLonAlt(ϕ = π/2)))
+x0.kin .= get_x0(KinInit(Ob = Geographic(LatLon(ϕ = π/2))))
 reinit!(ac_mdl, x0, tf = 3)
 solve!(ac_mdl)
 
-#this could set at startup.jl
-plot_settings = (linewidth=2,
-                plot_titlefontfamily="Computer Modern", plot_titlefontsize = 20,
-                guidefontfamily = "Computer Modern", guidefontsize = 12,
-                tickfontfamily = "Computer Modern", tickfontsize = 10,
-                legendfontfamily="Computer Modern", legendfontsize=12, fg_legend = :match, bg_legend = :match,)
+#this should be set at startup.jl
+plot_settings = (linewidth=2, margin = 10mm,)
 
 plots(ac_mdl; save_path = joinpath("tmp", "plots2"), plot_settings...)

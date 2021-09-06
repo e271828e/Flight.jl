@@ -176,7 +176,10 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
     #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
     #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
     #LTF(Ob), and then apply it at G.
-    g_G_l = g_Ob_l = g_l(y_pos.Ob_nvh)
+    @unpack n_e, h_e, q_lb = y_pos
+
+    Ob = Geographic(n_e, h_e)
+    g_G_l = g_Ob_l = g_l(Ob)
 
     #the resultant consists of the gravity force acting on G along the local
     #vertical and a null torque
@@ -188,7 +191,7 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
     wr_c = wr_G_l
-    f_bc = FrameSpec(r_ObOc_b = mass.r_ObG_b, q_bc = y_pos.q_lb')
+    f_bc = FrameSpec(r_ObOc_b = mass.r_ObG_b, q_bc = q_lb')
     return f_bc(wr_c) #wr_b
 
 end
@@ -226,7 +229,7 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
     #least singular)!
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-    @unpack q_lb, q_el, q_eb, Ob_nvh = y_kin.pos
+    @unpack q_lb, q_el, q_eb, n_e, h_e = y_kin.pos
     @unpack ω_eb_b, ω_ie_b, v_eOb_b = y_kin.vel
 
     r_ObG_b_sk = Attitude.skew(r_ObG_b)
@@ -242,12 +245,14 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
     wr_b = wr_ext_b + wr_g_b + wr_in_b
     b = SVector{6}(vcat(wr_b.M, wr_b.F))
 
+    # update ẋ_vel
     ẋ_vel .= A\b
 
-    # update ẋ_vel
-    v̇_eOb_b = SVector{3}(ẋ_vel.v_eOb_b)
-    r_eOb_e = CartECEF(Ob_nvh).data
+    #compute outputs
+    Ob = Geographic(n_e, h_e)
+    r_eOb_e = CartECEF(Ob)[:]
     r_eOb_b = q_eb'(r_eOb_e)
+    v̇_eOb_b = SVector{3}(ẋ_vel.v_eOb_b)
 
     #angular accelerations
     α_eb_b = SVector{3}(ẋ_vel.ω_eb_b) #α_eb_b == ω_eb_b_dot
@@ -257,7 +262,7 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
     a_eOb_b = v̇_eOb_b + ω_eb_b × v_eOb_b
     a_iOb_b = v̇_eOb_b + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eOb_b)
 
-    g_Ob_b = q_lb'(g_l(Ob_nvh))
+    g_Ob_b = q_lb'(g_l(Ob))
     G_Ob_b = g_Ob_b + ω_ie_b × (ω_ie_b × r_eOb_b)
     f_Ob_b = a_iOb_b - G_Ob_b
 

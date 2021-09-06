@@ -25,12 +25,12 @@ Base.@kwdef struct KinInit
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
     v_eOb_b::SVector{3, Float64} = zeros(SVector{3})
     q_nb::RQuat = RQuat()
-    Ob::NVectorAlt = NVectorAlt()
+    Ob::Geographic{NVector,Ellipsoidal} = Geographic()
     Δx::Float64 = 0.0
     Δy::Float64 = 0.0
 end
 
-const PosXTemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h = 0.0)
+const PosXTemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
 const KinXTemplate = ComponentVector(pos = PosXTemplate, vel = VelXTemplate)
 
@@ -51,9 +51,11 @@ Base.@kwdef struct PosY <: AbstractY{Pos}
     e_nb::REuler
     ψ_nl::Float64
     q_el::RQuat #attitude of the local tangent frame at Ob
-    Ob_nvh::NVectorAlt #position of Ob, NVectorAlt descriptor
-    Ob_llh::LatLonAlt #position of Ob, LatLonAlt descriptor
-    Ob_xyh::SVector{3,Float64} #velocity integral
+    n_e::NVector
+    ϕ_λ::LatLon
+    h_e::Altitude{Ellipsoidal}
+    h_o::Altitude{Orthometric}
+    Δxy::SVector{2,Float64} #v_eOb_n[1:2] integrals
 end
 
 Base.@kwdef struct VelY <: AbstractY{Vel}
@@ -81,12 +83,12 @@ function init!(x::KinX, init::KinInit)
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
 
-    h = Ob.h[1]
+    h_e = Ob.alt
     (R_N, R_E) = radii(Ob)
     v_eOb_n = q_nb * v_eOb_b
     ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + h),
-        -v_eOb_n[1] / (R_N + h),
+        v_eOb_n[2] / (R_E + h_e),
+        -v_eOb_n[1] / (R_N + h_e),
         0.0)
 
     ω_el_b = q_nb' * ω_el_n
@@ -98,7 +100,7 @@ function init!(x::KinX, init::KinInit)
     x.pos.q_el .= ltf(Ob)[:]
     x.pos.Δx = Δx
     x.pos.Δy = Δy
-    x.pos.h = h
+    x.pos.h_e = h_e
     x.vel.ω_eb_b .= ω_eb_b
     x.vel.v_eOb_b .= v_eOb_b
 
@@ -108,23 +110,21 @@ function f_kin!(ẋ_pos::PosX, x::KinX)
 
     q_lb = RQuat(x.pos.q_lb, normalization = false)
     q_el = RQuat(x.pos.q_el, normalization = false)
-    Δx = x.pos.Δx
-    Δy = x.pos.Δy
-    h = x.pos.h[1]
     ω_eb_b = SVector{3}(x.vel.ω_eb_b)
     v_eOb_b = SVector{3}(x.vel.v_eOb_b)
+    h_e = Altitude{Ellipsoidal}(x.pos.h_e[1])
 
-    Ob_nvh = NVectorAlt(NVector(q_el), h)
-    _ψ_nl = ψ_nl(q_el)
-    q_nl = Rz(_ψ_nl)
+    n_e = NVector(q_el)
+    ψ_nl = get_ψ_nl(q_el)
+    q_nl = Rz(ψ_nl)
     q_nb = q_nl ∘ q_lb
     q_eb = q_el ∘ q_lb
 
-    (R_N, R_E) = radii(Ob_nvh)
+    (R_N, R_E) = radii(n_e)
     v_eOb_n = q_nb(v_eOb_b)
     ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + h),
-        -v_eOb_n[1] / (R_N + h),
+        v_eOb_n[2] / (R_E + h_e),
+        -v_eOb_n[1] / (R_N + h_e),
         0.0)
 
     ω_el_l = q_nl'(ω_el_n)
@@ -140,11 +140,12 @@ function f_kin!(ẋ_pos::PosX, x::KinX)
     ẋ_pos.q_el .= dt(q_el, ω_el_l)
     ẋ_pos.Δx = v_eOb_n[1]
     ẋ_pos.Δy = v_eOb_n[2]
-    ẋ_pos.h = -v_eOb_n[3]
+    ẋ_pos.h_e = -v_eOb_n[3]
 
-    #build outputs
-    y_pos = PosY(q_lb, q_nb, q_eb, REuler(q_nb), _ψ_nl, q_el, Ob_nvh,
-                 LatLonAlt(Ob_nvh), SVector{3}(Δx, Δy, h))
+    #build output
+    y_pos = PosY(q_lb, q_nb, q_eb, REuler(q_nb), ψ_nl, q_el, n_e, LatLon(n_e),
+                h_e, Altitude{Orthometric}(h_e, n_e), SVector{2}(x.pos.Δx, x.pos.Δy))
+
     y_vel = VelY(ω_eb_b, ω_lb_b, ω_el_l, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
 
     return KinY(y_pos, y_vel)
@@ -173,26 +174,49 @@ end
 
 function plots(t, data::AbstractVector{<:PosY}; mode, save_path, kwargs...)
 
-    @unpack e_nb, Ob_llh, Ob_xyh = StructArray(data)
+    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy = StructArray(data)
 
     plt_e_nb = thplot(t, e_nb;
         plot_title = "Attitude (Airframe/NED)",
         kwargs...)
 
-    plt_Ob_llh = thplot(t, Ob_llh;
-        plot_title = "Position (WGS84)",
+    #remove the title added by the Altitude TH recipe
+    splt_h = thplot(t, h_e; title = "", kwargs...)
+    thplot!(t, h_o; title = "", kwargs...)
+
+    #remove the title added by the LatLon TH recipe
+    splt_latlon = thplot(t, ϕ_λ;
+                         title = "",
+                         th_split = :v,
+                         kwargs...)
+
+    splt_xy = thplot(t, Δxy;
+        label = [L"$\int v_{eO_b}^{x_n} dt$" L"$\int v_{eO_b}^{y_n} dt$"],
+        ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$"],
+        th_split = :h,
+        link = :none,
         kwargs...)
 
-    plt_Ob_xyh = thplot(t, Ob_xyh;
-        plot_title = "Position (Local Cartesian)",
-        label = [L"$\int v_{eO_b}^{x_n} dt$" L"$\int v_{eO_b}^{y_n} dt$" "Altitude"],
-        ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$" L"h \ (m)"],
-        th_split = :h, link = :none,
-        kwargs...)
+    #when we assemble a plot from multiple subplots, the plot_titlefontsize
+    #attribute no longer works, and it is titlefontisze what determines the font
+    #size of the overall figure title (which normally is used for subplots).
+    #however, we can still override it specifically for this plot
+    plt_geo = plot(splt_latlon, splt_h;
+                layout = grid(1, 2, widths = [0.67, 0.33]),
+                plot_title = "Position (WGS84)",
+                kwargs...,
+                titlefontsize = 20) #override titlefontsize after kwargs
+
+
+    plt_xyh = plot(splt_xy, splt_h;
+                layout = grid(1, 2, widths = [0.67, 0.33]),
+                plot_title = "Position (Local Cartesian)",
+                kwargs...,
+                titlefontsize = 20)
 
     savefig(plt_e_nb, joinpath(save_path, "e_nb.png"))
-    savefig(plt_Ob_llh, joinpath(save_path, "Ob_llh.png"))
-    savefig(plt_Ob_xyh, joinpath(save_path, "Ob_xyh.png"))
+    savefig(plt_geo, joinpath(save_path, "Ob_geo.png"))
+    savefig(plt_xyh, joinpath(save_path, "Ob_xyh.png"))
 
     #debug mode plots:
     # wander angle
@@ -204,7 +228,6 @@ function plots(t, data::AbstractVector{<:PosY}; mode, save_path, kwargs...)
     # plt_Ob_xyh_3D = plot(collect(view(Ob_xyh_voa,i,:) for i ∈ 1:3)...;
     #     camera = (30, 45))
     #aspect_ratio attribute does not work for 3d figures
-
     # savefig(plt_Ob_xyh_3D, joinpath(save_path, "Ob_xyh_3D.png"))
 end
 
@@ -237,6 +260,14 @@ function plots(t, data::AbstractVector{<:VelY}; mode, save_path, kwargs...)
         ylabel = [L"$v_{eO_b}^{x_b} \ (m/s)$" L"$v_{eO_b}^{y_b} \ (m/s)$" L"$v_{eO_b}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
+
+    subplot1 = thplot(t, v_eOb_b;
+        ylabel = [L"$h \ (m)$"],
+        kwargs...)
+    subplot1 = thplot(t, v_eOb_b;
+        ylabel = [L"$h \ (m)$"],
+        kwargs...)
+    plot_subplots =
 
     savefig(plt_ω_lb_b, joinpath(save_path, "ω_lb_b.png"))
     savefig(plt_ω_el_l, joinpath(save_path, "ω_el_l.png"))

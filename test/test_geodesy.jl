@@ -108,16 +108,16 @@ function test_Altitude()
     @test Altitude{Ellipsoidal}(h_orth, loc) isa Altitude{Ellipsoidal}
 
     #operations and conversions
-    @test (h_ellip + Δh) isa Altitude{Ellipsoidal}
-    @test (h_orth + Δh) isa Altitude{Orthometric}
+    @test (h_ellip + Δh) isa Float64
+    @test (h_orth + Δh) isa Float64
     @test Float64(h_ellip + Δh) == Float64(h_ellip) + Δh
     @test Float64(h_orth + Δh) == Float64(h_orth) + Δh
 
     @test h_ellip - h_ellip/2 isa Float64
     @test h_ellip - h_ellip/2 == h_ellip/2
-    @test h_ellip + Float64(h_ellip/2) isa Altitude{Ellipsoidal}
-    @test 0.7h_ellip isa Altitude{Ellipsoidal}
-    @test h_ellip/2 isa Altitude{Ellipsoidal}
+    @test h_ellip + Float64(h_ellip/2) isa Float64
+    @test 0.7h_ellip isa Float64
+    @test h_ellip/2 isa Float64
 
     @test h_ellip + Float64(h_ellip/2) == 3h_ellip/2
     @test h_ellip + Float64(h_ellip/2) ≈ 3h_ellip/2
@@ -140,7 +140,7 @@ function test_Geographic()
     p_nve = Geographic()
     p_llo = Geographic{LatLon,Orthometric}(p_nve)
     @test p_nve isa Geographic{NVector,Ellipsoidal}
-    @test Geographic(loc = LatLon(), alt = H_Orth()) isa Geographic{LatLon,Orthometric}
+    @test Geographic(loc = LatLon(), alt = AltOrth()) isa Geographic{LatLon,Orthometric}
 
     #conversion
     @test Geographic{NVector,Ellipsoidal}(p_llo) isa Geographic{NVector,Ellipsoidal}
@@ -163,7 +163,7 @@ end
 function test_CartECEF()
 
     #construction from Geographic
-    p_nvo = Geographic(NVector([3,1,-3]), H_Orth(10000))
+    p_nvo = Geographic(NVector([3,1,-3]), AltOrth(10000))
     p_lle = Geographic{LatLon,Ellipsoidal}(p_nvo)
     r = CartECEF(p_nvo)
     @test r ≈ CartECEF(p_lle)
@@ -181,7 +181,7 @@ function test_CartECEF()
     λ_range = range(-π, π, length = 10)
     h_range = range(Geodesy.h_min + 200, 10000, length = 10)
 
-    p_array = [Geographic(LatLon(ϕ, λ), H_Orth(h)) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
+    p_array = [Geographic(LatLon(ϕ, λ), AltOrth(h)) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
     p_array_test = [ftest(p) for p in p_array]
     @test all(p_array .≈ p_array_test)
 

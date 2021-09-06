@@ -42,17 +42,10 @@ Base.@kwdef struct StaticISAModel <: AbstractAtmosphericModel
 end
 # ρ₀ = p₀/R*T₀
 
-function get_atmospheric_data(atm::StaticISAModel, Ob::WGS84Pos)
+function get_atmospheric_data(atm::StaticISAModel, p::Abstract3DPosition)
 
-    #the geometric altitude in the context of the ISA model is orthometric: it
-    #is measured with respect to MSL, that is, from the geoid's surface, rather
-    #than the ellipsoid's. in contrast, the h provided by the Kinematics module
-    #is relative to the WGS84 ellipsoid. so, the first step is to convert
-    #altitude to orthometric. this method must be provided by the Geodesy module.
-    #if properly implemented, it would have to make use of EGM96, EGM08 or EGM20
-    #to evaluate the geoid's height N above the ellipsoid at the requested
-    #location, then do: h_orth = h - N(ϕ, λ)
-    h_orth = get_h_orth(Ob)
+    #the geometric altitude in the context of the ISA model is orthometric
+    h_orth = Altitude{Orthometric}(p)
 
     #now, the fluidostatic equations used to compute pressure and density as
     #functions of altitude in the ISA model assume constant gravity. this is

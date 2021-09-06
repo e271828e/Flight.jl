@@ -14,7 +14,8 @@ using Interpolations
 using Flight.Attitude
 using Flight.Plotting
 
-export NVector, LatLon, Altitude, Ellipsoidal, Orthometric, H_Ellip, H_Orth, Geographic, CartECEF
+export NVector, LatLon, Altitude, Ellipsoidal, Orthometric, AltEllip, AltOrth
+export Abstract3DPosition, Geographic, CartECEF
 export ω_ie, gravity, g_l, G_l, ltf, radii, get_ψ_nl, get_geoid_offset
 
 #WGS84 fundamental constants, SI units
@@ -202,8 +203,8 @@ Base.@kwdef struct Altitude{D<:AbstractAltitudeDatum}
     end
 end
 
-const H_Ellip = Altitude{Ellipsoidal}
-const H_Orth = Altitude{Orthometric}
+const AltEllip = Altitude{Ellipsoidal}
+const AltOrth = Altitude{Orthometric}
 
 # Altitude(h::Real) = Altitude{Ellipsoidal}(h)
 Altitude{D}(h::Altitude{D}, args...) where {D} = Altitude{D}(h._val)
@@ -219,13 +220,20 @@ Base.convert(::Type{<:Altitude{D}}, h::Real) where {D} = Altitude{D}(h)
 Base.convert(::Type{T}, h::Altitude) where {T<:Real} = convert(T, h._val)
 (::Type{<:T})(h::Altitude) where {T<:Real} = convert(T, h)
 
-Base.:+(h::Altitude{D}, Δh::Real) where {D} = Altitude{D}(h._val + Δh)
-Base.:-(h::Altitude{D}, Δh::Real) where {D} = Altitude{D}(h._val - Δh)
-Base.:*(k::Real, h::Altitude{D}) where {D} = Altitude{D}(k*h._val)
-Base.:*(h::Altitude{D}, k::Real) where {D} = k*h
-Base.:/(h::Altitude{D}, k::Real) where {D} = Altitude{D}(h._val/k)
-
+# Base.:+(h::Altitude{D}, Δh::Real) where {D} = Altitude{D}(h._val + Δh)
+# Base.:-(h::Altitude{D}, Δh::Real) where {D} = Altitude{D}(h._val - Δh)
+# Base.:*(k::Real, h::Altitude{D}) where {D} = Altitude{D}(k*h._val)
+# Base.:*(h::Altitude{D}, k::Real) where {D} = k*h
+# Base.:/(h::Altitude{D}, k::Real) where {D} = Altitude{D}(h._val/k)
 # Base.:+(h1::Altitude{D}, h2::Altitude{D}) where {D} = Altitude{D}(h1._val + h2._val)
+
+Base.:+(h::Altitude, Δh::Real) = h._val + Δh
+Base.:+(Δh::Real, h::Altitude) = Δh + h._val
+Base.:-(h::Altitude, Δh::Real) = h._val - Δh
+Base.:-(Δh::Real, h::Altitude) = Δh - h._val
+Base.:*(k::Real, h::Altitude) = k*h._val
+Base.:*(h::Altitude, k::Real) = k*h
+Base.:/(h::Altitude, k::Real) = h._val/k
 Base.:-(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val - h2._val
 
 Base.:(==)(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val == h2._val
@@ -259,8 +267,9 @@ Base.convert(::Type{P}, p::P) where {P<:Abstract3DPosition} = p
 #the default constructor generates a Geographic{NVector, EllipsoidalAlt} instance
 Base.@kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DPosition
     loc::L = NVector()
-    alt::Altitude{H} = H_Ellip()
+    alt::Altitude{H} = AltOrth()
 end
+Geographic(loc::Abstract2DLocation) = Geographic(loc, AltOrth())
 Geographic(p::Abstract3DPosition) = Geographic{NVector,Ellipsoidal}(p)
 Geographic{L,H}(p::Abstract3DPosition) where {L,H} = convert(Geographic{L,H}, p)
 
@@ -268,9 +277,9 @@ function Base.convert(::Type{Geographic{L,H}}, p::Geographic) where {L,H}
     Geographic(convert(L, p.loc), Altitude{H}(p))
 end
 
+Altitude{D}(p::Abstract3DPosition) where {D} = Altitude{D}(Geographic{NVector,D}(p))
 Altitude{D}(p::Geographic) where {D} = Altitude{D}(p.alt, p.loc)
 
-# Altitude{D}(p::Abstract3DPosition) = Altitude{D}(Geographic())
 
 function Base.:(==)(p1::Geographic{NVector,H}, p2::Geographic{NVector,H}) where {H}
     return p1.alt == p2.alt && p1.loc == p2.loc
@@ -297,6 +306,7 @@ struct CartECEF <: Abstract3DPosition
     data::SVector{3,Float64}
 end
 CartECEF(p::Abstract3DPosition) = convert(CartECEF, p)
+CartECEF() = CartECEF(Geographic())
 
 Base.:(==)(r1::CartECEF, r2::CartECEF) = r1.data == r2.data
 Base.:(≈)(r1::CartECEF, r2::CartECEF) = r1.data ≈ r2.data
@@ -430,34 +440,36 @@ function G_l(p::Abstract3DPosition)
 
 end
 
+##################### Plotting ##############################
 
-#=
-########################## Plotting #################################
+@recipe function plot_latlon(th::TimeHistory{<:AbstractVector{<:LatLon}})
 
-#unless a more specialized method is defined, a TimeHistory{<:Abstract3DPosition} is
-#converted to Geographic{} for plotting
-@recipe function plot_geodesypos(th::TimeHistory{<:AbstractVector{<:Abstract3DPosition}})
-
-    v_geo = Vector{Geographic{LatLon,EllipsoidalAlt}}(undef, length(th.data))
-    for i in 1:length(v_geo)
-        v_geo[i] = Geographic{LatLon,EllipsoidalAlt}(th.data[i])
-    end
-    geo_sa = StructArray(v_geo) #this is now a struct of two arrays: loc and alt
-    latlon_sa = StructArray(geo_sa.loc) #this is now a struct of two arrays: ϕ and λ
-    alt_sa = StructArray(geo_sa.alt) #this now has a struct of one array: _val
-    data = hcat(latlon_sa.ϕ/π, latlon_sa.λ/π, alt_sa._val)
-
-    #maybe convert to degrees
-    label --> ["Latitude" "Longitude" "Altitude"]
-    yguide --> [L"$\varphi \ (\pi \ rad)$" L"$\lambda \ (\pi \ rad)$" L"$h \ (m)$"]
-    th_split --> :h
-    link --> :none #when th_split link defaults to :y, but we need a different scale for h
-
-
+    sa = StructArray(th.data)
+    data = hcat(sa.ϕ/π, sa.λ/π)
+    title --> ["Latitude" "Longitude"]
+    label --> ["Latitude" "Longitude"]
+    yguide --> [L"$\varphi \ (\pi \ rad)$" L"$\lambda \ (\pi \ rad)$"]
+    th_split --> :v
     return TimeHistory(th.t, data)
 
 end
 
-=#
+@recipe function plot_altitude(th::TimeHistory{<:AbstractVector{<:Altitude{D}}}) where {D}
+
+    data = StructArray(th.data)._val
+
+    if D === Orthometric
+        D_label = "MSL"
+    elseif D === Ellipsoidal
+        D_label = "Ellipsoidal"
+    end
+
+    title --> "Altitude ($D_label)"
+    label --> "Altitude ($D_label)"
+    yguide --> L"$h \ (m)$"
+
+    return TimeHistory(th.t, data)
+
+end
 
 end #module
