@@ -12,16 +12,19 @@ air = AirY()
 
 thr = EThruster();
 thr_sys = HybridSystem(thr);
-y_thr = f_cont!(thr_sys, air);
+f_cont!(thr_sys, air);
+y_thr = thr_sys.y
 thr_mdl = HybridModel(thr_sys, (air,))
 thr_mdl.u.throttle = 1
 step!(thr_mdl, 10, true)
 
 g = ACGroup(left = EThruster(), right = EThruster());
 g_sys = HybridSystem(g);
-y_g = f_cont!(g_sys, air);
-get_wr_b(y_g)
+f_cont!(g_sys, air);
+y_g = g_sys.y
 g_mdl = HybridModel(g_sys, (air,))
+g_mdl.u.left.throttle = 1
+g_mdl.u.right.throttle = 1
 step!(g_mdl)
 
 trn = DummyTerrainModel()
@@ -29,7 +32,8 @@ atm = DummyAtmosphericModel()
 ac = TestAircraft();
 
 ac_sys = HybridSystem(ac);
-y_ac = f_cont!(ac_sys, trn, atm);
+f_cont!(ac_sys, trn, atm);
+y_ac = ac_sys.y
 
 ac_sys = HybridSystem(ac); #should remake the system, because it sets the Model's initial condition upon creation
 ac_mdl = HybridModel(ac_sys, (trn, atm); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0.1);

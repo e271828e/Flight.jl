@@ -22,14 +22,14 @@ include("terrain.jl")
 include("atmosphere.jl")
 include("dynamics.jl")
 
-# #airframe
+# # #airframe
 include("airframe.jl")
 include("airdata.jl")
 include("propulsion.jl")
-# include("landinggear.jl")
+# # include("landinggear.jl")
 include("statemachine.jl")
 
-# #aircraft
+# # #aircraft
 include("aircraft.jl")
 
 
@@ -52,7 +52,7 @@ include("aircraft.jl")
 @reexport using .Airdata
 @reexport using .Propulsion
 @reexport using .StateMachine
-# @reexport using .LandingGear
+# # @reexport using .LandingGear
 
 @reexport using .Aircraft
 

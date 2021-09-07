@@ -45,32 +45,32 @@ const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T
 const KinX{T, D} = ComponentVector{T, D, typeof(getaxes(KinXTemplate))} where {T, D}
 
 Base.@kwdef struct PosY <: AbstractY{Pos}
-    q_lb::RQuat
-    q_nb::RQuat
-    q_eb::RQuat
-    e_nb::REuler
-    ψ_nl::Float64
-    q_el::RQuat #attitude of the local tangent frame at Ob
-    n_e::NVector
-    ϕ_λ::LatLon
-    h_e::Altitude{Ellipsoidal}
-    h_o::Altitude{Orthometric}
-    Δxy::SVector{2,Float64} #v_eOb_n[1:2] integrals
+    q_lb::RQuat = RQuat()
+    q_nb::RQuat = RQuat()
+    q_eb::RQuat = RQuat()
+    e_nb::REuler = REuler()
+    ψ_nl::Float64 = 0.0
+    q_el::RQuat = RQuat() #attitude of the local tangent frame at Ob
+    n_e::NVector = NVector()
+    ϕ_λ::LatLon = LatLon()
+    h_e::Altitude{Ellipsoidal} = Altitude{Ellipsoidal}()
+    h_o::Altitude{Orthometric} = Altitude{Orthometric}()
+    Δxy::SVector{2,Float64} = zeros(2) #v_eOb_n[1:2] integrals
 end
 
 Base.@kwdef struct VelY <: AbstractY{Vel}
-    ω_eb_b::SVector{3,Float64}
-    ω_lb_b::SVector{3,Float64}
-    ω_el_l::SVector{3,Float64}
-    ω_ie_b::SVector{3,Float64}
-    ω_ib_b::SVector{3,Float64}
-    v_eOb_b::SVector{3,Float64}
-    v_eOb_n::SVector{3,Float64}
+    ω_eb_b::SVector{3,Float64} = zeros(3)
+    ω_lb_b::SVector{3,Float64} = zeros(3)
+    ω_el_l::SVector{3,Float64} = zeros(3)
+    ω_ie_b::SVector{3,Float64} = zeros(3)
+    ω_ib_b::SVector{3,Float64} = zeros(3)
+    v_eOb_b::SVector{3,Float64} = zeros(3)
+    v_eOb_n::SVector{3,Float64} = zeros(3)
 end
 
 Base.@kwdef struct KinY <: AbstractY{Kin}
-    pos::PosY
-    vel::VelY
+    pos::PosY = PosY()
+    vel::VelY = VelY()
 end
 
 #Kin is not a System, so we do not really need to define get_x0 to comply with the

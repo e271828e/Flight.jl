@@ -9,7 +9,7 @@ import Flight.Plotting: plots
 
 export HybridModel
 
-abstract type AbstractModel end
+abstract type AbstractModel{S<:AbstractSystem} end
 
 ############### HybridModel #####################
 
@@ -17,7 +17,9 @@ abstract type AbstractModel end
 #storage for f_cont! and f_disc! calls, so we have no guarantees about their
 #status after a certain step. the only valid sources for t and x at any
 #given moment is the integrator's t and u
-struct HybridModel{S <: HybridSystem, I <: OrdinaryDiffEq.ODEIntegrator, L <: SavedValues} <: AbstractModel
+struct HybridModel{S <: HybridSystem,
+                   I <: Union{Nothing, OrdinaryDiffEq.ODEIntegrator},
+                   L <: SavedValues} <: AbstractModel{S}
 
     sys::S
     integrator::I
@@ -34,8 +36,8 @@ struct HybridModel{S <: HybridSystem, I <: OrdinaryDiffEq.ODEIntegrator, L <: Sa
 
         params = (sys = sys, args_c = args_c, args_d = args_d)
 
-        y₀ = f_cont!(sys, args_c...)
-        log = SavedValues(Float64, typeof(y₀))
+        # y₀ = f_cont!(sys, args_c...)
+        log = SavedValues(Float64, typeof(sys.y))
 
         dcb = DiscreteCallback((u, t, integrator)->true, f_dcb!)
         scb = SavingCallback(f_scb, log, saveat = saveat_arr)
@@ -86,7 +88,8 @@ end
 function f_scb(x::X, t::Real, sys::HybridSystem{C,X}, args_c) where {C,X}
     sys.x .= x
     sys.t[] = t
-    return f_cont!(sys, args_c...)
+    f_cont!(sys, args_c...)
+    return deepcopy(sys.y)
 end
 
 
@@ -95,6 +98,8 @@ function Base.getproperty(m::HybridModel, s::Symbol)
         return m.integrator.t
     elseif s === :x
         return m.integrator.u
+    elseif s === :y
+        return m.sys.y
     elseif s === :u
         return m.sys.u
     elseif s in (:sys, :integrator, :log)

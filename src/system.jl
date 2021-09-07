@@ -3,7 +3,7 @@ module System
 using ComponentArrays
 import Flight.Plotting: plots
 
-export get_x0, get_d0, get_u0, f_cont!, f_disc!
+export get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 export AbstractComponent, AbstractSystem, DiscreteSystem, HybridSystem, AlgebraicSystem
 export AbstractD, AbstractU, AbstractY
 
@@ -23,37 +23,33 @@ abstract type AbstractD{C<:AbstractComponent} end
 abstract type AbstractU{C<:AbstractComponent} end
 
 get_x0(::C) where {C<:AbstractComponent} = no_extend_error(get_x0, C)
-get_d0(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
+get_y0(::C) where {C<:AbstractComponent} = nothing
 get_u0(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
+get_d0(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
 
 abstract type AbstractSystem{C<:AbstractComponent} end
 
 #need the C type parameter for dispatch, the rest for type stability
-struct HybridSystem{C, X, D, U, P, S} <: AbstractSystem{C}
+mutable struct HybridSystem{C, X <: Union{Nothing, AbstractVector{<:Real}},
+                    Y, U, D, P, S} <: AbstractSystem{C}
     ẋ::X #continuous state vector derivative
     x::X #continuous state vector (to be used as a buffer for f_cont! evaluation)
+    y::Y #output state
+    u::U #control inputs
+    d::D #discrete state
+    t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
+    params::P
+    subsystems::S
+end
+
+mutable struct DiscreteSystem{C, Y, U, D, P, S} <: AbstractSystem{C}
+    y::Y #control inputs
+    u::U #control inputs
     d::D #discrete state vector
-    u::U #control inputs
     t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
     params::P
     subsystems::S
 end
-
-struct DiscreteSystem{C, D, U, P, S} <: AbstractSystem{C}
-    d::D #discrete state vector
-    u::U #control inputs
-    t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
-    params::P
-    subsystems::S
-end
-
-struct AlgebraicSystem{C, U, P, S} <: AbstractSystem{C}
-    u::U #control inputs
-    t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
-    params::P
-    subsystems::S
-end
-
 
 f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 (f_disc!(::S, args...)::Bool) where {S<:AbstractSystem} = no_extend_error(f_disc!, S)

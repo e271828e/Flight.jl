@@ -14,7 +14,7 @@ using Flight.Dynamics
 using Flight.Airframe
 using Flight.System
 import Flight.Dynamics: get_wr_b, get_hr_b
-import Flight.System: HybridSystem, get_x0, get_d0, get_u0, f_cont!, f_disc!
+import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, EThrusterU, EThrusterD, EThrusterY
@@ -84,14 +84,14 @@ const EThrusterX{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterXTemplate
 #disallow default values to avoid subtle bugs when failing to change a
 #constructor call in user code after changing the struct definition
 Base.@kwdef struct EThrusterY <: AbstractY{EThruster}
-    throttle::Float64
-    ω_shaft::Float64
-    ω_prop::Float64
-    i::Float64
-    c_bat::Float64
-    wr_c::Wrench
-    wr_b::Wrench
-    hr_b::SVector{3,Float64}
+    throttle::Float64 = 0
+    ω_shaft::Float64 = 0
+    ω_prop::Float64 = 0
+    i::Float64 = 0
+    c_bat::Float64 = 0
+    wr_c::Wrench = Wrench()
+    wr_b::Wrench = Wrench()
+    hr_b::SVector{3,Float64} = zeros(SVector{3})
 end
 
 Base.@kwdef mutable struct EThrusterU <: AbstractU{EThruster}
@@ -104,25 +104,26 @@ Base.@kwdef mutable struct EThrusterD <: AbstractD{EThruster} end
 get_x0(::EThruster) = copy(EThrusterXTemplate)
 get_d0(::EThruster) = EThrusterD()
 get_u0(::EThruster) = EThrusterU()
+get_y0(::EThruster) = EThrusterY()
 
 
 ################ EThruster HybridSystem ###################
 
 function HybridSystem(thr::EThruster, ẋ = get_x0(thr), x = get_x0(thr),
-                        d = get_d0(thr), u = get_u0(thr), t = Ref(0.0))
+                        y = get_y0(thr), u = get_u0(thr), d = get_d0(thr), t = Ref(0.0))
     params = thr #params is the component itself
     subsystems = nothing #no subsystems to define
-    HybridSystem{map(typeof, (thr, x, d, u, params, subsystems))...}(ẋ, x, d, u, t, params, subsystems)
+    HybridSystem{map(typeof, (thr, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
 end
 
-get_wr_b(y::EThrusterY) = y.wr_b
-get_hr_b(y::EThrusterY) = y.hr_b
+get_wr_b(sys::HybridSystem{EThruster}) = sys.y.wr_b
+get_hr_b(sys::HybridSystem{EThruster}) = sys.y.hr_b
 
 f_disc!(sys::HybridSystem{EThruster}) = false
 
 function f_cont!(sys::HybridSystem{EThruster}, air::AirY)
 
-    @unpack ẋ, x, u, params = sys #no need for subsystems
+    @unpack ẋ, x, y, u, params = sys #no need for subsystems
     @unpack frame, battery, motor, propeller, gearbox = params
     @unpack n, η = gearbox
     @unpack ω_shaft, c_bat = x
@@ -146,7 +147,9 @@ function f_cont!(sys::HybridSystem{EThruster}, air::AirY)
     ẋ.ω_shaft = ω_shaft_dot
     ẋ.c_bat = ċ(battery, i)
 
-    return EThrusterY(throttle, ω_shaft, ω_prop, i, c_bat, wr_c, wr_b, hr_b)
+    sys.y = EThrusterY(throttle, ω_shaft, ω_prop, i, c_bat, wr_c, wr_b, hr_b)
+
+    return nothing
 
 end
 

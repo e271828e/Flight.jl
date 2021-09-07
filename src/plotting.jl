@@ -6,8 +6,8 @@ using Reexport
 @reexport using RecursiveArrayTools
 @reexport using LaTeXStrings
 
-export plots
-export TimeHistory, thplot, thplot!
+export TimeHistory
+export plots, thplot, thplot!
 
 
 

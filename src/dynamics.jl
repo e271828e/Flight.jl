@@ -123,10 +123,10 @@ end
 
 #every component that influences aircraft dynamics must define an output type
 #that implements these two methods
-function get_wr_b(::T) where {T<:AbstractY{<:AbstractComponent}}
+function get_wr_b(::T) where {T<:HybridSystem{<:AbstractComponent}}
     error("Method get_wr_b not implemented for type $T or incorrect call signature")
 end
-function get_hr_b(::T) where {T<:AbstractY{<:AbstractComponent}}
+function get_hr_b(::T) where {T<:HybridSystem{<:AbstractComponent}}
     error("Method hr_b not implemented for type $T or incorrect call signature")
 end
 
@@ -202,11 +202,11 @@ end
 struct Acc <: AbstractComponent end
 
 Base.@kwdef struct AccY <: AbstractY{Acc}
-    α_eb_b::SVector{3,Float64}
-    α_ib_b::SVector{3,Float64}
-    a_eOb_b::SVector{3,Float64}
-    a_iOb_b::SVector{3,Float64}
-    f_Ob_b::SVector{3,Float64} #specific force
+    α_eb_b::SVector{3,Float64} = zeros(3)
+    α_ib_b::SVector{3,Float64} = zeros(3)
+    a_eOb_b::SVector{3,Float64} = zeros(3)
+    a_iOb_b::SVector{3,Float64} = zeros(3)
+    f_Ob_b::SVector{3,Float64} = zeros(3) #specific force
 end
 
 function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},

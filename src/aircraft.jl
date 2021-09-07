@@ -19,7 +19,7 @@ using Flight.Propulsion
 using Flight.Kinematics
 using Flight.Dynamics
 
-import Flight.System: HybridSystem, get_x0, get_d0, get_u0, f_cont!, f_disc!
+import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0,f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -86,10 +86,11 @@ end
 #because if it is an internally modifiable input vector, it is not actually an
 #input vector). the state machine, like
 
-struct TestAircraftY{PwpY<:AbstractY} <: AbstractY{TestAircraft}
+struct TestAircraftY{StmY<:AbstractY, PwpY<:AbstractY} <: AbstractY{TestAircraft}
     kin::KinY
     acc::AccY
     air::AirY
+    stm::StmY
     pwp::PwpY
 end
 
@@ -106,11 +107,13 @@ end
 #here we should check which subsystems are hybrid (stateful), and add only those
 #as x0 blocks
 get_x0(ac::TestAircraft) = ComponentVector(kin = get_x0(Kin()), pwp = get_x0(ac.pwp))
+get_y0(ac::TestAircraft) = TestAircraftY(KinY(), AccY(), AirY(), get_y0(ac.stm), get_y0(ac.pwp))
 get_d0(ac::TestAircraft) = TestAircraftD(get_d0(ac.stm), get_d0(ac.pwp))
 
 
-struct EmptyU <: AbstractU{TestAircraft} end
-get_u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyU()
+#replace this with EmptyU <: AbstractU{EmptyComponent}
+struct EmptyAircraftU <: AbstractU{TestAircraft} end
+get_u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyAircraftU()
 
 #in a NoMapping aircraft, there are no aircraft controls! we act upon the
 #subsystem's controls directly! this allows testing multiple subsystem
@@ -133,16 +136,16 @@ end
 const TestAircraftSys{C,S,M,P} = HybridSystem{TestAircraft{C,S,M,P}} where {C,S,M,P}
 
 function HybridSystem(ac::TestAircraft, ẋ = get_x0(ac), x = get_x0(ac),
-                    d = get_d0(ac), u = get_u0(ac), t = Ref(0.0))
+                    y = get_y0(ac), u = get_u0(ac), d = get_d0(ac), t = Ref(0.0))
     #each subsystem allocate its own u, then we can decide how the aircraft's u
     #should map onto it via assign_control_inputs!
-    stm = DiscreteSystem(ac.stm, d.stm, get_u0(ac.stm), t)
-    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, d.pwp, get_u0(ac.pwp), t)
+    stm = DiscreteSystem(ac.stm, y.stm, get_u0(ac.stm), d.stm, t)
+    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, y.pwp, get_u0(ac.pwp), d.pwp, t)
     # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, get_u0(ac.ldg), t)
     params = (mass = ac.mass,)
     # subsystems = (pwp = pwp, ldg = ldg)
     subsystems = (stm = stm, pwp = pwp,)
-    HybridSystem{map(typeof, (ac, x, d, u, params, subsystems))...}(ẋ, x, d, u, t, params, subsystems)
+    HybridSystem{map(typeof, (ac, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
 end
 
 #for an aircraft with no specific mapping, the user is expected to act upon
@@ -159,7 +162,7 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
 
 
     @unpack ẋ, x, u, params, subsystems = ac_sys
-    @unpack pwp = subsystems
+    @unpack stm, pwp = subsystems
     @unpack mass = params
 
     y_kin = f_kin!(ẋ.kin.pos, x.kin)
@@ -175,9 +178,12 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
     #get aerodynamics Wrench
     # y_aero = get_wr_b(Aero, y.air, y.srf, y.ldg, trn)
 
+    y_stm = stm.y
+
     #we don't need to update or extract each subsystem's ẋ, x or y, because
     #they are either views or mutable fields
-    y_pwp = f_cont!(pwp, y_air)
+    f_cont!(pwp, y_air)
+    y_pwp = pwp.y
     # #update landing gear
     # f_cont!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, Ldg, trn)
 
@@ -185,11 +191,9 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
     wr_ext_b = Wrench()
     hr_b = SVector(0.,0.,0.)
 
-    #add the contributions from all airframe components
-
     #add powerplant contributions
-    wr_ext_b += get_wr_b(y_pwp)
-    hr_b += get_hr_b(y_pwp)
+    wr_ext_b += get_wr_b(pwp)
+    hr_b += get_hr_b(pwp)
 
     # #add landing gear contributions
     # wr_ext_b .+= get_wr_b(y.ldg, Ldg)
@@ -202,7 +206,9 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
     #update dynamics
     y_acc = f_dyn!(ẋ.kin.vel, wr_ext_b, hr_b, mass_data, y_kin)
 
-    return TestAircraftY(y_kin, y_acc, y_air, y_pwp)
+    ac_sys.y = TestAircraftY(y_kin, y_acc, y_air, y_stm, y_pwp)
+
+    return nothing
 end
 
 
