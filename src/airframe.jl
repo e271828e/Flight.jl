@@ -12,7 +12,7 @@ using Flight.Dynamics
 import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 import Flight.Dynamics: get_wr_b, get_hr_b
 
-export ACGroup, ACGroupD, ACGroupU, ACGroupY
+export ACGroup
 export AbstractAirframeComponent
 
 
@@ -37,52 +37,31 @@ Base.getproperty(g::ACGroup, i::Symbol) = getproperty(getfield(g,:components), i
 Base.keys(::ACGroup{T,N,L}) where {T,N,L} = L
 Base.values(g::ACGroup) = values(getfield(g,:components))
 
-
-struct ACGroupU{U<:AbstractU,N,L} <: AbstractU{ACGroup}
-    nt::NamedTuple{L, NTuple{N,U}}
-    function ACGroupU(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, U}} where {N, U}
-        new{U,N,L}(nt)
-    end
-end
-
-struct ACGroupD{D<:AbstractD,N,L} <: AbstractD{ACGroup}
-    nt::NamedTuple{L, NTuple{N,D}}
-    function ACGroupD(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, D}} where {N, D}
-        new{D,N,L}(nt)
-    end
-end
-
-struct ACGroupY{Y<:AbstractY,N,L} <: AbstractY{ACGroup}
-    nt::NamedTuple{L, NTuple{N,Y}}
-    function ACGroupY(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, Y}} where {N, Y}
-        new{Y,N,L}(nt)
-    end
-end
-
-get_x0(g::ACGroup{T,N,L}) where {T,N,L} = ComponentVector(NamedTuple{L}(get_x0.(values(g))))
-get_u0(g::ACGroup{T,N,L}) where {T,N,L} = ACGroupU(NamedTuple{L}(get_u0.(values(g))))
-get_y0(g::ACGroup{T,N,L}) where {T,N,L} = ACGroupY(NamedTuple{L}(get_y0.(values(g))))
-get_d0(g::ACGroup{T,N,L}) where {T,N,L} = ACGroupD(NamedTuple{L}(get_d0.(values(g))))
-
-Base.getproperty(y::Union{ACGroupY, ACGroupD, ACGroupU}, s::Symbol) = getproperty(getfield(y,:nt), s)
-Base.getindex(y::Union{ACGroupY, ACGroupD, ACGroupU}, s::Symbol) = getindex(getfield(y,:nt), s)
-
-########## ALL OF THESE NEED FIXING!!!!!!
+# function get_x0(g::ACGroup{T,N,L}) where {T,N,L}
+#     NamedTuple{L}(map(ss -> System.get_x0(ss), values(g)))
+# end
+get_x0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_x0.(values(g)))
+get_u0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_u0.(values(g)))
+get_y0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_y0.(values(g)))
+get_d0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_d0.(values(g)))
 
 function HybridSystem(g::ACGroup{T,N,L},
                     ẋ = get_x0(g), x = get_x0(g), y = get_y0(g), u = get_u0(g),
                     d = get_d0(g), t = Ref(0.0)) where {T,N,L}
 
-    s_list = Vector{HybridSystem}()
+    (ẋ_s, ẋ_ss) = System.assemble_x0(ẋ)
+    (x_s, x_ss) = System.assemble_x0(x)
+
+    ss_list = Vector{HybridSystem}()
     for label in L
-        s_cmp = HybridSystem(map((λ)->getproperty(λ, label), (g, ẋ, x, y, u, d))..., t)
-        push!(s_list, s_cmp)
+        s_cmp = HybridSystem(map((λ)->getproperty(λ, label), (g, ẋ_ss, x_ss, y, u, d))..., t)
+        push!(ss_list, s_cmp)
     end
 
     params = nothing #everything is already stored in the subsystem's parameters
-    subsystems = NamedTuple{L}(s_list)
+    subsystems = NamedTuple{L}(ss_list)
 
-    HybridSystem{map(typeof, (g, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
+    HybridSystem{map(typeof, (g, x_s, y, u, d, params, subsystems))...}(ẋ_s, x_s, y, u, d, t, params, subsystems)
 end
 
 @inline @generated function f_cont!(sys::HybridSystem{C}, args...
@@ -106,7 +85,7 @@ end
 
     #build a NamedTuple from the subsystem's labels and the constructed tuple,
     #and pass it to the ACGroupY's constructor
-    ex_y = Expr(:call, ACGroupY, Expr(:call, Expr(:curly, NamedTuple, L), ex_tuple))
+    ex_y = Expr(:call, Expr(:curly, NamedTuple, L), ex_tuple)
 
     #assign the resulting ACGroupY to the parent system's y
     ex_assign_y = Expr(:(=), :(sys.y), ex_y)

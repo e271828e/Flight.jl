@@ -44,7 +44,7 @@ const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T
 "Type definition for dispatching on velocity state vector instances"
 const KinX{T, D} = ComponentVector{T, D, typeof(getaxes(KinXTemplate))} where {T, D}
 
-Base.@kwdef struct PosY <: AbstractY{Pos}
+Base.@kwdef struct PosY
     q_lb::RQuat = RQuat()
     q_nb::RQuat = RQuat()
     q_eb::RQuat = RQuat()
@@ -58,7 +58,7 @@ Base.@kwdef struct PosY <: AbstractY{Pos}
     Δxy::SVector{2,Float64} = zeros(2) #v_eOb_n[1:2] integrals
 end
 
-Base.@kwdef struct VelY <: AbstractY{Vel}
+Base.@kwdef struct VelY
     ω_eb_b::SVector{3,Float64} = zeros(3)
     ω_lb_b::SVector{3,Float64} = zeros(3)
     ω_el_l::SVector{3,Float64} = zeros(3)
@@ -68,7 +68,7 @@ Base.@kwdef struct VelY <: AbstractY{Vel}
     v_eOb_n::SVector{3,Float64} = zeros(3)
 end
 
-Base.@kwdef struct KinY <: AbstractY{Kin}
+Base.@kwdef struct KinY
     pos::PosY = PosY()
     vel::VelY = VelY()
 end

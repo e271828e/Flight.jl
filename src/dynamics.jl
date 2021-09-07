@@ -201,7 +201,7 @@ end
 
 struct Acc <: AbstractComponent end
 
-Base.@kwdef struct AccY <: AbstractY{Acc}
+Base.@kwdef struct AccY
     α_eb_b::SVector{3,Float64} = zeros(3)
     α_ib_b::SVector{3,Float64} = zeros(3)
     a_eOb_b::SVector{3,Float64} = zeros(3)

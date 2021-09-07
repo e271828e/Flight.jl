@@ -86,7 +86,7 @@ end
 #because if it is an internally modifiable input vector, it is not actually an
 #input vector). the state machine, like
 
-struct TestAircraftY{StmY<:AbstractY, PwpY<:AbstractY} <: AbstractY{TestAircraft}
+struct TestAircraftY{StmY, PwpY}
     kin::KinY
     acc::AccY
     air::AirY
@@ -95,7 +95,7 @@ struct TestAircraftY{StmY<:AbstractY, PwpY<:AbstractY} <: AbstractY{TestAircraft
 end
 
 
-struct TestAircraftD{StmD<:AbstractD, PwpD<:AbstractD} <: AbstractD{TestAircraft}
+struct TestAircraftD{StmD, PwpD}
     stm::StmD
     pwp::PwpD
 end
@@ -106,13 +106,20 @@ end
 
 #here we should check which subsystems are hybrid (stateful), and add only those
 #as x0 blocks
-get_x0(ac::TestAircraft) = ComponentVector(kin = get_x0(Kin()), pwp = get_x0(ac.pwp))
+function get_x0(ac::TestAircraft)
+    (
+        kin = System.assemble_x0(Kin())[1],
+        stm = System.assemble_x0(ac.stm)[1],
+        pwp = System.assemble_x0(ac.pwp)[1]
+        )
+end
+
 get_y0(ac::TestAircraft) = TestAircraftY(KinY(), AccY(), AirY(), get_y0(ac.stm), get_y0(ac.pwp))
 get_d0(ac::TestAircraft) = TestAircraftD(get_d0(ac.stm), get_d0(ac.pwp))
 
 
 #replace this with EmptyU <: AbstractU{EmptyComponent}
-struct EmptyAircraftU <: AbstractU{TestAircraft} end
+struct EmptyAircraftU end
 get_u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyAircraftU()
 
 #in a NoMapping aircraft, there are no aircraft controls! we act upon the
@@ -135,17 +142,22 @@ end
 
 const TestAircraftSys{C,S,M,P} = HybridSystem{TestAircraft{C,S,M,P}} where {C,S,M,P}
 
+
 function HybridSystem(ac::TestAircraft, ẋ = get_x0(ac), x = get_x0(ac),
                     y = get_y0(ac), u = get_u0(ac), d = get_d0(ac), t = Ref(0.0))
+
     #each subsystem allocate its own u, then we can decide how the aircraft's u
     #should map onto it via assign_control_inputs!
-    stm = DiscreteSystem(ac.stm, y.stm, get_u0(ac.stm), d.stm, t)
-    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, y.pwp, get_u0(ac.pwp), d.pwp, t)
+    (ẋ_s, ẋ_ss) = System.assemble_x0(ẋ)
+    (x_s, x_ss) = System.assemble_x0(x)
+
+    stm = HybridSystem(ac.stm, ẋ_ss.stm, x_ss.stm, y.stm, get_u0(ac.stm), d.stm, t)
+    pwp = HybridSystem(ac.pwp, ẋ_ss.pwp, x_ss.pwp, y.pwp, get_u0(ac.pwp), d.pwp, t)
     # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, get_u0(ac.ldg), t)
     params = (mass = ac.mass,)
     # subsystems = (pwp = pwp, ldg = ldg)
     subsystems = (stm = stm, pwp = pwp,)
-    HybridSystem{map(typeof, (ac, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
+    HybridSystem{map(typeof, (ac, x_s, y, u, d, params, subsystems))...}(ẋ_s, x_s, y, u, d, t, params, subsystems)
 end
 
 #for an aircraft with no specific mapping, the user is expected to act upon
@@ -224,10 +236,12 @@ function plots(t::AbstractVector{<:Real}, data::AbstractVector{<:TestAircraftY};
     sa = StructArray(data)
     kin_data = sa.kin
     acc_data = sa.acc
+    pwp_data = sa.pwp
 
     #put kinematics and acceleration outputs all in a single airframe folder
     plots(t, kin_data; mode, save_path, kwargs...)
     # plots(t, acc_data; mode, save_path, kwargs...)
+    plots(t, pwp_data; mode, save_path, kwargs...)
 end
 
 ######### Example: extracting y fields for plotting
