@@ -3,7 +3,7 @@ module System
 using ComponentArrays
 import Flight.Plotting: plots
 
-export assemble_x0, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+export get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 export AbstractComponent, AbstractSystem, HybridSystem
 
 no_extend_error(f::Function, ::Type{S}) where {S} = error(
@@ -14,17 +14,20 @@ no_extend_warning(f::Function, ::Type{S}) where {S} = println(
 #anything around which we can build a System
 abstract type AbstractComponent end #anything that can go in a HybridSystem
 
-#get_x0 must return either nothing, an AbstractVector{<:Real} or a NT with a
-#Union{AbstractVector{<:Real},Nothing}
-get_x0(::C) where {C<:AbstractComponent} = nothing
-get_y0(::C) where {C<:AbstractComponent} = nothing
-get_u0(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
-get_d0(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
+#every AbstractComponent's get_x0 must return an AbstractVector{<:Real}, even if
+#its inherently discrete and its f_cont! does nothing. this eases composability
+#of HybridSystems without the hassle of dealing automatically with empty state
+#vector blocks, which is magnified by the need to assign views from the root
+#System's state vector to each children in its hierarchy
+get_x0(::AbstractComponent) = [0.0]
+get_y0(::AbstractComponent) = nothing
+get_u0(::AbstractComponent) = nothing #sytems are not required to have control inputs
+get_d0(::AbstractComponent) = nothing #systems are not required to have discrete states
 
 abstract type AbstractSystem{C<:AbstractComponent} end
 
 #need the C type parameter for dispatch, the rest for type stability
-mutable struct HybridSystem{C, X <: Union{Nothing, AbstractVector{<:Real}},
+mutable struct HybridSystem{C, X <: AbstractVector{<:Float64},
                     Y, U, D, P, S} <: AbstractSystem{C}
     ẋ::X #continuous state vector derivative
     x::X #continuous state vector (to be used as a buffer for f_cont! evaluation)
@@ -46,49 +49,6 @@ f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 #the dispatch will revert to the fallback, which may not be obvious at all. it
 #is safer to force each concrete System that does not require an actual f_disc!
 #to implement a trivial f_disc! that returns false
-
-#when the HybridSystem constructor for a certain Component is passed no
-#parameters for dx and x, it calls the get_x0 method for that Component, which
-#may return
-
-assemble_x0(c::AbstractComponent) = assemble_x0(get_x0(c))
-
-assemble_x0(::Nothing) = (s = nothing, ss = nothing)
-
-assemble_x0(x::AbstractVector{<:Real}) = (s = x, ss = nothing)
-
-function assemble_x0(x::ComponentVector)
-
-    x_ss = Dict{Symbol,Any}()
-
-    for id in keys(x)
-        x_ss[id] = view(x, id)
-    end
-
-    return (s = x, ss = NamedTuple{Tuple(keys(x_ss))}(values(x_ss)))
-
-end
-
-# function assemble_x0(nt::NamedTuple{L,X}
-#     ) where {L, X <: NTuple{N, Union{AbstractVector{<:Real}, Nothing}} where {N}}
-function assemble_x0(nt::NamedTuple)
-    #assembles the System's state vector from the non-empty subsystems' state
-    #vectors. returns the System's state vector and the views to be assigned to
-    #the subsystems
-    x_ss = Dict{Symbol,Any}(pairs(nt))
-
-    x_s_blocks = filter(x_ss) do item
-        isa(item.second, AbstractVector{<:Real})
-    end
-    x_s = (!isempty(x_s_blocks) ? ComponentVector{Float64}(x_s_blocks) : nothing)
-
-    for id in keys(x_ss)
-        x_ss[id] = (id in keys(x_s_blocks) ? view(x_s, id) : x_ss[id])
-    end
-
-    return (s = x_s, ss = NamedTuple{Tuple(keys(x_ss))}(values(x_ss)))
-
-end
 
 function plots(::AbstractVector{<:Real}, ::AbstractVector{T}) where {T}
     no_extend_warning(plots, T) #nothing to plot by default, warn about it

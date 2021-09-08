@@ -107,10 +107,10 @@ end
 #here we should check which subsystems are hybrid (stateful), and add only those
 #as x0 blocks
 function get_x0(ac::TestAircraft)
-    (
-        kin = System.assemble_x0(Kin())[1],
-        stm = System.assemble_x0(ac.stm)[1],
-        pwp = System.assemble_x0(ac.pwp)[1]
+    ComponentVector(
+        kin = get_x0(Kin()),
+        stm = get_x0(ac.stm),
+        pwp = get_x0(ac.pwp)
         )
 end
 
@@ -148,16 +148,13 @@ function HybridSystem(ac::TestAircraft, ẋ = get_x0(ac), x = get_x0(ac),
 
     #each subsystem allocate its own u, then we can decide how the aircraft's u
     #should map onto it via assign_control_inputs!
-    (ẋ_s, ẋ_ss) = System.assemble_x0(ẋ)
-    (x_s, x_ss) = System.assemble_x0(x)
-
-    stm = HybridSystem(ac.stm, ẋ_ss.stm, x_ss.stm, y.stm, get_u0(ac.stm), d.stm, t)
-    pwp = HybridSystem(ac.pwp, ẋ_ss.pwp, x_ss.pwp, y.pwp, get_u0(ac.pwp), d.pwp, t)
+    stm = HybridSystem(ac.stm, ẋ.stm, x.stm, y.stm, get_u0(ac.stm), d.stm, t)
+    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, y.pwp, get_u0(ac.pwp), d.pwp, t)
     # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, get_u0(ac.ldg), t)
     params = (mass = ac.mass,)
     # subsystems = (pwp = pwp, ldg = ldg)
     subsystems = (stm = stm, pwp = pwp,)
-    HybridSystem{map(typeof, (ac, x_s, y, u, d, params, subsystems))...}(ẋ_s, x_s, y, u, d, t, params, subsystems)
+    HybridSystem{map(typeof, (ac, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
 end
 
 #for an aircraft with no specific mapping, the user is expected to act upon
@@ -241,7 +238,7 @@ function plots(t::AbstractVector{<:Real}, data::AbstractVector{<:TestAircraftY};
     #put kinematics and acceleration outputs all in a single airframe folder
     plots(t, kin_data; mode, save_path, kwargs...)
     # plots(t, acc_data; mode, save_path, kwargs...)
-    plots(t, pwp_data; mode, save_path, kwargs...)
+    # plots(t, pwp_data; mode, save_path, kwargs...)
 end
 
 ######### Example: extracting y fields for plotting

@@ -20,8 +20,8 @@ abstract type AbstractAirframeComponent <: AbstractComponent end
 
 ######################### AirframeComponentGroup #############################
 
-#we must keep N as a type parameter, because it's left open in the components
-#type declaration!
+#must keep N as a type parameter, because it's left open in the components
+#type declaration
 struct ACGroup{T<:AbstractAirframeComponent,N,L} <: AbstractAirframeComponent
     components::NamedTuple{L, M} where {L, M <: NTuple{N, T}}
     function ACGroup(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, T}} where {N, T<:AbstractAirframeComponent}
@@ -37,10 +37,7 @@ Base.getproperty(g::ACGroup, i::Symbol) = getproperty(getfield(g,:components), i
 Base.keys(::ACGroup{T,N,L}) where {T,N,L} = L
 Base.values(g::ACGroup) = values(getfield(g,:components))
 
-# function get_x0(g::ACGroup{T,N,L}) where {T,N,L}
-#     NamedTuple{L}(map(ss -> System.get_x0(ss), values(g)))
-# end
-get_x0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_x0.(values(g)))
+get_x0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_x0.(values(g))) |> ComponentVector
 get_u0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_u0.(values(g)))
 get_y0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_y0.(values(g)))
 get_d0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_d0.(values(g)))
@@ -49,19 +46,16 @@ function HybridSystem(g::ACGroup{T,N,L},
                     ẋ = get_x0(g), x = get_x0(g), y = get_y0(g), u = get_u0(g),
                     d = get_d0(g), t = Ref(0.0)) where {T,N,L}
 
-    (ẋ_s, ẋ_ss) = System.assemble_x0(ẋ)
-    (x_s, x_ss) = System.assemble_x0(x)
-
     ss_list = Vector{HybridSystem}()
     for label in L
-        s_cmp = HybridSystem(map((λ)->getproperty(λ, label), (g, ẋ_ss, x_ss, y, u, d))..., t)
+        s_cmp = HybridSystem(map((λ)->getproperty(λ, label), (g, ẋ, x, y, u, d))..., t)
         push!(ss_list, s_cmp)
     end
 
     params = nothing #everything is already stored in the subsystem's parameters
     subsystems = NamedTuple{L}(ss_list)
 
-    HybridSystem{map(typeof, (g, x_s, y, u, d, params, subsystems))...}(ẋ_s, x_s, y, u, d, t, params, subsystems)
+    HybridSystem{map(typeof, (g, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
 end
 
 @inline @generated function f_cont!(sys::HybridSystem{C}, args...

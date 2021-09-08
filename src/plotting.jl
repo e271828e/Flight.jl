@@ -9,8 +9,6 @@ using Reexport
 export TimeHistory
 export plots, thplot, thplot!
 
-
-
 # https://daschw.github.io/recipes/
 # http://docs.juliaplots.org/latest/recipes/
 
@@ -24,6 +22,7 @@ mismo plot
 """
 
 """
+Wrench must produce two plots
 necesito un recipe para Wrench tambien? depende, si voy a generar un solo plot
 con dos subplots, puedo hacerlo. si no, tengo que generar un rplot para Wrench
 que llame a la recipe Vector3DPlot(t, F) y Vector3DPlot(t, M). esto ultimo es lo

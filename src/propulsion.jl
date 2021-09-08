@@ -153,7 +153,31 @@ function f_cont!(sys::HybridSystem{EThruster}, air::AirY)
 
 end
 
+##################### Hand of God ##########################
 
+# Base.@kwdef struct HandOfGod <: AbstractAirframeComponent
+#     frame::FrameSpec = FrameSpec()
+#     enabled::Bool = false
+# end
+
+# Base.@kwdef struct HandOfGodY
+#     wr_c::Wrench = Wrench()
+#     wr_b::Wrench = Wrench()
+#     hr_b::SVector{3,Float64} = zeros(SVector{3})
+# end
+
+# Base.@kwdef mutable struct HandOfGodU
+#     F::MVector{3,Float64} = 0.0
+#     M::MVector{3,Float64} = 0.0
+# end
+
+# #required to make EThruster compatible with HybridSystem
+# Base.@kwdef mutable struct EThrusterD end
+
+# get_x0(::EThruster) = copy(EThrusterXTemplate)
+# get_d0(::EThruster) = EThrusterD()
+# get_u0(::EThruster) = EThrusterU()
+# get_y0(::EThruster) = EThrusterY()
 
 # function PropulsionGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
 #     PropulsionGroup{nt}()
