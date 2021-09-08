@@ -1,13 +1,9 @@
-
-"""
-Position with respect to the WGS84 Ellipsoid
-"""
 module Geodesy
 
-using Base: Real, Symbol
+# using Base: Real, Symbol
 using LinearAlgebra
+using StaticArrays
 using SHA
-using StaticArrays: SVector
 using UnPack
 using Interpolations
 

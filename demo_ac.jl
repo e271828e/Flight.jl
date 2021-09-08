@@ -6,31 +6,12 @@ using BenchmarkTools
 
 using StructArrays
 
+using Flight.Kinematics
 using Flight.Plotting
-
-air = AirY()
-
-thr = EThruster();
-thr_sys = HybridSystem(thr);
-f_cont!(thr_sys, air);
-y_thr = thr_sys.y
-thr_mdl = HybridModel(thr_sys, (air,))
-thr_mdl.u.throttle = 1
-step!(thr_mdl, 10, true)
-
-g = ACGroup(left = EThruster(), right = EThruster());
-g_sys = HybridSystem(g);
-f_cont!(g_sys, air);
-y_g = g_sys.y
-g_mdl = HybridModel(g_sys, (air,))
-g_mdl.u.left.throttle = 1
-g_mdl.u.right.throttle = 1
-step!(g_mdl)
 
 trn = DummyTerrainModel()
 atm = DummyAtmosphericModel()
 ac = TestAircraft();
-
 ac_sys = HybridSystem(ac);
 f_cont!(ac_sys, trn, atm);
 y_ac = ac_sys.y
@@ -54,12 +35,13 @@ b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
 #doesn't chatter because due to Coriolis acceleration, it does not remain at π.
 
 #reinitialize at the North Pole, set end time and run to completion
+reinit!(ac_mdl)
 x0 = copy(ac_mdl.x)
 x0.kin .= get_x0(KinInit(Ob = Geographic(LatLon(ϕ = π/2))))
 reinit!(ac_mdl, x0, tf = 3)
 solve!(ac_mdl)
 
 #this should be set at startup.jl
-plot_settings = (linewidth=2, margin = 10mm,)
+plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
 
 plots(ac_mdl; save_path = joinpath("tmp", "plots2"), plot_settings...)

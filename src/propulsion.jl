@@ -1,10 +1,7 @@
 module Propulsion
 
 using LinearAlgebra
-using StaticArrays
-using ComponentArrays
-using StructArrays
-using RecursiveArrayTools
+using StaticArrays, ComponentArrays, StructArrays, RecursiveArrayTools
 using Unitful
 using UnPack
 using Plots
@@ -84,7 +81,7 @@ end
 const EThrusterXTemplate = ComponentVector(ω_shaft = 0.0, c_bat = 1.0)
 const EThrusterX{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterXTemplate))} where {T,D}
 
-#disallow default values to avoid subtle bugs when failing to change a
+#maybe disallow default values to avoid subtle bugs when failing to change a
 #constructor call in user code after changing the struct definition
 Base.@kwdef struct EThrusterY
     throttle::Float64 = 0
@@ -101,7 +98,6 @@ Base.@kwdef mutable struct EThrusterU
     throttle::Float64 = 0.0
 end
 
-#required to make EThruster compatible with HybridSystem
 Base.@kwdef mutable struct EThrusterD end
 
 get_x0(::EThruster) = copy(EThrusterXTemplate)
@@ -159,24 +155,37 @@ end
 function plots(t, data::AbstractVector{<:EThrusterY}; mode, save_path, kwargs...)
 
     @unpack wr_c, wr_b = StructArray(data)
-    sa_wr_c = StructArray(wr_c)
+    # sa_wr_c = StructArray(wr_c)
     # sa_wr_b = StructArray(wr_b)
-    println("Hello")
 
-    plt_F_c = thplot(t, sa_wr_c.F;
-        ylabel = L"$F \ (N)$",
-        plot_title = "Thruster Force [Thruster Frame]",
-        th_split = :h,
+    # plt_F_c = thplot(t, sa_wr_c.F;
+    #     ylabel = L"$F \ (N)$",
+    #     plot_title = "Thruster Force [Thruster Frame]",
+    #     th_split = :h,
+    #     kwargs...)
+
+    # plt_M_c = thplot(t, sa_wr_c.M;
+    #     ylabel = L"$M \ (Nm)$",
+    #     plot_title = "Thruster Moment [Thruster Frame]",
+    #     th_split = :h,
+    #     kwargs...)
+
+    # savefig(plt_F_c, joinpath(save_path, "F_Oc_c.png"))
+    # savefig(plt_M_c, joinpath(save_path, "M_Oc_c.png"))
+
+    pd = Dict{String, Plots.Plot}()
+
+    pd["01_wr_Oc_c"] = thplot(t, wr_c;
+        plot_title = "Thruster Wrench [Thruster Frame]",
+        wr_source = "thr", wr_frame = "c",
         kwargs...)
 
-    plt_M_c = thplot(t, sa_wr_c.M;
-        ylabel = L"$M \ (Nm)$",
-        plot_title = "Thruster Moment [Thruster Frame]",
-        th_split = :h,
+    pd["02_wr_Ob_b"] = thplot(t, wr_b;
+        plot_title = "Thruster Wrench [Airframe]",
+        wr_source = "thr", wr_frame = "b",
         kwargs...)
 
-    savefig(plt_F_c, joinpath(save_path, "F_Oc_c.png"))
-    savefig(plt_M_c, joinpath(save_path, "M_Oc_c.png"))
+    save_plots(pd; save_path)
 
 end
 

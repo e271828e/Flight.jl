@@ -333,7 +333,8 @@ end
 
 #unless a more specialized method is defined, a TimeHistory{Rotations} is
 #converted to REuler for plotting
-@recipe function plot_rotation(th::TimeHistory{<:AbstractVector{<:Rotation}})
+@recipe function plot_rotation(th::TimeHistory{<:AbstractVector{<:Rotation}};
+                                rot_ref = "", rot_target = "")
 
     v_euler = Vector{REuler}(undef, length(th.data))
     for i in 1:length(v_euler)
@@ -343,7 +344,9 @@ end
     data = hcat(sa.ψ, sa.θ, sa.φ)./π #plot as π factors
 
     label --> ["Heading" "Inclination" "Bank"]
-    yguide --> [L"$\psi \ (\pi \ rad)$" L"$\theta \ (\pi \ rad)$" L"$\phi \ (\pi \ rad)$"]
+    yguide --> hcat(L"$\psi_{%$rot_ref %$rot_target} \ (\pi \ rad)$",
+                    L"$\theta_{%$rot_ref %$rot_target} \ (\pi \ rad)$",
+                    L"$\phi_{%$rot_ref %$rot_target} \ (\pi \ rad)$")
     th_split --> :h #custom TimeHistory attribute
 
     return TimeHistory(th.t, data)

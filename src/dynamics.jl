@@ -12,9 +12,10 @@ using Flight.System
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export AccY
+export DynY
 export MassData, FrameSpec, Wrench
 export translate, get_wr_b, get_hr_b, f_dyn!
+
 
 
 ############################# FrameSpec ###############################
@@ -201,23 +202,27 @@ end
 
 ###################### Acceleration Outputs #####################
 
-struct Acc <: AbstractComponent end
+Base.@kwdef struct DynInputY
+    wr_g_b::Wrench = Wrench()
+    wr_in_b::Wrench = Wrench()
+    wr_ext_b::Wrench = Wrench()
+    hr_b::SVector{3,Float64} = zeros(3)
+end
 
-Base.@kwdef struct AccY
+Base.@kwdef struct DynOutputY
     α_eb_b::SVector{3,Float64} = zeros(3)
     α_ib_b::SVector{3,Float64} = zeros(3)
     a_eOb_b::SVector{3,Float64} = zeros(3)
+    a_eOb_n::SVector{3,Float64} = zeros(3)
     a_iOb_b::SVector{3,Float64} = zeros(3)
-    f_Ob_b::SVector{3,Float64} = zeros(3) #specific force
+    f_Ob_b::SVector{3,Float64} = zeros(3) #specific force (g) maybe two y axes??
 end
-#interest in:
-#gravity wrench [Airframe] wr_g_b
-#inertia wrench [Airframe] wr_in_b
-#total external wrench [Airframe] wr_ext_b. two in the same plot
-#additional angular momentum  hr_b
-#
-#angular acceleration (Airframe/ECEF) [Airframe]
-#
+
+Base.@kwdef struct DynY
+    input::DynInputY = DynInputY()
+    output::DynOutputY = DynOutputY()
+end
+
 
 function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
     mass::MassData, y_kin::KinY)
@@ -239,7 +244,7 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
     #least singular)!
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-    @unpack q_lb, q_el, q_eb, n_e, h_e = y_kin.pos
+    @unpack q_lb, q_el, q_eb, q_nb, n_e, h_e = y_kin.pos
     @unpack ω_eb_b, ω_ie_b, v_eOb_b = y_kin.vel
 
     r_ObG_b_sk = Attitude.skew(r_ObG_b)
@@ -270,26 +275,142 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
 
     #linear accelerations and specific force
     a_eOb_b = v̇_eOb_b + ω_eb_b × v_eOb_b
+    a_eOb_n = q_nb(a_eOb_b)
     a_iOb_b = v̇_eOb_b + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eOb_b)
 
     g_Ob_b = q_lb'(g_l(Ob))
     G_Ob_b = g_Ob_b + ω_ie_b × (ω_ie_b × r_eOb_b)
     f_Ob_b = a_iOb_b - G_Ob_b
 
-    return AccY(α_eb_b, α_ib_b, a_eOb_b, a_iOb_b, f_Ob_b)
+    y_in = DynInputY(wr_g_b, wr_in_b, wr_ext_b, hr_b)
+    y_out = DynOutputY(α_eb_b, α_ib_b, a_eOb_b, a_eOb_n, a_iOb_b, f_Ob_b)
+
+    return DynY(y_in, y_out)
 
 end
 
 
-    #=
-    #basic mode plots
+######################## Plots ############################
+
+@recipe function plot_wrench(th::TimeHistory{<:AbstractVector{<:Wrench}};
+                             wr_frame = "", wr_source = "")
+
+    @unpack F, M = StructArray(th.data)
+
+    layout := (1, 2)
+    seriestype --> :path
+
+    @series begin
+        subplot := 1
+        title --> "Force"
+        yguide --> L"$F_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N)$"
+        # yguide --> L"$F \ (N)$"
+        th_split --> :none
+        TimeHistory(th.t, F)
+    end
+
+    @series begin
+        subplot := 2
+        title --> "Torque"
+        yguide --> L"$M_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N \ m)$"
+        th_split --> :none
+        TimeHistory(th.t, M)
+    end
+
+end
 
 
-    acceleration:
-    α_eb_b: Angular Acceleration (Airframe/ECEF) [Airframe] (not much interest in α_lb_b, but could compute it)
-    a_eOb_b: Acceleration (Airframe/ECEF) [Airframe]
-    f_Ob_b: Specific Force [Airframe]
-    =#
+function plots(t, data::AbstractVector{<:DynY}; mode, save_path, kwargs...)
 
+    sa = StructArray(data)
+    plots(t, sa.input; mode, save_path, kwargs...)
+    plots(t, sa.output; mode, save_path, kwargs...)
+
+end
+
+
+function plots(t, data::AbstractVector{<:DynInputY}; mode, save_path, kwargs...)
+
+    @unpack wr_g_b, wr_in_b, wr_ext_b, hr_b = StructArray(data)
+
+    pd = Dict{String, Plots.Plot}()
+
+    pd["01_wr_g_b"] = thplot(t, wr_g_b;
+        plot_title = "Gravity Wrench [Airframe]",
+        wr_source = "g", wr_frame = "b",
+        kwargs...)
+
+    pd["02_wr_in_b"] = thplot(t, wr_in_b;
+        plot_title = "Inertia Wrench [Airframe]",
+        wr_source = "in", wr_frame = "b",
+        kwargs...)
+
+    pd["03_wr_ext_b"] = thplot(t, wr_ext_b;
+        plot_title = "External Wrench [Airframe]",
+        wr_source = "ext", wr_frame = "b",
+        kwargs...)
+
+    pd["04_hr_b"] = thplot(t, hr_b;
+        plot_title = "Angular Momentum from Rotating Components [Airframe]",
+        ylabel = hcat(
+            L"$h_{Ob \ (r)}^{x_b} \ (kg \ m^2 / s)$",
+            L"$h_{Ob \ (r)}^{y_b} \ (kg \ m^2 / s)$",
+            L"$h_{Ob \ (r)}^{z_b} \ (kg \ m^2 / s)$"),
+        th_split = :h, link = :none,
+        kwargs...)
+
+    save_plots(pd; save_path)
+
+end
+
+
+function plots(t, data::AbstractVector{<:DynOutputY}; mode, save_path, kwargs...)
+
+    @unpack α_eb_b, a_eOb_b, a_eOb_n, f_Ob_b = StructArray(data)
+
+    #standard gravity for specific force normalization
+    g₀ = 9.80665
+
+    pd = Dict{String, Plots.Plot}()
+
+    pd["05_α_eb_b"] = thplot(t, α_eb_b;
+        plot_title = "Angular Acceleration (Airframe/ECEF) [Airframe]",
+        ylabel = hcat(
+            L"$\alpha_{eb}^{x_b} \ (rad/s^2)$",
+            L"$\alpha_{eb}^{y_b} \ (rad/s^2)$",
+            L"$\alpha_{eb}^{z_b} \ (rad/s^2)$"),
+        th_split = :h,
+        kwargs...)
+
+    pd["06_a_eOb_b"] = thplot(t, a_eOb_b;
+        plot_title = "Linear Acceleration (Airframe/ECEF) [Airframe]",
+        ylabel = hcat(
+            L"$a_{eb}^{x_b} \ (m/s^{2})$",
+            L"$a_{eb}^{y_b} \ (m/s^{2})$",
+            L"$a_{eb}^{z_b} \ (m/s^{2})$"),
+        th_split = :h,
+        kwargs...)
+
+    pd["07_a_eOb_n"] = thplot(t, a_eOb_n;
+        plot_title = "Linear Acceleration (Airframe/ECEF) [NED]",
+        ylabel = hcat(
+            L"$a_{eb}^{N} \ (m/s^{2})$",
+            L"$a_{eb}^{E} \ (m/s^{2})$",
+            L"$a_{eb}^{D} \ (m/s^{2})$"),
+        th_split = :h, link = :none,
+        kwargs...)
+
+    pd["08_f_Ob_b"] = thplot(t, f_Ob_b / g₀;
+        plot_title = "Specific Force [Airframe]",
+        ylabel = hcat(
+            L"$f_{Ob}^{x_b} \ (g)$",
+            L"$f_{Ob}^{y_b} \ (g)$",
+            L"$f_{Ob}^{z_b} \ (g)$"),
+        th_split = :h,
+        kwargs...)
+
+    save_plots(pd; save_path)
+
+end
 
 end #module

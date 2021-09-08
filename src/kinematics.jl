@@ -1,8 +1,7 @@
 module Kinematics
 
 using LinearAlgebra
-using StaticArrays: SVector
-using ComponentArrays
+using StaticArrays, ComponentArrays
 using UnPack
 
 using Flight.Geodesy
@@ -13,13 +12,8 @@ import Flight.System: get_x0
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export Pos, Vel, Kin, KinInit
-export PosX, PosY, VelX, VelY, KinX, KinY
+export PosX, PosY, VelX, VelY, KinX, KinY, KinInit
 export init!, f_kin!, renormalize!
-
-struct Pos <: AbstractComponent end
-struct Vel <: AbstractComponent end
-struct Kin <: AbstractComponent end
 
 Base.@kwdef struct KinInit
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
@@ -34,14 +28,11 @@ const PosXTemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
 const KinXTemplate = ComponentVector(pos = PosXTemplate, vel = VelXTemplate)
 
-"""
-Type definition for dispatching on position state vector instances"
-
-"""
+"Type definition for dispatching on position state vector instances"
 const PosX{T, D} = ComponentVector{T, D, typeof(getaxes(PosXTemplate))} where {T, D}
 "Type definition for dispatching on velocity state vector instances"
 const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T, D}
-"Type definition for dispatching on velocity state vector instances"
+"Type definition for dispatching on kinematic state vector instances"
 const KinX{T, D} = ComponentVector{T, D, typeof(getaxes(KinXTemplate))} where {T, D}
 
 Base.@kwdef struct PosY
@@ -73,10 +64,6 @@ Base.@kwdef struct KinY
     vel::VelY = VelY()
 end
 
-#Kin is not a System, so we do not really need to define get_x0 to comply with the
-#System interface. however, it is convenient for testing, and to ensure the
-#aircraft state has its kinematic block initialized to reasonable values
-get_x0(::Kin) = get_x0(KinInit())
 get_x0(init::KinInit) = (x=similar(KinXTemplate); init!(x, init); return x)
 
 function init!(x::KinX, init::KinInit)
@@ -177,47 +164,41 @@ function plots(t, data::AbstractVector{<:PosY}; mode, save_path, kwargs...)
 
     @unpack e_nb, ϕ_λ, h_e, h_o, Δxy = StructArray(data)
 
-    plt_e_nb = thplot(t, e_nb;
-        plot_title = "Attitude (Airframe/NED)",
-        kwargs...)
+    pd = Dict{String, Plots.Plot}()
 
     #remove the title added by the Altitude TH recipe
     splt_h = thplot(t, h_e; title = "", kwargs...)
-    thplot!(t, h_o; title = "", kwargs...)
+             thplot!(t, h_o; title = "", kwargs...)
 
     #remove the title added by the LatLon TH recipe
-    splt_latlon = thplot(t, ϕ_λ;
-                         title = "",
-                         th_split = :v,
-                         kwargs...)
+    splt_latlon = thplot(t, ϕ_λ; title = "", th_split = :v, kwargs...)
 
     splt_xy = thplot(t, Δxy;
-        label = [L"$\int v_{eO_b}^{x_n} dt$" L"$\int v_{eO_b}^{y_n} dt$"],
+        label = [L"$\int v_{eb}^{x_n} dt$" L"$\int v_{eb}^{y_n} dt$"],
         ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$"],
-        th_split = :h,
-        link = :none,
+        th_split = :h, link = :none, kwargs...)
+
+    pd["01_e_nb"] = thplot(t, e_nb;
+        plot_title = "Attitude (Airframe/NED)",
+        rot_ref = "n", rot_target = "b",
         kwargs...)
+
+    pd["02_Ob_geo"] = plot(splt_latlon, splt_h;
+        layout = grid(1, 2, widths = [0.67, 0.33]),
+        plot_title = "Position (WGS84)",
+        kwargs..., titlefontsize = 20) #override titlefontsize after kwargs
+
+    pd["03_Ob_xyh"] = plot(splt_xy, splt_h;
+        layout = grid(1, 2, widths = [0.67, 0.33]),
+        plot_title = "Position (Local Cartesian)",
+        kwargs..., titlefontsize = 20) #override titlefontsize after kwargs
+
+    save_plots(pd; save_path)
 
     #when we assemble a plot from multiple subplots, the plot_titlefontsize
     #attribute no longer works, and it is titlefontisze what determines the font
     #size of the overall figure title (which normally is used for subplots).
     #however, we can still override it specifically for this plot
-    plt_geo = plot(splt_latlon, splt_h;
-                layout = grid(1, 2, widths = [0.67, 0.33]),
-                plot_title = "Position (WGS84)",
-                kwargs...,
-                titlefontsize = 20) #override titlefontsize after kwargs
-
-
-    plt_xyh = plot(splt_xy, splt_h;
-                layout = grid(1, 2, widths = [0.67, 0.33]),
-                plot_title = "Position (Local Cartesian)",
-                kwargs...,
-                titlefontsize = 20)
-
-    savefig(plt_e_nb, joinpath(save_path, "e_nb.png"))
-    savefig(plt_geo, joinpath(save_path, "Ob_geo.png"))
-    savefig(plt_xyh, joinpath(save_path, "Ob_xyh.png"))
 
     #debug mode plots:
     # wander angle
@@ -236,36 +217,35 @@ function plots(t, data::AbstractVector{<:VelY}; mode, save_path, kwargs...)
 
     @unpack v_eOb_b, v_eOb_n, ω_lb_b, ω_el_l = StructArray(data)
 
-    plt_ω_lb_b = thplot(t, ω_lb_b;
+    pd = Dict{String, Plots.Plot}()
+
+    pd["04_ω_lb_b"] = thplot(t, ω_lb_b;
         plot_title = "Angular Velocity (Airframe/LTF) [Airframe]",
         label = ["Roll Rate" "Pitch Rate" "Yaw Rate"],
         ylabel = [L"$p \ (rad/s)$" L"$q \ (rad/s)$" L"$r \ (rad/s)$"],
         th_split = :h,
         kwargs...)
 
-    plt_ω_el_l = thplot(t, ω_el_l;
-        plot_title = "LTF Transport Rate (LTF/ECEF) [LTF]",
+    pd["05_ω_el_l"] = thplot(t, ω_el_l;
+        plot_title = "Local Tangent Frame Transport Rate (LTF/ECEF) [LTF]",
         ylabel = L"$\omega_{el}^{l} \ (rad/s)$",
         th_split = :h,
         kwargs...)
 
-    plt_v_eOb_n = thplot(t, v_eOb_n;
+    pd["06_v_eOb_n"] = thplot(t, v_eOb_n;
         plot_title = "Velocity (Airframe/ECEF) [NED]",
         label = ["North" "East" "Down"],
-        ylabel = [L"$v_{eO_b}^{N} \ (m/s)$" L"$v_{eO_b}^{E} \ (m/s)$" L"$v_{eO_b}^{D} \ (m/s)$"],
+        ylabel = [L"$v_{eb}^{N} \ (m/s)$" L"$v_{eb}^{E} \ (m/s)$" L"$v_{eb}^{D} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
-    plt_v_eOb_b = thplot(t, v_eOb_b;
+    pd["07_v_eOb_b"] = thplot(t, v_eOb_b;
         plot_title = "Velocity (Airframe/ECEF) [Airframe]",
-        ylabel = [L"$v_{eO_b}^{x_b} \ (m/s)$" L"$v_{eO_b}^{y_b} \ (m/s)$" L"$v_{eO_b}^{z_b} \ (m/s)$"],
+        ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
-    savefig(plt_ω_lb_b, joinpath(save_path, "ω_lb_b.png"))
-    savefig(plt_ω_el_l, joinpath(save_path, "ω_el_l.png"))
-    savefig(plt_v_eOb_n, joinpath(save_path, "v_eOb_n.png"))
-    savefig(plt_v_eOb_b, joinpath(save_path, "v_eOb_b.png"))
+    save_plots(pd; save_path)
 
 end
 

@@ -1,9 +1,7 @@
 module Aircraft
 
-using StaticArrays: SVector, SMatrix
 using LinearAlgebra
-using ComponentArrays
-using RecursiveArrayTools
+using StaticArrays, ComponentArrays
 using UnPack
 
 using Flight.Terrain
@@ -42,7 +40,12 @@ end
 get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.r_ObG_b)
 
 abstract type AbstractControlMapping end
+#in a NoMapping control setup there are no aircraft controls! we act upon the
+#subsystem's controls directly! this allows testing multiple subsystem
+#configurations without the hassle of having to define a dedicated
+#assign_control_inputs! method for each one
 struct NoMapping <: AbstractControlMapping end
+
 
 struct TestAircraft{Ctl <: AbstractControlMapping,
                     StM <: AbstractStateMachine,
@@ -73,59 +76,36 @@ function TestAircraft()
     TestAircraft(ctl, stm, mass, pwp)
 end
 
-
-#there are no aircraft's "own" continuous states (if there were, we could always
-#create a subsystem to accomodate them). however, we cannot say the same of
-#discrete states. there may be some discrete logic (a state machine) in the
-#aircraft which has no continuous states. and if it has no continuous states, we
-#cannot store it within any subsystem (all systems are required to have at least
-#continuous states). we reserve a state machine field for this. the state
-#machine only has discrete states of its own, but every time its f_disc! is
-#called, it can (and should) accept the aircraft's continuous state (which it
-#should not modify) and its input vector (which it shouldn't modify either,
-#because if it is an internally modifiable input vector, it is not actually an
-#input vector). the state machine, like
-
 struct TestAircraftY{StmY, PwpY}
+    dyn::DynY
     kin::KinY
-    acc::AccY
     air::AirY
     stm::StmY
     pwp::PwpY
 end
-
 
 struct TestAircraftD{StmD, PwpD}
     stm::StmD
     pwp::PwpD
 end
 
-#the crucial different wrt X, D and Y is that U is arbitrarily defined by
-#ourselves, it is not determined by the aircraft subsystems (although obviously
-#it should be defined taking them into account)
+#in contrast with X, D and Y, which must hold all their aircraft subsystems'
+#counterparts, U is arbitrarily defined by us as a design choice, and will
+#obviously be partially determined by the selected ControlMapping
+struct EmptyAircraftU end
 
-#here we should check which subsystems are hybrid (stateful), and add only those
-#as x0 blocks
+
 function get_x0(ac::TestAircraft)
     ComponentVector(
-        kin = get_x0(Kin()),
+        kin = get_x0(KinInit()),
         stm = get_x0(ac.stm),
         pwp = get_x0(ac.pwp)
         )
 end
-
-get_y0(ac::TestAircraft) = TestAircraftY(KinY(), AccY(), AirY(), get_y0(ac.stm), get_y0(ac.pwp))
+get_y0(ac::TestAircraft) = TestAircraftY(DynY(), KinY(), AirY(), get_y0(ac.stm), get_y0(ac.pwp))
 get_d0(ac::TestAircraft) = TestAircraftD(get_d0(ac.stm), get_d0(ac.pwp))
-
-
-#replace this with EmptyU <: AbstractU{EmptyComponent}
-struct EmptyAircraftU end
 get_u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyAircraftU()
 
-#in a NoMapping aircraft, there are no aircraft controls! we act upon the
-#subsystem's controls directly! this allows testing multiple subsystem
-#configurations without the hassle of having to define a dedicated
-#assign_control_inputs! method for each one
 
 #=
 # example:
@@ -213,9 +193,9 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
     mass_data = get_mass_data(mass)
 
     #update dynamics
-    y_acc = f_dyn!(ẋ.kin.vel, wr_ext_b, hr_b, mass_data, y_kin)
+    y_dyn = f_dyn!(ẋ.kin.vel, wr_ext_b, hr_b, mass_data, y_kin)
 
-    ac_sys.y = TestAircraftY(y_kin, y_acc, y_air, y_stm, y_pwp)
+    ac_sys.y = TestAircraftY(y_dyn, y_kin, y_air, y_stm, y_pwp)
 
     return nothing
 end
@@ -231,47 +211,12 @@ function plots(t::AbstractVector{<:Real}, data::AbstractVector{<:TestAircraftY};
     mode::Symbol, save_path::Union{String, Nothing}, kwargs...)
 
     sa = StructArray(data)
-    kin_data = sa.kin
-    acc_data = sa.acc
-    pwp_data = sa.pwp
 
-    #put kinematics and acceleration outputs all in a single airframe folder
-    plots(t, kin_data; mode, save_path = mkpath(joinpath(save_path, "kinematics")), kwargs...)
-    # plots(t, acc_data; mode, save_path, kwargs...)
-    plots(t, pwp_data; mode, save_path = mkpath(joinpath(save_path, "power_plant")), kwargs...)
+    plots(t, sa.dyn; mode, save_path = mkpath(joinpath(save_path, "dynamics")), kwargs...)
+    plots(t, sa.kin; mode, save_path = mkpath(joinpath(save_path, "kinematics")), kwargs...)
+    plots(t, sa.pwp; mode, save_path = mkpath(joinpath(save_path, "powerplant")), kwargs...)
 end
 
-######### Example: extracting y fields for plotting
-
-# Base.@kwdef struct Output{Y, YD} #this is the type we pass to SavedValues
-# y::Y = ComponentVector(a = fill(1.0, 2), b = fill(2.0, 3))
-# yd::YD = ComponentVector(m = fill(4,3), n = fill(-2, 2))
-# end
-# log = collect(Output() for i in 1:5) #create some copies of it
-# sa = StructArray(log) #now all the y fields of log lie in a contiguous array
-# y = sa.y
-# y_voa = VectorOfArray(y) #now we have a vector of Y's that indexes like a matrix
-# y_mat = convert(Array, y_voa) #and a matrix of y's whose rows still preserve axis metadata
-# function plotlog(log, aircraft::ParametricAircraft)
-
-#############
-
-#     y = log.y
-
-#     #this could all be delegated to kin, which can return a handle to each plot
-#     #it produces
-#     #who saves the plots? how is the folder hierarchy generated?
-#     kin = y[:kin, :]
-#     pos = kin[:pos, :]
-#     Δx = pos[:Δx, :]
-#     Δy = pos[:Δy, :]
-#     h = pos[:h, :]
-
-#     #the only thing we ask of the log type is that it has fields :t and :saveval
-#     #now we would construct a NamedTuple to delegate
-#     return((log.t, h))
-
-# end
 
 
 end

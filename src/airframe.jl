@@ -1,8 +1,7 @@
 module Airframe #this module is really needed, do NOT merge it into aircraft
 
 using LinearAlgebra
-using StaticArrays
-using ComponentArrays
+using StaticArrays, ComponentArrays
 using UnPack
 
 using Flight.Attitude

@@ -7,7 +7,7 @@ using Reexport
 @reexport using LaTeXStrings
 
 export TimeHistory
-export plots, thplot, thplot!
+export plots, save_plots, hplot, thplot!
 
 # https://daschw.github.io/recipes/
 # http://docs.juliaplots.org/latest/recipes/
@@ -48,6 +48,12 @@ end
 #plots. for this we define a new method thplots()
 plots(args...; kwargs...) = error("Not implemented")
 
+function save_plots(d::Dict{String,Plots.Plot}; save_path, format = :png)
+    for (id, p) in zip(keys(d), values(d))
+        savefig(p, joinpath(save_path, id*"."*String(format)))
+    end
+end
+
 #for all these type parameters, TimeHistory{D} needs to create only a single
 #figure, so they can be handled in recipes
 @recipe function f(th::TimeHistory{<:AbstractVector{<:Real}})
@@ -71,7 +77,6 @@ end
     else
         layout --> 1
     end
-    delete!(plotattributes, :th_split)
 
     return th.t, th.data
 
@@ -85,4 +90,18 @@ end
 thplot(t, data; kwargs...) = plot(TimeHistory(t, data); kwargs...)
 thplot!(t, data; kwargs...) = plot!(TimeHistory(t, data); kwargs...)
 
+######### Example: extracting y fields for plotting
+
+# Base.@kwdef struct Output{Y, YD} #this is the type we pass to SavedValues
+# y::Y = ComponentVector(a = fill(1.0, 2), b = fill(2.0, 3))
+# yd::YD = ComponentVector(m = fill(4,3), n = fill(-2, 2))
+# end
+# log = collect(Output() for i in 1:5) #create some copies of it
+# sa = StructArray(log) #now all the y fields of log lie in a contiguous array
+# y = sa.y
+# y_voa = VectorOfArray(y) #now we have a vector of Y's that indexes like a matrix
+# y_mat = convert(Array, y_voa) #and a matrix of y's whose rows still preserve axis metadata
+# function plotlog(log, aircraft::ParametricAircraft)
+
+#############
 end
