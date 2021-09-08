@@ -7,7 +7,7 @@ using Reexport
 @reexport using LaTeXStrings
 
 export TimeHistory
-export plots, save_plots, hplot, thplot!
+export plots, save_plots, thplot, thplot!
 
 # https://daschw.github.io/recipes/
 # http://docs.juliaplots.org/latest/recipes/

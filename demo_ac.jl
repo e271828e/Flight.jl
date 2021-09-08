@@ -44,4 +44,4 @@ solve!(ac_mdl)
 #this should be set at startup.jl
 plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
 
-plots(ac_mdl; save_path = joinpath("tmp", "plots2"), plot_settings...)
+plots(ac_mdl; save_path = joinpath("tmp", "plots"), plot_settings...)
