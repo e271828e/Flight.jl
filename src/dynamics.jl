@@ -6,9 +6,11 @@ using UnPack
 
 using Flight.Geodesy
 using Flight.Attitude
-# using Flight.Airframe
 using Flight.Kinematics
 using Flight.System
+
+using Flight.Plotting
+import Flight.Plotting: plots
 
 export AccY
 export MassData, FrameSpec, Wrench
@@ -208,6 +210,14 @@ Base.@kwdef struct AccY
     a_iOb_b::SVector{3,Float64} = zeros(3)
     f_Ob_b::SVector{3,Float64} = zeros(3) #specific force
 end
+#interest in:
+#gravity wrench [Airframe] wr_g_b
+#inertia wrench [Airframe] wr_in_b
+#total external wrench [Airframe] wr_ext_b. two in the same plot
+#additional angular momentum  hr_b
+#
+#angular acceleration (Airframe/ECEF) [Airframe]
+#
 
 function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
     mass::MassData, y_kin::KinY)

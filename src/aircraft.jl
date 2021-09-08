@@ -236,9 +236,9 @@ function plots(t::AbstractVector{<:Real}, data::AbstractVector{<:TestAircraftY};
     pwp_data = sa.pwp
 
     #put kinematics and acceleration outputs all in a single airframe folder
-    plots(t, kin_data; mode, save_path, kwargs...)
+    plots(t, kin_data; mode, save_path = mkpath(joinpath(save_path, "kinematics")), kwargs...)
     # plots(t, acc_data; mode, save_path, kwargs...)
-    # plots(t, pwp_data; mode, save_path, kwargs...)
+    plots(t, pwp_data; mode, save_path = mkpath(joinpath(save_path, "power_plant")), kwargs...)
 end
 
 ######### Example: extracting y fields for plotting

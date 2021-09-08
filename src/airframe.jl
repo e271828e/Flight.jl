@@ -12,6 +12,9 @@ using Flight.Dynamics
 import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 import Flight.Dynamics: get_wr_b, get_hr_b
 
+using Flight.Plotting
+import Flight.Plotting: plots
+
 export ACGroup
 export AbstractAirframeComponent
 
@@ -134,6 +137,16 @@ end
 
 end
 
+
+function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...)
+
+    c = data |> StructArray |> StructArrays.components
+    for (c_label, c_data) in zip(keys(c), values(c))
+        save_path_c = mkpath(joinpath(save_path, String(c_label)))
+        plots(t, c_data; mode, save_path = save_path_c, kwargs...)
+    end
+
+end
 
 
 end

@@ -168,6 +168,7 @@ end
 function plots(t, data::AbstractVector{<:KinY}; mode, save_path, kwargs...)
 
     sa = StructArray(data)
+
     plots(t, sa.pos; mode, save_path, kwargs...)
     plots(t, sa.vel; mode, save_path, kwargs...)
 end
@@ -260,14 +261,6 @@ function plots(t, data::AbstractVector{<:VelY}; mode, save_path, kwargs...)
         ylabel = [L"$v_{eO_b}^{x_b} \ (m/s)$" L"$v_{eO_b}^{y_b} \ (m/s)$" L"$v_{eO_b}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
-
-    subplot1 = thplot(t, v_eOb_b;
-        ylabel = [L"$h \ (m)$"],
-        kwargs...)
-    subplot1 = thplot(t, v_eOb_b;
-        ylabel = [L"$h \ (m)$"],
-        kwargs...)
-    plot_subplots =
 
     savefig(plt_ω_lb_b, joinpath(save_path, "ω_lb_b.png"))
     savefig(plt_ω_el_l, joinpath(save_path, "ω_el_l.png"))

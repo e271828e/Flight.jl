@@ -16,6 +16,9 @@ using Flight.System
 import Flight.Dynamics: get_wr_b, get_hr_b
 import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 
+using Flight.Plotting
+import Flight.Plotting: plots
+
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, EThrusterU, EThrusterD, EThrusterY
 
@@ -150,6 +153,30 @@ function f_cont!(sys::HybridSystem{EThruster}, air::AirY)
     sys.y = EThrusterY(throttle, ω_shaft, ω_prop, i, c_bat, wr_c, wr_b, hr_b)
 
     return nothing
+
+end
+
+function plots(t, data::AbstractVector{<:EThrusterY}; mode, save_path, kwargs...)
+
+    @unpack wr_c, wr_b = StructArray(data)
+    sa_wr_c = StructArray(wr_c)
+    # sa_wr_b = StructArray(wr_b)
+    println("Hello")
+
+    plt_F_c = thplot(t, sa_wr_c.F;
+        ylabel = L"$F \ (N)$",
+        plot_title = "Thruster Force [Thruster Frame]",
+        th_split = :h,
+        kwargs...)
+
+    plt_M_c = thplot(t, sa_wr_c.M;
+        ylabel = L"$M \ (Nm)$",
+        plot_title = "Thruster Moment [Thruster Frame]",
+        th_split = :h,
+        kwargs...)
+
+    savefig(plt_F_c, joinpath(save_path, "F_Oc_c.png"))
+    savefig(plt_M_c, joinpath(save_path, "M_Oc_c.png"))
 
 end
 
