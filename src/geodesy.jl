@@ -10,7 +10,8 @@ using Interpolations
 using Flight.Attitude
 using Flight.Plotting
 
-export NVector, LatLon, Altitude, Ellipsoidal, Orthometric, AltEllip, AltOrth
+export NVector, LatLon, Altitude, Ellipsoidal, Orthometric, Geopotential
+export AltEllip, AltOrth, AltGeop
 export Abstract3DPosition, Geographic, CartECEF
 export ω_ie, gravity, g_l, G_l, ltf, radii, get_ψ_nl, get_geoid_offset
 
@@ -45,7 +46,6 @@ const γ_b = GM / a² * (1 + m/3 * eʹ * q₀ʹ/q₀) #Normal gravity at the pol
 abstract type Abstract2DLocation end
 
 Base.convert(::Type{L}, loc::L) where {L<:Abstract2DLocation} = loc
-
 
 
 #### NVector ####
@@ -148,6 +148,7 @@ end
 abstract type AbstractAltitudeDatum end
 struct Ellipsoidal <: AbstractAltitudeDatum end
 struct Orthometric <: AbstractAltitudeDatum end
+struct Geopotential <: AbstractAltitudeDatum end
 
 const h_min = -1000 #catches numerical catastrophes
 
@@ -189,10 +190,9 @@ end
 
 Base.@kwdef struct Altitude{D<:AbstractAltitudeDatum}
     _val::Float64 = 0.0
-    #this inner constructor prevents the user from passing an Altitude with a
-    #different datum, which would get implicitly converted to Float64 and its
-    #value directly assigned to _val. typically, this is not what we want: we
-    #want a change of altitude reference, and this requires a 2D location
+    #this constructor prevents the user from passing an Altitude with a
+    #different datum, which would get implicitly converted to Float64 without
+    #actually changing its value
     function Altitude{D}(h::Real) where {D}
         h >= h_min || throw(ArgumentError("Minimum altitude value is $h_min m, got $h"))
         return new{D}(h)
@@ -201,32 +201,39 @@ end
 
 const AltEllip = Altitude{Ellipsoidal}
 const AltOrth = Altitude{Orthometric}
+const AltGeop = Altitude{Geopotential}
 
-# Altitude(h::Real) = Altitude{Ellipsoidal}(h)
 Altitude{D}(h::Altitude{D}, args...) where {D} = Altitude{D}(h._val)
-function Altitude{Ellipsoidal}(h::Altitude{Orthometric}, loc::Abstract2DLocation)
-    Altitude{Ellipsoidal}(h._val + get_geoid_offset(loc))
-end
-function Altitude{Orthometric}(h::Altitude{Ellipsoidal}, loc::Abstract2DLocation)
-    Altitude{Orthometric}(h._val - get_geoid_offset(loc))
-end
 
+#Ellipsoidal and Orthometric altitudes are related by the geoid's offset at a
+#given 2D location
+Altitude{Ellipsoidal}(h::AltOrth, loc::Abstract2DLocation) = AltEllip(h._val + get_geoid_offset(loc))
+Altitude{Orthometric}(h::AltEllip, loc::Abstract2DLocation) = AltOrth(h._val - get_geoid_offset(loc))
+
+#Orthometric and Geopotential are directly related by the point-mass gravity
+#approximation, 2D location not required
+Altitude{Geopotential}(h::AltOrth) = AltGeop(h*a / (a+h))
+Altitude{Orthometric}(h::AltGeop) = AltOrth(h*a / (a-h))
+
+#still, for interface consistency we provide the two-argument method
+Altitude{Geopotential}(h::AltOrth, ::Abstract2DLocation) = AltGeop(h)
+Altitude{Orthometric}(h::AltGeop, ::Abstract2DLocation) = AltOrth(h)
+
+#Geopotential and Ellipsoidal altitudes are related via Orthometric
+Altitude{Geopotential}(h_ellip::AltEllip, loc::Abstract2DLocation) = AltGeop(AltOrth(h_ellip, loc))
+Altitude{Ellipsoidal}(h_geop::AltGeop, loc::Abstract2DLocation) = AltEllip(AltOrth(h_geop), loc)
+
+#operations between Altitude subtypes and Reals
 Base.promote_rule(::Type{<:Altitude{D}}, ::Type{<:Real}) where {D} = Altitude{D}
 Base.convert(::Type{<:Altitude{D}}, h::Real) where {D} = Altitude{D}(h)
 Base.convert(::Type{T}, h::Altitude) where {T<:Real} = convert(T, h._val)
 (::Type{<:T})(h::Altitude) where {T<:Real} = convert(T, h)
 
-# Base.:+(h::Altitude{D}, Δh::Real) where {D} = Altitude{D}(h._val + Δh)
-# Base.:-(h::Altitude{D}, Δh::Real) where {D} = Altitude{D}(h._val - Δh)
-# Base.:*(k::Real, h::Altitude{D}) where {D} = Altitude{D}(k*h._val)
-# Base.:*(h::Altitude{D}, k::Real) where {D} = k*h
-# Base.:/(h::Altitude{D}, k::Real) where {D} = Altitude{D}(h._val/k)
-# Base.:+(h1::Altitude{D}, h2::Altitude{D}) where {D} = Altitude{D}(h1._val + h2._val)
-
 Base.:+(h::Altitude, Δh::Real) = h._val + Δh
-Base.:+(Δh::Real, h::Altitude) = Δh + h._val
 Base.:-(h::Altitude, Δh::Real) = h._val - Δh
+Base.:+(Δh::Real, h::Altitude) = Δh + h._val
 Base.:-(Δh::Real, h::Altitude) = Δh - h._val
+
 Base.:*(k::Real, h::Altitude) = k*h._val
 Base.:*(h::Altitude, k::Real) = k*h
 Base.:/(h::Altitude, k::Real) = h._val/k
@@ -248,14 +255,12 @@ Base.:>(h1::Real, h2::Altitude{D}) where {D} = h2 < h1
 Base.:<(h1::Real, h2::Altitude{D}) where {D} = h2 > h1
 
 
-
 ########################## Abstract3DPosition ##########################
 
 abstract type Abstract3DPosition end
 
 #avoid infinite recursion
 Base.convert(::Type{P}, p::P) where {P<:Abstract3DPosition} = p
-
 
 
 #### Geographic ####
@@ -276,7 +281,6 @@ end
 Altitude{D}(p::Abstract3DPosition) where {D} = Altitude{D}(Geographic{NVector,D}(p))
 Altitude{D}(p::Geographic) where {D} = Altitude{D}(p.alt, p.loc)
 
-
 function Base.:(==)(p1::Geographic{NVector,H}, p2::Geographic{NVector,H}) where {H}
     return p1.alt == p2.alt && p1.loc == p2.loc
 end
@@ -290,7 +294,6 @@ Base.:(≈)(p1::Abstract3DPosition, p2::Abstract3DPosition) = CartECEF(p1) ≈ C
 function Base.:(==)(p1::Abstract3DPosition, p2::Abstract3DPosition)
     throw(ArgumentError("Exact comparison between $(typeof(p1)) and $(typeof(p2)) not defined, use ≈ instead"))
 end
-
 
 Base.:(-)(p::T) where {T<:Abstract3DPosition} = convert(T, -CartECEF(p))
 
@@ -442,29 +445,23 @@ end
 
     sa = StructArray(th.data)
     data = hcat(sa.ϕ/π, sa.λ/π)
+
     title --> ["Latitude" "Longitude"]
     label --> ["Latitude" "Longitude"]
     yguide --> [L"$\varphi \ (\pi \ rad)$" L"$\lambda \ (\pi \ rad)$"]
     th_split --> :v
+
     return TimeHistory(th.t, data)
 
 end
 
 @recipe function plot_altitude(th::TimeHistory{<:AbstractVector{<:Altitude{D}}}) where {D}
 
-    data = StructArray(th.data)._val
-
-    if D === Orthometric
-        D_label = "MSL"
-    elseif D === Ellipsoidal
-        D_label = "Ellipsoidal"
-    end
-
-    title --> "Altitude ($D_label)"
-    label --> "Altitude ($D_label)"
+    title --> "Altitude ($String(D))"
+    label --> "Altitude ($String(D))"
     yguide --> L"$h \ (m)$"
 
-    return TimeHistory(th.t, data)
+    return TimeHistory(th.t, StructArray(th.data)._val)
 
 end
 

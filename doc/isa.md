@@ -1,4 +1,4 @@
-See "Manual of the ICAO Standard Atmosphere"
+See "Manual of the ICAO Standard Atmosphere", "Principles of GNSS...", 2.138
 
 A couple of comments...
 
