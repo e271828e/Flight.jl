@@ -10,8 +10,8 @@ using Interpolations
 using Flight.Attitude
 using Flight.Plotting
 
-export NVector, LatLon, Altitude, Ellipsoidal, Orthometric, Geopotential
-export AltEllip, AltOrth, AltGeop
+export Abstract2DLocation, NVector, LatLon
+export Altitude, Ellipsoidal, Orthometric, Geopotential, AltEllip, AltOrth, AltGeop
 export Abstract3DPosition, Geographic, CartECEF
 export ω_ie, gravity, g_l, G_l, ltf, radii, get_ψ_nl, get_geoid_offset
 
@@ -457,8 +457,8 @@ end
 
 @recipe function plot_altitude(th::TimeHistory{<:AbstractVector{<:Altitude{D}}}) where {D}
 
-    title --> "Altitude ($String(D))"
-    label --> "Altitude ($String(D))"
+    title --> "Altitude ($(string(D)))"
+    label --> "Altitude ($(string(D)))"
     yguide --> L"$h \ (m)$"
 
     return TimeHistory(th.t, StructArray(th.data)._val)

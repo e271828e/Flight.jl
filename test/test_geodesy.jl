@@ -106,6 +106,8 @@ function test_Altitude()
     @test Altitude{Orthometric}(Altitude{Ellipsoidal}(h_orth, loc), loc) == h_orth
     @test Altitude{Orthometric}(h_ellip, loc) isa Altitude{Orthometric}
     @test Altitude{Ellipsoidal}(h_orth, loc) isa Altitude{Ellipsoidal}
+    @test Altitude{Geopotential}(h_ellip, loc) isa Altitude{Geopotential}
+    @test Altitude{Geopotential}(h_orth) isa Altitude{Geopotential}
 
     #operations and conversions
     @test (h_ellip + Δh) isa Float64
@@ -137,9 +139,9 @@ end
 
 function test_Geographic()
 
-    p_nve = Geographic()
+    p_nve = Geographic(alt = AltOrth(1500))
     p_llo = Geographic{LatLon,Orthometric}(p_nve)
-    @test p_nve isa Geographic{NVector,Ellipsoidal}
+    @test p_nve isa Geographic{NVector,Orthometric}
     @test Geographic(loc = LatLon(), alt = AltOrth()) isa Geographic{LatLon,Orthometric}
 
     #conversion
@@ -175,7 +177,9 @@ function test_CartECEF()
 
     #conversion torture test
     ftest(p) = p |> CartECEF |> Geographic{NVector,Ellipsoidal} |> CartECEF |>
-                Geographic{NVector,Orthometric} |> CartECEF |> Geographic{LatLon, Ellipsoidal}
+                Geographic{NVector,Orthometric} |> CartECEF |>
+                Geographic{LatLon, Ellipsoidal} |> Geographic{LatLon, Geopotential} |>
+                Geographic{LatLon, Ellipsoidal}
 
     ϕ_range = range(-π/2, π/2, length = 10)
     λ_range = range(-π, π, length = 10)

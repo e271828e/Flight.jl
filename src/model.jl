@@ -74,13 +74,14 @@ function f_update!(ẋ::X, x::X, t::Real, sys::HybridSystem{C,X}, args_c) where 
     return nothing
 end
 
-#DiscreteCallback function (called on every integration step)
+#DiscreteCallback function (called on every integration step). among other
+#things, this callback ensures that after each step, the System's x is correctly
+#set to the integrator's updated state
 function f_dcb!(x::X, t::Real, sys::HybridSystem{C,X}, args_d) where {C,X}
     sys.x .= x #assign the integrator's state to the system's local continuous state
     sys.t[] = t #ditto for time
     x_modified = f_disc!(sys, args_d...)
     x .= sys.x #assign the (potentially) modified continuous state back to the integrator
-    # println(x_modified)
     return x_modified
 end
 

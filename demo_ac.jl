@@ -4,11 +4,6 @@ using SciMLBase
 using LinearAlgebra
 using BenchmarkTools
 
-using StructArrays
-
-using Flight.Kinematics
-using Flight.Plotting
-
 trn = DummyTerrainModel()
 atm = DummyAtmosphericModel()
 ac = TestAircraft();
