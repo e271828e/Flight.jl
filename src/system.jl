@@ -39,6 +39,14 @@ mutable struct HybridSystem{C, X <: AbstractVector{<:Float64},
     subsystems::S
 end
 
+function HybridSystem(c::AbstractComponent, ẋ = get_x0(c), x = get_x0(c),
+                    y = get_y0(c), u = get_u0(c), d = get_d0(c), t = Ref(0.0))
+    params = c #assign the component descriptor itself as a System parameter
+    subsystems = nothing
+    HybridSystem{map(typeof, (c, x, y, u, d, params, subsystems))...}(
+                                    ẋ, x, y, u, d, t, params, subsystems)
+end
+
 f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 (f_disc!(::S, args...)::Bool) where {S<:AbstractSystem} = no_extend_error(f_disc!, S)
 
@@ -54,6 +62,44 @@ function plots(::AbstractVector{<:Real}, ::AbstractVector{T}) where {T}
     no_extend_warning(plots, T) #nothing to plot by default, warn about it
 end
 
+"""
+#alternative: abstract type MaybeContinuousDynamics end struct
+HasContinuousDynamics end struct HasNoContinuousDynamics end
+MaybeContinuousDynamics(::Type{<:Any}) = NoContinuousDynamics
+MaybeContinuousDynamics(::Type{<:EThruster}) = ContinuousDynamics
+# MaybeContinuousDynamics(::Type{<:SimpleISA}) = NoContinuousDynamics
+
+#this is the first method that should be overridden by any HybridSystem that
+#declares having continuous dynamics. function f_cont!(s::HybridSystem{C},
+args...) where {C<:AbstractComponent} f_cont!(s, MaybeContinuousDynamics(C),
+args...) end function f_cont!(::S, ::ContinuousDynamics, args...) where
+{S<:HybridSystem} println("Warning: S declared itself as having
+ContinuousDynamics but does not implement f_cont!") end f_cont!(::HybridSystem,
+::NoContinuousDynamics, args...) = nothing #its OK #this assumes that when some
+type calls f_cont! with variable arguments, but the #second one is NOT of type
+MaybeContinuousDynamics, the compiler will dispatch #to the first method first.
+this method should have been overridden
+
+#we could do the same with MaybeDiscreteDynamics
+
+
+#what purpose does it serve? it avoids an unwanted and inadverted dispatch to
+#the fallback f_cont! or f_disc due to wrong interface in its own
+#implementation. obviously, the component is assumed to have actually
+#implemented f_cont! and f_disc! and declared itself as having Continous or
+#DiscreteDynamics. a component that neither declares ContinuousDynamics nor
+#defines f_cont! will receive no warning
+
+#we could go another step and do the same with get_x0, which will also dispatch
+#on MaybeContinuousDynamics, and get_d0, on MaybeDiscreteDynamics. then
+#MaybeInput, MaybeOutput for get_u0 and get_d0
+
+#however, all this does is force systems with continuous dyanmics to define the
+#a MaybeContinuousDynamics method in addition to f_cont!. on exchange, systems
+without continuous dynamics are not forced to implement f_cont!. not much to be
+gained
+
+"""
 
 
 

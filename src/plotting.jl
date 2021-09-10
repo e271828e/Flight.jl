@@ -43,9 +43,9 @@ mutable struct TimeHistory{D}
 end
 
 #our entry plotting entry point cannot be a recipe. a recipe is called within
-#the plot() pipeline, which creates a single figure. however,
-#TimeHistory{<:AbstractY} will generally need to generate not one but multiple
-#plots. for this we define a new method thplots()
+#the plot() pipeline, which creates a single figure. however, a Vector of System
+#outputs will typically need to generate multiple plots from its values. for
+#this we define a new method plots()
 plots(args...; kwargs...) = error("Not implemented")
 
 function save_plots(d::Dict{String,Plots.Plot}; save_path, format = :png)
@@ -54,8 +54,8 @@ function save_plots(d::Dict{String,Plots.Plot}; save_path, format = :png)
     end
 end
 
-#for all these type parameters, TimeHistory{D} needs to create only a single
-#figure, so they can be handled in recipes
+#for all the following TimeHistory subtypes, a single figure is enough, so they
+#can be handled by recipes
 @recipe function f(th::TimeHistory{<:AbstractVector{<:Real}})
 
     xguide --> L"$t \: (s)$"

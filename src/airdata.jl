@@ -9,8 +9,8 @@ export AirY
 
 Base.@kwdef struct AirY
     v::SVector{3,Float64} = zeros(SVector{3}) #v_wOb_b
-    α::Float64 = 0.0
-    β::Float64 = 0.0
+    # α::Float64 = 0.0
+    # β::Float64 = 0.0
     ps::Float64 = 0.0
     pt::Float64 = 0.0
     Tt::Float64 = 0.0
