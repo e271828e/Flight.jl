@@ -146,8 +146,9 @@ end
 #### AbstractAltitude ####
 
 abstract type AbstractAltitudeDatum end
-struct Ellipsoidal <: AbstractAltitudeDatum end
-struct Orthometric <: AbstractAltitudeDatum end
+abstract type AbstractGeometricAltitudeDatum <: AbstractAltitudeDatum end
+struct Ellipsoidal <: AbstractGeometricAltitudeDatum end
+struct Orthometric <: AbstractGeometricAltitudeDatum end
 struct Geopotential <: AbstractAltitudeDatum end
 
 const h_min = -1000 #catches numerical catastrophes

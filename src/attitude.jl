@@ -64,10 +64,9 @@ struct RQuat <: Rotation
     _u::UnitQuat #no normalization is performed for an UnitQuat input
 end
 
-#generic AbstractVectors are normalized by default, this can be overridden with
-#the optional keyword argument
+#generic AbstractVectors are normalized by default
 function RQuat(v::AbstractVector{<:Real}; normalization::Bool = true)
-    RQuat(UnitQuat(SVector{4,Float64}(v), normalization = normalization))
+    RQuat(UnitQuat(SVector{4,Float64}(v); normalization))
 end
 RQuat() = RQuat(UnitQuat(1.0))
 RQuat(r::Rotation) = convert(RQuat, r)
