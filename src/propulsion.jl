@@ -34,7 +34,7 @@ Base.@kwdef struct SimpleProp
     J::Float64 = 0.5
 end
 
-function get_wrench(prop::SimpleProp, ω::Real, air::AirY) #air data just for interface demo
+function get_wrench(prop::SimpleProp, ω::Real, air::AirData) #air data just for interface demo
     @unpack kF, kM = prop
     F_ext_Os_s = kF * ω^2 * SVector(1,0,0)
     M_ext_Os_s = -tanh(ω/1.0) * kM * ω^2 * SVector(1,0,0) #choose ω_ref = 1.0
@@ -120,7 +120,7 @@ get_hr_b(sys::HybridSystem{EThruster}) = sys.y.hr_b
 
 f_disc!(sys::HybridSystem{EThruster}) = false
 
-function f_cont!(sys::HybridSystem{EThruster}, air::AirY)
+function f_cont!(sys::HybridSystem{EThruster}, air::AirData)
 
     @unpack ẋ, x, y, u, params = sys #no need for subsystems
     @unpack frame, battery, motor, propeller, gearbox = params

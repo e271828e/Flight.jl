@@ -9,7 +9,7 @@ using StructArrays
 using Flight.Kinematics
 using Flight.Plotting
 
-air = AirY()
+air = AirData()
 
 thr = EThruster();
 thr_sys = HybridSystem(thr);

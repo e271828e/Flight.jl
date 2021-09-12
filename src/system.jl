@@ -15,10 +15,10 @@ no_extend_warning(f::Function, ::Type{S}) where {S} = println(
 abstract type AbstractComponent end #anything that can go in a HybridSystem
 
 #every AbstractComponent's get_x0 must return an AbstractVector{<:Real}, even if
-#its inherently discrete and its f_cont! does nothing. this eases composability
-#of HybridSystems without the hassle of dealing automatically with empty state
-#vector blocks, which is magnified by the need to assign views from the root
-#System's state vector to each children in its hierarchy
+#its inherently discrete and its f_cont! does nothing. this is ugly but ensures
+#composability of HybridSystems without the hassle of dealing automatically with
+#empty state vector blocks, which is magnified by the need to assign views from
+#the root System's state vector to each children in its hierarchy
 get_x0(::AbstractComponent) = [0.0]
 get_y0(::AbstractComponent) = nothing
 get_u0(::AbstractComponent) = nothing #sytems are not required to have control inputs

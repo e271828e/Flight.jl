@@ -4,10 +4,11 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
+using Flight.System
+
 using Flight.Terrain
 using Flight.Atmosphere
 
-using Flight.System
 using Flight.StateMachine
 using Flight.Airframe
 using Flight.Airdata
@@ -23,21 +24,21 @@ using Flight.Plotting
 import Flight.Plotting: plots
 
 export TestAircraft, TestAircraftD, TestAircraftY
-export NoMapping, ConstantMassModel
+export NoMapping, ConstantMassProperties
 
 abstract type AbstractMassModel end
 
 #given some inputs (typically state of the fuel system and external payloads),
 #an AbstractMassModel returns a MassData struct (defined in the Dynamics
-#module). for now, we can simply define a ConstantMassModel
+#module). for now, we can simply define a ConstantMassProperties
 
-Base.@kwdef struct ConstantMassModel <: AbstractMassModel
+Base.@kwdef struct ConstantMassProperties <: AbstractMassModel
     m::Float64 = 1.0
     J_Ob_b::SMatrix{3, 3, Float64, 9} = SMatrix{3,3,Float64}(I)
     r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
 end
 
-get_mass_data(model::ConstantMassModel) = MassData(model.m, model.J_Ob_b, model.r_ObG_b)
+get_mass_data(model::ConstantMassProperties) = MassData(model.m, model.J_Ob_b, model.r_ObG_b)
 
 abstract type AbstractControlMapping end
 #in a NoMapping control setup there are no aircraft controls! we act upon the
@@ -63,7 +64,7 @@ function TestAircraft()
 
     ctl = NoMapping()
     stm = NoStateMachine()
-    mass = ConstantMassModel(m = 1, J_Ob_b = 1*Matrix{Float64}(I,3,3))
+    mass = ConstantMassProperties(m = 1, J_Ob_b = 1*Matrix{Float64}(I,3,3))
     pwp = ACGroup((
         left = EThruster(motor = ElectricMotor(α = CW)),
         right = EThruster(motor = ElectricMotor(α = CCW))))
@@ -75,6 +76,8 @@ function TestAircraft()
     # TestAircraft(mass, pwp, ldg)
     TestAircraft(ctl, stm, mass, pwp)
 end
+
+const AirY = AirData
 
 struct TestAircraftY{StmY, PwpY}
     dyn::DynY
@@ -147,7 +150,7 @@ assign_control_inputs!(::TestAircraftSys{NoMapping,S,M,P} where {S,M,P}) = nothi
 
 function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
                 trn::AbstractTerrainModel,
-                atm::AbstractAtmosphericModel)
+                atm::AtmosphericSystem)
 
 
     @unpack ẋ, x, u, params, subsystems = ac_sys
@@ -160,9 +163,7 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
     #aircraft's control input vector
     assign_control_inputs!(ac_sys)
 
-    y_air = AirY() #replacej
-    # y.air .= get_air_data(). #call air data system here to update air data, passing also as
-    # argument data.atmospheric_model
+    y_air = AirData(atm, y_kin)
 
     #get aerodynamics Wrench
     # y_aero = get_wr_b(Aero, y.air, y.srf, y.ldg, trn)

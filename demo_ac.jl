@@ -5,7 +5,7 @@ using LinearAlgebra
 using BenchmarkTools
 
 trn = DummyTerrainModel()
-atm = DummyAtmosphericModel()
+atm = HybridSystem(AtmosphereCmp())
 ac = TestAircraft();
 ac_sys = HybridSystem(ac);
 f_cont!(ac_sys, trn, atm);

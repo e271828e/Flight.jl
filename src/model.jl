@@ -18,7 +18,7 @@ abstract type AbstractModel{S<:AbstractSystem} end
 #status after a certain step. the only valid sources for t and x at any
 #given moment is the integrator's t and u
 struct HybridModel{S <: HybridSystem,
-                   I <: Union{Nothing, OrdinaryDiffEq.ODEIntegrator},
+                   I <: OrdinaryDiffEq.ODEIntegrator,
                    L <: SavedValues} <: AbstractModel{S}
 
     sys::S
@@ -50,13 +50,13 @@ struct HybridModel{S <: HybridSystem,
     end
 end
 
-#these functions are better defined outside the constructor; apparently closures
-#are not as efficient
+#these functions are better defined outside the constructor; closures seem to
+#have some overhead (?)
 
 #function barriers: the HybridSystem is first extracted from integrator.p,
 #then used as an argument in the call to the actual update & callback functions,
 #forcing the compiler to specialize for the specific HybridSystem subtype;
-#accesing sys.x and sys.ẋ directly without this causes type instability
+#accesing sys.x and sys.ẋ directly instead causes type instability
 f_update!(ẋ, x, p, t) = f_update!(ẋ, x, t, p.sys, p.args_c)
 f_scb(x, t, integrator) = f_scb(x, t, integrator.p.sys, integrator.p.args_c)
 function f_dcb!(integrator)
@@ -131,17 +131,14 @@ function SciMLBase.reinit!(m::HybridModel, args...; kwargs...)
     return nothing
 end
 
-function plots(mdl::HybridModel; mode::Symbol = :basic, save_path::Union{String,Nothing} = nothing, kwargs...)
+function plots(mdl::HybridModel; mode::Symbol = :basic,
+    save_path::Union{String,Nothing} = nothing, kwargs...)
     #generate default path tmp/plots/current_date
-    save_path = (save_path === nothing ? joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_path)
+    save_path = (save_path === nothing ?
+        joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_path)
     mkpath(save_path)
     plots(mdl.log.t, mdl.log.saveval; mode, save_path, kwargs...)
 end
-
-# #delegate recursive plotting to the simulated System's AbstractY rplot method
-# function System.rplot(log::DiffEqCallbacks.SavedValues, args...)
-#     isempty(log.t) ? error("Can't plot an empty log") : rplot(log.t, log.saveval, args...)
-# end
 
 #the following causes type instability and destroys performance:
 # function f_update!(ẋ, x, p, t)
@@ -152,21 +149,18 @@ end
     # ẋ = sys.ẋ
 # end
 
-#the reason seems to be that having sys stored in p obfuscates type
-#inference. when unpacking sys, the compiler can no longer tell its
-#type, and therefore has no knowledge of the types of sys.x, sys.dx,
-#sys.y and sys.t. since these are being assigned to and read from,
-#the type instability kills performance.
+# the reason seems to be that having sys stored in p obfuscates type inference.
+# when unpacking sys, the compiler can no longer tell its type, and therefore
+# has no knowledge of the types of sys.x, sys.dx, sys.y and sys.t. since these
+# are being assigned to and read from, the type instability kills performance.
 
-#this can be fixed by storing the x, dx and y fields of sys directly
-#as entries of p. this probably fixes their types during
-#construction, so when they are accessed later in the closure, the
-#type instability is no longer an issue.
+# this can be fixed by storing the x, dx and y fields of sys directly as entries
+# of p. this probably fixes their types during construction, so when they are
+# accessed later in the closure, the type instability is no longer an issue.
 
-#however, this is redundant! we already have x, dx, y and t inside
-#of sys. a more elegant alternative is simply to use a function
-#barrier, first extract sys, then call another function using it as
-#an argument. this forces the compiler to infer its type, and
-#therefore it specializes the time-critical assignment statements to
-#their actual types.
+# however, this is redundant! we already have x, dx, y and t inside of sys. a
+# more elegant alternative is simply to use a function barrier, first extract
+# sys, then call another function using it as an argument. this forces the
+# compiler to infer its type, and therefore it specializes the time-critical
+# assignment statements to their actual types.
 end

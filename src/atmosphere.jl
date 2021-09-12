@@ -7,26 +7,18 @@ using Flight.System
 
 import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 
-export SimpleISA, SimpleISASystem, get_ISA_data
-export NoWind, get_wind_velocity
-export ParametricAtmosphere
-
-export AbstractAtmosphericModel, DummyAtmosphericModel
+export SimpleISA, get_ISA_data
+export SimpleWind, get_wind_velocity
+export AtmosphereCmp, AtmosphericData, AtmosphericSystem
 
 const R = 287.05287 #gas constant for dry air
 const γ = 1.40 #heat capacity ratio for dry air
 const T_std = 288.15
 const p_std = 101325.0
+const ρ_std = p_std / (R * T_std)
 const g_std = 9.80665
 
 abstract type AbstractISA <: AbstractComponent end
-
-Base.@kwdef struct ISAData
-    p::Float64 = p_std
-    T::Float64 = T_std
-    ρ::Float64 = p_std / (R * T_std)
-    a::Float64 = √(γ*R*T_std)
-end
 
 const ISA_layers = StructArray(
     β =      SVector{7,Float64}([-6.5e-3, 0, 1e-3, 2.8e-3, 0, -2.8e-3, -2e-3]),
@@ -53,15 +45,14 @@ end
     throw(ArgumentError("Altitude out of bounds"))
 end
 
-@inline function get_ISA_data(s::HybridSystem{<:AbstractISA}, p::Abstract3DPosition)
-
-    p_nvg = Geographic{NVector, Geopotential}(p)
-    (T_SL, p_SL, g_SL) = get_SL_values(s, p_nvg.loc)
-    get_ISA_data(p_nvg.alt, T_SL, p_SL, g_SL)
-
+struct ISAData
+    p::Float64
+    T::Float64
+    ρ::Float64
+    a::Float64
 end
 
-@inline function get_ISA_data(h::AltGeop, T_sl = T_std, p_sl = p_std, g_sl = g_std)
+@inline function ISAData(h::AltGeop; T_sl = T_std, p_sl = p_std, g_sl = g_std)
 
     h_base = 0; T_base = T_sl; p_base = p_sl
     β, h_ceil = get_ISA_layer_parameters(h_base)
@@ -75,9 +66,18 @@ end
     T = ISA_temperature_law(h, T_base, h_base, β)
     p = ISA_pressure_law(h, g_sl, p_base, T_base, h_base, β)
 
-    return ISAData(p = p, T = T, ρ = p / (R*T), a = √(γ*R*T) )
+    return ISAData(p, T, p / (R*T), √(γ*R*T) )
 
 end
+
+@inline function ISAData(s::HybridSystem{<:AbstractISA}, p::Geographic)
+
+    h_geop = Altitude{Geopotential}(p.alt, p.loc)
+    (T_sl, p_sl, g_sl) = get_SL_values(s, p.loc)
+    ISAData(h_geop; T_sl, p_sl, g_sl)
+
+end
+
 
 ##################### ConstantUniformISA ###########################
 
@@ -123,36 +123,37 @@ function get_wind_velocity(::T, ::Abstract2DLocation) where {T<:HybridSystem{<:A
     error("get_wind_velocity not implemented for $T")
 end
 
-struct NoWind <: AbstractWind end
-f_cont!(::HybridSystem{<:NoWind}, args...) = nothing
-f_disc!(::HybridSystem{<:NoWind}, args...) = false
+struct SimpleWind <: AbstractWind end
 
-function get_wind_velocity(::HybridSystem{<:NoWind}, ::Abstract3DPosition)
-    zeros(SVector{3,Float64})
+Base.@kwdef mutable struct USimpleWind
+    v_ew_n::MVector{3,Float64} = zeros(3)
 end
 
-#################### ParametricAtmosphere ############################
+get_u0(::SimpleWind) = USimpleWind()
+f_cont!(::HybridSystem{<:SimpleWind}, args...) = nothing
+f_disc!(::HybridSystem{<:SimpleWind}, args...) = false
 
-Base.@kwdef struct ParametricAtmosphere{I <: AbstractISA, W <: AbstractWind} <: AbstractComponent
+function get_wind_velocity(wind::HybridSystem{<:SimpleWind}, ::Abstract3DPosition)
+    SVector{3,Float64}(wind.u.v_ew_n)
+end
+
+#################### AtmosphereCmp ############################
+
+Base.@kwdef struct AtmosphereCmp{I <: AbstractISA, W <: AbstractWind} <: AbstractComponent
     isa_::I = SimpleISA()
-    wind::W = NoWind()
-end
-
-Base.@kwdef struct AtmosphericData
-    isa_::ISAData = ISAData()
-    v_ew_n::SVector{3,Float64} = zeros(3)
+    wind::W = SimpleWind()
 end
 
 #this one's convenient for dispatching on plots() methods, but for U and D we
 #can use simply NamedTuples
-struct ParametricAtmosphereY{I, W}; isa_::I; wind::W; end
+struct AtmosphereCmpY{I, W}; isa_::I; wind::W; end
 
-get_x0(atm::ParametricAtmosphere) = ComponentVector(isa_ = get_x0(atm.isa_), wind = get_x0(atm.wind))
-get_y0(atm::ParametricAtmosphere) = ParametricAtmosphereY(get_y0(atm.isa_), get_y0(atm.wind))
-get_u0(atm::ParametricAtmosphere) = (isa_ = get_u0(atm.isa_), wind = get_u0(atm.wind))
-get_d0(atm::ParametricAtmosphere) = (isa_ = get_d0(atm.isa_), wind = get_d0(atm.wind))
+get_x0(atm::AtmosphereCmp) = ComponentVector(isa_ = get_x0(atm.isa_), wind = get_x0(atm.wind))
+get_y0(atm::AtmosphereCmp) = AtmosphereCmpY(get_y0(atm.isa_), get_y0(atm.wind))
+get_u0(atm::AtmosphereCmp) = (isa_ = get_u0(atm.isa_), wind = get_u0(atm.wind))
+get_d0(atm::AtmosphereCmp) = (isa_ = get_d0(atm.isa_), wind = get_d0(atm.wind))
 
-function HybridSystem(atm::ParametricAtmosphere, ẋ = get_x0(atm), x = get_x0(atm),
+function HybridSystem(atm::AtmosphereCmp, ẋ = get_x0(atm), x = get_x0(atm),
                     y = get_y0(atm), u = get_u0(atm), d = get_d0(atm), t = Ref(0.0))
 
     isa_sys = HybridSystem(atm.isa_, ẋ.isa_, x.isa_, y.isa_, u.isa_, d.isa_, t)
@@ -163,24 +164,28 @@ function HybridSystem(atm::ParametricAtmosphere, ẋ = get_x0(atm), x = get_x0(a
                                 ẋ, x, y, u, d, t, params, subsystems)
 end
 
-# function get_atmospheric_data(atm::AbstractAtmosphericModel, p::Abstract3DPosition)
+const AtmosphericSystem = HybridSystem{<:AtmosphereCmp}
 
-#     # v_ew_n::SVector{3,Float64} #v_ew_n: wind velocity relative to the ECEF, NED axes
-# end
-#if we dont want to step the AtmosphericSystem in time because we know it is
-#Constant, we don't create a World to compose them both. THE IMPORTANT THING IS
-#THAT WHAT AIRCRAFT RECEIVES AS ATM MUST BE A SYSTEM, not a component. in case
-#that we want to compose the aircraft with the environment in a World model, we
-#simply pass it as a subsystem within f_cont!(::World). if the AtmosphericSystem
-#is dynamic but still we don't want to compose it with the Aircraft, we can
-#always put the atmospheric system in a separate model, step it separately, and
-#pass a reference to its underlying AtmosphericSystem to the AircraftSystem that
-#will be wrapped in its own Model
+struct AtmosphericData
+    isa_::ISAData
+    v_ew_n::SVector{3,Float64}
+end
 
+function AtmosphericData(a::AtmosphericSystem, pos::Geographic)
+    AtmosphericData(
+        ISAData(a.subsystems.isa_, pos),
+        get_wind_velocity(a.subsystems.wind, pos))
+end
 
-abstract type AbstractAtmosphericModel end
+#if we dont want to step the AtmosphericSystem in time because it is constant,
+#we simply don't create a World to compose Aircraft and AtmosphericSystem. in
+#case that we want to compose the aircraft with the environment in a World
+#model, we simply pass it as a subsystem within f_cont!(::World). if the
+#AtmosphericSystem is dynamic but still we don't want to compose it with the
+#Aircraft, we can always put the atmospheric system in a separate model, step it
+#separately, and pass a reference to its underlying AtmosphericSystem to the
+#AircraftSystem that will be wrapped in its own Model
 
-struct DummyAtmosphericModel <: AbstractAtmosphericModel end
 
 
 
