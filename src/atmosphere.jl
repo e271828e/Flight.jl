@@ -163,10 +163,10 @@ function HybridSystem(atm::ParametricAtmosphere, ẋ = get_x0(atm), x = get_x0(a
                                 ẋ, x, y, u, d, t, params, subsystems)
 end
 
-function get_atmospheric_data(atm::AbstractAtmosphericModel, p::Abstract3DPosition)
+# function get_atmospheric_data(atm::AbstractAtmosphericModel, p::Abstract3DPosition)
 
-    # v_ew_n::SVector{3,Float64} #v_ew_n: wind velocity relative to the ECEF, NED axes
-end
+#     # v_ew_n::SVector{3,Float64} #v_ew_n: wind velocity relative to the ECEF, NED axes
+# end
 #if we dont want to step the AtmosphericSystem in time because we know it is
 #Constant, we don't create a World to compose them both. THE IMPORTANT THING IS
 #THAT WHAT AIRCRAFT RECEIVES AS ATM MUST BE A SYSTEM, not a component. in case

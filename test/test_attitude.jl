@@ -71,7 +71,7 @@ function test_RQuat()
 
         #time derivative
         ω_ab_b = [10, -4, 2]
-        @test dt(q_ab, ω_ab_b) == 0.5 * (q_ab._u * Quat(imag = ω_ab_b))
+        @test dt(q_ab, ω_ab_b) == 0.5 * (q_ab._u * FreeQuat(imag = ω_ab_b))
 
     end
 

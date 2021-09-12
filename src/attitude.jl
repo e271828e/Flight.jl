@@ -111,7 +111,7 @@ If `r_ab` represents the rotation from axes εa to axes εb, and `ω_ab_b` is th
 angular velocity of εb with respect to εa projected in εb, then `ṙ_ab ==
 dt(r_ab, ω_ab_b)`
 """
-dt(r_ab::RQuat, ω_ab_b::AbstractVector{<:Real}) = 0.5 * (r_ab._u * Quat(imag=ω_ab_b))
+dt(r_ab::RQuat, ω_ab_b::AbstractVector{<:Real}) = 0.5 * (r_ab._u * FreeQuat(imag=ω_ab_b))
 
 ##### RQuat fallbacks #####
 
