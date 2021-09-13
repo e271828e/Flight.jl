@@ -20,7 +20,7 @@ abstract type AbstractComponent end #anything from which we can build a System
 #empty state vector blocks, which is magnified by the need to assign views from
 #the root System's state vector to each children in its hierarchy
 get_x0(::AbstractComponent) = [0.0]
-get_y0(::AbstractComponent) = nothing
+get_y0(::AbstractComponent) = nothing #sytems are not required to have outputs
 get_u0(::AbstractComponent) = nothing #sytems are not required to have control inputs
 get_d0(::AbstractComponent) = nothing #systems are not required to have discrete states
 

@@ -32,7 +32,10 @@ struct NullAirframeComponent <: AbstractAirframeComponent end
 get_wr_b(::System{NullAirframeComponent}) = Wrench()
 get_hr_b(::System{NullAirframeComponent}) = zeros(SVector{3})
 
+f_cont!(::System{NullAirframeComponent}, args...) = nothing
+(f_disc!(::System{NullAirframeComponent}, args...)::Bool) = false
 
+# function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...)
 ######################### AirframeGroup #############################
 
 #must keep N as a type parameter, because it's left open in the components
@@ -149,7 +152,8 @@ end
 
 end
 
-
+#should probably define an AirframeGroupY{T,N,L} to dispatch instead of simply
+#grouping outputs in a NamedTuple, but this works for now
 function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...)
 
     c = data |> StructArray |> StructArrays.components

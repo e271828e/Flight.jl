@@ -24,7 +24,7 @@ using Flight.Plotting
 import Flight.Plotting: plots
 
 export TestAircraft, TestAircraftD, TestAircraftY
-export NoMapping, ConstantMassProperties
+export NoControlMapping, ConstantMassProperties
 
 abstract type AbstractMassModel end
 
@@ -41,55 +41,58 @@ end
 get_mass_data(model::ConstantMassProperties) = MassData(model.m, model.J_Ob_b, model.r_ObG_b)
 
 abstract type AbstractControlMapping end
-#in a NoMapping control setup there are no aircraft controls! we act upon the
-#subsystem's controls directly! this allows testing multiple subsystem
+#in a NoControlMapping control setup there are no aircraft controls! we act upon
+#the subsystem's controls directly! this allows testing multiple subsystem
 #configurations without the hassle of having to define a dedicated
 #assign_control_inputs! method for each one
-struct NoMapping <: AbstractControlMapping end
+struct NoControlMapping <: AbstractControlMapping end
 
 
 struct TestAircraft{Ctl <: AbstractControlMapping,
                     StM <: AbstractStateMachine,
                     Mass <: AbstractMassModel,
-                    Pwp <: AbstractAirframeComponent} <: AbstractComponent
+                    Pwp <: AbstractAirframeComponent,
+                    Ldg <: AbstractAirframeComponent} <: AbstractComponent
     # Ldg} <: AbstractComponent
     ctl::Ctl
     stm::StM
     mass::Mass
     pwp::Pwp
-    # ldg::Ldg
+    ldg::Ldg
 end
 
 function TestAircraft()
 
-    ctl = NoMapping()
+    ctl = NoControlMapping()
     stm = NoStateMachine()
     mass = ConstantMassProperties(m = 1, J_Ob_b = 1*Matrix{Float64}(I,3,3))
     pwp = AirframeGroup((
         left = EThruster(motor = ElectricMotor(α = CW)),
         right = EThruster(motor = ElectricMotor(α = CCW))))
+    ldg = NullAirframeComponent()
     # ldg = AirframeGroup((
     #     lmain = LandingGearLeg(),
     #     rmain = LandingGearLeg(),
     #     nlg = LandingGearLeg()))
 
-    # TestAircraft(mass, pwp, ldg)
-    TestAircraft(ctl, stm, mass, pwp)
+    TestAircraft(ctl, stm, mass, pwp, ldg)
 end
 
 const AirY = AirData
 
-struct TestAircraftY{StmY, PwpY}
+struct TestAircraftY{StmY, PwpY, LdgY}
     dyn::DynY
     kin::KinY
     air::AirY
     stm::StmY
     pwp::PwpY
+    ldg::LdgY
 end
 
-struct TestAircraftD{StmD, PwpD}
+struct TestAircraftD{StmD, PwpD, LdgD}
     stm::StmD
     pwp::PwpD
+    ldg::LdgD
 end
 
 #in contrast with X, D and Y, which must hold all their aircraft subsystems'
@@ -102,12 +105,21 @@ function get_x0(ac::TestAircraft)
     ComponentVector(
         kin = get_x0(KinInit()),
         stm = get_x0(ac.stm),
-        pwp = get_x0(ac.pwp)
+        pwp = get_x0(ac.pwp),
+        ldg = get_x0(ac.ldg)
         )
 end
-get_y0(ac::TestAircraft) = TestAircraftY(DynY(), KinY(), AirY(), get_y0(ac.stm), get_y0(ac.pwp))
-get_d0(ac::TestAircraft) = TestAircraftD(get_d0(ac.stm), get_d0(ac.pwp))
-get_u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyAircraftU()
+function get_y0(ac::TestAircraft)
+    TestAircraftY(
+        DynY(),
+        KinY(),
+        AirY(),
+        get_y0(ac.stm),
+        get_y0(ac.pwp),
+        get_y0(ac.ldg))
+end
+get_d0(ac::TestAircraft) = TestAircraftD(get_d0(ac.stm), get_d0(ac.pwp), get_d0(ac.ldg))
+get_u0(::TestAircraft{NoControlMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyAircraftU()
 
 
 #=
@@ -123,7 +135,7 @@ function assign_control_inputs!(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) whe
 end
 =#
 
-const TestAircraftSys{C,S,M,P} = System{TestAircraft{C,S,M,P}} where {C,S,M,P}
+const TestAircraftSys{C,S,M,P,L} = System{TestAircraft{C,S,M,P,L}} where {C,S,M,P,L}
 
 
 function System(ac::TestAircraft, ẋ = get_x0(ac), x = get_x0(ac),
@@ -133,10 +145,10 @@ function System(ac::TestAircraft, ẋ = get_x0(ac), x = get_x0(ac),
     #should map onto it via assign_control_inputs!
     stm = System(ac.stm, ẋ.stm, x.stm, y.stm, get_u0(ac.stm), d.stm, t)
     pwp = System(ac.pwp, ẋ.pwp, x.pwp, y.pwp, get_u0(ac.pwp), d.pwp, t)
-    # ldg = System(ac.ldg, ẋ.ldg, x.ldg, d.ldg, get_u0(ac.ldg), t)
+    ldg = System(ac.ldg, ẋ.ldg, x.ldg, y.ldg, get_u0(ac.ldg), d.ldg, t)
     params = (mass = ac.mass,)
     # subsystems = (pwp = pwp, ldg = ldg)
-    subsystems = (stm = stm, pwp = pwp,)
+    subsystems = (stm = stm, pwp = pwp, ldg = ldg)
     System{map(typeof, (ac, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
 end
 
@@ -145,16 +157,16 @@ end
 #overriding this function for specific TestAircraft type parameter
 #combinations allows us to customize how the aircraft's control inputs map
 #into its subsystems's control inputs.
-assign_control_inputs!(::TestAircraftSys{NoMapping,S,M,P} where {S,M,P}) = nothing
+assign_control_inputs!(::TestAircraftSys{NoControlMapping,S,M,P,L} where {S,M,P,L}) = nothing
 
 
-function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
+function f_cont!(ac_sys::TestAircraftSys{C,S,M,P,L} where {C,S,M,P,L},
                 trn::AbstractTerrainModel,
                 atm::AtmosphericSystem)
 
 
     @unpack ẋ, x, u, params, subsystems = ac_sys
-    @unpack stm, pwp = subsystems
+    @unpack stm, pwp, ldg = subsystems
     @unpack mass = params
 
     y_kin = f_kin!(ẋ.kin.pos, x.kin)
@@ -174,8 +186,9 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
     #they are either views or mutable fields
     f_cont!(pwp, y_air)
     y_pwp = pwp.y
-    # #update landing gear
-    # f_cont!(y.ldg, ẋ.ldg, x.ldg, u.ldg, t, Ldg, trn)
+
+    f_cont!(ldg, trn)
+    y_ldg = ldg.y
 
     #initialize external Wrench and additional angular momentum
     wr_ext_b = Wrench()
@@ -185,9 +198,9 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
     wr_ext_b += get_wr_b(pwp)
     hr_b += get_hr_b(pwp)
 
-    # #add landing gear contributions
-    # wr_ext_b .+= get_wr_b(y.ldg, Ldg)
-    # hr_b += get_hr_b(y.ldg, Ldg)
+    #add landing gear contributions
+    wr_ext_b += get_wr_b(ldg)
+    hr_b += get_hr_b(ldg)
 
     #mass data depends on the state of the systems, we need updated y to compute
     #it, so it should go after the systems
@@ -196,7 +209,7 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P} where {C,S,M,P},
     #update dynamics
     y_dyn = f_dyn!(ẋ.kin.vel, wr_ext_b, hr_b, mass_data, y_kin)
 
-    ac_sys.y = TestAircraftY(y_dyn, y_kin, y_air, y_stm, y_pwp)
+    ac_sys.y = TestAircraftY(y_dyn, y_kin, y_air, y_stm, y_pwp, y_ldg)
 
     return nothing
 end
@@ -216,6 +229,7 @@ function plots(t::AbstractVector{<:Real}, data::AbstractVector{<:TestAircraftY};
     plots(t, sa.dyn; mode, save_path = mkpath(joinpath(save_path, "dynamics")), kwargs...)
     plots(t, sa.kin; mode, save_path = mkpath(joinpath(save_path, "kinematics")), kwargs...)
     plots(t, sa.pwp; mode, save_path = mkpath(joinpath(save_path, "powerplant")), kwargs...)
+    plots(t, sa.ldg; mode, save_path = mkpath(joinpath(save_path, "landinggear")), kwargs...)
 end
 
 

@@ -6,6 +6,7 @@ using Reexport
 @reexport using RecursiveArrayTools
 @reexport using LaTeXStrings
 
+using Flight.Utils
 using Flight.ModelingTools
 
 export TimeHistory
@@ -30,9 +31,8 @@ function plots(mdl::Model; mode::Symbol = :basic,
     plots(mdl.log.t, mdl.log.saveval; mode, save_path, kwargs...)
 end
 
-function plots(::AbstractVector{<:Real}, ::AbstractVector{T}) where {T}
-    no_extend_warning(plots, T) #nothing to plot by default, warn about it
-end
+#for Systems without outputs
+plots(::AbstractVector{<:Real}, ::AbstractVector{Nothing}; kwargs...) = nothing
 
 function save_plots(d::Dict{String,Plots.Plot}; save_path, format = :png)
     for (id, p) in zip(keys(d), values(d))
