@@ -160,10 +160,7 @@ end
 assign_control_inputs!(::TestAircraftSys{NoControlMapping,S,M,P,L} where {S,M,P,L}) = nothing
 
 
-function f_cont!(ac_sys::TestAircraftSys{C,S,M,P,L} where {C,S,M,P,L},
-                trn::AbstractTerrainModel,
-                atm::AtmosphericSystem)
-
+function f_cont!(ac_sys::TestAircraftSys, trn::AbstractTerrainModel, atm::AtmosphericSystem)
 
     @unpack ẋ, x, u, params, subsystems = ac_sys
     @unpack stm, pwp, ldg = subsystems
@@ -215,9 +212,8 @@ function f_cont!(ac_sys::TestAircraftSys{C,S,M,P,L} where {C,S,M,P,L},
 end
 
 
-function f_disc!(ac_sys::TestAircraftSys{C,M,P} where {C,M,P})
+function f_disc!(ac_sys::TestAircraftSys)
     x_mod = renormalize!(ac_sys.x.kin, 1e-8)
-    # println(x_mod)
     return x_mod
 end
 

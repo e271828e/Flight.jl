@@ -35,7 +35,7 @@ get_hr_b(::System{NullAirframeComponent}) = zeros(SVector{3})
 f_cont!(::System{NullAirframeComponent}, args...) = nothing
 (f_disc!(::System{NullAirframeComponent}, args...)::Bool) = false
 
-# function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...)
+
 ######################### AirframeGroup #############################
 
 #must keep N as a type parameter, because it's left open in the components
