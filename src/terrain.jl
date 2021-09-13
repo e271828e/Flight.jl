@@ -24,13 +24,12 @@ module Terrain
 #is not the product of model evaluation at the Aircraft location, but the data
 #required to perform those evaluations within the Aircraft model.
 
-#both scenarios could be realized with an Observer model (or even Reactive
-#programming, see Rocket.jl), with any vehicle in the simulation subscribing to
-#the AtmosphericModel simulation and the TerrainModel. each time these update,
-#they notify all their subscribers so they can also be evolved by the scheduler.
-#if this communication occurs through Channels, each Model (Atmospheric,
-#Terrain, Vehicle...) can run on separate Tasks, and each of these in a
-#different thread. Thread safety.
+#both scenarios could be realized with an Observer model, with any vehicle in
+#the simulation subscribing to the AtmosphericModel and the TerrainModel. each
+#time these update, they notify all their subscribers so they can also be
+#evolved by the scheduler. if this communication occurs through Channels, each
+#Model (Atmospheric, Terrain, Vehicle...) can run on separate Tasks, and each of
+#these in a different thread. Thread safety.
 
 export AbstractTerrainModel, DummyTerrainModel
 

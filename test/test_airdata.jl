@@ -1,9 +1,10 @@
+using Flight.Geodesy
 using Flight.Kinematics
 using Flight.Atmosphere
 using Flight.Airdata
 using Flight.Utils
 
-atm_sys = HybridSystem(AtmosphereCmp())
+atm_sys = System(AtmosphereCmp())
 p = Geographic(alt = AltOrth(13000))
 x_kin = get_x0(KinInit(v_eOb_b = [300, 10, 30], Ob = p, q_nb = Ry(0.01)))
 dx_pos = copy(x_kin.pos)

@@ -9,9 +9,9 @@ using Plots
 using Flight.Airdata
 using Flight.Dynamics
 using Flight.Airframe
-using Flight.System
+using Flight.ModelingTools
 import Flight.Airframe: get_wr_b, get_hr_b
-import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -106,21 +106,21 @@ get_u0(::EThruster) = EThrusterU()
 get_y0(::EThruster) = EThrusterY()
 
 
-################ EThruster HybridSystem ###################
+################ EThruster System ###################
 
-function HybridSystem(thr::EThruster, ẋ = get_x0(thr), x = get_x0(thr),
+function System(thr::EThruster, ẋ = get_x0(thr), x = get_x0(thr),
                         y = get_y0(thr), u = get_u0(thr), d = get_d0(thr), t = Ref(0.0))
     params = thr #params is the component itself
     subsystems = nothing #no subsystems to define
-    HybridSystem{map(typeof, (thr, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
+    System{map(typeof, (thr, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
 end
 
-get_wr_b(sys::HybridSystem{EThruster}) = sys.y.wr_b
-get_hr_b(sys::HybridSystem{EThruster}) = sys.y.hr_b
+get_wr_b(sys::System{EThruster}) = sys.y.wr_b
+get_hr_b(sys::System{EThruster}) = sys.y.hr_b
 
-f_disc!(sys::HybridSystem{EThruster}) = false
+f_disc!(sys::System{EThruster}) = false
 
-function f_cont!(sys::HybridSystem{EThruster}, air::AirData)
+function f_cont!(sys::System{EThruster}, air::AirData)
 
     @unpack ẋ, x, y, u, params = sys #no need for subsystems
     @unpack frame, battery, motor, propeller, gearbox = params
@@ -207,7 +207,7 @@ end
 #     M::MVector{3,Float64} = 0.0
 # end
 
-# #required to make EThruster compatible with HybridSystem
+# #required to make EThruster compatible with System
 # Base.@kwdef mutable struct EThrusterD end
 
 # get_x0(::EThruster) = copy(EThrusterXTemplate)

@@ -6,8 +6,8 @@ using UnPack
 
 using Flight.Attitude
 using Flight.Dynamics
-using Flight.System
-import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+using Flight.ModelingTools
+import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -18,10 +18,10 @@ export get_wr_b, get_hr_b
 
 abstract type AbstractAirframeComponent <: AbstractComponent end
 
-function get_wr_b(::T) where {T<:HybridSystem{<:AbstractAirframeComponent}}
+function get_wr_b(::T) where {T<:System{<:AbstractAirframeComponent}}
     error("Method get_wr_b not implemented for type $T or incorrect call signature")
 end
-function get_hr_b(::T) where {T<:HybridSystem{<:AbstractAirframeComponent}}
+function get_hr_b(::T) where {T<:System{<:AbstractAirframeComponent}}
     error("Method hr_b not implemented for type $T or incorrect call signature")
 end
 
@@ -29,8 +29,8 @@ end
 
 struct NullAirframeComponent <: AbstractAirframeComponent end
 
-get_wr_b(::HybridSystem{NullAirframeComponent}) = Wrench()
-get_hr_b(::HybridSystem{NullAirframeComponent}) = zeros(SVector{3})
+get_wr_b(::System{NullAirframeComponent}) = Wrench()
+get_hr_b(::System{NullAirframeComponent}) = zeros(SVector{3})
 
 
 ######################### AirframeGroup #############################
@@ -57,23 +57,23 @@ get_u0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_u0.(values(g))
 get_y0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_y0.(values(g)))
 get_d0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_d0.(values(g)))
 
-function HybridSystem(g::AirframeGroup{T,N,L},
+function System(g::AirframeGroup{T,N,L},
                     ẋ = get_x0(g), x = get_x0(g), y = get_y0(g), u = get_u0(g),
                     d = get_d0(g), t = Ref(0.0)) where {T,N,L}
 
-    ss_list = Vector{HybridSystem}()
+    ss_list = Vector{System}()
     for label in L
-        s_cmp = HybridSystem(map((λ)->getproperty(λ, label), (g, ẋ, x, y, u, d))..., t)
+        s_cmp = System(map((λ)->getproperty(λ, label), (g, ẋ, x, y, u, d))..., t)
         push!(ss_list, s_cmp)
     end
 
     params = nothing #everything is already stored in the subsystem's parameters
     subsystems = NamedTuple{L}(ss_list)
 
-    HybridSystem{map(typeof, (g, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
+    System{map(typeof, (g, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
 end
 
-@inline @generated function f_cont!(sys::HybridSystem{C}, args...
+@inline @generated function f_cont!(sys::System{C}, args...
     ) where {C<:AirframeGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
 
     ex_main = Expr(:block)
@@ -109,7 +109,7 @@ end
 end
 
 
-@inline @generated function (f_disc!(sys::HybridSystem{C}, args...)::Bool
+@inline @generated function (f_disc!(sys::System{C}, args...)::Bool
     ) where {C<:AirframeGroup{T,N,L}} where {T <:AbstractAirframeComponent,N,L}
 
     ex = Expr(:block)
@@ -123,7 +123,7 @@ end
 
 end
 
-@inline @generated function get_wr_b(sys::HybridSystem{C}
+@inline @generated function get_wr_b(sys::System{C}
     ) where {C<:AirframeGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
 
     ex = Expr(:block)
@@ -136,7 +136,7 @@ end
 
 end
 
-@inline @generated function get_hr_b(sys::HybridSystem{C}
+@inline @generated function get_hr_b(sys::System{C}
     ) where {C<:AirframeGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
 
     ex = Expr(:block)

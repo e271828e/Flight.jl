@@ -7,7 +7,7 @@ using UnPack
 using Flight.Geodesy
 using Flight.Attitude
 using Flight.Kinematics
-using Flight.System
+using Flight.ModelingTools
 
 using Flight.Plotting
 import Flight.Plotting: plots

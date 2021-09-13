@@ -4,7 +4,7 @@ using ComponentArrays
 import Flight.Plotting: plots
 
 export assemble_x0, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
-export AbstractComponent, AbstractSystem, HybridSystem
+export AbstractComponent, AbstractSystem, System
 
 no_extend_error(f::Function, ::Type{S}) where {S} = error(
     "Function $f not implemented for type $S or incorrect call signature")
@@ -12,7 +12,7 @@ no_extend_warning(f::Function, ::Type{S}) where {S} = println(
     "Warning: Function $f not implemented for type $S or incorrect call signature")
 
 #anything around which we can build a System
-abstract type AbstractComponent end #anything that can go in a HybridSystem
+abstract type AbstractComponent end #anything that can go in a System
 
 #get_x0 must return either nothing, an AbstractVector{<:Real} or a NT with a
 #Union{AbstractVector{<:Real},Nothing}
@@ -24,7 +24,7 @@ get_d0(::C) where {C<:AbstractComponent} = nothing #systems are not required to 
 abstract type AbstractSystem{C<:AbstractComponent} end
 
 #need the C type parameter for dispatch, the rest for type stability
-mutable struct HybridSystem{C, X <: Union{Nothing, AbstractVector{<:Real}},
+mutable struct System{C, X <: Union{Nothing, AbstractVector{<:Real}},
                     Y, U, D, P, S} <: AbstractSystem{C}
     ẋ::X #continuous state vector derivative
     x::X #continuous state vector (to be used as a buffer for f_cont! evaluation)
@@ -47,7 +47,7 @@ f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 #is safer to force each concrete System that does not require an actual f_disc!
 #to implement a trivial f_disc! that returns false
 
-#when the HybridSystem constructor for a certain Component is passed no
+#when the System constructor for a certain Component is passed no
 #parameters for dx and x, it calls the get_x0 method for that Component, which
 #may return
 

@@ -6,8 +6,8 @@ using UnPack
 
 using Flight.Geodesy
 using Flight.Attitude
-using Flight.System
-import Flight.System: get_x0
+using Flight.ModelingTools
+import Flight.ModelingTools: get_x0
 
 using Flight.Plotting
 import Flight.Plotting: plots

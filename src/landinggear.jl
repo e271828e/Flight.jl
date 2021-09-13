@@ -7,7 +7,7 @@ using ComponentArrays
 using Flight.Airdata
 using Flight.Airframe
 import Flight.Airframe: get_wr_b, get_hr_b
-import Flight.System: get_x0, get_d0, Y, get_u0, f_cont!, f_disc!
+import Flight.ModelingTools: get_x0, get_d0, Y, get_u0, f_cont!, f_disc!
 
 export LandingGearLeg, LandingGearGroup
 

@@ -4,7 +4,7 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
-using Flight.System
+using Flight.ModelingTools
 
 using Flight.Terrain
 using Flight.Atmosphere
@@ -18,7 +18,7 @@ using Flight.Propulsion
 using Flight.Kinematics
 using Flight.Dynamics
 
-import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0,f_cont!, f_disc!
+import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0,f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -123,21 +123,21 @@ function assign_control_inputs!(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) whe
 end
 =#
 
-const TestAircraftSys{C,S,M,P} = HybridSystem{TestAircraft{C,S,M,P}} where {C,S,M,P}
+const TestAircraftSys{C,S,M,P} = System{TestAircraft{C,S,M,P}} where {C,S,M,P}
 
 
-function HybridSystem(ac::TestAircraft, ẋ = get_x0(ac), x = get_x0(ac),
+function System(ac::TestAircraft, ẋ = get_x0(ac), x = get_x0(ac),
                     y = get_y0(ac), u = get_u0(ac), d = get_d0(ac), t = Ref(0.0))
 
     #each subsystem allocate its own u, then we can decide how the aircraft's u
     #should map onto it via assign_control_inputs!
-    stm = HybridSystem(ac.stm, ẋ.stm, x.stm, y.stm, get_u0(ac.stm), d.stm, t)
-    pwp = HybridSystem(ac.pwp, ẋ.pwp, x.pwp, y.pwp, get_u0(ac.pwp), d.pwp, t)
-    # ldg = HybridSystem(ac.ldg, ẋ.ldg, x.ldg, d.ldg, get_u0(ac.ldg), t)
+    stm = System(ac.stm, ẋ.stm, x.stm, y.stm, get_u0(ac.stm), d.stm, t)
+    pwp = System(ac.pwp, ẋ.pwp, x.pwp, y.pwp, get_u0(ac.pwp), d.pwp, t)
+    # ldg = System(ac.ldg, ẋ.ldg, x.ldg, d.ldg, get_u0(ac.ldg), t)
     params = (mass = ac.mass,)
     # subsystems = (pwp = pwp, ldg = ldg)
     subsystems = (stm = stm, pwp = pwp,)
-    HybridSystem{map(typeof, (ac, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
+    System{map(typeof, (ac, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
 end
 
 #for an aircraft with no specific mapping, the user is expected to act upon

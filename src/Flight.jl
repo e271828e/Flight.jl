@@ -5,15 +5,12 @@ using Reexport
 
 #general
 include("utils.jl")
+include("modeling.jl")
 include("plotting.jl")
 
 #math
 include("quaternions.jl")
 include("attitude.jl")
-
-#systems and models
-include("system.jl")
-include("model.jl")
 
 #environment & dynamics
 include("geodesy.jl")
@@ -22,25 +19,23 @@ include("terrain.jl")
 include("atmosphere.jl")
 include("dynamics.jl")
 
-# # #airframe
+#airframe
 include("airframe.jl")
 include("airdata.jl")
 include("propulsion.jl")
-# # include("landinggear.jl")
+#include("landinggear.jl")
 include("statemachine.jl")
 
-# # #aircraft
+#aircraft
 include("aircraft.jl")
 
 
 @reexport using .Utils
+@reexport using .ModelingTools
 @reexport using .Plotting
 
 @reexport using .Quaternions
 @reexport using .Attitude
-
-@reexport using .System
-@reexport using .Model
 
 @reexport using .Geodesy
 @reexport using .Kinematics

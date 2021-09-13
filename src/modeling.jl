@@ -1,31 +1,80 @@
-module Model
+module ModelingTools
 
 using Dates
-using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks, RecursiveArrayTools
 using UnPack
+using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks
+using ComponentArrays, RecursiveArrayTools
+using Flight.Utils
 
-using Flight.System
-import Flight.Plotting: plots
+export get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+export AbstractComponent, System, Model
 
-export HybridModel
 
-abstract type AbstractModel{S<:AbstractSystem} end
+############################# AbstractComponent ############################
 
-############### HybridModel #####################
+abstract type AbstractComponent end #anything from which we can build a System
+
+#every AbstractComponent's get_x0 must return an AbstractVector{<:Real}, even if
+#its inherently discrete and its f_cont! does nothing. this is ugly but ensures
+#composability of HybridSystems without the hassle of dealing automatically with
+#empty state vector blocks, which is magnified by the need to assign views from
+#the root System's state vector to each children in its hierarchy
+get_x0(::AbstractComponent) = [0.0]
+get_y0(::AbstractComponent) = nothing
+get_u0(::AbstractComponent) = nothing #sytems are not required to have control inputs
+get_d0(::AbstractComponent) = nothing #systems are not required to have discrete states
+
+
+
+############################# System ############################
+
+#need the C type parameter for dispatch, the rest for type stability
+mutable struct System{C, X <: AbstractVector{<:Float64},
+                    Y, U, D, P, S}
+    ẋ::X #continuous state vector derivative
+    x::X #continuous state vector (to be used as a buffer for f_cont! evaluation)
+    y::Y #output state
+    u::U #control inputs
+    d::D #discrete state
+    t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
+    params::P
+    subsystems::S
+end
+
+function System(c::AbstractComponent, ẋ = get_x0(c), x = get_x0(c),
+                    y = get_y0(c), u = get_u0(c), d = get_d0(c), t = Ref(0.0))
+    params = c #assign the component descriptor itself as a System parameter
+    subsystems = nothing
+    System{map(typeof, (c, x, y, u, d, params, subsystems))...}(
+                                    ẋ, x, y, u, d, t, params, subsystems)
+end
+
+#f_disc! is free to modify a Hybrid system's discrete state, control inputs and
+#continuous state. if it modifies the latter, it must return true, false
+#otherwise. no fallbacks are provided for safety reasons: if the intended
+#f_cont! or f_disc! implementations for the System have the wrong interface, the
+#dispatch will silently revert to the fallback, which does nothing and may not
+#be obvious at all.
+f_cont!(::S, args...) where {S<:System} = no_extend_error(f_cont!, S)
+(f_disc!(::S, args...)::Bool) where {S<:System} = no_extend_error(f_disc!, S)
+
+
+
+############################# Model ############################
 
 #in this design, the t and x fields of m.sys behave only as temporary
 #storage for f_cont! and f_disc! calls, so we have no guarantees about their
 #status after a certain step. the only valid sources for t and x at any
 #given moment is the integrator's t and u
-struct HybridModel{S <: HybridSystem,
+struct Model{S <: System,
                    I <: OrdinaryDiffEq.ODEIntegrator,
-                   L <: SavedValues} <: AbstractModel{S}
+                   L <: SavedValues}
 
     sys::S
     integrator::I
     log::L
 
-    function HybridModel(sys, args_c::Tuple = (), args_d::Tuple = ();
+    function Model(sys, args_c::Tuple = (), args_d::Tuple = ();
         method = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
         save_on = false, int_kwargs...)
 
@@ -53,9 +102,9 @@ end
 #these functions are better defined outside the constructor; closures seem to
 #have some overhead (?)
 
-#function barriers: the HybridSystem is first extracted from integrator.p,
+#function barriers: the System is first extracted from integrator.p,
 #then used as an argument in the call to the actual update & callback functions,
-#forcing the compiler to specialize for the specific HybridSystem subtype;
+#forcing the compiler to specialize for the specific System subtype;
 #accesing sys.x and sys.ẋ directly instead causes type instability
 f_update!(ẋ, x, p, t) = f_update!(ẋ, x, t, p.sys, p.args_c)
 f_scb(x, t, integrator) = f_scb(x, t, integrator.p.sys, integrator.p.args_c)
@@ -66,7 +115,7 @@ function f_dcb!(integrator)
 end
 
 #in-place integrator update function
-function f_update!(ẋ::X, x::X, t::Real, sys::HybridSystem{C,X}, args_c) where {C, X}
+function f_update!(ẋ::X, x::X, t::Real, sys::System{C,X}, args_c) where {C, X}
     sys.x .= x
     sys.t[] = t
     f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
@@ -75,9 +124,9 @@ function f_update!(ẋ::X, x::X, t::Real, sys::HybridSystem{C,X}, args_c) where 
 end
 
 #DiscreteCallback function (called on every integration step). among other
-#things, this callback ensures that after each step, the System's x is correctly
-#set to the integrator's updated state
-function f_dcb!(x::X, t::Real, sys::HybridSystem{C,X}, args_d) where {C,X}
+#potential uses provided by f_disc!, this callback ensures that the System's
+#internal x is up to date with the integrator's last solution value
+function f_dcb!(x::X, t::Real, sys::System{C,X}, args_d) where {C,X}
     sys.x .= x #assign the integrator's state to the system's local continuous state
     sys.t[] = t #ditto for time
     x_modified = f_disc!(sys, args_d...)
@@ -86,7 +135,7 @@ function f_dcb!(x::X, t::Real, sys::HybridSystem{C,X}, args_d) where {C,X}
 end
 
 #SavingCallback function
-function f_scb(x::X, t::Real, sys::HybridSystem{C,X}, args_c) where {C,X}
+function f_scb(x::X, t::Real, sys::System{C,X}, args_c) where {C,X}
     sys.x .= x
     sys.t[] = t
     f_cont!(sys, args_c...)
@@ -94,7 +143,7 @@ function f_scb(x::X, t::Real, sys::HybridSystem{C,X}, args_c) where {C,X}
 end
 
 
-function Base.getproperty(m::HybridModel, s::Symbol)
+function Base.getproperty(m::Model, s::Symbol)
     if s === :t
         return m.integrator.t
     elseif s === :x
@@ -110,11 +159,11 @@ function Base.getproperty(m::HybridModel, s::Symbol)
     end
 end
 
-SciMLBase.step!(m::HybridModel, args...) = step!(m.integrator, args...)
+SciMLBase.step!(m::Model, args...) = step!(m.integrator, args...)
 
-SciMLBase.solve!(m::HybridModel) = solve!(m.integrator)
+SciMLBase.solve!(m::Model) = solve!(m.integrator)
 
-function SciMLBase.reinit!(m::HybridModel, args...; kwargs...)
+function SciMLBase.reinit!(m::Model, args...; kwargs...)
 
     #for an ODEIntegrator, the optional args... is simply a new initial
     #condition. if not specified, the original initial condition is used
@@ -129,15 +178,6 @@ function SciMLBase.reinit!(m::HybridModel, args...; kwargs...)
     resize!(m.log.t, 1)
     resize!(m.log.saveval, 1)
     return nothing
-end
-
-function plots(mdl::HybridModel; mode::Symbol = :basic,
-    save_path::Union{String,Nothing} = nothing, kwargs...)
-    #generate default path tmp/plots/current_date
-    save_path = (save_path === nothing ?
-        joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_path)
-    mkpath(save_path)
-    plots(mdl.log.t, mdl.log.saveval; mode, save_path, kwargs...)
 end
 
 #the following causes type instability and destroys performance:
@@ -163,4 +203,5 @@ end
 # sys, then call another function using it as an argument. this forces the
 # compiler to infer its type, and therefore it specializes the time-critical
 # assignment statements to their actual types.
+
 end

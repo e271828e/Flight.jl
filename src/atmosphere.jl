@@ -3,9 +3,9 @@ module Atmosphere
 using StaticArrays, StructArrays, ComponentArrays
 
 using Flight.Geodesy
-using Flight.System
+using Flight.ModelingTools
 
-import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 
 export SimpleISA, get_ISA_data
 export SimpleWind, get_wind_velocity
@@ -54,7 +54,7 @@ Base.@kwdef struct ISAData
     a::Float64 = √(γ*R*T_std)
 end
 
-function SLConditions(::T, ::Abstract2DLocation) where {T<:HybridSystem{<:AbstractISA}}
+function SLConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractISA}}
     error("SLConditions constructor not implemented for $T")
 end
 
@@ -76,7 +76,7 @@ end
 
 end
 
-@inline function ISAData(sys::HybridSystem{<:AbstractISA}, p::Geographic)
+@inline function ISAData(sys::System{<:AbstractISA}, p::Geographic)
 
     h_geop = Altitude{Geopotential}(p.alt, p.loc)
     sl = SLConditions(sys, p.loc)
@@ -87,8 +87,8 @@ end
 
 ##################### ConstantUniformISA ###########################
 
-#a HybridSystem{<:AbstractISA} may have an output type of its own, as any other
-#HybridSystem. however, this output is NOT an ISAData instance. the ISA_data
+#a System{<:AbstractISA} may have an output type of its own, as any other
+#System. however, this output is NOT an ISAData instance. the ISA_data
 #returned by a ISA System depends on the location specified in the query.
 #instead, the output from an ISA System may hold quantities of interest related
 #to its own internal state, if it has one due to it being a dynamic ISA
@@ -110,10 +110,10 @@ Base.@kwdef mutable struct USimpleISA
 end
 
 get_u0(::SimpleISA) = USimpleISA()
-f_cont!(::HybridSystem{<:SimpleISA}, args...) = nothing
-f_disc!(::HybridSystem{<:SimpleISA}, args...) = false
+f_cont!(::System{<:SimpleISA}, args...) = nothing
+f_disc!(::System{<:SimpleISA}, args...) = false
 
-function SLConditions(s::HybridSystem{<:SimpleISA}, ::Abstract2DLocation)
+function SLConditions(s::System{<:SimpleISA}, ::Abstract2DLocation)
     SLConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
     #alternative using actual local SL gravity:
     # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(loc, AltOrth(0.0))))
@@ -129,7 +129,7 @@ Base.@kwdef struct WindData
     v_ew_n::SVector{3,Float64} = zeros(SVector{3})
 end
 
-function WindData(::T, ::Abstract2DLocation) where {T<:HybridSystem{<:AbstractWind}}
+function WindData(::T, ::Abstract2DLocation) where {T<:System{<:AbstractWind}}
     error("WindData constructor not implemented for $T")
 end
 
@@ -140,10 +140,10 @@ Base.@kwdef mutable struct USimpleWind
 end
 
 get_u0(::SimpleWind) = USimpleWind()
-f_cont!(::HybridSystem{<:SimpleWind}, args...) = nothing
-f_disc!(::HybridSystem{<:SimpleWind}, args...) = false
+f_cont!(::System{<:SimpleWind}, args...) = nothing
+f_disc!(::System{<:SimpleWind}, args...) = false
 
-function WindData(wind::HybridSystem{<:SimpleWind}, ::Abstract3DPosition)
+function WindData(wind::System{<:SimpleWind}, ::Abstract3DPosition)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData
 end
 
@@ -163,18 +163,18 @@ get_y0(atm::AtmosphereCmp) = AtmosphereCmpY(get_y0(atm.isa_), get_y0(atm.wind))
 get_u0(atm::AtmosphereCmp) = (isa_ = get_u0(atm.isa_), wind = get_u0(atm.wind))
 get_d0(atm::AtmosphereCmp) = (isa_ = get_d0(atm.isa_), wind = get_d0(atm.wind))
 
-function HybridSystem(atm::AtmosphereCmp, ẋ = get_x0(atm), x = get_x0(atm),
+function System(atm::AtmosphereCmp, ẋ = get_x0(atm), x = get_x0(atm),
                     y = get_y0(atm), u = get_u0(atm), d = get_d0(atm), t = Ref(0.0))
 
-    isa_sys = HybridSystem(atm.isa_, ẋ.isa_, x.isa_, y.isa_, u.isa_, d.isa_, t)
-    wind_sys = HybridSystem(atm.wind, ẋ.wind, x.wind, y.wind, u.wind, d.wind, t)
+    isa_sys = System(atm.isa_, ẋ.isa_, x.isa_, y.isa_, u.isa_, d.isa_, t)
+    wind_sys = System(atm.wind, ẋ.wind, x.wind, y.wind, u.wind, d.wind, t)
     params = nothing
     subsystems = (isa_ = isa_sys, wind = wind_sys,)
-    HybridSystem{map(typeof, (atm, x, y, u, d, params, subsystems))...}(
+    System{map(typeof, (atm, x, y, u, d, params, subsystems))...}(
                                 ẋ, x, y, u, d, t, params, subsystems)
 end
 
-const AtmosphericSystem = HybridSystem{<:AtmosphereCmp}
+const AtmosphericSystem = System{<:AtmosphereCmp}
 
 struct AtmosphericData
     isa_::ISAData
