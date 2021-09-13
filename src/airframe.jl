@@ -5,22 +5,35 @@ using StaticArrays, ComponentArrays
 using UnPack
 
 using Flight.Attitude
-using Flight.System
 using Flight.Dynamics
-
+using Flight.System
 import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
-import Flight.Dynamics: get_wr_b, get_hr_b
 
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export AirframeGroup
-export AbstractAirframeComponent
+export AbstractAirframeComponent, NullAirframeComponent, AirframeGroup
+export get_wr_b, get_hr_b
 
 
 abstract type AbstractAirframeComponent <: AbstractComponent end
 
-######################### AirframeComponentGroup #############################
+function get_wr_b(::T) where {T<:HybridSystem{<:AbstractAirframeComponent}}
+    error("Method get_wr_b not implemented for type $T or incorrect call signature")
+end
+function get_hr_b(::T) where {T<:HybridSystem{<:AbstractAirframeComponent}}
+    error("Method hr_b not implemented for type $T or incorrect call signature")
+end
+
+######################### NullAirframeComponent ############################
+
+struct NullAirframeComponent <: AbstractAirframeComponent end
+
+get_wr_b(::HybridSystem{NullAirframeComponent}) = Wrench()
+get_hr_b(::HybridSystem{NullAirframeComponent}) = zeros(SVector{3})
+
+
+######################### AirframeGroup #############################
 
 #must keep N as a type parameter, because it's left open in the components
 #type declaration

@@ -10,7 +10,7 @@ using Flight.Airdata
 using Flight.Dynamics
 using Flight.Airframe
 using Flight.System
-import Flight.Dynamics: get_wr_b, get_hr_b
+import Flight.Airframe: get_wr_b, get_hr_b
 import Flight.System: HybridSystem, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 
 using Flight.Plotting

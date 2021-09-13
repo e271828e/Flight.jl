@@ -47,16 +47,14 @@ function HybridSystem(c::AbstractComponent, ẋ = get_x0(c), x = get_x0(c),
                                     ẋ, x, y, u, d, t, params, subsystems)
 end
 
-f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
-(f_disc!(::S, args...)::Bool) where {S<:AbstractSystem} = no_extend_error(f_disc!, S)
-
 #f_disc! is free to modify a Hybrid system's discrete state, control inputs and
 #continuous state. if it modifies the latter, it must return true, false
-#otherwise. it is dangerous to provide a default fallback for f_disc!, because
-#if the intended f_disc! implementation for the System has the wrong interface,
-#the dispatch will revert to the fallback, which may not be obvious at all. it
-#is safer to force each concrete System that does not require an actual f_disc!
-#to implement a trivial f_disc! that returns false
+#otherwise. no fallbacks are provided for safety reasons: if the intended
+#f_cont! or f_disc! implementations for the System have the wrong interface, the
+#dispatch will silently revert to the fallback, which does nothing and may not
+#be obvious at all.
+f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
+(f_disc!(::S, args...)::Bool) where {S<:AbstractSystem} = no_extend_error(f_disc!, S)
 
 function plots(::AbstractVector{<:Real}, ::AbstractVector{T}) where {T}
     no_extend_warning(plots, T) #nothing to plot by default, warn about it

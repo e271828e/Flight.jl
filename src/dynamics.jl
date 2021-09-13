@@ -14,7 +14,7 @@ import Flight.Plotting: plots
 
 export DynY
 export MassData, FrameSpec, Wrench
-export translate, get_wr_b, get_hr_b, f_dyn!
+export translate, f_dyn!
 
 
 
@@ -123,15 +123,6 @@ end
 
 
 ################## Dynamic Equations and helper functions ####################
-
-#every component that influences aircraft dynamics must define an output type
-#that implements these two methods
-function get_wr_b(::T) where {T<:HybridSystem{<:AbstractComponent}}
-    error("Method get_wr_b not implemented for type $T or incorrect call signature")
-end
-function get_hr_b(::T) where {T<:HybridSystem{<:AbstractComponent}}
-    error("Method hr_b not implemented for type $T or incorrect call signature")
-end
 
 
 """

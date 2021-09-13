@@ -5,19 +5,19 @@ using LinearAlgebra
 using BenchmarkTools
 
 trn = DummyTerrainModel()
-atm = HybridSystem(AtmosphereCmp())
+atm_sys = HybridSystem(AtmosphereCmp())
 ac = TestAircraft();
 ac_sys = HybridSystem(ac);
-f_cont!(ac_sys, trn, atm);
+f_cont!(ac_sys, trn, atm_sys);
 y_ac = ac_sys.y
 
 ac_sys = HybridSystem(ac); #should remake the system, because it sets the Model's initial condition upon creation
-ac_mdl = HybridModel(ac_sys, (trn, atm); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0.1);
+ac_mdl = HybridModel(ac_sys, (trn, atm_sys); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0.1);
 ac_mdl.sys.subsystems.pwp.u.left.throttle = 1 #the same
 b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
 
 ac_sys = HybridSystem(ac); #should remake the system, because it sets the Model's initial condition upon creation
-ac_mdl = HybridModel(ac_sys, (trn, atm));
+ac_mdl = HybridModel(ac_sys, (trn, atm_sys));
 ac_mdl.sys.subsystems.pwp.u.left.throttle = 1 #the same
 b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
 
