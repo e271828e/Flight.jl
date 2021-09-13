@@ -65,10 +65,10 @@ function TestAircraft()
     ctl = NoMapping()
     stm = NoStateMachine()
     mass = ConstantMassProperties(m = 1, J_Ob_b = 1*Matrix{Float64}(I,3,3))
-    pwp = ACGroup((
+    pwp = AirframeGroup((
         left = EThruster(motor = ElectricMotor(α = CW)),
         right = EThruster(motor = ElectricMotor(α = CCW))))
-    # ldg = ACGroup((
+    # ldg = AirframeGroup((
     #     lmain = LandingGearLeg(),
     #     rmain = LandingGearLeg(),
     #     nlg = LandingGearLeg()))
@@ -112,7 +112,7 @@ get_u0(::TestAircraft{NoMapping,Mass,Pwp} where {Mass,Pwp}) = EmptyAircraftU()
 
 #=
 # example:
-const my_pwp = ACGroup(left = EThruster(), right = EThruster())
+const my_pwp = AirframeGroup(left = EThruster(), right = EThruster())
 const MyPwp = typeof(my_pwp)
 struct MyMapping <: AbstractControlMapping
 get_u0(::TestAircraft{MyMapping, Mass, MyPwp, Ldg}) where {Mass,Ldg} = ComponentVector(throttle = 0.0)

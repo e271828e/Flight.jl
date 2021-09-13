@@ -34,10 +34,6 @@ const ISA_layers = StructArray(
     end
 end
 
-function get_SL_values(::T, ::Abstract2DLocation) where {T<:HybridSystem{<:AbstractISA}}
-    error("get_SL_values not implemented for $T")
-end
-
 @inline function get_ISA_layer_parameters(h::Real)
     for i in 1:length(ISA_layers)
         h < ISA_layers.h_ceil[i] && return ISA_layers[i]
@@ -45,36 +41,46 @@ end
     throw(ArgumentError("Altitude out of bounds"))
 end
 
-struct ISAData
-    p::Float64
-    T::Float64
-    ρ::Float64
-    a::Float64
+Base.@kwdef struct SLConditions
+    p::Float64 = p_std
+    T::Float64 = T_std
+    g::Float64 = g_std
 end
 
-@inline function ISAData(h::AltGeop; T_sl = T_std, p_sl = p_std, g_sl = g_std)
+Base.@kwdef struct ISAData
+    p::Float64 = p_std
+    T::Float64 = T_std
+    ρ::Float64 = p_std / (R * T_std)
+    a::Float64 = √(γ*R*T_std)
+end
 
-    h_base = 0; T_base = T_sl; p_base = p_sl
+function SLConditions(::T, ::Abstract2DLocation) where {T<:HybridSystem{<:AbstractISA}}
+    error("SLConditions constructor not implemented for $T")
+end
+
+@inline function ISAData(h::AltGeop; sl::SLConditions = SLConditions())
+
+    h_base = 0; T_base = sl.T; p_base = sl.p; g_base = sl.g
     β, h_ceil = get_ISA_layer_parameters(h_base)
 
     while h > h_ceil
         T_ceil = ISA_temperature_law(h_ceil, T_base, h_base, β)
-        p_ceil = ISA_pressure_law(h_ceil, g_sl, p_base, T_base, h_base, β)
+        p_ceil = ISA_pressure_law(h_ceil, g_base, p_base, T_base, h_base, β)
         h_base = h_ceil; T_base = T_ceil; p_base = p_ceil
         β, h_ceil = get_ISA_layer_parameters(h_base)
     end
     T = ISA_temperature_law(h, T_base, h_base, β)
-    p = ISA_pressure_law(h, g_sl, p_base, T_base, h_base, β)
+    p = ISA_pressure_law(h, g_base, p_base, T_base, h_base, β)
 
     return ISAData(p, T, p / (R*T), √(γ*R*T) )
 
 end
 
-@inline function ISAData(s::HybridSystem{<:AbstractISA}, p::Geographic)
+@inline function ISAData(sys::HybridSystem{<:AbstractISA}, p::Geographic)
 
     h_geop = Altitude{Geopotential}(p.alt, p.loc)
-    (T_sl, p_sl, g_sl) = get_SL_values(s, p.loc)
-    ISAData(h_geop; T_sl, p_sl, g_sl)
+    sl = SLConditions(sys, p.loc)
+    ISAData(h_geop; sl)
 
 end
 
@@ -107,8 +113,8 @@ get_u0(::SimpleISA) = USimpleISA()
 f_cont!(::HybridSystem{<:SimpleISA}, args...) = nothing
 f_disc!(::HybridSystem{<:SimpleISA}, args...) = false
 
-function get_SL_values(s::HybridSystem{<:SimpleISA}, ::Abstract2DLocation)
-    return (T = s.u.T_sl, p = s.u.p_sl, g = g_std)
+function SLConditions(s::HybridSystem{<:SimpleISA}, ::Abstract2DLocation)
+    SLConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
     #alternative using actual local SL gravity:
     # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(loc, AltOrth(0.0))))
 end
@@ -119,8 +125,12 @@ end
 
 abstract type AbstractWind <: AbstractComponent end
 
-function get_wind_velocity(::T, ::Abstract2DLocation) where {T<:HybridSystem{<:AbstractWind}}
-    error("get_wind_velocity not implemented for $T")
+Base.@kwdef struct WindData
+    v_ew_n::SVector{3,Float64} = zeros(SVector{3})
+end
+
+function WindData(::T, ::Abstract2DLocation) where {T<:HybridSystem{<:AbstractWind}}
+    error("WindData constructor not implemented for $T")
 end
 
 struct SimpleWind <: AbstractWind end
@@ -133,8 +143,8 @@ get_u0(::SimpleWind) = USimpleWind()
 f_cont!(::HybridSystem{<:SimpleWind}, args...) = nothing
 f_disc!(::HybridSystem{<:SimpleWind}, args...) = false
 
-function get_wind_velocity(wind::HybridSystem{<:SimpleWind}, ::Abstract3DPosition)
-    SVector{3,Float64}(wind.u.v_ew_n)
+function WindData(wind::HybridSystem{<:SimpleWind}, ::Abstract3DPosition)
+    wind.u.v_ew_n |> SVector{3,Float64} |> WindData
 end
 
 #################### AtmosphereCmp ############################
@@ -168,13 +178,13 @@ const AtmosphericSystem = HybridSystem{<:AtmosphereCmp}
 
 struct AtmosphericData
     isa_::ISAData
-    v_ew_n::SVector{3,Float64}
+    wind::WindData
 end
 
 function AtmosphericData(a::AtmosphericSystem, pos::Geographic)
     AtmosphericData(
         ISAData(a.subsystems.isa_, pos),
-        get_wind_velocity(a.subsystems.wind, pos))
+        WindData(a.subsystems.wind, pos))
 end
 
 #if we dont want to step the AtmosphericSystem in time because it is constant,

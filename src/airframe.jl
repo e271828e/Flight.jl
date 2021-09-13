@@ -14,7 +14,7 @@ import Flight.Dynamics: get_wr_b, get_hr_b
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export ACGroup
+export AirframeGroup
 export AbstractAirframeComponent
 
 
@@ -24,27 +24,27 @@ abstract type AbstractAirframeComponent <: AbstractComponent end
 
 #must keep N as a type parameter, because it's left open in the components
 #type declaration
-struct ACGroup{T<:AbstractAirframeComponent,N,L} <: AbstractAirframeComponent
+struct AirframeGroup{T<:AbstractAirframeComponent,N,L} <: AbstractAirframeComponent
     components::NamedTuple{L, M} where {L, M <: NTuple{N, T}}
-    function ACGroup(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, T}} where {N, T<:AbstractAirframeComponent}
+    function AirframeGroup(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, T}} where {N, T<:AbstractAirframeComponent}
         new{T,N,L}(nt)
     end
 end
 
-ACGroup(;kwargs...) = ACGroup((; kwargs...))
+AirframeGroup(;kwargs...) = AirframeGroup((; kwargs...))
 
-Base.length(::ACGroup{T,N,L}) where {T,N,L} = N
-Base.getindex(g::ACGroup, i) = getindex(getfield(g,:components), i)
-Base.getproperty(g::ACGroup, i::Symbol) = getproperty(getfield(g,:components), i)
-Base.keys(::ACGroup{T,N,L}) where {T,N,L} = L
-Base.values(g::ACGroup) = values(getfield(g,:components))
+Base.length(::AirframeGroup{T,N,L}) where {T,N,L} = N
+Base.getindex(g::AirframeGroup, i) = getindex(getfield(g,:components), i)
+Base.getproperty(g::AirframeGroup, i::Symbol) = getproperty(getfield(g,:components), i)
+Base.keys(::AirframeGroup{T,N,L}) where {T,N,L} = L
+Base.values(g::AirframeGroup) = values(getfield(g,:components))
 
-get_x0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_x0.(values(g))) |> ComponentVector
-get_u0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_u0.(values(g)))
-get_y0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_y0.(values(g)))
-get_d0(g::ACGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_d0.(values(g)))
+get_x0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_x0.(values(g))) |> ComponentVector
+get_u0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_u0.(values(g)))
+get_y0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_y0.(values(g)))
+get_d0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_d0.(values(g)))
 
-function HybridSystem(g::ACGroup{T,N,L},
+function HybridSystem(g::AirframeGroup{T,N,L},
                     ẋ = get_x0(g), x = get_x0(g), y = get_y0(g), u = get_u0(g),
                     d = get_d0(g), t = Ref(0.0)) where {T,N,L}
 
@@ -61,7 +61,7 @@ function HybridSystem(g::ACGroup{T,N,L},
 end
 
 @inline @generated function f_cont!(sys::HybridSystem{C}, args...
-    ) where {C<:ACGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
+    ) where {C<:AirframeGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
 
     ex_main = Expr(:block)
 
@@ -97,7 +97,7 @@ end
 
 
 @inline @generated function (f_disc!(sys::HybridSystem{C}, args...)::Bool
-    ) where {C<:ACGroup{T,N,L}} where {T <:AbstractAirframeComponent,N,L}
+    ) where {C<:AirframeGroup{T,N,L}} where {T <:AbstractAirframeComponent,N,L}
 
     ex = Expr(:block)
     push!(ex.args, :(x_mod = false))
@@ -111,7 +111,7 @@ end
 end
 
 @inline @generated function get_wr_b(sys::HybridSystem{C}
-    ) where {C<:ACGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
+    ) where {C<:AirframeGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
 
     ex = Expr(:block)
     push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
@@ -124,7 +124,7 @@ end
 end
 
 @inline @generated function get_hr_b(sys::HybridSystem{C}
-    ) where {C<:ACGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
+    ) where {C<:AirframeGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
 
     ex = Expr(:block)
     push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate

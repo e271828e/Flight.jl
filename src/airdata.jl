@@ -12,7 +12,9 @@ import Flight.Atmosphere: γ, p_std, ρ_std
 export AirData
 
 Base.@kwdef struct AirData
-    v_wOb_b::SVector{3,Float64} = zeros(SVector{3}) #wind-relative velocity #v_wOb_b
+    v_ew_n::SVector{3,Float64} = zeros(SVector{3}) #wind velocity, NED axes
+    v_ew_b::SVector{3,Float64} = zeros(SVector{3}) #wind-relative, airframe axes
+    v_wOb_b::SVector{3,Float64} = zeros(SVector{3}) #aerodynamic velocity vector, airframe axes
     α_b::Float64 = 0.0 #airframe-axes AoA
     β_b::Float64 = 0.0 #airframe-axes AoS
     T::Float64 = 0.0 #static temperature
@@ -39,7 +41,8 @@ end
 function AirData(atm::AtmosphericData, kin::KinY)
 
     v_eOb_b = kin.vel.v_eOb_b
-    v_ew_b = kin.pos.q_nb'(atm.v_ew_n)
+    v_ew_n = atm.wind.v_ew_n
+    v_ew_b = kin.pos.q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
     (α_b, β_b) = get_airflow_angles(v_wOb_b)
 
@@ -54,7 +57,7 @@ function AirData(atm::AtmosphericData, kin::KinY)
     EAS = TAS * √(ρ / ρ_std)
     CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + q/p_std)^((γ-1)/γ) - 1) )
 
-    AirData(; v_wOb_b, α_b, β_b, T, p, ρ, a, M, Tt, pt, Δp, q, TAS, EAS, CAS)
+    AirData(; v_ew_n, v_ew_b, v_wOb_b, α_b, β_b, T, p, ρ, a, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
 

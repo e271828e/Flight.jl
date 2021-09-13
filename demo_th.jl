@@ -19,7 +19,7 @@ thr_mdl = HybridModel(thr_sys, (air,))
 thr_mdl.u.throttle = 1
 step!(thr_mdl, 10, true)
 
-g = ACGroup(left = EThruster(), right = EThruster());
+g = AirframeGroup(left = EThruster(), right = EThruster());
 g_sys = HybridSystem(g);
 f_cont!(g_sys, air);
 y_g = g_sys.y
