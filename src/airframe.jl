@@ -29,11 +29,11 @@ end
 
 struct NullAirframeComponent <: AbstractAirframeComponent end
 
-get_wr_b(::System{NullAirframeComponent}) = Wrench()
-get_hr_b(::System{NullAirframeComponent}) = zeros(SVector{3})
+@inline get_wr_b(::System{NullAirframeComponent}) = Wrench()
+@inline get_hr_b(::System{NullAirframeComponent}) = zeros(SVector{3})
 
-f_cont!(::System{NullAirframeComponent}, args...) = nothing
-(f_disc!(::System{NullAirframeComponent}, args...)::Bool) = false
+@inline f_cont!(::System{NullAirframeComponent}, args...) = nothing
+@inline (f_disc!(::System{NullAirframeComponent}, args...)::Bool) = false
 
 
 ######################### AirframeGroup #############################

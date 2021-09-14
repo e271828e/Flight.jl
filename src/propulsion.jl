@@ -7,6 +7,7 @@ using UnPack
 using Plots
 
 using Flight.Airdata
+using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Airframe
 using Flight.ModelingTools
@@ -101,8 +102,8 @@ end
 Base.@kwdef mutable struct EThrusterD end
 
 get_x0(::EThruster) = copy(EThrusterXTemplate)
-get_d0(::EThruster) = EThrusterD()
-get_u0(::EThruster) = EThrusterU()
+# get_d0(::EThruster) = EThrusterD() #not really needed, defaults to nothing
+get_u0(::EThruster) = EThrusterU() #not really needed, defaults to nothing
 get_y0(::EThruster) = EThrusterY()
 
 
@@ -120,7 +121,7 @@ get_hr_b(sys::System{EThruster}) = sys.y.hr_b
 
 f_disc!(sys::System{EThruster}) = false
 
-function f_cont!(sys::System{EThruster}, air::AirData)
+function f_cont!(sys::System{EThruster}, kin::KinData, air::AirData)
 
     @unpack ẋ, x, y, u, params = sys #no need for subsystems
     @unpack frame, battery, motor, propeller, gearbox = params

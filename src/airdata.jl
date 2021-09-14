@@ -7,7 +7,7 @@ using UnPack
 using Flight.Kinematics
 using Flight.Geodesy
 using Flight.Atmosphere
-import Flight.Atmosphere: γ, p_std, ρ_std
+import Flight.Atmosphere: γ, T_std, p_std, ρ_std
 
 export AirData
 
@@ -31,22 +31,22 @@ Base.@kwdef struct AirData
     CAS::Float64 = 0.0 #calibrated airspeed
 end
 
-function AirData(atm_sys::AtmosphericSystem, kin::KinY)
+function AirData(kin::KinData, atm_sys::AtmosphericSystem)
     #the AtmosphericData constructor accepts any Geographic subtype, but it's
     #likely that ISA SL conditions and wind will be expressed in LatLon
     atm_data = AtmosphericData(atm_sys, Geographic(kin.pos.ϕ_λ, kin.pos.h_o))
-    AirData(atm_data, kin)
+    AirData(kin, atm_data)
 end
 
-function AirData(atm::AtmosphericData, kin::KinY)
+function AirData(kin::KinData, atm_data::AtmosphericData)
 
     v_eOb_b = kin.vel.v_eOb_b
-    v_ew_n = atm.wind.v_ew_n
+    v_ew_n = atm_data.wind.v_ew_n
     v_ew_b = kin.pos.q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
     (α_b, β_b) = get_airflow_angles(v_wOb_b)
 
-    @unpack T, p, ρ, a = atm.isa_
+    @unpack T, p, ρ, a = atm_data.isa_
     TAS = norm(v_wOb_b)
     M = TAS / a
     Tt = T * (1 + (γ - 1)/2 * M^2)

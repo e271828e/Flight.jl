@@ -4,11 +4,10 @@ using StaticArrays, StructArrays, ComponentArrays
 
 using Flight.Geodesy
 using Flight.ModelingTools
-
 import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 
-export SimpleISA, get_ISA_data
-export SimpleWind, get_wind_velocity
+export SimpleISA
+export SimpleWind
 export AtmosphereCmp, AtmosphericData, AtmosphericSystem
 
 const R = 287.05287 #gas constant for dry air
@@ -187,16 +186,17 @@ function AtmosphericData(a::AtmosphericSystem, pos::Geographic)
         WindData(a.subsystems.wind, pos))
 end
 
-#if we dont want to step the AtmosphericSystem in time because it is constant,
-#we simply don't create a World to compose Aircraft and AtmosphericSystem. in
-#case that we want to compose the aircraft with the environment in a World
-#model, we simply pass it as a subsystem within f_cont!(::World). if the
+function f_cont!(sys::AtmosphericSystem)
+    f_cont!(sys.isa_)
+    f_cont!(sys.wind)
+end
+
+#we can create a World <: AbstractComponent to compose Aircraft and
+#AtmosphericSystem, and step them together in a single Model. if the
 #AtmosphericSystem is dynamic but still we don't want to compose it with the
-#Aircraft, we can always put the atmospheric system in a separate model, step it
-#separately, and pass a reference to its underlying AtmosphericSystem to the
-#AircraftSystem that will be wrapped in its own Model
-
-
+#Aircraft, we can always put it in a separate model, step it separately, and
+#simply pass a reference to its underlying AtmosphericSystem to the
+#AircraftSystem, which will be wrapped in its own Model
 
 
 # #top-down / recursive implementation

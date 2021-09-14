@@ -12,7 +12,7 @@ import Flight.ModelingTools: get_x0
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export PosX, PosY, VelX, VelY, KinX, KinY, KinInit
+export PosX, PosData, VelX, VelData, KinX, KinData, KinInit
 export init!, f_kin!, renormalize!
 
 Base.@kwdef struct KinInit
@@ -35,7 +35,7 @@ const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T
 "Type definition for dispatching on kinematic state vector instances"
 const KinX{T, D} = ComponentVector{T, D, typeof(getaxes(KinXTemplate))} where {T, D}
 
-Base.@kwdef struct PosY
+Base.@kwdef struct PosData
     q_lb::RQuat = RQuat()
     q_nb::RQuat = RQuat()
     q_eb::RQuat = RQuat()
@@ -49,7 +49,7 @@ Base.@kwdef struct PosY
     Δxy::SVector{2,Float64} = zeros(2) #v_eOb_n[1:2] integrals
 end
 
-Base.@kwdef struct VelY
+Base.@kwdef struct VelData
     ω_eb_b::SVector{3,Float64} = zeros(3)
     ω_lb_b::SVector{3,Float64} = zeros(3)
     ω_el_l::SVector{3,Float64} = zeros(3)
@@ -59,9 +59,9 @@ Base.@kwdef struct VelY
     v_eOb_n::SVector{3,Float64} = zeros(3)
 end
 
-Base.@kwdef struct KinY
-    pos::PosY = PosY()
-    vel::VelY = VelY()
+Base.@kwdef struct KinData
+    pos::PosData = PosData()
+    vel::VelData = VelData()
 end
 
 get_x0(init::KinInit) = (x=similar(KinXTemplate); init!(x, init); return x)
@@ -130,12 +130,12 @@ function f_kin!(ẋ_pos::PosX, x::KinX)
     ẋ_pos.h_e = -v_eOb_n[3]
 
     #build output
-    y_pos = PosY(q_lb, q_nb, q_eb, REuler(q_nb), ψ_nl, q_el, n_e, LatLon(n_e),
+    pos = PosData(q_lb, q_nb, q_eb, REuler(q_nb), ψ_nl, q_el, n_e, LatLon(n_e),
                 h_e, Altitude{Orthometric}(h_e, n_e), SVector{2}(x.pos.Δx, x.pos.Δy))
 
-    y_vel = VelY(ω_eb_b, ω_lb_b, ω_el_l, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
+    vel = VelData(ω_eb_b, ω_lb_b, ω_el_l, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
 
-    return KinY(y_pos, y_vel)
+    return KinData(pos, vel)
 
 end
 
@@ -152,7 +152,7 @@ end
 
 ############################ Plotting ################################
 
-function plots(t, data::AbstractVector{<:KinY}; mode, save_path, kwargs...)
+function plots(t, data::AbstractVector{<:KinData}; mode, save_path, kwargs...)
 
     sa = StructArray(data)
 
@@ -160,7 +160,7 @@ function plots(t, data::AbstractVector{<:KinY}; mode, save_path, kwargs...)
     plots(t, sa.vel; mode, save_path, kwargs...)
 end
 
-function plots(t, data::AbstractVector{<:PosY}; mode, save_path, kwargs...)
+function plots(t, data::AbstractVector{<:PosData}; mode, save_path, kwargs...)
 
     @unpack e_nb, ϕ_λ, h_e, h_o, Δxy = StructArray(data)
 
@@ -213,7 +213,7 @@ function plots(t, data::AbstractVector{<:PosY}; mode, save_path, kwargs...)
     # savefig(plt_Ob_xyh_3D, joinpath(save_path, "Ob_xyh_3D.png"))
 end
 
-function plots(t, data::AbstractVector{<:VelY}; mode, save_path, kwargs...)
+function plots(t, data::AbstractVector{<:VelData}; mode, save_path, kwargs...)
 
     @unpack v_eOb_b, v_eOb_n, ω_lb_b, ω_el_l = StructArray(data)
 

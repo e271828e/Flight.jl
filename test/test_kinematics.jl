@@ -65,10 +65,10 @@ function test_fpos()
 
     x_kin = get_x0(init)
 
-    y_kin = Y(Kin())
+    kin_data = Y(Kin())
     ẋ_pos = get_x0(Pos())
 
-    @btime f_kin!($y_kin, $ẋ_pos, $x_kin)
+    @btime f_kin!($kin_data, $ẋ_pos, $x_kin)
 
 end
 

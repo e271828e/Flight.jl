@@ -152,7 +152,7 @@ function Base.getproperty(m::Model, s::Symbol)
         return m.sys.y
     elseif s === :u
         return m.sys.u
-    elseif s in (:sys, :integrator, :log)
+    elseif s ∈ (:sys, :integrator, :log)
         return getfield(m, s)
     else
         return getproperty(m.integrator, s)

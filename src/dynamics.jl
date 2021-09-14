@@ -12,7 +12,7 @@ using Flight.ModelingTools
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export DynY
+export DynData
 export MassData, FrameSpec, Wrench
 export translate, f_dyn!
 
@@ -126,7 +126,7 @@ end
 
 
 """
-    inertia_wrench(mass::MassData, y_vel::VelY, hr_b::AbstractVector{<:Real})
+    inertia_wrench(mass::MassData, vel::VelData, hr_b::AbstractVector{<:Real})
 
 Compute the equivalent `Wrench` arising from inertia terms in the dynamic
 equations
@@ -135,16 +135,16 @@ The resulting `Wrench` is defined on the airframe's reference frame.
 
 # Arguments:
 - `mass::MassData`: Current aircraft mass properties
-- `y_vel::VelY`: Velocity outputs
+- `vel::VelData`: Velocity outputs
 - `hr_b::AbstractVector{<:Real}`: Additional angular momentum due to the
   angular velocity of any rotating elements with respect to the airframe,
   projected on the airframe axes
 
 """
-function inertia_wrench(mass::MassData, y_vel::VelY, hr_b::AbstractVector{<:Real})
+function inertia_wrench(mass::MassData, vel::VelData, hr_b::AbstractVector{<:Real})
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-    @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = y_vel
+    @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = vel
 
     #angular momentum of the overall airframe as a rigid body
     h_rbd_b = J_Ob_b * ω_ib_b
@@ -161,7 +161,7 @@ function inertia_wrench(mass::MassData, y_vel::VelY, hr_b::AbstractVector{<:Real
 
 end
 
-function gravity_wrench(mass::MassData, y_pos::PosY)
+function gravity_wrench(mass::MassData, pos::PosData)
 
     #gravity can be viewed as an entity acting on a local frame with its origin
     #at G and its axes aligned with the local tangent frame
@@ -170,7 +170,7 @@ function gravity_wrench(mass::MassData, y_pos::PosY)
     #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
     #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
     #LTF(Ob), and then apply it at G.
-    @unpack n_e, h_e, q_lb = y_pos
+    @unpack n_e, h_e, q_lb = pos
 
     Ob = Geographic(n_e, h_e)
     g_G_l = g_Ob_l = g_l(Ob)
@@ -193,14 +193,14 @@ end
 
 ###################### Acceleration Outputs #####################
 
-Base.@kwdef struct DynInputY
+Base.@kwdef struct DynDataIn
     wr_g_b::Wrench = Wrench()
     wr_in_b::Wrench = Wrench()
     wr_ext_b::Wrench = Wrench()
     hr_b::SVector{3,Float64} = zeros(3)
 end
 
-Base.@kwdef struct DynOutputY
+Base.@kwdef struct DynDataOut
     α_eb_b::SVector{3,Float64} = zeros(3)
     α_ib_b::SVector{3,Float64} = zeros(3)
     a_eOb_b::SVector{3,Float64} = zeros(3)
@@ -209,14 +209,14 @@ Base.@kwdef struct DynOutputY
     f_Ob_b::SVector{3,Float64} = zeros(3) #specific force (g) maybe two y axes??
 end
 
-Base.@kwdef struct DynY
-    input::DynInputY = DynInputY()
-    output::DynOutputY = DynOutputY()
+Base.@kwdef struct DynData
+    input::DynDataIn = DynDataIn()
+    output::DynDataOut = DynDataOut()
 end
 
 
-function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
-    mass::MassData, y_kin::KinY)
+function f_dyn!(ẋ_vel::VelX, kin::KinData, mass::MassData,
+    wr_ext_b::Wrench, hr_b::AbstractVector{<:Real})
 
     #wr_ext_b: Total external wrench on the airframe
 
@@ -227,7 +227,7 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
 
     #wr_ext_b and hr_b, as well as mass data, are produced by aircraft
     #components, so they must be computed by the aircraft's x_dot method. and,
-    #since y_kin is needed by those components, it must be called from the
+    #since kin is needed by those components, it must be called from the
     #aircraft's kinematic state vector
 
     #clearly, r_ObG_b cannot be arbitrarily large, because J_Ob_b is larger than
@@ -235,8 +235,8 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
     #least singular)!
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-    @unpack q_lb, q_el, q_eb, q_nb, n_e, h_e = y_kin.pos
-    @unpack ω_eb_b, ω_ie_b, v_eOb_b = y_kin.vel
+    @unpack q_lb, q_el, q_eb, q_nb, n_e, h_e = kin.pos
+    @unpack ω_eb_b, ω_ie_b, v_eOb_b = kin.vel
 
     r_ObG_b_sk = Attitude.skew(r_ObG_b)
     A11 = J_Ob_b
@@ -246,8 +246,8 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
 
     A = vcat(hcat(A11, A12), hcat(A21, A22))
 
-    wr_g_b = gravity_wrench(mass, y_kin.pos)
-    wr_in_b = inertia_wrench(mass, y_kin.vel, hr_b)
+    wr_g_b = gravity_wrench(mass, kin.pos)
+    wr_in_b = inertia_wrench(mass, kin.vel, hr_b)
     wr_b = wr_ext_b + wr_g_b + wr_in_b
     b = SVector{6}(vcat(wr_b.M, wr_b.F))
 
@@ -273,10 +273,10 @@ function f_dyn!(ẋ_vel::VelX, wr_ext_b::Wrench, hr_b::AbstractVector{<:Real},
     G_Ob_b = g_Ob_b + ω_ie_b × (ω_ie_b × r_eOb_b)
     f_Ob_b = a_iOb_b - G_Ob_b
 
-    y_in = DynInputY(wr_g_b, wr_in_b, wr_ext_b, hr_b)
-    y_out = DynOutputY(α_eb_b, α_ib_b, a_eOb_b, a_eOb_n, a_iOb_b, f_Ob_b)
+    data_in = DynDataIn(wr_g_b, wr_in_b, wr_ext_b, hr_b)
+    data_out = DynDataOut(α_eb_b, α_ib_b, a_eOb_b, a_eOb_n, a_iOb_b, f_Ob_b)
 
-    return DynY(y_in, y_out)
+    return DynData(data_in, data_out)
 
 end
 
@@ -311,7 +311,7 @@ end
 end
 
 
-function plots(t, data::AbstractVector{<:DynY}; mode, save_path, kwargs...)
+function plots(t, data::AbstractVector{<:DynData}; mode, save_path, kwargs...)
 
     sa = StructArray(data)
     plots(t, sa.input; mode, save_path, kwargs...)
@@ -320,7 +320,7 @@ function plots(t, data::AbstractVector{<:DynY}; mode, save_path, kwargs...)
 end
 
 
-function plots(t, data::AbstractVector{<:DynInputY}; mode, save_path, kwargs...)
+function plots(t, data::AbstractVector{<:DynDataIn}; mode, save_path, kwargs...)
 
     @unpack wr_g_b, wr_in_b, wr_ext_b, hr_b = StructArray(data)
 
@@ -355,7 +355,7 @@ function plots(t, data::AbstractVector{<:DynInputY}; mode, save_path, kwargs...)
 end
 
 
-function plots(t, data::AbstractVector{<:DynOutputY}; mode, save_path, kwargs...)
+function plots(t, data::AbstractVector{<:DynDataOut}; mode, save_path, kwargs...)
 
     @unpack α_eb_b, a_eOb_b, a_eOb_n, f_Ob_b = StructArray(data)
 

@@ -38,9 +38,9 @@ include("aircraft.jl")
 @reexport using .Attitude
 
 @reexport using .Geodesy
-@reexport using .Kinematics
 @reexport using .Terrain
 @reexport using .Atmosphere
+@reexport using .Kinematics
 @reexport using .Dynamics
 
 @reexport using .Airframe
