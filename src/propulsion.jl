@@ -109,12 +109,7 @@ get_y0(::EThruster) = EThrusterY()
 
 ################ EThruster System ###################
 
-function System(thr::EThruster, ẋ = get_x0(thr), x = get_x0(thr),
-                        y = get_y0(thr), u = get_u0(thr), d = get_d0(thr), t = Ref(0.0))
-    params = thr #params is the component itself
-    subsystems = nothing #no subsystems to define
-    System{map(typeof, (thr, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
-end
+#the default System constructor works OK in this case
 
 get_wr_b(sys::System{EThruster}) = sys.y.wr_b
 get_hr_b(sys::System{EThruster}) = sys.y.hr_b
@@ -156,23 +151,6 @@ end
 function plots(t, data::AbstractVector{<:EThrusterY}; mode, save_path, kwargs...)
 
     @unpack wr_c, wr_b = StructArray(data)
-    # sa_wr_c = StructArray(wr_c)
-    # sa_wr_b = StructArray(wr_b)
-
-    # plt_F_c = thplot(t, sa_wr_c.F;
-    #     ylabel = L"$F \ (N)$",
-    #     plot_title = "Thruster Force [Thruster Frame]",
-    #     th_split = :h,
-    #     kwargs...)
-
-    # plt_M_c = thplot(t, sa_wr_c.M;
-    #     ylabel = L"$M \ (Nm)$",
-    #     plot_title = "Thruster Moment [Thruster Frame]",
-    #     th_split = :h,
-    #     kwargs...)
-
-    # savefig(plt_F_c, joinpath(save_path, "F_Oc_c.png"))
-    # savefig(plt_M_c, joinpath(save_path, "M_Oc_c.png"))
 
     pd = Dict{String, Plots.Plot}()
 

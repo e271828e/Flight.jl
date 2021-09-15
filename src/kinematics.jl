@@ -157,8 +157,8 @@ end
 
 struct KinECEF <: AbstractKinematics end
 
-const KinECEFXTemplate = ComponentVector(pos = PosECEFXTemplate, vel = VelXTemplate)
 const PosECEFXTemplate = ComponentVector(q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0)
+const KinECEFXTemplate = ComponentVector(pos = PosECEFXTemplate, vel = VelXTemplate)
 const PosECEFX{T, D} = ComponentVector{T, D, typeof(getaxes(PosECEFXTemplate))} where {T, D}
 const KinECEFX{T, D} = ComponentVector{T, D, typeof(getaxes(KinECEFXTemplate))} where {T, D}
 
@@ -277,12 +277,12 @@ function plots(t, data::AbstractVector{<:PosData}; mode, save_path, kwargs...)
     pd["02_Ob_geo"] = plot(splt_latlon, splt_h;
         layout = grid(1, 2, widths = [0.67, 0.33]),
         plot_title = "Position (WGS84)",
-        kwargs..., titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     pd["03_Ob_xyh"] = plot(splt_xy, splt_h;
         layout = grid(1, 2, widths = [0.67, 0.33]),
         plot_title = "Position (Local Cartesian)",
-        kwargs..., titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     save_plots(pd; save_path)
 

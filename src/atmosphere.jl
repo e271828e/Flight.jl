@@ -12,6 +12,9 @@ export AtmosphereCmp, AtmosphericData, AtmosphericSystem
 
 const R = 287.05287 #gas constant for dry air
 const γ = 1.40 #heat capacity ratio for dry air
+const β = 1.458e-6 #Sutherland's empirical constant for dynamic viscosity
+const S = 110.4 #Sutherland's empirical constant for dynamic viscosity
+
 const T_std = 288.15
 const p_std = 101325.0
 const ρ_std = p_std / (R * T_std)
@@ -22,6 +25,10 @@ abstract type AbstractISA <: AbstractComponent end
 const ISA_layers = StructArray(
     β =      SVector{7,Float64}([-6.5e-3, 0, 1e-3, 2.8e-3, 0, -2.8e-3, -2e-3]),
     h_ceil = SVector{7,Float64}([11000, 20000, 32000, 47000, 51000, 71000, 80000]))
+
+@inline density(p,T) = p/(R*T)
+@inline speed_of_sound(T) = √(γ*R*T)
+@inline dynamic_viscosity(T) = (β * T^1.5) / (T + S)
 
 @inline ISA_temperature_law(h, T_b, h_b, β) = T_b + β * (h - h_b)
 
@@ -49,8 +56,9 @@ end
 Base.@kwdef struct ISAData
     p::Float64 = p_std
     T::Float64 = T_std
-    ρ::Float64 = p_std / (R * T_std)
-    a::Float64 = √(γ*R*T_std)
+    ρ::Float64 = density(p_std, T_std)
+    a::Float64 = speed_of_sound(T_std)
+    μ::Float64 = dynamic_viscosity(T_std)
 end
 
 function SLConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractISA}}
@@ -71,7 +79,7 @@ end
     T = ISA_temperature_law(h, T_base, h_base, β)
     p = ISA_pressure_law(h, g_base, p_base, T_base, h_base, β)
 
-    return ISAData(p, T, p / (R*T), √(γ*R*T) )
+    return ISAData(p, T, density(p, T), speed_of_sound(T), dynamic_viscosity(T) )
 
 end
 

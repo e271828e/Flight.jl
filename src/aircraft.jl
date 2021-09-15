@@ -29,7 +29,6 @@ export NoControlMapping, ConstantMass
 
 abstract type AbstractMass <: AbstractComponent end
 
-abstract type AbstractAerodynamics <: AbstractAirframeComponent end
 
 #given the fuel system outputs and the installed payloads, a MassSystem must
 #return a MassData instance. open questions:
@@ -274,7 +273,7 @@ function plots(t::AbstractVector{<:Real}, data::AbstractVector{<:TestAircraftY};
 
     sa = StructArray(data)
 
-    ss_path = (dyn = "dynamics", kin = "kinematics", mass = "mass",
+    ss_path = (dyn = "dynamics", kin = "kinematics", air = "airdata", mass = "mass",
         aero = "aerodynamics", pwp = "powerplant", ldg = "landinggear", srf = "surfaces")
 
     for (label, path) ∈ zip(keys(ss_path), values(ss_path))
