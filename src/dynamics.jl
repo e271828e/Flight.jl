@@ -170,22 +170,22 @@ function gravity_wrench(mass::MassData, pos::PosData)
     #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
     #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
     #LTF(Ob), and then apply it at G.
-    @unpack n_e, h_e, q_lb = pos
+    @unpack n_e, h_e, q_nb = pos
 
     Ob = Geographic(n_e, h_e)
-    g_G_l = g_Ob_l = g_l(Ob)
+    g_G_n = g_Ob_n = g_n(Ob)
 
     #the resultant consists of the gravity force acting on G along the local
     #vertical and a null torque
-    F_G_l = mass.m * g_G_l
-    M_G_l = zeros(SVector{3})
-    wr_G_l = Wrench(F = F_G_l, M = M_G_l)
+    F_G_n = mass.m * g_G_n
+    M_G_n = zeros(SVector{3})
+    wr_G_n = Wrench(F = F_G_n, M = M_G_n)
 
     #with the previous assumption, the transformation from body frame to local
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
-    wr_c = wr_G_l
-    f_bc = FrameSpec(r_ObOc_b = mass.r_ObG_b, q_bc = q_lb')
+    wr_c = wr_G_n
+    f_bc = FrameSpec(r_ObOc_b = mass.r_ObG_b, q_bc = q_nb')
     return f_bc(wr_c) #wr_b
 
 end
@@ -235,7 +235,7 @@ function f_dyn!(ẋ_vel::VelX, kin::KinData, mass::MassData,
     #least singular)!
 
     @unpack m, J_Ob_b, r_ObG_b = mass
-    @unpack q_lb, q_el, q_eb, q_nb, n_e, h_e = kin.pos
+    @unpack q_eb, q_nb, n_e, h_e = kin.pos
     @unpack ω_eb_b, ω_ie_b, v_eOb_b = kin.vel
 
     r_ObG_b_sk = Attitude.skew(r_ObG_b)
@@ -269,7 +269,7 @@ function f_dyn!(ẋ_vel::VelX, kin::KinData, mass::MassData,
     a_eOb_n = q_nb(a_eOb_b)
     a_iOb_b = v̇_eOb_b + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eOb_b)
 
-    g_Ob_b = q_lb'(g_l(Ob))
+    g_Ob_b = q_nb'(g_n(Ob))
     G_Ob_b = g_Ob_b + ω_ie_b × (ω_ie_b × r_eOb_b)
     f_Ob_b = a_iOb_b - G_Ob_b
 

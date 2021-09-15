@@ -13,7 +13,7 @@ using Flight.Plotting
 export Abstract2DLocation, NVector, LatLon
 export Altitude, Ellipsoidal, Orthometric, Geopotential, AltEllip, AltOrth, AltGeop
 export Abstract3DPosition, Geographic, CartECEF
-export ω_ie, gravity, g_l, G_l, ltf, radii, get_ψ_nl, get_geoid_offset
+export ω_ie, gravity, g_n, G_n, ltf, radii, get_ψ_nl, get_geoid_offset
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -84,6 +84,8 @@ Base.length(::NVector) = 3
 Base.getindex(n::NVector, i) = getindex(n.data, i)
 #this allocates
 # Base.iterate(n::NVector, state = 1) = (state > 3 ? nothing : (n.data[state], state + 1))
+LinearAlgebra.norm(n::NVector) = norm(getfield(n, :data)) #uses StaticArrays implementation
+LinearAlgebra.normalize(n::NVector) = NVector(getfield(n, :data)) #let the constructor normalize
 
 
 #### LatLon ####
@@ -419,24 +421,24 @@ function gravity(p::Abstract3DPosition)
 end
 
 """
-    g_l(p::Abstract3DPosition)
+    g_n(p::Abstract3DPosition)
 
 Compute gravity vector resolved in the local tangent frame.
 """
-g_l(p::Abstract3DPosition) = SVector{3}(0, 0, gravity(p))
+g_n(p::Abstract3DPosition) = SVector{3}(0, 0, gravity(p))
 
 """
-    G_l(p::Abstract3DPosition)
+    G_n(p::Abstract3DPosition)
 
 Compute gravitational attraction resolved in the local tangent frame.
 """
-function G_l(p::Abstract3DPosition)
+function G_n(p::Abstract3DPosition)
 
-    q_el = ltf(p)
+    q_en = ltf(p)
     ω_ie_e = SVector{3, Float64}(0,0,ω_ie)
     r_eP_e = CartECEF(p)[:]
-    G_l = g_l(p) + q_el'(ω_ie_e × (ω_ie_e × r_eP_e))
-    return G_l
+    G_n = g_n(p) + q_en'(ω_ie_e × (ω_ie_e × r_eP_e))
+    return G_n
 
 end
 

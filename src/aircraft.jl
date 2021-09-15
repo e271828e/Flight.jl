@@ -74,6 +74,7 @@ struct NoControlMapping <: AbstractControlMapping end
 ######################### TestAircraft ########################
 
 struct TestAircraft{CMap <: AbstractControlMapping,
+                    Kin <: AbstractKinematics,
                     #SMac <: AbstractStateMachine,
                     Mass <: AbstractMass,
                     Aero <: AbstractAirframeComponent,
@@ -81,6 +82,7 @@ struct TestAircraft{CMap <: AbstractControlMapping,
                     Ldg <: AbstractAirframeComponent,
                     Srf <: AbstractAirframeComponent} <: AbstractComponent
     cmap::CMap
+    kin::Kin
     #smac::SMac
     mass::Mass
     aero::Aero
@@ -92,6 +94,7 @@ end
 function TestAircraft()
 
     cmap = NoControlMapping()
+    kin = KinLTF()
     #smac = NoStateMachine()
     mass = ConstantMass()
     aero = NullAirframeComponent()
@@ -105,7 +108,7 @@ function TestAircraft()
     #     rmain = LandingGearLeg(),
     #     nlg = LandingGearLeg()))
 
-    TestAircraft(cmap, mass, aero, pwp, ldg, srf)
+    TestAircraft(cmap, kin, mass, aero, pwp, ldg, srf)
 end
 
 struct TestAircraftY{MassY, AeroY, PwpY, LdgY, SrfY}
@@ -147,11 +150,11 @@ end
 =#
 struct NoAircraftU end
 
-get_u0(::TestAircraft{NoControlMapping,Mass,Pwp} where {Mass,Pwp}) = NoAircraftU()
+get_u0(::TestAircraft{NoControlMapping,Kin,Mass,Aero,Pwp,Ldg,Srf} where {Kin,Mass,Aero,Pwp,Ldg,Srf}) = NoAircraftU()
 
 function get_x0(ac::TestAircraft)
     ComponentVector(
-        kin = get_x0(KinInit()),
+        kin = get_x0(ac.kin),
         # smac = get_x0(ac.smac),
         mass = get_x0(ac.mass),
         aero = get_x0(ac.aero),
@@ -185,7 +188,7 @@ function get_d0(ac::TestAircraft)
 end
 
 
-const TestAircraftSys{C,M,A,P,L,S} = System{TestAircraft{C,M,A,P,L,S}} where {C,M,A,P,L,S}
+const TestAircraftSys{C,K,M,A,P,L,S} = System{TestAircraft{C,K,M,A,P,L,S}} where {C,K,M,A,P,L,S}
 
 
 function System(ac::TestAircraft, ẋ = get_x0(ac), x = get_x0(ac),
@@ -214,7 +217,7 @@ end
 #overriding this function for specific TestAircraft type parameter
 #combinations allows us to customize how the aircraft's control inputs map
 #into its subsystems's control inputs.
-assign_control_inputs!(::TestAircraftSys{NoControlMapping,M,A,P,L,S} where {M,A,P,L,S}) = nothing
+assign_control_inputs!(::TestAircraftSys{NoControlMapping,K,M,A,P,L,S} where {K,M,A,P,L,S}) = nothing
 
 
 function f_cont!(ac_sys::TestAircraftSys, trn::AbstractTerrainModel, atm::AtmosphericSystem)

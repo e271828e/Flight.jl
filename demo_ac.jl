@@ -32,7 +32,7 @@ b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
 #reinitialize at the North Pole, set end time and run to completion
 reinit!(ac_mdl)
 x0 = copy(ac_mdl.x)
-x0.kin .= get_x0(KinInit(Ob = Geographic(LatLon(ϕ = π/2))))
+init!(x0.kin, KinInit(Ob = Geographic(LatLon(ϕ = π/2))))
 reinit!(ac_mdl, x0, tf = 3)
 solve!(ac_mdl)
 
