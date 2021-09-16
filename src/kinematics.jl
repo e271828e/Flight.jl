@@ -28,31 +28,37 @@ Base.@kwdef struct KinInit
     Δy::Float64 = 0.0
 end
 
-Base.@kwdef struct PosData
-    q_nb::RQuat = RQuat()
-    q_eb::RQuat = RQuat()
-    e_nb::REuler = REuler()
-    q_en::RQuat = RQuat()
-    n_e::NVector = NVector()
-    ϕ_λ::LatLon = LatLon()
-    h_e::Altitude{Ellipsoidal} = Altitude{Ellipsoidal}()
-    h_o::Altitude{Orthometric} = Altitude{Orthometric}()
-    Δxy::SVector{2,Float64} = zeros(2) #v_eOb_n[1:2] integrals
+struct PosData
+    q_nb::RQuat
+    q_eb::RQuat
+    e_nb::REuler
+    q_en::RQuat
+    n_e::NVector
+    ϕ_λ::LatLon
+    h_e::Altitude{Ellipsoidal}
+    h_o::Altitude{Orthometric}
+    Δxy::SVector{2,Float64}
 end
 
-Base.@kwdef struct VelData
-    ω_eb_b::SVector{3,Float64} = zeros(3)
-    ω_el_n::SVector{3,Float64} = zeros(3)
-    ω_lb_b::SVector{3,Float64} = zeros(3)
-    ω_ie_b::SVector{3,Float64} = zeros(3)
-    ω_ib_b::SVector{3,Float64} = zeros(3)
-    v_eOb_b::SVector{3,Float64} = zeros(3)
-    v_eOb_n::SVector{3,Float64} = zeros(3)
+struct VelData
+    ω_eb_b::SVector{3,Float64}
+    ω_el_n::SVector{3,Float64}
+    ω_lb_b::SVector{3,Float64}
+    ω_ie_b::SVector{3,Float64}
+    ω_ib_b::SVector{3,Float64}
+    v_eOb_b::SVector{3,Float64}
+    v_eOb_n::SVector{3,Float64}
 end
 
-Base.@kwdef struct KinData
-    pos::PosData = PosData()
-    vel::VelData = VelData()
+struct KinData
+    pos::PosData
+    vel::VelData
+end
+
+function KinData()
+    x_kin = get_x0(KinLTF())
+    ẋ_pos = copy(x_kin.pos)
+    return f_kin!(ẋ_pos, x_kin)
 end
 
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))

@@ -53,17 +53,19 @@ Base.@kwdef struct SLConditions
     g::Float64 = g_std
 end
 
-Base.@kwdef struct ISAData
-    p::Float64 = p_std
-    T::Float64 = T_std
-    ρ::Float64 = density(p_std, T_std)
-    a::Float64 = speed_of_sound(T_std)
-    μ::Float64 = dynamic_viscosity(T_std)
-end
-
 function SLConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractISA}}
     error("SLConditions constructor not implemented for $T")
 end
+
+struct ISAData
+    p::Float64
+    T::Float64
+    ρ::Float64
+    a::Float64
+    μ::Float64
+end
+
+ISAData() = ISAData(AltGeop(0))
 
 @inline function ISAData(h::AltGeop; sl::SLConditions = SLConditions())
 
@@ -183,9 +185,9 @@ end
 
 const AtmosphericSystem = System{<:AtmosphereCmp}
 
-struct AtmosphericData
-    isa_::ISAData
-    wind::WindData
+Base.@kwdef struct AtmosphericData
+    isa_::ISAData = ISAData()
+    wind::WindData = WindData()
 end
 
 function AtmosphericData(a::AtmosphericSystem, pos::Geographic)

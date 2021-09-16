@@ -13,6 +13,7 @@ using Flight.StateMachine
 using Flight.Airframe
 using Flight.Airdata
 using Flight.Propulsion
+using Flight.Aerodynamics
 # using Flight.LandingGear
 
 using Flight.Kinematics
@@ -96,7 +97,7 @@ function TestAircraft()
     kin = KinLTF()
     #smac = NoStateMachine()
     mass = ConstantMass()
-    aero = NullAirframeComponent()
+    aero = SimpleDrag()
     pwp = AirframeGroup((
         left = EThruster(motor = ElectricMotor(α = CW)),
         right = EThruster(motor = ElectricMotor(α = CCW))))
@@ -243,6 +244,7 @@ function f_cont!(ac_sys::TestAircraftSys, trn::AbstractTerrainModel, atm::Atmosp
 
     #initialize external Wrench and additional angular momentum
     wr_ext_b = get_wr_b(pwp) + get_wr_b(ldg) + get_wr_b(aero)
+    # wr_ext_b = get_wr_b(pwp) + get_wr_b(ldg)
     hr_b = get_hr_b(pwp) + get_hr_b(ldg) + get_hr_b(aero)
 
     # update dynamics

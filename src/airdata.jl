@@ -15,24 +15,28 @@ import Flight.Plotting: plots
 
 export AirData
 
-Base.@kwdef struct AirData
-    v_ew_n::SVector{3,Float64} = zeros(SVector{3}) #wind velocity, NED axes
-    v_ew_b::SVector{3,Float64} = zeros(SVector{3}) #wind-relative, airframe axes
-    v_eOb_b::SVector{3,Float64} = zeros(SVector{3}) #velocity vector, airframe axes
-    v_wOb_b::SVector{3,Float64} = zeros(SVector{3}) #aerodynamic velocity vector, airframe axes
-    T::Float64 = 0.0 #static temperature
-    p::Float64 = 0.0 #static pressure
-    ρ::Float64 = 0.0 #density
-    a::Float64 = 0.0 #speed of sound
-    μ::Float64 = 0.0 #dynamic viscosity
-    M::Float64 = 0.0 #Mach number
-    Tt::Float64 = 0.0 #total temperature
-    pt::Float64 = 0.0 #total pressure
-    Δp::Float64 = 0.0 #impact pressure
-    q::Float64 = 0.0 #dynamic pressure
-    TAS::Float64 = 0.0 #true airspeed
-    EAS::Float64 = 0.0 #equivalent airspeed
-    CAS::Float64 = 0.0 #calibrated airspeed
+struct AirData
+    v_ew_n::SVector{3,Float64} #wind velocity, NED axes
+    v_ew_b::SVector{3,Float64} #wind-relative, airframe axes
+    v_eOb_b::SVector{3,Float64} #velocity vector, airframe axes
+    v_wOb_b::SVector{3,Float64} #aerodynamic velocity vector, airframe axes
+    T::Float64 #static temperature
+    p::Float64 #static pressure
+    ρ::Float64 #density
+    a::Float64 #speed of sound
+    μ::Float64 #dynamic viscosity
+    M::Float64 #Mach number
+    Tt::Float64 #total temperature
+    pt::Float64 #total pressure
+    Δp::Float64 #impact pressure
+    q::Float64 #dynamic pressure
+    TAS::Float64 #true airspeed
+    EAS::Float64 #equivalent airspeed
+    CAS::Float64 #calibrated airspeed
+end
+
+function AirData()
+    AirData(KinData(), AtmosphericData())
 end
 
 function AirData(kin::KinData, atm_sys::AtmosphericSystem)
@@ -60,7 +64,7 @@ function AirData(kin::KinData, atm_data::AtmosphericData)
     EAS = TAS * √(ρ / ρ_std)
     CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + q/p_std)^((γ-1)/γ) - 1) )
 
-    AirData(; v_ew_n, v_ew_b, v_eOb_b, v_wOb_b,
+    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b,
             T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
@@ -140,7 +144,7 @@ function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
 
     splt_airspeed = thplot(t, hcat(TAS,EAS,CAS);
         title = "Airspeed",
-        label = ["TAS" "EAS" "CAS"],
+        label = ["True" "Equivalent" "Calibrated"],
         ylabel = L"$v \ (m/s)$",
         th_split = :none, kwargs...)
 

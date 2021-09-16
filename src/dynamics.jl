@@ -12,8 +12,7 @@ using Flight.ModelingTools
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export DynData
-export MassData, FrameSpec, Wrench
+export DynData, MassData, FrameSpec, Wrench
 export translate, f_dyn!
 
 
