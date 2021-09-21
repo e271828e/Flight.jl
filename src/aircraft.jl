@@ -73,42 +73,22 @@ struct NoControlMapping <: AbstractControlMapping end
 
 ######################### TestAircraft ########################
 
-struct TestAircraft{CMap <: AbstractControlMapping,
+Base.@kwdef struct TestAircraft{
                     Kin <: AbstractKinematics,
+                    Ctrl <: AbstractControlMapping,
                     #SMac <: AbstractStateMachine,
                     Mass <: AbstractMass,
                     Aero <: AbstractAirframeComponent,
                     Pwp <: AbstractAirframeComponent,
                     Ldg <: AbstractAirframeComponent,
                     Srf <: AbstractAirframeComponent} <: AbstractComponent
-    cmap::CMap
-    kin::Kin
-    #smac::SMac
-    mass::Mass
-    aero::Aero
-    pwp::Pwp
-    ldg::Ldg
-    srf::Srf
-end
-
-function TestAircraft()
-
-    cmap = NoControlMapping()
-    kin = KinLTF()
-    #smac = NoStateMachine()
-    mass = ConstantMass()
-    aero = SimpleDrag()
-    pwp = AirframeGroup((
-        left = EThruster(motor = ElectricMotor(α = CW)),
-        right = EThruster(motor = ElectricMotor(α = CCW))))
-    ldg = NullAirframeComponent()
-    srf = NullAirframeComponent()
-    # ldg = AirframeGroup((
-    #     lmain = LandingGearLeg(),
-    #     rmain = LandingGearLeg(),
-    #     nlg = LandingGearLeg()))
-
-    TestAircraft(cmap, kin, mass, aero, pwp, ldg, srf)
+    kin::Kin = KinLTF()
+    ctrl::Ctrl = NoControlMapping()
+    mass::Mass = ConstantMass()
+    aero::Aero = NullAirframeComponent()
+    pwp::Pwp = NullAirframeComponent()
+    ldg::Ldg = NullAirframeComponent()
+    srf::Srf = NullAirframeComponent()
 end
 
 struct TestAircraftY{MassY, AeroY, PwpY, LdgY, SrfY}
@@ -150,7 +130,7 @@ end
 =#
 struct NoAircraftU end
 
-get_u0(::TestAircraft{NoControlMapping,Kin,Mass,Aero,Pwp,Ldg,Srf} where {Kin,Mass,Aero,Pwp,Ldg,Srf}) = NoAircraftU()
+get_u0(::TestAircraft{Kin,NoControlMapping,Mass,Aero,Pwp,Ldg,Srf} where {Kin,Mass,Aero,Pwp,Ldg,Srf}) = NoAircraftU()
 
 function get_x0(ac::TestAircraft)
     ComponentVector(
@@ -188,7 +168,7 @@ function get_d0(ac::TestAircraft)
 end
 
 
-const TestAircraftSys{C,K,M,A,P,L,S} = System{TestAircraft{C,K,M,A,P,L,S}} where {C,K,M,A,P,L,S}
+const TestAircraftSys{K,C,M,A,P,L,S} = System{TestAircraft{K,C,M,A,P,L,S}} where {K,C,M,A,P,L,S}
 
 
 function System(ac::TestAircraft, ẋ = get_x0(ac), x = get_x0(ac),
@@ -217,7 +197,7 @@ end
 #overriding this function for specific TestAircraft type parameter
 #combinations allows us to customize how the aircraft's control inputs map
 #into its subsystems's control inputs.
-assign_control_inputs!(::TestAircraftSys{NoControlMapping,K,M,A,P,L,S} where {K,M,A,P,L,S}) = nothing
+assign_control_inputs!(::TestAircraftSys{K,NoControlMapping,M,A,P,L,S} where {K,M,A,P,L,S}) = nothing
 
 
 function f_cont!(ac_sys::TestAircraftSys, trn::AbstractTerrainModel, atm::AtmosphericSystem)
