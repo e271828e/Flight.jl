@@ -23,7 +23,7 @@ const ω_ie = 7.292115e-05 #Earth's angular velocity with respect to the ECI fra
 
 #derived parameters
 const b = a * (1 - f) #Polar semi-minor axis
-const e² = 2f - f^2 #First eccentricity squared (^ operator calls _power_by_squaring, no need to write f*f)
+const e² = 2f - f^2 #First eccentricity squared
 const e = √e² #First eccentricity
 const eʹ² = e² / (1 - e²) #Second eccentricity squared
 const eʹ = √eʹ² #Second eccentricity

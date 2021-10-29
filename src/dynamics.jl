@@ -103,7 +103,7 @@ These are:
 - `r_ObG_b`: Position vector from the airframe origin Ob to the aircraft's
   center of mass G, projected on the airframe axes εb.
 
-Considerations on the role of mass properties in the aircraft dynamic equations:
+Notes:
 - The inertia tensor `J_Ob_b` must include the contributions of any rotating
   elements on the aircraft. As long as rotating elements have axial symmetry
   around their axes of rotation, their contributions to `J_Ob_b` will be
@@ -111,8 +111,8 @@ Considerations on the role of mass properties in the aircraft dynamic equations:
 - Aircraft dynamics and kinematics are formulated on the airframe origin Ob
   instead of the aircraft's center of mass G. This allows for any of the
   aircraft's mass properties to change, either gradually (for example, due to
-  fuel consumption) or suddenly (due to a payload release), without causing
-  discontinuities in the kinematic state vector.
+  fuel consumption) or suddenly (due to a payload release), without having to
+  worry about discontinuities in the kinematic state vector.
 """
 Base.@kwdef struct MassData
     m::Float64 = 1.0

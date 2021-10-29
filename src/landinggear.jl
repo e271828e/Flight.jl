@@ -4,85 +4,85 @@ module LandingGear
 using StaticArrays
 using ComponentArrays
 
+using Flight.ModelingTools
 using Flight.Airdata
+using Flight.Dynamics
 using Flight.Airframe
+
+#for method extension without module qualifier
+import Flight.ModelingTools: get_x0, get_d0, get_y0, get_u0, f_cont!, f_disc!
 import Flight.Airframe: get_wr_b, get_hr_b
-import Flight.ModelingTools: get_x0, get_d0, Y, get_u0, f_cont!, f_disc!
 
-export LandingGearLeg, LandingGearGroup
-
-abstract type AbstractLandingGearLeg <: SystemDescriptor end
-
-Base.@kwdef struct LandingGearLeg <: AbstractLandingGearLeg
-end
+export LandingGearLeg
 
 """
 SET NORMALIZATION TO false!!!!!!!
 """
 
-#=
-
 #first implement a LandingGearLeg with a basic shock absorber, direct steering
 #and direct braking. then add the required generalizations to allow for
 #NoSteering, NoBraking, etc.
 
-
-abstract type AbstractActuator end
-
-Base.@kwdef struct LandingGearLeg{A<:AbstractShockAbsorber, S <: AbstractSteering, B <: AbstractBraking}
-    frame::FrameSpec
-    contact::ContactModel #vRegulator goes here
-    shock::A
-    steering::S
-    braking::B
-end
-
-struct ContactModel
+#aqui faltan muchos parametros: los μ no deben ser Floats, sino permitir static,
+#dynamic, falta breakout velocity interval
+Base.@kwdef struct ContactModel
     μ_roll::Float64
     μ_skid::Float64
     k_p::Float64
     k_i::Float64
 end
 get_x0(::ContactModel) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
-Y(::ContactModel) = ComponentVector(v = zeros(2), s = zeros(2), α_p = zeros(2), α_i = zeros(2),
+get_y0(::ContactModel) = ComponentVector(v = zeros(2), s = zeros(2), α_p = zeros(2), α_i = zeros(2),
                                     α_raw = zeros(2), α_sat = zeros(2), α = zeros(2))
-get_u0(::ContactModel) = nothing
 
-abstract type AbstractSteering end
+#a shock absorber does not have to be a System, so strictly speaking we wouldn't
+#need to derive from AbstractComponent
+abstract type AbstractShockAbsorber <: AbstractComponent end
+get_force(::A) where {A<:AbstractShockAbsorber} = no_extend_error(get_force, A)
+
+Base.@kwdef struct StandardShockAbsorber <: AbstractShockAbsorber
+    l_0::Float64 = 1 #natural length
+    k_s::Float64 = 25000 #spring constant
+    k_d_ext::Float64 = 1000 #extension damping coefficient
+    k_d_cmp::Float64 = 1000 #compression damping coefficient
+    ξ_min::Float64 = -1 #compression below which the shock absorber is disabled
+end
+
+abstract type AbstractSteering <: AbstractComponent end
 
 struct NoSteering <: AbstractSteering end
-get_x0(::NoSteering) = nothing
-Y(::NoSteering) = nothing
-get_u0(::NoSteering) = nothing
 
 struct DirectSteering <: AbstractSteering
     limits::SVector{2,Float64}
 end
-get_x0(::DirectSteering) = nothing
-Y(::DirectSteering) = 0.0 #steering angle
 get_u0(::DirectSteering) = 0.0 #steering angle input
+get_y0(::DirectSteering) = 0.0 #steering angle
 
-struct ActuatedSteering{A <: AbstractActuator} <: AbstractSteering
-    limits::SVector{2,Float64} #more generally, transmission kinematics could go here
-    actuator::A #actuator model parameters go here
-end
-get_x0(steering::ActuatedSteering) = get_x0(steering.actuator)
-Y(steering::ActuatedSteering) = Y(steering.actuator)
-get_u0(steering::ActuatedSteering) = get_u0(steering.actuator) #typically, 1
+# struct ActuatedSteering{A <: AbstractActuator} <: AbstractSteering
+#     limits::SVector{2,Float64} #more generally, transmission kinematics could go here
+#     actuator::A #actuator model parameters go here
+# end
+# get_x0(steering::ActuatedSteering) = get_x0(steering.actuator)
+# get_y0(steering::ActuatedSteering) = get_x0(steering.actuator)
+# get_u0(steering::ActuatedSteering) = get_u0(steering.actuator) #typically, 1
 
-abstract type AbstractBraking end
+abstract type AbstractBraking <: AbstractComponent end
 
 struct NoBraking <: AbstractBraking end
-get_x0(::NoBraking) = nothing
-Y(::NoBraking) = nothing
-get_u0(::NoBraking) = nothing
 
 struct DirectBraking <: AbstractBraking
     efficiency::Float64
 end
-get_x0(::DirectBraking) = nothing
-Y(::DirectBraking) = 0.0 #braking strength
 get_u0(::DirectBraking) = 0.0 #braking strength input
+get_y0(::DirectBraking) = 0.0 #braking strength
+
+Base.@kwdef struct LandingGearLeg{A<:AbstractShockAbsorber, S <: AbstractSteering, B <: AbstractBraking} <: AbstractAirframeComponent
+    frame::FrameSpec
+    contact::ContactModel #vRegulator goes here
+    shock::A
+    steering::S
+    braking::B
+end
 
 function get_x0(ldg::LandingGearLeg{A,S,B}) where {A,S,B}
     x_blocks = Dict(:Symbol, Any)
@@ -108,29 +108,11 @@ end
 #get_braking_strength(x, u, ldg::Ldg{A,S,NoBraking} where {A,S} ) = 0
 #get_braking_strength(x, u, ldg::Ldg{A,S,DirectBraking} where {A,S} ) = u.braking
 #get_μ_max(x,u,ldg) calls braking_strength (from zero to one), but in the future
-could #also #account for other braking model parameters
-
-=#
+#could also #account for other braking model parameters
 
 
 #################### AbstractSystem interface
-get_x0(::LandingGearLeg) = ComponentVector(state = 0.0)
-Y(::LandingGearLeg) = ComponentVector(output = 0.0) #both are valid, but not having missing elements in the overall Y vector is slightly faster for some operations
-get_u0(::LandingGearLeg) = missing
-f_cont!(y, ẋ, x, u, t, ldg::LandingGearLeg, trn = nothing) = (ẋ.state = 0.001x.state)
-f_disc!(x, u, t, ldg::LandingGearLeg, trn = nothing) = false
 
-
-get_wr_b(y, comp::LandingGearLeg) = Wrench()
-get_hr_b(y, comp::LandingGearLeg) = SVector(0.0, 0, 0)
-
-
-
-struct LandingGearGroup{C} <: AirframeGroup{C} end
-
-function LandingGearGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractLandingGearLeg} where {N}})
-    LandingGearGroup{nt}()
-end
 
 end
 

@@ -157,8 +157,8 @@ function test_Geographic()
     @test ltf(p_nve, π/3) == ltf(p_nve.loc, π/3)
     @test radii(p_nve) == radii(p_nve.loc)
     @test gravity(p_llo) ≈ gravity(p_nve)
-    @test g_l(p_llo) ≈ g_l(p_nve)
-    @test G_l(p_llo) ≈ G_l(p_nve)
+    @test g_n(p_llo) ≈ g_n(p_nve)
+    @test G_n(p_llo) ≈ G_n(p_nve)
 
 end
 

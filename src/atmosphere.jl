@@ -94,13 +94,13 @@ end
 end
 
 
-##################### ConstantUniformISA ###########################
+##################### SimpleISA ###########################
 
 #a System{<:AbstractISA} may have an output type of its own, as any other
-#System. however, this output is NOT an ISAData instance. the ISA_data
-#returned by a ISA System depends on the location specified in the query.
-#instead, the output from an ISA System may hold quantities of interest related
-#to its own internal state, if it has one due to it being a dynamic ISA
+#System. however, this output generally will not be an ISAData instance. the
+#ISAData returned by a ISA System depends on the location specified in the
+#query. instead, the output from an ISA System may hold quantities of interest
+#related to its own internal state, if it has one due to it being a dynamic ISA
 #implementation.
 
 #AbstractISA subtypes: ConstantUniformISA (SimpleISA), ConstantFieldISA,
@@ -141,6 +141,9 @@ end
 function WindData(::T, ::Abstract2DLocation) where {T<:System{<:AbstractWind}}
     error("WindData constructor not implemented for $T")
 end
+
+
+######################## SimpleWind ############################
 
 struct SimpleWind <: AbstractWind end
 
