@@ -163,6 +163,8 @@ SciMLBase.step!(m::Model, args...) = step!(m.integrator, args...)
 
 SciMLBase.solve!(m::Model) = solve!(m.integrator)
 
+SciMLBase.get_proposed_dt(m::Model) = get_proposed_dt(m.integrator)
+
 function SciMLBase.reinit!(m::Model, args...; kwargs...)
 
     #for an ODEIntegrator, the optional args... is simply a new initial

@@ -1,7 +1,7 @@
 """
 Lightweight 3D attitude representation module.
 
-Defines the abstract type `Rotation`, and implements four concrete subtypes:
+Defines the abstract type `Abstract3DRotation`, and implements four concrete subtypes:
 - Unit quaternion (`RQuat`)
 - Rotation matrix (`RMatrix`)
 - Axis-angle (`RAxAng`)
@@ -18,7 +18,7 @@ All of them support the essential attitude operations used in this package:
 operations natively, and therefore it can be used for promotion whenever a
 specific operation cannot be directly performed on its original operand(s).
 
-This allows for a common interface; any `Rotation` subtype need only implement
+This allows for a common interface; any `Abstract3DRotation` subtype need only implement
 conversions to and from `RQuat` to be fully compatible with all other subtypes
 and operations. However, for efficiency reasons, some direct methods are
 provided for the implemented subtypes.
@@ -32,7 +32,7 @@ using Flight.Quaternions
 using Flight.Plotting
 #using ..Quaternions: UnitQuat, Quat #also works (but relies on folder hierarchy)
 
-export Rotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dt
+export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dt
 
 const half_π = π/2
 
@@ -47,20 +47,20 @@ function skew(v::AbstractVector)
 
 end
 
-######################### Rotation ###########################
+######################### Abstract3DRotation ###########################
 
 """
 Generic 3D rotation descriptor
 """
-abstract type Rotation end
+abstract type Abstract3DRotation end
 
 "Function call notation for coordinate transformations"
-(r::Rotation)(v::AbstractVector{<:Real}) = r * v
+(r::Abstract3DRotation)(v::AbstractVector{<:Real}) = r * v
 
 ############################# RQuat ###############################
 
 "Unit quaternion representation"
-struct RQuat <: Rotation
+struct RQuat <: Abstract3DRotation
     _u::UnitQuat #no normalization is performed for an UnitQuat input
 end
 
@@ -69,7 +69,7 @@ function RQuat(v::AbstractVector{<:Real}; normalization::Bool = true)
     RQuat(UnitQuat(SVector{4,Float64}(v); normalization))
 end
 RQuat() = RQuat(UnitQuat(1.0))
-RQuat(r::Rotation) = convert(RQuat, r)
+RQuat(r::Abstract3DRotation) = convert(RQuat, r)
 
 Base.getindex(r::RQuat, i) = getindex(r._u, i)
 Base.length(r::RQuat) = length(r._u)
@@ -115,23 +115,23 @@ dt(r_ab::RQuat, ω_ab_b::AbstractVector{<:Real}) = 0.5 * (r_ab._u * FreeQuat(ima
 
 ##### RQuat fallbacks #####
 
-#require each Rotation subtype to implement conversions to and from RQuat
-Base.convert(::Type{RQuat}, r::R) where {R<:Rotation} = error("Implement $R to RQuat conversion")
-Base.convert(::Type{R}, r::RQuat) where {R<:Rotation} = error("Implement RQuat to $R conversion")
+#require each Abstract3DRotation subtype to implement conversions to and from RQuat
+Base.convert(::Type{RQuat}, r::R) where {R<:Abstract3DRotation} = error("Implement $R to RQuat conversion")
+Base.convert(::Type{R}, r::RQuat) where {R<:Abstract3DRotation} = error("Implement RQuat to $R conversion")
 
 #this enables a two-step conversion via RQuat, but requires defining trivial
 #conversions to avoid stack overflow
-Base.convert(::Type{R}, r::Rotation) where {R<:Rotation} = convert(R, RQuat(r))
-Base.convert(::Type{R}, r::R) where {R<:Rotation} = r
+Base.convert(::Type{R}, r::Abstract3DRotation) where {R<:Abstract3DRotation} = convert(R, RQuat(r))
+Base.convert(::Type{R}, r::R) where {R<:Abstract3DRotation} = r
 Base.convert(::Type{RQuat}, r::RQuat) = r
 
 #unless the representation defines its own methods, fall back to RQuat;
 #promote rules don't work here, because promoting two inputs of the same subtype
 #leaves them unchanged, and here we need them converted to RQuat
-Base.adjoint(r::R) where {R<:Rotation} = convert(R, RQuat(r)')
-Base.:*(r::Rotation, v::AbstractVector{<:Real}) = RQuat(r) * v
-Base.:(≈)(r1::Rotation, r2::Rotation) = RQuat(r1) ≈ RQuat(r2)
-Base.:∘(r1::Rotation, r2::Rotation) = RQuat(r1) ∘ RQuat(r2)
+Base.adjoint(r::R) where {R<:Abstract3DRotation} = convert(R, RQuat(r)')
+Base.:*(r::Abstract3DRotation, v::AbstractVector{<:Real}) = RQuat(r) * v
+Base.:(≈)(r1::Abstract3DRotation, r2::Abstract3DRotation) = RQuat(r1) ≈ RQuat(r2)
+Base.:∘(r1::Abstract3DRotation, r2::Abstract3DRotation) = RQuat(r1) ∘ RQuat(r2)
 
 #absolute equality is not defined in general, because comparing two different
 #subtypes requires promotion to RQuat, whose outcome is affected by floating
@@ -140,7 +140,7 @@ Base.:∘(r1::Rotation, r2::Rotation) = RQuat(r1) ∘ RQuat(r2)
 ######################### RMatrix #######################
 
 "Rotation matrix representation"
-struct RMatrix <: Rotation
+struct RMatrix <: Abstract3DRotation
     _mat::SMatrix{3, 3, Float64, 9}
     function RMatrix(input::AbstractArray{<:Real, 2}; normalization::Bool = true)
         return normalization ? new(qr(input).Q) : new(input)
@@ -149,7 +149,7 @@ end
 
 #normalize by default
 RMatrix() = RMatrix(SMatrix{3,3,Float64}(I), normalization = false)
-RMatrix(r::Rotation) = convert(RMatrix, r)
+RMatrix(r::Abstract3DRotation) = convert(RMatrix, r)
 
 Base.size(r::RMatrix) = size(getfield(r,:_mat))
 Base.getindex(r::RMatrix, i...) = getindex(getfield(r,:_mat), i...)
@@ -253,7 +253,7 @@ end
 ############################# RAxAng ###############################
 
 "Axis-angle representation"
-struct RAxAng <: Rotation
+struct RAxAng <: Abstract3DRotation
     axis::SVector{3, Float64}
     angle::Float64
     function RAxAng(axis::AbstractVector{<:Real}, angle::Real; normalization::Bool = true)
@@ -262,7 +262,7 @@ struct RAxAng <: Rotation
     end
 end
 
-RAxAng(r::Rotation) = convert(RAxAng, r)
+RAxAng(r::Abstract3DRotation) = convert(RAxAng, r)
 RAxAng(::Nothing, ::Real; normalization::Bool = false) = RAxAng()
 RAxAng(input::Tuple{Union{Nothing, AbstractVector{<:Real}}, Real}) = RAxAng(input...)
 
@@ -296,7 +296,7 @@ Base.adjoint(r::RAxAng) = RAxAng(r.axis, -r.angle)
 ############################# REuler #############################
 
 "Euler angle representation (convention is ZYX)"
-struct REuler <: Rotation
+struct REuler <: Abstract3DRotation
     ψ::Float64 #heading
     θ::Float64 #inclination
     φ::Float64 #bank
@@ -308,7 +308,7 @@ struct REuler <: Rotation
     end
 end
 
-REuler(r::Rotation) = convert(REuler, r)
+REuler(r::Abstract3DRotation) = convert(REuler, r)
 REuler(input::Tuple{Real, Real, Real}) = REuler(input...)
 REuler(; ψ = 0, θ = 0, φ = 0) = REuler(ψ, θ, φ)
 
@@ -332,7 +332,7 @@ end
 
 #unless a more specialized method is defined, a TimeHistory{Rotations} is
 #converted to REuler for plotting
-@recipe function plot_rotation(th::TimeHistory{<:AbstractVector{<:Rotation}};
+@recipe function plot_rotation(th::TimeHistory{<:AbstractVector{<:Abstract3DRotation}};
                                 rot_ref = "", rot_target = "")
 
     v_euler = Vector{REuler}(undef, length(th.data))

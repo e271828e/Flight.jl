@@ -105,6 +105,8 @@ function init!(x::KinLTFX, init::KinInit)
     x.vel.ω_eb_b .= ω_eb_b
     x.vel.v_eOb_b .= v_eOb_b
 
+    return nothing
+
 end
 
 function f_kin!(ẋ_pos::PosLTFX, x::KinLTFX)

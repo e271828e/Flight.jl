@@ -30,6 +30,8 @@ include("statemachine.jl")
 #aircraft
 include("aircraft.jl")
 
+#output interfaces
+include("output.jl")
 
 @reexport using .Utils
 @reexport using .ModelingTools
@@ -52,6 +54,8 @@ include("aircraft.jl")
 @reexport using .LandingGear
 
 @reexport using .Aircraft
+
+@reexport using .Output
 
 export ftest
 

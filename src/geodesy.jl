@@ -12,7 +12,7 @@ using Flight.Plotting
 
 export Abstract2DLocation, NVector, LatLon
 export Altitude, Ellipsoidal, Orthometric, Geopotential, AltEllip, AltOrth, AltGeop
-export Abstract3DPosition, Geographic, CartECEF
+export Abstract3DLocation, Geographic, CartECEF
 export ω_ie, gravity, g_n, G_n, ltf, radii, get_ψ_nl, get_geoid_offset
 
 #WGS84 fundamental constants, SI units
@@ -61,7 +61,7 @@ end
 NVector(loc::Abstract2DLocation) = convert(NVector, loc)
 
 #NVector from ECEF to Local Tangent Frame rotation
-NVector(r_el::Rotation) = NVector(RMatrix(r_el))
+NVector(r_el::Abstract3DRotation) = NVector(RMatrix(r_el))
 
 NVector(r_el::RMatrix) = NVector( -r_el[:,3], normalization = false)
 
@@ -133,7 +133,7 @@ function ltf(loc::Abstract2DLocation, ψ_nl::Real = 0.)
 end
 
 #extract Wander Angle from ECEF to Local Tangent Frame rotation
-get_ψ_nl(r_el::Rotation) = get_ψ_nl(RMatrix(r_el))
+get_ψ_nl(r_el::Abstract3DRotation) = get_ψ_nl(RMatrix(r_el))
 get_ψ_nl(r_el::RMatrix) = atan( -r_el[3,2], r_el[3,1] )
 function get_ψ_nl(r_el::RQuat)
     #n_e is the third column of the R_el matrix. we don't need the complete
@@ -258,30 +258,30 @@ Base.:>(h1::Real, h2::Altitude{D}) where {D} = h2 < h1
 Base.:<(h1::Real, h2::Altitude{D}) where {D} = h2 > h1
 
 
-########################## Abstract3DPosition ##########################
+########################## Abstract3DLocation ##########################
 
-abstract type Abstract3DPosition end
+abstract type Abstract3DLocation end
 
 #avoid infinite recursion
-Base.convert(::Type{P}, p::P) where {P<:Abstract3DPosition} = p
+Base.convert(::Type{P}, p::P) where {P<:Abstract3DLocation} = p
 
 
 #### Geographic ####
 
 #the default constructor generates a Geographic{NVector, EllipsoidalAlt} instance
-Base.@kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DPosition
+Base.@kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DLocation
     loc::L = NVector()
     alt::Altitude{H} = AltOrth()
 end
 Geographic(loc::Abstract2DLocation) = Geographic(loc, AltOrth())
-Geographic(p::Abstract3DPosition) = Geographic{NVector,Ellipsoidal}(p)
-Geographic{L,H}(p::Abstract3DPosition) where {L,H} = convert(Geographic{L,H}, p)
+Geographic(p::Abstract3DLocation) = Geographic{NVector,Ellipsoidal}(p)
+Geographic{L,H}(p::Abstract3DLocation) where {L,H} = convert(Geographic{L,H}, p)
 
 function Base.convert(::Type{Geographic{L,H}}, p::Geographic) where {L,H}
     Geographic(convert(L, p.loc), Altitude{H}(p))
 end
 
-Altitude{D}(p::Abstract3DPosition) where {D} = Altitude{D}(Geographic{NVector,D}(p))
+Altitude{D}(p::Abstract3DLocation) where {D} = Altitude{D}(Geographic{NVector,D}(p))
 Altitude{D}(p::Geographic) where {D} = Altitude{D}(p.alt, p.loc)
 
 function Base.:(==)(p1::Geographic{NVector,H}, p2::Geographic{NVector,H}) where {H}
@@ -292,22 +292,22 @@ function Base.:(≈)(p1::Geographic{L,H}, p2::Geographic{L,H}) where {L,H}
     return p1.alt ≈ p2.alt && p1.loc ≈ p2.loc
 end
 
-Base.:(≈)(p1::Abstract3DPosition, p2::Abstract3DPosition) = CartECEF(p1) ≈ CartECEF(p2)
+Base.:(≈)(p1::Abstract3DLocation, p2::Abstract3DLocation) = CartECEF(p1) ≈ CartECEF(p2)
 
-function Base.:(==)(p1::Abstract3DPosition, p2::Abstract3DPosition)
+function Base.:(==)(p1::Abstract3DLocation, p2::Abstract3DLocation)
     throw(ArgumentError("Exact comparison between $(typeof(p1)) and $(typeof(p2)) not defined, use ≈ instead"))
 end
 
-Base.:(-)(p::T) where {T<:Abstract3DPosition} = convert(T, -CartECEF(p))
+Base.:(-)(p::T) where {T<:Abstract3DLocation} = convert(T, -CartECEF(p))
 
 
 
 ############################# CartECEF #############################
 
-struct CartECEF <: Abstract3DPosition
+struct CartECEF <: Abstract3DLocation
     data::SVector{3,Float64}
 end
-CartECEF(p::Abstract3DPosition) = convert(CartECEF, p)
+CartECEF(p::Abstract3DLocation) = convert(CartECEF, p)
 CartECEF() = CartECEF(Geographic())
 
 Base.:(==)(r1::CartECEF, r2::CartECEF) = r1.data == r2.data
@@ -385,13 +385,13 @@ function Base.convert(::Type{CartECEF}, p::Geographic{NVector, Ellipsoidal})
 
 end
 
-##### Generic Abstract3DPosition methods ####
+##### Generic Abstract3DLocation methods ####
 
-ltf(p::Abstract3DPosition, ψ_nl::Real = 0.0) = ltf(Geographic{NVector,Ellipsoidal}(p).loc, ψ_nl)
-radii(p::Abstract3DPosition) = radii(Geographic{NVector,Ellipsoidal}(p).loc)
+ltf(p::Abstract3DLocation, ψ_nl::Real = 0.0) = ltf(Geographic{NVector,Ellipsoidal}(p).loc, ψ_nl)
+radii(p::Abstract3DLocation) = radii(Geographic{NVector,Ellipsoidal}(p).loc)
 
 """
-    gravity(p::Abstract3DPosition)
+    gravity(p::Abstract3DLocation)
 
 Compute normal gravity.
 
@@ -401,7 +401,7 @@ above the WGS84 ellipsoid (h<<a). Direction is assumed normal to the WGS84
 ellipsoid, a good enough approximation for most navigation applications. See
 Hoffmann & Moritz.
 """
-function gravity(p::Abstract3DPosition)
+function gravity(p::Abstract3DLocation)
 
     p_nve = Geographic{NVector,Ellipsoidal}(p)
     n_e = p_nve.loc
@@ -421,18 +421,18 @@ function gravity(p::Abstract3DPosition)
 end
 
 """
-    g_n(p::Abstract3DPosition)
+    g_n(p::Abstract3DLocation)
 
 Compute gravity vector resolved in the local tangent frame.
 """
-g_n(p::Abstract3DPosition) = SVector{3}(0, 0, gravity(p))
+g_n(p::Abstract3DLocation) = SVector{3}(0, 0, gravity(p))
 
 """
-    G_n(p::Abstract3DPosition)
+    G_n(p::Abstract3DLocation)
 
 Compute gravitational attraction resolved in the local tangent frame.
 """
-function G_n(p::Abstract3DPosition)
+function G_n(p::Abstract3DLocation)
 
     q_en = ltf(p)
     ω_ie_e = SVector{3, Float64}(0,0,ω_ie)

@@ -155,7 +155,7 @@ get_u0(::SimpleWind) = USimpleWind()
 f_cont!(::System{<:SimpleWind}, args...) = nothing
 f_disc!(::System{<:SimpleWind}, args...) = false
 
-function WindData(wind::System{<:SimpleWind}, ::Abstract3DPosition)
+function WindData(wind::System{<:SimpleWind}, ::Abstract3DLocation)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData
 end
 
