@@ -113,7 +113,7 @@ end
 
 struct SimpleISA <: AbstractISA end #Constant, Uniform ISA
 
-Base.@kwdef mutable struct USimpleISA
+Base.@kwdef mutable struct USimpleISA #only allocates upon System instantiation
     T_sl::Float64 = T_std
     p_sl::Float64 = p_std
 end
@@ -148,7 +148,7 @@ end
 struct SimpleWind <: AbstractWind end
 
 Base.@kwdef mutable struct USimpleWind
-    v_ew_n::MVector{3,Float64} = zeros(3)
+    v_ew_n::MVector{3,Float64} = zeros(3) #MVector allows changing single components
 end
 
 get_u0(::SimpleWind) = USimpleWind()

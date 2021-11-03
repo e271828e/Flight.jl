@@ -103,7 +103,7 @@ Base.@kwdef mutable struct EThrusterD end
 
 get_x0(::EThruster) = copy(EThrusterXTemplate)
 # get_d0(::EThruster) = EThrusterD() #not really needed, defaults to nothing
-get_u0(::EThruster) = EThrusterU() #not really needed, defaults to nothing
+get_u0(::EThruster) = EThrusterU()
 get_y0(::EThruster) = EThrusterY()
 
 

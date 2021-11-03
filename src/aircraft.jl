@@ -132,40 +132,36 @@ struct NoAircraftU end
 
 get_u0(::TestAircraft{Kin,NoControlMapping,Mass,Aero,Pwp,Ldg,Srf} where {Kin,Mass,Aero,Pwp,Ldg,Srf}) = NoAircraftU()
 
-function get_x0(ac::TestAircraft)
-    ComponentVector(
-        kin = get_x0(ac.kin),
-        # smac = get_x0(ac.smac),
-        mass = get_x0(ac.mass),
-        aero = get_x0(ac.aero),
-        pwp = get_x0(ac.pwp),
-        ldg = get_x0(ac.ldg),
-        srf = get_x0(ac.srf)
-        )
-end
+get_x0(ac::TestAircraft) = ComponentVector(
+    kin = get_x0(ac.kin),
+    # smac = get_x0(ac.smac),
+    mass = get_x0(ac.mass),
+    aero = get_x0(ac.aero),
+    pwp = get_x0(ac.pwp),
+    ldg = get_x0(ac.ldg),
+    srf = get_x0(ac.srf)
+    )
 
-function get_y0(ac::TestAircraft)
-    TestAircraftY(
-        DynData(),
-        KinData(),
-        AirData(),
-        # get_y0(ac.smac),
-        get_y0(ac.mass),
-        get_y0(ac.aero),
-        get_y0(ac.pwp),
-        get_y0(ac.ldg),
-        get_y0(ac.srf))
-end
+get_y0(ac::TestAircraft) = TestAircraftY(
+    DynData(),
+    KinData(),
+    AirData(),
+    # get_y0(ac.smac),
+    get_y0(ac.mass),
+    get_y0(ac.aero),
+    get_y0(ac.pwp),
+    get_y0(ac.ldg),
+    get_y0(ac.srf)
+    )
 
-function get_d0(ac::TestAircraft)
-    TestAircraftD(
-        # get_d0(ac.smac),
-        get_d0(ac.mass),
-        get_d0(ac.aero),
-        get_d0(ac.pwp),
-        get_d0(ac.ldg),
-        get_d0(ac.srf))
-end
+get_d0(ac::TestAircraft) = TestAircraftD(
+    # get_d0(ac.smac),
+    get_d0(ac.mass),
+    get_d0(ac.aero),
+    get_d0(ac.pwp),
+    get_d0(ac.ldg),
+    get_d0(ac.srf)
+    )
 
 
 const TestAircraftSys{K,C,M,A,P,L,S} = System{TestAircraft{K,C,M,A,P,L,S}} where {K,C,M,A,P,L,S}
