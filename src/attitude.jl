@@ -120,7 +120,7 @@ Base.convert(::Type{RQuat}, r::R) where {R<:Abstract3DRotation} = error("Impleme
 Base.convert(::Type{R}, r::RQuat) where {R<:Abstract3DRotation} = error("Implement RQuat to $R conversion")
 
 #this enables a two-step conversion via RQuat, but requires defining trivial
-#conversions to avoid stack overflow
+#conversions to avoid infinite recursion
 Base.convert(::Type{R}, r::Abstract3DRotation) where {R<:Abstract3DRotation} = convert(R, RQuat(r))
 Base.convert(::Type{R}, r::R) where {R<:Abstract3DRotation} = r
 Base.convert(::Type{RQuat}, r::RQuat) = r

@@ -1,5 +1,10 @@
 module Terrain
 
+using StaticArrays
+
+using Flight.Geodesy
+using Flight.Utils
+
 #TerrainModel does not belong to the Aircraft itself. it must be defined
 #separately, and passed as an external data source. the same goes for
 #AtmosphereModel. there must be a level above the Aircraft, which will typically
@@ -31,9 +36,38 @@ module Terrain
 #Model (Atmospheric, Terrain, Vehicle...) can run on separate Tasks, and each of
 #these in a different thread. Thread safety.
 
-export AbstractTerrainModel, DummyTerrainModel
+export AbstractTerrain, DummyTerrain, HorizontalTerrain
+export TerrainData, SurfaceCondition
 
-abstract type AbstractTerrainModel end
-struct DummyTerrainModel <: AbstractTerrainModel end
+@enum SurfaceCondition Dry Wet Icy
 
+struct TerrainData{D<:Geodesy.AbstractAltitudeDatum}
+    altitude::Altitude{D}
+    normal::SVector{3,Float64} #NED components, inward pointing
+    condition::SurfaceCondition
 end
+
+TerrainData(; altitude = AltOrth(0), normal = SVector{3,Float64}(0,0,1),
+    condition = Dry) = TerrainData(altitude, SVector{3,Float64}(normal), condition)
+
+
+######################## AbstractTerrain ##########################
+
+abstract type AbstractTerrain end
+get_terrain_data(::T, ::Abstract3DLocation) where {T<:AbstractTerrain}=
+    no_extend_error(get_terrain_data, T)
+
+struct DummyTerrain <: AbstractTerrain end
+
+struct HorizontalTerrain{D<:Geodesy.AbstractAltitudeDatum} <: AbstractTerrain
+    altitude::Altitude{D}
+    condition::SurfaceCondition
+end
+
+HorizontalTerrain(; altitude = AltOrth(0), condition = Dry) =
+    HorizontalTerrain(altitude, condition)
+
+get_terrain_data(trn::HorizontalTerrain, ::Abstract3DLocation) =
+    TerrainData(trn.altitude, SVector{3,Float64}(0,0,1), trn.condition)
+
+end #module

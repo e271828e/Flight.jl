@@ -1,12 +1,12 @@
 
-Assumptions:
+Main assumptions / simplifications:
 
 The landing gear strut (whether it is an oleo or a spring steel strut) compresses along a straight
 line
 
-The compression force depends on the position and compression force can be modeled We define
+The compression force depends on the position and
 
-Equivalent spring damper
+No detailed tire dynamics
 
 Linear momentum equation for the mass
 
@@ -17,129 +17,142 @@ Strut frame $s$:
 - $y_s$: Parallel to the wheel axle when the steering angle $\psi_{sg}$ is zero.
 The attitude of the strut frame axes with respect to the airframe axes is constant and known.
 
-Gear frame $g$:
-- $O_g$: End point of the tire . It is located on the $z_s$ axis.
-- $z_g$: Parallel to $z_s$.
-- $y_g$: Parallel to the wheel axle. The angle from $y_s$ to $y_g$ is the steering angle $\psi_{sg}$.
+Wheel frame $w$:
+- $O_w$: End point of the tire, located along the $z_s$ axis.
+- $z_w$: Parallel to $z_s$.
+- $y_w$: Parallel to the wheel axle. The angle from $y_s$ to $y_w$ is the steering angle $\psi_{sw}$.
 
 Contact frame $c$:
-- $O_c$: Intersection of the $z_g$ axis with the ground.
-- $z_c$: Parallel to the local vertical, which is defined by the $z_n$ axis.
-- $y_c$: Parallel to the wheel axle.
+- $O_c$: Coincident with $O_w$
+- $z_c$: Parallel to the terrain's local normal, defined by its NED components $k_t^n$.
+- $x_c$: Parallel to the projection of the $x_w$ axis onto the terrain's tangent plane.
 
 Strut length parameters:
-- $l$: Signed distance from $O_s$ to $O_g$ along $z_s$
-- $l_0$: Signed distance from $O_s$ to $O_g$ along $z_s$ when the strut is at its natural length (no compression or
+- $l$: Signed distance from $O_s$ to $O_w$ along $z_s$
+- $l_0$: Signed distance from $O_s$ to $O_w$ along $z_s$ when the strut is at its natural length (no compression or
   elongation other than that due to the weight of the strut-tire assembly itself).
-- $\xi = l - l_0$: Strut elongation. When the tire is in the air, $l > l_0$ and the strut is at its natural
+- $\xi = \min\{0,l - l_0\}$: Strut elongation. When the tire is in the air, $l > l_0$ and the strut is at its natural
   length ($\xi = 0$). When the tire is in contact with the ground, but supporting no weight, so that the strut is
   exactly at its natural length, we have $\xi = 0$. When  the tire is on the ground and the strut is compressed,
-  $\xi = l - l_0 < 0$. When there is contact, we have $O_g = O_c$
+  $\xi = l - l_0 < 0$. When there is contact, we have $O_w = O_c$
 
 ### WoW Determination
 
 First, we need to compute $O_c$ (that is, $l$) to determine whether there is ground contact.
 
-Now, we have:\
-$h(O_c) = h(O_s) - e_3^T r_{O_sO_c}^n$
+We have:
+$$h(O_c) = h(O_s) - e_3^T r_{O_sO_c}^n$$
 
-Noting that $r_{O_sO_c}^s = l \, k_s^s = l \,e_3$:\
-$k_s^n = R^n_s k_s^s$\
-$h(O_c) = h(O_s) - e_3^T k_s^n \,l$
+Noting that $r_{O_sO_c}^s = l \, k_s^s = l \,e_3$:
+$$k_s^n = R^n_s k_s^s$$
+$$h(O_c) = h(O_s) - e_3^T k_s^n \,l$$
 
-Setting $h(O_c) = h_{gnd}(O_c)$:\
-$h_{gnd}(O_c) = h(O_s) - e_3^T k_s^n \,l$
+Setting $h(O_c) = h_{gnd}(O_c)$:
+$$h_{gnd}(O_c) = h(O_s) - e_3^T k_s^n \,l$$
 
-This equation cannot be directly solved, because $O_c$ is unknown (its location is given by the value of $l$), and
-therefore we cannot evaluate $h_{gnd}(O_c)$. However, $h_{gnd}(O_c) \approx h_{gnd}(O_s)$  will be a suitable approximation in most cases.
+This equation cannot be directly solved, because $O_c$ is unknown (its location is given by the
+value of $l$), and therefore we cannot evaluate $h_{gnd}(O_c)$. However, a suitable approximation is
+$h_{gnd}(O_c) \approx
+h_{gnd}(O_w(l_0))$, where $O_w(l_0)$ is the origin of the wheel frame with the strut at its natural
+length, given by:
 
-$l = \dfrac{h(O_s) - h_{gnd}(O_s) }{e_3^T k^n_s}$
+$${r}_{O_sO_w(l_0)}^s = {\begin{pmatrix} 0 & 0 & l_0 \end{pmatrix}}^T$$
 
-If $e_3^T k^n_s< 0$, the projection of the $z_s$ axis along the Down direction is negative, that is, the strut is upside
-down. If the aircraft is above the ground, enforcing the ground contact constraint would result in the ground pulling
-the contact point towards it and compressing the shock absorber, potentially beyond $O_s$. When the aircraft is far from
-the ground, the compression produces astronomically large forces and the simulation numerically breaks down. Naturally,
-this situation is absurd to begin with, because the contact constraint is unilateral. Therefore, if $e_3^T k^n_s< 0$, we
-should simply set $l = l_0$.
+With this:
 
-Elongation is given by:
+$$\Delta h = h(O_s) - h_{gnd}(O_c)$$
 
-$\xi = l < l_0$
+$$l = \dfrac{\Delta h}{e_3^T k^n_s}$$
 
-If the aircraft falls upside down, the landing gear model will be disabled by the above condition and the aircraft will
-penetrate the ground. If the aircraft then rolls over, the model will be reenabled with a potentially huge compression,
-which will cause numerical blowup again. To avoid this, we can define a minimum $\xi_{min}<0$ below which the model is
-disabled. With this, the WoW condition is:
+If $e_3^T k^n_s< 0$, the projection of the $z_s$ axis along the Down direction is negative, that is, the strut is upside down. If the aircraft is above the ground, enforcing the ground contact constraint would result in the ground pulling the contact point towards it and compressing the shock absorber, potentially beyond $O_s$. When the aircraft is far from the ground, the compression produces astronomically large forces and the simulation numerically breaks down. Naturally, this situation is absurd to begin with, because the contact constraint is unilateral. Therefore, if
+$e_3^T k^n_s< 0$, we should simply set $l = l_0$.
 
-$\xi \in [\xi_{min}, 0]$
+Elongation is then given by:
 
-### Computing $v_{eO_c}^n$
+$$\xi = \min\{0, l < l_0\}$$
 
-$r_{O_eO_c}^e = r_{O_eO_b}^e + r_{O_bO_c}^e = r_{O_eO_b}^e + R^e_b r_{O_bO_c}^b$
+If the aircraft falls upside down, the landing gear model will be disabled by the above condition and the aircraft will penetrate the ground. If the aircraft then rolls over, the model will be reenabled with a potentially huge compression, which will cause numerical blowup again. To avoid this, we can define a minimum $\xi_{min}<0$ below which the model is disabled. With this, the WoW condition is:
 
-$\dot{r}_{O_eO_c}^e = \dot{r}_{O_eO_b}^e + R^e_b \Omega_{eb}^b r_{O_bO_c}^b + R^e_b \dot{r}_{O_bO_c}^b$
-
-${v}_{eO_c}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b + \dot{r}_{O_bO_c}^b =$
-${v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b + \dot{r}_{O_sO_c}^b =$
-${v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b + R^b_s \dot{r}_{O_sO_c}^s =$
-${v}_{eO_c(b)}^b + R^b_s \dot{r}_{O_sO_c}^s$
-
-Where:
-
-${v}_{eO_c(b)}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b$
-
-$r_{O_bO_c}^b = r_{O_bO_s}^b + R^b_s r_{O_sO_c}^s$
-
-The term ${v}_{eO_c(b)}^b$ represents the velocity of the contact point due to airframe motion, and
-$R^b_s \dot{r}_{O_sO_c}^s$ is its velocity due to piston elongation or compression.
-
-${r}_{O_sO_c}^s = {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T$
-
-$\dot{r}_{O_sO_c}^s = {\begin{pmatrix} 0 & 0 & \dot{\xi} \end{pmatrix}}^T = e_3 \dot{\xi}$
-
-Now:
-
-${v}_{eO_c(b)}^n = R^n_b {v}_{eO_c(b)}^b$
-
-${v}_{eO_c}^n = {v}_{eO_c(b)}^n + R^n_s \dot{r}_{O_sO_c}^s  = {v}_{eO_c(b)}^n + R^n_s e_3 \dot{\xi}$
-
-The non-penetration constraint requires that:
-
-$e_3^T {v}_{eO_c}^n = 0 = e_3^T {v}_{eO_c(b)}^n + e_3^T R^n_s e_3 \dot{\xi}$
-
-From which:
-
-$\dot{\xi} = \dfrac{-1}{R^n_s(3,3)} e_3^T {v}_{eO_c(b)}^n$
-
-Once $\dot{\xi}$ is known, we can compute:
-
-${v}_{eO_c}^{x_n} = {v}_{eO_c(b)}^n(1) + e_1^T R^n_s e_3 \dot{\xi} = {v}_{eO_c(b)}^n(1) + R^n_s(1,3) \dot{\xi}$
-
-${v}_{eO_c}^{y_n} = {v}_{eO_c(b)}^n(2) + e_2^T R^n_s e_3 \dot{\xi} = {v}_{eO_c(b)}^n(2) + R^n_s(2,3) \dot{\xi}$
-
+$$\xi \in [\xi_{min}, 0]$$
 
 ### Contact Frame Construction
 
-If the wheel is castered, the azimuth of $x_c$ is that of the horizontal projection of v_eOc_n. Therefore, we have:
+We start by constructing the wheel axes $w$ as a rotation of the strut axes $s$ by an angle
+$\psi_{sw}$ (the steering angle) around $z_s$.
 
-$\psi_{nc} = atan2 \left( {v}_{eO_c}^{y_n}, {v}_{eO_c}^{x_n} \right)$
+$$R^s_w = R_z(\psi_{sw})$$
 
-Note that this implicitly determines the steering angle $\psi_{sg}$, but we don't need to compute it.
+$$R^n_w = R^n_s R^s_w$$
 
-If the wheel is not castered, $\psi_{sg}$ is given. Then:
+$$i^n_w = R^n_w i^w_w = R^n_w e_1$$
 
-$R^s_g = R_z(\psi_{sg})$
+The direction of the $x_c$ axis is given by the projection of the $x_w$ axis onto the terrain
+tangent plane. Thus, $i_c$ can be computed by subtracting from $i_w$ its projection along the terrain
+normal $k_t$, and then normalizing:
 
-$R^n_g = R^n_s R^s_g$
+$$i_c^n = \dfrac{i_w^n - (i_w^n \cdot k_t^n) k_t^n}{\left|i_w^n - (i_w^n \cdot k_t^n) k_t^n\right|}$$
 
-$i^n_g = R^n_g i^g_g = R^n_g e_1$
+The $z_c$ axis is parallel to $k_t$, and $y_c$ can be constructed from $z_c$ and $x_c$:
+$$k_c^n = k_t^n$$
+$$j_c^n = k_c^n \times i_c^n$$
 
-The azimuth of $x_c$ is that of the horizontal projection of the $x_g$ axis. Therefore:
+Then:
+$$R^n_c = {\begin{bmatrix} i_c^n & k_c^n & k_c^n \end{bmatrix}}$$
+$$R^b_c = (R^n_b)^T R^n_c$$
 
-$\psi_{nc} = atan2 \left( i^n_g(2), i^n_g(1)\right)$
+The position of $O_c$ is given by:
+$${r}_{O_sO_c}^s = {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T$$
 
-With $\psi_{nc}$, we can construct $c$ as a rotation of $n$ around $z_n$. And the position of its origin
-$r_{O_bO_c}^b$ was previously computed.
+$$r_{O_bO_c}^b = r_{O_bO_s}^b + R^b_s r_{O_sO_c}^s$$:
+
+### Computing $v_{eO_c}^n$
+
+$$r_{O_eO_c}^e = r_{O_eO_b}^e + r_{O_bO_c}^e = r_{O_eO_b}^e + R^e_b r_{O_bO_c}^b$$
+
+$$\dot{r}_{O_eO_c}^e = \dot{r}_{O_eO_b}^e + R^e_b \Omega_{eb}^b r_{O_bO_c}^b + R^e_b \dot{r}_{O_bO_c}^b$$
+
+$${v}_{eO_c}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b + \dot{r}_{O_bO_c}^b$$
+
+Now:
+$$r_{O_bO_c}^b = r_{O_bO_s}^b + R^b_s r_{O_sO_c}^s$$
+$$\dot{r}_{O_bO_c}^b = \dot{r}_{O_bO_s}^b + R^b_s \dot{r}_{O_sO_c}^s = R^b_s \dot{r}_{O_sO_c}^s$$
+
+$$\dot{r}_{O_sO_c}^s = {\begin{pmatrix} 0 & 0 & \dot{\xi} \end{pmatrix}}^T = e_3 \dot{\xi}$$
+
+$$\dot{r}_{O_bO_c}^b = R^b_s e_3 \dot{\xi}$$
+
+
+Then:
+$${v}_{eO_c}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b + R^b_s e_3 \dot{\xi}$$
+$${v}_{eO_c}^b = {v}_{eO_c(b)}^b + R^b_s e_3 \dot{\xi}$$
+
+Where we have defined:
+$${v}_{eO_c(b)}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b$$
+
+
+
+The term ${v}_{eO_c(b)}^b$ represents the velocity of the contact point due to airframe motion, and
+$R^b_s e_3 \dot{\xi}$ is its velocity due to piston elongation or compression.
+
+Now:
+$$R^c_s = R^c_b R^b_s$$
+
+$${v}_{eO_c(b)}^c = R^c_b {v}_{eO_c(b)}^b$$
+
+$${v}_{eO_c}^c = {v}_{eO_c(b)}^c + R^c_s e_3 \dot{\xi}$$
+
+The non-penetration constraint requires that:
+
+$$e_3^T {v}_{eO_c}^c = 0 = e_3^T {v}_{eO_c(b)}^c + e_3^T R^c_s e_3 \dot{\xi}$$
+
+From which:
+
+$$\dot{\xi} = \dfrac{-1}{R^c_s(3,3)} e_3^T {v}_{eO_c(b)}^c$$
+
+Once $\dot{\xi}$ is known, we can compute:
+
+$${v}_{eO_c}^c = {v}_{eO_c(b)}^c + R^c_s e_3 \dot{\xi}$$
+
 
 ### Maximum Friction Coefficients
 

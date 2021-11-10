@@ -196,7 +196,7 @@ end
 assign_control_inputs!(::TestAircraftSys{K,NoControlMapping,M,A,P,L,S} where {K,M,A,P,L,S}) = nothing
 
 
-function f_cont!(ac_sys::TestAircraftSys, trn::AbstractTerrainModel, atm::AtmosphericSystem)
+function f_cont!(ac_sys::TestAircraftSys, trn::AbstractTerrain, atm::AtmosphericSystem)
 
     @unpack ẋ, x, u, params, subsystems = ac_sys
     @unpack mass, aero, pwp, ldg, srf = subsystems

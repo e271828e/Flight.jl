@@ -313,6 +313,8 @@ CartECEF() = CartECEF(Geographic())
 Base.:(==)(r1::CartECEF, r2::CartECEF) = r1.data == r2.data
 Base.:(≈)(r1::CartECEF, r2::CartECEF) = r1.data ≈ r2.data
 Base.:(-)(r::CartECEF) = CartECEF(-r.data)
+Base.:(+)(r1::CartECEF, r2::AbstractVector{<:Real}) = CartECEF(r1.data + SVector{3,Float64}(r2))
+Base.:(+)(r1::AbstractVector{<:Real}, r2::CartECEF) = r2 + r1
 
 #### AbstractArray interface
 Base.size(::CartECEF) = (3,)

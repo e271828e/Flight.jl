@@ -7,7 +7,7 @@ using BenchmarkTools
 
 plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
 
-trn = DummyTerrainModel()
+trn = DummyTerrain()
 atm_sys = System(AtmosphereCmp())
 
 ac = TestAircraft(
