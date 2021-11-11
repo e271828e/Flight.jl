@@ -31,7 +31,7 @@ Strut length parameters:
 - $l$: Signed distance from $O_s$ to $O_w$ along $z_s$
 - $l_0$: Signed distance from $O_s$ to $O_w$ along $z_s$ when the strut is at its natural length (no compression or
   elongation other than that due to the weight of the strut-tire assembly itself).
-- $\xi = \min\{0,l - l_0\}$: Strut elongation. When the tire is in the air, $l > l_0$ and the strut is at its natural
+- $\xi = \min\{0,l - l_0\}$: Strut deformation. When the tire is in the air, $l > l_0$ and the strut is at its natural
   length ($\xi = 0$). When the tire is in contact with the ground, but supporting no weight, so that the strut is
   exactly at its natural length, we have $\xi = 0$. When  the tire is on the ground and the strut is compressed,
   $\xi = l - l_0 < 0$. When there is contact, we have $O_w = O_c$
@@ -216,11 +216,12 @@ $\mu_{y(max)}:= \mu_{y(max)} \, \min \left( 1, \mu_{skid} / \mu_{mag} \right)$
 
 ### $\mu$ Scaling
 
-As described above, the magnitude and direction of the friction force must be such that the contact point velocity is
-kept at zero. This constraint is enforced as long as the friction coefficients remain below their maximum values,
-computed above. Once a friction coefficient reaches its maximum, it will saturate, and the contact point will start
-moving along that coefficient's direction. In this new condition, the friction force along that direction will have a
-constant value, given by the maximum value of that friction coefficient, and will oppose the direction of movement.
+In our friction model, the force exerted by the ground on the tire at the contact point is given by:
+$$F_{gnd,P}^c = F_N \begin{pmatrix} \mu_x & \mu_y & -1 \end{pmatrix}$$
+
+Where $F_N \ge 0$ is the magnitude of the force along the outward terrain normal, and $\mu_x$ and $\mu_y$ are signed friction coefficients.
+
+As described above, the magnitude and sign of $\mu_x$ and $\mu_y$ must be such that the contact point velocity is kept at zero. This constraint is enforced as long as the friction coefficients remain below their maximum values, computed above. Once a friction coefficient reaches its maximum, it will saturate, and the contact point will start moving along that coefficient's direction. In this new condition, the friction force along that direction will have a constant value, given by the maximum value of that friction coefficient, and will oppose the direction of movement.
 
 This behavior can be simulated by defining the friction coefficients as follows:
 
@@ -315,13 +316,26 @@ the shock absorber, which often can be a reasonable approximation. Multiplying t
 
 $e_3^T R^s_c F_{gnd,P}^c(F_N) + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = m \ddot{\xi} - m e_3^T \left(g^s - a_{eO_s}^s \right) = 0$
 
-Then we have the following scalar equation, which we can solve for $F_N$:
+Then we have the following scalar equation:
 
-$e_3^T R^s_c  {\begin{pmatrix} \mu_x \alpha_x \\ \mu_y \alpha_y \\ -1 \end{pmatrix}} F_N$
-$+ F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = 0$
+$$e_3^T R^s_c  {\begin{pmatrix} \mu_x \alpha_x \\ \mu_y \alpha_y \\ -1 \end{pmatrix}} F_N
++ F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = 0$$
+
+Let us define the non-dimensional contact force as:
+$$f_{gnd,P}^c = {\begin{pmatrix} \mu_x \alpha_x \\ \mu_y \alpha_y \\ -1 \end{pmatrix}} $$
+
+We can then write the previous equation as:
+$$e_3^T f_{gnd,P}^s F_N + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = 0$$
+
+Solving for $F_N$:
+$$F_N = \dfrac{-F_{oleo,P}^{z_s}(\xi, \dot{\xi})}{f_{gnd,P}^{z_s}}$$
 
 Since the contact constraint is unilateral, we must have $F_N \ge 0$, so we must bound the result accordingly. $F_N > 0$
-means that the vertical ground force is negative along $x_c$, as it should. And typically, when the oleo is compressing,
-$F_{oleo,P}^{z_s}(\xi, \dot{\xi}) > 0$. For example, $F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = -k_s \xi - k_d \dot{\xi}$.
+means that the vertical ground force is negative along $z_c$, as it should. And typically, when the oleo is compressing,
+$F_{oleo,P}^{z_s}(\xi, \dot{\xi}) > 0$. For example, $F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = -k_s \xi -
+k_d \dot{\xi}$.
 
-With $F_N$, we have $F_{gnd,P}^c(F_N)$, which is the force directly transmitted to the airframe.
+With $F_N$, we can now compute $F_{gnd,P}^c(F_N)$, which is the force directly transmitted to the airframe through the tire.
+
+Ground force $F_{gnd,P}^s$ (normal and friction), transmitted through the tire.\
+$$F_{gnd,P}^s = R^s_c F_N {\begin{pmatrix} \mu_x \alpha_x & \mu_y \alpha_y & -1 \end{pmatrix}}^T$$

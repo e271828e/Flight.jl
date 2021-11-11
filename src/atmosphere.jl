@@ -148,7 +148,7 @@ end
 struct SimpleWind <: AbstractWind end
 
 Base.@kwdef mutable struct USimpleWind
-    v_ew_n::MVector{3,Float64} = zeros(3) #MVector allows changing single components
+    v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
 end
 
 get_u0(::SimpleWind) = USimpleWind()

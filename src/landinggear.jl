@@ -18,10 +18,10 @@ import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_
 import Flight.Airframe: get_wr_b, get_hr_b
 
 export Contact, ContactY
+export SimpleDamper, get_damper_force
 export NoSteering, DirectSteering, get_steering_angle, set_steering_input
 export NoBraking, DirectBraking, get_braking_coefficient, set_braking_input
 export LandingGearLeg
-
 
 ########################### Contact #############################
 
@@ -44,7 +44,7 @@ Base.@kwdef struct Skidding
     icy::StaticDynamic = StaticDynamic(0.075, 0.025)
 end
 
-get_μ(f::StaticDynamic, η_bo::Real)::Float64 = η_bo * f.dynamic + (1-η_bo) * f.static
+get_μ(f::StaticDynamic, α_bo::Real)::Float64 = α_bo * f.dynamic + (1-α_bo) * f.static
 
 get_μ(f::Rolling, ::SurfaceCondition)::StaticDynamic = f.sd
 
@@ -60,8 +60,8 @@ function get_μ(f::Skidding, cond::SurfaceCondition)::StaticDynamic
     end
 end
 
-get_μ(f::Union{Rolling,Skidding}, cond::SurfaceCondition, η_bo::Real)::Float64 =
-    get_μ(get_μ(f, cond), η_bo)
+get_μ(f::Union{Rolling,Skidding}, cond::SurfaceCondition, α_bo::Real)::Float64 =
+    get_μ(get_μ(f, cond), α_bo)
 
 #this allocates. why??
 # get_sd(f::Skidding, ::Val{Terrain.Dry}) = f.dry
@@ -79,46 +79,48 @@ Base.@kwdef struct Contact <: AbstractComponent
 end
 
 Base.@kwdef struct ContactY
-    v::SVector{2,Float64} = zeros(2)
-    s::SVector{2,Float64} = zeros(2)
-    α_p::SVector{2,Float64} = zeros(2)
-    α_i::SVector{2,Float64} = zeros(2)
-    α_raw::SVector{2,Float64} = zeros(2)
-    α_sat::SVector{2,Bool} = zeros(2)
-    α::SVector{2,Float64} = zeros(2)
-    ψ_slip::Float64 = 0.0
-    k_bo::Float64 = 0.0
-    μ_max::SVector{2,Float64} = zeros(2)
-    μ::SVector{2,Float64} = zeros(2)
+    v::SVector{2,Float64} = zeros(SVector{2})
+    s::SVector{2,Float64} = zeros(SVector{2})
+    α_p::SVector{2,Float64} = zeros(SVector{2})
+    α_i::SVector{2,Float64} = zeros(SVector{2})
+    α_raw::SVector{2,Float64} = zeros(SVector{2})
+    α::SVector{2,Float64} = zeros(SVector{2})
+    sat::SVector{2,Bool} = zeros(SVector{2,Bool})
+    ψ_cv::Float64 = 0.0
+    α_bo::Float64 = 0.0
+    μ_max::SVector{2,Float64} = zeros(SVector{2})
+    μ::SVector{2,Float64} = zeros(SVector{2})
+    f_c::SVector{3,Float64} = zeros(SVector{3})
 end
 
 get_x0(::Contact) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
 get_y0(::Contact) = ContactY()
 
-
 function f_cont!(sys::System{Contact}, ::WoW{true}, srf_cond::SurfaceCondition,
-                 η_br::Real, v_eOc_c_in::AbstractVector{<:Real})
+                 α_br::Real, v_eOc_c_in::AbstractVector{<:Real})
 
-    @unpack rolling, skidding, v_bo, ψ_skid = sys.params
+
+    @unpack ẋ, x, y, params = sys
+    @unpack rolling, skidding, v_bo, ψ_skid, k_p, k_i = params
 
     v_eOc_c = SVector{3,Float64}(v_eOc_c_in)
 
     #breakout coefficient
-    η_bo = clamp((norm(v_eOc_c) - v_bo[1]) / (v_bo[2] - v_bo[1]), 0, 1)
+    α_bo = clamp((norm(v_eOc_c) - v_bo[1]) / (v_bo[2] - v_bo[1]), 0, 1)
 
-    μ_roll = get_μ(rolling, srf_cond, η_bo)
-    μ_skid = get_μ(skidding, srf_cond, η_bo)
+    μ_roll = get_μ(rolling, srf_cond, α_bo)
+    μ_skid = get_μ(skidding, srf_cond, α_bo)
 
     #longitudinal friction coefficient
-    @assert (η_br >= 0 && η_br <= 1)
-    μ_x = μ_roll + (μ_skid - μ_roll) * η_br
+    @assert (α_br >= 0 && α_br <= 1)
+    μ_x = μ_roll + (μ_skid - μ_roll) * α_br
 
     #lateral friction coefficient
     ψ_cv = atan(v_eOc_c[2], v_eOc_c[1]) #tire slip angle
     ψ_abs = abs(ψ_cv)
     @assert (ψ_abs <= π)
 
-    if η_bo < 1
+    if α_bo < 1
         μ_y = μ_skid
     else
         if ψ_abs < ψ_skid
@@ -130,103 +132,140 @@ function f_cont!(sys::System{Contact}, ::WoW{true}, srf_cond::SurfaceCondition,
         end
     end
 
-    # 2D friction coefficient vector
-    μ = @SVector [μ_x, μ_y]
+    #maximum friction coefficient vector
+    μ_max = @SVector [μ_x, μ_y]
 
-    # the magnitude of μ cannot exceed μ_skid; if it does, scale down its components
-    μ *= min(1, μ_skid / norm(μ))
+    #the magnitude of μ_max cannot exceed μ_skid; if it does, scale down its components
+    μ_max *= min(1, μ_skid / norm(μ_max))
 
-    # SEGUIR AQUI
+    v = SVector{2,Float64}(v_eOc_c[1], v_eOc_c[2]) #contact point velocity
+    s = SVector{2,Float64}(x) #velocity integrator state
+    α_p = -k_p * v
+    α_i = -k_i * s
+    α_raw = α_p + α_i #raw μ scaling
+    α = clamp.(α_raw, -1, 1) #clipped μ scaling
+    μ = α .* μ_max
+
+    #non-dimensional contact force projected on the contact frame
+    f_c = SVector{3,Float64}(μ[1], μ[2], -1)
+
+    #if not saturated, integrator accumulates
+    sat = abs.(α_raw) .> abs.(α) #saturated?
+    ẋ .= v .* sat
+    y = ContactY(; v, s, α_p, α_i, α_raw, α, sat, ψ_cv, α_bo, μ_max, μ, f_c)
 
 end
 
 function f_cont!(sys::System{Contact}, ::WoW{false})
-    println("Tobeimplemented")
+    sys.ẋ .= 0
+    sys.y = ContactY()
 end
 
-# ########################### Damper #############################
+########################### Damper #############################
 
-# abstract type AbstractDamper end #not a System!
-# get_force(::A) where {A<:AbstractDamper} = no_extend_error(get_force, A)
+abstract type AbstractDamper end #not a System!
+get_damper_force(::A, args...) where {A<:AbstractDamper} = no_extend_error(get_force, A)
 
-# Base.@kwdef struct SimpleDamper <: AbstractDamper
-#     l_0::Float64 = 1 #natural length
-#     k_s::Float64 = 25000 #spring constant
-#     k_d_ext::Float64 = 1000 #extension damping coefficient
-#     k_d_cmp::Float64 = 1000 #compression damping coefficient
-#     ξ_min::Float64 = -1 #compression below which the shock absorber is disabled
+Base.@kwdef struct SimpleDamper <: AbstractDamper
+    l_0::Float64 = 1 #natural length
+    k_s::Float64 = 25000 #spring constant
+    k_d_ext::Float64 = 1000 #extension damping coefficient
+    k_d_cmp::Float64 = 1000 #compression damping coefficient
+    ξ_min::Float64 = -1 #compression below which the shock absorber is disabled
+end
+
+#Force exerted by the damper along zs. The deformation ξ is positive along z_s
+#(elongation). The resulting force can be negative, meaning the damper pulls the
+#piston rod assembly upwards along the negative z_s axis. This can happen when
+#ξ_dot > 0 and sufficiently large
+function get_damper_force(c::SimpleDamper, ξ::Real, ξ_dot::Real)
+    k_d = (ξ_dot > 0 ? c.k_d_ext : c.k_d_cmp)
+    F = -(c.k_s * ξ + k_d * ξ_dot)
+    F = F * (ξ > c.ξ_min)
+    return F
+end
+
+########################### Steering #############################
+
+abstract type AbstractSteering <: AbstractComponent end
+
+############## NoSteering ##############
+
+struct NoSteering <: AbstractSteering end
+
+set_steering_input(::System{NoSteering}, ::Real) = nothing
+get_steering_angle(::System{NoSteering}) = 0.0
+f_cont!(::System{NoSteering}, args...) = nothing
+
+
+############## DirectSteering ##############
+
+Base.@kwdef struct DirectSteering <: AbstractSteering
+    ψ_max::Float64 = π/6
+end
+
+Base.@kwdef struct DirectSteeringY
+    ψ::Float64 = 0.0
+end
+#we need to make the contents of u mutable
+get_u0(::DirectSteering) = Ref(0.0) #steering input
+get_y0(::DirectSteering) = DirectSteeringY(0.0) #steering angle
+
+function set_steering_input(sys::System{DirectSteering}, u::Real)
+    @assert abs(u) <= 1 "Steering input must be within [-1,1]"
+    sys.u[] = u
+end
+
+function f_cont!(sys::System{DirectSteering})
+    sys.y = DirectSteeringY(sys.u[] * sys.params.ψ_max)
+end
+
+get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
+
+# struct ActuatedSteering{A <: AbstractActuator} <: AbstractSteering
+#     limits::SVector{2,Float64} #more generally, transmission kinematics could go here
+#     actuator::A #actuator model parameters go here
 # end
+# get_x0(steering::ActuatedSteering) = get_x0(steering.actuator)
+# get_y0(steering::ActuatedSteering) = get_x0(steering.actuator)
+# get_u0(steering::ActuatedSteering) = get_u0(steering.actuator) #typically, 1
 
-# f_cont!(::System{SimpleDamper}, args...) = nothing
+########################### Braking #############################
 
-# ########################### Steering #############################
+abstract type AbstractBraking <: AbstractComponent end
 
-# abstract type AbstractSteering <: AbstractComponent end
+############## NoBraking ###############
 
-# ############## NoSteering ##############
+struct NoBraking <: AbstractBraking end
 
-# struct NoSteering <: AbstractSteering end
-# set_steering_input(::System{NoSteering}, ::Float64) = nothing
-# get_steering_angle(::System{NoSteering}) = 0.0
-# f_cont!(::System{NoSteering}, args...) = nothing
+f_cont!(::System{NoBraking}, args...) = nothing
+set_braking_input(::System{NoBraking}, ::Real) = nothing
+get_braking_coefficient(::System{NoBraking}) = 0.0
 
+########### DirectBraking #############
 
-# ############## DirectSteering ##############
+Base.@kwdef struct DirectBraking <: AbstractBraking
+   η_br::Float64 = 1.0 #braking efficiency
+end
 
-# Base.@kwdef struct DirectSteering <: AbstractSteering
-#     ψ_max::Float64 = π/6
-# end
+Base.@kwdef struct DirectBrakingY
+   α_br::Float64 = 0.0 #braking coefficient
+end
 
-# Base.@kwdef struct DirectSteeringY
-#     ψ::Float64 = 0.0
-# end
-# #we need to make the contents of u mutable
-# get_u0(::DirectSteering) = Ref(0.0) #steering input
-# get_y0(::DirectSteering) = DirectSteeringY(0.0) #steering angle
+get_u0(::DirectBraking) = Ref(0.0)
+get_y0(::DirectBraking) = DirectBrakingY()
 
-# function f_cont!(sys::System{DirectSteering})
-#     u = sys.u[]
-#     abs(u) <= 1 ? sys.y = DirectSteeringY(u * sys.params.ψ_max) :
-#         throw(ArgumentError("Steering input must be within [-1,1]"))
-# end
+function set_braking_input(sys::System{DirectBraking}, u::Real)
+    @assert (u <= 1 && u >= 0) "Braking input must be within [0,1]"
+    sys.u[] = u
+end
 
-# # struct ActuatedSteering{A <: AbstractActuator} <: AbstractSteering
-# #     limits::SVector{2,Float64} #more generally, transmission kinematics could go here
-# #     actuator::A #actuator model parameters go here
-# # end
-# # get_x0(steering::ActuatedSteering) = get_x0(steering.actuator)
-# # get_y0(steering::ActuatedSteering) = get_x0(steering.actuator)
-# # get_u0(steering::ActuatedSteering) = get_u0(steering.actuator) #typically, 1
+function f_cont!(sys::System{DirectBraking})
+    sys.y = DirectBrakingY(sys.u[] * sys.params.η_br)
+end
 
-# ########################### Braking #############################
+get_braking_coefficient(sys::System{DirectBraking}) = sys.y.α_br
 
-# abstract type AbstractBraking <: AbstractComponent end
-
-# ############## NoBraking ###############
-
-# struct NoBraking <: AbstractBraking end
-# f_cont!(::System{NoBraking}, args...) = nothing
-# set_braking_input(::System{NoBraking}, ::Float64) = nothing
-# get_braking_coefficient(::System{NoBraking}) = 0.0
-
-# ########### DirectBraking #############
-
-# Base.@kwdef struct DirectBraking <: AbstractBraking
-#     η_brk::Float64 = 1.0 #braking efficiency
-# end
-
-# Base.@kwdef struct DirectBrakingY
-#     k_brk::Float64 = 0.0 #braking coefficient
-# end
-
-# get_u0(::DirectBraking) = Ref(0.0)
-# get_y0(::DirectBraking) = DirectBrakingY()
-
-# function f_cont!(sys::System{DirectBraking})
-#     u = sys.u[]
-#     (u <= 1 && u >= 0) ? sys.y = DirectBrakingY(u * sys.params.η_brk) :
-#         throw(ArgumentError("Braking Input must be within [0,1]"))
-# end
 
 # ########################## LandingGearLeg #########################
 
@@ -372,7 +411,7 @@ end
 #     v_eOc_c = v_eOc_afm_c + v_eOc_dmp_c
 
 #     ###### contact force computation #####
-#     η_br = get_braking_coefficient(braking)
+#     α_br = get_braking_coefficient(braking)
 
 #     #update contact model
 #     f_cont!()

@@ -196,16 +196,16 @@ Base.@kwdef struct DynDataIn
     wr_g_b::Wrench = Wrench()
     wr_in_b::Wrench = Wrench()
     wr_ext_b::Wrench = Wrench()
-    hr_b::SVector{3,Float64} = zeros(3)
+    hr_b::SVector{3,Float64} = zeros(SVector{3})
 end
 
 Base.@kwdef struct DynDataOut
-    α_eb_b::SVector{3,Float64} = zeros(3)
-    α_ib_b::SVector{3,Float64} = zeros(3)
-    a_eOb_b::SVector{3,Float64} = zeros(3)
-    a_eOb_n::SVector{3,Float64} = zeros(3)
-    a_iOb_b::SVector{3,Float64} = zeros(3)
-    f_Ob_b::SVector{3,Float64} = zeros(3) #specific force (g) maybe two y axes??
+    α_eb_b::SVector{3,Float64} = zeros(SVector{3})
+    α_ib_b::SVector{3,Float64} = zeros(SVector{3})
+    a_eOb_b::SVector{3,Float64} = zeros(SVector{3})
+    a_eOb_n::SVector{3,Float64} = zeros(SVector{3})
+    a_iOb_b::SVector{3,Float64} = zeros(SVector{3})
+    f_Ob_b::SVector{3,Float64} = zeros(SVector{3}) #specific force (g) maybe two y axes??
 end
 
 Base.@kwdef struct DynData
