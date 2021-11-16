@@ -72,7 +72,7 @@ function f_cont!(sys::System{SimpleDrag}, air::AirData, args...)
     wr_c = Wrench(F = F_Oc_c)
     wr_b = wr_c #SimpleDrag frame is the airframe itself
 
-    sys.y = SimpleDragY(; D, wr_b)
+    sys.y = SimpleDragY(D, wr_b)
 
 end
 
@@ -180,8 +180,8 @@ function f_cont!(sys::System{TestAerodynamics}, air::AirData, kin::KinData, ::An
     f_bc = params.frame
 
     # v_wOc_b = v_wOb_b #simply use the airframe origin velocity
-    v_wOc_b = air.v_wOb_b + kin.ω_eb_b × f_bc.r_ObOc_b
-    v_wOc_c = f_bc.q_bc'(v_wOc_b)
+    v_wOc_b = air.v_wOb_b + kin.ω_eb_b × f_bc.r
+    v_wOc_c = f_bc.q'(v_wOc_b)
     α_in, β_in = get_airflow_angles(v_wOc_c) #airflow angles in component frame
 
     α_dot = 1/τ * (α_in - x.α)

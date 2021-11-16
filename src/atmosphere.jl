@@ -87,8 +87,8 @@ end
 
 @inline function ISAData(sys::System{<:AbstractISA}, p::Geographic)
 
-    h_geop = Altitude{Geopotential}(p.alt, p.loc)
-    sl = SLConditions(sys, p.loc)
+    h_geop = Altitude{Geopotential}(p.alt, p.l2d)
+    sl = SLConditions(sys, p.l2d)
     ISAData(h_geop; sl)
 
 end
@@ -125,7 +125,7 @@ f_disc!(::System{<:SimpleISA}, args...) = false
 function SLConditions(s::System{<:SimpleISA}, ::Abstract2DLocation)
     SLConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
     #alternative using actual local SL gravity:
-    # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(loc, AltOrth(0.0))))
+    # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(l2d, AltOrth(0.0))))
 end
 
 
@@ -138,7 +138,7 @@ Base.@kwdef struct WindData
     v_ew_n::SVector{3,Float64} = zeros(SVector{3})
 end
 
-function WindData(::T, ::Abstract2DLocation) where {T<:System{<:AbstractWind}}
+function WindData(::T, ::Abstract3DLocation) where {T<:System{<:AbstractWind}}
     error("WindData constructor not implemented for $T")
 end
 

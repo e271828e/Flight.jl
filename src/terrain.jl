@@ -38,11 +38,12 @@ using Flight.Utils
 
 export AbstractTerrain, DummyTerrain, HorizontalTerrain
 export TerrainData, SurfaceCondition
+export get_terrain_data
 
 @enum SurfaceCondition Dry Wet Icy
 
-struct TerrainData{D<:Geodesy.AbstractAltitudeDatum}
-    altitude::Altitude{D}
+struct TerrainData
+    altitude::Altitude{Orthometric}
     normal::SVector{3,Float64} #NED components, inward pointing
     condition::SurfaceCondition
 end
@@ -54,20 +55,20 @@ TerrainData(; altitude = AltOrth(0), normal = SVector{3,Float64}(0,0,1),
 ######################## AbstractTerrain ##########################
 
 abstract type AbstractTerrain end
-get_terrain_data(::T, ::Abstract3DLocation) where {T<:AbstractTerrain}=
+get_terrain_data(::T, ::Abstract2DLocation) where {T<:AbstractTerrain}=
     no_extend_error(get_terrain_data, T)
 
 struct DummyTerrain <: AbstractTerrain end
 
-struct HorizontalTerrain{D<:Geodesy.AbstractAltitudeDatum} <: AbstractTerrain
-    altitude::Altitude{D}
+struct HorizontalTerrain <: AbstractTerrain
+    altitude::Altitude{Orthometric}
     condition::SurfaceCondition
 end
 
 HorizontalTerrain(; altitude = AltOrth(0), condition = Dry) =
     HorizontalTerrain(altitude, condition)
 
-get_terrain_data(trn::HorizontalTerrain, ::Abstract3DLocation) =
+get_terrain_data(trn::HorizontalTerrain, ::Abstract2DLocation) =
     TerrainData(trn.altitude, SVector{3,Float64}(0,0,1), trn.condition)
 
 end #module

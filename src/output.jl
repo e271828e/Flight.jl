@@ -51,8 +51,8 @@ function set_position(xp::XPInterface, pos::PosData, aircraft::Integer = 0)
     llh = Geographic(pos.ϕ_λ, pos.h_o)
     euler = REuler(pos.q_nb)
 
-    lat = rad2deg(llh.loc.ϕ)
-    lon = rad2deg(llh.loc.λ)
+    lat = rad2deg(llh.l2d.ϕ)
+    lon = rad2deg(llh.l2d.λ)
     alt = llh.alt
     psi = rad2deg(euler.ψ)
     theta = rad2deg(euler.θ)

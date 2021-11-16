@@ -96,30 +96,30 @@ function test_Altitude()
     h_ellip = Altitude{Ellipsoidal}(1500)
     h_orth = Altitude{Orthometric}(1500)
     Δh = 300
-    loc = NVector([3,1,-5])
+    l2d = NVector([3,1,-5])
 
     #cannot convert from one datum to another without a 2D location
     @test_throws MethodError Altitude{Ellipsoidal}(h_orth)
     @test_throws MethodError Altitude{Orthometric}(h_ellip)
 
     #however, with a 2D location we can convert back and forth
-    @test Altitude{Orthometric}(Altitude{Ellipsoidal}(h_orth, loc), loc) == h_orth
-    @test Altitude{Orthometric}(h_ellip, loc) isa Altitude{Orthometric}
-    @test Altitude{Ellipsoidal}(h_orth, loc) isa Altitude{Ellipsoidal}
-    @test Altitude{Geopotential}(h_ellip, loc) isa Altitude{Geopotential}
+    @test Altitude{Orthometric}(Altitude{Ellipsoidal}(h_orth, l2d), l2d) == h_orth
+    @test Altitude{Orthometric}(h_ellip, l2d) isa Altitude{Orthometric}
+    @test Altitude{Ellipsoidal}(h_orth, l2d) isa Altitude{Ellipsoidal}
+    @test Altitude{Geopotential}(h_ellip, l2d) isa Altitude{Geopotential}
     @test Altitude{Geopotential}(h_orth) isa Altitude{Geopotential}
 
     #operations and conversions
-    @test (h_ellip + Δh) isa Float64
-    @test (h_orth + Δh) isa Float64
+    @test (h_ellip + Δh) isa AltEllip
+    @test (h_orth + Δh) isa AltOrth
     @test Float64(h_ellip + Δh) == Float64(h_ellip) + Δh
     @test Float64(h_orth + Δh) == Float64(h_orth) + Δh
 
     @test h_ellip - h_ellip/2 isa Float64
     @test h_ellip - h_ellip/2 == h_ellip/2
-    @test h_ellip + Float64(h_ellip/2) isa Float64
-    @test 0.7h_ellip isa Float64
-    @test h_ellip/2 isa Float64
+    @test h_ellip + Float64(h_ellip/2) isa AltEllip
+    @test 0.7h_ellip isa AltEllip
+    @test h_ellip/2 isa AltEllip
 
     @test h_ellip + Float64(h_ellip/2) == 3h_ellip/2
     @test h_ellip + Float64(h_ellip/2) ≈ 3h_ellip/2
@@ -142,7 +142,7 @@ function test_Geographic()
     p_nve = Geographic(alt = AltOrth(1500))
     p_llo = Geographic{LatLon,Orthometric}(p_nve)
     @test p_nve isa Geographic{NVector,Orthometric}
-    @test Geographic(loc = LatLon(), alt = AltOrth()) isa Geographic{LatLon,Orthometric}
+    @test Geographic(l2d = LatLon(), alt = AltOrth()) isa Geographic{LatLon,Orthometric}
 
     #conversion
     @test Geographic{NVector,Ellipsoidal}(p_llo) isa Geographic{NVector,Ellipsoidal}
@@ -154,8 +154,8 @@ function test_Geographic()
     @test -(-p_llo) ≈ p_llo #requires CartECEF
     @test -(-p_nve) ≈ p_nve #requires CartECEF
 
-    @test ltf(p_nve, π/3) == ltf(p_nve.loc, π/3)
-    @test radii(p_nve) == radii(p_nve.loc)
+    @test ltf(p_nve, π/3) == ltf(p_nve.l2d, π/3)
+    @test radii(p_nve) == radii(p_nve.l2d)
     @test gravity(p_llo) ≈ gravity(p_nve)
     @test g_n(p_llo) ≈ g_n(p_nve)
     @test G_n(p_llo) ≈ G_n(p_nve)

@@ -1,5 +1,5 @@
 module LandingGear
-#rename to ground, rename LandingGearLeg to LandingGear
+#rename to ground, rename LandingGearUnit to LandingGear
 
 using LinearAlgebra
 using StaticArrays
@@ -7,7 +7,8 @@ using ComponentArrays
 using UnPack
 
 using Flight.ModelingTools
-# using Flight.Airdata
+using Flight.Attitude
+using Flight.Geodesy
 using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Airframe
@@ -17,17 +18,20 @@ using Flight.Terrain
 import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 import Flight.Airframe: get_wr_b, get_hr_b
 
+export Strut, StrutY
 export Contact, ContactY
 export SimpleDamper, get_damper_force
 export NoSteering, DirectSteering, get_steering_angle, set_steering_input
 export NoBraking, DirectBraking, get_braking_coefficient, set_braking_input
-export LandingGearLeg
+export LandingGearUnit
 
 ########################### Contact #############################
 
-struct WoW{x}
-    WoW(x::Bool) = new{x}()
-end
+# struct WoW{x}
+#     WoW(x::Bool) = new{x}()
+# end
+# Base.convert(::Type{Bool}, ::WoW{B}) where {B} = B
+# (::Type{Bool})(wow::WoW) = convert(Bool, wow)
 
 struct StaticDynamic
     static::Float64
@@ -96,12 +100,17 @@ end
 get_x0(::Contact) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
 get_y0(::Contact) = ContactY()
 
-function f_cont!(sys::System{Contact}, ::WoW{true}, srf_cond::SurfaceCondition,
+function f_cont!(sys::System{Contact}, wow::Bool, srf_cond::SurfaceCondition,
                  α_br::Real, v_eOc_c_in::AbstractVector{<:Real})
 
 
-    @unpack ẋ, x, y, params = sys
-    @unpack rolling, skidding, v_bo, ψ_skid, k_p, k_i = params
+    @unpack rolling, skidding, v_bo, ψ_skid, k_p, k_i = sys.params
+
+    if !wow
+        sys.ẋ .= 0
+        sys.y = ContactY(f_c = zeros(SVector{3}))
+        return
+    end
 
     v_eOc_c = SVector{3,Float64}(v_eOc_c_in)
 
@@ -139,7 +148,7 @@ function f_cont!(sys::System{Contact}, ::WoW{true}, srf_cond::SurfaceCondition,
     μ_max *= min(1, μ_skid / norm(μ_max))
 
     v = SVector{2,Float64}(v_eOc_c[1], v_eOc_c[2]) #contact point velocity
-    s = SVector{2,Float64}(x) #velocity integrator state
+    s = SVector{2,Float64}(sys.x) #velocity integrator state
     α_p = -k_p * v
     α_i = -k_i * s
     α_raw = α_p + α_i #raw μ scaling
@@ -151,38 +160,9 @@ function f_cont!(sys::System{Contact}, ::WoW{true}, srf_cond::SurfaceCondition,
 
     #if not saturated, integrator accumulates
     sat = abs.(α_raw) .> abs.(α) #saturated?
-    ẋ .= v .* sat
-    y = ContactY(; v, s, α_p, α_i, α_raw, α, sat, ψ_cv, α_bo, μ_max, μ, f_c)
+    sys.ẋ .= v .* sat
+    sys.y = ContactY(; v, s, α_p, α_i, α_raw, α, sat, ψ_cv, α_bo, μ_max, μ, f_c)
 
-end
-
-function f_cont!(sys::System{Contact}, ::WoW{false})
-    sys.ẋ .= 0
-    sys.y = ContactY()
-end
-
-########################### Damper #############################
-
-abstract type AbstractDamper end #not a System!
-get_damper_force(::A, args...) where {A<:AbstractDamper} = no_extend_error(get_force, A)
-
-Base.@kwdef struct SimpleDamper <: AbstractDamper
-    l_0::Float64 = 1 #natural length
-    k_s::Float64 = 25000 #spring constant
-    k_d_ext::Float64 = 1000 #extension damping coefficient
-    k_d_cmp::Float64 = 1000 #compression damping coefficient
-    ξ_min::Float64 = -1 #compression below which the shock absorber is disabled
-end
-
-#Force exerted by the damper along zs. The deformation ξ is positive along z_s
-#(elongation). The resulting force can be negative, meaning the damper pulls the
-#piston rod assembly upwards along the negative z_s axis. This can happen when
-#ξ_dot > 0 and sufficiently large
-function get_damper_force(c::SimpleDamper, ξ::Real, ξ_dot::Real)
-    k_d = (ξ_dot > 0 ? c.k_d_ext : c.k_d_cmp)
-    F = -(c.k_s * ξ + k_d * ξ_dot)
-    F = F * (ξ > c.ξ_min)
-    return F
 end
 
 ########################### Steering #############################
@@ -266,192 +246,232 @@ end
 
 get_braking_coefficient(sys::System{DirectBraking}) = sys.y.α_br
 
+########################### Damper #############################
 
-# ########################## LandingGearLeg #########################
+abstract type AbstractDamper end #not a System!
+get_damper_force(::A, args...) where {A<:AbstractDamper} = no_extend_error(get_force, A)
 
-# Base.@kwdef struct LandingGearLeg{D<:AbstractDamper, S <: AbstractSteering,
-#                             B <: AbstractBraking} <: AbstractAirframeComponent
-#     frame::FrameSpec = FrameSpec()
-#     contact::Contact = Contact()
-#     damper::D = SimpleDamper()
-#     steering::S = NoSteering()
-#     braking::B = NoBraking()
-# end
+Base.@kwdef struct SimpleDamper <: AbstractDamper
+    k_s::Float64 = 25000 #spring constant
+    k_d_ext::Float64 = 1000 #extension damping coefficient
+    k_d_cmp::Float64 = 1000 #compression damping coefficient
+    ξ_min::Float64 = -1 #compression below which the shock absorber is disabled
+end
 
-# struct LandingGearLegY{ContactY, SteeringY, BrakingY}
-#     contact::ContactY
-#     steering::SteeringY
-#     braking::BrakingY
-# end
+#Force exerted by the damper along zs. The deformation ξ is positive along z_s
+#(elongation). The resulting force can be negative, meaning the damper pulls the
+#piston rod assembly upwards along the negative z_s axis. This can happen when
+#ξ_dot > 0 and sufficiently large
+function get_damper_force(c::SimpleDamper, ξ::Real, ξ_dot::Real)
+    k_d = (ξ_dot > 0 ? c.k_d_ext : c.k_d_cmp)
+    F = -(c.k_s * ξ + k_d * ξ_dot)
+    F = F * (ξ > c.ξ_min)
+    return F
+end
 
-# get_x0(ldg::LandingGearLeg) = ComponentVector(
-#     contact = get_x0(ldg.contact),
-#     steering = get_x0(ldg.steering),
-#     braking = get_x0(ldg.braking)
-#     )
+########################## Strut #########################
 
-# get_y0(ldg::LandingGearLeg) = LandingGearLegY(
-#     get_y0(ldg.contact),
-#     get_y0(ldg.steering),
-#     get_y0(ldg.braking)
-#     )
+Base.@kwdef struct Strut{D<:AbstractDamper} <: AbstractComponent
+    f_bs::FrameSpec = FrameSpec()
+    l_0::Float64 = 1.0 #natural length
+    damper::D = SimpleDamper()
+end
 
-# get_u0(ldg::LandingGearLeg) = (
-#     contact = get_u0(ldg.contact),
-#     steering = get_u0(ldg.steering),
-#     braking = get_u0(ldg.braking)
-#     )
+Base.@kwdef struct StrutY
+    wow::Bool = false
+    ξ::Float64 = 0.0
+    ξ_dot::Float64 = 0.0
+    F_dmp::Float64 = 0.0 #damper force along the zs axis
+    f_bc::FrameSpec = FrameSpec() #contact frame relative to the body frame
+    v_eOc_c::SVector{3,Float64} = zeros(SVector{3})
+    trn_data::TerrainData = TerrainData()
+end
 
-# get_d0(ldg::LandingGearLeg) = (
-#     contact = get_d0(ldg.contact),
-#     steering = get_d0(ldg.steering),
-#     braking = get_d0(ldg.braking)
-#     )
+get_y0(::Strut) = StrutY()
 
+function f_cont!(sys::System{<:Strut}, kin::KinData, trn::AbstractTerrain, ψ_sw::Real)
 
-# function System(ldg::LandingGearLeg, ẋ = get_x0(ldg), x = get_x0(ldg),
-#                     y = get_y0(ldg), u = get_u0(ldg), d = get_d0(ldg), t = Ref(0.0))
+    @unpack f_bs, l_0, damper = sys.params
+    @unpack n_e, h_e, q_eb, q_nb = kin.pos
+    @unpack v_eOb_b, ω_eb_b = kin.vel
 
-#     ss_list = Vector{System}()
-#     ss_labels = (:contact, :steering, :braking)
-#     for label in ss_labels
-#         push!(ss_list, System(map((λ)->getproperty(λ, label), (ldg, ẋ, x, y, u, d))..., t))
-#     end
+    #basis elements, for convenience
+    e1 = SVector{3,Float64}(1,0,0)
+    e3 = SVector{3,Float64}(0,0,1)
 
-#     params = (frame = ldg.frame, damper = ldg.damper)
-#     subsystems = NamedTuple{ss_labels}(ss_list)
+    #strut frame axes
+    q_bs = f_bs.q
 
-#     System{map(typeof, (ldg, x, y, u, d, params, subsystems))...}(
-#                          ẋ, x, y, u, d, t, params, subsystems)
-# end
+    #compute contact reference point P
+    r_ObOs_b = f_bs.r #strut frame origin
+    r_OsP_s = l_0 * e3
+    r_ObP_b = r_ObOs_b + q_bs(r_OsP_s)
+    r_ObP_e = q_eb(r_ObP_b)
+    r_OeOb_e = CartECEF(Geographic(n_e, h_e))
+    r_OeP_e = r_OeOb_e + r_ObP_e
+    P = Geographic(r_OeP_e)
 
-# function f_cont!(sys::System{<:LandingGearLeg}, kin::KinData, trn::AbstractTerrain)
+    #get terrain data at the contact reference point (close enough to the actual
+    #contact frame origin, which is still unknown)
+    trn_data = get_terrain_data(trn, P.l2d)
+    Δh = AltOrth(P) - AltOrth(trn_data.altitude, P.l2d)
 
-#     @unpack ẋ, x, u, params, subsystems = sys
-#     @unpack frame, damper = params
-#     @unpack contact, steering, braking = subsystems
-#     @unpack n_e, h_e, q_eb, q_nb = kin.pos
-#     @unpack v_eOb_b, ω_eb_b = kin.vel
+    #project k_s onto z_n
+    q_ns = q_nb ∘ q_bs
+    k_s_zn = q_ns(e3)[3]
 
-#     #third basis element, for convenience
-#     e3 = SVector{3,Float64}(0,0,1)
+    #if close to zero (strut nearly horizontal) or negative (strut upside down)
+    #we set the elongation to zero
+    ξ = (k_s_zn > 1e-3 ? Δh / k_s_zn : 0.0) #0 instead of 0.0 leads to type instability!!
+    wow = ξ < 0
 
-#     #update steering and braking subsystems
-#     f_cont!(steering)
-#     f_cont!(braking)
+    if !wow
+        sys.y = StrutY(; wow, ξ, trn_data)
+        return
+    end
 
-#     #strut frame axes
-#     q_bs = frame.q_bc
-#     q_ns = q_nb ∘ q_bs
+    #contact frame axes
+    q_sw = Rz(ψ_sw) #rotate strut axes to get wheel axes
+    q_nw = q_ns ∘ q_sw #NED to contact axes rotation
+    i_w_n = q_nw(e1) #NED components of wheel x-axis
+    k_t_n = trn_data.normal #terrain (inward pointing) normal
+    i_w_n_trn = i_w_n - (i_w_n ⋅ k_t_n) * k_t_n #projection of i_w_n onto the terrain tangent plane
+    i_c_n = normalize(i_w_n_trn) #NED components of contact x-axis
+    k_c_n = k_t_n #NED components of contact z-axis
+    j_c_n = k_c_n × i_c_n #NED components of contact y-axis
+    R_nc = RMatrix(SMatrix{3,3}([i_c_n j_c_n k_c_n]), normalization = false)
+    q_bc = q_nb' ∘ R_nc #airframe to contact axes rotation
 
-#     #strut frame origin
-#     r_ObOs_b = frame.r_ObOc_b
-#     r_ObOs_e = q_eb(r_ObOs_b)
-#     r_OeOb_e = CartECEF(Geographic(n_e, h_e))
-#     Os = r_OeOb_e + r_ObOs_e
+    #contact frame origin
+    r_OsOc_s = e3 * (l_0 + ξ)
+    r_OsOc_b = q_bs(r_OsOc_s)
+    r_ObOc_b = r_OsOc_b + r_ObOs_b
 
-#     ###### WoW computation ######
+    #contact frame
+    f_bc = FrameSpec(r_ObOc_b, q_bc)
 
-#     #retrieve terrain data at the strut frame origin (close enough to the
-#     #contact frame origin, which is still unknown)
-#     terrain_data = get_terrain_data(trn, Os)
-#     Δh = AltOrth(Os) - terrain_data.h
+    # contact frame origin velocity due to airframe motion
+    v_eOc_afm_b = v_eOb_b + ω_eb_b × r_ObOc_b
+    v_eOc_afm_c = q_bc'(v_eOc_afm_b)
 
-#     #project k_s onto z_n
-#     k_s_zn = q_ns(e3)[3]
+    # compute the damper elongation rate required to cancel the airframe
+    # contribution to the contact point velocity along the contact frame z axis
+    q_sc = q_bs' ∘ q_bc
+    k_s_c = q_sc'(e3)
+    ξ_dot = -v_eOc_afm_c[3] / k_s_c[3]
+    v_eOc_dmp_c = k_s_c * ξ_dot
+    v_eOc_c = v_eOc_afm_c + v_eOc_dmp_c
 
-#     #if close to zero (strut nearly horizontal) or negative (strut upside down)
-#     #we should set l=l_0 to yield WoW(false)
-#     l = (k_s_zn > 1e-3 ? Δh / k_s_zn : damper.l_0)
-#     ξ = l - damper.l_0
-#     wow = WoW(ξ < 0)
+    F_dmp = get_damper_force(damper, ξ, ξ_dot)
 
-#     if wow === WoW(false)
-#         f_cont!(contact, WoW(false))
-#         sys.y = LandingGearLegY(contact.y, steering.y, braking.y)
-#         return
-#     end
+    sys.y = StrutY(; wow, ξ, ξ_dot, F_dmp, f_bc, v_eOc_c, trn_data)
 
-#     ###### contact frame construction ######
+end
 
-#     #contact frame axes
-#     ψ_sw = get_steering_angle(steering)
-#     q_sw = Rz(ψ_sw) #rotate strut axes to get wheel axes
-#     q_nw = q_ns ∘ q_sw #NED to contact axes rotation
-#     i_w_n = q_nw(e3) #NED components of wheel x-axis
+########################## LandingGearUnit #########################
 
-#     k_t_n = terrain_data.k_t_n #terrain (inward pointing) normal
-#     i_w_n_trn = i_w_n - (i_w_n ⋅ k_t_n) * k_t_n #projection of i_w_n onto the terrain tangent plane
-#     i_c_n = normalize(i_w_n_trn) #NED components of contact x-axis
-#     k_c_n = k_t_n #NED components of contact z-axis
-#     j_c_n = k_c_n × i_c_n #NED components of contact y-axis
-#     R_nc = RMatrix(SMatrix{3,3}([i_c_n j_c_n k_c_n]), normalization = false)
-#     q_bc = q_nb' ∘ R_nc #airframe to contact axes rotation
+Base.@kwdef struct LandingGearUnit{L<:Strut, S <: AbstractSteering,
+                            B <: AbstractBraking} <: AbstractAirframeComponent
+    strut::L = Strut()
+    steering::S = NoSteering()
+    braking::B = NoBraking()
+    contact::Contact = Contact()
+end
 
-#     #contact frame origin
-#     r_OsOc_s = e3 * l
-#     r_OsOc_b = q_bs(r_OsOc_s)
-#     r_ObOc_b = r_OsOc_b + r_ObOs_b
+struct LandingGearUnitY{SteeringY, BrakingY}
+    strut::StrutY
+    steering::SteeringY
+    braking::BrakingY
+    contact::ContactY
+    wr_Oc_c::Wrench
+    wr_Ob_b::Wrench
+end
 
-#     bc = FrameSpec(r_ObOc_b, q_bc)
+get_y0(ldg::LandingGearUnit) = LandingGearUnitY(
+    get_y0(ldg.strut),
+    get_y0(ldg.steering),
+    get_y0(ldg.braking),
+    get_y0(ldg.contact),
+    Wrench(),
+    Wrench(),
+    )
 
-#     ###### contact point velocity computation ######
+get_x0(ldg::LandingGearUnit) = ComponentVector(
+    strut = get_x0(ldg.strut),
+    steering = get_x0(ldg.steering),
+    braking = get_x0(ldg.braking),
+    contact = get_x0(ldg.contact),
+    )
 
-#     # contact frame origin velocity due to airframe motion
-#     v_eOc_afm_b = v_eOb_b + ω_eb_b × r_ObOc_b
-#     v_eOc_afm_c = q_bc'(v_eOc_af_b)
+get_u0(ldg::LandingGearUnit) = (
+    strut = get_u0(ldg.strut),
+    steering = get_u0(ldg.steering),
+    braking = get_u0(ldg.braking),
+    contact = get_u0(ldg.contact),
+    )
 
-#     #compute the damper elongation rate required to cancel the airframe
-#     #contribution to the contact point velocity along the contact frame z axis
-#     q_cs = q_bc' ∘ q_bs
-#     k_s_c = q_cs(e3)
-#     ξ_dot = -v_eOc_afm_c[3] / k_s_c[3]
-#     v_eOc_dmp_c = k_s_c * ξ_dot
-
-#     v_eOc_c = v_eOc_afm_c + v_eOc_dmp_c
-
-#     ###### contact force computation #####
-#     α_br = get_braking_coefficient(braking)
-
-#     #update contact model
-#     f_cont!()
-
-#     #we MUST NOT access contact.y as sys.y.contact, because the reference is not
-#     #kept as it is with component vectors, and sys.y is only updated before
-#     #returning from f_cont!
-#     #in fact, we should only use this method:
-#     get_normalized_contact_force()
-
-#     #CONSIDERAR USAR RMatrix para todo. asi en vez de obtener k_s_n
-#     #transformando 001 puedo coger directamente la 3a columna de R_ns
-
-#     """
-#     SET NORMALIZATION TO false!!!!!!!
-#     """
-
-
-#     #with the kinematics and the strut frame, determine WoW state
-
-#     #the contact model gives us the normalized contact force in the contact
-#     #frame
+get_d0(ldg::LandingGearUnit) = (
+    strut = get_d0(ldg.strut),
+    steering = get_d0(ldg.steering),
+    braking = get_d0(ldg.braking),
+    contact = get_d0(ldg.contact),
+    )
 
 
-#     #now, from the kinematics of the contact point and the oleo parameters, we
-#     #get F_shock_zs
+function System(ldg::LandingGearUnit, ẋ = get_x0(ldg), x = get_x0(ldg),
+                    y = get_y0(ldg), u = get_u0(ldg), d = get_d0(ldg), t = Ref(0.0))
 
-#     sys.y = LandingGearLegY(contact.y, steering.y, braking.y)
+    ss_list = Vector{System}()
+    ss_labels = (:strut, :steering, :braking, :contact)
+    for label in ss_labels
+        push!(ss_list, System(map((λ)->getproperty(λ, label), (ldg, ẋ, x, y, u, d))..., t))
+    end
 
-# end
+    params = (frame = ldg.frame, damper = ldg.damper)
+    subsystems = NamedTuple{ss_labels}(ss_list)
+
+    System{map(typeof, (ldg, x, y, u, d, params, subsystems))...}(
+                         ẋ, x, y, u, d, t, params, subsystems)
+end
+
+function f_cont!(sys::System{<:LandingGearUnit}, kin::KinData, trn::AbstractTerrain)
+
+    @unpack strut, steering, braking, contact = sys.subsystems
+
+    #update steering and braking subsystems
+    f_cont!(steering)
+    f_cont!(braking)
+    ψ_sw = get_steering_angle(steering)
+    α_br = get_braking_coefficient(braking)
+
+    f_cont!(strut, kin, trn, ψ_sw)
+
+    @unpack wow, trn_data, v_eOc_c = strut.y
+    f_cont!(contact, wow, trn_data.condition, α_br, v_eOc_c)
+
+    f_c = get_normalized_force(contact) #if !wow, guaranteed to be zero!
+    f_s = q_sc(f_c)
+    @assert f_s[3] < 0 #strictly
+    N = -F_dmp_zs / f_s[3]
+    N = max(0, N) #cannot be negative (could happen with large xi_dot >0)
+    F_gnd_Oc_c = f_c * N
+
+    wr_Oc_c = Wrench(F = F_Oc_c)
+    wr_Ob_b = frame_bc(wr_Oc_c)
+
+    sys.y = LandingGearUnitY(strut.y, contact.y, steering.y, braking.y, wr_Oc_c, wr_Ob_b)
+
+end
 
 # #add f_disc! to reset the integrators for contact model
-# f_disc!(::System{<:LandingGearLeg}) = false
+# f_disc!(::System{<:LandingGearUnit}) = false
 
 # #CHANGE THIS
 # #CHANGE THIS
 # #CHANGE THIS
 # #CHANGE THIS
-# get_wr_b(::System{<:LandingGearLeg}) = Wrench()
-# get_hr_b(::System{<:LandingGearLeg}) = zeros(SVector{3})
+# get_wr_b(::System{<:LandingGearUnit}) = Wrench()
+# get_hr_b(::System{<:LandingGearUnit}) = zeros(SVector{3})
 
 
 end #module

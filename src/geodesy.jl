@@ -45,7 +45,7 @@ const γ_b = GM / a² * (1 + m/3 * eʹ * q₀ʹ/q₀) #Normal gravity at the pol
 
 abstract type Abstract2DLocation end
 
-Base.convert(::Type{L}, loc::L) where {L<:Abstract2DLocation} = loc
+Base.convert(::Type{L}, l2d::L) where {L<:Abstract2DLocation} = l2d
 
 
 #### NVector ####
@@ -58,7 +58,7 @@ Base.@kwdef struct NVector <: Abstract2DLocation
     end
 end
 
-NVector(loc::Abstract2DLocation) = convert(NVector, loc)
+NVector(l2d::Abstract2DLocation) = convert(NVector, l2d)
 
 #NVector from ECEF to Local Tangent Frame rotation
 NVector(r_el::Abstract3DRotation) = NVector(RMatrix(r_el))
@@ -99,10 +99,10 @@ Base.@kwdef struct LatLon <: Abstract2DLocation
         return new(ϕ, λ)
     end
 end
-LatLon(loc::Abstract2DLocation) = convert(LatLon, loc)
+LatLon(l2d::Abstract2DLocation) = convert(LatLon, l2d)
 
-function Base.convert(::Type{NVector}, loc::LatLon)
-    @unpack ϕ, λ = loc
+function Base.convert(::Type{NVector}, l2d::LatLon)
+    @unpack ϕ, λ = l2d
     cos_ϕ = cos(ϕ)
     NVector(SVector{3,Float64}(cos_ϕ * cos(λ), cos_ϕ * sin(λ), sin(ϕ)), normalization = false)
 end
@@ -114,21 +114,21 @@ end
 
 #strict equality not implemented because comparison requires conversion
 Base.:(≈)(loc1::LatLon, loc2::LatLon) = NVector(loc1) ≈ NVector(loc2)
-Base.:(-)(loc::LatLon) = LatLon(-NVector(loc))
+Base.:(-)(l2d::LatLon) = LatLon(-NVector(l2d))
 
 
 ##### Generic Abstract2DLocation methods #####
 
 #ellipsoid's radii of curvature
-function radii(loc::Abstract2DLocation)
-    n_e = NVector(loc)
+function radii(l2d::Abstract2DLocation)
+    n_e = NVector(l2d)
     f_den = √(1 - e² * n_e[3]^2)
     return ( M = a * (1 - e²) / f_den^3, N = a / f_den ) #(R_N, R_E)
 end
 
 #local tangent frame from Abstract2DLocation
-function ltf(loc::Abstract2DLocation, ψ_nl::Real = 0.)
-    @unpack ϕ, λ = LatLon(loc)
+function ltf(l2d::Abstract2DLocation, ψ_nl::Real = 0.)
+    @unpack ϕ, λ = LatLon(l2d)
     Rz(λ) ∘ Ry(-(ϕ + 0.5π)) ∘ Rz(ψ_nl)
 end
 
@@ -182,10 +182,10 @@ end
 
 const geoid_offset_interp = load_geoid_offset_interp()
 
-function get_geoid_offset(loc::Abstract2DLocation)
+function get_geoid_offset(l2d::Abstract2DLocation)
     #our longitude interval is [-π,π], but the table uses [0,2π], so we need to
     #correct for that
-    latlon = LatLon(loc)
+    latlon = LatLon(l2d)
     ϕ = latlon.ϕ
     λ = mod(latlon.λ + 2π, 2π)
     geoid_offset_interp(ϕ, λ)
@@ -210,21 +210,21 @@ Altitude{D}(h::Altitude{D}, args...) where {D} = Altitude{D}(h._val)
 
 #Ellipsoidal and Orthometric altitudes are related by the geoid's offset at a
 #given 2D location
-Altitude{Ellipsoidal}(h::AltOrth, loc::Abstract2DLocation) = AltEllip(h._val + get_geoid_offset(loc))
-Altitude{Orthometric}(h::AltEllip, loc::Abstract2DLocation) = AltOrth(h._val - get_geoid_offset(loc))
+Altitude{Ellipsoidal}(h::AltOrth, l2d::Abstract2DLocation) = AltEllip(h._val + get_geoid_offset(l2d))
+Altitude{Orthometric}(h::AltEllip, l2d::Abstract2DLocation) = AltOrth(h._val - get_geoid_offset(l2d))
 
 #Orthometric and Geopotential are directly related by the point-mass gravity
 #approximation, 2D location not required
-Altitude{Geopotential}(h::AltOrth) = AltGeop(h*a / (a+h))
-Altitude{Orthometric}(h::AltGeop) = AltOrth(h*a / (a-h))
+Altitude{Geopotential}(h::AltOrth) = AltGeop(h._val*a / (a+h._val))
+Altitude{Orthometric}(h::AltGeop) = AltOrth(h._val*a / (a-h._val))
 
 #still, for interface consistency we provide the two-argument method
 Altitude{Geopotential}(h::AltOrth, ::Abstract2DLocation) = AltGeop(h)
 Altitude{Orthometric}(h::AltGeop, ::Abstract2DLocation) = AltOrth(h)
 
 #Geopotential and Ellipsoidal altitudes are related via Orthometric
-Altitude{Geopotential}(h_ellip::AltEllip, loc::Abstract2DLocation) = AltGeop(AltOrth(h_ellip, loc))
-Altitude{Ellipsoidal}(h_geop::AltGeop, loc::Abstract2DLocation) = AltEllip(AltOrth(h_geop), loc)
+Altitude{Geopotential}(h_ellip::AltEllip, l2d::Abstract2DLocation) = AltGeop(AltOrth(h_ellip, l2d))
+Altitude{Ellipsoidal}(h_geop::AltGeop, l2d::Abstract2DLocation) = AltEllip(AltOrth(h_geop), l2d)
 
 #operations between Altitude subtypes and Reals
 Base.promote_rule(::Type{<:Altitude{D}}, ::Type{<:Real}) where {D} = Altitude{D}
@@ -232,14 +232,15 @@ Base.convert(::Type{<:Altitude{D}}, h::Real) where {D} = Altitude{D}(h)
 Base.convert(::Type{T}, h::Altitude) where {T<:Real} = convert(T, h._val)
 (::Type{<:T})(h::Altitude) where {T<:Real} = convert(T, h)
 
-Base.:+(h::Altitude, Δh::Real) = h._val + Δh
-Base.:-(h::Altitude, Δh::Real) = h._val - Δh
-Base.:+(Δh::Real, h::Altitude) = Δh + h._val
-Base.:-(Δh::Real, h::Altitude) = Δh - h._val
+Base.:+(h::T, Δh::Real) where {T<:Altitude} = T(h._val + Δh)
+Base.:-(h::T, Δh::Real) where {T<:Altitude} = T(h._val - Δh)
+Base.:+(Δh::Real, h::T) where {T<:Altitude} = T(Δh + h._val)
+Base.:-(Δh::Real, h::T) where {T<:Altitude} = T(Δh - h._val)
 
-Base.:*(k::Real, h::Altitude) = k*h._val
-Base.:*(h::Altitude, k::Real) = k*h
-Base.:/(h::Altitude, k::Real) = h._val/k
+Base.:*(k::Real, h::T) where {T<:Altitude} = T(k*h._val)
+Base.:*(h::T, k::Real) where {T<:Altitude} = T(k*h)
+Base.:/(h::T, k::Real) where {T<:Altitude} = T(h._val/k)
+
 Base.:-(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val - h2._val
 
 Base.:(==)(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val == h2._val
@@ -265,31 +266,30 @@ abstract type Abstract3DLocation end
 #avoid infinite recursion
 Base.convert(::Type{P}, p::P) where {P<:Abstract3DLocation} = p
 
-
 #### Geographic ####
 
 #the default constructor generates a Geographic{NVector, EllipsoidalAlt} instance
 Base.@kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DLocation
-    loc::L = NVector()
+    l2d::L = NVector()
     alt::Altitude{H} = AltOrth()
 end
-Geographic(loc::Abstract2DLocation) = Geographic(loc, AltOrth())
+Geographic(l2d::Abstract2DLocation) = Geographic(l2d, AltOrth())
 Geographic(p::Abstract3DLocation) = Geographic{NVector,Ellipsoidal}(p)
 Geographic{L,H}(p::Abstract3DLocation) where {L,H} = convert(Geographic{L,H}, p)
 
 function Base.convert(::Type{Geographic{L,H}}, p::Geographic) where {L,H}
-    Geographic(convert(L, p.loc), Altitude{H}(p))
+    Geographic(convert(L, p.l2d), Altitude{H}(p))
 end
 
 Altitude{D}(p::Abstract3DLocation) where {D} = Altitude{D}(Geographic{NVector,D}(p))
-Altitude{D}(p::Geographic) where {D} = Altitude{D}(p.alt, p.loc)
+Altitude{D}(p::Geographic) where {D} = Altitude{D}(p.alt, p.l2d)
 
 function Base.:(==)(p1::Geographic{NVector,H}, p2::Geographic{NVector,H}) where {H}
-    return p1.alt == p2.alt && p1.loc == p2.loc
+    return p1.alt == p2.alt && p1.l2d == p2.l2d
 end
 
 function Base.:(≈)(p1::Geographic{L,H}, p2::Geographic{L,H}) where {L,H}
-    return p1.alt ≈ p2.alt && p1.loc ≈ p2.loc
+    return p1.alt ≈ p2.alt && p1.l2d ≈ p2.l2d
 end
 
 Base.:(≈)(p1::Abstract3DLocation, p2::Abstract3DLocation) = CartECEF(p1) ≈ CartECEF(p2)
@@ -377,7 +377,7 @@ end
 
 function Base.convert(::Type{CartECEF}, p::Geographic{NVector, Ellipsoidal})
 
-    n_e = p.loc; h = Float64(p.alt)
+    n_e = p.l2d; h = Float64(p.alt)
     _, N = radii(n_e)
 
     return CartECEF(SVector{3, Float64}(
@@ -389,8 +389,11 @@ end
 
 ##### Generic Abstract3DLocation methods ####
 
-ltf(p::Abstract3DLocation, ψ_nl::Real = 0.0) = ltf(Geographic{NVector,Ellipsoidal}(p).loc, ψ_nl)
-radii(p::Abstract3DLocation) = radii(Geographic{NVector,Ellipsoidal}(p).loc)
+#general conversion from 3D to 2D location
+(::Type{L})(p::Abstract3DLocation) where {L<:Abstract2DLocation} = Geographic{L,Ellipsoidal}(p).l2d
+
+ltf(p::Abstract3DLocation, ψ_nl::Real = 0.0) = ltf(Geographic{NVector,Ellipsoidal}(p).l2d, ψ_nl)
+radii(p::Abstract3DLocation) = radii(Geographic{NVector,Ellipsoidal}(p).l2d)
 
 """
     gravity(p::Abstract3DLocation)
@@ -406,7 +409,7 @@ Hoffmann & Moritz.
 function gravity(p::Abstract3DLocation)
 
     p_nve = Geographic{NVector,Ellipsoidal}(p)
-    n_e = p_nve.loc
+    n_e = p_nve.l2d
     h = Float64(p_nve.alt)
 
     sin²ϕ = n_e[3]^2

@@ -61,6 +61,13 @@ function KinData()
     return f_kin!(ẋ_pos, x_kin)
 end
 
+function KinData(init::KinInit)
+    x_kin = get_x0(KinLTF())
+    init!(x_kin, init)
+    ẋ_pos = copy(x_kin.pos)
+    return f_kin!(ẋ_pos, x_kin)
+end
+
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
 const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T, D}
 
@@ -88,8 +95,8 @@ function init!(x::KinLTFX, init::KinInit)
     (R_N, R_E) = radii(Ob)
     v_eOb_n = q_nb * v_eOb_b
     ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + h_e),
-        -v_eOb_n[1] / (R_N + h_e),
+        v_eOb_n[2] / (R_E + Float64(h_e)),
+        -v_eOb_n[1] / (R_N + Float64(h_e)),
         0.0)
 
     ω_el_b = q_nb'(ω_el_n)
@@ -127,8 +134,8 @@ function f_kin!(ẋ_pos::PosLTFX, x::KinLTFX)
     (R_N, R_E) = radii(n_e)
     v_eOb_n = q_nb(v_eOb_b)
     ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + h_e),
-        -v_eOb_n[1] / (R_N + h_e),
+        v_eOb_n[2] / (R_E + Float64(h_e)),
+        -v_eOb_n[1] / (R_N + Float64(h_e)),
         0.0)
 
     ω_el_l = q_nl'(ω_el_n)
@@ -176,13 +183,13 @@ function init!(x::KinECEFX, init::KinInit)
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
 
-    n_e = Ob.loc
+    n_e = Ob.l2d
     h_e = Ob.alt
     (R_N, R_E) = radii(Ob)
     v_eOb_n = q_nb * v_eOb_b
     ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + h_e),
-        -v_eOb_n[1] / (R_N + h_e),
+        v_eOb_n[2] / (R_E + Float64(h_e)),
+        -v_eOb_n[1] / (R_N + Float64(h_e)),
         0.0)
 
     ω_el_b = q_nb'(ω_el_n)
@@ -215,8 +222,8 @@ function f_kin!(ẋ_pos::PosECEFX, x::KinECEFX)
     (R_N, R_E) = radii(n_e)
     v_eOb_n = q_nb(v_eOb_b)
     ω_el_n = SVector{3,Float64}(
-        v_eOb_n[2] / (R_E + h_e),
-        -v_eOb_n[1] / (R_N + h_e),
+        v_eOb_n[2] / (R_E + Float64(h_e)),
+        -v_eOb_n[1] / (R_N + Float64(h_e)),
         0.0)
 
     ω_el_b = q_nb'(ω_el_n)

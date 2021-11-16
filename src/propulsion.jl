@@ -136,7 +136,7 @@ function f_cont!(sys::System{EThruster}, kin::KinData, air::AirData)
     M_air_prop = wr_c.M[1]
 
     hr_c = SVector(motor.J * ω_shaft + propeller.J * ω_prop, 0, 0)
-    hr_b = frame.q_bc(hr_c)
+    hr_b = frame.q(hr_c)
 
     ω_shaft_dot = (M_eng_shaft + M_air_prop/(η*n)) / (motor.J + propeller.J/(η*n^2))
     ẋ.ω_shaft = ω_shaft_dot

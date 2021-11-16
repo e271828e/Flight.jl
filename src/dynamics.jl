@@ -28,8 +28,8 @@ Frame `fc(Oc, Ɛc)` is specified by:
 - The rotation quaternion from fb's axes εb to fc's axes εc (`q_bc`)
 """
 Base.@kwdef struct FrameSpec
-    r_ObOc_b::SVector{3,Float64} = zeros(SVector{3})
-    q_bc::RQuat = RQuat()
+    r::SVector{3,Float64} = zeros(SVector{3})
+    q::RQuat = RQuat()
 end
 
 
@@ -74,17 +74,16 @@ An alternative function call notation is provided:
 
 function translate(f_bc::FrameSpec, wr_c::Wrench)
 
-    @unpack q_bc, r_ObOc_b = f_bc
     F_Oc_c = wr_c.F
     M_Oc_c = wr_c.M
 
     #project onto airframe axes
-    F_Oc_b = q_bc(F_Oc_c)
-    M_Oc_b = q_bc(M_Oc_c)
+    F_Oc_b = f_bc.q(F_Oc_c)
+    M_Oc_b = f_bc.q(M_Oc_c)
 
     #translate to airframe origin
     F_Ob_b = F_Oc_b
-    M_Ob_b = M_Oc_b + r_ObOc_b × F_Oc_b
+    M_Ob_b = M_Oc_b + f_bc.r × F_Oc_b
 
     return Wrench(F = F_Ob_b, M = M_Ob_b) #wr_b
 
@@ -184,7 +183,7 @@ function gravity_wrench(mass::MassData, pos::PosData)
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
     wr_c = wr_G_n
-    f_bc = FrameSpec(r_ObOc_b = mass.r_ObG_b, q_bc = q_nb')
+    f_bc = FrameSpec(r_ObOc_b = mass.r_ObG_b, q = q_nb')
     return f_bc(wr_c) #wr_b
 
 end

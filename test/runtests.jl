@@ -11,7 +11,7 @@ using .TestAttitude
 using .TestGeodesy
 # using .TestKinematics
 
-test_quaternions()
-test_attitude()
+# test_quaternions()
+# test_attitude()
 test_geodesy()
 # test_kinematics()

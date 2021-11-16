@@ -13,7 +13,7 @@ ac = TestAircraft(
     kin = KinLTF(),
     mass = ConstantMass(),
     aero = SimpleDrag(),
-    ldg = LandingGearLeg(steering = DirectSteering(), braking = DirectBraking()),
+    ldg = LandingGearUnit(steering = DirectSteering(), braking = DirectBraking()),
     pwp = AirframeGroup((
         left = EThruster(motor = ElectricMotor(α = CW)),
         right = EThruster(motor = ElectricMotor(α = CCW)))),
