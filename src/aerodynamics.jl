@@ -154,7 +154,7 @@ end
 
 
 Base.@kwdef struct TestAerodynamics <: AbstractAerodynamics
-    frame::FrameSpec = FrameSpec()
+    frame::FrameTransform = FrameTransform()
     τ::Float64 = 0.1 #time constant for first-order airflow angle filters
 end
 
@@ -177,11 +177,11 @@ function f_cont!(sys::System{TestAerodynamics}, air::AirData, kin::KinData, ::An
     @unpack ẋ, x, y, params = sys
     @unpack α, β = x
 
-    f_bc = params.frame
+    t_bc = params.frame
 
     # v_wOc_b = v_wOb_b #simply use the airframe origin velocity
-    v_wOc_b = air.v_wOb_b + kin.ω_eb_b × f_bc.r
-    v_wOc_c = f_bc.q'(v_wOc_b)
+    v_wOc_b = air.v_wOb_b + kin.ω_eb_b × t_bc.r
+    v_wOc_c = t_bc.q'(v_wOc_b)
     α_in, β_in = get_airflow_angles(v_wOc_c) #airflow angles in component frame
 
     α_dot = 1/τ * (α_in - x.α)
@@ -190,7 +190,7 @@ function f_cont!(sys::System{TestAerodynamics}, air::AirData, kin::KinData, ::An
     #here we would actually compute aerodynamic forces and moments using either
     #α_c, β_c or α_c_in and β_c_in
     wr_c = Wrench()
-    wr_b = f_bc(wr_c)
+    wr_b = t_bc(wr_c)
 
     ẋ.α = α_dot
     ẋ.β = β_dot

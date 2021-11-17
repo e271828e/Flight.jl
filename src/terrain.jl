@@ -37,19 +37,21 @@ using Flight.Utils
 #these in a different thread. Thread safety.
 
 export AbstractTerrain, DummyTerrain, HorizontalTerrain
-export TerrainData, SurfaceCondition
+export TerrainData, SurfaceType
 export get_terrain_data
 
-@enum SurfaceCondition Dry Wet Icy
+@enum SurfaceType DryTarmac WetTarmac IcyTarmac
 
 struct TerrainData
     altitude::Altitude{Orthometric}
     normal::SVector{3,Float64} #NED components, inward pointing
-    condition::SurfaceCondition
+    surface::SurfaceType
 end
 
-TerrainData(; altitude = AltOrth(0), normal = SVector{3,Float64}(0,0,1),
-    condition = Dry) = TerrainData(altitude, SVector{3,Float64}(normal), condition)
+TerrainData(; altitude = AltOrth(0),
+                normal = SVector{3,Float64}(0,0,1),
+                surface = DryTarmac) =
+    TerrainData(altitude, SVector{3,Float64}(normal), surface)
 
 
 ######################## AbstractTerrain ##########################
@@ -62,13 +64,13 @@ struct DummyTerrain <: AbstractTerrain end
 
 struct HorizontalTerrain <: AbstractTerrain
     altitude::Altitude{Orthometric}
-    condition::SurfaceCondition
+    surface::SurfaceType
 end
 
-HorizontalTerrain(; altitude = AltOrth(0), condition = Dry) =
-    HorizontalTerrain(altitude, condition)
+HorizontalTerrain(; altitude = AltOrth(0), surface = DryTarmac) =
+    HorizontalTerrain(altitude, surface)
 
 get_terrain_data(trn::HorizontalTerrain, ::Abstract2DLocation) =
-    TerrainData(trn.altitude, SVector{3,Float64}(0,0,1), trn.condition)
+    TerrainData(trn.altitude, SVector{3,Float64}(0,0,1), trn.surface)
 
 end #module

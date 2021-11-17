@@ -72,7 +72,7 @@ R(b::Battery) = b.n_cells * b.R_cell
 ċ(b::Battery, i::Real) = -i/b.Cmax
 
 Base.@kwdef struct EThruster <: AbstractAirframeComponent
-    frame::FrameSpec = FrameSpec()
+    frame::FrameTransform = FrameTransform()
     battery::Battery = Battery()
     motor::ElectricMotor = ElectricMotor()
     gearbox::Gearbox = Gearbox()
@@ -171,7 +171,7 @@ end
 ##################### Hand of God ##########################
 
 # Base.@kwdef struct HandOfGod <: AbstractAirframeComponent
-#     frame::FrameSpec = FrameSpec()
+#     frame::FrameTransform = FrameTransform()
 #     enabled::Bool = false
 # end
 

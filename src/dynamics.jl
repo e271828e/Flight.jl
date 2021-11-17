@@ -12,12 +12,12 @@ using Flight.ModelingTools
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export DynData, MassData, FrameSpec, Wrench
+export DynData, MassData, FrameTransform, Wrench
 export translate, f_dyn!
 
 
 
-############################# FrameSpec ###############################
+############################# FrameTransform ###############################
 
 """
 Specifies a reference frame `fc(Oc, Ɛc)` relative to another `fb(Ob, Ɛb)`
@@ -27,7 +27,7 @@ Frame `fc(Oc, Ɛc)` is specified by:
   axes εb (`r_ObOc_b`)
 - The rotation quaternion from fb's axes εb to fc's axes εc (`q_bc`)
 """
-Base.@kwdef struct FrameSpec
+Base.@kwdef struct FrameTransform
     r::SVector{3,Float64} = zeros(SVector{3})
     q::RQuat = RQuat()
 end
@@ -59,31 +59,31 @@ Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(F = wr1.F + wr2.F, M = wr1.M + wr2.M)
 
 
 """
-    translate(f_bc::FrameSpec, wr_c::Wrench)
+    translate(t_bc::FrameTransform, wr_c::Wrench)
 
 Translate a Wrench from one reference frame to another.
 
-If `f_bc` is a `FrameSpec` specifying frame fc(Oc, εc) relative to fb(Ob, εb),
-and `wr_c` is a `Wrench` defined on fc, then `wr_b = translate(f_bc,
+If `t_bc` is a `FrameTransform` specifying frame fc(Oc, εc) relative to fb(Ob, εb),
+and `wr_c` is a `Wrench` defined on fc, then `wr_b = translate(t_bc,
 wr_c)` is the equivalent `Wrench` defined on fb.
 
 An alternative function call notation is provided:
-`f_bc(wr_c) == translate(f_bc, wr_c)`
+`t_bc(wr_c) == translate(t_bc, wr_c)`
 """
-(f_bc::FrameSpec)(wr_c::Wrench) = translate(f_bc, wr_c)
+(t_bc::FrameTransform)(wr_c::Wrench) = translate(t_bc, wr_c)
 
-function translate(f_bc::FrameSpec, wr_c::Wrench)
+function translate(t_bc::FrameTransform, wr_c::Wrench)
 
     F_Oc_c = wr_c.F
     M_Oc_c = wr_c.M
 
     #project onto airframe axes
-    F_Oc_b = f_bc.q(F_Oc_c)
-    M_Oc_b = f_bc.q(M_Oc_c)
+    F_Oc_b = t_bc.q(F_Oc_c)
+    M_Oc_b = t_bc.q(M_Oc_c)
 
     #translate to airframe origin
     F_Ob_b = F_Oc_b
-    M_Ob_b = M_Oc_b + f_bc.r × F_Oc_b
+    M_Ob_b = M_Oc_b + t_bc.r × F_Oc_b
 
     return Wrench(F = F_Ob_b, M = M_Ob_b) #wr_b
 
@@ -183,8 +183,8 @@ function gravity_wrench(mass::MassData, pos::PosData)
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
     wr_c = wr_G_n
-    f_bc = FrameSpec(r_ObOc_b = mass.r_ObG_b, q = q_nb')
-    return f_bc(wr_c) #wr_b
+    t_bc = FrameTransform(r_ObOc_b = mass.r_ObG_b, q = q_nb')
+    return t_bc(wr_c) #wr_b
 
 end
 
