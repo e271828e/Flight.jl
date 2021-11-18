@@ -51,26 +51,27 @@ end
 
 function test_strut()
 
-    trn = HorizontalTerrain()
-
+    steering_sys = System(DirectSteering())
     strut_sys = System(Strut())
+
+    terrain = HorizontalTerrain()
 
     #set the initial 2D Location
     l2d = LatLon()
 
     #get terrain altitude
-    h_trn = Terrain.get_terrain_data(trn, l2d).altitude
+    h_trn = Terrain.get_terrain_data(terrain, l2d).altitude
 
     #wow = false
     kin_init = KinInit(
-        Ob = Geographic(l2d, h_trn + 10), #initialize 1m above the terrain
+        Ob = Geographic(l2d, h_trn + 10),
         q_nb = REuler(0, 0, 0),
         v_eOb_b = [0,0,0]
     )
     kin_data = KinData(kin_init)
 
-    f_cont!(strut_sys, kin_data, trn, 0.0)
-    @btime f_cont!($strut_sys, $kin_data, $trn, 0.0)
+    f_cont!(strut_sys, steering_sys, terrain, kin_data)
+    @btime f_cont!($strut_sys, $steering_sys, $terrain, $kin_data)
 
     #wow = true
     kin_init = KinInit(
@@ -81,48 +82,53 @@ function test_strut()
     )
     kin_data = KinData(kin_init)
 
-    f_cont!(strut_sys, kin_data, trn, 0.0)
-    @btime f_cont!($strut_sys, $kin_data, $trn, 0.0)
+    f_cont!(strut_sys, steering_sys, terrain, kin_data)
+    @btime f_cont!($strut_sys, $steering_sys, $terrain, $kin_data)
 
 end
 
-# function test_contact()
+function test_friction()
 
-#     roll = LandingGear.Rolling()
-#     skid = LandingGear.Skidding(wet = LandingGear.StaticDynamic(0.2, 0.1))
+    roll = LandingGear.Rolling()
+    skid = LandingGear.Skidding(wet = LandingGear.StaticDynamic(0.2, 0.1))
 
-#     dry = Terrain.DryTarmac; wet = Terrain.WetTarmac; icy = Terrain.IcyTarmac
-#     LandingGear.get_μ(roll, dry)
-#     LandingGear.get_μ(roll, wet)
+    dry = Terrain.DryTarmac; wet = Terrain.WetTarmac; icy = Terrain.IcyTarmac
+    LandingGear.get_μ(roll, dry)
+    LandingGear.get_μ(roll, wet)
 
-#     LandingGear.get_μ(skid, dry)
-#     LandingGear.get_μ(skid, wet)
-#     LandingGear.get_μ(skid, icy)
+    LandingGear.get_μ(skid, dry)
+    LandingGear.get_μ(skid, wet)
+    LandingGear.get_μ(skid, icy)
 
-#     LandingGear.get_μ(roll, dry, 0)
-#     LandingGear.get_μ(roll, dry, 0.5)
-#     LandingGear.get_μ(roll, dry, 1)
+    LandingGear.get_μ(roll, dry, 0)
+    LandingGear.get_μ(roll, dry, 0.5)
+    LandingGear.get_μ(roll, dry, 1)
 
-#     LandingGear.get_μ(skid, icy, 0.1)
+    LandingGear.get_μ(skid, icy, 0.1)
 
-#     contact = Contact()
-#     LandingGear.ContactY()
+end
 
-#     get_x0(contact)
-#     get_y0(contact)
+function test_ldg_unit()
 
-#     contact_sys = System(contact)
+    ldg_sys = System(LandingGearUnit())
 
-#     f_cont!(contact_sys, true, wet, 1, @SVector [0, 0, 0])
-#     @btime f_cont!($contact_sys, true, $wet, 1, @SVector [0, 0, 0])
-#     @btime f_cont!($contact_sys, false, $wet, 1, @SVector [0, 0, 0])
+    terrain = HorizontalTerrain()
 
-# end
+    #set the initial 2D Location
+    l2d = LatLon()
 
+    #get terrain altitude
+    h_trn = Terrain.get_terrain_data(terrain, l2d).altitude
 
-# ldg_sys = System(ldg);
+    #wow = true
+    kin_init = KinInit(
+        Ob = Geographic(l2d, h_trn + 0.9),
+        q_nb = REuler(0, 0, 0),
+        v_eOb_b = [0,1,0]
+    )
+    kinematics = KinData(kin_init)
 
-# f_cont!(ldg_sys, kin_data, trn)
-# @btime f_cont!($ldg_sys, $kin_data, $trn)
+    @btime f_cont!($ldg_sys, $kinematics, $terrain)
+    f_cont!(ldg_sys, kinematics, terrain)
 
-# end
+end

@@ -21,9 +21,9 @@ import Flight.Airframe: get_wr_b, get_hr_b
 export Strut, StrutY
 export Contact, ContactY
 export SimpleDamper, get_damper_force
-export NoSteering, DirectSteering, get_steering_angle, set_steering_input
-export NoBraking, DirectBraking, get_braking_coefficient, set_braking_input
-export LandingGearUnit
+export NoSteering, DirectSteering, DirectSteeringY, get_steering_angle, set_steering_input
+export NoBraking, DirectBraking, DirectBrakingY, get_braking_coefficient, set_braking_input
+export LandingGearUnit, LandingGearUnitY
 
 #basis elements, for convenience
 const e1 = SVector{3,Float64}(1,0,0)
@@ -142,14 +142,14 @@ Base.@kwdef struct Strut{D<:AbstractDamper} <: AbstractComponent
 end
 
 Base.@kwdef struct StrutY
-    wow::Bool = false
-    ξ::Float64 = 0.0
-    ξ_dot::Float64 = 0.0
-    t_sc::FrameTransform = FrameTransform() #contact frame relative to the strut frame
-    t_bc::FrameTransform = FrameTransform() #contact frame relative to the body frame
-    F_dmp::Float64 = 0.0 #damper force along the zs axis
-    v_eOc_c::SVector{3,Float64} = zeros(SVector{3})
-    srf::SurfaceType = Terrain.DryTarmac
+    wow::Bool = false #weight-on-wheel flag
+    ξ::Float64 = 0.0 #damper deformation
+    ξ_dot::Float64 = 0.0 #damper deformation rate
+    t_sc::FrameTransform = FrameTransform() #strut to contact frame transform
+    t_bc::FrameTransform = FrameTransform() #body to contact frame transform
+    F_dmp::Float64 = 0.0 #damper force on the ground along the strut z axis
+    v_eOc_c::SVector{3,Float64} = zeros(SVector{3}) #contact point velocity
+    srf::SurfaceType = Terrain.DryTarmac #surface type at the reference point
 end
 
 get_y0(::Strut) = StrutY()
@@ -161,15 +161,11 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     @unpack n_e, h_e, q_eb, q_nb = kin.pos
     @unpack v_eOb_b, ω_eb_b = kin.vel
 
-    #basis elements, for convenience
-    e1 = SVector{3,Float64}(1,0,0)
-    e3 = SVector{3,Float64}(0,0,1)
-
     #strut frame axes
     q_bs = t_bs.q
+    r_ObOs_b = t_bs.r #strut frame origin
 
     #compute contact reference point P
-    r_ObOs_b = t_bs.r #strut frame origin
     r_OsP_s = l_0 * e3
     r_ObP_b = r_ObOs_b + q_bs(r_OsP_s)
     r_ObP_e = q_eb(r_ObP_b)
@@ -181,31 +177,31 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     #contact frame origin, which is still unknown)
     trn = get_terrain_data(terrain, P.l2d)
     h_trn = trn.altitude
+    srf = trn.surface
 
-    #project k_s onto z_n
+    #compute damper deformation. if the projection of k_s onto z_n is close to
+    #zero (strut nearly horizontal) or negative (strut upside down), set it to 0
     q_ns = q_nb ∘ q_bs
     k_s_zn = q_ns(e3)[3]
-
-    #if close to zero (strut nearly horizontal) or negative (strut upside down)
-    #we set the elongation to zero
     Δh = AltOrth(P) - h_trn
-    ξ = (k_s_zn > 1e-3 ? Δh / k_s_zn : 0.0) #0 instead of 0.0 leads to type instability!!
+    ξ = (k_s_zn > 1e-3 ? Δh / k_s_zn : 0.0) #0 instead of 0.0 causes type instability
     wow = ξ < 0
 
-    if !wow
-        sys.y = StrutY(; wow, ξ, trn)
+    if !wow #we're done, assign only relevant outputs and return
+        sys.y = StrutY(; wow, ξ, srf)
         return
     end
 
-    #contact frame
+    #wheel frame axes
     ψ_sw = get_steering_angle(steering)
     q_sw = Rz(ψ_sw) #rotate strut axes to get wheel axes
     q_nw = q_ns ∘ q_sw #NED to contact axes rotation
+
+    #contact frame axes
+    k_c_n = trn.normal #NED components of contact z-axis
     i_w_n = q_nw(e1) #NED components of wheel x-axis
-    k_t_n = trn.normal
-    i_w_n_trn = i_w_n - (i_w_n ⋅ k_t_n) * k_t_n #projection of i_w_n onto the terrain tangent plane
+    i_w_n_trn = i_w_n - (i_w_n ⋅ k_c_n) * k_c_n #projection of i_w_n onto the terrain tangent plane
     i_c_n = normalize(i_w_n_trn) #NED components of contact x-axis
-    k_c_n = k_t_n #NED components of contact z-axis
     j_c_n = k_c_n × i_c_n #NED components of contact y-axis
     R_nc = RMatrix(SMatrix{3,3}([i_c_n j_c_n k_c_n]), normalization = false)
     q_sc = q_ns' ∘ R_nc
@@ -216,24 +212,25 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     r_OsOc_b = q_bs(r_OsOc_s)
     r_ObOc_b = r_OsOc_b + r_ObOs_b
 
-    #contact frame
+    #construct contact frame transforms
+    t_sc = FrameTransform(r_OsOc_s, q_sc)
     t_bc = FrameTransform(r_ObOc_b, q_bc)
 
-    # contact frame origin velocity due to airframe motion
+    #contact frame origin velocity due to airframe motion
     v_eOc_afm_b = v_eOb_b + ω_eb_b × r_ObOc_b
     v_eOc_afm_c = q_bc'(v_eOc_afm_b)
 
-    # compute the damper elongation rate required to cancel the airframe
-    # contribution to the contact point velocity along the contact frame z axis
+    #compute the damper elongation rate required to cancel the airframe
+    #contribution to the contact point velocity along the contact frame z axis
     q_sc = q_bs' ∘ q_bc
     k_s_c = q_sc'(e3)
     ξ_dot = -v_eOc_afm_c[3] / k_s_c[3]
+
+    #compute contact point velocity
     v_eOc_dmp_c = k_s_c * ξ_dot
     v_eOc_c = v_eOc_afm_c + v_eOc_dmp_c
 
     F_dmp = get_damper_force(damper, ξ, ξ_dot)
-
-    srf = trn.srf
 
     sys.y = StrutY(; wow, ξ, ξ_dot, t_sc, t_bc, F_dmp, v_eOc_c, srf)
 
@@ -241,30 +238,28 @@ end
 
 ########################### Contact #############################
 
-# struct WoW{x}
-#     WoW(x::Bool) = new{x}()
-# end
-# Base.convert(::Type{Bool}, ::WoW{B}) where {B} = B
-# (::Type{Bool})(wow::WoW) = convert(Bool, wow)
-
+#static / dynamic friction coefficient set
 struct StaticDynamic
     static::Float64
     dynamic::Float64
 end
 
+#static / dynamic friction interpolation from breakout coefficient
+get_μ(f::StaticDynamic, α_bo::Real)::Float64 = α_bo * f.dynamic + (1-α_bo) * f.static
+
+#pure rolling friction coefficient set
 Base.@kwdef struct Rolling
     sd::StaticDynamic= StaticDynamic(0.03, 0.02)
 end
 
+get_μ(f::Rolling, ::SurfaceType)::StaticDynamic = f.sd
+
+#pure skidding friction coefficient set
 Base.@kwdef struct Skidding
     dry::StaticDynamic = StaticDynamic(0.75, 0.25)
     wet::StaticDynamic = StaticDynamic(0.25, 0.15)
     icy::StaticDynamic = StaticDynamic(0.075, 0.025)
 end
-
-get_μ(f::StaticDynamic, α_bo::Real)::Float64 = α_bo * f.dynamic + (1-α_bo) * f.static
-
-get_μ(f::Rolling, ::SurfaceType)::StaticDynamic = f.sd
 
 function get_μ(f::Skidding, srf::SurfaceType)::StaticDynamic
     if srf === Terrain.DryTarmac
@@ -286,7 +281,6 @@ get_μ(f::Union{Rolling,Skidding}, srf::SurfaceType, α_bo::Real)::Float64 =
 # get_sd(f::Skidding, ::Val{Terrain.WetTarmac}) = f.wet
 # get_sd(f::Skidding, ::Val{Terrain.IcyTarmac}) = f.icy
 
-
 Base.@kwdef struct Contact <: AbstractComponent
     rolling::Rolling = Rolling() #rolling friction coefficients
     skidding::Skidding = Skidding() #skidding friction coefficients
@@ -297,20 +291,20 @@ Base.@kwdef struct Contact <: AbstractComponent
 end
 
 Base.@kwdef struct ContactY
-    v::SVector{2,Float64} = zeros(SVector{2})
-    s::SVector{2,Float64} = zeros(SVector{2})
-    α_p::SVector{2,Float64} = zeros(SVector{2})
-    α_i::SVector{2,Float64} = zeros(SVector{2})
-    α_raw::SVector{2,Float64} = zeros(SVector{2})
-    α::SVector{2,Float64} = zeros(SVector{2})
-    sat::SVector{2,Bool} = zeros(SVector{2,Bool})
-    ψ_cv::Float64 = 0.0
-    α_bo::Float64 = 0.0
-    μ_max::SVector{2,Float64} = zeros(SVector{2})
-    μ::SVector{2,Float64} = zeros(SVector{2})
-    f_c::SVector{3,Float64} = zeros(SVector{3})
-    F_c::SVector{3,Float64} = zeros(SVector{3})
-    wr_b::Wrench = Wrench()
+    v::SVector{2,Float64} = zeros(SVector{2}) #contact plane velocity
+    s::SVector{2,Float64} = zeros(SVector{2}) #contact plane velocity integral
+    α_p::SVector{2,Float64} = zeros(SVector{2}) #proportional μ scale factor
+    α_i::SVector{2,Float64} = zeros(SVector{2}) #integral μ scale factor
+    α_raw::SVector{2,Float64} = zeros(SVector{2}) #total scale factor, raw
+    α::SVector{2,Float64} = zeros(SVector{2}) #total scale factor, clipped
+    sat::SVector{2,Bool} = zeros(SVector{2,Bool}) #scale factor saturation flag
+    ψ_cv::Float64 = 0.0 #tire slip angle
+    α_bo::Float64 = 0.0 #breakout coefficient
+    μ_max::SVector{2,Float64} = zeros(SVector{2}) #maximum friction coefficient
+    μ::SVector{2,Float64} = zeros(SVector{2}) #scaled friction coefficient
+    f_c::SVector{3,Float64} = zeros(SVector{3}) #non-dimensional contact force
+    F_c::SVector{3,Float64} = zeros(SVector{3}) #contact force
+    wr_b::Wrench = Wrench() #resulting airframe Wrench
 end
 
 get_x0(::Contact) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
@@ -328,8 +322,6 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
         sys.y = ContactY()
         return
     end
-
-    v_eOc_c = SVector{3,Float64}(v_eOc_c_in)
 
     #breakout coefficient
     α_bo = clamp((norm(v_eOc_c) - v_bo[1]) / (v_bo[2] - v_bo[1]), 0, 1)
@@ -398,44 +390,44 @@ end
 Base.@kwdef struct LandingGearUnit{L<:Strut, S <: AbstractSteering,
                             B <: AbstractBraking} <: AbstractAirframeComponent
     strut::L = Strut()
+    contact::Contact = Contact()
     steering::S = NoSteering()
     braking::B = NoBraking()
-    contact::Contact = Contact()
 end
 
 struct LandingGearUnitY{SteeringY, BrakingY}
     strut::StrutY
+    contact::ContactY
     steering::SteeringY
     braking::BrakingY
-    contact::ContactY
 end
 
 get_y0(ldg::LandingGearUnit) = LandingGearUnitY(
     get_y0(ldg.strut),
+    get_y0(ldg.contact),
     get_y0(ldg.steering),
     get_y0(ldg.braking),
-    get_y0(ldg.contact),
     )
 
 get_x0(ldg::LandingGearUnit) = ComponentVector(
     strut = get_x0(ldg.strut),
+    contact = get_x0(ldg.contact),
     steering = get_x0(ldg.steering),
     braking = get_x0(ldg.braking),
-    contact = get_x0(ldg.contact),
     )
 
 get_u0(ldg::LandingGearUnit) = (
     strut = get_u0(ldg.strut),
+    contact = get_u0(ldg.contact),
     steering = get_u0(ldg.steering),
     braking = get_u0(ldg.braking),
-    contact = get_u0(ldg.contact),
     )
 
 get_d0(ldg::LandingGearUnit) = (
     strut = get_d0(ldg.strut),
+    contact = get_d0(ldg.contact),
     steering = get_d0(ldg.steering),
     braking = get_d0(ldg.braking),
-    contact = get_d0(ldg.contact),
     )
 
 
@@ -443,12 +435,12 @@ function System(ldg::LandingGearUnit, ẋ = get_x0(ldg), x = get_x0(ldg),
                     y = get_y0(ldg), u = get_u0(ldg), d = get_d0(ldg), t = Ref(0.0))
 
     ss_list = Vector{System}()
-    ss_labels = (:strut, :steering, :braking, :contact)
+    ss_labels = (:strut, :contact, :steering, :braking)
     for label in ss_labels
         push!(ss_list, System(map((λ)->getproperty(λ, label), (ldg, ẋ, x, y, u, d))..., t))
     end
 
-    params = (frame = ldg.frame, damper = ldg.damper)
+    params = nothing
     subsystems = NamedTuple{ss_labels}(ss_list)
 
     System{map(typeof, (ldg, x, y, u, d, params, subsystems))...}(
@@ -458,7 +450,7 @@ end
 function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
                 terrain::AbstractTerrain)
 
-    @unpack strut, steering, braking, contact = sys.subsystems
+    @unpack strut, contact, steering, braking = sys.subsystems
 
     #update steering and braking subsystems
     f_cont!(steering)
@@ -470,20 +462,11 @@ function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
 
 end
 
-# #add f_disc! to reset the integrators for contact model
-# f_disc!(::System{<:LandingGearUnit}) = false
+get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
+get_hr_b(::System{<:LandingGearUnit}) = zeros(SVector{3})
 
-function get_wr_b(sys::System{<:LandingGearUnit})
-
-    sys.y.contact.wr_b
-
-end
-
-# #CHANGE THIS
-# #CHANGE THIS
-# #CHANGE THIS
-# #CHANGE THIS
-# get_hr_b(::System{<:LandingGearUnit}) = zeros(SVector{3})
+#TODO: add contact state reset for wow=false
+f_disc!(::System{<:LandingGearUnit}) = false
 
 
 end #module

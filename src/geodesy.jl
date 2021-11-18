@@ -240,6 +240,7 @@ Base.:-(Δh::Real, h::T) where {T<:Altitude} = T(Δh - h._val)
 Base.:*(k::Real, h::T) where {T<:Altitude} = T(k*h._val)
 Base.:*(h::T, k::Real) where {T<:Altitude} = T(k*h)
 Base.:/(h::T, k::Real) where {T<:Altitude} = T(h._val/k)
+Base.:^(h::T, k::Real) where {T<:Altitude} = h._val^k
 
 Base.:-(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val - h2._val
 

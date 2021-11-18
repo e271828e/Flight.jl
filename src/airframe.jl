@@ -12,7 +12,7 @@ import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export AbstractAirframeComponent, NullAirframeComponent, AirframeGroup
+export AbstractAirframeComponent, NullAirframeComponent, AirframeGroup, AirframeGroup2
 export get_wr_b, get_hr_b
 
 
@@ -37,6 +37,9 @@ struct NullAirframeComponent <: AbstractAirframeComponent end
 
 
 ######################### AirframeGroup #############################
+
+#AirframeGroup must only group identical components, otherwise the arguments to
+#f_cont! and f_disc! would generally be different for each one
 
 #must keep N as a type parameter, because it's left open in the components
 #type declaration
@@ -95,11 +98,10 @@ end
             :(sys.subsystems[$(QuoteNode(label))].y))
     end
 
-    #build a NamedTuple from the subsystem's labels and the constructed tuple,
-    #and pass it to the ACGroupY's constructor
+    #build a NamedTuple from the subsystem's labels and the constructed tuple
     ex_y = Expr(:call, Expr(:curly, NamedTuple, L), ex_tuple)
 
-    #assign the resulting ACGroupY to the parent system's y
+    #assign the result to the parent system's y
     ex_assign_y = Expr(:(=), :(sys.y), ex_y)
 
     #pack everything into the main block expression
@@ -152,8 +154,8 @@ end
 
 end
 
-#should probably define an AirframeGroupY{T,N,L} to dispatch instead of simply
-#grouping outputs in a NamedTuple, but this works for now
+#TODO: define an AirframeGroupY{T,N,L} to dispatch instead of simply grouping
+#outputs in a NamedTuple, but this works for now
 function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...)
 
     c = data |> StructArray |> StructArrays.components
@@ -164,5 +166,4 @@ function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...
 
 end
 
-
-end
+end #module

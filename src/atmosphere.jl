@@ -12,7 +12,7 @@ export AtmosphereCmp, AtmosphericData, AtmosphericSystem
 
 const R = 287.05287 #gas constant for dry air
 const γ = 1.40 #heat capacity ratio for dry air
-const β = 1.458e-6 #Sutherland's empirical constant for dynamic viscosity
+const βs = 1.458e-6 #Sutherland's empirical constant for dynamic viscosity
 const S = 110.4 #Sutherland's empirical constant for dynamic viscosity
 
 const T_std = 288.15
@@ -20,41 +20,28 @@ const p_std = 101325.0
 const ρ_std = p_std / (R * T_std)
 const g_std = 9.80665
 
-abstract type AbstractISA <: AbstractComponent end
-
 const ISA_layers = StructArray(
     β =      SVector{7,Float64}([-6.5e-3, 0, 1e-3, 2.8e-3, 0, -2.8e-3, -2e-3]),
-    h_ceil = SVector{7,Float64}([11000, 20000, 32000, 47000, 51000, 71000, 80000]))
+    h_ceil = SVector{7,Float64}([11000, 20000, 32000, 47000, 51000, 71000, 84852]))
 
 @inline density(p,T) = p/(R*T)
 @inline speed_of_sound(T) = √(γ*R*T)
-@inline dynamic_viscosity(T) = (β * T^1.5) / (T + S)
+@inline dynamic_viscosity(T) = (βs * T^1.5) / (T + S)
 
-@inline ISA_temperature_law(h, T_b, h_b, β) = T_b + β * (h - h_b)
+@inline ISA_temperature_law(h::Real, T_b, h_b, β)::Float64 = T_b + β * (h - h_b)
 
-@inline function ISA_pressure_law(h, g0, p_b, T_b, h_b, β)
+@inline function ISA_pressure_law(h::Real, g0, p_b, T_b, h_b, β)::Float64
     if β != 0.0
         p_b * (1 + β/T_b * (h - h_b)) ^ (-g0/(β*R))
     else
-       p_b * exp(-g0/(R*T_b) * (h - h_b))
+        p_b * exp(-g0/(R*T_b) * (h - h_b))
     end
-end
-
-@inline function get_ISA_layer_parameters(h::Real)
-    for i in 1:length(ISA_layers)
-        h < ISA_layers.h_ceil[i] && return ISA_layers[i]
-    end
-    throw(ArgumentError("Altitude out of bounds"))
 end
 
 Base.@kwdef struct SLConditions
     p::Float64 = p_std
     T::Float64 = T_std
     g::Float64 = g_std
-end
-
-function SLConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractISA}}
-    error("SLConditions constructor not implemented for $T")
 end
 
 struct ISAData
@@ -67,34 +54,28 @@ end
 
 ISAData() = ISAData(AltGeop(0))
 
-@inline function ISAData(h::AltGeop; sl::SLConditions = SLConditions())
+@inline function ISAData(h_geo::AltGeop, sl::SLConditions = SLConditions())
 
+    h = Float64(h_geo)
     h_base = 0; T_base = sl.T; p_base = sl.p; g_base = sl.g
-    β, h_ceil = get_ISA_layer_parameters(h_base)
 
-    while h > h_ceil
+    for i in 1:length(ISA_layers)
+        β, h_ceil = ISA_layers[i]
+        if h < h_ceil
+            T = ISA_temperature_law(h, T_base, h_base, β)
+            p = ISA_pressure_law(h, g_base, p_base, T_base, h_base, β)
+            return ISAData(p, T, density(p, T), speed_of_sound(T), dynamic_viscosity(T) )
+        end
         T_ceil = ISA_temperature_law(h_ceil, T_base, h_base, β)
         p_ceil = ISA_pressure_law(h_ceil, g_base, p_base, T_base, h_base, β)
         h_base = h_ceil; T_base = T_ceil; p_base = p_ceil
-        β, h_ceil = get_ISA_layer_parameters(h_base)
     end
-    T = ISA_temperature_law(h, T_base, h_base, β)
-    p = ISA_pressure_law(h, g_base, p_base, T_base, h_base, β)
 
-    return ISAData(p, T, density(p, T), speed_of_sound(T), dynamic_viscosity(T) )
+    throw(ArgumentError("Altitude out of bounds"))
 
 end
 
-@inline function ISAData(sys::System{<:AbstractISA}, p::Geographic)
-
-    h_geop = Altitude{Geopotential}(p.alt, p.l2d)
-    sl = SLConditions(sys, p.l2d)
-    ISAData(h_geop; sl)
-
-end
-
-
-##################### SimpleISA ###########################
+##################### AbstractISA ###########################
 
 #a System{<:AbstractISA} may have an output type of its own, as any other
 #System. however, this output generally will not be an ISAData instance. the
@@ -106,10 +87,25 @@ end
 #AbstractISA subtypes: ConstantUniformISA (SimpleISA), ConstantFieldISA,
 #DynamicUniformISA, DynamicFieldISA.
 
-#the constancy of a SimpleISA System is not really such, it simply means that
-#the System does not have a state and therefore cannot evolve on its own. but
-#its input vector can still be used to change manually the SL conditions during
-#simulation.
+abstract type AbstractISA <: AbstractComponent end
+
+function SLConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractISA}}
+    error("SLConditions constructor not implemented for $T")
+end
+
+@inline function ISAData(sys::System{<:AbstractISA}, p::Geographic)
+
+    h_geop = Altitude{Geopotential}(p.alt, p.l2d)
+    sl = SLConditions(sys, p.l2d)
+    ISAData(h_geop, sl)
+
+end
+
+##################### SimpleISA ###########################
+
+#a SimpleISA System is not really constant, it simply means that the System does
+#not have a state and therefore cannot evolve on its own. but its input vector
+#can still be used to change manually the SL conditions during simulation.
 
 struct SimpleISA <: AbstractISA end #Constant, Uniform ISA
 

@@ -183,7 +183,7 @@ function gravity_wrench(mass::MassData, pos::PosData)
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
     wr_c = wr_G_n
-    t_bc = FrameTransform(r_ObOc_b = mass.r_ObG_b, q = q_nb')
+    t_bc = FrameTransform(r = mass.r_ObG_b, q = q_nb')
     return t_bc(wr_c) #wr_b
 
 end
