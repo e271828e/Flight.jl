@@ -12,7 +12,7 @@ import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export AbstractAirframeComponent, NullAirframeComponent, AirframeGroup, AirframeGroup2
+export AbstractAirframeComponent, NullAirframeComponent, AirframeGroup
 export get_wr_b, get_hr_b
 
 

@@ -4,7 +4,7 @@
 HasContinuousDynamics end struct HasNoContinuousDynamics end
 MaybeContinuousDynamics(::Type{<:Any}) = NoContinuousDynamics
 MaybeContinuousDynamics(::Type{<:EThruster}) = ContinuousDynamics
-# MaybeContinuousDynamics(::Type{<:SimpleISA}) = NoContinuousDynamics
+# MaybeContinuousDynamics(::Type{<:TunableISA}) = NoContinuousDynamics
 
 #this is the first method that should be overridden by any System that
 #declares having continuous dynamics. function f_cont!(s::System{C},

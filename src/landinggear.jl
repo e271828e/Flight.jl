@@ -1,5 +1,8 @@
 module LandingGear
-#rename to ground, rename LandingGearUnit to LandingGear
+
+############################################
+#TODO: add contact state reset for wow=false
+############################################
 
 using LinearAlgebra
 using StaticArrays
@@ -18,12 +21,16 @@ using Flight.Terrain
 import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 import Flight.Airframe: get_wr_b, get_hr_b
 
+using Flight.Plotting
+import Flight.Plotting: plots
+
 export Strut, StrutY
 export Contact, ContactY
 export SimpleDamper, get_damper_force
 export NoSteering, DirectSteering, DirectSteeringY, get_steering_angle, set_steering_input
 export NoBraking, DirectBraking, DirectBrakingY, get_braking_coefficient, set_braking_input
 export LandingGearUnit, LandingGearUnitY
+export TricycleLandingGear, TricycleLandingGearY
 
 #basis elements, for convenience
 const e1 = SVector{3,Float64}(1,0,0)
@@ -138,7 +145,7 @@ end
 Base.@kwdef struct Strut{D<:AbstractDamper} <: AbstractComponent
     t_bs::FrameTransform = FrameTransform()
     damper::D = SimpleDamper()
-    l_0::Float64 = 1.0 #natural length
+    l_0::Float64 = 0.0 #natural length
 end
 
 Base.@kwdef struct StrutY
@@ -395,7 +402,7 @@ Base.@kwdef struct LandingGearUnit{L<:Strut, S <: AbstractSteering,
     braking::B = NoBraking()
 end
 
-struct LandingGearUnitY{SteeringY, BrakingY}
+Base.@kwdef struct LandingGearUnitY{SteeringY, BrakingY}
     strut::StrutY
     contact::ContactY
     steering::SteeringY
@@ -403,10 +410,10 @@ struct LandingGearUnitY{SteeringY, BrakingY}
 end
 
 get_y0(ldg::LandingGearUnit) = LandingGearUnitY(
-    get_y0(ldg.strut),
-    get_y0(ldg.contact),
-    get_y0(ldg.steering),
-    get_y0(ldg.braking),
+    strut = get_y0(ldg.strut),
+    contact = get_y0(ldg.contact),
+    steering = get_y0(ldg.steering),
+    braking = get_y0(ldg.braking),
     )
 
 get_x0(ldg::LandingGearUnit) = ComponentVector(
@@ -435,7 +442,7 @@ function System(ldg::LandingGearUnit, ẋ = get_x0(ldg), x = get_x0(ldg),
                     y = get_y0(ldg), u = get_u0(ldg), d = get_d0(ldg), t = Ref(0.0))
 
     ss_list = Vector{System}()
-    ss_labels = (:strut, :contact, :steering, :braking)
+    ss_labels = propertynames(ldg)
     for label in ss_labels
         push!(ss_list, System(map((λ)->getproperty(λ, label), (ldg, ẋ, x, y, u, d))..., t))
     end
@@ -465,11 +472,104 @@ end
 get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
 get_hr_b(::System{<:LandingGearUnit}) = zeros(SVector{3})
 
-#TODO: add contact state reset for wow=false
 f_disc!(::System{<:LandingGearUnit}) = false
 
 
-end #module
+function plots(t, data::AbstractVector{<:LandingGearUnitY}; mode, save_path, kwargs...)
+
+    println("Plots for LandingGearUnitY to be implemented...")
+
+end
+
+############################ TricycleLandingGear ############################
+
+Base.@kwdef struct TricycleLandingGear{L <: LandingGearUnit, R <: LandingGearUnit,
+    C <: LandingGearUnit} <: AbstractAirframeComponent
+    left::L = LandingGearUnit(braking = DirectBraking())
+    right::R = LandingGearUnit(braking = DirectBraking())
+    center::C = LandingGearUnit(steering = DirectSteering())
+
+end
+
+#needed for plots dispatch
+Base.@kwdef struct TricycleLandingGearY{L <: LandingGearUnitY, R <: LandingGearUnitY,
+    C <: LandingGearUnitY}
+    left::L
+    right::R
+    center::C
+end
+
+get_y0(ldg::TricycleLandingGear) = TricycleLandingGearY(
+    left = get_y0(ldg.left),
+    right = get_y0(ldg.right),
+    center = get_y0(ldg.center),
+    )
+
+get_x0(ldg::TricycleLandingGear) = ComponentVector(
+    left = get_x0(ldg.left),
+    right = get_x0(ldg.right),
+    center = get_x0(ldg.center),
+    )
+
+get_u0(ldg::TricycleLandingGear) = (
+    left = get_u0(ldg.left),
+    right = get_u0(ldg.right),
+    center = get_u0(ldg.center),
+    )
+
+get_d0(ldg::TricycleLandingGear) = (
+    left = get_d0(ldg.left),
+    right = get_d0(ldg.right),
+    center = get_d0(ldg.center),
+    )
+
+function plots(t, data::AbstractVector{<:TricycleLandingGearY}; mode, save_path, kwargs...)
+
+    println("Plots for TricycleLandingGearY to be implemented...")
+
+end
+
+function System(ldg::TricycleLandingGear, ẋ = get_x0(ldg), x = get_x0(ldg),
+                    y = get_y0(ldg), u = get_u0(ldg), d = get_d0(ldg), t = Ref(0.0))
+
+    ss_list = Vector{System}()
+    ss_labels = propertynames(ldg)
+    for label in ss_labels
+        push!(ss_list, System(map((λ)->getproperty(λ, label), (ldg, ẋ, x, y, u, d))..., t))
+    end
+
+    params = nothing
+    subsystems = NamedTuple{ss_labels}(ss_list)
+
+    System{map(typeof, (ldg, x, y, u, d, params, subsystems))...}(
+                         ẋ, x, y, u, d, t, params, subsystems)
+end
+
+function f_cont!(sys::System{<:TricycleLandingGear}, kinematics::KinData,
+                terrain::AbstractTerrain)
+
+    @unpack left, right, center = sys.subsystems
+
+    #update steering and braking subsystems
+    f_cont!(left, kinematics, terrain)
+    f_cont!(right, kinematics, terrain)
+    f_cont!(center, kinematics, terrain)
+
+    sys.y = TricycleLandingGearY(left.y, right.y, center.y)
+
+end
+
+function get_wr_b(sys::System{<:TricycleLandingGear})
+    @unpack left, right, center = sys.subsystems
+    get_wr_b(left) + get_wr_b(right) + get_wr_b(center)
+end
+
+function get_hr_b(sys::System{<:TricycleLandingGear})
+    @unpack left, right, center = sys.subsystems
+    get_hr_b(left) + get_hr_b(right) + get_hr_b(center)
+end
+
+f_disc!(::System{<:TricycleLandingGear}) = false
 
 #in System, define and extend f_branch!
 
@@ -492,5 +592,4 @@ end #module
 #     end
 # end
 
-
-#this method
+end #module

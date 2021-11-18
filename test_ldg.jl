@@ -1,4 +1,6 @@
 using StaticArrays
+using OrdinaryDiffEq
+using SciMLBase
 using BenchmarkTools
 using Flight
 
@@ -75,7 +77,7 @@ function test_strut()
 
     #wow = true
     kin_init = KinInit(
-        Ob = Geographic(l2d, h_trn + 1 + 0*cos(π/6)),
+        Ob = Geographic(l2d, h_trn + 0*cos(π/6)),
         q_nb = REuler(0, 0, 0*π/6),
         v_eOb_b = [0,0,0],
         ω_lb_b = [1,0,0]
@@ -130,5 +132,51 @@ function test_ldg_unit()
 
     @btime f_cont!($ldg_sys, $kinematics, $terrain)
     f_cont!(ldg_sys, kinematics, terrain)
+
+end
+
+#test on-aircraft integration
+function test_ldg_ac()
+
+    atm_sys = System(AtmosphereCmp());
+
+    terrain = HorizontalTerrain()
+
+    l2d = LatLon()
+    h_trn = Terrain.get_terrain_data(terrain, l2d).altitude
+
+    #wow = true
+    kin_init = KinInit(
+        Ob = Geographic(l2d, h_trn - 0.1),
+        q_nb = REuler(0, 0, 0),
+        v_eOb_b = [0,1,0]
+    )
+
+    ac = AircraftBase(
+        kin = KinLTF(),
+        mass = ConstantMass(m = 1000),
+        aero = SimpleDrag(),
+        ldg = LandingGearUnit(steering = DirectSteering(), braking = DirectBraking()),
+        pwp = AirframeGroup((
+            left = EThruster(motor = ElectricMotor(α = CW)),
+            right = EThruster(motor = ElectricMotor(α = CCW)))),
+    );
+    ac_sys = System(ac);
+
+    init!(ac_sys.x.kin, kin_init)
+    ac_sys.x.kin.pos
+    ac_sys.x.kin.vel
+
+    f_cont!(ac_sys, terrain, atm_sys);
+    @show ac_sys.ẋ.kin.vel
+    println(ac_sys.y.ldg)
+    @btime f_cont!($ac_sys, $terrain, $atm_sys)
+
+    ac_mdl = Model(ac_sys, (terrain, atm_sys); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0.1);
+    b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
+
+    plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
+
+    plots(ac_mdl; save_path = joinpath("tmp", "test_ldg_ac"), plot_settings...)
 
 end

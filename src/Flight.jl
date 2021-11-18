@@ -21,6 +21,7 @@ include("dynamics.jl")
 
 #airframe
 include("airframe.jl")
+include("mass.jl")
 include("airdata.jl")
 include("propulsion.jl")
 include("landinggear.jl")
@@ -29,6 +30,7 @@ include("statemachine.jl")
 
 #aircraft
 include("aircraft.jl")
+include("c172.jl")
 
 #output interfaces
 include("output.jl")
@@ -47,6 +49,7 @@ include("output.jl")
 @reexport using .Dynamics
 
 @reexport using .Airframe
+@reexport using .Mass
 @reexport using .Airdata
 @reexport using .Propulsion
 @reexport using .Aerodynamics
@@ -54,6 +57,7 @@ include("output.jl")
 @reexport using .LandingGear
 
 @reexport using .Aircraft
+@reexport using .C172
 
 @reexport using .Output
 

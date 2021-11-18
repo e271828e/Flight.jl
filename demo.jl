@@ -10,8 +10,8 @@ plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
 trn = DummyTerrain()
 atm_sys = System(AtmosphereCmp())
 
-ac = TestAircraft(
-    mass = ConstantMass(),
+ac = AircraftBase(
+    mass = TunableMass(),
     ctrl = NoControlMapping(),
     aero = NullAirframeComponent(),
     pwp = NullAirframeComponent(),
@@ -33,9 +33,9 @@ plots(ac_mdl; save_path = joinpath("tmp", "plots_ac_02"), plot_settings...)
 
 ################################## AC2 ######################################
 
-ac = TestAircraft(
+ac = AircraftBase(
     kin = KinLTF(),
-    mass = ConstantMass(),
+    mass = TunableMass(),
     aero = SimpleDrag(),
     pwp = AirframeGroup((
         left = EThruster(motor = ElectricMotor(α = CW)),

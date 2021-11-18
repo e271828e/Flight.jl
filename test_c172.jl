@@ -4,7 +4,7 @@ using SciMLBase
 using LinearAlgebra
 using BenchmarkTools
 
-trn = DummyTerrain()
+terrain = HorizontalTerrain()
 atm_sys = System(AtmosphereCmp())
 ac = AircraftBase(
     kin = KinLTF(),

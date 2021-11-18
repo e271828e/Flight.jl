@@ -6,7 +6,7 @@ using Flight.Geodesy
 using Flight.ModelingTools
 import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
 
-export SimpleISA
+export TunableISA
 export SimpleWind
 export AtmosphereCmp, AtmosphericData, AtmosphericSystem
 
@@ -84,7 +84,7 @@ end
 #related to its own internal state, if it has one due to it being a dynamic ISA
 #implementation.
 
-#AbstractISA subtypes: ConstantUniformISA (SimpleISA), ConstantFieldISA,
+#AbstractISA subtypes: ConstantUniformISA (TunableISA), ConstantFieldISA,
 #DynamicUniformISA, DynamicFieldISA.
 
 abstract type AbstractISA <: AbstractComponent end
@@ -101,24 +101,24 @@ end
 
 end
 
-##################### SimpleISA ###########################
+##################### TunableISA ###########################
 
-#a SimpleISA System is not really constant, it simply means that the System does
-#not have a state and therefore cannot evolve on its own. but its input vector
-#can still be used to change manually the SL conditions during simulation.
+#a TunableISA System does not have a state and therefore cannot evolve on its
+#own. but its input vector can still be used to manually tune the SL conditions
+#during simulation.
 
-struct SimpleISA <: AbstractISA end #Constant, Uniform ISA
+struct TunableISA <: AbstractISA end #Constant, Uniform ISA
 
-Base.@kwdef mutable struct USimpleISA #only allocates upon System instantiation
+Base.@kwdef mutable struct UTunableISA #only allocates upon System instantiation
     T_sl::Float64 = T_std
     p_sl::Float64 = p_std
 end
 
-get_u0(::SimpleISA) = USimpleISA()
-f_cont!(::System{<:SimpleISA}, args...) = nothing
-f_disc!(::System{<:SimpleISA}, args...) = false
+get_u0(::TunableISA) = UTunableISA()
+f_cont!(::System{<:TunableISA}, args...) = nothing
+f_disc!(::System{<:TunableISA}, args...) = false
 
-function SLConditions(s::System{<:SimpleISA}, ::Abstract2DLocation)
+function SLConditions(s::System{<:TunableISA}, ::Abstract2DLocation)
     SLConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
     #alternative using actual local SL gravity:
     # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(l2d, AltOrth(0.0))))
@@ -158,7 +158,7 @@ end
 #################### AtmosphereCmp ############################
 
 Base.@kwdef struct AtmosphereCmp{I <: AbstractISA, W <: AbstractWind} <: AbstractComponent
-    isa_::I = SimpleISA()
+    isa_::I = TunableISA()
     wind::W = SimpleWind()
 end
 
