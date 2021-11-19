@@ -1,7 +1,7 @@
 module LandingGear
 
 ############################################
-#TODO: add contact state reset for wow=false
+#TODO: add contact state reset in f_disc! for wow=false
 ############################################
 
 using LinearAlgebra
@@ -47,6 +47,7 @@ struct NoSteering <: AbstractSteering end
 set_steering_input(::System{NoSteering}, ::Real) = nothing
 get_steering_angle(::System{NoSteering}) = 0.0
 f_cont!(::System{NoSteering}, args...) = nothing
+f_disc!(::System{NoSteering}, args...) = false
 
 
 ############## DirectSteering ##############
@@ -71,6 +72,8 @@ function f_cont!(sys::System{DirectSteering})
     sys.y = DirectSteeringY(sys.u[] * sys.params.ψ_max)
 end
 
+f_disc!(::System{DirectSteering}, args...) = false
+
 get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
 
 # struct ActuatedSteering{A <: AbstractActuator} <: AbstractSteering
@@ -90,6 +93,7 @@ abstract type AbstractBraking <: AbstractComponent end
 struct NoBraking <: AbstractBraking end
 
 f_cont!(::System{NoBraking}, args...) = nothing
+f_disc!(::System{NoBraking}, args...) = false
 set_braking_input(::System{NoBraking}, ::Real) = nothing
 get_braking_coefficient(::System{NoBraking}) = 0.0
 
@@ -114,6 +118,8 @@ end
 function f_cont!(sys::System{DirectBraking})
     sys.y = DirectBrakingY(sys.u[] * sys.params.η_br)
 end
+
+f_disc!(::System{DirectBraking}, args...) = false
 
 get_braking_coefficient(sys::System{DirectBraking}) = sys.y.α_br
 
@@ -242,6 +248,8 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     sys.y = StrutY(; wow, ξ, ξ_dot, t_sc, t_bc, F_dmp, v_eOc_c, srf)
 
 end
+
+f_disc!(::System{<:Strut}, args...) = false
 
 ########################### Contact #############################
 
@@ -392,66 +400,16 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
 
 end
 
+f_disc!(::System{Contact}, args...) = false
+
 ########################## LandingGearUnit #########################
 
 Base.@kwdef struct LandingGearUnit{L<:Strut, S <: AbstractSteering,
-                            B <: AbstractBraking} <: AbstractAirframeComponent
+                            B <: AbstractBraking} <: AbstractAirframeNode
     strut::L = Strut()
     contact::Contact = Contact()
     steering::S = NoSteering()
     braking::B = NoBraking()
-end
-
-Base.@kwdef struct LandingGearUnitY{SteeringY, BrakingY}
-    strut::StrutY
-    contact::ContactY
-    steering::SteeringY
-    braking::BrakingY
-end
-
-get_y0(ldg::LandingGearUnit) = LandingGearUnitY(
-    strut = get_y0(ldg.strut),
-    contact = get_y0(ldg.contact),
-    steering = get_y0(ldg.steering),
-    braking = get_y0(ldg.braking),
-    )
-
-get_x0(ldg::LandingGearUnit) = ComponentVector(
-    strut = get_x0(ldg.strut),
-    contact = get_x0(ldg.contact),
-    steering = get_x0(ldg.steering),
-    braking = get_x0(ldg.braking),
-    )
-
-get_u0(ldg::LandingGearUnit) = (
-    strut = get_u0(ldg.strut),
-    contact = get_u0(ldg.contact),
-    steering = get_u0(ldg.steering),
-    braking = get_u0(ldg.braking),
-    )
-
-get_d0(ldg::LandingGearUnit) = (
-    strut = get_d0(ldg.strut),
-    contact = get_d0(ldg.contact),
-    steering = get_d0(ldg.steering),
-    braking = get_d0(ldg.braking),
-    )
-
-
-function System(ldg::LandingGearUnit, ẋ = get_x0(ldg), x = get_x0(ldg),
-                    y = get_y0(ldg), u = get_u0(ldg), d = get_d0(ldg), t = Ref(0.0))
-
-    ss_list = Vector{System}()
-    ss_labels = propertynames(ldg)
-    for label in ss_labels
-        push!(ss_list, System(map((λ)->getproperty(λ, label), (ldg, ẋ, x, y, u, d))..., t))
-    end
-
-    params = nothing
-    subsystems = NamedTuple{ss_labels}(ss_list)
-
-    System{map(typeof, (ldg, x, y, u, d, params, subsystems))...}(
-                         ẋ, x, y, u, d, t, params, subsystems)
 end
 
 function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
@@ -459,137 +417,31 @@ function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
 
     @unpack strut, contact, steering, braking = sys.subsystems
 
-    #update steering and braking subsystems
     f_cont!(steering)
     f_cont!(braking)
     f_cont!(strut, steering, terrain, kinematics)
     f_cont!(contact, strut, braking)
 
-    sys.y = LandingGearUnitY(strut.y, contact.y, steering.y, braking.y)
+    sys.y = (strut = strut.y, contact = contact.y, steering = steering.y,
+            braking = braking.y)
 
 end
 
+#need to override the default AirframeNode implementation, since the underlying
+#subcomponents are not AirframeComponents and only Contact contributes wr_b.
+#could also define trivial get_wr_b and get_hr_b methods for steering, braking
+#and strut, and let the default AirframeNode implementation do its thing
 get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
 get_hr_b(::System{<:LandingGearUnit}) = zeros(SVector{3})
-
-f_disc!(::System{<:LandingGearUnit}) = false
-
-
-function plots(t, data::AbstractVector{<:LandingGearUnitY}; mode, save_path, kwargs...)
-
-    println("Plots for LandingGearUnitY to be implemented...")
-
-end
 
 ############################ TricycleLandingGear ############################
 
 Base.@kwdef struct TricycleLandingGear{L <: LandingGearUnit, R <: LandingGearUnit,
-    C <: LandingGearUnit} <: AbstractAirframeComponent
+    C <: LandingGearUnit} <: AbstractAirframeNode
     left::L = LandingGearUnit(braking = DirectBraking())
     right::R = LandingGearUnit(braking = DirectBraking())
     center::C = LandingGearUnit(steering = DirectSteering())
-
 end
 
-#needed for plots dispatch
-Base.@kwdef struct TricycleLandingGearY{L <: LandingGearUnitY, R <: LandingGearUnitY,
-    C <: LandingGearUnitY}
-    left::L
-    right::R
-    center::C
-end
-
-get_y0(ldg::TricycleLandingGear) = TricycleLandingGearY(
-    left = get_y0(ldg.left),
-    right = get_y0(ldg.right),
-    center = get_y0(ldg.center),
-    )
-
-get_x0(ldg::TricycleLandingGear) = ComponentVector(
-    left = get_x0(ldg.left),
-    right = get_x0(ldg.right),
-    center = get_x0(ldg.center),
-    )
-
-get_u0(ldg::TricycleLandingGear) = (
-    left = get_u0(ldg.left),
-    right = get_u0(ldg.right),
-    center = get_u0(ldg.center),
-    )
-
-get_d0(ldg::TricycleLandingGear) = (
-    left = get_d0(ldg.left),
-    right = get_d0(ldg.right),
-    center = get_d0(ldg.center),
-    )
-
-function plots(t, data::AbstractVector{<:TricycleLandingGearY}; mode, save_path, kwargs...)
-
-    println("Plots for TricycleLandingGearY to be implemented...")
-
-end
-
-function System(ldg::TricycleLandingGear, ẋ = get_x0(ldg), x = get_x0(ldg),
-                    y = get_y0(ldg), u = get_u0(ldg), d = get_d0(ldg), t = Ref(0.0))
-
-    ss_list = Vector{System}()
-    ss_labels = propertynames(ldg)
-    for label in ss_labels
-        push!(ss_list, System(map((λ)->getproperty(λ, label), (ldg, ẋ, x, y, u, d))..., t))
-    end
-
-    params = nothing
-    subsystems = NamedTuple{ss_labels}(ss_list)
-
-    System{map(typeof, (ldg, x, y, u, d, params, subsystems))...}(
-                         ẋ, x, y, u, d, t, params, subsystems)
-end
-
-function f_cont!(sys::System{<:TricycleLandingGear}, kinematics::KinData,
-                terrain::AbstractTerrain)
-
-    @unpack left, right, center = sys.subsystems
-
-    #update steering and braking subsystems
-    f_cont!(left, kinematics, terrain)
-    f_cont!(right, kinematics, terrain)
-    f_cont!(center, kinematics, terrain)
-
-    sys.y = TricycleLandingGearY(left.y, right.y, center.y)
-
-end
-
-function get_wr_b(sys::System{<:TricycleLandingGear})
-    @unpack left, right, center = sys.subsystems
-    get_wr_b(left) + get_wr_b(right) + get_wr_b(center)
-end
-
-function get_hr_b(sys::System{<:TricycleLandingGear})
-    @unpack left, right, center = sys.subsystems
-    get_hr_b(left) + get_hr_b(right) + get_hr_b(center)
-end
-
-f_disc!(::System{<:TricycleLandingGear}) = false
-
-#in System, define and extend f_branch!
-
-# #individual Component
-# f_branch!(y, dx, x, u, t, sys, args...) = f_branch!(Val(has_input(sys)), y, dx, x, u, t, args...)
-# f_branch!(::Val{true}, y, dx, x, u, t, sys, args...) = f_cont!(y, dx, x, u, t, sys, args...)
-# f_cont!(::HasInput, y, dx, x ,u, t, sys, args...) = f_cont!(y, dx, x, u, t, sys, args...)
-# f_cont!(::HasNoInput, y, dx, x, u, t, sys, args...) = f_cont!(y, dx, x, t, sys, args...)
-
-# #for a AirframeGroup
-# f_cont!(MaybeInput(S), MaybeOutput(S), y, dx, x, u, t, sys, args...)
-# f_cont!(::HasInput, ::HasOutput, y, dx, x ,u, t, sys, args...)
-# #now, this method needs to consider the possibility for each component that it
-# #may have or not Input or Output. so it must do
-# for (label, component) in zip(keys(C), values(C))
-#     if MaybeInput(typeof(component)) #need tocheck, because if it has no input, u[label] will not exist!
-#         f_cont!(y_cmp, dx_cmp, x_cmp, u_cmp, t, cmp, args...)
-#     else
-#         f_cont!(y_cmp, dx_cmp, x_cmp, t, cmp, args...)
-#     end
-# end
 
 end #module

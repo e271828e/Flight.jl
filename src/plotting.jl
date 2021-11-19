@@ -34,6 +34,19 @@ end
 #for Systems without outputs
 plots(::AbstractVector{<:Real}, ::AbstractVector{Nothing}; kwargs...) = nothing
 
+#for AbstractAirframeNode and AirframeGroup Systems
+function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...)
+
+    c = data |> StructArray |> StructArrays.components
+    for (c_label, c_data) in zip(keys(c), values(c))
+        save_path_c = mkpath(joinpath(save_path, String(c_label)))
+        plots(t, c_data; mode, save_path = save_path_c, kwargs...)
+    end
+
+end
+
+
+
 function save_plots(d::Dict{String,Plots.Plot}; save_path, format = :png)
     for (id, p) in zip(keys(d), values(d))
         savefig(p, joinpath(save_path, id*"."*String(format)))

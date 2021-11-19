@@ -12,7 +12,7 @@ import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export AbstractAirframeComponent, NullAirframeComponent, AirframeGroup
+export AbstractAirframeComponent, AbstractAirframeNode, NullAirframeComponent
 export get_wr_b, get_hr_b
 
 
@@ -35,76 +35,69 @@ struct NullAirframeComponent <: AbstractAirframeComponent end
 @inline f_cont!(::System{NullAirframeComponent}, args...) = nothing
 @inline (f_disc!(::System{NullAirframeComponent}, args...)::Bool) = false
 
+######################## AbstractAirframeNode #############################
 
-######################### AirframeGroup #############################
+#abstract type providing convenience methods for those
+#AbstractAirframeComponents consisting only of AbstractAirframeComponent fields
 
-#AirframeGroup must only group identical components, otherwise the arguments to
-#f_cont! and f_disc! would generally be different for each one
+abstract type AbstractAirframeNode <: AbstractAirframeComponent end
 
-#must keep N as a type parameter, because it's left open in the components
-#type declaration
-struct AirframeGroup{T<:AbstractAirframeComponent,N,L} <: AbstractAirframeComponent
-    components::NamedTuple{L, M} where {L, M <: NTuple{N, T}}
-    function AirframeGroup(nt::NamedTuple{L, M}) where {L, M<:NTuple{N, T}} where {N, T<:AbstractAirframeComponent}
-        new{T,N,L}(nt)
-    end
-end
+Base.keys(node::AbstractAirframeNode) = propertynames(node)
+Base.values(node::AbstractAirframeNode) = map(λ -> getproperty(node, λ), keys(node))
 
-AirframeGroup(;kwargs...) = AirframeGroup((; kwargs...))
+get_x0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(get_x0.(values(node))) |> ComponentVector
+get_y0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(get_y0.(values(node)))
+get_u0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(get_u0.(values(node)))
+get_d0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(get_d0.(values(node)))
 
-Base.length(::AirframeGroup{T,N,L}) where {T,N,L} = N
-Base.getindex(g::AirframeGroup, i) = getindex(getfield(g,:components), i)
-Base.getproperty(g::AirframeGroup, i::Symbol) = getproperty(getfield(g,:components), i)
-Base.keys(::AirframeGroup{T,N,L}) where {T,N,L} = L
-Base.values(g::AirframeGroup) = values(getfield(g,:components))
-
-get_x0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_x0.(values(g))) |> ComponentVector
-get_u0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_u0.(values(g)))
-get_y0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_y0.(values(g)))
-get_d0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_d0.(values(g)))
-
-function System(g::AirframeGroup{T,N,L},
-                    ẋ = get_x0(g), x = get_x0(g), y = get_y0(g), u = get_u0(g),
-                    d = get_d0(g), t = Ref(0.0)) where {T,N,L}
+function System(node::AbstractAirframeNode, ẋ = get_x0(node), x = get_x0(node),
+                    y = get_y0(node), u = get_u0(node), d = get_d0(node), t = Ref(0.0))
 
     ss_list = Vector{System}()
-    for label in L
-        s_cmp = System(map((λ)->getproperty(λ, label), (g, ẋ, x, y, u, d))..., t)
-        push!(ss_list, s_cmp)
+    ss_labels = keys(node)
+    @show ss_labels
+    for label in ss_labels
+        push!(ss_list, System(map((λ)->getproperty(λ, label), (node, ẋ, x, y, u, d))..., t))
     end
 
-    params = nothing #everything is already stored in the subsystem's parameters
-    subsystems = NamedTuple{L}(ss_list)
+    params = nothing
+    subsystems = NamedTuple{ss_labels}(ss_list)
 
-    System{map(typeof, (g, x, y, u, d, params, subsystems))...}(ẋ, x, y, u, d, t, params, subsystems)
+    System{map(typeof, (node, x, y, u, d, params, subsystems))...}(
+                         ẋ, x, y, u, d, t, params, subsystems)
+
 end
 
-@inline @generated function f_cont!(sys::System{C}, args...
-    ) where {C<:AirframeGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
+#default implementation calls f_cont! on all Node subsystems with the same
+#arguments provided to the parent Node's System, then builds the NamedTuple
+#can be overridden for specific AbstractAirframeNode subtypes if needed
+@inline @generated function f_cont!(sys::System{C}, args...) where {C<:AbstractAirframeNode}
 
+    # Core.print("Generated function called")
     ex_main = Expr(:block)
 
     #call f_cont! on each subsystem
     ex_calls = Expr(:block)
-    for label in L
+    ss_labels = fieldnames(C)
+    for label in ss_labels
         push!(ex_calls.args,
             :(f_cont!(sys.subsystems[$(QuoteNode(label))], args...)))
     end
 
-    #retrieve the y from each subsystem and build a tuple with them
+    #retrieve the y from each subsystem and build a tuple from them
     ex_tuple = Expr(:tuple)
-    for label in L
+    for label in ss_labels
         push!(ex_tuple.args,
             :(sys.subsystems[$(QuoteNode(label))].y))
     end
 
     #build a NamedTuple from the subsystem's labels and the constructed tuple
-    ex_y = Expr(:call, Expr(:curly, NamedTuple, L), ex_tuple)
+    ex_y = Expr(:call, Expr(:curly, NamedTuple, ss_labels), ex_tuple)
 
     #assign the result to the parent system's y
     ex_assign_y = Expr(:(=), :(sys.y), ex_y)
 
-    #pack everything into the main block expression
+    #push everything into the main block expression
     push!(ex_main.args, ex_calls)
     push!(ex_main.args, ex_assign_y)
     push!(ex_main.args, :(return nothing))
@@ -113,13 +106,16 @@ end
 
 end
 
-
+#default implementation calls f_disc! on all Node subsystems with the same
+#arguments provided to the parent Node's System, then ORs their outputs.
+#can be overridden for specific AbstractAirframeNode subtypes if needed
 @inline @generated function (f_disc!(sys::System{C}, args...)::Bool
-    ) where {C<:AirframeGroup{T,N,L}} where {T <:AbstractAirframeComponent,N,L}
+    ) where {C<:AbstractAirframeNode}
 
+    # Core.print("Generated function called")
     ex = Expr(:block)
     push!(ex.args, :(x_mod = false))
-    for label in L
+    for label in fieldnames(C)
         #we need all f_disc! calls executed, so | must be used instead of ||
         push!(ex.args,
             :(x_mod = x_mod | f_disc!(sys.subsystems[$(QuoteNode(label))], args...)))
@@ -128,12 +124,13 @@ end
 
 end
 
-@inline @generated function get_wr_b(sys::System{C}
-    ) where {C<:AirframeGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
+#default implementation retrieves the wrench from each subsystem and sums them
+@inline @generated function get_wr_b(sys::System{C}) where {C<:AbstractAirframeNode}
 
+    # Core.print("Generated function called")
     ex = Expr(:block)
     push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
-    for label in L
+    for label in fieldnames(C)
         push!(ex.args,
             :(wr += get_wr_b(sys.subsystems[$(QuoteNode(label))])))
     end
@@ -141,28 +138,18 @@ end
 
 end
 
-@inline @generated function get_hr_b(sys::System{C}
-    ) where {C<:AirframeGroup{T,N,L}} where {T <: AbstractAirframeComponent,N,L}
+#default implementation retrieves angular momentum from each subsystem and sums
+#them
+@inline @generated function get_hr_b(sys::System{C}) where {C<:AbstractAirframeNode}
 
+    # Core.print("Generated function called")
     ex = Expr(:block)
     push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate
-    for label in L
+    for label in fieldnames(C)
         push!(ex.args,
             :(h += get_hr_b(sys.subsystems[$(QuoteNode(label))])))
     end
     return ex
-
-end
-
-#TODO: define an AirframeGroupY{T,N,L} to dispatch instead of simply grouping
-#outputs in a NamedTuple, but this works for now
-function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...)
-
-    c = data |> StructArray |> StructArrays.components
-    for (c_label, c_data) in zip(keys(c), values(c))
-        save_path_c = mkpath(joinpath(save_path, String(c_label)))
-        plots(t, c_data; mode, save_path = save_path_c, kwargs...)
-    end
 
 end
 

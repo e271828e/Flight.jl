@@ -208,4 +208,29 @@ end
 # compiler to infer its type, and therefore it specializes the time-critical
 # assignment statements to their actual types.
 
+###########################################################################
+
+#to try:
+
+#in System, define and extend f_branch!
+
+# #individual Component
+# f_branch!(y, dx, x, u, t, sys, args...) = f_branch!(Val(has_input(sys)), y, dx, x, u, t, args...)
+# f_branch!(::Val{true}, y, dx, x, u, t, sys, args...) = f_cont!(y, dx, x, u, t, sys, args...)
+# f_cont!(::HasInput, y, dx, x ,u, t, sys, args...) = f_cont!(y, dx, x, u, t, sys, args...)
+# f_cont!(::HasNoInput, y, dx, x, u, t, sys, args...) = f_cont!(y, dx, x, t, sys, args...)
+
+# #for a AirframeGroup
+# f_cont!(MaybeInput(S), MaybeOutput(S), y, dx, x, u, t, sys, args...)
+# f_cont!(::HasInput, ::HasOutput, y, dx, x ,u, t, sys, args...)
+# #now, this method needs to consider the possibility for each component that it
+# #may have or not Input or Output. so it must do
+# for (label, component) in zip(keys(C), values(C))
+#     if MaybeInput(typeof(component)) #need tocheck, because if it has no input, u[label] will not exist!
+#         f_cont!(y_cmp, dx_cmp, x_cmp, u_cmp, t, cmp, args...)
+#     else
+#         f_cont!(y_cmp, dx_cmp, x_cmp, t, cmp, args...)
+#     end
+# end
+
 end
