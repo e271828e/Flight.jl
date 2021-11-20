@@ -20,7 +20,7 @@ using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
 
-import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0,f_cont!, f_disc!
+import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0,f_cont!, f_disc!
 import Flight.Dynamics: MassData
 
 using Flight.Plotting
@@ -73,56 +73,56 @@ struct AircraftBaseD{MassD, AeroD, PwpD, LdgD, SrfD}
     srf::SrfD
 end
 
-#in contrast with X, D and Y, which must hold all their aircraft subsystems'
-#counterparts, U is arbitrarily defined as a design choice
+#unlike X, D and Y, which must hold all their aircraft subsystems' counterparts,
+#U is arbitrarily defined as a design choice
 
 struct NoAircraftU end
 
-get_u0(::AircraftBase) = NoAircraftU()
+init_u0(::AircraftBase) = NoAircraftU()
 
-get_x0(ac::AircraftBase) = ComponentVector(
-    kin = get_x0(ac.kin),
-    mass = get_x0(ac.mass),
-    aero = get_x0(ac.aero),
-    pwp = get_x0(ac.pwp),
-    ldg = get_x0(ac.ldg),
-    srf = get_x0(ac.srf)
+init_x0(ac::AircraftBase) = ComponentVector(
+    kin = init_x0(ac.kin),
+    mass = init_x0(ac.mass),
+    aero = init_x0(ac.aero),
+    pwp = init_x0(ac.pwp),
+    ldg = init_x0(ac.ldg),
+    srf = init_x0(ac.srf)
     )
 
-get_y0(ac::AircraftBase) = AircraftBaseY(
+init_y0(ac::AircraftBase) = AircraftBaseY(
     DynData(),
     KinData(),
     AirData(),
-    get_y0(ac.mass),
-    get_y0(ac.aero),
-    get_y0(ac.pwp),
-    get_y0(ac.ldg),
-    get_y0(ac.srf)
+    init_y0(ac.mass),
+    init_y0(ac.aero),
+    init_y0(ac.pwp),
+    init_y0(ac.ldg),
+    init_y0(ac.srf)
     )
 
-get_d0(ac::AircraftBase) = AircraftBaseD(
-    get_d0(ac.mass),
-    get_d0(ac.aero),
-    get_d0(ac.pwp),
-    get_d0(ac.ldg),
-    get_d0(ac.srf)
+init_d0(ac::AircraftBase) = AircraftBaseD(
+    init_d0(ac.mass),
+    init_d0(ac.aero),
+    init_d0(ac.pwp),
+    init_d0(ac.ldg),
+    init_d0(ac.srf)
     )
 
 
 const AircraftBaseSys{I,K,M,A,P,L,S} = System{AircraftBase{I,K,M,A,P,L,S}} where {I,K,M,A,P,L,S}
 
 
-function System(ac::AircraftBase, ẋ = get_x0(ac), x = get_x0(ac),
-                    y = get_y0(ac), u = get_u0(ac), d = get_d0(ac), t = Ref(0.0))
+function System(ac::AircraftBase, ẋ = init_x0(ac), x = init_x0(ac),
+                    y = init_y0(ac), u = init_u0(ac), d = init_d0(ac), t = Ref(0.0))
 
     #each subsystem allocates its own u, then we can decide how the aircraft's u
     #should map onto it via assign_control_inputs!
-    # smac = System(ac.smac, ẋ.smac, x.smac, y.smac, get_u0(ac.smac), d.smac, t)
-    mass = System(ac.mass, ẋ.mass, x.mass, y.mass, get_u0(ac.mass), d.mass, t)
-    aero = System(ac.aero, ẋ.aero, x.aero, y.aero, get_u0(ac.aero), d.aero, t)
-    pwp = System(ac.pwp, ẋ.pwp, x.pwp, y.pwp, get_u0(ac.pwp), d.pwp, t)
-    ldg = System(ac.ldg, ẋ.ldg, x.ldg, y.ldg, get_u0(ac.ldg), d.ldg, t)
-    srf = System(ac.srf, ẋ.srf, x.srf, y.srf, get_u0(ac.srf), d.srf, t)
+    # smac = System(ac.smac, ẋ.smac, x.smac, y.smac, init_u0(ac.smac), d.smac, t)
+    mass = System(ac.mass, ẋ.mass, x.mass, y.mass, init_u0(ac.mass), d.mass, t)
+    aero = System(ac.aero, ẋ.aero, x.aero, y.aero, init_u0(ac.aero), d.aero, t)
+    pwp = System(ac.pwp, ẋ.pwp, x.pwp, y.pwp, init_u0(ac.pwp), d.pwp, t)
+    ldg = System(ac.ldg, ẋ.ldg, x.ldg, y.ldg, init_u0(ac.ldg), d.ldg, t)
+    srf = System(ac.srf, ẋ.srf, x.srf, y.srf, init_u0(ac.srf), d.srf, t)
 
     params = ()
 
@@ -145,7 +145,7 @@ assign_control_inputs!(::AircraftBaseSys) = nothing
 # example:
 const my_pwp = AirframeGroup(left = EThruster(), right = EThruster())
 const MyPwp = typeof(my_pwp)
-get_u0(::AircraftBase{MyAircraftID}) = ComponentVector(throttle = 0.0)
+init_u0(::AircraftBase{MyAircraftID}) = ComponentVector(throttle = 0.0)
 function assign_control_inputs!(::AircraftBase{MyAircraftID})
     ac.subsystems.pwp.left.throttle = ac.u.throttle
     ac.subsystems.pwp.right.throttle = ac.u.throttle
@@ -212,6 +212,7 @@ function plots(t::AbstractVector{<:Real}, data::AbstractVector{<:AircraftBaseY};
         aero = "aerodynamics", pwp = "powerplant", ldg = "landinggear", srf = "surfaces")
 
     for (label, path) ∈ zip(keys(ss_path), values(ss_path))
+        println("Generating plots for $label")
         plots(t, getproperty(sa, label);
                 mode, save_path = mkpath(joinpath(save_path, path)), kwargs...)
     end

@@ -7,7 +7,7 @@ using UnPack
 using Flight.Geodesy
 using Flight.Attitude
 using Flight.ModelingTools
-import Flight.ModelingTools: get_x0
+import Flight.ModelingTools: init_x0
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -56,13 +56,13 @@ struct KinData
 end
 
 function KinData()
-    x_kin = get_x0(KinLTF())
+    x_kin = init_x0(KinLTF())
     ẋ_pos = copy(x_kin.pos)
     return f_kin!(ẋ_pos, x_kin)
 end
 
 function KinData(init::KinInit)
-    x_kin = get_x0(KinLTF())
+    x_kin = init_x0(KinLTF())
     init!(x_kin, init)
     ẋ_pos = copy(x_kin.pos)
     return f_kin!(ẋ_pos, x_kin)
@@ -85,7 +85,7 @@ const KinLTFXTemplate = ComponentVector(pos = PosLTFXTemplate, vel = VelXTemplat
 const PosLTFX{T, D} = ComponentVector{T, D, typeof(getaxes(PosLTFXTemplate))} where {T, D}
 const KinLTFX{T, D} = ComponentVector{T, D, typeof(getaxes(KinLTFXTemplate))} where {T, D}
 
-get_x0(::KinLTF, init::KinInit = KinInit()) = (x=similar(KinLTFXTemplate); init!(x, init); return x)
+init_x0(::KinLTF, init::KinInit = KinInit()) = (x=similar(KinLTFXTemplate); init!(x, init); return x)
 
 function init!(x::KinLTFX, init::KinInit)
 
@@ -177,7 +177,7 @@ const KinECEFXTemplate = ComponentVector(pos = PosECEFXTemplate, vel = VelXTempl
 const PosECEFX{T, D} = ComponentVector{T, D, typeof(getaxes(PosECEFXTemplate))} where {T, D}
 const KinECEFX{T, D} = ComponentVector{T, D, typeof(getaxes(KinECEFXTemplate))} where {T, D}
 
-get_x0(::KinECEF, init::KinInit = KinInit()) = (x=similar(KinECEFXTemplate); init!(x, init); return x)
+init_x0(::KinECEF, init::KinInit = KinInit()) = (x=similar(KinECEFXTemplate); init!(x, init); return x)
 
 function init!(x::KinECEFX, init::KinInit)
 
@@ -272,6 +272,8 @@ function plots(t, data::AbstractVector{<:PosData}; mode, save_path, kwargs...)
 
     pd = Dict{String, Plots.Plot}()
 
+    splt_h_e = thplot(t, h_e; title = "", kwargs...)
+
     #remove the title added by the Altitude TH recipe
     splt_h = thplot(t, h_e; title = "", kwargs...)
              thplot!(t, h_o; title = "", kwargs...)
@@ -294,7 +296,7 @@ function plots(t, data::AbstractVector{<:PosData}; mode, save_path, kwargs...)
         plot_title = "Position (WGS84)",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd["03_Ob_xyh"] = plot(splt_xy, splt_h;
+    pd["03_Ob_xyh"] = plot(splt_xy, splt_h_e;
         layout = grid(1, 2, widths = [0.67, 0.33]),
         plot_title = "Position (Local Cartesian)",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs

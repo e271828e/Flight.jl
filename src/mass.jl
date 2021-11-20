@@ -10,7 +10,7 @@ using Flight.Airframe
 
 using Flight.Dynamics
 
-import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0,f_cont!, f_disc!
+import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0,f_cont!, f_disc!
 import Flight.Dynamics: MassData
 
 using Flight.Plotting
@@ -59,7 +59,7 @@ Base.@kwdef mutable struct TunableMassU
     r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
 end
 
-get_u0(::TunableMass) = TunableMassU()
+init_u0(::TunableMass) = TunableMassU()
 
 f_cont!(::System{TunableMass}) = nothing
 f_disc!(::System{TunableMass}) = false

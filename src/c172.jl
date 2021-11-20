@@ -12,7 +12,7 @@ using Flight.Attitude
 using Flight.Airframe
 using Flight.Mass
 # using Flight.Airdata
-# using Flight.Propulsion
+using Flight.Propulsion
 # using Flight.Aerodynamics
 using Flight.LandingGear
 
@@ -28,16 +28,25 @@ export C172Aircraft
 
 struct C172ID <: AbstractAircraftID end
 
-const C172_kin = KinLTF()
+Base.@kwdef struct C172Pwp <: AbstractAirframeNode
+    left::EThruster = EThruster(motor = ElectricMotor(α = CW))
+    right::EThruster = EThruster(motor = ElectricMotor(α = CCW))
+end
 
-const C172_mass = ConstantMass(
+#these should eventually be declared constant
+
+C172_kin = KinLTF()
+
+C172_mass = ConstantMass(
     m = upreferred(2650u"lb") |> ustrip,
     J_Ob_b = upreferred.([948, 1346, 1967]u"m") |> ustrip |> diagm |> SMatrix{3,3,Float64},
     r_ObG_b = zeros(SVector{3}))
 
-const C172_aero = NullAirframeComponent()
-const C172_pwp = NullAirframeComponent()
-const C172_ldg = TricycleLandingGear(
+C172_aero = SimpleDrag()
+
+C172_pwp = C172Pwp()
+
+C172_ldg = TricycleLandingGear(
 
     left = LandingGearUnit(
         strut = Strut(
@@ -70,7 +79,7 @@ const C172_ldg = TricycleLandingGear(
         steering = DirectSteering())
 )
 
-const C172_srf = NullAirframeComponent()
+C172_srf = NullAirframeComponent()
 
 function C172Aircraft(; kin = C172_kin, mass = C172_mass, aero = C172_aero,
                 pwp = C172_pwp, ldg = C172_ldg, srf = C172_srf)

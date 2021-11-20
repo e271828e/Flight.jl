@@ -6,7 +6,7 @@ using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks
 using ComponentArrays, RecursiveArrayTools
 using Flight.Utils
 
-export get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+export init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 export AbstractComponent, System, Model
 
 
@@ -14,15 +14,15 @@ export AbstractComponent, System, Model
 
 abstract type AbstractComponent end #anything from which we can build a System
 
-#every AbstractComponent's get_x0 must return an AbstractVector{<:Real}, even if
+#every AbstractComponent's init_x0 must return an AbstractVector{<:Real}, even if
 #its inherently discrete and its f_cont! does nothing. this is ugly but ensures
 #composability of HybridSystems without the hassle of dealing automatically with
 #empty state vector blocks, which is magnified by the need to assign views from
 #the root System's state vector to each children in its hierarchy
-get_x0(::AbstractComponent) = [0.0]
-get_y0(::AbstractComponent) = nothing #sytems are not required to have outputs
-get_u0(::AbstractComponent) = nothing #sytems are not required to have control inputs
-get_d0(::AbstractComponent) = nothing #systems are not required to have discrete states
+init_x0(::AbstractComponent) = [0.0]
+init_y0(::AbstractComponent) = nothing #sytems are not required to have outputs
+init_u0(::AbstractComponent) = nothing #sytems are not required to have control inputs
+init_d0(::AbstractComponent) = nothing #systems are not required to have discrete states
 
 
 
@@ -43,8 +43,8 @@ mutable struct System{C, X <: AbstractVector{<:Float64},
     subsystems::S
 end
 
-function System(c::AbstractComponent, ẋ = get_x0(c), x = get_x0(c),
-                    y = get_y0(c), u = get_u0(c), d = get_d0(c), t = Ref(0.0))
+function System(c::AbstractComponent, ẋ = init_x0(c), x = init_x0(c),
+                    y = init_y0(c), u = init_u0(c), d = init_d0(c), t = Ref(0.0))
     params = c #assign the component descriptor itself as a System parameter
     subsystems = nothing
     System{map(typeof, (c, x, y, u, d, params, subsystems))...}(

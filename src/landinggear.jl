@@ -18,7 +18,7 @@ using Flight.Airframe
 using Flight.Terrain
 
 #for method extension without module qualifier
-import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 import Flight.Airframe: get_wr_b, get_hr_b
 
 using Flight.Plotting
@@ -60,8 +60,8 @@ Base.@kwdef struct DirectSteeringY
     ψ::Float64 = 0.0
 end
 #we need to make the contents of u mutable
-get_u0(::DirectSteering) = Ref(0.0) #steering input
-get_y0(::DirectSteering) = DirectSteeringY(0.0) #steering angle
+init_u0(::DirectSteering) = Ref(0.0) #steering input
+init_y0(::DirectSteering) = DirectSteeringY(0.0) #steering angle
 
 function set_steering_input(sys::System{DirectSteering}, u::Real)
     @assert abs(u) <= 1 "Steering input must be within [-1,1]"
@@ -76,13 +76,17 @@ f_disc!(::System{DirectSteering}, args...) = false
 
 get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
 
+function plots(t, data::AbstractVector{<:DirectSteeringY}; mode, save_path, kwargs...)
+    println("To be implemented")
+end
+
 # struct ActuatedSteering{A <: AbstractActuator} <: AbstractSteering
 #     limits::SVector{2,Float64} #more generally, transmission kinematics could go here
 #     actuator::A #actuator model parameters go here
 # end
-# get_x0(steering::ActuatedSteering) = get_x0(steering.actuator)
-# get_y0(steering::ActuatedSteering) = get_x0(steering.actuator)
-# get_u0(steering::ActuatedSteering) = get_u0(steering.actuator) #typically, 1
+# init_x0(steering::ActuatedSteering) = init_x0(steering.actuator)
+# init_y0(steering::ActuatedSteering) = init_x0(steering.actuator)
+# init_u0(steering::ActuatedSteering) = init_u0(steering.actuator) #typically, 1
 
 ########################### Braking #############################
 
@@ -107,8 +111,8 @@ Base.@kwdef struct DirectBrakingY
    α_br::Float64 = 0.0 #braking coefficient
 end
 
-get_u0(::DirectBraking) = Ref(0.0)
-get_y0(::DirectBraking) = DirectBrakingY()
+init_u0(::DirectBraking) = Ref(0.0)
+init_y0(::DirectBraking) = DirectBrakingY()
 
 function set_braking_input(sys::System{DirectBraking}, u::Real)
     @assert (u <= 1 && u >= 0) "Braking input must be within [0,1]"
@@ -122,6 +126,10 @@ end
 f_disc!(::System{DirectBraking}, args...) = false
 
 get_braking_coefficient(sys::System{DirectBraking}) = sys.y.α_br
+
+function plots(t, data::AbstractVector{<:DirectBrakingY}; mode, save_path, kwargs...)
+    println("To be implemented")
+end
 
 ########################### Damper #############################
 
@@ -165,7 +173,7 @@ Base.@kwdef struct StrutY
     srf::SurfaceType = Terrain.DryTarmac #surface type at the reference point
 end
 
-get_y0(::Strut) = StrutY()
+init_y0(::Strut) = StrutY()
 
 function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     terrain::AbstractTerrain, kin::KinData)
@@ -251,6 +259,10 @@ end
 
 f_disc!(::System{<:Strut}, args...) = false
 
+function plots(t, data::AbstractVector{<:StrutY}; mode, save_path, kwargs...)
+    println("To be implemented")
+end
+
 ########################### Contact #############################
 
 #static / dynamic friction coefficient set
@@ -259,7 +271,7 @@ struct StaticDynamic
     dynamic::Float64
 end
 
-#static / dynamic friction interpolation from breakout coefficient
+#static / dynamic friction interpolation from breakout factor
 get_μ(f::StaticDynamic, α_bo::Real)::Float64 = α_bo * f.dynamic + (1-α_bo) * f.static
 
 #pure rolling friction coefficient set
@@ -314,16 +326,16 @@ Base.@kwdef struct ContactY
     α::SVector{2,Float64} = zeros(SVector{2}) #total scale factor, clipped
     sat::SVector{2,Bool} = zeros(SVector{2,Bool}) #scale factor saturation flag
     ψ_cv::Float64 = 0.0 #tire slip angle
-    α_bo::Float64 = 0.0 #breakout coefficient
+    α_bo::Float64 = 0.0 #breakout factor
     μ_max::SVector{2,Float64} = zeros(SVector{2}) #maximum friction coefficient
     μ::SVector{2,Float64} = zeros(SVector{2}) #scaled friction coefficient
-    f_c::SVector{3,Float64} = zeros(SVector{3}) #non-dimensional contact force
+    f_c::SVector{3,Float64} = zeros(SVector{3}) #normalized contact force
     F_c::SVector{3,Float64} = zeros(SVector{3}) #contact force
     wr_b::Wrench = Wrench() #resulting airframe Wrench
 end
 
-get_x0(::Contact) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
-get_y0(::Contact) = ContactY()
+init_x0(::Contact) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
+init_y0(::Contact) = ContactY()
 
 function f_cont!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
@@ -338,7 +350,7 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
         return
     end
 
-    #breakout coefficient
+    #breakout factor
     α_bo = clamp((norm(v_eOc_c) - v_bo[1]) / (v_bo[2] - v_bo[1]), 0, 1)
 
     μ_roll = get_μ(rolling, srf, α_bo)
@@ -349,21 +361,22 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     @assert (α_br >= 0 && α_br <= 1)
     μ_x = μ_roll + (μ_skid - μ_roll) * α_br
 
-    #lateral friction coefficient
-    ψ_cv = atan(v_eOc_c[2], v_eOc_c[1]) #tire slip angle
+    #tire slip angle
+    if α_bo < 1 #prevents chattering in μ_y for near-zero contact velocity
+        ψ_cv = ψ_skid
+    else
+        ψ_cv = atan(v_eOc_c[2], v_eOc_c[1])
+    end
     ψ_abs = abs(ψ_cv)
     @assert (ψ_abs <= π)
 
-    if α_bo < 1
-        μ_y = μ_skid
+    #lateral friction coefficient
+    if ψ_abs < ψ_skid
+        μ_y = μ_skid * ψ_abs / ψ_skid
+    elseif ψ_abs > π - ψ_skid
+        μ_y = μ_skid * (1 - (ψ_skid + ψ_abs - π)/ ψ_skid)
     else
-        if ψ_abs < ψ_skid
-            μ_y = μ_skid * ψ_abs / ψ_skid
-        elseif ψ_abs > π - ψ_skid
-            μ_y = μ_skid * (1 - (ψ_skid + ψ_abs - π)/ ψ_skid)
-        else
-            μ_y = μ_skid
-        end
+        μ_y = μ_skid
     end
 
     #maximum friction coefficient vector
@@ -382,11 +395,11 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
 
     #if not saturated, integrator accumulates
     sat = abs.(α_raw) .> abs.(α) #saturated?
-    sys.ẋ .= v .* sat
+    sys.ẋ .= v .* .!sat
 
-    #non-dimensional contact force projected on the contact frame
+    #normalized contact force projected on the contact frame
     f_c = SVector{3,Float64}(μ[1], μ[2], -1)
-    f_s = t_sc.q(f_c) #project non-dimensional force onto the strut frame
+    f_s = t_sc.q(f_c) #project normalized force onto the strut frame
     @assert f_s[3] < 0
 
     N = -F_dmp / f_s[3]
@@ -401,6 +414,125 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
 end
 
 f_disc!(::System{Contact}, args...) = false
+
+function plots(t, data::AbstractVector{<:ContactY}; mode, save_path, kwargs...)
+
+#     Contact Point Regulator (X Axis)
+# Contact Point Velocity
+# Proportional Term
+# Integral Term
+
+# Contact Point Regulator (X Axis)
+# Raw Output
+# Clipped Output
+# Saturation
+
+# Rolling and Skidding Friction
+# Breakout Factor
+# Rolling Friction Coefficient
+# Skidding Friction Coefficient
+
+# Longitudinal Friction
+# Braking Factor
+# Maximum Friction Coefficient
+# Effective Friction Coefficient
+
+# Lateral Friction
+# Tire Slip Angle
+# Maximum Friction Coefficient
+# Effective Friction Coefficient
+
+    @unpack v, s, α_p, α_i, α_raw, α, sat, ψ_cv, α_bo, μ_max, μ,
+            f_c, F_c, wr_b = StructArray(data)
+
+    pd = Dict{String, Plots.Plot}()
+
+    pd["01_v"] = thplot(t, v;
+        plot_title = "Contact Point Velocity",
+        # ylabel = [L"$v_{ew}^{N} \ (m/s)$" L"$v_{ew}^{E} \ (m/s)$" L"$v_{ew}^{D} \ (m/s)$"],
+        th_split = :h,
+        kwargs...)
+
+    pd["02_s"] = thplot(t, s;
+        plot_title = "Contact Point Velocity Integral",
+        th_split = :h,
+        kwargs...)
+
+    pd["021_psi_cv"] = thplot(t, ψ_cv;
+        plot_title = "Tire slip angle",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h,
+        kwargs...)
+
+    pd["022_alpha_bo"] = thplot(t, α_bo;
+        plot_title = "Breakout factor",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h,
+        kwargs...)
+
+    pd["03_alpha_p"] = thplot(t, α_p;
+        plot_title = "Proportional mu scale factor",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h,
+        kwargs...)
+
+    pd["04_alpha_i"] = thplot(t, α_i;
+        plot_title = "Integral mu scale factor",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h,
+        kwargs...)
+
+    pd["05_alpha_raw"] = thplot(t, α_raw;
+        plot_title = "Total mu scale factor, raw",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h,
+        kwargs...)
+
+    pd["06_alpha"] = thplot(t, α;
+        plot_title = "Total mu scale factor, clipped",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h,
+        kwargs...)
+
+    pd["07_sat"] = thplot(t, sat;
+        plot_title = "Scale factor saturation flag",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h,
+        kwargs...)
+
+
+    pd["10_mu_max"] = thplot(t, μ_max;
+        plot_title = "Maximum friction coefficient",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h,
+        kwargs...)
+
+    pd["11_mu"] = thplot(t, μ;
+        plot_title = "Scaled friction coefficient",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h,
+        kwargs...)
+
+    pd["12_f_c"] = thplot(t, f_c;
+        plot_title = "Normalized contact force",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h, link = :none,
+        kwargs...)
+
+    pd["13_F_c"] = thplot(t, F_c;
+        plot_title = "Contact force",
+        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+        th_split = :h, link = :none,
+        kwargs...)
+
+    pd["14_wr_b"] = thplot(t, wr_b;
+        plot_title = "Wrench [Airframe]",
+        wr_source = "trn", wr_frame = "b",
+        kwargs...)
+
+    save_plots(pd; save_path)
+
+end
 
 ########################## LandingGearUnit #########################
 
@@ -433,6 +565,7 @@ end
 #and strut, and let the default AirframeNode implementation do its thing
 get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
 get_hr_b(::System{<:LandingGearUnit}) = zeros(SVector{3})
+
 
 ############################ TricycleLandingGear ############################
 

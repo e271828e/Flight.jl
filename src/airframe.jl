@@ -7,7 +7,7 @@ using UnPack
 using Flight.Attitude
 using Flight.Dynamics
 using Flight.ModelingTools
-import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -45,17 +45,17 @@ abstract type AbstractAirframeNode <: AbstractAirframeComponent end
 Base.keys(node::AbstractAirframeNode) = propertynames(node)
 Base.values(node::AbstractAirframeNode) = map(λ -> getproperty(node, λ), keys(node))
 
-get_x0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(get_x0.(values(node))) |> ComponentVector
-get_y0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(get_y0.(values(node)))
-get_u0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(get_u0.(values(node)))
-get_d0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(get_d0.(values(node)))
+init_x0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(init_x0.(values(node))) |> ComponentVector
+init_y0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(init_y0.(values(node)))
+init_u0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(init_u0.(values(node)))
+init_d0(node::AbstractAirframeNode) = NamedTuple{keys(node)}(init_d0.(values(node)))
 
-function System(node::AbstractAirframeNode, ẋ = get_x0(node), x = get_x0(node),
-                    y = get_y0(node), u = get_u0(node), d = get_d0(node), t = Ref(0.0))
+function System(node::AbstractAirframeNode, ẋ = init_x0(node), x = init_x0(node),
+                    y = init_y0(node), u = init_u0(node), d = init_d0(node), t = Ref(0.0))
 
     ss_list = Vector{System}()
     ss_labels = keys(node)
-    @show ss_labels
+    # @show ss_labels
     for label in ss_labels
         push!(ss_list, System(map((λ)->getproperty(λ, label), (node, ẋ, x, y, u, d))..., t))
     end

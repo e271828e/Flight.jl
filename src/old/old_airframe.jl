@@ -7,7 +7,7 @@ using UnPack
 using Flight.Attitude
 using Flight.Dynamics
 using Flight.ModelingTools
-import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -57,14 +57,14 @@ Base.getproperty(g::AirframeGroup, i::Symbol) = getproperty(getfield(g,:componen
 Base.keys(::AirframeGroup{T,N,L}) where {T,N,L} = L
 Base.values(g::AirframeGroup) = values(getfield(g,:components))
 
-get_x0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_x0.(values(g))) |> ComponentVector
-get_u0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_u0.(values(g)))
-get_y0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_y0.(values(g)))
-get_d0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(get_d0.(values(g)))
+init_x0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(init_x0.(values(g))) |> ComponentVector
+init_u0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(init_u0.(values(g)))
+init_y0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(init_y0.(values(g)))
+init_d0(g::AirframeGroup{T,N,L}) where {T,N,L} = NamedTuple{L}(init_d0.(values(g)))
 
 function System(g::AirframeGroup{T,N,L},
-                    ẋ = get_x0(g), x = get_x0(g), y = get_y0(g), u = get_u0(g),
-                    d = get_d0(g), t = Ref(0.0)) where {T,N,L}
+                    ẋ = init_x0(g), x = init_x0(g), y = init_y0(g), u = init_u0(g),
+                    d = init_d0(g), t = Ref(0.0)) where {T,N,L}
 
     ss_list = Vector{System}()
     for label in L

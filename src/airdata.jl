@@ -13,13 +13,39 @@ import Flight.Atmosphere: T_std, p_std, ρ_std, γ
 using Flight.Plotting
 import Flight.Plotting: plots
 
+export get_airflow_angles, get_wind_axes
 export AirData
+
+#compute airflow angles at frame c from the c-frame aerodynamic velocity
+@inline function get_airflow_angles(v_wOc_c::AbstractVector{<:Real})::Tuple{Float64, Float64}
+    if norm(v_wOc_c) < 1
+        α = β = 0.0
+    else
+        α = atan(v_wOc_c[3], v_wOc_c[1])
+        β = atan(v_wOc_c[2], √(v_wOc_c[1]^2 + v_wOc_c[3]^2))
+    end
+    return (α, β)
+end
+
+#compute c-axes to wind axes rotation from the c-frame aerodynamic velocity
+@inline function get_wind_axes(v_wOc_c::AbstractVector{<:Real})
+    α, β = get_airflow_angles(v_wOc_c)
+    get_wind_axes(α, β)
+end
+
+#compute c-axes to wind axes rotation from the c-frame airflow angles
+@inline function get_wind_axes(α::Real, β::Real)
+    q_cw = Ry(-α) ∘ Rz(β)
+    return q_cw
+end
 
 struct AirData
     v_ew_n::SVector{3,Float64} #wind velocity, NED axes
     v_ew_b::SVector{3,Float64} #wind-relative, airframe axes
-    v_eOb_b::SVector{3,Float64} #velocity vector, airframe axes
-    v_wOb_b::SVector{3,Float64} #aerodynamic velocity vector, airframe axes
+    v_eOb_b::SVector{3,Float64} #airframe velocity vector
+    v_wOb_b::SVector{3,Float64} #airframe aerodynamic velocity vector
+    α_b::Float64 #airframe angle of attack
+    β_b::Float64 #airframe angle of sideslip
     T::Float64 #static temperature
     p::Float64 #static pressure
     ρ::Float64 #density
@@ -52,6 +78,7 @@ function AirData(kin::KinData, atm_data::AtmosphericData)
     v_ew_n = atm_data.wind.v_ew_n
     v_ew_b = kin.pos.q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
+    α_b, β_b = get_airflow_angles(v_wOb_b)
 
     @unpack T, p, ρ, a, μ = atm_data.isa_
     TAS = norm(v_wOb_b)
@@ -64,7 +91,7 @@ function AirData(kin::KinData, atm_data::AtmosphericData)
     EAS = TAS * √(ρ / ρ_std)
     CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + q/p_std)^((γ-1)/γ) - 1) )
 
-    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b,
+    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, α_b, β_b,
             T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
@@ -72,7 +99,7 @@ end
 
 function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
 
-    @unpack v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, a, μ, ρ, TAS, EAS, CAS, M,
+    @unpack v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, α_b, β_b, a, μ, ρ, TAS, EAS, CAS, M,
             p, pt, T, Tt, Δp, q = StructArray(data)
 
     pd = Dict{String, Plots.Plot}()
@@ -91,7 +118,7 @@ function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
         kwargs...)
 
     pd["03_v_eOb_b"] = thplot(t, v_eOb_b;
-        plot_title = "Velocity (Airframe/ECEF) [Airframe]",
+        plot_title = "Velocity (Airframe / ECEF) [Airframe]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
@@ -101,6 +128,23 @@ function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
+
+    splt_α = thplot(t, rad2deg.(α_b);
+        title = "Angle of Attack",
+        label = "",
+        ylabel = L"$\alpha \ (deg)$",
+        kwargs...)
+
+    splt_β = thplot(t, rad2deg.(β_b);
+        title = "Angle of Sideslip",
+        label = "",
+        ylabel = L"$\beta \ (deg)$",
+        kwargs...)
+
+    pd["05_α_β"] = plot(splt_α, splt_β;
+        plot_title = "Airflow Angles [Airframe]",
+        layout = (1,2),
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     splt_a = thplot(t, a;
         title = "Speed of Sound",
@@ -120,7 +164,7 @@ function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
         ylabel = L"$\mu \ (Pa \ s)$",
         kwargs...)
 
-    pd["05_ρ_a"] = plot(splt_ρ, splt_a, splt_μ;
+    pd["06_ρ_a"] = plot(splt_ρ, splt_a, splt_μ;
         plot_title = "Freestream Properties",
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
@@ -137,7 +181,7 @@ function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
         ylabel = L"$p \ (kPa)$",
         th_split = :none, kwargs...)
 
-    pd["06_T_p"] = plot(splt_T, splt_p;
+    pd["07_T_p"] = plot(splt_T, splt_p;
         plot_title = "Freestream Properties",
         layout = (1,2),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
@@ -161,7 +205,7 @@ function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
         kwargs...)
 
     l3 = @layout [a{0.5w} [b; c{0.5h}]]
-    pd["07_airspeed_M_q"] = plot(splt_airspeed, splt_Mach, splt_q;
+    pd["08_airspeed_M_q"] = plot(splt_airspeed, splt_Mach, splt_q;
         layout = l3,
         plot_title = "Freestream Properties",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs

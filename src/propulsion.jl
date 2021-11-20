@@ -12,7 +12,7 @@ using Flight.Dynamics
 using Flight.Airframe
 using Flight.ModelingTools
 import Flight.Airframe: get_wr_b, get_hr_b
-import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -101,10 +101,10 @@ end
 
 Base.@kwdef mutable struct EThrusterD end
 
-get_x0(::EThruster) = copy(EThrusterXTemplate)
-# get_d0(::EThruster) = EThrusterD() #not really needed, defaults to nothing
-get_u0(::EThruster) = EThrusterU()
-get_y0(::EThruster) = EThrusterY()
+init_x0(::EThruster) = copy(EThrusterXTemplate)
+# init_d0(::EThruster) = EThrusterD() #not really needed, defaults to nothing
+init_u0(::EThruster) = EThrusterU()
+init_y0(::EThruster) = EThrusterY()
 
 
 ################ EThruster System ###################
@@ -189,10 +189,10 @@ end
 # #required to make EThruster compatible with System
 # Base.@kwdef mutable struct EThrusterD end
 
-# get_x0(::EThruster) = copy(EThrusterXTemplate)
-# get_d0(::EThruster) = EThrusterD()
-# get_u0(::EThruster) = EThrusterU()
-# get_y0(::EThruster) = EThrusterY()
+# init_x0(::EThruster) = copy(EThrusterXTemplate)
+# init_d0(::EThruster) = EThrusterD()
+# init_u0(::EThruster) = EThrusterU()
+# init_y0(::EThruster) = EThrusterY()
 
 # function PropulsionGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
 #     PropulsionGroup{nt}()

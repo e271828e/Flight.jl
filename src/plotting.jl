@@ -20,7 +20,7 @@ export plots, save_plots, thplot, thplot!
 #this we define a new method plots(). maybe define different detail levels /
 #modes for
 
-plots(args...; kwargs...) = error("Not implemented")
+plots(args...; kwargs...) = println("Not implemented")
 
 function plots(mdl::Model; mode::Symbol = :basic,
     save_path::Union{String,Nothing} = nothing, kwargs...)

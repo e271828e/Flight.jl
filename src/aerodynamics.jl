@@ -12,7 +12,7 @@ using Flight.Airframe
 import Flight.Airframe: get_wr_b, get_hr_b
 
 using Flight.ModelingTools
-import Flight.ModelingTools: System, get_x0, get_y0, get_u0, get_d0, f_cont!, f_disc!
+import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -21,22 +21,6 @@ export SimpleDrag, TestAerodynamics
 
 
 abstract type AbstractAerodynamics <: AbstractAirframeComponent end
-
-#compute airflow angles at frame c from the c-frame aerodynamic velocity
-@inline function get_airflow_angles(v_wOc_c::AbstractVector{<:Real})
-    ( α = atan(v_wOc_c[3], v_wOc_c[1]),
-      β = atan(v_wOc_c[2], √(v_wOc_c[1]^2 + v_wOc_c[3]^2)))
-end
-
-@inline function get_wind_axes(v_wOc_c::AbstractVector{<:Real})
-    α, β = get_airflow_angles(v_wOc_c)
-    get_wind_axes(α, β)
-end
-
-@inline function get_wind_axes(α::Real, β::Real)
-    q_bw = Ry(-α) ∘ Rz(β)
-    return q_bw
-end
 
 
 
@@ -55,22 +39,21 @@ Base.@kwdef struct SimpleDragY
     wr_b::Wrench = Wrench()
 end
 
-get_y0(::SimpleDrag) = SimpleDragY()
+init_y0(::SimpleDrag) = SimpleDragY()
 
 #in case of type instability use this one instead (or maybe a function barrier)
 # function f_cont!(sys::System{SimpleDrag}, air::AirData, ::KinData, ::Any, ::Any)
 function f_cont!(sys::System{SimpleDrag}, air::AirData, args...)
 
-    v_wOc_c = air.v_wOb_b #SimpleDrag frame is the airframe itself
-    q_cw = get_wind_axes(v_wOc_c)
+    @unpack α_b, β_b = air
+    q_bw = get_wind_axes(α_b, β_b)
 
     D = 0.5 * air.q * sys.params.c_d * sys.params.A
-    F_Oc_w = SVector{3,Float64}(-D, 0.0, 0.0)
-    F_Oc_c = q_cw(F_Oc_w)
+    F_Ob_w = SVector{3,Float64}(-D, 0.0, 0.0)
+    F_Ob_b = q_bw(F_Ob_w)
 
     #now the wrench is trivially computed
-    wr_c = Wrench(F = F_Oc_c)
-    wr_b = wr_c #SimpleDrag frame is the airframe itself
+    wr_b = Wrench(F = F_Ob_b)
 
     sys.y = SimpleDragY(D, wr_b)
 
@@ -120,7 +103,8 @@ end
 
 #generally, v_wOa ≈ v_wOb, so the whole conversion won't be necessary; at most,
 #we will need to reproject v_wOb_b into v_wOb_a to comply with the axes used by
-#the aerodynamics database
+#the aerodynamics database, and from v_wOb_a we can compute airflow angles for
+#those axes
 
 #2) what to do if there is dependence of α_dot and β_dot in the aerodynamic
 #   coefficients
@@ -169,8 +153,8 @@ Base.@kwdef struct TestAerodynamicsY
     wr_b::Wrench = Wrench()
 end
 
-get_x0(::TestAerodynamics) = ComponentVector(α = 0.0, β = 0.0)
-get_y0(::TestAerodynamics) = TestAerodynamicsY()
+init_x0(::TestAerodynamics) = ComponentVector(α = 0.0, β = 0.0)
+init_y0(::TestAerodynamics) = TestAerodynamicsY()
 
 function f_cont!(sys::System{TestAerodynamics}, air::AirData, kin::KinData, ::Any, ::Any)
 
