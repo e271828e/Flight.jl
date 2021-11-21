@@ -13,7 +13,7 @@ using Flight.Airframe
 using Flight.Mass
 # using Flight.Airdata
 using Flight.Propulsion
-# using Flight.Aerodynamics
+using Flight.Aerodynamics
 using Flight.LandingGear
 
 using Flight.Kinematics

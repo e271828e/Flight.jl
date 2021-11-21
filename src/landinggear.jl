@@ -1,9 +1,5 @@
 module LandingGear
 
-############################################
-#TODO: add contact state reset in f_disc! for wow=false
-############################################
-
 using LinearAlgebra
 using StaticArrays
 using ComponentArrays
@@ -128,7 +124,7 @@ f_disc!(::System{DirectBraking}, args...) = false
 get_braking_coefficient(sys::System{DirectBraking}) = sys.y.α_br
 
 function plots(t, data::AbstractVector{<:DirectBrakingY}; mode, save_path, kwargs...)
-    println("To be implemented")
+    # println("To be implemented")
 end
 
 ########################### Damper #############################
@@ -205,7 +201,11 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     q_ns = q_nb ∘ q_bs
     k_s_zn = q_ns(e3)[3]
     Δh = AltOrth(P) - h_trn
-    ξ = (k_s_zn > 1e-3 ? Δh / k_s_zn : 0.0) #0 instead of 0.0 causes type instability
+    if k_s_zn > 1e-3
+        ξ = min(0.0, Δh / k_s_zn)
+    else
+        ξ = 0.0 #0 instead of 0.0 causes type instability
+    end
     wow = ξ < 0
 
     if !wow #we're done, assign only relevant outputs and return
@@ -260,7 +260,31 @@ end
 f_disc!(::System{<:Strut}, args...) = false
 
 function plots(t, data::AbstractVector{<:StrutY}; mode, save_path, kwargs...)
-    println("To be implemented")
+
+    @unpack ξ, ξ_dot, F_dmp = StructArray(data)
+
+    pd = Dict{String, Plots.Plot}()
+
+    splt_ξ = thplot(t, ξ;
+        title = "Elongation", ylabel = L"$\xi \ (m)$",
+        label = "", kwargs...)
+
+    splt_ξ_dot = thplot(t, ξ_dot;
+        title = "Elongation Rate", ylabel = L"$\dot{\xi} \ (m/s)$",
+        label = "", kwargs...)
+
+    splt_F_dmp = thplot(t, F_dmp;
+        title = "Force", ylabel = L"$F_{dmp} \ (N)$",
+        label = "", kwargs...)
+
+    pd["01_dmp"] = plot(splt_ξ, splt_ξ_dot, splt_F_dmp;
+        plot_title = "Damper",
+        layout = (1,3), link = :none,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    save_plots(pd; save_path)
+
+
 end
 
 ########################### Contact #############################
@@ -325,8 +349,11 @@ Base.@kwdef struct ContactY
     α_raw::SVector{2,Float64} = zeros(SVector{2}) #total scale factor, raw
     α::SVector{2,Float64} = zeros(SVector{2}) #total scale factor, clipped
     sat::SVector{2,Bool} = zeros(SVector{2,Bool}) #scale factor saturation flag
-    ψ_cv::Float64 = 0.0 #tire slip angle
     α_bo::Float64 = 0.0 #breakout factor
+    μ_roll::Float64 = 0.0 #rolling friction coefficient
+    μ_skid::Float64 = 0.0 #skidding friction coefficient
+    α_br::Float64 = 0.0 #braking factor
+    ψ_cv::Float64 = 0.0 #tire slip angle
     μ_max::SVector{2,Float64} = zeros(SVector{2}) #maximum friction coefficient
     μ::SVector{2,Float64} = zeros(SVector{2}) #scaled friction coefficient
     f_c::SVector{3,Float64} = zeros(SVector{3}) #normalized contact force
@@ -336,6 +363,7 @@ end
 
 init_x0(::Contact) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
 init_y0(::Contact) = ContactY()
+init_d0(::Contact) = Ref(true) #contact active?
 
 function f_cont!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
@@ -344,14 +372,17 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     @unpack rolling, skidding, v_bo, ψ_skid, k_p, k_i = sys.params
     @unpack wow, t_sc, t_bc, F_dmp, v_eOc_c, srf = strut.y
 
-    if !wow
+    if !wow #better than !sys.d[], which is set at f_disc! so has a one-step delay
         sys.ẋ .= 0
         sys.y = ContactY()
         return
     end
 
+    v = SVector{2,Float64}(v_eOc_c[1], v_eOc_c[2]) #contact point velocity
+    s = SVector{2,Float64}(sys.x) #velocity integrator state
+
     #breakout factor
-    α_bo = clamp((norm(v_eOc_c) - v_bo[1]) / (v_bo[2] - v_bo[1]), 0, 1)
+    α_bo = clamp((norm(v) - v_bo[1]) / (v_bo[2] - v_bo[1]), 0, 1)
 
     μ_roll = get_μ(rolling, srf, α_bo)
     μ_skid = get_μ(skidding, srf, α_bo)
@@ -365,7 +396,7 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     if α_bo < 1 #prevents chattering in μ_y for near-zero contact velocity
         ψ_cv = ψ_skid
     else
-        ψ_cv = atan(v_eOc_c[2], v_eOc_c[1])
+        ψ_cv = atan(v[2], v[1])
     end
     ψ_abs = abs(ψ_cv)
     @assert (ψ_abs <= π)
@@ -385,8 +416,6 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     #the magnitude of μ_max cannot exceed μ_skid; if it does, scale down its components
     μ_max *= min(1, μ_skid / norm(μ_max))
 
-    v = SVector{2,Float64}(v_eOc_c[1], v_eOc_c[2]) #contact point velocity
-    s = SVector{2,Float64}(sys.x) #velocity integrator state
     α_p = -k_p * v
     α_i = -k_i * s
     α_raw = α_p + α_i #raw μ scaling
@@ -409,123 +438,127 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     wr_c = Wrench(F = F_c)
     wr_b = t_bc(wr_c)
 
-    sys.y = ContactY(; v, s, α_p, α_i, α_raw, α, sat, ψ_cv, α_bo, μ_max, μ, f_c, F_c, wr_b)
+    sys.y = ContactY(; v, s, α_p, α_i, α_raw, α, sat, α_bo, μ_roll, μ_skid,
+        α_br, ψ_cv, μ_max, μ, f_c, F_c, wr_b)
 
 end
 
-f_disc!(::System{Contact}, args...) = false
+function f_disc!(sys::System{Contact}, strut::System{<:Strut})
+
+    if strut.y.wow
+        sys.d[] = true #declare contact as active
+    else #no wow
+        if sys.d[] #contact was active, declare it inactive and reset integrator states
+            sys.d[] = false
+            sys.x .= 0 #reset integrator states
+            return true #continuous state was modified
+        end
+    end
+    return false
+end
 
 function plots(t, data::AbstractVector{<:ContactY}; mode, save_path, kwargs...)
 
-#     Contact Point Regulator (X Axis)
-# Contact Point Velocity
-# Proportional Term
-# Integral Term
+    @unpack v, s, α_p, α_i, α_raw, α, sat, α_bo, μ_roll, μ_skid,
+        α_br, ψ_cv, μ_max, μ, f_c, F_c, wr_b = StructArray(data)
 
-# Contact Point Regulator (X Axis)
-# Raw Output
-# Clipped Output
-# Saturation
+    extract_xy = (input) -> (input |> StructArray |> StructArrays.components)
 
-# Rolling and Skidding Friction
-# Breakout Factor
-# Rolling Friction Coefficient
-# Skidding Friction Coefficient
-
-# Longitudinal Friction
-# Braking Factor
-# Maximum Friction Coefficient
-# Effective Friction Coefficient
-
-# Lateral Friction
-# Tire Slip Angle
-# Maximum Friction Coefficient
-# Effective Friction Coefficient
-
-    @unpack v, s, α_p, α_i, α_raw, α, sat, ψ_cv, α_bo, μ_max, μ,
-            f_c, F_c, wr_b = StructArray(data)
+    (v_x, v_y), (α_p_x, α_p_y), (α_i_x, α_i_y), (sat_x, sat_y),
+        (α_raw_x, α_raw_y), (α_x, α_y), (μ_max_x, μ_max_y), (μ_x, μ_y) =
+         map(extract_xy, (v, α_p, α_i, sat, α, α, μ_max, μ))
 
     pd = Dict{String, Plots.Plot}()
 
-    pd["01_v"] = thplot(t, v;
-        plot_title = "Contact Point Velocity",
-        # ylabel = [L"$v_{ew}^{N} \ (m/s)$" L"$v_{ew}^{E} \ (m/s)$" L"$v_{ew}^{D} \ (m/s)$"],
-        th_split = :h,
-        kwargs...)
+    splt_v_mag = thplot(t, norm.(v); title = "Contact Velocity Magnitude",
+        ylabel = L"$\alpha_{bo}$", label = "", kwargs...)
+    splt_α_bo = thplot(t, α_bo; title = "Breakout Factor",
+        ylabel = L"$\alpha_{bo}$", label = "", kwargs...)
+    splt_μ_roll = thplot(t, μ_roll; title = "Rolling Friction Coefficient",
+        ylabel = L"$\mu_{roll}$", label = "", kwargs...)
+    splt_μ_skid = thplot(t, μ_skid; title = "Skidding Friction Coefficient",
+        ylabel = L"$\mu_{skid}$", label = "", kwargs...)
 
-    pd["02_s"] = thplot(t, s;
-        plot_title = "Contact Point Velocity Integral",
-        th_split = :h,
-        kwargs...)
+    pd["01_srf"] = plot(splt_v_mag, splt_α_bo, splt_μ_roll, splt_μ_skid;
+        plot_title = "Rolling and Skidding Friction",
+        layout = (2,2), link = :none,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd["021_psi_cv"] = thplot(t, ψ_cv;
-        plot_title = "Tire slip angle",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
-        kwargs...)
+    splt_v_x = thplot(t, v_x; title = "Contact Point Velocity",
+        ylabel = L"$v^x \ (m/s)$", label = "", kwargs...)
+    splt_α_p_x = thplot(t, α_p_x; title = "Proportional Term",
+        ylabel = L"$\alpha_p^x$", label = "", kwargs...)
+    splt_α_i_x = thplot(t, α_i_x; title = "Integral Term",
+        ylabel = L"$\alpha_i^x$", label = "", kwargs...)
+    splt_sat_x = thplot(t, sat_x; title = "Saturation",
+        ylabel = L"$S^x$", label = "", kwargs...)
+    splt_α_raw_x = thplot(t, α_raw_x; title = "Raw Output",
+        ylabel = L"$\alpha_{raw}^{x}$", label = "", kwargs...)
+    splt_α_x = thplot(t, α_x; title = "Clipped Output",
+        ylabel = L"$\alpha^{x}$", label = "", kwargs...)
 
-    pd["022_alpha_bo"] = thplot(t, α_bo;
-        plot_title = "Breakout factor",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
-        kwargs...)
+    pd["02_reg_x"] = plot(splt_v_x, splt_α_p_x, splt_α_i_x,
+                        splt_sat_x, splt_α_raw_x, splt_α_x;
+        plot_title = "Longitudinal Friction Regulator",
+        layout = (2,3),
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd["03_alpha_p"] = thplot(t, α_p;
-        plot_title = "Proportional mu scale factor",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
-        kwargs...)
+    splt_α_br = thplot(t, α_br; title = "Braking Intensity",
+        ylabel = L"$\alpha_{br}$", label = "", kwargs...)
+    splt_μ_max_x = thplot(t, μ_max_x; title = "Maximum Friction Coefficient",
+        ylabel = L"$\mu_{max}^{x}$", label = "", kwargs...)
+    splt_μ_x = thplot(t, μ_x; title = "Effective Friction Coefficient",
+        ylabel = L"$\mu^{x}$", label = "", kwargs...)
 
-    pd["04_alpha_i"] = thplot(t, α_i;
-        plot_title = "Integral mu scale factor",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
-        kwargs...)
+    pd["03_mu_x"] = plot(splt_α_br, splt_μ_max_x, splt_μ_x;
+        plot_title = "Longitudinal Friction",
+        layout = (1,3),
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd["05_alpha_raw"] = thplot(t, α_raw;
-        plot_title = "Total mu scale factor, raw",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
-        kwargs...)
+    splt_v_y = thplot(t, v_y; title = "Contact Point Velocity",
+        ylabel = L"$v^y \ (m/s)$", label = "", kwargs...)
+    splt_α_p_y = thplot(t, α_p_y; title = "Proportional Term",
+        ylabel = L"$\alpha_p^y$", label = "", kwargs...)
+    splt_α_i_y = thplot(t, α_i_y; title = "Integral Term",
+        ylabel = L"$\alpha_i^y$", label = "", kwargs...)
+    splt_sat_y = thplot(t, sat_y; title = "Saturation",
+        ylabel = L"$S^y$", label = "", kwargs...)
+    splt_α_raw_y = thplot(t, α_raw_y; title = "Raw Output",
+        ylabel = L"$\alpha_{raw}^{y}$", label = "", kwargs...)
+    splt_α_y = thplot(t, α_y; title = "Clipped Output",
+        ylabel = L"$\alpha^{y}$", label = "", kwargs...)
 
-    pd["06_alpha"] = thplot(t, α;
-        plot_title = "Total mu scale factor, clipped",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
-        kwargs...)
+    pd["04_reg_y"] = plot(splt_v_y, splt_α_p_y, splt_α_i_y,
+                        splt_sat_y, splt_α_raw_y, splt_α_y;
+        plot_title = "Lateral Contact Regulator",
+        layout = (2,3),
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd["07_sat"] = thplot(t, sat;
-        plot_title = "Scale factor saturation flag",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
-        kwargs...)
+    splt_ψ_cv = thplot(t, rad2deg.(ψ_cv); title = "Tire Slip Angle",
+        ylabel = L"$\psi_{cv} \ (deg)$", label = "", kwargs...)
+    splt_μ_max_y = thplot(t, μ_max_y; title = "Maximum Friction Coefficient",
+        ylabel = L"$\mu_{max}^{y}$", label = "", kwargs...)
+    splt_μ_y = thplot(t, μ_y; title = "Effective Friction Coefficient",
+        ylabel = L"$\mu^{y}$", label = "", kwargs...)
 
+    pd["05_mu_y"] = plot(splt_ψ_cv, splt_μ_max_y, splt_μ_y;
+        plot_title = "Lateral Friction",
+        layout = (1,3),
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd["10_mu_max"] = thplot(t, μ_max;
-        plot_title = "Maximum friction coefficient",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
-        kwargs...)
-
-    pd["11_mu"] = thplot(t, μ;
-        plot_title = "Scaled friction coefficient",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
-        kwargs...)
-
-    pd["12_f_c"] = thplot(t, f_c;
-        plot_title = "Normalized contact force",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+    pd["06_Fn_c"] = thplot(t, f_c;
+        plot_title = "Normalized Contact Force",
+        ylabel = [L"$f_{Oc \ (trn)}^{c}$" L"$f_{Oc \ (trn)}^{c}$" L"$f_{Oc \ (trn)}^{c}$"],
         th_split = :h, link = :none,
         kwargs...)
 
-    pd["13_F_c"] = thplot(t, F_c;
-        plot_title = "Contact force",
-        # ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
+    pd["07_F_c"] = thplot(t, F_c;
+        plot_title = "Contact Force",
+        ylabel = [L"$F_{Oc \ (trn)}^{c} \ (N)$" L"$F_{Oc \ (trn)}^{c} \ (N)$" L"$F_{Oc \ (trn)}^{c} \ (N)$"],
         th_split = :h, link = :none,
         kwargs...)
 
-    pd["14_wr_b"] = thplot(t, wr_b;
+    pd["08_wr_b"] = thplot(t, wr_b;
         plot_title = "Wrench [Airframe]",
         wr_source = "trn", wr_frame = "b",
         kwargs...)
@@ -556,6 +589,16 @@ function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
 
     sys.y = (strut = strut.y, contact = contact.y, steering = steering.y,
             braking = braking.y)
+
+end
+
+function f_disc!(sys::System{<:LandingGearUnit})
+
+    @unpack strut, contact = sys.subsystems
+
+    # println("Called LdgUnit f_disc!")
+    contact_modified = f_disc!(contact, strut)
+    return contact_modified
 
 end
 

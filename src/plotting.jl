@@ -45,8 +45,6 @@ function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...
 
 end
 
-
-
 function save_plots(d::Dict{String,Plots.Plot}; save_path, format = :png)
     for (id, p) in zip(keys(d), values(d))
         savefig(p, joinpath(save_path, id*"."*String(format)))

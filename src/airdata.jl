@@ -130,16 +130,12 @@ function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
         kwargs...)
 
     splt_α = thplot(t, rad2deg.(α_b);
-        title = "Angle of Attack",
-        label = "",
-        ylabel = L"$\alpha \ (deg)$",
-        kwargs...)
+        title = "Angle of Attack", ylabel = L"$\alpha \ (deg)$",
+        label = "", kwargs...)
 
     splt_β = thplot(t, rad2deg.(β_b);
-        title = "Angle of Sideslip",
-        label = "",
-        ylabel = L"$\beta \ (deg)$",
-        kwargs...)
+        title = "Angle of Sideslip", ylabel = L"$\beta \ (deg)$",
+        label = "", kwargs...)
 
     pd["05_α_β"] = plot(splt_α, splt_β;
         plot_title = "Airflow Angles [Airframe]",
@@ -147,22 +143,16 @@ function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     splt_a = thplot(t, a;
-        title = "Speed of Sound",
-        label = "",
-        ylabel = L"$a \ (m/s)$",
-        kwargs...)
+        title = "Speed of Sound", ylabel = L"$a \ (m/s)$",
+        label = "", kwargs...)
 
     splt_ρ = thplot(t, ρ;
-        title = "Density",
-        label = "",
-        ylabel = L"$\rho \ (kg/m^3)$",
-        kwargs...)
+        title = "Density", ylabel = L"$\rho \ (kg/m^3)$",
+        label = "", kwargs...)
 
     splt_μ = thplot(t, μ;
-        title = "Dynamic Viscosity",
-        label = "",
-        ylabel = L"$\mu \ (Pa \ s)$",
-        kwargs...)
+        title = "Dynamic Viscosity", ylabel = L"$\mu \ (Pa \ s)$",
+        label = "", kwargs...)
 
     pd["06_ρ_a"] = plot(splt_ρ, splt_a, splt_μ;
         plot_title = "Freestream Properties",
@@ -193,16 +183,12 @@ function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
         th_split = :none, kwargs...)
 
     splt_Mach = thplot(t, M;
-        title = "Mach",
-        label = "",
-        ylabel = L"M",
-        kwargs...)
+        title = "Mach", ylabel = L"M",
+        label = "", kwargs...)
 
     splt_q = thplot(t, q/1000;
-        title = "Dynamic Pressure",
-        label = "",
-        ylabel = L"$q \ (kPa)$",
-        kwargs...)
+        title = "Dynamic Pressure", ylabel = L"$q \ (kPa)$",
+        label = "", kwargs...)
 
     l3 = @layout [a{0.5w} [b; c{0.5h}]]
     pd["08_airspeed_M_q"] = plot(splt_airspeed, splt_Mach, splt_q;

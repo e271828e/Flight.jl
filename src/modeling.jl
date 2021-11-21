@@ -112,38 +112,51 @@ f_update!(ẋ, x, p, t) = f_update!(ẋ, x, t, p.sys, p.args_c)
 f_scb(x, t, integrator) = f_scb(x, t, integrator.p.sys, integrator.p.args_c)
 function f_dcb!(integrator)
     x = integrator.u; t = integrator.t; p = integrator.p
-    x_modified = f_dcb!(x, t, p.sys, p.args_d)
+    x_modified = f_dcb!(x, t, p.sys, p.args_c, p.args_d)
     u_modified!(integrator, x_modified)
 end
 
 #in-place integrator update function
 function f_update!(ẋ::X, x::X, t::Real, sys::System{C,X}, args_c) where {C, X}
+
     sys.x .= x
     sys.t[] = t
     f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
     ẋ .= sys.ẋ
+
     return nothing
 end
 
-#DiscreteCallback function (called on every integration step). among other
-#potential uses provided by f_disc!, this callback ensures that the System's
-#internal x is up to date with the integrator's last solution value
-function f_dcb!(x::X, t::Real, sys::System{C,X}, args_d) where {C,X}
-    sys.x .= x #assign the integrator's state to the system's local continuous state
+#DiscreteCallback function (called on every integration step). in addition to
+#specific functionality implemented by f_disc!, this callback ensures that
+#the System's internal x and y are up to date with the last integrator's
+#solution step
+function f_dcb!(x::X, t::Real, sys::System{C,X}, args_c, args_d) where {C,X}
+
+    sys.x .= x #assign the updated integrator's state to the system's local continuous state
     sys.t[] = t #ditto for time
-    x_modified = f_disc!(sys, args_d...)
-    x .= sys.x #assign the (potentially) modified continuous state back to the integrator
+
+    #at this point sys.y holds the output from the last solver evaluation of
+    #f_cont!, not the one corresponding to the updated x. with x up to date, we
+    #can now compute the correct sys.y for this epoch
+    f_cont!(sys, args_c...) #updates sys.y, but leaves sys.x unmodified
+    #this could be commented for additional performance, at the cost of
+    #a slight output inaccuracy at integration epochs
+
+    #with the system's outputs up to date, call the discrete update function
+    x_modified = f_disc!(sys, args_d...) #this may modify sys.x
+    x .= sys.x #assign the (potentially modified) sys.x back to the integrator
+
+    #note that if x is modified by f_disc!, it will not be reflected in sys.y
+    #until the next call to f_dcb!
+
     return x_modified
 end
 
-#SavingCallback function
-function f_scb(x::X, t::Real, sys::System{C,X}, args_c) where {C,X}
-    sys.x .= x
-    sys.t[] = t
-    f_cont!(sys, args_c...)
+#SavingCallback function, this gets called at the end of each step after f_disc!
+function f_scb(::X, ::Real, sys::System{C,X}, args_c) where {C,X}
     return deepcopy(sys.y)
 end
-
 
 function Base.getproperty(m::Model, s::Symbol)
     if s === :t
