@@ -7,7 +7,7 @@ using BenchmarkTools
 function ac_test01()
 
     trn = DummyTerrain()
-    atm_sys = System(AtmosphereCmp())
+    atm_sys = System(AtmosphereDescriptor())
     ac = AircraftBase(
         kin = KinLTF(),
         mass = TunableMass(),
@@ -63,7 +63,7 @@ function ac_test02()
 
     trn = HorizontalTerrain(altitude = h_trn)
 
-    atm_sys = System(AtmosphereCmp())
+    atm_sys = System(AtmosphereDescriptor())
     atm_sys.u.wind.v_ew_n[1] = 0
 
     ac = C172Aircraft()
@@ -94,7 +94,7 @@ function ac_test03()
 
     h_trn = AltOrth()
     trn = HorizontalTerrain(altitude = h_trn)
-    atm_sys = System(AtmosphereCmp())
+    atm_sys = System(AtmosphereDescriptor())
     ac_sys = System(C172Aircraft());
 
     kin_init = KinInit(v_eOb_b = [5, 0, 0],

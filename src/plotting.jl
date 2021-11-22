@@ -34,7 +34,7 @@ end
 #for Systems without outputs
 plots(::AbstractVector{<:Real}, ::AbstractVector{Nothing}; kwargs...) = nothing
 
-#for AbstractAirframeNode and AirframeGroup Systems
+#takes care of SystemGroups
 function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...)
 
     c = data |> StructArray |> StructArrays.components

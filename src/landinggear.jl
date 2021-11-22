@@ -10,12 +10,12 @@ using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
 using Flight.Dynamics
-using Flight.Airframe
+using Flight.Components
 using Flight.Terrain
 
 #for method extension without module qualifier
 import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
-import Flight.Airframe: get_wr_b, get_hr_b
+import Flight.Components: get_wr_b, get_hr_b
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -34,7 +34,7 @@ const e3 = SVector{3,Float64}(0,0,1)
 
 ########################### Steering #############################
 
-abstract type AbstractSteering <: AbstractComponent end
+abstract type AbstractSteering <: SystemDescriptor end
 
 ############## NoSteering ##############
 
@@ -86,7 +86,7 @@ end
 
 ########################### Braking #############################
 
-abstract type AbstractBraking <: AbstractComponent end
+abstract type AbstractBraking <: SystemDescriptor end
 
 ############## NoBraking ###############
 
@@ -152,7 +152,7 @@ end
 
 ########################## Strut #########################
 
-Base.@kwdef struct Strut{D<:AbstractDamper} <: AbstractComponent
+Base.@kwdef struct Strut{D<:AbstractDamper} <: SystemDescriptor
     t_bs::FrameTransform = FrameTransform()
     damper::D = SimpleDamper()
     l_0::Float64 = 0.0 #natural length
@@ -332,7 +332,7 @@ get_μ(f::Union{Rolling,Skidding}, srf::SurfaceType, α_bo::Real)::Float64 =
 # get_sd(f::Skidding, ::Val{Terrain.WetTarmac}) = f.wet
 # get_sd(f::Skidding, ::Val{Terrain.IcyTarmac}) = f.icy
 
-Base.@kwdef struct Contact <: AbstractComponent
+Base.@kwdef struct Contact <: SystemDescriptor
     rolling::Rolling = Rolling() #rolling friction coefficients
     skidding::Skidding = Skidding() #skidding friction coefficients
     v_bo::SVector{2,Float64} = [0.005, 0.01] #breakout velocity interval
@@ -570,12 +570,14 @@ end
 ########################## LandingGearUnit #########################
 
 Base.@kwdef struct LandingGearUnit{L<:Strut, S <: AbstractSteering,
-                            B <: AbstractBraking} <: AbstractAirframeNode
+                            B <: AbstractBraking} <: SystemGroupDescriptor
     strut::L = Strut()
     contact::Contact = Contact()
     steering::S = NoSteering()
     braking::B = NoBraking()
 end
+
+ExternalWrenchTrait(::Type{<:System{<:LandingGearUnit}}) = ExternalWrench()
 
 function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
                 terrain::AbstractTerrain)
@@ -606,14 +608,13 @@ end
 #subcomponents are not AirframeComponents and only Contact contributes wr_b.
 #could also define trivial get_wr_b and get_hr_b methods for steering, braking
 #and strut, and let the default AirframeNode implementation do its thing
-get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
-get_hr_b(::System{<:LandingGearUnit}) = zeros(SVector{3})
+# get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
 
 
 ############################ TricycleLandingGear ############################
 
 Base.@kwdef struct TricycleLandingGear{L <: LandingGearUnit, R <: LandingGearUnit,
-    C <: LandingGearUnit} <: AbstractAirframeNode
+    C <: LandingGearUnit} <: SystemGroupDescriptor
     left::L = LandingGearUnit(braking = DirectBraking())
     right::R = LandingGearUnit(braking = DirectBraking())
     center::C = LandingGearUnit(steering = DirectSteering())

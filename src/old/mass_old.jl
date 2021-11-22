@@ -12,6 +12,7 @@ using Flight.Dynamics
 
 import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0,f_cont!, f_disc!
 import Flight.Dynamics: MassData
+import Flight.Airframe: get_wr_b, get_hr_b
 
 using Flight.Plotting
 import Flight.Plotting: plots
@@ -21,7 +22,10 @@ export AbstractMass, ConstantMass, TunableMass
 
 ############################ AbstractMass ######################################
 
-abstract type AbstractMass <: AbstractComponent end
+abstract type AbstractMass <: AbstractAirframeComponent end
+
+get_wr_b(::System{<:AbstractMass}) = Wrench()
+get_hr_b(::System{<:AbstractMass}) = zeros(SVector{3})
 
 #given the fuel system outputs and the installed payloads, a MassSystem must
 #return a MassData instance. open questions:

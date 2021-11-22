@@ -8,7 +8,7 @@ using BenchmarkTools
 plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
 
 trn = DummyTerrain()
-atm_sys = System(AtmosphereCmp())
+atm_sys = System(AtmosphereDescriptor())
 
 ac = AircraftBase(
     mass = TunableMass(),

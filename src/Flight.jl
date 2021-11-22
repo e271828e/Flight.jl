@@ -14,19 +14,18 @@ include("attitude.jl")
 
 #environment & dynamics
 include("geodesy.jl")
-include("kinematics.jl")
 include("terrain.jl")
 include("atmosphere.jl")
+
+include("kinematics.jl")
 include("dynamics.jl")
 
-#airframe
-include("airframe.jl")
-include("mass.jl")
+#aircraft components
+include("components.jl")
 include("airdata.jl")
 include("propulsion.jl")
 include("landinggear.jl")
 include("aerodynamics.jl")
-include("statemachine.jl")
 
 #aircraft
 include("aircraft.jl")
@@ -48,12 +47,10 @@ include("output.jl")
 @reexport using .Kinematics
 @reexport using .Dynamics
 
-@reexport using .Airframe
-@reexport using .Mass
+@reexport using .Components
 @reexport using .Airdata
 @reexport using .Propulsion
 @reexport using .Aerodynamics
-@reexport using .StateMachine
 @reexport using .LandingGear
 
 @reexport using .Aircraft

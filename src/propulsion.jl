@@ -9,9 +9,9 @@ using Plots
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-using Flight.Airframe
+using Flight.Components
 using Flight.ModelingTools
-import Flight.Airframe: get_wr_b, get_hr_b
+import Flight.Components: get_wr_b, get_hr_b
 import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 
 using Flight.Plotting
@@ -71,7 +71,7 @@ voltage_open(b::Battery, charge_ratio::Real) = b.n_cells * b.V_cell * voltage_cu
 R(b::Battery) = b.n_cells * b.R_cell
 ċ(b::Battery, i::Real) = -i/b.Cmax
 
-Base.@kwdef struct EThruster <: AbstractAirframeComponent
+Base.@kwdef struct EThruster <: SystemDescriptor
     frame::FrameTransform = FrameTransform()
     battery::Battery = Battery()
     motor::ElectricMotor = ElectricMotor()
@@ -106,10 +106,12 @@ init_x0(::EThruster) = copy(EThrusterXTemplate)
 init_u0(::EThruster) = EThrusterU()
 init_y0(::EThruster) = EThrusterY()
 
-
 ################ EThruster System ###################
 
 #the default System constructor works OK in this case
+
+ExternalWrenchTrait(::Type{<:System{EThruster}}) = ExternalWrench()
+AngularMomentumTrait(::Type{<:System{EThruster}}) = AngularMomentum()
 
 get_wr_b(sys::System{EThruster}) = sys.y.wr_b
 get_hr_b(sys::System{EThruster}) = sys.y.hr_b
@@ -170,7 +172,7 @@ end
 
 ##################### Hand of God ##########################
 
-# Base.@kwdef struct HandOfGod <: AbstractAirframeComponent
+# Base.@kwdef struct HandOfGod <: SystemDescriptor
 #     frame::FrameTransform = FrameTransform()
 #     enabled::Bool = false
 # end

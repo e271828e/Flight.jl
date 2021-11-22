@@ -7,8 +7,8 @@ using Flight.ModelingTools
 import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 
 export TunableISA
-export SimpleWind
-export AtmosphereCmp, AtmosphericData, AtmosphericSystem
+export TunableWind
+export AtmosphereDescriptor, AtmosphericData, AtmosphericSystem
 
 const R = 287.05287 #gas constant for dry air
 const γ = 1.40 #heat capacity ratio for dry air
@@ -87,7 +87,7 @@ end
 #AbstractISA subtypes: ConstantUniformISA (TunableISA), ConstantFieldISA,
 #DynamicUniformISA, DynamicFieldISA.
 
-abstract type AbstractISA <: AbstractComponent end
+abstract type AbstractISA <: SystemDescriptor end
 
 function SLConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractISA}}
     error("SLConditions constructor not implemented for $T")
@@ -128,7 +128,7 @@ end
 
 ######################## AbstractWind ############################
 
-abstract type AbstractWind <: AbstractComponent end
+abstract type AbstractWind <: SystemDescriptor end
 
 Base.@kwdef struct WindData
     v_ew_n::SVector{3,Float64} = zeros(SVector{3})
@@ -139,39 +139,39 @@ function WindData(::T, ::Abstract3DLocation) where {T<:System{<:AbstractWind}}
 end
 
 
-######################## SimpleWind ############################
+######################## TunableWind ############################
 
-struct SimpleWind <: AbstractWind end
+struct TunableWind <: AbstractWind end
 
 Base.@kwdef mutable struct USimpleWind
     v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
 end
 
-init_u0(::SimpleWind) = USimpleWind()
-f_cont!(::System{<:SimpleWind}, args...) = nothing
-f_disc!(::System{<:SimpleWind}, args...) = false
+init_u0(::TunableWind) = USimpleWind()
+f_cont!(::System{<:TunableWind}, args...) = nothing
+f_disc!(::System{<:TunableWind}, args...) = false
 
-function WindData(wind::System{<:SimpleWind}, ::Abstract3DLocation)
+function WindData(wind::System{<:TunableWind}, ::Abstract3DLocation)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData
 end
 
-#################### AtmosphereCmp ############################
+#################### AtmosphereDescriptor ############################
 
-Base.@kwdef struct AtmosphereCmp{I <: AbstractISA, W <: AbstractWind} <: AbstractComponent
+Base.@kwdef struct AtmosphereDescriptor{I <: AbstractISA, W <: AbstractWind} <: SystemDescriptor
     isa_::I = TunableISA()
-    wind::W = SimpleWind()
+    wind::W = TunableWind()
 end
 
 #this one's convenient for dispatching on plots() methods, but for U and D we
 #can use simply NamedTuples
 struct AtmosphereCmpY{I, W}; isa_::I; wind::W; end
 
-init_x0(atm::AtmosphereCmp) = ComponentVector(isa_ = init_x0(atm.isa_), wind = init_x0(atm.wind))
-init_y0(atm::AtmosphereCmp) = AtmosphereCmpY(init_y0(atm.isa_), init_y0(atm.wind))
-init_u0(atm::AtmosphereCmp) = (isa_ = init_u0(atm.isa_), wind = init_u0(atm.wind))
-init_d0(atm::AtmosphereCmp) = (isa_ = init_d0(atm.isa_), wind = init_d0(atm.wind))
+init_x0(atm::AtmosphereDescriptor) = ComponentVector(isa_ = init_x0(atm.isa_), wind = init_x0(atm.wind))
+init_y0(atm::AtmosphereDescriptor) = AtmosphereCmpY(init_y0(atm.isa_), init_y0(atm.wind))
+init_u0(atm::AtmosphereDescriptor) = (isa_ = init_u0(atm.isa_), wind = init_u0(atm.wind))
+init_d0(atm::AtmosphereDescriptor) = (isa_ = init_d0(atm.isa_), wind = init_d0(atm.wind))
 
-function System(atm::AtmosphereCmp, ẋ = init_x0(atm), x = init_x0(atm),
+function System(atm::AtmosphereDescriptor, ẋ = init_x0(atm), x = init_x0(atm),
                     y = init_y0(atm), u = init_u0(atm), d = init_d0(atm), t = Ref(0.0))
 
     isa_sys = System(atm.isa_, ẋ.isa_, x.isa_, y.isa_, u.isa_, d.isa_, t)
@@ -182,7 +182,7 @@ function System(atm::AtmosphereCmp, ẋ = init_x0(atm), x = init_x0(atm),
                                 ẋ, x, y, u, d, t, params, subsystems)
 end
 
-const AtmosphericSystem = System{<:AtmosphereCmp}
+const AtmosphericSystem = System{<:AtmosphereDescriptor}
 
 Base.@kwdef struct AtmosphericData
     isa_::ISAData = ISAData()
@@ -200,7 +200,7 @@ function f_cont!(sys::AtmosphericSystem)
     f_cont!(sys.wind)
 end
 
-#we can create a World <: AbstractComponent to compose Aircraft and
+#we can create a World <: SystemDescriptor to compose Aircraft and
 #AtmosphericSystem, and step them together in a single Model. if the
 #AtmosphericSystem is dynamic but still we don't want to compose it with the
 #Aircraft, we can always put it in a separate model, step it separately, and

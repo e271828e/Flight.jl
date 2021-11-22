@@ -12,7 +12,7 @@ using Flight.ModelingTools
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export DynData, MassData, FrameTransform, Wrench
+export DynData, MassProperties, FrameTransform, Wrench
 export translate, f_dyn!
 
 
@@ -90,7 +90,7 @@ function translate(t_bc::FrameTransform, wr_c::Wrench)
 end
 
 
-############################## MassData #################################
+############################## MassProperties #################################
 
 """
 Groups the mass properties required by the aircraft's dynamic equations
@@ -113,7 +113,7 @@ Notes:
   fuel consumption) or suddenly (due to a payload release), without having to
   worry about discontinuities in the kinematic state vector.
 """
-Base.@kwdef struct MassData
+Base.@kwdef struct MassProperties
     m::Float64 = 1.0
     J_Ob_b::SMatrix{3, 3, Float64, 9} = SMatrix{3,3,Float64}(I)
     r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
@@ -124,7 +124,7 @@ end
 
 
 """
-    inertia_wrench(mass::MassData, vel::VelData, hr_b::AbstractVector{<:Real})
+    inertia_wrench(mass::MassProperties, vel::VelData, hr_b::AbstractVector{<:Real})
 
 Compute the equivalent `Wrench` arising from inertia terms in the dynamic
 equations
@@ -132,14 +132,14 @@ equations
 The resulting `Wrench` is defined on the airframe's reference frame.
 
 # Arguments:
-- `mass::MassData`: Current aircraft mass properties
+- `mass::MassProperties`: Current aircraft mass properties
 - `vel::VelData`: Velocity outputs
 - `hr_b::AbstractVector{<:Real}`: Additional angular momentum due to the
   angular velocity of any rotating elements with respect to the airframe,
   projected on the airframe axes
 
 """
-function inertia_wrench(mass::MassData, vel::VelData, hr_b::AbstractVector{<:Real})
+function inertia_wrench(mass::MassProperties, vel::VelData, hr_b::AbstractVector{<:Real})
 
     @unpack m, J_Ob_b, r_ObG_b = mass
     @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = vel
@@ -159,7 +159,7 @@ function inertia_wrench(mass::MassData, vel::VelData, hr_b::AbstractVector{<:Rea
 
 end
 
-function gravity_wrench(mass::MassData, pos::PosData)
+function gravity_wrench(mass::MassProperties, pos::PosData)
 
     #gravity can be viewed as an entity acting on a local frame with its origin
     #at G and its axes aligned with the local tangent frame
@@ -213,7 +213,7 @@ Base.@kwdef struct DynData
 end
 
 
-function f_dyn!(ẋ_vel::VelX, kin::KinData, mass::MassData,
+function f_dyn!(ẋ_vel::VelX, kin::KinData, mass::MassProperties,
     wr_ext_b::Wrench, hr_b::AbstractVector{<:Real})
 
     #wr_ext_b: Total external wrench on the airframe

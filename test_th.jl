@@ -9,7 +9,7 @@ using StructArrays
 using Flight.Kinematics
 using Flight.Plotting
 
-atm_sys = System(AtmosphereCmp())
+atm_sys = System(AtmosphereDescriptor())
 p = Geographic(alt = AltOrth(13000))
 x_kin = init_x0(KinInit(v_eOb_b = [300, 10, 30], Ob = p, q_nb = Ry(0.01)))
 dx_pos = copy(x_kin.pos)

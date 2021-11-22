@@ -138,7 +138,7 @@ end
 #test on-aircraft integration
 function test_ldg_ac()
 
-    atm_sys = System(AtmosphereCmp());
+    atm_sys = System(AtmosphereDescriptor());
 
     terrain = HorizontalTerrain()
 

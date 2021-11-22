@@ -8,8 +8,8 @@ using Flight.Attitude
 using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Airdata
-using Flight.Airframe
-import Flight.Airframe: get_wr_b, get_hr_b
+using Flight.Components
+import Flight.Components: get_wr_b, get_hr_b
 
 using Flight.ModelingTools
 import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
@@ -20,12 +20,9 @@ import Flight.Plotting: plots
 export SimpleDrag, TestAerodynamics
 
 
-abstract type AbstractAerodynamics <: AbstractAirframeComponent end
+abstract type AbstractAerodynamics <: SystemDescriptor end
 
-
-
-#AbstractAerodynamics subtypes don't produce angular momentum
-get_hr_b(::System{<:AbstractAerodynamics}) = zeros(SVector{3})
+ExternalWrenchTrait(::Type{<:System{<:AbstractAerodynamics}}) = ExternalWrench()
 
 #################### SimpleDrag ######################
 
@@ -91,7 +88,7 @@ end
 #   than that chosen for the airframe (b), and we actually care about the
 #   velocity lever arm between them
 
-# answer: having v_wOb_b in AirData, any AbstractComponent to which AirData is
+# answer: having v_wOb_b in AirData, any SystemDescriptor to which AirData is
 # passed is free to transform v_wOb_b into its own frame. this may be
 # particularly useful for an Aerodynamics component. if its frame is f(Oa, εa):
 

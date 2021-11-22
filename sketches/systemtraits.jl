@@ -8,7 +8,7 @@ MaybeContinuousDynamics(::Type{<:EThruster}) = ContinuousDynamics
 
 #this is the first method that should be overridden by any System that
 #declares having continuous dynamics. function f_cont!(s::System{C},
-args...) where {C<:AbstractComponent} f_cont!(s, MaybeContinuousDynamics(C),
+args...) where {C<:SystemDescriptor} f_cont!(s, MaybeContinuousDynamics(C),
 args...) end function f_cont!(::S, ::ContinuousDynamics, args...) where
 {S<:System} println("Warning: S declared itself as having
 ContinuousDynamics but does not implement f_cont!") end f_cont!(::System,

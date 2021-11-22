@@ -7,31 +7,29 @@ using ComponentArrays, RecursiveArrayTools
 using Flight.Utils
 
 export init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
-export AbstractComponent, System, Model
+export SystemDescriptor, SystemGroupDescriptor, System, NullSystemDescriptor, Model
 
 
-############################# AbstractComponent ############################
+############################# SystemDescriptor ############################
 
-abstract type AbstractComponent end #anything from which we can build a System
+abstract type SystemDescriptor end #anything from which we can build a System
 
-#every AbstractComponent's init_x0 must return an AbstractVector{<:Real}, even if
+#every SystemDescriptor's init_x0 must return an AbstractVector{<:Real}, even if
 #its inherently discrete and its f_cont! does nothing. this is ugly but ensures
-#composability of HybridSystems without the hassle of dealing automatically with
-#empty state vector blocks, which is magnified by the need to assign views from
-#the root System's state vector to each children in its hierarchy
-init_x0(::AbstractComponent) = [0.0]
-init_y0(::AbstractComponent) = nothing #sytems are not required to have outputs
-init_u0(::AbstractComponent) = nothing #sytems are not required to have control inputs
-init_d0(::AbstractComponent) = nothing #systems are not required to have discrete states
-
-
+#composability of Systems without the hassle of dealing automatically with empty
+#state vector blocks, which is exacerbated by the need to assign views from the
+#root System's state vector to its children System's state vectors
+init_x0(::SystemDescriptor) = [0.0]
+init_y0(::SystemDescriptor) = nothing #sytems are not required to have outputs
+init_u0(::SystemDescriptor) = nothing #sytems are not required to have control inputs
+init_d0(::SystemDescriptor) = nothing #systems are not required to have discrete states
 
 ############################# System ############################
 
-#need the C type parameter for dispatch, the rest for type stability
+#need the T type parameter for dispatch, the rest for type stability
 #making System mutable does not hurt performance, because System instances are
 #only instantiated upon initialization, so no runtime heap allocations
-mutable struct System{C, X <: AbstractVector{<:Float64},
+mutable struct System{T, X <: AbstractVector{<:Float64},
                     Y, U, D, P, S}
     ẋ::X #continuous state vector derivative
     x::X #continuous state vector (to be used as a buffer for f_cont! evaluation)
@@ -43,9 +41,10 @@ mutable struct System{C, X <: AbstractVector{<:Float64},
     subsystems::S
 end
 
-function System(c::AbstractComponent, ẋ = init_x0(c), x = init_x0(c),
+function System(c::SystemDescriptor, ẋ = init_x0(c), x = init_x0(c),
                     y = init_y0(c), u = init_u0(c), d = init_d0(c), t = Ref(0.0))
-    params = c #assign the component descriptor itself as a System parameter
+
+    params = c #assign the system descriptor itself as a System parameter
     subsystems = nothing
     System{map(typeof, (c, x, y, u, d, params, subsystems))...}(
                                     ẋ, x, y, u, d, t, params, subsystems)
@@ -59,6 +58,102 @@ end
 #be obvious at all.
 f_cont!(::S, args...) where {S<:System} = no_extend_error(f_cont!, S)
 (f_disc!(::S, args...)::Bool) where {S<:System} = no_extend_error(f_disc!, S)
+
+######################### NullSystem ############################
+
+struct NullSystemDescriptor <: SystemDescriptor end
+
+@inline f_cont!(::System{NullSystemDescriptor}, args...) = nothing
+@inline (f_disc!(::System{NullSystemDescriptor}, args...)::Bool) = false
+
+
+######################## SystemGroup #############################
+
+#abstract type providing convenience methods for composite Systems
+
+abstract type SystemGroupDescriptor <: SystemDescriptor end
+
+Base.keys(g::SystemGroupDescriptor) = propertynames(g)
+Base.values(g::SystemGroupDescriptor) = map(λ -> getproperty(g, λ), keys(g))
+
+init_x0(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_x0.(values(g))) |> ComponentVector
+init_y0(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_y0.(values(g)))
+init_u0(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_u0.(values(g)))
+init_d0(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_d0.(values(g)))
+
+function System(g::SystemGroupDescriptor, ẋ = init_x0(g), x = init_x0(g),
+                    y = init_y0(g), u = init_u0(g), d = init_d0(g), t = Ref(0.0))
+
+    ss_list = Vector{System}()
+    ss_labels = keys(g)
+
+    for label in ss_labels
+        push!(ss_list, System(map((λ)->getproperty(λ, label), (g, ẋ, x, y, u, d))..., t))
+    end
+
+    params = nothing
+    subsystems = NamedTuple{ss_labels}(ss_list)
+
+    System{map(typeof, (g, x, y, u, d, params, subsystems))...}(
+                         ẋ, x, y, u, d, t, params, subsystems)
+
+end
+
+#default implementation calls f_cont! on all Node subsystems with the same
+#arguments provided to the parent Node's System, then builds the NamedTuple
+#can be overridden for specific SystemGroupDescriptor subtypes if needed
+@inline @generated function f_cont!(sys::System{T}, args...) where {T<:SystemGroupDescriptor}
+
+    # Core.print("Generated function called")
+    ex_main = Expr(:block)
+
+    #call f_cont! on each subsystem
+    ex_calls = Expr(:block)
+    ss_labels = fieldnames(T)
+    for label in ss_labels
+        push!(ex_calls.args,
+            :(f_cont!(sys.subsystems[$(QuoteNode(label))], args...)))
+    end
+
+    #retrieve the y from each subsystem and build a tuple from them
+    ex_tuple = Expr(:tuple)
+    for label in ss_labels
+        push!(ex_tuple.args,
+            :(sys.subsystems[$(QuoteNode(label))].y))
+    end
+
+    #build a NamedTuple from the subsystem's labels and the constructed tuple
+    ex_y = Expr(:call, Expr(:curly, NamedTuple, ss_labels), ex_tuple)
+
+    #assign the result to the parent system's y
+    ex_assign_y = Expr(:(=), :(sys.y), ex_y)
+
+    #push everything into the main block expression
+    push!(ex_main.args, ex_calls)
+    push!(ex_main.args, ex_assign_y)
+    push!(ex_main.args, :(return nothing))
+
+    return ex_main
+
+end
+
+#default implementation calls f_disc! on all Node subsystems with the same
+#arguments provided to the parent Node's System, then ORs their outputs.
+#can be overridden for specific SystemGroupDescriptor subtypes if needed
+@inline @generated function (f_disc!(sys::System{T}, args...)::Bool
+    ) where {T<:SystemGroupDescriptor}
+
+    # Core.print("Generated function called")
+    ex = Expr(:block)
+    push!(ex.args, :(x_mod = false))
+    for label in fieldnames(T)
+        #we need all f_disc! calls executed, so | must be used instead of ||
+        push!(ex.args,
+            :(x_mod = x_mod | f_disc!(sys.subsystems[$(QuoteNode(label))], args...)))
+    end
+    return ex
+
+end
 
 
 
@@ -117,7 +212,7 @@ function f_dcb!(integrator)
 end
 
 #in-place integrator update function
-function f_update!(ẋ::X, x::X, t::Real, sys::System{C,X}, args_c) where {C, X}
+function f_update!(ẋ::X, x::X, t::Real, sys::System{T,X}, args_c) where {T, X}
 
     sys.x .= x
     sys.t[] = t
@@ -131,7 +226,7 @@ end
 #specific functionality implemented by f_disc!, this callback ensures that
 #the System's internal x and y are up to date with the last integrator's
 #solution step
-function f_dcb!(x::X, t::Real, sys::System{C,X}, args_c, args_d) where {C,X}
+function f_dcb!(x::X, t::Real, sys::System{T,X}, args_c, args_d) where {T,X}
 
     sys.x .= x #assign the updated integrator's state to the system's local continuous state
     sys.t[] = t #ditto for time
@@ -154,7 +249,7 @@ function f_dcb!(x::X, t::Real, sys::System{C,X}, args_c, args_d) where {C,X}
 end
 
 #SavingCallback function, this gets called at the end of each step after f_disc!
-function f_scb(::X, ::Real, sys::System{C,X}, args_c) where {C,X}
+function f_scb(::X, ::Real, sys::System{T,X}, args_c) where {T,X}
     return deepcopy(sys.y)
 end
 

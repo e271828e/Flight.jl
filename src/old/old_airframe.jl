@@ -16,7 +16,7 @@ export AbstractAirframeComponent, NullAirframeComponent, AbstractAirframeNode, A
 export get_wr_b, get_hr_b
 
 
-abstract type AbstractAirframeComponent <: AbstractComponent end
+abstract type AbstractAirframeComponent <: SystemDescriptor end
 
 function get_wr_b(::T) where {T<:System{<:AbstractAirframeComponent}}
     error("Method get_wr_b not implemented for type $T or incorrect call signature")

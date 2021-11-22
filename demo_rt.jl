@@ -11,7 +11,7 @@ plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
 ################################## AC2 ######################################
 
 trn = DummyTerrain()
-atm_sys = System(AtmosphereCmp());
+atm_sys = System(AtmosphereDescriptor());
 
 ac = AircraftBase(
     kin = KinLTF(),
