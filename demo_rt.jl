@@ -6,72 +6,79 @@ using BenchmarkTools
 using Base.Iterators
 
 
-plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
-
 ################################## AC2 ######################################
 
-trn = DummyTerrain()
-atm_sys = System(AtmosphereDescriptor());
+function demo_rt()
 
-ac = AircraftBase(
-    kin = KinLTF(),
-    mass = TunableMass(),
-    aero = SimpleDrag(),
-    pwp = AirframeGroup((
-        left = EThruster(motor = ElectricMotor(α = CW)),
-        right = EThruster(motor = ElectricMotor(α = CCW)))),
-);
+    h_trn = AltOrth(609.5);
 
-kin_init = KinInit(v_eOb_b = [50, 0, 0],
-                    ω_lb_b = [0, 0, 0.2],
-                    q_nb = REuler(ψ = 0, θ = 0, φ = 0),
-                    Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),
-                                    AltOrth(811)));
-atm_sys.u.wind.v_ew_n[1] = -5
-ac_sys = System(ac);
-init!(ac_sys.x.kin, kin_init)
-ac_sys.subsystems.pwp.u.left.throttle = .1
-ac_sys.subsystems.pwp.u.right.throttle = .1
+    trn = HorizontalTerrain(altitude = h_trn);
+    atm = System(AtmosphereDescriptor());
+    ac = System(C172Aircraft());
+    ac_mdl = Model(ac, (trn, atm); dt = 0.02, t_end = 20, adaptive = false, method = RK4(), y_saveat = 0.02);
 
-ac_mdl = Model(ac_sys, (trn, atm_sys); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0.1);
+    kin_init = KinInit(v_eOb_b = [30, 0, 0],
+                        ω_lb_b = [0, 0, 0],
+                        q_nb = REuler(ψ = π, θ = 0.1, φ = 0.05),
+                        Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),
+                                        h_trn + 0.85 + 0.4));
 
-xp = XPInterface()
-disable_physics(xp)
-set_position(xp, ac_mdl.sys.y.kin.pos)
-output_div = 4
+    init!(ac, kin_init)
+    #if the model was instantiated in advance, we need this to change its internal state vector!
+    reinit!(ac_mdl, ac.x)
 
-t_wall = time()
-t_wall_0 = t_wall
+    xp = XPInterface()
+    disable_physics(xp)
+    set_position(xp, kin_init)
 
-# for i in take(ac_mdl.integrator, 5)
-for i in ac_mdl.integrator
+    ac.u.throttle = 0
+    ac.u.pedals = 0.1
+    ac.u.brake_left = 1
+    ac.u.brake_right = 1
+    atm.u.wind.v_ew_n[1] = 0
 
-    #when using the integrator as an iterator, we don't need to step, it is done
-    #automatically at the beginning of each iteration. therefore, the dt we need
-    #for pacing the simulation is not the proposed dt for the next step, but the
-    #one in the step the integrator has already taken.
+    #reinitializing
 
-    #retrieve the dt just taken by the integrator
-    dt = ac_mdl.dt
+    output_div = 1
 
-    #compute the wall time corresponding to the newly updated simulation
-    t_wall_next = t_wall + dt
+    t_wall = time()
+    t_wall_0 = t_wall
 
-    #busy wait until the wall time catches up
-    while (time() < t_wall_next) end
-    # println(time()-t_wall_next)
+    # for i in take(ac_mdl.integrator, 5)
+    for i in ac_mdl.integrator
 
-    t_wall = t_wall_next
-    # println(t_wall - t_wall_0)
+        #when using the integrator as an iterator, we don't need to step, it is done
+        #automatically at the beginning of each iteration. therefore, the dt we need
+        #for pacing the simulation is not the proposed dt for the next step, but the
+        #one in the step the integrator has already taken.
 
-    if ac_mdl.success_iter % output_div == 0
-        set_position(xp, ac_mdl.sys.y.kin.pos)
+        #retrieve the dt just taken by the integrator
+        dt = ac_mdl.dt
+
+        #compute the wall time corresponding to the newly updated simulation
+        t_wall_next = t_wall + dt
+
+        #busy wait until the wall time catches up
+        while (time() < t_wall_next) end
+        # println(time()-t_wall_next)
+
+        t_wall = t_wall_next
+        # println(t_wall - t_wall_0)
+
+        if ac_mdl.success_iter % output_div == 0
+            set_position(xp, ac_mdl.sys.y.kin.pos)
+        end
+
+        #when GLFW is implemented, build the model with t_end = Inf and use this to break
+        # if !GLFW.WindowShouldClose(window)
+        #     break
+        # end
+
     end
 
-    #when GLFW is implemented, build the model with t_end = Inf and use this to break
-    # if !GLFW.WindowShouldClose(window)
-    #     break
-    # end
+    plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
+    plots(ac_mdl; save_path = joinpath("tmp", "plots_demo_rt"), plot_settings...)
+
 
 end
 

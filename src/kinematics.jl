@@ -4,12 +4,11 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
-using Flight.Geodesy
-using Flight.Attitude
-using Flight.ModelingTools
-import Flight.ModelingTools: init_x0
-
 using Flight.Plotting
+using Flight.Attitude
+using Flight.Geodesy
+
+import Flight.Modeling: init_x0
 import Flight.Plotting: plots
 
 export AbstractKinematics, KinLTF, KinECEF
@@ -55,18 +54,49 @@ struct KinData
     vel::VelData
 end
 
-function KinData()
-    x_kin = init_x0(KinLTF())
-    ẋ_pos = copy(x_kin.pos)
-    return f_kin!(ẋ_pos, x_kin)
+function KinData(init::KinInit)
+
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
+
+    h_e = Ob.alt
+    q_el = ltf(Ob)
+
+    #arbitrarily initialize ψ_nl to 0
+    q_nl = RQuat()
+    q_lb = q_nb
+    q_en = q_el
+    q_eb = q_el ∘ q_lb
+
+    n_e = NVector(q_el)
+
+    v_eOb_n = q_nb(v_eOb_b)
+
+    (R_N, R_E) = radii(Ob)
+    ω_el_n = SVector{3}(
+        v_eOb_n[2] / (R_E + Float64(h_e)),
+        -v_eOb_n[1] / (R_N + Float64(h_e)),
+        0.0)
+    ω_el_b = q_nb'(ω_el_n)
+    ω_eb_b = ω_el_b + ω_lb_b
+
+    ω_el_l = q_nl'(ω_el_n)
+    ω_el_b = q_lb'(ω_el_l)
+    ω_lb_b = ω_eb_b - ω_el_b
+
+    ω_ie_e = SVector{3}(0, 0, ω_ie)
+    ω_ie_b = q_eb'(ω_ie_e)
+    ω_ib_b = ω_ie_b + ω_eb_b
+
+    pos = PosData(q_nb, q_eb, REuler(q_nb), q_en, n_e, LatLon(n_e), h_e,
+        Altitude{Orthometric}(h_e, n_e), SVector{2}(Δx, Δy))
+
+    vel = VelData(ω_eb_b, ω_el_n, ω_lb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
+
+    return KinData(pos, vel)
+
 end
 
-function KinData(init::KinInit)
-    x_kin = init_x0(KinLTF())
-    init!(x_kin, init)
-    ẋ_pos = copy(x_kin.pos)
-    return f_kin!(ẋ_pos, x_kin)
-end
+KinData() = KinData(KinInit())
 
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
 const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T, D}

@@ -7,7 +7,7 @@ using Reexport
 @reexport using LaTeXStrings
 
 using Flight.Utils
-using Flight.ModelingTools
+using Flight.Modeling
 
 export TimeHistory
 export plots, save_plots, thplot, thplot!
@@ -39,6 +39,7 @@ function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...
 
     c = data |> StructArray |> StructArrays.components
     for (c_label, c_data) in zip(keys(c), values(c))
+        println("Generating plots for $c_label")
         save_path_c = mkpath(joinpath(save_path, String(c_label)))
         plots(t, c_data; mode, save_path = save_path_c, kwargs...)
     end

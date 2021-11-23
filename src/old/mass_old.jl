@@ -4,13 +4,13 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
-using Flight.ModelingTools
+using Flight.Modeling
 
 using Flight.Airframe
 
 using Flight.Dynamics
 
-import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0,f_cont!, f_disc!
+import Flight.Modeling: System, init_x0, init_y0, init_u0, init_d0,f_cont!, f_disc!
 import Flight.Dynamics: MassData
 import Flight.Airframe: get_wr_b, get_hr_b
 

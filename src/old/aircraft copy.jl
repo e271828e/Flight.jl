@@ -4,7 +4,7 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
-using Flight.ModelingTools
+using Flight.Modeling
 
 using Flight.Terrain
 using Flight.Atmosphere
@@ -20,7 +20,7 @@ using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
 
-import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0,f_cont!, f_disc!
+import Flight.Modeling: System, init_x0, init_y0, init_u0, init_d0,f_cont!, f_disc!
 import Flight.Dynamics: MassData
 
 using Flight.Plotting

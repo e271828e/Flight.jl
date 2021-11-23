@@ -27,7 +27,7 @@ include("propulsion.jl")
 include("landinggear.jl")
 include("aerodynamics.jl")
 
-#aircraft
+# #aircraft
 include("aircraft.jl")
 include("c172.jl")
 
@@ -35,7 +35,7 @@ include("c172.jl")
 include("output.jl")
 
 @reexport using .Utils
-@reexport using .ModelingTools
+@reexport using .Modeling
 @reexport using .Plotting
 
 @reexport using .Quaternions
@@ -44,14 +44,15 @@ include("output.jl")
 @reexport using .Geodesy
 @reexport using .Terrain
 @reexport using .Atmosphere
+
 @reexport using .Kinematics
 @reexport using .Dynamics
 
 @reexport using .Components
 @reexport using .Airdata
 @reexport using .Propulsion
-@reexport using .Aerodynamics
 @reexport using .LandingGear
+@reexport using .Aerodynamics
 
 @reexport using .Aircraft
 @reexport using .C172

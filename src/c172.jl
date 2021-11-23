@@ -5,8 +5,10 @@ using StaticArrays
 using UnPack
 using Unitful
 
-using Flight.ModelingTools
-import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+using Flight.Modeling
+import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+using Flight.Plotting
+import Flight.Plotting: plots
 
 using Flight.Attitude
 
@@ -14,10 +16,9 @@ using Flight.Terrain
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-import Flight.Dynamics: MassProperties
 
 using Flight.Components
-import Flight.Components: get_wr_b, get_hr_b
+import Flight.Components: MassTrait, WrenchTrait, AngularMomentumTrait, get_mass_properties
 
 using Flight.Propulsion
 using Flight.Aerodynamics
@@ -30,26 +31,30 @@ export C172Aircraft
 struct C172ID <: AbstractAircraftID end
 
 
-#############################################################
+############################## C172Powerplant ################################
 
 Base.@kwdef struct C172Pwp <: SystemGroupDescriptor
     left::EThruster = EThruster(motor = ElectricMotor(α = CW))
     right::EThruster = EThruster(motor = ElectricMotor(α = CCW))
 end
 
-##############################################################
+WrenchTrait(::System{<:C172Pwp}) = HasWrench()
+AngularMomentumTrait(::System{<:C172Pwp}) = HasAngularMomentum()
 
-Base.@kwdef struct C172Components{ Aero <: SystemDescriptor,
-    Pwp <: SystemDescriptor, Ldg <: SystemDescriptor} <: SystemGroupDescriptor
+############################## C172Airframe #################################
 
-    aero::Aero = NullSystemDescriptor()
-    pwp::Pwp = C172Pwp()
-    ldg::Ldg = TricycleLandingGear()
+Base.@kwdef struct C172Airframe{ Aero <: SystemDescriptor, Pwp <: SystemDescriptor,
+                        Ldg <: SystemDescriptor} <: SystemGroupDescriptor
+    aero::Aero = C172_aero()
+    pwp::Pwp = C172_pwp()
+    ldg::Ldg = C172_ldg()
 end
 
-MassTrait(::Type{<:System{<:C172Components}}) = HasMass()
+MassTrait(::System{<:C172Airframe}) = HasMass()
+WrenchTrait(::System{<:C172Airframe}) = HasWrench()
+AngularMomentumTrait(::System{<:C172Airframe}) = HasAngularMomentum()
 
-function MassProperties(::System{<:C172Components})
+function get_mass_properties(::System{<:C172Airframe})
 
     #for an aircraft implementing a fuel system here we could compute the actual
     #mass properties from the different fuel tank contents
@@ -61,6 +66,9 @@ function MassProperties(::System{<:C172Components})
         J_Ob_b = SA[948.0 0 0; 0 1346.0 0; 0 0 1967.0],
         r_ObG_b = zeros(SVector{3}))
 end
+
+#get_wr_b and get_hr_b use the fallback for SystemGroups, which will in turn
+#call get_wr_b and get_hr_b on aero, pwp and ldg
 
 #uses default SystemGroup f_disc! implementation
 
@@ -78,7 +86,7 @@ Base.@kwdef mutable struct C172ControlsU
 end
 
 #const is essential when declaring type aliases!
-const C172ControlsY = @NamedTuple begin
+struct C172ControlsY
     throttle::Float64
     yoke_x::Float64
     yoke_y::Float64
@@ -89,16 +97,16 @@ end
 
 init_u0(::C172Controls) = C172ControlsU()
 
-init_y0(::C172Controls) = C172ControlsY(zeros(SVector{6}))
+init_y0(::C172Controls) = C172ControlsY(zeros(SVector{6})...)
 
 
-###################### Continuous Update functions ##########################
+###################### Continuous update functions ##########################
 
-function assign_component_inputs!(cmp::System{<:C172Components},
+function assign_component_inputs!(afr::System{<:C172Airframe},
     ctl::System{<:C172Controls})
 
     @unpack throttle, yoke_x, yoke_y, pedals, brake_left, brake_right = ctl.u
-    @unpack aero, pwp, ldg = cmp.subsystems
+    @unpack aero, pwp, ldg = afr.subsystems
 
     pwp.u.left.throttle = throttle
     pwp.u.right.throttle = throttle
@@ -109,31 +117,31 @@ function assign_component_inputs!(cmp::System{<:C172Components},
     return nothing
 end
 
-function f_cont!(cmp::System{<:C172Components}, ctl::System{<:C172Controls},
+function f_cont!(afr::System{<:C172Airframe}, ctl::System{<:C172Controls},
                 kin::KinData, air::AirData, trn::AbstractTerrain)
 
-    @unpack aero, pwp, ldg = cmp.subsystems
+    @unpack aero, pwp, ldg = afr.subsystems
 
     #could this go in the main aircraft f_cont!?
-    assign_component_inputs!(cmp, ctl)
+    assign_component_inputs!(afr, ctl)
     # f_cont!(srf, air) #update surface actuator continuous state & outputs
     f_cont!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_cont!(pwp, kin, air) #update powerplant continuous state & outputs
     f_cont!(aero, air, kin, trn) #requires previous srf update
     # f_cont!(aero, air, kin, srf, trn) #requires previous srf update
 
-    cmp.y = (aero = aero.y, pwp = pwp.y, ldg = ldg.y)
+    afr.y = (aero = aero.y, pwp = pwp.y, ldg = ldg.y)
 
 end
 
-function f_cont!(ctl::System{<:C172Controls}, ::System{<:C172Components},
+function f_cont!(ctl::System{<:C172Controls}, ::System{<:C172Airframe},
                 ::KinData, ::AirData, ::AbstractTerrain)
 
     #here, controls do nothing but update their output state. in a more complex
     #aircraft this could even be a complete autopilot implementation
     @unpack throttle, yoke_x, yoke_y, pedals, brake_left, brake_right = ctl.u
-    return C172ControlsY((throttle, yoke_x, yoke_y, pedals, brake_left,
-    brake_right))
+    return C172ControlsY(throttle, yoke_x, yoke_y, pedals, brake_left,
+    brake_right)
     # return (throttle = 0.0, yoke_x = 0.0, yoke_y = 0.0, pedals = 0.0,
     #         brake_left = 0.0, brake_right = 0.0)
 
@@ -141,17 +149,17 @@ end
 
 ######################## Discrete Update Functions ########################
 
-function f_disc!(::System{<:C172Controls}, ::System{<:C172Components})
+function f_disc!(::System{<:C172Controls}, ::System{<:C172Airframe})
     #this does nothing, but could also be used to implement open loop or closed
     #loop control laws, predefined maneuvers, etc. by calling an additional
     #function we could call as part of
     return false
 end
 
-function f_disc!(cmp::System{<:C172Components}, ::System{<:C172Controls})
+function f_disc!(afr::System{<:C172Airframe}, ::System{<:C172Controls})
     #fall back to the default SystemGroup implementation, the f_disc! for the
     #C172 components don't have to deal with the C172Controls
-    return f_disc!(cmp)
+    return f_disc!(afr)
 end
 
 #these should eventually be declared as constants:
@@ -164,8 +172,8 @@ C172_pwp() = C172Pwp()
 
 function C172_ldg()
 
-    mlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000, ξ_min = -1)
-    nlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000, ξ_min = -1)
+    mlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
+    nlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
 
     left = LandingGearUnit(
         strut = Strut(
@@ -194,7 +202,11 @@ end
 
 function C172Aircraft(; kin = C172_kin(), aero = C172_aero(), pwp = C172_pwp(),
                         ldg = C172_ldg())
-    AircraftBase(C172ID(), kin, C172Components(; aero, pwp, ldg), C172Controls())
+    AircraftBase(
+        C172ID(),
+        kin,
+        C172Airframe(aero, pwp, ldg),
+        C172Controls())
 end
 
 end #module

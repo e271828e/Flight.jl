@@ -1,4 +1,4 @@
-module ModelingTools
+module Modeling
 
 using Dates
 using UnPack
@@ -6,8 +6,8 @@ using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks
 using ComponentArrays, RecursiveArrayTools
 using Flight.Utils
 
-export init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
-export SystemDescriptor, SystemGroupDescriptor, System, NullSystemDescriptor, Model
+export f_cont!, f_disc!
+export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Model
 
 
 ############################# SystemDescriptor ############################
@@ -189,7 +189,8 @@ struct Model{S <: System,
         scb = SavingCallback(f_scb, log, saveat = saveat_arr)
         cb_set = CallbackSet(dcb, scb)
 
-        x0 = copy(sys.x)
+        # x0 = copy(sys.x) #not needed, the integrator creates its own copy
+        x0 = sys.x
         problem = ODEProblem{true}(f_update!, x0, (t_start, t_end), params)
         integrator = init(problem, method; callback = cb_set, save_on, int_kwargs...)
         new{typeof(sys), typeof(integrator), typeof(log)}(sys, integrator, log)

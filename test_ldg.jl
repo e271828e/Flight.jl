@@ -152,16 +152,7 @@ function test_ldg_ac()
         v_eOb_b = [0,1,0]
     )
 
-    ac = AircraftBase(
-        kin = KinLTF(),
-        mass = ConstantMass(m = 1000),
-        aero = SimpleDrag(),
-        ldg = LandingGearUnit(steering = DirectSteering(), braking = DirectBraking()),
-        pwp = AirframeGroup((
-            left = EThruster(motor = ElectricMotor(α = CW)),
-            right = EThruster(motor = ElectricMotor(α = CCW)))),
-    );
-    ac_sys = System(ac);
+    ac_sys = System(AircraftBase());
 
     init!(ac_sys.x.kin, kin_init)
     ac_sys.x.kin.pos

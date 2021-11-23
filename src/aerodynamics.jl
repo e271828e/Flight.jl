@@ -4,25 +4,27 @@ module Aerodynamics
 using StaticArrays, ComponentArrays
 using UnPack
 
+using Flight.Modeling
+import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+
+using Flight.Plotting
+import Flight.Plotting: plots
+
 using Flight.Attitude
 using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Airdata
+
 using Flight.Components
-import Flight.Components: get_wr_b, get_hr_b
-
-using Flight.ModelingTools
-import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
-
-using Flight.Plotting
-import Flight.Plotting: plots
+import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b
 
 export SimpleDrag, TestAerodynamics
 
 
 abstract type AbstractAerodynamics <: SystemDescriptor end
 
-ExternalWrenchTrait(::Type{<:System{<:AbstractAerodynamics}}) = ExternalWrench()
+WrenchTrait(::System{<:AbstractAerodynamics}) = HasWrench()
+AngularMomentumTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
 
 #################### SimpleDrag ######################
 
@@ -58,7 +60,7 @@ end
 
 f_disc!(::System{SimpleDrag}) = false
 
-get_wr_b(sys::System{SimpleDrag}) = sys.y.wr_b
+Components.get_wr_b(sys::System{SimpleDrag}) = sys.y.wr_b
 
 function plots(t, data::AbstractVector{SimpleDragY}; mode, save_path, kwargs...)
 
@@ -176,24 +178,8 @@ function f_cont!(sys::System{TestAerodynamics}, air::AirData, kin::KinData, ::An
     ẋ.α = α_dot
     ẋ.β = β_dot
 
-
     sys.y = TestAerodynamicsY(α_dot, α_in, α, β_dot, β_in, β, wr_c, wr_b)
 
 end
-
-
-
-
-    #TURN THIS INTO A RECIPE FOR AIRFLOW ANGLES
-
-    # pd["05_α_β"] = thplot(t, rad2deg.(hcat(α_b, β_b));
-    #     plot_title = "Airflow Angles [Airframe]",
-    #     label = "",
-    #     title = ["Angle of Attack" "Sideslip Angle"],
-    #     ylabel = [L"$\alpha_b \ (deg)$" L"$\beta_b \ (deg)$"],
-    #     th_split = :h, link = :none,
-    #     kwargs...)
-
-
 
 end #module

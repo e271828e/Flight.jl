@@ -6,8 +6,8 @@ using UnPack
 
 using Flight.Attitude
 using Flight.Dynamics
-using Flight.ModelingTools
-import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+using Flight.Modeling
+import Flight.Modeling: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots

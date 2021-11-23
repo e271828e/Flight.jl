@@ -5,28 +5,25 @@ using StaticArrays
 using ComponentArrays
 using UnPack
 
-using Flight.ModelingTools
-using Flight.Attitude
-using Flight.Geodesy
-using Flight.Kinematics
-using Flight.Dynamics
-using Flight.Components
-using Flight.Terrain
-
-#for method extension without module qualifier
-import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
-import Flight.Components: get_wr_b, get_hr_b
+using Flight.Modeling
+import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
 
-export Strut, StrutY
-export Contact, ContactY
-export SimpleDamper, get_damper_force
-export NoSteering, DirectSteering, DirectSteeringY, get_steering_angle, set_steering_input
-export NoBraking, DirectBraking, DirectBrakingY, get_braking_coefficient, set_braking_input
-export LandingGearUnit, LandingGearUnitY
-export TricycleLandingGear, TricycleLandingGearY
+using Flight.Attitude
+using Flight.Geodesy
+using Flight.Terrain
+using Flight.Kinematics
+using Flight.Dynamics
+
+using Flight.Components
+import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b
+
+export NoSteering, DirectSteering, get_steering_angle
+export NoBraking, DirectBraking, get_braking_coefficient
+export SimpleDamper, Strut
+export LandingGearUnit, TricycleLandingGear
 
 #basis elements, for convenience
 const e1 = SVector{3,Float64}(1,0,0)
@@ -40,7 +37,6 @@ abstract type AbstractSteering <: SystemDescriptor end
 
 struct NoSteering <: AbstractSteering end
 
-set_steering_input(::System{NoSteering}, ::Real) = nothing
 get_steering_angle(::System{NoSteering}) = 0.0
 f_cont!(::System{NoSteering}, args...) = nothing
 f_disc!(::System{NoSteering}, args...) = false
@@ -59,30 +55,19 @@ end
 init_u0(::DirectSteering) = Ref(0.0) #steering input
 init_y0(::DirectSteering) = DirectSteeringY(0.0) #steering angle
 
-function set_steering_input(sys::System{DirectSteering}, u::Real)
-    @assert abs(u) <= 1 "Steering input must be within [-1,1]"
-    sys.u[] = u
-end
-
 function f_cont!(sys::System{DirectSteering})
-    sys.y = DirectSteeringY(sys.u[] * sys.params.ψ_max)
+    u = sys.u[]
+    @assert abs(u) <= 1 "Steering input must be within [-1,1]"
+    sys.y = DirectSteeringY(u * sys.params.ψ_max)
 end
 
 f_disc!(::System{DirectSteering}, args...) = false
 
 get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
 
-function plots(t, data::AbstractVector{<:DirectSteeringY}; mode, save_path, kwargs...)
-    println("To be implemented")
-end
-
-# struct ActuatedSteering{A <: AbstractActuator} <: AbstractSteering
-#     limits::SVector{2,Float64} #more generally, transmission kinematics could go here
-#     actuator::A #actuator model parameters go here
+# function plots(t, data::AbstractVector{<:DirectSteeringY}; mode, save_path, kwargs...)
+#     println("To be implemented")
 # end
-# init_x0(steering::ActuatedSteering) = init_x0(steering.actuator)
-# init_y0(steering::ActuatedSteering) = init_x0(steering.actuator)
-# init_u0(steering::ActuatedSteering) = init_u0(steering.actuator) #typically, 1
 
 ########################### Braking #############################
 
@@ -92,10 +77,9 @@ abstract type AbstractBraking <: SystemDescriptor end
 
 struct NoBraking <: AbstractBraking end
 
+get_braking_coefficient(::System{NoBraking}) = 0.0
 f_cont!(::System{NoBraking}, args...) = nothing
 f_disc!(::System{NoBraking}, args...) = false
-set_braking_input(::System{NoBraking}, ::Real) = nothing
-get_braking_coefficient(::System{NoBraking}) = 0.0
 
 ########### DirectBraking #############
 
@@ -110,13 +94,10 @@ end
 init_u0(::DirectBraking) = Ref(0.0)
 init_y0(::DirectBraking) = DirectBrakingY()
 
-function set_braking_input(sys::System{DirectBraking}, u::Real)
-    @assert (u <= 1 && u >= 0) "Braking input must be within [0,1]"
-    sys.u[] = u
-end
-
 function f_cont!(sys::System{DirectBraking})
-    sys.y = DirectBrakingY(sys.u[] * sys.params.η_br)
+    u = sys.u[]
+    @assert (u <= 1 && u >= 0) "Braking input must be within [0,1]"
+    sys.y = DirectBrakingY(u * sys.params.η_br)
 end
 
 f_disc!(::System{DirectBraking}, args...) = false
@@ -136,7 +117,7 @@ Base.@kwdef struct SimpleDamper <: AbstractDamper
     k_s::Float64 = 25000 #spring constant
     k_d_ext::Float64 = 1000 #extension damping coefficient
     k_d_cmp::Float64 = 1000 #compression damping coefficient
-    ξ_min::Float64 = -1 #compression below which the shock absorber is disabled
+    ξ_min::Float64 = -2 #compression below which the shock absorber is disabled
 end
 
 #Force exerted by the damper along zs. The deformation ξ is positive along z_s
@@ -238,18 +219,18 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     t_bc = FrameTransform(r_ObOc_b, q_bc)
 
     #contact frame origin velocity due to airframe motion
-    v_eOc_afm_b = v_eOb_b + ω_eb_b × r_ObOc_b
-    v_eOc_afm_c = q_bc'(v_eOc_afm_b)
+    v_eOc_afr_b = v_eOb_b + ω_eb_b × r_ObOc_b
+    v_eOc_afr_c = q_bc'(v_eOc_afr_b)
 
     #compute the damper elongation rate required to cancel the airframe
     #contribution to the contact point velocity along the contact frame z axis
     q_sc = q_bs' ∘ q_bc
     k_s_c = q_sc'(e3)
-    ξ_dot = -v_eOc_afm_c[3] / k_s_c[3]
+    ξ_dot = -v_eOc_afr_c[3] / k_s_c[3]
 
     #compute contact point velocity
     v_eOc_dmp_c = k_s_c * ξ_dot
-    v_eOc_c = v_eOc_afm_c + v_eOc_dmp_c
+    v_eOc_c = v_eOc_afr_c + v_eOc_dmp_c
 
     F_dmp = get_damper_force(damper, ξ, ξ_dot)
 
@@ -340,6 +321,8 @@ Base.@kwdef struct Contact <: SystemDescriptor
     k_p::Float64 = 5.0 #proportional gain for contact velocity regulator
     k_i::Float64 = 400.0 #integral gain for contact velocity regulator
 end
+
+WrenchTrait(::System{<:Contact}) = HasNoWrench()
 
 Base.@kwdef struct ContactY
     v::SVector{2,Float64} = zeros(SVector{2}) #contact plane velocity
@@ -503,7 +486,7 @@ function plots(t, data::AbstractVector{<:ContactY}; mode, save_path, kwargs...)
         layout = (2,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    splt_α_br = thplot(t, α_br; title = "Braking Intensity",
+    splt_α_br = thplot(t, α_br; title = "Braking Coefficient",
         ylabel = L"$\alpha_{br}$", label = "", kwargs...)
     splt_μ_max_x = thplot(t, μ_max_x; title = "Maximum Friction Coefficient",
         ylabel = L"$\mu_{max}^{x}$", label = "", kwargs...)
@@ -577,7 +560,13 @@ Base.@kwdef struct LandingGearUnit{L<:Strut, S <: AbstractSteering,
     braking::B = NoBraking()
 end
 
-ExternalWrenchTrait(::Type{<:System{<:LandingGearUnit}}) = ExternalWrench()
+#if we avoid the generic fallback for SystemGroup, we don't need to define
+#traits for Steering, Braking, Contact or Strut
+WrenchTrait(::System{<:LandingGearUnit}) = HasWrench()
+AngularMomentumTrait(::System{<:LandingGearUnit}) = HasNoAngularMomentum()
+
+get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
+
 
 function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
                 terrain::AbstractTerrain)
@@ -620,5 +609,7 @@ Base.@kwdef struct TricycleLandingGear{L <: LandingGearUnit, R <: LandingGearUni
     center::C = LandingGearUnit(steering = DirectSteering())
 end
 
+WrenchTrait(::System{<:TricycleLandingGear}) = HasWrench()
+AngularMomentumTrait(::System{<:TricycleLandingGear}) = HasNoAngularMomentum()
 
 end #module

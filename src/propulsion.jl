@@ -4,23 +4,23 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays, StructArrays, RecursiveArrayTools
 using Unitful
 using UnPack
-using Plots
-
-using Flight.Airdata
-using Flight.Kinematics
-using Flight.Dynamics
-using Flight.Components
-using Flight.ModelingTools
-import Flight.Components: get_wr_b, get_hr_b
-import Flight.ModelingTools: System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 
 using Flight.Plotting
 import Flight.Plotting: plots
 
+using Flight.Airdata
+using Flight.Kinematics
+using Flight.Dynamics
+
+using Flight.Modeling
+import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+
+using Flight.Components
+import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
+
 export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
 export EThruster, EThrusterU, EThrusterD, EThrusterY
 
-# abstract type AbstractThruster <: SystemDescriptor end
 
 @enum TurnSense begin
     CW = 1
@@ -110,8 +110,8 @@ init_y0(::EThruster) = EThrusterY()
 
 #the default System constructor works OK in this case
 
-ExternalWrenchTrait(::Type{<:System{EThruster}}) = ExternalWrench()
-AngularMomentumTrait(::Type{<:System{EThruster}}) = AngularMomentum()
+WrenchTrait(::System{EThruster}) = HasWrench()
+AngularMomentumTrait(::System{EThruster}) = HasAngularMomentum()
 
 get_wr_b(sys::System{EThruster}) = sys.y.wr_b
 get_hr_b(sys::System{EThruster}) = sys.y.hr_b

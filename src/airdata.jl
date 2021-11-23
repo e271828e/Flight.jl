@@ -4,13 +4,15 @@ using LinearAlgebra
 using StaticArrays
 using UnPack
 
+using Flight.Plotting
 using Flight.Attitude
-using Flight.Kinematics
+
 using Flight.Geodesy
 using Flight.Atmosphere
-import Flight.Atmosphere: T_std, p_std, ρ_std, γ
+using Flight.Kinematics
 
-using Flight.Plotting
+using Flight.Atmosphere: T_std, p_std, ρ_std, γ
+
 import Flight.Plotting: plots
 
 export get_airflow_angles, get_wind_axes

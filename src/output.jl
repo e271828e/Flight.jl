@@ -45,6 +45,9 @@ end
 
 disable_physics(xp::XPInterface) = set_dref(xp, "sim/operation/override/override_planepath", 1)
 
+function set_position(xp::XPInterface, init::KinInit, aircraft::Integer = 0)
+    set_position(xp, KinData(init).pos, aircraft)
+end
 
 function set_position(xp::XPInterface, pos::PosData, aircraft::Integer = 0)
 

@@ -4,12 +4,11 @@ using StaticArrays
 using LinearAlgebra
 using UnPack
 
-using Flight.Geodesy
-using Flight.Attitude
-using Flight.Kinematics
-using Flight.ModelingTools
-
 using Flight.Plotting
+using Flight.Attitude
+using Flight.Geodesy
+using Flight.Kinematics
+
 import Flight.Plotting: plots
 
 export DynData, MassProperties, FrameTransform, Wrench
@@ -114,8 +113,8 @@ Notes:
   worry about discontinuities in the kinematic state vector.
 """
 Base.@kwdef struct MassProperties
-    m::Float64 = 1.0
-    J_Ob_b::SMatrix{3, 3, Float64, 9} = SMatrix{3,3,Float64}(I)
+    m::Float64 = 1000.0
+    J_Ob_b::SMatrix{3, 3, Float64, 9} = 1000.0 * SMatrix{3,3,Float64}(I)
     r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
 end
 
