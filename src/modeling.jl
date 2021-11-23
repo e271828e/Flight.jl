@@ -182,7 +182,6 @@ struct Model{S <: System,
 
         params = (sys = sys, args_c = args_c, args_d = args_d)
 
-        # y₀ = f_cont!(sys, args_c...)
         log = SavedValues(Float64, typeof(sys.y))
 
         dcb = DiscreteCallback((u, t, integrator)->true, f_dcb!)

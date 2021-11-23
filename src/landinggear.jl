@@ -313,6 +313,10 @@ get_μ(f::Union{Rolling,Skidding}, srf::SurfaceType, α_bo::Real)::Float64 =
 # get_sd(f::Skidding, ::Val{Terrain.WetTarmac}) = f.wet
 # get_sd(f::Skidding, ::Val{Terrain.IcyTarmac}) = f.icy
 
+#note: setting k_l > 0 asymptotically removes residual force fighting between
+#contacts in equilibrium at the expense of some position creep under persistent
+#external loads. k_l = 0.2 gives reasonable practical results
+
 Base.@kwdef struct Contact <: SystemDescriptor
     rolling::Rolling = Rolling() #rolling friction coefficients
     skidding::Skidding = Skidding() #skidding friction coefficients
@@ -320,6 +324,7 @@ Base.@kwdef struct Contact <: SystemDescriptor
     ψ_skid::Float64 = deg2rad(10) #skidding slip angle thresold
     k_p::Float64 = 5.0 #proportional gain for contact velocity regulator
     k_i::Float64 = 400.0 #integral gain for contact velocity regulator
+    k_l::Float64 = 0.0 #integrator leak factor for contact velocity regulator
 end
 
 WrenchTrait(::System{<:Contact}) = HasNoWrench()
@@ -352,7 +357,7 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
 
 
-    @unpack rolling, skidding, v_bo, ψ_skid, k_p, k_i = sys.params
+    @unpack rolling, skidding, v_bo, ψ_skid, k_p, k_i, k_l = sys.params
     @unpack wow, t_sc, t_bc, F_dmp, v_eOc_c, srf = strut.y
 
     if !wow #better than !sys.d[], which is set at f_disc! so has a one-step delay
@@ -407,7 +412,7 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
 
     #if not saturated, integrator accumulates
     sat = abs.(α_raw) .> abs.(α) #saturated?
-    sys.ẋ .= v .* .!sat
+    sys.ẋ .= (v - k_l * s) .* .!sat
 
     #normalized contact force projected on the contact frame
     f_c = SVector{3,Float64}(μ[1], μ[2], -1)

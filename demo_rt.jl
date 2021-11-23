@@ -22,6 +22,21 @@ function demo_rt()
                         q_nb = REuler(ψ = π, θ = 0.1, φ = 0.05),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),
                                         h_trn + 0.85 + 0.4));
+    ac.u.throttle = 0
+    ac.u.pedals = 0.1
+    ac.u.brake_left = 1
+    ac.u.brake_right = 1
+    atm.u.wind.v_ew_n[1] = 0
+
+    # kin_init = KinInit(v_eOb_b = [0, 0, 0],
+    #                     ω_lb_b = [0, 0, 0],
+    #                     q_nb = REuler(ψ = π, θ = 0, φ = 0),
+    #                     Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),
+    #                                     h_trn + 0.85));
+
+    # ac.u.throttle = 1
+    # ac.u.brake_left = 1
+    # ac.u.brake_right = 1
 
     init!(ac, kin_init)
     #if the model was instantiated in advance, we need this to change its internal state vector!
@@ -31,18 +46,12 @@ function demo_rt()
     disable_physics(xp)
     set_position(xp, kin_init)
 
-    ac.u.throttle = 0
-    ac.u.pedals = 0.1
-    ac.u.brake_left = 1
-    ac.u.brake_right = 1
-    atm.u.wind.v_ew_n[1] = 0
-
-    #reinitializing
-
     output_div = 1
 
     t_wall = time()
     t_wall_0 = t_wall
+
+    println("Generalize this for non-rt")
 
     # for i in take(ac_mdl.integrator, 5)
     for i in ac_mdl.integrator
