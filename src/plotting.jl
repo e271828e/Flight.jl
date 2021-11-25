@@ -6,7 +6,6 @@ using Reexport
 @reexport using RecursiveArrayTools
 @reexport using LaTeXStrings
 
-using Flight.Utils
 using Flight.Modeling
 
 export TimeHistory

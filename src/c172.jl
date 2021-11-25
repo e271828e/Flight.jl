@@ -9,6 +9,7 @@ using Flight.Modeling
 import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 using Flight.Plotting
 import Flight.Plotting: plots
+using Flight.Misc
 
 using Flight.Attitude
 
@@ -25,21 +26,81 @@ using Flight.Aerodynamics
 using Flight.LandingGear
 
 using Flight.Aircraft
+import Flight.Aircraft: assign_joystick_inputs!
 
-export C172Aircraft
+using Flight.Input
+
+export C172Aircraft, C172Pwp, C172Ldg
 
 struct C172ID <: AbstractAircraftID end
 
 
 ############################## C172Powerplant ################################
 
-Base.@kwdef struct C172Pwp <: SystemGroupDescriptor
-    left::EThruster = EThruster(motor = ElectricMotor(α = CW))
-    right::EThruster = EThruster(motor = ElectricMotor(α = CCW))
+struct C172Pwp <: SystemGroupDescriptor
+    left::EThruster
+    right::EThruster
 end
 
 WrenchTrait(::System{<:C172Pwp}) = HasWrench()
 AngularMomentumTrait(::System{<:C172Pwp}) = HasAngularMomentum()
+
+function C172Pwp()
+
+    prop = SimpleProp(kF = 4e-3, J = 0.25)
+
+    left = EThruster(propeller = prop, motor = ElectricMotor(α = CW))
+    right = EThruster(propeller = prop, motor = ElectricMotor(α = CCW))
+
+    C172Pwp(left, right)
+
+end
+
+############################ C172LandingGear ############################
+
+struct C172Ldg{L <: LandingGearUnit, R <: LandingGearUnit,
+    C <: LandingGearUnit} <: SystemGroupDescriptor
+    left::L
+    right::R
+    center::C
+end
+
+WrenchTrait(::System{<:C172Ldg}) = HasWrench()
+AngularMomentumTrait(::System{<:C172Ldg}) = HasNoAngularMomentum()
+
+function C172Ldg()
+
+    mlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
+    nlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
+
+    left = LandingGearUnit(
+        strut = Strut(
+            t_bs = FrameTransform(r = [-1, -1.25, 1], q = RQuat() ),
+            l_0 = 0.0,
+            damper = mlg_damper),
+        braking = DirectBraking())
+
+    right = LandingGearUnit(
+        strut = Strut(
+            t_bs = FrameTransform(r = [-1, 1.25, 1], q = RQuat() ),
+            l_0 = 0.0,
+            damper = mlg_damper),
+        braking = DirectBraking())
+
+    center = LandingGearUnit(
+        strut = Strut(
+            t_bs = FrameTransform(r = [2, 0, 1] , q = RQuat()),
+            l_0 = 0.0,
+            damper = nlg_damper),
+        steering = DirectSteering())
+
+    C172Ldg(left, right, center)
+
+end
+
+############################### C172 Aerodynamics ###########################
+
+C172_aero() = SimpleDrag()
 
 ############################## C172Airframe #################################
 
@@ -77,12 +138,12 @@ end
 struct C172Controls <: SystemDescriptor end
 
 Base.@kwdef mutable struct C172ControlsU
-    throttle::Float64 = 0.0 #[0, 1]
-    yoke_x::Float64 = 0.0 #[-1, 1], ailerons (+ bank right)
-    yoke_y::Float64 = 0.0 #[-1, 1], elevator (+ pitch up)
-    pedals::Float64 = 0.0 #[-1, 1], rudder and nose wheel (+ yaw right)
-    brake_left::Float64 = 0.0 #[0, 1]
-    brake_right::Float64 = 0.0 #[0, 1]
+    throttle::Bounded{Float64, 0, 1} = 0.0
+    yoke_x::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
+    yoke_y::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
+    pedals::Bounded{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
+    brake_left::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
+    brake_right::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
 end
 
 #const is essential when declaring type aliases!
@@ -98,7 +159,6 @@ end
 init_u0(::C172Controls) = C172ControlsU()
 
 init_y0(::C172Controls) = C172ControlsY(zeros(SVector{6})...)
-
 
 ###################### Continuous update functions ##########################
 
@@ -166,47 +226,36 @@ end
 
 C172_kin() = KinLTF()
 
-C172_aero() = SimpleDrag()
 
-C172_pwp() = C172Pwp()
-
-function C172_ldg()
-
-    mlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
-    nlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
-
-    left = LandingGearUnit(
-        strut = Strut(
-            t_bs = FrameTransform(r = [-1, -1.25, 1], q = RQuat() ),
-            l_0 = 0.0,
-            damper = mlg_damper),
-        braking = DirectBraking())
-
-    right = LandingGearUnit(
-        strut = Strut(
-            t_bs = FrameTransform(r = [-1, 1.25, 1], q = RQuat() ),
-            l_0 = 0.0,
-            damper = mlg_damper),
-        braking = DirectBraking())
-
-    center = LandingGearUnit(
-        strut = Strut(
-            t_bs = FrameTransform(r = [2, 0, 1] , q = RQuat()),
-            l_0 = 0.0,
-            damper = nlg_damper),
-        steering = DirectSteering())
-
-    TricycleLandingGear(; left, right, center)
-
-end
-
-function C172Aircraft(; kin = C172_kin(), aero = C172_aero(), pwp = C172_pwp(),
-                        ldg = C172_ldg())
+function C172Aircraft(; kin = C172_kin(), aero = C172_aero(), pwp = C172Pwp(),
+                        ldg = C172Ldg())
     AircraftBase(
         C172ID(),
         kin,
         C172Airframe(aero, pwp, ldg),
         C172Controls())
 end
+
+######################## Joystick Input Interface ########################
+
+yoke_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
+pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.1)
+brake_curve(x) = exp_axis_curve(x, strength = 0, deadzone = 0.05)
+
+function assign_joystick_inputs!(ac::System{<:AircraftBase{C172ID}}, joystick::XBoxController)
+
+    if get_button_change(joystick, :dpad_up) === button_released
+        ac.u.throttle = Float64(ac.u.throttle) + 0.1
+    elseif get_button_change(joystick, :dpad_down) === button_released
+        ac.u.throttle = Float64(ac.u.throttle) - 0.1
+    end
+
+    ac.u.yoke_x = get_axis_data(joystick, :right_analog_x) |> yoke_curve
+    ac.u.yoke_y = get_axis_data(joystick, :right_analog_y) |> yoke_curve
+    ac.u.pedals = get_axis_data(joystick, :left_analog_x) |> pedal_curve
+    ac.u.brake_left = get_axis_data(joystick, :left_trigger) |> brake_curve
+    ac.u.brake_right = get_axis_data(joystick, :right_trigger) |> brake_curve
+end
+
 
 end #module

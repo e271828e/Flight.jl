@@ -4,7 +4,6 @@ using Dates
 using UnPack
 using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks
 using ComponentArrays, RecursiveArrayTools
-using Flight.Utils
 
 export f_cont!, f_disc!
 export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Model
@@ -56,8 +55,8 @@ end
 #f_cont! or f_disc! implementations for the System have the wrong interface, the
 #dispatch will silently revert to the fallback, which does nothing and may not
 #be obvious at all.
-f_cont!(::S, args...) where {S<:System} = no_extend_error(f_cont!, S)
-(f_disc!(::S, args...)::Bool) where {S<:System} = no_extend_error(f_disc!, S)
+f_cont!(args...) = MethodError(f_cont!, args) |> throw
+(f_disc!(args...)::Bool) = MethodError(f_disc!, args) |> throw
 
 ######################### NullSystem ############################
 
@@ -172,7 +171,7 @@ struct Model{S <: System,
     log::L
 
     function Model(sys, args_c::Tuple = (), args_d::Tuple = ();
-        method = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
+        solver = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
         save_on = false, int_kwargs...)
 
         #save_on is set to false because we are not usually interested in saving
@@ -191,7 +190,7 @@ struct Model{S <: System,
         # x0 = copy(sys.x) #not needed, the integrator creates its own copy
         x0 = sys.x
         problem = ODEProblem{true}(f_update!, x0, (t_start, t_end), params)
-        integrator = init(problem, method; callback = cb_set, save_on, int_kwargs...)
+        integrator = init(problem, solver; callback = cb_set, save_on, int_kwargs...)
         new{typeof(sys), typeof(integrator), typeof(log)}(sys, integrator, log)
     end
 end

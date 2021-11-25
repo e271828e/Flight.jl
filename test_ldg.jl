@@ -163,7 +163,7 @@ function test_ldg_ac()
     println(ac_sys.y.ldg)
     @btime f_cont!($ac_sys, $terrain, $atm_sys)
 
-    ac_mdl = Model(ac_sys, (terrain, atm_sys); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0.1);
+    ac_mdl = Model(ac_sys, (terrain, atm_sys); dt = 0.01, adaptive = false, solver = Heun(), y_saveat = 0.1);
     b = @benchmarkable step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl)); run(b)
 
     plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)

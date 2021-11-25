@@ -23,7 +23,7 @@ import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b
 export NoSteering, DirectSteering, get_steering_angle
 export NoBraking, DirectBraking, get_braking_coefficient
 export SimpleDamper, Strut
-export LandingGearUnit, TricycleLandingGear
+export LandingGearUnit
 
 #basis elements, for convenience
 const e1 = SVector{3,Float64}(1,0,0)
@@ -111,7 +111,7 @@ end
 ########################### Damper #############################
 
 abstract type AbstractDamper end #not a System!
-get_damper_force(::A, args...) where {A<:AbstractDamper} = no_extend_error(get_force, A)
+get_damper_force(args...) = throw(MethodError(get_damper_force, args))
 
 Base.@kwdef struct SimpleDamper <: AbstractDamper
     k_s::Float64 = 25000 #spring constant
@@ -604,17 +604,5 @@ end
 #and strut, and let the default AirframeNode implementation do its thing
 # get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
 
-
-############################ TricycleLandingGear ############################
-
-Base.@kwdef struct TricycleLandingGear{L <: LandingGearUnit, R <: LandingGearUnit,
-    C <: LandingGearUnit} <: SystemGroupDescriptor
-    left::L = LandingGearUnit(braking = DirectBraking())
-    right::R = LandingGearUnit(braking = DirectBraking())
-    center::C = LandingGearUnit(steering = DirectSteering())
-end
-
-WrenchTrait(::System{<:TricycleLandingGear}) = HasWrench()
-AngularMomentumTrait(::System{<:TricycleLandingGear}) = HasNoAngularMomentum()
 
 end #module

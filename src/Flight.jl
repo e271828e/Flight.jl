@@ -5,6 +5,7 @@ using Reexport
 
 #general
 include("utils.jl")
+include("misc.jl")
 include("modeling.jl")
 include("plotting.jl")
 
@@ -27,14 +28,16 @@ include("propulsion.jl")
 include("landinggear.jl")
 include("aerodynamics.jl")
 
+#IO interfaces
+include("input.jl")
+include("output.jl")
+
 # #aircraft
 include("aircraft.jl")
 include("c172.jl")
 
-#output interfaces
-include("output.jl")
-
 @reexport using .Utils
+@reexport using .Misc
 @reexport using .Modeling
 @reexport using .Plotting
 
@@ -54,10 +57,11 @@ include("output.jl")
 @reexport using .LandingGear
 @reexport using .Aerodynamics
 
+@reexport using .Input
+@reexport using .Output
+
 @reexport using .Aircraft
 @reexport using .C172
-
-@reexport using .Output
 
 export ftest
 

@@ -57,8 +57,7 @@ TerrainData(; altitude = AltOrth(0),
 ######################## AbstractTerrain ##########################
 
 abstract type AbstractTerrain end
-get_terrain_data(::T, ::Abstract2DLocation) where {T<:AbstractTerrain}=
-    no_extend_error(get_terrain_data, T)
+get_terrain_data(::AbstractTerrain, args...) = throw(MethodError(get_terrain_data, args))
 
 struct DummyTerrain <: AbstractTerrain end
 
