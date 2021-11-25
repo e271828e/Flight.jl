@@ -111,7 +111,7 @@ end
 ########################### Damper #############################
 
 abstract type AbstractDamper end #not a System!
-get_damper_force(::A, args...) where {A<:AbstractDamper} = no_extend_error(get_force, A)
+get_damper_force(args...) = throw(MethodError(get_damper_force, args))
 
 Base.@kwdef struct SimpleDamper <: AbstractDamper
     k_s::Float64 = 25000 #spring constant

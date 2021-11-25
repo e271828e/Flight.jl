@@ -21,7 +21,7 @@ ac = AircraftBase(
 
 ac_sys = System(ac); #should remake the system, because it sets the Model's initial condition upon creation
 init!(ac_sys.x.kin, KinInit(v_eOb_b = [10, 0, 0], Ob = Geographic(LatLon(ϕ = 0), AltOrth(1000))))
-ac_mdl = Model(ac_sys, (trn, atm_sys); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0.1);
+ac_mdl = Model(ac_sys, (trn, atm_sys); dt = 0.01, adaptive = false, solver = Heun(), y_saveat = 0.1);
 solve!(ac_mdl)
 plots(ac_mdl; save_path = joinpath("tmp", "plots_ac_01"), plot_settings...)
 
@@ -45,7 +45,7 @@ ac = AircraftBase(
 atm_sys.u.wind.v_ew_n[1] = -5
 ac_sys = System(ac);
 init!(ac_sys.x.kin, KinInit(v_eOb_b = [10, 0, 0], Ob = Geographic(LatLon(ϕ = 0), AltOrth(1000))))
-ac_mdl = Model(ac_sys, (trn, atm_sys); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0.1);
+ac_mdl = Model(ac_sys, (trn, atm_sys); dt = 0.01, adaptive = false, solver = Heun(), y_saveat = 0.1);
 solve!(ac_mdl)
 plots(ac_mdl; save_path = joinpath("tmp", "plots_ac_03"), plot_settings...)
 

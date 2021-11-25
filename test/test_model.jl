@@ -19,7 +19,7 @@ function test_pwp()
 
     #RT setup, save at specified time steps (should be multiple of dt to avoid
     #intermediate steps)
-    mdl3 = Model(EThruster(); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0:0.1:1)
+    mdl3 = Model(EThruster(); dt = 0.01, adaptive = false, solver = Heun(), y_saveat = 0:0.1:1)
 
     @btime f_benchmark($mdl1)
     @btime f_benchmark($mdl2)

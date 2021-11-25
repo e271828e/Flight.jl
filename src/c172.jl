@@ -9,6 +9,7 @@ using Flight.Modeling
 import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 using Flight.Plotting
 import Flight.Plotting: plots
+using Flight.Misc
 
 using Flight.Attitude
 
@@ -25,6 +26,9 @@ using Flight.Aerodynamics
 using Flight.LandingGear
 
 using Flight.Aircraft
+import Flight.Aircraft: assign_joystick_inputs!
+
+using Flight.Input
 
 export C172Aircraft
 
@@ -77,12 +81,12 @@ end
 struct C172Controls <: SystemDescriptor end
 
 Base.@kwdef mutable struct C172ControlsU
-    throttle::Float64 = 0.0 #[0, 1]
-    yoke_x::Float64 = 0.0 #[-1, 1], ailerons (+ bank right)
-    yoke_y::Float64 = 0.0 #[-1, 1], elevator (+ pitch up)
-    pedals::Float64 = 0.0 #[-1, 1], rudder and nose wheel (+ yaw right)
-    brake_left::Float64 = 0.0 #[0, 1]
-    brake_right::Float64 = 0.0 #[0, 1]
+    throttle::Bounded{Float64, 0, 1} = 0.0
+    yoke_x::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
+    yoke_y::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
+    pedals::Bounded{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
+    brake_left::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
+    brake_right::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
 end
 
 #const is essential when declaring type aliases!
@@ -98,7 +102,6 @@ end
 init_u0(::C172Controls) = C172ControlsU()
 
 init_y0(::C172Controls) = C172ControlsY(zeros(SVector{6})...)
-
 
 ###################### Continuous update functions ##########################
 
@@ -208,5 +211,18 @@ function C172Aircraft(; kin = C172_kin(), aero = C172_aero(), pwp = C172_pwp(),
         C172Airframe(aero, pwp, ldg),
         C172Controls())
 end
+
+function assign_joystick_inputs!(ac::System{<:AircraftBase{C172ID}}, joystick::XBoxController)
+
+    #dead zone and exponentials required!
+
+    # ac.u.throttle = get_axis_value(joystick, :left_analog_y)
+    ac.u.yoke_x = get_axis_value(joystick, :right_analog_x)
+    ac.u.yoke_y = get_axis_value(joystick, :right_analog_y)
+    ac.u.pedals = get_axis_value(joystick, :left_analog_x)
+    ac.u.brake_left = get_axis_value(joystick, :left_trigger)
+    ac.u.brake_right = get_axis_value(joystick, :right_trigger)
+end
+
 
 end #module

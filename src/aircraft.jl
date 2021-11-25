@@ -21,6 +21,7 @@ using Flight.Dynamics
 using Flight.Components: get_mass_properties, get_wr_b, get_hr_b
 
 export AbstractAircraftID, GenericAircraftID, AircraftBase
+export assign_joystick_inputs!
 
 ######################### AircraftBase ########################
 
@@ -112,6 +113,8 @@ function f_disc!(sys::AircraftBaseSys)
 
     return x_mod
 end
+
+assign_joystick_inputs!(args...) = throw(MethodError(assign_joystick_inputs!, args))
 
 #no custom plots function required, since all outputs are namedtuples
 

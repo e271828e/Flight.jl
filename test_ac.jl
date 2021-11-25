@@ -18,7 +18,7 @@ function ac_benchmark()
     b = @benchmark f_cont!($ac, $trn, $atm)
     @show median(b)
 
-    ac_mdl = Model(ac, (trn, atm); dt = 0.01, adaptive = false, method = Heun(), y_saveat = 0.1);
+    ac_mdl = Model(ac, (trn, atm); dt = 0.01, adaptive = false, solver = Heun(), y_saveat = 0.1);
 
     b = @benchmark step!($ac_mdl) setup=(reinit!($ac_mdl))
     @show median(b)
@@ -26,7 +26,7 @@ function ac_benchmark()
     b = @benchmark step!($ac_mdl, 1, true) setup=(reinit!($ac_mdl))
     @show median(b)
 
-    ac_mdl = Model(ac, (trn, atm); dt = 0.02, adaptive = false, method = RK4(), y_saveat = 0.1);
+    ac_mdl = Model(ac, (trn, atm); dt = 0.02, adaptive = false, solver = RK4(), y_saveat = 0.1);
 
     b = @benchmark step!($ac_mdl) setup=(reinit!($ac_mdl))
     @show median(b)
@@ -64,7 +64,7 @@ function ac_test02()
     ac.u.brake_right = 0
     atm.u.wind.v_ew_n[1] = 10
 
-    ac_mdl = Model(ac, (trn, atm); dt = 0.01, adaptive = false, method = Heun());
+    ac_mdl = Model(ac, (trn, atm); dt = 0.01, adaptive = false, solver = Heun());
     # reinit!(ac_mdl, tf = 20)
     step!(ac_mdl, 5, true)
     ac.u.pedals = 1
