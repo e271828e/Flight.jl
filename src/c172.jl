@@ -258,4 +258,17 @@ function assign_joystick_inputs!(ac::System{<:AircraftBase{C172ID}}, joystick::X
 end
 
 
+function assign_joystick_inputs!(ac::System{<:AircraftBase{C172ID}}, joystick::XBoxController)
+
+    #dead zone and exponentials required!
+
+    # ac.u.throttle = get_axis_value(joystick, :left_analog_y)
+    ac.u.yoke_x = get_axis_value(joystick, :right_analog_x)
+    ac.u.yoke_y = get_axis_value(joystick, :right_analog_y)
+    ac.u.pedals = get_axis_value(joystick, :left_analog_x)
+    ac.u.brake_left = get_axis_value(joystick, :left_trigger)
+    ac.u.brake_right = get_axis_value(joystick, :right_trigger)
+end
+
+
 end #module
