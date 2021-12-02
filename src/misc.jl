@@ -26,13 +26,10 @@ function Base.convert(::Type{Bounded{T1}}, x::Bounded{T2,Min,Max}) where {T1, T2
     Bounded(T1(x.val), Min, Max)
 end
 
-<<<<<<< HEAD
 function Base.promote_rule(::Type{Bounded{T1,Min,Max}}, ::Type{T2}) where {T1, T2, Min, Max}
     Bounded{promote_type(T1,T2),Min,Max}
 end
 
 #addition and subtraction between Bounded and Reals not required by now
 
-=======
->>>>>>> 2b43b39531b2df1b347a259c6136d8662fec5e94
 end#module

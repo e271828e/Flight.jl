@@ -80,8 +80,6 @@ function demo_rt_xbox()
             update_joystick(joystick)
             Aircraft.assign_joystick_inputs!(ac, joystick)
             println(ac.u.throttle)
-            # println(ac.u.brake_left)
-            # println(ac.u.brake_right)
         end
 
         # Swap front and back buffers
