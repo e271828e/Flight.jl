@@ -80,17 +80,4 @@ function set_position(xp::XPInterface; lat = -998, lon = -998, alt = -998,
 
 end
 
-
-# function display_test()
-
-#     #XPlane expects native byte-ordering, so no need to convert anything
-#     xp = XPInterface()
-
-#     #disable physics and set aircraft position
-#     set_dref(xp, "sim/operation/override/override_planepath", 1)
-#     # set_position(xp, REuler(0, π/6, π/4), Geographic(LatLon(), AltOrth(10)))
-#     set_position(xp, lat = 40.531818, lon = -3.574862, alt = 611, theta = 0)
-# end
-
-
 end #module
