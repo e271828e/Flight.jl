@@ -18,7 +18,7 @@ using Flight.Airdata
 using Flight.Components
 import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b
 
-export SimpleDrag, TestAerodynamics
+export AbstractAerodynamics, SimpleDrag
 
 
 abstract type AbstractAerodynamics <: SystemDescriptor end

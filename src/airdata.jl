@@ -15,30 +15,34 @@ using Flight.Atmosphere: T_std, p_std, ρ_std, γ
 
 import Flight.Plotting: plots
 
-export get_airflow_angles, get_wind_axes
+export get_airflow_angles, get_wind_axes, get_stability_axes
 export AirData
 
 #compute airflow angles at frame c from the c-frame aerodynamic velocity
 @inline function get_airflow_angles(v_wOc_c::AbstractVector{<:Real})::Tuple{Float64, Float64}
-    if norm(v_wOc_c) < 1
-        α = β = 0.0
-    else
+    #let the aerodynamics handle this
+    # if norm(v_wOc_c) < 1
+    #     α = β = 0.0
+    # else
         α = atan(v_wOc_c[3], v_wOc_c[1])
         β = atan(v_wOc_c[2], √(v_wOc_c[1]^2 + v_wOc_c[3]^2))
-    end
+    # end
     return (α, β)
 end
 
-#compute c-axes to wind axes rotation from the c-frame aerodynamic velocity
 @inline function get_wind_axes(v_wOc_c::AbstractVector{<:Real})
     α, β = get_airflow_angles(v_wOc_c)
     get_wind_axes(α, β)
 end
 
-#compute c-axes to wind axes rotation from the c-frame airflow angles
 @inline function get_wind_axes(α::Real, β::Real)
     q_cw = Ry(-α) ∘ Rz(β)
     return q_cw
+end
+
+@inline function get_stability_axes(α::Real)
+    q_cs = Ry(-α)
+    return q_cs
 end
 
 struct AirData
