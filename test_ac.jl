@@ -52,9 +52,9 @@ function ac_test02()
     atm = System(AtmosphereDescriptor())
     ac = System(C172Aircraft());
 
-    kin_init = KinInit(v_eOb_b = [10, 0, 0],
+    kin_init = KinInit(v_eOb_b = [1, 0, 0.1],
                         ω_lb_b = [0, 0, 0],
-                        q_nb = REuler(ψ = 0, θ = 0.1, φ = 0),
+                        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),
                                         h_trn + 0.85));
 
@@ -62,7 +62,9 @@ function ac_test02()
     ac.u.throttle = 0
     ac.u.brake_left = 0
     ac.u.brake_right = 0
-    atm.u.wind.v_ew_n[1] = 10
+    atm.u.wind.v_ew_n[1] = 0
+
+    # f_cont!(ac, trn, atm)
 
     ac_mdl = Model(ac, (trn, atm); dt = 0.01, adaptive = false, solver = Heun());
     # reinit!(ac_mdl, tf = 20)

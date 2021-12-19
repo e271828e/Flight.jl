@@ -132,21 +132,14 @@ C172_aero() = C172Aerodynamics()
 #change greatly from one aircraft to another
 
 Base.@kwdef struct C172Aerodynamics <: AbstractAerodynamics
-    S::Float64 = 23.23 #wing area
-    b::Float64 = 14.63 #wingspan
-    c::Float64 = 1.5875 #mean aerodynamic chord
-    δe_max::Float64 = 20 |> deg2rad #maximum elevator deflection (rad)
-    δa_max::Float64 = 20 |> deg2rad #maximum aileron deflection (rad)
-    δr_max::Float64 = 20 |> deg2rad #maximum rudder deflection (rad)
-    δf_max::Float64 = 30 |> deg2rad #maximum flap deflection (rad)
     τ::Float64 = 0.1 #time constant for airflow angle filtering
 end
 
 Base.@kwdef mutable struct C172AerodynamicsU
-    δe::Bounded{Float64, -1, 1} = 0.0 #(+ pitch down)
-    δa::Bounded{Float64, -1, 1} = 0.0 #(+ roll left)
-    δr::Bounded{Float64, -1, 1} = 0.0 #(+ yaw left)
-    δr::Bounded{Float64, 0, 1} = 0.0 #(+ flap down)
+    δe::Float64 = 0.0
+    δa::Float64 = 0.0
+    δr::Float64 = 0.0
+    δf::Float64 = 0.0
 end
 
 Base.@kwdef struct C172AerodynamicsY
@@ -156,10 +149,6 @@ Base.@kwdef struct C172AerodynamicsY
     β::Float64 = 0.0
     β_filt::Float64 = 0.0
     β_filt_dot::Float64 = 0.0
-    δe::Float64 = 0.0
-    δa::Float64 = 0.0
-    δr::Float64 = 0.0
-    δf::Float64 = 0.0
     wr_b::Wrench = Wrench()
 end
 
@@ -167,25 +156,23 @@ init_x0(::C172Aerodynamics) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #fil
 init_y0(::C172Aerodynamics) = C172AerodynamicsY()
 init_u0(::C172Aerodynamics) = C172AerodynamicsU()
 
-function get_coefficients(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd)
+C_X(; α, q_nd, δr, δf) = #force keyword arguments
+    -0.03554 + 0.00292α + 5.459α^2 - 5.162α^3 - 0.6748q_nd + 0.03412δr - 0.09447δf + 1.106(δf*α)
 
-    #stall is modeled, so +/-1 seem like sensible limits for airflow angles
-    α = clamp(α, -1.0, 1.0)
-    β = clamp(β, -1.0, 1.0)
+C_Y(; α, β, p_nd, r_nd, δa, δr, β_dot_nd) =
+    -0.002226 - 0.7678β - 0.1240p_nd + 0.3666r_nd -0.02956δa + 0.1158δr + 0.5238(δr*α) - 0.16β_dot_nd
 
-    α² = α^2; α³ = α^3; β² = β^2; β³ = β^3
+C_Z(; α, β, q_nd, δe, δf) =
+    -0.05504 - 5.578α + 3.442α^3 - 2.988q_nd - 0.3980δe - 1.377δf - 1.261(δf*α) - 15.93(δe*β^2)
 
-    C_X = -0.03554 + 0.00292α + 5.459α² - 5.162α³  - 0.6748q_nd + 0.03412δr - 0.09447δf + 1.106(δf*α)
-    C_Y = -0.002226 - 0.7678β - 0.1240p_nd + 0.3666r_nd -0.02956δa + 0.1158δr + 0.5238(δr*α) - 0.16β_dot_nd
-    C_Z = -0.05504 - 5.578α + 3.442α³ - 2.988q_nd - 0.3980δe - 1.377δf - 1.261(δf*α) - 15.93(δe*β²)
-    C_l = 5.91e-4 - 0.0618β - 0.5045p_nd + 0.1695r_nd - 0.09917δa + 6.934e-3δr - 0.08269(δa*α)
-    C_m = 0.09448 - 0.6028α - 2.14α² -15.56q_nd - 1.921δe + 0.6921β² - 0.3118r_nd + 0.4072δf
-    C_n = -3.117e-3 + 6.719e-3β + 0.1373β³ - 0.1585p_nd + 0.1595q_nd - 0.1112r_nd - 3.872e-3δa - 0.08265δr
+C_l(; α, β, p_nd, r_nd, δa, δr) =
+    5.91e-4 - 0.0618β - 0.5045p_nd + 0.1695r_nd - 0.09917δa + 6.934e-3δr - 0.08269(δa*α)
 
-    return (C_X, C_Y, C_Z, C_m, C_l, C_n)
+C_m(; α, β, q_nd, r_nd, δe, δf) =
+    0.09448 - 0.6028α - 2.14α^2 -15.56q_nd - 1.921δe + 0.6921β^2 - 0.3118r_nd + 0.4072δf
 
-end
-
+C_n(; α, β, p_nd, q_nd, r_nd, δa, δr) =
+    -3.117e-3 + 6.719e-3β + 0.1373β^3 - 0.1585p_nd + 0.1595q_nd - 0.1112r_nd - 3.872e-3δa - 0.08265δr
 
 
 function f_cont!(sys::System{C172Aerodynamics}, pwp::System{C172Pwp},
@@ -193,33 +180,49 @@ function f_cont!(sys::System{C172Aerodynamics}, pwp::System{C172Pwp},
 
     #USING BEAVER AERODYNAMICS
 
+    #question: should we separate the filters in a dedicated subsystem? not
+    #initially, let's keep it simple and dirty
+
+    @unpack ẋ, x, u, params = sys
+    @unpack α_filt, β_filt = x
+    @unpack δe, δa, δr, δf = u
+
+    S = 23.23 #wing area
+    b = 14.63 #wingspan
+    c = 1.5875 #mean aerodynamic chord
+
     #in this aircraft, the aerodynamics' frame is the airframe itself (b), so
     #we can just use the airflow angles computed by the air data module for the
     #airframe axes. no need to recompute them on a local component frame
 
-    #for near-zero TAS, the airflow angles are likely to chatter between 0, -π
-    #and π. this introduces noise in airflow angle derivatives and general
-    #unpleasantness. to fix it we fade them in from zero to a safe threshold. as
-    #for V, it's only used for non-dimensionalization. we just need to avoid
-    #dividing by zero. for TAS < TAS_min, dynamic pressure will be close to zero
-    #and therefore forces and moments will vanish anyway.
+    #for zero and near-zero TAS, the airflow angles are bound to chatter between
+    #0 and π. also, the non-dimensional angular rates are ill-defined. we thus
+    #set an airspeed threshold to ensure all of these are well-behaved
+    TAS_thr = 1.0
+    TAS = air.TAS
 
-    @unpack ẋ, x, u, params = sys
-    @unpack α_filt, β_filt = x
-    @unpack S, b, c, δe_max, δa_max, δr_max, δf_max, τ = params
-    @unpack TAS, q, α_b, β_b = air
-    ω_lb_b = kinematics.vel.ω_lb_b
+    if TAS < TAS_thr
+        α = 0.0; β = 0.0
+    else
+        α = air.α_b; β = air.β_b
+    end
 
-    TAS_min = 1.0
-    χ_TAS = min(TAS/TAS_min, 1.0) #linear fade-in for TAS < TAS_thr
-
-    α = α_b * χ_TAS
-    β = β_b * χ_TAS
-    V = max(TAS, TAS_min)
-
+    τ = params.τ
     α_filt_dot = 1/τ * (α - α_filt)
     β_filt_dot = 1/τ * (β - β_filt)
 
+    #V is only used for non-dimensionalization. if TAS < TAS_thr, we can simply
+    #bound it by TAS_thr; forces and moments will be negligible anyway
+    V = max(TAS_thr, TAS)
+
+    @show TAS
+    @show α
+    @show α_filt_dot
+    @show β
+    @show β_filt_dot
+    @show V
+
+    ω_lb_b = kinematics.vel.ω_lb_b
     p_nd = ω_lb_b[1] * b / (2V) #non-dimensional roll rate
     q_nd = ω_lb_b[2] * c / V #non-dimensional pitch rate
     r_nd = ω_lb_b[3] * b / (2V) #non-dimensional yaw rate
@@ -229,33 +232,27 @@ function f_cont!(sys::System{C172Aerodynamics}, pwp::System{C172Pwp},
 
     # T = get_wr_b(pwp).F[1]
     # C_T = T / (dyn_p * S) #thrust coefficient, not used
-    δe = Float64(u.δe) * δe_max
-    δa = Float64(u.δa) * δa_max
-    δr = Float64(u.δr) * δr_max
-    δf = Float64(u.δf) * δf_max
 
-    C_X, C_Y, C_Z, C_l, C_m, C_n = get_coefficients(; α, β, p_nd, q_nd, r_nd,
-        δa, δr, δe, δf, α_dot_nd, β_dot_nd)
+    q = air.q
+    F_x = C_X(; α, q_nd, δr, δf) * q * S
+    F_y = C_Y(; α, β, p_nd, r_nd, δa, δr, β_dot_nd) * q * S
+    F_z = C_Z(; α, β, q_nd, δe, δf) * q * S
 
-    F_x = C_X * q * S
-    F_y = C_Y * q * S
-    F_z = C_Z * q * S
+    M_x = C_l(; α, β, p_nd, r_nd, δa, δr) * q * S * b
+    M_y = C_m(; α, β, q_nd, r_nd, δe, δf) * q * S * c
+    M_z = C_n(; α, β, p_nd, q_nd, r_nd, δa, δr) * q * S * b
+
     F_aero_b = SVector{3,Float64}(F_x, F_y, F_z)
-
-    M_x = C_l * q * S * b
-    M_y = C_m * q * S * c
-    M_z = C_n * q * S * b
     M_aero_b = SVector{3,Float64}(M_x, M_y, M_z)
 
     wr_b = Wrench(F_aero_b, M_aero_b)
 
-    # @show wr_b
+    @show wr_b
 
     ẋ.α_filt = α_filt_dot
     ẋ.β_filt = β_filt_dot
 
-    sys.y = C172AerodynamicsY(; α, α_filt, α_filt_dot, β, β_filt, β_filt_dot,
-        δe, δa, δr, δf, wr_b)
+    sys.y = C172AerodynamicsY(; α, α_filt, α_filt_dot, β, β_filt, β_filt_dot, wr_b)
 
 end
 
@@ -305,18 +302,16 @@ Base.@kwdef mutable struct C172ControlsU
     pedals::Bounded{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
     brake_left::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
     brake_right::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
-    flaps::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
 end
 
 #const is essential when declaring type aliases!
-Base.@kwdef struct C172ControlsY
+struct C172ControlsY
     throttle::Float64
     yoke_x::Float64
     yoke_y::Float64
     pedals::Float64
     brake_left::Float64
     brake_right::Float64
-    flaps::Float64
 end
 
 init_u0(::C172Controls) = C172ControlsU()
@@ -328,7 +323,7 @@ init_y0(::C172Controls) = C172ControlsY(zeros(SVector{6})...)
 function assign_component_inputs!(afr::System{<:C172Airframe},
     ctl::System{<:C172Controls})
 
-    @unpack throttle, yoke_x, yoke_y, pedals, brake_left, brake_right, flaps = ctl.u
+    @unpack throttle, yoke_x, yoke_y, pedals, brake_left, brake_right = ctl.u
     @unpack aero, pwp, ldg = afr.subsystems
 
     pwp.u.left.throttle = throttle
@@ -336,11 +331,6 @@ function assign_component_inputs!(afr::System{<:C172Airframe},
     ldg.u.center.steering[] = pedals
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
-    aero.u.δe = yoke_y # +yoke_y is forward and +δe is pitch down
-    aero.u.δa = -yoke_x # +yoke_x is right and +δa is roll left
-    aero.u.δr = -pedals # +pedals is right and +δr is yaw left
-    aero.u.δf = flaps # +flaps is flaps down and +δf is flaps down
-    error("Add trims")
 
     return nothing
 end
@@ -368,7 +358,7 @@ function f_cont!(ctl::System{<:C172Controls}, ::System{<:C172Airframe},
     #here, controls do nothing but update their output state. in a more complex
     #aircraft this could even be a complete autopilot implementation
     @unpack throttle, yoke_x, yoke_y, pedals, brake_left, brake_right = ctl.u
-    return C172ControlsY(; throttle, yoke_x, yoke_y, pedals, brake_left,
+    return C172ControlsY(throttle, yoke_x, yoke_y, pedals, brake_left,
     brake_right)
     # return (throttle = 0.0, yoke_x = 0.0, yoke_y = 0.0, pedals = 0.0,
     #         brake_left = 0.0, brake_right = 0.0)
@@ -423,16 +413,6 @@ function assign_joystick_inputs!(ac::System{<:AircraftBase{C172ID}}, joystick::X
     ac.u.pedals = get_axis_data(joystick, :left_analog_x) |> pedal_curve
     ac.u.brake_left = get_axis_data(joystick, :left_trigger) |> brake_curve
     ac.u.brake_right = get_axis_data(joystick, :right_trigger) |> brake_curve
-    error("Assign some button to flaps as a toggle")
-    #Ojo que todavia tengo los bumpers libres!! Bumper right: flaps down 50%. Bumper
-    #left: flaps up 50%.
-    #Dejar dpad para pitch trim y roll trim
-    #A-Y manifold pressure
-    #X-B RPM
-
-    # Y si quisiera landing gear up y down, podria usar option como
-    #modifier
-
 end
 
 
