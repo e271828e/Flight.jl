@@ -77,9 +77,17 @@ function demo_rt_xbox()
         end
 
         for joystick in values(connected_joysticks)
+
             update_joystick(joystick)
             Aircraft.assign_joystick_inputs!(ac, joystick)
-            println(ac.u.throttle)
+
+            if ac_mdl.success_iter % 20 == 0
+                println(ac.u.yoke_x_trim.val, " ",  ac.u.yoke_x.val, " ", ac.subsystems.afr.subsystems.aero.u.δa.val)
+                println(ac.u.yoke_y_trim.val, " ",  ac.u.yoke_y.val, " ", ac.subsystems.afr.subsystems.aero.u.δe.val)
+                println(ac.subsystems.afr.subsystems.aero.u.δr.val)
+                println(ac.subsystems.afr.subsystems.aero.u.δf.val)
+            end
+
         end
 
         # Swap front and back buffers

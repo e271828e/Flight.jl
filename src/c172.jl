@@ -102,7 +102,7 @@ end
 ############################### C172 Aerodynamics ###########################
 
 # C172_aero() = SimpleDrag()
-C172_aero() = C172Aerodynamics()
+# C172_aero() = C172Aerodynamics()
 
 #we need a generic aerodynamics system, which computes all the input values to
 #the aerodynamic coefficient tables, including filtered alphadot and betadot,
@@ -146,7 +146,7 @@ Base.@kwdef mutable struct C172AerodynamicsU
     δe::Bounded{Float64, -1, 1} = 0.0 #(+ pitch down)
     δa::Bounded{Float64, -1, 1} = 0.0 #(+ roll left)
     δr::Bounded{Float64, -1, 1} = 0.0 #(+ yaw left)
-    δr::Bounded{Float64, 0, 1} = 0.0 #(+ flap down)
+    δf::Bounded{Float64, 0, 1} = 0.0 #(+ flap down)
 end
 
 Base.@kwdef struct C172AerodynamicsY
@@ -167,26 +167,55 @@ init_x0(::C172Aerodynamics) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #fil
 init_y0(::C172Aerodynamics) = C172AerodynamicsY()
 init_u0(::C172Aerodynamics) = C172AerodynamicsU()
 
-function get_coefficients(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd)
 
-    #stall is modeled, so +/-1 seem like sensible limits for airflow angles
-    α = clamp(α, -1.0, 1.0)
-    β = clamp(β, -1.0, 1.0)
+############################## C172Controls #################################
 
-    α² = α^2; α³ = α^3; β² = β^2; β³ = β^3
+struct C172Controls <: SystemDescriptor end
 
-    C_X = -0.03554 + 0.00292α + 5.459α² - 5.162α³  - 0.6748q_nd + 0.03412δr - 0.09447δf + 1.106(δf*α)
-    C_Y = -0.002226 - 0.7678β - 0.1240p_nd + 0.3666r_nd -0.02956δa + 0.1158δr + 0.5238(δr*α) - 0.16β_dot_nd
-    C_Z = -0.05504 - 5.578α + 3.442α³ - 2.988q_nd - 0.3980δe - 1.377δf - 1.261(δf*α) - 15.93(δe*β²)
-    C_l = 5.91e-4 - 0.0618β - 0.5045p_nd + 0.1695r_nd - 0.09917δa + 6.934e-3δr - 0.08269(δa*α)
-    C_m = 0.09448 - 0.6028α - 2.14α² -15.56q_nd - 1.921δe + 0.6921β² - 0.3118r_nd + 0.4072δf
-    C_n = -3.117e-3 + 6.719e-3β + 0.1373β³ - 0.1585p_nd + 0.1595q_nd - 0.1112r_nd - 3.872e-3δa - 0.08265δr
-
-    return (C_X, C_Y, C_Z, C_m, C_l, C_n)
-
+Base.@kwdef mutable struct C172ControlsU
+    throttle::Bounded{Float64, 0, 1} = 0.0
+    yoke_x::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
+    yoke_x_trim::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
+    yoke_y::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
+    yoke_y_trim::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
+    pedals::Bounded{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
+    brake_left::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
+    brake_right::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
+    flaps::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
 end
 
+#const is essential when declaring type aliases!
+Base.@kwdef struct C172ControlsY
+    throttle::Float64
+    yoke_x::Float64
+    yoke_x_trim::Float64
+    yoke_y::Float64
+    yoke_y_trim::Float64
+    pedals::Float64
+    brake_left::Float64
+    brake_right::Float64
+    flaps::Float64
+end
 
+init_u0(::C172Controls) = C172ControlsU()
+init_y0(::C172Controls) = C172ControlsY(zeros(SVector{9})...)
+
+
+############################## C172Airframe #################################
+
+Base.@kwdef struct C172Airframe{ Aero <: SystemDescriptor, Pwp <: SystemDescriptor,
+                        Ldg <: SystemDescriptor} <: SystemGroupDescriptor
+    aero::Aero = C172Aerodynamics()
+    pwp::Pwp = C172Pwp()
+    ldg::Ldg = C172Ldg()
+end
+
+MassTrait(::System{<:C172Airframe}) = HasMass()
+WrenchTrait(::System{<:C172Airframe}) = HasWrench()
+AngularMomentumTrait(::System{<:C172Airframe}) = HasAngularMomentum()
+
+
+################## Aerodynamics Update Functions #######################
 
 function f_cont!(sys::System{C172Aerodynamics}, pwp::System{C172Pwp},
     air::AirData, kinematics::KinData, terrain::AbstractTerrain)
@@ -259,91 +288,58 @@ function f_cont!(sys::System{C172Aerodynamics}, pwp::System{C172Pwp},
 
 end
 
-get_wr_b(sys::System{C172Aerodynamics}) = sys.y.wr_b
+function get_coefficients(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd)
 
+    #stall is modeled, so +/-1 seem like sensible limits for airflow angles
+    α = clamp(α, -1.0, 1.0)
+    β = clamp(β, -1.0, 1.0)
 
-############################## C172Airframe #################################
+    α² = α^2; α³ = α^3; β² = β^2; β³ = β^3
 
-Base.@kwdef struct C172Airframe{ Aero <: SystemDescriptor, Pwp <: SystemDescriptor,
-                        Ldg <: SystemDescriptor} <: SystemGroupDescriptor
-    aero::Aero = C172_aero()
-    pwp::Pwp = C172_pwp()
-    ldg::Ldg = C172_ldg()
+    C_X = -0.03554 + 0.00292α + 5.459α² - 5.162α³  - 0.6748q_nd + 0.03412δr - 0.09447δf + 1.106(δf*α)
+    C_Y = -0.002226 - 0.7678β - 0.1240p_nd + 0.3666r_nd -0.02956δa + 0.1158δr + 0.5238(δr*α) - 0.16β_dot_nd
+    C_Z = -0.05504 - 5.578α + 3.442α³ - 2.988q_nd - 0.3980δe - 1.377δf - 1.261(δf*α) - 15.93(δe*β²)
+    C_l = 5.91e-4 - 0.0618β - 0.5045p_nd + 0.1695r_nd - 0.09917δa + 6.934e-3δr - 0.08269(δa*α)
+    C_m = 0.09448 - 0.6028α - 2.14α² -15.56q_nd - 1.921δe + 0.6921β² - 0.3118r_nd + 0.4072δf
+    C_n = -3.117e-3 + 6.719e-3β + 0.1373β³ - 0.1585p_nd + 0.1595q_nd - 0.1112r_nd - 3.872e-3δa - 0.08265δr
+
+    return (C_X, C_Y, C_Z, C_m, C_l, C_n)
+
 end
 
-MassTrait(::System{<:C172Airframe}) = HasMass()
-WrenchTrait(::System{<:C172Airframe}) = HasWrench()
-AngularMomentumTrait(::System{<:C172Airframe}) = HasAngularMomentum()
-
-function get_mass_properties(::System{<:C172Airframe})
-
-    #for an aircraft implementing a fuel system the current mass properties are
-    #computed here by querying the fuel system for the contributions of the
-    #different fuel tanks
-
-    MassProperties(
-        #upreferred(2650u"lb") |> ustrip,
-        m = 1202.0197805,
-        #upreferred.([948, 1346, 1967]u"m") |> ustrip |> diagm |> SMatrix{3,3,Float64},
-        J_Ob_b = SA[948.0 0 0; 0 1346.0 0; 0 0 1967.0],
-        r_ObG_b = zeros(SVector{3}))
+function f_disc!(::System{<:C172Aerodynamics})
+    return false
 end
 
-#get_wr_b and get_hr_b use the fallback for SystemGroups, which will in turn
-#call get_wr_b and get_hr_b on aero, pwp and ldg
+# get_wr_b(sys::System{C172Aerodynamics}) = sys.y.wr_b
+get_wr_b(sys::System{C172Aerodynamics}) = Wrench()
 
-#uses default SystemGroup f_disc! implementation
 
-############################## C172Controls #################################
+######################## Controls Update Functions ###########################
 
-struct C172Controls <: SystemDescriptor end
+function f_cont!(ctl::System{<:C172Controls}, ::System{<:C172Airframe},
+                ::KinData, ::AirData, ::AbstractTerrain)
 
-Base.@kwdef mutable struct C172ControlsU
-    throttle::Bounded{Float64, 0, 1} = 0.0
-    yoke_x::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
-    yoke_y::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
-    pedals::Bounded{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
-    brake_left::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
-    brake_right::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
-    flaps::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
+    #here, controls do nothing but update their output state. for a more complex
+    #aircraft a continuous state-space autopilot implementation could go here
+    @unpack throttle, yoke_x, yoke_x_trim, yoke_y, yoke_y_trim,
+            pedals, brake_left, brake_right, flaps = ctl.u
+
+    return C172ControlsY(; throttle, yoke_x, yoke_x_trim, yoke_y, yoke_y_trim,
+                            pedals, brake_left, brake_right, flaps)
+
 end
 
-#const is essential when declaring type aliases!
-Base.@kwdef struct C172ControlsY
-    throttle::Float64
-    yoke_x::Float64
-    yoke_y::Float64
-    pedals::Float64
-    brake_left::Float64
-    brake_right::Float64
-    flaps::Float64
+function f_disc!(::System{<:C172Controls}, ::System{<:C172Airframe})
+    #this currently does nothing, but it may be used to implement open loop or
+    #closed loop control laws, predefined maneuvers, etc. by calling an
+    #externally overloadable function
+    return false
 end
 
-init_u0(::C172Controls) = C172ControlsU()
 
-init_y0(::C172Controls) = C172ControlsY(zeros(SVector{6})...)
+####################### Airframe Update Functions ###########################
 
-###################### Continuous update functions ##########################
-
-function assign_component_inputs!(afr::System{<:C172Airframe},
-    ctl::System{<:C172Controls})
-
-    @unpack throttle, yoke_x, yoke_y, pedals, brake_left, brake_right, flaps = ctl.u
-    @unpack aero, pwp, ldg = afr.subsystems
-
-    pwp.u.left.throttle = throttle
-    pwp.u.right.throttle = throttle
-    ldg.u.center.steering[] = pedals
-    ldg.u.left.braking[] = brake_left
-    ldg.u.right.braking[] = brake_right
-    aero.u.δe = yoke_y # +yoke_y is forward and +δe is pitch down
-    aero.u.δa = -yoke_x # +yoke_x is right and +δa is roll left
-    aero.u.δr = -pedals # +pedals is right and +δr is yaw left
-    aero.u.δf = flaps # +flaps is flaps down and +δf is flaps down
-    error("Add trims")
-
-    return nothing
-end
 
 function f_cont!(afr::System{<:C172Airframe}, ctl::System{<:C172Controls},
                 kin::KinData, air::AirData, trn::AbstractTerrain)
@@ -362,78 +358,116 @@ function f_cont!(afr::System{<:C172Airframe}, ctl::System{<:C172Controls},
 
 end
 
-function f_cont!(ctl::System{<:C172Controls}, ::System{<:C172Airframe},
-                ::KinData, ::AirData, ::AbstractTerrain)
-
-    #here, controls do nothing but update their output state. in a more complex
-    #aircraft this could even be a complete autopilot implementation
-    @unpack throttle, yoke_x, yoke_y, pedals, brake_left, brake_right = ctl.u
-    return C172ControlsY(; throttle, yoke_x, yoke_y, pedals, brake_left,
-    brake_right)
-    # return (throttle = 0.0, yoke_x = 0.0, yoke_y = 0.0, pedals = 0.0,
-    #         brake_left = 0.0, brake_right = 0.0)
-
-end
-
-######################## Discrete Update Functions ########################
-
-function f_disc!(::System{<:C172Controls}, ::System{<:C172Airframe})
-    #this does nothing, but could also be used to implement open loop or closed
-    #loop control laws, predefined maneuvers, etc. by calling an additional
-    #function we could call as part of
-    return false
-end
-
 function f_disc!(afr::System{<:C172Airframe}, ::System{<:C172Controls})
     #fall back to the default SystemGroup implementation, the f_disc! for the
     #C172 components don't have to deal with the C172Controls
     return f_disc!(afr)
 end
 
-#these should eventually be declared as constants:
+function get_mass_properties(::System{<:C172Airframe})
 
-C172_kin() = KinLTF()
+    #for an aircraft implementing a fuel system the current mass properties are
+    #computed here by querying the fuel system for the contributions of the
+    #different fuel tanks
 
-
-function C172Aircraft(; kin = C172_kin(), aero = C172_aero(), pwp = C172Pwp(),
-                        ldg = C172Ldg())
-    AircraftBase(
-        C172ID(),
-        kin,
-        C172Airframe(aero, pwp, ldg),
-        C172Controls())
+    MassProperties(
+        #upreferred(2650u"lb") |> ustrip,
+        m = 1202.0197805,
+        #upreferred.([948, 1346, 1967]u"m") |> ustrip |> diagm |> SMatrix{3,3,Float64},
+        J_Ob_b = SA[948.0 0 0; 0 1346.0 0; 0 0 1967.0],
+        r_ObG_b = zeros(SVector{3}))
 end
 
-######################## Joystick Input Interface ########################
+#get_wr_b and get_hr_b use the fallback for SystemGroups, which will in turn
+#call get_wr_b and get_hr_b on aero, pwp and ldg
 
-yoke_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
-pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.1)
+function assign_component_inputs!(afr::System{<:C172Airframe},
+    ctl::System{<:C172Controls})
+
+    @unpack throttle, yoke_x, yoke_x_trim, yoke_y, yoke_y_trim,
+            pedals, brake_left, brake_right, flaps = ctl.u
+    @unpack aero, pwp, ldg = afr.subsystems
+
+    #here, we interpret yoke_y as the offset with respect to the force-free yoke
+    #y position. the absolute yoke y position is the sum of yoke_y and
+    #yoke_y_trim, from which it is measured
+
+    pwp.u.left.throttle = throttle
+    pwp.u.right.throttle = throttle
+    ldg.u.center.steering[] = steering_curve(pedals)
+    ldg.u.left.braking[] = brake_curve(brake_left)
+    ldg.u.right.braking[] = brake_curve(brake_right)
+    aero.u.δe = -elevator_curve(yoke_y_trim + yoke_y) #+yoke_y and +yoke_y_trim are back and +δe is pitch down, need to invert it
+    aero.u.δa = -aileron_curve(yoke_x_trim + yoke_x) #+yoke_x and +yoke_x_trim are right and +δa is roll left, need to invert it
+    aero.u.δr = -rudder_curve(pedals) # +pedals is right and +δr is yaw left
+    aero.u.δf = flaps # +flaps is flaps down and +δf is flaps down
+
+    return nothing
+end
+
+elevator_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
+aileron_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
+rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.1)
+steering_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.1)
 brake_curve(x) = exp_axis_curve(x, strength = 0, deadzone = 0.05)
+
+function exp_axis_curve(x::Bounded{T}, args...; kwargs...) where {T}
+    exp_axis_curve(T(x), args...; kwargs...)
+end
+
+function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
+
+    a = strength
+    x0 = deadzone
+
+    abs(x) <= 1 || throw(ArgumentError("Input to exponential curve must be within [-1, 1]"))
+    (x0 >= 0 && x0 <= 1) || throw(ArgumentError("Exponential curve deadzone must be within [0, 1]"))
+
+    if x > 0
+        y = max(0, (x - x0)/(1 - x0)) * exp( a * (abs(x) -1) )
+    else
+        y = min(0, (x + x0)/(1 - x0)) * exp( a * (abs(x) -1) )
+    end
+end
+
+######################## XBoxController Input Interface ########################
 
 function assign_joystick_inputs!(ac::System{<:AircraftBase{C172ID}}, joystick::XBoxController)
 
-    if get_button_change(joystick, :dpad_up) === button_released
-        ac.u.throttle = Float64(ac.u.throttle) + 0.1
-    elseif get_button_change(joystick, :dpad_down) === button_released
-        ac.u.throttle = Float64(ac.u.throttle) - 0.1
-    end
+    ac.u.yoke_x = get_axis_value(joystick, :right_analog_x)
+    ac.u.yoke_x_trim += 0.01 * is_released(joystick, :dpad_right)
+    ac.u.yoke_x_trim -= 0.01 * is_released(joystick, :dpad_left)
 
-    ac.u.yoke_x = get_axis_data(joystick, :right_analog_x) |> yoke_curve
-    ac.u.yoke_y = get_axis_data(joystick, :right_analog_y) |> yoke_curve
-    ac.u.pedals = get_axis_data(joystick, :left_analog_x) |> pedal_curve
-    ac.u.brake_left = get_axis_data(joystick, :left_trigger) |> brake_curve
-    ac.u.brake_right = get_axis_data(joystick, :right_trigger) |> brake_curve
-    error("Assign some button to flaps as a toggle")
-    #Ojo que todavia tengo los bumpers libres!! Bumper right: flaps down 50%. Bumper
-    #left: flaps up 50%.
-    #Dejar dpad para pitch trim y roll trim
-    #A-Y manifold pressure
-    #X-B RPM
+    ac.u.yoke_y = get_axis_value(joystick, :right_analog_y)
+    ac.u.yoke_y_trim -= 0.01 * is_released(joystick, :dpad_up)
+    ac.u.yoke_y_trim += 0.01 * is_released(joystick, :dpad_down)
+
+    ac.u.pedals = get_axis_value(joystick, :left_analog_x)
+
+    ac.u.brake_left = get_axis_value(joystick, :left_trigger)
+    ac.u.brake_right = get_axis_value(joystick, :right_trigger)
+
+    ac.u.throttle += 0.1 * is_released(joystick, :button_Y) #manifold pressure
+    ac.u.throttle -= 0.1 * is_released(joystick, :button_A)
+
+    # ac.u.propeller_speed += 0.1 * is_released(joystick, :button_X) #rpms
+    # ac.u.propeller_speed -= 0.1 * is_released(joystick, :button_B)
+
+    ac.u.flaps += 0.5 * is_released(joystick, :right_bumper)
+    ac.u.flaps -= 0.5 * is_released(joystick, :left_bumper)
 
     # Y si quisiera landing gear up y down, podria usar option como
     #modifier
 
 end
+
+
+#Aircraft constructor override keyword inputs to customize
+
+function C172Aircraft(; kin = KinLTF(), afm = C172Airframe(), ctl = C172Controls())
+    AircraftBase( C172ID(), kin, afm, ctl)
+end
+
 
 
 end #module

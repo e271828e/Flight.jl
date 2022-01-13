@@ -7,9 +7,8 @@ using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
         GetJoystickAxes, GetJoystickButtons, GetJoystickName
 
 export connected_joysticks, init_joysticks, update_joystick, joystick_callback
-export get_axis_data, get_button_state, get_button_change
-export ButtonChange, button_unchanged, button_pressed, button_released
-export exp_axis_curve
+export get_axis_value, get_button_state, get_button_change, is_pressed, is_released
+export ButtonChange, unchanged, pressed, released
 export XBoxController
 
 abstract type AbstractJoystick end
@@ -19,12 +18,12 @@ const connected_joysticks = Dict{JoystickSlot, AbstractJoystick}()
 ###################
 
 @enum ButtonChange begin
-    button_unchanged = 0
-    button_pressed = 1
-    button_released = 2
+    unchanged = 0
+    pressed = 1
+    released = 2
 end
 Base.convert(::Type{ButtonChange}, n::Integer) = ButtonChange(n)
-Base.zero(::Type{ButtonChange}) = button_unchanged
+Base.zero(::Type{ButtonChange}) = unchanged
 
 
 ######################### XBox Controller ########################
@@ -83,11 +82,11 @@ function update_joystick(joystick::XBoxController)
 
     for i in 1:length(buttons.state)
         if !buttons.state[i] && buttons_state_new[i]
-            buttons.change[i] = button_pressed
+            buttons.change[i] = pressed
         elseif buttons.state[i] && !buttons_state_new[i]
-            buttons.change[i] = button_released
+            buttons.change[i] = released
         else
-            buttons.change[i] = button_unchanged
+            buttons.change[i] = unchanged
         end
     end
 
@@ -95,11 +94,11 @@ function update_joystick(joystick::XBoxController)
 
 end
 
-get_axis_data(joy::XBoxController) = NamedTuple{XBoxAxisLabels}(Tuple(joy.axes.data))
+get_axis_value(joy::XBoxController) = NamedTuple{XBoxAxisLabels}(Tuple(joy.axes.data))
 get_button_state(joy::XBoxController) = NamedTuple{XBoxButtonLabels}(Tuple(joy.buttons.state))
 get_button_change(joy::XBoxController) = NamedTuple{XBoxButtonLabels}(Tuple(joy.buttons.change))
 
-function get_axis_data(joystick::XBoxController, s::Symbol)
+function get_axis_value(joystick::XBoxController, s::Symbol)
     @unpack data, mapping = joystick.axes
     data[mapping[s]]
 end
@@ -114,7 +113,15 @@ function get_button_change(joystick::XBoxController, s::Symbol)
     change[mapping[s]]
 end
 
+function is_pressed(joystick::XBoxController, s::Symbol)
+    @unpack change, mapping = joystick.buttons
+    change[mapping[s]] === pressed
+end
 
+function is_released(joystick::XBoxController, s::Symbol)
+    @unpack change, mapping = joystick.buttons
+    change[mapping[s]] === released
+end
 ##################### Joystick configuration ################
 
 #adds any joysticks already connected when GLFW is first imported. from this
@@ -173,22 +180,5 @@ function remove_joystick(slot::JoystickSlot)
     println("$slot is no longer active")
 end
 
-####################### Response Curves ####################
-            # f_Oc_xc = cls.exp_curve(-state.lstick_y, strength=1, deadzone=0.3),
-
-function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
-
-    a = strength
-    x0 = deadzone
-
-    abs(x) <= 1 || throw(ArgumentError("Input to exponential curve must be within [-1, 1]"))
-    (x0 >= 0 && x0 <= 1) || throw(ArgumentError("Exponential curve deadzone must be within [0, 1]"))
-
-    if x > 0
-        y = max(0, (x - x0)/(1 - x0)) * exp( a * (abs(x) -1) )
-    else
-        y = min(0, (x + x0)/(1 - x0)) * exp( a * (abs(x) -1) )
-    end
-end
 
 end #module

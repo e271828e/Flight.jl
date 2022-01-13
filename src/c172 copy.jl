@@ -395,6 +395,20 @@ function C172Aircraft(; kin = C172_kin(), aero = C172_aero(), pwp = C172Pwp(),
 end
 
 ######################## Joystick Input Interface ########################
+function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
+
+    a = strength
+    x0 = deadzone
+
+    abs(x) <= 1 || throw(ArgumentError("Input to exponential curve must be within [-1, 1]"))
+    (x0 >= 0 && x0 <= 1) || throw(ArgumentError("Exponential curve deadzone must be within [0, 1]"))
+
+    if x > 0
+        y = max(0, (x - x0)/(1 - x0)) * exp( a * (abs(x) -1) )
+    else
+        y = min(0, (x + x0)/(1 - x0)) * exp( a * (abs(x) -1) )
+    end
+end
 
 yoke_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
 pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.1)
@@ -408,11 +422,11 @@ function assign_joystick_inputs!(ac::System{<:AircraftBase{C172ID}}, joystick::X
         ac.u.throttle = Float64(ac.u.throttle) - 0.1
     end
 
-    ac.u.yoke_x = get_axis_data(joystick, :right_analog_x) |> yoke_curve
-    ac.u.yoke_y = get_axis_data(joystick, :right_analog_y) |> yoke_curve
-    ac.u.pedals = get_axis_data(joystick, :left_analog_x) |> pedal_curve
-    ac.u.brake_left = get_axis_data(joystick, :left_trigger) |> brake_curve
-    ac.u.brake_right = get_axis_data(joystick, :right_trigger) |> brake_curve
+    ac.u.yoke_x = get_axis_value(joystick, :right_analog_x) |> yoke_curve
+    ac.u.yoke_y = get_axis_value(joystick, :right_analog_y) |> yoke_curve
+    ac.u.pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
+    ac.u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
+    ac.u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 end
 
 

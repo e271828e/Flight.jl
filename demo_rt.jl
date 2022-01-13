@@ -23,7 +23,7 @@ function demo_rt()
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),
                                         h_trn + 0.85 + 0.4));
     ac.u.throttle = 0
-    ac.u.pedals = 0.1
+    ac.u.pedals = 0.5
     ac.u.brake_left = 1
     ac.u.brake_right = 1
     atm.u.wind.v_ew_n[1] = 0

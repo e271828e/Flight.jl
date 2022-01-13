@@ -30,6 +30,13 @@ function Base.promote_rule(::Type{Bounded{T1,Min,Max}}, ::Type{T2}) where {T1, T
     Bounded{promote_type(T1,T2),Min,Max}
 end
 
-#addition and subtraction between Bounded and Reals not required by now
+#basic addition and subtraction
+Base.:+(x::Bounded{T1,Min,Max}, y::Real) where {T1, Min, Max} = Bounded(x.val + y, Min, Max)
+Base.:-(x::Bounded{T1,Min,Max}, y::Real) where {T1, Min, Max} = Bounded(x.val - y, Min, Max)
+
+#both Bounded must have identical underlying types and bounds, otherwise there
+#is no way of telling which bounds or underlying types should win
+Base.:+(x::B, y::B) where {B <: Bounded{T,Min,Max}} where {T, Min, Max} = Bounded(x.val + y.val, Min, Max)
+Base.:-(x::B, y::B) where {B <: Bounded{T,Min,Max}} where {T, Min, Max} = Bounded(x.val - y.val, Min, Max)
 
 end#module
