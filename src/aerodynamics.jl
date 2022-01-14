@@ -5,17 +5,15 @@ using StaticArrays, ComponentArrays
 using UnPack
 
 using Flight.Modeling
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
-
 using Flight.Plotting
-import Flight.Plotting: plots
-
 using Flight.Attitude
 using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Airdata
-
 using Flight.Components
+
+import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+import Flight.Plotting: plots
 import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b
 
 export AbstractAerodynamics, SimpleDrag

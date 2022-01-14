@@ -5,27 +5,28 @@ using StaticArrays, ComponentArrays, StructArrays, RecursiveArrayTools
 using Unitful
 using UnPack
 
+using Flight.Modeling
 using Flight.Plotting
-import Flight.Plotting: plots
-
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-
-using Flight.Modeling
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
-
 using Flight.Components
+
+import Flight.Plotting: plots
+import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
 
-export SimpleProp, Gearbox, ElectricMotor, Battery, CW, CCW
-export EThruster, EThrusterU, EThrusterD, EThrusterY
-
+export AbstractThruster, EThruster
 
 @enum TurnSense begin
     CW = 1
     CCW = -1
 end
+
+abstract type AbstractThruster <: SystemDescriptor end
+
+WrenchTrait(::System{AbstractThruster}) = HasWrench()
+AngularMomentumTrait(::System{AbstractThruster}) = HasAngularMomentum()
 
 ################ EThruster Component ###################
 
@@ -71,7 +72,7 @@ voltage_open(b::Battery, charge_ratio::Real) = b.n_cells * b.V_cell * voltage_cu
 R(b::Battery) = b.n_cells * b.R_cell
 ċ(b::Battery, i::Real) = -i/b.Cmax
 
-Base.@kwdef struct EThruster <: SystemDescriptor
+Base.@kwdef struct EThruster <: AbstractThruster
     frame::FrameTransform = FrameTransform()
     battery::Battery = Battery()
     motor::ElectricMotor = ElectricMotor()

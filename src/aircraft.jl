@@ -5,20 +5,17 @@ using StaticArrays, ComponentArrays
 using UnPack
 
 using Flight.Modeling
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0,f_cont!, f_disc!
-
 using Flight.Plotting
-import Flight.Plotting: plots
-
 using Flight.Terrain
 using Flight.Atmosphere
 using Flight.Airdata
-
 using Flight.Kinematics
-import Flight.Kinematics: init!
 using Flight.Dynamics
+using Flight.Components
 
-using Flight.Components: get_mass_properties, get_wr_b, get_hr_b
+import Flight.Modeling: init_x0, init_y0, init_u0, init_d0,f_cont!, f_disc!
+import Flight.Plotting: plots
+import Flight.Kinematics: init!
 
 ######################### AircraftBase ########################
 

@@ -8,7 +8,6 @@ using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
 
 export connected_joysticks, init_joysticks, update_joystick, joystick_callback
 export get_axis_value, get_button_state, get_button_change, is_pressed, is_released
-export ButtonChange, unchanged, pressed, released
 export XBoxController
 
 abstract type AbstractJoystick end

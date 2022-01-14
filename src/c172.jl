@@ -15,11 +15,11 @@ using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Components
-using Flight.Propulsion
-using Flight.Aerodynamics
-using Flight.LandingGear
+using Flight.Aerodynamics: AbstractAerodynamics
+using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
+using Flight.LandingGear: LandingGearUnit, DirectSteering, DirectBraking, Strut, SimpleDamper
 using Flight.Aircraft: AircraftBase, AbstractAircraftID
-using Flight.Input
+using Flight.Input: XBoxController, get_axis_value, is_released
 
 import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 import Flight.Plotting: plots

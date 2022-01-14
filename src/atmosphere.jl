@@ -3,8 +3,9 @@ module Atmosphere
 using StaticArrays, StructArrays, ComponentArrays
 
 using Flight.Geodesy
+using Flight.Modeling
 
-import Flight.Modeling: SystemDescriptor, System, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
 
 export TunableISA
 export TunableWind

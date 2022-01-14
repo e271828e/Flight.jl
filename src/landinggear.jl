@@ -6,23 +6,18 @@ using ComponentArrays
 using UnPack
 
 using Flight.Modeling
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
-
 using Flight.Plotting
-import Flight.Plotting: plots
-
 using Flight.Attitude
 using Flight.Geodesy
 using Flight.Terrain
 using Flight.Kinematics
 using Flight.Dynamics
-
 using Flight.Components
+
+import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+import Flight.Plotting: plots
 import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b
 
-export NoSteering, DirectSteering, get_steering_angle
-export NoBraking, DirectBraking, get_braking_coefficient
-export SimpleDamper, Strut
 export LandingGearUnit
 
 #basis elements, for convenience

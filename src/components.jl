@@ -6,11 +6,10 @@ using UnPack
 
 using Flight.Modeling
 using Flight.Plotting
-import Flight.Plotting: plots
-
 using Flight.Attitude
-
 using Flight.Dynamics
+
+import Flight.Plotting: plots
 
 export HasMass, HasNoMass, get_mass_properties
 export HasWrench, HasNoWrench, get_wr_b
