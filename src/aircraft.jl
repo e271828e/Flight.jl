@@ -20,21 +20,18 @@ using Flight.Dynamics
 
 using Flight.Components: get_mass_properties, get_wr_b, get_hr_b
 
-export AbstractAircraftID, GenericAircraftID, AircraftBase
-export assign_joystick_inputs!
-
 ######################### AircraftBase ########################
 
 abstract type AbstractAircraftID end
 
-struct GenericAircraftID <: AbstractAircraftID end
+struct GenericID <: AbstractAircraftID end
 
 Base.@kwdef struct AircraftBase{I <: AbstractAircraftID,
                     K <: AbstractKinematics,
                     F <: SystemDescriptor,
                     C <: SystemDescriptor} <: SystemDescriptor
 
-    identifier::I = GenericAircraftID()
+    identifier::I = GenericID()
     kinematics::K = KinLTF()
     airframe::F = RigidBody()
     controls::C = NullSystemDescriptor()
