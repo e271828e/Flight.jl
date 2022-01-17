@@ -34,7 +34,7 @@ include("output.jl")
 
 # #aircraft
 include("aircraft.jl")
-include("c172.jl")
+include("beaver.jl")
 
 @reexport using .Utils
 @reexport using .Misc
@@ -61,7 +61,7 @@ include("c172.jl")
 @reexport using .Output
 
 @reexport using .Aircraft
-@reexport using .C172
+@reexport using .Beaver
 
 export ftest
 

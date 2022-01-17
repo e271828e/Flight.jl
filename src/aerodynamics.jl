@@ -12,7 +12,7 @@ using Flight.Dynamics
 using Flight.Airdata
 using Flight.Components
 
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
 import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b
 
@@ -36,7 +36,7 @@ Base.@kwdef struct SimpleDragY
     wr_b::Wrench = Wrench()
 end
 
-init_y0(::SimpleDrag) = SimpleDragY()
+init_y(::SimpleDrag) = SimpleDragY()
 
 #in case of type instability use this one instead (or maybe a function barrier)
 # function f_cont!(sys::System{SimpleDrag}, air::AirData, ::KinData, ::Any, ::Any)
@@ -150,8 +150,8 @@ Base.@kwdef struct TestAerodynamicsY
     wr_b::Wrench = Wrench()
 end
 
-init_x0(::TestAerodynamics) = ComponentVector(α = 0.0, β = 0.0)
-init_y0(::TestAerodynamics) = TestAerodynamicsY()
+init_x(::TestAerodynamics) = ComponentVector(α = 0.0, β = 0.0)
+init_y(::TestAerodynamics) = TestAerodynamicsY()
 
 function f_cont!(sys::System{TestAerodynamics}, air::AirData, kin::KinData, ::Any, ::Any)
 

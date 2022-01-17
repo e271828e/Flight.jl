@@ -9,7 +9,7 @@ function ac_benchmark()
     h_trn = AltOrth()
     trn = HorizontalTerrain(altitude = h_trn)
     atm = System(AtmosphereDescriptor())
-    ac = System(C172Aircraft());
+    ac = System(BeaverDescriptor());
 
     kin_init = KinInit( Ob = Geographic(LatLon(), h_trn + 0.9));
 
@@ -50,7 +50,7 @@ function ac_test02()
 
     trn = HorizontalTerrain(altitude = h_trn)
     atm = System(AtmosphereDescriptor())
-    ac = System(C172Aircraft());
+    ac = System(BeaverDescriptor());
 
     kin_init = KinInit(v_eOb_b = [1, 0, 0.1],
                         ω_lb_b = [0, 0, 0],

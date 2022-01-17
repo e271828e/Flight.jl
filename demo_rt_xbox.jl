@@ -18,7 +18,7 @@ function demo_rt_xbox()
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
-    ac = System(C172Aircraft());
+    ac = System(BeaverDescriptor());
     ac_mdl = Model(ac, (trn, atm); dt = 0.02, t_end = 40, adaptive = false, solver = RK4(), y_saveat = 0.02);
 
     kin_init = KinInit(v_eOb_b = [10, 0, 0],

@@ -27,9 +27,9 @@ this method should have been overridden
 #DiscreteDynamics. a component that neither declares ContinuousDynamics nor
 #defines f_cont! will receive no warning
 
-#we could go another step and do the same with init_x0, which will also dispatch
-#on MaybeContinuousDynamics, and init_d0, on MaybeDiscreteDynamics. then
-#MaybeInput, MaybeOutput for init_u0 and init_d0
+#we could go another step and do the same with init_x, which will also dispatch
+#on MaybeContinuousDynamics, and init_d, on MaybeDiscreteDynamics. then
+#MaybeInput, MaybeOutput for init_u and init_d
 
 #however, all this does is force systems with continuous dyanmics to define the
 #a MaybeContinuousDynamics method in addition to f_cont!. on exchange, systems

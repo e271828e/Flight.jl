@@ -1,4 +1,4 @@
-module C172
+module Beaver
 
 using LinearAlgebra
 using StaticArrays
@@ -21,12 +21,12 @@ using Flight.LandingGear: LandingGearUnit, DirectSteering, DirectBraking, Strut,
 using Flight.Aircraft: AircraftBase, AbstractAircraftID
 using Flight.Input: XBoxController, get_axis_value, is_released
 
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
 import Flight.Components: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mass_properties
 import Flight.Aircraft: assign_joystick_inputs!
 
-export C172Aircraft
+export BeaverDescriptor
 
 struct ID <: AbstractAircraftID end
 
@@ -167,9 +167,9 @@ Base.@kwdef struct AeroY
     wr_b::Wrench = Wrench() #aerodynamic wrench, airframe
 end
 
-init_x0(::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
-init_y0(::Aero) = AeroY()
-init_u0(::Aero) = AeroU()
+init_x(::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+init_y(::Aero) = AeroY()
+init_u(::Aero) = AeroU()
 
 
 ############################## Controls #################################
@@ -201,8 +201,8 @@ Base.@kwdef struct ControlsY
     flaps::Float64
 end
 
-init_u0(::Controls) = ControlsU()
-init_y0(::Controls) = ControlsY(zeros(SVector{9})...)
+init_u(::Controls) = ControlsU()
+init_y(::Controls) = ControlsY(zeros(SVector{9})...)
 
 
 ############################## Airframe #################################
@@ -467,7 +467,7 @@ end
 
 #Aircraft constructor override keyword inputs to customize
 
-function C172Aircraft(; id = ID(), kin = KinLTF(), afm = Airframe(), ctl = Controls())
+function BeaverDescriptor(; id = ID(), kin = KinLTF(), afm = Airframe(), ctl = Controls())
     AircraftBase( id, kin, afm, ctl)
 end
 

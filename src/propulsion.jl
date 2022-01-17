@@ -13,7 +13,7 @@ using Flight.Dynamics
 using Flight.Components
 
 import Flight.Plotting: plots
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
 
 export AbstractThruster, EThruster
@@ -102,9 +102,9 @@ end
 
 Base.@kwdef mutable struct EThrusterD end
 
-init_x0(::EThruster) = copy(EThrusterXTemplate)
-init_u0(::EThruster) = EThrusterU()
-init_y0(::EThruster) = EThrusterY()
+init_x(::EThruster) = copy(EThrusterXTemplate)
+init_u(::EThruster) = EThrusterU()
+init_y(::EThruster) = EThrusterY()
 
 ################ EThruster System ###################
 
@@ -186,10 +186,10 @@ end
 # #required to make EThruster compatible with System
 # Base.@kwdef mutable struct EThrusterD end
 
-# init_x0(::EThruster) = copy(EThrusterXTemplate)
-# init_d0(::EThruster) = EThrusterD()
-# init_u0(::EThruster) = EThrusterU()
-# init_y0(::EThruster) = EThrusterY()
+# init_x(::EThruster) = copy(EThrusterXTemplate)
+# init_d(::EThruster) = EThrusterD()
+# init_u(::EThruster) = EThrusterU()
+# init_y(::EThruster) = EThrusterY()
 
 # function PropulsionGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
 #     PropulsionGroup{nt}()

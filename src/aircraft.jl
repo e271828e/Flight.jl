@@ -13,7 +13,7 @@ using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Components
 
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0,f_cont!, f_disc!
+import Flight.Modeling: init_x, init_y, init_u, init_d,f_cont!, f_disc!
 import Flight.Plotting: plots
 import Flight.Kinematics: init!
 
@@ -34,35 +34,35 @@ Base.@kwdef struct AircraftBase{I <: AbstractAircraftID,
     controls::C = NullSystemDescriptor()
 end
 
-init_x0(ac::AircraftBase) = ComponentVector(
-    kin = init_x0(ac.kinematics),
-    afr = init_x0(ac.airframe),
-    ctl = init_x0(ac.controls),
+init_x(ac::AircraftBase) = ComponentVector(
+    kin = init_x(ac.kinematics),
+    afr = init_x(ac.airframe),
+    ctl = init_x(ac.controls),
     )
 
-init_u0(ac::AircraftBase) = init_u0(ac.controls)
+init_u(ac::AircraftBase) = init_u(ac.controls)
 
-init_y0(ac::AircraftBase) = (
+init_y(ac::AircraftBase) = (
     kin = KinData(),
     dyn = DynData(),
     air = AirData(),
-    afr = init_y0(ac.airframe),
-    ctl = init_y0(ac.controls),
+    afr = init_y(ac.airframe),
+    ctl = init_y(ac.controls),
     )
 
-init_d0(ac::AircraftBase) = (
-    afr = init_d0(ac.airframe),
-    ctl = init_d0(ac.controls),
+init_d(ac::AircraftBase) = (
+    afr = init_d(ac.airframe),
+    ctl = init_d(ac.controls),
     )
 
 const AircraftBaseSys{I,K,F,C} = System{AircraftBase{I,K,F,C}} where {I,K,F,C}
 
-function System(ac::AircraftBase, ẋ = init_x0(ac), x = init_x0(ac),
-                    y = init_y0(ac), u = init_u0(ac), d = init_d0(ac), t = Ref(0.0))
+function System(ac::AircraftBase, ẋ = init_x(ac), x = init_x(ac),
+                    y = init_y(ac), u = init_u(ac), d = init_d(ac), t = Ref(0.0))
 
     params = ()
     subsystems = (
-        afr = System(ac.airframe, ẋ.afr, x.afr, y.afr, init_u0(ac.airframe), d.afr, t),
+        afr = System(ac.airframe, ẋ.afr, x.afr, y.afr, init_u(ac.airframe), d.afr, t),
         ctl = System(ac.controls, ẋ.ctl, x.ctl, y.ctl, u, d.ctl, t),)
 
     System{map(typeof, (ac, x, y, u, d, params, subsystems))...}(

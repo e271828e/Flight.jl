@@ -14,8 +14,8 @@ function demo_rt()
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
-    ac = System(C172Aircraft());
-    ac_mdl = Model(ac, (trn, atm); dt = 0.02, t_end = 20, adaptive = false, solver = RK4(), y_saveat = 0.02);
+    ac = System(BeaverDescriptor());
+    ac_mdl = Model(ac, (trn, atm); dt = 0.02, t_end = 30, adaptive = false, solver = RK4(), y_saveat = 0.02);
 
     kin_init = KinInit(v_eOb_b = [50, 0, 0],
                         ω_lb_b = [0, 0, 0],

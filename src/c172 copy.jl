@@ -7,7 +7,7 @@ using UnPack
 using Unitful
 
 using Flight.Modeling
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 using Flight.Plotting
 import Flight.Plotting: plots
 using Flight.Misc
@@ -152,9 +152,9 @@ Base.@kwdef struct C172AerodynamicsY
     wr_b::Wrench = Wrench()
 end
 
-init_x0(::C172Aerodynamics) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
-init_y0(::C172Aerodynamics) = C172AerodynamicsY()
-init_u0(::C172Aerodynamics) = C172AerodynamicsU()
+init_x(::C172Aerodynamics) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+init_y(::C172Aerodynamics) = C172AerodynamicsY()
+init_u(::C172Aerodynamics) = C172AerodynamicsU()
 
 C_X(; α, q_nd, δr, δf) = #force keyword arguments
     -0.03554 + 0.00292α + 5.459α^2 - 5.162α^3 - 0.6748q_nd + 0.03412δr - 0.09447δf + 1.106(δf*α)
@@ -314,9 +314,9 @@ struct C172ControlsY
     brake_right::Float64
 end
 
-init_u0(::C172Controls) = C172ControlsU()
+init_u(::C172Controls) = C172ControlsU()
 
-init_y0(::C172Controls) = C172ControlsY(zeros(SVector{6})...)
+init_y(::C172Controls) = C172ControlsY(zeros(SVector{6})...)
 
 ###################### Continuous update functions ##########################
 

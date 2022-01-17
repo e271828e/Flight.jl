@@ -4,8 +4,8 @@ h_trn = AltOrth(811);
 trn = HorizontalTerrain(altitude = h_trn);
 atm = System(AtmosphereDescriptor());
 
-aero = System(C172.Aero());
-pwp = System(C172.Pwp());
+aero = System(Beaver.Aero());
+pwp = System(Beaver.Pwp());
 
 kin = KinInit(
     v_eOb_b = [50, 0, 5],

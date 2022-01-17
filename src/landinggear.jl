@@ -14,7 +14,7 @@ using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Components
 
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
 import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b
 
@@ -47,8 +47,8 @@ Base.@kwdef struct DirectSteeringY
     ψ::Float64 = 0.0
 end
 #we need to make the contents of u mutable
-init_u0(::DirectSteering) = Ref(0.0) #steering input
-init_y0(::DirectSteering) = DirectSteeringY(0.0) #steering angle
+init_u(::DirectSteering) = Ref(0.0) #steering input
+init_y(::DirectSteering) = DirectSteeringY(0.0) #steering angle
 
 function f_cont!(sys::System{DirectSteering})
     u = sys.u[]
@@ -86,8 +86,8 @@ Base.@kwdef struct DirectBrakingY
    α_br::Float64 = 0.0 #braking coefficient
 end
 
-init_u0(::DirectBraking) = Ref(0.0)
-init_y0(::DirectBraking) = DirectBrakingY()
+init_u(::DirectBraking) = Ref(0.0)
+init_y(::DirectBraking) = DirectBrakingY()
 
 function f_cont!(sys::System{DirectBraking})
     u = sys.u[]
@@ -145,7 +145,7 @@ Base.@kwdef struct StrutY
     srf::SurfaceType = Terrain.DryTarmac #surface type at the reference point
 end
 
-init_y0(::Strut) = StrutY()
+init_y(::Strut) = StrutY()
 
 function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     terrain::AbstractTerrain, kin::KinData)
@@ -344,9 +344,9 @@ Base.@kwdef struct ContactY
     wr_b::Wrench = Wrench() #resulting airframe Wrench
 end
 
-init_x0(::Contact) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
-init_y0(::Contact) = ContactY()
-init_d0(::Contact) = Ref(true) #contact active?
+init_x(::Contact) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
+init_y(::Contact) = ContactY()
+init_d(::Contact) = Ref(true) #contact active?
 
 function f_cont!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})

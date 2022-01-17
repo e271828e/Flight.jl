@@ -3,7 +3,7 @@ module System
 using ComponentArrays
 import Flight.Plotting: plots
 
-export assemble_x0, init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+export assemble_x0, init_x, init_y, init_u, init_d, f_cont!, f_disc!
 export AbstractComponent, AbstractSystem, System
 
 no_extend_error(f::Function, ::Type{S}) where {S} = error(
@@ -14,12 +14,12 @@ no_extend_warning(f::Function, ::Type{S}) where {S} = println(
 #anything around which we can build a System
 abstract type AbstractComponent end #anything that can go in a System
 
-#init_x0 must return either nothing, an AbstractVector{<:Real} or a NT with a
+#init_x must return either nothing, an AbstractVector{<:Real} or a NT with a
 #Union{AbstractVector{<:Real},Nothing}
-init_x0(::C) where {C<:AbstractComponent} = nothing
-init_y0(::C) where {C<:AbstractComponent} = nothing
-init_u0(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
-init_d0(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
+init_x(::C) where {C<:AbstractComponent} = nothing
+init_y(::C) where {C<:AbstractComponent} = nothing
+init_u(::C) where {C<:AbstractComponent} = nothing #sytems are not required to have control inputs
+init_d(::C) where {C<:AbstractComponent} = nothing #systems are not required to have discrete states
 
 abstract type AbstractSystem{C<:AbstractComponent} end
 
@@ -48,10 +48,10 @@ f_cont!(::S, args...) where {S<:AbstractSystem} = no_extend_error(f_cont!, S)
 #to implement a trivial f_disc! that returns false
 
 #when the System constructor for a certain Component is passed no
-#parameters for dx and x, it calls the init_x0 method for that Component, which
+#parameters for dx and x, it calls the init_x method for that Component, which
 #may return
 
-assemble_x0(c::AbstractComponent) = assemble_x0(init_x0(c))
+assemble_x0(c::AbstractComponent) = assemble_x0(init_x(c))
 
 assemble_x0(::Nothing) = (s = nothing, ss = nothing)
 

@@ -5,7 +5,7 @@ using StaticArrays, StructArrays, ComponentArrays
 using Flight.Geodesy
 using Flight.Modeling
 
-import Flight.Modeling: init_x0, init_y0, init_u0, init_d0, f_cont!, f_disc!
+import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 
 export TunableISA
 export TunableWind
@@ -115,7 +115,7 @@ Base.@kwdef mutable struct UTunableISA #only allocates upon System instantiation
     p_sl::Float64 = p_std
 end
 
-init_u0(::TunableISA) = UTunableISA()
+init_u(::TunableISA) = UTunableISA()
 f_cont!(::System{<:TunableISA}, args...) = nothing
 f_disc!(::System{<:TunableISA}, args...) = false
 
@@ -148,7 +148,7 @@ Base.@kwdef mutable struct USimpleWind
     v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
 end
 
-init_u0(::TunableWind) = USimpleWind()
+init_u(::TunableWind) = USimpleWind()
 f_cont!(::System{<:TunableWind}, args...) = nothing
 f_disc!(::System{<:TunableWind}, args...) = false
 
@@ -167,13 +167,13 @@ end
 #can use simply NamedTuples
 struct AtmosphereCmpY{I, W}; isa_::I; wind::W; end
 
-init_x0(atm::AtmosphereDescriptor) = ComponentVector(isa_ = init_x0(atm.isa_), wind = init_x0(atm.wind))
-init_y0(atm::AtmosphereDescriptor) = AtmosphereCmpY(init_y0(atm.isa_), init_y0(atm.wind))
-init_u0(atm::AtmosphereDescriptor) = (isa_ = init_u0(atm.isa_), wind = init_u0(atm.wind))
-init_d0(atm::AtmosphereDescriptor) = (isa_ = init_d0(atm.isa_), wind = init_d0(atm.wind))
+init_x(atm::AtmosphereDescriptor) = ComponentVector(isa_ = init_x(atm.isa_), wind = init_x(atm.wind))
+init_y(atm::AtmosphereDescriptor) = AtmosphereCmpY(init_y(atm.isa_), init_y(atm.wind))
+init_u(atm::AtmosphereDescriptor) = (isa_ = init_u(atm.isa_), wind = init_u(atm.wind))
+init_d(atm::AtmosphereDescriptor) = (isa_ = init_d(atm.isa_), wind = init_d(atm.wind))
 
-function System(atm::AtmosphereDescriptor, ẋ = init_x0(atm), x = init_x0(atm),
-                    y = init_y0(atm), u = init_u0(atm), d = init_d0(atm), t = Ref(0.0))
+function System(atm::AtmosphereDescriptor, ẋ = init_x(atm), x = init_x(atm),
+                    y = init_y(atm), u = init_u(atm), d = init_d(atm), t = Ref(0.0))
 
     isa_sys = System(atm.isa_, ẋ.isa_, x.isa_, y.isa_, u.isa_, d.isa_, t)
     wind_sys = System(atm.wind, ẋ.wind, x.wind, y.wind, u.wind, d.wind, t)

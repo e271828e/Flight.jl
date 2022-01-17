@@ -11,7 +11,7 @@ using Flight.Plotting
 
 atm_sys = System(AtmosphereDescriptor())
 p = Geographic(alt = AltOrth(13000))
-x_kin = init_x0(KinInit(v_eOb_b = [300, 10, 30], Ob = p, q_nb = Ry(0.01)))
+x_kin = init_x(KinInit(v_eOb_b = [300, 10, 30], Ob = p, q_nb = Ry(0.01)))
 dx_pos = copy(x_kin.pos)
 kin_data = f_kin!(dx_pos, x_kin)
 air_data = AirData(kin_data, atm_sys)

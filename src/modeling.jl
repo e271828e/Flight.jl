@@ -13,15 +13,15 @@ export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Mo
 
 abstract type SystemDescriptor end #anything from which we can build a System
 
-#every SystemDescriptor's init_x0 must return an AbstractVector{<:Real}, even if
-#its inherently discrete and its f_cont! does nothing. this is ugly but ensures
+#every SystemDescriptor's init_x must return an AbstractVector{<:Real}, even if
+#it's inherently discrete and its f_cont! does nothing. this is ugly but ensures
 #composability of Systems without the hassle of dealing automatically with empty
 #state vector blocks, which is exacerbated by the need to assign views from the
 #root System's state vector to its children System's state vectors
-init_x0(::SystemDescriptor) = [0.0]
-init_y0(::SystemDescriptor) = nothing #sytems are not required to have outputs
-init_u0(::SystemDescriptor) = nothing #sytems are not required to have control inputs
-init_d0(::SystemDescriptor) = nothing #systems are not required to have discrete states
+init_x(::SystemDescriptor) = [0.0]
+init_y(::SystemDescriptor) = nothing #sytems are not required to have outputs
+init_u(::SystemDescriptor) = nothing #sytems are not required to have control inputs
+init_d(::SystemDescriptor) = nothing #systems are not required to have discrete states
 
 ############################# System ############################
 
@@ -40,8 +40,8 @@ mutable struct System{T, X <: AbstractVector{<:Float64},
     subsystems::S
 end
 
-function System(c::SystemDescriptor, ẋ = init_x0(c), x = init_x0(c),
-                    y = init_y0(c), u = init_u0(c), d = init_d0(c), t = Ref(0.0))
+function System(c::SystemDescriptor, ẋ = init_x(c), x = init_x(c),
+                    y = init_y(c), u = init_u(c), d = init_d(c), t = Ref(0.0))
 
     params = c #assign the system descriptor itself as a System parameter
     subsystems = nothing
@@ -75,13 +75,13 @@ abstract type SystemGroupDescriptor <: SystemDescriptor end
 Base.keys(g::SystemGroupDescriptor) = propertynames(g)
 Base.values(g::SystemGroupDescriptor) = map(λ -> getproperty(g, λ), keys(g))
 
-init_x0(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_x0.(values(g))) |> ComponentVector
-init_y0(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_y0.(values(g)))
-init_u0(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_u0.(values(g)))
-init_d0(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_d0.(values(g)))
+init_x(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_x.(values(g))) |> ComponentVector
+init_y(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_y.(values(g)))
+init_u(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_u.(values(g)))
+init_d(g::SystemGroupDescriptor) = NamedTuple{keys(g)}(init_d.(values(g)))
 
-function System(g::SystemGroupDescriptor, ẋ = init_x0(g), x = init_x0(g),
-                    y = init_y0(g), u = init_u0(g), d = init_d0(g), t = Ref(0.0))
+function System(g::SystemGroupDescriptor, ẋ = init_x(g), x = init_x(g),
+                    y = init_y(g), u = init_u(g), d = init_d(g), t = Ref(0.0))
 
     ss_list = Vector{System}()
     ss_labels = keys(g)

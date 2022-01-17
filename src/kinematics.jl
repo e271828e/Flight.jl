@@ -8,7 +8,7 @@ using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy
 
-import Flight.Modeling: init_x0
+import Flight.Modeling: init_x
 import Flight.Plotting: plots
 
 export AbstractKinematics, KinLTF, KinECEF
@@ -115,7 +115,7 @@ const KinLTFXTemplate = ComponentVector(pos = PosLTFXTemplate, vel = VelXTemplat
 const PosLTFX{T, D} = ComponentVector{T, D, typeof(getaxes(PosLTFXTemplate))} where {T, D}
 const KinLTFX{T, D} = ComponentVector{T, D, typeof(getaxes(KinLTFXTemplate))} where {T, D}
 
-init_x0(::KinLTF, init::KinInit = KinInit()) = (x=similar(KinLTFXTemplate); init!(x, init); return x)
+init_x(::KinLTF, init::KinInit = KinInit()) = (x=similar(KinLTFXTemplate); init!(x, init); return x)
 
 function init!(x::KinLTFX, init::KinInit)
 
@@ -207,7 +207,7 @@ const KinECEFXTemplate = ComponentVector(pos = PosECEFXTemplate, vel = VelXTempl
 const PosECEFX{T, D} = ComponentVector{T, D, typeof(getaxes(PosECEFXTemplate))} where {T, D}
 const KinECEFX{T, D} = ComponentVector{T, D, typeof(getaxes(KinECEFXTemplate))} where {T, D}
 
-init_x0(::KinECEF, init::KinInit = KinInit()) = (x=similar(KinECEFXTemplate); init!(x, init); return x)
+init_x(::KinECEF, init::KinInit = KinInit()) = (x=similar(KinECEFXTemplate); init!(x, init); return x)
 
 function init!(x::KinECEFX, init::KinInit)
 
