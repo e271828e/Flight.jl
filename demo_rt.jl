@@ -10,33 +10,27 @@ using Base.Iterators
 
 function demo_rt()
 
-    h_trn = AltOrth(609.5);
+    h_trn = AltOrth(607.72);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
     ac = System(C172Aircraft());
     ac_mdl = Model(ac, (trn, atm); dt = 0.02, t_end = 20, adaptive = false, solver = RK4(), y_saveat = 0.02);
 
-    kin_init = KinInit(v_eOb_b = [30, 0, 0],
+    kin_init = KinInit(v_eOb_b = [50, 0, 0],
                         ω_lb_b = [0, 0, 0],
-                        q_nb = REuler(ψ = π, θ = 0.1, φ = 0.05),
-                        Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),
-                                        h_trn + 0.85 + 0.4));
-    ac.u.throttle = 0
-    ac.u.pedals = 0.5
-    ac.u.brake_left = 1
-    ac.u.brake_right = 1
+                        q_nb = REuler(ψ = 0, θ = -0.05, φ = 0.00),
+                        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+                                        h_trn + 2.5 - 0.1 + 50.0));
+    ac.u.throttle = 0.
+    ac.u.pedals = 0.4
+    ac.u.yoke_y = -0.4
+    ac.u.yoke_x = 0.
+    ac.u.brake_left = 0
+    ac.u.brake_right = 0
+    ac.u.flaps = 0
     atm.u.wind.v_ew_n[1] = 0
-
-    # kin_init = KinInit(v_eOb_b = [0, 0, 0],
-    #                     ω_lb_b = [0, 0, 0],
-    #                     q_nb = REuler(ψ = π, θ = 0, φ = 0),
-    #                     Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),
-    #                                     h_trn + 0.85));
-
-    # ac.u.throttle = 1
-    # ac.u.brake_left = 1
-    # ac.u.brake_right = 1
+    atm.u.wind.v_ew_n[2] = 0
 
     init!(ac, kin_init)
     #if the model was instantiated in advance, we need this to change its internal state vector!
@@ -45,6 +39,10 @@ function demo_rt()
     xp = XPInterface()
     disable_physics(xp)
     set_position(xp, kin_init)
+
+    # ac.y.afr.ldg.left |> pwf
+    # ac.y.afr.ldg.left.strut |> pwf
+    # return
 
     output_div = 1
 
@@ -86,7 +84,7 @@ function demo_rt()
     end
 
     plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
-    plots(ac_mdl; save_path = joinpath("tmp", "plots_demo_rt"), plot_settings...)
+    # plots(ac57575757_mdl; save_path = joinpath("tmp", "plots_demo_rt"), plot_settings...)
 
 
 end

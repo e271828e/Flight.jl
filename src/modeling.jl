@@ -25,9 +25,9 @@ init_d0(::SystemDescriptor) = nothing #systems are not required to have discrete
 
 ############################# System ############################
 
-#need the T type parameter for dispatch, the rest for type stability
-#making System mutable does not hurt performance, because System instances are
-#only instantiated upon initialization, so no runtime heap allocations
+#need the T type parameter for dispatch, the rest for type stability making
+#System mutable does not hurt performance, because Systems should only
+#instantiated upon initialization. therefore, no runtime heap allocations
 mutable struct System{T, X <: AbstractVector{<:Float64},
                     Y, U, D, P, S}
     ẋ::X #continuous state vector derivative

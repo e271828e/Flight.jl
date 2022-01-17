@@ -103,16 +103,10 @@ end
 Base.@kwdef mutable struct EThrusterD end
 
 init_x0(::EThruster) = copy(EThrusterXTemplate)
-# init_d0(::EThruster) = EThrusterD() #not really needed, defaults to nothing
 init_u0(::EThruster) = EThrusterU()
 init_y0(::EThruster) = EThrusterY()
 
 ################ EThruster System ###################
-
-#the default System constructor works OK in this case
-
-WrenchTrait(::System{EThruster}) = HasWrench()
-AngularMomentumTrait(::System{EThruster}) = HasAngularMomentum()
 
 get_wr_b(sys::System{EThruster}) = sys.y.wr_b
 get_hr_b(sys::System{EThruster}) = sys.y.hr_b

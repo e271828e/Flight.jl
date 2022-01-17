@@ -36,13 +36,13 @@ end
 end
 
 @inline function get_wind_axes(α::Real, β::Real)
-    q_cw = Ry(-α) ∘ Rz(β)
-    return q_cw
+    q_bw = Ry(-α) ∘ Rz(β)
+    return q_bw
 end
 
 @inline function get_stability_axes(α::Real)
-    q_cs = Ry(-α)
-    return q_cs
+    q_bs = Ry(-α)
+    return q_bs
 end
 
 struct AirData

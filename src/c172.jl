@@ -38,12 +38,18 @@ struct Pwp <: SystemGroupDescriptor
     right::EThruster
 end
 
+# la fuerza y el momento que da el motor ya nos lo dan directamente en ejes b en
+# funcion de alpha y dpt, que no se que cojones era. parece una potencia
+# adimensional. no hace falta modelar la helice explicitamente, aunque se puede
+# proporcionar el momento cinetico en funcion de las RPMs con un calculo
+# aproximado.
+
 WrenchTrait(::System{<:Pwp}) = HasWrench()
 AngularMomentumTrait(::System{<:Pwp}) = HasAngularMomentum()
 
 function Pwp()
 
-    prop = SimpleProp(kF = 4e-3, J = 0.25)
+    prop = SimpleProp(kF = 1e-2, J = 0.25)
 
     left = EThruster(propeller = prop, motor = ElectricMotor(α = CW))
     right = EThruster(propeller = prop, motor = ElectricMotor(α = CCW))
@@ -54,11 +60,15 @@ end
 
 ############################ LandingGear ############################
 
+# looking at pictures of the aircraft, the coordinates for the bottom of the MLG
+# wheels are roughly [0, +/-1.2, 2.3] and the coordinates for the bottom of the
+# TLG wheel are roughly [-6.5, 0, 1.8]
+
 struct Ldg{L <: LandingGearUnit, R <: LandingGearUnit,
-    C <: LandingGearUnit} <: SystemGroupDescriptor
+    T <: LandingGearUnit} <: SystemGroupDescriptor
     left::L
     right::R
-    center::C
+    tail::T
 end
 
 WrenchTrait(::System{<:Ldg}) = HasWrench()
@@ -66,31 +76,32 @@ AngularMomentumTrait(::System{<:Ldg}) = HasNoAngularMomentum()
 
 function Ldg()
 
-    mlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
-    nlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
+    main_damper = SimpleDamper(k_s = 100000, k_d_ext = 2000, k_d_cmp = 2000)
+    tail_damper = SimpleDamper(k_s = 100000, k_d_ext = 2000, k_d_cmp = 2000)
 
     left = LandingGearUnit(
         strut = Strut(
-            t_bs = FrameTransform(r = [-1, -1.25, 1], q = RQuat() ),
+            t_bs = FrameTransform(r = [0, -1.2, 2.5], q = RQuat() ),
             l_0 = 0.0,
-            damper = mlg_damper),
+            damper = main_damper),
         braking = DirectBraking())
 
     right = LandingGearUnit(
         strut = Strut(
-            t_bs = FrameTransform(r = [-1, 1.25, 1], q = RQuat() ),
+            t_bs = FrameTransform(r = [0, 1.2, 2.5], q = RQuat() ),
             l_0 = 0.0,
-            damper = mlg_damper),
+            damper = main_damper),
         braking = DirectBraking())
 
-    center = LandingGearUnit(
+    tail = LandingGearUnit(
         strut = Strut(
-            t_bs = FrameTransform(r = [2, 0, 1] , q = RQuat()),
+            # t_bs = FrameTransform(r = [-6.5, 0, 1.8] , q = RQuat()),
+            t_bs = FrameTransform(r = [-6.5, 0, 1.05] , q = RQuat()), #XPlane cosmetics
             l_0 = 0.0,
-            damper = nlg_damper),
+            damper = tail_damper),
         steering = DirectSteering())
 
-    Ldg(left, right, center)
+    Ldg(left, right, tail)
 
 end
 
@@ -127,32 +138,33 @@ Base.@kwdef struct Aero <: AbstractAerodynamics
     S::Float64 = 23.23 #wing area
     b::Float64 = 14.63 #wingspan
     c::Float64 = 1.5875 #mean aerodynamic chord
+    τ::Float64 = 0.1 #time constant for airflow angle filtering
     δe_max::Float64 = 20 |> deg2rad #maximum elevator deflection (rad)
     δa_max::Float64 = 20 |> deg2rad #maximum aileron deflection (rad)
     δr_max::Float64 = 20 |> deg2rad #maximum rudder deflection (rad)
     δf_max::Float64 = 30 |> deg2rad #maximum flap deflection (rad)
-    τ::Float64 = 0.1 #time constant for airflow angle filtering
 end
 
 Base.@kwdef mutable struct AeroU
-    δe::Bounded{Float64, -1, 1} = 0.0 #(+ pitch down)
-    δa::Bounded{Float64, -1, 1} = 0.0 #(+ roll left)
-    δr::Bounded{Float64, -1, 1} = 0.0 #(+ yaw left)
-    δf::Bounded{Float64, 0, 1} = 0.0 #(+ flap down)
+    e::Bounded{Float64, -1, 1} = 0.0 #elevator control input (+ pitch down)
+    a::Bounded{Float64, -1, 1} = 0.0 #aileron control input (+ roll left)
+    r::Bounded{Float64, -1, 1} = 0.0 #rudder control input (+ yaw left)
+    f::Bounded{Float64, 0, 1} = 0.0 # flap control input (+ flap down)
 end
 
 Base.@kwdef struct AeroY
-    α::Float64 = 0.0
-    α_filt::Float64 = 0.0
-    α_filt_dot::Float64 = 0.0
-    β::Float64 = 0.0
-    β_filt::Float64 = 0.0
-    β_filt_dot::Float64 = 0.0
-    δe::Float64 = 0.0
-    δa::Float64 = 0.0
-    δr::Float64 = 0.0
-    δf::Float64 = 0.0
-    wr_b::Wrench = Wrench()
+    α::Float64 = 0.0 #preprocessed AoA
+    α_filt::Float64 = 0.0 #filtered AoA
+    α_filt_dot::Float64 = 0.0 #filtered AoA derivative
+    β::Float64 = 0.0 #preprocessed AoS
+    β_filt::Float64 = 0.0 #filtered AoS
+    β_filt_dot::Float64 = 0.0 #filtered AoS derivative
+    e::Float64 = 0.0 #elevator control input
+    a::Float64 = 0.0 #aileron control input
+    r::Float64 = 0.0 #rudder control input
+    f::Float64 = 0.0 #flap control input
+    wr_s::Wrench = Wrench() #aerodynamic wrench, stability frame
+    wr_b::Wrench = Wrench() #aerodynamic wrench, airframe
 end
 
 init_x0(::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
@@ -228,14 +240,16 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     @unpack ẋ, x, u, params = sys
     @unpack α_filt, β_filt = x
     @unpack S, b, c, δe_max, δa_max, δr_max, δf_max, τ = params
+    @unpack e, a, r, f = u
     @unpack TAS, q, α_b, β_b = air
     ω_lb_b = kinematics.vel.ω_lb_b
 
-    TAS_min = 1.0
-    χ_TAS = min(TAS/TAS_min, 1.0) #linear fade-in for TAS < TAS_thr
-
-    α = α_b * χ_TAS
-    β = β_b * χ_TAS
+    #preprocess airflow angles and airspeed. looking at the lift/drag polar +/-1
+    #seem like reasonable airflow angle limits
+    TAS_min = 2.0
+    χ_TAS = min(TAS/TAS_min, 1.0) #linear fade-in for airflow angles
+    α = clamp(α_b * χ_TAS, -1.0, 1.0)
+    β = clamp(β_b * χ_TAS, -1.0, 1.0)
     V = max(TAS, TAS_min)
 
     α_filt_dot = 1/τ * (α - α_filt)
@@ -248,43 +262,34 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     α_dot_nd = α_filt_dot * c / (2V) #not used
     β_dot_nd = β_filt_dot * b / (2V)
 
+    ẋ.α_filt = α_filt_dot
+    ẋ.β_filt = β_filt_dot
+
     # T = get_wr_b(pwp).F[1]
-    # C_T = T / (dyn_p * S) #thrust coefficient, not used
-    δe = Float64(u.δe) * δe_max
-    δa = Float64(u.δa) * δa_max
-    δr = Float64(u.δr) * δr_max
-    δf = Float64(u.δf) * δf_max
+    # C_T = T / (q * S) #thrust coefficient, not used
+    δe = Float64(e) * δe_max
+    δa = Float64(a) * δa_max
+    δr = Float64(r) * δr_max
+    δf = Float64(f) * δf_max
 
     C_X, C_Y, C_Z, C_l, C_m, C_n = get_coefficients(; α, β, p_nd, q_nd, r_nd,
         δa, δr, δe, δf, α_dot_nd, β_dot_nd)
 
-    F_x = C_X * q * S
-    F_y = C_Y * q * S
-    F_z = C_Z * q * S
-    F_aero_b = SVector{3,Float64}(F_x, F_y, F_z)
-
-    M_x = C_l * q * S * b
-    M_y = C_m * q * S * c
-    M_z = C_n * q * S * b
-    M_aero_b = SVector{3,Float64}(M_x, M_y, M_z)
+    F_aero_b = q * S * SVector{3,Float64}(C_X, C_Y, C_Z)
+    M_aero_b = q * S * SVector{3,Float64}(C_l * b/2, C_m * c, C_n * b/2)
 
     wr_b = Wrench(F_aero_b, M_aero_b)
 
-    # @show wr_b
-
-    ẋ.α_filt = α_filt_dot
-    ẋ.β_filt = β_filt_dot
+    q_bs = get_stability_axes(α)
+    t_sb = FrameTransform(q = q_bs')
+    wr_s = t_sb(wr_b)
 
     sys.y = AeroY(; α, α_filt, α_filt_dot, β, β_filt, β_filt_dot,
-        δe, δa, δr, δf, wr_b)
+        e, a, r, f, wr_s, wr_b)
 
 end
 
 function get_coefficients(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd)
-
-    #stall is modeled, so +/-1 seem like sensible limits for airflow angles
-    α = clamp(α, -1.0, 1.0)
-    β = clamp(β, -1.0, 1.0)
 
     α² = α^2; α³ = α^3; β² = β^2; β³ = β^3
 
@@ -295,7 +300,7 @@ function get_coefficients(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot
     C_m = 0.09448 - 0.6028α - 2.14α² -15.56q_nd - 1.921δe + 0.6921β² - 0.3118r_nd + 0.4072δf
     C_n = -3.117e-3 + 6.719e-3β + 0.1373β³ - 0.1585p_nd + 0.1595q_nd - 0.1112r_nd - 3.872e-3δa - 0.08265δr
 
-    return (C_X, C_Y, C_Z, C_m, C_l, C_n)
+    return (C_X, C_Y, C_Z, C_l, C_m, C_n)
 
 end
 
@@ -303,8 +308,8 @@ function f_disc!(::System{<:Aero})
     return false
 end
 
-# get_wr_b(sys::System{Aero}) = sys.y.wr_b
-get_wr_b(sys::System{Aero}) = Wrench()
+get_wr_b(sys::System{Aero}) = sys.y.wr_b
+# get_wr_b(sys::System{Aero}) = Wrench()
 
 
 ######################## Controls Update Functions ###########################
@@ -332,6 +337,11 @@ end
 
 ####################### Airframe Update Functions ###########################
 
+#the (left-handed) measurement frame defined in the report has its origin at the
+#leading edge of the wing chord, x pointing backwards, z pointint upwards and y
+#pointing to the left. here, the reference frame for the airframe is defined
+#with the same origin, but with the conventional flight physics axes (x pointing
+#forward, z downward and y to the right).
 
 function f_cont!(afr::System{<:Airframe}, ctl::System{<:Controls},
                 kin::KinData, air::AirData, trn::AbstractTerrain)
@@ -362,16 +372,17 @@ function get_mass_properties(::System{<:Airframe})
     #computed here by querying the fuel system for the contributions of the
     #different fuel tanks
 
+
     MassProperties(
         #upreferred(2650u"lb") |> ustrip,
-        m = 1202.0197805,
+        m = 2288, #(OEW = 1526, MTOW = 2324)
         #upreferred.([948, 1346, 1967]u"m") |> ustrip |> diagm |> SMatrix{3,3,Float64},
-        J_Ob_b = SA[948.0 0 0; 0 1346.0 0; 0 0 1967.0],
-        r_ObG_b = zeros(SVector{3}))
+        J_Ob_b = SA[5368.39 0 117.64; 0 6928.93 0; 117.64 0 11158.75],
+        r_ObG_b = SVector{3,Float64}(-0.5996, 0, 0.8851))
 end
 
-#get_wr_b and get_hr_b use the fallback for SystemGroups, which will in turn
-#call get_wr_b and get_hr_b on aero, pwp and ldg
+#get_wr_b and get_hr_b use the fallback for SystemGroups, which in turn call
+#get_wr_b and get_hr_b on aero, pwp and ldg
 
 function assign_component_inputs!(afr::System{<:Airframe},
     ctl::System{<:Controls})
@@ -386,13 +397,13 @@ function assign_component_inputs!(afr::System{<:Airframe},
 
     pwp.u.left.throttle = throttle
     pwp.u.right.throttle = throttle
-    ldg.u.center.steering[] = steering_curve(pedals)
+    ldg.u.tail.steering[] = -steering_curve(pedals) #wheel is behind CG, so we must switch sign
     ldg.u.left.braking[] = brake_curve(brake_left)
     ldg.u.right.braking[] = brake_curve(brake_right)
-    aero.u.δe = -elevator_curve(yoke_y_trim + yoke_y) #+yoke_y and +yoke_y_trim are back and +δe is pitch down, need to invert it
-    aero.u.δa = -aileron_curve(yoke_x_trim + yoke_x) #+yoke_x and +yoke_x_trim are right and +δa is roll left, need to invert it
-    aero.u.δr = -rudder_curve(pedals) # +pedals is right and +δr is yaw left
-    aero.u.δf = flaps # +flaps is flaps down and +δf is flaps down
+    aero.u.e = -elevator_curve(yoke_y_trim + yoke_y) #+yoke_y and +yoke_y_trim are back and +δe is pitch down, need to invert it
+    aero.u.a = -aileron_curve(yoke_x_trim + yoke_x) #+yoke_x and +yoke_x_trim are right and +δa is roll left, need to invert it
+    aero.u.r = -rudder_curve(pedals) # +pedals is right and +δr is yaw left
+    aero.u.f = flaps # +flaps is flaps down and +δf is flaps down
 
     return nothing
 end
