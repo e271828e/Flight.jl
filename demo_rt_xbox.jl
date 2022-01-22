@@ -4,6 +4,7 @@ using Base.Iterators
 using OrdinaryDiffEq
 using SciMLBase
 using LinearAlgebra
+using Sockets
 using BenchmarkTools
 using GLFW
 
@@ -19,13 +20,13 @@ function demo_rt_xbox()
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
     ac = System(BeaverDescriptor());
-    ac_mdl = Model(ac, (trn, atm); dt = 0.02, t_end = 40, adaptive = false, solver = RK4(), y_saveat = 0.02);
+    ac_mdl = Model(ac, (trn, atm); dt = 0.02, t_end = 90, adaptive = false, solver = RK4(), y_saveat = 0.02);
 
-    kin_init = KinInit(v_eOb_b = [10, 0, 0],
+    kin_init = KinInit(v_eOb_b = [0, 0, 0],
                         ω_lb_b = [0, 0, 0],
-                        q_nb = REuler(ψ = π, θ = 0.0, φ = 0.00),
-                        Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),
-                                        h_trn + 0.85 + 0.0));
+                        q_nb = REuler(ψ = 0, θ = -0.05, φ = 0.00),
+                        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+                                        h_trn + 2.5 - 0.1 + 0.0));
 
     atm.u.wind.v_ew_n[1] = 0
     ac.u.throttle = 0
@@ -34,7 +35,8 @@ function demo_rt_xbox()
     #since the model was instantiated in advance, we need this to change its internal state vector
     reinit!(ac_mdl, ac.x)
 
-    xp = XPInterface()
+    # xp = XPInterface()
+    xp = XPInterface(host = IPv4("192.168.1.2"))
     disable_physics(xp)
     set_position(xp, kin_init)
 
@@ -82,10 +84,11 @@ function demo_rt_xbox()
             Aircraft.assign_joystick_inputs!(ac, joystick)
 
             if ac_mdl.success_iter % 20 == 0
-                println(ac.u.yoke_x_trim.val, " ",  ac.u.yoke_x.val, " ", ac.subsystems.afr.subsystems.aero.u.δa.val)
-                println(ac.u.yoke_y_trim.val, " ",  ac.u.yoke_y.val, " ", ac.subsystems.afr.subsystems.aero.u.δe.val)
-                println(ac.subsystems.afr.subsystems.aero.u.δr.val)
-                println(ac.subsystems.afr.subsystems.aero.u.δf.val)
+                pwf(ac.u)
+                # println(ac.u.yoke_x_trim.val, " ",  ac.u.yoke_x.val, " ", ac.subsystems.afr.subsystems.aero.u.δa.val)
+                # println(ac.u.yoke_y_trim.val, " ",  ac.u.yoke_y.val, " ", ac.subsystems.afr.subsystems.aero.u.δe.val)
+                # println(ac.subsystems.afr.subsystems.aero.u.δr.val)
+                # println(ac.subsystems.afr.subsystems.aero.u.δf.val)
             end
 
         end

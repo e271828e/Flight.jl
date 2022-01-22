@@ -33,6 +33,7 @@ end
 #basic addition and subtraction
 Base.:+(x::Bounded{T1,Min,Max}, y::Real) where {T1, Min, Max} = Bounded(x.val + y, Min, Max)
 Base.:-(x::Bounded{T1,Min,Max}, y::Real) where {T1, Min, Max} = Bounded(x.val - y, Min, Max)
+Base.:-(x::Bounded{T1,Min,Max}) where {T1, Min, Max} = Bounded(-x.val, Min, Max)
 
 #both Bounded must have identical underlying types and bounds, otherwise there
 #is no way of telling which bounds or underlying types should win

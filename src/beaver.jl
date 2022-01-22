@@ -58,6 +58,25 @@ function Pwp()
 
 end
 
+######################### Powerplant Real ####################################
+
+"""
+El modelo de motor del report es valido solo dentro de un cierto intervalo de
+velocidades. Esto es particularmente evidente viendo que el dpt tiene una V^3 en
+el denominador.
+
+Las dos preguntas inmediatas son: cual es este intervalo de validez? que hacemos
+fuera de el?
+
+Para responder, echamos mano de Fundamentals of Aircraft and Airship Design,
+Vol. 1, Ch 17, Fig 17.20 y Fig 17.19.
+
+Calculamos la potencia en funcion de pz (manifold pressure), rho y n (rpm). a
+partir de aqui, el modelo se bifurca en dos. una de baja velocidad, y otra de
+alta velocidad. a baja velocidad, solo consideramos el CX dado por las
+tablas, las otras 5 contribuciones
+"""
+
 ############################ LandingGear ############################
 
 # looking at pictures of the aircraft, the coordinates for the bottom of the MLG
@@ -139,9 +158,9 @@ Base.@kwdef struct Aero <: AbstractAerodynamics
     b::Float64 = 14.63 #wingspan
     c::Float64 = 1.5875 #mean aerodynamic chord
     τ::Float64 = 0.1 #time constant for airflow angle filtering
-    δe_max::Float64 = 20 |> deg2rad #maximum elevator deflection (rad)
-    δa_max::Float64 = 20 |> deg2rad #maximum aileron deflection (rad)
-    δr_max::Float64 = 20 |> deg2rad #maximum rudder deflection (rad)
+    δe_max::Float64 = 30 |> deg2rad #maximum elevator deflection (rad)
+    δa_max::Float64 = 40 |> deg2rad #maximum (combined) aileron deflection (rad)
+    δr_max::Float64 = 30 |> deg2rad #maximum rudder deflection (rad)
     δf_max::Float64 = 30 |> deg2rad #maximum flap deflection (rad)
 end
 
@@ -159,10 +178,10 @@ Base.@kwdef struct AeroY
     β::Float64 = 0.0 #preprocessed AoS
     β_filt::Float64 = 0.0 #filtered AoS
     β_filt_dot::Float64 = 0.0 #filtered AoS derivative
-    e::Float64 = 0.0 #elevator control input
-    a::Float64 = 0.0 #aileron control input
-    r::Float64 = 0.0 #rudder control input
-    f::Float64 = 0.0 #flap control input
+    e::Float64 = 0.0 #normalized elevator control input
+    a::Float64 = 0.0 #normalized aileron control input
+    r::Float64 = 0.0 #normalized rudder control input
+    f::Float64 = 0.0 #normalized flap control input
     wr_s::Wrench = Wrench() #aerodynamic wrench, stability frame
     wr_b::Wrench = Wrench() #aerodynamic wrench, airframe
 end
@@ -178,10 +197,10 @@ struct Controls <: SystemDescriptor end
 
 Base.@kwdef mutable struct ControlsU
     throttle::Bounded{Float64, 0, 1} = 0.0
-    yoke_x::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
-    yoke_x_trim::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
-    yoke_y::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
-    yoke_y_trim::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
+    yoke_Δx::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
+    yoke_x0::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
+    yoke_Δy::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
+    yoke_y0::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
     pedals::Bounded{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
     brake_left::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
     brake_right::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
@@ -191,10 +210,10 @@ end
 #const is essential when declaring type aliases!
 Base.@kwdef struct ControlsY
     throttle::Float64
-    yoke_x::Float64
-    yoke_x_trim::Float64
-    yoke_y::Float64
-    yoke_y_trim::Float64
+    yoke_Δx::Float64
+    yoke_x0::Float64
+    yoke_Δy::Float64
+    yoke_y0::Float64
     pedals::Float64
     brake_left::Float64
     brake_right::Float64
@@ -304,12 +323,9 @@ function get_coefficients(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot
 
 end
 
-function f_disc!(::System{<:Aero})
-    return false
-end
+f_disc!(::System{<:Aero}) = false
 
 get_wr_b(sys::System{Aero}) = sys.y.wr_b
-# get_wr_b(sys::System{Aero}) = Wrench()
 
 
 ######################## Controls Update Functions ###########################
@@ -319,10 +335,10 @@ function f_cont!(ctl::System{<:Controls}, ::System{<:Airframe},
 
     #here, controls do nothing but update their output state. for a more complex
     #aircraft a continuous state-space autopilot implementation could go here
-    @unpack throttle, yoke_x, yoke_x_trim, yoke_y, yoke_y_trim,
+    @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
             pedals, brake_left, brake_right, flaps = ctl.u
 
-    return ControlsY(; throttle, yoke_x, yoke_x_trim, yoke_y, yoke_y_trim,
+    return ControlsY(; throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
                             pedals, brake_left, brake_right, flaps)
 
 end
@@ -387,31 +403,31 @@ end
 function assign_component_inputs!(afr::System{<:Airframe},
     ctl::System{<:Controls})
 
-    @unpack throttle, yoke_x, yoke_x_trim, yoke_y, yoke_y_trim,
+    @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
             pedals, brake_left, brake_right, flaps = ctl.u
     @unpack aero, pwp, ldg = afr.subsystems
 
-    #here, we interpret yoke_y as the offset with respect to the force-free yoke
-    #y position. the absolute yoke y position is the sum of yoke_y and
-    #yoke_y_trim, from which it is measured
+    #yoke_Δx is the offset with respect to the force-free position yoke_x0
+    #yoke_Δy is the offset with respect to the force-free position yoke_y0
 
     pwp.u.left.throttle = throttle
     pwp.u.right.throttle = throttle
-    ldg.u.tail.steering[] = -steering_curve(pedals) #wheel is behind CG, so we must switch sign
-    ldg.u.left.braking[] = brake_curve(brake_left)
-    ldg.u.right.braking[] = brake_curve(brake_right)
-    aero.u.e = -elevator_curve(yoke_y_trim + yoke_y) #+yoke_y and +yoke_y_trim are back and +δe is pitch down, need to invert it
-    aero.u.a = -aileron_curve(yoke_x_trim + yoke_x) #+yoke_x and +yoke_x_trim are right and +δa is roll left, need to invert it
-    aero.u.r = -rudder_curve(pedals) # +pedals is right and +δr is yaw left
+    ldg.u.tail.steering[] = -pedals #wheel is behind CG, so we must switch sign
+    ldg.u.left.braking[] = brake_left
+    ldg.u.right.braking[] = brake_right
+    aero.u.e = -(yoke_y0 + yoke_Δy) #+yoke_Δy and +yoke_y0 are back and +δe is pitch down, need to invert it
+    aero.u.a = -(yoke_x0 + yoke_Δx) #+yoke_Δx and +yoke_x0 are right and +δa is roll left, need to invert it
+    aero.u.r = -pedals # +pedals is right and +δr is yaw left
     aero.u.f = flaps # +flaps is flaps down and +δf is flaps down
 
     return nothing
 end
 
+######################## XBoxController Input Interface ########################
+
 elevator_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
 aileron_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
-rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.1)
-steering_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.1)
+pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 0, deadzone = 0.05)
 
 function exp_axis_curve(x::Bounded{T}, args...; kwargs...) where {T}
@@ -433,24 +449,20 @@ function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
     end
 end
 
-######################## XBoxController Input Interface ########################
-
 function assign_joystick_inputs!(ac::System{<:AircraftBase{ID}}, joystick::XBoxController)
 
-    ac.u.yoke_x = get_axis_value(joystick, :right_analog_x)
-    ac.u.yoke_x_trim += 0.01 * is_released(joystick, :dpad_right)
-    ac.u.yoke_x_trim -= 0.01 * is_released(joystick, :dpad_left)
+    ac.u.yoke_Δx = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    ac.u.yoke_Δy = get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    ac.u.pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
+    ac.u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
+    ac.u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    ac.u.yoke_y = get_axis_value(joystick, :right_analog_y)
-    ac.u.yoke_y_trim -= 0.01 * is_released(joystick, :dpad_up)
-    ac.u.yoke_y_trim += 0.01 * is_released(joystick, :dpad_down)
+    ac.u.yoke_x0 -= 0.01 * is_released(joystick, :dpad_left)
+    ac.u.yoke_x0 += 0.01 * is_released(joystick, :dpad_right)
+    ac.u.yoke_y0 -= 0.01 * is_released(joystick, :dpad_up)
+    ac.u.yoke_y0 += 0.01 * is_released(joystick, :dpad_down)
 
-    ac.u.pedals = get_axis_value(joystick, :left_analog_x)
-
-    ac.u.brake_left = get_axis_value(joystick, :left_trigger)
-    ac.u.brake_right = get_axis_value(joystick, :right_trigger)
-
-    ac.u.throttle += 0.1 * is_released(joystick, :button_Y) #manifold pressure
+    ac.u.throttle += 0.1 * is_released(joystick, :button_Y)
     ac.u.throttle -= 0.1 * is_released(joystick, :button_A)
 
     # ac.u.propeller_speed += 0.1 * is_released(joystick, :button_X) #rpms

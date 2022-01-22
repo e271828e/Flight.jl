@@ -3,6 +3,7 @@ using OrdinaryDiffEq
 using SciMLBase
 using LinearAlgebra
 using BenchmarkTools
+using Sockets
 using Base.Iterators
 
 
@@ -17,15 +18,15 @@ function demo_rt()
     ac = System(BeaverDescriptor());
     ac_mdl = Model(ac, (trn, atm); dt = 0.02, t_end = 30, adaptive = false, solver = RK4(), y_saveat = 0.02);
 
-    kin_init = KinInit(v_eOb_b = [50, 0, 0],
+    kin_init = KinInit(v_eOb_b = [0, 0, 0],
                         ω_lb_b = [0, 0, 0],
                         q_nb = REuler(ψ = 0, θ = -0.05, φ = 0.00),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-                                        h_trn + 2.5 - 0.1 + 50.0));
+                                        h_trn + 2.5 - 0.1 + 0.0));
     ac.u.throttle = 0.
     ac.u.pedals = 0.4
-    ac.u.yoke_y = -0.4
-    ac.u.yoke_x = 0.
+    ac.u.yoke_Δy = -0.4
+    ac.u.yoke_Δx = 0.
     ac.u.brake_left = 0
     ac.u.brake_right = 0
     ac.u.flaps = 0
@@ -36,7 +37,8 @@ function demo_rt()
     #if the model was instantiated in advance, we need this to change its internal state vector!
     reinit!(ac_mdl, ac.x)
 
-    xp = XPInterface()
+    # xp = XPInterface()
+    xp = XPInterface(host = IPv4("192.168.1.2"))
     disable_physics(xp)
     set_position(xp, kin_init)
 
