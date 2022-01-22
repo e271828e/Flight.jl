@@ -31,6 +31,37 @@ Base.@kwdef struct FrameTransform
     q::RQuat = RQuat()
 end
 
+ """
+    Base.:∘(t_bc::FrameTransform, t_cd::FrameTransform)
+
+Concatenate two `FrameTransform` instances.
+"""
+function Base.:∘(t_bc::FrameTransform, t_cd::FrameTransform)
+
+    r_ObOc_b = t_bc.r; q_bc = t_bc.q
+    r_OcOd_c = t_cd.r; q_cd = t_cd.q
+
+    r_ObOd_b = r_ObOc_b + q_bc(r_OcOd_c)
+    q_bd = q_bc ∘ q_cd
+
+    return FrameTransform(r_ObOd_b, q_bd)
+
+end
+
+"""
+    Base.:adjoint(t_bc::FrameTransform)
+
+Get the reciprocal `FrameTransform`.
+"""
+function Base.:adjoint(t_bc::FrameTransform)
+
+    r_ObOc_b = t_bc.r; q_bc = t_bc.q
+
+    q_cb = q_bc'
+    r_OcOb_c = q_cb(-r_ObOc_b)
+
+    return FrameTransform(r_OcOb_c, q_cb)
+end
 
 ############################## Wrench #################################
 
@@ -92,32 +123,77 @@ end
 ############################## MassProperties #################################
 
 """
-Groups the mass properties required by the aircraft's dynamic equations
-
-These are:
-- `m`: Total aircraft mass, including that of the rotating elements.
-- `J_Ob_b`: Overall aircraft inertia tensor with respect to the airframe origin
-  Ob, projected on the airframe axes εb.
-- `r_ObG_b`: Position vector from the airframe origin Ob to the aircraft's
-  center of mass G, projected on the airframe axes εb.
+Groups the mass properties of a component expressed on a specific reference
+frame fb(Ob,εb):
+- `m`: Total mass, including that of rotating elements.
+- `J_O`: Overall inertia tensor with respect to the origin Ob, projected on
+  axes εb, more explicitly, J_Ob_b.
+- `r_OG`: Position vector from the origin Ob to the component's center of
+  mass G, projected on axes εb, more explicitly r_ObG_b.
 
 Notes:
-- The inertia tensor `J_Ob_b` must include the contributions of any rotating
-  elements on the aircraft. As long as rotating elements have axial symmetry
-  around their axes of rotation, their contributions to `J_Ob_b` will be
-  strictly constant.
-- Aircraft dynamics and kinematics are formulated on the airframe origin Ob
-  instead of the aircraft's center of mass G. This allows for any of the
-  aircraft's mass properties to change, either gradually (for example, due to
-  fuel consumption) or suddenly (due to a payload release), without having to
-  worry about discontinuities in the kinematic state vector.
+- The inertia tensor `J_O` must include the contributions of any rotating
+  elements. As long as rotating elements have axial symmetry around their axes
+  of rotation, their contributions to `J_O` will be strictly constant.
 """
 Base.@kwdef struct MassProperties
-    m::Float64 = 1000.0
-    J_Ob_b::SMatrix{3, 3, Float64, 9} = 1000.0 * SMatrix{3,3,Float64}(I)
-    r_ObG_b::SVector{3, Float64} = zeros(SVector{3})
+    m::Float64 = 0.0
+    J_O::SMatrix{3, 3, Float64, 9} = zeros(SMatrix{3,3,Float64,9})
+    r_OG::SVector{3, Float64} = zeros(SVector{3})
 end
 
+ """
+    Base.:+(p1::MassProperties, p2::MassProperties)
+
+Aggregate the `MassProperties` of two components expressed in a common reference
+frame. If neither component has mass, return a null MassProperties() instance
+"""
+function Base.:+(p1::MassProperties, p2::MassProperties)
+    m = p1.m + p2.m
+    if m > 0
+        return MassProperties( m = m,
+        r_OG = 1/m * (p1.m * p1.r_OG + p2.m * p2.r_OG),
+        J_O = p1.J_O + p2.J_O)
+    else
+        return MassProperties()
+    end
+end
+
+"""
+    translate(t_bc::FrameTransform, p_c::MassProperties)
+
+Translate a `MassProperties` instance from one reference frame fc to another fb.
+
+If `t_bc` is a `FrameTransform` specifying frame fc(Oc, εc) relative to fb(Ob,
+εb), and `p_c` is a `MassProperties` defined with respect to fc, then `p_b =
+translate(t_bc, p_c)` is the equivalent `MassProperties` defined with respect to
+fb.
+
+An alternative function call notation is provided: `t_bc(p_c) ==
+translate(t_bc, p_c)`
+"""
+(t_bc::FrameTransform)(p_c::MassProperties) = translate(t_bc, p_c)
+
+function translate(t_bc::FrameTransform, p_c::MassProperties)
+
+    r_ObOc_b = t_bc.r
+    q_bc = t_bc.q
+
+    m = p_c.m
+    J_Oc_c = p_c.J_O
+    r_OcG_c = p_c.r_OG
+
+    r_OcG_b = q_bc(r_OcG_c)
+    r_ObG_b = r_ObOc_b + r_OcG_b
+
+    R_bc = RMatrix(q_bc)
+    J_G_c = J_Oc_c + m * Attitude.skew(r_OcG_c)^2
+    J_G_b = R_bc * J_G_c * R_bc'
+    J_Ob_b = J_G_b - m * Attitude.skew(r_ObG_b)^2
+
+    return MassProperties(m, J_Ob_b, r_ObG_b) #p_b
+
+end
 
 ################## Dynamic Equations and helper functions ####################
 
@@ -140,8 +216,9 @@ The resulting `Wrench` is defined on the airframe's reference frame.
 """
 function inertia_wrench(mass::MassProperties, vel::VelData, hr_b::AbstractVector{<:Real})
 
-    @unpack m, J_Ob_b, r_ObG_b = mass
     @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = vel
+
+    m = mass.m; J_Ob_b = mass.J_O; r_ObG_b = mass.r_OG
 
     #angular momentum of the overall airframe as a rigid body
     h_rbd_b = J_Ob_b * ω_ib_b
@@ -231,9 +308,10 @@ function f_dyn!(ẋ_vel::VelX, kin::KinData, mass::MassProperties,
     #J_G_b (Steiner). therefore, at some point J_G_b would become zero (or at
     #least singular)!
 
-    @unpack m, J_Ob_b, r_ObG_b = mass
     @unpack q_eb, q_nb, n_e, h_e = kin.pos
     @unpack ω_eb_b, ω_ie_b, v_eOb_b = kin.vel
+
+    m = mass.m; J_Ob_b = mass.J_O; r_ObG_b = mass.r_OG
 
     r_ObG_b_sk = Attitude.skew(r_ObG_b)
     A11 = J_Ob_b

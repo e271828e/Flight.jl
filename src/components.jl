@@ -24,14 +24,45 @@ struct HasNoMass <: MassTrait end
 MassTrait(::S) where {S<:System} = error(
     "Please extend Components.MassTrait for $S")
 
+"""
+Notes:
+- When get_mass_properties is called on a System, the returned MassProperties
+  instance must be expressed in the System's parent reference frame.
+- At the root of the component hierarchy will typically be the airframe. The
+  airframe is its own parent. Therefore, the MassProperties returned by the
+  airframe must be expressed in its own reference frame: total airframe mass,
+  position vector from the airframe origin to the airframe center of mass
+  expressed in airframe axes, and inertia tensor of the airframe with respect to
+  its origin, expressed in airframe axes. and these are the properties expected
+  by the dynamics equations.
+- Aircraft dynamics and kinematics are formulated on the airframe origin Ob
+  instead of the aircraft's center of mass G. This allows for any of the
+  aircraft's mass properties to change, either gradually (for example, due to
+  fuel consumption) or suddenly (due to a payload release), without having to
+  worry about discontinuities in the kinematic state vector.
+"""
+
 get_mass_properties(sys::System) = get_mass_properties(MassTrait(sys), sys)
 
 get_mass_properties(::HasMass, sys::System) = error(
     "$(typeof(sys)) has the HasMass trait, but no get_mass_properties method is defined for it")
 
-get_mass_properties(::HasNoMass, sys::System) = error(
-    "$(typeof(sys)) has the HasNoMass trait")
+get_mass_properties(::HasNoMass, sys::System) = MassProperties()
 
+#default implementation for a SystemGroup with the HasMass trait, tries
+#to compute the aggregate mass properties for all the subsystems
+@inline @generated function get_mass_properties(::HasMass, sys::System{D}) where {D<:SystemGroupDescriptor}
+
+    # Core.print("Generated function called")
+    ex = Expr(:block)
+    push!(ex.args, :(p = MassProperties()))
+    for label in fieldnames(D)
+        push!(ex.args,
+            :(p += get_mass_properties(sys.subsystems[$(QuoteNode(label))])))
+    end
+    return ex
+
+end
 ###################### AngularMomentumTrait ##########################
 
 abstract type AngularMomentumTrait end

@@ -222,6 +222,8 @@ Base.:(≈)(r1::RMatrix, r2::RMatrix) = r1._mat ≈ r2._mat
 
 # Coordinate transformation
 Base.:*(r::RMatrix, v::AbstractVector{<:Real}) = r._mat * v
+Base.:*(r::RMatrix, m::AbstractMatrix{<:Real}) = r._mat * m
+Base.:*(m::AbstractMatrix{<:Real}, r::RMatrix) = m * r._mat
 
 # Composition
 Base.:∘(r1::RMatrix, r2::RMatrix) = RMatrix(r1._mat * r2._mat, normalization = false)

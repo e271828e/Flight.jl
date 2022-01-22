@@ -16,47 +16,58 @@ y que necesita a su vez
 
 """
 al airframe de la c182 le anado un subsystem que sea payload. este a su vez
-tendra HasMass, HasNoWrench, HasNoAngularMomentum
+tendra HasMass, HasNoWrench, HasNoAngularMomentum. pilot, copilot, passengerp
+left, passenger right, baggage
+airframe lo creo como SystemGroup, de manera que
 
 """
+
+#define the pilot in its own reference frame as a point mass with m = 75,
+#r_OcG_c = zeros(3), J_Oc_c = 0. its reference frame is simply a translation of
+#fb.
+
+Base.@kwdef struct Payload <: SystemDescriptor
+    pilot_mass::MassProperties = translate(FrameTransform(r = SA[-0.914, -0.356, -0.610]), MassProperties(m = 75))
+    copilot_mass::MassProperties = translate(FrameTransform(r = SA[-0.914, 0.356, -0.610]), MassProperties(m = 75))
+end
+#DISCRETE STATES: pilot present, pilot_not present
+
+#al crear el systemdescriptor, las masas de piloto y copiloto ya aparecen
+#expresadas en fb. por tanto, get_mass_properties(System{Payload}) es trivial,
+#se limita a sumar las MassProperties de cada uno atendiendo a si estan
+#presentes o no. pero ojo, que pasa si no hay nadie? no podemos sumar las
+#contribuciones si son todas cero. si, deberiamos
+mass = OEW(afr::System{Airframe})
+function get_mass_properties(pl::System{Payload})
+    mass = MassProperties()
+    pl.d.pilot_present ? mass += payload.params.pilot : nothing
+    pl.d.copilot_present ? mass += payload.params.copilot : nothing
+    return mass
+end
+
+#we need to switch x and z signs
 
 #let P be the origin of the JSBSim aircraft main reference frame and b the
 #conventional flight physics axes. looks like JSBSim main reference frame is
 #roughly at the center of the mean chord
 
-#let 0 denote the empty aircraft (OEW)
 
+#let 0 denote the empty aircraft (OEW)
 m0 = 894
 r_PG0_b = SA[-1.041, 0, -0.927]
 J0_G0_b = SA[1285 0 0; 0 1825 0; 0 0 2667] #OEW
-J0_P_b = J0_G0_b - m0 * skew(r_PG0_b)^2
 
-#pilot
-m1 = 75
-r_PG1_b = SA[-0.914, -0.356, -0.610]
-J1_G1_b = SA[0 0 0; 0 0 0; 0 0 0]
-J1_P_b = J1_G1_b - m1 * skew(r_PG1_b)^2
-
-#copilot
-m2 = 75
-r_PG2_b = SA[-0.914, 0.356, -0.610]
-J2_G2_b = SA[0 0 0; 0 0 0; 0 0 0]
-J2_P_b = J2_G2_b - m2 * skew(r_PG2_b)^2
-
-
-#si queremos J_P_b:
-
-J_P_b = J0_P_b + J1_P_b + J2_P_b
+#ahora, la implementacion de get_mass_properties para airframe se limitara a
+#llamar a la de payload para obtener su contribucion en fb, que a su vez
+#dependera de
 
 
 
-#one option is to make Ob = G0
 
 MTOW = 1406
 
 #
 
-#we need to switch x and z signs
 
 
 #aerodynamics (SI)

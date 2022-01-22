@@ -16,7 +16,7 @@ abstract type SystemDescriptor end #anything from which we can build a System
 #every SystemDescriptor's init_x must return an AbstractVector{<:Real}, even if
 #it's inherently discrete and its f_cont! does nothing. this is ugly but ensures
 #composability of Systems without the hassle of dealing automatically with empty
-#state vector blocks, which is exacerbated by the need to assign views from the
+#state vector blocks, which is worsened by the need to assign views from the
 #root System's state vector to its children System's state vectors
 init_x(::SystemDescriptor) = [0.0]
 init_y(::SystemDescriptor) = nothing #sytems are not required to have outputs
