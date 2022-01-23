@@ -11,7 +11,7 @@ using Flight.Dynamics
 
 import Flight.Plotting: plots
 
-export HasMass, HasNoMass, get_mass_properties
+export HasMass, HasNoMass, get_mp_b
 export HasWrench, HasNoWrench, get_wr_b
 export HasAngularMomentum, HasNoAngularMomentum, get_hr_b
 
@@ -26,7 +26,7 @@ MassTrait(::S) where {S<:System} = error(
 
 """
 Notes:
-- When get_mass_properties is called on a System, the returned MassProperties
+- When get_mp_b is called on a System, the returned MassProperties
   instance must be expressed in the System's parent reference frame.
 - At the root of the component hierarchy will typically be the airframe. The
   airframe is its own parent. Therefore, the MassProperties returned by the
@@ -42,23 +42,23 @@ Notes:
   worry about discontinuities in the kinematic state vector.
 """
 
-get_mass_properties(sys::System) = get_mass_properties(MassTrait(sys), sys)
+get_mp_b(sys::System) = get_mp_b(MassTrait(sys), sys)
 
-get_mass_properties(::HasMass, sys::System) = error(
-    "$(typeof(sys)) has the HasMass trait, but no get_mass_properties method is defined for it")
+get_mp_b(::HasMass, sys::System) = error(
+    "$(typeof(sys)) has the HasMass trait, but no get_mp_b constructor is defined for it")
 
-get_mass_properties(::HasNoMass, sys::System) = MassProperties()
+get_mp_b(::HasNoMass, sys::System) = get_mp_b()
 
 #default implementation for a SystemGroup with the HasMass trait, tries
 #to compute the aggregate mass properties for all the subsystems
-@inline @generated function get_mass_properties(::HasMass, sys::System{D}) where {D<:SystemGroupDescriptor}
+@inline @generated function get_mp_b(::HasMass, sys::System{D}) where {D<:SystemGroupDescriptor}
 
     # Core.print("Generated function called")
     ex = Expr(:block)
     push!(ex.args, :(p = MassProperties()))
     for label in fieldnames(D)
         push!(ex.args,
-            :(p += get_mass_properties(sys.subsystems[$(QuoteNode(label))])))
+            :(p += get_mp_b(sys.subsystems[$(QuoteNode(label))])))
     end
     return ex
 

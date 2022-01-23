@@ -86,12 +86,12 @@ function f_cont!(sys::AircraftBaseSys, trn::AbstractTerrain, atm::AtmosphericSys
     #update airframe components
     f_cont!(afr, ctl, kin, air, trn)
 
-    mass = get_mass_properties(afr)
-    wr_ext_b = get_wr_b(afr)
+    mp_b = get_mp_b(afr)
+    wr_b = get_wr_b(afr)
     hr_b = get_hr_b(afr)
 
     # update dynamics
-    dyn = f_dyn!(ẋ.kin.vel, kin, mass, wr_ext_b, hr_b)
+    dyn = f_dyn!(ẋ.kin.vel, kin, mp_b, wr_b, hr_b)
 
     sys.y = (kin = kin, dyn = dyn, air = air, afr = afr.y, ctl = ctl.y)
     return nothing

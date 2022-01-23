@@ -11,8 +11,8 @@ using Flight.Kinematics
 
 import Flight.Plotting: plots
 
-export DynData, MassProperties, FrameTransform, Wrench
-export translate, f_dyn!
+export FrameTransform, Wrench, AbstractMassDistribution, PointMass, RigidBody, MassProperties, DynData
+export transform, f_dyn!
 
 
 
@@ -21,7 +21,7 @@ export translate, f_dyn!
 """
 Specifies a reference frame `fc(Oc, Ɛc)` relative to another `fb(Ob, Ɛb)`
 
-Frame `fc(Oc, Ɛc)` is specified by:
+Frame `fc(Oc, Ɛc)` is defined by:
 - The position vector from fb's origin Ob to fc's origin Oc, projected on fb's
   axes εb (`r_ObOc_b`)
 - The rotation quaternion from fb's axes εb to fc's axes εc (`q_bc`)
@@ -31,7 +31,8 @@ Base.@kwdef struct FrameTransform
     q::RQuat = RQuat()
 end
 
- """
+
+"""
     Base.:∘(t_bc::FrameTransform, t_cd::FrameTransform)
 
 Concatenate two `FrameTransform` instances.
@@ -44,9 +45,12 @@ function Base.:∘(t_bc::FrameTransform, t_cd::FrameTransform)
     r_ObOd_b = r_ObOc_b + q_bc(r_OcOd_c)
     q_bd = q_bc ∘ q_cd
 
-    return FrameTransform(r_ObOd_b, q_bd)
+    t_bd = FrameTransform(r_ObOd_b, q_bd)
+
+    return t_bd
 
 end
+
 
 """
     Base.:adjoint(t_bc::FrameTransform)
@@ -60,8 +64,33 @@ function Base.:adjoint(t_bc::FrameTransform)
     q_cb = q_bc'
     r_OcOb_c = q_cb(-r_ObOc_b)
 
-    return FrameTransform(r_OcOb_c, q_cb)
+    t_cb = FrameTransform(r_OcOb_c, q_cb)
+
+    return t_cb
 end
+
+
+"""
+    transform(t_bc::FrameTransform, r_OcP_c::AbstractVector{<:Real})
+
+Given the (3D) position vector of some point P in reference frame fc, and the
+`FrameTransform` from fb to fc, compute the position vector of P in fb
+"""
+function transform(t_bc::FrameTransform, r_OcP_c::AbstractVector{<:Real})
+
+    r_ObOc_b = t_bc.r; q_bc = t_bc.q
+
+    r_ObP_b = r_ObOc_b + q_bc(SVector{3,Float64}(r_OcP_c))
+
+    return r_ObP_b
+end
+
+
+"""Alternative function call notation: `t_bc(p_c) == transform(t_bc, p_c)`
+"""
+(t_bc::FrameTransform)(x) = transform(t_bc, x)
+
+
 
 ############################## Wrench #################################
 
@@ -89,20 +118,16 @@ Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(F = wr1.F + wr2.F, M = wr1.M + wr2.M)
 
 
 """
-    translate(t_bc::FrameTransform, wr_c::Wrench)
+    transform(t_bc::FrameTransform, wr_c::Wrench)
 
-Translate a Wrench from one reference frame to another.
+Transform a `Wrench` from one reference frame to another.
 
 If `t_bc` is a `FrameTransform` specifying frame fc(Oc, εc) relative to fb(Ob, εb),
-and `wr_c` is a `Wrench` defined on fc, then `wr_b = translate(t_bc,
+and `wr_c` is a `Wrench` defined on fc, then `wr_b = transform(t_bc,
 wr_c)` is the equivalent `Wrench` defined on fb.
-
-An alternative function call notation is provided:
-`t_bc(wr_c) == translate(t_bc, wr_c)`
 """
-(t_bc::FrameTransform)(wr_c::Wrench) = translate(t_bc, wr_c)
 
-function translate(t_bc::FrameTransform, wr_c::Wrench)
+function transform(t_bc::FrameTransform, wr_c::Wrench)
 
     F_Oc_c = wr_c.F
     M_Oc_c = wr_c.M
@@ -111,7 +136,7 @@ function translate(t_bc::FrameTransform, wr_c::Wrench)
     F_Oc_b = t_bc.q(F_Oc_c)
     M_Oc_b = t_bc.q(M_Oc_c)
 
-    #translate to airframe origin
+    #transform to airframe origin
     F_Ob_b = F_Oc_b
     M_Ob_b = M_Oc_b + t_bc.r × F_Oc_b
 
@@ -120,11 +145,34 @@ function translate(t_bc::FrameTransform, wr_c::Wrench)
 end
 
 
-############################## MassProperties #################################
+############################## MassDistributions #################################
+
+abstract type AbstractMassDistribution end
+
+struct PointMass <: AbstractMassDistribution
+    m::Float64
+end
+
+"""Defines a rigid body mass distribution.
+
+A `RigidBody` is defined in a local reference frame fc, whose origin Oc is
+located at the body's center of mass G, and whose axes εc are arbitrarily chosen
+to express the inertia tensor conveniently (typically they will be the body's
+principal axes of inertia)
+- m: Total mass
+- J: Inertia tensor computed with respect to Oc and projected in εc
+"""
+struct RigidBody <: AbstractMassDistribution
+    m::Float64
+    J::SMatrix{3,3,Float64,9}
+end
+
 
 """
 Groups the mass properties of a component expressed on a specific reference
-frame fb(Ob,εb):
+frame fb(Ob,εb).
+
+These are:
 - `m`: Total mass, including that of rotating elements.
 - `J_O`: Overall inertia tensor with respect to the origin Ob, projected on
   axes εb, more explicitly, J_Ob_b.
@@ -141,6 +189,52 @@ Base.@kwdef struct MassProperties
     J_O::SMatrix{3, 3, Float64, 9} = zeros(SMatrix{3,3,Float64,9})
     r_OG::SVector{3, Float64} = zeros(SVector{3})
 end
+
+
+"""Compute the `MassProperties` of a `PointMass` located at point P in reference
+frame fb, given the position vector of P with respect to Ob projected in axes εb
+"""
+function MassProperties(p::PointMass, r_ObP_b::AbstractVector{<:Real})
+    J_Ob_b = -p.m * Attitude.skew(r_ObP_b)^2
+    MassProperties(p.m, J_Ob_b, r_ObP_b)
+end
+
+"""Compute the `MassProperties` of a `PointMass` located at the origin Oc of
+reference frame fc, given the `FrameTransform` from fb to fc
+"""
+MassProperties(p::PointMass, t_bc::FrameTransform) = MassProperties(p, t_bc.r)
+
+
+"""Return the `MassProperties` of a `RigidBody` C expressed in its own reference
+frame fc.
+"""
+MassProperties(c::RigidBody) = MassProperties(c.m, c.J, zeros(SVector{3}))
+
+
+"""Compute the `MassProperties` of a `RigidBody` C in reference frame fb, given
+the `FrameTransform` t_bc from fb to C's local reference frame fc.
+"""
+function MassProperties(c::RigidBody, t_bc::FrameTransform)
+
+    m = c.m
+    J_G_c = c.J
+
+    q_bc = t_bc.q
+    #tensor rotation is somewhat expensive, so if it's just a translation skip it
+    if q_bc != RQuat()
+        R_bc = RMatrix(q_bc)
+        J_G_b = R_bc * J_G_c * R_bc'
+    else
+        J_G_b = J_G_c
+    end
+
+    r_ObG_b = t_bc.r
+    J_Ob_b = J_G_b - m * Attitude.skew(r_ObG_b)^2
+
+    return MassProperties(m, J_Ob_b, r_ObG_b) #p_b
+
+end
+
 
  """
     Base.:+(p1::MassProperties, p2::MassProperties)
@@ -160,21 +254,18 @@ function Base.:+(p1::MassProperties, p2::MassProperties)
 end
 
 """
-    translate(t_bc::FrameTransform, p_c::MassProperties)
+    transform(t_bc::FrameTransform, p_c::MassProperties)
 
-Translate a `MassProperties` instance from one reference frame fc to another fb.
+Transform a `MassProperties` instance from one reference frame fc to another fb.
 
 If `t_bc` is a `FrameTransform` specifying frame fc(Oc, εc) relative to fb(Ob,
 εb), and `p_c` is a `MassProperties` defined with respect to fc, then `p_b =
-translate(t_bc, p_c)` is the equivalent `MassProperties` defined with respect to
+transform(t_bc, p_c)` is the equivalent `MassProperties` defined with respect to
 fb.
-
-An alternative function call notation is provided: `t_bc(p_c) ==
-translate(t_bc, p_c)`
 """
-(t_bc::FrameTransform)(p_c::MassProperties) = translate(t_bc, p_c)
 
-function translate(t_bc::FrameTransform, p_c::MassProperties)
+
+function transform(t_bc::FrameTransform, p_c::MassProperties)
 
     r_ObOc_b = t_bc.r
     q_bc = t_bc.q
@@ -186,17 +277,24 @@ function translate(t_bc::FrameTransform, p_c::MassProperties)
     r_OcG_b = q_bc(r_OcG_c)
     r_ObG_b = r_ObOc_b + r_OcG_b
 
-    R_bc = RMatrix(q_bc)
     J_G_c = J_Oc_c + m * Attitude.skew(r_OcG_c)^2
-    J_G_b = R_bc * J_G_c * R_bc'
+
+    #tensor rotation is somewhat expensive, so if it's just a translation skip it
+    if q_bc != RQuat()
+        R_bc = RMatrix(q_bc)
+        J_G_b = R_bc * J_G_c * R_bc'
+    else
+        J_G_b = J_G_c
+    end
+
     J_Ob_b = J_G_b - m * Attitude.skew(r_ObG_b)^2
 
     return MassProperties(m, J_Ob_b, r_ObG_b) #p_b
 
 end
 
-################## Dynamic Equations and helper functions ####################
 
+################## Dynamic Equations and helper functions ####################
 
 """
     inertia_wrench(mass::MassProperties, vel::VelData, hr_b::AbstractVector{<:Real})
@@ -204,21 +302,21 @@ end
 Compute the equivalent `Wrench` arising from inertia terms in the dynamic
 equations
 
-The resulting `Wrench` is defined on the airframe's reference frame.
+The resulting `Wrench` is defined on the airframe's reference frame fb.
 
 # Arguments:
-- `mass::MassProperties`: Current aircraft mass properties
+- `mp_b::MassProperties`: Current aircraft mass properties in frame fb
 - `vel::VelData`: Velocity outputs
 - `hr_b::AbstractVector{<:Real}`: Additional angular momentum due to the
   angular velocity of any rotating elements with respect to the airframe,
   projected on the airframe axes
 
 """
-function inertia_wrench(mass::MassProperties, vel::VelData, hr_b::AbstractVector{<:Real})
+function inertia_wrench(mp_b::MassProperties, vel::VelData, hr_b::AbstractVector{<:Real})
 
     @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = vel
 
-    m = mass.m; J_Ob_b = mass.J_O; r_ObG_b = mass.r_OG
+    m = mp_b.m; J_Ob_b = mp_b.J_O; r_ObG_b = mp_b.r_OG
 
     #angular momentum of the overall airframe as a rigid body
     h_rbd_b = J_Ob_b * ω_ib_b
@@ -235,7 +333,7 @@ function inertia_wrench(mass::MassProperties, vel::VelData, hr_b::AbstractVector
 
 end
 
-function gravity_wrench(mass::MassProperties, pos::PosData)
+function gravity_wrench(mp_b::MassProperties, pos::PosData)
 
     #gravity can be viewed as an entity acting on a local frame with its origin
     #at G and its axes aligned with the local tangent frame
@@ -251,7 +349,7 @@ function gravity_wrench(mass::MassProperties, pos::PosData)
 
     #the resultant consists of the gravity force acting on G along the local
     #vertical and a null torque
-    F_G_n = mass.m * g_G_n
+    F_G_n = mp_b.m * g_G_n
     M_G_n = zeros(SVector{3})
     wr_G_n = Wrench(F = F_G_n, M = M_G_n)
 
@@ -259,7 +357,8 @@ function gravity_wrench(mass::MassProperties, pos::PosData)
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
     wr_c = wr_G_n
-    t_bc = FrameTransform(r = mass.r_ObG_b, q = q_nb')
+    r_ObG_b = mp_b.r_OG
+    t_bc = FrameTransform(r = r_ObG_b, q = q_nb')
     return t_bc(wr_c) #wr_b
 
 end
@@ -289,7 +388,7 @@ Base.@kwdef struct DynData
 end
 
 
-function f_dyn!(ẋ_vel::VelX, kin::KinData, mass::MassProperties,
+function f_dyn!(ẋ_vel::VelX, kin::KinData, mp_b::MassProperties,
     wr_ext_b::Wrench, hr_b::AbstractVector{<:Real})
 
     #wr_ext_b: Total external wrench on the airframe
@@ -311,7 +410,7 @@ function f_dyn!(ẋ_vel::VelX, kin::KinData, mass::MassProperties,
     @unpack q_eb, q_nb, n_e, h_e = kin.pos
     @unpack ω_eb_b, ω_ie_b, v_eOb_b = kin.vel
 
-    m = mass.m; J_Ob_b = mass.J_O; r_ObG_b = mass.r_OG
+    m = mp_b.m; J_Ob_b = mp_b.J_O; r_ObG_b = mp_b.r_OG
 
     r_ObG_b_sk = Attitude.skew(r_ObG_b)
     A11 = J_Ob_b
@@ -321,8 +420,8 @@ function f_dyn!(ẋ_vel::VelX, kin::KinData, mass::MassProperties,
 
     A = vcat(hcat(A11, A12), hcat(A21, A22))
 
-    wr_g_b = gravity_wrench(mass, kin.pos)
-    wr_in_b = inertia_wrench(mass, kin.vel, hr_b)
+    wr_g_b = gravity_wrench(mp_b, kin.pos)
+    wr_in_b = inertia_wrench(mp_b, kin.vel, hr_b)
     wr_b = wr_ext_b + wr_g_b + wr_in_b
     b = SVector{6}(vcat(wr_b.M, wr_b.F))
 

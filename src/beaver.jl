@@ -23,7 +23,7 @@ using Flight.Input: XBoxController, get_axis_value, is_released
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
-import Flight.Components: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mass_properties
+import Flight.Components: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Aircraft: assign_joystick_inputs!
 
 export BeaverDescriptor
@@ -382,7 +382,7 @@ function f_disc!(afr::System{<:Airframe}, ::System{<:Controls})
     return f_disc!(afr)
 end
 
-function get_mass_properties(::System{<:Airframe})
+function get_mp_b(::System{<:Airframe})
 
     #for an aircraft implementing a fuel system the current mass properties are
     #computed here by querying the fuel system for the contributions of the
@@ -393,8 +393,8 @@ function get_mass_properties(::System{<:Airframe})
         #upreferred(2650u"lb") |> ustrip,
         m = 2288, #(OEW = 1526, MTOW = 2324)
         #upreferred.([948, 1346, 1967]u"m") |> ustrip |> diagm |> SMatrix{3,3,Float64},
-        J_Ob_b = SA[5368.39 0 117.64; 0 6928.93 0; 117.64 0 11158.75],
-        r_ObG_b = SVector{3,Float64}(-0.5996, 0, 0.8851))
+        J_O = SA[5368.39 0 117.64; 0 6928.93 0; 117.64 0 11158.75],
+        r_OG = SVector{3,Float64}(-0.5996, 0, 0.8851))
 end
 
 #get_wr_b and get_hr_b use the fallback for SystemGroups, which in turn call
