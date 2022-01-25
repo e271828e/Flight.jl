@@ -294,40 +294,38 @@ function SysNew(g::T, ẋ = init_x(T), x = init_x(T), y = init_y(T),
 end
 
 
-@inline @generated function f_cont!(sys::SysNew{T}, args...) where {T<:SysGroupDescNew}
+@inline @generated function f_cont!(sys::SysNew{T, X, Y}, args...) where {T<:SysGroupDescNew, X, Y <: Union{Nothing, NamedTuple{L, M}}} where {L, M}
+# @inline @generated function f_cont!(sys::SysNew{T, X, Y}, args...) where {T<:SysGroupDescNew, X <: Union{Nothing, AbstractVector{Float64}}, Y <: Union{Nothing, NamedTuple{L, M}}} where {L, M}
 
-    ss_labels = fieldnames(T)
-    ss_types = T.types
+    #when Y is not Nothing, L will hold the labels of those subsystems that have
+    #output. therefore, we know we can retrieve the y fields of those subsystems
+    #and assemble them into a NamedTuple, which will have the same type as Y
 
-    # Core.print("Generated function called")
+    Core.println("Generated function called")
     ex_main = Expr(:block)
 
-    #call f_cont! on each subsystem
+    #call f_cont! on every subsystem
     ex_calls = Expr(:block)
-    for label in ss_labels
+    for label in fieldnames(T)
         push!(ex_calls.args,
             :(f_cont!(sys.subsystems[$(QuoteNode(label))], args...)))
     end
 
     push!(ex_main.args, ex_calls)
 
-    if OutputTrait(T) === HasOutput() #at least one child has output
+    if Y !== Nothing #then it is a NamedTuple type with keys L
 
+        Core.println("Assembling outputs")
         #tuple expression for the names of children with outputs
-        ex_ss_labels = Expr(:tuple)
-        #tuple expression for children's outputs
-        ex_ss_outputs = Expr(:tuple)
+        ex_ss_outputs = Expr(:tuple) #tuple expression for children's outputs
 
-        for (ss_label, ss_type) in zip(ss_labels, ss_types)
-            if OutputTrait(ss_type) === HasOutput() #does this child have output?
-                #put its name and its output in the corresponding expressions
-                push!(ex_ss_labels.args, :($(QuoteNode(ss_label))))
-                push!(ex_ss_outputs.args, :(sys.subsystems[$(QuoteNode(ss_label))].y))
-            end
+        for label in L
+            push!(ex_ss_outputs.args,
+                :(sys.subsystems[$(QuoteNode(label))].y))
         end
 
         #build a NamedTuple from the subsystem's labels and the constructed tuple
-        ex_y = Expr(:call, Expr(:curly, NamedTuple, ex_ss_labels), ex_ss_outputs)
+        ex_y = Expr(:call, Expr(:curly, NamedTuple, L), ex_ss_outputs)
 
         #assign the result to the parent system's y
         ex_assign_y = Expr(:(=), :(sys.y), ex_y)

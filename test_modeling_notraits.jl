@@ -1,10 +1,9 @@
 # module TestSysNew
 
 using Flight
+using StaticArrays
 
 import Flight.Modeling: f_cont!, f_disc!, init_x, init_y, init_u, init_d
-import Flight.ModelingTraits: ContinuousStateTrait, OutputTrait
-# using Flight.ModelingNew: ContinuousStateTrait, OutputTrait
 export StatefulGroup, OutputfulGroup, MixedGroup
 
 
@@ -12,25 +11,24 @@ export StatefulGroup, OutputfulGroup, MixedGroup
 
 struct Stateful <: SysDescNew end
 
-ContinuousStateTrait(::Type{Stateful}) = HasContinuousState()
 init_x(::Type{Stateful}) = [0.0]
+init_u(::Type{Stateful}) = Ref(true)
 
-function f_cont!(sys::SysNew{Stateful}, args...)
+@inline function f_cont!(sys::SysNew{Stateful}, args...)
     sys.x .+= 1.5
 end
-f_disc!(::SysNew{Stateful}, args...) = false
+@inline f_disc!(::SysNew{Stateful}, args...) = false
 
 struct Outputful <: SysDescNew end
 
-# ContinuousStateTrait(::Type{Outputful}) = HasContinuousStates()
-OutputTrait(::Type{Outputful}) = HasOutput()
 init_y(::Type{Outputful}) = 0.0
+init_d(::Type{Outputful}) = [1,2,3]
 
-function f_cont!(sys::SysNew{Outputful}, args...)
+@inline function f_cont!(sys::SysNew{Outputful}, args...)
     sys.y += 1
 end
 
-f_disc!(::SysNew{Outputful}, args...) = true
+@inline f_disc!(::SysNew{Outputful}, args...) = true
 
 #######################
 
