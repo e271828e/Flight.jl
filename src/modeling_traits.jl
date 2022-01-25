@@ -8,62 +8,96 @@ using DataStructures: OrderedDict
 
 import Flight.Modeling: f_cont!, f_disc!, init_x, init_y, init_u, init_d
 export SysDescNew, SysNew, SysGroupDescNew
-export HasContinuousStates, HasNoContinuousStates
-export HasOutputs, HasNoOutputs
+export HasContinuousState, HasNoContinuousState
+export HasOutput, HasNoOutput
 
-############################# SysDescNew ###########################
 
 abstract type SysDescNew end #anything from which we can build a System
 
+############################# System Traits ###########################
+
 abstract type ContinuousStateTrait end
-struct HasNoContinuousStates <: ContinuousStateTrait end
-struct HasContinuousStates <: ContinuousStateTrait end
+struct HasNoContinuousState <: ContinuousStateTrait end
+struct HasContinuousState <: ContinuousStateTrait end
 
 ContinuousStateTrait(::T) where {T<:SysDescNew} = ContinuousStateTrait(T)
-ContinuousStateTrait(::Type{T}) where {T<:SysDescNew} = HasNoContinuousStates()
+ContinuousStateTrait(::Type{T}) where {T<:SysDescNew} = HasNoContinuousState()
 
 init_x(::T) where {T<:SysDescNew} = init_x(T)
 init_x(::Type{T}) where {T<:SysDescNew} = init_x(T, ContinuousStateTrait(T))
-init_x(::Type{T} where {T<:SysDescNew}, ::HasNoContinuousStates) = nothing
-function init_x(::Type{T}, ::HasContinuousStates) where {T<:SysDescNew}
-    error("$T was declared to have continuous states, so a method with signature
+init_x(::Type{T} where {T<:SysDescNew}, ::HasNoContinuousState) = nothing
+function init_x(::Type{T}, ::HasContinuousState) where {T<:SysDescNew}
+    error("$T was declared to have continuous state, so a method with signature
         init_x(::Type{$T})::AbstractVector{Float64} is required")
 end
 
 abstract type OutputTrait end
-struct HasNoOutputs <: OutputTrait end
-struct HasOutputs <: OutputTrait end
+struct HasNoOutput <: OutputTrait end
+struct HasOutput <: OutputTrait end
 
 OutputTrait(::T) where {T<:SysDescNew} = OutputTrait(T)
-OutputTrait(::Type{T}) where {T<:SysDescNew} = HasNoOutputs()
+OutputTrait(::Type{T}) where {T<:SysDescNew} = HasNoOutput()
 
 init_y(::T) where {T<:SysDescNew} = init_y(T)
 init_y(::Type{T}) where {T<:SysDescNew} = init_y(T, OutputTrait(T))
-init_y(::Type{T} where {T<:SysDescNew}, ::HasNoOutputs) = nothing
-function init_x(::Type{T}, ::HasOutputs) where {T<:SysDescNew}
-    error("$T was declared to have outputs, so a method with signature
+init_y(::Type{T} where {T<:SysDescNew}, ::HasNoOutput) = nothing
+function init_y(::Type{T}, ::HasOutput) where {T<:SysDescNew}
+    error("$T was declared to have output, so a method with signature
         init_y(::Type{$T}) is required")
+end
+
+abstract type InputTrait end
+struct HasNoInput <: InputTrait end
+struct HasInput <: InputTrait end
+
+InputTrait(::T) where {T<:SysDescNew} = InputTrait(T)
+InputTrait(::Type{T}) where {T<:SysDescNew} = HasNoInput()
+
+init_u(::T) where {T<:SysDescNew} = init_u(T)
+init_u(::Type{T}) where {T<:SysDescNew} = init_u(T, InputTrait(T))
+init_u(::Type{T} where {T<:SysDescNew}, ::HasNoInput) = nothing
+function init_u(::Type{T}, ::HasInput) where {T<:SysDescNew}
+    error("$T was declared to have input, so a method with signature
+        init_u(::Type{$T}) is required")
+end
+
+abstract type DiscreteStateTrait end
+struct HasNoDiscreteState <: DiscreteStateTrait end
+struct HasDiscreteState <: DiscreteStateTrait end
+
+DiscreteStateTrait(::T) where {T<:SysDescNew} = DiscreteStateTrait(T)
+DiscreteStateTrait(::Type{T}) where {T<:SysDescNew} = HasNoDiscreteState()
+
+init_d(::T) where {T<:SysDescNew} = init_d(T)
+init_d(::Type{T}) where {T<:SysDescNew} = init_d(T, DiscreteStateTrait(T))
+init_d(::Type{T} where {T<:SysDescNew}, ::HasNoDiscreteState) = nothing
+function init_d(::Type{T}, ::HasDiscreteState) where {T<:SysDescNew}
+    error("$T was declared to have input, so a method with signature
+        init_d(::Type{$T}) is required")
 end
 
 ############################# SysNew ############################
 
-mutable struct SysNew{D <: SysDescNew,
-                    X <: Union{Nothing, AbstractFloat, AbstractVector{<:AbstractFloat}},
-                    Y, P, S}
+mutable struct SysNew{  T <: SysDescNew,
+                        X <: Union{Nothing, AbstractVector{Float64}},
+                        Y, U, D, P, S}
     ẋ::X #continuous state vector derivative
-    x::X #continuous state vector (to be used as a buffer for f_cont! evaluation)
-    y::Y #output state
+    x::X #continuous state vector
+    y::Y #output
+    u::U #control input
+    d::D #discrete state
     t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
     params::P
     subsystems::S
 end
 
-function SysNew(c::T, ẋ = init_x(T), x = init_x(T), y = init_y(T), t = Ref(0.0)) where {T<:SysDescNew}
+function SysNew(c::T, ẋ = init_x(T), x = init_x(T), y = init_y(T),
+                u = init_u(T), d = init_d(T), t = Ref(0.0)) where {T<:SysDescNew}
 
     params = c #by default assign the system descriptor as System parameters
     subsystems = nothing
-    SysNew{map(typeof, (c, x, y, params, subsystems))...}(
-                                    ẋ, x, y, t, params, subsystems)
+    SysNew{map(typeof, (c, x, y, u, d, params, subsystems))...}(
+                                    ẋ, x, y, u, d, t, params, subsystems)
 end
 
 f_cont!(::SysNew, args...) = MethodError(f_cont!, args) |> throw
@@ -74,36 +108,137 @@ f_cont!(::SysNew, args...) = MethodError(f_cont!, args) |> throw
 
 abstract type SysGroupDescNew <: SysDescNew end
 
+
 function ContinuousStateTrait(::Type{T}) where {T<:SysGroupDescNew}
     for field_type in T.types
-        if ContinuousStateTrait(field_type) === HasContinuousStates()
-            return HasContinuousStates()
+        if ContinuousStateTrait(field_type) === HasContinuousState()
+            return HasContinuousState()
         end
     end
-    return HasNoContinuousStates()
+    return HasNoContinuousState()
 end
 
 function OutputTrait(::Type{T}) where {T<:SysGroupDescNew}
     for field_type in T.types
-        if OutputTrait(field_type) === HasOutputs()
-            return HasOutputs()
+        if OutputTrait(field_type) === HasOutput()
+            return HasOutput()
         end
     end
-    return HasNoOutputs()
+    return HasNoOutput()
 end
 
+function InputTrait(::Type{T}) where {T<:SysGroupDescNew}
+    for field_type in T.types
+        if InputTrait(field_type) === HasInput()
+            return HasInput()
+        end
+    end
+    return HasNoInput()
+end
+
+function DiscreteStateTrait(::Type{T}) where {T<:SysGroupDescNew}
+    for field_type in T.types
+        if DiscreteStateTrait(field_type) === HasDiscreteState()
+            return HasDiscreteState()
+        end
+    end
+    return HasNoDiscreteState()
+end
+
+init_x(::Type{T}, ::HasContinuousState) where {T<:SysGroupDescNew} = init_cv(T, init_x)
+init_y(::Type{T}, ::HasOutput) where {T<:SysGroupDescNew} = init_nt(T, init_y)
+init_u(::Type{T}, ::HasInput) where {T<:SysGroupDescNew} = init_nt(T, init_u)
+init_d(::Type{T}, ::HasDiscreteState) where {T<:SysGroupDescNew} = init_nt(T, init_d)
+
+function init_nt(::Type{T}, f::Function) where {T<:SysGroupDescNew}
+    dict = OrderedDict{Symbol, Any}()
+
+    for (label, type) in zip(fieldnames(T), T.types)
+        ss_value = f(type)
+        !isnothing(ss_value) ? dict[label] = ss_value : nothing
+    end
+
+    return NamedTuple{Tuple(keys(dict))}(values(dict))
+end
+
+function init_cv(::Type{T}, f::Function) where {T<:SysGroupDescNew}
+
+    dict = OrderedDict{Symbol, AbstractVector{Float64}}()
+
+    for (label, type) in zip(fieldnames(T), T.types)
+        ss_value = f(type)
+        !isnothing(ss_value) ? dict[label] = ss_value : nothing
+    end
+
+    return ComponentVector(dict)
+
+end
+
+# function init_x(::Type{T}, ::HasContinuousState) where {T<:SysGroupDescNew}
+
+#     dict = OrderedDict{Symbol, AbstractVector{Float64}}()
+
+#     for (label, type) in zip(fieldnames(T), T.types)
+#         x_ss = init_x(type)
+#         !isnothing(x_ss) ? dict[label] = x_ss : nothing
+#     end
+
+#     return ComponentVector(dict)
+
+# end
+
+# function init_y(::Type{T}, ::HasOutput) where {T<:SysGroupDescNew}
+
+#     dict = OrderedDict{Symbol, Any}()
+
+#     for (label, type) in zip(fieldnames(T), T.types)
+#         y_ss = init_y(type)
+#         !isnothing(y_ss) ? dict[label] = y_ss : nothing
+#     end
+
+#     return NamedTuple{Tuple(keys(dict))}(values(dict))
+
+# end
+
+# function init_u(::Type{T}, ::HasInput) where {T<:SysGroupDescNew}
+
+#     dict = OrderedDict{Symbol, Any}()
+
+#     for (label, type) in zip(fieldnames(T), T.types)
+#         u_ss = init_u(type)
+#         !isnothing(u_ss) ? dict[label] = u_ss : nothing
+#     end
+
+#     return NamedTuple{Tuple(keys(dict))}(values(dict))
+
+# end
+
+# function init_d(::Type{T}, ::HasDiscreteState) where {T<:SysGroupDescNew}
+
+#     dict = OrderedDict{Symbol, Any}()
+
+#     for (label, type) in zip(fieldnames(T), T.types)
+#         u_ss = init_d(type)
+#         !isnothing(u_ss) ? dict[label] = u_ss : nothing
+#     end
+
+#     @assert !isempty(dict) #T has outputs states, shouldn't end up empty
+
+#     return NamedTuple{Tuple(keys(dict))}(values(dict))
+
+# end
 # @generated function ContinuousStateTrait(::T) where {T<:SysGroupDescNew}
 #     ##this doesn't work, but it does when a Core.println statement is added!!
 #     # for field_type in T.types
-#     #     # if ContinuousStateTrait(field_type) === HasContinuousStates()
+#     #     # if ContinuousStateTrait(field_type) === HasContinuousState()
 #     #     #     Core.print("Got states")
 #     #     # end
 #     # end
-#     # return :(HasNoContinuousStates())
-#     if any(isa.(ContinuousStateTrait.(T.types), HasContinuousStates))
-#         return :(HasContinuousStates())
+#     # return :(HasNoContinuousState())
+#     if any(isa.(ContinuousStateTrait.(T.types), HasContinuousState))
+#         return :(HasContinuousState())
 #     else
-#         return :(HasNoContinuousStates())
+#         return :(HasNoContinuousState())
 #     end
 # end
 
@@ -112,47 +247,18 @@ end
 #     # has_outputs = false
 
 #     # for field_type in T.types
-#     #     if OutputTrait(field_type) === HasOutputs()
+#     #     if OutputTrait(field_type) === HasOutput()
 #     #         # Core.println(field_type)
 #     #         has_outputs = true
 #     #     end
 #     # end
-#     if any(isa.(OutputTrait.(T.types), HasOutputs))
-#         return :(HasOutputs())
+#     if any(isa.(OutputTrait.(T.types), HasOutput))
+#         return :(HasOutput())
 #     else
-#         return :(HasNoOutputs())
+#         return :(HasNoOutput())
 #     end
 # end
 
-function init_x(::Type{T}, ::HasContinuousStates) where {T<:SysGroupDescNew}
-
-    x_dict = OrderedDict{Symbol, Union{Real, AbstractVector{<:Real}}}()
-
-    for (label, type) in zip(fieldnames(T), T.types)
-        x_ss = init_x(type)
-        !isnothing(x_ss) ? x_dict[label] = x_ss : nothing
-    end
-
-    @assert !isempty(x_dict) #T has continuous states, shouldn't end up empty
-
-    return ComponentVector(x_dict)
-
-end
-
-function init_y(::Type{T}, ::HasOutputs) where {T<:SysGroupDescNew}
-
-    y_dict = OrderedDict{Symbol, Any}()
-
-    for (label, type) in zip(fieldnames(T), T.types)
-        y_ss = init_y(type)
-        !isnothing(y_ss) ? y_dict[label] = y_ss : nothing
-    end
-
-    @assert !isempty(y_dict) #T has outputs states, shouldn't end up empty
-
-    return NamedTuple{Tuple(keys(y_dict))}(values(y_dict))
-
-end
 
     #the x of a SysGroupDescNew will be either a ComponentVector or nothing.
     #if it's nothing it's because init_x returned nothing, and this is only
@@ -163,7 +269,8 @@ function maybe_getproperty(x, label)
     !isnothing(x) && (label in keys(x)) ? getproperty(x, label) : nothing
 end
 
-function SysNew(g::T, ẋ = init_x(T), x = init_x(T), y = init_y(T), t = Ref(0.0)) where {T<:SysGroupDescNew}
+function SysNew(g::T, ẋ = init_x(T), x = init_x(T), y = init_y(T),
+                u = init_u(T), d = init_d(T), t = Ref(0.0)) where {T<:SysGroupDescNew}
 
     ss_names = fieldnames(T)
     ss_list = Vector{SysNew}()
@@ -172,15 +279,17 @@ function SysNew(g::T, ẋ = init_x(T), x = init_x(T), y = init_y(T), t = Ref(0.0
         ẋ_ss = maybe_getproperty(ẋ, name) #if x is a ComponentVector, this returns a view
         x_ss = maybe_getproperty(x, name) #idem
         y_ss = maybe_getproperty(y, name)
-        push!(ss_list, SysNew(getproperty(g, name), ẋ_ss, x_ss, y_ss, t))
+        u_ss = maybe_getproperty(u, name)
+        d_ss = maybe_getproperty(d, name)
+        push!(ss_list, SysNew(getproperty(g, name), ẋ_ss, x_ss, y_ss, u_ss, d_ss, t))
         # push!(ss_list, SysNew(map((λ)->getproperty(λ, label), (g, ẋ, x, y, ))..., t))
     end
 
-    desc = nothing
+    params = nothing
     subsystems = NamedTuple{ss_names}(ss_list)
 
-    SysNew{map(typeof, (g, x, y, desc, subsystems))...}(
-                         ẋ, x, y, t, desc, subsystems)
+    SysNew{map(typeof, (g, x, y, u, d, params, subsystems))...}(
+                         ẋ, x, y, u, d, t, params, subsystems)
 
 end
 
@@ -202,7 +311,7 @@ end
 
     push!(ex_main.args, ex_calls)
 
-    if OutputTrait(T) === HasOutputs() #at least one child has output
+    if OutputTrait(T) === HasOutput() #at least one child has output
 
         #tuple expression for the names of children with outputs
         ex_ss_labels = Expr(:tuple)
@@ -210,7 +319,7 @@ end
         ex_ss_outputs = Expr(:tuple)
 
         for (ss_label, ss_type) in zip(ss_labels, ss_types)
-            if OutputTrait(ss_type) === HasOutputs() #does this child have output?
+            if OutputTrait(ss_type) === HasOutput() #does this child have output?
                 #put its name and its output in the corresponding expressions
                 push!(ex_ss_labels.args, :($(QuoteNode(ss_label))))
                 push!(ex_ss_outputs.args, :(sys.subsystems[$(QuoteNode(ss_label))].y))

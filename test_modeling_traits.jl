@@ -12,8 +12,8 @@ export StatefulGroup, OutputfulGroup, MixedGroup
 
 struct Stateful <: SysDescNew end
 
-ContinuousStateTrait(::Type{Stateful}) = HasContinuousStates()
-init_x(::Type{Stateful}) = 0.0
+ContinuousStateTrait(::Type{Stateful}) = HasContinuousState()
+init_x(::Type{Stateful}) = [0.0]
 
 f_cont!(::SysNew{Stateful}, args...) = nothing
 f_disc!(::SysNew{Stateful}, args...) = false
@@ -21,7 +21,7 @@ f_disc!(::SysNew{Stateful}, args...) = false
 struct Outputful <: SysDescNew end
 
 # ContinuousStateTrait(::Type{Outputful}) = HasContinuousStates()
-OutputTrait(::Type{Outputful}) = HasOutputs()
+OutputTrait(::Type{Outputful}) = HasOutput()
 init_y(::Type{Outputful}) = 0.0
 
 function f_cont!(sys::SysNew{Outputful}, args...)
