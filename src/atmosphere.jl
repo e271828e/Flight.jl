@@ -115,7 +115,7 @@ Base.@kwdef mutable struct UTunableISA #only allocates upon System instantiation
     p_sl::Float64 = p_std
 end
 
-init_u(::TunableISA) = UTunableISA()
+init_u(::Type{TunableISA}) = UTunableISA()
 f_cont!(::System{<:TunableISA}, args...) = nothing
 f_disc!(::System{<:TunableISA}, args...) = false
 
@@ -124,7 +124,6 @@ function SLConditions(s::System{<:TunableISA}, ::Abstract2DLocation)
     #alternative using actual local SL gravity:
     # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(l2d, AltOrth(0.0))))
 end
-
 
 
 ######################## AbstractWind ############################
@@ -148,7 +147,7 @@ Base.@kwdef mutable struct USimpleWind
     v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
 end
 
-init_u(::TunableWind) = USimpleWind()
+init_u(::Type{TunableWind}) = USimpleWind()
 f_cont!(::System{<:TunableWind}, args...) = nothing
 f_disc!(::System{<:TunableWind}, args...) = false
 
@@ -158,29 +157,9 @@ end
 
 #################### AtmosphereDescriptor ############################
 
-Base.@kwdef struct AtmosphereDescriptor{I <: AbstractISA, W <: AbstractWind} <: SystemDescriptor
+Base.@kwdef struct AtmosphereDescriptor{I <: AbstractISA, W <: AbstractWind} <: SystemGroupDescriptor
     isa_::I = TunableISA()
     wind::W = TunableWind()
-end
-
-#this one's convenient for dispatching on plots() methods, but for U and D we
-#can use simply NamedTuples
-struct AtmosphereCmpY{I, W}; isa_::I; wind::W; end
-
-init_x(atm::AtmosphereDescriptor) = ComponentVector(isa_ = init_x(atm.isa_), wind = init_x(atm.wind))
-init_y(atm::AtmosphereDescriptor) = AtmosphereCmpY(init_y(atm.isa_), init_y(atm.wind))
-init_u(atm::AtmosphereDescriptor) = (isa_ = init_u(atm.isa_), wind = init_u(atm.wind))
-init_d(atm::AtmosphereDescriptor) = (isa_ = init_d(atm.isa_), wind = init_d(atm.wind))
-
-function System(atm::AtmosphereDescriptor, ẋ = init_x(atm), x = init_x(atm),
-                    y = init_y(atm), u = init_u(atm), d = init_d(atm), t = Ref(0.0))
-
-    isa_sys = System(atm.isa_, ẋ.isa_, x.isa_, y.isa_, u.isa_, d.isa_, t)
-    wind_sys = System(atm.wind, ẋ.wind, x.wind, y.wind, u.wind, d.wind, t)
-    params = nothing
-    subsystems = (isa_ = isa_sys, wind = wind_sys,)
-    System{map(typeof, (atm, x, y, u, d, params, subsystems))...}(
-                                ẋ, x, y, u, d, t, params, subsystems)
 end
 
 const AtmosphericSystem = System{<:AtmosphereDescriptor}
@@ -196,10 +175,6 @@ function AtmosphericData(a::AtmosphericSystem, pos::Geographic)
         WindData(a.subsystems.wind, pos))
 end
 
-function f_cont!(sys::AtmosphericSystem)
-    f_cont!(sys.isa_)
-    f_cont!(sys.wind)
-end
 
 #we can create a World <: SystemDescriptor to compose Aircraft and
 #AtmosphericSystem, and step them together in a single Model. if the

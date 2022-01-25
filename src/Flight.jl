@@ -26,19 +26,19 @@ include("components.jl")
 include("airdata.jl")
 include("propulsion.jl")
 include("landinggear.jl")
-include("aerodynamics.jl")
+# include("aerodynamics.jl")
 
 #IO interfaces
-include("input.jl")
-include("output.jl")
+# include("input.jl")
+# include("output.jl")
 
 # #aircraft
-include("aircraft.jl")
-include("beaver.jl")
+# include("aircraft.jl")
+# include("beaver.jl")
 # include("c182t.jl")
 
-include("modeling_notraits.jl")
-include("modeling_traits.jl")
+# include("modeling_notraits.jl")
+# include("modeling_traits.jl")
 
 @reexport using .Utils
 @reexport using .Misc
@@ -59,16 +59,16 @@ include("modeling_traits.jl")
 @reexport using .Airdata
 @reexport using .Propulsion
 @reexport using .LandingGear
-@reexport using .Aerodynamics
+# @reexport using .Aerodynamics
 
-@reexport using .Input
-@reexport using .Output
+# @reexport using .Input
+# @reexport using .Output
 
-@reexport using .Aircraft
-@reexport using .Beaver
+# @reexport using .Aircraft
+# @reexport using .Beaver
 # @reexport using .C182T
 
-@reexport using .ModelingNoTraits
+# @reexport using .ModelingNoTraits
 # @reexport using .ModelingTraits
 
 export ftest

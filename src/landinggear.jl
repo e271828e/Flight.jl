@@ -47,8 +47,8 @@ Base.@kwdef struct DirectSteeringY
     ψ::Float64 = 0.0
 end
 #we need to make the contents of u mutable
-init_u(::DirectSteering) = Ref(0.0) #steering input
-init_y(::DirectSteering) = DirectSteeringY(0.0) #steering angle
+init_u(::Type{DirectSteering}) = Ref(0.0) #steering input
+init_y(::Type{DirectSteering}) = DirectSteeringY(0.0) #steering angle
 
 function f_cont!(sys::System{DirectSteering})
     u = sys.u[]
@@ -86,8 +86,8 @@ Base.@kwdef struct DirectBrakingY
    α_br::Float64 = 0.0 #braking coefficient
 end
 
-init_u(::DirectBraking) = Ref(0.0)
-init_y(::DirectBraking) = DirectBrakingY()
+init_u(::Type{DirectBraking}) = Ref(0.0)
+init_y(::Type{DirectBraking}) = DirectBrakingY()
 
 function f_cont!(sys::System{DirectBraking})
     u = sys.u[]
@@ -145,7 +145,7 @@ Base.@kwdef struct StrutY
     srf::SurfaceType = Terrain.DryTarmac #surface type at the reference point
 end
 
-init_y(::Strut) = StrutY()
+init_y(::Type{<:Strut}) = StrutY()
 
 function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     terrain::AbstractTerrain, kin::KinData)
@@ -228,6 +228,8 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     v_eOc_c = v_eOc_afr_c + v_eOc_dmp_c
 
     F_dmp = get_damper_force(damper, ξ, ξ_dot)
+
+    println(typeof(sys.y))
 
     sys.y = StrutY(; wow, ξ, ξ_dot, t_sc, t_bc, F_dmp, v_eOc_c, srf)
 
@@ -344,9 +346,9 @@ Base.@kwdef struct ContactY
     wr_b::Wrench = Wrench() #resulting airframe Wrench
 end
 
-init_x(::Contact) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
-init_y(::Contact) = ContactY()
-init_d(::Contact) = Ref(true) #contact active?
+init_x(::Type{Contact}) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
+init_y(::Type{Contact}) = ContactY()
+init_d(::Type{Contact}) = Ref(true) #contact active?
 
 function f_cont!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
