@@ -1,5 +1,3 @@
-# module TestSysNew
-
 using Flight
 using StaticArrays
 
@@ -9,44 +7,40 @@ export StatefulGroup, OutputfulGroup, MixedGroup
 
 ############## NoSteering ##############
 
-struct Stateful <: SysDescNew end
+struct Stateful <: SystemDescriptor end
 
 init_x(::Type{Stateful}) = [0.0]
 init_u(::Type{Stateful}) = Ref(true)
 
-@inline function f_cont!(sys::SysNew{Stateful}, args...)
+@inline function f_cont!(sys::System{Stateful}, args...)
     sys.x .+= 1.5
 end
-@inline f_disc!(::SysNew{Stateful}, args...) = false
+@inline f_disc!(::System{Stateful}, args...) = false
 
-struct Outputful <: SysDescNew end
+struct Outputful <: SystemDescriptor end
 
 init_y(::Type{Outputful}) = 0.0
 init_d(::Type{Outputful}) = [1,2,3]
 
-@inline function f_cont!(sys::SysNew{Outputful}, args...)
+@inline function f_cont!(sys::System{Outputful}, args...)
     sys.y += 1
 end
 
-@inline f_disc!(::SysNew{Outputful}, args...) = true
+@inline f_disc!(::System{Outputful}, args...) = true
 
 #######################
 
-Base.@kwdef struct StatefulGroup <: SysGroupDescNew
+Base.@kwdef struct StatefulGroup <: SystemGroupDescriptor
     stateful1::Stateful = Stateful()
     stateful2::Stateful = Stateful()
 end
 
-Base.@kwdef struct OutputfulGroup <: SysGroupDescNew
+Base.@kwdef struct OutputfulGroup <: SystemGroupDescriptor
     outputful1::Outputful = Outputful()
     outputful2::Outputful = Outputful()
 end
 
-Base.@kwdef struct MixedGroup <: SysGroupDescNew
+Base.@kwdef struct MixedGroup <: SystemGroupDescriptor
     stateful::Stateful = Stateful()
     outputful::Outputful = Outputful()
 end
-
-#what i need to do when composing systems is:
-
-# end #module

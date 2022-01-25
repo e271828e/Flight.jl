@@ -36,7 +36,7 @@ Base.@kwdef struct SimpleDragY
     wr_b::Wrench = Wrench()
 end
 
-init_y(::SimpleDrag) = SimpleDragY()
+init_y(::Type{SimpleDrag}) = SimpleDragY()
 
 #in case of type instability use this one instead (or maybe a function barrier)
 # function f_cont!(sys::System{SimpleDrag}, air::AirData, ::KinData, ::Any, ::Any)

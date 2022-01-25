@@ -14,10 +14,11 @@ export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Mo
 
 abstract type SystemDescriptor end #anything from which we can build a System
 
-init_x(::T) where {T<:SystemDescriptor} = init_x(T)
-init_y(::T) where {T<:SystemDescriptor} = init_y(T)
-init_u(::T) where {T<:SystemDescriptor} = init_u(T)
-init_d(::T) where {T<:SystemDescriptor} = init_d(T)
+#this is dangerous, should discourage defining init methods directly on instances
+# init_x(::T) where {T<:SystemDescriptor} = init_x(T)
+# init_y(::T) where {T<:SystemDescriptor} = init_y(T)
+# init_u(::T) where {T<:SystemDescriptor} = init_u(T)
+# init_d(::T) where {T<:SystemDescriptor} = init_d(T)
 
 init_x(::Type{T} where {T<:SystemDescriptor}) = nothing
 init_y(::Type{T} where {T<:SystemDescriptor}) = nothing
@@ -160,32 +161,45 @@ end
             :(f_cont!(sys.subsystems[$(QuoteNode(label))], args...)))
     end
 
+    ex_update_y = :(update_y!(sys))
+
     push!(ex_main.args, ex_calls)
+    push!(ex_main.args, ex_update_y)
+    push!(ex_main.args, :(return nothing))
 
-    #when Y is not Nothing, L will hold the labels of those subsystems that have
-    #output. therefore, we know we can retrieve the y fields of those subsystems
-    #and assemble them into a NamedTuple, which will have the same type as Y
-    if Y !== Nothing
+    return ex_main
 
-        # Core.println("Assembling outputs")
-        #tuple expression for the names of children with outputs
-        ex_ss_outputs = Expr(:tuple) #tuple expression for children's outputs
+end
 
-        for label in L
-            push!(ex_ss_outputs.args,
-                :(sys.subsystems[$(QuoteNode(label))].y))
-        end
+@inline function (update_y!(sys::System{T, X, Y})
+    where {T<:SystemGroupDescriptor, X, Y <: Nothing})
+end
 
-        #build a NamedTuple from the subsystem's labels and the constructed tuple
-        ex_y = Expr(:call, Expr(:curly, NamedTuple, L), ex_ss_outputs)
+@inline @generated function (update_y!(sys::System{T, X, Y})
+    where {T<:SystemGroupDescriptor, X, Y <: NamedTuple{L, M}} where {L, M})
 
-        #assign the result to the parent system's y
-        ex_assign_y = Expr(:(=), :(sys.y), ex_y)
+    #when Y is not Nothing, it is a NamedTuple. L holds the labels of those
+    #subsystems which have outputs. we can retrieve the y fields of those
+    #subsystems and assemble them into a NamedTuple, which will have the same
+    # type as Y
+    Core.println("Assembling outputs")
 
-        #push everything into the main block expression
-        push!(ex_main.args, ex_assign_y)
+    ex_main = Expr(:block)
+
+    #build a tuple expression with subsystem outputs
+    ex_ss_outputs = Expr(:tuple) #tuple expression for children's outputs
+    for label in L
+        push!(ex_ss_outputs.args,
+            :(sys.subsystems[$(QuoteNode(label))].y))
     end
 
+    #build a NamedTuple from the subsystem's labels and the constructed tuple
+    ex_nt = Expr(:call, Expr(:curly, NamedTuple, L), ex_ss_outputs)
+
+    #assign the result to the parent system's y
+    ex_assign = Expr(:(=), :(sys.y), ex_nt)
+
+    push!(ex_main.args, ex_assign)
     push!(ex_main.args, :(return nothing))
 
     return ex_main

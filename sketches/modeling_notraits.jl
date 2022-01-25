@@ -27,10 +27,11 @@ mutable struct SysNew{  T <: SysDescNew,
     subsystems::S
 end
 
-init_x(::T) where {T<:SysDescNew} = init_x(T)
-init_y(::T) where {T<:SysDescNew} = init_y(T)
-init_u(::T) where {T<:SysDescNew} = init_u(T)
-init_d(::T) where {T<:SysDescNew} = init_d(T)
+#this is dangerous, discourage defining init methods directly on instances
+# init_x(::T) where {T<:SysDescNew} = init_x(T)
+# init_y(::T) where {T<:SysDescNew} = init_y(T)
+# init_u(::T) where {T<:SysDescNew} = init_u(T)
+# init_d(::T) where {T<:SysDescNew} = init_d(T)
 
 init_x(::Type{T} where {T<:SysDescNew}) = nothing
 init_y(::Type{T} where {T<:SysDescNew}) = nothing

@@ -37,9 +37,6 @@ include("landinggear.jl")
 # include("beaver.jl")
 # include("c182t.jl")
 
-# include("modeling_notraits.jl")
-# include("modeling_traits.jl")
-
 @reexport using .Utils
 @reexport using .Misc
 @reexport using .Modeling
@@ -67,9 +64,6 @@ include("landinggear.jl")
 # @reexport using .Aircraft
 # @reexport using .Beaver
 # @reexport using .C182T
-
-# @reexport using .ModelingNoTraits
-# @reexport using .ModelingTraits
 
 export ftest
 

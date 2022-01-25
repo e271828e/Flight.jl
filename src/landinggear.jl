@@ -229,8 +229,6 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
 
     F_dmp = get_damper_force(damper, ξ, ξ_dot)
 
-    println(typeof(sys.y))
-
     sys.y = StrutY(; wow, ξ, ξ_dot, t_sc, t_bc, F_dmp, v_eOc_c, srf)
 
 end
@@ -348,7 +346,7 @@ end
 
 init_x(::Type{Contact}) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
 init_y(::Type{Contact}) = ContactY()
-init_d(::Type{Contact}) = Ref(true) #contact active?
+init_d(::Type{Contact}) = Ref(false) #contact active?
 
 function f_cont!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
@@ -580,8 +578,9 @@ function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
     f_cont!(strut, steering, terrain, kinematics)
     f_cont!(contact, strut, braking)
 
-    sys.y = (strut = strut.y, contact = contact.y, steering = steering.y,
-            braking = braking.y)
+    # sys.y = (strut = strut.y, contact = contact.y, steering = steering.y,
+    #         braking = braking.y)
+    Modeling.update_y!(sys)
 
 end
 
