@@ -47,7 +47,7 @@ get_mp_b(sys::System) = get_mp_b(MassTrait(sys), sys)
 get_mp_b(::HasMass, sys::System) = error(
     "$(typeof(sys)) has the HasMass trait, but no get_mp_b constructor is defined for it")
 
-get_mp_b(::HasNoMass, sys::System) = get_mp_b()
+get_mp_b(::HasNoMass, sys::System) = MassProperties()
 
 #default implementation for a SystemGroup with the HasMass trait, tries
 #to compute the aggregate mass properties for all the subsystems

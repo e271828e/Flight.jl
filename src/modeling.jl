@@ -55,8 +55,8 @@ end
 #f_cont! or f_disc! implementations for the System have the wrong interface, the
 #dispatch will silently revert to the fallback, which does nothing and may not
 #be obvious at all.
-f_cont!(args...) = MethodError(f_cont!, args) |> throw
-(f_disc!(args...)::Bool) = MethodError(f_disc!, args) |> throw
+f_cont!(::System, args...) = MethodError(f_cont!, args) |> throw
+(f_disc!(::System, args...)::Bool) = MethodError(f_disc!, args) |> throw
 
 ######################### NullSystem ############################
 
@@ -153,8 +153,6 @@ end
     return ex
 
 end
-
-
 
 ############################# Model ############################
 
