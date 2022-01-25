@@ -37,7 +37,9 @@ include("aircraft.jl")
 include("beaver.jl")
 # include("c182t.jl")
 
-include("modeling_new.jl")
+# include("modeling_notraits.jl")
+include("modeling_traits.jl")
+# include("test_sys_new.jl")
 
 @reexport using .Utils
 @reexport using .Misc
@@ -67,7 +69,9 @@ include("modeling_new.jl")
 @reexport using .Beaver
 # @reexport using .C182T
 
-@reexport using .ModelingNew
+# @reexport using .ModelingNoTraits
+@reexport using .ModelingTraits
+# @reexport using .TestSysNew
 
 export ftest
 
