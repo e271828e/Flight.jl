@@ -14,7 +14,7 @@ using Flight.Terrain
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-using Flight.Components
+# using Flight.Components
 using Flight.Aerodynamics: AbstractAerodynamics
 using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
 using Flight.LandingGear: LandingGearUnit, DirectSteering, DirectBraking, Strut, SimpleDamper
@@ -23,7 +23,7 @@ using Flight.Input: XBoxController, get_axis_value, is_released
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
-import Flight.Components: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
+import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Aircraft: assign_joystick_inputs!
 
 export BeaverDescriptor
@@ -359,27 +359,27 @@ end
 #with the same origin, but with the conventional flight physics axes (x pointing
 #forward, z downward and y to the right).
 
-function f_cont!(afr::System{<:Airframe}, ctl::System{<:Controls},
+function f_cont!(afm::System{<:Airframe}, ctl::System{<:Controls},
                 kin::KinData, air::AirData, trn::AbstractTerrain)
 
-    @unpack aero, pwp, ldg = afr.subsystems
+    @unpack aero, pwp, ldg = afm.subsystems
 
     #could this go in the main aircraft f_cont!?
-    assign_component_inputs!(afr, ctl)
+    assign_component_inputs!(afm, ctl)
     # f_cont!(srf, air) #update surface actuator continuous state & outputs
     f_cont!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_cont!(pwp, kin, air) #update powerplant continuous state & outputs
     f_cont!(aero, pwp, air, kin, trn)
     # f_cont!(aero, air, kin, srf, trn) #requires previous srf update
 
-    afr.y = (aero = aero.y, pwp = pwp.y, ldg = ldg.y)
+    afm.y = (aero = aero.y, pwp = pwp.y, ldg = ldg.y)
 
 end
 
-function f_disc!(afr::System{<:Airframe}, ::System{<:Controls})
+function f_disc!(afm::System{<:Airframe}, ::System{<:Controls})
     #fall back to the default SystemGroup implementation, the f_disc! for the
     # components don't have to deal with the Controls
-    return f_disc!(afr)
+    return f_disc!(afm)
 end
 
 function get_mp_b(::System{<:Airframe})
@@ -400,12 +400,12 @@ end
 #get_wr_b and get_hr_b use the fallback for SystemGroups, which in turn call
 #get_wr_b and get_hr_b on aero, pwp and ldg
 
-function assign_component_inputs!(afr::System{<:Airframe},
+function assign_component_inputs!(afm::System{<:Airframe},
     ctl::System{<:Controls})
 
     @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
             pedals, brake_left, brake_right, flaps = ctl.u
-    @unpack aero, pwp, ldg = afr.subsystems
+    @unpack aero, pwp, ldg = afm.subsystems
 
     #yoke_Δx is the offset with respect to the force-free position yoke_x0
     #yoke_Δy is the offset with respect to the force-free position yoke_y0

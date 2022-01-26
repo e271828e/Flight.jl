@@ -26,14 +26,14 @@ include("components.jl")
 include("airdata.jl")
 include("propulsion.jl")
 include("landinggear.jl")
-# include("aerodynamics.jl")
+include("aerodynamics.jl")
 
 #IO interfaces
-# include("input.jl")
-# include("output.jl")
+include("input.jl")
+include("output.jl")
 
 # #aircraft
-# include("aircraft.jl")
+include("aircraft.jl")
 # include("beaver.jl")
 # include("c182t.jl")
 
@@ -56,12 +56,12 @@ include("landinggear.jl")
 @reexport using .Airdata
 @reexport using .Propulsion
 @reexport using .LandingGear
-# @reexport using .Aerodynamics
+@reexport using .Aerodynamics
 
-# @reexport using .Input
-# @reexport using .Output
+@reexport using .Input
+@reexport using .Output
 
-# @reexport using .Aircraft
+@reexport using .Aircraft
 # @reexport using .Beaver
 # @reexport using .C182T
 

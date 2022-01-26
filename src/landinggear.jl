@@ -12,11 +12,11 @@ using Flight.Geodesy
 using Flight.Terrain
 using Flight.Kinematics
 using Flight.Dynamics
-using Flight.Components
+# using Flight.Components
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
-import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b
+import Flight.Dynamics: WrenchTrait, AngularMomentumTrait, get_wr_b
 
 export LandingGearUnit
 
@@ -214,18 +214,18 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     t_bc = FrameTransform(r_ObOc_b, q_bc)
 
     #contact frame origin velocity due to airframe motion
-    v_eOc_afr_b = v_eOb_b + ω_eb_b × r_ObOc_b
-    v_eOc_afr_c = q_bc'(v_eOc_afr_b)
+    v_eOc_afm_b = v_eOb_b + ω_eb_b × r_ObOc_b
+    v_eOc_afm_c = q_bc'(v_eOc_afm_b)
 
     #compute the damper elongation rate required to cancel the airframe
     #contribution to the contact point velocity along the contact frame z axis
     q_sc = q_bs' ∘ q_bc
     k_s_c = q_sc'(e3)
-    ξ_dot = -v_eOc_afr_c[3] / k_s_c[3]
+    ξ_dot = -v_eOc_afm_c[3] / k_s_c[3]
 
     #compute contact point velocity
     v_eOc_dmp_c = k_s_c * ξ_dot
-    v_eOc_c = v_eOc_afr_c + v_eOc_dmp_c
+    v_eOc_c = v_eOc_afm_c + v_eOc_dmp_c
 
     F_dmp = get_damper_force(damper, ξ, ξ_dot)
 

@@ -4,19 +4,20 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
+using Flight.Modeling
 using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy
 
-import Flight.Modeling: init_x
+
+import Flight.Modeling: init_x, init_y
 import Flight.Plotting: plots
 
 export AbstractKinematics, KinLTF, KinECEF
 export VelX, PosData, VelData, KinData, KinInit
 export init!, f_kin!, renormalize!
 
-
-abstract type AbstractKinematics end
+abstract type AbstractKinematics <: SystemDescriptor end
 
 Base.@kwdef struct KinInit
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
@@ -115,7 +116,8 @@ const KinLTFXTemplate = ComponentVector(pos = PosLTFXTemplate, vel = VelXTemplat
 const PosLTFX{T, D} = ComponentVector{T, D, typeof(getaxes(PosLTFXTemplate))} where {T, D}
 const KinLTFX{T, D} = ComponentVector{T, D, typeof(getaxes(KinLTFXTemplate))} where {T, D}
 
-init_x(::KinLTF, init::KinInit = KinInit()) = (x=similar(KinLTFXTemplate); init!(x, init); return x)
+init_x(::Type{KinLTF}, init::KinInit = KinInit()) = (x=similar(KinLTFXTemplate); init!(x, init); return x)
+init_y(::Type{KinLTF}) = KinData()
 
 function init!(x::KinLTFX, init::KinInit)
 
@@ -207,7 +209,8 @@ const KinECEFXTemplate = ComponentVector(pos = PosECEFXTemplate, vel = VelXTempl
 const PosECEFX{T, D} = ComponentVector{T, D, typeof(getaxes(PosECEFXTemplate))} where {T, D}
 const KinECEFX{T, D} = ComponentVector{T, D, typeof(getaxes(KinECEFXTemplate))} where {T, D}
 
-init_x(::KinECEF, init::KinInit = KinInit()) = (x=similar(KinECEFXTemplate); init!(x, init); return x)
+init_x(::Type{KinECEF}, init::KinInit = KinInit()) = (x=similar(KinECEFXTemplate); init!(x, init); return x)
+init_y(::Type{KinECEF}) = KinData()
 
 function init!(x::KinECEFX, init::KinInit)
 

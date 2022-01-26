@@ -10,11 +10,11 @@ using Flight.Plotting
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-using Flight.Components
+# using Flight.Components
 
 import Flight.Plotting: plots
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
-import Flight.Components: WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
+import Flight.Dynamics: WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
 
 export AbstractThruster, EThruster
 

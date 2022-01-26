@@ -85,10 +85,10 @@ function demo_rt_xbox()
 
             if ac_mdl.success_iter % 20 == 0
                 pwf(ac.u)
-                # println(ac.u.yoke_x_trim.val, " ",  ac.u.yoke_x.val, " ", ac.subsystems.afr.subsystems.aero.u.δa.val)
-                # println(ac.u.yoke_y_trim.val, " ",  ac.u.yoke_y.val, " ", ac.subsystems.afr.subsystems.aero.u.δe.val)
-                # println(ac.subsystems.afr.subsystems.aero.u.δr.val)
-                # println(ac.subsystems.afr.subsystems.aero.u.δf.val)
+                # println(ac.u.yoke_x_trim.val, " ",  ac.u.yoke_x.val, " ", ac.subsystems.afm.subsystems.aero.u.δa.val)
+                # println(ac.u.yoke_y_trim.val, " ",  ac.u.yoke_y.val, " ", ac.subsystems.afm.subsystems.aero.u.δe.val)
+                # println(ac.subsystems.afm.subsystems.aero.u.δr.val)
+                # println(ac.subsystems.afm.subsystems.aero.u.δf.val)
             end
 
         end

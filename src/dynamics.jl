@@ -4,6 +4,7 @@ using StaticArrays
 using LinearAlgebra
 using UnPack
 
+using Flight.Modeling
 using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy
@@ -11,8 +12,13 @@ using Flight.Kinematics
 
 import Flight.Plotting: plots
 
-export FrameTransform, Wrench, AbstractMassDistribution, PointMass, RigidBody, MassProperties, DynData
-export transform, f_dyn!
+export FrameTransform, transform
+export Wrench
+export PointMass, RigidBody, MassProperties
+export HasMass, HasNoMass, get_mp_b
+export HasWrench, HasNoWrench, get_wr_b
+export HasAngularMomentum, HasNoAngularMomentum, get_hr_b
+export DynData, f_dyn!
 
 
 
@@ -63,7 +69,6 @@ function Base.:adjoint(t_bc::FrameTransform)
 
     q_cb = q_bc'
     r_OcOb_c = q_cb(-r_ObOc_b)
-
     t_cb = FrameTransform(r_OcOb_c, q_cb)
 
     return t_cb
@@ -81,7 +86,6 @@ function transform(t_bc::FrameTransform, r_OcP_c::AbstractVector{<:Real})
     r_ObOc_b = t_bc.r; q_bc = t_bc.q
 
     r_ObP_b = r_ObOc_b + q_bc(SVector{3,Float64}(r_OcP_c))
-
     return r_ObP_b
 end
 
@@ -191,7 +195,8 @@ Base.@kwdef struct MassProperties
 end
 
 
-"""Compute the `MassProperties` of a `PointMass` located at point P in reference
+"""
+Compute the `MassProperties` of a `PointMass` located at point P in reference
 frame fb, given the position vector of P with respect to Ob projected in axes εb
 """
 function MassProperties(p::PointMass, r_ObP_b::AbstractVector{<:Real})
@@ -199,19 +204,22 @@ function MassProperties(p::PointMass, r_ObP_b::AbstractVector{<:Real})
     MassProperties(p.m, J_Ob_b, r_ObP_b)
 end
 
-"""Compute the `MassProperties` of a `PointMass` located at the origin Oc of
+"""
+Compute the `MassProperties` of a `PointMass` located at the origin Oc of
 reference frame fc, given the `FrameTransform` from fb to fc
 """
 MassProperties(p::PointMass, t_bc::FrameTransform) = MassProperties(p, t_bc.r)
 
-
-"""Return the `MassProperties` of a `RigidBody` C expressed in its own reference
+"""
+Return the `MassProperties` of a `RigidBody` C expressed in its own reference
 frame fc.
 """
 MassProperties(c::RigidBody) = MassProperties(c.m, c.J, zeros(SVector{3}))
 
+"""
+    MassProperties(c::RigidBody, t_bc::FrameTransform)
 
-"""Compute the `MassProperties` of a `RigidBody` C in reference frame fb, given
+Compute the `MassProperties` of a `RigidBody` C in reference frame fb, given
 the `FrameTransform` t_bc from fb to C's local reference frame fc.
 """
 function MassProperties(c::RigidBody, t_bc::FrameTransform)
@@ -234,7 +242,6 @@ function MassProperties(c::RigidBody, t_bc::FrameTransform)
     return MassProperties(m, J_Ob_b, r_ObG_b) #p_b
 
 end
-
 
  """
     Base.:+(p1::MassProperties, p2::MassProperties)
@@ -263,8 +270,6 @@ If `t_bc` is a `FrameTransform` specifying frame fc(Oc, εc) relative to fb(Ob,
 transform(t_bc, p_c)` is the equivalent `MassProperties` defined with respect to
 fb.
 """
-
-
 function transform(t_bc::FrameTransform, p_c::MassProperties)
 
     r_ObOc_b = t_bc.r
@@ -293,8 +298,119 @@ function transform(t_bc::FrameTransform, p_c::MassProperties)
 
 end
 
+############################ MassTrait #################################
 
-################## Dynamic Equations and helper functions ####################
+abstract type MassTrait end
+struct HasMass <: MassTrait end
+struct HasNoMass <: MassTrait end
+
+"""
+Notes:
+- When get_mp_b is called on a System, the returned MassProperties instance must
+  be expressed in the System's parent reference frame.
+- At the root of the component hierarchy we have the airframe. The airframe is
+  its own parent, so the MassProperties it returns must be expressed in its own
+  reference frame: total airframe mass, position vector from the airframe origin
+  Ob to the airframe center of mass G expressed in airframe axes, and inertia
+  tensor of the airframe with respect to its origin, expressed in airframe axes.
+  These are the properties expected by the dynamics equations.
+- Aircraft dynamics and kinematics are formulated on the airframe origin Ob
+  instead of the aircraft's center of mass G. This allows for any of the
+  aircraft's mass properties to change, either gradually (for example, due to
+  fuel consumption) or suddenly (due to a payload release), without having to
+  worry about discontinuities in the kinematic state vector.
+"""
+
+MassTrait(::S) where {S<:System} = error(
+    "Please extend Dynamics.MassTrait for $S")
+
+get_mp_b(sys::System) = get_mp_b(MassTrait(sys), sys)
+
+get_mp_b(::HasMass, sys::System) = error(
+    "$(typeof(sys)) has the HasMass trait, but no get_mp_b constructor is defined for it")
+
+get_mp_b(::HasNoMass, sys::System) = MassProperties()
+
+#default implementation for a SystemGroup with the HasMass trait, tries
+#to compute the aggregate mass properties for all the subsystems
+@inline @generated function get_mp_b(::HasMass, sys::System{D}) where {D<:SystemGroupDescriptor}
+
+    # Core.print("Generated function called")
+    ex = Expr(:block)
+    push!(ex.args, :(p = MassProperties()))
+    for label in fieldnames(D)
+        push!(ex.args,
+            :(p += get_mp_b(sys.subsystems[$(QuoteNode(label))])))
+    end
+    return ex
+
+end
+
+###################### WrenchTrait ##########################
+
+abstract type WrenchTrait end
+struct HasWrench <: WrenchTrait end
+struct HasNoWrench <: WrenchTrait end
+
+#prevents the trait system from failing silently when wrongly extended
+WrenchTrait(::S) where {S<:System} = error(
+    "Please extend Components.WrenchTrait for $S")
+
+get_wr_b(sys::System) = get_wr_b(WrenchTrait(sys), sys)
+
+get_wr_b(::HasWrench, sys::System) = error(
+    "$(typeof(sys)) is a Wrench source, but no method get_wr_b was defined for it")
+
+get_wr_b(::HasNoWrench, sys::System) = Wrench()
+
+#default implementation for a SystemGroup with the HasWrench trait, tries
+#to sum all the Wrenches from its individual components. override as required
+@inline @generated function get_wr_b(::HasWrench, sys::System{D}) where {D<:SystemGroupDescriptor}
+
+    # Core.print("Generated function called")
+    ex = Expr(:block)
+    push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
+    for label in fieldnames(D)
+        push!(ex.args,
+            :(wr += get_wr_b(sys.subsystems[$(QuoteNode(label))])))
+    end
+    return ex
+
+end
+
+###################### AngularMomentumTrait ##########################
+
+abstract type AngularMomentumTrait end
+struct HasAngularMomentum <: AngularMomentumTrait end
+struct HasNoAngularMomentum <: AngularMomentumTrait end
+
+#prevents the trait system from failing silently when wrongly extended
+AngularMomentumTrait(::S) where {S<:System} = error(
+    "Please extend Dynamics.AngularMomentumTrait for $S")
+
+get_hr_b(sys::System) = get_hr_b(AngularMomentumTrait(sys), sys)
+
+get_hr_b(::HasAngularMomentum, sys::System) = error(
+    "$(typeof(sys)) has angular momentum, but no method get_hr_b was defined for it")
+
+get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
+
+#default implementation for a SystemGroup with the HasAngularMomentum trait, tries
+#to sum the angular momentum from its individual components. override as required
+@inline @generated function get_hr_b(::HasAngularMomentum, sys::System{D}) where {D<:SystemGroupDescriptor}
+
+    # Core.print("Generated function called")
+    ex = Expr(:block)
+    push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate
+    for label in fieldnames(D)
+        push!(ex.args,
+            :(h += get_hr_b(sys.subsystems[$(QuoteNode(label))])))
+    end
+    return ex
+
+end
+
+########################### Dynamic Equations ################################
 
 """
     inertia_wrench(mass::MassProperties, vel::VelData, hr_b::AbstractVector{<:Real})

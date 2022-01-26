@@ -187,7 +187,6 @@ Base.@kwdef struct Aero
     S::Float64 = 23.23 #wing area
     b::Float64 = 14.63 #wingspan
     c::Float64 = 1.5875 #mean aerodynamic chord
-    t_ba::FrameTransform = FrameTransform() #airframe to aerodynamics frame
     δe_max::Float64 = 30 |> deg2rad #maximum elevator deflection (rad)
     δa_max::Float64 = 40 |> deg2rad #maximum (combined) aileron deflection (rad)
     δr_max::Float64 = 30 |> deg2rad #maximum rudder deflection (rad)
@@ -265,6 +264,19 @@ end
 function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     air::AirData, kinematics::KinData, terrain::AbstractTerrain)
 
+    #for this aircraft we have chosen the aerodynamics frame fa as the main
+    #aircraft reference frame fb. all the AirData variables from the AirData
+    #module are computed in frame fb, they are directly applicable here. if this
+    #wasn't the case, either because the origin Oa is not coincident with Ob and
+    #we care about the velocity lever arm or because the axes εa and εb are
+    #different, we would need to compute v_wOa_a from v_wOb_b and then recompute
+    #all the derived air data variables
+
+    # v_wOb_b = v_eOb_b - v_ew_b
+    # v_eOa_b = v_eOb_b + ω_eb_b × r_ObOa_b
+    # v_wOa_b = v_eOa_b - v_ew_b = v_eOb_b + ω_eb_b × r_ObOa_b - v_ew_b
+    # v_wOa_b = v_wOb_b + ω_eb_b × r_ObOa_b
+    # v_wOa_a = q_ba'(v_wOa_b)
 
     #for near-zero TAS, the airflow angles are likely to chatter between 0, -π
     #and π. this introduces noise in airflow angle derivatives and general
@@ -275,7 +287,7 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
 
     @unpack ẋ, x, u, params = sys
     @unpack α_filt, β_filt = x
-    @unpack S, b, c, t_ba, δe_max, δa_max, δr_max, δf_max, τ = params
+    @unpack S, b, c, δe_max, δa_max, δr_max, δf_max, τ = params
     @unpack e, a, r, f = u
     @unpack TAS, q, α_b, β_b = air
     ω_lb_b = kinematics.vel.ω_lb_b
@@ -320,8 +332,7 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     F_aero_a = q_as(F_aero_s)
     M_aero_a = q * S * SVector{3,Float64}(C_l * b, C_m * c, C_n * b)
 
-    wr_a = Wrench(F_aero_a, M_aero_a)
-    wr_b = t_ba(wr_a)
+    wr_b = wr_a = Wrench(F_aero_a, M_aero_a)
 
     sys.y = AeroY(; α, α_filt, α_filt_dot, β, β_filt, β_filt_dot,
         e, a, r, f, coeffs, wr_b)

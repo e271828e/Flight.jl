@@ -19,8 +19,8 @@ using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
 
-using Flight.Components
-import Flight.Components: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mass_properties
+# using Flight.Components
+import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mass_properties
 
 using Flight.Propulsion
 using Flight.Aerodynamics
@@ -320,11 +320,11 @@ init_y(::C172Controls) = C172ControlsY(zeros(SVector{6})...)
 
 ###################### Continuous update functions ##########################
 
-function assign_component_inputs!(afr::System{<:C172Airframe},
+function assign_component_inputs!(afm::System{<:C172Airframe},
     ctl::System{<:C172Controls})
 
     @unpack throttle, yoke_x, yoke_y, pedals, brake_left, brake_right = ctl.u
-    @unpack aero, pwp, ldg = afr.subsystems
+    @unpack aero, pwp, ldg = afm.subsystems
 
     pwp.u.left.throttle = throttle
     pwp.u.right.throttle = throttle
@@ -335,20 +335,20 @@ function assign_component_inputs!(afr::System{<:C172Airframe},
     return nothing
 end
 
-function f_cont!(afr::System{<:C172Airframe}, ctl::System{<:C172Controls},
+function f_cont!(afm::System{<:C172Airframe}, ctl::System{<:C172Controls},
                 kin::KinData, air::AirData, trn::AbstractTerrain)
 
-    @unpack aero, pwp, ldg = afr.subsystems
+    @unpack aero, pwp, ldg = afm.subsystems
 
     #could this go in the main aircraft f_cont!?
-    assign_component_inputs!(afr, ctl)
+    assign_component_inputs!(afm, ctl)
     # f_cont!(srf, air) #update surface actuator continuous state & outputs
     f_cont!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_cont!(pwp, kin, air) #update powerplant continuous state & outputs
     f_cont!(aero, pwp, air, kin, trn)
     # f_cont!(aero, air, kin, srf, trn) #requires previous srf update
 
-    afr.y = (aero = aero.y, pwp = pwp.y, ldg = ldg.y)
+    afm.y = (aero = aero.y, pwp = pwp.y, ldg = ldg.y)
 
 end
 
@@ -374,10 +374,10 @@ function f_disc!(::System{<:C172Controls}, ::System{<:C172Airframe})
     return false
 end
 
-function f_disc!(afr::System{<:C172Airframe}, ::System{<:C172Controls})
+function f_disc!(afm::System{<:C172Airframe}, ::System{<:C172Controls})
     #fall back to the default SystemGroup implementation, the f_disc! for the
     #C172 components don't have to deal with the C172Controls
-    return f_disc!(afr)
+    return f_disc!(afm)
 end
 
 #these should eventually be declared as constants:

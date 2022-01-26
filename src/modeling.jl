@@ -62,6 +62,26 @@ end
 f_cont!(::System, args...) = MethodError(f_cont!, args) |> throw
 (f_disc!(::System, args...)::Bool) = MethodError(f_disc!, args) |> throw
 
+# Base.getproperty(sys::System, s::Symbol) = getproperty(sys, Val(s))
+# Base.getproperty(sys::System, ::Val{S}) where {S} = getfield(getfield(sys, :subsystems), S)
+# Base.getproperty(sys::System, ::Val{:ẋ}) = getfield(sys, :ẋ)
+# Base.getproperty(sys::System, ::Val{:x}) = getfield(sys, :x)
+# Base.getproperty(sys::System, ::Val{:y}) = getfield(sys, :y)
+# Base.getproperty(sys::System, ::Val{:u}) = getfield(sys, :u)
+# Base.getproperty(sys::System, ::Val{:d}) = getfield(sys, :d)
+# Base.getproperty(sys::System, ::Val{:t}) = getfield(sys, :t)
+# Base.getproperty(sys::System, ::Val{:params}) = getfield(sys, :params)
+# Base.getproperty(sys::System, ::Val{:subsystems}) = getfield(sys, :subsystems)
+
+
+
+# function Base.getproperty(sys::System, s::Symbol)
+#     if s ∈ (:ẋ, :x, :y, :u, :d, :t, :params, :subsystems)
+#         return getfield(sys, s)
+#     else
+#         return getproperty(sys.subsystems, s)
+#     end
+# end
 ######################### NullSystem ############################
 
 struct NullSystemDescriptor <: SystemDescriptor end
@@ -76,12 +96,12 @@ struct NullSystemDescriptor <: SystemDescriptor end
 
 abstract type SystemGroupDescriptor <: SystemDescriptor end
 
-init_x(::Type{T}) where {T<:SystemGroupDescriptor} = init_cv(T, init_x)
-init_y(::Type{T}) where {T<:SystemGroupDescriptor} = init_nt(T, init_y)
-init_u(::Type{T}) where {T<:SystemGroupDescriptor} = init_nt(T, init_u)
-init_d(::Type{T}) where {T<:SystemGroupDescriptor} = init_nt(T, init_d)
+init_x(::Type{T}) where {T<:SystemGroupDescriptor} = maybe_assemble_cv(T, init_x)
+init_y(::Type{T}) where {T<:SystemGroupDescriptor} = maybe_assemble_nt(T, init_y)
+init_u(::Type{T}) where {T<:SystemGroupDescriptor} = maybe_assemble_nt(T, init_u)
+init_d(::Type{T}) where {T<:SystemGroupDescriptor} = maybe_assemble_nt(T, init_d)
 
-function init_cv(::Type{T}, f::Function) where {T<:SystemGroupDescriptor}
+function maybe_assemble_cv(::Type{T}, f::Function) where {T<:SystemGroupDescriptor}
 
     dict = OrderedDict{Symbol, AbstractVector{Float64}}()
 
@@ -90,11 +110,12 @@ function init_cv(::Type{T}, f::Function) where {T<:SystemGroupDescriptor}
         !isnothing(ss_value) ? dict[ss_label] = ss_value : nothing
     end
 
+    #if all subsystems returned nothing, return nothing instead of a CV
     return !isempty(dict) ? ComponentVector(dict) : nothing
 
 end
 
-function init_nt(::Type{T}, f::Function) where {T<:SystemGroupDescriptor}
+function maybe_assemble_nt(::Type{T}, f::Function) where {T<:SystemGroupDescriptor}
     dict = OrderedDict{Symbol, Any}()
 
     for (ss_label, ss_type) in zip(fieldnames(T), T.types)
@@ -102,6 +123,7 @@ function init_nt(::Type{T}, f::Function) where {T<:SystemGroupDescriptor}
         !isnothing(ss_value) ? dict[ss_label] = ss_value : nothing
     end
 
+    #if all subsystems returned nothing, return nothing instead of a NT
     return !isempty(dict) ? NamedTuple{Tuple(keys(dict))}(values(dict)) : nothing
 
 end

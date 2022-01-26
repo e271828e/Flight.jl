@@ -42,8 +42,8 @@ function demo_rt()
     disable_physics(xp)
     set_position(xp, kin_init)
 
-    # ac.y.afr.ldg.left |> pwf
-    # ac.y.afr.ldg.left.strut |> pwf
+    # ac.y.afm.ldg.left |> pwf
+    # ac.y.afm.ldg.left.strut |> pwf
     # return
 
     output_div = 1
