@@ -14,7 +14,6 @@ using Flight.Terrain
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-# using Flight.Components
 using Flight.Aerodynamics: AbstractAerodynamics
 using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
 using Flight.LandingGear: LandingGearUnit, DirectSteering, DirectBraking, Strut, SimpleDamper
@@ -24,7 +23,7 @@ using Flight.Input: XBoxController, get_axis_value, is_released
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
-import Flight.Aircraft: assign_joystick_inputs!
+import Flight.Input: assign_joystick_inputs!
 
 export BeaverDescriptor
 
@@ -37,12 +36,6 @@ struct Pwp <: SystemGroupDescriptor
     left::EThruster
     right::EThruster
 end
-
-# la fuerza y el momento que da el motor ya nos lo dan directamente en ejes b en
-# funcion de alpha y dpt, que no se que cojones era. parece una potencia
-# adimensional. no hace falta modelar la helice explicitamente, aunque se puede
-# proporcionar el momento cinetico en funcion de las RPMs con un calculo
-# aproximado.
 
 WrenchTrait(::System{<:Pwp}) = HasWrench()
 AngularMomentumTrait(::System{<:Pwp}) = HasAngularMomentum()
@@ -186,9 +179,9 @@ Base.@kwdef struct AeroY
     wr_b::Wrench = Wrench() #aerodynamic wrench, airframe
 end
 
-init_x(::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
-init_y(::Aero) = AeroY()
-init_u(::Aero) = AeroU()
+init_x(::Type{Aero}) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+init_y(::Type{Aero}) = AeroY()
+init_u(::Type{Aero}) = AeroU()
 
 
 ############################## Controls #################################
@@ -220,8 +213,8 @@ Base.@kwdef struct ControlsY
     flaps::Float64
 end
 
-init_u(::Controls) = ControlsU()
-init_y(::Controls) = ControlsY(zeros(SVector{9})...)
+init_u(::Type{Controls}) = ControlsU()
+init_y(::Type{Controls}) = ControlsY(zeros(SVector{9})...)
 
 
 ############################## Airframe #################################
@@ -451,25 +444,27 @@ end
 
 function assign_joystick_inputs!(ac::System{<:AircraftBase{ID}}, joystick::XBoxController)
 
-    ac.u.yoke_Δx = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    ac.u.yoke_Δy = get_axis_value(joystick, :right_analog_y) |> elevator_curve
-    ac.u.pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
-    ac.u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
-    ac.u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
+    u = ac.u.controls
 
-    ac.u.yoke_x0 -= 0.01 * is_released(joystick, :dpad_left)
-    ac.u.yoke_x0 += 0.01 * is_released(joystick, :dpad_right)
-    ac.u.yoke_y0 -= 0.01 * is_released(joystick, :dpad_up)
-    ac.u.yoke_y0 += 0.01 * is_released(joystick, :dpad_down)
+    u.yoke_Δx = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.yoke_Δy = get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
+    u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
+    u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    ac.u.throttle += 0.1 * is_released(joystick, :button_Y)
-    ac.u.throttle -= 0.1 * is_released(joystick, :button_A)
+    u.yoke_x0 -= 0.01 * is_released(joystick, :dpad_left)
+    u.yoke_x0 += 0.01 * is_released(joystick, :dpad_right)
+    u.yoke_y0 -= 0.01 * is_released(joystick, :dpad_up)
+    u.yoke_y0 += 0.01 * is_released(joystick, :dpad_down)
 
-    # ac.u.propeller_speed += 0.1 * is_released(joystick, :button_X) #rpms
-    # ac.u.propeller_speed -= 0.1 * is_released(joystick, :button_B)
+    u.throttle += 0.1 * is_released(joystick, :button_Y)
+    u.throttle -= 0.1 * is_released(joystick, :button_A)
 
-    ac.u.flaps += 0.5 * is_released(joystick, :right_bumper)
-    ac.u.flaps -= 0.5 * is_released(joystick, :left_bumper)
+    # u.propeller_speed += 0.1 * is_released(joystick, :button_X) #rpms
+    # u.propeller_speed -= 0.1 * is_released(joystick, :button_B)
+
+    u.flaps += 0.5 * is_released(joystick, :right_bumper)
+    u.flaps -= 0.5 * is_released(joystick, :left_bumper)
 
     # Y si quisiera landing gear up y down, podria usar option como
     #modifier
@@ -480,7 +475,7 @@ end
 #Aircraft constructor override keyword inputs to customize
 
 function BeaverDescriptor(; id = ID(), kin = KinLTF(), afm = Airframe(), ctl = Controls())
-    AircraftBase( id, kin, afm, ctl)
+    AircraftBase( id; kin, afm, ctl)
 end
 
 

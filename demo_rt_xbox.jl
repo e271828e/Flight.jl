@@ -9,8 +9,6 @@ using BenchmarkTools
 using GLFW
 
 
-################################## AC2 ######################################
-
 function demo_rt_xbox()
 
     println("Generalize this for non-rt")
@@ -24,15 +22,16 @@ function demo_rt_xbox()
 
     kin_init = KinInit(v_eOb_b = [0, 0, 0],
                         ω_lb_b = [0, 0, 0],
-                        q_nb = REuler(ψ = 0, θ = -0.05, φ = 0.00),
+                        q_nb = REuler(ψ = 0, θ = 0.07π, φ = 0.00),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-                                        h_trn + 2.5 - 0.1 + 0.0));
+                                        h_trn + 2.5 - 0.15 + 0.0));
 
     atm.u.wind.v_ew_n[1] = 0
-    ac.u.throttle = 0
+    ac.u.controls.throttle = 0
 
     init!(ac, kin_init)
-    #since the model was instantiated in advance, we need this to change its internal state vector
+    #since the model was instantiated in advance, we need this to change its
+    #internal initial condition
     reinit!(ac_mdl, ac.x)
 
     # xp = XPInterface()
@@ -54,37 +53,38 @@ function demo_rt_xbox()
 
     t_wall = time()
 
+    # error()
+
     # for i in take(ac_mdl.integrator, 5)
     for i in ac_mdl.integrator
 
-        #when using the integrator as an iterator, we don't need to step, it is done
-        #automatically at the beginning of each iteration. therefore, the dt we need
-        #for pacing the simulation is not the proposed dt for the next step, but the
-        #one in the step the integrator has already taken.
+        #the integrator steps automatically at the beginning of each iteration
 
         #retrieve the dt just taken by the integrator
         dt = ac_mdl.dt
 
-        #compute the wall time corresponding to the newly updated simulation
+        #compute the wall time epoch corresponding to the simulation time epoch
+        #we just reached
         t_wall_next = t_wall + dt
 
-        #busy wait until the wall time catches up
+        #busy wait while wall time catches up
         while (time() < t_wall_next) end
         # println(time()-t_wall_next)
 
         t_wall = t_wall_next
 
         if ac_mdl.success_iter % output_div == 0
-            set_position(xp, ac_mdl.sys.y.kin.pos)
+            set_position(xp, ac_mdl.sys.y.kinematics.pos)
         end
 
         for joystick in values(connected_joysticks)
 
             update_joystick(joystick)
-            Aircraft.assign_joystick_inputs!(ac, joystick)
+            Input.assign_joystick_inputs!(ac, joystick)
 
-            if ac_mdl.success_iter % 20 == 0
-                pwf(ac.u)
+            if ac_mdl.success_iter % 40 == 0
+                pwf(ac.u.controls)
+                # ac.y.kinematics.pos.h_o
                 # println(ac.u.yoke_x_trim.val, " ",  ac.u.yoke_x.val, " ", ac.subsystems.afm.subsystems.aero.u.δa.val)
                 # println(ac.u.yoke_y_trim.val, " ",  ac.u.yoke_y.val, " ", ac.subsystems.afm.subsystems.aero.u.δe.val)
                 # println(ac.subsystems.afm.subsystems.aero.u.δr.val)

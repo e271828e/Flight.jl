@@ -11,124 +11,112 @@ using Flight.Atmosphere
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-# using Flight.Components
 
-import Flight.Modeling: System, init_x, init_y, init_u, init_d,f_cont!, f_disc!
-import Flight.Dynamics: MassTrait, get_mp_b
+import Flight.Modeling: init_x, init_y, init_u, init_d,f_cont!, f_disc!
+import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Plotting: plots
-import Flight.Kinematics: init!
 
-export AircraftBase
+export AircraftBase, init!
 
-######################### AircraftBase ########################
 
 abstract type AbstractAircraftID end
 
 struct GenericID <: AbstractAircraftID end
 
-######################## EmptyAirframe ########################
+###############################################################################
+############################## Airframe #######################################
 
-Base.@kwdef struct EmptyAirframe <: SystemDescriptor
+abstract type AbstractAirframe <: SystemDescriptor end
+
+MassTrait(::System{<:AbstractAirframe}) = HasMass()
+
+########################## EmptyAirframe ###########################
+
+Base.@kwdef struct EmptyAirframe <: AbstractAirframe
     mass_distribution::RigidBody = RigidBody(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
 end
 
+WrenchTrait(::System{EmptyAirframe}) = HasNoWrench()
+AngularMomentumTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
+
 get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
 
+@inline f_cont!(::System{EmptyAirframe}, args...) = nothing
+@inline (f_disc!(::System{EmptyAirframe}, args...)::Bool) = false
 
 
+###############################################################################
+############################## AircraftBase ###################################
 
-Base.@kwdef struct AircraftBase{I <: AbstractAircraftID,
+struct AircraftBase{I <: AbstractAircraftID,
                     K <: AbstractKinematics,
                     F <: SystemDescriptor,
                     C <: SystemDescriptor} <: SystemGroupDescriptor
 
-    # identifier::I = GenericID()
-    kinematics::K = KinLTF()
-    airframe::F = EmptyAirframe()
-    controls::C = NullSystemDescriptor()
+    kinematics::K
+    airframe::F
+    controls::C
 end
 
-init_x(::Type{T}) where {T<:AircraftBase{I,K,F,C}} where {I,K,F,C} =
-    ComponentVector(
-    kin = init_x(K),
-    afm = init_x(F),
-    ctl = init_x(C),
-    )
+function AircraftBase(     ::I = GenericID();
+                        kin::K = KinLTF(),
+                        afm::F = EmptyAirframe(),
+                        ctl::C = NullSystemDescriptor()) where {I,K,F,C}
+    AircraftBase{I,K,F,C}(kin, afm, ctl)
+end
 
-init_u(::Type{T}) where {T<:AircraftBase{I,K,F,C}} where {I,K,F,C} = (
-    afm = init_u(F),
-    ctl = init_u(C),
-    )
-
+#override the default SystemGroupDescriptor implementation, because we need to
+#add some stuff besides subsystem outputs
 init_y(::Type{T}) where {T<:AircraftBase{I,K,F,C}} where {I,K,F,C} = (
-    kin = KinData(),
-    dyn = DynData(),
+    kinematics = init_y(K),
+    airframe = init_y(F),
+    controls = init_y(C),
+    dynamics = DynData(),
     air = AirData(),
-    afm = init_y(F),
-    ctl = init_y(C),
     )
 
-init_d(::Type{T}) where {T<:AircraftBase{I,K,F,C}} where {I,K,F,C} = (
-    afm = init_d(F),
-    ctl = init_d(C),
-    )
-
-const AircraftBaseSys{I,K,F,C} = System{AircraftBase{I,K,F,C}} where {I,K,F,C}
-
-function System(ac::T, ẋ = init_x(T), x = init_x(T), y = init_y(T),
-                u = init_u(T), d = init_d(T), t = Ref(0.0)) where {T<:AircraftBase}
-
-    params = ()
-    subsystems = (
-        afm = System(ac.airframe, ẋ.afm, x.afm, y.afm, u.afm, d.afm, t),
-        ctl = System(ac.controls, ẋ.ctl, x.ctl, y.ctl, u.ctl, d.ctl, t),)
-
-    println(x)
-    System{map(typeof, (ac, x, y, u, d, params, subsystems))...}(
-                         ẋ, x, y, u, d, t, params, subsystems)
+function init!(ac::System{T}, init::KinInit) where {T<:AircraftBase{I,K}} where {I,K}
+    ac.x.kinematics .= init_x(K, init)
 end
 
-init!(ac::System{<:AircraftBase}, init::KinInit) = init!(ac.x.kin, init)
-
-function f_cont!(sys::AircraftBaseSys, trn::AbstractTerrain, atm::AtmosphericSystem)
+function f_cont!(sys::System{<:AircraftBase}, trn::AbstractTerrain, atm::AtmosphericSystem)
 
     @unpack ẋ, x, subsystems = sys
-    @unpack afm, ctl = subsystems
+    @unpack kinematics, airframe, controls = subsystems
 
     #update kinematics
-    kin = f_kin!(ẋ.kin.pos, x.kin)
+    f_cont!(kinematics)
+    kin_data = kinematics.y
+    air_data = AirData(kin_data, atm)
 
-    air = AirData(kin, atm)
+    #update controls and airframe components
+    f_cont!(controls, airframe, kin_data, air_data, trn)
+    f_cont!(airframe, controls, kin_data, air_data, trn)
 
-    #update controls
-    f_cont!(ctl, afm, kin, air, trn)
-    #update airframe components
-    f_cont!(afm, ctl, kin, air, trn)
+    mp_b = get_mp_b(airframe)
+    wr_b = get_wr_b(airframe)
+    hr_b = get_hr_b(airframe)
 
-    mp_b = get_mp_b(afm)
-    wr_b = get_wr_b(afm)
-    hr_b = get_hr_b(afm)
+    #update velocity derivatives
+    dyn_data = f_dyn!(kinematics.ẋ.vel, kinematics.y, mp_b, wr_b, hr_b)
 
-    # update dynamics
-    dyn = f_dyn!(ẋ.kin.vel, kin, mp_b, wr_b, hr_b)
+    sys.y = (kinematics = kinematics.y, airframe = airframe.y, controls = controls.y,
+            dynamics = dyn_data, air = air_data,)
 
-    sys.y = (kin = kin, dyn = dyn, air = air, afm = afm.y, ctl = ctl.y)
     return nothing
 
 end
 
-function f_disc!(sys::AircraftBaseSys)
-    @unpack afm, ctl = sys.subsystems
+function f_disc!(sys::System{<:AircraftBase})
+    @unpack kinematics, airframe, controls = sys.subsystems
 
-    x_mod = renormalize!(sys.x.kin, 1e-8) |
-            f_disc!(afm, ctl) |
-            f_disc!(ctl, afm)
+    x_mod = f_disc!(kinematics, 1e-8) |
+            f_disc!(airframe, controls) |
+            f_disc!(controls, airframe)
 
     return x_mod
 end
 
-assign_joystick_inputs!(args...) = throw(MethodError(assign_joystick_inputs!, args))
-
-#no custom plots function required, since all outputs are namedtuples
+#no custom plots function required, all outputs are namedtuples
 
 end #module

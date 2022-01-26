@@ -14,7 +14,6 @@ using Flight.Terrain
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-using Flight.Components
 using Flight.Aerodynamics: AbstractAerodynamics
 using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
 using Flight.LandingGear: LandingGearUnit, DirectSteering, DirectBraking, Strut, SimpleDamper
@@ -23,8 +22,8 @@ using Flight.Input: XBoxController, get_axis_value, is_released
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
-import Flight.Components: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
-import Flight.Aircraft: assign_joystick_inputs!
+import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
+import Flight.Input: assign_joystick_inputs!
 
 # export BeaverDescriptor
 

@@ -20,18 +20,18 @@ function demo_rt()
 
     kin_init = KinInit(v_eOb_b = [0, 0, 0],
                         ω_lb_b = [0, 0, 0],
-                        q_nb = REuler(ψ = 0, θ = -0.05, φ = 0.00),
+                        q_nb = REuler(ψ = 0, θ = 0.7π, φ = 0.00),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
                                         h_trn + 2.5 - 0.1 + 0.0));
-    ac.u.throttle = 0.
-    ac.u.pedals = 0.4
-    ac.u.yoke_Δy = -0.4
-    ac.u.yoke_Δx = 0.
-    ac.u.brake_left = 0
-    ac.u.brake_right = 0
-    ac.u.flaps = 0
-    atm.u.wind.v_ew_n[1] = 0
-    atm.u.wind.v_ew_n[2] = 0
+    # ac.u.throttle = 0.
+    # ac.u.pedals = 0.4
+    # ac.u.yoke_Δy = -0.4
+    # ac.u.yoke_Δx = 0.
+    # ac.u.brake_left = 0
+    # ac.u.brake_right = 0
+    # ac.u.flaps = 0
+    # atm.u.wind.v_ew_n[1] = 0
+    # atm.u.wind.v_ew_n[2] = 0
 
     init!(ac, kin_init)
     #if the model was instantiated in advance, we need this to change its internal state vector!

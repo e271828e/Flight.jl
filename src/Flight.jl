@@ -22,7 +22,6 @@ include("kinematics.jl")
 include("dynamics.jl")
 
 #aircraft components
-include("components.jl")
 include("airdata.jl")
 include("propulsion.jl")
 include("landinggear.jl")
@@ -34,7 +33,7 @@ include("output.jl")
 
 # #aircraft
 include("aircraft.jl")
-# include("beaver.jl")
+include("beaver.jl")
 # include("c182t.jl")
 
 @reexport using .Utils
@@ -52,7 +51,6 @@ include("aircraft.jl")
 @reexport using .Kinematics
 @reexport using .Dynamics
 
-@reexport using .Components
 @reexport using .Airdata
 @reexport using .Propulsion
 @reexport using .LandingGear
@@ -62,7 +60,7 @@ include("aircraft.jl")
 @reexport using .Output
 
 @reexport using .Aircraft
-# @reexport using .Beaver
+@reexport using .Beaver
 # @reexport using .C182T
 
 export ftest

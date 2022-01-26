@@ -10,7 +10,6 @@ using Flight.Plotting
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-# using Flight.Components
 
 import Flight.Plotting: plots
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
@@ -186,11 +185,7 @@ end
 # #required to make EThruster compatible with System
 # Base.@kwdef mutable struct EThrusterD end
 
-# init_x(::EThruster) = copy(EThrusterXTemplate)
-# init_d(::EThruster) = EThrusterD()
-# init_u(::EThruster) = EThrusterU()
-# init_y(::EThruster) = EThrusterY()
-
+#this works:
 # function PropulsionGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
 #     PropulsionGroup{nt}()
 # end

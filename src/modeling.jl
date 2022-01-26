@@ -14,12 +14,6 @@ export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Mo
 
 abstract type SystemDescriptor end #anything from which we can build a System
 
-#this is dangerous, should discourage defining init methods directly on instances
-# init_x(::T) where {T<:SystemDescriptor} = init_x(T)
-# init_y(::T) where {T<:SystemDescriptor} = init_y(T)
-# init_u(::T) where {T<:SystemDescriptor} = init_u(T)
-# init_d(::T) where {T<:SystemDescriptor} = init_d(T)
-
 init_x(::Type{T} where {T<:SystemDescriptor}) = nothing
 init_y(::Type{T} where {T<:SystemDescriptor}) = nothing
 init_u(::Type{T} where {T<:SystemDescriptor}) = nothing
@@ -27,9 +21,9 @@ init_d(::Type{T} where {T<:SystemDescriptor}) = nothing
 
 ############################# System ############################
 
-#need the T type parameter for dispatch, the rest for type stability making
-#System mutable does not hurt performance, because Systems should only
-#instantiated upon initialization. therefore, no runtime heap allocations
+#need the T type parameter for dispatch, the rest for type stability. making
+#System mutable does not hurt performance, because Systems are only meant to be
+#instantiated upon initialization. no runtime heap allocations
 mutable struct System{  T <: SystemDescriptor,
                         X <: Union{Nothing, AbstractVector{Float64}},
                         Y, U, D, P, S}
@@ -38,7 +32,7 @@ mutable struct System{  T <: SystemDescriptor,
     y::Y #output
     u::U #control input
     d::D #discrete state
-    t::Base.RefValue{Float64} #this allows propagation of t updates down the subsystem hierarchy
+    t::Base.RefValue{Float64} #Ref allows automatic propagation of t updates down the subsystem hierarchy
     params::P
     subsystems::S
 end
@@ -62,26 +56,19 @@ end
 f_cont!(::System, args...) = MethodError(f_cont!, args) |> throw
 (f_disc!(::System, args...)::Bool) = MethodError(f_disc!, args) |> throw
 
-# Base.getproperty(sys::System, s::Symbol) = getproperty(sys, Val(s))
-# Base.getproperty(sys::System, ::Val{S}) where {S} = getfield(getfield(sys, :subsystems), S)
-# Base.getproperty(sys::System, ::Val{:ẋ}) = getfield(sys, :ẋ)
-# Base.getproperty(sys::System, ::Val{:x}) = getfield(sys, :x)
-# Base.getproperty(sys::System, ::Val{:y}) = getfield(sys, :y)
-# Base.getproperty(sys::System, ::Val{:u}) = getfield(sys, :u)
-# Base.getproperty(sys::System, ::Val{:d}) = getfield(sys, :d)
-# Base.getproperty(sys::System, ::Val{:t}) = getfield(sys, :t)
-# Base.getproperty(sys::System, ::Val{:params}) = getfield(sys, :params)
-# Base.getproperty(sys::System, ::Val{:subsystems}) = getfield(sys, :subsystems)
+Base.getproperty(sys::System, s::Symbol) = getproperty(sys, Val(s))
+Base.getproperty(sys::System, ::Val{S}) where {S} = getfield(getfield(sys, :subsystems), S)
+
+Base.getproperty(sys::System, ::Val{:ẋ}) = getfield(sys, :ẋ)
+Base.getproperty(sys::System, ::Val{:x}) = getfield(sys, :x)
+Base.getproperty(sys::System, ::Val{:y}) = getfield(sys, :y)
+Base.getproperty(sys::System, ::Val{:u}) = getfield(sys, :u)
+Base.getproperty(sys::System, ::Val{:d}) = getfield(sys, :d)
+Base.getproperty(sys::System, ::Val{:t}) = getfield(sys, :t)
+Base.getproperty(sys::System, ::Val{:params}) = getfield(sys, :params)
+Base.getproperty(sys::System, ::Val{:subsystems}) = getfield(sys, :subsystems)
 
 
-
-# function Base.getproperty(sys::System, s::Symbol)
-#     if s ∈ (:ẋ, :x, :y, :u, :d, :t, :params, :subsystems)
-#         return getfield(sys, s)
-#     else
-#         return getproperty(sys.subsystems, s)
-#     end
-# end
 ######################### NullSystem ############################
 
 struct NullSystemDescriptor <: SystemDescriptor end
@@ -95,6 +82,9 @@ struct NullSystemDescriptor <: SystemDescriptor end
 #abstract type providing convenience methods for composite Systems
 
 abstract type SystemGroupDescriptor <: SystemDescriptor end
+
+Base.keys(g::SystemGroupDescriptor) = propertynames(g)
+Base.values(g::SystemGroupDescriptor) = map(λ -> getproperty(g, λ), keys(g))
 
 init_x(::Type{T}) where {T<:SystemGroupDescriptor} = maybe_assemble_cv(T, init_x)
 init_y(::Type{T}) where {T<:SystemGroupDescriptor} = maybe_assemble_nt(T, init_y)
@@ -128,6 +118,14 @@ function maybe_assemble_nt(::Type{T}, f::Function) where {T<:SystemGroupDescript
 
 end
 
+#the x of a SystemGroupDescriptor will be either a ComponentVector or nothing. if it's
+#nothing it's because init_x returned nothing, and this is only the case if all
+#of its subsystems' init_x in turn returned nothing. in this scenario, we can
+#assign nothing to its subsystem's x the same goes for y, but with a NamedTuple
+#instead of a ComponentVector
+function maybe_getproperty(input, label)
+    !isnothing(input) && (label in keys(input)) ? getproperty(input, label) : nothing
+end
 
 function System(g::T, ẋ = init_x(T), x = init_x(T), y = init_y(T),
                 u = init_u(T), d = init_d(T), t = Ref(0.0)) where {T<:SystemGroupDescriptor}
@@ -135,17 +133,15 @@ function System(g::T, ẋ = init_x(T), x = init_x(T), y = init_y(T),
     ss_names = fieldnames(T)
     ss_list = Vector{System}()
 
-    # println(x)
-    # println(u)
-    # println(y)
-
     for name in ss_names
+        # ss = getproperty(g, name)
+        ss = maybe_getproperty(g, name)
         ẋ_ss = maybe_getproperty(ẋ, name) #if x is a ComponentVector, this returns a view
         x_ss = maybe_getproperty(x, name) #idem
         y_ss = maybe_getproperty(y, name)
         u_ss = maybe_getproperty(u, name)
         d_ss = maybe_getproperty(d, name)
-        push!(ss_list, System(getproperty(g, name), ẋ_ss, x_ss, y_ss, u_ss, d_ss, t))
+        push!(ss_list, System(ss, ẋ_ss, x_ss, y_ss, u_ss, d_ss, t))
         # push!(ss_list, System(map((λ)->getproperty(λ, label), (g, ẋ, x, y, ))..., t))
     end
 
@@ -157,15 +153,6 @@ function System(g::T, ẋ = init_x(T), x = init_x(T), y = init_y(T),
 
 end
 
-#the x of a SystemGroupDescriptor will be either a ComponentVector or nothing. if it's
-#nothing it's because init_x returned nothing, and this is only the case if all
-#of its subsystems' init_x in turn returned nothing. in this scenario, we can
-#assign nothing to its subsystem's x the same goes for y, but with a NamedTuple
-#instead of a ComponentVector
-function maybe_getproperty(x, label)
-    # println(!isnothing(x))
-    !isnothing(x) && (label in keys(x)) ? getproperty(x, label) : nothing
-end
 
 #default implementation calls f_cont! on all Group subsystems with the same
 #arguments provided to the parent System, then builds the NamedTuple with the
@@ -200,12 +187,11 @@ end
 @inline @generated function (update_y!(sys::System{T, X, Y})
     where {T<:SystemGroupDescriptor, X, Y <: NamedTuple{L, M}} where {L, M})
 
-    #when Y is not Nothing, it is a NamedTuple. L holds the labels of those
-    #subsystems which have outputs. we can retrieve the y fields of those
-    #subsystems and assemble them into a NamedTuple, which will have the same
-    # type as Y
-    Core.println("Assembling outputs")
+    #L contains the field names of those subsystems which have outputs. retrieve
+    #the y's of those subsystems and assemble them into a NamedTuple, which will
+    #have the same type as Y
 
+    #initialize main expression
     ex_main = Expr(:block)
 
     #build a tuple expression with subsystem outputs

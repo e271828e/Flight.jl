@@ -7,9 +7,7 @@ using UnPack
 using Unitful
 
 using Flight.Modeling
-import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 using Flight.Plotting
-import Flight.Plotting: plots
 using Flight.Misc
 
 using Flight.Attitude
@@ -19,17 +17,18 @@ using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
 
-# using Flight.Components
-import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mass_properties
-
 using Flight.Propulsion
 using Flight.Aerodynamics
 using Flight.LandingGear
-
 using Flight.Aircraft
-import Flight.Aircraft: assign_joystick_inputs!
 
 using Flight.Input
+
+import Flight.Plotting: plots
+import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
+import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mass_properties
+import Flight.Input: assign_joystick_inputs!
+
 
 export C172Aircraft, C172Pwp, C172Ldg
 
@@ -152,9 +151,9 @@ Base.@kwdef struct C172AerodynamicsY
     wr_b::Wrench = Wrench()
 end
 
-init_x(::C172Aerodynamics) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
-init_y(::C172Aerodynamics) = C172AerodynamicsY()
-init_u(::C172Aerodynamics) = C172AerodynamicsU()
+init_x(::Type{C172Aerodynamics}) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+init_y(::Type{C172Aerodynamics}) = C172AerodynamicsY()
+init_u(::Type{C172Aerodynamics}) = C172AerodynamicsU()
 
 C_X(; α, q_nd, δr, δf) = #force keyword arguments
     -0.03554 + 0.00292α + 5.459α^2 - 5.162α^3 - 0.6748q_nd + 0.03412δr - 0.09447δf + 1.106(δf*α)
@@ -314,9 +313,9 @@ struct C172ControlsY
     brake_right::Float64
 end
 
-init_u(::C172Controls) = C172ControlsU()
+init_u(::Type{C172Controls}) = C172ControlsU()
 
-init_y(::C172Controls) = C172ControlsY(zeros(SVector{6})...)
+init_y(::Type{C172Controls}) = C172ControlsY(zeros(SVector{6})...)
 
 ###################### Continuous update functions ##########################
 

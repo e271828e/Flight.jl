@@ -9,15 +9,16 @@ using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy
 
-
-import Flight.Modeling: init_x, init_y
+import Flight.Modeling: init_x, init_y, f_cont!, f_disc!
 import Flight.Plotting: plots
 
 export AbstractKinematics, KinLTF, KinECEF
 export VelX, PosData, VelData, KinData, KinInit
-export init!, f_kin!, renormalize!
+export KinematicsSystem
 
 abstract type AbstractKinematics <: SystemDescriptor end
+
+const KinematicsSystem = System{<:AbstractKinematics}
 
 Base.@kwdef struct KinInit
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
@@ -99,6 +100,10 @@ end
 
 KinData() = KinData(KinInit())
 
+#every AbstractKinematics implementation must comply with the same outputs
+init_y(::Type{<:AbstractKinematics}) = KinData()
+
+#for dispatching
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
 const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T, D}
 
@@ -111,17 +116,14 @@ end
 
 struct KinLTF <: AbstractKinematics end
 
-const PosLTFXTemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
-const KinLTFXTemplate = ComponentVector(pos = PosLTFXTemplate, vel = VelXTemplate)
-const PosLTFX{T, D} = ComponentVector{T, D, typeof(getaxes(PosLTFXTemplate))} where {T, D}
-const KinLTFX{T, D} = ComponentVector{T, D, typeof(getaxes(KinLTFXTemplate))} where {T, D}
-
-init_x(::Type{KinLTF}, init::KinInit = KinInit()) = (x=similar(KinLTFXTemplate); init!(x, init); return x)
-init_y(::Type{KinLTF}) = KinData()
-
-function init!(x::KinLTFX, init::KinInit)
+function init_x(::Type{KinLTF}, init::KinInit = KinInit())
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
+
+    x = ComponentVector(
+        pos = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0),
+        vel = similar(VelXTemplate) #using similar instead of simple assignment is essential
+        )
 
     h_e = Ob.alt
     (R_N, R_E) = radii(Ob)
@@ -144,11 +146,14 @@ function init!(x::KinLTFX, init::KinInit)
     x.vel.ω_eb_b .= ω_eb_b
     x.vel.v_eOb_b .= v_eOb_b
 
-    return nothing
+    return x
 
 end
 
-function f_kin!(ẋ_pos::PosLTFX, x::KinLTFX)
+#this only updates xpos_dot, we need f_dyn! to perform the xvel_dot update
+function f_cont!(sys::System{KinLTF})
+
+    x = sys.x
 
     q_lb = RQuat(x.pos.q_lb, normalization = false)
     q_el = RQuat(x.pos.q_el, normalization = false)
@@ -179,42 +184,41 @@ function f_kin!(ẋ_pos::PosLTFX, x::KinLTFX)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     #update ẋ_pos
+    ẋ_pos = sys.ẋ.pos
     ẋ_pos.q_lb .= dt(q_lb, ω_lb_b)
     ẋ_pos.q_el .= dt(q_el, ω_el_l)
     ẋ_pos.Δx = v_eOb_n[1]
     ẋ_pos.Δy = v_eOb_n[2]
     ẋ_pos.h_e = -v_eOb_n[3]
 
-    #build output
+    #build and assign output
     pos = PosData(q_nb, q_eb, REuler(q_nb), q_en, n_e, LatLon(n_e), h_e,
         Altitude{Orthometric}(h_e, n_e), SVector{2}(x.pos.Δx, x.pos.Δy))
 
     vel = VelData(ω_eb_b, ω_el_n, ω_lb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
 
-    return KinData(pos, vel)
+    sys.y = KinData(pos, vel)
 
 end
 
-function renormalize!(x_kin::KinLTFX, ε = 1e-10)
+function f_disc!(sys::System{KinLTF}, ε = 1e-10)
     #we need both calls executed, so | must be used here instead of ||
-    renormalize_block!(x_kin.pos.q_lb, ε) | renormalize_block!(x_kin.pos.q_el, ε)
+    x_pos = sys.x.pos
+    renormalize_block!(x_pos.q_lb, ε) | renormalize_block!(x_pos.q_el, ε)
 end
 
 ######################### ECEF Kinematics #########################
 
 struct KinECEF <: AbstractKinematics end
 
-const PosECEFXTemplate = ComponentVector(q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0)
-const KinECEFXTemplate = ComponentVector(pos = PosECEFXTemplate, vel = VelXTemplate)
-const PosECEFX{T, D} = ComponentVector{T, D, typeof(getaxes(PosECEFXTemplate))} where {T, D}
-const KinECEFX{T, D} = ComponentVector{T, D, typeof(getaxes(KinECEFXTemplate))} where {T, D}
-
-init_x(::Type{KinECEF}, init::KinInit = KinInit()) = (x=similar(KinECEFXTemplate); init!(x, init); return x)
-init_y(::Type{KinECEF}) = KinData()
-
-function init!(x::KinECEFX, init::KinInit)
+function init_x(::Type{KinECEF}, init::KinInit = KinInit())
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
+
+    x = ComponentVector(
+        pos = ComponentVector(q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0),
+        vel = similar(VelXTemplate) #using similar instead of simple assignment is essential
+        )
 
     n_e = Ob.l2d
     h_e = Ob.alt
@@ -239,9 +243,14 @@ function init!(x::KinECEFX, init::KinInit)
     x.vel.ω_eb_b .= ω_eb_b
     x.vel.v_eOb_b .= v_eOb_b
 
+    return x
+
 end
 
-function f_kin!(ẋ_pos::PosECEFX, x::KinECEFX)
+#this only updates xpos_dot, we need f_dyn! to perform the xvel_dot update
+function f_cont!(sys::System{KinECEF})
+
+    x = sys.x
 
     q_eb = RQuat(x.pos.q_eb, normalization = false)
     n_e = NVector(x.pos.n_e, normalization = false)
@@ -267,6 +276,7 @@ function f_kin!(ẋ_pos::PosECEFX, x::KinECEFX)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     #update ẋ_pos
+    ẋ_pos = sys.ẋ.pos
     ẋ_pos.q_eb .= dt(q_eb, ω_eb_b)
     ẋ_pos.n_e .= q_en(ω_el_n × SVector{3,Float64}(0,0,-1))
     ẋ_pos.Δx = v_eOb_n[1]
@@ -279,13 +289,14 @@ function f_kin!(ẋ_pos::PosECEFX, x::KinECEFX)
 
     vel = VelData(ω_eb_b, ω_el_n, ω_lb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
 
-    return KinData(pos, vel)
+    sys.y = KinData(pos, vel)
 
 end
 
-function renormalize!(x_kin::KinECEFX, ε = 1e-10)
+function f_disc!(sys::System{KinECEF}, ε = 1e-10)
+    x_pos = sys.x.pos
     #we need both calls executed, so | must be used here instead of ||
-    renormalize_block!(x_kin.pos.q_eb, ε) | renormalize_block!(x_kin.pos.n_e, ε)
+    renormalize_block!(x_pos.q_eb, ε) | renormalize_block!(x_pos.n_e, ε)
 end
 
 

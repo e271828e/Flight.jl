@@ -12,7 +12,6 @@ using Flight.Geodesy
 using Flight.Terrain
 using Flight.Kinematics
 using Flight.Dynamics
-# using Flight.Components
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
@@ -60,9 +59,6 @@ f_disc!(::System{DirectSteering}, args...) = false
 
 get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
 
-# function plots(t, data::AbstractVector{<:DirectSteeringY}; mode, save_path, kwargs...)
-#     println("To be implemented")
-# end
 
 ########################### Braking #############################
 
@@ -99,9 +95,6 @@ f_disc!(::System{DirectBraking}, args...) = false
 
 get_braking_coefficient(sys::System{DirectBraking}) = sys.y.α_br
 
-function plots(t, data::AbstractVector{<:DirectBrakingY}; mode, save_path, kwargs...)
-    # println("To be implemented")
-end
 
 ########################### Damper #############################
 
@@ -112,7 +105,7 @@ Base.@kwdef struct SimpleDamper <: AbstractDamper
     k_s::Float64 = 25000 #spring constant
     k_d_ext::Float64 = 1000 #extension damping coefficient
     k_d_cmp::Float64 = 1000 #compression damping coefficient
-    ξ_min::Float64 = -2 #compression below which the shock absorber is disabled
+    ξ_min::Float64 = -5 #compression below which the shock absorber is disabled
 end
 
 #Force exerted by the damper along zs. The deformation ξ is positive along z_s

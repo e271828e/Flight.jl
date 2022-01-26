@@ -10,7 +10,6 @@ using Flight.Attitude
 using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Airdata
-# using Flight.Components
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
@@ -130,8 +129,8 @@ Base.@kwdef struct TestAerodynamicsY
     wr_b::Wrench = Wrench()
 end
 
-init_x(::TestAerodynamics) = ComponentVector(α = 0.0, β = 0.0)
-init_y(::TestAerodynamics) = TestAerodynamicsY()
+init_x(::Type{TestAerodynamics}) = ComponentVector(α = 0.0, β = 0.0)
+init_y(::Type{TestAerodynamics}) = TestAerodynamicsY()
 
 function f_cont!(sys::System{TestAerodynamics}, air::AirData, kin::KinData, ::Any, ::Any)
 

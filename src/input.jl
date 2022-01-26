@@ -12,6 +12,8 @@ export XBoxController
 
 abstract type AbstractJoystick end
 
+assign_joystick_inputs!(args...) = throw(MethodError(assign_joystick_inputs!, args))
+
 const connected_joysticks = Dict{JoystickSlot, AbstractJoystick}()
 
 ###################

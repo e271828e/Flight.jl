@@ -71,18 +71,19 @@ function AirData()
     AirData(KinData(), AtmosphericData())
 end
 
-function AirData(kin::KinData, atm_sys::AtmosphericSystem)
+function AirData(kin_data::KinData, atm_sys::AtmosphericSystem)
     #the AtmosphericData constructor accepts any Geographic subtype, but it's
     #likely that ISA SL conditions and wind will be expressed in LatLon
-    atm_data = AtmosphericData(atm_sys, Geographic(kin.pos.ϕ_λ, kin.pos.h_o))
-    AirData(kin, atm_data)
+    # println(kin_sys)
+    atm_data = AtmosphericData(atm_sys, Geographic(kin_data.pos.ϕ_λ, kin_data.pos.h_o))
+    AirData(kin_data, atm_data)
 end
 
-function AirData(kin::KinData, atm_data::AtmosphericData)
+function AirData(kin_data::KinData, atm_data::AtmosphericData)
 
-    v_eOb_b = kin.vel.v_eOb_b
+    v_eOb_b = kin_data.vel.v_eOb_b
     v_ew_n = atm_data.wind.v_ew_n
-    v_ew_b = kin.pos.q_nb'(v_ew_n)
+    v_ew_b = kin_data.pos.q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
     α_b, β_b = get_airflow_angles(v_wOb_b)
 
