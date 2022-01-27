@@ -59,14 +59,13 @@ f_cont!(::System, args...) = MethodError(f_cont!, args) |> throw
 Base.getproperty(sys::System, s::Symbol) = getproperty(sys, Val(s))
 Base.getproperty(sys::System, ::Val{S}) where {S} = getfield(getfield(sys, :subsystems), S)
 
-Base.getproperty(sys::System, ::Val{:ẋ}) = getfield(sys, :ẋ)
-Base.getproperty(sys::System, ::Val{:x}) = getfield(sys, :x)
-Base.getproperty(sys::System, ::Val{:y}) = getfield(sys, :y)
-Base.getproperty(sys::System, ::Val{:u}) = getfield(sys, :u)
-Base.getproperty(sys::System, ::Val{:d}) = getfield(sys, :d)
-Base.getproperty(sys::System, ::Val{:t}) = getfield(sys, :t)
-Base.getproperty(sys::System, ::Val{:params}) = getfield(sys, :params)
-Base.getproperty(sys::System, ::Val{:subsystems}) = getfield(sys, :subsystems)
+@generated function Base.getproperty(sys::System, ::Val{S}) where {S}
+    if S ∈ fieldnames(System)
+        return :(getfield(sys, $(QuoteNode(S))))
+    else
+        return :(getfield(getfield(sys, :subsystems), $(QuoteNode(S))))
+    end
+end
 
 
 ######################### NullSystem ############################
@@ -134,15 +133,7 @@ function System(g::T, ẋ = init_x(T), x = init_x(T), y = init_y(T),
     ss_list = Vector{System}()
 
     for name in ss_names
-        # ss = getproperty(g, name)
-        ss = maybe_getproperty(g, name)
-        ẋ_ss = maybe_getproperty(ẋ, name) #if x is a ComponentVector, this returns a view
-        x_ss = maybe_getproperty(x, name) #idem
-        y_ss = maybe_getproperty(y, name)
-        u_ss = maybe_getproperty(u, name)
-        d_ss = maybe_getproperty(d, name)
-        push!(ss_list, System(ss, ẋ_ss, x_ss, y_ss, u_ss, d_ss, t))
-        # push!(ss_list, System(map((λ)->getproperty(λ, label), (g, ẋ, x, y, ))..., t))
+        push!(ss_list, System(map((λ)->maybe_getproperty(λ, name), (g, ẋ, x, y, u, d))..., t))
     end
 
     params = nothing

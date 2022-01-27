@@ -11,9 +11,9 @@ using GLFW
 
 function demo_rt_xbox()
 
-    println("Generalize this for non-rt")
+    # println("Generalize this for non-rt")
 
-    h_trn = AltOrth(609.5);
+    h_trn = AltOrth(607.7);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
@@ -34,8 +34,8 @@ function demo_rt_xbox()
     #internal initial condition
     reinit!(ac_mdl, ac.x)
 
-    # xp = XPInterface()
-    xp = XPInterface(host = IPv4("192.168.1.2"))
+    xp = XPInterface()
+    # xp = XPInterface(host = IPv4("192.168.1.2"))
     disable_physics(xp)
     set_position(xp, kin_init)
 

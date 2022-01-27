@@ -29,8 +29,6 @@ import Flight.Input: assign_joystick_inputs!
 
 struct ID <: AbstractAircraftID end
 
-
-
 ############################## Controls #################################
 
 struct Controls <: SystemDescriptor end
@@ -229,7 +227,7 @@ Base.@kwdef struct AeroY
     a::Float64 = 0.0 #normalized aileron control input
     r::Float64 = 0.0 #normalized rudder control input
     f::Float64 = 0.0 #normalized flap control input
-    coeffs::AeroC = AeroC() #aerodynamic coefficients
+    coefs::AeroC = AeroC() #aerodynamic coefficients
     wr_b::Wrench = Wrench() #aerodynamic Wrench, airframe
 end
 
@@ -243,6 +241,19 @@ AngularMomentumTrait(::System{Aero}) = HasNoAngularMomentum()
 
 get_wr_b(sys::System{Aero}) = sys.y.wr_b
 
+
+############################## Airframe #################################
+
+Base.@kwdef struct Airframe{ Aero <: SystemDescriptor, Pwp <: SystemDescriptor,
+                        Ldg <: SystemDescriptor} <: SystemGroupDescriptor
+    # aero::Aero = Aero()
+    pwp::Pwp = Pwp()
+    ldg::Ldg = Ldg()
+end
+
+MassTrait(::System{<:Airframe}) = HasMass()
+WrenchTrait(::System{<:Airframe}) = HasWrench()
+AngularMomentumTrait(::System{<:Airframe}) = HasAngularMomentum()
 
 
 ####################### Update functions ###########################
@@ -319,10 +330,6 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     δr = Float64(r) * δr_max
     δf = Float64(f) * δf_max
 
-
-    #OJO CON LAS ADIMENSIONALIZACIONS DE PQR y DE Cl, Cm, Cn, podrian no ser las
-    #mismas que en Beaver
-
     aero_coeffs = get_aero_coeffs(; α, β, p_nd, q_nd, r_nd,
         δa, δr, δe, δf, α_dot_nd, β_dot_nd)
 
@@ -337,7 +344,6 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
         e, a, r, f, coeffs, wr_b)
 
 end
-
 
 f_disc!(::System{Controls}, ::System{Airframe}) = false
 f_disc!(::System{Aero}) = false
