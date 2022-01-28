@@ -13,13 +13,14 @@ using Flight.Airdata
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
-import Flight.Dynamics: WrenchTrait, AngularMomentumTrait, get_wr_b
+import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
 
 export AbstractAerodynamics, SimpleDrag
 
 
 abstract type AbstractAerodynamics <: SystemDescriptor end
 
+MassTrait(::System{<:AbstractAerodynamics}) = HasNoMass()
 WrenchTrait(::System{<:AbstractAerodynamics}) = HasWrench()
 AngularMomentumTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
 

@@ -2,13 +2,16 @@ module Output
 
 using Sockets
 
-using Flight.Attitude
-using Flight.Geodesy
-using Flight.Kinematics
+export AbstractOutputInterface
+export XPInterface
 
-export XPInterface, disable_physics, set_position
+abstract type AbstractOutputInterface end
 
-Base.@kwdef struct XPInterface
+init!(out::AbstractOutputInterface) = throw(MethodError(init!, (out,)))
+update!(out::AbstractOutputInterface, args...) = throw(MethodError(update!, (out, args...)))
+# the baseline update! methods should be defined by AircraftBase
+
+Base.@kwdef struct XPInterface <: AbstractOutputInterface
     socket::UDPSocket = UDPSocket()
     host::IPv4 = IPv4("127.0.0.1")
     port::Integer = 49009
@@ -43,28 +46,12 @@ function set_dref(xp::XPInterface, dref_id::AbstractString, dref_value::Abstract
     send(xp.socket, xp.host, xp.port, buffer.data)
 end
 
-disable_physics(xp::XPInterface) = set_dref(xp, "sim/operation/override/override_planepath", 1)
+disable_physics!(xp::XPInterface) = set_dref(xp, "sim/operation/override/override_planepath", 1)
 
-function set_position(xp::XPInterface, init::KinInit, aircraft::Integer = 0)
-    set_position(xp, KinData(init).pos, aircraft)
-end
+init!(xp::XPInterface) = disable_physics!(xp)
 
-function set_position(xp::XPInterface, pos::PosData, aircraft::Integer = 0)
 
-    llh = Geographic(pos.ϕ_λ, pos.h_o)
-    euler = REuler(pos.q_nb)
-
-    lat = rad2deg(llh.l2d.ϕ)
-    lon = rad2deg(llh.l2d.λ)
-    alt = llh.alt
-    psi = rad2deg(euler.ψ)
-    theta = rad2deg(euler.θ)
-    phi = rad2deg(euler.φ)
-    set_position(xp; lat, lon, alt, psi, theta, phi, aircraft)
-
-end
-
-function set_position(xp::XPInterface; lat = -998, lon = -998, alt = -998,
+function set_position!(xp::XPInterface; lat = -998, lon = -998, alt = -998,
                         psi = -998, theta = -998, phi = -998,
                         aircraft::Integer = 0)
 

@@ -17,13 +17,14 @@ using Flight.Dynamics
 using Flight.Aerodynamics: AbstractAerodynamics
 using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
 using Flight.LandingGear: LandingGearUnit, DirectSteering, DirectBraking, Strut, SimpleDamper
-using Flight.Aircraft: AircraftBase, AbstractAircraftID
+using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractAirframe
 using Flight.Input: XBoxController, get_axis_value, is_released
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
-import Flight.Input: assign_joystick_inputs!
+import Flight.Input: assign!
+import Flight.Output: update!
 
 export BeaverDescriptor
 
@@ -219,11 +220,11 @@ init_y(::Type{Controls}) = ControlsY(zeros(SVector{9})...)
 
 ############################## Airframe #################################
 
-Base.@kwdef struct Airframe{ Aero <: SystemDescriptor, Pwp <: SystemDescriptor,
-                        Ldg <: SystemDescriptor} <: SystemGroupDescriptor
-    aero::Aero = Aero()
-    pwp::Pwp = Pwp()
-    ldg::Ldg = Ldg()
+Base.@kwdef struct Airframe{ A <: SystemDescriptor, P <: SystemDescriptor,
+                        L <: SystemDescriptor} <: AbstractAirframe
+    aero::A = Aero()
+    pwp::P = Pwp()
+    ldg::L = Ldg()
 end
 
 MassTrait(::System{<:Airframe}) = HasMass()
@@ -316,14 +317,14 @@ function get_coefficients(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot
 
 end
 
-f_disc!(::System{<:Aero}) = false
+f_disc!(::System{Aero}) = false
 
 get_wr_b(sys::System{Aero}) = sys.y.wr_b
 
 
 ######################## Controls Update Functions ###########################
 
-function f_cont!(ctl::System{<:Controls}, ::System{<:Airframe},
+function f_cont!(ctl::System{Controls}, ::System{Airframe},
                 ::KinData, ::AirData, ::AbstractTerrain)
 
     #here, controls do nothing but update their output state. for a more complex
@@ -442,7 +443,7 @@ function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
     end
 end
 
-function assign_joystick_inputs!(ac::System{<:AircraftBase{ID}}, joystick::XBoxController)
+function assign!(ac::System{<:AircraftBase{ID}}, joystick::XBoxController)
 
     u = ac.u.controls
 
@@ -470,7 +471,6 @@ function assign_joystick_inputs!(ac::System{<:AircraftBase{ID}}, joystick::XBoxC
     #modifier
 
 end
-
 
 #Aircraft constructor override keyword inputs to customize
 

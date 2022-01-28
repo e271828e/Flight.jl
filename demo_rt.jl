@@ -33,14 +33,14 @@ function demo_rt()
     # atm.u.wind.v_ew_n[1] = 0
     # atm.u.wind.v_ew_n[2] = 0
 
-    init!(ac, kin_init)
+    Aircraft.init!(ac, kin_init)
     #if the model was instantiated in advance, we need this to change its internal state vector!
     reinit!(ac_mdl, ac.x)
 
     # xp = XPInterface()
     xp = XPInterface(host = IPv4("192.168.1.2"))
-    disable_physics(xp)
-    set_position(xp, kin_init)
+    Output.init!(xp)
+    Output.update!(xp, kin_init)
 
     # ac.y.afm.ldg.left |> pwf
     # ac.y.afm.ldg.left.strut |> pwf
@@ -75,7 +75,7 @@ function demo_rt()
         # println(t_wall - t_wall_0)
 
         if ac_mdl.success_iter % output_div == 0
-            set_position(xp, ac_mdl.sys.y.kin.pos)
+            Output.update!(xp, ac_mdl.sys.y.kin.pos)
         end
 
         #when GLFW is implemented, build the model with t_end = Inf and use this to break

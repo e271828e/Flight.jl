@@ -154,7 +154,7 @@ function test_ldg_ac()
 
     ac_sys = System(AircraftBase());
 
-    init!(ac_sys.x.kin, kin_init)
+    Aircraft.init!(ac_sys.x.kin, kin_init)
     ac_sys.x.kin.pos
     ac_sys.x.kin.vel
 

@@ -16,16 +16,16 @@ using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Aerodynamics: AbstractAerodynamics
 using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
-using Flight.LandingGear: LandingGearUnit, DirectSteering, DirectBraking, Strut, SimpleDamper
-using Flight.Aircraft: AircraftBase, AbstractAircraftID
+using Flight.LandingGear
+using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractAirframe
 using Flight.Input: XBoxController, get_axis_value, is_released
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
-import Flight.Input: assign_joystick_inputs!
+import Flight.Input: assign!
 
-# export BeaverDescriptor
+export C182TDescriptor
 
 struct ID <: AbstractAircraftID end
 
@@ -62,25 +62,84 @@ init_u(::Type{Controls}) = ControlsU()
 init_y(::Type{Controls}) = ControlsY(zeros(SVector{9})...)
 
 
-
+################################################################################
 ############################ Airframe ############################
+
+############################## OEW #################################
+
+#dummy subsystem to add OEW mass properties to the airframe; could instead
+#customize the get_mp_b method for System{Airframe} but this way we can fall
+#back on the default System{SystemGroupDescriptor} implementation for get_mp_b,
+#which requires all subsystems to define their own get_mp_b methods
+struct OEW <: SystemDescriptor end
+
+const mp_b_OEW = let
+    #define the empty airframe as a RigidBody
+    OEW_G = RigidBody(894, SA[1285 0 0; 0 1825 0; 0 0 2667])
+    #define the transform from the origin of the airframe reference frame (Ob)
+    #to the empty airframe's center of mass (G)
+    t_Ob_G = FrameTransform(r = SVector{3}(0.056, 0, 0.582))
+    #compute the empty airframe mass properties at Ob
+    MassProperties(OEW_G, t_Ob_G)
+end
+
+MassTrait(::System{OEW}) = HasMass()
+WrenchTrait(::System{OEW}) = HasNoWrench()
+AngularMomentumTrait(::System{OEW}) = HasNoAngularMomentum()
+
+get_mp_b(::System{OEW}) = mp_b_OEW
+
+##################################### Pwp ######################################
+
+struct Pwp <: SystemGroupDescriptor
+    left::EThruster
+    right::EThruster
+end
+
+MassTrait(::System{Pwp}) = HasNoMass()
+WrenchTrait(::System{Pwp}) = HasWrench()
+AngularMomentumTrait(::System{Pwp}) = HasAngularMomentum()
+
+function Pwp()
+
+    prop = SimpleProp(kF = 2e-3, J = 0.25)
+
+    left = EThruster(propeller = prop, motor = ElectricMotor(α = CW))
+    right = EThruster(propeller = prop, motor = ElectricMotor(α = CCW))
+
+    Pwp(left, right)
+
+end
 
 ##### Landing Gear ####
 
-struct Ldg{L <: LandingGearUnit, R <: LandingGearUnit,
-    N <: LandingGearUnit} <: SystemGroupDescriptor
-    left::L
-    right::R
-    nose::N
+#more flexible, but requires adding a type parameter for the ldg field in the
+#Airframe. if we simply declare ldg::Ldg, Ldg is a UnionAll and the System
+#constructor (appropriately) fails. also, requires System{<:Ldg} instead of
+#System{Ldg} in method signatures
+# struct Ldg{L <: LandingGearUnit, R <: LandingGearUnit,
+#     N <: LandingGearUnit} <: SystemGroupDescriptor
+#     left::L
+#     right::R
+#     nose::N
+# end
+
+#alternative, less flexible (implies type redefinition if the type parameters of
+#the field types change, and Revise will complain)
+struct Ldg <: SystemGroupDescriptor
+    left::LandingGearUnit{Strut{SimpleDamper}, NoSteering, DirectBraking}
+    right::LandingGearUnit{Strut{SimpleDamper}, NoSteering, DirectBraking}
+    nose::LandingGearUnit{Strut{SimpleDamper}, DirectSteering, NoBraking}
 end
 
-WrenchTrait(::System{<:Ldg}) = HasWrench()
-AngularMomentumTrait(::System{<:Ldg}) = HasNoAngularMomentum()
+MassTrait(::System{Ldg}) = HasNoMass()
+WrenchTrait(::System{Ldg}) = HasWrench()
+AngularMomentumTrait(::System{Ldg}) = HasNoAngularMomentum()
 
 function Ldg()
 
-    mlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
-    nlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
+    mlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 2000, k_d_cmp = 2000)
+    nlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 2000, k_d_cmp = 2000)
 
     left = LandingGearUnit(
         strut = Strut(
@@ -98,7 +157,8 @@ function Ldg()
 
     nose = LandingGearUnit(
         strut = Strut(
-            t_bs = FrameTransform(r = [1.27, 0, 2.004] , q = RQuat()),
+            # t_bs = FrameTransform(r = [1.27, 0, 2.004] , q = RQuat()),
+            t_bs = FrameTransform(r = [1.27, 0, 1.9] , q = RQuat()),
             l_0 = 0.0,
             damper = nlg_damper),
         steering = DirectSteering())
@@ -175,15 +235,18 @@ function get_mp_b(sys::System{Fuel})
     return mp_b
 end
 
+f_cont!(::System{Fuel}, ::System{Pwp}) = nothing
+
 #here we would define f_cont! to account for fuel consumption. also could add
 #discrete states to define which tank(s) we're drawing from
 
 ##### Aerodynamics ####
 
-Base.@kwdef struct Aero
-    S::Float64 = 23.23 #wing area
-    b::Float64 = 14.63 #wingspan
-    c::Float64 = 1.5875 #mean aerodynamic chord
+
+Base.@kwdef struct Aero <: AbstractAerodynamics
+    S::Float64 = 16.165 #wing area
+    b::Float64 = 10.912 #wingspan
+    c::Float64 = 1.494 #mean aerodynamic chord
     δe_max::Float64 = 30 |> deg2rad #maximum elevator deflection (rad)
     δa_max::Float64 = 40 |> deg2rad #maximum (combined) aileron deflection (rad)
     δr_max::Float64 = 30 |> deg2rad #maximum rudder deflection (rad)
@@ -235,42 +298,38 @@ init_x(::Type{Aero}) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered a
 init_y(::Type{Aero}) = AeroY()
 init_u(::Type{Aero}) = AeroU()
 
-MassTrait(::System{Aero}) = HasNoMass()
-WrenchTrait(::System{Aero}) = HasWrench()
-AngularMomentumTrait(::System{Aero}) = HasNoAngularMomentum()
 
-get_wr_b(sys::System{Aero}) = sys.y.wr_b
+################################ Airframe ######################################
 
-
-############################## Airframe #################################
-
-Base.@kwdef struct Airframe{ Aero <: SystemDescriptor, Pwp <: SystemDescriptor,
-                        Ldg <: SystemDescriptor} <: SystemGroupDescriptor
-    # aero::Aero = Aero()
+Base.@kwdef struct Airframe <: AbstractAirframe
+    oew::OEW = OEW()
+    aero::Aero = Aero()
     pwp::Pwp = Pwp()
     ldg::Ldg = Ldg()
+    fuel::Fuel = Fuel()
+    pld::Payload = Payload()
 end
 
-MassTrait(::System{<:Airframe}) = HasMass()
-WrenchTrait(::System{<:Airframe}) = HasWrench()
-AngularMomentumTrait(::System{<:Airframe}) = HasAngularMomentum()
+MassTrait(::System{Airframe}) = HasMass()
+WrenchTrait(::System{Airframe}) = HasWrench()
+AngularMomentumTrait(::System{Airframe}) = HasAngularMomentum()
 
 
-####################### Update functions ###########################
+################################################################################
+####################### Update functions #######################################
 
-function f_cont!(ctl::System{Controls}, ::System{Airframe},
-                ::KinData, ::AirData, ::AbstractTerrain)
 
-    #here, controls do nothing but update their output state. for a more complex
-    #aircraft a continuous state-space autopilot implementation could go here
-    @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
-            pedals, brake_left, brake_right, flaps = ctl.u
+####################### REMOVE THIS ########################################
+####################### REMOVE THIS ########################################
+####################### REMOVE THIS ########################################
+####################### REMOVE THIS ########################################
+####################### REMOVE THIS ########################################
+####################### REMOVE THIS ########################################
 
-    return ControlsY(; throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
-                            pedals, brake_left, brake_right, flaps)
+f_cont!(sys::System{Aero}, pwp::System{Pwp},
+    air::AirData, kinematics::KinData, terrain::AbstractTerrain) = nothing
 
-end
-
+"""
 function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     air::AirData, kinematics::KinData, terrain::AbstractTerrain)
 
@@ -344,24 +403,151 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
         e, a, r, f, coeffs, wr_b)
 
 end
+"""
+
+get_wr_b(sys::System{Aero}) = sys.y.wr_b
+
+
+######################## Controls Update Functions ###########################
+
+function f_cont!(ctl::System{Controls}, ::System{Airframe},
+                ::KinData, ::AirData, ::AbstractTerrain)
+
+    #here, controls do nothing but update their output state. for a more complex
+    #aircraft a continuous state-space autopilot implementation could go here
+    @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
+            pedals, brake_left, brake_right, flaps = ctl.u
+
+    return ControlsY(; throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
+                            pedals, brake_left, brake_right, flaps)
+
+end
 
 f_disc!(::System{Controls}, ::System{Airframe}) = false
+
+################################################################################
+####################### Airframe Update Functions ##############################
+
+#we can't fall back  on the default System Group implementation, because of the
+#interactions between the different subsystems
+
+function f_cont!(afm::System{Airframe}, ctl::System{Controls},
+                kin::KinData, air::AirData, trn::AbstractTerrain)
+
+    @unpack aero, pwp, ldg, fuel, pld = afm.subsystems
+
+    assign_component_inputs!(afm, ctl)
+    f_cont!(ldg, kin, trn) #update landing gear continuous state & outputs
+    f_cont!(pwp, kin, air) #update powerplant continuous state & outputs
+    f_cont!(fuel, pwp) #update fuel system
+    f_cont!(aero, pwp, air, kin, trn)
+
+    # afm.y = (aero = aero.y, pwp = pwp.y, ldg = ldg.y, fuel = fuel.y, pld = pld.y )
+    afm.y = (aero = aero.y, pwp = pwp.y, ldg = ldg.y)
+
+end
+
+function assign_component_inputs!(afm::System{<:Airframe}, ctl::System{<:Controls})
+
+    @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
+            pedals, brake_left, brake_right, flaps = ctl.u
+    @unpack aero, pwp, ldg = afm.subsystems
+
+    #yoke_Δx is the offset with respect to the force-free position yoke_x0
+    #yoke_Δy is the offset with respect to the force-free position yoke_y0
+
+    pwp.u.left.throttle = throttle
+    pwp.u.right.throttle = throttle
+    ldg.u.nose.steering[] = pedals
+    ldg.u.left.braking[] = brake_left
+    ldg.u.right.braking[] = brake_right
+    aero.u.e = -(yoke_y0 + yoke_Δy) #+yoke_Δy and +yoke_y0 are back and +δe is pitch down, need to invert it
+    aero.u.a = -(yoke_x0 + yoke_Δx) #+yoke_Δx and +yoke_x0 are right and +δa is roll left, need to invert it
+    aero.u.r = -pedals # +pedals is right and +δr is yaw left
+    aero.u.f = flaps # +flaps is flaps down and +δf is flaps down
+
+    return nothing
+end
+
+function f_disc!(afm::System{Airframe}, ::System{Controls})
+    #fall back to the default SystemGroup implementation
+    return f_disc!(afm)
+end
+
+f_disc!(::System{OEW}) = false
 f_disc!(::System{Aero}) = false
+f_disc!(::System{Fuel}) = false
+f_disc!(::System{Payload}) = false
+#Pwp and Ldg are SystemGroups, so we can rely on the fallback f_disc!
+
+#get_mp_b, get_wr_b and get_hr_b use the fallback for SystemGroups, which in turn call
+#get_mp_b, get_wr_b and get_hr_b on aero, pwp and ldg
 
 
+################################################################################
+############################# Input Interfaces ################################
 
 
-c = RigidBody(894, SA[1285 0 0; 0 1825 0; 0 0 2667])
-t_bc = FrameTransform(r = SVector{3}(0.056, 0, 0.582))
-mp_b = MassProperties(c, t_bc)
+####################### XBoxController Input Interface ########################
 
+elevator_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
+aileron_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
+pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
+brake_curve(x) = exp_axis_curve(x, strength = 0, deadzone = 0.05)
 
-MTOW = 1406
+function exp_axis_curve(x::Bounded{T}, args...; kwargs...) where {T}
+    exp_axis_curve(T(x), args...; kwargs...)
+end
 
-#aerodynamics (SI)
-S = 16.165
-b = 10.912
-c = 1.494
+function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
+
+    a = strength
+    x0 = deadzone
+
+    abs(x) <= 1 || throw(ArgumentError("Input to exponential curve must be within [-1, 1]"))
+    (x0 >= 0 && x0 <= 1) || throw(ArgumentError("Exponential curve deadzone must be within [0, 1]"))
+
+    if x > 0
+        y = max(0, (x - x0)/(1 - x0)) * exp( a * (abs(x) -1) )
+    else
+        y = min(0, (x + x0)/(1 - x0)) * exp( a * (abs(x) -1) )
+    end
+end
+
+function assign!(ac::System{<:AircraftBase{ID}}, joystick::XBoxController)
+
+    u = ac.u.controls
+
+    u.yoke_Δx = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.yoke_Δy = get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
+    u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
+    u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
+
+    u.yoke_x0 -= 0.01 * is_released(joystick, :dpad_left)
+    u.yoke_x0 += 0.01 * is_released(joystick, :dpad_right)
+    u.yoke_y0 -= 0.01 * is_released(joystick, :dpad_up)
+    u.yoke_y0 += 0.01 * is_released(joystick, :dpad_down)
+
+    u.throttle += 0.1 * is_released(joystick, :button_Y)
+    u.throttle -= 0.1 * is_released(joystick, :button_A)
+
+    # u.propeller_speed += 0.1 * is_released(joystick, :button_X) #rpms
+    # u.propeller_speed -= 0.1 * is_released(joystick, :button_B)
+
+    u.flaps += 0.5 * is_released(joystick, :right_bumper)
+    u.flaps -= 0.5 * is_released(joystick, :left_bumper)
+
+    # Y si quisiera landing gear up y down, podria usar option como
+    #modifier
+
+end
+
+#Aircraft constructor override keyword inputs to customize
+
+function C182TDescriptor(; id = ID(), kin = KinLTF(), afm = Airframe(), ctl = Controls())
+    AircraftBase( id; kin, afm, ctl)
+end
 
 
 end #module

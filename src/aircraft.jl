@@ -7,27 +7,29 @@ using UnPack
 using Flight.Modeling
 using Flight.Plotting
 using Flight.Terrain
+using Flight.Attitude
+using Flight.Geodesy
 using Flight.Atmosphere
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
+using Flight.Input
+using Flight.Output
 
 import Flight.Modeling: init_x, init_y, init_u, init_d,f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Plotting: plots
+import Flight.Output: update!
 
-export AircraftBase, init!
+export AircraftBase, AbstractAirframe, EmptyAirframe
 
 
 abstract type AbstractAircraftID end
 
-struct GenericID <: AbstractAircraftID end
-
 ###############################################################################
 ############################## Airframe #######################################
 
-abstract type AbstractAirframe <: SystemDescriptor end
-
+abstract type AbstractAirframe <: SystemGroupDescriptor end
 MassTrait(::System{<:AbstractAirframe}) = HasMass()
 
 ########################## EmptyAirframe ###########################
@@ -48,9 +50,11 @@ get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distributi
 ###############################################################################
 ############################## AircraftBase ###################################
 
+struct GenericID <: AbstractAircraftID end
+
 struct AircraftBase{I <: AbstractAircraftID,
                     K <: AbstractKinematics,
-                    F <: SystemDescriptor,
+                    F <: AbstractAirframe,
                     C <: SystemDescriptor} <: SystemGroupDescriptor
 
     kinematics::K
@@ -115,6 +119,27 @@ function f_disc!(sys::System{<:AircraftBase})
             f_disc!(controls, airframe)
 
     return x_mod
+end
+
+function update!(xp::XPInterface, ac::System{<:AircraftBase}, ac_number::Integer = 0)
+    update!(xp, ac.y.kinematics.pos, ac_number)
+end
+
+function update!(xp::XPInterface, pos::PosData, aircraft::Integer = 0)
+
+    llh = Geographic(pos.ϕ_λ, pos.h_o)
+    euler = REuler(pos.q_nb)
+
+    lat = rad2deg(llh.l2d.ϕ)
+    lon = rad2deg(llh.l2d.λ)
+    alt = llh.alt
+
+    psi = rad2deg(euler.ψ)
+    theta = rad2deg(euler.θ)
+    phi = rad2deg(euler.φ)
+
+    Output.set_position!(xp; lat, lon, alt, psi, theta, phi, aircraft)
+
 end
 
 #no custom plots function required, all outputs are namedtuples

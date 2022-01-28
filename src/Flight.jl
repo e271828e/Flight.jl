@@ -4,10 +4,12 @@ using Reexport
 @reexport using BenchmarkTools
 
 #general
-include("utils.jl")
 include("misc.jl")
 include("modeling.jl")
 include("plotting.jl")
+include("input.jl")
+include("output.jl")
+include("simulation.jl")
 
 #math
 include("quaternions.jl")
@@ -17,7 +19,6 @@ include("attitude.jl")
 include("geodesy.jl")
 include("terrain.jl")
 include("atmosphere.jl")
-
 include("kinematics.jl")
 include("dynamics.jl")
 
@@ -27,19 +28,18 @@ include("propulsion.jl")
 include("landinggear.jl")
 include("aerodynamics.jl")
 
-#IO interfaces
-include("input.jl")
-include("output.jl")
-
 # #aircraft
 include("aircraft.jl")
 include("beaver.jl")
-# include("c182t.jl")
+include("c182t.jl")
 
-@reexport using .Utils
 @reexport using .Misc
 @reexport using .Modeling
 @reexport using .Plotting
+@reexport using .Simulation
+
+@reexport using .Input
+@reexport using .Output
 
 @reexport using .Quaternions
 @reexport using .Attitude
@@ -56,12 +56,9 @@ include("beaver.jl")
 @reexport using .LandingGear
 @reexport using .Aerodynamics
 
-@reexport using .Input
-@reexport using .Output
-
 @reexport using .Aircraft
 @reexport using .Beaver
-# @reexport using .C182T
+@reexport using .C182T
 
 export ftest
 

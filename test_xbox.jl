@@ -28,7 +28,7 @@ function test_xbox()
         #try to catch potential joystick disconnections
         GLFW.PollEvents()
         for joystick in values(connected_joysticks)
-            update_joystick(joystick)
+            Input.update!(joystick)
             println(get_axis_value(joystick))
             println()
             println(get_button_state(joystick, :button_A))

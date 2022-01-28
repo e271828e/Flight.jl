@@ -1,7 +1,9 @@
 module Plotting
 
 using Reexport
+using Dates
 @reexport using Plots
+@reexport using Measures
 @reexport using StructArrays
 @reexport using RecursiveArrayTools
 @reexport using LaTeXStrings

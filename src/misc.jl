@@ -1,6 +1,14 @@
 module Misc
 
 export Bounded
+export pwf
+
+#print with fieldnames
+function pwf(s)
+    for f in fieldnames(typeof(s))
+        println("$f: $(getfield(s,f))")
+    end
+end
 
 #needs some unit tests
 struct Bounded{T<:Real, Min, Max}

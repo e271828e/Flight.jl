@@ -27,7 +27,7 @@ using Flight.Input
 import Flight.Plotting: plots
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mass_properties
-import Flight.Input: assign_joystick_inputs!
+import Flight.Input: assign!
 
 
 export C172Aircraft, C172Pwp, C172Ldg
@@ -413,7 +413,7 @@ yoke_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
 pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.1)
 brake_curve(x) = exp_axis_curve(x, strength = 0, deadzone = 0.05)
 
-function assign_joystick_inputs!(ac::System{<:AircraftBase{C172ID}}, joystick::XBoxController)
+function assign!(ac::System{<:AircraftBase{C172ID}}, joystick::XBoxController)
 
     if get_button_change(joystick, :dpad_up) === button_released
         ac.u.throttle = Float64(ac.u.throttle) + 0.1

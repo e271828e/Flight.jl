@@ -53,11 +53,10 @@ end
 #dispatch will silently revert to the fallback, which does nothing and may not
 #be obvious at all.
 
-f_cont!(::System, args...) = MethodError(f_cont!, args) |> throw
-(f_disc!(::System, args...)::Bool) = MethodError(f_disc!, args) |> throw
+f_cont!(sys::System, args...) = MethodError(f_cont!, (sys, args...)) |> throw
+(f_disc!(sys::System, args...)::Bool) = MethodError(f_disc!, (sys, args...)) |> throw
 
 Base.getproperty(sys::System, s::Symbol) = getproperty(sys, Val(s))
-Base.getproperty(sys::System, ::Val{S}) where {S} = getfield(getfield(sys, :subsystems), S)
 
 @generated function Base.getproperty(sys::System, ::Val{S}) where {S}
     if S ∈ fieldnames(System)

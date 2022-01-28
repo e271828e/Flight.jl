@@ -17,7 +17,7 @@ import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
 import Flight.Dynamics: WrenchTrait, AngularMomentumTrait, get_wr_b
 
-export LandingGearUnit
+export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 
 #basis elements, for convenience
 const e1 = SVector{3,Float64}(1,0,0)

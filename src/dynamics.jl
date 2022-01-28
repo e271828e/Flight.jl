@@ -14,7 +14,7 @@ import Flight.Plotting: plots
 
 export FrameTransform, transform
 export Wrench
-export PointMass, RigidBody, MassProperties
+export AbstractMassDistribution, PointMass, RigidBody, MassProperties
 export HasMass, HasNoMass, get_mp_b
 export HasWrench, HasNoWrench, get_wr_b
 export HasAngularMomentum, HasNoAngularMomentum, get_hr_b

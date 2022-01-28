@@ -3,18 +3,106 @@ module Input
 using StaticArrays
 using UnPack
 
+export AbstractInputInterface
+
 using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
         GetJoystickAxes, GetJoystickButtons, GetJoystickName
-
-export connected_joysticks, init_joysticks, update_joystick, joystick_callback
+export connected_joysticks, init_joysticks, joystick_callback
 export get_axis_value, get_button_state, get_button_change, is_pressed, is_released
 export XBoxController
 
-abstract type AbstractJoystick end
+abstract type AbstractInputInterface end
 
-assign_joystick_inputs!(args...) = throw(MethodError(assign_joystick_inputs!, args))
+update!(input::AbstractInputInterface) = throw(MethodError(update!, (input,)))
+assign!(target::Any, input::AbstractInputInterface) = throw(MethodError(assign!, (target, input)))
+#to be extended by users for concrete target and interface
+
+#############################################################
+#################### AbstractJoystick #######################
+
+abstract type AbstractJoystick <: AbstractInputInterface end
 
 const connected_joysticks = Dict{JoystickSlot, AbstractJoystick}()
+
+get_slot(joystick::AbstractJoystick) = throw(MethodError(get_slot, (joystick,)))
+
+function update!(joystick::AbstractJoystick)
+    slot = get_slot(joystick)
+    JoystickPresent(slot) ? _update!(joystick) : error(
+        "$(typeof(joystick)) not found at slot $slot"
+    )
+end
+
+#to be overridden by concrete joystick subtypes
+_update!(j::AbstractJoystick) = throw(MethodError(update!, (j,)))
+
+
+
+##################### Joystick configuration ################
+
+#adds any joysticks already connected when GLFW is first imported. from this
+#moment, connections and disconnections will need to be caught by the callback
+#by calling GLFW.PollEvents()
+function init_joysticks()
+
+    for slot in instances(JoystickSlot)
+        delete!(connected_joysticks, slot)
+        if JoystickPresent(slot)
+            add_joystick(slot)
+        end
+    end
+
+    return connected_joysticks
+
+end
+
+function add_joystick(slot::JoystickSlot)
+
+    if !JoystickPresent(slot)
+        println("Error while adding device at slot $slot: not found")
+        return
+    end
+
+    joystick_model = GetJoystickName(slot)
+
+    if joystick_model === "Xbox Controller"
+        joystick = XBoxController(slot)
+        println("$joystick_model active at slot $slot")
+    else
+        error("Interface for joystick $joystick_model not implemented")
+    end
+
+    connected_joysticks[slot] = joystick
+
+end
+
+function remove_joystick(slot::JoystickSlot)
+
+    if JoystickPresent(slot)
+        joystick_model = GetJoystickName(slot)
+        println("Can't remove $joystick_model from slot $slot: device still connected")
+        return
+    end
+
+    delete!(connected_joysticks, slot)
+    println("$slot is no longer active")
+end
+
+function joystick_callback(slot::JoystickSlot, event::DeviceConfigEvent)
+
+    if event === GLFW.CONNECTED
+        add_joystick(slot)
+    elseif event === GLFW.DISCONNECTED
+        remove_joystick(slot)
+    end
+
+end
+
+# #add any joysticks connected before GLFW was imported
+# #enable detection of further joystick connections or disconnections
+# init_joysticks()
+# GLFW.SetJoystickCallback(joystick_callback)
+# GLFW.PollEvents() #check for newly connected joysticks
 
 ###################
 
@@ -27,20 +115,16 @@ Base.convert(::Type{ButtonChange}, n::Integer) = ButtonChange(n)
 Base.zero(::Type{ButtonChange}) = unchanged
 
 
+##################################################################
 ######################### XBox Controller ########################
+
+########################## Axes
 
 const XBoxAxisLabels = (
     :left_analog_x, :left_analog_y, :right_analog_x, :right_analog_y,
     :left_trigger, :right_trigger
 )
-const XBoxButtonLabels = (
-    :button_A, :button_B, :button_X, :button_Y, :left_bumper, :right_bumper,
-    :view, :menu, :left_analog, :right_analog,
-    :dpad_up, :dpad_right, :dpad_down, :dpad_left
-)
-
 const default_axis_mapping = NamedTuple{XBoxAxisLabels}(1:6)
-const default_button_mapping = NamedTuple{XBoxButtonLabels}(1:14)
 
 Base.@kwdef struct XBoxAxes
     mapping::NamedTuple{XBoxAxisLabels, NTuple{6,Int}} = default_axis_mapping
@@ -57,11 +141,23 @@ function Base.setindex!(axes::XBoxAxes, v, s::Symbol)
     data[mapping[s]] = v
 end
 
+######################## Buttons
+
+const XBoxButtonLabels = (
+    :button_A, :button_B, :button_X, :button_Y, :left_bumper, :right_bumper,
+    :view, :menu, :left_analog, :right_analog,
+    :dpad_up, :dpad_right, :dpad_down, :dpad_left
+)
+
+const default_button_mapping = NamedTuple{XBoxButtonLabels}(1:14)
+
 Base.@kwdef struct XBoxButtons
     mapping::NamedTuple{XBoxButtonLabels, NTuple{14,Int}} = default_button_mapping
     state::MVector{14,Bool} = zeros(MVector{14,Bool})
     change::MVector{14,ButtonChange} = zeros(MVector{14,ButtonChange})
 end
+
+####################### Main
 
 Base.@kwdef struct XBoxController <: AbstractJoystick
     slot::JoystickSlot = GLFW.JOYSTICK_1
@@ -70,8 +166,9 @@ Base.@kwdef struct XBoxController <: AbstractJoystick
 end
 
 XBoxController(slot::JoystickSlot) = XBoxController(; slot)
+get_slot(joystick::XBoxController) = joystick.slot
 
-function update_joystick(joystick::XBoxController)
+function _update!(joystick::XBoxController)
 
     @unpack slot, axes, buttons = joystick
 
@@ -122,63 +219,6 @@ end
 function is_released(joystick::XBoxController, s::Symbol)
     @unpack change, mapping = joystick.buttons
     change[mapping[s]] === released
-end
-##################### Joystick configuration ################
-
-#adds any joysticks already connected when GLFW is first imported. from this
-#moment, connections and disconnections will need to be caught by the callback
-#by calling GLFW.PollEvents()
-function init_joysticks()
-
-    for slot in instances(JoystickSlot)
-        delete!(connected_joysticks, slot)
-        if JoystickPresent(slot)
-            add_joystick(slot)
-        end
-    end
-
-end
-
-function joystick_callback(slot::JoystickSlot, event::DeviceConfigEvent)
-
-    if event === GLFW.CONNECTED
-        add_joystick(slot)
-    elseif event === GLFW.DISCONNECTED
-        remove_joystick(slot)
-    end
-
-end
-
-function add_joystick(slot::JoystickSlot)
-
-    if !JoystickPresent(slot)
-        println("Error while adding device at slot $slot: not found")
-        return
-    end
-
-    joystick_model = GetJoystickName(slot)
-
-    if joystick_model === "Xbox Controller"
-        joystick = XBoxController(slot)
-        println("$joystick_model now active at slot $slot")
-    else
-        error("Interface for joystick $joystick_model not implemented")
-    end
-
-    connected_joysticks[slot] = joystick
-
-end
-
-function remove_joystick(slot::JoystickSlot)
-
-    if JoystickPresent(slot)
-        joystick_model = GetJoystickName(slot)
-        println("Can't remove $joystick_model from slot $slot: device still connected")
-        return
-    end
-
-    delete!(connected_joysticks, slot)
-    println("$slot is no longer active")
 end
 
 

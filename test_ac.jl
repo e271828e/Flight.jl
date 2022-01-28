@@ -13,7 +13,7 @@ function ac_benchmark()
 
     kin_init = KinInit( Ob = Geographic(LatLon(), h_trn + 0.9));
 
-    init!(ac, kin_init)
+    Aircraft.init!(ac, kin_init)
 
     b = @benchmark f_cont!($ac, $trn, $atm)
     @show median(b)
@@ -58,7 +58,7 @@ function ac_test02()
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),
                                         h_trn + 0.85));
 
-    init!(ac, kin_init)
+    Aircraft.init!(ac, kin_init)
     ac.u.throttle = 0
     ac.u.brake_left = 0
     ac.u.brake_right = 0

@@ -3,7 +3,6 @@ module Terrain
 using StaticArrays
 
 using Flight.Geodesy
-using Flight.Utils
 
 export AbstractTerrain, DummyTerrain, HorizontalTerrain
 export TerrainData, SurfaceType
