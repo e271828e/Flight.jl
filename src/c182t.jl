@@ -250,16 +250,6 @@ end
 #CYdeltar > 0. es decir, deltar > 0 provoca fuerza lateral a la derecha. esto
 #significa trailing edge left. como en Beaver
 
-"""
-el comportamiento del stall hysteresis es el siguiente:
-
-si alpha > alpha_hyst_hi (AKA alpha_stall_onset), entonces el estado cambia a stall. esto debe hacerse en f_disc!
-si alpha < alpha_hyst_lo (AKA alpha_stall_recovery), entonces el estado cambia a no_stall.
-
-mientras stall = false, el CL se lee en la tabla de CL_no_stall.
-mientras stall = true, se lee en la tabla de CL_stalled
-"""
-
 #ojo: en JSBSim enchufan simplemente la deflexion del aleron izquierdo como
 #delta_a en los coeficientes. pero esto tiene un problema: como el intervalo de
 #delta_a es asimetrico, el avion va a tener distinto mando en roll a un lado y a
@@ -280,10 +270,10 @@ Base.@kwdef struct Aero <: AbstractAerodynamics
     δa_range::NTuple{2,Float64} = deg2rad.((-20, 20)) #aileron deflection range (rad)
     δr_range::NTuple{2,Float64} = deg2rad.((-16, 16)) #rudder deflection range (rad)
     δf_range::NTuple{2,Float64} = deg2rad.((0, 30)) #flap deflection range (rad)
-    α_bounds::NTuple{2,Float64} = (-0.1, 0.4) #α range for aerodynamic dataset input
-    β_bounds::NTuple{2,Float64} = (-0.1, 0.4) #β range for aerodynamic dataset input
-    α_stall::NTuple{2,Float64} = (0.09, 0.36) #α values for switching stall state
-    V_min::Float64 = 1.0 #lower airspeed threshold for non-dimensionalization
+    α_bounds::NTuple{2,Float64} = (-0.1, 0.4) #α bounds for aerodynamic dataset input
+    β_bounds::NTuple{2,Float64} = (-0.1, 0.4) #β bounds for aerodynamic dataset input
+    α_stall::NTuple{2,Float64} = (0.09, 0.36) #α values for stall hysteresis switching
+    V_min::Float64 = 1.0 #lower airspeed threshold for non-dimensional angle rates
     τ::Float64 = 0.1 #time constant for airflow angle filtering
 end
 
@@ -306,8 +296,6 @@ Base.@kwdef struct AeroCoeffs
     C_m::Float64 = 0.0
     C_n::Float64 = 0.0
 end
-
-
 
 Base.@kwdef struct AeroY
     e::Float64 = 0.0 #normalized elevator control input
@@ -392,10 +380,7 @@ function linear_scaling(u::Bounded{T, UMin, UMax}, δ_range::NTuple{2,Real}) whe
 end
 
 function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
-# function get_aero_coeffs()
 
-    #OJO CON LOS GRADOS Y LOS RADIANES!!!!!!!
-    #   en las tablas los flaps estan en deg y lo demas en rad
     C_D = aero_data.C_D
 
     # C_D.z |> println
@@ -444,16 +429,16 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
 
     @unpack ẋ, x, u, d, params = sys
     @unpack α_filt, β_filt = x
-    @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_bounds, β_bounds, α_stall, V_min, τ = params
     @unpack e, a, r, f = u
+    @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_bounds, β_bounds, α_stall, V_min, τ = params
     @unpack TAS, q, v_wOb_b = air
     @unpack ω_lb_b = kinematics.vel
     @unpack n_e, h_o = kinematics.pos
 
     v_wOb_a = v_wOb_b
     α, β = get_airflow_angles(v_wOb_a)
-    # α = clamp(α, α_min, α_max)
-    # β = clamp(β, αβ_min, αβ_max)
+    α = clamp(α, α_bounds[1], α_bounds[2])
+    β = clamp(β, β_bounds[2], β_bounds[2])
     V = max(TAS, V_min)
 
     α_filt_dot = 1/τ * (α - α_filt)
@@ -483,8 +468,8 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     # T = get_wr_b(pwp).F[1]
     # C_T = T / (q * S) #thrust coefficient, not used here
 
-    coeffs = get_aero_coeffs(; α, β, p_nd, q_nd, r_nd,
-        δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
+    coeffs = get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf,
+                               α_dot_nd, β_dot_nd, Δh_nd, stall)
 
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
 
@@ -648,14 +633,8 @@ function assign!(ac::System{<:AircraftBase{ID}}, joystick::XBoxController)
     u.throttle += 0.1 * is_released(joystick, :button_Y)
     u.throttle -= 0.1 * is_released(joystick, :button_A)
 
-    # u.propeller_speed += 0.1 * is_released(joystick, :button_X) #rpms
-    # u.propeller_speed -= 0.1 * is_released(joystick, :button_B)
-
     u.flaps += 0.5 * is_released(joystick, :right_bumper)
     u.flaps -= 0.5 * is_released(joystick, :left_bumper)
-
-    # Y si quisiera landing gear up y down, podria usar option como
-    #modifier
 
 end
 
