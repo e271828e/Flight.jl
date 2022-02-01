@@ -5,6 +5,8 @@ using StaticArrays
 using ComponentArrays
 using UnPack
 using Unitful
+using Interpolations
+using HDF5
 
 using Flight.Modeling
 using Flight.Plotting
@@ -235,67 +237,96 @@ function get_mp_b(sys::System{Fuel})
     return mp_b
 end
 
-f_cont!(::System{Fuel}, ::System{Pwp}) = nothing
-
-#here we would define f_cont! to account for fuel consumption. also could add
-#discrete states to define which tank(s) we're drawing from
 
 ##### Aerodynamics ####
 
+#Cmdeltae es negativo. Por tanto, un deltae > 0 provoca pitch down. esto
+#significa que deltae > 0 corresponde a stab trailing edge down. igual que en
+#Beaver
+
+#Cldeltaa > 0. es decir, un deltaa > 0 provoca roll right. Es decir, corresponde
+#a left aileron trailing edge down. esto es al reves que en Beaver
+
+#CYdeltar > 0. es decir, deltar > 0 provoca fuerza lateral a la derecha. esto
+#significa trailing edge left. como en Beaver
+
+"""
+el comportamiento del stall hysteresis es el siguiente:
+
+si alpha > alpha_hyst_hi (AKA alpha_stall_onset), entonces el estado cambia a stall. esto debe hacerse en f_disc!
+si alpha < alpha_hyst_lo (AKA alpha_stall_recovery), entonces el estado cambia a no_stall.
+
+mientras stall = false, el CL se lee en la tabla de CL_no_stall.
+mientras stall = true, se lee en la tabla de CL_stalled
+"""
+
+#ojo: en JSBSim enchufan simplemente la deflexion del aleron izquierdo como
+#delta_a en los coeficientes. pero esto tiene un problema: como el intervalo de
+#delta_a es asimetrico, el avion va a tener distinto mando en roll a un lado y a
+#otro. esto esta mal. deberia ser una suma o un promedio de deflexiones. y
+#entonces el intervalo si seria simetrico. por tanto, voy a suponer que es un
+#promedio (porque si no me saldria el doble de autoridad de la que tiene), y que
+#el intervalo es simetrico
+
+#aunque las tablas de interpolacion saturen en alpha y beta en sus extremos, hay
+#contribuciones que son un producto de alpha o beta por una derivada de
+#estabilidad sin mas, asi que conviene saturar alpha y beta aparte de esto
 
 Base.@kwdef struct Aero <: AbstractAerodynamics
     S::Float64 = 16.165 #wing area
     b::Float64 = 10.912 #wingspan
     c::Float64 = 1.494 #mean aerodynamic chord
-    δe_max::Float64 = 30 |> deg2rad #maximum elevator deflection (rad)
-    δa_max::Float64 = 40 |> deg2rad #maximum (combined) aileron deflection (rad)
-    δr_max::Float64 = 30 |> deg2rad #maximum rudder deflection (rad)
-    δf_max::Float64 = 30 |> deg2rad #maximum flap deflection (rad)
+    δe_range::NTuple{2,Float64} = deg2rad.((-28, 23)) #elevator deflection range (rad)
+    δa_range::NTuple{2,Float64} = deg2rad.((-20, 20)) #aileron deflection range (rad)
+    δr_range::NTuple{2,Float64} = deg2rad.((-16, 16)) #rudder deflection range (rad)
+    δf_range::NTuple{2,Float64} = deg2rad.((0, 30)) #flap deflection range (rad)
+    α_bounds::NTuple{2,Float64} = (-0.1, 0.4) #α range for aerodynamic dataset input
+    β_bounds::NTuple{2,Float64} = (-0.1, 0.4) #β range for aerodynamic dataset input
+    α_stall::NTuple{2,Float64} = (0.09, 0.36) #α values for switching stall state
+    V_min::Float64 = 1.0 #lower airspeed threshold for non-dimensionalization
     τ::Float64 = 0.1 #time constant for airflow angle filtering
 end
 
 Base.@kwdef mutable struct AeroU
     e::Bounded{Float64, -1, 1} = 0.0 #elevator control input (+ pitch down)
-    a::Bounded{Float64, -1, 1} = 0.0 #aileron control input (+ roll left)
+    a::Bounded{Float64, -1, 1} = 0.0 #aileron control input (+ roll right)
     r::Bounded{Float64, -1, 1} = 0.0 #rudder control input (+ yaw left)
     f::Bounded{Float64, 0, 1} = 0.0 # flap control input (+ flap down)
 end
 
-# const aero_derivatives =
-#this should be a namedtuple with fields C_L, C_D, C_Y. Each one in turn should
-#be a NamedTuple, and it should contain C_L.α, C_L.q, each of which can be a
-#constant or an interpolator
+Base.@kwdef mutable struct AeroD #discrete state
+    stall::Bool = false
+end
 
-#then within get_aero_coeffs we unpack everything and evaluate each interpolator
-#with its appropriate independent variables.
-
-
-Base.@kwdef struct AeroC
-    C_L::Float64 = 0.0
+Base.@kwdef struct AeroCoeffs
     C_D::Float64 = 0.0
     C_Y::Float64 = 0.0
+    C_L::Float64 = 0.0
     C_l::Float64 = 0.0
     C_m::Float64 = 0.0
     C_n::Float64 = 0.0
 end
 
+
+
 Base.@kwdef struct AeroY
-    α::Float64 = 0.0 #preprocessed AoA
-    α_filt::Float64 = 0.0 #filtered AoA
-    α_filt_dot::Float64 = 0.0 #filtered AoA derivative
-    β::Float64 = 0.0 #preprocessed AoS
-    β_filt::Float64 = 0.0 #filtered AoS
-    β_filt_dot::Float64 = 0.0 #filtered AoS derivative
     e::Float64 = 0.0 #normalized elevator control input
     a::Float64 = 0.0 #normalized aileron control input
     r::Float64 = 0.0 #normalized rudder control input
     f::Float64 = 0.0 #normalized flap control input
-    coefs::AeroC = AeroC() #aerodynamic coefficients
+    α::Float64 = 0.0 #clamped AoA
+    β::Float64 = 0.0 #clamped AoS
+    α_filt::Float64 = 0.0 #filtered AoA
+    β_filt::Float64 = 0.0 #filtered AoS
+    α_filt_dot::Float64 = 0.0 #filtered AoA derivative
+    β_filt_dot::Float64 = 0.0 #filtered AoS derivative
+    coeffs::AeroCoeffs = AeroCoeffs() #aerodynamic coefficients
     wr_b::Wrench = Wrench() #aerodynamic Wrench, airframe
 end
 
 init_x(::Type{Aero}) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
 init_y(::Type{Aero}) = AeroY()
+init_d(::Type{Aero}) = AeroD()
 init_u(::Type{Aero}) = AeroU()
 
 
@@ -319,17 +350,74 @@ AngularMomentumTrait(::System{Airframe}) = HasAngularMomentum()
 ####################### Update functions #######################################
 
 
-####################### REMOVE THIS ########################################
-####################### REMOVE THIS ########################################
-####################### REMOVE THIS ########################################
-####################### REMOVE THIS ########################################
-####################### REMOVE THIS ########################################
-####################### REMOVE THIS ########################################
+#aerodynamic coefficients are taken from JSBSim's c172p.xml, because it is more
+#complete than 182
 
-f_cont!(sys::System{Aero}, pwp::System{Pwp},
-    air::AirData, kinematics::KinData, terrain::AbstractTerrain) = nothing
 
-"""
+function load_aero_data()
+
+    fname = "src/c182t_aero.h5"
+    fid = h5open(fname, "r")
+
+    gr_C_D = fid["C_D"]
+    gr_C_Y = fid["C_Y"]
+    gr_C_L = fid["C_L"]
+
+    C_D = (
+        z = gr_C_D["zero"] |> read,
+        β = gr_C_D["β"] |> read,
+        δe = gr_C_D["δe"] |> read,
+        δf = LinearInterpolation(gr_C_D["δf"]["δf"] |> read, gr_C_D["δf"]["C_D"] |> read, extrapolation_bc = Flat()),
+        α_δf = LinearInterpolation((gr_C_D["α_δf"]["α"] |> read,  gr_C_D["α_δf"]["δf"] |> read), gr_C_D["α_δf"]["C_D"] |> read, extrapolation_bc = Flat()),
+        ge = LinearInterpolation(gr_C_D["ge"]["Δh_nd"] |> read, gr_C_D["ge"]["k"] |> read, extrapolation_bc = Flat())
+    )
+
+    C_Y = nothing
+    C_L = nothing
+
+    close(fid)
+
+    println("ENSURE DELTAF IN RADIANS IN THE WHOLE DATASET")
+
+    return (C_D = C_D, C_Y = C_Y, C_L = C_L)
+
+end
+
+const aero_data = load_aero_data()
+
+#scale a normalized control input to its corresponding surface deflection range
+function linear_scaling(u::Bounded{T, UMin, UMax}, δ_range::NTuple{2,Real}) where {T, UMin, UMax}
+    @assert UMin != UMax
+    return δ_range[1] + (δ_range[2] - δ_range[1])/(UMax - UMin) * (T(u) - UMin)
+end
+
+function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
+# function get_aero_coeffs()
+
+    #OJO CON LOS GRADOS Y LOS RADIANES!!!!!!!
+    #   en las tablas los flaps estan en deg y lo demas en rad
+    C_D = aero_data.C_D
+
+    # C_D.z |> println
+    # C_D.ge(Δh_nd) |> println
+    # C_D.α_δf(α,δf) |> println
+    # C_D.δf(δf) |> println
+    # C_D.δe |> println
+    # C_D.β |> println
+
+    AeroCoeffs(
+        C_D = C_D.z + C_D.ge(Δh_nd) * (C_D.α_δf(α,δf) + C_D.δf(δf)) + C_D.δe * δe + C_D.β * β,
+        C_Y = 0,
+        C_L = 0,
+        C_l = 0.0,
+        C_m = 0.0,
+        C_n = 0.0,
+    )
+end
+
+# f_cont!(sys::System{Aero}, pwp::System{Pwp},
+#     air::AirData, kinematics::KinData, terrain::AbstractTerrain) = nothing
+
 function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     air::AirData, kinematics::KinData, terrain::AbstractTerrain)
 
@@ -354,20 +442,19 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     #dividing by zero. for TAS < TAS_min, dynamic pressure will be close to zero
     #and therefore forces and moments will vanish anyway.
 
-    @unpack ẋ, x, u, params = sys
+    @unpack ẋ, x, u, d, params = sys
     @unpack α_filt, β_filt = x
-    @unpack S, b, c, δe_max, δa_max, δr_max, δf_max, τ = params
+    @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_bounds, β_bounds, α_stall, V_min, τ = params
     @unpack e, a, r, f = u
-    @unpack TAS, q, α_b, β_b = air
-    ω_lb_b = kinematics.vel.ω_lb_b
+    @unpack TAS, q, v_wOb_b = air
+    @unpack ω_lb_b = kinematics.vel
+    @unpack n_e, h_o = kinematics.pos
 
-    #preprocess airflow angles and airspeed. looking at the lift/drag polar +/-1
-    #seem like reasonable airflow angle limits
-    TAS_min = 2.0
-    χ_TAS = min(TAS/TAS_min, 1.0) #linear fade-in for airflow angles
-    α = clamp(α_b * χ_TAS, -1.0, 1.0)
-    β = clamp(β_b * χ_TAS, -1.0, 1.0)
-    V = max(TAS, TAS_min)
+    v_wOb_a = v_wOb_b
+    α, β = get_airflow_angles(v_wOb_a)
+    # α = clamp(α, α_min, α_max)
+    # β = clamp(β, αβ_min, αβ_max)
+    V = max(TAS, V_min)
 
     α_filt_dot = 1/τ * (α - α_filt)
     β_filt_dot = 1/τ * (β - β_filt)
@@ -376,21 +463,30 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     q_nd = ω_lb_b[2] * c / (2V) #non-dimensional pitch rate
     r_nd = ω_lb_b[3] * b / (2V) #non-dimensional yaw rate
 
-    α_dot_nd = α_filt_dot * c / (2V) #not used
+    α_dot_nd = α_filt_dot * c / (2V)
     β_dot_nd = β_filt_dot * b / (2V)
 
-    ẋ.α_filt = α_filt_dot
-    ẋ.β_filt = β_filt_dot
+    δe = linear_scaling(e, δe_range)
+    δa = linear_scaling(a, δa_range)
+    δr = linear_scaling(r, δr_range)
+    δf = linear_scaling(f, δf_range)
+
+    #non-dimensional height above ground
+    l2d_Oa = n_e #Oa = Ob
+    h_Oa = h_o #orthometric
+    h_trn_Oa = get_terrain_data(terrain, l2d_Oa).altitude #orthometric
+    Δh_nd = (h_Oa - h_trn_Oa) / b
+
+    #stall state
+    stall = Float64(d.stall)
 
     # T = get_wr_b(pwp).F[1]
-    # C_T = T / (q * S) #thrust coefficient, not used
-    δe = Float64(e) * δe_max
-    δa = Float64(a) * δa_max
-    δr = Float64(r) * δr_max
-    δf = Float64(f) * δf_max
+    # C_T = T / (q * S) #thrust coefficient, not used here
 
-    aero_coeffs = get_aero_coeffs(; α, β, p_nd, q_nd, r_nd,
-        δa, δr, δe, δf, α_dot_nd, β_dot_nd)
+    coeffs = get_aero_coeffs(; α, β, p_nd, q_nd, r_nd,
+        δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
+
+    @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
 
     q_as = get_stability_axes(α)
     F_aero_s = q * S * SVector{3,Float64}(-C_D, C_Y, -C_L)
@@ -399,14 +495,29 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
 
     wr_b = wr_a = Wrench(F_aero_a, M_aero_a)
 
+    ẋ.α_filt = α_filt_dot
+    ẋ.β_filt = β_filt_dot
+
     sys.y = AeroY(; α, α_filt, α_filt_dot, β, β_filt, β_filt_dot,
         e, a, r, f, coeffs, wr_b)
 
+    return nothing
+
 end
-"""
 
 get_wr_b(sys::System{Aero}) = sys.y.wr_b
 
+function f_disc!(sys::System{Aero})
+    #stall hysteresis
+    α = sys.y.α
+    α_stall = sys.params.α_stall
+    if α > α_stall[2]
+        sys.d.stall = true
+    elseif α < α_stall[1]
+        sys.d.stall = false
+    end
+    return false
+end
 
 ######################## Controls Update Functions ###########################
 
@@ -427,6 +538,10 @@ f_disc!(::System{Controls}, ::System{Airframe}) = false
 
 ################################################################################
 ####################### Airframe Update Functions ##############################
+
+#here we could define f_cont! to account for fuel consumption
+f_cont!(::System{Fuel}, ::System{Pwp}) = nothing
+
 
 #we can't fall back  on the default System Group implementation, because of the
 #interactions between the different subsystems
@@ -475,10 +590,11 @@ function f_disc!(afm::System{Airframe}, ::System{Controls})
 end
 
 f_disc!(::System{OEW}) = false
-f_disc!(::System{Aero}) = false
 f_disc!(::System{Fuel}) = false
 f_disc!(::System{Payload}) = false
 #Pwp and Ldg are SystemGroups, so we can rely on the fallback f_disc!
+
+#for Fuel we could define discrete states to select which tank(s) we're drawing from
 
 #get_mp_b, get_wr_b and get_hr_b use the fallback for SystemGroups, which in turn call
 #get_mp_b, get_wr_b and get_hr_b on aero, pwp and ldg
@@ -549,5 +665,18 @@ function C182TDescriptor(; id = ID(), kin = KinLTF(), afm = Airframe(), ctl = Co
     AircraftBase( id; kin, afm, ctl)
 end
 
+
+    # splt_α = thplot(t, rad2deg.(α_b);
+    #     title = "Angle of Attack", ylabel = L"$\alpha \ (deg)$",
+    #     label = "", kwargs...)
+
+    # splt_β = thplot(t, rad2deg.(β_b);
+    #     title = "Angle of Sideslip", ylabel = L"$\beta \ (deg)$",
+    #     label = "", kwargs...)
+
+    # pd["05_α_β"] = plot(splt_α, splt_β;
+    #     plot_title = "Airflow Angles [Airframe]",
+    #     layout = (1,2),
+    #     kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
 end #module

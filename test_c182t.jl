@@ -8,6 +8,38 @@ using Sockets
 using BenchmarkTools
 using GLFW
 
+function aerodynamics_test()
+
+    h_trn = AltOrth(601.3);
+
+    trn = HorizontalTerrain(altitude = h_trn);
+    atm = System(AtmosphereDescriptor());
+    aero = System(C182T.Aero());
+    pwp = System(C182T.Pwp());
+    kin_init = KinInit(v_eOb_b = [40, 0, 0],
+                        ω_lb_b = [0, 0, 0],
+                        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
+                        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+                                        h_trn - 0 + 100.0));
+
+    kin_data = KinData(kin_init)
+    air_data = AirData(kin_data, atm)
+
+    aero.u.e = 0.0
+    aero.u.a = 0.0
+    aero.u.r = 0.0
+    aero.u.f = 0.0
+
+    f_cont!(aero, pwp, air_data, kin_data, trn)
+
+    aero.y |> pwf
+
+    f_disc!(aero)
+
+    aero.d |> pwf
+
+end
+
 function forward_drop_test()
 
     h_trn = AltOrth(601.3);

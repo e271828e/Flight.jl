@@ -50,8 +50,6 @@ struct AirData
     v_ew_b::SVector{3,Float64} #wind-relative, airframe axes
     v_eOb_b::SVector{3,Float64} #airframe velocity vector
     v_wOb_b::SVector{3,Float64} #airframe aerodynamic velocity vector
-    α_b::Float64 #airframe angle of attack
-    β_b::Float64 #airframe angle of sideslip
     T::Float64 #static temperature
     p::Float64 #static pressure
     ρ::Float64 #density
@@ -85,7 +83,6 @@ function AirData(kin_data::KinData, atm_data::AtmosphericData)
     v_ew_n = atm_data.wind.v_ew_n
     v_ew_b = kin_data.pos.q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
-    α_b, β_b = get_airflow_angles(v_wOb_b)
 
     @unpack T, p, ρ, a, μ = atm_data.isa_
     TAS = norm(v_wOb_b)
@@ -98,15 +95,14 @@ function AirData(kin_data::KinData, atm_data::AtmosphericData)
     EAS = TAS * √(ρ / ρ_std)
     CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + q/p_std)^((γ-1)/γ) - 1) )
 
-    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, α_b, β_b,
-            T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
+    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
 
 
 function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
 
-    @unpack v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, α_b, β_b, a, μ, ρ, TAS, EAS, CAS, M,
+    @unpack v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, a, μ, ρ, TAS, EAS, CAS, M,
             p, pt, T, Tt, Δp, q = StructArray(data)
 
     pd = Dict{String, Plots.Plot}()
@@ -136,18 +132,6 @@ function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
         th_split = :h,
         kwargs...)
 
-    splt_α = thplot(t, rad2deg.(α_b);
-        title = "Angle of Attack", ylabel = L"$\alpha \ (deg)$",
-        label = "", kwargs...)
-
-    splt_β = thplot(t, rad2deg.(β_b);
-        title = "Angle of Sideslip", ylabel = L"$\beta \ (deg)$",
-        label = "", kwargs...)
-
-    pd["05_α_β"] = plot(splt_α, splt_β;
-        plot_title = "Airflow Angles [Airframe]",
-        layout = (1,2),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     splt_a = thplot(t, a;
         title = "Speed of Sound", ylabel = L"$a \ (m/s)$",

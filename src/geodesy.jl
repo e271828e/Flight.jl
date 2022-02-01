@@ -155,7 +155,7 @@ struct Geopotential <: AbstractAltitudeDatum end
 
 const h_min = -1000 #catches numerical catastrophes
 
-function load_geoid_offset_interp(file_path = "src/ww15mgh_le.bin")
+function load_geoid_data(file_path = "src/ww15mgh_le.bin")
     #the target file stores a 721x1441 Matrix{Float32} in low-endian binary
     #format. the matrix holds the data points for the EGM96 geoid height offset
     #with respect to the WGS84 ellipsoid in 15 arc-minute resolution. latitude
@@ -180,7 +180,7 @@ function load_geoid_offset_interp(file_path = "src/ww15mgh_le.bin")
     # CubicSplineInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
 end
 
-const geoid_offset_interp = load_geoid_offset_interp()
+const geoid_data = load_geoid_data()
 
 function get_geoid_offset(l2d::Abstract2DLocation)
     #our longitude interval is [-π,π], but the table uses [0,2π], so we need to
@@ -188,7 +188,7 @@ function get_geoid_offset(l2d::Abstract2DLocation)
     latlon = LatLon(l2d)
     ϕ = latlon.ϕ
     λ = mod(latlon.λ + 2π, 2π)
-    geoid_offset_interp(ϕ, λ)
+    geoid_data(ϕ, λ)
 end
 
 Base.@kwdef struct Altitude{D<:AbstractAltitudeDatum}
