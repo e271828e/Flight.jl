@@ -65,7 +65,8 @@ init_y(::Type{Controls}) = ControlsY(zeros(SVector{9})...)
 
 
 ################################################################################
-############################ Airframe ############################
+############################ Type Definitions ##################################
+################################################################################
 
 ############################## OEW #################################
 
@@ -336,11 +337,9 @@ AngularMomentumTrait(::System{Airframe}) = HasAngularMomentum()
 
 ################################################################################
 ####################### Update functions #######################################
+################################################################################
 
-
-#aerodynamic coefficients are taken from JSBSim's c172p.xml, because it is more
-#complete than 182
-
+#aerodynamic dataset taken from JSBSim's c172p
 
 function load_aero_data()
 
@@ -350,24 +349,64 @@ function load_aero_data()
     gr_C_D = fid["C_D"]
     gr_C_Y = fid["C_Y"]
     gr_C_L = fid["C_L"]
+    gr_C_l = fid["C_l"]
+    gr_C_m = fid["C_m"]
+    gr_C_n = fid["C_n"]
 
     C_D = (
         z = gr_C_D["zero"] |> read,
         β = gr_C_D["β"] |> read,
         δe = gr_C_D["δe"] |> read,
-        δf = LinearInterpolation(gr_C_D["δf"]["δf"] |> read, gr_C_D["δf"]["C_D"] |> read, extrapolation_bc = Flat()),
-        α_δf = LinearInterpolation((gr_C_D["α_δf"]["α"] |> read,  gr_C_D["α_δf"]["δf"] |> read), gr_C_D["α_δf"]["C_D"] |> read, extrapolation_bc = Flat()),
-        ge = LinearInterpolation(gr_C_D["ge"]["Δh_nd"] |> read, gr_C_D["ge"]["k"] |> read, extrapolation_bc = Flat())
+        δf = LinearInterpolation(gr_C_D["δf"]["δf"] |> read, gr_C_D["δf"]["data"] |> read, extrapolation_bc = Flat()),
+        α_δf = LinearInterpolation((gr_C_D["α_δf"]["α"] |> read,  gr_C_D["α_δf"]["δf"] |> read), gr_C_D["α_δf"]["data"] |> read, extrapolation_bc = Flat()),
+        ge = LinearInterpolation(gr_C_D["ge"]["Δh_nd"] |> read, gr_C_D["ge"]["data"] |> read, extrapolation_bc = Flat())
     )
 
-    C_Y = nothing
-    C_L = nothing
+    C_Y = (
+        δr = gr_C_Y["δr"] |> read,
+        δa = gr_C_Y["δa"] |> read,
+        β_δf = LinearInterpolation((gr_C_Y["β_δf"]["β"] |> read,  gr_C_Y["β_δf"]["δf"] |> read), gr_C_Y["β_δf"]["data"] |> read, extrapolation_bc = Flat()),
+        p = LinearInterpolation((gr_C_Y["p"]["α"] |> read,  gr_C_Y["p"]["δf"] |> read), gr_C_Y["p"]["data"] |> read, extrapolation_bc = Flat()),
+        r = LinearInterpolation((gr_C_Y["r"]["α"] |> read,  gr_C_Y["r"]["δf"] |> read), gr_C_Y["r"]["data"] |> read, extrapolation_bc = Flat()),
+    )
+
+    C_L = (
+        δe = gr_C_L["δe"] |> read,
+        q = gr_C_L["q"] |> read,
+        α_dot = gr_C_L["α_dot"] |> read,
+        α = LinearInterpolation((gr_C_L["α"]["α"] |> read,  gr_C_L["α"]["stall"] |> read), gr_C_L["α"]["data"] |> read, extrapolation_bc = Flat()),
+        δf = LinearInterpolation(gr_C_L["δf"]["δf"] |> read, gr_C_L["δf"]["data"] |> read, extrapolation_bc = Flat()),
+        ge = LinearInterpolation(gr_C_L["ge"]["Δh_nd"] |> read, gr_C_L["ge"]["data"] |> read, extrapolation_bc = Flat())
+    )
+
+    C_l = (
+        δa = gr_C_l["δa"] |> read,
+        δr = gr_C_l["δr"] |> read,
+        β = gr_C_l["β"] |> read,
+        p = gr_C_l["p"] |> read,
+        r = LinearInterpolation((gr_C_l["r"]["α"] |> read,  gr_C_l["r"]["δf"] |> read), gr_C_l["r"]["data"] |> read, extrapolation_bc = Flat()),
+    )
+
+    C_m = (
+        z = gr_C_m["zero"] |> read,
+        δe = gr_C_m["δe"] |> read,
+        α = gr_C_m["α"] |> read,
+        q = gr_C_m["q"] |> read,
+        α_dot = gr_C_m["α_dot"] |> read,
+        δf = LinearInterpolation(gr_C_m["δf"]["δf"] |> read, gr_C_m["δf"]["data"] |> read, extrapolation_bc = Flat()),
+    )
+
+    C_n = (
+        δr = gr_C_n["δr"] |> read,
+        δa = gr_C_n["δa"] |> read,
+        β = gr_C_n["β"] |> read,
+        p = gr_C_n["p"] |> read,
+        r = gr_C_n["r"] |> read,
+    )
 
     close(fid)
 
-    println("ENSURE DELTAF IN RADIANS IN THE WHOLE DATASET")
-
-    return (C_D = C_D, C_Y = C_Y, C_L = C_L)
+    return (C_D = C_D, C_Y = C_Y, C_L = C_L, C_l = C_l, C_m = C_m, C_n = C_n)
 
 end
 
@@ -381,7 +420,7 @@ end
 
 function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
 
-    C_D = aero_data.C_D
+    @unpack C_D, C_Y, C_L, C_l, C_m, C_n = aero_data
 
     # C_D.z |> println
     # C_D.ge(Δh_nd) |> println
@@ -390,14 +429,17 @@ function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_
     # C_D.δe |> println
     # C_D.β |> println
 
+    # @show α β p_nd q_nd r_nd δa δr δe δf α_dot_nd β_dot_nd Δh_nd stall
+
     AeroCoeffs(
         C_D = C_D.z + C_D.ge(Δh_nd) * (C_D.α_δf(α,δf) + C_D.δf(δf)) + C_D.δe * δe + C_D.β * β,
-        C_Y = 0,
-        C_L = 0,
-        C_l = 0.0,
-        C_m = 0.0,
-        C_n = 0.0,
+        C_Y = C_Y.δr * δr + C_Y.δa * δa + C_Y.β_δf(β,δf) + C_Y.p(α,δf) * p_nd + C_Y.r(α,δf) * r_nd,
+        C_L = C_L.ge(Δh_nd) * (C_L.α(α,stall) + C_L.δf(δf)) + C_L.δe * δe + C_L.q * q_nd + C_L.α_dot * α_dot_nd,
+        C_l = C_l.δa * δa + C_l.δr * δr + C_l.β * β + C_l.p * p_nd + C_l.r(α,δf) * r_nd,
+        C_m = C_m.z + C_m.δe * δe + C_m.δf(δf) + C_m.α * α + C_m.q * q_nd + C_m.α_dot * α_dot_nd,
+        C_n = C_n.δr * δr + C_n.δa * δa + C_n.β * β + C_n.p * p_nd + C_n.r * r_nd,
     )
+
 end
 
 # f_cont!(sys::System{Aero}, pwp::System{Pwp},
@@ -438,7 +480,7 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     v_wOb_a = v_wOb_b
     α, β = get_airflow_angles(v_wOb_a)
     α = clamp(α, α_bounds[1], α_bounds[2])
-    β = clamp(β, β_bounds[2], β_bounds[2])
+    β = clamp(β, β_bounds[1], β_bounds[2])
     V = max(TAS, V_min)
 
     α_filt_dot = 1/τ * (α - α_filt)

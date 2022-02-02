@@ -20,15 +20,15 @@ function aerodynamics_test()
                         ω_lb_b = [0, 0, 0],
                         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-                                        h_trn - 0 + 100.0));
+                                        h_trn - 0 + 2.0));
 
     kin_data = KinData(kin_init)
     air_data = AirData(kin_data, atm)
 
-    aero.u.e = 0.0
+    aero.u.e = 0.2
     aero.u.a = 0.0
     aero.u.r = 0.0
-    aero.u.f = 0.0
+    aero.u.f = 0.333
 
     f_cont!(aero, pwp, air_data, kin_data, trn)
 

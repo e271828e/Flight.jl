@@ -6,6 +6,7 @@ using StaticArrays
 using SHA
 using UnPack
 using Interpolations
+using HDF5
 
 using Flight.Attitude
 using Flight.Plotting
@@ -153,9 +154,10 @@ struct Ellipsoidal <: AbstractGeometricAltitudeDatum end
 struct Orthometric <: AbstractGeometricAltitudeDatum end
 struct Geopotential <: AbstractAltitudeDatum end
 
-const h_min = -1000 #catches numerical catastrophes
+const h_min = -1000 #helps catch numerical catastrophes
 
-function load_geoid_data(file_path = "src/ww15mgh_le.bin")
+#functionally equivalent to load_geoid_data_hdf5 but with the additional hash check
+function load_geoid_data_bin(file_path = "src/ww15mgh_le.bin")
     #the target file stores a 721x1441 Matrix{Float32} in low-endian binary
     #format. the matrix holds the data points for the EGM96 geoid height offset
     #with respect to the WGS84 ellipsoid in 15 arc-minute resolution. latitude
@@ -180,7 +182,17 @@ function load_geoid_data(file_path = "src/ww15mgh_le.bin")
     # CubicSplineInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
 end
 
-const geoid_data = load_geoid_data()
+function load_geoid_data_hdf5(file_path = "src/ww15mgh_hdf5.h5")
+    data = Matrix{Float32}(undef, 721, 1441)
+    h5open(file_path) do file
+        data .= file["geoid_height"] |> read
+    end
+    ϕ_range = LinRange(-π/2, π/2, size(data, 1))
+    λ_range = LinRange(0, 2π, size(data, 2))
+    LinearInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
+end
+
+const geoid_data = load_geoid_data_hdf5()
 
 function get_geoid_offset(l2d::Abstract2DLocation)
     #our longitude interval is [-π,π], but the table uses [0,2π], so we need to
