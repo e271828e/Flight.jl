@@ -47,7 +47,6 @@ Base.@kwdef mutable struct ControlsU
     flaps::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
 end
 
-#const is essential when declaring type aliases!
 Base.@kwdef struct ControlsY
     throttle::Float64
     yoke_Δx::Float64
@@ -105,7 +104,7 @@ AngularMomentumTrait(::System{Pwp}) = HasAngularMomentum()
 
 function Pwp()
 
-    prop = SimpleProp(kF = 2e-3, J = 0.25)
+    prop = SimpleProp(kF = 4e-3, J = 0.005)
 
     left = EThruster(propeller = prop, motor = ElectricMotor(α = CW))
     right = EThruster(propeller = prop, motor = ElectricMotor(α = CCW))
@@ -141,8 +140,12 @@ AngularMomentumTrait(::System{Ldg}) = HasNoAngularMomentum()
 
 function Ldg()
 
-    mlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 2000, k_d_cmp = 2000)
-    nlg_damper = SimpleDamper(k_s = 25000, k_d_ext = 2000, k_d_cmp = 2000)
+    mlg_damper = SimpleDamper(k_s = ustrip(u"N/m", 0.5*5400u"lbf/ft"),
+                              k_d_ext = ustrip(u"N/(m/s)", 0.4*1600u"lbf/(ft/s)"),
+                              k_d_cmp = ustrip(u"N/(m/s)", 0.4*1600u"lbf/(ft/s)"))
+    nlg_damper = SimpleDamper(k_s = ustrip(u"N/m", 1800u"lbf/ft"),
+                              k_d_ext = ustrip(u"N/(m/s)", 600u"lbf/(ft/s)"),
+                              k_d_cmp = ustrip(u"N/(m/s)", 600u"lbf/(ft/s)"))
 
     left = LandingGearUnit(
         strut = Strut(
@@ -224,7 +227,6 @@ WrenchTrait(::System{Fuel}) = HasNoWrench()
 AngularMomentumTrait(::System{Fuel}) = HasNoAngularMomentum()
 
 function get_mp_b(sys::System{Fuel})
-    mp_b = MassProperties()
 
     frame_left = FrameTransform(r = SVector{3}(0.325, -2.845, 0))
     frame_right = FrameTransform(r = SVector{3}(0.325, 2.845, 0))
@@ -232,6 +234,7 @@ function get_mp_b(sys::System{Fuel})
     m_left = PointMass(sys.x.m_left)
     m_right = PointMass(sys.x.m_right)
 
+    mp_b = MassProperties()
     mp_b += MassProperties(m_left, frame_left)
     mp_b += MassProperties(m_right, frame_right)
 
@@ -355,8 +358,8 @@ function load_aero_data()
 
     C_D = (
         z = gr_C_D["zero"] |> read,
-        β = gr_C_D["β"] |> read,
-        δe = gr_C_D["δe"] |> read,
+        β = LinearInterpolation(gr_C_D["β"]["β"] |> read, gr_C_D["β"]["data"] |> read, extrapolation_bc = Flat()),
+        δe = LinearInterpolation(gr_C_D["δe"]["δe"] |> read, gr_C_D["δe"]["data"] |> read, extrapolation_bc = Flat()),
         δf = LinearInterpolation(gr_C_D["δf"]["δf"] |> read, gr_C_D["δf"]["data"] |> read, extrapolation_bc = Flat()),
         α_δf = LinearInterpolation((gr_C_D["α_δf"]["α"] |> read,  gr_C_D["α_δf"]["δf"] |> read), gr_C_D["α_δf"]["data"] |> read, extrapolation_bc = Flat()),
         ge = LinearInterpolation(gr_C_D["ge"]["Δh_nd"] |> read, gr_C_D["ge"]["data"] |> read, extrapolation_bc = Flat())
@@ -426,18 +429,19 @@ function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_
     # C_D.ge(Δh_nd) |> println
     # C_D.α_δf(α,δf) |> println
     # C_D.δf(δf) |> println
-    # C_D.δe |> println
-    # C_D.β |> println
+    # C_D.δe(δe) |> println
+    # C_D.β(β) |> println
 
     # @show α β p_nd q_nd r_nd δa δr δe δf α_dot_nd β_dot_nd Δh_nd stall
 
     AeroCoeffs(
-        C_D = C_D.z + C_D.ge(Δh_nd) * (C_D.α_δf(α,δf) + C_D.δf(δf)) + C_D.δe * δe + C_D.β * β,
+        C_D = C_D.z + C_D.ge(Δh_nd) * (C_D.α_δf(α,δf) + C_D.δf(δf)) + C_D.δe(δe) + C_D.β(β),
         C_Y = C_Y.δr * δr + C_Y.δa * δa + C_Y.β_δf(β,δf) + C_Y.p(α,δf) * p_nd + C_Y.r(α,δf) * r_nd,
         C_L = C_L.ge(Δh_nd) * (C_L.α(α,stall) + C_L.δf(δf)) + C_L.δe * δe + C_L.q * q_nd + C_L.α_dot * α_dot_nd,
         C_l = C_l.δa * δa + C_l.δr * δr + C_l.β * β + C_l.p * p_nd + C_l.r(α,δf) * r_nd,
         C_m = C_m.z + C_m.δe * δe + C_m.δf(δf) + C_m.α * α + C_m.q * q_nd + C_m.α_dot * α_dot_nd,
         C_n = C_n.δr * δr + C_n.δa * δa + C_n.β * β + C_n.p * p_nd + C_n.r * r_nd,
+        # C_n = C_n.δr * δr + C_n.δa * δa + C_n.p * p_nd + C_n.r * r_nd,
     )
 
 end
@@ -604,7 +608,7 @@ function assign_component_inputs!(afm::System{<:Airframe}, ctl::System{<:Control
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
     aero.u.e = -(yoke_y0 + yoke_Δy) #+yoke_Δy and +yoke_y0 are back and +δe is pitch down, need to invert it
-    aero.u.a = -(yoke_x0 + yoke_Δx) #+yoke_Δx and +yoke_x0 are right and +δa is roll left, need to invert it
+    aero.u.a = (yoke_x0 + yoke_Δx) #+yoke_Δx and +yoke_x0 are right and +δa is roll right
     aero.u.r = -pedals # +pedals is right and +δr is yaw left
     aero.u.f = flaps # +flaps is flaps down and +δf is flaps down
 
@@ -633,10 +637,10 @@ f_disc!(::System{Payload}) = false
 
 ####################### XBoxController Input Interface ########################
 
-elevator_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
-aileron_curve(x) = exp_axis_curve(x, strength = 0.5, deadzone = 0.05)
+elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
-brake_curve(x) = exp_axis_curve(x, strength = 0, deadzone = 0.05)
+brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 function exp_axis_curve(x::Bounded{T}, args...; kwargs...) where {T}
     exp_axis_curve(T(x), args...; kwargs...)

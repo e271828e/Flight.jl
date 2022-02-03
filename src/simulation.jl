@@ -73,6 +73,8 @@ function run!(sim::SimulationRun)
             if mdl.success_iter % output_div == 0
                 for output in sim.outputs
                     Output.update!(output, mdl.sys)
+                    # mdl.sys.d.airframe.aero.stall |> println
+                    # mdl.sys.y.airframe.aero.α |> println
                 end
             end
 

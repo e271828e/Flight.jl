@@ -13,8 +13,14 @@ function generate_data()
         C_D = fid["C_D"]
 
         C_D["zero"] = 0.027
-        C_D["β"] = 0.17
-        C_D["δe"] = 0.06
+
+        create_group(C_D, "δe")
+        C_D["δe"]["δe"] = [-1.0 0.0 1.0] |> vec
+        C_D["δe"]["data"] = [ 0.06 0 0.06] |> vec
+
+        create_group(C_D, "β")
+        C_D["β"]["β"] = [-1.0 0.0 1.0] |> vec
+        C_D["β"]["data"] = [ 0.17 0 0.17] |> vec
 
         create_group(C_D, "ge")
         C_D["ge"]["Δh_nd"] = [ 0.0000 0.1000 0.1500 0.2000 0.3000 0.4000 0.5000 0.6000 0.7000 0.8000 0.9000 1.0000 1.1000 ] |> vec
@@ -167,7 +173,7 @@ function generate_data()
 
         C_n["δr"] = -0.0430
         C_n["δa"] = -0.0053
-        C_n["β"] = -0.05874
+        C_n["β"] = 0.05874
         C_n["p"] = -0.0278
         C_n["r"] = -0.0937
 
@@ -183,8 +189,8 @@ function load_data()
     gr_C_D = fid["C_D"]
     C_D = (
         z = gr_C_D["zero"] |> read,
-        β = gr_C_D["β"] |> read,
-        δe = gr_C_D["δe"] |> read,
+        β = LinearInterpolation(gr_C_D["β"]["β"] |> read, gr_C_D["β"]["data"] |> read, extrapolation_bc = Flat()),
+        δe = LinearInterpolation(gr_C_D["δe"]["δe"] |> read, gr_C_D["δe"]["data"] |> read, extrapolation_bc = Flat()),
         δf = LinearInterpolation(gr_C_D["δf"]["δf"] |> read, gr_C_D["δf"]["data"] |> read, extrapolation_bc = Flat()),
         α_δf = LinearInterpolation((gr_C_D["α_δf"]["α"] |> read,  gr_C_D["α_δf"]["δf"] |> read), gr_C_D["α_δf"]["data"] |> read, extrapolation_bc = Flat()),
         ge = LinearInterpolation(gr_C_D["ge"]["Δh_nd"] |> read, gr_C_D["ge"]["data"] |> read, extrapolation_bc = Flat())
