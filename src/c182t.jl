@@ -106,8 +106,8 @@ function Pwp()
 
     prop = SimpleProp(kF = 4e-3, J = 0.005)
 
-    left = EThruster(propeller = prop, motor = ElectricMotor(α = CW))
-    right = EThruster(propeller = prop, motor = ElectricMotor(α = CCW))
+    left = EThruster(frame = FrameTransform(r = [2.055, 0, 0.833]), propeller = prop, motor = ElectricMotor(α = CW))
+    right = EThruster(frame = FrameTransform(r = [2.055, 0, 0.833]), propeller = prop, motor = ElectricMotor(α = CCW))
 
     Pwp(left, right)
 
