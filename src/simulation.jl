@@ -93,7 +93,7 @@ function run!(sim::SimulationRun)
 
         #move this to an AbstractOutputInterface
         # if mdl.success_iter % 40 == 0
-        #     pwf(mdl.sys.u.controls)
+        #     pwf(mdl.sys.u.avionics)
         # end
 
         # Swap front and back buffers

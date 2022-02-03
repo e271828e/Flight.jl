@@ -90,7 +90,6 @@ function free_flight()
 
     Aircraft.init!(ac, kin_init)
 
-    ac.controls.u.throttle = 0.0
     # #if the model was instantiated before setting the system's initial
     # condition, we need this to update the model's initial condition
     # reinit!(mdl, ac.x)

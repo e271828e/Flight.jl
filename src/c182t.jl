@@ -31,11 +31,11 @@ export C182TDescriptor
 
 struct ID <: AbstractAircraftID end
 
-############################## Controls #################################
+############################## Avionics #################################
 
-struct Controls <: SystemDescriptor end
+struct Avionics <: SystemDescriptor end
 
-Base.@kwdef mutable struct ControlsU
+Base.@kwdef mutable struct AvionicsU
     throttle::Bounded{Float64, 0, 1} = 0.0
     yoke_Δx::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
     yoke_x0::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
@@ -47,7 +47,7 @@ Base.@kwdef mutable struct ControlsU
     flaps::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
 end
 
-Base.@kwdef struct ControlsY
+Base.@kwdef struct AvionicsY
     throttle::Float64
     yoke_Δx::Float64
     yoke_x0::Float64
@@ -59,8 +59,8 @@ Base.@kwdef struct ControlsY
     flaps::Float64
 end
 
-init_u(::Type{Controls}) = ControlsU()
-init_y(::Type{Controls}) = ControlsY(zeros(SVector{9})...)
+init_u(::Type{Avionics}) = AvionicsU()
+init_y(::Type{Avionics}) = AvionicsY(zeros(SVector{9})...)
 
 
 ################################################################################
@@ -550,22 +550,22 @@ function f_disc!(sys::System{Aero})
     return false
 end
 
-######################## Controls Update Functions ###########################
+######################## Avionics Update Functions ###########################
 
-function f_cont!(ctl::System{Controls}, ::System{Airframe},
+function f_cont!(avs::System{Avionics}, ::System{Airframe},
                 ::KinData, ::AirData, ::AbstractTerrain)
 
-    #here, controls do nothing but update their output state. for a more complex
+    #here, avionics do nothing but update their output state. for a more complex
     #aircraft a continuous state-space autopilot implementation could go here
     @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
-            pedals, brake_left, brake_right, flaps = ctl.u
+            pedals, brake_left, brake_right, flaps = avs.u
 
-    return ControlsY(; throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
+    return AvionicsY(; throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
                             pedals, brake_left, brake_right, flaps)
 
 end
 
-f_disc!(::System{Controls}, ::System{Airframe}) = false
+f_disc!(::System{Avionics}, ::System{Airframe}) = false
 
 ################################################################################
 ####################### Airframe Update Functions ##############################
@@ -577,12 +577,12 @@ f_cont!(::System{Fuel}, ::System{Pwp}) = nothing
 #we can't fall back  on the default System Group implementation, because of the
 #interactions between the different subsystems
 
-function f_cont!(afm::System{Airframe}, ctl::System{Controls},
+function f_cont!(afm::System{Airframe}, avs::System{Avionics},
                 kin::KinData, air::AirData, trn::AbstractTerrain)
 
     @unpack aero, pwp, ldg, fuel, pld = afm.subsystems
 
-    assign_component_inputs!(afm, ctl)
+    assign_component_inputs!(afm, avs)
     f_cont!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_cont!(pwp, kin, air) #update powerplant continuous state & outputs
     f_cont!(fuel, pwp) #update fuel system
@@ -593,10 +593,10 @@ function f_cont!(afm::System{Airframe}, ctl::System{Controls},
 
 end
 
-function assign_component_inputs!(afm::System{<:Airframe}, ctl::System{<:Controls})
+function assign_component_inputs!(afm::System{<:Airframe}, avs::System{<:Avionics})
 
     @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
-            pedals, brake_left, brake_right, flaps = ctl.u
+            pedals, brake_left, brake_right, flaps = avs.u
     @unpack aero, pwp, ldg = afm.subsystems
 
     #yoke_Δx is the offset with respect to the force-free position yoke_x0
@@ -615,7 +615,7 @@ function assign_component_inputs!(afm::System{<:Airframe}, ctl::System{<:Control
     return nothing
 end
 
-function f_disc!(afm::System{Airframe}, ::System{Controls})
+function f_disc!(afm::System{Airframe}, ::System{Avionics})
     #fall back to the default SystemGroup implementation
     return f_disc!(afm)
 end
@@ -663,7 +663,7 @@ end
 
 function assign!(ac::System{<:AircraftBase{ID}}, joystick::XBoxController)
 
-    u = ac.u.controls
+    u = ac.u.avionics
 
     u.yoke_Δx = get_axis_value(joystick, :right_analog_x) |> aileron_curve
     u.yoke_Δy = get_axis_value(joystick, :right_analog_y) |> elevator_curve
@@ -686,8 +686,8 @@ end
 
 #Aircraft constructor override keyword inputs to customize
 
-function C182TDescriptor(; id = ID(), kin = KinLTF(), afm = Airframe(), ctl = Controls())
-    AircraftBase( id; kin, afm, ctl)
+function C182TDescriptor(; id = ID(), kin = KinLTF(), afm = Airframe(), avs = Avionics())
+    AircraftBase( id; kin, afm, avs)
 end
 
 

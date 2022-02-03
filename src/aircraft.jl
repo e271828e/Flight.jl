@@ -55,26 +55,26 @@ struct GenericID <: AbstractAircraftID end
 struct AircraftBase{I <: AbstractAircraftID,
                     K <: AbstractKinematics,
                     F <: AbstractAirframe,
-                    C <: SystemDescriptor} <: SystemGroupDescriptor
+                    V <: SystemDescriptor} <: SystemGroupDescriptor
 
     kinematics::K
     airframe::F
-    controls::C
+    avionics::V
 end
 
 function AircraftBase(     ::I = GenericID();
                         kin::K = KinLTF(),
                         afm::F = EmptyAirframe(),
-                        ctl::C = NullSystemDescriptor()) where {I,K,F,C}
-    AircraftBase{I,K,F,C}(kin, afm, ctl)
+                        avs::V = NullSystemDescriptor()) where {I,K,F,V}
+    AircraftBase{I,K,F,V}(kin, afm, avs)
 end
 
 #override the default SystemGroupDescriptor implementation, because we need to
 #add some stuff besides subsystem outputs
-init_y(::Type{T}) where {T<:AircraftBase{I,K,F,C}} where {I,K,F,C} = (
+init_y(::Type{T}) where {T<:AircraftBase{I,K,F,V}} where {I,K,F,V} = (
     kinematics = init_y(K),
     airframe = init_y(F),
-    controls = init_y(C),
+    avionics = init_y(V),
     dynamics = DynData(),
     air = AirData(),
     )
@@ -86,16 +86,16 @@ end
 function f_cont!(sys::System{<:AircraftBase}, trn::AbstractTerrain, atm::AtmosphericSystem)
 
     @unpack ẋ, x, subsystems = sys
-    @unpack kinematics, airframe, controls = subsystems
+    @unpack kinematics, airframe, avionics = subsystems
 
     #update kinematics
     f_cont!(kinematics)
     kin_data = kinematics.y
     air_data = AirData(kin_data, atm)
 
-    #update controls and airframe components
-    f_cont!(controls, airframe, kin_data, air_data, trn)
-    f_cont!(airframe, controls, kin_data, air_data, trn)
+    #update avionics and airframe components
+    f_cont!(avionics, airframe, kin_data, air_data, trn)
+    f_cont!(airframe, avionics, kin_data, air_data, trn)
 
     mp_b = get_mp_b(airframe)
     wr_b = get_wr_b(airframe)
@@ -104,7 +104,7 @@ function f_cont!(sys::System{<:AircraftBase}, trn::AbstractTerrain, atm::Atmosph
     #update velocity derivatives
     dyn_data = f_dyn!(kinematics.ẋ.vel, kinematics.y, mp_b, wr_b, hr_b)
 
-    sys.y = (kinematics = kinematics.y, airframe = airframe.y, controls = controls.y,
+    sys.y = (kinematics = kinematics.y, airframe = airframe.y, avionics = avionics.y,
             dynamics = dyn_data, air = air_data,)
 
     return nothing
@@ -112,11 +112,11 @@ function f_cont!(sys::System{<:AircraftBase}, trn::AbstractTerrain, atm::Atmosph
 end
 
 function f_disc!(sys::System{<:AircraftBase})
-    @unpack kinematics, airframe, controls = sys.subsystems
+    @unpack kinematics, airframe, avionics = sys.subsystems
 
     x_mod = f_disc!(kinematics, 1e-8) |
-            f_disc!(airframe, controls) |
-            f_disc!(controls, airframe)
+            f_disc!(airframe, avionics) |
+            f_disc!(avionics, airframe)
 
     return x_mod
 end
