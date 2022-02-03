@@ -220,7 +220,7 @@ end
 
 struct Fuel <: SystemDescriptor end
 
-init_x(::Type{Fuel}) = ComponentVector(m_left = 0.0, m_right = 0.0) #fuel tank contents
+init_x(::Type{Fuel}) = ComponentVector(m_left = 50.0, m_right = 50.0) #fuel tank contents
 
 MassTrait(::System{Fuel}) = HasMass()
 WrenchTrait(::System{Fuel}) = HasNoWrench()
@@ -679,8 +679,8 @@ function assign!(ac::System{<:AircraftBase{ID}}, joystick::XBoxController)
     u.throttle += 0.1 * is_released(joystick, :button_Y)
     u.throttle -= 0.1 * is_released(joystick, :button_A)
 
-    u.flaps += 0.5 * is_released(joystick, :right_bumper)
-    u.flaps -= 0.5 * is_released(joystick, :left_bumper)
+    u.flaps += 0.3333 * is_released(joystick, :right_bumper)
+    u.flaps -= 0.3333 * is_released(joystick, :left_bumper)
 
 end
 

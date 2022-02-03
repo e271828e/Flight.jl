@@ -18,6 +18,10 @@ init_x(::Type{T} where {T<:SystemDescriptor}) = nothing
 init_y(::Type{T} where {T<:SystemDescriptor}) = nothing
 init_u(::Type{T} where {T<:SystemDescriptor}) = nothing
 init_d(::Type{T} where {T<:SystemDescriptor}) = nothing
+init_ẋ(::Type{T}) where {T<:SystemDescriptor} = init_ẋ(init_x(T))
+
+init_ẋ(x::AbstractVector) = (x |> similar |> zero)
+init_ẋ(::Nothing) = nothing
 
 ############################# System ############################
 
@@ -37,7 +41,7 @@ mutable struct System{  T <: SystemDescriptor,
     subsystems::S
 end
 
-function System(c::T, ẋ = init_x(T), x = init_x(T), y = init_y(T),
+function System(c::T, ẋ = init_ẋ(T), x = init_x(T), y = init_y(T),
                 u = init_u(T), d = init_d(T), t = Ref(0.0)) where {T<:SystemDescriptor}
 
     params = c #by default assign the system descriptor as System parameters
@@ -125,7 +129,7 @@ function maybe_getproperty(input, label)
     !isnothing(input) && (label in keys(input)) ? getproperty(input, label) : nothing
 end
 
-function System(g::T, ẋ = init_x(T), x = init_x(T), y = init_y(T),
+function System(g::T, ẋ = init_ẋ(T), x = init_x(T), y = init_y(T),
                 u = init_u(T), d = init_d(T), t = Ref(0.0)) where {T<:SystemGroupDescriptor}
 
     ss_names = fieldnames(T)
