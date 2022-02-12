@@ -46,6 +46,20 @@ function set_dref(xp::XPInterface, dref_id::AbstractString, dref_value::Abstract
     send(xp.socket, xp.host, xp.port, buffer.data)
 end
 
+function display_text(xp::XPInterface, txt::AbstractString, x::Integer = -1, y::Integer = -1)
+
+    buffer = IOBuffer()
+    txt_ascii = ascii(txt)
+    write(buffer,
+        b"TEXT\0",
+        x |> Int32,
+        y |> Int32,
+        txt_ascii |> length |> UInt8,
+        txt_ascii |> codeunits)
+
+    send(xp.socket, xp.host, xp.port, buffer.data)
+end
+
 disable_physics!(xp::XPInterface) = set_dref(xp, "sim/operation/override/override_planepath", 1)
 
 init!(xp::XPInterface) = disable_physics!(xp)

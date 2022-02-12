@@ -144,8 +144,8 @@ function Ldg()
                               k_d_ext = ustrip(u"N/(m/s)", 0.4*1600u"lbf/(ft/s)"),
                               k_d_cmp = ustrip(u"N/(m/s)", 0.4*1600u"lbf/(ft/s)"))
     nlg_damper = SimpleDamper(k_s = ustrip(u"N/m", 1800u"lbf/ft"),
-                              k_d_ext = ustrip(u"N/(m/s)", 600u"lbf/(ft/s)"),
-                              k_d_cmp = ustrip(u"N/(m/s)", 600u"lbf/(ft/s)"))
+                              k_d_ext = ustrip(u"N/(m/s)", 0.4*600u"lbf/(ft/s)"),
+                              k_d_cmp = ustrip(u"N/(m/s)", 0.4*600u"lbf/(ft/s)"))
 
     left = LandingGearUnit(
         strut = Strut(
@@ -244,27 +244,9 @@ end
 
 ##### Aerodynamics ####
 
-#Cmdeltae es negativo. Por tanto, un deltae > 0 provoca pitch down. esto
-#significa que deltae > 0 corresponde a stab trailing edge down. igual que en
-#Beaver
-
-#Cldeltaa > 0. es decir, un deltaa > 0 provoca roll right. Es decir, corresponde
-#a left aileron trailing edge down. esto es al reves que en Beaver
-
-#CYdeltar > 0. es decir, deltar > 0 provoca fuerza lateral a la derecha. esto
-#significa trailing edge left. como en Beaver
-
-#ojo: en JSBSim enchufan simplemente la deflexion del aleron izquierdo como
-#delta_a en los coeficientes. pero esto tiene un problema: como el intervalo de
-#delta_a es asimetrico, el avion va a tener distinto mando en roll a un lado y a
-#otro. esto esta mal. deberia ser una suma o un promedio de deflexiones. y
-#entonces el intervalo si seria simetrico. por tanto, voy a suponer que es un
-#promedio (porque si no me saldria el doble de autoridad de la que tiene), y que
-#el intervalo es simetrico
-
 #aunque las tablas de interpolacion saturen en alpha y beta en sus extremos, hay
 #contribuciones que son un producto de alpha o beta por una derivada de
-#estabilidad sin mas, asi que conviene saturar alpha y beta aparte de esto
+#estabilidad sin mas, asi que conviene saturar alpha y beta en cualquier caso
 
 Base.@kwdef struct Aero <: AbstractAerodynamics
     S::Float64 = 16.165 #wing area
@@ -312,6 +294,7 @@ Base.@kwdef struct AeroY
     β_filt::Float64 = 0.0 #filtered AoS
     α_filt_dot::Float64 = 0.0 #filtered AoA derivative
     β_filt_dot::Float64 = 0.0 #filtered AoS derivative
+    stall::Bool = false #stall state
     coeffs::AeroCoeffs = AeroCoeffs() #aerodynamic coefficients
     wr_b::Wrench = Wrench() #aerodynamic Wrench, airframe
 end
@@ -480,6 +463,7 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     @unpack TAS, q, v_wOb_b = air
     @unpack ω_lb_b = kinematics.vel
     @unpack n_e, h_o = kinematics.pos
+    stall = d.stall
 
     v_wOb_a = v_wOb_b
     α, β = get_airflow_angles(v_wOb_a)
@@ -508,9 +492,6 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     h_trn_Oa = get_terrain_data(terrain, l2d_Oa).altitude #orthometric
     Δh_nd = (h_Oa - h_trn_Oa) / b
 
-    #stall state
-    stall = Float64(d.stall)
-
     # T = get_wr_b(pwp).F[1]
     # C_T = T / (q * S) #thrust coefficient, not used here
 
@@ -530,7 +511,7 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     ẋ.β_filt = β_filt_dot
 
     sys.y = AeroY(; α, α_filt, α_filt_dot, β, β_filt, β_filt_dot,
-        e, a, r, f, coeffs, wr_b)
+        e, a, r, f, stall, coeffs, wr_b)
 
     return nothing
 

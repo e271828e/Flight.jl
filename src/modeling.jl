@@ -291,28 +291,26 @@ function f_update!(ẋ::X, x::X, t::Real, sys::System{T,X}, args_c) where {T, X}
     return nothing
 end
 
-#DiscreteCallback function (called on every integration step). in addition to
-#specific functionality implemented by f_disc!, this callback ensures that
-#the System's internal x and y are up to date with the last integrator's
-#solution step
+#DiscreteCallback function (called on every integration step). this callback
+#brings the System's internal x and y up to date with the last integrator's
+#solution step, then executes the System's discrete update function
 function f_dcb!(x::X, t::Real, sys::System{T,X}, args_c, args_d) where {T,X}
 
     sys.x .= x #assign the updated integrator's state to the system's local continuous state
     sys.t[] = t #ditto for time
 
-    #at this point sys.y holds the output from the last solver evaluation of
+    #at this point sys.y and sys.ẋ hold the values from the last solver evaluation of
     #f_cont!, not the one corresponding to the updated x. with x up to date, we
-    #can now compute the correct sys.y for this epoch
+    #can now compute the correct sys.y sys.ẋ for this epoch
     f_cont!(sys, args_c...) #updates sys.y, but leaves sys.x unmodified
-    #this could be commented for additional performance, at the cost of
-    #a slight output inaccuracy at integration epochs
 
     #with the system's outputs up to date, call the discrete update function
     x_modified = f_disc!(sys, args_d...) #this may modify sys.x
     x .= sys.x #assign the (potentially modified) sys.x back to the integrator
 
-    #note that if x is modified by f_disc!, it will not be reflected in sys.y
-    #until the next call to f_dcb!
+    #note: as it is, if the System's y depends on x or d, and these are modified
+    #by f_disc!, the change will not be reflected on y until the following
+    #integration step
 
     return x_modified
 end
