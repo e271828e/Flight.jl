@@ -173,7 +173,9 @@ Note that:
 - $\zeta \in [\zeta_h, 1]$, where $\zeta_h$ corresponds to the propeller hub radius and is typically larger than $0.1$. Therefore, $\zeta \sim 1$, while generally $\bar{v}_{wO_p}^{y_p} \ll 1$ and $\bar{v}_{wO_p}^{z_p} \ll 1$. So we will generally have, $\bar{v}_{wO_a}^{x_a} \gt 1$, as we would expect. However, very slow propeller rotation and large propeller off-axis velocities may result in $\bar{v}_{wO_a}^{x_a} \le 1$, particularly near the hub. This corresponds to a locally receding airflow around the airfoil and should not be allowed in the numerical computations.
 - For a forward moving propeller, ${v}_{wO_p}^{x_p} \ge 0$
 
-Pero al final como esto lo vamos a usar para generar tablas, es decir, no hay que resolver en tiempo real. Lo que se puede hacer es limitar los valores de vbar que vamos a tabular, de manera que su suma nunca exceda el valor de zeta_h de nuestra helice. Por ejemplo, limitar ambos valores a 0.25zeta_h
+Pero al final como esto lo vamos a usar para generar tablas, es decir, no hay que resolver en tiempo real. Lo que se puede hacer es limitar los valores de vbar que vamos a tabular, de manera que su suma nunca exceda el valor de zeta_h de nuestra helice. Por ejemplo, limitar ambos valores a 0.25zeta_h. Si zeta_h = 0.1, tenemos limitadas las componentes de v_bar a 0.025. A 500 rpm tenemos 52 rad/s. v_y = omega R * 0.025. Si R=1, queda que por encima de 1.3 m/s estamos fuera de tablas (y hay que saturar). A 1500 rpm que es un valor bajo pero posible, tendriamos unos 4m/s. Si estamos volando a 40m/s, eso es unos 5.5 deg de AoA. Es bastante restrictivo.
+
+Otra opcion es simplemente lidiar con las secciones problematicas. Primero, imponer que vza sea menor o igual que cero (es decir, que sea negativa en za, es decir, que vaya hacia arriba, es decir, que tienda a reducir el angulo de ataque, como corresponde). Por ejemplo, limitar inferiormente \bar{v}_x_a a un valor positivo y estrictamente mayor que 5 \bar{v}
 
 OJO: EN PHI PROMEDIAMOS, NO INTEGRAMOS SIN MAS. NO OLVIDAR DIVIDIR POR 2PI
 
