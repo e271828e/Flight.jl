@@ -16,7 +16,7 @@ export FrameTransform, transform
 export Wrench
 export AbstractMassDistribution, PointMass, RigidBody, MassProperties
 export HasMass, HasNoMass, get_mp_b
-export HasWrench, HasNoWrench, get_wr_b
+export GetsExternalWrench, GetsNoExternalWrench, get_wr_b
 export HasAngularMomentum, HasNoAngularMomentum, get_hr_b
 export DynData, f_dyn!
 
@@ -349,8 +349,8 @@ end
 ###################### WrenchTrait ##########################
 
 abstract type WrenchTrait end
-struct HasWrench <: WrenchTrait end
-struct HasNoWrench <: WrenchTrait end
+struct GetsExternalWrench <: WrenchTrait end
+struct GetsNoExternalWrench <: WrenchTrait end
 
 #prevents the trait system from failing silently when wrongly extended
 WrenchTrait(::S) where {S<:System} = error(
@@ -358,14 +358,14 @@ WrenchTrait(::S) where {S<:System} = error(
 
 get_wr_b(sys::System) = get_wr_b(WrenchTrait(sys), sys)
 
-get_wr_b(::HasWrench, sys::System) = error(
+get_wr_b(::GetsExternalWrench, sys::System) = error(
     "$(typeof(sys)) is a Wrench source, but no method get_wr_b was defined for it")
 
-get_wr_b(::HasNoWrench, sys::System) = Wrench()
+get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
 
-#default implementation for a SystemGroup with the HasWrench trait, tries
+#default implementation for a SystemGroup with the GetsExternalWrench trait, tries
 #to sum all the Wrenches from its individual components. override as required
-@inline @generated function get_wr_b(::HasWrench, sys::System{D}) where {D<:SystemGroupDescriptor}
+@inline @generated function get_wr_b(::GetsExternalWrench, sys::System{D}) where {D<:SystemGroupDescriptor}
 
     # Core.print("Generated function called")
     ex = Expr(:block)

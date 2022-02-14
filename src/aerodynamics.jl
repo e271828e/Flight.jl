@@ -21,7 +21,7 @@ export AbstractAerodynamics, SimpleDrag
 abstract type AbstractAerodynamics <: SystemDescriptor end
 
 MassTrait(::System{<:AbstractAerodynamics}) = HasNoMass()
-WrenchTrait(::System{<:AbstractAerodynamics}) = HasWrench()
+WrenchTrait(::System{<:AbstractAerodynamics}) = GetsExternalWrench()
 AngularMomentumTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
 
 #################### SimpleDrag ######################

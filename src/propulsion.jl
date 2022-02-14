@@ -13,7 +13,7 @@ using Flight.Dynamics
 
 import Flight.Plotting: plots
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
-import Flight.Dynamics: WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
+import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
 
 export AbstractThruster, EThruster
 
@@ -24,8 +24,9 @@ end
 
 abstract type AbstractThruster <: SystemDescriptor end
 
-WrenchTrait(::System{AbstractThruster}) = HasWrench()
-AngularMomentumTrait(::System{AbstractThruster}) = HasAngularMomentum()
+MassTrait(::System{<:AbstractThruster}) = HasNoMass()
+WrenchTrait(::System{<:AbstractThruster}) = GetsExternalWrench()
+AngularMomentumTrait(::System{<:AbstractThruster}) = HasAngularMomentum()
 
 ################ EThruster Component ###################
 

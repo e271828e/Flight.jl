@@ -14,8 +14,8 @@ using Flight.Kinematics
 using Flight.Dynamics
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
+import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
 import Flight.Plotting: plots
-import Flight.Dynamics: WrenchTrait, AngularMomentumTrait, get_wr_b
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 
@@ -315,7 +315,7 @@ Base.@kwdef struct Contact <: SystemDescriptor
     k_l::Float64 = 0.0 #integrator leak factor for contact velocity regulator
 end
 
-WrenchTrait(::System{<:Contact}) = HasNoWrench()
+WrenchTrait(::System{<:Contact}) = GetsNoExternalWrench()
 
 Base.@kwdef struct ContactY
     v::SVector{2,Float64} = zeros(SVector{2}) #contact plane velocity
@@ -555,7 +555,8 @@ end
 
 #if we avoid the generic fallback for SystemGroup, we don't need to define
 #traits for Steering, Braking, Contact or Strut
-WrenchTrait(::System{<:LandingGearUnit}) = HasWrench()
+MassTrait(::System{<:LandingGearUnit}) = HasNoMass()
+WrenchTrait(::System{<:LandingGearUnit}) = GetsExternalWrench()
 AngularMomentumTrait(::System{<:LandingGearUnit}) = HasNoAngularMomentum()
 
 get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b

@@ -4,24 +4,18 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
-using Flight.Modeling
-using Flight.Plotting
-using Flight.Terrain
+using Flight.Modeling, Flight.Plotting
 using Flight.Attitude
-using Flight.Geodesy
-using Flight.Atmosphere
-using Flight.Airdata
-using Flight.Kinematics
-using Flight.Dynamics
-using Flight.Input
-using Flight.Output
+using Flight.Geodesy, Flight.Terrain, Flight.Atmosphere
+using Flight.Kinematics, Flight.Dynamics, Flight.Airdata
+using Flight.Input, Flight.Output
 
 import Flight.Modeling: init_x, init_y, init_u, init_d,f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Plotting: plots
 import Flight.Output: update!
 
-export AircraftBase, AbstractAirframe, EmptyAirframe
+export AircraftBase, AbstractAirframe, EmptyAirframe, AbstractAvionics, NoAvionics
 
 
 abstract type AbstractAircraftID end
@@ -38,7 +32,7 @@ Base.@kwdef struct EmptyAirframe <: AbstractAirframe
     mass_distribution::RigidBody = RigidBody(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
 end
 
-WrenchTrait(::System{EmptyAirframe}) = HasNoWrench()
+WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
 AngularMomentumTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
 
 get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
@@ -46,7 +40,15 @@ get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distributi
 @inline f_cont!(::System{EmptyAirframe}, args...) = nothing
 @inline (f_disc!(::System{EmptyAirframe}, args...)::Bool) = false
 
+###############################################################################
+############################## Avionics #######################################
 
+abstract type AbstractAvionics <: SystemGroupDescriptor end
+
+struct NoAvionics <: AbstractAvionics end
+
+@inline f_cont!(::System{NoAvionics}, args...) = nothing
+@inline (f_disc!(::System{NoAvionics}, args...)::Bool) = false
 ###############################################################################
 ############################## AircraftBase ###################################
 
@@ -55,7 +57,7 @@ struct GenericID <: AbstractAircraftID end
 struct AircraftBase{I <: AbstractAircraftID,
                     K <: AbstractKinematics,
                     F <: AbstractAirframe,
-                    V <: SystemDescriptor} <: SystemGroupDescriptor
+                    V <: AbstractAvionics} <: SystemGroupDescriptor
 
     kinematics::K
     airframe::F
@@ -65,7 +67,7 @@ end
 function AircraftBase(     ::I = GenericID();
                         kin::K = KinLTF(),
                         afm::F = EmptyAirframe(),
-                        avs::V = NullSystemDescriptor()) where {I,K,F,V}
+                        avs::V = NoAvionics()) where {I,K,F,V}
     AircraftBase{I,K,F,V}(kin, afm, avs)
 end
 

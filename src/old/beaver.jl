@@ -38,7 +38,7 @@ struct Pwp <: SystemGroupDescriptor
     right::EThruster
 end
 
-WrenchTrait(::System{<:Pwp}) = HasWrench()
+WrenchTrait(::System{<:Pwp}) = GetsExternalWrench()
 AngularMomentumTrait(::System{<:Pwp}) = HasAngularMomentum()
 
 function Pwp()
@@ -84,7 +84,7 @@ struct Ldg{L <: LandingGearUnit, R <: LandingGearUnit,
     tail::T
 end
 
-WrenchTrait(::System{<:Ldg}) = HasWrench()
+WrenchTrait(::System{<:Ldg}) = GetsExternalWrench()
 AngularMomentumTrait(::System{<:Ldg}) = HasNoAngularMomentum()
 
 function Ldg()
@@ -228,7 +228,7 @@ Base.@kwdef struct Airframe{ A <: SystemDescriptor, P <: SystemDescriptor,
 end
 
 MassTrait(::System{<:Airframe}) = HasMass()
-WrenchTrait(::System{<:Airframe}) = HasWrench()
+WrenchTrait(::System{<:Airframe}) = GetsExternalWrench()
 AngularMomentumTrait(::System{<:Airframe}) = HasAngularMomentum()
 
 

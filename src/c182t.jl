@@ -19,7 +19,7 @@ using Flight.Dynamics
 using Flight.Aerodynamics: AbstractAerodynamics
 using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
 using Flight.LandingGear
-using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractAirframe
+using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractAirframe, AbstractAvionics
 using Flight.Input: XBoxController, get_axis_value, is_released
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
@@ -33,7 +33,7 @@ struct ID <: AbstractAircraftID end
 
 ############################## Avionics #################################
 
-struct Avionics <: SystemDescriptor end
+struct Avionics <: AbstractAvionics end
 
 Base.@kwdef mutable struct AvionicsU
     throttle::Bounded{Float64, 0, 1} = 0.0
@@ -86,7 +86,7 @@ const mp_b_OEW = let
 end
 
 MassTrait(::System{OEW}) = HasMass()
-WrenchTrait(::System{OEW}) = HasNoWrench()
+WrenchTrait(::System{OEW}) = GetsNoExternalWrench()
 AngularMomentumTrait(::System{OEW}) = HasNoAngularMomentum()
 
 get_mp_b(::System{OEW}) = mp_b_OEW
@@ -99,7 +99,7 @@ struct Pwp <: SystemGroupDescriptor
 end
 
 MassTrait(::System{Pwp}) = HasNoMass()
-WrenchTrait(::System{Pwp}) = HasWrench()
+WrenchTrait(::System{Pwp}) = GetsExternalWrench()
 AngularMomentumTrait(::System{Pwp}) = HasAngularMomentum()
 
 function Pwp()
@@ -135,7 +135,7 @@ struct Ldg <: SystemGroupDescriptor
 end
 
 MassTrait(::System{Ldg}) = HasNoMass()
-WrenchTrait(::System{Ldg}) = HasWrench()
+WrenchTrait(::System{Ldg}) = GetsExternalWrench()
 AngularMomentumTrait(::System{Ldg}) = HasNoAngularMomentum()
 
 function Ldg()
@@ -204,7 +204,7 @@ end
 init_d(::Type{Payload}) = PayloadD()
 
 MassTrait(::System{Payload}) = HasMass()
-WrenchTrait(::System{Payload}) = HasNoWrench()
+WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
 AngularMomentumTrait(::System{Payload}) = HasNoAngularMomentum()
 
 function get_mp_b(sys::System{Payload})
@@ -223,7 +223,7 @@ struct Fuel <: SystemDescriptor end
 init_x(::Type{Fuel}) = ComponentVector(m_left = 50.0, m_right = 50.0) #fuel tank contents
 
 MassTrait(::System{Fuel}) = HasMass()
-WrenchTrait(::System{Fuel}) = HasNoWrench()
+WrenchTrait(::System{Fuel}) = GetsNoExternalWrench()
 AngularMomentumTrait(::System{Fuel}) = HasNoAngularMomentum()
 
 function get_mp_b(sys::System{Fuel})
@@ -317,7 +317,7 @@ Base.@kwdef struct Airframe <: AbstractAirframe
 end
 
 MassTrait(::System{Airframe}) = HasMass()
-WrenchTrait(::System{Airframe}) = HasWrench()
+WrenchTrait(::System{Airframe}) = GetsExternalWrench()
 AngularMomentumTrait(::System{Airframe}) = HasAngularMomentum()
 
 
@@ -408,13 +408,6 @@ function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_
 
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = aero_data
 
-    # C_D.z |> println
-    # C_D.ge(Δh_nd) |> println
-    # C_D.α_δf(α,δf) |> println
-    # C_D.δf(δf) |> println
-    # C_D.δe(δe) |> println
-    # C_D.β(β) |> println
-
     # @show α β p_nd q_nd r_nd δa δr δe δf α_dot_nd β_dot_nd Δh_nd stall
 
     AeroCoeffs(
@@ -424,13 +417,9 @@ function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_
         C_l = C_l.δa * δa + C_l.δr * δr + C_l.β * β + C_l.p * p_nd + C_l.r(α,δf) * r_nd,
         C_m = C_m.z + C_m.δe * δe + C_m.δf(δf) + C_m.α * α + C_m.q * q_nd + C_m.α_dot * α_dot_nd,
         C_n = C_n.δr * δr + C_n.δa * δa + C_n.β * β + C_n.p * p_nd + C_n.r * r_nd,
-        # C_n = C_n.δr * δr + C_n.δa * δa + C_n.p * p_nd + C_n.r * r_nd,
     )
 
 end
-
-# f_cont!(sys::System{Aero}, pwp::System{Pwp},
-#     air::AirData, kinematics::KinData, terrain::AbstractTerrain) = nothing
 
 function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     air::AirData, kinematics::KinData, terrain::AbstractTerrain)

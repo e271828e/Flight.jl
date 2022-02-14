@@ -47,7 +47,7 @@ end
 
 struct AirData
     v_ew_n::SVector{3,Float64} #wind velocity, NED axes
-    v_ew_b::SVector{3,Float64} #wind-relative, airframe axes
+    v_ew_b::SVector{3,Float64} #wind velocity, airframe axes
     v_eOb_b::SVector{3,Float64} #airframe velocity vector
     v_wOb_b::SVector{3,Float64} #airframe aerodynamic velocity vector
     T::Float64 #static temperature
