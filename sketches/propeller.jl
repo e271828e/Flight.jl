@@ -26,7 +26,25 @@ export FixedPitchFamily, FixedPitchPropeller
     ###############################################
     # en f_cont! de pwp no hay que olvidar asignar u = omega_shaft / n
 
-error("Write some fucking tests")
+
+"""
+    como implementar VariablePitchPropeller
+    0) VariablePitchFamily constara de una FixedPitchFamily mas un campo
+       Δβc_range, que nos dice el incremento de βc (positivo o negativo) que se
+       le puede aplicar
+    1) VariablePitchDataset ira en funcion de dos variables, J y Δβ_c. pero ojo,
+       ya no podemos simplemente cortar en un J para el que  C_Fx sea menor que
+       un umbral, porque eso es para un Δβc determinado, para otro puede ser
+       necesario seguir
+    2) ahora VariablePitchPropeller sera igual que FixedPitchPropeller, solo que
+       en dataset tendra VariablePitchDataset
+    3) definimos una U que sea Bounded{0,1}, donde 0 corresponde a Δβc_range[1]
+       y 1 a Δβc_range[2]
+    4) en f_cont! extraemos u, y hacemos PropellerCoefficients(J, Δβc)
+    5) a partir de ahi, todo es similar a FixedPitch
+"""
+
+# error("Write some fucking tests")
 
 const π² = π^2
 
@@ -192,7 +210,7 @@ struct FixedPitchDataset{T <: Interpolations.Extrapolation}
     η_p::T
 end
 
-function FixedPitchDataset(pf::FixedPitchFamily; n_ζ = 201, ΔJ = 0.01, J_max = 2, C_Fx_min = -0.02)
+function FixedPitchDataset(pf::FixedPitchFamily; n_ζ = 201, ΔJ = 0.01, J_max = 1.5, C_Fx_min = -0.02)
 
     data = Vector{PropellerCoefficients}()
 
@@ -249,10 +267,6 @@ function FixedPitchPropeller(; d = 2.0, Ixx = 0.3, t_bp = FrameTransform(), sens
     FixedPitchPropeller(d, Ixx, t_bp, sense, FixedPitchDataset(family))
 end
 
-Base.@kwdef mutable struct FixedPitchPropellerU
-    ω::Float64 = 0.0 #CW +, CCW -
-end
-
 Base.@kwdef struct FixedPitchPropellerY
     v_wOp_p::SVector{3,Float64} = zeros(SVector{3}) #local aerodynamic velocity, propeller axes
     ω::Float64 = 0 #angular velocity
@@ -266,14 +280,11 @@ Base.@kwdef struct FixedPitchPropellerY
     η_p::Float64 = 0.0 #propulsive efficiency
 end
 
-init_u(::Type{<:FixedPitchPropeller}) = FixedPitchPropellerU()
 init_y(::Type{<:FixedPitchPropeller}) = FixedPitchPropellerY()
 
-function f_cont!(sys::System{<:FixedPitchPropeller}, kin::KinData, air::AirData)
+function f_cont!(sys::System{<:FixedPitchPropeller}, kin::KinData, air::AirData, ω::Real)
 
-    @unpack u, params = sys
-    @unpack d, t_bp, sense, dataset = params
-    ω = u.ω
+    @unpack d, t_bp, sense, dataset = sys.params
 
     v_wOp_b = air.v_wOb_b + kin.vel.ω_eb_b × t_bp.r
     v_wOp_p = t_bp.q'(v_wOp_b)
@@ -299,11 +310,11 @@ function f_cont!(sys::System{<:FixedPitchPropeller}, kin::KinData, air::AirData)
     #can reason that, for a CCW propeller, force coefficients remain the same,
     #while moment coefficients must change sign
     C_F = SVector{3,Float64}(C_Fx, C_Fy_β * β_p, C_Fz_α * α_p)
-    C_M = Int(sys.params.sense) * SVector{3,Float64}(C_Fx, C_My_β * β_p, C_Mz_α * α_p)
+    C_M = Int(sense) * SVector{3,Float64}(C_Fx, C_My_β * β_p, C_Mz_α * α_p)
 
     ρ = air.ρ
     f = ω/2π; f² = f^2; f³ = f * f²
-    d⁴ = params.d^4; d⁵ = params.d * d⁴
+    d⁴ = d^4; d⁵ = d * d⁴
 
     F_Op_p = ρ * f² * d⁴ * C_F
     M_Op_p = ρ * f² * d⁵ * C_M
