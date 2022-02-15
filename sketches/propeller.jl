@@ -16,7 +16,8 @@ import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 import Flight.Plotting: plots
 
-export FixedPitchFamily, FixedPitchPropeller
+export PropellerCoefficients
+export FixedPitchFamily, FixedPitchPropeller, FixedPitchDataset
 
 
     ###############################################
@@ -94,7 +95,7 @@ end
 
 
 
-abstract type AbstractPropellerFamily <: SystemDescriptor end
+abstract type AbstractPropellerFamily end
 # a propeller family is characterized by a series of scale-independent parameters
 # given as functions of non-dimensional radial parameter ζ ∈ [ζ_h, 1]
 
@@ -107,7 +108,7 @@ abstract type AbstractPropellerFamily <: SystemDescriptor end
 struct FixedPitchFamily{C, P, A <: AbstractFunction{1},
                         L, D, S <: AbstractCoefficient} <: AbstractPropellerFamily
     k::Int #number of blades
-    ζ_h::Float64 #hub to blade diameter ratio
+    ζ_h::Float64 #hub diameter to blade diameter ratio
     c̃::C #chord to diameter ratio c_d(ζ)
     p̃::P #chord-line-pitch to diameter ratio k_c(ζ)
     α_0::A #airfoil zero-lift angle of attack α_0(ζ)
@@ -144,7 +145,9 @@ function PropellerCoefficients(pf::FixedPitchFamily, J::Real, n_ζ = 201)
 
     @unpack k, ζ_h, c̃, p̃, α_0, cL, cD, cL_α = pf
 
-    β_t = atan(p̃(1) / π) - α_0(1)
+    βc_t = atan(p̃(1) / π) #chord-line pitch angle
+    β_t = βc_t - α_0(1) #aerodynamic pitch angle at the tip
+    # β_t -= π/6 ####################################################################################################
 
     ζ = range(ζ_h, 1, length = n_ζ)
     dC_Fx = similar(ζ); dC_Fz_α = similar(ζ)
@@ -154,7 +157,9 @@ function PropellerCoefficients(pf::FixedPitchFamily, J::Real, n_ζ = 201)
 
     for (i, ζ) in enumerate(ζ)
 
-        β = atan(p̃(ζ) / (π*ζ)) - α_0(ζ)
+        βc = atan(p̃(ζ) / (π*ζ)) #chord-line pitch angle
+        β = βc - α_0(ζ) #aerodynamic pitch angle
+        # β -= π/6 ####################################################################################################
         ε_inf = atan(J / (π*ζ))
 
         f = let k = k, β_t = β_t, c̃ = c̃, cL = cL, ζ = ζ, β = β, ε_inf = ε_inf
@@ -165,6 +170,9 @@ function PropellerCoefficients(pf::FixedPitchFamily, J::Real, n_ζ = 201)
 
         ε = ε_inf + ε_i
         α = β - ε
+        # @show β |> rad2deg
+        # @show ε_i |> rad2deg
+        @show α |> rad2deg
 
         kc̃ = k * c̃(ζ)
         ζ² = ζ^2; ζ³ = ζ^3
@@ -190,7 +198,7 @@ function PropellerCoefficients(pf::FixedPitchFamily, J::Real, n_ζ = 201)
     C_Fz_α = trapz(ζ, dC_Fz_α)
     C_Mz_α = trapz(ζ, dC_Mz_α)
     C_P = 2π * C_Mx
-    η_p = (C_Fx > 0 ? -J * C_Fx / C_P : 0)
+    η_p = (C_Fx > 0 ? -J * C_Fx / C_P : 0.0)
 
     PropellerCoefficients(; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p)
 
@@ -210,22 +218,26 @@ struct FixedPitchDataset{T <: Interpolations.Extrapolation}
     η_p::T
 end
 
-function FixedPitchDataset(pf::FixedPitchFamily; n_ζ = 201, ΔJ = 0.01, J_max = 1.5, C_Fx_min = -0.02)
+function FixedPitchDataset(pf::FixedPitchFamily; n_ζ = 201, ΔJ = 0.01, J_max = 1.5)
 
-    data = Vector{PropellerCoefficients}()
+    J_range = range(0, J_max; step = ΔJ)
+    data = Vector{PropellerCoefficients}(undef, length(J_range))
 
-    for J in range(0, J_max; step = ΔJ)
-        coefs = PropellerCoefficients(pf, J, n_ζ)
-        coefs.C_Fx < C_Fx_min ? break : nothing
-        push!(data, coefs)
+    for (i, J) in enumerate(J_range)
+        data[i] = PropellerCoefficients(pf, J, n_ζ)
     end
 
-    J_valid = range(0; step = ΔJ, length = length(data))
-
-    interps = [ LinearInterpolation(J_valid, c, extrapolation_bc = Flat()) #flat extrapolation by default
+    interps = [ LinearInterpolation(J_range, c, extrapolation_bc = Flat()) #flat extrapolation by default
         for c in data |> StructArray |> StructArrays.components]
 
-    FixedPitchDataset(interps...)
+    data = FixedPitchDataset(interps...)
+
+    negative_traction = sum(data.C_Fx.(J_range) .< 0) / length(J_range)
+    if negative_traction > 0.5
+        println("Warning: $(negative_traction * 100)% of dataset points have negative traction, consider reducing J_max")
+    end
+
+    return data
 
 end
 
@@ -271,9 +283,6 @@ Base.@kwdef struct FixedPitchPropellerY
     v_wOp_p::SVector{3,Float64} = zeros(SVector{3}) #local aerodynamic velocity, propeller axes
     ω::Float64 = 0 #angular velocity
     J::Float64 = 0 #advance ratio
-    α_p::Float64 = 0 #propeller angle of attack
-    β_p::Float64 = 0 #propeller angle of sideslip
-    coeffs::PropellerCoefficients = PropellerCoefficients()
     wr_p::Wrench = Wrench() #resulting aerodynamic Wrench, propeller frame
     wr_b::Wrench = Wrench() #resulting aerodynamic Wrench, airframe
     P::Float64 = 0.0 #power produced by the propeller
@@ -323,7 +332,7 @@ function f_cont!(sys::System{<:FixedPitchPropeller}, kin::KinData, air::AirData,
     wr_p = Wrench(F_Op_p, M_Op_p)
     wr_b = t_bp(wr_p)
 
-    sys.y = FixedPitchPropellerY(; v_wOp_p, ω, J, α_p, β_p, coeffs, wr_p, wr_b, P, η_p)
+    sys.y = FixedPitchPropellerY(; v_wOp_p, ω, J, wr_p, wr_b, P, η_p)
 
 end
 
