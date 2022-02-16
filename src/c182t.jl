@@ -398,12 +398,6 @@ end
 
 const aero_data = load_aero_data()
 
-#scale a normalized control input to its corresponding surface deflection range
-function linear_scaling(u::Bounded{T, UMin, UMax}, δ_range::NTuple{2,Real}) where {T, UMin, UMax}
-    @assert UMin != UMax
-    return δ_range[1] + (δ_range[2] - δ_range[1])/(UMax - UMin) * (T(u) - UMin)
-end
-
 function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
 
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = aero_data

@@ -1,6 +1,6 @@
 module Misc
 
-export Bounded
+export Bounded, linear_scaling
 export pwf
 
 #print with fieldnames
@@ -47,5 +47,12 @@ Base.:-(x::Bounded{T1,Min,Max}) where {T1, Min, Max} = Bounded(-x.val, Min, Max)
 #is no way of telling which bounds or underlying types should win
 Base.:+(x::B, y::B) where {B <: Bounded{T,Min,Max}} where {T, Min, Max} = Bounded(x.val + y.val, Min, Max)
 Base.:-(x::B, y::B) where {B <: Bounded{T,Min,Max}} where {T, Min, Max} = Bounded(x.val - y.val, Min, Max)
+
+
+function linear_scaling(u::Bounded{T, UMin, UMax}, range::NTuple{2,Real}) where {T, UMin, UMax}
+    @assert UMin != UMax
+    return range[1] + (range[2] - range[1])/(UMax - UMin) * (T(u) - UMin)
+end
+
 
 end#module
