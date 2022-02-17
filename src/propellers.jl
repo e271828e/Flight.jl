@@ -1,4 +1,4 @@
-module Propulsion2
+module Propellers
 
 using UnPack
 using Roots
@@ -16,17 +16,18 @@ import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 import Flight.Plotting: plots
 
-export PropCoefficients, PropBlade, PropFamily, FixedPitch, VariablePitch
+export PropCoefficients, PropBlade, Propeller, FixedPitch, VariablePitch
 
 ###############################################
 # en f_cont! de pwp no hay que olvidar asignar u = omega_shaft / n
-
 
 
 # error("Write some fucking tests")
 
 const π² = π^2
 
+################################################################################
+############################## Propeller Blade #################################
 
 abstract type AbstractFunction{N} end
 
@@ -82,17 +83,9 @@ Base.@kwdef struct PropBlade{C, P, A <: AbstractFunction{1}, L, D, S <: Abstract
     cL_α::S = DefaultCLSlope() #airfoil lift coefficient slope cl_α(ζ, α)
 end
 
-#############################################################################
 
-abstract type PitchTrait end
-
-struct FixedPitch <: PitchTrait end
-
-Base.@kwdef struct VariablePitch <: PitchTrait
-    bounds::NTuple{2, Float64} = (0.0, deg2rad(20))
-end
-
-#############################################################################
+################################################################################
+############################ PropCoefficients ##################################
 
 Base.@kwdef struct PropCoefficients{T}
     C_Fx::T
@@ -104,8 +97,8 @@ Base.@kwdef struct PropCoefficients{T}
 end
 
 #compute coefficients for k propeller blades with the given properties at a
-#specific advance ratio and blade pitch offset setting
-function PropCoefficients(k::Real, blade::PropBlade, J::Real, Δβc::Real; n_ζ = 201)
+#specific advance ratio and blade pitch offset setting. CW is assumed.
+function PropCoefficients(blade::PropBlade, k::Int, J::Real, Δβc::Real; n_ζ = 201)
 
     @unpack ζ_h, c̃, p̃, α_0, cL, cD, cL_α = blade
 
@@ -130,10 +123,7 @@ function PropCoefficients(k::Real, blade::PropBlade, J::Real, Δβc::Real; n_ζ 
 
         ε = ε_inf + ε_i
         α = β - ε
-        # @assert (α < π/2 && α > -π/3) "α out of bounds after solving for ε_i"
-        # @show β |> rad2deg
-        # @show ε_i |> rad2deg
-        # @show α |> rad2deg
+        @assert (α < π/2 && α > -π/3) "α out of bounds after solving for ε_i"
 
         kc̃ = k * c̃(ζ)
         ζ² = ζ^2; ζ³ = ζ^3
@@ -158,7 +148,7 @@ function PropCoefficients(k::Real, blade::PropBlade, J::Real, Δβc::Real; n_ζ 
     C_Mx = trapz(ζ, dC_Mx)
     C_Fz_α = trapz(ζ, dC_Fz_α)
     C_Mz_α = trapz(ζ, dC_Mz_α)
-    C_P = 2π * C_Mx
+    C_P = 2π * C_Mx #all of these are for a CW propelller, we'll deal with the signs later
     η_p = (C_Fx > 0 ? -J * C_Fx / C_P : 0.0)
 
     PropCoefficients(C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p)
@@ -170,38 +160,76 @@ function induced_angle_eq(k, β_t, c̃, cL, ζ, β, ε_inf, ε_i)
     k*c̃(ζ) / (8ζ) * cL(ζ; α) - acos((exp(-k*(1-ζ)/(2sin(β_t))))) * tan(ε_i) * sin(ε_inf + ε_i)
 end
 
-# function PropCoefficients(k::Int, blade::PropBlade, J_bounds, Δβc_bounds; opts...)
-# end
+################################################################################
+################################ PitchControl ###################################
+
+abstract type PitchControl end
+
+struct FixedPitch <: PitchControl end
+
+Base.@kwdef struct VariablePitch <: PitchControl
+    bounds::NTuple{2, Float64} = (0.0, deg2rad(20))
+end
+
+################################################################################
+################################ PropDataset ###################################
+
+struct PropDataset{P <: PitchControl, T <: Interpolations.Extrapolation}
+    _data::PropCoefficients{T}
+end
+PropDataset{P}(data::PropCoefficients{T}) where {P, T} = PropDataset{P, T}(data)
+
+Base.getproperty(dataset::PropDataset, s::Symbol) = getproperty(dataset, Val(s))
+Base.getproperty(dataset::PropDataset, ::Val{:_data}) = getfield(dataset, :_data)
+@generated function Base.getproperty(dataset::PropDataset, ::Val{S}) where {S}
+    return :(getfield(getfield(dataset, :_data), $(QuoteNode(S))))
+end
+#the number of blades affects the total blade section circulation at a given
+#radial distance in the Goldstein's condition, and therefore the more blades
+#we have, the larger the induced velocity will be, and the less is to be
+#gained from adding further blades. in fact, while the traction coefficient
+#increases with the number of blades, the propulsive efficiency decreases
+
 #compute coefficient dataset for a fixed pitch propeller with k blades of the
 #specified geometry
-function PropCoefficients(::FixedPitch, k::Int, blade::PropBlade; opts...)
+function PropDataset(::FixedPitch, blade::PropBlade, k::Int; opts...)
 
     n_ζ = get(opts, :n_ζ, 201)
     n_J = get(opts, :n_J, 101)
     J_max = get(opts, :J_max, 1.5)
 
     J_range = range(0, J_max, length = n_J)
-    data = Vector{PropCoefficients}(undef, length(J_range))
+    data = Vector{PropCoefficients{Float64}}(undef, length(J_range))
 
     for (i, J) in enumerate(J_range)
-        data[i] = PropCoefficients(k, blade, J, 0; n_ζ)
+        data[i] = PropCoefficients(blade, k, J, 0; n_ζ)
     end
 
     data_sa = data |> StructArray |> StructArrays.components
+
+    interps = [ LinearInterpolation(J_range, c, extrapolation_bc = Flat())  for c in data_sa]
+    data = PropCoefficients(interps...)
 
     neg_ratio = sum((data_sa.C_Fx) .< 0) / length(data_sa.C_Fx)
     if neg_ratio > 0.3
         println("Warning: $(neg_ratio * 100)% of dataset points have negative traction")
     end
 
-    #flat extrapolation by default
-    interps = [ LinearInterpolation(J_range, c, extrapolation_bc = Flat())  for c in data_sa]
-
-    PropCoefficients(interps...)
+    PropDataset{FixedPitch}(data)
 
 end
 
-function PropCoefficients(p::VariablePitch, k::Int, blade::PropBlade; opts...)
+function PropCoefficients(dataset::PropDataset{FixedPitch, T}, J::Real) where {T}
+
+    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = dataset
+
+    PropCoefficients(   C_Fx = C_Fx(J), C_Mx = C_Mx(J), C_Fz_α = C_Fz_α(J),
+                        C_Mz_α = C_Mz_α(J), C_P = C_P(J), η_p = η_p(J))
+end
+
+#compute coefficient dataset for a variable pitch propeller with k blades of the
+#specified geometry
+function PropDataset(p::VariablePitch, blade::PropBlade, k::Int; opts...)
 
     n_ζ = get(opts, :n_ζ, 201)
     n_J = get(opts, :n_J, 101)
@@ -214,67 +242,36 @@ function PropCoefficients(p::VariablePitch, k::Int, blade::PropBlade; opts...)
 
     for (j, Δβc) in enumerate(Δβc_range)
         for (i, J) in enumerate(J_range)
-            data[i,j] = PropCoefficients(k, blade, J, Δβc; n_ζ)
+            data[i,j] = PropCoefficient(blade, k, J, Δβc; n_ζ)
         end
     end
 
     data_sa = data |> StructArray |> StructArrays.components
+
+    interps = [ LinearInterpolation((J_range, Δβc_range), c, extrapolation_bc = Flat())
+        for c in data_sa]
+    data = PropCoefficients(interps...)
 
     neg_ratio = sum((data_sa.C_Fx) .< 0) / length(data_sa.C_Fx)
     if neg_ratio > 0.3
         println("Warning: $(neg_ratio * 100)% of dataset points have negative traction")
     end
 
-    interps = [ LinearInterpolation((J_range, Δβc_range), c, extrapolation_bc = Flat()) #flat extrapolation by default
-        for c in data_sa]
-
-    PropCoefficients(interps...)
+    PropDataset{FixedPitch}(data)
 
 end
 
-function PropCoefficients(data::PropCoefficients{<:Interpolations.Extrapolation}, J::Real)
+function PropCoefficients(dataset::PropDataset{VariablePitch}, J::Real, Δβc::Real)
 
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
-
-    PropCoefficients(   C_Fx = C_Fx(J), C_Mx = C_Mx(J), C_Fz_α = C_Fz_α(J),
-                        C_Mz_α = C_Mz_α(J), C_P = C_P(J), η_p = η_p(J))
-end
-
-function PropCoefficients(data::PropCoefficients{<:Interpolations.Extrapolation}, J::Real, Δβc::Real)
-
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
+    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = dataset._data
 
     PropCoefficients(  C_Fx = C_Fx(J, Δβc), C_Mx = C_Mx(J, Δβc),
                         C_Fz_α = C_Fz_α(J, Δβc), C_Mz_α = C_Mz_α(J, Δβc),
                         C_P = C_P(J, Δβc), η_p = η_p(J, Δβc))
 end
 
-############################################################################
-
-#the number of blades affects the total blade section circulation at a given
-#radial distance in the Goldstein's condition, and therefore the more blades
-#we have, the larger the induced velocity will be, and the less is to be
-#gained from adding further blades. in fact, while the traction coefficient
-#increases with the number of blades, the propulsive efficiency decreases
-
-
-struct PropFamily{P <: PitchTrait, B <: PropBlade, D <: PropCoefficients{<:Interpolations.Extrapolation}}
-    k::Int #number of blades
-    pitch::P
-    blade::B
-    data::D
-
-    function PropFamily(; k = 2, blade = PropBlade(), pitch = FixedPitch(), dataset_opts...)
-        data = PropCoefficients(pitch, k, blade; dataset_opts...)
-        new{typeof(pitch), typeof(blade), typeof(data)}(k, pitch, blade, data)
-    end
-
-end
-
-PropCoefficients(pf::PropFamily{FixedPitch}, J::Real) = PropCoefficients(pf.data, J)
-PropCoefficients(pf::PropFamily{VariablePitch}, J::Real, Δβc::Real) = PropCoefficients(pf.data, J, Δβc)
-
-##########################################################################
+################################################################################
+################################ Propeller #####################################
 
 @enum TurnSense begin
     CW = 1
@@ -287,17 +284,26 @@ MassTrait(::System{<:AbstractPropeller}) = HasNoMass()
 WrenchTrait(::System{<:AbstractPropeller}) = GetsExternalWrench()
 AngularMomentumTrait(::System{<:AbstractPropeller}) = HasAngularMomentum()
 
-struct Propeller{F <: PropFamily} <: AbstractPropeller
+struct Propeller{P <: PitchControl, B <: PropBlade,  D <: PropDataset{P}} <: AbstractPropeller
+    pitch::P
+    blade::B
+    k::Int #number of blades
     d::Float64 #diameter
     Ixx::Float64 #axial moment of inertia, labelled Ixx to avoid confusion with advance ratio
-    t_bp::FrameTransform
     sense::TurnSense
-    family::F
+    t_bp::FrameTransform
+    dataset::D
 end
 
-function Propeller(; d = 2.0, Ixx = 0.3, t_bp = FrameTransform(), sense = CW, family = PropFamily())
-    Propeller(d, Ixx, t_bp, sense, family)
+function Propeller(pitch = FixedPitch(), blade = PropBlade(), k = 2,
+                   d = 2.0, Ixx = 0.3, sense = CW, t_bp = FrameTransform(); dataset_opts...)
+
+    dataset = PropDataset(pitch, blade, k; dataset_opts...)
+
+    Propeller{typeof(pitch), typeof(blade), typeof(dataset)}(
+        pitch, blade, k, d, Ixx, sense, t_bp, dataset)
 end
+
 
 Base.@kwdef struct PropellerY
     v_wOp_p::SVector{3,Float64} = zeros(SVector{3}) #local aerodynamic velocity, propeller axes
@@ -312,25 +318,25 @@ end
 Base.@kwdef mutable struct VariablePitchU
     pitch_setting::Bounded{Float64, 0, 1} = 0.0 #elevator control input (+ pitch down)
 end
-init_u(::Type{<:Propeller{<:PropFamily{FixedPitch}}}) = nothing
-init_u(::Type{<:Propeller{<:PropFamily{VariablePitch}}}) = VariablePitchU()
+init_u(::Type{<:Propeller{FixedPitch}}) = nothing
+init_u(::Type{<:Propeller{VariablePitch}}) = VariablePitchU()
 init_y(::Type{<:Propeller}) = PropellerY()
 
 
-function PropCoefficients(sys::System{Propeller{PropFamily{FixedPitch}}}, J::Real, ::Real)
-    PropCoefficients(sys.params.family, J)
+function PropCoefficients(sys::System{<:Propeller{FixedPitch}}, J::Real)
+    PropCoefficients(sys.params.dataset, J)
 end
 
-function PropCoefficients(sys::System{<:Propeller{<:PropFamily{VariablePitch}}}, J::Real)
+function PropCoefficients(sys::System{<:Propeller{VariablePitch}}, J::Real)
 
-    Δβc = linear_scaling(sys.u.pitch_setting, sys.params.family.pitch.bounds)
+    Δβc = linear_scaling(sys.u.pitch_setting, sys.params.pitch.bounds)
     # @show Δβc
-    PropCoefficients(sys.params.family, J, Δβc)
+    PropCoefficients(sys.params.dataset, J, Δβc)
 end
 
 function f_cont!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
 
-    @unpack d, t_bp, sense, family = sys.params
+    @unpack d, t_bp, sense, dataset = sys.params
 
     v_wOp_b = air.v_wOb_b + kin.vel.ω_eb_b × t_bp.r
     v_wOp_p = t_bp.q'(v_wOp_b)
@@ -352,7 +358,7 @@ function f_cont!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
 
     α_p, β_p = get_airflow_angles(v_wOp_p)
 
-    #the dataset is computed for a CW propeller. by symmetry considerations, one
+    #datasets are computed for a CW propeller. by symmetry considerations, one
     #can reason that, for a CCW propeller, force coefficients remain the same,
     #while moment coefficients must change sign
     C_F = SVector{3,Float64}(C_Fx, C_Fy_β * β_p, C_Fz_α * α_p)
@@ -364,7 +370,7 @@ function f_cont!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
 
     F_Op_p = ρ * f² * d⁴ * C_F
     M_Op_p = ρ * f² * d⁵ * C_M
-    P      = ρ * f³ * d⁵ * C_P
+    P      = Int(sense) * ρ * abs(f³) * d⁵ * C_P
 
     wr_p = Wrench(F_Op_p, M_Op_p)
     wr_b = t_bp(wr_p)

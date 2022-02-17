@@ -11,6 +11,8 @@ export TunableISA
 export TunableWind
 export AtmosphereDescriptor, AtmosphericData, AtmosphericSystem
 
+### see ISO 2553
+
 const R = 287.05287 #gas constant for dry air
 const γ = 1.40 #heat capacity ratio for dry air
 const βs = 1.458e-6 #Sutherland's empirical constant for dynamic viscosity

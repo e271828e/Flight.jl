@@ -26,6 +26,7 @@ include("dynamics.jl")
 include("airdata.jl")
 include("propulsion.jl")
 include("landinggear.jl")
+include("propellers.jl")
 include("aerodynamics.jl")
 
 # #aircraft
@@ -53,6 +54,7 @@ include("c182t.jl")
 @reexport using .Airdata
 @reexport using .Propulsion
 @reexport using .LandingGear
+@reexport using .Propellers
 @reexport using .Aerodynamics
 
 @reexport using .Aircraft
