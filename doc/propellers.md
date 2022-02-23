@@ -28,3 +28,37 @@ With our definitions:
 - For a CCW propeller, $C_{Mx} > 0$ and $\omega < 0$, so $C_{P} <0$
 
 That is, $C_P$ is always negative, which is consistent with the fact that the aerodynamic torque produced by the propeller opposes the angular velocity and thus generates negative power ($P = Mx \omega$).
+
+## Compressibility
+
+For axial airflow, the aerodynamic velocity vector at an any blade section is parallel to the section's plane, and its magnitude is:
+$$V_b = \sqrt{\omega ^2 r^2 + V_\infty ^2} \cos \varepsilon_i = \omega R \sqrt{\zeta^2 + \left(\dfrac{J}{\pi}\right)^2} \cos \varepsilon_i$$
+
+The Mach number is then:
+$$M = \dfrac{\omega R}{a} \sqrt{\zeta^2 + \left(\dfrac{J}{\pi}\right)^2} \cos \varepsilon_i$$
+
+And the Mach number at the blade tip:
+$$M_{tip} = \dfrac{\omega R}{a} \sqrt{1 + \left(\dfrac{J}{\pi}\right)^2} \cos \varepsilon_i$$
+
+With these we can write:
+$$M = M_{tip} \sqrt{\dfrac{\zeta^2 + \left(\dfrac{J}{\pi}\right)^2}{1 + \left(\dfrac{J}{\pi}\right)^2}} \cos \varepsilon_i = M(\zeta,J,M_{tip},\varepsilon_i)$$
+
+When the airflow is non-axial, the airspeed at a given section (and therefore the Mach number) will also depend on the airflow angle $\alpha_p$ and the section's azimuth $\theta$ within the propeller disc. However, as long as the airflow angle is small, these contributions will be minor and the above expression remains a good approximation.
+
+The propeller's force and torque coefficients for non-axial incompressible airflow were:
+$$C_{F_x} = \dfrac{\pi^2}{4} \int_{\zeta_h}^{1} \zeta^2 k \tilde{c} \dfrac{\cos^2 \varepsilon_i}{\cos^2 \varepsilon_\infty}
+            \left[c_{L}(\alpha) \cos(\varepsilon_\infty + \varepsilon_i) - c_{D}(\alpha) \sin(\varepsilon_\infty + \varepsilon_i)\right] d\zeta$$
+
+$$C_{M_x} = -\dfrac{\pi^2}{8} \int_{\zeta_h}^{1} \zeta^3 k \tilde{c} \dfrac{\cos^2 \varepsilon_i}{\cos^2 \varepsilon_\infty}
+            \left[c_{D}(\alpha) \cos(\varepsilon_\infty + \varepsilon_i) + c_{L}(\alpha) \sin(\varepsilon_\infty + \varepsilon_i)\right] d\zeta$$
+
+$$C_{M_x} = -\dfrac{\pi^2}{8} \int_{\zeta_h}^{1} \zeta^3 k \tilde{c} \dfrac{\cos^2 \varepsilon_i}{\cos^2 \varepsilon_\infty}
+            \left[c_{D}(\alpha) \cos(\varepsilon_\infty + \varepsilon_i) + c_{L}(\alpha) \sin(\varepsilon_\infty + \varepsilon_i)\right] d\zeta$$
+
+etc.
+
+Where $c_{L}(\alpha)$, $c_{D}(\alpha)$ and $c_{L,\alpha}(\alpha)$ were the airfoil's coefficients for the incompressible limit ($M\rightarrow 0$).
+
+To account for compressibility, we can replace the incompressible airfoil coefficients with suitable functions $c_L(M, \alpha)$, $c_D(M, \alpha)$ and $c_{L,\alpha}(M, \alpha)$.  The same can be done in the equation for $\varepsilon_i$.
+
+Now the propeller coefficients will be functions of $J$ and $M_{tip}$, so they must be computed and tabulated as such.
