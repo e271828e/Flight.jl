@@ -1,110 +1,179 @@
 module TestPropellers
 
 using Test
-using Plots
-using UnPack
-using StructArrays
+using Zygote
+using BenchmarkTools
 using LaTeXStrings
 using LinearAlgebra
 using Interpolations
+
+using Flight
+
 using Flight.Propellers
 using Flight.Propellers: DefaultAirfoil, cL, cD, cL_α
-using Flight.Propellers: PropBlade, PropDataset
+using Flight.Propellers: Blade, Coefficients, Dataset
 
 function test_propellers()
     @testset verbose = true "Propellers" begin
-        @testset verbose = true "DefaultAirfoil" begin test_default_airfoil() end
+        test_default_airfoil()
+        test_coefficients()
+        test_dataset()
+        test_propeller()
     end
 end
 
-function test_default_airfoil(show = false)
-    airfoil = DefaultAirfoil()
+function test_default_airfoil()
 
-    α = range(-π/6, π/3, length = 100)
-    M = range(0, 1.5, length = 6)
+    @testset verbose = true "DefaultAirfoil" begin
 
-    cL_data = Array{Float64}(undef, length(α), length(M))
-    cL_α_data = similar(cL_data); cD_data = similar(cL_data)
+        airfoil = DefaultAirfoil()
 
-    for (j, M) in enumerate(M)
-        for (i, α) in enumerate(α)
-            cL_data[i, j] = cL(airfoil, α, M)
-            cD_data[i, j] = cD(airfoil, α, M)
-            cL_α_data[i, j] = cL_α(airfoil, α, M)
+        α = range(-π/6, π/3, length = 10)
+        M = range(0, 1.5, length = 5)
+
+        cL_α_auto_array = Array{Float64}(undef, (length(α), length(M)))
+        cL_α_analytic_array = similar(cL_α_auto_array)
+
+        for (j, M) in enumerate(M)
+            cL_α_auto = let airfoil = airfoil, M = M
+                α -> cL(airfoil, α, M)
+            end
+            for (i, α) in enumerate(α)
+                cL_α_analytic_array[i,j] = cL_α(airfoil, α, M)
+                cL_α_auto_array[i,j] = gradient(cL_α_auto, α)[1]
+            end
         end
-    end
 
-    p = Vector{Plots.Plot}()
-    push!(p, plot(α, cL_data, label = "M = ".*string.(M'), title = L"c_L", xlabel = L"\alpha \ (rad)"))
-    push!(p, plot(α, cL_α_data, label = "M = ".*string.(M'), title = L"c_{L,\alpha}", xlabel = L"\alpha \ (rad)"))
-    push!(p, plot(α, cD_data, label = "M = ".*string.(M'), title = L"cD", xlabel = L"\alpha \ (rad)"))
+    @test all(cL_α_analytic_array .≈ cL_α_auto_array)
 
-    if show
-        display.(p)
+    end #testset
+
+end
+
+function test_coefficients()
+
+    @testset verbose = true "Coefficients" begin
+
+        n = 2
+        b = Blade()
+        # b = Blade(c̃ = Propellers.ConstantFunction(0.0573))
+
+        coeffs_static = Coefficients(b, n; J=0, M_tip=0, Δβ = 0.0)
+        coeffs_moving = Coefficients(b, n; J=0.5, M_tip=0, Δβ = 0.0)
+
+        @test coeffs_static.η_p == 0
+        @test coeffs_static.C_Fx > 0
+        @test coeffs_static.C_Mx < 0
+        @test coeffs_static.C_Fz_α == 0
+        @test coeffs_static.C_Mz_α == 0
+        @test coeffs_static.C_P < 0
+
+        @test coeffs_moving.η_p > 0
+        @test coeffs_moving.C_Fx < coeffs_static.C_Fx
+        @test abs(coeffs_moving.C_Mx) < abs(coeffs_static.C_Mx)
+        @test coeffs_moving.C_Fz_α < 0
+        @test coeffs_moving.C_Mz_α < 0
+        @test abs(coeffs_moving.C_P) < abs(coeffs_static.C_P)
+
     end
 
 end
 
-function test_prop_coefficients()
-    n_blades = 2
-    blade = PropBlade()
-    # blade = PropBlade(c̃ = Propellers.ConstantFunction(0.0573))
+function test_dataset()
 
-    PropCoefficients(blade, n_blades; J = 0.5, M_t = 1.2, Δβ = 0)
-end
+    @testset verbose = true "Dataset" begin
 
-function test_fixed_pitch_dataset(show = false)
+        @testset verbose = true "FixedPitch" begin
 
-    #generate dataset
-    n_blades = 2
-    blade = PropBlade()
-    pitch = Propellers.FixedPitch()
-    dataset = PropDataset(pitch, blade, n_blades)
+            fpd = Dataset(FixedPitch(), Blade(), 2; n_J = 20, n_M_tip = 5)
 
-    #define evaluation grid
-    J_bounds, M_tip_bounds = bounds(dataset)
-    J = range(J_bounds[1], J_bounds[2], length = 100)
-    M_tip = range(M_tip_bounds[1], stop = M_tip_bounds[2], step = 0.4)
-    iter = Iterators.product(J, M_tip)
+            J_bounds, M_tip_bounds = bounds(fpd)
+            J = range(J_bounds[1], J_bounds[2], length = 100)
+            M_tip = range(M_tip_bounds[1], stop = M_tip_bounds[2], step = 0.4)
 
-    coeffs = Array{PropCoefficients{Float64}}(undef, size(iter))
+            data = [fpd(J, M_tip, 0) for (J, M_tip) in Iterators.product(J, M_tip)]
 
-    for (i, (J, M_tip)) in enumerate(iter)
-        coeffs[i] = PropCoefficients(dataset, J, M_tip)
-    end
+            @test @ballocated($fpd(0.1, 0.3, 0)) == 0
+            @test (data isa Array{Coefficients{Float64}})
 
-    coeffs_sa = coeffs |> StructArray |> StructArrays.components
+        end #testset
 
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = coeffs_sa
+        @testset verbose = true "VariablePitch" begin
 
-    p = Vector{Plots.Plot}()
-    push!(p, plot(J, C_Fx, label = "Mtip = " .* string.(M_tip'), title = L"C_{Fx}", xlabel = L"J"))
-    push!(p, plot(J, C_Mx, label = "Mtip = " .* string.(M_tip'), title = L"C_{Mx}", xlabel = L"J"))
-    push!(p, plot(J, C_Fz_α, label = "Mtip = " .* string.(M_tip'), title = L"C_{Fz, \alpha}", xlabel = L"J"))
-    push!(p, plot(J, C_Mz_α, label = "Mtip = " .* string.(M_tip'), title = L"C_{Mz, \alpha}", xlabel = L"J"))
-    push!(p, plot(J, C_P, label = "Mtip = " .* string.(M_tip'), title = L"C_{P}", xlabel = L"J"))
-    push!(p, plot(J, η_p, label = "Mtip = " .* string.(M_tip'), title = L"\eta_p", xlabel = L"J"))
+            vpd = Dataset(FixedPitch(), Blade(), 2; n_J = 20, n_M_tip = 5, n_Δβ = 5)
 
-    if show
-        display.(p)
-    end
+            J_bounds, M_tip_bounds, Δβ_bounds = bounds(vpd)
+            J = range(J_bounds[1], J_bounds[2], length = 100)
+            M_tip = range(M_tip_bounds[1], stop = M_tip_bounds[2], step = 0.4)
+            Δβ = range(Δβ_bounds[1], stop = Δβ_bounds[2], length = 5)
 
-    error("Verify no allocations when evaluating a dataset")
-    # alloc =  @allocated PropCoefficients(dataset,0,0)
-    # @show alloc
+            data = [vpd(J, M_tip, Δβ) for (J, M_tip, Δβ) in Iterators.product(J, M_tip, Δβ)]
 
-    # return dataset
+            @test @ballocated($vpd(0.1, 0.3, 0.05)) == 0
+            @test (data isa Array{Coefficients{Float64}})
+
+        end #testset
+
+    end #testset
 
 end
 
-function test_variable_pitch_dataset(show = false)
-    #generate dataset, fix M_tip and evaluate at different blade pitch offsets
-end
+function test_propeller()
 
-function test_sytem_functions()
-    # alloc =  @allocated PropCoefficients(dataset,0,0)
-    # @show alloc
-    #require no allocations
+    t_bp = FrameTransform(r = [1.0, 0, 0])
+    kin = KinInit(v_eOb_b = [50, 0, 5]) |> KinData #positive α
+    atm = AtmosphereDescriptor() |> System
+    air = AirData(kin, atm)
+    ω = 300
+
+    @testset verbose = true "Propeller" begin
+
+        @testset verbose = true "FixedPitch" begin
+
+            pitch = FixedPitch()
+            sense = Propellers.CCW
+            fp_sys = Propeller(; pitch, sense, t_bp) |> System
+
+            @test_throws AssertionError f_cont!(fp_sys, kin, air, ω)
+
+            f_cont!(fp_sys, kin, air, -ω)
+
+            wr_p = fp_sys.y.wr_p
+            @test wr_p.F[1] > 0
+            @test wr_p.F[3] < 0
+            @test wr_p.M[1] > 0 #in a CCW propeller should be positive along x
+            @test wr_p.M[3] > 0 #in a CCW propeller should be positive along z
+
+            @test @ballocated(f_cont!($fp_sys, $kin, $air, -$ω)) == 0
+            @test @ballocated(f_disc!($fp_sys)) == 0
+
+
+        end #testset
+
+        @testset verbose = true "VariablePitch" begin
+
+            pitch = VariablePitch((-deg2rad(5), deg2rad(10)))
+            sense = Propellers.CW
+            vp_sys = Propeller(; pitch, sense, t_bp) |> System
+
+            vp_sys.u[] = 0
+            f_cont!(vp_sys, kin, air, ω)
+            @test vp_sys.y.Δβ ≈ vp_sys.params.pitch.bounds[1]
+            Fx_0 = vp_sys.y.wr_p.F[1]
+
+            vp_sys.u[] = 1
+            f_cont!(vp_sys, kin, air, ω)
+            @test vp_sys.y.Δβ ≈ vp_sys.params.pitch.bounds[2]
+            Fx_1 = vp_sys.y.wr_p.F[1]
+
+            @test Fx_1 > Fx_0
+
+            @test @ballocated(f_cont!($vp_sys, $kin, $air, $ω)) == 0
+            @test @ballocated(f_disc!($vp_sys)) == 0
+
+        end #testset
+
+    end #testset
 
 end
 

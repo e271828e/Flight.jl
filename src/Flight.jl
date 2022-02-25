@@ -5,8 +5,8 @@ using Reexport
 
 #general
 include("misc.jl")
-include("modeling.jl")
 include("plotting.jl")
+include("modeling.jl")
 include("input.jl")
 include("output.jl")
 include("simulation.jl")

@@ -6,6 +6,8 @@ using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks
 using ComponentArrays, RecursiveArrayTools
 using DataStructures: OrderedDict
 
+import Flight.Plotting: plots
+
 export f_cont!, f_disc!
 export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Model
 
@@ -359,7 +361,16 @@ function SciMLBase.reinit!(m::Model, args...; kwargs...)
     return nothing
 end
 
-#the following causes type instability and destroys performance:
+function plots(mdl::Model; mode::Symbol = :basic,
+    save_path::Union{String,Nothing} = nothing, kwargs...)
+    #generate default path tmp/plots/current_date
+    save_path = (save_path === nothing ?
+        joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_path)
+    mkpath(save_path)
+    plots(mdl.log.t, mdl.log.saveval; mode, save_path, kwargs...)
+end
+
+#the following causes type instability and kills performance:
 # function f_update!(ẋ, x, p, t)
     # @unpack sys, args_c = p
     # sys.x .= x

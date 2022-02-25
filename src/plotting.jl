@@ -8,8 +8,6 @@ using Dates
 @reexport using RecursiveArrayTools
 @reexport using LaTeXStrings
 
-using Flight.Modeling
-
 export TimeHistory
 export plots, save_plots, thplot, thplot!
 
@@ -18,19 +16,9 @@ export plots, save_plots, thplot, thplot!
 #our entry plotting entry point cannot be a recipe. a recipe is called within
 #the plot() pipeline, which creates a single figure. however, a Vector of System
 #outputs will typically need to generate multiple plots from its values. for
-#this we define a new method plots(). maybe define different detail levels /
-#modes for
+#this we define a new function plots().
 
 plots(args...; kwargs...) = println("Not implemented")
-
-function plots(mdl::Model; mode::Symbol = :basic,
-    save_path::Union{String,Nothing} = nothing, kwargs...)
-    #generate default path tmp/plots/current_date
-    save_path = (save_path === nothing ?
-        joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_path)
-    mkpath(save_path)
-    plots(mdl.log.t, mdl.log.saveval; mode, save_path, kwargs...)
-end
 
 #for Systems without outputs
 plots(::AbstractVector{<:Real}, ::AbstractVector{Nothing}; kwargs...) = nothing
