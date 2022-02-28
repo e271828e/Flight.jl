@@ -335,7 +335,7 @@ get_Δβ(sys::System{<:Propeller{VariablePitch}}) = linear_scaling(sys.u[], sys.
 function f_cont!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
 
     @unpack d, t_bp, sense, dataset = sys.params
-    @assert sign(ω) === Int(sys.params.sense) "Propeller turning in the wrong sense"
+    @assert sign(ω) * Int(sys.params.sense) >= 0 "Propeller turning in the wrong sense"
 
     v_wOp_b = air.v_wOb_b + kin.vel.ω_eb_b × t_bp.r
     v_wOp_p = t_bp.q'(v_wOp_b)
