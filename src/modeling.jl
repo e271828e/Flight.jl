@@ -33,12 +33,12 @@ init_ẋ(::Nothing) = nothing
 mutable struct System{  T <: SystemDescriptor,
                         X <: Union{Nothing, AbstractVector{Float64}},
                         Y, U, D, P, S}
-    ẋ::X #continuous state vector derivative
-    x::X #continuous state vector
+    ẋ::X #continuous dynamics state vector derivative
+    x::X #continuous dynamics state vector
     y::Y #output
     u::U #control input
-    d::D #discrete state
-    t::Base.RefValue{Float64} #Ref allows automatic propagation of t updates down the subsystem hierarchy
+    d::D #discrete dynamics state
+    t::Base.RefValue{Float64} #allows implicit propagation of t updates down the subsystem hierarchy
     params::P
     subsystems::S
 end
