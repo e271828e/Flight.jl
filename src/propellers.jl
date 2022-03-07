@@ -321,6 +321,8 @@ Base.@kwdef struct PropellerY
     Δβ::Float64 = 0 #blade pitch offset
     wr_p::Wrench = Wrench() #resulting aerodynamic Wrench, propeller frame
     wr_b::Wrench = Wrench() #resulting aerodynamic Wrench, airframe
+    hr_p::SVector{3,Float64} = zeros(SVector{3})#angular momentum, propeller frame
+    hr_b::SVector{3,Float64} = zeros(SVector{3}) #angular momentum, airframe
     P::Float64 = 0.0 #power produced by the propeller
     η_p::Float64 = 0.0 #propulsive efficiency
 end
@@ -334,7 +336,7 @@ get_Δβ(sys::System{<:Propeller{VariablePitch}}) = linear_scaling(sys.u[], sys.
 
 function f_cont!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
 
-    @unpack d, t_bp, sense, dataset = sys.params
+    @unpack d, Ixx, t_bp, sense, dataset = sys.params
     @assert sign(ω) * Int(sys.params.sense) >= 0 "Propeller turning in the wrong sense"
 
     v_wOp_b = air.v_wOb_b + kin.vel.ω_eb_b × t_bp.r
@@ -373,13 +375,17 @@ function f_cont!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
     wr_p = Wrench(F_Op_p, M_Op_p)
     wr_b = t_bp(wr_p)
 
-    sys.y = PropellerY(; v_wOp_p, ω, J, M_tip, Δβ, wr_p, wr_b, P, η_p)
+    hr_p = SVector(Ixx * ω, 0, 0)
+    hr_b = t_bp.q(hr_p)
+
+    sys.y = PropellerY(; v_wOp_p, ω, J, M_tip, Δβ, wr_p, wr_b, hr_p, hr_b, P, η_p)
 
 end
 
 f_disc!(::System{<:Propeller}, args...) = false
 
 get_wr_b(sys::System{<:Propeller}) = sys.y.wr_b
+get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 
 
 
