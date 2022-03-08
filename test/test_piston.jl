@@ -7,39 +7,77 @@ using BenchmarkTools
 using LinearAlgebra
 
 using Flight
-using Flight.Piston: PistonEngine, GPE_data, GPE_constants, compute_π_ISA, inHg2Pa, ft2m, h2δ, p2δ
-using Flight.Atmosphere: p_std
+using Flight.Piston: PistonEngine, inHg2Pa, ft2m, h2δ, p2δ, compute_π_ISA
+using Flight.Atmosphere: Atmosphere, p_std, T_std
 using Flight.Airdata
+
+export test_piston
 
 function test_piston()
     @testset verbose = true "Piston" begin
-        test_π_ISA()
+        test_dataset()
+        test_propagation()
+        test_allocations()
     end
 end
 
-function test_π_ISA()
+function test_dataset()
+    n_shutdown = 0.15
+    n_cutoff = 1.4
+    dataset = Piston.generate_dataset(; n_shutdown, n_cutoff)
+    ω_rated = 2700
+    P_rated = 200
 
-    @testset verbose = true "π_ISA" begin
+    @testset verbose = true "Dataset" begin
 
-        @unpack f_δ_wot, f_μ_wot, f_π_ISA_std, f_π_ISA_wot = GPE_data
-        @unpack n_idle, n_max, μ_idle_std, π_idle_std = GPE_constants
+        @testset verbose = true "δ_wot" begin
 
-        ω_rated = 2700
-        P_rated = 200
+            let δ_wot = dataset.δ_wot
+            #test some values here
+            end
 
-        @test compute_π_ISA(n_idle, μ_idle_std, 1) ≈ π_idle_std
+        end #testset
 
-        #power output should remain at π_idle_std for n < n_idle
-        @test compute_π_ISA(0, μ_idle_std, 1) ≈ compute_π_ISA(n_idle, μ_idle_std, 1)
+        @testset verbose = true "π_ISA_std" begin
 
-        #power output should increase with MAP at n_idle (otherwise it would not
-        #respond to acceleration)
-        @test compute_π_ISA(n_idle, f_μ_wot(n_idle, 1), 0.8) > compute_π_ISA(n_idle, μ_idle_std, 0.8)
+            let π_ISA_std = dataset.π_ISA_std
+            #test some values here
+            end
 
-        #sanity checks against IO360 performance charts
-        @test 71 < compute_π_ISA(1800/ω_rated, inHg2Pa(20)/p_std, 3e3 |> ft2m |> h2δ) * P_rated < 84
-        @test 131 < compute_π_ISA(2310/ω_rated, inHg2Pa(23.6)/p_std, 2.4e3 |> ft2m |> h2δ) * P_rated < 139
-        @test 102 < compute_π_ISA(2500/ω_rated, inHg2Pa(18)/p_std, 10e3 |> ft2m |> h2δ) * P_rated < 119
+        end #testset
+
+        @testset verbose = true "π_ISA_wot" begin
+
+            let π_ISA_wot = dataset.π_ISA_wot
+
+                @show π_ISA_wot(1800/ω_rated, 3e3 |> ft2m |> h2δ) * P_rated
+                @show π_ISA_wot(2300/ω_rated, 2.4e3 |> ft2m |> h2δ) * P_rated
+                @show π_ISA_wot(2500/ω_rated, 10e3 |> ft2m |> h2δ) * P_rated
+
+            end
+
+        end #testset
+
+        @testset verbose = true "π_ISA" begin
+
+            π_ISA = let dataset = dataset
+                (n, μ, δ) -> compute_π_ISA(dataset, n, μ, δ)
+            end
+
+            #at n_shutdown and below, power is zero regardless of MAP value
+            @test π_ISA(n_shutdown, 0, 1) ≈ 0
+            @test π_ISA(n_shutdown, dataset.μ_wot(n_shutdown, 1), 1) ≈ 0
+            @test π_ISA(0.5*n_shutdown, 0.5, 1) ≈ 0
+
+            #as soon as n rises above n_shutdown, power starts increasing with MAP
+            @test π_ISA(1.5*n_shutdown, 0.5, 1) > π_ISA(1.5*n_shutdown, 0.3, 1)
+
+            #sanity checks against IO360 performance charts
+            @test 71 <  π_ISA(1800/ω_rated, inHg2Pa(20)/p_std, 3e3 |> ft2m |> h2δ) * P_rated < 84
+            @test 131 < π_ISA(2310/ω_rated, inHg2Pa(23.6)/p_std, 2.4e3 |> ft2m |> h2δ) * P_rated < 139
+            @test 102 < π_ISA(2500/ω_rated, inHg2Pa(18)/p_std, 10e3 |> ft2m |> h2δ) * P_rated < 119
+
+        end #testset
 
     end #testset
 
@@ -51,34 +89,40 @@ function test_propagation()
 
         kin = KinInit(v_eOb_b = [50, 0, 5]) |> KinData #positive α
         atm = AtmosphereDescriptor() |> System
+        atm.u.static.T_sl = T_std + 10
         air = AirData(kin, atm)
-        ω = 300
 
-        sys = PistonEngine() |> System
+        sys = PistonEngine(idle_ratio = 0.2) |> System
+        sys.x.ω = 100
 
-        T = 0
-        J = 1
-        f_cont!(sys, air; T, J)
+
+        M_load = 0
+        J_load = 1
+        f_cont!(sys, air; M_load, J_load)
 
     end #testset
 
 end #function
 
-function plot_GPE_data(data = GPE_data)
+function test_allocations()
 
-    @unpack f_δ_wot, f_μ_wot, f_π_ISA_std, f_π_ISA_wot = data
+    @test_broken false
 
-    # p_std_inHg = inHg2Pa(p_std)
+end
 
-    n_plot = range(0.15, 1.5, length = 100)
+function plot_dataset()
+
+    dataset = PistonEngine().dataset
+
+    n_plot = range(0, 1.5, length = 100)
     δ_plot = range(1, 0, length = 100)
-    @show μ_plot = range(0.25, inHg2Pa(30), length = 10)/p_std
+    @show μ_plot = range(0.1p_std, inHg2Pa(30), length = 10)/p_std
 
-    π_std_plot = [f_π_ISA_std(n, μ) for (n, μ) in Iterators.product(n_plot, μ_plot)]
+    π_std_plot = [dataset.π_ISA_std(n, μ) for (n, μ) in Iterators.product(n_plot, μ_plot)]
     # plot(μ_plot, π_std_plot')
     plot(n_plot, π_std_plot)
 
-    # π_wot_plot = [f_π_ISA_wot(n,p) for (n,p) in Iterators.product(n_plot, δ_plot)]
+    # π_wot_plot = [dataset.π_ISA_wot(n,p) for (n,p) in Iterators.product(n_plot, δ_plot)]
     # plot(δ_plot, π_wot_plot')
     # # plot(n_plot, π_wot_plot)
 

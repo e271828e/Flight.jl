@@ -159,21 +159,21 @@ end
 
 #################### AtmosphereDescriptor ############################
 
-Base.@kwdef struct AtmosphereDescriptor{I <: AbstractISA, W <: AbstractWind} <: SystemGroupDescriptor
-    isa_::I = TunableISA()
+Base.@kwdef struct AtmosphereDescriptor{S <: AbstractISA, W <: AbstractWind} <: SystemGroupDescriptor
+    static::S = TunableISA()
     wind::W = TunableWind()
 end
 
 const AtmosphericSystem = System{<:AtmosphereDescriptor}
 
 Base.@kwdef struct AtmosphericData
-    isa_::ISAData = ISAData()
+    static::ISAData = ISAData()
     wind::WindData = WindData()
 end
 
 function AtmosphericData(a::AtmosphericSystem, pos::Geographic)
     AtmosphericData(
-        ISAData(a.subsystems.isa_, pos),
+        ISAData(a.subsystems.static, pos),
         WindData(a.subsystems.wind, pos))
 end
 

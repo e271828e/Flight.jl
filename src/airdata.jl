@@ -84,7 +84,7 @@ function AirData(kin_data::KinData, atm_data::AtmosphericData)
     v_ew_b = kin_data.pos.q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
 
-    @unpack T, p, ρ, a, μ = atm_data.isa_
+    @unpack T, p, ρ, a, μ = atm_data.static
     TAS = norm(v_wOb_b)
     M = TAS / a
     Tt = T * (1 + (γ - 1)/2 * M^2)

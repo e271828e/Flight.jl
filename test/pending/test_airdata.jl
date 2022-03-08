@@ -12,7 +12,7 @@ function test_airdata()
     kin_data = f_kin!(dx_pos, x_kin)
 
     atm_sys.u.wind.v_ew_n[1] = 50
-    atm_sys.u.isa_.T_sl += 10 #ISA+10 day
+    atm_sys.u.static.T_sl += 10 #ISA+10 day
 
     b = @benchmarkable AirData($kin_data, $atm_sys); run(b)
 
