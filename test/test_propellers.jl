@@ -3,15 +3,15 @@ module TestPropellers
 using Test
 using Zygote
 using BenchmarkTools
-using LaTeXStrings
 using LinearAlgebra
 using Interpolations
 
 using Flight
 
-using Flight.Propellers
 using Flight.Propellers: DefaultAirfoil, cL, cD, cL_α
 using Flight.Propellers: Blade, Coefficients, Dataset
+
+export test_propellers
 
 function test_propellers()
     @testset verbose = true "Propellers" begin
