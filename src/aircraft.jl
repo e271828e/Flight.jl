@@ -73,16 +73,16 @@ end
 
 #override the default SystemGroupDescriptor implementation, because we need to
 #add some stuff besides subsystem outputs
-init_y(::Type{T}) where {T<:AircraftBase{I,K,F,V}} where {I,K,F,V} = (
-    kinematics = init_y(K),
-    airframe = init_y(F),
-    avionics = init_y(V),
+init_y(ac::T) where {T<:AircraftBase{I,K,F,V}} where {I,K,F,V} = (
+    kinematics = init_y(ac.kinematics),
+    airframe = init_y(ac.airframe),
+    avionics = init_y(ac.avionics),
     dynamics = DynData(),
     air = AirData(),
     )
 
 function init!(ac::System{T}, init::KinInit) where {T<:AircraftBase{I,K}} where {I,K}
-    ac.x.kinematics .= init_x(K, init)
+    ac.x.kinematics .= init_x(ac.kinematics.params, init)
 end
 
 function f_cont!(sys::System{<:AircraftBase}, trn::AbstractTerrain, atm::AtmosphericSystem)

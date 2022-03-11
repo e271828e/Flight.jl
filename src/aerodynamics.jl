@@ -36,7 +36,7 @@ Base.@kwdef struct SimpleDragY
     wr_b::Wrench = Wrench()
 end
 
-init_y(::Type{SimpleDrag}) = SimpleDragY()
+init_y(::SimpleDrag) = SimpleDragY()
 
 #in case of type instability use this one instead (or maybe a function barrier)
 # function f_cont!(sys::System{SimpleDrag}, air::AirData, ::KinData, ::Any, ::Any)
@@ -130,8 +130,8 @@ Base.@kwdef struct TestAerodynamicsY
     wr_b::Wrench = Wrench()
 end
 
-init_x(::Type{TestAerodynamics}) = ComponentVector(α = 0.0, β = 0.0)
-init_y(::Type{TestAerodynamics}) = TestAerodynamicsY()
+init_x(::TestAerodynamics) = ComponentVector(α = 0.0, β = 0.0)
+init_y(::TestAerodynamics) = TestAerodynamicsY()
 
 function f_cont!(sys::System{TestAerodynamics}, air::AirData, kin::KinData, ::Any, ::Any)
 

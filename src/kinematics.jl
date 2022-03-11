@@ -101,7 +101,7 @@ end
 KinData() = KinData(KinInit())
 
 #every AbstractKinematics implementation must comply with the same outputs
-init_y(::Type{<:AbstractKinematics}) = KinData()
+init_y(::AbstractKinematics) = KinData()
 
 #for dispatching
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
@@ -116,7 +116,7 @@ end
 
 struct KinLTF <: AbstractKinematics end
 
-function init_x(::Type{KinLTF}, init::KinInit = KinInit())
+function init_x(::KinLTF, init::KinInit = KinInit())
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
 
@@ -211,7 +211,7 @@ end
 
 struct KinECEF <: AbstractKinematics end
 
-function init_x(::Type{KinECEF}, init::KinInit = KinInit())
+function init_x(::KinECEF, init::KinInit = KinInit())
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
 

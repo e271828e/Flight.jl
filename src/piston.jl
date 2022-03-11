@@ -77,9 +77,9 @@ Base.@kwdef struct PistonEngineY
     # ṁ::Float64 = 0.0 #fuel consumption
 end
 
-init_x(::Type{<:PistonEngine}) = ComponentVector(ω = 0.0)
-init_u(::Type{<:PistonEngine}) = Ref(Bounded(0.0, 0, 1))
-init_y(::Type{<:PistonEngine}) = PistonEngineY()
+init_x(c::PistonEngine) = ComponentVector(ω = 1.5 * c.ω_shutdown)
+init_u(::PistonEngine) = Ref(Bounded(0.0, 0, 1))
+init_y(::PistonEngine) = PistonEngineY()
 
 function generate_dataset(; n_shutdown, n_cutoff)
 

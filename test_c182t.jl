@@ -54,11 +54,11 @@ function forward_drop_test()
                                         h_trn + 2.0 - 0.15 + 1.0));
 
     Aircraft.init!(ac, kin_init)
-
-
     # #if the model was instantiated before setting the system's initial
     # condition, we need this to update the model's initial condition
     # reinit!(mdl, ac.x)
+
+    ac.u.avionics.pedals = -.5
 
     sim = SimulationRun(
         # model = Model(ac, (trn, atm); t_end = 3600, adaptive = true),
@@ -66,7 +66,7 @@ function forward_drop_test()
         # outputs = [XPInterface(host = IPv4("192.168.1.2"))], #Parsec
         outputs = [XPInterface()], #localhost
         realtime = true,
-        plot_enable = false,
+        plot_enable = true,
         plot_path = joinpath("tmp", "c182t", "forward_drop")
         )
 

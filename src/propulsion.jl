@@ -102,9 +102,9 @@ end
 
 Base.@kwdef mutable struct EThrusterD end
 
-init_x(::Type{EThruster}) = copy(EThrusterXTemplate)
-init_u(::Type{EThruster}) = EThrusterU()
-init_y(::Type{EThruster}) = EThrusterY()
+init_x(::EThruster) = copy(EThrusterXTemplate)
+init_u(::EThruster) = EThrusterU()
+init_y(::EThruster) = EThrusterY()
 
 ################ EThruster System ###################
 

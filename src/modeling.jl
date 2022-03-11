@@ -16,11 +16,11 @@ export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Mo
 
 abstract type SystemDescriptor end #anything from which we can build a System
 
-init_x(::Type{T} where {T<:SystemDescriptor}) = nothing
-init_y(::Type{T} where {T<:SystemDescriptor}) = nothing
-init_u(::Type{T} where {T<:SystemDescriptor}) = nothing
-init_d(::Type{T} where {T<:SystemDescriptor}) = nothing
-init_ẋ(::Type{T}) where {T<:SystemDescriptor} = init_ẋ(init_x(T))
+init_x(::SystemDescriptor) = nothing
+init_y(::SystemDescriptor) = nothing
+init_u(::SystemDescriptor) = nothing
+init_d(::SystemDescriptor) = nothing
+init_ẋ(c::SystemDescriptor) = init_ẋ(init_x(c))
 
 init_ẋ(x::AbstractVector) = (x |> similar |> zero)
 init_ẋ(::Nothing) = nothing
@@ -43,8 +43,8 @@ mutable struct System{  T <: SystemDescriptor,
     subsystems::S
 end
 
-function System(c::T, ẋ = init_ẋ(T), x = init_x(T), y = init_y(T),
-                u = init_u(T), d = init_d(T), t = Ref(0.0)) where {T<:SystemDescriptor}
+function System(c::T, ẋ = init_ẋ(c), x = init_x(c), y = init_y(c),
+                u = init_u(c), d = init_d(c), t = Ref(0.0)) where {T<:SystemDescriptor}
 
     params = c #by default assign the system descriptor as System parameters
     subsystems = nothing
@@ -90,18 +90,19 @@ abstract type SystemGroupDescriptor <: SystemDescriptor end
 Base.keys(g::SystemGroupDescriptor) = propertynames(g)
 Base.values(g::SystemGroupDescriptor) = map(λ -> getproperty(g, λ), keys(g))
 
-init_x(::Type{T}) where {T<:SystemGroupDescriptor} = maybe_assemble_cv(T, init_x)
-init_y(::Type{T}) where {T<:SystemGroupDescriptor} = maybe_assemble_nt(T, init_y)
-init_u(::Type{T}) where {T<:SystemGroupDescriptor} = maybe_assemble_nt(T, init_u)
-init_d(::Type{T}) where {T<:SystemGroupDescriptor} = maybe_assemble_nt(T, init_d)
+init_x(c::T where T<:SystemGroupDescriptor) = maybe_assemble_cv(c, init_x)
+init_y(c::T where T<:SystemGroupDescriptor) = maybe_assemble_nt(c, init_y)
+init_u(c::T where T<:SystemGroupDescriptor) = maybe_assemble_nt(c, init_u)
+init_d(c::T where T<:SystemGroupDescriptor) = maybe_assemble_nt(c, init_d)
 
-function maybe_assemble_cv(::Type{T}, f::Function) where {T<:SystemGroupDescriptor}
+function maybe_assemble_cv(c::T, f::Function) where {T<:SystemGroupDescriptor}
 
     dict = OrderedDict{Symbol, AbstractVector{Float64}}()
 
-    for (ss_label, ss_type) in zip(fieldnames(T), T.types)
-        ss_value = f(ss_type)
-        !isnothing(ss_value) ? dict[ss_label] = ss_value : nothing
+    for sc_label in fieldnames(T)
+        sc = getproperty(c, sc_label)
+        sc_value = f(sc)
+        !isnothing(sc_value) ? dict[sc_label] = sc_value : nothing
     end
 
     #if all subsystems returned nothing, return nothing instead of a CV
@@ -109,12 +110,14 @@ function maybe_assemble_cv(::Type{T}, f::Function) where {T<:SystemGroupDescript
 
 end
 
-function maybe_assemble_nt(::Type{T}, f::Function) where {T<:SystemGroupDescriptor}
+function maybe_assemble_nt(c::T, f::Function) where {T<:SystemGroupDescriptor}
+
     dict = OrderedDict{Symbol, Any}()
 
-    for (ss_label, ss_type) in zip(fieldnames(T), T.types)
-        ss_value = f(ss_type)
-        !isnothing(ss_value) ? dict[ss_label] = ss_value : nothing
+    for sc_label in fieldnames(T)
+        sc = getproperty(c, sc_label)
+        sc_value = f(sc)
+        !isnothing(sc_value) ? dict[sc_label] = sc_value : nothing
     end
 
     #if all subsystems returned nothing, return nothing instead of a NT
@@ -131,8 +134,8 @@ function maybe_getproperty(input, label)
     !isnothing(input) && (label in keys(input)) ? getproperty(input, label) : nothing
 end
 
-function System(g::T, ẋ = init_ẋ(T), x = init_x(T), y = init_y(T),
-                u = init_u(T), d = init_d(T), t = Ref(0.0)) where {T<:SystemGroupDescriptor}
+function System(g::T, ẋ = init_ẋ(g), x = init_x(g), y = init_y(g),
+                u = init_u(g), d = init_d(g), t = Ref(0.0)) where {T<:SystemGroupDescriptor}
 
     ss_names = fieldnames(T)
     ss_list = Vector{System}()

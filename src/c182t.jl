@@ -59,8 +59,8 @@ Base.@kwdef struct AvionicsY
     flaps::Float64
 end
 
-init_u(::Type{Avionics}) = AvionicsU()
-init_y(::Type{Avionics}) = AvionicsY(zeros(SVector{9})...)
+init_u(::Avionics) = AvionicsU()
+init_y(::Avionics) = AvionicsY(zeros(SVector{9})...)
 
 
 ################################################################################
@@ -201,7 +201,7 @@ Base.@kwdef mutable struct PayloadD
     baggage::Bool = true
 end
 
-init_d(::Type{Payload}) = PayloadD()
+init_d(::Payload) = PayloadD()
 
 MassTrait(::System{Payload}) = HasMass()
 WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
@@ -220,7 +220,7 @@ end
 
 struct Fuel <: SystemDescriptor end
 
-init_x(::Type{Fuel}) = ComponentVector(m_left = 50.0, m_right = 50.0) #fuel tank contents
+init_x(::Fuel) = ComponentVector(m_left = 50.0, m_right = 50.0) #fuel tank contents
 
 MassTrait(::System{Fuel}) = HasMass()
 WrenchTrait(::System{Fuel}) = GetsNoExternalWrench()
@@ -299,10 +299,10 @@ Base.@kwdef struct AeroY
     wr_b::Wrench = Wrench() #aerodynamic Wrench, airframe
 end
 
-init_x(::Type{Aero}) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
-init_y(::Type{Aero}) = AeroY()
-init_d(::Type{Aero}) = AeroD()
-init_u(::Type{Aero}) = AeroU()
+init_x(::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+init_y(::Aero) = AeroY()
+init_d(::Aero) = AeroD()
+init_u(::Aero) = AeroU()
 
 
 ################################ Airframe ######################################
