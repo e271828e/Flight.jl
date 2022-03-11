@@ -2,6 +2,7 @@
 
 #Project specific
 examples/
+references/
 
 # Editors
 .vscode/
