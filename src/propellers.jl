@@ -327,9 +327,9 @@ Base.@kwdef struct PropellerY
     η_p::Float64 = 0.0 #propulsive efficiency
 end
 
-init_u(::Type{<:Propeller{FixedPitch}}) = nothing
-init_u(::Type{<:Propeller{VariablePitch}}) = Ref(Bounded(0.0, 0, 1))
-init_y(::Type{<:Propeller}) = PropellerY()
+init_u(::Propeller{FixedPitch}) = nothing
+init_u(::Propeller{VariablePitch}) = Ref(Bounded(0.0, 0, 1))
+init_y(::Propeller) = PropellerY()
 
 get_Δβ(sys::System{<:Propeller{FixedPitch}}) = 0.0
 get_Δβ(sys::System{<:Propeller{VariablePitch}}) = linear_scaling(sys.u[], sys.params.pitch.bounds)
