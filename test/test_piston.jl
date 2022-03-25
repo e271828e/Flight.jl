@@ -7,7 +7,7 @@ using BenchmarkTools
 using LinearAlgebra
 
 using Flight
-using Flight.Piston: PistonEngine, inHg2Pa, ft2m, h2δ, p2δ, compute_π_ISA
+using Flight.Piston: PistonEngine, inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA
 using Flight.Atmosphere: Atmosphere, p_std, T_std
 using Flight.Airdata
 
@@ -17,7 +17,6 @@ function test_piston()
     @testset verbose = true "Piston" begin
         test_dataset()
         test_propagation()
-        test_allocations()
     end
 end
 
@@ -33,7 +32,11 @@ function test_dataset()
         @testset verbose = true "δ_wot" begin
 
             let δ_wot = dataset.δ_wot
-            #test some values here
+                #these graphs have been retouched, so allow more leeway here
+                @test δ_wot(1800/ω_rated, inHg2Pa(20)/p_std) ≈ (9500 |> ft2m |> h2δ) atol = 0.1
+                @test δ_wot(2700/ω_rated, inHg2Pa(22)/p_std) ≈ (7000 |> ft2m |> h2δ) atol = 0.1
+                @test δ_wot(2100/ω_rated, inHg2Pa(16)/p_std) ≈ (15250 |> ft2m |> h2δ) atol = 0.1
+                @test δ_wot(2300/ω_rated, inHg2Pa(12)/p_std) ≈ (22000 |> ft2m |> h2δ) atol = 0.1
             end
 
         end #testset
@@ -41,6 +44,10 @@ function test_dataset()
         @testset verbose = true "π_ISA_std" begin
 
             let π_ISA_std = dataset.π_ISA_std
+                @test π_ISA_std(1800/ω_rated, inHg2Pa(20)/p_std) * P_rated ≈ 71 atol = 1
+                @test π_ISA_std(2050/ω_rated, inHg2Pa(24)/p_std) * P_rated ≈ 113 atol = 1
+                @test π_ISA_std(2400/ω_rated, inHg2Pa(17)/p_std) * P_rated ≈ 85 atol = 1
+                @test π_ISA_std(2400/ω_rated, inHg2Pa(28.8)/p_std) * P_rated ≈ 176 atol = 1
             #test some values here
             end
 
@@ -49,10 +56,11 @@ function test_dataset()
         @testset verbose = true "π_ISA_wot" begin
 
             let π_ISA_wot = dataset.π_ISA_wot
-
-                @show π_ISA_wot(1800/ω_rated, 3e3 |> ft2m |> h2δ) * P_rated
-                @show π_ISA_wot(2300/ω_rated, 2.4e3 |> ft2m |> h2δ) * P_rated
-                @show π_ISA_wot(2500/ω_rated, 10e3 |> ft2m |> h2δ) * P_rated
+                #these graphs have been retouched, so allow more leeway here
+                @test π_ISA_wot(1800/ω_rated, 3e3 |> ft2m |> h2δ) * P_rated ≈ 108 atol = 3
+                @test π_ISA_wot(2300/ω_rated, 2.4e3 |> ft2m |> h2δ) * P_rated ≈ 153 atol = 3
+                @test π_ISA_wot(2500/ω_rated, 10e3 |> ft2m |> h2δ) * P_rated ≈ 129 atol = 3
+                @test π_ISA_wot(2000/ω_rated, 20e3 |> ft2m |> h2δ) * P_rated ≈ 65 atol = 3
 
             end
 
@@ -85,30 +93,57 @@ end #function
 
 function test_propagation()
 
-    @testset verbose = true "Propagation Functions" begin
+    @testset verbose = true "Propagation" begin
 
         kin = KinInit(v_eOb_b = [50, 0, 5]) |> KinData #positive α
         atm = AtmosphereDescriptor() |> System
         atm.u.static.T_sl = T_std + 10
         air = AirData(kin, atm)
+        eng = PistonEngine(idle_ratio = 0.2)
+        sys = System(eng)
 
-        sys = PistonEngine(idle_ratio = 0.2) |> System
-        sys.x.ω = 100
-
-
-        M_load = 0
+        M_load = -1.123897198
         J_load = 1
-        f_cont!(sys, air; M_load, J_load)
+
+        @testset verbose = true "Essentials" begin
+
+            @test sys.ẋ == Modeling.init_ẋ(eng)
+            @test sys.y == Modeling.init_y(eng)
+
+            sys.x.ω = 100
+            f_cont!(sys, air; M_load, J_load)
+
+            @test sys.ẋ != Modeling.init_ẋ(eng)
+            @test sys.y != Modeling.init_y(eng)
+
+            sys.x.ω = 0.9eng.ω_shutdown
+            f_disc!(sys)
+            @test !sys.d.running
+
+            sys.u.start = true
+            f_disc!(sys)
+            sys.u.start = false
+            @test sys.x.ω > eng.ω_shutdown
+            @test sys.d.running
+
+            sys.u.stop = true
+            f_disc!(sys)
+            sys.u.stop = false
+            @test !sys.d.running
+
+        end
+
+        @testset verbose = true "Allocations" begin
+
+            @test @ballocated(f_cont!($sys, $air; M_load = $M_load, J_load = $J_load)) == 0
+            @test @ballocated(f_disc!($sys)) == 0
+
+        end
 
     end #testset
 
 end #function
 
-function test_allocations()
-
-    @test_broken false
-
-end
 
 function plot_dataset()
 

@@ -18,19 +18,21 @@ export PistonEngine
 # @unit inHg "inHg" InchOfMercury 3386.389*Unitful.Pa false
 # @unit hp "hp" Horsepower 735.49875*Unitful.W false
 
+println("Remember to define AngularMomentum trait for PistonPowerplant!")
+
 const β = ISA_layers[1].β
 
 inHg2Pa(p) = 3386.389p
 ft2m(h) = 0.3048h
 hp2W(P) = 735.49875P
 
+T_ISA(p) = T_std * (p / p_std) ^ (-β * R / g_std)
+p2δ(p) = (p/p_std) * (T_ISA(p)/T_std)^(-0.5)
 function h2δ(h)
     @unpack p, T = ISAData(AltGeop(h))
     p / p_std / √(T / T_std)
 end
 
-T_ISA(p) = T_std * (p / p_std) ^ (-β * R / g_std)
-p2δ(p) = (p/p_std) * (T_ISA(p)/T_std)^(-0.5)
 
 ########################### AbstractPistonEngine ###############################
 
@@ -66,6 +68,16 @@ function PistonEngine(;
     PistonEngine{typeof(dataset)}(P_rated, ω_rated, ω_shutdown, ω_cutoff, idle_ratio, dataset)
 end
 
+Base.@kwdef mutable struct PistonEngineD
+    running::Bool = true
+end
+
+Base.@kwdef mutable struct PistonEngineU
+    throttle::Bounded{Float64, 0, 1} = 0.0
+    start::Bool = false
+    stop::Bool = false
+end
+
 Base.@kwdef struct PistonEngineY
     throttle::Float64 = 0.0
     n::Float64 = 0.0 #normalized engine speed, n = ω/ω_rated
@@ -78,7 +90,8 @@ Base.@kwdef struct PistonEngineY
 end
 
 init_x(c::PistonEngine) = ComponentVector(ω = 1.5 * c.ω_shutdown)
-init_u(::PistonEngine) = Ref(Bounded(0.0, 0, 1))
+init_d(::PistonEngine) = PistonEngineD()
+init_u(::PistonEngine) = PistonEngineU()
 init_y(::PistonEngine) = PistonEngineY()
 
 function generate_dataset(; n_shutdown, n_cutoff)
@@ -151,8 +164,8 @@ function generate_dataset(; n_shutdown, n_cutoff)
         π_data = Array{Float64,2}(undef, length(n_range), length(δ_range))
 
         π_data[:, 1] .= 0 #power should vanish for δ → 0 ∀n
-        π_data[:, 2] .= [0, 0.23, 0.409, 0.409, 0]
-        π_data[:, 3] .= [π_ISA_std(n, μ_wot(n, 1)) for n in n_range]
+        π_data[:, 2] .= [0, 0.23, 0.409, 0.409, 0] #it also vanishes at n_shutdown and n_cutoff ∀δ
+        π_data[:, 3] .= [π_ISA_std(n, μ_wot(n, 1)) for n in n_range] #at δ=1 by definition it's π_ISA_std(μ_wot)
 
         LinearInterpolation((n_range,δ_range), π_data, extrapolation_bc = ((Flat(), Flat()), (Flat(), Line())))
 
@@ -186,21 +199,27 @@ function f_cont!(sys::System{<:PistonEngine}, air::AirData; M_load::Real, J_load
     #conditions (generative), it may become positive, and drive the engine
     #instead of being driven by it
 
-    @show throttle = sys.u[] |> Float64
-    @show ω = sys.x.ω
+    throttle = sys.u.throttle |> Float64
+    ω = sys.x.ω
+    n = ω / ω_rated
+    δ = p2δ(air.p)
 
-    @show n = ω / ω_rated
-    @show δ = p2δ(air.p)
+    if !sys.d.running
+        μ = air.p / p_std #manifold pressure equals ambient pressure
+        P = 0.0 #engine power ≈ 0
+        M = 0.0 #engine torque ≈ 0
+    else
+        μ = dataset.μ_wot(n, δ) * (idle_ratio + throttle * (1 - idle_ratio))
+        π_ISA = compute_π_ISA(dataset, n, μ, δ)
+        π = π_ISA * √(T_ISA(air.p)/air.T)
 
-    @show μ = dataset.μ_wot(n, δ) * (idle_ratio + throttle * (1 - idle_ratio))
+        #correct for mixture setting
 
-    @show π_ISA = compute_π_ISA(dataset, n, μ, δ)
-    @show π_true = π_ISA * √(T_ISA(air.p)/air.T)
-
-    #we know that for ω < ω_shutdown power will be zero, we just need to avoid
-    #dividing by zero
-    @show P = π_true * P_rated
-    @show M = (ω > 0 ? P / ω : 0)
+        #for ω < ω_shutdown we should not be here, but just to be safe let's handle
+        #division by zero
+        P = π * P_rated
+        M = (ω > 0 ? P / ω : 0.0)
+    end
 
     sys.ẋ.ω = (M - M_load) / J_load
 
@@ -208,5 +227,22 @@ function f_cont!(sys::System{<:PistonEngine}, air::AirData; M_load::Real, J_load
 
 end
 
+function f_disc!(sys::System{<:PistonEngine})
+
+    ω_shutdown = sys.params.ω_shutdown
+
+    x_mod = false
+
+    if !sys.d.running && sys.u.start
+        sys.x.ω = 1.5 * ω_shutdown
+        x_mod = true
+        sys.d.running = true
+    end
+
+    (sys.u.stop || sys.x.ω < ω_shutdown) ? sys.d.running = false : nothing
+
+    return x_mod
+
+end
 
 end #module
