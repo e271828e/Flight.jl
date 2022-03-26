@@ -13,8 +13,8 @@ using .TestGeodesy
 using .TestPropellers
 using .TestPiston
 
-test_quaternions()
-test_attitude()
-test_geodesy()
-test_propellers()
+# test_quaternions()
+# test_attitude()
+# test_geodesy()
+# test_propellers()
 test_piston()

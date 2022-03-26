@@ -308,8 +308,8 @@ get_μ(f::Union{Rolling,Skidding}, srf::SurfaceType, α_bo::Real)::Float64 =
 Base.@kwdef struct Contact <: SystemDescriptor
     rolling::Rolling = Rolling() #rolling friction coefficients
     skidding::Skidding = Skidding() #skidding friction coefficients
-    v_bo::SVector{2,Float64} = [0.005, 0.01] #breakout velocity interval
     ψ_skid::Float64 = deg2rad(10) #skidding slip angle thresold
+    v_bo::SVector{2,Float64} = [0.005, 0.01] #breakout velocity interval
     k_p::Float64 = 5.0 #proportional gain for contact velocity regulator
     k_i::Float64 = 400.0 #integral gain for contact velocity regulator
     k_l::Float64 = 0.0 #integrator leak factor for contact velocity regulator
@@ -396,13 +396,12 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     α_i = -k_i * s
     α_raw = α_p + α_i #raw μ scaling
     α = clamp.(α_raw, -1, 1) #clipped μ scaling
-    μ = α .* μ_max
-
     #if not saturated, integrator accumulates
     sat = abs.(α_raw) .> abs.(α) #saturated?
     sys.ẋ .= (v - k_l * s) .* .!sat
 
     #normalized contact force projected on the contact frame
+    μ = α .* μ_max
     f_c = SVector{3,Float64}(μ[1], μ[2], -1)
     f_s = t_sc.q(f_c) #project normalized force onto the strut frame
     @assert f_s[3] < 0
