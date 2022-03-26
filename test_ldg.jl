@@ -28,7 +28,7 @@ function test_braking()
     no_braking_sys = System(NoBraking())
     set_braking_input(no_braking_sys, 0)
     f_cont!(no_braking_sys)
-    get_braking_coefficient(no_braking_sys)
+    get_braking_factor(no_braking_sys)
 
     direct_braking_sys = System(DirectBraking())
     set_braking_input(direct_braking_sys, 0.1)
@@ -38,7 +38,7 @@ function test_braking()
     catch AssertionError
         print("OK")
     end
-    get_braking_coefficient(direct_braking_sys)
+    get_braking_factor(direct_braking_sys)
 
 end
 

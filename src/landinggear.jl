@@ -68,7 +68,7 @@ abstract type AbstractBraking <: SystemDescriptor end
 
 struct NoBraking <: AbstractBraking end
 
-get_braking_coefficient(::System{NoBraking}) = 0.0
+get_braking_factor(::System{NoBraking}) = 0.0
 f_cont!(::System{NoBraking}, args...) = nothing
 f_disc!(::System{NoBraking}, args...) = false
 
@@ -79,7 +79,7 @@ Base.@kwdef struct DirectBraking <: AbstractBraking
 end
 
 Base.@kwdef struct DirectBrakingY
-   α_br::Float64 = 0.0 #braking coefficient
+   η_br::Float64 = 0.0 #braking coefficient
 end
 
 init_u(::DirectBraking) = Ref(0.0)
@@ -93,7 +93,7 @@ end
 
 f_disc!(::System{DirectBraking}, args...) = false
 
-get_braking_coefficient(sys::System{DirectBraking}) = sys.y.α_br
+get_braking_factor(sys::System{DirectBraking}) = sys.y.η_br
 
 
 ########################### Damper #############################
@@ -265,14 +265,14 @@ struct StaticDynamic
 end
 
 #static / dynamic friction interpolation from breakout factor
-get_μ(f::StaticDynamic, α_bo::Real)::Float64 = α_bo * f.dynamic + (1-α_bo) * f.static
+get_μ(f::StaticDynamic, η_bo::Real)::Float64 = η_bo * f.dynamic + (1-η_bo) * f.static
 
 #pure rolling friction coefficient set
 Base.@kwdef struct Rolling
     sd::StaticDynamic= StaticDynamic(0.03, 0.02)
 end
 
-get_μ(f::Rolling, ::SurfaceType)::StaticDynamic = f.sd
+get_sd(f::Rolling, ::SurfaceType)::StaticDynamic = f.sd
 
 #pure skidding friction coefficient set
 Base.@kwdef struct Skidding
@@ -281,7 +281,7 @@ Base.@kwdef struct Skidding
     icy::StaticDynamic = StaticDynamic(0.075, 0.025)
 end
 
-function get_μ(f::Skidding, srf::SurfaceType)::StaticDynamic
+function get_sd(f::Skidding, srf::SurfaceType)::StaticDynamic
     if srf === Terrain.DryTarmac
         return f.dry
     elseif srf === Terrain.WetTarmac
@@ -293,10 +293,10 @@ function get_μ(f::Skidding, srf::SurfaceType)::StaticDynamic
     end
 end
 
-get_μ(f::Union{Rolling,Skidding}, srf::SurfaceType, α_bo::Real)::Float64 =
-    get_μ(get_μ(f, srf), α_bo)
+get_μ(f::Union{Rolling,Skidding}, srf::SurfaceType, η_bo::Real)::Float64 =
+    get_μ(get_sd(f, srf), η_bo)
 
-#this allocates. why??
+#why does this allocate??
 # get_sd(f::Skidding, ::Val{Terrain.DryTarmac}) = f.dry
 # get_sd(f::Skidding, ::Val{Terrain.WetTarmac}) = f.wet
 # get_sd(f::Skidding, ::Val{Terrain.IcyTarmac}) = f.icy
@@ -325,10 +325,10 @@ Base.@kwdef struct ContactY
     α_raw::SVector{2,Float64} = zeros(SVector{2}) #total scale factor, raw
     α::SVector{2,Float64} = zeros(SVector{2}) #total scale factor, clipped
     sat::SVector{2,Bool} = zeros(SVector{2,Bool}) #scale factor saturation flag
-    α_bo::Float64 = 0.0 #breakout factor
+    η_bo::Float64 = 0.0 #breakout factor
     μ_roll::Float64 = 0.0 #rolling friction coefficient
     μ_skid::Float64 = 0.0 #skidding friction coefficient
-    α_br::Float64 = 0.0 #braking factor
+    η_br::Float64 = 0.0 #braking factor
     ψ_cv::Float64 = 0.0 #tire slip angle
     μ_max::SVector{2,Float64} = zeros(SVector{2}) #maximum friction coefficient
     μ::SVector{2,Float64} = zeros(SVector{2}) #scaled friction coefficient
@@ -358,18 +358,18 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     s = SVector{2,Float64}(sys.x) #velocity integrator state
 
     #breakout factor
-    α_bo = clamp((norm(v) - v_bo[1]) / (v_bo[2] - v_bo[1]), 0, 1)
+    η_bo = clamp((norm(v) - v_bo[1]) / (v_bo[2] - v_bo[1]), 0, 1)
 
-    μ_roll = get_μ(rolling, srf, α_bo)
-    μ_skid = get_μ(skidding, srf, α_bo)
+    μ_roll = get_μ(rolling, srf, η_bo)
+    μ_skid = get_μ(skidding, srf, η_bo)
 
     #longitudinal friction coefficient
-    α_br = get_braking_coefficient(braking)
-    @assert (α_br >= 0 && α_br <= 1)
-    μ_x = μ_roll + (μ_skid - μ_roll) * α_br
+    η_br = get_braking_factor(braking)
+    @assert (η_br >= 0 && η_br <= 1)
+    μ_x = μ_roll + (μ_skid - μ_roll) * η_br
 
     #tire slip angle
-    if α_bo < 1 #prevents chattering in μ_y for near-zero contact velocity
+    if η_bo < 1 #prevents chattering in μ_y for near-zero contact velocity
         ψ_cv = ψ_skid
     else
         ψ_cv = atan(v[2], v[1])
@@ -413,8 +413,8 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     wr_c = Wrench(F = F_c)
     wr_b = t_bc(wr_c)
 
-    sys.y = ContactY(; v, s, α_p, α_i, α_raw, α, sat, α_bo, μ_roll, μ_skid,
-        α_br, ψ_cv, μ_max, μ, f_c, F_c, wr_b)
+    sys.y = ContactY(; v, s, α_p, α_i, α_raw, α, sat, η_bo, μ_roll, μ_skid,
+        η_br, ψ_cv, μ_max, μ, f_c, F_c, wr_b)
 
 end
 
@@ -434,8 +434,8 @@ end
 
 function plots(t, data::AbstractVector{<:ContactY}; mode, save_path, kwargs...)
 
-    @unpack v, s, α_p, α_i, α_raw, α, sat, α_bo, μ_roll, μ_skid,
-        α_br, ψ_cv, μ_max, μ, f_c, F_c, wr_b = StructArray(data)
+    @unpack v, s, α_p, α_i, α_raw, α, sat, η_bo, μ_roll, μ_skid,
+        η_br, ψ_cv, μ_max, μ, f_c, F_c, wr_b = StructArray(data)
 
     extract_xy = (input) -> (input |> StructArray |> StructArrays.components)
 
@@ -447,14 +447,14 @@ function plots(t, data::AbstractVector{<:ContactY}; mode, save_path, kwargs...)
 
     splt_v_mag = thplot(t, norm.(v); title = "Contact Velocity Magnitude",
         ylabel = L"$\alpha_{bo}$", label = "", kwargs...)
-    splt_α_bo = thplot(t, α_bo; title = "Breakout Factor",
+    splt_η_bo = thplot(t, η_bo; title = "Breakout Factor",
         ylabel = L"$\alpha_{bo}$", label = "", kwargs...)
     splt_μ_roll = thplot(t, μ_roll; title = "Rolling Friction Coefficient",
         ylabel = L"$\mu_{roll}$", label = "", kwargs...)
     splt_μ_skid = thplot(t, μ_skid; title = "Skidding Friction Coefficient",
         ylabel = L"$\mu_{skid}$", label = "", kwargs...)
 
-    pd["01_srf"] = plot(splt_v_mag, splt_α_bo, splt_μ_roll, splt_μ_skid;
+    pd["01_srf"] = plot(splt_v_mag, splt_η_bo, splt_μ_roll, splt_μ_skid;
         plot_title = "Rolling and Skidding Friction",
         layout = (2,2), link = :none,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
@@ -478,14 +478,14 @@ function plots(t, data::AbstractVector{<:ContactY}; mode, save_path, kwargs...)
         layout = (2,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    splt_α_br = thplot(t, α_br; title = "Braking Coefficient",
+    splt_η_br = thplot(t, η_br; title = "Braking Coefficient",
         ylabel = L"$\alpha_{br}$", label = "", kwargs...)
     splt_μ_max_x = thplot(t, μ_max_x; title = "Maximum Friction Coefficient",
         ylabel = L"$\mu_{max}^{x}$", label = "", kwargs...)
     splt_μ_x = thplot(t, μ_x; title = "Effective Friction Coefficient",
         ylabel = L"$\mu^{x}$", label = "", kwargs...)
 
-    pd["03_mu_x"] = plot(splt_α_br, splt_μ_max_x, splt_μ_x;
+    pd["03_mu_x"] = plot(splt_η_br, splt_μ_max_x, splt_μ_x;
         plot_title = "Longitudinal Friction",
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
@@ -571,8 +571,6 @@ function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
     f_cont!(strut, steering, terrain, kinematics)
     f_cont!(contact, strut, braking)
 
-    # sys.y = (strut = strut.y, contact = contact.y, steering = steering.y,
-    #         braking = braking.y)
     Modeling.update_y!(sys)
 
 end
@@ -581,7 +579,6 @@ function f_disc!(sys::System{<:LandingGearUnit})
 
     @unpack strut, contact = sys.subsystems
 
-    # println("Called LdgUnit f_disc!")
     contact_modified = f_disc!(contact, strut)
     return contact_modified
 
