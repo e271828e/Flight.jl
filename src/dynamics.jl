@@ -333,7 +333,7 @@ get_mp_b(::HasNoMass, sys::System) = MassProperties()
 
 #default implementation for a SystemGroup with the HasMass trait, tries
 #to compute the aggregate mass properties for all the subsystems
-@inline @generated function get_mp_b(::HasMass, sys::System{D}) where {D<:SystemGroupDescriptor}
+@inline @generated function get_mp_b(::HasMass, sys::System{D}) where {D<:NodeSystemDescriptor}
 
     # Core.print("Generated function called")
     ex = Expr(:block)
@@ -365,7 +365,7 @@ get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
 
 #default implementation for a SystemGroup with the GetsExternalWrench trait, tries
 #to sum all the Wrenches from its individual components. override as required
-@inline @generated function get_wr_b(::GetsExternalWrench, sys::System{D}) where {D<:SystemGroupDescriptor}
+@inline @generated function get_wr_b(::GetsExternalWrench, sys::System{D}) where {D<:NodeSystemDescriptor}
 
     # Core.print("Generated function called")
     ex = Expr(:block)
@@ -397,7 +397,7 @@ get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
 
 #default implementation for a SystemGroup with the HasAngularMomentum trait, tries
 #to sum the angular momentum from its individual components. override as required
-@inline @generated function get_hr_b(::HasAngularMomentum, sys::System{D}) where {D<:SystemGroupDescriptor}
+@inline @generated function get_hr_b(::HasAngularMomentum, sys::System{D}) where {D<:NodeSystemDescriptor}
 
     # Core.print("Generated function called")
     ex = Expr(:block)

@@ -13,7 +13,7 @@ using Flight.Terrain
 using Flight.Kinematics
 using Flight.Dynamics
 
-import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
+import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
 import Flight.Plotting: plots
 
@@ -46,8 +46,8 @@ Base.@kwdef struct DirectSteeringY
     ψ::Float64 = 0.0
 end
 #we need to make the contents of u mutable
-init_u(::DirectSteering) = Ref(0.0) #steering input
-init_y(::DirectSteering) = DirectSteeringY(0.0) #steering angle
+init(::DirectSteering, ::SystemU) = Ref(0.0) #steering input
+init(::DirectSteering, ::SystemY) = DirectSteeringY(0.0) #steering angle
 
 function f_cont!(sys::System{DirectSteering})
     u = sys.u[]
@@ -82,8 +82,8 @@ Base.@kwdef struct DirectBrakingY
    η_br::Float64 = 0.0 #braking coefficient
 end
 
-init_u(::DirectBraking) = Ref(0.0)
-init_y(::DirectBraking) = DirectBrakingY()
+init(::DirectBraking, ::SystemU) = Ref(0.0)
+init(::DirectBraking, ::SystemY) = DirectBrakingY()
 
 function f_cont!(sys::System{DirectBraking})
     u = sys.u[]
@@ -138,7 +138,7 @@ Base.@kwdef struct StrutY
     srf::SurfaceType = Terrain.DryTarmac #surface type at the reference point
 end
 
-init_y(::Strut) = StrutY()
+init(::Strut, ::SystemY) = StrutY()
 
 function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     terrain::AbstractTerrain, kin::KinData)
@@ -337,9 +337,9 @@ Base.@kwdef struct ContactY
     wr_b::Wrench = Wrench() #resulting airframe Wrench
 end
 
-init_x(::Contact) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
-init_y(::Contact) = ContactY()
-init_d(::Contact) = Ref(false) #contact active?
+init(::Contact, ::SystemX) = ComponentVector(x = 0.0, y = 0.0) #v regulator integrator states
+init(::Contact, ::SystemY) = ContactY()
+init(::Contact, ::SystemD) = Ref(false) #contact active?
 
 function f_cont!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
@@ -545,7 +545,7 @@ end
 ########################## LandingGearUnit #########################
 
 Base.@kwdef struct LandingGearUnit{L<:Strut, S <: AbstractSteering,
-                            B <: AbstractBraking} <: SystemGroupDescriptor
+                            B <: AbstractBraking} <: NodeSystemDescriptor
     strut::L = Strut()
     contact::Contact = Contact()
     steering::S = NoSteering()

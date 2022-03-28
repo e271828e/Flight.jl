@@ -12,7 +12,7 @@ using Flight.Kinematics
 using Flight.Dynamics
 
 import Flight.Plotting: plots
-import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
+import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
 
 export AbstractThruster, EThruster
@@ -102,9 +102,9 @@ end
 
 Base.@kwdef mutable struct EThrusterD end
 
-init_x(::EThruster) = copy(EThrusterXTemplate)
-init_u(::EThruster) = EThrusterU()
-init_y(::EThruster) = EThrusterY()
+init(::EThruster, ::SystemX) = copy(EThrusterXTemplate)
+init(::EThruster, ::SystemU) = EThrusterU()
+init(::EThruster, ::SystemY) = EThrusterY()
 
 ################ EThruster System ###################
 

@@ -9,7 +9,7 @@ import Interpolations: knots, bounds
 using Flight.Modeling, Flight.Misc
 using Flight.Kinematics, Flight.Dynamics, Flight.Airdata
 
-import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
+import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 import Flight.Plotting: plots
 
@@ -237,9 +237,9 @@ Interpolations.bounds(dataset::Dataset) = Interpolations.bounds(dataset.C_Fx.itp
 #geometry and specified pitch control
 function Dataset(p::PitchControl, blade::Blade, n_blades::Int; opts...)
 
-    n_ζ = get(opts, :n_ζ, 201)
+    n_ζ = get(opts, :n_ζ, 101)
 
-    J_range = range(0, get(opts, :J_max, 1.5), length = get(opts, :n_J, 41))
+    J_range = range(0, get(opts, :J_max, 1.5), length = get(opts, :n_J, 21))
     J_mode = BSpline(Linear())
     J_scaling = J_range
 
@@ -327,9 +327,9 @@ Base.@kwdef struct PropellerY
     η_p::Float64 = 0.0 #propulsive efficiency
 end
 
-init_u(::Propeller{FixedPitch}) = nothing
-init_u(::Propeller{VariablePitch}) = Ref(Bounded(0.0, 0, 1))
-init_y(::Propeller) = PropellerY()
+init(::Propeller{FixedPitch}, ::SystemU) = nothing
+init(::Propeller{VariablePitch}, ::SystemU) = Ref(Bounded(0.0, 0, 1))
+init(::Propeller, ::SystemY) = PropellerY()
 
 get_Δβ(sys::System{<:Propeller{FixedPitch}}) = 0.0
 get_Δβ(sys::System{<:Propeller{VariablePitch}}) = linear_scaling(sys.u[], sys.params.pitch.bounds)

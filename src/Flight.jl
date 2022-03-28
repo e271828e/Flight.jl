@@ -22,15 +22,15 @@ include("atmosphere.jl")
 include("kinematics.jl")
 include("dynamics.jl")
 
-#aircraft components
+# #aircraft components
 include("airdata.jl")
 include("propulsion.jl")
 include("landinggear.jl")
 include("propellers.jl")
 include("piston.jl")
-include("aerodynamics.jl")
+# include("aerodynamics.jl")
 
-# #aircraft
+# # #aircraft
 include("aircraft.jl")
 include("c182t.jl")
 
@@ -57,7 +57,7 @@ include("c182t.jl")
 @reexport using .LandingGear
 @reexport using .Propellers
 @reexport using .Piston
-@reexport using .Aerodynamics
+# @reexport using .Aerodynamics
 
 @reexport using .Aircraft
 @reexport using .C182T

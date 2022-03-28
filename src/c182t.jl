@@ -16,13 +16,13 @@ using Flight.Terrain
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-using Flight.Aerodynamics: AbstractAerodynamics
+# using Flight.Aerodynamics: AbstractAerodynamics
 using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
 using Flight.LandingGear
 using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractAirframe, AbstractAvionics
 using Flight.Input: XBoxController, get_axis_value, is_released
 
-import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
+import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Plotting: plots
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Input: assign!
@@ -59,8 +59,8 @@ Base.@kwdef struct AvionicsY
     flaps::Float64
 end
 
-init_u(::Avionics) = AvionicsU()
-init_y(::Avionics) = AvionicsY(zeros(SVector{9})...)
+init(::Avionics, ::SystemU) = AvionicsU()
+init(::Avionics, ::SystemY) = AvionicsY(zeros(SVector{9})...)
 
 
 ################################################################################
@@ -71,7 +71,7 @@ init_y(::Avionics) = AvionicsY(zeros(SVector{9})...)
 
 #dummy subsystem to add OEW mass properties to the airframe; could instead
 #customize the get_mp_b method for System{Airframe} but this way we can fall
-#back on the default System{SystemGroupDescriptor} implementation for get_mp_b,
+#back on the default System{NodeSystemDescriptor} implementation for get_mp_b,
 #which requires all subsystems to define their own get_mp_b methods
 struct OEW <: SystemDescriptor end
 
@@ -93,7 +93,7 @@ get_mp_b(::System{OEW}) = mp_b_OEW
 
 ##################################### Pwp ######################################
 
-struct Pwp <: SystemGroupDescriptor
+struct Pwp <: NodeSystemDescriptor
     left::EThruster
     right::EThruster
 end
@@ -120,7 +120,7 @@ end
 #constructor (appropriately) fails. also, requires System{<:Ldg} instead of
 #System{Ldg} in method signatures
 # struct Ldg{L <: LandingGearUnit, R <: LandingGearUnit,
-#     N <: LandingGearUnit} <: SystemGroupDescriptor
+#     N <: LandingGearUnit} <: NodeSystemDescriptor
 #     left::L
 #     right::R
 #     nose::N
@@ -128,7 +128,7 @@ end
 
 #alternative, less flexible (implies type redefinition if the type parameters of
 #the field types change, and Revise will complain)
-struct Ldg <: SystemGroupDescriptor
+struct Ldg <: NodeSystemDescriptor
     left::LandingGearUnit{Strut{SimpleDamper}, NoSteering, DirectBraking}
     right::LandingGearUnit{Strut{SimpleDamper}, NoSteering, DirectBraking}
     nose::LandingGearUnit{Strut{SimpleDamper}, DirectSteering, NoBraking}
@@ -201,7 +201,7 @@ Base.@kwdef mutable struct PayloadD
     baggage::Bool = true
 end
 
-init_d(::Payload) = PayloadD()
+init(::Payload, ::SystemD) = PayloadD()
 
 MassTrait(::System{Payload}) = HasMass()
 WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
@@ -220,7 +220,7 @@ end
 
 struct Fuel <: SystemDescriptor end
 
-init_x(::Fuel) = ComponentVector(m_left = 50.0, m_right = 50.0) #fuel tank contents
+init(::Fuel, ::SystemX) = ComponentVector(m_left = 50.0, m_right = 50.0) #fuel tank contents
 
 MassTrait(::System{Fuel}) = HasMass()
 WrenchTrait(::System{Fuel}) = GetsNoExternalWrench()
@@ -248,7 +248,7 @@ end
 #contribuciones que son un producto de alpha o beta por una derivada de
 #estabilidad sin mas, asi que conviene saturar alpha y beta en cualquier caso
 
-Base.@kwdef struct Aero <: AbstractAerodynamics
+Base.@kwdef struct Aero <: SystemDescriptor
     S::Float64 = 16.165 #wing area
     b::Float64 = 10.912 #wingspan
     c::Float64 = 1.494 #mean aerodynamic chord
@@ -299,10 +299,10 @@ Base.@kwdef struct AeroY
     wr_b::Wrench = Wrench() #aerodynamic Wrench, airframe
 end
 
-init_x(::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
-init_y(::Aero) = AeroY()
-init_d(::Aero) = AeroD()
-init_u(::Aero) = AeroU()
+init(::Aero, ::SystemX) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+init(::Aero, ::SystemY) = AeroY()
+init(::Aero, ::SystemU) = AeroU()
+init(::Aero, ::SystemD) = AeroD()
 
 
 ################################ Airframe ######################################

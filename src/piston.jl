@@ -7,7 +7,7 @@ using Flight.Dynamics, Flight.Airdata
 using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
 using Flight.Geodesy: AltGeop
 
-import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
+import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 import Flight.Plotting: plots
 
@@ -98,10 +98,10 @@ Base.@kwdef struct PistonEngineY
     ṁ::Float64 = 0.0 #fuel consumption
 end
 
-init_x(c::PistonEngine) = ComponentVector(ω = 1.5 * c.ω_shutdown)
-init_d(::PistonEngine) = PistonEngineD()
-init_u(::PistonEngine) = PistonEngineU()
-init_y(::PistonEngine) = PistonEngineY()
+init(c::PistonEngine, ::SystemX) = ComponentVector(ω = 1.5 * c.ω_shutdown)
+init(::PistonEngine, ::SystemY) = PistonEngineY()
+init(::PistonEngine, ::SystemU) = PistonEngineU()
+init(::PistonEngine, ::SystemD) = PistonEngineD()
 
 function generate_dataset(; n_shutdown, n_cutoff)
 

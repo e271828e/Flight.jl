@@ -5,7 +5,7 @@ using StaticArrays, StructArrays, ComponentArrays
 using Flight.Geodesy
 using Flight.Modeling
 
-import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
+import Flight.Modeling: init, f_cont!, f_disc!
 
 export TunableISA
 export TunableWind
@@ -117,7 +117,7 @@ Base.@kwdef mutable struct UTunableISA #only allocates upon System instantiation
     p_sl::Float64 = p_std
 end
 
-init_u(::TunableISA) = UTunableISA()
+init(::TunableISA, ::SystemU) = UTunableISA()
 f_cont!(::System{<:TunableISA}, args...) = nothing
 f_disc!(::System{<:TunableISA}, args...) = false
 
@@ -149,7 +149,7 @@ Base.@kwdef mutable struct USimpleWind
     v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
 end
 
-init_u(::TunableWind) = USimpleWind()
+init(::TunableWind, ::SystemU) = USimpleWind()
 f_cont!(::System{<:TunableWind}, args...) = nothing
 f_disc!(::System{<:TunableWind}, args...) = false
 
@@ -159,7 +159,7 @@ end
 
 #################### AtmosphereDescriptor ############################
 
-Base.@kwdef struct AtmosphereDescriptor{S <: AbstractISA, W <: AbstractWind} <: SystemGroupDescriptor
+Base.@kwdef struct AtmosphereDescriptor{S <: AbstractISA, W <: AbstractWind} <: NodeSystemDescriptor
     static::S = TunableISA()
     wind::W = TunableWind()
 end

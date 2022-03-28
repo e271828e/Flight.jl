@@ -9,7 +9,7 @@ using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy
 
-import Flight.Modeling: init_x, init_y, f_cont!, f_disc!
+import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Plotting: plots
 
 export AbstractKinematics, KinLTF, KinECEF
@@ -101,7 +101,7 @@ end
 KinData() = KinData(KinInit())
 
 #every AbstractKinematics implementation must comply with the same outputs
-init_y(::AbstractKinematics) = KinData()
+init(::AbstractKinematics, ::SystemY) = KinData()
 
 #for dispatching
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
@@ -116,9 +116,11 @@ end
 
 struct KinLTF <: AbstractKinematics end
 
-function init_x(::KinLTF, init::KinInit = KinInit())
+init(kin::KinLTF, ::SystemX) = init(kin, KinInit())
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
+function init(::KinLTF, kin_init::KinInit = KinInit())
+
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = kin_init
 
     x = ComponentVector(
         pos = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0),
@@ -211,9 +213,11 @@ end
 
 struct KinECEF <: AbstractKinematics end
 
-function init_x(::KinECEF, init::KinInit = KinInit())
+init(kin::KinECEF, ::SystemX) = init(kin, KinInit())
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
+function init(::KinECEF, kin_init::KinInit = KinInit())
+
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = kin_init
 
     x = ComponentVector(
         pos = ComponentVector(q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0),

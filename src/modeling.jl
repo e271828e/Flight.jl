@@ -2,37 +2,46 @@ module Modeling
 
 using Dates
 using UnPack
-using SciMLBase, OrdinaryDiffEq, DiffEqCallbacks
 using ComponentArrays, RecursiveArrayTools
-using DataStructures: OrderedDict
+using SciMLBase: ODEProblem, u_modified!, init as init_problem
+using OrdinaryDiffEq: ODEIntegrator, Tsit5
+using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
 
+import SciMLBase: step!, solve!, reinit!, get_proposed_dt
+import DataStructures: OrderedDict
 import Flight.Plotting: plots
 
 export f_cont!, f_disc!
-export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Model
+export SystemDescriptor, NodeSystemDescriptor, NullSystemDescriptor, System, Model
+export SystemẊ, SystemX, SystemY, SystemU, SystemD
 
 
 ############################# SystemDescriptor ############################
 
 abstract type SystemDescriptor end #anything from which we can build a System
 
-init_x(::SystemDescriptor) = nothing
-init_y(::SystemDescriptor) = nothing
-init_u(::SystemDescriptor) = nothing
-init_d(::SystemDescriptor) = nothing
-init_ẋ(c::SystemDescriptor) = init_ẋ(init_x(c))
+abstract type SystemTrait end
 
-init_ẋ(x::AbstractVector) = (x |> similar |> zero)
-init_ẋ(::Nothing) = nothing
+struct SystemẊ <: SystemTrait end
+struct SystemX <: SystemTrait end
+struct SystemY <: SystemTrait end
+struct SystemU <: SystemTrait end
+struct SystemD <: SystemTrait end
+
+init(::SystemDescriptor, ::Union{SystemX, SystemY, SystemU, SystemD}) = nothing
+
+#fallback method for state vector derivative initialization
+function init(d::SystemDescriptor, ::SystemẊ)
+    x = init(d, SystemX())
+    !isnothing(x) ? x |> similar |> zero : nothing
+end
 
 ############################# System ############################
 
-#need the T type parameter for dispatch, the rest for type stability. making
-#System mutable does not hurt performance, because Systems are only meant to be
-#instantiated upon initialization. no runtime heap allocations
-mutable struct System{  T <: SystemDescriptor,
-                        X <: Union{Nothing, AbstractVector{Float64}},
-                        Y, U, D, P, S}
+#need the T type parameter for dispatch, the rest for type stability. since
+#Systems are only meant to be instantiated during initialization, making
+#them mutable does not hurt performance (no runtime heap allocations)
+mutable struct System{  T <: SystemDescriptor, X, Y, U, D, P, S}
     ẋ::X #continuous dynamics state vector derivative
     x::X #continuous dynamics state vector
     y::Y #output
@@ -43,12 +52,16 @@ mutable struct System{  T <: SystemDescriptor,
     subsystems::S
 end
 
-function System(c::T, ẋ = init_ẋ(c), x = init_x(c), y = init_y(c),
-                u = init_u(c), d = init_d(c), t = Ref(0.0)) where {T<:SystemDescriptor}
+function System(desc::T,
+                ẋ = init(desc, SystemẊ()), x = init(desc, SystemX()),
+                y = init(desc, SystemY()), u = init(desc, SystemU()),
+                d = init(desc, SystemD()), t = Ref(0.0)) where {T<:SystemDescriptor}
 
-    params = c #by default assign the system descriptor as System parameters
+    @assert x isa Union{Nothing, AbstractVector{Float64}}
+
+    params = desc #make the system descriptor available for later use
     subsystems = nothing
-    System{map(typeof, (c, x, y, u, d, params, subsystems))...}(
+    System{map(typeof, (desc, x, y, u, d, params, subsystems))...}(
                                     ẋ, x, y, u, d, t, params, subsystems)
 end
 
@@ -81,90 +94,78 @@ struct NullSystemDescriptor <: SystemDescriptor end
 @inline (f_disc!(::System{NullSystemDescriptor}, args...)::Bool) = false
 
 
-######################## SystemGroup #############################
+######################## NodeSystem #############################
 
 #abstract type providing convenience methods for composite Systems
 
-abstract type SystemGroupDescriptor <: SystemDescriptor end
+abstract type NodeSystemDescriptor <: SystemDescriptor end
 
-Base.keys(g::SystemGroupDescriptor) = propertynames(g)
-Base.values(g::SystemGroupDescriptor) = map(λ -> getproperty(g, λ), keys(g))
+function OrderedDict(g::NodeSystemDescriptor)
+    fields = propertynames(g)
+    values = map(λ -> getproperty(g, λ), fields)
+    OrderedDict(k => v for (k, v) in zip(fields, values))
+end
 
-init_x(c::T where T<:SystemGroupDescriptor) = maybe_assemble_cv(c, init_x)
-init_y(c::T where T<:SystemGroupDescriptor) = maybe_assemble_nt(c, init_y)
-init_u(c::T where T<:SystemGroupDescriptor) = maybe_assemble_nt(c, init_u)
-init_d(c::T where T<:SystemGroupDescriptor) = maybe_assemble_nt(c, init_d)
+function init(desc::NodeSystemDescriptor, trait::Union{SystemX, SystemY, SystemU, SystemD})
 
-function maybe_assemble_cv(c::T, f::Function) where {T<:SystemGroupDescriptor}
+    child_descriptors = filter(p -> isa(p.second, SystemDescriptor), OrderedDict(desc))
 
-    dict = OrderedDict{Symbol, AbstractVector{Float64}}()
-
-    for sc_label in fieldnames(T)
-        sc = getproperty(c, sc_label)
-        sc_value = f(sc)
-        !isnothing(sc_value) ? dict[sc_label] = sc_value : nothing
+    dict = OrderedDict()
+    for (name, child) in child_descriptors
+        child_data = init(child, trait)
+        !isnothing(child_data) ? dict[name] = child_data : nothing
     end
 
-    #if all subsystems returned nothing, return nothing instead of a CV
-    return !isempty(dict) ? ComponentVector(dict) : nothing
+    init(dict, trait)
 
 end
 
-function maybe_assemble_nt(c::T, f::Function) where {T<:SystemGroupDescriptor}
-
-    dict = OrderedDict{Symbol, Any}()
-
-    for sc_label in fieldnames(T)
-        sc = getproperty(c, sc_label)
-        sc_value = f(sc)
-        !isnothing(sc_value) ? dict[sc_label] = sc_value : nothing
-    end
-
-    #if all subsystems returned nothing, return nothing instead of a NT
-    return !isempty(dict) ? NamedTuple{Tuple(keys(dict))}(values(dict)) : nothing
-
+function init(dict::OrderedDict, ::Union{SystemX})
+    !isempty(dict) ? ComponentVector(dict) : nothing
 end
 
-#the x of a SystemGroupDescriptor will be either a ComponentVector or nothing. if it's
-#nothing it's because init_x returned nothing, and this is only the case if all
-#of its subsystems' init_x in turn returned nothing. in this scenario, we can
-#assign nothing to its subsystem's x the same goes for y, but with a NamedTuple
-#instead of a ComponentVector
+function init(dict::OrderedDict, ::Union{SystemY, SystemU, SystemD})
+    !isempty(dict) ? NamedTuple{Tuple(keys(dict))}(values(dict)) : nothing
+end
+
+#suppose we have a NodeSystem a with children b and c. the NodeSystem
+#constructor will try to retrieve views a.x.b and a.x.c and assign them as state
+#vectors b.x and c.x. but if b and c have no continuous states, x = init(a,
+#SystemX()) will return nothing. so the constructor will try to retrieve fields
+#from a nothing variable. this function handles this scenario
 function maybe_getproperty(input, label)
-    !isnothing(input) && (label in keys(input)) ? getproperty(input, label) : nothing
+    !isnothing(input) && (label in propertynames(input)) ? getproperty(input, label) : nothing
 end
 
-function System(g::T, ẋ = init_ẋ(g), x = init_x(g), y = init_y(g),
-                u = init_u(g), d = init_d(g), t = Ref(0.0)) where {T<:SystemGroupDescriptor}
+function System(desc::NodeSystemDescriptor,
+                ẋ = init(desc, SystemẊ()), x = init(desc, SystemX()),
+                y = init(desc, SystemY()), u = init(desc, SystemU()),
+                d = init(desc, SystemD()), t = Ref(0.0))
 
-    ss_names = fieldnames(T)
-    ss_list = Vector{System}()
+    child_names = filter(p -> (p.second isa SystemDescriptor), OrderedDict(desc)) |> keys |> Tuple
+    child_systems = (System(map((λ)->maybe_getproperty(λ, name), (desc, ẋ, x, y, u, d))..., t) for name in child_names) |> Tuple
+    subsystems = NamedTuple{child_names}(child_systems)
 
-    for name in ss_names
-        push!(ss_list, System(map((λ)->maybe_getproperty(λ, name), (g, ẋ, x, y, u, d))..., t))
-    end
+    non_children = NamedTuple(n=>getfield(desc,n) for n in propertynames(desc) if !(n in child_names))
+    params = (!isempty(non_children) ? non_children : nothing)
 
-    params = nothing
-    subsystems = NamedTuple{ss_names}(ss_list)
-
-    System{map(typeof, (g, x, y, u, d, params, subsystems))...}(
+    System{map(typeof, (desc, x, y, u, d, params, subsystems))...}(
                          ẋ, x, y, u, d, t, params, subsystems)
 
 end
 
-
 #default implementation calls f_cont! on all Group subsystems with the same
 #arguments provided to the parent System, then builds the NamedTuple with the
 #subsystem outputs
-@inline @generated function (f_cont!(sys::System{T, X, Y}, args...)
-    where {T<:SystemGroupDescriptor, X, Y <: Union{Nothing, NamedTuple{L, M}}} where {L, M})
+@inline @generated function (f_cont!(sys::System{T, X, Y, U, D, P, S}, args...)
+    where {T<:NodeSystemDescriptor, X, Y, U, D, P, S})
 
     # Core.println("Generated function called")
     ex_main = Expr(:block)
 
-    #call f_cont! on every subsystem
+    #call f_cont! on each subsystem
     ex_calls = Expr(:block)
-    for label in fieldnames(T)
+    for label in fieldnames(S)
         push!(ex_calls.args,
             :(f_cont!(sys.subsystems[$(QuoteNode(label))], args...)))
     end
@@ -180,11 +181,11 @@ end
 end
 
 @inline function (update_y!(sys::System{T, X, Y})
-    where {T<:SystemGroupDescriptor, X, Y <: Nothing})
+    where {T<:NodeSystemDescriptor, X, Y <: Nothing})
 end
 
 @inline @generated function (update_y!(sys::System{T, X, Y})
-    where {T<:SystemGroupDescriptor, X, Y <: NamedTuple{L, M}} where {L, M})
+    where {T<:NodeSystemDescriptor, X, Y <: NamedTuple{L, M}} where {L, M})
 
     #L contains the field names of those subsystems which have outputs. retrieve
     #the y's of those subsystems and assemble them into a NamedTuple, which will
@@ -215,14 +216,16 @@ end
 
 #default implementation calls f_disc! on all Node subsystems with the same
 #arguments provided to the parent Node's System, then ORs their outputs.
-#can be overridden for specific SystemGroupDescriptor subtypes if needed
-@inline @generated function (f_disc!(sys::System{T}, args...)::Bool
-    ) where {T<:SystemGroupDescriptor}
+#can be overridden for specific NodeSystemDescriptor subtypes if needed
+@inline @generated function (f_disc!(sys::System{T, X, Y, U, D, P, S}, args...)
+    where {T<:NodeSystemDescriptor, X, Y, U, D, P, S})
 
     # Core.print("Generated function called")
     ex = Expr(:block)
     push!(ex.args, :(x_mod = false))
-    for label in fieldnames(T)
+
+    #call f_disc! on each subsystem
+    for label in fieldnames(S)
         #we need all f_disc! calls executed, so | must be used instead of ||
         push!(ex.args,
             :(x_mod = x_mod | f_disc!(sys.subsystems[$(QuoteNode(label))], args...)))
@@ -237,10 +240,7 @@ end
 #storage for f_cont! and f_disc! calls, so we have no guarantees about their
 #status after a certain step. the only valid sources for t and x at any
 #given moment is the integrator's t and u
-struct Model{S <: System,
-                   I <: OrdinaryDiffEq.ODEIntegrator,
-                   L <: SavedValues}
-
+struct Model{S <: System, I <: ODEIntegrator, L <: SavedValues}
     sys::S
     integrator::I
     log::L
@@ -262,38 +262,35 @@ struct Model{S <: System,
         scb = SavingCallback(f_scb, log, saveat = saveat_arr)
         cb_set = CallbackSet(dcb, scb)
 
-        # x0 = copy(sys.x) #not needed, the integrator creates its own copy
-        x0 = sys.x
+        x0 = sys.x #the integrator creates its own copy
         problem = ODEProblem{true}(f_update!, x0, (t_start, t_end), params)
-        integrator = init(problem, solver; callback = cb_set, save_on, int_kwargs...)
+        integrator = init_problem(problem, solver; callback = cb_set, save_on, int_kwargs...)
         new{typeof(sys), typeof(integrator), typeof(log)}(sys, integrator, log)
     end
 end
 
-#these functions are better defined outside the constructor; closures seem to
-#have some overhead (?)
+#function barriers: the System and arguments to f_cont! are first extracted from
+#integrator parameters, then used as an argument in the call to the actual
+#update & callback functions, forcing the compiler to specialize; accesing sys.x
+#and sys.ẋ directly instead causes type instability
 
-#function barriers: the System is first extracted from integrator.p,
-#then used as an argument in the call to the actual update & callback functions,
-#forcing the compiler to specialize for the specific System subtype;
-#accesing sys.x and sys.ẋ directly instead causes type instability
+#function barrier for integrator update
 f_update!(ẋ, x, p, t) = f_update!(ẋ, x, t, p.sys, p.args_c)
-f_scb(x, t, integrator) = f_scb(x, t, integrator.p.sys, integrator.p.args_c)
-function f_dcb!(integrator)
-    x = integrator.u; t = integrator.t; p = integrator.p
-    x_modified = f_dcb!(x, t, p.sys, p.args_c, p.args_d)
-    u_modified!(integrator, x_modified)
-end
 
 #in-place integrator update function
 function f_update!(ẋ::X, x::X, t::Real, sys::System{T,X}, args_c) where {T, X}
-
     sys.x .= x
     sys.t[] = t
     f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
     ẋ .= sys.ẋ
-
     return nothing
+end
+
+#function barrier for discrete callback
+function f_dcb!(integrator)
+    x = integrator.u; t = integrator.t; p = integrator.p
+    x_modified = f_dcb!(x, t, p.sys, p.args_c, p.args_d)
+    u_modified!(integrator, x_modified)
 end
 
 #DiscreteCallback function (called on every integration step). this callback
@@ -320,6 +317,9 @@ function f_dcb!(x::X, t::Real, sys::System{T,X}, args_c, args_d) where {T,X}
     return x_modified
 end
 
+#function barrier for saving callback
+f_scb(x, t, integrator) = f_scb(x, t, integrator.p.sys, integrator.p.args_c)
+
 #SavingCallback function, this gets called at the end of each step after f_disc!
 function f_scb(::X, ::Real, sys::System{T,X}, args_c) where {T,X}
     return deepcopy(sys.y)
@@ -341,13 +341,13 @@ function Base.getproperty(m::Model, s::Symbol)
     end
 end
 
-SciMLBase.step!(m::Model, args...) = step!(m.integrator, args...)
+step!(m::Model, args...) = step!(m.integrator, args...)
 
-SciMLBase.solve!(m::Model) = solve!(m.integrator)
+solve!(m::Model) = solve!(m.integrator)
 
-SciMLBase.get_proposed_dt(m::Model) = get_proposed_dt(m.integrator)
+get_proposed_dt(m::Model) = get_proposed_dt(m.integrator)
 
-function SciMLBase.reinit!(m::Model, args...; kwargs...)
+function reinit!(m::Model, args...; kwargs...)
 
     #for an ODEIntegrator, the optional args... is simply a new initial
     #condition. if not specified, the original initial condition is used

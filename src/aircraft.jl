@@ -10,7 +10,7 @@ using Flight.Geodesy, Flight.Terrain, Flight.Atmosphere
 using Flight.Kinematics, Flight.Dynamics, Flight.Airdata
 using Flight.Input, Flight.Output
 
-import Flight.Modeling: init_x, init_y, init_u, init_d,f_cont!, f_disc!
+import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Plotting: plots
 import Flight.Output: update!
@@ -23,7 +23,7 @@ abstract type AbstractAircraftID end
 ###############################################################################
 ############################## Airframe #######################################
 
-abstract type AbstractAirframe <: SystemGroupDescriptor end
+abstract type AbstractAirframe <: NodeSystemDescriptor end
 MassTrait(::System{<:AbstractAirframe}) = HasMass()
 
 ########################## EmptyAirframe ###########################
@@ -43,7 +43,7 @@ get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distributi
 ###############################################################################
 ############################## Avionics #######################################
 
-abstract type AbstractAvionics <: SystemGroupDescriptor end
+abstract type AbstractAvionics <: NodeSystemDescriptor end
 
 struct NoAvionics <: AbstractAvionics end
 
@@ -57,7 +57,7 @@ struct GenericID <: AbstractAircraftID end
 struct AircraftBase{I <: AbstractAircraftID,
                     K <: AbstractKinematics,
                     F <: AbstractAirframe,
-                    V <: AbstractAvionics} <: SystemGroupDescriptor
+                    V <: AbstractAvionics} <: NodeSystemDescriptor
 
     kinematics::K
     airframe::F
@@ -71,18 +71,18 @@ function AircraftBase(     ::I = GenericID();
     AircraftBase{I,K,F,V}(kin, afm, avs)
 end
 
-#override the default SystemGroupDescriptor implementation, because we need to
+#override the default NodeSystemDescriptor implementation, because we need to
 #add some stuff besides subsystem outputs
-init_y(ac::T) where {T<:AircraftBase{I,K,F,V}} where {I,K,F,V} = (
-    kinematics = init_y(ac.kinematics),
-    airframe = init_y(ac.airframe),
-    avionics = init_y(ac.avionics),
+init(ac::AircraftBase, ::SystemY) = (
+    kinematics = init(ac.kinematics, SystemY()),
+    airframe = init(ac.airframe, SystemY()),
+    avionics = init(ac.avionics, SystemY()),
     dynamics = DynData(),
     air = AirData(),
     )
 
-function init!(ac::System{T}, init::KinInit) where {T<:AircraftBase{I,K}} where {I,K}
-    ac.x.kinematics .= init_x(ac.kinematics.params, init)
+function init!(ac::System{T}, kin_init::KinInit) where {T<:AircraftBase{I,K}} where {I,K}
+    ac.x.kinematics .= init(ac.kinematics.params, kin_init)
 end
 
 function f_cont!(sys::System{<:AircraftBase}, trn::AbstractTerrain, atm::AtmosphericSystem)
