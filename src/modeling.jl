@@ -20,13 +20,13 @@ export SystemẊ, SystemX, SystemY, SystemU, SystemD
 
 abstract type SystemDescriptor end #anything from which we can build a System
 
-abstract type SystemTrait end
+abstract type SystemData end
 
-struct SystemẊ <: SystemTrait end
-struct SystemX <: SystemTrait end
-struct SystemY <: SystemTrait end
-struct SystemU <: SystemTrait end
-struct SystemD <: SystemTrait end
+struct SystemẊ <: SystemData end
+struct SystemX <: SystemData end
+struct SystemY <: SystemData end
+struct SystemU <: SystemData end
+struct SystemD <: SystemData end
 
 init(::SystemDescriptor, ::Union{SystemX, SystemY, SystemU, SystemD}) = nothing
 

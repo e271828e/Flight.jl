@@ -15,7 +15,8 @@ import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Plotting: plots
 import Flight.Output: update!
 
-export AircraftBase, AbstractAirframe, EmptyAirframe, AbstractAvionics, NoAvionics
+export AircraftBase, AbstractAirframe, EmptyAirframe, AbstractAerodynamics,
+       AbstractAvionics, NoAvionics
 
 
 abstract type AbstractAircraftID end
@@ -40,6 +41,15 @@ get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distributi
 @inline f_cont!(::System{EmptyAirframe}, args...) = nothing
 @inline (f_disc!(::System{EmptyAirframe}, args...)::Bool) = false
 
+####################### AbstractAerodynamics ##########################
+
+abstract type AbstractAerodynamics <: SystemDescriptor end
+
+MassTrait(::System{<:AbstractAerodynamics}) = HasNoMass()
+WrenchTrait(::System{<:AbstractAerodynamics}) = GetsExternalWrench()
+AngularMomentumTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
+
+
 ###############################################################################
 ############################## Avionics #######################################
 
@@ -49,6 +59,7 @@ struct NoAvionics <: AbstractAvionics end
 
 @inline f_cont!(::System{NoAvionics}, args...) = nothing
 @inline (f_disc!(::System{NoAvionics}, args...)::Bool) = false
+
 ###############################################################################
 ############################## AircraftBase ###################################
 

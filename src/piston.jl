@@ -18,7 +18,7 @@ export PistonEngine
 # @unit inHg "inHg" InchOfMercury 3386.389*Unitful.Pa false
 # @unit hp "hp" Horsepower 735.49875*Unitful.W false
 
-println("Remember to define AngularMomentum trait for PistonPowerplant!")
+println("Reminder: Define AngularMomentum trait for PistonPowerplant!")
 
 const β = ISA_layers[1].β
 

@@ -16,10 +16,9 @@ using Flight.Terrain
 using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
-# using Flight.Aerodynamics: AbstractAerodynamics
 using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
 using Flight.LandingGear
-using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractAirframe, AbstractAvionics
+using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 using Flight.Input: XBoxController, get_axis_value, is_released
 
 import Flight.Modeling: init, f_cont!, f_disc!
@@ -248,7 +247,7 @@ end
 #contribuciones que son un producto de alpha o beta por una derivada de
 #estabilidad sin mas, asi que conviene saturar alpha y beta en cualquier caso
 
-Base.@kwdef struct Aero <: SystemDescriptor
+Base.@kwdef struct Aero <: AbstractAerodynamics
     S::Float64 = 16.165 #wing area
     b::Float64 = 10.912 #wingspan
     c::Float64 = 1.494 #mean aerodynamic chord

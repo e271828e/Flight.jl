@@ -107,14 +107,14 @@ function test_propagation()
 
         @testset verbose = true "Essentials" begin
 
-            @test sys.ẋ == Modeling.init_ẋ(eng)
-            @test sys.y == Modeling.init_y(eng)
+            @test sys.ẋ == Modeling.init(eng, SystemẊ())
+            @test sys.y == Modeling.init(eng, SystemY())
 
             sys.x.ω = 100
             f_cont!(sys, air; M_load, J_load)
 
-            @test sys.ẋ != Modeling.init_ẋ(eng)
-            @test sys.y != Modeling.init_y(eng)
+            @test sys.ẋ != Modeling.init(eng, SystemẊ())
+            @test sys.y != Modeling.init(eng, SystemY())
 
             sys.x.ω = 0.9eng.ω_shutdown
             f_disc!(sys, true)
