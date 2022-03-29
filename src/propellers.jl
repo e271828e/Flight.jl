@@ -388,6 +388,19 @@ get_wr_b(sys::System{<:Propeller}) = sys.y.wr_b
 get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 
 
+################################################################################
+####################### ConstantSpeedPropeller #################################
+
+# abstract type AbstractGovernor <: SystemDescriptor end
+
+# struct ConstantSpeedPropeller{P <: Propeller{VariablePitch}, G <: AbstractGovernor} <: AbstractPropeller
+#     propeller::P
+#     governor::G
+# end
+
+# struct DummyGovernor end
+# @inline f_cont!(::System{DummyGovernor}, args...) = nothing
+# @inline (f_disc!(::System{NullSystemDescriptor}, args...)::Bool) = false
 
 ################################################################################
 ############################ Plots #############################################

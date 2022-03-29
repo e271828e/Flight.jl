@@ -81,17 +81,17 @@ end
 Base.@kwdef mutable struct PistonEngineU
     start::Bool = false
     shutdown::Bool = false
-    throttle::Bounded{Float64, 0, 1} = 0.0
-    mixture::Bounded{Float64, 0, 1} = 0.5
+    thr::Bounded{Float64, 0, 1} = 0.0 #throttle setting
+    mix::Bounded{Float64, 0, 1} = 0.5 #mixture setting
 end
 
 Base.@kwdef struct PistonEngineY
     start::Bool = false #start control
     shutdown::Bool = false #shutdown control
-    thr::Float64 = 0.0 #throttle
-    mix::Float64 = 0.0 #mixture setting
+    throttle::Float64 = 0.0 #throttle setting
+    mixture::Float64 = 0.0 #mixture setting
     MAP::Float64 = 0.0 #manifold air pressure
-    ω::Float64 = 0.0 #engine speed
+    ω::Float64 = 0.0 #angular velocity (crankshaft)
     M::Float64 = 0.0 #output torque
     P::Float64 = 0.0 #output power
     SFC::Float64 = 0.0 #specific fuel consumption
@@ -257,10 +257,10 @@ function f_cont!(sys::System{<:PistonEngine}, air::AirData; M_load::Real, J_load
     #conditions (generative), it may become positive, and drive the engine
     #instead of being driven by it
 
-    @unpack throttle, mixture, start, shutdown = sys.u
-    thr = Float64(throttle)
-    mix = Float64(mixture)
-    ω = sys.x.ω
+    @unpack thr, mix, start, shutdown = sys.u
+    throttle = Float64(thr)
+    mixture = Float64(mix)
+    ω_crankshaft = sys.x.ω
 
     if sys.d.running
 
@@ -274,7 +274,7 @@ function f_cont!(sys::System{<:PistonEngine}, air::AirData; M_load::Real, J_load
         μ_wot = dataset.μ_wot(n, δ)
 
         #actual, part throttle normalized MAP
-        μ = μ_wot * (μ_ratio_idle + thr * (1 - μ_ratio_idle))
+        μ = μ_wot * (μ_ratio_idle + throttle * (1 - μ_ratio_idle))
 
         #normalized power at part throttle, altitude, ISA conditions and maximum
         #power mixture
@@ -284,12 +284,12 @@ function f_cont!(sys::System{<:PistonEngine}, air::AirData; M_load::Real, J_load
         π_pow = π_ISA_pow * √(T_ISA(air.p)/air.T)
 
         #correction for arbitrary mixture setting
-        π_actual = π_pow * dataset.π_ratio(mix)
+        π_actual = π_pow * dataset.π_ratio(mixture)
 
         MAP = μ * p_std
         P = P_rated * π_actual
         M = (ω > 0 ? P / ω : 0.0) #for ω < ω_shutdown we should not even be here
-        SFC = dataset.sfc_pow(n, π_actual) * dataset.sfc_ratio(mix)
+        SFC = dataset.sfc_pow(n, π_actual) * dataset.sfc_ratio(mixture)
 
     else
 
@@ -304,7 +304,7 @@ function f_cont!(sys::System{<:PistonEngine}, air::AirData; M_load::Real, J_load
 
     sys.ẋ.ω = (M + M_load) / J_load #M_load must have the appropriate sign!
 
-    sys.y = PistonEngineY(; start, shutdown, thr, mix, MAP, ω, M, P, SFC, ṁ)
+    sys.y = PistonEngineY(; start, shutdown, throttle, mixture, MAP, ω, M, P, SFC, ṁ)
 
 end
 

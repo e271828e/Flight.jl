@@ -146,8 +146,8 @@ function System(desc::NodeSystemDescriptor,
     child_systems = (System(map((λ)->maybe_getproperty(λ, name), (desc, ẋ, x, y, u, d))..., t) for name in child_names) |> Tuple
     subsystems = NamedTuple{child_names}(child_systems)
 
-    non_children = NamedTuple(n=>getfield(desc,n) for n in propertynames(desc) if !(n in child_names))
-    params = (!isempty(non_children) ? non_children : nothing)
+    params = NamedTuple(n=>getfield(desc,n) for n in propertynames(desc) if !(n in child_names))
+    params = (!isempty(params) ? params : nothing)
 
     System{map(typeof, (desc, x, y, u, d, params, subsystems))...}(
                          ẋ, x, y, u, d, t, params, subsystems)
