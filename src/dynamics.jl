@@ -365,12 +365,13 @@ get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
 
 #default implementation for a SystemGroup with the GetsExternalWrench trait, tries
 #to sum all the Wrenches from its individual components. override as required
-@inline @generated function get_wr_b(::GetsExternalWrench, sys::System{D}) where {D<:NodeSystemDescriptor}
+@inline @generated function (get_wr_b(::GetsExternalWrench, sys::System{T, X, Y, U, D, P, S})
+    where {T<:NodeSystemDescriptor, X, Y, U, D, P, S})
 
     # Core.print("Generated function called")
     ex = Expr(:block)
     push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
-    for label in fieldnames(D)
+    for label in fieldnames(S)
         push!(ex.args,
             :(wr += get_wr_b(sys.subsystems[$(QuoteNode(label))])))
     end
@@ -397,12 +398,13 @@ get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
 
 #default implementation for a SystemGroup with the HasAngularMomentum trait, tries
 #to sum the angular momentum from its individual components. override as required
-@inline @generated function get_hr_b(::HasAngularMomentum, sys::System{D}) where {D<:NodeSystemDescriptor}
+@inline @generated function (get_hr_b(::HasAngularMomentum, sys::System{T, X, Y, U, D, P, S})
+    where {T<:NodeSystemDescriptor, X, Y, U, D, P, S})
 
     # Core.print("Generated function called")
     ex = Expr(:block)
     push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate
-    for label in fieldnames(D)
+    for label in fieldnames(S)
         push!(ex.args,
             :(h += get_hr_b(sys.subsystems[$(QuoteNode(label))])))
     end
