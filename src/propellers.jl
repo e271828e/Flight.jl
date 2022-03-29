@@ -299,17 +299,17 @@ struct Propeller{P <: PitchControl, B <: Blade,  D <: Dataset} <: AbstractPropel
     n_blades::Int
     sense::TurnSense
     d::Float64 #diameter
-    Ixx::Float64 #axial moment of inertia, Ixx label avoids confusion with advance ratio
+    J_xx::Float64 #axial moment of inertia, J_xx label avoids confusion with advance ratio
     t_bp::FrameTransform
 end
 
 function Propeller(; pitch = FixedPitch(), blade = Blade(), n_blades = 2,
-                   d = 2.0, Ixx = 0.3, sense = CW, t_bp = FrameTransform(), dataset_opts = ())
+                   d = 2.0, J_xx = 0.3, sense = CW, t_bp = FrameTransform(), dataset_opts = ())
 
     dataset = Dataset(pitch, blade, n_blades; dataset_opts...)
 
     Propeller{typeof(pitch), typeof(blade), typeof(dataset)}(
-        pitch, blade, dataset, n_blades, sense, d, Ixx, t_bp)
+        pitch, blade, dataset, n_blades, sense, d, J_xx, t_bp)
 end
 
 
@@ -336,7 +336,7 @@ get_Δβ(sys::System{<:Propeller{VariablePitch}}) = linear_scaling(sys.u[], sys.
 
 function f_cont!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
 
-    @unpack d, Ixx, t_bp, sense, dataset = sys.params
+    @unpack d, J_xx, t_bp, sense, dataset = sys.params
     @assert sign(ω) * Int(sys.params.sense) >= 0 "Propeller turning in the wrong sense"
 
     v_wOp_b = air.v_wOb_b + kin.vel.ω_eb_b × t_bp.r
@@ -350,7 +350,7 @@ function f_cont!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
     ω_J = max(abs(ω), abs_ω_min)
     J = 2π * v_J / (ω_J * d)
 
-    M_tip = ω*(d/2) / air.a
+    M_tip = abs(ω)*(d/2) / air.a
 
     Δβ = get_Δβ(sys)
     coeffs = Coefficients(dataset, J, M_tip, Δβ)
@@ -370,12 +370,12 @@ function f_cont!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
 
     F_Op_p = ρ * f² * d⁴ * C_F
     M_Op_p = ρ * f² * d⁵ * C_M
-    P      = Int(sense) * ρ * abs(f³) * d⁵ * C_P
+    P      = ρ * abs(f³) * d⁵ * C_P
 
     wr_p = Wrench(F_Op_p, M_Op_p)
     wr_b = t_bp(wr_p)
 
-    hr_p = SVector(Ixx * ω, 0, 0)
+    hr_p = SVector(J_xx * ω, 0, 0)
     hr_b = t_bp.q(hr_p)
 
     sys.y = PropellerY(; v_wOp_p, ω, J, M_tip, Δβ, wr_p, wr_b, hr_p, hr_b, P, η_p)

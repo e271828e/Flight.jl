@@ -3,9 +3,10 @@ module Piston
 using Interpolations, Unitful, Plots, StructArrays, ComponentArrays, UnPack
 
 using Flight.Modeling, Flight.Misc
-using Flight.Dynamics, Flight.Airdata
+using Flight.Kinematics, Flight.Dynamics, Flight.Airdata
 using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
 using Flight.Geodesy: AltGeop
+using Flight.Propellers: AbstractPropeller, Propeller
 
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
@@ -17,8 +18,6 @@ export PistonEngine
 # methods
 # @unit inHg "inHg" InchOfMercury 3386.389*Unitful.Pa false
 # @unit hp "hp" Horsepower 735.49875*Unitful.W false
-
-println("Reminder: Define AngularMomentum trait for PistonPowerplant!")
 
 const β = ISA_layers[1].β
 
@@ -47,6 +46,13 @@ AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
 
 ############################ PistonEngine ###############################
 
+@enum EngineState begin
+    eng_off = 0
+    eng_starting = 1
+    eng_running = 2
+end
+
+
 #represents a family of naturally aspirated, fuel-injected aviation engines.
 #based on performance data available for the Lycoming IO-360A engine. data is
 #normalized with rated power and rated speed to allow for arbitrary engine
@@ -54,26 +60,32 @@ AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
 struct PistonEngine{D} <: AbstractPistonEngine
     P_rated::Float64
     ω_rated::Float64
-    ω_shutdown::Float64 #speed below which engine shuts down
+    ω_stall::Float64 #speed below which engine shuts down
     ω_cutoff::Float64 #speed above ω_rated for which power output drops back to zero
     μ_ratio_idle::Float64 #μ_idle/μ_wot, may be used to adjust idle RPM for a given load
+    M_start::Float64 #starter torque
+    J_xx::Float64 #equivalent axial moment of inertia of the engine shaft
     dataset::D
 end
 
 function PistonEngine(;
-    P_rated= 200 |> hp2W, ω_rated = ustrip(u"rad/s", 2700u"rpm"), #IO 360
-    ω_shutdown = ustrip(u"rad/s", 400u"rpm"), ω_cutoff = ustrip(u"rad/s", 2701*1.4u"rpm"),
-    μ_ratio_idle = 0.25)
+    P_rated= 200 |> hp2W,
+    ω_rated = ustrip(u"rad/s", 2700u"rpm"), #IO 360
+    ω_stall = ustrip(u"rad/s", 400u"rpm"),
+    ω_cutoff = ustrip(u"rad/s", 3600u"rpm"),
+    μ_ratio_idle = 0.25,
+    M_start = 30,
+    J_xx = 0.05)
 
-    n_shutdown = ω_shutdown / ω_rated
+    n_stall = ω_stall / ω_rated
     n_cutoff = ω_cutoff / ω_rated
-    dataset = generate_dataset(; n_shutdown, n_cutoff)
+    dataset = generate_dataset(; n_stall, n_cutoff)
 
-    PistonEngine{typeof(dataset)}(P_rated, ω_rated, ω_shutdown, ω_cutoff, μ_ratio_idle, dataset)
+    PistonEngine{typeof(dataset)}(P_rated, ω_rated, ω_stall, ω_cutoff, μ_ratio_idle, M_start, J_xx, dataset)
 end
 
 Base.@kwdef mutable struct PistonEngineD
-    running::Bool = true
+    state::EngineState = eng_off
 end
 
 #best economy: mixture around 0.1
@@ -90,6 +102,7 @@ Base.@kwdef struct PistonEngineY
     shutdown::Bool = false #shutdown control
     throttle::Float64 = 0.0 #throttle setting
     mixture::Float64 = 0.0 #mixture setting
+    state::EngineState = eng_off #engine discrete state
     MAP::Float64 = 0.0 #manifold air pressure
     ω::Float64 = 0.0 #angular velocity (crankshaft)
     M::Float64 = 0.0 #output torque
@@ -98,14 +111,13 @@ Base.@kwdef struct PistonEngineY
     ṁ::Float64 = 0.0 #fuel consumption
 end
 
-init(c::PistonEngine, ::SystemX) = ComponentVector(ω = 1.5 * c.ω_shutdown)
 init(::PistonEngine, ::SystemY) = PistonEngineY()
 init(::PistonEngine, ::SystemU) = PistonEngineU()
 init(::PistonEngine, ::SystemD) = PistonEngineD()
 
-function generate_dataset(; n_shutdown, n_cutoff)
+function generate_dataset(; n_stall, n_cutoff)
 
-    @assert n_shutdown < 1
+    @assert n_stall < 1
     @assert n_cutoff > 1
 
     #δ for which a given μ is the wide open throttle μ
@@ -142,7 +154,7 @@ function generate_dataset(; n_shutdown, n_cutoff)
     #part throttle normalized power at sea level for ISA conditions (δ = 1) and maximum power mixture
     π_std = let
 
-        n_data = [n_shutdown, 0.667, 0.704, 0.741, 0.778, 0.815, 0.852, 0.889, 0.926, 0.963, 1.000, 1.074, n_cutoff]
+        n_data = [n_stall, 0.667, 0.704, 0.741, 0.778, 0.815, 0.852, 0.889, 0.926, 0.963, 1.000, 1.074, n_cutoff]
         μ_data = [0, 0.568, 1.0]
 
         μ_knots = [zeros(1, length(n_data))
@@ -150,7 +162,7 @@ function generate_dataset(; n_shutdown, n_cutoff)
                    1.000 0.836 0.854 0.874 0.898 0.912 0.939 0.961 0.959 0.958 0.956 0.953 1.000]
 
         #power is zero at MAP = 0 regardless of n (first row)
-        #power is zero at n_shutdown and n_cutoff regardless of MAP (first and last columns)
+        #power is zero at n_stall and n_cutoff regardless of MAP (first and last columns)
         π_knots = [zeros(1, length(n_data))
                    0 0.270 0.305 0.335 0.360 0.380 0.405 0.428 0.450 0.476 0.498 0.498 0
                    0 0.489 0.548 0.609 0.680 0.729 0.810 0.880 0.920 0.965 1.000 0.950 0]
@@ -171,13 +183,13 @@ function generate_dataset(; n_shutdown, n_cutoff)
     #wide-open throttle normalized power at altitude for ISA conditions and maximum power mixture
     π_wot = let
 
-        n_data = [n_shutdown, 0.667, 1.000, 1.074, n_cutoff]
+        n_data = [n_stall, 0.667, 1.000, 1.074, n_cutoff]
         δ_data = [0, 0.441, 1]
 
         π_data = Array{Float64,2}(undef, length(n_data), length(δ_data))
 
         π_data[:, 1] .= 0 #power should vanish for δ → 0 ∀n
-        π_data[:, 2] .= [0, 0.23, 0.409, 0.409, 0] #it also vanishes at n_shutdown and n_cutoff ∀δ
+        π_data[:, 2] .= [0, 0.23, 0.409, 0.409, 0] #it also vanishes at n_stall and n_cutoff ∀δ
         π_data[:, 3] .= [π_std(n, μ_wot(n, 1)) for n in n_data] #at δ=1 by definition it's π_std(μ_wot)
 
         LinearInterpolation((n_data,δ_data), π_data, extrapolation_bc = ((Flat(), Flat()), (Flat(), Line())))
@@ -247,22 +259,31 @@ function compute_π_ISA_pow(dataset, n, μ, δ)
 end
 
 
-function f_cont!(sys::System{<:PistonEngine}, air::AirData; M_load::Real, J_load::Real)
+function f_cont!(sys::System{<:PistonEngine}, air::AirData, ω::Real)
 
     @unpack ω_rated, P_rated, dataset, μ_ratio_idle = sys.params
-
-    @assert J_load > 0 "Equivalent moment of inertia at the engine shaft must be positive"
-    #M_load should be negative under normal operation (for a CCW propeller, this
-    #is achieved by means of a gearbox). however, in negative propeller thrust
-    #conditions (generative), it may become positive, and drive the engine
-    #instead of being driven by it
-
     @unpack thr, mix, start, shutdown = sys.u
+    state = sys.d.state
     throttle = Float64(thr)
     mixture = Float64(mix)
-    ω_crankshaft = sys.x.ω
 
-    if sys.d.running
+    if state === eng_off
+
+        MAP = air.p
+        P = 0.0
+        M = 0.0
+        SFC = 0.0
+        ṁ = 0.0
+
+    elseif state === eng_starting
+
+        MAP = air.p
+        M = sys.params.M_start
+        P = M * ω
+        SFC = 0.0
+        ṁ = 0.0
+
+    else #state === eng_running
 
         #normalized engine speed
         n = ω / ω_rated
@@ -288,42 +309,139 @@ function f_cont!(sys::System{<:PistonEngine}, air::AirData; M_load::Real, J_load
 
         MAP = μ * p_std
         P = P_rated * π_actual
-        M = (ω > 0 ? P / ω : 0.0) #for ω < ω_shutdown we should not even be here
+        M = (ω > 0 ? P / ω : 0.0) #for ω < ω_stall we should not even be here
         SFC = dataset.sfc_pow(n, π_actual) * dataset.sfc_ratio(mixture)
-
-    else
-
-        MAP = air.p
-        P = 0.0
-        M = 0.0
-        SFC = 0.0
+        ṁ = SFC * P
 
     end
 
-    ṁ =  SFC * P
-
-    sys.ẋ.ω = (M + M_load) / J_load #M_load must have the appropriate sign!
-
-    sys.y = PistonEngineY(; start, shutdown, throttle, mixture, MAP, ω, M, P, SFC, ṁ)
+    sys.y = PistonEngineY(; start, shutdown, throttle, mixture, state, MAP, ω, M, P, SFC, ṁ)
 
 end
 
-function f_disc!(sys::System{<:PistonEngine}, fuel::Bool)
+function f_disc!(eng::System{<:PistonEngine}, ω::Real, fuel::Bool)
 
-    ω_shutdown = sys.params.ω_shutdown
+    ω_stall = eng.params.ω_stall
 
-    x_mod = false
+    if eng.d.state === eng_off
 
-    if !sys.d.running && sys.u.start && fuel
-        sys.x.ω = 1.5 * ω_shutdown
-        x_mod = true
-        sys.d.running = true
+        eng.u.start ? eng.d.state = eng_starting : nothing
+
+    elseif eng.d.state === eng_starting
+
+        !eng.u.start ? eng.d.state = eng_off : nothing
+
+        (ω > 1.5ω_stall && fuel) ? eng.d.state = eng_running : nothing
+
+    else #eng_running
+
+        (ω < ω_stall || eng.u.shutdown || !fuel) ? eng.d.state = eng_off : nothing
+
     end
 
-    (sys.x.ω < ω_shutdown || sys.u.shutdown || !fuel) ? sys.d.running = false : nothing
-
-    return x_mod
+    return false
 
 end
+
+############################## Transmission ################################
+
+Base.@kwdef struct Transmission <: SystemDescriptor
+    n::Float64 = 1.0 #gear ratio: ω_propeller / ω_crankshaft
+    η::Float64 = 1.0 #mechanical efficiency
+end
+
+Base.@kwdef struct TransmissionY
+    ω_eng::Float64 = 0.0
+    ω_prop::Float64 = 0.0
+    M_exc::Float64 = 0.0
+    P_exc::Float64 = 0.0
+end
+
+init(::Transmission, ::SystemX) = ComponentVector(ω_eng = 0.0)
+init(::Transmission, ::SystemY) = TransmissionY()
+
+MassTrait(::System{Transmission}) = HasNoMass()
+WrenchTrait(::System{Transmission}) = GetsNoExternalWrench()
+AngularMomentumTrait(::System{Transmission}) = HasNoAngularMomentum()
+
+function f_cont!(sys::System{<:Transmission};
+                 M_eng::Real, M_prop::Real, J_eng::Real, J_prop::Real)
+
+    #M_eng will always be positive. therefore, for a CW thruster, n should be
+    #positive as well. M_prop will be negative under normal operating
+    #conditions. for a CCW thruster, n should be negative. M_prop will be
+    #positive under normal operating conditions.
+
+    #however, the sign of M_prop may be inverted under negative propeller thrust
+    #conditions (generative), with the propeller driving the engine instead of
+    #the other way around
+
+    @unpack n, η = sys.params
+    ω_eng = sys.x.ω_eng
+    ω_prop = n * ω_eng
+
+    #from the engine side
+    M_net = M_eng + n / η * M_prop
+    J_eq = J_eng + n^2 / η * J_prop
+    ω_eng_dot = M_net / J_eq
+    ω_prop_dot = n * ω_eng_dot
+
+    #from the prop side (equivalent)
+    # M_net = η / n * M_eng + M_prop
+    # J_eq = η / n^2 * J_eng + J_prop
+    # ω_prop_dot = M_net / J_eq
+    # ω_eng_dot = ω_prop_dot / n
+
+    #excess torque and power
+    M_exc = J_prop * ω_prop_dot
+    P_exc = M_exc * ω_prop
+
+    sys.ẋ.ω_eng = ω_eng_dot
+    sys.y = TransmissionY(; ω_eng, ω_prop, M_exc, P_exc)
+
+end
+
+f_disc!(::System{Transmission}, args...) = false
+
+############################# PistonThruster ###################################
+
+Base.@kwdef struct PistonThruster{E <: AbstractPistonEngine,
+                                  P <: AbstractPropeller} <: NodeSystemDescriptor
+    engine::E = PistonEngine()
+    propeller::P = Propeller()
+    transmission::Transmission = Transmission()
+end
+
+MassTrait(::System{<:PistonThruster}) = HasNoMass()
+WrenchTrait(::System{<:PistonThruster}) = GetsExternalWrench()
+AngularMomentumTrait(::System{<:PistonThruster}) = HasAngularMomentum()
+
+function f_cont!(sys::System{<:PistonThruster}, kin::KinData, air::AirData)
+
+    @unpack engine, propeller, transmission = sys.subsystems
+    @unpack ω_eng, ω_prop = transmission.y
+
+    M_eng = engine.y.M
+    M_prop = propeller.y.wr_p.M[1]
+    J_eng = engine.params.J_xx
+    J_prop = propeller.params.J_xx
+
+    f_cont!(engine, air, ω_eng)
+    f_cont!(propeller, kin, air, ω_prop)
+    f_cont!(transmission; M_eng, M_prop, J_eng, J_prop)
+
+    Modeling.update_y!(sys)
+
+end
+
+function f_disc!(thr::System{<:PistonThruster}, fuel::Bool)
+
+    @unpack engine, propeller, transmission = thr.subsystems
+    ω_eng = transmission.y.ω_eng
+
+    f_disc!(engine, ω_eng, fuel) || f_disc!(propeller) || f_disc!(transmission)
+
+end
+
 
 end #module
