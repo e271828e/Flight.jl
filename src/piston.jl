@@ -40,18 +40,7 @@ end
 
 abstract type AbstractPistonEngine <: SystemDescriptor end
 
-MassTrait(::System{<:AbstractPistonEngine}) = HasNoMass()
-WrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
-AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
-
 ############################ PistonEngine ###############################
-
-@enum EngineState begin
-    eng_off = 0
-    eng_starting = 1
-    eng_running = 2
-end
-
 
 #represents a family of naturally aspirated, fuel-injected aviation engines.
 #based on performance data available for the Lycoming IO-360A engine. data is
@@ -82,6 +71,12 @@ function PistonEngine(;
     dataset = generate_dataset(; n_stall, n_cutoff)
 
     PistonEngine{typeof(dataset)}(P_rated, ω_rated, ω_stall, ω_cutoff, μ_ratio_idle, M_start, J_xx, dataset)
+end
+
+@enum EngineState begin
+    eng_off = 0
+    eng_starting = 1
+    eng_running = 2
 end
 
 Base.@kwdef mutable struct PistonEngineD
@@ -360,10 +355,6 @@ end
 init(::Transmission, ::SystemX) = ComponentVector(ω_eng = 0.0)
 init(::Transmission, ::SystemY) = TransmissionY()
 
-MassTrait(::System{Transmission}) = HasNoMass()
-WrenchTrait(::System{Transmission}) = GetsNoExternalWrench()
-AngularMomentumTrait(::System{Transmission}) = HasNoAngularMomentum()
-
 function f_cont!(sys::System{<:Transmission};
                  M_eng::Real, M_prop::Real, J_eng::Real, J_prop::Real)
 
@@ -412,10 +403,6 @@ Base.@kwdef struct PistonThruster{E <: AbstractPistonEngine,
     transmission::Transmission = Transmission()
 end
 
-MassTrait(::System{<:PistonThruster}) = HasNoMass()
-WrenchTrait(::System{<:PistonThruster}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:PistonThruster}) = HasAngularMomentum()
-
 function f_cont!(sys::System{<:PistonThruster}, kin::KinData, air::AirData)
 
     @unpack engine, propeller, transmission = sys.subsystems
@@ -443,5 +430,11 @@ function f_disc!(thr::System{<:PistonThruster}, fuel::Bool)
 
 end
 
+MassTrait(::System{<:PistonThruster}) = HasNoMass()
+WrenchTrait(::System{<:PistonThruster}) = GetsExternalWrench()
+AngularMomentumTrait(::System{<:PistonThruster}) = HasAngularMomentum()
+
+get_wr_b(sys::System{<:PistonThruster}) = get_wr_b(sys.subsystems.propeller)
+get_hr_b(sys::System{<:PistonThruster}) = get_hr_b(sys.subsystems.propeller)
 
 end #module
