@@ -70,7 +70,7 @@ init(::Avionics, ::SystemY) = AvionicsY(zeros(SVector{9})...)
 
 #dummy subsystem to add OEW mass properties to the airframe; could instead
 #customize the get_mp_b method for System{Airframe} but this way we can fall
-#back on the default System{NodeSystemDescriptor} implementation for get_mp_b,
+#back on the default System{SystemDescriptor} implementation for get_mp_b,
 #which requires all subsystems to define their own get_mp_b methods
 struct OEW <: SystemDescriptor end
 
@@ -92,7 +92,7 @@ get_mp_b(::System{OEW}) = mp_b_OEW
 
 ##################################### Pwp ######################################
 
-struct Pwp <: NodeSystemDescriptor
+struct Pwp <: SystemGroupDescriptor
     left::EThruster
     right::EThruster
 end
@@ -119,7 +119,7 @@ end
 #constructor (appropriately) fails. also, requires System{<:Ldg} instead of
 #System{Ldg} in method signatures
 # struct Ldg{L <: LandingGearUnit, R <: LandingGearUnit,
-#     N <: LandingGearUnit} <: NodeSystemDescriptor
+#     N <: LandingGearUnit} <: SystemGroupDescriptor
 #     left::L
 #     right::R
 #     nose::N
@@ -127,7 +127,7 @@ end
 
 #alternative, less flexible (implies type redefinition if the type parameters of
 #the field types change, and Revise will complain)
-struct Ldg <: NodeSystemDescriptor
+struct Ldg <: SystemGroupDescriptor
     left::LandingGearUnit{Strut{SimpleDamper}, NoSteering, DirectBraking}
     right::LandingGearUnit{Strut{SimpleDamper}, NoSteering, DirectBraking}
     nose::LandingGearUnit{Strut{SimpleDamper}, DirectSteering, NoBraking}
@@ -241,11 +241,7 @@ function get_mp_b(sys::System{Fuel})
 end
 
 
-##### Aerodynamics ####
-
-#aunque las tablas de interpolacion saturen en alpha y beta en sus extremos, hay
-#contribuciones que son un producto de alpha o beta por una derivada de
-#estabilidad sin mas, asi que conviene saturar alpha y beta en cualquier caso
+############################ Aerodynamics ######################################
 
 Base.@kwdef struct Aero <: AbstractAerodynamics
     S::Float64 = 16.165 #wing area
@@ -314,11 +310,6 @@ Base.@kwdef struct Airframe <: AbstractAirframe
     fuel::Fuel = Fuel()
     pld::Payload = Payload()
 end
-
-MassTrait(::System{Airframe}) = HasMass()
-WrenchTrait(::System{Airframe}) = GetsExternalWrench()
-AngularMomentumTrait(::System{Airframe}) = HasAngularMomentum()
-
 
 ################################################################################
 ####################### Update functions #######################################
@@ -536,10 +527,6 @@ f_disc!(::System{Avionics}, ::System{Airframe}) = false
 #here we could define f_cont! to account for fuel consumption
 f_cont!(::System{Fuel}, ::System{Pwp}) = nothing
 
-
-#we can't fall back  on the default System Group implementation, because of the
-#interactions between the different subsystems
-
 function f_cont!(afm::System{Airframe}, avs::System{Avionics},
                 kin::KinData, air::AirData, trn::AbstractTerrain)
 
@@ -551,8 +538,7 @@ function f_cont!(afm::System{Airframe}, avs::System{Avionics},
     f_cont!(fuel, pwp) #update fuel system
     f_cont!(aero, pwp, air, kin, trn)
 
-    # afm.y = (aero = aero.y, pwp = pwp.y, ldg = ldg.y, fuel = fuel.y, pld = pld.y )
-    afm.y = (aero = aero.y, pwp = pwp.y, ldg = ldg.y)
+    Modeling.assemble_y!(afm)
 
 end
 
@@ -578,20 +564,10 @@ function assign_component_inputs!(afm::System{<:Airframe}, avs::System{<:Avionic
     return nothing
 end
 
-function f_disc!(afm::System{Airframe}, ::System{Avionics})
-    #fall back to the default SystemGroup implementation
-    return f_disc!(afm)
-end
+f_disc!(::System{Airframe}, ::System{Avionics}) = false
 
-f_disc!(::System{OEW}) = false
-f_disc!(::System{Fuel}) = false
-f_disc!(::System{Payload}) = false
-#Pwp and Ldg are SystemGroups, so we can rely on the fallback f_disc!
-
-#for Fuel we could define discrete states to select which tank(s) we're drawing from
-
-#get_mp_b, get_wr_b and get_hr_b use the fallback for SystemGroups, which in turn call
-#get_mp_b, get_wr_b and get_hr_b on aero, pwp and ldg
+#get_mp_b, get_wr_b and get_hr_b fall back to the @generated methods, which then
+#recurse on Airframe subsystems
 
 
 ################################################################################

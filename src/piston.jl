@@ -397,7 +397,7 @@ f_disc!(::System{Transmission}, args...) = false
 ############################# PistonThruster ###################################
 
 Base.@kwdef struct PistonThruster{E <: AbstractPistonEngine,
-                                  P <: AbstractPropeller} <: NodeSystemDescriptor
+                                  P <: AbstractPropeller} <: SystemDescriptor
     engine::E = PistonEngine()
     propeller::P = Propeller()
     transmission::Transmission = Transmission()
@@ -417,7 +417,7 @@ function f_cont!(sys::System{<:PistonThruster}, kin::KinData, air::AirData)
     f_cont!(propeller, kin, air, ω_prop)
     f_cont!(transmission; M_eng, M_prop, J_eng, J_prop)
 
-    Modeling.update_y!(sys)
+    Modeling.assemble_y!(sys)
 
 end
 

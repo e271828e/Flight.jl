@@ -90,6 +90,7 @@ end
 
 function joystick_callback(slot::JoystickSlot, event::DeviceConfigEvent)
 
+    print("Joystick callback called")
     if event === GLFW.CONNECTED
         add_joystick(slot)
     elseif event === GLFW.DISCONNECTED
@@ -98,8 +99,7 @@ function joystick_callback(slot::JoystickSlot, event::DeviceConfigEvent)
 
 end
 
-# #add any joysticks connected before GLFW was imported
-# #enable detection of further joystick connections or disconnections
+#these only work when run from the module that uses the joystick(s)
 # init_joysticks()
 # GLFW.SetJoystickCallback(joystick_callback)
 # GLFW.PollEvents() #check for newly connected joysticks

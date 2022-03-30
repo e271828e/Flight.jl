@@ -159,7 +159,7 @@ end
 
 #################### AtmosphereDescriptor ############################
 
-Base.@kwdef struct AtmosphereDescriptor{S <: AbstractISA, W <: AbstractWind} <: NodeSystemDescriptor
+Base.@kwdef struct AtmosphereDescriptor{S <: AbstractISA, W <: AbstractWind} <: SystemDescriptor
     static::S = TunableISA()
     wind::W = TunableWind()
 end
@@ -177,15 +177,6 @@ function AtmosphericData(a::AtmosphericSystem, pos::Geographic)
         WindData(a.subsystems.wind, pos))
 end
 
-
-#we can create a World <: SystemDescriptor to compose Aircraft and
-#AtmosphericSystem, and step them together in a single Model. if the
-#AtmosphericSystem is dynamic but still we don't want to compose it with the
-#Aircraft, we can always put it in a separate model, step it separately, and
-#simply pass a reference to its underlying AtmosphericSystem to the
-#AircraftSystem, which will be wrapped in its own Model
-
-
 # #top-down / recursive implementation
 # @inline function get_tp(h::Real, T0::Real = T0_std, p0::Real = p0_std, g0::Real = g0_std)
 
@@ -196,11 +187,5 @@ end
 #     p = ISA_pressure_law(h, g0, p_b, T_b, h_b, β)
 #     return (T, p)
 # end
-
-
-
-
-
-
 
 end

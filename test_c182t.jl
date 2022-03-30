@@ -96,10 +96,10 @@ function free_flight()
 
     sim = SimulationRun(
         # model = Model(ac, (trn, atm); t_end = 3600, adaptive = true),
-        model = Model(ac, (trn, atm); t_end = 10, adaptive = false, solver = RK4(), dt = 0.02, y_saveat = 0.02),
+        model = Model(ac, (trn, atm); t_end = 100, adaptive = false, solver = RK4(), dt = 0.02, y_saveat = 0.02),
         inputs = init_joysticks() |> values |> collect,
-        # outputs = [XPInterface(host = IPv4("192.168.1.2"))], #Parsec
-        outputs = [XPInterface()], #localhost
+        outputs = [XPInterface(host = IPv4("192.168.1.2"))], #Parsec
+        # outputs = [XPInterface()], #localhost
         realtime = true,
         plot_enable = true,
         plot_path = joinpath("tmp", "c182t", "free_flight")

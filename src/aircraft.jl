@@ -24,8 +24,10 @@ abstract type AbstractAircraftID end
 ###############################################################################
 ############################## Airframe #######################################
 
-abstract type AbstractAirframe <: NodeSystemDescriptor end
+abstract type AbstractAirframe <: SystemDescriptor end
 MassTrait(::System{<:AbstractAirframe}) = HasMass()
+WrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
+AngularMomentumTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
 
 ########################## EmptyAirframe ###########################
 
@@ -53,7 +55,7 @@ AngularMomentumTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
 ###############################################################################
 ############################## Avionics #######################################
 
-abstract type AbstractAvionics <: NodeSystemDescriptor end
+abstract type AbstractAvionics <: SystemDescriptor end
 
 struct NoAvionics <: AbstractAvionics end
 
@@ -68,7 +70,7 @@ struct GenericID <: AbstractAircraftID end
 struct AircraftBase{I <: AbstractAircraftID,
                     K <: AbstractKinematics,
                     F <: AbstractAirframe,
-                    V <: AbstractAvionics} <: NodeSystemDescriptor
+                    V <: AbstractAvionics} <: SystemDescriptor
 
     kinematics::K
     airframe::F
@@ -82,7 +84,7 @@ function AircraftBase(     ::I = GenericID();
     AircraftBase{I,K,F,V}(kin, afm, avs)
 end
 
-#override the default NodeSystemDescriptor implementation, because we need to
+#override the default SystemDescriptor implementation, because we need to
 #add some stuff besides subsystem outputs
 init(ac::AircraftBase, ::SystemY) = (
     kinematics = init(ac.kinematics, SystemY()),
@@ -93,7 +95,7 @@ init(ac::AircraftBase, ::SystemY) = (
     )
 
 function init!(ac::System{T}, kin_init::KinInit) where {T<:AircraftBase{I,K}} where {I,K}
-    ac.x.kinematics .= init(ac.kinematics.params, kin_init)
+    ac.x.kinematics .= init(K(), kin_init)
 end
 
 function f_cont!(sys::System{<:AircraftBase}, trn::AbstractTerrain, atm::AtmosphericSystem)
@@ -126,6 +128,10 @@ end
 
 function f_disc!(sys::System{<:AircraftBase})
     @unpack kinematics, airframe, avionics = sys.subsystems
+
+    # f_disc!(kinematics, 1e-8)
+    # f_disc!(airframe, avionics)
+    # f_disc!(avionics, airframe)
 
     x_mod = f_disc!(kinematics, 1e-8) |
             f_disc!(airframe, avionics) |

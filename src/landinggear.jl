@@ -545,7 +545,7 @@ end
 ########################## LandingGearUnit #########################
 
 Base.@kwdef struct LandingGearUnit{L<:Strut, S <: AbstractSteering,
-                            B <: AbstractBraking} <: NodeSystemDescriptor
+                            B <: AbstractBraking} <: SystemDescriptor
     strut::L = Strut()
     contact::Contact = Contact()
     steering::S = NoSteering()
@@ -571,7 +571,7 @@ function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
     f_cont!(strut, steering, terrain, kinematics)
     f_cont!(contact, strut, braking)
 
-    Modeling.update_y!(sys)
+    Modeling.assemble_y!(sys)
 
 end
 

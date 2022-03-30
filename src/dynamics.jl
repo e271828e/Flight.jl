@@ -326,19 +326,20 @@ MassTrait(::S) where {S<:System} = error(
 
 get_mp_b(sys::System) = get_mp_b(MassTrait(sys), sys)
 
-get_mp_b(::HasMass, sys::System) = error(
-    "$(typeof(sys)) has the HasMass trait, but no get_mp_b constructor is defined for it")
+# get_mp_b(::HasMass, sys::System) = error(
+#     "$(typeof(sys)) has the HasMass trait, but no get_mp_b constructor is defined for it")
 
 get_mp_b(::HasNoMass, sys::System) = MassProperties()
 
-#default implementation for a SystemGroup with the HasMass trait, tries
-#to compute the aggregate mass properties for all the subsystems
-@inline @generated function get_mp_b(::HasMass, sys::System{D}) where {D<:NodeSystemDescriptor}
+#default implementation for a System with the HasMass trait tries to compute
+#the aggregate mass properties for all the subsystems
+@inline @generated function (get_mp_b(::HasMass, sys::System{T, X, Y, U, D, P, S})
+    where {T<:SystemDescriptor, X, Y, U, D, P, S})
 
     # Core.print("Generated function called")
     ex = Expr(:block)
     push!(ex.args, :(p = MassProperties()))
-    for label in fieldnames(D)
+    for label in fieldnames(S)
         push!(ex.args,
             :(p += get_mp_b(sys.subsystems[$(QuoteNode(label))])))
     end
@@ -358,15 +359,15 @@ WrenchTrait(::S) where {S<:System} = error(
 
 get_wr_b(sys::System) = get_wr_b(WrenchTrait(sys), sys)
 
-get_wr_b(::GetsExternalWrench, sys::System) = error(
-    "$(typeof(sys)) is a Wrench source, but no method get_wr_b was defined for it")
+# get_wr_b(::GetsExternalWrench, sys::System) = error(
+#     "$(typeof(sys)) is a Wrench source, but no method get_wr_b was defined for it")
 
 get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
 
-#default implementation for a SystemGroup with the GetsExternalWrench trait, tries
+#default implementation for a System with the GetsExternalWrench trait, tries
 #to sum all the Wrenches from its individual components. override as required
 @inline @generated function (get_wr_b(::GetsExternalWrench, sys::System{T, X, Y, U, D, P, S})
-    where {T<:NodeSystemDescriptor, X, Y, U, D, P, S})
+    where {T<:SystemDescriptor, X, Y, U, D, P, S})
 
     # Core.print("Generated function called")
     ex = Expr(:block)
@@ -391,15 +392,15 @@ AngularMomentumTrait(::S) where {S<:System} = error(
 
 get_hr_b(sys::System) = get_hr_b(AngularMomentumTrait(sys), sys)
 
-get_hr_b(::HasAngularMomentum, sys::System) = error(
-    "$(typeof(sys)) has angular momentum, but no method get_hr_b was defined for it")
+# get_hr_b(::HasAngularMomentum, sys::System) = error(
+#     "$(typeof(sys)) has angular momentum, but no method get_hr_b was defined for it")
 
 get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
 
-#default implementation for a SystemGroup with the HasAngularMomentum trait, tries
-#to sum the angular momentum from its individual components. override as required
+#default implementation for a System with the HasAngularMomentum trait, tries to
+#sum the angular momentum from its individual components. override as required
 @inline @generated function (get_hr_b(::HasAngularMomentum, sys::System{T, X, Y, U, D, P, S})
-    where {T<:NodeSystemDescriptor, X, Y, U, D, P, S})
+    where {T<:SystemDescriptor, X, Y, U, D, P, S})
 
     # Core.print("Generated function called")
     ex = Expr(:block)
