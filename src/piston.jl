@@ -359,8 +359,8 @@ function f_cont!(sys::System{<:Transmission};
                  M_eng::Real, M_prop::Real, J_eng::Real, J_prop::Real)
 
     #M_eng will always be positive. therefore, for a CW thruster, n should be
-    #positive as well. M_prop will be negative under normal operating
-    #conditions. for a CCW thruster, n should be negative. M_prop will be
+    #positive as well and M_prop will be negative under normal operating
+    #conditions. for a CCW thruster, n should be negative and M_prop will be
     #positive under normal operating conditions.
 
     #however, the sign of M_prop may be inverted under negative propeller thrust

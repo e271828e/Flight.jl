@@ -5,21 +5,28 @@ using StaticArrays
 using Flight.Geodesy
 
 export AbstractTerrain, DummyTerrain, HorizontalTerrain
+
 export TerrainData, SurfaceType
 export get_terrain_data
 
-@enum SurfaceType DryTarmac WetTarmac IcyTarmac
+export SurfaceType, DryTarmac, WetTarmac, IcyTarmac
 
-struct TerrainData
+abstract type SurfaceType end
+struct DryTarmac <: SurfaceType end
+struct WetTarmac <: SurfaceType end
+struct IcyTarmac <: SurfaceType end
+
+struct TerrainData{T <: SurfaceType}
     altitude::Altitude{Orthometric}
     normal::SVector{3,Float64} #NED components, inward pointing
-    surface::SurfaceType
+    surface::T
 end
 
-TerrainData(; altitude = AltOrth(0),
-                normal = SVector{3,Float64}(0,0,1),
-                surface = DryTarmac) =
+function TerrainData(; altitude = AltOrth(0),
+                       normal = SVector{3,Float64}(0,0,1),
+                       surface = DryTarmac)
     TerrainData(altitude, SVector{3,Float64}(normal), surface)
+end
 
 
 ######################## AbstractTerrain ##########################

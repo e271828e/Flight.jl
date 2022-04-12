@@ -21,18 +21,19 @@ include("terrain.jl")
 include("atmosphere.jl")
 include("kinematics.jl")
 include("dynamics.jl")
+include("friction.jl")
 
 # #aircraft components
 include("airdata.jl")
 include("propulsion.jl")
 include("landinggear.jl")
+# include("landinggear_new.jl")
 include("propellers.jl")
 include("piston.jl")
-# include("aerodynamics.jl")
 
 # # #aircraft
-include("aircraft.jl")
-include("c182t.jl")
+# include("aircraft.jl")
+# include("c182t.jl")
 
 @reexport using .Misc
 @reexport using .Modeling
@@ -48,19 +49,19 @@ include("c182t.jl")
 @reexport using .Geodesy
 @reexport using .Terrain
 @reexport using .Atmosphere
-
 @reexport using .Kinematics
 @reexport using .Dynamics
+@reexport using .Friction
 
 @reexport using .Airdata
 @reexport using .Propulsion
+# @reexport using .LandingGear
 @reexport using .LandingGear
 @reexport using .Propellers
 @reexport using .Piston
-# @reexport using .Aerodynamics
 
-@reexport using .Aircraft
-@reexport using .C182T
+# @reexport using .Aircraft
+# @reexport using .C182T
 
 export ftest
 
