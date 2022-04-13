@@ -21,8 +21,6 @@ import Flight.Friction: FrictionParameters
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 
-export DefaultFriction, FrictionRegulator
-
 #basis elements, for convenience
 const e1 = SVector{3,Float64}(1,0,0)
 const e3 = SVector{3,Float64}(0,0,1)
@@ -102,14 +100,11 @@ abstract type AbstractDamper end #not a System!
 get_damper_force(args...) = throw(MethodError(get_damper_force, args))
 
 Base.@kwdef struct SimpleDamper <: AbstractDamper
-    l_0::Float64 = 0.0 #natural length
     k_s::Float64 = 25000 #spring constant
     k_d_ext::Float64 = 1000 #extension damping coefficient
     k_d_cmp::Float64 = 1000 #compression damping coefficient
     ξ_min::Float64 = -5 #compression below which the shock absorber is disabled
 end
-
-get_natural_length(c::SimpleDamper) = c.l_0
 
 #Force exerted by the damper along zs. The deformation ξ is positive along z_s
 #(elongation). The resulting force can be negative, meaning the damper pulls the
@@ -159,7 +154,7 @@ Base.@kwdef struct StrutY
     t_bc::FrameTransform = FrameTransform() #body to contact frame transform
     F::Float64 = 0.0 #damper force on the ground along the strut z axis
     v_eOc_c::SVector{3,Float64} = zeros(SVector{3}) #contact point velocity
-    srf::SurfaceType = Terrain.DryTarmac #surface type at the contact reference point
+    srf::SurfaceType = DryTarmac() #surface type at the contact reference point
 end
 
 init(::Strut, ::SystemY) = StrutY()
@@ -175,7 +170,7 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     q_bs = t_bs.q
     r_ObOs_b = t_bs.r #strut frame origin
 
-    #compute contact reference point P
+    #compute contact reference point P (wheel endpoint)
     r_OsP_s = l_OsP * e3
     r_ObP_b = r_ObOs_b + q_bs(r_OsP_s)
     r_ObP_e = q_eb(r_ObP_b)
@@ -183,17 +178,16 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     r_OeP_e = r_OeOb_e + r_ObP_e
     P = Geographic(r_OeP_e)
 
-    #get terrain data at the contact reference point (close enough to the actual
-    #contact frame origin, which is still unknown)
+    #get terrain data at the contact reference point's 2D location (close enough
+    #to the actual contact frame origin, which is still unknown)
     trn = get_terrain_data(terrain, P.l2d)
-    h_trn = trn.altitude
     srf = trn.surface
 
     #compute damper deformation. if the projection of k_s onto z_n is close to
     #zero (strut nearly horizontal) or negative (strut upside down), set it to 0
     q_ns = q_nb ∘ q_bs
     k_s_zn = q_ns(e3)[3]
-    Δh = AltOrth(P) - h_trn
+    Δh = AltOrth(P) - trn.altitude
     if k_s_zn > 1e-3
         ξ = min(0.0, Δh / k_s_zn)
     else
@@ -253,11 +247,11 @@ end
 
 f_disc!(::System{<:Strut}, args...) = false
 
+
 ########################## Contact ###############################
 
-
 Base.@kwdef struct Contact <: SystemDescriptor
-    friction::FrictionRegulator{2} = FrictionRegulator{2}(k_p = 5.0, k_i = 400.0)
+    friction::FrictionRegulator{2} = FrictionRegulator{2}(k_p = 5.0, k_i = 400.0, k_l = 0.0)
 end
 
 Base.@kwdef struct ContactY
@@ -273,7 +267,7 @@ Base.@kwdef struct ContactY
     wr_b::Wrench = Wrench() #resulting airframe Wrench
 end
 
-#x should be initialized by the fallback methods
+#x should be initialized by the default methods
 init(::Contact, ::SystemY) = ContactY()
 
 function f_cont!(sys::System{Contact}, strut::System{<:Strut},
@@ -282,15 +276,23 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     @unpack wow, t_sc, t_bc, F, v_eOc_c, srf = strut.y
     friction = sys.friction
 
-    if !wow
-        sys.y = ContactY(friction = friction.y) #rest of fields to default
+    if wow
+        #disable friction regulator reset for the next call to f_disc!
+        friction.u.reset .= false
+    else
+        #retrieve the current friction regulator state without updating it and
+        #keep the remaining outputs to their defaults
+        sys.y = ContactY(friction = friction.y)
+        #set the friction regulator to reset on the next call to f_disc!
+        friction.u.reset .= true
+        #...and we're done
         return
     end
 
     v = SVector{2,Float64}(v_eOc_c[1], v_eOc_c[2]) #contact point velocity
 
-    μ_roll = get_μ(FrictionParameters(srf, Rolling()), norm(v))
-    μ_skid = get_μ(FrictionParameters(srf, Skidding()), norm(v))
+    μ_roll = get_μ(FrictionParameters(Rolling(), srf), norm(v))
+    μ_skid = get_μ(FrictionParameters(Skidding(), srf), norm(v))
 
     #longitudinal friction coefficient
     κ_br = get_braking_factor(braking)
@@ -315,30 +317,21 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
         μ_y = μ_skid
     end
 
-    #maximum friction coefficient vector
     μ_max = @SVector [μ_x, μ_y]
+    μ_max *= min(1, μ_skid / norm(μ_max)) #scale μ_max so norm(μ_max) does not exceed μ_skid
 
-    #norm(μ_max) cannot exceed μ_skid; if it does, scale down its components
-    μ_max *= min(1, μ_skid / norm(μ_max))
-
-    #update friction regulator
-    f_cont!(friction, v)
-
-    #retrieve its scaling factor
+    f_cont!(friction, v) #friction regulator update
     μ_eff = friction.y.α .* μ_max
-
-    ############# HASTA AQUI
-    ############# HASTA AQUI
-    ############# HASTA AQUI
-    ############# HASTA AQUI
 
     #normalized contact force projected on the contact frame
     f_c = SVector{3,Float64}(μ[1], μ[2], -1)
     f_s = t_sc.q(f_c) #project normalized force onto the strut frame
     @assert f_s[3] < 0
 
+    #the value of the ground's normal force must be such that its projection
+    #along the strut cancels the damper's force
     N = -F / f_s[3]
-    N = max(0, N) #cannot be negative (could happen with large xi_dot >0)
+    N = max(0, N) #it must not be negative (might happen with large ξ_dot >0)
     F_c = f_c * N
 
     wr_c = Wrench(F = F_c)
@@ -348,11 +341,8 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
 
 end
 
-function f_disc!(contact::System{Contact}, strut::System{<:Strut})
-    #if !wow, reset regulator and return x_mod flag
-    return f_disc!(contact.friction, !strut.y.wow)
-end
-
+#if wow==false in the last f_cont! evaluation, this resets the friction regulator
+f_disc!(contact::System{Contact}) = f_disc!(contact.friction)
 
 ########################## LandingGearUnit #########################
 

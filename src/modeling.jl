@@ -11,7 +11,7 @@ import SciMLBase: step!, solve!, reinit!, get_proposed_dt
 import DataStructures: OrderedDict
 import Flight.Plotting: plots
 
-export f_cont!, f_disc!
+export f_cont!, f_disc!, step!
 export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Model
 export SystemẊ, SystemX, SystemY, SystemU, SystemD
 
