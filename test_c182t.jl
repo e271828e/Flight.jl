@@ -47,9 +47,9 @@ function forward_drop_test()
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
     ac = System(C182TDescriptor());
-    kin_init = KinInit(v_eOb_b = [40, 0, 0],
+    kin_init = KinInit(v_eOb_b = [0, 0, 0],
                         ω_lb_b = [0, 0, 0],
-                        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.1),
+                        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
                                         h_trn + 2.0 - 0.15 + 1.0));
 
@@ -59,13 +59,16 @@ function forward_drop_test()
     # reinit!(mdl, ac.x)
 
     ac.u.avionics.pedals = -.5
+    ac.u.avionics.brake_left = 1
+    ac.u.avionics.brake_right = 1
+    ac.u.avionics.throttle = 0.5
 
     sim = SimulationRun(
         # model = Model(ac, (trn, atm); t_end = 3600, adaptive = true),
-        model = Model(ac, (trn, atm); t_end = 10, adaptive = false, solver = RK4(), dt = 0.02, y_saveat = 0.02),
+        model = Model(ac, (trn, atm); t_end = 20, adaptive = false, solver = RK4(), dt = 0.01, y_saveat = 0.01),
         # outputs = [XPInterface(host = IPv4("192.168.1.2"))], #Parsec
         outputs = [XPInterface()], #localhost
-        realtime = true,
+        realtime = false,
         plot_enable = true,
         plot_path = joinpath("tmp", "c182t", "forward_drop")
         )

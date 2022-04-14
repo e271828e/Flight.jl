@@ -186,7 +186,7 @@ These are:
 Notes:
 - The inertia tensor `J_O` must include the contributions of any rotating
   elements. As long as rotating elements have axial symmetry around their axes
-  of rotation, their contributions to `J_O` will be strictly constant.
+  of rotation, their contributions to `J_O` will be constant.
 """
 Base.@kwdef struct MassProperties
     m::Float64 = 0.0

@@ -44,10 +44,12 @@ Base.:-(x::Bounded{T1,Min,Max}, y::Real) where {T1, Min, Max} = Bounded(x.val - 
 Base.:-(x::Bounded{T1,Min,Max}) where {T1, Min, Max} = Bounded(-x.val, Min, Max)
 
 #both Bounded must have identical underlying types and bounds, otherwise there
-#is no way of telling which bounds or underlying types should win
+#is no way of telling which bounds should win
 Base.:+(x::B, y::B) where {B <: Bounded{T,Min,Max}} where {T, Min, Max} = Bounded(x.val + y.val, Min, Max)
 Base.:-(x::B, y::B) where {B <: Bounded{T,Min,Max}} where {T, Min, Max} = Bounded(x.val - y.val, Min, Max)
 
+#basic equality
+Base.:(==)(x::Bounded{T1}, y::Real) where {T1, T2} = (==)(promote(x.val, y)...)
 
 function linear_scaling(u::Bounded{T, UMin, UMax}, range::NTuple{2,Real}) where {T, UMin, UMax}
     @assert UMin != UMax

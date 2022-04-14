@@ -6,55 +6,63 @@ using StaticArrays
 using OrdinaryDiffEq
 
 using Flight
+using Flight.Friction: Parameters, Regulator
+
+export test_friction
 
 function test_friction()
 
-    @testset verbose = true "FrictionParameters" begin
+    @testset verbose = true "Friction" begin
 
-        μ_s = 0.03; μ_d = 0.02; v_s = 0.005; v_d = 0.01
-        fp = FrictionParameters(; μ_s, μ_d, v_s, v_d)
-        @test get_μ(fp, 0.001) === μ_s
-        @test get_μ(fp, 0.1) === μ_d
-        @test get_μ(fp, 0.5(v_s + v_d)) === 0.5(μ_s + μ_d)
+        @testset verbose = true "Parameters" begin
 
-    end
+            μ_s = 0.03; μ_d = 0.02; v_s = 0.005; v_d = 0.01
+            fp = Parameters(; μ_s, μ_d, v_s, v_d)
+            @test get_μ(fp, 0.001) === μ_s
+            @test get_μ(fp, 0.1) === μ_d
+            @test get_μ(fp, 0.5(v_s + v_d)) === 0.5(μ_s + μ_d)
 
-    @testset verbose = true "FrictionRegulator" begin
+        end
 
-        @test FrictionRegulator{2}(k_p = [2, 4], k_i = [200.0, 400.0], k_l = [0.1, 0.1]).k_p == [2.0, 4.0]
-        @test FrictionRegulator{3}(k_p = 3.0, k_i = 10.0, k_l = 0.2).k_i == fill(10.0, 3)
-        @test_throws DimensionMismatch FrictionRegulator{1}(k_p = [2, 4], k_i = [200.0, 400.0], k_l = zeros(2)) |> System
+        @testset verbose = true "Regulator" begin
 
-        reg = FrictionRegulator{2}(k_p = [2, 4], k_i = [200.0, 400.0], k_l = [0.1, 0.1])
-        sys = reg |> System
-        @test sys.u.reset isa MVector{2,Bool}
-        @test sys.y.v isa SVector{2,Float64}
-        @test sys.y.sat isa SVector{2,Bool}
-        @test length(sys.x) === 2
+            @test Regulator{2}(k_p = [2, 4], k_i = [200.0, 400.0], k_l = [0.1, 0.1]).k_p == [2.0, 4.0]
+            @test Regulator{3}(k_p = 3.0, k_i = 10.0, k_l = 0.2).k_i == fill(10.0, 3)
+            @test_throws DimensionMismatch Regulator{1}(k_p = [2, 4], k_i = [200.0, 400.0], k_l = zeros(2)) |> System
 
-        v = [1, -0.1]
-        f_cont!(sys, v)
-        @test sys.y.sat == [true, false]
-        @test sys.y.α == [-1, 0.4]
+            reg = Regulator{2}(k_p = [2, 4], k_i = [200.0, 400.0], k_l = [0.1, 0.1])
+            sys = reg |> System
+            @test sys.u.reset isa MVector{2,Bool}
+            @test sys.y.v isa SVector{2,Float64}
+            @test sys.y.sat isa SVector{2,Bool}
+            @test length(sys.x) === 2
 
-        sys.x .= [0.1, 0]
-        sys.u.reset .= [false, true]
-        @test f_disc!(sys) == false
-        @test sys.x == [0.1, 0]
+            v = [1, -0.1]
+            f_cont!(sys, v)
+            @test sys.y.sat == [true, false]
+            @test sys.y.α == [-1, 0.4]
 
-        sys.u.reset .= [true, true]
-        @test f_disc!(sys) == true
-        @test sys.x == zeros(2)
+            sys.x .= [0.1, 0]
+            sys.u.reset .= [false, true]
+            @test f_disc!(sys) == false
+            @test sys.x == [0.1, 0]
 
-        @test @ballocated(f_cont!($sys, $v)) == 0
-        @test @ballocated(f_disc!($sys)) == 0
+            sys.u.reset .= [true, true]
+            @test f_disc!(sys) == true
+            @test sys.x == zeros(2)
 
-    end
+            @test @ballocated(f_cont!($sys, $v)) == 0
+            @test @ballocated(f_disc!($sys)) == 0
+
+        end #testset
+
+    end #testset
+
 end
 
 function friction_regulator_plots()
 
-    reg = FrictionRegulator{2}(k_p = [1, 1], k_i = [1, 1], k_l = [0., 0.])
+    reg = Regulator{2}(k_p = [1, 1], k_i = [1, 1], k_l = [0., 0.])
     sys = reg |> System
     v = [0.5, -0.5]
 

@@ -10,49 +10,49 @@ using Flight.Plotting
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Plotting: plots
 
-export FrictionParameters, FrictionRegulator, get_μ
+export get_μ
 
-########################### FrictionParameters #############################
+########################### Parameters #############################
 
-struct FrictionParameters
+struct Parameters
     μ_s::Float64 #static friction coefficient
     μ_d::Float64 #dynamic friction coefficient (μ_d < μ_s)
     v_s::Float64 #static friction upper velocity threshold
     v_d::Float64 #dynamic friction lower velocity threshold (v_d > v_s)
 
-    function FrictionParameters(; μ_s, μ_d, v_s, v_d)
-        @assert μ_s > μ_d
+    function Parameters(; μ_s = 0, μ_d = 0, v_s = 0, v_d = 1)
+        @assert μ_s >= μ_d
         @assert v_s < v_d
         new(μ_s, μ_d, v_s, v_d)
     end
 end
 
-function get_μ(fr::FrictionParameters, v::Real)
+function get_μ(fr::Parameters, v::Real)
     @unpack v_s, v_d, μ_s, μ_d = fr
     κ_sd = clamp((norm(v) - v_s) / (v_d - v_s), 0, 1)
     return κ_sd * μ_d + (1 - κ_sd) * μ_s
 end
 
 
-######################### FrictionRegulator###################################
+######################### Regulator###################################
 
-Base.@kwdef struct FrictionRegulator{N} <: SystemDescriptor
+Base.@kwdef struct Regulator{N} <: SystemDescriptor
     k_p::SVector{N,Float64} #proportional gain
     k_i::SVector{N,Float64} #integral gain
     k_l::SVector{N,Float64} #integrator leak factor
 end
 
-# FrictionRegulator{N}(; k_p, k_i, k_l) where {N} = FrictionRegulator{N}(k_p, k_i, k_l)
+# Regulator{N}(; k_p, k_i, k_l) where {N} = Regulator{N}(k_p, k_i, k_l)
 
-function FrictionRegulator{N}(k_p::Real, k_i::Real, k_l::Real) where {N}
-    FrictionRegulator{N}(fill(k_p, N), fill(k_i, N), fill(k_l, N))
+function Regulator{N}(k_p::Real, k_i::Real, k_l::Real) where {N}
+    Regulator{N}(fill(k_p, N), fill(k_i, N), fill(k_l, N))
 end
 
-Base.@kwdef struct FrictionRegulatorU{N}
+Base.@kwdef struct RegulatorU{N}
     reset::MVector{N,Bool} = zeros(Bool, N)
 end
 
-Base.@kwdef struct FrictionRegulatorY{N}
+Base.@kwdef struct RegulatorY{N}
     reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset input
     v::SVector{N,Float64} = zeros(SVector{N}) #constraint velocity
     s::SVector{N,Float64} = zeros(SVector{N})  #constraint velocity integral
@@ -63,11 +63,11 @@ Base.@kwdef struct FrictionRegulatorY{N}
     sat::SVector{N,Bool} = zeros(SVector{N, Bool}) #scale factor saturation flag
 end
 
-init(::FrictionRegulator{N}, ::SystemX) where {N} = zeros(N) #v regulator integrator states
-init(::FrictionRegulator{N}, ::SystemY) where {N} = FrictionRegulatorY{N}()
-init(::FrictionRegulator{N}, ::SystemU) where {N} = FrictionRegulatorU{N}()
+init(::Regulator{N}, ::SystemX) where {N} = zeros(N) #v regulator integrator states
+init(::Regulator{N}, ::SystemY) where {N} = RegulatorY{N}()
+init(::Regulator{N}, ::SystemU) where {N} = RegulatorU{N}()
 
-function f_cont!(sys::System{<:FrictionRegulator{N}}, v_in::AbstractVector{<:Real}) where {N}
+function f_cont!(sys::System{<:Regulator{N}}, v_in::AbstractVector{<:Real}) where {N}
 
     @unpack k_p, k_i, k_l = sys.params
 
@@ -82,11 +82,11 @@ function f_cont!(sys::System{<:FrictionRegulator{N}}, v_in::AbstractVector{<:Rea
     sat = abs.(α_raw) .> abs.(α) #saturated?
     sys.ẋ .= (v - k_l .* s) .* .!sat .* .!reset #if not, integrator accumulates
 
-    sys.y = FrictionRegulatorY(; reset, v, s, α_p, α_i, α_raw, α, sat)
+    sys.y = RegulatorY(; reset, v, s, α_p, α_i, α_raw, α, sat)
 
 end
 
-function f_disc!(sys::System{<:FrictionRegulator{N}}) where {N}
+function f_disc!(sys::System{<:Regulator{N}}) where {N}
 
     x = sys.x
     reset = sys.u.reset
@@ -102,7 +102,7 @@ function f_disc!(sys::System{<:FrictionRegulator{N}}) where {N}
 
 end
 
-function plots(t, data::AbstractVector{<:FrictionRegulatorY}; mode, save_path, kwargs...)
+function plots(t, data::AbstractVector{<:RegulatorY}; mode, save_path, kwargs...)
 
     @unpack v, s, α_p, α_i, α_raw, α, sat = StructArray(data)
 
@@ -113,19 +113,19 @@ function plots(t, data::AbstractVector{<:FrictionRegulatorY}; mode, save_path, k
     splt_s = thplot(t, s; title = "Velocity Integral",
         ylabel = L"$s \ (m)$", kwargs...)
     splt_α_p = thplot(t, α_p; title = "Proportional Term",
-        ylabel = L"$\alpha_p$", label = "", kwargs...)
+        ylabel = L"$\alpha_p$", kwargs...)
     splt_α_i = thplot(t, α_i; title = "Integral Term",
-        ylabel = L"$\alpha_i$", label = "", kwargs...)
+        ylabel = L"$\alpha_i$", kwargs...)
     splt_α_raw = thplot(t, α_raw; title = "Raw Output",
-        ylabel = L"$\alpha_{raw}$", label = "", kwargs...)
+        ylabel = L"$\alpha_{raw}$", kwargs...)
     splt_α = thplot(t, α; title = "Clipped Output",
-        ylabel = L"$\alpha$", label = "", kwargs...)
+        ylabel = L"$\alpha$", kwargs...)
     splt_sat = thplot(t, sat; title = "Saturation",
-        ylabel = L"$S$", label = "", kwargs...)
+        ylabel = L"$S$", kwargs...)
 
-    pd["01_vs"] = plot(splt_v, splt_s;
+    pd["01_vs"] = plot(splt_v, splt_s, splt_sat;
         plot_title = "Contact Point Kinematics",
-        layout = (1,2),
+        layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     pd["02_pi"] = plot(splt_α_p, splt_α_i, splt_sat;

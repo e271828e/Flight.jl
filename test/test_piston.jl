@@ -14,16 +14,16 @@ using Flight.Airdata
 export test_piston
 
 function test_piston()
-    @testset verbose = true "Piston" begin
-        test_dataset()
+    @testset verbose = true "PistonEngine" begin
+        test_engine_dataset()
         test_propagation()
     end
 end
 
-function test_dataset()
-    n_shutdown = 0.15
+function test_engine_dataset()
+    n_stall = 0.15
     n_cutoff = 1.4
-    dataset = Piston.generate_dataset(; n_shutdown, n_cutoff)
+    dataset = Piston.generate_dataset(; n_stall, n_cutoff)
     ω_rated = 2700
     P_rated = 200
 
@@ -72,13 +72,13 @@ function test_dataset()
                 (n, μ, δ) -> compute_π_ISA_pow(dataset, n, μ, δ)
             end
 
-            #at n_shutdown and below, power is zero regardless of MAP value
-            @test π_ISA_pow(n_shutdown, 0, 1) ≈ 0
-            @test π_ISA_pow(n_shutdown, dataset.μ_wot(n_shutdown, 1), 1) ≈ 0
-            @test π_ISA_pow(0.5*n_shutdown, 0.5, 1) ≈ 0
+            #at n_stall and below, power is zero regardless of MAP value
+            @test π_ISA_pow(n_stall, 0, 1) ≈ 0
+            @test π_ISA_pow(n_stall, dataset.μ_wot(n_stall, 1), 1) ≈ 0
+            @test π_ISA_pow(0.5*n_stall, 0.5, 1) ≈ 0
 
-            #as soon as n rises above n_shutdown, power starts increasing with MAP
-            @test π_ISA_pow(1.5*n_shutdown, 0.5, 1) > π_ISA_pow(1.5*n_shutdown, 0.3, 1)
+            #as soon as n rises above n_stall, power starts increasing with MAP
+            @test π_ISA_pow(1.5*n_stall, 0.5, 1) > π_ISA_pow(1.5*n_stall, 0.3, 1)
 
             #sanity checks against IO360 performance charts
             @test 71 <  π_ISA_pow(1800/ω_rated, inHg2Pa(20)/p_std, 3e3 |> ft2m |> h2δ) * P_rated < 84
@@ -102,46 +102,35 @@ function test_propagation()
         eng = PistonEngine(μ_ratio_idle = 0.2)
         sys = System(eng)
 
-        M_load = -1.123897198
-        J_load = 1
+        @test sys.y == Modeling.init(eng, SystemY())
 
-        @testset verbose = true "Essentials" begin
+        ω = 100
+        f_cont!(sys, air, ω)
 
-            @test sys.ẋ == Modeling.init(eng, SystemẊ())
-            @test sys.y == Modeling.init(eng, SystemY())
+        @test sys.y != Modeling.init(eng, SystemY())
 
-            sys.x.ω = 100
-            f_cont!(sys, air; M_load, J_load)
+        ω = 0.9eng.ω_stall
+        f_disc!(sys, ω, true)
+        @test !sys.d.running
 
-            @test sys.ẋ != Modeling.init(eng, SystemẊ())
-            @test sys.y != Modeling.init(eng, SystemY())
+        sys.u.start = true
+        f_disc!(sys, ω, true)
+        sys.u.shutdown = false
+        @test !sys.d.running
 
-            sys.x.ω = 0.9eng.ω_shutdown
-            f_disc!(sys, true)
-            @test !sys.d.running
+        sys.u.start = true
+        f_disc!(sys, ω, true)
+        sys.u.start = false
+        @test sys.x.ω > eng.ω_stall
+        @test sys.d.running
 
-            sys.u.start = true
-            f_disc!(sys, false)
-            sys.u.shutdown = false
-            @test !sys.d.running
+        sys.u.shutdown = true
+        f_disc!(sys, true)
+        sys.u.shutdown = false
+        @test !sys.d.running
 
-            sys.u.start = true
-            f_disc!(sys, true)
-            sys.u.start = false
-            @test sys.x.ω > eng.ω_shutdown
-            @test sys.d.running
-
-            sys.u.shutdown = true
-            f_disc!(sys, true)
-            sys.u.shutdown = false
-            @test !sys.d.running
-
-        end
-
-        @testset verbose = true "Allocations" begin
-
-            @test @ballocated(f_cont!($sys, $air; M_load = $M_load, J_load = $J_load)) == 0
-            @test @ballocated(f_disc!($sys, true)) == 0
+        @test @ballocated(f_cont!($sys, $air; M_load = $M_load, J_load = $J_load)) == 0
+        @test @ballocated(f_disc!($sys, true)) == 0
 
         end
 

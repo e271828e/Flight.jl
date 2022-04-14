@@ -7,24 +7,20 @@ using Flight.Geodesy
 export AbstractTerrain, DummyTerrain, HorizontalTerrain
 
 export TerrainData, SurfaceType
-export get_terrain_data
 
 export SurfaceType, DryTarmac, WetTarmac, IcyTarmac
 
-abstract type SurfaceType end
-struct DryTarmac <: SurfaceType end
-struct WetTarmac <: SurfaceType end
-struct IcyTarmac <: SurfaceType end
+@enum SurfaceType DryTarmac WetTarmac IcyTarmac
 
-struct TerrainData{T <: SurfaceType}
+struct TerrainData
     altitude::Altitude{Orthometric}
     normal::SVector{3,Float64} #NED components, inward pointing
-    surface::T
+    surface::SurfaceType
 end
 
 function TerrainData(; altitude = AltOrth(0),
                        normal = SVector{3,Float64}(0,0,1),
-                       surface = DryTarmac)
+                       surface = DryTarmac) where {S}
     TerrainData(altitude, SVector{3,Float64}(normal), surface)
 end
 
@@ -32,7 +28,7 @@ end
 ######################## AbstractTerrain ##########################
 
 abstract type AbstractTerrain end
-get_terrain_data(::AbstractTerrain, args...) = throw(MethodError(get_terrain_data, args))
+TerrainData(::AbstractTerrain, args...) = throw(MethodError(TerrainData, args))
 
 struct DummyTerrain <: AbstractTerrain end
 
@@ -44,8 +40,9 @@ end
 HorizontalTerrain(; altitude = AltOrth(0), surface = DryTarmac) =
     HorizontalTerrain(altitude, surface)
 
-get_terrain_data(trn::HorizontalTerrain, ::Abstract2DLocation) =
+TerrainData(trn::HorizontalTerrain, ::Abstract2DLocation) =
     TerrainData(trn.altitude, SVector{3,Float64}(0,0,1), trn.surface)
+
 
 end #module
 

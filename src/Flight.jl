@@ -27,13 +27,12 @@ include("friction.jl")
 include("airdata.jl")
 include("propulsion.jl")
 include("landinggear.jl")
-# include("landinggear_new.jl")
 include("propellers.jl")
 include("piston.jl")
 
 # # #aircraft
-# include("aircraft.jl")
-# include("c182t.jl")
+include("aircraft.jl")
+include("c182t.jl")
 
 @reexport using .Misc
 @reexport using .Modeling
@@ -55,13 +54,12 @@ include("piston.jl")
 
 @reexport using .Airdata
 @reexport using .Propulsion
-# @reexport using .LandingGear
 @reexport using .LandingGear
 @reexport using .Propellers
 @reexport using .Piston
 
-# @reexport using .Aircraft
-# @reexport using .C182T
+@reexport using .Aircraft
+@reexport using .C182T
 
 export ftest
 

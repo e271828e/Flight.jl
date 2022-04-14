@@ -128,9 +128,9 @@ end
 #alternative, less flexible (implies type redefinition if the type parameters of
 #the field types change, and Revise will complain)
 struct Ldg <: SystemGroupDescriptor
-    left::LandingGearUnit{Strut{SimpleDamper}, NoSteering, DirectBraking}
-    right::LandingGearUnit{Strut{SimpleDamper}, NoSteering, DirectBraking}
-    nose::LandingGearUnit{Strut{SimpleDamper}, DirectSteering, NoBraking}
+    left::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
+    right::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
+    nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
 end
 
 MassTrait(::System{Ldg}) = HasNoMass()
@@ -149,14 +149,14 @@ function Ldg()
     left = LandingGearUnit(
         strut = Strut(
             t_bs = FrameTransform(r = [-0.381, -1.092, 1.902], q = RQuat() ),
-            l_0 = 0.0,
+            l_OsP = 0.0,
             damper = mlg_damper),
         braking = DirectBraking())
 
     right = LandingGearUnit(
         strut = Strut(
             t_bs = FrameTransform(r = [-0.381, 1.092, 1.902], q = RQuat() ),
-            l_0 = 0.0,
+            l_OsP = 0.0,
             damper = mlg_damper),
         braking = DirectBraking())
 
@@ -164,7 +164,7 @@ function Ldg()
         strut = Strut(
             # t_bs = FrameTransform(r = [1.27, 0, 2.004] , q = RQuat()),
             t_bs = FrameTransform(r = [1.27, 0, 1.9] , q = RQuat()),
-            l_0 = 0.0,
+            l_OsP = 0.0,
             damper = nlg_damper),
         steering = DirectSteering())
 
@@ -462,7 +462,7 @@ function f_cont!(sys::System{Aero}, pwp::System{Pwp},
     #non-dimensional height above ground
     l2d_Oa = n_e #Oa = Ob
     h_Oa = h_o #orthometric
-    h_trn_Oa = get_terrain_data(terrain, l2d_Oa).altitude #orthometric
+    h_trn_Oa = TerrainData(terrain, l2d_Oa).altitude #orthometric
     Δh_nd = (h_Oa - h_trn_Oa) / b
 
     # T = get_wr_b(pwp).F[1]
