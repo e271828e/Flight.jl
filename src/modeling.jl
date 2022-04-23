@@ -2,17 +2,17 @@ module Modeling
 
 using Dates
 using UnPack
-using ComponentArrays, RecursiveArrayTools
+using ComponentArrays, StructArrays, RecursiveArrayTools
 using SciMLBase: ODEProblem, u_modified!, init as init_problem
 using OrdinaryDiffEq: ODEIntegrator, Tsit5
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
 
 import SciMLBase: step!, solve!, reinit!, get_proposed_dt
 import DataStructures: OrderedDict
-import Flight.Plotting: plots
+# import Flight.Plotting: plots
 
 export f_cont!, f_disc!, step!
-export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Model
+export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Model, THNew
 export SystemẊ, SystemX, SystemY, SystemU, SystemD
 
 
@@ -240,9 +240,9 @@ struct Model{S <: System, I <: ODEIntegrator, L <: SavedValues}
         solver = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
         save_on = false, int_kwargs...)
 
-        #save_on is set to false because we are not usually interested in saving
-        #the naked state vector. the output saved by the SavingCallback is all
-        #we need for insight
+        #save_on is set to false because we are not usually interested in the
+        #naked System's state vector. everything we need should be available in
+        #the System's output struct saved by the SavingCallback
         saveat_arr = (y_saveat isa Real ? (t_start:y_saveat:t_end) : y_saveat)
 
         params = (sys = sys, args_c = args_c, args_d = args_d)
@@ -345,23 +345,13 @@ function reinit!(m::Model, args...; kwargs...)
     reinit!(m.integrator, args...; kwargs...)
 
     #grab the updated t and x from the integrator (in case they were reset by
-    #the input arguments). this is not strictly necessary, since they are merely
-    #buffers. just for consistency.
+    #kwargs). this is just to keep consistency, since they are merely buffers.
     m.sys.t[] = m.integrator.t
     m.sys.x .= m.integrator.u
 
     resize!(m.log.t, 1)
     resize!(m.log.saveval, 1)
     return nothing
-end
-
-function plots(mdl::Model; mode::Symbol = :basic,
-    save_path::Union{String,Nothing} = nothing, kwargs...)
-    #generate default path tmp/plots/current_date
-    save_path = (save_path === nothing ?
-        joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_path)
-    mkpath(save_path)
-    plots(mdl.log.t, mdl.log.saveval; mode, save_path, kwargs...)
 end
 
 #the following causes type instability and kills performance:
@@ -373,14 +363,15 @@ end
     # ẋ = sys.ẋ
 # end
 
-# the reason seems to be that having sys stored in p obfuscates type inference.
+# might the reason be that having sys stored in p obfuscates type inference?
 # when unpacking sys, the compiler can no longer tell its type, and therefore
 # has no knowledge of the types of sys.x, sys.dx, sys.y and sys.t. since these
-# are being assigned to and read from, the type instability kills performance.
+# are being assigned to and read from, type instability occurs.
 
-# this can be fixed by storing the x, dx and y fields of sys directly as entries
-# of p. this probably fixes their types during construction, so when they are
-# accessed later in the closure, the type instability is no longer an issue.
+# apparently, this can be fixed by storing the x, dx and y fields of sys
+# directly as entries of p. this probably fixes their types during construction,
+# so when they are accessed later in the closure, the type instability is no
+# longer an issue.
 
 # however, this is redundant! we already have x, dx, y and t inside of sys. a
 # more elegant alternative is simply to use a function barrier, first extract
@@ -388,29 +379,41 @@ end
 # compiler to infer its type, and therefore it specializes the time-critical
 # assignment statements to their actual types.
 
-###########################################################################
 
-#to try:
 
-#in System, define and extend f_branch!
+################################################################################
+################################## THNew #######################################
 
-# #individual Component
-# f_branch!(y, dx, x, u, t, sys, args...) = f_branch!(Val(has_input(sys)), y, dx, x, u, t, args...)
-# f_branch!(::Val{true}, y, dx, x, u, t, sys, args...) = f_cont!(y, dx, x, u, t, sys, args...)
-# f_cont!(::HasInput, y, dx, x ,u, t, sys, args...) = f_cont!(y, dx, x, u, t, sys, args...)
-# f_cont!(::HasNoInput, y, dx, x, u, t, sys, args...) = f_cont!(y, dx, x, t, sys, args...)
-
-# #for a AirframeGroup
-# f_cont!(MaybeInput(S), MaybeOutput(S), y, dx, x, u, t, sys, args...)
-# f_cont!(::HasInput, ::HasOutput, y, dx, x ,u, t, sys, args...)
-# #now, this method needs to consider the possibility for each component that it
-# #may have or not Input or Output. so it must do
-# for (label, component) in zip(keys(C), values(C))
-#     if MaybeInput(typeof(component)) #need tocheck, because if it has no input, u[label] will not exist!
-#         f_cont!(y_cmp, dx_cmp, x_cmp, u_cmp, t, cmp, args...)
-#     else
-#         f_cont!(y_cmp, dx_cmp, x_cmp, t, cmp, args...)
-#     end
-# end
-
+mutable struct THNew{T}
+    _t::Vector{Float64}
+    _y::Vector{T}
 end
+
+THNew(mdl::Model) = THNew(mdl.log.t, mdl.log.saveval)
+
+THNew(t::Real, y) = THNew([Float64(t)], [y])
+
+function Base.getproperty(th::THNew, s::Symbol)
+    t = getfield(th, :_t)
+    y = getfield(th, :_y)
+    if s === :_t
+        return t
+    elseif s === :_y
+        return y
+    else
+        return THNew(t, getproperty(StructArray(y), s))
+    end
+end
+
+Base.getindex(th::THNew, i) = THNew(th._t[i], th._y[i])
+
+#for inspection
+get_child_names(::T) where {T <: THNew} = get_child_names(T)
+get_child_names(::Type{THNew{T}}) where {T} = fieldnames(T)
+
+#could be rewritten as @generated to avoid allocating if needed
+function get_scalar_components(th::THNew{<:AbstractVector{T}}) where {T<:Real}
+    [THNew(th._t, y) for y in th._y |> StructArray |> StructArrays.components]
+end
+
+end #module
