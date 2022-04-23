@@ -16,7 +16,8 @@ export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Mo
 export SystemẊ, SystemX, SystemY, SystemU, SystemD
 
 
-############################# SystemDescriptor ############################
+################################################################################
+############################## SystemDescriptor ################################
 
 abstract type SystemDescriptor end #anything from which we can build a System
 
@@ -28,7 +29,8 @@ struct SystemY <: SystemData end
 struct SystemU <: SystemData end
 struct SystemD <: SystemData end
 
-############################# System ############################
+################################################################################
+################################### System #####################################
 
 #need the T type parameter for dispatch, the rest for type stability. since
 #Systems are only meant to be instantiated during initialization, making
@@ -222,7 +224,8 @@ end
 
 end
 
-############################# Model ############################
+################################################################################
+################################## Model #######################################
 
 #in this design, the t and x fields of m.sys behave only as temporary
 #storage for f_cont! and f_disc! calls, so we have no guarantees about their

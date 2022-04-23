@@ -8,6 +8,7 @@ using LinearAlgebra
 
 using Flight
 using Flight.Piston: PistonEngine, inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
+using Flight.Piston: eng_off, eng_starting, eng_running
 using Flight.Atmosphere: Atmosphere, p_std, T_std
 using Flight.Airdata
 
@@ -99,64 +100,74 @@ function test_propagation()
         atm = AtmosphereDescriptor() |> System
         atm.u.static.T_sl = T_std + 10
         air = AirData(kin, atm)
-        eng = PistonEngine(μ_ratio_idle = 0.2)
-        sys = System(eng)
+        eng = PistonEngine(μ_ratio_idle = 0.2) |> System
+        fuel = System(MagicFuelSupply())
 
-        @test sys.y == Modeling.init(eng, SystemY())
+        ω = 100.0
+        y_init = eng.y
+        f_cont!(eng, air, ω)
+        @test eng.y != y_init #y must have been updated
 
-        ω = 100
-        f_cont!(sys, air, ω)
+        ω = 0.0
+        eng.d.state = eng_off
+        f_cont!(eng, air, ω)
+        @test eng.y.M == 0
 
-        @test sys.y != Modeling.init(eng, SystemY())
+        eng.u.start = true
+        f_disc!(eng, fuel, ω)
+        @test eng.d.state == eng_starting
 
-        ω = 0.9eng.ω_stall
-        f_disc!(sys, ω, true)
-        @test !sys.d.running
+        ω = 1.4eng.params.ω_stall
+        f_disc!(eng, fuel, ω) #with ω <= 1.5ω_stall, engine won't leave the starting state
+        @test eng.d.state == eng_starting
+        f_cont!(eng, air, ω)
+        @test eng.y.M > 0 #it should output the starter torque
 
-        sys.u.start = true
-        f_disc!(sys, ω, true)
-        sys.u.shutdown = false
-        @test !sys.d.running
+        ω = 1.6eng.params.ω_stall
+        f_disc!(eng, fuel, ω) #engine should start now
+        @test eng.d.state == eng_running
+        f_cont!(eng, air, ω)
+        @test eng.y.M > 0 #and generate its own torque
 
-        sys.u.start = true
-        f_disc!(sys, ω, true)
-        sys.u.start = false
-        @test sys.x.ω > eng.ω_stall
-        @test sys.d.running
+        #commanded shutdown
+        eng.d.state = eng_running
+        eng.u.shutdown = true
+        f_disc!(eng, fuel, ω) #engine should start now
+        eng.u.shutdown = false
+        @test eng.d.state == eng_off
 
-        sys.u.shutdown = true
-        f_disc!(sys, true)
-        sys.u.shutdown = false
-        @test !sys.d.running
+        #stall shutdown
+        eng.d.state = eng_running
+        ω = 0.95eng.params.ω_stall
+        f_disc!(eng, fuel, ω) #engine should start now
+        @test eng.d.state == eng_off
+        ω = 1.6eng.params.ω_stall
+        eng.d.state = eng_running
 
-        @test @ballocated(f_cont!($sys, $air; M_load = $M_load, J_load = $J_load)) == 0
-        @test @ballocated(f_disc!($sys, true)) == 0
+        #without fuel, the engine should shut down
+        fuel.u[] = false
+        f_disc!(eng, fuel, ω)
+        @test eng.d.state == eng_off
 
-        end
+        #and then fail to start, even above the required speed
+        eng.u.start = true
+        f_disc!(eng, fuel, ω)
+        @test eng.d.state == eng_starting
+        f_disc!(eng, fuel, ω)
+        @test eng.d.state != eng_running
+
+        #when fuel is available, the engine starts
+        fuel.u[] = true
+        f_disc!(eng, fuel, ω)
+        @test eng.d.state == eng_running
+
+        @test @ballocated(f_cont!($eng, $air, $ω)) == 0
+        @test @ballocated(f_disc!($eng, $fuel, $ω)) == 0
 
     end #testset
 
 end #function
 
-function sanity_check()
-
-        kin = KinInit(v_eOb_b = [50, 0, 5]) |> KinData #positive α
-        atm = AtmosphereDescriptor() |> System
-        air = AirData(kin, atm)
-        eng = PistonEngine()
-        sys = System(eng)
-
-        M_load = -400
-        J_load = 0.3
-        sys.x.ω = 260
-        sys.u.throttle = 1
-        sys.u.mixture = 0.1
-        f_cont!(sys, air; M_load, J_load)
-
-        @show sys.ẋ
-        sys.y |> pwf
-
-end
 
 function plot_dataset()
 
@@ -175,8 +186,6 @@ function plot_dataset()
     # # plot(n_plot, π_wot_plot)
 
 
-end
-
-
+end #function
 
 end #module

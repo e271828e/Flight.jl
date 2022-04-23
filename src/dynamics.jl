@@ -326,27 +326,29 @@ MassTrait(::S) where {S<:System} = error(
 
 get_mp_b(sys::System) = get_mp_b(MassTrait(sys), sys)
 
-# get_mp_b(::HasMass, sys::System) = error(
-#     "$(typeof(sys)) has the HasMass trait, but no get_mp_b constructor is defined for it")
-
 get_mp_b(::HasNoMass, sys::System) = MassProperties()
 
 #default implementation for a System with the HasMass trait tries to compute
-#the aggregate mass properties for all the subsystems
+#the aggregate mass properties for all its the subsystems
 @inline @generated function (get_mp_b(::HasMass, sys::System{T, X, Y, U, D, P, S})
     where {T<:SystemDescriptor, X, Y, U, D, P, S})
 
-    # Core.print("Generated function called")
     ex = Expr(:block)
-    push!(ex.args, :(p = MassProperties()))
-    for label in fieldnames(S)
+
+    if isempty(fieldnames(S))
         push!(ex.args,
-            :(p += get_mp_b(sys.subsystems[$(QuoteNode(label))])))
+            :(error("System{$(T)} has the HasMass trait and no subsystems, "*
+                "but it does not extend the get_mp_b method")))
+    else
+        push!(ex.args, :(p = MassProperties()))
+        for label in fieldnames(S)
+            push!(ex.args,
+                :(p += get_mp_b(sys.subsystems[$(QuoteNode(label))])))
+        end
     end
     return ex
 
 end
-
 ###################### WrenchTrait ##########################
 
 abstract type WrenchTrait end
@@ -359,9 +361,6 @@ WrenchTrait(::S) where {S<:System} = error(
 
 get_wr_b(sys::System) = get_wr_b(WrenchTrait(sys), sys)
 
-# get_wr_b(::GetsExternalWrench, sys::System) = error(
-#     "$(typeof(sys)) is a Wrench source, but no method get_wr_b was defined for it")
-
 get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
 
 #default implementation for a System with the GetsExternalWrench trait, tries
@@ -370,12 +369,21 @@ get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
     where {T<:SystemDescriptor, X, Y, U, D, P, S})
 
     # Core.print("Generated function called")
+
     ex = Expr(:block)
-    push!(ex.args, :(wr = Wrench())) #allocate a zero wrench
-    for label in fieldnames(S)
+
+    if isempty(fieldnames(S))
         push!(ex.args,
-            :(wr += get_wr_b(sys.subsystems[$(QuoteNode(label))])))
+            :(error("System{$(T)} has the GetsExternalWrench trait and no subsystems, "*
+                "but it does not extend the get_wr_b method")))
+    else
+        push!(ex.args, :(wr = Wrench())) #initialize a zero wrench
+        for label in fieldnames(S)
+            push!(ex.args,
+                :(wr += get_wr_b(sys.subsystems[$(QuoteNode(label))])))
+        end
     end
+
     return ex
 
 end
@@ -392,9 +400,6 @@ AngularMomentumTrait(::S) where {S<:System} = error(
 
 get_hr_b(sys::System) = get_hr_b(AngularMomentumTrait(sys), sys)
 
-# get_hr_b(::HasAngularMomentum, sys::System) = error(
-#     "$(typeof(sys)) has angular momentum, but no method get_hr_b was defined for it")
-
 get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
 
 #default implementation for a System with the HasAngularMomentum trait, tries to
@@ -404,11 +409,19 @@ get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
 
     # Core.print("Generated function called")
     ex = Expr(:block)
-    push!(ex.args, :(h = SVector(0., 0., 0.))) #allocate
-    for label in fieldnames(S)
+
+    if isempty(fieldnames(S))
         push!(ex.args,
-            :(h += get_hr_b(sys.subsystems[$(QuoteNode(label))])))
+            :(error("System{$(T)} has the HasAngularMomentum trait and no subsystems, "*
+                "but it does not extend the get_hr_b method")))
+    else
+        push!(ex.args, :(h = SVector(0., 0., 0.))) #initialize
+        for label in fieldnames(S)
+            push!(ex.args,
+                :(h += get_hr_b(sys.subsystems[$(QuoteNode(label))])))
+        end
     end
+
     return ex
 
 end

@@ -10,9 +10,34 @@ using Flight.Propellers: AbstractPropeller, Propeller
 
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
+import Flight.Dynamics: get_mp_b
 import Flight.Plotting: plots
 
-export PistonEngine
+export PistonEngine, MagicFuelSupply
+
+########################### AbstractFuelSupply #################################
+
+abstract type AbstractFuelSupply <: SystemDescriptor end
+
+MassTrait(::System{<:AbstractFuelSupply}) = HasMass()
+WrenchTrait(::System{<:AbstractFuelSupply}) = GetsNoExternalWrench()
+AngularMomentumTrait(::System{<:AbstractFuelSupply}) = HasNoAngularMomentum()
+
+#to be extended by concrete subtypes
+fuel_available(f::System{<:AbstractFuelSupply}) = throw(
+    MethodError(fuel_available, (f,)))
+
+#a massless, infinite fuel supply
+struct MagicFuelSupply <: AbstractFuelSupply end
+
+init(::MagicFuelSupply, ::SystemU) = Ref(true)
+
+get_mp_b(::System{MagicFuelSupply}) = MassProperties()
+fuel_available(f::System{MagicFuelSupply}) = f.u[]
+
+########################### AbstractPistonEngine ###############################
+
+abstract type AbstractPistonEngine <: SystemDescriptor end
 
 # can't figure out how to register these so that they are seen from module
 # methods
@@ -35,10 +60,13 @@ function h2δ(h)
     p / p_std / √(T / T_std)
 end
 
+#by default, engine mass is assumed to be accounted for by the airframe
+MassTrait(::System{<:AbstractPistonEngine}) = HasNoMass()
+#the propeller gets it instead
+WrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
+#assumed to be negligible by default
+AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
 
-########################### AbstractPistonEngine ###############################
-
-abstract type AbstractPistonEngine <: SystemDescriptor end
 
 ############################ PistonEngine ###############################
 
@@ -314,7 +342,7 @@ function f_cont!(sys::System{<:PistonEngine}, air::AirData, ω::Real)
 
 end
 
-function f_disc!(eng::System{<:PistonEngine}, ω::Real, fuel::Bool)
+function f_disc!(eng::System{<:PistonEngine}, fuel::System{<:AbstractFuelSupply}, ω::Real)
 
     ω_stall = eng.params.ω_stall
 
@@ -326,11 +354,11 @@ function f_disc!(eng::System{<:PistonEngine}, ω::Real, fuel::Bool)
 
         !eng.u.start ? eng.d.state = eng_off : nothing
 
-        (ω > 1.5ω_stall && fuel) ? eng.d.state = eng_running : nothing
+        (ω > 1.5ω_stall && fuel_available(fuel) ) ? eng.d.state = eng_running : nothing
 
     else #eng_running
 
-        (ω < ω_stall || eng.u.shutdown || !fuel) ? eng.d.state = eng_off : nothing
+        (ω < ω_stall || eng.u.shutdown || !fuel_available(fuel)) ? eng.d.state = eng_off : nothing
 
     end
 
