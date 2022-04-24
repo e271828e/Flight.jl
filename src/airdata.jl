@@ -4,16 +4,16 @@ using LinearAlgebra
 using StaticArrays
 using UnPack
 
+using Flight.Modeling
 using Flight.Plotting
 using Flight.Attitude
-
 using Flight.Geodesy
 using Flight.Atmosphere
 using Flight.Kinematics
 
 using Flight.Atmosphere: T_std, p_std, ρ_std, γ
 
-import Flight.Plotting: plots
+import Flight.Plotting: make_plots
 
 export get_airflow_angles, get_wind_axes, get_stability_axes
 export AirData
@@ -100,95 +100,93 @@ function AirData(kin_data::KinData, atm_data::AtmosphericData)
 end
 
 
-function plots(t, data::AbstractVector{<:AirData}; mode, save_path, kwargs...)
+function make_plots(th::THNew{<:AirData}; mode, kwargs...)
 
-    @unpack v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, a, μ, ρ, TAS, EAS, CAS, M,
-            p, pt, T, Tt, Δp, q = StructArray(data)
+    pd = OrderedDict{Symbol, Plots.Plot}()
 
-    pd = Dict{String, Plots.Plot}()
-
-    pd["01_v_ew_n"] = thplot(t, v_ew_n;
+    pd[:v_ew_n] = plot(th.v_ew_n;
         plot_title = "Velocity (Wind / ECEF) [NED]",
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{ew}^{N} \ (m/s)$" L"$v_{ew}^{E} \ (m/s)$" L"$v_{ew}^{D} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
-    pd["02_v_ew_b"] = thplot(t, v_ew_b;
+    pd[:v_ew_b] = plot(th.v_ew_b;
         plot_title = "Velocity (Wind / ECEF) [Airframe]",
         ylabel = [L"$v_{ew}^{x_b} \ (m/s)$" L"$v_{ew}^{y_b} \ (m/s)$" L"$v_{ew}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
-    pd["03_v_eOb_b"] = thplot(t, v_eOb_b;
+    pd[:v_eOb_b] = plot(th.v_eOb_b;
         plot_title = "Velocity (Airframe / ECEF) [Airframe]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
-    pd["04_v_wOb_b"] = thplot(t, v_wOb_b;
+    pd[:v_wOb_b] = plot(th.v_wOb_b;
         plot_title = "Velocity (Airframe / Wind) [Airframe]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
+        subplot_a = plot(th.a;
+            title = "Speed of Sound", ylabel = L"$a \ (m/s)$",
+            label = "", kwargs...)
 
-    splt_a = thplot(t, a;
-        title = "Speed of Sound", ylabel = L"$a \ (m/s)$",
-        label = "", kwargs...)
+        subplot_ρ = plot(th.ρ;
+            title = "Density", ylabel = L"$\rho \ (kg/m^3)$",
+            label = "", kwargs...)
 
-    splt_ρ = thplot(t, ρ;
-        title = "Density", ylabel = L"$\rho \ (kg/m^3)$",
-        label = "", kwargs...)
+        subplot_μ = plot(th.μ;
+            title = "Dynamic Viscosity", ylabel = L"$\mu \ (Pa \ s)$",
+            label = "", kwargs...)
 
-    splt_μ = thplot(t, μ;
-        title = "Dynamic Viscosity", ylabel = L"$\mu \ (Pa \ s)$",
-        label = "", kwargs...)
-
-    pd["06_ρ_a"] = plot(splt_ρ, splt_a, splt_μ;
+    pd[:ρ_a] = plot(subplot_ρ, subplot_a, subplot_μ;
         plot_title = "Freestream Properties",
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    splt_T = thplot(t, hcat(T, Tt);
-        title = "Temperature",
-        label = ["Static"  "Total"],
-        ylabel = L"$T \ (K)$",
-        th_split = :none, kwargs...)
 
-    splt_p = thplot(t, hcat(p, pt)/1000;
-        title = "Pressure",
-        label = ["Static"  "Total"],
-        ylabel = L"$p \ (kPa)$",
-        th_split = :none, kwargs...)
+        subplot_T = plot(THNew(th._t, hcat(th.T._y, th.Tt._y)' |> collect);
+            title = "Temperature",
+            label = ["Static"  "Total"],
+            ylabel = L"$T \ (K)$",
+            th_split = :none, kwargs...)
 
-    pd["07_T_p"] = plot(splt_T, splt_p;
+        subplot_p = plot(THNew(th._t, 1e-3*hcat(th.p._y, th.pt._y)' |> collect);
+            title = "Pressure",
+            label = ["Static"  "Total"],
+            ylabel = L"$p \ (kPa)$",
+            th_split = :none, kwargs...)
+
+    pd[:T_p] = plot(subplot_T, subplot_p;
         plot_title = "Freestream Properties",
         layout = (1,2),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    splt_airspeed = thplot(t, hcat(TAS,EAS,CAS);
-        title = "Airspeed",
-        label = ["True" "Equivalent" "Calibrated"],
-        ylabel = L"$v \ (m/s)$",
-        th_split = :none, kwargs...)
+        subplot_airspeed = plot(THNew(th._t, hcat(th.TAS._y, th.EAS._y, th.CAS._y)' |> collect);
+            title = "Airspeed",
+            label = ["True" "Equivalent" "Calibrated"],
+            ylabel = L"$v \ (m/s)$",
+            th_split = :none, kwargs...)
 
-    splt_Mach = thplot(t, M;
-        title = "Mach", ylabel = L"M",
-        label = "", kwargs...)
+        subplot_Mach = plot(th.M;
+            title = "Mach", ylabel = L"M",
+            label = "", kwargs...)
 
-    splt_q = thplot(t, q/1000;
-        title = "Dynamic Pressure", ylabel = L"$q \ (kPa)$",
-        label = "", kwargs...)
+        subplot_q = plot(th._t, th.q._y/1000;
+            title = "Dynamic Pressure", ylabel = L"$q \ (kPa)$",
+            label = "", kwargs...)
 
     l3 = @layout [a{0.5w} [b; c{0.5h}]]
-    pd["08_airspeed_M_q"] = plot(splt_airspeed, splt_Mach, splt_q;
+    pd[:airspeed_M_q] = plot(subplot_airspeed, subplot_Mach, subplot_q;
         layout = l3,
         plot_title = "Freestream Properties",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    save_plots(pd; save_path)
+    return NamedTuple(pd)
 
 end
+
 
 end #module

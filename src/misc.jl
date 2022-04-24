@@ -1,7 +1,12 @@
 module Misc
 
+using DataStructures: OrderedDict
+
 export Bounded, linear_scaling
 export pwf
+
+#convenience
+Base.NamedTuple(dict::OrderedDict{Symbol, T} where {T}) = NamedTuple{Tuple(keys(dict))}(values(dict))
 
 #print with fieldnames
 function pwf(s)
@@ -10,6 +15,8 @@ function pwf(s)
     end
 end
 
+
+################################### Bounded ####################################
 #needs some unit tests
 struct Bounded{T<:Real, Min, Max}
     val::T

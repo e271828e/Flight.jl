@@ -13,6 +13,7 @@ using Flight.Airdata
 
 import Flight.Modeling: init_x, init_y, init_u, init_d, f_cont!, f_disc!
 import Flight.Plotting: plots
+import Flight.Plotting: make_plots
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
 
 export AbstractAerodynamics, SimpleDrag

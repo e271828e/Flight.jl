@@ -8,7 +8,6 @@ using Flight.Modeling
 using Flight.Plotting
 
 import Flight.Modeling: init, f_cont!, f_disc!
-import Flight.Plotting: plots
 import Flight.Plotting: make_plots
 
 export get_μ
@@ -105,7 +104,7 @@ end
 
 function make_plots(th::THNew{<:RegulatorY}; mode, kwargs...)
 
-    pd = Dict{Symbol, Plots.Plot}()
+    pd = OrderedDict{Symbol, Plots.Plot}()
 
     splt_v = plot(th.v; title = "Velocity",
         ylabel = L"$v \ (m/s)$", kwargs...)
@@ -143,47 +142,7 @@ function make_plots(th::THNew{<:RegulatorY}; mode, kwargs...)
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    return pd
-
-end
-
-function plots(t, data::AbstractVector{<:RegulatorY}; mode, save_path, kwargs...)
-
-    @unpack v, s, α_p, α_i, α_raw, α, sat = StructArray(data)
-
-    pd = Dict{String, Plots.Plot}()
-
-    splt_v = thplot(t, v; title = "Velocity",
-        ylabel = L"$v \ (m/s)$", kwargs...)
-    splt_s = thplot(t, s; title = "Velocity Integral",
-        ylabel = L"$s \ (m)$", kwargs...)
-    splt_α_p = thplot(t, α_p; title = "Proportional Term",
-        ylabel = L"$\alpha_p$", kwargs...)
-    splt_α_i = thplot(t, α_i; title = "Integral Term",
-        ylabel = L"$\alpha_i$", kwargs...)
-    splt_α_raw = thplot(t, α_raw; title = "Raw Output",
-        ylabel = L"$\alpha_{raw}$", kwargs...)
-    splt_α = thplot(t, α; title = "Clipped Output",
-        ylabel = L"$\alpha$", kwargs...)
-    splt_sat = thplot(t, sat; title = "Saturation",
-        ylabel = L"$S$", kwargs...)
-
-    pd["01_vs"] = plot(splt_v, splt_s, splt_sat;
-        plot_title = "Contact Point Kinematics",
-        layout = (1,3),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
-    pd["02_pi"] = plot(splt_α_p, splt_α_i, splt_sat;
-        plot_title = "Proportional and Integral Terms",
-        layout = (1,3),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
-    pd["03_pi"] = plot(splt_α_raw, splt_α, splt_sat;
-        plot_title = "Regulator Output",
-        layout = (1,3),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
-    save_plots(pd; save_path)
+    return NamedTuple(pd)
 
 end
 

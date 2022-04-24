@@ -28,6 +28,8 @@ module Attitude
 using StaticArrays
 using StructArrays
 using LinearAlgebra
+
+using Flight.Modeling
 using Flight.Quaternions
 using Flight.Plotting
 #using ..Quaternions: UnitQuat, Quat #also works (but relies on folder hierarchy)
@@ -334,15 +336,13 @@ end
 
 #unless a more specialized method is defined, a TimeHistory{Rotations} is
 #converted to REuler for plotting
-@recipe function plot_rotation(th::TimeHistory{<:AbstractVector{<:Abstract3DRotation}};
-                                rot_ref = "", rot_target = "")
+@recipe function plot(th::THNew{<:Abstract3DRotation}; rot_ref = "", rot_target = "")
 
-    v_euler = Vector{REuler}(undef, length(th.data))
-    for i in 1:length(v_euler)
-        v_euler[i] = REuler(th.data[i])
-    end
-    sa = StructArray(v_euler)
-    data = hcat(sa.ψ, sa.θ, sa.φ)./π #plot as π factors
+    return THNew(th._t, [REuler(v) for v in th._y])
+
+end
+
+@recipe function plot(th::THNew{<:REuler}; rot_ref = "", rot_target = "")
 
     label --> ["Heading" "Inclination" "Bank"]
     yguide --> hcat(L"$\psi_{%$rot_ref %$rot_target} \ (\pi \ rad)$",
@@ -350,7 +350,8 @@ end
                     L"$\phi_{%$rot_ref %$rot_target} \ (\pi \ rad)$")
     th_split --> :h #custom TimeHistory attribute
 
-    return TimeHistory(th.t, data)
+    y_mat = hcat(th.ψ._y, th.θ._y, th.φ._y)'/π #plot as π factors
+    return THNew(th._t, y_mat)
 
 end
 

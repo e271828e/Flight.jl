@@ -11,6 +11,7 @@ using Flight.Geodesy
 
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Plotting: plots
+import Flight.Plotting: make_plots
 
 export AbstractKinematics, KinLTF, KinECEF
 export VelX, PosData, VelData, KinData, KinInit
@@ -306,58 +307,56 @@ end
 
 ############################ Plotting ################################
 
-function plots(t, data::AbstractVector{<:KinData}; mode, save_path, kwargs...)
+function make_plots(th::THNew{<:KinData}; mode, kwargs...)
 
-    sa = StructArray(data)
+    pd = Dict{Symbol, NamedTuple}()
+    pd[:pos] = make_plots(th.pos; mode, kwargs...)
+    pd[:vel] = make_plots(th.vel; mode, kwargs...)
+    return NamedTuple(pd)
 
-    plots(t, sa.pos; mode, save_path, kwargs...)
-    plots(t, sa.vel; mode, save_path, kwargs...)
 end
 
-function plots(t, data::AbstractVector{<:PosData}; mode, save_path, kwargs...)
+function make_plots(th::THNew{<:PosData}; mode, kwargs...)
 
-    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy = StructArray(data)
+    pd = Dict{Symbol, Plots.Plot}()
 
-    pd = Dict{String, Plots.Plot}()
-
-    splt_h_e = thplot(t, h_e; title = "", kwargs...)
+    subplot_h_e = plot(th.h_e; title = "", kwargs...)
 
     #remove the title added by the Altitude TH recipe
-    splt_h = thplot(t, h_e; title = "", kwargs...)
-             thplot!(t, h_o; title = "", kwargs...)
+    subplot_h = plot(th.h_e; title = "", kwargs...)
+                plot!(th.h_o; title = "", kwargs...)
 
     #remove the title added by the LatLon TH recipe
-    splt_latlon = thplot(t, ϕ_λ; title = "", th_split = :v, kwargs...)
+    subplot_latlon = plot(th.ϕ_λ; title = "", th_split = :v, kwargs...)
 
-    splt_xy = thplot(t, Δxy;
+    subplot_xy = plot(th.Δxy;
         label = [L"$\int v_{eb}^{x_n} dt$" L"$\int v_{eb}^{y_n} dt$"],
         ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$"],
         th_split = :h, link = :none, kwargs...)
 
-    pd["01_e_nb"] = thplot(t, e_nb;
+    pd[:e_nb] = plot(th.e_nb;
         plot_title = "Attitude (Airframe/NED)",
         rot_ref = "n", rot_target = "b",
         kwargs...)
 
-    pd["02_Ob_geo"] = plot(splt_latlon, splt_h;
+    pd[:Ob_geo] = plot(subplot_latlon, subplot_h;
         layout = grid(1, 2, widths = [0.67, 0.33]),
         plot_title = "Position (WGS84)",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd["03_Ob_xyh"] = plot(splt_xy, splt_h_e;
+    pd[:Ob_xyh] = plot(subplot_xy, subplot_h_e;
         layout = grid(1, 2, widths = [0.67, 0.33]),
         plot_title = "Position (Local Cartesian)",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    save_plots(pd; save_path)
+    return NamedTuple(pd)
 
-    #when we assemble a plot from multiple subplots, the plot_titlefontsize
+    #when a plot is assembled from multiple subplots, the plot_titlefontsize
     #attribute no longer works, and it is titlefontisze what determines the font
     #size of the overall figure title (which normally is used for subplots).
     #however, we can still override it specifically for this plot
 
-    #debug mode plots:
-    # wander angle
+end
 
     #maybe add a Trajectory user recipe for Vectors of 3DVector so that i can
     #pass it a Vector series directly.
@@ -367,41 +366,38 @@ function plots(t, data::AbstractVector{<:PosData}; mode, save_path, kwargs...)
     #     camera = (30, 45))
     #aspect_ratio attribute does not work for 3d figures
     # savefig(plt_Ob_xyh_3D, joinpath(save_path, "Ob_xyh_3D.png"))
-end
 
-function plots(t, data::AbstractVector{<:VelData}; mode, save_path, kwargs...)
+function make_plots(th::THNew{<:VelData}; mode, kwargs...)
 
-    @unpack v_eOb_b, v_eOb_n, ω_lb_b, ω_el_n = StructArray(data)
+    pd = Dict{Symbol, Plots.Plot}()
 
-    pd = Dict{String, Plots.Plot}()
-
-    pd["04_ω_lb_b"] = thplot(t, ω_lb_b;
+    pd[:ω_lb_b] = plot(th.ω_lb_b;
         plot_title = "Angular Velocity (Airframe/LTF) [Airframe]",
         label = ["Roll Rate" "Pitch Rate" "Yaw Rate"],
         ylabel = [L"$p \ (rad/s)$" L"$q \ (rad/s)$" L"$r \ (rad/s)$"],
         th_split = :h,
         kwargs...)
 
-    pd["05_ω_el_n"] = thplot(t, ω_el_n;
+    pd[:ω_el_n] = plot(th.ω_el_n;
         plot_title = "Local Tangent Frame Transport Rate (LTF/ECEF) [NED]",
         ylabel = L"$\omega_{el}^{l} \ (rad/s)$",
         th_split = :h,
         kwargs...)
 
-    pd["06_v_eOb_n"] = thplot(t, v_eOb_n;
+    pd[:v_eOb_n] = plot(th.v_eOb_n;
         plot_title = "Velocity (Airframe/ECEF) [NED]",
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{eb}^{N} \ (m/s)$" L"$v_{eb}^{E} \ (m/s)$" L"$v_{eb}^{D} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
-    pd["07_v_eOb_b"] = thplot(t, v_eOb_b;
+    pd[:v_eOb_b] = plot(th.v_eOb_b;
         plot_title = "Velocity (Airframe/ECEF) [Airframe]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
-    save_plots(pd; save_path)
+    return NamedTuple(pd)
 
 end
 

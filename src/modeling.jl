@@ -9,7 +9,6 @@ using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValue
 
 import SciMLBase: step!, solve!, reinit!, get_proposed_dt
 import DataStructures: OrderedDict
-# import Flight.Plotting: plots
 
 export f_cont!, f_disc!, step!
 export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Model, THNew
@@ -387,11 +386,22 @@ end
 mutable struct THNew{T}
     _t::Vector{Float64}
     _y::Vector{T}
+    function THNew(t::AbstractVector{Float64}, y::AbstractVector{T}) where {T}
+        @assert length(t) == length(y)
+        new{T}(t, y)
+    end
 end
 
-THNew(mdl::Model) = THNew(mdl.log.t, mdl.log.saveval)
+# THNew(mdl::Model) = THNew(mdl.log.t, mdl.log.saveval)
 
 THNew(t::Real, y) = THNew([Float64(t)], [y])
+
+function THNew(t::AbstractVector{<:Real}, M::Matrix{<:Real})
+    #each Matrix column interpreted as one Vector value
+    THNew(t, [M[:, i] for i in 1:size(M,2)])
+end
+
+Base.length(th::THNew) = length(th._t)
 
 function Base.getproperty(th::THNew, s::Symbol)
     t = getfield(th, :_t)

@@ -8,6 +8,7 @@ using UnPack
 using Interpolations
 using HDF5
 
+using Flight.Modeling
 using Flight.Attitude
 using Flight.Plotting
 
@@ -462,28 +463,27 @@ end
 
 ##################### Plotting ##############################
 
-@recipe function plot_latlon(th::TimeHistory{<:AbstractVector{<:LatLon}})
-
-    sa = StructArray(th.data)
-    data = hcat(sa.ϕ/π, sa.λ/π)
+@recipe function plot(th::THNew{<:LatLon})
 
     title --> ["Latitude" "Longitude"]
     label --> ["Latitude" "Longitude"]
     yguide --> [L"$\varphi \ (\pi \ rad)$" L"$\lambda \ (\pi \ rad)$"]
     th_split --> :v
 
-    return TimeHistory(th.t, data)
+    y_matrix = hcat(th.ϕ._y, th.λ._y)'/π |> collect
+    return THNew(th._t, y_matrix)
 
 end
 
-@recipe function plot_altitude(th::TimeHistory{<:AbstractVector{<:Altitude{D}}}) where {D}
+@recipe function plot(th::THNew{<:Altitude{D}}) where {D}
 
     title --> "Altitude ($(string(D)))"
     label --> "Altitude ($(string(D)))"
     yguide --> L"$h \ (m)$"
 
-    return TimeHistory(th.t, StructArray(th.data)._val)
+    return THNew(th._t, Float64.(th._y))
 
 end
+
 
 end #module

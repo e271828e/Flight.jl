@@ -11,6 +11,7 @@ using Flight.Geodesy
 using Flight.Kinematics
 
 import Flight.Plotting: plots
+import Flight.Plotting: make_plots
 
 export FrameTransform, transform
 export Wrench
@@ -589,10 +590,7 @@ end
 
 ######################## Plots ############################
 
-@recipe function plot_wrench(th::TimeHistory{<:AbstractVector{<:Wrench}};
-                             wr_frame = "", wr_source = "")
-
-    @unpack F, M = StructArray(th.data)
+@recipe function plot(th::THNew{<:Wrench}; wr_frame = "", wr_source = "")
 
     layout := (1, 2)
     seriestype --> :path
@@ -601,9 +599,8 @@ end
         subplot := 1
         title --> "Force"
         yguide --> L"$F_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N)$"
-        # yguide --> L"$F \ (N)$"
         th_split --> :none
-        TimeHistory(th.t, F)
+        th.F
     end
 
     @series begin
@@ -611,43 +608,41 @@ end
         title --> "Torque"
         yguide --> L"$M_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N \ m)$"
         th_split --> :none
-        TimeHistory(th.t, M)
+        th.M
     end
 
 end
 
 
-function plots(t, data::AbstractVector{<:DynData}; mode, save_path, kwargs...)
+function make_plots(th::THNew{<:DynData}; mode, kwargs...)
 
-    sa = StructArray(data)
-    plots(t, sa.input; mode, save_path, kwargs...)
-    plots(t, sa.output; mode, save_path, kwargs...)
+    pd = Dict( :input => make_plots(th.input; mode, kwargs...),
+               :output => make_plots(th.output; mode, kwargs...))
+    return NamedTuple(pd)
 
 end
 
 
-function plots(t, data::AbstractVector{<:DynDataIn}; mode, save_path, kwargs...)
+function make_plots(th::THNew{<:DynDataIn}; mode, kwargs...)
 
-    @unpack wr_g_b, wr_in_b, wr_ext_b, hr_b = StructArray(data)
+    pd = Dict{Symbol, Plots.Plot}()
 
-    pd = Dict{String, Plots.Plot}()
-
-    pd["01_wr_g_b"] = thplot(t, wr_g_b;
+    pd[:wr_g_b] = plot(th.wr_g_b;
         plot_title = "Gravity Wrench [Airframe]",
         wr_source = "g", wr_frame = "b",
         kwargs...)
 
-    pd["02_wr_in_b"] = thplot(t, wr_in_b;
+    pd[:wr_in_b] = plot(th.wr_in_b;
         plot_title = "Inertia Wrench [Airframe]",
         wr_source = "in", wr_frame = "b",
         kwargs...)
 
-    pd["03_wr_ext_b"] = thplot(t, wr_ext_b;
+    pd[:wr_ext_b] = plot(th.wr_ext_b;
         plot_title = "External Wrench [Airframe]",
         wr_source = "ext", wr_frame = "b",
         kwargs...)
 
-    pd["04_hr_b"] = thplot(t, hr_b;
+    pd[:hr_b] = plot(th.hr_b;
         plot_title = "Angular Momentum from Rotating Components [Airframe]",
         ylabel = hcat(
             L"$h_{Ob \ (r)}^{x_b} \ (kg \ m^2 / s)$",
@@ -656,21 +651,19 @@ function plots(t, data::AbstractVector{<:DynDataIn}; mode, save_path, kwargs...)
         th_split = :h, link = :none,
         kwargs...)
 
-    save_plots(pd; save_path)
+    return NamedTuple(pd)
 
 end
 
 
-function plots(t, data::AbstractVector{<:DynDataOut}; mode, save_path, kwargs...)
-
-    @unpack α_eb_b, a_eOb_b, a_eOb_n, f_Ob_b = StructArray(data)
+function make_plots(th::THNew{<:DynDataOut}; mode, kwargs...)
 
     #standard gravity for specific force normalization
     g₀ = 9.80665
 
-    pd = Dict{String, Plots.Plot}()
+    pd = Dict{Symbol, Plots.Plot}()
 
-    pd["05_α_eb_b"] = thplot(t, α_eb_b;
+    pd[:α_eb_b] = plot(th.α_eb_b;
         plot_title = "Angular Acceleration (Airframe/ECEF) [Airframe]",
         ylabel = hcat(
             L"$\alpha_{eb}^{x_b} \ (rad/s^2)$",
@@ -679,7 +672,7 @@ function plots(t, data::AbstractVector{<:DynDataOut}; mode, save_path, kwargs...
         th_split = :h,
         kwargs...)
 
-    pd["06_a_eOb_b"] = thplot(t, a_eOb_b;
+    pd[:a_eOb_b] = plot(th.a_eOb_b;
         plot_title = "Linear Acceleration (Airframe/ECEF) [Airframe]",
         ylabel = hcat(
             L"$a_{eb}^{x_b} \ (m/s^{2})$",
@@ -688,7 +681,7 @@ function plots(t, data::AbstractVector{<:DynDataOut}; mode, save_path, kwargs...
         th_split = :h,
         kwargs...)
 
-    pd["07_a_eOb_n"] = thplot(t, a_eOb_n;
+    pd[:a_eOb_n] = plot(th.a_eOb_n;
         plot_title = "Linear Acceleration (Airframe/ECEF) [NED]",
         ylabel = hcat(
             L"$a_{eb}^{N} \ (m/s^{2})$",
@@ -697,7 +690,7 @@ function plots(t, data::AbstractVector{<:DynDataOut}; mode, save_path, kwargs...
         th_split = :h, link = :none,
         kwargs...)
 
-    pd["08_f_Ob_b"] = thplot(t, f_Ob_b / g₀;
+    pd[:f_Ob_b] = plot(THNew(th._t, th.f_Ob_b._y / g₀);
         plot_title = "Specific Force [Airframe]",
         ylabel = hcat(
             L"$f_{Ob}^{x_b} \ (g)$",
@@ -706,7 +699,7 @@ function plots(t, data::AbstractVector{<:DynDataOut}; mode, save_path, kwargs...
         th_split = :h,
         kwargs...)
 
-    save_plots(pd; save_path)
+    return NamedTuple(pd)
 
 end
 

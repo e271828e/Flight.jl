@@ -4,100 +4,27 @@ using Reexport
 using Dates
 @reexport using Plots
 @reexport using Measures
+@reexport using LaTeXStrings
 @reexport using StructArrays
 @reexport using RecursiveArrayTools
-@reexport using LaTeXStrings
+@reexport using DataStructures: OrderedDict
 
-using Flight.Modeling
+#this is how relative imports would work
+using ..Misc
+using ..Modeling
 
-export TimeHistory
-export plots, save_plots, thplot, thplot!
-export make_plots
-
-# ########################## plots method ###############################
-
-#our entry plotting entry point cannot be a recipe. a recipe is called within
-#the plot() pipeline, which creates a single figure. however, a Vector of System
-#outputs will typically need to generate multiple plots from its values. for
-#this we define a new function plots().
-
-plots(args...; kwargs...) = println("Not implemented")
-
-#for Systems without outputs
-plots(::AbstractVector{<:Real}, ::AbstractVector{Nothing}; kwargs...) = nothing
-
-#takes care of SystemGroups
-function plots(t, data::AbstractVector{<:NamedTuple}; mode, save_path, kwargs...)
-
-    c = data |> StructArray |> StructArrays.components
-    for (c_label, c_data) in zip(keys(c), values(c))
-        println("Generating plots for $c_label")
-        save_path_c = mkpath(joinpath(save_path, String(c_label)))
-        plots(t, c_data; mode, save_path = save_path_c, kwargs...)
-    end
-
-end
-
-function save_plots(d::Dict{String,Plots.Plot}; save_path, format = :png)
-    for (id, p) in zip(keys(d), values(d))
-        savefig(p, joinpath(save_path, id*"."*String(format)))
-    end
-end
-
-# ############################ TimeHistory #################################
-
-mutable struct TimeHistory{D}
-    t::AbstractVector{<:Real}
-    data::D
-end
-
-#for all the following TimeHistory subtypes, a single figure is enough, so they
-#can be handled by recipes
-@recipe function f(th::TimeHistory{<:AbstractVector{<:Real}})
-
-    xguide --> L"$t \: (s)$"
-    return th.t, th.data
-
-end
-
-@recipe function f(th::TimeHistory{<:AbstractMatrix{<:Real}}; th_split = :none)
-
-    xguide --> L"$t \ (s)$"
-
-    vlength = size(th.data)[2]
-    label --> (vlength <= 3 ?  ["x" "y" "z"][:, 1:vlength] : (1:vlength)')
-    if th_split === :h
-        layout --> (1, vlength)
-        link --> :y #alternative: :none
-    elseif th_split === :v
-        layout --> (vlength, 1)
-    else
-        layout --> 1
-    end
-
-    return th.t, th.data
-
-end
-
-#convert to TimeHistory{Matrix} and return it to the pipeline for dispatching
-@recipe function f(th::TimeHistory{<:AbstractVector{<:AbstractVector{<:Real}}})
-    return TimeHistory(th.t, Array(VectorOfArray(th.data))')
-end
-
-thplot(t, data; kwargs...) = plot(TimeHistory(t, data); kwargs...)
-thplot!(t, data; kwargs...) = plot!(TimeHistory(t, data); kwargs...)
+export make_plots, save_plots
 
 
 ################################################################################
 
-# function make_plots(mdl::Model; mode::Symbol = :basic, kwargs...)
-#     make_plots(THNew(mdl); mode, save_path, kwargs...)
-# end
+make_plots(::T; kwargs...) where {T<:THNew} = println("Method make_plots not extended for $T")
 
-# #try to dispatch to the Plots method; this is useful when assembling
-# make_plots(args...; kwargs...) = plot(args...; kwargs...)
+#these produce a single figure so they can be handled by the Plots pipeline
+#directly as recipes
+make_plots(th::THNew{<:Real}; kwargs...) = plot(th; kwargs...)
 
-make_plots(::THNew; kwargs...) = println("Not implemented")
+make_plots(th::THNew{<:AbstractVector{<:Real}}; kwargs...) = plot(th; kwargs...)
 
 #complex Systems whose outputs are NamedTuples will typically require multiple
 #figures, so we cannot use a @recipe for them. we need to handle the THNew
@@ -106,32 +33,28 @@ function make_plots(th::THNew{<:NamedTuple}; mode, kwargs...)
 
     pd = Dict{Symbol, Any}()
     for name in Modeling.get_child_names(th)
-        println("Generating plots for $name")
-        #this will return either nothing, a Dict or a Plots.Plot instance
-        child_plots = make_plots(getproperty(th, name); mode, kwargs...)
+        child_plots = make_plots(getproperty(th, name); mode, kwargs...)::Union{Nothing, NamedTuple, Plots.Plot}
         !isnothing(child_plots) ? pd[name] = child_plots : nothing
     end
 
-    return pd
+    return NamedTuple(pd)
 
 end
 
-# #remove this?
-# make_plots(::THNew{Nothing}; kwargs...) = nothing
+# function make_plots(mdl::Model; mode::Symbol = :basic, kwargs...)
+#     make_plots(THNew(mdl); mode, save_path, kwargs...)
+# end
 
-#these produce a single figure so they can be passed to the Plots pipeline
-#directly as recipes
-make_plots(th::THNew{<:Real}; kwargs...) = plot(th; kwargs...)
-make_plots(th::THNew{<:AbstractVector{<:Real}}; kwargs...) = plot(th; kwargs...)
 
-@recipe function f(th::THNew{<:Real})
+
+@recipe function plot(th::THNew{<:Real})
 
     xguide --> L"$t \: (s)$"
     return th._t, th._y
 
 end
 
-@recipe function f(th::THNew{<:AbstractVector{<:Real}}; th_split = :none)
+@recipe function plot(th::THNew{<:AbstractVector{<:Real}}; th_split = :none)
 
     #th._y is a Vector{AbstractVector{<:Real}}; convert it to a matrix
     y_matrix = Array(VectorOfArray(th._y))'
@@ -156,34 +79,31 @@ end
 end
 
 
-function save_plots(d::Dict{Symbol, T} where {T <: Any};
-                    save_path::Union{String, Nothing} = nothing, format = :png)
+function save_plots(nt::NamedTuple{K, T} where {K, T <: NTuple{N, Union{NamedTuple, Plots.Plot}} where {N}};
+                    save_folder::Union{String, Nothing} = nothing, format = :png)
 
-    save_path = (save_path === nothing ?
-        joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_path)
+    save_folder = mkpath(save_folder === nothing ?
+        joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_folder)
 
-    for (label, child) in zip(keys(d), values(d))
-        child_save_path = joinpath(save_path, String(label))
-        if isa(child, Dict)
-            mkpath(child_save_path)
-            save_plots(d[label]; save_path = child_save_path, format)
+    n = 0
+    for (label, child) in zip(keys(nt), values(nt))
+
+        if isa(child, NamedTuple)
+            save_subfolder = mkpath(joinpath(save_folder, String(label)))
+            save_plots(nt[label]; save_folder = save_subfolder, format)
+
         elseif isa(child, Plots.Plot)
-            savefig(child, child_save_path*"."*String(format))
+            n += 1
+            plot_filename = joinpath(save_folder, string(n, pad = 2)*"_"*String(label)*"."*String(format))
+            savefig(child, plot_filename)
+            println("Saved figure $plot_filename")
+
         else
-            error("Invalid Dict entry type")
+            error("Invalid entry type")
         end
     end
 
 end
 
-function save_plots(plt::Plots.Plot;
-                    save_path::Union{String,Nothing} = nothing, format = :png)
 
-    save_path = (save_path === nothing ?
-        joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_path)
-
-    savefig(plt, save_path*"."*String(format))
-end
-
-
-end
+end #module

@@ -11,9 +11,9 @@ using Flight.Airdata
 using Flight.Kinematics
 using Flight.Dynamics
 
-import Flight.Plotting: plots
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
+import Flight.Plotting: make_plots
 
 export AbstractThruster, EThruster
 
@@ -145,25 +145,25 @@ function f_cont!(sys::System{EThruster}, kin::KinData, air::AirData)
 
 end
 
-function plots(t, data::AbstractVector{<:EThrusterY}; mode, save_path, kwargs...)
 
-    @unpack wr_c, wr_b = StructArray(data)
+function make_plots(th::THNew{<:EThrusterY}; mode, kwargs...)
 
-    pd = Dict{String, Plots.Plot}()
+    pd = OrderedDict{Symbol, Plots.Plot}()
 
-    pd["01_wr_Oc_c"] = thplot(t, wr_c;
+    pd[:wr_Oc_c] = plot(th.wr_c;
         plot_title = "Thruster Wrench [Thruster Frame]",
         wr_source = "thr", wr_frame = "c",
         kwargs...)
 
-    pd["02_wr_Ob_b"] = thplot(t, wr_b;
+    pd[:wr_Ob_b] = plot(th.wr_b;
         plot_title = "Thruster Wrench [Airframe]",
         wr_source = "thr", wr_frame = "b",
         kwargs...)
 
-    save_plots(pd; save_path)
+    return NamedTuple(pd)
 
 end
+
 
 ##################### Hand of God ##########################
 
@@ -186,18 +186,5 @@ end
 # #required to make EThruster compatible with System
 # Base.@kwdef mutable struct EThrusterD end
 
-#this works:
-# function PropulsionGroup(nt::NamedTuple{L, T}  where {L, T<:NTuple{N,AbstractThruster} where {N}})
-#     PropulsionGroup{nt}()
-# end
-#= #interestingly, this does not work:
-PropulsionGroup(nt::NamedTuple{L, NTuple{N, T}  where {L,N,T<:NTuple{N,
-Propulsion.AbstractThruster}}) = PropulsionGroup{nt}()
-
-#the reason is that NamedTuple, unlike Tuple (and therefore NTuple) is
-#NOT covariant. that is:
-#(EThruster(), EThruster()) isa NTuple{N, AbstractThruster} where {N} == true
-#however:
-#(a=EThruster(), b=NThruster) isa NamedTuple{L, NTuple{N, AbstractThruster} where {N} == false
-=#
+#
 end #module

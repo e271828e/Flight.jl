@@ -12,7 +12,6 @@ using Flight.Input, Flight.Output
 
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
-import Flight.Plotting: plots
 import Flight.Output: update!
 
 export AircraftBase, AbstractAirframe, EmptyAirframe, AbstractAerodynamics,
@@ -161,6 +160,5 @@ function update!(xp::XPInterface, pos::PosData, aircraft::Integer = 0)
 
 end
 
-#no custom plots function required, all outputs are namedtuples
 
 end #module
