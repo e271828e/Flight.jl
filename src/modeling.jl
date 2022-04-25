@@ -7,6 +7,7 @@ using SciMLBase: ODEProblem, u_modified!, init as init_problem
 using OrdinaryDiffEq: ODEIntegrator, Tsit5
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
 
+import AbstractTrees: children, printnode, print_tree
 import SciMLBase: step!, solve!, reinit!, get_proposed_dt
 import DataStructures: OrderedDict
 
@@ -421,9 +422,54 @@ Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._y[i])
 get_child_names(::T) where {T <: TimeHistory} = get_child_names(T)
 get_child_names(::Type{TimeHistory{T}}) where {T} = fieldnames(T)
 
-#could be rewritten as @generated to avoid allocating if needed
+#could be rewritten as @generated to avoid allocation if needed
 function get_scalar_components(th::TimeHistory{<:AbstractVector{T}}) where {T<:Real}
     [TimeHistory(th._t, y) for y in th._y |> StructArray |> StructArrays.components]
 end
+
+
+################################################################################
+############################## Visualization ###################################
+
+Base.@kwdef struct SystemTreeNode
+    label::Symbol = :root
+    type::DataType #SystemDescriptor type
+    function SystemTreeNode(label::Symbol, type::DataType)
+        @assert (type <: SystemDescriptor) && (!isabstracttype(type))
+        new(label, type)
+    end
+end
+
+SystemTreeNode(::T) where {T<:SystemDescriptor} = SystemTreeNode(type = T)
+SystemTreeNode(::System{D}) where {D} = SystemTreeNode(type = D)
+
+function children(node::SystemTreeNode)
+    return [SystemTreeNode(name, type) for (name, type) in zip(
+            fieldnames(node.type), fieldtypes(node.type))
+            if type <: SystemDescriptor]
+end
+
+function printnode(io::IO, node::SystemTreeNode)
+    print(io, ":"*string(node.label)*" ($(node.type))")
+end
+
+print_tree(desc::SystemDescriptor) = print_tree(SystemTreeNode(desc))
+print_tree(sys::System) = print_tree(SystemTreeNode(sys))
+
+
+# function AbstractTrees.children(x::ComponentVector)
+#     c = []
+#     for k in keys(x)
+#         k isa Symbol ? push!(c, getproperty(x, k)) : nothing
+#     end
+
+#     # vector = [getproperty(x, k) for k in keys(x) if keys(x) isa Tuple]
+#     return c
+# end
+
+# function AbstractTrees.printnode(io::IO, x::ComponentVector)
+#     nothing
+# end
+
 
 end #module

@@ -168,6 +168,7 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     k_s_zn = q_ns(e3)[3]
     Δh = AltOrth(P) - trn.altitude
     if k_s_zn > 1e-3
+    # if abs(k_s_zn > 1e-3)
         ξ = min(0.0, Δh / k_s_zn)
     else
         ξ = 0.0 #0 instead of 0.0 causes type instability
@@ -327,7 +328,7 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     #normalized contact force projected on the contact frame
     f_c = SVector{3,Float64}(μ_eff[1], μ_eff[2], -1)
     f_s = t_sc.q(f_c) #project normalized force onto the strut frame
-    @assert f_s[3] < 0
+    # @assert f_s[3] < 0
 
     #the value of the ground's normal force must be such that its projection
     #along the strut cancels the damper's force

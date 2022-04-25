@@ -48,11 +48,11 @@ function forward_drop_test()
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
     ac = System(C182TDescriptor());
-    kin_init = KinInit(v_eOb_b = [0, 0, 0],
+    kin_init = KinInit(v_eOb_b = [30, 0, 0],
                         ω_lb_b = [0, 0, 0],
-                        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
+                        q_nb = REuler(ψ = 0, θ = 0.2, φ = 0.0),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-                                        h_trn + 2.0 - 0.15 + 1.0));
+                                        h_trn + 1.9 + 2220.5));
 
     Aircraft.init!(ac, kin_init)
     # #if the model was instantiated before setting the system's initial
@@ -62,19 +62,21 @@ function forward_drop_test()
     ac.u.avionics.pedals = -.5
     ac.u.avionics.brake_left = 1
     ac.u.avionics.brake_right = 1
-    ac.u.avionics.throttle = 0.5
+    ac.u.avionics.throttle = 0.3
 
     sim = SimulationRun(
         # model = Model(ac, (trn, atm); t_end = 3600, adaptive = true),
-        model = Model(ac, (trn, atm); t_end = 20, adaptive = false, solver = RK4(), dt = 0.01, y_saveat = 0.01),
+        model = Model(ac, (trn, atm); t_end = 30, adaptive = false, solver = RK4(), dt = 0.02, y_saveat = 0.02),
         # outputs = [XPInterface(host = IPv4("192.168.1.2"))], #Parsec
         outputs = [XPInterface()], #localhost
         realtime = false,
         )
 
     Simulation.run!(sim)
-    plots = make_plots(sim.model)
-    save_plots(plots, save_folder = joinpath("tmp", "drop_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
+    # plots = make_plots(sim.model)
+    # save_plots(plots, save_folder = joinpath("tmp", "drop_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
+
+    return sim
 
 end
 
@@ -110,5 +112,7 @@ function free_flight()
     Simulation.run!(sim)
     plots = make_plots(sim.model)
     save_plots(plots, save_folder = joinpath("tmp", "free_flight", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
+
+    return sim
 
 end

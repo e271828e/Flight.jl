@@ -326,34 +326,69 @@ function make_plots(th::TimeHistory{<:PosData}; kwargs...)
         return pd #nothing also works
     end
 
-    subplot_h_e = plot(th.h_e; title = "", kwargs...)
-
-    #remove the title added by the Altitude TH recipe
-    subplot_h = plot(th.h_e; title = "", kwargs...)
-                plot!(th.h_o; title = "", kwargs...)
-
-    #remove the title added by the LatLon TH recipe
-    subplot_latlon = plot(th.ϕ_λ; title = "", th_split = :v, kwargs...)
-
-    subplot_xy = plot(th.Δxy;
-        label = [L"$\int v_{eb}^{x_n} dt$" L"$\int v_{eb}^{y_n} dt$"],
-        ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$"],
-        th_split = :h, link = :none, kwargs...)
-
     pd[:e_nb] = plot(th.e_nb;
         plot_title = "Attitude (Airframe/NED)",
         rot_ref = "n", rot_target = "b",
         kwargs...)
+
+    #remove the title added by the LatLon TH recipe
+    subplot_latlon = plot(th.ϕ_λ; title = "", th_split = :v, kwargs...)
+
+    #remove the title added by the Altitude TH recipe
+    subplot_h = plot(th.h_e; title = "", kwargs...)
+                plot!(th.h_o; title = "", kwargs...)
 
     pd[:Ob_geo] = plot(subplot_latlon, subplot_h;
         layout = grid(1, 2, widths = [0.67, 0.33]),
         plot_title = "Position (WGS84)",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
+    subplot_xy = plot(th.Δxy;
+        label = [L"$\int v_{eb}^{x_n} dt$" L"$\int v_{eb}^{y_n} dt$"],
+        ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$"],
+        th_split = :h, link = :none, kwargs...)
+
+    subplot_h_e = plot(th.h_e; title = "", kwargs...)
+
     pd[:Ob_xyh] = plot(subplot_xy, subplot_h_e;
         layout = grid(1, 2, widths = [0.67, 0.33]),
         plot_title = "Position (Local Cartesian)",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    n = length(th)
+    th_Δx, th_Δy = Modeling.get_scalar_components(th.Δxy)
+    xs = th_Δx._y
+    ys = th_Δy._y
+    zs = Float64.(th.h_e._y)
+
+    pd[:Ob_xyh_3D] = plot(xs, ys, zs)
+    # @show xl = pd[:Ob_xyh_3D] |> xlims
+    # @show yl = pd[:Ob_xyh_3D] |> ylims
+    # @show zl = pd[:Ob_xyh_3D] |> zlims
+    xl = (minimum(xs), maximum(xs))
+    yl = (minimum(ys), maximum(ys))
+    zl = (minimum(zs), maximum(zs))
+
+    #scale all axes equally
+    @show xl_mid = 0.5sum(xl)
+    @show yl_mid = 0.5sum(yl)
+    @show zl_mid = 0.5sum(zl)
+    @show xl_span = xl[2] - xl[1]
+    @show yl_span = yl[2] - yl[1]
+    @show zl_span = zl[2] - zl[1]
+    @show span = max(xl_span, yl_span, zl_span)
+    xlims!(pd[:Ob_xyh_3D], (xl_mid - 0.5span, xl_mid + 0.5span))
+    ylims!(pd[:Ob_xyh_3D], (yl_mid - 0.5span, yl_mid + 0.5span))
+    zlims!(pd[:Ob_xyh_3D], (zl[1], zl[1] + span))
+    # @show xl = pd[:Ob_xyh_3D] |> xlims
+    # @show yl = pd[:Ob_xyh_3D] |> ylims
+    # @show zl = pd[:Ob_xyh_3D] |> zlims
+
+    plot!(xs, ys, fill(zl[1], n), lc=:lightgray)
+    plot!(xs, fill(yl[2], n), zs, lc=:lightgray)
+    plot!(fill(xl[1], n), ys, zs, lc=:lightgray)
+    plot!(xs, ys, zs, lc=:blue, lw=3, xlims=xl, ylims=yl, zlims=zl) # plot again to front
+
 
     return pd
 

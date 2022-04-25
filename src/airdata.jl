@@ -147,13 +147,15 @@ function make_plots(th::TimeHistory{<:AirData}; kwargs...)
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
 
-        subplot_T = plot(TimeHistory(th._t, hcat(th.T._y, th.Tt._y)' |> collect);
+        subplot_T = plot(
+            TimeHistory(th._t, hcat(th.T._y, th.Tt._y)' |> collect);
             title = "Temperature",
             label = ["Static"  "Total"],
             ylabel = L"$T \ (K)$",
             th_split = :none, kwargs...)
 
-        subplot_p = plot(TimeHistory(th._t, 1e-3*hcat(th.p._y, th.pt._y)' |> collect);
+        subplot_p = plot(
+            TimeHistory(th._t, 1e-3*hcat(th.p._y, th.pt._y)' |> collect);
             title = "Pressure",
             label = ["Static"  "Total"],
             ylabel = L"$p \ (kPa)$",
@@ -164,7 +166,8 @@ function make_plots(th::TimeHistory{<:AirData}; kwargs...)
         layout = (1,2),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-        subplot_airspeed = plot(TimeHistory(th._t, hcat(th.TAS._y, th.EAS._y, th.CAS._y)' |> collect);
+        subplot_airspeed = plot(
+            TimeHistory(th._t, hcat(th.TAS._y, th.EAS._y, th.CAS._y)' |> collect);
             title = "Airspeed",
             label = ["True" "Equivalent" "Calibrated"],
             ylabel = L"$v \ (m/s)$",
@@ -179,7 +182,9 @@ function make_plots(th::TimeHistory{<:AirData}; kwargs...)
             label = "", kwargs...)
 
     l3 = @layout [a{0.5w} [b; c{0.5h}]]
-    pd[:airspeed_M_q] = plot(subplot_airspeed, subplot_Mach, subplot_q;
+
+    pd[:airspeed_M_q] = plot(
+        subplot_airspeed, subplot_Mach, subplot_q;
         layout = l3,
         plot_title = "Freestream Properties",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
