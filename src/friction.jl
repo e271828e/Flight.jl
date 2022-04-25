@@ -102,7 +102,7 @@ function f_disc!(sys::System{<:Regulator{N}}) where {N}
 
 end
 
-function make_plots(th::THNew{<:RegulatorY}; mode, kwargs...)
+function make_plots(th::TimeHistory{<:RegulatorY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -142,7 +142,7 @@ function make_plots(th::THNew{<:RegulatorY}; mode, kwargs...)
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    return NamedTuple(pd)
+    return pd
 
 end
 

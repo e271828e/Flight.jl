@@ -1,6 +1,7 @@
 using Flight
 
 using Base.Iterators
+using Dates
 using OrdinaryDiffEq
 using SciMLBase
 using LinearAlgebra
@@ -69,11 +70,11 @@ function forward_drop_test()
         # outputs = [XPInterface(host = IPv4("192.168.1.2"))], #Parsec
         outputs = [XPInterface()], #localhost
         realtime = false,
-        plot_enable = true,
-        plot_path = joinpath("tmp", "c182t", "forward_drop")
         )
 
     Simulation.run!(sim)
+    plots = make_plots(sim.model)
+    save_plots(plots, save_folder = joinpath("tmp", "drop_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
 
 end
 
@@ -104,10 +105,10 @@ function free_flight()
         outputs = [XPInterface(host = IPv4("192.168.1.2"))], #Parsec
         # outputs = [XPInterface()], #localhost
         realtime = true,
-        plot_enable = true,
-        plot_path = joinpath("tmp", "c182t", "free_flight")
         )
 
     Simulation.run!(sim)
+    plots = make_plots(sim.model)
+    save_plots(plots, save_folder = joinpath("tmp", "free_flight", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
 
 end

@@ -11,7 +11,7 @@ import SciMLBase: step!, solve!, reinit!, get_proposed_dt
 import DataStructures: OrderedDict
 
 export f_cont!, f_disc!, step!
-export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Model, THNew
+export SystemDescriptor, SystemGroupDescriptor, NullSystemDescriptor, System, Model, TimeHistory
 export SystemẊ, SystemX, SystemY, SystemU, SystemD
 
 
@@ -381,29 +381,29 @@ end
 
 
 ################################################################################
-################################## THNew #######################################
+################################## TimeHistory #######################################
 
-mutable struct THNew{T}
+mutable struct TimeHistory{T}
     _t::Vector{Float64}
     _y::Vector{T}
-    function THNew(t::AbstractVector{Float64}, y::AbstractVector{T}) where {T}
+    function TimeHistory(t::AbstractVector{Float64}, y::AbstractVector{T}) where {T}
         @assert length(t) == length(y)
         new{T}(t, y)
     end
 end
 
-# THNew(mdl::Model) = THNew(mdl.log.t, mdl.log.saveval)
+TimeHistory(t::Real, y) = TimeHistory([Float64(t)], [y])
 
-THNew(t::Real, y) = THNew([Float64(t)], [y])
-
-function THNew(t::AbstractVector{<:Real}, M::Matrix{<:Real})
+function TimeHistory(t::AbstractVector{<:Real}, M::Matrix{<:Real})
     #each Matrix column interpreted as one Vector value
-    THNew(t, [M[:, i] for i in 1:size(M,2)])
+    TimeHistory(t, [M[:, i] for i in 1:size(M,2)])
 end
 
-Base.length(th::THNew) = length(th._t)
+TimeHistory(mdl::Model) = TimeHistory(mdl.log.t, mdl.log.saveval)
 
-function Base.getproperty(th::THNew, s::Symbol)
+Base.length(th::TimeHistory) = length(th._t)
+
+function Base.getproperty(th::TimeHistory, s::Symbol)
     t = getfield(th, :_t)
     y = getfield(th, :_y)
     if s === :_t
@@ -411,19 +411,19 @@ function Base.getproperty(th::THNew, s::Symbol)
     elseif s === :_y
         return y
     else
-        return THNew(t, getproperty(StructArray(y), s))
+        return TimeHistory(t, getproperty(StructArray(y), s))
     end
 end
 
-Base.getindex(th::THNew, i) = THNew(th._t[i], th._y[i])
+Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._y[i])
 
 #for inspection
-get_child_names(::T) where {T <: THNew} = get_child_names(T)
-get_child_names(::Type{THNew{T}}) where {T} = fieldnames(T)
+get_child_names(::T) where {T <: TimeHistory} = get_child_names(T)
+get_child_names(::Type{TimeHistory{T}}) where {T} = fieldnames(T)
 
 #could be rewritten as @generated to avoid allocating if needed
-function get_scalar_components(th::THNew{<:AbstractVector{T}}) where {T<:Real}
-    [THNew(th._t, y) for y in th._y |> StructArray |> StructArrays.components]
+function get_scalar_components(th::TimeHistory{<:AbstractVector{T}}) where {T<:Real}
+    [TimeHistory(th._t, y) for y in th._y |> StructArray |> StructArrays.components]
 end
 
 end #module

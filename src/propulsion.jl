@@ -146,7 +146,7 @@ function f_cont!(sys::System{EThruster}, kin::KinData, air::AirData)
 end
 
 
-function make_plots(th::THNew{<:EThrusterY}; mode, kwargs...)
+function make_plots(th::TimeHistory{<:EThrusterY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -160,7 +160,7 @@ function make_plots(th::THNew{<:EThrusterY}; mode, kwargs...)
         wr_source = "thr", wr_frame = "b",
         kwargs...)
 
-    return NamedTuple(pd)
+    return pd
 
 end
 

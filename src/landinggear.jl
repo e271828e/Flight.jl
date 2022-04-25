@@ -388,7 +388,7 @@ end
 
 ############################### Plots #########################################
 
-function make_plots(th::THNew{<:StrutY}; mode, kwargs...)
+function make_plots(th::TimeHistory{<:StrutY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -409,16 +409,16 @@ function make_plots(th::THNew{<:StrutY}; mode, kwargs...)
         layout = (1,3), link = :none,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    return NamedTuple(pd)
+    return pd
 
 end
 
 
-function make_plots(th::THNew{<:ContactY}; mode, kwargs...)
+function make_plots(th::TimeHistory{<:ContactY}; kwargs...)
 
     pd = OrderedDict{Symbol, Any}()
 
-    pd[:regulator] = make_plots(th.regulator; mode, kwargs...)
+    pd[:regulator] = make_plots(th.regulator; kwargs...)
 
     (μ_max_x, μ_max_y) = Modeling.get_scalar_components(th.μ_max)
     (μ_eff_x, μ_eff_y) = Modeling.get_scalar_components(th.μ_eff)
@@ -474,7 +474,7 @@ function make_plots(th::THNew{<:ContactY}; mode, kwargs...)
         wr_source = "trn", wr_frame = "b",
         kwargs...)
 
-    return NamedTuple(pd)
+    return pd
 
 end
 

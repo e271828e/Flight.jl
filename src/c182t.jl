@@ -24,7 +24,6 @@ using Flight.Input: XBoxController, get_axis_value, is_released
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Input: assign!
-import Flight.Plotting: plots
 import Flight.Plotting: make_plots
 
 export C182TDescriptor

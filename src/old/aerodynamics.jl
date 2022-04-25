@@ -65,7 +65,7 @@ function plots(t, data::AbstractVector{SimpleDragY}; mode, save_path, kwargs...)
 
     @unpack D, wr_b = StructArray(data)
 
-    pd = Dict{String, Plots.Plot}()
+    pd = OrderedDict{String, Plots.Plot}()
 
     pd["01_D"] = thplot(t, D;
         plot_title = "Aerodynamic Drag",

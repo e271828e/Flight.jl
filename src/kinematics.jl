@@ -10,7 +10,6 @@ using Flight.Attitude
 using Flight.Geodesy
 
 import Flight.Modeling: init, f_cont!, f_disc!
-import Flight.Plotting: plots
 import Flight.Plotting: make_plots
 
 export AbstractKinematics, KinLTF, KinECEF
@@ -307,18 +306,25 @@ end
 
 ############################ Plotting ################################
 
-function make_plots(th::THNew{<:KinData}; mode, kwargs...)
+function make_plots(th::TimeHistory{<:KinData}; kwargs...)
 
-    pd = Dict{Symbol, NamedTuple}()
-    pd[:pos] = make_plots(th.pos; mode, kwargs...)
-    pd[:vel] = make_plots(th.vel; mode, kwargs...)
-    return NamedTuple(pd)
+    return OrderedDict(
+        :pos => make_plots(th.pos; kwargs...),
+        :vel => make_plots(th.vel; kwargs...)
+    )
 
 end
 
-function make_plots(th::THNew{<:PosData}; mode, kwargs...)
+function make_plots(th::TimeHistory{<:PosData}; kwargs...)
 
-    pd = Dict{Symbol, Plots.Plot}()
+    pd = OrderedDict{Symbol, Plots.Plot}()
+
+    plot_level = get(kwargs, :plot_level, :full)
+
+    #example of capturing the plot_level keyword to control which plots are generated
+    if plot_level == :simplified
+        return pd #nothing also works
+    end
 
     subplot_h_e = plot(th.h_e; title = "", kwargs...)
 
@@ -349,7 +355,7 @@ function make_plots(th::THNew{<:PosData}; mode, kwargs...)
         plot_title = "Position (Local Cartesian)",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    return NamedTuple(pd)
+    return pd
 
     #when a plot is assembled from multiple subplots, the plot_titlefontsize
     #attribute no longer works, and it is titlefontisze what determines the font
@@ -358,18 +364,9 @@ function make_plots(th::THNew{<:PosData}; mode, kwargs...)
 
 end
 
-    #maybe add a Trajectory user recipe for Vectors of 3DVector so that i can
-    #pass it a Vector series directly.
-    #also trplot
-    # Ob_xyh_voa = VectorOfArray(Ob_xyh)
-    # plt_Ob_xyh_3D = plot(collect(view(Ob_xyh_voa,i,:) for i ∈ 1:3)...;
-    #     camera = (30, 45))
-    #aspect_ratio attribute does not work for 3d figures
-    # savefig(plt_Ob_xyh_3D, joinpath(save_path, "Ob_xyh_3D.png"))
+function make_plots(th::TimeHistory{<:VelData}; kwargs...)
 
-function make_plots(th::THNew{<:VelData}; mode, kwargs...)
-
-    pd = Dict{Symbol, Plots.Plot}()
+    pd = OrderedDict{Symbol, Plots.Plot}()
 
     pd[:ω_lb_b] = plot(th.ω_lb_b;
         plot_title = "Angular Velocity (Airframe/LTF) [Airframe]",
@@ -397,8 +394,18 @@ function make_plots(th::THNew{<:VelData}; mode, kwargs...)
         th_split = :h,
         kwargs...)
 
-    return NamedTuple(pd)
+    return pd
 
 end
+
+#maybe add a Trajectory user recipe for Vectors of 3DVector so that i can
+#pass it a Vector series directly.
+#also trplot
+# Ob_xyh_voa = VectorOfArray(Ob_xyh)
+# plt_Ob_xyh_3D = plot(collect(view(Ob_xyh_voa,i,:) for i ∈ 1:3)...;
+#     camera = (30, 45))
+#aspect_ratio attribute does not work for 3d figures
+# savefig(plt_Ob_xyh_3D, joinpath(save_path, "Ob_xyh_3D.png"))
+
 
 end #module

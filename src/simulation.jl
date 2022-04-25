@@ -21,20 +21,14 @@ struct SimulationRun{   M <: Model,
     inputs::I
     outputs::O
     realtime::Bool
-    plot_enable::Bool
-    plot_path::Union{Nothing, String}
-    plot_settings::Union{Nothing, NamedTuple}
 end
 
 function SimulationRun(;
     model::Model,
     inputs = Vector{AbstractInputInterface}(),
     outputs = Vector{AbstractOutputInterface}(),
-    realtime = false,
-    plot_enable = false,
-    plot_path = joinpath("tmp", "plots"),
-    plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12))
-    SimulationRun(model, inputs, outputs, realtime, plot_enable, plot_path, plot_settings)
+    realtime = false)
+    SimulationRun(model, inputs, outputs, realtime)
 end
 
 
@@ -107,10 +101,6 @@ function run!(sim::SimulationRun)
     end
 
     println("Simulation finished in $(time() - t_wall_0) seconds")
-
-    if sim.plot_enable
-        plots(mdl; save_path = sim.plot_path, sim.plot_settings...)
-    end
 
 end
 

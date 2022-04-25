@@ -463,7 +463,7 @@ end
 
 ##################### Plotting ##############################
 
-@recipe function plot(th::THNew{<:LatLon})
+@recipe function plot(th::TimeHistory{<:LatLon})
 
     title --> ["Latitude" "Longitude"]
     label --> ["Latitude" "Longitude"]
@@ -471,17 +471,17 @@ end
     th_split --> :v
 
     y_matrix = hcat(th.ϕ._y, th.λ._y)'/π |> collect
-    return THNew(th._t, y_matrix)
+    return TimeHistory(th._t, y_matrix)
 
 end
 
-@recipe function plot(th::THNew{<:Altitude{D}}) where {D}
+@recipe function plot(th::TimeHistory{<:Altitude{D}}) where {D}
 
     title --> "Altitude ($(string(D)))"
     label --> "Altitude ($(string(D)))"
     yguide --> L"$h \ (m)$"
 
-    return THNew(th._t, Float64.(th._y))
+    return TimeHistory(th._t, Float64.(th._y))
 
 end
 

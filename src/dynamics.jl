@@ -10,7 +10,6 @@ using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
 
-import Flight.Plotting: plots
 import Flight.Plotting: make_plots
 
 export FrameTransform, transform
@@ -590,7 +589,7 @@ end
 
 ######################## Plots ############################
 
-@recipe function plot(th::THNew{<:Wrench}; wr_frame = "", wr_source = "")
+@recipe function plot(th::TimeHistory{<:Wrench}; wr_frame = "", wr_source = "")
 
     layout := (1, 2)
     seriestype --> :path
@@ -614,18 +613,19 @@ end
 end
 
 
-function make_plots(th::THNew{<:DynData}; mode, kwargs...)
+function make_plots(th::TimeHistory{<:DynData}; kwargs...)
 
-    pd = Dict( :input => make_plots(th.input; mode, kwargs...),
-               :output => make_plots(th.output; mode, kwargs...))
-    return NamedTuple(pd)
+    return OrderedDict(
+        :input => make_plots(th.input; kwargs...),
+        :output => make_plots(th.output; kwargs...)
+    )
 
 end
 
 
-function make_plots(th::THNew{<:DynDataIn}; mode, kwargs...)
+function make_plots(th::TimeHistory{<:DynDataIn}; kwargs...)
 
-    pd = Dict{Symbol, Plots.Plot}()
+    pd = OrderedDict{Symbol, Plots.Plot}()
 
     pd[:wr_g_b] = plot(th.wr_g_b;
         plot_title = "Gravity Wrench [Airframe]",
@@ -651,17 +651,17 @@ function make_plots(th::THNew{<:DynDataIn}; mode, kwargs...)
         th_split = :h, link = :none,
         kwargs...)
 
-    return NamedTuple(pd)
+    return pd
 
 end
 
 
-function make_plots(th::THNew{<:DynDataOut}; mode, kwargs...)
+function make_plots(th::TimeHistory{<:DynDataOut}; kwargs...)
 
     #standard gravity for specific force normalization
     g₀ = 9.80665
 
-    pd = Dict{Symbol, Plots.Plot}()
+    pd = OrderedDict{Symbol, Plots.Plot}()
 
     pd[:α_eb_b] = plot(th.α_eb_b;
         plot_title = "Angular Acceleration (Airframe/ECEF) [Airframe]",
@@ -690,7 +690,7 @@ function make_plots(th::THNew{<:DynDataOut}; mode, kwargs...)
         th_split = :h, link = :none,
         kwargs...)
 
-    pd[:f_Ob_b] = plot(THNew(th._t, th.f_Ob_b._y / g₀);
+    pd[:f_Ob_b] = plot(TimeHistory(th._t, th.f_Ob_b._y / g₀);
         plot_title = "Specific Force [Airframe]",
         ylabel = hcat(
             L"$f_{Ob}^{x_b} \ (g)$",
@@ -699,7 +699,7 @@ function make_plots(th::THNew{<:DynDataOut}; mode, kwargs...)
         th_split = :h,
         kwargs...)
 
-    return NamedTuple(pd)
+    return pd
 
 end
 

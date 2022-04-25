@@ -336,13 +336,13 @@ end
 
 #unless a more specialized method is defined, a TimeHistory{Rotations} is
 #converted to REuler for plotting
-@recipe function plot(th::THNew{<:Abstract3DRotation}; rot_ref = "", rot_target = "")
+@recipe function plot(th::TimeHistory{<:Abstract3DRotation}; rot_ref = "", rot_target = "")
 
-    return THNew(th._t, [REuler(v) for v in th._y])
+    return TimeHistory(th._t, [REuler(v) for v in th._y])
 
 end
 
-@recipe function plot(th::THNew{<:REuler}; rot_ref = "", rot_target = "")
+@recipe function plot(th::TimeHistory{<:REuler}; rot_ref = "", rot_target = "")
 
     label --> ["Heading" "Inclination" "Bank"]
     yguide --> hcat(L"$\psi_{%$rot_ref %$rot_target} \ (\pi \ rad)$",
@@ -351,7 +351,7 @@ end
     th_split --> :h #custom TimeHistory attribute
 
     y_mat = hcat(th.ψ._y, th.θ._y, th.φ._y)'/π #plot as π factors
-    return THNew(th._t, y_mat)
+    return TimeHistory(th._t, y_mat)
 
 end
 
