@@ -52,7 +52,7 @@ function ac_test02()
     atm = System(AtmosphereDescriptor())
     ac = System(BeaverDescriptor());
 
-    kin_init = KinInit(v_eOb_b = [1, 0, 0.1],
+    kin_init = KinInit(v_eOb_n = [1, 0, 0.1],
                         ω_lb_b = [0, 0, 0],
                         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.531818), λ = deg2rad(-3.574862)),

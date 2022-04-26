@@ -120,13 +120,13 @@ function test_strut()
         @test strut.y.F < 2500 #force is smaller
 
         #compressing load
-        kin_data = KinInit(; Ob, v_eOb_b = [0,0,1]) |> KinData
+        kin_data = KinInit(; Ob, v_eOb_n = [0,0,1]) |> KinData
         f_cont!(strut, steering, terrain, kin_data)
         @test strut.y.ξ_dot < 0 #strut is compressing
         @test strut.y.F ≈ 3500 #damping force is added to elastic force
 
         #advancing motion and compression
-        kin_data = KinInit(; Ob, v_eOb_b = [10,0,1]) |> KinData
+        kin_data = KinInit(; Ob, v_eOb_n = [10,0,1]) |> KinData
         f_cont!(strut, steering, terrain, kin_data)
         @test isapprox.(strut.y.v_eOc_c, [10, 0, 0], atol = 1e-5) |> all
 
@@ -140,7 +140,7 @@ function test_strut()
         f_cont!(steering)
 
         #check that steering angle is accounted for
-        kin_data = KinInit(; Ob, v_eOb_b = [10,0,1]) |> KinData
+        kin_data = KinInit(; Ob, v_eOb_n = [10,0,1]) |> KinData
         f_cont!(strut, steering, terrain, kin_data)
         @test strut.y.v_eOc_c[1] < 10
         @test strut.y.v_eOc_c[2] < 0
@@ -187,7 +187,7 @@ function test_contact()
         @test contact.y.f_c[1:2] == [0, 0] #no effective friction, no tangential force
         @test contact.y.f_c[3] < 0 #ground reaction negative along contact frame z-axis
 
-        kin_data = KinInit(; Ob, v_eOb_b = [1e-4, 0, 0] ) |> KinData
+        kin_data = KinInit(; Ob, v_eOb_n = [1e-4, 0, 0] ) |> KinData
         f_cont!(strut, steering, terrain, kin_data)
         f_cont!(contact, strut, braking)
         @test contact.y.μ_max[1] <= contact.y.μ_roll
@@ -197,7 +197,7 @@ function test_contact()
         @test contact.ẋ[1] > 0 #longitudinal velocity integral should be increasing
 
         #braking
-        kin_data = KinInit(; Ob, q_nb = REuler(φ = 0), v_eOb_b = [1e-4, 0, 0] ) |> KinData
+        kin_data = KinInit(; Ob, q_nb = REuler(φ = 0), v_eOb_n = [1e-4, 0, 0] ) |> KinData
         braking.u[] = 1
         f_cont!(braking)
         f_cont!(strut, steering, terrain, kin_data)
@@ -205,20 +205,20 @@ function test_contact()
         @test contact.y.μ_max[1] > contact.y.μ_roll
 
         #non-axial load, forward motion
-        kin_data = KinInit(; Ob, q_nb = REuler(φ = π/12), v_eOb_b = [1e-4, 0, 0] ) |> KinData
+        kin_data = KinInit(; Ob, q_nb = REuler(φ = π/12), v_eOb_n = [1e-4, 0, 0] ) |> KinData
         f_cont!(strut, steering, terrain, kin_data)
         f_cont!(contact, strut, braking)
         @test contact.y.wr_b.F[2] < 0
 
         #lateral motion, small velocity
-        kin_data = KinInit(; Ob, q_nb = REuler(φ = 0), v_eOb_b = [0, -1e-4, 0] ) |> KinData
+        kin_data = KinInit(; Ob, q_nb = REuler(φ = 0), v_eOb_n = [0, -1e-4, 0] ) |> KinData
         f_cont!(strut, steering, terrain, kin_data)
         f_cont!(contact, strut, braking)
         @test contact.y.wr_b.F[2] > 0
         @test contact.ẋ[2] < 0 #lateral velocity integral should be decreasing
 
         #lateral motion, large velocity
-        kin_data = KinInit(; Ob, q_nb = REuler(φ = 0), v_eOb_b = [0, -1, 0] ) |> KinData
+        kin_data = KinInit(; Ob, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> KinData
         f_cont!(strut, steering, terrain, kin_data)
         f_cont!(contact, strut, braking)
         @test contact.regulator.y.sat[2] == true #large velocity saturates
@@ -263,7 +263,7 @@ function test_landing_gear_unit()
         h_trn = Terrain.TerrainData(trn, l2d).altitude
 
         #wow = true
-        kin = KinInit( Ob = Geographic(l2d, h_trn + 0.9), v_eOb_b = [0,1,0]) |> KinData
+        kin = KinInit( Ob = Geographic(l2d, h_trn + 0.9), v_eOb_n = [0,1,0]) |> KinData
 
         @test (@ballocated f_cont!($ldg, $kin, $trn)) == 0
         @test @ballocated(f_disc!($ldg)) == 0

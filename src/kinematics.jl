@@ -22,7 +22,7 @@ const KinematicsSystem = System{<:AbstractKinematics}
 
 Base.@kwdef struct KinInit
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
-    v_eOb_b::SVector{3, Float64} = zeros(SVector{3})
+    v_eOb_n::SVector{3, Float64} = zeros(SVector{3})
     q_nb::RQuat = RQuat()
     Ob::Geographic{NVector,Ellipsoidal} = Geographic()
     Δx::Float64 = 0.0
@@ -58,7 +58,7 @@ end
 
 function KinData(init::KinInit)
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = init
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = init
 
     h_e = Ob.alt
     q_el = ltf(Ob)
@@ -71,7 +71,7 @@ function KinData(init::KinInit)
 
     n_e = NVector(q_el)
 
-    v_eOb_n = q_nb(v_eOb_b)
+    v_eOb_b = q_nb'(v_eOb_n)
 
     (R_N, R_E) = radii(Ob)
     ω_el_n = SVector{3}(
@@ -120,7 +120,7 @@ init(kin::KinLTF, ::SystemX) = init(kin, KinInit())
 
 function init(::KinLTF, kin_init::KinInit = KinInit())
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = kin_init
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = kin_init
 
     x = ComponentVector(
         pos = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0),
@@ -129,7 +129,7 @@ function init(::KinLTF, kin_init::KinInit = KinInit())
 
     h_e = Ob.alt
     (R_N, R_E) = radii(Ob)
-    v_eOb_n = q_nb * v_eOb_b
+    v_eOb_b = q_nb'(v_eOb_n)
     ω_el_n = SVector{3}(
         v_eOb_n[2] / (R_E + Float64(h_e)),
         -v_eOb_n[1] / (R_N + Float64(h_e)),
@@ -217,7 +217,7 @@ init(kin::KinECEF, ::SystemX) = init(kin, KinInit())
 
 function init(::KinECEF, kin_init::KinInit = KinInit())
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_b, Δx, Δy = kin_init
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = kin_init
 
     x = ComponentVector(
         pos = ComponentVector(q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0),
@@ -227,7 +227,7 @@ function init(::KinECEF, kin_init::KinInit = KinInit())
     n_e = Ob.l2d
     h_e = Ob.alt
     (R_N, R_E) = radii(Ob)
-    v_eOb_n = q_nb * v_eOb_b
+    v_eOb_b = q_nb'(v_eOb_n)
     ω_el_n = SVector{3}(
         v_eOb_n[2] / (R_E + Float64(h_e)),
         -v_eOb_n[1] / (R_N + Float64(h_e)),
@@ -326,7 +326,8 @@ function make_plots(th::TimeHistory{<:PosData}; kwargs...)
         return pd #nothing also works
     end
 
-    pd[:e_nb] = plot(th.e_nb;
+    pd[:e_nb] = plot(
+        th.e_nb;
         plot_title = "Attitude (Airframe/NED)",
         rot_ref = "n", rot_target = "b",
         kwargs...)
@@ -338,64 +339,95 @@ function make_plots(th::TimeHistory{<:PosData}; kwargs...)
     subplot_h = plot(th.h_e; title = "", kwargs...)
                 plot!(th.h_o; title = "", kwargs...)
 
-    pd[:Ob_geo] = plot(subplot_latlon, subplot_h;
-        layout = grid(1, 2, widths = [0.67, 0.33]),
-        plot_title = "Position (WGS84)",
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
-    subplot_xy = plot(th.Δxy;
+    subplot_xy = plot(
+        th.Δxy;
         label = [L"$\int v_{eb}^{x_n} dt$" L"$\int v_{eb}^{y_n} dt$"],
         ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$"],
         th_split = :h, link = :none, kwargs...)
 
-    subplot_h_e = plot(th.h_e; title = "", kwargs...)
+    pd[:Ob_geo] = plot(
+        subplot_latlon, subplot_h;
+        layout = grid(1, 2, widths = [0.67, 0.33]),
+        plot_title = "Position (WGS84)",
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd[:Ob_xyh] = plot(subplot_xy, subplot_h_e;
+    pd[:Ob_xyh] = plot(
+        subplot_xy, subplot_h;
         layout = grid(1, 2, widths = [0.67, 0.33]),
         plot_title = "Position (Local Cartesian)",
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    n = length(th)
-    th_Δx, th_Δy = Modeling.get_scalar_components(th.Δxy)
-    xs = th_Δx._y
-    ys = th_Δy._y
-    zs = Float64.(th.h_e._y)
-
-    pd[:Ob_xyh_3D] = plot(xs, ys, zs)
-    # @show xl = pd[:Ob_xyh_3D] |> xlims
-    # @show yl = pd[:Ob_xyh_3D] |> ylims
-    # @show zl = pd[:Ob_xyh_3D] |> zlims
-    xl = (minimum(xs), maximum(xs))
-    yl = (minimum(ys), maximum(ys))
-    zl = (minimum(zs), maximum(zs))
-
-    #scale all axes equally
-    @show xl_mid = 0.5sum(xl)
-    @show yl_mid = 0.5sum(yl)
-    @show zl_mid = 0.5sum(zl)
-    @show xl_span = xl[2] - xl[1]
-    @show yl_span = yl[2] - yl[1]
-    @show zl_span = zl[2] - zl[1]
-    @show span = max(xl_span, yl_span, zl_span)
-    xlims!(pd[:Ob_xyh_3D], (xl_mid - 0.5span, xl_mid + 0.5span))
-    ylims!(pd[:Ob_xyh_3D], (yl_mid - 0.5span, yl_mid + 0.5span))
-    zlims!(pd[:Ob_xyh_3D], (zl[1], zl[1] + span))
-    # @show xl = pd[:Ob_xyh_3D] |> xlims
-    # @show yl = pd[:Ob_xyh_3D] |> ylims
-    # @show zl = pd[:Ob_xyh_3D] |> zlims
-
-    plot!(xs, ys, fill(zl[1], n), lc=:lightgray)
-    plot!(xs, fill(yl[2], n), zs, lc=:lightgray)
-    plot!(fill(xl[1], n), ys, zs, lc=:lightgray)
-    plot!(xs, ys, zs, lc=:blue, lw=3, xlims=xl, ylims=yl, zlims=zl) # plot again to front
-
-
-    return pd
-
     #when a plot is assembled from multiple subplots, the plot_titlefontsize
     #attribute no longer works, and it is titlefontisze what determines the font
     #size of the overall figure title (which normally is used for subplots).
-    #however, we can still override it specifically for this plot
+
+    th_Δx, th_Δy = Modeling.get_scalar_components(th.Δxy)
+    xs, ys, zs = th_Δx._y, th_Δy._y, Float64.(th.h_e._y)
+
+    pd[:Ob_t3d] = plot(
+        Trajectory3D((xs, ys, zs));
+        plot_title = "Trajectory (Local Cartesian, Ellipsoidal Altitude)",
+        titlefontsize = 20,
+        camera = (30, 45),
+        )
+
+    return pd
+
+end
+
+#@userplot allows defining a custom plot for a specific dataset without having
+#to create a custom type for dispatch. we just wrap the data in the userplot
+#type generated by Plots, and is received inside the recipe in its field "args"
+@userplot Trajectory3D
+@recipe function f(t3d::Trajectory3D)
+
+    # https://daschw.github.io/recipes/#series_recipes
+
+    xs, ys, zs = t3d.args
+    @assert length(xs) == length(ys) == length(zs)
+    n = length(xs)
+
+    xe, ye, ze = map(extrema, (xs, ys, zs))
+    x_mid, y_mid, _ = map(v -> 0.5sum(v), (xe, ye, ze))
+    x_span, y_span, z_span = map(v -> v[2] - v[1], (xe, ye, ze))
+    span = max(x_span, y_span, z_span)
+
+    xl = (x_mid - 0.5span, x_mid + 0.5span)
+    yl = (y_mid - 0.5span, y_mid + 0.5span)
+    zl = (ze[1], ze[1] + span)
+
+    seriestype --> :path
+    xguide --> L"$\Delta x\ (m)$"
+    yguide --> L"$\Delta y\ (m)$"
+    zguide --> L"$h\ (m)$"
+    legend --> false
+
+    xlims --> xl
+    ylims --> yl
+    zlims --> zl
+
+    @series begin
+        linecolor --> :lightgray
+        xs, ys, fill(zl[1], n)
+    end
+
+    @series begin
+        linecolor --> :lightgray
+        xs, fill(yl[2], n), zs
+    end
+
+    @series begin
+        linecolor --> :lightgray
+        fill(xl[1], n), ys, zs
+    end
+
+    @series begin
+        linecolor --> :blue
+        linewidth --> 3
+        xs, ys, zs
+    end
+
+    return nothing
 
 end
 
@@ -403,27 +435,31 @@ function make_plots(th::TimeHistory{<:VelData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    pd[:ω_lb_b] = plot(th.ω_lb_b;
+    pd[:ω_lb_b] = plot(
+        th.ω_lb_b;
         plot_title = "Angular Velocity (Airframe/LTF) [Airframe]",
         label = ["Roll Rate" "Pitch Rate" "Yaw Rate"],
         ylabel = [L"$p \ (rad/s)$" L"$q \ (rad/s)$" L"$r \ (rad/s)$"],
         th_split = :h,
         kwargs...)
 
-    pd[:ω_el_n] = plot(th.ω_el_n;
+    pd[:ω_el_n] = plot(
+        th.ω_el_n;
         plot_title = "Local Tangent Frame Transport Rate (LTF/ECEF) [NED]",
         ylabel = L"$\omega_{el}^{l} \ (rad/s)$",
         th_split = :h,
         kwargs...)
 
-    pd[:v_eOb_n] = plot(th.v_eOb_n;
+    pd[:v_eOb_n] = plot(
+        th.v_eOb_n;
         plot_title = "Velocity (Airframe/ECEF) [NED]",
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{eb}^{N} \ (m/s)$" L"$v_{eb}^{E} \ (m/s)$" L"$v_{eb}^{D} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
-    pd[:v_eOb_b] = plot(th.v_eOb_b;
+    pd[:v_eOb_b] = plot(
+        th.v_eOb_b;
         plot_title = "Velocity (Airframe/ECEF) [Airframe]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
@@ -432,15 +468,6 @@ function make_plots(th::TimeHistory{<:VelData}; kwargs...)
     return pd
 
 end
-
-#maybe add a Trajectory user recipe for Vectors of 3DVector so that i can
-#pass it a Vector series directly.
-#also trplot
-# Ob_xyh_voa = VectorOfArray(Ob_xyh)
-# plt_Ob_xyh_3D = plot(collect(view(Ob_xyh_voa,i,:) for i ∈ 1:3)...;
-#     camera = (30, 45))
-#aspect_ratio attribute does not work for 3d figures
-# savefig(plt_Ob_xyh_3D, joinpath(save_path, "Ob_xyh_3D.png"))
 
 
 end #module

@@ -23,7 +23,7 @@ function test_init()
         q_nb = RQuat([1, 2, 3, -2]),
         Ob = NVectorAlt(ϕ = π/3, λ = -π/6, h = 1500),
         ω_lb_b = [0.1, 0.01, -0.4],
-        v_eOb_b = [100, 5, -10])
+        v_eOb_n = [100, 5, 0])
 
     x = init_x(init)
     #now rebuild the initializer from the kinematic state vector and check it
@@ -37,7 +37,7 @@ function test_init()
     Ob = NVectorAlt(NVector(q_el), h)
     (R_N, R_E) = radii(Ob)
     q_nb = q_lb
-    v_eOb_n = q_nb * v_eOb_b
+    v_eOb_n = q_nb(v_eOb_b)
     ω_el_n = [
         v_eOb_n[2] / (R_E + h),
         -v_eOb_n[1] / (R_N + h),
@@ -45,12 +45,12 @@ function test_init()
     ω_el_b = q_nb' * ω_el_n
     ω_lb_b = ω_eb_b - ω_el_b
 
-    init_test = KinInit(q_nb = q_lb, Ob = Ob, ω_lb_b = ω_lb_b, v_eOb_b = v_eOb_b )
+    init_test = KinInit(q_nb = q_lb, Ob = Ob, ω_lb_b = ω_lb_b, v_eOb_n = v_eOb_n )
 
     @test init.q_nb ≈ init_test.q_nb
     @test init.Ob ≈ init_test.Ob
     @test init.ω_lb_b ≈ init_test.ω_lb_b
-    @test init.v_eOb_b ≈ init_test.v_eOb_b
+    @test init.v_eOb_n ≈ init_test.v_eOb_n
 
 end
 
@@ -61,7 +61,7 @@ function test_fpos()
         q_nb = RQuat([1, 2, 3, -2]),
         Ob = NVectorAlt(ϕ = π/3, λ = -π/6, h = 1500),
         ω_lb_b = [0.1, 0.01, -0.4],
-        v_eOb_b = [100, 5, -10])
+        v_eOb_n = [100, 5, -10])
 
     x_kin = init_x(init)
 

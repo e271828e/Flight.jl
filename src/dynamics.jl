@@ -589,7 +589,7 @@ end
 
 ######################## Plots ############################
 
-@recipe function plot(th::TimeHistory{<:Wrench}; wr_frame = "", wr_source = "")
+@recipe function f(th::TimeHistory{<:Wrench}; wr_frame = "", wr_source = "")
 
     layout := (1, 2)
     seriestype --> :path

@@ -96,7 +96,7 @@ function test_propagation()
 
     @testset verbose = true "Propagation" begin
 
-        kin = KinInit(v_eOb_b = [50, 0, 5]) |> KinData #positive α
+        kin = KinInit(v_eOb_n = [50, 0, 0]) |> KinData
         atm = AtmosphereDescriptor() |> System
         atm.u.static.T_sl = T_std + 10
         air = AirData(kin, atm)

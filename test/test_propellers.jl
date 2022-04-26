@@ -1,10 +1,10 @@
 module TestPropellers
 
 using Test
-using Zygote
 using BenchmarkTools
 using LinearAlgebra
-using Interpolations
+using Interpolations: bounds
+using Zygote: gradient
 
 using Flight
 
@@ -121,7 +121,7 @@ end
 function test_propeller()
 
     t_bp = FrameTransform(r = [1.0, 0, 0])
-    kin = KinInit(v_eOb_b = [50, 0, 5]) |> KinData #positive α
+    kin = KinInit(v_eOb_n = [50, 0, 0]) |> KinData
     atm = AtmosphereDescriptor() |> System
     air = AirData(kin, atm)
     ω = 300
