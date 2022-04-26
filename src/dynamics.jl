@@ -690,7 +690,7 @@ function make_plots(th::TimeHistory{<:DynDataOut}; kwargs...)
         th_split = :h, link = :none,
         kwargs...)
 
-    pd[:f_Ob_b] = plot(TimeHistory(th._t, th.f_Ob_b._y / g₀);
+    pd[:f_Ob_b] = plot(TimeHistory(th._t, th.f_Ob_b._data / g₀);
         plot_title = "Specific Force [Airframe]",
         ylabel = hcat(
             L"$f_{Ob}^{x_b} \ (g)$",

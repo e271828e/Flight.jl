@@ -470,8 +470,8 @@ end
     yguide --> [L"$\varphi \ (\pi \ rad)$" L"$\lambda \ (\pi \ rad)$"]
     th_split --> :v
 
-    y_matrix = hcat(th.ϕ._y, th.λ._y)'/π |> collect
-    return TimeHistory(th._t, y_matrix)
+    data = hcat(th.ϕ._data, th.λ._data)'/π |> collect
+    return TimeHistory(th._t, data)
 
 end
 
@@ -481,7 +481,7 @@ end
     label --> "Altitude ($(string(D)))"
     yguide --> L"$h \ (m)$"
 
-    return TimeHistory(th._t, Float64.(th._y))
+    return TimeHistory(th._t, Float64.(th._data))
 
 end
 

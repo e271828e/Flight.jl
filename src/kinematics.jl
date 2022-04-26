@@ -362,7 +362,7 @@ function make_plots(th::TimeHistory{<:PosData}; kwargs...)
     #size of the overall figure title (which normally is used for subplots).
 
     th_Δx, th_Δy = Modeling.get_scalar_components(th.Δxy)
-    xs, ys, zs = th_Δx._y, th_Δy._y, Float64.(th.h_e._y)
+    xs, ys, zs = th_Δx._data, th_Δy._data, Float64.(th.h_e._data)
 
     pd[:Ob_t3d] = plot(
         Trajectory3D((xs, ys, zs));

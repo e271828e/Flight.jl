@@ -338,7 +338,7 @@ end
 #converted to REuler for plotting
 @recipe function plot(th::TimeHistory{<:Abstract3DRotation}; rot_ref = "", rot_target = "")
 
-    return TimeHistory(th._t, [REuler(v) for v in th._y])
+    return TimeHistory(th._t, [REuler(v) for v in th._data])
 
 end
 
@@ -350,8 +350,8 @@ end
                     L"$\phi_{%$rot_ref %$rot_target} \ (\pi \ rad)$")
     th_split --> :h #custom TimeHistory attribute
 
-    y_mat = hcat(th.ψ._y, th.θ._y, th.φ._y)'/π #plot as π factors
-    return TimeHistory(th._t, y_mat)
+    data = hcat(th.ψ._data, th.θ._data, th.φ._data)'/π #plot as π factors
+    return TimeHistory(th._t, data)
 
 end
 

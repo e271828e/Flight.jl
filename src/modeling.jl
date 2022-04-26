@@ -386,7 +386,7 @@ end
 
 mutable struct TimeHistory{T}
     _t::Vector{Float64}
-    _y::Vector{T}
+    _data::Vector{T}
     function TimeHistory(t::AbstractVector{Float64}, y::AbstractVector{T}) where {T}
         @assert length(t) == length(y)
         new{T}(t, y)
@@ -406,17 +406,17 @@ Base.length(th::TimeHistory) = length(th._t)
 
 function Base.getproperty(th::TimeHistory, s::Symbol)
     t = getfield(th, :_t)
-    y = getfield(th, :_y)
+    y = getfield(th, :_data)
     if s === :_t
         return t
-    elseif s === :_y
+    elseif s === :_data
         return y
     else
         return TimeHistory(t, getproperty(StructArray(y), s))
     end
 end
 
-Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._y[i])
+Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._data[i])
 
 #for inspection
 get_child_names(::T) where {T <: TimeHistory} = get_child_names(T)
@@ -424,7 +424,7 @@ get_child_names(::Type{TimeHistory{T}}) where {T} = fieldnames(T)
 
 #could be rewritten as @generated to avoid allocation if needed
 function get_scalar_components(th::TimeHistory{<:AbstractVector{T}}) where {T<:Real}
-    [TimeHistory(th._t, y) for y in th._y |> StructArray |> StructArrays.components]
+    [TimeHistory(th._t, y) for y in th._data |> StructArray |> StructArrays.components]
 end
 
 

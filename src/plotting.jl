@@ -52,17 +52,17 @@ end
 @recipe function plot(th::TimeHistory{<:Real})
 
     xguide --> L"$t \: (s)$"
-    return th._t, th._y
+    return th._t, th._data
 
 end
 
 @recipe function plot(th::TimeHistory{<:AbstractVector{<:Real}}; th_split = :none)
 
-    #th._y is a Vector{AbstractVector{<:Real}}; convert it to a matrix
-    y_matrix = Array(VectorOfArray(th._y))'
+    #th._data is a Vector{AbstractVector{<:Real}}; convert it to a matrix
+    data = Array(VectorOfArray(th._data))'
 
     #number of matrix columns corresponds to the AbstractVector's length
-    vlength = size(y_matrix)[2]
+    vlength = size(data)[2]
 
     xguide --> L"$t \ (s)$"
 
@@ -76,7 +76,7 @@ end
         layout --> 1
     end
 
-    return th._t, y_matrix
+    return th._t, data
 
 end
 

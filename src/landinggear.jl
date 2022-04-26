@@ -446,7 +446,7 @@ function make_plots(th::TimeHistory{<:ContactY}; kwargs...)
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    subplot_ψ_cv = plot(th._t, rad2deg.(th.ψ_cv._y); title = "Tire Slip Angle",
+    subplot_ψ_cv = plot(th._t, rad2deg.(th.ψ_cv._data); title = "Tire Slip Angle",
         ylabel = L"$\psi_{cv} \ (deg)$", label = "", kwargs...)
     subplot_μ_max_y = plot(μ_max_y; title = "Maximum Friction Coefficient",
         ylabel = L"$\mu_{max}^{y}$", label = "", kwargs...)
