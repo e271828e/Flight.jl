@@ -1,4 +1,4 @@
-module C182T
+module C172R
 
 using LinearAlgebra
 using StaticArrays
@@ -18,7 +18,7 @@ using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
 using Flight.LandingGear
-using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
+using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractVehicle, AbstractAerodynamics, AbstractAvionics
 using Flight.Input: XBoxController, get_axis_value, is_released
 
 import Flight.Modeling: init, f_cont!, f_disc!
@@ -26,7 +26,7 @@ import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, 
 import Flight.Input: assign!
 import Flight.Plotting: make_plots
 
-export C182TDescriptor
+export C172RAircraft
 
 struct ID <: AbstractAircraftID end
 
@@ -66,29 +66,31 @@ init(::Avionics, ::SystemY) = AvionicsY(zeros(SVector{9})...)
 ############################ Type Definitions ##################################
 ################################################################################
 
-############################## OEW #################################
+############################## Airframe #################################
 
-#dummy subsystem to add OEW mass properties to the airframe; could instead
-#customize the get_mp_b method for System{Airframe} but this way we can fall
-#back on the default System{SystemDescriptor} implementation for get_mp_b,
-#which requires all subsystems to define their own get_mp_b methods
-struct OEW <: SystemDescriptor end
-
-const mp_b_OEW = let
-    #define the empty airframe as a RigidBody
-    OEW_G = RigidBody(894, SA[1285 0 0; 0 1825 0; 0 0 2667])
-    #define the transform from the origin of the airframe reference frame (Ob)
-    #to the empty airframe's center of mass (G)
+struct Airframe <: SystemDescriptor end
+#airframe mass properties. these are assumed to include any components attached
+#rigidly to the airframe itself, such as power plant and landing gear, but not
+#fuel contents or payload
+const mp_b_afm = let
+    #define the airframe as a RigidBody
+    afm_G = RigidBody(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
+    #define the transform from the origin of the vehicle reference frame (Ob)
+    #to the (empty) airframe's center of mass (G)
     t_Ob_G = FrameTransform(r = SVector{3}(0.056, 0, 0.582))
-    #compute the empty airframe mass properties at Ob
-    MassProperties(OEW_G, t_Ob_G)
+    #compute the (empty) airframe mass properties at Ob
+    MassProperties(afm_G, t_Ob_G)
 end
 
-MassTrait(::System{OEW}) = HasMass()
-WrenchTrait(::System{OEW}) = GetsNoExternalWrench()
-AngularMomentumTrait(::System{OEW}) = HasNoAngularMomentum()
+MassTrait(::System{Airframe}) = HasMass()
 
-get_mp_b(::System{OEW}) = mp_b_OEW
+#the airframe itself receives no external actions. these are considered to act
+#upon the vehicle's aerodynamics, power plant and landing gear. the same goes
+#for rotational angular momentum.
+WrenchTrait(::System{Airframe}) = GetsNoExternalWrench()
+AngularMomentumTrait(::System{Airframe}) = HasNoAngularMomentum()
+
+get_mp_b(::System{Airframe}) = mp_b_afm
 
 ##################################### Pwp ######################################
 
@@ -115,7 +117,7 @@ end
 ##### Landing Gear ####
 
 #more flexible, but requires adding a type parameter for the ldg field in the
-#Airframe. if we simply declare ldg::Ldg, Ldg is a UnionAll and the System
+#Vehicle. if we simply declare ldg::Ldg, Ldg is a UnionAll and the System
 #constructor (appropriately) fails. also, requires System{<:Ldg} instead of
 #System{Ldg} in method signatures
 # struct Ldg{L <: LandingGearUnit, R <: LandingGearUnit,
@@ -174,33 +176,44 @@ end
 
 ##### Payload ####
 
+const pilot_slot = FrameTransform(r = SVector{3}(0.183, -0.356, 0.899))
+const copilot_slot = FrameTransform(r = SVector{3}(0.183, 0.356, 0.899))
+const psg_left_slot = FrameTransform(r = SVector{3}(-0.681, -0.356, 0.899))
+const psg_right_slot = FrameTransform(r = SVector{3}(-0.681, 0.356, 0.899))
+const baggage_slot = FrameTransform(r = SVector{3}(-1.316, 0, 0.899))
+
 struct Payload <: SystemDescriptor
     pilot::MassProperties #mp_b
     copilot::MassProperties #mp_b
-    baggage::MassProperties
+    psg_left::MassProperties #mp_b
+    psg_right::MassProperties #mp_b
+    baggage::MassProperties #mp_b
 
     function Payload( ; pilot::AbstractMassDistribution = PointMass(75),
                         copilot::AbstractMassDistribution = PointMass(75),
+                        psg_left::AbstractMassDistribution = PointMass(75),
+                        psg_right::AbstractMassDistribution = PointMass(75),
                         baggage::AbstractMassDistribution = PointMass(50))
-
-        pilot_slot = FrameTransform(r = SVector{3}(0.183, -0.356, 0.899))
-        copilot_slot = FrameTransform(r = SVector{3}(0.183, 0.356, 0.899))
-        baggage_slot = FrameTransform(r = SVector{3}(-1.316, 0, 0.899))
 
         return new( MassProperties(pilot, pilot_slot),
                     MassProperties(copilot, copilot_slot),
-                    MassProperties(baggage, baggage_slot))
+                    MassProperties(psg_left, psg_left_slot),
+                    MassProperties(psg_right, psg_right_slot),
+                    MassProperties(baggage, baggage_slot)
+                    )
 
     end
 end
 
-Base.@kwdef mutable struct PayloadD
+Base.@kwdef mutable struct PayloadU
     pilot::Bool = true
     copilot::Bool = true
+    psg_left::Bool = false
+    psg_right::Bool = false
     baggage::Bool = true
 end
 
-init(::Payload, ::SystemD) = PayloadD()
+init(::Payload, ::SystemU) = PayloadU()
 
 MassTrait(::System{Payload}) = HasMass()
 WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
@@ -208,14 +221,16 @@ AngularMomentumTrait(::System{Payload}) = HasNoAngularMomentum()
 
 function get_mp_b(sys::System{Payload})
     mp_b = MassProperties()
-    sys.d.pilot ? mp_b += sys.params.pilot : nothing
-    sys.d.copilot ? mp_b += sys.params.copilot : nothing
-    sys.d.baggage ? mp_b += sys.params.baggage : nothing
+    sys.u.pilot ? mp_b += sys.params.pilot : nothing
+    sys.u.copilot ? mp_b += sys.params.copilot : nothing
+    sys.u.psg_left ? mp_b += sys.params.psg_left : nothing
+    sys.u.psg_right ? mp_b += sys.params.psg_right : nothing
+    sys.u.baggage ? mp_b += sys.params.baggage : nothing
     return mp_b
 end
 
 
-##### Fuel ####
+################################### Fuel #######################################
 
 struct Fuel <: SystemDescriptor end
 
@@ -291,7 +306,7 @@ Base.@kwdef struct AeroY
     β_filt_dot::Float64 = 0.0 #filtered AoS derivative
     stall::Bool = false #stall state
     coeffs::AeroCoeffs = AeroCoeffs() #aerodynamic coefficients
-    wr_b::Wrench = Wrench() #aerodynamic Wrench, airframe
+    wr_b::Wrench = Wrench() #aerodynamic Wrench, vehicle frame
 end
 
 init(::Aero, ::SystemX) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
@@ -300,10 +315,10 @@ init(::Aero, ::SystemU) = AeroU()
 init(::Aero, ::SystemD) = AeroD()
 
 
-################################ Airframe ######################################
+################################ Vehicle ######################################
 
-Base.@kwdef struct Airframe <: AbstractAirframe
-    oew::OEW = OEW()
+Base.@kwdef struct Vehicle <: AbstractVehicle
+    afm::Airframe = Airframe()
     aero::Aero = Aero()
     pwp::Pwp = Pwp()
     ldg::Ldg = Ldg()
@@ -319,7 +334,7 @@ end
 
 function load_aero_data()
 
-    fname = "src/c182t_aero.h5"
+    fname = "src/c172r_aero.h5"
     fid = h5open(fname, "r")
 
     gr_C_D = fid["C_D"]
@@ -506,47 +521,47 @@ end
 
 ######################## Avionics Update Functions ###########################
 
-function f_cont!(avs::System{Avionics}, ::System{Airframe},
+function f_cont!(avionics::System{Avionics}, ::System{Vehicle},
                 ::KinData, ::AirData, ::AbstractTerrain)
 
     #here, avionics do nothing but update their output state. for a more complex
     #aircraft a continuous state-space autopilot implementation could go here
     @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
-            pedals, brake_left, brake_right, flaps = avs.u
+            pedals, brake_left, brake_right, flaps = avionics.u
 
     return AvionicsY(; throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
                             pedals, brake_left, brake_right, flaps)
 
 end
 
-f_disc!(::System{Avionics}, ::System{Airframe}) = false
+f_disc!(::System{Avionics}, ::System{Vehicle}) = false
 
 ################################################################################
-####################### Airframe Update Functions ##############################
+####################### Vehicle Update Functions ##############################
 
 #here we could define f_cont! to account for fuel consumption
 f_cont!(::System{Fuel}, ::System{Pwp}) = nothing
 
-function f_cont!(afm::System{Airframe}, avs::System{Avionics},
+function f_cont!(vehicle::System{Vehicle}, avionics::System{Avionics},
                 kin::KinData, air::AirData, trn::AbstractTerrain)
 
-    @unpack aero, pwp, ldg, fuel, pld = afm.subsystems
+    @unpack aero, pwp, ldg, fuel, pld = vehicle.subsystems
 
-    assign_component_inputs!(afm, avs)
+    assign_component_inputs!(vehicle, avionics)
     f_cont!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_cont!(pwp, kin, air) #update powerplant continuous state & outputs
     f_cont!(fuel, pwp) #update fuel system
     f_cont!(aero, pwp, air, kin, trn)
 
-    Modeling.assemble_y!(afm)
+    Modeling.assemble_y!(vehicle)
 
 end
 
-function assign_component_inputs!(afm::System{<:Airframe}, avs::System{<:Avionics})
+function assign_component_inputs!(vehicle::System{<:Vehicle}, avionics::System{<:Avionics})
 
     @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
-            pedals, brake_left, brake_right, flaps = avs.u
-    @unpack aero, pwp, ldg = afm.subsystems
+            pedals, brake_left, brake_right, flaps = avionics.u
+    @unpack aero, pwp, ldg = vehicle.subsystems
 
     #yoke_Δx is the offset with respect to the force-free position yoke_x0
     #yoke_Δy is the offset with respect to the force-free position yoke_y0
@@ -564,10 +579,10 @@ function assign_component_inputs!(afm::System{<:Airframe}, avs::System{<:Avionic
     return nothing
 end
 
-f_disc!(::System{Airframe}, ::System{Avionics}) = false
+f_disc!(::System{Vehicle}, ::System{Avionics}) = false
 
 #get_mp_b, get_wr_b and get_hr_b fall back to the @generated methods, which then
-#recurse on Airframe subsystems
+#recurse on Vehicle subsystems
 
 
 ################################################################################
@@ -625,8 +640,8 @@ end
 
 #Aircraft constructor override keyword inputs to customize
 
-function C182TDescriptor(; id = ID(), kin = KinLTF(), afm = Airframe(), avs = Avionics())
-    AircraftBase( id; kin, afm, avs)
+function C172RAircraft(; id = ID(), kinematics = KinLTF(), vehicle = Vehicle(), avionics = Avionics())
+    AircraftBase( id; kinematics, vehicle, avionics)
 end
 
 

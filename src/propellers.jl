@@ -320,9 +320,9 @@ Base.@kwdef struct PropellerY
     M_tip::Float64 = 0 #blade tip Mach number
     Δβ::Float64 = 0 #blade pitch offset
     wr_p::Wrench = Wrench() #resulting aerodynamic Wrench, propeller frame
-    wr_b::Wrench = Wrench() #resulting aerodynamic Wrench, airframe
+    wr_b::Wrench = Wrench() #resulting aerodynamic Wrench, vehicle frame
     hr_p::SVector{3,Float64} = zeros(SVector{3})#angular momentum, propeller frame
-    hr_b::SVector{3,Float64} = zeros(SVector{3}) #angular momentum, airframe
+    hr_b::SVector{3,Float64} = zeros(SVector{3}) #angular momentum, vehicle frame
     P::Float64 = 0.0 #power produced by the propeller
     η_p::Float64 = 0.0 #propulsive efficiency
 end

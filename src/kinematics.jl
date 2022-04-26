@@ -328,7 +328,7 @@ function make_plots(th::TimeHistory{<:PosData}; kwargs...)
 
     pd[:e_nb] = plot(
         th.e_nb;
-        plot_title = "Attitude (Airframe/NED)",
+        plot_title = "Attitude (Vehicle/NED)",
         rot_ref = "n", rot_target = "b",
         kwargs...)
 
@@ -437,7 +437,7 @@ function make_plots(th::TimeHistory{<:VelData}; kwargs...)
 
     pd[:ω_lb_b] = plot(
         th.ω_lb_b;
-        plot_title = "Angular Velocity (Airframe/LTF) [Airframe]",
+        plot_title = "Angular Velocity (Vehicle/LTF) [Vehicle Axes]",
         label = ["Roll Rate" "Pitch Rate" "Yaw Rate"],
         ylabel = [L"$p \ (rad/s)$" L"$q \ (rad/s)$" L"$r \ (rad/s)$"],
         th_split = :h,
@@ -445,14 +445,14 @@ function make_plots(th::TimeHistory{<:VelData}; kwargs...)
 
     pd[:ω_el_n] = plot(
         th.ω_el_n;
-        plot_title = "Local Tangent Frame Transport Rate (LTF/ECEF) [NED]",
+        plot_title = "Local Tangent Frame Transport Rate (LTF/ECEF) [NED Axes]",
         ylabel = L"$\omega_{el}^{l} \ (rad/s)$",
         th_split = :h,
         kwargs...)
 
     pd[:v_eOb_n] = plot(
         th.v_eOb_n;
-        plot_title = "Velocity (Airframe/ECEF) [NED]",
+        plot_title = "Velocity (Vehicle/ECEF) [NED Axes]",
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{eb}^{N} \ (m/s)$" L"$v_{eb}^{E} \ (m/s)$" L"$v_{eb}^{D} \ (m/s)$"],
         th_split = :h,
@@ -460,7 +460,7 @@ function make_plots(th::TimeHistory{<:VelData}; kwargs...)
 
     pd[:v_eOb_b] = plot(
         th.v_eOb_b;
-        plot_title = "Velocity (Airframe/ECEF) [Airframe]",
+        plot_title = "Velocity (Vehicle/ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)

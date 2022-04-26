@@ -32,7 +32,7 @@ include("piston.jl")
 
 # # #aircraft
 include("aircraft.jl")
-include("c182t.jl")
+include("c172r.jl")
 
 @reexport using .Misc
 @reexport using .Modeling
@@ -59,7 +59,7 @@ include("c182t.jl")
 @reexport using .Piston
 
 @reexport using .Aircraft
-@reexport using .C182T
+@reexport using .C172R
 
 export ftest
 

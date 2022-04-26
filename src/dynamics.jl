@@ -136,11 +136,11 @@ function transform(t_bc::FrameTransform, wr_c::Wrench)
     F_Oc_c = wr_c.F
     M_Oc_c = wr_c.M
 
-    #project onto airframe axes
+    #project onto vehicle axes
     F_Oc_b = t_bc.q(F_Oc_c)
     M_Oc_b = t_bc.q(M_Oc_c)
 
-    #transform to airframe origin
+    #transform to vehicle origin
     F_Ob_b = F_Oc_b
     M_Ob_b = M_Oc_b + t_bc.r × F_Oc_b
 
@@ -308,15 +308,15 @@ struct HasNoMass <: MassTrait end
 Notes:
 - When get_mp_b is called on a System, the returned MassProperties instance must
   be expressed in the System's parent reference frame.
-- At the root of the component hierarchy we have the airframe. The airframe is
+- At the root of the component hierarchy we have the vehicle. The vehicle is
   its own parent, so the MassProperties it returns must be expressed in its own
-  reference frame: total airframe mass, position vector from the airframe origin
-  Ob to the airframe center of mass G expressed in airframe axes, and inertia
-  tensor of the airframe with respect to its origin, expressed in airframe axes.
+  reference frame: total vehicle mass, position vector from the vehicle origin
+  Ob to the vehicle center of mass G expressed in vehicle axes, and inertia
+  tensor of the vehicle with respect to its origin, expressed in vehicle axes.
   These are the properties expected by the dynamics equations.
-- Aircraft dynamics and kinematics are formulated on the airframe origin Ob
-  instead of the aircraft's center of mass G. This allows for any of the
-  aircraft's mass properties to change, either gradually (for example, due to
+- Aircraft dynamics and kinematics are formulated on the vehicle origin Ob
+  instead of the overall aircraft's center of mass G. This allows for any of the
+  overall aircraft's mass properties to change, either gradually (for example, due to
   fuel consumption) or suddenly (due to a payload release), without having to
   worry about discontinuities in the kinematic state vector.
 """
@@ -390,6 +390,7 @@ end
 
 ###################### AngularMomentumTrait ##########################
 
+#accounts only for additional angular momentum due to rotating components
 abstract type AngularMomentumTrait end
 struct HasAngularMomentum <: AngularMomentumTrait end
 struct HasNoAngularMomentum <: AngularMomentumTrait end
@@ -434,14 +435,14 @@ end
 Compute the equivalent `Wrench` arising from inertia terms in the dynamic
 equations
 
-The resulting `Wrench` is defined on the airframe's reference frame fb.
+The resulting `Wrench` is defined on the vehicle's reference frame fb.
 
 # Arguments:
 - `mp_b::MassProperties`: Current aircraft mass properties in frame fb
 - `vel::VelData`: Velocity outputs
 - `hr_b::AbstractVector{<:Real}`: Additional angular momentum due to the
-  angular velocity of any rotating elements with respect to the airframe,
-  projected on the airframe axes
+  angular velocity of any rotating elements with respect to the vehicle,
+  projected on vehicle axes
 
 """
 function inertia_wrench(mp_b::MassProperties, vel::VelData, hr_b::AbstractVector{<:Real})
@@ -450,7 +451,8 @@ function inertia_wrench(mp_b::MassProperties, vel::VelData, hr_b::AbstractVector
 
     m = mp_b.m; J_Ob_b = mp_b.J_O; r_ObG_b = mp_b.r_OG
 
-    #angular momentum of the overall airframe as a rigid body
+    #angular momentum of the vehicle as a rigid body (excluding rotating
+    #components)
     h_rbd_b = J_Ob_b * ω_ib_b
 
     #total angular momentum
@@ -523,10 +525,10 @@ end
 function f_dyn!(ẋ_vel::VelX, kin::KinData, mp_b::MassProperties,
     wr_ext_b::Wrench, hr_b::AbstractVector{<:Real})
 
-    #wr_ext_b: Total external wrench on the airframe
+    #wr_ext_b: Total external wrench on the vehicle
 
     #hr_b: Additional angular momentum due to the angular velocity of the
-    #rotating aircraft components with respect to the airframe. these are
+    #rotating aircraft components with respect to the vehicle. these are
     #computed individually by each component relative to its center of mass and
     #then summed
 
@@ -628,22 +630,22 @@ function make_plots(th::TimeHistory{<:DynDataIn}; kwargs...)
     pd = OrderedDict{Symbol, Plots.Plot}()
 
     pd[:wr_g_b] = plot(th.wr_g_b;
-        plot_title = "Gravity Wrench [Airframe]",
+        plot_title = "Gravity Wrench [Vehicle Axes]",
         wr_source = "g", wr_frame = "b",
         kwargs...)
 
     pd[:wr_in_b] = plot(th.wr_in_b;
-        plot_title = "Inertia Wrench [Airframe]",
+        plot_title = "Inertia Wrench [Vehicle Axes]",
         wr_source = "in", wr_frame = "b",
         kwargs...)
 
     pd[:wr_ext_b] = plot(th.wr_ext_b;
-        plot_title = "External Wrench [Airframe]",
+        plot_title = "External Wrench [Vehicle Axes]",
         wr_source = "ext", wr_frame = "b",
         kwargs...)
 
     pd[:hr_b] = plot(th.hr_b;
-        plot_title = "Angular Momentum from Rotating Components [Airframe]",
+        plot_title = "Angular Momentum from Rotating Components [Vehicle Axes]",
         ylabel = hcat(
             L"$h_{Ob \ (r)}^{x_b} \ (kg \ m^2 / s)$",
             L"$h_{Ob \ (r)}^{y_b} \ (kg \ m^2 / s)$",
@@ -664,7 +666,7 @@ function make_plots(th::TimeHistory{<:DynDataOut}; kwargs...)
     pd = OrderedDict{Symbol, Plots.Plot}()
 
     pd[:α_eb_b] = plot(th.α_eb_b;
-        plot_title = "Angular Acceleration (Airframe/ECEF) [Airframe]",
+        plot_title = "Angular Acceleration (Vehicle/ECEF) [Vehicle Axes]",
         ylabel = hcat(
             L"$\alpha_{eb}^{x_b} \ (rad/s^2)$",
             L"$\alpha_{eb}^{y_b} \ (rad/s^2)$",
@@ -673,7 +675,7 @@ function make_plots(th::TimeHistory{<:DynDataOut}; kwargs...)
         kwargs...)
 
     pd[:a_eOb_b] = plot(th.a_eOb_b;
-        plot_title = "Linear Acceleration (Airframe/ECEF) [Airframe]",
+        plot_title = "Linear Acceleration (Vehicle/ECEF) [Vehicle Axes]",
         ylabel = hcat(
             L"$a_{eb}^{x_b} \ (m/s^{2})$",
             L"$a_{eb}^{y_b} \ (m/s^{2})$",
@@ -682,7 +684,7 @@ function make_plots(th::TimeHistory{<:DynDataOut}; kwargs...)
         kwargs...)
 
     pd[:a_eOb_n] = plot(th.a_eOb_n;
-        plot_title = "Linear Acceleration (Airframe/ECEF) [NED]",
+        plot_title = "Linear Acceleration (Vehicle/ECEF) [NED Axes]",
         ylabel = hcat(
             L"$a_{eb}^{N} \ (m/s^{2})$",
             L"$a_{eb}^{E} \ (m/s^{2})$",
@@ -691,7 +693,7 @@ function make_plots(th::TimeHistory{<:DynDataOut}; kwargs...)
         kwargs...)
 
     pd[:f_Ob_b] = plot(TimeHistory(th._t, th.f_Ob_b._data / g₀);
-        plot_title = "Specific Force [Airframe]",
+        plot_title = "Specific Force [Vehicle Axes]",
         ylabel = hcat(
             L"$f_{Ob}^{x_b} \ (g)$",
             L"$f_{Ob}^{y_b} \ (g)$",

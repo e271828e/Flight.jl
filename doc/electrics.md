@@ -2,16 +2,16 @@
 
 ## Angular Momentum Equation
 
-For each rotating element attached to the airframe, we have the following scalar angular momentum equation along its
+For each rotating element attached to the vehicle, we have the following scalar angular momentum equation along its
 axis of rotation (arbitrarily chosen as its x-axis):
 
 $J_k^{xx} \left( R^{b_0}_{s_k}\right)^T \dot{\omega}^{b_0}_{eb_0} + J_k^{xx} \dot{\omega}_{k} =$
 $1_x^T M_{ext,B_k[O_k]}^{s_k} + M_{B_0,B_k}$
 
 For most atmospheric vehicles, $\left| J_{B_k} \right| \ll \left| J_{sys}\right|$. This means that, the angular
-acceleration experienced by the airframe due to the torque exchanged with the rotating element will be negligible
+acceleration experienced by the vehicle due to the torque exchanged with the rotating element will be negligible
 compared to that experienced by the rotating element. This justifies dropping the first term on the left hand side,
-which uncouples the rotational dynamics of the rotating element and the airframe. We are then left with:
+which uncouples the rotational dynamics of the rotating element and the vehicle. We are then left with:
 
 $J_k^{xx} \dot{\omega}_{k} = 1_x^T M_{ext,B_k[O_k]}^{s_k} + M_{B_0,B_k}$
 
@@ -23,7 +23,7 @@ $J_s \dot{\omega}_s = M_{gb,s} + M_{eng,s}$
 
 Where:
 - $J_s$: Axial moment of inertia of the motor shaft
-- $\omega_s$: Angular velocity of the motor shaft relative to the airframe
+- $\omega_s$: Angular velocity of the motor shaft relative to the vehicle
 - $M_{gb,s}$: Torque transmitted by the gearbox to the motor shaft
 - $M_{eng,s}$: Torque output by the motor to the motor shaft
 
@@ -35,7 +35,7 @@ $J_p \dot{\omega}_p = M_{air,p} + M_{gb,p}$
 
 Where:
 - $J_p$: Axial moment of inertia of the propeller
-- $\omega_p$: Angular velocity of the propeller relative to the airframe
+- $\omega_p$: Angular velocity of the propeller relative to the vehicle
 - $M_{gb,p}$: Torque transmitted by the gearbox to the propeller
 - $M_{air,s}$: Torque exerted by the airflow on the propeller *along its rotating axis*
 
@@ -161,7 +161,7 @@ $M_{air,p} = -\tanh \left(\dfrac{\omega_p}{\omega_{ref}}\right) k_M \omega_p^2$
 In which the turn sense of the propeller is determined by the choice of $\alpha$ and $sgn(n)$.
 
 The additional angular momentum contributed by the engine, gearbox and propeller assembly to the overall vehicle due to
-their angular velocity with respect to the airframe is:
+their angular velocity with respect to the vehicle is:
 
 $h_{[G_c]}^{c} = \begin{pmatrix} J_p \omega_p + J_s \omega_s & 0 & 0 \end{pmatrix}$
 

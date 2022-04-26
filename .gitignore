@@ -14,6 +14,7 @@ Thumbs.db
 #Julia
 /*.tar.gz
 /tmp
+/old
 /dist
 /dist-extras
 /julia

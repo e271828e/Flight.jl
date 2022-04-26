@@ -156,7 +156,7 @@ function make_plots(th::TimeHistory{<:EThrusterY}; kwargs...)
         kwargs...)
 
     pd[:wr_Ob_b] = plot(th.wr_b;
-        plot_title = "Thruster Wrench [Airframe]",
+        plot_title = "Thruster Wrench [Vehicle Axes]",
         wr_source = "thr", wr_frame = "b",
         kwargs...)
 

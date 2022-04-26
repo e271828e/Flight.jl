@@ -47,9 +47,9 @@ end
 
 struct AirData
     v_ew_n::SVector{3,Float64} #wind velocity, NED axes
-    v_ew_b::SVector{3,Float64} #wind velocity, airframe axes
-    v_eOb_b::SVector{3,Float64} #airframe velocity vector
-    v_wOb_b::SVector{3,Float64} #airframe aerodynamic velocity vector
+    v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
+    v_eOb_b::SVector{3,Float64} #vehicle velocity vector
+    v_wOb_b::SVector{3,Float64} #vehicle aerodynamic velocity vector
     T::Float64 #static temperature
     p::Float64 #static pressure
     ρ::Float64 #density
@@ -105,26 +105,26 @@ function make_plots(th::TimeHistory{<:AirData}; kwargs...)
     pd = OrderedDict{Symbol, Plots.Plot}()
 
     pd[:v_ew_n] = plot(th.v_ew_n;
-        plot_title = "Velocity (Wind / ECEF) [NED]",
+        plot_title = "Velocity (Wind / ECEF) [NED Axes]",
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{ew}^{N} \ (m/s)$" L"$v_{ew}^{E} \ (m/s)$" L"$v_{ew}^{D} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
     pd[:v_ew_b] = plot(th.v_ew_b;
-        plot_title = "Velocity (Wind / ECEF) [Airframe]",
+        plot_title = "Velocity (Wind / ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{ew}^{x_b} \ (m/s)$" L"$v_{ew}^{y_b} \ (m/s)$" L"$v_{ew}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
     pd[:v_eOb_b] = plot(th.v_eOb_b;
-        plot_title = "Velocity (Airframe / ECEF) [Airframe]",
+        plot_title = "Velocity (Vehicle / ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
 
     pd[:v_wOb_b] = plot(th.v_wOb_b;
-        plot_title = "Velocity (Airframe / Wind) [Airframe]",
+        plot_title = "Velocity (Vehicle / Wind) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)

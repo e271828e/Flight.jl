@@ -121,7 +121,7 @@ end
 ########################## Strut #########################
 
 Base.@kwdef struct Strut{D<:AbstractDamper} <: SystemDescriptor
-    t_bs::FrameTransform = FrameTransform() #airframe to strut frame transform
+    t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
     l_OsP::Float64 = 0.0 #strut natural length from strut frame origin to wheel endpoint
     damper::D = SimpleDamper()
 end
@@ -204,19 +204,19 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     t_sc = FrameTransform(r_OsOc_s, q_sc)
     t_bc = FrameTransform(r_ObOc_b, q_bc)
 
-    #contact frame origin velocity due to airframe motion
-    v_eOc_afm_b = v_eOb_b + ω_eb_b × r_ObOc_b
-    v_eOc_afm_c = q_bc'(v_eOc_afm_b)
+    #contact frame origin velocity due to rigid body vehicle motion
+    v_eOc_veh_b = v_eOb_b + ω_eb_b × r_ObOc_b
+    v_eOc_veh_c = q_bc'(v_eOc_veh_b)
 
-    #compute the damper elongation rate required to cancel the airframe
+    #compute the damper elongation rate required to cancel the vehicle
     #contribution to the contact point velocity along the contact frame z axis
     q_sc = q_bs' ∘ q_bc
     k_s_c = q_sc'(e3)
-    ξ_dot = -v_eOc_afm_c[3] / k_s_c[3]
+    ξ_dot = -v_eOc_veh_c[3] / k_s_c[3]
 
     #compute contact point velocity
     v_eOc_dmp_c = k_s_c * ξ_dot
-    v_eOc_c = v_eOc_afm_c + v_eOc_dmp_c
+    v_eOc_c = v_eOc_veh_c + v_eOc_dmp_c
 
     F = get_force(damper, ξ, ξ_dot)
 
@@ -265,7 +265,7 @@ Base.@kwdef struct ContactY
     μ_eff::SVector{2,Float64} = zeros(SVector{2}) #scaled friction coefficient
     f_c::SVector{3,Float64} = zeros(SVector{3}) #normalized contact force
     F_c::SVector{3,Float64} = zeros(SVector{3}) #contact force
-    wr_b::Wrench = Wrench() #resulting airframe Wrench
+    wr_b::Wrench = Wrench() #resulting Wrench on the vehicle frame
 end
 
 #x should be initialized by the default methods
@@ -471,7 +471,7 @@ function make_plots(th::TimeHistory{<:ContactY}; kwargs...)
         kwargs...)
 
     pd[:wr_b] = plot(th.wr_b;
-        plot_title = "Wrench [Airframe]",
+        plot_title = "Wrench [Vehicle Axes]",
         wr_source = "trn", wr_frame = "b",
         kwargs...)
 

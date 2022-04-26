@@ -60,7 +60,7 @@ function h2δ(h)
     p / p_std / √(T / T_std)
 end
 
-#by default, engine mass is assumed to be accounted for by the airframe
+#by default, engine mass is assumed to be accounted for in the vehicle's airframe
 MassTrait(::System{<:AbstractPistonEngine}) = HasNoMass()
 #the propeller gets it instead
 WrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()

@@ -12,10 +12,10 @@ Linear momentum equation for the mass
 
 
 Strut frame $s$:
-- $O_s$: Strut-airframe attachment point. Its position vector with respect to the airframe origin $r_{O_bO_s}^b$ is known and constant.
+- $O_s$: Strut-airframe attachment point. Its position vector with respect to the vehicle origin $r_{O_bO_s}^b$ is known and constant.
 - $z_s$: Parallel to the landing gear compression line, positive along strut elongation.
 - $y_s$: Parallel to the wheel axle when the steering angle $\psi_{sg}$ is zero.
-The attitude of the strut frame axes with respect to the airframe axes is constant and known.
+The attitude of the strut frame axes with respect to the vehicle axes is constant and known.
 
 Wheel frame $w$:
 - $O_w$: End point of the tire, located along the $z_s$ axis.
@@ -131,7 +131,7 @@ $${v}_{eO_c(b)}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b$$
 
 
 
-The term ${v}_{eO_c(b)}^b$ represents the velocity of the contact point due to airframe motion, and
+The term ${v}_{eO_c(b)}^b$ represents the velocity of the contact point due to vehicle motion, and
 $R^b_s e_3 \dot{\xi}$ is its velocity due to piston elongation or compression.
 
 Now:
@@ -335,7 +335,7 @@ means that the vertical ground force is negative along $z_c$, as it should. And 
 $F_{oleo,P}^{z_s}(\xi, \dot{\xi}) > 0$. For example, $F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = -k_s \xi -
 k_d \dot{\xi}$.
 
-With $F_N$, we can now compute $F_{gnd,P}^c(F_N)$, which is the force directly transmitted to the airframe through the tire.
+With $F_N$, we can now compute $F_{gnd,P}^c(F_N)$, which is the ground force transmitted to the vehicle through the tire.
 
 Ground force $F_{gnd,P}^s$ (normal and friction), transmitted through the tire.\
 $$F_{gnd,P}^s = R^s_c F_N {\begin{pmatrix} \mu_x \alpha_x & \mu_y \alpha_y & -1 \end{pmatrix}}^T$$

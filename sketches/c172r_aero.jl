@@ -3,7 +3,7 @@ using Interpolations
 
 function generate_data()
 
-    fname = "src/c182t_aero.h5"
+    fname = "src/c172r_aero.h5"
 
     h5open(fname, "w") do fid
 
@@ -183,7 +183,7 @@ end
 
 function load_data()
 
-    fname = "src/c182t_aero.h5"
+    fname = "src/c172r_aero.h5"
     fid = h5open(fname, "r")
 
     gr_C_D = fid["C_D"]

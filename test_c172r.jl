@@ -15,8 +15,8 @@ function aerodynamics_test()
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
-    aero = System(C182T.Aero());
-    pwp = System(C182T.Pwp());
+    aero = System(C172R.Aero());
+    pwp = System(C172R.Pwp());
     kin_init = KinInit(v_eOb_n = [40, 0, 0],
                         ω_lb_b = [0, 0, 0],
                         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
@@ -47,12 +47,12 @@ function forward_drop_test()
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
-    ac = System(C182TDescriptor());
+    ac = System(C172RAircraft());
     kin_init = KinInit(v_eOb_n = [30, 0, 0],
                         ω_lb_b = [0, 0, 0],
                         q_nb = REuler(ψ = 0, θ = 0.2, φ = 0.0),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-                                        h_trn + 1.9 + 2220.5));
+                                        h_trn + 1.9 + 0.5));
 
     Aircraft.init!(ac, kin_init)
     # #if the model was instantiated before setting the system's initial
@@ -87,7 +87,7 @@ function free_flight()
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
-    ac = System(C182TDescriptor());
+    ac = System(C172RAircraft());
     kin_init = KinInit(v_eOb_n = [0, 0, 0],
                         ω_lb_b = [0, 0, 0],
                         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
