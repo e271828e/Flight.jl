@@ -236,9 +236,16 @@ struct Model{S <: System, I <: ODEIntegrator, L <: SavedValues}
     integrator::I
     log::L
 
-    function Model(sys, args_c::Tuple = (), args_d::Tuple = ();
-        solver = Tsit5(), t_start = 0.0, t_end = 10.0, y_saveat = Float64[],
-        save_on = false, int_kwargs...)
+    function Model(
+        sys, #System
+        args_c::Tuple = (), #externally supplied arguments to f_cont!
+        args_d::Tuple = (); #externally supplied arguments to f_disc!
+        solver = Tsit5(), #
+        t_start = 0.0,
+        t_end = 10.0,
+        y_saveat = Float64[],
+        save_on = false,
+        integrator_kwargs...)
 
         #save_on is set to false because we are not usually interested in the
         #naked System's state vector. everything we need should be available in
@@ -255,7 +262,7 @@ struct Model{S <: System, I <: ODEIntegrator, L <: SavedValues}
 
         x0 = sys.x #the integrator creates its own copy
         problem = ODEProblem{true}(f_update!, x0, (t_start, t_end), params)
-        integrator = init_problem(problem, solver; callback = cb_set, save_on, int_kwargs...)
+        integrator = init_problem(problem, solver; callback = cb_set, save_on, integrator_kwargs...)
         new{typeof(sys), typeof(integrator), typeof(log)}(sys, integrator, log)
     end
 end
