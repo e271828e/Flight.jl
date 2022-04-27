@@ -6,7 +6,7 @@ using Trapz: trapz
 
 import Interpolations: knots, bounds
 
-using Flight.Modeling, Flight.Misc
+using Flight.Modeling, Flight.Utils
 using Flight.Kinematics, Flight.Dynamics, Flight.Airdata
 
 import Flight.Modeling: init, f_cont!, f_disc!
@@ -328,7 +328,7 @@ Base.@kwdef struct PropellerY
 end
 
 init(::Propeller{FixedPitch}, ::SystemU) = nothing
-init(::Propeller{VariablePitch}, ::SystemU) = Ref(Bounded(0.0, 0, 1))
+init(::Propeller{VariablePitch}, ::SystemU) = Ref(Ranged(0.0, 0, 1))
 init(::Propeller, ::SystemY) = PropellerY()
 
 get_Δβ(sys::System{<:Propeller{FixedPitch}}) = 0.0

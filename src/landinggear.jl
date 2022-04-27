@@ -5,7 +5,7 @@ using StaticArrays
 using ComponentArrays
 using UnPack
 
-using Flight.Misc
+using Flight.Utils
 using Flight.Modeling
 using Flight.Plotting
 using Flight.Attitude
@@ -48,7 +48,7 @@ Base.@kwdef struct DirectSteeringY
     ψ::Float64 = 0.0
 end
 #the contents of u must be mutable
-init(::DirectSteering, ::SystemU) = Ref(Bounded(0.0, -1, 1))
+init(::DirectSteering, ::SystemU) = Ref(Ranged(0.0, -1, 1))
 init(::DirectSteering, ::SystemY) = DirectSteeringY(0.0) #steering angle
 
 function f_cont!(sys::System{DirectSteering})
@@ -82,7 +82,7 @@ Base.@kwdef struct DirectBrakingY
    κ_br::Float64 = 0.0 #braking coefficient
 end
 
-init(::DirectBraking, ::SystemU) = Ref(Bounded(0.0, 0, 1))
+init(::DirectBraking, ::SystemU) = Ref(Ranged(0.0, 0, 1))
 init(::DirectBraking, ::SystemY) = DirectBrakingY()
 
 function f_cont!(sys::System{DirectBraking})

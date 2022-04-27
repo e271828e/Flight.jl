@@ -2,21 +2,21 @@ module Plotting
 
 using Reexport
 using Dates
-@reexport using Plots
-@reexport using Measures
-@reexport using LaTeXStrings
-@reexport using StructArrays
-@reexport using RecursiveArrayTools
-@reexport using DataStructures: OrderedDict
+using Plots
+using Measures
+using LaTeXStrings
+using StructArrays
+using RecursiveArrayTools
+using DataStructures: OrderedDict
 
 #this is how relative imports would work
-using ..Utils
 using ..Modeling
 
 export make_plots, save_plots
 
 
 ################################################################################
+########################### System Plot Definitions ############################
 
 make_plots(::T; kwargs...) where {T<:TimeHistory} = println("Method make_plots not extended for $T")
 
@@ -48,15 +48,20 @@ function make_plots(mdl::Model;
     make_plots(TimeHistory(mdl); plot_level, linewidth, margin, guidefontsize, kwargs...)
 end
 
+########### Kinematics ###############
 
-@recipe function plot(th::TimeHistory{<:Real})
+
+################################################################################
+############################ Plot Recipes ######################################
+
+@recipe function f(th::TimeHistory{<:Real})
 
     xguide --> L"$t \: (s)$"
     return th._t, th._data
 
 end
 
-@recipe function plot(th::TimeHistory{<:AbstractVector{<:Real}}; th_split = :none)
+@recipe function f(th::TimeHistory{<:AbstractVector{<:Real}}; th_split = :none)
 
     #th._data is a Vector{AbstractVector{<:Real}}; convert it to a matrix
     data = Array(VectorOfArray(th._data))'
@@ -79,6 +84,10 @@ end
     return th._t, data
 
 end
+
+
+################################################################################
+############################# Plot Saving ######################################
 
 
 function save_plots(dict::OrderedDict{Symbol, T} where {T};

@@ -10,7 +10,7 @@ using HDF5
 
 using Flight.Modeling
 using Flight.Plotting
-using Flight.Misc
+using Flight.Utils
 using Flight.Attitude
 using Flight.Terrain
 using Flight.Airdata
@@ -35,15 +35,15 @@ struct ID <: AbstractAircraftID end
 struct Avionics <: AbstractAvionics end
 
 Base.@kwdef mutable struct AvionicsU
-    throttle::Bounded{Float64, 0, 1} = 0.0
-    yoke_Δx::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
-    yoke_x0::Bounded{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
-    yoke_Δy::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
-    yoke_y0::Bounded{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
-    pedals::Bounded{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
-    brake_left::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
-    brake_right::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
-    flaps::Bounded{Float64, 0, 1} = 0.0 #[0, 1]
+    throttle::Ranged{Float64, 0, 1} = 0.0
+    yoke_Δx::Ranged{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
+    yoke_x0::Ranged{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
+    yoke_Δy::Ranged{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
+    yoke_y0::Ranged{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
+    pedals::Ranged{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
+    brake_left::Ranged{Float64, 0, 1} = 0.0 #[0, 1]
+    brake_right::Ranged{Float64, 0, 1} = 0.0 #[0, 1]
+    flaps::Ranged{Float64, 0, 1} = 0.0 #[0, 1]
 end
 
 Base.@kwdef struct AvionicsY
@@ -274,10 +274,10 @@ Base.@kwdef struct Aero <: AbstractAerodynamics
 end
 
 Base.@kwdef mutable struct AeroU
-    e::Bounded{Float64, -1, 1} = 0.0 #elevator control input (+ pitch down)
-    a::Bounded{Float64, -1, 1} = 0.0 #aileron control input (+ roll right)
-    r::Bounded{Float64, -1, 1} = 0.0 #rudder control input (+ yaw left)
-    f::Bounded{Float64, 0, 1} = 0.0 # flap control input (+ flap down)
+    e::Ranged{Float64, -1, 1} = 0.0 #elevator control input (+ pitch down)
+    a::Ranged{Float64, -1, 1} = 0.0 #aileron control input (+ roll right)
+    r::Ranged{Float64, -1, 1} = 0.0 #rudder control input (+ yaw left)
+    f::Ranged{Float64, 0, 1} = 0.0 # flap control input (+ flap down)
 end
 
 Base.@kwdef mutable struct AeroD #discrete state
@@ -596,7 +596,7 @@ aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function exp_axis_curve(x::Bounded{T}, args...; kwargs...) where {T}
+function exp_axis_curve(x::Ranged{T}, args...; kwargs...) where {T}
     exp_axis_curve(T(x), args...; kwargs...)
 end
 

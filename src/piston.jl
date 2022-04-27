@@ -2,7 +2,7 @@ module Piston
 
 using Interpolations, Unitful, Plots, StructArrays, ComponentArrays, UnPack
 
-using Flight.Modeling, Flight.Misc
+using Flight.Modeling, Flight.Utils
 using Flight.Kinematics, Flight.Dynamics, Flight.Airdata
 using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
 using Flight.Geodesy: AltGeop
@@ -116,8 +116,8 @@ end
 Base.@kwdef mutable struct PistonEngineU
     start::Bool = false
     shutdown::Bool = false
-    thr::Bounded{Float64, 0, 1} = 0.0 #throttle setting
-    mix::Bounded{Float64, 0, 1} = 0.5 #mixture setting
+    thr::Ranged{Float64, 0, 1} = 0.0 #throttle setting
+    mix::Ranged{Float64, 0, 1} = 0.5 #mixture setting
 end
 
 Base.@kwdef struct PistonEngineY
