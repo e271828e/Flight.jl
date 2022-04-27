@@ -1,19 +1,14 @@
 module Simulation
 
-using Flight
 using Flight.Modeling
-using Flight.Plotting
 using Flight.Input
 using Flight.Output
 
 using Base.Iterators
-using OrdinaryDiffEq
-using SciMLBase
 using GLFW
 
 export SimulationRun
 
-# I <: Union{Nothing, NTuple{N,AbstractInputInterface} where N},
 struct SimulationRun{   M <: Model,
                         I <: Vector{<:AbstractInputInterface},
                         O <: Vector{<:AbstractOutputInterface}}

@@ -41,6 +41,11 @@ function aerodynamics_test()
 
 end
 
+# function test_allocations()
+# end
+
+
+
 function forward_drop_test()
 
     h_trn = AltOrth(608.55);
@@ -52,29 +57,37 @@ function forward_drop_test()
                         ω_lb_b = [0, 0, 0],
                         q_nb = REuler(ψ = 0, θ = 0.2, φ = 0.0),
                         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-                                        h_trn + 1.9 + 0.5));
+                                        h_trn + 1.9 + 2000.5));
 
     Aircraft.init!(ac, kin_init)
     # #if the model was instantiated before setting the system's initial
     # condition, we need this to update the model's initial condition
     # reinit!(mdl, ac.x)
 
-    ac.u.avionics.pedals = -.5
+    #spiral mode
+    # ac.u.avionics.pedals = -.05
+    ac.u.avionics.yoke_Δy = 0.0
     ac.u.avionics.brake_left = 1
     ac.u.avionics.brake_right = 1
-    ac.u.avionics.throttle = 0.3
+    ac.u.avionics.throttle = 1
+
+    # ac.x.vehicle.fuel .= 0
+    # ac.u.vehicle.pld.baggage = false
+    # ac.u.vehicle.pld.copilot = false
+    atm.u.wind.v_ew_n[1] = 0
 
     sim = SimulationRun(
         # model = Model(ac, (trn, atm); t_end = 3600, adaptive = true),
-        model = Model(ac, (trn, atm); t_end = 30, adaptive = false, solver = RK4(), dt = 0.02, y_saveat = 0.02),
+        model = Model(ac, (trn, atm); t_end = 250, adaptive = false, solver = RK4(), dt = 0.02, y_saveat = 0.02),
         # outputs = [XPInterface(host = IPv4("192.168.1.2"))], #Parsec
         outputs = [XPInterface()], #localhost
         realtime = false,
         )
 
     Simulation.run!(sim)
-    # plots = make_plots(sim.model)
+    plots = make_plots(sim.model)
     # save_plots(plots, save_folder = joinpath("tmp", "drop_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
+    save_plots(plots, save_folder = joinpath("tmp", "quick_drop_test"))
 
     return sim
 
