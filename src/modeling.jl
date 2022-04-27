@@ -225,6 +225,51 @@ end
 end
 
 ################################################################################
+############################## Visualization ###################################
+
+Base.@kwdef struct SystemTreeNode
+    label::Symbol = :root
+    type::DataType #SystemDescriptor type
+    function SystemTreeNode(label::Symbol, type::DataType)
+        @assert (type <: SystemDescriptor) && (!isabstracttype(type))
+        new(label, type)
+    end
+end
+
+SystemTreeNode(::T) where {T<:SystemDescriptor} = SystemTreeNode(type = T)
+SystemTreeNode(::System{D}) where {D} = SystemTreeNode(type = D)
+
+function children(node::SystemTreeNode)
+    return [SystemTreeNode(name, type) for (name, type) in zip(
+            fieldnames(node.type), fieldtypes(node.type))
+            if type <: SystemDescriptor]
+end
+
+function printnode(io::IO, node::SystemTreeNode)
+    print(io, ":"*string(node.label)*" ($(node.type))")
+end
+
+print_tree(desc::SystemDescriptor) = print_tree(SystemTreeNode(desc))
+print_tree(sys::System) = print_tree(SystemTreeNode(sys))
+
+
+# function AbstractTrees.children(x::ComponentVector)
+#     c = []
+#     for k in keys(x)
+#         k isa Symbol ? push!(c, getproperty(x, k)) : nothing
+#     end
+
+#     # vector = [getproperty(x, k) for k in keys(x) if keys(x) isa Tuple]
+#     return c
+# end
+
+# function AbstractTrees.printnode(io::IO, x::ComponentVector)
+#     nothing
+# end
+
+
+
+################################################################################
 ################################## Model #######################################
 
 #in this design, the t and x fields of m.sys behave only as temporary
@@ -260,157 +305,97 @@ struct Model{S <: System, I <: ODEIntegrator, L <: SavedValues}
         scb = SavingCallback(f_scb, log, saveat = saveat_arr)
         cb_set = CallbackSet(dcb, scb)
 
-        x0 = sys.x #the integrator creates its own copy
+        #use the current System's x value as initial condition. need a copy,
+        #otherwise a reference is used and the initial value is overwritten
+        x0 = copy(sys.x)
         problem = ODEProblem{true}(f_update!, x0, (t_start, t_end), params)
         integrator = init_problem(problem, solver; callback = cb_set, save_on, integrator_kwargs...)
         new{typeof(sys), typeof(integrator), typeof(log)}(sys, integrator, log)
     end
 end
 
-#function barriers: the System and arguments to f_cont! are first extracted from
-#integrator parameters, then used as an argument in the call to the actual
-#update & callback functions, forcing the compiler to specialize; accesing sys.x
-#and sys.ẋ directly instead causes type instability
+Base.getproperty(mdl::Model, s::Symbol) = getproperty(mdl, Val(s))
 
-# # the following causes type instability and kills performance:
-# function f_update!(ẋ, x, p, t)
-#     @unpack sys, args_c = p
-#     sys.x .= x
-#     sys.t[] = t
-#     f_cont!(sys, args_c...)
-#     ẋ = sys.ẋ
-#     return nothing
-# end
-
-#function barrier for integrator update
-f_update!(ẋ, x, p, t) = f_update!(ẋ, x, t, p.sys, p.args_c)
-
-#in-place integrator update function
-function f_update!(ẋ::X, x::X, t::Real, sys::System{T,X}, args_c) where {T, X}
-    sys.x .= x
-    sys.t[] = t
-    f_cont!(sys, args_c...) #updates sys.ẋ and sys.y
-    ẋ .= sys.ẋ
-    return nothing
-end
-
-#function barrier for discrete callback
-function f_dcb!(integrator)
-    x = integrator.u; t = integrator.t; p = integrator.p
-    x_modified = f_dcb!(x, t, p.sys, p.args_c, p.args_d)
-    u_modified!(integrator, x_modified)
-end
-
-#DiscreteCallback function (called on every integration step). this callback
-#brings the System's internal x and y up to date with the last integrator's
-#solution step, then executes the System's discrete update function
-function f_dcb!(x::X, t::Real, sys::System{T,X}, args_c, args_d) where {T,X}
-
-    sys.x .= x #assign the updated integrator's state to the system's local continuous state
-    sys.t[] = t #ditto for time
-
-    #at this point sys.y and sys.ẋ hold the values from the last solver evaluation of
-    #f_cont!, not the one corresponding to the updated x. with x up to date, we
-    #can now compute the correct sys.y sys.ẋ for this epoch
-    f_cont!(sys, args_c...) #updates sys.y, but leaves sys.x unmodified
-
-    #with the system's outputs up to date, call the discrete update function
-    x_modified = f_disc!(sys, args_d...) #this may modify sys.x
-    x .= sys.x #assign the (potentially modified) sys.x back to the integrator
-
-    #note: as it is, if the System's y depends on x or d, and these are modified
-    #by f_disc!, the change will not be reflected on y until the following
-    #integration step
-
-    return x_modified
-end
-
-#function barrier for saving callback
-f_scb(x, t, integrator) = f_scb(x, t, integrator.p.sys, integrator.p.args_c)
-
-#SavingCallback function, this gets called at the end of each step after f_disc!
-function f_scb(::X, ::Real, sys::System{T,X}, args_c) where {T,X}
-    return deepcopy(sys.y)
-end
-
-function Base.getproperty(m::Model, s::Symbol)
-    if s === :t
-        return m.integrator.t
-    elseif s === :x
-        return m.integrator.u
-    elseif s === :y
-        return m.sys.y
-    elseif s === :u
-        return m.sys.u
-    elseif s ∈ (:sys, :integrator, :log)
-        return getfield(m, s)
+@generated function Base.getproperty(mdl::Model, ::Val{S}) where {S}
+    if S === :t
+        return :(getproperty(getfield(mdl, :sys), $(QuoteNode(S)))[])
+    elseif S ∈ fieldnames(System)
+        return :(getproperty(getfield(mdl, :sys), $(QuoteNode(S))))
     else
-        return getproperty(m.integrator, s)
+        return :(getfield(mdl, $(QuoteNode(S))))
     end
 end
 
-# Base.getproperty(mdl::Model, s::Symbol) = getproperty(mdl, Val(s))
+#neither f_update!, f_dcb! nor f_scb should allocate
 
-# @generated function Base.getproperty(mdl::Model, ::Val{S}) where {S}
-#     if S === fieldnames(System)
-#         return :(getfield(mdl.sys, $(QuoteNode(S))))
-#         return m.integrator.t
-#     elseif S === :x
-#         return m.integrator.u
-#     elseif S === :y
-#         return m.sys.y
-#     elseif S === :u
-#         return m.sys.u
-#     elseif s ∈ (:sys, :integrator, :log)
-#         return getfield(m, s)
-#     else
-#         return getproperty(m.integrator, s)
-#     end
+#integrator ODE function. basically, a wrapper around the System's continuous
+#dynamics function. as a side effect, modifies the System's ẋ and y.
+function f_update!(u̇, u, p, t)
 
-#     if S === fieldnames(System)
-#         return :(getfield(sys, $(QuoteNode(S))))
-#     else
-#         return :(getfield(getfield(sys, :subsystems), $(QuoteNode(S))))
-#     end
-# end
+    @unpack sys, args_c = p
 
-step!(m::Model, args...) = step!(m.integrator, args...)
+    sys.x .= u #assign current integrator solution to System continuous state
+    sys.t[] = t #ditto for time
 
-solve!(m::Model) = solve!(m.integrator)
+    f_cont!(sys, args_c...) #call continuous dynamics, updates sys.ẋ and sys.y
 
-get_proposed_dt(m::Model) = get_proposed_dt(m.integrator)
+    u̇ .= sys.ẋ #update the integrator's derivative
 
-function reinit!(m::Model, args...; kwargs...)
+    return nothing
+
+end
+
+#DiscreteCallback function, called on every integration step. brings the
+#System's internal x and y up to date with the last integrator's solution step,
+#then calls the System's discrete dynamics. as it is, if the System's y
+#depends on x or d, and these are modified by f_disc!, the change will not be
+#reflected on y until the following integration step
+function f_dcb!(integrator)
+
+    @unpack t, u, p = integrator
+    @unpack sys, args_c, args_d = p
+
+    sys.x .= u #assign the updated integrator's state to the System's continuous state
+    sys.t[] = t #ditto for time
+
+    #at this point sys.y and sys.ẋ hold the values from the last solver
+    #evaluation of f_cont!, not the one corresponding to the updated x. with x
+    #up to date, we can now compute the final sys.y and sys.ẋ for this epoch
+    f_cont!(sys, args_c...)
+
+    #with the System's ẋ and y up to date, call the discrete dynamics function
+    x_modified = f_disc!(sys, args_d...)
+
+    u .= sys.x #assign the (potentially modified) sys.x back to the integrator
+
+    u_modified!(integrator, x_modified)
+
+end
+
+#SavingCallback function, gets called at the end of each step after f_disc!
+f_scb(x, t, integrator) = deepcopy(integrator.p.sys.y)
+
+step!(mdl::Model, args...) = step!(mdl.integrator, args...)
+
+#makes no sense for a simulation
+# solve!(mdl::Model) = solve!(mdl.integrator)
+
+get_proposed_dt(mdl::Model) = get_proposed_dt(mdl.integrator)
+
+function reinit!(mdl::Model, args...; kwargs...)
 
     #for an ODEIntegrator, the optional args... is simply a new initial
-    #condition. if not specified, the original initial condition is used
-    reinit!(m.integrator, args...; kwargs...)
+    #condition. if not specified, the original initial condition is used.
+    reinit!(mdl.integrator, args...; kwargs...)
 
-    #grab the updated t and x from the integrator (in case they were reset by
-    #kwargs). this is just to keep consistency, since they are merely buffers.
-    m.sys.t[] = m.integrator.t
-    m.sys.x .= m.integrator.u
+    #apparently, reinit! calls f_update!, so all System fields are updated in
+    #the process, no need to do it manually
 
-    resize!(m.log.t, 1)
-    resize!(m.log.saveval, 1)
+    resize!(mdl.log.t, 1)
+    resize!(mdl.log.saveval, 1)
     return nothing
 end
 
-# might be because having sys stored in p obfuscates type inference? when
-# unpacking sys, the compiler can no longer tell its type, and therefore has no
-# knowledge of the types of sys.x, sys.dx, sys.y and sys.t. since these are
-# being assigned to and read from, type instability occurs.
-
-# apparently, this can be fixed by storing the x, dx and y fields of sys
-# directly as entries of p. this probably fixes their types during construction,
-# so when they are accessed later in the closure, the type instability is no
-# longer an issue.
-
-# however, this is redundant! we already have x, dx, y and t inside of sys. a
-# more elegant alternative is simply to use a function barrier, first extract
-# sys, then call another function using it as an argument. this forces the
-# compiler to infer its type, and therefore it specializes the time-critical
-# assignment statements to their actual types.
 
 ################################################################################
 ################################## TimeHistory #######################################
@@ -458,49 +443,6 @@ function get_scalar_components(th::TimeHistory{<:AbstractVector{T}}) where {T<:R
     [TimeHistory(th._t, y) for y in th._data |> StructArray |> StructArrays.components]
 end
 
-
-################################################################################
-############################## Visualization ###################################
-
-Base.@kwdef struct SystemTreeNode
-    label::Symbol = :root
-    type::DataType #SystemDescriptor type
-    function SystemTreeNode(label::Symbol, type::DataType)
-        @assert (type <: SystemDescriptor) && (!isabstracttype(type))
-        new(label, type)
-    end
-end
-
-SystemTreeNode(::T) where {T<:SystemDescriptor} = SystemTreeNode(type = T)
-SystemTreeNode(::System{D}) where {D} = SystemTreeNode(type = D)
-
-function children(node::SystemTreeNode)
-    return [SystemTreeNode(name, type) for (name, type) in zip(
-            fieldnames(node.type), fieldtypes(node.type))
-            if type <: SystemDescriptor]
-end
-
-function printnode(io::IO, node::SystemTreeNode)
-    print(io, ":"*string(node.label)*" ($(node.type))")
-end
-
-print_tree(desc::SystemDescriptor) = print_tree(SystemTreeNode(desc))
-print_tree(sys::System) = print_tree(SystemTreeNode(sys))
-
-
-# function AbstractTrees.children(x::ComponentVector)
-#     c = []
-#     for k in keys(x)
-#         k isa Symbol ? push!(c, getproperty(x, k)) : nothing
-#     end
-
-#     # vector = [getproperty(x, k) for k in keys(x) if keys(x) isa Tuple]
-#     return c
-# end
-
-# function AbstractTrees.printnode(io::IO, x::ComponentVector)
-#     nothing
-# end
 
 
 end #module

@@ -50,7 +50,7 @@ function run!(sim::SimulationRun)
         #the integrator steps automatically at the beginning of each iteration
 
         #retrieve the dt just taken by the integrator
-        dt = mdl.dt
+        dt = mdl.integrator.dt
 
         #compute the wall time epoch corresponding to the simulation time epoch
         #we just reached
