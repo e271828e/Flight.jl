@@ -15,6 +15,11 @@ function pwf(s)
     end
 end
 
+function linear_scaling(u::Bounded{T, UMin, UMax}, range::NTuple{2,Real}) where {T, UMin, UMax}
+    @assert UMin != UMax
+    return range[1] + (range[2] - range[1])/(UMax - UMin) * (T(u) - UMin)
+end
+
 
 ################################### Bounded ####################################
 #needs some unit tests
@@ -57,11 +62,6 @@ Base.:-(x::B, y::B) where {B <: Bounded{T,Min,Max}} where {T, Min, Max} = Bounde
 
 #basic equality
 Base.:(==)(x::Bounded{T1}, y::Real) where {T1, T2} = (==)(promote(x.val, y)...)
-
-function linear_scaling(u::Bounded{T, UMin, UMax}, range::NTuple{2,Real}) where {T, UMin, UMax}
-    @assert UMin != UMax
-    return range[1] + (range[2] - range[1])/(UMax - UMin) * (T(u) - UMin)
-end
 
 
 end#module
