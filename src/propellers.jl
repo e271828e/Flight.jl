@@ -7,11 +7,10 @@ using Trapz: trapz
 import Interpolations: knots, bounds
 
 using Flight.Modeling, Flight.Utils
-using Flight.Kinematics, Flight.Dynamics, Flight.Airdata
+using Flight.Kinematics, Flight.Dynamics, Flight.Air
 
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
-import Flight.Plotting: make_plots
 
 export FixedPitch, VariablePitch, Propeller
 
@@ -404,122 +403,6 @@ get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 
 ################################################################################
 ############################ Plots #############################################
-
-
-function plot_airfoil(airfoil::AbstractAirfoil, show = true)
-
-    α = range(-π/6, π/3, length = 100)
-    M = range(0, 1.5, length = 6)
-    iter = Iterators.product(α, M)
-
-    cL_data = [cL(airfoil, α, M) for (α, M) in iter]
-    cD_data = [cD(airfoil, α, M) for (α, M) in iter]
-    cL_α_data = [cL_α(airfoil, α, M) for (α, M) in iter]
-
-    label = latexstring.("M = ".*string.(M'))
-    titles = (L"c_L", L"c_{L, \alpha}", L"c_D")
-    x_label = L"\alpha \ (rad)"
-
-    p = Vector{Plots.Plot}()
-    for (i, data) in enumerate((cL_data, cD_data, cL_α_data))
-        push!(p, plot(α, data, label = label, title = titles[i], xlabel = x_label))
-    end
-
-    show ? display.(p) : nothing
-
-    return p
-
-end
-
-function plot_J_Δβ(dataset::Dataset, M_tip::Real = 0.0, show = true)
-
-    J = knots(dataset).iterators[1] |> collect
-    Δβ_bounds = bounds(dataset)[3]
-    Δβ = range(Δβ_bounds[1], Δβ_bounds[2], length = 5)
-
-    data = [dataset(J, M_tip, Δβ) for (J, Δβ) in Iterators.product(J, Δβ)]
-    data = data |> StructArray |> StructArrays.components
-
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
-
-    label = latexstring.("\$ \\Delta \\beta = " .* string.(rad2deg.(Δβ')) .* "\\degree \$")
-    label_pos = [:bottomleft, :topleft, :bottomleft, :bottomleft, :topright, :topleft]
-    x_label = L"J"
-    y_labels = [L"C_{Fx}", L"C_{Mx}", L"C_{Fz, \alpha}", L"C_{Mz, \alpha}", L"M_{tip}", L"\eta_p"]
-    titles = ["Traction Coefficient ", "Torque Coefficient", "Off-Axis Force Coefficient Derivative",
-                "Off-Axis Moment Coefficient Derivative", "Power Coefficient", "Propulsive Efficiency"] .*
-                " (Blade Tip Mach Number = $M_tip)"
-
-    p = Vector{Plots.Plot}()
-    for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))
-        push!(p, plot(J, c; title = titles[i], label = label, legend = label_pos[i], xlabel = x_label, ylabel = y_labels[i]))
-    end
-
-    show ? display.(p) : nothing
-
-    return p
-
-end
-
-function plot_M_J(dataset::Dataset, Δβ::Real = 0.0, show = true)
-
-    M_tip = knots(dataset).iterators[2] |> collect
-    J_bounds = bounds(dataset)[1]
-    J = range(J_bounds[1], J_bounds[2], length = 5)
-
-    data = [dataset(J, M_tip, Δβ) for (M_tip, J) in Iterators.product(M_tip, J)]
-    data = data |> StructArray |> StructArrays.components
-
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
-
-    label = latexstring.("J = ".*string.(J'))
-    label_pos = [:bottomleft, :topleft, :bottomleft, :bottomleft, :topright, :topleft]
-    x_label = L"M_{tip}"
-    y_labels = [L"C_{Fx}", L"C_{Mx}", L"C_{Fz, \alpha}", L"C_{Mz, \alpha}", L"M_{tip}", L"\eta_p"]
-    titles = ["Traction Coefficient ", "Torque Coefficient", "Off-Axis Force Coefficient Derivative",
-                "Off-Axis Moment Coefficient Derivative", "Power Coefficient", "Propulsive Efficiency"] .*
-                " (Blade Pitch Offset = $(rad2deg(Δβ))°)"
-
-    p = Vector{Plots.Plot}()
-    for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))
-        push!(p, plot(M_tip, c; title = titles[i], label = label, legend = label_pos[i], xlabel = x_label, ylabel = y_labels[i]))
-    end
-
-    show ? display.(p) : nothing
-
-    return p
-
-end
-
-function plot_J_M(dataset::Dataset, Δβ::Real = 0.0, show = true)
-
-    J = knots(dataset).iterators[1] |> collect
-    M_tip_bounds = bounds(dataset)[2]
-    M_tip = range(M_tip_bounds[1], M_tip_bounds[2], length = 5)
-
-    data = [dataset(J, M_tip, Δβ) for (J, M_tip) in Iterators.product(J, M_tip)]
-    data = data |> StructArray |> StructArrays.components
-
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
-
-    label = latexstring.("M_{tip} = ".*string.(M_tip'))
-    label_pos = [:bottomleft, :topleft, :bottomleft, :bottomleft, :topright, :topleft]
-    x_label = L"J"
-    y_labels = [L"C_{Fx}", L"C_{Mx}", L"C_{Fz, \alpha}", L"C_{Mz, \alpha}", L"M_{tip}", L"\eta_p"]
-    titles = ["Traction Coefficient ", "Torque Coefficient", "Off-Axis Force Coefficient Derivative",
-                "Off-Axis Moment Coefficient Derivative", "Power Coefficient", "Propulsive Efficiency"] .*
-                " (Blade Pitch Offset = $(rad2deg(Δβ))°)"
-
-    p = Vector{Plots.Plot}()
-    for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))
-        push!(p, plot(J, c; title = titles[i], label = label, legend = label_pos[i], xlabel = x_label, ylabel = y_labels[i]))
-    end
-
-    show ? display.(p) : nothing
-
-    return p
-
-end
 
 
 end #module

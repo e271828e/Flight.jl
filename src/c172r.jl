@@ -9,14 +9,13 @@ using Interpolations
 using HDF5
 
 using Flight.Modeling
-using Flight.Plotting
 using Flight.Utils
 using Flight.Attitude
 using Flight.Terrain
-using Flight.Airdata
+using Flight.Air
 using Flight.Kinematics
 using Flight.Dynamics
-using Flight.Propulsion: EThruster, ElectricMotor, SimpleProp, CW, CCW
+using Flight.Electrics: EThruster, ElectricMotor, SimpleProp, CW, CCW
 using Flight.LandingGear
 using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractVehicle, AbstractAerodynamics, AbstractAvionics
 using Flight.Input: XBoxController, get_axis_value, is_released
@@ -24,7 +23,6 @@ using Flight.Input: XBoxController, get_axis_value, is_released
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Input: assign!
-import Flight.Plotting: make_plots
 
 export C172RAircraft
 
@@ -644,18 +642,5 @@ function C172RAircraft(; id = ID(), kinematics = KinLTF(), vehicle = Vehicle(), 
     AircraftBase( id; kinematics, vehicle, avionics)
 end
 
-
-    # splt_α = thplot(t, rad2deg.(α_b);
-    #     title = "Angle of Attack", ylabel = L"$\alpha \ (deg)$",
-    #     label = "", kwargs...)
-
-    # splt_β = thplot(t, rad2deg.(β_b);
-    #     title = "Angle of Sideslip", ylabel = L"$\beta \ (deg)$",
-    #     label = "", kwargs...)
-
-    # pd["05_α_β"] = plot(splt_α, splt_β;
-    #     plot_title = "Airflow Angles [Airframe]",
-    #     layout = (1,2),
-    #     kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
 end #module

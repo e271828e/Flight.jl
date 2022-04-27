@@ -7,7 +7,6 @@ using UnPack
 
 using Flight.Utils
 using Flight.Modeling
-using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy
 using Flight.Terrain
@@ -17,7 +16,6 @@ using Flight.Friction
 
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
-import Flight.Plotting: make_plots
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 
@@ -387,96 +385,5 @@ function f_disc!(sys::System{<:LandingGearUnit})
 
 end
 
-############################### Plots #########################################
-
-function make_plots(th::TimeHistory{<:StrutY}; kwargs...)
-
-    pd = OrderedDict{Symbol, Plots.Plot}()
-
-    subplot_ξ = plot(th.ξ;
-        title = "Elongation", ylabel = L"$\xi \ (m)$",
-        label = "", kwargs...)
-
-    subplot_ξ_dot = plot(th.ξ_dot;
-        title = "Elongation Rate", ylabel = L"$\dot{\xi} \ (m/s)$",
-        label = "", kwargs...)
-
-    subplot_F = plot(th.F;
-        title = "Force", ylabel = L"$F \ (N)$",
-        label = "", kwargs...)
-
-    pd[:dmp] = plot(subplot_ξ, subplot_ξ_dot, subplot_F;
-        plot_title = "Damper",
-        layout = (1,3), link = :none,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
-    return pd
-
-end
-
-
-function make_plots(th::TimeHistory{<:ContactY}; kwargs...)
-
-    pd = OrderedDict{Symbol, Any}()
-
-    pd[:regulator] = make_plots(th.regulator; kwargs...)
-
-    (μ_max_x, μ_max_y) = Modeling.get_scalar_components(th.μ_max)
-    (μ_eff_x, μ_eff_y) = Modeling.get_scalar_components(th.μ_eff)
-
-    subplot_μ_roll = plot(th.μ_roll; title = "Rolling Friction Coefficient",
-        ylabel = L"$\mu_{roll}$", label = "", kwargs...)
-    subplot_μ_skid = plot(th.μ_skid; title = "Skidding Friction Coefficient",
-        ylabel = L"$\mu_{skid}$", label = "", kwargs...)
-
-    pd[:srf] = plot(subplot_μ_roll, subplot_μ_skid;
-        plot_title = "Surface Friction",
-        layout = (1,2), link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
-    subplot_κ_br = plot(th.κ_br; title = "Braking Coefficient",
-        ylabel = L"$\alpha_{br}$", label = "", kwargs...)
-    subplot_μ_max_x = plot(μ_max_x; title = "Maximum Friction Coefficient",
-        ylabel = L"$\mu_{max}^{x}$", label = "", kwargs...)
-    subplot_μ_eff_x = plot(μ_eff_x; title = "Effective Friction Coefficient",
-        ylabel = L"$\mu^{x}$", label = "", kwargs...)
-
-    pd[:μ_x] = plot(subplot_κ_br, subplot_μ_max_x, subplot_μ_eff_x;
-        plot_title = "Longitudinal Friction",
-        layout = (1,3),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
-    subplot_ψ_cv = plot(th._t, rad2deg.(th.ψ_cv._data); title = "Tire Slip Angle",
-        ylabel = L"$\psi_{cv} \ (deg)$", label = "", kwargs...)
-    subplot_μ_max_y = plot(μ_max_y; title = "Maximum Friction Coefficient",
-        ylabel = L"$\mu_{max}^{y}$", label = "", kwargs...)
-    subplot_μ_eff_y = plot(μ_eff_y; title = "Effective Friction Coefficient",
-        ylabel = L"$\mu^{y}$", label = "", kwargs...)
-
-    pd[:μ_y] = plot(subplot_ψ_cv, subplot_μ_max_y, subplot_μ_eff_y;
-        plot_title = "Lateral Friction",
-        layout = (1,3),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
-    pd[:f_c] = plot(th.f_c;
-        plot_title = "Normalized Contact Force",
-        ylabel = [L"$f_{Oc \ (trn)}^{c}$" L"$f_{Oc \ (trn)}^{c}$" L"$f_{Oc \ (trn)}^{c}$"],
-        th_split = :h, link = :none,
-        kwargs...)
-
-    pd[:F_c] = plot(th.F_c;
-        plot_title = "Contact Force",
-        ylabel = [L"$F_{Oc \ (trn)}^{c} \ (N)$" L"$F_{Oc \ (trn)}^{c} \ (N)$" L"$F_{Oc \ (trn)}^{c} \ (N)$"],
-        th_split = :h, link = :none,
-        kwargs...)
-
-    pd[:wr_b] = plot(th.wr_b;
-        plot_title = "Wrench [Vehicle Axes]",
-        wr_source = "trn", wr_frame = "b",
-        kwargs...)
-
-    return pd
-
-end
 
 end #module

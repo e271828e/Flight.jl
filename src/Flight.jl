@@ -6,7 +6,6 @@ using Reexport
 #general
 include("utils.jl")
 include("modeling.jl")
-include("plotting.jl")
 include("input.jl")
 include("output.jl")
 include("simulation.jl")
@@ -20,12 +19,12 @@ include("geodesy.jl")
 include("terrain.jl")
 include("atmosphere.jl")
 include("kinematics.jl")
+include("air.jl")
 include("dynamics.jl")
 include("friction.jl")
 
 # #aircraft components
-include("airdata.jl")
-include("propulsion.jl")
+include("electrics.jl")
 include("landinggear.jl")
 include("propellers.jl")
 include("piston.jl")
@@ -34,9 +33,10 @@ include("piston.jl")
 include("aircraft.jl")
 include("c172r.jl")
 
+include("plotting.jl")
+
 @reexport using .Utils
 @reexport using .Modeling
-@reexport using .Plotting
 @reexport using .Simulation
 
 @reexport using .Input
@@ -49,11 +49,11 @@ include("c172r.jl")
 @reexport using .Terrain
 @reexport using .Atmosphere
 @reexport using .Kinematics
+@reexport using .Air
 @reexport using .Dynamics
 @reexport using .Friction
 
-@reexport using .Airdata
-@reexport using .Propulsion
+@reexport using .Electrics
 @reexport using .LandingGear
 @reexport using .Propellers
 @reexport using .Piston
@@ -61,10 +61,7 @@ include("c172r.jl")
 @reexport using .Aircraft
 @reexport using .C172R
 
-export ftest
-
-ftest() = println("Welcome to Flight")
-
+@reexport using .Plotting
 
 
 end

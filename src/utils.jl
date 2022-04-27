@@ -21,8 +21,8 @@ function Base.convert(::Type{Ranged{T1,Min,Max}}, x::Ranged{T2}) where {T1, T2, 
     Ranged(T1(x.val), Min, Max)
 end
 
+#if the conversion target does not specify bounds, take them from the source
 function Base.convert(::Type{Ranged{T1}}, x::Ranged{T2,Min,Max}) where {T1, T2, Min, Max}
-    #since the conversion target does not specify bounds, take them from the conversion source
     Ranged(T1(x.val), Min, Max)
 end
 
@@ -35,10 +35,10 @@ Base.:+(x::Ranged{T1,Min,Max}, y::Real) where {T1, Min, Max} = Ranged(x.val + y,
 Base.:-(x::Ranged{T1,Min,Max}, y::Real) where {T1, Min, Max} = Ranged(x.val - y, Min, Max)
 Base.:-(x::Ranged{T1,Min,Max}) where {T1, Min, Max} = Ranged(-x.val, Min, Max)
 
-#both Ranged must have identical underlying types and bounds, otherwise there
-#is no easy way of deciding whose bounds should win
-Base.:+(x::B, y::B) where {B <: Ranged{T,Min,Max}} where {T, Min, Max} = Ranged(x.val + y.val, Min, Max)
-Base.:-(x::B, y::B) where {B <: Ranged{T,Min,Max}} where {T, Min, Max} = Ranged(x.val - y.val, Min, Max)
+#bounds must be identical, since there is no easy way of deciding whose bounds
+#should win
+Base.:+(x::Ranged{T1,Min,Max}, y::Ranged{T2,Min,Max}) where {T1,T2,Min,Max} = Ranged(x.val + y.val, Min, Max)
+Base.:-(x::Ranged{T1,Min,Max}, y::Ranged{T2,Min,Max}) where {T1,T2,Min,Max} = Ranged(x.val - y.val, Min, Max)
 
 #basic equality
 Base.:(==)(x::Ranged{T1}, y::Real) where {T1, T2} = (==)(promote(x.val, y)...)
@@ -46,6 +46,19 @@ Base.:(==)(x::Ranged{T1}, y::Real) where {T1, T2} = (==)(promote(x.val, y)...)
 function linear_scaling(u::Ranged{T, UMin, UMax}, range::NTuple{2,Real}) where {T, UMin, UMax}
     @assert UMin != UMax
     return range[1] + (range[2] - range[1])/(UMax - UMin) * (T(u) - UMin)
+end
+
+function test()
+
+    a = Ranged(1, 0, 2)
+    b = Ranged(2.0, 0, 2)
+    A = fill(a, 100)
+    B = fill(b, 100)
+    C = copy(B)
+
+    #no allocations
+    C .= A .+ B
+
 end
 
 end #module

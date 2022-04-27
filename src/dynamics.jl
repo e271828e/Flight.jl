@@ -5,12 +5,9 @@ using LinearAlgebra
 using UnPack
 
 using Flight.Modeling
-using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
-
-import Flight.Plotting: make_plots
 
 export FrameTransform, transform
 export Wrench
@@ -588,121 +585,5 @@ function f_dyn!(ẋ_vel::VelX, kin::KinData, mp_b::MassProperties,
 
 end
 
-
-######################## Plots ############################
-
-@recipe function f(th::TimeHistory{<:Wrench}; wr_frame = "", wr_source = "")
-
-    layout := (1, 2)
-    seriestype --> :path
-
-    @series begin
-        subplot := 1
-        title --> "Force"
-        yguide --> L"$F_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N)$"
-        th_split --> :none
-        th.F
-    end
-
-    @series begin
-        subplot := 2
-        title --> "Torque"
-        yguide --> L"$M_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N \ m)$"
-        th_split --> :none
-        th.M
-    end
-
-end
-
-
-function make_plots(th::TimeHistory{<:DynData}; kwargs...)
-
-    return OrderedDict(
-        :input => make_plots(th.input; kwargs...),
-        :output => make_plots(th.output; kwargs...)
-    )
-
-end
-
-
-function make_plots(th::TimeHistory{<:DynDataIn}; kwargs...)
-
-    pd = OrderedDict{Symbol, Plots.Plot}()
-
-    pd[:wr_g_b] = plot(th.wr_g_b;
-        plot_title = "Gravity Wrench [Vehicle Axes]",
-        wr_source = "g", wr_frame = "b",
-        kwargs...)
-
-    pd[:wr_in_b] = plot(th.wr_in_b;
-        plot_title = "Inertia Wrench [Vehicle Axes]",
-        wr_source = "in", wr_frame = "b",
-        kwargs...)
-
-    pd[:wr_ext_b] = plot(th.wr_ext_b;
-        plot_title = "External Wrench [Vehicle Axes]",
-        wr_source = "ext", wr_frame = "b",
-        kwargs...)
-
-    pd[:hr_b] = plot(th.hr_b;
-        plot_title = "Angular Momentum from Rotating Components [Vehicle Axes]",
-        ylabel = hcat(
-            L"$h_{Ob \ (r)}^{x_b} \ (kg \ m^2 / s)$",
-            L"$h_{Ob \ (r)}^{y_b} \ (kg \ m^2 / s)$",
-            L"$h_{Ob \ (r)}^{z_b} \ (kg \ m^2 / s)$"),
-        th_split = :h, link = :none,
-        kwargs...)
-
-    return pd
-
-end
-
-
-function make_plots(th::TimeHistory{<:DynDataOut}; kwargs...)
-
-    #standard gravity for specific force normalization
-    g₀ = 9.80665
-
-    pd = OrderedDict{Symbol, Plots.Plot}()
-
-    pd[:α_eb_b] = plot(th.α_eb_b;
-        plot_title = "Angular Acceleration (Vehicle/ECEF) [Vehicle Axes]",
-        ylabel = hcat(
-            L"$\alpha_{eb}^{x_b} \ (rad/s^2)$",
-            L"$\alpha_{eb}^{y_b} \ (rad/s^2)$",
-            L"$\alpha_{eb}^{z_b} \ (rad/s^2)$"),
-        th_split = :h,
-        kwargs...)
-
-    pd[:a_eOb_b] = plot(th.a_eOb_b;
-        plot_title = "Linear Acceleration (Vehicle/ECEF) [Vehicle Axes]",
-        ylabel = hcat(
-            L"$a_{eb}^{x_b} \ (m/s^{2})$",
-            L"$a_{eb}^{y_b} \ (m/s^{2})$",
-            L"$a_{eb}^{z_b} \ (m/s^{2})$"),
-        th_split = :h,
-        kwargs...)
-
-    pd[:a_eOb_n] = plot(th.a_eOb_n;
-        plot_title = "Linear Acceleration (Vehicle/ECEF) [NED Axes]",
-        ylabel = hcat(
-            L"$a_{eb}^{N} \ (m/s^{2})$",
-            L"$a_{eb}^{E} \ (m/s^{2})$",
-            L"$a_{eb}^{D} \ (m/s^{2})$"),
-        th_split = :h, link = :none,
-        kwargs...)
-
-    pd[:f_Ob_b] = plot(TimeHistory(th._t, th.f_Ob_b._data / g₀);
-        plot_title = "Specific Force [Vehicle Axes]",
-        ylabel = hcat(
-            L"$f_{Ob}^{x_b} \ (g)$",
-            L"$f_{Ob}^{y_b} \ (g)$",
-            L"$f_{Ob}^{z_b} \ (g)$"),
-        th_split = :h,
-        kwargs...)
-
-    return pd
-
-end
 
 end #module

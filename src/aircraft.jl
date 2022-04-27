@@ -4,10 +4,10 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
-using Flight.Modeling, Flight.Plotting
+using Flight.Modeling
 using Flight.Attitude
 using Flight.Geodesy, Flight.Terrain, Flight.Atmosphere
-using Flight.Kinematics, Flight.Dynamics, Flight.Airdata
+using Flight.Kinematics, Flight.Dynamics, Flight.Air
 using Flight.Input, Flight.Output
 
 import Flight.Modeling: init, f_cont!, f_disc!

@@ -31,7 +31,6 @@ using LinearAlgebra
 
 using Flight.Modeling
 using Flight.Quaternions
-using Flight.Plotting
 #using ..Quaternions: UnitQuat, Quat #also works (but relies on folder hierarchy)
 
 export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dt
@@ -330,29 +329,6 @@ end
 
 function Base.convert(::Type{RQuat}, r::REuler)
     Rz(r.ψ) ∘ Ry(r.θ) ∘ Rx(r.φ)
-end
-
-########################## Plotting #################################
-
-#unless a more specialized method is defined, a TimeHistory{Rotations} is
-#converted to REuler for plotting
-@recipe function plot(th::TimeHistory{<:Abstract3DRotation}; rot_ref = "", rot_target = "")
-
-    return TimeHistory(th._t, [REuler(v) for v in th._data])
-
-end
-
-@recipe function plot(th::TimeHistory{<:REuler}; rot_ref = "", rot_target = "")
-
-    label --> ["Heading" "Inclination" "Bank"]
-    yguide --> hcat(L"$\psi_{%$rot_ref %$rot_target} \ (\pi \ rad)$",
-                    L"$\theta_{%$rot_ref %$rot_target} \ (\pi \ rad)$",
-                    L"$\phi_{%$rot_ref %$rot_target} \ (\pi \ rad)$")
-    th_split --> :h #custom TimeHistory attribute
-
-    data = hcat(th.ψ._data, th.θ._data, th.φ._data)'/π #plot as π factors
-    return TimeHistory(th._t, data)
-
 end
 
 

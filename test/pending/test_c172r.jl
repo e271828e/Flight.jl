@@ -85,9 +85,9 @@ function forward_drop_test()
         )
 
     Simulation.run!(sim)
-    plots = make_plots(sim.model)
+    # plots = make_plots(sim.model)
     # save_plots(plots, save_folder = joinpath("tmp", "drop_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
-    save_plots(plots, save_folder = joinpath("tmp", "quick_drop_test"))
+    # save_plots(plots, save_folder = joinpath("tmp", "ick_drop_test"))
 
     return sim
 

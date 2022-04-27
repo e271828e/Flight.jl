@@ -10,7 +10,6 @@ using HDF5
 
 using Flight.Modeling
 using Flight.Attitude
-using Flight.Plotting
 
 export Abstract2DLocation, NVector, LatLon
 export Altitude, Ellipsoidal, Orthometric, Geopotential, AltEllip, AltOrth, AltGeop
@@ -458,30 +457,6 @@ function G_n(p::Abstract3DLocation)
     r_eP_e = CartECEF(p)[:]
     G_n = g_n(p) + q_en'(ω_ie_e × (ω_ie_e × r_eP_e))
     return G_n
-
-end
-
-##################### Plotting ##############################
-
-@recipe function plot(th::TimeHistory{<:LatLon})
-
-    title --> ["Latitude" "Longitude"]
-    label --> ["Latitude" "Longitude"]
-    yguide --> [L"$\varphi \ (\pi \ rad)$" L"$\lambda \ (\pi \ rad)$"]
-    th_split --> :v
-
-    data = hcat(th.ϕ._data, th.λ._data)'/π |> collect
-    return TimeHistory(th._t, data)
-
-end
-
-@recipe function plot(th::TimeHistory{<:Altitude{D}}) where {D}
-
-    title --> "Altitude ($(string(D)))"
-    label --> "Altitude ($(string(D)))"
-    yguide --> L"$h \ (m)$"
-
-    return TimeHistory(th._t, Float64.(th._data))
 
 end
 

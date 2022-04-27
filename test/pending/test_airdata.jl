@@ -1,7 +1,7 @@
 using Flight.Geodesy
 using Flight.Kinematics
 using Flight.Atmosphere
-using Flight.Airdata
+using Flight.Air
 
 function test_airdata()
 

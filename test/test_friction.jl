@@ -74,7 +74,7 @@ function friction_regulator_plots()
     Modeling.step!(mdl, 2, true)
 
     plot_settings = (linewidth=2, margin = 10mm, guidefontsize = 12)
-    plots(mdl; save_path = joinpath("tmp", "test_friction"), plot_settings...)
+    make_plots(mdl; save_path = joinpath("tmp", "test_friction"), plot_settings...)
 
 end
 

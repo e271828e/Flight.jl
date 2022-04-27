@@ -1,4 +1,4 @@
-module Propulsion
+module Electrics
 
 using LinearAlgebra
 using StaticArrays, ComponentArrays, StructArrays, RecursiveArrayTools
@@ -6,27 +6,19 @@ using Unitful
 using UnPack
 
 using Flight.Modeling
-using Flight.Plotting
-using Flight.Airdata
+using Flight.Air
 using Flight.Kinematics
 using Flight.Dynamics
 
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
-import Flight.Plotting: make_plots
 
-export AbstractThruster, EThruster
+export EThruster
 
 @enum TurnSense begin
     CW = 1
     CCW = -1
 end
-
-abstract type AbstractThruster <: SystemDescriptor end
-
-MassTrait(::System{<:AbstractThruster}) = HasNoMass()
-WrenchTrait(::System{<:AbstractThruster}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:AbstractThruster}) = HasAngularMomentum()
 
 ################ EThruster Component ###################
 
@@ -72,7 +64,7 @@ voltage_open(b::Battery, charge_ratio::Real) = b.n_cells * b.V_cell * voltage_cu
 R(b::Battery) = b.n_cells * b.R_cell
 ċ(b::Battery, i::Real) = -i/b.Cmax
 
-Base.@kwdef struct EThruster <: AbstractThruster
+Base.@kwdef struct EThruster <: SystemDescriptor
     frame::FrameTransform = FrameTransform()
     battery::Battery = Battery()
     motor::ElectricMotor = ElectricMotor()
@@ -145,24 +137,6 @@ function f_cont!(sys::System{EThruster}, kin::KinData, air::AirData)
 
 end
 
-
-function make_plots(th::TimeHistory{<:EThrusterY}; kwargs...)
-
-    pd = OrderedDict{Symbol, Plots.Plot}()
-
-    pd[:wr_Oc_c] = plot(th.wr_c;
-        plot_title = "Thruster Wrench [Thruster Frame]",
-        wr_source = "thr", wr_frame = "c",
-        kwargs...)
-
-    pd[:wr_Ob_b] = plot(th.wr_b;
-        plot_title = "Thruster Wrench [Vehicle Axes]",
-        wr_source = "thr", wr_frame = "b",
-        kwargs...)
-
-    return pd
-
-end
 
 
 ##################### Hand of God ##########################

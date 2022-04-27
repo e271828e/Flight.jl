@@ -272,6 +272,16 @@ end
 #update & callback functions, forcing the compiler to specialize; accesing sys.x
 #and sys.ẋ directly instead causes type instability
 
+# # the following causes type instability and kills performance:
+# function f_update!(ẋ, x, p, t)
+#     @unpack sys, args_c = p
+#     sys.x .= x
+#     sys.t[] = t
+#     f_cont!(sys, args_c...)
+#     ẋ = sys.ẋ
+#     return nothing
+# end
+
 #function barrier for integrator update
 f_update!(ẋ, x, p, t) = f_update!(ẋ, x, t, p.sys, p.args_c)
 
@@ -339,6 +349,31 @@ function Base.getproperty(m::Model, s::Symbol)
     end
 end
 
+# Base.getproperty(mdl::Model, s::Symbol) = getproperty(mdl, Val(s))
+
+# @generated function Base.getproperty(mdl::Model, ::Val{S}) where {S}
+#     if S === fieldnames(System)
+#         return :(getfield(mdl.sys, $(QuoteNode(S))))
+#         return m.integrator.t
+#     elseif S === :x
+#         return m.integrator.u
+#     elseif S === :y
+#         return m.sys.y
+#     elseif S === :u
+#         return m.sys.u
+#     elseif s ∈ (:sys, :integrator, :log)
+#         return getfield(m, s)
+#     else
+#         return getproperty(m.integrator, s)
+#     end
+
+#     if S === fieldnames(System)
+#         return :(getfield(sys, $(QuoteNode(S))))
+#     else
+#         return :(getfield(getfield(sys, :subsystems), $(QuoteNode(S))))
+#     end
+# end
+
 step!(m::Model, args...) = step!(m.integrator, args...)
 
 solve!(m::Model) = solve!(m.integrator)
@@ -361,19 +396,10 @@ function reinit!(m::Model, args...; kwargs...)
     return nothing
 end
 
-#the following causes type instability and kills performance:
-# function f_update!(ẋ, x, p, t)
-    # @unpack sys, args_c = p
-    # sys.x .= x
-    # sys.t[] = t
-    # f_cont!(sys, args_c...)
-    # ẋ = sys.ẋ
-# end
-
-# might the reason be that having sys stored in p obfuscates type inference?
-# when unpacking sys, the compiler can no longer tell its type, and therefore
-# has no knowledge of the types of sys.x, sys.dx, sys.y and sys.t. since these
-# are being assigned to and read from, type instability occurs.
+# might be because having sys stored in p obfuscates type inference? when
+# unpacking sys, the compiler can no longer tell its type, and therefore has no
+# knowledge of the types of sys.x, sys.dx, sys.y and sys.t. since these are
+# being assigned to and read from, type instability occurs.
 
 # apparently, this can be fixed by storing the x, dx and y fields of sys
 # directly as entries of p. this probably fixes their types during construction,
@@ -385,8 +411,6 @@ end
 # sys, then call another function using it as an argument. this forces the
 # compiler to infer its type, and therefore it specializes the time-critical
 # assignment statements to their actual types.
-
-
 
 ################################################################################
 ################################## TimeHistory #######################################

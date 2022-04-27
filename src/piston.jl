@@ -3,7 +3,7 @@ module Piston
 using Interpolations, Unitful, Plots, StructArrays, ComponentArrays, UnPack
 
 using Flight.Modeling, Flight.Utils
-using Flight.Kinematics, Flight.Dynamics, Flight.Airdata
+using Flight.Kinematics, Flight.Dynamics, Flight.Air
 using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
 using Flight.Geodesy: AltGeop
 using Flight.Propellers: AbstractPropeller, Propeller
@@ -11,7 +11,6 @@ using Flight.Propellers: AbstractPropeller, Propeller
 import Flight.Modeling: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 import Flight.Dynamics: get_mp_b
-import Flight.Plotting: make_plots
 
 export PistonEngine, MagicFuelSupply
 
