@@ -2,13 +2,13 @@ module Piston
 
 using Interpolations, Unitful, Plots, StructArrays, ComponentArrays, UnPack
 
-using Flight.Modeling, Flight.Utils
+using Flight.Systems, Flight.Utils
 using Flight.Kinematics, Flight.Dynamics, Flight.Air
 using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
 using Flight.Geodesy: AltGeop
 using Flight.Propellers: AbstractPropeller, Propeller
 
-import Flight.Modeling: init, f_cont!, f_disc!
+import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 import Flight.Dynamics: get_mp_b
 
@@ -444,7 +444,7 @@ function f_cont!(sys::System{<:PistonThruster}, kin::KinData, air::AirData)
     f_cont!(propeller, kin, air, ω_prop)
     f_cont!(transmission; M_eng, M_prop, J_eng, J_prop)
 
-    Modeling.assemble_y!(sys)
+    Systems.assemble_y!(sys)
 
 end
 

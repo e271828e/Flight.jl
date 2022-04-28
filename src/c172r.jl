@@ -8,7 +8,7 @@ using Unitful
 using Interpolations
 using HDF5
 
-using Flight.Modeling
+using Flight.Systems
 using Flight.Utils
 using Flight.Attitude
 using Flight.Terrain
@@ -20,7 +20,7 @@ using Flight.LandingGear
 using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractVehicle, AbstractAerodynamics, AbstractAvionics
 using Flight.Input: XBoxController, get_axis_value, is_released
 
-import Flight.Modeling: init, f_cont!, f_disc!
+import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Input: assign!
 
@@ -551,7 +551,7 @@ function f_cont!(vehicle::System{Vehicle}, avionics::System{Avionics},
     f_cont!(fuel, pwp) #update fuel system
     f_cont!(aero, pwp, air, kin, trn)
 
-    Modeling.assemble_y!(vehicle)
+    Systems.assemble_y!(vehicle)
 
 end
 

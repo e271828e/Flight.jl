@@ -27,7 +27,7 @@ Thumbs.db
 /source-dist.tmp
 /source-dist.tmp1
 
-/src/misc.jl
+/misc.jl
 
 *.exe
 *.dll

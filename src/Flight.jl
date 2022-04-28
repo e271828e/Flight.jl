@@ -5,6 +5,7 @@ using Reexport
 
 #general
 include("utils.jl")
+include("systems.jl")
 include("modeling.jl")
 include("input.jl")
 include("output.jl")
@@ -36,6 +37,7 @@ include("c172r.jl")
 include("plotting.jl")
 
 @reexport using .Utils
+@reexport using .Systems
 @reexport using .Modeling
 @reexport using .Simulation
 

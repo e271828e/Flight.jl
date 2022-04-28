@@ -4,7 +4,7 @@ using LinearAlgebra
 using StaticArrays
 using UnPack
 
-using Flight.Modeling
+using Flight.Systems
 using Flight.Attitude
 using Flight.Geodesy
 using Flight.Atmosphere
@@ -17,13 +17,8 @@ export AirData
 
 #compute airflow angles at frame c from the c-frame aerodynamic velocity
 @inline function get_airflow_angles(v_wOc_c::AbstractVector{<:Real})::Tuple{Float64, Float64}
-    #let the aerodynamics handle this
-    # if norm(v_wOc_c) < 1
-    #     α = β = 0.0
-    # else
-        α = atan(v_wOc_c[3], v_wOc_c[1])
-        β = atan(v_wOc_c[2], √(v_wOc_c[1]^2 + v_wOc_c[3]^2))
-    # end
+    α = atan(v_wOc_c[3], v_wOc_c[1])
+    β = atan(v_wOc_c[2], √(v_wOc_c[1]^2 + v_wOc_c[3]^2))
     return (α, β)
 end
 
@@ -62,14 +57,11 @@ struct AirData
     CAS::Float64 #calibrated airspeed
 end
 
-function AirData()
-    AirData(KinData(), AtmosphericData())
-end
+AirData() = AirData(KinData(), AtmosphericData())
 
 function AirData(kin_data::KinData, atm_sys::AtmosphericSystem)
     #the AtmosphericData constructor accepts any Geographic subtype, but it's
     #likely that ISA SL conditions and wind will be expressed in LatLon
-    # println(kin_sys)
     atm_data = AtmosphericData(atm_sys, Geographic(kin_data.pos.ϕ_λ, kin_data.pos.h_o))
     AirData(kin_data, atm_data)
 end
@@ -95,7 +87,5 @@ function AirData(kin_data::KinData, atm_data::AtmosphericData)
     AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
-
-
 
 end #module

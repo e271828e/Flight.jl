@@ -4,13 +4,13 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
-using Flight.Modeling
+using Flight.Systems
 using Flight.Attitude
 using Flight.Geodesy, Flight.Terrain, Flight.Atmosphere
 using Flight.Kinematics, Flight.Dynamics, Flight.Air
 using Flight.Input, Flight.Output
 
-import Flight.Modeling: init, f_cont!, f_disc!
+import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Output: update!
 

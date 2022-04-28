@@ -5,12 +5,12 @@ using StaticArrays, ComponentArrays, StructArrays, RecursiveArrayTools
 using Unitful
 using UnPack
 
-using Flight.Modeling
+using Flight.Systems
 using Flight.Air
 using Flight.Kinematics
 using Flight.Dynamics
 
-import Flight.Modeling: init, f_cont!, f_disc!
+import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
 
 export EThruster

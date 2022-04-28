@@ -4,9 +4,9 @@ using StaticArrays
 using LinearAlgebra
 using UnPack
 
-using Flight.Modeling
+using Flight.Systems
 
-import Flight.Modeling: init, f_cont!, f_disc!
+import Flight.Systems: init, f_cont!, f_disc!
 
 export get_μ
 

@@ -6,7 +6,7 @@ using ComponentArrays
 using UnPack
 
 using Flight.Utils
-using Flight.Modeling
+using Flight.Systems
 using Flight.Attitude
 using Flight.Geodesy
 using Flight.Terrain
@@ -14,7 +14,7 @@ using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Friction
 
-import Flight.Modeling: init, f_cont!, f_disc!
+import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
@@ -374,7 +374,7 @@ function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
     f_cont!(strut, steering, terrain, kinematics)
     f_cont!(contact, strut, braking)
 
-    Modeling.assemble_y!(sys)
+    Systems.assemble_y!(sys)
 
 end
 

@@ -4,7 +4,7 @@ using StaticArrays
 using LinearAlgebra
 using UnPack
 
-using Flight.Modeling
+using Flight.Systems
 using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics

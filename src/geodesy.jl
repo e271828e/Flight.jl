@@ -8,7 +8,7 @@ using UnPack
 using Interpolations
 using HDF5
 
-using Flight.Modeling
+using Flight.Systems
 using Flight.Attitude
 
 export Abstract2DLocation, NVector, LatLon

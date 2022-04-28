@@ -6,10 +6,10 @@ using Trapz: trapz
 
 import Interpolations: knots, bounds
 
-using Flight.Modeling, Flight.Utils
+using Flight.Systems, Flight.Utils
 using Flight.Kinematics, Flight.Dynamics, Flight.Air
 
-import Flight.Modeling: init, f_cont!, f_disc!
+import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 
 export FixedPitch, VariablePitch, Propeller

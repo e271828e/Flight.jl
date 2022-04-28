@@ -29,9 +29,7 @@ using StaticArrays
 using StructArrays
 using LinearAlgebra
 
-using Flight.Modeling
 using Flight.Quaternions
-#using ..Quaternions: UnitQuat, Quat #also works (but relies on folder hierarchy)
 
 export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dt
 

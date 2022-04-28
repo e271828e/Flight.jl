@@ -4,11 +4,11 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
-using Flight.Modeling
+using Flight.Systems
 using Flight.Attitude
 using Flight.Geodesy
 
-import Flight.Modeling: init, f_cont!, f_disc!
+import Flight.Systems: init, f_cont!, f_disc!
 
 export AbstractKinematics, KinLTF, KinECEF
 export VelX, PosData, VelData, KinData, KinInit
