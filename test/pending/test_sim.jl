@@ -63,29 +63,28 @@ function test_sim_nrt()
 
     atm.u.wind.v_ew_n[1] = 0
 
-    sim_callback! = let
+    callback! = let
 
         function (u, t, y, params)
 
-            # ac.u.avionics.pedals = -.05
-            # ac.u.avionics.yoke_Δx = 0.1
+            ac.u.avionics.yoke_Δx = (t < 5 ? 0.1 : 0.0)
             ac.u.avionics.yoke_Δy = 0.0
+            ac.u.avionics.pedals = 0.0
             ac.u.avionics.brake_left = 0
             ac.u.avionics.brake_right = 0
             ac.u.avionics.throttle = 0
 
-            ac.u.avionics.yoke_Δx = (t < 5 ? 0.1 : 0.0)
 
         end
     end
 
-    sim = Simulation(ac; args_c = (trn, atm), t_end = 30, callback = sim_callback!)
+    sim = Simulation(ac; args_c = (trn, atm), t_end = 150, sim_callback = callback!)
 
-    @show @ballocated Sim.step!($sim) #this takes many steps!
+    # @show @ballocated Sim.step!($sim) #this takes many steps!
 
-    # Sim.run!(sim)
-    # plots = make_plots(sim)
-    # save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test"))
+    Sim.run!(sim)
+    plots = make_plots(sim)
+    save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test"))
     # save_plots(plots, save_folder = joinpath("tmp", "sim_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
 
     return sim
@@ -109,7 +108,7 @@ function test_sim_rt()
 
     Aircraft.init!(ac, kin_init)
 
-    sim_callback! = let input_callback! = get_input_callback(), output_callback = get_output_callback()
+    callback! = let input_callback! = get_input_callback(), output_callback = get_output_callback()
 
         function (u, t, y, params)
             input_callback!(u)
@@ -120,7 +119,7 @@ function test_sim_rt()
     sim = Simulation(ac;
         args_c = (trn, atm),
         t_end = 10,
-        callback = sim_callback!,
+        sim_callback = callback!,
         realtime = true,
         )
 

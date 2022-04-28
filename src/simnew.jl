@@ -22,18 +22,17 @@ export Simulation, TimeHistory
 #storage for f_cont! and f_disc! calls, so we have no guarantees about their
 #status after a certain step. the only valid sources for t and x at any
 #given moment is the integrator's t and u
-struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, F <: Function}
+struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
     sys::S
     integrator::I
     log::L
-    callback::F
     realtime::Bool
 
     function Simulation(
         sys::System;
         args_c::Tuple = (), #externally supplied arguments to f_cont!
         args_d::Tuple = (), #externally supplied arguments to f_disc!
-        callback::Function = sim_callback!,
+        sim_callback::Function = no_sim_callback!, #simulation control callback
         realtime::Bool = false,
         solver::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false, #can be overridden in integrator_kwargs
@@ -50,29 +49,32 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, F <: Functi
         #the System's output struct saved by the SavingCallback
         saveat_arr = (y_saveat isa Real ? (t_start:y_saveat:t_end) : y_saveat)
 
-        params = (sys = sys, args_c = args_c, args_d = args_d)
-
-        dcb = DiscreteCallback((u, t, integrator)->true, f_dcb!)
+        params = (sys = sys, args_c = args_c, args_d = args_d, sim_callback = sim_callback)
 
         log = SavedValues(Float64, typeof(sys.y))
-        if y_save_on
-            scb = SavingCallback(f_scb, log, saveat = saveat_arr)
-            cb_set = CallbackSet(dcb, scb)
-        else
-            cb_set = dcb
-        end
 
+        cb_step = DiscreteCallback((u, t, integrator)->true, f_step!)
+        cb_sim = DiscreteCallback((u, t, integrator)->true, f_sim!)
+        cb_save = SavingCallback(f_save, log, saveat = saveat_arr)
+
+        if y_save_on
+            cb_set = CallbackSet(cb_step, cb_sim, cb_save)
+            # cb_set = CallbackSet(cb_step, cb_save)
+        else
+            cb_set = CallbackSet(cb_step, cb_sim)
+            # cb_set = CallbackSet(cb_step)
+        end
 
         #the current System's x value is used as initial condition. a copy is
         #needed, otherwise it's just a reference and will get overwritten during
         #simulation
         x0 = copy(sys.x)
-        problem = ODEProblem{true}(f_update!, x0, (t_start, t_end), params)
+        problem = ODEProblem{true}(f_ode!, x0, (t_start, t_end), params)
         integrator = init_problem(problem, solver; callback = cb_set, save_on,
                                   adaptive, dt, integrator_kwargs...)
 
-        new{typeof(sys), typeof(integrator), typeof(log), typeof(callback)}(
-            sys, integrator, log, callback, realtime)
+        new{typeof(sys), typeof(integrator), typeof(log)}(
+            sys, integrator, log, realtime)
     end
 
 end
@@ -89,18 +91,11 @@ Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
     end
 end
 
-#function signature a simulation callback must adhere to.
-#u is the (mutable) System's control input, which the callback may modify
-#t is the (dereferenced) System's t field
-#y is the (immutable) System's output
-#params is the (immutable) System's params field
-sim_callback!(u, t::Float64, y, params) = nothing
-
-#neither f_update!, f_dcb! nor f_scb should allocate
+#neither f_ode!, f_step! or f_save should allocate
 
 #integrator ODE function. basically, a wrapper around the System's continuous
 #dynamics function. as a side effect, modifies the System's ẋ and y.
-function f_update!(u̇, u, p, t)
+function f_ode!(u̇, u, p, t)
 
     @unpack sys, args_c = p
 
@@ -120,7 +115,7 @@ end
 #then calls the System's discrete dynamics. as it is, if the System's y
 #depends on x or d, and these are modified by f_disc!, the change will not be
 #reflected on y until the following integration step
-function f_dcb!(integrator)
+function f_step!(integrator)
 
     @unpack t, u, p = integrator
     @unpack sys, args_c, args_d = p
@@ -142,20 +137,32 @@ function f_dcb!(integrator)
 
 end
 
-#SavingCallback function, gets called at the end of each step after f_disc!
-f_scb(x, t, integrator) = deepcopy(integrator.p.sys.y)
+#DiscreteCallback function, calls the user-specified simulation control callback
+#after every integration step
+function f_sim!(integrator)
 
+    @unpack sys, sim_callback = integrator.p
 
-#makes no sense, because it skips
-function step!(sim::Simulation, args...)
-
-    @unpack sys, integrator, callback = sim
-    @unpack t, u, y, params = sys
-
-    step!(integrator, args...)
-    callback(u, t[], y, params)
+    sim_callback(sys.u, sys.t[], sys.y, sys.params)
+    u_modified!(integrator, false) #avoids needless performance loss
 
 end
+
+#function signature a simulation control callback must adhere to.
+#u is the (mutable) System's control input, which the callback may modify
+#t is the (dereferenced) System's t field
+#y is the (immutable) System's output
+#params is the (immutable) System's params field
+no_sim_callback!(u, t::Float64, y, params) = nothing
+
+#SavingCallback function, gets called at the end of each step after f_step!
+f_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
+
+
+
+############################## Method Extensions ###############################
+
+step!(sim::Simulation, args...) = step!(sim.integrator, args...)
 
 get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
 
@@ -167,7 +174,7 @@ function reinit!(sim::Simulation, args...; kwargs...)
     #condition. if not specified, the original initial condition is used.
     reinit!(sim.integrator, args...; kwargs...)
 
-    #apparently, reinit! calls f_update!, so all System fields are updated in
+    #apparently, reinit! calls f_ode!, so all System fields are updated in
     #the process, no need to do it manually
 
     resize!(sim.log.t, 1)
@@ -177,7 +184,7 @@ end
 
 function run!(sim::Simulation)
 
-    @unpack sys, callback, integrator, realtime = sim
+    @unpack sys, integrator, realtime = sim
 
     # #with this we can close the simulation at any time
     #if realtime
@@ -201,8 +208,6 @@ function run!(sim::Simulation)
 
         #retrieve the dt just taken by the integrator
         dt = integrator.dt
-
-        callback(sys.u, sys.t[], sys.y, sys.params)
 
         #compute the wall time epoch corresponding to the simulation time epoch
         #we just reached
