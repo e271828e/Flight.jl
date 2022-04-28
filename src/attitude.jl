@@ -1,7 +1,8 @@
 """
 Lightweight 3D attitude representation module.
 
-Defines the abstract type `Abstract3DRotation`, and implements four concrete subtypes:
+Defines the abstract type `Abstract3DRotation`, and implements four concrete
+subtypes:
 - Unit quaternion (`RQuat`)
 - Rotation matrix (`RMatrix`)
 - Axis-angle (`RAxAng`)
@@ -18,10 +19,10 @@ All of them support the essential attitude operations used in this package:
 operations natively, and therefore it can be used for promotion whenever a
 specific operation cannot be directly performed on its original operand(s).
 
-This allows for a common interface; any `Abstract3DRotation` subtype need only implement
-conversions to and from `RQuat` to be fully compatible with all other subtypes
-and operations. However, for efficiency reasons, some direct methods are
-provided for the implemented subtypes.
+This allows for a common interface; any `Abstract3DRotation` subtype need only
+implement conversions to and from `RQuat` to be fully compatible with all other
+subtypes and operations. For efficiency, some direct methods are provided for
+the implemented subtypes.
 """
 module Attitude
 
