@@ -135,9 +135,9 @@ function f_disc!(sys::System{<:AircraftBase})
     return x_mod
 end
 
-function update!(xp::XPInterface, ac::System{<:AircraftBase}, ac_number::Integer = 0)
-    update!(xp, ac.y.kinematics.pos, ac_number)
-end
+# function update!(xp::XPInterface, ac::System{<:AircraftBase}, ac_number::Integer = 0)
+#     update!(xp, ac.y.kinematics.pos, ac_number)
+# end
 
 function update!(xp::XPInterface, pos::PosData, aircraft::Integer = 0)
 

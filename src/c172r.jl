@@ -613,9 +613,7 @@ function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
     end
 end
 
-function assign!(ac::System{<:AircraftBase{ID}}, joystick::XBoxController)
-
-    u = ac.u.avionics
+function assign!(u::AvionicsU, joystick::XBoxController)
 
     u.yoke_Δx = get_axis_value(joystick, :right_analog_x) |> aileron_curve
     u.yoke_Δy = get_axis_value(joystick, :right_analog_y) |> elevator_curve

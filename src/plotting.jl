@@ -9,7 +9,7 @@ using StructArrays
 using RecursiveArrayTools: VectorOfArray
 using DataStructures: OrderedDict
 
-using Flight.Modeling
+using Flight.Sim
 
 export make_plots, save_plots
 
@@ -159,6 +159,8 @@ end
     ylims --> yl
     zlims --> zl
 
+    yflip --> true
+
     @series begin
         linecolor --> :lightgray
         xs, ys, fill(zl[1], n)
@@ -166,7 +168,7 @@ end
 
     @series begin
         linecolor --> :lightgray
-        xs, fill(yl[2], n), zs
+        xs, fill(yl[1], n), zs
     end
 
     @series begin
@@ -202,7 +204,7 @@ make_plots(th::TimeHistory{<:AbstractVector{<:Real}}; kwargs...) = plot(th; kwar
 function make_plots(th::TimeHistory{<:NamedTuple}; kwargs...)
 
     pd = OrderedDict{Symbol, Any}()
-    for name in Modeling.get_child_names(th)
+    for name in Sim.get_child_names(th)
         child_plots = make_plots(getproperty(th, name); kwargs...)::Union{Nothing, OrderedDict, Plots.Plot}
         !isnothing(child_plots) ? pd[name] = child_plots : nothing
     end
@@ -211,15 +213,15 @@ function make_plots(th::TimeHistory{<:NamedTuple}; kwargs...)
 
 end
 
-############################### Modeling #######################################
+############################### Simulation #####################################
 
-using Flight.Modeling: Model
+using Flight.Sim: Simulation
 
-function make_plots(mdl::Model;
+function make_plots(sim::Simulation;
                     plot_level = :full, #:simplified
                     linewidth=2, margin = 10mm, guidefontsize = 1,
                     kwargs...)
-    make_plots(TimeHistory(mdl); plot_level, linewidth, margin, guidefontsize, kwargs...)
+    make_plots(TimeHistory(sim); plot_level, linewidth, margin, guidefontsize, kwargs...)
 end
 
 
@@ -282,7 +284,7 @@ function make_plots(th::TimeHistory{<:PosData}; kwargs...)
     #attribute no longer works, and it is titlefontisze what determines the font
     #size of the overall figure title (which normally is used for subplots).
 
-    th_Δx, th_Δy = Modeling.get_scalar_components(th.Δxy)
+    th_Δx, th_Δy = Sim.get_scalar_components(th.Δxy)
     xs, ys, zs = th_Δx._data, th_Δy._data, Float64.(th.h_e._data)
 
     pd[:Ob_t3d] = plot(
@@ -632,8 +634,8 @@ function make_plots(th::TimeHistory{<:ContactY}; kwargs...)
 
     pd[:regulator] = make_plots(th.regulator; kwargs...)
 
-    (μ_max_x, μ_max_y) = Modeling.get_scalar_components(th.μ_max)
-    (μ_eff_x, μ_eff_y) = Modeling.get_scalar_components(th.μ_eff)
+    (μ_max_x, μ_max_y) = Sim.get_scalar_components(th.μ_max)
+    (μ_eff_x, μ_eff_y) = Sim.get_scalar_components(th.μ_eff)
 
     subplot_μ_roll = plot(th.μ_roll; title = "Rolling Friction Coefficient",
         ylabel = L"$\mu_{roll}$", label = "", kwargs...)

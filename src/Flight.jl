@@ -6,10 +6,11 @@ using Reexport
 #general
 include("utils.jl")
 include("systems.jl")
-include("modeling.jl")
+# include("modeling.jl")
 include("input.jl")
 include("output.jl")
-include("simulation.jl")
+# include("simulation.jl")
+include("simnew.jl")
 
 #math
 include("quaternions.jl")
@@ -38,11 +39,11 @@ include("plotting.jl")
 
 @reexport using .Utils
 @reexport using .Systems
-@reexport using .Modeling
-@reexport using .Simulation
-
+# @reexport using .Modeling
 @reexport using .Input
 @reexport using .Output
+@reexport using .Sim
+
 
 @reexport using .Quaternions
 @reexport using .Attitude
