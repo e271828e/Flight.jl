@@ -3,56 +3,45 @@ module Flight
 using Reexport
 @reexport using BenchmarkTools
 
-#general
-include("utils.jl")
-include("systems.jl")
-# include("modeling.jl")
-include("input.jl")
-include("output.jl")
-# include("simulation.jl")
-include("simnew.jl")
+include("core/utils.jl")
+include("core/systems.jl")
+include("core/sim.jl")
+include("core/input.jl")
+include("core/output.jl")
+include("core/plotting.jl")
 
-#math
-include("quaternions.jl")
-include("attitude.jl")
+include("common/quaternions.jl")
+include("common/attitude.jl")
+include("common/geodesy.jl")
+include("common/kinematics.jl")
+include("common/atmosphere.jl")
+include("common/airflow.jl")
+include("common/terrain.jl")
+include("common/dynamics.jl")
+include("common/friction.jl")
 
-#environment & dynamics
-include("geodesy.jl")
-include("terrain.jl")
-include("atmosphere.jl")
-include("kinematics.jl")
-include("air.jl")
-include("dynamics.jl")
-include("friction.jl")
+include("components/landinggear.jl")
+include("components/propellers.jl")
+include("components/piston.jl")
+include("components/electrics.jl")
 
-# #aircraft components
-include("electrics.jl")
-include("landinggear.jl")
-include("propellers.jl")
-include("piston.jl")
-
-# # #aircraft
-include("aircraft.jl")
-include("c172r.jl")
-
-include("plotting.jl")
+include("aircraft/aircraft.jl")
+include("aircraft/c172r/c172r.jl")
 
 @reexport using .Utils
 @reexport using .Systems
-# @reexport using .Modeling
+@reexport using .Sim
 @reexport using .Input
 @reexport using .Output
-@reexport using .Sim
-
+@reexport using .Plotting
 
 @reexport using .Quaternions
 @reexport using .Attitude
-
 @reexport using .Geodesy
-@reexport using .Terrain
-@reexport using .Atmosphere
 @reexport using .Kinematics
-@reexport using .Air
+@reexport using .Atmosphere
+@reexport using .Airflow
+@reexport using .Terrain
 @reexport using .Dynamics
 @reexport using .Friction
 
@@ -64,7 +53,6 @@ include("plotting.jl")
 @reexport using .Aircraft
 @reexport using .C172R
 
-@reexport using .Plotting
 
 
 end

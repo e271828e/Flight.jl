@@ -46,7 +46,7 @@ end
 
 function test_sim_nrt()
 
-    h_trn = AltOrth(608.55);
+    h_trn = AltO(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
@@ -55,7 +55,7 @@ function test_sim_nrt()
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-        Ob = Geographic(
+        Ob = GeographicLocation(
             LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
             h_trn + 1.9 + 2200.5));
 
@@ -67,7 +67,7 @@ function test_sim_nrt()
 
         function (u, t, y, params)
 
-            ac.u.avionics.yoke_Δx = (t < 5 ? 0.1 : 0.0)
+            ac.u.avionics.yoke_Δx = (t < 5 ? 0.2 : 0.0)
             ac.u.avionics.yoke_Δy = 0.0
             ac.u.avionics.pedals = 0.0
             ac.u.avionics.brake_left = 0
@@ -80,7 +80,7 @@ function test_sim_nrt()
 
     sim = Simulation(ac; args_c = (trn, atm), t_end = 150, sim_callback = callback!)
 
-    # @show @ballocated Sim.step!($sim) #this takes many steps!
+    # @show @ballocated SciMLBase.step!($sim) #this takes many steps!
 
     Sim.run!(sim)
     plots = make_plots(sim)
@@ -93,7 +93,7 @@ end
 
 function test_sim_rt()
 
-    h_trn = AltOrth(608.55);
+    h_trn = AltO(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
@@ -102,7 +102,7 @@ function test_sim_rt()
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-        Ob = Geographic(
+        Ob = GeographicLocation(
             LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
             h_trn + 1.9 + 2200.5));
 

@@ -3,9 +3,9 @@ module Piston
 using Interpolations, Unitful, Plots, StructArrays, ComponentArrays, UnPack
 
 using Flight.Systems, Flight.Utils
-using Flight.Kinematics, Flight.Dynamics, Flight.Air
+using Flight.Kinematics, Flight.Dynamics, Flight.Airflow
 using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
-using Flight.Geodesy: AltGeop
+using Flight.Geodesy: AltG
 using Flight.Propellers: AbstractPropeller, Propeller
 
 import Flight.Systems: init, f_cont!, f_disc!
@@ -55,7 +55,7 @@ T_ISA(p) = T_std * (p / p_std) ^ (-β * R / g_std)
 p2δ(p) = (p/p_std) * (T_ISA(p)/T_std)^(-0.5)
 
 function h2δ(h)
-    @unpack p, T = ISAData(AltGeop(h))
+    @unpack p, T = ISAData(AltG(h))
     p / p_std / √(T / T_std)
 end
 
@@ -281,7 +281,7 @@ function compute_π_ISA_pow(dataset, n, μ, δ)
 end
 
 
-function f_cont!(sys::System{<:PistonEngine}, air::AirData, ω::Real)
+function f_cont!(sys::System{<:PistonEngine}, air::AirflowData, ω::Real)
 
     @unpack ω_rated, P_rated, dataset, μ_ratio_idle = sys.params
     @unpack thr, mix, start, shutdown = sys.u
@@ -430,7 +430,7 @@ Base.@kwdef struct PistonThruster{E <: AbstractPistonEngine,
     transmission::Transmission = Transmission()
 end
 
-function f_cont!(sys::System{<:PistonThruster}, kin::KinData, air::AirData)
+function f_cont!(sys::System{<:PistonThruster}, kin::KinData, air::AirflowData)
 
     @unpack engine, propeller, transmission = sys.subsystems
     @unpack ω_eng, ω_prop = transmission.y

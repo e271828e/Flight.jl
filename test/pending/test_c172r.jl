@@ -11,7 +11,7 @@ using GLFW
 
 function aerodynamics_test()
 
-    h_trn = AltOrth(601.3);
+    h_trn = AltO(601.3);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
@@ -20,11 +20,11 @@ function aerodynamics_test()
     kin_init = KinInit(v_eOb_n = [40, 0, 0],
                         ω_lb_b = [0, 0, 0],
                         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
-                        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+                        Ob = GeographicLocation(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
                                         h_trn - 0 + 102.0));
 
     kin_data = KinData(kin_init)
-    air_data = AirData(kin_data, atm)
+    air_data = AirflowData(kin_data, atm)
 
     aero.u.e = 0.0
     aero.u.a = 0.0
@@ -48,7 +48,7 @@ end
 
 function forward_drop_test()
 
-    h_trn = AltOrth(608.55);
+    h_trn = AltO(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
@@ -56,7 +56,7 @@ function forward_drop_test()
     kin_init = KinInit(v_eOb_n = [30, 0, 0],
                         ω_lb_b = [0, 0, 0],
                         q_nb = REuler(ψ = 0, θ = 0.2, φ = 0.0),
-                        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+                        Ob = GeographicLocation(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
                                         h_trn + 1.9 + 2000.5));
 
     Aircraft.init!(ac, kin_init)
@@ -96,7 +96,7 @@ end
 
 function free_flight()
 
-    h_trn = AltOrth(608.55);
+    h_trn = AltO(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(AtmosphereDescriptor());
@@ -104,7 +104,7 @@ function free_flight()
     kin_init = KinInit(v_eOb_n = [0, 0, 0],
                         ω_lb_b = [0, 0, 0],
                         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-                        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+                        Ob = GeographicLocation(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
                                         h_trn + 2.0 - 0.15 + 00.0));
 
     Aircraft.init!(ac, kin_init)

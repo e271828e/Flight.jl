@@ -100,12 +100,12 @@ function test_strut()
         h_trn = TerrainData(terrain, l2d).altitude
 
         #wow = false
-        kin_data = KinInit( Ob = Geographic(l2d, h_trn + 1.1)) |> KinData
+        kin_data = KinInit( Ob = GeographicLocation(l2d, h_trn + 1.1)) |> KinData
         f_cont!(strut, steering, terrain, kin_data)
         @test strut.y == y_default #strut outputs stay at their defaults
 
         #wow = true
-        Ob = Geographic(l2d, h_trn + 0.9)
+        Ob = GeographicLocation(l2d, h_trn + 0.9)
 
         #normal static load
         kin_data = KinInit(; Ob ) |> KinData
@@ -176,7 +176,7 @@ function test_contact()
         h_trn = TerrainData(terrain, l2d).altitude
 
         #wow = true
-        Ob = Geographic(l2d, h_trn + 0.9)
+        Ob = GeographicLocation(l2d, h_trn + 0.9)
 
         #normal static load
         kin_data = KinInit(; Ob ) |> KinData
@@ -238,7 +238,7 @@ function test_contact()
         @test @ballocated(f_disc!($contact)) == 0
 
         #wow = false
-        kin_data = KinInit( Ob = Geographic(l2d, h_trn + 1.1)) |> KinData
+        kin_data = KinInit( Ob = GeographicLocation(l2d, h_trn + 1.1)) |> KinData
         f_cont!(strut, steering, terrain, kin_data) #update Strut
         f_cont!(contact, strut, braking)
         #the friction regulator's reset input is set and propagated to the outputs
@@ -263,7 +263,7 @@ function test_landing_gear_unit()
         h_trn = Terrain.TerrainData(trn, l2d).altitude
 
         #wow = true
-        kin = KinInit( Ob = Geographic(l2d, h_trn + 0.9), v_eOb_n = [0,1,0]) |> KinData
+        kin = KinInit( Ob = GeographicLocation(l2d, h_trn + 0.9), v_eOb_n = [0,1,0]) |> KinData
 
         @test (@ballocated f_cont!($ldg, $kin, $trn)) == 0
         @test @ballocated(f_disc!($ldg)) == 0

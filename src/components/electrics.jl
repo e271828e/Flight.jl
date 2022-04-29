@@ -4,13 +4,18 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays, StructArrays, RecursiveArrayTools
 using Unitful
 using UnPack
+using Plots
 
+using Flight.Utils
 using Flight.Systems
-using Flight.Air
+using Flight.Plotting
+
+using Flight.Airflow
 using Flight.Kinematics
 using Flight.Dynamics
 
 import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Plotting: make_plots
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
 
 export EThruster
@@ -28,7 +33,7 @@ Base.@kwdef struct SimpleProp
     J::Float64 = 0.5
 end
 
-function get_wrench(prop::SimpleProp, ω::Real, air::AirData) #air data just for interface demo
+function get_wrench(prop::SimpleProp, ω::Real, air::AirflowData) #air data just for interface demo
     @unpack kF, kM = prop
     F_ext_Os_s = kF * ω^2 * SVector(1,0,0)
     M_ext_Os_s = -tanh(ω/1.0) * kM * ω^2 * SVector(1,0,0) #choose ω_ref = 1.0
@@ -105,7 +110,7 @@ get_hr_b(sys::System{EThruster}) = sys.y.hr_b
 
 f_disc!(sys::System{EThruster}) = false
 
-function f_cont!(sys::System{EThruster}, kin::KinData, air::AirData)
+function f_cont!(sys::System{EThruster}, kin::KinData, air::AirflowData)
 
     @unpack ẋ, x, y, u, params = sys #no need for subsystems
     @unpack frame, battery, motor, propeller, gearbox = params
@@ -134,6 +139,28 @@ function f_cont!(sys::System{EThruster}, kin::KinData, air::AirData)
     sys.y = EThrusterY(throttle, ω_shaft, ω_prop, i, c_bat, wr_c, wr_b, hr_b)
 
     return nothing
+
+end
+
+
+############################### Electrics ######################################
+
+
+function make_plots(th::TimeHistory{<:EThrusterY}; kwargs...)
+
+    pd = OrderedDict{Symbol, Plots.Plot}()
+
+    pd[:wr_Oc_c] = plot(th.wr_c;
+        plot_title = "Thruster Wrench [Thruster Frame]",
+        wr_source = "thr", wr_frame = "c",
+        kwargs...)
+
+    pd[:wr_Ob_b] = plot(th.wr_b;
+        plot_title = "Thruster Wrench [Vehicle Axes]",
+        wr_source = "thr", wr_frame = "b",
+        kwargs...)
+
+    return pd
 
 end
 

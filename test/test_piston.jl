@@ -10,7 +10,7 @@ using Flight
 using Flight.Piston: PistonEngine, inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
 using Flight.Piston: eng_off, eng_starting, eng_running
 using Flight.Atmosphere: Atmosphere, p_std, T_std
-using Flight.Air
+using Flight.Airflow
 
 export test_piston
 
@@ -99,7 +99,7 @@ function test_propagation()
         kin = KinInit(v_eOb_n = [50, 0, 0]) |> KinData
         atm = AtmosphereDescriptor() |> System
         atm.u.static.T_sl = T_std + 10
-        air = AirData(kin, atm)
+        air = AirflowData(kin, atm)
         eng = PistonEngine(μ_ratio_idle = 0.2) |> System
         fuel = System(MagicFuelSupply())
 

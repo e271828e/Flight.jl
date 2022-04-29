@@ -11,6 +11,9 @@ init!(out::AbstractOutputInterface) = throw(MethodError(init!, (out,)))
 update!(out::AbstractOutputInterface, args...) = throw(MethodError(update!, (out, args...)))
 # the baseline update! methods should be defined by AircraftBase
 
+################################################################################
+############################### XPInterface ####################################
+
 Base.@kwdef struct XPInterface <: AbstractOutputInterface
     socket::UDPSocket = UDPSocket()
     host::IPv4 = IPv4("127.0.0.1")

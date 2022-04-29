@@ -12,7 +12,7 @@ using Flight.Systems
 using Flight.Utils
 using Flight.Attitude
 using Flight.Terrain
-using Flight.Air
+using Flight.Airflow
 using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Electrics: EThruster, ElectricMotor, SimpleProp, CW, CCW
@@ -332,7 +332,7 @@ end
 
 function load_aero_data()
 
-    fname = "src/c172r_aero.h5"
+    fname = "src/aircraft/c172r/c172r.h5"
     fid = h5open(fname, "r")
 
     gr_C_D = fid["C_D"]
@@ -419,10 +419,10 @@ function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_
 end
 
 function f_cont!(sys::System{Aero}, pwp::System{Pwp},
-    air::AirData, kinematics::KinData, terrain::AbstractTerrain)
+    air::AirflowData, kinematics::KinData, terrain::AbstractTerrain)
 
     #for this aircraft we have chosen the aerodynamics frame fa as the main
-    #aircraft reference frame fb. all the AirData variables from the AirData
+    #aircraft reference frame fb. all the AirflowData variables from the AirflowData
     #module are computed in frame fb, they are directly applicable here. if this
     #wasn't the case, either because the origin Oa is not coincident with Ob and
     #we care about the velocity lever arm or because the axes εa and εb are
@@ -520,7 +520,7 @@ end
 ######################## Avionics Update Functions ###########################
 
 function f_cont!(avionics::System{Avionics}, ::System{Vehicle},
-                ::KinData, ::AirData, ::AbstractTerrain)
+                ::KinData, ::AirflowData, ::AbstractTerrain)
 
     #here, avionics do nothing but update their output state. for a more complex
     #aircraft a continuous state-space autopilot implementation could go here
@@ -541,7 +541,7 @@ f_disc!(::System{Avionics}, ::System{Vehicle}) = false
 f_cont!(::System{Fuel}, ::System{Pwp}) = nothing
 
 function f_cont!(vehicle::System{Vehicle}, avionics::System{Avionics},
-                kin::KinData, air::AirData, trn::AbstractTerrain)
+                kin::KinData, air::AirflowData, trn::AbstractTerrain)
 
     @unpack aero, pwp, ldg, fuel, pld = vehicle.subsystems
 

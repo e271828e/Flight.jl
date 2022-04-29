@@ -3,10 +3,14 @@ module Friction
 using StaticArrays
 using LinearAlgebra
 using UnPack
+using Plots
 
+using Flight.Utils
+using Flight.Plotting
 using Flight.Systems
 
 import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Plotting: make_plots
 
 export get_μ
 
@@ -99,5 +103,52 @@ function f_disc!(sys::System{<:Regulator{N}}) where {N}
     return x_mod
 
 end
+
+############################## Plotting ########################################
+
+function make_plots(th::TimeHistory{<:RegulatorY}; kwargs...)
+
+    pd = OrderedDict{Symbol, Plots.Plot}()
+
+    splt_v = plot(th.v; title = "Velocity",
+        ylabel = L"$v \ (m/s)$", kwargs...)
+
+    splt_s = plot(th.s; title = "Velocity Integral",
+        ylabel = L"$s \ (m)$", kwargs...)
+
+    splt_α_p = plot(th.α_p; title = "Proportional Term",
+        ylabel = L"$\alpha_p$", kwargs...)
+
+    splt_α_i = plot(th.α_i; title = "Integral Term",
+        ylabel = L"$\alpha_i$", kwargs...)
+
+    splt_α_raw = plot(th.α_raw; title = "Raw Output",
+        ylabel = L"$\alpha_{raw}$", kwargs...)
+
+    splt_α = plot(th.α; title = "Clipped Output",
+        ylabel = L"$\alpha$", kwargs...)
+
+    splt_sat = plot(th.sat; title = "Saturation",
+        ylabel = L"$S$", kwargs...)
+
+    pd[:vs] = plot(splt_v, splt_s, splt_sat;
+        plot_title = "Contact Point Kinematics",
+        layout = (1,3),
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    pd[:pi] = plot(splt_α_p, splt_α_i, splt_sat;
+        plot_title = "Proportional and Integral Terms",
+        layout = (1,3),
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    pd[:output] = plot(splt_α_raw, splt_α, splt_sat;
+        plot_title = "Regulator Output",
+        layout = (1,3),
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    return pd
+
+end
+
 
 end #module

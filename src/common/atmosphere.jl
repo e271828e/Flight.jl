@@ -13,6 +13,21 @@ export AtmosphereDescriptor, AtmosphericData, AtmosphericSystem
 
 ### see ISO 2553
 
+################################################################################
+############################## ISA Model #######################################
+
+#a System{<:AbstractISA} may have an output type of its own, as any other
+#System. however, this output generally will not be an ISAData instance. the
+#ISAData returned by a ISA System depends on the location specified in the
+#query. instead, the output from an ISA System may hold quantities of interest
+#related to its own internal state, if it has one due to it being a dynamic ISA
+#implementation.
+
+#AbstractISA subtypes: ConstantUniformISA (TunableISA), ConstantFieldISA,
+#DynamicUniformISA, DynamicFieldISA.
+
+abstract type AbstractISA <: SystemDescriptor end
+
 const R = 287.05287 #gas constant for dry air
 const γ = 1.40 #heat capacity ratio for dry air
 const βs = 1.458e-6 #Sutherland's empirical constant for dynamic viscosity
@@ -23,13 +38,39 @@ const p_std = 101325.0
 const ρ_std = p_std / (R * T_std)
 const g_std = 9.80665
 
-const ISA_layers = StructArray(
-    β =      SVector{7,Float64}([-6.5e-3, 0, 1e-3, 2.8e-3, 0, -2.8e-3, -2e-3]),
-    h_ceil = SVector{7,Float64}([11000, 20000, 32000, 47000, 51000, 71000, 84852]))
-
 @inline density(p,T) = p/(R*T)
 @inline speed_of_sound(T) = √(γ*R*T)
 @inline dynamic_viscosity(T) = (βs * T^1.5) / (T + S)
+
+
+############################# SeaLevelConditions ###############################
+
+Base.@kwdef struct SeaLevelConditions
+    p::Float64 = p_std
+    T::Float64 = T_std
+    g::Float64 = g_std
+end
+
+#when queried, any ISA System must provide the sea level atmospheric conditions
+#at any given 2D location. these may be stationary or time-evolving.
+function SeaLevelConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractISA}}
+    error("SeaLevelConditions constructor not implemented for $T")
+end
+
+
+############################### ISAData ########################################
+
+struct ISAData
+    p::Float64
+    T::Float64
+    ρ::Float64
+    a::Float64
+    μ::Float64
+end
+
+const ISA_layers = StructArray(
+    β =      SVector{7,Float64}([-6.5e-3, 0, 1e-3, 2.8e-3, 0, -2.8e-3, -2e-3]),
+    h_ceil = SVector{7,Float64}([11000, 20000, 32000, 47000, 51000, 71000, 84852]))
 
 @inline ISA_temperature_law(h::Real, T_b, h_b, β)::Float64 = T_b + β * (h - h_b)
 
@@ -41,23 +82,10 @@ const ISA_layers = StructArray(
     end
 end
 
-Base.@kwdef struct SLConditions
-    p::Float64 = p_std
-    T::Float64 = T_std
-    g::Float64 = g_std
-end
-
-struct ISAData
-    p::Float64
-    T::Float64
-    ρ::Float64
-    a::Float64
-    μ::Float64
-end
-
-ISAData() = ISAData(AltGeop(0))
-
-@inline function ISAData(h_geo::AltGeop, sl::SLConditions = SLConditions())
+#compute ISAData by using ISA_temperature_law and ISA_pressure_law to propagate
+#the given sea level conditions upwards through the successive ISA_layers, until
+#the requested altitude is reached
+@inline function ISAData(h_geo::AltG, sl::SeaLevelConditions = SeaLevelConditions())
 
     h = Float64(h_geo)
     h_base = 0; T_base = sl.T; p_base = sl.p; g_base = sl.g
@@ -78,37 +106,21 @@ ISAData() = ISAData(AltGeop(0))
 
 end
 
-##################### AbstractISA ###########################
+@inline ISAData() = ISAData(AltG(0))
 
-#a System{<:AbstractISA} may have an output type of its own, as any other
-#System. however, this output generally will not be an ISAData instance. the
-#ISAData returned by a ISA System depends on the location specified in the
-#query. instead, the output from an ISA System may hold quantities of interest
-#related to its own internal state, if it has one due to it being a dynamic ISA
-#implementation.
+@inline function ISAData(sys::System{<:AbstractISA}, loc::GeographicLocation)
 
-#AbstractISA subtypes: ConstantUniformISA (TunableISA), ConstantFieldISA,
-#DynamicUniformISA, DynamicFieldISA.
-
-abstract type AbstractISA <: SystemDescriptor end
-
-function SLConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractISA}}
-    error("SLConditions constructor not implemented for $T")
-end
-
-@inline function ISAData(sys::System{<:AbstractISA}, p::Geographic)
-
-    h_geop = Altitude{Geopotential}(p.alt, p.l2d)
-    sl = SLConditions(sys, p.l2d)
+    h_geop = Altitude{Geopotential}(loc.alt, loc.l2d)
+    sl = SeaLevelConditions(sys, loc.l2d)
     ISAData(h_geop, sl)
 
 end
 
-##################### TunableISA ###########################
+############################ TunableISA ########################################
 
-#a TunableISA System does not have a state and therefore cannot evolve on its
-#own. but its input vector can still be used to manually tune the SL conditions
-#during simulation.
+#a simple ISA model. it does not have a state and therefore cannot evolve on its
+#own. but its input vector can be used to manually tune the SeaLevelConditions
+#during simulation
 
 struct TunableISA <: AbstractISA end #Constant, Uniform ISA
 
@@ -121,14 +133,14 @@ init(::TunableISA, ::SystemU) = UTunableISA()
 f_cont!(::System{<:TunableISA}, args...) = nothing
 f_disc!(::System{<:TunableISA}, args...) = false
 
-function SLConditions(s::System{<:TunableISA}, ::Abstract2DLocation)
-    SLConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
+function SeaLevelConditions(s::System{<:TunableISA}, ::Abstract2DLocation)
+    SeaLevelConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
     #alternative using actual local SL gravity:
-    # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(l2d, AltOrth(0.0))))
+    # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(GeographicLocation(l2d, AltO(0.0))))
 end
 
-
-######################## AbstractWind ############################
+################################################################################
+################################ WindModel #####################################
 
 abstract type AbstractWind <: SystemDescriptor end
 
@@ -141,7 +153,7 @@ function WindData(::T, ::Abstract3DLocation) where {T<:System{<:AbstractWind}}
 end
 
 
-######################## TunableWind ############################
+############################### TunableWind ####################################
 
 struct TunableWind <: AbstractWind end
 
@@ -157,7 +169,8 @@ function WindData(wind::System{<:TunableWind}, ::Abstract3DLocation)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData
 end
 
-#################### AtmosphereDescriptor ############################
+################################################################################
+############################# Atmospheric Model ################################
 
 Base.@kwdef struct AtmosphereDescriptor{S <: AbstractISA, W <: AbstractWind} <: SystemDescriptor
     static::S = TunableISA()
@@ -171,10 +184,10 @@ Base.@kwdef struct AtmosphericData
     wind::WindData = WindData()
 end
 
-function AtmosphericData(a::AtmosphericSystem, pos::Geographic)
+function AtmosphericData(a::AtmosphericSystem, loc::GeographicLocation)
     AtmosphericData(
-        ISAData(a.subsystems.static, pos),
-        WindData(a.subsystems.wind, pos))
+        ISAData(a.subsystems.static, loc),
+        WindData(a.subsystems.wind, loc))
 end
 
 # #top-down / recursive implementation

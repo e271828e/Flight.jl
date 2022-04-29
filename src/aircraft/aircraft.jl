@@ -7,7 +7,7 @@ using UnPack
 using Flight.Systems
 using Flight.Attitude
 using Flight.Geodesy, Flight.Terrain, Flight.Atmosphere
-using Flight.Kinematics, Flight.Dynamics, Flight.Air
+using Flight.Kinematics, Flight.Dynamics, Flight.Airflow
 using Flight.Input, Flight.Output
 
 import Flight.Systems: init, f_cont!, f_disc!
@@ -90,7 +90,7 @@ init(ac::AircraftBase, ::SystemY) = (
     vehicle = init(ac.vehicle, SystemY()),
     avionics = init(ac.avionics, SystemY()),
     dynamics = DynData(),
-    air = AirData(),
+    air = AirflowData(),
     )
 
 function init!(ac::System{T}, kin_init::KinInit) where {T<:AircraftBase{I,K}} where {I,K}
@@ -105,7 +105,7 @@ function f_cont!(sys::System{<:AircraftBase}, trn::AbstractTerrain, atm::Atmosph
     #update kinematics
     f_cont!(kinematics)
     kin_data = kinematics.y
-    air_data = AirData(kin_data, atm)
+    air_data = AirflowData(kin_data, atm)
 
     #update avionics and vehicle components
     f_cont!(avionics, vehicle, kin_data, air_data, trn)
@@ -141,7 +141,7 @@ end
 
 function update!(xp::XPInterface, pos::PosData, aircraft::Integer = 0)
 
-    llh = Geographic(pos.ϕ_λ, pos.h_o)
+    llh = GeographicLocation(pos.ϕ_λ, pos.h_o)
     euler = REuler(pos.q_nb)
 
     lat = rad2deg(llh.l2d.ϕ)
