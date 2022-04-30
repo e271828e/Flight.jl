@@ -459,8 +459,8 @@ function G_n(l3d::Abstract3DLocation)
 
     q_en = ltf(l3d)
     ω_ie_e = SVector{3, Float64}(0,0,ω_ie)
-    r_eP_e = CartesianLocation(p)[:]
-    G_n = g_n(p) + q_en'(ω_ie_e × (ω_ie_e × r_eP_e))
+    r_eP_e = CartesianLocation(l3d)[:]
+    G_n = g_n(l3d) + q_en'(ω_ie_e × (ω_ie_e × r_eP_e))
     return G_n
 
 end

@@ -3,8 +3,8 @@ module Piston
 using Interpolations, Unitful, Plots, StructArrays, ComponentArrays, UnPack
 
 using Flight.Systems, Flight.Utils
-using Flight.Kinematics, Flight.Dynamics, Flight.Airflow
-using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
+using Flight.Kinematics, Flight.Dynamics, Flight.Air
+using Flight.Air: ISA_layers, AirProperties, p_std, T_std, g_std, R
 using Flight.Geodesy: AltG
 using Flight.Propellers: AbstractPropeller, Propeller
 
@@ -55,7 +55,7 @@ T_ISA(p) = T_std * (p / p_std) ^ (-β * R / g_std)
 p2δ(p) = (p/p_std) * (T_ISA(p)/T_std)^(-0.5)
 
 function h2δ(h)
-    @unpack p, T = ISAData(AltG(h))
+    @unpack p, T = AirProperties(AltG(h))
     p / p_std / √(T / T_std)
 end
 
@@ -432,7 +432,7 @@ end
 
 function f_cont!(sys::System{<:PistonThruster}, kin::KinData, air::AirflowData)
 
-    @unpack engine, propeller, transmission = sys.subsystems
+    @unpack engine, propeller, transmission = sys
     @unpack ω_eng, ω_prop = transmission.y
 
     M_eng = engine.y.M
@@ -450,7 +450,7 @@ end
 
 function f_disc!(thr::System{<:PistonThruster}, fuel::Bool)
 
-    @unpack engine, propeller, transmission = thr.subsystems
+    @unpack engine, propeller, transmission = thr
     ω_eng = transmission.y.ω_eng
 
     f_disc!(engine, ω_eng, fuel) || f_disc!(propeller) || f_disc!(transmission)
@@ -461,7 +461,7 @@ MassTrait(::System{<:PistonThruster}) = HasNoMass()
 WrenchTrait(::System{<:PistonThruster}) = GetsExternalWrench()
 AngularMomentumTrait(::System{<:PistonThruster}) = HasAngularMomentum()
 
-get_wr_b(sys::System{<:PistonThruster}) = get_wr_b(sys.subsystems.propeller)
-get_hr_b(sys::System{<:PistonThruster}) = get_hr_b(sys.subsystems.propeller)
+get_wr_b(sys::System{<:PistonThruster}) = get_wr_b(sys.propeller)
+get_hr_b(sys::System{<:PistonThruster}) = get_hr_b(sys.propeller)
 
 end #module

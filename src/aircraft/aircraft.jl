@@ -6,8 +6,8 @@ using UnPack
 
 using Flight.Systems
 using Flight.Attitude
-using Flight.Geodesy, Flight.Terrain, Flight.Atmosphere
-using Flight.Kinematics, Flight.Dynamics, Flight.Airflow
+using Flight.Geodesy, Flight.Terrain, Flight.Air
+using Flight.Kinematics, Flight.Dynamics
 using Flight.Input, Flight.Output
 
 import Flight.Systems: init, f_cont!, f_disc!
@@ -90,14 +90,14 @@ init(ac::AircraftBase, ::SystemY) = (
     vehicle = init(ac.vehicle, SystemY()),
     avionics = init(ac.avionics, SystemY()),
     dynamics = DynData(),
-    air = AirflowData(),
+    airflow = AirflowData(),
     )
 
 function init!(ac::System{T}, kin_init::KinInit) where {T<:AircraftBase{I,K}} where {I,K}
     ac.x.kinematics .= init(K(), kin_init)
 end
 
-function f_cont!(sys::System{<:AircraftBase}, trn::AbstractTerrain, atm::AtmosphericSystem)
+function f_cont!(sys::System{<:AircraftBase}, atm::System{<:Atmosphere}, trn::AbstractTerrain)
 
     @unpack ẋ, x, subsystems = sys
     @unpack kinematics, vehicle, avionics = subsystems
@@ -119,14 +119,14 @@ function f_cont!(sys::System{<:AircraftBase}, trn::AbstractTerrain, atm::Atmosph
     dyn_data = f_dyn!(kinematics.ẋ.vel, kinematics.y, mp_b, wr_b, hr_b)
 
     sys.y = (kinematics = kinematics.y, vehicle = vehicle.y, avionics = avionics.y,
-            dynamics = dyn_data, air = air_data,)
+            dynamics = dyn_data, airflow = air_data,)
 
     return nothing
 
 end
 
 function f_disc!(sys::System{<:AircraftBase})
-    @unpack kinematics, vehicle, avionics = sys.subsystems
+    @unpack kinematics, vehicle, avionics = sys
 
     x_mod = f_disc!(kinematics, 1e-8) |
             f_disc!(vehicle, avionics) |

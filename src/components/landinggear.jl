@@ -371,7 +371,7 @@ get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
 function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinData,
                 terrain::AbstractTerrain)
 
-    @unpack strut, contact, steering, braking = sys.subsystems
+    @unpack strut, contact, steering, braking = sys
 
     f_cont!(steering)
     f_cont!(braking)

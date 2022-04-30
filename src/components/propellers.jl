@@ -10,7 +10,7 @@ import Interpolations: knots, bounds
 using Flight.Utils
 using Flight.Systems
 using Flight.Plotting
-using Flight.Kinematics, Flight.Dynamics, Flight.Airflow
+using Flight.Kinematics, Flight.Dynamics, Flight.Air
 
 import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Plotting: make_plots

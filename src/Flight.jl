@@ -14,8 +14,7 @@ include("common/quaternions.jl")
 include("common/attitude.jl")
 include("common/geodesy.jl")
 include("common/kinematics.jl")
-include("common/atmosphere.jl")
-include("common/airflow.jl")
+include("common/air.jl")
 include("common/terrain.jl")
 include("common/dynamics.jl")
 include("common/friction.jl")
@@ -39,8 +38,7 @@ include("aircraft/c172r/c172r.jl")
 @reexport using .Attitude
 @reexport using .Geodesy
 @reexport using .Kinematics
-@reexport using .Atmosphere
-@reexport using .Airflow
+@reexport using .Air
 @reexport using .Terrain
 @reexport using .Dynamics
 @reexport using .Friction

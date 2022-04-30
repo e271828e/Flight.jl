@@ -49,7 +49,7 @@ function test_sim_nrt()
     h_trn = AltO(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(AtmosphereDescriptor());
+    atm = System(Atmosphere());
     ac = System(C172RAircraft());
     kin_init = KinInit(
         v_eOb_n = [30, 0, 0],
@@ -78,7 +78,7 @@ function test_sim_nrt()
         end
     end
 
-    sim = Simulation(ac; args_c = (trn, atm), t_end = 150, sim_callback = callback!)
+    sim = Simulation(ac; args_c = (atm, trn), t_end = 150, sim_callback = callback!)
 
     # @show @ballocated SciMLBase.step!($sim) #this takes many steps!
 
@@ -96,7 +96,7 @@ function test_sim_rt()
     h_trn = AltO(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(AtmosphereDescriptor());
+    atm = System(Atmosphere());
     ac = System(C172RAircraft());
     kin_init = KinInit(
         v_eOb_n = [30, 0, 0],
@@ -117,7 +117,7 @@ function test_sim_rt()
     end
 
     sim = Simulation(ac;
-        args_c = (trn, atm),
+        args_c = (atm, trn),
         t_end = 10,
         sim_callback = callback!,
         realtime = true,

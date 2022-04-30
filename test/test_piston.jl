@@ -9,8 +9,8 @@ using LinearAlgebra
 using Flight
 using Flight.Piston: PistonEngine, inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
 using Flight.Piston: eng_off, eng_starting, eng_running
-using Flight.Atmosphere: Atmosphere, p_std, T_std
-using Flight.Airflow
+using Flight.Air
+using Flight.Air: p_std, T_std
 
 export test_piston
 
@@ -97,8 +97,8 @@ function test_propagation()
     @testset verbose = true "Propagation" begin
 
         kin = KinInit(v_eOb_n = [50, 0, 0]) |> KinData
-        atm = AtmosphereDescriptor() |> System
-        atm.u.static.T_sl = T_std + 10
+        atm = Atmosphere() |> System
+        atm.u.air.T_sl = T_std + 10
         air = AirflowData(kin, atm)
         eng = PistonEngine(μ_ratio_idle = 0.2) |> System
         fuel = System(MagicFuelSupply())

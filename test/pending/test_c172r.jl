@@ -14,7 +14,7 @@ function aerodynamics_test()
     h_trn = AltO(601.3);
 
     trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(AtmosphereDescriptor());
+    atm = System(Atmosphere());
     aero = System(C172R.Aero());
     pwp = System(C172R.Pwp());
     kin_init = KinInit(v_eOb_n = [40, 0, 0],
@@ -51,7 +51,7 @@ function forward_drop_test()
     h_trn = AltO(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(AtmosphereDescriptor());
+    atm = System(Atmosphere());
     ac = System(C172RAircraft());
     kin_init = KinInit(v_eOb_n = [30, 0, 0],
                         ω_lb_b = [0, 0, 0],
@@ -77,8 +77,8 @@ function forward_drop_test()
     atm.u.wind.v_ew_n[1] = 0
 
     sim = SimulationRun(
-        # model = Model(ac, (trn, atm); t_end = 3600, adaptive = true),
-        model = Model(ac, (trn, atm); t_end = 250, adaptive = false, solver = RK4(), dt = 0.02, y_saveat = 0.02),
+        # model = Model(ac, (atm, trn); t_end = 3600, adaptive = true),
+        model = Model(ac, (atm, trn); t_end = 250, adaptive = false, solver = RK4(), dt = 0.02, y_saveat = 0.02),
         # outputs = [XPInterface(host = IPv4("192.168.1.2"))], #Parsec
         outputs = [XPInterface()], #localhost
         realtime = false,
@@ -99,7 +99,7 @@ function free_flight()
     h_trn = AltO(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(AtmosphereDescriptor());
+    atm = System(Atmosphere());
     ac = System(C172RAircraft());
     kin_init = KinInit(v_eOb_n = [0, 0, 0],
                         ω_lb_b = [0, 0, 0],
@@ -114,8 +114,8 @@ function free_flight()
     # reinit!(mdl, ac.x)
 
     sim = SimulationRun(
-        # model = Model(ac, (trn, atm); t_end = 3600, adaptive = true),
-        model = Model(ac, (trn, atm); t_end = 100, adaptive = false, solver = RK4(), dt = 0.02, y_saveat = 0.02),
+        # model = Model(ac, (atm, trn); t_end = 3600, adaptive = true),
+        model = Model(ac, (atm, trn); t_end = 100, adaptive = false, solver = RK4(), dt = 0.02, y_saveat = 0.02),
         inputs = init_joysticks() |> values |> collect,
         outputs = [XPInterface(host = IPv4("192.168.1.2"))], #Parsec
         # outputs = [XPInterface()], #localhost

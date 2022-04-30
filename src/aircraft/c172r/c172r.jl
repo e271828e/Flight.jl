@@ -12,7 +12,7 @@ using Flight.Systems
 using Flight.Utils
 using Flight.Attitude
 using Flight.Terrain
-using Flight.Airflow
+using Flight.Air
 using Flight.Kinematics
 using Flight.Dynamics
 using Flight.Electrics: EThruster, ElectricMotor, SimpleProp, CW, CCW
@@ -543,7 +543,7 @@ f_cont!(::System{Fuel}, ::System{Pwp}) = nothing
 function f_cont!(vehicle::System{Vehicle}, avionics::System{Avionics},
                 kin::KinData, air::AirflowData, trn::AbstractTerrain)
 
-    @unpack aero, pwp, ldg, fuel, pld = vehicle.subsystems
+    @unpack aero, pwp, ldg, fuel, pld = vehicle
 
     assign_component_inputs!(vehicle, avionics)
     f_cont!(ldg, kin, trn) #update landing gear continuous state & outputs
@@ -559,7 +559,7 @@ function assign_component_inputs!(vehicle::System{<:Vehicle}, avionics::System{<
 
     @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0,
             pedals, brake_left, brake_right, flaps = avionics.u
-    @unpack aero, pwp, ldg = vehicle.subsystems
+    @unpack aero, pwp, ldg = vehicle
 
     #yoke_Δx is the offset with respect to the force-free position yoke_x0
     #yoke_Δy is the offset with respect to the force-free position yoke_y0

@@ -10,7 +10,7 @@ using Flight.Utils
 using Flight.Systems
 using Flight.Plotting
 
-using Flight.Airflow
+using Flight.Air
 using Flight.Kinematics
 using Flight.Dynamics
 
