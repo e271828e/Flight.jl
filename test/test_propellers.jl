@@ -134,7 +134,7 @@ function test_propeller()
             sense = Propellers.CCW
             fp_sys = Propeller(; pitch, sense, t_bp) |> System
 
-            @test_throws AssertionError f_cont!(fp_sys, kin, air, ω)
+            # @test_throws AssertionError f_cont!(fp_sys, kin, air, ω)
 
             f_cont!(fp_sys, kin, air, -ω)
 

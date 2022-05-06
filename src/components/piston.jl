@@ -7,6 +7,7 @@ using Flight.Kinematics, Flight.Dynamics, Flight.Air
 using Flight.Air: ISA_layers, AirProperties, p_std, T_std, g_std, R
 using Flight.Geodesy: AltG
 using Flight.Propellers: AbstractPropeller, Propeller
+using Flight.Friction
 
 import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
@@ -64,6 +65,42 @@ WrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
 #assumed to be negligible by default
 AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
 
+########################### IdleController #####################################
+
+#a simple PI controller to maintain the desired target idle RPM
+Base.@kwdef struct IdleController <: SystemDescriptor
+    k_p::Float64 = 4
+    k_i::Float64 = 2
+    ω_target::Float64 = 60
+end
+
+Base.@kwdef struct IdleControllerY
+    ϵ::Float64 = 0.0
+    ϵ_int::Float64 = 0.0
+    output_raw::Float64 = 0.0
+    output::Float64 = 0.0
+    sat::Bool = false
+end
+
+init(::IdleController, ::SystemX) = ComponentVector(ϵ_int = 0.0)
+init(::IdleController, ::SystemY) = IdleControllerY()
+
+function f_cont!(sys::System{IdleController}, ω::Real)
+
+    @unpack k_p, k_i, ω_target = sys.params
+
+    ϵ = (ω - ω_target)/ω_target
+    ϵ_int = sys.x.ϵ_int
+    output_raw = -(k_p * ϵ + k_i * ϵ_int)
+    output = min(max(0.0, output_raw), 1.0)
+    sat = (output_raw == output ? false : true)
+    sys.ẋ.ϵ_int = !sat * ϵ
+
+    sys.y = IdleControllerY(ϵ, ϵ_int, output_raw, output, sat)
+
+end
+
+f_disc!(::System{IdleController}, args...) = false
 
 ############################ Engine ###############################
 
@@ -76,26 +113,27 @@ struct Engine{D} <: AbstractPistonEngine
     ω_rated::Float64
     ω_stall::Float64 #speed below which engine shuts down
     ω_cutoff::Float64 #speed above ω_rated for which power output drops back to zero
-    μ_ratio_idle::Float64 #μ_idle/μ_wot, may be used to adjust idle RPM for a given load
     M_start::Float64 #starter torque
-    J_xx::Float64 #equivalent axial moment of inertia of the engine shaft
+    J::Float64 #equivalent axial moment of inertia of the engine shaft
+    idle::IdleController
     dataset::D
 end
 
 function Engine(;
     P_rated= 200 |> hp2W,
     ω_rated = ustrip(u"rad/s", 2700u"rpm"), #IO 360
-    ω_stall = ustrip(u"rad/s", 400u"rpm"),
-    ω_cutoff = ustrip(u"rad/s", 3600u"rpm"),
-    μ_ratio_idle = 0.20,
-    M_start = 30,
-    J_xx = 0.05)
+    ω_stall = ustrip(u"rad/s", 300u"rpm"),
+    ω_cutoff = ustrip(u"rad/s", 3100u"rpm"),
+    M_start = 40,
+    J = 0.05,
+    idle = IdleController(ω_target = 2ω_stall),
+    )
 
     n_stall = ω_stall / ω_rated
     n_cutoff = ω_cutoff / ω_rated
     dataset = generate_dataset(; n_stall, n_cutoff)
 
-    Engine{typeof(dataset)}(P_rated, ω_rated, ω_stall, ω_cutoff, μ_ratio_idle, M_start, J_xx, dataset)
+    Engine{typeof(dataset)}(P_rated, ω_rated, ω_stall, ω_cutoff, M_start, J, idle, dataset)
 end
 
 @enum EngineState begin
@@ -129,11 +167,104 @@ Base.@kwdef struct PistonEngineY
     P::Float64 = 0.0 #output power
     SFC::Float64 = 0.0 #specific fuel consumption
     ṁ::Float64 = 0.0 #fuel consumption
+    idle::IdleControllerY = IdleControllerY()
 end
 
+init(eng::Engine, ::SystemX) = ComponentVector(idle = init(eng.idle, SystemX()))
 init(::Engine, ::SystemY) = PistonEngineY()
 init(::Engine, ::SystemU) = PistonEngineU()
 init(::Engine, ::SystemD) = PistonEngineD()
+
+function f_cont!(eng::System{<:Engine}, air::AirflowData, ω::Real)
+
+    @unpack ω_rated, P_rated, J, M_start, dataset = eng.params
+    @unpack thr, mix, start, shutdown = eng.u
+    state = eng.d.state
+
+    throttle = Float64(thr)
+    mixture = Float64(mix)
+
+    f_cont!(eng.idle, ω) #update idle controller
+    μ_ratio_idle = eng.idle.y.output
+
+    #normalized engine speed
+    n = ω / ω_rated
+
+    #inlet air parameter for ISA conditions
+    δ = p2δ(air.p)
+
+    #normalized MAP at wide open throttle
+    μ_wot = dataset.μ_wot(n, δ)
+
+    #actual, part throttle normalized MAP
+    μ = μ_wot * (μ_ratio_idle + throttle * (1 - μ_ratio_idle))
+
+    if state === eng_off
+
+        MAP = air.p
+        M = 0.0
+        P = M * ω
+        SFC = 0.0
+        ṁ = 0.0
+
+    elseif state === eng_starting
+
+        MAP = μ * p_std
+        M = M_start
+        P = M * ω
+        SFC = 0.0
+        ṁ = 0.0
+
+    else #state === eng_running
+
+        #normalized power at part throttle, altitude, ISA conditions and maximum
+        #power mixture
+        π_ISA_pow = compute_π_ISA_pow(dataset, n, μ, δ)
+
+        #correction for non-ISA conditions
+        π_pow = π_ISA_pow * √(T_ISA(air.p)/air.T)
+
+        #correction for arbitrary mixture setting
+        π_actual = π_pow * dataset.π_ratio(mixture)
+
+        MAP = μ * p_std
+        P = P_rated * π_actual
+        M = (ω > 0 ? P / ω : 0.0) #for ω < ω_stall we should not even be here
+        SFC = dataset.sfc_pow(n, π_actual) * dataset.sfc_ratio(mixture)
+        ṁ = SFC * P
+
+    end
+
+    eng.y = PistonEngineY(; start, shutdown, throttle, mixture, state,
+                            MAP, ω, M, P, SFC, ṁ, idle = eng.idle.y)
+
+end
+
+function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply}, ω::Real)
+
+    ω_stall = eng.params.ω_stall
+    ω_target = eng.idle.params.ω_target
+
+    if eng.d.state === eng_off
+
+        eng.u.start ? eng.d.state = eng_starting : nothing
+
+    elseif eng.d.state === eng_starting
+
+        !eng.u.start ? eng.d.state = eng_off : nothing
+
+        (ω > ω_target && fuel_available(fuel) ) ? eng.d.state = eng_running : nothing
+
+    else #eng_running
+
+        (ω < ω_stall || eng.u.shutdown || !fuel_available(fuel)) ? eng.d.state = eng_off : nothing
+
+    end
+
+    return false
+
+end
+
 
 function generate_dataset(; n_stall, n_cutoff)
 
@@ -278,106 +409,30 @@ function compute_π_ISA_pow(dataset, n, μ, δ)
 
 end
 
-
-function f_cont!(sys::System{<:Engine}, air::AirflowData, ω::Real)
-
-    @unpack ω_rated, P_rated, dataset, μ_ratio_idle = sys.params
-    @unpack thr, mix, start, shutdown = sys.u
-    state = sys.d.state
-    throttle = Float64(thr)
-    mixture = Float64(mix)
-
-    if state === eng_off
-
-        MAP = air.p
-        P = 0.0
-        M = 0.0
-        SFC = 0.0
-        ṁ = 0.0
-
-    elseif state === eng_starting
-
-        MAP = air.p
-        M = sys.params.M_start
-        P = M * ω
-        SFC = 0.0
-        ṁ = 0.0
-
-    else #state === eng_running
-
-        #normalized engine speed
-        n = ω / ω_rated
-
-        #inlet air parameter for ISA conditions
-        δ = p2δ(air.p)
-
-        #normalized MAP at wide open throttle
-        μ_wot = dataset.μ_wot(n, δ)
-
-        #actual, part throttle normalized MAP
-        μ = μ_wot * (μ_ratio_idle + throttle * (1 - μ_ratio_idle))
-
-        #normalized power at part throttle, altitude, ISA conditions and maximum
-        #power mixture
-        π_ISA_pow = compute_π_ISA_pow(dataset, n, μ, δ)
-
-        #correction for non-ISA conditions
-        π_pow = π_ISA_pow * √(T_ISA(air.p)/air.T)
-
-        #correction for arbitrary mixture setting
-        π_actual = π_pow * dataset.π_ratio(mixture)
-
-        MAP = μ * p_std
-        P = P_rated * π_actual
-        M = (ω > 0 ? P / ω : 0.0) #for ω < ω_stall we should not even be here
-        SFC = dataset.sfc_pow(n, π_actual) * dataset.sfc_ratio(mixture)
-        ṁ = SFC * P
-
-    end
-
-    sys.y = PistonEngineY(; start, shutdown, throttle, mixture, state, MAP, ω, M, P, SFC, ṁ)
-
-end
-
-function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply}, ω::Real)
-
-    ω_stall = eng.params.ω_stall
-
-    if eng.d.state === eng_off
-
-        eng.u.start ? eng.d.state = eng_starting : nothing
-
-    elseif eng.d.state === eng_starting
-
-        !eng.u.start ? eng.d.state = eng_off : nothing
-
-        (ω > 1.5ω_stall && fuel_available(fuel) ) ? eng.d.state = eng_running : nothing
-
-    else #eng_running
-
-        (ω < ω_stall || eng.u.shutdown || !fuel_available(fuel)) ? eng.d.state = eng_off : nothing
-
-    end
-
-    return false
-
-end
-
 ############################## Transmission ################################
 
 Base.@kwdef struct Transmission <: SystemDescriptor
     n::Float64 = 1.0 #gear ratio: ω_out / ω_in
-    η::Float64 = 1.0 #mechanical efficiency
+    M_fr_max::Float64 = 5.0 #maximum friction torque
+    regulator::Friction.Regulator{1} = Friction.Regulator{1}()
 end
 
 Base.@kwdef struct TransmissionY
     ω_in::Float64 = 0.0 #angular velocity at the input side
     ω_out::Float64 = 0.0 #angular velocity at the output side
-    ΔM::Float64 = 0.0 #excess output torque
-    ΔP::Float64 = 0.0 #excess output power
+    M_in::Float64 = 0.0 #torque applied at the input side
+    P_in::Float64 = 0.0 #power applied at the input side
+    M_out::Float64 = 0.0 #torque applied at the output side
+    P_out::Float64 = 0.0 #power applied at the output side
+    M_fr::Float64 = 0.0 #friction torque
+    P_fr::Float64 = 0.0 #power dissipated by friction
+    ω_in_dot::Float64 = 0.0 #angular acceleration at the input side
+    regulator::Friction.RegulatorY{1} = Friction.RegulatorY{1}()
 end
 
-init(::Transmission, ::SystemX) = ComponentVector(ω_in = 0.0)
+init(tr::Transmission, ::SystemX) = ComponentVector(
+    ω_in = 0.0, regulator = init(tr.regulator, SystemX()))
+
 init(::Transmission, ::SystemY) = TransmissionY()
 
 function f_cont!(sys::System{<:Transmission};
@@ -386,32 +441,51 @@ function f_cont!(sys::System{<:Transmission};
     #J_in: axial moment of inertia at the input side
     #J_out: axial moment of inertia at the output side
 
-    @unpack n, η = sys.params
+    @unpack n, M_fr_max = sys.params
+    regulator = sys.regulator
+
     ω_in = sys.x.ω_in
     ω_out = n * ω_in
 
-    #from the input side
-    M_net = M_in + n / η * M_out
-    J_eq = J_in + n^2 / η * J_out
-    ω_in_dot = M_net / J_eq
-    ω_out_dot = n * ω_in_dot
+    f_cont!(regulator, ω_in)
+    M_fr = regulator.y.α[1] .* M_fr_max
+
+    M_eq = n * M_out #M_out seen from the input side
+    J_eq = n^2 * J_out #J_ouot seen from the input side
+    ΣM = M_in + M_fr + M_eq
+    ΣJ = J_in + J_eq
+    ω_in_dot = ΣM / ΣJ
+
+    # #from the input side
+    # M_net = M_in + M_fr + n / η * M_out
+    # J_eq = J_in + n^2 / η * J_out
+    # ω_in_dot = M_net / J_eq
+    # ω_out_dot = n * ω_in_dot
 
     #from the out side (equivalent)
-    # M_net = η / n * M_in + M_out
+    # M_net = η / n * (M_in + M_fr) + M_out
     # J_eq = η / n^2 * J_in + J_out
     # ω_out_dot = M_net / J_eq
     # ω_in_dot = ω_out_dot / n
 
-    #excess torque and power
-    ΔM = J_out * ω_out_dot
-    ΔP = ΔM * ω_out
+    #excess torque and power at the output side
+    # ω_out_dot = n * ω_in_dot
+    # ΔM = J_out * ω_out_dot
+    # ΔP = ΔM * ω_out
 
     sys.ẋ.ω_in = ω_in_dot
-    sys.y = TransmissionY(; ω_in, ω_out, ΔM, ΔP)
+
+    P_in = M_in * ω_in
+    P_out = M_out * ω_out
+    P_fr = M_fr * ω_in
+
+    sys.y = TransmissionY(; ω_in, ω_out, M_in, P_in, M_out, P_out, M_fr, P_fr,
+                            ω_in_dot, regulator = regulator.y)
 
 end
 
 f_disc!(::System{Transmission}, args...) = false
+
 
 ############################# Thruster ###################################
 
@@ -429,6 +503,11 @@ Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
     engine::E = Engine()
     propeller::P = Propeller()
     transmission::Transmission = Transmission()
+    function Thruster(eng::E, prop::P, tr::Transmission) where {E, P}
+        @assert sign(tr.n) * Int(prop.sense) > 0 "Transmission gear ratio "*
+        "does not match propeller turn sign"
+        new{E,P}(eng, prop, tr)
+    end
 end
 
 function f_cont!(eng::System{<:Thruster}, air::AirflowData, kin::KinData)
@@ -438,7 +517,7 @@ function f_cont!(eng::System{<:Thruster}, air::AirflowData, kin::KinData)
 
     M_in = engine.y.M
     M_out = propeller.y.wr_p.M[1]
-    J_in = engine.params.J_xx
+    J_in = engine.params.J
     J_out = propeller.params.J_xx
 
     f_cont!(engine, air, ω_in)

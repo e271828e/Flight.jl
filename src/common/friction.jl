@@ -38,13 +38,13 @@ end
 
 ######################### Regulator###################################
 
-Base.@kwdef struct Regulator{N} <: SystemDescriptor
+struct Regulator{N} <: SystemDescriptor
     k_p::SVector{N,Float64} #proportional gain
     k_i::SVector{N,Float64} #integral gain
     k_l::SVector{N,Float64} #integrator leak factor
 end
 
-# Regulator{N}(; k_p, k_i, k_l) where {N} = Regulator{N}(k_p, k_i, k_l)
+Regulator{N}(; k_p = 5.0, k_i = 400.0, k_l = 0.2) where {N} = Regulator{N}(k_p, k_i, k_l)
 
 function Regulator{N}(k_p::Real, k_i::Real, k_l::Real) where {N}
     Regulator{N}(fill(k_p, N), fill(k_i, N), fill(k_l, N))
@@ -68,6 +68,8 @@ end
 init(::Regulator{N}, ::SystemX) where {N} = zeros(N) #v regulator integrator states
 init(::Regulator{N}, ::SystemY) where {N} = RegulatorY{N}()
 init(::Regulator{N}, ::SystemU) where {N} = RegulatorU{N}()
+
+f_cont!(sys::System{<:Regulator{1}}, v_in::Real) = f_cont!(sys, SVector{1, Float64}(v_in))
 
 function f_cont!(sys::System{<:Regulator{N}}, v_in::AbstractVector{<:Real}) where {N}
 
