@@ -12,8 +12,6 @@ import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 import Flight.Dynamics: get_mp_b
 
-export PistonEngine, MagicFuelSupply
-
 ########################### AbstractFuelSupply #################################
 
 abstract type AbstractFuelSupply <: SystemDescriptor end
@@ -67,13 +65,13 @@ WrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
 AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
 
 
-############################ PistonEngine ###############################
+############################ Engine ###############################
 
 #represents a family of naturally aspirated, fuel-injected aviation engines.
 #based on performance data available for the Lycoming IO-360A engine. data is
 #normalized with rated power and rated speed to allow for arbitrary engine
 #sizing
-struct PistonEngine{D} <: AbstractPistonEngine
+struct Engine{D} <: AbstractPistonEngine
     P_rated::Float64
     ω_rated::Float64
     ω_stall::Float64 #speed below which engine shuts down
@@ -84,12 +82,12 @@ struct PistonEngine{D} <: AbstractPistonEngine
     dataset::D
 end
 
-function PistonEngine(;
+function Engine(;
     P_rated= 200 |> hp2W,
     ω_rated = ustrip(u"rad/s", 2700u"rpm"), #IO 360
     ω_stall = ustrip(u"rad/s", 400u"rpm"),
     ω_cutoff = ustrip(u"rad/s", 3600u"rpm"),
-    μ_ratio_idle = 0.25,
+    μ_ratio_idle = 0.20,
     M_start = 30,
     J_xx = 0.05)
 
@@ -97,7 +95,7 @@ function PistonEngine(;
     n_cutoff = ω_cutoff / ω_rated
     dataset = generate_dataset(; n_stall, n_cutoff)
 
-    PistonEngine{typeof(dataset)}(P_rated, ω_rated, ω_stall, ω_cutoff, μ_ratio_idle, M_start, J_xx, dataset)
+    Engine{typeof(dataset)}(P_rated, ω_rated, ω_stall, ω_cutoff, μ_ratio_idle, M_start, J_xx, dataset)
 end
 
 @enum EngineState begin
@@ -133,9 +131,9 @@ Base.@kwdef struct PistonEngineY
     ṁ::Float64 = 0.0 #fuel consumption
 end
 
-init(::PistonEngine, ::SystemY) = PistonEngineY()
-init(::PistonEngine, ::SystemU) = PistonEngineU()
-init(::PistonEngine, ::SystemD) = PistonEngineD()
+init(::Engine, ::SystemY) = PistonEngineY()
+init(::Engine, ::SystemU) = PistonEngineU()
+init(::Engine, ::SystemD) = PistonEngineD()
 
 function generate_dataset(; n_stall, n_cutoff)
 
@@ -281,7 +279,7 @@ function compute_π_ISA_pow(dataset, n, μ, δ)
 end
 
 
-function f_cont!(sys::System{<:PistonEngine}, air::AirflowData, ω::Real)
+function f_cont!(sys::System{<:Engine}, air::AirflowData, ω::Real)
 
     @unpack ω_rated, P_rated, dataset, μ_ratio_idle = sys.params
     @unpack thr, mix, start, shutdown = sys.u
@@ -341,7 +339,7 @@ function f_cont!(sys::System{<:PistonEngine}, air::AirflowData, ω::Real)
 
 end
 
-function f_disc!(eng::System{<:PistonEngine}, fuel::System{<:AbstractFuelSupply}, ω::Real)
+function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply}, ω::Real)
 
     ω_stall = eng.params.ω_stall
 
@@ -368,100 +366,103 @@ end
 ############################## Transmission ################################
 
 Base.@kwdef struct Transmission <: SystemDescriptor
-    n::Float64 = 1.0 #gear ratio: ω_propeller / ω_crankshaft
+    n::Float64 = 1.0 #gear ratio: ω_out / ω_in
     η::Float64 = 1.0 #mechanical efficiency
 end
 
 Base.@kwdef struct TransmissionY
-    ω_eng::Float64 = 0.0
-    ω_prop::Float64 = 0.0
-    M_exc::Float64 = 0.0
-    P_exc::Float64 = 0.0
+    ω_in::Float64 = 0.0 #angular velocity at the input side
+    ω_out::Float64 = 0.0 #angular velocity at the output side
+    ΔM::Float64 = 0.0 #excess output torque
+    ΔP::Float64 = 0.0 #excess output power
 end
 
-init(::Transmission, ::SystemX) = ComponentVector(ω_eng = 0.0)
+init(::Transmission, ::SystemX) = ComponentVector(ω_in = 0.0)
 init(::Transmission, ::SystemY) = TransmissionY()
 
 function f_cont!(sys::System{<:Transmission};
-                 M_eng::Real, M_prop::Real, J_eng::Real, J_prop::Real)
+                 M_in::Real, M_out::Real, J_in::Real, J_out::Real)
 
-    #M_eng will always be positive. therefore, for a CW thruster, n should be
-    #positive as well and M_prop will be negative under normal operating
-    #conditions. for a CCW thruster, n should be negative and M_prop will be
-    #positive under normal operating conditions.
-
-    #however, the sign of M_prop may be inverted under negative propeller thrust
-    #conditions (generative), with the propeller driving the engine instead of
-    #the other way around
+    #J_in: axial moment of inertia at the input side
+    #J_out: axial moment of inertia at the output side
 
     @unpack n, η = sys.params
-    ω_eng = sys.x.ω_eng
-    ω_prop = n * ω_eng
+    ω_in = sys.x.ω_in
+    ω_out = n * ω_in
 
-    #from the engine side
-    M_net = M_eng + n / η * M_prop
-    J_eq = J_eng + n^2 / η * J_prop
-    ω_eng_dot = M_net / J_eq
-    ω_prop_dot = n * ω_eng_dot
+    #from the input side
+    M_net = M_in + n / η * M_out
+    J_eq = J_in + n^2 / η * J_out
+    ω_in_dot = M_net / J_eq
+    ω_out_dot = n * ω_in_dot
 
-    #from the prop side (equivalent)
-    # M_net = η / n * M_eng + M_prop
-    # J_eq = η / n^2 * J_eng + J_prop
-    # ω_prop_dot = M_net / J_eq
-    # ω_eng_dot = ω_prop_dot / n
+    #from the out side (equivalent)
+    # M_net = η / n * M_in + M_out
+    # J_eq = η / n^2 * J_in + J_out
+    # ω_out_dot = M_net / J_eq
+    # ω_in_dot = ω_out_dot / n
 
     #excess torque and power
-    M_exc = J_prop * ω_prop_dot
-    P_exc = M_exc * ω_prop
+    ΔM = J_out * ω_out_dot
+    ΔP = ΔM * ω_out
 
-    sys.ẋ.ω_eng = ω_eng_dot
-    sys.y = TransmissionY(; ω_eng, ω_prop, M_exc, P_exc)
+    sys.ẋ.ω_in = ω_in_dot
+    sys.y = TransmissionY(; ω_in, ω_out, ΔM, ΔP)
 
 end
 
 f_disc!(::System{Transmission}, args...) = false
 
-############################# PistonThruster ###################################
+############################# Thruster ###################################
 
-Base.@kwdef struct PistonThruster{E <: AbstractPistonEngine,
-                                  P <: AbstractPropeller} <: SystemDescriptor
-    engine::E = PistonEngine()
+#M_eng is always positive. therefore, for a CW thruster, n should be positive as
+#well and, under normal operating, conditions M_prop will be negative. for a CCW
+#thruster, n should be negative and M_prop will be positive under normal
+#operating conditions.
+
+#however, the sign of M_prop may be inverted under negative propeller thrust
+#conditions (generative), with the propeller driving the engine instead of
+#the other way around
+
+Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
+                            P <: AbstractPropeller} <: SystemDescriptor
+    engine::E = Engine()
     propeller::P = Propeller()
     transmission::Transmission = Transmission()
 end
 
-function f_cont!(sys::System{<:PistonThruster}, kin::KinData, air::AirflowData)
+function f_cont!(eng::System{<:Thruster}, air::AirflowData, kin::KinData)
 
-    @unpack engine, propeller, transmission = sys
-    @unpack ω_eng, ω_prop = transmission.y
+    @unpack engine, propeller, transmission = eng
+    @unpack ω_in, ω_out = transmission.y
 
-    M_eng = engine.y.M
-    M_prop = propeller.y.wr_p.M[1]
-    J_eng = engine.params.J_xx
-    J_prop = propeller.params.J_xx
+    M_in = engine.y.M
+    M_out = propeller.y.wr_p.M[1]
+    J_in = engine.params.J_xx
+    J_out = propeller.params.J_xx
 
-    f_cont!(engine, air, ω_eng)
-    f_cont!(propeller, kin, air, ω_prop)
-    f_cont!(transmission; M_eng, M_prop, J_eng, J_prop)
+    f_cont!(engine, air, ω_in)
+    f_cont!(propeller, kin, air, ω_out)
+    f_cont!(transmission; M_in, M_out, J_in, J_out)
 
-    Systems.assemble_y!(sys)
+    Systems.assemble_y!(eng)
 
 end
 
-function f_disc!(thr::System{<:PistonThruster}, fuel::Bool)
+function f_disc!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
 
     @unpack engine, propeller, transmission = thr
-    ω_eng = transmission.y.ω_eng
+    ω_eng = transmission.y.ω_in
 
-    f_disc!(engine, ω_eng, fuel) || f_disc!(propeller) || f_disc!(transmission)
+    f_disc!(engine, fuel, ω_eng) || f_disc!(propeller) || f_disc!(transmission)
 
 end
 
-MassTrait(::System{<:PistonThruster}) = HasNoMass()
-WrenchTrait(::System{<:PistonThruster}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:PistonThruster}) = HasAngularMomentum()
+MassTrait(::System{<:Thruster}) = HasNoMass()
+WrenchTrait(::System{<:Thruster}) = GetsExternalWrench()
+AngularMomentumTrait(::System{<:Thruster}) = HasAngularMomentum()
 
-get_wr_b(sys::System{<:PistonThruster}) = get_wr_b(sys.propeller)
-get_hr_b(sys::System{<:PistonThruster}) = get_hr_b(sys.propeller)
+get_wr_b(thr::System{<:Thruster}) = get_wr_b(thr.propeller) #only external
+get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
 
 end #module

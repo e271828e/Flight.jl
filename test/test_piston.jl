@@ -5,9 +5,11 @@ using Plots
 using UnPack
 using BenchmarkTools
 using LinearAlgebra
+using SciMLBase
 
 using Flight
-using Flight.Piston: PistonEngine, inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
+using Flight.Piston: Engine, Thruster, MagicFuelSupply
+using Flight.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
 using Flight.Piston: eng_off, eng_starting, eng_running
 using Flight.Air
 using Flight.Air: p_std, T_std
@@ -15,10 +17,9 @@ using Flight.Air: p_std, T_std
 export test_piston
 
 function test_piston()
-    @testset verbose = true "PistonEngine" begin
-        test_engine_dataset()
-        test_propagation()
-    end
+    test_engine_dataset()
+    test_engine_dynamics()
+    test_thruster_dynamics()
 end
 
 function test_engine_dataset()
@@ -28,7 +29,7 @@ function test_engine_dataset()
     ω_rated = 2700
     P_rated = 200
 
-    @testset verbose = true "Dataset" begin
+    @testset verbose = true "EngineDataset" begin
 
         @testset verbose = true "δ_wot" begin
 
@@ -92,15 +93,15 @@ function test_engine_dataset()
 
 end #function
 
-function test_propagation()
+function test_engine_dynamics()
 
-    @testset verbose = true "Propagation" begin
+    @testset verbose = true "EngineDynamics" begin
 
         kin = KinInit(v_eOb_n = [50, 0, 0]) |> KinData
         atm = Atmosphere() |> System
         atm.u.air.T_sl = T_std + 10
         air = AirflowData(kin, atm)
-        eng = PistonEngine(μ_ratio_idle = 0.2) |> System
+        eng = Engine(μ_ratio_idle = 0.2) |> System
         fuel = System(MagicFuelSupply())
 
         ω = 100.0
@@ -168,10 +169,142 @@ function test_propagation()
 
 end #function
 
+function test_thruster_dynamics()
+
+    @testset verbose = true "ThrusterDynamics" begin
+
+        #initialize auxiliary elements
+        kin = KinInit(v_eOb_n = [0, 0, 0]) |> KinData
+        atm = Atmosphere() |> System
+        atm.u.air.T_sl = T_std + 10
+        air = AirflowData(kin, atm)
+        fuel = System(MagicFuelSupply())
+
+
+        ######################## Wrong idle setting ############################
+
+        #this engine has too low an idle setting, and will shutdown immediately
+        #after starting
+        thr = Thruster( engine = Piston.Engine(μ_ratio_idle = 0.05)) |> System
+        sim = Simulation(thr, args_c = (air, kin), args_d = (fuel,), t_end = 100)
+
+        #the starter torque takes the engine above 1.5ω_stall, so engine state
+        #changes to eng_running
+        sim.u.engine.start = true
+        while sim.y.engine.state != Piston.eng_running
+            step!(sim)
+        end
+        sim.u.engine.start = false
+
+        #but as soon as the starter is turned off, torque is insufficient to
+        #keep the engine above ω_stall when driving the propeller
+        step!(sim, 5, true)
+        @test sim.y.engine.state === Piston.eng_off
+
+        ######################## Correct idle setting ##########################
+
+        #this one has an appropriate idle setting
+        thr = Thruster(
+            transmission = Piston.Transmission(n = 0.8),
+            engine = Piston.Engine(μ_ratio_idle = 0.2)
+        ) |> System
+
+        sim = Simulation(thr, args_c = (air, kin), args_d = (fuel,), t_end = 100)
+
+        sim.u.engine.start = true
+
+        #take two steps for the start command to take effect
+        step!(sim)
+        step!(sim)
+        @test sim.y.engine.state === Piston.eng_starting
+
+        step!(sim, 5, true) #give it a few seconds to get to stable idle RPMs
+        @test sim.y.engine.state === Piston.eng_running
+
+        sim.u.engine.start = false
+        step!(sim, 5, true) #give it a few seconds to get to stable idle RPMs
+        @test sim.y.engine.state === Piston.eng_running
+
+        @test sim.y.propeller.ω ≈ 0.8sim.y.engine.ω
+        #after stabilization, the engine's power output should be equal to that
+        #consumed by the propeller and there should be no excess power
+        @test sim.y.engine.P ≈ -sim.y.propeller.P atol = 1e-8
+        @test sim.y.transmission.ΔP ≈ 0 atol = 1e-8
+
+        #thruster should be pushing
+        @test get_wr_b(sim.sys).F[1] > 0
+        #and receiving a CCW torque
+        @test get_wr_b(sim.sys).M[1] < 0
+
+        ω_eng_idle = sim.y.engine.ω
+        #give it some throttle and see the RPMs increase
+        sim.u.engine.thr = 0.5
+        step!(sim, 5, true)
+        @test sim.y.engine.ω > ω_eng_idle
+
+
+        ########## Propeller sense and transmission gear ratio mismatch ########
+
+        #coupling a CCW propeller with a positive gear ratio (non-inverting)
+        #transmission, leads to the propeller turning in the wrong sense
+
+        thr = Thruster(
+            propeller = Propeller(sense = Propellers.CCW),
+            transmission = Piston.Transmission(n = 1)
+        ) |> System
+
+        sim = Simulation(thr, args_c = (air, kin), args_d = (fuel,), t_end = 100)
+
+        sim.u.engine.start = true
+
+        @test_throws AssertionError step!(sim, 1, true)
+
+
+        ################### Variable pitch CCW thruster ########################
+
+        #CCW propeller should be coupled with negative gear ratio transmission
+        thr = Thruster(
+            propeller = Propeller(pitch = VariablePitch(), sense = Propellers.CCW),
+            transmission = Piston.Transmission(n = -1)
+        ) |> System
+
+        sim = Simulation(thr, args_c = (air, kin), args_d = (fuel,), t_end = 100)
+
+        sim.u.propeller[] = 0
+        sim.u.engine.start = true
+        step!(sim, 20, true) #give it a few seconds to get to stable idle RPMs
+        sim.u.engine.start = false
+        @test sim.y.engine.state === Piston.eng_running
+
+        @test sim.y.propeller.ω ≈ -sim.y.engine.ω
+        @test sim.y.engine.P ≈ -sim.y.propeller.P atol = 1e-3
+        @test get_wr_b(sim.sys).F[1] > 0
+        @test get_wr_b(sim.sys).M[1] > 0 #CW opposing torque
+
+        #give it some throttle before increasing propeller pitch to avoid stall
+        sim.u.engine.thr = 0.2
+        step!(sim, 5, true)
+        ω_tmp = sim.y.engine.ω
+        sim.u.propeller[] = 0.1
+        step!(sim, 5, true)
+        #increasing pitch gives a higher thrust coefficient, but also a higher
+        #torque coefficient, which drives down RPMs, which in turn reduces
+        #absolute thrust. in general, whether absolute thrust increases or
+        #decreases with propeller pitch depends on operating conditions.
+        @test sim.y.engine.ω < ω_tmp
+
+        #starved engine shuts down
+        fuel.u[] = false
+        step!(sim, 1, true)
+        @test sim.y.engine.state == Piston.eng_off
+
+    end #testset
+
+end #function
 
 function plot_dataset()
 
-    dataset = PistonEngine().dataset
+    dataset = Engine().dataset
 
     n_plot = range(0, 1.5, length = 100)
     δ_plot = range(1, 0, length = 100)
