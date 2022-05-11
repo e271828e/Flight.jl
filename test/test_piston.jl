@@ -261,11 +261,12 @@ function test_thruster_dynamics()
         step!(sim, 5, true)
         @test sim.y.engine.ω ≈ thr.engine.idle.params.ω_target atol = 1
 
-        #well above idle, the idle controller will not be holding RPMs anymore.
-        sim.u.engine.thr = 0.5 #increase throttle to prevent idle controller from interfering
+        #with the throttle well above idle, the idle controller will not be
+        #holding RPMs anymore
+        sim.u.engine.thr = 0.5
         step!(sim, 5, true)
 
-        #now,  increasing pitch gives a higher thrust coefficient, but also a
+        #now, increasing pitch gives a higher thrust coefficient, but also a
         #higher torque coefficient, which drives down RPMs, which in turn
         #reduces absolute thrust. in general, whether absolute thrust increases
         #or decreases with propeller pitch depends on operating conditions.
@@ -280,15 +281,31 @@ function test_thruster_dynamics()
         @test sim.y.engine.state == Piston.eng_off
         step!(sim, 5, true)
 
-        #make sure that friction does its job and after a few seconds the engine
-        #has completely stopped
+        #after a few seconds the engine should have stopped completely due to
+        #friction
         @test sim.y.engine.ω ≈ 0.0 atol = 1e-10
+
+        #start the engine again to test for allocations
+        sim.u.engine.start = true
+        step!(sim, 5, true)
+        sim.u.engine.start = false
+
+        @test @ballocated(f_cont!($thr, $air, $kin)) == 0
+        @test @ballocated(f_disc!($thr, $fuel)) == 0
+
+        sim = Simulation(thr, args_c = (air, kin), args_d = (fuel,), t_end = 100, y_save_on = false)
+        sim.u.engine.start = true
+        step!(sim, 5, true)
+        sim.u.engine.start = false
+        @show @ballocated(step!($sim, 0.1, true))
+
+        return sim
 
     end #testset
 
 end #function
 
-function plot_dataset()
+function plot_dataset(; plot_settings...)
 
     dataset = Engine().dataset
 
@@ -297,12 +314,12 @@ function plot_dataset()
     @show μ_plot = range(0.1p_std, inHg2Pa(30), length = 10)/p_std
 
     π_std_plot = [dataset.π_std(n, μ) for (n, μ) in Iterators.product(n_plot, μ_plot)]
-    # plot(μ_plot, π_std_plot')
-    plot(n_plot, π_std_plot)
+    # plot(μ_plot, π_std_plot'; plot_settings...)
+    plot(n_plot, π_std_plot; plot_settings...)
 
     # π_wot_plot = [dataset.π_wot(n,p) for (n,p) in Iterators.product(n_plot, δ_plot)]
-    # plot(δ_plot, π_wot_plot')
-    # # plot(n_plot, π_wot_plot)
+    # plot(δ_plot, π_wot_plot'; plot_settings...)
+    # plot(n_plot, π_wot_plot; plot_settings...)
 
 
 end #function

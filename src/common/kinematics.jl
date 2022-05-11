@@ -110,7 +110,7 @@ init(::AbstractKinematics, ::SystemY) = KinData()
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
 const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T, D}
 
-function renormalize_block!(x, ε) #returns true if norm restored, false otherwise
+function renormalize_block!(x, ε) #returns true if norm was corrected
     norm_x = norm(x)
     abs(norm_x - 1.0) > ε ? (x ./= norm_x; return true) : return false
 end
@@ -224,7 +224,7 @@ function init(::KinECEF, kin_init::KinInit = KinInit())
 
     x = ComponentVector(
         pos = ComponentVector(q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0),
-        vel = similar(VelXTemplate) #using similar instead of simple assignment is essential
+        vel = similar(VelXTemplate) #using similar rather than assignment is essential here!
         )
 
     n_e = Ob.l2d
@@ -429,6 +429,7 @@ function make_plots(th::TimeHistory{<:PosData}; kwargs...)
         plot_title = "Trajectory (Local Cartesian, Ellipsoidal Altitude)",
         titlefontsize = 20,
         camera = (30, 45),
+        kwargs...
         )
 
     return pd

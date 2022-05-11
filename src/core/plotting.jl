@@ -4,7 +4,7 @@ using Reexport
 using Dates
 using UnPack
 using Plots
-using Measures #?
+using Measures: mm
 using StructArrays
 using RecursiveArrayTools: VectorOfArray
 
@@ -15,6 +15,22 @@ using Flight.Utils
 using Flight.Sim
 
 export make_plots, save_plots
+
+const defaults = Dict(
+    :size => (1920, 1080),
+    :dpi => 100,
+    :margin => 10mm,
+    :topmargin => 5mm,
+    :linewidth => 2,
+    :plot_titlefontfamily => "Computer Modern",
+    :titlefontfamily => "Computer Modern",
+    :fontfamily_subplot => "Computer Modern", #controls guide, tick and legend
+    :plot_titlefontsize => 20,
+    :titlefontsize => 16,
+    :guidefontsize => 12,
+    :tickfontsize => 10,
+    :legendfontsize => 12,
+    )
 
 ################################################################################
 ################################# Recipes ######################################
@@ -78,9 +94,8 @@ end
 
 function make_plots(sim::Simulation;
                     plot_level = :full, #:simplified
-                    linewidth=2, margin = 10mm, guidefontsize = 1,
-                    kwargs...)
-    make_plots(TimeHistory(sim); plot_level, linewidth, margin, guidefontsize, kwargs...)
+                    plot_settings...)
+    make_plots(TimeHistory(sim); plot_level, plot_settings...)
 end
 
 

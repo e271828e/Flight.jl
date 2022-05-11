@@ -409,7 +409,8 @@ get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 ################################################################################
 ############################ Plots #############################################
 
-function plot_airfoil(airfoil::Propellers.AbstractAirfoil, show = true)
+#called as: plot_airfoil(airfoil; Plotting.defaults...)
+function plot_airfoil(airfoil::Propellers.AbstractAirfoil; plot_settings...)
 
     α = range(-π/6, π/3, length = 100)
     M = range(0, 1.5, length = 6)
@@ -425,16 +426,14 @@ function plot_airfoil(airfoil::Propellers.AbstractAirfoil, show = true)
 
     p = Vector{Plots.Plot}()
     for (i, data) in enumerate((cL_data, cD_data, cL_α_data))
-        push!(p, plot(α, data, label = label, title = titles[i], xlabel = x_label))
+        push!(p, plot(α, data; label = label, title = titles[i], xlabel = x_label, plot_settings...))
     end
-
-    show ? display.(p) : nothing
 
     return p
 
 end
 
-function plot_J_Δβ(dataset::Propellers.Dataset, M_tip::Real = 0.0, show = true)
+function plot_J_Δβ(dataset::Propellers.Dataset, M_tip::Real = 0.0; plot_settings...)
 
     J = knots(dataset).iterators[1] |> collect
     Δβ_bounds = bounds(dataset)[3]
@@ -455,16 +454,16 @@ function plot_J_Δβ(dataset::Propellers.Dataset, M_tip::Real = 0.0, show = true
 
     p = Vector{Plots.Plot}()
     for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))
-        push!(p, plot(J, c; title = titles[i], label = label, legend = label_pos[i], xlabel = x_label, ylabel = y_labels[i]))
+        push!(p, plot( J, c;
+                        title = titles[i], label = label, legend = label_pos[i],
+                        xlabel = x_label, ylabel = y_labels[i], plot_settings...))
     end
-
-    show ? display.(p) : nothing
 
     return p
 
 end
 
-function plot_M_J(dataset::Propellers.Dataset, Δβ::Real = 0.0, show = true)
+function plot_M_J(dataset::Propellers.Dataset, Δβ::Real = 0.0; plot_settings...)
 
     M_tip = knots(dataset).iterators[2] |> collect
     J_bounds = bounds(dataset)[1]
@@ -485,16 +484,17 @@ function plot_M_J(dataset::Propellers.Dataset, Δβ::Real = 0.0, show = true)
 
     p = Vector{Plots.Plot}()
     for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))
-        push!(p, plot(M_tip, c; title = titles[i], label = label, legend = label_pos[i], xlabel = x_label, ylabel = y_labels[i]))
+        push!(p, plot(M_tip, c;
+                        title = titles[i], label = label, legend = label_pos[i],
+                        xlabel = x_label, ylabel = y_labels[i],
+                        plot_settings...))
     end
-
-    show ? display.(p) : nothing
 
     return p
 
 end
 
-function plot_J_M(dataset::Propellers.Dataset, Δβ::Real = 0.0, show = true)
+function plot_J_M(dataset::Propellers.Dataset, Δβ::Real = 0.0; plot_settings...)
 
     J = knots(dataset).iterators[1] |> collect
     M_tip_bounds = bounds(dataset)[2]
@@ -515,10 +515,11 @@ function plot_J_M(dataset::Propellers.Dataset, Δβ::Real = 0.0, show = true)
 
     p = Vector{Plots.Plot}()
     for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))
-        push!(p, plot(J, c; title = titles[i], label = label, legend = label_pos[i], xlabel = x_label, ylabel = y_labels[i]))
+        push!(p, plot(J, c;
+                        title = titles[i], label = label, legend = label_pos[i],
+                        xlabel = x_label, ylabel = y_labels[i],
+                        plot_settings...))
     end
-
-    show ? display.(p) : nothing
 
     return p
 

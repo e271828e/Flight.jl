@@ -83,7 +83,7 @@ function test_sim_nrt()
     # @show @ballocated SciMLBase.step!($sim) #this takes many steps!
 
     Sim.run!(sim)
-    plots = make_plots(sim)
+    plots = make_plots(sim; Plotting.defaults...)
     save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test"))
     # save_plots(plots, save_folder = joinpath("tmp", "sim_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
 
@@ -125,7 +125,7 @@ function test_sim_rt()
 
 
     Sim.run!(sim)
-    plots = make_plots(sim)
+    plots = make_plots(sim; Plotting.defaults...)
     save_plots(plots, save_folder = joinpath("tmp", "rt_sim_test"))
     # save_plots(plots, save_folder = joinpath("tmp", "sim_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
 

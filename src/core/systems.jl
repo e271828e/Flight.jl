@@ -230,8 +230,7 @@ Base.@kwdef struct SystemTreeNode
     end
 end
 
-SystemTreeNode(::T) where {T<:SystemDescriptor} = SystemTreeNode(type = T)
-SystemTreeNode(::System{D}) where {D} = SystemTreeNode(type = D)
+SystemTreeNode(::Type{T}) where {T<:SystemDescriptor} = SystemTreeNode(type = T)
 
 function children(node::SystemTreeNode)
     return [SystemTreeNode(name, type) for (name, type) in zip(
@@ -243,7 +242,10 @@ function printnode(io::IO, node::SystemTreeNode)
     print(io, ":"*string(node.label)*" ($(node.type))")
 end
 
-print_tree(desc::SystemDescriptor) = print_tree(SystemTreeNode(desc))
-print_tree(sys::System) = print_tree(SystemTreeNode(sys))
+print_tree(desc::Type{T}; kwargs...) where {T<:SystemDescriptor} =
+    print_tree(SystemTreeNode(desc); kwargs...)
+
+print_tree(::T; kwargs...) where {T<:SystemDescriptor} = print_tree(T; kwargs...)
+print_tree(::System{D}; kwargs...) where {D} = print_tree(D; kwargs...)
 
 end #module
