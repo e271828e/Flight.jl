@@ -19,12 +19,13 @@ include("common/terrain.jl")
 include("common/dynamics.jl")
 include("common/friction.jl")
 
-include("components/landinggear.jl")
-include("components/propellers.jl")
-include("components/piston.jl")
-include("components/electrics.jl")
-
 include("aircraft/aircraft.jl")
+
+include("aircraft/components/landinggear.jl")
+include("aircraft/components/propellers.jl")
+include("aircraft/components/piston.jl")
+include("aircraft/components/electrics.jl")
+
 include("aircraft/c172r/c172r.jl")
 
 @reexport using .Utils

@@ -131,15 +131,8 @@ Base.@kwdef struct XBoxAxes
     data::MVector{6,Float32} = zeros(MVector{6, Float32})
 end
 
-function Base.getindex(axes::XBoxAxes, s::Symbol)
-    data = getproperty(axes, :data); mapping = getproperty(axes, :mapping)
-    data[mapping[s]]
-end
-
-function Base.setindex!(axes::XBoxAxes, v, s::Symbol)
-    data = getproperty(axes, :data); mapping = getproperty(axes, :mapping)
-    data[mapping[s]] = v
-end
+Base.getindex(axes::XBoxAxes, s::Symbol) = axes.data[axes.mapping[s]]
+Base.setindex!(axes::XBoxAxes, v, s::Symbol) = (axes.data[axes.mapping[s]] = v)
 
 ######################## Buttons
 
