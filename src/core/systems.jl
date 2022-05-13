@@ -210,9 +210,9 @@ end
 
     #call f_disc! on each subsystem
     for label in fieldnames(S)
-        #we need all f_disc! calls executed, so | must be used instead of ||
+        #we need all f_disc! calls executed, so we can't just chain them with ||
         push!(ex.args,
-            :(x_mod = x_mod | f_disc!(sys.subsystems[$(QuoteNode(label))], args...)))
+            :(x_mod = x_mod || f_disc!(sys.subsystems[$(QuoteNode(label))], args...)))
     end
     return ex
 

@@ -21,10 +21,10 @@ include("common/friction.jl")
 
 include("aircraft/aircraft.jl")
 
-include("aircraft/components/landinggear.jl")
-include("aircraft/components/propellers.jl")
-include("aircraft/components/piston.jl")
-include("aircraft/components/electrics.jl")
+include("aircraft/landinggear.jl")
+include("aircraft/propellers.jl")
+include("aircraft/piston.jl")
+include("aircraft/electrics.jl")
 
 include("aircraft/c172r/c172r.jl")
 

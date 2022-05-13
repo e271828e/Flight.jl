@@ -105,7 +105,7 @@ Base.@kwdef struct SimpleDamper <: AbstractDamper
     k_s::Float64 = 25000 #spring constant
     k_d_ext::Float64 = 1000 #extension damping coefficient
     k_d_cmp::Float64 = 1000 #compression damping coefficient
-    ξ_min::Float64 = -5 #compression below which the shock absorber is disabled
+    ξ_min::Float64 = -10 #compression below which the shock absorber is disabled
 end
 
 #Force exerted by the damper along zs. The deformation ξ is positive along z_s
@@ -164,16 +164,22 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     #to the actual contact frame origin, which is still unknown)
     trn = TerrainData(terrain, P.l2d)
 
-    #compute damper deformation. if the projection of k_s onto z_n is close to
-    #zero (strut nearly horizontal) or negative (strut upside down), set it to 0
     q_ns = q_nb ∘ q_bs
     k_s_zn = q_ns(e3)[3]
     Δh = AltO(P) - trn.altitude
-    if k_s_zn > 1e-3
-    # if abs(k_s_zn > 1e-3)
-        ξ = min(0.0, Δh / k_s_zn)
-    else
-        ξ = 0.0 #0 instead of 0.0 causes type instability
+
+    if Δh > 0 #reference point above ground, strut at its natural length
+        ξ = 0.0
+    else #reference point below ground
+        #the projection of the strut along z_n should be positive and reasonably
+        #close to 1. otherwise, the landing gear unit is hitting the ground at
+        #an unacceptable angle and we're in trouble
+        if k_s_zn < 0.3
+            println("This looks like a crash, press any key to continue")
+            read(stdin, 1)
+            error("Exiting...")
+        end
+        ξ = Δh / k_s_zn
     end
     wow = ξ < 0
 
@@ -384,8 +390,14 @@ end
 
 function f_disc!(sys::System{<:LandingGearUnit})
 
-    return f_disc!(sys.steering) || f_disc!(sys.braking) ||
-           f_disc!(sys.strut)|| f_disc!(sys.contact)
+    x_mod = false
+
+    x_mod = x_mod || f_disc!(sys.steering)
+    x_mod = x_mod || f_disc!(sys.braking)
+    x_mod = x_mod || f_disc!(sys.strut)
+    x_mod = x_mod || f_disc!(sys.contact)
+
+    return x_mod
 
 end
 

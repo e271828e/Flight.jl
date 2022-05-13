@@ -128,9 +128,10 @@ end
 function f_disc!(sys::System{<:AircraftBase})
     @unpack kinematics, vehicle, avionics = sys
 
-    x_mod = f_disc!(kinematics, 1e-8) |
-            f_disc!(vehicle, avionics) |
-            f_disc!(avionics, vehicle)
+    x_mod = false
+    x_mod = x_mod || f_disc!(kinematics, 1e-8)
+    x_mod = x_mod || f_disc!(vehicle, avionics)
+    x_mod = x_mod || f_disc!(avionics, vehicle)
 
     return x_mod
 end

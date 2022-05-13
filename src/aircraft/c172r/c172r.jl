@@ -15,14 +15,16 @@ using Flight.Terrain
 using Flight.Air
 using Flight.Kinematics
 using Flight.Dynamics
-using Flight.Electrics: EThruster, ElectricMotor, SimpleProp, CW, CCW
 using Flight.LandingGear
+using Flight.Propellers
+using Flight.Piston
 using Flight.Aircraft: AircraftBase, AbstractAircraftID, AbstractVehicle, AbstractAerodynamics, AbstractAvionics
 using Flight.Input: XBoxController, get_axis_value, is_released
 
 import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Input: assign!
+import Flight.Piston: fuel_available
 
 export C172RAircraft
 
@@ -61,12 +63,12 @@ init(::Avionics, ::SystemY) = AvionicsY(zeros(SVector{9})...)
 
 
 ################################################################################
-############################ Type Definitions ##################################
-################################################################################
+############################ Vehicle Subsystems ################################
 
-############################## Airframe #################################
+################################ Airframe ######################################
 
 struct Airframe <: SystemDescriptor end
+
 #airframe mass properties. these are assumed to include any components attached
 #rigidly to the airframe itself, such as power plant and landing gear, but not
 #fuel contents or payload
@@ -74,9 +76,9 @@ const mp_b_afm = let
     #define the airframe as a RigidBody
     afm_G = RigidBody(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
     #define the transform from the origin of the vehicle reference frame (Ob)
-    #to the (empty) airframe's center of mass (G)
+    #to the airframe's center of mass (G)
     t_Ob_G = FrameTransform(r = SVector{3}(0.056, 0, 0.582))
-    #compute the (empty) airframe mass properties at Ob
+    #compute the airframe's mass properties at Ob
     MassProperties(afm_G, t_Ob_G)
 end
 
@@ -89,169 +91,6 @@ WrenchTrait(::System{Airframe}) = GetsNoExternalWrench()
 AngularMomentumTrait(::System{Airframe}) = HasNoAngularMomentum()
 
 get_mp_b(::System{Airframe}) = mp_b_afm
-
-##################################### Pwp ######################################
-
-struct Pwp <: SystemGroupDescriptor
-    left::EThruster
-    right::EThruster
-end
-
-MassTrait(::System{Pwp}) = HasNoMass()
-WrenchTrait(::System{Pwp}) = GetsExternalWrench()
-AngularMomentumTrait(::System{Pwp}) = HasAngularMomentum()
-
-function Pwp()
-
-    prop = SimpleProp(kF = 4e-3, J = 0.005)
-
-    left = EThruster(frame = FrameTransform(r = [2.055, 0, 0.833]), propeller = prop, motor = ElectricMotor(α = CW))
-    right = EThruster(frame = FrameTransform(r = [2.055, 0, 0.833]), propeller = prop, motor = ElectricMotor(α = CCW))
-
-    Pwp(left, right)
-
-end
-
-##### Landing Gear ####
-
-#more flexible, but requires adding a type parameter for the ldg field in the
-#Vehicle. if we simply declare ldg::Ldg, Ldg is a UnionAll and the System
-#constructor (appropriately) fails. also, requires System{<:Ldg} instead of
-#System{Ldg} in method signatures
-# struct Ldg{L <: LandingGearUnit, R <: LandingGearUnit,
-#     N <: LandingGearUnit} <: SystemGroupDescriptor
-#     left::L
-#     right::R
-#     nose::N
-# end
-
-#alternative, less flexible (implies type redefinition if the type parameters of
-#the field types change, and Revise will complain)
-struct Ldg <: SystemGroupDescriptor
-    left::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
-    right::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
-    nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
-end
-
-MassTrait(::System{Ldg}) = HasNoMass()
-WrenchTrait(::System{Ldg}) = GetsExternalWrench()
-AngularMomentumTrait(::System{Ldg}) = HasNoAngularMomentum()
-
-function Ldg()
-
-    mlg_damper = SimpleDamper(k_s = ustrip(u"N/m", 0.5*5400u"lbf/ft"),
-                              k_d_ext = ustrip(u"N/(m/s)", 0.4*1600u"lbf/(ft/s)"),
-                              k_d_cmp = ustrip(u"N/(m/s)", 0.4*1600u"lbf/(ft/s)"))
-    nlg_damper = SimpleDamper(k_s = ustrip(u"N/m", 1800u"lbf/ft"),
-                              k_d_ext = ustrip(u"N/(m/s)", 0.4*600u"lbf/(ft/s)"),
-                              k_d_cmp = ustrip(u"N/(m/s)", 0.4*600u"lbf/(ft/s)"))
-
-    left = LandingGearUnit(
-        strut = Strut(
-            t_bs = FrameTransform(r = [-0.381, -1.092, 1.902], q = RQuat() ),
-            l_OsP = 0.0,
-            damper = mlg_damper),
-        braking = DirectBraking())
-
-    right = LandingGearUnit(
-        strut = Strut(
-            t_bs = FrameTransform(r = [-0.381, 1.092, 1.902], q = RQuat() ),
-            l_OsP = 0.0,
-            damper = mlg_damper),
-        braking = DirectBraking())
-
-    nose = LandingGearUnit(
-        strut = Strut(
-            # t_bs = FrameTransform(r = [1.27, 0, 2.004] , q = RQuat()),
-            t_bs = FrameTransform(r = [1.27, 0, 1.9] , q = RQuat()),
-            l_OsP = 0.0,
-            damper = nlg_damper),
-        steering = DirectSteering())
-
-    Ldg(left, right, nose)
-
-end
-
-##### Payload ####
-
-const pilot_slot = FrameTransform(r = SVector{3}(0.183, -0.356, 0.899))
-const copilot_slot = FrameTransform(r = SVector{3}(0.183, 0.356, 0.899))
-const psg_left_slot = FrameTransform(r = SVector{3}(-0.681, -0.356, 0.899))
-const psg_right_slot = FrameTransform(r = SVector{3}(-0.681, 0.356, 0.899))
-const baggage_slot = FrameTransform(r = SVector{3}(-1.316, 0, 0.899))
-
-struct Payload <: SystemDescriptor
-    pilot::MassProperties #mp_b
-    copilot::MassProperties #mp_b
-    psg_left::MassProperties #mp_b
-    psg_right::MassProperties #mp_b
-    baggage::MassProperties #mp_b
-
-    function Payload( ; pilot::AbstractMassDistribution = PointMass(75),
-                        copilot::AbstractMassDistribution = PointMass(75),
-                        psg_left::AbstractMassDistribution = PointMass(75),
-                        psg_right::AbstractMassDistribution = PointMass(75),
-                        baggage::AbstractMassDistribution = PointMass(50))
-
-        return new( MassProperties(pilot, pilot_slot),
-                    MassProperties(copilot, copilot_slot),
-                    MassProperties(psg_left, psg_left_slot),
-                    MassProperties(psg_right, psg_right_slot),
-                    MassProperties(baggage, baggage_slot)
-                    )
-
-    end
-end
-
-Base.@kwdef mutable struct PayloadU
-    pilot::Bool = true
-    copilot::Bool = true
-    psg_left::Bool = false
-    psg_right::Bool = false
-    baggage::Bool = true
-end
-
-init(::Payload, ::SystemU) = PayloadU()
-
-MassTrait(::System{Payload}) = HasMass()
-WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
-AngularMomentumTrait(::System{Payload}) = HasNoAngularMomentum()
-
-function get_mp_b(sys::System{Payload})
-    mp_b = MassProperties()
-    sys.u.pilot ? mp_b += sys.params.pilot : nothing
-    sys.u.copilot ? mp_b += sys.params.copilot : nothing
-    sys.u.psg_left ? mp_b += sys.params.psg_left : nothing
-    sys.u.psg_right ? mp_b += sys.params.psg_right : nothing
-    sys.u.baggage ? mp_b += sys.params.baggage : nothing
-    return mp_b
-end
-
-
-################################### Fuel #######################################
-
-struct Fuel <: SystemDescriptor end
-
-init(::Fuel, ::SystemX) = ComponentVector(m_left = 50.0, m_right = 50.0) #fuel tank contents
-
-MassTrait(::System{Fuel}) = HasMass()
-WrenchTrait(::System{Fuel}) = GetsNoExternalWrench()
-AngularMomentumTrait(::System{Fuel}) = HasNoAngularMomentum()
-
-function get_mp_b(sys::System{Fuel})
-
-    frame_left = FrameTransform(r = SVector{3}(0.325, -2.845, 0))
-    frame_right = FrameTransform(r = SVector{3}(0.325, 2.845, 0))
-
-    m_left = PointMass(sys.x.m_left)
-    m_right = PointMass(sys.x.m_right)
-
-    mp_b = MassProperties()
-    mp_b += MassProperties(m_left, frame_left)
-    mp_b += MassProperties(m_right, frame_right)
-
-    return mp_b
-end
 
 
 ############################ Aerodynamics ######################################
@@ -312,24 +151,7 @@ init(::Aero, ::SystemY) = AeroY()
 init(::Aero, ::SystemU) = AeroU()
 init(::Aero, ::SystemD) = AeroD()
 
-
-################################ Vehicle ######################################
-
-Base.@kwdef struct Vehicle <: AbstractVehicle
-    afm::Airframe = Airframe()
-    aero::Aero = Aero()
-    pwp::Pwp = Pwp()
-    ldg::Ldg = Ldg()
-    fuel::Fuel = Fuel()
-    pld::Payload = Payload()
-end
-
-################################################################################
-####################### Update functions #######################################
-################################################################################
-
-#aerodynamic dataset taken from JSBSim's c172p
-
+#dataset taken from JSBSim's c172p
 function load_aero_data()
 
     fname = "src/aircraft/c172r/c172r.h5"
@@ -418,16 +240,15 @@ function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_
 
 end
 
-function f_cont!(sys::System{Aero}, pwp::System{Pwp},
+function f_cont!(sys::System{Aero}, ::System{<:Piston.Thruster},
     air::AirflowData, kinematics::KinData, terrain::AbstractTerrain)
 
     #for this aircraft we have chosen the aerodynamics frame fa as the main
-    #aircraft reference frame fb. all the AirflowData variables from the AirflowData
-    #module are computed in frame fb, they are directly applicable here. if this
-    #wasn't the case, either because the origin Oa is not coincident with Ob and
-    #we care about the velocity lever arm or because the axes εa and εb are
-    #different, we would need to compute v_wOa_a from v_wOb_b and then recompute
-    #all the derived air data variables
+    #aircraft reference frame fb. any airflow variables computed in frame fb are
+    #directly usable here. if this wasn't the case, either because the origin Oa
+    #is not coincident with Ob and we care about the velocity lever arm, or
+    #because the axes εa and εb are different, we would need to compute v_wOa_a
+    #from v_wOb_b and then recompute all the derived air data variables
 
     # v_wOb_b = v_eOb_b - v_ew_b
     # v_eOa_b = v_eOb_b + ω_eb_b × r_ObOa_b
@@ -517,9 +338,184 @@ function f_disc!(sys::System{Aero})
     return false
 end
 
+
+############################# Landing Gear ####################################
+
+struct Ldg <: SystemGroupDescriptor
+    left::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
+    right::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
+    nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
+end
+
+MassTrait(::System{Ldg}) = HasNoMass()
+WrenchTrait(::System{Ldg}) = GetsExternalWrench()
+AngularMomentumTrait(::System{Ldg}) = HasNoAngularMomentum()
+
+function Ldg()
+
+    mlg_damper = SimpleDamper(k_s = ustrip(u"N/m", 0.5*5400u"lbf/ft"),
+                              k_d_ext = ustrip(u"N/(m/s)", 0.4*1600u"lbf/(ft/s)"),
+                              k_d_cmp = ustrip(u"N/(m/s)", 0.4*1600u"lbf/(ft/s)"))
+    nlg_damper = SimpleDamper(k_s = ustrip(u"N/m", 1800u"lbf/ft"),
+                              k_d_ext = ustrip(u"N/(m/s)", 0.4*600u"lbf/(ft/s)"),
+                              k_d_cmp = ustrip(u"N/(m/s)", 0.4*600u"lbf/(ft/s)"))
+
+    left = LandingGearUnit(
+        strut = Strut(
+            t_bs = FrameTransform(r = [-0.381, -1.092, 1.902], q = RQuat() ),
+            l_OsP = 0.0,
+            damper = mlg_damper),
+        braking = DirectBraking())
+
+    right = LandingGearUnit(
+        strut = Strut(
+            t_bs = FrameTransform(r = [-0.381, 1.092, 1.902], q = RQuat() ),
+            l_OsP = 0.0,
+            damper = mlg_damper),
+        braking = DirectBraking())
+
+    nose = LandingGearUnit(
+        strut = Strut(
+            t_bs = FrameTransform(r = [1.27, 0, 1.9] , q = RQuat()),
+            l_OsP = 0.0,
+            damper = nlg_damper),
+        steering = DirectSteering())
+
+    Ldg(left, right, nose)
+
+end
+
+############################## Payload ######################################
+
+const pilot_slot = FrameTransform(r = SVector{3}(0.183, -0.356, 0.899))
+const copilot_slot = FrameTransform(r = SVector{3}(0.183, 0.356, 0.899))
+const psg_left_slot = FrameTransform(r = SVector{3}(-0.681, -0.356, 0.899))
+const psg_right_slot = FrameTransform(r = SVector{3}(-0.681, 0.356, 0.899))
+const baggage_slot = FrameTransform(r = SVector{3}(-1.316, 0, 0.899))
+
+struct Payload <: SystemDescriptor
+    pilot::MassProperties #mp_b
+    copilot::MassProperties #mp_b
+    psg_left::MassProperties #mp_b
+    psg_right::MassProperties #mp_b
+    baggage::MassProperties #mp_b
+
+    function Payload( ; pilot::AbstractMassDistribution = PointMass(75),
+                        copilot::AbstractMassDistribution = PointMass(75),
+                        psg_left::AbstractMassDistribution = PointMass(75),
+                        psg_right::AbstractMassDistribution = PointMass(75),
+                        baggage::AbstractMassDistribution = PointMass(50))
+
+        return new( MassProperties(pilot, pilot_slot),
+                    MassProperties(copilot, copilot_slot),
+                    MassProperties(psg_left, psg_left_slot),
+                    MassProperties(psg_right, psg_right_slot),
+                    MassProperties(baggage, baggage_slot)
+                    )
+
+    end
+end
+
+Base.@kwdef mutable struct PayloadU
+    pilot::Bool = true
+    copilot::Bool = true
+    psg_left::Bool = false
+    psg_right::Bool = false
+    baggage::Bool = true
+end
+
+init(::Payload, ::SystemU) = PayloadU()
+
+MassTrait(::System{Payload}) = HasMass()
+WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
+AngularMomentumTrait(::System{Payload}) = HasNoAngularMomentum()
+
+function get_mp_b(sys::System{Payload})
+    mp_b = MassProperties()
+    sys.u.pilot ? mp_b += sys.params.pilot : nothing
+    sys.u.copilot ? mp_b += sys.params.copilot : nothing
+    sys.u.psg_left ? mp_b += sys.params.psg_left : nothing
+    sys.u.psg_right ? mp_b += sys.params.psg_right : nothing
+    sys.u.baggage ? mp_b += sys.params.baggage : nothing
+    return mp_b
+end
+
+
+############################## Fuel #########################################
+
+#assumes fuel is drawn equally from both tanks, no need to model them
+#individually for now
+Base.@kwdef struct Fuel <: Piston.AbstractFuelSupply
+    m_full::Float64 = 114.4 #maximum fuel mass (42 gal * 6 lb/gal * 0.454 kg/lb)
+    m_empty::Float64 = 0.0 #residual fuel mass
+end
+
+Base.@kwdef struct FuelY
+    m::Float64 = 0.0 #current fuel mass
+end
+
+#normalized fuel content (0: residual, 1: full)
+init(::Fuel, ::SystemX) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
+init(::Fuel, ::SystemY) = FuelY()
+
+function f_cont!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
+
+    @unpack m_full, m_empty = sys.params #no need for subsystems
+    m = m_empty + sys.x[1] * (m_full - m_empty) #current mass
+    sys.ẋ .= -pwp.y.engine.ṁ / (m_full - m_empty)
+    sys.y = FuelY(m)
+
+end
+
+f_disc!(::System{Fuel}) = false
+
+fuel_available(sys::System{<:Fuel}) = (sys.y.m > 0)
+
+function get_mp_b(fuel::System{Fuel})
+
+    #in case x accidentally becomes negative (fuel is consumed beyond x=0 before
+    #the engine dies)
+    m_fuel = max(0.0, fuel.y.m)
+
+    m_left = PointMass(0.5m_fuel)
+    m_right = PointMass(0.5m_fuel)
+
+    #fuel tanks reference frames
+    frame_left = FrameTransform(r = SVector{3}(0.325, -2.845, 0))
+    frame_right = FrameTransform(r = SVector{3}(0.325, 2.845, 0))
+
+    mp_b = MassProperties()
+    mp_b += MassProperties(m_left, frame_left)
+    mp_b += MassProperties(m_right, frame_right)
+
+    return mp_b
+end
+
+################################ Powerplant ####################################
+
+Pwp() = Piston.Thruster(propeller = Propeller(t_bp = FrameTransform(r = [2.055, 0, 0.833])))
+
+################################ Vehicle ######################################
+
+#P is introduced as a type parameter, because Piston.Thruster is itself a
+#parametric type, and therefore not concrete
+Base.@kwdef struct Vehicle{P} <: AbstractVehicle
+    afm::Airframe = Airframe()
+    aero::Aero = Aero()
+    ldg::Ldg = Ldg()
+    fuel::Fuel = Fuel()
+    pld::Payload = Payload()
+    pwp::P = Pwp()
+end
+
+################################################################################
+####################### Update functions #######################################
+################################################################################
+
+################################################################################
 ######################## Avionics Update Functions ###########################
 
-function f_cont!(avionics::System{Avionics}, ::System{Vehicle},
+function f_cont!(avionics::System{Avionics}, ::System{<:Vehicle},
                 ::KinData, ::AirflowData, ::AbstractTerrain)
 
     #here, avionics do nothing but update their output state. for a more complex
@@ -532,28 +528,40 @@ function f_cont!(avionics::System{Avionics}, ::System{Vehicle},
 
 end
 
-f_disc!(::System{Avionics}, ::System{Vehicle}) = false
+f_disc!(::System{Avionics}, ::System{<:Vehicle}) = false
+
 
 ################################################################################
 ####################### Vehicle Update Functions ##############################
 
-#here we could define f_cont! to account for fuel consumption
-f_cont!(::System{Fuel}, ::System{Pwp}) = nothing
-
-function f_cont!(vehicle::System{Vehicle}, avionics::System{Avionics},
+function f_cont!(vehicle::System{<:Vehicle}, avionics::System{Avionics},
                 kin::KinData, air::AirflowData, trn::AbstractTerrain)
 
     @unpack aero, pwp, ldg, fuel, pld = vehicle
 
     assign_component_inputs!(vehicle, avionics)
-    f_cont!(ldg, kin, trn) #update landing gear continuous state & outputs
-    f_cont!(pwp, kin, air) #update powerplant continuous state & outputs
-    f_cont!(fuel, pwp) #update fuel system
     f_cont!(aero, pwp, air, kin, trn)
+    f_cont!(ldg, kin, trn) #update landing gear continuous state & outputs
+    f_cont!(pwp, air, kin) #update powerplant continuous state & outputs
+    f_cont!(fuel, pwp) #update fuel system
 
     Systems.assemble_y!(vehicle)
 
 end
+
+function f_disc!(vehicle::System{<:Vehicle}, ::System{Avionics})
+    @unpack afm, aero, pwp, fuel, ldg, fuel, pld = vehicle
+
+    x_mod = false
+    x_mod = x_mod || f_disc!(aero)
+    x_mod = x_mod || f_disc!(ldg)
+    x_mod = x_mod || f_disc!(pwp, fuel)
+    return x_mod
+
+end
+
+#get_mp_b, get_wr_b and get_hr_b fall back to the @generated methods, which then
+#recurse on Vehicle subsystems
 
 function assign_component_inputs!(vehicle::System{<:Vehicle}, avionics::System{<:Avionics})
 
@@ -564,8 +572,7 @@ function assign_component_inputs!(vehicle::System{<:Vehicle}, avionics::System{<
     #yoke_Δx is the offset with respect to the force-free position yoke_x0
     #yoke_Δy is the offset with respect to the force-free position yoke_y0
 
-    pwp.u.left.throttle = throttle
-    pwp.u.right.throttle = throttle
+    pwp.u.engine.thr = throttle
     ldg.u.nose.steering[] = pedals
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
@@ -577,10 +584,6 @@ function assign_component_inputs!(vehicle::System{<:Vehicle}, avionics::System{<
     return nothing
 end
 
-f_disc!(::System{Vehicle}, ::System{Avionics}) = false
-
-#get_mp_b, get_wr_b and get_hr_b fall back to the @generated methods, which then
-#recurse on Vehicle subsystems
 
 
 ################################################################################

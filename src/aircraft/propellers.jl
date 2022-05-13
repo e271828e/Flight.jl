@@ -303,7 +303,7 @@ struct Propeller{P <: PitchControl, B <: Blade,  D <: Dataset} <: AbstractPropel
     sense::TurnSense
     d::Float64 #diameter
     J_xx::Float64 #axial moment of inertia, J_xx label avoids confusion with advance ratio
-    t_bp::FrameTransform
+    t_bp::FrameTransform #vehicle frame to propeller frame
 end
 
 function Propeller(; pitch = FixedPitch(), blade = Blade(), n_blades = 2,

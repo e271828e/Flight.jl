@@ -25,10 +25,13 @@ AngularMomentumTrait(::System{<:AbstractFuelSupply}) = HasNoAngularMomentum()
 fuel_available(f::System{<:AbstractFuelSupply}) = throw(
     MethodError(fuel_available, (f,)))
 
-#a massless, infinite fuel supply
+#a massless, infinite fuel supply, for testing purposes
 struct MagicFuelSupply <: AbstractFuelSupply end
 
 init(::MagicFuelSupply, ::SystemU) = Ref(true)
+
+f_cont!(::System{MagicFuelSupply}) = nothing
+f_disc!(::System{MagicFuelSupply}) = false
 
 get_mp_b(::System{MagicFuelSupply}) = MassProperties()
 fuel_available(f::System{MagicFuelSupply}) = f.u[]
@@ -533,7 +536,11 @@ function f_disc!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
     @unpack engine, propeller, transmission = thr
     ω_eng = transmission.y.ω_in
 
-    f_disc!(engine, fuel, ω_eng) || f_disc!(propeller) || f_disc!(transmission)
+    x_mod = false
+    x_mod = x_mod || f_disc!(engine, fuel, ω_eng)
+    x_mod = x_mod || f_disc!(propeller)
+    x_mod = x_mod || f_disc!(transmission)
+    return x_mod
 
 end
 
