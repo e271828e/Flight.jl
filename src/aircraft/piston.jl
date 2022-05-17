@@ -417,7 +417,7 @@ end
 Base.@kwdef struct Transmission <: SystemDescriptor
     n::Float64 = 1.0 #gear ratio: ω_out / ω_in
     M_fr_max::Float64 = 5.0 #maximum friction torque
-    regulator::Friction.Regulator{1} = Friction.Regulator{1}()
+    friction::Friction.Regulator{1} = Friction.Regulator{1}()
 end
 
 Base.@kwdef struct TransmissionY
@@ -430,11 +430,11 @@ Base.@kwdef struct TransmissionY
     M_fr::Float64 = 0.0 #friction torque
     P_fr::Float64 = 0.0 #power dissipated by friction
     ω_in_dot::Float64 = 0.0 #angular acceleration at the input side
-    regulator::Friction.RegulatorY{1} = Friction.RegulatorY{1}()
+    friction::Friction.RegulatorY{1} = Friction.RegulatorY{1}()
 end
 
 init(tr::Transmission, ::SystemX) = ComponentVector(
-    ω_in = 0.0, regulator = init(tr.regulator, SystemX()))
+    ω_in = 0.0, friction = init(tr.friction, SystemX()))
 
 init(::Transmission, ::SystemY) = TransmissionY()
 
@@ -445,36 +445,19 @@ function f_cont!(sys::System{<:Transmission};
     #J_out: axial moment of inertia at the output side
 
     @unpack n, M_fr_max = sys.params
-    regulator = sys.regulator
+    friction = sys.friction
 
     ω_in = sys.x.ω_in
     ω_out = n * ω_in
 
-    f_cont!(regulator, ω_in)
-    M_fr = regulator.y.α[1] .* M_fr_max
+    f_cont!(friction, ω_in)
+    M_fr = friction.y.α[1] .* M_fr_max
 
     M_eq = n * M_out #M_out seen from the input side
     J_eq = n^2 * J_out #J_ouot seen from the input side
     ΣM = M_in + M_fr + M_eq
     ΣJ = J_in + J_eq
     ω_in_dot = ΣM / ΣJ
-
-    # #from the input side
-    # M_net = M_in + M_fr + n / η * M_out
-    # J_eq = J_in + n^2 / η * J_out
-    # ω_in_dot = M_net / J_eq
-    # ω_out_dot = n * ω_in_dot
-
-    #from the out side (equivalent)
-    # M_net = η / n * (M_in + M_fr) + M_out
-    # J_eq = η / n^2 * J_in + J_out
-    # ω_out_dot = M_net / J_eq
-    # ω_in_dot = ω_out_dot / n
-
-    #excess torque and power at the output side
-    # ω_out_dot = n * ω_in_dot
-    # ΔM = J_out * ω_out_dot
-    # ΔP = ΔM * ω_out
 
     sys.ẋ.ω_in = ω_in_dot
 
@@ -483,7 +466,7 @@ function f_cont!(sys::System{<:Transmission};
     P_fr = M_fr * ω_in
 
     sys.y = TransmissionY(; ω_in, ω_out, M_in, P_in, M_out, P_out, M_fr, P_fr,
-                            ω_in_dot, regulator = regulator.y)
+                            ω_in_dot, friction = friction.y)
 
 end
 

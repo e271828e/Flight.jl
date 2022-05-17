@@ -60,7 +60,7 @@ function test_sim_nrt()
             h_trn + 1.9 + 2200.5));
 
     Aircraft.init!(ac, kin_init)
-    ac.vehicle.pwp.engine.u.start = false #engine start switch on
+    ac.vehicle.pwp.engine.u.start = true #engine start switch on
 
     atm.u.wind.v_ew_n[1] = 0
 
@@ -68,7 +68,7 @@ function test_sim_nrt()
 
         function (u, t, y, params)
 
-            ac.u.avionics.throttle = 0
+            ac.u.avionics.throttle = 0.2
             ac.u.avionics.yoke_Δx = (t < 5 ? 0.2 : 0.0)
             ac.u.avionics.yoke_Δy = 0.0
             ac.u.avionics.pedals = 0.0
@@ -80,8 +80,6 @@ function test_sim_nrt()
 
     sim = Simulation(ac; args_c = (atm, trn), t_end = 150, sim_callback = callback!)
 
-    # @show @ballocated SciMLBase.step!($sim) #this takes many steps!
-
     Sim.run!(sim)
     plots = make_plots(sim; Plotting.defaults...)
     save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test"))
@@ -89,54 +87,6 @@ function test_sim_nrt()
     return sim
 
 end
-
-# function test_sim_nrt()
-
-#     h_trn = AltO(608.55);
-
-#     trn = HorizontalTerrain(altitude = h_trn);
-#     atm = System(Atmosphere());
-#     ac = System(C172RAircraft());
-#     kin_init = KinInit(
-#         v_eOb_n = [30, 0, 0],
-#         ω_lb_b = [0, 0, 0],
-#         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-#         Ob = GeographicLocation(
-#             LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-#             h_trn + 1.9 + 2200.5));
-
-#     Aircraft.init!(ac, kin_init)
-
-
-#     atm.u.wind.v_ew_n[1] = 0
-
-#     callback! = let
-
-#         function (u, t, y, params)
-
-#             ac.u.avionics.yoke_Δx = (t < 5 ? 0.2 : 0.0)
-#             ac.u.avionics.yoke_Δy = 0.0
-#             ac.u.avionics.pedals = 0.0
-#             ac.u.avionics.brake_left = 0
-#             ac.u.avionics.brake_right = 0
-#             ac.u.avionics.throttle = 0
-
-
-#         end
-#     end
-
-#     sim = Simulation(ac; args_c = (atm, trn), t_end = 150, sim_callback = callback!)
-
-#     # @show @ballocated SciMLBase.step!($sim) #this takes many steps!
-
-#     Sim.run!(sim)
-#     plots = make_plots(sim; Plotting.defaults...)
-#     save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test"))
-#     # save_plots(plots, save_folder = joinpath("tmp", "sim_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
-
-#     return sim
-
-# end
 
 function test_sim_rt()
 

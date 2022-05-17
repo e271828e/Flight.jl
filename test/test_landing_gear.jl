@@ -164,7 +164,7 @@ function test_contact()
 
         contact = LandingGear.Contact() |> System
         @test length(contact.x) == 2
-        @test length(contact.u.regulator.reset) == 2
+        @test length(contact.u.friction.reset) == 2
 
         strut = Strut(l_OsP = 1.0) |> System
         steering = System(DirectSteering())
@@ -182,7 +182,7 @@ function test_contact()
         kin_data = KinInit(; Ob ) |> KinData
         f_cont!(strut, steering, terrain, kin_data)
         f_cont!(contact, strut, braking)
-        @test contact.u.regulator.reset == contact.y.regulator.reset == [false, false]
+        @test contact.u.friction.reset == contact.y.friction.reset == [false, false]
         @test contact.y.μ_eff == [0, 0] #no motion, no effective friction
         @test contact.y.f_c[1:2] == [0, 0] #no effective friction, no tangential force
         @test contact.y.f_c[3] < 0 #ground reaction negative along contact frame z-axis
@@ -221,7 +221,7 @@ function test_contact()
         kin_data = KinInit(; Ob, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> KinData
         f_cont!(strut, steering, terrain, kin_data)
         f_cont!(contact, strut, braking)
-        @test contact.regulator.y.sat[2] == true #large velocity saturates
+        @test contact.friction.y.sat[2] == true #large velocity saturates
         @test contact.ẋ[2] == 0 #lateral velocity integral should be decreasing
 
         #with wow = true, f_disc! should not modify x
@@ -242,7 +242,7 @@ function test_contact()
         f_cont!(strut, steering, terrain, kin_data) #update Strut
         f_cont!(contact, strut, braking)
         #the friction regulator's reset input is set and propagated to the outputs
-        @test contact.u.regulator.reset == contact.y.regulator.reset == [true, true]
+        @test contact.u.friction.reset == contact.y.friction.reset == [true, true]
         @test f_disc!(contact) == false #x was already 0, not modified
         contact.x[1] = 1
         @test f_disc!(contact) == true #now it has

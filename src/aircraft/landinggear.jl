@@ -260,11 +260,11 @@ end
 ########################## Contact ###############################
 
 Base.@kwdef struct Contact <: SystemDescriptor
-    regulator::Friction.Regulator{2} = Friction.Regulator{2}(k_p = 5.0, k_i = 400.0, k_l = 0.2)
+    friction::Friction.Regulator{2} = Friction.Regulator{2}(k_p = 5.0, k_i = 400.0, k_l = 0.2)
 end
 
 Base.@kwdef struct ContactY
-    regulator::Friction.RegulatorY{2} = Friction.RegulatorY{2}()
+    friction::Friction.RegulatorY{2} = Friction.RegulatorY{2}()
     μ_roll::Float64 = 0.0 #rolling friction coefficient
     μ_skid::Float64 = 0.0 #skidding friction coefficient
     κ_br::Float64 = 0.0 #braking factor
@@ -283,18 +283,18 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
 
     @unpack wow, t_sc, t_bc, F, v_eOc_c, trn = strut.y
-    reg_sys = sys.regulator
+    friction = sys.friction
 
     if wow
         #disable friction regulator reset for the next call to f_disc!
-        reg_sys.u.reset .= false
+        friction.u.reset .= false
     else
         #set the friction regulator to reset on the next call to f_disc!
-        reg_sys.u.reset .= true
+        friction.u.reset .= true
         #update regulator with zero contact velocity so that the reset input
         #becomes visible in regulator outputs
-        f_cont!(reg_sys, zeros(SVector{2}))
-        sys.y = ContactY(regulator = reg_sys.y)
+        f_cont!(friction, zeros(SVector{2}))
+        sys.y = ContactY(friction = friction.y)
         #...and we're done
         return
     end
@@ -330,8 +330,8 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     μ_max = @SVector [μ_x, μ_y]
     μ_max *= min(1, μ_skid / norm(μ_max)) #scale μ_max so norm(μ_max) does not exceed μ_skid
 
-    f_cont!(reg_sys, v) #friction regulator update
-    μ_eff = reg_sys.y.α .* μ_max
+    f_cont!(friction, v) #friction regulator update
+    μ_eff = friction.y.α .* μ_max
 
     #normalized contact force projected on the contact frame
     f_c = SVector{3,Float64}(μ_eff[1], μ_eff[2], -1)
@@ -347,13 +347,13 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     wr_c = Wrench(F = F_c)
     wr_b = t_bc(wr_c)
 
-    regulator = reg_sys.y
-    sys.y = ContactY(; regulator, μ_roll, μ_skid, κ_br, ψ_cv, μ_max, μ_eff, f_c, F_c, wr_b)
+    sys.y = ContactY(; friction = friction.y,
+                       μ_roll, μ_skid, κ_br, ψ_cv, μ_max, μ_eff, f_c, F_c, wr_b)
 
 end
 
 #if wow==false in the last f_cont! evaluation, this resets the friction regulator
-f_disc!(contact::System{Contact}) = f_disc!(contact.regulator)
+f_disc!(contact::System{Contact}) = f_disc!(contact.friction)
 
 ########################## LandingGearUnit #########################
 
@@ -432,7 +432,7 @@ function make_plots(th::TimeHistory{<:ContactY}; kwargs...)
 
     pd = OrderedDict{Symbol, Any}()
 
-    pd[:regulator] = make_plots(th.regulator; kwargs...)
+    pd[:friction] = make_plots(th.friction; kwargs...)
 
     (μ_max_x, μ_max_y) = Utils.get_scalar_components(th.μ_max)
     (μ_eff_x, μ_eff_y) = Utils.get_scalar_components(th.μ_eff)

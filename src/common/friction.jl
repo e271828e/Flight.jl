@@ -65,7 +65,7 @@ Base.@kwdef struct RegulatorY{N}
     sat::SVector{N,Bool} = zeros(SVector{N, Bool}) #scale factor saturation flag
 end
 
-init(::Regulator{N}, ::SystemX) where {N} = zeros(N) #v regulator integrator states
+init(::Regulator{N}, ::SystemX) where {N} = zeros(N) #v friction integrator states
 init(::Regulator{N}, ::SystemY) where {N} = RegulatorY{N}()
 init(::Regulator{N}, ::SystemU) where {N} = RegulatorU{N}()
 
