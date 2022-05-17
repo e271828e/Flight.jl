@@ -81,8 +81,8 @@ function test_sim_nrt()
     sim = Simulation(ac; args_c = (atm, trn), t_end = 150, sim_callback = callback!)
 
     Sim.run!(sim)
-    plots = make_plots(sim; Plotting.defaults...)
-    save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test"))
+    # plots = make_plots(sim; Plotting.defaults...)
+    # save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test"))
 
     return sim
 

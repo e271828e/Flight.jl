@@ -96,7 +96,7 @@ function f_cont!(sys::System{IdleController}, ω::Real)
     ϵ_int = sys.x.ϵ_int
     output_raw = -(k_p * ϵ + k_i * ϵ_int)
     output = min(max(0.0, output_raw), 1.0)
-    sat = (output_raw == output ? false : true)
+    sat = ((output_raw > 0) && (output_raw < 1) ? false : true)
     sys.ẋ.ϵ_int = !sat * ϵ
 
     sys.y = IdleControllerY(ϵ, ϵ_int, output_raw, output, sat)
