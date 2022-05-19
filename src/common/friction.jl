@@ -65,9 +65,9 @@ Base.@kwdef struct RegulatorY{N}
     sat::SVector{N,Bool} = zeros(SVector{N, Bool}) #scale factor saturation flag
 end
 
-init(::Regulator{N}, ::SystemX) where {N} = zeros(N) #v friction integrator states
-init(::Regulator{N}, ::SystemY) where {N} = RegulatorY{N}()
-init(::Regulator{N}, ::SystemU) where {N} = RegulatorU{N}()
+init(::SystemX, ::Regulator{N}) where {N} = zeros(N) #v friction integrator states
+init(::SystemY, ::Regulator{N}) where {N} = RegulatorY{N}()
+init(::SystemU, ::Regulator{N}) where {N} = RegulatorU{N}()
 
 f_cont!(sys::System{<:Regulator{1}}, v_in::Real) = f_cont!(sys, SVector{1, Float64}(v_in))
 

@@ -5,10 +5,10 @@ using ComponentArrays
 import AbstractTrees: children, printnode, print_tree
 import DataStructures: OrderedDict
 
-export f_cont!, f_disc!, step!
-export SystemDescriptor, SystemGroupDescriptor
-export System, SystemẊ, SystemX, SystemY, SystemU, SystemD
-export init_x, init_y, init_u, init_d
+export f_cont!, f_disc!
+export SystemDescriptor, SystemGroupDescriptor, System
+export SystemẊ, SystemX, SystemY, SystemU, SystemD
+export init_ẋ, init_x, init_y, init_u, init_d
 
 
 ################################################################################
@@ -16,20 +16,51 @@ export init_x, init_y, init_u, init_d
 
 abstract type SystemDescriptor end #anything from which we can build a System
 
-abstract type SystemData end
+function OrderedDict(g::SystemDescriptor)
+    fields = propertynames(g)
+    values = map(λ -> getproperty(g, λ), fields)
+    OrderedDict(k => v for (k, v) in zip(fields, values))
+end
 
-struct SystemẊ <: SystemData end
-struct SystemX <: SystemData end
-struct SystemY <: SystemData end
-struct SystemU <: SystemData end
-struct SystemD <: SystemData end
+################################################################################
+############################## SystemTrait #####################################
+
+abstract type SystemTrait end
+
+struct SystemẊ <: SystemTrait end
+struct SystemX <: SystemTrait end
+struct SystemY <: SystemTrait end
+struct SystemU <: SystemTrait end
+struct SystemD <: SystemTrait end
+
+#initialize continuous state vector traits from OrderedDict
+function init(::Union{SystemẊ, SystemX}, dict::OrderedDict)
+    filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
+    !isempty(dict) ? ComponentVector(dict) : nothing
+end
+
+#initialize all other traits from OrderedDict
+function init(::Union{SystemY, SystemU, SystemD}, dict::OrderedDict)
+    filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
+    !isempty(dict) ? NamedTuple(dict) : nothing
+end
+
+init(trait::SystemTrait; kwargs...) = init(trait, OrderedDict(kwargs))
+
+#shorthands (do not extend)
+init_ẋ(args...; kwargs...) = init(SystemẊ(), args...; kwargs...)
+init_x(args...; kwargs...) = init(SystemX(), args...; kwargs...)
+init_y(args...; kwargs...) = init(SystemY(), args...; kwargs...)
+init_u(args...; kwargs...) = init(SystemU(), args...; kwargs...)
+init_d(args...; kwargs...) = init(SystemD(), args...; kwargs...)
+
 
 ################################################################################
 ################################### System #####################################
 
-#need the T type parameter for dispatch, the rest for type stability. since
-#Systems are only meant to be instantiated during initialization, making
-#them mutable does not hurt performance (no runtime heap allocations)
+#need the T type parameter for dispatch, the rest for type stability. Systems
+#are only meant to be instantiated during initialization, so making them mutable
+#does not hurt performance (allocations only occur once)
 mutable struct System{T <: SystemDescriptor,
                       X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S}
     ẋ::X #continuous dynamics state vector derivative
@@ -42,52 +73,22 @@ mutable struct System{T <: SystemDescriptor,
     subsystems::S
 end
 
-function init(dict::OrderedDict, ::SystemX)
-    filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
-    !isempty(dict) ? ComponentVector(dict) : nothing
-end
-
-function init(dict::OrderedDict, ::Union{SystemY, SystemU, SystemD})
-    filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
-    !isempty(dict) ? NamedTuple(dict) : nothing
-end
-
-function init(nt::NamedTuple, trait::Union{SystemX, SystemY, SystemU, SystemD})
-    init(OrderedDict(pairs(nt)), trait)
-end
-
-#fallback initializer for SystemDescriptors that do not define a init method for
-#one or more of their traits. if such a SystemDescriptor has SystemDescriptor
-#fields, these are considered children, and its traits are initialized from
-#them. otherwise, an empty OrderedDict is returned
-function init(desc::SystemDescriptor, trait::Union{SystemX, SystemY, SystemU, SystemD})
+#default trait initializer. if the descriptor has any SystemDescriptor fields of
+#its own, these are considered children and traits are (recursively) initialized
+#from them
+function init(trait::Union{SystemX, SystemY, SystemU, SystemD}, desc::SystemDescriptor)
     #get those fields that are themselves SystemDescriptors
     children = filter(p -> isa(p.second, SystemDescriptor), OrderedDict(desc))
     #build an OrderedDict with the initialized traits for each of those
-    dict = OrderedDict(k => init(v, trait) for (k, v) in pairs(children))
-    #forward it to one of the OrderedDict init methods
-    init(dict, trait)
+    trait_dict = OrderedDict(k => init(trait, v) for (k, v) in pairs(children))
+    #forward it to the OrderedDict initializers
+    init(trait, trait_dict)
 end
 
 #fallback method for state vector derivative initialization
-function init(d::SystemDescriptor, ::SystemẊ)
-    x = init(d, SystemX())
-    !isnothing(x) ? x |> similar |> zero : nothing
-end
-
-#shorthands, not meant for extension
-init_x(desc) = init(desc, SystemX())
-init_y(desc) = init(desc, SystemY())
-init_u(desc) = init(desc, SystemU())
-init_d(desc) = init(desc, SystemD())
-
-#convenience methods
-Base.NamedTuple(od::OrderedDict) = NamedTuple{Tuple(keys(od))}(values(od))
-
-function OrderedDict(g::SystemDescriptor)
-    fields = propertynames(g)
-    values = map(λ -> getproperty(g, λ), fields)
-    OrderedDict(k => v for (k, v) in zip(fields, values))
+function init(::SystemẊ, desc::SystemDescriptor)
+    x = init(SystemX(), desc) #this is a namedtuple
+    !isnothing(x) ? x |> zero : nothing
 end
 
 #suppose we have a System a with children b and c. the System constructor will
@@ -100,9 +101,8 @@ function maybe_getproperty(input, label)
 end
 
 function System(desc::SystemDescriptor,
-                ẋ = init(desc, SystemẊ()), x = init(desc, SystemX()),
-                y = init(desc, SystemY()), u = init(desc, SystemU()),
-                d = init(desc, SystemD()), t = Ref(0.0))
+                ẋ = init_ẋ(desc), x = init_x(desc), y = init_y(desc),
+                u = init_u(desc), d = init_d(desc), t = Ref(0.0))
 
     child_names = filter(p -> (p.second isa SystemDescriptor), OrderedDict(desc)) |> keys |> Tuple
     child_systems = (System(map((λ)->maybe_getproperty(λ, name), (desc, ẋ, x, y, u, d))..., t) for name in child_names) |> Tuple

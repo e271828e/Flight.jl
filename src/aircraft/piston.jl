@@ -1,6 +1,6 @@
 module Piston
 
-using Interpolations, Unitful, Plots, StructArrays, ComponentArrays, UnPack
+using Interpolations, Unitful, Plots, StaticArrays, StructArrays, ComponentArrays, UnPack
 
 using Flight.Systems, Flight.Utils
 using Flight.Kinematics, Flight.Dynamics, Flight.Air
@@ -28,7 +28,7 @@ fuel_available(f::System{<:AbstractFuelSupply}) = throw(
 #a massless, infinite fuel supply, for testing purposes
 struct MagicFuelSupply <: AbstractFuelSupply end
 
-init(::MagicFuelSupply, ::SystemU) = Ref(true)
+init(::SystemU, ::MagicFuelSupply) = Ref(true)
 
 f_cont!(::System{MagicFuelSupply}) = nothing
 f_disc!(::System{MagicFuelSupply}) = false
@@ -85,8 +85,8 @@ Base.@kwdef struct IdleControllerY
     sat::Bool = false
 end
 
-init(::IdleController, ::SystemX) = [0.0]
-init(::IdleController, ::SystemY) = IdleControllerY()
+init(::SystemX, ::IdleController) = [0.0]
+init(::SystemY, ::IdleController) = IdleControllerY()
 
 function f_cont!(sys::System{IdleController}, ω::Real)
 
@@ -173,9 +173,9 @@ Base.@kwdef struct PistonEngineY
     idle::IdleControllerY = IdleControllerY()
 end
 
-init(::Engine, ::SystemY) = PistonEngineY()
-init(::Engine, ::SystemU) = PistonEngineU()
-init(::Engine, ::SystemD) = PistonEngineD()
+init(::SystemY, ::Engine) = PistonEngineY()
+init(::SystemU, ::Engine) = PistonEngineU()
+init(::SystemD, ::Engine) = PistonEngineD()
 
 function f_cont!(eng::System{<:Engine}, air::AirflowData, ω::Real)
 
@@ -411,66 +411,6 @@ function compute_π_ISA_pow(dataset, n, μ, δ)
 
 end
 
-############################## Transmission ################################
-
-Base.@kwdef struct Transmission <: SystemDescriptor
-    n::Float64 = 1.0 #gear ratio: ω_out / ω_in
-    M_fr_max::Float64 = 5.0 #maximum friction torque
-    friction::Friction.Regulator{1} = Friction.Regulator{1}()
-end
-
-Base.@kwdef struct TransmissionY
-    ω_in::Float64 = 0.0 #angular velocity at the input side
-    ω_out::Float64 = 0.0 #angular velocity at the output side
-    M_in::Float64 = 0.0 #torque applied at the input side
-    P_in::Float64 = 0.0 #power applied at the input side
-    M_out::Float64 = 0.0 #torque applied at the output side
-    P_out::Float64 = 0.0 #power applied at the output side
-    M_fr::Float64 = 0.0 #friction torque
-    P_fr::Float64 = 0.0 #power dissipated by friction
-    ω_in_dot::Float64 = 0.0 #angular acceleration at the input side
-    friction::Friction.RegulatorY{1} = Friction.RegulatorY{1}()
-end
-
-init(tr::Transmission, ::SystemX) = (ω_in = 0.0, friction = init_x(tr.friction))
-
-init(::Transmission, ::SystemY) = TransmissionY()
-
-function f_cont!(sys::System{<:Transmission};
-                 M_in::Real, M_out::Real, J_in::Real, J_out::Real)
-
-    #J_in: axial moment of inertia at the input side
-    #J_out: axial moment of inertia at the output side
-
-    @unpack n, M_fr_max = sys.params
-    friction = sys.friction
-
-    ω_in = sys.x.ω_in
-    ω_out = n * ω_in
-
-    f_cont!(friction, ω_in)
-    M_fr = friction.y.α[1] .* M_fr_max
-
-    M_eq = n * M_out #M_out seen from the input side
-    J_eq = n^2 * J_out #J_ouot seen from the input side
-    ΣM = M_in + M_fr + M_eq
-    ΣJ = J_in + J_eq
-    ω_in_dot = ΣM / ΣJ
-
-    sys.ẋ.ω_in = ω_in_dot
-
-    P_in = M_in * ω_in
-    P_out = M_out * ω_out
-    P_fr = M_fr * ω_in
-
-    sys.y = TransmissionY(; ω_in, ω_out, M_in, P_in, M_out, P_out, M_fr, P_fr,
-                            ω_in_dot, friction = friction.y)
-
-end
-
-f_disc!(::System{Transmission}, args...) = false
-
-
 ############################# Thruster ###################################
 
 #M_eng is always positive. therefore, for a CW thruster, n should be positive as
@@ -486,89 +426,29 @@ Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
                             P <: AbstractPropeller} <: SystemDescriptor
     engine::E = Engine()
     propeller::P = Propeller()
-    transmission::Transmission = Transmission()
-    function Thruster(eng::E, prop::P, tr::Transmission) where {E, P}
-        @assert sign(tr.n) * Int(prop.sense) > 0 "Transmission gear ratio "*
-        "does not match propeller turn sign"
-        new{E,P}(eng, prop, tr)
-    end
-end
-
-function f_cont!(eng::System{<:Thruster}, air::AirflowData, kin::KinData)
-
-    @unpack engine, propeller, transmission = eng
-    @unpack ω_in, ω_out = transmission.y
-
-    M_in = engine.y.M
-    M_out = propeller.y.wr_p.M[1]
-    J_in = engine.params.J
-    J_out = propeller.params.J_xx
-
-    f_cont!(engine, air, ω_in)
-    f_cont!(propeller, kin, air, ω_out)
-    f_cont!(transmission; M_in, M_out, J_in, J_out)
-
-    Systems.assemble_y!(eng)
-
-end
-
-function f_disc!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
-
-    @unpack engine, propeller, transmission = thr
-    ω_eng = transmission.y.ω_in
-
-    x_mod = false
-    x_mod = x_mod || f_disc!(engine, fuel, ω_eng)
-    x_mod = x_mod || f_disc!(propeller)
-    x_mod = x_mod || f_disc!(transmission)
-    return x_mod
-
-end
-
-MassTrait(::System{<:Thruster}) = HasNoMass()
-WrenchTrait(::System{<:Thruster}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:Thruster}) = HasAngularMomentum()
-
-get_wr_b(thr::System{<:Thruster}) = get_wr_b(thr.propeller) #only external
-get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
-
-############################# NewThruster ###################################
-
-#M_eng is always positive. therefore, for a CW thruster, n should be positive as
-#well and, under normal operating, conditions M_prop will be negative. for a CCW
-#thruster, n should be negative and M_prop will be positive under normal
-#operating conditions.
-
-#however, the sign of M_prop may be inverted under negative propeller thrust
-#conditions (generative), with the propeller driving the engine instead of
-#the other way around
-
-Base.@kwdef struct NewThruster{E <: AbstractPistonEngine,
-                            P <: AbstractPropeller} <: SystemDescriptor
-    engine::E = Engine()
-    propeller::P = Propeller()
     friction::Friction.Regulator{1} = Friction.Regulator{1}()
     M::Float64 = 5.0 #maximum friction torque
     n::Float64 = 1.0 #gear ratio
-    function NewThruster(eng::E, prop::P, friction, M, n) where {E, P}
+    function Thruster(eng::E, prop::P, friction, M, n) where {E, P}
         @assert sign(n) * Int(prop.sense) > 0 "Thruster gear ratio sign "*
         "does not match propeller turn sign"
         new{E,P}(eng, prop, friction, M, n)
     end
 end
 
-init(tr::NewThruster, ::SystemX) = (ω = 0.0, engine = init_x(tr.engine),
+#call init_x on the assembled NamedTuple to get an actual ComponentVector
+init(::SystemX, tr::Thruster) = init_x(ω = 0.0, engine = init_x(tr.engine),
     propeller = init_x(tr.propeller), friction = init_x(tr.friction))
 
-function f_cont!(thr::System{<:NewThruster}, air::AirflowData, kin::KinData)
+function f_cont!(thr::System{<:Thruster}, air::AirflowData, kin::KinData)
 
     @unpack engine, propeller, friction = thr
-    @unpack n, M = thr.parameters
+    @unpack n, M = thr.params
 
     ω_eng = thr.x.ω
     ω_prop = n * ω_eng
 
-    f_cont!(friction, ω_eng)
+    f_cont!(friction, SVector{1, Float64}(ω_eng))
     f_cont!(engine, air, ω_eng)
     f_cont!(propeller, kin, air, ω_prop)
 
@@ -586,13 +466,13 @@ function f_cont!(thr::System{<:NewThruster}, air::AirflowData, kin::KinData)
     ΣJ = J_eng + J_eq
     ω_eng_dot = ΣM / ΣJ
 
-    sys.ẋ.ω = ω_eng_dot
+    thr.ẋ.ω = ω_eng_dot
 
     Systems.assemble_y!(thr)
 
 end
 
-function f_disc!(thr::System{<:NewThruster}, fuel::System{<:AbstractFuelSupply})
+function f_disc!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
 
     @unpack engine, propeller, friction = thr
 
@@ -606,10 +486,10 @@ function f_disc!(thr::System{<:NewThruster}, fuel::System{<:AbstractFuelSupply})
 
 end
 
-MassTrait(::System{<:NewThruster}) = HasNoMass()
-WrenchTrait(::System{<:NewThruster}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:NewThruster}) = HasAngularMomentum()
+MassTrait(::System{<:Thruster}) = HasNoMass()
+WrenchTrait(::System{<:Thruster}) = GetsExternalWrench()
+AngularMomentumTrait(::System{<:Thruster}) = HasAngularMomentum()
 
-get_wr_b(thr::System{<:NewThruster}) = get_wr_b(thr.propeller) #only external
-get_hr_b(thr::System{<:NewThruster}) = get_hr_b(thr.propeller)
+get_wr_b(thr::System{<:Thruster}) = get_wr_b(thr.propeller) #only external
+get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
 end #module

@@ -85,10 +85,10 @@ end
 
 #override the default SystemDescriptor implementation, because we need to
 #add some stuff besides subsystem outputs
-init(ac::AircraftBase, ::SystemY) = (
-    kinematics = init(ac.kinematics, SystemY()),
-    vehicle = init(ac.vehicle, SystemY()),
-    avionics = init(ac.avionics, SystemY()),
+init(::SystemY, ac::AircraftBase) = (
+    kinematics = init_y(ac.kinematics),
+    vehicle = init_y(ac.vehicle),
+    avionics = init_y(ac.avionics),
     dynamics = DynData(),
     airflow = AirflowData(),
     )
@@ -130,15 +130,11 @@ function f_disc!(sys::System{<:AircraftBase})
 
     x_mod = false
     x_mod = x_mod || f_disc!(kinematics, 1e-8)
-    x_mod = x_mod || f_disc!(vehicle, avionics)
-    x_mod = x_mod || f_disc!(avionics, vehicle)
+    x_mod = x_mod || f_disc!(vehicle, avionics, kinematics)
+    x_mod = x_mod || f_disc!(avionics, vehicle, kinematics)
 
     return x_mod
 end
-
-# function update!(xp::XPInterface, ac::System{<:AircraftBase}, ac_number::Integer = 0)
-#     update!(xp, ac.y.kinematics.pos, ac_number)
-# end
 
 function update!(xp::XPInterface, pos::PosData, aircraft::Integer = 0)
 

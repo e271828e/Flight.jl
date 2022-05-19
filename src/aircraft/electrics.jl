@@ -96,9 +96,9 @@ end
 
 Base.@kwdef mutable struct EThrusterD end
 
-init(::EThruster, ::SystemX) = (ω_shaft = 0.0, c_bat = 1.0)
-init(::EThruster, ::SystemU) = EThrusterU()
-init(::EThruster, ::SystemY) = EThrusterY()
+init(::SystemX, ::EThruster) = init_x(ω_shaft = 0.0, c_bat = 1.0)
+init(::SystemU, ::EThruster) = EThrusterU()
+init(::SystemY, ::EThruster) = EThrusterY()
 
 ################ EThruster System ###################
 

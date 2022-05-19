@@ -50,8 +50,8 @@ Base.@kwdef struct DirectSteeringY
     ψ::Float64 = 0.0
 end
 #the contents of u must be mutable
-init(::DirectSteering, ::SystemU) = Ref(Ranged(0.0, -1, 1))
-init(::DirectSteering, ::SystemY) = DirectSteeringY(0.0) #steering angle
+init(::SystemU, ::DirectSteering) = Ref(Ranged(0.0, -1, 1))
+init(::SystemY, ::DirectSteering) = DirectSteeringY(0.0) #steering angle
 
 function f_cont!(sys::System{DirectSteering})
     sys.y = DirectSteeringY(Float64(sys.u[]) * sys.params.ψ_max)
@@ -84,8 +84,8 @@ Base.@kwdef struct DirectBrakingY
    κ_br::Float64 = 0.0 #braking coefficient
 end
 
-init(::DirectBraking, ::SystemU) = Ref(Ranged(0.0, 0, 1))
-init(::DirectBraking, ::SystemY) = DirectBrakingY()
+init(::SystemU, ::DirectBraking) = Ref(Ranged(0.0, 0, 1))
+init(::SystemY, ::DirectBraking) = DirectBrakingY()
 
 function f_cont!(sys::System{DirectBraking})
     sys.y = DirectBrakingY(Float64(sys.u[]) * sys.params.η_br)
@@ -139,7 +139,7 @@ Base.@kwdef struct StrutY
     trn::TerrainData = TerrainData()
 end
 
-init(::Strut, ::SystemY) = StrutY()
+init(::SystemY, ::Strut) = StrutY()
 
 function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     terrain::AbstractTerrain, kin::KinData)
@@ -277,7 +277,7 @@ Base.@kwdef struct ContactY
 end
 
 #x should be initialized by the default methods
-init(::Contact, ::SystemY) = ContactY()
+init(::SystemY, ::Contact) = ContactY()
 
 function f_cont!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
@@ -286,13 +286,13 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     friction = sys.friction
 
     if wow
-        #disable friction regulator reset for the next call to f_disc!
+        #disable friction regulator reset command
         friction.u.reset .= false
     else
-        #set the friction regulator to reset on the next call to f_disc!
+        #mark the friction regulator for reset on the next call to f_disc!
         friction.u.reset .= true
-        #update regulator with zero contact velocity so that the reset input
-        #becomes visible in regulator outputs
+        #update regulator with zero contact velocity so that the reset command
+        #shows in regulator outputs (not strictly required)
         f_cont!(friction, zeros(SVector{2}))
         sys.y = ContactY(friction = friction.y)
         #...and we're done

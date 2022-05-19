@@ -182,7 +182,7 @@ end #function
 
 function test_thruster_dynamics()
 
-    @testset verbose = true "ThrusterDynamics" begin
+    @testset verbose = true "NewThrusterDynamics" begin
 
         #initialize auxiliary elements
         kin = KinInit(v_eOb_n = [0, 0, 0]) |> KinData
@@ -231,8 +231,7 @@ function test_thruster_dynamics()
 
         @test_throws AssertionError Thruster(
             propeller = Propeller(sense = Propellers.CCW),
-            transmission = Piston.Transmission(n = 1)
-        )
+            n = 1)
 
 
         ################### Variable pitch CCW thruster ########################
@@ -240,7 +239,7 @@ function test_thruster_dynamics()
         #CCW propeller should be coupled with negative gear ratio transmission
         thr = Thruster(
             propeller = Propeller(pitch = VariablePitch(), sense = Propellers.CCW),
-            transmission = Piston.Transmission(n = -1)
+            n = -1
         ) |> System
 
         sim = Simulation(thr, args_c = (air, kin), args_d = (fuel,), t_end = 100)
@@ -297,9 +296,9 @@ function test_thruster_dynamics()
         sim.u.engine.start = true
         step!(sim, 5, true)
         sim.u.engine.start = false
-        @show @ballocated(step!($sim, 0.1, true))
+        # @show @ballocated(step!($sim, 0.1, true))
 
-        return sim
+        # return sim
 
     end #testset
 

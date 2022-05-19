@@ -153,7 +153,7 @@ Base.@kwdef mutable struct UTunableISA #only allocates upon System instantiation
     p_sl::Float64 = p_std
 end
 
-init(::TunableISA, ::SystemU) = UTunableISA()
+init(::SystemU, ::TunableISA) = UTunableISA()
 f_cont!(::System{<:TunableISA}, args...) = nothing
 f_disc!(::System{<:TunableISA}, args...) = false
 
@@ -185,7 +185,7 @@ Base.@kwdef mutable struct USimpleWind
     v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
 end
 
-init(::TunableWind, ::SystemU) = USimpleWind()
+init(::SystemU, ::TunableWind) = USimpleWind()
 f_cont!(::System{<:TunableWind}, args...) = nothing
 f_disc!(::System{<:TunableWind}, args...) = false
 

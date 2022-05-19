@@ -13,7 +13,7 @@ import OrdinaryDiffEq: add_tstop!
 
 import Flight.Utils: TimeHistory
 
-export Simulation
+export Simulation, step!
 
 
 ################################################################################

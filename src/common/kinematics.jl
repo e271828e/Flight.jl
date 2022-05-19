@@ -17,11 +17,8 @@ import Flight.Plotting: make_plots
 
 export AbstractKinematics, KinLTF, KinECEF
 export VelX, PosData, VelData, KinData, KinInit
-export KinematicsSystem
 
 abstract type AbstractKinematics <: SystemDescriptor end
-
-const KinematicsSystem = System{<:AbstractKinematics}
 
 Base.@kwdef struct KinInit
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
@@ -104,7 +101,7 @@ end
 KinData() = KinData(KinInit())
 
 #every AbstractKinematics implementation must comply with the same outputs
-init(::AbstractKinematics, ::SystemY) = KinData()
+init(::SystemY, ::AbstractKinematics) = KinData()
 
 #for dispatching
 const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
@@ -119,7 +116,7 @@ end
 
 struct KinLTF <: AbstractKinematics end
 
-init(kin::KinLTF, ::SystemX) = init(kin, KinInit())
+init(::SystemX, kin::KinLTF) = init(kin, KinInit())
 
 function init(::KinLTF, kin_init::KinInit = KinInit())
 
@@ -216,7 +213,7 @@ end
 
 struct KinECEF <: AbstractKinematics end
 
-init(kin::KinECEF, ::SystemX) = init(kin, KinInit())
+init(::SystemX, kin::KinECEF) = init(kin, KinInit())
 
 function init(::KinECEF, kin_init::KinInit = KinInit())
 

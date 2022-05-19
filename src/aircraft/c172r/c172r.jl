@@ -58,8 +58,8 @@ Base.@kwdef struct AvionicsY
     flaps::Float64
 end
 
-init(::Avionics, ::SystemU) = AvionicsU()
-init(::Avionics, ::SystemY) = AvionicsY(zeros(SVector{9})...)
+init(::SystemU, ::Avionics) = AvionicsU()
+init(::SystemY, ::Avionics) = AvionicsY(zeros(SVector{9})...)
 
 
 ################################################################################
@@ -146,10 +146,10 @@ Base.@kwdef struct AeroY
     wr_b::Wrench = Wrench() #aerodynamic Wrench, vehicle frame
 end
 
-init(::Aero, ::SystemX) = (α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
-init(::Aero, ::SystemY) = AeroY()
-init(::Aero, ::SystemU) = AeroU()
-init(::Aero, ::SystemD) = AeroD()
+init(::SystemX, ::Aero) = init(SystemX(); α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+init(::SystemY, ::Aero) = AeroY()
+init(::SystemU, ::Aero) = AeroU()
+init(::SystemD, ::Aero) = AeroD()
 
 #dataset taken from JSBSim's c172p
 function load_aero_data()
@@ -424,7 +424,7 @@ Base.@kwdef mutable struct PayloadU
     baggage::Bool = true
 end
 
-init(::Payload, ::SystemU) = PayloadU()
+init(::SystemU, ::Payload) = PayloadU()
 
 MassTrait(::System{Payload}) = HasMass()
 WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
@@ -455,8 +455,8 @@ Base.@kwdef struct FuelY
 end
 
 #normalized fuel content (0: residual, 1: full)
-init(::Fuel, ::SystemX) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
-init(::Fuel, ::SystemY) = FuelY()
+init(::SystemX, ::Fuel) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
+init(::SystemY, ::Fuel) = FuelY()
 
 function f_cont!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 
@@ -528,7 +528,7 @@ function f_cont!(avionics::System{Avionics}, ::System{<:Vehicle},
 
 end
 
-f_disc!(::System{Avionics}, ::System{<:Vehicle}) = false
+f_disc!(::System{Avionics}, ::System{<:Vehicle}, ::System{<:AbstractKinematics}) = false
 
 
 ################################################################################
@@ -549,7 +549,7 @@ function f_cont!(vehicle::System{<:Vehicle}, avionics::System{Avionics},
 
 end
 
-function f_disc!(vehicle::System{<:Vehicle}, ::System{Avionics})
+function f_disc!(vehicle::System{<:Vehicle}, ::System{Avionics}, ::System{<:AbstractKinematics})
     @unpack afm, aero, pwp, fuel, ldg, fuel, pld = vehicle
 
     x_mod = false
