@@ -29,7 +29,8 @@ struct SystemD <: SystemData end
 #need the T type parameter for dispatch, the rest for type stability. since
 #Systems are only meant to be instantiated during initialization, making
 #them mutable does not hurt performance (no runtime heap allocations)
-mutable struct System{T <: SystemDescriptor, X, Y, U, D, P, S}
+mutable struct System{T <: SystemDescriptor,
+                      X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S}
     ẋ::X #continuous dynamics state vector derivative
     x::X #continuous dynamics state vector
     y::Y #output
@@ -40,10 +41,31 @@ mutable struct System{T <: SystemDescriptor, X, Y, U, D, P, S}
     subsystems::S
 end
 
-function OrderedDict(g::SystemDescriptor)
-    fields = propertynames(g)
-    values = map(λ -> getproperty(g, λ), fields)
-    OrderedDict(k => v for (k, v) in zip(fields, values))
+function init(dict::OrderedDict, ::SystemX)
+    filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
+    !isempty(dict) ? ComponentVector(dict) : nothing
+end
+
+function init(dict::OrderedDict, ::Union{SystemY, SystemU, SystemD})
+    filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
+    !isempty(dict) ? NamedTuple(dict) : nothing
+end
+
+function init(nt::NamedTuple, trait::Union{SystemX, SystemY, SystemU, SystemD})
+    init(OrderedDict(pairs(nt)), trait)
+end
+
+#fallback initializer for SystemDescriptors that do not define a init method for
+#one or more of their traits. if such a SystemDescriptor has SystemDescriptor
+#fields, these are considered children, and its traits are initialized from
+#them. otherwise, an empty OrderedDict is returned
+function init(desc::SystemDescriptor, trait::Union{SystemX, SystemY, SystemU, SystemD})
+    #get those fields that are themselves SystemDescriptors
+    children = filter(p -> isa(p.second, SystemDescriptor), OrderedDict(desc))
+    #build an OrderedDict with the initialized traits for each of those
+    dict = OrderedDict(k => init(v, trait) for (k, v) in pairs(children))
+    #forward it to one of the OrderedDict init methods
+    init(dict, trait)
 end
 
 #fallback method for state vector derivative initialization
@@ -52,28 +74,13 @@ function init(d::SystemDescriptor, ::SystemẊ)
     !isnothing(x) ? x |> similar |> zero : nothing
 end
 
-#if the SystemDescriptor has no SystemDescriptor children, and does not override
-#this method, it will initialize all its traits to nothing
-function init(desc::SystemDescriptor, trait::Union{SystemX, SystemY, SystemU, SystemD})
+#convenience methods
+Base.NamedTuple(od::OrderedDict) = NamedTuple{Tuple(keys(od))}(values(od))
 
-    child_descriptors = filter(p -> isa(p.second, SystemDescriptor), OrderedDict(desc))
-
-    dict = OrderedDict()
-    for (name, child) in child_descriptors
-        child_data = init(child, trait)
-        !isnothing(child_data) ? dict[name] = child_data : nothing
-    end
-
-    init(dict, trait)
-
-end
-
-function init(dict::OrderedDict, ::Union{SystemX})
-    !isempty(dict) ? ComponentVector(dict) : nothing
-end
-
-function init(dict::OrderedDict, ::Union{SystemY, SystemU, SystemD})
-    !isempty(dict) ? NamedTuple{Tuple(keys(dict))}(values(dict)) : nothing
+function OrderedDict(g::SystemDescriptor)
+    fields = propertynames(g)
+    values = map(λ -> getproperty(g, λ), fields)
+    OrderedDict(k => v for (k, v) in zip(fields, values))
 end
 
 #suppose we have a System a with children b and c. the System constructor will
@@ -176,7 +183,7 @@ abstract type SystemGroupDescriptor <: SystemDescriptor end
 #arguments provided to the parent System, then builds a NamedTuple with the
 #subsystem outputs. can be overridden as required.
 @inline @generated function (f_cont!(sys::System{T, X, Y, U, D, P, S}, args...)
-    where {T<:SystemGroupDescriptor, X, Y, U, D, P, S})
+    where {T<:SystemGroupDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
 
     # Core.println("Generated function called")
     ex_main = Expr(:block)
@@ -201,8 +208,10 @@ end
 #default implementation calls f_disc! on all Node subsystems with the same
 #arguments provided to the parent Node's System, then ORs their outputs.
 #can be overridden as required
+# @inline @generated function (f_disc!(sys::System{T, X, Y, U, D, P, S}, args...)
+#     where {T<:SystemGroupDescriptor, X, Y, U, D, P, S})
 @inline @generated function (f_disc!(sys::System{T, X, Y, U, D, P, S}, args...)
-    where {T<:SystemGroupDescriptor, X, Y, U, D, P, S})
+    where {T<:SystemGroupDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
 
     # Core.print("Generated function called")
     ex = Expr(:block)

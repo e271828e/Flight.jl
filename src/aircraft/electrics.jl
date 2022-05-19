@@ -77,9 +77,6 @@ Base.@kwdef struct EThruster <: SystemDescriptor
     propeller::SimpleProp = SimpleProp()
 end
 
-const EThrusterXTemplate = ComponentVector(ω_shaft = 0.0, c_bat = 1.0)
-const EThrusterX{T, D} = ComponentVector{T, D, typeof(getaxes(EThrusterXTemplate))} where {T,D}
-
 #maybe disallow default values to avoid subtle bugs when failing to change a
 #constructor call in user code after changing the struct definition
 Base.@kwdef struct EThrusterY
@@ -99,7 +96,7 @@ end
 
 Base.@kwdef mutable struct EThrusterD end
 
-init(::EThruster, ::SystemX) = copy(EThrusterXTemplate)
+init(::EThruster, ::SystemX) = (ω_shaft = 0.0, c_bat = 1.0)
 init(::EThruster, ::SystemU) = EThrusterU()
 init(::EThruster, ::SystemY) = EThrusterY()
 
