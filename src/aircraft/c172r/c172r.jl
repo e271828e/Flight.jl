@@ -146,7 +146,7 @@ Base.@kwdef struct AeroY
     wr_b::Wrench = Wrench() #aerodynamic Wrench, vehicle frame
 end
 
-init(::Aero, ::SystemX) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+init(::Aero, ::SystemX) = (α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
 init(::Aero, ::SystemY) = AeroY()
 init(::Aero, ::SystemU) = AeroU()
 init(::Aero, ::SystemD) = AeroD()

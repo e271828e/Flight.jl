@@ -8,6 +8,7 @@ import DataStructures: OrderedDict
 export f_cont!, f_disc!, step!
 export SystemDescriptor, SystemGroupDescriptor
 export System, SystemẊ, SystemX, SystemY, SystemU, SystemD
+export init_x, init_y, init_u, init_d
 
 
 ################################################################################
@@ -73,6 +74,12 @@ function init(d::SystemDescriptor, ::SystemẊ)
     x = init(d, SystemX())
     !isnothing(x) ? x |> similar |> zero : nothing
 end
+
+#shorthands, not meant for extension
+init_x(desc) = init(desc, SystemX())
+init_y(desc) = init(desc, SystemY())
+init_u(desc) = init(desc, SystemU())
+init_d(desc) = init(desc, SystemD())
 
 #convenience methods
 Base.NamedTuple(od::OrderedDict) = NamedTuple{Tuple(keys(od))}(values(od))

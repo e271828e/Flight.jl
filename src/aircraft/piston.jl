@@ -85,7 +85,7 @@ Base.@kwdef struct IdleControllerY
     sat::Bool = false
 end
 
-init(::IdleController, ::SystemX) = ComponentVector(ϵ_int = 0.0)
+init(::IdleController, ::SystemX) = [0.0]
 init(::IdleController, ::SystemY) = IdleControllerY()
 
 function f_cont!(sys::System{IdleController}, ω::Real)
@@ -93,11 +93,11 @@ function f_cont!(sys::System{IdleController}, ω::Real)
     @unpack k_p, k_i, ω_target = sys.params
 
     ϵ = (ω - ω_target)/ω_target
-    ϵ_int = sys.x.ϵ_int
+    ϵ_int = sys.x[]
     output_raw = -(k_p * ϵ + k_i * ϵ_int)
     output = min(max(0.0, output_raw), 1.0)
     sat = ((output_raw > 0) && (output_raw < 1) ? false : true)
-    sys.ẋ.ϵ_int = !sat * ϵ
+    sys.ẋ .= !sat * ϵ
 
     sys.y = IdleControllerY(ϵ, ϵ_int, output_raw, output, sat)
 
@@ -173,7 +173,6 @@ Base.@kwdef struct PistonEngineY
     idle::IdleControllerY = IdleControllerY()
 end
 
-init(eng::Engine, ::SystemX) = ComponentVector(idle = init(eng.idle, SystemX()))
 init(::Engine, ::SystemY) = PistonEngineY()
 init(::Engine, ::SystemU) = PistonEngineU()
 init(::Engine, ::SystemD) = PistonEngineD()
@@ -433,8 +432,7 @@ Base.@kwdef struct TransmissionY
     friction::Friction.RegulatorY{1} = Friction.RegulatorY{1}()
 end
 
-init(tr::Transmission, ::SystemX) = ComponentVector(
-    ω_in = 0.0, friction = init(tr.friction, SystemX()))
+init(tr::Transmission, ::SystemX) = (ω_in = 0.0, friction = init_x(tr.friction))
 
 init(::Transmission, ::SystemY) = TransmissionY()
 
@@ -534,4 +532,84 @@ AngularMomentumTrait(::System{<:Thruster}) = HasAngularMomentum()
 get_wr_b(thr::System{<:Thruster}) = get_wr_b(thr.propeller) #only external
 get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
 
+############################# NewThruster ###################################
+
+#M_eng is always positive. therefore, for a CW thruster, n should be positive as
+#well and, under normal operating, conditions M_prop will be negative. for a CCW
+#thruster, n should be negative and M_prop will be positive under normal
+#operating conditions.
+
+#however, the sign of M_prop may be inverted under negative propeller thrust
+#conditions (generative), with the propeller driving the engine instead of
+#the other way around
+
+Base.@kwdef struct NewThruster{E <: AbstractPistonEngine,
+                            P <: AbstractPropeller} <: SystemDescriptor
+    engine::E = Engine()
+    propeller::P = Propeller()
+    friction::Friction.Regulator{1} = Friction.Regulator{1}()
+    M::Float64 = 5.0 #maximum friction torque
+    n::Float64 = 1.0 #gear ratio
+    function NewThruster(eng::E, prop::P, friction, M, n) where {E, P}
+        @assert sign(n) * Int(prop.sense) > 0 "Thruster gear ratio sign "*
+        "does not match propeller turn sign"
+        new{E,P}(eng, prop, friction, M, n)
+    end
+end
+
+init(tr::NewThruster, ::SystemX) = (ω = 0.0, engine = init_x(tr.engine),
+    propeller = init_x(tr.propeller), friction = init_x(tr.friction))
+
+function f_cont!(thr::System{<:NewThruster}, air::AirflowData, kin::KinData)
+
+    @unpack engine, propeller, friction = thr
+    @unpack n, M = thr.parameters
+
+    ω_eng = thr.x.ω
+    ω_prop = n * ω_eng
+
+    f_cont!(friction, ω_eng)
+    f_cont!(engine, air, ω_eng)
+    f_cont!(propeller, kin, air, ω_prop)
+
+    M_fr = friction.y.α[1] .* M
+
+    M_eng = engine.y.M
+    M_prop = propeller.y.wr_p.M[1]
+    M_eq = n * M_prop #M_prop seen from the engine side
+
+    J_eng = engine.params.J
+    J_prop = propeller.params.J_xx
+    J_eq = n^2 * J_prop #J_prop seen from the engine side
+
+    ΣM = M_eng + M_eq + M_fr
+    ΣJ = J_eng + J_eq
+    ω_eng_dot = ΣM / ΣJ
+
+    sys.ẋ.ω = ω_eng_dot
+
+    Systems.assemble_y!(thr)
+
+end
+
+function f_disc!(thr::System{<:NewThruster}, fuel::System{<:AbstractFuelSupply})
+
+    @unpack engine, propeller, friction = thr
+
+    ω_eng = thr.x.ω
+
+    x_mod = false
+    x_mod = x_mod || f_disc!(engine, fuel, ω_eng)
+    x_mod = x_mod || f_disc!(propeller)
+    x_mod = x_mod || f_disc!(friction)
+    return x_mod
+
+end
+
+MassTrait(::System{<:NewThruster}) = HasNoMass()
+WrenchTrait(::System{<:NewThruster}) = GetsExternalWrench()
+AngularMomentumTrait(::System{<:NewThruster}) = HasAngularMomentum()
+
+get_wr_b(thr::System{<:NewThruster}) = get_wr_b(thr.propeller) #only external
+get_hr_b(thr::System{<:NewThruster}) = get_hr_b(thr.propeller)
 end #module
