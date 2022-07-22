@@ -20,7 +20,7 @@ export AbstractWindModel, TunableWind
 export Atmosphere, AtmosphericData
 
 export AirflowData
-export get_airflow_angles, get_wind_axes, get_stability_axes
+export get_velocity_vector, get_airflow_angles, get_wind_axes, get_stability_axes
 
 import Flight.Plotting: make_plots
 
@@ -212,6 +212,12 @@ end
 
 ################################################################################
 ############################### Airflow ########################################
+
+#compute aerodynamic velocity vector from TAS and airflow angles
+@inline function get_velocity_vector(TAS::Real, α::Real, β::Real)
+    cos_β = cos(β)
+    return TAS * SVector(cos(α) * cos_β, sin(β), sin(α) * cos_β)
+end
 
 #compute airflow angles at frame c from the c-frame aerodynamic velocity
 @inline function get_airflow_angles(v_wOc_c::AbstractVector{<:Real})::Tuple{Float64, Float64}

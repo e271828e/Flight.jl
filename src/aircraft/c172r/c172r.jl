@@ -107,7 +107,7 @@ Base.@kwdef struct Aero <: AbstractAerodynamics
     β_bounds::NTuple{2,Float64} = (-0.1, 0.4) #β bounds for aerodynamic dataset input
     α_stall::NTuple{2,Float64} = (0.09, 0.36) #α values for stall hysteresis switching
     V_min::Float64 = 1.0 #lower airspeed threshold for non-dimensional angle rates
-    τ::Float64 = 0.1 #time constant for airflow angle filtering
+    τ::Float64 = 0.1 #time constant for filtered airflow angle derivatives
 end
 
 Base.@kwdef mutable struct AeroU
