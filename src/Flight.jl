@@ -10,14 +10,15 @@ include("core/input.jl")
 include("core/output.jl")
 include("core/plotting.jl")
 
-include("common/quaternions.jl")
-include("common/attitude.jl")
-include("common/geodesy.jl")
-include("common/kinematics.jl")
-include("common/air.jl")
-include("common/terrain.jl")
-include("common/dynamics.jl")
-include("common/friction.jl")
+include("physics/quaternions.jl")
+include("physics/attitude.jl")
+include("physics/geodesy.jl")
+include("physics/kinematics.jl")
+include("physics/air.jl")
+include("physics/terrain.jl")
+include("physics/dynamics.jl")
+include("physics/friction.jl")
+include("physics/kinematics_new.jl")
 
 include("aircraft/aircraft.jl")
 
@@ -43,6 +44,7 @@ include("aircraft/c172r/c172r.jl")
 @reexport using .Terrain
 @reexport using .Dynamics
 @reexport using .Friction
+@reexport using .KinematicsNew
 
 @reexport using .Electrics
 @reexport using .LandingGear

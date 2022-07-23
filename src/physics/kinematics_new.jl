@@ -20,8 +20,8 @@ export XVelNew, PositionY, VelocityY, KinematicsY
 
 abstract type AbstractKinematicsNew <: SystemDescriptor end
 
-Base.@kwdef struct Initializer
-    ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
+Base.@kwdef struct InitialCondition
+    ω_nb_b::SVector{3, Float64} = zeros(SVector{3})
     v_eOb_n::SVector{3, Float64} = zeros(SVector{3})
     q_nb::RQuat = RQuat()
     Ob::GeographicLocation{NVector,Ellipsoidal} = GeographicLocation()
@@ -33,8 +33,10 @@ Base.@kwdef struct PositionY
     q_lb::RQuat
     q_el::RQuat
     q_nb::RQuat
+    e_nb::REuler
     q_eb::RQuat
     n_e::NVector
+    ϕ_λ::LatLon
     h_e::Altitude{Ellipsoidal}
     h_o::Altitude{Orthometric}
     Δxy::SVector{2,Float64}
@@ -89,7 +91,7 @@ const XPosWATemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0
 const XWATemplate = ComponentVector(pos = similar(XPosWATemplate), vel = similar(XVelTemplate))
 const XWA{T, D} = ComponentVector{T, D, typeof(getaxes(XWATemplate))} where {T, D}
 
-function transport_rate_WA(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
+@inline function transport_rate_WA(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
     h_e = AltE(Ob)
     (R_N, R_E) = radii(Ob)
     ω_el_n = SVector{3}(
@@ -105,13 +107,14 @@ function init(::SystemX, ::WA)
     return x
 end
 
-function init!(x::XWA, init::Initializer = Initializer())
+function init!(x::XWA, initializer::InitialCondition = InitialCondition())
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = init
+    @unpack q_nb, Ob, ω_nb_b, v_eOb_n, Δx, Δy = initializer
 
-    ω_el_n = transport_rate_WA(v_eOb_n, Ob)
-    ω_el_b = q_nb'(ω_el_n)
-    ω_eb_b = ω_el_b + ω_lb_b
+    #although we're initializing XWA, we need the NED transport rate here
+    ω_en_n = transport_rate_NED(v_eOb_n, Ob)
+    ω_en_b = q_nb'(ω_en_n)
+    ω_eb_b = ω_en_b + ω_nb_b
     v_eOb_b = q_nb'(v_eOb_n)
     h_e = AltE(Ob)
 
@@ -127,6 +130,8 @@ function init!(x::XWA, init::Initializer = Initializer())
 
 end
 
+init!(sys::System{WA}, initializer::InitialCondition = InitialCondition()) = init!(sys.x, initializer)
+
 function KinematicsY(x::XWA)
 
     q_lb = RQuat(x.pos.q_lb, normalization = false)
@@ -141,7 +146,9 @@ function KinematicsY(x::XWA)
     q_nl = Rz(ψ_nl)
     q_nb = q_nl ∘ q_lb
     q_eb = q_el ∘ q_lb
+    e_nb = REuler(q_nb)
 
+    ϕ_λ = LatLon(n_e)
     h_o = AltO(h_e, n_e)
 
     v_eOb_n = q_nb(v_eOb_b)
@@ -156,7 +163,7 @@ function KinematicsY(x::XWA)
     ω_ie_b = q_eb'(ω_ie_e)
     ω_ib_b = ω_ie_b + ω_eb_b
 
-    pos = PositionY(; q_lb, q_el, q_nb, q_eb, n_e, h_e, h_o, Δxy)
+    pos = PositionY(; q_lb, q_el, q_nb, e_nb, q_eb, n_e, ϕ_λ, h_e, h_o, Δxy)
     vel = VelocityY(; ω_lb_b, ω_el_l, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
 
     return KinematicsY(pos, vel)
@@ -176,8 +183,8 @@ function f_cont!(sys::System{WA})
 
     #update ẋ_pos
     ẋ_pos = sys.ẋ.pos
-    ẋ_pos.q_lb .= dt(q_lb, ω_lb_b)
-    ẋ_pos.q_el .= dt(q_el, ω_el_l)
+    ẋ_pos.q_lb .= Attitude.dt(q_lb, ω_lb_b)
+    ẋ_pos.q_el .= Attitude.dt(q_el, ω_el_l)
     ẋ_pos.Δx = v_eOb_n[1]
     ẋ_pos.Δy = v_eOb_n[2]
     ẋ_pos.h_e = -v_eOb_n[3]
@@ -202,7 +209,7 @@ const XPosNEDTemplate = ComponentVector(e_nb = zeros(3), ϕ = 0.0, λ = 0.0, Δx
 const XNEDTemplate = ComponentVector(pos = similar(XPosNEDTemplate), vel = similar(XVelTemplate))
 const XNED{T, D} = ComponentVector{T, D, typeof(getaxes(XNEDTemplate))} where {T, D}
 
-function transport_rate_NED(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
+@inline function transport_rate_NED(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
 
     (R_N, R_E) = radii(Ob)
     h_e = AltE(Ob)
@@ -222,13 +229,13 @@ function init(::SystemX, ::NED)
     return x
 end
 
-function init!(x::XNED, init::Initializer = Initializer())
+function init!(x::XNED, initializer::InitialCondition = InitialCondition())
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = init
+    @unpack q_nb, Ob, ω_nb_b, v_eOb_n, Δx, Δy = initializer
 
-    ω_el_n = transport_rate_NED(v_eOb_n, Ob)
-    ω_el_b = q_nb'(ω_el_n)
-    ω_eb_b = ω_el_b + ω_lb_b
+    ω_en_n = transport_rate_NED(v_eOb_n, Ob)
+    ω_en_b = q_nb'(ω_en_n)
+    ω_eb_b = ω_en_b + ω_nb_b
     v_eOb_b = q_nb'(v_eOb_n)
     h_e = AltE(Ob)
 
@@ -246,16 +253,18 @@ function init!(x::XNED, init::Initializer = Initializer())
 
 end
 
+init!(sys::System{NED}, initializer::InitialCondition = InitialCondition()) = init!(sys.x, initializer)
+
 function KinematicsY(x::XNED)
 
     e_nb = REuler(x.pos.e_nb)
-    ϕλ = LatLon(x.pos.ϕ, x.pos.λ)
+    ϕ_λ = LatLon(x.pos.ϕ, x.pos.λ)
     h_e = AltE(x.pos.h_e[1])
     Δxy = SVector(x.pos.Δx, x.pos.Δy)
     ω_eb_b = SVector{3}(x.vel.ω_eb_b)
     v_eOb_b = SVector{3}(x.vel.v_eOb_b)
 
-    n_e = NVector(ϕλ)
+    n_e = NVector(ϕ_λ)
     q_nb = RQuat(e_nb)
     q_en = ltf(n_e)
     q_eb = q_en ∘ q_nb
@@ -278,7 +287,7 @@ function KinematicsY(x::XNED)
     ω_lb_b = ω_nb_b
     ω_el_l = ω_en_n
 
-    pos = PositionY(; q_lb, q_el, q_nb, q_eb, n_e, h_e, h_o, Δxy)
+    pos = PositionY(; q_lb, q_el, q_nb, e_nb, q_eb, n_e, ϕ_λ, h_e, h_o, Δxy)
     vel = VelocityY(; ω_lb_b, ω_el_l, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
 
     return KinematicsY(pos, vel)
@@ -459,12 +468,12 @@ function make_plots(th::TimeHistory{<:VelocityY}; kwargs...)
         th_split = :h,
         kwargs...)
 
-    pd[:ω_el_n] = plot(
-        th.ω_el_n;
-        plot_title = "Local Tangent Frame Transport Rate (LTF/ECEF) [NED Axes]",
-        ylabel = L"$\omega_{el}^{l} \ (rad/s)$",
-        th_split = :h,
-        kwargs...)
+    # pd[:ω_el_n] = plot(
+    #     th.ω_el_n;
+    #     plot_title = "Local Tangent Frame Transport Rate (LTF/ECEF) [NED Axes]",
+    #     ylabel = L"$\omega_{el}^{l} \ (rad/s)$",
+    #     th_split = :h,
+    #     kwargs...)
 
     pd[:v_eOb_n] = plot(
         th.v_eOb_n;

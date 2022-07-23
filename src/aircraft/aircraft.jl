@@ -139,15 +139,15 @@ end
 function update!(xp::XPInterface, pos::PosData, aircraft::Integer = 0)
 
     llh = GeographicLocation(pos.ϕ_λ, pos.h_o)
-    euler = REuler(pos.q_nb)
+    e_nb = pos.e_nb
 
     lat = rad2deg(llh.l2d.ϕ)
     lon = rad2deg(llh.l2d.λ)
     alt = llh.alt
 
-    psi = rad2deg(euler.ψ)
-    theta = rad2deg(euler.θ)
-    phi = rad2deg(euler.φ)
+    psi = rad2deg(e_nb.ψ)
+    theta = rad2deg(e_nb.θ)
+    phi = rad2deg(e_nb.φ)
 
     Output.set_position!(xp; lat, lon, alt, psi, theta, phi, aircraft)
 

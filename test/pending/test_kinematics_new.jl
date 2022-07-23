@@ -4,74 +4,73 @@ using Test
 using LinearAlgebra
 using BenchmarkTools
 
+using Flight.Systems
+using Flight.Sim
 using Flight.Kinematics
-
-using Flight.Kinematics
+using Flight.KinematicsNew
 using Flight.Attitude
 using Flight.Geodesy
 
 export test_kinematics
 
 function test_kinematics()
-    @testset verbose = true "Geodesy Kinematics" begin
-        @testset verbose = true "Initialization" begin test_init() end
-        @testset verbose = true "Position Update" begin test_init() end
-    end
-end
 
-function test_init()
+    sys_LTF = System(KinLTF())
+    sys_WA = System(WA())
+    sys_NED = System(NED())
 
-    init = KinInit(
-        q_nb = RQuat([1, 2, 3, -2]),
-        Ob = NVectorAlt(ϕ = π/3, λ = -π/6, h = 1500),
-        ω_lb_b = [0.1, 0.01, -0.4],
-        v_eOb_n = [100, 5, 0])
+    v_eOb_b = [100, 10, -4]
+    ω_eb_b = [0.1, 0.1, -0.2]
+    h_e = 12354
 
-    x = init_x(init)
-    #now rebuild the initializer from the kinematic state vector and check it
-    #against the original
-    q_lb = RQuat(x.pos.q_lb, normalization = false)
-    q_el = RQuat(x.pos.q_el, normalization = false)
-    h = x.pos.h[1]
-    ω_eb_b = x.vel.ω_eb_b
-    v_eOb_b = x.vel.v_eOb_b
+    sys_LTF.x.vel.v_eOb_b = v_eOb_b
+    sys_LTF.x.vel.ω_eb_b = ω_eb_b
+    sys_LTF.x.pos.h_e = h_e
+    sys_WA.x.vel.v_eOb_b = v_eOb_b
+    sys_WA.x.vel.ω_eb_b = ω_eb_b
+    sys_WA.x.pos.h_e = h_e
+    sys_NED.x.vel.v_eOb_b = v_eOb_b
+    sys_NED.x.vel.ω_eb_b = ω_eb_b
+    sys_NED.x.pos.h_e = h_e
 
-    Ob = NVectorAlt(NVector(q_el), h)
-    (R_N, R_E) = radii(Ob)
-    q_nb = q_lb
-    v_eOb_n = q_nb(v_eOb_b)
-    ω_el_n = [
-        v_eOb_n[2] / (R_E + h),
-        -v_eOb_n[1] / (R_N + h),
-        0.0]
-    ω_el_b = q_nb' * ω_el_n
-    ω_lb_b = ω_eb_b - ω_el_b
+    println(@btime f_cont!($sys_LTF))
+    println(@btime f_cont!($sys_WA))
+    println(@btime f_cont!($sys_NED))
 
-    init_test = KinInit(q_nb = q_lb, Ob = Ob, ω_lb_b = ω_lb_b, v_eOb_n = v_eOb_n )
+    #### validate WA against LTF
 
-    @test init.q_nb ≈ init_test.q_nb
-    @test init.Ob ≈ init_test.Ob
-    @test init.ω_lb_b ≈ init_test.ω_lb_b
-    @test init.v_eOb_n ≈ init_test.v_eOb_n
+    sim_LTF = Simulation(sys_LTF; t_end = 20);
+    sim_WA = Simulation(sys_WA; t_end = 20);
 
-end
+    Sim.run!(sim_LTF)
+    Sim.run!(sim_WA)
 
+    println(sys_LTF.y.pos.q_nb ∘ sys_WA.y.pos.q_nb')
+    println(sys_LTF.y.pos.h_e - sys_WA.y.pos.h_e)
 
-function test_fpos()
+    #### validate NED against WA
 
-    init = KinInit(
-        q_nb = RQuat([1, 2, 3, -2]),
-        Ob = NVectorAlt(ϕ = π/3, λ = -π/6, h = 1500),
-        ω_lb_b = [0.1, 0.01, -0.4],
-        v_eOb_n = [100, 5, -10])
+    kin_init = KinematicsNew.InitialCondition(
+        Ob = GeographicLocation(LatLon(π/3, -π/6), AltE(12354)),
+        v_eOb_n = [100, 10, -4])
 
-    x_kin = init_x(init)
+    KinematicsNew.init!(sys_WA, kin_init)
+    KinematicsNew.init!(sys_NED, kin_init)
 
-    kin_data = Y(Kin())
-    ẋ_pos = init_x(Pos())
+    println(sys_WA.y.vel)
+    println(sys_NED.y.vel)
 
-    @btime f_kin!($kin_data, $ẋ_pos, $x_kin)
+    sim_WA = Simulation(sys_WA; t_end = 20);
+    sim_NED = Simulation(sys_NED; t_end = 20);
+
+    Sim.run!(sim_WA)
+    Sim.run!(sim_NED)
+
+    println(sys_WA.y.pos.q_nb ∘ sys_NED.y.pos.q_nb')
+    println(sys_WA.y.pos.h_e - sys_NED.y.pos.h_e)
 
 end
+
+
 
 end #module

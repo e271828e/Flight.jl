@@ -187,7 +187,7 @@ function load_geoid_data_bin(file_path = "src/ww15mgh_le.bin")
     # CubicSplineInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
 end
 
-function load_geoid_data_hdf5(file_path = "src/common/ww15mgh_hdf5.h5")
+function load_geoid_data_hdf5(file_path = "src/physics/ww15mgh_hdf5.h5")
     data = Matrix{Float32}(undef, 721, 1441)
     h5open(file_path) do file
         data .= file["geoid_height"] |> read
