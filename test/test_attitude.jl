@@ -71,7 +71,7 @@ function test_RQuat()
 
         #time derivative
         ω_ab_b = [10, -4, 2]
-        @test dt(q_ab, ω_ab_b) == 0.5 * (q_ab._u * FreeQuat(imag = ω_ab_b))
+        @test Attitude.dt(q_ab, ω_ab_b) == 0.5 * (q_ab._u * FreeQuat(imag = ω_ab_b))
 
     end
 
@@ -165,11 +165,13 @@ function test_REuler()
         ψ = 1.459; θ = -1.122; φ = 0.454
         r1 = REuler(ψ, θ, φ) #individual arguments
         r2 = REuler((ψ, θ, φ)) #tuple
-        r3 = REuler(θ = θ) #tuple
-        r4 = REuler() #zero argument
+        r3 = REuler([ψ, θ, φ]) #tuple
+        r4 = REuler(θ = θ) #keyword
+        r5 = REuler() #zero argument
         @test r1.ψ == r2.ψ && r1.θ == r2.θ && r1.φ == r2.φ
-        @test r3.θ == θ && r3.ψ == r3.φ == 0
-        @test r4.ψ == r4.θ == r4.φ == 0
+        @test r1.ψ == r3.ψ && r1.θ == r3.θ && r1.φ == r3.φ
+        @test r4.θ == θ && r4.ψ == r4.φ == 0
+        @test r5.ψ == r5.θ == r5.φ == 0
 
         @test_throws AssertionError REuler(θ = 1.7)
         @test_throws AssertionError REuler(ψ = 1.65π)
@@ -196,6 +198,15 @@ function test_REuler()
         #transformation, composition & inversion
         @test r_ab * (r_bc * x_c) ≈ (r_ab ∘ r_bc) * x_c
         @test x_c ≈ r_bc' * (r_bc * x_c)
+
+        #time derivative
+        @test isapprox(Attitude.dt(REuler(φ = π/2), [0, 1, 0]), [1.0, 0, 0], atol = 1e-10)
+        @test isapprox(Attitude.dt(REuler(φ = π), [0, 1, 0]), [0, -1.0, 0], atol = 1e-10)
+        @test Attitude.dt(REuler(θ = π/4), [0, 0, 1])[1] > 0
+        @test Attitude.dt(REuler(φ = π/4), [0, 0, 1])[1] > 0
+        @test Attitude.dt(REuler(φ = π/4), [0, 0, 1])[2] < 0
+        @test isapprox(Attitude.dt(REuler(θ = π/3, φ = π/4), [1, 0, 0]), [0, 0, 1.0], atol = 1e-10)
+        @test all(Attitude.dt(REuler(ψ = π/3, θ = π/4), [-1, 2, 1]) .≈ Attitude.dt(REuler(ψ = π/6, θ = π/4), [-1, 2, 1]))
 
     end
 
@@ -287,7 +298,7 @@ function test_RMatrix()
 
         #time derivative
         ω_ab_b = [10, -4, 2]
-        @test dt(r_ab, ω_ab_b) == r_ab._mat * Attitude.skew(ω_ab_b)
+        @test Attitude.dt(r_ab, ω_ab_b) == r_ab._mat * Attitude.skew(ω_ab_b)
     end
 
     @testset "Conversions" begin

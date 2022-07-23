@@ -1,4 +1,4 @@
-module Kinematics
+module KinematicsNew
 
 using LinearAlgebra
 using StaticArrays, ComponentArrays
@@ -15,12 +15,12 @@ using Flight.Geodesy
 import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Plotting: make_plots
 
-export AbstractKinematics, KinLTF, KinECEF
-export VelX, PosData, VelData, KinData, KinInit
+export AbstractKinematicsNew, WA, NED
+export XVelNew, PositionY, VelocityY, KinematicsY
 
-abstract type AbstractKinematics <: SystemDescriptor end
+abstract type AbstractKinematicsNew <: SystemDescriptor end
 
-Base.@kwdef struct KinInit
+Base.@kwdef struct Initializer
     ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
     v_eOb_n::SVector{3, Float64} = zeros(SVector{3})
     q_nb::RQuat = RQuat()
@@ -29,83 +29,37 @@ Base.@kwdef struct KinInit
     Δy::Float64 = 0.0
 end
 
-struct PosData
+Base.@kwdef struct PositionY
+    q_lb::RQuat
+    q_el::RQuat
     q_nb::RQuat
     q_eb::RQuat
-    e_nb::REuler
-    q_en::RQuat
     n_e::NVector
-    ϕ_λ::LatLon
     h_e::Altitude{Ellipsoidal}
     h_o::Altitude{Orthometric}
     Δxy::SVector{2,Float64}
 end
 
-struct VelData
-    ω_eb_b::SVector{3,Float64}
-    ω_el_n::SVector{3,Float64}
+Base.@kwdef struct VelocityY
     ω_lb_b::SVector{3,Float64}
+    ω_el_l::SVector{3,Float64}
+    ω_eb_b::SVector{3,Float64}
     ω_ie_b::SVector{3,Float64}
     ω_ib_b::SVector{3,Float64}
     v_eOb_b::SVector{3,Float64}
     v_eOb_n::SVector{3,Float64}
 end
 
-struct KinData
-    pos::PosData
-    vel::VelData
+struct KinematicsY
+    pos::PositionY
+    vel::VelocityY
 end
 
-function KinData(init::KinInit)
-
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = init
-
-    h_e = Ob.alt
-    q_el = ltf(Ob)
-
-    #arbitrarily initialize ψ_nl to 0
-    q_nl = RQuat()
-    q_lb = q_nb
-    q_en = q_el
-    q_eb = q_el ∘ q_lb
-
-    n_e = NVector(q_el)
-
-    v_eOb_b = q_nb'(v_eOb_n)
-
-    (R_N, R_E) = radii(Ob)
-    ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + Float64(h_e)),
-        -v_eOb_n[1] / (R_N + Float64(h_e)),
-        0.0)
-    ω_el_b = q_nb'(ω_el_n)
-    ω_eb_b = ω_el_b + ω_lb_b
-
-    ω_el_l = q_nl'(ω_el_n)
-    ω_el_b = q_lb'(ω_el_l)
-    ω_lb_b = ω_eb_b - ω_el_b
-
-    ω_ie_e = SVector{3}(0, 0, ω_ie)
-    ω_ie_b = q_eb'(ω_ie_e)
-    ω_ib_b = ω_ie_b + ω_eb_b
-
-    pos = PosData(q_nb, q_eb, REuler(q_nb), q_en, n_e, LatLon(n_e), h_e,
-        Altitude{Orthometric}(h_e, n_e), SVector{2}(Δx, Δy))
-
-    vel = VelData(ω_eb_b, ω_el_n, ω_lb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
-
-    return KinData(pos, vel)
-
-end
-
-KinData() = KinData(KinInit())
-
-#every AbstractKinematics implementation must comply with the same outputs
-init(::SystemY, ::AbstractKinematics) = KinData()
+init(::SystemY, kinematics::AbstractKinematicsNew) = KinematicsY(kinematics)
 
 #for dispatching
-const VelXTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
-const VelX{T, D} = ComponentVector{T, D, typeof(getaxes(VelXTemplate))} where {T, D}
+const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
+const XVelNew{T, D} = ComponentVector{T, D, typeof(getaxes(XVelTemplate))} where {T, D}
 
 function renormalize_block!(x, ε) #returns true if norm was corrected
     norm_x = norm(x)
@@ -114,29 +68,52 @@ end
 
 ######################### LTF Kinematics #########################
 
-struct KinLTF <: AbstractKinematics end
+#Wander Azimuth kinematics.
 
-init(::SystemX, kin::KinLTF) = init(kin, KinInit())
+#Robust, singularity-free (all-attitude, all-latitude) kinematic description,
+#ideal for simulation.
 
-function init(::KinLTF, kin_init::KinInit = KinInit())
+#The salient feature of this kinematic description is that the azimuth of the
+#local tangent frame (LTF) is not slaved to the geographic North, as it is in a
+#NED-based kinematic description. Instead, the vertical component of the LTF's
+#transport rate is arbitrarily set to zero. This avoids polar singularities, but
+#also means that the azimuth angle of the LTF with respect to the geographic
+#North will fluctuate as the vehicle moves around the Earth's surface. The
+#resulting LTF is sometimes known as Wander Azimuth Frame. Position is defined
+#by the rotation from the ECEF axes to the LTF axes, and attitude is defined by
+#the rotation from the LTF axes to the vehicle axes.
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = kin_init
+struct WA <: AbstractKinematicsNew end
 
-    x = ComponentVector(
-        pos = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0),
-        vel = similar(VelXTemplate) #using similar instead of simple assignment is essential
-        )
+const XPosWATemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
+const XWATemplate = ComponentVector(pos = similar(XPosWATemplate), vel = similar(XVelTemplate))
+const XWA{T, D} = ComponentVector{T, D, typeof(getaxes(XWATemplate))} where {T, D}
 
-    h_e = Ob.alt
+function transport_rate_WA(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
+    h_e = AltE(Ob)
     (R_N, R_E) = radii(Ob)
-    v_eOb_b = q_nb'(v_eOb_n)
     ω_el_n = SVector{3}(
         v_eOb_n[2] / (R_E + Float64(h_e)),
         -v_eOb_n[1] / (R_N + Float64(h_e)),
         0.0)
+    return ω_el_n
+end
 
+function init(::SystemX, ::WA)
+    x = similar(XWATemplate)
+    init!(x)
+    return x
+end
+
+function init!(x::XWA, init::Initializer = Initializer())
+
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = init
+
+    ω_el_n = transport_rate_WA(v_eOb_n, Ob)
     ω_el_b = q_nb'(ω_el_n)
     ω_eb_b = ω_el_b + ω_lb_b
+    v_eOb_b = q_nb'(v_eOb_n)
+    h_e = AltE(Ob)
 
     q_lb = q_nb #arbitrarily initialize ψ_nl to 1
 
@@ -148,34 +125,28 @@ function init(::KinLTF, kin_init::KinInit = KinInit())
     x.vel.ω_eb_b .= ω_eb_b
     x.vel.v_eOb_b .= v_eOb_b
 
-    return x
-
 end
 
-#this only updates xpos_dot, we need f_dyn! to perform the xvel_dot update
-function f_cont!(sys::System{KinLTF})
-
-    x = sys.x
+function KinematicsY(x::XWA)
 
     q_lb = RQuat(x.pos.q_lb, normalization = false)
     q_el = RQuat(x.pos.q_el, normalization = false)
     ω_eb_b = SVector{3}(x.vel.ω_eb_b)
     v_eOb_b = SVector{3}(x.vel.v_eOb_b)
-    h_e = Altitude{Ellipsoidal}(x.pos.h_e[1])
+    h_e = AltE(x.pos.h_e[1])
+    Δxy = SVector(x.pos.Δx, x.pos.Δy)
 
     n_e = NVector(q_el)
     ψ_nl = get_ψ_nl(q_el)
     q_nl = Rz(ψ_nl)
     q_nb = q_nl ∘ q_lb
     q_eb = q_el ∘ q_lb
-    q_en = q_el ∘ q_nl'
 
-    (R_N, R_E) = radii(n_e)
+    h_o = AltO(h_e, n_e)
+
     v_eOb_n = q_nb(v_eOb_b)
-    ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + Float64(h_e)),
-        -v_eOb_n[1] / (R_N + Float64(h_e)),
-        0.0)
+    Ob = GeographicLocation(n_e, h_e)
+    ω_el_n = transport_rate_WA(v_eOb_n, Ob)
 
     ω_el_l = q_nl'(ω_el_n)
     ω_el_b = q_lb'(ω_el_l)
@@ -185,123 +156,166 @@ function f_cont!(sys::System{KinLTF})
     ω_ie_b = q_eb'(ω_ie_e)
     ω_ib_b = ω_ie_b + ω_eb_b
 
+    pos = PositionY(; q_lb, q_el, q_nb, q_eb, n_e, h_e, h_o, Δxy)
+    vel = VelocityY(; ω_lb_b, ω_el_l, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
+
+    return KinematicsY(pos, vel)
+
+end
+
+KinematicsY(::WA) = KinematicsY(init(SystemX(), WA()))
+
+#this only updates xpos_dot, we need f_dyn! to perform the xvel_dot update
+function f_cont!(sys::System{WA})
+
+    #compute y
+    y = KinematicsY(sys.x)
+
+    @unpack q_lb, q_el = y.pos
+    @unpack ω_lb_b, ω_el_l, v_eOb_n = y.vel
+
     #update ẋ_pos
     ẋ_pos = sys.ẋ.pos
-    ẋ_pos.q_lb .= Attitude.dt(q_lb, ω_lb_b)
-    ẋ_pos.q_el .= Attitude.dt(q_el, ω_el_l)
+    ẋ_pos.q_lb .= dt(q_lb, ω_lb_b)
+    ẋ_pos.q_el .= dt(q_el, ω_el_l)
     ẋ_pos.Δx = v_eOb_n[1]
     ẋ_pos.Δy = v_eOb_n[2]
     ẋ_pos.h_e = -v_eOb_n[3]
 
-    #build and assign output
-    pos = PosData(q_nb, q_eb, REuler(q_nb), q_en, n_e, LatLon(n_e), h_e,
-        Altitude{Orthometric}(h_e, n_e), SVector{2}(x.pos.Δx, x.pos.Δy))
-
-    vel = VelData(ω_eb_b, ω_el_n, ω_lb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
-
-    sys.y = KinData(pos, vel)
+    #update y
+    sys.y = y
 
 end
 
-function f_disc!(sys::System{KinLTF}, ε = 1e-10)
+function f_disc!(sys::System{WA}, ε = 1e-10)
     #we need both calls executed, so | must be used here instead of ||
     x_pos = sys.x.pos
     renormalize_block!(x_pos.q_lb, ε) | renormalize_block!(x_pos.q_el, ε)
 end
 
-######################### ECEF Kinematics #########################
 
-struct KinECEF <: AbstractKinematics end
+######################### NED Kinematics #########################
 
-init(::SystemX, kin::KinECEF) = init(kin, KinInit())
+struct NED <: AbstractKinematicsNew end
 
-function init(::KinECEF, kin_init::KinInit = KinInit())
+const XPosNEDTemplate = ComponentVector(e_nb = zeros(3), ϕ = 0.0, λ = 0.0, Δx = 0.0, Δy = 0.0, h_e = 0.0)
+const XNEDTemplate = ComponentVector(pos = similar(XPosNEDTemplate), vel = similar(XVelTemplate))
+const XNED{T, D} = ComponentVector{T, D, typeof(getaxes(XNEDTemplate))} where {T, D}
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = kin_init
+function transport_rate_NED(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
 
-    x = ComponentVector(
-        pos = ComponentVector(q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0),
-        vel = similar(VelXTemplate) #using similar rather than assignment is essential here!
-        )
-
-    n_e = Ob.l2d
-    h_e = Ob.alt
     (R_N, R_E) = radii(Ob)
-    v_eOb_b = q_nb'(v_eOb_n)
-    ω_el_n = SVector{3}(
+    h_e = AltE(Ob)
+    ϕ = LatLon(Ob).ϕ
+
+    ω_en_n = SVector{3}(
         v_eOb_n[2] / (R_E + Float64(h_e)),
         -v_eOb_n[1] / (R_N + Float64(h_e)),
-        0.0)
+        -v_eOb_n[2] * tan(ϕ) / (R_E + Float64(h_e))
+        )
+    return ω_en_n
+end
 
+function init(::SystemX, ::NED)
+    x = similar(XNEDTemplate)
+    init!(x)
+    return x
+end
+
+function init!(x::XNED, init::Initializer = Initializer())
+
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = init
+
+    ω_el_n = transport_rate_NED(v_eOb_n, Ob)
     ω_el_b = q_nb'(ω_el_n)
     ω_eb_b = ω_el_b + ω_lb_b
+    v_eOb_b = q_nb'(v_eOb_n)
+    h_e = AltE(Ob)
 
-    q_en = ltf(n_e)
-    q_eb = q_en ∘ q_nb
+    e_nb = REuler(q_nb)
+    ϕλ = LatLon(Ob)
 
-    x.pos.q_eb .= q_eb[:]
-    x.pos.n_e .= n_e[:]
+    x.pos.e_nb .= SVector(e_nb.ψ, e_nb.θ, e_nb.φ)
+    x.pos.ϕ = ϕλ.ϕ
+    x.pos.λ = ϕλ.λ
     x.pos.Δx = Δx
     x.pos.Δy = Δy
     x.pos.h_e = h_e
     x.vel.ω_eb_b .= ω_eb_b
     x.vel.v_eOb_b .= v_eOb_b
 
-    return x
-
 end
 
-#this only updates xpos_dot, we need f_dyn! to perform the xvel_dot update
-function f_cont!(sys::System{KinECEF})
+function KinematicsY(x::XNED)
 
-    x = sys.x
-
-    q_eb = RQuat(x.pos.q_eb, normalization = false)
-    n_e = NVector(x.pos.n_e, normalization = false)
+    e_nb = REuler(x.pos.e_nb)
+    ϕλ = LatLon(x.pos.ϕ, x.pos.λ)
+    h_e = AltE(x.pos.h_e[1])
+    Δxy = SVector(x.pos.Δx, x.pos.Δy)
     ω_eb_b = SVector{3}(x.vel.ω_eb_b)
     v_eOb_b = SVector{3}(x.vel.v_eOb_b)
-    h_e = Altitude{Ellipsoidal}(x.pos.h_e[1])
 
+    n_e = NVector(ϕλ)
+    q_nb = RQuat(e_nb)
     q_en = ltf(n_e)
-    q_nb = q_en' ∘ q_eb
+    q_eb = q_en ∘ q_nb
 
-    (R_N, R_E) = radii(n_e)
     v_eOb_n = q_nb(v_eOb_b)
-    ω_el_n = SVector{3,Float64}(
-        v_eOb_n[2] / (R_E + Float64(h_e)),
-        -v_eOb_n[1] / (R_N + Float64(h_e)),
-        0.0)
+    Ob = GeographicLocation(n_e, h_e)
+    ω_en_n = transport_rate_NED(v_eOb_n, Ob)
+    ω_en_b = q_nb'(ω_en_n)
+    ω_nb_b = ω_eb_b - ω_en_b
 
-    ω_el_b = q_nb'(ω_el_n)
-    ω_lb_b = ω_eb_b - ω_el_b
-
-    ω_ie_e = SVector{3,Float64}(0, 0, ω_ie)
+    ω_ie_e = SVector{3}(0, 0, ω_ie)
     ω_ie_b = q_eb'(ω_ie_e)
     ω_ib_b = ω_ie_b + ω_eb_b
 
+    h_o = AltO(h_e, n_e)
+
+    #LTF = NED
+    q_lb = q_nb
+    q_el = q_en
+    ω_lb_b = ω_nb_b
+    ω_el_l = ω_en_n
+
+    pos = PositionY(; q_lb, q_el, q_nb, q_eb, n_e, h_e, h_o, Δxy)
+    vel = VelocityY(; ω_lb_b, ω_el_l, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
+
+    return KinematicsY(pos, vel)
+
+end
+
+KinematicsY(::NED) = KinematicsY(init(SystemX(), NED()))
+
+#this only updates xpos_dot, we need f_dyn! to perform the xvel_dot update
+function f_cont!(sys::System{NED})
+
+    #compute y
+    x = sys.x
+    y = KinematicsY(x)
+
+    e_nb = REuler(x.pos.e_nb)
+    ϕ = x.pos.ϕ
+    ω_nb_b = y.vel.ω_lb_b #LTF = NED
+    ω_en_n = y.vel.ω_el_l #LTF = NED
+    v_eOb_n = y.vel.v_eOb_n
+
     #update ẋ_pos
     ẋ_pos = sys.ẋ.pos
-    ẋ_pos.q_eb .= Attitude.dt(q_eb, ω_eb_b)
-    ẋ_pos.n_e .= q_en(ω_el_n × SVector{3,Float64}(0,0,-1))
+    ẋ_pos.e_nb .= Attitude.dt(e_nb, ω_nb_b)
+    ẋ_pos.ϕ = -ω_en_n[2]
+    ẋ_pos.λ = ω_en_n[1] / cos(ϕ)
     ẋ_pos.Δx = v_eOb_n[1]
     ẋ_pos.Δy = v_eOb_n[2]
     ẋ_pos.h_e = -v_eOb_n[3]
 
-    #build output
-    pos = PosData(q_nb, q_eb, REuler(q_nb), q_en, n_e, LatLon(n_e), h_e,
-        Altitude{Orthometric}(h_e, n_e), SVector{2}(x.pos.Δx, x.pos.Δy))
-
-    vel = VelData(ω_eb_b, ω_el_n, ω_lb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n)
-
-    sys.y = KinData(pos, vel)
+    #update y
+    sys.y = y
 
 end
 
-function f_disc!(sys::System{KinECEF}, ε = 1e-10)
-    x_pos = sys.x.pos
-    #we need both calls executed, so | must be used here instead of ||
-    renormalize_block!(x_pos.q_eb, ε) | renormalize_block!(x_pos.n_e, ε)
-end
+f_disc!(sys::System{NED}) = false
+
 
 ################################# Plotting #####################################
 
@@ -363,7 +377,7 @@ end
 
 end
 
-function make_plots(th::TimeHistory{<:KinData}; kwargs...)
+function make_plots(th::TimeHistory{<:KinematicsY}; kwargs...)
 
     return OrderedDict(
         :pos => make_plots(th.pos; kwargs...),
@@ -372,7 +386,7 @@ function make_plots(th::TimeHistory{<:KinData}; kwargs...)
 
 end
 
-function make_plots(th::TimeHistory{<:PosData}; kwargs...)
+function make_plots(th::TimeHistory{<:PositionY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -433,7 +447,7 @@ function make_plots(th::TimeHistory{<:PosData}; kwargs...)
 
 end
 
-function make_plots(th::TimeHistory{<:VelData}; kwargs...)
+function make_plots(th::TimeHistory{<:VelocityY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 

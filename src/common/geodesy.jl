@@ -284,7 +284,7 @@ abstract type Abstract3DLocation end
 #avoid infinite recursion
 Base.convert(::Type{P}, p::P) where {P<:Abstract3DLocation} = p
 
-#### GeographicLocation ####
+########################### GeographicLocation ###############################
 
 #the default constructor generates a GeographicLocation{NVector, AltOrthometric} instance
 Base.@kwdef struct GeographicLocation{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DLocation
@@ -299,7 +299,8 @@ function Base.convert(::Type{GeographicLocation{L,H}}, geo::GeographicLocation) 
     GeographicLocation(convert(L, geo.l2d), Altitude{H}(geo))
 end
 
-Altitude{D}(l3d::Abstract3DLocation) where {D} = Altitude{D}(GeographicLocation{NVector,D}(l3d))
+NVector(geo::GeographicLocation) = NVector(geo.l2d)
+LatLon(geo::GeographicLocation) = LatLon(geo.l2d)
 Altitude{D}(geo::GeographicLocation) where {D} = Altitude{D}(geo.alt, geo.l2d)
 
 function Base.:(==)(geo1::GeographicLocation{NVector,H}, geo2::GeographicLocation{NVector,H}) where {H}
@@ -319,7 +320,6 @@ end
 Base.:(-)(l3d::T) where {T<:Abstract3DLocation} = convert(T, -CartesianLocation(l3d))
 
 
-
 ############################# CartesianLocation #############################
 
 struct CartesianLocation <: Abstract3DLocation
@@ -327,6 +327,10 @@ struct CartesianLocation <: Abstract3DLocation
 end
 CartesianLocation(l3d::Abstract3DLocation) = convert(CartesianLocation, l3d)
 CartesianLocation() = CartesianLocation(GeographicLocation())
+
+NVector(r::CartesianLocation) = GeographicLocation{NVector, Ellipsoidal}(r).l2d
+LatLon(r::CartesianLocation) = GeographicLocation{LatLon, Ellipsoidal}(r).l2d
+Altitude{D}(r::CartesianLocation) where {D} = Altitude{D}(GeographicLocation{NVector,D}(r))
 
 Base.:(==)(r1::CartesianLocation, r2::CartesianLocation) = r1.data == r2.data
 Base.:(≈)(r1::CartesianLocation, r2::CartesianLocation) = r1.data ≈ r2.data

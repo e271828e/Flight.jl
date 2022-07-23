@@ -18,7 +18,6 @@ function test_target_eval()
 
     #TrimConfiguration
     trim_configuration = (
-        eng_running = true,
         fuel = 0.5, #fuel load, 0 to 1
         mixture = 0.5, #engine mixture control, 0 to 1
         flaps = 0, #flap setting, 0 to 1
@@ -72,18 +71,21 @@ function get_target_function(aircraft, atmosphere, terrain, trim_parameters, tri
     func = let  x = aircraft.x, d = aircraft.d, u = aircraft.u, atmosphere = atmosphere, terrain = terrain,
                 trim_parameters = trim_parameters, trim_configuration = trim_configuration
 
+        #set the engine running, no way to trim otherwise
+        d.vehicle.pwp.engine.state = Piston.eng_running
+
         u.avionics.flaps = trim_configuration.flaps
         u.avionics.yoke_x0 = trim_configuration.yoke_x0
         u.avionics.yoke_y0 = trim_configuration.yoke_y0
         u.vehicle.pwp.engine.mix = trim_configuration.mixture
         x.vehicle.fuel .= trim_configuration.fuel
-        d.vehicle.pwp.engine.state = (trim_configuration.eng_running ? Piston.eng_running : Piston.eng_off)
 
         x.vehicle.pwp.engine.idle .= trim_configuration.x_pwp_idle
         x.vehicle.pwp.friction .= trim_configuration.x_pwp_friction
 
         function compute_derivative(x_trim)
 
+            error("Convertir primero a KinInit para independizar de la cinematica elegida. Alternativamente, imponer que la cinematica sea LTF al crear aircraft. Mejor lo primero, porque KinInit allocates, habria que hacer una version in place")
             ψ_nl = 0 #align NED to LTF, so q_lb = q_nb
             q_nb = q_lb = REuler(trim_parameters.ψ_lb, x_trim.θ_lb, x_trim.φ_lb) |> RQuat
             h_e = AltE(trim_parameters.Ob)
@@ -120,6 +122,7 @@ function get_target_function(aircraft, atmosphere, terrain, trim_parameters, tri
 
             println(aircraft.x)
             println()
+            # println("cuando acabe con trim, create XPosMinimal, validate against others") #minimal attitude and pos repr
             println("ensure x_idle and x_friction have indeed zero derivatives")
             println("do not forget psi_dot in the cost function")
 

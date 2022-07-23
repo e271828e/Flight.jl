@@ -34,7 +34,7 @@ using Flight.Utils
 using Flight.Plotting
 using Flight.Quaternions
 
-export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz, dt
+export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz
 
 const half_π = π/2
 
@@ -315,21 +315,50 @@ end
 REuler(r::Abstract3DRotation) = convert(REuler, r)
 REuler(input::Tuple{Real, Real, Real}) = REuler(input...)
 REuler(; ψ = 0, θ = 0, φ = 0) = REuler(ψ, θ, φ)
+function REuler(v::AbstractVector{<:Real})
+    @assert length(v) == 3
+    REuler(v[1], v[2], v[3])
+end
 
 #conversions to and from RQuat
 function Base.convert(::Type{REuler}, r::RQuat)
-        q = r._u
-        q_sq = q[:] .* q[:]
+    q = r._u
+    q_sq = q[:] .* q[:]
 
-        ψ = atan( 2*(q[1]*q[4] + q[2]*q[3]), 1 - 2*(q_sq[3] + q_sq[4]))
-        θ = asin( clamp(2*(q[1]*q[3] - q[2]*q[4]), -1, 1) )
-        φ = atan( 2*(q[1]*q[2] + q[3]*q[4]), 1 - 2*(q_sq[2] + q_sq[3]))
+    ψ = atan( 2*(q[1]*q[4] + q[2]*q[3]), 1 - 2*(q_sq[3] + q_sq[4]))
+    θ = asin( clamp(2*(q[1]*q[3] - q[2]*q[4]), -1, 1) )
+    φ = atan( 2*(q[1]*q[2] + q[3]*q[4]), 1 - 2*(q_sq[2] + q_sq[3]))
 
-        return REuler(ψ, θ, φ)
+    return REuler(ψ, θ, φ)
 end
 
 function Base.convert(::Type{RQuat}, r::REuler)
     Rz(r.ψ) ∘ Ry(r.θ) ∘ Rx(r.φ)
+end
+
+
+"""
+    dt(e_ab::REuler, ω_ab_b::AbstractVector{<:Real})
+
+Time derivative of Euler angles
+
+If `e_ab` represents the rotation from axes εa to axes εb, and `ω_ab_b` is the
+angular velocity of εb with respect to εa projected in εb, then `̇e_ab ==
+dt(e_ab, ω_ab_b) is an array containing the time derivative of each angle in
+e_ab`
+"""
+function dt(e_ab::REuler, ω_ab_b::AbstractVector{<:Real})
+
+    sin_φ = sin(e_ab.φ); cos_φ = cos(e_ab.φ);
+    tan_θ = tan(e_ab.θ); sec_θ = sec(e_ab.θ)
+
+    M = @SMatrix [
+                    0   sin_φ * sec_θ   cos_φ * sec_θ;
+                    0   cos_φ           -sin_φ;
+                    1   sin_φ * tan_θ   cos_φ * tan_θ
+    ]
+
+    return M * SVector{3}(ω_ab_b)
 end
 
 ################################# Plotting #####################################
