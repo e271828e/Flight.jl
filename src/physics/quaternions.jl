@@ -94,15 +94,13 @@ Base.:+(u::UnitQuat) = u
 Base.:-(u::UnitQuat) = UnitQuat(-getfield(u, :_sv), false)
 
 Base.:(==)(q1::Quaternion, q2::Quaternion) = getfield(q1,:_sv) == getfield(q2,:_sv)
-Base.:(≈)(q1::Quaternion, q2::Quaternion) = getfield(q1,:_sv) ≈ getfield(q2,:_sv)
+Base.:(≈)(q1::Quaternion, q2::Quaternion; kwargs...) = ≈(getfield(q1,:_sv), getfield(q2,:_sv); kwargs...)
 
-Base.:+(q1::FreeQuat, q2::FreeQuat) = FreeQuat(getfield(q1,:_sv) + getfield(q2,:_sv))
-Base.:+(q1::Quaternion, q2::Quaternion) = +(promote(q1,q2)...)
+Base.:+(q1::Quaternion, q2::Quaternion) = FreeQuat(getfield(q1,:_sv) + getfield(q2,:_sv))
 Base.:+(q::Quaternion, a::Real) = +(promote(q, a)...)
 Base.:+(a::Real, q::Quaternion) = +(promote(a, q)...)
 
-Base.:-(q1::FreeQuat, q2::FreeQuat) = FreeQuat(getfield(q1,:_sv) - getfield(q2,:_sv))
-Base.:-(q1::Quaternion, q2::Quaternion) = -(promote(q1,q2)...)
+Base.:-(q1::Quaternion, q2::Quaternion) = FreeQuat(getfield(q1,:_sv) - getfield(q2,:_sv))
 Base.:-(q::Quaternion, a::Real) = -(promote(q, a)...)
 Base.:-(a::Real, q::Quaternion) = -(promote(a, q)...)
 

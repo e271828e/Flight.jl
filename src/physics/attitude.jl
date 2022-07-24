@@ -87,7 +87,7 @@ Base.show(io::IO, r::RQuat) = print(io, "$(typeof(r))($(r[:]))")
 #Strict equality (accounts for the unit quaternions' double cover of SO(3))
 Base.:(==)(r1::RQuat, r2::RQuat) = (r1._u == r2._u || r1._u == -r2._u)
 # Approximate equality (accounts for the unit quaternions' double cover of SO(3))
-Base.:(≈)(r1::RQuat, r2::RQuat) = (r1._u ≈ r2._u || r1._u ≈ -r2._u)
+Base.:(≈)(r1::RQuat, r2::RQuat; kwargs...) = (≈(r1._u, r2._u; kwargs...) || ≈(r1._u, -(r2._u); kwargs...))
 # Composition
 Base.:∘(r1::RQuat, r2::RQuat) = RQuat(r1._u * r2._u)
 # Inversion
@@ -103,6 +103,7 @@ end
 
 LinearAlgebra.norm(r::RQuat) = norm(r._u)
 LinearAlgebra.normalize(r::RQuat) = RQuat(normalize(r._u))
+Quaternions.UnitQuat(r::RQuat) = r._u
 
 """
     dt(r_ab::RQuat, ω_ab_b::AbstractVector{<:Real})
@@ -132,7 +133,7 @@ Base.convert(::Type{RQuat}, r::RQuat) = r
 #leaves them unchanged, and here we need them converted to RQuat
 Base.adjoint(r::R) where {R<:Abstract3DRotation} = convert(R, RQuat(r)')
 Base.:*(r::Abstract3DRotation, v::AbstractVector{<:Real}) = RQuat(r) * v
-Base.:(≈)(r1::Abstract3DRotation, r2::Abstract3DRotation) = RQuat(r1) ≈ RQuat(r2)
+Base.:(≈)(r1::Abstract3DRotation, r2::Abstract3DRotation; kwargs...) = ≈(RQuat(r1), RQuat(r2); kwargs...)
 Base.:∘(r1::Abstract3DRotation, r2::Abstract3DRotation) = RQuat(r1) ∘ RQuat(r2)
 
 #absolute equality is not defined in general, because comparing two different

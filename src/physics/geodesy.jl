@@ -81,14 +81,14 @@ function NVector(r_el::RQuat)
 end
 
 Base.:(==)(n1::NVector, n2::NVector) = n1.data == n2.data
-Base.:(≈)(n1::NVector, n2::NVector) = n1.data ≈ n2.data
+Base.:(≈)(n1::NVector, n2::NVector; kwargs...) = ≈(n1.data, n2.data; kwargs...)
 Base.:(-)(n::NVector) = NVector(-n.data)
 
 #### AbstractArray interface
 Base.size(::NVector) = (3,)
 Base.length(::NVector) = 3
 Base.getindex(n::NVector, i) = getindex(n.data, i)
-#this allocates
+#why does this allocate??
 # Base.iterate(n::NVector, state = 1) = (state > 3 ? nothing : (n.data[state], state + 1))
 LinearAlgebra.norm(n::NVector) = norm(getfield(n, :data)) #uses StaticArrays implementation
 LinearAlgebra.normalize(n::NVector) = NVector(getfield(n, :data)) #let the constructor normalize
@@ -119,7 +119,7 @@ function Base.convert(::Type{LatLon}, n_e::NVector)
 end
 
 #strict equality not implemented because comparison requires conversion
-Base.:(≈)(ll1::LatLon, ll2::LatLon) = NVector(ll1) ≈ NVector(ll2)
+Base.:(≈)(ll1::LatLon, ll2::LatLon; kwargs...) = ≈(NVector(ll1), NVector(ll2); kwargs...)
 Base.:(-)(latlon::LatLon) = LatLon(-NVector(latlon))
 
 
@@ -262,17 +262,17 @@ Base.:^(h::T, k::Real) where {T<:Altitude} = h._val^k
 Base.:-(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val - h2._val
 
 Base.:(==)(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val == h2._val
-Base.:≈(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val ≈ h2._val
+Base.:≈(h1::Altitude{D}, h2::Altitude{D}; kwargs...) where {D} = ≈(h1._val, h2._val; kwargs...)
 Base.:>(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val > h2._val
 Base.:<(h1::Altitude{D}, h2::Altitude{D}) where {D} = h1._val < h2._val
 
 Base.:(==)(h1::Altitude{D}, h2::Real) where {D} = ==(promote(h1,h2)...)
-Base.:≈(h1::Altitude{D}, h2::Real) where {D} = ≈(promote(h1,h2)...)
+Base.:≈(h1::Altitude{D}, h2::Real; kwargs...) where {D} = ≈(promote(h1,h2)...; kwargs...)
 Base.:>(h1::Altitude{D}, h2::Real) where {D} = >(promote(h1,h2)...)
 Base.:<(h1::Altitude{D}, h2::Real) where {D} = <(promote(h1,h2)...)
 
 Base.:(==)(h1::Real, h2::Altitude{D}) where {D} = h2 == h1
-Base.:≈(h1::Real, h2::Altitude{D}) where {D} = h2 ≈ h1
+Base.:≈(h1::Real, h2::Altitude{D}; kwargs...) where {D} = ≈(h2, h1; kwargs...)
 Base.:>(h1::Real, h2::Altitude{D}) where {D} = h2 < h1
 Base.:<(h1::Real, h2::Altitude{D}) where {D} = h2 > h1
 
@@ -307,11 +307,13 @@ function Base.:(==)(geo1::GeographicLocation{NVector,H}, geo2::GeographicLocatio
     return geo1.alt == geo2.alt && geo1.l2d == geo2.l2d
 end
 
-function Base.:(≈)(geo1::GeographicLocation{L,H}, geo2::GeographicLocation{L,H}) where {L,H}
-    return geo1.alt ≈ geo2.alt && geo1.l2d ≈ geo2.l2d
+function Base.:(≈)(geo1::GeographicLocation{L,H}, geo2::GeographicLocation{L,H}; kwargs...) where {L,H}
+    return ≈(geo1.alt, geo2.alt; kwargs...) && ≈(geo1.l2d, geo2.l2d; kwargs...)
 end
 
-Base.:(≈)(loc1::Abstract3DLocation, loc2::Abstract3DLocation) = CartesianLocation(loc1) ≈ CartesianLocation(loc2)
+function Base.:(≈)(loc1::Abstract3DLocation, loc2::Abstract3DLocation; kwargs...)
+    ≈(CartesianLocation(loc1), CartesianLocation(loc2); kwargs...)
+end
 
 function Base.:(==)(loc1::Abstract3DLocation, loc2::Abstract3DLocation)
     throw(ArgumentError("Exact comparison between $(typeof(loc1)) and $(typeof(loc2)) not defined, use ≈ instead"))
@@ -333,7 +335,7 @@ LatLon(r::CartesianLocation) = GeographicLocation{LatLon, Ellipsoidal}(r).l2d
 Altitude{D}(r::CartesianLocation) where {D} = Altitude{D}(GeographicLocation{NVector,D}(r))
 
 Base.:(==)(r1::CartesianLocation, r2::CartesianLocation) = r1.data == r2.data
-Base.:(≈)(r1::CartesianLocation, r2::CartesianLocation) = r1.data ≈ r2.data
+Base.:(≈)(r1::CartesianLocation, r2::CartesianLocation; kwargs...) = ≈(r1.data, r2.data; kwargs...)
 Base.:(-)(r::CartesianLocation) = CartesianLocation(-r.data)
 Base.:(+)(r1::CartesianLocation, r2::AbstractVector{<:Real}) = CartesianLocation(r1.data + SVector{3,Float64}(r2))
 Base.:(+)(r1::AbstractVector{<:Real}, r2::CartesianLocation) = r2 + r1
@@ -470,6 +472,13 @@ function G_n(l3d::Abstract3DLocation)
 end
 
 ############################### Plotting #######################################
+
+#if no specific method available, convert to LatLon for plotting
+@recipe function fp(th::TimeHistory{<:Abstract2DLocation})
+
+    return TimeHistory(th._t, [LatLon(v) for v in th._data])
+
+end
 
 @recipe function fp(th::TimeHistory{<:LatLon})
 

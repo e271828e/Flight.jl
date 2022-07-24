@@ -182,7 +182,7 @@ function reinit!(sim::Simulation, args...; kwargs...)
     return nothing
 end
 
-function run!(sim::Simulation)
+function run!(sim::Simulation; verbose = false)
 
     @unpack sys, integrator, realtime = sim
 
@@ -201,7 +201,7 @@ function run!(sim::Simulation)
     t_wall = time()
     t_wall_0 = t_wall
 
-    println("Starting simulation...")
+    verbose && println("Starting simulation...")
     for _ in integrator
 
         #integrator steps automatically at the beginning of each iteration
@@ -230,7 +230,8 @@ function run!(sim::Simulation)
 
     end
 
-    println("Simulation finished in $(time() - t_wall_0) seconds")
+    verbose && println("Simulation finished in $(time() - t_wall_0) seconds")
+    return nothing
 
 end
 
