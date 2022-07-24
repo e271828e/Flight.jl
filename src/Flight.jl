@@ -18,10 +18,8 @@ include("physics/air.jl")
 include("physics/terrain.jl")
 include("physics/dynamics.jl")
 include("physics/friction.jl")
-include("physics/kinematics_new.jl")
 
 include("aircraft/aircraft.jl")
-
 include("aircraft/landinggear.jl")
 include("aircraft/propellers.jl")
 include("aircraft/piston.jl")
@@ -44,14 +42,13 @@ include("aircraft/c172r/c172r.jl")
 @reexport using .Terrain
 @reexport using .Dynamics
 @reexport using .Friction
-@reexport using .KinematicsNew
 
+@reexport using .Aircraft
 @reexport using .Electrics
 @reexport using .LandingGear
 @reexport using .Propellers
 @reexport using .Piston
 
-@reexport using .Aircraft
 @reexport using .C172R
 
 

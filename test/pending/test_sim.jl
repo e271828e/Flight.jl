@@ -51,7 +51,7 @@ function test_sim_nrt()
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(Atmosphere());
     ac = System(C172RAircraft());
-    kin_init = KinInit(
+    kin_init = Kinematics.Initializer(
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
@@ -80,7 +80,7 @@ function test_sim_nrt()
 
     sim = Simulation(ac; args_c = (atm, trn), t_end = 150, sim_callback = callback!)
 
-    Sim.run!(sim)
+    Sim.run!(sim; verbose = true)
     plots = make_plots(sim; Plotting.defaults...)
     save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test"))
 
@@ -95,7 +95,7 @@ function test_sim_rt()
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(Atmosphere());
     ac = System(C172RAircraft());
-    kin_init = KinInit(
+    kin_init = Kinematics.Initializer(
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
@@ -123,7 +123,7 @@ function test_sim_rt()
         )
 
 
-    Sim.run!(sim)
+    Sim.run!(sim; verbose = true)
     plots = make_plots(sim; Plotting.defaults...)
     save_plots(plots, save_folder = joinpath("tmp", "rt_sim_test"))
     # save_plots(plots, save_folder = joinpath("tmp", "sim_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))

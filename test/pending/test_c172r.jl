@@ -17,13 +17,14 @@ function aerodynamics_test()
     atm = System(Atmosphere());
     aero = System(C172R.Aero());
     pwp = System(C172R.Pwp());
-    kin_init = KinInit(v_eOb_n = [40, 0, 0],
-                        ω_lb_b = [0, 0, 0],
-                        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
-                        Ob = GeographicLocation(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+    kin_init = Kinematics.Initializer(
+        v_eOb_n = [40, 0, 0],
+        ω_lb_b = [0, 0, 0],
+        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
+        Ob = GeographicLocation(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
                                         h_trn - 0 + 102.0));
 
-    kin_data = KinData(kin_init)
+    kin_data = Kinematics.Common(kin_init)
     air_data = AirflowData(kin_data, atm)
 
     aero.u.e = 0.0
@@ -53,11 +54,12 @@ function forward_drop_test()
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(Atmosphere());
     ac = System(C172RAircraft());
-    kin_init = KinInit(v_eOb_n = [30, 0, 0],
-                        ω_lb_b = [0, 0, 0],
-                        q_nb = REuler(ψ = 0, θ = 0.2, φ = 0.0),
-                        Ob = GeographicLocation(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-                                        h_trn + 1.9 + 2000.5));
+    kin_init = Kinematics.Initializer(
+        v_eOb_n = [30, 0, 0],
+        ω_lb_b = [0, 0, 0],
+        q_nb = REuler(ψ = 0, θ = 0.2, φ = 0.0),
+        Ob = GeographicLocation(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+                                h_trn + 1.9 + 2000.5));
 
     Aircraft.init!(ac, kin_init)
     # #if the model was instantiated before setting the system's initial
@@ -101,11 +103,12 @@ function free_flight()
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(Atmosphere());
     ac = System(C172RAircraft());
-    kin_init = KinInit(v_eOb_n = [0, 0, 0],
-                        ω_lb_b = [0, 0, 0],
-                        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-                        Ob = GeographicLocation(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-                                        h_trn + 2.0 - 0.15 + 00.0));
+    kin_init = Kinematics.Initializer(
+        v_eOb_n = [0, 0, 0],
+        ω_lb_b = [0, 0, 0],
+        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
+        Ob = GeographicLocation(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+                                h_trn + 2.0 - 0.15 + 00.0));
 
     Aircraft.init!(ac, kin_init)
 

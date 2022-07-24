@@ -98,7 +98,7 @@ function test_engine_dynamics()
 
     @testset verbose = true "EngineDynamics" begin
 
-        kin = KinInit(v_eOb_n = [50, 0, 0]) |> KinData
+        kin = Kinematics.Initializer(v_eOb_n = [50, 0, 0]) |> Kinematics.Common
         atm = Atmosphere() |> System
         air = AirflowData(kin, atm)
         eng = Engine() |> System
@@ -185,7 +185,7 @@ function test_thruster_dynamics()
     @testset verbose = true "NewThrusterDynamics" begin
 
         #initialize auxiliary elements
-        kin = KinInit(v_eOb_n = [0, 0, 0]) |> KinData
+        kin = Kinematics.Initializer(v_eOb_n = [0, 0, 0]) |> Kinematics.Common
         atm = Atmosphere() |> System
         air = AirflowData(kin, atm)
         fuel = System(MagicFuelSupply())

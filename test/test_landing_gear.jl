@@ -100,39 +100,39 @@ function test_strut()
         h_trn = TerrainData(terrain, l2d).altitude
 
         #wow = false
-        kin_data = KinInit( Ob = GeographicLocation(l2d, h_trn + 1.1)) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer( Ob = GeographicLocation(l2d, h_trn + 1.1)) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         @test strut.y == y_default #strut outputs stay at their defaults
 
         #wow = true
         Ob = GeographicLocation(l2d, h_trn + 0.9)
 
         #normal static load
-        kin_data = KinInit(; Ob ) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob ) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         @test strut.y.ξ ≈ -0.1 #strut is compressed
         @test strut.y.F ≈ 2500 #pure elastic force, positive along the strut's z axis
 
         #oblique static load
-        kin_data = KinInit(; Ob, q_nb = REuler(0, 0, π/12)) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob, q_nb = REuler(0, 0, π/12)) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         @test strut.y.ξ > -0.1 #strut is less compressed
         @test strut.y.F < 2500 #force is smaller
 
         #compressing load
-        kin_data = KinInit(; Ob, v_eOb_n = [0,0,1]) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob, v_eOb_n = [0,0,1]) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         @test strut.y.ξ_dot < 0 #strut is compressing
         @test strut.y.F ≈ 3500 #damping force is added to elastic force
 
         #advancing motion and compression
-        kin_data = KinInit(; Ob, v_eOb_n = [10,0,1]) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob, v_eOb_n = [10,0,1]) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         @test isapprox.(strut.y.v_eOc_c, [10, 0, 0], atol = 1e-5) |> all
 
         #lateral motion and compression
-        kin_data = KinInit(; Ob, ω_lb_b = [1,0,0]) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob, ω_lb_b = [1,0,0]) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         @test isapprox.(strut.y.v_eOc_c, [0, -0.9, 0], atol = 1e-5) |> all
 
         #set steering input and update steering system
@@ -140,12 +140,12 @@ function test_strut()
         f_cont!(steering)
 
         #check that steering angle is accounted for
-        kin_data = KinInit(; Ob, v_eOb_n = [10,0,1]) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob, v_eOb_n = [10,0,1]) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         @test strut.y.v_eOc_c[1] < 10
         @test strut.y.v_eOc_c[2] < 0
 
-        @test @ballocated(f_cont!($strut, $steering, $terrain, $kin_data)) == 0
+        @test @ballocated(f_cont!($strut, $steering, $terrain, $kin)) == 0
         @test @ballocated(f_disc!($strut)) == 0
     end
 
@@ -179,16 +179,16 @@ function test_contact()
         Ob = GeographicLocation(l2d, h_trn + 0.9)
 
         #normal static load
-        kin_data = KinInit(; Ob ) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob ) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         f_cont!(contact, strut, braking)
         @test contact.u.friction.reset == contact.y.friction.reset == [false, false]
         @test contact.y.μ_eff == [0, 0] #no motion, no effective friction
         @test contact.y.f_c[1:2] == [0, 0] #no effective friction, no tangential force
         @test contact.y.f_c[3] < 0 #ground reaction negative along contact frame z-axis
 
-        kin_data = KinInit(; Ob, v_eOb_n = [1e-4, 0, 0] ) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob, v_eOb_n = [1e-4, 0, 0] ) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         f_cont!(contact, strut, braking)
         @test contact.y.μ_max[1] <= contact.y.μ_roll
         @test contact.y.μ_eff[2] == 0 #no lateral motion, no lateral effective friction
@@ -197,29 +197,29 @@ function test_contact()
         @test contact.ẋ[1] > 0 #longitudinal velocity integral should be increasing
 
         #braking
-        kin_data = KinInit(; Ob, q_nb = REuler(φ = 0), v_eOb_n = [1e-4, 0, 0] ) |> KinData
+        kin = Kinematics.Initializer(; Ob, q_nb = REuler(φ = 0), v_eOb_n = [1e-4, 0, 0] ) |> Kinematics.Common
         braking.u[] = 1
         f_cont!(braking)
-        f_cont!(strut, steering, terrain, kin_data)
+        f_cont!(strut, steering, terrain, kin)
         f_cont!(contact, strut, braking)
         @test contact.y.μ_max[1] > contact.y.μ_roll
 
         #non-axial load, forward motion
-        kin_data = KinInit(; Ob, q_nb = REuler(φ = π/12), v_eOb_n = [1e-4, 0, 0] ) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob, q_nb = REuler(φ = π/12), v_eOb_n = [1e-4, 0, 0] ) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         f_cont!(contact, strut, braking)
         @test contact.y.wr_b.F[2] < 0
 
         #lateral motion, small velocity
-        kin_data = KinInit(; Ob, q_nb = REuler(φ = 0), v_eOb_n = [0, -1e-4, 0] ) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob, q_nb = REuler(φ = 0), v_eOb_n = [0, -1e-4, 0] ) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         f_cont!(contact, strut, braking)
         @test contact.y.wr_b.F[2] > 0
         @test contact.ẋ[2] < 0 #lateral velocity integral should be decreasing
 
         #lateral motion, large velocity
-        kin_data = KinInit(; Ob, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> KinData
-        f_cont!(strut, steering, terrain, kin_data)
+        kin = Kinematics.Initializer(; Ob, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> Kinematics.Common
+        f_cont!(strut, steering, terrain, kin)
         f_cont!(contact, strut, braking)
         @test contact.friction.y.sat[2] == true #large velocity saturates
         @test contact.ẋ[2] == 0 #lateral velocity integral should be decreasing
@@ -238,7 +238,7 @@ function test_contact()
         @test @ballocated(f_disc!($contact)) == 0
 
         #wow = false
-        kin_data = KinInit( Ob = GeographicLocation(l2d, h_trn + 1.1)) |> KinData
+        kin_data = Kinematics.Initializer( Ob = GeographicLocation(l2d, h_trn + 1.1)) |> Kinematics.Common
         f_cont!(strut, steering, terrain, kin_data) #update Strut
         f_cont!(contact, strut, braking)
         #the friction regulator's reset input is set and propagated to the outputs
@@ -263,7 +263,7 @@ function test_landing_gear_unit()
         h_trn = Terrain.TerrainData(trn, l2d).altitude
 
         #wow = true
-        kin = KinInit( Ob = GeographicLocation(l2d, h_trn + 0.9), v_eOb_n = [0,1,0]) |> KinData
+        kin = Kinematics.Initializer( Ob = GeographicLocation(l2d, h_trn + 0.9), v_eOb_n = [0,1,0]) |> Kinematics.Common
 
         @test (@ballocated f_cont!($ldg, $kin, $trn)) == 0
         @test @ballocated(f_disc!($ldg)) == 0

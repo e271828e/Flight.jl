@@ -261,13 +261,13 @@ struct AirflowData
     CAS::Float64 #calibrated airspeed
 end
 
-AirflowData() = AirflowData(KinData(), AtmosphericData())
+AirflowData() = AirflowData(Kinematics.Common(), AtmosphericData())
 
-function AirflowData(kin_data::KinData, atm_data::AtmosphericData)
+function AirflowData(kin::Kinematics.Common, atm_data::AtmosphericData)
 
-    v_eOb_b = kin_data.vel.v_eOb_b
+    v_eOb_b = kin.v_eOb_b
     v_ew_n = atm_data.wind.v_ew_n
-    v_ew_b = kin_data.pos.q_nb'(v_ew_n)
+    v_ew_b = kin.q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
 
     @unpack T, p, ρ, a, μ = atm_data.air
@@ -285,12 +285,11 @@ function AirflowData(kin_data::KinData, atm_data::AtmosphericData)
 
 end
 
-function AirflowData(kin_data::KinData, atm_sys::System{<:Atmosphere})
+function AirflowData(kin_data::Kinematics.Common, atm_sys::System{<:Atmosphere})
     #the AtmosphericData constructor accepts any GeographicLocation subtype, but it's most
     #likely that ISA SL conditions and wind will be expressed in {LatLon,
     #Orthometric}
-    @unpack ϕ_λ, h_o = kin_data.pos
-    loc = GeographicLocation(kin_data.pos.ϕ_λ, kin_data.pos.h_o)
+    loc = GeographicLocation(kin_data.n_e, kin_data.h_o)
 
     #query the Atmosphere System for the atmospheric data at our location
     atm_data = AtmosphericData(atm_sys, loc)

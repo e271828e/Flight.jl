@@ -448,9 +448,9 @@ The resulting `Wrench` is defined on the vehicle's reference frame fb.
   projected on vehicle axes
 
 """
-function inertia_wrench(mp_b::MassProperties, vel::VelData, hr_b::AbstractVector{<:Real})
+function inertia_wrench(mp_b::MassProperties, kin::Kinematics.Common, hr_b::AbstractVector{<:Real})
 
-    @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = vel
+    @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = kin
 
     m = mp_b.m; J_Ob_b = mp_b.J_O; r_ObG_b = mp_b.r_OG
 
@@ -470,7 +470,7 @@ function inertia_wrench(mp_b::MassProperties, vel::VelData, hr_b::AbstractVector
 
 end
 
-function gravity_wrench(mp_b::MassProperties, pos::PosData)
+function gravity_wrench(mp_b::MassProperties, kin::Kinematics.Common)
 
     #gravity can be viewed as an entity acting on a local frame with its origin
     #at G and its axes aligned with the local tangent frame
@@ -479,7 +479,7 @@ function gravity_wrench(mp_b::MassProperties, pos::PosData)
     #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
     #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
     #LTF(Ob), and then apply it at G.
-    @unpack n_e, h_e, q_nb = pos
+    @unpack n_e, h_e, q_nb = kin
 
     Ob = GeographicLocation(n_e, h_e)
     g_G_n = g_Ob_n = g_n(Ob)
@@ -492,7 +492,7 @@ function gravity_wrench(mp_b::MassProperties, pos::PosData)
 
     #with the previous assumption, the transformation from body frame to local
     #gravity frame is given by the translation r_ObG_b and the (passive)
-    #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by pos.l_b'
+    #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by q_lb'
     wr_c = wr_G_n
     r_ObG_b = mp_b.r_OG
     t_bc = FrameTransform(r = r_ObG_b, q = q_nb')
@@ -525,7 +525,7 @@ Base.@kwdef struct DynData
 end
 
 
-function f_dyn!(ẋ_vel::VelX, kin::KinData, mp_b::MassProperties,
+function f_dyn!(ẋ_vel::Kinematics.XVel, kin::Kinematics.Common, mp_b::MassProperties,
     wr_ext_b::Wrench, hr_b::AbstractVector{<:Real})
 
     #wr_ext_b: Total external wrench on the vehicle
@@ -544,8 +544,7 @@ function f_dyn!(ẋ_vel::VelX, kin::KinData, mp_b::MassProperties,
     #J_G_b (Steiner). therefore, at some point J_G_b would become zero (or at
     #least singular)!
 
-    @unpack q_eb, q_nb, n_e, h_e = kin.pos
-    @unpack ω_eb_b, ω_ie_b, v_eOb_b = kin.vel
+    @unpack q_eb, q_nb, n_e, h_e, ω_eb_b, ω_ie_b, v_eOb_b = kin
 
     m = mp_b.m; J_Ob_b = mp_b.J_O; r_ObG_b = mp_b.r_OG
 
@@ -557,8 +556,8 @@ function f_dyn!(ẋ_vel::VelX, kin::KinData, mp_b::MassProperties,
 
     A = vcat(hcat(A11, A12), hcat(A21, A22))
 
-    wr_g_b = gravity_wrench(mp_b, kin.pos)
-    wr_in_b = inertia_wrench(mp_b, kin.vel, hr_b)
+    wr_g_b = gravity_wrench(mp_b, kin)
+    wr_in_b = inertia_wrench(mp_b, kin, hr_b)
     wr_b = wr_ext_b + wr_g_b + wr_in_b
     b = SVector{6}(vcat(wr_b.M, wr_b.F))
 

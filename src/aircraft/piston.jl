@@ -440,7 +440,7 @@ end
 init(::SystemX, tr::Thruster) = init_x(ω = 0.0, engine = init_x(tr.engine),
     propeller = init_x(tr.propeller), friction = init_x(tr.friction))
 
-function f_cont!(thr::System{<:Thruster}, air::AirflowData, kin::KinData)
+function f_cont!(thr::System{<:Thruster}, air::AirflowData, kin::Kinematics.Common)
 
     @unpack engine, propeller, friction = thr
     @unpack n, M = thr.params

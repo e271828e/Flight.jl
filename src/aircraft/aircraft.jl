@@ -77,7 +77,7 @@ struct AircraftBase{I <: AbstractAircraftID,
 end
 
 function AircraftBase(     ::I = GenericID();
-                        kinematics::K = KinLTF(),
+                        kinematics::K = LTF(),
                         vehicle::V = EmptyVehicle(),
                         avionics::A = NoAvionics()) where {I,K,V,A}
     AircraftBase{I,K,V,A}(kinematics, vehicle, avionics)
@@ -86,15 +86,15 @@ end
 #override the default SystemDescriptor implementation, because we need to
 #add some stuff besides subsystem outputs
 init(::SystemY, ac::AircraftBase) = (
-    kinematics = init_y(ac.kinematics),
     vehicle = init_y(ac.vehicle),
     avionics = init_y(ac.avionics),
+    kinematics = init_y(ac.kinematics),
     dynamics = DynData(),
     airflow = AirflowData(),
     )
 
-function init!(ac::System{T}, kin_init::KinInit) where {T<:AircraftBase{I,K}} where {I,K}
-    ac.x.kinematics .= init(K(), kin_init)
+function init!(ac::System{T}, ic::Kinematics.Initializer) where {T<:AircraftBase{I,K}} where {I,K}
+    Kinematics.init!(ac.x.kinematics, ic)
 end
 
 function f_cont!(sys::System{<:AircraftBase}, atm::System{<:Atmosphere}, trn::AbstractTerrain)
@@ -104,7 +104,7 @@ function f_cont!(sys::System{<:AircraftBase}, atm::System{<:Atmosphere}, trn::Ab
 
     #update kinematics
     f_cont!(kinematics)
-    kin_data = kinematics.y
+    kin_data = kinematics.y.common
     air_data = AirflowData(kin_data, atm)
 
     #update avionics and vehicle components
@@ -116,9 +116,9 @@ function f_cont!(sys::System{<:AircraftBase}, atm::System{<:Atmosphere}, trn::Ab
     hr_b = get_hr_b(vehicle)
 
     #update velocity derivatives
-    dyn_data = f_dyn!(kinematics.ẋ.vel, kinematics.y, mp_b, wr_b, hr_b)
+    dyn_data = f_dyn!(kinematics.ẋ.vel, kin_data, mp_b, wr_b, hr_b)
 
-    sys.y = (kinematics = kinematics.y, vehicle = vehicle.y, avionics = avionics.y,
+    sys.y = (vehicle = vehicle.y, avionics = avionics.y, kinematics = kinematics.y,
             dynamics = dyn_data, airflow = air_data,)
 
     return nothing
@@ -136,14 +136,14 @@ function f_disc!(sys::System{<:AircraftBase})
     return x_mod
 end
 
-function update!(xp::XPInterface, pos::PosData, aircraft::Integer = 0)
+function update!(xp::XPInterface, kin::Kinematics.Common, aircraft::Integer = 0)
 
-    llh = GeographicLocation(pos.ϕ_λ, pos.h_o)
-    e_nb = pos.e_nb
+    ll = LatLon(kin.n_e)
+    e_nb = REuler(kin.q_nb)
 
-    lat = rad2deg(llh.l2d.ϕ)
-    lon = rad2deg(llh.l2d.λ)
-    alt = llh.alt
+    lat = rad2deg(ll.ϕ)
+    lon = rad2deg(ll.λ)
+    alt = kin.h_o
 
     psi = rad2deg(e_nb.ψ)
     theta = rad2deg(e_nb.θ)

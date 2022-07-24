@@ -107,7 +107,7 @@ get_hr_b(sys::System{EThruster}) = sys.y.hr_b
 
 f_disc!(sys::System{EThruster}) = false
 
-function f_cont!(sys::System{EThruster}, kin::KinData, air::AirflowData)
+function f_cont!(sys::System{EThruster}, kin::Kinematics.Common, air::AirflowData)
 
     @unpack ẋ, x, y, u, params = sys #no need for subsystems
     @unpack frame, battery, motor, propeller, gearbox = params

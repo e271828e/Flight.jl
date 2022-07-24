@@ -4,6 +4,14 @@ using StructArrays
 
 export Ranged, linear_scaling
 export TimeHistory
+export pwf
+
+#print with fieldnames
+function pwf(s)
+    for f in fieldnames(typeof(s))
+        println("$f: $(getfield(s,f))")
+    end
+end
 
 ################################################################################
 ################################ Ranged ########################################

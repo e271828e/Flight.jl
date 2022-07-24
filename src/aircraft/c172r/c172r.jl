@@ -241,7 +241,7 @@ function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_
 end
 
 function f_cont!(sys::System{Aero}, ::System{<:Piston.Thruster},
-    air::AirflowData, kinematics::KinData, terrain::AbstractTerrain)
+    air::AirflowData, kinematics::Kinematics.Common, terrain::AbstractTerrain)
 
     #for this aircraft we have chosen the aerodynamics frame fa as the main
     #aircraft reference frame fb. any airflow variables computed in frame fb are
@@ -268,8 +268,7 @@ function f_cont!(sys::System{Aero}, ::System{<:Piston.Thruster},
     @unpack e, a, r, f = u
     @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_bounds, β_bounds, α_stall, V_min, τ = params
     @unpack TAS, q, v_wOb_b = air
-    @unpack ω_lb_b = kinematics.vel
-    @unpack n_e, h_o = kinematics.pos
+    @unpack ω_lb_b, n_e, h_o = kinematics
     stall = d.stall
 
     v_wOb_a = v_wOb_b
@@ -516,7 +515,7 @@ end
 ######################## Avionics Update Functions ###########################
 
 function f_cont!(avionics::System{Avionics}, ::System{<:Vehicle},
-                ::KinData, ::AirflowData, ::AbstractTerrain)
+                ::Kinematics.Common, ::AirflowData, ::AbstractTerrain)
 
     #here, avionics do nothing but update their output state. for a more complex
     #aircraft a continuous state-space autopilot implementation could go here
@@ -535,7 +534,7 @@ f_disc!(::System{Avionics}, ::System{<:Vehicle}, ::System{<:AbstractKinematics})
 ####################### Vehicle Update Functions ##############################
 
 function f_cont!(vehicle::System{<:Vehicle}, avionics::System{Avionics},
-                kin::KinData, air::AirflowData, trn::AbstractTerrain)
+                kin::Kinematics.Common, air::AirflowData, trn::AbstractTerrain)
 
     @unpack aero, pwp, ldg, fuel, pld = vehicle
 
@@ -639,7 +638,7 @@ end
 
 #Aircraft constructor override keyword inputs to customize
 
-function C172RAircraft(; id = ID(), kinematics = KinLTF(), vehicle = Vehicle(), avionics = Avionics())
+function C172RAircraft(; id = ID(), kinematics = LTF(), vehicle = Vehicle(), avionics = Avionics())
     AircraftBase( id; kinematics, vehicle, avionics)
 end
 

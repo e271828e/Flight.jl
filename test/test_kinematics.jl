@@ -1,4 +1,4 @@
-module TestKinematicsNew
+module TestKinematics
 
 using Test
 using LinearAlgebra
@@ -6,7 +6,7 @@ using BenchmarkTools
 
 using Flight.Systems
 using Flight.Sim
-using Flight.KinematicsNew
+using Flight.Kinematics
 using Flight.Attitude
 using Flight.Geodesy
 
@@ -24,14 +24,14 @@ function test_kinematics()
     @test (@ballocated f_cont!($sys_LTF)) == 0
     @test (@ballocated f_cont!($sys_NED)) == 0
 
-    kin_init = KinematicsNew.InitialCondition(
+    kin_init = Kinematics.Initializer(
         Ob = GeographicLocation(LatLon(π/3, -π/6), AltE(12354)),
         ω_lb_b = [0.1, 0.1, -0.2],
         v_eOb_n = [100, 10, -4])
 
-    KinematicsNew.init!(sys_ECEF, kin_init)
-    KinematicsNew.init!(sys_LTF, kin_init)
-    KinematicsNew.init!(sys_NED, kin_init)
+    Kinematics.init!(sys_ECEF, kin_init)
+    Kinematics.init!(sys_LTF, kin_init)
+    Kinematics.init!(sys_NED, kin_init)
 
     #let the kinematic state propagate to y
     f_cont!(sys_ECEF)

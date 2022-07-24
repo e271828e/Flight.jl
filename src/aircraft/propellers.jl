@@ -335,13 +335,13 @@ init(::SystemY, ::Propeller) = PropellerY()
 get_Δβ(sys::System{<:Propeller{FixedPitch}}) = 0.0
 get_Δβ(sys::System{<:Propeller{VariablePitch}}) = linear_scaling(sys.u[], sys.params.pitch.bounds)
 
-function f_cont!(sys::System{<:Propeller}, kin::KinData, air::AirflowData, ω::Real)
+function f_cont!(sys::System{<:Propeller}, kin::Kinematics.Common, air::AirflowData, ω::Real)
 
     @unpack d, J_xx, t_bp, sense, dataset = sys.params
     #remove this, it may happen due to friction overshoot at low RPMs
     # @assert sign(ω) * Int(sys.params.sense) >= 0 "Propeller turning in the wrong sense"
 
-    v_wOp_b = air.v_wOb_b + kin.vel.ω_eb_b × t_bp.r
+    v_wOp_b = air.v_wOb_b + kin.ω_eb_b × t_bp.r
     v_wOp_p = t_bp.q'(v_wOp_b)
 
     #compute advance ratio. here we use the velocity vector magnitude rather
