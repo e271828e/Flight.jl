@@ -17,10 +17,10 @@ using .TestPiston
 using .TestFriction
 using .TestLandingGear
 
-# test_quaternions()
-# test_attitude()
-# test_geodesy()
-# test_propellers()
-# test_friction()
-# test_landing_gear()
+test_quaternions()
+test_attitude()
+test_geodesy()
+test_propellers()
+test_friction()
+test_landing_gear()
 test_piston()

@@ -325,6 +325,7 @@ end
     xl = (x_mid - 0.5span, x_mid + 0.5span)
     yl = (y_mid - 0.5span, y_mid + 0.5span)
     zl = (ze[1], ze[1] + span)
+    println(xl, yl, zl)
 
     seriestype --> :path
     xguide --> L"$\Delta x\ (m)$"
@@ -425,7 +426,7 @@ function make_plots(th::TimeHistory{<:PosData}; kwargs...)
         Trajectory3D((xs, ys, zs));
         plot_title = "Trajectory (Local Cartesian, Ellipsoidal Altitude)",
         titlefontsize = 20,
-        camera = (30, 45),
+        camera = (20, 00),
         kwargs...
         )
 
