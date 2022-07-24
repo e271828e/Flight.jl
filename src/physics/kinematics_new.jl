@@ -21,7 +21,7 @@ export XVelNew, PositionY, VelocityY, KinematicsY
 abstract type AbstractKinematicsNew <: SystemDescriptor end
 
 Base.@kwdef struct InitialCondition
-    ω_nb_b::SVector{3, Float64} = zeros(SVector{3})
+    ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
     v_eOb_n::SVector{3, Float64} = zeros(SVector{3})
     q_nb::RQuat = RQuat()
     Ob::GeographicLocation{NVector,Ellipsoidal} = GeographicLocation()
@@ -57,6 +57,47 @@ struct KinematicsY
     vel::VelocityY
 end
 
+
+#DataECEF
+Base.@kwdef struct DataECEF
+    q_en::RQuat
+end
+
+#DataWA
+Base.@kwdef struct DataWA
+    q_el::RQuat
+    ω_el_l::SVector{3,Float64}
+end
+
+#DataNED
+Base.@kwdef struct DataNED
+    e_nb::REuler
+    ϕ_λ::LatLon
+    ω_nb_b::RQuat
+    ω_en_n::RQuat
+end
+
+#DataCommon
+Base.@kwdef struct DataCommon
+    q_nb::RQuat
+    q_eb::RQuat
+    n_e::NVector
+    h_e::Altitude{Ellipsoidal}
+    h_o::Altitude{Orthometric}
+    Δxy::SVector{2,Float64}
+    ω_lb_b::SVector{3,Float64}
+    ω_eb_b::SVector{3,Float64}
+    ω_ie_b::SVector{3,Float64}
+    ω_ib_b::SVector{3,Float64}
+    v_eOb_b::SVector{3,Float64}
+    v_eOb_n::SVector{3,Float64}
+end
+
+struct KinematicYPar{S <: Union{DataECEF, DataWA, DataNED}}
+    common::DataCommon
+    specific::S
+end
+
 init(::SystemY, kinematics::AbstractKinematicsNew) = KinematicsY(kinematics)
 
 #for dispatching
@@ -66,6 +107,31 @@ const XVelNew{T, D} = ComponentVector{T, D, typeof(getaxes(XVelTemplate))} where
 function renormalize_block!(x, ε) #returns true if norm was corrected
     norm_x = norm(x)
     abs(norm_x - 1.0) > ε ? (x ./= norm_x; return true) : return false
+end
+
+@inline function get_ω_el_n(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
+
+    (R_N, R_E) = radii(Ob)
+    h_e = AltE(Ob)
+
+    return SVector{3}(
+        v_eOb_n[2] / (R_E + Float64(h_e)),
+        -v_eOb_n[1] / (R_N + Float64(h_e)),
+        0.0)
+
+end
+
+@inline function get_ω_en_n(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
+
+    (R_N, R_E) = radii(Ob)
+    h_e = AltE(Ob)
+    ϕ = LatLon(Ob).ϕ
+
+    return SVector{3}(
+        v_eOb_n[2] / (R_E + Float64(h_e)),
+        -v_eOb_n[1] / (R_N + Float64(h_e)),
+        -v_eOb_n[2] * tan(ϕ) / (R_E + Float64(h_e))
+        )
 end
 
 ######################### LTF Kinematics #########################
@@ -91,30 +157,19 @@ const XPosWATemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0
 const XWATemplate = ComponentVector(pos = similar(XPosWATemplate), vel = similar(XVelTemplate))
 const XWA{T, D} = ComponentVector{T, D, typeof(getaxes(XWATemplate))} where {T, D}
 
-@inline function transport_rate_WA(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
-    h_e = AltE(Ob)
-    (R_N, R_E) = radii(Ob)
-    ω_el_n = SVector{3}(
-        v_eOb_n[2] / (R_E + Float64(h_e)),
-        -v_eOb_n[1] / (R_N + Float64(h_e)),
-        0.0)
-    return ω_el_n
-end
-
 function init(::SystemX, ::WA)
     x = similar(XWATemplate)
     init!(x)
     return x
 end
 
-function init!(x::XWA, initializer::InitialCondition = InitialCondition())
+function init!(x::XWA, init_cond::InitialCondition = InitialCondition())
 
-    @unpack q_nb, Ob, ω_nb_b, v_eOb_n, Δx, Δy = initializer
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = init_cond
 
-    #although we're initializing XWA, we need the NED transport rate here
-    ω_en_n = transport_rate_NED(v_eOb_n, Ob)
-    ω_en_b = q_nb'(ω_en_n)
-    ω_eb_b = ω_en_b + ω_nb_b
+    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
+    ω_el_b = q_nb'(ω_el_n)
+    ω_eb_b = ω_el_b + ω_lb_b
     v_eOb_b = q_nb'(v_eOb_n)
     h_e = AltE(Ob)
 
@@ -130,7 +185,7 @@ function init!(x::XWA, initializer::InitialCondition = InitialCondition())
 
 end
 
-init!(sys::System{WA}, initializer::InitialCondition = InitialCondition()) = init!(sys.x, initializer)
+init!(sys::System{WA}, init_cond::InitialCondition = InitialCondition()) = init!(sys.x, init_cond)
 
 function KinematicsY(x::XWA)
 
@@ -153,7 +208,7 @@ function KinematicsY(x::XWA)
 
     v_eOb_n = q_nb(v_eOb_b)
     Ob = GeographicLocation(n_e, h_e)
-    ω_el_n = transport_rate_WA(v_eOb_n, Ob)
+    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
 
     ω_el_l = q_nl'(ω_el_n)
     ω_el_b = q_lb'(ω_el_l)
@@ -209,19 +264,6 @@ const XPosNEDTemplate = ComponentVector(e_nb = zeros(3), ϕ = 0.0, λ = 0.0, Δx
 const XNEDTemplate = ComponentVector(pos = similar(XPosNEDTemplate), vel = similar(XVelTemplate))
 const XNED{T, D} = ComponentVector{T, D, typeof(getaxes(XNEDTemplate))} where {T, D}
 
-@inline function transport_rate_NED(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
-
-    (R_N, R_E) = radii(Ob)
-    h_e = AltE(Ob)
-    ϕ = LatLon(Ob).ϕ
-
-    ω_en_n = SVector{3}(
-        v_eOb_n[2] / (R_E + Float64(h_e)),
-        -v_eOb_n[1] / (R_N + Float64(h_e)),
-        -v_eOb_n[2] * tan(ϕ) / (R_E + Float64(h_e))
-        )
-    return ω_en_n
-end
 
 function init(::SystemX, ::NED)
     x = similar(XNEDTemplate)
@@ -229,22 +271,22 @@ function init(::SystemX, ::NED)
     return x
 end
 
-function init!(x::XNED, initializer::InitialCondition = InitialCondition())
+function init!(x::XNED, init_cond::InitialCondition = InitialCondition())
 
-    @unpack q_nb, Ob, ω_nb_b, v_eOb_n, Δx, Δy = initializer
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = init_cond
 
-    ω_en_n = transport_rate_NED(v_eOb_n, Ob)
-    ω_en_b = q_nb'(ω_en_n)
-    ω_eb_b = ω_en_b + ω_nb_b
+    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
+    ω_el_b = q_nb'(ω_el_n)
+    ω_eb_b = ω_el_b + ω_lb_b
     v_eOb_b = q_nb'(v_eOb_n)
-    h_e = AltE(Ob)
 
     e_nb = REuler(q_nb)
-    ϕλ = LatLon(Ob)
+    ϕ_λ = LatLon(Ob)
+    h_e = AltE(Ob)
 
     x.pos.e_nb .= SVector(e_nb.ψ, e_nb.θ, e_nb.φ)
-    x.pos.ϕ = ϕλ.ϕ
-    x.pos.λ = ϕλ.λ
+    x.pos.ϕ = ϕ_λ.ϕ
+    x.pos.λ = ϕ_λ.λ
     x.pos.Δx = Δx
     x.pos.Δy = Δy
     x.pos.h_e = h_e
@@ -253,7 +295,7 @@ function init!(x::XNED, initializer::InitialCondition = InitialCondition())
 
 end
 
-init!(sys::System{NED}, initializer::InitialCondition = InitialCondition()) = init!(sys.x, initializer)
+init!(sys::System{NED}, init_cond::InitialCondition = InitialCondition()) = init!(sys.x, init_cond)
 
 function KinematicsY(x::XNED)
 
@@ -271,7 +313,7 @@ function KinematicsY(x::XNED)
 
     v_eOb_n = q_nb(v_eOb_b)
     Ob = GeographicLocation(n_e, h_e)
-    ω_en_n = transport_rate_NED(v_eOb_n, Ob)
+    ω_en_n = get_ω_en_n(v_eOb_n, Ob)
     ω_en_b = q_nb'(ω_en_n)
     ω_nb_b = ω_eb_b - ω_en_b
 

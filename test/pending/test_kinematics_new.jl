@@ -33,9 +33,10 @@ function test_kinematics()
     sys_NED.x.vel.ω_eb_b = ω_eb_b
     sys_NED.x.pos.h_e = h_e
 
-    println(@btime f_cont!($sys_LTF))
-    println(@btime f_cont!($sys_WA))
-    println(@btime f_cont!($sys_NED))
+    # println(@btime f_cont!($sys_LTF))
+    # println(@btime f_cont!($sys_WA))
+    # println(@btime f_cont!($sys_NED))
+    # return
 
     #### validate WA against LTF
 

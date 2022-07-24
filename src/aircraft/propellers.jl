@@ -217,15 +217,15 @@ end
 ################################ Dataset ###################################
 
 struct Dataset{T <: Interpolations.Extrapolation}
-    _data::Coefficients{T}
+    _coeffs::Coefficients{T}
 end
 
 Base.getproperty(dataset::Dataset, s::Symbol) = getproperty(dataset, Val(s))
 @generated function Base.getproperty(dataset::Dataset, ::Val{S}) where {S}
-    if S === :_data
-        return :(getfield(dataset, :_data))
+    if S === :_coeffs
+        return :(getfield(dataset, :_coeffs))
     elseif S ∈ fieldnames(Coefficients)
-        return :(getfield(getfield(dataset, :_data), $(QuoteNode(S))))
+        return :(getfield(getfield(dataset, :_coeffs), $(QuoteNode(S))))
     else
         error("Dataset has no property $S")
     end
