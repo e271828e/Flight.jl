@@ -18,24 +18,24 @@ export test_piston
 
 function test_piston()
     @testset verbose = true "Piston" begin
-        test_engine_dataset()
+        test_engine_lookup()
         test_engine_dynamics()
         test_thruster_dynamics()
     end
 end
 
-function test_engine_dataset()
+function test_engine_lookup()
     n_stall = 0.15
     n_cutoff = 1.4
-    dataset = Piston.generate_dataset(; n_stall, n_cutoff)
+    lookup = Piston.generate_lookup(; n_stall, n_cutoff)
     ω_rated = 2700
     P_rated = 200
 
-    @testset verbose = true "EngineDataset" begin
+    @testset verbose = true "EngineLookup" begin
 
         @testset verbose = true "δ_wot" begin
 
-            let δ_wot = dataset.δ_wot
+            let δ_wot = lookup.δ_wot
                 #these graphs have been retouched, so allow more leeway here
                 @test δ_wot(1800/ω_rated, inHg2Pa(20)/p_std) ≈ (9500 |> ft2m |> h2δ) atol = 0.1
                 @test δ_wot(2700/ω_rated, inHg2Pa(22)/p_std) ≈ (7000 |> ft2m |> h2δ) atol = 0.1
@@ -47,7 +47,7 @@ function test_engine_dataset()
 
         @testset verbose = true "π_std" begin
 
-            let π_std = dataset.π_std
+            let π_std = lookup.π_std
                 @test π_std(1800/ω_rated, inHg2Pa(20)/p_std) * P_rated ≈ 71 atol = 1
                 @test π_std(2050/ω_rated, inHg2Pa(24)/p_std) * P_rated ≈ 113 atol = 1
                 @test π_std(2400/ω_rated, inHg2Pa(17)/p_std) * P_rated ≈ 85 atol = 1
@@ -59,7 +59,7 @@ function test_engine_dataset()
 
         @testset verbose = true "π_wot" begin
 
-            let π_wot = dataset.π_wot
+            let π_wot = lookup.π_wot
                 #these graphs have been retouched, so allow more leeway here
                 @test π_wot(1800/ω_rated, 3e3 |> ft2m |> h2δ) * P_rated ≈ 108 atol = 3
                 @test π_wot(2300/ω_rated, 2.4e3 |> ft2m |> h2δ) * P_rated ≈ 153 atol = 3
@@ -72,13 +72,13 @@ function test_engine_dataset()
 
         @testset verbose = true "π_ISA_pow" begin
 
-            π_ISA_pow = let dataset = dataset
-                (n, μ, δ) -> compute_π_ISA_pow(dataset, n, μ, δ)
+            π_ISA_pow = let lookup = lookup
+                (n, μ, δ) -> compute_π_ISA_pow(lookup, n, μ, δ)
             end
 
             #at n_stall and below, power is zero regardless of MAP value
             @test π_ISA_pow(n_stall, 0, 1) ≈ 0
-            @test π_ISA_pow(n_stall, dataset.μ_wot(n_stall, 1), 1) ≈ 0
+            @test π_ISA_pow(n_stall, lookup.μ_wot(n_stall, 1), 1) ≈ 0
             @test π_ISA_pow(0.5*n_stall, 0.5, 1) ≈ 0
 
             #as soon as n rises above n_stall, power starts increasing with MAP
@@ -306,19 +306,19 @@ function test_thruster_dynamics()
 
 end #function
 
-function plot_dataset(; plot_settings...)
+function plot_lookup(; plot_settings...)
 
-    dataset = Engine().dataset
+    lookup = Engine().lookup
 
     n_plot = range(0, 1.5, length = 100)
     δ_plot = range(1, 0, length = 100)
     @show μ_plot = range(0.1p_std, inHg2Pa(30), length = 10)/p_std
 
-    π_std_plot = [dataset.π_std(n, μ) for (n, μ) in Iterators.product(n_plot, μ_plot)]
+    π_std_plot = [lookup.π_std(n, μ) for (n, μ) in Iterators.product(n_plot, μ_plot)]
     # plot(μ_plot, π_std_plot'; plot_settings...)
     plot(n_plot, π_std_plot; plot_settings...)
 
-    # π_wot_plot = [dataset.π_wot(n,p) for (n,p) in Iterators.product(n_plot, δ_plot)]
+    # π_wot_plot = [lookup.π_wot(n,p) for (n,p) in Iterators.product(n_plot, δ_plot)]
     # plot(δ_plot, π_wot_plot'; plot_settings...)
     # plot(n_plot, π_wot_plot; plot_settings...)
 

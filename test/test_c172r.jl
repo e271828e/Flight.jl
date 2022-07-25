@@ -1,4 +1,4 @@
-module TestIntegration
+module TestC172R
 
 using Test
 using UnPack
@@ -6,12 +6,38 @@ using BenchmarkTools
 
 using Flight
 
-export test_integration
+export test_c172r
 
-function test_integration()
-    @testset verbose = true "Integration" begin
-        test_nrt(false)
+function test_c172r()
+    @testset verbose = true "Cessna172R" begin
+
+        @testset verbose = true "Performance" begin test_system() end
+        @testset verbose = true "Simulation" begin test_sim_nrt(save = false) end
+
     end
+end
+
+function test_system()
+
+        trn = HorizontalTerrain();
+        atm = System(Atmosphere());
+
+        ac_LTF = System(Cessna172R(LTF()));
+        ac_ECEF = System(Cessna172R(ECEF()));
+        ac_NED = System(Cessna172R(NED()));
+
+        #all three kinematics implementations must be supported, no allocations
+        @test @ballocated(f_cont!($ac_LTF, $atm, $trn)) == 0
+        @test @ballocated(f_disc!($ac_LTF)) == 0
+
+        @test @ballocated(f_cont!($ac_ECEF, $atm, $trn)) == 0
+        @test @ballocated(f_disc!($ac_ECEF)) == 0
+
+        @test @ballocated(f_cont!($ac_NED, $atm, $trn)) == 0
+        @test @ballocated(f_disc!($ac_NED)) == 0
+
+    return nothing
+
 end
 
 function get_input_callback()
@@ -50,7 +76,7 @@ function get_output_callback()
 
 end
 
-function test_nrt(save::Bool = true)
+function test_sim_nrt(; save::Bool = true)
 
     h_trn = AltO(608.55);
 
@@ -86,7 +112,7 @@ function test_nrt(save::Bool = true)
 
     sim = Simulation(ac; args_c = (atm, trn), t_end = 150, sim_callback = callback!)
 
-    Sim.run!(sim; verbose = true)
+    Sim.run!(sim)
     plots = make_plots(sim; Plotting.defaults...)
     save ? save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test")) : nothing
 
@@ -94,7 +120,7 @@ function test_nrt(save::Bool = true)
 
 end
 
-function test_rt(save::Bool = true)
+function test_sim_rt(; save::Bool = true)
 
     h_trn = AltO(608.55);
 
@@ -129,7 +155,7 @@ function test_rt(save::Bool = true)
         )
 
 
-    Sim.run!(sim; verbose = true)
+    Sim.run!(sim)
     plots = make_plots(sim; Plotting.defaults...)
     save ? save_plots(plots, save_folder = joinpath("tmp", "rt_sim_test")) : nothing
 

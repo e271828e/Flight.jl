@@ -9,7 +9,7 @@ using Zygote: gradient
 using Flight
 
 using Flight.Propellers: DefaultAirfoil, cL, cD, cL_α
-using Flight.Propellers: Blade, Coefficients, Dataset
+using Flight.Propellers: Blade, Coefficients, Lookup
 
 export test_propellers
 
@@ -17,7 +17,7 @@ function test_propellers()
     @testset verbose = true "Propellers" begin
         test_default_airfoil()
         test_coefficients()
-        test_dataset()
+        test_lookup()
         test_propeller()
     end
 end
@@ -79,13 +79,13 @@ function test_coefficients()
 
 end
 
-function test_dataset()
+function test_lookup()
 
-    @testset verbose = true "Dataset" begin
+    @testset verbose = true "Lookup" begin
 
         @testset verbose = true "FixedPitch" begin
 
-            fpd = Dataset(FixedPitch(), Blade(), 2; n_J = 20, n_M_tip = 5)
+            fpd = Lookup(FixedPitch(), Blade(), 2; n_J = 20, n_M_tip = 5)
 
             J_bounds, M_tip_bounds = bounds(fpd)
             J = range(J_bounds[1], J_bounds[2], length = 100)
@@ -100,7 +100,7 @@ function test_dataset()
 
         @testset verbose = true "VariablePitch" begin
 
-            vpd = Dataset(FixedPitch(), Blade(), 2; n_J = 20, n_M_tip = 5, n_Δβ = 5)
+            vpd = Lookup(FixedPitch(), Blade(), 2; n_J = 20, n_M_tip = 5, n_Δβ = 5)
 
             J_bounds, M_tip_bounds, Δβ_bounds = bounds(vpd)
             J = range(J_bounds[1], J_bounds[2], length = 100)

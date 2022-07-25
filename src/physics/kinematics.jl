@@ -437,7 +437,7 @@ function f_cont!(sys::System{NED})
 
 end
 
-f_disc!(sys::System{NED}) = false
+f_disc!(sys::System{NED}, args...) = false
 
 
 ################################# Plotting #####################################

@@ -9,7 +9,7 @@ include("test_propellers.jl")
 include("test_friction.jl")
 include("test_piston.jl")
 include("test_landing_gear.jl")
-include("test_integration.jl")
+include("test_c172r.jl")
 
 using .TestQuaternions
 using .TestAttitude
@@ -19,7 +19,7 @@ using .TestPropellers
 using .TestFriction
 using .TestPiston
 using .TestLandingGear
-using .TestIntegration
+using .TestC172R
 
 test_quaternions()
 test_attitude()
@@ -29,4 +29,4 @@ test_propellers()
 test_friction()
 test_landing_gear()
 test_piston()
-test_integration()
+test_c172r()

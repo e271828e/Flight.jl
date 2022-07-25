@@ -112,7 +112,7 @@ f_disc!(::System{IdleController}, args...) = false
 #based on performance data available for the Lycoming IO-360A engine. data is
 #normalized with rated power and rated speed to allow for arbitrary engine
 #sizing
-struct Engine{D} <: AbstractPistonEngine
+struct Engine{L} <: AbstractPistonEngine
     P_rated::Float64
     ω_rated::Float64
     ω_stall::Float64 #speed below which engine shuts down
@@ -120,7 +120,7 @@ struct Engine{D} <: AbstractPistonEngine
     M_start::Float64 #starter torque
     J::Float64 #equivalent axial moment of inertia of the engine shaft
     idle::IdleController
-    dataset::D
+    lookup::L
 end
 
 function Engine(;
@@ -135,9 +135,9 @@ function Engine(;
 
     n_stall = ω_stall / ω_rated
     n_cutoff = ω_cutoff / ω_rated
-    dataset = generate_dataset(; n_stall, n_cutoff)
+    lookup = generate_lookup(; n_stall, n_cutoff)
 
-    Engine{typeof(dataset)}(P_rated, ω_rated, ω_stall, ω_cutoff, M_start, J, idle, dataset)
+    Engine{typeof(lookup)}(P_rated, ω_rated, ω_stall, ω_cutoff, M_start, J, idle, lookup)
 end
 
 @enum EngineState begin
@@ -180,7 +180,7 @@ init(::SystemD, ::Engine) = PistonEngineD()
 
 function f_cont!(eng::System{<:Engine}, air::AirflowData, ω::Real)
 
-    @unpack ω_rated, P_rated, J, M_start, dataset = eng.params
+    @unpack ω_rated, P_rated, J, M_start, lookup = eng.params
     @unpack thr, mix, start, stop = eng.u
     state = eng.d.state
 
@@ -197,7 +197,7 @@ function f_cont!(eng::System{<:Engine}, air::AirflowData, ω::Real)
     δ = p2δ(air.p)
 
     #normalized MAP at wide open throttle
-    μ_wot = dataset.μ_wot(n, δ)
+    μ_wot = lookup.μ_wot(n, δ)
 
     #actual, part throttle normalized MAP
     μ = μ_wot * (μ_ratio_idle + throttle * (1 - μ_ratio_idle))
@@ -222,18 +222,18 @@ function f_cont!(eng::System{<:Engine}, air::AirflowData, ω::Real)
 
         #normalized power at part throttle, altitude, ISA conditions and maximum
         #power mixture
-        π_ISA_pow = compute_π_ISA_pow(dataset, n, μ, δ)
+        π_ISA_pow = compute_π_ISA_pow(lookup, n, μ, δ)
 
         #correction for non-ISA conditions
         π_pow = π_ISA_pow * √(T_ISA(air.p)/air.T)
 
         #correction for arbitrary mixture setting
-        π_actual = π_pow * dataset.π_ratio(mixture)
+        π_actual = π_pow * lookup.π_ratio(mixture)
 
         MAP = μ * p_std
         P = P_rated * π_actual
         M = (ω > 0 ? P / ω : 0.0) #for ω < ω_stall we should not even be here
-        SFC = dataset.sfc_pow(n, π_actual) * dataset.sfc_ratio(mixture)
+        SFC = lookup.sfc_pow(n, π_actual) * lookup.sfc_ratio(mixture)
         ṁ = SFC * P
 
     end
@@ -269,7 +269,7 @@ function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply}, ω::
 end
 
 
-function generate_dataset(; n_stall, n_cutoff)
+function generate_lookup(; n_stall, n_cutoff)
 
     @assert n_stall < 1
     @assert n_cutoff > 1
@@ -392,17 +392,17 @@ function generate_dataset(; n_stall, n_cutoff)
 
 end
 
-function compute_π_ISA_pow(dataset, n, μ, δ)
+function compute_π_ISA_pow(lookup, n, μ, δ)
 
-        δ_wot = dataset.δ_wot(n, μ) #δ at which our μ would be μ_wot
+        δ_wot = lookup.δ_wot(n, μ) #δ at which our μ would be μ_wot
 
         #normalized power at part throttle, sea level, ISA conditions (δ = 1)
         #and maximum power mixture
-        π_std = dataset.π_std(n, μ)
+        π_std = lookup.π_std(n, μ)
 
         #normalized power at full throttle, altitude, ISA conditions and maximum
         #power mixture
-        π_wot = dataset.π_wot(n, δ_wot)
+        π_wot = lookup.π_wot(n, δ_wot)
 
         if abs(δ_wot - 1) < 5e-3
             π_ISA_pow = π_std

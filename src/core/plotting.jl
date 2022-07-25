@@ -130,22 +130,4 @@ function save_plots(dict::OrderedDict{Symbol, T} where {T};
 end
 
 
-
-
-
-# # splt_α = thplot(t, rad2deg.(α_b);
-# #     title = "Angle of Attack", ylabel = L"$\alpha \ (deg)$",
-# #     label = "", kwargs...)
-
-# # splt_β = thplot(t, rad2deg.(β_b);
-# #     title = "Angle of Sideslip", ylabel = L"$\beta \ (deg)$",
-# #     label = "", kwargs...)
-
-# # pd["05_α_β"] = plot(splt_α, splt_β;
-# #     plot_title = "Airflow Angles [Airframe]",
-# #     layout = (1,2),
-# #     kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
-
-
 end #module

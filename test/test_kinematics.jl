@@ -16,52 +16,70 @@ function test_kinematics()
 
     @testset verbose = true "Kinematics" begin
 
-    sys_ECEF = System(ECEF())
-    sys_LTF = System(LTF())
-    sys_NED = System(NED())
+        sys_ECEF = System(ECEF())
+        sys_LTF = System(LTF())
+        sys_NED = System(NED())
 
-    @test (@ballocated f_cont!($sys_ECEF)) == 0
-    @test (@ballocated f_cont!($sys_LTF)) == 0
-    @test (@ballocated f_cont!($sys_NED)) == 0
+        @testset verbose = true "Performance" begin
 
-    kin_init = KinematicInit(
-        Ob = GeographicLocation(LatLon(π/3, -π/6), AltE(12354)),
-        ω_lb_b = [0.1, 0.1, -0.2],
-        v_eOb_n = [100, 10, -4])
+            @test (@ballocated f_cont!($sys_ECEF)) == 0
+            @test (@ballocated f_cont!($sys_LTF)) == 0
+            @test (@ballocated f_cont!($sys_NED)) == 0
 
-    Kinematics.init!(sys_ECEF, kin_init)
-    Kinematics.init!(sys_LTF, kin_init)
-    Kinematics.init!(sys_NED, kin_init)
+            sys_LTF.x.pos.q_lb[1] = 3 #force renormalization in f_disc!
+            sys_ECEF.x.pos.q_eb[1] = 3 #force renormalization in f_disc!
+            @test @ballocated(f_disc!($sys_LTF)) == 0
+            @test @ballocated(f_disc!($sys_ECEF)) == 0
+            @test @ballocated(f_disc!($sys_NED)) == 0
 
-    #let the kinematic state propagate to y
-    f_cont!(sys_ECEF)
-    f_cont!(sys_LTF)
-    f_cont!(sys_NED)
+        end
 
-    #check the initialization yields consistent results between implementations
-    @test sys_ECEF.y.q_nb ≈ sys_LTF.y.q_nb
-    @test sys_ECEF.y.n_e ≈ sys_LTF.y.n_e
-    @test sys_ECEF.y.h_e ≈ sys_LTF.y.h_e
-    @test sys_ECEF.y.v_eOb_b ≈ sys_LTF.y.v_eOb_b
-    @test sys_ECEF.y.ω_eb_b ≈ sys_LTF.y.ω_eb_b
+        @testset verbose = true "Initialization" begin
 
-    sim_ECEF = Simulation(sys_ECEF; t_end = 20);
-    sim_LTF = Simulation(sys_LTF; t_end = 20);
-    sim_NED = Simulation(sys_NED; t_end = 20);
+            kin_init = KinematicInit(
+                Ob = GeographicLocation(LatLon(π/3, -π/6), AltE(12354)),
+                ω_lb_b = [0.1, 0.1, -0.2],
+                v_eOb_n = [100, 10, -4])
 
-    Sim.run!(sim_ECEF)
-    Sim.run!(sim_LTF)
-    Sim.run!(sim_NED)
+            Kinematics.init!(sys_ECEF, kin_init)
+            Kinematics.init!(sys_LTF, kin_init)
+            Kinematics.init!(sys_NED, kin_init)
 
-    #### validate LTF against ECEF
-    @test sys_ECEF.y.q_nb ≈ sys_LTF.y.q_nb
-    @test sys_ECEF.y.v_eOb_n ≈ sys_LTF.y.v_eOb_n
-    @test sys_ECEF.y.h_e ≈ sys_LTF.y.h_e
+            #let the kinematic state propagate to y
+            f_cont!(sys_ECEF)
+            f_cont!(sys_LTF)
+            f_cont!(sys_NED)
 
-    #### validate NED against LTF
-    @test sys_LTF.y.q_nb ≈ sys_NED.y.q_nb
-    @test sys_LTF.y.v_eOb_n ≈ sys_NED.y.v_eOb_n
-    @test sys_LTF.y.h_e ≈ sys_NED.y.h_e
+            #check the initialization yields consistent results between implementations
+            @test sys_ECEF.y.q_nb ≈ sys_LTF.y.q_nb
+            @test sys_ECEF.y.n_e ≈ sys_LTF.y.n_e
+            @test sys_ECEF.y.h_e ≈ sys_LTF.y.h_e
+            @test sys_ECEF.y.v_eOb_b ≈ sys_LTF.y.v_eOb_b
+            @test sys_ECEF.y.ω_eb_b ≈ sys_LTF.y.ω_eb_b
+
+        end
+
+        @testset verbose = true "Simulation" begin
+
+            sim_ECEF = Simulation(sys_ECEF; t_end = 20);
+            sim_LTF = Simulation(sys_LTF; t_end = 20);
+            sim_NED = Simulation(sys_NED; t_end = 20);
+
+            Sim.run!(sim_ECEF)
+            Sim.run!(sim_LTF)
+            Sim.run!(sim_NED)
+
+            #### validate LTF against ECEF
+            @test sys_ECEF.y.q_nb ≈ sys_LTF.y.q_nb
+            @test sys_ECEF.y.v_eOb_n ≈ sys_LTF.y.v_eOb_n
+            @test sys_ECEF.y.h_e ≈ sys_LTF.y.h_e
+
+            #### validate NED against LTF
+            @test sys_LTF.y.q_nb ≈ sys_NED.y.q_nb
+            @test sys_LTF.y.v_eOb_n ≈ sys_NED.y.v_eOb_n
+            @test sys_LTF.y.h_e ≈ sys_NED.y.h_e
+
+        end
 
     end #testset
 

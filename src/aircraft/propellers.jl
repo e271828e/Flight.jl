@@ -216,29 +216,29 @@ Base.@kwdef struct VariablePitch <: PitchControl
 end
 
 ################################################################################
-################################ Dataset ###################################
+################################ Lookup ###################################
 
-struct Dataset{T <: Interpolations.Extrapolation}
+struct Lookup{T <: Interpolations.Extrapolation}
     _data::Coefficients{T}
 end
 
-Base.getproperty(dataset::Dataset, s::Symbol) = getproperty(dataset, Val(s))
-@generated function Base.getproperty(dataset::Dataset, ::Val{S}) where {S}
+Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
+@generated function Base.getproperty(lookup::Lookup, ::Val{S}) where {S}
     if S === :_data
-        return :(getfield(dataset, :_data))
+        return :(getfield(lookup, :_data))
     elseif S ∈ fieldnames(Coefficients)
-        return :(getfield(getfield(dataset, :_data), $(QuoteNode(S))))
+        return :(getfield(getfield(lookup, :_data), $(QuoteNode(S))))
     else
-        error("Dataset has no property $S")
+        error("Lookup has no property $S")
     end
 end
 
-Interpolations.knots(dataset::Dataset) = Interpolations.knots(dataset.C_Fx)
-Interpolations.bounds(dataset::Dataset) = Interpolations.bounds(dataset.C_Fx.itp)
+Interpolations.knots(lookup::Lookup) = Interpolations.knots(lookup.C_Fx)
+Interpolations.bounds(lookup::Lookup) = Interpolations.bounds(lookup.C_Fx.itp)
 
-#compute coefficient dataset for a propeller with n_blades of the specified
-#geometry and specified pitch control
-function Dataset(p::PitchControl, blade::Blade, n_blades::Int; opts...)
+#compute coefficient lookup tables for a propeller with n_blades of the
+#specified geometry and specified pitch control
+function Lookup(p::PitchControl, blade::Blade, n_blades::Int; opts...)
 
     n_ζ = get(opts, :n_ζ, 101)
 
@@ -266,20 +266,20 @@ function Dataset(p::PitchControl, blade::Blade, n_blades::Int; opts...)
     interps = [extrapolate(scale(interpolate(coef, (J_mode, M_tip_mode, Δβ_mode)), J_scaling, M_tip_scaling, Δβ_scaling), (Flat(), Flat(), Flat()))
             for coef in data]
 
-    Dataset(Coefficients(interps...))
+    Lookup(Coefficients(interps...))
 
 end
 
-function Coefficients(dataset::Dataset, J::Real, M_tip::Real, Δβ::Real)
+function Coefficients(lookup::Lookup, J::Real, M_tip::Real, Δβ::Real)
 
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = dataset
+    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = lookup
 
     Coefficients(  C_Fx = C_Fx(J, M_tip, Δβ), C_Mx = C_Mx(J, M_tip, Δβ),
                         C_Fz_α = C_Fz_α(J, M_tip, Δβ), C_Mz_α = C_Mz_α(J, M_tip, Δβ),
                         C_P = C_P(J, M_tip, Δβ), η_p = η_p(J, M_tip, Δβ))
 end
 
-(d::Dataset)(J::Real, M_tip::Real, Δβ::Real) = Coefficients(d, J, M_tip, Δβ)
+(d::Lookup)(J::Real, M_tip::Real, Δβ::Real) = Coefficients(d, J, M_tip, Δβ)
 
 ################################################################################
 ################################ Propeller #####################################
@@ -295,10 +295,10 @@ MassTrait(::System{<:AbstractPropeller}) = HasNoMass()
 WrenchTrait(::System{<:AbstractPropeller}) = GetsExternalWrench()
 AngularMomentumTrait(::System{<:AbstractPropeller}) = HasAngularMomentum()
 
-struct Propeller{P <: PitchControl, B <: Blade,  D <: Dataset} <: AbstractPropeller
+struct Propeller{P <: PitchControl, B <: Blade,  L <: Lookup} <: AbstractPropeller
     pitch::P
     blade::B
-    dataset::D
+    lookup::L
     n_blades::Int
     sense::TurnSense
     d::Float64 #diameter
@@ -307,12 +307,12 @@ struct Propeller{P <: PitchControl, B <: Blade,  D <: Dataset} <: AbstractPropel
 end
 
 function Propeller(; pitch = FixedPitch(), blade = Blade(), n_blades = 2,
-                   d = 2.0, J_xx = 0.3, sense = CW, t_bp = FrameTransform(), dataset_opts = ())
+                   d = 2.0, J_xx = 0.3, sense = CW, t_bp = FrameTransform(), lookup_opts = ())
 
-    dataset = Dataset(pitch, blade, n_blades; dataset_opts...)
+    lookup = Lookup(pitch, blade, n_blades; lookup_opts...)
 
-    Propeller{typeof(pitch), typeof(blade), typeof(dataset)}(
-        pitch, blade, dataset, n_blades, sense, d, J_xx, t_bp)
+    Propeller{typeof(pitch), typeof(blade), typeof(lookup)}(
+        pitch, blade, lookup, n_blades, sense, d, J_xx, t_bp)
 end
 
 
@@ -339,7 +339,7 @@ get_Δβ(sys::System{<:Propeller{VariablePitch}}) = linear_scaling(sys.u[], sys.
 
 function f_cont!(sys::System{<:Propeller}, kin::KinematicData, air::AirflowData, ω::Real)
 
-    @unpack d, J_xx, t_bp, sense, dataset = sys.params
+    @unpack d, J_xx, t_bp, sense, lookup = sys.params
     #remove this, it may happen due to friction overshoot at low RPMs
     # @assert sign(ω) * Int(sys.params.sense) >= 0 "Propeller turning in the wrong sense"
 
@@ -357,7 +357,7 @@ function f_cont!(sys::System{<:Propeller}, kin::KinematicData, air::AirflowData,
     M_tip = abs(ω)*(d/2) / air.a
 
     Δβ = get_Δβ(sys)
-    coeffs = Coefficients(dataset, J, M_tip, Δβ)
+    coeffs = Coefficients(lookup, J, M_tip, Δβ)
 
     @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = coeffs
     C_Fy_β = C_Fz_α #by y/z symmetry
@@ -433,13 +433,13 @@ function plot_airfoil(airfoil::Propellers.AbstractAirfoil; plot_settings...)
 
 end
 
-function plot_J_Δβ(dataset::Propellers.Dataset, M_tip::Real = 0.0; plot_settings...)
+function plot_J_Δβ(lookup::Propellers.Lookup, M_tip::Real = 0.0; plot_settings...)
 
-    J = knots(dataset).iterators[1] |> collect
-    Δβ_bounds = bounds(dataset)[3]
+    J = knots(lookup).iterators[1] |> collect
+    Δβ_bounds = bounds(lookup)[3]
     Δβ = range(Δβ_bounds[1], Δβ_bounds[2], length = 5)
 
-    data = [dataset(J, M_tip, Δβ) for (J, Δβ) in Iterators.product(J, Δβ)]
+    data = [lookup(J, M_tip, Δβ) for (J, Δβ) in Iterators.product(J, Δβ)]
     data = data |> StructArray |> StructArrays.components
 
     @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
@@ -463,13 +463,13 @@ function plot_J_Δβ(dataset::Propellers.Dataset, M_tip::Real = 0.0; plot_settin
 
 end
 
-function plot_M_J(dataset::Propellers.Dataset, Δβ::Real = 0.0; plot_settings...)
+function plot_M_J(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
 
-    M_tip = knots(dataset).iterators[2] |> collect
-    J_bounds = bounds(dataset)[1]
+    M_tip = knots(lookup).iterators[2] |> collect
+    J_bounds = bounds(lookup)[1]
     J = range(J_bounds[1], J_bounds[2], length = 5)
 
-    data = [dataset(J, M_tip, Δβ) for (M_tip, J) in Iterators.product(M_tip, J)]
+    data = [lookup(J, M_tip, Δβ) for (M_tip, J) in Iterators.product(M_tip, J)]
     data = data |> StructArray |> StructArrays.components
 
     @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
@@ -494,13 +494,13 @@ function plot_M_J(dataset::Propellers.Dataset, Δβ::Real = 0.0; plot_settings..
 
 end
 
-function plot_J_M(dataset::Propellers.Dataset, Δβ::Real = 0.0; plot_settings...)
+function plot_J_M(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
 
-    J = knots(dataset).iterators[1] |> collect
-    M_tip_bounds = bounds(dataset)[2]
+    J = knots(lookup).iterators[1] |> collect
+    M_tip_bounds = bounds(lookup)[2]
     M_tip = range(M_tip_bounds[1], M_tip_bounds[2], length = 5)
 
-    data = [dataset(J, M_tip, Δβ) for (J, M_tip) in Iterators.product(J, M_tip)]
+    data = [lookup(J, M_tip, Δβ) for (J, M_tip) in Iterators.product(J, M_tip)]
     data = data |> StructArray |> StructArrays.components
 
     @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
