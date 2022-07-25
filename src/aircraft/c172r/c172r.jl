@@ -102,12 +102,11 @@ get_mp_b(::System{Structure}) = mp_b_str
 
 ############################ Aerodynamics ######################################
 
-include("aero_dataset.jl")
-
-const aero_dataset_default = load_aero_data("src/aircraft/c172r/aero_dataset.h5")
+include("c172r_aero.jl")
 
 #the aircraft body reference frame fb is arbitrarily chosen to coincide with
 #the aerodynamics frame fa, so the frame transform is trivial
+const aero_lookup = generate_aero_lookup()
 const f_ba = FrameTransform()
 
 # if this weren't the case, and cared not only about the rotation but also
@@ -118,6 +117,37 @@ const f_ba = FrameTransform()
 # v_wOa_b = v_wOb_b + ω_eb_b × r_ObOa_b
 # v_wOa_a = q_ba'(v_wOa_b)
 
+Base.@kwdef struct AeroCoeffs
+    C_D::Float64 = 0.0
+    C_Y::Float64 = 0.0
+    C_L::Float64 = 0.0
+    C_l::Float64 = 0.0
+    C_m::Float64 = 0.0
+    C_n::Float64 = 0.0
+end
+
+function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
+
+    #set sensible bounds for inputs that might become ill-defined
+    α = clamp(α, -0.1, 0.4)
+    β = clamp(β, -0.1, 0.4)
+    α_dot_nd = clamp(α_dot_nd, -0.04, 0.04)
+    β_dot_nd = clamp(β_dot_nd, -0.2, 0.2)
+
+    @unpack C_D, C_Y, C_L, C_l, C_m, C_n = aero_lookup
+
+    AeroCoeffs(
+        C_D = C_D.z + C_D.ge(Δh_nd) * (C_D.α_δf(α,δf) + C_D.δf(δf)) + C_D.δe(δe) + C_D.β(β),
+        C_Y = C_Y.δr * δr + C_Y.δa * δa + C_Y.β_δf(β,δf) + C_Y.p(α,δf) * p_nd + C_Y.r(α,δf) * r_nd,
+        C_L = C_L.ge(Δh_nd) * (C_L.α(α,stall) + C_L.δf(δf)) + C_L.δe * δe + C_L.q * q_nd + C_L.α_dot * α_dot_nd,
+        C_l = C_l.δa * δa + C_l.δr * δr + C_l.β * β + C_l.p * p_nd + C_l.r(α,δf) * r_nd,
+        C_m = C_m.z + C_m.δe * δe + C_m.δf(δf) + C_m.α * α + C_m.q * q_nd + C_m.α_dot * α_dot_nd,
+        C_n = C_n.δr * δr + C_n.δa * δa + C_n.β * β + C_n.p * p_nd + C_n.r * r_nd,
+    )
+
+end
+
+
 Base.@kwdef struct Aero <: AbstractAerodynamics
     S::Float64 = 16.165 #wing area
     b::Float64 = 10.912 #wingspan
@@ -126,8 +156,6 @@ Base.@kwdef struct Aero <: AbstractAerodynamics
     δa_range::NTuple{2,Float64} = deg2rad.((-20, 20)) #aileron deflection range (rad)
     δr_range::NTuple{2,Float64} = deg2rad.((-16, 16)) #rudder deflection range (rad)
     δf_range::NTuple{2,Float64} = deg2rad.((0, 30)) #flap deflection range (rad)
-    α_bounds::NTuple{2,Float64} = (-0.1, 0.4) #α bounds for aerodynamic dataset input
-    β_bounds::NTuple{2,Float64} = (-0.1, 0.4) #β bounds for aerodynamic dataset input
     α_stall::NTuple{2,Float64} = (0.09, 0.36) #α values for stall hysteresis switching
     V_min::Float64 = 1.0 #lower airspeed threshold for non-dimensional angle rates
     τ::Float64 = 0.1 #time constant for filtered airflow angle derivatives
@@ -142,15 +170,6 @@ end
 
 Base.@kwdef mutable struct AeroD #discrete state
     stall::Bool = false
-end
-
-Base.@kwdef struct AeroCoeffs
-    C_D::Float64 = 0.0
-    C_Y::Float64 = 0.0
-    C_L::Float64 = 0.0
-    C_l::Float64 = 0.0
-    C_m::Float64 = 0.0
-    C_n::Float64 = 0.0
 end
 
 Base.@kwdef struct AeroY
@@ -175,21 +194,6 @@ init(::SystemU, ::Aero) = AeroU()
 init(::SystemD, ::Aero) = AeroD()
 
 
-function get_aero_coeffs(data = aero_dataset_default; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
-
-    @unpack C_D, C_Y, C_L, C_l, C_m, C_n = data
-
-    AeroCoeffs(
-        C_D = C_D.z + C_D.ge(Δh_nd) * (C_D.α_δf(α,δf) + C_D.δf(δf)) + C_D.δe(δe) + C_D.β(β),
-        C_Y = C_Y.δr * δr + C_Y.δa * δa + C_Y.β_δf(β,δf) + C_Y.p(α,δf) * p_nd + C_Y.r(α,δf) * r_nd,
-        C_L = C_L.ge(Δh_nd) * (C_L.α(α,stall) + C_L.δf(δf)) + C_L.δe * δe + C_L.q * q_nd + C_L.α_dot * α_dot_nd,
-        C_l = C_l.δa * δa + C_l.δr * δr + C_l.β * β + C_l.p * p_nd + C_l.r(α,δf) * r_nd,
-        C_m = C_m.z + C_m.δe * δe + C_m.δf(δf) + C_m.α * α + C_m.q * q_nd + C_m.α_dot * α_dot_nd,
-        C_n = C_n.δr * δr + C_n.δa * δa + C_n.β * β + C_n.p * p_nd + C_n.r * r_nd,
-    )
-
-end
-
 function f_cont!(sys::System{Aero}, ::System{<:Piston.Thruster},
     air::AirflowData, kinematics::KinematicData, terrain::AbstractTerrain)
 
@@ -201,15 +205,13 @@ function f_cont!(sys::System{Aero}, ::System{<:Piston.Thruster},
     @unpack ẋ, x, u, d, params = sys
     @unpack α_filt, β_filt = x
     @unpack e, a, r, f = u
-    @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_bounds, β_bounds, α_stall, V_min, τ = params
+    @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = params
     @unpack TAS, q, v_wOb_b = air
     @unpack ω_lb_b, n_e, h_o = kinematics
     stall = d.stall
 
     v_wOb_a = f_ba.q'(v_wOb_b)
     α, β = get_airflow_angles(v_wOb_a)
-    α = clamp(α, α_bounds[1], α_bounds[2])
-    β = clamp(β, β_bounds[1], β_bounds[2])
     V = max(TAS, V_min) #avoid division by zero
 
     α_filt_dot = 1/τ * (α - α_filt)
@@ -236,8 +238,8 @@ function f_cont!(sys::System{Aero}, ::System{<:Piston.Thruster},
     # T = get_wr_b(pwp).F[1]
     # C_T = T / (q * S) #thrust coefficient, not used here
 
-    coeffs = get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf,
-                               α_dot_nd, β_dot_nd, Δh_nd, stall)
+    coeffs = get_aero_coeffs(;
+        α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
 
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
 

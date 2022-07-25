@@ -1,7 +1,7 @@
 using HDF5
 using Interpolations
 
-function generate_data(fname = "src/aircraft/c172r/aero_dataset.h5")
+function generate_aero_data(fname = "src/aircraft/c172r/c172r_aero.h5")
 
     h5open(fname, "w") do fid
 
@@ -179,7 +179,7 @@ function generate_data(fname = "src/aircraft/c172r/aero_dataset.h5")
 
 end
 
-function load_aero_data( fname = "src/aircraft/c172r/aero_dataset.h5")
+function generate_aero_lookup( fname = "src/aircraft/c172r/c172r_aero.h5")
 
     fid = h5open(fname, "r")
 

@@ -66,7 +66,7 @@ function test_nrt(save::Bool = true)
             h_trn + 1.9 + 2200.5));
 
     Aircraft.init!(ac, kin_init)
-    ac.airframe.pwp.engine.u.start = true #engine start switch on
+    ac.u.avionics.eng_start = true #engine start switch on
 
     atm.u.wind.v_ew_n[1] = 0
 
@@ -110,8 +110,8 @@ function test_rt(save::Bool = true)
             h_trn + 1.9 + 100.5));
 
     Aircraft.init!(ac, kin_init)
-    ac.airframe.pwp.engine.u.start = true #engine start switch on
-    ac.airframe.pwp.engine.u.thr = 1
+    ac.u.avionics.eng_start = true #engine start switch on
+    ac.u.avionics.throttle = 1
 
     callback! = let input_callback! = get_input_callback(), output_callback = get_output_callback()
 
