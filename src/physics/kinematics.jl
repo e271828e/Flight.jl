@@ -22,13 +22,23 @@ export AbstractKinematics, ECEF, LTF, NED, KinematicInit, KinematicData
 
 abstract type AbstractKinematics <: SystemDescriptor end
 
-Base.@kwdef struct Initializer
-    ω_lb_b::SVector{3, Float64} = zeros(SVector{3})
-    v_eOb_n::SVector{3, Float64} = zeros(SVector{3})
-    q_nb::RQuat = RQuat()
-    Ob::GeographicLocation{NVector,Ellipsoidal} = GeographicLocation()
-    Δx::Float64 = 0.0
-    Δy::Float64 = 0.0
+struct Initializer
+    q_nb::RQuat
+    Ob::GeographicLocation{NVector, Ellipsoidal}
+    ω_lb_b::SVector{3, Float64}
+    v_eOb_n::SVector{3, Float64}
+    Δx::Float64
+    Δy::Float64
+
+end
+
+function Initializer(;
+    q_nb::Abstract3DRotation = RQuat(), l2d::Abstract2DLocation = LatLon(),
+    h::Altitude = AltO(), ω_lb_b::AbstractVector{<:Real} = zeros(3),
+    v_eOb_n::AbstractVector{<:Real} = zeros(3), Δx::Real = 0.0, Δy::Real = 0.0)
+
+    Ob = GeographicLocation(l2d, h)
+    Initializer(q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy)
 end
 
 struct Common

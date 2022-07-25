@@ -87,10 +87,13 @@ una cinematica NED. esa ha sido la razon inmediata para implementarla!
 asi que trim_cost(::Cessna172R{NED}, trim_state, trim_parameters, trim_configuration,
 atmosphere, terrain)
 
-y ya para resolver creamos una anonymous function:
+y ya para optimizar creamos una anonymous function:
 let ac = ac, trim_parameters = trim_parameters, trim_configuration = trim_configuration, atmosphere, terrain
  f = x -> trim_cost!(ac, x, trim_parameters, atmosphere, terrain)
 end
+
+metemos un assert que compruebe que no hay wow
+
 """
 
 function get_target_function(aircraft, atmosphere, terrain, trim_parameters, trim_configuration)

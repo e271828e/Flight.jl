@@ -410,6 +410,8 @@ function compute_π_ISA_pow(lookup, n, μ, δ)
             π_ISA_pow = π_std + (π_wot - π_std) / (δ_wot - 1) * (δ - 1)
         end
 
+        return max(π_ISA_pow, 0)
+
 end
 
 ############################# Thruster ###################################

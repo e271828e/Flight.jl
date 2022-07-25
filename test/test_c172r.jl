@@ -87,9 +87,8 @@ function test_sim_nrt(; save::Bool = true)
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-        Ob = GeographicLocation(
-            LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-            h_trn + 1.9 + 2200.5));
+        l2d = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        h = h_trn + 1.9 + 2200.5);
 
     Aircraft.init!(ac, kin_init)
     ac.u.avionics.eng_start = true #engine start switch on
@@ -131,9 +130,8 @@ function test_sim_rt(; save::Bool = true)
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-        Ob = GeographicLocation(
-            LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-            h_trn + 1.9 + 100.5));
+        l2d = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        h = h_trn + 1.9 + 100.5);
 
     Aircraft.init!(ac, kin_init)
     ac.u.avionics.eng_start = true #engine start switch on

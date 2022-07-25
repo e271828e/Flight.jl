@@ -100,7 +100,7 @@ function test_engine_dynamics()
 
     @testset verbose = true "EngineDynamics" begin
 
-        kin = KinematicInit(v_eOb_n = [50, 0, 0]) |> KinematicData
+        kin = KinematicInit(h = AltE(), v_eOb_n = [50, 0, 0]) |> KinematicData
         atm = Atmosphere() |> System
         air = AirflowData(kin, atm)
         eng = Engine() |> System
