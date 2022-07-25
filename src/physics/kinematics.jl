@@ -64,14 +64,14 @@ Base.@kwdef struct NEDSpecific
     ω_en_n::SVector{3,Float64}
 end
 
-struct Y{S <: Union{ECEFSpecific, LTFSpecific, NEDSpecific}}
+struct KinematicsY{S <: Union{ECEFSpecific, LTFSpecific, NEDSpecific}}
     common::Common
     specific::S
 end
 
-Base.getproperty(y::Y, s::Symbol) = getproperty(y, Val(s))
+Base.getproperty(y::KinematicsY, s::Symbol) = getproperty(y, Val(s))
 
-@generated function Base.getproperty(y::Y{T}, ::Val{S}) where {T, S}
+@generated function Base.getproperty(y::KinematicsY{T}, ::Val{S}) where {T, S}
     if S === :common || S === :specific
         return :(getfield(y, $(QuoteNode(S))))
     elseif S ∈ fieldnames(Common)
@@ -79,11 +79,11 @@ Base.getproperty(y::Y, s::Symbol) = getproperty(y, Val(s))
     elseif S ∈ fieldnames(T)
         return :(getfield(getfield(y, :specific), $(QuoteNode(S))))
     else
-        error("$(typeof(Y)) has no property $S")
+        error("$(typeof(y)) has no property $S")
     end
 end
 
-Common(ic::Initializer = Initializer()) = Y(LTF(), ic).common
+Common(ic::Initializer = Initializer()) = KinematicsY(LTF(), ic).common
 
 function init(::SystemX, kin::AbstractKinematics, ic::Initializer = Initializer())
     x = similar(x_template(kin))
@@ -92,12 +92,12 @@ function init(::SystemX, kin::AbstractKinematics, ic::Initializer = Initializer(
 end
 
 function init(::SystemY, kin::AbstractKinematics, ic::Initializer = Initializer())
-    return Y(kin, ic)
+    return KinematicsY(kin, ic)
 end
 
-function Y(kin::AbstractKinematics, ic::Initializer = Initializer())
+function KinematicsY(kin::AbstractKinematics, ic::Initializer = Initializer())
     x = init(SystemX(), kin, ic)
-    return Y(x)
+    return KinematicsY(x)
 end
 
 init!(sys::System{<:AbstractKinematics}, ic::Initializer = Initializer()) = init!(sys.x, ic)
@@ -182,7 +182,7 @@ function init!(x::XLTF, ic::Initializer = Initializer())
 
 end
 
-function Y(x::XLTF)
+function KinematicsY(x::XLTF)
 
     x_pos = x.pos; x_vel = x.vel
     q_lb = RQuat(x_pos.q_lb, normalization = false)
@@ -212,7 +212,7 @@ function Y(x::XLTF)
     ω_ie_b = q_eb'(ω_ie_e)
     ω_ib_b = ω_ie_b + ω_eb_b
 
-    return Y(
+    return KinematicsY(
         Common(q_nb, q_eb, n_e, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
         LTFSpecific(; q_lb, q_el, ω_el_l)
     )
@@ -223,7 +223,7 @@ end
 function f_cont!(sys::System{LTF})
 
     #compute and update y
-    sys.y = Y(sys.x)
+    sys.y = KinematicsY(sys.x)
 
     @unpack q_lb, q_el, ω_lb_b, ω_el_l, v_eOb_n = sys.y
 
@@ -283,7 +283,7 @@ function init!(x::XECEF, ic::Initializer = Initializer())
 
 end
 
-function Y(x::XECEF)
+function KinematicsY(x::XECEF)
 
     x_pos = x.pos; x_vel = x.vel
     q_eb = RQuat(x_pos.q_eb, normalization = false)
@@ -307,7 +307,7 @@ function Y(x::XECEF)
     ω_ie_b = q_eb'(ω_ie_e)
     ω_ib_b = ω_ie_b + ω_eb_b
 
-    return Y(
+    return KinematicsY(
         Common(q_nb, q_eb, n_e, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
         ECEFSpecific(; q_en, ω_el_n)
     )
@@ -318,7 +318,7 @@ end
 function f_cont!(sys::System{ECEF})
 
     #compute and update y
-    sys.y = Y(sys.x)
+    sys.y = KinematicsY(sys.x)
 
     @unpack q_eb, q_en, ω_el_n, ω_eb_b, v_eOb_n = sys.y
 
@@ -377,7 +377,7 @@ function init!(x::XNED, ic::Initializer = Initializer())
 
 end
 
-function Y(x::XNED)
+function KinematicsY(x::XNED)
 
     e_nb = REuler(x.pos.e_nb)
     ϕ_λ = LatLon(x.pos.ϕ, x.pos.λ)
@@ -408,7 +408,7 @@ function Y(x::XNED)
     ω_ie_b = q_eb'(ω_ie_e)
     ω_ib_b = ω_ie_b + ω_eb_b
 
-    return Y(
+    return KinematicsY(
         Common(q_nb, q_eb, n_e, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
         NEDSpecific(; e_nb, ϕ_λ, ω_nb_b, ω_en_n)
     )
@@ -419,7 +419,7 @@ end
 function f_cont!(sys::System{NED})
 
     #compute and update y
-    sys.y = Y(sys.x)
+    sys.y = KinematicsY(sys.x)
 
     @unpack e_nb, ϕ_λ, ω_nb_b, ω_en_n, v_eOb_n = sys.y
 
@@ -497,7 +497,7 @@ f_disc!(sys::System{NED}) = false
 
 end
 
-function make_plots(th::TimeHistory{<:Y}; kwargs...)
+function make_plots(th::TimeHistory{<:KinematicsY}; kwargs...)
 
     return OrderedDict(
         :common => make_plots(th.common; kwargs...),
