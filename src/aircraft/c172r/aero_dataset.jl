@@ -1,9 +1,7 @@
 using HDF5
 using Interpolations
 
-function generate_data()
-
-    fname = "src/c172r_aero.h5"
+function generate_data(fname = "src/aircraft/c172r/aero_dataset.h5")
 
     h5open(fname, "w") do fid
 
@@ -181,12 +179,17 @@ function generate_data()
 
 end
 
-function load_data()
+function load_aero_data( fname = "src/aircraft/c172r/aero_dataset.h5")
 
-    fname = "src/c172r_aero.h5"
     fid = h5open(fname, "r")
 
     gr_C_D = fid["C_D"]
+    gr_C_Y = fid["C_Y"]
+    gr_C_L = fid["C_L"]
+    gr_C_l = fid["C_l"]
+    gr_C_m = fid["C_m"]
+    gr_C_n = fid["C_n"]
+
     C_D = (
         z = gr_C_D["zero"] |> read,
         β = LinearInterpolation(gr_C_D["β"]["β"] |> read, gr_C_D["β"]["data"] |> read, extrapolation_bc = Flat()),
@@ -196,7 +199,6 @@ function load_data()
         ge = LinearInterpolation(gr_C_D["ge"]["Δh_nd"] |> read, gr_C_D["ge"]["data"] |> read, extrapolation_bc = Flat())
     )
 
-    gr_C_Y = fid["C_Y"]
     C_Y = (
         δr = gr_C_Y["δr"] |> read,
         δa = gr_C_Y["δa"] |> read,
@@ -205,16 +207,15 @@ function load_data()
         r = LinearInterpolation((gr_C_Y["r"]["α"] |> read,  gr_C_Y["r"]["δf"] |> read), gr_C_Y["r"]["data"] |> read, extrapolation_bc = Flat()),
     )
 
-    gr_C_L = fid["C_L"]
     C_L = (
         δe = gr_C_L["δe"] |> read,
         q = gr_C_L["q"] |> read,
         α_dot = gr_C_L["α_dot"] |> read,
         α = LinearInterpolation((gr_C_L["α"]["α"] |> read,  gr_C_L["α"]["stall"] |> read), gr_C_L["α"]["data"] |> read, extrapolation_bc = Flat()),
         δf = LinearInterpolation(gr_C_L["δf"]["δf"] |> read, gr_C_L["δf"]["data"] |> read, extrapolation_bc = Flat()),
+        ge = LinearInterpolation(gr_C_L["ge"]["Δh_nd"] |> read, gr_C_L["ge"]["data"] |> read, extrapolation_bc = Flat())
     )
 
-    gr_C_l = fid["C_l"]
     C_l = (
         δa = gr_C_l["δa"] |> read,
         δr = gr_C_l["δr"] |> read,
@@ -223,9 +224,8 @@ function load_data()
         r = LinearInterpolation((gr_C_l["r"]["α"] |> read,  gr_C_l["r"]["δf"] |> read), gr_C_l["r"]["data"] |> read, extrapolation_bc = Flat()),
     )
 
-    gr_C_m = fid["C_m"]
     C_m = (
-        zero = gr_C_m["zero"] |> read,
+        z = gr_C_m["zero"] |> read,
         δe = gr_C_m["δe"] |> read,
         α = gr_C_m["α"] |> read,
         q = gr_C_m["q"] |> read,
@@ -233,7 +233,6 @@ function load_data()
         δf = LinearInterpolation(gr_C_m["δf"]["δf"] |> read, gr_C_m["δf"]["data"] |> read, extrapolation_bc = Flat()),
     )
 
-    gr_C_n = fid["C_n"]
     C_n = (
         δr = gr_C_n["δr"] |> read,
         δa = gr_C_n["δa"] |> read,

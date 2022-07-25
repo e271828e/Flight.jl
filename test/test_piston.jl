@@ -17,9 +17,11 @@ using Flight.Air: p_std, T_std
 export test_piston
 
 function test_piston()
-    test_engine_dataset()
-    test_engine_dynamics()
-    test_thruster_dynamics()
+    @testset verbose = true "Piston" begin
+        test_engine_dataset()
+        test_engine_dynamics()
+        test_thruster_dynamics()
+    end
 end
 
 function test_engine_dataset()
@@ -98,7 +100,7 @@ function test_engine_dynamics()
 
     @testset verbose = true "EngineDynamics" begin
 
-        kin = Kinematics.Initializer(v_eOb_n = [50, 0, 0]) |> Kinematics.Common
+        kin = KinematicInit(v_eOb_n = [50, 0, 0]) |> KinematicData
         atm = Atmosphere() |> System
         air = AirflowData(kin, atm)
         eng = Engine() |> System
@@ -139,14 +141,14 @@ function test_engine_dynamics()
         f_cont!(eng, air, ω)
         @test eng.y.M > 0
 
-        #commanded shutdown
+        #commanded stop
         eng.d.state = eng_running
-        eng.u.shutdown = true
+        eng.u.stop = true
         f_disc!(eng, fuel, ω) #engine should start now
-        eng.u.shutdown = false
+        eng.u.stop = false
         @test eng.d.state == eng_off
 
-        #stall shutdown
+        #stall stop
         eng.d.state = eng_running
         ω = 0.95eng.params.ω_stall
         f_disc!(eng, fuel, ω) #engine should start now
@@ -182,10 +184,10 @@ end #function
 
 function test_thruster_dynamics()
 
-    @testset verbose = true "NewThrusterDynamics" begin
+    @testset verbose = true "ThrusterDynamics" begin
 
         #initialize auxiliary elements
-        kin = Kinematics.Initializer(v_eOb_n = [0, 0, 0]) |> Kinematics.Common
+        kin = KinematicInit(v_eOb_n = [0, 0, 0]) |> KinematicData
         atm = Atmosphere() |> System
         air = AirflowData(kin, atm)
         fuel = System(MagicFuelSupply())

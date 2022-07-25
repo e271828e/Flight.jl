@@ -121,7 +121,7 @@ end
 function test_propeller()
 
     t_bp = FrameTransform(r = [1.0, 0, 0])
-    kin = Kinematics.Initializer(v_eOb_n = [50, 0, 0]) |> Kinematics.Common
+    kin = KinematicInit(v_eOb_n = [50, 0, 0]) |> KinematicData
     atm = Atmosphere() |> System
     air = AirflowData(kin, atm)
     ω = 300

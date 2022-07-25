@@ -61,7 +61,8 @@ function h2δ(h)
     p / p_std / √(T / T_std)
 end
 
-#by default, engine mass is assumed to be accounted for in the vehicle's airframe
+#by default, engine mass is assumed to be accounted for in the vehicle's
+#structure
 MassTrait(::System{<:AbstractPistonEngine}) = HasNoMass()
 #the propeller gets it instead
 WrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
@@ -153,14 +154,14 @@ end
 #best power: mixture around 0.5
 Base.@kwdef mutable struct PistonEngineU
     start::Bool = false
-    shutdown::Bool = false
+    stop::Bool = false
     thr::Ranged{Float64, 0, 1} = 0.0 #throttle setting
     mix::Ranged{Float64, 0, 1} = 0.5 #mixture setting
 end
 
 Base.@kwdef struct PistonEngineY
     start::Bool = false #start control
-    shutdown::Bool = false #shutdown control
+    stop::Bool = false #stop control
     throttle::Float64 = 0.0 #throttle setting
     mixture::Float64 = 0.0 #mixture setting
     state::EngineState = eng_off #engine discrete state
@@ -180,7 +181,7 @@ init(::SystemD, ::Engine) = PistonEngineD()
 function f_cont!(eng::System{<:Engine}, air::AirflowData, ω::Real)
 
     @unpack ω_rated, P_rated, J, M_start, dataset = eng.params
-    @unpack thr, mix, start, shutdown = eng.u
+    @unpack thr, mix, start, stop = eng.u
     state = eng.d.state
 
     throttle = Float64(thr)
@@ -237,7 +238,7 @@ function f_cont!(eng::System{<:Engine}, air::AirflowData, ω::Real)
 
     end
 
-    eng.y = PistonEngineY(; start, shutdown, throttle, mixture, state,
+    eng.y = PistonEngineY(; start, stop, throttle, mixture, state,
                             MAP, ω, M, P, SFC, ṁ, idle = eng.idle.y)
 
 end
@@ -259,7 +260,7 @@ function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply}, ω::
 
     else #eng_running
 
-        (ω < ω_stall || eng.u.shutdown || !fuel_available(fuel)) ? eng.d.state = eng_off : nothing
+        (ω < ω_stall || eng.u.stop || !fuel_available(fuel)) ? eng.d.state = eng_off : nothing
 
     end
 
@@ -440,7 +441,7 @@ end
 init(::SystemX, tr::Thruster) = init_x(ω = 0.0, engine = init_x(tr.engine),
     propeller = init_x(tr.propeller), friction = init_x(tr.friction))
 
-function f_cont!(thr::System{<:Thruster}, air::AirflowData, kin::Kinematics.Common)
+function f_cont!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
 
     @unpack engine, propeller, friction = thr
     @unpack n, M = thr.params

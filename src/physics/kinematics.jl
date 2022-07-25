@@ -15,7 +15,7 @@ using Flight.Geodesy
 import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Plotting: make_plots
 
-export AbstractKinematics, ECEF, LTF, NED
+export AbstractKinematics, ECEF, LTF, NED, KinematicInit, KinematicData
 
 ########################## AbstractKinematics #############################
 ##############################################################################
@@ -68,6 +68,9 @@ struct KinematicsY{S <: Union{ECEFSpecific, LTFSpecific, NEDSpecific}}
     common::Common
     specific::S
 end
+
+const KinematicData = Common
+const KinematicInit = Initializer
 
 Base.getproperty(y::KinematicsY, s::Symbol) = getproperty(y, Val(s))
 

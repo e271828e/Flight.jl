@@ -1,4 +1,4 @@
-module TestSim
+module TestIntegration
 
 using Test
 using UnPack
@@ -6,7 +6,13 @@ using BenchmarkTools
 
 using Flight
 
-export test_sim
+export test_integration
+
+function test_integration()
+    @testset verbose = true "Integration" begin
+        test_nrt(false)
+    end
+end
 
 function get_input_callback()
 
@@ -44,14 +50,14 @@ function get_output_callback()
 
 end
 
-function test_sim_nrt()
+function test_nrt(save::Bool = true)
 
     h_trn = AltO(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(Atmosphere());
-    ac = System(C172RAircraft());
-    kin_init = Kinematics.Initializer(
+    ac = System(Cessna172R());
+    kin_init = KinematicInit(
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
@@ -60,7 +66,7 @@ function test_sim_nrt()
             h_trn + 1.9 + 2200.5));
 
     Aircraft.init!(ac, kin_init)
-    ac.vehicle.pwp.engine.u.start = true #engine start switch on
+    ac.airframe.pwp.engine.u.start = true #engine start switch on
 
     atm.u.wind.v_ew_n[1] = 0
 
@@ -82,20 +88,20 @@ function test_sim_nrt()
 
     Sim.run!(sim; verbose = true)
     plots = make_plots(sim; Plotting.defaults...)
-    save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test"))
+    save ? save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test")) : nothing
 
     return sim
 
 end
 
-function test_sim_rt()
+function test_rt(save::Bool = true)
 
     h_trn = AltO(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(Atmosphere());
-    ac = System(C172RAircraft());
-    kin_init = Kinematics.Initializer(
+    ac = System(Cessna172R());
+    kin_init = KinematicInit(
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
@@ -104,8 +110,8 @@ function test_sim_rt()
             h_trn + 1.9 + 100.5));
 
     Aircraft.init!(ac, kin_init)
-    ac.vehicle.pwp.engine.u.start = true #engine start switch on
-    ac.vehicle.pwp.engine.u.thr = 1
+    ac.airframe.pwp.engine.u.start = true #engine start switch on
+    ac.airframe.pwp.engine.u.thr = 1
 
     callback! = let input_callback! = get_input_callback(), output_callback = get_output_callback()
 
@@ -125,8 +131,7 @@ function test_sim_rt()
 
     Sim.run!(sim; verbose = true)
     plots = make_plots(sim; Plotting.defaults...)
-    save_plots(plots, save_folder = joinpath("tmp", "rt_sim_test"))
-    # save_plots(plots, save_folder = joinpath("tmp", "sim_test", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
+    save ? save_plots(plots, save_folder = joinpath("tmp", "rt_sim_test")) : nothing
 
     return sim
 

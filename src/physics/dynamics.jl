@@ -448,7 +448,7 @@ The resulting `Wrench` is defined on the vehicle's reference frame fb.
   projected on vehicle axes
 
 """
-function inertia_wrench(mp_b::MassProperties, kin::Kinematics.Common, hr_b::AbstractVector{<:Real})
+function inertia_wrench(mp_b::MassProperties, kin::KinematicData, hr_b::AbstractVector{<:Real})
 
     @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = kin
 
@@ -470,7 +470,7 @@ function inertia_wrench(mp_b::MassProperties, kin::Kinematics.Common, hr_b::Abst
 
 end
 
-function gravity_wrench(mp_b::MassProperties, kin::Kinematics.Common)
+function gravity_wrench(mp_b::MassProperties, kin::KinematicData)
 
     #gravity can be viewed as an entity acting on a local frame with its origin
     #at G and its axes aligned with the local tangent frame
@@ -525,7 +525,7 @@ Base.@kwdef struct DynData
 end
 
 
-function f_dyn!(ẋ_vel::Kinematics.XVel, kin::Kinematics.Common, mp_b::MassProperties,
+function f_dyn!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassProperties,
     wr_ext_b::Wrench, hr_b::AbstractVector{<:Real})
 
     #wr_ext_b: Total external wrench on the vehicle

@@ -261,9 +261,9 @@ struct AirflowData
     CAS::Float64 #calibrated airspeed
 end
 
-AirflowData() = AirflowData(Kinematics.Common(), AtmosphericData())
+AirflowData() = AirflowData(KinematicData(), AtmosphericData())
 
-function AirflowData(kin::Kinematics.Common, atm_data::AtmosphericData)
+function AirflowData(kin::KinematicData, atm_data::AtmosphericData)
 
     v_eOb_b = kin.v_eOb_b
     v_ew_n = atm_data.wind.v_ew_n
@@ -285,7 +285,7 @@ function AirflowData(kin::Kinematics.Common, atm_data::AtmosphericData)
 
 end
 
-function AirflowData(kin_data::Kinematics.Common, atm_sys::System{<:Atmosphere})
+function AirflowData(kin_data::KinematicData, atm_sys::System{<:Atmosphere})
     #the AtmosphericData constructor accepts any GeographicLocation subtype, but it's most
     #likely that ISA SL conditions and wind will be expressed in {LatLon,
     #Orthometric}

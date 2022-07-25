@@ -17,14 +17,14 @@ function aerodynamics_test()
     atm = System(Atmosphere());
     aero = System(C172R.Aero());
     pwp = System(C172R.Pwp());
-    kin_init = Kinematics.Initializer(
+    kin_init = KinematicInit(
         v_eOb_n = [40, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
         Ob = GeographicLocation(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
                                         h_trn - 0 + 102.0));
 
-    kin_data = Kinematics.Common(kin_init)
+    kin_data = KinematicData(kin_init)
     air_data = AirflowData(kin_data, atm)
 
     aero.u.e = 0.0
@@ -53,8 +53,8 @@ function forward_drop_test()
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(Atmosphere());
-    ac = System(C172RAircraft());
-    kin_init = Kinematics.Initializer(
+    ac = System(Cessna172R());
+    kin_init = KinematicInit(
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.2, φ = 0.0),
@@ -73,9 +73,9 @@ function forward_drop_test()
     ac.u.avionics.brake_right = 1
     ac.u.avionics.throttle = 1
 
-    # ac.x.vehicle.fuel .= 0
-    # ac.u.vehicle.pld.baggage = false
-    # ac.u.vehicle.pld.copilot = false
+    # ac.x.airframe.fuel .= 0
+    # ac.u.airframe.pld.baggage = false
+    # ac.u.airframe.pld.copilot = false
     atm.u.wind.v_ew_n[1] = 0
 
     sim = SimulationRun(
@@ -102,8 +102,8 @@ function free_flight()
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(Atmosphere());
-    ac = System(C172RAircraft());
-    kin_init = Kinematics.Initializer(
+    ac = System(Cessna172R());
+    kin_init = KinematicInit(
         v_eOb_n = [0, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),

@@ -24,7 +24,7 @@ function test_kinematics()
     @test (@ballocated f_cont!($sys_LTF)) == 0
     @test (@ballocated f_cont!($sys_NED)) == 0
 
-    kin_init = Kinematics.Initializer(
+    kin_init = KinematicInit(
         Ob = GeographicLocation(LatLon(π/3, -π/6), AltE(12354)),
         ω_lb_b = [0.1, 0.1, -0.2],
         v_eOb_n = [100, 10, -4])

@@ -14,33 +14,30 @@ import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Output: update!
 
-export AircraftBase, AbstractVehicle, EmptyVehicle, AbstractAerodynamics,
-       AbstractAvionics, NoAvionics
+export AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 
-
-abstract type AbstractAircraftID end
 
 ###############################################################################
-############################## Vehicle #######################################
+############################## Airframe #######################################
 
-abstract type AbstractVehicle <: SystemDescriptor end
-MassTrait(::System{<:AbstractVehicle}) = HasMass()
-WrenchTrait(::System{<:AbstractVehicle}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:AbstractVehicle}) = HasAngularMomentum()
+abstract type AbstractAirframe <: SystemDescriptor end
+MassTrait(::System{<:AbstractAirframe}) = HasMass()
+WrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
+AngularMomentumTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
 
-########################## EmptyVehicle ###########################
+########################## EmptyAirframe ###########################
 
-Base.@kwdef struct EmptyVehicle <: AbstractVehicle
+Base.@kwdef struct EmptyAirframe <: AbstractAirframe
     mass_distribution::RigidBody = RigidBody(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
 end
 
-WrenchTrait(::System{EmptyVehicle}) = GetsNoExternalWrench()
-AngularMomentumTrait(::System{EmptyVehicle}) = HasNoAngularMomentum()
+WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
+AngularMomentumTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
 
-get_mp_b(sys::System{EmptyVehicle}) = MassProperties(sys.params.mass_distribution)
+get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
 
-@inline f_cont!(::System{EmptyVehicle}, args...) = nothing
-@inline (f_disc!(::System{EmptyVehicle}, args...)::Bool) = false
+@inline f_cont!(::System{EmptyAirframe}, args...) = nothing
+@inline (f_disc!(::System{EmptyAirframe}, args...)::Bool) = false
 
 ####################### AbstractAerodynamics ##########################
 
@@ -52,7 +49,7 @@ AngularMomentumTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
 
 
 ###############################################################################
-############################## Avionics #######################################
+######################### AbstractAvionics ####################################
 
 abstract type AbstractAvionics <: SystemDescriptor end
 
@@ -64,61 +61,56 @@ struct NoAvionics <: AbstractAvionics end
 ###############################################################################
 ############################## AircraftBase ###################################
 
-struct GenericID <: AbstractAircraftID end
-
-struct AircraftBase{I <: AbstractAircraftID,
-                    K <: AbstractKinematics,
-                    V <: AbstractVehicle,
+struct AircraftBase{K <: AbstractKinematics,
+                    F <: AbstractAirframe,
                     A <: AbstractAvionics} <: SystemDescriptor
-
     kinematics::K
-    vehicle::V
+    airframe::F
     avionics::A
 end
 
-function AircraftBase(     ::I = GenericID();
-                        kinematics::K = LTF(),
-                        vehicle::V = EmptyVehicle(),
-                        avionics::A = NoAvionics()) where {I,K,V,A}
-    AircraftBase{I,K,V,A}(kinematics, vehicle, avionics)
+function AircraftBase(kinematics::K = LTF(),
+                      airframe::F = EmptyAirframe(),
+                      avionics::A = NoAvionics()) where {I,K,F,A}
+    AircraftBase{K,F,A}(kinematics, airframe, avionics)
 end
 
 #override the default SystemDescriptor implementation, because we need to
 #add some stuff besides subsystem outputs
 init(::SystemY, ac::AircraftBase) = (
-    vehicle = init_y(ac.vehicle),
+    airframe = init_y(ac.airframe),
     avionics = init_y(ac.avionics),
     kinematics = init_y(ac.kinematics),
     dynamics = DynData(),
     airflow = AirflowData(),
     )
 
-function init!(ac::System{T}, ic::Kinematics.Initializer) where {T<:AircraftBase{I,K}} where {I,K}
+function init!(ac::System{<:AircraftBase}, ic::KinematicInit)
     Kinematics.init!(ac.x.kinematics, ic)
 end
 
 function f_cont!(sys::System{<:AircraftBase}, atm::System{<:Atmosphere}, trn::AbstractTerrain)
 
     @unpack ẋ, x, subsystems = sys
-    @unpack kinematics, vehicle, avionics = subsystems
+    @unpack kinematics, airframe, avionics = subsystems
 
     #update kinematics
     f_cont!(kinematics)
     kin_data = kinematics.y.common
     air_data = AirflowData(kin_data, atm)
 
-    #update avionics and vehicle components
-    f_cont!(avionics, vehicle, kin_data, air_data, trn)
-    f_cont!(vehicle, avionics, kin_data, air_data, trn)
+    #update avionics and airframe components
+    f_cont!(avionics, airframe, kin_data, air_data, trn)
+    f_cont!(airframe, avionics, kin_data, air_data, trn)
 
-    mp_b = get_mp_b(vehicle)
-    wr_b = get_wr_b(vehicle)
-    hr_b = get_hr_b(vehicle)
+    mp_b = get_mp_b(airframe)
+    wr_b = get_wr_b(airframe)
+    hr_b = get_hr_b(airframe)
 
     #update velocity derivatives
     dyn_data = f_dyn!(kinematics.ẋ.vel, kin_data, mp_b, wr_b, hr_b)
 
-    sys.y = (vehicle = vehicle.y, avionics = avionics.y, kinematics = kinematics.y,
+    sys.y = (airframe = airframe.y, avionics = avionics.y, kinematics = kinematics.y,
             dynamics = dyn_data, airflow = air_data,)
 
     return nothing
@@ -126,17 +118,17 @@ function f_cont!(sys::System{<:AircraftBase}, atm::System{<:Atmosphere}, trn::Ab
 end
 
 function f_disc!(sys::System{<:AircraftBase})
-    @unpack kinematics, vehicle, avionics = sys
+    @unpack kinematics, airframe, avionics = sys
 
     x_mod = false
     x_mod = x_mod || f_disc!(kinematics, 1e-8)
-    x_mod = x_mod || f_disc!(vehicle, avionics, kinematics)
-    x_mod = x_mod || f_disc!(avionics, vehicle, kinematics)
+    x_mod = x_mod || f_disc!(airframe, avionics, kinematics)
+    x_mod = x_mod || f_disc!(avionics, airframe, kinematics)
 
     return x_mod
 end
 
-function update!(xp::XPInterface, kin::Kinematics.Common, aircraft::Integer = 0)
+function update!(xp::XPInterface, kin::KinematicData, aircraft::Integer = 0)
 
     ll = LatLon(kin.n_e)
     e_nb = REuler(kin.q_nb)

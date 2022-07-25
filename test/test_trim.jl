@@ -12,7 +12,7 @@ using Flight
 #TrimState, variables to optimize
 function test_target_eval()
 
-    aircraft = System(C172RAircraft())
+    aircraft = System(Cessna172R())
     atmosphere = System(Atmosphere())
     terrain = HorizontalTerrain() #zero orthometric altitude
 
@@ -64,6 +64,34 @@ function test_target_eval()
     # println(@ballocated($f($x_trim_0))) #no allocations! nice!
 
 end
+"""
+seguro que tiene que haber distincion entre trim_parameters y trim_configuration?? podemos agrupar todo en trim_parameters. si es asi nos ahorramos un argumento
+
+definir function assign!(::Cessna172R, ::TrimState, ::TrimParameters, ::Atmosphere, ::Terrain)
+dentro llamamos a una kin_init = KinematicInit(::TrimState, ::TrimParameters, ::Atmosphere, ::Terrain)
+y despues init!(ac, kin_init), que ya lo tenemos definido
+con ello independizamos la cinematica elegida de la asignacion de todas estas cosas, y con ello de la funcion de coste
+
+notese que no esta del todo injustificado meter terrain en el trimado, por el
+efecto suelo
+
+OJO: esta funcion assign! me interesa que sea agnostica respecto de la
+cinematica elegida, porque una vez obtenida la solucion, puedo querer
+asignarsela a una C172R con una cinematica de un tipo o de otro.
+
+donde ya si es relevante el tipo de cinematica, y ademas tiene sentido usar la
+NED, es para calcular la cost function. porque en ella aparecen los angulos de
+euler y sus derivadas. y todas esas estan directamente disponibles cuando uso
+una cinematica NED. esa ha sido la razon inmediata para implementarla!
+
+asi que trim_cost(::Cessna172R{NED}, trim_state, trim_parameters, trim_configuration,
+atmosphere, terrain)
+
+y ya para resolver creamos una anonymous function:
+let ac = ac, trim_parameters = trim_parameters, trim_configuration = trim_configuration, atmosphere, terrain
+ f = x -> trim_cost!(ac, x, trim_parameters, atmosphere, terrain)
+end
+"""
 
 function get_target_function(aircraft, atmosphere, terrain, trim_parameters, trim_configuration)
 
@@ -72,16 +100,16 @@ function get_target_function(aircraft, atmosphere, terrain, trim_parameters, tri
                 trim_parameters = trim_parameters, trim_configuration = trim_configuration
 
         #set the engine running, no way to trim otherwise
-        d.vehicle.pwp.engine.state = Piston.eng_running
+        d.airframe.pwp.engine.state = Piston.eng_running
 
         u.avionics.flaps = trim_configuration.flaps
         u.avionics.yoke_x0 = trim_configuration.yoke_x0
         u.avionics.yoke_y0 = trim_configuration.yoke_y0
-        u.vehicle.pwp.engine.mix = trim_configuration.mixture
-        x.vehicle.fuel .= trim_configuration.fuel
+        u.airframe.pwp.engine.mix = trim_configuration.mixture
+        x.airframe.fuel .= trim_configuration.fuel
 
-        x.vehicle.pwp.engine.idle .= trim_configuration.x_pwp_idle
-        x.vehicle.pwp.friction .= trim_configuration.x_pwp_friction
+        x.airframe.pwp.engine.idle .= trim_configuration.x_pwp_idle
+        x.airframe.pwp.friction .= trim_configuration.x_pwp_friction
 
         function compute_derivative(x_trim)
 
@@ -109,9 +137,9 @@ function get_target_function(aircraft, atmosphere, terrain, trim_parameters, tri
             ω_el_b = q_nb'(ω_el_n)
             x.kinematics.vel.ω_eb_b = ω_el_b + x_trim.ω_lb_b
 
-            x.vehicle.aero.α_filt = x_trim.α #this ensures zero state derivative
-            x.vehicle.aero.β_filt = trim_parameters.β #this ensures zero state derivative
-            x.vehicle.pwp.ω = x_trim.ω_eng
+            x.airframe.aero.α_filt = x_trim.α #this ensures zero state derivative
+            x.airframe.aero.β_filt = trim_parameters.β #this ensures zero state derivative
+            x.airframe.pwp.ω = x_trim.ω_eng
 
             u.avionics.throttle = x_trim.throttle
             u.avionics.yoke_Δx = x_trim.yoke_Δx
