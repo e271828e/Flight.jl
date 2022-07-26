@@ -7,6 +7,8 @@ using UnPack
 using Unitful
 using Interpolations
 using HDF5
+using Reexport
+# using Revise
 
 using Flight.Systems
 using Flight.Utils
@@ -19,12 +21,14 @@ using Flight.LandingGear
 using Flight.Propellers
 using Flight.Piston
 using Flight.Aircraft: AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
-using Flight.Input: XBoxController, get_axis_value, is_released
+using Flight.Input: Input, XBoxController, get_axis_value, is_released
 
 import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Kinematics: KinematicInit
 import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
-import Flight.Input: assign!
 import Flight.Piston: fuel_available
+
+include("c172r_aero.jl")
 
 export Cessna172R
 
@@ -101,8 +105,6 @@ get_mp_b(::System{Structure}) = mp_b_str
 
 
 ############################ Aerodynamics ######################################
-
-include("c172r_aero.jl")
 
 #the aircraft body reference frame fb is arbitrarily chosen to coincide with
 #the aerodynamics frame fa, so the frame transform is trivial
@@ -591,8 +593,10 @@ function assign!(u::BasicAvionicsU, joystick::XBoxController)
 
 end
 
-const Cessna172R{K} = AircraftBase{K, Airframe, BasicAvionics} where {K}
-
+const Cessna172R{K, F, V} = AircraftBase{K, F, V} where {K, F <: C172R.Airframe, V <: C172R.BasicAvionics}
 Cessna172R(kinematics = LTF()) = AircraftBase( kinematics, Airframe(), BasicAvionics())
+
+include("c172r_trim.jl")
+using .Trim #do not reexport, names in Trim are generic
 
 end #module
