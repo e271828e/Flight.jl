@@ -41,7 +41,9 @@ const half_π = π/2
 """
 Compute the skew-symmetric matrix corresponding to a 3-element vector.
 """
-function skew(v::AbstractVector)
+function v2skew(v::AbstractVector)
+
+    @assert length(v) == 3
 
     @SMatrix [0 -v[3] v[2];
             v[3] 0 -v[1];
@@ -108,13 +110,24 @@ Quaternions.UnitQuat(r::RQuat) = r._u
 """
     dt(r_ab::RQuat, ω_ab_b::AbstractVector{<:Real})
 
-Unit quaternion time derivative
+Rotation quaternion time derivative
 
 If `r_ab` represents the rotation from axes εa to axes εb, and `ω_ab_b` is the
 angular velocity of εb with respect to εa projected in εb, then `ṙ_ab ==
 dt(r_ab, ω_ab_b)`
 """
 dt(r_ab::RQuat, ω_ab_b::AbstractVector{<:Real}) = 0.5 * (r_ab._u * FreeQuat(imag=ω_ab_b))
+
+"""
+    ω(r_ab::RQuat, ṙ_ab::AbstractVector{<:Real})
+
+Angular velocity from rotation quaternion and its time derivative
+
+If `r_ab` is a `RQuat` representing the rotation from axes εa to axes εb, and
+`̇r_ab` is its time derivative, `ω_ab_b = ω(r_ab, ̇r_ab)` is the angular
+velocity of εb with respect to εa projected in εb axes
+"""
+ω(r_ab::RQuat, ṙ_ab::AbstractVector{<:Real}) = 2 * (UnitQuat(r_ab)' * FreeQuat(ṙ_ab)).imag
 
 ##### RQuat fallbacks #####
 
@@ -250,7 +263,7 @@ angular velocity of εb with respect to εa projected in εb, then `Ṙ_ab ==
 dt(R_ab, ω_ab_b)`
 """
 function dt(R_ab::RMatrix, ω_ab_b::AbstractVector{<:Real})
-    Ω_ab_b = skew(ω_ab_b)
+    Ω_ab_b = v2skew(ω_ab_b)
     return R_ab._mat * Ω_ab_b
 end
 
@@ -294,13 +307,18 @@ function Base.convert(::Type{RQuat}, r::RAxAng)
     RQuat(UnitQuat(real = cos(0.5μ), imag = u*sin(0.5μ), normalization = false))
 end
 
-# Inversion (the only native operation we can easily define for axis-angle)
+# Inversion
 Base.adjoint(r::RAxAng) = RAxAng(r.axis, -r.angle)
 
+azimuth(v::AbstractVector{<:Real}) = atan(v[2], v[1])
+inclination(v::AbstractVector{<:Real}) = atan(-v[3], √(v[1]^2 + v[2]^2))
 
 ############################# REuler #############################
 
-"Euler angle representation (convention is ZYX)"
+"""
+Euler angle representation. Rotation order is ZYX, so when packed in a Vector,
+angles must follow the ordering ψ, θ, φ.
+"""
 struct REuler <: Abstract3DRotation
     ψ::Float64 #heading
     θ::Float64 #inclination
@@ -337,6 +355,34 @@ function Base.convert(::Type{RQuat}, r::REuler)
     Rz(r.ψ) ∘ Ry(r.θ) ∘ Rx(r.φ)
 end
 
+function Base.convert(::Type{RMatrix}, r::REuler)
+
+    cψ = cos(r.ψ); sψ = sin(r.ψ)
+    cθ = cos(r.θ); sθ = sin(r.θ)
+    cφ = cos(r.φ); sφ = sin(r.φ)
+
+    M = @SMatrix [
+    cψ * cθ         -sψ * cφ + cψ * sθ * sφ      sψ * sφ + cψ * sθ * cφ;
+    sψ * cθ          cψ * cφ + sψ * sθ * sφ     -cψ * sφ + sψ * sθ * cφ;
+    -sθ              cθ * sφ                     cθ * cφ
+    ]
+
+    RMatrix(M, normalization = false)
+
+end
+
+function Base.convert(::Type{REuler}, r::RMatrix)
+
+    R = r._mat
+
+    ψ = atan(R[2,1], R[1,1])
+    θ = -asin( clamp(R[3,1], -1, 1) )
+    φ = atan(R[3,2], R[3,3])
+
+    REuler(ψ, θ, φ)
+
+end
+
 
 """
     dt(e_ab::REuler, ω_ab_b::AbstractVector{<:Real})
@@ -360,6 +406,30 @@ function dt(e_ab::REuler, ω_ab_b::AbstractVector{<:Real})
     ]
 
     return M * SVector{3}(ω_ab_b)
+end
+
+"""
+    ω(e_ab::REuler, ė_ab::AbstractVector{<:Real})
+
+Angular velocity vector from a set of Euler angles and its time derivative
+
+If `e_ab` is a set of Euler angles representing the rotation from axes εa to
+axes εb, and `̇e_ab` is its time derivative, `ω_ab_b = ω(e_ab, ̇e_ab)` is the
+angular velocity of εb with respect to εa projected in εb axes
+"""
+function ω(e_ab::REuler, ė_ab::AbstractVector{<:Real})
+
+    sin_θ = sin(e_ab.θ); cos_θ = cos(e_ab.θ);
+    sin_φ = sin(e_ab.φ); cos_φ = cos(e_ab.φ);
+
+    M = @SMatrix [
+                  -sin_θ           0       1;
+                  cos_θ * sin_φ    cos_φ   0;
+                  cos_θ * cos_φ    -sin_φ  0;
+    ]
+
+    return M * SVector{3}(ė_ab)
+
 end
 
 ################################# Plotting #####################################

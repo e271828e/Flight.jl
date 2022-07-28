@@ -3,7 +3,9 @@ module Trim
 using LinearAlgebra
 using StaticArrays
 using ComponentArrays
+using BenchmarkTools
 using UnPack
+using Optim
 
 using Flight.Systems
 using Flight.Attitude
@@ -11,6 +13,8 @@ using Flight.Geodesy
 using Flight.Kinematics
 using Flight.Air
 using Flight.Terrain
+using Flight.Piston
+using Flight.Aircraft
 
 import Flight.Kinematics: KinematicInit
 export XTrimTemplate, XTrim, TrimParameters
@@ -20,50 +24,87 @@ using ..C172R
 ############################### Trimming #######################################
 ################################################################################
 
-const TrimStateTemplate = ComponentVector(
-    α = 0.08, θ_nb = 0.08, φ_nb = 0.0, ω_eng = 215.0, ω_lb_b = [0, 0, 0],
-    throttle = 0.61, yoke_Δx = 0.01, yoke_Δy = -0.025, pedals = 0.0,
+#for trimming, we set the yoke incremental commands to zero. the reason is that,
+#when we start an interactive simulation from a trimmed state, leaving the
+#controller sticks at neutral corresponds to zero yoke incremental commands. in
+#this case, it is the yoke_x and yoke_y values that set the surfaces where they
+#need to be
+
+
+# maybe split trim state into common and aircraft dependent, that way the first
+# ones can be reused
+const StateTemplate = ComponentVector(
+    α_a = 0.0, #angle of attack, aerodynamic axes
+    φ_nb = 0.0, #bank angle
+    n_eng = 0.5, #normalized engine speed (ω/ω_rated)
+    throttle = 0.5,
+    yoke_x = 0.0,
+    yoke_y = 0.0,
+    pedals = 0.0,
 )
 
-const TrimState{T, D} = ComponentVector{T, D, typeof(getaxes(TrimStateTemplate))} where {T, D}
-TrimState() = similar(TrimStateTemplate)
+const State{T, D} = ComponentVector{T, D, typeof(getaxes(StateTemplate))} where {T, D}
 
-#these do not require evaluation of are assigned to the aircraft states and inputs
-struct TrimParameters
-    Ob::GeographicLocation{NVector, Ellipsoidal}
-    TAS::Float64
-    β::Float64
+function State(; α_a = 0.0848, φ_nb = 0.0, n_eng = 0.9,
+    throttle = 0.62, yoke_x = 0.015, yoke_y = -0.006, pedals = -0.03)
+
+    x = copy(StateTemplate)
+    @pack! x = α_a, φ_nb, n_eng, throttle, yoke_x, yoke_y, pedals
+    return x
+
+end
+
+#the first 5 do not depend on the aircraft type
+struct Parameters
+    Ob::GeographicLocation{NVector, Ellipsoidal} #position
     ψ_nb::Float64 #geographic heading
-    yoke_x0::Float64 #force-free (aileron-trimmed) yoke position
-    yoke_y0::Float64 #force-free (elevator-trimmed) yoke position
+    TAS::Float64 #true airspeed
+    γ_wOb_n::Float64 #wind-relative flight path angle
+    ψ_lb_dot::Float64 #LTF-relative turn rate
+    β_a::Float64 #sideslip angle measured in the aerodynamic reference frame
     fuel::Float64 #fuel load, 0 to 1
     mixture::Float64 #engine mixture control, 0 to 1
     flaps::Float64 #flap setting, 0 to 1
 end
 
-function TrimParameters(;
+function Parameters(;
     l2d::Abstract2DLocation = LatLon(), h::Altitude = AltO(1000),
-    TAS = 40.0, β = 0.0, ψ_nb = 0.0, yoke_x0 = 0.0, yoke_y0 = 0.0,
+    ψ_nb = 0.0, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.0, β_a = 0.0,
     fuel = 0.5, mixture = 0.5, flaps = 0.0)
 
     Ob = GeographicLocation(l2d, h)
-    TrimParameters(Ob, TAS, β, ψ_nb, yoke_x0, yoke_y0, fuel, mixture, flaps)
+    Parameters(Ob, ψ_nb, TAS, γ_wOb_n, ψ_lb_dot, β_a, fuel, mixture, flaps)
 end
 
-Base.@kwdef struct TrimConstraints
-    h_dot::Float64 = 0.0 #climb rate
-    ψ_nb_dot::Float64 = 0.0 #turn rate
+#given the body-axes wind-relative velocity, the wind-relative flight path angle
+#and the bank angle, the pitch angle is unambiguously determined
+function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
+    TAS = norm(v_wOb_b)
+    a = v_wOb_b[1] / TAS
+    b = (v_wOb_b[2] * sin(φ_nb) + v_wOb_b[3] * cos(φ_nb)) / TAS
+    sγ = sin(γ_wOb_n)
+
+    return atan((a*b + sγ*√(a^2 + b^2 - sγ^2))/(a^2 - sγ^2))
+    # return asin((a*sγ + b*√(a^2 + b^2 - sγ^2))/(a^2 + b^2)) #equivalent
+
 end
 
-function KinematicInit(state::TrimState, params::TrimParameters, atm::Atmosphere)
+function KinematicInit(state::State, params::Parameters, atm::System{<:Atmosphere})
 
-    q_nb = REuler(params.ψ_nb, state.θ_nb, state.φ_nb) |> RQuat
+    v_wOb_a = Air.get_velocity_vector(params.TAS, state.α_a, params.β_a)
+    v_wOb_b = C172R.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
+
+    θ_nb = θ_constraint(; v_wOb_b, params.γ_wOb_n, state.φ_nb)
+    e_nb = REuler(params.ψ_nb, θ_nb, state.φ_nb)
+    q_nb = RQuat(e_nb)
+
+    e_lb = e_nb #initialize LTF arbitrarily to NED
+    ė_lb = SVector(params.ψ_lb_dot, 0.0, 0.0)
+    ω_lb_b = Attitude.ω(e_lb, ė_lb)
+
     l2d = NVector(params.Ob)
     h = AltE(params.Ob)
-    ω_lb_b = state.ω_lb_b
 
-    v_wOb_a = Air.get_velocity_vector(params.TAS, state.α, params.β)
-    v_wOb_b = C172R.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
     v_wOb_n = q_nb(v_wOb_b) #wind-relative aircraft velocity, NED frame
     v_ew_n = AtmosphericData(atm, params.Ob).wind.v_ew_n
     v_eOb_n = v_ew_n + v_wOb_n
@@ -75,33 +116,37 @@ end
 #assigns trim state and parameters to the aircraft system, and then updates it
 #by calling its continuous dynamics function
 function assign!(ac::System{<:Cessna172R}, atm::System{<:Atmosphere},
-    trn::AbstractTerrain, state::TrimState, params::TrimParameters)
+    trn::AbstractTerrain, state::State, params::Parameters)
 
-    init!(ac, KinematicInit(state, params, atm))
+    Aircraft.init!(ac, KinematicInit(state, params, atm))
 
-    ac.x.airframe.aero.α_filt = state.α #ensures zero state derivative
-    ac.x.airframe.aero.β_filt = params.β #ensures zero state derivative
-    ac.x.airframe.pwp.ω = state.ω_eng
+    ω_eng = state.n_eng * ac.airframe.pwp.engine.params.ω_rated
+
+    ac.x.airframe.aero.α_filt = state.α_a #ensures zero state derivative
+    ac.x.airframe.aero.β_filt = params.β_a #ensures zero state derivative
+    ac.x.airframe.pwp.ω = ω_eng
     ac.x.airframe.fuel .= params.fuel
 
     ac.u.avionics.throttle = state.throttle
-    ac.u.avionics.yoke_Δx = state.yoke_Δx
-    ac.u.avionics.yoke_Δy = state.yoke_Δy
+    ac.u.avionics.yoke_x = state.yoke_x
+    ac.u.avionics.yoke_y = state.yoke_y
     ac.u.avionics.pedals = state.pedals
     ac.u.avionics.flaps = params.flaps
-    ac.u.avionics.yoke_x0 = params.yoke_x0
-    ac.u.avionics.yoke_y0 = params.yoke_y0
     ac.u.avionics.mixture = params.mixture
+
+    #incremental yoke positions to zero
+    ac.u.avionics.yoke_Δx = 0
+    ac.u.avionics.yoke_Δy = 0
 
     #engine must be running, no way to trim otherwise
     ac.d.airframe.pwp.engine.state = Piston.eng_running
-    @assert ac.x.airframe.pwp.ω > ac.airframe.pwp.engine.idle.params.ω_idle
+    @assert ac.x.airframe.pwp.ω > ac.airframe.pwp.engine.idle.params.ω_target
 
     #as long as the engine remains above the idle controller's target speed, the
     #idle controller's output will be saturated at 0 by proportional error, so
     #the integrator will be disabled and its state will not change. we just set
     #it to zero and forget about it
-    ac.x.airframe.pwp.engine.idle = 0.0
+    ac.x.airframe.pwp.engine.idle .= 0.0
 
     #powerplant friction regulator: with the propeller spinning, the friction
     #regulator's output will be saturated at -1 due to proportional error, so
@@ -111,100 +156,79 @@ function assign!(ac::System{<:Cessna172R}, atm::System{<:Atmosphere},
 
     f_cont!(ac, atm, trn)
 
-    println("Aqui habria que comprobar varias cosas: que WoW es cero, que x_idle y x_friction son cero, y que alpha filt y beta filt son cero")
+    #check assumptions concerning airframe systems states & derivatives
+    wow = reduce(|, SVector{3,Bool}(leg.strut.wow for leg in ac.y.airframe.ldg))
+    @assert wow === false
+    @assert ac.ẋ.airframe.pwp.engine.idle[1] .== 0
+    @assert ac.ẋ.airframe.pwp.friction[1] .== 0
 
 end
 
-function cost(ac::System{<:Cessna172R{NED}}, constraints::TrimConstraints)
+function cost(ac::System{<:Cessna172R})
 
-    #this function assumes the trim_state and parameters have already been
-    #assigned and the System evaluated; the cost can be calculated entirely from
-    #the aircraft system and the user-specified constraints
 
-    return
+    # necesitamos introducir la barrier functions ANTES de que los control
+    # inputs saturen a 1, porque entonces la cost function se hace estrictamente
+    # infinita. por tanto, no podemos coger los valores de los controles de
+    # dentro de la avionica para despues penalizarlos. hay que cogerlos
+    # directamente del trim_state ANTES de que se asignen al sistema y se
+    # saturen. o sea que o bien el interfaz de la cost function anade el state
+    # como input, y se mantiene la funcion assign! independiente, o redefinimos
+    # la funcion cost como cost! y absorbemos dentro assign!
+
+
+
+    v_nd_dot = SVector{3}(ac.ẋ.kinematics.vel.v_eOb_b) / norm(ac.y.kinematics.common.v_eOb_b)
+    ω_dot = SVector{3}(ac.ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
+    n_eng_dot = ac.ẋ.airframe.pwp.ω / ac.airframe.pwp.engine.params.ω_rated
+
+    sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2
 
 end
 
+function get_target_function(ac::System{<:Cessna172R},
+    atm::System{<:Atmosphere}, trn::AbstractTerrain,
+    params::Parameters = Parameters())
 
-function trim!(ac::System{<:Cessna172R{NED}}, atm::System{<:Atmosphere}, trn::AbstractTerrain,
-    state0::TrimState = TrimState(), params::TrimParameters = TrimParameters(),
-    constraints::TrimConstraints = TrimConstraints(); kwargs...)
+    f_target = let ac = ac, atm = atm, trn = trn, params = params
 
-    f_target = let ac = ac, params = params, constraints = constraints, atm = atm, trn = trn
-
-        function (x::TrimState)
-            assign!(ac, x, params, atm, trn)
-            return cost(ac, constraints)
+        function (x::State)
+            assign!(ac, atm, trn, x, params)
+            return cost(ac)
         end
 
     end
 
-end
-
-
-function test_target_eval()
-
-    aircraft = System(Cessna172R())
-    atmosphere = System(Atmosphere())
-    terrain = HorizontalTerrain() #zero orthometric altitude
-
-
-    f = get_target_function(aircraft, atmosphere, terrain, trim_parameters, trim_configuration)
-
-
-    f(x_trim_0)
-    # println(@ballocated($f($x_trim_0))) #no allocations! nice!
+    return f_target
 
 end
 
+function trim!(ac::System{<:Cessna172R},
+    atm::System{<:Atmosphere}, trn::AbstractTerrain,
+    x0::State = State(), params::Parameters = Parameters();
+    a = 0.02, b = 0.05, g_tol = 1e-14, iterations = 5000)
 
-function trim!(ac, atmosphere, terrain, trim_parameters, trim_configuration)
-
-
-    #is this let really needed? or being inside a function already freezes values
-    func = let  x = aircraft.x, d = aircraft.d, u = aircraft.u, atmosphere = atmosphere, terrain = terrain,
-                trim_parameters = trim_parameters, trim_configuration = trim_configuration
-
-        #set the engine running, no way to trim otherwise
-        d.airframe.pwp.engine.state = Piston.eng_running
-
-        u.avionics.flaps = trim_configuration.flaps
-        u.avionics.yoke_x0 = trim_configuration.yoke_x0
-        u.avionics.yoke_y0 = trim_configuration.yoke_y0
-        u.airframe.pwp.engine.mix = trim_configuration.mixture
-        x.airframe.fuel .= trim_configuration.fuel
-
-        x.airframe.pwp.engine.idle .= trim_configuration.x_pwp_idle
-        x.airframe.pwp.friction .= trim_configuration.x_pwp_friction
-
-        function compute_derivative(x_trim)
-
-
-            x.airframe.aero.α_filt = x_trim.α #this ensures zero state derivative
-            x.airframe.aero.β_filt = trim_parameters.β #this ensures zero state derivative
-            x.airframe.pwp.ω = x_trim.ω_eng
-
-            u.avionics.throttle = x_trim.throttle
-            u.avionics.yoke_Δx = x_trim.yoke_Δx
-            u.avionics.yoke_Δy = x_trim.yoke_Δy
-            u.avionics.pedals = x_trim.pedals
-
-            f_cont!(aircraft, atmosphere, terrain)
-
-            println(aircraft.x)
-            println()
-            # println("cuando acabe con trim, create XPosMinimal, validate against others") #minimal attitude and pos repr
-            println("ensure x_idle and x_friction have indeed zero derivatives")
-            println("do not forget psi_dot in the cost function")
-
-            return aircraft.ẋ
-
-        end
-
+    f = get_target_function(ac, atm, trn, params)
+    initial_simplex = Optim.AffineSimplexer(; a, b)
+    @show initial_cost = f(x0)
+    result = optimize(f, x0, NelderMead(; initial_simplex), Optim.Options(; g_tol, iterations))
+    @show final_cost = f(result.minimizer)
+    if final_cost > 10g_tol
+        println("Warning: Optimization did not converge")
     end
+    @show
+    return result
 
-    return func
+
+    #no hay que preocuparse por el caso en que
+
+
+
 
 end
+
+
+
+
 
 end #module

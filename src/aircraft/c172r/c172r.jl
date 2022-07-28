@@ -38,10 +38,10 @@ struct BasicAvionics <: AbstractAvionics end
 
 Base.@kwdef mutable struct BasicAvionicsU
     throttle::Ranged{Float64, 0, 1} = 0.0
-    yoke_Δx::Ranged{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
-    yoke_x0::Ranged{Float64, -1, 1} = 0.0 #ailerons (+ bank right)
-    yoke_Δy::Ranged{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
-    yoke_y0::Ranged{Float64, -1, 1} = 0.0 #elevator (+ pitch up)
+    yoke_x::Ranged{Float64, -1, 1} = 0.0 #ailerons (+ -> bank right)
+    yoke_Δx::Ranged{Float64, -1, 1} = 0.0 #ailerons (+ -> bank right), only for input devices
+    yoke_y::Ranged{Float64, -1, 1} = 0.0 #elevator (+ -> pitch up)
+    yoke_Δy::Ranged{Float64, -1, 1} = 0.0 #elevator (+ -> pitch up), only for input devices
     pedals::Ranged{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
     brake_left::Ranged{Float64, 0, 1} = 0.0 #[0, 1]
     brake_right::Ranged{Float64, 0, 1} = 0.0 #[0, 1]
@@ -54,9 +54,9 @@ end
 Base.@kwdef struct BasicAvionicsY
     throttle::Float64 = 0.0
     yoke_Δx::Float64 = 0.0
-    yoke_x0::Float64 = 0.0
+    yoke_x::Float64 = 0.0
     yoke_Δy::Float64 = 0.0
-    yoke_y0::Float64 = 0.0
+    yoke_y::Float64 = 0.0
     pedals::Float64 = 0.0
     brake_left::Float64 = 0.0
     brake_right::Float64 = 0.0
@@ -472,11 +472,11 @@ function f_cont!(avionics::System{BasicAvionics}, ::System{<:Airframe},
 
     #here, avionics do nothing but update their output state. for a more complex
     #aircraft a continuous state-space autopilot implementation could go here
-    @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0, pedals, brake_left,
+    @unpack throttle, yoke_Δx, yoke_x, yoke_Δy, yoke_y, pedals, brake_left,
             brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
 
     return BasicAvionicsY(;
-            throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0, pedals, brake_left,
+            throttle, yoke_Δx, yoke_x, yoke_Δy, yoke_y, pedals, brake_left,
             brake_right, flaps, mixture, eng_start, eng_stop)
 
 end
@@ -518,12 +518,12 @@ end
 
 function assign_component_inputs!(airframe::System{<:Airframe}, avionics::System{BasicAvionics})
 
-    @unpack throttle, yoke_Δx, yoke_x0, yoke_Δy, yoke_y0, pedals, brake_left,
+    @unpack throttle, yoke_Δx, yoke_x, yoke_Δy, yoke_y, pedals, brake_left,
             brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
     @unpack aero, pwp, ldg = airframe
 
-    #yoke_Δx is the offset with respect to the force-free position yoke_x0
-    #yoke_Δy is the offset with respect to the force-free position yoke_y0
+    #yoke_Δx is the offset with respect to the force-free position yoke_x
+    #yoke_Δy is the offset with respect to the force-free position yoke_y
 
     pwp.u.engine.start = eng_start
     pwp.u.engine.stop = eng_stop
@@ -532,8 +532,8 @@ function assign_component_inputs!(airframe::System{<:Airframe}, avionics::System
     ldg.u.nose.steering[] = pedals
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
-    aero.u.e = -(yoke_y0 + yoke_Δy) #+yoke_Δy and +yoke_y0 are back and +δe is pitch down, need to invert it
-    aero.u.a = (yoke_x0 + yoke_Δx) #+yoke_Δx and +yoke_x0 are right and +δa is roll right
+    aero.u.e = -(yoke_y + yoke_Δy) #+yoke_Δy and +yoke_y are back and +δe is pitch down, need to invert it
+    aero.u.a = (yoke_x + yoke_Δx) #+yoke_Δx and +yoke_x are right and +δa is roll right
     aero.u.r = -pedals # +pedals is right and +δr is yaw left
     aero.u.f = flaps # +flaps is flaps down and +δf is flaps down
 
@@ -580,10 +580,10 @@ function assign!(u::BasicAvionicsU, joystick::XBoxController)
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    u.yoke_x0 -= 0.01 * is_released(joystick, :dpad_left)
-    u.yoke_x0 += 0.01 * is_released(joystick, :dpad_right)
-    u.yoke_y0 -= 0.01 * is_released(joystick, :dpad_up)
-    u.yoke_y0 += 0.01 * is_released(joystick, :dpad_down)
+    u.yoke_x -= 0.01 * is_released(joystick, :dpad_left)
+    u.yoke_x += 0.01 * is_released(joystick, :dpad_right)
+    u.yoke_y -= 0.01 * is_released(joystick, :dpad_up)
+    u.yoke_y += 0.01 * is_released(joystick, :dpad_down)
 
     u.throttle += 0.1 * is_released(joystick, :button_Y)
     u.throttle -= 0.1 * is_released(joystick, :button_A)

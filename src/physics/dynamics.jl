@@ -203,7 +203,7 @@ Compute the `MassProperties` of a `PointMass` located at point P in reference
 frame fb, given the position vector of P with respect to Ob projected in axes εb
 """
 function MassProperties(p::PointMass, r_ObP_b::AbstractVector{<:Real})
-    J_Ob_b = -p.m * Attitude.skew(r_ObP_b)^2
+    J_Ob_b = -p.m * Attitude.v2skew(r_ObP_b)^2
     MassProperties(p.m, J_Ob_b, r_ObP_b)
 end
 
@@ -240,7 +240,7 @@ function MassProperties(c::RigidBody, t_bc::FrameTransform)
     end
 
     r_ObG_b = t_bc.r
-    J_Ob_b = J_G_b - m * Attitude.skew(r_ObG_b)^2
+    J_Ob_b = J_G_b - m * Attitude.v2skew(r_ObG_b)^2
 
     return MassProperties(m, J_Ob_b, r_ObG_b) #p_b
 
@@ -285,7 +285,7 @@ function transform(t_bc::FrameTransform, p_c::MassProperties)
     r_OcG_b = q_bc(r_OcG_c)
     r_ObG_b = r_ObOc_b + r_OcG_b
 
-    J_G_c = J_Oc_c + m * Attitude.skew(r_OcG_c)^2
+    J_G_c = J_Oc_c + m * Attitude.v2skew(r_OcG_c)^2
 
     #tensor rotation is somewhat expensive, so if it's just a translation skip it
     if q_bc != RQuat()
@@ -295,7 +295,7 @@ function transform(t_bc::FrameTransform, p_c::MassProperties)
         J_G_b = J_G_c
     end
 
-    J_Ob_b = J_G_b - m * Attitude.skew(r_ObG_b)^2
+    J_Ob_b = J_G_b - m * Attitude.v2skew(r_ObG_b)^2
 
     return MassProperties(m, J_Ob_b, r_ObG_b) #p_b
 
@@ -548,7 +548,7 @@ function f_dyn!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassProperti
 
     m = mp_b.m; J_Ob_b = mp_b.J_O; r_ObG_b = mp_b.r_OG
 
-    r_ObG_b_sk = Attitude.skew(r_ObG_b)
+    r_ObG_b_sk = Attitude.v2skew(r_ObG_b)
     A11 = J_Ob_b
     A12 = m * r_ObG_b_sk
     A21 = -m * r_ObG_b_sk

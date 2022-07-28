@@ -13,6 +13,7 @@ function test_c172r()
 
         @testset verbose = true "Performance" begin test_system() end
         @testset verbose = true "Simulation" begin test_sim_nrt(save = false) end
+        @testset verbose = true "Trimming" begin test_trimming() end
 
     end
 end
@@ -160,6 +161,104 @@ function test_sim_rt(; save::Bool = true)
     return sim
 
 end
+
+function test_trimming()
+
+    @testset verbose = true "θ Constraint" begin
+
+        #precompute v_wOb_b
+        α_a = 0.15
+        β_a = -0.11
+        TAS = 100
+        v_wOa_a = Air.get_velocity_vector(TAS, α_a, β_a)
+        v_wOb_b = C172R.f_ba.q(v_wOa_a)
+
+        #set γ_wOb_n and φ_nb arbitrarily and compute θ_nb
+        γ_wOb_n = -0.07 #set arbitrarily
+        ψ_nb = 0.3 #inconsequential
+        φ_nb = 0.7
+        θ_nb = C172R.Trim.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
+
+        #then construct e_nb, transform v_wOb_b to v_wOb_n, recompute γ_wOb_n
+        #and check it matches the original value
+        e_nb = REuler(ψ_nb, θ_nb, φ_nb)
+        v_wOb_n = e_nb(v_wOb_b)
+        γ_wOb_n_test = Attitude.inclination(v_wOb_n)
+
+        @test γ_wOb_n_test ≈ γ_wOb_n
+        @test @ballocated(C172R.Trim.θ_constraint(; v_wOb_b = $v_wOb_b, γ_wOb_n = $γ_wOb_n, φ_nb = $φ_nb)) === 0
+
+    end
+
+    @testset verbose = true "Assignment" begin
+
+        ac = System(Cessna172R())
+
+        state = C172R.Trim.State(;
+            α_a = 0.08, φ_nb = 0.3, ω_pwp = 215.0,
+            throttle = 0.61, yoke_Δx = 0.01, yoke_Δy = -0.025, pedals = 0.0)
+
+        params = C172R.Trim.Parameters(;
+            l2d = LatLon(), h = AltO(1000),
+            ψ_nb = 0.2, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.2, β_a = 0.3,
+            yoke_x = 0.0, yoke_y = 0.0, fuel = 0.5, mixture = 0.5, flaps = 0.0)
+
+        atm = System(Atmosphere());
+        # atm.u.wind.v_ew_n = [4, 2, 4]
+
+        trn = HorizontalTerrain()
+
+        C172R.Trim.assign!(ac, atm, trn, state, params)
+
+        e_lb = e_nb = REuler(ac.y.kinematics.q_nb)
+        v_wOb_n = e_nb(ac.y.airflow.v_wOb_b)
+
+        @test e_nb.φ ≈ state.φ_nb
+        @test ac.y.airframe.aero.α ≈ state.α_a
+        @test ac.y.airframe.pwp.engine.ω == state.ω_pwp
+        @test ac.u.avionics.throttle == state.throttle
+        @test ac.u.avionics.yoke_Δx == state.yoke_Δx
+        @test ac.u.avionics.yoke_Δy == state.yoke_Δy
+        @test ac.u.avionics.pedals == state.pedals
+
+        @test e_nb.ψ ≈ params.ψ_nb
+        @test Attitude.inclination(v_wOb_n) ≈ params.γ_wOb_n atol = 1e-12
+        @test ac.y.kinematics.common.ω_lb_b ≈ Attitude.ω(e_lb, [params.ψ_lb_dot, 0, 0])
+        @test ac.y.airflow.TAS ≈ params.TAS
+        @test ac.y.airframe.aero.β ≈ params.β_a
+        @test ac.x.airframe.fuel[1] == params.fuel
+        @test ac.u.avionics.yoke_x == params.yoke_x
+        @test ac.u.avionics.yoke_y == params.yoke_y
+        @test ac.u.avionics.mixture == params.mixture
+        @test ac.u.avionics.flaps == params.flaps
+
+        #setting α_filt = α and β_filt = β should have zeroed their derivatives
+        @test ac.ẋ.airframe.aero.α_filt ≈ 0.0 atol = 1e-12
+        @test ac.ẋ.airframe.aero.β_filt ≈ 0.0 atol = 1e-12
+
+        @test (@ballocated C172R.Trim.assign!($ac, $atm, $trn, $state, $params))===0
+
+    end
+
+    @testset verbose = true "Optimization" begin
+
+        ac = System(Cessna172R())
+        atm = System(Atmosphere())
+        trn = HorizontalTerrain() #zero orthometric altitude
+        state = State()
+        params = Parameters()
+
+        f_target = get_target_function(ac, atm, trn, params)
+
+        @assert @ballocated($f_target($state)) === 0
+
+        end
+
+    end
+end
+
+
+
 
 
 end #module

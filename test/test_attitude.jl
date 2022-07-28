@@ -71,7 +71,10 @@ function test_RQuat()
 
         #time derivative
         ω_ab_b = [10, -4, 2]
-        @test Attitude.dt(q_ab, ω_ab_b) == 0.5 * (q_ab._u * FreeQuat(imag = ω_ab_b))
+        q̇_ab =Attitude.dt(q_ab, ω_ab_b)
+        @test q̇_ab == 0.5 * (q_ab._u * FreeQuat(imag = ω_ab_b))
+
+        @test ω_ab_b ≈ Attitude.ω(q_ab, q̇_ab)
 
     end
 
@@ -208,6 +211,10 @@ function test_REuler()
         @test isapprox(Attitude.dt(REuler(θ = π/3, φ = π/4), [1, 0, 0]), [0, 0, 1.0], atol = 1e-10)
         @test all(Attitude.dt(REuler(ψ = π/3, θ = π/4), [-1, 2, 1]) .≈ Attitude.dt(REuler(ψ = π/6, θ = π/4), [-1, 2, 1]))
 
+        ω_ab_b = [2, -3.2, 4]
+        ṙ_ab = Attitude.dt(r_ab, ω_ab_b)
+        @test ω_ab_b ≈ Attitude.ω(r_ab, ṙ_ab)
+
     end
 
     @testset "Conversions" begin
@@ -298,8 +305,9 @@ function test_RMatrix()
 
         #time derivative
         ω_ab_b = [10, -4, 2]
-        @test Attitude.dt(r_ab, ω_ab_b) == r_ab._mat * Attitude.skew(ω_ab_b)
+        @test Attitude.dt(r_ab, ω_ab_b) == r_ab._mat * Attitude.v2skew(ω_ab_b)
     end
+
 
     @testset "Conversions" begin
 
@@ -311,6 +319,7 @@ function test_RMatrix()
 
         #this should exercise all cases of RMatrix -> RQuat conversion
         r_array_test = [r |> RMatrix |> RQuat |> RMatrix |> REuler |> RMatrix |> RAxAng |> RMatrix for r in r_array]
+        # @show r_array .≈ r_array_test
         @test all(r_array .≈ r_array_test)
 
     end
