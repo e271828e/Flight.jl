@@ -117,7 +117,8 @@ get_βa(b::Blade, ζ::Real, Δβ::Real) = get_βc(b, ζ, Δβ) - α_0(b.airfoil)
 #given radial distance in the Goldstein's condition, and therefore the more
 #blades we have, the larger the induced velocity will be, and the less is to be
 #gained from adding further blades. in fact, while the traction coefficient
-#increases with the number of blades, the propulsive efficiency decreases
+#increases with the number of blades, the propulsive efficiency is optimal for a
+#single blade and decreases from there
 
 Base.@kwdef struct Coefficients{T}
     C_Fx::T
@@ -128,8 +129,9 @@ Base.@kwdef struct Coefficients{T}
     η_p::T
 end
 
-#compute coefficients for n_blades propeller blades with the given properties at a
-#specific advance ratio and blade pitch offset setting. CW is assumed.
+#compute propeller coefficients for n blades with the specified properties, at a
+#given advance ratio, blade tip Mach number and blade pitch offset setting. CW
+#is assumed.
 function Coefficients(blade::Blade, n_blades::Int; J::Real, M_tip::Real, Δβ::Real, n_ζ = 201)
 
     airfoil = blade.airfoil
@@ -180,7 +182,8 @@ function Coefficients(blade::Blade, n_blades::Int; J::Real, M_tip::Real, Δβ::R
         end
     end
 
-    #these are for a CW propeller, we'll deal with CCW signs somewhere else
+    #these are for a CW propeller, we'll deal with the CCW case through symmetry
+    #inside the propeller dynamics update function
     C_Fx = trapz(ζ, dC_Fx)
     C_Mx = trapz(ζ, dC_Mx)
     C_Fz_α = trapz(ζ, dC_Fz_α)

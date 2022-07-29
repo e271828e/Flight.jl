@@ -130,9 +130,9 @@ end
 
 function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
 
-    #set sensible bounds for inputs that might become ill-defined
-    α = clamp(α, -0.1, 0.4)
-    β = clamp(β, -0.1, 0.4)
+    #set sensible bounds
+    α = clamp(α, -0.1, 0.36) #0.36 is the highest value (post-stall) tabulated for C_L
+    β = clamp(β, -0.2, 0.2)
     α_dot_nd = clamp(α_dot_nd, -0.04, 0.04)
     β_dot_nd = clamp(β_dot_nd, -0.2, 0.2)
 

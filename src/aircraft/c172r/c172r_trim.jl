@@ -191,35 +191,14 @@ function get_target_function(ac::System{<:Cessna172R},
     atm::System{<:Atmosphere}, trn::AbstractTerrain,
     params::Parameters = Parameters())
 
-    f_target = let ac = ac, atm = atm, trn = trn, params = params
-
+    let ac = ac, atm = atm, trn = trn, params = params
         function (x::State)
             assign!(ac, atm, trn, x, params)
             return cost(ac)
         end
-
     end
 
-    return f_target
-
 end
-
-# function trim!(ac::System{<:Cessna172R},
-#     atm::System{<:Atmosphere}, trn::AbstractTerrain,
-#     x0::State = State(), params::Parameters = Parameters();
-#     a = 0.02, b = 0.05, g_tol = 1e-14, iterations = 5000)
-
-#     f = get_target_function(ac, atm, trn, params)
-#     initial_simplex = Optim.AffineSimplexer(; a, b)
-#     @show initial_cost = f(x0)
-#     result = optimize(f, x0, NelderMead(; initial_simplex), Optim.Options(; g_tol, iterations))
-#     @show final_cost = f(result.minimizer)
-#     if final_cost > 10g_tol
-#         println("Warning: Optimization did not converge")
-#     end
-#     @show
-#     return result
-# end
 
 function trim_new!(; ac::System{<:Cessna172R} = System(Cessna172R()),
     atm::System{<:Atmosphere} = System(Atmosphere()),
@@ -228,7 +207,7 @@ function trim_new!(; ac::System{<:Cessna172R} = System(Cessna172R()),
 
     f_target = get_target_function(ac, atm, trn, params)
 
-    #wrapper function with the interface required by NLopt
+    #wrapper around the function with the interface required by NLopt
     ax = getaxes(state)
     function f_opt(x::Vector{Float64}, ::Vector{Float64})
         s = ComponentVector(x, ax)
@@ -236,54 +215,54 @@ function trim_new!(; ac::System{<:Cessna172R} = System(Cessna172R()),
     end
 
     n = length(state)
-    x0 = zeros(n); lower_bounds = similar(x0); upper_bounds = similar(x0)
+    x0 = zeros(n); lower_bounds = similar(x0); upper_bounds = similar(x0); initial_step = similar(x0)
 
     x0[:] .= state
 
     lower_bounds[:] .= State(
-        α_a = -π/6,
+        α_a = -π/12,
         φ_nb = -π/3,
-        n_eng = 0,
+        n_eng = 0.4,
         throttle = 0,
         yoke_x = -1,
         yoke_y = -1,
         pedals = -1)
 
     upper_bounds[:] .= State(
-        α_a = π/6,
+        α_a = ac.airframe.aero.params.α_stall[2], #critical AoA is 0.28 < 0.36
         φ_nb = π/3,
-        n_eng = 1.2,
+        n_eng = 1.1,
         throttle = 1,
         yoke_x = 1,
         yoke_y = 1,
         pedals = 1)
 
+    initial_step[:] .= 0.05 #safe value for all optimization variables
+
     # @show initial_cost = f_opt(x0, x0)
     # @btime $f_opt($x0, $x0)
 
-    opt  = Opt(:LN_NELDERMEAD, length(x0))
+    # opt = Opt(:LN_NELDERMEAD, length(x0))
+    opt = Opt(:LN_BOBYQA, length(x0))
+    # opt = Opt(:GN_CRS2_LM, length(x0))
     opt.min_objective = f_opt
-    opt.maxeval = 10000
-    opt.stopval = 1e-12
-
-    println("TUNE opt.initial_step FOR THE DIFFERENT trim states and retry COBYLA")
+    opt.maxeval = 100000
+    opt.stopval = 1e-14
     opt.lower_bounds = lower_bounds
     opt.upper_bounds = upper_bounds
+    opt.initial_step = initial_step
 
-    # @show x0
-    # @show opt.lower_bounds
-    # @show opt.upper_bounds
-
-    # @btime $f($x0, $x0)
+    @btime optimize($opt, $x0)
 
     (minf,minx,ret) = optimize(opt, x0)
     @show ret
     @show minf
     @show numevals = opt.numevals # the number of function evaluations
-    # println("got $minf at $minx after $numevals iterations (returned $ret)")
 
     @show final_state = ComponentVector(minx, ax)
-    # @btime optimize($opt, $x0)
+    if ret != :STOPVAL_REACHED
+        println("Warning: Optimization did not converge")
+    end
 
 
 end
