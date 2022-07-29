@@ -6,10 +6,10 @@ export Ranged, linear_scaling
 export TimeHistory
 export pwf
 
-#print with fieldnames
+#print with propertynames
 function pwf(s)
-    for f in fieldnames(typeof(s))
-        println("$f: $(getfield(s,f))")
+    for f in propertynames(s)
+        println("$f: $(getproperty(s,f))")
     end
 end
 
