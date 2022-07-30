@@ -10,11 +10,11 @@ import Interpolations: knots, bounds
 using Flight.Utils
 using Flight.Systems
 using Flight.Plotting
-using Flight.Kinematics, Flight.Dynamics, Flight.Air
+using Flight.Kinematics, Flight.RigidBody, Flight.Air
 
 import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Plotting: make_plots
-import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
+import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 
 export FixedPitch, VariablePitch, Propeller
 

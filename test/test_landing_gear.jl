@@ -96,7 +96,7 @@ function test_strut()
         terrain = HorizontalTerrain()
 
         #set the initial 2D Location
-        h_trn = TerrainData(terrain, l2d).altitude
+        h_trn = TerrainData(terrain, loc).altitude
 
         #wow = false
         h = h_trn + 1.1
@@ -171,8 +171,8 @@ function test_contact()
         braking = System(DirectBraking())
         terrain = HorizontalTerrain()
 
-        l2d = LatLon()
-        h_trn = TerrainData(terrain, l2d).altitude
+        loc = LatLon()
+        h_trn = TerrainData(terrain, loc).altitude
         h = h_trn + 0.9
 
         #normal static load
@@ -256,8 +256,8 @@ function test_landing_gear_unit()
         ldg = System(LandingGearUnit())
 
         trn = HorizontalTerrain()
-        l2d = LatLon()
-        h_trn = Terrain.TerrainData(trn, l2d).altitude
+        loc = LatLon()
+        h_trn = Terrain.TerrainData(trn, loc).altitude
 
         #wow = true
         kin = KinematicInit(; h = h_trn + 0.9, v_eOb_n = [0,1,0]) |> KinematicData

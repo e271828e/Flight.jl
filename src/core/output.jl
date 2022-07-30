@@ -68,7 +68,7 @@ disable_physics!(xp::XPInterface) = set_dref(xp, "sim/operation/override/overrid
 init!(xp::XPInterface) = disable_physics!(xp)
 
 
-function set_position!(xp::XPInterface; lat = -998, lon = -998, alt = -998,
+function set_position!(xp::XPInterface; lat = -998, lon = -998, h = -998,
                         psi = -998, theta = -998, phi = -998,
                         aircraft::Integer = 0)
 
@@ -76,7 +76,7 @@ function set_position!(xp::XPInterface; lat = -998, lon = -998, alt = -998,
     buffer = IOBuffer()
     write(buffer,
         b"POSI\0", UInt8(aircraft),
-        Float64(lat), Float64(lon), Float64(alt),
+        Float64(lat), Float64(lon), Float64(h),
         Float32(theta), Float32(phi), Float32(psi),
         Float32(-998)) #last one is landing gear (?!)
 

@@ -11,8 +11,8 @@ function test_geodesy()
         @testset verbose = true "NVector" begin test_NVector() end
         @testset verbose = true "LatLon" begin test_LatLon() end
         @testset verbose = true "Altitude" begin test_Altitude() end
-        @testset verbose = true "GeographicLocation" begin test_GeographicLocation() end
-        @testset verbose = true "CartesianLocation" begin test_CartesianLocation() end
+        @testset verbose = true "Geographic" begin test_GeographicLocation() end
+        @testset verbose = true "Cartesian" begin test_CartesianLocation() end
     end
 end
 
@@ -96,30 +96,30 @@ function test_Altitude()
     h_ellip = Altitude{Ellipsoidal}(1500)
     h_orth = Altitude{Orthometric}(1500)
     Δh = 300
-    l2d = NVector([3,1,-5])
+    loc = NVector([3,1,-5])
 
     #cannot convert from one datum to another without a 2D location
     @test_throws MethodError Altitude{Ellipsoidal}(h_orth)
     @test_throws MethodError Altitude{Orthometric}(h_ellip)
 
     #however, with a 2D location we can convert back and forth
-    @test Altitude{Orthometric}(Altitude{Ellipsoidal}(h_orth, l2d), l2d) == h_orth
-    @test Altitude{Orthometric}(h_ellip, l2d) isa Altitude{Orthometric}
-    @test Altitude{Ellipsoidal}(h_orth, l2d) isa Altitude{Ellipsoidal}
-    @test Altitude{Geopotential}(h_ellip, l2d) isa Altitude{Geopotential}
+    @test Altitude{Orthometric}(Altitude{Ellipsoidal}(h_orth, loc), loc) == h_orth
+    @test Altitude{Orthometric}(h_ellip, loc) isa Altitude{Orthometric}
+    @test Altitude{Ellipsoidal}(h_orth, loc) isa Altitude{Ellipsoidal}
+    @test Altitude{Geopotential}(h_ellip, loc) isa Altitude{Geopotential}
     @test Altitude{Geopotential}(h_orth) isa Altitude{Geopotential}
 
     #operations and conversions
-    @test (h_ellip + Δh) isa AltE
-    @test (h_orth + Δh) isa AltO
+    @test (h_ellip + Δh) isa HEllip
+    @test (h_orth + Δh) isa HOrth
     @test Float64(h_ellip + Δh) == Float64(h_ellip) + Δh
     @test Float64(h_orth + Δh) == Float64(h_orth) + Δh
 
     @test h_ellip - h_ellip/2 isa Float64
     @test h_ellip - h_ellip/2 == h_ellip/2
-    @test h_ellip + Float64(h_ellip/2) isa AltE
-    @test 0.7h_ellip isa AltE
-    @test h_ellip/2 isa AltE
+    @test h_ellip + Float64(h_ellip/2) isa HEllip
+    @test 0.7h_ellip isa HEllip
+    @test h_ellip/2 isa HEllip
 
     @test h_ellip + Float64(h_ellip/2) == 3h_ellip/2
     @test h_ellip + Float64(h_ellip/2) ≈ 3h_ellip/2
@@ -139,23 +139,23 @@ end
 
 function test_GeographicLocation()
 
-    p_nve = GeographicLocation(alt = AltO(1500))
-    p_llo = GeographicLocation{LatLon,Orthometric}(p_nve)
-    @test p_nve isa GeographicLocation{NVector,Orthometric}
-    @test GeographicLocation(l2d = LatLon(), alt = AltO()) isa GeographicLocation{LatLon,Orthometric}
+    p_nve = Geographic(h = HOrth(1500))
+    p_llo = Geographic{LatLon,Orthometric}(p_nve)
+    @test p_nve isa Geographic{NVector,Orthometric}
+    @test Geographic(loc = LatLon(), h = HOrth()) isa Geographic{LatLon,Orthometric}
 
     #conversion
-    @test GeographicLocation{NVector,Ellipsoidal}(p_llo) isa GeographicLocation{NVector,Ellipsoidal}
+    @test Geographic{NVector,Ellipsoidal}(p_llo) isa Geographic{NVector,Ellipsoidal}
 
     @test_throws ArgumentError p_llo == p_llo
-    @test p_nve == p_nve #strict equality only defined for GeographicLocation{NVector}
+    @test p_nve == p_nve #strict equality only defined for Geographic{NVector}
     @test p_llo ≈ p_llo
     @test p_llo ≈ p_nve
-    @test -(-p_llo) ≈ p_llo #requires CartesianLocation
-    @test -(-p_nve) ≈ p_nve #requires CartesianLocation
+    @test -(-p_llo) ≈ p_llo #requires Cartesian
+    @test -(-p_nve) ≈ p_nve #requires Cartesian
 
-    @test ltf(p_nve, π/3) == ltf(p_nve.l2d, π/3)
-    @test radii(p_nve) == radii(p_nve.l2d)
+    @test ltf(p_nve, π/3) == ltf(p_nve.loc, π/3)
+    @test radii(p_nve) == radii(p_nve.loc)
     @test gravity(p_llo) ≈ gravity(p_nve)
     @test g_n(p_llo) ≈ g_n(p_nve)
     @test G_n(p_llo) ≈ G_n(p_nve)
@@ -164,11 +164,11 @@ end
 
 function test_CartesianLocation()
 
-    #construction from GeographicLocation
-    p_nvo = GeographicLocation(NVector([3,1,-3]), AltO(10000))
-    p_lle = GeographicLocation{LatLon,Ellipsoidal}(p_nvo)
-    r = CartesianLocation(p_nvo)
-    @test r ≈ CartesianLocation(p_lle)
+    #construction from Geographic
+    p_nvo = Geographic(NVector([3,1,-3]), HOrth(10000))
+    p_lle = Geographic{LatLon,Ellipsoidal}(p_nvo)
+    r = Cartesian(p_nvo)
+    @test r ≈ Cartesian(p_lle)
 
     @test r == r
     @test -(-r) == r
@@ -176,16 +176,16 @@ function test_CartesianLocation()
     @test r ≈ r
 
     #conversion torture test
-    ftest(p) = p |> CartesianLocation |> GeographicLocation{NVector,Ellipsoidal} |> CartesianLocation |>
-                GeographicLocation{NVector,Orthometric} |> CartesianLocation |>
-                GeographicLocation{LatLon, Ellipsoidal} |> GeographicLocation{LatLon, Geopotential} |>
-                GeographicLocation{LatLon, Ellipsoidal}
+    ftest(p) = p |> Cartesian |> Geographic{NVector,Ellipsoidal} |> Cartesian |>
+                Geographic{NVector,Orthometric} |> Cartesian |>
+                Geographic{LatLon, Ellipsoidal} |> Geographic{LatLon, Geopotential} |>
+                Geographic{LatLon, Ellipsoidal}
 
     ϕ_range = range(-π/2, π/2, length = 10)
     λ_range = range(-π, π, length = 10)
     h_range = range(Geodesy.h_min + 200, 10000, length = 10)
 
-    p_array = [GeographicLocation(LatLon(ϕ, λ), AltO(h)) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
+    p_array = [Geographic(LatLon(ϕ, λ), HOrth(h)) for (ϕ, λ, h) in Iterators.product(ϕ_range, λ_range, h_range)]
     p_array_test = [ftest(p) for p in p_array]
     @test all(p_array .≈ p_array_test)
 

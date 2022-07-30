@@ -3,15 +3,15 @@ module Piston
 using Interpolations, Unitful, Plots, StaticArrays, StructArrays, ComponentArrays, UnPack
 
 using Flight.Systems, Flight.Utils
-using Flight.Kinematics, Flight.Dynamics, Flight.Air
+using Flight.Kinematics, Flight.RigidBody, Flight.Air
 using Flight.Air: ISA_layers, AirProperties, p_std, T_std, g_std, R
-using Flight.Geodesy: AltG
+using Flight.Geodesy: HGeop
 using Flight.Propellers: AbstractPropeller, Propeller
 using Flight.Friction
 
 import Flight.Systems: init, f_cont!, f_disc!
-import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
-import Flight.Dynamics: get_mp_b
+import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
+import Flight.RigidBody: get_mp_b
 
 ########################### AbstractFuelSupply #################################
 
@@ -57,7 +57,7 @@ T_ISA(p) = T_std * (p / p_std) ^ (-β * R / g_std)
 p2δ(p) = (p/p_std) * (T_ISA(p)/T_std)^(-0.5)
 
 function h2δ(h)
-    @unpack p, T = AirProperties(AltG(h))
+    @unpack p, T = AirProperties(HGeop(h))
     p / p_std / √(T / T_std)
 end
 

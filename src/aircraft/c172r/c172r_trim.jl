@@ -57,7 +57,7 @@ end
 
 #the first 5 do not depend on the aircraft type
 struct Parameters
-    Ob::GeographicLocation{NVector, Ellipsoidal} #position
+    Ob::Geographic{NVector, Ellipsoidal} #position
     ψ_nb::Float64 #geographic heading
     TAS::Float64 #true airspeed
     γ_wOb_n::Float64 #wind-relative flight path angle
@@ -69,11 +69,11 @@ struct Parameters
 end
 
 function Parameters(;
-    l2d::Abstract2DLocation = LatLon(), h::Altitude = AltO(1000),
+    loc::Abstract2DLocation = LatLon(), h::Altitude = HOrth(1000),
     ψ_nb = 0.0, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.0, β_a = 0.0,
     fuel = 0.5, mixture = 0.5, flaps = 0.0)
 
-    Ob = GeographicLocation(l2d, h)
+    Ob = Geographic(loc, h)
     Parameters(Ob, ψ_nb, TAS, γ_wOb_n, ψ_lb_dot, β_a, fuel, mixture, flaps)
 end
 
@@ -103,14 +103,14 @@ function KinematicInit(state::State, params::Parameters, atm::System{<:Atmospher
     ė_lb = SVector(params.ψ_lb_dot, 0.0, 0.0)
     ω_lb_b = Attitude.ω(e_lb, ė_lb)
 
-    l2d = NVector(params.Ob)
-    h = AltE(params.Ob)
+    loc = NVector(params.Ob)
+    h = HEllip(params.Ob)
 
     v_wOb_n = q_nb(v_wOb_b) #wind-relative aircraft velocity, NED frame
     v_ew_n = AtmosphericData(atm, params.Ob).wind.v_ew_n
     v_eOb_n = v_ew_n + v_wOb_n
 
-    KinematicInit(; q_nb, l2d, h, ω_lb_b, v_eOb_n)
+    KinematicInit(; q_nb, loc, h, ω_lb_b, v_eOb_n)
 
 end
 
@@ -167,18 +167,6 @@ end
 
 function cost(ac::System{<:Cessna172R})
 
-
-    # necesitamos introducir la barrier functions ANTES de que los control
-    # inputs saturen a 1, porque entonces la cost function se hace estrictamente
-    # infinita. por tanto, no podemos coger los valores de los controles de
-    # dentro de la avionica para despues penalizarlos. hay que cogerlos
-    # directamente del trim_state ANTES de que se asignen al sistema y se
-    # saturen. o sea que o bien el interfaz de la cost function anade el state
-    # como input, y se mantiene la funcion assign! independiente, o redefinimos
-    # la funcion cost como cost! y absorbemos dentro assign!
-
-
-
     v_nd_dot = SVector{3}(ac.ẋ.kinematics.vel.v_eOb_b) / norm(ac.y.kinematics.common.v_eOb_b)
     ω_dot = SVector{3}(ac.ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
     n_eng_dot = ac.ẋ.airframe.pwp.ω / ac.airframe.pwp.engine.params.ω_rated
@@ -207,7 +195,7 @@ function trim_new!(; ac::System{<:Cessna172R} = System(Cessna172R()),
 
     f_target = get_target_function(ac, atm, trn, params)
 
-    #wrapper around the function with the interface required by NLopt
+    #wrapper around f_target with the interface required by NLopt
     ax = getaxes(state)
     function f_opt(x::Vector{Float64}, ::Vector{Float64})
         s = ComponentVector(x, ax)
@@ -252,8 +240,8 @@ function trim_new!(; ac::System{<:Cessna172R} = System(Cessna172R()),
     opt.upper_bounds = upper_bounds
     opt.initial_step = initial_step
 
-    @btime optimize($opt, $x0)
 
+@btime optimize($opt, $x0)
     (minf,minx,ret) = optimize(opt, x0)
     @show ret
     @show minf

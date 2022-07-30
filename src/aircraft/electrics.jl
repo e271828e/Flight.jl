@@ -12,11 +12,11 @@ using Flight.Plotting
 
 using Flight.Air
 using Flight.Kinematics
-using Flight.Dynamics
+using Flight.RigidBody
 
 import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Plotting: make_plots
-import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
+import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_hr_b
 
 export EThruster
 

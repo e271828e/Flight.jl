@@ -79,7 +79,7 @@ end
 
 function test_sim_nrt(; save::Bool = true)
 
-    h_trn = AltO(608.55);
+    h_trn = HOrth(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(Atmosphere());
@@ -88,7 +88,7 @@ function test_sim_nrt(; save::Bool = true)
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-        l2d = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.9 + 2200.5);
 
     Aircraft.init!(ac, kin_init)
@@ -122,7 +122,7 @@ end
 
 function test_sim_rt(; save::Bool = true)
 
-    h_trn = AltO(608.55);
+    h_trn = HOrth(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
     atm = System(Atmosphere());
@@ -131,7 +131,7 @@ function test_sim_rt(; save::Bool = true)
         v_eOb_n = [30, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-        l2d = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.9 + 100.5);
 
     Aircraft.init!(ac, kin_init)
@@ -195,13 +195,13 @@ function test_trimming()
         ac = System(Cessna172R())
 
         state = C172R.Trim.State(;
-            α_a = 0.08, φ_nb = 0.3, ω_pwp = 215.0,
-            throttle = 0.61, yoke_Δx = 0.01, yoke_Δy = -0.025, pedals = 0.0)
+            α_a = 0.08, φ_nb = 0.3, n_eng = 0.8,
+            throttle = 0.61, yoke_x = 0.01, yoke_y = -0.025, pedals = 0.0)
 
         params = C172R.Trim.Parameters(;
-            l2d = LatLon(), h = AltO(1000),
+            loc = LatLon(), h = HOrth(1000),
             ψ_nb = 0.2, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.2, β_a = 0.3,
-            yoke_x = 0.0, yoke_y = 0.0, fuel = 0.5, mixture = 0.5, flaps = 0.0)
+            fuel = 0.5, mixture = 0.5, flaps = 0.0)
 
         atm = System(Atmosphere());
         # atm.u.wind.v_ew_n = [4, 2, 4]
@@ -215,10 +215,10 @@ function test_trimming()
 
         @test e_nb.φ ≈ state.φ_nb
         @test ac.y.airframe.aero.α ≈ state.α_a
-        @test ac.y.airframe.pwp.engine.ω == state.ω_pwp
+        @test ac.y.airframe.pwp.engine.ω == state.n_eng * ac.airframe.pwp.engine.params.ω_rated
         @test ac.u.avionics.throttle == state.throttle
-        @test ac.u.avionics.yoke_Δx == state.yoke_Δx
-        @test ac.u.avionics.yoke_Δy == state.yoke_Δy
+        @test ac.u.avionics.yoke_x == state.yoke_x
+        @test ac.u.avionics.yoke_y == state.yoke_y
         @test ac.u.avionics.pedals == state.pedals
 
         @test e_nb.ψ ≈ params.ψ_nb
@@ -227,8 +227,6 @@ function test_trimming()
         @test ac.y.airflow.TAS ≈ params.TAS
         @test ac.y.airframe.aero.β ≈ params.β_a
         @test ac.x.airframe.fuel[1] == params.fuel
-        @test ac.u.avionics.yoke_x == params.yoke_x
-        @test ac.u.avionics.yoke_y == params.yoke_y
         @test ac.u.avionics.mixture == params.mixture
         @test ac.u.avionics.flaps == params.flaps
 
@@ -245,14 +243,12 @@ function test_trimming()
         ac = System(Cessna172R())
         atm = System(Atmosphere())
         trn = HorizontalTerrain() #zero orthometric altitude
-        state = State()
-        params = Parameters()
+        state = C172R.Trim.State()
+        params = C172R.Trim.Parameters()
 
-        f_target = get_target_function(ac, atm, trn, params)
+        f_target = C172R.Trim.get_target_function(ac, atm, trn, params)
 
         @assert @ballocated($f_target($state)) === 0
-
-        end
 
     end
 end

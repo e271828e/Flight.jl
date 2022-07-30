@@ -24,7 +24,7 @@ abstract type AbstractKinematics <: SystemDescriptor end
 
 struct Initializer
     q_nb::RQuat
-    Ob::GeographicLocation{NVector, Ellipsoidal}
+    Ob::Geographic{NVector, Ellipsoidal}
     ω_lb_b::SVector{3, Float64}
     v_eOb_n::SVector{3, Float64}
     Δx::Float64
@@ -33,11 +33,11 @@ struct Initializer
 end
 
 function Initializer(;
-    q_nb::Abstract3DRotation = RQuat(), l2d::Abstract2DLocation = LatLon(),
-    h::Altitude = AltO(), ω_lb_b::AbstractVector{<:Real} = zeros(3),
+    q_nb::Abstract3DRotation = RQuat(), loc::Abstract2DLocation = LatLon(),
+    h::Altitude = HOrth(), ω_lb_b::AbstractVector{<:Real} = zeros(3),
     v_eOb_n::AbstractVector{<:Real} = zeros(3), Δx::Real = 0.0, Δy::Real = 0.0)
 
-    Ob = GeographicLocation(l2d, h)
+    Ob = Geographic(loc, h)
     Initializer(q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy)
 end
 
@@ -124,10 +124,10 @@ function renormalize_block!(x, ε) #returns true if norm was corrected
     abs(norm_x - 1.0) > ε ? (x ./= norm_x; return true) : return false
 end
 
-@inline function get_ω_el_n(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
+@inline function get_ω_el_n(v_eOb_n::AbstractVector{<:Real}, Ob::Geographic)
 
     (R_N, R_E) = radii(Ob)
-    h_e = AltE(Ob)
+    h_e = HEllip(Ob)
 
     return SVector{3}(
         v_eOb_n[2] / (R_E + Float64(h_e)),
@@ -136,10 +136,10 @@ end
 
 end
 
-@inline function get_ω_en_n(v_eOb_n::AbstractVector{<:Real}, Ob::GeographicLocation)
+@inline function get_ω_en_n(v_eOb_n::AbstractVector{<:Real}, Ob::Geographic)
 
     (R_N, R_E) = radii(Ob)
-    h_e = AltE(Ob)
+    h_e = HEllip(Ob)
     ϕ = LatLon(Ob).ϕ
 
     return SVector{3}(
@@ -181,7 +181,7 @@ function init!(x::XLTF, ic::Initializer = Initializer())
     ω_el_b = q_nb'(ω_el_n)
     ω_eb_b = ω_el_b + ω_lb_b
     v_eOb_b = q_nb'(v_eOb_n)
-    h_e = AltE(Ob)
+    h_e = HEllip(Ob)
 
     q_lb = q_nb #arbitrarily initialize ψ_nl to 1
 
@@ -202,7 +202,7 @@ function KinematicsY(x::XLTF)
     q_el = RQuat(x_pos.q_el, normalization = false)
     ω_eb_b = SVector{3}(x_vel.ω_eb_b)
     v_eOb_b = SVector{3}(x_vel.v_eOb_b)
-    h_e = AltE(x_pos.h_e[1])
+    h_e = HEllip(x_pos.h_e[1])
     Δxy = SVector(x_pos.Δx, x_pos.Δy)
 
     ψ_nl = get_ψ_nl(q_el)
@@ -211,10 +211,10 @@ function KinematicsY(x::XLTF)
     q_eb = q_el ∘ q_lb
 
     n_e = NVector(q_el)
-    h_o = AltO(h_e, n_e)
+    h_o = HOrth(h_e, n_e)
 
     v_eOb_n = q_nb(v_eOb_b)
-    Ob = GeographicLocation(n_e, h_e)
+    Ob = Geographic(n_e, h_e)
     ω_el_n = get_ω_el_n(v_eOb_n, Ob)
 
     ω_el_l = q_nl'(ω_el_n)
@@ -276,7 +276,7 @@ function init!(x::XECEF, ic::Initializer = Initializer())
     @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
 
     n_e = NVector(Ob)
-    h_e = AltE(Ob)
+    h_e = HEllip(Ob)
 
     q_en = ltf(n_e)
     q_eb = q_en ∘ q_nb
@@ -304,13 +304,13 @@ function KinematicsY(x::XECEF)
     ω_eb_b = SVector{3}(x_vel.ω_eb_b)
     v_eOb_b = SVector{3}(x_vel.v_eOb_b)
     Δxy = SVector(x_pos.Δx, x_pos.Δy)
-    h_e = AltE(x_pos.h_e[1])
-    h_o = AltO(h_e, n_e)
+    h_e = HEllip(x_pos.h_e[1])
+    h_o = HOrth(h_e, n_e)
 
     q_en = ltf(n_e)
     q_nb = q_en' ∘ q_eb
 
-    Ob = GeographicLocation(n_e, h_e)
+    Ob = Geographic(n_e, h_e)
     v_eOb_n = q_nb(v_eOb_b)
     ω_el_n = get_ω_el_n(v_eOb_n, Ob)
     ω_el_b = q_nb'(ω_el_n)
@@ -377,7 +377,7 @@ function init!(x::XNED, ic::Initializer = Initializer())
 
     e_nb = REuler(q_nb)
     ϕ_λ = LatLon(Ob)
-    h_e = AltE(Ob)
+    h_e = HEllip(Ob)
 
     x.pos.e_nb .= SVector(e_nb.ψ, e_nb.θ, e_nb.φ)
     x.pos.ϕ = ϕ_λ.ϕ
@@ -394,20 +394,20 @@ function KinematicsY(x::XNED)
 
     e_nb = REuler(x.pos.e_nb)
     ϕ_λ = LatLon(x.pos.ϕ, x.pos.λ)
-    h_e = AltE(x.pos.h_e[1])
+    h_e = HEllip(x.pos.h_e[1])
     Δxy = SVector(x.pos.Δx, x.pos.Δy)
     ω_eb_b = SVector{3}(x.vel.ω_eb_b)
     v_eOb_b = SVector{3}(x.vel.v_eOb_b)
 
     n_e = NVector(ϕ_λ)
-    h_o = AltO(h_e, n_e)
+    h_o = HOrth(h_e, n_e)
 
     q_nb = RQuat(e_nb)
     q_en = ltf(n_e)
     q_eb = q_en ∘ q_nb
 
     v_eOb_n = q_nb(v_eOb_b)
-    Ob = GeographicLocation(n_e, h_e)
+    Ob = Geographic(n_e, h_e)
 
     ω_en_n = get_ω_en_n(v_eOb_n, Ob)
     ω_en_b = q_nb'(ω_en_n)

@@ -6,7 +6,7 @@ using Flight.Air
 function test_airflow()
 
     atm_sys = System(Atmosphere())
-    p = GeographicLocation(alt = AltO(13000))
+    p = Geographic(h = HOrth(13000))
     x_kin = init_x(KinLTF(), KinInit(v_eOb_n = [300, 10, 0], Ob = p, q_nb = Ry(0.01)))
     dx_pos = copy(x_kin.pos)
     kin_data = f_kin!(dx_pos, x_kin)

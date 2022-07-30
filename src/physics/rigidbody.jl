@@ -1,4 +1,4 @@
-module Dynamics
+module RigidBody
 
 using StaticArrays
 using LinearAlgebra
@@ -17,11 +17,11 @@ import Flight.Plotting: make_plots
 
 export FrameTransform, transform
 export Wrench
-export AbstractMassDistribution, PointMass, RigidBody, MassProperties
+export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
 export HasMass, HasNoMass, get_mp_b
 export GetsExternalWrench, GetsNoExternalWrench, get_wr_b
 export HasAngularMomentum, HasNoAngularMomentum, get_hr_b
-export DynData, f_dyn!
+export RigidBodyData, f_dyn!
 
 
 
@@ -156,20 +156,20 @@ end
 
 abstract type AbstractMassDistribution end
 
-struct PointMass <: AbstractMassDistribution
+struct PointDistribution <: AbstractMassDistribution
     m::Float64
 end
 
 """Defines a rigid body mass distribution.
 
-A `RigidBody` is defined in a local reference frame fc, whose origin Oc is
+A `RigidBodyDistribution` is defined in a local reference frame fc, whose origin Oc is
 located at the body's center of mass G, and whose axes εc are arbitrarily chosen
 to express the inertia tensor conveniently (typically they will be the body's
 principal axes of inertia)
 - m: Total mass
 - J: Inertia tensor computed with respect to Oc and projected in εc
 """
-struct RigidBody <: AbstractMassDistribution
+struct RigidBodyDistribution <: AbstractMassDistribution
     m::Float64
     J::SMatrix{3,3,Float64,9}
 end
@@ -199,33 +199,33 @@ end
 
 
 """
-Compute the `MassProperties` of a `PointMass` located at point P in reference
+Compute the `MassProperties` of a `PointDistribution` located at point P in reference
 frame fb, given the position vector of P with respect to Ob projected in axes εb
 """
-function MassProperties(p::PointMass, r_ObP_b::AbstractVector{<:Real})
+function MassProperties(p::PointDistribution, r_ObP_b::AbstractVector{<:Real})
     J_Ob_b = -p.m * Attitude.v2skew(r_ObP_b)^2
     MassProperties(p.m, J_Ob_b, r_ObP_b)
 end
 
 """
-Compute the `MassProperties` of a `PointMass` located at the origin Oc of
+Compute the `MassProperties` of a `PointDistribution` located at the origin Oc of
 reference frame fc, given the `FrameTransform` from fb to fc
 """
-MassProperties(p::PointMass, t_bc::FrameTransform) = MassProperties(p, t_bc.r)
+MassProperties(p::PointDistribution, t_bc::FrameTransform) = MassProperties(p, t_bc.r)
 
 """
-Return the `MassProperties` of a `RigidBody` C expressed in its own reference
+Return the `MassProperties` of a `RigidBodyDistribution` C expressed in its own reference
 frame fc.
 """
-MassProperties(c::RigidBody) = MassProperties(c.m, c.J, zeros(SVector{3}))
+MassProperties(c::RigidBodyDistribution) = MassProperties(c.m, c.J, zeros(SVector{3}))
 
 """
-    MassProperties(c::RigidBody, t_bc::FrameTransform)
+    MassProperties(c::RigidBodyDistribution, t_bc::FrameTransform)
 
-Compute the `MassProperties` of a `RigidBody` C in reference frame fb, given
+Compute the `MassProperties` of a `RigidBodyDistribution` C in reference frame fb, given
 the `FrameTransform` t_bc from fb to C's local reference frame fc.
 """
-function MassProperties(c::RigidBody, t_bc::FrameTransform)
+function MassProperties(c::RigidBodyDistribution, t_bc::FrameTransform)
 
     m = c.m
     J_G_c = c.J
@@ -325,7 +325,7 @@ Notes:
 """
 
 MassTrait(::S) where {S<:System} = error(
-    "Please extend Dynamics.MassTrait for $S")
+    "Please extend RigidBody.MassTrait for $S")
 
 get_mp_b(sys::System) = get_mp_b(MassTrait(sys), sys)
 
@@ -400,7 +400,7 @@ struct HasNoAngularMomentum <: AngularMomentumTrait end
 
 #prevents the trait system from failing silently when wrongly extended
 AngularMomentumTrait(::S) where {S<:System} = error(
-    "Please extend Dynamics.AngularMomentumTrait for $S")
+    "Please extend RigidBody.AngularMomentumTrait for $S")
 
 get_hr_b(sys::System) = get_hr_b(AngularMomentumTrait(sys), sys)
 
@@ -481,7 +481,7 @@ function gravity_wrench(mp_b::MassProperties, kin::KinematicData)
     #LTF(Ob), and then apply it at G.
     @unpack n_e, h_e, q_nb = kin
 
-    Ob = GeographicLocation(n_e, h_e)
+    Ob = Geographic(n_e, h_e)
     g_G_n = g_Ob_n = g_n(Ob)
 
     #the resultant consists of the gravity force acting on G along the local
@@ -503,14 +503,12 @@ end
 
 ###################### Acceleration Outputs #####################
 
-Base.@kwdef struct DynDataIn
+Base.@kwdef struct RigidBodyData
+    mp_b::MassProperties = MassProperties()
     wr_g_b::Wrench = Wrench()
     wr_in_b::Wrench = Wrench()
     wr_ext_b::Wrench = Wrench()
     hr_b::SVector{3,Float64} = zeros(SVector{3})
-end
-
-Base.@kwdef struct DynDataOut
     α_eb_b::SVector{3,Float64} = zeros(SVector{3})
     α_ib_b::SVector{3,Float64} = zeros(SVector{3})
     a_eOb_b::SVector{3,Float64} = zeros(SVector{3})
@@ -518,12 +516,6 @@ Base.@kwdef struct DynDataOut
     a_iOb_b::SVector{3,Float64} = zeros(SVector{3})
     f_Ob_b::SVector{3,Float64} = zeros(SVector{3}) #specific force (g) maybe two y axes??
 end
-
-Base.@kwdef struct DynData
-    input::DynDataIn = DynDataIn()
-    output::DynDataOut = DynDataOut()
-end
-
 
 function f_dyn!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassProperties,
     wr_ext_b::Wrench, hr_b::AbstractVector{<:Real})
@@ -565,8 +557,8 @@ function f_dyn!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassProperti
     ẋ_vel .= A\b
 
     #compute outputs
-    Ob = GeographicLocation(n_e, h_e)
-    r_eOb_e = CartesianLocation(Ob)[:]
+    Ob = Geographic(n_e, h_e)
+    r_eOb_e = Cartesian(Ob)[:]
     r_eOb_b = q_eb'(r_eOb_e)
     v̇_eOb_b = SVector{3}(ẋ_vel.v_eOb_b)
 
@@ -583,14 +575,12 @@ function f_dyn!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassProperti
     G_Ob_b = g_Ob_b + ω_ie_b × (ω_ie_b × r_eOb_b)
     f_Ob_b = a_iOb_b - G_Ob_b
 
-    data_in = DynDataIn(wr_g_b, wr_in_b, wr_ext_b, hr_b)
-    data_out = DynDataOut(α_eb_b, α_ib_b, a_eOb_b, a_eOb_n, a_iOb_b, f_Ob_b)
-
-    return DynData(data_in, data_out)
+    return RigidBodyData(; mp_b, wr_g_b, wr_in_b, wr_ext_b, hr_b,
+                           α_eb_b, α_ib_b, a_eOb_b, a_eOb_n, a_iOb_b, f_Ob_b)
 
 end
 
-################################# Dynamics #####################################
+################################# RigidBody #####################################
 
 @recipe function f(th::TimeHistory{<:Wrench}; wr_frame = "", wr_source = "")
 
@@ -615,16 +605,10 @@ end
 
 end
 
-function make_plots(th::TimeHistory{<:DynData}; kwargs...)
+function make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
 
-    return OrderedDict(
-        :input => make_plots(th.input; kwargs...),
-        :output => make_plots(th.output; kwargs...)
-    )
-
-end
-
-function make_plots(th::TimeHistory{<:DynDataIn}; kwargs...)
+    #standard gravity for specific force normalization
+    g₀ = 9.80665
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -651,17 +635,6 @@ function make_plots(th::TimeHistory{<:DynDataIn}; kwargs...)
             L"$h_{Ob \ (r)}^{z_b} \ (kg \ m^2 / s)$"),
         th_split = :h, link = :none,
         kwargs...)
-
-    return pd
-
-end
-
-function make_plots(th::TimeHistory{<:DynDataOut}; kwargs...)
-
-    #standard gravity for specific force normalization
-    g₀ = 9.80665
-
-    pd = OrderedDict{Symbol, Plots.Plot}()
 
     pd[:α_eb_b] = plot(th.α_eb_b;
         plot_title = "Angular Acceleration (Vehicle/ECEF) [Vehicle Axes]",

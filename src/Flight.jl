@@ -16,7 +16,7 @@ include("physics/geodesy.jl")
 include("physics/kinematics.jl")
 include("physics/air.jl")
 include("physics/terrain.jl")
-include("physics/dynamics.jl")
+include("physics/rigidbody.jl")
 include("physics/friction.jl")
 
 include("aircraft/aircraft.jl")
@@ -40,7 +40,7 @@ include("aircraft/c172r/c172r.jl")
 @reexport using .Kinematics
 @reexport using .Air
 @reexport using .Terrain
-@reexport using .Dynamics
+@reexport using .RigidBody
 @reexport using .Friction
 
 @reexport using .Aircraft

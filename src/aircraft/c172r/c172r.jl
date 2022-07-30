@@ -16,7 +16,7 @@ using Flight.Attitude
 using Flight.Terrain
 using Flight.Air
 using Flight.Kinematics
-using Flight.Dynamics
+using Flight.RigidBody
 using Flight.LandingGear
 using Flight.Propellers
 using Flight.Piston
@@ -25,7 +25,7 @@ using Flight.Input: Input, XBoxController, get_axis_value, is_released
 
 import Flight.Systems: init, f_cont!, f_disc!
 import Flight.Kinematics: KinematicInit
-import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
+import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Piston: fuel_available
 
 include("c172r_aero.jl")
@@ -84,8 +84,8 @@ struct Structure <: SystemDescriptor end
 
 #Structure mass properties computed in the vehicle reference frame b
 const mp_b_str = let
-    #define the structure as a RigidBody
-    str_G = RigidBody(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
+    #define the structure as a RigidBodyDistribution
+    str_G = RigidBodyDistribution(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
     #define the transform from the origin of the vehicle reference frame (Ob)
     #to the structure's center of mass (G)
     t_Ob_G = FrameTransform(r = SVector{3}(0.056, 0, 0.582))
@@ -352,11 +352,11 @@ struct Payload <: SystemDescriptor
     psg_right::MassProperties #mp_b
     baggage::MassProperties #mp_b
 
-    function Payload( ; pilot::AbstractMassDistribution = PointMass(75),
-                        copilot::AbstractMassDistribution = PointMass(75),
-                        psg_left::AbstractMassDistribution = PointMass(75),
-                        psg_right::AbstractMassDistribution = PointMass(75),
-                        baggage::AbstractMassDistribution = PointMass(50))
+    function Payload( ; pilot::PointDistribution = PointDistribution(75),
+                        copilot::PointDistribution = PointDistribution(75),
+                        psg_left::PointDistribution = PointDistribution(75),
+                        psg_right::PointDistribution = PointDistribution(75),
+                        baggage::PointDistribution = PointDistribution(50))
 
         return new( MassProperties(pilot, pilot_slot),
                     MassProperties(copilot, copilot_slot),
@@ -429,8 +429,8 @@ function get_mp_b(fuel::System{Fuel})
     #the engine dies)
     m_fuel = max(0.0, fuel.y.m)
 
-    m_left = PointMass(0.5m_fuel)
-    m_right = PointMass(0.5m_fuel)
+    m_left = PointDistribution(0.5m_fuel)
+    m_right = PointDistribution(0.5m_fuel)
 
     #fuel tanks reference frames
     frame_left = FrameTransform(r = SVector{3}(0.325, -2.845, 0))

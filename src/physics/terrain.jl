@@ -18,7 +18,7 @@ struct TerrainData
     surface::SurfaceType
 end
 
-function TerrainData(; altitude = AltO(0),
+function TerrainData(; altitude = HOrth(0),
                        normal = SVector{3,Float64}(0,0,1),
                        surface = DryTarmac) where {S}
     TerrainData(altitude, SVector{3,Float64}(normal), surface)
@@ -37,7 +37,7 @@ struct HorizontalTerrain <: AbstractTerrain
     surface::SurfaceType
 end
 
-HorizontalTerrain(; altitude = AltO(0), surface = DryTarmac) =
+HorizontalTerrain(; altitude = HOrth(0), surface = DryTarmac) =
     HorizontalTerrain(altitude, surface)
 
 TerrainData(trn::HorizontalTerrain, ::Abstract2DLocation) =

@@ -7,11 +7,11 @@ using UnPack
 using Flight.Systems
 using Flight.Attitude
 using Flight.Geodesy, Flight.Terrain, Flight.Air
-using Flight.Kinematics, Flight.Dynamics
+using Flight.Kinematics, Flight.RigidBody
 using Flight.Input, Flight.Output
 
 import Flight.Systems: init, f_cont!, f_disc!
-import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
+import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Output: update!
 
 export AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
@@ -28,7 +28,7 @@ AngularMomentumTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
 ########################## EmptyAirframe ###########################
 
 Base.@kwdef struct EmptyAirframe <: AbstractAirframe
-    mass_distribution::RigidBody = RigidBody(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
+    mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
 end
 
 WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
@@ -81,7 +81,7 @@ init(::SystemY, ac::AircraftBase) = (
     airframe = init_y(ac.airframe),
     avionics = init_y(ac.avionics),
     kinematics = init_y(ac.kinematics),
-    dynamics = DynData(),
+    rigidbody = RigidBodyData(),
     airflow = AirflowData(),
     )
 
@@ -108,10 +108,10 @@ function f_cont!(sys::System{<:AircraftBase}, atm::System{<:Atmosphere}, trn::Ab
     hr_b = get_hr_b(airframe)
 
     #update velocity derivatives
-    dyn_data = f_dyn!(kinematics.ẋ.vel, kin_data, mp_b, wr_b, hr_b)
+    rb_data = f_dyn!(kinematics.ẋ.vel, kin_data, mp_b, wr_b, hr_b)
 
     sys.y = (airframe = airframe.y, avionics = avionics.y, kinematics = kinematics.y,
-            dynamics = dyn_data, airflow = air_data,)
+            rigidbody = rb_data, airflow = air_data,)
 
     return nothing
 
@@ -135,13 +135,13 @@ function update!(xp::XPInterface, kin::KinematicData, aircraft::Integer = 0)
 
     lat = rad2deg(ll.ϕ)
     lon = rad2deg(ll.λ)
-    alt = kin.h_o
+    h = kin.h_o
 
     psi = rad2deg(e_nb.ψ)
     theta = rad2deg(e_nb.θ)
     phi = rad2deg(e_nb.φ)
 
-    Output.set_position!(xp; lat, lon, alt, psi, theta, phi, aircraft)
+    Output.set_position!(xp; lat, lon, h, psi, theta, phi, aircraft)
 
 end
 

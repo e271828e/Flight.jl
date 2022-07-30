@@ -98,7 +98,7 @@ end
 #compute AirProperties at a given geopotential altitude, using ISA_temperature_law and
 #ISA_pressure_law to propagate the given sea level conditions upwards through
 #the successive ISA_layers up to the requested altitude
-@inline function AirProperties(h_geo::AltG, sl::SeaLevelConditions = SeaLevelConditions())
+@inline function AirProperties(h_geo::HGeop, sl::SeaLevelConditions = SeaLevelConditions())
 
     h = Float64(h_geo)
     h_base = 0; T_base = sl.T; p_base = sl.p; g_base = sl.g
@@ -130,12 +130,12 @@ end
 #     return (T, p)
 # end
 
-@inline AirProperties() = AirProperties(AltG(0))
+@inline AirProperties() = AirProperties(HGeop(0))
 
-@inline function AirProperties(sys::System{<:AbstractISAModel}, loc::GeographicLocation)
+@inline function AirProperties(sys::System{<:AbstractISAModel}, loc::Geographic)
 
-    h_geop = Altitude{Geopotential}(loc.alt, loc.l2d)
-    sl = SeaLevelConditions(sys, loc.l2d)
+    h_geop = Altitude{Geopotential}(loc.h, loc.loc)
+    sl = SeaLevelConditions(sys, loc.loc)
     AirProperties(h_geop, sl)
 
 end
@@ -160,7 +160,7 @@ f_disc!(::System{<:TunableISA}, args...) = false
 function SeaLevelConditions(s::System{<:TunableISA}, ::Abstract2DLocation)
     SeaLevelConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
     #alternative using actual local SL gravity:
-    # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(GeographicLocation(l2d, AltO(0.0))))
+    # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(loc, HOrth(0.0))))
 end
 
 ################################################################################
@@ -172,7 +172,7 @@ Base.@kwdef struct WindData
     v_ew_n::SVector{3,Float64} = zeros(SVector{3})
 end
 
-function WindData(::T, ::Abstract3DLocation) where {T<:System{<:AbstractWindModel}}
+function WindData(::T, ::Abstract3DPosition) where {T<:System{<:AbstractWindModel}}
     error("WindData constructor not implemented for $T")
 end
 
@@ -189,7 +189,7 @@ init(::SystemU, ::TunableWind) = USimpleWind()
 f_cont!(::System{<:TunableWind}, args...) = nothing
 f_disc!(::System{<:TunableWind}, args...) = false
 
-function WindData(wind::System{<:TunableWind}, ::Abstract3DLocation)
+function WindData(wind::System{<:TunableWind}, ::Abstract3DPosition)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData
 end
 
@@ -206,7 +206,7 @@ Base.@kwdef struct AtmosphericData
     wind::WindData = WindData()
 end
 
-function AtmosphericData(atm::System{<:Atmosphere}, loc::GeographicLocation)
+function AtmosphericData(atm::System{<:Atmosphere}, loc::Geographic)
     AtmosphericData( AirProperties(atm.air, loc), WindData(atm.wind, loc))
 end
 
@@ -286,10 +286,10 @@ function AirflowData(kin::KinematicData, atm_data::AtmosphericData)
 end
 
 function AirflowData(kin_data::KinematicData, atm_sys::System{<:Atmosphere})
-    #the AtmosphericData constructor accepts any GeographicLocation subtype, but it's most
+    #the AtmosphericData constructor accepts any Geographic subtype, but it's most
     #likely that ISA SL conditions and wind will be expressed in {LatLon,
     #Orthometric}
-    loc = GeographicLocation(kin_data.n_e, kin_data.h_o)
+    loc = Geographic(kin_data.n_e, kin_data.h_o)
 
     #query the Atmosphere System for the atmospheric data at our location
     atm_data = AtmosphericData(atm_sys, loc)

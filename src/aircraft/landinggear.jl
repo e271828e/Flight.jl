@@ -14,11 +14,11 @@ using Flight.Attitude
 using Flight.Geodesy
 using Flight.Terrain
 using Flight.Kinematics
-using Flight.Dynamics
+using Flight.RigidBody
 using Flight.Friction
 
 import Flight.Systems: init, f_cont!, f_disc!
-import Flight.Dynamics: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
+import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
 import Flight.Plotting: make_plots
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
@@ -155,17 +155,17 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     r_OsP_s = l_OsP * e3
     r_ObP_b = r_ObOs_b + q_bs(r_OsP_s)
     r_ObP_e = q_eb(r_ObP_b)
-    r_OeOb_e = CartesianLocation(GeographicLocation(n_e, h_e))
+    r_OeOb_e = Cartesian(Geographic(n_e, h_e))
     r_OeP_e = r_OeOb_e + r_ObP_e
-    P = GeographicLocation(r_OeP_e)
+    P = Geographic(r_OeP_e)
 
     #get terrain data at the contact reference point's 2D location (close enough
     #to the actual contact frame origin, which is still unknown)
-    trn = TerrainData(terrain, P.l2d)
+    trn = TerrainData(terrain, P.loc)
 
     q_ns = q_nb ∘ q_bs
     k_s_zn = q_ns(e3)[3]
-    Δh = AltO(P) - trn.altitude
+    Δh = HOrth(P) - trn.altitude
 
     if Δh > 0 #reference point above ground, strut at its natural length
         ξ = 0.0
