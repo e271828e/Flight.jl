@@ -14,7 +14,7 @@ function aerodynamics_test()
     h_trn = HOrth(601.3);
 
     trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(Atmosphere());
+    atm = System(SimpleAtmosphere());
     aero = System(C172R.Aero());
     pwp = System(C172R.Pwp());
     kin_init = KinematicInit(
@@ -52,7 +52,7 @@ function forward_drop_test()
     h_trn = HOrth(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(Atmosphere());
+    atm = System(SimpleAtmosphere());
     ac = System(Cessna172R());
     kin_init = KinematicInit(
         v_eOb_n = [30, 0, 0],
@@ -101,7 +101,7 @@ function free_flight()
     h_trn = HOrth(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(Atmosphere());
+    atm = System(SimpleAtmosphere());
     ac = System(Cessna172R());
     kin_init = KinematicInit(
         v_eOb_n = [0, 0, 0],

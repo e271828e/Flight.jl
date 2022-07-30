@@ -2,7 +2,9 @@ module Terrain
 
 using StaticArrays
 
+using Flight.Systems
 using Flight.Geodesy
+import Flight.Systems: init, f_cont!, f_disc!
 
 export AbstractTerrain, DummyTerrain, HorizontalTerrain
 
@@ -27,7 +29,7 @@ end
 
 ######################## AbstractTerrain ##########################
 
-abstract type AbstractTerrain end
+abstract type AbstractTerrain <: SystemDescriptor end
 TerrainData(::AbstractTerrain, args...) = throw(MethodError(TerrainData, args))
 
 struct DummyTerrain <: AbstractTerrain end
@@ -43,6 +45,8 @@ HorizontalTerrain(; altitude = HOrth(0), surface = DryTarmac) =
 TerrainData(trn::HorizontalTerrain, ::Abstract2DLocation) =
     TerrainData(trn.altitude, SVector{3,Float64}(0,0,1), trn.surface)
 
+f_cont!(::System{<:HorizontalTerrain}) = nothing
+f_disc!(::System{<:HorizontalTerrain}) = false
 
 end #module
 

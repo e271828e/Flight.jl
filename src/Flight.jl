@@ -14,10 +14,12 @@ include("physics/quaternions.jl")
 include("physics/attitude.jl")
 include("physics/geodesy.jl")
 include("physics/kinematics.jl")
-include("physics/air.jl")
-include("physics/terrain.jl")
 include("physics/rigidbody.jl")
 include("physics/friction.jl")
+
+include("environment/atmosphere.jl")
+include("environment/terrain.jl")
+include("environment/environment.jl")
 
 include("aircraft/aircraft.jl")
 include("aircraft/landinggear.jl")
@@ -38,10 +40,12 @@ include("aircraft/c172r/c172r.jl")
 @reexport using .Attitude
 @reexport using .Geodesy
 @reexport using .Kinematics
-@reexport using .Air
-@reexport using .Terrain
 @reexport using .RigidBody
 @reexport using .Friction
+
+@reexport using .Atmosphere
+@reexport using .Terrain
+@reexport using .Environment
 
 @reexport using .Aircraft
 @reexport using .Electrics

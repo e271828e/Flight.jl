@@ -10,7 +10,7 @@ function test_θ_constraint()
     α_a = 0.15
     β_a = -0.11
     TAS = 100
-    v_wOa_a = Air.get_velocity_vector(TAS, α_a, β_a)
+    v_wOa_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
     v_wOb_b = v_wOa_a #in general we'd have v_wOb_b = q_ba(v_wOa_a)
 
     #set γ_wOb_n and φ_nb arbitrarily, compute θ_nb, construct e_nb, transform

@@ -3,8 +3,8 @@ module Piston
 using Interpolations, Unitful, Plots, StaticArrays, StructArrays, ComponentArrays, UnPack
 
 using Flight.Systems, Flight.Utils
-using Flight.Kinematics, Flight.RigidBody, Flight.Air
-using Flight.Air: ISA_layers, AirProperties, p_std, T_std, g_std, R
+using Flight.Kinematics, Flight.RigidBody, Flight.Atmosphere
+using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
 using Flight.Geodesy: HGeop
 using Flight.Propellers: AbstractPropeller, Propeller
 using Flight.Friction
@@ -57,7 +57,7 @@ T_ISA(p) = T_std * (p / p_std) ^ (-β * R / g_std)
 p2δ(p) = (p/p_std) * (T_ISA(p)/T_std)^(-0.5)
 
 function h2δ(h)
-    @unpack p, T = AirProperties(HGeop(h))
+    @unpack p, T = ISAData(HGeop(h))
     p / p_std / √(T / T_std)
 end
 

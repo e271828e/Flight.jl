@@ -6,7 +6,7 @@ using UnPack
 
 using Flight.Systems
 using Flight.Attitude
-using Flight.Geodesy, Flight.Terrain, Flight.Air
+using Flight.Geodesy, Flight.Terrain, Flight.Atmosphere
 using Flight.Kinematics, Flight.RigidBody
 using Flight.Input, Flight.Output
 
@@ -89,7 +89,7 @@ function init!(ac::System{<:AircraftBase}, ic::KinematicInit)
     Kinematics.init!(ac.x.kinematics, ic)
 end
 
-function f_cont!(sys::System{<:AircraftBase}, atm::System{<:Atmosphere}, trn::AbstractTerrain)
+function f_cont!(sys::System{<:AircraftBase}, atm::System{<:SimpleAtmosphere}, trn::AbstractTerrain)
 
     @unpack ẋ, x, subsystems = sys
     @unpack kinematics, airframe, avionics = subsystems

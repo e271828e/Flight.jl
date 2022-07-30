@@ -1,11 +1,11 @@
 using Flight.Geodesy
 using Flight.Kinematics
-using Flight.Air
-using Flight.Air
+using Flight.Atmosphere
+using Flight.Atmosphere
 
 function test_airflow()
 
-    atm_sys = System(Atmosphere())
+    atm_sys = System(SimpleAtmosphere())
     p = Geographic(h = HOrth(13000))
     x_kin = init_x(KinLTF(), KinInit(v_eOb_n = [300, 10, 0], Ob = p, q_nb = Ry(0.01)))
     dx_pos = copy(x_kin.pos)

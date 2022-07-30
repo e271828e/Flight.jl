@@ -1,4 +1,4 @@
-module Air
+module Atmosphere
 
 using StaticArrays, StructArrays, ComponentArrays
 using LinearAlgebra
@@ -17,7 +17,7 @@ import Flight.Systems: init, f_cont!, f_disc!
 
 export AbstractISAModel, TunableISA
 export AbstractWindModel, TunableWind
-export Atmosphere, AtmosphericData
+export AbstractAtmosphere, SimpleAtmosphere, AtmosphericData
 
 export AirflowData
 export get_velocity_vector, get_airflow_angles, get_wind_axes, get_stability_axes
@@ -30,8 +30,8 @@ import Flight.Plotting: make_plots
 ############################## ISA Model #######################################
 
 #a System{<:AbstractISAModel} may have an output type of its own, as any other
-#System. however, this output generally will not be an AirProperties instance. the
-#AirProperties returned by a ISA System depends on the location specified in the
+#System. however, this output generally will not be an ISAData instance. the
+#ISAData returned by a ISA System depends on the location specified in the
 #query. instead, the output from an ISA System may hold quantities of interest
 #related to its own internal state, if it has one due to it being a dynamic ISA
 #implementation.
@@ -41,8 +41,8 @@ import Flight.Plotting: make_plots
 
 abstract type AbstractISAModel <: SystemDescriptor end
 
-const R = 287.05287 #gas constant for dry air
-const γ = 1.40 #heat capacity ratio for dry air
+const R = 287.05287 #gas constant for dry ISA
+const γ = 1.40 #heat capacity ratio for dry ISA
 const βs = 1.458e-6 #Sutherland's empirical constant for dynamic viscosity
 const S = 110.4 #Sutherland's empirical constant for dynamic viscosity
 
@@ -71,9 +71,9 @@ function SeaLevelConditions(::T, ::Abstract2DLocation) where {T<:System{<:Abstra
 end
 
 
-############################### AirProperties ########################################
+############################### ISAData ########################################
 
-struct AirProperties
+struct ISAData
     p::Float64
     T::Float64
     ρ::Float64
@@ -95,20 +95,20 @@ const ISA_layers = StructArray(
     end
 end
 
-#compute AirProperties at a given geopotential altitude, using ISA_temperature_law and
+#compute ISAData at a given geopotential altitude, using ISA_temperature_law and
 #ISA_pressure_law to propagate the given sea level conditions upwards through
 #the successive ISA_layers up to the requested altitude
-@inline function AirProperties(h_geo::HGeop, sl::SeaLevelConditions = SeaLevelConditions())
+@inline function ISAData(h_geo::HGeop, sl::SeaLevelConditions = SeaLevelConditions())
 
     h = Float64(h_geo)
     h_base = 0; T_base = sl.T; p_base = sl.p; g_base = sl.g
 
-    for i in 1:length(ISA_layers)
+    for i in eachindex(ISA_layers)
         β, h_ceil = ISA_layers[i]
         if h < h_ceil
             T = ISA_temperature_law(h, T_base, h_base, β)
             p = ISA_pressure_law(h, g_base, p_base, T_base, h_base, β)
-            return AirProperties(p, T, density(p, T), speed_of_sound(T), dynamic_viscosity(T) )
+            return ISAData(p, T, density(p, T), speed_of_sound(T), dynamic_viscosity(T) )
         end
         T_ceil = ISA_temperature_law(h_ceil, T_base, h_base, β)
         p_ceil = ISA_pressure_law(h_ceil, g_base, p_base, T_base, h_base, β)
@@ -130,13 +130,13 @@ end
 #     return (T, p)
 # end
 
-@inline AirProperties() = AirProperties(HGeop(0))
+@inline ISAData() = ISAData(HGeop(0))
 
-@inline function AirProperties(sys::System{<:AbstractISAModel}, loc::Geographic)
+@inline function ISAData(sys::System{<:AbstractISAModel}, loc::Geographic)
 
     h_geop = Altitude{Geopotential}(loc.h, loc.loc)
     sl = SeaLevelConditions(sys, loc.loc)
-    AirProperties(h_geop, sl)
+    ISAData(h_geop, sl)
 
 end
 
@@ -196,18 +196,31 @@ end
 ################################################################################
 ############################# Atmospheric Model ################################
 
-Base.@kwdef struct Atmosphere{S <: AbstractISAModel, W <: AbstractWindModel} <: SystemDescriptor
-    air::S = TunableISA()
+abstract type AbstractAtmosphere <: SystemDescriptor end
+
+Base.@kwdef struct SimpleAtmosphere{S <: AbstractISAModel, W <: AbstractWindModel} <: AbstractAtmosphere
+    ISA::S = TunableISA()
     wind::W = TunableWind()
 end
 
 Base.@kwdef struct AtmosphericData
-    air::AirProperties = AirProperties()
+    ISA::ISAData = ISAData()
     wind::WindData = WindData()
 end
 
-function AtmosphericData(atm::System{<:Atmosphere}, loc::Geographic)
-    AtmosphericData( AirProperties(atm.air, loc), WindData(atm.wind, loc))
+function AtmosphericData(atm::System{<:SimpleAtmosphere}, loc::Geographic)
+    AtmosphericData( ISAData(atm.ISA, loc), WindData(atm.wind, loc))
+end
+
+function f_cont!(atm::System{<:SimpleAtmosphere})
+    f_cont!(atm.ISA)
+    f_cont!(atm.wind)
+end
+
+function f_disc!(atm::System{<:SimpleAtmosphere})
+    x_mod = false
+    x_mod = x_mod || f_disc!(atm.ISA)
+    x_mod = x_mod || f_disc!(atm.wind)
 end
 
 ################################################################################
@@ -246,8 +259,8 @@ struct AirflowData
     v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
     v_eOb_b::SVector{3,Float64} #vehicle velocity vector
     v_wOb_b::SVector{3,Float64} #vehicle aerodynamic velocity vector
-    T::Float64 #air temperature
-    p::Float64 #air pressure
+    T::Float64 #ISA temperature
+    p::Float64 #ISA pressure
     ρ::Float64 #density
     a::Float64 #speed of sound
     μ::Float64 #dynamic viscosity
@@ -270,7 +283,7 @@ function AirflowData(kin::KinematicData, atm_data::AtmosphericData)
     v_ew_b = kin.q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
 
-    @unpack T, p, ρ, a, μ = atm_data.air
+    @unpack T, p, ρ, a, μ = atm_data.ISA
     TAS = norm(v_wOb_b)
     M = TAS / a
     Tt = T * (1 + (γ - 1)/2 * M^2)
@@ -285,13 +298,13 @@ function AirflowData(kin::KinematicData, atm_data::AtmosphericData)
 
 end
 
-function AirflowData(kin_data::KinematicData, atm_sys::System{<:Atmosphere})
+function AirflowData(kin_data::KinematicData, atm_sys::System{<:SimpleAtmosphere})
     #the AtmosphericData constructor accepts any Geographic subtype, but it's most
     #likely that ISA SL conditions and wind will be expressed in {LatLon,
     #Orthometric}
     loc = Geographic(kin_data.n_e, kin_data.h_o)
 
-    #query the Atmosphere System for the atmospheric data at our location
+    #query the SimpleAtmosphere System for the atmospheric data at our location
     atm_data = AtmosphericData(atm_sys, loc)
     AirflowData(kin_data, atm_data)
 end

@@ -12,7 +12,7 @@ using Flight.Systems
 using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
-using Flight.Air
+using Flight.Atmosphere
 using Flight.Terrain
 using Flight.Piston
 using Flight.Aircraft
@@ -62,6 +62,7 @@ struct Parameters
     TAS::Float64 #true airspeed
     γ_wOb_n::Float64 #wind-relative flight path angle
     ψ_lb_dot::Float64 #LTF-relative turn rate
+    θ_lb_dot::Float64 #LTF-relative pitch rate
     β_a::Float64 #sideslip angle measured in the aerodynamic reference frame
     fuel::Float64 #fuel load, 0 to 1
     mixture::Float64 #engine mixture control, 0 to 1
@@ -70,11 +71,11 @@ end
 
 function Parameters(;
     loc::Abstract2DLocation = LatLon(), h::Altitude = HOrth(1000),
-    ψ_nb = 0.0, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.0, β_a = 0.0,
-    fuel = 0.5, mixture = 0.5, flaps = 0.0)
+    ψ_nb = 0.0, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.0, θ_lb_dot = 0.0,
+    β_a = 0.0, fuel = 0.5, mixture = 0.5, flaps = 0.0)
 
     Ob = Geographic(loc, h)
-    Parameters(Ob, ψ_nb, TAS, γ_wOb_n, ψ_lb_dot, β_a, fuel, mixture, flaps)
+    Parameters(Ob, ψ_nb, TAS, γ_wOb_n, ψ_lb_dot, θ_lb_dot, β_a, fuel, mixture, flaps)
 end
 
 #given the body-axes wind-relative velocity, the wind-relative flight path angle
@@ -90,9 +91,9 @@ function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
 
 end
 
-function KinematicInit(state::State, params::Parameters, atm::System{<:Atmosphere})
+function KinematicInit(state::State, params::Parameters, atm::System{<:SimpleAtmosphere})
 
-    v_wOb_a = Air.get_velocity_vector(params.TAS, state.α_a, params.β_a)
+    v_wOb_a = Atmosphere.get_velocity_vector(params.TAS, state.α_a, params.β_a)
     v_wOb_b = C172R.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
 
     θ_nb = θ_constraint(; v_wOb_b, params.γ_wOb_n, state.φ_nb)
@@ -100,7 +101,7 @@ function KinematicInit(state::State, params::Parameters, atm::System{<:Atmospher
     q_nb = RQuat(e_nb)
 
     e_lb = e_nb #initialize LTF arbitrarily to NED
-    ė_lb = SVector(params.ψ_lb_dot, 0.0, 0.0)
+    ė_lb = SVector(params.ψ_lb_dot, params.θ_lb_dot, 0.0)
     ω_lb_b = Attitude.ω(e_lb, ė_lb)
 
     loc = NVector(params.Ob)
@@ -116,7 +117,7 @@ end
 
 #assigns trim state and parameters to the aircraft system, and then updates it
 #by calling its continuous dynamics function
-function assign!(ac::System{<:Cessna172R}, atm::System{<:Atmosphere},
+function assign!(ac::System{<:Cessna172R}, atm::System{<:SimpleAtmosphere},
     trn::AbstractTerrain, state::State, params::Parameters)
 
     Aircraft.init!(ac, KinematicInit(state, params, atm))
@@ -176,7 +177,7 @@ function cost(ac::System{<:Cessna172R})
 end
 
 function get_target_function(ac::System{<:Cessna172R},
-    atm::System{<:Atmosphere}, trn::AbstractTerrain,
+    atm::System{<:SimpleAtmosphere}, trn::AbstractTerrain,
     params::Parameters = Parameters())
 
     let ac = ac, atm = atm, trn = trn, params = params
@@ -189,7 +190,7 @@ function get_target_function(ac::System{<:Cessna172R},
 end
 
 function trim_new!(; ac::System{<:Cessna172R} = System(Cessna172R()),
-    atm::System{<:Atmosphere} = System(Atmosphere()),
+    atm::System{<:SimpleAtmosphere} = System(SimpleAtmosphere()),
     trn::AbstractTerrain = HorizontalTerrain(),
     state::State = State(), params::Parameters = Parameters())
 
@@ -241,7 +242,7 @@ function trim_new!(; ac::System{<:Cessna172R} = System(Cessna172R()),
     opt.initial_step = initial_step
 
 
-@btime optimize($opt, $x0)
+    # @btime optimize($opt, $x0)
     (minf,minx,ret) = optimize(opt, x0)
     @show ret
     @show minf

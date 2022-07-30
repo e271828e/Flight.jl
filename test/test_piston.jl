@@ -11,8 +11,8 @@ using Flight
 using Flight.Piston: Engine, Thruster, MagicFuelSupply
 using Flight.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
 using Flight.Piston: eng_off, eng_starting, eng_running
-using Flight.Air
-using Flight.Air: p_std, T_std
+using Flight.Atmosphere
+using Flight.Atmosphere: p_std, T_std
 
 export test_piston
 
@@ -101,7 +101,7 @@ function test_engine_dynamics()
     @testset verbose = true "EngineDynamics" begin
 
         kin = KinematicInit(h = HEllip(), v_eOb_n = [50, 0, 0]) |> KinematicData
-        atm = Atmosphere() |> System
+        atm = SimpleAtmosphere() |> System
         air = AirflowData(kin, atm)
         eng = Engine() |> System
         fuel = System(MagicFuelSupply())
@@ -188,7 +188,7 @@ function test_thruster_dynamics()
 
         #initialize auxiliary elements
         kin = KinematicInit(v_eOb_n = [0, 0, 0]) |> KinematicData
-        atm = Atmosphere() |> System
+        atm = SimpleAtmosphere() |> System
         air = AirflowData(kin, atm)
         fuel = System(MagicFuelSupply())
         thr = Thruster() |> System

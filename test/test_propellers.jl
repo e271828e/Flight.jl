@@ -122,7 +122,7 @@ function test_propeller()
 
     t_bp = FrameTransform(r = [1.0, 0, 0])
     kin = KinematicInit(v_eOb_n = [50, 0, 0]) |> KinematicData
-    atm = Atmosphere() |> System
+    atm = SimpleAtmosphere() |> System
     air = AirflowData(kin, atm)
     ω = 300
 

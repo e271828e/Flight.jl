@@ -21,7 +21,7 @@ end
 function test_system()
 
         trn = HorizontalTerrain();
-        atm = System(Atmosphere());
+        atm = System(SimpleAtmosphere());
 
         ac_LTF = System(Cessna172R(LTF()));
         ac_ECEF = System(Cessna172R(ECEF()));
@@ -82,7 +82,7 @@ function test_sim_nrt(; save::Bool = true)
     h_trn = HOrth(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(Atmosphere());
+    atm = System(SimpleAtmosphere());
     ac = System(Cessna172R());
     kin_init = KinematicInit(
         v_eOb_n = [30, 0, 0],
@@ -125,7 +125,7 @@ function test_sim_rt(; save::Bool = true)
     h_trn = HOrth(608.55);
 
     trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(Atmosphere());
+    atm = System(SimpleAtmosphere());
     ac = System(Cessna172R());
     kin_init = KinematicInit(
         v_eOb_n = [30, 0, 0],
@@ -170,7 +170,7 @@ function test_trimming()
         α_a = 0.15
         β_a = -0.11
         TAS = 100
-        v_wOa_a = Air.get_velocity_vector(TAS, α_a, β_a)
+        v_wOa_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
         v_wOb_b = C172R.f_ba.q(v_wOa_a)
 
         #set γ_wOb_n and φ_nb arbitrarily and compute θ_nb
@@ -200,10 +200,10 @@ function test_trimming()
 
         params = C172R.Trim.Parameters(;
             loc = LatLon(), h = HOrth(1000),
-            ψ_nb = 0.2, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.2, β_a = 0.3,
-            fuel = 0.5, mixture = 0.5, flaps = 0.0)
+            ψ_nb = 0.2, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.2, θ_lb_dot = 0.2,
+            β_a = 0.3, fuel = 0.5, mixture = 0.5, flaps = 0.0)
 
-        atm = System(Atmosphere());
+        atm = System(SimpleAtmosphere());
         # atm.u.wind.v_ew_n = [4, 2, 4]
 
         trn = HorizontalTerrain()
@@ -223,7 +223,7 @@ function test_trimming()
 
         @test e_nb.ψ ≈ params.ψ_nb
         @test Attitude.inclination(v_wOb_n) ≈ params.γ_wOb_n atol = 1e-12
-        @test ac.y.kinematics.common.ω_lb_b ≈ Attitude.ω(e_lb, [params.ψ_lb_dot, 0, 0])
+        @test ac.y.kinematics.common.ω_lb_b ≈ Attitude.ω(e_lb, [params.ψ_lb_dot, params.θ_lb_dot, 0])
         @test ac.y.airflow.TAS ≈ params.TAS
         @test ac.y.airframe.aero.β ≈ params.β_a
         @test ac.x.airframe.fuel[1] == params.fuel
@@ -241,7 +241,7 @@ function test_trimming()
     @testset verbose = true "Optimization" begin
 
         ac = System(Cessna172R())
-        atm = System(Atmosphere())
+        atm = System(SimpleAtmosphere())
         trn = HorizontalTerrain() #zero orthometric altitude
         state = C172R.Trim.State()
         params = C172R.Trim.Parameters()

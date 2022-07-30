@@ -14,7 +14,7 @@ using Flight.Systems
 using Flight.Utils
 using Flight.Attitude
 using Flight.Terrain
-using Flight.Air
+using Flight.Atmosphere
 using Flight.Kinematics
 using Flight.RigidBody
 using Flight.LandingGear
