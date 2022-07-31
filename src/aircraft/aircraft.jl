@@ -6,7 +6,7 @@ using UnPack
 
 using Flight.Systems
 using Flight.Attitude
-using Flight.Geodesy, Flight.Terrain, Flight.Atmosphere
+using Flight.Geodesy, Flight.Terrain, Flight.Environment
 using Flight.Kinematics, Flight.RigidBody
 using Flight.Input, Flight.Output
 
@@ -89,10 +89,11 @@ function init!(ac::System{<:AircraftBase}, ic::KinematicInit)
     Kinematics.init!(ac.x.kinematics, ic)
 end
 
-function f_cont!(sys::System{<:AircraftBase}, atm::System{<:SimpleAtmosphere}, trn::AbstractTerrain)
+function f_cont!(sys::System{<:AircraftBase}, env::System{<:AbstractEnvironment})
 
     @unpack ẋ, x, subsystems = sys
     @unpack kinematics, airframe, avionics = subsystems
+    @unpack atm, trn = env
 
     #update kinematics
     f_cont!(kinematics)
@@ -108,7 +109,7 @@ function f_cont!(sys::System{<:AircraftBase}, atm::System{<:SimpleAtmosphere}, t
     hr_b = get_hr_b(airframe)
 
     #update velocity derivatives
-    rb_data = f_dyn!(kinematics.ẋ.vel, kin_data, mp_b, wr_b, hr_b)
+    rb_data = f_rigidbody!(kinematics.ẋ.vel, kin_data, mp_b, wr_b, hr_b)
 
     sys.y = (airframe = airframe.y, avionics = avionics.y, kinematics = kinematics.y,
             rigidbody = rb_data, airflow = air_data,)

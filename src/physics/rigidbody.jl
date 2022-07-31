@@ -21,7 +21,7 @@ export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassP
 export HasMass, HasNoMass, get_mp_b
 export GetsExternalWrench, GetsNoExternalWrench, get_wr_b
 export HasAngularMomentum, HasNoAngularMomentum, get_hr_b
-export RigidBodyData, f_dyn!
+export RigidBodyData, f_rigidbody!
 
 
 
@@ -517,7 +517,7 @@ Base.@kwdef struct RigidBodyData
     f_Ob_b::SVector{3,Float64} = zeros(SVector{3}) #specific force (g) maybe two y axes??
 end
 
-function f_dyn!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassProperties,
+function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassProperties,
     wr_ext_b::Wrench, hr_b::AbstractVector{<:Real})
 
     #wr_ext_b: Total external wrench on the vehicle

@@ -3,6 +3,7 @@ module TestC172R
 using Test
 using UnPack
 using BenchmarkTools
+using NLopt
 
 using Flight
 
@@ -20,21 +21,20 @@ end
 
 function test_system()
 
-        trn = HorizontalTerrain();
-        atm = System(SimpleAtmosphere());
+        env = SimpleEnvironment() |> System
 
         ac_LTF = System(Cessna172R(LTF()));
         ac_ECEF = System(Cessna172R(ECEF()));
         ac_NED = System(Cessna172R(NED()));
 
         #all three kinematics implementations must be supported, no allocations
-        @test @ballocated(f_cont!($ac_LTF, $atm, $trn)) == 0
+        @test @ballocated(f_cont!($ac_LTF, $env)) == 0
         @test @ballocated(f_disc!($ac_LTF)) == 0
 
-        @test @ballocated(f_cont!($ac_ECEF, $atm, $trn)) == 0
+        @test @ballocated(f_cont!($ac_ECEF, $env)) == 0
         @test @ballocated(f_disc!($ac_ECEF)) == 0
 
-        @test @ballocated(f_cont!($ac_NED, $atm, $trn)) == 0
+        @test @ballocated(f_cont!($ac_NED, $env)) == 0
         @test @ballocated(f_disc!($ac_NED)) == 0
 
     return nothing
@@ -81,8 +81,7 @@ function test_sim_nrt(; save::Bool = true)
 
     h_trn = HOrth(608.55);
 
-    trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(SimpleAtmosphere());
+    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
     ac = System(Cessna172R());
     kin_init = KinematicInit(
         v_eOb_n = [30, 0, 0],
@@ -94,7 +93,7 @@ function test_sim_nrt(; save::Bool = true)
     Aircraft.init!(ac, kin_init)
     ac.u.avionics.eng_start = true #engine start switch on
 
-    atm.u.wind.v_ew_n[1] = 0
+    env.atm.u.wind.v_ew_n[1] = 0
 
     callback! = let
 
@@ -110,7 +109,7 @@ function test_sim_nrt(; save::Bool = true)
         end
     end
 
-    sim = Simulation(ac; args_c = (atm, trn), t_end = 150, sim_callback = callback!)
+    sim = Simulation(ac; args_c = (env, ), t_end = 150, sim_callback = callback!)
 
     Sim.run!(sim)
     plots = make_plots(sim; Plotting.defaults...)
@@ -124,8 +123,7 @@ function test_sim_rt(; save::Bool = true)
 
     h_trn = HOrth(608.55);
 
-    trn = HorizontalTerrain(altitude = h_trn);
-    atm = System(SimpleAtmosphere());
+    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
     ac = System(Cessna172R());
     kin_init = KinematicInit(
         v_eOb_n = [30, 0, 0],
@@ -147,7 +145,7 @@ function test_sim_rt(; save::Bool = true)
     end
 
     sim = Simulation(ac;
-        args_c = (atm, trn),
+        args_c = (env,),
         t_end = 120,
         sim_callback = callback!,
         realtime = true,
@@ -203,12 +201,10 @@ function test_trimming()
             ψ_nb = 0.2, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.2, θ_lb_dot = 0.2,
             β_a = 0.3, fuel = 0.5, mixture = 0.5, flaps = 0.0)
 
-        atm = System(SimpleAtmosphere());
-        # atm.u.wind.v_ew_n = [4, 2, 4]
+        env = SimpleEnvironment() |> System
+        # env.atm.u.wind.v_ew_n = [4, 2, 4]
 
-        trn = HorizontalTerrain()
-
-        C172R.Trim.assign!(ac, atm, trn, state, params)
+        C172R.Trim.assign!(ac, env, state, params)
 
         e_lb = e_nb = REuler(ac.y.kinematics.q_nb)
         v_wOb_n = e_nb(ac.y.airflow.v_wOb_b)
@@ -234,21 +230,24 @@ function test_trimming()
         @test ac.ẋ.airframe.aero.α_filt ≈ 0.0 atol = 1e-12
         @test ac.ẋ.airframe.aero.β_filt ≈ 0.0 atol = 1e-12
 
-        @test (@ballocated C172R.Trim.assign!($ac, $atm, $trn, $state, $params))===0
+        @test (@ballocated C172R.Trim.assign!($ac, $env, $state, $params))===0
 
     end
 
     @testset verbose = true "Optimization" begin
 
         ac = System(Cessna172R())
-        atm = System(SimpleAtmosphere())
-        trn = HorizontalTerrain() #zero orthometric altitude
+        env = System(SimpleEnvironment())
         state = C172R.Trim.State()
         params = C172R.Trim.Parameters()
 
-        f_target = C172R.Trim.get_target_function(ac, atm, trn, params)
+        f_target = C172R.Trim.get_target_function(ac, env, params)
 
-        @assert @ballocated($f_target($state)) === 0
+        @test @ballocated($f_target($state)) === 0
+
+        exit_flag, _ = C172R.Trim.trim!(; ac, env, state, params)
+
+        @test exit_flag === :STOPVAL_REACHED
 
     end
 end

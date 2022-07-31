@@ -197,7 +197,7 @@ init(::SystemD, ::Aero) = AeroD()
 
 
 function f_cont!(sys::System{Aero}, ::System{<:Piston.Thruster},
-    air::AirflowData, kinematics::KinematicData, terrain::AbstractTerrain)
+    air::AirflowData, kinematics::KinematicData, terrain::System{<:AbstractTerrain})
 
     #for near-zero TAS, the airflow angles are likely to chatter between 0, -π
     #and π. this can cause lots of noise in airflow angle derivatives and
@@ -468,7 +468,7 @@ end
 ######################## Avionics Update Functions ###########################
 
 function f_cont!(avionics::System{BasicAvionics}, ::System{<:Airframe},
-                ::KinematicData, ::AirflowData, ::AbstractTerrain)
+                ::KinematicData, ::AirflowData, ::System{<:AbstractTerrain})
 
     #here, avionics do nothing but update their output state. for a more complex
     #aircraft a continuous state-space autopilot implementation could go here
@@ -488,7 +488,7 @@ f_disc!(::System{BasicAvionics}, ::System{<:Airframe}, ::System{<:AbstractKinema
 ####################### Airframe Update Functions ##############################
 
 function f_cont!(airframe::System{<:Airframe}, avionics::System{BasicAvionics},
-                kin::KinematicData, air::AirflowData, trn::AbstractTerrain)
+                kin::KinematicData, air::AirflowData, trn::System{<:AbstractTerrain})
 
     @unpack aero, pwp, ldg, fuel, pld = airframe
 

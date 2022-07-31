@@ -106,75 +106,79 @@ function test_engine_dynamics()
         eng = Engine() |> System
         fuel = System(MagicFuelSupply())
 
-        ω = 100.0
+        M_load = -10
+        J_load = 0.1
+
+        eng.x.ω = 100.0
         y_init = eng.y
-        f_cont!(eng, air, ω)
+        f_cont!(eng, air; M_load, J_load)
         @test eng.y != y_init #y must have been updated
 
-        ω = 0.0
+        eng.x.ω = 0.0
         eng.d.state = eng_off
-        f_cont!(eng, air, ω)
-        @test eng.y.M == 0
+        f_cont!(eng, air; M_load, J_load)
+        @test eng.y.M_shaft == 0
 
         eng.u.start = true
-        f_disc!(eng, fuel, ω)
+        f_disc!(eng, fuel)
         @test eng.d.state == eng_starting
 
-        ω = 0.9eng.idle.params.ω_target
-        f_disc!(eng, fuel, ω) #with ω <= ω_target, engine won't leave the starting state
+        eng.x.ω = 0.9eng.idle.params.ω_target
+        f_disc!(eng, fuel) #with ω <= ω_target, engine won't leave the starting state
         @test eng.d.state == eng_starting
-        f_cont!(eng, air, ω)
-        @test eng.y.M > 0 #it should output the starter torque
+        f_cont!(eng, air; M_load, J_load)
+        @test eng.y.M_shaft > 0 #it should output the starter torque
 
-        ω = 1.1eng.idle.params.ω_target
-        f_disc!(eng, fuel, ω) #engine should start now
+        eng.x.ω = 1.1eng.idle.params.ω_target
+        f_disc!(eng, fuel) #engine should start now
         @test eng.d.state == eng_running
-        f_cont!(eng, air, ω)
+        f_cont!(eng, air; M_load, J_load)
+
 
         #engine will not generate torque because the idle controller's state is
         #initialized to 0, and ω is currently above ω_target, so μ_ratio_idle is
         #set to 0, and therefore idle power is also 0
-        @test eng.y.M == 0
+        @test eng.y.M_shaft == 0
 
         #if we give it some throttle, we should get output power
         eng.u.thr = 0.1
-        f_cont!(eng, air, ω)
-        @test eng.y.M > 0
+        f_cont!(eng, air; M_load, J_load)
+        @test eng.y.M_shaft > 0
 
         #commanded stop
         eng.d.state = eng_running
         eng.u.stop = true
-        f_disc!(eng, fuel, ω) #engine should start now
+        f_disc!(eng, fuel) #engine should start now
         eng.u.stop = false
         @test eng.d.state == eng_off
 
         #stall stop
         eng.d.state = eng_running
-        ω = 0.95eng.params.ω_stall
-        f_disc!(eng, fuel, ω) #engine should start now
+        eng.x.ω = 0.95eng.params.ω_stall
+        f_disc!(eng, fuel)
         @test eng.d.state == eng_off
-        ω = 1.1eng.idle.params.ω_target
+        eng.x.ω = 1.1eng.idle.params.ω_target
         eng.d.state = eng_running
 
         #without fuel, the engine should shut down
         fuel.u[] = false
-        f_disc!(eng, fuel, ω)
+        f_disc!(eng, fuel)
         @test eng.d.state == eng_off
 
         #and then fail to start, even above the required speed
         eng.u.start = true
-        f_disc!(eng, fuel, ω)
+        f_disc!(eng, fuel)
         @test eng.d.state == eng_starting
-        f_disc!(eng, fuel, ω)
+        f_disc!(eng, fuel)
         @test eng.d.state != eng_running
 
         #when fuel is available, the engine starts
         fuel.u[] = true
-        f_disc!(eng, fuel, ω)
+        f_disc!(eng, fuel)
         @test eng.d.state == eng_running
 
-        @test @ballocated(f_cont!($eng, $air, $ω)) == 0
-        @test @ballocated(f_disc!($eng, $fuel, $ω)) == 0
+        @test @ballocated(f_cont!($eng, $air; M_load = $M_load, J_load = $J_load)) == 0
+        @test @ballocated(f_disc!($eng, $fuel)) == 0
 
         return eng
 
@@ -199,15 +203,14 @@ function test_thruster_dynamics()
         #take two steps for the start command to take effect
         step!(sim)
         step!(sim)
-        @test sim.y.engine.state === Piston.eng_starting
+        @test sim.y.engine.state === eng_starting
+
 
         #give it a few seconds to get to stable idle RPMs
         step!(sim, 5, true)
-        @test sim.y.engine.state === Piston.eng_running
+        @test sim.y.engine.state === eng_running
         @test sim.y.engine.ω ≈ thr.engine.idle.params.ω_target atol = 1
         sim.u.engine.start = false
-
-        # @test sim.y.transmission.ΔP ≈ 0 atol = 1e-8
 
         #thruster should be pushing
         @test get_wr_b(sim.sys).F[1] > 0
@@ -233,7 +236,7 @@ function test_thruster_dynamics()
 
         @test_throws AssertionError Thruster(
             propeller = Propeller(sense = Propellers.CCW),
-            n = 1)
+            gear_ratio = 1)
 
 
         ################### Variable pitch CCW thruster ########################
@@ -241,7 +244,7 @@ function test_thruster_dynamics()
         #CCW propeller should be coupled with negative gear ratio transmission
         thr = Thruster(
             propeller = Propeller(pitch = VariablePitch(), sense = Propellers.CCW),
-            n = -1
+            gear_ratio = -1
         ) |> System
 
         sim = Simulation(thr, args_c = (air, kin), args_d = (fuel,), t_end = 100)
@@ -250,7 +253,7 @@ function test_thruster_dynamics()
         sim.u.engine.start = true
         step!(sim, 5, true) #give it a few seconds to get to stable idle RPMs
         sim.u.engine.start = false
-        @test sim.y.engine.state === Piston.eng_running
+        @test sim.y.engine.state === eng_running
 
         @test sim.y.propeller.ω ≈ -sim.y.engine.ω
         @test get_wr_b(sim.sys).F[1] > 0
@@ -279,7 +282,7 @@ function test_thruster_dynamics()
         #starved engine shuts down
         fuel.u[] = false
         step!(sim, 1, true)
-        @test sim.y.engine.state == Piston.eng_off
+        @test sim.y.engine.state == eng_off
         step!(sim, 5, true)
 
         #after a few seconds the engine should have stopped completely due to
@@ -300,7 +303,6 @@ function test_thruster_dynamics()
         sim.u.engine.start = false
         # @show @ballocated(step!($sim, 0.1, true))
 
-        # return sim
 
     end #testset
 

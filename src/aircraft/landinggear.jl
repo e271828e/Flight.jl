@@ -142,7 +142,7 @@ end
 init(::SystemY, ::Strut) = StrutY()
 
 function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
-    terrain::AbstractTerrain, kin::KinematicData)
+    terrain::System{<:AbstractTerrain}, kin::KinematicData)
 
     @unpack t_bs, l_OsP, damper = sys.params
     @unpack n_e, h_e, q_eb, q_nb, v_eOb_b, ω_eb_b = kin
@@ -372,9 +372,8 @@ AngularMomentumTrait(::System{<:LandingGearUnit}) = HasNoAngularMomentum()
 
 get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
 
-
 function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinematicData,
-                terrain::AbstractTerrain)
+                terrain::System{<:AbstractTerrain})
 
     @unpack strut, contact, steering, braking = sys
 

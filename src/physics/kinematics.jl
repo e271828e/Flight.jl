@@ -232,7 +232,7 @@ function KinematicsY(x::XLTF)
 
 end
 
-#only updates xpos_dot, f_dyn! performs the xvel_dot update
+#only updates xpos_dot, f_rigidbody! performs the xvel_dot update
 function f_cont!(sys::System{LTF})
 
     #compute and update y
@@ -327,7 +327,7 @@ function KinematicsY(x::XECEF)
 
 end
 
-#only updates xpos_dot, xvel_dot update can only be performed by f_dyn!
+#only updates xpos_dot, xvel_dot update can only be performed by f_rigidbody!
 function f_cont!(sys::System{ECEF})
 
     #compute and update y
@@ -428,7 +428,7 @@ function KinematicsY(x::XNED)
 
 end
 
-#only updates xpos_dot, xvel_dot update can only be performed by f_dyn!
+#only updates xpos_dot, xvel_dot update can only be performed by f_rigidbody!
 function f_cont!(sys::System{NED})
 
     #compute and update y

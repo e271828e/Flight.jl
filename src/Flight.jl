@@ -21,12 +21,12 @@ include("environment/atmosphere.jl")
 include("environment/terrain.jl")
 include("environment/environment.jl")
 
-include("aircraft/aircraft.jl")
 include("aircraft/landinggear.jl")
 include("aircraft/propellers.jl")
 include("aircraft/piston.jl")
 include("aircraft/electrics.jl")
 
+include("aircraft/aircraft.jl")
 include("aircraft/c172r/c172r.jl")
 
 @reexport using .Utils
@@ -47,12 +47,12 @@ include("aircraft/c172r/c172r.jl")
 @reexport using .Terrain
 @reexport using .Environment
 
-@reexport using .Aircraft
-@reexport using .Electrics
 @reexport using .LandingGear
 @reexport using .Propellers
 @reexport using .Piston
+@reexport using .Electrics
 
+@reexport using .Aircraft
 @reexport using .C172R
 
 

@@ -30,7 +30,7 @@ end
 ######################## AbstractTerrain ##########################
 
 abstract type AbstractTerrain <: SystemDescriptor end
-TerrainData(::AbstractTerrain, args...) = throw(MethodError(TerrainData, args))
+TerrainData(::System{<:AbstractTerrain}, args...) = throw(MethodError(TerrainData, args))
 
 struct DummyTerrain <: AbstractTerrain end
 
@@ -42,8 +42,8 @@ end
 HorizontalTerrain(; altitude = HOrth(0), surface = DryTarmac) =
     HorizontalTerrain(altitude, surface)
 
-TerrainData(trn::HorizontalTerrain, ::Abstract2DLocation) =
-    TerrainData(trn.altitude, SVector{3,Float64}(0,0,1), trn.surface)
+TerrainData(trn::System{<:HorizontalTerrain}, ::Abstract2DLocation) =
+    TerrainData(trn.params.altitude, SVector{3,Float64}(0,0,1), trn.params.surface)
 
 f_cont!(::System{<:HorizontalTerrain}) = nothing
 f_disc!(::System{<:HorizontalTerrain}) = false

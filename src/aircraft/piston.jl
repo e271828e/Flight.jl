@@ -137,7 +137,8 @@ function Engine(;
     n_cutoff = ω_cutoff / ω_rated
     lookup = generate_lookup(; n_stall, n_cutoff)
 
-    Engine{typeof(lookup)}(P_rated, ω_rated, ω_stall, ω_cutoff, M_start, J, idle, lookup)
+    Engine{typeof(lookup)}(
+        P_rated, ω_rated, ω_stall, ω_cutoff, M_start, J, idle, lookup)
 end
 
 @enum EngineState begin
@@ -167,27 +168,30 @@ Base.@kwdef struct PistonEngineY
     state::EngineState = eng_off #engine discrete state
     MAP::Float64 = 0.0 #manifold air pressure
     ω::Float64 = 0.0 #angular velocity (crankshaft)
-    M::Float64 = 0.0 #output torque
-    P::Float64 = 0.0 #output power
+    M_shaft::Float64 = 0.0 #shaft output torque
+    P_shaft::Float64 = 0.0 #shaft power
     SFC::Float64 = 0.0 #specific fuel consumption
     ṁ::Float64 = 0.0 #fuel consumption
     idle::IdleControllerY = IdleControllerY()
 end
 
-init(::SystemY, ::Engine) = PistonEngineY()
+init(::SystemX, eng::Engine) = ComponentVector(ω = 0.0, idle = init_x(eng.idle))
 init(::SystemU, ::Engine) = PistonEngineU()
+init(::SystemY, ::Engine) = PistonEngineY()
 init(::SystemD, ::Engine) = PistonEngineD()
 
-function f_cont!(eng::System{<:Engine}, air::AirflowData, ω::Real)
+function f_cont!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::Real)
 
     @unpack ω_rated, P_rated, J, M_start, lookup = eng.params
     @unpack thr, mix, start, stop = eng.u
     state = eng.d.state
+    ω = eng.x.ω
 
     throttle = Float64(thr)
     mixture = Float64(mix)
 
     f_cont!(eng.idle, ω) #update idle controller
+
     μ_ratio_idle = eng.idle.y.output
 
     #normalized engine speed
@@ -205,16 +209,16 @@ function f_cont!(eng::System{<:Engine}, air::AirflowData, ω::Real)
     if state === eng_off
 
         MAP = air.p
-        M = 0.0
-        P = M * ω
+        M_shaft = 0.0
+        P_shaft = 0.0
         SFC = 0.0
         ṁ = 0.0
 
     elseif state === eng_starting
 
         MAP = μ * p_std
-        M = M_start
-        P = M * ω
+        M_shaft = M_start
+        P_shaft = M_shaft * ω
         SFC = 0.0
         ṁ = 0.0
 
@@ -231,20 +235,27 @@ function f_cont!(eng::System{<:Engine}, air::AirflowData, ω::Real)
         π_actual = π_pow * lookup.π_ratio(mixture)
 
         MAP = μ * p_std
-        P = P_rated * π_actual
-        M = (ω > 0 ? P / ω : 0.0) #for ω < ω_stall we should not even be here
+        P_shaft = P_rated * π_actual
+        M_shaft = (ω > 0 ? P_shaft / ω : 0.0) #for ω < ω_stall we should not even be here
         SFC = lookup.sfc_pow(n, π_actual) * lookup.sfc_ratio(mixture)
-        ṁ = SFC * P
+        ṁ = SFC * P_shaft
 
     end
 
+    ΣM = M_shaft + M_load
+    ΣJ = J + J_load
+    ω_dot = ΣM / ΣJ
+
+    eng.ẋ.ω = ω_dot
+
     eng.y = PistonEngineY(; start, stop, throttle, mixture, state,
-                            MAP, ω, M, P, SFC, ṁ, idle = eng.idle.y)
+                            MAP, ω, M_shaft, P_shaft, SFC, ṁ, idle = eng.idle.y)
 
 end
 
-function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply}, ω::Real)
+function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
 
+    ω = eng.x.ω
     ω_stall = eng.params.ω_stall
     ω_target = eng.idle.params.ω_target
 
@@ -264,7 +275,9 @@ function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply}, ω::
 
     end
 
-    return false
+    x_mod = false
+    x_mod = x_mod || f_disc!(eng.idle)
+    return x_mod
 
 end
 
@@ -429,47 +442,45 @@ Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
                             P <: AbstractPropeller} <: SystemDescriptor
     engine::E = Engine()
     propeller::P = Propeller()
+    gear_ratio::Float64 = 1.0 #gear ratio
     friction::Friction.Regulator{1} = Friction.Regulator{1}()
-    M::Float64 = 5.0 #maximum friction torque
-    n::Float64 = 1.0 #gear ratio
-    function Thruster(eng::E, prop::P, friction, M, n) where {E, P}
-        @assert sign(n) * Int(prop.sense) > 0 "Thruster gear ratio sign "*
+    M_fr_max::Float64 = 5.0 #maximum friction torque
+    function Thruster(eng::E, prop::P, gear_ratio, friction, M_fr_max) where {E, P}
+        @assert sign(gear_ratio) * Int(prop.sense) > 0 "Thruster gear ratio sign "*
         "does not match propeller turn sign"
-        new{E,P}(eng, prop, friction, M, n)
+        new{E,P}(eng, prop, gear_ratio, friction, M_fr_max)
     end
 end
 
-#call init_x on the assembled NamedTuple to get an actual ComponentVector
-init(::SystemX, tr::Thruster) = init_x(ω = 0.0, engine = init_x(tr.engine),
-    propeller = init_x(tr.propeller), friction = init_x(tr.friction))
 
 function f_cont!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
 
     @unpack engine, propeller, friction = thr
-    @unpack n, M = thr.params
+    @unpack gear_ratio, M_fr_max = thr.params
 
-    ω_eng = thr.x.ω
-    ω_prop = n * ω_eng
+    ω_eng = engine.x.ω
+    ω_prop = gear_ratio * ω_eng
 
     f_cont!(friction, SVector{1, Float64}(ω_eng))
-    f_cont!(engine, air, ω_eng)
     f_cont!(propeller, kin, air, ω_prop)
 
-    M_fr = friction.y.α[1] .* M
-
-    M_eng = engine.y.M
     M_prop = propeller.y.wr_p.M[1]
-    M_eq = n * M_prop #M_prop seen from the engine side
+    M_eq = gear_ratio * M_prop #load torque seen from the engine shaft
+    M_fr = friction.y.α[1] .* M_fr_max
 
-    J_eng = engine.params.J
+    #when the engine is stopped, introduce a friction constraint to make the
+    #propeller actually stop instead of slowing down asymptotically, and once
+    #stopped to keep it so (unless there is a lot of headwind...). with the
+    #engine running, all friction is assumed to be already accounted for by the
+    #performance tables, which give shaft torque and power
+    if engine.d.state === eng_off
+        M_eq += M_fr
+    end
+
     J_prop = propeller.params.J_xx
-    J_eq = n^2 * J_prop #J_prop seen from the engine side
+    J_eq = gear_ratio^2 * J_prop #load moment of inertia seen from the engine side
 
-    ΣM = M_eng + M_eq + M_fr
-    ΣJ = J_eng + J_eq
-    ω_eng_dot = ΣM / ΣJ
-
-    thr.ẋ.ω = ω_eng_dot
+    f_cont!(engine, air; M_load = M_eq, J_load = J_eq)
 
     Systems.assemble_y!(thr)
 
@@ -479,10 +490,8 @@ function f_disc!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
 
     @unpack engine, propeller, friction = thr
 
-    ω_eng = thr.x.ω
-
     x_mod = false
-    x_mod = x_mod || f_disc!(engine, fuel, ω_eng)
+    x_mod = x_mod || f_disc!(engine, fuel)
     x_mod = x_mod || f_disc!(propeller)
     x_mod = x_mod || f_disc!(friction)
     return x_mod

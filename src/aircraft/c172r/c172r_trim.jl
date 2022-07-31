@@ -5,17 +5,15 @@ using StaticArrays
 using ComponentArrays
 using BenchmarkTools
 using UnPack
-# using Optim
 using NLopt
 
 using Flight.Systems
 using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
-using Flight.Atmosphere
-using Flight.Terrain
 using Flight.Piston
 using Flight.Aircraft
+using Flight.Environment
 
 import Flight.Kinematics: KinematicInit
 export XTrimTemplate, XTrim, TrimParameters
@@ -91,7 +89,7 @@ function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
 
 end
 
-function KinematicInit(state::State, params::Parameters, atm::System{<:SimpleAtmosphere})
+function KinematicInit(state::State, params::Parameters, env::System{<:AbstractEnvironment})
 
     v_wOb_a = Atmosphere.get_velocity_vector(params.TAS, state.α_a, params.β_a)
     v_wOb_b = C172R.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
@@ -108,25 +106,25 @@ function KinematicInit(state::State, params::Parameters, atm::System{<:SimpleAtm
     h = HEllip(params.Ob)
 
     v_wOb_n = q_nb(v_wOb_b) #wind-relative aircraft velocity, NED frame
-    v_ew_n = AtmosphericData(atm, params.Ob).wind.v_ew_n
+    v_ew_n = AtmosphericData(env.atm, params.Ob).wind.v_ew_n
     v_eOb_n = v_ew_n + v_wOb_n
 
-    KinematicInit(; q_nb, loc, h, ω_lb_b, v_eOb_n)
+    KinematicInit(; q_nb, loc, h, ω_lb_b, v_eOb_n, Δx = 0.0, Δy = 0.0)
 
 end
 
 #assigns trim state and parameters to the aircraft system, and then updates it
 #by calling its continuous dynamics function
-function assign!(ac::System{<:Cessna172R}, atm::System{<:SimpleAtmosphere},
-    trn::AbstractTerrain, state::State, params::Parameters)
+function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
+    state::State, params::Parameters)
 
-    Aircraft.init!(ac, KinematicInit(state, params, atm))
+    Aircraft.init!(ac, KinematicInit(state, params, env))
 
     ω_eng = state.n_eng * ac.airframe.pwp.engine.params.ω_rated
 
     ac.x.airframe.aero.α_filt = state.α_a #ensures zero state derivative
     ac.x.airframe.aero.β_filt = params.β_a #ensures zero state derivative
-    ac.x.airframe.pwp.ω = ω_eng
+    ac.x.airframe.pwp.engine.ω = ω_eng
     ac.x.airframe.fuel .= params.fuel
 
     ac.u.avionics.throttle = state.throttle
@@ -142,7 +140,7 @@ function assign!(ac::System{<:Cessna172R}, atm::System{<:SimpleAtmosphere},
 
     #engine must be running, no way to trim otherwise
     ac.d.airframe.pwp.engine.state = Piston.eng_running
-    @assert ac.x.airframe.pwp.ω > ac.airframe.pwp.engine.idle.params.ω_target
+    @assert ac.x.airframe.pwp.engine.ω > ac.airframe.pwp.engine.idle.params.ω_target
 
     #as long as the engine remains above the idle controller's target speed, the
     #idle controller's output will be saturated at 0 by proportional error, so
@@ -156,7 +154,7 @@ function assign!(ac::System{<:Cessna172R}, atm::System{<:SimpleAtmosphere},
     #it to zero and forget about it
     ac.x.airframe.pwp.friction .= 0.0
 
-    f_cont!(ac, atm, trn)
+    f_cont!(ac, env)
 
     #check assumptions concerning airframe systems states & derivatives
     wow = reduce(|, SVector{3,Bool}(leg.strut.wow for leg in ac.y.airframe.ldg))
@@ -170,31 +168,29 @@ function cost(ac::System{<:Cessna172R})
 
     v_nd_dot = SVector{3}(ac.ẋ.kinematics.vel.v_eOb_b) / norm(ac.y.kinematics.common.v_eOb_b)
     ω_dot = SVector{3}(ac.ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
-    n_eng_dot = ac.ẋ.airframe.pwp.ω / ac.airframe.pwp.engine.params.ω_rated
+    n_eng_dot = ac.ẋ.airframe.pwp.engine.ω / ac.airframe.pwp.engine.params.ω_rated
 
     sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2
 
 end
 
 function get_target_function(ac::System{<:Cessna172R},
-    atm::System{<:SimpleAtmosphere}, trn::AbstractTerrain,
-    params::Parameters = Parameters())
+    env::System{<:AbstractEnvironment}, params::Parameters = Parameters())
 
-    let ac = ac, atm = atm, trn = trn, params = params
+    let ac = ac, env = env, params = params
         function (x::State)
-            assign!(ac, atm, trn, x, params)
+            assign!(ac, env, x, params)
             return cost(ac)
         end
     end
 
 end
 
-function trim_new!(; ac::System{<:Cessna172R} = System(Cessna172R()),
-    atm::System{<:SimpleAtmosphere} = System(SimpleAtmosphere()),
-    trn::AbstractTerrain = HorizontalTerrain(),
+function trim!(; ac::System{<:Cessna172R} = System(Cessna172R()),
+    env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
     state::State = State(), params::Parameters = Parameters())
 
-    f_target = get_target_function(ac, atm, trn, params)
+    f_target = get_target_function(ac, env, params)
 
     #wrapper around f_target with the interface required by NLopt
     ax = getaxes(state)
@@ -243,15 +239,16 @@ function trim_new!(; ac::System{<:Cessna172R} = System(Cessna172R()),
 
 
     # @btime optimize($opt, $x0)
-    (minf,minx,ret) = optimize(opt, x0)
-    @show ret
-    @show minf
-    @show numevals = opt.numevals # the number of function evaluations
+    (minf, minx, exit_flag) = optimize(opt, x0)
+    # @show exit_flag
+    # @show minf
+    # @show numevals = opt.numevals # the number of function evaluations
 
-    @show final_state = ComponentVector(minx, ax)
-    if ret != :STOPVAL_REACHED
+    if exit_flag != :STOPVAL_REACHED
         println("Warning: Optimization did not converge")
     end
+
+    return (exit_flag = exit_flag, result = ComponentVector(minx, ax))
 
 
 end
