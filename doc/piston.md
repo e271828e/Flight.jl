@@ -1,4 +1,4 @@
-### Power and SFC Computation for Lycoming IO 360
+# Power and SFC Computation for Lycoming IO 360
 
 References:
 Lycoming IO-360 Operator's Manual, Figures 3-21 & 3-5
@@ -131,7 +131,7 @@ Our actual input to the engine is not a $MAP$ value, but a throttle setting $thr
 For each $(\omega, \delta)$ combination, the right graph gives us $MAP_{wot}$. Then we simply compute:
 $$MAP(thr, \delta, \omega) = MAP_{wot} \left(k + thr (1 - k)\right)$$
 
-Where $k$ is a suitably chosen idle $MAP_{idle}/MAP_{wot}$ ratio (0.4 may be reasonable).
+Where $k$ is a suitably chosen $MAP_{idle}/MAP_{wot}$ ratio that achieves the desired target idle engine RPMs at each operating condition.
 
 With this relation, engine power becomes a function of the form:
 $$P = P(\omega, MAP, \delta, T) = P(thr, \omega, \delta, T)$$
@@ -140,7 +140,7 @@ $$P = P(\omega, MAP, \delta, T) = P(thr, \omega, \delta, T)$$
 
 Both graphs in Fig. 3-21 show a line labelled "limiting manifold pressure for continuous operation". From looking at both graphs, it is apparent that this line actually enforces a maximum power for each $\omega$. That is, it defines a function $P_{ISA,lim}(\omega)$
 
-So far we have ignored this limit when computing $P_{ISA}$, so we may obtain values $P_{ISA} > P_{ISA, lim}(\omega)$. In principle, this power limitation is not enforced by the engine itself; they are under the pilot's responsibility. Therefore, we can choose to ignore them when modeling the engine. But we can also easily simulate the observation of these limits by setting $P_{ISA} = min\{P_{ISA}, P_{ISA,lim}(\omega)\}$.
+So far we have ignored this limit when computing $P_{ISA}$, so we may obtain values $P_{ISA} > P_{ISA, lim}(\omega)$. In principle, this power limitation is not enforced by the engine itself; they are under the pilot's responsibility. Therefore, we can choose to ignore them when modeling the engine. We could easily enforce these limits by setting $P_{ISA} = min\{P_{ISA}, P_{ISA,lim}(\omega)\}$.
 
 ## Effect of Mixture
 

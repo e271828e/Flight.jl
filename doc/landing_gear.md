@@ -1,15 +1,14 @@
+## Landing Gear Model
 
-Main assumptions / simplifications:
+### Assumptions
 
-The landing gear strut (whether it is an oleo or a spring steel strut) compresses along a straight
-line
+1. The inertia of the landing gear assembly is neglected, so compression forces are transmitted directly to the airframe
 
-The compression force depends on the position and
+2. The landing gear strut (whether it is an oleo or a spring steel strut) compresses along a straight line. Its force depends on compression length and compression rate.
 
-No detailed tire dynamics
+3. No detailed tire dynamics
 
-Linear momentum equation for the mass
-
+### Reference Frames
 
 Strut frame $s$:
 - $O_s$: Strut-airframe attachment point. Its position vector with respect to the vehicle origin $r_{O_bO_s}^b$ is known and constant.

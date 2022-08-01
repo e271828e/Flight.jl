@@ -49,7 +49,7 @@ $z = \dfrac{ah}{a + h}$
 
 Where $a$ is the Earth's equatorial radius. This eliminates the latitude dependency altogether.
 
-### Non-Standard Base Temperatures
+### Non-Standard Base Temperatures and Pressures
 
 The temperature variation with geopotential altitude $T = T(z)$ is assumed linear and it is known
 for each atmospheric layer.

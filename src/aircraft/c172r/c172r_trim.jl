@@ -23,11 +23,11 @@ using ..C172R
 ############################### Trimming #######################################
 ################################################################################
 
-#for trimming, we set the yoke incremental commands to zero. the reason is that,
-#when we start an interactive simulation from a trimmed state, leaving the
-#controller sticks at neutral corresponds to zero yoke incremental commands. in
-#this case, it is the yoke_x and yoke_y values that set the surfaces where they
-#need to be
+#for trimming, the incremental yoke commands Δx and Δy are set to zero. the
+#reason is that, when starting a simulation from a trimmed state, leaving the
+#controller sticks at neutral positions corresponds to zero yoke incremental
+#commands. in this case, it is the yoke_x and yoke_y values that set the
+#appropriate surface positions
 
 
 # maybe split trim state into common and aircraft dependent, that way the first
@@ -247,8 +247,9 @@ function trim!(; ac::System{<:Cessna172R} = System(Cessna172R()),
     if exit_flag != :STOPVAL_REACHED
         println("Warning: Optimization did not converge")
     end
-
-    return (exit_flag = exit_flag, result = ComponentVector(minx, ax))
+    state_opt = ComponentVector(minx, ax)
+    assign!(ac, env, state_opt, params)
+    return (exit_flag = exit_flag, result = state_opt)
 
 
 end
