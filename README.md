@@ -1,1 +1,3 @@
 # Flight
+
+This package is essentially a flight dynamics engine. As such, it provides a framework for aircraft modeling and simulation. It is meant to facilitate the design and validation of guidance, navigation and control algorithms, but it can also be used for other purposes, such as interactive flight simulation. It is written entirely in Julia, with an emphasis on performance, accuracy and flexibility.

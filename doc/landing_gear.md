@@ -8,7 +8,7 @@
 
 3. No detailed tire dynamics
 
-### Reference Frames
+### Definitions
 
 Strut frame $s$:
 - $O_s$: Strut-airframe attachment point. Its position vector with respect to the vehicle origin $r_{O_bO_s}^b$ is known and constant.

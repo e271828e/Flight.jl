@@ -4,14 +4,16 @@ using StructArrays
 
 export Ranged, linear_scaling
 export TimeHistory
-export pwf
+export showfields, swf
 
 #print with propertynames
-function pwf(s)
+function showfields(s)
     for f in propertynames(s)
         println("$f: $(getproperty(s,f))")
     end
 end
+
+const swf = showfields
 
 ################################################################################
 ################################ Ranged ########################################
