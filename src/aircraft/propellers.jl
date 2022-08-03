@@ -31,17 +31,17 @@ get_value(f::AbstractFunction{N}, ::Vararg{Any, M}) where {N, M} =
 get_value(f::AbstractFunction{N}, ::Vararg{Any, N}) where {N} =
     error("Method get_value not implemented for $(typeof(f))")
 
-(d::AbstractFunction)(args...) = get_value(d, args...)
+(f::AbstractFunction)(args...) = get_value(f, args...)
 
 struct ConstantFunction <: AbstractFunction{1}
     a::Float64
 end
-get_value(d::ConstantFunction, ::Real) = d.a
+get_value(f::ConstantFunction, ::Real) = f.a
 
 Base.@kwdef struct EllipticFunction <: AbstractFunction{1}
     a::Float64 = 0.075
 end
-get_value(d::EllipticFunction, ζ::Real) = d.a*√(1 - ζ^2)
+get_value(f::EllipticFunction, ζ::Real) = f.a*√(1 - ζ^2)
 
 
 abstract type AbstractAirfoil end

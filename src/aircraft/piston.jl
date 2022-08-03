@@ -147,7 +147,7 @@ end
     eng_running = 2
 end
 
-Base.@kwdef mutable struct PistonEngineD
+Base.@kwdef mutable struct PistonEngineS
     state::EngineState = eng_off
 end
 
@@ -178,13 +178,13 @@ end
 init(::SystemX, eng::Engine) = ComponentVector(ω = 0.0, idle = init_x(eng.idle))
 init(::SystemU, ::Engine) = PistonEngineU()
 init(::SystemY, ::Engine) = PistonEngineY()
-init(::SystemD, ::Engine) = PistonEngineD()
+init(::SystemS, ::Engine) = PistonEngineS()
 
 function f_cont!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::Real)
 
     @unpack ω_rated, P_rated, J, M_start, lookup = eng.params
     @unpack thr, mix, start, stop = eng.u
-    state = eng.d.state
+    state = eng.s.state
     ω = eng.x.ω
 
     throttle = Float64(thr)
@@ -259,19 +259,19 @@ function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
     ω_stall = eng.params.ω_stall
     ω_target = eng.idle.params.ω_target
 
-    if eng.d.state === eng_off
+    if eng.s.state === eng_off
 
-        eng.u.start ? eng.d.state = eng_starting : nothing
+        eng.u.start ? eng.s.state = eng_starting : nothing
 
-    elseif eng.d.state === eng_starting
+    elseif eng.s.state === eng_starting
 
-        !eng.u.start ? eng.d.state = eng_off : nothing
+        !eng.u.start ? eng.s.state = eng_off : nothing
 
-        (ω > ω_target && fuel_available(fuel) ) ? eng.d.state = eng_running : nothing
+        (ω > ω_target && fuel_available(fuel) ) ? eng.s.state = eng_running : nothing
 
     else #eng_running
 
-        (ω < ω_stall || eng.u.stop || !fuel_available(fuel)) ? eng.d.state = eng_off : nothing
+        (ω < ω_stall || eng.u.stop || !fuel_available(fuel)) ? eng.s.state = eng_off : nothing
 
     end
 
@@ -473,7 +473,7 @@ function f_cont!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
     #stopped to keep it so (unless there is a lot of headwind...). with the
     #engine running, all friction is assumed to be already accounted for by the
     #performance tables, which give shaft torque and power
-    if engine.d.state === eng_off
+    if engine.s.state === eng_off
         M_eq += M_fr
     end
 

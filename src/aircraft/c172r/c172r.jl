@@ -170,7 +170,7 @@ Base.@kwdef mutable struct AeroU
     f::Ranged{Float64, 0, 1} = 0.0 # flap control input (+ flap down)
 end
 
-Base.@kwdef mutable struct AeroD #discrete state
+Base.@kwdef mutable struct AeroS #discrete state
     stall::Bool = false
 end
 
@@ -193,7 +193,7 @@ end
 init(::SystemX, ::Aero) = init(SystemX(); α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
 init(::SystemY, ::Aero) = AeroY()
 init(::SystemU, ::Aero) = AeroU()
-init(::SystemD, ::Aero) = AeroD()
+init(::SystemS, ::Aero) = AeroS()
 
 
 function f_cont!(sys::System{Aero}, ::System{<:Piston.Thruster},
@@ -204,13 +204,13 @@ function f_cont!(sys::System{Aero}, ::System{<:Piston.Thruster},
     #general unpleasantness. however, in this situation dynamic pressure will be
     #close to zero, so forces and moments will vanish anyway.
 
-    @unpack ẋ, x, u, d, params = sys
+    @unpack ẋ, x, u, s, params = sys
     @unpack α_filt, β_filt = x
     @unpack e, a, r, f = u
     @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = params
     @unpack TAS, q, v_wOb_b = air
     @unpack ω_lb_b, n_e, h_o = kinematics
-    stall = d.stall
+    stall = s.stall
 
     v_wOb_a = f_ba.q'(v_wOb_b)
     α, β = get_airflow_angles(v_wOb_a)
@@ -269,9 +269,9 @@ function f_disc!(sys::System{Aero})
     α = sys.y.α
     α_stall = sys.params.α_stall
     if α > α_stall[2]
-        sys.d.stall = true
+        sys.s.stall = true
     elseif α < α_stall[1]
-        sys.d.stall = false
+        sys.s.stall = false
     end
     return false
 end

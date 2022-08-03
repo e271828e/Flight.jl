@@ -7,8 +7,8 @@ import DataStructures: OrderedDict
 
 export f_cont!, f_disc!
 export SystemDescriptor, SystemGroupDescriptor, System
-export SystemẊ, SystemX, SystemY, SystemU, SystemD
-export init_ẋ, init_x, init_y, init_u, init_d
+export SystemẊ, SystemX, SystemY, SystemU, SystemS
+export init_ẋ, init_x, init_y, init_u, init_s
 
 
 ################################################################################
@@ -31,7 +31,7 @@ struct SystemẊ <: SystemTrait end
 struct SystemX <: SystemTrait end
 struct SystemY <: SystemTrait end
 struct SystemU <: SystemTrait end
-struct SystemD <: SystemTrait end
+struct SystemS <: SystemTrait end
 
 #initialize continuous state vector traits from OrderedDict
 function init(::Union{SystemẊ, SystemX}, dict::OrderedDict)
@@ -40,7 +40,7 @@ function init(::Union{SystemẊ, SystemX}, dict::OrderedDict)
 end
 
 #initialize all other traits from OrderedDict
-function init(::Union{SystemY, SystemU, SystemD}, dict::OrderedDict)
+function init(::Union{SystemY, SystemU, SystemS}, dict::OrderedDict)
     filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
     !isempty(dict) ? NamedTuple(dict) : nothing
 end
@@ -52,7 +52,7 @@ init_ẋ(args...; kwargs...) = init(SystemẊ(), args...; kwargs...)
 init_x(args...; kwargs...) = init(SystemX(), args...; kwargs...)
 init_y(args...; kwargs...) = init(SystemY(), args...; kwargs...)
 init_u(args...; kwargs...) = init(SystemU(), args...; kwargs...)
-init_d(args...; kwargs...) = init(SystemD(), args...; kwargs...)
+init_s(args...; kwargs...) = init(SystemS(), args...; kwargs...)
 
 
 ################################################################################
@@ -67,7 +67,7 @@ mutable struct System{T <: SystemDescriptor,
     x::X #continuous dynamics state vector
     y::Y #output
     u::U #control input
-    d::D #discrete dynamics state
+    s::D #discrete dynamics state
     t::Base.RefValue{Float64} #allows implicit propagation of t updates down the subsystem hierarchy
     params::P
     subsystems::S
@@ -76,7 +76,7 @@ end
 #default trait initializer. if the descriptor has any SystemDescriptor fields of
 #its own, these are considered children and traits are (recursively) initialized
 #from them
-function init(trait::Union{SystemX, SystemY, SystemU, SystemD}, desc::SystemDescriptor)
+function init(trait::Union{SystemX, SystemY, SystemU, SystemS}, desc::SystemDescriptor)
     #get those fields that are themselves SystemDescriptors
     children = filter(p -> isa(p.second, SystemDescriptor), OrderedDict(desc))
     #build an OrderedDict with the initialized traits for each of those
@@ -102,17 +102,17 @@ end
 
 function System(desc::SystemDescriptor,
                 ẋ = init_ẋ(desc), x = init_x(desc), y = init_y(desc),
-                u = init_u(desc), d = init_d(desc), t = Ref(0.0))
+                u = init_u(desc), s = init_s(desc), t = Ref(0.0))
 
     child_names = filter(p -> (p.second isa SystemDescriptor), OrderedDict(desc)) |> keys |> Tuple
-    child_systems = (System(map((λ)->maybe_getproperty(λ, name), (desc, ẋ, x, y, u, d))..., t) for name in child_names) |> Tuple
+    child_systems = (System(map((λ)->maybe_getproperty(λ, name), (desc, ẋ, x, y, u, s))..., t) for name in child_names) |> Tuple
     subsystems = NamedTuple{child_names}(child_systems)
 
     params = NamedTuple(n=>getfield(desc,n) for n in propertynames(desc) if !(n in child_names))
     params = (!isempty(params) ? params : nothing)
 
-    System{map(typeof, (desc, x, y, u, d, params, subsystems))...}(
-                         ẋ, x, y, u, d, t, params, subsystems)
+    System{map(typeof, (desc, x, y, u, s, params, subsystems))...}(
+                         ẋ, x, y, u, s, t, params, subsystems)
 
 end
 

@@ -139,7 +139,7 @@ function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
     ac.u.avionics.yoke_Δy = 0
 
     #engine must be running, no way to trim otherwise
-    ac.d.airframe.pwp.engine.state = Piston.eng_running
+    ac.s.airframe.pwp.engine.state = Piston.eng_running
     @assert ac.x.airframe.pwp.engine.ω > ac.airframe.pwp.engine.idle.params.ω_target
 
     #as long as the engine remains above the idle controller's target speed, the

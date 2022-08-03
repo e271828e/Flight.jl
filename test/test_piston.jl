@@ -115,23 +115,23 @@ function test_engine_dynamics()
         @test eng.y != y_init #y must have been updated
 
         eng.x.ω = 0.0
-        eng.d.state = eng_off
+        eng.s.state = eng_off
         f_cont!(eng, air; M_load, J_load)
         @test eng.y.M_shaft == 0
 
         eng.u.start = true
         f_disc!(eng, fuel)
-        @test eng.d.state == eng_starting
+        @test eng.s.state == eng_starting
 
         eng.x.ω = 0.9eng.idle.params.ω_target
         f_disc!(eng, fuel) #with ω <= ω_target, engine won't leave the starting state
-        @test eng.d.state == eng_starting
+        @test eng.s.state == eng_starting
         f_cont!(eng, air; M_load, J_load)
         @test eng.y.M_shaft > 0 #it should output the starter torque
 
         eng.x.ω = 1.1eng.idle.params.ω_target
         f_disc!(eng, fuel) #engine should start now
-        @test eng.d.state == eng_running
+        @test eng.s.state == eng_running
         f_cont!(eng, air; M_load, J_load)
 
 
@@ -146,36 +146,36 @@ function test_engine_dynamics()
         @test eng.y.M_shaft > 0
 
         #commanded stop
-        eng.d.state = eng_running
+        eng.s.state = eng_running
         eng.u.stop = true
         f_disc!(eng, fuel) #engine should start now
         eng.u.stop = false
-        @test eng.d.state == eng_off
+        @test eng.s.state == eng_off
 
         #stall stop
-        eng.d.state = eng_running
+        eng.s.state = eng_running
         eng.x.ω = 0.95eng.params.ω_stall
         f_disc!(eng, fuel)
-        @test eng.d.state == eng_off
+        @test eng.s.state == eng_off
         eng.x.ω = 1.1eng.idle.params.ω_target
-        eng.d.state = eng_running
+        eng.s.state = eng_running
 
         #without fuel, the engine should shut down
         fuel.u[] = false
         f_disc!(eng, fuel)
-        @test eng.d.state == eng_off
+        @test eng.s.state == eng_off
 
         #and then fail to start, even above the required speed
         eng.u.start = true
         f_disc!(eng, fuel)
-        @test eng.d.state == eng_starting
+        @test eng.s.state == eng_starting
         f_disc!(eng, fuel)
-        @test eng.d.state != eng_running
+        @test eng.s.state != eng_running
 
         #when fuel is available, the engine starts
         fuel.u[] = true
         f_disc!(eng, fuel)
-        @test eng.d.state == eng_running
+        @test eng.s.state == eng_running
 
         @test @ballocated(f_cont!($eng, $air; M_load = $M_load, J_load = $J_load)) == 0
         @test @ballocated(f_disc!($eng, $fuel)) == 0

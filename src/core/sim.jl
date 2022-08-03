@@ -114,7 +114,7 @@ end
 #DiscreteCallback function, called on every integration step. brings the
 #System's internal x and y up to date with the last integrator's solution step,
 #then calls the System's discrete dynamics. as it is, if the System's y
-#depends on x or d, and these are modified by f_disc!, the change will not be
+#depends on x or s, and these are modified by f_disc!, the change will not be
 #reflected on y until the following integration step
 function f_step!(integrator)
 
