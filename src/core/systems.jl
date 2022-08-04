@@ -58,11 +58,10 @@ init_s(args...; kwargs...) = init(SystemS(), args...; kwargs...)
 ################################################################################
 ################################### System #####################################
 
-#need the T type parameter for dispatch, the rest for type stability. Systems
-#are only meant to be instantiated during initialization, so making them mutable
-#does not hurt performance (allocations only occur once)
-mutable struct System{T <: SystemDescriptor,
-                      X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S}
+#needs the T type parameter for dispatch, the rest for type stability
+#must be mutable to allow y updates
+mutable struct System{  T <: SystemDescriptor,
+                X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S}
     ẋ::X #continuous dynamics state vector derivative
     x::X #continuous dynamics state vector
     y::Y #output
@@ -91,11 +90,11 @@ function init(::SystemẊ, desc::SystemDescriptor)
     !isnothing(x) ? x |> zero : nothing
 end
 
-#suppose we have a System a with children b and c. the System constructor will
-#try to retrieve views a.x.b and a.x.c and assign them as state vectors b.x and
-#c.x. but if b and c have no continuous states, x = init(a, SystemX()) will
-#return nothing. so the constructor will try to retrieve fields from a nothing
-#variable. this function handles this scenario
+#suppose we have a System a with children b and c. if neither b and c have
+#inputs, u = init(a, SystemU()) will return nothing. when the System constructor
+#for a tries to retrieve a.u.b and a.u.c to use them as inputs for subsystems b
+#and c, it will be accessing fields b and c of a nothing variable. we must
+#handle this scenario.
 function maybe_getproperty(input, label)
     !isnothing(input) && (label in propertynames(input)) ? getproperty(input, label) : nothing
 end
@@ -116,17 +115,17 @@ function System(desc::SystemDescriptor,
 
 end
 
-#f_disc! is free to modify a Hybrid system's discrete state, control inputs and
-#continuous state. if it modifies the latter, it must return true, false
-#otherwise. no fallbacks are provided for safety reasons: if the intended
-#f_cont! or f_disc! implementations for the System have the wrong interface, the
-#dispatch will silently revert to the fallback, which does nothing and may not
-#be obvious at all.
+#f_disc! is free to modify a System's u, s and x. if it modifies x, it must
+#return true, otherwise false. no fallbacks are provided for safety reasons: if
+#the intended f_cont! or f_disc! implementations for the System have the wrong
+#interface, the dispatch will silently revert to the fallback, which does
+#nothing. this may not be obvious at all and introduce treacherous bugs.
 
 f_cont!(sys::System, args...) = MethodError(f_cont!, (sys, args...)) |> throw
 (f_disc!(sys::System, args...)::Bool) = MethodError(f_disc!, (sys, args...)) |> throw
 
-Base.getproperty(sys::System, s::Symbol) = getproperty(sys, Val(s))
+Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
+Base.setproperty!(sys::System, name::Symbol, value) = setproperty!(sys, Val(name), value)
 
 @generated function Base.getproperty(sys::System, ::Val{S}) where {S}
     if S ∈ fieldnames(System)
@@ -136,6 +135,15 @@ Base.getproperty(sys::System, s::Symbol) = getproperty(sys, Val(s))
     end
 end
 
+#disallow setting any System field other than y to avoid breaking the references
+#with its subsystems' fields
+@generated function Base.setproperty!(sys::System, ::Val{S}, value) where {S}
+    if S === :y
+        return :(setfield!(sys, $(QuoteNode(S)), value))
+    else
+        return :(error("A System's $S cannot be reassigned; mutate its fields instead."))
+    end
+end
 
 @inline function (assemble_y!(sys::System{T, X, Y})
     where {T<:SystemDescriptor, X, Y <: Nothing})

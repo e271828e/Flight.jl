@@ -101,7 +101,7 @@ function f_ode!(u̇, u, p, t)
     @unpack sys, args_c = p
 
     sys.x .= u #assign current integrator solution to System continuous state
-    sys.t[] = t #ditto for time
+    sys.t[] = t #likewise for time
 
     f_cont!(sys, args_c...) #call continuous dynamics, updates sys.ẋ and sys.y
 
