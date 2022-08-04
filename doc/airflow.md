@@ -1,3 +1,5 @@
+### Stability and Wind Axes Rotations
+
 The stability axes are defined by a rotation $-\alpha$ around $y_b$. Thus:
 
 $$R^{b}_{s} = \begin{pmatrix} \cos\alpha & 0 & -\sin\alpha \\
