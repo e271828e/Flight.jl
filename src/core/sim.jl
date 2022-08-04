@@ -8,12 +8,12 @@ using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValue
 
 using ..Systems
 
-import SciMLBase: step!, solve!, reinit!, get_proposed_dt
+import SciMLBase: step!, reinit!, get_proposed_dt
 import OrdinaryDiffEq: add_tstop!
 
 import Flight.Utils: TimeHistory
 
-export Simulation, step!
+export Simulation, step!, reinit!, get_proposed_dt, add_tstop!
 
 
 ################################################################################
@@ -168,19 +168,22 @@ get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
 
 add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 
-function reinit!(sim::Simulation, args...; kwargs...)
+#in order to be actually useful, this would need to restore also u and s to
+#their original values, which is non-trivial, because it may break the coupling
+#between a parent system and its subsystems
+# function reinit!(sim::Simulation, args...; kwargs...)
 
-    #for an ODEIntegrator, the optional args... is simply a new initial
-    #condition. if not specified, the original initial condition is used.
-    reinit!(sim.integrator, args...; kwargs...)
+#     #for an ODEIntegrator, the optional args... is simply a new initial
+#     #condition. if not specified, the original initial condition is used.
+#     reinit!(sim.integrator, args...; kwargs...)
 
-    #apparently, reinit! calls f_ode!, so all System fields are updated in
-    #the process, no need to do it manually
+#     #apparently, reinit! calls f_ode!, so all System fields are updated in
+#     #the process, no need to do it manually
 
-    resize!(sim.log.t, 1)
-    resize!(sim.log.saveval, 1)
-    return nothing
-end
+#     resize!(sim.log.t, 1)
+#     resize!(sim.log.saveval, 1)
+#     return nothing
+# end
 
 function run!(sim::Simulation; verbose = false)
 

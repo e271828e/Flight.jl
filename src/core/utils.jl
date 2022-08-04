@@ -3,7 +3,7 @@ module Utils
 using StructArrays
 
 export Ranged, linear_scaling
-export TimeHistory
+export TimeHistory, timestamps
 export showfields, swf
 
 #print with propertynames
@@ -109,6 +109,8 @@ function Base.getproperty(th::TimeHistory, s::Symbol)
         return TimeHistory(t, getproperty(StructArray(y), s))
     end
 end
+
+timestamps(th::TimeHistory) = getfield(th, :_t)
 
 Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._data[i])
 Base.view(th::TimeHistory, i) = TimeHistory(view(th._t, i), view(th._data, i))
