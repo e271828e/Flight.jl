@@ -40,9 +40,9 @@ _update!(j::AbstractJoystick) = throw(MethodError(update!, (j,)))
 
 ##################### Joystick configuration ################
 
-#adds any joysticks already connected when GLFW is first imported. from this
-#moment, connections and disconnections will need to be caught by the callback
-#by calling GLFW.PollEvents()
+#adds any joysticks already connected when GLFW is first imported. from that
+#moment on, any connections and disconnections can only be detected via
+#callback, and then retrieved by calling GLFW.PollEvents()
 function init_joysticks()
 
     for slot in instances(JoystickSlot)

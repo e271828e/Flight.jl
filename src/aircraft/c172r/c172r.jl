@@ -28,7 +28,7 @@ import Flight.Kinematics: KinematicInit
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Piston: fuel_available
 
-include("c172r_aero.jl")
+include("data/aero.jl")
 
 export Cessna172R
 
@@ -596,7 +596,7 @@ end
 const Cessna172R{K, F, V} = AircraftBase{K, F, V} where {K, F <: C172R.Airframe, V <: C172R.BasicAvionics}
 Cessna172R(kinematics = LTF()) = AircraftBase( kinematics, Airframe(), BasicAvionics())
 
-include("c172r_trim.jl")
+include("tools.jl")
 using .Trim #do not reexport, names in Trim are generic
 
 end #module
