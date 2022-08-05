@@ -1,116 +1,193 @@
-#each of these functions needs its own aircraft instance to compute its outputs,
-#since it will mutate it in the process, butchering trim values that other
-#functions rely on
+# module Linearization
 
-#we should define xdot0, x0, u0, y0
-#for u0 and y0, we define their corresponding ComponentVector subtypes LinU and
-#LinY
-#for convenience, we also define AircraftU as typeof(ac.u)
-#Then we write functions that map the aircraft's u to this reduced
+#this module should probably be put together with Trim in c172r/tools.jl
 
-UTemplate = ComponentVector()
-YTemplate = ComponentVector()
+using ComponentArrays
+using UnPack
+using FiniteDiff: finite_difference_jacobian! as jacobian!
 
-function assign!(u::U, ac::System{<:Cessna172R}) end
-function assign!(y::Y, ac::System{<:Cessna172R}) end
+using Flight
 
-function assign!(ac::System{<:Cessna172R}, y::Y) end
-function assign!(ac::System{<:Cessna172R}, u::U) end #LinU is a ComponentVector
 
-ac = System(Cessna172R())
-state = C172R.Trim.State()
-params = C172R.Trim.Parameters()
-state_opt = C172R.Trim.trim!(ac, env, state, params)
-assign!(ac, env, state_opt, params) #set the aircraft to its trim state
-ẋ0 = copy(ac.ẋ)
-x0 = copy(ac.x)
-u0 = copy(UTemplate); assign!(u0, ac) #get the equilibrium value from the trimmed aircraft
-y0 = copy(YTemplate); assign!(y0, ac) #idem
+#flaps and mixture are omitted from the input vector, because they will often be
+#saturated at one of their range limits (for example, when operating with fully
+#retracted or fully extended flaps, full lean or full rich mixture), and
+#linearization will not go well in such cases. flaps and mixture are best kept
+#as configuration parameters
 
-# function assign!(ac::System{<:Cessna172R}, x, u)
-#     ac.x .= x #this can be assigned directly, because LinX is of the same type as ac.x
-#     assign!(ac, u) #assign the input u to the aircraft
-#     f_cont!(ac, env) #this also modifies ac.y, but we don't care about that here
-# end
+UTemplate = ComponentVector(
+    throttle = 0.0,
+    yoke_y = 0.0, #elevator control
+    yoke_x = 0.0, #aileron control
+    pedals = 0.0, #rudder control
+    )
 
-# #the same aircraft instance is shared by g and h, so we need to make sure we
-# #start with everything at its trimmed condition
-# g! = let ac = ac, env = env, state = state, params = params
-# 	function (ẋ, x, u)
-#         assign!(ac, env, state, params) #restore the aircraft to its trimmed status
-#         assign!(ac, x, u) #assign the given state and input to the aircraft and update its ẋ and y
-# 		ẋ .= ac.xdot #assign the aircraft's ẋ to the provided ẋ
-#     end
-# end
+YTemplate = ComponentVector(
+    ψ = 0.0, θ = 0.0, φ = 0.0, #heading, inclination, bank
+    ϕ = 0.0, λ = 0.0, h_e = 0.0, #latitude, longitude, altitude
+    p = 0.0, q = 0.0, r = 0.0, #angular rates
+    TAS = 0.0, α = 0.0, β = 0.0, #airspeed, AoA, AoS
+    f_x = 0.0, f_y = 0.0, f_z = 0.0, #specific force
+    ω_eng = 0.0, m_fuel = 0.0 #engine speed, fuel load
+)
 
-# h! = let ac = ac, env = env, state = state, params = params
-# 	function (y, x, u)
-#         assign!(ac, env, state, params) #restore the aircraft to its trimmed status
-#         assign!(ac, x, u) #assign the given state and input to the aircraft and update its ẋ and y
-# 		assign!(y, ac) #assign the aircraft's y to the provided y
-#     end
-# end
+const U{T, D} = ComponentVector{T, D, typeof(getaxes(UTemplate))} where {T, D}
+const Y{T, D} = ComponentVector{T, D, typeof(getaxes(YTemplate))} where {T, D}
 
-#doubly mutating function mirroring f_cont!(), which internally mutates the
-#system's ẋ and y
-f! = let ac = ac, env = env, state = state, params = params
-	function (ẋ, y, x, u)
-        assign!(ac, env, state, params) #restore the aircraft to its trimmed status
-        ac.x .= x #this can be assigned directly, because LinX is of the same type as ac.x
-        assign!(ac, u) #assign the input vector u to the aircraft
-        f_cont!(ac, env) #this also modifies ac.y, but we don't care about that here
-		ẋ .= ac.xdot #assign the aircraft's ẋ to the provided ẋ
-		assign!(y, ac) #assign the aircraft's y to the provided y
+function assign!(u::U, ac::System{<:Cessna172R})
+
+    @unpack throttle, yoke_y, yoke_x, pedals = ac.u.avionics
+    @pack! u = throttle, yoke_y, yoke_x, pedals
+
+end
+
+function assign!(ac::System{<:Cessna172R}, u::U)
+
+    @unpack throttle, yoke_y, yoke_x, pedals = u
+    @pack! ac.u.avionics = throttle, yoke_y, yoke_x, pedals
+
+end
+
+function assign!(y::Y, ac::System{<:Cessna172R})
+
+    @unpack q_nb, n_e, h_e, ω_lb_b = ac.y.kinematics
+    @unpack α, β = ac.y.airframe.aero
+    @unpack ψ, θ, φ = REuler(q_nb)
+    @unpack ϕ, λ = LatLon(n_e)
+
+    p, q, r = ω_lb_b
+    f_x, f_y, f_z = ac.y.rigidbody.f_Ob_b
+    TAS = ac.y.airflow.TAS
+    ω_eng = ac.y.airframe.pwp.engine.ω
+    m_fuel = ac.y.airframe.fuel.m
+
+    @pack! y = ψ, θ, φ, ϕ, λ, h_e, p, q, r, TAS, α, β, f_x, f_y, f_z, ω_eng, m_fuel
+
+end
+
+function test()
+
+    ac = System(Cessna172R(NED()))
+    env = System(SimpleEnvironment())
+    params = C172R.Trim.Parameters()
+
+    # state0 = C172R.Trim.State() #optional initial trim guess
+    (exit_flag, trim_state) = C172R.Trim.trim!(; ac, env, params) #ac is now trimmed
+
+    #save the trimmed aircraft ẋ, x, u and y for later
+    ẋ_ref = copy(ac.ẋ) #save the trimmed aircraft state vector derivative for later
+    x_ref = copy(ac.x) #
+    u_ref = similar(UTemplate); assign!(u_ref, ac) #get the reference value from the trimmed aircraft
+    y_ref = similar(YTemplate); assign!(y_ref, ac) #idem
+
+    # @show exit_flag
+    # @show trim_state
+    # @show ẋ_ref
+    # @show x_ref
+    # @show u_ref
+    # @show y_ref
+
+    #function wrapper around f_cont!() mutating ẋ and y. define a cache in case
+    #we get generic y or u
+    f_nonlinear! = let ac = ac, env = env, params = params, state = trim_state,
+                       u_axes = getaxes(UTemplate), y_axes = getaxes(YTemplate)
+
+        function (ẋ, y, x, u)
+
+            #we need these because finite_difference_jacobian! sometimes
+            #provides generic Vectors instead of ComponentVectors. creating
+            #these does not allocate, because the underlying data is already
+            #provided by u and y. updating u_cv and y_cv also updates u and y,
+            #while satisfying the interface requirements of the assign!
+            #functions
+            u_cv = ComponentVector(u, u_axes)
+            y_cv = ComponentVector(y, y_axes)
+
+            #make sure any input or state not set by x and u is at its reference
+            #trim value. this reverts changes to the aircraft done by functions
+            #sharing the same aircraft instance
+            C172R.Trim.assign!(ac, env, params, state)
+
+            ac.x .= x
+            assign!(ac, u_cv)
+
+            f_cont!(ac, env)
+
+            ẋ .= ac.ẋ
+            assign!(y_cv, ac) #this also updates y
+
+        end
+
     end
+
+    ẋ_tmp = similar(x_ref)
+    y_tmp = similar(y_ref)
+
+    # @btime $f_nonlinear!($ẋ_tmp, $y_tmp, $x_ref, $u_ref)
+    f_nonlinear!(ẋ_tmp, y_tmp, x_ref, u_ref)
+
+    @assert ẋ_tmp ≈ ẋ_ref #sanity check
+    @assert y_tmp ≈ y_ref #sanity check
+
+
+    f_A! = let u = u_ref, y = similar(y_ref) #y is discarded
+        (ẋ, x) -> f_nonlinear!(ẋ, y, x, u)
+    end
+
+    f_B! = let x = x_ref, y = similar(y_ref) #y is discarded
+        (ẋ, u) -> f_nonlinear!(ẋ, y, x, u)
+    end
+
+    f_C! = let u = u_ref, ẋ = similar(ẋ_ref) #ẋ is discarded
+        (y, x) -> f_nonlinear!(ẋ, y, x, u)
+    end
+
+    f_D! = let x = x_ref, ẋ = similar(ẋ_ref) #ẋ is discarded
+        (y, u) -> f_nonlinear!(ẋ, y, x, u)
+    end
+
+    #preallocate
+    A = x_ref * x_ref'
+    B = x_ref * u_ref'
+    C = y_ref * x_ref'
+    D = y_ref * u_ref'
+
+    jacobian!(A, f_A!, x_ref)
+    jacobian!(B, f_B!, u_ref)
+    jacobian!(C, f_C!, x_ref)
+    jacobian!(D, f_D!, u_ref)
+
+    # A_θ = A[:kinematics,:][:pos,:][:e_nb,:][2,:][:kinematics][:pos]
+
+    println("It may be convenient to restrict the linearization functionality to NED kinematics, ",
+    "then define also an XTemplate with only the continous state variables that matter, and",
+    "ordered conveniently to partition the state in longitudinal and lateral directional dynamics")
+
+    #despues podria crear tambien un LinearAircraft{A, B, C, D, X, U, Y} <:
+    #SystemDescriptor.
+    #ahi me guardo ẋ_ref, y_ref, etc
+    #esto seria generico, no tendria por que ser de C172R
+
+    #maybe define a LinearModel storing ẋ_ref, x_ref, y_ref, u_ref, and the state space
+    #matrices (or a state space system directly). the linear model is given by:
+    """
+    Δẋ = A*Δx + B*Δu
+    Δy = C*Δx + D*Δu
+
+    #if we receive ẋ, x, u and y, we need ẋ_ref, x_ref, u_ref and y_ref to compute the
+    increments. this is needed for simulation, not for controller design
+
+    """
+
+
+
+    return (A, B, C, D)
+
+
+
+
 end
 
-ẋ_tmp = copy(ẋ0)
-y_tmp = copy(y0)
 
-f!(ẋ_tmp, y, x0, u0)
-@assert ẋ_tmp ≈ ẋ0 #sanity check
-@assert y_tmp ≈ y0 #sanity check
 
-# # g!(ẋ, x0, u0)
-# # h!(y, x0, u0)
-# g_a! = let u = u0
-#     (ẋ, x) = g!(ẋ, x, u)
-# end
-
-# g_b! = let x = x0
-#     (ẋ, u) = g!(ẋ, x, u)
-# end
-
-f_a! = let u = u0, y = y_tmp
-    (ẋ, x) = f!(ẋ, y, x, u)
-end
-
-f_b! = let x = x0, y = y_tmp
-    (ẋ, u) = f!(ẋ, y, x, u)
-end
-
-f_c! = let u = u0, y = y_tmp
-    (y, x) = f!(ẋ, y, x, u)
-end
-
-f_d! = let x = x0, ẋ = ẋ_tmp
-    (y, u) = f!(ẋ, y, x, u)
-end
-
-f_a!(ẋ_tmp, x0)
-@assert ẋ_tmp ≈ ẋ0 #sanity check
-f_b!(ẋ_tmp, u0)
-@assert ẋ_tmp ≈ ẋ0 #sanity check
-f_c!(y_tmp, x0)
-@assert y_tmp ≈ y0 #sanity check
-f_d!(y_tmp, u0)
-@assert y_tmp ≈ y0 #sanity check
-
-B = x0 * u0' #nx x nu
-C = y0 * x0'
-D = y0 * u0'
-A = x0 * x0' #nx x nx
-finite_difference_jacobian!(A, f_a!, x0)
-finite_difference_jacobian!(B, f_b!, u0)
-finite_difference_jacobian!(C, f_c!, x0)
-finite_difference_jacobian!(D, f_d!, u0)
+# end #module

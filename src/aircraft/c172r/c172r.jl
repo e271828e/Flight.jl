@@ -179,8 +179,8 @@ Base.@kwdef struct AeroY
     a::Float64 = 0.0 #normalized aileron control input
     r::Float64 = 0.0 #normalized rudder control input
     f::Float64 = 0.0 #normalized flap control input
-    α::Float64 = 0.0 #clamped AoA
-    β::Float64 = 0.0 #clamped AoS
+    α::Float64 = 0.0 #clamped AoA, aerodynamic axes
+    β::Float64 = 0.0 #clamped AoS, aerodynamic axes
     α_filt::Float64 = 0.0 #filtered AoA
     β_filt::Float64 = 0.0 #filtered AoS
     α_filt_dot::Float64 = 0.0 #filtered AoA derivative
@@ -598,5 +598,6 @@ Cessna172R(kinematics = LTF()) = AircraftBase( kinematics, Airframe(), BasicAvio
 
 include("tools.jl")
 using .Trim #do not reexport, names in Trim are generic
+# using .Linearization #do not reexport, names in Trim are generic
 
 end #module

@@ -116,7 +116,7 @@ end
 #assigns trim state and parameters to the aircraft system, and then updates it
 #by calling its continuous dynamics function
 function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
-    state::State, params::Parameters)
+    params::Parameters, state::State)
 
     Aircraft.init!(ac, KinematicInit(state, params, env))
 
@@ -179,7 +179,7 @@ function get_target_function(ac::System{<:Cessna172R},
 
     let ac = ac, env = env, params = params
         function (x::State)
-            assign!(ac, env, x, params)
+            assign!(ac, env, params, x)
             return cost(ac)
         end
     end
@@ -188,21 +188,21 @@ end
 
 function trim!(; ac::System{<:Cessna172R} = System(Cessna172R()),
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
-    state::State = State(), params::Parameters = Parameters())
+    params::Parameters = Parameters(), state0::State = State())
 
     f_target = get_target_function(ac, env, params)
 
     #wrapper around f_target with the interface required by NLopt
-    ax = getaxes(state)
+    ax = getaxes(state0)
     function f_opt(x::Vector{Float64}, ::Vector{Float64})
         s = ComponentVector(x, ax)
         return f_target(s)
     end
 
-    n = length(state)
+    n = length(state0)
     x0 = zeros(n); lower_bounds = similar(x0); upper_bounds = similar(x0); initial_step = similar(x0)
 
-    x0[:] .= state
+    x0[:] .= state0
 
     lower_bounds[:] .= State(
         α_a = -π/12,
@@ -237,18 +237,16 @@ function trim!(; ac::System{<:Cessna172R} = System(Cessna172R()),
     opt.upper_bounds = upper_bounds
     opt.initial_step = initial_step
 
-
     # @btime optimize($opt, $x0)
+
     (minf, minx, exit_flag) = optimize(opt, x0)
-    # @show exit_flag
-    # @show minf
-    # @show numevals = opt.numevals # the number of function evaluations
+    # @show numevals = opt.numevals
 
     if exit_flag != :STOPVAL_REACHED
         println("Warning: Optimization did not converge")
     end
     state_opt = ComponentVector(minx, ax)
-    assign!(ac, env, state_opt, params)
+    assign!(ac, env, params, state_opt)
     return (exit_flag = exit_flag, result = state_opt)
 
 
