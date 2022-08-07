@@ -154,7 +154,7 @@ function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
     #it to zero and forget about it
     ac.x.airframe.pwp.friction .= 0.0
 
-    f_cont!(ac, env)
+    f_ode!(ac, env)
 
     #check assumptions concerning airframe systems states & derivatives
     wow = reduce(|, SVector{3,Bool}(leg.strut.wow for leg in ac.y.airframe.ldg))

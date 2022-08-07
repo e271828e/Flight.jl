@@ -4,7 +4,7 @@ using StaticArrays
 
 using Flight.Systems
 using Flight.Geodesy
-import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Systems: init, f_ode!, f_step!
 
 export AbstractTerrain, DummyTerrain, HorizontalTerrain
 
@@ -45,8 +45,8 @@ HorizontalTerrain(; altitude = HOrth(0), surface = DryTarmac) =
 TerrainData(trn::System{<:HorizontalTerrain}, ::Abstract2DLocation) =
     TerrainData(trn.params.altitude, SVector{3,Float64}(0,0,1), trn.params.surface)
 
-f_cont!(::System{<:HorizontalTerrain}) = nothing
-f_disc!(::System{<:HorizontalTerrain}) = false
+f_ode!(::System{<:HorizontalTerrain}) = nothing
+f_step!(::System{<:HorizontalTerrain}) = false
 
 end #module
 

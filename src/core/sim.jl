@@ -20,7 +20,7 @@ export Simulation, step!, reinit!, get_proposed_dt, add_tstop!
 ############################# Simulation #######################################
 
 #in this design, the t and x fields of m.sys behave only as temporary
-#storage for f_cont! and f_disc! calls, so we have no guarantees about their
+#storage for f_ode! and f_step! calls, so we have no guarantees about their
 #status after a certain step. the only valid sources for t and x at any
 #given moment is the integrator's t and u
 struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
@@ -31,9 +31,10 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
 
     function Simulation(
         sys::System;
-        args_c::Tuple = (), #externally supplied arguments to f_cont!
-        args_d::Tuple = (), #externally supplied arguments to f_disc!
-        sim_callback::Function = no_sim_callback!, #simulation control callback
+        args_ode::Tuple = (), #externally supplied arguments to System's f_ode!
+        args_step::Tuple = (), #externally supplied arguments to System's f_step!
+        sys_init::Function = no_sys_init!, #System initialization function
+        sys_io::Function = no_sys_io!, #System I/O function
         realtime::Bool = false,
         solver::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false, #can be overridden in integrator_kwargs
@@ -42,37 +43,36 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         t_end::Real = 10.0,
         y_save_on::Bool = true,
         y_saveat::Union{Real, AbstractVector{<:Real}} = dt, #save at every dt
-        save_on::Bool = false,
         integrator_kwargs...)
 
-        #save_on is set to false because we are not usually interested in the
-        #naked System's state vector. everything we need should be available in
-        #the System's output struct saved by the SavingCallback
         saveat_arr = (y_saveat isa Real ? (t_start:y_saveat:t_end) : y_saveat)
 
-        params = (sys = sys, args_c = args_c, args_d = args_d, sim_callback = sim_callback)
+        params = (sys = sys, args_ode = args_ode, args_step = args_step,
+                  sys_init = sys_init, sys_io = sys_io)
 
         log = SavedValues(Float64, typeof(sys.y))
 
-        cb_step = DiscreteCallback((u, t, integrator)->true, f_step!)
-        cb_sim = DiscreteCallback((u, t, integrator)->true, f_sim!)
-        cb_save = SavingCallback(f_save, log, saveat = saveat_arr)
+        cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
+        cb_io = DiscreteCallback((u, t, integrator)->true, f_cb_io!)
+
+        cb_save = SavingCallback(f_cb_save, log, saveat = saveat_arr)
 
         if y_save_on
-            cb_set = CallbackSet(cb_step, cb_sim, cb_save)
-            # cb_set = CallbackSet(cb_step, cb_save)
+            cb_set = CallbackSet(cb_step, cb_io, cb_save)
         else
-            cb_set = CallbackSet(cb_step, cb_sim)
-            # cb_set = CallbackSet(cb_step)
+            cb_set = CallbackSet(cb_step, cb_io)
         end
 
         #the current System's x value is used as initial condition. a copy is
         #needed, otherwise it's just a reference and will get overwritten during
         #simulation
         x0 = copy(sys.x)
-        problem = ODEProblem{true}(f_ode!, x0, (t_start, t_end), params)
-        integrator = init_problem(problem, solver; callback = cb_set, save_on,
+        problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
+        integrator = init_problem(problem, solver; callback = cb_set, save_on = false,
                                   adaptive, dt, integrator_kwargs...)
+        #save_on is set to false because we are not usually interested in the
+        #naked System's state vector. everything we need should be made
+        #available in the System's output struct saved by the SavingCallback
 
         new{typeof(sys), typeof(integrator), typeof(log)}(
             sys, integrator, log, realtime)
@@ -92,18 +92,16 @@ Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
     end
 end
 
-#neither f_ode!, f_step! or f_save should allocate
+#wrapper around the System's continuous dynamics function f_ode! it modifies the
+#System's ẋ and y as a side effect
+function f_ode_wrapper!(u̇, u, p, t)
 
-#integrator ODE function. basically, a wrapper around the System's continuous
-#dynamics function. as a side effect, modifies the System's ẋ and y.
-function f_ode!(u̇, u, p, t)
-
-    @unpack sys, args_c = p
+    @unpack sys, args_ode = p
 
     sys.x .= u #assign current integrator solution to System continuous state
     sys.t[] = t #likewise for time
 
-    f_cont!(sys, args_c...) #call continuous dynamics, updates sys.ẋ and sys.y
+    f_ode!(sys, args_ode...) #call continuous dynamics, updates sys.ẋ and sys.y
 
     u̇ .= sys.ẋ #update the integrator's derivative
 
@@ -113,24 +111,24 @@ end
 
 #DiscreteCallback function, called on every integration step. brings the
 #System's internal x and y up to date with the last integrator's solution step,
-#then calls the System's discrete dynamics. as it is, if the System's y
-#depends on x or s, and these are modified by f_disc!, the change will not be
-#reflected on y until the following integration step
-function f_step!(integrator)
+#then calls the System's own f_step!. if the System's y depends on x or s, and
+#these are modified by f_step!, the change will not be reflected on y until
+#f_ode! is executed again on the following integration step
+function f_cb_step!(integrator)
 
     @unpack t, u, p = integrator
-    @unpack sys, args_c, args_d = p
+    @unpack sys, args_ode, args_step = p
 
     sys.x .= u #assign the updated integrator's state to the System's continuous state
     sys.t[] = t #ditto for time
 
     #at this point sys.y and sys.ẋ hold the values from the last solver
-    #evaluation of f_cont!, not the one corresponding to the updated x. with x
+    #evaluation of f_ode!, not the one corresponding to the updated x. with x
     #up to date, we can now compute the final sys.y and sys.ẋ for this epoch
-    f_cont!(sys, args_c...)
+    f_ode!(sys, args_ode...)
 
     #with the System's ẋ and y up to date, call the discrete dynamics function
-    x_modified = f_disc!(sys, args_d...)
+    x_modified = f_step!(sys, args_step...)
 
     u .= sys.x #assign the (potentially modified) sys.x back to the integrator
 
@@ -138,26 +136,37 @@ function f_step!(integrator)
 
 end
 
-#DiscreteCallback function, calls the user-specified simulation control callback
+#DiscreteCallback function, calls the user-specified System I/O callback
 #after every integration step
-function f_sim!(integrator)
+function f_cb_io!(integrator)
 
-    @unpack sys, sim_callback = integrator.p
+    @unpack sys, sys_io = integrator.p
 
-    sim_callback(sys.u, sys.t[], sys.y, sys.params)
-    u_modified!(integrator, false) #avoids needless performance loss
+    sys_io(sys.u, sys.t[], sys.y, sys.params)
+
+    #a System control function will never modify the System's continuous state,
+    #so we may as well tell the integrator to avoid any performance hit
+    u_modified!(integrator, false)
 
 end
 
-#function signature a simulation control callback must adhere to.
-#u is the (mutable) System's control input, which the callback may modify
-#t is the (dereferenced) System's t field
-#y is the (immutable) System's output
-#params is the (immutable) System's params field
-no_sim_callback!(u, t::Float64, y, params) = nothing
-
 #SavingCallback function, gets called at the end of each step after f_step!
-f_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
+f_cb_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
+
+#function signature a System initialization function must adhere to.
+#x: System's continuous state, which the function may modify
+#u: System's control input, which the function may modify
+#s: System's discrete state, which the function may modify
+#t: (dereferenced) System's t field
+#params: (immutable) System's params field
+no_sys_init!(x, u, s, t, params, args...; kwargs...) = nothing
+
+#function signature a System I/O function must adhere to.
+#u: (mutable) System's control input, which the function may modify
+#y: (immutable) System's output
+#t: (dereferenced) System's t field
+#params: (immutable) System's params field
+no_sys_io!(u, y, t::Float64, params) = nothing
 
 
 ############################## Method Extensions ###############################
@@ -171,19 +180,22 @@ add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 #in order to be actually useful, this would need to restore also u and s to
 #their original values, which is non-trivial, because it may break the coupling
 #between a parent system and its subsystems
-# function reinit!(sim::Simulation, args...; kwargs...)
+function reinit!(sim::Simulation, args...; kwargs...)
 
-#     #for an ODEIntegrator, the optional args... is simply a new initial
-#     #condition. if not specified, the original initial condition is used.
-#     reinit!(sim.integrator, args...; kwargs...)
+    @unpack x, u, s, t, params = sim.sys
 
-#     #apparently, reinit! calls f_ode!, so all System fields are updated in
-#     #the process, no need to do it manually
+    #call the System initialization function, which sets x, u and s
+    sim.integrator.params.sys_init(x, u, s, t[], params, args...; kwargs...)
 
-#     resize!(sim.log.t, 1)
-#     resize!(sim.log.saveval, 1)
-#     return nothing
-# end
+    #reinitialize the ODEIntegrator to the System's initial continuous state
+    reinit!(sim.integrator, sys.x)
+
+    #apparently, reinit! calls f_ode_wrapper!, so the System's ẋ and y are
+    #updated in the process, no need to do it manually
+    resize!(sim.log.t, 1)
+    resize!(sim.log.saveval, 1)
+    return nothing
+end
 
 function run!(sim::Simulation; verbose = false)
 

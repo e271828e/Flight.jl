@@ -5,7 +5,7 @@ using ComponentArrays
 import AbstractTrees: children, printnode, print_tree
 import DataStructures: OrderedDict
 
-export f_cont!, f_disc!
+export f_ode!, f_step!
 export SystemDescriptor, SystemGroupDescriptor, System
 export SystemẊ, SystemX, SystemY, SystemU, SystemS
 export init_ẋ, init_x, init_y, init_u, init_s
@@ -115,14 +115,14 @@ function System(desc::SystemDescriptor,
 
 end
 
-#f_disc! is free to modify a System's u, s and x. if it modifies x, it must
+#f_step! is free to modify a System's u, s and x. if it modifies x, it must
 #return true, otherwise false. no fallbacks are provided for safety reasons: if
-#the intended f_cont! or f_disc! implementations for the System have the wrong
+#the intended f_ode! or f_step! implementations for the System have the wrong
 #interface, the dispatch will silently revert to the fallback, which does
 #nothing. this may not be obvious at all and introduce treacherous bugs.
 
-f_cont!(sys::System, args...) = MethodError(f_cont!, (sys, args...)) |> throw
-(f_disc!(sys::System, args...)::Bool) = MethodError(f_disc!, (sys, args...)) |> throw
+f_ode!(sys::System, args...) = MethodError(f_ode!, (sys, args...)) |> throw
+(f_step!(sys::System, args...)::Bool) = MethodError(f_step!, (sys, args...)) |> throw
 
 Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
 Base.setproperty!(sys::System, name::Symbol, value) = setproperty!(sys, Val(name), value)
@@ -183,31 +183,31 @@ end
 
 struct NullSystemDescriptor <: SystemDescriptor end
 
-@inline f_cont!(::System{NullSystemDescriptor}, args...) = nothing
-@inline (f_disc!(::System{NullSystemDescriptor}, args...)::Bool) = false
+@inline f_ode!(::System{NullSystemDescriptor}, args...) = nothing
+@inline (f_step!(::System{NullSystemDescriptor}, args...)::Bool) = false
 
 ######################### SystemGroupDescriptors ############################
 
 #abstract supertype for any SystemDescriptor grouping several children
-#SystemDescriptors with common f_cont! and f_disc! interfaces. it provides
+#SystemDescriptors with common f_ode! and f_step! interfaces. it provides
 #automatically generated methods for these functions.
 
 abstract type SystemGroupDescriptor <: SystemDescriptor end
 
-#default implementation calls f_cont! on all Group subsystems with the same
+#default implementation calls f_ode! on all Group subsystems with the same
 #arguments provided to the parent System, then builds a NamedTuple with the
 #subsystem outputs. can be overridden as required.
-@inline @generated function (f_cont!(sys::System{T, X, Y, U, D, P, S}, args...)
+@inline @generated function (f_ode!(sys::System{T, X, Y, U, D, P, S}, args...)
     where {T<:SystemGroupDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
 
     # Core.println("Generated function called")
     ex_main = Expr(:block)
 
-    #call f_cont! on each subsystem
+    #call f_ode! on each subsystem
     ex_calls = Expr(:block)
     for label in fieldnames(S)
         push!(ex_calls.args,
-            :(f_cont!(sys.subsystems[$(QuoteNode(label))], args...)))
+            :(f_ode!(sys.subsystems[$(QuoteNode(label))], args...)))
     end
 
     ex_assemble_y = :(assemble_y!(sys))
@@ -220,23 +220,23 @@ abstract type SystemGroupDescriptor <: SystemDescriptor end
 
 end
 
-#default implementation calls f_disc! on all Node subsystems with the same
+#default implementation calls f_step! on all Node subsystems with the same
 #arguments provided to the parent Node's System, then ORs their outputs.
 #can be overridden as required
-# @inline @generated function (f_disc!(sys::System{T, X, Y, U, D, P, S}, args...)
+# @inline @generated function (f_step!(sys::System{T, X, Y, U, D, P, S}, args...)
 #     where {T<:SystemGroupDescriptor, X, Y, U, D, P, S})
-@inline @generated function (f_disc!(sys::System{T, X, Y, U, D, P, S}, args...)
+@inline @generated function (f_step!(sys::System{T, X, Y, U, D, P, S}, args...)
     where {T<:SystemGroupDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
 
     # Core.print("Generated function called")
     ex = Expr(:block)
     push!(ex.args, :(x_mod = false))
 
-    #call f_disc! on each subsystem
+    #call f_step! on each subsystem
     for label in fieldnames(S)
-        #we need all f_disc! calls executed, so we can't just chain them with ||
+        #we need all f_step! calls executed, so we can't just chain them with ||
         push!(ex.args,
-            :(x_mod = x_mod || f_disc!(sys.subsystems[$(QuoteNode(label))], args...)))
+            :(x_mod = x_mod || f_step!(sys.subsystems[$(QuoteNode(label))], args...)))
     end
     return ex
 

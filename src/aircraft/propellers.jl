@@ -12,7 +12,7 @@ using Flight.Systems
 using Flight.Plotting
 using Flight.Kinematics, Flight.RigidBody, Flight.Atmosphere
 
-import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Systems: init, f_ode!, f_step!
 import Flight.Plotting: make_plots
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 
@@ -340,7 +340,7 @@ init(::SystemY, ::Propeller) = PropellerY()
 get_Δβ(sys::System{<:Propeller{FixedPitch}}) = 0.0
 get_Δβ(sys::System{<:Propeller{VariablePitch}}) = linear_scaling(sys.u[], sys.params.pitch.bounds)
 
-function f_cont!(sys::System{<:Propeller}, kin::KinematicData, air::AirflowData, ω::Real)
+function f_ode!(sys::System{<:Propeller}, kin::KinematicData, air::AirflowData, ω::Real)
 
     @unpack d, J_xx, t_bp, sense, lookup = sys.params
     #remove this, it may happen due to friction overshoot at low RPMs
@@ -389,7 +389,7 @@ function f_cont!(sys::System{<:Propeller}, kin::KinematicData, air::AirflowData,
 
 end
 
-f_disc!(::System{<:Propeller}, args...) = false
+f_step!(::System{<:Propeller}, args...) = false
 
 get_wr_b(sys::System{<:Propeller}) = sys.y.wr_b
 get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
@@ -406,8 +406,8 @@ get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 # end
 
 # struct DummyGovernor end
-# @inline f_cont!(::System{DummyGovernor}, args...) = nothing
-# @inline (f_disc!(::System{NullSystemDescriptor}, args...)::Bool) = false
+# @inline f_ode!(::System{DummyGovernor}, args...) = nothing
+# @inline (f_step!(::System{NullSystemDescriptor}, args...)::Bool) = false
 
 ################################################################################
 ############################ Plots #############################################

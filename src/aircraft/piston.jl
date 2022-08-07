@@ -9,7 +9,7 @@ using Flight.Geodesy: HGeop
 using Flight.Propellers: AbstractPropeller, Propeller
 using Flight.Friction
 
-import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Systems: init, f_ode!, f_step!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 import Flight.RigidBody: get_mp_b
 
@@ -30,8 +30,8 @@ struct MagicFuelSupply <: AbstractFuelSupply end
 
 init(::SystemU, ::MagicFuelSupply) = Ref(true)
 
-f_cont!(::System{MagicFuelSupply}) = nothing
-f_disc!(::System{MagicFuelSupply}) = false
+f_ode!(::System{MagicFuelSupply}) = nothing
+f_step!(::System{MagicFuelSupply}) = false
 
 get_mp_b(::System{MagicFuelSupply}) = MassProperties()
 fuel_available(f::System{MagicFuelSupply}) = f.u[]
@@ -89,7 +89,7 @@ end
 init(::SystemX, ::IdleController) = [0.0]
 init(::SystemY, ::IdleController) = IdleControllerY()
 
-function f_cont!(sys::System{IdleController}, ω::Real)
+function f_ode!(sys::System{IdleController}, ω::Real)
 
     @unpack k_p, k_i, ω_target = sys.params
 
@@ -104,7 +104,7 @@ function f_cont!(sys::System{IdleController}, ω::Real)
 
 end
 
-f_disc!(::System{IdleController}, args...) = false
+f_step!(::System{IdleController}, args...) = false
 
 ############################ Engine ###############################
 
@@ -180,7 +180,7 @@ init(::SystemU, ::Engine) = PistonEngineU()
 init(::SystemY, ::Engine) = PistonEngineY()
 init(::SystemS, ::Engine) = PistonEngineS()
 
-function f_cont!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::Real)
+function f_ode!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::Real)
 
     @unpack ω_rated, P_rated, J, M_start, lookup = eng.params
     @unpack thr, mix, start, stop = eng.u
@@ -190,7 +190,7 @@ function f_cont!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::
     throttle = Float64(thr)
     mixture = Float64(mix)
 
-    f_cont!(eng.idle, ω) #update idle controller
+    f_ode!(eng.idle, ω) #update idle controller
 
     μ_ratio_idle = eng.idle.y.output
 
@@ -253,7 +253,7 @@ function f_cont!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::
 
 end
 
-function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
+function f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
 
     ω = eng.x.ω
     ω_stall = eng.params.ω_stall
@@ -276,7 +276,7 @@ function f_disc!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
     end
 
     x_mod = false
-    x_mod = x_mod || f_disc!(eng.idle)
+    x_mod = x_mod || f_step!(eng.idle)
     return x_mod
 
 end
@@ -453,7 +453,7 @@ Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
 end
 
 
-function f_cont!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
+function f_ode!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
 
     @unpack engine, propeller, friction = thr
     @unpack gear_ratio, M_fr_max = thr.params
@@ -461,8 +461,8 @@ function f_cont!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
     ω_eng = engine.x.ω
     ω_prop = gear_ratio * ω_eng
 
-    f_cont!(friction, SVector{1, Float64}(ω_eng))
-    f_cont!(propeller, kin, air, ω_prop)
+    f_ode!(friction, SVector{1, Float64}(ω_eng))
+    f_ode!(propeller, kin, air, ω_prop)
 
     M_prop = propeller.y.wr_p.M[1]
     M_eq = gear_ratio * M_prop #load torque seen from the engine shaft
@@ -480,20 +480,20 @@ function f_cont!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
     J_prop = propeller.params.J_xx
     J_eq = gear_ratio^2 * J_prop #load moment of inertia seen from the engine side
 
-    f_cont!(engine, air; M_load = M_eq, J_load = J_eq)
+    f_ode!(engine, air; M_load = M_eq, J_load = J_eq)
 
     Systems.assemble_y!(thr)
 
 end
 
-function f_disc!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
+function f_step!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
 
     @unpack engine, propeller, friction = thr
 
     x_mod = false
-    x_mod = x_mod || f_disc!(engine, fuel)
-    x_mod = x_mod || f_disc!(propeller)
-    x_mod = x_mod || f_disc!(friction)
+    x_mod = x_mod || f_step!(engine, fuel)
+    x_mod = x_mod || f_step!(propeller)
+    x_mod = x_mod || f_step!(friction)
     return x_mod
 
 end

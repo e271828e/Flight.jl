@@ -22,15 +22,15 @@ function test_kinematics()
 
         @testset verbose = true "Performance" begin
 
-            @test (@ballocated f_cont!($sys_ECEF)) == 0
-            @test (@ballocated f_cont!($sys_LTF)) == 0
-            @test (@ballocated f_cont!($sys_NED)) == 0
+            @test (@ballocated f_ode!($sys_ECEF)) == 0
+            @test (@ballocated f_ode!($sys_LTF)) == 0
+            @test (@ballocated f_ode!($sys_NED)) == 0
 
-            sys_LTF.x.pos.q_lb[1] = 3 #force renormalization in f_disc!
-            sys_ECEF.x.pos.q_eb[1] = 3 #force renormalization in f_disc!
-            @test @ballocated(f_disc!($sys_LTF)) == 0
-            @test @ballocated(f_disc!($sys_ECEF)) == 0
-            @test @ballocated(f_disc!($sys_NED)) == 0
+            sys_LTF.x.pos.q_lb[1] = 3 #force renormalization in f_step!
+            sys_ECEF.x.pos.q_eb[1] = 3 #force renormalization in f_step!
+            @test @ballocated(f_step!($sys_LTF)) == 0
+            @test @ballocated(f_step!($sys_ECEF)) == 0
+            @test @ballocated(f_step!($sys_NED)) == 0
 
         end
 
@@ -47,9 +47,9 @@ function test_kinematics()
             Kinematics.init!(sys_NED, kin_init)
 
             #let the kinematic state propagate to y
-            f_cont!(sys_ECEF)
-            f_cont!(sys_LTF)
-            f_cont!(sys_NED)
+            f_ode!(sys_ECEF)
+            f_ode!(sys_LTF)
+            f_ode!(sys_NED)
 
             #check the initialization yields consistent results between implementations
             @test sys_ECEF.y.q_nb ≈ sys_LTF.y.q_nb

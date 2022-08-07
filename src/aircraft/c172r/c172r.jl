@@ -23,7 +23,7 @@ using Flight.Piston
 using Flight.Aircraft: AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 using Flight.Input: Input, XBoxController, get_axis_value, is_released
 
-import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Systems: init, f_ode!, f_step!
 import Flight.Kinematics: KinematicInit
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Piston: fuel_available
@@ -196,7 +196,7 @@ init(::SystemU, ::Aero) = AeroU()
 init(::SystemS, ::Aero) = AeroS()
 
 
-function f_cont!(sys::System{Aero}, ::System{<:Piston.Thruster},
+function f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
     air::AirflowData, kinematics::KinematicData, terrain::System{<:AbstractTerrain})
 
     #for near-zero TAS, the airflow angles are likely to chatter between 0, -π
@@ -264,7 +264,7 @@ end
 
 get_wr_b(sys::System{Aero}) = sys.y.wr_b
 
-function f_disc!(sys::System{Aero})
+function f_step!(sys::System{Aero})
     #stall hysteresis
     α = sys.y.α
     α_stall = sys.params.α_stall
@@ -410,7 +410,7 @@ end
 init(::SystemX, ::Fuel) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
 init(::SystemY, ::Fuel) = FuelY()
 
-function f_cont!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
+function f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 
     @unpack m_full, m_empty = sys.params #no need for subsystems
     m = m_empty + sys.x[1] * (m_full - m_empty) #current mass
@@ -419,7 +419,7 @@ function f_cont!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 
 end
 
-f_disc!(::System{Fuel}) = false
+f_step!(::System{Fuel}) = false
 
 fuel_available(sys::System{<:Fuel}) = (sys.y.m > 0)
 
@@ -467,7 +467,7 @@ end
 ################################################################################
 ######################## Avionics Update Functions ###########################
 
-function f_cont!(avionics::System{BasicAvionics}, ::System{<:Airframe},
+function f_ode!(avionics::System{BasicAvionics}, ::System{<:Airframe},
                 ::KinematicData, ::AirflowData, ::System{<:AbstractTerrain})
 
     #here, avionics do nothing but update their output state. for a more complex
@@ -481,34 +481,34 @@ function f_cont!(avionics::System{BasicAvionics}, ::System{<:Airframe},
 
 end
 
-f_disc!(::System{BasicAvionics}, ::System{<:Airframe}, ::System{<:AbstractKinematics}) = false
+f_step!(::System{BasicAvionics}, ::System{<:Airframe}, ::System{<:AbstractKinematics}) = false
 
 
 ################################################################################
 ####################### Airframe Update Functions ##############################
 
-function f_cont!(airframe::System{<:Airframe}, avionics::System{BasicAvionics},
+function f_ode!(airframe::System{<:Airframe}, avionics::System{BasicAvionics},
                 kin::KinematicData, air::AirflowData, trn::System{<:AbstractTerrain})
 
     @unpack aero, pwp, ldg, fuel, pld = airframe
 
     assign_component_inputs!(airframe, avionics)
-    f_cont!(aero, pwp, air, kin, trn)
-    f_cont!(ldg, kin, trn) #update landing gear continuous state & outputs
-    f_cont!(pwp, air, kin) #update powerplant continuous state & outputs
-    f_cont!(fuel, pwp) #update fuel system
+    f_ode!(aero, pwp, air, kin, trn)
+    f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
+    f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
+    f_ode!(fuel, pwp) #update fuel system
 
     Systems.assemble_y!(airframe)
 
 end
 
-function f_disc!(airframe::System{<:Airframe}, ::System{BasicAvionics}, ::System{<:AbstractKinematics})
+function f_step!(airframe::System{<:Airframe}, ::System{BasicAvionics}, ::System{<:AbstractKinematics})
     @unpack aero, pwp, fuel, ldg, fuel, pld = airframe
 
     x_mod = false
-    x_mod = x_mod || f_disc!(aero)
-    x_mod = x_mod || f_disc!(ldg)
-    x_mod = x_mod || f_disc!(pwp, fuel)
+    x_mod = x_mod || f_step!(aero)
+    x_mod = x_mod || f_step!(ldg)
+    x_mod = x_mod || f_step!(pwp, fuel)
     return x_mod
 
 end

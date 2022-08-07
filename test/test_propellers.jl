@@ -134,9 +134,9 @@ function test_propeller()
             sense = Propellers.CCW
             fp_sys = Propeller(; pitch, sense, t_bp) |> System
 
-            # @test_throws AssertionError f_cont!(fp_sys, kin, air, ω)
+            # @test_throws AssertionError f_ode!(fp_sys, kin, air, ω)
 
-            f_cont!(fp_sys, kin, air, -ω)
+            f_ode!(fp_sys, kin, air, -ω)
 
             wr_p = fp_sys.y.wr_p
             @test wr_p.F[1] > 0
@@ -144,8 +144,8 @@ function test_propeller()
             @test wr_p.M[1] > 0 #in a CCW propeller should be positive along x
             @test wr_p.M[3] > 0 #in a CCW propeller should be positive along z
 
-            @test @ballocated(f_cont!($fp_sys, $kin, $air, -$ω)) == 0
-            @test @ballocated(f_disc!($fp_sys)) == 0
+            @test @ballocated(f_ode!($fp_sys, $kin, $air, -$ω)) == 0
+            @test @ballocated(f_step!($fp_sys)) == 0
 
 
         end #testset
@@ -157,19 +157,19 @@ function test_propeller()
             vp_sys = Propeller(; pitch, sense, t_bp) |> System
 
             vp_sys.u[] = 0
-            f_cont!(vp_sys, kin, air, ω)
+            f_ode!(vp_sys, kin, air, ω)
             @test vp_sys.y.Δβ ≈ vp_sys.params.pitch.bounds[1]
             Fx_0 = vp_sys.y.wr_p.F[1]
 
             vp_sys.u[] = 1
-            f_cont!(vp_sys, kin, air, ω)
+            f_ode!(vp_sys, kin, air, ω)
             @test vp_sys.y.Δβ ≈ vp_sys.params.pitch.bounds[2]
             Fx_1 = vp_sys.y.wr_p.F[1]
 
             @test Fx_1 > Fx_0
 
-            @test @ballocated(f_cont!($vp_sys, $kin, $air, $ω)) == 0
-            @test @ballocated(f_disc!($vp_sys)) == 0
+            @test @ballocated(f_ode!($vp_sys, $kin, $air, $ω)) == 0
+            @test @ballocated(f_step!($vp_sys)) == 0
 
         end #testset
 

@@ -13,7 +13,7 @@ using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
 
-import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Systems: init, f_ode!, f_step!
 
 export AbstractISAModel, TunableISA
 export AbstractWindModel, TunableWind
@@ -154,8 +154,8 @@ Base.@kwdef mutable struct UTunableISA #only allocates upon System instantiation
 end
 
 init(::SystemU, ::TunableISA) = UTunableISA()
-f_cont!(::System{<:TunableISA}, args...) = nothing
-f_disc!(::System{<:TunableISA}, args...) = false
+f_ode!(::System{<:TunableISA}, args...) = nothing
+f_step!(::System{<:TunableISA}, args...) = false
 
 function SeaLevelConditions(s::System{<:TunableISA}, ::Abstract2DLocation)
     SeaLevelConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
@@ -186,8 +186,8 @@ Base.@kwdef mutable struct USimpleWind
 end
 
 init(::SystemU, ::TunableWind) = USimpleWind()
-f_cont!(::System{<:TunableWind}, args...) = nothing
-f_disc!(::System{<:TunableWind}, args...) = false
+f_ode!(::System{<:TunableWind}, args...) = nothing
+f_step!(::System{<:TunableWind}, args...) = false
 
 function WindData(wind::System{<:TunableWind}, ::Abstract3DPosition)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData
@@ -212,15 +212,15 @@ function AtmosphericData(atm::System{<:SimpleAtmosphere}, loc::Geographic)
     AtmosphericData( ISAData(atm.ISA, loc), WindData(atm.wind, loc))
 end
 
-function f_cont!(atm::System{<:SimpleAtmosphere})
-    f_cont!(atm.ISA)
-    f_cont!(atm.wind)
+function f_ode!(atm::System{<:SimpleAtmosphere})
+    f_ode!(atm.ISA)
+    f_ode!(atm.wind)
 end
 
-function f_disc!(atm::System{<:SimpleAtmosphere})
+function f_step!(atm::System{<:SimpleAtmosphere})
     x_mod = false
-    x_mod = x_mod || f_disc!(atm.ISA)
-    x_mod = x_mod || f_disc!(atm.wind)
+    x_mod = x_mod || f_step!(atm.ISA)
+    x_mod = x_mod || f_step!(atm.wind)
 end
 
 ################################################################################

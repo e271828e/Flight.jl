@@ -17,7 +17,7 @@ using Flight.Kinematics
 using Flight.RigidBody
 using Flight.Friction
 
-import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Systems: init, f_ode!, f_step!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
 import Flight.Plotting: make_plots
 
@@ -36,8 +36,8 @@ abstract type AbstractSteering <: SystemDescriptor end
 struct NoSteering <: AbstractSteering end
 
 get_steering_angle(::System{NoSteering}) = 0.0
-f_cont!(::System{NoSteering}, args...) = nothing
-f_disc!(::System{NoSteering}, args...) = false
+f_ode!(::System{NoSteering}, args...) = nothing
+f_step!(::System{NoSteering}, args...) = false
 
 
 ############## DirectSteering ##############
@@ -53,11 +53,11 @@ end
 init(::SystemU, ::DirectSteering) = Ref(Ranged(0.0, -1, 1))
 init(::SystemY, ::DirectSteering) = DirectSteeringY(0.0) #steering angle
 
-function f_cont!(sys::System{DirectSteering})
+function f_ode!(sys::System{DirectSteering})
     sys.y = DirectSteeringY(Float64(sys.u[]) * sys.params.ψ_max)
 end
 
-f_disc!(::System{DirectSteering}, args...) = false
+f_step!(::System{DirectSteering}, args...) = false
 
 get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
 
@@ -71,8 +71,8 @@ abstract type AbstractBraking <: SystemDescriptor end
 struct NoBraking <: AbstractBraking end
 
 get_braking_factor(::System{NoBraking}) = 0.0
-f_cont!(::System{NoBraking}, args...) = nothing
-f_disc!(::System{NoBraking}, args...) = false
+f_ode!(::System{NoBraking}, args...) = nothing
+f_step!(::System{NoBraking}, args...) = false
 
 ########### DirectBraking #############
 
@@ -87,11 +87,11 @@ end
 init(::SystemU, ::DirectBraking) = Ref(Ranged(0.0, 0, 1))
 init(::SystemY, ::DirectBraking) = DirectBrakingY()
 
-function f_cont!(sys::System{DirectBraking})
+function f_ode!(sys::System{DirectBraking})
     sys.y = DirectBrakingY(Float64(sys.u[]) * sys.params.η_br)
 end
 
-f_disc!(::System{DirectBraking}, args...) = false
+f_step!(::System{DirectBraking}, args...) = false
 
 get_braking_factor(sys::System{DirectBraking}) = sys.y.κ_br
 
@@ -141,7 +141,7 @@ end
 
 init(::SystemY, ::Strut) = StrutY()
 
-function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
+function f_ode!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     terrain::System{<:AbstractTerrain}, kin::KinematicData)
 
     @unpack t_bs, l_OsP, damper = sys.params
@@ -232,7 +232,7 @@ function f_cont!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
 end
 
 
-f_disc!(::System{<:Strut}, args...) = false
+f_step!(::System{<:Strut}, args...) = false
 
 ########################### FrictionParameters ################################
 
@@ -278,7 +278,7 @@ end
 #x should be initialized by the default methods
 init(::SystemY, ::Contact) = ContactY()
 
-function f_cont!(sys::System{Contact}, strut::System{<:Strut},
+function f_ode!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
 
     @unpack wow, t_sc, t_bc, F, v_eOc_c, trn = strut.y
@@ -288,11 +288,11 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
         #disable friction regulator reset command
         friction.u.reset .= false
     else
-        #mark the friction regulator for reset on the next call to f_disc!
+        #mark the friction regulator for reset on the next call to f_step!
         friction.u.reset .= true
         #update regulator with zero contact velocity so that the reset command
         #shows in regulator outputs (not strictly required)
-        f_cont!(friction, zeros(SVector{2}))
+        f_ode!(friction, zeros(SVector{2}))
         sys.y = ContactY(friction = friction.y)
         #...and we're done
         return
@@ -329,7 +329,7 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
     μ_max = @SVector [μ_x, μ_y]
     μ_max *= min(1, μ_skid / norm(μ_max)) #scale μ_max so norm(μ_max) does not exceed μ_skid
 
-    f_cont!(friction, v) #friction regulator update
+    f_ode!(friction, v) #friction regulator update
     μ_eff = friction.y.α .* μ_max
 
     #normalized contact force projected on the contact frame
@@ -351,8 +351,8 @@ function f_cont!(sys::System{Contact}, strut::System{<:Strut},
 
 end
 
-#if wow==false in the last f_cont! evaluation, this resets the friction regulator
-f_disc!(contact::System{Contact}) = f_disc!(contact.friction)
+#if wow==false in the last f_ode! evaluation, this resets the friction regulator
+f_step!(contact::System{Contact}) = f_step!(contact.friction)
 
 ########################## LandingGearUnit #########################
 
@@ -372,28 +372,28 @@ AngularMomentumTrait(::System{<:LandingGearUnit}) = HasNoAngularMomentum()
 
 get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
 
-function f_cont!(sys::System{<:LandingGearUnit}, kinematics::KinematicData,
+function f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinematicData,
                 terrain::System{<:AbstractTerrain})
 
     @unpack strut, contact, steering, braking = sys
 
-    f_cont!(steering)
-    f_cont!(braking)
-    f_cont!(strut, steering, terrain, kinematics)
-    f_cont!(contact, strut, braking)
+    f_ode!(steering)
+    f_ode!(braking)
+    f_ode!(strut, steering, terrain, kinematics)
+    f_ode!(contact, strut, braking)
 
     Systems.assemble_y!(sys)
 
 end
 
-function f_disc!(sys::System{<:LandingGearUnit})
+function f_step!(sys::System{<:LandingGearUnit})
 
     x_mod = false
 
-    x_mod = x_mod || f_disc!(sys.steering)
-    x_mod = x_mod || f_disc!(sys.braking)
-    x_mod = x_mod || f_disc!(sys.strut)
-    x_mod = x_mod || f_disc!(sys.contact)
+    x_mod = x_mod || f_step!(sys.steering)
+    x_mod = x_mod || f_step!(sys.braking)
+    x_mod = x_mod || f_step!(sys.strut)
+    x_mod = x_mod || f_step!(sys.contact)
 
     return x_mod
 

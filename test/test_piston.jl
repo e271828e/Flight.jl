@@ -111,28 +111,28 @@ function test_engine_dynamics()
 
         eng.x.ω = 100.0
         y_init = eng.y
-        f_cont!(eng, air; M_load, J_load)
+        f_ode!(eng, air; M_load, J_load)
         @test eng.y != y_init #y must have been updated
 
         eng.x.ω = 0.0
         eng.s.state = eng_off
-        f_cont!(eng, air; M_load, J_load)
+        f_ode!(eng, air; M_load, J_load)
         @test eng.y.M_shaft == 0
 
         eng.u.start = true
-        f_disc!(eng, fuel)
+        f_step!(eng, fuel)
         @test eng.s.state == eng_starting
 
         eng.x.ω = 0.9eng.idle.params.ω_target
-        f_disc!(eng, fuel) #with ω <= ω_target, engine won't leave the starting state
+        f_step!(eng, fuel) #with ω <= ω_target, engine won't leave the starting state
         @test eng.s.state == eng_starting
-        f_cont!(eng, air; M_load, J_load)
+        f_ode!(eng, air; M_load, J_load)
         @test eng.y.M_shaft > 0 #it should output the starter torque
 
         eng.x.ω = 1.1eng.idle.params.ω_target
-        f_disc!(eng, fuel) #engine should start now
+        f_step!(eng, fuel) #engine should start now
         @test eng.s.state == eng_running
-        f_cont!(eng, air; M_load, J_load)
+        f_ode!(eng, air; M_load, J_load)
 
 
         #engine will not generate torque because the idle controller's state is
@@ -142,43 +142,43 @@ function test_engine_dynamics()
 
         #if we give it some throttle, we should get output power
         eng.u.thr = 0.1
-        f_cont!(eng, air; M_load, J_load)
+        f_ode!(eng, air; M_load, J_load)
         @test eng.y.M_shaft > 0
 
         #commanded stop
         eng.s.state = eng_running
         eng.u.stop = true
-        f_disc!(eng, fuel) #engine should start now
+        f_step!(eng, fuel) #engine should start now
         eng.u.stop = false
         @test eng.s.state == eng_off
 
         #stall stop
         eng.s.state = eng_running
         eng.x.ω = 0.95eng.params.ω_stall
-        f_disc!(eng, fuel)
+        f_step!(eng, fuel)
         @test eng.s.state == eng_off
         eng.x.ω = 1.1eng.idle.params.ω_target
         eng.s.state = eng_running
 
         #without fuel, the engine should shut down
         fuel.u[] = false
-        f_disc!(eng, fuel)
+        f_step!(eng, fuel)
         @test eng.s.state == eng_off
 
         #and then fail to start, even above the required speed
         eng.u.start = true
-        f_disc!(eng, fuel)
+        f_step!(eng, fuel)
         @test eng.s.state == eng_starting
-        f_disc!(eng, fuel)
+        f_step!(eng, fuel)
         @test eng.s.state != eng_running
 
         #when fuel is available, the engine starts
         fuel.u[] = true
-        f_disc!(eng, fuel)
+        f_step!(eng, fuel)
         @test eng.s.state == eng_running
 
-        @test @ballocated(f_cont!($eng, $air; M_load = $M_load, J_load = $J_load)) == 0
-        @test @ballocated(f_disc!($eng, $fuel)) == 0
+        @test @ballocated(f_ode!($eng, $air; M_load = $M_load, J_load = $J_load)) == 0
+        @test @ballocated(f_step!($eng, $fuel)) == 0
 
         return eng
 
@@ -196,7 +196,7 @@ function test_thruster_dynamics()
         air = AirflowData(kin, atm)
         fuel = System(MagicFuelSupply())
         thr = Thruster() |> System
-        sim = Simulation(thr, args_c = (air, kin), args_d = (fuel,), t_end = 100)
+        sim = Simulation(thr, args_ode = (air, kin), args_step = (fuel,), t_end = 100)
 
         sim.u.engine.start = true
 
@@ -247,7 +247,7 @@ function test_thruster_dynamics()
             gear_ratio = -1
         ) |> System
 
-        sim = Simulation(thr, args_c = (air, kin), args_d = (fuel,), t_end = 100)
+        sim = Simulation(thr, args_ode = (air, kin), args_step = (fuel,), t_end = 100)
 
         sim.u.propeller[] = 0
         sim.u.engine.start = true
@@ -294,10 +294,10 @@ function test_thruster_dynamics()
         step!(sim, 5, true)
         sim.u.engine.start = false
 
-        @test @ballocated(f_cont!($thr, $air, $kin)) == 0
-        @test @ballocated(f_disc!($thr, $fuel)) == 0
+        @test @ballocated(f_ode!($thr, $air, $kin)) == 0
+        @test @ballocated(f_step!($thr, $fuel)) == 0
 
-        sim = Simulation(thr, args_c = (air, kin), args_d = (fuel,), t_end = 100, y_save_on = false)
+        sim = Simulation(thr, args_ode = (air, kin), args_step = (fuel,), t_end = 100, y_save_on = false)
         sim.u.engine.start = true
         step!(sim, 5, true)
         sim.u.engine.start = false

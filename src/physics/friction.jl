@@ -9,7 +9,7 @@ using Flight.Utils
 using Flight.Plotting
 using Flight.Systems
 
-import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Systems: init, f_ode!, f_step!
 import Flight.Plotting: make_plots
 
 export get_μ
@@ -69,9 +69,9 @@ init(::SystemX, ::Regulator{N}) where {N} = zeros(N) #v friction integrator stat
 init(::SystemY, ::Regulator{N}) where {N} = RegulatorY{N}()
 init(::SystemU, ::Regulator{N}) where {N} = RegulatorU{N}()
 
-f_cont!(sys::System{<:Regulator{1}}, v_in::Real) = f_cont!(sys, SVector{1, Float64}(v_in))
+f_ode!(sys::System{<:Regulator{1}}, v_in::Real) = f_ode!(sys, SVector{1, Float64}(v_in))
 
-function f_cont!(sys::System{<:Regulator{N}}, v_in::AbstractVector{<:Real}) where {N}
+function f_ode!(sys::System{<:Regulator{N}}, v_in::AbstractVector{<:Real}) where {N}
 
     @unpack k_p, k_i, k_l = sys.params
 
@@ -90,7 +90,7 @@ function f_cont!(sys::System{<:Regulator{N}}, v_in::AbstractVector{<:Real}) wher
 
 end
 
-function f_disc!(sys::System{<:Regulator{N}}) where {N}
+function f_step!(sys::System{<:Regulator{N}}) where {N}
 
     x = sys.x
     reset = sys.u.reset

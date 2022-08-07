@@ -38,21 +38,21 @@ function test_friction()
             @test length(sys.x) === 2
 
             v = [1, -0.1]
-            f_cont!(sys, v)
+            f_ode!(sys, v)
             @test sys.y.sat == [true, false]
             @test sys.y.α == [-1, 0.4]
 
             sys.x .= [0.1, 0]
             sys.u.reset .= [false, true]
-            @test f_disc!(sys) == false
+            @test f_step!(sys) == false
             @test sys.x == [0.1, 0]
 
             sys.u.reset .= [true, true]
-            @test f_disc!(sys) == true
+            @test f_step!(sys) == true
             @test sys.x == zeros(2)
 
-            @test @ballocated(f_cont!($sys, $v)) == 0
-            @test @ballocated(f_disc!($sys)) == 0
+            @test @ballocated(f_ode!($sys, $v)) == 0
+            @test @ballocated(f_step!($sys)) == 0
 
         end #testset
 

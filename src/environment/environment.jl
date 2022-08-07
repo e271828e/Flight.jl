@@ -6,7 +6,7 @@ using Flight.Systems
 @reexport using Flight.Atmosphere
 @reexport using Flight.Terrain
 
-import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Systems: init, f_ode!, f_step!
 
 export AbstractEnvironment, SimpleEnvironment
 
@@ -17,15 +17,15 @@ Base.@kwdef struct SimpleEnvironment{A <: AbstractAtmosphere, T <: AbstractTerra
     trn::T = HorizontalTerrain()
 end
 
-function f_cont!(env::System{<:SimpleEnvironment})
-    f_cont!(env.atm)
-    f_cont!(env.trn)
+function f_ode!(env::System{<:SimpleEnvironment})
+    f_ode!(env.atm)
+    f_ode!(env.trn)
 end
 
-function f_disc!(env::System{<:SimpleEnvironment})
+function f_step!(env::System{<:SimpleEnvironment})
     x_mod = false
-    x_mod = x_mod || f_disc!(env.atm)
-    x_mod = x_mod || f_disc!(env.trn)
+    x_mod = x_mod || f_step!(env.atm)
+    x_mod = x_mod || f_step!(env.trn)
 end
 
 end #module

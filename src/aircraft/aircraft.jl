@@ -10,7 +10,7 @@ using Flight.Geodesy, Flight.Terrain, Flight.Environment
 using Flight.Kinematics, Flight.RigidBody
 using Flight.Input, Flight.Output
 
-import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Systems: init, f_ode!, f_step!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Output: update!
 
@@ -36,8 +36,8 @@ AngularMomentumTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
 
 get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
 
-@inline f_cont!(::System{EmptyAirframe}, args...) = nothing
-@inline (f_disc!(::System{EmptyAirframe}, args...)::Bool) = false
+@inline f_ode!(::System{EmptyAirframe}, args...) = nothing
+@inline (f_step!(::System{EmptyAirframe}, args...)::Bool) = false
 
 ####################### AbstractAerodynamics ##########################
 
@@ -55,8 +55,8 @@ abstract type AbstractAvionics <: SystemDescriptor end
 
 struct NoAvionics <: AbstractAvionics end
 
-@inline f_cont!(::System{NoAvionics}, args...) = nothing
-@inline (f_disc!(::System{NoAvionics}, args...)::Bool) = false
+@inline f_ode!(::System{NoAvionics}, args...) = nothing
+@inline (f_step!(::System{NoAvionics}, args...)::Bool) = false
 
 ###############################################################################
 ############################## AircraftBase ###################################
@@ -89,20 +89,20 @@ function init!(ac::System{<:AircraftBase}, ic::KinematicInit)
     Kinematics.init!(ac.x.kinematics, ic)
 end
 
-function f_cont!(sys::System{<:AircraftBase}, env::System{<:AbstractEnvironment})
+function f_ode!(sys::System{<:AircraftBase}, env::System{<:AbstractEnvironment})
 
     @unpack ẋ, x, subsystems = sys
     @unpack kinematics, airframe, avionics = subsystems
     @unpack atm, trn = env
 
     #update kinematics
-    f_cont!(kinematics)
+    f_ode!(kinematics)
     kin_data = kinematics.y.common
     air_data = AirflowData(kin_data, atm)
 
     #update avionics and airframe components
-    f_cont!(avionics, airframe, kin_data, air_data, trn)
-    f_cont!(airframe, avionics, kin_data, air_data, trn)
+    f_ode!(avionics, airframe, kin_data, air_data, trn)
+    f_ode!(airframe, avionics, kin_data, air_data, trn)
 
     mp_b = get_mp_b(airframe)
     wr_b = get_wr_b(airframe)
@@ -118,13 +118,14 @@ function f_cont!(sys::System{<:AircraftBase}, env::System{<:AbstractEnvironment}
 
 end
 
-function f_disc!(sys::System{<:AircraftBase})
+function f_step!(sys::System{<:AircraftBase})
     @unpack kinematics, airframe, avionics = sys
 
+    #could use chained | instead, but this is clearer
     x_mod = false
-    x_mod = x_mod || f_disc!(kinematics, 1e-8)
-    x_mod = x_mod || f_disc!(airframe, avionics, kinematics)
-    x_mod = x_mod || f_disc!(avionics, airframe, kinematics)
+    x_mod = x_mod || f_step!(kinematics)
+    x_mod = x_mod || f_step!(airframe, avionics, kinematics)
+    x_mod = x_mod || f_step!(avionics, airframe, kinematics)
 
     return x_mod
 end

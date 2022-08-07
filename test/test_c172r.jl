@@ -28,14 +28,14 @@ function test_system()
         ac_NED = System(Cessna172R(NED()));
 
         #all three kinematics implementations must be supported, no allocations
-        @test @ballocated(f_cont!($ac_LTF, $env)) == 0
-        @test @ballocated(f_disc!($ac_LTF)) == 0
+        @test @ballocated(f_ode!($ac_LTF, $env)) == 0
+        @test @ballocated(f_step!($ac_LTF)) == 0
 
-        @test @ballocated(f_cont!($ac_ECEF, $env)) == 0
-        @test @ballocated(f_disc!($ac_ECEF)) == 0
+        @test @ballocated(f_ode!($ac_ECEF, $env)) == 0
+        @test @ballocated(f_step!($ac_ECEF)) == 0
 
-        @test @ballocated(f_cont!($ac_NED, $env)) == 0
-        @test @ballocated(f_disc!($ac_NED)) == 0
+        @test @ballocated(f_ode!($ac_NED, $env)) == 0
+        @test @ballocated(f_step!($ac_NED)) == 0
 
     return nothing
 
@@ -109,7 +109,7 @@ function test_sim_nrt(; save::Bool = true)
         end
     end
 
-    sim = Simulation(ac; args_c = (env, ), t_end = 150, sim_callback = callback!)
+    sim = Simulation(ac; args_ode = (env, ), t_end = 150, sim_ctl = callback!)
 
     Sim.run!(sim)
     plots = make_plots(sim; Plotting.defaults...)
@@ -145,7 +145,7 @@ function test_sim_rt(; save::Bool = true)
     end
 
     sim = Simulation(ac;
-        args_c = (env,),
+        args_ode = (env,),
         t_end = 120,
         sim_callback = callback!,
         realtime = true,

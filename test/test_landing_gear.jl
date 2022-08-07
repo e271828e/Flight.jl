@@ -28,8 +28,8 @@ function test_braking()
         @test isnothing(nb_sys.u)
         @test isnothing(nb_sys.y)
         @test LandingGear.get_braking_factor(nb_sys) == 0
-        @test @ballocated(f_cont!($nb_sys)) == 0
-        @test @ballocated(f_disc!($nb_sys)) == 0
+        @test @ballocated(f_ode!($nb_sys)) == 0
+        @test @ballocated(f_step!($nb_sys)) == 0
 
         db_sys = System(DirectBraking(η_br = 0.8))
         db_sys.u[] = -2
@@ -38,10 +38,10 @@ function test_braking()
         @test db_sys.u[] == 1
         db_sys.u[] = 0.5
         @test db_sys.u[] == 0.5
-        f_cont!(db_sys)
+        f_ode!(db_sys)
         @test LandingGear.get_braking_factor(db_sys) == 0.4
-        @test @ballocated(f_cont!($db_sys)) == 0
-        @test @ballocated(f_disc!($db_sys)) == 0
+        @test @ballocated(f_ode!($db_sys)) == 0
+        @test @ballocated(f_step!($db_sys)) == 0
     end
 
 end
@@ -55,8 +55,8 @@ function test_steering()
         @test isnothing(ns_sys.u)
         @test isnothing(ns_sys.y)
         @test LandingGear.get_steering_angle(ns_sys) == 0
-        @test @ballocated(f_cont!($ns_sys)) == 0
-        @test @ballocated(f_disc!($ns_sys)) == 0
+        @test @ballocated(f_ode!($ns_sys)) == 0
+        @test @ballocated(f_step!($ns_sys)) == 0
 
         ds_sys = System(DirectSteering(ψ_max = π/8))
         ds_sys.u[] = -2
@@ -65,10 +65,10 @@ function test_steering()
         @test ds_sys.u[] == 1
         ds_sys.u[] = 0.5
         @test ds_sys.u[] == 0.5
-        f_cont!(ds_sys)
+        f_ode!(ds_sys)
         @test LandingGear.get_steering_angle(ds_sys) == π/8 * 0.5
-        @test @ballocated(f_cont!($ds_sys)) == 0
-        @test @ballocated(f_disc!($ds_sys)) == 0
+        @test @ballocated(f_ode!($ds_sys)) == 0
+        @test @ballocated(f_step!($ds_sys)) == 0
     end
 
 end
@@ -101,7 +101,7 @@ function test_strut()
         #wow = false
         h = h_trn + 1.1
         kin = KinematicInit(; h) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
+        f_ode!(strut, steering, terrain, kin)
         @test strut.y == y_default #strut outputs stay at their defaults
 
         #wow = true
@@ -109,44 +109,44 @@ function test_strut()
 
         #normal static load
         kin = KinematicInit(; h ) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
+        f_ode!(strut, steering, terrain, kin)
         @test strut.y.ξ ≈ -0.1 #strut is compressed
         @test strut.y.F ≈ 2500 #pure elastic force, positive along the strut's z axis
 
         #oblique static load
         kin = KinematicInit(; h, q_nb = REuler(0, 0, π/12)) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
+        f_ode!(strut, steering, terrain, kin)
         @test strut.y.ξ > -0.1 #strut is less compressed
         @test strut.y.F < 2500 #force is smaller
 
         #compressing load
         kin = KinematicInit(; h, v_eOb_n = [0,0,1]) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
+        f_ode!(strut, steering, terrain, kin)
         @test strut.y.ξ_dot < 0 #strut is compressing
         @test strut.y.F ≈ 3500 #damping force is added to elastic force
 
         #advancing motion and compression
         kin = KinematicInit(; h, v_eOb_n = [10,0,1]) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
+        f_ode!(strut, steering, terrain, kin)
         @test isapprox.(strut.y.v_eOc_c, [10, 0, 0], atol = 1e-5) |> all
 
         #lateral motion and compression
         kin = KinematicInit(; h, ω_lb_b = [1,0,0]) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
+        f_ode!(strut, steering, terrain, kin)
         @test isapprox.(strut.y.v_eOc_c, [0, -0.9, 0], atol = 1e-5) |> all
 
         #set steering input and update steering system
         steering.u[] = 0.5
-        f_cont!(steering)
+        f_ode!(steering)
 
         #check that steering angle is accounted for
         kin = KinematicInit(; h, v_eOb_n = [10,0,1]) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
+        f_ode!(strut, steering, terrain, kin)
         @test strut.y.v_eOc_c[1] < 10
         @test strut.y.v_eOc_c[2] < 0
 
-        @test @ballocated(f_cont!($strut, $steering, $terrain, $kin)) == 0
-        @test @ballocated(f_disc!($strut)) == 0
+        @test @ballocated(f_ode!($strut, $steering, $terrain, $kin)) == 0
+        @test @ballocated(f_step!($strut)) == 0
     end
 
 end
@@ -177,16 +177,16 @@ function test_contact()
 
         #normal static load
         kin = KinematicInit(; h ) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
-        f_cont!(contact, strut, braking)
+        f_ode!(strut, steering, terrain, kin)
+        f_ode!(contact, strut, braking)
         @test contact.u.friction.reset == contact.y.friction.reset == [false, false]
         @test contact.y.μ_eff == [0, 0] #no motion, no effective friction
         @test contact.y.f_c[1:2] == [0, 0] #no effective friction, no tangential force
         @test contact.y.f_c[3] < 0 #ground reaction negative along contact frame z-axis
 
         kin = KinematicInit(; h, v_eOb_n = [1e-4, 0, 0] ) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
-        f_cont!(contact, strut, braking)
+        f_ode!(strut, steering, terrain, kin)
+        f_ode!(contact, strut, braking)
         @test contact.y.μ_max[1] <= contact.y.μ_roll
         @test contact.y.μ_eff[2] == 0 #no lateral motion, no lateral effective friction
         #low positive longitudinal velocity, small negative longitudinal effective friction
@@ -196,53 +196,53 @@ function test_contact()
         #braking
         kin = KinematicInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [1e-4, 0, 0] ) |> KinematicData
         braking.u[] = 1
-        f_cont!(braking)
-        f_cont!(strut, steering, terrain, kin)
-        f_cont!(contact, strut, braking)
+        f_ode!(braking)
+        f_ode!(strut, steering, terrain, kin)
+        f_ode!(contact, strut, braking)
         @test contact.y.μ_max[1] > contact.y.μ_roll
 
         #non-axial load, forward motion
         kin = KinematicInit(; h, q_nb = REuler(φ = π/12), v_eOb_n = [1e-4, 0, 0] ) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
-        f_cont!(contact, strut, braking)
+        f_ode!(strut, steering, terrain, kin)
+        f_ode!(contact, strut, braking)
         @test contact.y.wr_b.F[2] < 0
 
         #lateral motion, small velocity
         kin = KinematicInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1e-4, 0] ) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
-        f_cont!(contact, strut, braking)
+        f_ode!(strut, steering, terrain, kin)
+        f_ode!(contact, strut, braking)
         @test contact.y.wr_b.F[2] > 0
         @test contact.ẋ[2] < 0 #lateral velocity integral should be decreasing
 
         #lateral motion, large velocity
         kin = KinematicInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> KinematicData
-        f_cont!(strut, steering, terrain, kin)
-        f_cont!(contact, strut, braking)
+        f_ode!(strut, steering, terrain, kin)
+        f_ode!(contact, strut, braking)
         @test contact.friction.y.sat[2] == true #large velocity saturates
         @test contact.ẋ[2] == 0 #lateral velocity integral should be decreasing
 
-        #with wow = true, f_disc! should not modify x
+        #with wow = true, f_step! should not modify x
         contact.x .= 1
-        @test f_disc!(contact) == false
+        @test f_step!(contact) == false
         @test all(contact.x .== 1)
 
         contact.x .= 0
         @test all(contact.x .== 0) #state has not been modified yet
 
-        #check for f_cont! allocations with wow = true (wow = false exits
+        #check for f_ode! allocations with wow = true (wow = false exits
         #prematurely)
-        @test @ballocated(f_cont!($contact, $strut, $braking)) == 0
-        @test @ballocated(f_disc!($contact)) == 0
+        @test @ballocated(f_ode!($contact, $strut, $braking)) == 0
+        @test @ballocated(f_step!($contact)) == 0
 
         #wow = false
         kin_data = KinematicInit(; h = h_trn + 1.1) |> KinematicData
-        f_cont!(strut, steering, terrain, kin_data) #update Strut
-        f_cont!(contact, strut, braking)
+        f_ode!(strut, steering, terrain, kin_data) #update Strut
+        f_ode!(contact, strut, braking)
         #the friction regulator's reset input is set and propagated to the outputs
         @test contact.u.friction.reset == contact.y.friction.reset == [true, true]
-        @test f_disc!(contact) == false #x was already 0, not modified
+        @test f_step!(contact) == false #x was already 0, not modified
         contact.x[1] = 1
-        @test f_disc!(contact) == true #now it has
+        @test f_step!(contact) == true #now it has
         @test all(contact.x .== 0)
 
     end
@@ -263,8 +263,8 @@ function test_landing_gear_unit()
         #wow = true
         kin = KinematicInit(; h = h_trn + 0.9, v_eOb_n = [0,1,0]) |> KinematicData
 
-        @test (@ballocated f_cont!($ldg, $kin, $trn)) == 0
-        @test @ballocated(f_disc!($ldg)) == 0
+        @test (@ballocated f_ode!($ldg, $kin, $trn)) == 0
+        @test @ballocated(f_step!($ldg)) == 0
 
     end
 

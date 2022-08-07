@@ -12,7 +12,7 @@ using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy
 
-import Flight.Systems: init, f_cont!, f_disc!
+import Flight.Systems: init, f_ode!, f_step!
 import Flight.Plotting: make_plots
 
 export AbstractKinematics, ECEF, LTF, NED, KinematicInit, KinematicData
@@ -233,7 +233,7 @@ function KinematicsY(x::XLTF)
 end
 
 #only updates xpos_dot, f_rigidbody! performs the xvel_dot update
-function f_cont!(sys::System{LTF})
+function f_ode!(sys::System{LTF})
 
     #compute and update y
     sys.y = KinematicsY(sys.x)
@@ -250,7 +250,7 @@ function f_cont!(sys::System{LTF})
 
 end
 
-function f_disc!(sys::System{LTF}, ε = 1e-10)
+function f_step!(sys::System{LTF}, ε = 1e-8)
     #we need both calls executed, so | must be used here instead of ||
     x_pos = sys.x.pos
     renormalize_block!(x_pos.q_lb, ε) | renormalize_block!(x_pos.q_el, ε)
@@ -328,7 +328,7 @@ function KinematicsY(x::XECEF)
 end
 
 #only updates xpos_dot, xvel_dot update can only be performed by f_rigidbody!
-function f_cont!(sys::System{ECEF})
+function f_ode!(sys::System{ECEF})
 
     #compute and update y
     sys.y = KinematicsY(sys.x)
@@ -345,7 +345,7 @@ function f_cont!(sys::System{ECEF})
 
 end
 
-function f_disc!(sys::System{ECEF}, ε = 1e-10)
+function f_step!(sys::System{ECEF}, ε = 1e-8)
     x_pos = sys.x.pos
     #we need both calls executed, so | must be used here instead of ||
     renormalize_block!(x_pos.q_eb, ε) | renormalize_block!(x_pos.n_e, ε)
@@ -429,7 +429,7 @@ function KinematicsY(x::XNED)
 end
 
 #only updates xpos_dot, xvel_dot update can only be performed by f_rigidbody!
-function f_cont!(sys::System{NED})
+function f_ode!(sys::System{NED})
 
     #compute and update y
     sys.y = KinematicsY(sys.x)
@@ -447,7 +447,7 @@ function f_cont!(sys::System{NED})
 
 end
 
-f_disc!(sys::System{NED}, args...) = false
+f_step!(sys::System{NED}, args...) = false
 
 
 ################################# Plotting #####################################

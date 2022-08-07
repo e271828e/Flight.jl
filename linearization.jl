@@ -87,7 +87,7 @@ function test()
     # @show u_ref
     # @show y_ref
 
-    #function wrapper around f_cont!() mutating ẋ and y. define a cache in case
+    #function wrapper around f_ode!() mutating ẋ and y. define a cache in case
     #we get generic y or u
     f_nonlinear! = let ac = ac, env = env, params = params, state = trim_state,
                        u_axes = getaxes(UTemplate), y_axes = getaxes(YTemplate)
@@ -111,7 +111,7 @@ function test()
             ac.x .= x
             assign!(ac, u_cv)
 
-            f_cont!(ac, env)
+            f_ode!(ac, env)
 
             ẋ .= ac.ẋ
             assign!(y_cv, ac) #this also updates y
