@@ -483,7 +483,7 @@ f_step!(sys::System{NED}, args...) = false
     ylims --> yl
     zlims --> zl
 
-    yflip --> true
+    # yflip --> true
 
     @series begin
         linecolor --> :lightgray
@@ -573,7 +573,7 @@ function make_plots(th::TimeHistory{<:Common}; kwargs...)
         Trajectory3D((xs, ys, zs));
         plot_title = "Trajectory (Local Cartesian, Ellipsoidal Altitude)",
         titlefontsize = 20,
-        camera = (30, 45),
+        camera = (30, 15),
         kwargs...
         )
 

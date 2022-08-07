@@ -115,14 +115,6 @@ function System(desc::SystemDescriptor,
 
 end
 
-#f_step! is free to modify a System's u, s and x. if it modifies x, it must
-#return true, otherwise false. no fallbacks are provided for safety reasons: if
-#the intended f_ode! or f_step! implementations for the System have the wrong
-#interface, the dispatch will silently revert to the fallback, which does
-#nothing. this may not be obvious at all and introduce treacherous bugs.
-
-f_ode!(sys::System, args...) = MethodError(f_ode!, (sys, args...)) |> throw
-(f_step!(sys::System, args...)::Bool) = MethodError(f_step!, (sys, args...)) |> throw
 
 Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
 Base.setproperty!(sys::System, name::Symbol, value) = setproperty!(sys, Val(name), value)
@@ -144,6 +136,37 @@ end
         return :(error("A System's $S cannot be reassigned; mutate its fields instead."))
     end
 end
+
+#f_step! is free to modify a System's u, s and x. if it modifies x, it must
+#return true, otherwise false. no fallbacks are provided for safety reasons: if
+#the intended f_ode! or f_step! implementations for the System have the wrong
+#interface, the dispatch will silently revert to the fallback, which does
+#nothing. this may not be obvious at all and introduce treacherous bugs.
+
+f_ode!(sys::System, args...) = MethodError(f_ode!, (sys, args...)) |> throw
+(f_step!(sys::System, args...)::Bool) = MethodError(f_step!, (sys, args...)) |> throw
+
+# #default implementation calls f_step! on all Node subsystems with no
+# #arguments, then ORs their outputs. override as required
+# @inline @generated function (f_step!(sys::System{T, X, Y, U, D, P, S})
+#     where {T<:SystemDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
+
+#     Core.println("Generated function called for $%")
+#     Core.println()
+#     Core.println()
+
+#     ex = Expr(:block)
+#     push!(ex.args, :(x_mod = false))
+
+#     #call f_step! on each subsystem
+#     for label in fieldnames(S)
+#         #we need all f_step! calls executed, so we can't just chain them with ||
+#         push!(ex.args,
+#             :(x_mod = x_mod || f_step!(sys.subsystems[$(QuoteNode(label))])))
+#     end
+#     return ex
+
+# end
 
 @inline function (assemble_y!(sys::System{T, X, Y})
     where {T<:SystemDescriptor, X, Y <: Nothing})

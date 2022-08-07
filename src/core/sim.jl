@@ -2,9 +2,10 @@ module Sim
 
 using UnPack
 using StructArrays
-using SciMLBase: ODEProblem, u_modified!, init as init_problem
-using OrdinaryDiffEq: OrdinaryDiffEqAlgorithm, RK4, ODEIntegrator
+using SciMLBase: ODEProblem, u_modified!, init as init_integrator
+using OrdinaryDiffEq: OrdinaryDiffEqAlgorithm, ODEIntegrator, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
+using Flight.Utils
 
 using ..Systems
 
@@ -33,31 +34,33 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         sys::System;
         args_ode::Tuple = (), #externally supplied arguments to System's f_ode!
         args_step::Tuple = (), #externally supplied arguments to System's f_step!
-        sys_init::Function = no_sys_init!, #System initialization function
-        sys_io::Function = no_sys_io!, #System I/O function
+        sys_init!::Function = no_sys_init!, #System initialization function
+        sys_io!::Function = no_sys_io!, #System I/O function
         realtime::Bool = false,
-        solver::OrdinaryDiffEqAlgorithm = RK4(),
-        adaptive::Bool = false, #can be overridden in integrator_kwargs
-        dt::Real = 0.02, #can be overridden in integrator_kwargs
+        algorithm::OrdinaryDiffEqAlgorithm = RK4(),
+        adaptive::Bool = false,
+        dt::Real = 0.02,
         t_start::Real = 0.0,
         t_end::Real = 10.0,
-        y_save_on::Bool = true,
-        y_saveat::Union{Real, AbstractVector{<:Real}} = dt, #save at every dt
-        integrator_kwargs...)
+        save_on::Bool = true,
+        saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
+        save_everystep::Bool = isempty(saveat),
+        sys_init_kwargs...)
 
-        saveat_arr = (y_saveat isa Real ? (t_start:y_saveat:t_end) : y_saveat)
+        sys_init!(sys; sys_init_kwargs...)
+        f_ode!(sys, args_ode...) #updates y so that the first log entry is valid
 
         params = (sys = sys, args_ode = args_ode, args_step = args_step,
-                  sys_init = sys_init, sys_io = sys_io)
-
-        log = SavedValues(Float64, typeof(sys.y))
+                  sys_init! = sys_init!, sys_io! = sys_io!)
 
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_io = DiscreteCallback((u, t, integrator)->true, f_cb_io!)
 
-        cb_save = SavingCallback(f_cb_save, log, saveat = saveat_arr)
+        log = SavedValues(Float64, typeof(sys.y))
+        saveat_arr = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
+        cb_save = SavingCallback(f_cb_save, log; saveat = saveat_arr, save_everystep)
 
-        if y_save_on
+        if save_on
             cb_set = CallbackSet(cb_step, cb_io, cb_save)
         else
             cb_set = CallbackSet(cb_step, cb_io)
@@ -68,8 +71,8 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         #simulation
         x0 = copy(sys.x)
         problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
-        integrator = init_problem(problem, solver; callback = cb_set, save_on = false,
-                                  adaptive, dt, integrator_kwargs...)
+        integrator = init_integrator(
+            problem, algorithm; callback = cb_set, save_on = false, adaptive, dt)
         #save_on is set to false because we are not usually interested in the
         #naked System's state vector. everything we need should be made
         #available in the System's output struct saved by the SavingCallback
@@ -122,7 +125,7 @@ function f_cb_step!(integrator)
     sys.x .= u #assign the updated integrator's state to the System's continuous state
     sys.t[] = t #ditto for time
 
-    #at this point sys.y and sys.ẋ hold the values from the last solver
+    #at this point sys.y and sys.ẋ hold the values from the last algorithm
     #evaluation of f_ode!, not the one corresponding to the updated x. with x
     #up to date, we can now compute the final sys.y and sys.ẋ for this epoch
     f_ode!(sys, args_ode...)
@@ -140,9 +143,9 @@ end
 #after every integration step
 function f_cb_io!(integrator)
 
-    @unpack sys, sys_io = integrator.p
+    @unpack sys, sys_io! = integrator.p
 
-    sys_io(sys.u, sys.t[], sys.y, sys.params)
+    sys_io!(sys.u, sys.y, sys.t[], sys.params)
 
     #a System control function will never modify the System's continuous state,
     #so we may as well tell the integrator to avoid any performance hit
@@ -159,7 +162,7 @@ f_cb_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
 #s: System's discrete state, which the function may modify
 #t: (dereferenced) System's t field
 #params: (immutable) System's params field
-no_sys_init!(x, u, s, t, params, args...; kwargs...) = nothing
+no_sys_init!(sys::System) = nothing
 
 #function signature a System I/O function must adhere to.
 #u: (mutable) System's control input, which the function may modify
@@ -180,20 +183,21 @@ add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 #in order to be actually useful, this would need to restore also u and s to
 #their original values, which is non-trivial, because it may break the coupling
 #between a parent system and its subsystems
-function reinit!(sim::Simulation, args...; kwargs...)
+function reinit!(sim::Simulation; sys_init_kwargs...)
 
-    @unpack x, u, s, t, params = sim.sys
+    @unpack integrator, log = sim
+    @unpack p = integrator
 
-    #call the System initialization function, which sets x, u and s
-    sim.integrator.params.sys_init(x, u, s, t[], params, args...; kwargs...)
+    #initialize the System's x, u and s
+    p.sys_init!(p.sys; sys_init_kwargs...)
 
-    #reinitialize the ODEIntegrator to the System's initial continuous state
-    reinit!(sim.integrator, sys.x)
+    #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
+    #reinit! calls f_ode_wrapper!, so the System's ẋ and y are updated in the
+    #process, no need to do it explicitly
+    reinit!(integrator, p.sys.x)
 
-    #apparently, reinit! calls f_ode_wrapper!, so the System's ẋ and y are
-    #updated in the process, no need to do it manually
-    resize!(sim.log.t, 1)
-    resize!(sim.log.saveval, 1)
+    resize!(log.t, 1)
+    resize!(log.saveval, 1)
     return nothing
 end
 

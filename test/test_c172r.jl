@@ -41,41 +41,6 @@ function test_system()
 
 end
 
-function get_input_callback()
-
-    inputs = init_joysticks() |> values |> collect
-    # inputs = [XBoxController(),]
-
-    let inputs = inputs
-
-        function (u) #anonymous
-            for input in inputs
-                Input.update!(input)
-                Input.assign!(u.avionics, input)
-            end
-        end
-
-    end
-
-end
-
-function get_output_callback()
-
-    # outputs = [XPInterface(host = IPv4("192.168.1.2"))] #Parsec
-    outputs = [XPInterface(),]
-    Output.init!.(outputs)
-
-    let outputs = outputs
-
-        function (y) #anonymous
-            for output in outputs
-                Output.update!(output, y.kinematics.pos)
-            end
-        end
-
-    end
-
-end
 
 function test_sim_nrt(; save::Bool = true)
 
@@ -95,9 +60,9 @@ function test_sim_nrt(; save::Bool = true)
 
     env.atm.u.wind.v_ew_n[1] = 0
 
-    callback! = let
+    sys_io! = let
 
-        function (u, t, y, params)
+        function (u, y, t, params)
 
             ac.u.avionics.throttle = 0.2
             ac.u.avionics.yoke_Δx = (t < 5 ? 0.2 : 0.0)
@@ -109,15 +74,16 @@ function test_sim_nrt(; save::Bool = true)
         end
     end
 
-    sim = Simulation(ac; args_ode = (env, ), t_end = 150, sim_ctl = callback!)
-
-    Sim.run!(sim)
-    plots = make_plots(sim; Plotting.defaults...)
+    sim = Simulation(ac; args_ode = (env, ), t_end = 150, sys_io!, adaptive = true)
+    Sim.run!(sim, verbose = true)
+    # plots = make_plots(sim; Plotting.defaults...)
+    plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
     save ? save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test")) : nothing
 
     return sim
 
 end
+
 
 function test_sim_rt(; save::Bool = true)
 
@@ -136,29 +102,33 @@ function test_sim_rt(; save::Bool = true)
     ac.u.avionics.eng_start = true #engine start switch on
     ac.u.avionics.throttle = 1
 
-    callback! = let input_callback! = get_input_callback(), output_callback = get_output_callback()
+    sys_io! = let inputs = init_joysticks() |> values |> collect, # inputs = [XBoxController(),]
+                  outputs = [XPInterface(),] # outputs = [XPInterface(host = IPv4("192.168.1.2"))] #Parsec
 
-        function (u, t, y, params)
-            input_callback!(u)
-            output_callback(y)
+        Output.init!.(outputs)
+
+        function (u, y, t, params)
+            for input in inputs
+                Input.update!(input)
+                Input.assign!(u.avionics, input)
+            end
+            for output in outputs
+                Output.update!(output, y.kinematics.common)
+            end
         end
+
     end
 
-    sim = Simulation(ac;
-        args_ode = (env,),
-        t_end = 120,
-        sim_callback = callback!,
-        realtime = true,
-        )
+    sim = Simulation(ac; args_ode = (env,), t_end = 1, sys_io!, realtime = true,)
 
-
-    Sim.run!(sim)
+    Sim.run!(sim; verbose= true)
     plots = make_plots(sim; Plotting.defaults...)
     save ? save_plots(plots, save_folder = joinpath("tmp", "rt_sim_test")) : nothing
 
     return sim
 
 end
+
 
 function test_trimming()
 
@@ -204,7 +174,7 @@ function test_trimming()
         env = SimpleEnvironment() |> System
         # env.atm.u.wind.v_ew_n = [4, 2, 4]
 
-        C172R.Trim.assign!(ac, env, state, params)
+        C172R.Trim.assign!(ac, env, params, state)
 
         e_lb = e_nb = REuler(ac.y.kinematics.q_nb)
         v_wOb_n = e_nb(ac.y.airflow.v_wOb_b)
@@ -230,7 +200,7 @@ function test_trimming()
         @test ac.ẋ.airframe.aero.α_filt ≈ 0.0 atol = 1e-12
         @test ac.ẋ.airframe.aero.β_filt ≈ 0.0 atol = 1e-12
 
-        @test (@ballocated C172R.Trim.assign!($ac, $env, $state, $params))===0
+        @test (@ballocated C172R.Trim.assign!($ac, $env, $params, $state))===0
 
     end
 
@@ -238,14 +208,14 @@ function test_trimming()
 
         ac = System(Cessna172R())
         env = System(SimpleEnvironment())
-        state = C172R.Trim.State()
         params = C172R.Trim.Parameters()
+        state = C172R.Trim.State()
 
         f_target = C172R.Trim.get_target_function(ac, env, params)
 
         @test @ballocated($f_target($state)) === 0
 
-        exit_flag, _ = C172R.Trim.trim!(; ac, env, state, params)
+        exit_flag, _ = C172R.Trim.trim!(; ac, env, params, state)
 
         @test exit_flag === :STOPVAL_REACHED
 

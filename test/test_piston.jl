@@ -297,7 +297,7 @@ function test_thruster_dynamics()
         @test @ballocated(f_ode!($thr, $air, $kin)) == 0
         @test @ballocated(f_step!($thr, $fuel)) == 0
 
-        sim = Simulation(thr, args_ode = (air, kin), args_step = (fuel,), t_end = 100, y_save_on = false)
+        sim = Simulation(thr, args_ode = (air, kin), args_step = (fuel,), t_end = 100, save_on = false)
         sim.u.engine.start = true
         step!(sim, 5, true)
         sim.u.engine.start = false

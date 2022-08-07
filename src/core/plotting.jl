@@ -19,12 +19,12 @@ export make_plots, save_plots
 const defaults = Dict(
     :size => (1920, 1080),
     :dpi => 100,
-    :margin => 10mm,
-    :topmargin => 5mm,
+    :margin => 10Plots.mm,
+    :topmargin => 5Plots.mm,
     :linewidth => 2,
     :plot_titlefontfamily => "Computer Modern",
     :titlefontfamily => "Computer Modern",
-    :fontfamily_subplot => "Computer Modern", #controls guide, tick and legend
+    :fontfamily_subplot => "Computer Modern", #controls guide, tick and legend font
     :plot_titlefontsize => 20,
     :titlefontsize => 16,
     :guidefontsize => 12,

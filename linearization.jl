@@ -71,7 +71,7 @@ function test()
     env = System(SimpleEnvironment())
     params = C172R.Trim.Parameters()
 
-    # state0 = C172R.Trim.State() #optional initial trim guess
+    # state = C172R.Trim.State() #optional initial trim guess
     (exit_flag, trim_state) = C172R.Trim.trim!(; ac, env, params) #ac is now trimmed
 
     #save the trimmed aircraft ẋ, x, u and y for later

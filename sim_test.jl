@@ -1,6 +1,7 @@
 using ComponentArrays
 using Flight
 using UnPack
+using OrdinaryDiffEq
 
 Base.@kwdef struct MassSpringDamper <: SystemDescriptor
     ω_n::Float64 = 1.0 #undamped natural frequency
@@ -49,8 +50,6 @@ function Systems.f_step!(sys::System{<:MassSpringDamper})
     @unpack x, s, t, params = sys
     @unpack Δt_d, v_ϵ = params
 
-    println("System f_step! called")
-
     #t also needs to be de-referenced
     abs(x.v) > v_ϵ ? s.t_last_moving = t[] : s.t_last_stopped = t[]
 
@@ -72,21 +71,30 @@ function get_sim()
 
     sys_desc = MassSpringDamper(; ω_n = 20.0, ζ = 0.4, Δt_d = 1)
     sys = System(sys_desc)
-    @show typeof(sys)
-    Utils.showfields(sys) #show the type's fields with their current values
+    # @show typeof(sys)
+    # Utils.showfields(sys) #show the type's fields with their current values
 
-    function sys_init!(x, u, s, t, params)
-        nothing
+    function sys_init!(sys; p::Real = 0.0, v::Real = 0.0, f::Real = 0.0, )
+        sys.x.p = p
+        sys.x.v = v
+        sys.u[] = f
+        sys.s.damper_engaged = false
+        sys.s.t_last_moving = 0
+        sys.s.t_last_stopped = 0
+        @show sys.x
+        @show sys.u
     end
 
     function sys_io!(u, t, y, params)
-        println("System IO called")
-        u[] = 1.0
-        nothing
+        # println("System IO called")
+        u[] += 0
     end
 
+    sim = Simulation(sys; algorithm = Heun(), sys_init!, sys_io!,
+                        init_kwargs = (f = 0.0, p = 0.0, v = 0.0))
 
-    return Simulation(sys; sys_init = sys_init!, sys_io = sys_io!)
+    return sim
+
 
 
 end

@@ -188,21 +188,21 @@ end
 
 function trim!(; ac::System{<:Cessna172R} = System(Cessna172R()),
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
-    params::Parameters = Parameters(), state0::State = State())
+    params::Parameters = Parameters(), state::State = State()) #optional initial guess
 
     f_target = get_target_function(ac, env, params)
 
     #wrapper around f_target with the interface required by NLopt
-    ax = getaxes(state0)
+    ax = getaxes(state)
     function f_opt(x::Vector{Float64}, ::Vector{Float64})
         s = ComponentVector(x, ax)
         return f_target(s)
     end
 
-    n = length(state0)
+    n = length(state)
     x0 = zeros(n); lower_bounds = similar(x0); upper_bounds = similar(x0); initial_step = similar(x0)
 
-    x0[:] .= state0
+    x0[:] .= state
 
     lower_bounds[:] .= State(
         α_a = -π/12,
