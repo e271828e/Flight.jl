@@ -47,10 +47,9 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         save_on::Bool = true,
         saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
         save_everystep::Bool = isempty(saveat),
-        sys_init_kwargs...)
+        sys_init_kwargs = NamedTuple())
 
         sys_init!(sys; sys_init_kwargs...)
-        f_ode!(sys, args_ode...) #updates y so that the first log entry is valid
 
         params = (sys = sys, sys_init! = sys_init!, sys_io! = sys_io!, Δt = Δt,
                   args_ode = args_ode, args_step = args_step, args_disc = args_disc)
@@ -59,6 +58,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         cb_disc = PeriodicCallback(f_cb_disc!, Δt)
         cb_io = DiscreteCallback((u, t, integrator)->true, f_cb_io!)
 
+        f_ode!(sys, args_ode...) #update y so that the first log entry is correct
         log = SavedValues(Float64, typeof(sys.y))
         saveat_arr = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
         cb_save = SavingCallback(f_cb_save, log; saveat = saveat_arr, save_everystep)
@@ -178,7 +178,7 @@ f_cb_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
 #s: System's discrete state, which the function may modify
 #t: (dereferenced) System's t field
 #params: (immutable) System's params field
-no_sys_init!(sys::System) = nothing
+no_sys_init!(sys::System; kwargs...) = nothing
 
 #function signature a System I/O function must adhere to.
 #u: (mutable) System's control input, which the function may modify

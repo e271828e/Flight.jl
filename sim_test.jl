@@ -98,7 +98,7 @@ function get_sim()
     end
 
     sim = Simulation(sys; algorithm = RK4(), sys_init!, sys_io!, Δt = 0.2,
-                    adaptive = true, f = 0.0, p = 0.0, v = 0.0)
+                    adaptive = true, sys_init_kwargs = (f = 1.0, p = 0.0, v = 0.0))
 
     return sim
 

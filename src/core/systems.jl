@@ -90,11 +90,11 @@ function init(::SystemẊ, desc::SystemDescriptor)
     !isnothing(x) ? x |> zero : nothing
 end
 
-#suppose we have a System a with children b and c. if neither b and c have
-#inputs, u = init(a, SystemU()) will return nothing. when the System constructor
-#for a tries to retrieve a.u.b and a.u.c to use them as inputs for subsystems b
-#and c, it will be accessing fields b and c of a nothing variable. we must
-#handle this scenario.
+#need a custom getproperty to address the following scenario: we have a System a
+#with children b and c. if neither b and c have inputs, u = init(a, SystemU())
+#will return nothing. when the System constructor for a tries to retrieve a.u.b
+#and a.u.c to pass them along as inputs for subsystems b and c, it will be
+#accessing fields b and c of a nothing variable.
 function maybe_getproperty(input, label)
     !isnothing(input) && (label in propertynames(input)) ? getproperty(input, label) : nothing
 end
@@ -147,49 +147,56 @@ f_ode!(sys::System, args...) = MethodError(f_ode!, (sys, args...)) |> throw
 (f_step!(sys::System, args...)::Bool) = MethodError(f_step!, (sys, args...)) |> throw
 (f_disc!(sys::System, Δt, args...)::Bool) = MethodError(f_disc!, (sys, Δt, args...)) |> throw
 
-# #default implementation calls f_disc! on all Node subsystems with no
-# #arguments, then ORs their outputs. override as required
-# @inline @generated function (f_step!(sys::System{T, X, Y, U, D, P, S})
-#     where {T<:SystemDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
+############################ Fallback Methods ##################################
 
-#     Core.println("Generated function called for $%")
-#     Core.println()
-#     Core.println()
+#caution: if a System type implements a specific no-argument f_disc! or f_step!
+#method, but its interface is not correctly defined, dispatch will fail and it
+#will silently revert to the fallback. this has potential to cause subtle bugs.
+#run a test to confirm your method is being dispatched to!
 
-#     ex = Expr(:block)
-#     push!(ex.args, :(x_mod = false))
+#no-argument fallback method. calls f_disc! on all Node subsystems, then ORs
+#their outputs. override as required.
+@inline @generated function (f_disc!(sys::System{T, X, Y, U, D, P, S}, Δt)
+    where {T<:SystemDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
 
-#     #call f_step! on each subsystem
-#     for label in fieldnames(S)
-#         #we need all f_step! calls executed, so we can't just chain them with ||
-#         push!(ex.args,
-#             :(x_mod = x_mod || f_step!(sys.subsystems[$(QuoteNode(label))])))
-#     end
-#     return ex
+    Core.println("@generated f_disc! called for $T")
+    Core.println()
+    Core.println()
 
-# end
+    ex = Expr(:block)
+    push!(ex.args, :(x_mod = false))
 
-# #default implementation calls f_step! on all Node subsystems with no
-# #arguments, then ORs their outputs. override as required
-# @inline @generated function (f_step!(sys::System{T, X, Y, U, D, P, S})
-#     where {T<:SystemDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
+    #call f_step! on each subsystem
+    for label in fieldnames(S)
+        #we need all f_step! calls executed, so we can't just chain them with ||
+        push!(ex.args,
+            :(x_mod = x_mod || f_disc!(sys.subsystems[$(QuoteNode(label))], Δt)))
+    end
+    return ex
 
-#     Core.println("Generated function called for $%")
-#     Core.println()
-#     Core.println()
+end
 
-#     ex = Expr(:block)
-#     push!(ex.args, :(x_mod = false))
+#no-argument fallback method. calls f_step! on all Node subsystems, then ORs
+#their outputs. override as required
+@inline @generated function (f_step!(sys::System{T, X, Y, U, D, P, S})
+    where {T<:SystemDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
 
-#     #call f_step! on each subsystem
-#     for label in fieldnames(S)
-#         #we need all f_step! calls executed, so we can't just chain them with ||
-#         push!(ex.args,
-#             :(x_mod = x_mod || f_step!(sys.subsystems[$(QuoteNode(label))])))
-#     end
-#     return ex
+    Core.println("Generated f_step! called for $T")
+    Core.println()
+    Core.println()
 
-# end
+    ex = Expr(:block)
+    push!(ex.args, :(x_mod = false))
+
+    #call f_step! on each subsystem
+    for label in fieldnames(S)
+        #we need all f_step! calls executed, so we can't just chain them with ||
+        push!(ex.args,
+            :(x_mod = x_mod || f_step!(sys.subsystems[$(QuoteNode(label))])))
+    end
+    return ex
+
+end
 
 @inline function (assemble_y!(sys::System{T, X, Y})
     where {T<:SystemDescriptor, X, Y <: Nothing})
@@ -242,7 +249,7 @@ abstract type SystemGroupDescriptor <: SystemDescriptor end
 
 #default implementation calls f_ode! on all Group subsystems with the same
 #arguments provided to the parent System, then builds a NamedTuple with the
-#subsystem outputs. can be overridden as required.
+#subsystem outputs. override as required.
 @inline @generated function (f_ode!(sys::System{T, X, Y, U, D, P, S}, args...)
     where {T<:SystemGroupDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
 
@@ -268,7 +275,7 @@ end
 
 #default implementation calls f_step! on all Node subsystems with the same
 #arguments provided to the parent Node's System, then ORs their outputs.
-#can be overridden as required
+#override as required.
 # @inline @generated function (f_step!(sys::System{T, X, Y, U, D, P, S}, args...)
 #     where {T<:SystemGroupDescriptor, X, Y, U, D, P, S})
 @inline @generated function (f_step!(sys::System{T, X, Y, U, D, P, S}, args...)

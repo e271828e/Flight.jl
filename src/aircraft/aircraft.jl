@@ -10,7 +10,7 @@ using Flight.Geodesy, Flight.Terrain, Flight.Environment
 using Flight.Kinematics, Flight.RigidBody
 using Flight.Input, Flight.Output
 
-import Flight.Systems: init, f_ode!, f_step!
+import Flight.Systems: init, f_ode!, f_step!, f_disc!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Output: update!
 
@@ -129,6 +129,19 @@ function f_step!(sys::System{<:AircraftBase})
 
     return x_mod
 end
+
+function f_disc!(sys::System{<:AircraftBase}, Δt)
+    @unpack kinematics, airframe, avionics = sys
+
+    #could use chained | instead, but this is clearer
+    x_mod = false
+    #in principle, only avionics will have discrete dynamics (it's the aircraft
+    #subsystem in which discretized algorithms are implemented)
+    x_mod = x_mod || f_disc!(avionics, airframe, kinematics, Δt)
+
+    return x_mod
+end
+
 
 function update!(xp::XPInterface, kin::KinematicData, aircraft::Integer = 0)
 

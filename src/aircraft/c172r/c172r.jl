@@ -23,7 +23,7 @@ using Flight.Piston
 using Flight.Aircraft: AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 using Flight.Input: Input, XBoxController, get_axis_value, is_released
 
-import Flight.Systems: init, f_ode!, f_step!
+import Flight.Systems: init, f_ode!, f_step!, f_disc!
 import Flight.Kinematics: KinematicInit
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Piston: fuel_available
@@ -481,7 +481,10 @@ function f_ode!(avionics::System{BasicAvionics}, ::System{<:Airframe},
 
 end
 
-f_step!(::System{BasicAvionics}, ::System{<:Airframe}, ::System{<:AbstractKinematics}) = false
+@inline f_step!(::System{BasicAvionics}, ::System{<:Airframe}, ::System{<:AbstractKinematics}) = false
+
+#nothing digital in BasicAvionics
+@inline f_disc!(::System{BasicAvionics}, ::System{<:Airframe}, ::System{<:AbstractKinematics}, Δt) = false
 
 
 ################################################################################
@@ -592,6 +595,10 @@ function assign!(u::BasicAvionicsU, joystick::XBoxController)
     u.flaps -= 0.3333 * is_released(joystick, :left_bumper)
 
 end
+
+
+################################################################################
+############################### Cessna172R #####################################
 
 const Cessna172R{K, F, V} = AircraftBase{K, F, V} where {K, F <: C172R.Airframe, V <: C172R.BasicAvionics}
 Cessna172R(kinematics = LTF()) = AircraftBase( kinematics, Airframe(), BasicAvionics())
