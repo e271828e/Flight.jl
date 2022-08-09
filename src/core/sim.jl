@@ -41,13 +41,15 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
         dt::Real = 0.02, #continuous dynamics integration step
-        Δt::Real = Inf, #discrete dynamics execution period
+        Δt::Real = 1.0, #discrete dynamics execution period (do not set to Inf!)
         t_start::Real = 0.0,
         t_end::Real = 10.0,
         save_on::Bool = true,
         saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
         save_everystep::Bool = isempty(saveat),
         sys_init_kwargs = NamedTuple())
+
+        @assert !(sys.x === nothing) "Can't simulate purely discrete Systems"
 
         sys_init!(sys; sys_init_kwargs...)
 

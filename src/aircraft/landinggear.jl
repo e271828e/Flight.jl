@@ -27,7 +27,8 @@ export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteeri
 const e1 = SVector{3,Float64}(1,0,0)
 const e3 = SVector{3,Float64}(0,0,1)
 
-########################### Steering #############################
+################################################################################
+################################# Steering #####################################
 
 abstract type AbstractSteering <: SystemDescriptor end
 
@@ -36,9 +37,6 @@ abstract type AbstractSteering <: SystemDescriptor end
 struct NoSteering <: AbstractSteering end
 
 get_steering_angle(::System{NoSteering}) = 0.0
-f_ode!(::System{NoSteering}, args...) = nothing
-f_step!(::System{NoSteering}, args...) = false
-
 
 ############## DirectSteering ##############
 
@@ -57,22 +55,21 @@ function f_ode!(sys::System{DirectSteering})
     sys.y = DirectSteeringY(Float64(sys.u[]) * sys.params.ψ_max)
 end
 
-f_step!(::System{DirectSteering}, args...) = false
-
 get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
 
 
-########################### Braking #############################
+################################################################################
+################################# Braking ######################################
 
 abstract type AbstractBraking <: SystemDescriptor end
+
 
 ############## NoBraking ###############
 
 struct NoBraking <: AbstractBraking end
 
 get_braking_factor(::System{NoBraking}) = 0.0
-f_ode!(::System{NoBraking}, args...) = nothing
-f_step!(::System{NoBraking}, args...) = false
+
 
 ########### DirectBraking #############
 
@@ -90,8 +87,6 @@ init(::SystemY, ::DirectBraking) = DirectBrakingY()
 function f_ode!(sys::System{DirectBraking})
     sys.y = DirectBrakingY(Float64(sys.u[]) * sys.params.η_br)
 end
-
-f_step!(::System{DirectBraking}, args...) = false
 
 get_braking_factor(sys::System{DirectBraking}) = sys.y.κ_br
 
@@ -232,8 +227,6 @@ function f_ode!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
 end
 
 
-f_step!(::System{<:Strut}, args...) = false
-
 ########################### FrictionParameters ################################
 
 abstract type RollingOrSkidding end
@@ -351,7 +344,9 @@ function f_ode!(sys::System{Contact}, strut::System{<:Strut},
 
 end
 
-#if wow==false in the last f_ode! evaluation, this resets the friction regulator
+#if wow==false in the last f_ode! evaluation, this resets the friction
+#regulator. this method is only defined for clarity, because the fallback
+#f_disc! method would already call f_step! on every subsystem by default
 f_step!(contact::System{Contact}) = f_step!(contact.friction)
 
 ########################## LandingGearUnit #########################

@@ -36,9 +36,6 @@ AngularMomentumTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
 
 get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
 
-@inline f_ode!(::System{EmptyAirframe}, args...) = nothing
-@inline (f_step!(::System{EmptyAirframe}, args...)::Bool) = false
-
 ####################### AbstractAerodynamics ##########################
 
 abstract type AbstractAerodynamics <: SystemDescriptor end
@@ -54,9 +51,6 @@ AngularMomentumTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
 abstract type AbstractAvionics <: SystemDescriptor end
 
 struct NoAvionics <: AbstractAvionics end
-
-@inline f_ode!(::System{NoAvionics}, args...) = nothing
-@inline (f_step!(::System{NoAvionics}, args...)::Bool) = false
 
 ###############################################################################
 ############################## AircraftBase ###################################

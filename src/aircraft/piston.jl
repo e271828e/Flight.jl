@@ -31,7 +31,6 @@ struct MagicFuelSupply <: AbstractFuelSupply end
 init(::SystemU, ::MagicFuelSupply) = Ref(true)
 
 f_ode!(::System{MagicFuelSupply}) = nothing
-f_step!(::System{MagicFuelSupply}) = false
 
 get_mp_b(::System{MagicFuelSupply}) = MassProperties()
 fuel_available(f::System{MagicFuelSupply}) = f.u[]
@@ -103,8 +102,6 @@ function f_ode!(sys::System{IdleController}, ω::Real)
     sys.y = IdleControllerY(ϵ, ϵ_int, output_raw, output, sat)
 
 end
-
-f_step!(::System{IdleController}, args...) = false
 
 ############################ Engine ###############################
 

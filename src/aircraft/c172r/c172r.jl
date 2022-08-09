@@ -293,7 +293,7 @@ end
 
 ############################# Landing Gear ####################################
 
-struct Ldg <: SystemGroupDescriptor
+struct Ldg <: SystemDescriptor
     left::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
     right::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
     nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
@@ -419,8 +419,6 @@ function f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 
 end
 
-f_step!(::System{Fuel}) = false
-
 fuel_available(sys::System{<:Fuel}) = (sys.y.m > 0)
 
 function get_mp_b(fuel::System{Fuel})
@@ -481,9 +479,8 @@ function f_ode!(avionics::System{BasicAvionics}, ::System{<:Airframe},
 
 end
 
+#no digital components or state machines in BasicAvionics
 @inline f_step!(::System{BasicAvionics}, ::System{<:Airframe}, ::System{<:AbstractKinematics}) = false
-
-#nothing digital in BasicAvionics
 @inline f_disc!(::System{BasicAvionics}, ::System{<:Airframe}, ::System{<:AbstractKinematics}, Δt) = false
 
 

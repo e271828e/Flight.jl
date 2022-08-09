@@ -45,9 +45,6 @@ HorizontalTerrain(; altitude = HOrth(0), surface = DryTarmac) =
 TerrainData(trn::System{<:HorizontalTerrain}, ::Abstract2DLocation) =
     TerrainData(trn.params.altitude, SVector{3,Float64}(0,0,1), trn.params.surface)
 
-f_ode!(::System{<:HorizontalTerrain}) = nothing
-f_step!(::System{<:HorizontalTerrain}) = false
-
 end #module
 
 #TerrainModel does not belong to the Aircraft itself. it must be defined

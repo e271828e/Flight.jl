@@ -154,8 +154,6 @@ Base.@kwdef mutable struct UTunableISA #only allocates upon System instantiation
 end
 
 init(::SystemU, ::TunableISA) = UTunableISA()
-f_ode!(::System{<:TunableISA}, args...) = nothing
-f_step!(::System{<:TunableISA}, args...) = false
 
 function SeaLevelConditions(s::System{<:TunableISA}, ::Abstract2DLocation)
     SeaLevelConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
@@ -176,7 +174,6 @@ function WindData(::T, ::Abstract3DPosition) where {T<:System{<:AbstractWindMode
     error("WindData constructor not implemented for $T")
 end
 
-
 ############################### TunableWind ####################################
 
 struct TunableWind <: AbstractWindModel end
@@ -186,8 +183,6 @@ Base.@kwdef mutable struct USimpleWind
 end
 
 init(::SystemU, ::TunableWind) = USimpleWind()
-f_ode!(::System{<:TunableWind}, args...) = nothing
-f_step!(::System{<:TunableWind}, args...) = false
 
 function WindData(wind::System{<:TunableWind}, ::Abstract3DPosition)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData
@@ -210,17 +205,6 @@ end
 
 function AtmosphericData(atm::System{<:SimpleAtmosphere}, loc::Geographic)
     AtmosphericData( ISAData(atm.ISA, loc), WindData(atm.wind, loc))
-end
-
-function f_ode!(atm::System{<:SimpleAtmosphere})
-    f_ode!(atm.ISA)
-    f_ode!(atm.wind)
-end
-
-function f_step!(atm::System{<:SimpleAtmosphere})
-    x_mod = false
-    x_mod = x_mod || f_step!(atm.ISA)
-    x_mod = x_mod || f_step!(atm.wind)
 end
 
 ################################################################################

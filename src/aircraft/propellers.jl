@@ -389,8 +389,6 @@ function f_ode!(sys::System{<:Propeller}, kin::KinematicData, air::AirflowData, 
 
 end
 
-f_step!(::System{<:Propeller}, args...) = false
-
 get_wr_b(sys::System{<:Propeller}) = sys.y.wr_b
 get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 
@@ -406,8 +404,6 @@ get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 # end
 
 # struct DummyGovernor end
-# @inline f_ode!(::System{DummyGovernor}, args...) = nothing
-# @inline (f_step!(::System{NullSystemDescriptor}, args...)::Bool) = false
 
 ################################################################################
 ############################ Plots #############################################

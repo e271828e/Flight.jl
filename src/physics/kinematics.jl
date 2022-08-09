@@ -447,6 +447,7 @@ function f_ode!(sys::System{NED})
 
 end
 
+#no need for normalization in this case
 f_step!(sys::System{NED}, args...) = false
 
 
