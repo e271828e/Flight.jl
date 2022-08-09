@@ -4,7 +4,7 @@ using UnPack
 using StructArrays
 using SciMLBase: ODEProblem, u_modified!, init as init_integrator
 using OrdinaryDiffEq: OrdinaryDiffEqAlgorithm, ODEIntegrator, RK4
-using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
+using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback, CallbackSet, SavedValues
 using Flight.Utils
 
 using ..Systems
@@ -34,12 +34,14 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         sys::System;
         args_ode::Tuple = (), #externally supplied arguments to System's f_ode!
         args_step::Tuple = (), #externally supplied arguments to System's f_step!
+        args_disc::Tuple = (), #externally supplied arguments to System's f_disc!
         sys_init!::Function = no_sys_init!, #System initialization function
         sys_io!::Function = no_sys_io!, #System I/O function
         realtime::Bool = false,
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
-        dt::Real = 0.02,
+        dt::Real = 0.02, #continuous dynamics integration step
+        Δt::Real = Inf, #discrete dynamics execution period
         t_start::Real = 0.0,
         t_end::Real = 10.0,
         save_on::Bool = true,
@@ -50,10 +52,11 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         sys_init!(sys; sys_init_kwargs...)
         f_ode!(sys, args_ode...) #updates y so that the first log entry is valid
 
-        params = (sys = sys, args_ode = args_ode, args_step = args_step,
-                  sys_init! = sys_init!, sys_io! = sys_io!)
+        params = (sys = sys, sys_init! = sys_init!, sys_io! = sys_io!, Δt = Δt,
+                  args_ode = args_ode, args_step = args_step, args_disc = args_disc)
 
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
+        cb_disc = PeriodicCallback(f_cb_disc!, Δt)
         cb_io = DiscreteCallback((u, t, integrator)->true, f_cb_io!)
 
         log = SavedValues(Float64, typeof(sys.y))
@@ -61,9 +64,9 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         cb_save = SavingCallback(f_cb_save, log; saveat = saveat_arr, save_everystep)
 
         if save_on
-            cb_set = CallbackSet(cb_step, cb_io, cb_save)
+            cb_set = CallbackSet(cb_step, cb_disc, cb_io, cb_save)
         else
-            cb_set = CallbackSet(cb_step, cb_io)
+            cb_set = CallbackSet(cb_step, cb_disc, cb_io)
         end
 
         #the current System's x value is used as initial condition. a copy is
@@ -139,8 +142,20 @@ function f_cb_step!(integrator)
 
 end
 
-#DiscreteCallback function, calls the user-specified System I/O callback
-#after every integration step
+#PeriodicCallback function, calls the System's discrete dynamics update
+#with the period Δt given to the Simulation constructor
+function f_cb_disc!(integrator)
+
+    @unpack sys, Δt, args_disc = integrator.p
+
+    x_modified = f_disc!(sys, Δt, args_disc...)
+
+    u_modified!(integrator, x_modified)
+
+end
+
+#DiscreteCallback function, calls the user-specified System I/O function after
+#every integration step
 function f_cb_io!(integrator)
 
     @unpack sys, sys_io! = integrator.p
@@ -153,7 +168,8 @@ function f_cb_io!(integrator)
 
 end
 
-#SavingCallback function, gets called at the end of each step after f_step!
+#SavingCallback function, gets called at the end of each step after f_disc!
+#and/or f_step!
 f_cb_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
 
 #function signature a System initialization function must adhere to.
@@ -189,6 +205,7 @@ function reinit!(sim::Simulation; sys_init_kwargs...)
     @unpack p = integrator
 
     #initialize the System's x, u and s
+    println(sys_init_kwargs)
     p.sys_init!(p.sys; sys_init_kwargs...)
 
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's

@@ -65,6 +65,11 @@ function Systems.f_step!(sys::System{<:MassSpringDamper})
     return false
 end
 
+function Systems.f_disc!(sys::System{<:MassSpringDamper}, Δt::Float64)
+    println("f_disc! called at t = $(sys.t) with period $Δt")
+    return false
+end
+
 
 
 function get_sim()
@@ -74,7 +79,9 @@ function get_sim()
     # @show typeof(sys)
     # Utils.showfields(sys) #show the type's fields with their current values
 
-    function sys_init!(sys; p::Real = 0.0, v::Real = 0.0, f::Real = 0.0, )
+    function sys_init!(sys::System{<:MassSpringDamper};
+                       p::Real = 0.0, v::Real = 0.0, f::Real = 0.0, )
+        # println("System init called")
         sys.x.p = p
         sys.x.v = v
         sys.u[] = f
@@ -85,16 +92,14 @@ function get_sim()
         @show sys.u
     end
 
-    function sys_io!(u, t, y, params)
+    function sys_io!(u, y, t, params)
         # println("System IO called")
         u[] += 0
     end
 
-    sim = Simulation(sys; algorithm = Heun(), sys_init!, sys_io!,
-                        init_kwargs = (f = 0.0, p = 0.0, v = 0.0))
+    sim = Simulation(sys; algorithm = RK4(), sys_init!, sys_io!, Δt = 0.2,
+                    adaptive = true, f = 0.0, p = 0.0, v = 0.0)
 
     return sim
-
-
 
 end

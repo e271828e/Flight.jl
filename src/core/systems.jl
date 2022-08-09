@@ -5,7 +5,7 @@ using ComponentArrays
 import AbstractTrees: children, printnode, print_tree
 import DataStructures: OrderedDict
 
-export f_ode!, f_step!
+export f_ode!, f_step!, f_disc!
 export SystemDescriptor, SystemGroupDescriptor, System
 export SystemẊ, SystemX, SystemY, SystemU, SystemS
 export init_ẋ, init_x, init_y, init_u, init_s
@@ -145,6 +145,29 @@ end
 
 f_ode!(sys::System, args...) = MethodError(f_ode!, (sys, args...)) |> throw
 (f_step!(sys::System, args...)::Bool) = MethodError(f_step!, (sys, args...)) |> throw
+(f_disc!(sys::System, Δt, args...)::Bool) = MethodError(f_disc!, (sys, Δt, args...)) |> throw
+
+# #default implementation calls f_disc! on all Node subsystems with no
+# #arguments, then ORs their outputs. override as required
+# @inline @generated function (f_step!(sys::System{T, X, Y, U, D, P, S})
+#     where {T<:SystemDescriptor, X <: Union{Nothing, AbstractVector{Float64}}, Y, U, D, P, S})
+
+#     Core.println("Generated function called for $%")
+#     Core.println()
+#     Core.println()
+
+#     ex = Expr(:block)
+#     push!(ex.args, :(x_mod = false))
+
+#     #call f_step! on each subsystem
+#     for label in fieldnames(S)
+#         #we need all f_step! calls executed, so we can't just chain them with ||
+#         push!(ex.args,
+#             :(x_mod = x_mod || f_step!(sys.subsystems[$(QuoteNode(label))])))
+#     end
+#     return ex
+
+# end
 
 # #default implementation calls f_step! on all Node subsystems with no
 # #arguments, then ORs their outputs. override as required
