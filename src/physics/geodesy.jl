@@ -3,6 +3,7 @@ module Geodesy
 # using Base: Real, Symbol
 using LinearAlgebra
 using StaticArrays
+using ComponentArrays
 using SHA
 using UnPack
 using Interpolations
@@ -93,7 +94,6 @@ Base.getindex(n::NVector, i) = getindex(n.data, i)
 LinearAlgebra.norm(n::NVector) = norm(getfield(n, :data)) #uses StaticArrays implementation
 LinearAlgebra.normalize(n::NVector) = NVector(getfield(n, :data)) #let the constructor normalize
 
-
 #### LatLon ####
 
 Base.@kwdef struct LatLon <: Abstract2DLocation
@@ -121,6 +121,15 @@ end
 #strict equality not implemented because comparison requires conversion
 Base.:(≈)(ll1::LatLon, ll2::LatLon; kwargs...) = ≈(NVector(ll1), NVector(ll2); kwargs...)
 Base.:(-)(latlon::LatLon) = LatLon(-NVector(latlon))
+
+#time derivative of LatLon from NED frame transport rate (can be verified in
+#[Groves])
+function dt(ll::LatLon, ω_en_n::AbstractVector{<:Real})
+    ϕ_dot = -ω_en_n[2]
+    λ_dot = ω_en_n[1] / cos(ll.ϕ)
+    return SVector{2,Float64}(ϕ_dot, λ_dot)
+    # return ComponentVector(SVector(ϕ_dot, λ_dot), Axis(:ϕ, :λ))
+end
 
 
 ##### Generic Abstract2DLocation methods #####

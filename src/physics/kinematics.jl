@@ -439,8 +439,9 @@ function f_ode!(sys::System{NED})
     #update ẋ_pos
     ẋ_pos = sys.ẋ.pos
     ẋ_pos.e_nb .= Attitude.dt(e_nb, ω_nb_b)
-    ẋ_pos.ϕ = -ω_en_n[2] #can be verified in [Groves]
-    ẋ_pos.λ = ω_en_n[1] / cos(ϕ_λ.ϕ) #can be verified in [Groves]
+    ϕ_λ_dot = Geodesy.dt(ϕ_λ, ω_en_n)
+    ẋ_pos.ϕ = ϕ_λ_dot[1]
+    ẋ_pos.λ = ϕ_λ_dot[2]
     ẋ_pos.Δx = v_eOb_n[1]
     ẋ_pos.Δy = v_eOb_n[2]
     ẋ_pos.h_e = -v_eOb_n[3]

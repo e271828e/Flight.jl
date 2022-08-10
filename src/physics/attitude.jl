@@ -27,6 +27,7 @@ the implemented subtypes.
 module Attitude
 
 using StaticArrays
+using ComponentArrays
 using StructArrays
 using LinearAlgebra
 
@@ -405,7 +406,9 @@ function dt(e_ab::REuler, ω_ab_b::AbstractVector{<:Real})
                     1   sin_φ * tan_θ   cos_φ * tan_θ
     ]
 
-    return M * SVector{3}(ω_ab_b)
+    ė_ab = M * SVector{3}(ω_ab_b)
+    return ė_ab
+    # return ComponentVector(ė_ab, Axis(:ψ, :θ, :φ))
 end
 
 """
@@ -428,7 +431,8 @@ function ω(e_ab::REuler, ė_ab::AbstractVector{<:Real})
                   cos_θ * cos_φ    -sin_φ  0;
     ]
 
-    return M * SVector{3}(ė_ab)
+    ω_ab_b = M * SVector{3}(ė_ab)
+    return ω_ab_b
 
 end
 

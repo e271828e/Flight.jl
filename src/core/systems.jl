@@ -183,7 +183,7 @@ end
                             where {T<:SystemDescriptor, X <: XType, Y, U, D, P, S})
 
     # Core.println("Generated f_step! called for type $T")
-    Core.println()
+    # Core.println()
 
     ex = Expr(:block)
     push!(ex.args, :(x_mod = false))
@@ -205,7 +205,7 @@ end
                             where {T<:SystemDescriptor, X <: XType, Y, U, D, P, S})
 
     # Core.println("@generated f_disc! called for $T")
-    Core.println()
+    # Core.println()
 
     ex = Expr(:block)
     push!(ex.args, :(x_mod = false))

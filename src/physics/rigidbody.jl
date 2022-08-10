@@ -511,6 +511,7 @@ Base.@kwdef struct RigidBodyData
     hr_b::SVector{3,Float64} = zeros(SVector{3})
     α_eb_b::SVector{3,Float64} = zeros(SVector{3})
     α_ib_b::SVector{3,Float64} = zeros(SVector{3})
+    v̇_eOb_b::SVector{3,Float64} = zeros(SVector{3})
     a_eOb_b::SVector{3,Float64} = zeros(SVector{3})
     a_eOb_n::SVector{3,Float64} = zeros(SVector{3})
     a_iOb_b::SVector{3,Float64} = zeros(SVector{3})
@@ -575,8 +576,8 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
     G_Ob_b = g_Ob_b + ω_ie_b × (ω_ie_b × r_eOb_b)
     f_Ob_b = a_iOb_b - G_Ob_b
 
-    return RigidBodyData(; mp_b, wr_g_b, wr_in_b, wr_ext_b, hr_b,
-                           α_eb_b, α_ib_b, a_eOb_b, a_eOb_n, a_iOb_b, f_Ob_b)
+    return RigidBodyData(; mp_b, wr_g_b, wr_in_b, wr_ext_b, hr_b, α_eb_b,
+                           α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n, a_iOb_b, f_Ob_b)
 
 end
 

@@ -23,11 +23,11 @@ UTemplate = ComponentVector(
     )
 
 YTemplate = ComponentVector(
-    ψ = 0.0, θ = 0.0, φ = 0.0, #heading, inclination, bank
+    ψ = 0.0, θ = 0.0, φ = 0.0, #heading, inclination, bank (body/LTF)
     ϕ = 0.0, λ = 0.0, h_e = 0.0, #latitude, longitude, altitude
-    p = 0.0, q = 0.0, r = 0.0, #angular rates
+    p = 0.0, q = 0.0, r = 0.0, #angular rates (ω_eb_b)
     TAS = 0.0, α = 0.0, β = 0.0, #airspeed, AoA, AoS
-    f_x = 0.0, f_y = 0.0, f_z = 0.0, #specific force
+    f_x = 0.0, f_y = 0.0, f_z = 0.0, #specific force (f_iOb_b)
     ω_eng = 0.0, m_fuel = 0.0 #engine speed, fuel load
 )
 
@@ -159,9 +159,22 @@ function test()
 
     # A_θ = A[:kinematics,:][:pos,:][:e_nb,:][2,:][:kinematics][:pos]
 
-    println("It may be convenient to restrict the linearization functionality to NED kinematics, ",
-    "then define also an XTemplate with only the continous state variables that matter, and",
-    "ordered conveniently to partition the state in longitudinal and lateral directional dynamics")
+"""
+1) NO VOY A REDEFINIR X. Usare el x que tenga el ac que me envie y me saco las
+   matrices correspondientes. despues, utilizo label2index de ComponentArrays
+   para aplanar los axes de x y reordenar las matrices como me venga mejor. para
+   esto, simplemente necesito generarme un Dict o NamedTuple que contenga los
+   x_flattened_indices. despues puedo hacer por ejemplo: long_dyn_indices =
+   [x_flattened_indices.TAS, x_flattened_indices.alpha, ...]
+
+2) realmente necesito definirme structs para U y para Y del
+   System{LinearDynamics}? No: U es mutable de por si, asi que no necesito
+   definir una struct para el. Y ahora que he descubierto que puedo usar
+   ComponentVectors con SVectors, tampoco necesito hacerlo para Y, porque un
+   ComponentVector creado a partir de un SVector no genera allocations. Asi que
+   me basta con los templates que tenia antes
+
+"""
 
     #despues podria crear tambien un LinearAircraft{A, B, C, D, X, U, Y} <:
     #SystemDescriptor.
