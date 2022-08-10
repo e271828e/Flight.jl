@@ -1,17 +1,15 @@
-/Manifest.toml
-
-#Project specific
-examples/
-references/
-
-# Editors
+/tmp
+.github/
 .vscode/
 .VSCodeCounter
 
-# Windows
-Thumbs.db
+/perf*
+.DS_Store
+.idea/*
 
 #Julia
+/Manifest.toml
+/LocalPreferences.toml
 /*.tar.gz
 /tmp
 /old
@@ -26,8 +24,6 @@ Thumbs.db
 /julia-*
 /source-dist.tmp
 /source-dist.tmp1
-
-/misc.jl
 
 *.exe
 *.dll
@@ -44,7 +40,3 @@ Thumbs.db
 *.jl.mem
 *.jl.*.mem
 *.ji
-
-/perf*
-.DS_Store
-.idea/*
