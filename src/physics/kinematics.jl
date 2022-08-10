@@ -360,7 +360,8 @@ end
 
 struct NED <: AbstractKinematics end
 
-const XPosNEDTemplate = ComponentVector(e_nb = zeros(3), ϕ = 0.0, λ = 0.0, Δx = 0.0, Δy = 0.0, h_e = 0.0)
+const XPosNEDTemplate = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
+                                ϕ = 0.0, λ = 0.0, Δx = 0.0, Δy = 0.0, h_e = 0.0)
 const XNEDTemplate = ComponentVector(pos = similar(XPosNEDTemplate), vel = similar(XVelTemplate))
 const XNED{T, D} = ComponentVector{T, D, typeof(getaxes(XNEDTemplate))} where {T, D}
 x_template(::NED) = XNEDTemplate
@@ -379,7 +380,9 @@ function init!(x::XNED, ic::Initializer = Initializer())
     ϕ_λ = LatLon(Ob)
     h_e = HEllip(Ob)
 
-    x.pos.e_nb .= SVector(e_nb.ψ, e_nb.θ, e_nb.φ)
+    x.pos.ψ_nb = e_nb.ψ
+    x.pos.θ_nb = e_nb.θ
+    x.pos.φ_nb = e_nb.φ
     x.pos.ϕ = ϕ_λ.ϕ
     x.pos.λ = ϕ_λ.λ
     x.pos.Δx = Δx
@@ -392,7 +395,7 @@ end
 
 function KinematicsY(x::XNED)
 
-    e_nb = REuler(x.pos.e_nb)
+    e_nb = REuler(x.pos.ψ_nb, x.pos.θ_nb, x.pos.φ_nb)
     ϕ_λ = LatLon(x.pos.ϕ, x.pos.λ)
     h_e = HEllip(x.pos.h_e[1])
     Δxy = SVector(x.pos.Δx, x.pos.Δy)
@@ -437,11 +440,16 @@ function f_ode!(sys::System{NED})
     @unpack e_nb, ϕ_λ, ω_nb_b, ω_en_n, v_eOb_n = sys.y
 
     #update ẋ_pos
-    ẋ_pos = sys.ẋ.pos
-    ẋ_pos.e_nb .= Attitude.dt(e_nb, ω_nb_b)
+    ė_nb = Attitude.dt(e_nb, ω_nb_b)
     ϕ_λ_dot = Geodesy.dt(ϕ_λ, ω_en_n)
-    ẋ_pos.ϕ = ϕ_λ_dot[1]
-    ẋ_pos.λ = ϕ_λ_dot[2]
+    # @show ė_nb
+
+    ẋ_pos = sys.ẋ.pos
+    ẋ_pos.ψ_nb = ė_nb.ψ
+    ẋ_pos.θ_nb = ė_nb.θ
+    ẋ_pos.φ_nb = ė_nb.φ
+    ẋ_pos.ϕ = ϕ_λ_dot.ϕ
+    ẋ_pos.λ = ϕ_λ_dot.λ
     ẋ_pos.Δx = v_eOb_n[1]
     ẋ_pos.Δy = v_eOb_n[2]
     ẋ_pos.h_e = -v_eOb_n[3]

@@ -24,8 +24,8 @@ UTemplate = ComponentVector(
 
 YTemplate = ComponentVector(
     ψ = 0.0, θ = 0.0, φ = 0.0, #heading, inclination, bank (body/LTF)
-    ϕ = 0.0, λ = 0.0, h_e = 0.0, #latitude, longitude, altitude
-    p = 0.0, q = 0.0, r = 0.0, #angular rates (ω_eb_b)
+    ϕ = 0.0, λ = 0.0, h_e = 0.0, #latitude, longitude, ellipsoidal altitude
+    p = 0.0, q = 0.0, r = 0.0, #angular rates (ω_lb_b)
     TAS = 0.0, α = 0.0, β = 0.0, #airspeed, AoA, AoS
     f_x = 0.0, f_y = 0.0, f_z = 0.0, #specific force (f_iOb_b)
     ω_eng = 0.0, m_fuel = 0.0 #engine speed, fuel load
@@ -65,14 +65,13 @@ function assign!(y::Y, ac::System{<:Cessna172R})
 
 end
 
-function test()
+function linearize!(; ac::System{<:Cessna172R} = System(Cessna172R(NED())),
+    env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
+    params::C172R.Trim.Parameters = C172R.Trim.Parameters(),
+    state::C172R.Trim.State = C172R.Trim.State())
 
-    ac = System(Cessna172R(NED()))
-    env = System(SimpleEnvironment())
-    params = C172R.Trim.Parameters()
-
-    # state = C172R.Trim.State() #optional initial trim guess
-    (exit_flag, trim_state) = C172R.Trim.trim!(; ac, env, params) #ac is now trimmed
+    #trim the aircraft
+    (exit_flag, trim_state) = C172R.Trim.trim!(; ac, env, params, state)
 
     #save the trimmed aircraft ẋ, x, u and y for later
     ẋ_ref = copy(ac.ẋ) #save the trimmed aircraft state vector derivative for later
@@ -87,19 +86,15 @@ function test()
     # @show u_ref
     # @show y_ref
 
-    #function wrapper around f_ode!() mutating ẋ and y. define a cache in case
-    #we get generic y or u
+    #function wrapper around f_ode!() mutating ẋ and y. cast y and u into
+    #ComponentVectors in case we get generic Vectors from FiniteDiff
     f_nonlinear! = let ac = ac, env = env, params = params, state = trim_state,
                        u_axes = getaxes(UTemplate), y_axes = getaxes(YTemplate)
 
         function (ẋ, y, x, u)
 
-            #we need these because finite_difference_jacobian! sometimes
-            #provides generic Vectors instead of ComponentVectors. creating
-            #these does not allocate, because the underlying data is already
-            #provided by u and y. updating u_cv and y_cv also updates u and y,
-            #while satisfying the interface requirements of the assign!
-            #functions
+            #these do not allocate, because the underlying data is already
+            #provided by u and y
             u_cv = ComponentVector(u, u_axes)
             y_cv = ComponentVector(y, y_axes)
 
@@ -114,7 +109,7 @@ function test()
             f_ode!(ac, env)
 
             ẋ .= ac.ẋ
-            assign!(y_cv, ac) #this also updates y
+            assign!(y_cv, ac) #this also updates y (shares its data with y_cv)
 
         end
 
@@ -157,7 +152,31 @@ function test()
     jacobian!(C, f_C!, x_ref)
     jacobian!(D, f_D!, u_ref)
 
-    # A_θ = A[:kinematics,:][:pos,:][:e_nb,:][2,:][:kinematics][:pos]
+    #esta funcion lo unico que debe hacer es devolver las matrices!! debe ser
+    #totalmente agnostica respecto del tipo de avion, sus trim parameters, etc.
+    #pero es muy dificil generalizar hasta que no tenga otro ejemplo.
+
+    #PRIMERO IMPLEMENTAR, LUEGO ABSTRAER Y REFACTORIZAR. Primero se trata de
+    #pensar como quiero reordenar las matrices y como lo voy a hacer.
+
+    #esto que viene a continuacion no deberia estar en linearize! sino fuera.
+    #debe estar en un sitio en el que ya si, se imponga que sea NED. ahora que
+    #hemos restringido las kinematics a NED, ya sabemos cuales son los indices
+    #de
+    x_labels = (
+        ψ = "kinematics.pos.ψ_nb",
+        θ = "kinematics.pos.θ_nb",
+    )
+
+    x_indices = ()
+
+    #una vez definido este array, tengo un mapa de indices planos a las
+    #componentes individuales. a partir de ahi puedo hacer:
+    #long_dyn = [x_indices.TAS, x_indices.α, x_indices.θ, ]
+    #pero ojo, no me basta con quedarme con los datos. los mismos Symbols cuyos
+    #indices he extraido, tengo que usarlos para regenerar el bloque extraido
+    #como ComponentMatrix
+
 
 """
 1) NO VOY A REDEFINIR X. Usare el x que tenga el ac que me envie y me saco las
@@ -165,7 +184,8 @@ function test()
    para aplanar los axes de x y reordenar las matrices como me venga mejor. para
    esto, simplemente necesito generarme un Dict o NamedTuple que contenga los
    x_flattened_indices. despues puedo hacer por ejemplo: long_dyn_indices =
-   [x_flattened_indices.TAS, x_flattened_indices.alpha, ...]
+   [x_flattened_indices.TAS, x_flattened_indices.alpha, ...]. para esto si que
+   necesito realmente usar NED kinematics en x. esto iria aguas abajo
 
 2) realmente necesito definirme structs para U y para Y del
    System{LinearDynamics}? No: U es mutable de por si, asi que no necesito

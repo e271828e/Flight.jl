@@ -127,8 +127,8 @@ Base.:(-)(latlon::LatLon) = LatLon(-NVector(latlon))
 function dt(ll::LatLon, ω_en_n::AbstractVector{<:Real})
     ϕ_dot = -ω_en_n[2]
     λ_dot = ω_en_n[1] / cos(ll.ϕ)
-    return SVector{2,Float64}(ϕ_dot, λ_dot)
-    # return ComponentVector(SVector(ϕ_dot, λ_dot), Axis(:ϕ, :λ))
+    # return SVector{2,Float64}(ϕ_dot, λ_dot)
+    return ComponentVector(SVector(ϕ_dot, λ_dot), Axis(:ϕ, :λ))
 end
 
 

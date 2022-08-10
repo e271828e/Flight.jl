@@ -209,7 +209,7 @@ function test_REuler()
         @test Attitude.dt(REuler(φ = π/4), [0, 0, 1])[1] > 0
         @test Attitude.dt(REuler(φ = π/4), [0, 0, 1])[2] < 0
         @test isapprox(Attitude.dt(REuler(θ = π/3, φ = π/4), [1, 0, 0]), [0, 0, 1.0], atol = 1e-10)
-        @test all(Attitude.dt(REuler(ψ = π/3, θ = π/4), [-1, 2, 1]) .≈ Attitude.dt(REuler(ψ = π/6, θ = π/4), [-1, 2, 1]))
+        @test all(Attitude.dt(REuler(ψ = π/3, θ = π/4), [-1, 2, 1])[:] .≈ Attitude.dt(REuler(ψ = π/6, θ = π/4), [-1, 2, 1])[:])
 
         ω_ab_b = [2, -3.2, 4]
         ṙ_ab = Attitude.dt(r_ab, ω_ab_b)

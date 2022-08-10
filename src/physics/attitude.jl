@@ -407,8 +407,8 @@ function dt(e_ab::REuler, ω_ab_b::AbstractVector{<:Real})
     ]
 
     ė_ab = M * SVector{3}(ω_ab_b)
-    return ė_ab
-    # return ComponentVector(ė_ab, Axis(:ψ, :θ, :φ))
+    # return ė_ab
+    return ComponentVector(ė_ab, Axis(:ψ, :θ, :φ))
 end
 
 """
