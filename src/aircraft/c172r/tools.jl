@@ -186,7 +186,7 @@ function get_target_function(ac::System{<:Cessna172R},
 
 end
 
-function trim!(; ac::System{<:Cessna172R} = System(Cessna172R()),
+function trim!(; ac::System{<:Cessna172R},
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
     params::Parameters = Parameters(), state::State = State()) #optional initial guess
 

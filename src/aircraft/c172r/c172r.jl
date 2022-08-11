@@ -40,8 +40,8 @@ Base.@kwdef mutable struct BasicAvionicsU
     throttle::Ranged{Float64, 0, 1} = 0.0
     yoke_x::Ranged{Float64, -1, 1} = 0.0 #ailerons (+ -> bank right)
     yoke_Δx::Ranged{Float64, -1, 1} = 0.0 #ailerons (+ -> bank right), only for input devices
-    yoke_y::Ranged{Float64, -1, 1} = 0.0 #elevator (+ -> pitch up)
-    yoke_Δy::Ranged{Float64, -1, 1} = 0.0 #elevator (+ -> pitch up), only for input devices
+    yoke_y::Ranged{Float64, -1, 1} = 0.0 #elevator (+ -> pitch down)
+    yoke_Δy::Ranged{Float64, -1, 1} = 0.0 #elevator (+ -> pitch down), only for input devices
     pedals::Ranged{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
     brake_left::Ranged{Float64, 0, 1} = 0.0 #[0, 1]
     brake_right::Ranged{Float64, 0, 1} = 0.0 #[0, 1]
@@ -249,6 +249,10 @@ function f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
     F_aero_s = q * S * SVector{3,Float64}(-C_D, C_Y, -C_L)
     F_aero_a = q_as(F_aero_s)
     M_aero_a = q * S * SVector{3,Float64}(C_l * b, C_m * c, C_n * b)
+    # @show C_D
+    # @show C_Y
+    # @show C_L
+    # @show F_aero_a
 
     wr_b = wr_a = Wrench(F_aero_a, M_aero_a)
 
@@ -522,8 +526,15 @@ function assign_component_inputs!(airframe::System{<:Airframe}, avionics::System
             brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
     @unpack aero, pwp, ldg = airframe
 
-    #yoke_Δx is the offset with respect to the force-free position yoke_x
-    #yoke_Δy is the offset with respect to the force-free position yoke_y
+    #yoke_Δx and yoke_Δy are additional offsets with respect to the reference
+    #position
+
+    #elevator sign criteria: we want dyoke_y/dCm < 0 (pitch down when the yoke
+    #is pushed forward). since dCm/dδe < 0 (elevator deflection positive
+    #downwards, which creates a pitching down moment), we need dyoke_y/dδe > 0.
+    #of course, since dCL/dδe > 0 (because when deflected down, the elevator
+    #adds to the total lift), dCL/dyoke_y > 0. that is, when we push the yoke
+    #forward, lift increases
 
     pwp.u.engine.start = eng_start
     pwp.u.engine.stop = eng_stop
@@ -532,7 +543,7 @@ function assign_component_inputs!(airframe::System{<:Airframe}, avionics::System
     ldg.u.nose.steering[] = pedals
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
-    aero.u.e = -(yoke_y + yoke_Δy) #+yoke_Δy and +yoke_y are back and +δe is pitch down, need to invert it
+    aero.u.e = (yoke_y + yoke_Δy) #+yoke_Δy and +yoke_y are back and +δe is pitch down, need to invert it
     aero.u.a = (yoke_x + yoke_Δx) #+yoke_Δx and +yoke_x are right and +δa is roll right
     aero.u.r = -pedals # +pedals is right and +δr is yaw left
     aero.u.f = flaps # +flaps is flaps down and +δf is flaps down
@@ -575,15 +586,15 @@ end
 function assign!(u::BasicAvionicsU, joystick::XBoxController)
 
     u.yoke_Δx = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.yoke_Δy = get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.yoke_Δy = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
     u.pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
     u.yoke_x -= 0.01 * is_released(joystick, :dpad_left)
     u.yoke_x += 0.01 * is_released(joystick, :dpad_right)
-    u.yoke_y -= 0.01 * is_released(joystick, :dpad_up)
-    u.yoke_y += 0.01 * is_released(joystick, :dpad_down)
+    u.yoke_y -= 0.01 * is_released(joystick, :dpad_down)
+    u.yoke_y += 0.01 * is_released(joystick, :dpad_up)
 
     u.throttle += 0.1 * is_released(joystick, :button_Y)
     u.throttle -= 0.1 * is_released(joystick, :button_A)

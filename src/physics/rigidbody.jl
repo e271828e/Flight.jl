@@ -515,7 +515,9 @@ Base.@kwdef struct RigidBodyData
     a_eOb_b::SVector{3,Float64} = zeros(SVector{3})
     a_eOb_n::SVector{3,Float64} = zeros(SVector{3})
     a_iOb_b::SVector{3,Float64} = zeros(SVector{3})
-    f_Ob_b::SVector{3,Float64} = zeros(SVector{3}) #specific force (g) maybe two y axes??
+    f_Ob_b::SVector{3,Float64} = zeros(SVector{3})
+    a_iG_b::SVector{3,Float64} = zeros(SVector{3})
+    f_G_b::SVector{3,Float64} = zeros(SVector{3})
 end
 
 function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassProperties,
@@ -537,7 +539,7 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
     #J_G_b (Steiner). therefore, at some point J_G_b would become zero (or at
     #least singular)!
 
-    @unpack q_eb, q_nb, n_e, h_e, ω_eb_b, ω_ie_b, v_eOb_b = kin
+    @unpack q_eb, q_nb, n_e, h_e, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b = kin
 
     m = mp_b.m; J_Ob_b = mp_b.J_O; r_ObG_b = mp_b.r_OG
 
@@ -571,13 +573,16 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
     a_eOb_b = v̇_eOb_b + ω_eb_b × v_eOb_b
     a_eOb_n = q_nb(a_eOb_b)
     a_iOb_b = v̇_eOb_b + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eOb_b)
+    a_iG_b = a_iOb_b + ω_ib_b × (ω_ib_b × r_ObG_b) + α_ib_b × r_ObG_b
 
     g_Ob_b = q_nb'(g_n(Ob))
     G_Ob_b = g_Ob_b + ω_ie_b × (ω_ie_b × r_eOb_b)
     f_Ob_b = a_iOb_b - G_Ob_b
+    f_G_b = a_iG_b - G_Ob_b #G ≈ Ob
 
     return RigidBodyData(; mp_b, wr_g_b, wr_in_b, wr_ext_b, hr_b, α_eb_b,
-                           α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n, a_iOb_b, f_Ob_b)
+                           α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n, a_iOb_b, f_Ob_b,
+                           a_iG_b, f_G_b)
 
 end
 
