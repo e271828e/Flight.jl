@@ -29,9 +29,7 @@ using ..C172R
 #commands. in this case, it is the yoke_x and yoke_y values that set the
 #appropriate surface positions
 
-
-# maybe split trim state into common and aircraft dependent, that way the first
-# ones can be reused
+#first 2 are aircraft-agnostic
 const StateTemplate = ComponentVector(
     α_a = 0.0, #angle of attack, aerodynamic axes
     φ_nb = 0.0, #bank angle
@@ -53,7 +51,7 @@ function State(; α_a = 0.0848, φ_nb = 0.0, n_eng = 0.75,
 
 end
 
-#the first 5 do not depend on the aircraft type
+#first 5 are aircraft-agnostic
 struct Parameters
     Ob::Geographic{NVector, Ellipsoidal} #position
     ψ_nb::Float64 #geographic heading
@@ -114,7 +112,7 @@ function KinematicInit(state::State, params::Parameters, env::System{<:AbstractE
 end
 
 #assigns trim state and parameters to the aircraft system, and then updates it
-#by calling its continuous dynamics function
+#by calling f_ode!
 function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
     params::Parameters, state::State)
 
