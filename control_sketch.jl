@@ -7,12 +7,12 @@ function test()
     trim_params = C172R.Trim.Parameters()
     lm = C172R.Linear.Model(; ac, env, trim_params)
 
-    #create a submodel retaining only inputs, states and outputs relevant to
+    #extract a submodel retaining only inputs, states and outputs relevant to
     #longitudinal dynamics
-    long_dyn = lm
-    long_dyn = C172R.Linear.filter_u(long_dyn, (:yoke_y, :throttle))
-    long_dyn = C172R.Linear.filter_x(long_dyn, (:v_x, :v_z, :θ, :q, :α_filt, :ω_eng))
-    long_dyn = C172R.Linear.filter_y(long_dyn, (:TAS, :α, :θ, :q, :f_x, :f_z, :ω_eng))
+    long_dyn = C172R.Linear.submodel(lm,
+        u = (:yoke_y, :throttle),
+        x = (:v_x, :v_z, :θ, :q, :α_filt, :ω_eng),
+        y = (:TAS, :α, :θ, :q, :f_x, :f_z, :ω_eng))
 
     ss_long = ss(long_dyn)
     tf_long = tf(ss_long)

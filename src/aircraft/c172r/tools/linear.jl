@@ -27,38 +27,34 @@ struct Model{X <: VType, U <: VType, Y <: VType,
     A::tA; B::tB; C::tC; D::tD
 end
 
-function filter_x(m::Model, labels::NTuple{N, Symbol} where {N})
-
-    ẋ0 = m.ẋ0[labels]; x0 = m.x0[labels]; y0 = m.y0; u0 = m.u0
-    A = m.A[labels, labels]; B = m.B[labels, :]; C = m.C[:, labels]; D = m.D
-    return Model(ẋ0, x0, u0, y0, A, B, C, D)
-
-end
-
-function filter_u(m::Model, labels::NTuple{N, Symbol} where {N})
-
-    ẋ0 = m.ẋ0; x0 = m.x0; y0 = m.y0; u0 = m.u0[labels]
-    A = m.A; B = m.B[:, labels]; C = m.C; D = m.D[:, labels]
-    return Model(ẋ0, x0, u0, y0, A, B, C, D)
-
-end
-
-function filter_y(m::Model, labels::NTuple{N, Symbol} where {N})
-
-    ẋ0 = m.ẋ0; x0 = m.x0; y0 = m.y0[labels]; u0 = m.u0
-    A = m.A; B = m.B; C = m.C[labels, :]; D = m.D[labels, :]
-    return Model(ẋ0, x0, u0, y0, A, B, C, D)
-
-end
-
 get_ẋ(m::Model; x, u) = m.ẋ0 + m.A * (x - m.x0) + m.B * (u - m.u0)
 get_y(m::Model; x, u) = m.y0 + m.C * (x - m.x0) + m.D * (u - m.u0)
+
+function submodel(m::Model; x::NTuple{Nx, Symbol} = (),
+    y::NTuple{Ny, Symbol} = (), u::NTuple{Nu, Symbol} = ()) where {Nx, Ny, Nu}
+
+    x_ind = (!isempty(x) ? x : KeepIndex(:))
+    y_ind = (!isempty(y) ? y : KeepIndex(:))
+    u_ind = (!isempty(u) ? u : KeepIndex(:))
+
+    ẋ0 = m.ẋ0[x_ind]
+    x0 = m.x0[x_ind]
+    y0 = m.y0[y_ind]
+    u0 = m.u0[u_ind]
+    A = m.A[x_ind, x_ind]
+    B = m.B[x_ind, u_ind]
+    C = m.C[y_ind, x_ind]
+    D = m.D[y_ind, u_ind]
+
+    return Model(ẋ0, x0, u0, y0, A, B, C, D)
+
+end
 
 ControlSystems.ss(m::Model) = ss(m.A, m.B, m.C, m.D)
 
 ############################### Linearization ##################################
 
-#flaps and mixture are omitted from the input vector and regarded as parameters,
+#flaps and mixture are omitted from the input vector and considered parameters,
 #note that they will often be set at one of their range limits (for example,
 #when operating with fully retracted or fully extended flaps, full lean or full
 #rich mixture), and the resulting linearization would not be valid in such cases
@@ -119,15 +115,6 @@ function Model(; ac::System{<:Cessna172R{NED}} = System(Cessna172R(NED())),
                 env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
                 trim_params::Trim.Parameters = Trim.Parameters(),
                 trim_state::Trim.State = Trim.State())
-
-    linearize!(; ac, env, trim_params, trim_state)
-
-end
-
-function linearize!(; ac::System{<:Cessna172R{NED}},
-                    env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
-                    trim_params::Trim.Parameters = Trim.Parameters(),
-                    trim_state::Trim.State = Trim.State())
 
     (_, trim_state) = Trim.trim!(; ac, env, params = trim_params, state = trim_state)
 
