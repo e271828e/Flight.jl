@@ -65,9 +65,9 @@ function test_sim_nrt(; save::Bool = true)
         function (u, y, t, params)
 
             ac.u.avionics.throttle = 0.2
-            ac.u.avionics.yoke_Δx = (t < 5 ? 0.2 : 0.0)
-            ac.u.avionics.yoke_Δy = 0.0
-            ac.u.avionics.pedals = 0.0
+            ac.u.avionics.Δ_aileron = (t < 5 ? 0.2 : 0.0)
+            ac.u.avionics.Δ_elevator = 0.0
+            ac.u.avionics.Δ_pedals = 0.0
             ac.u.avionics.brake_left = 0
             ac.u.avionics.brake_right = 0
 
@@ -164,7 +164,7 @@ function test_trimming()
 
         state = C172R.Trim.State(;
             α_a = 0.08, φ_nb = 0.3, n_eng = 0.8,
-            throttle = 0.61, yoke_x = 0.01, yoke_y = -0.025, pedals = 0.0)
+            throttle = 0.61, aileron = 0.01, elevator = -0.025, pedals = 0.0)
 
         params = C172R.Trim.Parameters(;
             loc = LatLon(), h = HOrth(1000),
@@ -183,8 +183,8 @@ function test_trimming()
         @test ac.y.airframe.aero.α ≈ state.α_a
         @test ac.y.airframe.pwp.engine.ω == state.n_eng * ac.airframe.pwp.engine.params.ω_rated
         @test ac.u.avionics.throttle == state.throttle
-        @test ac.u.avionics.yoke_x == state.yoke_x
-        @test ac.u.avionics.yoke_y == state.yoke_y
+        @test ac.u.avionics.aileron == state.aileron
+        @test ac.u.avionics.elevator == state.elevator
         @test ac.u.avionics.pedals == state.pedals
 
         @test e_nb.ψ ≈ params.ψ_nb

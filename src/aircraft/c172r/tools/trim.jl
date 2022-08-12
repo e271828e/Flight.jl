@@ -23,11 +23,11 @@ using ..C172R
 ############################### Trimming #######################################
 ################################################################################
 
-#for trimming, the incremental yoke commands Δx and Δy are set to zero. the
-#reason is that, when starting a simulation from a trimmed state, leaving the
-#controller sticks at neutral positions corresponds to zero yoke incremental
-#commands. in this case, it is the yoke_x and yoke_y values that set the
-#appropriate surface positions
+#for trimming, the incremental control column inputs Δelevator and Δaileron are
+#set to zero. when a simulation from a trimmed state, leaving the controller
+#sticks at neutral positions corresponds to zero Δelevator and Δaileron, and
+#therefore will retain the trim control inputs. it is the aileron and elevator
+#input values that set the trim surface positions
 
 #first 2 are aircraft-agnostic
 const StateTemplate = ComponentVector(
@@ -35,18 +35,18 @@ const StateTemplate = ComponentVector(
     φ_nb = 0.0, #bank angle
     n_eng = 0.5, #normalized engine speed (ω/ω_rated)
     throttle = 0.5,
-    yoke_x = 0.0,
-    yoke_y = 0.0,
+    aileron = 0.0,
+    elevator = 0.0,
     pedals = 0.0,
 )
 
 const State{T, D} = ComponentVector{T, D, typeof(getaxes(StateTemplate))} where {T, D}
 
 function State(; α_a = 0.0848, φ_nb = 0.0, n_eng = 0.75,
-    throttle = 0.62, yoke_x = 0.015, yoke_y = -0.006, pedals = -0.03)
+    throttle = 0.62, aileron = 0.015, elevator = -0.006, pedals = -0.03)
 
     x = copy(StateTemplate)
-    @pack! x = α_a, φ_nb, n_eng, throttle, yoke_x, yoke_y, pedals
+    @pack! x = α_a, φ_nb, n_eng, throttle, aileron, elevator, pedals
     return x
 
 end
@@ -126,15 +126,16 @@ function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
     ac.x.airframe.fuel .= params.fuel
 
     ac.u.avionics.throttle = state.throttle
-    ac.u.avionics.yoke_x = state.yoke_x
-    ac.u.avionics.yoke_y = state.yoke_y
+    ac.u.avionics.aileron = state.aileron
+    ac.u.avionics.elevator = state.elevator
     ac.u.avionics.pedals = state.pedals
     ac.u.avionics.flaps = params.flaps
     ac.u.avionics.mixture = params.mixture
 
-    #incremental yoke positions to zero
-    ac.u.avionics.yoke_Δx = 0
-    ac.u.avionics.yoke_Δy = 0
+    #incremental control inputs to zero
+    ac.u.avionics.Δ_elevator = 0
+    ac.u.avionics.Δ_aileron = 0
+    ac.u.avionics.Δ_pedals = 0
 
     #engine must be running, no way to trim otherwise
     ac.s.airframe.pwp.engine.state = Piston.eng_running
@@ -207,8 +208,8 @@ function trim!(; ac::System{<:Cessna172R},
         φ_nb = -π/3,
         n_eng = 0.4,
         throttle = 0,
-        yoke_x = -1,
-        yoke_y = -1,
+        aileron = -1,
+        elevator = -1,
         pedals = -1)
 
     upper_bounds[:] .= State(
@@ -216,8 +217,8 @@ function trim!(; ac::System{<:Cessna172R},
         φ_nb = π/3,
         n_eng = 1.1,
         throttle = 1,
-        yoke_x = 1,
-        yoke_y = 1,
+        aileron = 1,
+        elevator = 1,
         pedals = 1)
 
     initial_step[:] .= 0.05 #safe value for all optimization variables

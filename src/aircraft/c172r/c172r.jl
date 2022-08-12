@@ -36,28 +36,35 @@ export Cessna172R
 
 struct BasicAvionics <: AbstractAvionics end
 
+#elevator↑ (stick forward) -> e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
+#aileron↑ (stick right) -> a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
+#pedals↑ (left pedal forward) -> r↓ -> δr↓ -> rudder trailing edge right -> Cn↑ -> yaw right
+#pedals↑ (right pedal forward) -> nose wheel steering right -> yaw right
+#flaps↑ -> δf↑ -> flap trailing edge down -> CL↑
 Base.@kwdef mutable struct BasicAvionicsU
     throttle::Ranged{Float64, 0, 1} = 0.0
-    yoke_x::Ranged{Float64, -1, 1} = 0.0 #ailerons (+ -> bank right)
-    yoke_Δx::Ranged{Float64, -1, 1} = 0.0 #ailerons (+ -> bank right), only for input devices
-    yoke_y::Ranged{Float64, -1, 1} = 0.0 #elevator (+ -> pitch down)
-    yoke_Δy::Ranged{Float64, -1, 1} = 0.0 #elevator (+ -> pitch down), only for input devices
-    pedals::Ranged{Float64, -1, 1} = 0.0 #rudder and nose wheel (+ yaw right)
-    brake_left::Ranged{Float64, 0, 1} = 0.0 #[0, 1]
-    brake_right::Ranged{Float64, 0, 1} = 0.0 #[0, 1]
-    flaps::Ranged{Float64, 0, 1} = 0.0 #[0, 1]
-    mixture::Ranged{Float64, 0, 1} = 0.5 #[0, 1]
+    aileron::Ranged{Float64, -1, 1} = 0.0
+    Δ_aileron::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    elevator::Ranged{Float64, -1, 1} = 0.0
+    Δ_elevator::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    pedals::Ranged{Float64, -1, 1} = 0.0
+    Δ_pedals::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    brake_left::Ranged{Float64, 0, 1} = 0.0
+    brake_right::Ranged{Float64, 0, 1} = 0.0
+    flaps::Ranged{Float64, 0, 1} = 0.0
+    mixture::Ranged{Float64, 0, 1} = 0.5
     eng_start::Bool = false
     eng_stop::Bool = false
 end
 
 Base.@kwdef struct BasicAvionicsY
     throttle::Float64 = 0.0
-    yoke_Δx::Float64 = 0.0
-    yoke_x::Float64 = 0.0
-    yoke_Δy::Float64 = 0.0
-    yoke_y::Float64 = 0.0
+    Δ_aileron::Float64 = 0.0
+    aileron::Float64 = 0.0
+    Δ_elevator::Float64 = 0.0
+    elevator::Float64 = 0.0
     pedals::Float64 = 0.0
+    Δ_pedals::Float64 = 0.0
     brake_left::Float64 = 0.0
     brake_right::Float64 = 0.0
     flaps::Float64 = 0.0
@@ -163,11 +170,16 @@ Base.@kwdef struct Aero <: AbstractAerodynamics
     τ::Float64 = 0.05 #time constant for filtered airflow angle derivatives
 end
 
+#e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
+#a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
+#r↑ -> δr↑ -> rudder trailing edge left -> Cn↓ -> yaw left
+#f↑ -> δf↑ -> flap trailing edge down -> CL↑
+
 Base.@kwdef mutable struct AeroU
-    e::Ranged{Float64, -1, 1} = 0.0 #elevator control input (+ pitch down)
-    a::Ranged{Float64, -1, 1} = 0.0 #aileron control input (+ roll right)
-    r::Ranged{Float64, -1, 1} = 0.0 #rudder control input (+ yaw left)
-    f::Ranged{Float64, 0, 1} = 0.0 # flap control input (+ flap down)
+    e::Ranged{Float64, -1, 1} = 0.0
+    a::Ranged{Float64, -1, 1} = 0.0
+    r::Ranged{Float64, -1, 1} = 0.0
+    f::Ranged{Float64, 0, 1} = 0.0
 end
 
 Base.@kwdef mutable struct AeroS #discrete state
@@ -474,12 +486,12 @@ function f_ode!(avionics::System{BasicAvionics}, ::System{<:Airframe},
 
     #here, avionics do nothing but update their output state. for a more complex
     #aircraft a continuous state-space autopilot implementation could go here
-    @unpack throttle, yoke_Δx, yoke_x, yoke_Δy, yoke_y, pedals, brake_left,
-            brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
+    @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
+     brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
 
     return BasicAvionicsY(;
-            throttle, yoke_Δx, yoke_x, yoke_Δy, yoke_y, pedals, brake_left,
-            brake_right, flaps, mixture, eng_start, eng_stop)
+            throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
+            brake_left, brake_right, flaps, mixture, eng_start, eng_stop)
 
 end
 
@@ -522,31 +534,21 @@ end
 
 function assign_component_inputs!(airframe::System{<:Airframe}, avionics::System{BasicAvionics})
 
-    @unpack throttle, yoke_Δx, yoke_x, yoke_Δy, yoke_y, pedals, brake_left,
-            brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
+    @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
+    brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
     @unpack aero, pwp, ldg = airframe
-
-    #yoke_Δx and yoke_Δy are additional offsets with respect to the reference
-    #position
-
-    #elevator sign criteria: we want dyoke_y/dCm < 0 (pitch down when the yoke
-    #is pushed forward). since dCm/dδe < 0 (elevator deflection positive
-    #downwards, which creates a pitching down moment), we need dyoke_y/dδe > 0.
-    #of course, since dCL/dδe > 0 (because when deflected down, the elevator
-    #adds to the total lift), dCL/dyoke_y > 0. that is, when we push the yoke
-    #forward, lift increases
 
     pwp.u.engine.start = eng_start
     pwp.u.engine.stop = eng_stop
     pwp.u.engine.thr = throttle
     pwp.u.engine.mix = mixture
-    ldg.u.nose.steering[] = pedals
+    ldg.u.nose.steering[] = (pedals + Δ_pedals) #pedals↑ (right pedal forward) -> nose wheel steering right
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
-    aero.u.e = (yoke_y + yoke_Δy) #+yoke_Δy and +yoke_y are back and +δe is pitch down, need to invert it
-    aero.u.a = (yoke_x + yoke_Δx) #+yoke_Δx and +yoke_x are right and +δa is roll right
-    aero.u.r = -pedals # +pedals is right and +δr is yaw left
-    aero.u.f = flaps # +flaps is flaps down and +δf is flaps down
+    aero.u.e = (elevator + Δ_elevator) #elevator↑ (stick forward) -> e↑
+    aero.u.a = (aileron + Δ_aileron) #aileron↑ (stick right) -> a↑
+    aero.u.r = -pedals #pedals↑ (left pedal forward) -> r↓
+    aero.u.f = flaps #flaps↑ -> δf↑
 
     return nothing
 end
@@ -585,16 +587,16 @@ end
 
 function assign!(u::BasicAvionicsU, joystick::XBoxController)
 
-    u.yoke_Δx = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.yoke_Δy = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
-    u.pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
+    u.Δ_aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.Δ_elevator = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.Δ_pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    u.yoke_x -= 0.01 * is_released(joystick, :dpad_left)
-    u.yoke_x += 0.01 * is_released(joystick, :dpad_right)
-    u.yoke_y -= 0.01 * is_released(joystick, :dpad_down)
-    u.yoke_y += 0.01 * is_released(joystick, :dpad_up)
+    u.aileron -= 0.01 * is_released(joystick, :dpad_left)
+    u.aileron += 0.01 * is_released(joystick, :dpad_right)
+    u.elevator -= 0.01 * is_released(joystick, :dpad_down)
+    u.elevator += 0.01 * is_released(joystick, :dpad_up)
 
     u.throttle += 0.1 * is_released(joystick, :button_Y)
     u.throttle -= 0.1 * is_released(joystick, :button_A)

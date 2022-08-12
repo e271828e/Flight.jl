@@ -62,8 +62,8 @@ ControlSystems.ss(m::Model) = ss(m.A, m.B, m.C, m.D)
 
 const UTemplate = ComponentVector(
     throttle = 0.0,
-    yoke_y = 0.0, #yoke forward
-    yoke_x = 0.0, #yoke right
+    elevator = 0.0, #yoke forward
+    aileron = 0.0, #yoke right
     pedals = 0.0, #right pedal forward
     )
 
@@ -81,15 +81,15 @@ const Y{T, D} = ComponentVector{T, D, typeof(getaxes(YTemplate))} where {T, D}
 
 function assign!(u::U, ac::System{<:Cessna172R})
 
-    @unpack throttle, yoke_y, yoke_x, pedals = ac.u.avionics
-    @pack! u = throttle, yoke_y, yoke_x, pedals
+    @unpack throttle, elevator, aileron, pedals = ac.u.avionics
+    @pack! u = throttle, elevator, aileron, pedals
 
 end
 
 function assign!(ac::System{<:Cessna172R}, u::U)
 
-    @unpack throttle, yoke_y, yoke_x, pedals = u
-    @pack! ac.u.avionics = throttle, yoke_y, yoke_x, pedals
+    @unpack throttle, elevator, aileron, pedals = u
+    @pack! ac.u.avionics = throttle, elevator, aileron, pedals
 
 end
 
@@ -192,7 +192,7 @@ function Model(; ac::System{<:Cessna172R{NED}} = System(Cessna172R(NED())),
         α_filt = "airframe.aero.α_filt",
         β_filt = "airframe.aero.β_filt",
         ω_eng = "airframe.pwp.engine.ω",
-        m_fuel = "airframe.fuel[1]",
+        fuel = "airframe.fuel[1]",
     )
 
     #find the indices for the variables in x_labels
