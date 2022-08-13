@@ -104,6 +104,7 @@ function System(desc::SystemDescriptor,
                 ẋ = init_ẋ(desc), x = init_x(desc), y = init_y(desc),
                 u = init_u(desc), s = init_s(desc), t = Ref(0.0))
 
+    println("OK")
     child_names = filter(p -> (p.second isa SystemDescriptor), OrderedDict(desc)) |> keys |> Tuple
     child_systems = (System(map((λ)->maybe_getproperty(λ, name), (desc, ẋ, x, y, u, s))..., t) for name in child_names) |> Tuple
     subsystems = NamedTuple{child_names}(child_systems)
