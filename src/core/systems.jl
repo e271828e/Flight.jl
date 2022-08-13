@@ -6,17 +6,17 @@ import AbstractTrees: children, printnode, print_tree
 import DataStructures: OrderedDict
 
 export f_ode!, f_step!, f_disc!
-export SystemDescriptor, System
+export Component, System
 export SystemẊ, SystemX, SystemY, SystemU, SystemS
 export init_ẋ, init_x, init_y, init_u, init_s
 
 
 ################################################################################
-############################## SystemDescriptor ################################
+############################## Component ################################
 
-abstract type SystemDescriptor end
+abstract type Component end
 
-function OrderedDict(g::SystemDescriptor)
+function OrderedDict(g::Component)
     fields = propertynames(g)
     values = map(λ -> getproperty(g, λ), fields)
     OrderedDict(k => v for (k, v) in zip(fields, values))
@@ -60,9 +60,9 @@ init_s(args...; kwargs...) = init(SystemS(), args...; kwargs...)
 
 const XType = Union{Nothing, AbstractVector{Float64}}
 
-#needs the T type parameter for dispatch, the rest for type stability
+#needs the C type parameter for dispatch, the rest for type stability
 #must be mutable to allow y updates
-mutable struct System{  T <: SystemDescriptor, X <: XType, Y, U, D, P, S}
+mutable struct System{C <: Component, X <: XType, Y, U, D, P, S}
     ẋ::X #continuous dynamics state vector derivative
     x::X #continuous dynamics state vector
     y::Y #output
@@ -73,12 +73,12 @@ mutable struct System{  T <: SystemDescriptor, X <: XType, Y, U, D, P, S}
     subsystems::S
 end
 
-#default trait initializer. if the descriptor has any SystemDescriptor fields of
+#default trait initializer. if the descriptor has any Component fields of
 #its own, these are considered children and traits are (recursively) initialized
 #from them
-function init(trait::Union{SystemX, SystemY, SystemU, SystemS}, desc::SystemDescriptor)
-    #get those fields that are themselves SystemDescriptors
-    children = filter(p -> isa(p.second, SystemDescriptor), OrderedDict(desc))
+function init(trait::Union{SystemX, SystemY, SystemU, SystemS}, cmp::Component)
+    #get those fields that are themselves Components
+    children = filter(p -> isa(p.second, Component), OrderedDict(cmp))
     #build an OrderedDict with the initialized traits for each of those
     trait_dict = OrderedDict(k => init(trait, v) for (k, v) in pairs(children))
     #forward it to the OrderedDict initializers
@@ -86,8 +86,8 @@ function init(trait::Union{SystemX, SystemY, SystemU, SystemS}, desc::SystemDesc
 end
 
 #fallback method for state vector derivative initialization
-function init(::SystemẊ, desc::SystemDescriptor)
-    x = init(SystemX(), desc) #this is a namedtuple
+function init(::SystemẊ, cmp::Component)
+    x = init(SystemX(), cmp) #this is a namedtuple
     !isnothing(x) ? x |> zero : nothing
 end
 
@@ -100,19 +100,18 @@ function maybe_getproperty(input, label)
     !isnothing(input) && (label in propertynames(input)) ? getproperty(input, label) : nothing
 end
 
-function System(desc::SystemDescriptor,
-                ẋ = init_ẋ(desc), x = init_x(desc), y = init_y(desc),
-                u = init_u(desc), s = init_s(desc), t = Ref(0.0))
+function System(cmp::Component,
+                ẋ = init_ẋ(cmp), x = init_x(cmp), y = init_y(cmp),
+                u = init_u(cmp), s = init_s(cmp), t = Ref(0.0))
 
-    println("OK")
-    child_names = filter(p -> (p.second isa SystemDescriptor), OrderedDict(desc)) |> keys |> Tuple
-    child_systems = (System(map((λ)->maybe_getproperty(λ, name), (desc, ẋ, x, y, u, s))..., t) for name in child_names) |> Tuple
+    child_names = filter(p -> (p.second isa Component), OrderedDict(cmp)) |> keys |> Tuple
+    child_systems = (System(map((λ)->maybe_getproperty(λ, name), (cmp, ẋ, x, y, u, s))..., t) for name in child_names) |> Tuple
     subsystems = NamedTuple{child_names}(child_systems)
 
-    params = NamedTuple(n=>getfield(desc,n) for n in propertynames(desc) if !(n in child_names))
+    params = NamedTuple(n=>getfield(cmp,n) for n in propertynames(cmp) if !(n in child_names))
     params = (!isempty(params) ? params : nothing)
 
-    System{map(typeof, (desc, x, y, u, s, params, subsystems))...}(
+    System{map(typeof, (cmp, x, y, u, s, params, subsystems))...}(
                          ẋ, x, y, u, s, t, params, subsystems)
 
 end
@@ -135,7 +134,7 @@ end
     if S === :y
         return :(setfield!(sys, $(QuoteNode(S)), value))
     else
-        return :(error("A System's $S cannot be reassigned; mutate its fields instead."))
+        return :(error("A System's $S cannot be reassigned, only mutated in place"))
     end
 end
 
@@ -154,10 +153,10 @@ end
 #fallback method for node Systems. tries calling f_ode! on all subsystems with
 #the same arguments provided to the parent System, then assembles a NamedTuple
 #from the subsystems' outputs. override as required.
-@inline @generated function (f_ode!(sys::System{T, X, Y, U, D, P, S}, args...)
-                            where {T<:SystemDescriptor, X <: XType, Y, U, D, P, S})
+@inline @generated function (f_ode!(sys::System{C, X, Y, U, D, P, S}, args...)
+                            where {C<:Component, X <: XType, Y, U, D, P, S})
 
-    # Core.println("@generated f_ode! called for type $T")
+    # Core.println("@generated f_ode! called for type $C")
     ex_main = Expr(:block)
 
     #call f_ode! on each subsystem
@@ -180,10 +179,10 @@ end
 #fallback method for node Systems. tries calling f_step! on all subsystems with
 #the same arguments provided to the parent System, then ORs their outputs.
 #override as required
-@inline @generated function (f_step!(sys::System{T, X, Y, U, D, P, S}, args...)
-                            where {T<:SystemDescriptor, X <: XType, Y, U, D, P, S})
+@inline @generated function (f_step!(sys::System{C, X, Y, U, D, P, S}, args...)
+                            where {C<:Component, X <: XType, Y, U, D, P, S})
 
-    # Core.println("Generated f_step! called for type $T")
+    # Core.println("Generated f_step! called for type $C")
     # Core.println()
 
     ex = Expr(:block)
@@ -202,10 +201,10 @@ end
 #fallback method for node Systems. tries calling f_disc! on all subsystems with
 #the same arguments provided to the parent System, then ORs their outputs.
 #override as required.
-@inline @generated function (f_disc!(sys::System{T, X, Y, U, D, P, S}, Δt, args...)
-                            where {T<:SystemDescriptor, X <: XType, Y, U, D, P, S})
+@inline @generated function (f_disc!(sys::System{C, X, Y, U, D, P, S}, Δt, args...)
+                            where {C<:Component, X <: XType, Y, U, D, P, S})
 
-    # Core.println("@generated f_disc! called for $T")
+    # Core.println("@generated f_disc! called for $C")
     # Core.println()
 
     ex = Expr(:block)
@@ -221,12 +220,12 @@ end
 
 end
 
-@inline function (assemble_y!(sys::System{T, X, Y})
-    where {T<:SystemDescriptor, X, Y <: Nothing})
+@inline function (assemble_y!(sys::System{C, X, Y})
+    where {C<:Component, X, Y <: Nothing})
 end
 
-@inline @generated function (assemble_y!(sys::System{T, X, Y})
-    where {T<:SystemDescriptor, X, Y <: NamedTuple{L, M}} where {L, M})
+@inline @generated function (assemble_y!(sys::System{C, X, Y})
+    where {C<:Component, X, Y <: NamedTuple{L, M}} where {L, M})
 
     #L contains the field names of those subsystems which have outputs. retrieve
     #the y's of those subsystems and assemble them into a NamedTuple, which will
@@ -261,29 +260,29 @@ end
 
 Base.@kwdef struct SystemTreeNode
     label::Symbol = :root
-    type::DataType #SystemDescriptor type
+    type::DataType #Component type
     function SystemTreeNode(label::Symbol, type::DataType)
-        @assert (type <: SystemDescriptor) && (!isabstracttype(type))
+        @assert (type <: Component) && (!isabstracttype(type))
         new(label, type)
     end
 end
 
-SystemTreeNode(::Type{T}) where {T<:SystemDescriptor} = SystemTreeNode(type = T)
+SystemTreeNode(::Type{C}) where {C<:Component} = SystemTreeNode(type = C)
 
 function children(node::SystemTreeNode)
     return [SystemTreeNode(name, type) for (name, type) in zip(
             fieldnames(node.type), fieldtypes(node.type))
-            if type <: SystemDescriptor]
+            if type <: Component]
 end
 
 function printnode(io::IO, node::SystemTreeNode)
     print(io, ":"*string(node.label)*" ($(node.type))")
 end
 
-print_tree(desc::Type{T}; kwargs...) where {T<:SystemDescriptor} =
-    print_tree(SystemTreeNode(desc); kwargs...)
+print_tree(cmp::Type{C}; kwargs...) where {C<:Component} =
+    print_tree(SystemTreeNode(cmp); kwargs...)
 
-print_tree(::T; kwargs...) where {T<:SystemDescriptor} = print_tree(T; kwargs...)
-print_tree(::System{D}; kwargs...) where {D} = print_tree(D; kwargs...)
+print_tree(::C; kwargs...) where {C<:Component} = print_tree(C; kwargs...)
+print_tree(::System{C}; kwargs...) where {C} = print_tree(C; kwargs...)
 
 end #module

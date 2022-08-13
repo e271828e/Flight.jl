@@ -15,7 +15,7 @@ import Flight.RigidBody: get_mp_b
 
 ########################### AbstractFuelSupply #################################
 
-abstract type AbstractFuelSupply <: SystemDescriptor end
+abstract type AbstractFuelSupply <: Component end
 
 MassTrait(::System{<:AbstractFuelSupply}) = HasMass()
 WrenchTrait(::System{<:AbstractFuelSupply}) = GetsNoExternalWrench()
@@ -37,7 +37,7 @@ fuel_available(f::System{MagicFuelSupply}) = f.u[]
 
 ########################### AbstractPistonEngine ###############################
 
-abstract type AbstractPistonEngine <: SystemDescriptor end
+abstract type AbstractPistonEngine <: Component end
 
 # can't figure out how to register these so that they are seen from module
 # methods
@@ -71,7 +71,7 @@ AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
 ########################### IdleController #####################################
 
 #a simple PI controller to maintain the desired target idle RPM
-Base.@kwdef struct IdleController <: SystemDescriptor
+Base.@kwdef struct IdleController <: Component
     k_p::Float64 = 4
     k_i::Float64 = 2
     ω_target::Float64 = 60
@@ -436,7 +436,7 @@ end
 #the other way around
 
 Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
-                            P <: AbstractPropeller} <: SystemDescriptor
+                            P <: AbstractPropeller} <: Component
     engine::E = Engine()
     propeller::P = Propeller()
     gear_ratio::Float64 = 1.0 #gear ratio

@@ -29,7 +29,7 @@ end
 
 ######################## AbstractTerrain ##########################
 
-abstract type AbstractTerrain <: SystemDescriptor end
+abstract type AbstractTerrain <: Component end
 TerrainData(::System{<:AbstractTerrain}, args...) = throw(MethodError(TerrainData, args))
 
 struct DummyTerrain <: AbstractTerrain end

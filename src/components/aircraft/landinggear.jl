@@ -30,7 +30,7 @@ const e3 = SVector{3,Float64}(0,0,1)
 ################################################################################
 ################################# Steering #####################################
 
-abstract type AbstractSteering <: SystemDescriptor end
+abstract type AbstractSteering <: Component end
 
 ############## NoSteering ##############
 
@@ -61,7 +61,7 @@ get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
 ################################################################################
 ################################# Braking ######################################
 
-abstract type AbstractBraking <: SystemDescriptor end
+abstract type AbstractBraking <: Component end
 
 
 ############## NoBraking ###############
@@ -117,7 +117,7 @@ end
 
 ########################## Strut #########################
 
-Base.@kwdef struct Strut{D<:AbstractDamper} <: SystemDescriptor
+Base.@kwdef struct Strut{D<:AbstractDamper} <: Component
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
     l_OsP::Float64 = 0.0 #strut natural length from strut frame origin to wheel endpoint
     damper::D = SimpleDamper()
@@ -251,7 +251,7 @@ end
 
 ########################## Contact ###############################
 
-Base.@kwdef struct Contact <: SystemDescriptor
+Base.@kwdef struct Contact <: Component
     friction::Friction.Regulator{2} = Friction.Regulator{2}(k_p = 5.0, k_i = 400.0, k_l = 0.2)
 end
 
@@ -352,7 +352,7 @@ f_step!(contact::System{Contact}) = f_step!(contact.friction)
 ########################## LandingGearUnit #########################
 
 Base.@kwdef struct LandingGearUnit{S <: AbstractSteering,
-                            B <: AbstractBraking, L<:Strut} <: SystemDescriptor
+                            B <: AbstractBraking, L<:Strut} <: Component
     steering::S = NoSteering()
     braking::B = NoBraking()
     strut::L = Strut()

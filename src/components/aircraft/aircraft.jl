@@ -20,7 +20,7 @@ export AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 ###############################################################################
 ############################## Airframe #######################################
 
-abstract type AbstractAirframe <: SystemDescriptor end
+abstract type AbstractAirframe <: Component end
 MassTrait(::System{<:AbstractAirframe}) = HasMass()
 WrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
 AngularMomentumTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
@@ -38,7 +38,7 @@ get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distributi
 
 ####################### AbstractAerodynamics ##########################
 
-abstract type AbstractAerodynamics <: SystemDescriptor end
+abstract type AbstractAerodynamics <: Component end
 
 MassTrait(::System{<:AbstractAerodynamics}) = HasNoMass()
 WrenchTrait(::System{<:AbstractAerodynamics}) = GetsExternalWrench()
@@ -48,7 +48,7 @@ AngularMomentumTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
 ###############################################################################
 ######################### AbstractAvionics ####################################
 
-abstract type AbstractAvionics <: SystemDescriptor end
+abstract type AbstractAvionics <: Component end
 
 struct NoAvionics <: AbstractAvionics end
 
@@ -57,7 +57,7 @@ struct NoAvionics <: AbstractAvionics end
 
 struct AircraftBase{K <: AbstractKinematics,
                     F <: AbstractAirframe,
-                    A <: AbstractAvionics} <: SystemDescriptor
+                    A <: AbstractAvionics} <: Component
     kinematics::K
     airframe::F
     avionics::A
@@ -69,7 +69,7 @@ function AircraftBase(kinematics::K = LTF(),
     AircraftBase{K,F,A}(kinematics, airframe, avionics)
 end
 
-#override the default SystemDescriptor implementation, because we need to
+#override the default Component implementation, because we need to
 #add some stuff besides subsystem outputs
 init(::SystemY, ac::AircraftBase) = (
     airframe = init_y(ac.airframe),

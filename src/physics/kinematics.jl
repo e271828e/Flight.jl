@@ -20,7 +20,7 @@ export AbstractKinematics, ECEF, LTF, NED, KinematicInit, KinematicData
 ########################## AbstractKinematics #############################
 ##############################################################################
 
-abstract type AbstractKinematics <: SystemDescriptor end
+abstract type AbstractKinematics <: Component end
 
 struct Initializer
     q_nb::RQuat

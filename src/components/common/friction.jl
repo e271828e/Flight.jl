@@ -38,7 +38,7 @@ end
 
 ######################### Regulator###################################
 
-struct Regulator{N} <: SystemDescriptor
+struct Regulator{N} <: Component
     k_p::SVector{N,Float64} #proportional gain
     k_i::SVector{N,Float64} #integral gain
     k_l::SVector{N,Float64} #integrator leak factor

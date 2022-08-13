@@ -10,7 +10,7 @@ import Flight.Systems: init, f_ode!, f_step!
 
 export AbstractEnvironment, SimpleEnvironment
 
-abstract type AbstractEnvironment <: SystemDescriptor end
+abstract type AbstractEnvironment <: Component end
 
 Base.@kwdef struct SimpleEnvironment{A <: AbstractAtmosphere, T <: AbstractTerrain} <: AbstractEnvironment
     atm::A = SimpleAtmosphere()

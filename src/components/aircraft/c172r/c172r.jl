@@ -82,7 +82,7 @@ init(::SystemY, ::BasicAvionics) = BasicAvionicsY()
 
 ################################ Airframe ######################################
 
-struct Structure <: SystemDescriptor end
+struct Structure <: Component end
 
 # This component represents the airframe structure, together with any components
 # rigidly attached to it, such as powerplant or landing gear, but not payload or
@@ -309,7 +309,7 @@ end
 
 ############################# Landing Gear ####################################
 
-struct Ldg <: SystemDescriptor
+struct Ldg <: Component
     left::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
     right::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
     nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
@@ -361,7 +361,7 @@ const psg_left_slot = FrameTransform(r = SVector{3}(-0.681, -0.356, 0.899))
 const psg_right_slot = FrameTransform(r = SVector{3}(-0.681, 0.356, 0.899))
 const baggage_slot = FrameTransform(r = SVector{3}(-1.316, 0, 0.899))
 
-struct Payload <: SystemDescriptor
+struct Payload <: Component
     pilot::MassProperties #mp_b
     copilot::MassProperties #mp_b
     psg_left::MassProperties #mp_b

@@ -18,7 +18,7 @@ function test(save = true)
         mixture = 0.5,
         flaps = 0.0)
 
-    C172R.Trim.trim!(; ac, env, params = trim_params)
+    C172R.Trim.trim!(ac, env, trim_params)
 
     sim = Simulation(ac; args_ode = (env, ), t_end = 150, adaptive = true)
     Sim.run!(sim, verbose = true)

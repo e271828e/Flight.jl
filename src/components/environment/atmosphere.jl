@@ -39,7 +39,7 @@ import Flight.Plotting: make_plots
 #AbstractISAModel subtypes: ConstantUniformISA (TunableISA), ConstantFieldISA,
 #DynamicUniformISA, DynamicFieldISA.
 
-abstract type AbstractISAModel <: SystemDescriptor end
+abstract type AbstractISAModel <: Component end
 
 const R = 287.05287 #gas constant for dry ISA
 const γ = 1.40 #heat capacity ratio for dry ISA
@@ -164,7 +164,7 @@ end
 ################################################################################
 ################################ WindModel #####################################
 
-abstract type AbstractWindModel <: SystemDescriptor end
+abstract type AbstractWindModel <: Component end
 
 Base.@kwdef struct WindData
     v_ew_n::SVector{3,Float64} = zeros(SVector{3})
@@ -191,7 +191,7 @@ end
 ################################################################################
 ############################# Atmospheric Model ################################
 
-abstract type AbstractAtmosphere <: SystemDescriptor end
+abstract type AbstractAtmosphere <: Component end
 
 Base.@kwdef struct SimpleAtmosphere{S <: AbstractISAModel, W <: AbstractWindModel} <: AbstractAtmosphere
     ISA::S = TunableISA()

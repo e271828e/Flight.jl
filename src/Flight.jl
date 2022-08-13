@@ -15,18 +15,19 @@ include("physics/attitude.jl")
 include("physics/geodesy.jl")
 include("physics/kinematics.jl")
 include("physics/rigidbody.jl")
-include("physics/friction.jl")
 
-include("environment/atmosphere.jl")
-include("environment/terrain.jl")
-include("environment/environment.jl")
+include("components/common/common.jl")
+include("components/common/friction.jl")
 
-include("aircraft/landinggear.jl")
-include("aircraft/propellers.jl")
-include("aircraft/piston.jl")
+include("components/environment/atmosphere.jl")
+include("components/environment/terrain.jl")
+include("components/environment/environment.jl")
 
-include("aircraft/aircraft.jl")
-include("aircraft/c172r/c172r.jl")
+include("components/aircraft/landinggear.jl")
+include("components/aircraft/propellers.jl")
+include("components/aircraft/piston.jl")
+include("components/aircraft/aircraft.jl")
+include("components/aircraft/c172r/c172r.jl")
 
 @reexport using .Utils
 @reexport using .Systems
@@ -40,7 +41,9 @@ include("aircraft/c172r/c172r.jl")
 @reexport using .Geodesy
 @reexport using .Kinematics
 @reexport using .RigidBody
+
 @reexport using .Friction
+@reexport using .Common
 
 @reexport using .Atmosphere
 @reexport using .Terrain
@@ -49,7 +52,6 @@ include("aircraft/c172r/c172r.jl")
 @reexport using .LandingGear
 @reexport using .Propellers
 @reexport using .Piston
-
 @reexport using .Aircraft
 @reexport using .C172R
 

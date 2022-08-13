@@ -3,7 +3,7 @@ using Flight
 using UnPack
 using OrdinaryDiffEq
 
-Base.@kwdef struct MassSpringDamper <: SystemDescriptor
+Base.@kwdef struct MassSpringDamper <: Component
     ω_n::Float64 = 1.0 #undamped natural frequency
     ζ::Float64 = 1.0 #damping ratio
     Δt_d::Float64 = 2 #spring switching time interval

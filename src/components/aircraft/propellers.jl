@@ -292,7 +292,7 @@ end
     CCW = -1
 end
 
-abstract type AbstractPropeller <: SystemDescriptor end
+abstract type AbstractPropeller <: Component end
 
 MassTrait(::System{<:AbstractPropeller}) = HasNoMass()
 WrenchTrait(::System{<:AbstractPropeller}) = GetsExternalWrench()
@@ -396,7 +396,7 @@ get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 ################################################################################
 ####################### ConstantSpeedPropeller #################################
 
-# abstract type AbstractGovernor <: SystemDescriptor end
+# abstract type AbstractGovernor <: Component end
 
 # struct ConstantSpeedPropeller{P <: Propeller{VariablePitch}, G <: AbstractGovernor} <: AbstractPropeller
 #     propeller::P
