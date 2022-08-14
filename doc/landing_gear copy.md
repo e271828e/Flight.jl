@@ -17,86 +17,62 @@ Strut frame $s$:
 The attitude of the strut frame axes with respect to the vehicle axes is constant and known.
 
 Wheel frame $w$:
-- $O_w$: Wheel's endpoint along $z_s$.
+- $O_w$: End point of the tire, located along the $z_s$ axis.
 - $z_w$: Parallel to $z_s$.
 - $y_w$: Parallel to the wheel axle. The angle from $y_s$ to $y_w$ is the steering angle $\psi_{sw}$.
 
 Contact frame $c$:
-- $O_c$: Intersection of $z_s$ with the local terrain tangent plane. When the wheel is in contact with the ground, $O_c = O_w$.
-- $z_c$: Parallel to the terrain's local surface normal unit vector, defined by its NED components $u_t^n$.
-- $x_c$: Parallel to the projection of the $x_w$ axis onto the terrain tangent plane.
+- $O_c$: Coincident with $O_w$
+- $z_c$: Parallel to the terrain's local normal, defined by its NED components $k_t^n$.
+- $x_c$: Parallel to the projection of the $x_w$ axis onto the terrain's tangent plane.
 
-Distance parameters:
-- $l$: Signed distance from $O_s$ to $O_c$ along $z_s$.
-- $l_0$: Strut natural length.
-- $\Delta l = l - l_0$: Theoretical strut deformation. When $\Delta l > 0$, the wheel is in the air, the strut is at its natural length and $O_w \neq O_c$. When $\Delta l < 0$ the wheel is in contact with the ground, the strut is compressed and $O_w = O_c$.
-- $\xi = \min\{0, \Delta l\}$: Actual strut deformation.
-
-The force exerted by the strut outwards along the positive $z_s$ is a function $F(\xi, \dot{\xi})$. Therefore, $\xi < 0$ does not necessarily mean that the strut is actually pushing on the ground. In particular, if the strut is compressed ($\xi<0$) but expanding ($\dot{\xi} > 0$), the function $F(\xi, \dot{\xi})$ could become negative. Of course, this is not actually possible, because in that case the wheel would lift off the ground momentarily. Therefore, the actual force exerted on the ground is $\max\{0,F(\xi, \dot{\xi})\}$.
-
-We define a maximum force $F_{max}$ such that if $F(\xi, \dot{\xi}) > F_{max}$, we consider the mechanical load has exceeded its admissible limit and we abort the simulation.
+Strut length parameters:
+- $l$: Signed distance from $O_s$ to $O_w$ along $z_s$
+- $l_0$: Signed distance from $O_s$ to $O_w$ along $z_s$ when the strut is at its natural length (no compression or
+  elongation other than that due to the weight of the strut-tire assembly itself).
+- $\xi = \min\{0,l - l_0\}$: Strut deformation. When the tire is in the air, $l > l_0$ and the strut is at its natural
+  length ($\xi = 0$). When the tire is in contact with the ground, but supporting no weight, so that the strut is
+  exactly at its natural length, we have $\xi = 0$. When  the tire is on the ground and the strut is compressed,
+  $\xi = l - l_0 < 0$. When there is contact, we have $O_w = O_c$
 
 ### WoW Determination
 
-We start by computing the position of $O_{w0} = O_w(\xi = 0)$, that is, the wheel's endpoint when the strut is at its natural length.
-$$ r_{O_eO_{w0}}^e = r_{O_eO_b}^e + r_{O_bO_s}^e + r_{O_sO_{w0}}^e $$
+First, we need to compute $O_c$ (that is, $l$) to determine whether there is ground contact.
 
-Where:
-$$R^e_s = R^e_b R^b_s$$
-$$
-r_{O_bO_s}^e = R^e_b r_{O_bO_s}^b
-$$
-$$
-r_{O_sO_{w0}}^e = R^e_s r_{O_sO_{w0}}^s = R^e_s {\begin{pmatrix} 0 & 0 & l_0 \end{pmatrix}}^T = R^e_s e_3 l_0 =  k^e_s l_0
-$$
+We have:
+$$h(O_c) = h(O_s) - e_3^T r_{O_sO_c}^n$$
 
-Then we construct the local ground tangent plane. We define it as follows:
-- Its origin $O_t$ is the projection of $O_{w0}$ onto the terrain along the local vertical. Therefore, the geographic 2D location of $O_t$, given by its n-Vector $n^e(O_t)$, is simply that of $O_{w0}$. The altitude $h(O_t)$ is obtained by querying the terrain model at $n^e(O_t)$. From $n^e(O_t)$ and $h(O_t)$ we compute the Cartesian position $r_{O_eO_t}^e$.
-- Its normal unit vector $u_t^n$ is obtained by querying the terrain model for its surface normal at $n^e(O_t)$, which we can then transform to $e$ axes.
+Noting that $r_{O_sO_c}^s = l \, k_s^s = l \,e_3$:
+$$k_s^n = R^n_s k_s^s$$
+$$h(O_c) = h(O_s) - e_3^T k_s^n \,l$$
 
-In order to avoid unnecessary computations when the aircraft is too far from the ground for contact to be even potentially possible, we first compute $h(O_{w0})$ and check the condition:
-$$
-h(O_{w0}) - h(O_t) < \Delta h_{max}
-$$
+Setting $h(O_c) = h_{gnd}(O_c)$:
+$$h_{gnd}(O_c) = h(O_s) - e_3^T k_s^n \,l$$
 
-Where $\Delta h_{max}$ is a suitable chosen threshold. If this doesn't hold, we are done. Otherwise, we continue with the exact ground contact test.
+This equation cannot be directly solved, because $O_c$ is unknown (its location is given by the
+value of $l$), and therefore we cannot evaluate $h_{gnd}(O_c)$. However, a suitable approximation is
+$h_{gnd}(O_c) \approx
+h_{gnd}(O_w(l_0))$, where $O_w(l_0)$ is the origin of the wheel frame with the strut at its natural
+length, given by:
 
-The equation satisfied by a point $P$ contained in the local ground tangent plane is:
-$$
-(u_t^e)^T (r_{O_eP}^e - r_{O_eO_t}^e) = (u_t^e)^T r_{O_tP}^e  = 0
-$$
-
-Now, we find $l$ by imposing that $O_c$ be contained in this plane:
-$$
-(u_t^e)^T r_{O_tO_c}^e = 0
-$$
-
-With:
-$$
-r_{O_tO_c}^e = r_{O_tO_s}^e + r_{O_sO_c}^e
-$$
-
-$$
-r_{O_sO_c}^e = R^e_s r_{O_sO_c}^s = R^e_s {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T = R^e_s e_3 l=  k^e_s l
-$$
-
-$$
-r_{O_tO_s}^e = r_{O_eO_s}^e - r_{O_eO_t}^e = r_{O_eO_b}^e + r_{O_bO_s}^e - r_{O_eO_t}^e =
-              r_{O_eO_b}^e + R^e_b r_{O_bO_s}^b - r_{O_eO_t}^e
-$$
+$${r}_{O_sO_w(l_0)}^s = {\begin{pmatrix} 0 & 0 & l_0 \end{pmatrix}}^T$$
 
 With this:
-$$ (u_t^e)^T (r_{O_tO_s}^e + k^e_s l) = 0 $$
 
-$$ l = - \dfrac{(u_t^e)^T r_{O_tO_s}^e}{(u_t^e)^T k^e_s }  $$
+$$\Delta h = h(O_s) - h_{gnd}(O_c)$$
 
-If $\Delta l = l - l_0 \geq 0$, there is no contact and we are done. Otherwise, $\xi = \Delta l$ and we proceed.
+$$l = \dfrac{\Delta h}{e_3^T k^n_s}$$
 
-Note that if the aircraft is inverted above the ground, imposing the above constraint will result in a large negative $l$ without physical validity (the wheel would crash through the airframe to attach itself to the ground). In order to avoid such situations, to declare ground contact we also require that the projection of $z_s$ onto the terrain (inward pointing) normal $u_t$ be positive, that is:
-$$
-(k_s^e)^T u_t^e > 0
-$$
+If $e_3^T k^n_s< 0$, the projection of the $z_s$ axis along the Down direction is negative, that is, the strut is upside down. If the aircraft is above the ground, enforcing the ground contact constraint would result in the ground pulling the contact point towards it and compressing the shock absorber, potentially beyond $O_s$. When the aircraft is far from the ground, the compression produces astronomically large forces and the simulation numerically breaks down. Naturally, this situation is absurd to begin with, because the contact constraint is unilateral. Therefore, if
+$e_3^T k^n_s< 0$, we should simply set $l = l_0$.
 
+Elongation is then given by:
+
+$$\xi = \min\{0, l < l_0\}$$
+
+If the aircraft falls upside down, the landing gear model will be disabled by the above condition and the aircraft will penetrate the ground. If the aircraft then rolls over, the model will be reenabled with a potentially huge compression, which will cause numerical blowup again. To avoid this, we can define a minimum $\xi_{min}<0$ below which the model is disabled. With this, the WoW condition is:
+
+$$\xi \in [\xi_{min}, 0]$$
 
 ### Contact Frame Construction
 
@@ -128,7 +104,7 @@ $${r}_{O_sO_c}^s = {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T$$
 
 $$r_{O_bO_c}^b = r_{O_bO_s}^b + R^b_s r_{O_sO_c}^s$$:
 
-### Computing $v_{eO_c}^c$
+### Computing $v_{eO_c}^n$
 
 $$r_{O_eO_c}^e = r_{O_eO_b}^e + r_{O_bO_c}^e = r_{O_eO_b}^e + R^e_b r_{O_bO_c}^b$$
 
@@ -155,26 +131,26 @@ $${v}_{eO_c(b)}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b$$
 
 
 The term ${v}_{eO_c(b)}^b$ represents the velocity of the contact point due to vehicle motion, and
-$R^b_s e_3 \dot{\xi}$ is its velocity due to strut deformation.
+$R^b_s e_3 \dot{\xi}$ is its velocity due to piston elongation or compression.
 
 Now:
 $$R^c_s = R^c_b R^b_s$$
 
 $${v}_{eO_c(b)}^c = R^c_b {v}_{eO_c(b)}^b$$
 
-$${v}_{eO_c}^c = {v}_{eO_c(b)}^c + R^c_s e_3 \dot{\xi} = {v}_{eO_c(b)}^c + k^c_s \dot{\xi}$$
+$${v}_{eO_c}^c = {v}_{eO_c(b)}^c + R^c_s e_3 \dot{\xi}$$
 
 The non-penetration constraint requires that:
 
-$$e_3^T {v}_{eO_c}^c = 0 = e_3^T {v}_{eO_c(b)}^c + e_3^T k^c_s \dot{\xi} = {v}_{eO_c(b)}^c[3] + \dot{\xi} k^c_s[3] $$
+$$e_3^T {v}_{eO_c}^c = 0 = e_3^T {v}_{eO_c(b)}^c + e_3^T R^c_s e_3 \dot{\xi}$$
 
 From which:
 
-$$\dot{\xi} = \dfrac{-{v}_{eO_c(b)}^c [3]}{k^c_s[3]} $$
+$$\dot{\xi} = \dfrac{-1}{R^c_s(3,3)} e_3^T {v}_{eO_c(b)}^c$$
 
 Once $\dot{\xi}$ is known, we can compute:
 
-$${v}_{eO_c}^c = {v}_{eO_c(b)}^c + k^c_s \dot{\xi}$$
+$${v}_{eO_c}^c = {v}_{eO_c(b)}^c + R^c_s e_3 \dot{\xi}$$
 
 
 ### Maximum Friction Coefficients

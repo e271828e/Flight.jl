@@ -104,9 +104,9 @@ Base.@kwdef struct SimpleDamper <: AbstractDamper
 end
 
 #Force exerted by the damper along zs. The deformation ξ is positive along z_s
-#(elongation). The resulting force can be negative, meaning the damper pulls the
-#piston rod assembly upwards along the negative z_s axis. This can happen when
-#ξ_dot > 0 and sufficiently large
+#(elongation). When the damper force is positive (weight on wheel), it pushes
+#the piston rod assembly downwards along the positive z_s direction. When it is
+#negative, it pulls the piston rod upwards along the negative z_s axis
 function get_force(c::SimpleDamper, ξ::Real, ξ_dot::Real)
     k_d = (ξ_dot > 0 ? c.k_d_ext : c.k_d_cmp)
     F = -(c.k_s * ξ + k_d * ξ_dot)
