@@ -5,6 +5,7 @@ using StaticArrays
 using Flight.Systems
 using Flight.Geodesy
 import Flight.Systems: init, f_ode!, f_step!
+import Flight.Geodesy: Altitude
 
 export AbstractTerrain, DummyTerrain, HorizontalTerrain
 
@@ -15,16 +16,20 @@ export SurfaceType, DryTarmac, WetTarmac, IcyTarmac
 @enum SurfaceType DryTarmac WetTarmac IcyTarmac
 
 struct TerrainData
+    location::NVector
     altitude::Altitude{Orthometric}
     normal::SVector{3,Float64} #NED components, inward pointing
     surface::SurfaceType
 end
 
-function TerrainData(; altitude = HOrth(0),
+function TerrainData(; location = NVector(),
+                       altitude = HOrth(0),
                        normal = SVector{3,Float64}(0,0,1),
                        surface = DryTarmac) where {S}
-    TerrainData(altitude, SVector{3,Float64}(normal), surface)
+    TerrainData(location, altitude, SVector{3,Float64}(normal), surface)
 end
+
+Altitude{D}(data::TerrainData) where {D} = Altitude{D}(data.altitude, data.location)
 
 
 ######################## AbstractTerrain ##########################
@@ -42,8 +47,8 @@ end
 HorizontalTerrain(; altitude = HOrth(0), surface = DryTarmac) =
     HorizontalTerrain(altitude, surface)
 
-TerrainData(trn::System{<:HorizontalTerrain}, ::Abstract2DLocation) =
-    TerrainData(trn.params.altitude, SVector{3,Float64}(0,0,1), trn.params.surface)
+TerrainData(trn::System{<:HorizontalTerrain}, loc::Abstract2DLocation) =
+    TerrainData(loc, trn.params.altitude, SVector{3,Float64}(0,0,1), trn.params.surface)
 
 end #module
 

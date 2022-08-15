@@ -79,7 +79,7 @@ function test_simple_damper()
         damper = LandingGear.SimpleDamper()
         @test LandingGear.get_force(damper, -0.1, 0) > 0
         @test LandingGear.get_force(damper, 0, -1) > 0
-        @test LandingGear.get_force(damper, damper.ξ_min - 0.1, 0) == 0
+        @test_throws AssertionError LandingGear.get_force(damper, -5, 0)
     end
 
 end
@@ -89,11 +89,11 @@ function test_strut()
     @testset verbose = true "Strut" begin
 
         damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
-        strut = Strut(l_OsP = 1.0, damper = damper) |> System
-        y_default = strut.y
+        strut = Strut(l_0 = 1.0, damper = damper) |> System
 
         steering = System(DirectSteering(ψ_max = π/6))
         terrain = System(HorizontalTerrain())
+        loc = NVector()
 
         #set the initial 2D Location
         h_trn = TerrainData(terrain, loc).altitude
@@ -102,7 +102,7 @@ function test_strut()
         h = h_trn + 1.1
         kin = KinematicInit(; h) |> KinematicData
         f_ode!(strut, steering, terrain, kin)
-        @test strut.y == y_default #strut outputs stay at their defaults
+        @test strut.y.wow === false
 
         #wow = true
         h = h_trn + 0.9
@@ -166,7 +166,7 @@ function test_contact()
         @test length(contact.x) == 2
         @test length(contact.u.friction.reset) == 2
 
-        strut = Strut(l_OsP = 1.0) |> System
+        strut = Strut(l_0 = 1.0) |> System
         steering = System(DirectSteering())
         braking = System(DirectBraking())
         terrain = System(HorizontalTerrain())

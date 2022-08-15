@@ -1,10 +1,6 @@
 module LandingGear
 
-using LinearAlgebra
-using StaticArrays
-using ComponentArrays
-using UnPack
-using Plots
+using StaticArrays, ComponentArrays, LinearAlgebra, UnPack, Plots
 
 using Flight.Utils
 using Flight.Systems
@@ -100,7 +96,7 @@ Base.@kwdef struct SimpleDamper <: AbstractDamper
     k_s::Float64 = 25000 #spring constant
     k_d_ext::Float64 = 1000 #extension damping coefficient
     k_d_cmp::Float64 = 1000 #compression damping coefficient
-    ξ_min::Float64 = -10 #compression below which the shock absorber is disabled
+    F_max::Float64 = 25000 #maximum allowable damper force
 end
 
 #Force exerted by the damper along zs. The deformation ξ is positive along z_s
@@ -110,7 +106,7 @@ end
 function get_force(c::SimpleDamper, ξ::Real, ξ_dot::Real)
     k_d = (ξ_dot > 0 ? c.k_d_ext : c.k_d_cmp)
     F = -(c.k_s * ξ + k_d * ξ_dot)
-    F = F * (ξ > c.ξ_min)
+    @assert abs(F) < c.F_max "Maximum allowable damper force exceeded"
     return F
 end
 
@@ -119,7 +115,7 @@ end
 
 Base.@kwdef struct Strut{D<:AbstractDamper} <: Component
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
-    l_OsP::Float64 = 0.0 #strut natural length from strut frame origin to wheel endpoint
+    l_0::Float64 = 0.0 #strut natural length from airframe attachment point to wheel endpoint
     damper::D = SimpleDamper()
 end
 
@@ -139,66 +135,58 @@ init(::SystemY, ::Strut) = StrutY()
 function f_ode!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     terrain::System{<:AbstractTerrain}, kin::KinematicData)
 
-    @unpack t_bs, l_OsP, damper = sys.params
-    @unpack n_e, h_e, q_eb, q_nb, v_eOb_b, ω_eb_b = kin
+    @unpack t_bs, l_0, damper = sys.params
+    @unpack q_eb, q_nb, q_en, n_e, h_e, r_eOb_e, v_eOb_b, ω_eb_b = kin
 
-    #strut frame axes
-    q_bs = t_bs.q
+    q_bs = t_bs.q #body frame to strut frame rotation
     r_ObOs_b = t_bs.r #strut frame origin
 
-    #compute contact reference point P (wheel endpoint)
-    r_OsP_s = l_OsP * e3
-    r_ObP_b = r_ObOs_b + q_bs(r_OsP_s)
-    r_ObP_e = q_eb(r_ObP_b)
-    r_OeOb_e = Cartesian(Geographic(n_e, h_e))
-    r_OeP_e = r_OeOb_e + r_ObP_e
-    P = Geographic(r_OeP_e)
+    #do we have ground contact?
+    q_es = q_eb ∘ q_bs
+    ks_e = q_es(e3)
+    r_ObOs_e = q_eb(r_ObOs_b)
+    r_OsOw0_e = l_0 * ks_e
+    r_eOw0_e = r_eOb_e + r_ObOs_e + r_OsOw0_e
+    Ow0 = r_eOw0_e |> Cartesian |> Geographic
 
-    #get terrain data at the contact reference point's 2D location (close enough
-    #to the actual contact frame origin, which is still unknown)
-    trn = TerrainData(terrain, P.loc)
+    loc_Ot = NVector(Ow0)
+    trn_data_Ot = TerrainData(terrain, loc_Ot)
+    h_Ot = HEllip(trn_data_Ot)
+    Ot = Geographic(loc_Ot, h_Ot)
+    r_eOt_e = Cartesian(Ot)[:]
 
-    q_ns = q_nb ∘ q_bs
-    k_s_zn = q_ns(e3)[3]
-    Δh = HOrth(P) - trn.altitude
+    r_eOs_e = r_eOb_e + r_ObOs_e
+    r_OtOs_e = r_eOs_e - r_eOt_e
 
-    if Δh > 0 #reference point above ground, strut at its natural length
-        ξ = 0.0
-    else #reference point below ground
-        #the projection of the strut along z_n should be positive and reasonably
-        #close to 1. otherwise, the landing gear unit is hitting the ground at
-        #an unacceptable angle and we're in trouble
-        if k_s_zn < 0.3
-            println("This looks like a crash, press any key to continue")
-            read(stdin, 1)
-            error("Exiting...")
-        end
-        ξ = Δh / k_s_zn
-    end
-    wow = ξ < 0
+    ut_n = trn_data_Ot.normal
+    ut_e = q_en(ut_n)
+    l = -(ut_e ⋅ r_OtOs_e) / (ut_e ⋅ ks_e)
 
-    if !wow #we're done, assign only relevant outputs and return
-        sys.y = StrutY(; wow, ξ, trn)
+    Δl = l - l_0
+    if Δl > 0 #we're done, assign only relevant outputs and return
+        sys.y = StrutY(; wow = false, ξ = 0, trn = trn_data_Ot)
         return
     end
+    ξ = Δl
 
     #wheel frame axes
     ψ_sw = get_steering_angle(steering)
     q_sw = Rz(ψ_sw) #rotate strut axes to get wheel axes
+    q_ns = q_nb ∘ q_bs
     q_nw = q_ns ∘ q_sw #NED to contact axes rotation
 
     #contact frame axes
-    k_c_n = trn.normal #NED components of contact z-axis
-    i_w_n = q_nw(e1) #NED components of wheel x-axis
-    i_w_n_trn = i_w_n - (i_w_n ⋅ k_c_n) * k_c_n #projection of i_w_n onto the terrain tangent plane
-    i_c_n = normalize(i_w_n_trn) #NED components of contact x-axis
-    j_c_n = k_c_n × i_c_n #NED components of contact y-axis
-    R_nc = RMatrix(SMatrix{3,3}([i_c_n j_c_n k_c_n]), normalization = false)
+    kc_n = trn_data_Ot.normal #NED components of contact z-axis
+    iw_n = q_nw(e1) #NED components of wheel x-axis
+    iw_n_trn = iw_n - (iw_n ⋅ kc_n) * kc_n #projection of iw_n onto the terrain tangent plane
+    ic_n = normalize(iw_n_trn) #NED components of contact x-axis
+    jc_n = kc_n × ic_n #NED components of contact y-axis
+    R_nc = RMatrix(SMatrix{3,3}([ic_n jc_n kc_n]), normalization = false)
     q_sc = q_ns' ∘ R_nc
     q_bc = q_bs ∘ q_sc
 
     #contact frame origin
-    r_OsOc_s = e3 * (l_OsP + ξ)
+    r_OsOc_s = e3 * (l_0 + ξ)
     r_OsOc_b = q_bs(r_OsOc_s)
     r_ObOc_b = r_OsOc_b + r_ObOs_b
 
@@ -213,16 +201,16 @@ function f_ode!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     #compute the damper elongation rate required to cancel the vehicle
     #contribution to the contact point velocity along the contact frame z axis
     q_sc = q_bs' ∘ q_bc
-    k_s_c = q_sc'(e3)
-    ξ_dot = -v_eOc_veh_c[3] / k_s_c[3]
+    ks_c = q_sc'(e3)
+    ξ_dot = -v_eOc_veh_c[3] / ks_c[3]
 
     #compute contact point velocity
-    v_eOc_dmp_c = k_s_c * ξ_dot
+    v_eOc_dmp_c = ks_c * ξ_dot
     v_eOc_c = v_eOc_veh_c + v_eOc_dmp_c
 
     F = get_force(damper, ξ, ξ_dot)
 
-    sys.y = StrutY(; wow, ξ, ξ_dot, t_sc, t_bc, F, v_eOc_c, trn)
+    sys.y = StrutY(; wow = true, ξ, ξ_dot, t_sc, t_bc, F, v_eOc_c, trn = trn_data_Ot)
 
 end
 

@@ -13,8 +13,8 @@ function test_c172r()
     @testset verbose = true "Cessna172R" begin
 
         @testset verbose = true "Performance" begin test_system() end
-        @testset verbose = true "Simulation" begin test_sim_nrt(save = false) end
-        @testset verbose = true "Trimming" begin test_trimming() end
+        # @testset verbose = true "Simulation" begin test_sim_nrt(save = false) end
+        # @testset verbose = true "Trimming" begin test_trimming() end
 
     end
 end
@@ -23,9 +23,21 @@ function test_system()
 
         env = SimpleEnvironment() |> System
 
+        loc = NVector()
+        trn_data = TerrainData(env.trn, loc)
+        kin_init = KinematicInit( h = trn_data.altitude + 1.8);
+
         ac_LTF = System(Cessna172R(LTF()));
         ac_ECEF = System(Cessna172R(ECEF()));
         ac_NED = System(Cessna172R(NED()));
+
+        Aircraft.init!(ac_LTF, kin_init)
+        Aircraft.init!(ac_ECEF, kin_init)
+        Aircraft.init!(ac_NED, kin_init)
+
+        f_ode!(ac_LTF, env) #make sure we're on the ground
+        @test ac_LTF.y.airframe.ldg.left.strut.wow == true
+        # ac.u.avionics.eng_start = true #engine start switch on
 
         #all three kinematics implementations must be supported, no allocations
         @test @ballocated(f_ode!($ac_LTF, $env)) == 0
@@ -36,6 +48,7 @@ function test_system()
 
         @test @ballocated(f_ode!($ac_NED, $env)) == 0
         @test @ballocated(f_step!($ac_NED)) == 0
+
 
     return nothing
 

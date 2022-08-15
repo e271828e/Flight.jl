@@ -81,8 +81,7 @@ r_{O_sO_c}^e = R^e_s r_{O_sO_c}^s = R^e_s {\begin{pmatrix} 0 & 0 & l \end{pmatri
 $$
 
 $$
-r_{O_tO_s}^e = r_{O_eO_s}^e - r_{O_eO_t}^e = r_{O_eO_b}^e + r_{O_bO_s}^e - r_{O_eO_t}^e =
-              r_{O_eO_b}^e + R^e_b r_{O_bO_s}^b - r_{O_eO_t}^e
+r_{O_tO_s}^e = r_{O_eO_s}^e - r_{O_eO_t}^e = r_{O_eO_b}^e + r_{O_bO_s}^e - r_{O_eO_t}^e
 $$
 
 With this:

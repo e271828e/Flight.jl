@@ -1,7 +1,9 @@
 module Common
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
+using Flight.Utils
 using Flight.Systems
+using Flight.Plotting
 
 import ControlSystems #avoid bringing ControlSystems.StateSpace in scope
 
@@ -99,5 +101,6 @@ function Base.filter(cmp::StateSpace; x = (), u = (), y = ())
     return StateSpace(; ẋ0, x0, u0, y0, A, B, C, D)
 
 end
+
 
 end #module

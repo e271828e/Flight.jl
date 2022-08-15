@@ -1,9 +1,7 @@
 module Kinematics
 
-using LinearAlgebra
-using StaticArrays, ComponentArrays
-using UnPack
-using Plots
+using StaticArrays, ComponentArrays, LinearAlgebra
+using UnPack, Plots
 
 using Flight.Utils
 using Flight.Systems
@@ -29,7 +27,6 @@ struct Initializer
     v_eOb_n::SVector{3, Float64}
     Δx::Float64
     Δy::Float64
-
 end
 
 function Initializer(;
@@ -41,13 +38,16 @@ function Initializer(;
     Initializer(q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy)
 end
 
+#implementation-agnostic outputs
 struct Common
     q_nb::RQuat
     q_eb::RQuat
+    q_en::RQuat
     n_e::NVector
     h_e::Altitude{Ellipsoidal}
     h_o::Altitude{Orthometric}
     Δxy::SVector{2,Float64}
+    r_eOb_e::SVector{3,Float64}
     ω_lb_b::SVector{3,Float64}
     ω_eb_b::SVector{3,Float64}
     ω_ie_b::SVector{3,Float64}
@@ -56,25 +56,7 @@ struct Common
     v_eOb_n::SVector{3,Float64}
 end
 
-Base.@kwdef struct ECEFSpecific
-    q_en::RQuat
-    ω_el_n::SVector{3,Float64}
-end
-
-Base.@kwdef struct LTFSpecific
-    q_lb::RQuat
-    q_el::RQuat
-    ω_el_l::SVector{3,Float64}
-end
-
-Base.@kwdef struct NEDSpecific
-    e_nb::REuler
-    ϕ_λ::LatLon
-    ω_nb_b::SVector{3,Float64}
-    ω_en_n::SVector{3,Float64}
-end
-
-struct KinematicsY{S <: Union{ECEFSpecific, LTFSpecific, NEDSpecific}}
+struct KinematicsY{S}
     common::Common
     specific::S
 end
@@ -153,24 +135,32 @@ end
 ########################### LTF-based Kinematics #########################
 ##########################################################################
 
-#Fast, robust, singularity-free (all-attitude, all-latitude) kinematic
-#description, appropriate for simulation.
+#fast, singularity-free (all-attitude, all-latitude) kinematic mechanization,
+#appropriate for simulation.
 
-#The salient feature of this kinematic description is that the azimuth of the
+#The characteristic feature of this mechanization is that the azimuth of the
 #local tangent frame (LTF) is not slaved to the geographic North, as it is in a
-#NED-based kinematic description. Instead, the vertical component of the LTF's
-#transport rate is arbitrarily set to zero. This avoids polar singularities, but
-#also means that the azimuth angle of the LTF with respect to the geographic
-#North will fluctuate as the vehicle moves around the Earth's surface. The
-#resulting LTF is sometimes known as Wander Azimuth Frame. Position is defined
-#by the rotation from the ECEF axes to the LTF axes, and attitude is defined by
-#the rotation from the LTF axes to the vehicle axes.
+#NED-based mechanization. Instead, the vertical component of the LTF's transport
+#rate is arbitrarily set to zero. This avoids polar singularities, but also
+#means that the azimuth angle of the LTF with respect to the geographic North
+#will fluctuate as the vehicle moves around the Earth's surface. The resulting
+#LTF is sometimes known as Wander Azimuth Frame. Position is defined by the
+#rotation from the ECEF axes to the LTF axes, and attitude is defined by the
+#rotation from the LTF axes to the vehicle axes.
 
 struct LTF <: AbstractKinematics end
 
 const XPosLTFTemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
 const XLTFTemplate = ComponentVector(pos = similar(XPosLTFTemplate), vel = similar(XVelTemplate))
 const XLTF{T, D} = ComponentVector{T, D, typeof(getaxes(XLTFTemplate))} where {T, D}
+
+#LTF-specific outputs
+Base.@kwdef struct LTFSpecific
+    q_lb::RQuat
+    q_el::RQuat
+    ω_el_l::SVector{3,Float64}
+end
+
 x_template(::LTF) = XLTFTemplate
 
 function init!(x::XLTF, ic::Initializer = Initializer())
@@ -209,12 +199,14 @@ function KinematicsY(x::XLTF)
     q_nl = Rz(ψ_nl)
     q_nb = q_nl ∘ q_lb
     q_eb = q_el ∘ q_lb
+    q_en = q_eb ∘ q_nb'
 
     n_e = NVector(q_el)
     h_o = HOrth(h_e, n_e)
 
     v_eOb_n = q_nb(v_eOb_b)
     Ob = Geographic(n_e, h_e)
+    r_eOb_e = Cartesian(Ob)
     ω_el_n = get_ω_el_n(v_eOb_n, Ob)
 
     ω_el_l = q_nl'(ω_el_n)
@@ -226,7 +218,8 @@ function KinematicsY(x::XLTF)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     return KinematicsY(
-        Common(q_nb, q_eb, n_e, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
+        Common( q_nb, q_eb, q_en, n_e, h_e, h_o, Δxy, r_eOb_e,
+                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
         LTFSpecific(; q_lb, q_el, ω_el_l)
     )
 
@@ -260,7 +253,7 @@ end
 ########################## ECEF-based Kinematics #########################
 ##########################################################################
 
-#Robust, singularity-free (all-attitude, all-latitude) kinematic description,
+#fast, singularity-free (all-attitude, all-latitude) kinematic mechanization,
 #appropriate for simulation.
 
 struct ECEF <: AbstractKinematics end
@@ -268,6 +261,12 @@ struct ECEF <: AbstractKinematics end
 const XPosECEFTemplate = ComponentVector(q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0)
 const XECEFTemplate = ComponentVector(pos = similar(XPosECEFTemplate), vel = similar(XVelTemplate))
 const XECEF{T, D} = ComponentVector{T, D, typeof(getaxes(XECEFTemplate))} where {T, D}
+
+#ECEF-specific outputs
+Base.@kwdef struct ECEFSpecific
+    q_en::RQuat
+    ω_el_n::SVector{3,Float64}
+end
 
 x_template(::ECEF) = XECEFTemplate
 
@@ -311,6 +310,7 @@ function KinematicsY(x::XECEF)
     q_nb = q_en' ∘ q_eb
 
     Ob = Geographic(n_e, h_e)
+    r_eOb_e = Cartesian(Ob)
     v_eOb_n = q_nb(v_eOb_b)
     ω_el_n = get_ω_el_n(v_eOb_n, Ob)
     ω_el_b = q_nb'(ω_el_n)
@@ -321,7 +321,8 @@ function KinematicsY(x::XECEF)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     return KinematicsY(
-        Common(q_nb, q_eb, n_e, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
+        Common( q_nb, q_eb, q_en, n_e, h_e, h_o, Δxy, r_eOb_e,
+                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
         ECEFSpecific(; q_en, ω_el_n)
     )
 
@@ -355,8 +356,8 @@ end
 ################################ NED Kinematics ################################
 ################################################################################
 
-#slower, non-singularity free implementation. useful for analysis and control
-#design
+#non-singularity free kinematic mechanization. useful mostly for analysis and
+#control design
 
 struct NED <: AbstractKinematics end
 
@@ -364,6 +365,15 @@ const XPosNEDTemplate = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
                                 ϕ = 0.0, λ = 0.0, Δx = 0.0, Δy = 0.0, h_e = 0.0)
 const XNEDTemplate = ComponentVector(pos = similar(XPosNEDTemplate), vel = similar(XVelTemplate))
 const XNED{T, D} = ComponentVector{T, D, typeof(getaxes(XNEDTemplate))} where {T, D}
+
+#NED-specific outputs
+Base.@kwdef struct NEDSpecific
+    e_nb::REuler
+    ϕ_λ::LatLon
+    ω_nb_b::SVector{3,Float64}
+    ω_en_n::SVector{3,Float64}
+end
+
 x_template(::NED) = XNEDTemplate
 
 
@@ -411,6 +421,7 @@ function KinematicsY(x::XNED)
 
     v_eOb_n = q_nb(v_eOb_b)
     Ob = Geographic(n_e, h_e)
+    r_eOb_e = Cartesian(Ob)
 
     ω_en_n = get_ω_en_n(v_eOb_n, Ob)
     ω_en_b = q_nb'(ω_en_n)
@@ -425,7 +436,8 @@ function KinematicsY(x::XNED)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     return KinematicsY(
-        Common(q_nb, q_eb, n_e, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
+        Common( q_nb, q_eb, q_en, n_e, h_e, h_o, Δxy, r_eOb_e,
+                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
         NEDSpecific(; e_nb, ϕ_λ, ω_nb_b, ω_en_n)
     )
 

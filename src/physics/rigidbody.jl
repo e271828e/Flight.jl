@@ -1,9 +1,7 @@
 module RigidBody
 
 using StaticArrays
-using LinearAlgebra
-using UnPack
-using Plots
+using LinearAlgebra, UnPack, Plots
 
 using Flight.Utils
 using Flight.Systems
@@ -539,7 +537,7 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
     #J_G_b (Steiner). therefore, at some point J_G_b would become zero (or at
     #least singular)!
 
-    @unpack q_eb, q_nb, n_e, h_e, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b = kin
+    @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b = kin
 
     m = mp_b.m; J_Ob_b = mp_b.J_O; r_ObG_b = mp_b.r_OG
 
@@ -561,7 +559,6 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
 
     #compute outputs
     Ob = Geographic(n_e, h_e)
-    r_eOb_e = Cartesian(Ob)[:]
     r_eOb_b = q_eb'(r_eOb_e)
     v̇_eOb_b = SVector{3}(ẋ_vel.v_eOb_b)
 

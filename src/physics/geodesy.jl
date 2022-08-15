@@ -423,6 +423,8 @@ function Base.convert(::Type{Cartesian}, geo::Geographic{NVector, Ellipsoidal})
 
 end
 
+Base.convert(::Type{SVector{3,Float64}}, r::Cartesian) = r.data
+
 ##### Generic Abstract3DPosition methods ####
 
 #general conversion from 3D to 2D location

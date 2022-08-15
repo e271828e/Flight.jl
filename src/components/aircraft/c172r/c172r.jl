@@ -331,21 +331,21 @@ function Ldg()
     left = LandingGearUnit(
         strut = Strut(
             t_bs = FrameTransform(r = [-0.381, -1.092, 1.902], q = RQuat() ),
-            l_OsP = 0.0,
+            l_0 = 0.0,
             damper = mlg_damper),
         braking = DirectBraking())
 
     right = LandingGearUnit(
         strut = Strut(
             t_bs = FrameTransform(r = [-0.381, 1.092, 1.902], q = RQuat() ),
-            l_OsP = 0.0,
+            l_0 = 0.0,
             damper = mlg_damper),
         braking = DirectBraking())
 
     nose = LandingGearUnit(
         strut = Strut(
             t_bs = FrameTransform(r = [1.27, 0, 1.9] , q = RQuat()),
-            l_OsP = 0.0,
+            l_0 = 0.0,
             damper = nlg_damper),
         steering = DirectSteering())
 
