@@ -20,6 +20,7 @@ export AbstractKinematics, ECEF, LTF, NED, KinematicInit, KinematicData
 
 abstract type AbstractKinematics <: Component end
 
+#user-friendly conditions for kinematic state initialization
 struct Initializer
     q_nb::RQuat
     Ob::Geographic{NVector, Ellipsoidal}
@@ -38,7 +39,7 @@ function Initializer(;
     Initializer(q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy)
 end
 
-#implementation-agnostic outputs
+#implementation-independent outputs
 struct Common
     q_nb::RQuat
     q_eb::RQuat

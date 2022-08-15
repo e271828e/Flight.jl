@@ -317,13 +317,16 @@ $\ddot{\xi} = e_3^T \left(\dfrac{1}{m} F_{ext,P}^s + g^s - a_{eO_s}^s \right)$
 The external forces acting on the piston rod assembly are:
 - The force $F_{oleo,P}^s(\xi, \dot{\xi})$ along $z_s$ due to the shock absorber:\
   $F_{oleo,P}^s(\xi, \dot{\xi}) = {\begin{pmatrix} 0 & 0 & F_{oleo,P}^{z_s}(\xi, \dot{\xi})  \end{pmatrix}}^T$
+
 - The constraint forces along $x_s$ and $y_s$ transmitted by the strut casing:\
   $F_{c,P}^s = {\begin{pmatrix} F_{c,P}^{x_s} & F_{c,P}^{y_s} & 0 \end{pmatrix}}^T$
+
 - Ground force $F_{gnd,P}^s$ (normal and friction), transmitted through the tire.\
 $F_{gnd,P}^s = R^s_c F_{gnd,P}^c(F_N) =$
 $R^s_c F_N {\begin{pmatrix} \mu_x \alpha_x & \mu_y \alpha_y & -1 \end{pmatrix}}^T$
 
-$\ddot{\xi} = \dfrac{1}{m} \left( e_3^T R^s_c F_{gnd,P}^c(F_N) + F_{oleo,P}^{z_s}(\xi, \dot{\xi})\right) + e_3^T \left(g^s - a_{eO_s}^s \right)$
+Substituting:
+$$\ddot{\xi} = \dfrac{1}{m} \left( e_3^T R^s_c F_{gnd,P}^c(F_N) + F_{oleo,P}^{z_s}(\xi, \dot{\xi})\right) + e_3^T \left(g^s - a_{eO_s}^s \right)$$
 
 When there is no ground contact, the ground force is zero and we can solve for $\ddot{\xi}$.
 
@@ -334,7 +337,7 @@ which we can solve for $\ddot{\xi}$.
 
 To avoid having to handle the non-penetration constraint explicitly, we can neglect the inertia of the piston assembly
 by setting $m \approx 0$. This causes the ground forces to be transmitted instantaneously and directly to
-the shock absorber, which often can be a reasonable approximation. Multiplying the linear momentum equation by $m$ we have:
+the shock absorber, which is often a reasonable approximation. Multiplying the linear momentum equation by $m$ we have:
 
 $e_3^T R^s_c F_{gnd,P}^c(F_N) + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = m \ddot{\xi} - m e_3^T \left(g^s - a_{eO_s}^s \right) = 0$
 
@@ -353,11 +356,8 @@ Solving for $F_N$:
 $$F_N = \dfrac{-F_{oleo,P}^{z_s}(\xi, \dot{\xi})}{f_{gnd,P}^{z_s}}$$
 
 Since the contact constraint is unilateral, we must have $F_N \ge 0$, so we must bound the result accordingly. $F_N > 0$
-means that the vertical ground force is negative along $z_c$, as it should. And typically, when the oleo is compressing,
-$F_{oleo,P}^{z_s}(\xi, \dot{\xi}) > 0$. For example, $F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = -k_s \xi -
-k_d \dot{\xi}$.
+means that the vertical ground force is negative along $z_c$, as it should.
 
-With $F_N$, we can now compute $F_{gnd,P}^c(F_N)$, which is the ground force transmitted to the vehicle through the tire.
+With $F_N$, we can now compute $F_{gnd,P}^c(F_N)$, which is the ground force transmitted to the vehicle through the tire:
 
-Ground force $F_{gnd,P}^s$ (normal and friction), transmitted through the tire.\
 $$F_{gnd,P}^s = R^s_c F_N {\begin{pmatrix} \mu_x \alpha_x & \mu_y \alpha_y & -1 \end{pmatrix}}^T$$

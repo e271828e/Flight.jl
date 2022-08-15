@@ -13,6 +13,7 @@ export test_common
 function test_common()
     @testset verbose = true "Common" begin
         test_state_space()
+        test_pi_compensator()
     end
 end
 
@@ -81,6 +82,48 @@ function test_state_space()
 
     end
 
+end
+
+
+function test_pi_compensator(save = false)
+
+    @testset verbose = true "PICompensator" begin
+
+        comp = PICompensator{3}(k_p = 1.0, k_i = 1.0, k_l = 0.0, bounds = (-1, 2));
+        sys = System(comp)
+        sim = Simulation(sys)
+
+        sys.u.input .= 1.0
+        sys.u.sat_enable[2:3] .= false
+        step!(sim, 2, true)
+        @test sys.y.out[1] == 2.0
+        @test sys.y.sat_status[1] === true
+        @test sys.y.out[2] == sys.y.out[3] > sys.y.out[1]
+
+        sys.u.input .= -1.0
+        step!(sim, 3, true)
+        @test sys.y.out[1] == -1.0
+
+        sys.u.reset[2] = true
+        step!(sim, 2, true)
+        @test sys.y.out[2] != 0 #integrator disabled, but we still get proportional output
+
+        sys.u.input[3] = 0
+        sys.u.reset[3] = true
+        @test f_step!(sys) == true
+        @test sys.x[3] == 0 #sys.x changes immediately
+        f_ode!(sys)
+        @test sys.y.state[3] == 0 #but sys.y needs f_ode! to update
+        @test sys.y.out[3] == 0 #but sys.y needs f_ode! to update
+        @test f_step!(sys) == false #once reset, no further changes to sys.x[3]
+
+        @test @ballocated($f_ode!($sys)) == 0
+        @test @ballocated($f_step!($sys)) == 0
+
+        plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+        save ? save_plots(plots, save_folder = joinpath("tmp", "pi_test")) : nothing
+
+    end
 
 
 end

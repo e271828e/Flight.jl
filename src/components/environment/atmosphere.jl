@@ -238,10 +238,10 @@ end
 struct AirflowData
     v_ew_n::SVector{3,Float64} #wind velocity, NED axes
     v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
-    v_eOb_b::SVector{3,Float64} #vehicle velocity vector
-    v_wOb_b::SVector{3,Float64} #vehicle aerodynamic velocity vector
-    T::Float64 #ISA temperature
-    p::Float64 #ISA pressure
+    v_eOb_b::SVector{3,Float64} #vehicle velocity vector, vehicle axes
+    v_wOb_b::SVector{3,Float64} #vehicle aerodynamic velocity, vehicle axes
+    T::Float64 #static temperature
+    p::Float64 #static pressure
     ρ::Float64 #density
     a::Float64 #speed of sound
     μ::Float64 #dynamic viscosity
@@ -279,14 +279,12 @@ function AirflowData(kin::KinematicData, atm_data::AtmosphericData)
 
 end
 
-function AirflowData(kin_data::KinematicData, atm_sys::System{<:SimpleAtmosphere})
-    #the AtmosphericData constructor accepts any Geographic subtype, but it's most
-    #likely that ISA SL conditions and wind will be expressed in {LatLon,
-    #Orthometric}
-    loc = Geographic(kin_data.n_e, kin_data.h_o)
+function AirflowData(kin_data::KinematicData, atm_sys::System{<:AbstractAtmosphere})
 
-    #query the SimpleAtmosphere System for the atmospheric data at our location
-    atm_data = AtmosphericData(atm_sys, loc)
+    pos = Geographic(kin_data.n_e, kin_data.h_o)
+
+    #query the atmospheric System for the atmospheric data at our position
+    atm_data = AtmosphericData(atm_sys, pos)
     AirflowData(kin_data, atm_data)
 end
 

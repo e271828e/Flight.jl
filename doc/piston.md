@@ -205,9 +205,3 @@ J_{p} \right) \dot{\omega}_{cs}$$
 Or, equivalently:
 $$M_{air, p} + \dfrac{\eta}{n} M_{eng, cs} = \left(J_{p} + \dfrac{\eta}{n^2}
 J_{cs} \right) \dot{\omega}_{p}$$
-
-We define the excess torque as the sum of the torque applied on the propeller at the transmission output and the torque produced by aerodynamic drag (typically opposite in sign):
-$$M_{exc} = M_{tr,p} + M_{air,p} = J_p \dot{\omega}_{p} = J_p n \dot{\omega}_{cs}$$
-
-The excess power is then:
-$$P_{exc} = M_{exc} \omega_p$$

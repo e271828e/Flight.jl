@@ -466,14 +466,14 @@ end
 """
     g_n(p::Abstract3DPosition)
 
-Compute gravity vector resolved in the local tangent frame.
+Compute gravity vector resolved in the NED frame.
 """
 g_n(pos::Abstract3DPosition) = SVector{3}(0, 0, gravity(pos))
 
 """
     G_n(p::Abstract3DPosition)
 
-Compute gravitational attraction resolved in the local tangent frame.
+Compute gravitational attraction resolved in the NED frame.
 """
 function G_n(pos::Abstract3DPosition)
 
