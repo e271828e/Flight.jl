@@ -7,6 +7,7 @@ using Flight.Plotting
 
 import ControlSystems #avoids name clash with ControlSystems.StateSpace into scope
 import Flight.Systems: init, f_ode!, f_step!
+import Flight.Plotting: make_plots
 
 export StateSpace, PICompensator
 
@@ -140,11 +141,11 @@ Base.@kwdef struct PICompensatorY{N}
     sat_status::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation status
 end
 
-init(::SystemX, ::PICompensator{N}) where {N} = zeros(N) #v friction integrator states
-init(::SystemY, ::PICompensator{N}) where {N} = PICompensatorY{N}()
-init(::SystemU, ::PICompensator{N}) where {N} = PICompensatorU{N}()
+Systems.init(::SystemX, ::PICompensator{N}) where {N} = zeros(N) #v friction integrator states
+Systems.init(::SystemY, ::PICompensator{N}) where {N} = PICompensatorY{N}()
+Systems.init(::SystemU, ::PICompensator{N}) where {N} = PICompensatorU{N}()
 
-function f_ode!(sys::System{<:PICompensator{N}}) where {N}
+function Systems.f_ode!(sys::System{<:PICompensator{N}}) where {N}
 
     @unpack k_p, k_i, k_l, bounds = sys.params
     @unpack sat_enable = sys.u
@@ -166,7 +167,7 @@ function f_ode!(sys::System{<:PICompensator{N}}) where {N}
 
 end
 
-function f_step!(sys::System{<:PICompensator{N}}) where {N}
+function Systems.f_step!(sys::System{<:PICompensator{N}}) where {N}
 
     x = SVector{N,Float64}(sys.x)
     x_new = x .* .!sys.u.reset
@@ -180,7 +181,7 @@ end
 
 # ############################## Plotting ########################################
 
-function make_plots(th::TimeHistory{<:PICompensatorY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:PICompensatorY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -221,46 +222,6 @@ function make_plots(th::TimeHistory{<:PICompensatorY}; kwargs...)
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     return pd
-
-end
-
-############################## Contact Regulator ###############################
-################################################################################
-
-println("Make sure Piston.Engine sets its f_max to the required value")
-
-Base.@kwdef struct ContactRegulator{N} <: Component
-    compensator::PICompensator{N} = PICompensator{N}(
-        k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
-end
-
-Base.@kwdef struct ContactRegulatorU{N}
-    compensator::PICompensatorU{N} = PICompensatorU{N}()
-    f_max::MVector{N, Float64} = zeros(N)
-end
-
-Base.@kwdef struct ContactRegulatorY{N}
-    compensator::PICompensatorY{N} = PICompensatorY{N}()
-    f_max::SVector{N,Float64} = zeros(N)
-    f_eff::SVector{N,Float64} = zeros(N)
-end
-
-init(::SystemU, ::ContactRegulator{N}) where {N} = ContactRegulatorU{N}()
-init(::SystemY, ::ContactRegulator{N}) where {N} = ContactRegulatorY{N}()
-
-function f_ode!(sys::System{ContactRegulator{N}}, v::AbstractVector{<:Real}) where {N}
-
-    @unpack u, compensator = sys
-
-    f_max = SVector(u.f_max)
-    @assert all(f_max .>= 0) "Maximum constraint force must be positive"
-
-    u.compensator.sat_enable .= true #make sure this is enabled
-    u.compensator.input .= SVector{N,Float64}(v)
-    f_ode!(compensator)
-    f_eff = -compensator.y.out .* f_max
-
-    sys.y = ContactRegulatorY(; compensator = compensator.y, f_max, f_eff)
 
 end
 

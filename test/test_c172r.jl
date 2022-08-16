@@ -3,6 +3,7 @@ module TestC172R
 using Test
 using UnPack
 using BenchmarkTools
+using OrdinaryDiffEq
 using NLopt
 
 using Flight

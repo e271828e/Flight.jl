@@ -102,7 +102,7 @@ Base.@kwdef struct SimpleDamper <: AbstractDamper
     k_s::Float64 = 25000 #spring constant
     k_d_ext::Float64 = 1000 #extension damping coefficient
     k_d_cmp::Float64 = 1000 #compression damping coefficient
-    F_max::Float64 = 25000 #maximum allowable damper force
+    F_max::Float64 = 50000 #maximum allowable damper force
 end
 
 #Force exerted by the damper along zs. The elongation ξ is positive along z_s.
