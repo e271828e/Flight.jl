@@ -12,6 +12,7 @@ using Flight.Terrain
 using Flight.Kinematics
 using Flight.RigidBody
 using Flight.Friction
+using Flight.Common
 
 import Flight.Systems: init, f_ode!, f_step!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
@@ -23,18 +24,19 @@ export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteeri
 const e1 = SVector{3,Float64}(1,0,0)
 const e3 = SVector{3,Float64}(0,0,1)
 
+
 ################################################################################
 ################################# Steering #####################################
 
 abstract type AbstractSteering <: Component end
 
-############## NoSteering ##############
+################################ NoSteering ####################################
 
 struct NoSteering <: AbstractSteering end
 
 get_steering_angle(::System{NoSteering}) = 0.0
 
-############## DirectSteering ##############
+############################### DirectSteering #################################
 
 Base.@kwdef struct DirectSteering <: AbstractSteering
     ψ_max::Float64 = π/6
@@ -60,14 +62,14 @@ get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
 abstract type AbstractBraking <: Component end
 
 
-############## NoBraking ###############
+############################### NoBraking ######################################
 
 struct NoBraking <: AbstractBraking end
 
 get_braking_factor(::System{NoBraking}) = 0.0
 
 
-########### DirectBraking #############
+############################# DirectBraking ####################################
 
 Base.@kwdef struct DirectBraking <: AbstractBraking
    η_br::Float64 = 1.0 #braking efficiency
@@ -87,9 +89,13 @@ end
 get_braking_factor(sys::System{DirectBraking}) = sys.y.κ_br
 
 
-########################### Damper #############################
+################################################################################
+################################## Strut #######################################
+
+################################### Damper #####################################
 
 abstract type AbstractDamper end #not a System!
+
 get_force(args...) = throw(MethodError(get_force, args))
 
 Base.@kwdef struct SimpleDamper <: AbstractDamper
@@ -110,8 +116,7 @@ function get_force(c::SimpleDamper, ξ::Real, ξ_dot::Real)
     return F
 end
 
-
-########################## Strut #########################
+################################## Strut #######################################
 
 Base.@kwdef struct Strut{D<:AbstractDamper} <: Component
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
@@ -119,14 +124,14 @@ Base.@kwdef struct Strut{D<:AbstractDamper} <: Component
     damper::D = SimpleDamper()
 end
 
-Base.@kwdef struct StrutY
+Base.@kwdef struct StrutY #defaults should be consistent with wow = 0
     wow::Bool = false #weight-on-wheel flag
     ξ::Float64 = 0.0 #damper elongation
     ξ_dot::Float64 = 0.0 #damper elongation rate
     t_sc::FrameTransform = FrameTransform() #strut to contact frame transform
     t_bc::FrameTransform = FrameTransform() #body to contact frame transform
     F::Float64 = 0.0 #damper force on the ground along the strut z axis
-    v_eOc_c::SVector{3,Float64} = zeros(SVector{3}) #contact point velocity
+    v_eOc_c::SVector{2,Float64} = zeros(SVector{2}) #contact point velocity
     trn::TerrainData = TerrainData()
 end
 
@@ -163,8 +168,8 @@ function f_ode!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     l = -(ut_e ⋅ r_OtOs_e) / (ut_e ⋅ ks_e)
 
     Δl = l - l_0
-    if Δl > 0 #no contact, assign only relevant outputs and return
-        sys.y = StrutY(; wow = false, ξ = 0, trn = trn_data_Ot)
+    if Δl > 0 #no contact, assign non-default outputs and return
+        sys.y = StrutY(; wow = false, trn = trn_data_Ot)
         return
     end
     ξ = Δl
@@ -206,7 +211,9 @@ function f_ode!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
 
     #compute contact point velocity
     v_eOc_dmp_c = ks_c * ξ_dot
-    v_eOc_c = v_eOc_veh_c + v_eOc_dmp_c
+    v_eOc_c_3D = v_eOc_veh_c + v_eOc_dmp_c
+    v_eOc_c = v_eOc_c_3D[SVector(1,2)]
+    @assert abs(v_eOc_c_3D[3]) < 1e-8
 
     F = get_force(damper, ξ, ξ_dot)
 
@@ -215,36 +222,60 @@ function f_ode!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
 end
 
 
-########################### FrictionParameters ################################
+
+################################################################################
+############################### Contact ########################################
+
+########################### FrictionCoefficients ###############################
+
+struct FrictionCoefficients
+    μ_s::Float64 #static friction coefficient
+    μ_d::Float64 #dynamic friction coefficient (μ_d < μ_s)
+    v_s::Float64 #static friction upper velocity threshold
+    v_d::Float64 #dynamic friction lower velocity threshold (v_d > v_s)
+
+    function FrictionCoefficients(; μ_s = 0, μ_d = 0, v_s = 0, v_d = 1)
+        @assert μ_s >= μ_d
+        @assert v_s < v_d
+        new(μ_s, μ_d, v_s, v_d)
+    end
+end
+
+function get_μ(fr::FrictionCoefficients, v::Real)
+    @unpack v_s, v_d, μ_s, μ_d = fr
+    κ_sd = clamp((norm(v) - v_s) / (v_d - v_s), 0, 1)
+    return κ_sd * μ_d + (1 - κ_sd) * μ_s
+end
 
 abstract type RollingOrSkidding end
 struct Rolling <: RollingOrSkidding end
 struct Skidding <: RollingOrSkidding end
 
-Friction.Parameters(::Rolling, ::SurfaceType) =
-    Friction.Parameters(μ_s = 0.03, μ_d = 0.02, v_s = 0.005, v_d = 0.01)
+FrictionCoefficients(::Rolling, ::SurfaceType) =
+    FrictionCoefficients(μ_s = 0.03, μ_d = 0.02, v_s = 0.005, v_d = 0.01)
 
-function Friction.Parameters(::Skidding, srf::SurfaceType)
+function FrictionCoefficients(::Skidding, srf::SurfaceType)
     if srf == DryTarmac
-        Friction.Parameters( μ_s = 0.75, μ_d = 0.25, v_s = 0.005, v_d = 0.01)
+        FrictionCoefficients( μ_s = 0.75, μ_d = 0.25, v_s = 0.005, v_d = 0.01)
     elseif srf == WetTarmac
-        Friction.Parameters(μ_s = 0.25, μ_d = 0.15, v_s = 0.005, v_d = 0.01)
+        FrictionCoefficients(μ_s = 0.25, μ_d = 0.15, v_s = 0.005, v_d = 0.01)
     elseif srf == IcyTarmac
-        Friction.Parameters(μ_s = 0.075, μ_d = 0.025, v_s = 0.005, v_d = 0.01)
+        FrictionCoefficients(μ_s = 0.075, μ_d = 0.025, v_s = 0.005, v_d = 0.01)
     else
         error("Unrecognized surface type")
     end
 end
 
 
-########################## Contact ###############################
+############################### Contact ########################################
 
 Base.@kwdef struct Contact <: Component
-    friction::Friction.Regulator{2} = Friction.Regulator{2}(k_p = 5.0, k_i = 400.0, k_l = 0.2)
+    frc::PICompensator{2} = PICompensator{2}( #friction constraint compensator
+        k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
 end
 
 Base.@kwdef struct ContactY
-    friction::Friction.RegulatorY{2} = Friction.RegulatorY{2}()
+    frc::Common.PICompensatorY{2} = Common.PICompensatorY{2}()
     μ_roll::Float64 = 0.0 #rolling friction coefficient
     μ_skid::Float64 = 0.0 #skidding friction coefficient
     κ_br::Float64 = 0.0 #braking factor
@@ -263,36 +294,29 @@ function f_ode!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
 
     @unpack wow, t_sc, t_bc, F, v_eOc_c, trn = strut.y
-    friction = sys.friction
+    frc = sys.frc
 
-    if wow
-        #disable friction regulator reset command
-        friction.u.reset .= false
-    else
-        #mark the friction regulator for reset on the next call to f_step!
-        friction.u.reset .= true
-        #update regulator with zero contact velocity so that the reset command
-        #shows in regulator outputs (not strictly required)
-        f_ode!(friction, zeros(SVector{2}))
-        sys.y = ContactY(friction = friction.y)
-        #...and we're done
-        return
-    end
+    frc.u.sat_enable .= true #this should always be enabled (could also be set in init_u)
+    frc.u.input .= v_eOc_c #if !wow, v_eOc_c = [0,0]
+    frc.u.reset .= !wow #state will reset on the next call to f_ode!
+    f_ode!(frc) #we could skip this if !wow, but it is really cheap
 
-    v = SVector{2,Float64}(v_eOc_c[1], v_eOc_c[2]) #contact point velocity
+    !wow ? (sys.y = ContactY(; frc = frc.y); return) : nothing #if !wow, we are done
 
-    μ_roll = get_μ(Friction.Parameters(Rolling(), trn.surface), norm(v))
-    μ_skid = get_μ(Friction.Parameters(Skidding(), trn.surface), norm(v))
+    norm_v = norm(v_eOc_c)
+
+    μ_roll = get_μ(FrictionCoefficients(Rolling(), trn.surface), norm_v)
+    μ_skid = get_μ(FrictionCoefficients(Skidding(), trn.surface), norm_v)
 
     #longitudinal friction coefficient
     κ_br = get_braking_factor(braking)
     μ_x = μ_roll + (μ_skid - μ_roll) * κ_br
 
     #tire slip angle
-    if norm(v) < 1e-3 #prevents chattering in μ_y for near-zero contact velocity
+    if norm_v < 1e-3 #prevents chattering in μ_y for near-zero contact velocity
         ψ_cv = π/2 #pure sideslip
     else
-        ψ_cv = atan(v[2], v[1])
+        ψ_cv = atan(v_eOc_c[2], v_eOc_c[1])
     end
 
     #lateral friction coefficient
@@ -310,8 +334,8 @@ function f_ode!(sys::System{Contact}, strut::System{<:Strut},
     μ_max = @SVector [μ_x, μ_y]
     μ_max *= min(1, μ_skid / norm(μ_max)) #scale μ_max so norm(μ_max) does not exceed μ_skid
 
-    f_ode!(friction, v) #friction regulator update
-    μ_eff = friction.y.α .* μ_max
+    #scale μ_max with the feedback from the friction constraint compensator
+    μ_eff = -frc.y.out .* μ_max
 
     #normalized contact force projected on the contact frame
     f_c = SVector{3,Float64}(μ_eff[1], μ_eff[2], -1)
@@ -327,17 +351,14 @@ function f_ode!(sys::System{Contact}, strut::System{<:Strut},
     wr_c = Wrench(F = F_c)
     wr_b = t_bc(wr_c)
 
-    sys.y = ContactY(; friction = friction.y,
+    sys.y = ContactY(; frc = frc.y,
                        μ_roll, μ_skid, κ_br, ψ_cv, μ_max, μ_eff, f_c, F_c, wr_b)
 
 end
 
-#if wow==false in the last f_ode! evaluation, this resets the friction
-#regulator. this method is only defined for clarity, because the fallback
-#f_disc! method would already call f_step! on every subsystem by default
-f_step!(contact::System{Contact}) = f_step!(contact.friction)
 
-########################## LandingGearUnit #########################
+################################################################################
+############################ LandingGearUnit ###################################
 
 Base.@kwdef struct LandingGearUnit{S <: AbstractSteering,
                             B <: AbstractBraking, L<:Strut} <: Component
@@ -382,6 +403,8 @@ function f_step!(sys::System{<:LandingGearUnit})
 
 end
 
+
+################################################################################
 ############################ Plotting ##########################################
 
 function make_plots(th::TimeHistory{<:StrutY}; kwargs...)
@@ -413,7 +436,7 @@ function make_plots(th::TimeHistory{<:ContactY}; kwargs...)
 
     pd = OrderedDict{Symbol, Any}()
 
-    pd[:friction] = make_plots(th.friction; kwargs...)
+    pd[:frc] = make_plots(th.frc; kwargs...)
 
     (μ_max_x, μ_max_y) = Utils.get_scalar_components(th.μ_max)
     (μ_eff_x, μ_eff_y) = Utils.get_scalar_components(th.μ_eff)

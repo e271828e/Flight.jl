@@ -117,8 +117,8 @@ struct PICompensator{N} <: Component
     bounds::NTuple{2,MVector{N,Float64}} #output bounds
 end
 
-function PICompensator{N}(; k_p::Real, k_i::Real, k_l::Real,
-                            bounds::NTuple{2,Real}) where {N}
+function PICompensator{N}(; k_p::Real = 1.0, k_i::Real = 0.1, k_l::Real = 0.0,
+                            bounds::NTuple{2,Real} = (-1.0, 1.0)) where {N}
     s2v = (x)->fill(x,N)
     PICompensator{N}(s2v(k_p), s2v(k_i), s2v(k_l), (s2v(bounds[1]), s2v(bounds[2])))
 end

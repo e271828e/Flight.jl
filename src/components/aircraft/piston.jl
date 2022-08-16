@@ -441,6 +441,8 @@ Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
     propeller::P = Propeller()
     gear_ratio::Float64 = 1.0 #gear ratio
     friction::Friction.Regulator{1} = Friction.Regulator{1}()
+    # frc::PICompensator{2} = PICompensator{2}( #friction compensator
+    #     k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
     M_fr_max::Float64 = 5.0 #maximum friction torque
     function Thruster(eng::E, prop::P, gear_ratio, friction, M_fr_max) where {E, P}
         @assert sign(gear_ratio) * Int(prop.sense) > 0 "Thruster gear ratio sign "*

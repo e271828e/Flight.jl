@@ -4,8 +4,7 @@ using Test, Plots, UnPack, BenchmarkTools, LinearAlgebra, StaticArrays
 using OrdinaryDiffEq, SciMLBase
 
 using Flight
-using Flight.Friction: get_μ
-using Flight.LandingGear: Rolling, Skidding
+using Flight.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
 
 export test_landing_gear
 
@@ -157,14 +156,14 @@ function test_contact()
     @testset verbose = true "Contact" begin
 
         #friction parameters
-        @test get_μ(Friction.Parameters(Rolling(), DryTarmac), 0.0075) ≈ 0.025
-        @test get_μ(Friction.Parameters(Skidding(), DryTarmac), 0.0075) ≈ 0.5
-        @test get_μ(Friction.Parameters(Skidding(), WetTarmac), 1e-5) ≈ 0.25
-        @test get_μ(Friction.Parameters(Skidding(), IcyTarmac), 10) ≈ 0.025
+        @test get_μ(FrictionCoefficients(Rolling(), DryTarmac), 0.0075) ≈ 0.025
+        @test get_μ(FrictionCoefficients(Skidding(), DryTarmac), 0.0075) ≈ 0.5
+        @test get_μ(FrictionCoefficients(Skidding(), WetTarmac), 1e-5) ≈ 0.25
+        @test get_μ(FrictionCoefficients(Skidding(), IcyTarmac), 10) ≈ 0.025
 
         contact = LandingGear.Contact() |> System
         @test length(contact.x) == 2
-        @test length(contact.u.friction.reset) == 2
+        @test length(contact.u.frc.reset) == 2
 
         strut = Strut(l_0 = 1.0) |> System
         steering = System(DirectSteering())
@@ -179,7 +178,7 @@ function test_contact()
         kin = KinematicInit(; h ) |> KinematicData
         f_ode!(strut, steering, terrain, kin)
         f_ode!(contact, strut, braking)
-        @test contact.u.friction.reset == contact.y.friction.reset == [false, false]
+        @test contact.u.frc.reset == contact.y.frc.reset == [false, false]
         @test contact.y.μ_eff == [0, 0] #no motion, no effective friction
         @test contact.y.f_c[1:2] == [0, 0] #no effective friction, no tangential force
         @test contact.y.f_c[3] < 0 #ground reaction negative along contact frame z-axis
@@ -218,7 +217,7 @@ function test_contact()
         kin = KinematicInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> KinematicData
         f_ode!(strut, steering, terrain, kin)
         f_ode!(contact, strut, braking)
-        @test contact.friction.y.sat[2] == true #large velocity saturates
+        @test contact.frc.y.sat_status[2] == true #large velocity saturates
         @test contact.ẋ[2] == 0 #lateral velocity integral should be decreasing
 
         #with wow = true, f_step! should not modify x
@@ -239,7 +238,7 @@ function test_contact()
         f_ode!(strut, steering, terrain, kin_data) #update Strut
         f_ode!(contact, strut, braking)
         #the friction regulator's reset input is set and propagated to the outputs
-        @test contact.u.friction.reset == contact.y.friction.reset == [true, true]
+        @test contact.u.frc.reset == contact.y.frc.reset == [true, true]
         @test f_step!(contact) == false #x was already 0, not modified
         contact.x[1] = 1
         @test f_step!(contact) == true #now it has
