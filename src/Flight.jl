@@ -17,7 +17,6 @@ include("physics/kinematics.jl")
 include("physics/rigidbody.jl")
 
 include("components/common/common.jl")
-include("components/common/friction.jl")
 
 include("components/environment/atmosphere.jl")
 include("components/environment/terrain.jl")
@@ -42,7 +41,6 @@ include("components/aircraft/c172r/c172r.jl")
 @reexport using .Kinematics
 @reexport using .RigidBody
 
-@reexport using .Friction
 @reexport using .Common
 
 @reexport using .Atmosphere

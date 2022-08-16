@@ -14,8 +14,8 @@ function test_c172r()
     @testset verbose = true "Cessna172R" begin
 
         @testset verbose = true "Performance" begin test_system() end
-        # @testset verbose = true "Simulation" begin test_sim_nrt(save = false) end
-        # @testset verbose = true "Trimming" begin test_trimming() end
+        @testset verbose = true "Simulation" begin test_sim_nrt(save = false) end
+        @testset verbose = true "Trimming" begin test_trimming() end
 
     end
 end

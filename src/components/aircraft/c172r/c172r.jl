@@ -118,7 +118,7 @@ get_mp_b(::System{Structure}) = mp_b_str
 const aero_lookup = generate_aero_lookup()
 const f_ba = FrameTransform()
 
-# if this weren't the case, and cared not only about the rotation but also
+# if this weren't the case, and we cared not only about the rotation but also
 #about the velocity lever arm, here's the rigorous way of computing v_wOa_a:
 # v_wOb_b = v_eOb_b - v_ew_b
 # v_eOa_b = v_eOb_b + ω_eb_b × r_ObOa_b
@@ -261,10 +261,6 @@ function f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
     F_aero_s = q * S * SVector{3,Float64}(-C_D, C_Y, -C_L)
     F_aero_a = q_as(F_aero_s)
     M_aero_a = q * S * SVector{3,Float64}(C_l * b, C_m * c, C_n * b)
-    # @show C_D
-    # @show C_Y
-    # @show C_L
-    # @show F_aero_a
 
     wr_b = wr_a = Wrench(F_aero_a, M_aero_a)
 
@@ -615,7 +611,7 @@ Cessna172R(kinematics = LTF()) = AircraftBase( kinematics, Airframe(), BasicAvio
 
 include("tools/trim.jl")
 include("tools/linear.jl")
-using .Trim #do not reexport, names in Trim are generic
-using .Linear #idem
+using .Trim
+using .Linear
 
 end #module

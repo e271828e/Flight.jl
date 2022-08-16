@@ -19,11 +19,11 @@ function drop_test(; save::Bool = true)
     ac.u.avionics.brake_left = 1.
     ac.u.avionics.brake_right = 1.
 
-    sim = Simulation(ac; args_ode = (env, ), algorithm = Tsit5(), t_end = 25, adaptive = true)
+    sim = Simulation(ac; args_ode = (env, ), algorithm = RK4(), t_end = 25, adaptive = true)
     Sim.run!(sim, verbose = true)
     # plots = make_plots(sim; Plotting.defaults...)
     plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-    save ? save_plots(plots, save_folder = joinpath("tmp", "drop_test", "Tsit5")) : nothing
+    save ? save_plots(plots, save_folder = joinpath("tmp", "drop_test", "RK4")) : nothing
 
     return sim
 

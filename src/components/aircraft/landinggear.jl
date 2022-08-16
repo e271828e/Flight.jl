@@ -11,7 +11,6 @@ using Flight.Geodesy
 using Flight.Terrain
 using Flight.Kinematics
 using Flight.RigidBody
-using Flight.Friction
 using Flight.Common
 
 import Flight.Systems: init, f_ode!, f_step!
@@ -294,14 +293,20 @@ function f_ode!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
 
     @unpack wow, t_sc, t_bc, F, v_eOc_c, trn = strut.y
-    frc = sys.frc
 
+    frc = sys.frc
     frc.u.sat_enable .= true #this should always be enabled (could also be set in init_u)
     frc.u.input .= v_eOc_c #if !wow, v_eOc_c = [0,0]
-    frc.u.reset .= !wow #state will reset on the next call to f_ode!
-    f_ode!(frc) #we could skip this if !wow, but it is really cheap
+    frc.u.reset .= !wow #if !wow, state will reset on the next call to f_step!
 
-    !wow ? (sys.y = ContactY(; frc = frc.y); return) : nothing #if !wow, we are done
+    #if !wow, call f_ode!(frc) once to let the reset input propagate to frc's
+    #output. once it's updated, we have no need to call f_ode! until wow = true
+    if !wow
+        all(frc.y.reset) ? nothing : (f_ode!(frc); sys.y = ContactY(; frc = frc.y))
+        return #we are done
+    end
+
+    f_ode!(frc) #update friction constraint compensator
 
     norm_v = norm(v_eOc_c)
 

@@ -139,19 +139,20 @@ function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
 
     #engine must be running, no way to trim otherwise
     ac.s.airframe.pwp.engine.state = Piston.eng_running
-    @assert ac.x.airframe.pwp.engine.ω > ac.airframe.pwp.engine.idle.params.ω_target
+    @assert ac.x.airframe.pwp.engine.ω > ac.airframe.pwp.engine.params.ω_idle
 
-    #as long as the engine remains above the idle controller's target speed, the
-    #idle controller's output will be saturated at 0 by proportional error, so
-    #the integrator will be disabled and its state will not change. we just set
-    #it to zero and forget about it
+    #engine idle compensator: as long as the engine remains at normal
+    #operational speeds, well above its nominal idle speed, the idle controller
+    #compensator's output will be saturated at its lower bound by proportional
+    #error. its integrator will be disabled, its state will not change nor have
+    #any effect on the engine. we can simply set it to zero
     ac.x.airframe.pwp.engine.idle .= 0.0
 
-    #powerplant friction regulator: with the propeller spinning, the friction
-    #regulator's output will be saturated at -1 due to proportional error, so
-    #the integrator will be disabled and its state will not change. we just set
-    #it to zero and forget about it
-    ac.x.airframe.pwp.friction .= 0.0
+    #engine friction compensator: with the engine running at normal operational
+    #speeds, the engine's friction constraint compensator will be saturated, so
+    #its integrator will be disabled and its state will not change. furthermore,
+    #with the engine running friction is ignored. we can simply set it to zero.
+    ac.x.airframe.pwp.engine.frc .= 0.0
 
     f_ode!(ac, env)
 
@@ -159,7 +160,7 @@ function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
     wow = reduce(|, SVector{3,Bool}(leg.strut.wow for leg in ac.y.airframe.ldg))
     @assert wow === false
     @assert ac.ẋ.airframe.pwp.engine.idle[1] .== 0
-    @assert ac.ẋ.airframe.pwp.friction[1] .== 0
+    @assert ac.ẋ.airframe.pwp.engine.frc[1] .== 0
 
 end
 

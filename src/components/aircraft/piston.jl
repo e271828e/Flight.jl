@@ -13,6 +13,8 @@ import Flight.Systems: init, f_ode!, f_step!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 import Flight.RigidBody: get_mp_b
 
+
+################################################################################
 ########################### AbstractFuelSupply #################################
 
 abstract type AbstractFuelSupply <: Component end
@@ -35,6 +37,8 @@ f_ode!(::System{MagicFuelSupply}) = nothing
 get_mp_b(::System{MagicFuelSupply}) = MassProperties()
 fuel_available(f::System{MagicFuelSupply}) = f.u[]
 
+
+################################################################################
 ########################### AbstractPistonEngine ###############################
 
 abstract type AbstractPistonEngine <: Component end
@@ -68,56 +72,22 @@ WrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
 #assumed to be negligible by default
 AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
 
-########################### IdleController #####################################
 
-#a simple PI controller to maintain the desired target idle RPM
-Base.@kwdef struct IdleController <: Component
-    k_p::Float64 = 4
-    k_i::Float64 = 2
-    ω_target::Float64 = 60
-end
-
-Base.@kwdef struct IdleControllerY
-    ϵ::Float64 = 0.0
-    ϵ_int::Float64 = 0.0
-    output_raw::Float64 = 0.0
-    output::Float64 = 0.0
-    sat::Bool = false
-end
-
-init(::SystemX, ::IdleController) = [0.0]
-init(::SystemY, ::IdleController) = IdleControllerY()
-
-function f_ode!(sys::System{IdleController}, ω::Real)
-
-    @unpack k_p, k_i, ω_target = sys.params
-
-    ϵ = (ω - ω_target)/ω_target
-    ϵ_int = sys.x[]
-    output_raw = -(k_p * ϵ + k_i * ϵ_int)
-    output = min(max(0.0, output_raw), 1.0)
-    sat = ((output_raw > 0) && (output_raw < 1) ? false : true)
-    sys.ẋ .= !sat * ϵ
-
-    sys.y = IdleControllerY(ϵ, ϵ_int, output_raw, output, sat)
-
-end
-
-############################ Engine ###############################
+################################################################################
+################################# Engine #######################################
 
 #represents a family of naturally aspirated, fuel-injected aviation engines.
-#based on performance data available for the Lycoming IO-360A engine. data is
-#normalized with rated power and rated speed to allow for arbitrary engine
-#sizing
+#based on performance data available for the Lycoming IO-360A engine, normalized
+#with rated power and rated speed to allow for arbitrary engine sizing
 struct Engine{L} <: AbstractPistonEngine
     P_rated::Float64
     ω_rated::Float64
     ω_stall::Float64 #speed below which engine shuts down
     ω_cutoff::Float64 #speed above ω_rated for which power output drops back to zero
-    # ω_idle::Float64 #target idle speed
+    ω_idle::Float64 #target idle speed
     M_start::Float64 #starter torque
     J::Float64 #equivalent axial moment of inertia of the engine shaft
-    idle::IdleController #idle MAP control compensator
+    idle::PICompensator{1} #idle MAP control compensator
     frc::PICompensator{1} #friction constraint compensator
     lookup::L
 end
@@ -127,11 +97,10 @@ function Engine(;
     ω_rated = ustrip(u"rad/s", 2700u"rpm"), #IO 360
     ω_stall = ustrip(u"rad/s", 300u"rpm"),
     ω_cutoff = ustrip(u"rad/s", 3100u"rpm"),
-    # ω_idle = ustrip(u"rad/s", 600u"rpm"),
+    ω_idle = ustrip(u"rad/s", 600u"rpm"),
     M_start = 40,
     J = 0.05,
-    idle = IdleController(ω_target = 2ω_stall),
-    # idle = PICompensator{1}(k_p = 4.0, k_i = 2.0, bounds = (-0.5, 0.5))
+    idle = PICompensator{1}(k_p = 4.0, k_i = 2.0, bounds = (-0.5, 0.5)),
     frc =  PICompensator{1}(k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
     )
 
@@ -140,7 +109,7 @@ function Engine(;
     lookup = generate_lookup(; n_stall, n_cutoff)
 
     Engine{typeof(lookup)}(
-        P_rated, ω_rated, ω_stall, ω_cutoff, M_start, J, idle, frc, lookup)
+        P_rated, ω_rated, ω_stall, ω_cutoff, ω_idle, M_start, J, idle, frc, lookup)
 end
 
 @enum EngineState begin
@@ -160,6 +129,7 @@ Base.@kwdef mutable struct PistonEngineU
     stop::Bool = false
     thr::Ranged{Float64, 0, 1} = 0.0 #throttle setting
     mix::Ranged{Float64, 0, 1} = 0.5 #mixture setting
+    idle::Common.PICompensatorU{1} = Common.PICompensatorU{1}()
     frc::Common.PICompensatorU{1} = Common.PICompensatorU{1}()
 end
 
@@ -175,7 +145,7 @@ Base.@kwdef struct PistonEngineY
     P_shaft::Float64 = 0.0 #shaft power
     SFC::Float64 = 0.0 #specific fuel consumption
     ṁ::Float64 = 0.0 #fuel consumption
-    idle::IdleControllerY = IdleControllerY()
+    idle::Common.PICompensatorY{1} = Common.PICompensatorY{1}()
     frc::Common.PICompensatorY{1} = Common.PICompensatorY{1}()
 end
 
@@ -187,7 +157,7 @@ init(::SystemS, ::Engine) = PistonEngineS()
 
 function f_ode!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::Real)
 
-    @unpack ω_rated, P_rated, J, M_start, lookup = eng.params
+    @unpack ω_rated, ω_idle, P_rated, J, M_start, lookup = eng.params
     @unpack frc, idle = eng.subsystems
     @unpack thr, mix, start, stop = eng.u
 
@@ -201,11 +171,11 @@ function f_ode!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::R
     frc.u.sat_enable .= true
     f_ode!(frc)
 
-    # idle.u.input .= (ω_idle - ω) / ω_idle #normalized ω error
-    # idle.u.sat_enable .= true
-    f_ode!(eng.idle, ω) #update idle compensator
+    idle.u.input .= (ω_idle - ω) / ω_idle #normalized ω idle error
+    idle.u.sat_enable .= true
+    f_ode!(idle) #update idle compensator
 
-    μ_ratio_idle = eng.idle.y.output
+    μ_ratio_idle = 0.5 + idle.y.out[1]
 
     #normalized engine speed
     n = ω / ω_rated
@@ -276,10 +246,9 @@ end
 function f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
 
     @unpack idle, frc = eng.subsystems
+    @unpack ω_stall, ω_idle = eng.params
 
     ω = eng.x.ω
-    ω_stall = eng.params.ω_stall
-    ω_target = idle.params.ω_target
 
     if eng.s.state === eng_off
 
@@ -289,7 +258,7 @@ function f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
 
         !eng.u.start ? eng.s.state = eng_off : nothing
 
-        (ω > ω_target && fuel_available(fuel) ) ? eng.s.state = eng_running : nothing
+        (ω > ω_idle && fuel_available(fuel) ) ? eng.s.state = eng_running : nothing
 
     else #eng_running
 
@@ -450,16 +419,17 @@ function compute_π_ISA_pow(lookup, n, μ, δ)
 
 end
 
-############################# Thruster ###################################
 
-#M_eng is always positive. therefore, for a CW thruster, n should be positive as
-#well and, under normal operating, conditions M_prop will be negative. for a CCW
-#thruster, n should be negative and M_prop will be positive under normal
-#operating conditions.
+################################################################################
+############################### Thruster #######################################
 
-#however, the sign of M_prop may be inverted under negative propeller thrust
-#conditions (generative), with the propeller driving the engine instead of
-#the other way around
+#M_shaft is always positive. for a CW thruster, the gear ratio should be
+#positive as well and, under normal operating, conditions M_prop will be
+#negative. for a CCW thruster, the gear ratio should be negative and M_prop will
+#be positive under normal operating conditions.
+
+#the sign of M_prop may be inverted under negative propeller thrust conditions,
+#with the propeller driving the engine instead of the other way around
 
 Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
                             P <: AbstractPropeller} <: Component

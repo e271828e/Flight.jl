@@ -139,7 +139,7 @@ Base.@kwdef struct PICompensatorY{N}
     sat_status::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation status
 end
 
-Systems.init(::SystemX, ::PICompensator{N}) where {N} = zeros(N) #v friction integrator states
+Systems.init(::SystemX, ::PICompensator{N}) where {N} = zeros(N)
 Systems.init(::SystemY, ::PICompensator{N}) where {N} = PICompensatorY{N}()
 Systems.init(::SystemU, ::PICompensator{N}) where {N} = PICompensatorU{N}()
 
