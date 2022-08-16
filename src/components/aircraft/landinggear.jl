@@ -99,10 +99,10 @@ Base.@kwdef struct SimpleDamper <: AbstractDamper
     F_max::Float64 = 25000 #maximum allowable damper force
 end
 
-#Force exerted by the damper along zs. The deformation ξ is positive along z_s
-#(elongation). When the damper force is positive (weight on wheel), it pushes
-#the piston rod assembly downwards along the positive z_s direction. When it is
-#negative, it pulls the piston rod upwards along the negative z_s axis
+#Force exerted by the damper along zs. The elongation ξ is positive along z_s.
+# When the damper force is positive (weight on wheel), it pushes the piston rod
+#assembly downwards along the positive z_s direction. When it is negative, it
+#pulls the piston rod upwards along the negative z_s axis
 function get_force(c::SimpleDamper, ξ::Real, ξ_dot::Real)
     k_d = (ξ_dot > 0 ? c.k_d_ext : c.k_d_cmp)
     F = -(c.k_s * ξ + k_d * ξ_dot)
@@ -121,8 +121,8 @@ end
 
 Base.@kwdef struct StrutY
     wow::Bool = false #weight-on-wheel flag
-    ξ::Float64 = 0.0 #damper deformation
-    ξ_dot::Float64 = 0.0 #damper deformation rate
+    ξ::Float64 = 0.0 #damper elongation
+    ξ_dot::Float64 = 0.0 #damper elongation rate
     t_sc::FrameTransform = FrameTransform() #strut to contact frame transform
     t_bc::FrameTransform = FrameTransform() #body to contact frame transform
     F::Float64 = 0.0 #damper force on the ground along the strut z axis
@@ -163,7 +163,7 @@ function f_ode!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     l = -(ut_e ⋅ r_OtOs_e) / (ut_e ⋅ ks_e)
 
     Δl = l - l_0
-    if Δl > 0 #we're done, assign only relevant outputs and return
+    if Δl > 0 #no contact, assign only relevant outputs and return
         sys.y = StrutY(; wow = false, ξ = 0, trn = trn_data_Ot)
         return
     end

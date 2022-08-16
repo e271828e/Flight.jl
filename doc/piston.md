@@ -101,9 +101,6 @@ This function is provided by the left graph in Figure 3-21, with $MAP$ on the x 
 
 ## Part Throttle Power at Altitude
 
-Returning to $P_{ISA}$ we have:
-$$P_{ISA} = P_{ISA}(\omega, MAP, \delta)$$
-
 Our goal is to compute $P_{ISA}(\omega, MAP, \delta)$ for the general case. For this, we can write:
 $$P_{ISA}(\omega, MAP, \delta) \approx P_{ISA}(\omega, MAP, \delta_{std}) + \left.\dfrac{\partial P_{ISA}}{\partial \delta}\right|_{\omega,MAP,\delta_{std}}(\delta - \delta_{std})$$
 
@@ -151,7 +148,7 @@ Figure 3-21 assumes maximum power mixture ($mix = 1$). We can use the ratios in 
 Figure 3-5 provides fuel consumption as:
 $$\dot{m} = \dot{m}(\omega,P,mix)$$
 
-Where $P$ is the actual engine power output. This could be
+Where $P$ is the actual engine power output.
 
 
 To model any fuel injected piston engine in the Lycoming lineup, for example IO-540, non-dimensionalize:
