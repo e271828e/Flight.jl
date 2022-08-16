@@ -114,9 +114,11 @@ struct Engine{L} <: AbstractPistonEngine
     ω_rated::Float64
     ω_stall::Float64 #speed below which engine shuts down
     ω_cutoff::Float64 #speed above ω_rated for which power output drops back to zero
+    # ω_idle::Float64 #target idle speed
     M_start::Float64 #starter torque
     J::Float64 #equivalent axial moment of inertia of the engine shaft
-    idle::IdleController
+    idle::IdleController #idle MAP control compensator
+    frc::PICompensator{1} #friction constraint compensator
     lookup::L
 end
 
@@ -125,9 +127,12 @@ function Engine(;
     ω_rated = ustrip(u"rad/s", 2700u"rpm"), #IO 360
     ω_stall = ustrip(u"rad/s", 300u"rpm"),
     ω_cutoff = ustrip(u"rad/s", 3100u"rpm"),
+    # ω_idle = ustrip(u"rad/s", 600u"rpm"),
     M_start = 40,
     J = 0.05,
     idle = IdleController(ω_target = 2ω_stall),
+    # idle = PICompensator{1}(k_p = 4.0, k_i = 2.0, bounds = (-0.5, 0.5))
+    frc =  PICompensator{1}(k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
     )
 
     n_stall = ω_stall / ω_rated
@@ -135,7 +140,7 @@ function Engine(;
     lookup = generate_lookup(; n_stall, n_cutoff)
 
     Engine{typeof(lookup)}(
-        P_rated, ω_rated, ω_stall, ω_cutoff, M_start, J, idle, lookup)
+        P_rated, ω_rated, ω_stall, ω_cutoff, M_start, J, idle, frc, lookup)
 end
 
 @enum EngineState begin
@@ -155,6 +160,7 @@ Base.@kwdef mutable struct PistonEngineU
     stop::Bool = false
     thr::Ranged{Float64, 0, 1} = 0.0 #throttle setting
     mix::Ranged{Float64, 0, 1} = 0.5 #mixture setting
+    frc::Common.PICompensatorU{1} = Common.PICompensatorU{1}()
 end
 
 Base.@kwdef struct PistonEngineY
@@ -170,9 +176,11 @@ Base.@kwdef struct PistonEngineY
     SFC::Float64 = 0.0 #specific fuel consumption
     ṁ::Float64 = 0.0 #fuel consumption
     idle::IdleControllerY = IdleControllerY()
+    frc::Common.PICompensatorY{1} = Common.PICompensatorY{1}()
 end
 
-init(::SystemX, eng::Engine) = ComponentVector(ω = 0.0, idle = init_x(eng.idle))
+init(::SystemX, eng::Engine) = ComponentVector(
+    ω = 0.0, idle = init_x(eng.idle), frc = init_x(eng.frc))
 init(::SystemU, ::Engine) = PistonEngineU()
 init(::SystemY, ::Engine) = PistonEngineY()
 init(::SystemS, ::Engine) = PistonEngineS()
@@ -180,14 +188,22 @@ init(::SystemS, ::Engine) = PistonEngineS()
 function f_ode!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::Real)
 
     @unpack ω_rated, P_rated, J, M_start, lookup = eng.params
+    @unpack frc, idle = eng.subsystems
     @unpack thr, mix, start, stop = eng.u
-    state = eng.s.state
-    ω = eng.x.ω
 
     throttle = Float64(thr)
     mixture = Float64(mix)
+    state = eng.s.state
+    ω = eng.x.ω
 
-    f_ode!(eng.idle, ω) #update idle controller
+    #update friction constraint compensator
+    frc.u.input .= ω
+    frc.u.sat_enable .= true
+    f_ode!(frc)
+
+    # idle.u.input .= (ω_idle - ω) / ω_idle #normalized ω error
+    # idle.u.sat_enable .= true
+    f_ode!(eng.idle, ω) #update idle compensator
 
     μ_ratio_idle = eng.idle.y.output
 
@@ -205,8 +221,15 @@ function f_ode!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::R
 
     if state === eng_off
 
+        #with the engine off, introduce a friction constraint to make the
+        #propeller actually stop instead of slowing down asymptotically. with
+        #the engine running, all friction is assumed to be already accounted for
+        #in the performance tables
+        M_fr_max = 0.01 * P_rated / ω_rated #1% of rated torque
+        M_fr = -frc.y.out[1] .* M_fr_max #scale M_fr_max with compensator feedback
+
         MAP = air.p
-        M_shaft = 0.0
+        M_shaft = M_fr
         P_shaft = 0.0
         SFC = 0.0
         ṁ = 0.0
@@ -252,9 +275,11 @@ end
 
 function f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
 
+    @unpack idle, frc = eng.subsystems
+
     ω = eng.x.ω
     ω_stall = eng.params.ω_stall
-    ω_target = eng.idle.params.ω_target
+    ω_target = idle.params.ω_target
 
     if eng.s.state === eng_off
 
@@ -273,7 +298,8 @@ function f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
     end
 
     x_mod = false
-    x_mod = x_mod || f_step!(eng.idle)
+    x_mod = x_mod || f_step!(idle)
+    x_mod = x_mod || f_step!(frc)
     return x_mod
 
 end
@@ -440,42 +466,26 @@ Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
     engine::E = Engine()
     propeller::P = Propeller()
     gear_ratio::Float64 = 1.0 #gear ratio
-    frc::PICompensator{1} = PICompensator{1}( #friction constraint compensator
-        k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
-    M_fr_max::Float64 = 5.0 #maximum friction torque
-    function Thruster(eng::E, prop::P, gear_ratio, friction, M_fr_max) where {E, P}
+    function Thruster(eng::E, prop::P, gear_ratio) where {E, P}
         @assert sign(gear_ratio) * Int(prop.sense) > 0 "Thruster gear ratio sign "*
         "does not match propeller turn sign"
-        new{E,P}(eng, prop, gear_ratio, friction, M_fr_max)
+        new{E,P}(eng, prop, gear_ratio)
     end
 end
 
 
 function f_ode!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
 
-    @unpack engine, propeller, frc = thr
-    @unpack gear_ratio, M_fr_max = thr.params
+    @unpack engine, propeller = thr
+    @unpack gear_ratio = thr.params
 
     ω_eng = engine.x.ω
     ω_prop = gear_ratio * ω_eng
 
-    frc.u.input .= ω_eng
-    frc.u.sat_enable .= true
-    f_ode!(frc)
     f_ode!(propeller, kin, air, ω_prop)
 
     M_prop = propeller.y.wr_p.M[1]
     M_eq = gear_ratio * M_prop #load torque seen from the engine shaft
-    M_fr = -frc.y.out[1] .* M_fr_max #scale M_fr_max with compensator feedback
-
-    #when the engine is stopped, introduce a friction constraint to make the
-    #propeller actually stop instead of slowing down asymptotically, and once
-    #stopped to keep it so (unless there is a lot of headwind...). with the
-    #engine running, all friction is assumed to be already accounted for by the
-    #performance tables, which give shaft torque and power
-    if engine.s.state === eng_off
-        M_eq += M_fr
-    end
 
     J_prop = propeller.params.J_xx
     J_eq = gear_ratio^2 * J_prop #load moment of inertia seen from the engine side
@@ -488,12 +498,11 @@ end
 
 function f_step!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
 
-    @unpack engine, propeller, frc = thr
+    @unpack engine, propeller = thr
 
     x_mod = false
     x_mod = x_mod || f_step!(engine, fuel)
     x_mod = x_mod || f_step!(propeller)
-    x_mod = x_mod || f_step!(frc)
     return x_mod
 
 end

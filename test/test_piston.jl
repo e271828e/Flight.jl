@@ -205,7 +205,6 @@ function test_thruster_dynamics()
         step!(sim)
         @test sim.y.engine.state === eng_starting
 
-
         #give it a few seconds to get to stable idle RPMs
         step!(sim, 5, true)
         @test sim.y.engine.state === eng_running
@@ -227,6 +226,7 @@ function test_thruster_dynamics()
         sim.u.engine.thr = 0
         step!(sim, 5, true)
         @test sim.y.engine.ω ≈ thr.engine.idle.params.ω_target atol = 1
+
 
         ########## Propeller sense and transmission gear ratio mismatch ########
 
@@ -297,17 +297,11 @@ function test_thruster_dynamics()
         @test @ballocated(f_ode!($thr, $air, $kin)) == 0
         @test @ballocated(f_step!($thr, $fuel)) == 0
 
-        sim = Simulation(thr, args_ode = (air, kin), args_step = (fuel,), t_end = 100, save_on = false)
-        sim.u.engine.start = true
-        step!(sim, 5, true)
-        sim.u.engine.start = false
+        # sim = Simulation(thr, args_ode = (air, kin), args_step = (fuel,), t_end = 100, save_on = false)
+        # sim.u.engine.start = true
+        # step!(sim, 5, true)
+        # sim.u.engine.start = false
         # @show @ballocated(step!($sim, 0.1, true))
-
-        @show thr.x
-        @show thr.ẋ
-        thr.y |> showfields
-        return
-
 
     end #testset
 
