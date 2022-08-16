@@ -6,8 +6,6 @@ using Flight.Systems
 using Flight.Plotting
 
 import ControlSystems #avoids name clash with ControlSystems.StateSpace into scope
-import Flight.Systems: init, f_ode!, f_step!
-import Flight.Plotting: make_plots
 
 export StateSpace, PICompensator
 

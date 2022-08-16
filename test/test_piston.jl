@@ -228,7 +228,6 @@ function test_thruster_dynamics()
         step!(sim, 5, true)
         @test sim.y.engine.ω ≈ thr.engine.idle.params.ω_target atol = 1
 
-
         ########## Propeller sense and transmission gear ratio mismatch ########
 
         #coupling a CCW propeller with a positive gear ratio (non-inverting)
@@ -258,6 +257,7 @@ function test_thruster_dynamics()
         @test sim.y.propeller.ω ≈ -sim.y.engine.ω
         @test get_wr_b(sim.sys).F[1] > 0
         @test get_wr_b(sim.sys).M[1] > 0 #CW opposing torque
+
 
         #change propeller pitch and check that the idle controller raises the
         #idle manifold pressure to hold the target idle RPMs
@@ -302,6 +302,11 @@ function test_thruster_dynamics()
         step!(sim, 5, true)
         sim.u.engine.start = false
         # @show @ballocated(step!($sim, 0.1, true))
+
+        @show thr.x
+        @show thr.ẋ
+        thr.y |> showfields
+        return
 
 
     end #testset

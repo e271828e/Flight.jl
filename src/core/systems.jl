@@ -5,10 +5,10 @@ using ComponentArrays
 import AbstractTrees: children, printnode, print_tree
 import DataStructures: OrderedDict
 
-export f_ode!, f_step!, f_disc!
 export Component, System
 export SystemẊ, SystemX, SystemY, SystemU, SystemS
 export init_ẋ, init_x, init_y, init_u, init_s
+export f_ode!, f_step!, f_disc!, update_y!
 
 
 ################################################################################
@@ -166,10 +166,10 @@ end
             :(f_ode!(sys.subsystems[$(QuoteNode(label))], args...)))
     end
 
-    ex_assemble_y = :(assemble_y!(sys))
+    ex_update_y = :(update_y!(sys))
 
     push!(ex_main.args, ex_calls)
-    push!(ex_main.args, ex_assemble_y)
+    push!(ex_main.args, ex_update_y)
     push!(ex_main.args, :(return nothing))
 
     return ex_main
@@ -220,11 +220,13 @@ end
 
 end
 
-@inline function (assemble_y!(sys::System{C, X, Y})
+#fallback method for updating a System's output. it assembles the outputs from
+#its subsystems into a NamedTuple, then assigns it to the System's y field
+@inline function (update_y!(sys::System{C, X, Y})
     where {C<:Component, X, Y <: Nothing})
 end
 
-@inline @generated function (assemble_y!(sys::System{C, X, Y})
+@inline @generated function (update_y!(sys::System{C, X, Y})
     where {C<:Component, X, Y <: NamedTuple{L, M}} where {L, M})
 
     #L contains the field names of those subsystems which have outputs. retrieve

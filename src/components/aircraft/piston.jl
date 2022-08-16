@@ -7,7 +7,7 @@ using Flight.Kinematics, Flight.RigidBody, Flight.Atmosphere
 using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
 using Flight.Geodesy: HGeop
 using Flight.Propellers: AbstractPropeller, Propeller
-using Flight.Friction
+using Flight.Common
 
 import Flight.Systems: init, f_ode!, f_step!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
@@ -440,9 +440,8 @@ Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
     engine::E = Engine()
     propeller::P = Propeller()
     gear_ratio::Float64 = 1.0 #gear ratio
-    friction::Friction.Regulator{1} = Friction.Regulator{1}()
-    # frc::PICompensator{2} = PICompensator{2}( #friction compensator
-    #     k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
+    frc::PICompensator{1} = PICompensator{1}( #friction constraint compensator
+        k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
     M_fr_max::Float64 = 5.0 #maximum friction torque
     function Thruster(eng::E, prop::P, gear_ratio, friction, M_fr_max) where {E, P}
         @assert sign(gear_ratio) * Int(prop.sense) > 0 "Thruster gear ratio sign "*
@@ -454,18 +453,20 @@ end
 
 function f_ode!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
 
-    @unpack engine, propeller, friction = thr
+    @unpack engine, propeller, frc = thr
     @unpack gear_ratio, M_fr_max = thr.params
 
     ω_eng = engine.x.ω
     ω_prop = gear_ratio * ω_eng
 
-    f_ode!(friction, SVector{1, Float64}(ω_eng))
+    frc.u.input .= ω_eng
+    frc.u.sat_enable .= true
+    f_ode!(frc)
     f_ode!(propeller, kin, air, ω_prop)
 
     M_prop = propeller.y.wr_p.M[1]
     M_eq = gear_ratio * M_prop #load torque seen from the engine shaft
-    M_fr = friction.y.α[1] .* M_fr_max
+    M_fr = -frc.y.out[1] .* M_fr_max #scale M_fr_max with compensator feedback
 
     #when the engine is stopped, introduce a friction constraint to make the
     #propeller actually stop instead of slowing down asymptotically, and once
@@ -481,18 +482,18 @@ function f_ode!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
 
     f_ode!(engine, air; M_load = M_eq, J_load = J_eq)
 
-    Systems.assemble_y!(thr)
+    Systems.update_y!(thr)
 
 end
 
 function f_step!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
 
-    @unpack engine, propeller, friction = thr
+    @unpack engine, propeller, frc = thr
 
     x_mod = false
     x_mod = x_mod || f_step!(engine, fuel)
     x_mod = x_mod || f_step!(propeller)
-    x_mod = x_mod || f_step!(friction)
+    x_mod = x_mod || f_step!(frc)
     return x_mod
 
 end
@@ -503,4 +504,5 @@ AngularMomentumTrait(::System{<:Thruster}) = HasAngularMomentum()
 
 get_wr_b(thr::System{<:Thruster}) = get_wr_b(thr.propeller) #only external
 get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
+
 end #module

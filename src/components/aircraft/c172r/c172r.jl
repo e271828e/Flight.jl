@@ -514,7 +514,7 @@ function f_ode!(airframe::System{<:Airframe}, avionics::System{BasicAvionics},
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
-    Systems.assemble_y!(airframe)
+    Systems.update_y!(airframe)
 
 end
 

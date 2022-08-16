@@ -386,7 +386,7 @@ function f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinematicData,
     f_ode!(strut, steering, terrain, kinematics)
     f_ode!(contact, strut, braking)
 
-    Systems.assemble_y!(sys)
+    Systems.update_y!(sys)
 
 end
 
