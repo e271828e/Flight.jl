@@ -145,6 +145,7 @@ $${v}_{eO_c}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b + R^b_s e_3 \dot{\xi}
 $${v}_{eO_c}^b = {v}_{eO_c(b)}^b + R^b_s e_3 \dot{\xi}$$
 
 Where we have defined:
+
 $${v}_{eO_c(b)}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b$$
 
 The term ${v}_{eO_c(b)}^b$ represents the velocity of the contact point due to vehicle motion, and
@@ -345,8 +346,7 @@ $$e_3^T R^s_c F_{gnd,P}^c(F_N) + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = m \ddot{\xi}
 
 Then we have the following scalar equation:
 
-$$e_3^T R^s_c  {\begin{pmatrix} \mu_x \alpha_x \\ \mu_y \alpha_y \\ -1 \end{pmatrix}} F_N
-+ F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = 0$$
+$$e_3^T R^s_c \begin{pmatrix} \mu_x \alpha_x \\ \mu_y \alpha_y \\ -1 \end{pmatrix} F_N + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = 0$$
 
 Let us define the non-dimensional contact force as:
 

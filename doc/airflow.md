@@ -26,4 +26,5 @@ $$v_{wOb}^{b} = R^{b}_{w} v_{wOb}^{w} = R^{b}_{w} \begin{pmatrix} 1 & 0 & 0 \end
 And the airflow angles with respect to the body axes can be computed as:
 
 $$\alpha_b = atan2(v_{wOb}^{b}(3), v_{wOb}^{b}(1))$$
+
 $$\beta_b = atan2\left(v_{wOb}^{b}(2), \sqrt{v_{wOb}^{b}(1)^2 + v_{wOb}^{b}(3)^2}\right)$$
