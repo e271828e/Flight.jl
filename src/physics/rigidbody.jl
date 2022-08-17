@@ -501,21 +501,23 @@ end
 
 ###################### Acceleration Outputs #####################
 
+#all magnitudes resolved in body axes unless otherwise noted
 Base.@kwdef struct RigidBodyData
-    mp_b::MassProperties = MassProperties()
-    wr_g_b::Wrench = Wrench()
-    wr_in_b::Wrench = Wrench()
-    wr_ext_b::Wrench = Wrench()
-    hr_b::SVector{3,Float64} = zeros(SVector{3})
-    α_eb_b::SVector{3,Float64} = zeros(SVector{3})
-    α_ib_b::SVector{3,Float64} = zeros(SVector{3})
-    v̇_eOb_b::SVector{3,Float64} = zeros(SVector{3})
-    a_eOb_b::SVector{3,Float64} = zeros(SVector{3})
-    a_eOb_n::SVector{3,Float64} = zeros(SVector{3})
-    a_iOb_b::SVector{3,Float64} = zeros(SVector{3})
-    f_Ob_b::SVector{3,Float64} = zeros(SVector{3})
-    a_iG_b::SVector{3,Float64} = zeros(SVector{3})
-    f_G_b::SVector{3,Float64} = zeros(SVector{3})
+    mp_b::MassProperties = MassProperties() #aircraft mass properties at Ob
+    wr_g_b::Wrench = Wrench() #gravity wrench at Ob
+    wr_in_b::Wrench = Wrench() #inertia wrench at Ob
+    wr_ext_b::Wrench = Wrench() #externally applied wrench at Ob
+    wr_tot_b::Wrench = Wrench() #total wrench at Ob
+    hr_b::SVector{3,Float64} = zeros(SVector{3}) #angular momentum of rotating components
+    α_eb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-body angular acceleration
+    α_ib_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-to-body angular acceleration
+    v̇_eOb_b::SVector{3,Float64} = zeros(SVector{3}) #time derivative of ECEF-relative velocity
+    a_eOb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-relative acceleration of Ob
+    a_eOb_n::SVector{3,Float64} = zeros(SVector{3}) #ECEF-relative acceleration of Ob, NED axes
+    a_iOb_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-relative acceleration of Ob
+    f_Ob_b::SVector{3,Float64} = zeros(SVector{3}) #specific force at Ob
+    a_iG_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-relative acceleration of G
+    f_G_b::SVector{3,Float64} = zeros(SVector{3}) #specific force at G
 end
 
 function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassProperties,
@@ -533,9 +535,9 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
     #since kin is needed by those components, it must be called from the
     #aircraft's kinematic state vector
 
-    #clearly, r_ObG_b cannot be arbitrarily large, because J_Ob_b is larger than
-    #J_G_b (Steiner). therefore, at some point J_G_b would become zero (or at
-    #least singular)!
+    #note: for a given J_Ob_b, r_ObG_b cannot be arbitrarily large, because
+    #moments of inertia are minimum at G. therefore, at some point J_G_b would
+    #become non-positive definite
 
     @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b = kin
 
@@ -551,8 +553,8 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
 
     wr_g_b = gravity_wrench(mp_b, kin)
     wr_in_b = inertia_wrench(mp_b, kin, hr_b)
-    wr_b = wr_ext_b + wr_g_b + wr_in_b
-    b = SVector{6}(vcat(wr_b.M, wr_b.F))
+    wr_tot_b = wr_ext_b + wr_g_b + wr_in_b
+    b = SVector{6}(vcat(wr_tot_b.M, wr_tot_b.F))
 
     # update ẋ_vel
     ẋ_vel .= A\b
@@ -577,9 +579,9 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
     f_Ob_b = a_iOb_b - G_Ob_b
     f_G_b = a_iG_b - G_Ob_b #G ≈ Ob
 
-    return RigidBodyData(; mp_b, wr_g_b, wr_in_b, wr_ext_b, hr_b, α_eb_b,
-                           α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n, a_iOb_b, f_Ob_b,
-                           a_iG_b, f_G_b)
+    return RigidBodyData(; mp_b, wr_g_b, wr_in_b, wr_ext_b, wr_tot_b, hr_b,
+                           α_eb_b, α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n,
+                           a_iOb_b, f_Ob_b, a_iG_b, f_G_b)
 
 end
 
@@ -616,17 +618,22 @@ function make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
     pd = OrderedDict{Symbol, Plots.Plot}()
 
     pd[:wr_g_b] = plot(th.wr_g_b;
-        plot_title = "Gravity Wrench [Vehicle Axes]",
+        plot_title = "Gravity Wrench at Ob [Vehicle Axes]",
         wr_source = "g", wr_frame = "b",
         kwargs...)
 
     pd[:wr_in_b] = plot(th.wr_in_b;
-        plot_title = "Inertia Wrench [Vehicle Axes]",
+        plot_title = "Inertia Wrench at Ob [Vehicle Axes]",
         wr_source = "in", wr_frame = "b",
         kwargs...)
 
     pd[:wr_ext_b] = plot(th.wr_ext_b;
-        plot_title = "External Wrench [Vehicle Axes]",
+        plot_title = "External Wrench at Ob [Vehicle Axes]",
+        wr_source = "ext", wr_frame = "b",
+        kwargs...)
+
+    pd[:wr_tot_b] = plot(th.wr_tot_b;
+        plot_title = "Total Wrench at Ob [Vehicle Axes]",
         wr_source = "ext", wr_frame = "b",
         kwargs...)
 
@@ -649,7 +656,7 @@ function make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
         kwargs...)
 
     pd[:a_eOb_b] = plot(th.a_eOb_b;
-        plot_title = "Linear Acceleration (Vehicle/ECEF) [Vehicle Axes]",
+        plot_title = "Linear Acceleration (Ob/ECEF) [Vehicle Axes]",
         ylabel = hcat(
             L"$a_{eb}^{x_b} \ (m/s^{2})$",
             L"$a_{eb}^{y_b} \ (m/s^{2})$",
@@ -658,7 +665,7 @@ function make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
         kwargs...)
 
     pd[:a_eOb_n] = plot(th.a_eOb_n;
-        plot_title = "Linear Acceleration (Vehicle/ECEF) [NED Axes]",
+        plot_title = "Linear Acceleration (Ob/ECEF) [NED Axes]",
         ylabel = hcat(
             L"$a_{eb}^{N} \ (m/s^{2})$",
             L"$a_{eb}^{E} \ (m/s^{2})$",
@@ -667,11 +674,20 @@ function make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
         kwargs...)
 
     pd[:f_Ob_b] = plot(TimeHistory(th._t, th.f_Ob_b._data / g₀);
-        plot_title = "Specific Force [Vehicle Axes]",
+        plot_title = "Specific Force (Ob) [Vehicle Axes]",
         ylabel = hcat(
             L"$f_{Ob}^{x_b} \ (g)$",
             L"$f_{Ob}^{y_b} \ (g)$",
             L"$f_{Ob}^{z_b} \ (g)$"),
+        th_split = :h,
+        kwargs...)
+
+    pd[:f_G_b] = plot(TimeHistory(th._t, th.f_G_b._data / g₀);
+        plot_title = "Specific Force (Center of Mass) [Vehicle Axes]",
+        ylabel = hcat(
+            L"$f_{G}^{x_b} \ (g)$",
+            L"$f_{G}^{y_b} \ (g)$",
+            L"$f_{G}^{z_b} \ (g)$"),
         th_split = :h,
         kwargs...)
 

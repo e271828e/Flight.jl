@@ -38,53 +38,46 @@ We define a maximum force $F_{max}$ such that if $F(\xi, \dot{\xi}) > F_{max}$, 
 
 ### WoW Determination
 
-We start by computing the position of $O_{w0} = O_w(\xi = 0)$, that is, the wheel's endpoint when the strut is at its natural length.
+We start by computing the position of $O_{w0} = O_w(\xi = 0)$, that is, the wheel's endpoint when the strut is at its natural length:
+
 $$ r_{O_eO_{w0}}^e = r_{O_eO_b}^e + r_{O_bO_s}^e + r_{O_sO_{w0}}^e $$
 
 Where:
+
 $$R^e_s = R^e_b R^b_s$$
-$$
-r_{O_bO_s}^e = R^e_b r_{O_bO_s}^b
-$$
-$$
-r_{O_sO_{w0}}^e = R^e_s r_{O_sO_{w0}}^s = R^e_s {\begin{pmatrix} 0 & 0 & l_0 \end{pmatrix}}^T = R^e_s e_3 l_0 =  k^e_s l_0
-$$
+
+$$ r_{O_bO_s}^e = R^e_b r_{O_bO_s}^b $$
+
+$$ r_{O_sO_{w0}}^e = R^e_s r_{O_sO_{w0}}^s = R^e_s {\begin{pmatrix} 0 & 0 & l_0 \end{pmatrix}}^T = R^e_s e_3 l_0 =  k^e_s l_0 $$
 
 Then we construct the local ground tangent plane. We define it as follows:
 - Its origin $O_t$ is the projection of $O_{w0}$ onto the terrain along the local vertical. Therefore, the geographic 2D location of $O_t$, given by its n-Vector $n^e(O_t)$, is simply that of $O_{w0}$. The altitude $h(O_t)$ is obtained by querying the terrain model at $n^e(O_t)$. From $n^e(O_t)$ and $h(O_t)$ we compute the Cartesian position $r_{O_eO_t}^e$.
 - Its normal unit vector $u_t^n$ is obtained by querying the terrain model for its surface normal at $n^e(O_t)$, which we can then transform to $e$ axes.
 
 In order to avoid unnecessary computations when the aircraft is too far from the ground for contact to be even potentially possible, we first compute $h(O_{w0})$ and check the condition:
-$$
-h(O_{w0}) - h(O_t) < \Delta h_{max}
-$$
+
+$$ h(O_{w0}) - h(O_t) < \Delta h_{max} $$
 
 Where $\Delta h_{max}$ is a suitable chosen threshold. If this doesn't hold, we are done. Otherwise, we continue with the exact ground contact test.
 
 The equation satisfied by a point $P$ contained in the local ground tangent plane is:
-$$
-(u_t^e)^T (r_{O_eP}^e - r_{O_eO_t}^e) = (u_t^e)^T r_{O_tP}^e  = 0
-$$
+
+$$ (u_t^e)^T (r_{O_eP}^e - r_{O_eO_t}^e) = (u_t^e)^T r_{O_tP}^e  = 0 $$
 
 Now, we find $l$ by imposing that $O_c$ be contained in this plane:
-$$
-(u_t^e)^T r_{O_tO_c}^e = 0
-$$
+
+$$ (u_t^e)^T r_{O_tO_c}^e = 0 $$
 
 With:
-$$
-r_{O_tO_c}^e = r_{O_tO_s}^e + r_{O_sO_c}^e
-$$
 
-$$
-r_{O_sO_c}^e = R^e_s r_{O_sO_c}^s = R^e_s {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T = R^e_s e_3 l=  k^e_s l
-$$
+$$ r_{O_tO_c}^e = r_{O_tO_s}^e + r_{O_sO_c}^e $$
 
-$$
-r_{O_tO_s}^e = r_{O_eO_s}^e - r_{O_eO_t}^e = r_{O_eO_b}^e + r_{O_bO_s}^e - r_{O_eO_t}^e
-$$
+$$ r_{O_sO_c}^e = R^e_s r_{O_sO_c}^s = R^e_s {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T = R^e_s e_3 l=  k^e_s l $$
+
+$$ r_{O_tO_s}^e = r_{O_eO_s}^e - r_{O_eO_t}^e = r_{O_eO_b}^e + r_{O_bO_s}^e - r_{O_eO_t}^e $$
 
 With this:
+
 $$ (u_t^e)^T (r_{O_tO_s}^e + k^e_s l) = 0 $$
 
 $$ l = - \dfrac{(u_t^e)^T r_{O_tO_s}^e}{(u_t^e)^T k^e_s }  $$
@@ -125,7 +118,7 @@ $$R^b_c = (R^n_b)^T R^n_c$$
 The position of $O_c$ is given by:
 $${r}_{O_sO_c}^s = {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T$$
 
-$$r_{O_bO_c}^b = r_{O_bO_s}^b + R^b_s r_{O_sO_c}^s$$:
+$$r_{O_bO_c}^b = r_{O_bO_s}^b + R^b_s r_{O_sO_c}^s$$
 
 ### Computing $v_{eO_c}^c$
 
@@ -136,27 +129,29 @@ $$\dot{r}_{O_eO_c}^e = \dot{r}_{O_eO_b}^e + R^e_b \Omega_{eb}^b r_{O_bO_c}^b + R
 $${v}_{eO_c}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b + \dot{r}_{O_bO_c}^b$$
 
 Now:
+
 $$r_{O_bO_c}^b = r_{O_bO_s}^b + R^b_s r_{O_sO_c}^s$$
+
 $$\dot{r}_{O_bO_c}^b = \dot{r}_{O_bO_s}^b + R^b_s \dot{r}_{O_sO_c}^s = R^b_s \dot{r}_{O_sO_c}^s$$
 
 $$\dot{r}_{O_sO_c}^s = {\begin{pmatrix} 0 & 0 & \dot{\xi} \end{pmatrix}}^T = e_3 \dot{\xi}$$
 
 $$\dot{r}_{O_bO_c}^b = R^b_s e_3 \dot{\xi}$$
 
-
 Then:
+
 $${v}_{eO_c}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b + R^b_s e_3 \dot{\xi}$$
+
 $${v}_{eO_c}^b = {v}_{eO_c(b)}^b + R^b_s e_3 \dot{\xi}$$
 
 Where we have defined:
 $${v}_{eO_c(b)}^b = {v}_{eO_b}^b + \Omega_{eb}^b r_{O_bO_c}^b$$
 
-
-
 The term ${v}_{eO_c(b)}^b$ represents the velocity of the contact point due to vehicle motion, and
 $R^b_s e_3 \dot{\xi}$ is its velocity due to strut deformation.
 
 Now:
+
 $$R^c_s = R^c_b R^b_s$$
 
 $${v}_{eO_c(b)}^c = R^c_b {v}_{eO_c(b)}^b$$
@@ -218,7 +213,7 @@ The (maximum) longitudinal friction coefficient $\mu_{x(max)}$ is a function of 
 
 Then, $\mu_{x(max)}$ can be computed as:
 
-$\mu_{x(max)} = \mu_{roll} + \left( \mu_{skid} - \mu_{roll} \right) u_{brk}$
+$$\mu_{x(max)} = \mu_{roll} + \left( \mu_{skid} - \mu_{roll} \right) u_{brk}$$
 
 From the above, we can see that both $\mu_{x(max)}$ and $\mu_{y(max)}$ have $\mu_{skid}$ as their maximum value.
 However, the magnitude of the friction coefficient, both components considered, cannot exceed $\mu_{skid}$. This makes
@@ -228,13 +223,13 @@ the brakes should not allow the overall friction coefficient to surpass that of 
 
 Let:
 
-$\mu_{mag} = \sqrt{\mu_{x(max)}^2 + \mu_{y(max)}^2}$
+$$\mu_{mag} = \sqrt{\mu_{x(max)}^2 + \mu_{y(max)}^2}$$
 
 To keep $\mu_{mag} \leq \mu_{skid}$, the friction coefficients are scaled as follows:
 
-$\mu_{x(max)}:= \mu_{x(max)} \, \min \left( 1, \mu_{skid} / \mu_{mag} \right)$
+$$\mu_{x(max)}:= \mu_{x(max)} \, \min \left( 1, \mu_{skid} / \mu_{mag} \right)$$
 
-$\mu_{y(max)}:= \mu_{y(max)} \, \min \left( 1, \mu_{skid} / \mu_{mag} \right)$
+$$\mu_{y(max)}:= \mu_{y(max)} \, \min \left( 1, \mu_{skid} / \mu_{mag} \right)$$
 
 ### $\mu$ Scaling
 
@@ -247,14 +242,16 @@ As described above, the magnitude and sign of $\mu_x$ and $\mu_y$ must be such t
 
 This behavior can be simulated by defining the friction coefficients as follows:
 
-$\mu_{x} = \alpha_x \mu_{x(max)} F_N$\
-$\mu_{y} = \alpha_y \mu_{y(max)} F_N$
+$$\mu_{x} = \alpha_x \mu_{x(max)} F_N$$
+
+$$\mu_{y} = \alpha_y \mu_{y(max)} F_N$$
 
 Each $\alpha$ is a signed scaling coefficient, whose value is determined by a PI regulator acting on the contact velocity
 along the corresponding axis. The value of $\alpha$ is given by:
 
-$\alpha_x = -k_p v_{eO_c}^{x_c} - k_i \int{1_A(\alpha_x) v_{eO_c}^{x_c} dt}$\
-$\alpha_y = -k_p v_{eO_c}^{y_c} - k_i \int{1_A(\alpha_y) v_{eO_c}^{y_c} dt}$
+$$\alpha_x = -k_p v_{eO_c}^{x_c} - k_i \int{1_A(\alpha_x) v_{eO_c}^{x_c} dt}$$
+
+$$\alpha_y = -k_p v_{eO_c}^{y_c} - k_i \int{1_A(\alpha_y) v_{eO_c}^{y_c} dt}$$
 
 Where $k_p$ and $k_i$ are constant gains, and $1_A(x)$ is the indicator function, with $A = \{-1, 1\}$. Its purpose is
 to stop the integration whenever the overall output value of $\alpha$ is saturated at $-1$ or $1$ in order to avoid
@@ -262,13 +259,15 @@ windup.
 
 For a moving contact point, the constant (saturated) values will be given by:
 
-$\alpha_x = -sgn(v_{eO_c}^{x_c})$\
-$\alpha_y = -sgn(v_{eO_c}^{y_c})$
+$$\alpha_x = -sgn(v_{eO_c}^{x_c})$$
+
+$$\alpha_y = -sgn(v_{eO_c}^{y_c})$$
 
 Since these friction coefficients are signed, the friction force components are given simply by:
 
-$F_{O_c}^{x_c} = \mu_x F_N$\
-$F_{O_c}^{y_c} = \mu_y F_N$
+$$F_{O_c}^{x_c} = \mu_x F_N$$
+
+$$F_{O_c}^{y_c} = \mu_y F_N$$
 
 
 ### Computing ground forces
@@ -277,22 +276,22 @@ For the purposes of the linear momentum equation, let $P$ denote the location of
 assembly (which includes the tire). This point moves along the strut compression line, that is, along the $z_s$ axis.
 The linear momentum equation applied to $P$ is:
 
-$\dot{v}_{iP}^i = \dfrac{1}{m} F_{ext,P}^i + G^i$
+$$\dot{v}_{iP}^i = \dfrac{1}{m} F_{ext,P}^i + G^i$$
 
 Expressed in the ECEF frame, the above takes the form:
 
-$\dot{v}_{eP}^e = \dfrac{1}{m} F_{ext,P}^e + g^e - 2 \Omega_{ie}^e v_{eP}^e$
+$$\dot{v}_{eP}^e = \dfrac{1}{m} F_{ext,P}^e + g^e - 2 \Omega_{ie}^e v_{eP}^e$$
 
 Also:
 
-$\dot{v}_{eP}^e = a_{eO_s}^e + R^e_s (\ddot{r}_{O_sP}^s + (\Omega_{es}^s \Omega_{es}^s  +$
-$\dot{\Omega}_{es}^s )r_{O_sP}^s + \Omega_{es}^s \dot{r}_{sP}^s)$
+$$\dot{v}_{eP}^e = a_{eO_s}^e + R^e_s (\ddot{r}_{O_sP}^s + (\Omega_{es}^s \Omega_{es}^s  +
+\dot{\Omega}_{es}^s )r_{O_sP}^s + \Omega_{es}^s \dot{r}_{sP}^s)$$
 
 Substituting:
 
-$a_{eO_s}^s + \ddot{r}_{O_sP}^s + (\Omega_{es}^s \Omega_{es}^s  +$
-$\dot{\Omega}_{es}^s) r_{O_sP}^s + \Omega_{es}^s \dot{r}_{sP}^s =$
-$\dfrac{1}{m} F_{ext,P}^s + g^s - 2 \Omega_{ie}^s v_{eP}^s$
+$$a_{eO_s}^s + \ddot{r}_{O_sP}^s + (\Omega_{es}^s \Omega_{es}^s +
+\dot{\Omega}_{es}^s) r_{O_sP}^s + \Omega_{es}^s \dot{r}_{sP}^s =
+\dfrac{1}{m} F_{ext,P}^s + g^s - 2 \Omega_{ie}^s v_{eP}^s$$
 
 We now neglect:
 - Inertia terms due to the Earth rotation
@@ -300,33 +299,36 @@ We now neglect:
 
 The result is:
 
-$a_{eO_s}^s + \ddot{r}_{O_sP}^s = \dfrac{1}{m} F_{ext,P}^s + g^s$
+$$a_{eO_s}^s + \ddot{r}_{O_sP}^s = \dfrac{1}{m} F_{ext,P}^s + g^s$$
 
 Now, the position of $P$ can be expressed as:
 
-$r_{O_sP}^s = r_{O_sO_g}^s + r_{O_gP}^s = {\begin{pmatrix} 0 & 0 & l + d_{O_gP} \end{pmatrix}}^T$
+$$r_{O_sP}^s = r_{O_sO_g}^s + r_{O_gP}^s = {\begin{pmatrix} 0 & 0 & l + d_{O_gP} \end{pmatrix}}^T$$
 
 Where $d_{O_gP}$ is a constant signed distance that locates $P$ with respect to $O_g$. Then:
 
-$\ddot{r}_{O_sP}^s = {\begin{pmatrix} 0 & 0 & \ddot{\xi} \end{pmatrix}}^T$
+$$\ddot{r}_{O_sP}^s = {\begin{pmatrix} 0 & 0 & \ddot{\xi} \end{pmatrix}}^T$$
 
 Projecting onto the $z_s$ axis yields:
 
-$\ddot{\xi} = e_3^T \left(\dfrac{1}{m} F_{ext,P}^s + g^s - a_{eO_s}^s \right)$
+$$\ddot{\xi} = e_3^T \left(\dfrac{1}{m} F_{ext,P}^s + g^s - a_{eO_s}^s \right)$$
 
 The external forces acting on the piston rod assembly are:
-- The force $F_{oleo,P}^s(\xi, \dot{\xi})$ along $z_s$ due to the shock absorber:\
-  $F_{oleo,P}^s(\xi, \dot{\xi}) = {\begin{pmatrix} 0 & 0 & F_{oleo,P}^{z_s}(\xi, \dot{\xi})  \end{pmatrix}}^T$
+- The force $F_{oleo,P}^s(\xi, \dot{\xi})$ along $z_s$ due to the shock absorber:
 
-- The constraint forces along $x_s$ and $y_s$ transmitted by the strut casing:\
-  $F_{c,P}^s = {\begin{pmatrix} F_{c,P}^{x_s} & F_{c,P}^{y_s} & 0 \end{pmatrix}}^T$
+  $$F_{oleo,P}^s(\xi, \dot{\xi}) = {\begin{pmatrix} 0 & 0 & F_{oleo,P}^{z_s}(\xi, \dot{\xi})  \end{pmatrix}}^T$$
 
-- Ground force $F_{gnd,P}^s$ (normal and friction), transmitted through the tire.\
-$F_{gnd,P}^s = R^s_c F_{gnd,P}^c(F_N) =$
-$R^s_c F_N {\begin{pmatrix} \mu_x \alpha_x & \mu_y \alpha_y & -1 \end{pmatrix}}^T$
+- The constraint forces along $x_s$ and $y_s$ transmitted by the strut casing:
+
+  $$F_{c,P}^s = {\begin{pmatrix} F_{c,P}^{x_s} & F_{c,P}^{y_s} & 0 \end{pmatrix}}^T$$
+
+- Ground force $F_{gnd,P}^s$ (normal and friction), transmitted through the tire:
+
+  $$F_{gnd,P}^s = R^s_c F_{gnd,P}^c(F_N) = R^s_c F_N {\begin{pmatrix} \mu_x \alpha_x & \mu_y \alpha_y & -1 \end{pmatrix}}^T$$
 
 Substituting:
-$$\ddot{\xi} = \dfrac{1}{m} \left( e_3^T R^s_c F_{gnd,P}^c(F_N) + F_{oleo,P}^{z_s}(\xi, \dot{\xi})\right) + e_3^T \left(g^s - a_{eO_s}^s \right)$$
+
+  $$\ddot{\xi} = \dfrac{1}{m} \left( e_3^T R^s_c F_{gnd,P}^c(F_N) + F_{oleo,P}^{z_s}(\xi, \dot{\xi})\right) + e_3^T \left(g^s - a_{eO_s}^s \right)$$
 
 When there is no ground contact, the ground force is zero and we can solve for $\ddot{\xi}$.
 
@@ -339,7 +341,7 @@ To avoid having to handle the non-penetration constraint explicitly, we can negl
 by setting $m \approx 0$. This causes the ground forces to be transmitted instantaneously and directly to
 the shock absorber, which is often a reasonable approximation. Multiplying the linear momentum equation by $m$ we have:
 
-$e_3^T R^s_c F_{gnd,P}^c(F_N) + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = m \ddot{\xi} - m e_3^T \left(g^s - a_{eO_s}^s \right) = 0$
+$$e_3^T R^s_c F_{gnd,P}^c(F_N) + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = m \ddot{\xi} - m e_3^T \left(g^s - a_{eO_s}^s \right) = 0$$
 
 Then we have the following scalar equation:
 
@@ -347,12 +349,15 @@ $$e_3^T R^s_c  {\begin{pmatrix} \mu_x \alpha_x \\ \mu_y \alpha_y \\ -1 \end{pmat
 + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = 0$$
 
 Let us define the non-dimensional contact force as:
+
 $$f_{gnd,P}^c = {\begin{pmatrix} \mu_x \alpha_x \\ \mu_y \alpha_y \\ -1 \end{pmatrix}} $$
 
 We can then write the previous equation as:
+
 $$e_3^T f_{gnd,P}^s F_N + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = 0$$
 
 Solving for $F_N$:
+
 $$F_N = \dfrac{-F_{oleo,P}^{z_s}(\xi, \dot{\xi})}{f_{gnd,P}^{z_s}}$$
 
 Since the contact constraint is unilateral, we must have $F_N \ge 0$, so we must bound the result accordingly. $F_N > 0$
