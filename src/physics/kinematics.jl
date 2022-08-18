@@ -357,7 +357,7 @@ end
 ################################ NED Kinematics ################################
 ################################################################################
 
-#non-singularity free kinematic mechanization. useful mostly for analysis and
+#non singularity-free kinematic mechanization. useful mostly for analysis and
 #control design
 
 struct NED <: AbstractKinematics end

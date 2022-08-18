@@ -193,7 +193,7 @@ function load_geoid_data_bin(file_path = joinpath(dirname(@__FILE__), "ww15mgh_l
 
     #return interpolator with extrapolation enabled to avoid machine precision
     #issues due to the boundaries being multiples of π
-    LinearInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
+    linear_interpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
     # CubicSplineInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
 end
 
@@ -207,7 +207,7 @@ function load_geoid_data_hdf5(file_path = joinpath(dirname(@__FILE__), "ww15mgh_
     end
     ϕ_range = LinRange(-π/2, π/2, size(data, 1))
     λ_range = LinRange(0, 2π, size(data, 2))
-    LinearInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
+    linear_interpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
 end
 
 const geoid_data = load_geoid_data_hdf5()

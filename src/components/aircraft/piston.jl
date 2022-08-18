@@ -302,7 +302,7 @@ function generate_lookup(; n_stall, n_cutoff)
         μ_data = Array{Float64}(undef, length(n_range), length(δ_range))
         for (i,n) in enumerate(n_range)
             #inverse interpolation μ(δ)
-            μ_1D = LinearInterpolation(δ_wot(n, μ_knots), μ_knots, extrapolation_bc = Line())
+            μ_1D = linear_interpolation(δ_wot(n, μ_knots), μ_knots, extrapolation_bc = Line())
             μ_data[i, :] = μ_1D.(δ_range)
         end
 
@@ -329,12 +329,12 @@ function generate_lookup(; n_stall, n_cutoff)
         π_data = Array{Float64,2}(undef, (length(n_data), length(μ_data)))
 
         for i in 1:length(n_data)
-            π_std_1D = LinearInterpolation(
+            π_std_1D = linear_interpolation(
                 μ_knots[:,i], π_knots[:,i], extrapolation_bc = Line())
             π_data[i,:] = π_std_1D.(μ_data)
         end
 
-        LinearInterpolation(
+        linear_interpolation(
             (n_data, μ_data), π_data, extrapolation_bc = ((Flat(), Flat()), (Flat(), Flat())))
 
     end
@@ -351,7 +351,7 @@ function generate_lookup(; n_stall, n_cutoff)
         π_data[:, 2] .= [0, 0.23, 0.409, 0.409, 0] #it also vanishes at n_stall and n_cutoff ∀δ
         π_data[:, 3] .= [π_std(n, μ_wot(n, 1)) for n in n_data] #at δ=1 by definition it's π_std(μ_wot)
 
-        LinearInterpolation((n_data,δ_data), π_data, extrapolation_bc = ((Flat(), Flat()), (Flat(), Line())))
+        linear_interpolation((n_data,δ_data), π_data, extrapolation_bc = ((Flat(), Flat()), (Flat(), Line())))
 
     end
 
@@ -361,7 +361,7 @@ function generate_lookup(; n_stall, n_cutoff)
         m_data = [0.0, 0.071, 0.137, 0.281, 0.402, 0.472, 0.542, 0.637, 0.816, 1.0]
         π_ratio_data = [0.860, 0.931, 0.961, 0.989, 0.999, 1.000, 0.999, 0.994, 0.976, 0.950]
 
-        LinearInterpolation(m_data, π_ratio_data, extrapolation_bc = Flat())
+        linear_interpolation(m_data, π_ratio_data, extrapolation_bc = Flat())
 
     end
 
@@ -371,7 +371,7 @@ function generate_lookup(; n_stall, n_cutoff)
         m_data = [0.0, 0.071, 0.137, 0.281, 0.402, 0.472, 0.542, 0.637, 0.816, 1.0]
         sfc_ratio_data = [0.870, 0.850, 0.854, 0.901, 0.959, 1.0, 1.042, 1.105, 1.243, 1.428]
 
-        LinearInterpolation(m_data, sfc_ratio_data, extrapolation_bc = Flat())
+        linear_interpolation(m_data, sfc_ratio_data, extrapolation_bc = Flat())
 
     end
 
@@ -388,7 +388,7 @@ function generate_lookup(; n_stall, n_cutoff)
             2.11663  1.70062  1.40123  1.18576  1.03069   0.919083  0.838765  0.780961
             2.33484  1.85418  1.50825  1.2593   1.08012   0.951177  0.858376  0.791588]
 
-        LinearInterpolation((n_data, π_data), sfc_data, extrapolation_bc = Line())
+        linear_interpolation((n_data, π_data), sfc_data, extrapolation_bc = Line())
 
     end
 

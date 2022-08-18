@@ -356,7 +356,12 @@ F_N + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = 0$$
 
 Let us define the non-dimensional contact force as:
 
-$$f_{gnd,P}^c = {\begin{pmatrix} \mu_x \alpha_x \\ \mu_y \alpha_y \\ -1 \\ \end{pmatrix}} $$
+$$f_{gnd,P}^c =
+\begin{pmatrix}
+\mu_x \alpha_x \\
+\mu_y \alpha_y \\
+-1
+\end{pmatrix} $$
 
 We can then write the previous equation as:
 

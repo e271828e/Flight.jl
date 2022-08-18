@@ -126,7 +126,7 @@ function test_UnitQuat()
         @test u_badnorm.imag == q[2:end]
 
         #setindex & setproperty disallowed
-        @test_throws ErrorException u[4] = -5
+        @test_throws CanonicalIndexError u[4] = -5
         @test_throws ErrorException u.real = 0
         @test_throws ErrorException u.imag = [1, 2, 3]
 

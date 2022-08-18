@@ -21,7 +21,12 @@ $$R^{b}_{w} = \begin{pmatrix} \cos\alpha \cos\beta & -\cos\alpha\sin\beta & -\si
 
 The aerodynamic velocity components in body axes are then:
 
-$$v_{wOb}^{b} = R^{b}_{w} v_{wOb}^{w} = R^{b}_{w} \begin{pmatrix} 1 & 0 & 0 \end{pmatrix} = \begin{pmatrix} \cos\alpha \cos\beta \\ \sin\beta \\ \sin\alpha \cos\beta \end{pmatrix}$$
+$$v_{wOb}^{b} = R^{b}_{w} v_{wOb}^{w} = R^{b}_{w} \begin{pmatrix} 1 & 0 & 0 \end{pmatrix} =
+\begin{pmatrix}
+\cos\alpha \cos\beta \\
+\sin\beta \\
+\sin\alpha \cos\beta
+\end{pmatrix}$$
 
 And the airflow angles with respect to the body axes can be computed as:
 
