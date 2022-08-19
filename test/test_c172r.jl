@@ -5,6 +5,7 @@ using UnPack
 using BenchmarkTools
 using OrdinaryDiffEq
 using NLopt
+using Sockets
 
 using Flight
 
@@ -91,7 +92,7 @@ function test_sim_nrt(; save::Bool = true)
     sim = Simulation(ac; args_ode = (env, ), t_end = 150, sys_io!, adaptive = true)
     Sim.run!(sim, verbose = true)
     # plots = make_plots(sim; Plotting.defaults...)
-    plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
+    plots = make_plots(TimeHistory(sim); Plotting.defaults...)
     save ? save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test")) : nothing
 
     return sim
@@ -106,18 +107,19 @@ function test_sim_rt(; save::Bool = true)
     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
     ac = System(Cessna172R());
     kin_init = KinematicInit(
-        v_eOb_n = [30, 0, 0],
+        v_eOb_n = [0, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-        h = h_trn + 1.9 + 100.5);
+        h = h_trn + 1.9 + 0);
 
     Aircraft.init!(ac, kin_init)
     ac.u.avionics.eng_start = true #engine start switch on
     ac.u.avionics.throttle = 1
 
     sys_io! = let inputs = init_joysticks() |> values |> collect, # inputs = [XBoxController(),]
-                  outputs = [XPInterface(),] # outputs = [XPInterface(host = IPv4("192.168.1.2"))] #Parsec
+                #   outputs = [XPInterface(),]
+                outputs = [XPInterface(host = IPv4("192.168.1.2"))] #Parsec
 
         Output.init!.(outputs)
 
@@ -133,7 +135,7 @@ function test_sim_rt(; save::Bool = true)
 
     end
 
-    sim = Simulation(ac; args_ode = (env,), t_end = 1, sys_io!, realtime = true,)
+    sim = Simulation(ac; args_ode = (env,), t_end = 120, sys_io!, realtime = true,)
 
     Sim.run!(sim; verbose= true)
     plots = make_plots(sim; Plotting.defaults...)

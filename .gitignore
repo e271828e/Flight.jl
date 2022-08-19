@@ -1,5 +1,6 @@
 /tmp
 /precompile
+/sketches
 .github/
 .vscode/
 .VSCodeCounter
@@ -26,6 +27,7 @@
 /source-dist.tmp
 /source-dist.tmp1
 
+imgui.ini
 *.exe
 *.dll
 *.dwo

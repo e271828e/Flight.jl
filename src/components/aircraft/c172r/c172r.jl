@@ -26,6 +26,7 @@ import Flight.Systems: init, f_ode!, f_step!, f_disc!
 import Flight.Kinematics: KinematicInit
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Piston: fuel_available
+import Flight.Input: assign!
 
 include("data/aero.jl")
 
@@ -544,7 +545,7 @@ function assign_component_inputs!(airframe::System{<:Airframe}, avionics::System
     ldg.u.right.braking[] = brake_right
     aero.u.e = (elevator + Δ_elevator) #elevator↑ (stick forward) -> e↑
     aero.u.a = (aileron + Δ_aileron) #aileron↑ (stick right) -> a↑
-    aero.u.r = -pedals #pedals↑ (left pedal forward) -> r↓
+    aero.u.r = -(pedals + Δ_pedals) #pedals↑ (left pedal forward) -> r↓
     aero.u.f = flaps #flaps↑ -> δf↑
 
     return nothing
