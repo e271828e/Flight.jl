@@ -4,11 +4,10 @@ using LinearAlgebra
 using StaticArrays
 using ComponentArrays
 using UnPack
-using Unitful
+using Reexport
 using Interpolations
 using HDF5
-using Reexport
-# using Revise
+# using JLD
 
 using Flight.Systems
 using Flight.Utils
@@ -317,12 +316,14 @@ AngularMomentumTrait(::System{Ldg}) = HasNoAngularMomentum()
 
 function Ldg()
 
-    mlg_damper = SimpleDamper(k_s = ustrip(u"N/m", 0.5*5400u"lbf/ft"),
-                              k_d_ext = ustrip(u"N/(m/s)", 0.4*1600u"lbf/(ft/s)"),
-                              k_d_cmp = ustrip(u"N/(m/s)", 0.4*1600u"lbf/(ft/s)"))
-    nlg_damper = SimpleDamper(k_s = ustrip(u"N/m", 1800u"lbf/ft"),
-                              k_d_ext = ustrip(u"N/(m/s)", 0.4*600u"lbf/(ft/s)"),
-                              k_d_cmp = ustrip(u"N/(m/s)", 0.4*600u"lbf/(ft/s)"))
+    mlg_damper = SimpleDamper(k_s = 39404, #2700 lbf/ft
+                              k_d_ext = 9340, #640 lbf/(ft/s)
+                              k_d_cmp = 9340,
+                              F_max = 50000)
+    nlg_damper = SimpleDamper(k_s = 26269, #1800 lbf/ft
+                              k_d_ext = 3503, #240 lbf/(ft/s)
+                              k_d_cmp = 3503,
+                              F_max = 50000)
 
     left = LandingGearUnit(
         strut = Strut(

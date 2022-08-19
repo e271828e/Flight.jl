@@ -1,6 +1,6 @@
 module Piston
 
-using Interpolations, Unitful, Plots, StaticArrays, StructArrays, ComponentArrays, UnPack
+using Interpolations, Plots, StaticArrays, StructArrays, ComponentArrays, UnPack
 
 using Flight.Systems, Flight.Utils
 using Flight.Kinematics, Flight.RigidBody, Flight.Atmosphere
@@ -43,16 +43,12 @@ fuel_available(f::System{MagicFuelSupply}) = f.u[]
 
 abstract type AbstractPistonEngine <: Component end
 
-# can't figure out how to register these so that they are seen from module
-# methods
-# @unit inHg "inHg" InchOfMercury 3386.389*Unitful.Pa false
-# @unit hp "hp" Horsepower 735.49875*Unitful.W false
-
 const β = ISA_layers[1].β
 
 inHg2Pa(p) = 3386.389p
 ft2m(h) = 0.3048h
 hp2W(P) = 735.49875P
+RPM2radpersec(ω) = ω*π/30
 
 T_ISA(p) = T_std * (p / p_std) ^ (-β * R / g_std)
 
@@ -93,11 +89,11 @@ struct Engine{L} <: AbstractPistonEngine
 end
 
 function Engine(;
-    P_rated= 200 |> hp2W,
-    ω_rated = ustrip(u"rad/s", 2700u"rpm"), #IO 360
-    ω_stall = ustrip(u"rad/s", 300u"rpm"),
-    ω_cutoff = ustrip(u"rad/s", 3100u"rpm"),
-    ω_idle = ustrip(u"rad/s", 600u"rpm"),
+    P_rated= hp2W(200),
+    ω_rated = RPM2radpersec(2700), #IO 360
+    ω_stall = RPM2radpersec(300),
+    ω_cutoff = RPM2radpersec(3100),
+    ω_idle = RPM2radpersec(600),
     M_start = 40,
     J = 0.05,
     idle = PICompensator{1}(k_p = 4.0, k_i = 2.0, bounds = (-0.5, 0.5)),
