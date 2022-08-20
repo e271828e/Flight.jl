@@ -12,7 +12,7 @@ Base.@kwdef struct DummySim
     y::Ref{Float64} = Ref(0.0)
 end
 
-function step!(sim::DummySim, dt::Float64)
+function sim_step!(sim::DummySim, dt::Float64)
     f = 0.2
     sim.t[] += dt
     sim.y[] = sin(2π*f*sim.t[])
@@ -60,7 +60,7 @@ function sim_loop(sim::DummySim, channel::Channel{Float64},
 
         steps = 0
         while sim.t[] <= τ()
-            step!(sim, dt)
+            sim_step!(sim, dt)
             steps += 1
         end
     end

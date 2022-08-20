@@ -49,7 +49,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         save_everystep::Bool = isempty(saveat),
         sys_init_kwargs = NamedTuple())
 
-        @assert !(sys.x === nothing) "Can't simulate purely discrete Systems"
+        @assert !(sys.x === nothing) "Purely discrete Systems aren't currently supported"
 
         sys_init!(sys; sys_init_kwargs...)
 
