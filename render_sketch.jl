@@ -76,7 +76,6 @@ function start_loops_threaded(sim::DummySim = DummySim())
     channel = Channel{Float64}()
 
     Threads.@spawn sim_loop(sim, channel, τ)
-
     wait(Threads.@spawn render_loop(channel, τ))
     close(channel)
 

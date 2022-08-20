@@ -3,22 +3,39 @@ module Input
 using StaticArrays
 using UnPack
 
-export AbstractInputInterface
 
 using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
-        GetJoystickAxes, GetJoystickButtons, GetJoystickName
-export connected_joysticks, init_joysticks, joystick_callback
+        GetJoystickAxes, GetJoystickButtons, GetJoystickName, SetJoystickCallback
+
+export AbstractInputInterface, AbstractInputMapping, DefaultInputMapping
+export AbstractJoystick, XBoxController
+export connected_joysticks, init_joysticks
 export get_axis_value, get_button_state, get_button_change, is_pressed, is_released
-export XBoxController
+
+
+################################################################################
+########################### AbstractInputInterface #############################
 
 abstract type AbstractInputInterface end
 
-update!(input::AbstractInputInterface) = throw(MethodError(update!, (input,)))
-assign!(target::Any, input::AbstractInputInterface) = throw(MethodError(assign!, (target, input)))
-#to be extended by users for concrete target and interface
+#for every input interface it supports, a target should extend the three
+#argument assign! method below, with a ::DefaultInputMapping argument. for
+#alternative mappings, it can define a subtype of AbstractInputMapping, and then
+#extend assign! using that type as third argument
+abstract type AbstractInputMapping end
+struct DefaultInputMapping <: AbstractInputMapping end
 
-#############################################################
-#################### AbstractJoystick #######################
+#to be extended for concrete targets and interfaces
+update!(input::AbstractInputInterface) = throw(MethodError(update!, (input,)))
+assign!(target::Any, input::AbstractInputInterface, ::DefaultInputMapping) = throw(MethodError(assign!, (target, input)))
+
+
+assign!(target::Any, input::AbstractInputInterface) = assign!(target, input, DefaultInputMapping())
+
+
+################################################################################
+############################## AbstractJoystick ################################
+
 
 abstract type AbstractJoystick <: AbstractInputInterface end
 
@@ -37,14 +54,27 @@ end
 _update!(j::AbstractJoystick) = throw(MethodError(update!, (j,)))
 
 
+############################## ButtonChange ####################################
 
-##################### Joystick configuration ################
+@enum ButtonChange begin
+    unchanged = 0
+    pressed = 1
+    released = 2
+end
+Base.convert(::Type{ButtonChange}, n::Integer) = ButtonChange(n)
+Base.zero(::Type{ButtonChange}) = unchanged
 
-#adds any joysticks already connected when GLFW is first imported. from that
-#moment on, any connections and disconnections can only be detected via
-#callback, and then retrieved by calling GLFW.PollEvents()
+
+
+############################# Joystick initialization ##########################
+
 function init_joysticks()
 
+    #simply calling PollEvents refreshes all the joystick slots, so when
+    #JoystickPresent is then called, it returns their updated states. there is
+    #no need to explicitly handle the addition or removal of joysticks directly
+    #from a joystick_callback
+    GLFW.PollEvents()
     for slot in instances(JoystickSlot)
         delete!(connected_joysticks, slot)
         if JoystickPresent(slot)
@@ -59,7 +89,7 @@ end
 function add_joystick(slot::JoystickSlot)
 
     if !JoystickPresent(slot)
-        println("Error while adding device at slot $slot: not found")
+        println("Could not add joystick at slot $slot: not found")
         return
     end
 
@@ -67,58 +97,25 @@ function add_joystick(slot::JoystickSlot)
 
     if joystick_model === "Xbox Controller"
         joystick = XBoxController(slot)
-        println("$joystick_model active at slot $slot")
+        println("XBoxController active at slot $slot")
     else
-        error("Interface for joystick $joystick_model not implemented")
+        println("$joystick_model not supported")
     end
 
     connected_joysticks[slot] = joystick
 
 end
 
-function remove_joystick(slot::JoystickSlot)
-
-    if JoystickPresent(slot)
-        joystick_model = GetJoystickName(slot)
-        println("Can't remove $joystick_model from slot $slot: device still connected")
-        return
-    end
-
-    delete!(connected_joysticks, slot)
-    println("$slot is no longer active")
-end
-
-function joystick_callback(slot::JoystickSlot, event::DeviceConfigEvent)
-
-    print("Joystick callback called")
-    if event === GLFW.CONNECTED
-        add_joystick(slot)
-    elseif event === GLFW.DISCONNECTED
-        remove_joystick(slot)
-    end
-
-end
-
-#these only work when run from the module that uses the joystick(s)
-# init_joysticks()
-# GLFW.SetJoystickCallback(joystick_callback)
-# GLFW.PollEvents() #check for newly connected joysticks
-
-###################
-
-@enum ButtonChange begin
-    unchanged = 0
-    pressed = 1
-    released = 2
-end
-Base.convert(::Type{ButtonChange}, n::Integer) = ButtonChange(n)
-Base.zero(::Type{ButtonChange}) = unchanged
+# #let's see if this
+# function is_connected(joy::AbstractJoystick)
 
 
-##################################################################
-######################### XBox Controller ########################
 
-########################## Axes
+################################################################################
+############################# XBox Controller ##################################
+
+################################ Axes ##########################################
+
 
 const XBoxAxisLabels = (
     :left_analog_x, :left_analog_y, :right_analog_x, :right_analog_y,
@@ -134,7 +131,8 @@ end
 Base.getindex(axes::XBoxAxes, s::Symbol) = axes.data[axes.mapping[s]]
 Base.setindex!(axes::XBoxAxes, v, s::Symbol) = (axes.data[axes.mapping[s]] = v)
 
-######################## Buttons
+
+############################### Buttons ########################################
 
 const XBoxButtonLabels = (
     :button_A, :button_B, :button_X, :button_Y, :left_bumper, :right_bumper,
@@ -150,7 +148,7 @@ Base.@kwdef struct XBoxButtons
     change::MVector{14,ButtonChange} = zeros(MVector{14,ButtonChange})
 end
 
-####################### Main
+############################### Controller #####################################
 
 Base.@kwdef struct XBoxController <: AbstractJoystick
     slot::JoystickSlot = GLFW.JOYSTICK_1
@@ -214,5 +212,14 @@ function is_released(joystick::XBoxController, s::Symbol)
     change[mapping[s]] === released
 end
 
+#to show values in the REPL
+function Base.show(::IO, ::MIME"text/plain", joystick::XBoxController)
+    println("Hi")
+end
+
+#to print
+# function Base.show(::IO, joy::XBoxController)
+#     println("Hi from print")
+# end
 
 end #module

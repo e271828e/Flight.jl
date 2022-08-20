@@ -135,7 +135,7 @@ function test_sim_rt(; save::Bool = true)
 
     end
 
-    sim = Simulation(ac; args_ode = (env,), t_end = 120, sys_io!, realtime = true,)
+    sim = Simulation(ac; args_ode = (env,), t_end = 10, sys_io!, realtime = true,)
 
     Sim.run!(sim; verbose= true)
     plots = make_plots(sim; Plotting.defaults...)
