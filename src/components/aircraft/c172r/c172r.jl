@@ -9,8 +9,9 @@ using Interpolations
 using HDF5
 # using JLD
 
-using Flight.Systems
 using Flight.Utils
+using Flight.Input
+using Flight.Systems
 using Flight.Attitude
 using Flight.Terrain
 using Flight.Atmosphere
@@ -20,7 +21,6 @@ using Flight.LandingGear
 using Flight.Propellers
 using Flight.Piston
 using Flight.Aircraft: AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
-using Flight.Input: Input, XBoxController, get_axis_value, is_released
 
 import Flight.Systems: init, f_ode!, f_step!, f_disc!
 import Flight.Kinematics: KinematicInit
@@ -583,7 +583,7 @@ function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
     end
 end
 
-function assign!(u::BasicAvionicsU, joystick::XBoxController)
+function assign!(u::BasicAvionicsU, joystick::Joystick{XBoxController}, ::DefaultInputMapping)
 
     u.Δ_aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
     u.Δ_elevator = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
@@ -591,16 +591,16 @@ function assign!(u::BasicAvionicsU, joystick::XBoxController)
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    u.aileron -= 0.01 * is_released(joystick, :dpad_left)
-    u.aileron += 0.01 * is_released(joystick, :dpad_right)
-    u.elevator -= 0.01 * is_released(joystick, :dpad_down)
-    u.elevator += 0.01 * is_released(joystick, :dpad_up)
+    u.aileron -= 0.01 * was_released(joystick, :dpad_left)
+    u.aileron += 0.01 * was_released(joystick, :dpad_right)
+    u.elevator -= 0.01 * was_released(joystick, :dpad_down)
+    u.elevator += 0.01 * was_released(joystick, :dpad_up)
 
-    u.throttle += 0.1 * is_released(joystick, :button_Y)
-    u.throttle -= 0.1 * is_released(joystick, :button_A)
+    u.throttle += 0.1 * was_released(joystick, :button_Y)
+    u.throttle -= 0.1 * was_released(joystick, :button_A)
 
-    u.flaps += 0.3333 * is_released(joystick, :right_bumper)
-    u.flaps -= 0.3333 * is_released(joystick, :left_bumper)
+    u.flaps += 0.3333 * was_released(joystick, :right_bumper)
+    u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
 
 end
 

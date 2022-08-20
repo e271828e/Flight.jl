@@ -3,14 +3,13 @@ module Input
 using StaticArrays
 using UnPack
 
-
 using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
         GetJoystickAxes, GetJoystickButtons, GetJoystickName, SetJoystickCallback
 
 export AbstractInputInterface, AbstractInputMapping, DefaultInputMapping
-export AbstractJoystick, XBoxController
-export connected_joysticks, init_joysticks
-export get_axis_value, get_button_state, get_button_change, is_pressed, is_released
+export JoystickSlot, Joystick, XBoxController
+export get_connected_joysticks
+export get_axis_value, get_button_state, get_button_change, was_pressed, was_released
 
 
 ################################################################################
@@ -34,86 +33,10 @@ assign!(target::Any, input::AbstractInputInterface) = assign!(target, input, Def
 
 
 ################################################################################
-############################## AbstractJoystick ################################
+################################# Joystick #####################################
 
 
-abstract type AbstractJoystick <: AbstractInputInterface end
-
-const connected_joysticks = Dict{JoystickSlot, AbstractJoystick}()
-
-get_slot(joystick::AbstractJoystick) = throw(MethodError(get_slot, (joystick,)))
-
-function update!(joystick::AbstractJoystick)
-    slot = get_slot(joystick)
-    JoystickPresent(slot) ? _update!(joystick) : error(
-        "$(typeof(joystick)) not found at slot $slot"
-    )
-end
-
-#to be overridden by concrete joystick subtypes
-_update!(j::AbstractJoystick) = throw(MethodError(update!, (j,)))
-
-
-############################## ButtonChange ####################################
-
-@enum ButtonChange begin
-    unchanged = 0
-    pressed = 1
-    released = 2
-end
-Base.convert(::Type{ButtonChange}, n::Integer) = ButtonChange(n)
-Base.zero(::Type{ButtonChange}) = unchanged
-
-
-
-############################# Joystick initialization ##########################
-
-function init_joysticks()
-
-    #simply calling PollEvents refreshes all the joystick slots, so when
-    #JoystickPresent is then called, it returns their updated states. there is
-    #no need to explicitly handle the addition or removal of joysticks directly
-    #from a joystick_callback
-    GLFW.PollEvents()
-    for slot in instances(JoystickSlot)
-        delete!(connected_joysticks, slot)
-        if JoystickPresent(slot)
-            add_joystick(slot)
-        end
-    end
-
-    return connected_joysticks
-
-end
-
-function add_joystick(slot::JoystickSlot)
-
-    if !JoystickPresent(slot)
-        println("Could not add joystick at slot $slot: not found")
-        return
-    end
-
-    joystick_model = GetJoystickName(slot)
-
-    if joystick_model === "Xbox Controller"
-        joystick = XBoxController(slot)
-        println("XBoxController active at slot $slot")
-    else
-        println("$joystick_model not supported")
-    end
-
-    connected_joysticks[slot] = joystick
-
-end
-
-# #let's see if this
-# function is_connected(joy::AbstractJoystick)
-
-# struct GenericJoystick end
-
-
-default_axes_labels(N::Integer) = Symbol.("axis_".*string.(Tuple(1:N)))
-default_button_labels(N::Integer) = Symbol.("button_".*string.(Tuple(1:N)))
+################################ AxisSet #######################################
 
 struct AxisSet{N, L}
     mapping::NamedTuple{L, NTuple{N,Int}}
@@ -129,81 +52,47 @@ end
 AxisSet{N}() where {N} = AxisSet(default_axes_labels(N))
 AxisSet(N::Integer) = AxisSet{N}()
 
+Base.getindex(axes::AxisSet, s::Symbol) = axes.data[axes.mapping[s]]
+Base.setindex!(axes::AxisSet, v, s::Symbol) = (axes.data[axes.mapping[s]] = v)
 
-struct ButtonSet5{N, L}
+default_axes_labels(N::Integer) = Symbol.("axis_".*string.(Tuple(1:N)))
+
+update!(axes::AxisSet, slot::JoystickSlot) = (axes.data .= GetJoystickAxes(slot))
+
+
+
+################################ ButtonSet #####################################
+
+@enum ButtonChange begin
+    unchanged = 0
+    pressed = 1
+    released = 2
+end
+Base.convert(::Type{ButtonChange}, n::Integer) = ButtonChange(n)
+Base.zero(::Type{ButtonChange}) = unchanged
+
+
+struct ButtonSet{N, L}
     mapping::NamedTuple{L, NTuple{N,Int}}
     state::MVector{N,Bool}
     change::MVector{N,ButtonChange}
 end
 
-function ButtonSet5(labels::NTuple{N,Symbol} = default_button_labels(N)) where {N}
+function ButtonSet(labels::NTuple{N,Symbol} = default_button_labels(N)) where {N}
     mapping = NamedTuple{labels}(Tuple(1:N))
     state = zeros(MVector{N,Bool})
     change = zeros(MVector{N,ButtonChange})
-    ButtonSet5{N, labels}(mapping, state, change)
+    ButtonSet{N, labels}(mapping, state, change)
 end
 
-ButtonSet5{N}() where {N} = ButtonSet5(default_button_labels(N))
-ButtonSet5(N::Integer) = ButtonSet5{N}()
+ButtonSet{N}() where {N} = ButtonSet(default_button_labels(N))
+ButtonSet(N::Integer) = ButtonSet{N}()
 
+default_button_labels(N::Integer) = Symbol.("axis_".*string.(Tuple(1:N)))
 
-################################################################################
-############################# XBox Controller ##################################
+function update!(buttons::ButtonSet{N, L}, slot::JoystickSlot) where {N, L}
 
-################################ Axes ##########################################
-
-
-const XBoxAxisLabels = (
-    :left_analog_x, :left_analog_y, :right_analog_x, :right_analog_y,
-    :left_trigger, :right_trigger
-)
-const default_axis_mapping = NamedTuple{XBoxAxisLabels}(1:6)
-
-Base.@kwdef struct XBoxAxes
-    mapping::NamedTuple{XBoxAxisLabels, NTuple{6,Int}} = default_axis_mapping
-    data::MVector{6,Float32} = zeros(MVector{6, Float32})
-end
-
-Base.getindex(axes::XBoxAxes, s::Symbol) = axes.data[axes.mapping[s]]
-Base.setindex!(axes::XBoxAxes, v, s::Symbol) = (axes.data[axes.mapping[s]] = v)
-
-
-############################### Buttons ########################################
-
-const XBoxButtonLabels = (
-    :button_A, :button_B, :button_X, :button_Y, :left_bumper, :right_bumper,
-    :view, :menu, :left_analog, :right_analog,
-    :dpad_up, :dpad_right, :dpad_down, :dpad_left
-)
-
-const default_button_mapping = NamedTuple{XBoxButtonLabels}(1:14)
-
-Base.@kwdef struct XBoxButtons
-    mapping::NamedTuple{XBoxButtonLabels, NTuple{14,Int}} = default_button_mapping
-    state::MVector{14,Bool} = zeros(MVector{14,Bool})
-    change::MVector{14,ButtonChange} = zeros(MVector{14,ButtonChange})
-end
-
-############################### Controller #####################################
-
-Base.@kwdef struct XBoxController <: AbstractJoystick
-    slot::JoystickSlot = GLFW.JOYSTICK_1
-    axes::XBoxAxes = XBoxAxes()
-    buttons::XBoxButtons = XBoxButtons()
-end
-
-XBoxController(slot::JoystickSlot) = XBoxController(; slot)
-get_slot(joystick::XBoxController) = joystick.slot
-
-function _update!(joystick::XBoxController)
-
-    @unpack slot, axes, buttons = joystick
-
-    axes.data .= GetJoystickAxes(slot)
-    axes[:left_trigger] = 0.5*(1 + axes[:left_trigger])
-    axes[:right_trigger] = 0.5*(1 + axes[:right_trigger])
-
-    buttons_state_new = SVector{14,Bool}(GetJoystickButtons(slot))
+    buttons_state_new = SVector{N,Bool}(GetJoystickButtons(slot))
 
     for i in 1:length(buttons.state)
         if !buttons.state[i] && buttons_state_new[i]
@@ -219,43 +108,164 @@ function _update!(joystick::XBoxController)
 
 end
 
-get_axis_value(joy::XBoxController) = NamedTuple{XBoxAxisLabels}(Tuple(joy.axes.data))
-get_button_state(joy::XBoxController) = NamedTuple{XBoxButtonLabels}(Tuple(joy.buttons.state))
-get_button_change(joy::XBoxController) = NamedTuple{XBoxButtonLabels}(Tuple(joy.buttons.change))
 
-function get_axis_value(joystick::XBoxController, s::Symbol)
+################################ Joystick ######################################
+
+abstract type AbstractJoystickID end
+
+struct Joystick{T <: AbstractJoystickID, A <: AxisSet, B <: ButtonSet} <: AbstractInputInterface
+    id::T
+    axes::A
+    buttons::B
+    slot::JoystickSlot
+end
+
+function is_connected(joystick::Joystick)
+    #does the reference in our supposed slot still point to us?
+    return active_slots[joystick.slot][] === joystick
+end
+
+function update!(joystick::Joystick)
+
+    @unpack id, slot, axes, buttons = joystick
+
+    if !is_connected(joystick)
+        println("Can't update $(joystick.id) at slot $slot, it's no longer connected")
+        return
+    end
+
+    update!(axes, slot)
+    update!(buttons, slot)
+    rescale!(axes, id)
+
+end
+
+#to override as required by each joystick ID
+rescale!(::AxisSet, ::AbstractJoystickID) = nothing
+
+function get_axis_value(joystick::Joystick, s::Symbol)
     @unpack data, mapping = joystick.axes
     data[mapping[s]]
 end
 
-function get_button_state(joystick::XBoxController, s::Symbol)
+function get_button_state(joystick::Joystick, s::Symbol)
     @unpack state, mapping = joystick.buttons
     state[mapping[s]]
 end
 
-function get_button_change(joystick::XBoxController, s::Symbol)
+function get_button_change(joystick::Joystick, s::Symbol)
     @unpack change, mapping = joystick.buttons
     change[mapping[s]]
 end
 
-function is_pressed(joystick::XBoxController, s::Symbol)
+function was_pressed(joystick::Joystick, s::Symbol)
     @unpack change, mapping = joystick.buttons
     change[mapping[s]] === pressed
 end
 
-function is_released(joystick::XBoxController, s::Symbol)
+function was_released(joystick::Joystick, s::Symbol)
     @unpack change, mapping = joystick.buttons
     change[mapping[s]] === released
 end
 
-#to show values in the REPL
-function Base.show(::IO, ::MIME"text/plain", joystick::XBoxController)
-    println("Hi")
+############################# Joystick initialization ##########################
+
+const active_slots = Dict{JoystickSlot, Ref{<:Joystick}}()
+
+function refresh_joystick_slots()
+
+    #simply calling PollEvents refreshes all the joystick slots, so when
+    #JoystickPresent is then called, it returns their updated states. there is
+    #no need to explicitly handle the addition or removal of joysticks directly
+    #from a joystick_callback
+    GLFW.PollEvents()
+    for slot in instances(JoystickSlot)
+        delete!(active_slots, slot)
+        if JoystickPresent(slot)
+            add_joystick(slot)
+        end
+    end
+
+    return active_slots
+end
+
+function add_joystick(slot::JoystickSlot)
+
+    if !JoystickPresent(slot)
+        println("Could not add joystick at slot $slot: not found")
+        return
+    end
+
+    joystick_model = GetJoystickName(slot)
+
+    if joystick_model === "Xbox Controller"
+        joystick = xboxcontroller(slot)
+        println("XBoxController active at slot $slot")
+    else
+        println("$joystick_model not supported")
+    end
+
+    active_slots[slot] = Ref(joystick)
+
+end
+
+function get_connected_joysticks()
+
+    active_slots = refresh_joystick_slots()
+    return Tuple(jref[] for jref in values(active_slots))
+
+end
+
+
+################################################################################
+############################# XBox Controller ##################################
+
+################################ Axes ##########################################
+
+const XBoxAxisLabels = (
+    :left_analog_x, :left_analog_y, :right_analog_x, :right_analog_y,
+    :left_trigger, :right_trigger
+)
+
+const XBoxButtonLabels = (
+    :button_A, :button_B, :button_X, :button_Y, :left_bumper, :right_bumper,
+    :view, :menu, :left_analog, :right_analog,
+    :dpad_up, :dpad_right, :dpad_down, :dpad_left
+)
+
+############################### Controller #####################################
+
+struct XBoxController <: AbstractJoystickID end
+
+function xboxcontroller(slot::JoystickSlot = GLFW.JOYSTICK_1)
+    axes = AxisSet(XBoxAxisLabels)
+    buttons = ButtonSet(XBoxButtonLabels)
+    Joystick(XBoxController(), axes, buttons, slot)
+end
+
+function rescale!(axes::AxisSet, ::XBoxController)
+    axes[:left_trigger] = 0.5*(1 + axes[:left_trigger])
+    axes[:right_trigger] = 0.5*(1 + axes[:right_trigger])
 end
 
 #to print
-# function Base.show(::IO, joy::XBoxController)
-#     println("Hi from print")
+function Base.show(::IO, joystick::Joystick)
+
+    @unpack id, slot, axes, buttons = joystick
+    println()
+    println("$(typeof(id)) at slot $(slot), connected = $(is_connected(joystick))")
+    println("Axes:")
+    for label in keys(axes.mapping)
+        println(label, ": ", get_axis_value(joystick, label))
+    end
+    for label in keys(buttons.mapping)
+        println(label, ": ", get_button_state(joystick, label), ", ", get_button_change(joystick,label))
+    end
+
+end
+
+# to show in the REPL
+# function Base.show(::IO, ::MIME"text/plain", joystick::Joystick)
 # end
 
 end #module

@@ -117,7 +117,7 @@ function test_sim_rt(; save::Bool = true)
     ac.u.avionics.eng_start = true #engine start switch on
     ac.u.avionics.throttle = 1
 
-    sys_io! = let inputs = init_joysticks() |> values |> collect, # inputs = [XBoxController(),]
+    sys_io! = let inputs = get_connected_joysticks() |> values |> collect, # inputs = [XBoxController(),]
                 #   outputs = [XPInterface(),]
                 outputs = [XPInterface(host = IPv4("192.168.1.2"))] #Parsec
 

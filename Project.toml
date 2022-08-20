@@ -34,7 +34,6 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
 Trapz = "592b5752-818d-11e9-1e9a-2b8ca4a44cd1"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
-Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
 AbstractTrees = "0.4.2"
@@ -61,5 +60,4 @@ StaticArrays = "1.5.5"
 StructArrays = "0.6.12"
 Trapz = "2.0.3"
 UnPack = "1.0.2"
-Zygote = "0.6.44"
 julia = "1.8"

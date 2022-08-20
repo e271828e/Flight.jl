@@ -4,7 +4,7 @@ using Test
 using BenchmarkTools
 using LinearAlgebra
 using Interpolations: bounds
-using Zygote: gradient
+using FiniteDiff: finite_difference_derivative
 
 using Flight
 
@@ -40,7 +40,7 @@ function test_default_airfoil()
             end
             for (i, α) in enumerate(α)
                 cL_α_analytic_array[i,j] = cL_α(airfoil, α, M)
-                cL_α_auto_array[i,j] = gradient(cL_α_auto, α)[1]
+                cL_α_auto_array[i,j] = finite_difference_derivative(cL_α_auto, α)
             end
         end
 

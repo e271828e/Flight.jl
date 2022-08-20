@@ -6,15 +6,14 @@ using UnPack
 using ComponentArrays
 
 using Flight
-using Flight.Input: update!, assign!, AbstractJoystick
+using Flight.Input: update!, assign!
 
-export TestInput
+export test_input
 
 struct TestTarget end
 
-function assign!(::TestTarget, xbox::XBoxController, ::DefaultInputMapping)
-    return
-
+function Input.assign!(::TestTarget, joy::Joystick{XBoxController}, ::DefaultInputMapping)
+    println(joy)
 end
 
 function test_input()
@@ -23,26 +22,22 @@ end
 
 function test_joysticks()
 
-    init_joysticks()
-    for joy in values(connected_joysticks)
+    for joy in get_connected_joysticks()
         test(joy)
     end
 
 end
 
-test(joy::AbstractJoystick) = println("No tests defined for $joy")
+test(joy::Joystick) = println("No tests defined for $(typeof(joy.id))")
 
-function test(joy::XBoxController)
+function test(joy::Joystick{XBoxController})
 
     target = TestTarget()
     t0 = time()
-    println("Testing $(typeof(joy))")
+    println("Testing $(typeof(joy.id))")
     while time() - t0 < 10
         update!(joy)
         assign!(target, joy)
-        println()
-        # show(joy)
-        # joy.axes |> showfields
         sleep(1)
     end
 
