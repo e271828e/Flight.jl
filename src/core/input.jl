@@ -109,6 +109,42 @@ end
 # #let's see if this
 # function is_connected(joy::AbstractJoystick)
 
+# struct GenericJoystick end
+
+
+default_axes_labels(N::Integer) = Symbol.("axis_".*string.(Tuple(1:N)))
+default_button_labels(N::Integer) = Symbol.("button_".*string.(Tuple(1:N)))
+
+struct AxisSet{N, L}
+    mapping::NamedTuple{L, NTuple{N,Int}}
+    data::MVector{6,Float32}
+end
+
+function AxisSet(labels::NTuple{N,Symbol} = default_axes_labels(N)) where {N}
+    mapping = NamedTuple{labels}(Tuple(1:N))
+    data = zeros(MVector{6, Float32})
+    AxisSet{N, labels}(mapping, data)
+end
+
+AxisSet{N}() where {N} = AxisSet(default_axes_labels(N))
+AxisSet(N::Integer) = AxisSet{N}()
+
+
+struct ButtonSet5{N, L}
+    mapping::NamedTuple{L, NTuple{N,Int}}
+    state::MVector{N,Bool}
+    change::MVector{N,ButtonChange}
+end
+
+function ButtonSet5(labels::NTuple{N,Symbol} = default_button_labels(N)) where {N}
+    mapping = NamedTuple{labels}(Tuple(1:N))
+    state = zeros(MVector{N,Bool})
+    change = zeros(MVector{N,ButtonChange})
+    ButtonSet5{N, labels}(mapping, state, change)
+end
+
+ButtonSet5{N}() where {N} = ButtonSet5(default_button_labels(N))
+ButtonSet5(N::Integer) = ButtonSet5{N}()
 
 
 ################################################################################
