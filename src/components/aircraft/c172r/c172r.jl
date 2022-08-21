@@ -487,7 +487,7 @@ function f_ode!(avionics::System{BasicAvionics}, ::System{<:Airframe},
     @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
      brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
 
-    return BasicAvionicsY(;
+    avionics.y = BasicAvionicsY(;
             throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
             brake_left, brake_right, flaps, mixture, eng_start, eng_stop)
 

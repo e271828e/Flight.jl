@@ -275,18 +275,4 @@ end
 
 TimeHistory(sim::Simulation) = TimeHistory(sim.log.t, sim.log.saveval)
 
-
-# Base.@kwdef struct SimulationIO
-
-# end
-
-#what fields do i need? need to define:
-#an output Channel from which we will take data
-
-#por que determinar que va a
-
-#cuando voy a procesar el IO de mi simulacion? claramente ya no tiene por que
-#ser, ni debe ser despues de cada step
-
-
 end #module

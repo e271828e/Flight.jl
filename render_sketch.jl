@@ -79,7 +79,7 @@ function start_loops_threaded(sim::DummySim = DummySim())
     wait(Threads.@spawn render_loop(channel, τ))
     close(channel)
 
-    return render_task, sim_task, channel
+    return channel
 
 end
 
