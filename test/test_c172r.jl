@@ -107,7 +107,7 @@ function test_sim_rt(; save::Bool = true)
     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
     ac = System(Cessna172R());
     kin_init = KinematicInit(
-        v_eOb_n = [0, 0, 0],
+        v_eOb_n = [1, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
@@ -117,7 +117,7 @@ function test_sim_rt(; save::Bool = true)
     ac.u.avionics.eng_start = true #engine start switch on
     ac.u.avionics.throttle = 1
 
-    sys_io! = let inputs = get_connected_joysticks() |> values |> collect, # inputs = [XBoxController(),]
+    sys_io! = let inputs = get_connected_joysticks(), # inputs = [XBoxController(),]
                 #   outputs = [XPInterface(),]
                 outputs = [XPInterface(host = IPv4("192.168.1.2"))] #Parsec
 
@@ -135,9 +135,9 @@ function test_sim_rt(; save::Bool = true)
 
     end
 
-    sim = Simulation(ac; args_ode = (env,), t_end = 10, sys_io!, realtime = true,)
+    sim = Simulation(ac; args_ode = (env,), t_end = 10, sys_io!)
 
-    Sim.run!(sim; verbose= true)
+    Sim.run!(sim; verbose= true, rate = 1)
     plots = make_plots(sim; Plotting.defaults...)
     save ? save_plots(plots, save_folder = joinpath("tmp", "rt_sim_test")) : nothing
 

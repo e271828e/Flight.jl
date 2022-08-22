@@ -6,8 +6,11 @@ using UnPack
 using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
         GetJoystickAxes, GetJoystickButtons, GetJoystickName, SetJoystickCallback
 
+using Flight.Sim
+
 export AbstractInputInterface, AbstractInputMapping, DefaultInputMapping
 export JoystickSlot, Joystick, XBoxController
+export InputManager
 export get_connected_joysticks
 export get_axis_value, get_button_state, get_button_change, was_pressed, was_released
 
@@ -168,6 +171,7 @@ function was_released(joystick::Joystick, s::Symbol)
     change[mapping[s]] === released
 end
 
+
 ############################# Joystick initialization ##########################
 
 const active_slots = Dict{JoystickSlot, Ref{<:Joystick}}()
@@ -256,10 +260,11 @@ function Base.show(::IO, joystick::Joystick)
     println("$(typeof(id)) at slot $(slot), connected = $(is_connected(joystick))")
     println("Axes:")
     for label in keys(axes.mapping)
-        println(label, ": ", get_axis_value(joystick, label))
+        println("\t", label, ": ", get_axis_value(joystick, label))
     end
+    println("Buttons:")
     for label in keys(buttons.mapping)
-        println(label, ": ", get_button_state(joystick, label), ", ", get_button_change(joystick,label))
+        println("\t", label, ": ", get_button_state(joystick, label), ", ", get_button_change(joystick,label))
     end
 
 end
@@ -267,5 +272,95 @@ end
 # to show in the REPL
 # function Base.show(::IO, ::MIME"text/plain", joystick::Joystick)
 # end
+
+
+################################################################################
+############################# InputManager #####################################
+
+
+struct InputManager{N, U, D <: NTuple{N,AbstractInputInterface}, M <: NTuple{N,AbstractInputMapping}}
+    u::U
+    devices::D
+    mappings::M
+    sim_lock::ReentrantLock #is set to Simulation.sim_lock
+    sys_lock::ReentrantLock #is set to Simulation.sys_lock
+end
+
+function InputManager(  sim::Simulation,
+                        devices::NTuple{N, AbstractInputInterface},
+                        mappings::NTuple{N, AbstractInputMapping}) where {N}
+    InputManager(sim.u, devices, mappings, sim.sim_lock, sim.sys_lock)
+end
+
+function InputManager(sim::Simulation,
+                        devices::NTuple{N, AbstractInputInterface},
+                        mapping::AbstractInputMapping) where {N}
+    mappings = fill(mapping, N) |> Tuple
+    InputManager(sim, devices, mappings)
+end
+
+InputManager(sim::Simulation, devices) = InputManager(sim, devices, DefaultInputMapping())
+
+function run!(input::InputManager, update_interval::Integer = 1, timeout::Real = 5; verbose = true)
+
+    #update_interval: number of display updates per input device update:
+    #T_update = T_display * update_interval (where typically T_display =
+    #16.67ms). update_interval=0 uncaps the update rate (not recommended!)
+
+    @unpack u, devices, mappings, sim_lock, sys_lock = input
+
+    verbose && println("InputManager: Starting at thread $(Threads.threadid())...")
+
+    τ = let wall_time_ref = time()
+            ()-> time() - wall_time_ref
+        end
+
+    #wait for a while for the Simulation task to start and grab its execution
+    #lock. if it doesn't, give up.
+    while true
+        trylock(sim_lock) ? unlock(sim_lock) : break
+        if τ() > timeout
+            println("InputManager: Simulation not started after $timeout seconds, exiting...")
+            return
+        end
+    end
+
+    #open GLFW window and set up refresh interval and any other	stuff necessary
+    window = GLFW.CreateWindow(640, 480, "InputManager")
+    GLFW.MakeContextCurrent(window)
+    GLFW.SwapInterval(update_interval)
+
+    try
+
+        while !GLFW.WindowShouldClose(window)
+
+            update!.(input.devices)
+
+            @lock sys_lock begin
+                for (device, mapping) in zip(devices, mappings)
+                    assign!(u, device, mapping)
+                end
+            end
+
+            GLFW.SwapBuffers(window)
+            GLFW.PollEvents()
+
+            if trylock(sim_lock) #Simulation task no longer executing, we can quit
+                unlock(sim_lock)
+                println("InputManager: Simulation no longer running")
+                break
+            end
+
+        end
+
+    catch ex
+        println("InputManager: Error during execution: $ex")
+
+    finally
+        println("InputManager: Exiting")
+        GLFW.DestroyWindow(window)
+    end
+
+end
 
 end #module

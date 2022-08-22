@@ -167,6 +167,10 @@ end
 
 function Systems.f_step!(sys::System{<:PICompensator{N}}) where {N}
 
+    # @show sys.y.input
+    # @show sys.y.out
+    # @show sys.y.sat_status
+
     x = SVector{N,Float64}(sys.x)
     x_new = x .* .!sys.u.reset
     x_mod = any(x .!= x_new)

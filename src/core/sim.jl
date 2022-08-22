@@ -5,16 +5,18 @@ using StructArrays
 using SciMLBase: ODEProblem, u_modified!, init as init_integrator
 using OrdinaryDiffEq: OrdinaryDiffEqAlgorithm, ODEIntegrator, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback, CallbackSet, SavedValues
+using GLFW
+
 using Flight.Utils
 
 using ..Systems
 
-import SciMLBase: step!, reinit!, get_proposed_dt
+import SciMLBase: step!, reinit!, solve!, get_proposed_dt
 import OrdinaryDiffEq: add_tstop!
 
 import Flight.Utils: TimeHistory
 
-export Simulation, step!, reinit!, get_proposed_dt, add_tstop!
+export Simulation, step!, reinit!, solve!, get_proposed_dt, add_tstop!
 
 
 ################################################################################
@@ -24,11 +26,13 @@ export Simulation, step!, reinit!, get_proposed_dt, add_tstop!
 #storage for f_ode! and f_step! calls, so we have no guarantees about their
 #status after a certain step. the only valid sources for t and x at any
 #given moment is the integrator's t and u
-struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
+struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, C <: Vector{<:Channel}}
     sys::S
     integrator::I
     log::L
-    realtime::Bool
+    channels::C
+    sim_lock::ReentrantLock #signals to other tasks that Simulation is running
+    sys_lock::ReentrantLock #must be acquired to modify the system
 
     function Simulation(
         sys::System;
@@ -37,7 +41,8 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         args_disc::Tuple = (), #externally supplied arguments to System's f_disc!
         sys_init!::Function = no_sys_init!, #System initialization function
         sys_io!::Function = no_sys_io!, #System I/O function
-        realtime::Bool = false,
+        sim_lock::ReentrantLock = ReentrantLock(), #to be shared with input manager
+        sys_lock::ReentrantLock = ReentrantLock(), #to be shared with input manager
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
         dt::Real = 0.02, #continuous dynamics integration step
@@ -82,8 +87,10 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues}
         #naked System's state vector. everything we need should be made
         #available in the System's output struct saved by the SavingCallback
 
-        new{typeof(sys), typeof(integrator), typeof(log)}(
-            sys, integrator, log, realtime)
+        channels = Channel{typeof(sys.y)}[]
+
+        new{typeof(sys), typeof(integrator), typeof(log), typeof(channels)}(
+            sys, integrator, log, channels, sim_lock, sys_lock)
     end
 
 end
@@ -207,7 +214,7 @@ function reinit!(sim::Simulation; sys_init_kwargs...)
     @unpack p = integrator
 
     #initialize the System's x, u and s
-    println(sys_init_kwargs)
+    # println(sys_init_kwargs)
     p.sys_init!(p.sys; sys_init_kwargs...)
 
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
@@ -220,73 +227,107 @@ function reinit!(sim::Simulation; sys_init_kwargs...)
     return nothing
 end
 
-function run!(sim::Simulation; verbose = false)
 
-    @unpack sys, integrator, realtime = sim
+################################ Execution #####################################
 
-    # #with this we can close the simulation at any time
-    #if realtime
-    # window = GLFW.CreateWindow(640, 480, "GLFW Callback Test")
-    # GLFW.MakeContextCurrent(window)
-    #end
+function run!(sim::Simulation; rate::Real = Inf, verbose::Bool = false)
 
-    if isempty(integrator.opts.tstops)
+    #rate: rate of execution relative to wall time (Inf = uncapped, 1 ≈ real time )
+
+    #could add logging here instead
+    verbose && println("Simulation: Starting at thread $(Threads.threadid())...")
+
+    if isempty(sim.integrator.opts.tstops)
         println("The simulation has hit its end time, reset it using reinit! ",
-                " or add further tstops using add_tstop!")
+                "or add further tstops using add_tstop!")
         return
     end
 
-    t_wall = time()
-    t_wall_0 = t_wall
-
-    verbose && println("Starting simulation...")
-    for _ in integrator
-
-        #integrator steps automatically at the beginning of each iteration
-
-        #retrieve the dt just taken by the integrator
-        dt = integrator.dt
-
-        #compute the wall time epoch corresponding to the simulation time epoch
-        #we just reached
-        t_wall_next = t_wall + dt
-
-        if realtime
-            #busy wait while wall time catches up
-            while (time() < t_wall_next) end
-            t_wall = t_wall_next
-            # println(time()-t_wall_next)
-        end
-
-        # Swap front and back buffers
-        # GLFW.SwapBuffers(window)
-
-        #use this to abort a real time simulation
-        # if !GLFW.WindowShouldClose(window)
-        #     break
-        # end
-
-    end
-
-    verbose && println("Simulation finished in $(time() - t_wall_0) seconds")
-    return nothing
+    t_elapsed = (rate === Inf ? run_uncapped!(sim) : run_capped!(sim; rate))
+    verbose && println("Simulation: Finished in $t_elapsed seconds")
 
 end
 
+function run_uncapped!(sim::Simulation)
+
+    return @elapsed begin
+        for _ in sim.integrator #integrator steps automatically at the beginning of each iteration
+            update_channels!(sim)
+        end
+    end
+
+end
+
+
+function run_capped!(sim::Simulation; rate::Real = Inf)
+
+    @unpack sys, integrator, channels, sim_lock, sys_lock = sim
+
+    tstops = integrator.opts.tstops
+
+    window = GLFW.CreateWindow(640, 480, "Simulation")
+    GLFW.MakeContextCurrent(window)
+
+    τ = let wall_time_ref = time()
+            ()-> time() - wall_time_ref
+        end
+
+    τ_finish = τ()
+
+    try
+
+        lock(sim_lock) #this signals IO tasks that we are executing
+
+        while !isempty(tstops)
+
+            while true
+
+                t_next = sim.t[] + get_proposed_dt(sim)
+
+                (isempty(tstops) || t_next > rate * τ()) ? break : nothing
+
+                @lock sys_lock step!(sim)
+
+                # println("Took $steps steps, t = $(sim.t[])) at τ = $(τ())")
+            end
+
+            τ_finish = τ()
+
+            update_channels!(sim)
+
+            GLFW.PollEvents()
+            if GLFW.WindowShouldClose(window)
+                println("Simulation: Aborted at t = $(sim.t[])")
+                break
+            end
+
+        end
+
+    catch ex
+
+        println("Simulation: Error during execution: $ex")
+        # @error "Error during simulation" exception=e
+        # Base.show_backtrace(stderr, catch_backtrace())
+
+    finally
+
+        unlock(sim_lock)
+        GLFW.DestroyWindow(window)
+
+    end
+
+    return τ_finish
+
+end
+
+@inline function update_channels!(sim::Simulation)
+    for channel in sim.channels
+        isopen(channel) && isready(channel) ? put!(channel, sim.y) : nothing
+    end
+end
+
+
 TimeHistory(sim::Simulation) = TimeHistory(sim.log.t, sim.log.saveval)
-
-
-# Base.@kwdef struct SimulationIO
-
-# end
-
-#what fields do i need? need to define:
-#an output Channel from which we will take data
-
-#por que determinar que va a
-
-#cuando voy a procesar el IO de mi simulacion? claramente ya no tiene por que
-#ser, ni debe ser despues de cada step
 
 
 end #module

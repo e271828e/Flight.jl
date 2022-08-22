@@ -11,6 +11,16 @@ init!(out::AbstractOutputInterface) = throw(MethodError(init!, (out,)))
 update!(out::AbstractOutputInterface, args...) = throw(MethodError(update!, (out, args...)))
 # the baseline update! methods should be defined by AircraftBase
 
+
+
+# Base.@kwdef struct SimulationDashboard{Y}
+#     channel::Channel{Y}
+#     window::GLFW
+
+# end
+
+
+
 ################################################################################
 ############################### XPInterface ####################################
 

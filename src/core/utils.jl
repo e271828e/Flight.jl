@@ -1,9 +1,10 @@
 module Utils
 
-using StructArrays
+using StaticArrays, StructArrays
 
 export Ranged, linear_scaling
 export TimeHistory, timestamps
+export MovingAverage
 export showfields, swf
 
 #print with propertynames
@@ -123,5 +124,29 @@ get_child_names(::Type{<:TimeHistory{V}}) where {V} = fieldnames(V)
 function get_scalar_components(th::TimeHistory{<:AbstractVector{T}}) where {T<:Real}
     [TimeHistory(th._t, y) for y in th._data |> StructArray |> StructArrays.components]
 end
+
+
+################################################################################
+############################ MovingAverage #####################################
+
+
+struct MovingAverage{N}
+    samples::MVector{N,Float64}
+end
+
+MovingAverage(v::AbstractVector{<:Real}) = MovingAverage(MVector{length(v), Float64}(v))
+MovingAverage{N}() where {N} = MovingAverage(zeros(MVector{N}))
+
+(ma::MovingAverage{N})() where {N} = sum(ma.samples) / N
+
+function Base.push!(ma::MovingAverage{N}, x::Real) where {N}
+    samples = ma.samples
+    for i in N-1:-1:1
+        samples[i+1] = samples[i]
+    end
+    samples[1] = x
+    return ma()
+end
+
 
 end #module

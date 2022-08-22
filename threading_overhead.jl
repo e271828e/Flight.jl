@@ -41,3 +41,18 @@ function test_single()
     println("Approximate context switching time (μs): $(t/1e6)")
 
 end
+
+
+function test_lock_overhead(l::ReentrantLock)
+    a = π/4
+    # println("Put loop running on thread $(Threads.threadid())")
+    for _ in 1:10
+        lock(l)
+        # try
+            a += a
+        # finally
+        unlock(l)
+        # end
+    end
+    return a
+end
