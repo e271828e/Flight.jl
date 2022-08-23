@@ -2,6 +2,12 @@ module Output
 
 using Sockets
 
+# using CImGui: CImGui, CSyntax, GLFWBackend, OpenGLBackend
+# using CSyntax.CStatic
+# using GLFWBackend.GLFW
+# using OpenGLBackend.ModernGL
+# using Printf
+
 export AbstractOutputInterface
 export XPInterface
 
@@ -10,16 +16,6 @@ abstract type AbstractOutputInterface end
 init!(out::AbstractOutputInterface) = throw(MethodError(init!, (out,)))
 update!(out::AbstractOutputInterface, args...) = throw(MethodError(update!, (out, args...)))
 # the baseline update! methods should be defined by AircraftBase
-
-
-
-# Base.@kwdef struct SimulationDashboard{Y}
-#     channel::Channel{Y}
-#     window::GLFW
-
-# end
-
-
 
 ################################################################################
 ############################### XPInterface ####################################
@@ -93,5 +89,20 @@ function set_position!(xp::XPInterface; lat = -998, lon = -998, h = -998,
     send(xp.socket, xp.host, xp.port, buffer.data)
 
 end
+
+
+################################################################################
+################################ CImGui ########################################
+
+# Base.@kwdef struct CImGuiRenderer
+#     swap_interval::Integer = 1
+#     style::
+# end
+# Base.@kwdef struct SimulationDashboard{Y}
+#     channel::Channel{Y}
+#     window::GLFW
+
+# end
+
 
 end #module

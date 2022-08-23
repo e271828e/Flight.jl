@@ -32,16 +32,16 @@ include("data/aero.jl")
 
 export Cessna172R
 
-############################## BasicAvionics #################################
+############################## ReversibleControls #################################
 
-struct BasicAvionics <: AbstractAvionics end
+struct ReversibleControls <: AbstractAvionics end
 
 #elevator↑ (stick forward) -> e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
 #aileron↑ (stick right) -> a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
 #pedals↑ (left pedal forward) -> r↓ -> δr↓ -> rudder trailing edge right -> Cn↑ -> yaw right
 #pedals↑ (right pedal forward) -> nose wheel steering right -> yaw right
 #flaps↑ -> δf↑ -> flap trailing edge down -> CL↑
-Base.@kwdef mutable struct BasicAvionicsU
+Base.@kwdef mutable struct ReversibleControlsU
     throttle::Ranged{Float64, 0, 1} = 0.0
     aileron::Ranged{Float64, -1, 1} = 0.0
     Δ_aileron::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
@@ -57,7 +57,7 @@ Base.@kwdef mutable struct BasicAvionicsU
     eng_stop::Bool = false
 end
 
-Base.@kwdef struct BasicAvionicsY
+Base.@kwdef struct ReversibleControlsY
     throttle::Float64 = 0.0
     Δ_aileron::Float64 = 0.0
     aileron::Float64 = 0.0
@@ -73,8 +73,8 @@ Base.@kwdef struct BasicAvionicsY
     eng_stop::Bool = false
 end
 
-init(::SystemU, ::BasicAvionics) = BasicAvionicsU()
-init(::SystemY, ::BasicAvionics) = BasicAvionicsY()
+init(::SystemU, ::ReversibleControls) = ReversibleControlsU()
+init(::SystemY, ::ReversibleControls) = ReversibleControlsY()
 
 
 ################################################################################
@@ -479,7 +479,7 @@ end
 ################################################################################
 ######################## Avionics Update Functions ###########################
 
-function f_ode!(avionics::System{BasicAvionics}, ::System{<:Airframe},
+function f_ode!(avionics::System{ReversibleControls}, ::System{<:Airframe},
                 ::KinematicData, ::AirflowData, ::System{<:AbstractTerrain})
 
     #here, avionics do nothing but update their output state. for a more complex
@@ -487,21 +487,21 @@ function f_ode!(avionics::System{BasicAvionics}, ::System{<:Airframe},
     @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
      brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
 
-    avionics.y = BasicAvionicsY(;
+    avionics.y = ReversibleControlsY(;
             throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
             brake_left, brake_right, flaps, mixture, eng_start, eng_stop)
 
 end
 
-#no digital components or state machines in BasicAvionics
-@inline f_step!(::System{BasicAvionics}, ::System{<:Airframe}, ::KinematicSystem) = false
-@inline f_disc!(::System{BasicAvionics}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
+#no digital components or state machines in ReversibleControls
+@inline f_step!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem) = false
+@inline f_disc!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
 
 
 ################################################################################
 ####################### Airframe Update Functions ##############################
 
-function f_ode!(airframe::System{<:Airframe}, avionics::System{BasicAvionics},
+function f_ode!(airframe::System{<:Airframe}, avionics::System{ReversibleControls},
                 kin::KinematicData, air::AirflowData, trn::System{<:AbstractTerrain})
 
     @unpack aero, pwp, ldg, fuel, pld = airframe
@@ -516,7 +516,7 @@ function f_ode!(airframe::System{<:Airframe}, avionics::System{BasicAvionics},
 
 end
 
-function f_step!(airframe::System{<:Airframe}, ::System{BasicAvionics}, ::KinematicSystem)
+function f_step!(airframe::System{<:Airframe}, ::System{ReversibleControls}, ::KinematicSystem)
     @unpack aero, pwp, fuel, ldg, fuel, pld = airframe
 
     x_mod = false
@@ -530,7 +530,7 @@ end
 #get_mp_b, get_wr_b and get_hr_b fall back to the @generated methods, which then
 #recurse on Airframe subsystems
 
-function assign_component_inputs!(airframe::System{<:Airframe}, avionics::System{BasicAvionics})
+function assign_component_inputs!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
 
     @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
     brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
@@ -583,7 +583,7 @@ function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
     end
 end
 
-function assign!(u::BasicAvionicsU, joystick::Joystick{XBoxController}, ::DefaultInputMapping)
+function assign!(u::ReversibleControlsU, joystick::Joystick{XBoxController}, ::DefaultInputMapping)
 
     u.Δ_aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
     u.Δ_elevator = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
@@ -608,19 +608,53 @@ end
 ################################################################################
 ############################### Cessna172R #####################################
 
-const Cessna172R{K, F, V} = AircraftBase{K, F, V} where {K, F <: Airframe, V <: BasicAvionics}
-Cessna172R(kinematics = LTF()) = AircraftBase( kinematics, Airframe(), BasicAvionics())
+#Cessna172RBase has the common C172R.Airframe, but allows installing different
+#avionics and using different kinematic descriptions
+const Cessna172RBase{K, V} = AircraftBase{K, Airframe, V} where {K, V}
+
+function Cessna172RBase(kinematics = LTF(), avionics = ReversibleControls())
+    AircraftBase( kinematics, Airframe(), avionics)
+end
+
+#default Cessna172R installs the C172R.ReversibleControls avionics (which
+#provides only a basic reversible control system)
+const Cessna172R{K} = Cessna172RBase{K, ReversibleControls} where {K}
+Cessna172R(kinematics = LTF()) = Cessna172RBase(kinematics, ReversibleControls())
+
+#By default, the AircraftBase's U type will be automatically determined by the
+#System's generic initializers as a NamedTuple{(:airframe, :avionics),
+#Tuple{typeof(airframe)}, typeof(avionics)}, where typeof(airframe) and
+#typeof(avionics) will typically be themselves NamedTuples. this makes
+#dispatching on our specific Cessna172R <: AircraftBase imppractical. a
+#workaround is to define:
+
+# const Cessna172RTemplate = Cessna172R()
+# const Cessna172RX = typeof(init_x(Cessna172RTemplate))
+# const Cessna172RU = typeof(init_u(Cessna172RTemplate))
+# const Cessna172RY = typeof(init_y(Cessna172RTemplate))
+# const Cessna172RS = typeof(init_s(Cessna172RTemplate))
+
+#This works, but has the drawback of slowing down module imports. An alternative
+#is to override the default AircraftBase SystemU initializer with a custom,
+#easily dispatchable type, with the same fields:
+
+struct Cessna172RU{F, V}
+    airframe::F
+    avionics::V
+end
+
+init(::SystemU, ac::Cessna172RU) = Cessna172RU(init_u(ac.airframe), init_u(ac.avionics))
+
 
 include("tools/trim.jl")
 include("tools/linear.jl")
 using .Trim
 using .Linear
 
-#these are useful for dispatch, but slow down importing the module
-# const Cessna172RTemplate = Cessna172R()
-# const Cessna172RX = typeof(init_x(Cessna172RTemplate))
-# const Cessna172RU = typeof(init_u(Cessna172RTemplate))
-# const Cessna172RY = typeof(init_y(Cessna172RTemplate))
-# const Cessna172RS = typeof(init_s(Cessna172RTemplate))
+
+#these would facilitate dispatching without defining AircraftBaseU,
+#AircraftBaseY and AircraftBaseS parametric types, but slow down importing the
+#module
+
 
 end #module
