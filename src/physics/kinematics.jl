@@ -13,12 +13,14 @@ using Flight.Geodesy
 import Flight.Systems: init, f_ode!, f_step!
 import Flight.Plotting: make_plots
 
-export AbstractKinematics, ECEF, LTF, NED, KinematicInit, KinematicData
+export AbstractKinematicDescriptor, ECEF, LTF, NED
+export KinematicInit, KinematicData, KinematicSystem
 
-########################## AbstractKinematics #############################
+########################## AbstractKinematicDescriptor #############################
 ##############################################################################
 
-abstract type AbstractKinematics <: Component end
+abstract type AbstractKinematicDescriptor <: Component end
+const KinematicSystem = System{<:AbstractKinematicDescriptor}
 
 #user-friendly conditions for kinematic state initialization
 struct Initializer
@@ -81,22 +83,22 @@ end
 
 Common(ic::Initializer = Initializer()) = KinematicsY(LTF(), ic).common
 
-function init(::SystemX, kin::AbstractKinematics, ic::Initializer = Initializer())
+function init(::SystemX, kin::AbstractKinematicDescriptor, ic::Initializer = Initializer())
     x = similar(x_template(kin))
     init!(x, ic)
     return x
 end
 
-function init(::SystemY, kin::AbstractKinematics, ic::Initializer = Initializer())
+function init(::SystemY, kin::AbstractKinematicDescriptor, ic::Initializer = Initializer())
     return KinematicsY(kin, ic)
 end
 
-function KinematicsY(kin::AbstractKinematics, ic::Initializer = Initializer())
+function KinematicsY(kin::AbstractKinematicDescriptor, ic::Initializer = Initializer())
     x = init(SystemX(), kin, ic)
     return KinematicsY(x)
 end
 
-init!(sys::System{<:AbstractKinematics}, ic::Initializer = Initializer()) = init!(sys.x, ic)
+init!(sys::KinematicSystem, ic::Initializer = Initializer()) = init!(sys.x, ic)
 
 #for dispatching
 const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
@@ -149,7 +151,7 @@ end
 #rotation from the ECEF axes to the LTF axes, and attitude is defined by the
 #rotation from the LTF axes to the vehicle axes.
 
-struct LTF <: AbstractKinematics end
+struct LTF <: AbstractKinematicDescriptor end
 
 const XPosLTFTemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
 const XLTFTemplate = ComponentVector(pos = similar(XPosLTFTemplate), vel = similar(XVelTemplate))
@@ -257,7 +259,7 @@ end
 #fast, singularity-free (all-attitude, all-latitude) kinematic mechanization,
 #appropriate for simulation.
 
-struct ECEF <: AbstractKinematics end
+struct ECEF <: AbstractKinematicDescriptor end
 
 const XPosECEFTemplate = ComponentVector(q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0)
 const XECEFTemplate = ComponentVector(pos = similar(XPosECEFTemplate), vel = similar(XVelTemplate))
@@ -360,7 +362,7 @@ end
 #non singularity-free kinematic mechanization. useful mostly for analysis and
 #control design
 
-struct NED <: AbstractKinematics end
+struct NED <: AbstractKinematicDescriptor end
 
 const XPosNEDTemplate = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
                                 ϕ = 0.0, λ = 0.0, Δx = 0.0, Δy = 0.0, h_e = 0.0)

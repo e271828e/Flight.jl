@@ -325,7 +325,6 @@ function run!(input::InputManager, update_interval::Integer = 1, timeout::Real =
         end
     end
 
-    #open GLFW window and set up refresh interval and any other	stuff necessary
     window = GLFW.CreateWindow(640, 480, "InputManager")
     GLFW.MakeContextCurrent(window)
     GLFW.SwapInterval(update_interval)
@@ -345,7 +344,7 @@ function run!(input::InputManager, update_interval::Integer = 1, timeout::Real =
             GLFW.SwapBuffers(window)
             GLFW.PollEvents()
 
-            if trylock(sim_lock) #Simulation task no longer executing, we can quit
+            if trylock(sim_lock) #if this is unlocked, Simulation task is done
                 unlock(sim_lock)
                 println("InputManager: Simulation no longer running")
                 break

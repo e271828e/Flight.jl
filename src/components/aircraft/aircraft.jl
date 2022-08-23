@@ -55,7 +55,7 @@ struct NoAvionics <: AbstractAvionics end
 ###############################################################################
 ############################## AircraftBase ###################################
 
-struct AircraftBase{K <: AbstractKinematics,
+struct AircraftBase{K <: AbstractKinematicDescriptor,
                     F <: AbstractAirframe,
                     A <: AbstractAvionics} <: Component
     kinematics::K

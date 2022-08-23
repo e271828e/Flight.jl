@@ -494,8 +494,8 @@ function f_ode!(avionics::System{BasicAvionics}, ::System{<:Airframe},
 end
 
 #no digital components or state machines in BasicAvionics
-@inline f_step!(::System{BasicAvionics}, ::System{<:Airframe}, ::System{<:AbstractKinematics}) = false
-@inline f_disc!(::System{BasicAvionics}, ::System{<:Airframe}, ::System{<:AbstractKinematics}, Δt) = false
+@inline f_step!(::System{BasicAvionics}, ::System{<:Airframe}, ::KinematicSystem) = false
+@inline f_disc!(::System{BasicAvionics}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
 
 
 ################################################################################
@@ -516,7 +516,7 @@ function f_ode!(airframe::System{<:Airframe}, avionics::System{BasicAvionics},
 
 end
 
-function f_step!(airframe::System{<:Airframe}, ::System{BasicAvionics}, ::System{<:AbstractKinematics})
+function f_step!(airframe::System{<:Airframe}, ::System{BasicAvionics}, ::KinematicSystem)
     @unpack aero, pwp, fuel, ldg, fuel, pld = airframe
 
     x_mod = false
@@ -615,5 +615,12 @@ include("tools/trim.jl")
 include("tools/linear.jl")
 using .Trim
 using .Linear
+
+#these are useful for dispatch, but slow down importing the module
+# const Cessna172RTemplate = Cessna172R()
+# const Cessna172RX = typeof(init_x(Cessna172RTemplate))
+# const Cessna172RU = typeof(init_u(Cessna172RTemplate))
+# const Cessna172RY = typeof(init_y(Cessna172RTemplate))
+# const Cessna172RS = typeof(init_s(Cessna172RTemplate))
 
 end #module
