@@ -7,7 +7,6 @@ using Interpolations: bounds
 using FiniteDiff: finite_difference_derivative
 
 using Flight
-
 using Flight.Propellers: DefaultAirfoil, cL, cD, cL_α
 using Flight.Propellers: Blade, Coefficients, Lookup
 

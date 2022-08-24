@@ -1,9 +1,8 @@
 module Kinematics
 
 using StaticArrays, ComponentArrays, LinearAlgebra
-using UnPack, Plots
+using UnPack
 
-using Flight.Utils
 using Flight.Systems
 using Flight.Plotting
 
@@ -539,7 +538,6 @@ function make_plots(th::TimeHistory{<:KinematicsY}; kwargs...)
 
     return OrderedDict(
         :common => make_plots(th.common; kwargs...),
-        # :vel => make_plots(th.vel; kwargs...)
     )
 
 end
@@ -591,7 +589,7 @@ function make_plots(th::TimeHistory{<:Common}; kwargs...)
     #attribute no longer works, and it is titlefontisze what determines the font
     #size of the overall figure title (which normally is used for subplots).
 
-    th_Δx, th_Δy = Utils.get_scalar_components(th.Δxy)
+    th_Δx, th_Δy = get_components(th.Δxy)
     xs, ys, zs = th_Δx._data, th_Δy._data, Float64.(th.h_e._data)
 
     pd[:Ob_t3d] = plot(

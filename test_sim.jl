@@ -3,7 +3,8 @@ using Flight
 function benchmark_pi()
 
     sys = PICompensator{1}() |> System
-    sim = Simulation(sys; t_end = 1)
+    sys_init! = (s) -> nothing #inhibit warnings
+    sim = Simulation(sys; t_end = 1, sys_init!)
     b = @benchmarkable Sim.run!($sim) setup=reinit!($sim)
     return b
 
@@ -11,8 +12,9 @@ end
 
 function benchmark_ac()
 
-    ac = System(Cessna172R());
-    kin_init = KinematicInit( v_eOb_n = [30, 0, 0], h = HOrth(1.8 + 2000));
+    ac = System(Cessna172R())
+    env = System(SimpleEnvironment())
+    kin_init = KinematicInit( v_eOb_n = [30, 0, 0], h = HOrth(1.8 + 2000))
     ac.u.avionics.eng_start = true
 
     sys_init! = let kin_init = kin_init
@@ -31,7 +33,7 @@ end
 
 struct TestPICompensatorMapping <: AbstractInputMapping end
 
-function Input.assign!(u::Common.PICompensatorU{1},
+function Input.assign!(u::Essentials.PICompensatorU{1},
                        joystick::Joystick{XBoxController},
                        ::TestPICompensatorMapping)
 
@@ -49,7 +51,7 @@ function test_input_pi()
     input = InputManager(sim, joysticks, TestPICompensatorMapping())
 
     @sync begin
-        Threads.@spawn Input.run!(input; verbose = true)
+        Threads.@spawn Sim.run!(input; verbose = true)
         Threads.@spawn Sim.run!(sim; rate = 2, verbose = true)
     end
 

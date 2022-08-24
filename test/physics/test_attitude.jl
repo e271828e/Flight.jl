@@ -2,8 +2,8 @@ module TestAttitude
 
 using Test
 using LinearAlgebra
-using Flight.Attitude
-using Flight.Quaternions
+
+using Flight
 
 export test_attitude
 

@@ -10,7 +10,7 @@ using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
 using Flight.Environment
-using Flight.Common
+using Flight.Essentials
 using ..C172R
 using ..Trim
 
@@ -74,7 +74,7 @@ function assign!(y::Y, ac::System{<:Cessna172R})
 
 end
 
-function Common.StateSpace( ac::System{<:Cessna172R{NED}};
+function Essentials.StateSpace( ac::System{<:Cessna172R{NED}};
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
     trim_params::Trim.Parameters = Trim.Parameters(),
     trim_state::Trim.State = Trim.State())
@@ -174,7 +174,7 @@ function Common.StateSpace( ac::System{<:Cessna172R{NED}};
     C = ComponentMatrix(C_full[:, x_indices], getaxes(y0)[1], x_axis)
     D = D_full
 
-    return Common.StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+    return Essentials.StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
 end
 

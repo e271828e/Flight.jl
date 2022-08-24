@@ -5,6 +5,7 @@ using StaticArrays, ComponentArrays
 using UnPack
 
 using Flight.Systems
+using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy, Flight.Terrain, Flight.Environment
 using Flight.Kinematics, Flight.RigidBody
@@ -13,6 +14,7 @@ using Flight.Input, Flight.Output
 import Flight.Systems: init, f_ode!, f_step!, f_disc!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
 import Flight.Output: update!
+import Flight.Plotting: make_plots
 
 export AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 
@@ -155,6 +157,22 @@ function update!(xp::XPInterface, kin::KinematicData, aircraft::Integer = 0)
     phi = rad2deg(e_nb.φ)
 
     Output.set_position!(xp; lat, lon, h, psi, theta, phi, aircraft)
+
+end
+
+
+
+########################### Plotting ###########################################
+
+function make_plots(th::TimeHistory{<:AircraftBaseY}; kwargs...)
+
+    return OrderedDict(
+        :kinematics => make_plots(th.kinematics; kwargs...),
+        :airframe => make_plots(th.airframe; kwargs...),
+        :avionics => make_plots(th.avionics; kwargs...),
+        :rigidbody => make_plots(th.rigidbody; kwargs...),
+        :airflow => make_plots(th.airflow; kwargs...),
+    )
 
 end
 

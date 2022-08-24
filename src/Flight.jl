@@ -3,75 +3,30 @@ module Flight
 using Reexport
 @reexport using BenchmarkTools
 
-include("core/utils.jl")
-include("core/systems.jl")
-include("core/sim.jl")
-include("core/input.jl")
-include("core/output.jl")
-include("core/plotting.jl")
+include("core/systems.jl"); @reexport using .Systems
+include("core/visuals.jl"); @reexport using .Visuals
+include("core/input.jl"); @reexport using .Input
+include("core/output.jl"); @reexport using .Output
+include("core/sim.jl"); @reexport using .Sim
+include("core/plotting.jl"); @reexport using .Plotting
+include("core/utils.jl"); @reexport using .Utils
 
-include("physics/quaternions.jl")
-include("physics/attitude.jl")
-include("physics/geodesy.jl")
-include("physics/kinematics.jl")
-include("physics/rigidbody.jl")
-
-include("components/common/common.jl")
-
-include("components/environment/atmosphere.jl")
-include("components/environment/terrain.jl")
-include("components/environment/environment.jl")
-
-include("components/aircraft/landinggear.jl")
-include("components/aircraft/propellers.jl")
-include("components/aircraft/piston.jl")
-include("components/aircraft/aircraft.jl")
-include("components/aircraft/c172r/c172r.jl")
-
-@reexport using .Utils
-@reexport using .Systems
-@reexport using .Sim
-@reexport using .Input
-@reexport using .Output
-@reexport using .Plotting
-
-@reexport using .Quaternions
-@reexport using .Attitude
-@reexport using .Geodesy
-@reexport using .Kinematics
-@reexport using .RigidBody
-
-@reexport using .Common
-
-@reexport using .Atmosphere
-@reexport using .Terrain
-@reexport using .Environment
-
-@reexport using .LandingGear
-@reexport using .Propellers
-@reexport using .Piston
-@reexport using .Aircraft
-@reexport using .C172R
+include("physics/quaternions.jl"); @reexport using .Quaternions
+include("physics/attitude.jl"); @reexport using .Attitude
+include("physics/geodesy.jl"); @reexport using .Geodesy
+include("physics/kinematics.jl"); @reexport using .Kinematics
+include("physics/rigidbody.jl"); @reexport using .RigidBody
 
 
-#force precompilation
-# function f_precompile(; save::Bool = true)
+include("components/common/essentials.jl"); @reexport using .Essentials
+include("components/environment/atmosphere.jl"); @reexport using .Atmosphere
+include("components/environment/terrain.jl"); @reexport using .Terrain
+include("components/environment/environment.jl"); @reexport using .Environment
+include("components/aircraft/landinggear.jl"); @reexport using .LandingGear
+include("components/aircraft/propellers.jl"); @reexport using .Propellers
+include("components/aircraft/piston.jl"); @reexport using .Piston
 
-#     env = SimpleEnvironment() |> System
-#     ac = Cessna172R() |> System
-#     kin_init = KinematicInit( h = HOrth(2000))
-#     Aircraft.init!(ac, kin_init)
-
-#     sim = Simulation(ac; args_ode = (env, ), t_end = 150, adaptive = true)
-#     Sim.run!(sim, verbose = false)
-#     plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-#     save ? save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test")) : nothing
-
-# end
-
-#much longer precompilation time, and similar package loading times, but does
-#improve first execution times noticeably. not worth it during development.
-
-# f_precompile(save = false)
+include("aircraft/aircraft.jl"); @reexport using .Aircraft
+include("aircraft/c172r/c172r.jl"); @reexport using .C172R
 
 end

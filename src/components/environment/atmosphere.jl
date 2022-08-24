@@ -1,6 +1,6 @@
 module Atmosphere
 
-using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack, Plots
+using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
 
 using Flight.Utils
 using Flight.Systems #?

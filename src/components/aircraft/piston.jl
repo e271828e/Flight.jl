@@ -1,13 +1,14 @@
 module Piston
 
-using Interpolations, Plots, StaticArrays, StructArrays, ComponentArrays, UnPack
+using Interpolations, StaticArrays, StructArrays, ComponentArrays, UnPack
 
-using Flight.Systems, Flight.Utils
+using Flight.Systems
+using Flight.Utils: Ranged
 using Flight.Kinematics, Flight.RigidBody, Flight.Atmosphere
 using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
 using Flight.Geodesy: HGeop
 using Flight.Propellers: AbstractPropeller, Propeller
-using Flight.Common
+using Flight.Essentials: PICompensator, PICompensatorU, PICompensatorY
 
 import Flight.Systems: init, f_ode!, f_step!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
@@ -125,8 +126,8 @@ Base.@kwdef mutable struct PistonEngineU
     stop::Bool = false
     thr::Ranged{Float64, 0, 1} = 0.0 #throttle setting
     mix::Ranged{Float64, 0, 1} = 0.5 #mixture setting
-    idle::Common.PICompensatorU{1} = Common.PICompensatorU{1}()
-    frc::Common.PICompensatorU{1} = Common.PICompensatorU{1}()
+    idle::PICompensatorU{1} = PICompensatorU{1}()
+    frc::PICompensatorU{1} = PICompensatorU{1}()
 end
 
 Base.@kwdef struct PistonEngineY
@@ -141,8 +142,8 @@ Base.@kwdef struct PistonEngineY
     P_shaft::Float64 = 0.0 #shaft power
     SFC::Float64 = 0.0 #specific fuel consumption
     ṁ::Float64 = 0.0 #fuel consumption
-    idle::Common.PICompensatorY{1} = Common.PICompensatorY{1}()
-    frc::Common.PICompensatorY{1} = Common.PICompensatorY{1}()
+    idle::PICompensatorY{1} = PICompensatorY{1}()
+    frc::PICompensatorY{1} = PICompensatorY{1}()
 end
 
 init(::SystemX, eng::Engine) = ComponentVector(

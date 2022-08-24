@@ -1,7 +1,6 @@
-module Common
+module Essentials
 
-using ComponentArrays, StaticArrays, UnPack, LinearAlgebra, Plots
-using Flight.Utils
+using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using Flight.Systems
 using Flight.Plotting
 
@@ -83,7 +82,7 @@ function Base.filter(cmp::StateSpace; x = (), u = (), y = ())
 
     x_ind = (!isempty(x) ? x : keys(cmp.x0))
     u_ind = (!isempty(u) ? u : keys(cmp.u0))
-    y_ind = (!isempty(y) ? y : keys(cmp.z0))
+    y_ind = (!isempty(y) ? y : keys(cmp.y0))
 
     ẋ0 = cmp.ẋ0[x_ind]
     x0 = cmp.x0[x_ind]

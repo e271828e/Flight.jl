@@ -1,17 +1,15 @@
 module TestPiston
 
 using Test
-using Plots
 using UnPack
 using BenchmarkTools
 using LinearAlgebra
-using SciMLBase
+# using SciMLBase
 
 using Flight
 using Flight.Piston: Engine, Thruster, MagicFuelSupply
 using Flight.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
 using Flight.Piston: eng_off, eng_starting, eng_running
-using Flight.Atmosphere
 using Flight.Atmosphere: p_std, T_std
 
 export test_piston

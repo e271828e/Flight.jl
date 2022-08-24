@@ -4,11 +4,7 @@ using Test
 using LinearAlgebra
 using BenchmarkTools
 
-using Flight.Systems
-using Flight.Sim
-using Flight.Kinematics
-using Flight.Attitude
-using Flight.Geodesy
+using Flight
 
 export test_kinematics
 

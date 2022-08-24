@@ -9,7 +9,6 @@ using Interpolations
 using HDF5
 # using JLD
 
-using Flight.Utils
 using Flight.Input
 using Flight.Systems
 using Flight.Attitude
@@ -20,6 +19,7 @@ using Flight.RigidBody
 using Flight.LandingGear
 using Flight.Propellers
 using Flight.Piston
+using Flight.Utils: Ranged, linear_scaling
 using Flight.Aircraft: AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 
 import Flight.Systems: init, f_ode!, f_step!, f_disc!
@@ -262,7 +262,8 @@ function f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
     F_aero_a = q_as(F_aero_s)
     M_aero_a = q * S * SVector{3,Float64}(C_l * b, C_m * c, C_n * b)
 
-    wr_b = wr_a = Wrench(F_aero_a, M_aero_a)
+    # wr_b = wr_a = Wrench(F_aero_a, M_aero_a)
+    wr_b = Wrench(F_aero_a, M_aero_a)
 
     ẋ.α_filt = α_filt_dot
     ẋ.β_filt = β_filt_dot
@@ -608,24 +609,24 @@ end
 ################################################################################
 ############################### Cessna172R #####################################
 
-#Cessna172RBase has the common C172R.Airframe, but allows installing different
-#avionics and using different kinematic descriptions
-const Cessna172RBase{K, V} = AircraftBase{K, Airframe, V} where {K, V}
+#Cessna172RBase requires a parameterized subtype of the C172R.Airframe, but
+#allows installing different avionics and using different kinematic descriptions
+const Cessna172RBase{K, F, V} = AircraftBase{K, F, V} where {K, F <: Airframe, V}
 
 function Cessna172RBase(kinematics = LTF(), avionics = ReversibleControls())
     AircraftBase( kinematics, Airframe(), avionics)
 end
 
-#default Cessna172R installs the C172R.ReversibleControls avionics (which
+#the default Cessna172R installs the C172R.ReversibleControls avionics (which
 #provides only a basic reversible control system)
-const Cessna172R{K} = Cessna172RBase{K, ReversibleControls} where {K}
+const Cessna172R{K, F} = Cessna172RBase{K, F, ReversibleControls} where {K, F}
 Cessna172R(kinematics = LTF()) = Cessna172RBase(kinematics, ReversibleControls())
 
 #By default, the AircraftBase's U type will be automatically determined by the
 #System's generic initializers as a NamedTuple{(:airframe, :avionics),
 #Tuple{typeof(airframe)}, typeof(avionics)}, where typeof(airframe) and
 #typeof(avionics) will typically be themselves NamedTuples. this makes
-#dispatching on our specific Cessna172R <: AircraftBase imppractical. a
+#dispatching on our specific Cessna172R <: AircraftBase impractical. a
 #workaround is to define:
 
 # const Cessna172RTemplate = Cessna172R()

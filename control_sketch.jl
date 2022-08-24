@@ -28,7 +28,7 @@ function test(save = true)
 
     #recreate the aircraft with NED kinematics, suitable for linearization
     ac = Cessna172R(NED()) |> System
-    lm = C172R.Linear.Model(; ac, env, trim_params) #retrims
+    lm = Essentials.StateSpace(ac; env, trim_params) #retrims
 
     #the couplings of a specific state S into the time derivative of any other
     #state can be examined in the column of A corresponding to S. from this, we
@@ -47,7 +47,7 @@ function test(save = true)
     #states that do not couple or couple very weakly into the longitudinal
     #dynamics are excluded. some of them (ψ, φ, β, v_y, p, r) have a place in a
     #lateral-directional dynamics submodel.
-    long_dyn = C172R.Linear.submodel(lm,
+    long_dyn = filter(lm;
         u = (:elevator, :throttle),
         x = (:v_x, :v_z, :θ, :q, :α_filt, :ω_eng),
         y = (:TAS, :α, :θ, :q, :f_x, :f_z, :ω_eng))

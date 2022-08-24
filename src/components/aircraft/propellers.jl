@@ -3,14 +3,15 @@ module Propellers
 using LinearAlgebra, StaticArrays, StructArrays, Interpolations, UnPack
 using Roots: find_zero
 using Trapz: trapz
-using Plots
 
 import Interpolations: knots, bounds
 
-using Flight.Utils
 using Flight.Systems
 using Flight.Plotting
-using Flight.Kinematics, Flight.RigidBody, Flight.Atmosphere
+using Flight.Kinematics
+using Flight.RigidBody
+using Flight.Atmosphere
+using Flight.Utils: Ranged, linear_scaling
 
 import Flight.Systems: init, f_ode!, f_step!
 import Flight.Plotting: make_plots

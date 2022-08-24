@@ -1,32 +1,25 @@
 using Flight
-using Test
 
-include("test_quaternions.jl")
-include("test_attitude.jl")
-include("test_geodesy.jl")
-include("test_kinematics.jl")
-include("test_propellers.jl")
-include("test_common.jl")
-include("test_landing_gear.jl")
-include("test_piston.jl")
-include("test_c172r.jl")
+include("physics/test_quaternions.jl"); using .TestQuaternions
+include("physics/test_attitude.jl"); using .TestAttitude
+include("physics/test_geodesy.jl"); using .TestGeodesy
+include("physics/test_kinematics.jl"); using .TestKinematics
 
-using .TestQuaternions
-using .TestAttitude
-using .TestGeodesy
-using .TestKinematics
-using .TestPropellers
-using .TestCommon
-using .TestLandingGear
-using .TestPiston
-using .TestC172R
+include("components/test_essentials.jl"); using .TestEssentials
+include("components/test_propellers.jl"); using .TestPropellers
+include("components/test_landing_gear.jl"); using .TestLandingGear
+include("components/test_piston.jl"); using .TestPiston
+
+include("aircraft/test_c172r.jl"); using .TestC172R
 
 test_quaternions()
 test_attitude()
 test_geodesy()
 test_kinematics()
+
+test_essentials()
 test_propellers()
-test_common()
 test_landing_gear()
 test_piston()
+
 test_c172r()

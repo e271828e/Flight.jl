@@ -3,7 +3,8 @@ module TestQuaternions
 using Test
 using LinearAlgebra
 using StaticArrays
-using Flight.Quaternions
+
+using Flight
 
 export test_quaternions
 

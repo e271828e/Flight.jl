@@ -7,25 +7,22 @@ using OrdinaryDiffEq: OrdinaryDiffEqAlgorithm, ODEIntegrator, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback, CallbackSet, SavedValues
 using GLFW
 
-using Flight.Utils
-
 using ..Systems
+using ..Visuals
+using ..Input
+using ..Output
 
 import SciMLBase: step!, reinit!, solve!, get_proposed_dt
 import OrdinaryDiffEq: add_tstop!
 
-import Flight.Utils: TimeHistory
-
 export Simulation, step!, reinit!, solve!, get_proposed_dt, add_tstop!
+export TimeHistory, get_components, get_child_names
+export InputManager
 
 
 ################################################################################
 ############################# Simulation #######################################
 
-#in this design, the t and x fields of m.sys behave only as temporary
-#storage for f_ode! and f_step! calls, so we have no guarantees about their
-#status after a certain step. the only valid sources for t and x at any
-#given moment is the integrator's t and u
 struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, C <: Vector{<:Channel}}
     sys::S
     integrator::I
@@ -197,7 +194,7 @@ no_sys_init!(sys::System; kwargs...) = nothing
 no_sys_io!(u, y, t::Float64, params) = nothing
 
 
-############################## Method Extensions ###############################
+################# SciMLBase & OrdinaryDiffEq Extensions ########################
 
 step!(sim::Simulation, args...) = step!(sim.integrator, args...)
 
@@ -205,16 +202,17 @@ get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
 
 add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 
-#in order to be actually useful, this would need to restore also u and s to
-#their original values, which is non-trivial, because it may break the coupling
-#between a parent system and its subsystems
 function reinit!(sim::Simulation; sys_init_kwargs...)
 
     @unpack integrator, log = sim
     @unpack p = integrator
 
+    if p.sys_init! === no_sys_init!
+        println("Warning: Simulation has no sys_init! method; the System's ",
+        "states and inputs will remain at their latest values")
+    end
+
     #initialize the System's x, u and s
-    # println(sys_init_kwargs)
     p.sys_init!(p.sys; sys_init_kwargs...)
 
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
@@ -326,6 +324,144 @@ end
     end
 end
 
+
+
+################################################################################
+############################# InputManager #####################################
+
+
+struct InputManager{N, U, D <: NTuple{N,AbstractInputInterface}, M <: NTuple{N,AbstractInputMapping}}
+    u::U
+    devices::D
+    mappings::M
+    sim_lock::ReentrantLock #is set to Simulation.sim_lock
+    sys_lock::ReentrantLock #is set to Simulation.sys_lock
+end
+
+function InputManager(  sim::Simulation,
+                        devices::NTuple{N, AbstractInputInterface},
+                        mappings::NTuple{N, AbstractInputMapping}) where {N}
+    InputManager(sim.u, devices, mappings, sim.sim_lock, sim.sys_lock)
+end
+
+function InputManager(sim::Simulation,
+                        devices::NTuple{N, AbstractInputInterface},
+                        mapping::AbstractInputMapping) where {N}
+    mappings = fill(mapping, N) |> Tuple
+    InputManager(sim, devices, mappings)
+end
+
+InputManager(sim::Simulation, devices) = InputManager(sim, devices, DefaultInputMapping())
+
+function run!(input::InputManager, update_interval::Integer = 1, timeout::Real = 5; verbose = true)
+
+    #update_interval: number of display updates per input device update:
+    #T_update = T_display * update_interval (where typically T_display =
+    #16.67ms). update_interval=0 uncaps the update rate (not recommended!)
+
+    @unpack u, devices, mappings, sim_lock, sys_lock = input
+
+    verbose && println("InputManager: Starting at thread $(Threads.threadid())...")
+
+    τ = let wall_time_ref = time()
+            ()-> time() - wall_time_ref
+        end
+
+    #wait for a while for the Simulation task to start and grab its execution
+    #lock. if it doesn't, give up.
+    while true
+        trylock(sim_lock) ? unlock(sim_lock) : break
+        if τ() > timeout
+            println("InputManager: Simulation not started after $timeout seconds, exiting...")
+            return
+        end
+    end
+
+    window = GLFW.CreateWindow(640, 480, "InputManager")
+    GLFW.MakeContextCurrent(window)
+    GLFW.SwapInterval(update_interval)
+
+    try
+
+        while !GLFW.WindowShouldClose(window)
+
+            Input.update!.(input.devices)
+
+            @lock sys_lock begin
+                for (device, mapping) in zip(devices, mappings)
+                    Input.assign!(u, device, mapping)
+                end
+            end
+
+            GLFW.SwapBuffers(window)
+            GLFW.PollEvents()
+
+            if trylock(sim_lock) #if this is unlocked, Simulation task is done
+                unlock(sim_lock)
+                println("InputManager: Simulation no longer running")
+                break
+            end
+
+        end
+
+    catch ex
+        println("InputManager: Error during execution: $ex")
+
+    finally
+        println("InputManager: Exiting")
+        #shutdown.(input.devices)
+        GLFW.DestroyWindow(window)
+    end
+
+end
+
+
+################################################################################
+############################### TimeHistory ####################################
+
+mutable struct TimeHistory{V, T <: AbstractVector{Float64}, D <: AbstractVector{V}}
+    _t::T
+    _data::D
+    function TimeHistory(t::T, data::D) where {T, D <: AbstractVector{V}} where {V}
+        @assert length(t) == length(data)
+        new{V, T, D}(t, data)
+    end
+end
+
+TimeHistory(t::Real, data) = TimeHistory([Float64(t)], [data])
+
+function TimeHistory(t::AbstractVector, M::Matrix)
+    #each Matrix column interpreted as one Vector value
+    TimeHistory(t, [M[:, i] for i in 1:size(M,2)])
+end
+
+Base.length(th::TimeHistory) = length(th._t)
+
+function Base.getproperty(th::TimeHistory, s::Symbol)
+    t = getfield(th, :_t)
+    y = getfield(th, :_data)
+    if s === :_t
+        return t
+    elseif s === :_data
+        return y
+    else
+        return TimeHistory(t, getproperty(StructArray(y), s))
+    end
+end
+
+timestamps(th::TimeHistory) = getfield(th, :_t)
+
+Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._data[i])
+Base.view(th::TimeHistory, i) = TimeHistory(view(th._t, i), view(th._data, i))
+
+#for inspection
+get_child_names(::T) where {T <: TimeHistory} = get_child_names(T)
+get_child_names(::Type{<:TimeHistory{V}}) where {V} = fieldnames(V)
+
+#could be rewritten as @generated to avoid allocation
+function get_components(th::TimeHistory{<:AbstractVector{T}}) where {T<:Real}
+    [TimeHistory(th._t, y) for y in th._data |> StructArray |> StructArrays.components]
+end
 
 TimeHistory(sim::Simulation) = TimeHistory(sim.log.t, sim.log.saveval)
 

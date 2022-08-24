@@ -8,9 +8,7 @@ using SHA
 using UnPack
 using Interpolations
 using HDF5
-using Plots
 
-using Flight.Utils
 using Flight.Systems
 using Flight.Plotting
 using Flight.Attitude

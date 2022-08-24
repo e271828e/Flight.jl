@@ -79,54 +79,6 @@ function test()
 end
 
 ################################################################################
-############################ TimeHistory #######################################
-
-mutable struct TimeHistory{V, T <: AbstractVector{Float64}, D <: AbstractVector{V}}
-    _t::T
-    _data::D
-    function TimeHistory(t::T, data::D) where {T, D <: AbstractVector{V}} where {V}
-        @assert length(t) == length(data)
-        new{V, T, D}(t, data)
-    end
-end
-
-TimeHistory(t::Real, data) = TimeHistory([Float64(t)], [data])
-
-function TimeHistory(t::AbstractVector, M::Matrix)
-    #each Matrix column interpreted as one Vector value
-    TimeHistory(t, [M[:, i] for i in 1:size(M,2)])
-end
-
-Base.length(th::TimeHistory) = length(th._t)
-
-function Base.getproperty(th::TimeHistory, s::Symbol)
-    t = getfield(th, :_t)
-    y = getfield(th, :_data)
-    if s === :_t
-        return t
-    elseif s === :_data
-        return y
-    else
-        return TimeHistory(t, getproperty(StructArray(y), s))
-    end
-end
-
-timestamps(th::TimeHistory) = getfield(th, :_t)
-
-Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._data[i])
-Base.view(th::TimeHistory, i) = TimeHistory(view(th._t, i), view(th._data, i))
-
-#for inspection
-get_child_names(::T) where {T <: TimeHistory} = get_child_names(T)
-get_child_names(::Type{<:TimeHistory{V}}) where {V} = fieldnames(V)
-
-#could be rewritten as @generated to avoid allocation if needed
-function get_scalar_components(th::TimeHistory{<:AbstractVector{T}}) where {T<:Real}
-    [TimeHistory(th._t, y) for y in th._data |> StructArray |> StructArrays.components]
-end
-
-
-################################################################################
 ############################ MovingAverage #####################################
 
 

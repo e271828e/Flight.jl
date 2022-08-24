@@ -1,4 +1,4 @@
-module TestCommon
+module TestEssentials
 
 using Test
 using BenchmarkTools
@@ -6,12 +6,12 @@ using UnPack
 using ComponentArrays
 
 using Flight
-using Flight.Common: StateSpace
+using Flight.Essentials: StateSpace
 
-export test_common
+export test_essentials
 
-function test_common()
-    @testset verbose = true "Common" begin
+function test_essentials()
+    @testset verbose = true "Essentials" begin
         test_state_space()
         test_pi_compensator()
     end

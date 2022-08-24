@@ -1,8 +1,7 @@
 module LandingGear
 
-using StaticArrays, ComponentArrays, LinearAlgebra, UnPack, Plots
+using StaticArrays, ComponentArrays, LinearAlgebra, UnPack
 
-using Flight.Utils
 using Flight.Systems
 using Flight.Plotting
 
@@ -11,7 +10,8 @@ using Flight.Geodesy
 using Flight.Terrain
 using Flight.Kinematics
 using Flight.RigidBody
-using Flight.Common
+using Flight.Essentials: PICompensator, PICompensatorY
+using Flight.Utils: Ranged
 
 import Flight.Systems: init, f_ode!, f_step!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
@@ -274,7 +274,7 @@ Base.@kwdef struct Contact <: Component
 end
 
 Base.@kwdef struct ContactY
-    frc::Common.PICompensatorY{2} = Common.PICompensatorY{2}()
+    frc::PICompensatorY{2} = PICompensatorY{2}()
     μ_roll::Float64 = 0.0 #rolling friction coefficient
     μ_skid::Float64 = 0.0 #skidding friction coefficient
     κ_br::Float64 = 0.0 #braking factor
@@ -443,8 +443,8 @@ function make_plots(th::TimeHistory{<:ContactY}; kwargs...)
 
     pd[:frc] = make_plots(th.frc; kwargs...)
 
-    (μ_max_x, μ_max_y) = Utils.get_scalar_components(th.μ_max)
-    (μ_eff_x, μ_eff_y) = Utils.get_scalar_components(th.μ_eff)
+    (μ_max_x, μ_max_y) = get_components(th.μ_max)
+    (μ_eff_x, μ_eff_y) = get_components(th.μ_eff)
 
     subplot_μ_roll = plot(th.μ_roll; title = "Rolling Friction Coefficient",
         ylabel = L"$\mu_{roll}$", label = "", kwargs...)

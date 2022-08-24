@@ -3,15 +3,14 @@ module Plotting
 using Reexport
 using Dates
 using UnPack
-using Plots
 using StructArrays
 using RecursiveArrayTools: VectorOfArray
-
+@reexport using Plots
 @reexport using LaTeXStrings
 @reexport using DataStructures: OrderedDict
 
-using Flight.Utils
-using Flight.Sim
+using Flight.Sim: Simulation
+@reexport using Flight.Sim: TimeHistory, get_components, get_child_names
 
 export make_plots, save_plots
 
@@ -82,7 +81,7 @@ make_plots(th::TimeHistory{<:AbstractVector{<:Real}}; kwargs...) = plot(th; kwar
 function make_plots(th::TimeHistory{<:NamedTuple}; kwargs...)
 
     pd = OrderedDict{Symbol, Any}()
-    for name in Utils.get_child_names(th)
+    for name in get_child_names(th)
         child_plots = make_plots(getproperty(th, name); kwargs...)::Union{Nothing, OrderedDict, Plots.Plot}
         !isnothing(child_plots) ? pd[name] = child_plots : nothing
     end

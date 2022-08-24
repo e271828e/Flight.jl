@@ -1,9 +1,8 @@
 module RigidBody
 
 using StaticArrays
-using LinearAlgebra, UnPack, Plots
+using LinearAlgebra, UnPack
 
-using Flight.Utils
 using Flight.Systems
 using Flight.Plotting
 

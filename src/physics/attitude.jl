@@ -29,9 +29,10 @@ module Attitude
 using StaticArrays, ComponentArrays, StructArrays
 using LinearAlgebra
 
-using Flight.Utils
 using Flight.Plotting
 using Flight.Quaternions
+
+import Flight.Plotting: make_plots
 
 export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz
 
@@ -435,9 +436,6 @@ function ω(e_ab::REuler, ė_ab::AbstractVector{<:Real})
 end
 
 ################################# Plotting #####################################
-
-using Plots
-import Flight.Plotting: make_plots
 
 #if no specific method available, convert to REuler for plotting
 @recipe function f(th::TimeHistory{<:Abstract3DRotation}; rot_ref = "", rot_target = "")

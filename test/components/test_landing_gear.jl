@@ -1,7 +1,10 @@
 module TestLandingGear
 
-using Test, Plots, UnPack, BenchmarkTools, LinearAlgebra, StaticArrays
-using OrdinaryDiffEq, SciMLBase
+using Test
+using LinearAlgebra
+using BenchmarkTools
+using StaticArrays
+# using OrdinaryDiffEq, SciMLBase
 
 using Flight
 using Flight.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
