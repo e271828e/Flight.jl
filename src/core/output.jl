@@ -96,7 +96,7 @@ end
 
 
 ################################################################################
-################################ CImGui ########################################
+############################# CImGuiRenderer####################################
 
 @enum CImGuiStyle begin
     classic = 0
@@ -104,14 +104,24 @@ end
     light = 2
 end
 
-struct CImGuiRenderer{F <: Function}
-    refresh_interval::Integer
+mutable struct CImGuiRenderer
+    initialized::Bool
+    refresh::Integer
     style::CImGuiStyle
     window::GLFW.Window
     context::Ptr{CImGui.LibCImGui.ImGuiContext}
+    function CImGuiRenderer(; refresh::Integer, style::CImGuiStyle = dark)
+        renderer = new()
+        renderer.refresh = refresh
+        renderer.style = style
+        renderer.initialized = false
+        return renderer
+    end
 end
 
-function CImGuiRenderer(; refresh_interval::Integer, style::CImGuiStyle = dark)
+function init!(renderer::CImGuiRenderer)
+
+    @unpack refresh, style = renderer
 
     @static if Sys.isapple()
         # OpenGL 3.2 + GLSL 150
@@ -137,7 +147,7 @@ function CImGuiRenderer(; refresh_interval::Integer, style::CImGuiStyle = dark)
     window = GLFW.CreateWindow(1280, 720, "Demo")
     @assert window != C_NULL
     GLFW.MakeContextCurrent(window)
-    GLFW.SwapInterval(refresh_interval)
+    GLFW.SwapInterval(refresh)
 
     # setup Dear ImGui context
     context = CImGui.CreateContext()
@@ -151,7 +161,11 @@ function CImGuiRenderer(; refresh_interval::Integer, style::CImGuiStyle = dark)
     ImGui_ImplGlfw_InitForOpenGL(window, true)
     ImGui_ImplOpenGL3_Init(glsl_version)
 
-    CImGuiRenderer(refresh_interval, style, window, context)
+    renderer.initialized = true
+    renderer.window = window
+    renderer.context = context
+
+    return nothing
 
 end
 
@@ -161,6 +175,9 @@ function shutdown!(renderer::CImGuiRenderer)
     ImGui_ImplGlfw_Shutdown()
     CImGui.DestroyContext(renderer.context)
     GLFW.DestroyWindow(renderer.window)
+    renderer.initialized = false
+
+    return nothing
 
 end
 
@@ -197,10 +214,14 @@ function render!(renderer::CImGuiRenderer, draw::Function, draw_args...)
 
     end
 
+    return nothing
+
 end
 
 
 function run!(renderer::CImGuiRenderer, draw::Function, draw_args...)
+
+    renderer.initialized || init!(renderer)
 
     while !GLFW.WindowShouldClose(renderer.window)
         GLFW.PollEvents()
