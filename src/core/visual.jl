@@ -1,4 +1,4 @@
-module Visuals
+module Visual
 
 using UnPack
 
@@ -23,23 +23,25 @@ export CImGuiRenderer, CImGuiStyle
 end
 
 mutable struct CImGuiRenderer
-    initialized::Bool
     refresh::Integer
+    label::String
     style::CImGuiStyle
-    window::GLFW.Window
-    context::Ptr{CImGui.LibCImGui.ImGuiContext}
-    function CImGuiRenderer(; refresh::Integer, style::CImGuiStyle = dark)
+    wsize::Tuple{Int, Int}
+    _initialized::Bool
+    _window::GLFW.Window
+    _context::Ptr{CImGui.LibCImGui.ImGuiContext}
+    function CImGuiRenderer(; refresh::Integer, label::String = "Renderer",
+                              wsize = (1280, 720), style::CImGuiStyle = dark)
         renderer = new()
-        renderer.refresh = refresh
-        renderer.style = style
-        renderer.initialized = false
+        @pack! renderer = refresh, label, style, wsize
+        renderer._initialized = false
         return renderer
     end
 end
 
 function init!(renderer::CImGuiRenderer)
 
-    @unpack refresh, style = renderer
+    @unpack refresh, label, style, wsize = renderer
 
     @static if Sys.isapple()
         # OpenGL 3.2 + GLSL 150
@@ -62,13 +64,13 @@ function init!(renderer::CImGuiRenderer)
     GLFW.SetErrorCallback(error_callback)
 
     # create window
-    window = GLFW.CreateWindow(1280, 720, "Demo")
-    @assert window != C_NULL
-    GLFW.MakeContextCurrent(window)
+    _window = GLFW.CreateWindow(wsize[1], wsize[2], label)
+    @assert _window != C_NULL
+    GLFW.MakeContextCurrent(_window)
     GLFW.SwapInterval(refresh)
 
     # setup Dear ImGui context
-    context = CImGui.CreateContext()
+    _context = CImGui.CreateContext()
 
     # setup Dear ImGui style
     style === classic && CImGui.StyleColorsClassic()
@@ -76,24 +78,26 @@ function init!(renderer::CImGuiRenderer)
     style === light && CImGui.StyleColorsLight()
 
     # setup Platform/Renderer bindings
-    ImGui_ImplGlfw_InitForOpenGL(window, true)
+    ImGui_ImplGlfw_InitForOpenGL(_window, true)
     ImGui_ImplOpenGL3_Init(glsl_version)
 
-    renderer.initialized = true
-    renderer.window = window
-    renderer.context = context
+    renderer._initialized = true
+    renderer._window = _window
+    renderer._context = _context
 
     return nothing
 
 end
 
+@inline should_close(r::CImGuiRenderer) = GLFW.WindowShouldClose(r._window)
+
 function shutdown!(renderer::CImGuiRenderer)
 
     ImGui_ImplOpenGL3_Shutdown()
     ImGui_ImplGlfw_Shutdown()
-    CImGui.DestroyContext(renderer.context)
-    GLFW.DestroyWindow(renderer.window)
-    renderer.initialized = false
+    CImGui.DestroyContext(renderer._context)
+    GLFW.DestroyWindow(renderer._window)
+    renderer._initialized = false
 
     return nothing
 
@@ -102,7 +106,7 @@ end
 
 function render!(renderer::CImGuiRenderer, draw::Function, draw_args...)
 
-    @unpack window = renderer
+    @unpack _window = renderer
 
     try
         # start the Dear ImGui frame
@@ -114,15 +118,16 @@ function render!(renderer::CImGuiRenderer, draw::Function, draw_args...)
         draw(draw_args...)
 
         CImGui.Render()
-        GLFW.MakeContextCurrent(window)
+        GLFW.MakeContextCurrent(_window)
 
-        display_w, display_h = GLFW.GetFramebufferSize(window)
+        display_w, display_h = GLFW.GetFramebufferSize(_window)
         glViewport(0, 0, display_w, display_h)
         glClear(GL_COLOR_BUFFER_BIT)
         ImGui_ImplOpenGL3_RenderDrawData(CImGui.GetDrawData())
 
-        GLFW.MakeContextCurrent(window)
-        GLFW.SwapBuffers(window)
+        GLFW.MakeContextCurrent(_window)
+        GLFW.SwapBuffers(_window)
+        GLFW.PollEvents() #essential to catch window close requests
 
     catch e
 
@@ -139,10 +144,9 @@ end
 
 function run!(renderer::CImGuiRenderer, draw::Function, draw_args...)
 
-    renderer.initialized || init!(renderer)
+    renderer._initialized || init!(renderer)
 
-    while !GLFW.WindowShouldClose(renderer.window)
-        GLFW.PollEvents()
+    while !GLFW.WindowShouldClose(renderer._window)
         render!(renderer, draw, draw_args...)
     end
 
@@ -153,35 +157,39 @@ end
 
 function draw_test(value::Real = 1)
 
-    # show a simple window that we create ourselves.
-    # we use a Begin/End pair to created a named window.
-    @cstatic f=Cfloat(0.0) counter=Cint(0) begin
+    begin
         CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
+
         CImGui.Text("This is some useful text.")  # display some text
-
-        @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
-        CImGui.Button("Button") && (counter += 1)
-
         CImGui.SameLine()
-        CImGui.Text("counter = $counter")
         CImGui.Text("passed value = $value")
+
         CImGui.Text(@sprintf("Application average %.3f ms/frame (%.1f FPS)", 1000 / CImGui.GetIO().Framerate, CImGui.GetIO().Framerate))
 
         CImGui.End()
     end
 
 end
+# function draw_test(value::Real = 1)
 
+#     # show a simple window that we create ourselves.
+#     # we use a Begin/End pair to created a named window.
+#     @cstatic f=Cfloat(0.0) counter=Cint(0) begin
+#         CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
+#         CImGui.Text("This is some useful text.")  # display some text
 
-# Base.@kwdef struct CImGuiDashboard{R <: CImGuiRenderer, C <: Channel} <: AbstractOutputInterface
-#     renderer::R
-#     channel::C
+#         @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
+#         CImGui.Button("Button") && (counter += 1)
+
+#         CImGui.SameLine()
+#         CImGui.Text("counter = $counter")
+#         CImGui.Text("passed value = $value")
+#         CImGui.Text(@sprintf("Application average %.3f ms/frame (%.1f FPS)", 1000 / CImGui.GetIO().Framerate, CImGui.GetIO().Framerate))
+
+#         CImGui.End()
+#     end
+
 # end
-
-
-#we can also define a CImGuiInput, which would have a similar interface, but
-#would mimic InputManager, and would have additional arguments in draw! so that
-#the input can be modified by the variables captured in the widgets
 
 
 end #module

@@ -1,4 +1,5 @@
 using Flight
+using OrdinaryDiffEq
 
 function benchmark_pi()
 
@@ -46,13 +47,15 @@ end
 function test_input_pi()
 
     sys = PICompensator{1}(k_i = 0.5) |> System
-    sim = Simulation(sys; t_end = 30)
+    sim = Simulation(sys; t_end = 20, dt = 0.02)
     joysticks = get_connected_joysticks()
     input = InputManager(sim, joysticks, TestPICompensatorMapping())
 
     @sync begin
+        Threads.@spawn Sim.run!(sim; rate = 1, verbose = true)
         Threads.@spawn Sim.run!(input; verbose = true)
-        Threads.@spawn Sim.run!(sim; rate = 2, verbose = true)
     end
+
+    return sim
 
 end

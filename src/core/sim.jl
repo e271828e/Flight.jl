@@ -5,10 +5,13 @@ using StructArrays
 using SciMLBase: ODEProblem, u_modified!, init as init_integrator
 using OrdinaryDiffEq: OrdinaryDiffEqAlgorithm, ODEIntegrator, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback, CallbackSet, SavedValues
+
 using GLFW
+using CImGui
+using Printf
 
 using ..Systems
-using ..Visuals
+using ..Visual
 using ..Input
 using ..Output
 
@@ -230,7 +233,7 @@ end
 
 function run!(sim::Simulation; rate::Real = Inf, verbose::Bool = false)
 
-    #rate: rate of execution relative to wall time (Inf = uncapped, 1 ≈ real time )
+    #rate: rate of execution relative to wall time (Inf = unrestricted, 1 ≈ real time )
 
     #could add logging here instead
     verbose && println("Simulation: Starting at thread $(Threads.threadid())...")
@@ -241,12 +244,12 @@ function run!(sim::Simulation; rate::Real = Inf, verbose::Bool = false)
         return
     end
 
-    t_elapsed = (rate === Inf ? run_uncapped!(sim) : run_capped!(sim; rate))
+    t_elapsed = (rate === Inf ? run_full_speed!(sim) : run_paced!(sim; rate))
     verbose && println("Simulation: Finished in $t_elapsed seconds")
 
 end
 
-function run_uncapped!(sim::Simulation)
+function run_full_speed!(sim::Simulation)
 
     return @elapsed begin
         for _ in sim.integrator #integrator steps automatically at the beginning of each iteration
@@ -257,44 +260,52 @@ function run_uncapped!(sim::Simulation)
 end
 
 
-function run_capped!(sim::Simulation; rate::Real = Inf)
+function run_paced!(sim::Simulation; rate::Real = Inf)
 
     @unpack sys, integrator, channels, sim_lock, sys_lock = sim
 
-    tstops = integrator.opts.tstops
+    t_start, t_end = integrator.sol.prob.tspan
 
-    window = GLFW.CreateWindow(640, 480, "Simulation")
-    GLFW.MakeContextCurrent(window)
+    #info renderer should return immediately (refresh=0) to avoid slowing down
+    #the simulation thread; framerate is capped by the simulation rate setting
+    info_renderer = CImGuiRenderer(refresh = 0, wsize = (320, 240), label = "Simulation")
+    Visual.init!(info_renderer)
+    GLFW.SetWindowPos(info_renderer._window, 100, 100)
 
     τ = let wall_time_ref = time()
             ()-> time() - wall_time_ref
         end
 
-    τ_finish = τ()
+    τ_last = τ()
+
+    sim_info = Info(sim; τ = τ_last)
 
     try
 
-        lock(sim_lock) #this signals IO tasks that we are executing
+        lock(sim_lock) #signal IO tasks that we are executing
 
-        while !isempty(tstops)
+        while sim.t[] < t_end
 
-            while true
+            #simulation time must attempt to satisfy the invariant:
+            #t_next = t_start + rate * τ
+
+            lock(sys_lock)
 
                 t_next = sim.t[] + get_proposed_dt(sim)
+                while t_next - t_start > rate * τ() end #busy wait
+                step!(sim)
 
-                (isempty(tstops) || t_next > rate * τ()) ? break : nothing
+            unlock(sys_lock)
 
-                @lock sys_lock step!(sim)
+            τ_last = τ()
 
-                # println("Took $steps steps, t = $(sim.t[])) at τ = $(τ())")
-            end
+            update!(sim_info; dt = integrator.dt, iter = integrator.iter,
+                    t = sim.t[], τ = τ_last)
 
-            τ_finish = τ()
-
+            Visual.render!(info_renderer, draw, sim_info)
             update_channels!(sim)
 
-            GLFW.PollEvents()
-            if GLFW.WindowShouldClose(window)
+            if Visual.should_close(info_renderer)
                 println("Simulation: Aborted at t = $(sim.t[])")
                 break
             end
@@ -310,11 +321,11 @@ function run_capped!(sim::Simulation; rate::Real = Inf)
     finally
 
         unlock(sim_lock)
-        GLFW.DestroyWindow(window)
+        Visual.shutdown!(info_renderer)
 
     end
 
-    return τ_finish
+    return τ_last
 
 end
 
@@ -377,13 +388,19 @@ function run!(input::InputManager, update_interval::Integer = 1, timeout::Real =
         end
     end
 
+    #the InputManager's update interval is enforced via a hidden window whose
+    #swap interval is set to the desired value. when SwapBuffers is called on
+    #this window, the task will block for the appropriate length of time. this
+    #window will close automatically when the InputManager determines the
+    #Simulation is no longer running and exits its loop
     window = GLFW.CreateWindow(640, 480, "InputManager")
+    GLFW.HideWindow(window)
     GLFW.MakeContextCurrent(window)
     GLFW.SwapInterval(update_interval)
 
     try
 
-        while !GLFW.WindowShouldClose(window)
+        while !GLFW.WindowShouldClose(window) #cannot actually be closed, but...
 
             Input.update!.(input.devices)
 
@@ -415,6 +432,53 @@ function run!(input::InputManager, update_interval::Integer = 1, timeout::Real =
 
 end
 
+################################################################################
+################################# Info ########################################
+
+Base.@kwdef mutable struct Info
+    sys::String #typeof(sim.sys)
+    alg::String #typeof(sim.integrator.alg)
+    t_start::Float64
+    t_end::Float64
+    dt::Float64 #last time step
+    iter::Int #total iterations
+    t::Float64 #simulation time
+    τ::Float64 #wall-clock time
+end
+
+function Info(sim::Simulation{<:System{C}}; τ::Real = 0.0) where {C}
+    @unpack integrator = sim
+    sys = string(C)
+    alg = string(typeof(integrator.alg))
+    t_start, t_end = integrator.sol.prob.tspan
+    dt = get_proposed_dt(sim)
+    iter = integrator.iter
+    t = sim.t[]
+    Info(; sys, alg, t_start, t_end, dt, iter, t, τ)
+end
+
+update!(info::Info; dt, iter, t, τ) = begin @pack! info = dt, iter, t, τ end
+
+function draw(info::Info)
+
+    @unpack sys, alg, t_start, t_end, dt, iter, t, τ = info
+
+    begin
+        CImGui.Begin("Info")
+
+        CImGui.Text("Target system: " * sys)
+        CImGui.Text("Algorithm: " * alg)
+        CImGui.Text("Step size: $dt")
+        CImGui.Text("Iterations: $iter")
+        CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
+        CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
+
+        CImGui.Text(@sprintf("Framerate %.3f ms/frame (%.1f FPS)", 1000 / CImGui.GetIO().Framerate, CImGui.GetIO().Framerate))
+
+        CImGui.End()
+    end
+
+end
 
 ################################################################################
 ############################### TimeHistory ####################################

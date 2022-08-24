@@ -86,18 +86,12 @@ function set_position!(xp::XPInterface; lat = -998, lon = -998, h = -998,
 end
 
 
-############################# CImGuiRenderer####################################
+############################# CImGuiDashboard ##################################
 
 
 # Base.@kwdef struct CImGuiDashboard{R <: CImGuiRenderer, C <: Channel} <: AbstractOutputInterface
 #     renderer::R
 #     channel::C
 # end
-
-
-#we can also define a CImGuiInput, which would have a similar interface, but
-#would mimic InputManager, and would have additional arguments in draw! so that
-#the input can be modified by the variables captured in the widgets
-
 
 end #module

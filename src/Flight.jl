@@ -4,7 +4,7 @@ using Reexport
 @reexport using BenchmarkTools
 
 include("core/systems.jl"); @reexport using .Systems
-include("core/visuals.jl"); @reexport using .Visuals
+include("core/visual.jl"); @reexport using .Visual
 include("core/input.jl"); @reexport using .Input
 include("core/output.jl"); @reexport using .Output
 include("core/sim.jl"); @reexport using .Sim
