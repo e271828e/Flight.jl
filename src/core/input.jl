@@ -357,6 +357,7 @@ function run!(input::InputManager, update_interval::Integer = 1, timeout::Real =
 
     finally
         println("InputManager: Exiting")
+        #shutdown.(input.devices)
         GLFW.DestroyWindow(window)
     end
 

@@ -71,17 +71,17 @@ end
 
 #override the default Component update_y! to include stuff besides subsystem
 #outputs
-Base.@kwdef struct AircraftBaseY{F, A}
+Base.@kwdef struct AircraftBaseY{K, F, A}
+    kinematics::K
     airframe::F
     avionics::A
-    kinematics::KinematicData
     rigidbody::RigidBodyData
     airflow::AirflowData
 end
 
 init(::SystemY, ac::AircraftBase) = AircraftBaseY(
-    init_y(ac.airframe), init_y(ac.avionics),
-    KinematicData(), RigidBodyData(), AirflowData())
+    init_y(ac.kinematics), init_y(ac.airframe), init_y(ac.avionics),
+    RigidBodyData(), AirflowData())
 
 function init!(ac::System{<:AircraftBase}, ic::KinematicInit)
     Kinematics.init!(ac.x.kinematics, ic)
@@ -110,7 +110,7 @@ function f_ode!(sys::System{<:AircraftBase}, env::System{<:AbstractEnvironment})
     #update velocity derivatives
     rb_data = f_rigidbody!(kinematics.ẋ.vel, kin_data, mp_b, wr_b, hr_b)
 
-    sys.y = AircraftBaseY(airframe.y, avionics.y, kin_data, rb_data, air_data)
+    sys.y = AircraftBaseY(kinematics.y, airframe.y, avionics.y, rb_data, air_data)
 
     return nothing
 
