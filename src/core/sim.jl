@@ -6,12 +6,11 @@ using SciMLBase: ODEProblem, u_modified!, init as init_integrator
 using OrdinaryDiffEq: OrdinaryDiffEqAlgorithm, ODEIntegrator, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback, CallbackSet, SavedValues
 
-using GLFW
+# using GLFW
 using CImGui
 using Printf
 
 using ..Systems
-using ..Visual
 using ..Input
 using ..Output
 
@@ -20,19 +19,55 @@ import OrdinaryDiffEq: add_tstop!
 
 export Simulation, step!, reinit!, solve!, get_proposed_dt, add_tstop!
 export TimeHistory, get_components, get_child_names
-export InputManager
+
+
+################################################################################
+################################# Info ########################################
+
+Base.@kwdef struct Info
+    component::String = "No info"
+    algorithm::String = "No info"
+    t_start::Float64 = 0.0
+    t_end::Float64 = 0.0
+    dt::Float64 = 0.0 #last time step
+    iter::Int64 = 0 #total iterations
+    t::Float64 = 0.0 #simulation time
+    τ::Float64 = 0.0 #wall-clock time
+end
+
+function draw_info(info::Info)
+
+    @unpack component, algorithm, t_start, t_end, dt, iter, t, τ = info
+
+    begin
+        CImGui.Begin("Info")
+            CImGui.Text("Component: " * component)
+            CImGui.Text("Algorithm: " * algorithm)
+            CImGui.Text("Step size: $dt")
+            CImGui.Text("Iterations: $iter")
+            CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
+            CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
+            # CImGui.Text(@sprintf("Framerate %.3f ms/frame (%.1f FPS)",
+            #                     1000 / CImGui.GetIO().Framerate,
+            #                     CImGui.GetIO().Framerate))
+        CImGui.End()
+    end
+
+end
 
 
 ################################################################################
 ############################# Simulation #######################################
 
-struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, C <: Vector{<:Channel}}
+struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     sys::S
     integrator::I
     log::L
-    channels::C
-    sim_lock::ReentrantLock #signals to other tasks that Simulation is running
-    sys_lock::ReentrantLock #must be acquired to modify the system
+    output_channels::Vector{Channel{Y}}
+    info_channels::Vector{Channel{Info}}
+    started::Base.Event #signals that execution has started
+    executing::ReentrantLock #when released, signals that execution has ended
+    stepping::ReentrantLock #must be acquired to modify the system
 
     function Simulation(
         sys::System;
@@ -41,8 +76,9 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, C <: Vector
         args_disc::Tuple = (), #externally supplied arguments to System's f_disc!
         sys_init!::Function = no_sys_init!, #System initialization function
         sys_io!::Function = no_sys_io!, #System I/O function
-        sim_lock::ReentrantLock = ReentrantLock(), #to be shared with input manager
-        sys_lock::ReentrantLock = ReentrantLock(), #to be shared with input manager
+        started::Base.Event = Base.Event(), #to be shared with input interfaces
+        executing::ReentrantLock = ReentrantLock(), #to be shared with input interfaces
+        stepping::ReentrantLock = ReentrantLock(), #to be shared with input interfaces
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
         dt::Real = 0.02, #continuous dynamics integration step
@@ -85,12 +121,13 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, C <: Vector
             problem, algorithm; callback = cb_set, save_on = false, adaptive, dt)
         #save_on is set to false because we are not usually interested in the
         #naked System's state vector. everything we need should be made
-        #available in the System's output struct saved by the SavingCallback
+        #available in the System's y, saved by the SavingCallback
 
-        channels = Channel{typeof(sys.y)}[]
+        info_channels = Channel{Info}[]
+        output_channels = Channel{typeof(sys.y)}[]
 
-        new{typeof(sys), typeof(integrator), typeof(log), typeof(channels)}(
-            sys, integrator, log, channels, sim_lock, sys_lock)
+        new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
+            sys, integrator, log, output_channels, info_channels, started, executing, stepping)
     end
 
 end
@@ -106,6 +143,15 @@ Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
         return :(getfield(sim, $(QuoteNode(S))))
     end
 end
+
+#get underlying component type as a string
+get_component_name(::Simulation{<:System{C}}) where {C} = string(C)
+
+#get ODE algorithm type as a string
+get_algorithm_name(sim::Simulation) = sim.integrator.alg |> typeof |> string
+
+
+############################ Stepping functions ################################
 
 #wrapper around the System's continuous dynamics function f_ode! it modifies the
 #System's ẋ and y as a side effect
@@ -197,7 +243,7 @@ no_sys_init!(sys::System; kwargs...) = nothing
 no_sys_io!(u, y, t::Float64, params) = nothing
 
 
-################# SciMLBase & OrdinaryDiffEq Extensions ########################
+################# SciMLBase & OrdinaryDiffEq extensions ########################
 
 step!(sim::Simulation, args...) = step!(sim.integrator, args...)
 
@@ -229,14 +275,44 @@ function reinit!(sim::Simulation; sys_init_kwargs...)
 end
 
 
+################################### I/O #######################################
+
+#attaches an input device to the Simulation, enabling it to safely modify the
+#System's input during paced or full speed execution, and returns its interface
+function attach_input!( sim::Simulation, device::Input.AbstractDevice,
+                        mapping::Input.AbstractMapping = Input.DefaultMapping(),
+                        ext_shutdown::Bool = false)
+
+    InputInterface(device, sim.u, mapping, sim.started, sim.stepping, ext_shutdown)
+end
+
+add_output_channel!(sim::Simulation) = push!(sim.output_channels, eltype(sim.output_channels)(1))[end]
+pop_output_channel!(sim::Simulation) = pop!(sim.output_channels)
+add_info_channel!(sim::Simulation) = push!(sim.info_channels, eltype(sim.info_channels)(1))[end]
+pop_info_channel!(sim::Simulation) = pop!(sim.info_channels)
+
+#for unbuffered channels, isready doesn't seem to work as expected. it returns
+#false even if there is a task waiting for it
+
+#for buffered channels, isready returns 1 if there is at least one value in the
+#channel. if there is one value and we try to put! another, we will block. to
+#avoid this, we only put! if !isready
+@inline function put_no_block!(channel::Channel{T}, data::T) where {T}
+    (isopen(channel) && !isready(channel)) && put!(channel, data)
+end
+
+@inline function put_no_block!(channels::Vector{Channel{T}}, data::T) where {T}
+    for channel in channels
+        put_no_block!(channel, data)
+    end
+end
+
+
 ################################ Execution #####################################
 
 function run!(sim::Simulation; rate::Real = Inf, verbose::Bool = false)
 
     #rate: rate of execution relative to wall time (Inf = unrestricted, 1 ≈ real time )
-
-    #could add logging here instead
-    verbose && println("Simulation: Starting at thread $(Threads.threadid())...")
 
     if isempty(sim.integrator.opts.tstops)
         println("The simulation has hit its end time, reset it using reinit! ",
@@ -244,33 +320,49 @@ function run!(sim::Simulation; rate::Real = Inf, verbose::Bool = false)
         return
     end
 
-    t_elapsed = (rate === Inf ? run_full_speed!(sim) : run_paced!(sim; rate))
+    #could add logging here instead
+    verbose && println("Simulation: Starting at thread $(Threads.threadid())...")
+
+    t_elapsed = (rate === Inf ? run_fullspeed!(sim) : run_paced!(sim; rate))
+
     verbose && println("Simulation: Finished in $t_elapsed seconds")
 
 end
 
-function run_full_speed!(sim::Simulation)
-
+function run_fullspeed!(sim::Simulation)
     return @elapsed begin
         for _ in sim.integrator #integrator steps automatically at the beginning of each iteration
-            update_channels!(sim)
+            put_no_block!(sim.output_channels, sim.y)
         end
     end
-
 end
 
 
-function run_paced!(sim::Simulation; rate::Real = Inf)
+#IMPORTANT: if we launch something from the main thread (1) and it doesn't ever
+#block, no other thread will get CPU time. threfore, we should never call _run!
+#directly from the main thread, because it will starve all other threads,
+#including the dashboard thread launched from it. run_paced must always be run
+#from a Threads.@spawn'ed thread
 
-    @unpack sys, integrator, channels, sim_lock, sys_lock = sim
+function run_paced!(sim::Simulation; rate::Real)
+    τ_elapsed = fetch(Threads.@spawn(_run_paced!(sim; rate)))
+    return τ_elapsed
+end
+
+function _run_paced!(sim::Simulation; rate::Real)
+
+    @unpack sys, integrator, info_channels, output_channels,
+            started, executing, stepping = sim
 
     t_start, t_end = integrator.sol.prob.tspan
+    component = get_component_name(sim)
+    algorithm = get_algorithm_name(sim)
 
-    #info renderer should return immediately (refresh=0) to avoid slowing down
-    #the simulation thread; framerate is capped by the simulation rate setting
-    info_renderer = CImGuiRenderer(refresh = 0, wsize = (320, 240), label = "Simulation")
-    Visual.init!(info_renderer)
-    GLFW.SetWindowPos(info_renderer._window, 100, 100)
+    info_channel = add_info_channel!(sim)
+    db = Dashboard(draw_info; refresh = 1, wsize = (320, 240), label = "Simulation")
+    db_interface = Output.Interface(device = db, channel = info_channel, ext_shutdown = true)
+    db_thread = Threads.@spawn Output._run!(db_interface) #starts the dashboard on its own thread
+    # GLFW.SetWindowPos(info_renderer._window, 100, 100)
 
     τ = let wall_time_ref = time()
             ()-> time() - wall_time_ref
@@ -278,34 +370,33 @@ function run_paced!(sim::Simulation; rate::Real = Inf)
 
     τ_last = τ()
 
-    sim_info = Info(sim; τ = τ_last)
-
     try
 
-        lock(sim_lock) #signal IO tasks that we are executing
+        notify(started)
+        lock(executing) #signal input devices we are executing
 
         while sim.t[] < t_end
 
             #simulation time must attempt to satisfy the invariant:
             #t_next = t_start + rate * τ
 
-            lock(sys_lock)
+            t_next = sim.t[] + get_proposed_dt(sim)
+            while t_next - t_start > rate * τ() end #busy wait
 
-                t_next = sim.t[] + get_proposed_dt(sim)
-                while t_next - t_start > rate * τ() end #busy wait
+            lock(stepping)
                 step!(sim)
-
-            unlock(sys_lock)
+            unlock(stepping)
 
             τ_last = τ()
 
-            update!(sim_info; dt = integrator.dt, iter = integrator.iter,
-                    t = sim.t[], τ = τ_last)
+            info = Info(; component, algorithm, t_start, t_end,
+                          dt = get_proposed_dt(sim), iter = integrator.iter,
+                          t = sim.t[], τ = τ_last)
 
-            Visual.render!(info_renderer, draw, sim_info)
-            update_channels!(sim)
+            put_no_block!(sim.info_channels, info)
+            put_no_block!(sim.output_channels, sim.y)
 
-            if Visual.should_close(info_renderer)
+            if Output.should_close(db_interface)
                 println("Simulation: Aborted at t = $(sim.t[])")
                 break
             end
@@ -315,170 +406,22 @@ function run_paced!(sim::Simulation; rate::Real = Inf)
     catch ex
 
         println("Simulation: Error during execution: $ex")
-        # @error "Error during simulation" exception=e
-        # Base.show_backtrace(stderr, catch_backtrace())
+        Base.show_backtrace(stderr, catch_backtrace())
 
     finally
 
-        unlock(sim_lock)
-        Visual.shutdown!(info_renderer)
+        unlock(executing)
+        close.(info_channels)
+        close.(output_channels)
+        pop_info_channel!(sim)
 
     end
 
+    wait(db_thread)
     return τ_last
 
 end
 
-@inline function update_channels!(sim::Simulation)
-    for channel in sim.channels
-        isopen(channel) && isready(channel) ? put!(channel, sim.y) : nothing
-    end
-end
-
-
-
-################################################################################
-############################# InputManager #####################################
-
-
-struct InputManager{N, U, D <: NTuple{N,AbstractInputInterface}, M <: NTuple{N,AbstractInputMapping}}
-    u::U
-    devices::D
-    mappings::M
-    sim_lock::ReentrantLock #is set to Simulation.sim_lock
-    sys_lock::ReentrantLock #is set to Simulation.sys_lock
-end
-
-function InputManager(  sim::Simulation,
-                        devices::NTuple{N, AbstractInputInterface},
-                        mappings::NTuple{N, AbstractInputMapping}) where {N}
-    InputManager(sim.u, devices, mappings, sim.sim_lock, sim.sys_lock)
-end
-
-function InputManager(sim::Simulation,
-                        devices::NTuple{N, AbstractInputInterface},
-                        mapping::AbstractInputMapping) where {N}
-    mappings = fill(mapping, N) |> Tuple
-    InputManager(sim, devices, mappings)
-end
-
-InputManager(sim::Simulation, devices) = InputManager(sim, devices, DefaultInputMapping())
-
-function run!(input::InputManager, update_interval::Integer = 1, timeout::Real = 5; verbose = true)
-
-    #update_interval: number of display updates per input device update:
-    #T_update = T_display * update_interval (where typically T_display =
-    #16.67ms). update_interval=0 uncaps the update rate (not recommended!)
-
-    @unpack u, devices, mappings, sim_lock, sys_lock = input
-
-    verbose && println("InputManager: Starting at thread $(Threads.threadid())...")
-
-    τ = let wall_time_ref = time()
-            ()-> time() - wall_time_ref
-        end
-
-    #wait for a while for the Simulation task to start and grab its execution
-    #lock. if it doesn't, give up.
-    while true
-        trylock(sim_lock) ? unlock(sim_lock) : break
-        if τ() > timeout
-            println("InputManager: Simulation not started after $timeout seconds, exiting...")
-            return
-        end
-    end
-
-    #the InputManager's update interval is enforced via a hidden window whose
-    #swap interval is set to the desired value. when SwapBuffers is called on
-    #this window, the task will block for the appropriate length of time. this
-    #window will close automatically when the InputManager determines the
-    #Simulation is no longer running and exits its loop
-    window = GLFW.CreateWindow(640, 480, "InputManager")
-    GLFW.HideWindow(window)
-    GLFW.MakeContextCurrent(window)
-    GLFW.SwapInterval(update_interval)
-
-    try
-
-        while !GLFW.WindowShouldClose(window) #cannot actually be closed, but...
-
-            Input.update!.(input.devices)
-
-            @lock sys_lock begin
-                for (device, mapping) in zip(devices, mappings)
-                    Input.assign!(u, device, mapping)
-                end
-            end
-
-            GLFW.SwapBuffers(window)
-            GLFW.PollEvents()
-
-            if trylock(sim_lock) #if this is unlocked, Simulation task is done
-                unlock(sim_lock)
-                println("InputManager: Simulation no longer running")
-                break
-            end
-
-        end
-
-    catch ex
-        println("InputManager: Error during execution: $ex")
-
-    finally
-        println("InputManager: Exiting")
-        #shutdown.(input.devices)
-        GLFW.DestroyWindow(window)
-    end
-
-end
-
-################################################################################
-################################# Info ########################################
-
-Base.@kwdef mutable struct Info
-    sys::String #typeof(sim.sys)
-    alg::String #typeof(sim.integrator.alg)
-    t_start::Float64
-    t_end::Float64
-    dt::Float64 #last time step
-    iter::Int #total iterations
-    t::Float64 #simulation time
-    τ::Float64 #wall-clock time
-end
-
-function Info(sim::Simulation{<:System{C}}; τ::Real = 0.0) where {C}
-    @unpack integrator = sim
-    sys = string(C)
-    alg = string(typeof(integrator.alg))
-    t_start, t_end = integrator.sol.prob.tspan
-    dt = get_proposed_dt(sim)
-    iter = integrator.iter
-    t = sim.t[]
-    Info(; sys, alg, t_start, t_end, dt, iter, t, τ)
-end
-
-update!(info::Info; dt, iter, t, τ) = begin @pack! info = dt, iter, t, τ end
-
-function draw(info::Info)
-
-    @unpack sys, alg, t_start, t_end, dt, iter, t, τ = info
-
-    begin
-        CImGui.Begin("Info")
-
-        CImGui.Text("Target system: " * sys)
-        CImGui.Text("Algorithm: " * alg)
-        CImGui.Text("Step size: $dt")
-        CImGui.Text("Iterations: $iter")
-        CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
-        CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
-
-        CImGui.Text(@sprintf("Framerate %.3f ms/frame (%.1f FPS)", 1000 / CImGui.GetIO().Framerate, CImGui.GetIO().Framerate))
-
-        CImGui.End()
-    end
-
-end
 
 ################################################################################
 ############################### TimeHistory ####################################

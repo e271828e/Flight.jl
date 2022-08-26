@@ -143,7 +143,7 @@ function f_disc!(sys::System{<:AircraftBase}, Δt)
 end
 
 
-function update!(xp::XPInterface, kin::KinematicData, aircraft::Integer = 0)
+function update!(xp::XPConnect, kin::KinematicData, aircraft::Integer = 0)
 
     ll = LatLon(kin.n_e)
     e_nb = REuler(kin.q_nb)

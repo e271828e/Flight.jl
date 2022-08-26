@@ -116,8 +116,8 @@ function test_sim_rt(; save::Bool = true)
     ac.u.avionics.throttle = 1
 
     sys_io! = let inputs = get_connected_joysticks(), # inputs = [XBoxController(),]
-                #   outputs = [XPInterface(),]
-                outputs = [XPInterface(host = IPv4("192.168.1.2"))] #Parsec
+                #   outputs = [XPConnect(),]
+                outputs = [XPConnect(host = IPv4("192.168.1.2"))] #Parsec
 
         Output.init!.(outputs)
 

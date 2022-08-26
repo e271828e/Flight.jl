@@ -17,10 +17,10 @@ function Input.assign!(::TestTarget, joy::Joystick{XBoxController}, ::DefaultInp
 end
 
 function test_input()
-    test_joysticks()
+    test_active_joysticks()
 end
 
-function test_joysticks()
+function test_active_joysticks()
 
     for joy in get_connected_joysticks()
         test(joy)

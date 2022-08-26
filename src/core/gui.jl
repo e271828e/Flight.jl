@@ -1,4 +1,4 @@
-module Visual
+module GUI
 
 using UnPack
 
@@ -89,7 +89,9 @@ function init!(renderer::CImGuiRenderer)
 
 end
 
-@inline should_close(r::CImGuiRenderer) = GLFW.WindowShouldClose(r._window)
+function should_close(r::CImGuiRenderer)
+    r._initialized ? GLFW.WindowShouldClose(r._window) : false
+end
 
 function shutdown!(renderer::CImGuiRenderer)
 
@@ -106,7 +108,9 @@ end
 
 function render!(renderer::CImGuiRenderer, draw::Function, draw_args...)
 
-    @unpack _window = renderer
+    @unpack _window, _initialized = renderer
+
+    @assert _initialized "Renderer not initialized, call init! before render!"
 
     try
         # start the Dear ImGui frame
@@ -170,6 +174,7 @@ function draw_test(value::Real = 1)
     end
 
 end
+
 # function draw_test(value::Real = 1)
 
 #     # show a simple window that we create ourselves.
