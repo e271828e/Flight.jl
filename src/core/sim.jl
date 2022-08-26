@@ -47,9 +47,9 @@ function draw_info(info::Info)
             CImGui.Text("Iterations: $iter")
             CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
             CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
-            # CImGui.Text(@sprintf("Framerate %.3f ms/frame (%.1f FPS)",
-            #                     1000 / CImGui.GetIO().Framerate,
-            #                     CImGui.GetIO().Framerate))
+            CImGui.Text(@sprintf("GUI Framerate: %.3f ms/frame (%.1f FPS)",
+                                1000 / CImGui.GetIO().Framerate,
+                                CImGui.GetIO().Framerate))
         CImGui.End()
     end
 
@@ -354,10 +354,15 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
     component = get_component_name(sim)
     algorithm = get_algorithm_name(sim)
 
-    info_channel = add_info_channel!(sim)
-    db = Dashboard(draw_info; refresh = 1, wsize = (320, 240), label = "Simulation")
-    db_interface = Output.Interface(device = db, channel = info_channel, ext_shutdown = true)
-    db_thread = Output.run!(db_interface) #starts the dashboard on its own thread
+    #ext_shutdown = false prevents the dashboard from closing directly upon
+    #request. this lets us check the request explicitly, then abort the
+    #simulation and shut down the dashboard by closing its channel
+    db = Output.Interface(
+        device = Dashboard(draw_info; refresh = 1, wsize = (320, 240), label = "Simulation"),
+        channel = add_info_channel!(sim),
+        ext_shutdown = false)
+
+    dbf = Output.run!(db) #starts the dashboard on its own thread
     # GLFW.SetWindowPos(db_interface.renderer._window, 100, 100)
 
     τ = let wall_time_ref = time()
@@ -392,7 +397,7 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
             put_no_block!(sim.info_channels, info)
             put_no_block!(sim.output_channels, sim.y)
 
-            if Output.should_close(db_interface.device)
+            if Output.should_close(db.device)
                 println("Simulation: Aborted at t = $(sim.t[])")
                 break
             end
@@ -414,7 +419,7 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
     end
 
     verbose && println("Simulation: Finished in $τ_last seconds")
-    wait(db_thread)
+    wait(dbf)
 
 end
 
