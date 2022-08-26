@@ -35,10 +35,6 @@ Base.@kwdef struct Interface{D <: AbstractDevice, C <: Channel}
     ext_shutdown::Bool #whether to observe shutdown requests received by the IO device
 end
 
-init!(output::Interface) = init!(output.device)
-shutdown!(output::Interface) = shutdown!(output.device)
-should_close(output::Interface) = should_close(output.device)
-
 run!(output::Interface; verbose = true) = (Threads.@spawn _run!(output; verbose))
 
 function _run!(io::Interface{D}; verbose = true) where {D}

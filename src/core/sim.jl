@@ -315,28 +315,23 @@ function run!(sim::Simulation; rate::Real = Inf, verbose::Bool = false)
     #rate: rate of execution relative to wall time (Inf = unrestricted, 1 ≈ real time )
 
     if isempty(sim.integrator.opts.tstops)
-        println("The simulation has hit its end time, reset it using reinit! ",
+        println("Simulation has hit t_end, reset it using reinit! ",
                 "or add further tstops using add_tstop!")
         return
     end
 
-    #could add logging here instead
-    verbose && println("Simulation: Starting at thread $(Threads.threadid())...")
-
-    t_elapsed = (rate === Inf ? run_fullspeed!(sim) : run_paced!(sim; rate))
-
-    verbose && println("Simulation: Finished in $t_elapsed seconds")
+    rate === Inf ? run_fullspeed!(sim; verbose) : run_paced!(sim; rate, verbose)
 
 end
 
-function run_fullspeed!(sim::Simulation)
-    return @elapsed begin
+function run_fullspeed!(sim::Simulation; verbose::Bool)
+    τ = @elapsed begin
         for _ in sim.integrator #integrator steps automatically at the beginning of each iteration
             put_no_block!(sim.output_channels, sim.y)
         end
     end
+    verbose && println("Simulation: Finished in $τ seconds")
 end
-
 
 #IMPORTANT: if we launch something from the main thread (1) and it doesn't ever
 #block, no other thread will get CPU time. threfore, we should never call _run!
@@ -344,15 +339,16 @@ end
 #including the dashboard thread launched from it. run_paced must always be run
 #from a Threads.@spawn'ed thread
 
-function run_paced!(sim::Simulation; rate::Real)
-    τ_elapsed = fetch(Threads.@spawn(_run_paced!(sim; rate)))
-    return τ_elapsed
+function run_paced!(sim::Simulation; rate::Real, verbose::Bool)
+    wait(Threads.@spawn(_run_paced!(sim; rate, verbose)))
 end
 
-function _run_paced!(sim::Simulation; rate::Real)
+function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
 
     @unpack sys, integrator, info_channels, output_channels,
             started, executing, stepping = sim
+
+    verbose && println("Simulation: Starting at thread $(Threads.threadid())...")
 
     t_start, t_end = integrator.sol.prob.tspan
     component = get_component_name(sim)
@@ -361,8 +357,8 @@ function _run_paced!(sim::Simulation; rate::Real)
     info_channel = add_info_channel!(sim)
     db = Dashboard(draw_info; refresh = 1, wsize = (320, 240), label = "Simulation")
     db_interface = Output.Interface(device = db, channel = info_channel, ext_shutdown = true)
-    db_thread = Threads.@spawn Output._run!(db_interface) #starts the dashboard on its own thread
-    # GLFW.SetWindowPos(info_renderer._window, 100, 100)
+    db_thread = Output.run!(db_interface) #starts the dashboard on its own thread
+    # GLFW.SetWindowPos(db_interface.renderer._window, 100, 100)
 
     τ = let wall_time_ref = time()
             ()-> time() - wall_time_ref
@@ -396,7 +392,7 @@ function _run_paced!(sim::Simulation; rate::Real)
             put_no_block!(sim.info_channels, info)
             put_no_block!(sim.output_channels, sim.y)
 
-            if Output.should_close(db_interface)
+            if Output.should_close(db_interface.device)
                 println("Simulation: Aborted at t = $(sim.t[])")
                 break
             end
@@ -417,8 +413,8 @@ function _run_paced!(sim::Simulation; rate::Real)
 
     end
 
+    verbose && println("Simulation: Finished in $τ_last seconds")
     wait(db_thread)
-    return τ_last
 
 end
 
