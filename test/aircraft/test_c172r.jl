@@ -98,50 +98,50 @@ function test_sim_nrt(; save::Bool = true)
 end
 
 
-function test_sim_rt(; save::Bool = true)
+# function test_sim_rt(; save::Bool = true)
 
-    h_trn = HOrth(608.55);
+#     h_trn = HOrth(608.55);
 
-    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
-    ac = System(Cessna172R());
-    kin_init = KinematicInit(
-        v_eOb_n = [1, 0, 0],
-        ω_lb_b = [0, 0, 0],
-        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-        h = h_trn + 1.9 + 0);
+#     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
+#     ac = System(Cessna172R());
+#     kin_init = KinematicInit(
+#         v_eOb_n = [1, 0, 0],
+#         ω_lb_b = [0, 0, 0],
+#         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
+#         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+#         h = h_trn + 1.9 + 0);
 
-    Aircraft.init!(ac, kin_init)
-    ac.u.avionics.eng_start = true #engine start switch on
-    ac.u.avionics.throttle = 1
+#     Aircraft.init!(ac, kin_init)
+#     ac.u.avionics.eng_start = true #engine start switch on
+#     ac.u.avionics.throttle = 1
 
-    sys_io! = let inputs = get_connected_joysticks(), # inputs = [XBoxController(),]
-                #   outputs = [XPConnect(),]
-                outputs = [XPConnect(host = IPv4("192.168.1.2"))] #Parsec
+#     sys_io! = let inputs = get_connected_joysticks(), # inputs = [XBoxController(),]
+#                 #   outputs = [XPConnect(),]
+#                 outputs = [XPConnect(host = IPv4("192.168.1.2"))] #Parsec
 
-        Output.init!.(outputs)
+#         Output.init!.(outputs)
 
-        function (u, y, t, params)
-            for input in inputs
-                Input.update!(input)
-                Input.assign!(u.avionics, input)
-            end
-            for output in outputs
-                Output.update!(output, y.kinematics.common)
-            end
-        end
+#         function (u, y, t, params)
+#             for input in inputs
+#                 Input.update!(input)
+#                 Input.assign!(u.avionics, input)
+#             end
+#             for output in outputs
+#                 Output.update!(output, y.kinematics.common)
+#             end
+#         end
 
-    end
+#     end
 
-    sim = Simulation(ac; args_ode = (env,), t_end = 10, sys_io!)
+#     sim = Simulation(ac; args_ode = (env,), t_end = 10, sys_io!)
 
-    Sim.run!(sim; verbose= true, rate = 1)
-    plots = make_plots(sim; Plotting.defaults...)
-    save ? save_plots(plots, save_folder = joinpath("tmp", "rt_sim_test")) : nothing
+#     Sim.run!(sim; verbose= true, rate = 1)
+#     plots = make_plots(sim; Plotting.defaults...)
+#     save ? save_plots(plots, save_folder = joinpath("tmp", "rt_sim_test")) : nothing
 
-    return sim
+#     return sim
 
-end
+# end
 
 
 function test_trimming()

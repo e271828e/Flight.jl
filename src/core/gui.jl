@@ -11,7 +11,9 @@ using CImGui.OpenGLBackend
 using CImGui.GLFWBackend.GLFW
 using CImGui.OpenGLBackend.ModernGL
 
-export Renderer, CImGuiStyle
+using Flight.IODevices
+
+export CImGuiStyle, Renderer, Dashboard
 
 ################################################################################
 ############################# Renderer####################################
@@ -30,8 +32,7 @@ mutable struct Renderer
     _initialized::Bool
     _window::GLFW.Window
     _context::Ptr{CImGui.LibCImGui.ImGuiContext}
-    function Renderer(; refresh::Integer, label::String = "Renderer",
-                        wsize = (1280, 720), style::CImGuiStyle = dark)
+    function Renderer(; refresh = 1, label = "Renderer", wsize = (1280, 720), style = dark)
         renderer = new()
         @pack! renderer = refresh, label, style, wsize
         renderer._initialized = false
@@ -109,11 +110,11 @@ function shutdown!(renderer::Renderer)
 end
 
 
-function render!(renderer::Renderer, draw::Function, draw_args...)
+function update!(renderer::Renderer, draw::Function, draw_args...)
 
     @unpack _window, _initialized = renderer
 
-    @assert _initialized "Renderer not initialized, call init! before render!"
+    @assert _initialized "Renderer not initialized, call init! before update!"
 
     try
         # start the Dear ImGui frame
@@ -144,8 +145,6 @@ function render!(renderer::Renderer, draw::Function, draw_args...)
 
     end
 
-    @show draw_args
-
     return nothing
 
 end
@@ -156,7 +155,7 @@ function run!(renderer::Renderer, draw::Function, draw_args...)
     renderer._initialized || init!(renderer)
 
     while !GLFW.WindowShouldClose(renderer._window)
-        render!(renderer, draw, draw_args...)
+        update!(renderer, draw, draw_args...)
     end
 
     shutdown!(renderer)
@@ -164,39 +163,61 @@ function run!(renderer::Renderer, draw::Function, draw_args...)
 end
 
 
+################################################################################
+############################# Dashboard ##################################
+
+struct Dashboard{S} <: IODevice
+    renderer::Renderer
+    state::S #local state variables captured by the GUI on each Renderer update!
+end
+
+function Dashboard{S}(renderer::Renderer = Renderer(label = "Dashboard")) where {S}
+    Dashboard{S}(renderer, S())
+end
+
+IODevices.init!(db::Dashboard) = init!(db.renderer)
+IODevices.shutdown!(db::Dashboard) = shutdown!(db.renderer)
+IODevices.update!(db::Dashboard, data) = update!(db.renderer, draw_dashboard!, db.state, data)
+IODevices.should_close(db::Dashboard) = should_close(db.renderer)
+
+#draw the CImGui widgets using the current Dashboard's state and the externally
+#received data, and update the Dashboard's state from the user inputs captured
+#by the widgets
+function draw_dashboard!(state::Any, data::Any)
+    MethodError(draw_dashboard!, (state, data))
+end
+
+#runs continuously on the same data
+run!(db::Dashboard, data) = run!(db.renderer, draw_dashboard!, db.state, data)
+
+
+################################################################################
+########################## Test draw functions #################################
+
 function draw_test(value::Real = 1)
 
     begin
         CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
-
-        CImGui.Text("This is some useful text.")  # display some text
-        CImGui.SameLine()
-        CImGui.Text("passed value = $value")
-
-        CImGui.Text(@sprintf("Application average %.3f ms/frame (%.1f FPS)", 1000 / CImGui.GetIO().Framerate, CImGui.GetIO().Framerate))
-
+        CImGui.Text("Got value = $value")
         CImGui.End()
     end
 
 end
 
-function draw_test2(value::Real = 1)
+function draw_test2a()
 
     # show a simple window that we create ourselves.
     # we use a Begin/End pair to created a named window.
     @cstatic f=Cfloat(0.0) begin
         CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
         CImGui.Text("This is some useful text.")  # display some text
-
-        @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a #         slider from 0 to 1
-
+        @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
         CImGui.End()
     end
 
 end
 
-
-function draw_test2_nomacros()
+function draw_test2b() #draw_test2a with expanded macros
     let
         global f_glob = Cfloat(0.0)
         local f = f_glob
@@ -209,7 +230,6 @@ function draw_test2_nomacros()
                 f = f_ref[]
                 f_return
             end
-            #= C:\Users\Miguel\.julia\dev\Flight\test.jl:11 =#
             CImGui.End()
         end
         f_glob = f

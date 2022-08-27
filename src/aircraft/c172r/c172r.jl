@@ -9,7 +9,7 @@ using Interpolations
 using HDF5
 # using JLD
 
-using Flight.Input
+using Flight.IODevices
 using Flight.Systems
 using Flight.Attitude
 using Flight.Terrain
@@ -26,61 +26,16 @@ import Flight.Systems: init, f_ode!, f_step!, f_disc!
 import Flight.Kinematics: KinematicInit
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
 import Flight.Piston: fuel_available
-import Flight.Input: assign!
 
 include("data/aero.jl")
 
 export Cessna172R
 
-############################## ReversibleControls #################################
-
-struct ReversibleControls <: AbstractAvionics end
-
-#elevator↑ (stick forward) -> e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
-#aileron↑ (stick right) -> a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
-#pedals↑ (left pedal forward) -> r↓ -> δr↓ -> rudder trailing edge right -> Cn↑ -> yaw right
-#pedals↑ (right pedal forward) -> nose wheel steering right -> yaw right
-#flaps↑ -> δf↑ -> flap trailing edge down -> CL↑
-Base.@kwdef mutable struct ReversibleControlsU
-    throttle::Ranged{Float64, 0, 1} = 0.0
-    aileron::Ranged{Float64, -1, 1} = 0.0
-    Δ_aileron::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
-    elevator::Ranged{Float64, -1, 1} = 0.0
-    Δ_elevator::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
-    pedals::Ranged{Float64, -1, 1} = 0.0
-    Δ_pedals::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
-    brake_left::Ranged{Float64, 0, 1} = 0.0
-    brake_right::Ranged{Float64, 0, 1} = 0.0
-    flaps::Ranged{Float64, 0, 1} = 0.0
-    mixture::Ranged{Float64, 0, 1} = 0.5
-    eng_start::Bool = false
-    eng_stop::Bool = false
-end
-
-Base.@kwdef struct ReversibleControlsY
-    throttle::Float64 = 0.0
-    Δ_aileron::Float64 = 0.0
-    aileron::Float64 = 0.0
-    Δ_elevator::Float64 = 0.0
-    elevator::Float64 = 0.0
-    pedals::Float64 = 0.0
-    Δ_pedals::Float64 = 0.0
-    brake_left::Float64 = 0.0
-    brake_right::Float64 = 0.0
-    flaps::Float64 = 0.0
-    mixture::Float64 = 0.5
-    eng_start::Bool = false
-    eng_stop::Bool = false
-end
-
-init(::SystemU, ::ReversibleControls) = ReversibleControlsU()
-init(::SystemY, ::ReversibleControls) = ReversibleControlsY()
-
 
 ################################################################################
 ############################ Airframe Subsystems ################################
 
-################################ Airframe ######################################
+################################ Structure #####################################
 
 struct Structure <: Component end
 
@@ -202,7 +157,7 @@ Base.@kwdef struct AeroY
     wr_b::Wrench = Wrench() #aerodynamic Wrench, vehicle frame
 end
 
-init(::SystemX, ::Aero) = init(SystemX(); α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+init(::SystemX, ::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
 init(::SystemY, ::Aero) = AeroY()
 init(::SystemU, ::Aero) = AeroU()
 init(::SystemS, ::Aero) = AeroS()
@@ -474,40 +429,14 @@ Base.@kwdef struct Airframe{P} <: AbstractAirframe
 end
 
 ################################################################################
-####################### Update functions #######################################
-################################################################################
-
-################################################################################
-######################## Avionics Update Functions ###########################
-
-function f_ode!(avionics::System{ReversibleControls}, ::System{<:Airframe},
-                ::KinematicData, ::AirflowData, ::System{<:AbstractTerrain})
-
-    #here, avionics do nothing but update their output state. for a more complex
-    #aircraft a continuous state-space autopilot implementation could go here
-    @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
-     brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
-
-    avionics.y = ReversibleControlsY(;
-            throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
-            brake_left, brake_right, flaps, mixture, eng_start, eng_stop)
-
-end
-
-#no digital components or state machines in ReversibleControls
-@inline f_step!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem) = false
-@inline f_disc!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
-
-
-################################################################################
 ####################### Airframe Update Functions ##############################
 
-function f_ode!(airframe::System{<:Airframe}, avionics::System{ReversibleControls},
+function f_ode!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics},
                 kin::KinematicData, air::AirflowData, trn::System{<:AbstractTerrain})
 
     @unpack aero, pwp, ldg, fuel, pld = airframe
 
-    assign_component_inputs!(airframe, avionics)
+    apply_avionics!(airframe, avionics)
     f_ode!(aero, pwp, air, kin, trn)
     f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
@@ -531,7 +460,81 @@ end
 #get_mp_b, get_wr_b and get_hr_b fall back to the @generated methods, which then
 #recurse on Airframe subsystems
 
-function assign_component_inputs!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
+#to be extended by any avionics installed on the aircraft
+function apply_avionics!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics})
+    println("Please extend C172R.apply_avionics! for $(typeof(airframe)), $(typeof(avionics))")
+    MethodError(apply_avionics!, (airframe, avionics))
+end
+
+
+################################################################################
+########################### ReversibleControls #################################
+
+struct ReversibleControls <: AbstractAvionics end
+
+#elevator↑ (stick forward) -> e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
+#aileron↑ (stick right) -> a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
+#pedals↑ (left pedal forward) -> r↓ -> δr↓ -> rudder trailing edge right -> Cn↑ -> yaw right
+#pedals↑ (right pedal forward) -> nose wheel steering right -> yaw right
+#flaps↑ -> δf↑ -> flap trailing edge down -> CL↑
+Base.@kwdef mutable struct ReversibleControlsU
+    throttle::Ranged{Float64, 0, 1} = 0.0
+    aileron::Ranged{Float64, -1, 1} = 0.0
+    Δ_aileron::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    elevator::Ranged{Float64, -1, 1} = 0.0
+    Δ_elevator::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    pedals::Ranged{Float64, -1, 1} = 0.0
+    Δ_pedals::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    brake_left::Ranged{Float64, 0, 1} = 0.0
+    brake_right::Ranged{Float64, 0, 1} = 0.0
+    flaps::Ranged{Float64, 0, 1} = 0.0
+    mixture::Ranged{Float64, 0, 1} = 0.5
+    eng_start::Bool = false
+    eng_stop::Bool = false
+end
+
+Base.@kwdef struct ReversibleControlsY
+    throttle::Float64 = 0.0
+    Δ_aileron::Float64 = 0.0
+    aileron::Float64 = 0.0
+    Δ_elevator::Float64 = 0.0
+    elevator::Float64 = 0.0
+    pedals::Float64 = 0.0
+    Δ_pedals::Float64 = 0.0
+    brake_left::Float64 = 0.0
+    brake_right::Float64 = 0.0
+    flaps::Float64 = 0.0
+    mixture::Float64 = 0.5
+    eng_start::Bool = false
+    eng_stop::Bool = false
+end
+
+init(::SystemU, ::ReversibleControls) = ReversibleControlsU()
+init(::SystemY, ::ReversibleControls) = ReversibleControlsY()
+
+
+################################################################################
+######################## Avionics Update Functions #############################
+
+function f_ode!(avionics::System{ReversibleControls}, ::System{<:Airframe},
+                ::KinematicData, ::AirflowData, ::System{<:AbstractTerrain})
+
+    #ReversibleControls has no internal dynamics, just input-output feedthrough
+    @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
+     brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
+
+    avionics.y = ReversibleControlsY(;
+            throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
+            brake_left, brake_right, flaps, mixture, eng_start, eng_stop)
+
+end
+
+#no digital components or state machines in ReversibleControls
+@inline f_step!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem) = false
+@inline f_disc!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
+
+
+function apply_avionics!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
 
     @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
     brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
@@ -553,38 +556,18 @@ function assign_component_inputs!(airframe::System{<:Airframe}, avionics::System
 end
 
 
-
 ################################################################################
-############################# Input Interfaces ################################
-
-
-####################### XBoxController Input Interface ########################
+############################ Joystick Mappings #################################
 
 elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function exp_axis_curve(x::Ranged{T}, args...; kwargs...) where {T}
-    exp_axis_curve(T(x), args...; kwargs...)
-end
+################################ XBoxController ################################
 
-function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
-
-    a = strength
-    x0 = deadzone
-
-    abs(x) <= 1 || throw(ArgumentError("Input to exponential curve must be within [-1, 1]"))
-    (x0 >= 0 && x0 <= 1) || throw(ArgumentError("Exponential curve deadzone must be within [0, 1]"))
-
-    if x > 0
-        y = max(0, (x - x0)/(1 - x0)) * exp( a * (abs(x) -1) )
-    else
-        y = min(0, (x + x0)/(1 - x0)) * exp( a * (abs(x) -1) )
-    end
-end
-
-function assign!(u::ReversibleControlsU, joystick::Joystick{XBoxControllerID}, ::Input.DefaultMapping)
+function IODevices.assign!(u::ReversibleControlsU,
+            joystick::Joystick{XBoxControllerID}, ::DefaultMapping)
 
     u.Δ_aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
     u.Δ_elevator = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
@@ -609,8 +592,8 @@ end
 ################################################################################
 ############################### Cessna172R #####################################
 
-#Cessna172RBase requires a parameterized subtype of the C172R.Airframe, but
-#allows installing different avionics and using different kinematic descriptions
+#Cessna172RBase requires a subtype of C172R.Airframe, but allows installing any
+#avionics and using different kinematic descriptions
 const Cessna172RBase{K, F, V} = AircraftBase{K, F, V} where {K, F <: Airframe, V}
 
 function Cessna172RBase(kinematics = LTF(), avionics = ReversibleControls())

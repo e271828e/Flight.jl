@@ -32,23 +32,23 @@ function benchmark_ac()
 
 end
 
-struct TestPICompensatorMapping <: Input.AbstractMapping end
+# struct TestMapping <: InputMapping end
 
-function Input.assign!(u::Essentials.PICompensatorU{1},
-                       joystick::Joystick{XBoxControllerID},
-                       ::TestPICompensatorMapping)
+# function IODevices.assign!(u::Essentials.PICompensatorU{1},
+#                        joystick::Joystick{XBoxControllerID},
+#                        ::TestMapping)
 
-    u.input .= get_axis_value(joystick, :right_analog_y)
-    u.reset .= Input.was_released(joystick, :button_A)
-    u.sat_enable .⊻= Input.was_released(joystick, :button_Y)
+#     u.input .= get_axis_value(joystick, :right_analog_y)
+#     u.reset .= was_released(joystick, :button_A)
+#     u.sat_enable .⊻= was_released(joystick, :button_Y)
 
-end
+# end
 
-function test_input_pi()
+# function test_input_pi()
 
-    sys = PICompensator{1}(k_i = 0.5) |> System
-    sim = Simulation(sys; t_end = 10, dt = 0.02)
+#     sys = PICompensator{1}(k_i = 0.5) |> System
+#     sim = Simulation(sys; t_end = 10, dt = 0.02)
 
-    Sim.run!(sim; rate = 2, verbose = true)
-    return sim
-end
+#     Sim.run!(sim; rate = 2, verbose = true)
+#     return sim
+# end

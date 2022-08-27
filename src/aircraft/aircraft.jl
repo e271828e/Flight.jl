@@ -9,11 +9,11 @@ using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy, Flight.Terrain, Flight.Environment
 using Flight.Kinematics, Flight.RigidBody
-using Flight.Input, Flight.Output
+using Flight.IODevices
+using Flight.XPlane
 
 import Flight.Systems: init, f_ode!, f_step!, f_disc!
 import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
-import Flight.Output: update!
 import Flight.Plotting: make_plots
 
 export AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
@@ -143,26 +143,31 @@ function f_disc!(sys::System{<:AircraftBase}, Δt)
 end
 
 
-# function update!(xp::XPConnect, kin::KinematicData, aircraft::Integer = 0)
+############################# XPlaneConnect ####################################
 
-#     ll = LatLon(kin.n_e)
-#     e_nb = REuler(kin.q_nb)
+function IODevices.update!(xp::XPConnect, data::AircraftBaseY)
 
-#     lat = rad2deg(ll.ϕ)
-#     lon = rad2deg(ll.λ)
-#     h = kin.h_o
+    aircraft = 0
 
-#     psi = rad2deg(e_nb.ψ)
-#     theta = rad2deg(e_nb.θ)
-#     phi = rad2deg(e_nb.φ)
+    kin = data.kinematics
 
-#     Output.set_position!(xp; lat, lon, h, psi, theta, phi, aircraft)
+    ll = LatLon(kin.n_e)
+    e_nb = REuler(kin.q_nb)
 
-# end
+    lat = rad2deg(ll.ϕ)
+    lon = rad2deg(ll.λ)
+    h = kin.h_o
+
+    psi = rad2deg(e_nb.ψ)
+    theta = rad2deg(e_nb.θ)
+    phi = rad2deg(e_nb.φ)
+
+    XPlane.set_position!(xp; lat, lon, h, psi, theta, phi, aircraft)
+
+end
 
 
-
-########################### Plotting ###########################################
+############################### Plotting #######################################
 
 function make_plots(th::TimeHistory{<:AircraftBaseY}; kwargs...)
 

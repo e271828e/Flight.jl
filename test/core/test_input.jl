@@ -6,13 +6,12 @@ using UnPack
 using ComponentArrays
 
 using Flight
-using Flight.Input: update!, assign!
 
 export test_input
 
 struct TestTarget end
 
-function Input.assign!(::TestTarget, joy::Joystick{XBoxController}, ::DefaultInputMapping)
+function IODevices.assign!(::TestTarget, joy::Joystick{XBoxController}, ::DefaultInputMapping)
     println(joy)
 end
 

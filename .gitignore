@@ -1,6 +1,7 @@
 /tmp
 /precompile
 /sketches
+/cimgui
 .github/
 .vscode/
 .VSCodeCounter

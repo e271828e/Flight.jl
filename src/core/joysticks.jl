@@ -1,100 +1,19 @@
-module Input
+module Joysticks
 
 using StaticArrays
 using UnPack
-
 using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
         GetJoystickAxes, GetJoystickButtons, GetJoystickName, SetJoystickCallback
 
+using Flight.IODevices
+using Flight.Utils: Ranged
+
 export JoystickSlot, Joystick
 export get_connected_joysticks
-export get_axis_value, get_button_state, get_button_change, was_pressed, was_released
+export get_axis_value, exp_axis_curve
+export get_button_state, get_button_change, was_pressed, was_released
 
 export XBoxControllerID, XBoxController
-
-
-################################################################################
-############################# InputInterface ###################################
-
-abstract type AbstractDevice end
-abstract type AbstractMapping end
-struct DefaultMapping <: AbstractMapping end
-
-#each device should control its own update rate from within the update! method,
-#preferably via calls to blocking functions (such as GLFW.SwapBuffers with
-#GLFW.SwapInterval > 0)
-init!(device::D) where {D<:AbstractDevice} = MethodError(init!, (device, ))
-shutdown!(device::D) where {D<:AbstractDevice} = MethodError(shutdown!, (device, ))
-update!(device::D) where {D<:AbstractDevice} = MethodError(update!, (device,))
-should_close(device::D) where {D<:AbstractDevice} = MethodError(should_close, (device, ))
-
-#for every input device it wants to support, the target type should at least
-#extend the three argument assign! method below with a ::DefaultMapping
-#argument. for alternative mappings, it can define additional subtypes of
-#AbstractMapping and their corresponding assign! methods
-function assign!(target, device::AbstractDevice, mapping::AbstractMapping)
-    MethodError(update!, (target, device, mapping))
-end
-
-function assign!(target, device::AbstractDevice)
-    assign!(target, device, DefaultMapping())
-end
-
-struct Interface{D <: AbstractDevice, T,  M <: AbstractMapping}
-    device::D
-    target::T #input target, typically the simulation's u
-    mapping::M #selected device to target mapping, used for dispatch on assign!
-    sim_started::Base.Event #to be waited on before entering the update loop
-    sim_executing::ReentrantLock #to check whether we can terminate
-    target_lock::ReentrantLock #to acquire before modifying the target
-    ext_shutdown::Bool #whether to observe shutdown requests received by the IO device
-end
-
-run!(input::Interface; verbose = true) = (Threads.@spawn _run!(input; verbose))
-
-function _run!(io::Interface; verbose = true)
-
-    @unpack u, device, mapping, sim_started, sim_executing, sim_stepping, ext_shutdown = io
-
-    verbose && println("Input Interface: Starting at thread $(Threads.threadid())...")
-
-    init!(device)
-    wait(sim_started)
-
-    try
-
-        while true
-
-            #here is where each device should control its own update rate, for
-            #example via a call to GLFW.SwapBuffers
-            update!(device)
-
-            lock(sim_stepping) #wait for the simulation
-                assign!(u, device, mapping)
-            unlock(sim_stepping)
-
-            if ext_shutdown && should_close(device)
-                println("Input Interface: Shutdown requested")
-                break
-            end
-
-            if trylock(sim_executing) #if this is unlocked, Simulation task is done
-                unlock(sim_executing)
-                println("InputManager: Simulation no longer running")
-                break
-            end
-
-        end
-
-    catch ex
-        println("Input Interface: Error during execution: $ex")
-
-    finally
-        println("Input Interface: Exiting...")
-        shutdown!(device)
-    end
-
-end
 
 
 ################################################################################
@@ -123,6 +42,24 @@ default_axes_labels(N::Integer) = Symbol.("axis_".*string.(Tuple(1:N)))
 
 update!(axes::AxisSet, slot::JoystickSlot) = (axes.data .= GetJoystickAxes(slot))
 
+function exp_axis_curve(x::Ranged{T}, args...; kwargs...) where {T}
+    exp_axis_curve(T(x), args...; kwargs...)
+end
+
+function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
+
+    a = strength
+    x0 = deadzone
+
+    abs(x) <= 1 || throw(ArgumentError("Input to exponential curve must be within [-1, 1]"))
+    (x0 >= 0 && x0 <= 1) || throw(ArgumentError("Exponential curve deadzone must be within [0, 1]"))
+
+    if x > 0
+        y = max(0, (x - x0)/(1 - x0)) * exp( a * (abs(x) -1) )
+    else
+        y = min(0, (x + x0)/(1 - x0)) * exp( a * (abs(x) -1) )
+    end
+end
 
 ################################ ButtonSet #####################################
 
@@ -180,7 +117,7 @@ abstract type AbstractJoystickID end
 #T_update = T_display * update_interval (where typically T_display =
 #16.67ms). update_interval=0 uncaps the update rate (not recommended!)
 
-mutable struct Joystick{T <: AbstractJoystickID, A <: AxisSet, B <: ButtonSet} <: AbstractDevice
+mutable struct Joystick{T <: AbstractJoystickID, A <: AxisSet, B <: ButtonSet} <: IODevice
     id::T
     axes::A
     buttons::B
@@ -192,7 +129,8 @@ mutable struct Joystick{T <: AbstractJoystickID, A <: AxisSet, B <: ButtonSet} <
                         update_interval::Integer = 1)
         axes = AxisSet(id)
         buttons = ButtonSet(id)
-        new{typeof(id), typeof(axes), typeof(buttons)}(id, axes, buttons, slot, update_interval) #window pending initialization
+        new{typeof(id), typeof(axes), typeof(buttons)}(
+            id, axes, buttons, slot, update_interval) #window uninitialized
     end
 end
 
@@ -201,34 +139,6 @@ function is_connected(joystick::Joystick)
     slot = joystick.slot
     return (slot in keys(active_slots) && active_slots[slot][] === joystick)
 end
-
-function init!(joystick::Joystick)
-    joystick.window = GLFW.CreateWindow(640, 480, "$(string(joystick.id))")
-    @unpack window, update_interval = joystick
-    # GLFW.HideWindow(window)
-    GLFW.MakeContextCurrent(window)
-    GLFW.SwapInterval(update_interval)
-end
-
-function update!(joystick::Joystick)
-
-    @unpack id, slot, axes, buttons, window = joystick
-
-    if !is_connected(joystick)
-        println("Can't update $(joystick.id) at slot $slot, no longer connected")
-        return
-    end
-
-    GLFW.SwapBuffers(window) #honor the requested update_interval
-    update!(axes, slot)
-    update!(buttons, slot)
-    rescale!(axes, id)
-    GLFW.PollEvents() #see if we got a shutdown request
-
-end
-
-should_close(joystick::Joystick) = GLFW.WindowShouldClose(joystick.window)
-shutdown!(joystick::Joystick) = GLFW.DestroyWindow(joystick.window)
 
 #override as required by each joystick ID
 rescale!(::AxisSet, ::AbstractJoystickID) = nothing
@@ -258,8 +168,36 @@ function was_released(joystick::Joystick, s::Symbol)
     change[mapping[s]] === released
 end
 
+function IODevices.init!(joystick::Joystick)
+    joystick.window = GLFW.CreateWindow(640, 480, "$(string(typeof(joystick.id)))")
+    @unpack window, update_interval = joystick
+    # GLFW.HideWindow(window)
+    GLFW.MakeContextCurrent(window)
+    GLFW.SwapInterval(update_interval)
+end
 
-############################# Joystick initialization ##########################
+function IODevices.update!(joystick::Joystick)
+
+    @unpack id, slot, axes, buttons, window = joystick
+
+    if !is_connected(joystick)
+        println("Can't update $(joystick.id) at slot $slot, no longer connected")
+        return
+    end
+
+    GLFW.SwapBuffers(window) #honor the requested update_interval
+    update!(axes, slot)
+    update!(buttons, slot)
+    rescale!(axes, id)
+    GLFW.PollEvents() #see if we got a shutdown request
+
+end
+
+IODevices.should_close(joystick::Joystick) = GLFW.WindowShouldClose(joystick.window)
+IODevices.shutdown!(joystick::Joystick) = GLFW.DestroyWindow(joystick.window)
+
+
+############################# Initialization ###################################
 
 const active_slots = Dict{JoystickSlot, Ref{<:Joystick}}()
 
@@ -290,7 +228,7 @@ function add_joystick(slot::JoystickSlot)
     joystick_model = GetJoystickName(slot)
 
     if joystick_model === "Xbox Controller"
-        joystick = XBoxControllerID(slot)
+        joystick = XBoxController(slot)
         println("XBoxController active at slot $slot")
     else
         println("$joystick_model not supported")
@@ -329,7 +267,7 @@ const XBoxButtonLabels = (
 struct XBoxControllerID <: AbstractJoystickID end
 
 AxisSet(::XBoxControllerID) = AxisSet(XBoxAxisLabels)
-ButtonSet(::XBoxControllerID) = ButtonSet(XBoxAxisLabels)
+ButtonSet(::XBoxControllerID) = ButtonSet(XBoxButtonLabels)
 
 XBoxController(slot::JoystickSlot = GLFW.JOYSTICK_1) = Joystick(XBoxControllerID(), slot)
 
@@ -355,7 +293,7 @@ function Base.show(::IO, joystick::Joystick)
 
 end
 
-# to show in the REPL
+## REPL-specific:
 # function Base.show(::IO, ::MIME"text/plain", joystick::Joystick)
 # end
 
