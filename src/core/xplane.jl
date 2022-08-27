@@ -7,6 +7,7 @@ using Flight.IODevices
 
 export XPConnect
 
+
 ################################################################################
 ############################### XPConnect ####################################
 
@@ -68,7 +69,7 @@ function set_position!(xp::XPConnect; lat = -998, lon = -998, h = -998,
                         psi = -998, theta = -998, phi = -998,
                         aircraft::Integer = 0)
 
-    #all angles must be in degrees
+    #all angles must be provided in degrees
     buffer = IOBuffer()
     write(buffer,
         b"POSI\0", UInt8(aircraft),

@@ -17,8 +17,6 @@ export XBoxControllerID, XBoxController
 
 
 ################################################################################
-################################# Joystick #####################################
-
 ################################ AxisSet #######################################
 
 struct AxisSet{N, L}
@@ -61,6 +59,8 @@ function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
     end
 end
 
+
+################################################################################
 ################################ ButtonSet #####################################
 
 @enum ButtonChange begin
@@ -109,7 +109,8 @@ function update!(buttons::ButtonSet{N, L}, slot::JoystickSlot) where {N, L}
 end
 
 
-################################ Joystick ######################################
+################################################################################
+################################# Joystick #####################################
 
 abstract type AbstractJoystickID end
 
@@ -167,6 +168,28 @@ function was_released(joystick::Joystick, s::Symbol)
     @unpack change, mapping = joystick.buttons
     change[mapping[s]] === released
 end
+
+function Base.show(::IO, joystick::Joystick)
+
+    @unpack id, slot, axes, buttons = joystick
+    println()
+    println("$(typeof(id)) at slot $(slot), connected = $(is_connected(joystick))")
+    println("Axes:")
+    for label in keys(axes.mapping)
+        println("\t", label, ": ", get_axis_value(joystick, label))
+    end
+    println("Buttons:")
+    for label in keys(buttons.mapping)
+        println("\t", label, ": ", get_button_state(joystick, label), ", ", get_button_change(joystick,label))
+    end
+
+end
+
+## REPL-specific:
+# function Base.show(::IO, ::MIME"text/plain", joystick::Joystick)
+# end
+
+########################### IODevices extensions ###############################
 
 function IODevices.init!(joystick::Joystick)
     joystick.window = GLFW.CreateWindow(640, 480, "$(string(typeof(joystick.id)))")
@@ -276,25 +299,5 @@ function rescale!(axes::AxisSet, ::XBoxControllerID)
     axes[:right_trigger] = 0.5*(1 + axes[:right_trigger])
 end
 
-#to print
-function Base.show(::IO, joystick::Joystick)
-
-    @unpack id, slot, axes, buttons = joystick
-    println()
-    println("$(typeof(id)) at slot $(slot), connected = $(is_connected(joystick))")
-    println("Axes:")
-    for label in keys(axes.mapping)
-        println("\t", label, ": ", get_axis_value(joystick, label))
-    end
-    println("Buttons:")
-    for label in keys(buttons.mapping)
-        println("\t", label, ": ", get_button_state(joystick, label), ", ", get_button_change(joystick,label))
-    end
-
-end
-
-## REPL-specific:
-# function Base.show(::IO, ::MIME"text/plain", joystick::Joystick)
-# end
 
 end #module

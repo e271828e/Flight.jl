@@ -6,7 +6,6 @@ using SciMLBase: ODEProblem, u_modified!, init as init_integrator
 using OrdinaryDiffEq: OrdinaryDiffEqAlgorithm, ODEIntegrator, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback, CallbackSet, SavedValues
 
-# using GLFW
 using CImGui
 using Printf
 
@@ -38,6 +37,7 @@ end
 struct InfoDashboardState end
 
 const InfoDashboard = Dashboard{InfoDashboardState}
+
 
 ################################################################################
 ############################# Simulation #######################################
@@ -269,12 +269,9 @@ end
 add_output_channel!(sim::Simulation) = push!(sim.output_channels, eltype(sim.output_channels)(1))[end]
 pop_output_channel!(sim::Simulation) = pop!(sim.output_channels)
 
-#for unbuffered channels, isready doesn't seem to work as expected. it returns
-#false even if there is a task waiting for it
-
 #for buffered channels, isready returns 1 if there is at least one value in the
-#channel. if there is one value and we try to put! another, we will block. to
-#avoid this, we only put! if !isready
+#channel. if there is one value and we try to put! another, the simulation loop
+#will block. to avoid this, we only put! if !isready. we wait for no one!
 @inline function put_no_block!(channel::Channel{T}, data::T) where {T}
     (isopen(channel) && !isready(channel)) && put!(channel, data)
 end
@@ -311,11 +308,10 @@ function run_fullspeed!(sim::Simulation; verbose::Bool)
     verbose && println("Simulation: Finished in $τ seconds")
 end
 
-#IMPORTANT: if we launch something from the main thread (1) and it doesn't ever
-#block, no other thread will get CPU time. threfore, we should never call _run!
-#directly from the main thread, because it will starve all other threads,
-#including the dashboard thread launched from it. run_paced must always be run
-#from a Threads.@spawn'ed thread
+#apparently, if a task is launched from the main thread and it doesn't ever
+#block, no other thread will get CPU time until it's done. threfore, we should
+#never call _run! directly from the main thread, because it will starve all IO
+#threads. run_paced must always be run from a Threads.@spawn'ed thread
 
 function run_paced!(sim::Simulation; rate::Real, verbose::Bool)
     wait(Threads.@spawn(_run_paced!(sim; rate, verbose)))

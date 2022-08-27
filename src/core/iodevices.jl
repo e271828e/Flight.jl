@@ -5,8 +5,9 @@ using UnPack
 
 export IODevice, InputMapping, DefaultMapping
 
+
 ################################################################################
-############################# InputInterface ###################################
+################################# IODevice #####################################
 
 abstract type IODevice end
 abstract type InputMapping end
@@ -31,6 +32,10 @@ end
 function assign!(target, device::IODevice)
     assign!(target, device, DefaultMapping())
 end
+
+
+################################################################################
+################################ Interface #####################################
 
 #add mode: IOMode, Input <: IOMode, Output <: IOMode, InputOutput <: IOMode
 struct Interface{D <: IODevice, T,  M <: InputMapping, C <: Channel}
