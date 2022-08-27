@@ -77,11 +77,11 @@ end
 ############################# Dashboard ##################################
 
 Base.@kwdef struct Dashboard{F <: Function} <: AbstractDevice
-    renderer::CImGuiRenderer
+    renderer::Renderer
     draw::F
 end
 
-Dashboard(draw::Function; kwargs...) = Dashboard(CImGuiRenderer(; kwargs...), draw)
+Dashboard(draw::Function; kwargs...) = Dashboard(Renderer(; kwargs...), draw)
 
 function init!(db::Dashboard)
     GUI.init!(db.renderer)

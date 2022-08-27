@@ -584,7 +584,7 @@ function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
     end
 end
 
-function assign!(u::ReversibleControlsU, joystick::Joystick{XBoxController}, ::DefaultInputMapping)
+function assign!(u::ReversibleControlsU, joystick::Joystick{XBoxControllerID}, ::Input.DefaultMapping)
 
     u.Δ_aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
     u.Δ_elevator = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
@@ -644,7 +644,7 @@ struct Cessna172RU{F, V}
     avionics::V
 end
 
-init(::SystemU, ac::Cessna172RU) = Cessna172RU(init_u(ac.airframe), init_u(ac.avionics))
+init(::SystemU, ac::Cessna172R) = Cessna172RU(init_u(ac.airframe), init_u(ac.avionics))
 
 
 include("tools/trim.jl")

@@ -210,6 +210,7 @@ function render_loop(channel::Channel{Float64}, τ::Function)
                 CImGui.End()
             end
 
+            @show f
             # show another simple window.
             if show_another_window
                 @c CImGui.Begin("Another Window", &show_another_window)  # pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)

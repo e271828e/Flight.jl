@@ -11,10 +11,10 @@ using CImGui.OpenGLBackend
 using CImGui.GLFWBackend.GLFW
 using CImGui.OpenGLBackend.ModernGL
 
-export CImGuiRenderer, CImGuiStyle
+export Renderer, CImGuiStyle
 
 ################################################################################
-############################# CImGuiRenderer####################################
+############################# Renderer####################################
 
 @enum CImGuiStyle begin
     classic = 0
@@ -22,7 +22,7 @@ export CImGuiRenderer, CImGuiStyle
     light = 2
 end
 
-mutable struct CImGuiRenderer
+mutable struct Renderer
     refresh::Integer
     label::String
     style::CImGuiStyle
@@ -30,8 +30,8 @@ mutable struct CImGuiRenderer
     _initialized::Bool
     _window::GLFW.Window
     _context::Ptr{CImGui.LibCImGui.ImGuiContext}
-    function CImGuiRenderer(; refresh::Integer, label::String = "Renderer",
-                              wsize = (1280, 720), style::CImGuiStyle = dark)
+    function Renderer(; refresh::Integer, label::String = "Renderer",
+                        wsize = (1280, 720), style::CImGuiStyle = dark)
         renderer = new()
         @pack! renderer = refresh, label, style, wsize
         renderer._initialized = false
@@ -39,7 +39,7 @@ mutable struct CImGuiRenderer
     end
 end
 
-function init!(renderer::CImGuiRenderer)
+function init!(renderer::Renderer)
 
     @unpack refresh, label, style, wsize = renderer
 
@@ -89,16 +89,19 @@ function init!(renderer::CImGuiRenderer)
 
 end
 
-function should_close(r::CImGuiRenderer)
+function should_close(r::Renderer)
     r._initialized ? GLFW.WindowShouldClose(r._window) : false
 end
 
-function shutdown!(renderer::CImGuiRenderer)
+function shutdown!(renderer::Renderer)
+
+    @unpack _window, _context, _initialized = renderer
+    @assert _initialized "Cannot shutdown an uninitialized renderer"
 
     ImGui_ImplOpenGL3_Shutdown()
     ImGui_ImplGlfw_Shutdown()
-    CImGui.DestroyContext(renderer._context)
-    GLFW.DestroyWindow(renderer._window)
+    CImGui.DestroyContext(_context)
+    GLFW.DestroyWindow(_window)
     renderer._initialized = false
 
     return nothing
@@ -106,7 +109,7 @@ function shutdown!(renderer::CImGuiRenderer)
 end
 
 
-function render!(renderer::CImGuiRenderer, draw::Function, draw_args...)
+function render!(renderer::Renderer, draw::Function, draw_args...)
 
     @unpack _window, _initialized = renderer
 
@@ -141,12 +144,14 @@ function render!(renderer::CImGuiRenderer, draw::Function, draw_args...)
 
     end
 
+    @show draw_args
+
     return nothing
 
 end
 
 
-function run!(renderer::CImGuiRenderer, draw::Function, draw_args...)
+function run!(renderer::Renderer, draw::Function, draw_args...)
 
     renderer._initialized || init!(renderer)
 
@@ -175,26 +180,61 @@ function draw_test(value::Real = 1)
 
 end
 
-# function draw_test(value::Real = 1)
+function draw_test2(value::Real = 1)
 
-#     # show a simple window that we create ourselves.
-#     # we use a Begin/End pair to created a named window.
-#     @cstatic f=Cfloat(0.0) counter=Cint(0) begin
-#         CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
-#         CImGui.Text("This is some useful text.")  # display some text
+    # show a simple window that we create ourselves.
+    # we use a Begin/End pair to created a named window.
+    @cstatic f=Cfloat(0.0) begin
+        CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
+        CImGui.Text("This is some useful text.")  # display some text
 
-#         @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
-#         CImGui.Button("Button") && (counter += 1)
+        @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a #         slider from 0 to 1
 
-#         CImGui.SameLine()
-#         CImGui.Text("counter = $counter")
-#         CImGui.Text("passed value = $value")
-#         CImGui.Text(@sprintf("Application average %.3f ms/frame (%.1f FPS)", 1000 / CImGui.GetIO().Framerate, CImGui.GetIO().Framerate))
+        CImGui.End()
+    end
 
-#         CImGui.End()
-#     end
+end
 
-# end
+
+function draw_test2_nomacros()
+    let
+        global f_glob = Cfloat(0.0)
+        local f = f_glob
+        begin
+            CImGui.Begin("Hello, world!")
+            CImGui.Text("This is some useful text.")
+            begin
+                f_ref = Ref(f)
+                f_return = CImGui.SliderFloat("float", f_ref, 0, 1)
+                f = f_ref[]
+                f_return
+            end
+            #= C:\Users\Miguel\.julia\dev\Flight\test.jl:11 =#
+            CImGui.End()
+        end
+        f_glob = f
+        f
+    end
+
+end
+
+#don't need any static variables. we can modify the input variables directly. to
+#achieve this we can do one of the following:
+#1) have Refs to widget-compatible types passed to the draw function, and then
+#   call the widgets on them directly
+#2) have fields of a mutable struct passed to the draw function. for each field variable, we
+#   create a Ref, pass it to the widget, and then reassign the de-referenced Ref
+#   to the passed variable. this is exactly what the @c macro does
+#
+function draw_test3(f::Ref{Cfloat})
+    begin
+        CImGui.Begin("Hello, world!")
+        CImGui.Text("This is some useful text.")
+        CImGui.SliderFloat("float", f, 0, 1)
+        CImGui.End()
+    end
+
+end
 
 
 end #module

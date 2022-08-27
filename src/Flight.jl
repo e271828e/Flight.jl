@@ -19,14 +19,14 @@ include("physics/rigidbody.jl"); @reexport using .RigidBody
 
 
 include("components/common/essentials.jl"); @reexport using .Essentials
-# include("components/environment/atmosphere.jl"); @reexport using .Atmosphere
-# include("components/environment/terrain.jl"); @reexport using .Terrain
-# include("components/environment/environment.jl"); @reexport using .Environment
-# include("components/aircraft/landinggear.jl"); @reexport using .LandingGear
-# include("components/aircraft/propellers.jl"); @reexport using .Propellers
-# include("components/aircraft/piston.jl"); @reexport using .Piston
+include("components/environment/atmosphere.jl"); @reexport using .Atmosphere
+include("components/environment/terrain.jl"); @reexport using .Terrain
+include("components/environment/environment.jl"); @reexport using .Environment
+include("components/aircraft/landinggear.jl"); @reexport using .LandingGear
+include("components/aircraft/propellers.jl"); @reexport using .Propellers
+include("components/aircraft/piston.jl"); @reexport using .Piston
 
-# include("aircraft/aircraft.jl"); @reexport using .Aircraft
-# include("aircraft/c172r/c172r.jl"); @reexport using .C172R
+include("aircraft/aircraft.jl"); @reexport using .Aircraft
+include("aircraft/c172r/c172r.jl"); @reexport using .C172R
 
 end

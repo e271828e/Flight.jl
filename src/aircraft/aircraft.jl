@@ -143,22 +143,22 @@ function f_disc!(sys::System{<:AircraftBase}, Δt)
 end
 
 
-function update!(xp::XPConnect, kin::KinematicData, aircraft::Integer = 0)
+# function update!(xp::XPConnect, kin::KinematicData, aircraft::Integer = 0)
 
-    ll = LatLon(kin.n_e)
-    e_nb = REuler(kin.q_nb)
+#     ll = LatLon(kin.n_e)
+#     e_nb = REuler(kin.q_nb)
 
-    lat = rad2deg(ll.ϕ)
-    lon = rad2deg(ll.λ)
-    h = kin.h_o
+#     lat = rad2deg(ll.ϕ)
+#     lon = rad2deg(ll.λ)
+#     h = kin.h_o
 
-    psi = rad2deg(e_nb.ψ)
-    theta = rad2deg(e_nb.θ)
-    phi = rad2deg(e_nb.φ)
+#     psi = rad2deg(e_nb.ψ)
+#     theta = rad2deg(e_nb.θ)
+#     phi = rad2deg(e_nb.φ)
 
-    Output.set_position!(xp; lat, lon, h, psi, theta, phi, aircraft)
+#     Output.set_position!(xp; lat, lon, h, psi, theta, phi, aircraft)
 
-end
+# end
 
 
 
