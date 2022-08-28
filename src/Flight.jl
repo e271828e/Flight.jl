@@ -12,13 +12,13 @@ include("core/xplane.jl"); @reexport using .XPlane
 include("core/sim.jl"); @reexport using .Sim
 include("core/plotting.jl"); @reexport using .Plotting
 
-# include("physics/quaternions.jl"); @reexport using .Quaternions
-# include("physics/attitude.jl"); @reexport using .Attitude
-# include("physics/geodesy.jl"); @reexport using .Geodesy
-# include("physics/kinematics.jl"); @reexport using .Kinematics
-# include("physics/rigidbody.jl"); @reexport using .RigidBody
+include("physics/quaternions.jl"); @reexport using .Quaternions
+include("physics/attitude.jl"); @reexport using .Attitude
+include("physics/geodesy.jl"); @reexport using .Geodesy
+include("physics/kinematics.jl"); @reexport using .Kinematics
+include("physics/rigidbody.jl"); @reexport using .RigidBody
 
-# include("components/common/essentials.jl"); @reexport using .Essentials
+include("components/common/essentials.jl"); @reexport using .Essentials
 # include("components/environment/atmosphere.jl"); @reexport using .Atmosphere
 # include("components/environment/terrain.jl"); @reexport using .Terrain
 # include("components/environment/environment.jl"); @reexport using .Environment

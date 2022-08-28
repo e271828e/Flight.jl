@@ -48,15 +48,16 @@ struct Interface{D <: IODevice, T,  M <: InputMapping, C <: Channel}
     ext_shutdown::Bool #whether to observe shutdown requests received by the IO device
 end
 
-start!(io::Interface; verbose = true) = (Threads.@spawn _start!(io; verbose))
+start!(io::Interface; verbose = true) = Threads.@spawn _start!(io; verbose)
 
 function _start!(io::Interface{D}; verbose = true) where {D}
 
-    @unpack device, target, mapping, channel, start, sim_stepping, ext_shutdown = io
+    @unpack device, target, mapping, channel, start, target_lock, ext_shutdown = io
 
     verbose && println("$D: Starting on thread $(Threads.threadid())...")
 
     init!(device)
+    println("Waiting to start")
     wait(start)
 
     try

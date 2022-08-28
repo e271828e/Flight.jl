@@ -258,12 +258,13 @@ end
 
 #attaches an input device to the Simulation, enabling it to safely modify the
 #System's input during paced or full speed execution, and returns its interface
-function attach_io!(sim::Simulation, device::IODevice,
+function attach_io!(sim::Simulation, device::IODevice;
                     mapping::InputMapping = DefaultMapping(),
-                    ext_shutdown::Bool = false)
+                    ext_shutdown::Bool = true)
 
     channel = add_output_channel!(sim)
-    Interface(device, sim.u, mapping, channel, sim.started, sim.stepping, ext_shutdown)
+    IODevices.Interface(device, sim.u, mapping, channel,
+                        sim.started, sim.stepping, ext_shutdown)
 end
 
 add_output_channel!(sim::Simulation) = push!(sim.output_channels, eltype(sim.output_channels)(1))[end]
@@ -310,8 +311,8 @@ end
 
 #apparently, if a task is launched from the main thread and it doesn't ever
 #block, no other thread will get CPU time until it's done. threfore, we should
-#never call _run! directly from the main thread, because it will starve all IO
-#threads. run_paced must always be run from a Threads.@spawn'ed thread
+#never call _run_paced! directly from the main thread, because it will starve
+#all IO threads. it must always be run from a Threads.@spawn'ed thread
 
 function run_paced!(sim::Simulation; rate::Real, verbose::Bool)
     wait(Threads.@spawn(_run_paced!(sim; rate, verbose)))
@@ -319,7 +320,7 @@ end
 
 function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
 
-    @unpack sys, integrator, output_channels, started, stepping = sim
+    @unpack integrator, output_channels, started, stepping = sim
 
     verbose && println("Simulation: Starting on thread $(Threads.threadid())...")
 
@@ -331,7 +332,7 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
     #down the sim loop
     dashboard = InfoDashboard(Renderer(refresh = 0, wsize = (320, 240), label = "Simulation"))
 
-    init!(dashboard)
+    IODevices.init!(dashboard)
 
     # GLFW.SetWindowPos(dashboard.renderer._window, 100, 100)
 
@@ -367,7 +368,7 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
 
             put_no_block!(sim.output_channels, sim.y)
 
-            if IODevices.should_close(db)
+            if IODevices.should_close(dashboard)
                 println("Simulation: Aborted at t = $(sim.t[])")
                 break
             end
@@ -382,7 +383,7 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
     finally
 
         close.(output_channels)
-        shutdown!(dashboard)
+        IODevices.shutdown!(dashboard)
 
     end
 

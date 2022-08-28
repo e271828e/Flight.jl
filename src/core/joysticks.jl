@@ -199,7 +199,7 @@ function IODevices.init!(joystick::Joystick)
     GLFW.SwapInterval(update_interval)
 end
 
-function IODevices.update!(joystick::Joystick)
+function IODevices.update!(joystick::Joystick, ::Any)
 
     @unpack id, slot, axes, buttons, window = joystick
 
