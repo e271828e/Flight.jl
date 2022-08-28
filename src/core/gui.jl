@@ -11,9 +11,7 @@ using CImGui.OpenGLBackend
 using CImGui.GLFWBackend.GLFW
 using CImGui.OpenGLBackend.ModernGL
 
-using Flight.IODevices
-
-export CImGuiStyle, Renderer, Dashboard
+export CImGuiStyle, Renderer
 
 ################################################################################
 ############################# Renderer####################################
@@ -110,7 +108,7 @@ function shutdown!(renderer::Renderer)
 end
 
 
-function update!(renderer::Renderer, draw::Function, draw_args...)
+function render(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
     @unpack _window, _initialized = renderer
 
@@ -122,8 +120,8 @@ function update!(renderer::Renderer, draw::Function, draw_args...)
         ImGui_ImplGlfw_NewFrame()
         CImGui.NewFrame()
 
-        #draw the frame
-        draw(draw_args...)
+        #draw the frame and apply user inputs to arguments
+        fdraw!(fdraw_args...)
 
         CImGui.Render()
         GLFW.MakeContextCurrent(_window)
@@ -150,45 +148,20 @@ function update!(renderer::Renderer, draw::Function, draw_args...)
 end
 
 
-function run!(renderer::Renderer, draw::Function, draw_args...)
+function run(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
     renderer._initialized || init!(renderer)
 
     while !GLFW.WindowShouldClose(renderer._window)
-        update!(renderer, draw, draw_args...)
+        render(renderer, fdraw!, fdraw_args...)
     end
 
     shutdown!(renderer)
 
 end
 
-
-################################################################################
-############################# Dashboard ##################################
-
-struct Dashboard{S} <: IODevice
-    renderer::Renderer
-    state::S #local state variables captured by the GUI on each Renderer update!
-end
-
-function Dashboard{S}(renderer::Renderer = Renderer(label = "Dashboard")) where {S}
-    Dashboard{S}(renderer, S())
-end
-
-IODevices.init!(db::Dashboard) = init!(db.renderer)
-IODevices.shutdown!(db::Dashboard) = shutdown!(db.renderer)
-IODevices.update!(db::Dashboard, data) = update!(db.renderer, draw_dashboard!, db.state, data)
-IODevices.should_close(db::Dashboard) = should_close(db.renderer)
-
-#draw the CImGui widgets using the current Dashboard's state and the externally
-#received data, and update the Dashboard's state from the user inputs captured
-#by the widgets
-function draw_dashboard!(state::Any, data::Any)
-    MethodError(draw_dashboard!, (state, data))
-end
-
-#runs continuously on the same data
-run!(db::Dashboard, data) = run!(db.renderer, draw_dashboard!, db.state, data)
+#generic draw! function, to be extended by users
+draw!(args...) = MethodError(draw, (args...))
 
 
 ################################################################################

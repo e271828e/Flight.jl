@@ -24,7 +24,6 @@ export TimeHistory, get_components, get_child_names
 ################################# Info ########################################
 
 Base.@kwdef struct Info
-    component::String = "No info"
     algorithm::String = "No info"
     t_start::Float64 = 0.0
     t_end::Float64 = 0.0
@@ -34,10 +33,14 @@ Base.@kwdef struct Info
     τ::Float64 = 0.0 #wall-clock time
 end
 
-struct InfoDashboardState end
 
-const InfoDashboard = Dashboard{InfoDashboardState}
+################################################################################
+############################### Output #########################################
 
+Base.@kwdef struct Output{Y}
+    t::Float64
+    y::Y #System's y
+end
 
 ################################################################################
 ############################# Simulation #######################################
@@ -46,7 +49,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     sys::S
     integrator::I
     log::L
-    output_channels::Vector{Channel{Y}}
+    output_channels::Vector{Channel{Output{Y}}}
     started::Base.Event #signals that execution has started
     stepping::ReentrantLock #must be acquired by IO interfaces to modify the system
 
@@ -103,7 +106,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #naked System's state vector. everything we need should be made
         #available in the System's y, saved by the SavingCallback
 
-        output_channels = Channel{typeof(sys.y)}[]
+        output_channels = Channel{Output{typeof(sys.y)}}[]
 
         new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
             sys, integrator, log, output_channels, started, stepping)
@@ -123,11 +126,11 @@ Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
     end
 end
 
-#get underlying component type as a string
-get_component_name(::Simulation{<:System{C}}) where {C} = string(C)
+#get underlying component type
+component_type(::Simulation{<:System{C}}) where {C} = C
 
-#get ODE algorithm type as a string
-get_algorithm_name(sim::Simulation) = sim.integrator.alg |> typeof |> string
+#get ODE algorithm type
+algorithm_type(sim::Simulation) = sim.integrator.alg |> typeof
 
 
 ############################ Stepping functions ################################
@@ -267,7 +270,9 @@ function attach_io!(sim::Simulation, device::IODevice;
                         sim.started, sim.stepping, ext_shutdown)
 end
 
-add_output_channel!(sim::Simulation) = push!(sim.output_channels, eltype(sim.output_channels)(1))[end]
+add_output_channel!(sim::Simulation) = push!(sim.output_channels,
+                                            eltype(sim.output_channels)(1))[end]
+
 pop_output_channel!(sim::Simulation) = pop!(sim.output_channels)
 
 #for buffered channels, isready returns 1 if there is at least one value in the
@@ -303,7 +308,8 @@ end
 function run_fullspeed!(sim::Simulation; verbose::Bool)
     τ = @elapsed begin
         for _ in sim.integrator #integrator steps automatically at the beginning of each iteration
-            put_no_block!(sim.output_channels, sim.y)
+            output = Output(sim.t[], sim.y)
+            put_no_block!(sim.output_channels, output)
         end
     end
     verbose && println("Simulation: Finished in $τ seconds")
@@ -320,19 +326,18 @@ end
 
 function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
 
-    @unpack integrator, output_channels, started, stepping = sim
+    @unpack sys, integrator, output_channels, started, stepping = sim
 
     verbose && println("Simulation: Starting on thread $(Threads.threadid())...")
 
     t_start, t_end = integrator.sol.prob.tspan
-    component = get_component_name(sim)
-    algorithm = get_algorithm_name(sim)
+    algorithm = algorithm_type(sim) |> string
 
     #set refresh = 0 so that SwapBuffers returns immediately and doesn't slow
     #down the sim loop
-    dashboard = InfoDashboard(Renderer(refresh = 0, wsize = (320, 240), label = "Simulation"))
+    dashboard = Renderer(refresh = 0, wsize = (320, 240), label = "Simulation")
 
-    IODevices.init!(dashboard)
+    GUI.init!(dashboard)
 
     # GLFW.SetWindowPos(dashboard.renderer._window, 100, 100)
 
@@ -348,27 +353,25 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
 
         while sim.t[] < t_end
 
-            #simulation time must attempt to satisfy the invariant:
-            #t_next = t_start + rate * τ
+            #simulation time t and wall-clock time τ should satisfy:
+            #t_next = t_start + rate * τ_next
 
             t_next = sim.t[] + get_proposed_dt(sim)
-            while t_next - t_start > rate * τ() end #busy wait
+            τ_next = (t_next - t_start) / rate
+            while τ_next > τ() end #busy wait
 
             lock(stepping)
                 step!(sim)
+                τ_last = τ()
+                info = Info(; algorithm, t_start, t_end, dt = integrator.dt,
+                              iter = integrator.iter, t = sim.t[], τ = τ_last)
+                update!(sys, info, dashboard)
             unlock(stepping)
 
-            τ_last = τ()
+            output = Output(sim.t[], sim.y)
+            put_no_block!(sim.output_channels, output)
 
-            info = Info(; component, algorithm, t_start, t_end,
-                          dt = get_proposed_dt(sim), iter = integrator.iter,
-                          t = sim.t[], τ = τ_last)
-
-            IODevices.update!(dashboard, info)
-
-            put_no_block!(sim.output_channels, sim.y)
-
-            if IODevices.should_close(dashboard)
+            if GUI.should_close(dashboard)
                 println("Simulation: Aborted at t = $(sim.t[])")
                 break
             end
@@ -383,7 +386,7 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
     finally
 
         close.(output_channels)
-        IODevices.shutdown!(dashboard)
+        GUI.shutdown!(dashboard)
 
     end
 
@@ -391,22 +394,30 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
 
 end
 
+function update!(sys::System, info::Info, dashboard::Renderer)
+    GUI.render(dashboard, GUI.draw!, sys.u, sys.y, info)
+end
 
-function GUI.draw_dashboard!(::InfoDashboardState, info::Info) #Info Dashboard has no state
+function GUI.draw!(u, y, info::Info)
+    GUI.draw!(info)
+    GUI.draw!(u, y)
+end
 
-    @unpack component, algorithm, t_start, t_end, dt, iter, t, τ = info
+function GUI.draw!(info::Info)
+
+    @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
 
     begin
         CImGui.Begin("Info")
-            CImGui.Text("Component: " * component)
             CImGui.Text("Algorithm: " * algorithm)
             CImGui.Text("Step size: $dt")
             CImGui.Text("Iterations: $iter")
             CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
             CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
-            CImGui.Text(@sprintf("GUI Framerate: %.3f ms/frame (%.1f FPS)",
-                                1000 / CImGui.GetIO().Framerate,
-                                CImGui.GetIO().Framerate))
+            #replace with simulation rate: (t - t_start) / τ
+            # CImGui.Text(@sprintf("Simulation: %.3f ms/frame (%.1f FPS)",
+            #                     1000 / CImGui.GetIO().Framerate,
+            #                     CImGui.GetIO().Framerate))
         CImGui.End()
     end
 
