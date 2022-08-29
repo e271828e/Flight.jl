@@ -194,7 +194,7 @@ end
 function IODevices.init!(joystick::Joystick)
     joystick.window = GLFW.CreateWindow(640, 480, "$(string(typeof(joystick.id)))")
     @unpack window, update_interval = joystick
-    # GLFW.HideWindow(window)
+    GLFW.HideWindow(window)
     GLFW.MakeContextCurrent(window)
     GLFW.SwapInterval(update_interval)
 end

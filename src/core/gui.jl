@@ -23,16 +23,18 @@ export CImGuiStyle, Renderer
 end
 
 mutable struct Renderer
-    refresh::Integer
     label::String
-    style::CImGuiStyle
     wsize::Tuple{Int, Int}
+    style::CImGuiStyle
+    refresh::Integer
+    enabled::Bool
     _initialized::Bool
     _window::GLFW.Window
     _context::Ptr{CImGui.LibCImGui.ImGuiContext}
-    function Renderer(; refresh = 1, label = "Renderer", wsize = (1280, 720), style = dark)
+    function Renderer(; label = "Renderer", wsize = (1280, 720),
+                        style = dark, refresh = 1, enabled = true)
         renderer = new()
-        @pack! renderer = refresh, label, style, wsize
+        @pack! renderer = label, wsize, style, refresh, enabled
         renderer._initialized = false
         return renderer
     end
@@ -40,7 +42,9 @@ end
 
 function init!(renderer::Renderer)
 
-    @unpack refresh, label, style, wsize = renderer
+    @unpack label, wsize, style, refresh, enabled = renderer
+
+    enabled || return
 
     @static if Sys.isapple()
         # OpenGL 3.2 + GLSL 150
@@ -88,13 +92,16 @@ function init!(renderer::Renderer)
 
 end
 
-function should_close(r::Renderer)
-    r._initialized ? GLFW.WindowShouldClose(r._window) : false
+function should_close(renderer::Renderer)
+    @unpack enabled, _initialized, _window = renderer
+    (enabled && _initialized) ? GLFW.WindowShouldClose(_window) : false
 end
 
 function shutdown!(renderer::Renderer)
 
-    @unpack _window, _context, _initialized = renderer
+    @unpack enabled, _window, _context, _initialized = renderer
+
+    enabled || return
     @assert _initialized "Cannot shutdown an uninitialized renderer"
 
     ImGui_ImplOpenGL3_Shutdown()
@@ -110,7 +117,9 @@ end
 
 function render(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
-    @unpack _window, _initialized = renderer
+    @unpack enabled, _initialized, _window = renderer
+
+    enabled || return
 
     @assert _initialized "Renderer not initialized, call init! before update!"
 
@@ -150,9 +159,12 @@ end
 
 function run(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
-    renderer._initialized || init!(renderer)
+    @unpack enabled, _initialized, _window = renderer
 
-    while !GLFW.WindowShouldClose(renderer._window)
+    enabled || return
+    _initialized || init!(renderer)
+
+    while !GLFW.WindowShouldClose(_window)
         render(renderer, fdraw!, fdraw_args...)
     end
 
@@ -160,9 +172,10 @@ function run(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
 end
 
-#generic draw! function, to be extended by users
-draw!(args...) = MethodError(draw, (args...))
-
+#generic non-modifying frame draw function, to be extended by users
+draw(args...) = nothing
+#generic modifying draw function
+draw!(args...) = nothing
 
 ################################################################################
 ########################## Test draw functions #################################

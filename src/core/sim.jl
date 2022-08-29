@@ -291,27 +291,28 @@ end
 
 ################################ Execution #####################################
 
-function run!(sim::Simulation; rate::Real = Inf, verbose::Bool = false)
+isdone(sim::Simulation) = isempty(sim.integrator.opts.tstops)
 
-    #rate: rate of execution relative to wall time (Inf = unrestricted, 1 ≈ real time )
-
-    if isempty(sim.integrator.opts.tstops)
-        println("Simulation has hit t_end, reset it using reinit! ",
-                "or add further tstops using add_tstop!")
-        return
-    end
-
-    rate === Inf ? run_fullspeed!(sim; verbose) : run_paced!(sim; rate, verbose)
-
+function isdone_wrn(sim::Simulation)
+    sim_done = isdone(sim)
+    sim_done && println("Simulation has hit its end time, call reinit! ",
+                        "or add further tstops using add_tstop!")
+    return sim_done
 end
 
-function run_fullspeed!(sim::Simulation; verbose::Bool)
+run_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run!(sim; kwargs...)))
+
+function run!(sim::Simulation; verbose::Bool)
+
+    isdone_wrn(sim) && return
+
     τ = @elapsed begin
         for _ in sim.integrator #integrator steps automatically at the beginning of each iteration
             output = Output(sim.t[], sim.y)
             put_no_block!(sim.output_channels, output)
         end
     end
+
     verbose && println("Simulation: Finished in $τ seconds")
 end
 
@@ -319,27 +320,30 @@ end
 #block, no other thread will get CPU time until it's done. threfore, we should
 #never call _run_paced! directly from the main thread, because it will starve
 #all IO threads. it must always be run from a Threads.@spawn'ed thread
+run_paced_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run_paced!(sim; kwargs...)))
 
-function run_paced!(sim::Simulation; rate::Real, verbose::Bool)
-    wait(Threads.@spawn(_run_paced!(sim; rate, verbose)))
-end
+function run_paced!(sim::Simulation;
+                    rate::Real = 1,
+                    dashboard_enable::Bool = true,
+                    dashboard_input::Bool = true,
+                    verbose::Bool = true)
 
-function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
+    isdone_wrn(sim) && return
+    verbose && println("Simulation: Starting on thread $(Threads.threadid())...")
 
     @unpack sys, integrator, output_channels, started, stepping = sim
-
-    verbose && println("Simulation: Starting on thread $(Threads.threadid())...")
 
     t_start, t_end = integrator.sol.prob.tspan
     algorithm = algorithm_type(sim) |> string
 
     #set refresh = 0 so that SwapBuffers returns immediately and doesn't slow
     #down the sim loop
-    dashboard = Renderer(refresh = 0, wsize = (320, 240), label = "Simulation")
+    dashboard = Renderer(refresh = 0, wsize = (1280, 720), label = "Simulation",
+                        enabled = dashboard_enable)
 
     GUI.init!(dashboard)
 
-    # GLFW.SetWindowPos(dashboard.renderer._window, 100, 100)
+    # CImGui.SetWindowPos(dashboard, 100, 100)
 
     τ = let wall_time_ref = time()
             ()-> time() - wall_time_ref
@@ -365,7 +369,7 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
                 τ_last = τ()
                 info = Info(; algorithm, t_start, t_end, dt = integrator.dt,
                               iter = integrator.iter, t = sim.t[], τ = τ_last)
-                update!(sys, info, dashboard)
+                update!(sys, info, dashboard, dashboard_input)
             unlock(stepping)
 
             output = Output(sim.t[], sim.y)
@@ -394,16 +398,20 @@ function _run_paced!(sim::Simulation; rate::Real, verbose::Bool)
 
 end
 
-function update!(sys::System, info::Info, dashboard::Renderer)
-    GUI.render(dashboard, GUI.draw!, sys.u, sys.y, info)
+function update!(sys::System, info::Info, dashboard::Renderer, dashboard_input::Bool)
+    GUI.render(dashboard, GUI.draw!, sys, info, dashboard_input)
 end
 
-function GUI.draw!(u, y, info::Info)
-    GUI.draw!(info)
-    GUI.draw!(u, y)
+function GUI.draw!(sys::System, info::Info, dashboard_input::Bool)
+    GUI.draw(info) #show Simulation info
+    window_visible = CImGui.Begin("System")
+        window_visible ? GUI.draw!(sys, dashboard_input) : println("Not drawing")
+    CImGui.End()
+    # GUI.draw(y) #show System's y
+    # GUI.draw!(u) #apply user inputs to System's u
 end
 
-function GUI.draw!(info::Info)
+function GUI.draw(info::Info)
 
     @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
 
@@ -415,9 +423,10 @@ function GUI.draw!(info::Info)
             CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
             CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
             #replace with simulation rate: (t - t_start) / τ
-            # CImGui.Text(@sprintf("Simulation: %.3f ms/frame (%.1f FPS)",
-            #                     1000 / CImGui.GetIO().Framerate,
-            #                     CImGui.GetIO().Framerate))
+            CImGui.Text(@sprintf("Simulation rate: x%.3f", (t - t_start) / τ))
+            CImGui.Text(@sprintf("Dashboard Framerate: %.3f ms/frame (%.1f FPS)",
+                                1000 / CImGui.GetIO().Framerate,
+                                CImGui.GetIO().Framerate))
         CImGui.End()
     end
 

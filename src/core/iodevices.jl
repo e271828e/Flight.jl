@@ -48,16 +48,15 @@ struct Interface{D <: IODevice, T,  M <: InputMapping, C <: Channel}
     ext_shutdown::Bool #whether to observe shutdown requests received by the IO device
 end
 
-start!(io::Interface; verbose = true) = Threads.@spawn _start!(io; verbose)
+start_thr!(io::Interface; verbose = true) = Threads.@spawn _start!(io; verbose)
 
-function _start!(io::Interface{D}; verbose = true) where {D}
+function start!(io::Interface{D}; verbose = true) where {D}
 
     @unpack device, target, mapping, channel, start, target_lock, ext_shutdown = io
 
-    verbose && println("$D: Starting on thread $(Threads.threadid())...")
+    verbose && println("Interface: Starting on thread $(Threads.threadid())...")
 
     init!(device)
-    println("Waiting to start")
     wait(start)
 
     try
@@ -72,7 +71,7 @@ function _start!(io::Interface{D}; verbose = true) where {D}
             unlock(target_lock)
 
             if ext_shutdown && should_close(device)
-                println("$D: Shutdown requested")
+                println("Interface: Shutdown requested")
                 break
             end
 
@@ -81,13 +80,13 @@ function _start!(io::Interface{D}; verbose = true) where {D}
     catch ex
 
         if ex isa InvalidStateException
-            println("$D: Channel closed")
+            println("Interface: Channel closed")
         else
-            println("$D: Error during execution: $ex")
+            println("Interface: Error during execution: $ex")
         end
 
     finally
-        println("$D: Exiting...")
+        println("Interface: Exiting...")
         shutdown!(device)
     end
 

@@ -1,8 +1,11 @@
 module Essentials
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
+using CImGui, CImGui.CSyntax
+
 using Flight.Systems
 using Flight.Plotting
+using Flight.GUI
 
 import ControlSystems #avoids name clash with ControlSystems.StateSpace into scope
 
@@ -135,7 +138,9 @@ Base.@kwdef struct PICompensatorY{N}
     out_i::SVector{N,Float64} = zeros(SVector{N}) #integral term
     out_free::SVector{N,Float64} = zeros(SVector{N}) #total output, free
     out::SVector{N,Float64} = zeros(SVector{N}) #total output
-    sat_status::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation status
+    sat_enable::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation status
+    sat_status::SVector{N,Int64} = zeros(SVector{N, Int64}) #saturation status
+    int_status::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation status
 end
 
 Systems.init(::SystemX, ::PICompensator{N}) where {N} = zeros(N)
@@ -148,19 +153,26 @@ function Systems.f_ode!(sys::System{<:PICompensator{N}}) where {N}
     @unpack sat_enable = sys.u
 
     state = SVector{N, Float64}(sys.x)
-    reset = SVector{N, Bool}(sys.u.reset)
-    input = SVector{N, Float64}(sys.u.input)
+
+    reset = SVector(sys.u.reset)
+    input = SVector(sys.u.input)
+    sat_enable = SVector(sys.u.sat_enable)
 
     out_p = k_p .* input
     out_i = k_i .* state
     out_free = out_p + out_i #raw output
     out_clamped = clamp.(out_free, bounds[1], bounds[2]) #clamped output
-    out = out_free .* .!sat_enable .+ out_clamped .* sat_enable
-    sat_status = out .!= out_free #saturated?
-    sys.ẋ .= (input - k_l .* state) .* .!sat_status .* .!reset
+    out = (out_free .* .!sat_enable) .+ (out_clamped .* sat_enable)
+
+    sat_upper = (out_free .>= bounds[2]) .* sat_enable
+    sat_lower = (out_free .<= bounds[1]) .* sat_enable
+    sat_status = sat_upper - sat_lower
+    int_status = sign.(input .* sat_status) .<= 0 #enable integrator?
+
+    sys.ẋ .= (input .* int_status - k_l .* state) .* .!reset
 
     sys.y = PICompensatorY(; reset, input, state, out_p, out_i,
-                            out_free, out, sat_status)
+                            out_free, out, sat_enable, sat_status, int_status)
 
 end
 
@@ -223,6 +235,56 @@ function Plotting.make_plots(th::TimeHistory{<:PICompensatorY}; kwargs...)
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     return pd
+
+end
+
+################################# Dashboard ####################################
+
+function GUI.draw!(sys::System{<:PICompensator{N}}, dashboard_input::Bool = true) where {N}
+
+    @unpack u, y, params = sys
+
+    CImGui.Text("PICompensator{$N}")
+
+    if CImGui.TreeNode("Params")
+        @unpack k_p, k_i, k_l, bounds = params
+        CImGui.Text("Proportional Gain: $k_p")
+        CImGui.Text("Integral Gain: $k_i")
+        CImGui.Text("Leak Factor: = $k_l")
+        CImGui.Text("Output Bounds = $bounds")
+        CImGui.TreePop()
+    end
+
+    if dashboard_input
+        if CImGui.TreeNode("Inputs")
+            for i in 1:N
+                if CImGui.TreeNode("[$i]")
+                    @unpack reset, sat_enable = u
+                    reset_ref = Ref(reset[i])
+                    sat_ref = Ref(sat_enable[i])
+                    CImGui.Checkbox("Reset", reset_ref)
+                    CImGui.Checkbox("Enable Saturation", sat_ref)
+                    if dashboard_input
+                        reset[i] = reset_ref[]
+                        sat_enable[i] = sat_ref[]
+                    end
+                    CImGui.TreePop()
+                end
+            end
+        CImGui.TreePop()
+        end
+    end
+
+    if CImGui.TreeNode("Outputs")
+        @unpack reset, input, sat_enable, sat_status, out_free, out = y
+        CImGui.Text("Reset = $reset")
+        CImGui.Text("Input = $input")
+        CImGui.Text("Unbounded Output = $out_free")
+        CImGui.Text("Output = $out")
+        CImGui.Text("Saturation Enabled = $sat_enable")
+        CImGui.Text("Saturation Status = $sat_status")
+        CImGui.TreePop()
+    end
 
 end
 
