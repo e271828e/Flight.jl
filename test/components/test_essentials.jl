@@ -97,12 +97,13 @@ function test_pi_compensator(save = false)
         sys.u.sat_enable[2:3] .= false
         step!(sim, 2, true)
         @test sys.y.out[1] == 2.0
-        @test sys.y.sat_status[1] === true
+        @test sys.y.sat_status[1] == 1
         @test sys.y.out[2] == sys.y.out[3] > sys.y.out[1]
 
         sys.u.input .= -1.0
         step!(sim, 3, true)
         @test sys.y.out[1] == -1.0
+        @test sys.y.sat_status[1] == -1
 
         sys.u.reset[2] = true
         step!(sim, 2, true)

@@ -22,29 +22,52 @@ export CImGuiStyle, Renderer
     light = 2
 end
 
+#refresh: number of display updates per frame render:
+#T_render = T_display * refresh (where typically T_display = 16.67ms).
+#refresh = 1 syncs the render frame rate to the display rate (vsync)
+#refresh = 0 uncaps the render frame rate (use judiciously!)
+
 mutable struct Renderer
     label::String
     wsize::Tuple{Int, Int}
     style::CImGuiStyle
     refresh::Integer
-    enabled::Bool
+    _enabled::Bool
     _initialized::Bool
     _window::GLFW.Window
     _context::Ptr{CImGui.LibCImGui.ImGuiContext}
+
     function Renderer(; label = "Renderer", wsize = (1280, 720),
-                        style = dark, refresh = 1, enabled = true)
-        renderer = new()
-        @pack! renderer = label, wsize, style, refresh, enabled
-        renderer._initialized = false
-        return renderer
+                        style = dark, refresh = 0)
+        _enabled = true
+        _initialized = false
+        new(label, wsize, style, refresh, _enabled, _initialized)
+    end
+
+end
+
+Base.propertynames(::Renderer) = (:label, :wsize, :style, :refresh)
+
+function Base.setproperty!(renderer::Renderer, name::Symbol, value)
+    if name ∈ propertynames(renderer)
+        if renderer._initialized
+            println("Cannot set property $name for an initialized Renderer, ",
+            "call shutdown! first")
+        else
+            setfield!(renderer, name, value)
+        end
+    else
+        error("Unsupported property: $name")
     end
 end
 
+enable!(renderer::Renderer) = setfield!(renderer, :_enabled, true)
+
 function init!(renderer::Renderer)
 
-    @unpack label, wsize, style, refresh, enabled = renderer
+    @unpack label, wsize, style, refresh, _enabled = renderer
 
-    enabled || return
+    _enabled || return
 
     @static if Sys.isapple()
         # OpenGL 3.2 + GLSL 150
@@ -84,31 +107,9 @@ function init!(renderer::Renderer)
     ImGui_ImplGlfw_InitForOpenGL(_window, true)
     ImGui_ImplOpenGL3_Init(glsl_version)
 
-    renderer._initialized = true
-    renderer._window = _window
-    renderer._context = _context
-
-    return nothing
-
-end
-
-function should_close(renderer::Renderer)
-    @unpack enabled, _initialized, _window = renderer
-    (enabled && _initialized) ? GLFW.WindowShouldClose(_window) : false
-end
-
-function shutdown!(renderer::Renderer)
-
-    @unpack enabled, _window, _context, _initialized = renderer
-
-    enabled || return
-    @assert _initialized "Cannot shutdown an uninitialized renderer"
-
-    ImGui_ImplOpenGL3_Shutdown()
-    ImGui_ImplGlfw_Shutdown()
-    CImGui.DestroyContext(_context)
-    GLFW.DestroyWindow(_window)
-    renderer._initialized = false
+    setfield!(renderer, :_initialized, true)
+    setfield!(renderer, :_window, _window)
+    setfield!(renderer, :_context, _context)
 
     return nothing
 
@@ -117,9 +118,9 @@ end
 
 function render(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
-    @unpack enabled, _initialized, _window = renderer
+    renderer._enabled || return
 
-    enabled || return
+    @unpack _initialized, _window = renderer
 
     @assert _initialized "Renderer not initialized, call init! before update!"
 
@@ -159,12 +160,10 @@ end
 
 function run(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
-    @unpack enabled, _initialized, _window = renderer
+    renderer._enabled || return
+    renderer._initialized || init!(renderer)
 
-    enabled || return
-    _initialized || init!(renderer)
-
-    while !GLFW.WindowShouldClose(_window)
+    while !GLFW.WindowShouldClose(renderer._window)
         render(renderer, fdraw!, fdraw_args...)
     end
 
@@ -172,28 +171,48 @@ function run(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
 end
 
-#generic non-modifying frame draw function, to be extended by users
-draw(args...) = nothing
-#generic modifying draw function
-draw!(args...) = nothing
 
-################################################################################
-########################## Test draw functions #################################
+function should_close(renderer::Renderer)
 
-function draw_test(value::Real = 1)
-
-    begin
-        CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
-        CImGui.Text("Got value = $value")
-        CImGui.End()
-    end
+    renderer._enabled || return false
+    renderer._initialized ? GLFW.WindowShouldClose(renderer._window) : false
 
 end
 
-function draw_test2a()
 
-    # show a simple window that we create ourselves.
-    # we use a Begin/End pair to created a named window.
+function shutdown!(renderer::Renderer)
+
+    renderer._enabled || return
+    @assert renderer._initialized "Cannot shutdown an uninitialized renderer"
+
+    ImGui_ImplOpenGL3_Shutdown()
+    ImGui_ImplGlfw_Shutdown()
+    CImGui.DestroyContext(renderer._context)
+    GLFW.DestroyWindow(renderer._window)
+    setfield!(renderer, :_initialized, false)
+
+    return nothing
+
+end
+
+function disable!(renderer::Renderer)
+    !renderer._initialized ? setfield!(renderer, :_enabled, false) : println(
+        "Cannot disable an already initialized renderer, call shutdown! first")
+    return nothing
+end
+
+#generic non-mutating frame draw function, to be extended by users
+draw(args...) = nothing
+
+#generic mutating draw function, to be extended by users
+draw!(args...) = nothing
+
+
+################################################################################
+########################## Example draw functions ##############################
+
+function draw_test()
+
     @cstatic f=Cfloat(0.0) begin
         CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
         CImGui.Text("This is some useful text.")  # display some text
@@ -203,7 +222,7 @@ function draw_test2a()
 
 end
 
-function draw_test2b() #draw_test2a with expanded macros
+function draw_test_expanded() #draw_test2a with expanded macros
     let
         global f_glob = Cfloat(0.0)
         local f = f_glob
@@ -220,24 +239,6 @@ function draw_test2b() #draw_test2a with expanded macros
         end
         f_glob = f
         f
-    end
-
-end
-
-#don't need any static variables. we can modify the input variables directly. to
-#achieve this we can do one of the following:
-#1) have Refs to widget-compatible types passed to the draw function, and then
-#   call the widgets on them directly
-#2) have fields of a mutable struct passed to the draw function. for each field variable, we
-#   create a Ref, pass it to the widget, and then reassign the de-referenced Ref
-#   to the passed variable. this is exactly what the @c macro does
-#
-function draw_test3(f::Ref{Cfloat})
-    begin
-        CImGui.Begin("Hello, world!")
-        CImGui.Text("This is some useful text.")
-        CImGui.SliderFloat("float", f, 0, 1)
-        CImGui.End()
     end
 
 end

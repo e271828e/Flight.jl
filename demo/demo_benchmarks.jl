@@ -4,7 +4,7 @@ using OrdinaryDiffEq
 function benchmark_pi()
 
     sys = PICompensator{1}() |> System
-    sys_init! = (s) -> nothing #inhibit warnings
+    sys_init! = (s) -> nothing #avoid reinit! warnings
     sim = Simulation(sys; t_end = 100, sys_init!)
     b = @benchmarkable Sim.run!($sim) setup=reinit!($sim)
     return b
@@ -31,24 +31,3 @@ function benchmark_ac()
     return b
 
 end
-
-# struct TestMapping <: InputMapping end
-
-# function IODevices.assign!(u::Essentials.PICompensatorU{1},
-#                        joystick::Joystick{XBoxControllerID},
-#                        ::TestMapping)
-
-#     u.input .= get_axis_value(joystick, :right_analog_y)
-#     u.reset .= was_released(joystick, :button_A)
-#     u.sat_enable .⊻= was_released(joystick, :button_Y)
-
-# end
-
-# function test_input_pi()
-
-#     sys = PICompensator{1}(k_i = 0.5) |> System
-#     sim = Simulation(sys; t_end = 10, dt = 0.02)
-
-#     Sim.run!(sim; rate = 2, verbose = true)
-#     return sim
-# end

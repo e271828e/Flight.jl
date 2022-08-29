@@ -9,8 +9,9 @@ using Interpolations
 using HDF5
 # using JLD
 
-using Flight.IODevices
 using Flight.Systems
+using Flight.IODevices
+using Flight.Joysticks
 using Flight.Attitude
 using Flight.Terrain
 using Flight.Atmosphere
@@ -415,6 +416,9 @@ end
 
 Pwp() = Piston.Thruster(propeller = Propeller(t_bp = FrameTransform(r = [2.055, 0, 0.833])))
 
+
+
+################################################################################
 ################################ Airframe ######################################
 
 #P is introduced as a type parameter, because Piston.Thruster is itself a
@@ -428,8 +432,7 @@ Base.@kwdef struct Airframe{P} <: AbstractAirframe
     pwp::P = Pwp()
 end
 
-################################################################################
-####################### Airframe Update Functions ##############################
+############################# Update Methods ###################################
 
 function f_ode!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics},
                 kin::KinematicData, air::AirflowData, trn::System{<:AbstractTerrain})
@@ -446,7 +449,7 @@ function f_ode!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionic
 
 end
 
-function f_step!(airframe::System{<:Airframe}, ::System{ReversibleControls}, ::KinematicSystem)
+function f_step!(airframe::System{<:Airframe}, ::KinematicSystem)
     @unpack aero, pwp, fuel, ldg, fuel, pld = airframe
 
     x_mod = false
@@ -513,8 +516,7 @@ init(::SystemU, ::ReversibleControls) = ReversibleControlsU()
 init(::SystemY, ::ReversibleControls) = ReversibleControlsY()
 
 
-################################################################################
-######################## Avionics Update Functions #############################
+########################### Update Methods #####################################
 
 function f_ode!(avionics::System{ReversibleControls}, ::System{<:Airframe},
                 ::KinematicData, ::AirflowData, ::System{<:AbstractTerrain})
@@ -556,38 +558,6 @@ function apply_avionics!(airframe::System{<:Airframe}, avionics::System{Reversib
 end
 
 
-################################################################################
-############################ Joystick Mappings #################################
-
-elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
-brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-
-################################ XBoxController ################################
-
-function IODevices.assign!(u::ReversibleControlsU,
-            joystick::Joystick{XBoxControllerID}, ::DefaultMapping)
-
-    u.Δ_aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.Δ_elevator = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
-    u.Δ_pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
-    u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
-    u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
-
-    u.aileron -= 0.01 * was_released(joystick, :dpad_left)
-    u.aileron += 0.01 * was_released(joystick, :dpad_right)
-    u.elevator -= 0.01 * was_released(joystick, :dpad_down)
-    u.elevator += 0.01 * was_released(joystick, :dpad_up)
-
-    u.throttle += 0.1 * was_released(joystick, :button_Y)
-    u.throttle -= 0.1 * was_released(joystick, :button_A)
-
-    u.flaps += 0.3333 * was_released(joystick, :right_bumper)
-    u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
-
-end
-
 
 ################################################################################
 ############################### Cessna172R #####################################
@@ -618,9 +588,9 @@ Cessna172R(kinematics = LTF()) = Cessna172RBase(kinematics, ReversibleControls()
 # const Cessna172RY = typeof(init_y(Cessna172RTemplate))
 # const Cessna172RS = typeof(init_s(Cessna172RTemplate))
 
-#This works, but has the drawback of slowing down module imports. An alternative
-#is to override the default AircraftBase SystemU initializer with a custom,
-#easily dispatchable type, with the same fields:
+#...which works, but has the drawback of slowing down module imports. An
+#alternative is to override the default AircraftBase SystemU initializer with a
+#custom, dispatch-friendly type, with the same fields:
 
 struct Cessna172RU{F, V}
     airframe::F
@@ -629,6 +599,45 @@ end
 
 init(::SystemU, ac::Cessna172R) = Cessna172RU(init_u(ac.airframe), init_u(ac.avionics))
 
+
+################################################################################
+############################ Joystick Mappings #################################
+
+elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
+brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+
+function IODevices.assign!(u::Cessna172RU, joystick::Joystick{XBoxControllerID},
+                           mapping::InputMapping)
+    IODevices.assign!(u.avionics, joystick, mapping)
+end
+
+function IODevices.assign!(u::ReversibleControlsU,
+            joystick::Joystick{XBoxControllerID}, ::DefaultMapping)
+
+    u.Δ_aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.Δ_elevator = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.Δ_pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
+    u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
+    u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
+
+    u.aileron -= 0.01 * was_released(joystick, :dpad_left)
+    u.aileron += 0.01 * was_released(joystick, :dpad_right)
+    u.elevator -= 0.01 * was_released(joystick, :dpad_down)
+    u.elevator += 0.01 * was_released(joystick, :dpad_up)
+
+    u.throttle += 0.1 * was_released(joystick, :button_Y)
+    u.throttle -= 0.1 * was_released(joystick, :button_A)
+
+    u.flaps += 0.3333 * was_released(joystick, :right_bumper)
+    u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
+
+end
+
+
+################################################################################
+############################### Analysis Tools #################################
 
 include("tools/trim.jl")
 include("tools/linear.jl")

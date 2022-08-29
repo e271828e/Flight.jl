@@ -16,8 +16,9 @@ using ..GUI
 import SciMLBase: step!, reinit!, solve!, get_proposed_dt
 import OrdinaryDiffEq: add_tstop!
 
-export Simulation, step!, reinit!, solve!, get_proposed_dt, add_tstop!
+export Simulation, enable_gui!, disable_gui!, attach_io!
 export TimeHistory, get_components, get_child_names
+export step!, reinit!, solve!, get_proposed_dt, add_tstop!
 
 
 ################################################################################
@@ -49,10 +50,13 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     sys::S
     integrator::I
     log::L
-    output_channels::Vector{Channel{Output{Y}}}
+    gui::Renderer
+    channels::Vector{Channel{Output{Y}}}
     started::Base.Event #signals that execution has started
     stepping::ReentrantLock #must be acquired by IO interfaces to modify the system
 
+    #set refresh = 0 so that SwapBuffers returns immediately and doesn't slow
+    #down the sim loop
     function Simulation(
         sys::System;
         args_ode::Tuple = (), #externally supplied arguments to System's f_ode!
@@ -60,6 +64,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         args_disc::Tuple = (), #externally supplied arguments to System's f_disc!
         sys_init!::Function = no_sys_init!, #System initialization function
         sys_io!::Function = no_sys_io!, #System I/O function
+        gui::Renderer = Renderer(wsize = (1280, 720), label = "Simulation"),
         started::Base.Event = Base.Event(), #to be shared with input interfaces
         stepping::ReentrantLock = ReentrantLock(), #to be shared with input interfaces
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
@@ -106,10 +111,10 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #naked System's state vector. everything we need should be made
         #available in the System's y, saved by the SavingCallback
 
-        output_channels = Channel{Output{typeof(sys.y)}}[]
+        channels = Channel{Output{typeof(sys.y)}}[]
 
         new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
-            sys, integrator, log, output_channels, started, stepping)
+            sys, integrator, log, gui, channels, started, stepping)
     end
 
 end
@@ -257,6 +262,43 @@ function reinit!(sim::Simulation; sys_init_kwargs...)
 end
 
 
+################################# GUI ##########################################
+
+enable_gui!(sim::Simulation) = GUI.enable!(sim.gui)
+disable_gui!(sim::Simulation) = GUI.disable!(sim.gui)
+
+function update!(sys::System, info::Info, gui::Renderer, gui_input::Bool)
+    GUI.render(gui, GUI.draw!, sys, info, gui_input)
+end
+
+function GUI.draw!(sys::System, info::Info, gui_input::Bool)
+    GUI.draw(info) #show Simulation info
+    window_visible = CImGui.Begin("System")
+        window_visible ? GUI.draw!(sys, gui_input) : nothing
+    CImGui.End()
+end
+
+function GUI.draw(info::Info)
+
+    @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
+
+    begin
+        CImGui.Begin("Info")
+            CImGui.Text("Algorithm: " * algorithm)
+            CImGui.Text("Step size: $dt")
+            CImGui.Text("Iterations: $iter")
+            CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
+            CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
+            CImGui.Text(@sprintf("Simulation rate: x%.3f", (t - t_start) / τ))
+            CImGui.Text(@sprintf("Dashboard Framerate: %.3f ms/frame (%.1f FPS)",
+                                1000 / CImGui.GetIO().Framerate,
+                                CImGui.GetIO().Framerate))
+        CImGui.End()
+    end
+
+end
+
+
 ################################### I/O #######################################
 
 #attaches an input device to the Simulation, enabling it to safely modify the
@@ -270,10 +312,9 @@ function attach_io!(sim::Simulation, device::IODevice;
                         sim.started, sim.stepping, ext_shutdown)
 end
 
-add_output_channel!(sim::Simulation) = push!(sim.output_channels,
-                                            eltype(sim.output_channels)(1))[end]
+add_output_channel!(sim::Simulation) = push!(sim.channels, eltype(sim.channels)(1))[end]
 
-pop_output_channel!(sim::Simulation) = pop!(sim.output_channels)
+pop_output_channel!(sim::Simulation) = pop!(sim.channels)
 
 #for buffered channels, isready returns 1 if there is at least one value in the
 #channel. if there is one value and we try to put! another, the simulation loop
@@ -302,14 +343,14 @@ end
 
 run_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run!(sim; kwargs...)))
 
-function run!(sim::Simulation; verbose::Bool)
+function run!(sim::Simulation; verbose::Bool = true)
 
     isdone_wrn(sim) && return
 
     τ = @elapsed begin
         for _ in sim.integrator #integrator steps automatically at the beginning of each iteration
             output = Output(sim.t[], sim.y)
-            put_no_block!(sim.output_channels, output)
+            put_no_block!(sim.channels, output)
         end
     end
 
@@ -324,26 +365,21 @@ run_paced_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run_paced!(sim;
 
 function run_paced!(sim::Simulation;
                     rate::Real = 1,
-                    dashboard_enable::Bool = true,
-                    dashboard_input::Bool = true,
+                    gui_input::Bool = true,
                     verbose::Bool = true)
 
-    isdone_wrn(sim) && return
+    !isdone_wrn(sim) || return
     verbose && println("Simulation: Starting on thread $(Threads.threadid())...")
 
-    @unpack sys, integrator, output_channels, started, stepping = sim
+    @unpack sys, integrator, gui, channels, started, stepping = sim
 
     t_start, t_end = integrator.sol.prob.tspan
     algorithm = algorithm_type(sim) |> string
 
-    #set refresh = 0 so that SwapBuffers returns immediately and doesn't slow
-    #down the sim loop
-    dashboard = Renderer(refresh = 0, wsize = (1280, 720), label = "Simulation",
-                        enabled = dashboard_enable)
+    gui.refresh == 0 || println("Warning: GUI Renderer refresh interval ",
+        "should be set to 0 to avoid interfering with simulation scheduling")
 
-    GUI.init!(dashboard)
-
-    # CImGui.SetWindowPos(dashboard, 100, 100)
+    GUI.init!(gui)
 
     τ = let wall_time_ref = time()
             ()-> time() - wall_time_ref
@@ -355,27 +391,31 @@ function run_paced!(sim::Simulation;
 
         notify(started)
 
+        t0 = time()
         while sim.t[] < t_end
 
-            #simulation time t and wall-clock time τ should satisfy:
+            #simulation time t and wall-clock time τ are related by:
             #t_next = t_start + rate * τ_next
 
             t_next = sim.t[] + get_proposed_dt(sim)
             τ_next = (t_next - t_start) / rate
-            while τ_next > τ() end #busy wait
+            while τ_next > τ() end #busy wait (disgusting, needs to do better)
 
             lock(stepping)
+                t = time()
+                dt = t - t0
+                t0 = t
                 step!(sim)
                 τ_last = τ()
                 info = Info(; algorithm, t_start, t_end, dt = integrator.dt,
                               iter = integrator.iter, t = sim.t[], τ = τ_last)
-                update!(sys, info, dashboard, dashboard_input)
+                update!(sys, info, gui, gui_input)
             unlock(stepping)
 
             output = Output(sim.t[], sim.y)
-            put_no_block!(sim.output_channels, output)
+            put_no_block!(sim.channels, output)
 
-            if GUI.should_close(dashboard)
+            if GUI.should_close(gui)
                 println("Simulation: Aborted at t = $(sim.t[])")
                 break
             end
@@ -389,8 +429,8 @@ function run_paced!(sim::Simulation;
 
     finally
 
-        close.(output_channels)
-        GUI.shutdown!(dashboard)
+        close.(channels)
+        GUI.shutdown!(gui)
 
     end
 
@@ -398,39 +438,6 @@ function run_paced!(sim::Simulation;
 
 end
 
-function update!(sys::System, info::Info, dashboard::Renderer, dashboard_input::Bool)
-    GUI.render(dashboard, GUI.draw!, sys, info, dashboard_input)
-end
-
-function GUI.draw!(sys::System, info::Info, dashboard_input::Bool)
-    GUI.draw(info) #show Simulation info
-    window_visible = CImGui.Begin("System")
-        window_visible ? GUI.draw!(sys, dashboard_input) : println("Not drawing")
-    CImGui.End()
-    # GUI.draw(y) #show System's y
-    # GUI.draw!(u) #apply user inputs to System's u
-end
-
-function GUI.draw(info::Info)
-
-    @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
-
-    begin
-        CImGui.Begin("Info")
-            CImGui.Text("Algorithm: " * algorithm)
-            CImGui.Text("Step size: $dt")
-            CImGui.Text("Iterations: $iter")
-            CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
-            CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
-            #replace with simulation rate: (t - t_start) / τ
-            CImGui.Text(@sprintf("Simulation rate: x%.3f", (t - t_start) / τ))
-            CImGui.Text(@sprintf("Dashboard Framerate: %.3f ms/frame (%.1f FPS)",
-                                1000 / CImGui.GetIO().Framerate,
-                                CImGui.GetIO().Framerate))
-        CImGui.End()
-    end
-
-end
 
 
 ################################################################################

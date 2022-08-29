@@ -26,7 +26,7 @@ update!(device::D, data) where {D<:IODevice} = MethodError(update!, (device, dat
 #argument. for alternative mappings, it can define additional subtypes of
 #InputMapping and their corresponding assign! methods
 function assign!(target, device::IODevice, mapping::InputMapping)
-    MethodError(update!, (target, device, mapping))
+    MethodError(assign!, (target, device, mapping))
 end
 
 function assign!(target, device::IODevice)
@@ -40,9 +40,9 @@ end
 #add mode: IOMode, Input <: IOMode, Output <: IOMode, InputOutput <: IOMode
 struct Interface{D <: IODevice, T,  M <: InputMapping, C <: Channel}
     device::D
-    target::T #input target, typically the simulation's u
+    target::T #input target, typically the Simulation's u
     mapping::M #selected device to target mapping, used for dispatch on assign!
-    channel::C
+    channel::C #channel in which Simulation's output will be put!
     start::Base.Event #to be waited on before entering the update loop
     target_lock::ReentrantLock #to acquire before modifying the target
     ext_shutdown::Bool #whether to observe shutdown requests received by the IO device

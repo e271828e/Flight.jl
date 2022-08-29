@@ -124,7 +124,7 @@ function f_step!(sys::System{<:AircraftBase})
     #could use chained | instead, but this is clearer
     x_mod = false
     x_mod = x_mod || f_step!(kinematics)
-    x_mod = x_mod || f_step!(airframe, avionics, kinematics)
+    x_mod = x_mod || f_step!(airframe, kinematics)
     x_mod = x_mod || f_step!(avionics, airframe, kinematics)
 
     return x_mod

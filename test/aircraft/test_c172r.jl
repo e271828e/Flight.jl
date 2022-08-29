@@ -13,7 +13,7 @@ function test_c172r()
     @testset verbose = true "Cessna172R" begin
 
         @testset verbose = true "Performance" begin test_system() end
-        @testset verbose = true "Simulation" begin test_sim_nrt(save = false) end
+        @testset verbose = true "Simulation" begin test_sim(save = false) end
         @testset verbose = true "Trimming" begin test_trimming() end
 
     end
@@ -55,7 +55,7 @@ function test_system()
 end
 
 
-function test_sim_nrt(; save::Bool = true)
+function test_sim(; save::Bool = true)
 
     h_trn = HOrth(608.55);
 
@@ -78,7 +78,7 @@ function test_sim_nrt(; save::Bool = true)
         function (u, y, t, params)
 
             ac.u.avionics.throttle = 0.2
-            ac.u.avionics.Δ_aileron = (t < 5 ? 0.2 : 0.0)
+            ac.u.avionics.Δ_aileron = (t < 5 ? 0.25 : 0.0)
             ac.u.avionics.Δ_elevator = 0.0
             ac.u.avionics.Δ_pedals = 0.0
             ac.u.avionics.brake_left = 0
@@ -87,61 +87,54 @@ function test_sim_nrt(; save::Bool = true)
         end
     end
 
-    sim = Simulation(ac; args_ode = (env, ), t_end = 150, sys_io!, adaptive = true)
+    sim = Simulation(ac; args_ode = (env, ), t_end = 300, sys_io!, adaptive = true)
     Sim.run!(sim, verbose = true)
     # plots = make_plots(sim; Plotting.defaults...)
-    plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-    save ? save_plots(plots, save_folder = joinpath("tmp", "nrt_sim_test")) : nothing
+    plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
+    save ? save_plots(plots, save_folder = joinpath("tmp", "sim_test")) : nothing
 
     return sim
 
 end
 
 
-# function test_sim_rt(; save::Bool = true)
+function test_sim_paced(; save::Bool = true)
 
-#     h_trn = HOrth(608.55);
+    h_trn = HOrth(608.55);
 
-#     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
-#     ac = System(Cessna172R());
-#     kin_init = KinematicInit(
-#         v_eOb_n = [1, 0, 0],
-#         ω_lb_b = [0, 0, 0],
-#         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-#         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-#         h = h_trn + 1.9 + 0);
+    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
+    ac = System(Cessna172R());
+    kin_init = KinematicInit(
+        v_eOb_n = [5, 0, 0],
+        ω_lb_b = [0, 0, 0],
+        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
+        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        h = h_trn + 1.9 + 0);
 
-#     Aircraft.init!(ac, kin_init)
-#     ac.u.avionics.eng_start = true #engine start switch on
-#     ac.u.avionics.throttle = 1
+    Aircraft.init!(ac, kin_init)
+    ac.u.avionics.eng_start = true #engine start switch on
 
-#     sys_io! = let inputs = get_connected_joysticks(), # inputs = [XBoxController(),]
-#                 #   outputs = [XPConnect(),]
-#                 outputs = [XPConnect(host = IPv4("192.168.1.2"))] #Parsec
+    sim = Simulation(ac; args_ode = (env,), t_end = 10)
 
-#         Output.init!.(outputs)
+    interfaces = Vector{IODevices.Interface}()
+    for joystick in get_connected_joysticks()
+        push!(interfaces, attach_io!(sim, joystick))
+    end
+    # push!(interfaces, attach_io!(sim, XPConnect(host = IPv4("192.168.1.2"))))
 
-#         function (u, y, t, params)
-#             for input in inputs
-#                 Input.update!(input)
-#                 Input.assign!(u.avionics, input)
-#             end
-#             for output in outputs
-#                 Output.update!(output, y.kinematics.common)
-#             end
-#         end
+    @sync begin
+        for interface in interfaces
+            Threads.@spawn IODevices.start!(interface)
+        end
+        Threads.@spawn Sim.run_paced!(sim; rate = 1, verbose = true)
+    end
 
-#     end
+    plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
+    save ? save_plots(plots, save_folder = joinpath("tmp", "paced_sim_test")) : nothing
 
-#     sim = Simulation(ac; args_ode = (env,), t_end = 10, sys_io!)
+    return nothing
 
-#     Sim.run!(sim; verbose= true, rate = 1)
-#     plots = make_plots(sim; Plotting.defaults...)
-#     save ? save_plots(plots, save_folder = joinpath("tmp", "rt_sim_test")) : nothing
-
-#     return sim
-
-# end
+end
 
 
 function test_trimming()

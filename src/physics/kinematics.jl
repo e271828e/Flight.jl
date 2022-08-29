@@ -1,6 +1,6 @@
 module Kinematics
 
-using StaticArrays, ComponentArrays, LinearAlgebra
+using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra
 using UnPack
 
 using Flight.Systems
@@ -484,51 +484,102 @@ f_step!(sys::System{NED}, args...) = false
 
     # https://daschw.github.io/recipes/#series_recipes
 
-    xs, ys, zs = t3d.args
-    @assert length(xs) == length(ys) == length(zs)
-    n = length(xs)
+    path = t3d.args
+    n = length(path)
 
-    xe, ye, ze = map(extrema, (xs, ys, zs))
-    x_mid, y_mid, _ = map(v -> 0.5sum(v), (xe, ye, ze))
-    x_span, y_span, z_span = map(v -> v[2] - v[1], (xe, ye, ze))
+    x_ext, y_ext, z_ext = map(extrema, (path.x, path.y, path.z))
+    x_mid, y_mid, z_mid = map(v -> 0.5sum(v), (x_ext, y_ext, z_ext))
+    x_span, y_span, z_span = map(v -> v[2] - v[1], (x_ext, y_ext, z_ext))
     span = max(x_span, y_span, z_span)
 
-    xl = (x_mid - 0.5span, x_mid + 0.5span)
-    yl = (y_mid - 0.5span, y_mid + 0.5span)
-    zl = (ze[1], ze[1] + span)
+    x_bounds = (x_mid - 0.5span, x_mid + 0.5span)
+    y_bounds = (y_mid - 0.5span, y_mid + 0.5span)
+    z_bounds = (z_mid - 0.5span, z_mid + 0.5span)
 
-    seriestype --> :path
+    path_xp = StructArray((x = fill(x_bounds[1], n), y = path.y, z = path.z))
+    path_yp = StructArray((x = path.x, y = fill(y_bounds[1], n), z = path.z))
+    path_zp = StructArray((x = path.x, y = path.y, z = fill(z_bounds[1], n)))
+
+    #--> sets default values, which can be overridden by each series using :=
+    linewidth --> 3
+    markersize --> 8
     xguide --> L"$\Delta x\ (m)$"
     yguide --> L"$\Delta y\ (m)$"
     zguide --> L"$h\ (m)$"
     legend --> false
 
-    xlims --> xl
-    ylims --> yl
-    zlims --> zl
+    xlims --> x_bounds
+    ylims --> y_bounds
+    zlims --> z_bounds
 
-    # yflip --> true
-
-    @series begin
-        linecolor --> :lightgray
-        xs, ys, fill(zl[1], n)
+    #marker projection lines
+    linecolor --> :lightgray
+    for i in (1,n)
+        @series begin
+            linestyle := :dashdotdot
+            linewidth := 2
+            [path.x[i], path_xp.x[1]], [path.y[i], path.y[i]], [path.z[i], path.z[i]]
+        end
+        @series begin
+            linestyle := :dashdotdot
+            linewidth := 2
+            [path.x[i], path.x[i]], [path.y[i], path_yp.y[1]], [path.z[i], path.z[i]]
+        end
+        @series begin
+            linestyle := :dashdotdot
+            linewidth := 2
+            [path.x[i], path.x[i]], [path.y[i], path.y[i]], [path.z[i], path_zp.z[1]]
+        end
     end
 
-    @series begin
-        linecolor --> :lightgray
-        xs, fill(yl[1], n), zs
+    #3D path, path projections and start-end markers
+    for (p, c) in zip((path_xp, path_yp, path_zp, path),
+                      (:darkgray, :darkgray, :darkgray, :blue))
+
+        @series begin
+            linestyle := :solid
+            seriestype := :path3d
+            linecolor := c
+            p.x, p.y, p.z
+        end
+        @series begin
+            seriestype := :scatter3d
+            markercolor := :green
+            [p.x[1]], [p.y[1]], [p.z[1]]
+        end
+        @series begin
+            seriestype := :scatter3d
+            markercolor := :red
+            [p.x[end]], [p.y[end]], [p.z[end]]
+        end
+
     end
 
-    @series begin
-        linecolor --> :lightgray
-        fill(xl[1], n), ys, zs
-    end
 
-    @series begin
-        linecolor --> :blue
-        linewidth --> 3
-        xs, ys, zs
-    end
+    # @series begin
+    #     # linecolor --> :lightgray
+    #     # linestyle --> :dash
+    #     [x_path[1], x_path[1]], [path.y[1], y_bounds[1]], [z_path[1], z_path[1]]
+    # end
+
+
+    #start and end points, and their projections
+
+    # start_coords = projected_coords(1)
+    # end_coords = projected_coords(n)
+
+    # markersize --> 8
+    #     @series begin #start point and its projections
+    #     seriestype := :scatter3d
+    #     markercolor := :green
+    #     start_coords.x, start_coords.y, start_coords.z
+    # end
+
+    # @series begin
+    #     seriestype := :scatter3d
+    #     markercolor := :red
+    #     end_coords.x, end_coords.y, end_coords.z
+    # end
 
     return nothing
 
@@ -590,14 +641,15 @@ function make_plots(th::TimeHistory{<:Common}; kwargs...)
     #size of the overall figure title (which normally is used for subplots).
 
     th_Δx, th_Δy = get_components(th.Δxy)
-    xs, ys, zs = th_Δx._data, th_Δy._data, Float64.(th.h_e._data)
+    path = StructArray((x = th_Δx._data, y = th_Δy._data, z = Float64.(th.h_e._data)))
 
     pd[:Ob_t3d] = plot(
-        Trajectory3D((xs, ys, zs));
+        Trajectory3D(path);
         plot_title = "Trajectory (Local Cartesian, Ellipsoidal Altitude)",
         titlefontsize = 20,
         camera = (30, 15),
-        kwargs...
+        kwargs...,
+        size = (1920, 1920)
         )
 
     pd[:ω_lb_b] = plot(

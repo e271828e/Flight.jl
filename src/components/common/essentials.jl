@@ -240,12 +240,14 @@ end
 
 ################################# Dashboard ####################################
 
-function GUI.draw!(sys::System{<:PICompensator{N}}, dashboard_input::Bool = true) where {N}
+function GUI.draw!(sys::System{<:PICompensator{N}}, gui_input::Bool = true) where {N}
 
     @unpack u, y, params = sys
 
     CImGui.Text("PICompensator{$N}")
 
+    #if any of these trees are collapsed or their host window is hidden, they
+    #will not be drawn, saving CPU time
     if CImGui.TreeNode("Params")
         @unpack k_p, k_i, k_l, bounds = params
         CImGui.Text("Proportional Gain: $k_p")
@@ -255,7 +257,7 @@ function GUI.draw!(sys::System{<:PICompensator{N}}, dashboard_input::Bool = true
         CImGui.TreePop()
     end
 
-    if dashboard_input
+    if gui_input
         if CImGui.TreeNode("Inputs")
             for i in 1:N
                 if CImGui.TreeNode("[$i]")
@@ -263,8 +265,9 @@ function GUI.draw!(sys::System{<:PICompensator{N}}, dashboard_input::Bool = true
                     reset_ref = Ref(reset[i])
                     sat_ref = Ref(sat_enable[i])
                     CImGui.Checkbox("Reset", reset_ref)
+                    CImGui.SameLine()
                     CImGui.Checkbox("Enable Saturation", sat_ref)
-                    if dashboard_input
+                    if gui_input
                         reset[i] = reset_ref[]
                         sat_enable[i] = sat_ref[]
                     end
