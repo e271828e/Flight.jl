@@ -22,7 +22,7 @@ function benchmark_ac()
         ac -> Aircraft.init!(ac, kin_init)
     end
 
-    sim = Simulation(ac; args_ode = (env,), t_end = 100, adaptive = false, sys_init!)
+    sim = Simulation(ac; args_ode = (env,), t_end = 100, adaptive = true, sys_init!)
     Sim.run!(sim)
     plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
     save_plots(plots, save_folder = joinpath("tmp", "ac_benchmark"))

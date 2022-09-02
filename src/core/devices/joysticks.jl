@@ -255,6 +255,7 @@ function add_joystick(slot::JoystickSlot)
         println("XBoxController active at slot $slot")
     else
         println("$joystick_model not supported")
+        return
     end
 
     active_slots[slot] = Ref(joystick)

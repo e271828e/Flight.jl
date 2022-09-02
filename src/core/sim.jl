@@ -70,7 +70,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
         dt::Real = 0.02, #continuous dynamics integration step
-        Δt::Real = 1.0, #discrete dynamics execution period (do not set to Inf!)
+        Δt::Real = 100.0, #discrete dynamics execution period (do not set to Inf!)
         t_start::Real = 0.0,
         t_end::Real = 10.0,
         save_on::Bool = true,
@@ -85,19 +85,22 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         params = (sys = sys, sys_init! = sys_init!, sys_io! = sys_io!, Δt = Δt,
                   args_ode = args_ode, args_step = args_step, args_disc = args_disc)
 
+        cb_sys = DiscreteCallback((u, t, integrator)->true, f_cb_sys!)
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_disc = PeriodicCallback(f_cb_disc!, Δt)
         cb_io = DiscreteCallback((u, t, integrator)->true, f_cb_io!)
 
-        f_ode!(sys, args_ode...) #update y so that the first log entry is correct
+        #call System update functions that might modify y to ensure the first
+        #log entry is correct
+        f_ode!(sys, args_ode...)
         log = SavedValues(Float64, typeof(sys.y))
         saveat_arr = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
         cb_save = SavingCallback(f_cb_save, log; saveat = saveat_arr, save_everystep)
 
         if save_on
-            cb_set = CallbackSet(cb_step, cb_disc, cb_io, cb_save)
+            cb_set = CallbackSet(cb_sys, cb_step, cb_disc, cb_io, cb_save)
         else
-            cb_set = CallbackSet(cb_step, cb_disc, cb_io)
+            cb_set = CallbackSet(cb_sys, cb_step, cb_disc, cb_io)
         end
 
         #the current System's x value is used as initial condition. a copy is
@@ -153,19 +156,14 @@ function f_ode_wrapper!(u̇, u, p, t)
 
     u̇ .= sys.ẋ #update the integrator's derivative
 
-    return nothing
-
 end
 
-#DiscreteCallback function, called on every integration step. brings the
-#System's internal x and y up to date with the last integrator's solution step,
-#then calls the System's own f_step!. if the System's y depends on x or s, and
-#these are modified by f_step!, the change will not be reflected on y until
-#f_ode! is executed again on the following integration step
-function f_cb_step!(integrator)
+#System update function, called on every integration step. brings the
+#System's internal x and y up to date with the last integrator's solution step
+function f_cb_sys!(integrator)
 
     @unpack t, u, p = integrator
-    @unpack sys, args_ode, args_step = p
+    @unpack sys, args_ode = p
 
     sys.x .= u #assign the updated integrator's state to the System's continuous state
     sys.t[] = t #ditto for time
@@ -175,22 +173,39 @@ function f_cb_step!(integrator)
     #up to date, we can now compute the final sys.y and sys.ẋ for this epoch
     f_ode!(sys, args_ode...)
 
-    #with the System's ẋ and y up to date, call the discrete dynamics function
+    u_modified!(integrator, false)
+
+end
+
+#DiscreteCallback function, called on every integration step. calls the System's
+#own f_step!. modifications to x or s will not propagate to y until the next
+#integration step
+function f_cb_step!(integrator)
+
+    @unpack u, p = integrator
+    @unpack sys, args_step, args_ode = p
+
     x_modified = f_step!(sys, args_step...)
 
-    u .= sys.x #assign the (potentially modified) sys.x back to the integrator
+    #assign the (potentially modified) sys.x back to the integrator
+    x_modified && (u .= sys.x)
 
     u_modified!(integrator, x_modified)
 
 end
 
-#PeriodicCallback function, calls the System's discrete dynamics update
-#with the period Δt given to the Simulation constructor
+#PeriodicCallback function, calls the System's discrete dynamics update with the
+#period Δt given to the Simulation constructor. modifications to x or s will not
+#propagate to y until the next integration step
 function f_cb_disc!(integrator)
 
-    @unpack sys, Δt, args_disc = integrator.p
+    @unpack u, p = integrator
+    @unpack sys, Δt, args_disc, args_ode = p
 
     x_modified = f_disc!(sys, Δt, args_disc...)
+
+    #assign the (potentially modified) sys.x back to the integrator
+    x_modified && (u .= sys.x)
 
     u_modified!(integrator, x_modified)
 
@@ -343,7 +358,7 @@ end
 
 run_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run!(sim; kwargs...)))
 
-function run!(sim::Simulation; verbose::Bool = true)
+function run!(sim::Simulation; verbose::Bool = false)
 
     isdone_wrn(sim) && return
 
@@ -391,7 +406,6 @@ function run_paced!(sim::Simulation;
 
         notify(started)
 
-        t0 = time()
         while sim.t[] < t_end
 
             #simulation time t and wall-clock time τ are related by:
@@ -402,9 +416,6 @@ function run_paced!(sim::Simulation;
             while τ_next > τ() end #busy wait (disgusting, needs to do better)
 
             lock(stepping)
-                t = time()
-                dt = t - t0
-                t0 = t
                 step!(sim)
                 τ_last = τ()
                 info = Info(; algorithm, t_start, t_end, dt = integrator.dt,
