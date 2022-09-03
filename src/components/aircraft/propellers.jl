@@ -18,25 +18,25 @@ const π² = π^2
 ############################## Propeller Blade #################################
 ################################################################################
 
-abstract type AbstractFunction{N} end
+abstract type AbstractDistribution{N} end
 
-get_value(f::AbstractFunction{N}, ::Vararg{Any, M}) where {N, M} =
+get_value(f::AbstractDistribution{N}, ::Vararg{Any, M}) where {N, M} =
     error("A $(typeof(f)) was called with $M arguments, requires $N")
 
-get_value(f::AbstractFunction{N}, ::Vararg{Any, N}) where {N} =
+get_value(f::AbstractDistribution{N}, ::Vararg{Any, N}) where {N} =
     error("Method get_value not implemented for $(typeof(f))")
 
-(f::AbstractFunction)(args...) = get_value(f, args...)
+(f::AbstractDistribution)(args...) = get_value(f, args...)
 
-struct ConstantFunction <: AbstractFunction{1}
+struct ConstantDistribution <: AbstractDistribution{1}
     a::Float64
 end
-get_value(f::ConstantFunction, ::Real) = f.a
+get_value(f::ConstantDistribution, ::Real) = f.a
 
-Base.@kwdef struct EllipticFunction <: AbstractFunction{1}
+Base.@kwdef struct EllipticDistribution <: AbstractDistribution{1}
     a::Float64 = 0.075
 end
-get_value(f::EllipticFunction, ζ::Real) = f.a*√(1 - ζ^2)
+get_value(f::EllipticDistribution, ζ::Real) = f.a*√(1 - ζ^2)
 
 
 abstract type AbstractAirfoil end
@@ -93,8 +93,8 @@ end
 
 Base.@kwdef struct Blade{C, P, A <: AbstractAirfoil}
     ζ_h::Float64 = 0.2 #hub diameter to blade diameter ratio, ζ ∈ [ζ_h, 1]
-    c̃::C = EllipticFunction(0.075) #chord to diameter ratio c_d(ζ)
-    p̃::P = ConstantFunction(0.8)#chord-line-pitch to diameter ratio k_c(ζ)
+    c̃::C = EllipticDistribution(0.075) #chord to diameter ratio c_d(ζ)
+    p̃::P = ConstantDistribution(0.8)#chord-line-pitch to diameter ratio k_c(ζ)
     airfoil::A = DefaultAirfoil()
 end
 

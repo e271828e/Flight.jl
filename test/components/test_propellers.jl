@@ -55,7 +55,7 @@ function test_coefficients()
 
         n = 2
         b = Blade()
-        # b = Blade(c̃ = Propellers.ConstantFunction(0.0573))
+        # b = Blade(c̃ = Propellers.ConstantDistribution(0.0573))
 
         coeffs_static = Coefficients(b, n; J=0, M_tip=0, Δβ = 0.0)
         coeffs_moving = Coefficients(b, n; J=0.5, M_tip=0, Δβ = 0.0)
