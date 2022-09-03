@@ -2,8 +2,8 @@ module Sim
 
 using UnPack
 using StructArrays
-using SciMLBase: ODEProblem, u_modified!, init as init_integrator
-using OrdinaryDiffEq: OrdinaryDiffEqAlgorithm, ODEIntegrator, RK4
+using SciMLBase: SciMLBase, ODEProblem, u_modified!, init as init_integrator
+using OrdinaryDiffEq: OrdinaryDiffEq, OrdinaryDiffEqAlgorithm, ODEIntegrator, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback, CallbackSet, SavedValues
 
 using CImGui
@@ -62,7 +62,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         args_ode::Tuple = (), #externally supplied arguments to System's f_ode!
         args_step::Tuple = (), #externally supplied arguments to System's f_step!
         args_disc::Tuple = (), #externally supplied arguments to System's f_disc!
-        sys_init!::Function = no_sys_init!, #System initialization function
+        sys_reinit!::Function = no_sys_reinit!, #System initialization function
         sys_io!::Function = no_sys_io!, #System I/O function
         gui::Renderer = Renderer(wsize = (1280, 720), label = "Simulation"),
         started::Base.Event = Base.Event(), #to be shared with input interfaces
@@ -70,19 +70,22 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
         dt::Real = 0.02, #continuous dynamics integration step
-        Δt::Real = 100.0, #discrete dynamics execution period (do not set to Inf!)
+        Δt::Real = 1.0, #discrete dynamics execution period (do not set to Inf!)
         t_start::Real = 0.0,
         t_end::Real = 10.0,
         save_on::Bool = true,
         saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
-        save_everystep::Bool = isempty(saveat),
-        sys_init_kwargs = NamedTuple())
+        save_everystep::Bool = isempty(saveat),)
 
-        @assert !(sys.x === nothing) "Purely discrete Systems aren't currently supported"
+        @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
+                                        than the discrete dynamics update period"
 
-        sys_init!(sys; sys_init_kwargs...)
+        if isdiscrete(sys) && !adaptive && !(dt == Δt)
+            @warn ("System is discrete. Set `dt = Δt` or `adaptive = true` to "*
+                    "save unnecessary integration steps")
+        end
 
-        params = (sys = sys, sys_init! = sys_init!, sys_io! = sys_io!, Δt = Δt,
+        params = (sys = sys, sys_reinit! = sys_reinit!, sys_io! = sys_io!, Δt = Δt,
                   args_ode = args_ode, args_step = args_step, args_disc = args_disc)
 
         cb_sys = DiscreteCallback((u, t, integrator)->true, f_cb_sys!)
@@ -90,9 +93,12 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         cb_disc = PeriodicCallback(f_cb_disc!, Δt)
         cb_io = DiscreteCallback((u, t, integrator)->true, f_cb_io!)
 
-        #call System update functions that might modify y to ensure the first
-        #log entry is correct
+        #call System update functions that might compute y once to ensure the
+        #first log entry is correct
         f_ode!(sys, args_ode...)
+        f_step!(sys, args_step...)
+        f_disc!(sys, Δt, args_disc...)
+
         log = SavedValues(Float64, typeof(sys.y))
         saveat_arr = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
         cb_save = SavingCallback(f_cb_save, log; saveat = saveat_arr, save_everystep)
@@ -106,13 +112,18 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #the current System's x value is used as initial condition. a copy is
         #needed, otherwise it's just a reference and will get overwritten during
         #simulation
-        x0 = copy(sys.x)
+        x0 = (!isdiscrete(sys) ? copy(sys.x) : [0.0])
         problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
-        integrator = init_integrator(
-            problem, algorithm; callback = cb_set, save_on = false, adaptive, dt)
-        #save_on is set to false because we are not usually interested in the
-        #naked System's state vector. everything we need should be made
-        #available in the System's y, saved by the SavingCallback
+        integrator = init_integrator(problem, algorithm;
+                                    callback = cb_set, save_on = false,
+                                    adaptive, dt)
+                                    # adaptive = (!isdiscrete(sys) && adaptive),
+                                    # dt = (!isdiscrete(sys) ? dt : Δt))
+
+        #save_on = false because we are not interested in logging the plain
+        #System's state vector; everything we need to know about the System
+        #should be made available in its (immutable) output y, logged via
+        #SavingCallback
 
         channels = Channel{Output{typeof(sys.y)}}[]
 
@@ -143,18 +154,23 @@ algorithm_type(sim::Simulation) = sim.integrator.alg |> typeof
 
 ############################ Stepping functions ################################
 
+@inline isdiscrete(sys::System) = isnothing(sys.x)
+
 #wrapper around the System's continuous dynamics function f_ode! it modifies the
 #System's ẋ and y as a side effect
 function f_ode_wrapper!(u̇, u, p, t)
 
     @unpack sys, args_ode = p
 
-    sys.x .= u #assign current integrator solution to System continuous state
-    sys.t[] = t #likewise for time
+    #assign current integrator solution to System's continuous state
+    !isdiscrete(sys) && (sys.x .= u)
+
+    #same with time
+    sys.t[] = t
 
     f_ode!(sys, args_ode...) #call continuous dynamics, updates sys.ẋ and sys.y
 
-    u̇ .= sys.ẋ #update the integrator's derivative
+    !isdiscrete(sys) && (u̇ .= sys.ẋ) #update the integrator's derivative
 
 end
 
@@ -165,8 +181,11 @@ function f_cb_sys!(integrator)
     @unpack t, u, p = integrator
     @unpack sys, args_ode = p
 
-    sys.x .= u #assign the updated integrator's state to the System's continuous state
-    sys.t[] = t #ditto for time
+    #assign final integrator solution for this epoch to System's continuous state
+    !isdiscrete(sys) && (sys.x .= u)
+
+    #same with time
+    sys.t[] = t
 
     #at this point sys.y and sys.ẋ hold the values from the last algorithm
     #evaluation of f_ode!, not the one corresponding to the updated x. with x
@@ -183,14 +202,16 @@ end
 function f_cb_step!(integrator)
 
     @unpack u, p = integrator
-    @unpack sys, args_step, args_ode = p
+    @unpack sys, args_step = p
 
-    x_modified = f_step!(sys, args_step...)
+    x_mod = f_step!(sys, args_step...)
 
-    #assign the (potentially modified) sys.x back to the integrator
-    x_modified && (u .= sys.x)
+    u_modified!(integrator, x_mod)
 
-    u_modified!(integrator, x_modified)
+    #assign the modified sys.x back to the integrator
+    !isdiscrete(sys) && x_mod && (u .= sys.x)
+
+    return nothing
 
 end
 
@@ -200,14 +221,14 @@ end
 function f_cb_disc!(integrator)
 
     @unpack u, p = integrator
-    @unpack sys, Δt, args_disc, args_ode = p
+    @unpack sys, Δt, args_disc = p
 
-    x_modified = f_disc!(sys, Δt, args_disc...)
+    x_mod = f_disc!(sys, Δt, args_disc...)
 
-    #assign the (potentially modified) sys.x back to the integrator
-    x_modified && (u .= sys.x)
+    u_modified!(integrator, x_mod)
 
-    u_modified!(integrator, x_modified)
+    #assign the modified sys.x back to the integrator
+    !isdiscrete(sys) && x_mod && (u .= sys.x)
 
 end
 
@@ -235,7 +256,7 @@ f_cb_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
 #s: System's discrete state, which the function may modify
 #t: (dereferenced) System's t field
 #params: (immutable) System's params field
-no_sys_init!(sys::System; kwargs...) = nothing
+no_sys_reinit!(sys::System; kwargs...) = nothing
 
 #function signature a System I/O function must adhere to.
 #u: (mutable) System's control input, which the function may modify
@@ -253,18 +274,18 @@ get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
 
 add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 
-function reinit!(sim::Simulation; sys_init_kwargs...)
+function reinit!(sim::Simulation; sys_reinit_kwargs...)
 
     @unpack integrator, log = sim
     @unpack p = integrator
 
-    if p.sys_init! === no_sys_init!
-        println("Warning: Simulation has no sys_init! method; the System's ",
+    if p.sys_reinit! === no_sys_reinit!
+        println("Warning: Simulation has no sys_reinit! method; the System's ",
         "states and inputs will remain at their latest values")
     end
 
     #initialize the System's x, u and s
-    p.sys_init!(p.sys; sys_init_kwargs...)
+    p.sys_reinit!(p.sys; sys_reinit_kwargs...)
 
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
     #reinit! calls f_ode_wrapper!, so the System's ẋ and y are updated in the
