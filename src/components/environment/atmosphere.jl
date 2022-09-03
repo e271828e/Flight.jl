@@ -10,16 +10,12 @@ using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
 
-import Flight.Systems: init, f_ode!, f_step!
-
 export AbstractISAModel, TunableISA
 export AbstractWindModel, TunableWind
 export AbstractAtmosphere, SimpleAtmosphere, AtmosphericData
 
 export AirflowData
 export get_velocity_vector, get_airflow_angles, get_wind_axes, get_stability_axes
-
-import Flight.Plotting: make_plots
 
 ### see ISO 2553
 
@@ -150,7 +146,7 @@ Base.@kwdef mutable struct UTunableISA #only allocates upon System instantiation
     p_sl::Float64 = p_std
 end
 
-init(::SystemU, ::TunableISA) = UTunableISA()
+Systems.init(::SystemU, ::TunableISA) = UTunableISA()
 
 function SeaLevelConditions(s::System{<:TunableISA}, ::Abstract2DLocation)
     SeaLevelConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
@@ -179,7 +175,7 @@ Base.@kwdef mutable struct USimpleWind
     v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
 end
 
-init(::SystemU, ::TunableWind) = USimpleWind()
+Systems.init(::SystemU, ::TunableWind) = USimpleWind()
 
 function WindData(wind::System{<:TunableWind}, ::Abstract3DPosition)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData
@@ -290,7 +286,7 @@ end
 
 ################################## Plotting ####################################
 
-function make_plots(th::TimeHistory{<:AirflowData}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:AirflowData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 

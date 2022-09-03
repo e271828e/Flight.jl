@@ -4,13 +4,9 @@ using StaticArrays
 
 using Flight.Systems
 using Flight.Geodesy
-import Flight.Systems: init, f_ode!, f_step!
-import Flight.Geodesy: Altitude
 
 export AbstractTerrain, DummyTerrain, HorizontalTerrain
-
 export TerrainData, SurfaceType
-
 export SurfaceType, DryTarmac, WetTarmac, IcyTarmac
 
 @enum SurfaceType DryTarmac WetTarmac IcyTarmac
@@ -29,8 +25,9 @@ function TerrainData(; location = NVector(),
     TerrainData(location, altitude, SVector{3,Float64}(normal), surface)
 end
 
-Altitude{D}(data::TerrainData) where {D} = Altitude{D}(data.altitude, data.location)
-
+function Geodesy.Altitude{D}(data::TerrainData) where {D}
+    Altitude{D}(data.altitude, data.location)
+end
 
 ######################## AbstractTerrain ##########################
 

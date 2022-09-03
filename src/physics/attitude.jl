@@ -32,8 +32,6 @@ using LinearAlgebra
 using Flight.Plotting
 using Flight.Quaternions
 
-import Flight.Plotting: make_plots
-
 export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz
 
 const half_π = π/2

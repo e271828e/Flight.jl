@@ -10,12 +10,8 @@ using Flight.Geodesy
 using Flight.Terrain
 using Flight.Kinematics
 using Flight.RigidBody
-using Flight.Essentials: PICompensator, PICompensatorY
+using Flight.Generic: PICompensator, PICompensatorY
 using Flight.Utils: Ranged
-
-import Flight.Systems: init, f_ode!, f_step!
-import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b
-import Flight.Plotting: make_plots
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 
@@ -45,10 +41,10 @@ Base.@kwdef struct DirectSteeringY
     ψ::Float64 = 0.0
 end
 #the contents of u must be mutable
-init(::SystemU, ::DirectSteering) = Ref(Ranged(0.0, -1, 1))
-init(::SystemY, ::DirectSteering) = DirectSteeringY(0.0) #steering angle
+Systems.init(::SystemU, ::DirectSteering) = Ref(Ranged(0.0, -1, 1))
+Systems.init(::SystemY, ::DirectSteering) = DirectSteeringY(0.0) #steering angle
 
-function f_ode!(sys::System{DirectSteering})
+function Systems.f_ode!(sys::System{DirectSteering})
     sys.y = DirectSteeringY(Float64(sys.u[]) * sys.params.ψ_max)
 end
 
@@ -78,10 +74,10 @@ Base.@kwdef struct DirectBrakingY
    κ_br::Float64 = 0.0 #braking coefficient
 end
 
-init(::SystemU, ::DirectBraking) = Ref(Ranged(0.0, 0, 1))
-init(::SystemY, ::DirectBraking) = DirectBrakingY()
+Systems.init(::SystemU, ::DirectBraking) = Ref(Ranged(0.0, 0, 1))
+Systems.init(::SystemY, ::DirectBraking) = DirectBrakingY()
 
-function f_ode!(sys::System{DirectBraking})
+function Systems.f_ode!(sys::System{DirectBraking})
     sys.y = DirectBrakingY(Float64(sys.u[]) * sys.params.η_br)
 end
 
@@ -134,9 +130,9 @@ Base.@kwdef struct StrutY #defaults should be consistent with wow = 0
     trn::TerrainData = TerrainData()
 end
 
-init(::SystemY, ::Strut) = StrutY()
+Systems.init(::SystemY, ::Strut) = StrutY()
 
-function f_ode!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
+function Systems.f_ode!(sys::System{<:Strut}, steering::System{<:AbstractSteering},
     terrain::System{<:AbstractTerrain}, kin::KinematicData)
 
     @unpack t_bs, l_0, damper = sys.params
@@ -287,9 +283,9 @@ Base.@kwdef struct ContactY
 end
 
 #x should be initialized by the default methods
-init(::SystemY, ::Contact) = ContactY()
+Systems.init(::SystemY, ::Contact) = ContactY()
 
-function f_ode!(sys::System{Contact}, strut::System{<:Strut},
+function Systems.f_ode!(sys::System{Contact}, strut::System{<:Strut},
                 braking::System{<:AbstractBraking})
 
     @unpack wow, t_sc, t_bc, F, v_eOc_c, trn = strut.y
@@ -375,13 +371,13 @@ end
 
 #if we avoid the generic fallback for SystemGroup, we don't need to define
 #traits for Steering, Braking, Contact or Strut
-MassTrait(::System{<:LandingGearUnit}) = HasNoMass()
-WrenchTrait(::System{<:LandingGearUnit}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:LandingGearUnit}) = HasNoAngularMomentum()
+RigidBody.MassTrait(::System{<:LandingGearUnit}) = HasNoMass()
+RigidBody.AngMomTrait(::System{<:LandingGearUnit}) = HasNoAngularMomentum()
+RigidBody.WrenchTrait(::System{<:LandingGearUnit}) = GetsExternalWrench()
 
-get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
+RigidBody.get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
 
-function f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinematicData,
+function Systems.f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinematicData,
                 terrain::System{<:AbstractTerrain})
 
     @unpack strut, contact, steering, braking = sys
@@ -391,11 +387,11 @@ function f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinematicData,
     f_ode!(strut, steering, terrain, kinematics)
     f_ode!(contact, strut, braking)
 
-    Systems.update_y!(sys)
+    update_y!(sys)
 
 end
 
-function f_step!(sys::System{<:LandingGearUnit})
+function Systems.f_step!(sys::System{<:LandingGearUnit})
 
     x_mod = false
 
@@ -412,7 +408,7 @@ end
 ################################################################################
 ############################ Plotting ##########################################
 
-function make_plots(th::TimeHistory{<:StrutY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:StrutY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -437,7 +433,7 @@ function make_plots(th::TimeHistory{<:StrutY}; kwargs...)
 
 end
 
-function make_plots(th::TimeHistory{<:ContactY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:ContactY}; kwargs...)
 
     pd = OrderedDict{Symbol, Any}()
 

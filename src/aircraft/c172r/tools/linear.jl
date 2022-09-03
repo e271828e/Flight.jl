@@ -2,7 +2,6 @@ module Linear
 
 using ComponentArrays
 using UnPack
-using ControlSystems
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
 using Flight.Systems
@@ -10,7 +9,7 @@ using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
 using Flight.Environment
-using Flight.Essentials
+using Flight.Generic
 using ..C172R
 using ..Trim
 
@@ -74,7 +73,7 @@ function assign!(y::Y, ac::System{<:Cessna172R})
 
 end
 
-function Essentials.StateSpace( ac::System{<:Cessna172R{NED}};
+function Generic.StateSpaceModel( ac::System{<:Cessna172R{NED}};
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
     trim_params::Trim.Parameters = Trim.Parameters(),
     trim_state::Trim.State = Trim.State())
@@ -174,7 +173,7 @@ function Essentials.StateSpace( ac::System{<:Cessna172R{NED}};
     C = ComponentMatrix(C_full[:, x_indices], getaxes(y0)[1], x_axis)
     D = D_full
 
-    return Essentials.StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+    return Generic.StateSpaceModel(ẋ0, x0, u0, y0, A, B, C, D)
 
 end
 

@@ -8,11 +8,7 @@ using Flight.Kinematics, Flight.RigidBody, Flight.Atmosphere
 using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
 using Flight.Geodesy: HGeop
 using Flight.Propellers: AbstractPropeller, Propeller
-using Flight.Essentials: PICompensator, PICompensatorU, PICompensatorY
-
-import Flight.Systems: init, f_ode!, f_step!
-import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
-import Flight.RigidBody: get_mp_b
+using Flight.Generic: PICompensator, PICompensatorU, PICompensatorY
 
 
 ################################################################################
@@ -20,9 +16,9 @@ import Flight.RigidBody: get_mp_b
 
 abstract type AbstractFuelSupply <: Component end
 
-MassTrait(::System{<:AbstractFuelSupply}) = HasMass()
-WrenchTrait(::System{<:AbstractFuelSupply}) = GetsNoExternalWrench()
-AngularMomentumTrait(::System{<:AbstractFuelSupply}) = HasNoAngularMomentum()
+RigidBody.MassTrait(::System{<:AbstractFuelSupply}) = HasMass()
+RigidBody.AngMomTrait(::System{<:AbstractFuelSupply}) = HasNoAngularMomentum()
+RigidBody.WrenchTrait(::System{<:AbstractFuelSupply}) = GetsNoExternalWrench()
 
 #to be extended by concrete subtypes
 fuel_available(f::System{<:AbstractFuelSupply}) = throw(
@@ -31,11 +27,10 @@ fuel_available(f::System{<:AbstractFuelSupply}) = throw(
 #a massless, infinite fuel supply, for testing purposes
 struct MagicFuelSupply <: AbstractFuelSupply end
 
-init(::SystemU, ::MagicFuelSupply) = Ref(true)
+Systems.init(::SystemU, ::MagicFuelSupply) = Ref(true)
+Systems.f_ode!(::System{MagicFuelSupply}) = nothing
 
-f_ode!(::System{MagicFuelSupply}) = nothing
-
-get_mp_b(::System{MagicFuelSupply}) = MassProperties()
+RigidBody.get_mp_b(::System{MagicFuelSupply}) = MassProperties()
 fuel_available(f::System{MagicFuelSupply}) = f.u[]
 
 
@@ -63,11 +58,11 @@ end
 
 #by default, engine mass is assumed to be accounted for in the vehicle's
 #structure
-MassTrait(::System{<:AbstractPistonEngine}) = HasNoMass()
-#the propeller gets it instead
-WrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
+RigidBody.MassTrait(::System{<:AbstractPistonEngine}) = HasNoMass()
 #assumed to be negligible by default
-AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
+RigidBody.AngMomTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
+#no direct external wrench on the engine
+RigidBody.WrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
 
 
 ################################################################################
@@ -146,13 +141,14 @@ Base.@kwdef struct PistonEngineY
     frc::PICompensatorY{1} = PICompensatorY{1}()
 end
 
-init(::SystemX, eng::Engine) = ComponentVector(
+Systems.init(::SystemX, eng::Engine) = ComponentVector(
     ω = 0.0, idle = init_x(eng.idle), frc = init_x(eng.frc))
-init(::SystemU, ::Engine) = PistonEngineU()
-init(::SystemY, ::Engine) = PistonEngineY()
-init(::SystemS, ::Engine) = PistonEngineS()
+Systems.init(::SystemU, ::Engine) = PistonEngineU()
+Systems.init(::SystemY, ::Engine) = PistonEngineY()
+Systems.init(::SystemS, ::Engine) = PistonEngineS()
 
-function f_ode!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::Real)
+function Systems.f_ode!(eng::System{<:Engine}, air::AirflowData;
+                        M_load::Real, J_load::Real)
 
     @unpack ω_rated, ω_idle, P_rated, J, M_start, lookup = eng.params
     @unpack frc, idle = eng.subsystems
@@ -240,7 +236,7 @@ function f_ode!(eng::System{<:Engine}, air::AirflowData; M_load::Real, J_load::R
 
 end
 
-function f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
+function Systems.f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
 
     @unpack idle, frc = eng.subsystems
     @unpack ω_stall, ω_idle = eng.params
@@ -441,7 +437,7 @@ Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
 end
 
 
-function f_ode!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
+function Systems.f_ode!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
 
     @unpack engine, propeller = thr
     @unpack gear_ratio = thr.params
@@ -459,11 +455,11 @@ function f_ode!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
 
     f_ode!(engine, air; M_load = M_eq, J_load = J_eq)
 
-    Systems.update_y!(thr)
+    update_y!(thr)
 
 end
 
-function f_step!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
+function Systems.f_step!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
 
     @unpack engine, propeller = thr
 
@@ -474,11 +470,11 @@ function f_step!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
 
 end
 
-MassTrait(::System{<:Thruster}) = HasNoMass()
-WrenchTrait(::System{<:Thruster}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:Thruster}) = HasAngularMomentum()
+RigidBody.MassTrait(::System{<:Thruster}) = HasNoMass()
+RigidBody.AngMomTrait(::System{<:Thruster}) = HasAngularMomentum()
+RigidBody.WrenchTrait(::System{<:Thruster}) = GetsExternalWrench()
 
-get_wr_b(thr::System{<:Thruster}) = get_wr_b(thr.propeller) #only external
-get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
+RigidBody.get_wr_b(thr::System{<:Thruster}) = get_wr_b(thr.propeller) #only external
+RigidBody.get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
 
 end #module

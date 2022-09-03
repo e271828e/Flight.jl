@@ -4,18 +4,12 @@ using LinearAlgebra, StaticArrays, StructArrays, Interpolations, UnPack
 using Roots: find_zero
 using Trapz: trapz
 
-import Interpolations: knots, bounds
-
 using Flight.Systems
 using Flight.Plotting
 using Flight.Kinematics
 using Flight.RigidBody
 using Flight.Atmosphere
 using Flight.Utils: Ranged, linear_scaling
-
-import Flight.Systems: init, f_ode!, f_step!
-import Flight.Plotting: make_plots
-import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_hr_b, get_wr_b
 
 export FixedPitch, VariablePitch, Propeller
 
@@ -295,9 +289,9 @@ end
 
 abstract type AbstractPropeller <: Component end
 
-MassTrait(::System{<:AbstractPropeller}) = HasNoMass()
-WrenchTrait(::System{<:AbstractPropeller}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:AbstractPropeller}) = HasAngularMomentum()
+RigidBody.MassTrait(::System{<:AbstractPropeller}) = HasNoMass()
+RigidBody.AngMomTrait(::System{<:AbstractPropeller}) = HasAngularMomentum()
+RigidBody.WrenchTrait(::System{<:AbstractPropeller}) = GetsExternalWrench()
 
 struct Propeller{P <: PitchControl, B <: Blade,  L <: Lookup} <: AbstractPropeller
     pitch::P
@@ -334,14 +328,14 @@ Base.@kwdef struct PropellerY
     η_p::Float64 = 0.0 #propulsive efficiency
 end
 
-init(::SystemU, ::Propeller{FixedPitch}) = nothing
-init(::SystemU, ::Propeller{VariablePitch}) = Ref(Ranged(0.0, 0, 1))
-init(::SystemY, ::Propeller) = PropellerY()
+Systems.init(::SystemU, ::Propeller{FixedPitch}) = nothing
+Systems.init(::SystemU, ::Propeller{VariablePitch}) = Ref(Ranged(0.0, 0, 1))
+Systems.init(::SystemY, ::Propeller) = PropellerY()
 
 get_Δβ(sys::System{<:Propeller{FixedPitch}}) = 0.0
 get_Δβ(sys::System{<:Propeller{VariablePitch}}) = linear_scaling(sys.u[], sys.params.pitch.bounds)
 
-function f_ode!(sys::System{<:Propeller}, kin::KinematicData, air::AirflowData, ω::Real)
+function Systems.f_ode!(sys::System{<:Propeller}, kin::KinematicData, air::AirflowData, ω::Real)
 
     @unpack d, J_xx, t_bp, sense, lookup = sys.params
     #remove this, it may happen due to friction overshoot at low RPMs
@@ -390,8 +384,8 @@ function f_ode!(sys::System{<:Propeller}, kin::KinematicData, air::AirflowData, 
 
 end
 
-get_wr_b(sys::System{<:Propeller}) = sys.y.wr_b
-get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
+RigidBody.get_wr_b(sys::System{<:Propeller}) = sys.y.wr_b
+RigidBody.get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 
 
 ################################################################################

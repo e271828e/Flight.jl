@@ -1,24 +1,23 @@
 module Sim
 
 using UnPack
+using Reexport
 using StructArrays
-using SciMLBase: SciMLBase, ODEProblem, u_modified!, init as init_integrator
-using OrdinaryDiffEq: OrdinaryDiffEq, OrdinaryDiffEqAlgorithm, ODEIntegrator, RK4
-using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback, CallbackSet, SavedValues
-
 using CImGui
 using Printf
+using OrdinaryDiffEq: OrdinaryDiffEq, OrdinaryDiffEqAlgorithm, ODEProblem,
+                      ODEIntegrator, RK4, u_modified!, init as init_integrator
+
+using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback,
+                       CallbackSet, SavedValues
 
 using ..Systems
 using ..IODevices
 using ..GUI
 
-import SciMLBase: step!, reinit!, solve!, get_proposed_dt
-import OrdinaryDiffEq: add_tstop!
-
+@reexport using OrdinaryDiffEq: step!, reinit!, add_tstop!
 export Simulation, enable_gui!, disable_gui!, attach_io!
 export TimeHistory, get_components, get_child_names
-export step!, reinit!, solve!, get_proposed_dt, add_tstop!
 
 
 ################################################################################
@@ -266,15 +265,15 @@ no_sys_reinit!(sys::System; kwargs...) = nothing
 no_sys_io!(u, y, t::Float64, params) = nothing
 
 
-################# SciMLBase & OrdinaryDiffEq extensions ########################
+####################### OrdinaryDiffEq extensions ##############################
 
-step!(sim::Simulation, args...) = step!(sim.integrator, args...)
+OrdinaryDiffEq.step!(sim::Simulation, args...) = step!(sim.integrator, args...)
 
-get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
+OrdinaryDiffEq.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
 
-add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
+OrdinaryDiffEq.add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 
-function reinit!(sim::Simulation; sys_reinit_kwargs...)
+function OrdinaryDiffEq.reinit!(sim::Simulation; sys_reinit_kwargs...)
 
     @unpack integrator, log = sim
     @unpack p = integrator
@@ -290,7 +289,7 @@ function reinit!(sim::Simulation; sys_reinit_kwargs...)
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
     #reinit! calls f_ode_wrapper!, so the System's ẋ and y are updated in the
     #process, no need to do it explicitly
-    reinit!(integrator, p.sys.x)
+    OrdinaryDiffEq.reinit!(integrator, p.sys.x)
 
     resize!(log.t, 1)
     resize!(log.saveval, 1)

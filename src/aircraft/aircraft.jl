@@ -12,10 +12,6 @@ using Flight.Kinematics, Flight.RigidBody
 using Flight.IODevices
 using Flight.XPlane
 
-import Flight.Systems: init, f_ode!, f_step!, f_disc!
-import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_mp_b
-import Flight.Plotting: make_plots
-
 export AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 
 
@@ -23,9 +19,9 @@ export AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 ############################## Airframe #######################################
 
 abstract type AbstractAirframe <: Component end
-MassTrait(::System{<:AbstractAirframe}) = HasMass()
-WrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
+RigidBody.MassTrait(::System{<:AbstractAirframe}) = HasMass()
+RigidBody.AngMomTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
+RigidBody.WrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
 
 ########################## EmptyAirframe ###########################
 
@@ -33,18 +29,18 @@ Base.@kwdef struct EmptyAirframe <: AbstractAirframe
     mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
 end
 
-WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
-AngularMomentumTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
+RigidBody.AngMomTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
+RigidBody.WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
 
-get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
+RigidBody.get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
 
 ####################### AbstractAerodynamics ##########################
 
 abstract type AbstractAerodynamics <: Component end
 
-MassTrait(::System{<:AbstractAerodynamics}) = HasNoMass()
-WrenchTrait(::System{<:AbstractAerodynamics}) = GetsExternalWrench()
-AngularMomentumTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
+RigidBody.MassTrait(::System{<:AbstractAerodynamics}) = HasNoMass()
+RigidBody.AngMomTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
+RigidBody.WrenchTrait(::System{<:AbstractAerodynamics}) = GetsExternalWrench()
 
 
 ###############################################################################
@@ -81,7 +77,7 @@ Base.@kwdef struct AircraftBaseY{K, F, A}
     airflow::AirflowData
 end
 
-init(::SystemY, ac::AircraftBase) = AircraftBaseY(
+Systems.init(::SystemY, ac::AircraftBase) = AircraftBaseY(
     init_y(ac.kinematics), init_y(ac.airframe), init_y(ac.avionics),
     RigidBodyData(), AirflowData())
 
@@ -90,7 +86,7 @@ function init!(ac::System{<:AircraftBase}, ic::KinematicInit)
 end
 
 
-function f_ode!(sys::System{<:AircraftBase}, env::System{<:AbstractEnvironment})
+function Systems.f_ode!(sys::System{<:AircraftBase}, env::System{<:AbstractEnvironment})
 
     @unpack ẋ, x, subsystems = sys
     @unpack kinematics, airframe, avionics = subsystems
@@ -118,7 +114,7 @@ function f_ode!(sys::System{<:AircraftBase}, env::System{<:AbstractEnvironment})
 
 end
 
-function f_step!(sys::System{<:AircraftBase})
+function Systems.f_step!(sys::System{<:AircraftBase})
     @unpack kinematics, airframe, avionics = sys
 
     #could use chained | instead, but this is clearer
@@ -130,7 +126,7 @@ function f_step!(sys::System{<:AircraftBase})
     return x_mod
 end
 
-function f_disc!(sys::System{<:AircraftBase}, Δt)
+function Systems.f_disc!(sys::System{<:AircraftBase}, Δt)
     @unpack kinematics, airframe, avionics = sys
 
     #could use chained | instead, but this is clearer
@@ -169,7 +165,7 @@ end
 
 ############################### Plotting #######################################
 
-function make_plots(th::TimeHistory{<:AircraftBaseY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:AircraftBaseY}; kwargs...)
 
     return OrderedDict(
         :kinematics => make_plots(th.kinematics; kwargs...),

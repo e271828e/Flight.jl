@@ -13,8 +13,6 @@ using Flight.Systems
 using Flight.Plotting
 using Flight.Attitude
 
-import Flight.Plotting: make_plots
-
 export Abstract2DLocation, NVector, LatLon
 export Altitude, Ellipsoidal, Orthometric, Geopotential, HEllip, HOrth, HGeop
 export Abstract3DPosition, Geographic, Cartesian

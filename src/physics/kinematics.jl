@@ -9,9 +9,6 @@ using Flight.Plotting
 using Flight.Attitude
 using Flight.Geodesy
 
-import Flight.Systems: init, f_ode!, f_step!
-import Flight.Plotting: make_plots
-
 export AbstractKinematicDescriptor, ECEF, LTF, NED
 export KinematicInit, KinematicData, KinematicSystem
 
@@ -80,23 +77,25 @@ Base.getproperty(y::KinematicsY, s::Symbol) = getproperty(y, Val(s))
     end
 end
 
-Common(ic::Initializer = Initializer()) = KinematicsY(LTF(), ic).common
-
-function init(::SystemX, kin::AbstractKinematicDescriptor, ic::Initializer = Initializer())
+function Systems.init(::SystemX, kin::AbstractKinematicDescriptor,
+                      ic::Initializer = Initializer())
     x = similar(x_template(kin))
     init!(x, ic)
     return x
 end
 
-function init(::SystemY, kin::AbstractKinematicDescriptor, ic::Initializer = Initializer())
+function Systems.init(::SystemY, kin::AbstractKinematicDescriptor,
+                      ic::Initializer = Initializer())
     return KinematicsY(kin, ic)
 end
 
-function KinematicsY(kin::AbstractKinematicDescriptor, ic::Initializer = Initializer())
-    x = init(SystemX(), kin, ic)
+function KinematicsY(kin::AbstractKinematicDescriptor,
+                     ic::Initializer = Initializer())
+    x = Systems.init(SystemX(), kin, ic)
     return KinematicsY(x)
 end
 
+Common(ic::Initializer = Initializer()) = KinematicsY(LTF(), ic).common
 init!(sys::KinematicSystem, ic::Initializer = Initializer()) = init!(sys.x, ic)
 
 #for dispatching
@@ -228,7 +227,7 @@ function KinematicsY(x::XLTF)
 end
 
 #only updates xpos_dot, f_rigidbody! performs the xvel_dot update
-function f_ode!(sys::System{LTF})
+function Systems.f_ode!(sys::System{LTF})
 
     #compute and update y
     sys.y = KinematicsY(sys.x)
@@ -245,7 +244,7 @@ function f_ode!(sys::System{LTF})
 
 end
 
-function f_step!(sys::System{LTF}, ε = 1e-8)
+function Systems.f_step!(sys::System{LTF}, ε = 1e-8)
     #we need both calls executed, so | must be used here instead of ||
     x_pos = sys.x.pos
     renormalize_block!(x_pos.q_lb, ε) | renormalize_block!(x_pos.q_el, ε)
@@ -331,7 +330,7 @@ function KinematicsY(x::XECEF)
 end
 
 #only updates xpos_dot, xvel_dot update can only be performed by f_rigidbody!
-function f_ode!(sys::System{ECEF})
+function Systems.f_ode!(sys::System{ECEF})
 
     #compute and update y
     sys.y = KinematicsY(sys.x)
@@ -348,7 +347,7 @@ function f_ode!(sys::System{ECEF})
 
 end
 
-function f_step!(sys::System{ECEF}, ε = 1e-8)
+function Systems.f_step!(sys::System{ECEF}, ε = 1e-8)
     x_pos = sys.x.pos
     #we need both calls executed, so | must be used here instead of ||
     renormalize_block!(x_pos.q_eb, ε) | renormalize_block!(x_pos.n_e, ε)
@@ -446,7 +445,7 @@ function KinematicsY(x::XNED)
 end
 
 #only updates xpos_dot, xvel_dot update can only be performed by f_rigidbody!
-function f_ode!(sys::System{NED})
+function Systems.f_ode!(sys::System{NED})
 
     #compute and update y
     sys.y = KinematicsY(sys.x)
@@ -471,7 +470,7 @@ function f_ode!(sys::System{NED})
 end
 
 #no need for normalization in this case
-f_step!(sys::System{NED}, args...) = false
+Systems.f_step!(sys::System{NED}, args...) = false
 
 
 ################################# Plotting #####################################
@@ -555,37 +554,11 @@ f_step!(sys::System{NED}, args...) = false
 
     end
 
-
-    # @series begin
-    #     # linecolor --> :lightgray
-    #     # linestyle --> :dash
-    #     [x_path[1], x_path[1]], [path.y[1], y_bounds[1]], [z_path[1], z_path[1]]
-    # end
-
-
-    #start and end points, and their projections
-
-    # start_coords = projected_coords(1)
-    # end_coords = projected_coords(n)
-
-    # markersize --> 8
-    #     @series begin #start point and its projections
-    #     seriestype := :scatter3d
-    #     markercolor := :green
-    #     start_coords.x, start_coords.y, start_coords.z
-    # end
-
-    # @series begin
-    #     seriestype := :scatter3d
-    #     markercolor := :red
-    #     end_coords.x, end_coords.y, end_coords.z
-    # end
-
     return nothing
 
 end
 
-function make_plots(th::TimeHistory{<:KinematicsY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:KinematicsY}; kwargs...)
 
     return OrderedDict(
         :common => make_plots(th.common; kwargs...),
@@ -593,7 +566,7 @@ function make_plots(th::TimeHistory{<:KinematicsY}; kwargs...)
 
 end
 
-function make_plots(th::TimeHistory{<:Common}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:Common}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 

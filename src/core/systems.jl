@@ -1,9 +1,8 @@
 module Systems
 
 using ComponentArrays
-
-import AbstractTrees: children, printnode, print_tree
-import DataStructures: OrderedDict
+using DataStructures
+using AbstractTrees
 
 export Component, System
 export SystemẊ, SystemX, SystemY, SystemU, SystemS
@@ -16,7 +15,7 @@ export f_ode!, f_step!, f_disc!, update_y!
 
 abstract type Component end
 
-function OrderedDict(g::Component)
+function DataStructures.OrderedDict(g::Component)
     fields = propertynames(g)
     values = map(λ -> getproperty(g, λ), fields)
     OrderedDict(k => v for (k, v) in zip(fields, values))
@@ -87,7 +86,7 @@ end
 
 #fallback method for state vector derivative initialization
 function init(::SystemẊ, cmp::Component)
-    x = init(SystemX(), cmp) #this is a namedtuple
+    x = init(SystemX(), cmp)
     !isnothing(x) ? x |> zero : nothing
 end
 
@@ -271,20 +270,20 @@ end
 
 SystemTreeNode(::Type{C}) where {C<:Component} = SystemTreeNode(type = C)
 
-function children(node::SystemTreeNode)
+function AbstractTrees.children(node::SystemTreeNode)
     return [SystemTreeNode(name, type) for (name, type) in zip(
             fieldnames(node.type), fieldtypes(node.type))
             if type <: Component]
 end
 
-function printnode(io::IO, node::SystemTreeNode)
+function AbstractTrees.printnode(io::IO, node::SystemTreeNode)
     print(io, ":"*string(node.label)*" ($(node.type))")
 end
 
-print_tree(cmp::Type{C}; kwargs...) where {C<:Component} =
+AbstractTrees.print_tree(cmp::Type{C}; kwargs...) where {C<:Component} =
     print_tree(SystemTreeNode(cmp); kwargs...)
 
-print_tree(::C; kwargs...) where {C<:Component} = print_tree(C; kwargs...)
-print_tree(::System{C}; kwargs...) where {C} = print_tree(C; kwargs...)
+AbstractTrees.print_tree(::C; kwargs...) where {C<:Component} = print_tree(C; kwargs...)
+AbstractTrees.print_tree(::System{C}; kwargs...) where {C} = print_tree(C; kwargs...)
 
 end #module

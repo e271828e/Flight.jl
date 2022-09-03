@@ -10,8 +10,6 @@ using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
 
-import Flight.Plotting: make_plots
-
 export FrameTransform, transform
 export Wrench
 export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
@@ -349,6 +347,47 @@ get_mp_b(::HasNoMass, sys::System) = MassProperties()
     return ex
 
 end
+
+###################### AngMomTrait ##########################
+
+#accounts only for additional angular momentum due to rotating components
+abstract type AngMomTrait end
+struct HasAngularMomentum <: AngMomTrait end
+struct HasNoAngularMomentum <: AngMomTrait end
+
+#prevents the trait system from failing silently when wrongly extended
+AngMomTrait(::S) where {S<:System} = error(
+    "Please extend RigidBody.AngMomTrait for $S")
+
+get_hr_b(sys::System) = get_hr_b(AngMomTrait(sys), sys)
+
+get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
+
+#default implementation for a System with the HasAngularMomentum trait, tries to
+#sum the angular momentum from its individual components. override as required
+@inline @generated function (get_hr_b(::HasAngularMomentum, sys::System{T, X, Y, U, D, P, S})
+    where {T<:Component, X, Y, U, D, P, S})
+
+    # Core.print("Generated function called")
+    ex = Expr(:block)
+
+    if isempty(fieldnames(S))
+        push!(ex.args,
+            :(error("System{$(T)} has the HasAngularMomentum trait and no subsystems, "*
+                "but it does not extend the get_hr_b method")))
+    else
+        push!(ex.args, :(h = SVector(0., 0., 0.))) #initialize
+        for label in fieldnames(S)
+            push!(ex.args,
+                :(h += get_hr_b(sys.subsystems[$(QuoteNode(label))])))
+        end
+    end
+
+    return ex
+
+end
+
+
 ###################### WrenchTrait ##########################
 
 abstract type WrenchTrait end
@@ -381,45 +420,6 @@ get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
         for label in fieldnames(S)
             push!(ex.args,
                 :(wr += get_wr_b(sys.subsystems[$(QuoteNode(label))])))
-        end
-    end
-
-    return ex
-
-end
-
-###################### AngularMomentumTrait ##########################
-
-#accounts only for additional angular momentum due to rotating components
-abstract type AngularMomentumTrait end
-struct HasAngularMomentum <: AngularMomentumTrait end
-struct HasNoAngularMomentum <: AngularMomentumTrait end
-
-#prevents the trait system from failing silently when wrongly extended
-AngularMomentumTrait(::S) where {S<:System} = error(
-    "Please extend RigidBody.AngularMomentumTrait for $S")
-
-get_hr_b(sys::System) = get_hr_b(AngularMomentumTrait(sys), sys)
-
-get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
-
-#default implementation for a System with the HasAngularMomentum trait, tries to
-#sum the angular momentum from its individual components. override as required
-@inline @generated function (get_hr_b(::HasAngularMomentum, sys::System{T, X, Y, U, D, P, S})
-    where {T<:Component, X, Y, U, D, P, S})
-
-    # Core.print("Generated function called")
-    ex = Expr(:block)
-
-    if isempty(fieldnames(S))
-        push!(ex.args,
-            :(error("System{$(T)} has the HasAngularMomentum trait and no subsystems, "*
-                "but it does not extend the get_hr_b method")))
-    else
-        push!(ex.args, :(h = SVector(0., 0., 0.))) #initialize
-        for label in fieldnames(S)
-            push!(ex.args,
-                :(h += get_hr_b(sys.subsystems[$(QuoteNode(label))])))
         end
     end
 
@@ -609,7 +609,7 @@ end
 
 end
 
-function make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
 
     #standard gravity for specific force normalization
     g₀ = 9.80665

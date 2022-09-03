@@ -1,4 +1,4 @@
-module TestEssentials
+module TestGeneric
 
 using Test
 using BenchmarkTools
@@ -6,12 +6,11 @@ using UnPack
 using ComponentArrays
 
 using Flight
-using Flight.Essentials: StateSpace
 
-export test_essentials
+export test_generic
 
-function test_essentials()
-    @testset verbose = true "Essentials" begin
+function test_generic()
+    @testset verbose = true "Generic" begin
         test_state_space()
         test_pi_compensator()
     end
@@ -21,14 +20,14 @@ function test_state_space()
 
     function build_ss(x0, u0, y0)
 
-        ẋ0 = similar(x0)
+        ẋ0 = copy(x0)
 
         A = x0 * x0'
         B = x0 * u0'
         C = y0 * x0'
         D = y0 * u0'
 
-        return StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+        return StateSpaceModel(ẋ0, x0, u0, y0, A, B, C, D)
 
     end
 
@@ -53,7 +52,7 @@ function test_state_space()
 
     end
 
-    @testset verbose = true "StateSpace" begin
+    @testset verbose = true "StateSpaceModel" begin
 
         x0 = ComponentVector(V = 1.0, q = 0.5, θ = 0.3, α = 5.0)
         u0 = ComponentVector(e = 0.1, a = 0.2)

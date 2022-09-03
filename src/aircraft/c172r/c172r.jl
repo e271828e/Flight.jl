@@ -23,11 +23,6 @@ using Flight.Piston
 using Flight.Utils: Ranged, linear_scaling
 using Flight.Aircraft: AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 
-import Flight.Systems: init, f_ode!, f_step!, f_disc!
-import Flight.Kinematics: KinematicInit
-import Flight.RigidBody: MassTrait, WrenchTrait, AngularMomentumTrait, get_wr_b, get_mp_b
-import Flight.Piston: fuel_available
-
 include("data/aero.jl")
 
 export Cessna172R
@@ -56,15 +51,15 @@ const mp_b_str = let
     MassProperties(str_G, t_Ob_G)
 end
 
-MassTrait(::System{Structure}) = HasMass()
+RigidBody.MassTrait(::System{Structure}) = HasMass()
 
 #the structure itself receives no external actions. these are considered to act
 #upon the vehicle's aerodynamics, power plant and landing gear. the same goes
 #for rotational angular momentum.
-WrenchTrait(::System{Structure}) = GetsNoExternalWrench()
-AngularMomentumTrait(::System{Structure}) = HasNoAngularMomentum()
+RigidBody.WrenchTrait(::System{Structure}) = GetsNoExternalWrench()
+RigidBody.AngMomTrait(::System{Structure}) = HasNoAngularMomentum()
 
-get_mp_b(::System{Structure}) = mp_b_str
+RigidBody.get_mp_b(::System{Structure}) = mp_b_str
 
 
 ############################ Aerodynamics ######################################
@@ -158,13 +153,13 @@ Base.@kwdef struct AeroY
     wr_b::Wrench = Wrench() #aerodynamic Wrench, vehicle frame
 end
 
-init(::SystemX, ::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
-init(::SystemY, ::Aero) = AeroY()
-init(::SystemU, ::Aero) = AeroU()
-init(::SystemS, ::Aero) = AeroS()
+Systems.init(::SystemX, ::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+Systems.init(::SystemY, ::Aero) = AeroY()
+Systems.init(::SystemU, ::Aero) = AeroU()
+Systems.init(::SystemS, ::Aero) = AeroS()
 
 
-function f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
+function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
     air::AirflowData, kinematics::KinematicData, terrain::System{<:AbstractTerrain})
 
     #for near-zero TAS, the airflow angles are likely to chatter between 0, -π
@@ -231,9 +226,9 @@ function f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
 
 end
 
-get_wr_b(sys::System{Aero}) = sys.y.wr_b
+RigidBody.get_wr_b(sys::System{Aero}) = sys.y.wr_b
 
-function f_step!(sys::System{Aero})
+function Systems.f_step!(sys::System{Aero})
     #stall hysteresis
     α = sys.y.α
     α_stall = sys.params.α_stall
@@ -268,9 +263,9 @@ struct Ldg <: Component
     nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
 end
 
-MassTrait(::System{Ldg}) = HasNoMass()
-WrenchTrait(::System{Ldg}) = GetsExternalWrench()
-AngularMomentumTrait(::System{Ldg}) = HasNoAngularMomentum()
+RigidBody.MassTrait(::System{Ldg}) = HasNoMass()
+RigidBody.WrenchTrait(::System{Ldg}) = GetsExternalWrench()
+RigidBody.AngMomTrait(::System{Ldg}) = HasNoAngularMomentum()
 
 function Ldg()
 
@@ -347,13 +342,13 @@ Base.@kwdef mutable struct PayloadU
     baggage::Bool = true
 end
 
-init(::SystemU, ::Payload) = PayloadU()
+Systems.init(::SystemU, ::Payload) = PayloadU()
 
-MassTrait(::System{Payload}) = HasMass()
-WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
-AngularMomentumTrait(::System{Payload}) = HasNoAngularMomentum()
+RigidBody.MassTrait(::System{Payload}) = HasMass()
+RigidBody.WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
+RigidBody.AngMomTrait(::System{Payload}) = HasNoAngularMomentum()
 
-function get_mp_b(sys::System{Payload})
+function RigidBody.get_mp_b(sys::System{Payload})
     mp_b = MassProperties()
     sys.u.pilot ? mp_b += sys.params.pilot : nothing
     sys.u.copilot ? mp_b += sys.params.copilot : nothing
@@ -378,10 +373,10 @@ Base.@kwdef struct FuelY
 end
 
 #normalized fuel content (0: residual, 1: full)
-init(::SystemX, ::Fuel) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
-init(::SystemY, ::Fuel) = FuelY()
+Systems.init(::SystemX, ::Fuel) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
+Systems.init(::SystemY, ::Fuel) = FuelY()
 
-function f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
+function Systems.f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 
     @unpack m_full, m_empty = sys.params #no need for subsystems
     m = m_empty + sys.x[1] * (m_full - m_empty) #current mass
@@ -390,9 +385,9 @@ function f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 
 end
 
-fuel_available(sys::System{<:Fuel}) = (sys.y.m > 0)
+Piston.fuel_available(sys::System{<:Fuel}) = (sys.y.m > 0)
 
-function get_mp_b(fuel::System{Fuel})
+function RigidBody.get_mp_b(fuel::System{Fuel})
 
     #in case x accidentally becomes negative (fuel is consumed beyond x=0 before
     #the engine dies)
@@ -434,7 +429,7 @@ end
 
 ############################# Update Methods ###################################
 
-function f_ode!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics},
+function Systems.f_ode!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics},
                 kin::KinematicData, air::AirflowData, trn::System{<:AbstractTerrain})
 
     @unpack aero, pwp, ldg, fuel, pld = airframe
@@ -445,11 +440,11 @@ function f_ode!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionic
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
-    Systems.update_y!(airframe)
+    update_y!(airframe)
 
 end
 
-function f_step!(airframe::System{<:Airframe}, ::KinematicSystem)
+function Systems.f_step!(airframe::System{<:Airframe}, ::KinematicSystem)
     @unpack aero, pwp, fuel, ldg, fuel, pld = airframe
 
     x_mod = false
@@ -512,13 +507,13 @@ Base.@kwdef struct ReversibleControlsY
     eng_stop::Bool = false
 end
 
-init(::SystemU, ::ReversibleControls) = ReversibleControlsU()
-init(::SystemY, ::ReversibleControls) = ReversibleControlsY()
+Systems.init(::SystemU, ::ReversibleControls) = ReversibleControlsU()
+Systems.init(::SystemY, ::ReversibleControls) = ReversibleControlsY()
 
 
 ########################### Update Methods #####################################
 
-function f_ode!(avionics::System{ReversibleControls}, ::System{<:Airframe},
+function Systems.f_ode!(avionics::System{ReversibleControls}, ::System{<:Airframe},
                 ::KinematicData, ::AirflowData, ::System{<:AbstractTerrain})
 
     #ReversibleControls has no internal dynamics, just input-output feedthrough
@@ -532,8 +527,8 @@ function f_ode!(avionics::System{ReversibleControls}, ::System{<:Airframe},
 end
 
 #no digital components or state machines in ReversibleControls
-@inline f_step!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem) = false
-@inline f_disc!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
+@inline Systems.f_step!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem) = false
+@inline Systems.f_disc!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
 
 
 function apply_avionics!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
@@ -597,7 +592,7 @@ struct Cessna172RU{F, V}
     avionics::V
 end
 
-init(::SystemU, ac::Cessna172R) = Cessna172RU(init_u(ac.airframe), init_u(ac.avionics))
+Systems.init(::SystemU, ac::Cessna172R) = Cessna172RU(init_u(ac.airframe), init_u(ac.avionics))
 
 
 ################################################################################

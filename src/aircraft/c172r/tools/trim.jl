@@ -15,7 +15,6 @@ using Flight.Piston
 using Flight.Aircraft
 using Flight.Environment
 
-import Flight.Kinematics: KinematicInit
 export XTrimTemplate, XTrim, TrimParameters
 
 using ..C172R
@@ -87,7 +86,8 @@ function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
 
 end
 
-function KinematicInit(state::State, params::Parameters, env::System{<:AbstractEnvironment})
+function Kinematics.Initializer(state::State, params::Parameters,
+                                env::System{<:AbstractEnvironment})
 
     v_wOb_a = Atmosphere.get_velocity_vector(params.TAS, state.α_a, params.β_a)
     v_wOb_b = C172R.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
@@ -107,7 +107,7 @@ function KinematicInit(state::State, params::Parameters, env::System{<:AbstractE
     v_ew_n = AtmosphericData(env.atm, params.Ob).wind.v_ew_n
     v_eOb_n = v_ew_n + v_wOb_n
 
-    KinematicInit(; q_nb, loc, h, ω_lb_b, v_eOb_n, Δx = 0.0, Δy = 0.0)
+    Kinematics.Initializer(; q_nb, loc, h, ω_lb_b, v_eOb_n, Δx = 0.0, Δy = 0.0)
 
 end
 
@@ -116,7 +116,7 @@ end
 function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
     params::Parameters, state::State)
 
-    Aircraft.init!(ac, KinematicInit(state, params, env))
+    Aircraft.init!(ac, Kinematics.Initializer(state, params, env))
 
     ω_eng = state.n_eng * ac.airframe.pwp.engine.params.ω_rated
 
