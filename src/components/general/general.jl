@@ -294,97 +294,49 @@ end
 ################################################################################
 ########################### DiscreteSecondOrder ################################
 
+#when the System's u is fed by a rng, k_u can be used to control the resulting
+#σ of each noise input component
 
-# Base.@kwdef struct DiscreteSecondOrder{N}
-#     σ_v0::X #initial velocity state standard deviation
-#     σ_p0::X #initial position state standard deviation
-#     k_vv::X #velocity-velocity constant
-#     k_vp::X #velocity-position constant
-#     k_pp::X #position-position constant
-#     σ_w::X #white noise standard deviation acting on the velocity
+Base.@kwdef struct DiscreteSecondOrder{N} <: Component
+    k_u::SVector{N,Float64} = ones(SVector{N}) #input gain
+    k_av::SVector{N,Float64} = zeros(SVector{N}) #acceleration-velocity feedback (<0 stabilizes)
+    k_ap::SVector{N,Float64} = zeros(SVector{N}) #acceleration-position feedback (<0 stabilizes)
+end
 
-#     function DiscreteSecondOrder(args...)
-#         lengths = length.(args)
-#         N = lengths[1]
-#         X = typeof(args[1])
-#         @assert all(==(N), lengths)
-#         new{N, X}(args...)
-#     end
-# end
-
-# function Systems.f_disc!(sys::System{<:DiscreteSecondOrder{N}}, Δt::Real, rng::AbstractRNG) where {N}
-#     w = Random.randn(rng, SVector{N, Float64})
-#     f_disc!(sys, Δt, w)
-# end
-
-# function Systems.f_disc!(sys::System{<:DiscreteSecondOrder{N}}, Δt::Real, w::AbstractVector{<:Real}) where {N}
-
-#     @unpack x, params = sys
-#     @unpack k_vv, k_vp, σ_w = params
-
-#     (v, p, w, k_vv, k_vp, σ_w) = map(SVector{N,Float64}, (x.v, x.p, w, k_vv, k_vp, σ_w))
-
-#     #note: for some reason, using broadcasted assigment .= allocates
-#     x.v = k_vv .* v .+ k_vp .* p .+ σ_w .* w
-#     x.p = Δt .* v
-
-#     #static, non-allocating vector preserving x's layout
-#     sys.y = ComponentVector(SVector{2N,Float64}(x), getaxes(x))
+# function DiscreteSecondOrder(; k_u::AbstractVector{Float64}, k_av, k_ap)
 
 # end
 
+Base.@kwdef struct DiscreteSecondOrderY{N}
+    a::SVector{N,Float64} = zeros(SVector{N})
+    v::SVector{N,Float64} = zeros(SVector{N})
+    p::SVector{N,Float64} = zeros(SVector{N})
+end
 
-# function Systems.init(::SystemX, cmp::DiscreteSecondOrder)
-#     #if σ_v0 and σ_s0 are ComponentVectors themselves, this preserves their axes
-#     x = ComponentVector(v = cmp.σ_v0, p = cmp.σ_p0)
-#     x .= 0
-# end
+function Systems.init(::SystemX, cmp::DiscreteSecondOrder{N}) where {N}
+    ComponentVector(v = zeros(N), p = zeros(N))
+end
 
-# function Systems.init(::SystemY, cmp::DiscreteSecondOrder{N}) where {N}
-#     x = init_x(cmp)
-#     ComponentVector(SVector{2N,Float64}(x), getaxes(x))
-# end
+Systems.init(::SystemU, cmp::DiscreteSecondOrder{N}) where {N} = zeros(N)
+Systems.init(::SystemY, cmp::DiscreteSecondOrder{N}) where {N} = DiscreteSecondOrderY{N}()
 
+function Systems.f_disc!(sys::System{<:DiscreteSecondOrder{N}}, Δt::Real) where {N}
 
-# #for the UKF
-# # f_propagate! = let sys = sys, Δt = Δt
-# #     function (x1, x0, w)
-# #         sys.x .= x0
-# #         f_disc!(sys, Δt, w)
-# #         x1 .= sys.x
-# #     end
-# # end
+    @unpack x, u, params = sys
+    @unpack k_u, k_av, k_ap = params
 
+    (v, p, u) = map(SVector{N,Float64}, (x.v, x.p, u))
 
+    a = k_av .* v .+ k_ap .* p .+ k_u .* u
+    x.v += Δt .* a #broadcasted assignment .= allocates
+    x.p += Δt .* v #broadcasted assignment .= allocates
 
-# function test_plain_vectors()
-#     σ_p0 = [1.0, 1.0]
-#     σ_v0 = [0.1, 0.1]
-#     k_vv = [-0.1, -0.1]
-#     k_vp = [-0.1, -0.1]
-#     k_pp = zeros(2)
-#     σ_w = [0.05, 0.05]
-#     DiscreteSecondOrder(σ_p0, σ_v0, k_vv, k_vp, k_pp, σ_w)
-# end
+    sys.y = DiscreteSecondOrderY(; a, v = SVector{N}(x.v), p = SVector{N}(x.p))
 
-# function test_component_svectors()
-#     ax = Axis(a = 1, b = 2)
-#     cvec = let ax = ax
-#         (x) -> ComponentVector(SVector(x...), ax)
-#     end
-#     σ_p0 = [1.0, 1.0] |> cvec
-#     σ_v0 = [0.1, 0.1] |> cvec
-#     k_vv = [-0.1, -0.1] |> cvec
-#     k_vp = [-0.1, -0.1] |> cvec
-#     k_pp = zeros(2) |> cvec
-#     σ_w = [0.05, 0.05] |> cvec
-#     DiscreteSecondOrder(σ_p0, σ_v0, k_vv, k_vp, k_pp, σ_w)
-# end
+    return true #x modified
 
-# function test_second_order()
-#     test_plain_vectors()
-#     test_component_svectors()
-# end
+end
+
 
 
 end #module
