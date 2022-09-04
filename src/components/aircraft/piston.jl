@@ -2,13 +2,17 @@ module Piston
 
 using Interpolations, StaticArrays, StructArrays, ComponentArrays, UnPack
 
-using Flight.Systems
-using Flight.Utils: Ranged
-using Flight.Kinematics, Flight.RigidBody, Flight.Atmosphere
-using Flight.Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
-using Flight.Geodesy: HGeop
-using Flight.Propellers: AbstractPropeller, Propeller
-using Flight.Generic: PICompensator, PICompensatorU, PICompensatorY
+using Flight.Engine.Systems
+using Flight.Engine.Utils: Ranged
+
+using Flight.Physics.Kinematics
+using Flight.Physics.RigidBody
+using Flight.Physics.Geodesy: HGeop
+
+using ..Atmosphere
+using ..Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
+using ..Propellers: AbstractPropeller, Propeller
+using ..General: PICompensator, PICompensatorU, PICompensatorY
 
 
 ################################################################################

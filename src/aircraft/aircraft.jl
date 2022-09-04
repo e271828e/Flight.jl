@@ -4,15 +4,20 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays
 using UnPack
 
-using Flight.Systems
-using Flight.Plotting
-using Flight.Attitude
-using Flight.Geodesy, Flight.Terrain, Flight.Environment
-using Flight.Kinematics, Flight.RigidBody
-using Flight.IODevices
-using Flight.XPlane
+using Flight.Engine.Systems
+using Flight.Engine.Plotting
+using Flight.Engine.IODevices
+using Flight.Engine.XPlane
 
-export AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
+using Flight.Physics.Attitude
+using Flight.Physics.Geodesy
+using Flight.Physics.Kinematics
+using Flight.Physics.RigidBody
+
+using Flight.Components.Terrain
+using Flight.Components.Environment
+
+export AircraftTemplate, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 
 
 ###############################################################################
@@ -51,25 +56,25 @@ abstract type AbstractAvionics <: Component end
 struct NoAvionics <: AbstractAvionics end
 
 ###############################################################################
-############################## AircraftBase ###################################
+############################## AircraftTemplate ###################################
 
-struct AircraftBase{K <: AbstractKinematicDescriptor,
-                    F <: AbstractAirframe,
-                    A <: AbstractAvionics} <: Component
+struct AircraftTemplate{K <: AbstractKinematicDescriptor,
+                F <: AbstractAirframe,
+                A <: AbstractAvionics} <: Component
     kinematics::K
     airframe::F
     avionics::A
 end
 
-function AircraftBase(kinematics::K = LTF(),
-                      airframe::F = EmptyAirframe(),
-                      avionics::A = NoAvionics()) where {I,K,F,A}
-    AircraftBase{K,F,A}(kinematics, airframe, avionics)
+function AircraftTemplate(kinematics::K = LTF(),
+                airframe::F = EmptyAirframe(),
+                avionics::A = NoAvionics()) where {I,K,F,A}
+    AircraftTemplate{K,F,A}(kinematics, airframe, avionics)
 end
 
 #override the default Component update_y! to include stuff besides subsystem
 #outputs
-Base.@kwdef struct AircraftBaseY{K, F, A}
+Base.@kwdef struct AircraftTemplateY{K, F, A}
     kinematics::K
     airframe::F
     avionics::A
@@ -77,16 +82,16 @@ Base.@kwdef struct AircraftBaseY{K, F, A}
     airflow::AirflowData
 end
 
-Systems.init(::SystemY, ac::AircraftBase) = AircraftBaseY(
+Systems.init(::SystemY, ac::AircraftTemplate) = AircraftTemplateY(
     init_y(ac.kinematics), init_y(ac.airframe), init_y(ac.avionics),
     RigidBodyData(), AirflowData())
 
-function init!(ac::System{<:AircraftBase}, ic::KinematicInit)
+function init!(ac::System{<:AircraftTemplate}, ic::KinematicInit)
     Kinematics.init!(ac.x.kinematics, ic)
 end
 
 
-function Systems.f_ode!(sys::System{<:AircraftBase}, env::System{<:AbstractEnvironment})
+function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractEnvironment})
 
     @unpack ẋ, x, subsystems = sys
     @unpack kinematics, airframe, avionics = subsystems
@@ -108,13 +113,13 @@ function Systems.f_ode!(sys::System{<:AircraftBase}, env::System{<:AbstractEnvir
     #update velocity derivatives
     rb_data = f_rigidbody!(kinematics.ẋ.vel, kin_data, mp_b, wr_b, hr_b)
 
-    sys.y = AircraftBaseY(kinematics.y, airframe.y, avionics.y, rb_data, air_data)
+    sys.y = AircraftTemplateY(kinematics.y, airframe.y, avionics.y, rb_data, air_data)
 
     return nothing
 
 end
 
-function Systems.f_step!(sys::System{<:AircraftBase})
+function Systems.f_step!(sys::System{<:AircraftTemplate})
     @unpack kinematics, airframe, avionics = sys
 
     #could use chained | instead, but this is clearer
@@ -126,7 +131,7 @@ function Systems.f_step!(sys::System{<:AircraftBase})
     return x_mod
 end
 
-function Systems.f_disc!(sys::System{<:AircraftBase}, Δt)
+function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt)
     @unpack kinematics, airframe, avionics = sys
 
     #could use chained | instead, but this is clearer
@@ -141,7 +146,7 @@ end
 
 ############################# XPlaneConnect ####################################
 
-function IODevices.update!(xp::XPConnect, data::AircraftBaseY)
+function IODevices.update!(xp::XPConnect, data::AircraftTemplateY)
 
     aircraft = 0
 
@@ -165,7 +170,7 @@ end
 
 ############################### Plotting #######################################
 
-function Plotting.make_plots(th::TimeHistory{<:AircraftBaseY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:AircraftTemplateY}; kwargs...)
 
     return OrderedDict(
         :kinematics => make_plots(th.kinematics; kwargs...),

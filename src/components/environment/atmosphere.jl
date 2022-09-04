@@ -2,13 +2,13 @@ module Atmosphere
 
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
 
-using Flight.Utils
-using Flight.Systems #?
-using Flight.Plotting
+using Flight.Engine.Systems #?
+using Flight.Engine.Plotting
+using Flight.Engine.Utils
 
-using Flight.Attitude
-using Flight.Geodesy
-using Flight.Kinematics
+using Flight.Physics.Attitude
+using Flight.Physics.Geodesy
+using Flight.Physics.Kinematics
 
 export AbstractISAModel, TunableISA
 export AbstractWindModel, TunableWind

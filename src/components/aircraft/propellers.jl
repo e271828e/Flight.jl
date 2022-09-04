@@ -4,12 +4,14 @@ using LinearAlgebra, StaticArrays, StructArrays, Interpolations, UnPack
 using Roots: find_zero
 using Trapz: trapz
 
-using Flight.Systems
-using Flight.Plotting
-using Flight.Kinematics
-using Flight.RigidBody
-using Flight.Atmosphere
-using Flight.Utils: Ranged, linear_scaling
+using Flight.Engine.Systems
+using Flight.Engine.Plotting
+using Flight.Engine.Utils: Ranged, linear_scaling
+
+using Flight.Physics.Kinematics
+using Flight.Physics.RigidBody
+
+using ..Atmosphere
 
 export FixedPitch, VariablePitch, Propeller
 

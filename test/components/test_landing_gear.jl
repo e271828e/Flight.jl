@@ -7,7 +7,7 @@ using StaticArrays
 # using OrdinaryDiffEq, SciMLBase
 
 using Flight
-using Flight.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
+using Flight.Components.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
 
 export test_landing_gear
 

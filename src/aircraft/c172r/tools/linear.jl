@@ -9,7 +9,7 @@ using Flight.Attitude
 using Flight.Geodesy
 using Flight.Kinematics
 using Flight.Environment
-using Flight.Generic
+using Flight.General
 using ..C172R
 using ..Trim
 
@@ -73,7 +73,7 @@ function assign!(y::Y, ac::System{<:Cessna172R})
 
 end
 
-function Generic.StateSpaceModel( ac::System{<:Cessna172R{NED}};
+function General.StateSpaceModel( ac::System{<:Cessna172R{NED}};
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
     trim_params::Trim.Parameters = Trim.Parameters(),
     trim_state::Trim.State = Trim.State())
@@ -173,7 +173,7 @@ function Generic.StateSpaceModel( ac::System{<:Cessna172R{NED}};
     C = ComponentMatrix(C_full[:, x_indices], getaxes(y0)[1], x_axis)
     D = D_full
 
-    return Generic.StateSpaceModel(ẋ0, x0, u0, y0, A, B, C, D)
+    return General.StateSpaceModel(ẋ0, x0, u0, y0, A, B, C, D)
 
 end
 

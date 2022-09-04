@@ -1,14 +1,14 @@
-module Generic
+module General
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using CImGui, CImGui.CSyntax
 using ControlSystems
 
-using Flight.Systems
-using Flight.Plotting
-using Flight.GUI
+using Flight.Engine.Systems
+using Flight.Engine.Plotting
+using Flight.Engine.GUI
 
-export StateSpaceModel, PICompensator
+export StateSpaceModel, PICompensator, DiscreteSecondOrder
 
 
 ################################################################################
@@ -237,7 +237,7 @@ function Plotting.make_plots(th::TimeHistory{<:PICompensatorY}; kwargs...)
 
 end
 
-################################# Dashboard ####################################
+#################################### GUI #######################################
 
 function GUI.draw!(sys::System{<:PICompensator{N}}, gui_input::Bool = true) where {N}
 
@@ -289,6 +289,102 @@ function GUI.draw!(sys::System{<:PICompensator{N}}, gui_input::Bool = true) wher
     end
 
 end
+
+
+################################################################################
+########################### DiscreteSecondOrder ################################
+
+
+# Base.@kwdef struct DiscreteSecondOrder{N}
+#     σ_v0::X #initial velocity state standard deviation
+#     σ_p0::X #initial position state standard deviation
+#     k_vv::X #velocity-velocity constant
+#     k_vp::X #velocity-position constant
+#     k_pp::X #position-position constant
+#     σ_w::X #white noise standard deviation acting on the velocity
+
+#     function DiscreteSecondOrder(args...)
+#         lengths = length.(args)
+#         N = lengths[1]
+#         X = typeof(args[1])
+#         @assert all(==(N), lengths)
+#         new{N, X}(args...)
+#     end
+# end
+
+# function Systems.f_disc!(sys::System{<:DiscreteSecondOrder{N}}, Δt::Real, rng::AbstractRNG) where {N}
+#     w = Random.randn(rng, SVector{N, Float64})
+#     f_disc!(sys, Δt, w)
+# end
+
+# function Systems.f_disc!(sys::System{<:DiscreteSecondOrder{N}}, Δt::Real, w::AbstractVector{<:Real}) where {N}
+
+#     @unpack x, params = sys
+#     @unpack k_vv, k_vp, σ_w = params
+
+#     (v, p, w, k_vv, k_vp, σ_w) = map(SVector{N,Float64}, (x.v, x.p, w, k_vv, k_vp, σ_w))
+
+#     #note: for some reason, using broadcasted assigment .= allocates
+#     x.v = k_vv .* v .+ k_vp .* p .+ σ_w .* w
+#     x.p = Δt .* v
+
+#     #static, non-allocating vector preserving x's layout
+#     sys.y = ComponentVector(SVector{2N,Float64}(x), getaxes(x))
+
+# end
+
+
+# function Systems.init(::SystemX, cmp::DiscreteSecondOrder)
+#     #if σ_v0 and σ_s0 are ComponentVectors themselves, this preserves their axes
+#     x = ComponentVector(v = cmp.σ_v0, p = cmp.σ_p0)
+#     x .= 0
+# end
+
+# function Systems.init(::SystemY, cmp::DiscreteSecondOrder{N}) where {N}
+#     x = init_x(cmp)
+#     ComponentVector(SVector{2N,Float64}(x), getaxes(x))
+# end
+
+
+# #for the UKF
+# # f_propagate! = let sys = sys, Δt = Δt
+# #     function (x1, x0, w)
+# #         sys.x .= x0
+# #         f_disc!(sys, Δt, w)
+# #         x1 .= sys.x
+# #     end
+# # end
+
+
+
+# function test_plain_vectors()
+#     σ_p0 = [1.0, 1.0]
+#     σ_v0 = [0.1, 0.1]
+#     k_vv = [-0.1, -0.1]
+#     k_vp = [-0.1, -0.1]
+#     k_pp = zeros(2)
+#     σ_w = [0.05, 0.05]
+#     DiscreteSecondOrder(σ_p0, σ_v0, k_vv, k_vp, k_pp, σ_w)
+# end
+
+# function test_component_svectors()
+#     ax = Axis(a = 1, b = 2)
+#     cvec = let ax = ax
+#         (x) -> ComponentVector(SVector(x...), ax)
+#     end
+#     σ_p0 = [1.0, 1.0] |> cvec
+#     σ_v0 = [0.1, 0.1] |> cvec
+#     k_vv = [-0.1, -0.1] |> cvec
+#     k_vp = [-0.1, -0.1] |> cvec
+#     k_pp = zeros(2) |> cvec
+#     σ_w = [0.05, 0.05] |> cvec
+#     DiscreteSecondOrder(σ_p0, σ_v0, k_vv, k_vp, k_pp, σ_w)
+# end
+
+# function test_second_order()
+#     test_plain_vectors()
+#     test_component_svectors()
+# end
 
 
 end #module

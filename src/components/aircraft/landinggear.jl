@@ -2,16 +2,17 @@ module LandingGear
 
 using StaticArrays, ComponentArrays, LinearAlgebra, UnPack
 
-using Flight.Systems
-using Flight.Plotting
+using Flight.Engine.Systems
+using Flight.Engine.Plotting
+using Flight.Engine.Utils: Ranged
 
-using Flight.Attitude
-using Flight.Geodesy
-using Flight.Terrain
-using Flight.Kinematics
-using Flight.RigidBody
-using Flight.Generic: PICompensator, PICompensatorY
-using Flight.Utils: Ranged
+using Flight.Physics.Attitude
+using Flight.Physics.Geodesy
+using Flight.Physics.Kinematics
+using Flight.Physics.RigidBody
+
+using ..Terrain
+using ..General: PICompensator, PICompensatorY
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 

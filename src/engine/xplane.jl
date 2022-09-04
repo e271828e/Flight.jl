@@ -3,7 +3,7 @@ module XPlane
 using Sockets
 using UnPack
 
-using Flight.IODevices
+using ..IODevices
 
 export XPConnect
 

@@ -5,8 +5,8 @@ using UnPack
 using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
         GetJoystickAxes, GetJoystickButtons, GetJoystickName, SetJoystickCallback
 
-using Flight.IODevices
-using Flight.Utils: Ranged
+using ..IODevices
+using ..Utils: Ranged
 
 export JoystickSlot, Joystick
 export get_connected_joysticks

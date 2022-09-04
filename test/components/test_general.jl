@@ -1,4 +1,4 @@
-module TestGeneric
+module TestGeneral
 
 using Test
 using BenchmarkTools
@@ -7,10 +7,10 @@ using ComponentArrays
 
 using Flight
 
-export test_generic
+export test_general
 
-function test_generic()
-    @testset verbose = true "Generic" begin
+function test_general()
+    @testset verbose = true "General" begin
         test_state_space()
         test_pi_compensator()
     end

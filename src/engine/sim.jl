@@ -374,12 +374,20 @@ run_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run!(sim; kwargs...))
 
 function run!(sim::Simulation; verbose::Bool = false)
 
+    @unpack integrator, channels, started, stepping = sim
+    t_end = integrator.sol.prob.tspan[2]
+
     isdone_wrn(sim) && return
 
+    notify(started)
+
     τ = @elapsed begin
-        for _ in sim.integrator #integrator steps automatically at the beginning of each iteration
+        while sim.t[] < t_end
+            lock(stepping)
+                step!(sim)
+            unlock(stepping)
             output = Output(sim.t[], sim.y)
-            put_no_block!(sim.channels, output)
+            put_no_block!(channels, output)
         end
     end
 

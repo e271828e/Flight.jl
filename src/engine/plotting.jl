@@ -9,8 +9,7 @@ using RecursiveArrayTools: VectorOfArray
 @reexport using LaTeXStrings
 @reexport using DataStructures: OrderedDict
 
-using Flight.Sim: Simulation
-@reexport using Flight.Sim: TimeHistory, get_components, get_child_names
+@reexport using ..Sim: Simulation, TimeHistory, get_components, get_child_names
 
 export make_plots, save_plots
 

@@ -2,9 +2,9 @@ module Environment
 
 using Reexport
 
-using Flight.Systems
-@reexport using Flight.Atmosphere
-@reexport using Flight.Terrain
+using Flight.Engine.Systems
+@reexport using ..Atmosphere
+@reexport using ..Terrain
 
 export AbstractEnvironment, SimpleEnvironment
 

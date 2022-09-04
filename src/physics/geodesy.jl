@@ -9,9 +9,10 @@ using UnPack
 using Interpolations
 using HDF5
 
-using Flight.Systems
-using Flight.Plotting
-using Flight.Attitude
+using Flight.Engine.Systems
+using Flight.Engine.Plotting
+
+using ..Attitude
 
 export Abstract2DLocation, NVector, LatLon
 export Altitude, Ellipsoidal, Orthometric, Geopotential, HEllip, HOrth, HGeop
@@ -167,7 +168,7 @@ struct Geopotential <: AbstractAltitudeDatum end
 const h_min = -1000 #helps catch numerical catastrophes
 
 #equivalent to load_geoid_data_hdf5 but with the additional hash check
-function load_geoid_data_bin(file_path = joinpath(dirname(@__FILE__), "ww15mgh_le.bin"))
+function load_geoid_data_bin(file_path = joinpath(dirname(@__FILE__), "data", "ww15mgh_le.bin"))
     #the target file stores a 721x1441 Matrix{Float32} in low-endian binary
     #format. the matrix holds the data points for the EGM96 geoid height offset
     #with respect to the WGS84 ellipsoid in 15 arc-minute resolution. latitude
@@ -192,7 +193,7 @@ function load_geoid_data_bin(file_path = joinpath(dirname(@__FILE__), "ww15mgh_l
     # CubicSplineInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
 end
 
-function load_geoid_data_hdf5(file_path = joinpath(dirname(@__FILE__), "ww15mgh_hdf5.h5"))
+function load_geoid_data_hdf5(file_path = joinpath(dirname(@__FILE__), "data", "ww15mgh_hdf5.h5"))
 
     data = Matrix{Float32}(undef, 721, 1441)
     h5open(file_path) do file

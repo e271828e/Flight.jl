@@ -4,13 +4,12 @@ using Test
 using UnPack
 using BenchmarkTools
 using LinearAlgebra
-# using SciMLBase
 
 using Flight
-using Flight.Piston: Engine, Thruster, MagicFuelSupply
-using Flight.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
-using Flight.Piston: eng_off, eng_starting, eng_running
-using Flight.Atmosphere: p_std, T_std
+using Flight.Components.Piston: Engine, Thruster, MagicFuelSupply
+using Flight.Components.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
+using Flight.Components.Piston: eng_off, eng_starting, eng_running
+using Flight.Components.Atmosphere: p_std, T_std
 
 export test_piston
 

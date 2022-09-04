@@ -3,11 +3,11 @@ module Kinematics
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra
 using UnPack
 
-using Flight.Systems
-using Flight.Plotting
+using Flight.Engine.Systems
+using Flight.Engine.Plotting
 
-using Flight.Attitude
-using Flight.Geodesy
+using ..Attitude
+using ..Geodesy
 
 export AbstractKinematicDescriptor, ECEF, LTF, NED
 export KinematicInit, KinematicData, KinematicSystem

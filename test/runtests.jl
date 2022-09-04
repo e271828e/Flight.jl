@@ -5,7 +5,7 @@ include("physics/test_attitude.jl"); using .TestAttitude
 include("physics/test_geodesy.jl"); using .TestGeodesy
 include("physics/test_kinematics.jl"); using .TestKinematics
 
-include("components/test_generic.jl"); using .TestGeneric
+include("components/test_general.jl"); using .TestGeneral
 include("components/test_propellers.jl"); using .TestPropellers
 include("components/test_landing_gear.jl"); using .TestLandingGear
 include("components/test_piston.jl"); using .TestPiston
@@ -17,7 +17,7 @@ test_attitude()
 test_geodesy()
 test_kinematics()
 
-test_generic()
+test_general()
 test_propellers()
 test_landing_gear()
 test_piston()

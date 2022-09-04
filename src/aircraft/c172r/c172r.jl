@@ -7,21 +7,23 @@ using UnPack
 using Reexport
 using Interpolations
 using HDF5
-# using JLD
 
-using Flight.Systems
-using Flight.IODevices
-using Flight.Joysticks
-using Flight.Attitude
-using Flight.Terrain
-using Flight.Atmosphere
-using Flight.Kinematics
-using Flight.RigidBody
-using Flight.LandingGear
-using Flight.Propellers
-using Flight.Piston
-using Flight.Utils: Ranged, linear_scaling
-using Flight.Aircraft: AircraftBase, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
+using Flight.Engine.Systems
+using Flight.Engine.IODevices
+using Flight.Engine.Joysticks
+using Flight.Engine.Utils: Ranged, linear_scaling
+
+using Flight.Physics.Attitude
+using Flight.Physics.Kinematics
+using Flight.Physics.RigidBody
+
+using Flight.Components.Terrain
+using Flight.Components.Atmosphere
+using Flight.Components.LandingGear
+using Flight.Components.Propellers
+using Flight.Components.Piston
+
+using ..Aircraft
 
 include("data/aero.jl")
 
@@ -559,10 +561,10 @@ end
 
 #Cessna172RBase requires a subtype of C172R.Airframe, but allows installing any
 #avionics and using different kinematic descriptions
-const Cessna172RBase{K, F, V} = AircraftBase{K, F, V} where {K, F <: Airframe, V}
+const Cessna172RBase{K, F, V} = AircraftTemplate{K, F, V} where {K, F <: Airframe, V}
 
 function Cessna172RBase(kinematics = LTF(), avionics = ReversibleControls())
-    AircraftBase( kinematics, Airframe(), avionics)
+    AircraftTemplate( kinematics, Airframe(), avionics)
 end
 
 #the default Cessna172R installs the C172R.ReversibleControls avionics (which
@@ -570,11 +572,11 @@ end
 const Cessna172R{K, F} = Cessna172RBase{K, F, ReversibleControls} where {K, F}
 Cessna172R(kinematics = LTF()) = Cessna172RBase(kinematics, ReversibleControls())
 
-#By default, the AircraftBase's U type will be automatically determined by the
-#System's generic initializers as a NamedTuple{(:airframe, :avionics),
+#By default, the AircraftTemplate's U type will be automatically determined by
+#the System's generic initializers as a NamedTuple{(:airframe, :avionics),
 #Tuple{typeof(airframe)}, typeof(avionics)}, where typeof(airframe) and
 #typeof(avionics) will typically be themselves NamedTuples. this makes
-#dispatching on our specific Cessna172R <: AircraftBase impractical. a
+#dispatching on our specific Cessna172R <: AircraftTemplate impractical. a
 #workaround is to define:
 
 # const Cessna172RTemplate = Cessna172R()
@@ -584,8 +586,8 @@ Cessna172R(kinematics = LTF()) = Cessna172RBase(kinematics, ReversibleControls()
 # const Cessna172RS = typeof(init_s(Cessna172RTemplate))
 
 #...which works, but has the drawback of slowing down module imports. An
-#alternative is to override the default AircraftBase SystemU initializer with a
-#custom, dispatch-friendly type, with the same fields:
+#alternative is to override the default AircraftTemplate SystemU initializer
+#with a custom, dispatch-friendly type, with the same fields:
 
 struct Cessna172RU{F, V}
     airframe::F
@@ -638,11 +640,5 @@ include("tools/trim.jl")
 include("tools/linear.jl")
 using .Trim
 using .Linear
-
-
-#these would facilitate dispatching without defining AircraftBaseU,
-#AircraftBaseY and AircraftBaseS parametric types, but slow down importing the
-#module
-
 
 end #module

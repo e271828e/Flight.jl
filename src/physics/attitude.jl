@@ -29,8 +29,9 @@ module Attitude
 using StaticArrays, ComponentArrays, StructArrays
 using LinearAlgebra
 
-using Flight.Plotting
-using Flight.Quaternions
+using Flight.Engine.Plotting
+
+using ..Quaternions
 
 export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz
 
@@ -52,7 +53,7 @@ end
 ######################### Abstract3DRotation ###########################
 
 """
-Generic 3D rotation descriptor
+General 3D rotation descriptor
 """
 abstract type Abstract3DRotation end
 

@@ -3,12 +3,12 @@ module RigidBody
 using StaticArrays
 using LinearAlgebra, UnPack
 
-using Flight.Systems
-using Flight.Plotting
+using Flight.Engine.Systems
+using Flight.Engine.Plotting
 
-using Flight.Attitude
-using Flight.Geodesy
-using Flight.Kinematics
+using ..Attitude
+using ..Geodesy
+using ..Kinematics
 
 export FrameTransform, transform
 export Wrench
