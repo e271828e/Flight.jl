@@ -62,11 +62,11 @@ const XType = Union{Nothing, AbstractVector{Float64}}
 #needs the C type parameter for dispatch, the rest for type stability
 #must be mutable to allow y updates
 mutable struct System{C <: Component, X <: XType, Y, U, D, P, S}
-    ẋ::X #continuous dynamics state vector derivative
-    x::X #continuous dynamics state vector
+    ẋ::X #continuous state derivative
+    x::X #continuous state
     y::Y #output
     u::U #control input
-    s::D #discrete dynamics state
+    s::D #discrete state
     t::Base.RefValue{Float64} #allows implicit propagation of t updates down the subsystem hierarchy
     params::P
     subsystems::S
@@ -221,8 +221,12 @@ end
 
 #fallback method for updating a System's output. it assembles the outputs from
 #its subsystems into a NamedTuple, then assigns it to the System's y field
+# @inline function (update_y!(sys::System{C, X, Y})
+#     where {C<:Component, X, Y <: Nothing})
+# end
+
 @inline function (update_y!(sys::System{C, X, Y})
-    where {C<:Component, X, Y <: Nothing})
+    where {C<:Component, X, Y})
 end
 
 @inline @generated function (update_y!(sys::System{C, X, Y})
