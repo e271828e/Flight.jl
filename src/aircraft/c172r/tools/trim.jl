@@ -227,6 +227,7 @@ function trim!(ac::System{<:Cessna172R},
     # @show initial_cost = f_opt(x0, x0)
     # @btime $f_opt($x0, $x0)
 
+    #any of these three algorithms works
     # opt = Opt(:LN_NELDERMEAD, length(x0))
     opt = Opt(:LN_BOBYQA, length(x0))
     # opt = Opt(:GN_CRS2_LM, length(x0))
@@ -240,7 +241,6 @@ function trim!(ac::System{<:Cessna172R},
     # @btime optimize($opt, $x0)
 
     (minf, minx, exit_flag) = optimize(opt, x0)
-    # @show numevals = opt.numevals
 
     if exit_flag != :STOPVAL_REACHED
         println("Warning: Optimization did not converge")

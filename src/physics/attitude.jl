@@ -53,7 +53,7 @@ end
 ######################### Abstract3DRotation ###########################
 
 """
-General 3D rotation descriptor
+Continuous 3D rotation descriptor
 """
 abstract type Abstract3DRotation end
 

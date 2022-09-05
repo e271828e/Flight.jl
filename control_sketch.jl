@@ -28,7 +28,7 @@ function test(save = true)
 
     #recreate the aircraft with NED kinematics, suitable for linearization
     ac = Cessna172R(NED()) |> System
-    lm = General.StateSpaceModel(ac; env, trim_params) #retrims
+    lm = Continuous.StateSpace(ac; env, trim_params) #retrims
 
     #the couplings of a specific state S into the time derivative of any other
     #state can be examined in the column of A corresponding to S. from this, we

@@ -73,8 +73,7 @@ function test()
     B = fill(b, 100)
     C = copy(B)
 
-    #no allocations
-    C .= A .+ B
+    C .= A .+ B #no allocations
 
 end
 

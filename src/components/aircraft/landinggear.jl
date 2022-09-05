@@ -12,7 +12,7 @@ using Flight.Physics.Kinematics
 using Flight.Physics.RigidBody
 
 using ..Terrain
-using ..General: PICompensator, PICompensatorY
+using ..Continuous: PICompensator, PICompensatorY
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 

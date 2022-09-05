@@ -1,4 +1,4 @@
-module TestGeneral
+module TestContinuous
 
 using Test
 using BenchmarkTools
@@ -6,11 +6,12 @@ using UnPack
 using ComponentArrays
 
 using Flight
+using Flight.Components.Continuous: StateSpace, PICompensator
 
-export test_general
+export test_continuous
 
-function test_general()
-    @testset verbose = true "General" begin
+function test_continuous()
+    @testset verbose = true "Continuous" begin
         test_state_space()
         test_pi_compensator()
     end
@@ -27,7 +28,7 @@ function test_state_space()
         C = y0 * x0'
         D = y0 * u0'
 
-        return StateSpaceModel(ẋ0, x0, u0, y0, A, B, C, D)
+        return StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
     end
 
@@ -52,7 +53,7 @@ function test_state_space()
 
     end
 
-    @testset verbose = true "StateSpaceModel" begin
+    @testset verbose = true "StateSpace" begin
 
         x0 = ComponentVector(V = 1.0, q = 0.5, θ = 0.3, α = 5.0)
         u0 = ComponentVector(e = 0.1, a = 0.2)

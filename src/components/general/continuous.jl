@@ -1,23 +1,20 @@
-module General
+module Continuous
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using CImGui, CImGui.CSyntax
-using ControlSystems
+using ControlSystems: ControlSystems, ss
 
 using Flight.Engine.Systems
 using Flight.Engine.Plotting
 using Flight.Engine.GUI
 
-export StateSpaceModel, PICompensator, DiscreteSecondOrder
-
-
 ################################################################################
-########################### StateSpaceModel ###################################
+########################### StateSpace ###################################
 
 const tV = AbstractVector{<:Float64}
 const tM = AbstractMatrix{<:Float64}
 
-struct StateSpaceModel{ LX, LU, LY, #state, input and output vector lengths
+struct StateSpace{ LX, LU, LY, #state, input and output vector lengths
                         tX <: tV, tU <: tV, tY <: tV,
                         tA <: tM, tB <: tM, tC <: tM, tD <: tM} <: Component
 
@@ -26,7 +23,7 @@ struct StateSpaceModel{ LX, LU, LY, #state, input and output vector lengths
     x_cache::tX; y_cache::tY; y_cache_out::tY;
     Δx_cache::tX; Δu_cache::tU
 
-    function StateSpaceModel(ẋ0, x0, u0, y0, A, B, C, D)
+    function StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
         lengths = map(length, (x0, u0, y0))
         types = map(typeof, (x0, u0, y0, A, B, C, D))
@@ -41,15 +38,15 @@ struct StateSpaceModel{ LX, LU, LY, #state, input and output vector lengths
 
 end
 
-StateSpaceModel(; ẋ0, x0, u0, y0, A, B, C, D) = StateSpaceModel(ẋ0, x0, u0, y0, A, B, C, D)
+StateSpace(; ẋ0, x0, u0, y0, A, B, C, D) = StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
-ControlSystems.ss(cmp::StateSpaceModel) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
+ControlSystems.ss(cmp::StateSpace) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
 
-Systems.init(::SystemX, cmp::StateSpaceModel) = copy(cmp.x0)
-Systems.init(::SystemU, cmp::StateSpaceModel) = copy(cmp.u0)
-Systems.init(::SystemY, cmp::StateSpaceModel) = SVector{length(cmp.y0)}(cmp.y0)
+Systems.init(::SystemX, cmp::StateSpace) = copy(cmp.x0)
+Systems.init(::SystemU, cmp::StateSpace) = copy(cmp.u0)
+Systems.init(::SystemY, cmp::StateSpace) = SVector{length(cmp.y0)}(cmp.y0)
 
-function Systems.f_ode!(sys::System{<:StateSpaceModel{LX, LU, LY}}) where {LX, LU, LY}
+function Systems.f_ode!(sys::System{<:StateSpace{LX, LU, LY}}) where {LX, LU, LY}
 
     @unpack ẋ, x, u, y, params = sys
     @unpack ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache = params
@@ -80,7 +77,7 @@ function Systems.f_ode!(sys::System{<:StateSpaceModel{LX, LU, LY}}) where {LX, L
 
 end
 
-function Base.filter(cmp::StateSpaceModel; x = (), u = (), y = ())
+function Base.filter(cmp::StateSpace; x = (), u = (), y = ())
 
     x_ind = (!isempty(x) ? x : keys(cmp.x0))
     u_ind = (!isempty(u) ? u : keys(cmp.u0))
@@ -95,7 +92,7 @@ function Base.filter(cmp::StateSpaceModel; x = (), u = (), y = ())
     C = cmp.C[y_ind, x_ind]
     D = cmp.D[y_ind, u_ind]
 
-    return StateSpaceModel(; ẋ0, x0, u0, y0, A, B, C, D)
+    return StateSpace(; ẋ0, x0, u0, y0, A, B, C, D)
 
 end
 
@@ -289,93 +286,6 @@ function GUI.draw!(sys::System{<:PICompensator{N}}, gui_input::Bool = true) wher
     end
 
 end
-
-
-################################################################################
-############################# DiscretizedOU ####################################
-
-"""
-Implements an exact discretization of the OrnsteinUhlenbeck process:
-dx = -1/T_c * x * dt + k_w * dW
-
-Where T_c is a time constant, W is the Wiener process and k_w is a noise
-power constant, which can be interpreted as the square root PSD of the white
-noise process k_w * dW/dt (dW/dt is unit-PSD continuous white noise)
-
-Input must be driven by a rng with standard normal distribution.
-"""
-
-Base.@kwdef struct DiscretizedOU{N} <: Component
-    T_c::SVector{N,Float64} = ones(SVector{N}) #time constant
-    k_w::SVector{N,Float64} = ones(SVector{N}) #noise PSD square root
-end
-
-σ²x(; T_c, k_w) = k_w.^2 .* T_c/2
-σ²x(cmp::DiscretizedOU) = (@unpack T_c, k_w = cmp; σ²x(; T_c, k_w))
-σ²x(sys::System{<:DiscretizedOU}) = (@unpack T_c, k_w = sys.params; σ²x(; T_c, k_w))
-
-Systems.init(::SystemU, cmp::DiscretizedOU{N}) where {N} = zeros(N)
-Systems.init(::SystemX, cmp::DiscretizedOU{N}) where {N} = zeros(N)
-Systems.init(::SystemY, cmp::DiscretizedOU{N}) where {N} = zeros(SVector{N,Float64})
-
-function Systems.f_disc!(sys::System{<:DiscretizedOU{N}}, Δt::Real) where {N}
-
-    @unpack x, u, params = sys
-    @unpack T_c, k_w = params
-
-    α = exp.(-Δt ./ T_c)
-    β = sqrt.(σ²x(; T_c, k_w) .* (1 .- α.^2))
-
-    x .= α .* x .+ β .* u
-
-    sys.y = SVector{N, Float64}(x)
-
-    return true #x modified
-
-end
-
-################################################################################
-########################### DiscreteSecondOrder ################################
-
-#when the System's u is fed by a rng, k_u can be used to control the resulting
-#σ of each noise input component
-
-Base.@kwdef struct DiscreteSecondOrder{N} <: Component
-    k_u::SVector{N,Float64} = ones(SVector{N}) #input gain
-    k_av::SVector{N,Float64} = zeros(SVector{N}) #acceleration-velocity feedback (<0 stabilizes)
-    k_ap::SVector{N,Float64} = zeros(SVector{N}) #acceleration-position feedback (<0 stabilizes)
-end
-
-Base.@kwdef struct DiscreteSecondOrderY{N}
-    a::SVector{N,Float64} = zeros(SVector{N})
-    v::SVector{N,Float64} = zeros(SVector{N})
-    p::SVector{N,Float64} = zeros(SVector{N})
-end
-
-function Systems.init(::SystemX, cmp::DiscreteSecondOrder{N}) where {N}
-    ComponentVector(v = zeros(N), p = zeros(N))
-end
-
-Systems.init(::SystemU, cmp::DiscreteSecondOrder{N}) where {N} = zeros(N)
-Systems.init(::SystemY, cmp::DiscreteSecondOrder{N}) where {N} = DiscreteSecondOrderY{N}()
-
-function Systems.f_disc!(sys::System{<:DiscreteSecondOrder{N}}, Δt::Real) where {N}
-
-    @unpack x, u, params = sys
-    @unpack k_u, k_av, k_ap = params
-
-    (v, p, u) = map(SVector{N,Float64}, (x.v, x.p, u))
-
-    a = k_av .* v .+ k_ap .* p .+ k_u .* u
-    x.v += Δt .* a #broadcasted assignment .= allocates
-    x.p += Δt .* v #broadcasted assignment .= allocates
-
-    sys.y = DiscreteSecondOrderY(; a, v = SVector{N}(x.v), p = SVector{N}(x.p))
-
-    return true #x modified
-
-end
-
 
 
 end #module

@@ -12,7 +12,7 @@ using Flight.Physics.Geodesy: HGeop
 using ..Atmosphere
 using ..Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R
 using ..Propellers: AbstractPropeller, Propeller
-using ..General: PICompensator, PICompensatorU, PICompensatorY
+using ..Continuous: PICompensator, PICompensatorU, PICompensatorY
 
 
 ################################################################################

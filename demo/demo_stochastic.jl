@@ -3,15 +3,6 @@ using UnPack
 
 using Flight
 
-#for the UKF
-# f_propagate! = let sys = sys, Δt = Δt
-#     function (x1, x0, w)
-#         sys.x .= x0
-#         sys.u .= w
-#         f_disc!(sys, Δt)
-#         x1 .= sys.x
-#     end
-# end
 
 function demo_stochastic()
 
@@ -23,10 +14,9 @@ function demo_stochastic()
 
     rng_init = Xoshiro(0)
     rng_io = Xoshiro(0)
-    σ_0v = [0.1, 0.1]
-    σ_0p = [1, 1]
+    σ_0 = ComponentVector(v = [0.1, 0.1], p = [1, 1])
 
-    sys_reinit! = let rng_init = rng_init, rng_io = rng_io, σ_0v = σ_0v, σ_0p = σ_0p
+    sys_reinit! = let rng_init = rng_init, rng_io = rng_io, σ_0 = σ_0
         function (sys; init_seed = 0, io_seed = 0)
             #set seeds for both initialization and simulation
             @unpack x, u = sys
@@ -34,8 +24,8 @@ function demo_stochastic()
             #randomize initial state
             Random.seed!(rng_init, init_seed)
             Random.randn!(rng_init, x)
-            x.v .*= σ_0v #scale velocity components with their initial σ
-            x.p .*= σ_0p #scale position components with their initial σ
+            x.v .*= σ_0.v #scale velocity components with their initial σ
+            x.p .*= σ_0.p #scale position components with their initial σ
 
             #reset the io rng, and assign u for the first step (σ_u is
             #controlled by k_u)
@@ -56,8 +46,4 @@ function demo_stochastic()
 
     return sim
 
-end
-
-function test_second_order()
-    test_single()
 end

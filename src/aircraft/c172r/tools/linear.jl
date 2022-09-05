@@ -4,15 +4,19 @@ using ComponentArrays
 using UnPack
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
-using Flight.Systems
-using Flight.Attitude
-using Flight.Geodesy
-using Flight.Kinematics
-using Flight.Environment
-using Flight.General
+using Flight.Engine.Systems
+
+using Flight.Physics.Attitude
+using Flight.Physics.Geodesy
+using Flight.Physics.Kinematics
+
+using Flight.Components.Environment
+using Flight.Components.Continuous: StateSpace
+
 using ..C172R
 using ..Trim
 
+export linearize!
 
 ############################### Linearization ##################################
 
@@ -73,7 +77,9 @@ function assign!(y::Y, ac::System{<:Cessna172R})
 
 end
 
-function General.StateSpaceModel( ac::System{<:Cessna172R{NED}};
+linearize(ac::System{<:Cessna172R{NED}}; kwargs...) = StateSpace(ac; kwargs...)
+
+function StateSpace( ac::System{<:Cessna172R{NED}};
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
     trim_params::Trim.Parameters = Trim.Parameters(),
     trim_state::Trim.State = Trim.State())
@@ -116,7 +122,6 @@ function General.StateSpaceModel( ac::System{<:Cessna172R{NED}};
 
     # ẋ_tmp = similar(x0_full)
     # y_tmp = similar(y0)
-
     # # @btime $f_nonlinear!($ẋ_tmp, $y_tmp, $x0_full, $u0)
     # f_nonlinear!(ẋ_tmp, y_tmp, x0_full, u0)
 
@@ -173,7 +178,7 @@ function General.StateSpaceModel( ac::System{<:Cessna172R{NED}};
     C = ComponentMatrix(C_full[:, x_indices], getaxes(y0)[1], x_axis)
     D = D_full
 
-    return General.StateSpaceModel(ẋ0, x0, u0, y0, A, B, C, D)
+    return StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
 end
 

@@ -2,7 +2,8 @@ module Components
 
 using Reexport
 
-include("general/general.jl"); @reexport using .General
+include("general/continuous.jl"); using .Continuous #avoid name clash with ControlSystems
+include("general/discrete.jl"); using .Discrete
 include("environment/atmosphere.jl"); @reexport using .Atmosphere
 include("environment/terrain.jl"); @reexport using .Terrain
 include("environment/environment.jl"); @reexport using .Environment
