@@ -59,10 +59,14 @@ a discrete-time stochastic process, with k_u controlling the σ of each noise
 component
 """
 
-Base.@kwdef struct SecondOrder{N} <: Component
-    k_u::SVector{N,Float64} = ones(SVector{N}) #input gain
-    k_av::SVector{N,Float64} = zeros(SVector{N}) #acceleration-velocity feedback (<0 stabilizes)
-    k_ap::SVector{N,Float64} = zeros(SVector{N}) #acceleration-position feedback (<0 stabilizes)
+struct SecondOrder{N} <: Component
+    k_u::SVector{N,Float64} #input gain
+    k_av::SVector{N,Float64} #acceleration-velocity feedback (<0 stabilizes)
+    k_ap::SVector{N,Float64} #acceleration-position feedback (<0 stabilizes)
+end
+
+function SecondOrder{N}(; k_u::Real = 1.0, k_av::Real = 0., k_ap::Real = 0.) where {N}
+    SecondOrder{N}(map(x-> fill(x,N), (k_u, k_av, k_ap))...)
 end
 
 Base.@kwdef struct SecondOrderY{N}

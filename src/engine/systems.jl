@@ -159,14 +159,15 @@ end
 end
 
 #fallback method for node Systems. tries calling f_step! on all subsystems with
-#the same arguments provided to the parent System, then ORs their outputs.
-#override as required
+#the same arguments provided to the parent System, then ORs their outputs. does
+#NOT update y. override as required
 @inline function (f_step!(sys::System{C, X, Y, U, D, P, S}, args...)
                     where {C<:Component, X <: XType, Y, U, D, P, S})
 
     x_mod = false
+    #we need a bitwise OR to avoid calls being skipped after x_mod == true
     for ss in sys.subsystems
-        x_mod = x_mod || f_step!(ss, args...)
+        x_mod = x_mod | f_step!(ss, args...)
     end
     return x_mod
 
@@ -174,21 +175,27 @@ end
 
 #fallback method for node Systems. tries calling f_disc! on all subsystems with
 #the same arguments provided to the parent System, then ORs their outputs.
+#updates y, since f_disc! is where discrete Systems should do it
 #override as required.
 @inline function (f_disc!(sys::System{C, X, Y, U, D, P, S}, Δt, args...)
                     where {C<:Component, X <: XType, Y, U, D, P, S})
 
     x_mod = false
+    #we need a bitwise OR to avoid calls being skipped after x_mod == true
     for ss in sys.subsystems
-        x_mod = x_mod || f_disc!(ss, Δt, args...)
+        x_mod = x_mod | f_disc!(ss, Δt, args...)
     end
+    update_y!(sys)
     return x_mod
 
 end
 
-#fallback method for updating a System's output. it assembles the outputs from
-#its subsystems into a NamedTuple, then assigns it to the System's y field
-@inline update_y!(::System{C, X, Y}) where {C<:Component, X, Y} = nothing
+#fallback method for updating a System's NamedTuple output. it assembles the
+#outputs from its subsystems into a NamedTuple, then assigns it to the System's
+#y field
+@inline function (update_y!(sys::System{C, X, Y})
+    where {C<:Component, X, Y})
+end
 
 @inline function (update_y!(sys::System{C, X, Y})
     where {C<:Component, X, Y <: NamedTuple{L, M}} where {L, M})

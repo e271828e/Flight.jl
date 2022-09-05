@@ -82,7 +82,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         params = (sys = sys, sys_reinit! = sys_reinit!, sys_io! = sys_io!, Δt = Δt,
                   args_ode = args_ode, args_step = args_step, args_disc = args_disc)
 
-        cb_sys = DiscreteCallback((u, t, integrator)->true, f_cb_sys!)
+        cb_cont = DiscreteCallback((u, t, integrator)->true, f_cb_cont!)
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_disc = PeriodicCallback(f_cb_disc!, Δt)
         cb_io = DiscreteCallback((u, t, integrator)->true, f_cb_io!)
@@ -96,9 +96,9 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
                                     saveat = saveat_arr, save_everystep)
 
         if save_on
-            cb_set = CallbackSet(cb_sys, cb_step, cb_disc, cb_io, cb_save)
+            cb_set = CallbackSet(cb_cont, cb_step, cb_disc, cb_io, cb_save)
         else
-            cb_set = CallbackSet(cb_sys, cb_step, cb_disc, cb_io)
+            cb_set = CallbackSet(cb_cont, cb_step, cb_disc, cb_io)
         end
 
         #the current System's x value is used as initial condition. a copy is
@@ -165,7 +165,7 @@ end
 
 #System update function, called on every integration step. brings the
 #System's internal x and y up to date with the last integrator's solution step
-function f_cb_sys!(integrator)
+function f_cb_cont!(integrator)
 
     @unpack t, u, p = integrator
     @unpack sys, args_ode = p
