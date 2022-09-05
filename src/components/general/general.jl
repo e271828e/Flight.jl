@@ -292,6 +292,49 @@ end
 
 
 ################################################################################
+############################# DiscretizedOU ####################################
+
+"""
+Implements an exact discretization of the OrnsteinUhlenbeck process:
+dx = -1/T_c * x * dt + k_w * dW
+
+Where T_c is a time constant, W is the Wiener process and k_w is a noise
+power constant, which can be interpreted as the square root PSD of the white
+noise process k_w * dW/dt (dW/dt is unit-PSD continuous white noise)
+
+Input must be driven by a rng with standard normal distribution.
+"""
+
+Base.@kwdef struct DiscretizedOU{N} <: Component
+    T_c::SVector{N,Float64} = ones(SVector{N}) #time constant
+    k_w::SVector{N,Float64} = ones(SVector{N}) #noise PSD square root
+end
+
+σ²x(; T_c, k_w) = k_w.^2 .* T_c/2
+σ²x(cmp::DiscretizedOU) = (@unpack T_c, k_w = cmp; σ²x(; T_c, k_w))
+σ²x(sys::System{<:DiscretizedOU}) = (@unpack T_c, k_w = sys.params; σ²x(; T_c, k_w))
+
+Systems.init(::SystemU, cmp::DiscretizedOU{N}) where {N} = zeros(N)
+Systems.init(::SystemX, cmp::DiscretizedOU{N}) where {N} = zeros(N)
+Systems.init(::SystemY, cmp::DiscretizedOU{N}) where {N} = zeros(SVector{N,Float64})
+
+function Systems.f_disc!(sys::System{<:DiscretizedOU{N}}, Δt::Real) where {N}
+
+    @unpack x, u, params = sys
+    @unpack T_c, k_w = params
+
+    α = exp.(-Δt ./ T_c)
+    β = sqrt.(σ²x(; T_c, k_w) .* (1 .- α.^2))
+
+    x .= α .* x .+ β .* u
+
+    sys.y = SVector{N, Float64}(x)
+
+    return true #x modified
+
+end
+
+################################################################################
 ########################### DiscreteSecondOrder ################################
 
 #when the System's u is fed by a rng, k_u can be used to control the resulting
@@ -302,10 +345,6 @@ Base.@kwdef struct DiscreteSecondOrder{N} <: Component
     k_av::SVector{N,Float64} = zeros(SVector{N}) #acceleration-velocity feedback (<0 stabilizes)
     k_ap::SVector{N,Float64} = zeros(SVector{N}) #acceleration-position feedback (<0 stabilizes)
 end
-
-# function DiscreteSecondOrder(; k_u::AbstractVector{Float64}, k_av, k_ap)
-
-# end
 
 Base.@kwdef struct DiscreteSecondOrderY{N}
     a::SVector{N,Float64} = zeros(SVector{N})
