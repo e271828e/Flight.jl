@@ -149,110 +149,56 @@ end
 #fallback method for node Systems. tries calling f_ode! on all subsystems with
 #the same arguments provided to the parent System, then assembles a NamedTuple
 #from the subsystems' outputs. override as required.
-@inline @generated function (f_ode!(sys::System{C, X, Y, U, D, P, S}, args...)
-                            where {C<:Component, X <: XType, Y, U, D, P, S})
+@inline function (f_ode!(sys::System{C, X, Y, U, D, P, S}, args...)
+                where {C<:Component, X <: XType, Y, U, D, P, S})
 
-    # Core.println("@generated f_ode! called for type $C")
-    ex_main = Expr(:block)
-
-    #call f_ode! on each subsystem
-    ex_calls = Expr(:block)
-    for label in fieldnames(S)
-        push!(ex_calls.args,
-            :(f_ode!(sys.subsystems[$(QuoteNode(label))], args...)))
-    end
-
-    ex_update_y = :(update_y!(sys))
-
-    push!(ex_main.args, ex_calls)
-    push!(ex_main.args, ex_update_y)
-    push!(ex_main.args, :(return nothing))
-
-    return ex_main
+    map(ss-> f_ode!(ss, args...), values(sys.subsystems))
+    update_y!(sys)
+    return nothing
 
 end
 
 #fallback method for node Systems. tries calling f_step! on all subsystems with
 #the same arguments provided to the parent System, then ORs their outputs.
 #override as required
-@inline @generated function (f_step!(sys::System{C, X, Y, U, D, P, S}, args...)
-                            where {C<:Component, X <: XType, Y, U, D, P, S})
+@inline function (f_step!(sys::System{C, X, Y, U, D, P, S}, args...)
+                    where {C<:Component, X <: XType, Y, U, D, P, S})
 
-    # Core.println("Generated f_step! called for type $C")
-    # Core.println()
-
-    ex = Expr(:block)
-    push!(ex.args, :(x_mod = false))
-
-    #call f_step! on each subsystem
-    for label in fieldnames(S)
-        #we need all f_step! calls executed, so we can't just chain them with ||
-        push!(ex.args,
-            :(x_mod = x_mod || f_step!(sys.subsystems[$(QuoteNode(label))], args...)))
+    x_mod = false
+    for ss in sys.subsystems
+        x_mod = x_mod || f_step!(ss, args...)
     end
-    return ex
+    return x_mod
 
 end
 
 #fallback method for node Systems. tries calling f_disc! on all subsystems with
 #the same arguments provided to the parent System, then ORs their outputs.
 #override as required.
-@inline @generated function (f_disc!(sys::System{C, X, Y, U, D, P, S}, Δt, args...)
-                            where {C<:Component, X <: XType, Y, U, D, P, S})
+@inline function (f_disc!(sys::System{C, X, Y, U, D, P, S}, Δt, args...)
+                    where {C<:Component, X <: XType, Y, U, D, P, S})
 
-    # Core.println("@generated f_disc! called for $C")
-    # Core.println()
-
-    ex = Expr(:block)
-    push!(ex.args, :(x_mod = false))
-
-    #call f_step! on each subsystem
-    for label in fieldnames(S)
-        #we need all f_step! calls executed, so we can't just chain them with ||
-        push!(ex.args,
-            :(x_mod = x_mod || f_disc!(sys.subsystems[$(QuoteNode(label))], Δt, args...)))
+    x_mod = false
+    for ss in sys.subsystems
+        x_mod = x_mod || f_disc!(ss, Δt, args...)
     end
-    return ex
+    return x_mod
 
 end
 
 #fallback method for updating a System's output. it assembles the outputs from
 #its subsystems into a NamedTuple, then assigns it to the System's y field
-# @inline function (update_y!(sys::System{C, X, Y})
-#     where {C<:Component, X, Y <: Nothing})
-# end
+@inline update_y!(::System{C, X, Y}) where {C<:Component, X, Y} = nothing
 
 @inline function (update_y!(sys::System{C, X, Y})
-    where {C<:Component, X, Y})
-end
-
-@inline @generated function (update_y!(sys::System{C, X, Y})
     where {C<:Component, X, Y <: NamedTuple{L, M}} where {L, M})
 
-    #L contains the field names of those subsystems which have outputs. retrieve
-    #the y's of those subsystems and assemble them into a NamedTuple, which will
-    #have the same type as Y
-
-    #initialize main expression
-    ex_main = Expr(:block)
-
-    #build a tuple expression with subsystem outputs
-    ex_ss_outputs = Expr(:tuple) #tuple expression for children's outputs
-    for label in L
-        push!(ex_ss_outputs.args,
-            :(sys.subsystems[$(QuoteNode(label))].y))
-    end
-
-    #build a NamedTuple from the subsystem's labels and the constructed tuple
-    ex_nt = Expr(:call, Expr(:curly, NamedTuple, L), ex_ss_outputs)
-
-    #assign the result to the parent system's y
-    ex_assign = Expr(:(=), :(sys.y), ex_nt)
-
-    push!(ex_main.args, ex_assign)
-    push!(ex_main.args, :(return nothing))
-
-    return ex_main
+    #the keys of NamedTuple sys.y identify those subsystems with non-null
+    #outputs; retrieve their updated ys and assemble them into a NamedTuple of
+    #the same type
+    ys = map(id -> getproperty(sys.subsystems[id], :y), L)
+    sys.y = NamedTuple{L}(ys)
+    return nothing
 
 end
 
