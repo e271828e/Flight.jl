@@ -11,7 +11,7 @@ using Flight.Physics.Geodesy
 using Flight.Physics.Kinematics
 
 using Flight.Components.Environment
-using Flight.Components.Continuous: StateSpace
+using Flight.Components.Control: LinearStateSpace
 
 using ..C172R
 using ..Trim
@@ -77,9 +77,9 @@ function assign!(y::Y, ac::System{<:Cessna172R})
 
 end
 
-linearize(ac::System{<:Cessna172R{NED}}; kwargs...) = StateSpace(ac; kwargs...)
+linearize(ac::System{<:Cessna172R{NED}}; kwargs...) = LinearStateSpace(ac; kwargs...)
 
-function StateSpace( ac::System{<:Cessna172R{NED}};
+function LinearStateSpace( ac::System{<:Cessna172R{NED}};
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
     trim_params::Trim.Parameters = Trim.Parameters(),
     trim_state::Trim.State = Trim.State())
@@ -178,7 +178,7 @@ function StateSpace( ac::System{<:Cessna172R{NED}};
     C = ComponentMatrix(C_full[:, x_indices], getaxes(y0)[1], x_axis)
     D = D_full
 
-    return StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+    return LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
 end
 

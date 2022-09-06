@@ -1,4 +1,4 @@
-module TestDiscrete
+module TestStochastic
 
 using Test
 using BenchmarkTools
@@ -9,12 +9,11 @@ using Random
 using Statistics
 
 using Flight
-using Flight.Components.Discrete: OrnsteinUhlenbeck, σ²
 
-export test_discrete
+export test_stochastic
 
-function test_discrete()
-    @testset verbose = true "Discrete" begin
+function test_stochastic()
+    @testset verbose = true "Stochastic" begin
         test_ou()
     end
 end
@@ -33,7 +32,7 @@ function test_ou()
 
         rng_init = Xoshiro(0)
         rng_io = Xoshiro(0)
-        σ_0 = sqrt.(σ²(sys)) #set the initialization σ equal to the stationary σ
+        σ_0 = Stochastic.σ(sys) #set the initialization σ equal to the stationary σ
 
         sys_reinit! = let rng_init = rng_init, rng_io = rng_io, σ_0 = σ_0
             function (sys; init_seed = 0, io_seed = 0)
@@ -52,11 +51,9 @@ function test_ou()
             end
         end
 
-        sys_io! = let rng_io = rng_io
-            (u, y, t, params) -> Random.randn!(rng_io, u)
-        end
-
-        sim = Simulation(sys; t_end = 1000, dt = 1, Δt = 1, sys_reinit!, sys_io!)
+        #pass rng_io as additional argument to the System's f_disc!
+        sim = Simulation(sys; t_end = 1000, dt = 1, Δt = 1,
+                              args_disc = (rng_io,), sys_reinit!)
 
         #run 1000 trajectories and return their sample variances
         vars = map(1:1000) do seed
@@ -67,7 +64,7 @@ function test_ou()
         end
 
         #experimental variance should match the theoretical stationary variance
-        @test mean(vars) ≈ σ²(sys)[1] atol = 1e-3
+        @test mean(vars) ≈ Stochastic.σ²(sys)[1] atol = 1e-3
 
     end
 

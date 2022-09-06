@@ -1,4 +1,4 @@
-module Continuous
+module Control
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using CImGui, CImGui.CSyntax
@@ -8,13 +8,15 @@ using Flight.Engine.Systems
 using Flight.Engine.Plotting
 using Flight.Engine.GUI
 
+export LinearStateSpace, PICompensator
+
 ################################################################################
-########################### StateSpace ###################################
+########################### LinearStateSpace ###################################
 
 const tV = AbstractVector{<:Float64}
 const tM = AbstractMatrix{<:Float64}
 
-struct StateSpace{ LX, LU, LY, #state, input and output vector lengths
+struct LinearStateSpace{ LX, LU, LY, #state, input and output vector lengths
                         tX <: tV, tU <: tV, tY <: tV,
                         tA <: tM, tB <: tM, tC <: tM, tD <: tM} <: Component
 
@@ -23,7 +25,7 @@ struct StateSpace{ LX, LU, LY, #state, input and output vector lengths
     x_cache::tX; y_cache::tY; y_cache_out::tY;
     Δx_cache::tX; Δu_cache::tU
 
-    function StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+    function LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
         lengths = map(length, (x0, u0, y0))
         types = map(typeof, (x0, u0, y0, A, B, C, D))
@@ -38,15 +40,15 @@ struct StateSpace{ LX, LU, LY, #state, input and output vector lengths
 
 end
 
-StateSpace(; ẋ0, x0, u0, y0, A, B, C, D) = StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+LinearStateSpace(; ẋ0, x0, u0, y0, A, B, C, D) = LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
-ControlSystems.ss(cmp::StateSpace) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
+ControlSystems.ss(cmp::LinearStateSpace) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
 
-Systems.init(::SystemX, cmp::StateSpace) = copy(cmp.x0)
-Systems.init(::SystemU, cmp::StateSpace) = copy(cmp.u0)
-Systems.init(::SystemY, cmp::StateSpace) = SVector{length(cmp.y0)}(cmp.y0)
+Systems.init(::SystemX, cmp::LinearStateSpace) = copy(cmp.x0)
+Systems.init(::SystemU, cmp::LinearStateSpace) = copy(cmp.u0)
+Systems.init(::SystemY, cmp::LinearStateSpace) = SVector{length(cmp.y0)}(cmp.y0)
 
-function Systems.f_ode!(sys::System{<:StateSpace{LX, LU, LY}}) where {LX, LU, LY}
+function Systems.f_ode!(sys::System{<:LinearStateSpace{LX, LU, LY}}) where {LX, LU, LY}
 
     @unpack ẋ, x, u, y, params = sys
     @unpack ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache = params
@@ -77,7 +79,7 @@ function Systems.f_ode!(sys::System{<:StateSpace{LX, LU, LY}}) where {LX, LU, LY
 
 end
 
-function Base.filter(cmp::StateSpace; x = (), u = (), y = ())
+function Base.filter(cmp::LinearStateSpace; x = (), u = (), y = ())
 
     x_ind = (!isempty(x) ? x : keys(cmp.x0))
     u_ind = (!isempty(u) ? u : keys(cmp.u0))
@@ -92,7 +94,7 @@ function Base.filter(cmp::StateSpace; x = (), u = (), y = ())
     C = cmp.C[y_ind, x_ind]
     D = cmp.D[y_ind, u_ind]
 
-    return StateSpace(; ẋ0, x0, u0, y0, A, B, C, D)
+    return LinearStateSpace(; ẋ0, x0, u0, y0, A, B, C, D)
 
 end
 

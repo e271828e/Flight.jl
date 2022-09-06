@@ -1,4 +1,4 @@
-module TestContinuous
+module TestControl
 
 using Test
 using BenchmarkTools
@@ -6,12 +6,11 @@ using UnPack
 using ComponentArrays
 
 using Flight
-using Flight.Components.Continuous: StateSpace, PICompensator
 
-export test_continuous
+export test_control
 
-function test_continuous()
-    @testset verbose = true "Continuous" begin
+function test_control()
+    @testset verbose = true "Control" begin
         test_state_space()
         test_pi_compensator()
     end
@@ -28,7 +27,7 @@ function test_state_space()
         C = y0 * x0'
         D = y0 * u0'
 
-        return StateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+        return LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
     end
 
@@ -53,7 +52,7 @@ function test_state_space()
 
     end
 
-    @testset verbose = true "StateSpace" begin
+    @testset verbose = true "LinearStateSpace" begin
 
         x0 = ComponentVector(V = 1.0, q = 0.5, θ = 0.3, α = 5.0)
         u0 = ComponentVector(e = 0.1, a = 0.2)

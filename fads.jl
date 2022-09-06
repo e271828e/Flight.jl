@@ -5,21 +5,23 @@ using ComponentArrays
 using StaticArrays
 using UnPack
 using Flight
-using Flight.Components.Discrete: OrnsteinUhlenbeck, SecondOrder
 
 export AirflowDynamics, AirflowProperties
-export SensorArray, PressureSensor, PressureMeasurement
-
+export PressureSensor, PressureMeasurement, SensorArray
 
 ################################ AirflowDynamics ###############################
 
 Base.@kwdef struct AirflowDynamics <: Component
-    p::SecondOrder{1} = SecondOrder{1}(; k_u = 1.0, k_av = -0.3, k_ap = 0)
-    # M::SecondOrder
-    α::SecondOrder{1} = SecondOrder{1}(; k_u = 1.0, k_av = -0.3, k_ap = -0.02)
-    # β::SecondOrder
+    p::GaussianDoubleIntegrator{1} = GaussianDoubleIntegrator{1}(; k_u = 1.0, k_av = -0.3, k_ap = 0)
+    # M::GaussianDoubleIntegrator
+    α::GaussianDoubleIntegrator{1} = GaussianDoubleIntegrator{1}(; k_u = 1.0, k_av = -0.3, k_ap = -0.02)
+    # β::GaussianDoubleIntegrator
 end
 
+# #we can use the fallback f_disc!, but we need to handle randn! manually
+# function Random.randn!(rng::AbstractRNG, sys::System{<:AirflowDynamics})
+#     map(s -> randn!(rng, s), values(sys.subsystems))
+# end
 
 ############################### AirflowProperties ##############################
 
@@ -31,7 +33,7 @@ Base.@kwdef struct AirflowProperties
 end
 
 function AirflowProperties(sys::System{<:AirflowDynamics})
-    AirflowProperties(p = sys.y.p.p[1], α = sys.y.α.p)
+    AirflowProperties(p = sys.y.p.p[1], α = sys.y.α.p[1])
 end
 
 
@@ -39,39 +41,33 @@ end
 
 Base.@kwdef struct PressureSensor <: Component
     loc::Symbol
-    σ_y::Float64 = 0.05
+    noise::DiscreteGaussianWN{1} = DiscreteGaussianWN{1}(σ = [0.05])
 end
 
 Base.@kwdef struct PressureSensorY
     valid::Bool = true
     value::Float64 = 0.0
+    noise::SVector{1,Float64} = zeros(SVector{1})
 end
 
-Systems.init(::SystemU, ::PressureSensor) = (fail = Ref(false), w = Ref(0.0)) #noise input
+Systems.init(::SystemU, cmp::PressureSensor) = (fail = Ref(false), noise = init_u(cmp.noise))
 Systems.init(::SystemS, ::PressureSensor) = (fail = Ref(false),) #failed?
 Systems.init(::SystemY, ::PressureSensor) = PressureSensorY()
 
+function Systems.f_disc!(sys::System{<:PressureSensor}, Δt::Float64, airflow::AirflowProperties, noise_args...)
 
-#just update the fail state
-function Systems.f_disc!(sys::System{<:PressureSensor}, ::Float64, airflow::AirflowProperties)
-    sys.s.fail[] = sys.u.fail[]
-    sys.y = measure(sys, airflow)
-    return true
-end
+    @unpack s, u, noise = sys
 
-#randomize noise inputs
-Random.randn!(rng::AbstractRNG, sys::System{<:PressureSensor}) = (sys.u.w[] = randn(rng))
+    #update noise y
+    f_disc!(noise, Δt, noise_args...) #args can be a RNG or a N(0,1) sample
 
-function measure(sys::System{<:PressureSensor}, airflow::AirflowProperties)
-    @unpack u, s, params = sys
-    @unpack σ_y, loc = params
-
+    s.fail[] = u.fail[]
     healthy = !s.fail[]
-    p_loc = local_pressure(airflow, loc)
-    ỹ = p_loc * healthy + σ_y * u.w[]
+    p_loc = local_pressure(airflow, sys.params.loc)
+    ỹ = p_loc * healthy + noise.y[1]
 
-    PressureSensorY(; valid = healthy, value = ỹ)
-
+    sys.y = PressureSensorY(; valid = healthy, value = ỹ, noise = noise.y)
+    return true
 end
 
 local_pressure(airflow::AirflowProperties, loc::Symbol) = local_pressure(airflow, Val(loc))
@@ -89,14 +85,9 @@ end
 
 ################################# SensorArray ##################################
 
-Base.@kwdef struct SensorSet <: Component
+Base.@kwdef struct SensorArray <: Component
     a::PressureSensor = PressureSensor(loc = :a)
     b::PressureSensor = PressureSensor(loc = :b)
-end
-
-#we can use the fallback f_disc!, but randn! needs special handling
-function Random.randn!(rng::AbstractRNG, sys::System{<:SensorSet})
-    map(s -> randn!(rng, s), values(sys.subsystems))
 end
 
 
@@ -108,8 +99,14 @@ Base.@kwdef struct Estimator <: Component end
 
 Base.@kwdef struct World <: Component
     airflow::AirflowDynamics = AirflowDynamics()
-    sensors::SensorSet = SensorSet()
+    sensors::SensorArray = SensorArray()
     estimator::Estimator = Estimator()
+end
+
+function Systems.f_disc!(sys::System{<:World}, Δt::Real, rng::AbstractRNG)
+    f_disc!(sys.airflow, Δt, rng)
+    f_disc!(sys.sensors, Δt, rng)
+
 end
 
 end #module

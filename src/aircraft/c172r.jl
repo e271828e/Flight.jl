@@ -25,7 +25,7 @@ using Flight.Components.Piston
 
 using ..Aircraft
 
-include("data/aero.jl")
+include("c172r/data/aero.jl")
 
 export Cessna172R
 
@@ -636,8 +636,8 @@ end
 ################################################################################
 ############################### Analysis Tools #################################
 
-include("tools/trim.jl")
-include("tools/linear.jl")
+include("c172r/tools/trim.jl")
+include("c172r/tools/linear.jl")
 using .Trim
 using .Linear
 

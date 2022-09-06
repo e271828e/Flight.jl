@@ -5,8 +5,8 @@ include("physics/test_attitude.jl"); using .TestAttitude
 include("physics/test_geodesy.jl"); using .TestGeodesy
 include("physics/test_kinematics.jl"); using .TestKinematics
 
-include("components/test_continuous.jl"); using .TestContinuous
-include("components/test_discrete.jl"); using .TestDiscrete
+include("components/test_control.jl"); using .TestControl
+include("components/test_stochastic.jl"); using .TestStochastic
 include("components/test_propellers.jl"); using .TestPropellers
 include("components/test_landing_gear.jl"); using .TestLandingGear
 include("components/test_piston.jl"); using .TestPiston
@@ -18,8 +18,8 @@ test_attitude()
 test_geodesy()
 test_kinematics()
 
-test_continuous()
-test_discrete()
+test_control()
+test_stochastic()
 test_propellers()
 test_landing_gear()
 test_piston()
