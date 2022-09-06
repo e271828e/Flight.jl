@@ -124,9 +124,9 @@ function Systems.f_step!(sys::System{<:AircraftTemplate})
 
     #could use chained | instead, but this is clearer
     x_mod = false
-    x_mod = x_mod || f_step!(kinematics)
-    x_mod = x_mod || f_step!(airframe, kinematics)
-    x_mod = x_mod || f_step!(avionics, airframe, kinematics)
+    x_mod |= f_step!(kinematics)
+    x_mod |= f_step!(airframe, kinematics)
+    x_mod |= f_step!(avionics, airframe, kinematics)
 
     return x_mod
 end
@@ -138,7 +138,7 @@ function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt)
     x_mod = false
     #in principle, only avionics will have discrete dynamics (it's the aircraft
     #subsystem in which discretized algorithms are implemented)
-    x_mod = x_mod || f_disc!(avionics, airframe, kinematics, Δt)
+    x_mod |= f_disc!(avionics, airframe, kinematics, Δt)
 
     return x_mod
 end

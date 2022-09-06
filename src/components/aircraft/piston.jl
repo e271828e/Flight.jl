@@ -85,7 +85,7 @@ struct Engine{L} <: AbstractPistonEngine
     J::Float64 #equivalent axial moment of inertia of the engine shaft
     idle::PICompensator{1} #idle MAP control compensator
     frc::PICompensator{1} #friction constraint compensator
-    lookup::L
+    lookup::L #performance lookup table
 end
 
 function Engine(;
@@ -249,23 +249,22 @@ function Systems.f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSuppl
 
     if eng.s.state === eng_off
 
-        eng.u.start ? eng.s.state = eng_starting : nothing
+        eng.u.start && (eng.s.state = eng_starting)
 
     elseif eng.s.state === eng_starting
 
-        !eng.u.start ? eng.s.state = eng_off : nothing
-
-        (ω > ω_idle && fuel_available(fuel) ) ? eng.s.state = eng_running : nothing
+        !eng.u.start && (eng.s.state = eng_off)
+        (ω > ω_idle && fuel_available(fuel)) && (eng.s.state = eng_running)
 
     else #eng_running
 
-        (ω < ω_stall || eng.u.stop || !fuel_available(fuel)) ? eng.s.state = eng_off : nothing
+        (eng.u.stop || ω < ω_stall || !fuel_available(fuel)) && (eng.s.state = eng_off)
 
     end
 
     x_mod = false
-    x_mod = x_mod || f_step!(idle)
-    x_mod = x_mod || f_step!(frc)
+    x_mod |= f_step!(idle)
+    x_mod |= f_step!(frc)
     return x_mod
 
 end
@@ -468,8 +467,8 @@ function Systems.f_step!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSup
     @unpack engine, propeller = thr
 
     x_mod = false
-    x_mod = x_mod || f_step!(engine, fuel)
-    x_mod = x_mod || f_step!(propeller)
+    x_mod |= f_step!(engine, fuel)
+    x_mod |= f_step!(propeller)
     return x_mod
 
 end

@@ -82,7 +82,7 @@ function make_plots(th::TimeHistory{<:NamedTuple}; kwargs...)
     pd = OrderedDict{Symbol, Any}()
     for name in get_child_names(th)
         child_plots = make_plots(getproperty(th, name); kwargs...)::Union{Nothing, OrderedDict, Plots.Plot}
-        !isnothing(child_plots) ? pd[name] = child_plots : nothing
+        !isnothing(child_plots) && (pd[name] = child_plots)
     end
 
     return (!isempty(pd) ? pd : nothing)

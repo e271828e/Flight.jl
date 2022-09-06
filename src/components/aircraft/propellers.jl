@@ -147,8 +147,8 @@ function Coefficients(blade::Blade, n_blades::Int; J::Real, M_tip::Real, Δβ::R
         βa = get_βa(blade, ζ, Δβ)
         c̃ = blade.c̃(ζ)
 
-        βa > π/2 ?  println("Warning: Aerodynamic AoA at $ζ is $(rad2deg(βa))° " *
-            "for pitch offset $(rad2deg(Δβ))°") : nothing
+        (βa > π/2) &&  println("Warning: Aerodynamic AoA at $ζ is $(rad2deg(βa))° " *
+            "for pitch offset $(rad2deg(Δβ))°")
 
         f = let n_blades = n_blades, c̃ = c̃, airfoil = airfoil, βa_t = βa_t, J = J, M_tip = M_tip, βa = βa, ε_inf = ε_inf, ζ = ζ
             ε_i -> induced_angle_eq(; n_blades, c̃, airfoil, βa_t, J, M_tip, βa, ε_inf, ζ, ε_i)

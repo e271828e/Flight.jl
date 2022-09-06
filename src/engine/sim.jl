@@ -303,7 +303,7 @@ end
 function GUI.draw!(sys::System, info::Info, gui_input::Bool)
     GUI.draw(info) #show Simulation info
     window_visible = CImGui.Begin("System")
-        window_visible ? GUI.draw!(sys, gui_input) : nothing
+        window_visible && GUI.draw!(sys, gui_input)
     CImGui.End()
 end
 

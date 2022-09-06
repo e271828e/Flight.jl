@@ -91,7 +91,7 @@ function test_sim(; save::Bool = true)
     Sim.run!(sim, verbose = true)
     # plots = make_plots(sim; Plotting.defaults...)
     plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
-    save ? save_plots(plots, save_folder = joinpath("tmp", "sim_test")) : nothing
+    save && save_plots(plots, save_folder = joinpath("tmp", "sim_test"))
 
     return sim
 
@@ -130,7 +130,7 @@ function test_sim_paced(; save::Bool = true)
     end
 
     plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
-    save ? save_plots(plots, save_folder = joinpath("tmp", "paced_sim_test")) : nothing
+    save && save_plots(plots, save_folder = joinpath("tmp", "paced_sim_test"))
 
     return nothing
 

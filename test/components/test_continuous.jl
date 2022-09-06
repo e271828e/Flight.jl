@@ -122,7 +122,7 @@ function test_pi_compensator(save = false)
         @test @ballocated($f_step!($sys)) == 0
 
         plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-        save ? save_plots(plots, save_folder = joinpath("tmp", "pi_test")) : nothing
+        save && save_plots(plots, save_folder = joinpath("tmp", "pi_test"))
 
     end
 

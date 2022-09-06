@@ -24,7 +24,7 @@ function test(save = true)
     Sim.run!(sim, verbose = true)
     # plots = make_plots(sim; Plotting.defaults...)
     plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
-    save ? save_plots(plots, save_folder = joinpath("tmp", "trim_sim_test")) : nothing
+    save && save_plots(plots, save_folder = joinpath("tmp", "trim_sim_test"))
 
     #recreate the aircraft with NED kinematics, suitable for linearization
     ac = Cessna172R(NED()) |> System

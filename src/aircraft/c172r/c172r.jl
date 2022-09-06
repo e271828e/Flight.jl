@@ -352,11 +352,11 @@ RigidBody.AngMomTrait(::System{Payload}) = HasNoAngularMomentum()
 
 function RigidBody.get_mp_b(sys::System{Payload})
     mp_b = MassProperties()
-    sys.u.pilot ? mp_b += sys.params.pilot : nothing
-    sys.u.copilot ? mp_b += sys.params.copilot : nothing
-    sys.u.psg_left ? mp_b += sys.params.psg_left : nothing
-    sys.u.psg_right ? mp_b += sys.params.psg_right : nothing
-    sys.u.baggage ? mp_b += sys.params.baggage : nothing
+    sys.u.pilot && (mp_b += sys.params.pilot)
+    sys.u.copilot && (mp_b += sys.params.copilot)
+    sys.u.psg_left && (mp_b += sys.params.psg_left)
+    sys.u.psg_right && (mp_b += sys.params.psg_right)
+    sys.u.baggage && (mp_b += sys.params.baggage)
     return mp_b
 end
 
@@ -450,9 +450,9 @@ function Systems.f_step!(airframe::System{<:Airframe}, ::KinematicSystem)
     @unpack aero, pwp, fuel, ldg, fuel, pld = airframe
 
     x_mod = false
-    x_mod = x_mod || f_step!(aero)
-    x_mod = x_mod || f_step!(ldg)
-    x_mod = x_mod || f_step!(pwp, fuel)
+    x_mod |= f_step!(aero)
+    x_mod |= f_step!(ldg)
+    x_mod |= f_step!(pwp, fuel)
     return x_mod
 
 end

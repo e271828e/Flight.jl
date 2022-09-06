@@ -66,7 +66,7 @@ end
 #fallback method for state vector derivative initialization
 function init(::SystemẊ, cmp::Component)
     x = init(SystemX(), cmp)
-    !isnothing(x) ? x |> zero : nothing
+    return (!isnothing(x) ? (x |> zero) : nothing)
 end
 
 #initialize traits from OrderedDict
@@ -89,9 +89,9 @@ init_s(cmp::Component) = init(SystemS(), cmp)
 
 #need a custom getproperty to address the following scenario: we have a System a
 #with children b and c. if neither b and c have inputs, u = init(a, SystemU())
-#will return nothing. when the System constructor for a tries to retrieve a.u.b
-#and a.u.c to pass them along as inputs for subsystems b and c, it will be
-#accessing fields b and c of a nothing variable.
+#will return nothing. when the System constructor for a retrieves a.u.b and
+#a.u.c to pass them along as inputs for subsystems b and c, it will be accessing
+#fields b and c of a Nothing variable, and fail
 function maybe_getproperty(input, label)
     !isnothing(input) && (label in propertynames(input)) ? getproperty(input, label) : nothing
 end
@@ -167,7 +167,7 @@ end
     x_mod = false
     #we need a bitwise OR to avoid calls being skipped after x_mod == true
     for ss in sys.subsystems
-        x_mod = x_mod | f_step!(ss, args...)
+        x_mod |= f_step!(ss, args...)
     end
     return x_mod
 
@@ -183,7 +183,7 @@ end
     x_mod = false
     #we need a bitwise OR to avoid calls being skipped after x_mod == true
     for ss in sys.subsystems
-        x_mod = x_mod | f_disc!(ss, Δt, args...)
+        x_mod |= f_disc!(ss, Δt, args...)
     end
     update_y!(sys)
     return x_mod

@@ -16,7 +16,7 @@ export SensorArray, PressureSensor, PressureMeasurement
 Base.@kwdef struct AirflowDynamics <: Component
     # α::SecondOrder
     # β::SecondOrder
-    p::SecondOrder{1} = SecondOrder{1}(; k_u = 1.0, k_av = -0.3, k_ap = -0.02)
+    p::SecondOrder{1} = SecondOrder{1}(; k_u = 1.0, k_av = -0.3, k_ap = 0)
     # M::SecondOrder
 end
 

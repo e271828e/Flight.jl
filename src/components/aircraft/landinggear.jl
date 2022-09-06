@@ -396,10 +396,10 @@ function Systems.f_step!(sys::System{<:LandingGearUnit})
 
     x_mod = false
 
-    x_mod = x_mod || f_step!(sys.steering)
-    x_mod = x_mod || f_step!(sys.braking)
-    x_mod = x_mod || f_step!(sys.strut)
-    x_mod = x_mod || f_step!(sys.contact)
+    x_mod |= f_step!(sys.steering)
+    x_mod |= f_step!(sys.braking)
+    x_mod |= f_step!(sys.strut)
+    x_mod |= f_step!(sys.contact)
 
     return x_mod
 
