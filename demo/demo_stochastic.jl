@@ -2,6 +2,7 @@ using Random
 using UnPack
 
 using Flight
+using Flight.Components.Discrete: SecondOrder
 
 
 function demo_stochastic()
@@ -10,7 +11,7 @@ function demo_stochastic()
     k_av = [-0.3, -0.3]
     k_ap = [-0.02, -0.02]
 
-    sys = DiscreteSecondOrder{2}(; k_u, k_av, k_ap) |> System
+    sys = SecondOrder{2}(; k_u, k_av, k_ap) |> System
 
     rng_init = Xoshiro(0)
     rng_io = Xoshiro(0)

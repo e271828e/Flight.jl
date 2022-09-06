@@ -23,7 +23,7 @@ Base.@kwdef struct OrnsteinUhlenbeck{N} <: Component
     k_w::SVector{N,Float64} = ones(SVector{N}) #noise PSD square root
 end
 
-function stationary_var(sys::System{<:OrnsteinUhlenbeck})
+function σ²(sys::System{<:OrnsteinUhlenbeck})
     @unpack T_c, k_w = sys.params
     return k_w.^2 .* T_c/2
 end
@@ -37,9 +37,8 @@ function Systems.f_disc!(sys::System{<:OrnsteinUhlenbeck{N}}, Δt::Real) where {
     @unpack x, u, params = sys
     @unpack T_c, k_w = params
 
-    σ²x = stationary_var(sys)
     α = exp.(-Δt ./ T_c)
-    β = sqrt.(σ²x .* (1 .- α.^2))
+    β = sqrt.(σ²(sys) .* (1 .- α.^2))
 
     x .= α .* x .+ β .* u
 

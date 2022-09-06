@@ -17,7 +17,7 @@ using ..GUI
 
 @reexport using OrdinaryDiffEq: step!, reinit!, add_tstop!, get_proposed_dt
 export Simulation, enable_gui!, disable_gui!, attach_io!
-export TimeHistory, get_components, get_child_names
+export TimeHistory, get_timestamps, get_data, get_components, get_child_names
 
 
 ################################################################################
@@ -506,7 +506,8 @@ function Base.getproperty(th::TimeHistory, s::Symbol)
     end
 end
 
-timestamps(th::TimeHistory) = getfield(th, :_t)
+get_timestamps(th::TimeHistory) = getfield(th, :_t)
+get_data(th::TimeHistory) = getfield(th, :_data)
 
 Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._data[i])
 Base.view(th::TimeHistory, i) = TimeHistory(view(th._t, i), view(th._data, i))
@@ -517,7 +518,7 @@ get_child_names(::Type{<:TimeHistory{V}}) where {V} = fieldnames(V)
 
 #could be rewritten as @generated to avoid allocation
 function get_components(th::TimeHistory{<:AbstractVector{T}}) where {T<:Real}
-    [TimeHistory(th._t, y) for y in th._data |> StructArray |> StructArrays.components]
+    (TimeHistory(th._t, y) for y in th._data |> StructArray |> StructArrays.components)
 end
 
 TimeHistory(sim::Simulation) = TimeHistory(sim.log.t, sim.log.saveval)
