@@ -22,32 +22,24 @@ function test_ou()
 
     @testset verbose = true "Ornstein-Uhlenbeck" begin
 
-        T_c = [1.0]
-        k_w = [1.0]
+        T_c = 1.0
+        k_w = 1.0
 
         sys = OrnsteinUhlenbeck{1}(; T_c, k_w) |> System
 
-        #test for allocations
         @test (@ballocated(f_disc!($sys, 0.1)) == 0)
 
-        rng_init = Xoshiro(0)
-        rng_io = Xoshiro(0)
-        σ_0 = Stochastic.σ(sys) #set the initialization σ equal to the stationary σ
+        rng_init = Xoshiro(0) #for state initialization
+        rng_io = Xoshiro(0) #drives the white noise input
 
-        sys_reinit! = let rng_init = rng_init, rng_io = rng_io, σ_0 = σ_0
+        sys_reinit! = let rng_init = rng_init, rng_io = rng_io
             function (sys; init_seed = 0, io_seed = 0)
-                #set seeds for both initialization and simulation
-                @unpack x, u = sys
-
                 #randomize initial state
                 Random.seed!(rng_init, init_seed)
-                Random.randn!(rng_init, x)
-                x .*= σ_0.x #scale N(0,1) with initialization σ
+                Random.randn!(rng_init, sys) #σ is the stationary σ
 
-                #reset the io rng, and assign u for the first step (σ_u is
-                #controlled by k_w)
+                #set seed for simulation
                 Random.seed!(rng_io, io_seed)
-                Random.randn!(rng_io, u)
             end
         end
 

@@ -40,15 +40,15 @@ const XType = Union{Nothing, AbstractVector{Float64}}
 
 #needs the C type parameter for dispatch, the rest for type stability
 #must be mutable to allow y updates
-mutable struct System{C <: Component, X <: XType, Y, U, D, P, S}
+mutable struct System{C <: Component, X <: XType, Y, U, S, P, B}
     ẋ::X #continuous state derivative
     x::X #continuous state
     y::Y #output
     u::U #control input
-    s::D #discrete state
+    s::S #discrete state
     t::Base.RefValue{Float64} #allows implicit propagation of t updates down the subsystem hierarchy
     params::P
-    subsystems::S
+    subsystems::B
 end
 
 #default trait initializer. if the descriptor has any Component fields of
@@ -149,8 +149,8 @@ end
 #fallback method for node Systems. tries calling f_ode! on all subsystems with
 #the same arguments provided to the parent System, then assembles a NamedTuple
 #from the subsystems' outputs. override as required.
-@inline function (f_ode!(sys::System{C, X, Y, U, D, P, S}, args...)
-                where {C<:Component, X <: XType, Y, U, D, P, S})
+@inline function (f_ode!(sys::System{C, X, Y, U, S, P, B}, args...)
+                where {C<:Component, X <: XType, Y, U, S, P, B})
 
     map(ss-> f_ode!(ss, args...), values(sys.subsystems))
     update_y!(sys)
@@ -161,8 +161,8 @@ end
 #fallback method for node Systems. tries calling f_step! on all subsystems with
 #the same arguments provided to the parent System, then ORs their outputs. does
 #NOT update y. override as required
-@inline function (f_step!(sys::System{C, X, Y, U, D, P, S}, args...)
-                    where {C<:Component, X <: XType, Y, U, D, P, S})
+@inline function (f_step!(sys::System{C, X, Y, U, S, P, B}, args...)
+                    where {C<:Component, X <: XType, Y, U, S, P, B})
 
     x_mod = false
     #we need a bitwise OR to avoid calls being skipped after x_mod == true
@@ -177,8 +177,8 @@ end
 #the same arguments provided to the parent System, then ORs their outputs.
 #updates y, since f_disc! is where discrete Systems should do it
 #override as required.
-@inline function (f_disc!(sys::System{C, X, Y, U, D, P, S}, Δt, args...)
-                    where {C<:Component, X <: XType, Y, U, D, P, S})
+@inline function (f_disc!(sys::System{C, X, Y, U, S, P, B}, Δt, args...)
+                    where {C<:Component, X <: XType, Y, U, S, P, B})
 
     x_mod = false
     #we need a bitwise OR to avoid calls being skipped after x_mod == true

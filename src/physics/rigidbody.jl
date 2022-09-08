@@ -328,18 +328,18 @@ get_mp_b(::HasNoMass, sys::System) = MassProperties()
 
 #default implementation for a System with the HasMass trait tries to compute
 #the aggregate mass properties for all its the subsystems
-@inline @generated function (get_mp_b(::HasMass, sys::System{T, X, Y, U, D, P, S})
-    where {T<:Component, X, Y, U, D, P, S})
+@inline @generated function (get_mp_b(::HasMass, sys::System{T, X, Y, U, S, P, B})
+    where {T<:Component, X, Y, U, S, P, B})
 
     ex = Expr(:block)
 
-    if isempty(fieldnames(S))
+    if isempty(fieldnames(B))
         push!(ex.args,
             :(error("System{$(T)} has the HasMass trait and no subsystems, "*
                 "but it does not extend the get_mp_b method")))
     else
         push!(ex.args, :(p = MassProperties()))
-        for label in fieldnames(S)
+        for label in fieldnames(B)
             push!(ex.args,
                 :(p += get_mp_b(sys.subsystems[$(QuoteNode(label))])))
         end
@@ -365,19 +365,19 @@ get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
 
 #default implementation for a System with the HasAngularMomentum trait, tries to
 #sum the angular momentum from its individual components. override as required
-@inline @generated function (get_hr_b(::HasAngularMomentum, sys::System{T, X, Y, U, D, P, S})
-    where {T<:Component, X, Y, U, D, P, S})
+@inline @generated function (get_hr_b(::HasAngularMomentum, sys::System{T, X, Y, U, S, P, B})
+    where {T<:Component, X, Y, U, S, P, B})
 
     # Core.print("Generated function called")
     ex = Expr(:block)
 
-    if isempty(fieldnames(S))
+    if isempty(fieldnames(B))
         push!(ex.args,
             :(error("System{$(T)} has the HasAngularMomentum trait and no subsystems, "*
                 "but it does not extend the get_hr_b method")))
     else
         push!(ex.args, :(h = SVector(0., 0., 0.))) #initialize
-        for label in fieldnames(S)
+        for label in fieldnames(B)
             push!(ex.args,
                 :(h += get_hr_b(sys.subsystems[$(QuoteNode(label))])))
         end
@@ -396,7 +396,7 @@ struct GetsNoExternalWrench <: WrenchTrait end
 
 #prevents the trait system from failing silently when wrongly extended
 WrenchTrait(::S) where {S<:System} = error(
-    "Please extend Components.WrenchTrait for $S")
+    "Please extend RigidBody.WrenchTrait for $S")
 
 get_wr_b(sys::System) = get_wr_b(WrenchTrait(sys), sys)
 
@@ -404,20 +404,20 @@ get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
 
 #default implementation for a System with the GetsExternalWrench trait, tries
 #to sum all the Wrenches from its individual components. override as required
-@inline @generated function (get_wr_b(::GetsExternalWrench, sys::System{T, X, Y, U, D, P, S})
-    where {T<:Component, X, Y, U, D, P, S})
+@inline @generated function (get_wr_b(::GetsExternalWrench, sys::System{T, X, Y, U, S, P, B})
+    where {T<:Component, X, Y, U, S, P, B})
 
     # Core.print("Generated function called")
 
     ex = Expr(:block)
 
-    if isempty(fieldnames(S))
+    if isempty(fieldnames(B))
         push!(ex.args,
             :(error("System{$(T)} has the GetsExternalWrench trait and no subsystems, "*
                 "but it does not extend the get_wr_b method")))
     else
         push!(ex.args, :(wr = Wrench())) #initialize a zero wrench
-        for label in fieldnames(S)
+        for label in fieldnames(B)
             push!(ex.args,
                 :(wr += get_wr_b(sys.subsystems[$(QuoteNode(label))])))
         end

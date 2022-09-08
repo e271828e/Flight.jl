@@ -13,12 +13,12 @@ include("components/test_piston.jl"); using .TestPiston
 
 include("aircraft/test_c172r.jl"); using .TestC172R
 
-test_quaternions()
-test_attitude()
-test_geodesy()
-test_kinematics()
+# test_quaternions()
+# test_attitude()
+# test_geodesy()
+# test_kinematics()
 
-test_control()
+# test_control()
 test_stochastic()
 test_propellers()
 test_landing_gear()
