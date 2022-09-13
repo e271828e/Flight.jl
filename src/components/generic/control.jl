@@ -2,7 +2,7 @@ module Control
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using CImGui, CImGui.CSyntax
-using ControlSystems: ControlSystems, ss
+using ControlSystemsBase: ControlSystemsBase, ss
 
 using Flight.Engine.Systems
 using Flight.Engine.Plotting
@@ -42,7 +42,7 @@ end
 
 LinearStateSpace(; ẋ0, x0, u0, y0, A, B, C, D) = LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
-ControlSystems.ss(cmp::LinearStateSpace) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
+ControlSystemsBase.ss(cmp::LinearStateSpace) = ControlSystemsBase.ss(cmp.A, cmp.B, cmp.C, cmp.D)
 
 Systems.init(::SystemX, cmp::LinearStateSpace) = copy(cmp.x0)
 Systems.init(::SystemU, cmp::LinearStateSpace) = copy(cmp.u0)

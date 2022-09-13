@@ -7,15 +7,16 @@ using Random
 
 using Flight.Engine.Systems
 
-export DiscreteGWN, SampledGWN, OrnsteinUhlenbeck, DoubleIntegrator
+export StochasticProcess, DiscreteGWN, SampledGWN, OrnsteinUhlenbeck, DoubleIntegrator
 
 
 ################################################################################
-########################### GaussianProcess ##################################
+########################### StochasticProcess ##################################
 
-#An N-dimensional discrete-time Gaussian stochastic process
-abstract type GaussianProcess{N} <: Component end
+abstract type StochasticProcess <: Component end
 
+σ²0(sys::System{<:StochasticProcess}) = σ²(sys)
+σ0(sys::System{<:StochasticProcess}) = σ(sys)
 
 ################################################################################
 ############################ SampledGWN #################################
@@ -28,7 +29,7 @@ sampled at a frequency f_s = 1/Δt, this process must be band-limited to the
 Nyquist frequency W = f_s/2 = 1/(2Δt). The result is a discrete noise process
 with variance σ² = N0 * W = (2PSD) * 1/(2Δt) = PSD / Δt [Kay, Chapter 17.8]
 """
-Base.@kwdef struct SampledGWN{N} <: GaussianProcess{N}
+Base.@kwdef struct SampledGWN{N} <: StochasticProcess
     PSD::SVector{N,Float64} = ones(SVector{N})
 end
 
@@ -65,7 +66,7 @@ end
 """
 Discrete Gaussian white noise process
 """
-Base.@kwdef struct DiscreteGWN{N} <: GaussianProcess{N}
+Base.@kwdef struct DiscreteGWN{N} <: StochasticProcess
     σ::SVector{N,Float64} = ones(SVector{N})
 end
 
@@ -108,7 +109,7 @@ T_c is a time constant, W is the Wiener process and k_w is a noise power
 constant, which can be interpreted as the square root PSD of the white noise
 process k_w * dW/dt (dW/dt is unit-PSD continuous white noise)
 """
-struct OrnsteinUhlenbeck{N} <: GaussianProcess{N}
+struct OrnsteinUhlenbeck{N} <: StochasticProcess
     T_c::SVector{N,Float64} #time constant
     k_w::SVector{N,Float64} #noise PSD square root
 end
@@ -130,7 +131,7 @@ function Random.randn!(sys::System{<:OrnsteinUhlenbeck}, args...)
 end
 
 function Random.randn!(rng::AbstractRNG, sys::System{<:OrnsteinUhlenbeck},
-                       σ_init::Union{Real, AbstractVector{<:Real}} = σ(sys))
+                       σ_init::Union{Real, AbstractVector{<:Real}} = σ0(sys))
     randn!(rng, sys.x)
     sys.x .*= σ_init
 end
@@ -170,7 +171,7 @@ end
 Gaussian stochastic double integrator with embedded velocity-acceleration and
 position-acceleration feedback.
 """
-struct DoubleIntegrator{N} <: GaussianProcess{N}
+struct DoubleIntegrator{N} <: StochasticProcess
     k_u::SVector{N,Float64} #noise gain
     k_av::SVector{N,Float64} #velocity feedback gain (>0 stabilizes)
     k_ap::SVector{N,Float64} #position feedback gain (>0 stabilizes)

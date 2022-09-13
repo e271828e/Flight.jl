@@ -4,7 +4,7 @@ using ComponentArrays
 using DataStructures
 using AbstractTrees
 
-export Component, System
+export Component, System, SystemTrait
 export SystemẊ, SystemX, SystemY, SystemU, SystemS
 export init_ẋ, init_x, init_y, init_u, init_s
 export f_ode!, f_step!, f_disc!, update_y!
@@ -54,7 +54,7 @@ end
 #default trait initializer. if the descriptor has any Component fields of
 #its own, these are considered children and traits are (recursively) initialized
 #from them
-function init(trait::Union{SystemX, SystemY, SystemU, SystemS}, cmp::Component)
+function init(trait::SystemTrait, cmp::Component)
     #get those fields that are themselves Components
     children = filter(p -> isa(p.second, Component), OrderedDict(cmp))
     #build an OrderedDict with the initialized traits for each of those

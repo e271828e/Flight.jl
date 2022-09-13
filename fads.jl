@@ -5,17 +5,23 @@ using ComponentArrays
 using StaticArrays
 using UnPack
 using Flight
+using Flight.Stochastic: StochasticProcess, σ²0
 
 export AirflowDynamics, AirflowProperties
 export PressureSensor, PressureMeasurement, SensorArray
 
 ################################ AirflowDynamics ###############################
 
-Base.@kwdef struct AirflowDynamics <: Component
+Base.@kwdef struct AirflowDynamics <: StochasticProcess
     p::DoubleIntegrator{1} = DoubleIntegrator{1}(; k_u = 1.0, k_av = -0.3, k_ap = 0)
     # M::DoubleIntegrator
     α::DoubleIntegrator{1} = DoubleIntegrator{1}(; k_u = 1.0, k_av = -0.3, k_ap = -0.02)
     # β::DoubleIntegrator
+end
+
+function Stochastic.σ²0(sys::System{<:AirflowDynamics})
+    ss = sys.subsystems
+    (k => σ²0(v) for (k, v) in zip(keys(ss), values(ss))) |> OrderedDict |> ComponentVector
 end
 
 # #we can use the fallback f_disc!, but we need to handle randn! manually
@@ -58,7 +64,7 @@ end
 
 ############################## PressureSensor ##################################
 
-Base.@kwdef struct PressureSensor <: Component
+Base.@kwdef struct PressureSensor <: StochasticProcess
     loc::Symbol
     noise::DiscreteGWN{1} = DiscreteGWN{1}(σ = [0.05])
 end
@@ -90,36 +96,127 @@ end
 
 ################################# SensorArray ##################################
 
-Base.@kwdef struct SensorArray <: Component
+Base.@kwdef struct SensorArray <: StochasticProcess
     a::PressureSensor = PressureSensor(loc = :a)
     b::PressureSensor = PressureSensor(loc = :b)
 end
 
-################################### Model ######################################
+########################### OverallModel ################################
 
-Base.@kwdef struct Model <: Component
+Base.@kwdef struct Model <: StochasticProcess
     airflow::AirflowDynamics = AirflowDynamics()
     sensors::SensorArray = SensorArray()
 end
 
-#can we rely on the fallback f_disc!? we can for the method with AbstractRNG but
-#for the method with provided u, we need to assign u to the overall Model input.
-#each subsystm in the Model hierarchy will get its particular u block updated in
-#this step. so it is ready for a f_disc! call without extra args. we can then
-#call f_disc! without arguments, which will fall back to the generic method and
-#propagate down the hierarchy.
+function Stochastic.σ²0(sys::System{<:Model})
+    #ComponentVector(airflow = σ²0(model.airflow), sensors = σ²(model.sensors))
+    σ²0(sys.airflow) #only AirflowDynamics has states for now
+end
 
+function Systems.f_disc!(sys::System{<:Model}, Δt::Real,
+                         u::Union{Real, AbstractVector{<:Real}})
+    #assign the overall Model's noise input, then fall back to the generic,
+    #recursive no-argument f_disc! method
+    sys.u .= u
+    f_disc!(sys, Δt)
+end
 
+################################################################################
+############################## FADSFilter ######################################
 
-################################# Estimator ####################################
+Base.@kwdef struct FADSFilter{  D <: System{<:Model},
+                                P <: SRUKF.StatePropagator,
+                                M <: SRUKF.MeasurementProcessor} <: Component
+    model::D #estimator Model
+    sp::P #StatePropagator for the estimator Model
+    mp_p::M #MeasurementProcessor for static pressure measurements
+end
 
-Base.@kwdef struct Estimator <: Component end
+#sp and mp_p are sized during FADSFilter construction (not System!) from the
+#model's x and u.
+
+function Systems.init(::SystemS, fads::FADSFilter)
+
+    @unpack model = fads
+    LW = length(model.u) #noise length is given by Model input length
+
+    #state SR-covariance for the filter model
+    P_δx = diagm(σ²0(model))
+    S_δx = cholesky(P_δx).L
+
+    #normalized noise SR-covariance matrix for the filter model
+    P_δw = SizedMatrix{LW, LW}(1.0I)
+    S_δw = cholesky(P_δw).L
+
+    #normalized noise SR-covariance matrix for static pressure measurements
+    P_δv_p = SizedMatrix{1, 1}(1.0I)
+    S_δv_p = cholesky(P_δv_p).L
+
+    return (x̄ = x̄, S_δx = S_δx, S_δw = S_δw, S_δv_p = S_δv_p)
+
+end
+
+function Systems.f_disc!(sys::System{<:Filter}, Δt::Real)
+end
+
+function propagate!(filter::System{<:FADSFilter}, Δt::Real)
+
+    @unpack model, sp_p = filter.params
+    @unpack x̄, S_δx, S_δw = filter.s
+
+    f! = let model = model, Δt = Δt
+        function (x1, x0, w)
+            #assign overall model state, including airflow and all sensor states
+            model.x .= x0
+            #call discrete dynamics with the normalized noise sample from the
+            #unscented transform
+            f_disc!(model, Δt, w)
+            #retrieve the updated model state
+            x1 .= model.x
+        end
+    end
+
+    SRUKF.propagate!(sp_p, x̄, S_δx, S_δw_p, f!)
+
+end
+
+function correct!(filter::System{<:FADSFilter},
+    measurements::NamedTuple{S, NTuple{N, PressureSensorY}}) where {S,N}
+
+    @unpack model, mp_p = filter.params
+    @unpack x̄, S_δx, S_δv_p = filter.s
+
+    for (label, measurement) in measurements
+
+        h! = let model = model, label = label
+            function (y, x, v)
+                #assign model state (includes airflow and any modeled sensor
+                #states)
+                model.x .= x
+                #compute the airflow properties corresponding to the model state
+                airflow = AirflowProperties(model.airflow)
+                #retrieve the subsystem corresponding to the sensor that took
+                #the measurement sample
+                sensor = getproperty(model.sensors, label)
+                #compute and assign the predicted measurement using the
+                #single-sensor noise input from the unscented transform
+                y .= measure(sensor, airflow, v).value
+            end
+        end
+
+        measurement.valid || continue #if invalid, skip to the next measurement
+        ỹ = measurement.value
+        SRUKF.apply!(mp_p, x̄, S_δx, S_δv_p, ỹ, h!)
+
+    end
+end
+
 
 ################################### World ######################################
 
-Base.@kwdef struct World <: Component
-    model::Model = Model()
-    estimator::Estimator = Estimator()
+Base.@kwdef struct World{M, E} <: Component
+    model::M = Model()
+    estimator::E = Filter()
 end
 
 end #module
