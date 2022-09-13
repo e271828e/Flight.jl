@@ -11,7 +11,7 @@
 .idea/*
 
 #Julia
-/Manifest.toml
+*Manifest.toml*
 /LocalPreferences.toml
 /*.tar.gz
 /tmp
@@ -28,7 +28,6 @@
 /source-dist.tmp
 /source-dist.tmp1
 
-imgui.ini
 *.exe
 *.dll
 *.dwo
@@ -44,3 +43,5 @@ imgui.ini
 *.jl.mem
 *.jl.*.mem
 *.ji
+
+imgui.ini

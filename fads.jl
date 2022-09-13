@@ -95,10 +95,6 @@ Base.@kwdef struct SensorArray <: Component
     b::PressureSensor = PressureSensor(loc = :b)
 end
 
-#can we rely on the fallback f_disc!? we can for the method with AbstractRNG but
-#for the method with provided u, we need to assign u to the overall sensorarray
-#input, then call f_disc! without arguments, which will again fall back
-
 ################################### Model ######################################
 
 Base.@kwdef struct Model <: Component
@@ -106,12 +102,13 @@ Base.@kwdef struct Model <: Component
     sensors::SensorArray = SensorArray()
 end
 
-#override this for u
-# function Systems.f_disc!(sys::System{<:World}, Δt::Real, args...)
-#     f_disc!(sys.airflow, Δt, args...)
-#     f_disc!(sys.sensors, Δt, args...)
+#can we rely on the fallback f_disc!? we can for the method with AbstractRNG but
+#for the method with provided u, we need to assign u to the overall Model input.
+#each subsystm in the Model hierarchy will get its particular u block updated in
+#this step. so it is ready for a f_disc! call without extra args. we can then
+#call f_disc! without arguments, which will fall back to the generic method and
+#propagate down the hierarchy.
 
-# end
 
 
 ################################# Estimator ####################################
