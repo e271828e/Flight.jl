@@ -1,21 +1,19 @@
-/tmp
-/precompile
+/old
 /sketches
+/precompile
 /cimgui
-.github/
-.vscode/
-.VSCodeCounter
+/.vscode
+/.VSCodeCounter
 
-/perf*
-.DS_Store
-.idea/*
+#Documenter.jl
+/docs/build
+/docs/site
 
 #Julia
 *Manifest.toml*
 /LocalPreferences.toml
 /*.tar.gz
 /tmp
-/old
 /dist
 /dist-extras
 /julia

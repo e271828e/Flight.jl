@@ -24,11 +24,6 @@ function Stochastic.σ²0(sys::System{<:AirflowDynamics})
     (k => σ²0(v) for (k, v) in zip(keys(ss), values(ss))) |> OrderedDict |> ComponentVector
 end
 
-# #we can use the fallback f_disc!, but we need to handle randn! manually
-# function Random.randn!(rng::AbstractRNG, sys::System{<:AirflowDynamics})
-#     map(s -> randn!(rng, s), values(sys.subsystems))
-# end
-
 ############################### AirflowProperties ##############################
 
 Base.@kwdef struct AirflowProperties
@@ -101,7 +96,8 @@ Base.@kwdef struct SensorArray <: StochasticProcess
     b::PressureSensor = PressureSensor(loc = :b)
 end
 
-########################### OverallModel ################################
+
+################################ Model #########################################
 
 Base.@kwdef struct Model <: StochasticProcess
     airflow::AirflowDynamics = AirflowDynamics()
@@ -159,7 +155,7 @@ end
 function Systems.f_disc!(sys::System{<:Filter}, Δt::Real)
 end
 
-function propagate!(filter::System{<:FADSFilter}, Δt::Real)
+function SRUKF.propagate!(filter::System{<:FADSFilter}, Δt::Real)
 
     @unpack model, sp_p = filter.params
     @unpack x̄, S_δx, S_δw = filter.s
@@ -180,7 +176,7 @@ function propagate!(filter::System{<:FADSFilter}, Δt::Real)
 
 end
 
-function correct!(filter::System{<:FADSFilter},
+function SRUKF.update!(filter::System{<:FADSFilter},
     measurements::NamedTuple{S, NTuple{N, PressureSensorY}}) where {S,N}
 
     @unpack model, mp_p = filter.params
@@ -206,12 +202,13 @@ function correct!(filter::System{<:FADSFilter},
 
         measurement.valid || continue #if invalid, skip to the next measurement
         ỹ = measurement.value
-        SRUKF.apply!(mp_p, x̄, S_δx, S_δv_p, ỹ, h!)
+        SRUKF.update!(mp_p, x̄, S_δx, S_δv_p, ỹ, h!)
 
     end
 end
 
 
+################################################################################
 ################################### World ######################################
 
 Base.@kwdef struct World{M, E} <: Component
