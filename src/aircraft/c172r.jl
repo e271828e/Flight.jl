@@ -22,10 +22,7 @@ using Flight.Components.Atmosphere
 using Flight.Components.LandingGear
 using Flight.Components.Propellers
 using Flight.Components.Piston
-
-using ..Aircraft
-
-include("c172r/data/aero.jl")
+using Flight.Components.Aircraft
 
 export Cessna172R
 
@@ -65,6 +62,8 @@ RigidBody.get_mp_b(::System{Structure}) = mp_b_str
 
 
 ############################ Aerodynamics ######################################
+
+include("c172r/data/aero.jl")
 
 #the aircraft body reference frame fb is arbitrarily chosen to coincide with
 #the aerodynamics frame fa, so the frame transform is trivial

@@ -10,5 +10,6 @@ include("environment/environment.jl"); @reexport using .Environment
 include("aircraft/landinggear.jl"); @reexport using .LandingGear
 include("aircraft/propellers.jl"); @reexport using .Propellers
 include("aircraft/piston.jl"); @reexport using .Piston
+include("aircraft/aircraft.jl"); @reexport using .Aircraft
 
 end
