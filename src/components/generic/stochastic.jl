@@ -16,29 +16,16 @@ export StochasticProcess, DiscreteGWN, SampledGWN, OrnsteinUhlenbeck, DoubleInte
 
 abstract type StochasticProcess <: Component end
 
-#fallback for composite StochasticProcess Systems
-function σ²0(sys::System{<:StochasticProcess})
-    od = pairs(sys.subsystems) |> OrderedDict
-    filter(p -> isa(p.second, System{<:StochasticProcess}), od)
-    NamedTuple{Tuple(keys(od))}(σ²0.(values(od))) |> ComponentVector
+function Random.randn!(sys::System{<:StochasticProcess}, args...)
+    randn!(Random.default_rng(), sys, args...)
 end
 
-#fallback for composite StochasticProcess Systems
-σ0(sys::System{<:StochasticProcess}) = .√(σ²0(sys))
-
-#fall back to default rng
-function Random.randn!(sys::System{<:StochasticProcess})
-    randn!(Random.default_rng(), sys)
+function Random.randn!(rng::AbstractRNG,
+                        sys::System{<:StochasticProcess, X},
+                       σ::Union{Real, AbstractVector{<:Real}}) where {X <: AbstractVector{Float64}}
+    randn!(rng, sys.x)
+    sys.x .*= σ
 end
-
-#recursive fallback for composite StochasticProcess Systems
-function Random.randn!(rng::AbstractRNG, sys::System{<:StochasticProcess})
-    for ss in sys.subsystems
-        (ss isa System{<:StochasticProcess}) && randn!(rng, ss)
-    end
-end
-
-
 
 ################################################################################
 ############################ SampledGWN #################################
@@ -118,8 +105,6 @@ function Systems.f_disc!(sys::System{<:DiscreteGWN}, ::Real, args...)
     return false
 end
 
-# 𝒴
-# 𝒳
 ################################################################################
 ############################# OrnsteinUhlenbeck ################################
 
@@ -144,18 +129,9 @@ end
 @inline σ²(sys::System{<:OrnsteinUhlenbeck}) = (sys.params.k_w.^2 .* sys.params.T_c/2)
 @inline σ(sys::System{<:OrnsteinUhlenbeck}) = sqrt.(σ²(sys))
 
-@inline σ²0(sys::System{<:OrnsteinUhlenbeck}) = σ²(sys)
-@inline σ0(sys::System{<:OrnsteinUhlenbeck}) = σ(sys)
-
 Systems.init(::SystemU, cmp::OrnsteinUhlenbeck{N}) where {N} = zeros(N)
 Systems.init(::SystemX, cmp::OrnsteinUhlenbeck{N}) where {N} = zeros(N)
 Systems.init(::SystemY, cmp::OrnsteinUhlenbeck{N}) where {N} = zeros(SVector{N,Float64})
-
-function Random.randn!(rng::AbstractRNG, sys::System{<:OrnsteinUhlenbeck},
-                       σ_init::Union{Real, AbstractVector{<:Real}} = σ0(sys))
-    randn!(rng, sys.x)
-    sys.x .*= σ_init
-end
 
 function Systems.f_disc!(sys::System{<:OrnsteinUhlenbeck}, Δt::Real, rng::AbstractRNG)
     randn!(rng, sys.u) #generate a N(0,1) sample and apply it to the System's input
@@ -196,21 +172,11 @@ struct DoubleIntegrator{N} <: StochasticProcess
     k_u::SVector{N,Float64} #noise gain
     k_av::SVector{N,Float64} #velocity feedback gain (>0 stabilizes)
     k_ap::SVector{N,Float64} #position feedback gain (>0 stabilizes)
-    σ0_v::SVector{N,Float64} #initial velocity σ
-    σ0_p::SVector{N,Float64} #initial position σ
 end
 
 function DoubleIntegrator{N}(;
-                k_u::Real = 1.0, k_av::Real = 0., k_ap::Real = 0.,
-                σ0_v::Real = 0.0, σ0_p::Real = 0.0) where {N}
+                k_u::Real = 1.0, k_av::Real = 0., k_ap::Real = 0.) where {N}
     DoubleIntegrator{N}(map(x-> fill(x,N), (k_u, k_av, k_ap, σ0_v, σ0_p))...)
-end
-
-#initial variance and standard deviation
-σ²0(sys::System{<:DoubleIntegrator}) = σ0(sys).^2
-function σ0(sys::System{<:DoubleIntegrator})
-    @unpack σ0_v, σ0_p = sys.params
-    return ComponentVector(vcat(σ0_v, σ0_p), getaxes(sys.x))
 end
 
 Base.@kwdef struct DoubleIntegratorY{N}
@@ -223,12 +189,6 @@ Systems.init(::SystemU, cmp::DoubleIntegrator{N}) where {N} = zeros(N)
 Systems.init(::SystemY, cmp::DoubleIntegrator{N}) where {N} = DoubleIntegratorY{N}()
 function Systems.init(::SystemX, cmp::DoubleIntegrator{N}) where {N}
     ComponentVector(v = zeros(N), p = zeros(N))
-end
-
-function Random.randn!(rng::AbstractRNG, sys::System{<:DoubleIntegrator},
-                       σ_init::Union{Real, AbstractVector{<:Real}} = σ0(sys))
-    randn!(rng, sys.x)
-    sys.x .*= σ_init
 end
 
 function Systems.f_disc!(sys::System{<:DoubleIntegrator}, Δt::Real, rng::AbstractRNG)
