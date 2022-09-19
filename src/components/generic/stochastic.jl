@@ -4,6 +4,7 @@ using ComponentArrays
 using StaticArrays
 using UnPack
 using Random
+using DataStructures
 
 using Flight.Engine.Systems
 
@@ -15,8 +16,29 @@ export StochasticProcess, DiscreteGWN, SampledGWN, OrnsteinUhlenbeck, DoubleInte
 
 abstract type StochasticProcess <: Component end
 
-σ²0(sys::System{<:StochasticProcess}) = σ²(sys)
-σ0(sys::System{<:StochasticProcess}) = σ(sys)
+#fallback for composite StochasticProcess Systems
+function σ²0(sys::System{<:StochasticProcess})
+    od = pairs(sys.subsystems) |> OrderedDict
+    filter(p -> isa(p.second, System{<:StochasticProcess}), od)
+    NamedTuple{Tuple(keys(od))}(σ²0.(values(od))) |> ComponentVector
+end
+
+#fallback for composite StochasticProcess Systems
+σ0(sys::System{<:StochasticProcess}) = .√(σ²0(sys))
+
+#fall back to default rng
+function Random.randn!(sys::System{<:StochasticProcess})
+    randn!(Random.default_rng(), sys)
+end
+
+#recursive fallback for composite StochasticProcess Systems
+function Random.randn!(rng::AbstractRNG, sys::System{<:StochasticProcess})
+    for ss in sys.subsystems
+        (ss isa System{<:StochasticProcess}) && randn!(rng, ss)
+    end
+end
+
+
 
 ################################################################################
 ############################ SampledGWN #################################
@@ -122,13 +144,12 @@ end
 @inline σ²(sys::System{<:OrnsteinUhlenbeck}) = (sys.params.k_w.^2 .* sys.params.T_c/2)
 @inline σ(sys::System{<:OrnsteinUhlenbeck}) = sqrt.(σ²(sys))
 
+@inline σ²0(sys::System{<:OrnsteinUhlenbeck}) = σ²(sys)
+@inline σ0(sys::System{<:OrnsteinUhlenbeck}) = σ(sys)
+
 Systems.init(::SystemU, cmp::OrnsteinUhlenbeck{N}) where {N} = zeros(N)
 Systems.init(::SystemX, cmp::OrnsteinUhlenbeck{N}) where {N} = zeros(N)
 Systems.init(::SystemY, cmp::OrnsteinUhlenbeck{N}) where {N} = zeros(SVector{N,Float64})
-
-function Random.randn!(sys::System{<:OrnsteinUhlenbeck}, args...)
-    randn!(Random.default_rng(), sys, args...)
-end
 
 function Random.randn!(rng::AbstractRNG, sys::System{<:OrnsteinUhlenbeck},
                        σ_init::Union{Real, AbstractVector{<:Real}} = σ0(sys))
@@ -202,10 +223,6 @@ Systems.init(::SystemU, cmp::DoubleIntegrator{N}) where {N} = zeros(N)
 Systems.init(::SystemY, cmp::DoubleIntegrator{N}) where {N} = DoubleIntegratorY{N}()
 function Systems.init(::SystemX, cmp::DoubleIntegrator{N}) where {N}
     ComponentVector(v = zeros(N), p = zeros(N))
-end
-
-function Random.randn!(sys::System{<:DoubleIntegrator}, args...)
-    randn!(Random.default_rng(), sys, args...)
 end
 
 function Random.randn!(rng::AbstractRNG, sys::System{<:DoubleIntegrator},

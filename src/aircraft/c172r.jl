@@ -123,7 +123,7 @@ Base.@kwdef struct Aero <: AbstractAerodynamics
 end
 
 #e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
-#a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
+#a↑ -> δa↑ -> left trailing edge down, right up -> Cl↑ -> roll right
 #r↑ -> δr↑ -> rudder trailing edge left -> Cn↓ -> yaw left
 #f↑ -> δf↑ -> flap trailing edge down -> CL↑
 
