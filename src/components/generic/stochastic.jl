@@ -33,6 +33,16 @@ function Random.randn!(rng::AbstractRNG,
     sys.x .+= x̄
 end
 
+function sample(sys::System{<:StochasticProcess}, Δt::Real, rng::AbstractRNG)
+    randn!(rng, sys.u)
+    return sample(sys, Δt)
+end
+
+function sample(sys::System{<:StochasticProcess}, Δt::Real, u::Union{Real, AbstractVector{<:Real}})
+    sys.u .= u
+    return sample(sys, Δt)
+end
+
 #the System's input is driven by standard Gaussian white noise
 function Systems.f_disc!(sys::System{<:StochasticProcess, X, Y, U},
                          Δt::Real, rng::AbstractRNG) where {X, Y, U <: AbstractVector{Float64}}
@@ -62,9 +72,13 @@ Systems.init(::SystemY, cmp::DiscreteGWN{N}) where {N} = zeros(SVector{N,Float64
 @inline σ²(sys::System{<:DiscreteGWN}) = σ(sys).^2
 @inline σ(sys::System{<:DiscreteGWN}) = sys.params.σ
 
-function Systems.f_disc!(sys::System{<:DiscreteGWN}, ::Real)
+function sample(sys::System{<:DiscreteGWN{N}}) where {N}
     u = SVector{N,Float64}(sys.u)
-    sys.y = σ(sys) .* u
+    return σ(sys) .* u
+end
+
+function Systems.f_disc!(sys::System{<:DiscreteGWN{N}}, ::Real) where {N}
+    sys.y = sample(sys)
     return false
 end
 
@@ -89,9 +103,13 @@ Systems.init(::SystemY, cmp::SampledGWN{N}) where {N} = zeros(SVector{N,Float64}
 @inline σ²(sys::System{<:SampledGWN}, Δt::Real) = SVector(sys.params.PSD ./ Δt)
 @inline σ(sys::System{<:SampledGWN}, Δt::Real) = .√(σ²(sys, Δt))
 
-function Systems.f_disc!(sys::System{<:SampledGWN{N}}, Δt::Real) where {N}
+function sample(sys::System{<:SampledGWN{N}}, Δt::Real) where {N}
     u = SVector{N,Float64}(sys.u)
-    sys.y = σ(sys, Δt) .* u
+    return σ(sys, Δt) .* u
+end
+
+function Systems.f_disc!(sys::System{<:SampledGWN{N}}, Δt::Real) where {N}
+    sys.y = sample(sys, Δt)
     return false #no x
 end
 
