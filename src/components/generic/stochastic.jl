@@ -8,7 +8,8 @@ using DataStructures
 
 using Flight.Engine.Systems
 
-export StochasticProcess, DiscreteGWN, SampledGWN, OrnsteinUhlenbeck, DoubleIntegrator
+export StochasticProcess
+export DiscreteGWN, SampledGWN, SampledGRW, SampledOU, DoubleIntegrator
 
 
 ################################################################################
@@ -21,10 +22,46 @@ function Random.randn!(sys::System{<:StochasticProcess}, args...)
 end
 
 function Random.randn!(rng::AbstractRNG,
-                        sys::System{<:StochasticProcess, X},
+                       sys::System{<:StochasticProcess, X},
                        σ::Union{Real, AbstractVector{<:Real}}) where {X <: AbstractVector{Float64}}
     randn!(rng, sys.x)
     sys.x .*= σ
+end
+
+#for stochastic systems we assume the input is driven by standard Gaussian white
+#noise
+function Systems.f_disc!(sys::System{<:StochasticProcess, X, Y, U},
+                         Δt::Real, rng::AbstractRNG) where {X, Y, U <: AbstractVector{Float64}}
+    randn!(rng, sys.u) #generate a N(0,1) sample and apply it to the System's input
+    f_disc!(sys, Δt)
+end
+
+function Systems.f_disc!(sys::System{<:StochasticProcess, X, Y, U}, Δt::Real,
+                         u::Union{Real, AbstractVector{<:Real}}) where {X, Y, U <: AbstractVector{Float64}}
+    sys.u .= u #apply a directly provided N(0,1) sample to the System's input
+    f_disc!(sys, Δt)
+end
+
+################################################################################
+########################### DiscreteGWN #################################
+
+"""
+Discrete Gaussian white noise process
+"""
+Base.@kwdef struct DiscreteGWN{N} <: StochasticProcess
+    σ::SVector{N,Float64} = ones(SVector{N})
+end
+
+Systems.init(::SystemU, cmp::DiscreteGWN{N}) where {N} = zeros(N)
+Systems.init(::SystemY, cmp::DiscreteGWN{N}) where {N} = zeros(SVector{N,Float64})
+
+@inline σ²(sys::System{<:DiscreteGWN}) = σ(sys).^2
+@inline σ(sys::System{<:DiscreteGWN}) = sys.params.σ
+
+function Systems.f_disc!(sys::System{<:DiscreteGWN}, ::Real)
+    u = SVector{N,Float64}(sys.u)
+    sys.y = σ(sys) .* u
+    return false
 end
 
 ################################################################################
@@ -48,65 +85,46 @@ Systems.init(::SystemY, cmp::SampledGWN{N}) where {N} = zeros(SVector{N,Float64}
 @inline σ²(sys::System{<:SampledGWN}, Δt::Real) = SVector(sys.params.PSD ./ Δt)
 @inline σ(sys::System{<:SampledGWN}, Δt::Real) = .√(σ²(sys, Δt))
 
-function sample(sys::System{<:SampledGWN}, Δt::Real, rng::AbstractRNG)
-    randn!(rng, sys.u)
-    return sample(sys, Δt)
-end
-
-function sample(sys::System{<:SampledGWN}, Δt::Real, u::Union{Real, AbstractVector{<:Real}})
-    sys.u .= u
-    return sample(sys, Δt)
-end
-
-function sample(sys::System{<:SampledGWN{N}}, Δt::Real) where {N}
+function Systems.f_disc!(sys::System{<:SampledGWN{N}}, Δt::Real) where {N}
     u = SVector{N,Float64}(sys.u)
-    return σ(sys, Δt) .* u
-end
-
-function Systems.f_disc!(sys::System{<:SampledGWN}, Δt::Real, args...)
-    sys.y = sample(sys, Δt, args...)
+    sys.y = σ(sys, Δt) .* u
     return false #no x
 end
 
 
 ################################################################################
-########################### DiscreteGWN #################################
+############################# SampledGRW ################################
 
 """
-Discrete Gaussian white noise process
+Sampled continuous Gaussian random walk
+
+This is just a Wiener process scaled with a non-unit noise PSD.
 """
-Base.@kwdef struct DiscreteGWN{N} <: StochasticProcess
-    σ::SVector{N,Float64} = ones(SVector{N})
+struct SampledGRW{N} <: StochasticProcess
+    k_w::SVector{N,Float64} #noise PSD square root
 end
 
-Systems.init(::SystemU, cmp::DiscreteGWN{N}) where {N} = zeros(N)
-Systems.init(::SystemY, cmp::DiscreteGWN{N}) where {N} = zeros(SVector{N,Float64})
+SampledGRW{N}(; k_w::Real = 1.0) where {N} = SampledGRW{N}(fill(k_w, N))
 
-@inline σ²(sys::System{<:DiscreteGWN}) = σ(sys).^2
-@inline σ(sys::System{<:DiscreteGWN}) = sys.params.σ
+Systems.init(::SystemU, cmp::SampledGRW{N}) where {N} = zeros(N)
+Systems.init(::SystemX, cmp::SampledGRW{N}) where {N} = zeros(N)
+Systems.init(::SystemY, cmp::SampledGRW{N}) where {N} = zeros(SVector{N,Float64})
 
-function sample(sys::System{<:DiscreteGWN}, rng::AbstractRNG)
-    randn!(rng, sys.u)
-    return sample(sys)
-end
+function Systems.f_disc!(sys::System{<:SampledGRW{N}}, Δt::Real) where {N}
 
-function sample(sys::System{<:DiscreteGWN}, u::Union{Real, AbstractVector{<:Real}})
-    sys.u .= u
-    return sample(sys)
-end
+    @unpack x, u, params = sys
+    @unpack k_w = params
 
-function sample(sys::System{<:DiscreteGWN{N}}) where {N}
-    u = SVector{N,Float64}(sys.u)
-    return σ(sys) .* u
-end
+    x .= x .+ Δt .* k_w .* u
 
-function Systems.f_disc!(sys::System{<:DiscreteGWN}, ::Real, args...)
-    sys.y = sample(sys, args...)
-    return false
+    sys.y = SVector{N, Float64}(x)
+
+    return true #x modified
+
 end
 
 ################################################################################
-############################# OrnsteinUhlenbeck ################################
+############################# SampledOU ################################
 
 """
 An exact discretization of the Ornstein-Uhlenbeck process:
@@ -116,35 +134,24 @@ T_c is a time constant, W is the Wiener process and k_w is a noise power
 constant, which can be interpreted as the square root PSD of the white noise
 process k_w * dW/dt (dW/dt is unit-PSD continuous white noise)
 """
-struct OrnsteinUhlenbeck{N} <: StochasticProcess
+struct SampledOU{N} <: StochasticProcess
     T_c::SVector{N,Float64} #time constant
     k_w::SVector{N,Float64} #noise PSD square root
 end
 
-function OrnsteinUhlenbeck{N}(; T_c::Real = 1.0, k_w::Real = 1.0) where {N}
-    OrnsteinUhlenbeck{N}(map(x-> fill(x,N), (T_c, k_w))...)
+function SampledOU{N}(; T_c::Real = 1.0, k_w::Real = 1.0) where {N}
+    SampledOU{N}(map(x-> fill(x,N), (T_c, k_w))...)
 end
 
 #stationary variance and standard deviation
-@inline σ²(sys::System{<:OrnsteinUhlenbeck}) = (sys.params.k_w.^2 .* sys.params.T_c/2)
-@inline σ(sys::System{<:OrnsteinUhlenbeck}) = sqrt.(σ²(sys))
+@inline σ²(sys::System{<:SampledOU}) = (sys.params.k_w.^2 .* sys.params.T_c/2)
+@inline σ(sys::System{<:SampledOU}) = sqrt.(σ²(sys))
 
-Systems.init(::SystemU, cmp::OrnsteinUhlenbeck{N}) where {N} = zeros(N)
-Systems.init(::SystemX, cmp::OrnsteinUhlenbeck{N}) where {N} = zeros(N)
-Systems.init(::SystemY, cmp::OrnsteinUhlenbeck{N}) where {N} = zeros(SVector{N,Float64})
+Systems.init(::SystemU, cmp::SampledOU{N}) where {N} = zeros(N)
+Systems.init(::SystemX, cmp::SampledOU{N}) where {N} = zeros(N)
+Systems.init(::SystemY, cmp::SampledOU{N}) where {N} = zeros(SVector{N,Float64})
 
-function Systems.f_disc!(sys::System{<:OrnsteinUhlenbeck}, Δt::Real, rng::AbstractRNG)
-    randn!(rng, sys.u) #generate a N(0,1) sample and apply it to the System's input
-    f_disc!(sys, Δt)
-end
-
-function Systems.f_disc!(sys::System{<:OrnsteinUhlenbeck}, Δt::Real,
-                         u::Union{Real, AbstractVector{<:Real}})
-    sys.u .= u #apply a directly provided N(0,1) sample to the System's input
-    f_disc!(sys, Δt)
-end
-
-function Systems.f_disc!(sys::System{<:OrnsteinUhlenbeck{N}}, Δt::Real) where {N}
+function Systems.f_disc!(sys::System{<:SampledOU{N}}, Δt::Real) where {N}
 
     @unpack x, u, params = sys
     @unpack T_c, k_w = params
@@ -189,17 +196,6 @@ Systems.init(::SystemU, cmp::DoubleIntegrator{N}) where {N} = zeros(N)
 Systems.init(::SystemY, cmp::DoubleIntegrator{N}) where {N} = DoubleIntegratorY{N}()
 function Systems.init(::SystemX, cmp::DoubleIntegrator{N}) where {N}
     ComponentVector(v = zeros(N), p = zeros(N))
-end
-
-function Systems.f_disc!(sys::System{<:DoubleIntegrator}, Δt::Real, rng::AbstractRNG)
-    randn!(rng, sys.u) #generate a N(0,1) sample and apply it to the System's input
-    f_disc!(sys, Δt)
-end
-
-function Systems.f_disc!(sys::System{<:DoubleIntegrator}, Δt::Real,
-                         u::Union{Real, AbstractVector{<:Real}})
-    sys.u .= u #apply a directly provided N(0,1) sample to the System's input
-    f_disc!(sys, Δt)
 end
 
 function Systems.f_disc!(sys::System{<:DoubleIntegrator{N}}, Δt::Real) where {N}

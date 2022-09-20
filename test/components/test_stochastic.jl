@@ -20,12 +20,12 @@ end
 
 function test_ou()
 
-    @testset verbose = true "Ornstein-Uhlenbeck" begin
+    @testset verbose = true "Sampled Ornstein-Uhlenbeck" begin
 
         T_c = 1.0
         k_w = 1.0
 
-        sys = OrnsteinUhlenbeck{1}(; T_c, k_w) |> System
+        sys = SampledOU{1}(; T_c, k_w) |> System
 
         @test (@ballocated(f_disc!($sys, 0.1)) == 0)
 
