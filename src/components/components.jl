@@ -3,7 +3,6 @@ module Components
 using Reexport
 
 include("generic/control.jl"); @reexport using .Control
-include("generic/stochastic.jl"); @reexport using .Stochastic
 include("environment/atmosphere.jl"); @reexport using .Atmosphere
 include("environment/terrain.jl"); @reexport using .Terrain
 include("environment/environment.jl"); @reexport using .Environment
