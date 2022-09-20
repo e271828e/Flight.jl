@@ -29,6 +29,7 @@ function test_ou()
 
         @test (@ballocated(f_disc!($sys, 0.1)) == 0)
 
+        x̄0 = 0
         σ0 = Stochastic.σ(sys)
         rng_init = Xoshiro(0) #for state initialization
         rng_io = Xoshiro(0) #drives the white noise input
@@ -37,7 +38,7 @@ function test_ou()
             function (sys; init_seed = 0, io_seed = 0)
                 #randomize initial state
                 Random.seed!(rng_init, init_seed)
-                Random.randn!(rng_init, sys, σ0)
+                Random.randn!(rng_init, sys; x̄ = x̄0, σ = σ0)
 
                 #set seed for simulation
                 Random.seed!(rng_io, io_seed)

@@ -80,6 +80,14 @@ function init(::SystemTrait, dict::OrderedDict)
     end
 end
 
+#y must always be a NamedTuple, even if all subsystem's y are StaticArrays;
+#otherwise update_y! will not work
+function init(::SystemY, dict::OrderedDict)
+    filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
+    isempty(dict) && return nothing
+    return NamedTuple(dict)
+end
+
 #shorthands (do not extend these)
 init_ẋ(cmp::Component) = init(SystemẊ(), cmp)
 init_x(cmp::Component) = init(SystemX(), cmp)

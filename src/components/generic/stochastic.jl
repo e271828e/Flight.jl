@@ -22,14 +22,15 @@ function Random.randn!(sys::System{<:StochasticProcess}, args...)
 end
 
 function Random.randn!(rng::AbstractRNG,
-                       sys::System{<:StochasticProcess, X},
+                       sys::System{<:StochasticProcess, X};
+                       x̄::Union{Real, AbstractVector{<:Real}},
                        σ::Union{Real, AbstractVector{<:Real}}) where {X <: AbstractVector{Float64}}
     randn!(rng, sys.x)
     sys.x .*= σ
+    sys.x .+= x̄
 end
 
-#for stochastic systems we assume the input is driven by standard Gaussian white
-#noise
+#the System's input is driven by standard Gaussian white noise
 function Systems.f_disc!(sys::System{<:StochasticProcess, X, Y, U},
                          Δt::Real, rng::AbstractRNG) where {X, Y, U <: AbstractVector{Float64}}
     randn!(rng, sys.u) #generate a N(0,1) sample and apply it to the System's input
