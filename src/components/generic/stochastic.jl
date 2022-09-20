@@ -15,6 +15,9 @@ export DiscreteGWN, SampledGWN, SampledGRW, SampledOU, DoubleIntegrator
 ################################################################################
 ########################### StochasticProcess ##################################
 
+#all these Systems are meant to be driven by a unit-variance Gaussian white
+#noise input
+
 abstract type StochasticProcess <: Component end
 
 function Random.randn!(sys::System{<:StochasticProcess}, args...)
@@ -99,7 +102,8 @@ end
 """
 Sampled continuous Gaussian random walk
 
-This is just a Wiener process scaled with a non-unit noise PSD.
+This is just a Wiener process scaled with a non-unit noise PSD, so that its
+variance is σ²x = k_w^2 * t
 """
 struct SampledGRW{N} <: StochasticProcess
     k_w::SVector{N,Float64} #noise PSD square root
@@ -116,7 +120,7 @@ function Systems.f_disc!(sys::System{<:SampledGRW{N}}, Δt::Real) where {N}
     @unpack x, u, params = sys
     @unpack k_w = params
 
-    x .= x .+ Δt .* k_w .* u
+    x .= x .+ √Δt .* k_w .* u
 
     sys.y = SVector{N, Float64}(x)
 
@@ -133,7 +137,7 @@ dx = -1/T_c * x * dt + k_w * dW
 
 T_c is a time constant, W is the Wiener process and k_w is a noise power
 constant, which can be interpreted as the square root PSD of the white noise
-process k_w * dW/dt (dW/dt is unit-PSD continuous white noise)
+process k_w * dW/dt (dW/dt is unit-PSD continuous white noise).
 """
 struct SampledOU{N} <: StochasticProcess
     T_c::SVector{N,Float64} #time constant
