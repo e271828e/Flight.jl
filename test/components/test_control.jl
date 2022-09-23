@@ -43,8 +43,8 @@ function test_state_space()
         sys.u .= u
         f_ode!(sys)
 
-        @test sys.ẋ == ẋ0 + A * (x - x0) + B * (u - u0)
-        @test sys.y == y0 + C * (x - x0) + D * (u - u0)
+        @test all(sys.ẋ .== ẋ0 + A * (x - x0) + B * (u - u0))
+        @test all(sys.y .== y0 + C * (x - x0) + D * (u - u0))
 
         @test @ballocated(f_ode!($sys)) === 0
         @test @ballocated(f_step!($sys)) === 0
