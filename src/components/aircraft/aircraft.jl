@@ -72,7 +72,7 @@ function AircraftTemplate(kinematics::K = LTF(),
     AircraftTemplate{K,F,A}(kinematics, airframe, avionics)
 end
 
-#override the default Component update_y! to include stuff besides subsystem
+#override the default Component assemble_y! to include stuff besides subsystem
 #outputs
 Base.@kwdef struct AircraftTemplateY{K, F, A}
     kinematics::K

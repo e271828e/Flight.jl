@@ -7,7 +7,7 @@ using AbstractTrees
 export Component, System, SystemTrait
 export SystemẊ, SystemX, SystemY, SystemU, SystemS
 export init_ẋ, init_x, init_y, init_u, init_s
-export f_ode!, f_step!, f_disc!, update_y!
+export f_ode!, f_step!, f_disc!, assemble_y!
 
 
 ################################################################################
@@ -81,7 +81,7 @@ function init(::SystemTrait, dict::OrderedDict)
 end
 
 #y must always be a NamedTuple, even if all subsystem's y are StaticArrays;
-#otherwise update_y! will not work
+#otherwise assemble_y! will not work
 function init(::SystemY, dict::OrderedDict)
     filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
     isempty(dict) && return nothing
@@ -161,7 +161,7 @@ end
                 where {C<:Component, X <: XType, Y, U, S, P, B})
 
     map(ss-> f_ode!(ss, args...), values(sys.subsystems))
-    update_y!(sys)
+    assemble_y!(sys)
     return nothing
 
 end
@@ -183,7 +183,7 @@ end
 
 #fallback method for node Systems. tries calling f_disc! on all subsystems with
 #the same arguments provided to the parent System, then ORs their outputs.
-#updates y, since f_disc! is where discrete Systems should do it
+#updates y, since f_disc! is where discrete Systems should update their output.
 #override as required.
 @inline function (f_disc!(sys::System{C, X, Y, U, S, P, B}, Δt, args...)
                     where {C<:Component, X <: XType, Y, U, S, P, B})
@@ -193,19 +193,19 @@ end
     for ss in sys.subsystems
         x_mod |= f_disc!(ss, Δt, args...)
     end
-    update_y!(sys)
+    assemble_y!(sys)
     return x_mod
 
+end
+
+@inline function (assemble_y!(sys::System{C, X, Y})
+    where {C<:Component, X, Y})
 end
 
 #fallback method for updating a System's NamedTuple output. it assembles the
 #outputs from its subsystems into a NamedTuple, then assigns it to the System's
 #y field
-@inline function (update_y!(sys::System{C, X, Y})
-    where {C<:Component, X, Y})
-end
-
-@inline function (update_y!(sys::System{C, X, Y})
+@inline function (assemble_y!(sys::System{C, X, Y})
     where {C<:Component, X, Y <: NamedTuple{L, M}} where {L, M})
 
     #the keys of NamedTuple sys.y identify those subsystems with non-null

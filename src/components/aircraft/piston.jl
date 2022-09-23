@@ -458,7 +458,7 @@ function Systems.f_ode!(thr::System{<:Thruster}, air::AirflowData, kin::Kinemati
 
     f_ode!(engine, air; M_load = M_eq, J_load = J_eq)
 
-    update_y!(thr)
+    assemble_y!(thr)
 
 end
 
