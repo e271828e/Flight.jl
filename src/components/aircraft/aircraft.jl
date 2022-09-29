@@ -79,12 +79,12 @@ Base.@kwdef struct AircraftTemplateY{K, F, A}
     airframe::F
     avionics::A
     rigidbody::RigidBodyData
-    airflow::AirflowData
+    air::AirData
 end
 
 Systems.init(::SystemY, ac::AircraftTemplate) = AircraftTemplateY(
     init_y(ac.kinematics), init_y(ac.airframe), init_y(ac.avionics),
-    RigidBodyData(), AirflowData())
+    RigidBodyData(), AirData())
 
 function init!(ac::System{<:AircraftTemplate}, ic::KinematicInit)
     Kinematics.init!(ac.x.kinematics, ic)
@@ -100,7 +100,7 @@ function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractE
     #update kinematics
     f_ode!(kinematics)
     kin_data = kinematics.y.common
-    air_data = AirflowData(kin_data, atm)
+    air_data = AirData(kin_data, atm)
 
     #update avionics and airframe components
     f_ode!(avionics, airframe, kin_data, air_data, trn)
@@ -177,7 +177,7 @@ function Plotting.make_plots(th::TimeHistory{<:AircraftTemplateY}; kwargs...)
         :airframe => make_plots(th.airframe; kwargs...),
         :avionics => make_plots(th.avionics; kwargs...),
         :rigidbody => make_plots(th.rigidbody; kwargs...),
-        :airflow => make_plots(th.airflow; kwargs...),
+        :air => make_plots(th.air; kwargs...),
     )
 
 end

@@ -184,7 +184,7 @@ function test_trimming()
         C172R.Trim.assign!(ac, env, params, state)
 
         e_lb = e_nb = REuler(ac.y.kinematics.q_nb)
-        v_wOb_n = e_nb(ac.y.airflow.v_wOb_b)
+        v_wOb_n = e_nb(ac.y.air.v_wOb_b)
 
         @test e_nb.φ ≈ state.φ_nb
         @test ac.y.airframe.aero.α ≈ state.α_a
@@ -197,7 +197,7 @@ function test_trimming()
         @test e_nb.ψ ≈ params.ψ_nb
         @test Attitude.inclination(v_wOb_n) ≈ params.γ_wOb_n atol = 1e-12
         @test ac.y.kinematics.common.ω_lb_b ≈ Attitude.ω(e_lb, [params.ψ_lb_dot, params.θ_lb_dot, 0])
-        @test ac.y.airflow.TAS ≈ params.TAS
+        @test ac.y.air.TAS ≈ params.TAS
         @test ac.y.airframe.aero.β ≈ params.β_a
         @test ac.x.airframe.fuel[1] == params.fuel
         @test ac.u.avionics.mixture == params.mixture

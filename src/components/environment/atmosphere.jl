@@ -14,7 +14,7 @@ export AbstractISAModel, TunableISA
 export AbstractWindModel, TunableWind
 export AbstractAtmosphere, SimpleAtmosphere, AtmosphericData
 
-export AirflowData
+export AirData
 export get_velocity_vector, get_airflow_angles, get_wind_axes, get_stability_axes
 
 ### see ISO 2553
@@ -231,7 +231,7 @@ end
     return q_bs
 end
 
-struct AirflowData
+struct AirData
     v_ew_n::SVector{3,Float64} #wind velocity, NED axes
     v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
     v_eOb_b::SVector{3,Float64} #vehicle velocity vector, vehicle axes
@@ -251,9 +251,9 @@ struct AirflowData
     CAS::Float64 #calibrated airspeed
 end
 
-AirflowData() = AirflowData(KinematicData(), AtmosphericData())
+AirData() = AirData(KinematicData(), AtmosphericData())
 
-function AirflowData(kin::KinematicData, atm_data::AtmosphericData)
+function AirData(kin::KinematicData, atm_data::AtmosphericData)
 
     v_eOb_b = kin.v_eOb_b
     v_ew_n = atm_data.wind.v_ew_n
@@ -271,22 +271,22 @@ function AirflowData(kin::KinematicData, atm_data::AtmosphericData)
     EAS = TAS * √(ρ / ρ_std)
     CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + q/p_std)^((γ-1)/γ) - 1) )
 
-    AirflowData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
+    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
 
-function AirflowData(kin_data::KinematicData, atm_sys::System{<:AbstractAtmosphere})
+function AirData(kin_data::KinematicData, atm_sys::System{<:AbstractAtmosphere})
 
     pos = Geographic(kin_data.n_e, kin_data.h_o)
 
     #query the atmospheric System for the atmospheric data at our position
     atm_data = AtmosphericData(atm_sys, pos)
-    AirflowData(kin_data, atm_data)
+    AirData(kin_data, atm_data)
 end
 
 ################################## Plotting ####################################
 
-function Plotting.make_plots(th::TimeHistory{<:AirflowData}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:AirData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 

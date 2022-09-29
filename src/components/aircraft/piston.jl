@@ -151,7 +151,7 @@ Systems.init(::SystemU, ::Engine) = PistonEngineU()
 Systems.init(::SystemY, ::Engine) = PistonEngineY()
 Systems.init(::SystemS, ::Engine) = PistonEngineS()
 
-function Systems.f_ode!(eng::System{<:Engine}, air::AirflowData;
+function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
                         M_load::Real, J_load::Real)
 
     @unpack ω_rated, ω_idle, P_rated, J, M_start, lookup = eng.params
@@ -440,7 +440,7 @@ Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
 end
 
 
-function Systems.f_ode!(thr::System{<:Thruster}, air::AirflowData, kin::KinematicData)
+function Systems.f_ode!(thr::System{<:Thruster}, air::AirData, kin::KinematicData)
 
     @unpack engine, propeller = thr
     @unpack gear_ratio = thr.params

@@ -161,7 +161,7 @@ Systems.init(::SystemS, ::Aero) = AeroS()
 
 
 function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
-    air::AirflowData, kinematics::KinematicData, terrain::System{<:AbstractTerrain})
+    air::AirData, kinematics::KinematicData, terrain::System{<:AbstractTerrain})
 
     #for near-zero TAS, the airflow angles are likely to chatter between 0, -π
     #and π. this can cause lots of noise in airflow angle derivatives and
@@ -431,7 +431,7 @@ end
 ############################# Update Methods ###################################
 
 function Systems.f_ode!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics},
-                kin::KinematicData, air::AirflowData, trn::System{<:AbstractTerrain})
+                kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
 
     @unpack aero, pwp, ldg, fuel, pld = airframe
 
@@ -515,7 +515,7 @@ Systems.init(::SystemY, ::ReversibleControls) = ReversibleControlsY()
 ########################### Update Methods #####################################
 
 function Systems.f_ode!(avionics::System{ReversibleControls}, ::System{<:Airframe},
-                ::KinematicData, ::AirflowData, ::System{<:AbstractTerrain})
+                ::KinematicData, ::AirData, ::System{<:AbstractTerrain})
 
     #ReversibleControls has no internal dynamics, just input-output feedthrough
     @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
