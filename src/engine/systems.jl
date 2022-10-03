@@ -7,7 +7,7 @@ using AbstractTrees
 export Component, System, SystemTrait
 export SystemẊ, SystemX, SystemY, SystemU, SystemS
 export init_ẋ, init_x, init_y, init_u, init_s
-export f_ode!, f_step!, f_disc!, assemble_y!
+export f_ode!, f_step!, f_disc!, update_y!
 
 
 ################################################################################
@@ -81,7 +81,7 @@ function init(::SystemTrait, dict::OrderedDict)
 end
 
 #y must always be a NamedTuple, even if all subsystem's y are StaticArrays;
-#otherwise assemble_y! will not work
+#otherwise update_y! will not work
 function init(::SystemY, dict::OrderedDict)
     filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
     isempty(dict) && return nothing
@@ -161,7 +161,7 @@ end
                 where {C<:Component, X <: XType, Y, U, S, P, B})
 
     map(ss-> f_ode!(ss, args...), values(sys.subsystems))
-    assemble_y!(sys)
+    update_y!(sys)
     return nothing
 
 end
@@ -193,18 +193,18 @@ end
     for ss in sys.subsystems
         x_mod |= f_disc!(ss, Δt, args...)
     end
-    assemble_y!(sys)
+    update_y!(sys)
     return x_mod
 
 end
 
-@inline function (assemble_y!(sys::System{C, X, Y})
+@inline function (update_y!(sys::System{C, X, Y})
     where {C<:Component, X, Y})
 end
 
 #fallback method, assembles a System's NamedTuple output from its subsystems'
 #outputs, then assigns it to the System's y field
-@inline function (assemble_y!(sys::System{C, X, Y, U, S, P, B})
+@inline function (update_y!(sys::System{C, X, Y, U, S, P, B})
     where {C<:Component, X, Y <: NamedTuple{L, M},
            U, S, P, B <: NamedTuple{L,N}} where {L, M, N})
 
