@@ -75,7 +75,7 @@ function test_sim(; save::Bool = true)
 
     sys_io! = let
 
-        function (u, y, t, params)
+        function (u, s, y, t, params)
 
             u.avionics.throttle = 0.2
             u.avionics.Δ_aileron = (t < 5 ? 0.25 : 0.0)

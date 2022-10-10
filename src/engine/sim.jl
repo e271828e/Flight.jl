@@ -231,7 +231,7 @@ function f_cb_io!(integrator)
 
     @unpack sys, sys_io! = integrator.p
 
-    sys_io!(sys.u, sys.y, sys.t[], sys.params)
+    sys_io!(sys.u, sys.s, sys.y, sys.t[], sys.params)
 
     #a System control function will never modify the System's continuous state,
     #so we may as well tell the integrator to avoid any performance hit
@@ -253,10 +253,11 @@ no_sys_reinit!(sys::System; kwargs...) = nothing
 
 #function signature a System I/O function must adhere to.
 #u: (mutable) System's control input, which the function may modify
+#s: (mutable) System's discrete state, which the function may modify
 #y: (immutable) System's output
 #t: (dereferenced) System's t field
 #params: (immutable) System's params field
-no_sys_io!(u, y, t::Float64, params) = nothing
+no_sys_io!(u, s, y, t::Float64, params) = nothing
 
 
 ####################### OrdinaryDiffEq extensions ##############################
