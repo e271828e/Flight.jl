@@ -202,11 +202,11 @@ end
     where {C<:Component, X, Y})
 end
 
-#fallback method, assembles a System's NamedTuple output from its subsystems'
-#outputs, then assigns it to the System's y field
-@inline function (update_y!(sys::System{C, X, Y, U, S, P, B})
-    where {C<:Component, X, Y <: NamedTuple{L, M},
-           U, S, P, B <: NamedTuple{L,N}} where {L, M, N})
+#fallback method for updating a System's NamedTuple output. it assembles the
+#outputs from its subsystems into a NamedTuple, then assigns it to the System's
+#y field
+@inline function (update_y!(sys::System{C, X, Y})
+    where {C<:Component, X, Y <: NamedTuple{L, M}} where {L, M})
 
     #the keys of NamedTuple sys.y identify those subsystems with non-null
     #outputs; retrieve their updated ys and assemble them into a NamedTuple of
