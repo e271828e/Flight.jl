@@ -74,7 +74,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         t_end::Real = 10.0,
         save_on::Bool = true,
         saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
-        save_start::Bool = true,
+        save_start::Bool = false, #initial System's outputs might not be up to date
         save_everystep::Bool = isempty(saveat),)
 
         @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
@@ -88,11 +88,6 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         cb_disc = PeriodicCallback(f_cb_disc!, Δt)
         cb_io = DiscreteCallback((u, t, integrator)->true, f_cb_io!)
 
-        #execute all update functions once to ensure the System's outputs are up
-        #to date in case they're saved at t_start (if save_start === true)
-        f_ode!(sys, args_ode...)
-        f_step!(sys, args_step...)
-        f_disc!(sys, Δt, args_disc...)
         log = SavedValues(Float64, typeof(sys.y))
         saveat_arr = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
         cb_save = SavingCallback(f_cb_save, log; save_start = save_start,
