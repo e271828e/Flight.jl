@@ -7,10 +7,12 @@ using UnPack
 using Reexport
 using Interpolations
 using HDF5
+using CImGui, CImGui.CSyntax
 
 using Flight.Engine.Systems
 using Flight.Engine.IODevices
 using Flight.Engine.Joysticks
+using Flight.Engine.GUI
 using Flight.Engine.Utils: Ranged, linear_scaling
 
 using Flight.Physics.Attitude
@@ -40,7 +42,7 @@ struct Structure <: Component end
 # Weight
 
 #Structure mass properties computed in the vehicle reference frame b
-const mp_b_str = let
+const mp_Ob_str = let
     #define the structure as a RigidBodyDistribution
     str_G = RigidBodyDistribution(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
     #define the transform from the origin of the vehicle reference frame (Ob)
@@ -58,7 +60,7 @@ RigidBody.MassTrait(::System{Structure}) = HasMass()
 RigidBody.WrenchTrait(::System{Structure}) = GetsNoExternalWrench()
 RigidBody.AngMomTrait(::System{Structure}) = HasNoAngularMomentum()
 
-RigidBody.get_mp_b(::System{Structure}) = mp_b_str
+RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
 
 
 ############################ Aerodynamics ######################################
@@ -313,11 +315,11 @@ const psg_right_slot = FrameTransform(r = SVector{3}(-0.681, 0.356, 0.899))
 const baggage_slot = FrameTransform(r = SVector{3}(-1.316, 0, 0.899))
 
 struct Payload <: Component
-    pilot::MassProperties #mp_b
-    copilot::MassProperties #mp_b
-    psg_left::MassProperties #mp_b
-    psg_right::MassProperties #mp_b
-    baggage::MassProperties #mp_b
+    pilot::MassProperties #mp_Ob
+    copilot::MassProperties #mp_Ob
+    psg_left::MassProperties #mp_Ob
+    psg_right::MassProperties #mp_Ob
+    baggage::MassProperties #mp_Ob
 
     function Payload( ; pilot::PointDistribution = PointDistribution(75),
                         copilot::PointDistribution = PointDistribution(75),
@@ -349,14 +351,14 @@ RigidBody.MassTrait(::System{Payload}) = HasMass()
 RigidBody.WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
 RigidBody.AngMomTrait(::System{Payload}) = HasNoAngularMomentum()
 
-function RigidBody.get_mp_b(sys::System{Payload})
-    mp_b = MassProperties()
-    sys.u.pilot && (mp_b += sys.params.pilot)
-    sys.u.copilot && (mp_b += sys.params.copilot)
-    sys.u.psg_left && (mp_b += sys.params.psg_left)
-    sys.u.psg_right && (mp_b += sys.params.psg_right)
-    sys.u.baggage && (mp_b += sys.params.baggage)
-    return mp_b
+function RigidBody.get_mp_Ob(sys::System{Payload})
+    mp_Ob = MassProperties()
+    sys.u.pilot && (mp_Ob += sys.params.pilot)
+    sys.u.copilot && (mp_Ob += sys.params.copilot)
+    sys.u.psg_left && (mp_Ob += sys.params.psg_left)
+    sys.u.psg_right && (mp_Ob += sys.params.psg_right)
+    sys.u.baggage && (mp_Ob += sys.params.baggage)
+    return mp_Ob
 end
 
 
@@ -388,7 +390,7 @@ end
 
 Piston.fuel_available(sys::System{<:Fuel}) = (sys.y.m > 0)
 
-function RigidBody.get_mp_b(fuel::System{Fuel})
+function RigidBody.get_mp_Ob(fuel::System{Fuel})
 
     #in case x accidentally becomes negative (fuel is consumed beyond x=0 before
     #the engine dies)
@@ -401,11 +403,11 @@ function RigidBody.get_mp_b(fuel::System{Fuel})
     frame_left = FrameTransform(r = SVector{3}(0.325, -2.845, 0))
     frame_right = FrameTransform(r = SVector{3}(0.325, 2.845, 0))
 
-    mp_b = MassProperties()
-    mp_b += MassProperties(m_left, frame_left)
-    mp_b += MassProperties(m_right, frame_right)
+    mp_Ob = MassProperties()
+    mp_Ob += MassProperties(m_left, frame_left)
+    mp_Ob += MassProperties(m_right, frame_right)
 
-    return mp_b
+    return mp_Ob
 end
 
 ################################ Powerplant ####################################
@@ -456,7 +458,7 @@ function Systems.f_step!(airframe::System{<:Airframe}, ::KinematicSystem)
 
 end
 
-#get_mp_b, get_wr_b and get_hr_b fall back to the @generated methods, which then
+#get_mp_Ob, get_wr_b and get_hr_b fall back to the @generated methods, which then
 #recurse on Airframe subsystems
 
 #to be extended by any avionics installed on the aircraft
@@ -639,5 +641,61 @@ include("c172r/tools/trim.jl")
 include("c172r/tools/linear.jl")
 using .Trim
 using .Linear
+
+
+################################################################################
+#################################### GUI #######################################
+
+function GUI.draw!(sys::System{<:Airframe}, gui_input::Bool = true)
+
+    @unpack u, y, params = sys
+
+    CImGui.Text("Airframe")
+
+    # #if any of these trees are collapsed or their host window is hidden, they
+    # #will not be drawn, saving CPU time
+    # if CImGui.TreeNode("Params")
+    #     @unpack k_p, k_i, k_l, bounds = params
+    #     CImGui.Text("Proportional Gain: $k_p")
+    #     CImGui.Text("Integral Gain: $k_i")
+    #     CImGui.Text("Leak Factor: = $k_l")
+    #     CImGui.Text("Output Bounds = $bounds")
+    #     CImGui.TreePop()
+    # end
+
+    # if gui_input
+    #     if CImGui.TreeNode("Inputs")
+    #         for i in 1:N
+    #             if CImGui.TreeNode("[$i]")
+    #                 @unpack reset, sat_enable = u
+    #                 reset_ref = Ref(reset[i])
+    #                 sat_ref = Ref(sat_enable[i])
+    #                 CImGui.Checkbox("Reset", reset_ref)
+    #                 CImGui.SameLine()
+    #                 CImGui.Checkbox("Enable Saturation", sat_ref)
+    #                 if gui_input
+    #                     reset[i] = reset_ref[]
+    #                     sat_enable[i] = sat_ref[]
+    #                 end
+    #                 CImGui.TreePop()
+    #             end
+    #         end
+    #     CImGui.TreePop()
+    #     end
+    # end
+
+    # if CImGui.TreeNode("Outputs")
+    #     @unpack reset, input, sat_enable, sat_status, out_free, out = y
+    #     CImGui.Text("Reset = $reset")
+    #     CImGui.Text("Input = $input")
+    #     CImGui.Text("Unbounded Output = $out_free")
+    #     CImGui.Text("Output = $out")
+    #     CImGui.Text("Saturation Enabled = $sat_enable")
+    #     CImGui.Text("Saturation Status = $sat_status")
+    #     CImGui.TreePop()
+    # end
+
+end
+
 
 end #module

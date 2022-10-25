@@ -1,10 +1,12 @@
 module Atmosphere
 
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
+using CImGui, CImGui.CSyntax, Printf
 
 using Flight.Engine.Systems #?
 using Flight.Engine.Plotting
 using Flight.Engine.Utils
+using Flight.Engine.GUI
 
 using Flight.Physics.Attitude
 using Flight.Physics.Geodesy
@@ -201,7 +203,9 @@ function AtmosphericData(atm::System{<:SimpleAtmosphere}, loc::Geographic)
 end
 
 ################################################################################
-############################### Airflow ########################################
+############################### AirData ########################################
+
+@inline SI2kts(v::Real) = 1.94384v
 
 #compute aerodynamic velocity vector from TAS and airflow angles
 @inline function get_velocity_vector(TAS::Real, α::Real, β::Real)
@@ -376,6 +380,61 @@ function Plotting.make_plots(th::TimeHistory{<:AirData}; kwargs...)
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     return pd
+
+end
+
+################################################################################
+################################# GUI ##########################################
+
+function GUI.draw!(air::AirData)
+
+    @unpack v_ew_n, v_wOb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
+
+    CImGui.Begin("Air Data")
+
+    if CImGui.TreeNode("Wind")
+
+        CImGui.Text(@sprintf("[North]: %.3f m/s", v_ew_n[1]))
+        CImGui.Text(@sprintf("[East]: %.3f m/s", v_ew_n[2]))
+        CImGui.Text(@sprintf("[Down]: %.3f m/s", v_ew_n[3]))
+
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Velocity")
+
+        CImGui.Text(@sprintf("[X-Body]: %.3f m/s", v_wOb_b[1]))
+        CImGui.Text(@sprintf("[Y-Body]: %.3f m/s", v_wOb_b[2]))
+        CImGui.Text(@sprintf("[Z-Body]: %.3f m/s", v_wOb_b[3]))
+
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Airspeed")
+
+        CImGui.Text(@sprintf("CAS: %.3f kts", SI2kts(CAS)))
+        CImGui.Text(@sprintf("EAS: %.3f kts", SI2kts(EAS)))
+        CImGui.Text(@sprintf("TAS: %.3f kts", SI2kts(TAS)))
+
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Freestream Properties")
+
+        CImGui.Text(@sprintf("Static Temperature: %.3f K", T))
+        CImGui.Text(@sprintf("Total Temperature: %.3f K", Tt))
+        CImGui.Text(@sprintf("Static Pressure: %.3f Pa", p))
+        CImGui.Text(@sprintf("Total Pressure: %.3f Pa", pt))
+        CImGui.Text(@sprintf("Impact Pressure: %.3f Pa", Δp))
+        CImGui.Text(@sprintf("Dynamic Pressure: %.3f Pa", q))
+        CImGui.Text(@sprintf("Density: %.3f kg/m3", ρ))
+        CImGui.Text(@sprintf("Speed of Sound: %.3f m/s", a))
+        CImGui.Text(@sprintf("Mach: %.3f", M))
+
+        CImGui.TreePop()
+    end
+
+    CImGui.End()
 
 end
 

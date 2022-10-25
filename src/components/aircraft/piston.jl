@@ -34,7 +34,7 @@ struct MagicFuelSupply <: AbstractFuelSupply end
 Systems.init(::SystemU, ::MagicFuelSupply) = Ref(true)
 Systems.f_ode!(::System{MagicFuelSupply}) = nothing
 
-RigidBody.get_mp_b(::System{MagicFuelSupply}) = MassProperties()
+RigidBody.get_mp_Ob(::System{MagicFuelSupply}) = MassProperties()
 fuel_available(f::System{MagicFuelSupply}) = f.u[]
 
 

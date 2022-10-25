@@ -105,7 +105,7 @@ function test_sim_paced(; save::Bool = true)
     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
     ac = System(Cessna172R());
     kin_init = KinematicInit(
-        v_eOb_n = [5, 0, 0],
+        v_eOb_n = [10, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
@@ -113,8 +113,11 @@ function test_sim_paced(; save::Bool = true)
 
     Aircraft.init!(ac, kin_init)
     ac.u.avionics.eng_start = true #engine start switch on
+    ac.u.avionics.throttle = 0.2
+    # ac.u.avionics.brake_left = 1
+    # ac.u.avionics.brake_right = 1
 
-    sim = Simulation(ac; args_ode = (env,), t_end = 10)
+    sim = Simulation(ac; args_ode = (env,), t_end = 100)
 
     interfaces = Vector{IODevices.Interface}()
     for joystick in get_connected_joysticks()

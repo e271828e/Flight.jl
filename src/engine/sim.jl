@@ -301,17 +301,16 @@ end
 
 function GUI.draw!(sys::System, info::Info, gui_input::Bool)
     GUI.draw(info) #show Simulation info
-    window_visible = CImGui.Begin("System")
-        window_visible && GUI.draw!(sys, gui_input)
-    CImGui.End()
+    GUI.draw!(sys, gui_input)
 end
+
 
 function GUI.draw(info::Info)
 
     @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
 
     begin
-        CImGui.Begin("Info")
+        CImGui.Begin("Simulation")
             CImGui.Text("Algorithm: " * algorithm)
             CImGui.Text("Step size: $dt")
             CImGui.Text("Iterations: $iter")

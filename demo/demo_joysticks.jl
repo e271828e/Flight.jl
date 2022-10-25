@@ -21,7 +21,7 @@ end
 function demo_joysticks()
 
     sys = PICompensator{2}(k_p = 0, k_i = 0.2) |> System
-    sim = Simulation(sys; t_end = 10, dt = 0.02)
+    sim = Simulation(sys; t_end = 100, dt = 0.02)
 
     joy_interfaces = Vector{IODevices.Interface}()
     for joystick in get_connected_joysticks()
@@ -34,7 +34,7 @@ function demo_joysticks()
         end
 
         # disable_gui!(sim)
-        Threads.@spawn Sim.run_paced!(sim; rate = 1, verbose = true)
+        Threads.@spawn Sim.run_paced!(sim; rate = 1, verbose = true, gui_input = true)
     end
 
 end

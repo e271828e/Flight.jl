@@ -1,13 +1,15 @@
 module Aircraft
 
 using LinearAlgebra
-using StaticArrays, ComponentArrays
 using UnPack
+using StaticArrays, ComponentArrays
+using CImGui, CImGui.CSyntax
 
 using Flight.Engine.Systems
 using Flight.Engine.Plotting
 using Flight.Engine.IODevices
 using Flight.Engine.XPlane
+using Flight.Engine.GUI
 
 using Flight.Physics.Attitude
 using Flight.Physics.Geodesy
@@ -37,7 +39,7 @@ end
 RigidBody.AngMomTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
 RigidBody.WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
 
-RigidBody.get_mp_b(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
+RigidBody.get_mp_Ob(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
 
 ####################### AbstractAerodynamics ##########################
 
@@ -106,12 +108,12 @@ function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractE
     f_ode!(avionics, airframe, kin_data, air_data, trn)
     f_ode!(airframe, avionics, kin_data, air_data, trn)
 
-    mp_b = get_mp_b(airframe)
+    mp_Ob = get_mp_Ob(airframe)
     wr_b = get_wr_b(airframe)
     hr_b = get_hr_b(airframe)
 
     #update velocity derivatives
-    rb_data = f_rigidbody!(kinematics.ẋ.vel, kin_data, mp_b, wr_b, hr_b)
+    rb_data = f_rigidbody!(kinematics.ẋ.vel, kin_data, mp_Ob, wr_b, hr_b)
 
     sys.y = AircraftTemplateY(kinematics.y, airframe.y, avionics.y, rb_data, air_data)
 
@@ -179,6 +181,18 @@ function Plotting.make_plots(th::TimeHistory{<:AircraftTemplateY}; kwargs...)
         :rigidbody => make_plots(th.rigidbody; kwargs...),
         :air => make_plots(th.air; kwargs...),
     )
+
+end
+
+################################### GUI ########################################
+
+function GUI.draw!(sys::System{<:AircraftTemplate}, gui_input::Bool = true)
+
+    @unpack u, y, params = sys
+
+    GUI.draw!(y.rigidbody)
+    GUI.draw!(y.kinematics)
+    GUI.draw!(y.air)
 
 end
 

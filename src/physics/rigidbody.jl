@@ -2,9 +2,11 @@ module RigidBody
 
 using StaticArrays
 using LinearAlgebra, UnPack
+using CImGui, CImGui.CSyntax, Printf
 
 using Flight.Engine.Systems
 using Flight.Engine.Plotting
+using Flight.Engine.GUI
 
 using ..Attitude
 using ..Geodesy
@@ -13,12 +15,13 @@ using ..Kinematics
 export FrameTransform, transform
 export Wrench
 export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
-export HasMass, HasNoMass, get_mp_b
+export HasMass, HasNoMass, get_mp_Ob
 export GetsExternalWrench, GetsNoExternalWrench, get_wr_b
 export HasAngularMomentum, HasNoAngularMomentum, get_hr_b
 export RigidBodyData, f_rigidbody!
 
-
+#standard gravity for specific force normalization
+const g₀ = 9.80665
 
 ############################# FrameTransform ###############################
 
@@ -304,7 +307,7 @@ struct HasNoMass <: MassTrait end
 
 """
 Notes:
-- When get_mp_b is called on a System, the returned MassProperties instance must
+- When get_mp_Ob is called on a System, the returned MassProperties instance must
   be expressed in the System's parent reference frame.
 - At the root of the component hierarchy we have the vehicle. The vehicle is
   its own parent, so the MassProperties it returns must be expressed in its own
@@ -322,13 +325,13 @@ Notes:
 MassTrait(::S) where {S<:System} = error(
     "Please extend RigidBody.MassTrait for $S")
 
-get_mp_b(sys::System) = get_mp_b(MassTrait(sys), sys)
+get_mp_Ob(sys::System) = get_mp_Ob(MassTrait(sys), sys)
 
-get_mp_b(::HasNoMass, sys::System) = MassProperties()
+get_mp_Ob(::HasNoMass, sys::System) = MassProperties()
 
 #default implementation for a System with the HasMass trait tries to compute
 #the aggregate mass properties for all its the subsystems
-@inline @generated function (get_mp_b(::HasMass, sys::System{T, X, Y, U, S, P, B})
+@inline @generated function (get_mp_Ob(::HasMass, sys::System{T, X, Y, U, S, P, B})
     where {T<:Component, X, Y, U, S, P, B})
 
     ex = Expr(:block)
@@ -336,12 +339,12 @@ get_mp_b(::HasNoMass, sys::System) = MassProperties()
     if isempty(fieldnames(B))
         push!(ex.args,
             :(error("System{$(T)} has the HasMass trait and no subsystems, "*
-                "but it does not extend the get_mp_b method")))
+                "but it does not extend the get_mp_Ob method")))
     else
         push!(ex.args, :(p = MassProperties()))
         for label in fieldnames(B)
             push!(ex.args,
-                :(p += get_mp_b(sys.subsystems[$(QuoteNode(label))])))
+                :(p += get_mp_Ob(sys.subsystems[$(QuoteNode(label))])))
         end
     end
     return ex
@@ -438,18 +441,18 @@ equations
 The resulting `Wrench` is defined on the vehicle's reference frame fb.
 
 # Arguments:
-- `mp_b::MassProperties`: Current aircraft mass properties in frame fb
+- `mp_Ob::MassProperties`: Current aircraft mass properties in frame fb
 - `vel::VelData`: Velocity outputs
 - `hr_b::AbstractVector{<:Real}`: Additional angular momentum due to the
   angular velocity of any rotating elements with respect to the vehicle,
   projected on vehicle axes
 
 """
-function inertia_wrench(mp_b::MassProperties, kin::KinematicData, hr_b::AbstractVector{<:Real})
+function inertia_wrench(mp_Ob::MassProperties, kin::KinematicData, hr_b::AbstractVector{<:Real})
 
     @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = kin
 
-    m = mp_b.m; J_Ob_b = mp_b.J_O; r_ObG_b = mp_b.r_OG
+    m = mp_Ob.m; J_Ob_b = mp_Ob.J_O; r_ObG_b = mp_Ob.r_OG
 
     #angular momentum of the vehicle as a rigid body (excluding rotating
     #components)
@@ -467,7 +470,7 @@ function inertia_wrench(mp_b::MassProperties, kin::KinematicData, hr_b::Abstract
 
 end
 
-function gravity_wrench(mp_b::MassProperties, kin::KinematicData)
+function gravity_wrench(mp_Ob::MassProperties, kin::KinematicData)
 
     #gravity can be viewed as an entity acting on a local frame with its origin
     #at G and its axes aligned with the local tangent frame
@@ -483,7 +486,7 @@ function gravity_wrench(mp_b::MassProperties, kin::KinematicData)
 
     #the resultant consists of the gravity force acting on G along the local
     #vertical and a null torque
-    F_G_n = mp_b.m * g_G_n
+    F_G_n = mp_Ob.m * g_G_n
     M_G_n = zeros(SVector{3})
     wr_G_n = Wrench(F = F_G_n, M = M_G_n)
 
@@ -491,7 +494,7 @@ function gravity_wrench(mp_b::MassProperties, kin::KinematicData)
     #gravity frame is given by the translation r_ObG_b and the (passive)
     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by q_lb'
     wr_c = wr_G_n
-    r_ObG_b = mp_b.r_OG
+    r_ObG_b = mp_Ob.r_OG
     t_bc = FrameTransform(r = r_ObG_b, q = q_nb')
     return t_bc(wr_c) #wr_b
 
@@ -502,11 +505,11 @@ end
 
 #all magnitudes resolved in body axes unless otherwise noted
 Base.@kwdef struct RigidBodyData
-    mp_b::MassProperties = MassProperties() #aircraft mass properties at Ob
-    wr_g_b::Wrench = Wrench() #gravity wrench at Ob
-    wr_in_b::Wrench = Wrench() #inertia wrench at Ob
-    wr_ext_b::Wrench = Wrench() #externally applied wrench at Ob
-    wr_tot_b::Wrench = Wrench() #total wrench at Ob
+    mp_Ob::MassProperties = MassProperties() #aircraft mass properties at Ob
+    wr_g_Ob::Wrench = Wrench() #gravity wrench at Ob
+    wr_in_Ob::Wrench = Wrench() #inertia wrench at Ob
+    wr_ext_Ob::Wrench = Wrench() #externally applied wrench at Ob
+    wr_net_Ob::Wrench = Wrench() #net wrench at Ob
     hr_b::SVector{3,Float64} = zeros(SVector{3}) #angular momentum of rotating components
     α_eb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-body angular acceleration
     α_ib_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-to-body angular acceleration
@@ -519,17 +522,17 @@ Base.@kwdef struct RigidBodyData
     f_G_b::SVector{3,Float64} = zeros(SVector{3}) #specific force at G
 end
 
-function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassProperties,
-    wr_ext_b::Wrench, hr_b::AbstractVector{<:Real})
+function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_Ob::MassProperties,
+    wr_ext_Ob::Wrench, hr_b::AbstractVector{<:Real})
 
-    #wr_ext_b: Total external wrench on the vehicle
+    #wr_ext_Ob: Total external wrench on the vehicle
 
     #hr_b: Additional angular momentum due to the angular velocity of the
     #rotating aircraft components with respect to the vehicle. these are
     #computed individually by each component relative to its center of mass and
     #then summed
 
-    #wr_ext_b and hr_b, as well as mass data, are produced by aircraft
+    #wr_ext_Ob and hr_b, as well as mass data, are produced by aircraft
     #components, so they must be computed by the aircraft's x_dot method. and,
     #since kin is needed by those components, it must be called from the
     #aircraft's kinematic state vector
@@ -540,7 +543,7 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
 
     @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b = kin
 
-    m = mp_b.m; J_Ob_b = mp_b.J_O; r_ObG_b = mp_b.r_OG
+    m = mp_Ob.m; J_Ob_b = mp_Ob.J_O; r_ObG_b = mp_Ob.r_OG
 
     r_ObG_b_sk = Attitude.v2skew(r_ObG_b)
     A11 = J_Ob_b
@@ -550,10 +553,10 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
 
     A = vcat(hcat(A11, A12), hcat(A21, A22))
 
-    wr_g_b = gravity_wrench(mp_b, kin)
-    wr_in_b = inertia_wrench(mp_b, kin, hr_b)
-    wr_tot_b = wr_ext_b + wr_g_b + wr_in_b
-    b = SVector{6}(vcat(wr_tot_b.M, wr_tot_b.F))
+    wr_g_Ob = gravity_wrench(mp_Ob, kin)
+    wr_in_Ob = inertia_wrench(mp_Ob, kin, hr_b)
+    wr_net_Ob = wr_ext_Ob + wr_g_Ob + wr_in_Ob
+    b = SVector{6}(vcat(wr_net_Ob.M, wr_net_Ob.F))
 
     # update ẋ_vel
     ẋ_vel .= A\b
@@ -578,7 +581,7 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_b::MassPr
     f_Ob_b = a_iOb_b - G_Ob_b
     f_G_b = a_iG_b - G_Ob_b #G ≈ Ob
 
-    return RigidBodyData(; mp_b, wr_g_b, wr_in_b, wr_ext_b, wr_tot_b, hr_b,
+    return RigidBodyData(; mp_Ob, wr_g_Ob, wr_in_Ob, wr_ext_Ob, wr_net_Ob, hr_b,
                            α_eb_b, α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n,
                            a_iOb_b, f_Ob_b, a_iG_b, f_G_b)
 
@@ -611,27 +614,24 @@ end
 
 function Plotting.make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
 
-    #standard gravity for specific force normalization
-    g₀ = 9.80665
-
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    pd[:wr_g_b] = plot(th.wr_g_b;
+    pd[:wr_g_Ob] = plot(th.wr_g_Ob;
         plot_title = "Gravity Wrench at Ob [Vehicle Axes]",
         wr_source = "g", wr_frame = "b",
         kwargs...)
 
-    pd[:wr_in_b] = plot(th.wr_in_b;
+    pd[:wr_in_Ob] = plot(th.wr_in_Ob;
         plot_title = "Inertia Wrench at Ob [Vehicle Axes]",
         wr_source = "in", wr_frame = "b",
         kwargs...)
 
-    pd[:wr_ext_b] = plot(th.wr_ext_b;
+    pd[:wr_ext_Ob] = plot(th.wr_ext_Ob;
         plot_title = "External Wrench at Ob [Vehicle Axes]",
         wr_source = "ext", wr_frame = "b",
         kwargs...)
 
-    pd[:wr_tot_b] = plot(th.wr_tot_b;
+    pd[:wr_net_Ob] = plot(th.wr_net_Ob;
         plot_title = "Total Wrench at Ob [Vehicle Axes]",
         wr_source = "ext", wr_frame = "b",
         kwargs...)
@@ -693,5 +693,97 @@ function Plotting.make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
     return pd
 
 end
+
+################################################################################
+################################# GUI ##########################################
+
+function GUI.draw!(rb::RigidBodyData)
+
+    @unpack mp_Ob, wr_net_Ob, hr_b, α_eb_b, a_eOb_b, f_Ob_b, f_G_b = rb
+
+    CImGui.Begin("Rigid Body")
+
+    t_GbOb = FrameTransform(r = -mp_Ob.r_OG) #Gb to Ob
+    mp_Gb = t_GbOb(mp_Ob)
+    wr_net_Gb = t_GbOb(wr_net_Ob)
+
+    if CImGui.TreeNode("Mass Properties")
+        CImGui.Text(@sprintf("Mass: %.3f kg", mp_Ob.m))
+        if CImGui.TreeNode("CG Position (O)")
+            CImGui.Text(@sprintf("[X]: %.3f m", mp_Ob.r_OG[1]))
+            CImGui.Text(@sprintf("[Y]: %.3f m", mp_Ob.r_OG[2]))
+            CImGui.Text(@sprintf("[Z]: %.3f m", mp_Ob.r_OG[3]))
+            CImGui.TreePop()
+        end
+
+        if CImGui.TreeNode("Inertia Tensor (G)")
+            CImGui.Text(@sprintf("[XX]: %.3f kg m2", mp_Gb.J_O[1,1]))
+            CImGui.Text(@sprintf("[YY]: %.3f kg m2", mp_Gb.J_O[2,2]))
+            CImGui.Text(@sprintf("[ZZ]: %.3f kg m2", mp_Gb.J_O[3,3]))
+            CImGui.Text(@sprintf("[XY]: %.3f kg m2", mp_Gb.J_O[1,2]))
+            CImGui.Text(@sprintf("[XZ]: %.3f kg m2", mp_Gb.J_O[1,3]))
+            CImGui.Text(@sprintf("[YZ]: %.3f kg m2", mp_Gb.J_O[2,3]))
+            CImGui.TreePop()
+        end
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Net Force (G)")
+        CImGui.Text(@sprintf("[X]: %.3f N", wr_net_Gb.F[1]))
+        CImGui.Text(@sprintf("[Y]: %.3f N", wr_net_Gb.F[2]))
+        CImGui.Text(@sprintf("[Z]: %.3f N", wr_net_Gb.F[3]))
+
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Net Torque (G)")
+
+        CImGui.Text(@sprintf("[X]: %.3f N m", wr_net_Gb.M[1]))
+        CImGui.Text(@sprintf("[Y]: %.3f N m", wr_net_Gb.M[2]))
+        CImGui.Text(@sprintf("[Z]: %.3f N m", wr_net_Gb.M[3]))
+
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Internal Angular Momentum")
+
+        CImGui.Text(@sprintf("[X]: %.3f kg m2 / s", hr_b[1]))
+        CImGui.Text(@sprintf("[Y]: %.3f kg m2 / s", hr_b[2]))
+        CImGui.Text(@sprintf("[Z]: %.3f kg m2 / s", hr_b[3]))
+
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Angular Acceleration (Body / ECEF)")
+
+        CImGui.Text(@sprintf("[X]: %.6f rad/s2", α_eb_b[1]))
+        CImGui.Text(@sprintf("[Y]: %.6f rad/s2", α_eb_b[2]))
+        CImGui.Text(@sprintf("[Z]: %.6f rad/s2", α_eb_b[3]))
+
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Linear Acceleration (O / ECEF)")
+
+        CImGui.Text(@sprintf("[X]: %.6f m/s2", a_eOb_b[1]))
+        CImGui.Text(@sprintf("[Y]: %.6f m/s2", a_eOb_b[2]))
+        CImGui.Text(@sprintf("[Z]: %.6f m/s2", a_eOb_b[3]))
+
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Specific Force (G)")
+
+        CImGui.Text(@sprintf("[X]: %.3f g", f_G_b[1]/g₀))
+        CImGui.Text(@sprintf("[Y]: %.3f g", f_G_b[2]/g₀))
+        CImGui.Text(@sprintf("[Z]: %.3f g", f_G_b[3]/g₀))
+
+        CImGui.TreePop()
+    end
+
+    CImGui.End()
+
+end
+
 
 end #module
