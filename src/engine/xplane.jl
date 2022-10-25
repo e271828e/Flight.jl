@@ -2,7 +2,9 @@ module XPlane
 
 using Sockets
 using UnPack
+using GLFW
 
+using ..Sim
 using ..IODevices
 
 export XPConnect
@@ -11,10 +13,15 @@ export XPConnect
 ################################################################################
 ############################### XPConnect ####################################
 
-Base.@kwdef struct XPConnect <: IODevice
-    socket::UDPSocket = UDPSocket()
-    host::IPv4 = IPv4("127.0.0.1")
-    port::Integer = 49009
+mutable struct XPConnect <: IODevice
+    socket::UDPSocket
+    host::IPv4
+    port::Int64
+    update_interval::Int64
+    window::GLFW.Window
+    function XPConnect(; socket = UDPSocket(), host = IPv4("127.0.0.1"), port = 49009, update_interval = 1)
+        new(socket, host, port, update_interval) #window uninitialized
+    end
 end
 
 function set_dref(xp::XPConnect, dref_id::AbstractString, dref_value::Real)
@@ -46,28 +53,11 @@ function set_dref(xp::XPConnect, dref_id::AbstractString, dref_value::AbstractVe
     send(xp.socket, xp.host, xp.port, buffer.data)
 end
 
-function display_text(xp::XPConnect, txt::AbstractString, x::Integer = -1, y::Integer = -1)
-
-    buffer = IOBuffer()
-    txt_ascii = ascii(txt)
-    write(buffer,
-        b"TEXT\0",
-        x |> Int32,
-        y |> Int32,
-        txt_ascii |> length |> UInt8,
-        txt_ascii |> codeunits)
-
-    send(xp.socket, xp.host, xp.port, buffer.data)
-end
-
 disable_physics!(xp::XPConnect) = set_dref(xp, "sim/operation/override/override_planepath", 1)
 
-init!(xp::XPConnect) = disable_physics!(xp)
-
-
 function set_position!(xp::XPConnect; lat = -998, lon = -998, h = -998,
-                        psi = -998, theta = -998, phi = -998,
-                        aircraft::Integer = 0)
+                       psi = -998, theta = -998, phi = -998,
+                       aircraft::Integer = 0)
 
     #all angles must be provided in degrees
     buffer = IOBuffer()
@@ -80,6 +70,24 @@ function set_position!(xp::XPConnect; lat = -998, lon = -998, h = -998,
     send(xp.socket, xp.host, xp.port, buffer.data)
 
 end
+########################### IODevices extensions ###############################
 
+function IODevices.init!(xp::XPConnect)
+    xp.window = GLFW.CreateWindow(640, 480, "XPConnect")
+    @unpack window, update_interval = xp
+    # GLFW.HideWindow(window)
+    GLFW.MakeContextCurrent(window)
+    GLFW.SwapInterval(update_interval)
+    disable_physics!(xp)
+end
+
+function IODevices.update!(xp::XPConnect, out::Sim.Output)
+    GLFW.SwapBuffers(xp.window) #honor the requested update_interval
+    set_position!(xp, out.y) #to be overridden for each System's y
+    GLFW.PollEvents() #see if we got a shutdown request
+end
+
+IODevices.should_close(xp::XPConnect) = GLFW.WindowShouldClose(xp.window)
+IODevices.shutdown!(xp::XPConnect) = GLFW.DestroyWindow(xp.window)
 
 end #module

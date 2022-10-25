@@ -148,11 +148,11 @@ end
 
 ############################# XPlaneConnect ####################################
 
-function IODevices.update!(xp::XPConnect, data::AircraftTemplateY)
+function XPlane.set_position!(xp::XPConnect, y::AircraftTemplateY)
 
     aircraft = 0
 
-    kin = data.kinematics
+    kin = y.kinematics
 
     ll = LatLon(kin.n_e)
     e_nb = REuler(kin.q_nb)

@@ -113,17 +113,20 @@ function test_sim_paced(; save::Bool = true)
 
     Aircraft.init!(ac, kin_init)
     ac.u.avionics.eng_start = true #engine start switch on
-    ac.u.avionics.throttle = 0.2
+    ac.u.avionics.throttle = 0.3
     # ac.u.avionics.brake_left = 1
     # ac.u.avionics.brake_right = 1
 
-    sim = Simulation(ac; args_ode = (env,), t_end = 100)
+    sim = Simulation(ac; args_ode = (env,), t_end = 180)
 
     interfaces = Vector{IODevices.Interface}()
     for joystick in get_connected_joysticks()
         push!(interfaces, attach_io!(sim, joystick))
     end
-    # push!(interfaces, attach_io!(sim, XPConnect(host = IPv4("192.168.1.2"))))
+    xp = XPConnect()
+    # xp = XPConnect(host = IPv4("192.168.1.2"))
+    push!(interfaces, attach_io!(sim, xp))
+    # return sim, xp
 
     @sync begin
         for interface in interfaces
