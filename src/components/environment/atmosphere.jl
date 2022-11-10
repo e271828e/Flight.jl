@@ -14,9 +14,9 @@ using Flight.Physics.Kinematics
 
 export AbstractISAModel, TunableISA
 export AbstractWindModel, TunableWind
-export AbstractAtmosphere, SimpleAtmosphere, AtmosphericData
+export AbstractAtmosphere, SimpleAtmosphere
 
-export AirData
+export SeaLevelConditions, ISAData, WindData, AtmosphericData, AirData
 export get_velocity_vector, get_airflow_angles, get_wind_axes, get_stability_axes
 
 ### see ISO 2553
@@ -56,7 +56,6 @@ const g_std = 9.80665
 Base.@kwdef struct SeaLevelConditions
     p::Float64 = p_std
     T::Float64 = T_std
-    g::Float64 = g_std
 end
 
 #when queried, any ISA System must provide the sea level atmospheric conditions
@@ -96,17 +95,17 @@ end
 @inline function ISAData(h_geo::HGeop, sl::SeaLevelConditions = SeaLevelConditions())
 
     h = Float64(h_geo)
-    h_base = 0; T_base = sl.T; p_base = sl.p; g_base = sl.g
+    h_base = 0; T_base = sl.T; p_base = sl.p; g0 = g_std #g0 = sl.g
 
     for i in eachindex(ISA_layers)
         β, h_ceil = ISA_layers[i]
         if h < h_ceil
             T = ISA_temperature_law(h, T_base, h_base, β)
-            p = ISA_pressure_law(h, g_base, p_base, T_base, h_base, β)
+            p = ISA_pressure_law(h, g0, p_base, T_base, h_base, β)
             return ISAData(p, T, density(p, T), speed_of_sound(T), dynamic_viscosity(T) )
         end
         T_ceil = ISA_temperature_law(h_ceil, T_base, h_base, β)
-        p_ceil = ISA_pressure_law(h_ceil, g_base, p_base, T_base, h_base, β)
+        p_ceil = ISA_pressure_law(h_ceil, g0, p_base, T_base, h_base, β)
         h_base = h_ceil; T_base = T_ceil; p_base = p_ceil
     end
 
@@ -151,7 +150,7 @@ end
 Systems.init(::SystemU, ::TunableISA) = UTunableISA()
 
 function SeaLevelConditions(s::System{<:TunableISA}, ::Abstract2DLocation)
-    SeaLevelConditions(T = s.u.T_sl, p = s.u.p_sl, g = g_std)
+    SeaLevelConditions(T = s.u.T_sl, p = s.u.p_sl)
     #alternative using actual local SL gravity:
     # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(loc, HOrth(0.0))))
 end
