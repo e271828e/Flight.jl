@@ -239,6 +239,8 @@ struct AirData
     v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
     v_eOb_b::SVector{3,Float64} #vehicle velocity vector, vehicle axes
     v_wOb_b::SVector{3,Float64} #vehicle aerodynamic velocity, vehicle axes
+    α_b::Float64 #vehicle frame AoA
+    β_b::Float64 #vehicle frame AoS
     T::Float64 #static temperature
     p::Float64 #static pressure
     ρ::Float64 #density
@@ -262,6 +264,7 @@ function AirData(kin::KinematicData, atm_data::AtmosphericData)
     v_ew_n = atm_data.wind.v_ew_n
     v_ew_b = kin.q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
+    α_b, β_b = get_airflow_angles(v_wOb_b)
 
     @unpack T, p, ρ, a, μ = atm_data.ISA
     TAS = norm(v_wOb_b)
@@ -274,7 +277,7 @@ function AirData(kin::KinematicData, atm_data::AtmosphericData)
     EAS = TAS * √(ρ / ρ_std)
     CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + q/p_std)^((γ-1)/γ) - 1) )
 
-    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
+    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
 
@@ -317,6 +320,19 @@ function Plotting.make_plots(th::TimeHistory{<:AirData}; kwargs...)
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         th_split = :h,
         kwargs...)
+
+        subplot_α = plot(th.α_b;
+            title = "Angle of Attack", ylabel = L"$α_b \ (rad)$",
+            label = "", kwargs...)
+
+        subplot_β = plot(th.β_b;
+            title = "Angle of Sideslip", ylabel = L"$β_b \ (rad)$",
+            label = "", kwargs...)
+
+    pd[:α_β] = plot(subplot_α, subplot_β;
+        plot_title = "Airflow Angles [Vehicle Axes]",
+        layout = (1,2),
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
         subplot_a = plot(th.a;
             title = "Speed of Sound", ylabel = L"$a \ (m/s)$",
