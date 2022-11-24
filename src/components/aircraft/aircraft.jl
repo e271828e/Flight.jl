@@ -101,7 +101,7 @@ function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractE
 
     #update kinematics
     f_ode!(kinematics)
-    kin_data = kinematics.y.common
+    kin_data = KinematicData(kinematics)
     air_data = AirData(kin_data, atm)
 
     #update avionics and airframe components

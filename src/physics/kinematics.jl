@@ -30,6 +30,8 @@ struct Initializer
     Δy::Float64
 end
 
+const KinematicInit = Initializer
+
 function Initializer(;
     q_nb::Abstract3DRotation = RQuat(), loc::Abstract2DLocation = LatLon(),
     h::Altitude = HOrth(), ω_lb_b::AbstractVector{<:Real} = zeros(3),
@@ -38,6 +40,8 @@ function Initializer(;
     Ob = Geographic(loc, h)
     Initializer(q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy)
 end
+
+init!(sys::KinematicSystem, ic::Initializer = Initializer()) = init!(sys.x, ic)
 
 #implementation-independent outputs
 struct Common
@@ -57,13 +61,15 @@ struct Common
     v_eOb_n::SVector{3,Float64}
 end
 
+const KinematicData = Common
+
+Common(ic::Initializer = Initializer()) = KinematicsY(LTF(), ic).common
+Common(sys::KinematicSystem) = sys.y.common
+
 struct KinematicsY{S}
     common::Common
     specific::S
 end
-
-const KinematicData = Common
-const KinematicInit = Initializer
 
 Base.getproperty(y::KinematicsY, s::Symbol) = getproperty(y, Val(s))
 
@@ -96,9 +102,6 @@ function KinematicsY(kin::AbstractKinematicDescriptor,
     x = Systems.init(SystemX(), kin, ic)
     return KinematicsY(x)
 end
-
-Common(ic::Initializer = Initializer()) = KinematicsY(LTF(), ic).common
-init!(sys::KinematicSystem, ic::Initializer = Initializer()) = init!(sys.x, ic)
 
 #for dispatching
 const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
