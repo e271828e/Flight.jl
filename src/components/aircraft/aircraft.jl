@@ -70,7 +70,7 @@ end
 
 function AircraftTemplate(kinematics::K = LTF(),
                 airframe::F = EmptyAirframe(),
-                avionics::A = NoAvionics()) where {I,K,F,A}
+                avionics::A = NoAvionics()) where {K,F,A}
     AircraftTemplate{K,F,A}(kinematics, airframe, avionics)
 end
 

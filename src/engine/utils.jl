@@ -58,7 +58,7 @@ Base.:+(x::Ranged{T1,Min,Max}, y::Ranged{T2,Min,Max}) where {T1,T2,Min,Max} = Ra
 Base.:-(x::Ranged{T1,Min,Max}, y::Ranged{T2,Min,Max}) where {T1,T2,Min,Max} = Ranged(x.val - y.val, Min, Max)
 
 #basic equality
-Base.:(==)(x::Ranged{T1}, y::Real) where {T1, T2} = (==)(promote(x.val, y)...)
+Base.:(==)(x::Ranged{T1}, y::Real) where {T1} = (==)(promote(x.val, y)...)
 
 function linear_scaling(u::Ranged{T, UMin, UMax}, range::NTuple{2,Real}) where {T, UMin, UMax}
     @assert UMin != UMax

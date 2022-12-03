@@ -22,7 +22,7 @@ end
 function TerrainData(; location = NVector(),
                        altitude = HOrth(0),
                        normal = SVector{3,Float64}(0,0,1),
-                       surface = DryTarmac) where {S}
+                       surface = DryTarmac)
     TerrainData(location, altitude, SVector{3,Float64}(normal), surface)
 end
 

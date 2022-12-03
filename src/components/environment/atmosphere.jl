@@ -12,29 +12,14 @@ using Flight.Physics.Attitude
 using Flight.Physics.Geodesy
 using Flight.Physics.Kinematics
 
-export AbstractISAModel, TunableISA
-export AbstractWindModel, TunableWind
+export AbstractSeaLevel, TunableSeaLevel
+export AbstractWind, TunableWind
 export AbstractAtmosphere, SimpleAtmosphere
 
 export SeaLevelConditions, ISAData, WindData, AtmosphericData, AirData
 export get_velocity_vector, get_airflow_angles, get_wind_axes, get_stability_axes
 
 ### see ISO 2553
-
-################################################################################
-############################## ISA Model #######################################
-
-#a System{<:AbstractISAModel} may have an output type of its own, as any other
-#System. however, this output generally will not be an ISAData instance. the
-#ISAData returned by a ISA System depends on the location specified in the
-#query. instead, the output from an ISA System may hold quantities of interest
-#related to its own internal state, if it has one due to it being a dynamic ISA
-#implementation.
-
-#AbstractISAModel subtypes: ConstantUniformISA (TunableISA), ConstantFieldISA,
-#DynamicUniformISA, DynamicFieldISA.
-
-abstract type AbstractISAModel <: Component end
 
 const R = 287.05287 #gas constant for dry ISA
 const γ = 1.40 #heat capacity ratio for dry ISA
@@ -49,22 +34,48 @@ const g_std = 9.80665
 @inline density(p,T) = p/(R*T)
 @inline speed_of_sound(T) = √(γ*R*T)
 @inline dynamic_viscosity(T) = (βs * T^1.5) / (T + S)
+@inline SI2kts(v::Real) = 1.94384v
 
 
-############################# SeaLevelConditions ###############################
+################################################################################
+############################## SeaLevel #######################################
+
+abstract type AbstractSeaLevel <: Component end
 
 Base.@kwdef struct SeaLevelConditions
     p::Float64 = p_std
     T::Float64 = T_std
 end
 
-#when queried, any ISA System must provide the sea level atmospheric conditions
+#when queried, any AbstractSeaLevel System must provide the sea level conditions
 #at any given 2D location. these may be stationary or time-evolving.
-function SeaLevelConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractISAModel}}
+function SeaLevelConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractSeaLevel}}
     error("SeaLevelConditions constructor not implemented for $T")
 end
 
+############################ TunableSeaLevel ###################################
 
+#a simple SeaLevel model. it does not have a state and therefore cannot evolve
+#on its own. but its input vector can be used to manually tune the
+#SeaLevelConditions during simulation
+
+struct TunableSeaLevel <: AbstractSeaLevel end #uonstant, uniform SeaLevel
+
+Base.@kwdef mutable struct UTunableSeaLevel
+    T_sl::Float64 = T_std
+    p_sl::Float64 = p_std
+end
+
+Systems.init(::SystemU, ::TunableSeaLevel) = UTunableSeaLevel()
+
+function SeaLevelConditions(s::System{<:TunableSeaLevel}, ::Abstract2DLocation)
+    SeaLevelConditions(T = s.u.T_sl, p = s.u.p_sl)
+    #alternative using actual local SL gravity:
+    # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(loc, HOrth(0.0))))
+end
+
+
+################################################################################
 ############################### ISAData ########################################
 
 struct ISAData
@@ -126,7 +137,7 @@ end
 
 @inline ISAData() = ISAData(HGeop(0))
 
-@inline function ISAData(sys::System{<:AbstractISAModel}, loc::Geographic)
+@inline function ISAData(sys::System{<:AbstractSeaLevel}, loc::Geographic)
 
     h_geop = Altitude{Geopotential}(loc.h, loc.loc)
     sl = SeaLevelConditions(sys, loc.loc)
@@ -134,43 +145,22 @@ end
 
 end
 
-############################ TunableISA ########################################
-
-#a simple ISA model. it does not have a state and therefore cannot evolve on its
-#own. but its input vector can be used to manually tune the SeaLevelConditions
-#during simulation
-
-struct TunableISA <: AbstractISAModel end #Constant, Uniform ISA
-
-Base.@kwdef mutable struct UTunableISA #only allocates upon System instantiation
-    T_sl::Float64 = T_std
-    p_sl::Float64 = p_std
-end
-
-Systems.init(::SystemU, ::TunableISA) = UTunableISA()
-
-function SeaLevelConditions(s::System{<:TunableISA}, ::Abstract2DLocation)
-    SeaLevelConditions(T = s.u.T_sl, p = s.u.p_sl)
-    #alternative using actual local SL gravity:
-    # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(loc, HOrth(0.0))))
-end
-
 ################################################################################
-################################ WindModel #####################################
+################################# Wind #########################################
 
-abstract type AbstractWindModel <: Component end
+abstract type AbstractWind <: Component end
 
 Base.@kwdef struct WindData
     v_ew_n::SVector{3,Float64} = zeros(SVector{3})
 end
 
-function WindData(::T, ::Abstract3DPosition) where {T<:System{<:AbstractWindModel}}
+function WindData(::T, ::Abstract3DPosition) where {T<:System{<:AbstractWind}}
     error("WindData constructor not implemented for $T")
 end
 
 ############################### TunableWind ####################################
 
-struct TunableWind <: AbstractWindModel end
+struct TunableWind <: AbstractWind end
 
 Base.@kwdef mutable struct USimpleWind
     v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
@@ -182,57 +172,35 @@ function WindData(wind::System{<:TunableWind}, ::Abstract3DPosition)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData
 end
 
+
 ################################################################################
 ############################# Atmospheric Model ################################
 
 abstract type AbstractAtmosphere <: Component end
-
-Base.@kwdef struct SimpleAtmosphere{S <: AbstractISAModel, W <: AbstractWindModel} <: AbstractAtmosphere
-    ISA::S = TunableISA()
-    wind::W = TunableWind()
-end
 
 Base.@kwdef struct AtmosphericData
     ISA::ISAData = ISAData()
     wind::WindData = WindData()
 end
 
-function AtmosphericData(atm::System{<:SimpleAtmosphere}, loc::Geographic)
-    AtmosphericData( ISAData(atm.ISA, loc), WindData(atm.wind, loc))
+function AtmosphericData(::T, ::Abstract3DPosition) where {T<:System{<:AbstractAtmosphere}}
+    error("AtmosphericData constructor not implemented for $T")
 end
+
+############################## SimpleAtmosphere ################################
+
+Base.@kwdef struct SimpleAtmosphere{S <: AbstractSeaLevel, W <: AbstractWind} <: AbstractAtmosphere
+    sl::S = TunableSeaLevel()
+    wind::W = TunableWind()
+end
+
+function AtmosphericData(atm::System{<:SimpleAtmosphere}, loc::Geographic)
+    AtmosphericData( ISAData(atm.sl, loc), WindData(atm.wind, loc))
+end
+
 
 ################################################################################
 ############################### AirData ########################################
-
-@inline SI2kts(v::Real) = 1.94384v
-
-#compute aerodynamic velocity vector from TAS and airflow angles
-@inline function get_velocity_vector(TAS::Real, α::Real, β::Real)
-    cos_β = cos(β)
-    return TAS * SVector(cos(α) * cos_β, sin(β), sin(α) * cos_β)
-end
-
-#compute airflow angles at frame c from the c-frame aerodynamic velocity
-@inline function get_airflow_angles(v_wOc_c::AbstractVector{<:Real})::Tuple{Float64, Float64}
-    α = atan(v_wOc_c[3], v_wOc_c[1])
-    β = atan(v_wOc_c[2], √(v_wOc_c[1]^2 + v_wOc_c[3]^2))
-    return (α, β)
-end
-
-@inline function get_wind_axes(v_wOc_c::AbstractVector{<:Real})
-    α, β = get_airflow_angles(v_wOc_c)
-    get_wind_axes(α, β)
-end
-
-@inline function get_wind_axes(α::Real, β::Real)
-    q_bw = Ry(-α) ∘ Rz(β)
-    return q_bw
-end
-
-@inline function get_stability_axes(α::Real)
-    q_bs = Ry(-α)
-    return q_bs
-end
 
 struct AirData
     v_ew_n::SVector{3,Float64} #wind velocity, NED axes
@@ -289,6 +257,35 @@ function AirData(kin_data::KinematicData, atm_sys::System{<:AbstractAtmosphere})
     atm_data = AtmosphericData(atm_sys, pos)
     AirData(kin_data, atm_data)
 end
+
+#compute aerodynamic velocity vector from TAS and airflow angles
+@inline function get_velocity_vector(TAS::Real, α::Real, β::Real)
+    cos_β = cos(β)
+    return TAS * SVector(cos(α) * cos_β, sin(β), sin(α) * cos_β)
+end
+
+#compute airflow angles at frame c from the c-frame aerodynamic velocity
+@inline function get_airflow_angles(v_wOc_c::AbstractVector{<:Real})::Tuple{Float64, Float64}
+    α = atan(v_wOc_c[3], v_wOc_c[1])
+    β = atan(v_wOc_c[2], √(v_wOc_c[1]^2 + v_wOc_c[3]^2))
+    return (α, β)
+end
+
+@inline function get_wind_axes(v_wOc_c::AbstractVector{<:Real})
+    α, β = get_airflow_angles(v_wOc_c)
+    get_wind_axes(α, β)
+end
+
+@inline function get_wind_axes(α::Real, β::Real)
+    q_bw = Ry(-α) ∘ Rz(β)
+    return q_bw
+end
+
+@inline function get_stability_axes(α::Real)
+    q_bs = Ry(-α)
+    return q_bs
+end
+
 
 ################################## Plotting ####################################
 
