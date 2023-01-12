@@ -213,22 +213,31 @@ draw!(args...) = nothing
 
 function draw_test()
 
-    @cstatic f=Cfloat(0.0) begin
+    output = @cstatic f=Cfloat(0.0) begin
         CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
         CImGui.Text("This is some useful text.")  # display some text
         @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
         CImGui.End()
     end
 
+    println(output)
+
 end
+
+function draw_test_checkbox()
+    #internal variable name (check) is mangled by macro hygiene, we can reuse it
+    state1 = @cstatic check=false @c CImGui.Checkbox("1", &check)
+    state2 = @cstatic check=false @c CImGui.Checkbox("2", &check)
+    println("$state1, $state2")
+end
+
 
 function draw_test_expanded() #draw_test2a with expanded macros
     let
-        global f_glob = Cfloat(0.0)
+        global f_glob
         local f = f_glob
         begin
             CImGui.Begin("Hello, world!")
-            CImGui.Text("This is some useful text.")
             begin
                 f_ref = Ref(f)
                 f_return = CImGui.SliderFloat("float", f_ref, 0, 1)

@@ -3,7 +3,7 @@ module Aircraft
 using LinearAlgebra
 using UnPack
 using StaticArrays, ComponentArrays
-using CImGui, CImGui.CSyntax
+using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
 using Flight.Engine.Systems
 using Flight.Engine.Plotting
@@ -186,13 +186,36 @@ end
 
 ################################### GUI ########################################
 
+function GUI.draw!(sys::System{<:AbstractAirframe}, gui_input::Bool = true)
+    CImGui.Text("Abstract Airframe")
+end
+
+function GUI.draw!(sys::System{<:AbstractAvionics}, gui_input::Bool = true)
+    CImGui.Text("Abstract Avionics")
+end
+
 function GUI.draw!(sys::System{<:AircraftTemplate}, gui_input::Bool = true)
 
-    @unpack u, y, params = sys
+    @unpack y = sys
 
-    GUI.draw!(y.rigidbody)
-    GUI.draw!(y.kinematics)
-    GUI.draw!(y.air)
+    CImGui.Begin("Aircraft")
+
+    show_dyn = @cstatic check=false @c CImGui.Checkbox("Dynamics", &check)
+    show_dyn && GUI.draw!(y.rigidbody)
+
+    show_kin = @cstatic check=false @c CImGui.Checkbox("Kinematics", &check)
+    show_kin && GUI.draw!(y.kinematics)
+
+    show_air = @cstatic check=false @c CImGui.Checkbox("Air", &check)
+    show_air && GUI.draw!(y.air)
+
+    show_airframe = @cstatic check=false @c CImGui.Checkbox("Airframe", &check)
+    show_airframe && GUI.draw!(sys.airframe)
+
+    show_avionics = @cstatic check=false @c CImGui.Checkbox("Avionics", &check)
+    show_avionics && GUI.draw!(sys.avionics)
+
+    CImGui.End()
 
 end
 

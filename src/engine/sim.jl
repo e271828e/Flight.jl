@@ -309,19 +309,17 @@ function GUI.draw(info::Info)
 
     @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
 
-    begin
-        CImGui.Begin("Simulation")
-            CImGui.Text("Algorithm: " * algorithm)
-            CImGui.Text("Step size: $dt")
-            CImGui.Text("Iterations: $iter")
-            CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
-            CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
-            CImGui.Text(@sprintf("Simulation rate: x%.3f", (t - t_start) / τ))
-            CImGui.Text(@sprintf("Dashboard Framerate: %.3f ms/frame (%.1f FPS)",
-                                1000 / CImGui.GetIO().Framerate,
-                                CImGui.GetIO().Framerate))
-        CImGui.End()
-    end
+    CImGui.Begin("Simulation")
+        CImGui.Text("Algorithm: " * algorithm)
+        CImGui.Text("Step size: $dt")
+        CImGui.Text("Iterations: $iter")
+        CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
+        CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
+        CImGui.Text(@sprintf("Simulation rate: x%.3f", (t - t_start) / τ))
+        CImGui.Text(@sprintf("Dashboard Framerate: %.3f ms/frame (%.1f FPS)",
+                            1000 / CImGui.GetIO().Framerate,
+                            CImGui.GetIO().Framerate))
+    CImGui.End()
 
 end
 

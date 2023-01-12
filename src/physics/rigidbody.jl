@@ -701,11 +701,11 @@ function GUI.draw!(rb::RigidBodyData)
 
     @unpack mp_Ob, wr_net_Ob, hr_b, α_eb_b, a_eOb_b, f_Ob_b, f_G_b = rb
 
-    CImGui.Begin("Rigid Body")
-
     t_GbOb = FrameTransform(r = -mp_Ob.r_OG) #Gb to Ob
     mp_Gb = t_GbOb(mp_Ob)
     wr_net_Gb = t_GbOb(wr_net_Ob)
+
+    CImGui.Begin("Dynamics")
 
     if CImGui.TreeNode("Mass Properties")
         CImGui.Text(@sprintf("Mass: %.3f kg", mp_Ob.m))

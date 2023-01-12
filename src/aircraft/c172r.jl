@@ -7,7 +7,8 @@ using UnPack
 using Reexport
 using Interpolations
 using HDF5
-using CImGui, CImGui.CSyntax
+using Printf
+using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
 using Flight.Engine.Systems
 using Flight.Engine.IODevices
@@ -646,14 +647,46 @@ using .Linear
 ################################################################################
 #################################### GUI #######################################
 
+# Base.@kwdef struct Airframe{P} <: AbstractAirframe
+#     str::Structure = Structure()
+#     aero::Aero = Aero()
+#     ldg::Ldg = Ldg()
+#     fuel::Fuel = Fuel()
+#     pld::Payload = Payload()
+#     pwp::P = Pwp()
+# end
 function GUI.draw!(sys::System{<:Airframe}, gui_input::Bool = true)
 
-    @unpack u, y, params = sys
+    @unpack pwp, ldg = sys
 
-    CImGui.Text("Airframe")
+    CImGui.Begin("Airframe (Cessna 172R)")
+
+    show_pwp = @cstatic check=false @c CImGui.Checkbox("Powerplant", &check)
+    if show_pwp
+        CImGui.Begin("Powerplant")
+            GUI.draw!(pwp, gui_input)
+        CImGui.End()
+    end
+
+    # if CImGui.TreeNode("Powerplant")
+    #     GUI.draw!(pwp, gui_input)
+    #     CImGui.TreePop()
+    # end
+
+
+    CImGui.End()
 
 
 end
 
+function GUI.draw!(sys::System{<:ReversibleControls}, gui_input::Bool = true)
+
+    CImGui.Begin("Avionics")
+
+    CImGui.Text("Avionics (Cessna 172R Reversible Controls)")
+
+    CImGui.End()
+
+end
 
 end #module

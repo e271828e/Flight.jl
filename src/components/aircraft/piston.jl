@@ -1,9 +1,11 @@
 module Piston
 
 using Interpolations, StaticArrays, StructArrays, ComponentArrays, UnPack
+using CImGui, CImGui.CSyntax, Printf
 
 using Flight.Engine.Systems
 using Flight.Engine.Utils: Ranged
+using Flight.Engine.GUI
 
 using Flight.Physics.Kinematics
 using Flight.Physics.RigidBody
@@ -479,5 +481,50 @@ RigidBody.WrenchTrait(::System{<:Thruster}) = GetsExternalWrench()
 
 RigidBody.get_wr_b(thr::System{<:Thruster}) = get_wr_b(thr.propeller) #only external
 RigidBody.get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
+
+
+################################################################################
+################################# GUI ##########################################
+
+# Base.@kwdef struct PistonEngineY
+#     start::Bool = false #start control
+#     stop::Bool = false #stop control
+#     throttle::Float64 = 0.0 #throttle setting
+#     mixture::Float64 = 0.0 #mixture setting
+#     state::EngineState = eng_off #engine discrete state
+#     MAP::Float64 = 0.0 #manifold air pressure
+#     ω::Float64 = 0.0 #angular velocity (crankshaft)
+#     M_shaft::Float64 = 0.0 #shaft output torque
+#     P_shaft::Float64 = 0.0 #shaft power
+#     SFC::Float64 = 0.0 #specific fuel consumption
+#     ṁ::Float64 = 0.0 #fuel consumption
+#     idle::PICompensatorY{1} = PICompensatorY{1}()
+#     frc::PICompensatorY{1} = PICompensatorY{1}()
+# end
+
+
+function GUI.draw!(sys::System{<:Thruster}, gui_input::Bool = true)
+
+    GUI.draw!(sys.engine, gui_input)
+
+end
+
+function GUI.draw!(sys::System{<:Engine}, gui_input::Bool = true)
+
+    @unpack u, y, params = sys
+    @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ,
+            SFC, idle, frc = y
+
+    if CImGui.TreeNode("Engine")
+
+        CImGui.Text(@sprintf("Yaw Rate"))
+
+        CImGui.TreePop()
+    end
+
+end
+
+
+
 
 end #module

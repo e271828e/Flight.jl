@@ -400,9 +400,9 @@ end
 
 function GUI.draw!(air::AirData)
 
-    @unpack v_ew_n, v_wOb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
+    @unpack v_ew_n, v_wOb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
 
-    CImGui.Begin("Air Data")
+    CImGui.Begin("Air")
 
     if CImGui.TreeNode("Wind")
 
@@ -413,25 +413,7 @@ function GUI.draw!(air::AirData)
         CImGui.TreePop()
     end
 
-    if CImGui.TreeNode("Velocity")
-
-        CImGui.Text(@sprintf("[X-Body]: %.3f m/s", v_wOb_b[1]))
-        CImGui.Text(@sprintf("[Y-Body]: %.3f m/s", v_wOb_b[2]))
-        CImGui.Text(@sprintf("[Z-Body]: %.3f m/s", v_wOb_b[3]))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Airspeed")
-
-        CImGui.Text(@sprintf("CAS: %.3f kts", SI2kts(CAS)))
-        CImGui.Text(@sprintf("EAS: %.3f kts", SI2kts(EAS)))
-        CImGui.Text(@sprintf("TAS: %.3f kts", SI2kts(TAS)))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Freestream Properties")
+    if CImGui.TreeNode("Properties")
 
         CImGui.Text(@sprintf("Static Temperature: %.3f K", T))
         CImGui.Text(@sprintf("Total Temperature: %.3f K", Tt))
@@ -442,6 +424,20 @@ function GUI.draw!(air::AirData)
         CImGui.Text(@sprintf("Density: %.3f kg/m3", ρ))
         CImGui.Text(@sprintf("Speed of Sound: %.3f m/s", a))
         CImGui.Text(@sprintf("Mach: %.3f", M))
+
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Velocity")
+
+        CImGui.Text(@sprintf("[X-Body]: %.3f m/s", v_wOb_b[1]))
+        CImGui.Text(@sprintf("[Y-Body]: %.3f m/s", v_wOb_b[2]))
+        CImGui.Text(@sprintf("[Z-Body]: %.3f m/s", v_wOb_b[3]))
+        CImGui.Text(@sprintf("CAS: %.3f kts", SI2kts(CAS)))
+        CImGui.Text(@sprintf("EAS: %.3f kts", SI2kts(EAS)))
+        CImGui.Text(@sprintf("TAS: %.3f kts", SI2kts(TAS)))
+        CImGui.Text(@sprintf("AoA: %.3f deg", rad2deg(α_b)))
+        CImGui.Text(@sprintf("AoS: %.3f deg", rad2deg(β_b)))
 
         CImGui.TreePop()
     end
