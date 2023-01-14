@@ -127,7 +127,7 @@ function Systems.f_step!(sys::System{<:AircraftTemplate})
     #could use chained | instead, but this is clearer
     x_mod = false
     x_mod |= f_step!(kinematics)
-    x_mod |= f_step!(airframe, kinematics)
+    x_mod |= f_step!(airframe, avionics, kinematics)
     x_mod |= f_step!(avionics, airframe, kinematics)
 
     return x_mod
@@ -210,10 +210,10 @@ function GUI.draw!(sys::System{<:AircraftTemplate}, gui_input::Bool = true)
     show_air && GUI.draw!(y.air)
 
     show_airframe = @cstatic check=false @c CImGui.Checkbox("Airframe", &check)
-    show_airframe && GUI.draw!(sys.airframe)
+    show_airframe && GUI.draw!(sys.airframe, false) #disallow setting airframe systems inputs directly
 
     show_avionics = @cstatic check=false @c CImGui.Checkbox("Avionics", &check)
-    show_avionics && GUI.draw!(sys.avionics)
+    show_avionics && GUI.draw!(sys.avionics, gui_input)
 
     CImGui.End()
 

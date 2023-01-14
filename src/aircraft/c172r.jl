@@ -438,7 +438,7 @@ function Systems.f_ode!(airframe::System{<:Airframe}, avionics::System{<:Abstrac
 
     @unpack aero, pwp, ldg, fuel, pld = airframe
 
-    apply_avionics!(airframe, avionics)
+    map_controls!(airframe, avionics)
     f_ode!(aero, pwp, air, kin, trn)
     f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
@@ -448,10 +448,12 @@ function Systems.f_ode!(airframe::System{<:Airframe}, avionics::System{<:Abstrac
 
 end
 
-function Systems.f_step!(airframe::System{<:Airframe}, ::KinematicSystem)
+function Systems.f_step!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics},
+                         ::KinematicSystem)
     @unpack aero, pwp, fuel, ldg, fuel, pld = airframe
 
     x_mod = false
+    map_controls!(airframe, avionics)
     x_mod |= f_step!(aero)
     x_mod |= f_step!(ldg)
     x_mod |= f_step!(pwp, fuel)
@@ -463,9 +465,9 @@ end
 #recurse on Airframe subsystems
 
 #to be extended by any avionics installed on the aircraft
-function apply_avionics!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics})
-    println("Please extend C172R.apply_avionics! for $(typeof(airframe)), $(typeof(avionics))")
-    MethodError(apply_avionics!, (airframe, avionics))
+function map_controls!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics})
+    println("Please extend C172R.map_controls! for $(typeof(airframe)), $(typeof(avionics))")
+    MethodError(map_controls!, (airframe, avionics))
 end
 
 
@@ -535,7 +537,7 @@ end
 @inline Systems.f_disc!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
 
 
-function apply_avionics!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
+function map_controls!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
 
     @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
     brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
@@ -681,10 +683,52 @@ end
 
 function GUI.draw!(sys::System{<:ReversibleControls}, gui_input::Bool = true)
 
-    CImGui.Begin("Avionics")
+    u = sys.u
 
-    CImGui.Text("Avionics (Cessna 172R Reversible Controls)")
 
+    # aileron::Ranged{Float64, -1, 1} = 0.0
+    # Δ_aileron::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    # elevator::Ranged{Float64, -1, 1} = 0.0
+    # Δ_elevator::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    # pedals::Ranged{Float64, -1, 1} = 0.0
+    # Δ_pedals::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    # brake_left::Ranged{Float64, 0, 1} = 0.0
+    # brake_right::Ranged{Float64, 0, 1} = 0.0
+    # flaps::Ranged{Float64, 0, 1} = 0.0
+    # mixture::Ranged{Float64, 0, 1} = 0.5
+    # eng_start::Bool = false
+    # eng_stop::Bool = false
+
+    CImGui.Begin("Avionics (Cessna 172R Reversible Controls")
+    CImGui.PushItemWidth(-100)
+
+    #throttle
+    @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
+        values[values_offset+1] = u.throttle
+        values_offset = (values_offset+1) % length(values)
+        CImGui.PlotLines(string(u.throttle |> Float32), values, length(values), values_offset, "Throttle", 0.0, 1.0, (0,80))
+    end
+    if gui_input
+        if @cstatic thr_check=false @c CImGui.Checkbox("Override##Throttle", &thr_check)
+            CImGui.SameLine()
+            u.throttle = @cstatic f=Cfloat(0.0) @c CImGui.SliderFloat("##ThrottleSlider", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
+        end
+    end
+
+    #mixture
+    @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
+        values[values_offset+1] = u.mixture
+        values_offset = (values_offset+1) % length(values)
+        CImGui.PlotLines(string(u.mixture |> Float32), values, length(values), values_offset, "Mixture", 0.0, 1.0, (0,80))
+    end
+    if gui_input
+        if @cstatic thr_check=false @c CImGui.Checkbox("Override##Throttle", &thr_check)
+            CImGui.SameLine()
+            u.mixture = @cstatic f=Cfloat(0.0) @c CImGui.SliderFloat("##ThrottleSlider", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
+        end
+    end
+
+    CImGui.PopItemWidth()
     CImGui.End()
 
 end
