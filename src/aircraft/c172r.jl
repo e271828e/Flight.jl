@@ -472,23 +472,23 @@ end
 
 
 ################################################################################
-########################### ReversibleControls #################################
+########################### MechanicalControls #################################
 
-struct ReversibleControls <: AbstractAvionics end
+struct MechanicalControls <: AbstractAvionics end
 
 #elevator↑ (stick forward) -> e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
 #aileron↑ (stick right) -> a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
-#pedals↑ (left pedal forward) -> r↓ -> δr↓ -> rudder trailing edge right -> Cn↑ -> yaw right
-#pedals↑ (right pedal forward) -> nose wheel steering right -> yaw right
+#rudder↑ (right pedal forward) -> r↓ -> δr↓ -> rudder trailing edge right -> Cn↑ -> yaw right
+#rudder↑ (right pedal forward) -> nose wheel steering right -> yaw right
 #flaps↑ -> δf↑ -> flap trailing edge down -> CL↑
-Base.@kwdef mutable struct ReversibleControlsU
+Base.@kwdef mutable struct MechanicalControlsU
     throttle::Ranged{Float64, 0, 1} = 0.0
-    aileron::Ranged{Float64, -1, 1} = 0.0
-    Δ_aileron::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
-    elevator::Ranged{Float64, -1, 1} = 0.0
-    Δ_elevator::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
-    pedals::Ranged{Float64, -1, 1} = 0.0
-    Δ_pedals::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    aileron_trim::Ranged{Float64, -1, 1} = 0.0
+    aileron_offset::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    elevator_trim::Ranged{Float64, -1, 1} = 0.0
+    elevator_offset::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    rudder_trim::Ranged{Float64, -1, 1} = 0.0
+    rudder_offset::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
     brake_left::Ranged{Float64, 0, 1} = 0.0
     brake_right::Ranged{Float64, 0, 1} = 0.0
     flaps::Ranged{Float64, 0, 1} = 0.0
@@ -497,14 +497,14 @@ Base.@kwdef mutable struct ReversibleControlsU
     eng_stop::Bool = false
 end
 
-Base.@kwdef struct ReversibleControlsY
+Base.@kwdef struct MechanicalControlsY
     throttle::Float64 = 0.0
-    Δ_aileron::Float64 = 0.0
-    aileron::Float64 = 0.0
-    Δ_elevator::Float64 = 0.0
-    elevator::Float64 = 0.0
-    pedals::Float64 = 0.0
-    Δ_pedals::Float64 = 0.0
+    aileron_trim::Float64 = 0.0
+    aileron_offset::Float64 = 0.0
+    elevator_trim::Float64 = 0.0
+    elevator_offset::Float64 = 0.0
+    rudder_trim::Float64 = 0.0
+    rudder_offset::Float64 = 0.0
     brake_left::Float64 = 0.0
     brake_right::Float64 = 0.0
     flaps::Float64 = 0.0
@@ -513,46 +513,50 @@ Base.@kwdef struct ReversibleControlsY
     eng_stop::Bool = false
 end
 
-Systems.init(::SystemU, ::ReversibleControls) = ReversibleControlsU()
-Systems.init(::SystemY, ::ReversibleControls) = ReversibleControlsY()
+Systems.init(::SystemU, ::MechanicalControls) = MechanicalControlsU()
+Systems.init(::SystemY, ::MechanicalControls) = MechanicalControlsY()
 
 
 ########################### Update Methods #####################################
 
-function Systems.f_ode!(avionics::System{ReversibleControls}, ::System{<:Airframe},
+function Systems.f_ode!(avionics::System{MechanicalControls}, ::System{<:Airframe},
                 ::KinematicData, ::AirData, ::System{<:AbstractTerrain})
 
-    #ReversibleControls has no internal dynamics, just input-output feedthrough
-    @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
-     brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
+    #MechanicalControls has no internal dynamics, just input-output feedthrough
+    @unpack throttle, aileron_trim, aileron_offset, elevator_trim, elevator_offset,
+            rudder_trim, rudder_offset, brake_left, brake_right, flaps, mixture,
+            eng_start, eng_stop = avionics.u
 
-    avionics.y = ReversibleControlsY(;
-            throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
-            brake_left, brake_right, flaps, mixture, eng_start, eng_stop)
+    avionics.y = MechanicalControlsY(;
+            throttle, aileron_trim, aileron_offset, elevator_trim, elevator_offset,
+            rudder_trim, rudder_offset, brake_left, brake_right, flaps, mixture,
+            eng_start, eng_stop)
 
 end
 
-#no digital components or state machines in ReversibleControls
-@inline Systems.f_step!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem) = false
-@inline Systems.f_disc!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
+#no digital components or state machines in MechanicalControls
+@inline Systems.f_step!(::System{MechanicalControls}, ::System{<:Airframe}, ::KinematicSystem) = false
+@inline Systems.f_disc!(::System{MechanicalControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
 
 
-function map_controls!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
+function map_controls!(airframe::System{<:Airframe}, avionics::System{MechanicalControls})
 
-    @unpack throttle, Δ_aileron, aileron, Δ_elevator, elevator, pedals, Δ_pedals,
-    brake_left, brake_right, flaps, mixture, eng_start, eng_stop = avionics.u
+    @unpack throttle, aileron_trim, aileron_offset, elevator_trim, elevator_offset,
+            rudder_trim, rudder_offset, brake_left, brake_right, flaps, mixture,
+            eng_start, eng_stop = avionics.u
+
     @unpack aero, pwp, ldg = airframe
 
     pwp.u.engine.start = eng_start
     pwp.u.engine.stop = eng_stop
     pwp.u.engine.thr = throttle
     pwp.u.engine.mix = mixture
-    ldg.u.nose.steering[] = (pedals + Δ_pedals) #pedals↑ (right pedal forward) -> nose wheel steering right
+    ldg.u.nose.steering[] = (rudder_trim + rudder_offset) #rudder↑ (right pedal forward) -> nose wheel steering right
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
-    aero.u.e = (elevator + Δ_elevator) #elevator↑ (stick forward) -> e↑
-    aero.u.a = (aileron + Δ_aileron) #aileron↑ (stick right) -> a↑
-    aero.u.r = -(pedals + Δ_pedals) #pedals↑ (left pedal forward) -> r↓
+    aero.u.e = (elevator_trim + elevator_offset) #elevator↑ (stick forward) -> e↑ -> pitch down
+    aero.u.a = (aileron_trim + aileron_offset) #aileron↑ (stick right) -> a↑ -> roll right
+    aero.u.r = -(rudder_trim + rudder_offset) #rudder↑ (right pedal forward) -> r↓ -> yaw right
     aero.u.f = flaps #flaps↑ -> δf↑
 
     return nothing
@@ -567,14 +571,14 @@ end
 #avionics and using different kinematic descriptions
 const Cessna172RBase{K, F, V} = AircraftTemplate{K, F, V} where {K, F <: Airframe, V}
 
-function Cessna172RBase(kinematics = LTF(), avionics = ReversibleControls())
+function Cessna172RBase(kinematics = LTF(), avionics = MechanicalControls())
     AircraftTemplate( kinematics, Airframe(), avionics)
 end
 
-#the default Cessna172R installs the C172R.ReversibleControls avionics (which
+#the default Cessna172R installs the C172R.MechanicalControls avionics (which
 #provides only a basic reversible control system)
-const Cessna172R{K, F} = Cessna172RBase{K, F, ReversibleControls} where {K, F}
-Cessna172R(kinematics = LTF()) = Cessna172RBase(kinematics, ReversibleControls())
+const Cessna172R{K, F} = Cessna172RBase{K, F, MechanicalControls} where {K, F}
+Cessna172R(kinematics = LTF()) = Cessna172RBase(kinematics, MechanicalControls())
 
 #By default, the AircraftTemplate's U type will be automatically determined by
 #the System's generic initializers as a NamedTuple{(:airframe, :avionics),
@@ -606,7 +610,7 @@ Systems.init(::SystemU, ac::Cessna172R) = Cessna172RU(init_u(ac.airframe), init_
 
 elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-pedal_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
+rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 function IODevices.assign!(u::Cessna172RU, joystick::Joystick{XBoxControllerID},
@@ -614,19 +618,19 @@ function IODevices.assign!(u::Cessna172RU, joystick::Joystick{XBoxControllerID},
     IODevices.assign!(u.avionics, joystick, mapping)
 end
 
-function IODevices.assign!(u::ReversibleControlsU,
+function IODevices.assign!(u::MechanicalControlsU,
             joystick::Joystick{XBoxControllerID}, ::DefaultMapping)
 
-    u.Δ_aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.Δ_elevator = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
-    u.Δ_pedals = get_axis_value(joystick, :left_analog_x) |> pedal_curve
+    u.aileron_offset = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.elevator_offset = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.rudder_offset = get_axis_value(joystick, :left_analog_x) |> rudder_curve
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    u.aileron -= 0.01 * was_released(joystick, :dpad_left)
-    u.aileron += 0.01 * was_released(joystick, :dpad_right)
-    u.elevator -= 0.01 * was_released(joystick, :dpad_down)
-    u.elevator += 0.01 * was_released(joystick, :dpad_up)
+    u.aileron_trim -= 0.01 * was_released(joystick, :dpad_left)
+    u.aileron_trim += 0.01 * was_released(joystick, :dpad_right)
+    u.elevator_trim -= 0.01 * was_released(joystick, :dpad_down)
+    u.elevator_trim += 0.01 * was_released(joystick, :dpad_up)
 
     u.throttle += 0.1 * was_released(joystick, :button_Y)
     u.throttle -= 0.1 * was_released(joystick, :button_A)
@@ -670,6 +674,9 @@ function GUI.draw!(sys::System{<:Airframe}, gui_input::Bool = true)
         CImGui.End()
     end
 
+
+    CImGui.Text("$(pwp.y.engine.state)")
+    CImGui.Text("$(pwp.y.engine.ω)")
     # if CImGui.TreeNode("Powerplant")
     #     GUI.draw!(pwp, gui_input)
     #     CImGui.TreePop()
@@ -681,54 +688,103 @@ function GUI.draw!(sys::System{<:Airframe}, gui_input::Bool = true)
 
 end
 
-function GUI.draw!(sys::System{<:ReversibleControls}, gui_input::Bool = true)
+function GUI.draw!(sys::System{<:MechanicalControls}, gui_input::Bool = true)
 
     u = sys.u
 
+    CImGui.Begin("Avionics (Cessna 172R / Mechanical Controls)")
 
-    # aileron::Ranged{Float64, -1, 1} = 0.0
-    # Δ_aileron::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
-    # elevator::Ranged{Float64, -1, 1} = 0.0
-    # Δ_elevator::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
-    # pedals::Ranged{Float64, -1, 1} = 0.0
-    # Δ_pedals::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
-    # brake_left::Ranged{Float64, 0, 1} = 0.0
-    # brake_right::Ranged{Float64, 0, 1} = 0.0
-    # flaps::Ranged{Float64, 0, 1} = 0.0
-    # mixture::Ranged{Float64, 0, 1} = 0.5
-    # eng_start::Bool = false
-    # eng_stop::Bool = false
+    CImGui.PushItemWidth(-60)
 
-    CImGui.Begin("Avionics (Cessna 172R Reversible Controls")
-    CImGui.PushItemWidth(-100)
+    #engine start
+    let
+        if gui_input
+            enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Engine Start", &check)
+            CImGui.SameLine()
+            CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(0.4, 0.6, 0.6))
+            CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(0.4, 0.7, 0.7))
+            CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(0.4, 0.8, 0.8))
+            CImGui.Button("Engine Start")
+            CImGui.PopStyleColor(3)
+            enable_flag && (u.eng_start = CImGui.IsItemActive())
+        else
+            CImGui.Text("Engine Start: $(u.eng_start)")
+        end
+    end
+
+    # #engine stop
+    let
+        if gui_input
+            enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Engine Stop", &check)
+            CImGui.SameLine()
+            CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(0., 0.6, 0.6))
+            CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(0., 0.7, 0.7))
+            CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(0., 0.8, 0.8))
+            CImGui.Button("Engine Stop")
+            CImGui.PopStyleColor(3)
+            enable_flag && (u.eng_stop = CImGui.IsItemActive())
+        else
+            CImGui.Text("Engine Stop: $(u.eng_stop)")
+        end
+    end
+
+    #clean this up with a macro. arguments: u.throttle, "Throttle", default_value
+    #value. add a let #block for additional safety
 
     #throttle
     @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
         values[values_offset+1] = u.throttle
         values_offset = (values_offset+1) % length(values)
-        CImGui.PlotLines(string(u.throttle |> Float32), values, length(values), values_offset, "Throttle", 0.0, 1.0, (0,80))
+        CImGui.PlotLines(string(u.throttle |> Float32), values, length(values), values_offset, "Throttle", 0.0, 1.0, (0,50))
     end
     if gui_input
-        if @cstatic thr_check=false @c CImGui.Checkbox("Override##Throttle", &thr_check)
-            CImGui.SameLine()
-            u.throttle = @cstatic f=Cfloat(0.0) @c CImGui.SliderFloat("##ThrottleSlider", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
-        end
+        enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Throttle", &check)
+        CImGui.SameLine()
+        slider_value = @cstatic f=Cfloat(0.0) @c CImGui.SliderFloat("##Throttle", &f, 0, 1)
+        enable_flag && (u.throttle = slider_value)
     end
 
     #mixture
     @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
         values[values_offset+1] = u.mixture
         values_offset = (values_offset+1) % length(values)
-        CImGui.PlotLines(string(u.mixture |> Float32), values, length(values), values_offset, "Mixture", 0.0, 1.0, (0,80))
+        CImGui.PlotLines(string(u.mixture |> Float32), values, length(values), values_offset, "Mixture", 0.0, 1.0, (0,50))
     end
     if gui_input
-        if @cstatic thr_check=false @c CImGui.Checkbox("Override##Throttle", &thr_check)
-            CImGui.SameLine()
-            u.mixture = @cstatic f=Cfloat(0.0) @c CImGui.SliderFloat("##ThrottleSlider", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
-        end
+        enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Mixture", &check)
+        CImGui.SameLine()
+        slider_value = @cstatic f=Cfloat(0.5) @c CImGui.SliderFloat("##Mixture", &f, 0, 1)
+        enable_flag && (u.mixture = slider_value)
+    end
+
+    #left brake
+    @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
+        values[values_offset+1] = u.brake_left
+        values_offset = (values_offset+1) % length(values)
+        CImGui.PlotLines(string(u.brake_left |> Float32), values, length(values), values_offset, "Left Brake", 0.0, 1.0, (0,50))
+    end
+    if gui_input
+        enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Left Brake", &check)
+        CImGui.SameLine()
+        slider_value = @cstatic f=Cfloat(0.0) @c CImGui.SliderFloat("##Left Brake", &f, 0, 1)
+        enable_flag && (u.brake_left = slider_value)
+    end
+
+    #left brake
+    @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
+        values[values_offset+1] = u.brake_right
+        values_offset = (values_offset+1) % length(values)
+        CImGui.PlotLines(string(u.brake_right |> Float32), values, length(values), values_offset, "Right Brake", 0.0, 1.0, (0,50))
+    end
+    if gui_input
+        enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Right Brake", &check)
+        CImGui.SameLine()
+        slider_value = @cstatic f=Cfloat(0.0) @c CImGui.SliderFloat("##Right Brake", &f, 0, 1)
+        enable_flag && (u.brake_right = slider_value)
     end
 
     CImGui.PopItemWidth()
+
     CImGui.End()
 
 end

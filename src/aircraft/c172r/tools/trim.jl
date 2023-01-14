@@ -36,16 +36,16 @@ const StateTemplate = ComponentVector(
     throttle = 0.5,
     aileron = 0.0,
     elevator = 0.0,
-    pedals = 0.0,
+    rudder = 0.0, #rudder↑ -> aero.u.r↓ -> right yaw
 )
 
 const State{T, D} = ComponentVector{T, D, typeof(getaxes(StateTemplate))} where {T, D}
 
 function State(; α_a = 0.0848, φ_nb = 0.0, n_eng = 0.75,
-    throttle = 0.62, aileron = 0.015, elevator = -0.006, pedals = -0.03)
+    throttle = 0.62, aileron = 0.015, elevator = -0.006, rudder = -0.03)
 
     x = copy(StateTemplate)
-    @pack! x = α_a, φ_nb, n_eng, throttle, aileron, elevator, pedals
+    @pack! x = α_a, φ_nb, n_eng, throttle, aileron, elevator, rudder
     return x
 
 end
@@ -126,16 +126,16 @@ function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
     ac.x.airframe.fuel .= params.fuel
 
     ac.u.avionics.throttle = state.throttle
-    ac.u.avionics.aileron = state.aileron
-    ac.u.avionics.elevator = state.elevator
-    ac.u.avionics.pedals = state.pedals
+    ac.u.avionics.aileron_trim = state.aileron
+    ac.u.avionics.elevator_trim = state.elevator
+    ac.u.avionics.rudder_trim = state.rudder
     ac.u.avionics.flaps = params.flaps
     ac.u.avionics.mixture = params.mixture
 
     #incremental control inputs to zero
-    ac.u.avionics.Δ_elevator = 0
-    ac.u.avionics.Δ_aileron = 0
-    ac.u.avionics.Δ_pedals = 0
+    ac.u.avionics.elevator_offset = 0
+    ac.u.avionics.aileron_offset = 0
+    ac.u.avionics.rudder_offset = 0
 
     #engine must be running, no way to trim otherwise
     ac.s.airframe.pwp.engine.state = Piston.eng_running
@@ -211,7 +211,7 @@ function trim!(ac::System{<:Cessna172R},
         throttle = 0,
         aileron = -1,
         elevator = -1,
-        pedals = -1)
+        rudder = -1)
 
     upper_bounds[:] .= State(
         α_a = ac.airframe.aero.params.α_stall[2], #critical AoA is 0.28 < 0.36
@@ -220,7 +220,7 @@ function trim!(ac::System{<:Cessna172R},
         throttle = 1,
         aileron = 1,
         elevator = 1,
-        pedals = 1)
+        rudder = 1)
 
     initial_step[:] .= 0.05 #safe value for all optimization variables
 

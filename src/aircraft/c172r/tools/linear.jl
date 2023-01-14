@@ -30,7 +30,7 @@ const UTemplate = ComponentVector(
     throttle = 0.0,
     elevator = 0.0, #yoke forward
     aileron = 0.0, #yoke right
-    pedals = 0.0, #right pedal forward
+    rudder = 0.0, #right pedal forward
     )
 
 const YTemplate = ComponentVector(
@@ -47,15 +47,21 @@ const Y{T, D} = ComponentVector{T, D, typeof(getaxes(YTemplate))} where {T, D}
 
 function assign!(u::U, ac::System{<:Cessna172R})
 
-    @unpack throttle, elevator, aileron, pedals = ac.u.avionics
-    @pack! u = throttle, elevator, aileron, pedals
+    @unpack throttle, elevator_trim, aileron_trim, rudder_trim = ac.u.avionics
+    u.throttle = throttle
+    u.elevator = elevator_trim
+    u.aileron = aileron_trim
+    u.rudder = rudder_trim
 
 end
 
 function assign!(ac::System{<:Cessna172R}, u::U)
 
-    @unpack throttle, elevator, aileron, pedals = u
-    @pack! ac.u.avionics = throttle, elevator, aileron, pedals
+    @unpack throttle, elevator, aileron, rudder = u
+    ac.u.avionics.throttle = throttle
+    ac.u.avionics.elevator_trim = elevator
+    ac.u.avionics.aileron_trim = aileron
+    ac.u.avionics.rudder_trim = rudder
 
 end
 

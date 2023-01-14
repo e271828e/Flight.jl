@@ -96,7 +96,7 @@ function Engine(;
     ω_stall = RPM2radpersec(300),
     ω_cutoff = RPM2radpersec(3100),
     ω_idle = RPM2radpersec(600),
-    M_start = 40,
+    M_start = 30,
     J = 0.05,
     idle = PICompensator{1}(k_p = 4.0, k_i = 2.0, bounds = (-0.5, 0.5)),
     frc =  PICompensator{1}(k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))

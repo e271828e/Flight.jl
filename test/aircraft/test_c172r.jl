@@ -78,9 +78,9 @@ function test_sim(; save::Bool = true)
         function (u, s, y, t, params)
 
             u.avionics.throttle = 0.2
-            u.avionics.Δ_aileron = (t < 5 ? 0.25 : 0.0)
-            u.avionics.Δ_elevator = 0.0
-            u.avionics.Δ_pedals = 0.0
+            u.avionics.aileron_offset = (t < 5 ? 0.25 : 0.0)
+            u.avionics.elevator_offset = 0.0
+            u.avionics.rudder_offset = 0.0
             u.avionics.brake_left = 0
             u.avionics.brake_right = 0
 
@@ -112,10 +112,6 @@ function test_sim_paced(; save::Bool = true)
         h = h_trn + 1.9 + 0);
 
     Aircraft.init!(ac, kin_init)
-    ac.u.avionics.eng_start = true #engine start switch on
-    ac.u.avionics.throttle = 0.3
-    # ac.u.avionics.brake_left = 1
-    # ac.u.avionics.brake_right = 1
 
     sim = Simulation(ac; args_ode = (env,), t_end = 180)
 
@@ -177,7 +173,7 @@ function test_trimming()
 
         state = C172R.Trim.State(;
             α_a = 0.08, φ_nb = 0.3, n_eng = 0.8,
-            throttle = 0.61, aileron = 0.01, elevator = -0.025, pedals = 0.0)
+            throttle = 0.61, aileron = 0.01, elevator = -0.025, rudder = 0.0)
 
         params = C172R.Trim.Parameters(;
             loc = LatLon(), h = HOrth(1000),
@@ -196,9 +192,9 @@ function test_trimming()
         @test ac.y.airframe.aero.α ≈ state.α_a
         @test ac.y.airframe.pwp.engine.ω == state.n_eng * ac.airframe.pwp.engine.params.ω_rated
         @test ac.u.avionics.throttle == state.throttle
-        @test ac.u.avionics.aileron == state.aileron
-        @test ac.u.avionics.elevator == state.elevator
-        @test ac.u.avionics.pedals == state.pedals
+        @test ac.u.avionics.aileron_trim == state.aileron
+        @test ac.u.avionics.elevator_trim == state.elevator
+        @test ac.u.avionics.rudder_trim == state.rudder
 
         @test e_nb.ψ ≈ params.ψ_nb
         @test Attitude.inclination(v_wOb_n) ≈ params.γ_wOb_n atol = 1e-12
