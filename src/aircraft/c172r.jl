@@ -516,6 +516,7 @@ end
 Systems.init(::SystemU, ::MechanicalControls) = MechanicalControlsU()
 Systems.init(::SystemY, ::MechanicalControls) = MechanicalControlsY()
 
+#this should go in Avionics module
 
 ########################### Update Methods #####################################
 
@@ -608,15 +609,15 @@ Systems.init(::SystemU, ac::Cessna172R) = Cessna172RU(init_u(ac.airframe), init_
 ################################################################################
 ############################ Joystick Mappings #################################
 
-elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
-brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-
 function IODevices.assign!(u::Cessna172RU, joystick::Joystick{XBoxControllerID},
                            mapping::InputMapping)
     IODevices.assign!(u.avionics, joystick, mapping)
 end
+
+elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
+brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 function IODevices.assign!(u::MechanicalControlsU,
             joystick::Joystick{XBoxControllerID}, ::DefaultMapping)
@@ -644,23 +645,14 @@ end
 ################################################################################
 ############################### Analysis Tools #################################
 
-include("c172r/tools/trim.jl")
-include("c172r/tools/linear.jl")
-using .Trim
-using .Linear
+include("c172r/tools/trim.jl"); using .Trim
+include("c172r/tools/linear.jl"); using .Linear
 
 
 ################################################################################
 #################################### GUI #######################################
 
-# Base.@kwdef struct Airframe{P} <: AbstractAirframe
-#     str::Structure = Structure()
-#     aero::Aero = Aero()
-#     ldg::Ldg = Ldg()
-#     fuel::Fuel = Fuel()
-#     pld::Payload = Payload()
-#     pwp::P = Pwp()
-# end
+
 function GUI.draw!(sys::System{<:Airframe}, gui_input::Bool = true)
 
     @unpack pwp, ldg = sys
@@ -685,8 +677,51 @@ function GUI.draw!(sys::System{<:Airframe}, gui_input::Bool = true)
 
     CImGui.End()
 
-
 end
+
+
+################################################################################
+#################################### GUI #######################################
+
+macro input_slider(target, label, lower_bound, upper_bound, default)
+    return esc(quote
+        #generate a running plot
+        let
+            @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
+                values[values_offset+1] = $target
+                values_offset = (values_offset+1) % length(values)
+                CImGui.PlotLines(string($target |> Float32), values, length(values), values_offset, $label, 0.0, 1.0, (0,50))
+            end
+            #generate a checkbox-enabled slider to control the target's value
+            if gui_input
+                enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##"*($label), &check)
+                CImGui.SameLine()
+                slider_value = @cstatic f=Cfloat($default) @c CImGui.SliderFloat("##"*($label), &f, $lower_bound, $upper_bound)
+                enable_flag && ($target = slider_value)
+            end
+        end
+    end)
+end
+
+macro input_button(target, label, hue)
+    return esc(quote
+        let
+            if gui_input
+                enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##"*($label), &check)
+                CImGui.SameLine()
+                CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV($hue, 0.6, 0.6))
+                CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV($hue, 0.7, 0.7))
+                CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV($hue, 0.8, 0.8))
+                CImGui.Button(($label))
+                CImGui.PopStyleColor(3)
+                enable_flag && ($target = CImGui.IsItemActive())
+            else
+                CImGui.Text(($label) * ": " *string($target))
+            end
+        end
+    end)
+end
+
 
 function GUI.draw!(sys::System{<:MechanicalControls}, gui_input::Bool = true)
 
@@ -696,92 +731,19 @@ function GUI.draw!(sys::System{<:MechanicalControls}, gui_input::Bool = true)
 
     CImGui.PushItemWidth(-60)
 
-    #engine start
-    let
-        if gui_input
-            enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Engine Start", &check)
-            CImGui.SameLine()
-            CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(0.4, 0.6, 0.6))
-            CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(0.4, 0.7, 0.7))
-            CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(0.4, 0.8, 0.8))
-            CImGui.Button("Engine Start")
-            CImGui.PopStyleColor(3)
-            enable_flag && (u.eng_start = CImGui.IsItemActive())
-        else
-            CImGui.Text("Engine Start: $(u.eng_start)")
-        end
-    end
-
-    # #engine stop
-    let
-        if gui_input
-            enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Engine Stop", &check)
-            CImGui.SameLine()
-            CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(0., 0.6, 0.6))
-            CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(0., 0.7, 0.7))
-            CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(0., 0.8, 0.8))
-            CImGui.Button("Engine Stop")
-            CImGui.PopStyleColor(3)
-            enable_flag && (u.eng_stop = CImGui.IsItemActive())
-        else
-            CImGui.Text("Engine Stop: $(u.eng_stop)")
-        end
-    end
-
-    #clean this up with a macro. arguments: u.throttle, "Throttle", default_value
-    #value. add a let #block for additional safety
-
-    #throttle
-    @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
-        values[values_offset+1] = u.throttle
-        values_offset = (values_offset+1) % length(values)
-        CImGui.PlotLines(string(u.throttle |> Float32), values, length(values), values_offset, "Throttle", 0.0, 1.0, (0,50))
-    end
-    if gui_input
-        enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Throttle", &check)
-        CImGui.SameLine()
-        slider_value = @cstatic f=Cfloat(0.0) @c CImGui.SliderFloat("##Throttle", &f, 0, 1)
-        enable_flag && (u.throttle = slider_value)
-    end
-
-    #mixture
-    @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
-        values[values_offset+1] = u.mixture
-        values_offset = (values_offset+1) % length(values)
-        CImGui.PlotLines(string(u.mixture |> Float32), values, length(values), values_offset, "Mixture", 0.0, 1.0, (0,50))
-    end
-    if gui_input
-        enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Mixture", &check)
-        CImGui.SameLine()
-        slider_value = @cstatic f=Cfloat(0.5) @c CImGui.SliderFloat("##Mixture", &f, 0, 1)
-        enable_flag && (u.mixture = slider_value)
-    end
-
-    #left brake
-    @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
-        values[values_offset+1] = u.brake_left
-        values_offset = (values_offset+1) % length(values)
-        CImGui.PlotLines(string(u.brake_left |> Float32), values, length(values), values_offset, "Left Brake", 0.0, 1.0, (0,50))
-    end
-    if gui_input
-        enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Left Brake", &check)
-        CImGui.SameLine()
-        slider_value = @cstatic f=Cfloat(0.0) @c CImGui.SliderFloat("##Left Brake", &f, 0, 1)
-        enable_flag && (u.brake_left = slider_value)
-    end
-
-    #left brake
-    @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
-        values[values_offset+1] = u.brake_right
-        values_offset = (values_offset+1) % length(values)
-        CImGui.PlotLines(string(u.brake_right |> Float32), values, length(values), values_offset, "Right Brake", 0.0, 1.0, (0,50))
-    end
-    if gui_input
-        enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##Right Brake", &check)
-        CImGui.SameLine()
-        slider_value = @cstatic f=Cfloat(0.0) @c CImGui.SliderFloat("##Right Brake", &f, 0, 1)
-        enable_flag && (u.brake_right = slider_value)
-    end
+    @input_button(u.eng_start, "Engine Start", 0.4)
+    @input_button(u.eng_stop, "Engine Stop", 0.0)
+    @input_slider(u.throttle, "Throttle", 0, 1, 1)
+    @input_slider(u.mixture, "Mixture", 0, 1, 0.5)
+    @input_slider(u.brake_left, "Left Brake", 0, 1, 0.0)
+    @input_slider(u.brake_right, "Right Brake", 0, 1, 0.0)
+    @input_slider(u.aileron_offset, "Aileron Offset", -1, 1, 0.0)
+    @input_slider(u.elevator_offset, "Elevator Offset", -1, 1, 0.0)
+    @input_slider(u.rudder_offset, "Rudder Offset", -1, 1, 0.0)
+    @input_slider(u.flaps, "Flaps", 0, 1, 0.0)
+    @input_slider(u.aileron_trim, "Aileron Trim", -1, 1, 0.0)
+    @input_slider(u.elevator_trim, "Elevator Trim", -1, 1, 0.0)
+    @input_slider(u.rudder_trim, "Rudder Trim", -1, 1, 0.0)
 
     CImGui.PopItemWidth()
 

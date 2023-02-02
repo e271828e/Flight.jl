@@ -108,7 +108,7 @@ end
 function get_force(c::SimpleDamper, ξ::Real, ξ_dot::Real)
     k_d = (ξ_dot > 0 ? c.k_d_ext : c.k_d_cmp)
     F = -(c.k_s * ξ + k_d * ξ_dot)
-    @assert abs(F) < c.F_max "Maximum allowable damper force exceeded"
+    @assert abs(F) < c.F_max "Maximum allowable damper force exceeded, looks like a ground crash."
     return F
 end
 
