@@ -171,11 +171,12 @@ macro input_button(target, label, hue)
 end
 
 
-function GUI.draw!(sys::System{<:MechanicalControls}, gui_input::Bool = true)
+function GUI.draw!(sys::System{<:MechanicalControls}, gui_input::Bool = true,
+                label::String = "Cessna 172R Mechanical Controls")
 
     u = sys.u
 
-    CImGui.Begin("Avionics (Cessna 172R / Mechanical Controls)")
+    CImGui.Begin(label)
 
     CImGui.PushItemWidth(-60)
 

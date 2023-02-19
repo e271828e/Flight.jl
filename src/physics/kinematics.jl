@@ -668,11 +668,11 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw!(kin::KinematicsY)
+function GUI.draw!(kin::KinematicsY, label::String = "Kinematics")
 
     @unpack q_nb, n_e, h_e, h_o, Δxy, ω_lb_b, v_eOb_b, v_eOb_n  = kin.common
 
-    CImGui.Begin("Kinematics")
+    CImGui.Begin(label)
 
     if CImGui.TreeNode("Angular Velocity (Body / LTF)")
 

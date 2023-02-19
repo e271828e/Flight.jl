@@ -201,18 +201,15 @@ function GUI.draw!(sys::System{<:AircraftTemplate}, gui_input::Bool = true)
     CImGui.Begin("Aircraft")
 
     show_dyn = @cstatic check=false @c CImGui.Checkbox("Dynamics", &check)
-    show_dyn && GUI.draw!(y.rigidbody)
-
     show_kin = @cstatic check=false @c CImGui.Checkbox("Kinematics", &check)
-    show_kin && GUI.draw!(y.kinematics)
-
     show_air = @cstatic check=false @c CImGui.Checkbox("Air", &check)
-    show_air && GUI.draw!(y.air)
-
     show_airframe = @cstatic check=false @c CImGui.Checkbox("Airframe", &check)
-    show_airframe && GUI.draw!(sys.airframe, false) #disallow setting airframe systems inputs directly
-
     show_avionics = @cstatic check=false @c CImGui.Checkbox("Avionics", &check)
+
+    show_dyn && GUI.draw!(y.rigidbody, "Dynamics")
+    show_kin && GUI.draw!(y.kinematics, "Kinematics")
+    show_air && GUI.draw!(y.air, "Air")
+    show_airframe && GUI.draw!(sys.airframe, false) #disallow setting airframe systems inputs directly
     show_avionics && GUI.draw!(sys.avionics, gui_input)
 
     CImGui.End()

@@ -3,6 +3,9 @@ module Systems
 using ComponentArrays
 using DataStructures
 using AbstractTrees
+using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
+
+using Flight.Engine.GUI
 
 export Component, System, SystemTrait
 export SystemẊ, SystemX, SystemY, SystemU, SystemS
@@ -247,5 +250,41 @@ AbstractTrees.print_tree(cmp::Type{C}; kwargs...) where {C<:Component} =
 
 AbstractTrees.print_tree(::C; kwargs...) where {C<:Component} = print_tree(C; kwargs...)
 AbstractTrees.print_tree(::System{C}; kwargs...) where {C} = print_tree(C; kwargs...)
+
+
+################################################################################
+#################################### GUI #######################################
+
+
+#generating checkboxes via for loops does not work for some reason
+
+# function GUI.draw!(sys::System, gui_input::Bool = true, label::String = "Generic System")
+
+#     isempty(sys.subsystems) && return
+#     should_draw = falses(length(sys.subsystems))
+#     CImGui.Begin(label)
+#     for (i, k) in enumerate(keys(sys.subsystems))
+#         should_draw[i] = @cstatic check=false @c CImGui.Checkbox(string(k), &check)
+#         # should_draw[2] = @cstatic check=false @c CImGui.Checkbox(string(k), &check)
+#     end
+#     CImGui.End()
+#     println(should_draw)
+
+
+# end
+
+
+# function GUI.draw!(sys::System, gui_input::Bool = true, label::String = "Generic System")
+
+#     isempty(sys.subsystems) && return
+#     should_draw = falses(3)
+#     CImGui.Begin(label)
+#         should_draw[1] = @cstatic check=false @c CImGui.Checkbox("One", &check)
+#         should_draw[2] = @cstatic check=false @c CImGui.Checkbox("Two", &check)
+#         should_draw[3] = @cstatic check=false @c CImGui.Checkbox("Trhee", &check)
+#     CImGui.End()
+#     println(should_draw)
+
+# end
 
 end #module

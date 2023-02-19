@@ -697,7 +697,7 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw!(rb::RigidBodyData)
+function GUI.draw!(rb::RigidBodyData, label::String = "Rigid Body")
 
     @unpack mp_Ob, wr_net_Ob, hr_b, α_eb_b, a_eOb_b, f_Ob_b, f_G_b = rb
 
@@ -705,7 +705,7 @@ function GUI.draw!(rb::RigidBodyData)
     mp_Gb = t_GbOb(mp_Ob)
     wr_net_Gb = t_GbOb(wr_net_Ob)
 
-    CImGui.Begin("Dynamics")
+    CImGui.Begin(label)
 
     if CImGui.TreeNode("Mass Properties")
         CImGui.Text(@sprintf("Mass: %.3f kg", mp_Ob.m))

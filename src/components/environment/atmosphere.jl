@@ -398,11 +398,11 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw!(air::AirData)
+function GUI.draw!(air::AirData, label::String = "Air")
 
     @unpack v_ew_n, v_wOb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
 
-    CImGui.Begin("Air")
+    CImGui.Begin(label)
 
     if CImGui.TreeNode("Wind")
 

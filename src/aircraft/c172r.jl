@@ -1,53 +1,12 @@
 module C172R
 
-# using LinearAlgebra
 using UnPack
-# using Reexport
-# using Interpolations
-# using HDF5
-# using Printf
-# using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
 export Cessna172R
 
 include("c172r/airframe.jl");
 include("c172r/avionics.jl");
 
-############################# Update Methods ###################################
-
-#to be extended by any avionics installed on the aircraft
-function map_controls!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics})
-    println("Please extend C172R.map_controls! for $(typeof(airframe)), $(typeof(avionics))")
-    MethodError(map_controls!, (airframe, avionics))
-end
-
-function Systems.f_ode!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics},
-                kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
-
-    @unpack aero, pwp, ldg, fuel, pld = airframe
-
-    map_controls!(airframe, avionics)
-    f_ode!(aero, pwp, air, kin, trn)
-    f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
-    f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
-    f_ode!(fuel, pwp) #update fuel system
-
-    update_y!(airframe)
-
-end
-
-function Systems.f_step!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics},
-                         ::KinematicSystem)
-    @unpack aero, pwp, fuel, ldg, fuel, pld = airframe
-
-    x_mod = false
-    map_controls!(airframe, avionics)
-    x_mod |= f_step!(aero)
-    x_mod |= f_step!(ldg)
-    x_mod |= f_step!(pwp, fuel)
-    return x_mod
-
-end
 
 ################################################################################
 ############################### Cessna172R #####################################
