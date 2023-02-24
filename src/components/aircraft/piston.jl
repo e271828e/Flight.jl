@@ -1,7 +1,8 @@
 module Piston
 
 using Interpolations, StaticArrays, StructArrays, ComponentArrays, UnPack
-using CImGui, CImGui.CSyntax, Printf
+using Printf
+using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
 using Flight.Engine.Systems
 using Flight.Engine.Utils: Ranged
@@ -99,7 +100,7 @@ function Engine(;
     M_start = 30,
     J = 0.05,
     idle = PICompensator{1}(k_p = 4.0, k_i = 2.0, bounds = (-0.5, 0.5)),
-    frc =  PICompensator{1}(k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
+    frc =  PICompensator{1}(k_p = 5.0, k_i = 200.0, k_l = 0.0, bounds = (-1.0, 1.0))
     )
 
     n_stall = ω_stall / ω_rated
@@ -252,6 +253,8 @@ function Systems.f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSuppl
     if eng.s.state === eng_off
 
         eng.u.start && (eng.s.state = eng_starting)
+        # frc.u.reset .= true
+        # idle.u.reset .= true
 
     elseif eng.s.state === eng_starting
 
@@ -505,7 +508,12 @@ RigidBody.get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
 
 function GUI.draw!(sys::System{<:Thruster}, gui_input::Bool = true)
 
-    GUI.draw!(sys.engine, gui_input)
+    show_eng = @cstatic check=false @c CImGui.Checkbox("Engine", &check)
+    if show_eng
+        CImGui.Begin("Engine") #this should go within pwp's own draw, see airframe
+            GUI.draw!(sys.engine, gui_input)
+        CImGui.End()
+    end
 
 end
 
@@ -515,12 +523,16 @@ function GUI.draw!(sys::System{<:Engine}, gui_input::Bool = true)
     @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ,
             SFC, idle, frc = y
 
-    if CImGui.TreeNode("Engine")
+    CImGui.Text("$state")
+    CImGui.Text("$ω")
+    if CImGui.TreeNode("Friction")
 
-        CImGui.Text(@sprintf("Yaw Rate"))
+        GUI.draw!(sys.frc)
 
         CImGui.TreePop()
+
     end
+
 
 end
 

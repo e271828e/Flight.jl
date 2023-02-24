@@ -131,41 +131,44 @@ end
 
 ################################## GUI #########################################
 
-macro input_slider(target, label, lower_bound, upper_bound, default)
-    return esc(quote
-        #generate a running plot
-        let
-            @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
-                values[values_offset+1] = $target
-                values_offset = (values_offset+1) % length(values)
-                CImGui.PlotLines(string($target |> Float32), values, length(values), values_offset, $label, 0.0, 1.0, (0,50))
-            end
-            #generate a checkbox-enabled slider to control the target's value
-            if gui_input
-                enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##"*($label), &check)
-                CImGui.SameLine()
-                slider_value = @cstatic f=Cfloat($default) @c CImGui.SliderFloat("##"*($label), &f, $lower_bound, $upper_bound)
-                enable_flag && ($target = slider_value)
-            end
-        end
+struct InputState{T}
+    enabled::Bool
+    value::T
+end
+
+function Base.:(|)(target::Any, state::InputState{T}) where {T}
+    state.enabled ? state.value : convert(T, target)
+end
+
+macro input_button2(target, label, hue)
+    return (quote
+        # enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##"*($label), &check)
+        # CImGui.SameLine()
+        enable_flag = true
+        CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV($hue, 0.6, 0.6))
+        CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV($hue, 0.7, 0.7))
+        CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV($hue, 0.8, 0.8))
+        CImGui.Button(($label))
+        CImGui.PopStyleColor(3)
+        enable_flag && ($(esc(target)) = CImGui.IsItemActive())
     end)
 end
 
-macro input_button(target, label, hue)
-    return esc(quote
-        let
-            if gui_input
-                enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##"*($label), &check)
-                CImGui.SameLine()
-                CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV($hue, 0.6, 0.6))
-                CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV($hue, 0.7, 0.7))
-                CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV($hue, 0.8, 0.8))
-                CImGui.Button(($label))
-                CImGui.PopStyleColor(3)
-                enable_flag && ($target = CImGui.IsItemActive())
-            else
-                CImGui.Text(($label) * ": " *string($target))
-            end
+macro input_slider(target, label, lower_bound, upper_bound, default)
+    return (quote
+        enable_flag = @cstatic check=false @c CImGui.Checkbox($label, &check)
+        CImGui.SameLine()
+        slider_value = @cstatic f=Cfloat($default) @c CImGui.SliderFloat("##"*($label), &f, $lower_bound, $upper_bound)
+        enable_flag && ($(esc(target)) = slider_value)
+    end)
+end
+
+macro running_plot(source, label, lower_bound, upper_bound, default)
+    return (quote
+        @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
+            values[values_offset+1] = $(esc(source))
+            values_offset = (values_offset+1) % length(values)
+            CImGui.PlotLines(string($(esc(source)) |> Float32), values, length(values), values_offset, $label, 0.0, 1.0, (0,50))
         end
     end)
 end
@@ -180,19 +183,33 @@ function GUI.draw!(sys::System{<:MechanicalControls}, gui_input::Bool = true,
 
     CImGui.PushItemWidth(-60)
 
-    @input_button(u.eng_start, "Engine Start", 0.4)
-    @input_button(u.eng_stop, "Engine Stop", 0.0)
-    @input_slider(u.throttle, "Throttle", 0, 1, 1)
-    @input_slider(u.mixture, "Mixture", 0, 1, 0.5)
-    @input_slider(u.brake_left, "Left Brake", 0, 1, 0.0)
-    @input_slider(u.brake_right, "Right Brake", 0, 1, 0.0)
-    @input_slider(u.aileron_offset, "Aileron Offset", -1, 1, 0.0)
-    @input_slider(u.elevator_offset, "Elevator Offset", -1, 1, 0.0)
-    @input_slider(u.rudder_offset, "Rudder Offset", -1, 1, 0.0)
-    @input_slider(u.flaps, "Flaps", 0, 1, 0.0)
-    @input_slider(u.aileron_trim, "Aileron Trim", -1, 1, 0.0)
-    @input_slider(u.elevator_trim, "Elevator Trim", -1, 1, 0.0)
-    @input_slider(u.rudder_trim, "Rudder Trim", -1, 1, 0.0)
+    if gui_input
+        @input_button2(u.eng_start, "Engine Start", 0.4)
+        @input_button2(u.eng_stop, "Engine Stop", 0.0)
+        @input_slider(u.throttle, "Throttle", 0, 1, 1)
+        @input_slider(u.mixture, "Mixture", 0, 1, 0.5)
+        @input_slider(u.brake_left, "Left Brake", 0, 1, 0.0)
+        @input_slider(u.brake_right, "Right Brake", 0, 1, 0.0)
+        @input_slider(u.aileron_offset, "Aileron Offset", -1, 1, 0.0)
+        @input_slider(u.elevator_offset, "Elevator Offset", -1, 1, 0.0)
+        @input_slider(u.rudder_offset, "Rudder Offset", -1, 1, 0.0)
+        @input_slider(u.flaps, "Flaps", 0, 1, 0.0)
+        @input_slider(u.aileron_trim, "Aileron Trim", -1, 1, 0.0)
+        @input_slider(u.elevator_trim, "Elevator Trim", -1, 1, 0.0)
+        @input_slider(u.rudder_trim, "Rudder Trim", -1, 1, 0.0)
+    end
+
+    @running_plot(u.throttle, "Throttle", 0, 1, 1)
+    @running_plot(u.mixture, "Mixture", 0, 1, 0.5)
+    @running_plot(u.brake_left, "Left Brake", 0, 1, 0.0)
+    @running_plot(u.brake_right, "Right Brake", 0, 1, 0.0)
+    @running_plot(u.aileron_offset, "Aileron Offset", -1, 1, 0.0)
+    @running_plot(u.elevator_offset, "Elevator Offset", -1, 1, 0.0)
+    @running_plot(u.rudder_offset, "Rudder Offset", -1, 1, 0.0)
+    @running_plot(u.flaps, "Flaps", 0, 1, 0.0)
+    @running_plot(u.aileron_trim, "Aileron Trim", -1, 1, 0.0)
+    @running_plot(u.elevator_trim, "Elevator Trim", -1, 1, 0.0)
+    @running_plot(u.rudder_trim, "Rudder Trim", -1, 1, 0.0)
 
     CImGui.PopItemWidth()
 

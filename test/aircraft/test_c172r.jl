@@ -105,7 +105,7 @@ function test_sim_paced(; save::Bool = true)
     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
     ac = System(Cessna172R());
     kin_init = KinematicInit(
-        v_eOb_n = [10, 0, 0],
+        v_eOb_n = [0, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),

@@ -474,8 +474,6 @@ function GUI.draw!(sys::System{<:Airframe}, gui_input::Bool = true, label::Strin
     end
 
 
-    CImGui.Text("$(pwp.y.engine.state)")
-    CImGui.Text("$(pwp.y.engine.ω)")
     # if CImGui.TreeNode("Powerplant")
     #     GUI.draw!(pwp, gui_input)
     #     CImGui.TreePop()
