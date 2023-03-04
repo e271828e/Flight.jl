@@ -460,26 +460,16 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw!(sys::System{<:Airframe}, gui_input::Bool = true, label::String = "Cessna 172R Airframe")
+function GUI.draw!(sys::System{<:Airframe}, label::String = "Cessna 172R Airframe")
 
     @unpack pwp, ldg = sys
 
     CImGui.Begin(label)
 
-    show_pwp = @cstatic check=false @c CImGui.Checkbox("Powerplant", &check)
-    if show_pwp
-        CImGui.Begin("Powerplant") #this should go within pwp's own draw, see airframe
-            GUI.draw!(pwp, gui_input)
-        CImGui.End()
-    end
-
-
-    # if CImGui.TreeNode("Powerplant")
-    #     GUI.draw!(pwp, gui_input)
-    #     CImGui.TreePop()
-    # end
-
+        show_pwp = @cstatic check=false @c CImGui.Checkbox("Powerplant", &check)
 
     CImGui.End()
+
+    show_pwp && GUI.draw!(pwp)
 
 end

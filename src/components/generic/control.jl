@@ -238,7 +238,7 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw!(sys::System{<:PICompensator{N}}, gui_input::Bool = true) where {N}
+function GUI.draw!(sys::System{<:PICompensator{N}}) where {N}
 
     @unpack u, y, params = sys
 
@@ -255,6 +255,7 @@ function GUI.draw!(sys::System{<:PICompensator{N}}, gui_input::Bool = true) wher
         CImGui.TreePop()
     end
 
+    gui_input = true
     if gui_input
         if CImGui.TreeNode("Inputs")
             for i in 1:N
@@ -265,10 +266,8 @@ function GUI.draw!(sys::System{<:PICompensator{N}}, gui_input::Bool = true) wher
                     CImGui.Checkbox("Reset", reset_ref)
                     CImGui.SameLine()
                     CImGui.Checkbox("Enable Saturation", sat_ref)
-                    if gui_input
-                        reset[i] = reset_ref[]
-                        sat_enable[i] = sat_ref[]
-                    end
+                    reset[i] = reset_ref[]
+                    sat_enable[i] = sat_ref[]
                     CImGui.TreePop()
                 end
             end

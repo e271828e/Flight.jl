@@ -186,15 +186,7 @@ end
 
 ################################### GUI ########################################
 
-function GUI.draw!(sys::System{<:AbstractAirframe}, gui_input::Bool = true)
-    CImGui.Text("Abstract Airframe")
-end
-
-function GUI.draw!(sys::System{<:AbstractAvionics}, gui_input::Bool = true)
-    CImGui.Text("Abstract Avionics")
-end
-
-function GUI.draw!(sys::System{<:AircraftTemplate}, gui_input::Bool = true)
+function GUI.draw!(sys::System{<:AircraftTemplate})
 
     @unpack y = sys
 
@@ -209,8 +201,8 @@ function GUI.draw!(sys::System{<:AircraftTemplate}, gui_input::Bool = true)
     show_dyn && GUI.draw!(y.rigidbody, "Dynamics")
     show_kin && GUI.draw!(y.kinematics, "Kinematics")
     show_air && GUI.draw!(y.air, "Air")
-    show_airframe && GUI.draw!(sys.airframe, false) #disallow setting airframe systems inputs directly
-    show_avionics && GUI.draw!(sys.avionics, gui_input)
+    show_airframe && GUI.draw!(sys.airframe) #disallow setting airframe systems inputs directly
+    show_avionics && GUI.draw!(sys.avionics)
 
     CImGui.End()
 

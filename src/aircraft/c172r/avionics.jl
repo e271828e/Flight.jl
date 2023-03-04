@@ -174,8 +174,7 @@ macro running_plot(source, label, lower_bound, upper_bound, default)
 end
 
 
-function GUI.draw!(sys::System{<:MechanicalControls}, gui_input::Bool = true,
-                label::String = "Cessna 172R Mechanical Controls")
+function GUI.draw!(sys::System{<:MechanicalControls}, label::String = "Cessna 172R Mechanical Controls")
 
     u = sys.u
 
@@ -183,21 +182,19 @@ function GUI.draw!(sys::System{<:MechanicalControls}, gui_input::Bool = true,
 
     CImGui.PushItemWidth(-60)
 
-    if gui_input
-        @input_button2(u.eng_start, "Engine Start", 0.4)
-        @input_button2(u.eng_stop, "Engine Stop", 0.0)
-        @input_slider(u.throttle, "Throttle", 0, 1, 1)
-        @input_slider(u.mixture, "Mixture", 0, 1, 0.5)
-        @input_slider(u.brake_left, "Left Brake", 0, 1, 0.0)
-        @input_slider(u.brake_right, "Right Brake", 0, 1, 0.0)
-        @input_slider(u.aileron_offset, "Aileron Offset", -1, 1, 0.0)
-        @input_slider(u.elevator_offset, "Elevator Offset", -1, 1, 0.0)
-        @input_slider(u.rudder_offset, "Rudder Offset", -1, 1, 0.0)
-        @input_slider(u.flaps, "Flaps", 0, 1, 0.0)
-        @input_slider(u.aileron_trim, "Aileron Trim", -1, 1, 0.0)
-        @input_slider(u.elevator_trim, "Elevator Trim", -1, 1, 0.0)
-        @input_slider(u.rudder_trim, "Rudder Trim", -1, 1, 0.0)
-    end
+    @input_button2(u.eng_start, "Engine Start", 0.4)
+    @input_button2(u.eng_stop, "Engine Stop", 0.0)
+    @input_slider(u.throttle, "Throttle", 0, 1, 1)
+    @input_slider(u.mixture, "Mixture", 0, 1, 0.5)
+    @input_slider(u.brake_left, "Left Brake", 0, 1, 0.0)
+    @input_slider(u.brake_right, "Right Brake", 0, 1, 0.0)
+    @input_slider(u.aileron_offset, "Aileron Offset", -1, 1, 0.0)
+    @input_slider(u.elevator_offset, "Elevator Offset", -1, 1, 0.0)
+    @input_slider(u.rudder_offset, "Rudder Offset", -1, 1, 0.0)
+    @input_slider(u.flaps, "Flaps", 0, 1, 0.0)
+    @input_slider(u.aileron_trim, "Aileron Trim", -1, 1, 0.0)
+    @input_slider(u.elevator_trim, "Elevator Trim", -1, 1, 0.0)
+    @input_slider(u.rudder_trim, "Rudder Trim", -1, 1, 0.0)
 
     @running_plot(u.throttle, "Throttle", 0, 1, 1)
     @running_plot(u.mixture, "Mixture", 0, 1, 0.5)

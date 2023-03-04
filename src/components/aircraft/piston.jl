@@ -506,22 +506,23 @@ RigidBody.get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
 # end
 
 
-function GUI.draw!(sys::System{<:Thruster}, gui_input::Bool = true)
+function GUI.draw!(sys::System{<:Thruster}, label::String = "Piston Thruster")
 
-    show_eng = @cstatic check=false @c CImGui.Checkbox("Engine", &check)
-    if show_eng
-        CImGui.Begin("Engine") #this should go within pwp's own draw, see airframe
-            GUI.draw!(sys.engine, gui_input)
-        CImGui.End()
-    end
+    CImGui.Begin(label) #this should go within pwp's own draw, see airframe
+        show_eng = @cstatic check=false @c CImGui.Checkbox("Engine", &check)
+    CImGui.End()
+
+    show_eng && GUI.draw!(sys.engine)
 
 end
 
-function GUI.draw!(sys::System{<:Engine}, gui_input::Bool = true)
+function GUI.draw!(sys::System{<:Engine}, label::String = "Piston Engine")
 
     @unpack u, y, params = sys
     @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ,
             SFC, idle, frc = y
+
+    CImGui.Begin(label) #this should go within pwp's own draw, see airframe
 
     CImGui.Text("$state")
     CImGui.Text("$ω")
@@ -532,6 +533,8 @@ function GUI.draw!(sys::System{<:Engine}, gui_input::Bool = true)
         CImGui.TreePop()
 
     end
+
+    CImGui.End()
 
 
 end

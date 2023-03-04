@@ -295,13 +295,13 @@ end
 enable_gui!(sim::Simulation) = GUI.enable!(sim.gui)
 disable_gui!(sim::Simulation) = GUI.disable!(sim.gui)
 
-function update!(sys::System, info::Info, gui::Renderer, gui_input::Bool)
-    GUI.render(gui, GUI.draw!, sys, info, gui_input)
+function update!(sys::System, info::Info, gui::Renderer)
+    GUI.render(gui, GUI.draw!, sys, info)
 end
 
-function GUI.draw!(sys::System, info::Info, gui_input::Bool)
+function GUI.draw!(sys::System, info::Info)
     GUI.draw(info) #show Simulation info
-    GUI.draw!(sys, gui_input)
+    GUI.draw!(sys)
 end
 
 
@@ -398,7 +398,6 @@ run_paced_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run_paced!(sim;
 
 function run_paced!(sim::Simulation;
                     rate::Real = 1,
-                    gui_input::Bool = true,
                     verbose::Bool = true)
 
     !isdone_wrn(sim) || return
@@ -438,7 +437,7 @@ function run_paced!(sim::Simulation;
                 τ_last = τ()
                 info = Info(; algorithm, t_start, t_end, dt = integrator.dt,
                               iter = integrator.iter, t = sim.t[], τ = τ_last)
-                update!(sys, info, gui, gui_input)
+                update!(sys, info, gui)
             unlock(stepping)
 
             output = Output(sim.t[], sim.y)
