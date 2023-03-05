@@ -510,7 +510,7 @@ Base.@kwdef struct RigidBodyData
     wr_in_Ob::Wrench = Wrench() #inertia wrench at Ob
     wr_ext_Ob::Wrench = Wrench() #externally applied wrench at Ob
     wr_net_Ob::Wrench = Wrench() #net wrench at Ob
-    hr_b::SVector{3,Float64} = zeros(SVector{3}) #angular momentum of rotating components
+    hr_b::SVector{3,Float64} = zeros(SVector{3}) #angular momentum from rotating components
     α_eb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-body angular acceleration
     α_ib_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-to-body angular acceleration
     v̇_eOb_b::SVector{3,Float64} = zeros(SVector{3}) #time derivative of ECEF-relative velocity
@@ -707,79 +707,25 @@ function GUI.draw!(rb::RigidBodyData, label::String = "Rigid Body")
 
     CImGui.Begin(label)
 
-    if CImGui.TreeNode("Mass Properties")
-        CImGui.Text(@sprintf("Mass: %.3f kg", mp_Ob.m))
-        if CImGui.TreeNode("CG Position (O)")
-            CImGui.Text(@sprintf("[X]: %.3f m", mp_Ob.r_OG[1]))
-            CImGui.Text(@sprintf("[Y]: %.3f m", mp_Ob.r_OG[2]))
-            CImGui.Text(@sprintf("[Z]: %.3f m", mp_Ob.r_OG[3]))
-            CImGui.TreePop()
-        end
+    CImGui.Text(@sprintf("Mass: %.3f kg", mp_Ob.m))
+    GUI.draw(mp_Ob.r_OG, "CG Position (O) [Body]", "m")
 
-        if CImGui.TreeNode("Inertia Tensor (G)")
-            CImGui.Text(@sprintf("[XX]: %.3f kg m2", mp_Gb.J_O[1,1]))
-            CImGui.Text(@sprintf("[YY]: %.3f kg m2", mp_Gb.J_O[2,2]))
-            CImGui.Text(@sprintf("[ZZ]: %.3f kg m2", mp_Gb.J_O[3,3]))
-            CImGui.Text(@sprintf("[XY]: %.3f kg m2", mp_Gb.J_O[1,2]))
-            CImGui.Text(@sprintf("[XZ]: %.3f kg m2", mp_Gb.J_O[1,3]))
-            CImGui.Text(@sprintf("[YZ]: %.3f kg m2", mp_Gb.J_O[2,3]))
-            CImGui.TreePop()
-        end
+    if CImGui.TreeNode("Inertia Tensor (G) [Body]")
+        CImGui.Text(@sprintf("XX: %.3f kg m2", mp_Gb.J_O[1,1]))
+        CImGui.Text(@sprintf("YY: %.3f kg m2", mp_Gb.J_O[2,2]))
+        CImGui.Text(@sprintf("ZZ: %.3f kg m2", mp_Gb.J_O[3,3]))
+        CImGui.Text(@sprintf("XY: %.3f kg m2", mp_Gb.J_O[1,2]))
+        CImGui.Text(@sprintf("XZ: %.3f kg m2", mp_Gb.J_O[1,3]))
+        CImGui.Text(@sprintf("YZ: %.3f kg m2", mp_Gb.J_O[2,3]))
         CImGui.TreePop()
     end
 
-    if CImGui.TreeNode("Net Force (G)")
-        CImGui.Text(@sprintf("[X]: %.3f N", wr_net_Gb.F[1]))
-        CImGui.Text(@sprintf("[Y]: %.3f N", wr_net_Gb.F[2]))
-        CImGui.Text(@sprintf("[Z]: %.3f N", wr_net_Gb.F[3]))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Net Torque (G)")
-
-        CImGui.Text(@sprintf("[X]: %.3f N m", wr_net_Gb.M[1]))
-        CImGui.Text(@sprintf("[Y]: %.3f N m", wr_net_Gb.M[2]))
-        CImGui.Text(@sprintf("[Z]: %.3f N m", wr_net_Gb.M[3]))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Internal Angular Momentum")
-
-        CImGui.Text(@sprintf("[X]: %.3f kg m2 / s", hr_b[1]))
-        CImGui.Text(@sprintf("[Y]: %.3f kg m2 / s", hr_b[2]))
-        CImGui.Text(@sprintf("[Z]: %.3f kg m2 / s", hr_b[3]))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Angular Acceleration (Body / ECEF)")
-
-        CImGui.Text(@sprintf("[X]: %.6f rad/s2", α_eb_b[1]))
-        CImGui.Text(@sprintf("[Y]: %.6f rad/s2", α_eb_b[2]))
-        CImGui.Text(@sprintf("[Z]: %.6f rad/s2", α_eb_b[3]))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Linear Acceleration (O / ECEF)")
-
-        CImGui.Text(@sprintf("[X]: %.6f m/s2", a_eOb_b[1]))
-        CImGui.Text(@sprintf("[Y]: %.6f m/s2", a_eOb_b[2]))
-        CImGui.Text(@sprintf("[Z]: %.6f m/s2", a_eOb_b[3]))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Specific Force (G)")
-
-        CImGui.Text(@sprintf("[X]: %.3f g", f_G_b[1]/g₀))
-        CImGui.Text(@sprintf("[Y]: %.3f g", f_G_b[2]/g₀))
-        CImGui.Text(@sprintf("[Z]: %.3f g", f_G_b[3]/g₀))
-
-        CImGui.TreePop()
-    end
+    GUI.draw(wr_net_Gb.F, "Net Force (G) [Body]", "N")
+    GUI.draw(wr_net_Gb.M, "Net Torque (G) [Body]", "N*m")
+    GUI.draw(hr_b, "Angular Momentum From Rotating Components [Body]", "kg*(m^2)/s")
+    GUI.draw(α_eb_b, "Angular Acceleration (Body / ECEF) [Body]", "rad/(s^2)")
+    GUI.draw(a_eOb_b, "Linear Acceleration (O / ECEF) [Body]", "m/(s^2)")
+    GUI.draw(f_G_b, "Specific Force (G) [Body]", "g")
 
     CImGui.End()
 

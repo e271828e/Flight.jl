@@ -140,7 +140,7 @@ function Base.:(|)(target::Any, state::InputState{T}) where {T}
     state.enabled ? state.value : convert(T, target)
 end
 
-macro input_button2(target, label, hue)
+macro input_button(target, label, hue)
     return (quote
         # enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##"*($label), &check)
         # CImGui.SameLine()
@@ -182,8 +182,8 @@ function GUI.draw!(sys::System{<:MechanicalControls}, label::String = "Cessna 17
 
     CImGui.PushItemWidth(-60)
 
-    @input_button2(u.eng_start, "Engine Start", 0.4)
-    @input_button2(u.eng_stop, "Engine Stop", 0.0)
+    @input_button(u.eng_start, "Engine Start", 0.4)
+    @input_button(u.eng_stop, "Engine Stop", 0.0)
     @input_slider(u.throttle, "Throttle", 0, 1, 1)
     @input_slider(u.mixture, "Mixture", 0, 1, 0.5)
     @input_slider(u.brake_left, "Left Brake", 0, 1, 0.0)

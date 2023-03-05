@@ -466,10 +466,14 @@ function GUI.draw!(sys::System{<:Airframe}, label::String = "Cessna 172R Airfram
 
     CImGui.Begin(label)
 
+        show_aero = @cstatic check=false @c CImGui.Checkbox("Aerodynamics", &check)
+        show_ldg = @cstatic check=false @c CImGui.Checkbox("Landing Gear", &check)
         show_pwp = @cstatic check=false @c CImGui.Checkbox("Powerplant", &check)
 
     CImGui.End()
 
+    show_aero && GUI.draw!(aero)
+    show_ldg && GUI.draw!(ldg)
     show_pwp && GUI.draw!(pwp)
 
 end

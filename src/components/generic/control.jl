@@ -238,11 +238,11 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw!(sys::System{<:PICompensator{N}}) where {N}
+function GUI.draw!(sys::System{<:PICompensator{N}}, label::String = "PICompensator{$N}") where {N}
 
     @unpack u, y, params = sys
 
-    CImGui.Text("PICompensator{$N}")
+    CImGui.Begin(label)
 
     #if any of these trees are collapsed or their host window is hidden, they
     #will not be drawn, saving CPU time
@@ -286,6 +286,7 @@ function GUI.draw!(sys::System{<:PICompensator{N}}) where {N}
         CImGui.TreePop()
     end
 
+    CImGui.End()
 
 end
 

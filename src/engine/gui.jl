@@ -204,6 +204,25 @@ end
 #generic non-mutating frame draw function, to be extended by users
 draw(args...) = nothing
 
+function draw(v::AbstractVector{<:Real}, label::String, units::String = "")
+
+    N = length(v)
+    clabels = (N <= 3 ? ("X", "Y", "Z") : Tuple(1:N))
+
+    if CImGui.TreeNode(label)
+        for i in 1:N
+            CImGui.Text("$(clabels[i]): ")
+            CImGui.SameLine()
+            CImGui.Text(@sprintf("%.3f", v[i]))
+            CImGui.SameLine()
+            CImGui.Text(units)
+        end
+        CImGui.TreePop()
+    end
+
+end
+
+
 #generic mutating draw function, to be extended by users
 draw!(args...) = nothing
 
@@ -219,8 +238,6 @@ function draw_test()
         @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
         CImGui.End()
     end
-
-    println(output)
 
 end
 

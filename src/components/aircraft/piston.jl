@@ -52,6 +52,7 @@ inHg2Pa(p) = 3386.389p
 ft2m(h) = 0.3048h
 hp2W(P) = 735.49875P
 RPM2radpersec(ω) = ω*π/30
+radpersec2RPM(ω) = ω/(π/30)
 
 T_ISA(p) = T_std * (p / p_std) ^ (-β * R / g_std)
 
@@ -97,7 +98,7 @@ function Engine(;
     ω_stall = RPM2radpersec(300),
     ω_cutoff = RPM2radpersec(3100),
     ω_idle = RPM2radpersec(600),
-    M_start = 30,
+    M_start = 40,
     J = 0.05,
     idle = PICompensator{1}(k_p = 4.0, k_i = 2.0, bounds = (-0.5, 0.5)),
     frc =  PICompensator{1}(k_p = 5.0, k_i = 200.0, k_l = 0.0, bounds = (-1.0, 1.0))
@@ -489,23 +490,6 @@ RigidBody.get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
 ################################################################################
 ################################# GUI ##########################################
 
-# Base.@kwdef struct PistonEngineY
-#     start::Bool = false #start control
-#     stop::Bool = false #stop control
-#     throttle::Float64 = 0.0 #throttle setting
-#     mixture::Float64 = 0.0 #mixture setting
-#     state::EngineState = eng_off #engine discrete state
-#     MAP::Float64 = 0.0 #manifold air pressure
-#     ω::Float64 = 0.0 #angular velocity (crankshaft)
-#     M_shaft::Float64 = 0.0 #shaft output torque
-#     P_shaft::Float64 = 0.0 #shaft power
-#     SFC::Float64 = 0.0 #specific fuel consumption
-#     ṁ::Float64 = 0.0 #fuel consumption
-#     idle::PICompensatorY{1} = PICompensatorY{1}()
-#     frc::PICompensatorY{1} = PICompensatorY{1}()
-# end
-
-
 function GUI.draw!(sys::System{<:Thruster}, label::String = "Piston Thruster")
 
     CImGui.Begin(label) #this should go within pwp's own draw, see airframe
@@ -519,23 +503,30 @@ end
 function GUI.draw!(sys::System{<:Engine}, label::String = "Piston Engine")
 
     @unpack u, y, params = sys
-    @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ,
-            SFC, idle, frc = y
+    @unpack idle, frc = sys
+    @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ, SFC = y
 
-    CImGui.Begin(label) #this should go within pwp's own draw, see airframe
+    CImGui.Begin(label)
 
-    CImGui.Text("$state")
-    CImGui.Text("$ω")
-    if CImGui.TreeNode("Friction")
+        CImGui.Text("Start Switch: $start")
+        CImGui.Text("Stop Switch: $stop")
+        CImGui.Text("State: $state")
+        CImGui.Text(@sprintf("Throttle: %.3f", throttle))
+        CImGui.Text(@sprintf("Mixture: %.3f", mixture))
+        CImGui.Text(@sprintf("Manifold Pressure: %.3f Pa", MAP))
+        CImGui.Text(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
+        CImGui.Text(@sprintf("Shaft Torque: %.3f N*m", M_shaft))
+        CImGui.Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
+        CImGui.Text(@sprintf("Fuel Consumption: %.3f g/s", ṁ*1e3))
+        CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
 
-        GUI.draw!(sys.frc)
+        # show_idle = @cstatic check=false @c CImGui.Checkbox("Idle Controller", &check)
+        # show_frc = @cstatic check=false @c CImGui.Checkbox("Friction Regulator", &check)
 
-        CImGui.TreePop()
-
-    end
+        # show_idle && GUI.draw!(idle, "Idle Controller")
+        # show_frc && GUI.draw!(frc, "Friction Regulator")
 
     CImGui.End()
-
 
 end
 

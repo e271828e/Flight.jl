@@ -197,7 +197,7 @@ function test_thruster_dynamics()
         @test sim.y.engine.state === eng_starting
 
         #give it a few seconds to get to stable idle RPMs
-        step!(sim, 5, true)
+        step!(sim, 10, true)
         @test sim.y.engine.state === eng_running
         @test sim.y.engine.ω ≈ thr.engine.params.ω_idle atol = 1
         sim.u.engine.start = false

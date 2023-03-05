@@ -693,20 +693,25 @@ function GUI.draw!(kin::KinematicsY, label::String = "Kinematics")
         CImGui.TreePop()
     end
 
-    if CImGui.TreeNode("Velocity (Ob / ECEF)")
+    if CImGui.TreeNode("Velocity (O / ECEF) [NED]")
 
         CImGui.Text(@sprintf("[North]: %.3f m/s", v_eOb_n[1]))
         CImGui.Text(@sprintf("[East]: %.3f m/s", v_eOb_n[2]))
         CImGui.Text(@sprintf("[Down]: %.3f m/s", v_eOb_n[3]))
 
-        CImGui.Text(@sprintf("[X-Body]: %.3f m/s", v_eOb_b[1]))
-        CImGui.Text(@sprintf("[Y-Body]: %.3f m/s", v_eOb_b[2]))
-        CImGui.Text(@sprintf("[Z-Body]: %.3f m/s", v_eOb_b[3]))
+        CImGui.TreePop()
+    end
+
+    if CImGui.TreeNode("Velocity (O / ECEF) [Body]")
+
+        CImGui.Text(@sprintf("[X]: %.3f m/s", v_eOb_b[1]))
+        CImGui.Text(@sprintf("[Y]: %.3f m/s", v_eOb_b[2]))
+        CImGui.Text(@sprintf("[Z]: %.3f m/s", v_eOb_b[3]))
 
         CImGui.TreePop()
     end
 
-    if CImGui.TreeNode("Position (Ob / ECEF)")
+    if CImGui.TreeNode("Position (O / ECEF)")
 
         @unpack ϕ, λ = LatLon(n_e)
         CImGui.Text(@sprintf("Latitude: %.6f deg", rad2deg(ϕ)))
