@@ -164,11 +164,13 @@ macro input_slider(target, label, lower_bound, upper_bound, default)
 end
 
 macro running_plot(source, label, lower_bound, upper_bound, default)
+    window_height = 60
     return (quote
-        @cstatic values=fill(Cfloat(0),90) values_offset=Cint(0) begin
+        @cstatic values=fill(Cfloat($default),90) values_offset=Cint(0) begin
             values[values_offset+1] = $(esc(source))
             values_offset = (values_offset+1) % length(values)
-            CImGui.PlotLines(string($(esc(source)) |> Float32), values, length(values), values_offset, $label, 0.0, 1.0, (0,50))
+            CImGui.PlotLines(string($(esc(source)) |> Float32), values, length(values), values_offset,
+                             $label, $lower_bound, $upper_bound, (0, $window_height))
         end
     end)
 end
@@ -196,17 +198,33 @@ function GUI.draw!(sys::System{<:MechanicalControls}, label::String = "Cessna 17
     @input_slider(u.elevator_trim, "Elevator Trim", -1, 1, 0.0)
     @input_slider(u.rudder_trim, "Rudder Trim", -1, 1, 0.0)
 
-    @running_plot(u.throttle, "Throttle", 0, 1, 1)
-    @running_plot(u.mixture, "Mixture", 0, 1, 0.5)
-    @running_plot(u.brake_left, "Left Brake", 0, 1, 0.0)
-    @running_plot(u.brake_right, "Right Brake", 0, 1, 0.0)
-    @running_plot(u.aileron_offset, "Aileron Offset", -1, 1, 0.0)
-    @running_plot(u.elevator_offset, "Elevator Offset", -1, 1, 0.0)
-    @running_plot(u.rudder_offset, "Rudder Offset", -1, 1, 0.0)
-    @running_plot(u.flaps, "Flaps", 0, 1, 0.0)
-    @running_plot(u.aileron_trim, "Aileron Trim", -1, 1, 0.0)
-    @running_plot(u.elevator_trim, "Elevator Trim", -1, 1, 0.0)
-    @running_plot(u.rudder_trim, "Rudder Trim", -1, 1, 0.0)
+    CImGui.PopItemWidth()
+
+    CImGui.End()
+
+    GUI.draw(sys, label)
+
+end
+
+function GUI.draw(sys::System{<:MechanicalControls}, label::String = "Cessna 172R Mechanical Controls")
+
+    y = sys.y
+
+    CImGui.Begin(label)
+
+    CImGui.PushItemWidth(-60)
+
+    @running_plot(y.throttle, "Throttle", 0, 1, 0.0)
+    @running_plot(y.mixture, "Mixture", 0, 1, 0.5)
+    @running_plot(y.brake_left, "Left Brake", 0, 1, 0.0)
+    @running_plot(y.brake_right, "Right Brake", 0, 1, 0.0)
+    @running_plot(y.aileron_offset, "Aileron Offset", -1, 1, 0.0)
+    @running_plot(y.elevator_offset, "Elevator Offset", -1, 1, 0.0)
+    @running_plot(y.rudder_offset, "Rudder Offset", -1, 1, 0.0)
+    @running_plot(y.flaps, "Flaps", 0, 1, 0.0)
+    @running_plot(y.aileron_trim, "Aileron Trim", -1, 1, 0.0)
+    @running_plot(y.elevator_trim, "Elevator Trim", -1, 1, 0.0)
+    @running_plot(y.rudder_trim, "Rudder Trim", -1, 1, 0.0)
 
     CImGui.PopItemWidth()
 

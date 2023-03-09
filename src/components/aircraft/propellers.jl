@@ -3,8 +3,11 @@ module Propellers
 using LinearAlgebra, StaticArrays, StructArrays, Interpolations, UnPack
 using Roots: find_zero
 using Trapz: trapz
+using Printf
+using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
 using Flight.Engine.Systems
+using Flight.Engine.GUI
 using Flight.Engine.Plotting
 using Flight.Engine.Utils: Ranged, linear_scaling
 
@@ -16,6 +19,8 @@ using ..Atmosphere
 export FixedPitch, VariablePitch, Propeller
 
 const π² = π^2
+
+radpersec2RPM(ω) = ω/(π/30)
 
 ############################## Propeller Blade #################################
 ################################################################################
@@ -520,5 +525,27 @@ function plot_J_M(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
     return p
 
 end
+
+function GUI.draw(sys::System{<:Propeller}, label::String = "Propeller")
+
+    @unpack ω, J, M_tip, Δβ, wr_p, hr_p, P, η_p = sys.y
+
+    CImGui.Begin(label)
+
+        CImGui.Text(@sprintf("Angular Rate (Propeller/Body): %.7f RPM", radpersec2RPM(ω)))
+        CImGui.Text(@sprintf("Advance Ratio: %.7f", J))
+        CImGui.Text(@sprintf("Blade Tip Mach Number: %.7f", M_tip))
+        CImGui.Text(@sprintf("Blade Pitch Offset: %.7f deg", rad2deg(Δβ)))
+        CImGui.Text(@sprintf("Axial Angular Momentum: %.7f kg*(m^2)/s", hr_p[1]))
+        CImGui.Text(@sprintf("Power: %.7f kW", 1e-3*P))
+        CImGui.Text(@sprintf("Propulsive Efficiency: %.7f", η_p))
+        GUI.draw(wr_p.F, "Aerodynamic Force (Op) [Propeller]", "N")
+        GUI.draw(wr_p.M, "Aerodynamic Torque (Op) [Propeller]", "N*m")
+        GUI.draw(hr_p, "Axial Angular Momentum [Propeller]", "N*m")
+
+    CImGui.End()
+
+end
+
 
 end #module

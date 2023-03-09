@@ -697,7 +697,7 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw!(rb::RigidBodyData, label::String = "Rigid Body")
+function GUI.draw(rb::RigidBodyData, label::String = "Rigid Body")
 
     @unpack mp_Ob, wr_net_Ob, hr_b, α_eb_b, a_eOb_b, f_Ob_b, f_G_b = rb
 
@@ -725,7 +725,7 @@ function GUI.draw!(rb::RigidBodyData, label::String = "Rigid Body")
     GUI.draw(hr_b, "Angular Momentum From Rotating Components [Body]", "kg*(m^2)/s")
     GUI.draw(α_eb_b, "Angular Acceleration (Body / ECEF) [Body]", "rad/(s^2)")
     GUI.draw(a_eOb_b, "Linear Acceleration (O / ECEF) [Body]", "m/(s^2)")
-    GUI.draw(f_G_b, "Specific Force (G) [Body]", "g")
+    GUI.draw(f_G_b/g₀, "Specific Force (G) [Body]", "g")
 
     CImGui.End()
 

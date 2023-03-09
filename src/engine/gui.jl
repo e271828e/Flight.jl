@@ -213,7 +213,7 @@ function draw(v::AbstractVector{<:Real}, label::String, units::String = "")
         for i in 1:N
             CImGui.Text("$(clabels[i]): ")
             CImGui.SameLine()
-            CImGui.Text(@sprintf("%.3f", v[i]))
+            CImGui.Text(@sprintf("%.7f", v[i]))
             CImGui.SameLine()
             CImGui.Text(units)
         end

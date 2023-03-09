@@ -52,6 +52,7 @@ RigidBody.AngMomTrait(::System{Structure}) = HasNoAngularMomentum()
 RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
 
 
+################################################################################
 ############################ Aerodynamics ######################################
 
 include("data/aero.jl")
@@ -245,6 +246,60 @@ end
 # #     layout = (1,2),
 # #     kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
+
+################################# GUI ##########################################
+
+# Base.@kwdef struct AeroY
+#     e::Float64 = 0.0 #normalized elevator control input
+#     a::Float64 = 0.0 #normalized aileron control input
+#     r::Float64 = 0.0 #normalized rudder control input
+#     f::Float64 = 0.0 #normalized flap control input
+#     α::Float64 = 0.0 #clamped AoA, aerodynamic axes
+#     β::Float64 = 0.0 #clamped AoS, aerodynamic axes
+#     α_filt::Float64 = 0.0 #filtered AoA
+#     β_filt::Float64 = 0.0 #filtered AoS
+#     α_filt_dot::Float64 = 0.0 #filtered AoA derivative
+#     β_filt_dot::Float64 = 0.0 #filtered AoS derivative
+#     stall::Bool = false #stall state
+#     coeffs::AeroCoeffs = AeroCoeffs() #aerodynamic coefficients
+#     wr_b::Wrench = Wrench() #aerodynamic Wrench, vehicle frame
+# end
+
+function GUI.draw(sys::System{<:Aero}, label::String = "C172R Aerodynamics")
+
+    @unpack e, a, r, f, α, β, α_filt, β_filt, stall, coeffs, wr_b = sys.y
+    @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
+
+    CImGui.Begin(label)
+
+        CImGui.Text(@sprintf("Elevator Input: %.7f", e))
+        CImGui.Text(@sprintf("Aileron Input: %.7f", a))
+        CImGui.Text(@sprintf("Rudder Input: %.7f", r))
+        CImGui.Text(@sprintf("Flap Setting: %.7f", f))
+        CImGui.Text(@sprintf("AoA [Aero]: %.7f deg", rad2deg(α)))
+        CImGui.Text(@sprintf("Filtered AoA [Aero]: %.7f deg", rad2deg(α_filt)))
+        CImGui.Text(@sprintf("AoS [Aero]: %.7f deg", rad2deg(β)))
+        CImGui.Text(@sprintf("Filtered AoS [Aero]: %.7f deg", rad2deg(β_filt)))
+        CImGui.Text("Stall Status: $stall")
+
+        if CImGui.TreeNode("Aerodynamic Coefficients")
+
+            CImGui.Text(@sprintf("C_D: %.7f", C_D))
+            CImGui.Text(@sprintf("C_Y: %.7f", C_Y))
+            CImGui.Text(@sprintf("C_L: %.7f", C_L))
+            CImGui.Text(@sprintf("C_l: %.7f", C_l))
+            CImGui.Text(@sprintf("C_m: %.7f", C_m))
+            CImGui.Text(@sprintf("C_n: %.7f", C_n))
+
+            CImGui.TreePop()
+        end
+
+        GUI.draw(wr_b.F, "Aerodynamic Force (O) [Body]", "N")
+        GUI.draw(wr_b.M, "Aerodynamic Torque (O) [Body]", "N*m")
+
+    CImGui.End()
+
+end
 
 
 ############################# Landing Gear ####################################
@@ -460,9 +515,9 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw!(sys::System{<:Airframe}, label::String = "Cessna 172R Airframe")
+function GUI.draw(sys::System{<:Airframe}, label::String = "Cessna 172R Airframe")
 
-    @unpack pwp, ldg = sys
+    @unpack pwp, ldg, aero = sys
 
     CImGui.Begin(label)
 
@@ -472,8 +527,8 @@ function GUI.draw!(sys::System{<:Airframe}, label::String = "Cessna 172R Airfram
 
     CImGui.End()
 
-    show_aero && GUI.draw!(aero)
-    show_ldg && GUI.draw!(ldg)
-    show_pwp && GUI.draw!(pwp)
+    show_aero && GUI.draw(aero)
+    show_ldg && GUI.draw(ldg)
+    show_pwp && GUI.draw(pwp)
 
 end

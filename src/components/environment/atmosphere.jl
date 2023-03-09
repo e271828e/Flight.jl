@@ -398,49 +398,30 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw!(air::AirData, label::String = "Air")
+function GUI.draw(air::AirData, label::String = "Air")
 
-    @unpack v_ew_n, v_wOb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
+    @unpack v_ew_n, v_ew_b, v_wOb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
 
     CImGui.Begin(label)
 
-    if CImGui.TreeNode("Wind")
+    GUI.draw(v_ew_n, "Velocity (Wind/ECEF) [NED]", "m/s")
+    GUI.draw(v_ew_b, "Velocity (Wind/ECEF) [Body]", "m/s")
+    GUI.draw(v_wOb_b, "Velocity (Body/Wind) [Body]", "m/s")
+    CImGui.Text(@sprintf("AoA (Body/Wind): %.3f deg", rad2deg(α_b)))
+    CImGui.Text(@sprintf("AoS (Body/Wind): %.3f deg", rad2deg(β_b)))
 
-        CImGui.Text(@sprintf("[North]: %.3f m/s", v_ew_n[1]))
-        CImGui.Text(@sprintf("[East]: %.3f m/s", v_ew_n[2]))
-        CImGui.Text(@sprintf("[Down]: %.3f m/s", v_ew_n[3]))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Properties")
-
-        CImGui.Text(@sprintf("Static Temperature: %.3f K", T))
-        CImGui.Text(@sprintf("Total Temperature: %.3f K", Tt))
-        CImGui.Text(@sprintf("Static Pressure: %.3f Pa", p))
-        CImGui.Text(@sprintf("Total Pressure: %.3f Pa", pt))
-        CImGui.Text(@sprintf("Impact Pressure: %.3f Pa", Δp))
-        CImGui.Text(@sprintf("Dynamic Pressure: %.3f Pa", q))
-        CImGui.Text(@sprintf("Density: %.3f kg/m3", ρ))
-        CImGui.Text(@sprintf("Speed of Sound: %.3f m/s", a))
-        CImGui.Text(@sprintf("Mach: %.3f", M))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Velocity")
-
-        CImGui.Text(@sprintf("[X-Body]: %.3f m/s", v_wOb_b[1]))
-        CImGui.Text(@sprintf("[Y-Body]: %.3f m/s", v_wOb_b[2]))
-        CImGui.Text(@sprintf("[Z-Body]: %.3f m/s", v_wOb_b[3]))
-        CImGui.Text(@sprintf("CAS: %.3f kts", SI2kts(CAS)))
-        CImGui.Text(@sprintf("EAS: %.3f kts", SI2kts(EAS)))
-        CImGui.Text(@sprintf("TAS: %.3f kts", SI2kts(TAS)))
-        CImGui.Text(@sprintf("AoA: %.3f deg", rad2deg(α_b)))
-        CImGui.Text(@sprintf("AoS: %.3f deg", rad2deg(β_b)))
-
-        CImGui.TreePop()
-    end
+    CImGui.Text(@sprintf("Static Temperature: %.3f K", T))
+    CImGui.Text(@sprintf("Total Temperature: %.3f K", Tt))
+    CImGui.Text(@sprintf("Static Pressure: %.3f Pa", p))
+    CImGui.Text(@sprintf("Total Pressure: %.3f Pa", pt))
+    CImGui.Text(@sprintf("Impact Pressure: %.3f Pa", Δp))
+    CImGui.Text(@sprintf("Dynamic Pressure: %.3f Pa", q))
+    CImGui.Text(@sprintf("Density: %.3f kg/m3", ρ))
+    CImGui.Text(@sprintf("Speed of Sound: %.3f m/s", a))
+    CImGui.Text(@sprintf("Mach: %.3f", M))
+    CImGui.Text(@sprintf("CAS: %.3f kts", SI2kts(CAS)))
+    CImGui.Text(@sprintf("EAS: %.3f kts", SI2kts(EAS)))
+    CImGui.Text(@sprintf("TAS: %.3f kts", SI2kts(TAS)))
 
     CImGui.End()
 

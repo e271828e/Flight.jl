@@ -277,7 +277,7 @@ Base.@kwdef struct ContactY
     κ_br::Float64 = 0.0 #braking factor
     ψ_cv::Float64 = 0.0 #tire slip angle
     μ_max::SVector{2,Float64} = zeros(SVector{2}) #maximum friction coefficient
-    μ_eff::SVector{2,Float64} = zeros(SVector{2}) #scaled friction coefficient
+    μ_eff::SVector{2,Float64} = zeros(SVector{2}) #effective friction coefficient
     f_c::SVector{3,Float64} = zeros(SVector{3}) #normalized contact force
     F_c::SVector{3,Float64} = zeros(SVector{3}) #contact force
     wr_b::Wrench = Wrench() #resulting Wrench on the vehicle frame
@@ -370,7 +370,7 @@ Base.@kwdef struct LandingGearUnit{S <: AbstractSteering,
     contact::Contact = Contact()
 end
 
-#if we avoid the generic fallback for SystemGroup, we don't need to define
+#override the generic fallback for composite Systems so we don't need to define
 #traits for Steering, Braking, Contact or Strut
 RigidBody.MassTrait(::System{<:LandingGearUnit}) = HasNoMass()
 RigidBody.AngMomTrait(::System{<:LandingGearUnit}) = HasNoAngularMomentum()
@@ -498,5 +498,67 @@ function Plotting.make_plots(th::TimeHistory{<:ContactY}; kwargs...)
 
 end
 
+################################################################################
+############################ Plotting ##########################################
+
+# Base.@kwdef struct StrutY #defaults should be consistent with wow = 0
+#     wow::Bool = false #weight-on-wheel flag
+#     ξ::Float64 = 0.0 #damper elongation
+#     ξ_dot::Float64 = 0.0 #damper elongation rate
+#     t_sc::FrameTransform = FrameTransform() #strut to contact frame transform
+#     t_bc::FrameTransform = FrameTransform() #body to contact frame transform
+#     F::Float64 = 0.0 #damper force on the ground along the strut z axis
+#     v_eOc_c::SVector{2,Float64} = zeros(SVector{2}) #contact point velocity
+#     trn::TerrainData = TerrainData()
+# end
+
+# Base.@kwdef struct ContactY
+#     frc::PICompensatorY{2} = PICompensatorY{2}()
+#     μ_roll::Float64 = 0.0 #rolling friction coefficient
+#     μ_skid::Float64 = 0.0 #skidding friction coefficient
+#     κ_br::Float64 = 0.0 #braking factor
+#     ψ_cv::Float64 = 0.0 #tire slip angle
+#     μ_max::SVector{2,Float64} = zeros(SVector{2}) #maximum friction coefficient
+#     μ_eff::SVector{2,Float64} = zeros(SVector{2}) #effective friction coefficient
+#     f_c::SVector{3,Float64} = zeros(SVector{3}) #normalized contact force
+#     F_c::SVector{3,Float64} = zeros(SVector{3}) #contact force
+#     wr_b::Wrench = Wrench() #resulting Wrench on the vehicle frame
+# end
+
+# function GUI.draw(sys::System{<:LandingGearUnit}, label::String = "C172R Aerodynamics")
+
+#     @unpack steering, braking, strut, contact = sys
+#     @unpack wow, ξ, ξ_dot, v_eOc_c
+
+#     CImGui.Begin(label)
+
+#         CImGui.Text(@sprintf("Elevator Input: %.7f", e))
+#         CImGui.Text(@sprintf("Aileron Input: %.7f", a))
+#         CImGui.Text(@sprintf("Rudder Input: %.7f", r))
+#         CImGui.Text(@sprintf("Flap Setting: %.7f", f))
+#         CImGui.Text(@sprintf("AoA [Aero]: %.7f deg", rad2deg(α)))
+#         CImGui.Text(@sprintf("Filtered AoA [Aero]: %.7f deg", rad2deg(α_filt)))
+#         CImGui.Text(@sprintf("AoS [Aero]: %.7f deg", rad2deg(β)))
+#         CImGui.Text(@sprintf("Filtered AoS [Aero]: %.7f deg", rad2deg(β_filt)))
+#         CImGui.Text("Stall Status: $stall")
+
+#         if CImGui.TreeNode("Aerodynamic Coefficients")
+
+#             CImGui.Text(@sprintf("C_D: %.7f", C_D))
+#             CImGui.Text(@sprintf("C_Y: %.7f", C_Y))
+#             CImGui.Text(@sprintf("C_L: %.7f", C_L))
+#             CImGui.Text(@sprintf("C_l: %.7f", C_l))
+#             CImGui.Text(@sprintf("C_m: %.7f", C_m))
+#             CImGui.Text(@sprintf("C_n: %.7f", C_n))
+
+#             CImGui.TreePop()
+#         end
+
+#         GUI.draw(wr_b.F, "Aerodynamic Force (O) [Body]", "N")
+#         GUI.draw(wr_b.M, "Aerodynamic Torque (O) [Body]", "N*m")
+
+#     CImGui.End()
+
+# end
 
 end #module

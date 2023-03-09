@@ -668,45 +668,32 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw!(kin::KinematicsY, label::String = "Kinematics")
+function GUI.draw(kin::KinematicsY, label::String = "Kinematics")
 
-    @unpack q_nb, n_e, h_e, h_o, Δxy, ω_lb_b, v_eOb_b, v_eOb_n  = kin.common
+    @unpack q_nb, n_e, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ib_b, v_eOb_b, v_eOb_n  = kin.common
 
     CImGui.Begin(label)
 
-    if CImGui.TreeNode("Angular Velocity (Body / LTF)")
+    if CImGui.TreeNode("Angular Velocity (Body / LTF) [Body]")
 
-        CImGui.Text(@sprintf("Yaw Rate: %.3f deg/s", rad2deg(ω_lb_b[1])))
-        CImGui.Text(@sprintf("Pitch Rate: %.3f deg/s", rad2deg(ω_lb_b[2])))
-        CImGui.Text(@sprintf("Roll Rate: %.3f deg/s", rad2deg(ω_lb_b[3])))
+        CImGui.Text(@sprintf("Yaw Rate: %.7f deg/s", rad2deg(ω_lb_b[1])))
+        CImGui.Text(@sprintf("Pitch Rate: %.7f deg/s", rad2deg(ω_lb_b[2])))
+        CImGui.Text(@sprintf("Roll Rate: %.7f deg/s", rad2deg(ω_lb_b[3])))
 
         CImGui.TreePop()
     end
+
+    GUI.draw(rad2deg.(ω_eb_b - ω_lb_b), "Transport Rate (LTF / ECEF) [Body]", "deg/s")
+    GUI.draw(rad2deg.(ω_ib_b),"Angular Velocity (Body / ECI) [Body]", "deg/s")
+    GUI.draw(v_eOb_n, "Velocity (O / ECEF) [NED]", "m/s")
+    GUI.draw(v_eOb_b, "Velocity (O / ECEF) [Body]", "m/s")
 
     if CImGui.TreeNode("Attitude (Body / NED)")
 
         @unpack ψ, θ, φ = REuler(q_nb)
-        CImGui.Text(@sprintf("Heading: %.3f deg", rad2deg(ψ)))
-        CImGui.Text(@sprintf("Inclination: %.3f deg", rad2deg(θ)))
-        CImGui.Text(@sprintf("Bank: %.3f deg", rad2deg(φ)))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Velocity (O / ECEF) [NED]")
-
-        CImGui.Text(@sprintf("[North]: %.3f m/s", v_eOb_n[1]))
-        CImGui.Text(@sprintf("[East]: %.3f m/s", v_eOb_n[2]))
-        CImGui.Text(@sprintf("[Down]: %.3f m/s", v_eOb_n[3]))
-
-        CImGui.TreePop()
-    end
-
-    if CImGui.TreeNode("Velocity (O / ECEF) [Body]")
-
-        CImGui.Text(@sprintf("[X]: %.3f m/s", v_eOb_b[1]))
-        CImGui.Text(@sprintf("[Y]: %.3f m/s", v_eOb_b[2]))
-        CImGui.Text(@sprintf("[Z]: %.3f m/s", v_eOb_b[3]))
+        CImGui.Text(@sprintf("Heading: %.7f deg", rad2deg(ψ)))
+        CImGui.Text(@sprintf("Inclination: %.7f deg", rad2deg(θ)))
+        CImGui.Text(@sprintf("Bank: %.7f deg", rad2deg(φ)))
 
         CImGui.TreePop()
     end
@@ -714,12 +701,12 @@ function GUI.draw!(kin::KinematicsY, label::String = "Kinematics")
     if CImGui.TreeNode("Position (O / ECEF)")
 
         @unpack ϕ, λ = LatLon(n_e)
-        CImGui.Text(@sprintf("Latitude: %.6f deg", rad2deg(ϕ)))
-        CImGui.Text(@sprintf("Longitude: %.6f deg", rad2deg(λ)))
-        CImGui.Text(@sprintf("Northward Increment: %.6f m", Δxy[1]))
-        CImGui.Text(@sprintf("Eastward Increment: %.6f m", Δxy[2]))
-        CImGui.Text(@sprintf("Altitude (Ellipsoidal): %.6f m", Float64(h_e)))
-        CImGui.Text(@sprintf("Altitude (Orthometric): %.6f m", Float64(h_o)))
+        CImGui.Text(@sprintf("Latitude: %.7f deg", rad2deg(ϕ)))
+        CImGui.Text(@sprintf("Longitude: %.7f deg", rad2deg(λ)))
+        CImGui.Text(@sprintf("Northward Increment: %.7f m", Δxy[1]))
+        CImGui.Text(@sprintf("Eastward Increment: %.7f m", Δxy[2]))
+        CImGui.Text(@sprintf("Altitude (Ellipsoidal): %.7f m", Float64(h_e)))
+        CImGui.Text(@sprintf("Altitude (Orthometric): %.7f m", Float64(h_o)))
 
         CImGui.TreePop()
     end
