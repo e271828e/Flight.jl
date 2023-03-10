@@ -21,12 +21,12 @@ export XBoxControllerID, XBoxController
 
 struct AxisSet{N, L}
     mapping::NamedTuple{L, NTuple{N,Int}}
-    data::MVector{6,Float32}
+    data::MVector{N,Float32}
 end
 
 function AxisSet(labels::NTuple{N,Symbol} = default_axes_labels(N)) where {N}
     mapping = NamedTuple{labels}(Tuple(1:N))
-    data = zeros(MVector{6, Float32})
+    data = zeros(MVector{N, Float32})
     AxisSet{N, labels}(mapping, data)
 end
 
