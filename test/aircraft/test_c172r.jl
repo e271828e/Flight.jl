@@ -81,19 +81,20 @@ function test_sim(; save::Bool = true)
             u.avionics.aileron_offset = (t < 5 ? 0.25 : 0.0)
             u.avionics.elevator_offset = 0.0
             u.avionics.rudder_offset = 0.0
-            u.avionics.brake_left = 0
-            u.avionics.brake_right = 0
+            u.avionics.brake_left = 1
+            u.avionics.brake_right = 1
 
         end
     end
 
     sim = Simulation(ac; args_ode = (env, ), t_end = 300, sys_io!, adaptive = true)
     Sim.run!(sim, verbose = true)
+
     # plots = make_plots(sim; Plotting.defaults...)
     plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
     save && save_plots(plots, save_folder = joinpath("tmp", "sim_test"))
 
-    return sim
+    # return sim
 
 end
 
