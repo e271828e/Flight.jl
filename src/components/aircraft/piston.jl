@@ -523,10 +523,10 @@ function GUI.draw(sys::System{<:Engine}, label::String = "Piston Engine")
         CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
 
         show_idle = @cstatic check=false @c CImGui.Checkbox("Idle RPM Controller", &check)
-        show_frc = @cstatic check=false @c CImGui.Checkbox("Friction", &check)
+        show_frc = @cstatic check=false @c CImGui.Checkbox("Friction Regulator", &check)
 
         show_idle && GUI.draw(idle, "Idle RPM Controller")
-        show_frc && GUI.draw(frc, "Friction")
+        show_frc && GUI.draw(frc, "Friction Regulator")
 
     CImGui.End()
 

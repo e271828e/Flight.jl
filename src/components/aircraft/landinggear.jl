@@ -1,10 +1,13 @@
 module LandingGear
 
 using StaticArrays, ComponentArrays, LinearAlgebra, UnPack
+using Printf
+using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
 using Flight.Engine.Systems
 using Flight.Engine.Plotting
 using Flight.Engine.Utils: Ranged
+using Flight.Engine.GUI
 
 using Flight.Physics.Attitude
 using Flight.Physics.Geodesy
@@ -470,40 +473,64 @@ end
 ################################################################################
 ############################ Plotting ##########################################
 
-# function GUI.draw(sys::System{<:LandingGearUnit}, label::String = "C172R Aerodynamics")
+function GUI.draw(sys::System{<:LandingGearUnit}, label::String = "Landing Gear Unit")
 
-#     @unpack steering, braking, strut, contact = sys
-#     @unpack wow, ξ, ξ_dot, v_eOc_c
+    @unpack steering, braking, strut = sys
 
-#     CImGui.Begin(label)
+    CImGui.Begin(label) #this should go within pwp's own draw, see airframe
+        show_steering = @cstatic check=false @c CImGui.Checkbox("Steering", &check)
+        show_braking = @cstatic check=false @c CImGui.Checkbox("Braking", &check)
+        show_strut = @cstatic check=false @c CImGui.Checkbox("Strut", &check)
+    CImGui.End()
 
-#         CImGui.Text(@sprintf("Elevator Input: %.7f", e))
-#         CImGui.Text(@sprintf("Aileron Input: %.7f", a))
-#         CImGui.Text(@sprintf("Rudder Input: %.7f", r))
-#         CImGui.Text(@sprintf("Flap Setting: %.7f", f))
-#         CImGui.Text(@sprintf("AoA [Aero]: %.7f deg", rad2deg(α)))
-#         CImGui.Text(@sprintf("Filtered AoA [Aero]: %.7f deg", rad2deg(α_filt)))
-#         CImGui.Text(@sprintf("AoS [Aero]: %.7f deg", rad2deg(β)))
-#         CImGui.Text(@sprintf("Filtered AoS [Aero]: %.7f deg", rad2deg(β_filt)))
-#         CImGui.Text("Stall Status: $stall")
+    show_steering && GUI.draw(sys.steering, label*" Steering")
+    show_braking && GUI.draw(sys.braking, label*" Braking")
+    show_strut && GUI.draw(sys.strut, label*" Strut")
 
-#         if CImGui.TreeNode("Aerodynamic Coefficients")
+end
 
-#             CImGui.Text(@sprintf("C_D: %.7f", C_D))
-#             CImGui.Text(@sprintf("C_Y: %.7f", C_Y))
-#             CImGui.Text(@sprintf("C_L: %.7f", C_L))
-#             CImGui.Text(@sprintf("C_l: %.7f", C_l))
-#             CImGui.Text(@sprintf("C_m: %.7f", C_m))
-#             CImGui.Text(@sprintf("C_n: %.7f", C_n))
+function GUI.draw(sys::System{<:Strut}, label::String = "Strut")
 
-#             CImGui.TreePop()
-#         end
+    frc = sys.frc
+    @unpack wow, ξ, ξ_dot, v_eOc_c, trn_data, μ_roll, μ_skid, κ_br, ψ_cv,
+            μ_max, μ_eff, f_c, F, F_c, wr_b = sys.y
 
-#         GUI.draw(wr_b.F, "Aerodynamic Force (O) [Body]", "N")
-#         GUI.draw(wr_b.M, "Aerodynamic Torque (O) [Body]", "N*m")
+    CImGui.Begin(label) #this should go within pwp's own draw, see airframe
 
-#     CImGui.End()
+        CImGui.Text("Weight on Wheel: $wow")
+        CImGui.Text(@sprintf("Damper Elongation: %.7f m", ξ))
+        CImGui.Text(@sprintf("Damper Elongation Rate: %.7f m/s", ξ_dot))
+        CImGui.Text(@sprintf("Axial Damper Force: %.7f N", F))
 
-# end
+        if CImGui.TreeNode("Terrain Data at Contact Point")
+
+            @unpack location, altitude, normal, surface = trn_data
+            @unpack ϕ, λ = LatLon(location)
+            CImGui.Text(@sprintf("Latitude: %.7f deg", rad2deg(ϕ)))
+            CImGui.Text(@sprintf("Longitude: %.7f deg", rad2deg(λ)))
+            CImGui.Text(@sprintf("Altitude (Orthometric): %.7f m", Float64(altitude)))
+            CImGui.Text("Surface Type: $surface")
+            GUI.draw(normal, "Surface Normal [NED]")
+
+            CImGui.TreePop()
+        end
+
+        GUI.draw(v_eOc_c, "Contact Point Velocity (Oc / ECEF) [Contact]", "m/s")
+        CImGui.Text(@sprintf("Rolling Friction Coefficient: %.7f", μ_roll))
+        CImGui.Text(@sprintf("Skidding Friction Coefficient: %.7f", μ_skid))
+        CImGui.Text(@sprintf("Braking Factor: %.7f", κ_br))
+        CImGui.Text(@sprintf("Tire Slip Angle: %.7f deg", rad2deg(ψ_cv)))
+        GUI.draw(μ_max, "Maximum Friction Coefficient")
+        GUI.draw(μ_eff, "Effective Friction Coefficient")
+        GUI.draw(f_c, "Normalized Contact Force [Contact]")
+        GUI.draw(F_c, "Contact Force [Contact]", "N")
+
+        show_frc = @cstatic check=false @c CImGui.Checkbox("Friction Regulator", &check)
+        show_frc && GUI.draw(frc, label*" Friction Regulator")
+
+    CImGui.End()
+
+
+end
 
 end #module

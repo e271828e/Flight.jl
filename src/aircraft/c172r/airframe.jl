@@ -249,21 +249,6 @@ end
 
 ################################# GUI ##########################################
 
-# Base.@kwdef struct AeroY
-#     e::Float64 = 0.0 #normalized elevator control input
-#     a::Float64 = 0.0 #normalized aileron control input
-#     r::Float64 = 0.0 #normalized rudder control input
-#     f::Float64 = 0.0 #normalized flap control input
-#     α::Float64 = 0.0 #clamped AoA, aerodynamic axes
-#     β::Float64 = 0.0 #clamped AoS, aerodynamic axes
-#     α_filt::Float64 = 0.0 #filtered AoA
-#     β_filt::Float64 = 0.0 #filtered AoS
-#     α_filt_dot::Float64 = 0.0 #filtered AoA derivative
-#     β_filt_dot::Float64 = 0.0 #filtered AoS derivative
-#     stall::Bool = false #stall state
-#     coeffs::AeroCoeffs = AeroCoeffs() #aerodynamic coefficients
-#     wr_b::Wrench = Wrench() #aerodynamic Wrench, vehicle frame
-# end
 
 function GUI.draw(sys::System{<:Aero}, label::String = "C172R Aerodynamics")
 
@@ -347,6 +332,24 @@ function Ldg()
         steering = DirectSteering())
 
     Ldg(left, right, nose)
+
+end
+
+function GUI.draw(sys::System{<:Ldg}, label::String = "Cessna 172R Landing Gear")
+
+    @unpack left, right, nose = sys
+
+    CImGui.Begin(label)
+
+        show_left = @cstatic check=false @c CImGui.Checkbox("Left Main", &check)
+        show_right = @cstatic check=false @c CImGui.Checkbox("Right Main", &check)
+        show_nose = @cstatic check=false @c CImGui.Checkbox("Nose", &check)
+
+    CImGui.End()
+
+    show_left && GUI.draw(left, "Left Main")
+    show_right && GUI.draw(right, "Right Main")
+    show_nose && GUI.draw(nose, "Nose")
 
 end
 

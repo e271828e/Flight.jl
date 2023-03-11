@@ -234,58 +234,6 @@ end
 
 #################################### GUI #######################################
 
-# function GUI.draw!(sys::System{<:PICompensator{N}}, label::String = "PICompensator{$N}") where {N}
-
-#     @unpack u, y, params = sys
-
-#     CImGui.Begin(label)
-
-#     #if any of these trees are collapsed or their host window is hidden, they
-#     #will not be drawn, saving CPU time
-#     if CImGui.TreeNode("Params")
-#         @unpack k_p, k_i, k_l, bounds = params
-#         CImGui.Text("Proportional Gain: $k_p")
-#         CImGui.Text("Integral Gain: $k_i")
-#         CImGui.Text("Leak Factor: = $k_l")
-#         CImGui.Text("Output Bounds = $bounds")
-#         CImGui.TreePop()
-#     end
-
-#     gui_input = true
-#     if gui_input
-#         if CImGui.TreeNode("Inputs")
-#             for i in 1:N
-#                 if CImGui.TreeNode("[$i]")
-#                     @unpack reset, sat_enable = u
-#                     reset_ref = Ref(reset[i])
-#                     sat_ref = Ref(sat_enable[i])
-#                     CImGui.Checkbox("Reset", reset_ref)
-#                     CImGui.SameLine()
-#                     CImGui.Checkbox("Enable Saturation", sat_ref)
-#                     reset[i] = reset_ref[]
-#                     sat_enable[i] = sat_ref[]
-#                     CImGui.TreePop()
-#                 end
-#             end
-#         CImGui.TreePop()
-#         end
-#     end
-
-#     if CImGui.TreeNode("Outputs")
-#         @unpack reset, input, sat_enable, sat_status, out_free, out = y
-#         CImGui.Text("Reset = $reset")
-#         CImGui.Text("Input = $input")
-#         CImGui.Text("Unbounded Output = $out_free")
-#         CImGui.Text("Output = $out")
-#         CImGui.Text("Saturation Enabled = $sat_enable")
-#         CImGui.Text("Saturation Status = $sat_status")
-#         CImGui.TreePop()
-#     end
-
-#     CImGui.End()
-
-# end
-
 
 function GUI.draw!(sys::System{<:PICompensator{N}}, label::String = "PICompensator{$N}") where {N}
 
