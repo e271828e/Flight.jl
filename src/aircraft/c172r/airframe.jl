@@ -155,11 +155,6 @@ Systems.init(::SystemS, ::Aero) = AeroS()
 function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
     air::AirData, kinematics::KinematicData, terrain::System{<:AbstractTerrain})
 
-    #for near-zero TAS, the airflow angles are likely to chatter between 0, -π
-    #and π. this can cause lots of noise in airflow angle derivatives and
-    #general unpleasantness. however, in this situation dynamic pressure will be
-    #close to zero, so forces and moments will vanish anyway.
-
     @unpack ẋ, x, u, s, params = sys
     @unpack α_filt, β_filt = x
     @unpack e, a, r, f = u
@@ -169,7 +164,12 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
     stall = s.stall
 
     v_wOb_a = f_ba.q'(v_wOb_b)
-    α, β = get_airflow_angles(v_wOb_a)
+
+    #for near-zero TAS, the airflow angles are likely to chatter between 0, -π
+    #and π. to avoid this, we set a minimum TAS for airflow computation. in this
+    #scenario dynamic pressure will be close to zero, so forces and moments will
+    #vanish anyway.
+    α, β = (TAS > 0.1 ? get_airflow_angles(v_wOb_a) : (0.0, 0.0))
     V = max(TAS, V_min) #avoid division by zero
 
     α_filt_dot = 1/τ * (α - α_filt)
@@ -250,12 +250,12 @@ end
 ################################# GUI ##########################################
 
 
-function GUI.draw(sys::System{<:Aero}, label::String = "C172R Aerodynamics")
+function GUI.draw(sys::System{<:Aero}, window_label::String = "C172R Aerodynamics")
 
     @unpack e, a, r, f, α, β, α_filt, β_filt, stall, coeffs, wr_b = sys.y
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
 
-    CImGui.Begin(label)
+    CImGui.Begin(window_label)
 
         CImGui.Text(@sprintf("Elevator Input: %.7f", e))
         CImGui.Text(@sprintf("Aileron Input: %.7f", a))
@@ -335,11 +335,11 @@ function Ldg()
 
 end
 
-function GUI.draw(sys::System{<:Ldg}, label::String = "Cessna 172R Landing Gear")
+function GUI.draw(sys::System{<:Ldg}, window_label::String = "Cessna 172R Landing Gear")
 
     @unpack left, right, nose = sys
 
-    CImGui.Begin(label)
+    CImGui.Begin(window_label)
 
         show_left = @cstatic check=false @c CImGui.Checkbox("Left Main", &check)
         show_right = @cstatic check=false @c CImGui.Checkbox("Right Main", &check)
@@ -518,11 +518,11 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(sys::System{<:Airframe}, label::String = "Cessna 172R Airframe")
+function GUI.draw(sys::System{<:Airframe}, window_label::String = "Cessna 172R Airframe")
 
     @unpack pwp, ldg, aero = sys
 
-    CImGui.Begin(label)
+    CImGui.Begin(window_label)
 
         show_aero = @cstatic check=false @c CImGui.Checkbox("Aerodynamics", &check)
         show_ldg = @cstatic check=false @c CImGui.Checkbox("Landing Gear", &check)

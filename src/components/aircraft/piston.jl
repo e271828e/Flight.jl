@@ -490,9 +490,9 @@ RigidBody.get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(sys::System{<:Thruster}, label::String = "Piston Thruster")
+function GUI.draw(sys::System{<:Thruster}, window_label::String = "Piston Thruster")
 
-    CImGui.Begin(label) #this should go within pwp's own draw, see airframe
+    CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
         show_eng = @cstatic check=false @c CImGui.Checkbox("Engine", &check)
         show_prop = @cstatic check=false @c CImGui.Checkbox("Propeller", &check)
     CImGui.End()
@@ -502,13 +502,13 @@ function GUI.draw(sys::System{<:Thruster}, label::String = "Piston Thruster")
 
 end
 
-function GUI.draw(sys::System{<:Engine}, label::String = "Piston Engine")
+function GUI.draw(sys::System{<:Engine}, window_label::String = "Piston Engine")
 
     @unpack u, y, params = sys
     @unpack idle, frc = sys
     @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ, SFC = y
 
-    CImGui.Begin(label)
+    CImGui.Begin(window_label)
 
         CImGui.Text("Start Switch: $start")
         CImGui.Text("Stop Switch: $stop")
@@ -522,11 +522,15 @@ function GUI.draw(sys::System{<:Engine}, label::String = "Piston Engine")
         CImGui.Text(@sprintf("Fuel Consumption: %.3f g/s", ṁ*1e3))
         CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
 
-        show_idle = @cstatic check=false @c CImGui.Checkbox("Idle RPM Controller", &check)
-        show_frc = @cstatic check=false @c CImGui.Checkbox("Friction Regulator", &check)
+        if CImGui.TreeNode("Idle RPM Controller")
+            GUI.draw(idle, "Jarl")
+            CImGui.TreePop()
+        end
 
-        show_idle && GUI.draw(idle, "Idle RPM Controller")
-        show_frc && GUI.draw(frc, "Friction Regulator")
+        if CImGui.TreeNode("Friction Regulator")
+            GUI.draw(frc, window_label)
+            CImGui.TreePop()
+        end
 
     CImGui.End()
 

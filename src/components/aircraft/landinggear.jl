@@ -471,38 +471,38 @@ function Plotting.make_plots(th::TimeHistory{<:StrutY}; kwargs...)
 end
 
 ################################################################################
-############################ Plotting ##########################################
+################################# GUI ##########################################
 
-function GUI.draw(sys::System{<:LandingGearUnit}, label::String = "Landing Gear Unit")
+function GUI.draw(sys::System{<:LandingGearUnit}, window_label::String = "Landing Gear Unit")
 
     @unpack steering, braking, strut = sys
 
-    CImGui.Begin(label) #this should go within pwp's own draw, see airframe
+    CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
         show_steering = @cstatic check=false @c CImGui.Checkbox("Steering", &check)
         show_braking = @cstatic check=false @c CImGui.Checkbox("Braking", &check)
         show_strut = @cstatic check=false @c CImGui.Checkbox("Strut", &check)
     CImGui.End()
 
-    show_steering && GUI.draw(sys.steering, label*" Steering")
-    show_braking && GUI.draw(sys.braking, label*" Braking")
-    show_strut && GUI.draw(sys.strut, label*" Strut")
+    show_steering && GUI.draw(sys.steering, window_label*" Steering")
+    show_braking && GUI.draw(sys.braking, window_label*" Braking")
+    show_strut && GUI.draw(sys.strut, window_label*" Strut")
 
 end
 
-function GUI.draw(sys::System{<:Strut}, label::String = "Strut")
+function GUI.draw(sys::System{<:Strut}, window_label::String = "Strut")
 
     frc = sys.frc
     @unpack wow, ξ, ξ_dot, v_eOc_c, trn_data, μ_roll, μ_skid, κ_br, ψ_cv,
             μ_max, μ_eff, f_c, F, F_c, wr_b = sys.y
 
-    CImGui.Begin(label) #this should go within pwp's own draw, see airframe
+    CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
 
         CImGui.Text("Weight on Wheel: $wow")
         CImGui.Text(@sprintf("Damper Elongation: %.7f m", ξ))
         CImGui.Text(@sprintf("Damper Elongation Rate: %.7f m/s", ξ_dot))
         CImGui.Text(@sprintf("Axial Damper Force: %.7f N", F))
 
-        if CImGui.TreeNode("Terrain Data at Contact Point")
+        if CImGui.TreeNode("Terrain Data")
 
             @unpack location, altitude, normal, surface = trn_data
             @unpack ϕ, λ = LatLon(location)
@@ -525,8 +525,10 @@ function GUI.draw(sys::System{<:Strut}, label::String = "Strut")
         GUI.draw(f_c, "Normalized Contact Force [Contact]")
         GUI.draw(F_c, "Contact Force [Contact]", "N")
 
-        show_frc = @cstatic check=false @c CImGui.Checkbox("Friction Regulator", &check)
-        show_frc && GUI.draw(frc, label*" Friction Regulator")
+        if CImGui.TreeNode("Friction Regulator")
+            GUI.draw(frc, window_label)
+            CImGui.TreePop()
+        end
 
     CImGui.End()
 

@@ -49,7 +49,6 @@ function test_system()
         @test @ballocated(f_ode!($ac_NED, $env)) == 0
         @test @ballocated(f_step!($ac_NED)) == 0
 
-
     return nothing
 
 end
