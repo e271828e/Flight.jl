@@ -3,15 +3,14 @@ module GUI
 using UnPack
 
 using Printf
-using CImGui
-using CImGui.CSyntax
-using CImGui.CSyntax.CStatic
+using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 using CImGui.GLFWBackend
 using CImGui.OpenGLBackend
 using CImGui.GLFWBackend.GLFW
 using CImGui.OpenGLBackend.ModernGL
 
 export CImGuiStyle, Renderer
+export dynamic_button, safe_slider, safe_input, @running_plot
 
 ################################################################################
 ############################# Renderer####################################
@@ -204,6 +203,9 @@ end
 #generic non-mutating frame draw function, to be extended by users
 draw(args...) = nothing
 
+#generic mutating draw function, to be extended by users
+draw!(args...) = nothing
+
 function draw(v::AbstractVector{<:Real}, label::String, units::String = "")
 
     N = length(v)
@@ -222,14 +224,6 @@ function draw(v::AbstractVector{<:Real}, label::String, units::String = "")
 
 end
 
-
-#generic mutating draw function, to be extended by users
-draw!(args...) = nothing
-
-
-################################################################################
-########################## Example draw functions ##############################
-
 function draw_test()
 
     output = @cstatic f=Cfloat(0.0) begin
@@ -241,32 +235,71 @@ function draw_test()
 
 end
 
-function draw_test_checkbox()
-    #internal variable name (check) is mangled by macro hygiene, we can reuse it
-    state1 = @cstatic check=false @c CImGui.Checkbox("1", &check)
-    state2 = @cstatic check=false @c CImGui.Checkbox("2", &check)
-    println("$state1, $state2")
+################################################################################
+################################ Macros ########################################
+
+function show_help_marker(desc)
+    CImGui.TextDisabled("(?)")
+    if CImGui.IsItemHovered()
+        CImGui.BeginTooltip()
+        CImGui.PushTextWrapPos(CImGui.GetFontSize() * 35.0)
+        CImGui.TextUnformatted(desc)
+        CImGui.PopTextWrapPos()
+        CImGui.EndTooltip()
+    end
 end
 
+#changes shade when hovered and pushed
+function dynamic_button(label, hue)
+    CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(hue, 0.6, 0.6))
+    CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(hue, 0.7, 0.7))
+    CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(hue, 0.8, 0.8))
+    CImGui.Button((label))
+    CImGui.PopStyleColor(3)
+    return CImGui.IsItemActive()
+end
 
-function draw_test_expanded() #draw_test2a with expanded macros
-    let
-        global f_glob
-        local f = f_glob
-        begin
-            CImGui.Begin("Hello, world!")
-            begin
-                f_ref = Ref(f)
-                f_return = CImGui.SliderFloat("float", f_ref, 0, 1)
-                f = f_ref[]
-                f_return
-            end
-            CImGui.End()
+function safe_slider(source, label, lower_bound, upper_bound, display_format)
+    ref = Ref(Cfloat(source))
+    CImGui.Text(label)
+    CImGui.SameLine()
+    CImGui.SliderFloat("##"*(label), ref, lower_bound, upper_bound, display_format)
+    CImGui.SameLine()
+    show_help_marker("Ctrl+Click for keyboard input")
+    return ref[]
+end
+
+function safe_input(source, label, step, fast_step, display_format)
+    ref = Ref(Cdouble(source))
+    CImGui.Text(label)
+    CImGui.SameLine()
+    CImGui.InputDouble("##"*(label), ref, step, fast_step, display_format)
+    return ref[]
+end
+
+#inactive while not enabled; overwrites target while enabled
+macro enabled_slider(target, label, lower_bound, upper_bound, default)
+    enable = gensym(:enable)
+    value = gensym(:value)
+    return esc(quote
+        $enable = @cstatic check=false @c CImGui.Checkbox($label, &check)
+        CImGui.SameLine()
+        $value = @cstatic f=Cfloat($default) @c CImGui.SliderFloat("##"*($label), &f, $lower_bound, $upper_bound)
+        $enable && ($target = $value)
+    end)
+end
+
+macro running_plot(source, label, lower_bound, upper_bound, initial_value, window_height)
+    values = gensym(:values)
+    offset = gensym(:offset)
+    return esc(quote
+        @cstatic $values=fill(Cfloat($initial_value),90) $offset=Cint(0) begin
+            $values[$offset+1] = $source
+            $offset = ($offset+1) % length($values)
+            CImGui.PlotLines(string($source |> Float32), $values, length($values), $offset,
+                             $label, $lower_bound, $upper_bound, (0, $window_height))
         end
-        f_glob = f
-        f
-    end
-
+    end)
 end
 
 

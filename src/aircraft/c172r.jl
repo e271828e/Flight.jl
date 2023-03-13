@@ -15,14 +15,14 @@ include("c172r/avionics.jl");
 #avionics and using different kinematic descriptions
 const Cessna172RBase{K, F, V} = AircraftTemplate{K, F, V} where {K, F <: Airframe, V}
 
-function Cessna172RBase(kinematics = LTF(), avionics = MechanicalControls())
+function Cessna172RBase(kinematics = LTF(), avionics = ReversibleControls())
     AircraftTemplate( kinematics, Airframe(), avionics)
 end
 
-#the default Cessna172R installs the C172R.MechanicalControls avionics (which
+#the default Cessna172R installs the C172R.ReversibleControls avionics (which
 #provides only a basic reversible control system)
-const Cessna172R{K, F} = Cessna172RBase{K, F, MechanicalControls} where {K, F}
-Cessna172R(kinematics = LTF()) = Cessna172RBase(kinematics, MechanicalControls())
+const Cessna172R{K, F} = Cessna172RBase{K, F, ReversibleControls} where {K, F}
+Cessna172R(kinematics = LTF()) = Cessna172RBase(kinematics, ReversibleControls())
 
 #By default, the AircraftTemplate's U type will be automatically determined by
 #the System's generic initializers as a NamedTuple{(:airframe, :avionics),

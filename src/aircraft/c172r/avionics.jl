@@ -8,16 +8,16 @@ using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
 ################################################################################
-########################### MechanicalControls #################################
+########################### ReversibleControls #################################
 
-struct MechanicalControls <: AbstractAvionics end
+struct ReversibleControls <: AbstractAvionics end
 
 #elevator↑ (stick forward) -> e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
 #aileron↑ (stick right) -> a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
 #rudder↑ (right pedal forward) -> r↓ -> δr↓ -> rudder trailing edge right -> Cn↑ -> yaw right
 #rudder↑ (right pedal forward) -> nose wheel steering right -> yaw right
 #flaps↑ -> δf↑ -> flap trailing edge down -> CL↑
-Base.@kwdef mutable struct MechanicalControlsU
+Base.@kwdef mutable struct ReversibleControlsU
     throttle::Ranged{Float64, 0, 1} = 0.0
     aileron_trim::Ranged{Float64, -1, 1} = 0.0
     aileron_offset::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
@@ -33,7 +33,7 @@ Base.@kwdef mutable struct MechanicalControlsU
     eng_stop::Bool = false
 end
 
-Base.@kwdef struct MechanicalControlsY
+Base.@kwdef struct ReversibleControlsY
     throttle::Float64 = 0.0
     aileron_trim::Float64 = 0.0
     aileron_offset::Float64 = 0.0
@@ -49,33 +49,33 @@ Base.@kwdef struct MechanicalControlsY
     eng_stop::Bool = false
 end
 
-Systems.init(::SystemU, ::MechanicalControls) = MechanicalControlsU()
-Systems.init(::SystemY, ::MechanicalControls) = MechanicalControlsY()
+Systems.init(::SystemU, ::ReversibleControls) = ReversibleControlsU()
+Systems.init(::SystemY, ::ReversibleControls) = ReversibleControlsY()
 
 
 ########################### Update Methods #####################################
 
-function Systems.f_ode!(avionics::System{MechanicalControls}, ::System{<:Airframe},
+function Systems.f_ode!(avionics::System{ReversibleControls}, ::System{<:Airframe},
                 ::KinematicData, ::AirData, ::System{<:AbstractTerrain})
 
-    #MechanicalControls has no internal dynamics, just input-output feedthrough
+    #ReversibleControls has no internal dynamics, just input-output feedthrough
     @unpack throttle, aileron_trim, aileron_offset, elevator_trim, elevator_offset,
             rudder_trim, rudder_offset, brake_left, brake_right, flaps, mixture,
             eng_start, eng_stop = avionics.u
 
-    avionics.y = MechanicalControlsY(;
+    avionics.y = ReversibleControlsY(;
             throttle, aileron_trim, aileron_offset, elevator_trim, elevator_offset,
             rudder_trim, rudder_offset, brake_left, brake_right, flaps, mixture,
             eng_start, eng_stop)
 
 end
 
-#no digital components or state machines in MechanicalControls
-@inline Systems.f_step!(::System{MechanicalControls}, ::System{<:Airframe}, ::KinematicSystem) = false
-@inline Systems.f_disc!(::System{MechanicalControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
+#no digital components or state machines in ReversibleControls
+@inline Systems.f_step!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem) = false
+@inline Systems.f_disc!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
 
 
-function map_controls!(airframe::System{<:Airframe}, avionics::System{MechanicalControls})
+function map_controls!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
 
     @unpack throttle, aileron_trim, aileron_offset, elevator_trim, elevator_offset,
             rudder_trim, rudder_offset, brake_left, brake_right, flaps, mixture,
@@ -106,7 +106,7 @@ aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function IODevices.assign!(u::MechanicalControlsU,
+function IODevices.assign!(u::ReversibleControlsU,
             joystick::Joystick{XBoxControllerID}, ::DefaultMapping)
 
     u.aileron_offset = get_axis_value(joystick, :right_analog_x) |> aileron_curve
@@ -131,52 +131,8 @@ end
 
 ################################## GUI #########################################
 
-struct InputState{T}
-    enabled::Bool
-    value::T
-end
 
-function Base.:(|)(target::Any, state::InputState{T}) where {T}
-    state.enabled ? state.value : convert(T, target)
-end
-
-macro input_button(target, label, hue)
-    return (quote
-        # enable_flag = @cstatic check=false @c CImGui.Checkbox("Enable##"*($label), &check)
-        # CImGui.SameLine()
-        enable_flag = true
-        CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV($hue, 0.6, 0.6))
-        CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV($hue, 0.7, 0.7))
-        CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV($hue, 0.8, 0.8))
-        CImGui.Button(($label))
-        CImGui.PopStyleColor(3)
-        enable_flag && ($(esc(target)) = CImGui.IsItemActive())
-    end)
-end
-
-macro input_slider(target, label, lower_bound, upper_bound, default)
-    return (quote
-        enable_flag = @cstatic check=false @c CImGui.Checkbox($label, &check)
-        CImGui.SameLine()
-        slider_value = @cstatic f=Cfloat($default) @c CImGui.SliderFloat("##"*($label), &f, $lower_bound, $upper_bound)
-        enable_flag && ($(esc(target)) = slider_value)
-    end)
-end
-
-macro running_plot(source, label, lower_bound, upper_bound, default)
-    window_height = 60
-    return (quote
-        @cstatic values=fill(Cfloat($default),90) values_offset=Cint(0) begin
-            values[values_offset+1] = $(esc(source))
-            values_offset = (values_offset+1) % length(values)
-            CImGui.PlotLines(string($(esc(source)) |> Float32), values, length(values), values_offset,
-                             $label, $lower_bound, $upper_bound, (0, $window_height))
-        end
-    end)
-end
-
-
-function GUI.draw!(sys::System{<:MechanicalControls}, label::String = "Cessna 172R Mechanical Controls")
+function GUI.draw!(sys::System{<:ReversibleControls}, label::String = "Cessna 172R Reversible Controls")
 
     u = sys.u
 
@@ -184,19 +140,19 @@ function GUI.draw!(sys::System{<:MechanicalControls}, label::String = "Cessna 17
 
     CImGui.PushItemWidth(-60)
 
-    @input_button(u.eng_start, "Engine Start", 0.4)
-    @input_button(u.eng_stop, "Engine Stop", 0.0)
-    @input_slider(u.throttle, "Throttle", 0, 1, 1)
-    @input_slider(u.mixture, "Mixture", 0, 1, 0.5)
-    @input_slider(u.brake_left, "Left Brake", 0, 1, 0.0)
-    @input_slider(u.brake_right, "Right Brake", 0, 1, 0.0)
-    @input_slider(u.aileron_offset, "Aileron Offset", -1, 1, 0.0)
-    @input_slider(u.elevator_offset, "Elevator Offset", -1, 1, 0.0)
-    @input_slider(u.rudder_offset, "Rudder Offset", -1, 1, 0.0)
-    @input_slider(u.flaps, "Flaps", 0, 1, 0.0)
-    @input_slider(u.aileron_trim, "Aileron Trim", -1, 1, 0.0)
-    @input_slider(u.elevator_trim, "Elevator Trim", -1, 1, 0.0)
-    @input_slider(u.rudder_trim, "Rudder Trim", -1, 1, 0.0)
+    u.eng_start = dynamic_button("Engine Start", 0.4)
+    u.eng_stop = dynamic_button("Engine Stop", 0.0)
+    u.throttle = safe_slider(u.throttle, "Throttle", 0, 1, "%.6f")
+    u.mixture = safe_slider(u.mixture, "Mixture", 0, 1, "%.6f")
+    u.brake_left = safe_slider(u.brake_left, "Left Brake", 0, 1, "%.6f")
+    u.brake_right = safe_slider(u.brake_right, "Right Brake", 0, 1, "%.6f")
+    u.aileron_offset = safe_slider(u.aileron_offset, "Aileron Offset", -1, 1, "%.6f")
+    u.elevator_offset = safe_slider(u.elevator_offset, "Elevator Offset", -1, 1, "%.6f")
+    u.rudder_offset = safe_slider(u.rudder_offset, "Rudder Offset", -1, 1, "%.6f")
+    u.flaps = safe_slider(u.flaps, "Flap Setting", 0, 1, "%.6f")
+    u.aileron_trim = safe_input(u.aileron_trim, "Aileron Trim", -1, 1, "%.6f")
+    u.elevator_trim = safe_input(u.elevator_trim, "Elevator Trim", -1, 1, "%.6f")
+    u.rudder_trim = safe_input(u.rudder_trim, "Rudder Trim", -1, 1, "%.6f")
 
     CImGui.PopItemWidth()
 
@@ -206,7 +162,7 @@ function GUI.draw!(sys::System{<:MechanicalControls}, label::String = "Cessna 17
 
 end
 
-function GUI.draw(sys::System{<:MechanicalControls}, label::String = "Cessna 172R Mechanical Controls")
+function GUI.draw(sys::System{<:ReversibleControls}, label::String = "Cessna 172R Reversible Controls")
 
     y = sys.y
 
@@ -214,17 +170,17 @@ function GUI.draw(sys::System{<:MechanicalControls}, label::String = "Cessna 172
 
     CImGui.PushItemWidth(-60)
 
-    @running_plot(y.throttle, "Throttle", 0, 1, 0.0)
-    @running_plot(y.mixture, "Mixture", 0, 1, 0.5)
-    @running_plot(y.brake_left, "Left Brake", 0, 1, 0.0)
-    @running_plot(y.brake_right, "Right Brake", 0, 1, 0.0)
-    @running_plot(y.aileron_offset, "Aileron Offset", -1, 1, 0.0)
-    @running_plot(y.elevator_offset, "Elevator Offset", -1, 1, 0.0)
-    @running_plot(y.rudder_offset, "Rudder Offset", -1, 1, 0.0)
-    @running_plot(y.flaps, "Flaps", 0, 1, 0.0)
-    @running_plot(y.aileron_trim, "Aileron Trim", -1, 1, 0.0)
-    @running_plot(y.elevator_trim, "Elevator Trim", -1, 1, 0.0)
-    @running_plot(y.rudder_trim, "Rudder Trim", -1, 1, 0.0)
+    @running_plot(y.throttle, "Throttle", 0, 1, 0.0, 60)
+    @running_plot(y.mixture, "Mixture", 0, 1, 0.5, 60)
+    @running_plot(y.brake_left, "Left Brake", 0, 1, 0.0, 60)
+    @running_plot(y.brake_right, "Right Brake", 0, 1, 0.0, 60)
+    @running_plot(y.aileron_offset, "Aileron Offset", -1, 1, 0.0, 60)
+    @running_plot(y.elevator_offset, "Elevator Offset", -1, 1, 0.0, 60)
+    @running_plot(y.rudder_offset, "Rudder Offset", -1, 1, 0.0, 60)
+    @running_plot(y.aileron_trim, "Aileron Trim", -1, 1, 0.0, 60)
+    @running_plot(y.elevator_trim, "Elevator Trim", -1, 1, 0.0, 60)
+    @running_plot(y.rudder_trim, "Rudder Trim", -1, 1, 0.0, 60)
+    @running_plot(y.flaps, "Flap Setting", 0, 1, 0.0, 60)
 
     CImGui.PopItemWidth()
 

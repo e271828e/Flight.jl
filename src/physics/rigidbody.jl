@@ -710,6 +710,7 @@ function GUI.draw(rb::RigidBodyData, label::String = "Rigid Body")
     CImGui.Text(@sprintf("Mass: %.3f kg", mp_Ob.m))
     GUI.draw(mp_Ob.r_OG, "CG Position (O) [Body]", "m")
 
+    #inertia tensor is given at G instead of O
     if CImGui.TreeNode("Inertia Tensor (G) [Body]")
         CImGui.Text(@sprintf("XX: %.3f kg m2", mp_Gb.J_O[1,1]))
         CImGui.Text(@sprintf("YY: %.3f kg m2", mp_Gb.J_O[2,2]))
@@ -720,6 +721,7 @@ function GUI.draw(rb::RigidBodyData, label::String = "Rigid Body")
         CImGui.TreePop()
     end
 
+    #net force and torque are given at G instead of O
     GUI.draw(wr_net_Gb.F, "Net Force (G) [Body]", "N")
     GUI.draw(wr_net_Gb.M, "Net Torque (G) [Body]", "N*m")
     GUI.draw(hr_b, "Angular Momentum From Rotating Components [Body]", "kg*(m^2)/s")

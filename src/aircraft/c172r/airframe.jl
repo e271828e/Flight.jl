@@ -353,43 +353,24 @@ function GUI.draw(sys::System{<:Ldg}, window_label::String = "Cessna 172R Landin
 
 end
 
-############################## Payload ######################################
 
-const pilot_slot = FrameTransform(r = SVector{3}(0.183, -0.356, 0.899))
-const copilot_slot = FrameTransform(r = SVector{3}(0.183, 0.356, 0.899))
-const psg_left_slot = FrameTransform(r = SVector{3}(-0.681, -0.356, 0.899))
-const psg_right_slot = FrameTransform(r = SVector{3}(-0.681, 0.356, 0.899))
-const baggage_slot = FrameTransform(r = SVector{3}(-1.316, 0, 0.899))
+################################################################################
+################################# Payload ######################################
 
-struct Payload <: Component
-    pilot::MassProperties #mp_Ob
-    copilot::MassProperties #mp_Ob
-    psg_left::MassProperties #mp_Ob
-    psg_right::MassProperties #mp_Ob
-    baggage::MassProperties #mp_Ob
-
-    function Payload( ; pilot::PointDistribution = PointDistribution(75),
-                        copilot::PointDistribution = PointDistribution(75),
-                        psg_left::PointDistribution = PointDistribution(75),
-                        psg_right::PointDistribution = PointDistribution(75),
-                        baggage::PointDistribution = PointDistribution(50))
-
-        return new( MassProperties(pilot, pilot_slot),
-                    MassProperties(copilot, copilot_slot),
-                    MassProperties(psg_left, psg_left_slot),
-                    MassProperties(psg_right, psg_right_slot),
-                    MassProperties(baggage, baggage_slot)
-                    )
-
-    end
+Base.@kwdef struct Payload <: Component
+    pilot_slot::FrameTransform = FrameTransform(r = SVector{3}(0.183, -0.356, 0.899))
+    copilot_slot::FrameTransform = FrameTransform(r = SVector{3}(0.183, 0.356, 0.899))
+    lpass_slot::FrameTransform = FrameTransform(r = SVector{3}(-0.681, -0.356, 0.899))
+    rpass_slot::FrameTransform = FrameTransform(r = SVector{3}(-0.681, 0.356, 0.899))
+    baggage_slot::FrameTransform = FrameTransform(r = SVector{3}(-1.316, 0, 0.899))
 end
 
 Base.@kwdef mutable struct PayloadU
-    pilot::Bool = true
-    copilot::Bool = true
-    psg_left::Bool = false
-    psg_right::Bool = false
-    baggage::Bool = true
+    m_pilot::Ranged{Float64, 0, 100} = 75.0
+    m_copilot::Ranged{Float64, 0, 100} = 75.0
+    m_lpass::Ranged{Float64, 0, 100} = 0.0
+    m_rpass::Ranged{Float64, 0, 100} = 0.0
+    m_baggage::Ranged{Float64, 0, 100} = 50.0
 end
 
 Systems.init(::SystemU, ::Payload) = PayloadU()
@@ -399,13 +380,39 @@ RigidBody.WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
 RigidBody.AngMomTrait(::System{Payload}) = HasNoAngularMomentum()
 
 function RigidBody.get_mp_Ob(sys::System{Payload})
-    mp_Ob = MassProperties()
-    sys.u.pilot && (mp_Ob += sys.params.pilot)
-    sys.u.copilot && (mp_Ob += sys.params.copilot)
-    sys.u.psg_left && (mp_Ob += sys.params.psg_left)
-    sys.u.psg_right && (mp_Ob += sys.params.psg_right)
-    sys.u.baggage && (mp_Ob += sys.params.baggage)
+    @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = sys.u
+    @unpack pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot = sys.params
+
+    pilot = MassProperties(PointDistribution(m_pilot), pilot_slot)
+    copilot = MassProperties(PointDistribution(m_copilot), copilot_slot)
+    lpass = MassProperties(PointDistribution(m_lpass), lpass_slot)
+    rpass = MassProperties(PointDistribution(m_rpass), rpass_slot)
+    baggage = MassProperties(PointDistribution(m_baggage), baggage_slot)
+
+    mp_Ob = MassProperties() + pilot + copilot + lpass + rpass + baggage
     return mp_Ob
+end
+
+#################################### GUI #######################################
+
+function GUI.draw!(sys::System{<:Payload}, label::String = "Cessna 172R Payload")
+
+    u = sys.u
+
+    CImGui.Begin(label)
+
+    CImGui.PushItemWidth(-60)
+
+    u.m_pilot = GUI.safe_slider(u.m_pilot, "Pilot Mass (kg)", 0, 100, "%.3f")
+    u.m_copilot = GUI.safe_slider(u.m_copilot, "Copilot Mass (kg)", 0, 100, "%.3f")
+    u.m_lpass = GUI.safe_slider(u.m_lpass, "Left Passenger Mass (kg)", 0, 100, "%.3f")
+    u.m_rpass = GUI.safe_slider(u.m_rpass, "Right Passenger Mass (kg)", 0, 100, "%.3f")
+    u.m_baggage = GUI.safe_slider(u.m_baggage, "Baggage Mass (kg)", 0, 100, "%.3f")
+
+    CImGui.PopItemWidth()
+
+    CImGui.End()
+
 end
 
 
@@ -520,18 +527,20 @@ end
 
 function GUI.draw(sys::System{<:Airframe}, window_label::String = "Cessna 172R Airframe")
 
-    @unpack pwp, ldg, aero = sys
+    @unpack pwp, ldg, aero, pld = sys
 
     CImGui.Begin(window_label)
 
         show_aero = @cstatic check=false @c CImGui.Checkbox("Aerodynamics", &check)
         show_ldg = @cstatic check=false @c CImGui.Checkbox("Landing Gear", &check)
         show_pwp = @cstatic check=false @c CImGui.Checkbox("Powerplant", &check)
+        show_pld = @cstatic check=false @c CImGui.Checkbox("Payload", &check)
 
     CImGui.End()
 
     show_aero && GUI.draw(aero)
     show_ldg && GUI.draw(ldg)
     show_pwp && GUI.draw(pwp)
+    show_pld && GUI.draw!(pld)
 
 end
