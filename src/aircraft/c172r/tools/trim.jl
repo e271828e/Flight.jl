@@ -90,7 +90,7 @@ function Kinematics.Initializer(state::State, params::Parameters,
                                 env::System{<:AbstractEnvironment})
 
     v_wOb_a = Atmosphere.get_velocity_vector(params.TAS, state.α_a, params.β_a)
-    v_wOb_b = C172R.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
+    v_wOb_b = C172R.C172RAirframe.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
 
     θ_nb = θ_constraint(; v_wOb_b, params.γ_wOb_n, state.φ_nb)
     e_nb = REuler(params.ψ_nb, θ_nb, state.φ_nb)
@@ -251,9 +251,6 @@ function trim!(ac::System{<:Cessna172R},
 
 
 end
-
-
-
 
 
 end #module

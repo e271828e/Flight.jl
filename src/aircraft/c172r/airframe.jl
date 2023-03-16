@@ -1,5 +1,8 @@
+module C172RAirframe
+
 using StaticArrays
 using ComponentArrays
+using UnPack
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
@@ -17,6 +20,8 @@ using Flight.Components.LandingGear
 using Flight.Components.Propellers
 using Flight.Components.Piston
 using Flight.Components.Aircraft
+
+export Airframe
 
 ################################################################################
 ############################ Airframe Subsystems ################################
@@ -422,11 +427,12 @@ end
 #individually for now
 Base.@kwdef struct Fuel <: Piston.AbstractFuelSupply
     m_full::Float64 = 114.4 #maximum fuel mass (42 gal * 6 lb/gal * 0.454 kg/lb)
-    m_empty::Float64 = 0.0 #residual fuel mass
+    m_res::Float64 = 1.0 #residual fuel mass
 end
 
 Base.@kwdef struct FuelY
-    m::Float64 = 0.0 #current fuel mass
+    m_total::Float64 = 0.0 #total fuel mass
+    m_avail::Float64 = 0.0 #available fuel mass
 end
 
 #normalized fuel content (0: residual, 1: full)
@@ -435,20 +441,21 @@ Systems.init(::SystemY, ::Fuel) = FuelY()
 
 function Systems.f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 
-    @unpack m_full, m_empty = sys.params #no need for subsystems
-    m = m_empty + sys.x[1] * (m_full - m_empty) #current mass
-    sys.ẋ .= -pwp.y.engine.ṁ / (m_full - m_empty)
-    sys.y = FuelY(m)
+    @unpack m_full, m_res = sys.params #no need for subsystems
+    m_total = m_res + sys.x[1] * (m_full - m_res) #current mass
+    m_avail = m_total - m_res
+    sys.ẋ .= -pwp.y.engine.ṁ / (m_full - m_res)
+    sys.y = FuelY(; m_total, m_avail)
 
 end
 
-Piston.fuel_available(sys::System{<:Fuel}) = (sys.y.m > 0)
+Piston.fuel_available(sys::System{<:Fuel}) = (sys.y.m_avail > 0)
 
 function RigidBody.get_mp_Ob(fuel::System{Fuel})
 
-    #in case x accidentally becomes negative (fuel is consumed beyond x=0 before
-    #the engine dies)
-    m_fuel = max(0.0, fuel.y.m)
+    #in case x becomes negative (fuel consumed beyond x=0 before the engine
+    #dies)
+    m_fuel = max(0.0, fuel.y.m_total)
 
     m_left = PointDistribution(0.5m_fuel)
     m_right = PointDistribution(0.5m_fuel)
@@ -462,6 +469,19 @@ function RigidBody.get_mp_Ob(fuel::System{Fuel})
     mp_Ob += MassProperties(m_right, frame_right)
 
     return mp_Ob
+end
+
+function GUI.draw(sys::System{Fuel}, window_label::String = "C172R Fuel System")
+
+    @unpack m_total, m_avail = sys.y
+
+    CImGui.Begin(window_label)
+
+        CImGui.Text(@sprintf("Total Fuel: %.6f kg", m_total))
+        CImGui.Text(@sprintf("Available Fuel: %.6f kg", m_avail))
+
+    CImGui.End()
+
 end
 
 ################################ Powerplant ####################################
@@ -485,18 +505,12 @@ end
 
 ############################# Update Methods ###################################
 
-#to be extended by any avionics installed on the aircraft
-function map_controls!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics})
-    println("Please extend C172R.map_controls! for $(typeof(airframe)), $(typeof(avionics))")
-    MethodError(map_controls!, (airframe, avionics))
-end
 
-function Systems.f_ode!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics},
-                kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
+function Systems.f_ode!(airframe::System{<:Airframe},
+                        kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
 
     @unpack aero, pwp, ldg, fuel, pld = airframe
 
-    map_controls!(airframe, avionics)
     f_ode!(aero, pwp, air, kin, trn)
     f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
@@ -506,12 +520,10 @@ function Systems.f_ode!(airframe::System{<:Airframe}, avionics::System{<:Abstrac
 
 end
 
-function Systems.f_step!(airframe::System{<:Airframe}, avionics::System{<:AbstractAvionics},
-                         ::KinematicSystem)
+function Systems.f_step!(airframe::System{<:Airframe}, ::KinematicSystem)
     @unpack aero, pwp, fuel, ldg, fuel, pld = airframe
 
     x_mod = false
-    map_controls!(airframe, avionics)
     x_mod |= f_step!(aero)
     x_mod |= f_step!(ldg)
     x_mod |= f_step!(pwp, fuel)
@@ -527,13 +539,14 @@ end
 
 function GUI.draw(sys::System{<:Airframe}, window_label::String = "Cessna 172R Airframe")
 
-    @unpack pwp, ldg, aero, pld = sys
+    @unpack pwp, ldg, aero, fuel, pld = sys
 
     CImGui.Begin(window_label)
 
         show_aero = @cstatic check=false @c CImGui.Checkbox("Aerodynamics", &check)
         show_ldg = @cstatic check=false @c CImGui.Checkbox("Landing Gear", &check)
         show_pwp = @cstatic check=false @c CImGui.Checkbox("Powerplant", &check)
+        show_fuel = @cstatic check=false @c CImGui.Checkbox("Fuel", &check)
         show_pld = @cstatic check=false @c CImGui.Checkbox("Payload", &check)
 
     CImGui.End()
@@ -541,6 +554,10 @@ function GUI.draw(sys::System{<:Airframe}, window_label::String = "Cessna 172R A
     show_aero && GUI.draw(aero)
     show_ldg && GUI.draw(ldg)
     show_pwp && GUI.draw(pwp)
+    show_fuel && GUI.draw(fuel)
     show_pld && GUI.draw!(pld)
 
 end
+
+
+end #module

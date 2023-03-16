@@ -92,6 +92,23 @@ function init!(ac::System{<:AircraftTemplate}, ic::KinematicInit)
     Kinematics.init!(ac.x.kinematics, ic)
 end
 
+#to be extended
+function Systems.f_ode!(avionics::System{<:AbstractAvionics}, airframe::System{<:AbstractAirframe},
+                        kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
+    MethodError(f_ode!, (avionics, airframe, kin, air, trn))
+end
+
+#to be extended
+function map_controls!(airframe::System{<:AbstractAirframe}, avionics::System{<:AbstractAvionics})
+    MethodError(map_controls!, (airframe, avionics))
+end
+
+#to be extended
+function Systems.f_ode!(airframe::System{<:AbstractAirframe},
+                        kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
+    MethodError(f_ode!, (airframe, kin, air, trn))
+end
+
 
 function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractEnvironment})
 
@@ -106,7 +123,8 @@ function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractE
 
     #update avionics and airframe components
     f_ode!(avionics, airframe, kin_data, air_data, trn)
-    f_ode!(airframe, avionics, kin_data, air_data, trn)
+    map_controls!(airframe, avionics)
+    f_ode!(airframe, kin_data, air_data, trn)
 
     mp_Ob = get_mp_Ob(airframe)
     wr_b = get_wr_b(airframe)
@@ -127,8 +145,9 @@ function Systems.f_step!(sys::System{<:AircraftTemplate})
     #could use chained | instead, but this is clearer
     x_mod = false
     x_mod |= f_step!(kinematics)
-    x_mod |= f_step!(airframe, avionics, kinematics)
     x_mod |= f_step!(avionics, airframe, kinematics)
+    map_controls!(airframe, avionics)
+    x_mod |= f_step!(airframe, kinematics)
 
     return x_mod
 end
@@ -138,8 +157,8 @@ function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt)
 
     #could use chained | instead, but this is clearer
     x_mod = false
-    #in principle, only avionics will have discrete dynamics (it's the aircraft
-    #subsystem in which discretized algorithms are implemented)
+    #in principle, only avionics should have discrete dynamics (it's the
+    #aircraft subsystem in which discretized algorithms are hosted)
     x_mod |= f_disc!(avionics, airframe, kinematics, Δt)
 
     return x_mod

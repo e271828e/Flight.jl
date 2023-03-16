@@ -148,7 +148,7 @@ function test_trimming()
         β_a = -0.11
         TAS = 100
         v_wOa_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
-        v_wOb_b = C172R.f_ba.q(v_wOa_a)
+        v_wOb_b = C172R.C172RAirframe.f_ba.q(v_wOa_a)
 
         #set γ_wOb_n and φ_nb arbitrarily and compute θ_nb
         γ_wOb_n = -0.07 #set arbitrarily

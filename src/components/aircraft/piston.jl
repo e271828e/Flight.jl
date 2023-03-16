@@ -523,7 +523,7 @@ function GUI.draw(sys::System{<:Engine}, window_label::String = "Piston Engine")
         CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
 
         if CImGui.TreeNode("Idle RPM Controller")
-            GUI.draw(idle, "Jarl")
+            GUI.draw(idle, window_label)
             CImGui.TreePop()
         end
 

@@ -111,7 +111,7 @@ end
 function get_force(c::SimpleDamper, ξ::Real, ξ_dot::Real)
     k_d = (ξ_dot > 0 ? c.k_d_ext : c.k_d_cmp)
     F = -(c.k_s * ξ + k_d * ξ_dot)
-    @assert abs(F) < c.F_max "Maximum allowable damper force exceeded, looks like a ground crash."
+    # @assert abs(F) < c.F_max "Maximum allowable damper force exceeded, looks like a ground crash."
     return F
 end
 
@@ -168,6 +168,7 @@ end
 
 Base.@kwdef struct StrutY #defaults should be consistent with wow = 0
     wow::Bool = false #weight-on-wheel flag
+    Δl::Float64 = 0.0 #distance to ground along strut z-axis
     ξ::Float64 = 0.0 #damper elongation
     ξ_dot::Float64 = 0.0 #damper elongation rate
     F::Float64 = 0.0 #axial damper force
@@ -229,7 +230,7 @@ function Systems.f_ode!(sys::System{<:Strut},
     if !wow #no contact, compute any non-default outputs and return
         frc.u.input .= 0 #if !wow, v_eOc_c = [0,0]
         f_ode!(frc) #update frc.y
-        sys.y = StrutY(; wow, frc = frc.y)
+        sys.y = StrutY(; wow, Δl, frc = frc.y)
         return
     end
 
@@ -328,7 +329,7 @@ function Systems.f_ode!(sys::System{<:Strut},
     wr_c = Wrench(F = F_c)
     wr_b = t_bc(wr_c)
 
-    sys.y = StrutY(; wow, ξ, ξ_dot, t_sc, t_bc, v_eOc_c, trn_data, μ_roll, μ_skid,
+    sys.y = StrutY(; wow, Δl, ξ, ξ_dot, t_sc, t_bc, v_eOc_c, trn_data, μ_roll, μ_skid,
                      κ_br, ψ_cv, μ_max, μ_eff, f_c, F, F_c, wr_b, frc = frc.y)
 
 end
@@ -492,12 +493,13 @@ end
 function GUI.draw(sys::System{<:Strut}, window_label::String = "Strut")
 
     frc = sys.frc
-    @unpack wow, ξ, ξ_dot, v_eOc_c, trn_data, μ_roll, μ_skid, κ_br, ψ_cv,
+    @unpack wow, Δl, ξ, ξ_dot, v_eOc_c, trn_data, μ_roll, μ_skid, κ_br, ψ_cv,
             μ_max, μ_eff, f_c, F, F_c, wr_b = sys.y
 
     CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
 
         CImGui.Text("Weight on Wheel: $wow")
+        CImGui.Text(@sprintf("Distance to Ground: %.7f m", Δl))
         CImGui.Text(@sprintf("Damper Elongation: %.7f m", ξ))
         CImGui.Text(@sprintf("Damper Elongation Rate: %.7f m/s", ξ_dot))
         CImGui.Text(@sprintf("Axial Damper Force: %.7f N", F))
