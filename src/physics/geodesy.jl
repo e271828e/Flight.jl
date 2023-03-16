@@ -1,6 +1,5 @@
 module Geodesy
 
-# using Base: Real, Symbol
 using LinearAlgebra
 using StaticArrays
 using ComponentArrays
@@ -9,8 +8,8 @@ using UnPack
 using Interpolations
 using HDF5
 
-using Flight.Engine.Systems
-using Flight.Engine.Plotting
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
 
 using ..Attitude
 

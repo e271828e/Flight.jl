@@ -6,20 +6,20 @@ using UnPack
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.Engine.Systems
-using Flight.Engine.GUI
-using Flight.Engine.Utils: Ranged, linear_scaling
+using Flight.FlightCore.Systems
+using Flight.FlightCore.GUI
+using Flight.FlightCore.Utils: Ranged, linear_scaling
 
-using Flight.Physics.Attitude
-using Flight.Physics.Kinematics
-using Flight.Physics.RigidBody
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
 
-using Flight.Components.Terrain
-using Flight.Components.Atmosphere
-using Flight.Components.LandingGear
-using Flight.Components.Propellers
-using Flight.Components.Piston
-using Flight.Components.Aircraft
+using Flight.FlightComponents.Terrain
+using Flight.FlightComponents.Atmosphere
+using Flight.FlightComponents.LandingGear
+using Flight.FlightComponents.Propellers
+using Flight.FlightComponents.Piston
+using Flight.FlightComponents.Aircraft
 
 export Airframe
 

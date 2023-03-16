@@ -5,7 +5,7 @@ using DataStructures
 using AbstractTrees
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.Engine.GUI
+using ..GUI
 
 export Component, System, SystemTrait
 export SystemẊ, SystemX, SystemY, SystemU, SystemS

@@ -4,15 +4,15 @@ using StaticArrays, ComponentArrays, LinearAlgebra, UnPack
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.Engine.Systems
-using Flight.Engine.Plotting
-using Flight.Engine.Utils: Ranged
-using Flight.Engine.GUI
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.Utils: Ranged
+using Flight.FlightCore.GUI
 
-using Flight.Physics.Attitude
-using Flight.Physics.Geodesy
-using Flight.Physics.Kinematics
-using Flight.Physics.RigidBody
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
 
 using ..Terrain
 using ..Control: PICompensator, PICompensatorY

@@ -6,13 +6,13 @@ using Trapz: trapz
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.Engine.Systems
-using Flight.Engine.GUI
-using Flight.Engine.Plotting
-using Flight.Engine.Utils: Ranged, linear_scaling
+using Flight.FlightCore.Systems
+using Flight.FlightCore.GUI
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.Utils: Ranged, linear_scaling
 
-using Flight.Physics.Kinematics
-using Flight.Physics.RigidBody
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
 
 using ..Atmosphere
 

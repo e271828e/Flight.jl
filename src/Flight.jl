@@ -3,9 +3,9 @@ module Flight
 using Reexport
 @reexport using BenchmarkTools
 
-include("engine/engine.jl"); @reexport using .Engine
-include("physics/physics.jl"); @reexport using .Physics
-include("components/components.jl"); @reexport using .Components
-include("aircraft/c172r.jl"); @reexport using .C172R
+include("core/FlightCore.jl"); @reexport using .FlightCore
+include("physics/FlightPhysics.jl"); @reexport using .FlightPhysics
+include("components/FlightComponents.jl"); @reexport using .FlightComponents
+include("aircraft/FlightAircraft.jl"); @reexport using .FlightAircraft
 
 end

@@ -5,19 +5,19 @@ using UnPack
 using StaticArrays, ComponentArrays
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.Engine.Systems
-using Flight.Engine.Plotting
-using Flight.Engine.IODevices
-using Flight.Engine.XPlane
-using Flight.Engine.GUI
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.XPlane
+using Flight.FlightCore.GUI
 
-using Flight.Physics.Attitude
-using Flight.Physics.Geodesy
-using Flight.Physics.Kinematics
-using Flight.Physics.RigidBody
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
 
-using Flight.Components.Terrain
-using Flight.Components.Environment
+using ..Terrain
+using ..Environment
 
 export AircraftTemplate, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
 

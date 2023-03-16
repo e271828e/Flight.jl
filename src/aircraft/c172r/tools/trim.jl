@@ -7,13 +7,15 @@ using BenchmarkTools
 using UnPack
 using NLopt
 
-using Flight.Systems
-using Flight.Attitude
-using Flight.Geodesy
-using Flight.Kinematics
-using Flight.Piston
-using Flight.Aircraft
-using Flight.Environment
+using Flight.FlightCore.Systems
+
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
+
+using Flight.FlightComponents.Piston
+using Flight.FlightComponents.Aircraft
+using Flight.FlightComponents.Environment
 
 export XTrimTemplate, XTrim, TrimParameters
 

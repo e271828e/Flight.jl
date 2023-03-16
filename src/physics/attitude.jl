@@ -29,7 +29,7 @@ module Attitude
 using StaticArrays, ComponentArrays, StructArrays
 using LinearAlgebra
 
-using Flight.Engine.Plotting
+using Flight.FlightCore.Plotting
 
 using ..Quaternions
 

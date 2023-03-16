@@ -6,10 +6,10 @@ using BenchmarkTools
 using LinearAlgebra
 
 using Flight
-using Flight.Components.Piston: Engine, Thruster, MagicFuelSupply
-using Flight.Components.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
-using Flight.Components.Piston: eng_off, eng_starting, eng_running
-using Flight.Components.Atmosphere: p_std, T_std
+using Flight.FlightComponents.Piston: Engine, Thruster, MagicFuelSupply
+using Flight.FlightComponents.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
+using Flight.FlightComponents.Piston: eng_off, eng_starting, eng_running
+using Flight.FlightComponents.Atmosphere: p_std, T_std
 
 export test_piston
 

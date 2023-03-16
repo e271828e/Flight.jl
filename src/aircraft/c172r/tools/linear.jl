@@ -4,14 +4,14 @@ using ComponentArrays
 using UnPack
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
-using Flight.Engine.Systems
+using Flight.FlightCore.Systems
 
-using Flight.Physics.Attitude
-using Flight.Physics.Geodesy
-using Flight.Physics.Kinematics
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
 
-using Flight.Components.Environment
-using Flight.Components.Control: LinearStateSpace
+using Flight.FlightComponents.Environment
+using Flight.FlightComponents.Control: LinearStateSpace
 
 using ..C172R
 using ..Trim

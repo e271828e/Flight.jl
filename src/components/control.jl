@@ -4,9 +4,9 @@ using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using CImGui, CImGui.CSyntax
 using ControlSystemsBase: ControlSystemsBase, ss
 
-using Flight.Engine.Systems
-using Flight.Engine.Plotting
-using Flight.Engine.GUI
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.GUI
 
 export LinearStateSpace, PICompensator
 

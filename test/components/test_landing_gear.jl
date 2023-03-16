@@ -4,10 +4,9 @@ using Test
 using LinearAlgebra
 using BenchmarkTools
 using StaticArrays
-# using OrdinaryDiffEq, SciMLBase
 
 using Flight
-using Flight.Components.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
+using Flight.FlightComponents.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
 
 export test_landing_gear
 

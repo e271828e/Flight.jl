@@ -4,13 +4,13 @@ using Interpolations, StaticArrays, StructArrays, ComponentArrays, UnPack
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.Engine.Systems
-using Flight.Engine.Utils: Ranged
-using Flight.Engine.GUI
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Utils: Ranged
+using Flight.FlightCore.GUI
 
-using Flight.Physics.Kinematics
-using Flight.Physics.RigidBody
-using Flight.Physics.Geodesy: HGeop
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
+using Flight.FlightPhysics.Geodesy: HGeop
 
 using ..Atmosphere
 using ..Atmosphere: ISA_layers, ISAData, p_std, T_std, g_std, R

@@ -2,7 +2,7 @@ module Environment
 
 using Reexport
 
-using Flight.Engine.Systems
+using Flight.FlightCore.Systems
 @reexport using ..Atmosphere
 @reexport using ..Terrain
 

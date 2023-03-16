@@ -4,19 +4,19 @@ using UnPack
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.Engine.Systems
-using Flight.Engine.IODevices
-using Flight.Engine.Joysticks
-using Flight.Engine.GUI
-using Flight.Engine.Utils: Ranged
+using Flight.FlightCore.Systems
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.Joysticks
+using Flight.FlightCore.GUI
+using Flight.FlightCore.Utils: Ranged
 
-using Flight.Physics.Kinematics
+using Flight.FlightPhysics.Kinematics
 
-using Flight.Components.Terrain
-using Flight.Components.Environment
-using Flight.Components.Aircraft
+using Flight.FlightComponents.Terrain
+using Flight.FlightComponents.Environment
+using Flight.FlightComponents.Aircraft
 
-using Flight.C172R.C172RAirframe
+using ..C172RAirframe
 
 export ReversibleControls
 

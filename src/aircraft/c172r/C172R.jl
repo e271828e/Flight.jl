@@ -2,17 +2,17 @@ module C172R
 
 using UnPack
 
-using Flight.Engine.Systems
-using Flight.Engine.IODevices
-using Flight.Engine.Joysticks
+using Flight.FlightCore.Systems
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.Joysticks
 
-using Flight.Physics.Attitude
-using Flight.Physics.Kinematics
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Kinematics
 
-using Flight.Components.Aircraft
+using Flight.FlightComponents.Aircraft
 
-include("c172r/airframe.jl"); using .C172RAirframe
-include("c172r/avionics.jl"); using .C172RAvionics
+include("airframe.jl"); using .C172RAirframe
+include("avionics.jl"); using .C172RAvionics
 
 export Cessna172R
 
@@ -52,10 +52,8 @@ end
 ################################################################################
 ############################### Analysis Tools #################################
 
-include("c172r/tools/trim.jl"); using .Trim
-include("c172r/tools/linear.jl"); using .Linear
-
-
+include("tools/trim.jl"); using .Trim
+include("tools/linear.jl"); using .Linear
 
 
 end #module

@@ -1,4 +1,4 @@
-module Physics
+module FlightPhysics
 
 using Reexport
 
