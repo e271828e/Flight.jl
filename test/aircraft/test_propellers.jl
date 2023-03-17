@@ -7,8 +7,8 @@ using Interpolations: bounds
 using FiniteDiff: finite_difference_derivative
 
 using Flight
-using Flight.FlightComponents.Propellers: DefaultAirfoil, cL, cD, cL_α
-using Flight.FlightComponents.Propellers: Blade, Coefficients, Lookup
+using Flight.FlightAircraft.Propellers: DefaultAirfoil, cL, cD, cL_α
+using Flight.FlightAircraft.Propellers: Blade, Coefficients, Lookup
 
 export test_propellers
 

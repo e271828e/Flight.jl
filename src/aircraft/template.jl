@@ -1,25 +1,15 @@
-module Aircraft
+module Template
 
 using LinearAlgebra
 using UnPack
 using StaticArrays, ComponentArrays
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.IODevices
-using Flight.FlightCore.XPlane
-using Flight.FlightCore.GUI
+using Flight.FlightCore
+using Flight.FlightPhysics
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-
-using ..Terrain
-using ..Environment
-
-export AircraftTemplate, AbstractAirframe, AbstractAerodynamics, AbstractAvionics
+export AbstractAirframe, AbstractAvionics, AircraftTemplate
+export init_kinematics!
 
 
 ###############################################################################
@@ -40,14 +30,6 @@ RigidBody.AngMomTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
 RigidBody.WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
 
 RigidBody.get_mp_Ob(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
-
-####################### AbstractAerodynamics ##########################
-
-abstract type AbstractAerodynamics <: Component end
-
-RigidBody.MassTrait(::System{<:AbstractAerodynamics}) = HasNoMass()
-RigidBody.AngMomTrait(::System{<:AbstractAerodynamics}) = HasNoAngularMomentum()
-RigidBody.WrenchTrait(::System{<:AbstractAerodynamics}) = GetsExternalWrench()
 
 
 ###############################################################################
@@ -88,7 +70,7 @@ Systems.init(::SystemY, ac::AircraftTemplate) = AircraftTemplateY(
     init_y(ac.kinematics), init_y(ac.airframe), init_y(ac.avionics),
     RigidBodyData(), AirData())
 
-function init!(ac::System{<:AircraftTemplate}, ic::KinematicInit)
+function init_kinematics!(ac::System{<:AircraftTemplate}, ic::KinematicInit)
     Kinematics.init!(ac.x.kinematics, ic)
 end
 
@@ -99,14 +81,14 @@ function Systems.f_ode!(avionics::System{<:AbstractAvionics}, airframe::System{<
 end
 
 #to be extended
-function map_controls!(airframe::System{<:AbstractAirframe}, avionics::System{<:AbstractAvionics})
-    MethodError(map_controls!, (airframe, avionics))
-end
-
-#to be extended
 function Systems.f_ode!(airframe::System{<:AbstractAirframe},
                         kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
     MethodError(f_ode!, (airframe, kin, air, trn))
+end
+
+#to be extended
+function map_controls!(airframe::System{<:AbstractAirframe}, avionics::System{<:AbstractAvionics})
+    MethodError(map_controls!, (airframe, avionics))
 end
 
 

@@ -7,15 +7,11 @@ using BenchmarkTools
 using UnPack
 using NLopt
 
-using Flight.FlightCore.Systems
+using Flight.FlightCore
+using Flight.FlightPhysics
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-
-using Flight.FlightComponents.Piston
-using Flight.FlightComponents.Aircraft
-using Flight.FlightComponents.Environment
+using Flight.FlightAircraft.Piston
+using Flight.FlightAircraft.Template
 
 export XTrimTemplate, XTrim, TrimParameters
 
@@ -118,7 +114,7 @@ end
 function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
     params::Parameters, state::State)
 
-    Aircraft.init!(ac, Kinematics.Initializer(state, params, env))
+    init_kinematics!(ac, Kinematics.Initializer(state, params, env))
 
     ω_eng = state.n_eng * ac.airframe.pwp.engine.params.ω_rated
 

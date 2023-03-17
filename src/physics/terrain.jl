@@ -4,7 +4,7 @@ using StaticArrays
 
 using Flight.FlightCore.Systems
 
-using Flight.FlightPhysics.Geodesy
+using ..Geodesy
 
 export AbstractTerrain, DummyTerrain, HorizontalTerrain
 export TerrainData, SurfaceType

@@ -31,9 +31,9 @@ function test_system()
         ac_ECEF = System(Cessna172R(ECEF()));
         ac_NED = System(Cessna172R(NED()));
 
-        Aircraft.init!(ac_LTF, kin_init)
-        Aircraft.init!(ac_ECEF, kin_init)
-        Aircraft.init!(ac_NED, kin_init)
+        init_kinematics!(ac_LTF, kin_init)
+        init_kinematics!(ac_ECEF, kin_init)
+        init_kinematics!(ac_NED, kin_init)
 
         f_ode!(ac_LTF, env) #make sure we're on the ground
         @test ac_LTF.y.airframe.ldg.left.strut.wow == true
@@ -67,7 +67,7 @@ function test_sim(; save::Bool = true)
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.9 + 2200.5);
 
-    Aircraft.init!(ac, kin_init)
+    init_kinematics!(ac, kin_init)
     ac.u.avionics.eng_start = true #engine start switch on
 
     env.atm.u.wind.v_ew_n[1] = 0
@@ -111,7 +111,7 @@ function test_sim_paced(; save::Bool = true)
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.9 + 0);
 
-    Aircraft.init!(ac, kin_init)
+    init_kinematics!(ac, kin_init)
 
     sim = Simulation(ac; args_ode = (env,), t_end = 180)
 

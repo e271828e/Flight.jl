@@ -6,7 +6,7 @@ using BenchmarkTools
 using StaticArrays
 
 using Flight
-using Flight.FlightComponents.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
+using Flight.FlightAircraft.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
 
 export test_landing_gear
 

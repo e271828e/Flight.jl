@@ -6,15 +6,8 @@ using Trapz: trapz
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.GUI
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.Utils: Ranged, linear_scaling
-
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-
-using ..Atmosphere
+using Flight.FlightCore
+using Flight.FlightPhysics
 
 export FixedPitch, VariablePitch, Propeller
 

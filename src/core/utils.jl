@@ -3,7 +3,6 @@ module Utils
 using StaticArrays, StructArrays
 
 export Ranged, linear_scaling
-export TimeHistory, timestamps
 export MovingAverage
 export showfields, swf
 

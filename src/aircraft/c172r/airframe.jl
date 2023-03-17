@@ -6,20 +6,13 @@ using UnPack
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.GUI
-using Flight.FlightCore.Utils: Ranged, linear_scaling
+using Flight.FlightCore
+using Flight.FlightPhysics
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-
-using Flight.FlightComponents.Terrain
-using Flight.FlightComponents.Atmosphere
-using Flight.FlightComponents.LandingGear
-using Flight.FlightComponents.Propellers
-using Flight.FlightComponents.Piston
-using Flight.FlightComponents.Aircraft
+using Flight.FlightAircraft.LandingGear
+using Flight.FlightAircraft.Propellers
+using Flight.FlightAircraft.Piston
+using Flight.FlightAircraft.Template
 
 export Airframe
 
@@ -105,8 +98,7 @@ function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_
 
 end
 
-
-Base.@kwdef struct Aero <: AbstractAerodynamics
+Base.@kwdef struct Aero <: Component
     S::Float64 = 16.165 #wing area
     b::Float64 = 10.912 #wingspan
     c::Float64 = 1.494 #mean aerodynamic chord
@@ -156,6 +148,9 @@ Systems.init(::SystemY, ::Aero) = AeroY()
 Systems.init(::SystemU, ::Aero) = AeroU()
 Systems.init(::SystemS, ::Aero) = AeroS()
 
+RigidBody.MassTrait(::System{<:Aero}) = HasNoMass()
+RigidBody.AngMomTrait(::System{<:Aero}) = HasNoAngularMomentum()
+RigidBody.WrenchTrait(::System{<:Aero}) = GetsExternalWrench()
 
 function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
     air::AirData, kinematics::KinematicData, terrain::System{<:AbstractTerrain})

@@ -4,17 +4,10 @@ using UnPack
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.IODevices
-using Flight.FlightCore.Joysticks
-using Flight.FlightCore.GUI
-using Flight.FlightCore.Utils: Ranged
+using Flight.FlightCore
+using Flight.FlightPhysics
 
-using Flight.FlightPhysics.Kinematics
-
-using Flight.FlightComponents.Terrain
-using Flight.FlightComponents.Environment
-using Flight.FlightComponents.Aircraft
+using Flight.FlightAircraft.Template
 
 using ..C172RAirframe
 
@@ -88,7 +81,7 @@ end
 @inline Systems.f_disc!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
 
 
-function Aircraft.map_controls!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
+function Template.map_controls!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
 
     @unpack throttle, aileron_trim, aileron_offset, elevator_trim, elevator_offset,
             rudder_trim, rudder_offset, brake_left, brake_right, flaps, mixture,
@@ -153,7 +146,7 @@ function GUI.draw!(sys::System{<:ReversibleControls}, label::String = "Cessna 17
 
     CImGui.PushItemWidth(-60)
 
-    u.eng_start = dynamic_button("Engine Start", 0.4)
+    u.eng_start = dynamic_button("Engine Start", 0.4); CImGui.SameLine()
     u.eng_stop = dynamic_button("Engine Stop", 0.0)
     u.throttle = safe_slider(u.throttle, "Throttle", 0, 1, "%.6f")
     u.mixture = safe_slider(u.mixture, "Mixture", 0, 1, "%.6f")

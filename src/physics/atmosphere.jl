@@ -3,20 +3,15 @@ module Atmosphere
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
 using CImGui, CImGui.CSyntax, Printf
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.Utils
-using Flight.FlightCore.GUI
-
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
+using Flight.FlightCore
+using Flight.FlightPhysics
 
 export AbstractSeaLevel, TunableSeaLevel
 export AbstractWind, TunableWind
 export AbstractAtmosphere, SimpleAtmosphere
 
-export SeaLevelConditions, ISAData, WindData, AtmosphericData, AirData
+export SeaLevelData, ISAData, WindData, AtmosphericData, AirData
+export p_std, T_std, g_std, ρ_std, ISA_layers
 export get_velocity_vector, get_airflow_angles, get_wind_axes, get_stability_axes
 
 ### see ISO 2553
@@ -42,24 +37,24 @@ const g_std = 9.80665
 
 abstract type AbstractSeaLevel <: Component end
 
-Base.@kwdef struct SeaLevelConditions
+Base.@kwdef struct SeaLevelData
     p::Float64 = p_std
     T::Float64 = T_std
 end
 
-#when queried, any AbstractSeaLevel System must provide the sea level conditions
-#at any given 2D location. these may be stationary or time-evolving.
-function SeaLevelConditions(::T, ::Abstract2DLocation) where {T<:System{<:AbstractSeaLevel}}
-    error("SeaLevelConditions constructor not implemented for $T")
+#an AbstractSeaLevel System must return SeaLevelData at any queried 2D location.
+#these may be stationary or time-evolving.
+function SeaLevelData(::T, ::Abstract2DLocation) where {T<:System{<:AbstractSeaLevel}}
+    error("SeaLevelData constructor not implemented for $T")
 end
 
 ############################ TunableSeaLevel ###################################
 
 #a simple SeaLevel model. it does not have a state and therefore cannot evolve
-#on its own. but its input vector can be used to manually tune the
-#SeaLevelConditions during simulation
+#on its own. but its input vector can be used to manually tune SeaLevelData
+#during simulation
 
-struct TunableSeaLevel <: AbstractSeaLevel end #uonstant, uniform SeaLevel
+struct TunableSeaLevel <: AbstractSeaLevel end
 
 Base.@kwdef mutable struct UTunableSeaLevel
     T_sl::Float64 = T_std
@@ -68,8 +63,8 @@ end
 
 Systems.init(::SystemU, ::TunableSeaLevel) = UTunableSeaLevel()
 
-function SeaLevelConditions(s::System{<:TunableSeaLevel}, ::Abstract2DLocation)
-    SeaLevelConditions(T = s.u.T_sl, p = s.u.p_sl)
+function SeaLevelData(s::System{<:TunableSeaLevel}, ::Abstract2DLocation)
+    SeaLevelData(T = s.u.T_sl, p = s.u.p_sl)
     #alternative using actual local SL gravity:
     # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(loc, HOrth(0.0))))
 end
@@ -103,7 +98,7 @@ end
 #compute ISAData at a given geopotential altitude, using ISA_temperature_law and
 #ISA_pressure_law to propagate the given sea level conditions upwards through
 #the successive ISA_layers up to the requested altitude
-@inline function ISAData(h_geo::HGeop, sl::SeaLevelConditions = SeaLevelConditions())
+@inline function ISAData(h_geo::HGeop, sl::SeaLevelData = SeaLevelData())
 
     h = Float64(h_geo)
     h_base = 0; T_base = sl.T; p_base = sl.p; g0 = g_std #g0 = sl.g
@@ -140,7 +135,7 @@ end
 @inline function ISAData(sys::System{<:AbstractSeaLevel}, loc::Geographic)
 
     h_geop = Altitude{Geopotential}(loc.h, loc.loc)
-    sl = SeaLevelConditions(sys, loc.loc)
+    sl = SeaLevelData(sys, loc.loc)
     ISAData(h_geop, sl)
 
 end
@@ -162,11 +157,11 @@ end
 
 struct TunableWind <: AbstractWind end
 
-Base.@kwdef mutable struct USimpleWind
+Base.@kwdef mutable struct UTunableWInd
     v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
 end
 
-Systems.init(::SystemU, ::TunableWind) = USimpleWind()
+Systems.init(::SystemU, ::TunableWind) = UTunableWInd()
 
 function WindData(wind::System{<:TunableWind}, ::Abstract3DPosition)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData

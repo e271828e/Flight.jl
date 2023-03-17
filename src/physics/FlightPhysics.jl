@@ -7,5 +7,8 @@ include("attitude.jl"); @reexport using .Attitude
 include("geodesy.jl"); @reexport using .Geodesy
 include("kinematics.jl"); @reexport using .Kinematics
 include("rigidbody.jl"); @reexport using .RigidBody
+include("atmosphere.jl"); @reexport using .Atmosphere
+include("terrain.jl"); @reexport using .Terrain
+include("environment.jl"); @reexport using .Environment
 
 end

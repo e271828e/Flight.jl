@@ -5,7 +5,7 @@ using CImGui
 using CImGui.CSyntax
 
 using Flight
-using Flight.Components.Control: PICompensator, PICompensatorU, PICompensatorY
+using Flight.FlightAircraft.Control: PICompensator, PICompensatorU, PICompensatorY
 
 export demo_joysticks
 

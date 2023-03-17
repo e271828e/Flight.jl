@@ -20,7 +20,7 @@ function benchmark_ac()
 
     sys_reinit! = let kin_init = kin_init
         function (ac)
-            Aircraft.init!(ac, kin_init)
+            init_kinematics!(ac, kin_init)
             ac.u.avionics.eng_start = true
         end
     end

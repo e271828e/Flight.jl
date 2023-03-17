@@ -4,17 +4,9 @@ using StaticArrays, ComponentArrays, LinearAlgebra, UnPack
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.Utils: Ranged
-using Flight.FlightCore.GUI
+using Flight.FlightCore
+using Flight.FlightPhysics
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-
-using ..Terrain
 using ..Control: PICompensator, PICompensatorY
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking

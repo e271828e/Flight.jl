@@ -4,9 +4,7 @@ using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra
 using UnPack
 using CImGui, CImGui.CSyntax, Printf
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.GUI
+using Flight.FlightCore
 
 using ..Attitude
 using ..Geodesy
