@@ -73,7 +73,7 @@ function assign!(y::Y, ac::System{<:Cessna172R})
     f_x, f_y, f_z = ac.y.rigidbody.f_G_b
     TAS = ac.y.air.TAS
     ω_eng = ac.y.airframe.pwp.engine.ω
-    m_fuel = ac.y.airframe.fuel.m
+    m_fuel = ac.y.airframe.fuel.m_avail
 
     @pack! y = ψ, θ, φ, ϕ, λ, h, p, q, r, TAS, α, β, f_x, f_y, f_z, ω_eng, m_fuel
 

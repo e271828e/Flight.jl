@@ -131,9 +131,9 @@ function assign!(ac::System{<:Cessna172R}, env::System{<:AbstractEnvironment},
     ac.u.avionics.mixture = params.mixture
 
     #incremental control inputs to zero
-    ac.u.avionics.elevator_offset = 0
-    ac.u.avionics.aileron_offset = 0
-    ac.u.avionics.rudder_offset = 0
+    ac.u.avionics.elevator = 0
+    ac.u.avionics.aileron = 0
+    ac.u.avionics.rudder = 0
 
     #engine must be running, no way to trim otherwise
     ac.s.airframe.pwp.engine.state = Piston.eng_running

@@ -77,9 +77,9 @@ function test_sim(; save::Bool = true)
         function (u, s, y, t, params)
 
             u.avionics.throttle = 0.2
-            u.avionics.aileron_offset = (t < 5 ? 0.25 : 0.0)
-            u.avionics.elevator_offset = 0.0
-            u.avionics.rudder_offset = 0.0
+            u.avionics.aileron = (t < 5 ? 0.25 : 0.0)
+            u.avionics.elevator = 0.0
+            u.avionics.rudder = 0.0
             u.avionics.brake_left = 1
             u.avionics.brake_right = 1
 

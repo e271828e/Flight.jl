@@ -26,11 +26,11 @@ struct ReversibleControls <: AbstractAvionics end
 Base.@kwdef mutable struct ReversibleControlsU
     throttle::Ranged{Float64, 0, 1} = 0.0
     aileron_trim::Ranged{Float64, -1, 1} = 0.0
-    aileron_offset::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    aileron::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
     elevator_trim::Ranged{Float64, -1, 1} = 0.0
-    elevator_offset::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    elevator::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
     rudder_trim::Ranged{Float64, -1, 1} = 0.0
-    rudder_offset::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
+    rudder::Ranged{Float64, -1, 1} = 0.0 #incremental command, for input devices
     brake_left::Ranged{Float64, 0, 1} = 0.0
     brake_right::Ranged{Float64, 0, 1} = 0.0
     flaps::Ranged{Float64, 0, 1} = 0.0
@@ -42,11 +42,11 @@ end
 Base.@kwdef struct ReversibleControlsY
     throttle::Float64 = 0.0
     aileron_trim::Float64 = 0.0
-    aileron_offset::Float64 = 0.0
+    aileron::Float64 = 0.0
     elevator_trim::Float64 = 0.0
-    elevator_offset::Float64 = 0.0
+    elevator::Float64 = 0.0
     rudder_trim::Float64 = 0.0
-    rudder_offset::Float64 = 0.0
+    rudder::Float64 = 0.0
     brake_left::Float64 = 0.0
     brake_right::Float64 = 0.0
     flaps::Float64 = 0.0
@@ -65,13 +65,13 @@ function Systems.f_ode!(avionics::System{ReversibleControls}, ::System{<:Airfram
                 ::KinematicData, ::AirData, ::System{<:AbstractTerrain})
 
     #ReversibleControls has no internal dynamics, just input-output feedthrough
-    @unpack throttle, aileron_trim, aileron_offset, elevator_trim, elevator_offset,
-            rudder_trim, rudder_offset, brake_left, brake_right, flaps, mixture,
+    @unpack throttle, aileron_trim, aileron, elevator_trim, elevator,
+            rudder_trim, rudder, brake_left, brake_right, flaps, mixture,
             eng_start, eng_stop = avionics.u
 
     avionics.y = ReversibleControlsY(;
-            throttle, aileron_trim, aileron_offset, elevator_trim, elevator_offset,
-            rudder_trim, rudder_offset, brake_left, brake_right, flaps, mixture,
+            throttle, aileron_trim, aileron, elevator_trim, elevator,
+            rudder_trim, rudder, brake_left, brake_right, flaps, mixture,
             eng_start, eng_stop)
 
 end
@@ -83,8 +83,8 @@ end
 
 function Template.map_controls!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
 
-    @unpack throttle, aileron_trim, aileron_offset, elevator_trim, elevator_offset,
-            rudder_trim, rudder_offset, brake_left, brake_right, flaps, mixture,
+    @unpack throttle, aileron_trim, aileron, elevator_trim, elevator,
+            rudder_trim, rudder, brake_left, brake_right, flaps, mixture,
             eng_start, eng_stop = avionics.u
 
     @unpack aero, pwp, ldg = airframe
@@ -93,12 +93,12 @@ function Template.map_controls!(airframe::System{<:Airframe}, avionics::System{R
     pwp.u.engine.stop = eng_stop
     pwp.u.engine.thr = throttle
     pwp.u.engine.mix = mixture
-    ldg.u.nose.steering[] = (rudder_trim + rudder_offset) #rudder↑ (right pedal forward) -> nose wheel steering right
+    ldg.u.nose.steering[] = (rudder_trim + rudder) #rudder↑ (right pedal forward) -> nose wheel steering right
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
-    aero.u.e = (elevator_trim + elevator_offset) #elevator↑ (stick forward) -> e↑ -> pitch down
-    aero.u.a = (aileron_trim + aileron_offset) #aileron↑ (stick right) -> a↑ -> roll right
-    aero.u.r = -(rudder_trim + rudder_offset) #rudder↑ (right pedal forward) -> r↓ -> yaw right
+    aero.u.e = (elevator_trim + elevator) #elevator↑ (stick forward) -> e↑ -> pitch down
+    aero.u.a = (aileron_trim + aileron) #aileron↑ (stick right) -> a↑ -> roll right
+    aero.u.r = -(rudder_trim + rudder) #rudder↑ (right pedal forward) -> r↓ -> yaw right
     aero.u.f = flaps #flaps↑ -> δf↑
 
     return nothing
@@ -115,9 +115,9 @@ brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 function IODevices.assign!(u::ReversibleControlsU,
             joystick::Joystick{XBoxControllerID}, ::DefaultMapping)
 
-    u.aileron_offset = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.elevator_offset = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
-    u.rudder_offset = get_axis_value(joystick, :left_analog_x) |> rudder_curve
+    u.aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.elevator = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.rudder = get_axis_value(joystick, :left_analog_x) |> rudder_curve
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
@@ -152,9 +152,9 @@ function GUI.draw!(sys::System{<:ReversibleControls}, label::String = "Cessna 17
     u.mixture = safe_slider(u.mixture, "Mixture", 0, 1, "%.6f")
     u.brake_left = safe_slider(u.brake_left, "Left Brake", 0, 1, "%.6f")
     u.brake_right = safe_slider(u.brake_right, "Right Brake", 0, 1, "%.6f")
-    u.aileron_offset = safe_slider(u.aileron_offset, "Aileron Offset", -1, 1, "%.6f")
-    u.elevator_offset = safe_slider(u.elevator_offset, "Elevator Offset", -1, 1, "%.6f")
-    u.rudder_offset = safe_slider(u.rudder_offset, "Rudder Offset", -1, 1, "%.6f")
+    u.aileron = safe_slider(u.aileron, "Aileron", -1, 1, "%.6f")
+    u.elevator = safe_slider(u.elevator, "Elevator", -1, 1, "%.6f")
+    u.rudder = safe_slider(u.rudder, "Rudder", -1, 1, "%.6f")
     u.flaps = safe_slider(u.flaps, "Flap Setting", 0, 1, "%.6f")
     u.aileron_trim = safe_input(u.aileron_trim, "Aileron Trim", 0.001, 1, "%.6f")
     u.elevator_trim = safe_input(u.elevator_trim, "Elevator Trim", 0.001, 1, "%.6f")
@@ -180,9 +180,9 @@ function GUI.draw(sys::System{<:ReversibleControls}, label::String = "Cessna 172
     @running_plot(y.mixture, "Mixture", 0, 1, 0.5, 60)
     @running_plot(y.brake_left, "Left Brake", 0, 1, 0.0, 60)
     @running_plot(y.brake_right, "Right Brake", 0, 1, 0.0, 60)
-    @running_plot(y.aileron_offset, "Aileron Offset", -1, 1, 0.0, 60)
-    @running_plot(y.elevator_offset, "Elevator Offset", -1, 1, 0.0, 60)
-    @running_plot(y.rudder_offset, "Rudder Offset", -1, 1, 0.0, 60)
+    @running_plot(y.aileron, "Aileron", -1, 1, 0.0, 60)
+    @running_plot(y.elevator, "Elevator", -1, 1, 0.0, 60)
+    @running_plot(y.rudder, "Rudder", -1, 1, 0.0, 60)
     @running_plot(y.aileron_trim, "Aileron Trim", -1, 1, 0.0, 60)
     @running_plot(y.elevator_trim, "Elevator Trim", -1, 1, 0.0, 60)
     @running_plot(y.rudder_trim, "Rudder Trim", -1, 1, 0.0, 60)

@@ -77,11 +77,13 @@ function Systems.f_ode!(sys::System{<:LinearStateSpace{LX, LU, LY}}) where {LX, 
 
 end
 
-function Base.filter(cmp::LinearStateSpace; x = (), u = (), y = ())
+function Base.filter(cmp::LinearStateSpace; x = keys(cmp.x0), u = keys(cmp.u0), y = keys(cmp.y0))
 
-    x_ind = (!isempty(x) ? x : keys(cmp.x0))
-    u_ind = (!isempty(u) ? u : keys(cmp.u0))
-    y_ind = (!isempty(y) ? y : keys(cmp.y0))
+    #to do: make it work for scalars
+
+    x_ind = x
+    u_ind = u
+    y_ind = y
 
     ẋ0 = cmp.ẋ0[x_ind]
     x0 = cmp.x0[x_ind]
