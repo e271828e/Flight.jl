@@ -2,6 +2,8 @@ module Utils
 
 using StaticArrays, StructArrays
 
+using ..GUI
+
 export Ranged, linear_scaling
 export MovingAverage
 export showfields, swf
@@ -62,6 +64,14 @@ Base.:(==)(x::Ranged{T1}, y::Real) where {T1} = (==)(promote(x.val, y)...)
 function linear_scaling(u::Ranged{T, UMin, UMax}, range::NTuple{2,Real}) where {T, UMin, UMax}
     @assert UMin != UMax
     return range[1] + (range[2] - range[1])/(UMax - UMin) * (T(u) - UMin)
+end
+
+function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, display_format::String) where {T<:AbstractFloat,Min,Max}
+    safe_slider(label, Float64(source), Min, Max, display_format)
+end
+
+function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, step::Real, fast_step::Real, display_format::String) where {T<:AbstractFloat,Min,Max}
+    safe_input(label, Float64(source), step, fast_step, display_format)
 end
 
 function test()

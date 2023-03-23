@@ -5,7 +5,7 @@ using UnPack
 using Flight.FlightCore
 using Flight.FlightPhysics
 
-using ..Template
+using ..Aircraft
 
 include("airframe.jl"); using .C172RAirframe
 include("avionics.jl"); using .C172RAvionics

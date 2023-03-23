@@ -6,11 +6,18 @@ using Flight
 
 export test_gui
 
+# function test_gui()
+#     ctl = C172R.ReversibleControls() |> System
+#     r = Renderer()
+#     GUI.init!(r)
+#     GUI.run(r, GUI.draw!, ctl)
+# end
+
 function test_gui()
-    ctl = C172R.ReversibleControls() |> System
+    world = SimpleWorld() |> System
     r = Renderer()
     GUI.init!(r)
-    GUI.run(r, GUI.draw!, ctl)
+    GUI.run(r, GUI.draw!, world)
 end
 
 end

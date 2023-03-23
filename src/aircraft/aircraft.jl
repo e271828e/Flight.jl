@@ -1,4 +1,4 @@
-module Template
+module Aircraft
 
 using LinearAlgebra
 using UnPack
@@ -187,11 +187,11 @@ end
 
 ################################### GUI ########################################
 
-function GUI.draw!(sys::System{<:AircraftTemplate})
+function GUI.draw!(sys::System{<:AircraftTemplate}, label::String = "Aircraft")
 
     @unpack y = sys
 
-    CImGui.Begin("Aircraft")
+    CImGui.Begin(label)
 
     show_dyn = @cstatic check=false @c CImGui.Checkbox("Dynamics", &check)
     show_kin = @cstatic check=false @c CImGui.Checkbox("Kinematics", &check)

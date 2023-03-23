@@ -7,7 +7,7 @@ using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 using Flight.FlightCore
 using Flight.FlightPhysics
 
-using Flight.FlightAircraft.Template
+using Flight.FlightAircraft.Aircraft
 
 using ..C172RAirframe
 
@@ -81,7 +81,7 @@ end
 @inline Systems.f_disc!(::System{ReversibleControls}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
 
 
-function Template.map_controls!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
+function Aircraft.map_controls!(airframe::System{<:Airframe}, avionics::System{ReversibleControls})
 
     @unpack throttle, aileron_trim, aileron, elevator_trim, elevator,
             rudder_trim, rudder, brake_left, brake_right, flaps, mixture,
@@ -148,17 +148,17 @@ function GUI.draw!(sys::System{<:ReversibleControls}, label::String = "Cessna 17
 
     u.eng_start = dynamic_button("Engine Start", 0.4); CImGui.SameLine()
     u.eng_stop = dynamic_button("Engine Stop", 0.0)
-    u.throttle = safe_slider(u.throttle, "Throttle", 0, 1, "%.6f")
-    u.mixture = safe_slider(u.mixture, "Mixture", 0, 1, "%.6f")
-    u.brake_left = safe_slider(u.brake_left, "Left Brake", 0, 1, "%.6f")
-    u.brake_right = safe_slider(u.brake_right, "Right Brake", 0, 1, "%.6f")
-    u.aileron = safe_slider(u.aileron, "Aileron", -1, 1, "%.6f")
-    u.elevator = safe_slider(u.elevator, "Elevator", -1, 1, "%.6f")
-    u.rudder = safe_slider(u.rudder, "Rudder", -1, 1, "%.6f")
-    u.flaps = safe_slider(u.flaps, "Flap Setting", 0, 1, "%.6f")
-    u.aileron_trim = safe_input(u.aileron_trim, "Aileron Trim", 0.001, 1, "%.6f")
-    u.elevator_trim = safe_input(u.elevator_trim, "Elevator Trim", 0.001, 1, "%.6f")
-    u.rudder_trim = safe_input(u.rudder_trim, "Rudder Trim", 0.001, 1, "%.6f")
+    u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
+    u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
+    u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
+    u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
+    u.aileron = safe_slider("Aileron", u.aileron, "%.6f")
+    u.elevator = safe_slider("Elevator", u.elevator, "%.6f")
+    u.rudder = safe_slider("Rudder", u.rudder, "%.6f")
+    u.flaps = safe_slider("Flaps", u.flaps, "%.6f")
+    u.aileron_trim = safe_input("Aileron Trim", u.aileron_trim, 0.001, 0.1, "%.6f")
+    u.elevator_trim = safe_input("Elevator Trim", u.elevator_trim, 0.001, 0.1, "%.6f")
+    u.rudder_trim = safe_input("Rudder Trim", u.rudder_trim, 0.001, 0.1, "%.6f")
 
     CImGui.PopItemWidth()
 
@@ -176,17 +176,17 @@ function GUI.draw(sys::System{<:ReversibleControls}, label::String = "Cessna 172
 
     CImGui.PushItemWidth(-60)
 
-    @running_plot(y.throttle, "Throttle", 0, 1, 0.0, 60)
-    @running_plot(y.mixture, "Mixture", 0, 1, 0.5, 60)
-    @running_plot(y.brake_left, "Left Brake", 0, 1, 0.0, 60)
-    @running_plot(y.brake_right, "Right Brake", 0, 1, 0.0, 60)
-    @running_plot(y.aileron, "Aileron", -1, 1, 0.0, 60)
-    @running_plot(y.elevator, "Elevator", -1, 1, 0.0, 60)
-    @running_plot(y.rudder, "Rudder", -1, 1, 0.0, 60)
-    @running_plot(y.aileron_trim, "Aileron Trim", -1, 1, 0.0, 60)
-    @running_plot(y.elevator_trim, "Elevator Trim", -1, 1, 0.0, 60)
-    @running_plot(y.rudder_trim, "Rudder Trim", -1, 1, 0.0, 60)
-    @running_plot(y.flaps, "Flap Setting", 0, 1, 0.0, 60)
+    @running_plot("Throttle", y.throttle, 0, 1, 0.0, 60)
+    @running_plot("Mixture", y.mixture, 0, 1, 0.5, 60)
+    @running_plot("Left Brake", y.brake_left, 0, 1, 0.0, 60)
+    @running_plot("Right Brake", y.brake_right, 0, 1, 0.0, 60)
+    @running_plot("Aileron", y.aileron, -1, 1, 0.0, 60)
+    @running_plot("Elevator", y.elevator, -1, 1, 0.0, 60)
+    @running_plot("Rudder", y.rudder, -1, 1, 0.0, 60)
+    @running_plot("Aileron Trim", y.aileron_trim, -1, 1, 0.0, 60)
+    @running_plot("Elevator Trim", y.elevator_trim, -1, 1, 0.0, 60)
+    @running_plot("Rudder Trim", y.rudder_trim, -1, 1, 0.0, 60)
+    @running_plot("Flap Setting", y.flaps, 0, 1, 0.0, 60)
 
     CImGui.PopItemWidth()
 

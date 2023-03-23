@@ -255,8 +255,37 @@ AbstractTrees.print_tree(::System{C}; kwargs...) where {C} = print_tree(C; kwarg
 ################################################################################
 #################################### GUI #######################################
 
+#none of these work
 
-#generating checkboxes via for loops does not work for some reason
+#this one doesn't work because the checkbox state is not preserved from one
+#execution to the next without the @cstatic macro
+
+# @generated function (GUI.draw!(sys::System{T, X, Y, U, S, P, B}, label::String = "System")
+#     where {T<:Component, X, Y, U, S, P, B})
+
+#     ex = Expr(:block)
+
+#     push!(ex.args, :(CImGui.Begin(label)))
+
+#     for ss_key in fieldnames(B)
+#         ss_show = gensym(ss_key)
+#         ss_label = string(ss_key)
+#         Core.print(ss_label)
+#         ss_expr = quote
+#             $ss_show = Ref(false)
+#             println($ss_label)
+#             CImGui.Checkbox($ss_label, $ss_show)
+#             println($ss_show[])
+#         end
+#         push!(ex.args, ss_expr)
+
+#     end
+
+#     push!(ex.args, :(CImGui.End()))
+
+#     return ex
+
+# end
 
 # function GUI.draw!(sys::System, gui_input::Bool = true, label::String = "Generic System")
 

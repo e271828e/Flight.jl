@@ -12,7 +12,7 @@ using Flight.FlightPhysics
 using Flight.FlightAircraft.LandingGear
 using Flight.FlightAircraft.Propellers
 using Flight.FlightAircraft.Piston
-using Flight.FlightAircraft.Template
+using Flight.FlightAircraft.Aircraft
 
 export Airframe
 
@@ -403,11 +403,11 @@ function GUI.draw!(sys::System{<:Payload}, label::String = "Cessna 172R Payload"
 
     CImGui.PushItemWidth(-60)
 
-    u.m_pilot = GUI.safe_slider(u.m_pilot, "Pilot Mass (kg)", 0, 100, "%.3f")
-    u.m_copilot = GUI.safe_slider(u.m_copilot, "Copilot Mass (kg)", 0, 100, "%.3f")
-    u.m_lpass = GUI.safe_slider(u.m_lpass, "Left Passenger Mass (kg)", 0, 100, "%.3f")
-    u.m_rpass = GUI.safe_slider(u.m_rpass, "Right Passenger Mass (kg)", 0, 100, "%.3f")
-    u.m_baggage = GUI.safe_slider(u.m_baggage, "Baggage Mass (kg)", 0, 100, "%.3f")
+    u.m_pilot = GUI.safe_slider("Pilot Mass (kg)", u.m_pilot, 0, 100, "%.3f")
+    u.m_copilot = GUI.safe_slider("Copilot Mass (kg)", u.m_copilot, 0, 100, "%.3f")
+    u.m_lpass = GUI.safe_slider("Left Passenger Mass (kg)", u.m_lpass, 0, 100, "%.3f")
+    u.m_rpass = GUI.safe_slider("Right Passenger Mass (kg)", u.m_rpass, 0, 100, "%.3f")
+    u.m_baggage = GUI.safe_slider("Baggage Mass (kg)", u.m_baggage, 0, 100, "%.3f")
 
     CImGui.PopItemWidth()
 

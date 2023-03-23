@@ -11,7 +11,7 @@ using Flight.FlightCore
 using Flight.FlightPhysics
 
 using Flight.FlightAircraft.Piston
-using Flight.FlightAircraft.Template
+using Flight.FlightAircraft.Aircraft
 
 export XTrimTemplate, XTrim, TrimParameters
 
@@ -186,7 +186,8 @@ end
 
 function trim!(ac::System{<:Cessna172R},
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
-    params::Parameters = Parameters(), state::State = State()) #optional initial guess
+    params::Parameters = Parameters(),
+    state::State = State()) #optional initial guess
 
     f_target = get_target_function(ac, env, params)
 

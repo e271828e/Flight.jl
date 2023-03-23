@@ -1,13 +1,16 @@
 module GUI
 
 using UnPack
+using Reexport
 
-using Printf
-using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 using CImGui.GLFWBackend
 using CImGui.OpenGLBackend
 using CImGui.GLFWBackend.GLFW
 using CImGui.OpenGLBackend.ModernGL
+
+#these are needed by any module extending GUI draw methods
+@reexport using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
+@reexport using Printf
 
 export CImGuiStyle, Renderer
 export dynamic_button, safe_slider, safe_input, @running_plot
@@ -238,7 +241,7 @@ end
 ################################################################################
 ################################ Macros ########################################
 
-function show_help_marker(desc)
+function show_help_marker(desc::String)
     CImGui.TextDisabled("(?)")
     if CImGui.IsItemHovered()
         CImGui.BeginTooltip()
@@ -250,7 +253,7 @@ function show_help_marker(desc)
 end
 
 #changes shade when hovered and pushed
-function dynamic_button(label, hue)
+function dynamic_button(label::String, hue::AbstractFloat)
     CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(hue, 0.6, 0.6))
     CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(hue, 0.7, 0.7))
     CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(hue, 0.8, 0.8))
@@ -259,7 +262,7 @@ function dynamic_button(label, hue)
     return CImGui.IsItemActive()
 end
 
-function safe_slider(source, label, lower_bound, upper_bound, display_format)
+function safe_slider(label::String, source::AbstractFloat, lower_bound::Real, upper_bound::Real, display_format::String)
     ref = Ref(Cfloat(source))
     CImGui.Text(label)
     CImGui.SameLine()
@@ -269,7 +272,7 @@ function safe_slider(source, label, lower_bound, upper_bound, display_format)
     return ref[]
 end
 
-function safe_input(source, label, step, fast_step, display_format)
+function safe_input(label::String, source::AbstractFloat, step::Real, fast_step::Real, display_format::String)
     ref = Ref(Cdouble(source))
     CImGui.Text(label)
     CImGui.SameLine()
@@ -278,7 +281,7 @@ function safe_input(source, label, step, fast_step, display_format)
 end
 
 #inactive while not enabled; overwrites target while enabled
-macro enabled_slider(target, label, lower_bound, upper_bound, default)
+macro enabled_slider(label, target, lower_bound, upper_bound, default)
     enable = gensym(:enable)
     value = gensym(:value)
     return esc(quote
@@ -289,7 +292,7 @@ macro enabled_slider(target, label, lower_bound, upper_bound, default)
     end)
 end
 
-macro running_plot(source, label, lower_bound, upper_bound, initial_value, window_height)
+macro running_plot(label, source, lower_bound, upper_bound, initial_value, window_height)
     values = gensym(:values)
     offset = gensym(:offset)
     return esc(quote

@@ -1,12 +1,12 @@
 module Atmosphere
 
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
-using CImGui, CImGui.CSyntax, Printf
+# using CImGui, CImGui.CSyntax, Printf
 
 using Flight.FlightCore
 using Flight.FlightPhysics
 
-export AbstractSeaLevel, TunableSeaLevel
+export AbstractSeaLevelConditions, TunableSeaLevelConditions
 export AbstractWind, TunableWind
 export AbstractAtmosphere, SimpleAtmosphere
 
@@ -33,42 +33,59 @@ const g_std = 9.80665
 
 
 ################################################################################
-############################## SeaLevel #######################################
+############################ SeaLevelConditions ################################
 
-abstract type AbstractSeaLevel <: Component end
+abstract type AbstractSeaLevelConditions <: Component end
 
 Base.@kwdef struct SeaLevelData
     p::Float64 = p_std
     T::Float64 = T_std
 end
 
-#an AbstractSeaLevel System must return SeaLevelData at any queried 2D location.
-#these may be stationary or time-evolving.
-function SeaLevelData(::T, ::Abstract2DLocation) where {T<:System{<:AbstractSeaLevel}}
+#an AbstractSeaLevelConditions System must return SeaLevelData at any queried 2D
+#location. these may be stationary or time-evolving.
+function SeaLevelData(::T, ::Abstract2DLocation) where {T<:System{<:AbstractSeaLevelConditions}}
     error("SeaLevelData constructor not implemented for $T")
 end
 
-############################ TunableSeaLevel ###################################
+######################## TunableSeaLevelConditions #############################
 
-#a simple SeaLevel model. it does not have a state and therefore cannot evolve
-#on its own. but its input vector can be used to manually tune SeaLevelData
-#during simulation
+#a simple SeaLevelConditions model. it does not have a state and therefore
+#cannot evolve on its own, but its input vector can be used to manually tune
+#SeaLevelData during simulation
 
-struct TunableSeaLevel <: AbstractSeaLevel end
+struct TunableSeaLevelConditions <: AbstractSeaLevelConditions end
 
-Base.@kwdef mutable struct UTunableSeaLevel
-    T_sl::Float64 = T_std
-    p_sl::Float64 = p_std
+#these probably should be defined as Ranged
+Base.@kwdef mutable struct UTunableSeaLevelConditions
+    T_sl::Ranged{Float64, T_std - 50, T_std + 50} = T_std
+    p_sl::Ranged{Float64, p_std - 10000, p_std + 10000} = p_std
 end
 
-Systems.init(::SystemU, ::TunableSeaLevel) = UTunableSeaLevel()
+Systems.init(::SystemU, ::TunableSeaLevelConditions) = UTunableSeaLevelConditions()
 
-function SeaLevelData(s::System{<:TunableSeaLevel}, ::Abstract2DLocation)
+function SeaLevelData(s::System{<:TunableSeaLevelConditions}, ::Abstract2DLocation)
     SeaLevelData(T = s.u.T_sl, p = s.u.p_sl)
     #alternative using actual local SL gravity:
     # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(loc, HOrth(0.0))))
 end
 
+function GUI.draw!(sys::System{<:TunableSeaLevelConditions}, label::String = "Sea Level Conditions")
+
+    u = sys.u
+
+    CImGui.Begin(label)
+
+    CImGui.PushItemWidth(-60)
+    u.T_sl = GUI.safe_slider("Temperature (K)", u.T_sl, "%.3f")
+    u.p_sl = GUI.safe_slider("Pressure (Pa)", u.p_sl, "%.3f")
+    CImGui.PopItemWidth()
+
+    CImGui.End()
+
+    GUI.draw(sys, label)
+
+end
 
 ################################################################################
 ############################### ISAData ########################################
@@ -132,7 +149,7 @@ end
 
 @inline ISAData() = ISAData(HGeop(0))
 
-@inline function ISAData(sys::System{<:AbstractSeaLevel}, loc::Geographic)
+@inline function ISAData(sys::System{<:AbstractSeaLevelConditions}, loc::Geographic)
 
     h_geop = Altitude{Geopotential}(loc.h, loc.loc)
     sl = SeaLevelData(sys, loc.loc)
@@ -167,9 +184,27 @@ function WindData(wind::System{<:TunableWind}, ::Abstract3DPosition)
     wind.u.v_ew_n |> SVector{3,Float64} |> WindData
 end
 
+function GUI.draw!(sys::System{<:TunableWind}, label::String = "Wind")
+
+    v = sys.u.v_ew_n
+
+    CImGui.Begin(label)
+
+    CImGui.PushItemWidth(-60)
+    v[1] = GUI.safe_slider("North (m/s)", v[1], -30, 30, "%.3f")
+    v[2] = GUI.safe_slider("East (m/s)", v[2], -30, 30, "%.3f")
+    v[3] = GUI.safe_slider("Down (m/s)", v[3], -30, 30, "%.3f")
+    CImGui.PopItemWidth()
+
+    CImGui.End()
+
+    GUI.draw(sys, label)
+
+end
+
 
 ################################################################################
-############################# Atmospheric Model ################################
+############################ AbstractAtmosphere ################################
 
 abstract type AbstractAtmosphere <: Component end
 
@@ -182,15 +217,33 @@ function AtmosphericData(::T, ::Abstract3DPosition) where {T<:System{<:AbstractA
     error("AtmosphericData constructor not implemented for $T")
 end
 
+################################################################################
 ############################## SimpleAtmosphere ################################
 
-Base.@kwdef struct SimpleAtmosphere{S <: AbstractSeaLevel, W <: AbstractWind} <: AbstractAtmosphere
-    sl::S = TunableSeaLevel()
+Base.@kwdef struct SimpleAtmosphere{S <: AbstractSeaLevelConditions,
+                                   W <: AbstractWind} <: AbstractAtmosphere
+    sl::S = TunableSeaLevelConditions()
     wind::W = TunableWind()
 end
 
 function AtmosphericData(atm::System{<:SimpleAtmosphere}, loc::Geographic)
     AtmosphericData( ISAData(atm.sl, loc), WindData(atm.wind, loc))
+end
+
+################################# GUI ##########################################
+
+function GUI.draw!(sys::System{<:SimpleAtmosphere}, label::String = "Environment")
+
+    CImGui.Begin(label)
+
+    show_sl = @cstatic check=false @c CImGui.Checkbox("Sea Level Conditions", &check)
+    show_wind = @cstatic check=false @c CImGui.Checkbox("Wind", &check)
+
+    show_sl && GUI.draw!(sys.sl, "Sea Level Conditions")
+    show_wind && GUI.draw!(sys.wind, "Wind")
+
+    CImGui.End()
+
 end
 
 
@@ -390,7 +443,6 @@ function Plotting.make_plots(th::TimeHistory{<:AirData}; kwargs...)
 
 end
 
-################################################################################
 ################################# GUI ##########################################
 
 function GUI.draw(air::AirData, label::String = "Air")

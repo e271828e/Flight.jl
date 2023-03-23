@@ -12,7 +12,7 @@ using Flight.FlightAircraft.Control: LinearStateSpace
 using ..C172R
 using ..Trim
 
-export linearize!
+export linearize
 
 ############################### Linearization ##################################
 
