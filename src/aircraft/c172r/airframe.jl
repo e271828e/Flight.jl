@@ -56,11 +56,6 @@ RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
 
 struct MechanicalActuation <: Component end
 
-#elevator↑ (stick forward) -> e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
-#aileron↑ (stick right) -> a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
-#rudder↑ (right pedal forward) -> r↓ -> δr↓ -> rudder trailing edge right -> Cn↑ -> yaw right
-#rudder↑ (right pedal forward) -> nose wheel steering right -> yaw right
-#flaps↑ -> δf↑ -> flap trailing edge down -> CL↑
 Base.@kwdef mutable struct MechanicalActuationU
     eng_start::Bool = false
     eng_stop::Bool = false
@@ -103,14 +98,14 @@ RigidBody.WrenchTrait(::System{MechanicalActuation}) = GetsNoExternalWrench()
 function Systems.f_ode!(act::System{MechanicalActuation})
 
     #MechanicalActuation has no internal dynamics, just input-output feedthrough
-    @unpack throttle, aileron_trim, aileron, elevator_trim, elevator,
-            rudder_trim, rudder, brake_left, brake_right, flaps, mixture,
-            eng_start, eng_stop = act.u
+    @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
+            aileron_trim, elevator_trim, rudder_trim, flaps,
+            brake_left, brake_right= act.u
 
     act.y = MechanicalActuationY(;
-            throttle, aileron_trim, aileron, elevator_trim, elevator,
-            rudder_trim, rudder, brake_left, brake_right, flaps, mixture,
-            eng_start, eng_stop)
+            eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
+            aileron_trim, elevator_trim, rudder_trim, flaps,
+            brake_left, brake_right)
 
 end
 
@@ -840,6 +835,22 @@ end
 
 ############################# Update Methods ###################################
 
+#pitch up -> Cm↑ -> trailing edge up -> δe↓ -> aero.e↓ -> -act.elevator↑ ###
+#act-aero inversion required
+
+#roll right -> Cl↑ -> left trailing edge down, right up -> δa↑ -> aero.a↑ ->
+#act.aileron↑ ### no act-aero inversion
+
+#yaw right -> Cn↑ -> rudder trailing edge right -> δr↓ -> aero.r↓ -> -act.rudder↑
+#(right pedal forward) ### act-aero inversion required
+
+#yaw right -> nose wheel steering right -> act.rudder↑ (right pedal forward) ### no
+#act-nws inversion
+
+#more lift -> CL↑ -> flap trailing edge down -> δf↑ -> aero.f↑ -> act.flaps↑ ### no
+#act-aero inversion
+
+
 function assign!(aero::System{<:Aero}, ldg::System{<:Ldg}, pwp::System{<:Piston.Thruster},
                 act::System{<:MechanicalActuation})
 
@@ -851,13 +862,13 @@ function assign!(aero::System{<:Aero}, ldg::System{<:Ldg}, pwp::System{<:Piston.
     pwp.u.engine.stop = eng_stop
     pwp.u.engine.thr = throttle
     pwp.u.engine.mix = mixture
-    ldg.u.nose.steering[] = (rudder_trim + rudder) #rudder↑ (right pedal forward) -> nose wheel steering right
+    ldg.u.nose.steering[] = (rudder_trim + rudder)
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
-    aero.u.e = (elevator_trim + elevator) #elevator↑ (stick forward) -> e↑ -> pitch down
-    aero.u.a = (aileron_trim + aileron) #aileron↑ (stick right) -> a↑ -> roll right
-    aero.u.r = -(rudder_trim + rudder) #rudder↑ (right pedal forward) -> r↓ -> yaw right
-    aero.u.f = flaps #flaps↑ -> δf↑
+    aero.u.e = -(elevator_trim + elevator)
+    aero.u.a = (aileron_trim + aileron)
+    aero.u.r = -(rudder_trim + rudder)
+    aero.u.f = flaps
 
     return nothing
 end
@@ -867,7 +878,7 @@ function Systems.f_ode!(airframe::System{<:Airframe},
 
     @unpack act, aero, pwp, ldg, fuel, pld = airframe
 
-    f_ode!(act) #propagate actuation system to outputs
+    f_ode!(act) #update actuation system outputs
     assign!(aero, ldg, pwp, act) #assign actuation system outputs to airframe subsystems
     f_ode!(aero, pwp, air, kin, trn) #update aerodynamics continuous state & outputs
     f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs

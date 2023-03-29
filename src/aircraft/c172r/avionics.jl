@@ -17,8 +17,6 @@ export DirectControls
 
 struct DirectControls <: AbstractAvionics end
 
-#we can simply reuse the airframe MechanicalActuation definitions, this is just
-#a wrapper
 const DirectControlsU = C172RAirframe.MechanicalActuationU
 const DirectControlsY = C172RAirframe.MechanicalActuationY
 
@@ -67,15 +65,15 @@ function IODevices.assign!(u::DirectControlsU,
             joystick::Joystick{XBoxControllerID}, ::DefaultMapping)
 
     u.aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.elevator = -get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.elevator = get_axis_value(joystick, :right_analog_y) |> elevator_curve
     u.rudder = get_axis_value(joystick, :left_analog_x) |> rudder_curve
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
     u.aileron_trim -= 0.01 * was_released(joystick, :dpad_left)
     u.aileron_trim += 0.01 * was_released(joystick, :dpad_right)
-    u.elevator_trim -= 0.01 * was_released(joystick, :dpad_down)
-    u.elevator_trim += 0.01 * was_released(joystick, :dpad_up)
+    u.elevator_trim += 0.01 * was_released(joystick, :dpad_down)
+    u.elevator_trim -= 0.01 * was_released(joystick, :dpad_up)
 
     u.throttle += 0.1 * was_released(joystick, :button_Y)
     u.throttle -= 0.1 * was_released(joystick, :button_A)
@@ -145,7 +143,7 @@ end
 # function Systems.f_ode!()
 
 ################################################################################
-############################### XAvionics ######################################
+############################### CASAvionics ######################################
 
 struct StateMachine <: Component end
 
@@ -176,20 +174,22 @@ end
 
 #autopilot solo debe tener como inputs roll, pitch, yaw
 
-Base.@kwdef struct XAvionics <: AbstractAvionics
+Base.@kwdef struct CASAvionics <: AbstractAvionics
     sm::StateMachine = StateMachine()
     ap::Autopilot = Autopilot()
 end
 
-#we can reuse DirectControlsU here, but noticing that for XAvionics aileron,
-#elevator and rudder actually mean roll_input, pitch_input, yaw_input
+#we could reuse MechanicalActuationU here, but noticing that for CASAvionics aileron,
+#elevator and rudder actually mean roll_input, pitch_input, yaw_input. so we may
+#be better off redefining them. also, we need the ap_enable input
 
-#elevator↑ (stick forward) -> e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
-#aileron↑ (stick right) -> a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
-#rudder↑ (right pedal forward) -> r↓ -> δr↓ -> rudder trailing edge right -> Cn↑ -> yaw right
-#rudder↑ (right pedal forward) -> nose wheel steering right -> yaw right
-#flaps↑ -> δf↑ -> flap trailing edge down -> CL↑
-# Base.@kwdef mutable struct XAvionicsU
+#with the current sign criteria, positive aileron, elevator and rudder inputs
+#yield positive increments to p, q and r, respectively. this means that for
+#example, if the output of the pitch rate compensator (proportional plus
+#integral pitch rate error, q_dmd - q_actual) is positive, we need a positive
+#elevator input to the airframe actuation
+
+# Base.@kwdef mutable struct CASAvionicsU
 #     eng_start::Bool = false
 #     eng_stop::Bool = false
 #     throttle::Ranged{Float64, 0, 1} = 0.0
@@ -205,30 +205,24 @@ end
 #     brake_right::Ranged{Float64, 0, 1} = 0.0
 # end
 
-# Base.@kwdef struct XAvionicsY
-#     throttle::Float64 = 0.0
-#     aileron_trim::Float64 = 0.0
-#     aileron::Float64 = 0.0
-#     elevator_trim::Float64 = 0.0
-#     elevator::Float64 = 0.0
-#     rudder_trim::Float64 = 0.0
-#     rudder::Float64 = 0.0
-#     brake_left::Float64 = 0.0
-#     brake_right::Float64 = 0.0
-#     flaps::Float64 = 0.0
-#     mixture::Float64 = 0.5
-#     eng_start::Bool = false
-#     eng_stop::Bool = false
-# end
+#aqui deberiamos definir una struct auxiliar CASAvionicsCommands y hacer que
+#CASAvionicsY sea un NT con sm.y, ap.y, y cmd. asi sabemos en todo momento que
+#comandos de actuacion esta generando, independientemente de si son directos o
+#via CAS. esos comandos si que son una replica exacta de MechanicalActuationY,
+#ya que en map_controls! vamos a hacerles una asignacion directa, igual que en
+#DirectControls. y es en f_ode! donde decidimos la procedencia de estos comandos
+#y se los asignamos a CASAvionicsCommands
 
-# Systems.init(::SystemU, ::XAvionics) = FeedthroughActuationU()
-# Systems.init(::SystemY, ::XAvionics) = (ap = init_y(ap), controls = init_y(controls))
+const CASAvionicsCommands = C172RAirframe.MechanicalActuationY
+
+# Systems.init(::SystemU, ::CASAvionics) = FeedthroughActuationU()
+# Systems.init(::SystemY, ::CASAvionics) = (ap = init_y(ap), controls = init_y(controls))
 
 
 ########################### Update Methods #####################################
 
 #fallback method?
-# function Systems.f_ode!(avionics::System{XAvionics}, airframe::System{<:Airframe},
+# function Systems.f_ode!(avionics::System{CASAvionics}, airframe::System{<:Airframe},
 #                 kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
 
 #     @unpack sm, ap, act
@@ -245,7 +239,7 @@ end
 # @inline Systems.f_disc!(::System{FeedthroughActuation}, ::System{<:Airframe}, ::KinematicSystem, Δt) = false
 
 
-# function Aircraft.map_controls!(airframe::System{<:Airframe}, avionics::System{XAvionics})
+# function Aircraft.map_controls!(airframe::System{<:Airframe}, avionics::System{CASAvionics})
 
 #     @unpack sm, ap, act = avionics
 
@@ -273,7 +267,7 @@ end
 # end
 
 #opcion 1:
-#definimos un XAvionicsU identico a RevControlsU pero sustituyendo elevator por
+#definimos un CASAvionicsU identico a RevControlsU pero sustituyendo elevator por
 #pitch_input, aileron por roll_input y rudder por yaw_input
 
 #internamente hacemos que el origen de elevator de RevAvionicsU se determine de
@@ -281,7 +275,7 @@ end
 #o pitch_cas_output
 
 #opcion 2:
-#prescindimos de FeedthroughActuation, y consideramos solo XAvionics / AutopilotU
+#prescindimos de FeedthroughActuation, y consideramos solo CASAvionics / AutopilotU
 #mas adelante podemos meter actuators
 
 
