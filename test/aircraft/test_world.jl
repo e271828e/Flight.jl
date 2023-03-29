@@ -3,6 +3,7 @@ module TestWorld
 using Test
 using UnPack
 using BenchmarkTools
+using Sockets
 
 using Flight
 
@@ -46,13 +47,59 @@ function test_system()
 
 end
 
-
-function test_sim_paced(; save::Bool = true)
+function test_sim(; save::Bool = true)
 
     h_trn = HOrth(608.55);
 
-    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
     ac = Cessna172R();
+    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
+    world = SimpleWorld(ac, env) |> System;
+
+    kin_init = KinematicInit(
+        v_eOb_n = [30, 0, 0],
+        ω_lb_b = [0, 0, 0],
+        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
+        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        h = h_trn + 1.9 + 2200.5);
+
+    init_kinematics!(world, kin_init)
+
+    world.ac.u.avionics.eng_start = true #engine start switch on
+    world.env.atm.u.wind.v_ew_n .= [0, 0, 0]
+
+    sys_io! = let
+
+        function (u, s, y, t, params)
+
+            u.ac.avionics.throttle = 0.2
+            u.ac.avionics.aileron = (t < 5 ? 0.25 : 0.0)
+            u.ac.avionics.elevator = 0.0
+            u.ac.avionics.rudder = 0.0
+            u.ac.avionics.brake_left = 1
+            u.ac.avionics.brake_right = 1
+
+        end
+    end
+
+    sim = Simulation(world; t_end = 300, sys_io!, adaptive = true)
+    Sim.run!(sim, verbose = true)
+
+    # plots = make_plots(sim; Plotting.defaults...)
+    plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
+    save && save_plots(plots, save_folder = joinpath("tmp", "sim_test"))
+
+    # return sim
+
+end
+
+
+
+function test_sim_paced(; save::Bool = true)
+
+    h_trn = HOrth(601.55);
+
+    ac = Cessna172R();
+    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
     world = SimpleWorld(ac, env) |> System;
 
     kin_init = KinematicInit(
@@ -71,8 +118,8 @@ function test_sim_paced(; save::Bool = true)
         push!(interfaces, attach_io!(sim, joystick))
     end
 
-    xp = XPConnect()
-    # xp = XPConnect(host = IPv4("192.168.1.2"))
+    # xp = XPConnect()
+    xp = XPConnect(host = IPv4("192.168.1.2"))
     push!(interfaces, attach_io!(sim, xp))
 
     @sync begin

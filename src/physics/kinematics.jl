@@ -692,6 +692,9 @@ function GUI.draw(kin::KinematicsY, label::String = "Kinematics")
         CImGui.Text(@sprintf("Heading: %.7f deg", rad2deg(ψ)))
         CImGui.Text(@sprintf("Inclination: %.7f deg", rad2deg(θ)))
         CImGui.Text(@sprintf("Bank: %.7f deg", rad2deg(φ)))
+        # @running_plot("Heading (deg)", rad2deg(ψ), -180, 180, 0.0, 120)
+        # @running_plot("Inclination (deg)", rad2deg(θ), -90, 90, 0.0, 120)
+        # @running_plot("Bank (deg)", rad2deg(φ), -90, 90, 0.0, 120)
 
         CImGui.TreePop()
     end
