@@ -3,6 +3,8 @@ module C172RAirframe
 using StaticArrays
 using ComponentArrays
 using UnPack
+using HDF5
+using Interpolations
 using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
@@ -16,9 +18,8 @@ using Flight.FlightAircraft.Aircraft
 
 export Airframe
 
-################################################################################
-############################ Airframe Subsystems ################################
 
+################################################################################
 ################################ Structure #####################################
 
 struct Structure <: Component end
@@ -51,14 +52,348 @@ RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
 
 
 ################################################################################
+############################# MechanicalActuation ##################################
+
+struct MechanicalActuation <: Component end
+
+#elevator↑ (stick forward) -> e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
+#aileron↑ (stick right) -> a↑ -> δa↑ -> left trailing edge down, right up -> Cl↓ -> roll right
+#rudder↑ (right pedal forward) -> r↓ -> δr↓ -> rudder trailing edge right -> Cn↑ -> yaw right
+#rudder↑ (right pedal forward) -> nose wheel steering right -> yaw right
+#flaps↑ -> δf↑ -> flap trailing edge down -> CL↑
+Base.@kwdef mutable struct MechanicalActuationU
+    eng_start::Bool = false
+    eng_stop::Bool = false
+    throttle::Ranged{Float64, 0, 1} = 0.0
+    mixture::Ranged{Float64, 0, 1} = 0.5
+    aileron::Ranged{Float64, -1, 1} = 0.0
+    elevator::Ranged{Float64, -1, 1} = 0.0
+    rudder::Ranged{Float64, -1, 1} = 0.0
+    aileron_trim::Ranged{Float64, -1, 1} = 0.0
+    elevator_trim::Ranged{Float64, -1, 1} = 0.0
+    rudder_trim::Ranged{Float64, -1, 1} = 0.0
+    flaps::Ranged{Float64, 0, 1} = 0.0
+    brake_left::Ranged{Float64, 0, 1} = 0.0
+    brake_right::Ranged{Float64, 0, 1} = 0.0
+end
+
+Base.@kwdef struct MechanicalActuationY
+    eng_start::Bool = false
+    eng_stop::Bool = false
+    throttle::Float64 = 0.0
+    mixture::Float64 = 0.5
+    aileron::Float64 = 0.0
+    elevator::Float64 = 0.0
+    rudder::Float64 = 0.0
+    aileron_trim::Float64 = 0.0
+    elevator_trim::Float64 = 0.0
+    rudder_trim::Float64 = 0.0
+    flaps::Float64 = 0.0
+    brake_left::Float64 = 0.0
+    brake_right::Float64 = 0.0
+end
+
+Systems.init(::SystemU, ::MechanicalActuation) = MechanicalActuationU()
+Systems.init(::SystemY, ::MechanicalActuation) = MechanicalActuationY()
+
+RigidBody.MassTrait(::System{MechanicalActuation}) = HasNoMass()
+RigidBody.AngMomTrait(::System{MechanicalActuation}) = HasNoAngularMomentum()
+RigidBody.WrenchTrait(::System{MechanicalActuation}) = GetsNoExternalWrench()
+
+function Systems.f_ode!(act::System{MechanicalActuation})
+
+    #MechanicalActuation has no internal dynamics, just input-output feedthrough
+    @unpack throttle, aileron_trim, aileron, elevator_trim, elevator,
+            rudder_trim, rudder, brake_left, brake_right, flaps, mixture,
+            eng_start, eng_stop = act.u
+
+    act.y = MechanicalActuationY(;
+            throttle, aileron_trim, aileron, elevator_trim, elevator,
+            rudder_trim, rudder, brake_left, brake_right, flaps, mixture,
+            eng_start, eng_stop)
+
+end
+
+function GUI.draw(sys::System{MechanicalActuation}, label::String = "Cessna 172R MechanicalActuation")
+
+    y = sys.y
+
+    CImGui.Begin(label)
+
+    CImGui.PushItemWidth(-60)
+
+    @running_plot("Throttle", y.throttle, 0, 1, 0.0, 60)
+    @running_plot("Mixture", y.mixture, 0, 1, 0.5, 60)
+    @running_plot("Aileron", y.aileron, -1, 1, 0.0, 60)
+    @running_plot("Aileron Trim", y.aileron_trim, -1, 1, 0.0, 60)
+    @running_plot("Elevator", y.elevator, -1, 1, 0.0, 60)
+    @running_plot("Elevator Trim", y.elevator_trim, -1, 1, 0.0, 60)
+    @running_plot("Rudder", y.rudder, -1, 1, 0.0, 60)
+    @running_plot("Rudder Trim", y.rudder_trim, -1, 1, 0.0, 60)
+    @running_plot("Flaps", y.flaps, 0, 1, 0.0, 60)
+    @running_plot("Left Brake", y.brake_left, 0, 1, 0.0, 60)
+    @running_plot("Right Brake", y.brake_right, 0, 1, 0.0, 60)
+
+    CImGui.PopItemWidth()
+
+    CImGui.End()
+
+end
+
+
+################################################################################
 ############################ Aerodynamics ######################################
 
-include("data/aero.jl")
+function generate_aero_data(fname = joinpath(dirname(@__FILE__), "data", "aero.h5"))
+
+    h5open(fname, "w") do fid
+
+        ############################## C_D ##################################
+
+        create_group(fid, "C_D")
+        C_D = fid["C_D"]
+
+        C_D["zero"] = 0.027
+
+        create_group(C_D, "δe")
+        C_D["δe"]["δe"] = [-1.0 0.0 1.0] |> vec
+        C_D["δe"]["data"] = [ 0.06 0 0.06] |> vec
+
+        create_group(C_D, "β")
+        C_D["β"]["β"] = [-1.0 0.0 1.0] |> vec
+        C_D["β"]["data"] = [ 0.17 0 0.17] |> vec
+
+        create_group(C_D, "ge")
+        C_D["ge"]["Δh_nd"] = [ 0.0000 0.1000 0.1500 0.2000 0.3000 0.4000 0.5000 0.6000 0.7000 0.8000 0.9000 1.0000 1.1000 ] |> vec
+        C_D["ge"]["data"] = [ 0.4800 0.5150 0.6290 0.7090 0.8150 0.8820 0.9280 0.9620 0.9880 1.0000 1.0000 1.0000 1.0000 ] |> vec
+
+        create_group(C_D, "δf")
+        C_D["δf"]["δf"] = deg2rad.([ 0.0000	10.0000 20.0000 30.0000 ]) |> vec
+        C_D["δf"]["data"] = [ 0.0000 0.0070 0.0120 0.0180 ] |> vec
+
+        create_group(C_D, "α_δf")
+        C_D["α_δf"]["α"] = [ -0.0873 -0.0698 -0.0524 -0.0349 -0.0175 0.0000	0.0175	0.0349	0.0524	0.0698	0.0873 0.1047	0.1222	0.1396	0.1571	0.1745	0.1920	0.2094	0.2269	0.2443	0.2618	0.2793	0.2967	0.3142	0.3316	0.3491] |> vec
+        C_D["α_δf"]["δf"] = deg2rad.([ 0.0000	10.0000	20.0000	30.0000 ]) |> vec
+        C_D["α_δf"]["data"] = [ 0.0041	0.0000	0.0005	0.0014
+                                0.0013	0.0004	0.0025	0.0041
+                                0.0001	0.0023	0.0059	0.0084
+                                0.0003	0.0057	0.0108	0.0141
+                                0.0020	0.0105	0.0172	0.0212
+                                0.0052	0.0168	0.0251	0.0299
+                                0.0099	0.0248	0.0346	0.0402
+                                0.0162	0.0342	0.0457	0.0521
+                                0.0240	0.0452	0.0583	0.0655
+                                0.0334	0.0577	0.0724	0.0804
+                                0.0442	0.0718	0.0881	0.0968
+                                0.0566	0.0874	0.1053	0.1148
+                                0.0706	0.1045	0.1240	0.1343
+                                0.0860	0.1232	0.1442	0.1554
+                                0.0962	0.1353	0.1573	0.1690
+                                0.1069	0.1479	0.1708	0.1830
+                                0.1180	0.1610	0.1849	0.1975
+                                0.1298	0.1746	0.1995	0.2126
+                                0.1424	0.1892	0.2151	0.2286
+                                0.1565	0.2054	0.2323	0.2464
+                                0.1727	0.2240	0.2521	0.2667
+                                0.1782	0.2302	0.2587	0.2735
+                                0.1716	0.2227	0.2507	0.2653
+                                0.1618	0.2115	0.2388	0.2531
+                                0.1475	0.1951	0.2214	0.2351
+                                0.1097	0.1512	0.1744	0.1866
+        ]
+
+        ############################## C_Y ##################################
+
+        create_group(fid, "C_Y")
+        C_Y = fid["C_Y"]
+
+        C_Y["δr"] = 0.1870
+        C_Y["δa"] = 0.0
+
+        create_group(C_Y, "β_δf")
+        C_Y["β_δf"]["β"] = [-0.3490 0 0.3490] |> vec
+        C_Y["β_δf"]["δf"] = deg2rad.([0 30]) |> vec
+        C_Y["β_δf"]["data"] = [
+                            0.1370	0.1060
+                            0.0000	0.0000
+                            -0.1370	-0.1060
+        ]
+        create_group(C_Y, "p")
+        C_Y["p"]["α"] = [0.0 0.094] |> vec
+        C_Y["p"]["δf"] = deg2rad.([0 30]) |> vec
+        C_Y["p"]["data"] = [
+                            -0.0750	-0.1610
+                            -0.1450	-0.2310
+        ]
+        create_group(C_Y, "r")
+        C_Y["r"]["α"] = [0.0 0.094] |> vec
+        C_Y["r"]["δf"] = deg2rad.([0 30]) |> vec
+        C_Y["r"]["data"] = [
+                            0.2140	0.1620
+                            0.2670	0.2150
+        ]
+
+
+        ############################### C_L #################################
+
+        create_group(fid, "C_L")
+        C_L = fid["C_L"]
+
+        C_L["δe"] = 0.4300
+        C_L["q"] = 3.900
+        C_L["α_dot"] = 1.700
+
+        create_group(C_L, "ge")
+        C_L["ge"]["Δh_nd"] = [ 0.0000 0.1000 0.1500 0.2000 0.3000 0.4000 0.5000 0.6000 0.7000 0.8000 0.9000 1.0000 1.1000 ] |> vec
+        C_L["ge"]["data"] = [ 1.2030 1.1270 1.0900 1.0730 1.0460 1.0550 1.0190 1.0130 1.0080 1.0060 1.0030 1.0020 1.0000 ] |> vec
+
+        create_group(C_L, "α")
+        C_L["α"]["α"] = [ -0.0900 0.0000	0.0900	0.1000	0.1200	0.1400	0.1600	0.1700	0.1900	0.2100	0.2400	0.2600	0.2800	0.3000	0.3200	0.3400	0.3600	] |> vec
+        C_L["α"]["stall"] = [0.0 1.0] |> vec
+        C_L["α"]["data"] = [-0.2200	-0.2200
+                           	0.2500	0.2500
+                           	0.7300	0.7300
+                           	0.8300	0.7800
+                           	0.9200	0.7900
+                           	1.0200	0.8100
+                           	1.0800	0.8200
+                           	1.1300	0.8300
+                           	1.1900	0.8500
+                           	1.2500	0.8600
+                           	1.3500	0.8800
+                           	1.4400	0.9000
+                           	1.4700	0.9200
+                           	1.4300	0.9500
+                           	1.3800	0.9900
+                           	1.3000	1.0500
+                           	1.1500	1.1500
+        ]
+
+        create_group(C_L, "δf")
+        C_L["δf"]["δf"] = deg2rad.([ 0.0000	10.0000 20.0000 30.0000 ]) |> vec
+        C_L["δf"]["data"] = [ 0.0000 0.2 0.3 0.35] |> vec
+
+
+        ############################### C_l #################################
+
+        create_group(fid, "C_l")
+        C_l = fid["C_l"]
+
+        C_l["δa"] = 0.229
+        C_l["δr"] = 0.0147
+        C_l["β"] = -0.09226
+        C_l["p"] = -0.4840
+
+        create_group(C_l, "r")
+        C_l["r"]["α"] = [0.0 0.094] |> vec
+        C_l["r"]["δf"] = deg2rad.([0 30]) |> vec
+        C_l["r"]["data"] = [
+                            0.0798	0.1246
+                            0.1869	0.2317
+        ]
+
+        ############################# C_m ###################################
+
+        create_group(fid, "C_m")
+        C_m = fid["C_m"]
+
+        C_m["zero"] = 0.100
+        C_m["δe"] = -1.1220
+        C_m["α"] = -1.8000
+        C_m["q"] = -12.400
+        C_m["α_dot"] = -7.2700
+
+        create_group(C_m, "δf")
+        C_m["δf"]["δf"] = deg2rad.([0 10 20 30]) |> vec
+        C_m["δf"]["data"] = [ 0.0000 -0.0654 -0.0981 -0.1140 ] |> vec
+
+        ############################# C_n ###################################
+
+        create_group(fid, "C_n")
+        C_n = fid["C_n"]
+
+        C_n["δr"] = -0.0430
+        C_n["δa"] = -0.0053
+        C_n["β"] = 0.05874
+        C_n["p"] = -0.0278
+        C_n["r"] = -0.0937
+
+    end
+
+end
+
+function generate_aero_lookup(fname = joinpath(dirname(@__FILE__), "data", "aero.h5"))
+
+    fid = h5open(fname, "r")
+
+    gr_C_D = fid["C_D"]
+    gr_C_Y = fid["C_Y"]
+    gr_C_L = fid["C_L"]
+    gr_C_l = fid["C_l"]
+    gr_C_m = fid["C_m"]
+    gr_C_n = fid["C_n"]
+
+    C_D = (
+        z = gr_C_D["zero"] |> read,
+        β = linear_interpolation(gr_C_D["β"]["β"] |> read, gr_C_D["β"]["data"] |> read, extrapolation_bc = Flat()),
+        δe = linear_interpolation(gr_C_D["δe"]["δe"] |> read, gr_C_D["δe"]["data"] |> read, extrapolation_bc = Flat()),
+        δf = linear_interpolation(gr_C_D["δf"]["δf"] |> read, gr_C_D["δf"]["data"] |> read, extrapolation_bc = Flat()),
+        α_δf = linear_interpolation((gr_C_D["α_δf"]["α"] |> read,  gr_C_D["α_δf"]["δf"] |> read), gr_C_D["α_δf"]["data"] |> read, extrapolation_bc = Flat()),
+        ge = linear_interpolation(gr_C_D["ge"]["Δh_nd"] |> read, gr_C_D["ge"]["data"] |> read, extrapolation_bc = Flat())
+    )
+
+    C_Y = (
+        δr = gr_C_Y["δr"] |> read,
+        δa = gr_C_Y["δa"] |> read,
+        β_δf = linear_interpolation((gr_C_Y["β_δf"]["β"] |> read,  gr_C_Y["β_δf"]["δf"] |> read), gr_C_Y["β_δf"]["data"] |> read, extrapolation_bc = Flat()),
+        p = linear_interpolation((gr_C_Y["p"]["α"] |> read,  gr_C_Y["p"]["δf"] |> read), gr_C_Y["p"]["data"] |> read, extrapolation_bc = Flat()),
+        r = linear_interpolation((gr_C_Y["r"]["α"] |> read,  gr_C_Y["r"]["δf"] |> read), gr_C_Y["r"]["data"] |> read, extrapolation_bc = Flat()),
+    )
+
+    C_L = (
+        δe = gr_C_L["δe"] |> read,
+        q = gr_C_L["q"] |> read,
+        α_dot = gr_C_L["α_dot"] |> read,
+        α = linear_interpolation((gr_C_L["α"]["α"] |> read,  gr_C_L["α"]["stall"] |> read), gr_C_L["α"]["data"] |> read, extrapolation_bc = Flat()),
+        δf = linear_interpolation(gr_C_L["δf"]["δf"] |> read, gr_C_L["δf"]["data"] |> read, extrapolation_bc = Flat()),
+        ge = linear_interpolation(gr_C_L["ge"]["Δh_nd"] |> read, gr_C_L["ge"]["data"] |> read, extrapolation_bc = Flat())
+    )
+
+    C_l = (
+        δa = gr_C_l["δa"] |> read,
+        δr = gr_C_l["δr"] |> read,
+        β = gr_C_l["β"] |> read,
+        p = gr_C_l["p"] |> read,
+        r = linear_interpolation((gr_C_l["r"]["α"] |> read,  gr_C_l["r"]["δf"] |> read), gr_C_l["r"]["data"] |> read, extrapolation_bc = Flat()),
+    )
+
+    C_m = (
+        z = gr_C_m["zero"] |> read,
+        δe = gr_C_m["δe"] |> read,
+        α = gr_C_m["α"] |> read,
+        q = gr_C_m["q"] |> read,
+        α_dot = gr_C_m["α_dot"] |> read,
+        δf = linear_interpolation(gr_C_m["δf"]["δf"] |> read, gr_C_m["δf"]["data"] |> read, extrapolation_bc = Flat()),
+    )
+
+    C_n = (
+        δr = gr_C_n["δr"] |> read,
+        δa = gr_C_n["δa"] |> read,
+        β = gr_C_n["β"] |> read,
+        p = gr_C_n["p"] |> read,
+        r = gr_C_n["r"] |> read,
+    )
+
+    close(fid)
+
+    return (C_D = C_D, C_Y = C_Y, C_L = C_L, C_l = C_l, C_m = C_m, C_n = C_n)
+
+end
 
 #the aircraft body reference frame fb is arbitrarily chosen to coincide with
 #the aerodynamics frame fa, so the frame transform is trivial
-const aero_lookup = generate_aero_lookup()
 const f_ba = FrameTransform()
+const aero_lookup = generate_aero_lookup()
 
 # if this weren't the case, and we cared not only about the rotation but also
 #about the velocity lever arm, here's the rigorous way of computing v_wOa_a:
@@ -233,19 +568,6 @@ function Systems.f_step!(sys::System{Aero})
     return false
 end
 
-# # splt_α = thplot(t, rad2deg.(α_b);
-# #     title = "Angle of Attack", ylabel = L"$\alpha \ (deg)$",
-# #     label = "", kwargs...)
-
-# # splt_β = thplot(t, rad2deg.(β_b);
-# #     title = "Angle of Sideslip", ylabel = L"$\beta \ (deg)$",
-# #     label = "", kwargs...)
-
-# # pd["05_α_β"] = plot(splt_α, splt_β;
-# #     plot_title = "Airflow Angles [Airframe]",
-# #     layout = (1,2),
-# #     kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
 
 ################################# GUI ##########################################
 
@@ -287,6 +609,21 @@ function GUI.draw(sys::System{<:Aero}, window_label::String = "C172R Aerodynamic
 end
 
 
+# # splt_α = thplot(t, rad2deg.(α_b);
+# #     title = "Angle of Attack", ylabel = L"$\alpha \ (deg)$",
+# #     label = "", kwargs...)
+
+# # splt_β = thplot(t, rad2deg.(β_b);
+# #     title = "Angle of Sideslip", ylabel = L"$\beta \ (deg)$",
+# #     label = "", kwargs...)
+
+# # pd["05_α_β"] = plot(splt_α, splt_β;
+# #     plot_title = "Airflow Angles [Airframe]",
+# #     layout = (1,2),
+# #     kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+
+###############################################################################
 ############################# Landing Gear ####################################
 
 struct Ldg <: Component
@@ -353,7 +690,6 @@ function GUI.draw(sys::System{<:Ldg}, window_label::String = "Cessna 172R Landin
 
 end
 
-
 ################################################################################
 ################################# Payload ######################################
 
@@ -416,7 +752,8 @@ function GUI.draw!(sys::System{<:Payload}, label::String = "Cessna 172R Payload"
 end
 
 
-############################## Fuel #########################################
+################################################################################
+################################# Fuel #########################################
 
 #assumes fuel is drawn equally from both tanks, no need to model them
 #individually for now
@@ -479,6 +816,8 @@ function GUI.draw(sys::System{Fuel}, window_label::String = "C172R Fuel System")
 
 end
 
+
+################################################################################
 ################################ Powerplant ####################################
 
 Pwp() = Piston.Thruster(propeller = Propeller(t_bp = FrameTransform(r = [2.055, 0, 0.833])))
@@ -491,6 +830,7 @@ Pwp() = Piston.Thruster(propeller = Propeller(t_bp = FrameTransform(r = [2.055, 
 #parametric type, and therefore not concrete
 Base.@kwdef struct Airframe{P} <: AbstractAirframe
     str::Structure = Structure()
+    act::MechanicalActuation = MechanicalActuation()
     aero::Aero = Aero()
     ldg::Ldg = Ldg()
     fuel::Fuel = Fuel()
@@ -500,13 +840,36 @@ end
 
 ############################# Update Methods ###################################
 
+function assign!(aero::System{<:Aero}, ldg::System{<:Ldg}, pwp::System{<:Piston.Thruster},
+                act::System{<:MechanicalActuation})
+
+    @unpack throttle, aileron_trim, aileron, elevator_trim, elevator,
+            rudder_trim, rudder, brake_left, brake_right, flaps, mixture,
+            eng_start, eng_stop = act.y
+
+    pwp.u.engine.start = eng_start
+    pwp.u.engine.stop = eng_stop
+    pwp.u.engine.thr = throttle
+    pwp.u.engine.mix = mixture
+    ldg.u.nose.steering[] = (rudder_trim + rudder) #rudder↑ (right pedal forward) -> nose wheel steering right
+    ldg.u.left.braking[] = brake_left
+    ldg.u.right.braking[] = brake_right
+    aero.u.e = (elevator_trim + elevator) #elevator↑ (stick forward) -> e↑ -> pitch down
+    aero.u.a = (aileron_trim + aileron) #aileron↑ (stick right) -> a↑ -> roll right
+    aero.u.r = -(rudder_trim + rudder) #rudder↑ (right pedal forward) -> r↓ -> yaw right
+    aero.u.f = flaps #flaps↑ -> δf↑
+
+    return nothing
+end
 
 function Systems.f_ode!(airframe::System{<:Airframe},
                         kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
 
-    @unpack aero, pwp, ldg, fuel, pld = airframe
+    @unpack act, aero, pwp, ldg, fuel, pld = airframe
 
-    f_ode!(aero, pwp, air, kin, trn)
+    f_ode!(act) #propagate actuation system to outputs
+    assign!(aero, ldg, pwp, act) #assign actuation system outputs to airframe subsystems
+    f_ode!(aero, pwp, air, kin, trn) #update aerodynamics continuous state & outputs
     f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
@@ -516,7 +879,7 @@ function Systems.f_ode!(airframe::System{<:Airframe},
 end
 
 function Systems.f_step!(airframe::System{<:Airframe}, ::KinematicSystem)
-    @unpack aero, pwp, fuel, ldg, fuel, pld = airframe
+    @unpack aero, ldg, pwp, fuel = airframe
 
     x_mod = false
     x_mod |= f_step!(aero)
@@ -527,17 +890,15 @@ function Systems.f_step!(airframe::System{<:Airframe}, ::KinematicSystem)
 end
 
 
-
-################################################################################
 #################################### GUI #######################################
-
 
 function GUI.draw(sys::System{<:Airframe}, window_label::String = "Cessna 172R Airframe")
 
-    @unpack pwp, ldg, aero, fuel, pld = sys
+    @unpack act, pwp, ldg, aero, fuel, pld = sys
 
     CImGui.Begin(window_label)
 
+        show_act = @cstatic check=false @c CImGui.Checkbox("Actuation", &check)
         show_aero = @cstatic check=false @c CImGui.Checkbox("Aerodynamics", &check)
         show_ldg = @cstatic check=false @c CImGui.Checkbox("Landing Gear", &check)
         show_pwp = @cstatic check=false @c CImGui.Checkbox("Powerplant", &check)
@@ -546,6 +907,7 @@ function GUI.draw(sys::System{<:Airframe}, window_label::String = "Cessna 172R A
 
     CImGui.End()
 
+    show_act && GUI.draw(act)
     show_aero && GUI.draw(aero)
     show_ldg && GUI.draw(ldg)
     show_pwp && GUI.draw(pwp)

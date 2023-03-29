@@ -15,18 +15,18 @@ export Cessna172R
 ################################################################################
 ############################### Cessna172R #####################################
 
-#Cessna172RTemplate requires a subtype of C172R.Airframe, but allows installing
-#any avionics and using different kinematic descriptions
+#Cessna172RTemplate requires a subtype of C172R.Airframe, allows installing any
+#supported avionics and allows using different kinematic descriptions
 const Cessna172RTemplate{K, F, V} = AircraftTemplate{K, F, V} where {K, F <: Airframe, V}
 
-function Cessna172RTemplate(kinematics = LTF(), avionics = ReversibleControls())
+function Cessna172RTemplate(kinematics = LTF(), avionics = DirectControls())
     AircraftTemplate( kinematics, Airframe(), avionics)
 end
 
-#the default Cessna172R installing the C172R.ReversibleControls avionics, which
+#the default Cessna172R installs the C172R.DirectControls avionics, which
 #provides a basic reversible direct control system
-const Cessna172R{K, F} = Cessna172RTemplate{K, F, ReversibleControls} where {K, F}
-Cessna172R(kinematics = LTF()) = Cessna172RTemplate(kinematics, ReversibleControls())
+const Cessna172R{K, F} = Cessna172RTemplate{K, F, DirectControls} where {K, F <: Airframe}
+Cessna172R(kinematics = LTF()) = Cessna172RTemplate(kinematics, DirectControls())
 
 struct Cessna172RU{F, V}
     airframe::F
