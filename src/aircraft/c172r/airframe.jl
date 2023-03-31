@@ -52,11 +52,11 @@ RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
 
 
 ################################################################################
-############################# MechanicalActuation ##################################
+############################# ReversibleActuation ##################################
 
-struct MechanicalActuation <: Component end
+struct ReversibleActuation <: Component end
 
-Base.@kwdef mutable struct MechanicalActuationU
+Base.@kwdef mutable struct ReversibleActuationU
     eng_start::Bool = false
     eng_stop::Bool = false
     throttle::Ranged{Float64, 0, 1} = 0.0
@@ -72,7 +72,7 @@ Base.@kwdef mutable struct MechanicalActuationU
     brake_right::Ranged{Float64, 0, 1} = 0.0
 end
 
-Base.@kwdef struct MechanicalActuationY
+Base.@kwdef struct ReversibleActuationY
     eng_start::Bool = false
     eng_stop::Bool = false
     throttle::Float64 = 0.0
@@ -88,28 +88,28 @@ Base.@kwdef struct MechanicalActuationY
     brake_right::Float64 = 0.0
 end
 
-Systems.init(::SystemU, ::MechanicalActuation) = MechanicalActuationU()
-Systems.init(::SystemY, ::MechanicalActuation) = MechanicalActuationY()
+Systems.init(::SystemU, ::ReversibleActuation) = ReversibleActuationU()
+Systems.init(::SystemY, ::ReversibleActuation) = ReversibleActuationY()
 
-RigidBody.MassTrait(::System{MechanicalActuation}) = HasNoMass()
-RigidBody.AngMomTrait(::System{MechanicalActuation}) = HasNoAngularMomentum()
-RigidBody.WrenchTrait(::System{MechanicalActuation}) = GetsNoExternalWrench()
+RigidBody.MassTrait(::System{ReversibleActuation}) = HasNoMass()
+RigidBody.AngMomTrait(::System{ReversibleActuation}) = HasNoAngularMomentum()
+RigidBody.WrenchTrait(::System{ReversibleActuation}) = GetsNoExternalWrench()
 
-function Systems.f_ode!(act::System{MechanicalActuation})
+function Systems.f_ode!(act::System{ReversibleActuation})
 
-    #MechanicalActuation has no internal dynamics, just input-output feedthrough
+    #ReversibleActuation has no internal dynamics, just input-output feedthrough
     @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
             aileron_trim, elevator_trim, rudder_trim, flaps,
             brake_left, brake_right= act.u
 
-    act.y = MechanicalActuationY(;
+    act.y = ReversibleActuationY(;
             eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
             aileron_trim, elevator_trim, rudder_trim, flaps,
             brake_left, brake_right)
 
 end
 
-function GUI.draw(sys::System{MechanicalActuation}, label::String = "Cessna 172R MechanicalActuation")
+function GUI.draw(sys::System{ReversibleActuation}, label::String = "Cessna 172R ReversibleActuation")
 
     y = sys.y
 
@@ -567,7 +567,7 @@ end
 ################################# GUI ##########################################
 
 
-function GUI.draw(sys::System{<:Aero}, window_label::String = "C172R Aerodynamics")
+function GUI.draw(sys::System{<:Aero}, window_label::String = "Cessna 172R Aerodynamics")
 
     @unpack e, a, r, f, α, β, α_filt, β_filt, stall, coeffs, wr_b = sys.y
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
@@ -798,7 +798,7 @@ function RigidBody.get_mp_Ob(fuel::System{Fuel})
     return mp_Ob
 end
 
-function GUI.draw(sys::System{Fuel}, window_label::String = "C172R Fuel System")
+function GUI.draw(sys::System{Fuel}, window_label::String = "Cessna 172R Fuel System")
 
     @unpack m_total, m_avail = sys.y
 
@@ -825,7 +825,7 @@ Pwp() = Piston.Thruster(propeller = Propeller(t_bp = FrameTransform(r = [2.055, 
 #parametric type, and therefore not concrete
 Base.@kwdef struct Airframe{P} <: AbstractAirframe
     str::Structure = Structure()
-    act::MechanicalActuation = MechanicalActuation()
+    act::ReversibleActuation = ReversibleActuation()
     aero::Aero = Aero()
     ldg::Ldg = Ldg()
     fuel::Fuel = Fuel()
@@ -852,7 +852,7 @@ end
 
 
 function assign!(aero::System{<:Aero}, ldg::System{<:Ldg}, pwp::System{<:Piston.Thruster},
-                act::System{<:MechanicalActuation})
+                act::System{<:ReversibleActuation})
 
     @unpack throttle, aileron_trim, aileron, elevator_trim, elevator,
             rudder_trim, rudder, brake_left, brake_right, flaps, mixture,

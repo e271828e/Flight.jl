@@ -56,6 +56,11 @@ function AircraftTemplate(kinematics::K = LTF(),
     AircraftTemplate{K,F,A}(kinematics, airframe, avionics)
 end
 
+struct AircraftTemplateU{F, V}
+    airframe::F
+    avionics::V
+end
+
 #override the default Component update_y! to include stuff besides subsystem
 #outputs
 Base.@kwdef struct AircraftTemplateY{K, F, A}
@@ -66,6 +71,7 @@ Base.@kwdef struct AircraftTemplateY{K, F, A}
     air::AirData
 end
 
+Systems.init(::SystemU, ac::AircraftTemplate) = AircraftTemplateU(init_u(ac.airframe), init_u(ac.avionics))
 Systems.init(::SystemY, ac::AircraftTemplate) = AircraftTemplateY(
     init_y(ac.kinematics), init_y(ac.airframe), init_y(ac.avionics),
     RigidBodyData(), AirData())
@@ -191,6 +197,14 @@ function Plotting.make_plots(th::TimeHistory{<:AircraftTemplateY}; kwargs...)
         :air => make_plots(th.air; kwargs...),
     )
 
+end
+
+############################ Joystick Mappings #################################
+
+function IODevices.assign!(u::AircraftTemplateU,
+                           joystick::Joystick{<:Joysticks.AbstractJoystickID},
+                           mapping::InputMapping)
+    IODevices.assign!(u.avionics, joystick, mapping)
 end
 
 ################################### GUI ########################################

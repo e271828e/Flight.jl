@@ -7,7 +7,7 @@ using Flight
 export test_gui
 
 # function test_gui()
-#     ctl = C172R.FeedthroughActuation() |> System
+#     ctl = C172RDirect.FeedthroughActuation() |> System
 #     r = Renderer()
 #     GUI.init!(r)
 #     GUI.run(r, GUI.draw!, ctl)

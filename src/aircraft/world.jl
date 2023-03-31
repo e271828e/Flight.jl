@@ -6,7 +6,7 @@ using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 using Flight.FlightCore
 using Flight.FlightPhysics
 using ..Aircraft
-using ..C172R
+using ..C172RDirect
 
 export SimpleWorld
 

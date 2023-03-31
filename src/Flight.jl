@@ -3,8 +3,8 @@ module Flight
 using Reexport
 @reexport using BenchmarkTools
 
-include("core/FlightCore.jl"); @reexport using .FlightCore
-include("physics/FlightPhysics.jl"); @reexport using .FlightPhysics
-include("aircraft/FlightAircraft.jl"); @reexport using .FlightAircraft
+include(normpath("core/FlightCore.jl")); @reexport using .FlightCore
+include(normpath("physics/FlightPhysics.jl")); @reexport using .FlightPhysics
+include(normpath("aircraft/FlightAircraft.jl")); @reexport using .FlightAircraft
 
 end

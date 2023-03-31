@@ -1,4 +1,4 @@
-module Linear
+module Linearization
 
 using ComponentArrays
 using UnPack
@@ -9,7 +9,7 @@ using Flight.FlightPhysics
 
 using Flight.FlightAircraft.Control: LinearStateSpace
 
-using ..C172R
+using ..C172RDirect
 using ..Trim
 
 export linearize
@@ -109,7 +109,7 @@ function LinearStateSpace( ac::System{<:Cessna172R{NED}};
             #make sure any input or state not set by x and u is at its reference
             #trim value. this reverts any potential changes to the aircraft done
             #by functions sharing the same aircraft instance
-            C172R.Trim.assign!(ac, env, trim_params, trim_state)
+            C172RDirect.Trim.assign!(ac, env, trim_params, trim_state)
 
             assign!(ac, u_cv)
             ac.x .= x
@@ -134,7 +134,7 @@ function LinearStateSpace( ac::System{<:Cessna172R{NED}};
                                             ẋ0 = ẋ0_full, y0, x0 = x0_full, u0)
 
     #once we're done, make the ac is returned to its trimmed status
-    C172R.Trim.assign!(ac, env, trim_params, trim_state)
+    C172RDirect.Trim.assign!(ac, env, trim_params, trim_state)
 
     #so far we have worked with the nonlinear aircraft model's full state
     #vector, whose layout is given by the hierarchical structure of the
