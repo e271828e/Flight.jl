@@ -11,6 +11,7 @@ include("aircraft/test_landing_gear.jl"); using .TestLandingGear
 include("aircraft/test_piston.jl"); using .TestPiston
 
 include("aircraft/test_c172r.jl"); using .TestC172R
+include("aircraft/test_world.jl"); using .TestWorld
 
 test_quaternions()
 test_attitude()
@@ -22,3 +23,4 @@ test_propellers()
 test_landing_gear()
 test_piston()
 test_c172r()
+test_world()

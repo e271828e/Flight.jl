@@ -12,13 +12,13 @@ export test_world
 function test_world()
     @testset verbose = true "World" begin
 
-        @testset verbose = true "Performance" begin test_system() end
-        @testset verbose = true "Simulation" begin test_sim(save = false) end
+        test_system_methods()
+        test_sim(save = false)
 
     end
 end
 
-function test_system()
+function test_system_methods()
 
     h_trn = HOrth(608.55);
 
@@ -35,63 +35,97 @@ function test_system()
 
     init_kinematics!(world, kin_init)
 
-    #make sure we're on the ground
-    f_ode!(world)
-    @test world.ac.y.airframe.ldg.left.strut.wow == true
+    @testset verbose = true "System Methods" begin
 
-    @test @ballocated(f_ode!($world)) == 0
-    @test @ballocated(f_step!($world)) == 0
-    @test @ballocated(f_disc!($world, 0.2)) == 0
+        #get a copy of the initial system output
+        y0 = world.y
+        @test y0 == world.y
 
-    return nothing
+        #modify inputs and call f_ode!
+        world.u.env.atm.wind.v_ew_n[1] = -5
+
+        #if the right method is called, the modified inputs must propagate to
+        #the outputs
+        f_ode!(world)
+        @test world.y.env.atm.wind.v_ew_n[1] == -5
+        @test world.y.ac.air.v_ew_n[1] == -5
+
+        #reset outputs to their initial value
+        world.y = y0
+        @test y0 == world.y
+
+        #and repeat for f_disc!, which must also propagate inputs to outputs
+        f_disc!(world, 0.02)
+        @test world.y.env.atm.wind.v_ew_n[1] == -5
+        @test world.y.ac.air.v_ew_n[1] == -5
+
+        #mess up a quaternion norm
+        world.ac.x.kinematics.pos.q_lb[1] *= 2
+
+        #and make sure the call to f_step! restores it
+        x_mod = f_step!(world)
+        @test x_mod == true
+        @test world.ac.x.kinematics.pos.q_lb[1] ≈ 1
+
+        #make sure we are on the ground to ensure landing gear code coverage
+        @test world.ac.y.airframe.ldg.left.strut.wow == true
+        @test @ballocated(f_ode!($world)) == 0
+        @test @ballocated(f_step!($world)) == 0
+        @test @ballocated(f_disc!($world, 0.2)) == 0
+
+        # return nothing
+    end
 
 end
 
 function test_sim(; save::Bool = true)
 
-    h_trn = HOrth(608.55);
+    @testset verbose = true "Simulation" begin
 
-    ac = Cessna172R();
-    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
-    world = SimpleWorld(ac, env) |> System;
+        h_trn = HOrth(608.55);
 
-    kin_init = KinematicInit(
-        v_eOb_n = [30, 0, 0],
-        ω_lb_b = [0, 0, 0],
-        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-        h = h_trn + 1.9 + 2200.5);
+        ac = Cessna172R();
+        env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
+        world = SimpleWorld(ac, env) |> System;
 
-    init_kinematics!(world, kin_init)
+        kin_init = KinematicInit(
+            v_eOb_n = [30, 0, 0],
+            ω_lb_b = [0, 0, 0],
+            q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
+            loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+            h = h_trn + 1.9 + 2200.5);
 
-    world.ac.u.avionics.eng_start = true #engine start switch on
-    world.env.atm.u.wind.v_ew_n .= [0, 0, 0]
+        init_kinematics!(world, kin_init)
 
-    sys_io! = let
+        world.ac.u.avionics.eng_start = true #engine start switch on
+        world.env.atm.u.wind.v_ew_n .= [0, 0, 0]
 
-        function (u, s, y, t, params)
+        sys_io! = let
 
-            u.ac.avionics.throttle = 0.2
-            u.ac.avionics.aileron = (t < 5 ? 0.25 : 0.0)
-            u.ac.avionics.elevator = 0.0
-            u.ac.avionics.rudder = 0.0
-            u.ac.avionics.brake_left = 1
-            u.ac.avionics.brake_right = 1
+            function (u, s, y, t, params)
 
+                u.ac.avionics.throttle = 0.2
+                u.ac.avionics.aileron = (t < 5 ? 0.25 : 0.0)
+                u.ac.avionics.elevator = 0.0
+                u.ac.avionics.rudder = 0.0
+                u.ac.avionics.brake_left = 1
+                u.ac.avionics.brake_right = 1
+
+            end
         end
+
+        sim = Simulation(world; t_end = 300, sys_io!, adaptive = true)
+        Sim.run!(sim, verbose = true)
+
+        # plots = make_plots(sim; Plotting.defaults...)
+        plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
+        save && save_plots(plots, save_folder = joinpath("tmp", "sim_test"))
+
+        # return sim
+
     end
 
-    sim = Simulation(world; t_end = 300, sys_io!, adaptive = true)
-    Sim.run!(sim, verbose = true)
-
-    # plots = make_plots(sim; Plotting.defaults...)
-    plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
-    save && save_plots(plots, save_folder = joinpath("tmp", "sim_test"))
-
-    # return sim
-
 end
-
 
 
 function test_sim_paced(; save::Bool = true)

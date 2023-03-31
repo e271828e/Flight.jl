@@ -57,17 +57,25 @@ end
 struct TunableSeaLevelConditions <: AbstractSeaLevelConditions end
 
 #these probably should be defined as Ranged
-Base.@kwdef mutable struct UTunableSeaLevelConditions
-    T_sl::Ranged{Float64, T_std - 50, T_std + 50} = T_std
-    p_sl::Ranged{Float64, p_std - 10000, p_std + 10000} = p_std
+Base.@kwdef mutable struct TunableSeaLevelConditionsU
+    T::Ranged{Float64, T_std - 50, T_std + 50} = T_std
+    p::Ranged{Float64, p_std - 10000, p_std + 10000} = p_std
 end
 
-Systems.init(::SystemU, ::TunableSeaLevelConditions) = UTunableSeaLevelConditions()
+const TunableSeaLevelConditionsY = SeaLevelData
 
-function SeaLevelData(s::System{<:TunableSeaLevelConditions}, ::Abstract2DLocation)
-    SeaLevelData(T = s.u.T_sl, p = s.u.p_sl)
+Systems.init(::SystemU, ::TunableSeaLevelConditions) = TunableSeaLevelConditionsU()
+Systems.init(::SystemY, ::TunableSeaLevelConditions) = TunableSeaLevelConditionsY()
+
+function Systems.f_ode!(sys::System{TunableSeaLevelConditions})
+    @unpack T, p = sys.u
+    sys.y = TunableSeaLevelConditionsY(; T, p)
+end
+
+function SeaLevelData(sys::System{<:TunableSeaLevelConditions}, ::Abstract2DLocation)
+    SeaLevelData(T = sys.u.T, p = sys.u.p)
     #alternative using actual local SL gravity:
-    # return (T = s.u.T_sl, p = s.u.p_sl, g = gravity(Geographic(loc, HOrth(0.0))))
+    # return (T = s.u.T, p = s.u.p, g = gravity(Geographic(loc, HOrth(0.0))))
 end
 
 function GUI.draw!(sys::System{<:TunableSeaLevelConditions}, label::String = "Sea Level Conditions")
@@ -77,8 +85,8 @@ function GUI.draw!(sys::System{<:TunableSeaLevelConditions}, label::String = "Se
     CImGui.Begin(label)
 
     CImGui.PushItemWidth(-60)
-    u.T_sl = GUI.safe_slider("Temperature (K)", u.T_sl, "%.3f")
-    u.p_sl = GUI.safe_slider("Pressure (Pa)", u.p_sl, "%.3f")
+    u.T = GUI.safe_slider("Temperature (K)", u.T, "%.3f")
+    u.p = GUI.safe_slider("Pressure (Pa)", u.p, "%.3f")
     CImGui.PopItemWidth()
 
     CImGui.End()
@@ -174,14 +182,20 @@ end
 
 struct TunableWind <: AbstractWind end
 
-Base.@kwdef mutable struct UTunableWInd
+Base.@kwdef mutable struct TunableWindU
     v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
 end
 
-Systems.init(::SystemU, ::TunableWind) = UTunableWInd()
+const TunableWindY = WindData
 
-function WindData(wind::System{<:TunableWind}, ::Abstract3DPosition)
-    wind.u.v_ew_n |> SVector{3,Float64} |> WindData
+Systems.init(::SystemU, ::TunableWind) = TunableWindU()
+Systems.init(::SystemY, ::TunableWind) = TunableWindY()
+
+WindData(wind::System{<:TunableWind}, ::Abstract3DPosition) = WindData(wind)
+WindData(wind::System{<:TunableWind}) = (wind.u.v_ew_n |> SVector{3,Float64} |> WindData)
+
+function Systems.f_ode!(sys::System{TunableWind})
+    sys.y = TunableWindY(sys)
 end
 
 function GUI.draw!(sys::System{<:TunableWind}, label::String = "Wind")

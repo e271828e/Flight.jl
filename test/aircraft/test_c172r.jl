@@ -9,130 +9,53 @@ using Flight
 
 export test_c172r
 
+function test_CAS()
+
+end
+
+
 function test_c172r()
     @testset verbose = true "Cessna172R" begin
 
-        @testset verbose = true "Performance" begin test_system() end
-        @testset verbose = true "Simulation" begin test_sim(save = false) end
-        @testset verbose = true "Trimming" begin test_trimming() end
+        test_system_methods()
+        test_trimming()
 
     end
 end
 
-function test_system()
+function test_system_methods()
 
-        env = SimpleEnvironment() |> System
+        @testset verbose = true "System Methods" begin
 
-        loc = NVector()
-        trn_data = TerrainData(env.trn, loc)
-        kin_init = KinematicInit( h = trn_data.altitude + 1.8);
+            env = SimpleEnvironment() |> System
 
-        ac_LTF = System(Cessna172R(LTF()));
-        ac_ECEF = System(Cessna172R(ECEF()));
-        ac_NED = System(Cessna172R(NED()));
+            loc = NVector()
+            trn_data = TerrainData(env.trn, loc)
+            kin_init = KinematicInit( h = trn_data.altitude + 1.8);
 
-        init_kinematics!(ac_LTF, kin_init)
-        init_kinematics!(ac_ECEF, kin_init)
-        init_kinematics!(ac_NED, kin_init)
+            ac_LTF = System(Cessna172R(LTF()));
+            ac_ECEF = System(Cessna172R(ECEF()));
+            ac_NED = System(Cessna172R(NED()));
 
-        f_ode!(ac_LTF, env) #make sure we're on the ground
-        @test ac_LTF.y.airframe.ldg.left.strut.wow == true
-        # ac.u.avionics.eng_start = true #engine start switch on
+            init_kinematics!(ac_LTF, kin_init)
+            init_kinematics!(ac_ECEF, kin_init)
+            init_kinematics!(ac_NED, kin_init)
 
-        #all three kinematics implementations must be supported, no allocations
-        @test @ballocated(f_ode!($ac_LTF, $env)) == 0
-        @test @ballocated(f_step!($ac_LTF)) == 0
+            f_ode!(ac_LTF, env) #make sure we're on the ground
+            @test ac_LTF.y.airframe.ldg.left.strut.wow == true
+            # ac.u.avionics.eng_start = true #engine start switch on
 
-        @test @ballocated(f_ode!($ac_ECEF, $env)) == 0
-        @test @ballocated(f_step!($ac_ECEF)) == 0
+            #all three kinematics implementations must be supported, no allocations
+            @test @ballocated(f_ode!($ac_LTF, $env)) == 0
+            @test @ballocated(f_step!($ac_LTF)) == 0
 
-        @test @ballocated(f_ode!($ac_NED, $env)) == 0
-        @test @ballocated(f_step!($ac_NED)) == 0
+            @test @ballocated(f_ode!($ac_ECEF, $env)) == 0
+            @test @ballocated(f_step!($ac_ECEF)) == 0
 
-    return nothing
-
-end
-
-
-function test_sim(; save::Bool = true)
-
-    h_trn = HOrth(608.55);
-
-    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
-    ac = System(Cessna172R());
-    kin_init = KinematicInit(
-        v_eOb_n = [30, 0, 0],
-        ω_lb_b = [0, 0, 0],
-        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-        h = h_trn + 1.9 + 2200.5);
-
-    init_kinematics!(ac, kin_init)
-    ac.u.avionics.eng_start = true #engine start switch on
-
-    env.atm.u.wind.v_ew_n[1] = 0
-
-    sys_io! = let
-
-        function (u, s, y, t, params)
-
-            u.avionics.throttle = 0.2
-            u.avionics.aileron = (t < 5 ? 0.25 : 0.0)
-            u.avionics.elevator = 0.0
-            u.avionics.rudder = 0.0
-            u.avionics.brake_left = 1
-            u.avionics.brake_right = 1
+            @test @ballocated(f_ode!($ac_NED, $env)) == 0
+            @test @ballocated(f_step!($ac_NED)) == 0
 
         end
-    end
-
-    sim = Simulation(ac; args_ode = (env, ), args_disc = (env, ), t_end = 300, sys_io!, adaptive = true)
-    Sim.run!(sim, verbose = true)
-
-    # plots = make_plots(sim; Plotting.defaults...)
-    plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
-    save && save_plots(plots, save_folder = joinpath("tmp", "sim_test"))
-
-    # return sim
-
-end
-
-
-function test_sim_paced(; save::Bool = true)
-
-    h_trn = HOrth(608.55);
-
-    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn)) |> System
-    ac = System(Cessna172R());
-    kin_init = KinematicInit(
-        v_eOb_n = [0, 0, 0],
-        ω_lb_b = [0, 0, 0],
-        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-        h = h_trn + 1.9 + 0);
-
-    init_kinematics!(ac, kin_init)
-
-    sim = Simulation(ac; args_ode = (env,), args_disc = (env,), t_end = 180)
-
-    interfaces = Vector{IODevices.Interface}()
-    for joystick in get_connected_joysticks()
-        push!(interfaces, attach_io!(sim, joystick))
-    end
-    xp = XPConnect()
-    # xp = XPConnect(host = IPv4("192.168.1.2"))
-    push!(interfaces, attach_io!(sim, xp))
-    # return sim, xp
-
-    @sync begin
-        for interface in interfaces
-            Threads.@spawn IODevices.start!(interface)
-        end
-        Threads.@spawn Sim.run_paced!(sim; rate = 1, verbose = true)
-    end
-
-    plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
-    save && save_plots(plots, save_folder = joinpath("tmp", "paced_sim_test"))
 
     return nothing
 
@@ -140,6 +63,8 @@ end
 
 
 function test_trimming()
+
+    @testset verbose = true "Trimming" begin
 
     @testset verbose = true "θ Constraint" begin
 
@@ -229,7 +154,10 @@ function test_trimming()
         @test exit_flag === :STOPVAL_REACHED
 
     end
-end
+
+    end #testset
+
+end #function
 
 
 
