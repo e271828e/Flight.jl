@@ -117,6 +117,18 @@ function test_pi_compensator(save = false)
         @test sys.y.out[3] == 0 #but sys.y needs f_ode! to update
         @test f_step!(sys) == false #once reset, no further changes to sys.x[3]
 
+        sys.u.input .= 1e-1
+        sys.u.reset .= false
+        sys.u.hold .= false
+        step!(sim, 1, true)
+        @test sys.y.state[2] > 0 #integrator accumulates
+        sys.u.hold .= true
+        #let hold input propagate
+        step!(sim, 1, true)
+        last_state = sys.y.state[2]
+        step!(sim, 1, true)
+        @test sys.y.state[2] == last_state
+
         @test @ballocated($f_ode!($sys)) == 0
         @test @ballocated($f_step!($sys)) == 0
 

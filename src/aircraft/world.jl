@@ -47,7 +47,16 @@ function Systems.f_ode!(sys::System{<:SimpleWorld})
     return nothing
 end
 
-#f_disc! and f_step! can rely on their respective fallbacks
+function Systems.f_disc!(sys::System{<:SimpleWorld}, Δt::Real)
+    @unpack ac, env = sys
+    x_mod = false
+    x_mod |= f_disc!(env, Δt)
+    x_mod |= f_disc!(ac, Δt, env)
+    sys.y = SimpleWorldY(ac.y, env.y)
+    return x_mod
+end
+
+#f_step! can rely on its fallback
 
 ############################### Plotting #######################################
 

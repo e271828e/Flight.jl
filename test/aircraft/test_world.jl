@@ -37,7 +37,7 @@ function test_system()
 
     #make sure we're on the ground
     f_ode!(world)
-    @test world.aircraft.y.airframe.ldg.left.strut.wow == true
+    @test world.ac.y.airframe.ldg.left.strut.wow == true
 
     @test @ballocated(f_ode!($world)) == 0
     @test @ballocated(f_step!($world)) == 0

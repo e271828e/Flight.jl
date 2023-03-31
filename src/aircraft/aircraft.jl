@@ -104,15 +104,17 @@ function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractE
     air_data = AirData(kin_data, atm)
 
     #update avionics and airframe components
-    f_ode!(avionics, airframe, kin_data, air_data, trn)
+    rb_data = sys.y.rigidbody #use rigid body data from previous call
+    f_ode!(avionics, airframe, kin_data, air_data, rb_data, trn)
     map_controls!(airframe, avionics)
-    f_ode!(airframe, kin_data, air_data, trn)
+    f_ode!(airframe, kin_data, air_data, rb_data, trn)
 
+    #get inputs for rigid body dynamics
     mp_Ob = get_mp_Ob(airframe)
     wr_b = get_wr_b(airframe)
     hr_b = get_hr_b(airframe)
 
-    #update velocity derivatives
+    #update velocity derivatives and rigid body data
     rb_data = f_rigidbody!(kinematics.ẋ.vel, kin_data, mp_Ob, wr_b, hr_b)
 
     sys.y = AircraftTemplateY(kinematics.y, airframe.y, avionics.y, rb_data, air_data)
@@ -121,27 +123,33 @@ function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractE
 
 end
 
-function Systems.f_step!(sys::System{<:AircraftTemplate})
-    @unpack kinematics, airframe, avionics = sys
+function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt, env::System{<:AbstractEnvironment})
+
+    @unpack airframe, avionics = sys.subsystems
+    @unpack kinematics, rigidbody, air = sys.y
+    @unpack trn = env
 
     #could use chained | instead, but this is clearer
     x_mod = false
-    x_mod |= f_step!(kinematics)
-    x_mod |= f_step!(avionics, airframe, kinematics)
-    map_controls!(airframe, avionics)
-    x_mod |= f_step!(airframe, kinematics)
+    #in principle, only avionics should have discrete dynamics (it's the only
+    #aircraft subsystem in which discretized algorithms should live)
+    x_mod |= f_disc!(avionics, Δt, airframe, kinematics, air, rigidbody, trn)
+
+    #avionics might have modified its outputs, so we need to reassemble everything
+    sys.y = AircraftTemplateY(kinematics, airframe.y, avionics.y, rigidbody, air)
 
     return x_mod
 end
 
-function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt)
-    @unpack kinematics, airframe, avionics = sys
+function Systems.f_step!(sys::System{<:AircraftTemplate})
+
+    @unpack kinematics, airframe, avionics = sys.subsystems
 
     #could use chained | instead, but this is clearer
     x_mod = false
-    #in principle, only avionics should have discrete dynamics (it's the
-    #aircraft subsystem in which discretized algorithms are hosted)
-    x_mod |= f_disc!(avionics, airframe, kinematics, Δt)
+    x_mod |= f_step!(kinematics)
+    x_mod |= f_step!(airframe)
+    x_mod |= f_step!(avionics)
 
     return x_mod
 end

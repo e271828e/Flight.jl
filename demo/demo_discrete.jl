@@ -53,7 +53,7 @@ function f_dtc()
     @show sim.t
     @show sim.y
 
-    #setting dt > Δt also works: the integrator will honor the periodic callback
+    #setting dt > Δt also works: the integrator will honor the discrete callback
     sys = DiscreteTestComponent() |> System
     sim = Simulation(sys, Δt = 1.0, dt = 2.0)
     step!(sim, 1, true)

@@ -124,12 +124,14 @@ end
 
 Base.@kwdef struct PICompensatorU{N}
     input::MVector{N,Float64} = zeros(N)
+    hold::MVector{N,Bool} = zeros(Bool, N)
     reset::MVector{N,Bool} = zeros(Bool, N)
     sat_enable::MVector{N,Bool} = ones(Bool, N)
 end
 
 Base.@kwdef struct PICompensatorY{N}
-    reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset input
+    hold::SVector{N,Bool} = zeros(SVector{N, Bool}) #hold integrator state
+    reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset integrator state
     input::SVector{N,Float64} = zeros(SVector{N}) #input signal
     state::SVector{N,Float64} = zeros(SVector{N}) #integrator state
     out_p::SVector{N,Float64} = zeros(SVector{N}) #proportional term
@@ -138,7 +140,7 @@ Base.@kwdef struct PICompensatorY{N}
     out::SVector{N,Float64} = zeros(SVector{N}) #total output
     sat_enable::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation status
     sat_status::SVector{N,Int64} = zeros(SVector{N, Int64}) #saturation status
-    int_status::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation status
+    int_status::SVector{N,Bool} = zeros(SVector{N, Bool}) #integrator accumulating
 end
 
 Systems.init(::SystemX, ::PICompensator{N}) where {N} = zeros(N)
@@ -152,6 +154,7 @@ function Systems.f_ode!(sys::System{<:PICompensator{N}}) where {N}
 
     state = SVector{N, Float64}(sys.x)
 
+    hold = SVector(sys.u.hold)
     reset = SVector(sys.u.reset)
     input = SVector(sys.u.input)
     sat_enable = SVector(sys.u.sat_enable)
@@ -167,9 +170,9 @@ function Systems.f_ode!(sys::System{<:PICompensator{N}}) where {N}
     sat_status = sat_upper - sat_lower
     int_status = sign.(input .* sat_status) .<= 0 #enable integrator?
 
-    sys.ẋ .= (input .* int_status - k_l .* state) .* .!reset
+    sys.ẋ .= (input .* int_status - k_l .* state) .* .!reset .* .!hold
 
-    sys.y = PICompensatorY(; reset, input, state, out_p, out_i,
+    sys.y = PICompensatorY(; hold, reset, input, state, out_p, out_i,
                             out_free, out, sat_enable, sat_status, int_status)
 
 end
@@ -245,9 +248,12 @@ function GUI.draw!(sys::System{<:PICompensator{N}}, label::String = "PICompensat
     if CImGui.TreeNode("Inputs")
         for i in 1:N
             if CImGui.TreeNode("[$i]")
-                @unpack reset, sat_enable = sys.u
+                @unpack hold, reset, sat_enable = sys.u
+                hold_ref = Ref(hold[i])
                 reset_ref = Ref(reset[i])
                 sat_ref = Ref(sat_enable[i])
+                CImGui.Checkbox("Hold", hold_ref)
+                CImGui.SameLine()
                 CImGui.Checkbox("Reset", reset_ref)
                 CImGui.SameLine()
                 CImGui.Checkbox("Enable Saturation", sat_ref)
@@ -280,7 +286,8 @@ function GUI.draw(sys::System{<:PICompensator{N}}, label::String = "PICompensato
 
 
     if CImGui.TreeNode("Outputs")
-        @unpack reset, input, sat_enable, sat_status, out_free, out = y
+        @unpack hold, reset, input, sat_enable, sat_status, out_free, out = y
+        CImGui.Text("Hold = $hold")
         CImGui.Text("Reset = $reset")
         CImGui.Text("Input = $input")
         CImGui.Text("Unbounded Output = $out_free")

@@ -145,12 +145,12 @@ end
     end
 end
 
-########################## f_ode! f_step! f_disc! ##############################
+######################## f_ode! f_step! f_disc! ############################
 
 #f_ode! must update sys.ẋ, compute and reassign sys.y, then return nothing
 
-#f_step! and f_disc! are allowed to modify a System's u, s and x. if they do so,
-#they must return true, otherwise false
+#f_step! and f_disc! are allowed to modify a System's u, s and x. if they do
+#so, they must return true, otherwise false
 
 #caution: if a System subtype defines a f_ode!, f_disc! or f_step! method, but
 #its interface is incorrectly specified, dispatch will silently revert to the
@@ -184,10 +184,10 @@ end
 
 end
 
-#fallback method for node Systems. tries calling f_disc! on all subsystems with
-#the same arguments provided to the parent System, then ORs their outputs.
-#updates y, since f_disc! is where discrete Systems should update their output.
-#override as required.
+#fallback method for node Systems. tries calling f_disc! on all subsystems
+#with the same arguments provided to the parent System, then ORs their outputs.
+#updates y, since f_disc! is where discrete Systems should update their
+#output. override as required.
 @inline function (f_disc!(sys::System{C, X, Y, U, S, P, B}, Δt, args...)
                     where {C<:Component, X <: XType, Y, U, S, P, B})
 

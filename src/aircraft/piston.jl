@@ -153,7 +153,7 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
                         M_load::Real, J_load::Real)
 
     @unpack ω_rated, ω_idle, P_rated, J, M_start, lookup = eng.params
-    @unpack frc, idle = eng.subsystems
+    @unpack idle, frc = eng.subsystems
     @unpack thr, mix, start, stop = eng.u
 
     throttle = Float64(thr)
@@ -234,7 +234,8 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
     eng.ẋ.ω = ω_dot
 
     eng.y = PistonEngineY(; start, stop, throttle, mixture, state,
-                            MAP, ω, M_shaft, P_shaft, SFC, ṁ, idle = eng.idle.y)
+                            MAP, ω, M_shaft, P_shaft, SFC, ṁ,
+                            idle = eng.idle.y, frc = eng.frc.y)
 
 end
 

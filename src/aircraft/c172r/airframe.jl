@@ -874,7 +874,8 @@ function assign!(aero::System{<:Aero}, ldg::System{<:Ldg}, pwp::System{<:Piston.
 end
 
 function Systems.f_ode!(airframe::System{<:Airframe},
-                        kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
+                        kin::KinematicData, air::AirData, ::RigidBodyData,
+                        trn::System{<:AbstractTerrain})
 
     @unpack act, aero, pwp, ldg, fuel, pld = airframe
 
@@ -889,13 +890,14 @@ function Systems.f_ode!(airframe::System{<:Airframe},
 
 end
 
-function Systems.f_step!(airframe::System{<:Airframe}, ::KinematicSystem)
+function Systems.f_step!(airframe::System{<:Airframe})
     @unpack aero, ldg, pwp, fuel = airframe
 
     x_mod = false
     x_mod |= f_step!(aero)
     x_mod |= f_step!(ldg)
     x_mod |= f_step!(pwp, fuel)
+
     return x_mod
 
 end

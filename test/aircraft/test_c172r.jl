@@ -86,7 +86,7 @@ function test_sim(; save::Bool = true)
         end
     end
 
-    sim = Simulation(ac; args_ode = (env, ), t_end = 300, sys_io!, adaptive = true)
+    sim = Simulation(ac; args_ode = (env, ), args_disc = (env, ), t_end = 300, sys_io!, adaptive = true)
     Sim.run!(sim, verbose = true)
 
     # plots = make_plots(sim; Plotting.defaults...)
@@ -113,7 +113,7 @@ function test_sim_paced(; save::Bool = true)
 
     init_kinematics!(ac, kin_init)
 
-    sim = Simulation(ac; args_ode = (env,), t_end = 180)
+    sim = Simulation(ac; args_ode = (env,), args_disc = (env,), t_end = 180)
 
     interfaces = Vector{IODevices.Interface}()
     for joystick in get_connected_joysticks()
