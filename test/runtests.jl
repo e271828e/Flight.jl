@@ -12,14 +12,14 @@ include(normpath("aircraft/test_piston.jl")); using .TestPiston
 include(normpath("aircraft/test_c172r.jl")); using .TestC172R
 include(normpath("aircraft/test_world.jl")); using .TestWorld
 
-# test_quaternions()
-# test_attitude()
-# test_geodesy()
-# test_kinematics()
+test_quaternions()
+test_attitude()
+test_geodesy()
+test_kinematics()
 
-# test_control()
-# test_propellers()
-# test_landing_gear()
-# test_piston()
+test_control()
+test_propellers()
+test_landing_gear()
+test_piston()
 test_c172r()
 test_world()

@@ -6,7 +6,7 @@ using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 using Flight.FlightCore
 using Flight.FlightPhysics
 using ..Aircraft
-using ..C172RDirect
+using ..C172R
 
 export SimpleWorld
 
@@ -21,17 +21,11 @@ Base.@kwdef struct SimpleWorld{A <: AircraftTemplate, E <: AbstractEnvironment} 
     env::E = SimpleEnvironment()
 end
 
-struct SimpleWorldU{A, E}
-    ac::A
-    env::E
-end
-
 struct SimpleWorldY{A, E}
     ac::A
     env::E
 end
 
-Systems.init(::SystemU, world::SimpleWorld) = SimpleWorldU(init_u(world.ac), init_u(world.env))
 Systems.init(::SystemY, world::SimpleWorld) = SimpleWorldY(init_y(world.ac), init_y(world.env))
 
 get_aircraft(world::System{<:SimpleWorld}) = world.ac
@@ -40,7 +34,7 @@ get_environment(world::System{<:SimpleWorld}) = world.env
 Aircraft.init_kinematics!(world::System{<:SimpleWorld}, args...) = init_kinematics!(world.ac, args...)
 
 function Systems.f_ode!(sys::System{<:SimpleWorld})
-    @unpack ac, env = sys
+    @unpack ac, env = sys.subsystems
     f_ode!(env)
     f_ode!(ac, env)
     sys.y = SimpleWorldY(ac.y, env.y)
@@ -48,7 +42,7 @@ function Systems.f_ode!(sys::System{<:SimpleWorld})
 end
 
 function Systems.f_disc!(sys::System{<:SimpleWorld}, Δt::Real)
-    @unpack ac, env = sys
+    @unpack ac, env = sys.subsystems
     x_mod = false
     x_mod |= f_disc!(env, Δt)
     x_mod |= f_disc!(ac, Δt, env)
@@ -70,9 +64,10 @@ end
 
 ############################ Joystick Mappings #################################
 
-function IODevices.assign!(u::SimpleWorldU, joystick::Joystick{XBoxControllerID},
+function IODevices.assign!(sys::System{<:SimpleWorld},
+                           joystick::Joystick{<:AbstractJoystickID},
                            mapping::InputMapping)
-    IODevices.assign!(u.ac, joystick, mapping)
+    IODevices.assign!(sys.ac, joystick, mapping)
 end
 
 ############################# XPlaneConnect ####################################

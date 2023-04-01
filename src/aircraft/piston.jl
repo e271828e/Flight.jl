@@ -121,8 +121,8 @@ end
 Base.@kwdef mutable struct PistonEngineU
     start::Bool = false
     stop::Bool = false
-    thr::Ranged{Float64, 0, 1} = 0.0 #throttle setting
-    mix::Ranged{Float64, 0, 1} = 0.5 #mixture setting
+    throttle::Ranged{Float64, 0, 1} = 0.0 #throttle setting
+    mixture::Ranged{Float64, 0, 1} = 0.5 #mixture setting
     idle::PICompensatorU{1} = PICompensatorU{1}()
     frc::PICompensatorU{1} = PICompensatorU{1}()
 end
@@ -154,10 +154,10 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
 
     @unpack ω_rated, ω_idle, P_rated, J, M_start, lookup = eng.params
     @unpack idle, frc = eng.subsystems
-    @unpack thr, mix, start, stop = eng.u
+    @unpack start, stop = eng.u
 
-    throttle = Float64(thr)
-    mixture = Float64(mix)
+    throttle = Float64(eng.u.throttle)
+    mixture = Float64(eng.u.mixture)
     state = eng.s.state
     ω = eng.x.ω
 
@@ -417,6 +417,41 @@ function compute_π_ISA_pow(lookup, n, μ, δ)
 end
 
 
+function GUI.draw!(sys::System{<:Engine}, window_label::String = "Piston Engine")
+
+    @unpack u, y, params = sys
+    @unpack idle, frc = sys
+    @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ, SFC = y
+
+    CImGui.Begin(window_label)
+
+        u.start = dynamic_button("Start", 0.4); CImGui.SameLine()
+        u.stop = dynamic_button("Stop", 0.0)
+        CImGui.Text("State: $state")
+        CImGui.Text(@sprintf("Throttle: %.3f", throttle))
+        CImGui.Text(@sprintf("Mixture: %.3f", mixture))
+        CImGui.Text(@sprintf("Manifold Pressure: %.3f Pa", MAP))
+        CImGui.Text(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
+        CImGui.Text(@sprintf("Shaft Torque: %.3f N*m", M_shaft))
+        CImGui.Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
+        CImGui.Text(@sprintf("Fuel Consumption: %.3f g/s", ṁ*1e3))
+        CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
+
+        if CImGui.TreeNode("Idle RPM Controller")
+            GUI.draw(idle, window_label)
+            CImGui.TreePop()
+        end
+
+        if CImGui.TreeNode("Friction Regulator")
+            GUI.draw(frc, window_label)
+            CImGui.TreePop()
+        end
+
+    CImGui.End()
+
+end
+
+
 ################################################################################
 ############################### Thruster #######################################
 
@@ -441,10 +476,10 @@ Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
 end
 
 
-function Systems.f_ode!(thr::System{<:Thruster}, air::AirData, kin::KinematicData)
+function Systems.f_ode!(sys::System{<:Thruster}, air::AirData, kin::KinematicData)
 
-    @unpack engine, propeller = thr
-    @unpack gear_ratio = thr.params
+    @unpack engine, propeller = sys
+    @unpack gear_ratio = sys.params
 
     ω_eng = engine.x.ω
     ω_prop = gear_ratio * ω_eng
@@ -459,13 +494,13 @@ function Systems.f_ode!(thr::System{<:Thruster}, air::AirData, kin::KinematicDat
 
     f_ode!(engine, air; M_load = M_eq, J_load = J_eq)
 
-    update_y!(thr)
+    update_y!(sys)
 
 end
 
-function Systems.f_step!(thr::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
+function Systems.f_step!(sys::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
 
-    @unpack engine, propeller = thr
+    @unpack engine, propeller = sys
 
     x_mod = false
     x_mod |= f_step!(engine, fuel)
@@ -478,57 +513,24 @@ RigidBody.MassTrait(::System{<:Thruster}) = HasNoMass()
 RigidBody.AngMomTrait(::System{<:Thruster}) = HasAngularMomentum()
 RigidBody.WrenchTrait(::System{<:Thruster}) = GetsExternalWrench()
 
-RigidBody.get_wr_b(thr::System{<:Thruster}) = get_wr_b(thr.propeller) #only external
-RigidBody.get_hr_b(thr::System{<:Thruster}) = get_hr_b(thr.propeller)
+RigidBody.get_wr_b(sys::System{<:Thruster}) = get_wr_b(sys.propeller) #only external
+RigidBody.get_hr_b(sys::System{<:Thruster}) = get_hr_b(sys.propeller)
 
 
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(sys::System{<:Thruster}, window_label::String = "Piston Thruster")
+function GUI.draw!(sys::System{<:Thruster}, window_label::String = "Piston Thruster")
 
     CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
         show_eng = @cstatic check=false @c CImGui.Checkbox("Engine", &check)
         show_prop = @cstatic check=false @c CImGui.Checkbox("Propeller", &check)
     CImGui.End()
 
-    show_eng && GUI.draw(sys.engine)
-    show_prop && GUI.draw(sys.propeller)
+    show_eng && GUI.draw!(sys.engine)
+    show_prop && GUI.draw!(sys.propeller)
 
 end
 
-function GUI.draw(sys::System{<:Engine}, window_label::String = "Piston Engine")
-
-    @unpack u, y, params = sys
-    @unpack idle, frc = sys
-    @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ, SFC = y
-
-    CImGui.Begin(window_label)
-
-        CImGui.Text("Start Switch: $start")
-        CImGui.Text("Stop Switch: $stop")
-        CImGui.Text("State: $state")
-        CImGui.Text(@sprintf("Throttle: %.3f", throttle))
-        CImGui.Text(@sprintf("Mixture: %.3f", mixture))
-        CImGui.Text(@sprintf("Manifold Pressure: %.3f Pa", MAP))
-        CImGui.Text(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
-        CImGui.Text(@sprintf("Shaft Torque: %.3f N*m", M_shaft))
-        CImGui.Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
-        CImGui.Text(@sprintf("Fuel Consumption: %.3f g/s", ṁ*1e3))
-        CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
-
-        if CImGui.TreeNode("Idle RPM Controller")
-            GUI.draw(idle, window_label)
-            CImGui.TreePop()
-        end
-
-        if CImGui.TreeNode("Friction Regulator")
-            GUI.draw(frc, window_label)
-            CImGui.TreePop()
-        end
-
-    CImGui.End()
-
-end
 
 end #module

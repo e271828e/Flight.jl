@@ -1,4 +1,4 @@
-module C172RAirframe
+module Airframe
 
 using StaticArrays
 using ComponentArrays
@@ -16,7 +16,7 @@ using Flight.FlightAircraft.Propellers
 using Flight.FlightAircraft.Piston
 using Flight.FlightAircraft.Aircraft
 
-export Airframe
+export C172RAirframe
 
 
 ################################################################################
@@ -52,13 +52,11 @@ RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
 
 
 ################################################################################
-############################# ReversibleActuation ##################################
+############################# MechanicalActuation ##################################
 
-struct ReversibleActuation <: Component end
+struct MechanicalActuation <: Component end
 
-Base.@kwdef mutable struct ReversibleActuationU
-    eng_start::Bool = false
-    eng_stop::Bool = false
+Base.@kwdef mutable struct MechanicalActuationU
     throttle::Ranged{Float64, 0, 1} = 0.0
     mixture::Ranged{Float64, 0, 1} = 0.5
     aileron::Ranged{Float64, -1, 1} = 0.0
@@ -72,9 +70,7 @@ Base.@kwdef mutable struct ReversibleActuationU
     brake_right::Ranged{Float64, 0, 1} = 0.0
 end
 
-Base.@kwdef struct ReversibleActuationY
-    eng_start::Bool = false
-    eng_stop::Bool = false
+Base.@kwdef struct MechanicalActuationY
     throttle::Float64 = 0.0
     mixture::Float64 = 0.5
     aileron::Float64 = 0.0
@@ -88,46 +84,44 @@ Base.@kwdef struct ReversibleActuationY
     brake_right::Float64 = 0.0
 end
 
-Systems.init(::SystemU, ::ReversibleActuation) = ReversibleActuationU()
-Systems.init(::SystemY, ::ReversibleActuation) = ReversibleActuationY()
+Systems.init(::SystemU, ::MechanicalActuation) = MechanicalActuationU()
+Systems.init(::SystemY, ::MechanicalActuation) = MechanicalActuationY()
 
-RigidBody.MassTrait(::System{ReversibleActuation}) = HasNoMass()
-RigidBody.AngMomTrait(::System{ReversibleActuation}) = HasNoAngularMomentum()
-RigidBody.WrenchTrait(::System{ReversibleActuation}) = GetsNoExternalWrench()
+RigidBody.MassTrait(::System{MechanicalActuation}) = HasNoMass()
+RigidBody.AngMomTrait(::System{MechanicalActuation}) = HasNoAngularMomentum()
+RigidBody.WrenchTrait(::System{MechanicalActuation}) = GetsNoExternalWrench()
 
-function Systems.f_ode!(act::System{ReversibleActuation})
+function Systems.f_ode!(act::System{MechanicalActuation})
 
-    #ReversibleActuation has no internal dynamics, just input-output feedthrough
-    @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
-            aileron_trim, elevator_trim, rudder_trim, flaps,
-            brake_left, brake_right= act.u
+    @unpack throttle, mixture, aileron, elevator, rudder,
+            aileron_trim, elevator_trim, rudder_trim,
+            flaps, brake_left, brake_right= act.u
 
-    act.y = ReversibleActuationY(;
-            eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
-            aileron_trim, elevator_trim, rudder_trim, flaps,
-            brake_left, brake_right)
+    act.y = MechanicalActuationY(; throttle, mixture, aileron, elevator, rudder,
+            aileron_trim, elevator_trim, rudder_trim,
+            flaps, brake_left, brake_right)
 
 end
 
-function GUI.draw(sys::System{ReversibleActuation}, label::String = "Cessna 172R ReversibleActuation")
+function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172R Reversible Actuation")
 
-    y = sys.y
+    u = sys.u
 
     CImGui.Begin(label)
 
     CImGui.PushItemWidth(-60)
 
-    @running_plot("Throttle", y.throttle, 0, 1, 0.0, 60)
-    @running_plot("Mixture", y.mixture, 0, 1, 0.5, 60)
-    @running_plot("Aileron", y.aileron, -1, 1, 0.0, 60)
-    @running_plot("Aileron Trim", y.aileron_trim, -1, 1, 0.0, 60)
-    @running_plot("Elevator", y.elevator, -1, 1, 0.0, 60)
-    @running_plot("Elevator Trim", y.elevator_trim, -1, 1, 0.0, 60)
-    @running_plot("Rudder", y.rudder, -1, 1, 0.0, 60)
-    @running_plot("Rudder Trim", y.rudder_trim, -1, 1, 0.0, 60)
-    @running_plot("Flaps", y.flaps, 0, 1, 0.0, 60)
-    @running_plot("Left Brake", y.brake_left, 0, 1, 0.0, 60)
-    @running_plot("Right Brake", y.brake_right, 0, 1, 0.0, 60)
+    u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
+    u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
+    u.aileron = safe_slider("Aileron", u.aileron, "%.6f")
+    u.elevator = safe_slider("Elevator", u.elevator, "%.6f")
+    u.rudder = safe_slider("Rudder", u.rudder, "%.6f")
+    u.aileron_trim = safe_input("Aileron Trim", u.aileron_trim, 0.001, 0.1, "%.6f")
+    u.elevator_trim = safe_input("Elevator Trim", u.elevator_trim, 0.001, 0.1, "%.6f")
+    u.rudder_trim = safe_input("Rudder Trim", u.rudder_trim, 0.001, 0.1, "%.6f")
+    u.flaps = safe_slider("Flaps", u.flaps, "%.6f")
+    u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
+    u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
 
     CImGui.PopItemWidth()
 
@@ -734,11 +728,11 @@ function GUI.draw!(sys::System{<:Payload}, label::String = "Cessna 172R Payload"
 
     CImGui.PushItemWidth(-60)
 
-    u.m_pilot = GUI.safe_slider("Pilot Mass (kg)", u.m_pilot, 0, 100, "%.3f")
-    u.m_copilot = GUI.safe_slider("Copilot Mass (kg)", u.m_copilot, 0, 100, "%.3f")
-    u.m_lpass = GUI.safe_slider("Left Passenger Mass (kg)", u.m_lpass, 0, 100, "%.3f")
-    u.m_rpass = GUI.safe_slider("Right Passenger Mass (kg)", u.m_rpass, 0, 100, "%.3f")
-    u.m_baggage = GUI.safe_slider("Baggage Mass (kg)", u.m_baggage, 0, 100, "%.3f")
+    u.m_pilot = GUI.safe_slider("Pilot Mass (kg)", u.m_pilot, "%.3f")
+    u.m_copilot = GUI.safe_slider("Copilot Mass (kg)", u.m_copilot, "%.3f")
+    u.m_lpass = GUI.safe_slider("Left Passenger Mass (kg)", u.m_lpass, "%.3f")
+    u.m_rpass = GUI.safe_slider("Right Passenger Mass (kg)", u.m_rpass, "%.3f")
+    u.m_baggage = GUI.safe_slider("Baggage Mass (kg)", u.m_baggage, "%.3f")
 
     CImGui.PopItemWidth()
 
@@ -819,19 +813,21 @@ Pwp() = Piston.Thruster(propeller = Propeller(t_bp = FrameTransform(r = [2.055, 
 
 
 ################################################################################
-################################ Airframe ######################################
+################################ C172RAirframe ######################################
 
 #P is introduced as a type parameter, because Piston.Thruster is itself a
 #parametric type, and therefore not concrete
-Base.@kwdef struct Airframe{P} <: AbstractAirframe
+Base.@kwdef struct C172RAirframe{P} <: AbstractAirframe
     str::Structure = Structure()
-    act::ReversibleActuation = ReversibleActuation()
+    act::MechanicalActuation = MechanicalActuation()
     aero::Aero = Aero()
     ldg::Ldg = Ldg()
     fuel::Fuel = Fuel()
     pld::Payload = Payload()
     pwp::P = Pwp()
 end
+
+
 
 ############################# Update Methods ###################################
 
@@ -850,18 +846,19 @@ end
 #more lift -> CL↑ -> flap trailing edge down -> δf↑ -> aero.f↑ -> act.flaps↑ ### no
 #act-aero inversion
 
+#assign the outputs from the MechanicalActuation system to the Airframe
+#subsystems it handles
+function assign!(aero::System{<:Aero},
+                ldg::System{<:Ldg},
+                pwp::System{<:Piston.Thruster},
+                act::System{<:MechanicalActuation})
 
-function assign!(aero::System{<:Aero}, ldg::System{<:Ldg}, pwp::System{<:Piston.Thruster},
-                act::System{<:ReversibleActuation})
+    @unpack throttle, mixture, aileron, elevator, rudder,
+            aileron_trim, elevator_trim, rudder_trim,
+            brake_left, brake_right, flaps = act.y
 
-    @unpack throttle, aileron_trim, aileron, elevator_trim, elevator,
-            rudder_trim, rudder, brake_left, brake_right, flaps, mixture,
-            eng_start, eng_stop = act.y
-
-    pwp.u.engine.start = eng_start
-    pwp.u.engine.stop = eng_stop
-    pwp.u.engine.thr = throttle
-    pwp.u.engine.mix = mixture
+    pwp.u.engine.throttle = throttle
+    pwp.u.engine.mixture = mixture
     ldg.u.nose.steering[] = (rudder_trim + rudder)
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
@@ -873,8 +870,8 @@ function assign!(aero::System{<:Aero}, ldg::System{<:Ldg}, pwp::System{<:Piston.
     return nothing
 end
 
-function Systems.f_ode!(airframe::System{<:Airframe},
-                        kin::KinematicData, air::AirData, ::RigidBodyData,
+function Systems.f_ode!(airframe::System{<:C172RAirframe},
+                        kin::KinematicData, air::AirData,
                         trn::System{<:AbstractTerrain})
 
     @unpack act, aero, pwp, ldg, fuel, pld = airframe
@@ -890,7 +887,7 @@ function Systems.f_ode!(airframe::System{<:Airframe},
 
 end
 
-function Systems.f_step!(airframe::System{<:Airframe})
+function Systems.f_step!(airframe::System{<:C172RAirframe})
     @unpack aero, ldg, pwp, fuel = airframe
 
     x_mod = false
@@ -902,10 +899,41 @@ function Systems.f_step!(airframe::System{<:Airframe})
 
 end
 
+################################## IODevices ###################################
+
+elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
+brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+
+function IODevices.assign!(sys::System{<:C172RAirframe},
+                           joystick::Joystick{XBoxControllerID},
+                           ::DefaultMapping)
+
+    u = sys.u
+
+    u.act.aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.act.elevator = get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.act.rudder = get_axis_value(joystick, :left_analog_x) |> rudder_curve
+    u.act.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
+    u.act.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
+
+    u.act.aileron_trim -= 0.01 * was_released(joystick, :dpad_left)
+    u.act.aileron_trim += 0.01 * was_released(joystick, :dpad_right)
+    u.act.elevator_trim += 0.01 * was_released(joystick, :dpad_down)
+    u.act.elevator_trim -= 0.01 * was_released(joystick, :dpad_up)
+
+    u.act.flaps += 0.3333 * was_released(joystick, :right_bumper)
+    u.act.flaps -= 0.3333 * was_released(joystick, :left_bumper)
+
+    u.pwp.engine.throttle += 0.1 * was_released(joystick, :button_Y)
+    u.pwp.engine.throttle -= 0.1 * was_released(joystick, :button_A)
+end
+
 
 #################################### GUI #######################################
 
-function GUI.draw(sys::System{<:Airframe}, window_label::String = "Cessna 172R Airframe")
+function GUI.draw!(sys::System{<:C172RAirframe}, window_label::String = "Cessna 172R Airframe")
 
     @unpack act, pwp, ldg, aero, fuel, pld = sys
 
@@ -920,14 +948,13 @@ function GUI.draw(sys::System{<:Airframe}, window_label::String = "Cessna 172R A
 
     CImGui.End()
 
-    show_act && GUI.draw(act)
+    show_act && GUI.draw!(act)
     show_aero && GUI.draw(aero)
     show_ldg && GUI.draw(ldg)
-    show_pwp && GUI.draw(pwp)
+    show_pwp && GUI.draw!(pwp)
     show_fuel && GUI.draw(fuel)
     show_pld && GUI.draw!(pld)
 
 end
-
 
 end #module

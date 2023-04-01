@@ -8,7 +8,7 @@ using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 using Flight.FlightCore
 using Flight.FlightPhysics
 
-export AbstractAirframe, AbstractAvionics, AircraftTemplate
+export AbstractAirframe, EmptyAirframe, AbstractAvionics, NoAvionics, AircraftTemplate
 export init_kinematics!
 
 
@@ -56,11 +56,6 @@ function AircraftTemplate(kinematics::K = LTF(),
     AircraftTemplate{K,F,A}(kinematics, airframe, avionics)
 end
 
-struct AircraftTemplateU{F, V}
-    airframe::F
-    avionics::V
-end
-
 #override the default Component update_y! to include stuff besides subsystem
 #outputs
 Base.@kwdef struct AircraftTemplateY{K, F, A}
@@ -71,7 +66,6 @@ Base.@kwdef struct AircraftTemplateY{K, F, A}
     air::AirData
 end
 
-Systems.init(::SystemU, ac::AircraftTemplate) = AircraftTemplateU(init_u(ac.airframe), init_u(ac.avionics))
 Systems.init(::SystemY, ac::AircraftTemplate) = AircraftTemplateY(
     init_y(ac.kinematics), init_y(ac.airframe), init_y(ac.avionics),
     RigidBodyData(), AirData())
@@ -81,22 +75,17 @@ function init_kinematics!(ac::System{<:AircraftTemplate}, ic::KinematicInit)
 end
 
 #to be extended
-function Systems.f_ode!(avionics::System{<:AbstractAvionics}, airframe::System{<:AbstractAirframe},
-                        kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
-    MethodError(f_ode!, (avionics, airframe, kin, air, trn))
-end
-
-#to be extended
 function Systems.f_ode!(airframe::System{<:AbstractAirframe},
                         kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
-    MethodError(f_ode!, (airframe, kin, air, trn))
+    MethodError(f_ode!, (airframe, kin, air, trn)) |> throw
 end
 
 #to be extended
 function map_controls!(airframe::System{<:AbstractAirframe}, avionics::System{<:AbstractAvionics})
-    MethodError(map_controls!, (airframe, avionics))
+    MethodError(map_controls!, (airframe, avionics)) |> throw
 end
 
+map_controls!(::System{<:AbstractAirframe}, ::System{<:NoAvionics}) = nothing
 
 function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractEnvironment})
 
@@ -109,11 +98,8 @@ function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractE
     kin_data = KinematicData(kinematics)
     air_data = AirData(kin_data, atm)
 
-    #update avionics and airframe components
-    rb_data = sys.y.rigidbody #use rigid body data from previous call
-    f_ode!(avionics, airframe, kin_data, air_data, rb_data, trn)
-    map_controls!(airframe, avionics)
-    f_ode!(airframe, kin_data, air_data, rb_data, trn)
+    #update airframe components
+    f_ode!(airframe, kin_data, air_data, trn)
 
     #get inputs for rigid body dynamics
     mp_Ob = get_mp_Ob(airframe)
@@ -140,6 +126,7 @@ function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt, env::System{<:Abs
     #in principle, only avionics should have discrete dynamics (it's the only
     #aircraft subsystem in which discretized algorithms should live)
     x_mod |= f_disc!(avionics, Δt, airframe, kinematics, air, rigidbody, trn)
+    map_controls!(airframe, avionics)
 
     #avionics might have modified its outputs, so we need to reassemble everything
     sys.y = AircraftTemplateY(kinematics, airframe.y, avionics.y, rigidbody, air)
@@ -199,14 +186,6 @@ function Plotting.make_plots(th::TimeHistory{<:AircraftTemplateY}; kwargs...)
 
 end
 
-############################ Joystick Mappings #################################
-
-function IODevices.assign!(u::AircraftTemplateU,
-                           joystick::Joystick{<:Joysticks.AbstractJoystickID},
-                           mapping::InputMapping)
-    IODevices.assign!(u.avionics, joystick, mapping)
-end
-
 ################################### GUI ########################################
 
 function GUI.draw!(sys::System{<:AircraftTemplate}, label::String = "Aircraft")
@@ -224,7 +203,7 @@ function GUI.draw!(sys::System{<:AircraftTemplate}, label::String = "Aircraft")
     show_dyn && GUI.draw(y.rigidbody, "Dynamics")
     show_kin && GUI.draw(y.kinematics, "Kinematics")
     show_air && GUI.draw(y.air, "Air")
-    show_airframe && GUI.draw(sys.airframe) #disallow setting airframe systems inputs directly
+    show_airframe && GUI.draw!(sys.airframe)
     show_avionics && GUI.draw!(sys.avionics)
 
     CImGui.End()

@@ -8,8 +8,7 @@ using Flight.FlightCore
 using Flight.FlightPhysics
 using Flight.FlightAircraft
 
-# include(normpath(dirname(@__FILE__), "../../airframe.jl")); using .C172RAirframe
-include(normpath( "../../airframe.jl")); using .C172RAirframe
+include("airframe.jl"); using .Airframe
 
 export Cessna172R
 
@@ -18,11 +17,42 @@ export Cessna172R
 
 struct DirectControls <: AbstractAvionics end
 
-const DirectControlsU = C172RAirframe.ReversibleActuationU
-const DirectControlsY = C172RAirframe.ReversibleActuationY
+Base.@kwdef mutable struct DirectControlsU
+    eng_start::Bool = false
+    eng_stop::Bool = false
+    throttle::Ranged{Float64, 0, 1} = 0.0
+    mixture::Ranged{Float64, 0, 1} = 0.5
+    aileron::Ranged{Float64, -1, 1} = 0.0
+    elevator::Ranged{Float64, -1, 1} = 0.0
+    rudder::Ranged{Float64, -1, 1} = 0.0
+    aileron_trim::Ranged{Float64, -1, 1} = 0.0
+    elevator_trim::Ranged{Float64, -1, 1} = 0.0
+    rudder_trim::Ranged{Float64, -1, 1} = 0.0
+    flaps::Ranged{Float64, 0, 1} = 0.0
+    brake_left::Ranged{Float64, 0, 1} = 0.0
+    brake_right::Ranged{Float64, 0, 1} = 0.0
+end
+
+Base.@kwdef struct DirectControlsY
+    eng_start::Bool = false
+    eng_stop::Bool = false
+    throttle::Float64 = 0.0
+    mixture::Float64 = 0.5
+    aileron::Float64 = 0.0
+    elevator::Float64 = 0.0
+    rudder::Float64 = 0.0
+    aileron_trim::Float64 = 0.0
+    elevator_trim::Float64 = 0.0
+    rudder_trim::Float64 = 0.0
+    flaps::Float64 = 0.0
+    brake_left::Float64 = 0.0
+    brake_right::Float64 = 0.0
+end
 
 Systems.init(::SystemU, ::DirectControls) = DirectControlsU()
 Systems.init(::SystemY, ::DirectControls) = DirectControlsY()
+
+############################ hasta aqui ########################################
 
 ########################### Update Methods #####################################
 
@@ -46,7 +76,7 @@ function Aircraft.map_controls!(airframe::System{<:Airframe}, avionics::System{D
 
     @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
             aileron_trim, elevator_trim, rudder_trim, flaps,
-            brake_left, brake_right = avionics.y
+            brake_left, brake_right = avionics.u
 
     @pack!  airframe.act.u =
             eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
@@ -125,14 +155,9 @@ end
 
 #here we define the basic Cessna172R, which installs the C172RDirect.DirectControls
 #avionics, which provides a basic reversible direct control system
-const Cessna172R{K, F} = AircraftTemplate{K, F, DirectControls} where {K, F <: Airframe}
-Cessna172R(kinematics = LTF()) = AircraftTemplate(kinematics, Airframe(), DirectControls())
+const Cessna172RDirect{K, F} = AircraftTemplate{K, F, DirectControls} where {K, F <: Airframe}
+Cessna172RDirect(kinematics = LTF()) = AircraftTemplate(kinematics, C172RAirframe(), DirectControls())
 
-################################################################################
-############################### Analysis Tools #################################
-
-include("trim.jl"); using .Trim
-include("linearization.jl"); using .Linearization
 
 
 end #module

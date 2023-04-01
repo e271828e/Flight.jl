@@ -519,7 +519,7 @@ function plot_J_M(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
 
 end
 
-function GUI.draw(sys::System{<:Propeller}, window_label::String = "Propeller")
+function GUI.draw!(sys::System{<:Propeller}, window_label::String = "Propeller")
 
     @unpack ω, J, M_tip, Δβ, wr_p, hr_p, P, η_p = sys.y
 

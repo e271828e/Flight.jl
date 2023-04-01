@@ -97,19 +97,20 @@ function test_sim(; save::Bool = true)
 
         init_kinematics!(world, kin_init)
 
-        world.ac.u.avionics.eng_start = true #engine start switch on
-        world.env.atm.u.wind.v_ew_n .= [0, 0, 0]
+        world.u.ac.airframe.pwp.engine.start = true #engine start switch on
+        world.u.env.atm.wind.v_ew_n .= [0, 0, 0]
 
         sys_io! = let
 
             function (u, s, y, t, params)
 
-                u.ac.avionics.throttle = 0.2
-                u.ac.avionics.aileron = (t < 5 ? 0.25 : 0.0)
-                u.ac.avionics.elevator = 0.0
-                u.ac.avionics.rudder = 0.0
-                u.ac.avionics.brake_left = 1
-                u.ac.avionics.brake_right = 1
+                u.ac.airframe.pwp.engine.throttle = 0.2
+                u.ac.airframe.act.aileron = (t < 5 ? 0.25 : 0.0)
+                u.ac.airframe.act.elevator = 0.0
+                u.ac.airframe.act.rudder = 0.0
+                u.ac.airframe.act.brake_left = 1
+                u.ac.airframe.act.brake_right = 1
+                # println(y.ac.airframe.pwp.engine.ω)
 
             end
         end
@@ -122,6 +123,7 @@ function test_sim(; save::Bool = true)
         save && save_plots(plots, save_folder = joinpath("tmp", "sim_test"))
 
         # return sim
+        return world
 
     end
 

@@ -16,17 +16,18 @@ struct DefaultMapping <: InputMapping end
 #each device should control its own update rate from within the update! method,
 #preferably via calls to blocking functions (such as GLFW.SwapBuffers with
 #GLFW.SwapInterval > 0)
-init!(device::D) where {D<:IODevice} = MethodError(init!, (device, ))
-shutdown!(device::D) where {D<:IODevice} = MethodError(shutdown!, (device, ))
-should_close(device::D) where {D<:IODevice} = MethodError(should_close, (device, ))
-update!(device::D, data) where {D<:IODevice} = MethodError(update!, (device, data))
+init!(device::D) where {D<:IODevice} = MethodError(init!, (device, )) |> throw
+shutdown!(device::D) where {D<:IODevice} = MethodError(shutdown!, (device, )) |> throw
+should_close(device::D) where {D<:IODevice} = MethodError(should_close, (device, )) |> throw
+update!(device::D, data) where {D<:IODevice} = MethodError(update!, (device, data)) |> throw
 
 #for every input device it wants to support, the target type should at least
 #extend the three argument assign! method below with a ::DefaultMapping
 #argument. for alternative mappings, it can define additional subtypes of
 #InputMapping and their corresponding assign! methods
-function assign!(target, device::IODevice, mapping::InputMapping)
-    MethodError(assign!, (target, device, mapping))
+function assign!(target::Any, device::IODevice, mapping::InputMapping)
+    println("Warning: Assigment method for target $(typeof(target)) from device"*
+    "$(typeof(device)) with mapping $(typeof(mapping)) not implemented")
 end
 
 function assign!(target, device::IODevice)
@@ -40,8 +41,8 @@ end
 #add mode: IOMode, Input <: IOMode, Output <: IOMode, InputOutput <: IOMode
 struct Interface{D <: IODevice, T,  M <: InputMapping, C <: Channel}
     device::D
-    target::T #input target, typically the Simulation's u
-    mapping::M #selected device to target mapping, used for dispatch on assign!
+    target::T #target for input assignment, typically the simulated System
+    mapping::M #selected device-to-target mapping, used for dispatch on assign!
     channel::C #channel in which Simulation's output will be put!
     start::Base.Event #to be waited on before entering the update loop
     target_lock::ReentrantLock #to acquire before modifying the target

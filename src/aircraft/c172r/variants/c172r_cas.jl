@@ -86,7 +86,7 @@ Base.@kwdef struct AugmentedControls <: AbstractAvionics
     rate::RateCAS = RateCAS()
 end
 
-#we could reuse ReversibleActuationU here, but noticing that for AugmentedControl aileron,
+#we could reuse MechanicalActuationU here, but noticing that for AugmentedControl aileron,
 #elevator and rudder actually mean roll_input, pitch_input, yaw_input. so we may
 #be better off redefining them. also, we need the ap_enable input
 
@@ -113,7 +113,7 @@ Base.@kwdef mutable struct AugmentedControlsU
     brake_right::Ranged{Float64, 0, 1} = 0.0
 end
 
-const AugmentedCommands = C172RAirframe.ReversibleActuationY
+const AugmentedCommands = C172RAirframe.MechanicalActuationY
 
 Systems.init(::SystemU, ::AugmentedControls) = FeedthroughActuationU()
 function Systems.init(::SystemY, c::AugmentedControls)
@@ -202,8 +202,8 @@ end
 
 #     pwp.u.engine.start = eng_start
 #     pwp.u.engine.stop = eng_stop
-#     pwp.u.engine.thr = throttle
-#     pwp.u.engine.mix = mixture
+#     pwp.u.engine.throttle = throttle
+#     pwp.u.engine.mixture = mixture
 #     ldg.u.nose.steering[] = (rudder_trim + rudder) #rudder↑ (right pedal forward) -> nose wheel steering right
 #     ldg.u.left.braking[] = brake_left
 #     ldg.u.right.braking[] = brake_right

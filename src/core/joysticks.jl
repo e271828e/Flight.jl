@@ -13,7 +13,7 @@ export get_connected_joysticks
 export get_axis_value, exp_axis_curve
 export get_button_state, get_button_change, was_pressed, was_released
 
-export XBoxControllerID, XBoxController
+export AbstractJoystickID, XBoxControllerID, XBoxController
 
 
 ################################################################################

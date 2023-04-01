@@ -332,7 +332,7 @@ function attach_io!(sim::Simulation, device::IODevice;
                     ext_shutdown::Bool = true)
 
     channel = add_output_channel!(sim)
-    IODevices.Interface(device, sim.u, mapping, channel,
+    IODevices.Interface(device, sim.sys, mapping, channel,
                         sim.started, sim.stepping, ext_shutdown)
 end
 

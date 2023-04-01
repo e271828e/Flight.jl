@@ -7,7 +7,7 @@ include("landinggear.jl"); @reexport using .LandingGear
 include("propellers.jl"); @reexport using .Propellers
 include("piston.jl"); @reexport using .Piston
 include("aircraft.jl"); @reexport using .Aircraft
-include(normpath("c172r/variants/direct/c172r_direct.jl")); @reexport using .C172RDirect
+include(normpath("c172r/c172r.jl")); @reexport using .C172R
 include("world.jl"); @reexport using .World
 
 end

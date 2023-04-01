@@ -132,7 +132,7 @@ function test_engine_dynamics()
         f_ode!(eng, air; M_load, J_load)
 
         #if we give it some throttle, we should get output power
-        eng.u.thr = 0.1
+        eng.u.throttle = 0.1
         f_ode!(eng, air; M_load, J_load)
         @test eng.y.M_shaft > 0
 
@@ -208,13 +208,13 @@ function test_thruster_dynamics()
         @test get_wr_b(sim.sys).M[1] < 0
 
         #give it some throttle and see the RPMs increase
-        sim.u.engine.thr = 1
+        sim.u.engine.throttle = 1
         step!(sim, 5, true)
         @test sim.y.engine.ω > 2thr.engine.params.ω_idle
 
         #back to idle, make sure the idle controller kicks back in and idle RPMs
         #stabilize around their target value
-        sim.u.engine.thr = 0
+        sim.u.engine.throttle = 0
         step!(sim, 5, true)
         @test sim.y.engine.ω ≈ thr.engine.params.ω_idle atol = 1
 
@@ -258,7 +258,7 @@ function test_thruster_dynamics()
 
         #with the throttle well above idle, the idle controller will not be
         #holding RPMs anymore
-        sim.u.engine.thr = 0.5
+        sim.u.engine.throttle = 0.5
         step!(sim, 5, true)
 
         #now, increasing pitch gives a higher thrust coefficient, but also a
