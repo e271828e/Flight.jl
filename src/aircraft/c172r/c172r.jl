@@ -28,8 +28,7 @@ Cessna172R(kinematics = LTF()) = AircraftTemplate(kinematics, C172RAirframe(), N
 
 ############################ Joystick Mappings #################################
 
-function IODevices.assign!(sys::System{<:Cessna172R},
-                           joystick::Joystick{<:Joysticks.AbstractJoystickID},
+function IODevices.assign!(sys::System{<:Cessna172R}, joystick::Joystick,
                            mapping::InputMapping)
     IODevices.assign!(sys.airframe, joystick, mapping)
 end

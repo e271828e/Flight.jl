@@ -103,7 +103,7 @@ function Systems.f_ode!(act::System{MechanicalActuation})
 
 end
 
-function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172R Reversible Actuation")
+function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172R Mechanical Actuation")
 
     u = sys.u
 
@@ -112,14 +112,19 @@ function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172
     CImGui.PushItemWidth(-60)
 
     u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
-    u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
+    @running_plot("Throttle", u.throttle, 0, 1, 0.0, 120)
     u.aileron = safe_slider("Aileron", u.aileron, "%.6f")
+    @running_plot("Aileron", u.aileron, -1, 1, 0.0, 120)
     u.elevator = safe_slider("Elevator", u.elevator, "%.6f")
+    @running_plot("Elevator", u.elevator, -1, 1, 0.0, 120)
     u.rudder = safe_slider("Rudder", u.rudder, "%.6f")
+    @running_plot("Rudder", u.rudder, -1, 1, 0.0, 120)
+
     u.aileron_trim = safe_input("Aileron Trim", u.aileron_trim, 0.001, 0.1, "%.6f")
     u.elevator_trim = safe_input("Elevator Trim", u.elevator_trim, 0.001, 0.1, "%.6f")
     u.rudder_trim = safe_input("Rudder Trim", u.rudder_trim, 0.001, 0.1, "%.6f")
     u.flaps = safe_slider("Flaps", u.flaps, "%.6f")
+    u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
     u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
     u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
 
@@ -907,7 +912,7 @@ rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 function IODevices.assign!(sys::System{<:C172RAirframe},
-                           joystick::Joystick{XBoxControllerID},
+                           joystick::XBoxController,
                            ::DefaultMapping)
 
     u = sys.u
@@ -926,8 +931,32 @@ function IODevices.assign!(sys::System{<:C172RAirframe},
     u.act.flaps += 0.3333 * was_released(joystick, :right_bumper)
     u.act.flaps -= 0.3333 * was_released(joystick, :left_bumper)
 
-    u.pwp.engine.throttle += 0.1 * was_released(joystick, :button_Y)
-    u.pwp.engine.throttle -= 0.1 * was_released(joystick, :button_A)
+    u.act.throttle += 0.1 * was_released(joystick, :button_Y)
+    u.act.throttle -= 0.1 * was_released(joystick, :button_A)
+end
+
+function IODevices.assign!(sys::System{<:C172RAirframe},
+                           joystick::T16000M,
+                           ::DefaultMapping)
+
+    u = sys.u
+
+    u.act.throttle = get_axis_value(joystick, :throttle)
+    u.act.aileron = get_axis_value(joystick, :stick_x) |> aileron_curve
+    u.act.elevator = get_axis_value(joystick, :stick_y) |> elevator_curve
+    u.act.rudder = get_axis_value(joystick, :stick_z) |> rudder_curve
+
+    u.act.brake_left = is_pressed(joystick, :button_1)
+    u.act.brake_right = is_pressed(joystick, :button_1)
+
+    u.act.aileron_trim -= 2e-4 * is_pressed(joystick, :hat_left)
+    u.act.aileron_trim += 2e-4 * is_pressed(joystick, :hat_right)
+    u.act.elevator_trim += 2e-4 * is_pressed(joystick, :hat_down)
+    u.act.elevator_trim -= 2e-4 * is_pressed(joystick, :hat_up)
+
+    u.act.flaps += 0.3333 * was_released(joystick, :button_3)
+    u.act.flaps -= 0.3333 * was_released(joystick, :button_2)
+
 end
 
 

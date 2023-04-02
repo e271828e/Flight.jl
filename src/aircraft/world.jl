@@ -64,8 +64,7 @@ end
 
 ############################ Joystick Mappings #################################
 
-function IODevices.assign!(sys::System{<:SimpleWorld},
-                           joystick::Joystick{<:AbstractJoystickID},
+function IODevices.assign!(sys::System{<:SimpleWorld}, joystick::Joystick,
                            mapping::InputMapping)
     IODevices.assign!(sys.ac, joystick, mapping)
 end

@@ -11,9 +11,10 @@ using ..Utils: Ranged
 export JoystickSlot, Joystick
 export get_connected_joysticks
 export get_axis_value, exp_axis_curve
-export get_button_state, get_button_change, was_pressed, was_released
+export get_button_state, is_pressed, is_released
+export get_button_change, was_pressed, was_released
 
-export AbstractJoystickID, XBoxControllerID, XBoxController
+export AbstractJoystickID, XBoxController, T16000M
 
 
 ################################################################################
@@ -135,6 +136,10 @@ mutable struct Joystick{T <: AbstractJoystickID, A <: AxisSet, B <: ButtonSet} <
     end
 end
 
+function Joystick{ID}(args...) where {ID <: AbstractJoystickID}
+    Joystick(ID(), args...)
+end
+
 function is_connected(joystick::Joystick)
     #does the reference in our supposed slot still point to us?
     slot = joystick.slot
@@ -152,6 +157,16 @@ end
 function get_button_state(joystick::Joystick, s::Symbol)
     @unpack state, mapping = joystick.buttons
     state[mapping[s]]
+end
+
+function is_pressed(joystick::Joystick, s::Symbol)
+    @unpack state, mapping = joystick.buttons
+    state[mapping[s]] === true
+end
+
+function is_released(joystick::Joystick, s::Symbol)
+    @unpack state, mapping = joystick.buttons
+    state[mapping[s]] === false
 end
 
 function get_button_change(joystick::Joystick, s::Symbol)
@@ -185,6 +200,20 @@ function Base.show(::IO, joystick::Joystick)
 
 end
 
+function update!(joystick::Joystick)
+
+    @unpack id, slot, axes, buttons = joystick
+
+    if !is_connected(joystick)
+        println("Can't update $(joystick.id) at slot $slot, no longer connected")
+        return
+    end
+    update!(axes, slot)
+    update!(buttons, slot)
+    rescale!(axes, id)
+    return nothing
+
+end
 ## REPL-specific:
 # function Base.show(::IO, ::MIME"text/plain", joystick::Joystick)
 # end
@@ -200,20 +229,9 @@ function IODevices.init!(joystick::Joystick)
 end
 
 function IODevices.update!(joystick::Joystick, args...)
-
-    @unpack id, slot, axes, buttons, window = joystick
-
-    if !is_connected(joystick)
-        println("Can't update $(joystick.id) at slot $slot, no longer connected")
-        return
-    end
-
-    GLFW.SwapBuffers(window) #honor the requested update_interval
-    update!(axes, slot)
-    update!(buttons, slot)
-    rescale!(axes, id)
+    GLFW.SwapBuffers(joystick.window) #honor the requested update_interval
+    update!(joystick)
     GLFW.PollEvents() #see if we got a shutdown request
-
 end
 
 IODevices.should_close(joystick::Joystick) = GLFW.WindowShouldClose(joystick.window)
@@ -253,6 +271,9 @@ function add_joystick(slot::JoystickSlot)
     if joystick_model === "Xbox Controller"
         joystick = XBoxController(slot)
         println("XBoxController active at slot $slot")
+    elseif joystick_model === "T.16000M"
+        joystick = T16000M(slot)
+        println("T16000M active at slot $slot")
     else
         println("$joystick_model not supported")
         return
@@ -289,16 +310,42 @@ const XBoxButtonLabels = (
 ############################### Controller #####################################
 
 struct XBoxControllerID <: AbstractJoystickID end
+const XBoxController = Joystick{XBoxControllerID}
 
 AxisSet(::XBoxControllerID) = AxisSet(XBoxAxisLabels)
 ButtonSet(::XBoxControllerID) = ButtonSet(XBoxButtonLabels)
-
-XBoxController(slot::JoystickSlot = GLFW.JOYSTICK_1) = Joystick(XBoxControllerID(), slot)
 
 function rescale!(axes::AxisSet, ::XBoxControllerID)
     axes[:left_trigger] = 0.5*(1 + axes[:left_trigger])
     axes[:right_trigger] = 0.5*(1 + axes[:right_trigger])
 end
 
+################################################################################
+########################### Thrustmaster T.16000M ##############################
+
+############################# Axes & Buttons ###################################
+
+const T16000MAxisLabels = (
+    :stick_x, :stick_y, :stick_z, :throttle
+)
+
+const T16000MButtonLabels = (
+    :button_0, :button_1, :button_2, :button_3, :button_4, :button_5,
+    :button_6, :button_7, :button_8, :button_9, :button_10, :button_11,
+    :button_12, :button_13, :button_14, :button_15,
+    :hat_up, :hat_right, :hat_down, :hat_left
+)
+
+############################### Controller #####################################
+
+struct T16000M_ID <: AbstractJoystickID end
+const T16000M = Joystick{T16000M_ID}
+
+AxisSet(::T16000M_ID) = AxisSet(T16000MAxisLabels)
+ButtonSet(::T16000M_ID) = ButtonSet(T16000MButtonLabels)
+
+function rescale!(axes::AxisSet, ::T16000M_ID)
+    axes[:throttle] = 0.5*(1 - axes[:throttle])
+end
 
 end #module
