@@ -14,6 +14,7 @@ function test_c172rv1()
     @testset verbose = true "Cessna172Rv1" begin
 
         test_system_methods()
+        test_sim(save = false)
 
     end
 end
@@ -37,7 +38,7 @@ function test_system_methods()
 
             @test @ballocated(f_ode!($ac, $env)) == 0
             @test @ballocated(f_step!($ac)) == 0
-            @test @ballocated(f_disc!($ac, 0.02)) == 0
+            @test @ballocated(f_disc!($ac, 0.02, $env)) == 0
 
         end
 
@@ -81,7 +82,7 @@ function test_sim(; save::Bool = true)
             end
         end
 
-        sim = Simulation(world; t_end = 300, sys_io!, adaptive = true)
+        sim = Simulation(world; Δt = 0.02, t_end = 300, sys_io!, adaptive = false)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)

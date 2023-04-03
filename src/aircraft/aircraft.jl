@@ -20,6 +20,12 @@ RigidBody.MassTrait(::System{<:AbstractAirframe}) = HasMass()
 RigidBody.AngMomTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
 RigidBody.WrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
 
+function Systems.f_ode!(airframe::System{<:AbstractAirframe},
+                        kin::KinematicData, air::AirData,
+                        trn::System{<:AbstractTerrain})
+    MethodError(f_ode!, (airframe, kin, air, trn)) |> throw
+end
+
 ########################## EmptyAirframe ###########################
 
 Base.@kwdef struct EmptyAirframe <: AbstractAirframe
@@ -31,13 +37,41 @@ RigidBody.WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
 
 RigidBody.get_mp_Ob(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
 
+function Systems.f_ode!(::System{EmptyAirframe}, ::KinematicData, ::AirData,
+                        ::System{<:AbstractTerrain})
+end
 
 ###############################################################################
 ######################### AbstractAvionics ####################################
 
 abstract type AbstractAvionics <: Component end
 
+function Systems.f_disc!(avionics::System{<:AbstractAvionics}, Δt::Real,
+                        airframe::System{<:AbstractAirframe},
+                        kin::KinematicData, rb::RigidBodyData, air::AirData,
+                        trn::System{<:AbstractTerrain})
+    MethodError(f_disc!, (avionics, Δt, airframe, kin, air, rb, trn)) |> throw
+end
+
+function map_controls!(airframe::System{<:AbstractAirframe},
+                       avionics::System{<:AbstractAvionics})
+    MethodError(map_controls!, (airframe, avionics)) |> throw
+end
+
+
+################################### NoAvionics #################################
+
 struct NoAvionics <: AbstractAvionics end
+
+function Systems.f_disc!(::System{NoAvionics}, ::Real,
+                        ::System{<:AbstractAirframe},
+                        ::KinematicData, ::RigidBodyData, ::AirData,
+                        trn::System{<:AbstractTerrain})
+    return false
+end
+
+map_controls!(::System{<:AbstractAirframe}, ::System{<:NoAvionics}) = nothing
+
 
 ###############################################################################
 ############################## AircraftTemplate ###################################
@@ -56,8 +90,7 @@ function AircraftTemplate(kinematics::K = LTF(),
     AircraftTemplate{K,F,A}(kinematics, airframe, avionics)
 end
 
-#override the default Component update_y! to include stuff besides subsystem
-#outputs
+#override the generic NamedTuple to include stuff besides subsystem outputs
 Base.@kwdef struct AircraftTemplateY{K, F, A}
     kinematics::K
     airframe::F
@@ -74,18 +107,6 @@ function init_kinematics!(ac::System{<:AircraftTemplate}, ic::KinematicInit)
     Kinematics.init!(ac.x.kinematics, ic)
 end
 
-#to be extended
-function Systems.f_ode!(airframe::System{<:AbstractAirframe},
-                        kin::KinematicData, air::AirData, trn::System{<:AbstractTerrain})
-    MethodError(f_ode!, (airframe, kin, air, trn)) |> throw
-end
-
-#to be extended
-function map_controls!(airframe::System{<:AbstractAirframe}, avionics::System{<:AbstractAvionics})
-    MethodError(map_controls!, (airframe, avionics)) |> throw
-end
-
-map_controls!(::System{<:AbstractAirframe}, ::System{<:NoAvionics}) = nothing
 
 function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractEnvironment})
 
@@ -117,22 +138,23 @@ end
 
 function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt::Real, env::System{<:AbstractEnvironment})
 
-    @unpack airframe, avionics = sys.subsystems
-    @unpack kinematics, rigidbody, air = sys.y
+    @unpack airframe, avionics, kinematics = sys.subsystems
     @unpack trn = env
+    y = sys.y
+
+    kin_data = y.kinematics.common
+    rb_data = y.rigidbody
+    air_data = y.air
 
     #could use chained | instead, but this is clearer
     x_mod = false
     #in principle, only avionics should have discrete dynamics (it's the only
     #aircraft subsystem in which discretized algorithms should live)
-    # @show typeof(kinematics)
-    # @show kinematics isa KinematicData
-    x_mod |= f_disc!(avionics, Δt, airframe, kinematics, air, rigidbody, trn)
+    x_mod |= f_disc!(avionics, Δt, airframe, kin_data, rb_data, air_data, trn)
     map_controls!(airframe, avionics)
-    # println("This runs")
 
     #avionics might have modified its outputs, so we need to reassemble everything
-    sys.y = AircraftTemplateY(kinematics, airframe.y, avionics.y, rigidbody, air)
+    sys.y = AircraftTemplateY(kinematics.y, airframe.y, avionics.y, rb_data, air_data)
 
     return x_mod
 end
@@ -206,8 +228,8 @@ function GUI.draw!(sys::System{<:AircraftTemplate}, label::String = "Aircraft")
     show_dyn && GUI.draw(y.rigidbody, "Dynamics")
     show_kin && GUI.draw(y.kinematics, "Kinematics")
     show_air && GUI.draw(y.air, "Air")
-    show_airframe && GUI.draw!(sys.airframe)
-    show_avionics && GUI.draw!(sys.avionics)
+    show_airframe && GUI.draw!(sys.airframe, sys.avionics)
+    show_avionics && GUI.draw!(sys.avionics, sys.airframe)
 
     CImGui.End()
 

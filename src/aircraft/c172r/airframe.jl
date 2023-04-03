@@ -109,6 +109,41 @@ function Systems.f_ode!(act::System{MechanicalActuation})
 
 end
 
+function GUI.draw(sys::System{MechanicalActuation}, label::String = "Cessna 172R Mechanical Actuation")
+
+    y = sys.y
+
+    CImGui.Begin(label)
+
+    CImGui.PushItemWidth(-60)
+
+    CImGui.Text("Engine Start: $(y.eng_start)")
+    CImGui.Text("Engine Stop: $(y.eng_stop)")
+
+    @running_plot("Throttle", y.throttle, 0, 1, 0.0, 120)
+    GUI.display_bar("Throttle", y.throttle, 0, 1)
+    @running_plot("Aileron", y.aileron, -1, 1, 0.0, 120)
+    GUI.display_bar("Aileron", y.aileron, -1, 1)
+    @running_plot("Elevator", y.elevator, -1, 1, 0.0, 120)
+    GUI.display_bar("Elevator", y.elevator, -1, 1)
+    @running_plot("Rudder", y.rudder, -1, 1, 0.0, 120)
+    GUI.display_bar("Rudder", y.rudder, -1, 1)
+
+
+    safe_slider("Aileron Trim", y.aileron_trim, -1, 1, "%.6f")
+    safe_slider("Elevator Trim", y.elevator_trim, -1, 1, "%.6f")
+    safe_slider("Rudder Trim", y.rudder_trim, -1, 1, "%.6f")
+    safe_slider("Flaps", y.flaps, 0, 1, "%.6f")
+    safe_slider("Mixture", y.mixture, 0, 1, "%.6f")
+    safe_slider("Left Brake", y.brake_left, 0, 1, "%.6f")
+    safe_slider("Right Brake", y.brake_right, 0, 1, "%.6f")
+
+    CImGui.PopItemWidth()
+
+    CImGui.End()
+
+
+end
 function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172R Mechanical Actuation")
 
     u = sys.u
@@ -116,10 +151,6 @@ function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172
     CImGui.Begin(label)
 
     CImGui.PushItemWidth(-60)
-
-    # override = @cstatic check=false @c CImGui.Checkbox("Override", &check)
-    # CImGui.SameLine()
-    # show_help_marker("Overrides avionics and sets actuation inputs directly")
 
     u.eng_start = dynamic_button("Engine Start", 0.4); CImGui.SameLine()
     u.eng_stop = dynamic_button("Engine Stop", 0.0)
@@ -979,9 +1010,10 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw!(sys::System{<:C172RAirframe}, window_label::String = "Cessna 172R Airframe")
+function GUI.draw!( airframe::System{<:C172RAirframe}, ::System{A},
+                    window_label::String = "Cessna 172R Airframe") where {A<:AbstractAvionics}
 
-    @unpack act, pwp, ldg, aero, fuel, pld = sys
+    @unpack act, pwp, ldg, aero, fuel, pld = airframe
 
     CImGui.Begin(window_label)
 
@@ -994,7 +1026,7 @@ function GUI.draw!(sys::System{<:C172RAirframe}, window_label::String = "Cessna 
 
     CImGui.End()
 
-    show_act && GUI.draw!(act)
+    show_act && (A === NoAvionics ? GUI.draw!(act) : GUI.draw(act))
     show_aero && GUI.draw(aero)
     show_ldg && GUI.draw(ldg)
     show_pwp && GUI.draw(pwp)

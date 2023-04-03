@@ -60,64 +60,43 @@ Systems.init(::SystemY, ::DirectControls) = DirectControlsY()
 ########################### Update Methods #####################################
 
 function Systems.f_disc!(avionics::System{<:DirectControls}, ::Real,
-                        ::System{<:C172RAirframe}, ::KinematicData, args...)
+                        ::System{<:C172RAirframe}, ::KinematicData,
+                        ::RigidBodyData, ::AirData, ::System{<:AbstractTerrain})
 
     #DirectControls has no internal dynamics, just input-output feedthrough
     @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
             aileron_trim, elevator_trim, rudder_trim, flaps,
             brake_left, brake_right = avionics.u
 
-    println("But this doesnt")
     avionics.y = DirectControlsY(;
             eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
             aileron_trim, elevator_trim, rudder_trim, flaps,
             brake_left, brake_right)
 
+    return false
 
 end
-# function Systems.f_disc!(avionics::System{<:DirectControls}, ::Real,
-#                 ::System{<:C172RAirframe},
-#                 ::KinematicData, ::AirData, ::RigidBodyData,
-#                 ::System{<:AbstractTerrain})
-
-#     #DirectControls has no internal dynamics, just input-output feedthrough
-#     @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
-#             aileron_trim, elevator_trim, rudder_trim, flaps,
-#             brake_left, brake_right = avionics.u
-
-#     println("But this doesnt")
-#     avionics.y = DirectControlsY(;
-#             eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
-#             aileron_trim, elevator_trim, rudder_trim, flaps,
-#             brake_left, brake_right)
-
-
-# end
 
 function Aircraft.map_controls!(airframe::System{<:C172RAirframe},
                                 avionics::System{DirectControls})
-
-    u = airframe.u.act
 
     @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
             aileron_trim, elevator_trim, rudder_trim, flaps,
             brake_left, brake_right = avionics.y
 
-    # @pack!  airframe.u.act = eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
-    #         aileron_trim, elevator_trim, rudder_trim, flaps,
-    #         brake_left, brake_right
-
-    # @show avionics.u.aileron
+    @pack!  airframe.u.act = eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
+            aileron_trim, elevator_trim, rudder_trim, flaps,
+            brake_left, brake_right
 
 end
 
 
 ################################## GUI #########################################
 
+function GUI.draw!(avionics::System{<:DirectControls}, airframe::System{<:C172RAirframe},
+                    label::String = "Cessna 172R Direct Controls")
 
-function GUI.draw!(sys::System{<:DirectControls}, label::String = "Cessna 172R Direct Controls")
-
-    u = sys.u
+    u = avionics.u
 
     CImGui.Begin(label)
 
@@ -137,11 +116,12 @@ function GUI.draw!(sys::System{<:DirectControls}, label::String = "Cessna 172R D
     u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
     u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
 
+    CImGui.Text(@sprintf("Engine Speed: %.3f RPM",
+                        Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
+
     CImGui.PopItemWidth()
 
     CImGui.End()
-
-    GUI.draw(sys, label)
 
 end
 

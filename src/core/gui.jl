@@ -13,7 +13,7 @@ using CImGui.OpenGLBackend.ModernGL
 @reexport using Printf
 
 export CImGuiStyle, Renderer
-export dynamic_button, safe_slider, safe_input, @running_plot
+export dynamic_button, display_bar, safe_slider, safe_input, @running_plot
 
 ################################################################################
 ############################# Renderer####################################
@@ -261,6 +261,12 @@ function dynamic_button(label::String, hue::AbstractFloat)
     is_pressed = CImGui.IsItemActive()
     CImGui.PopStyleColor(3)
     return is_pressed
+end
+
+function display_bar(label::String, source::Real, lower_bound::Real, upper_bound::Real, size_arg = (0, 0))
+    CImGui.Text(label)
+    CImGui.SameLine()
+    CImGui.ProgressBar((source - lower_bound)/(upper_bound - lower_bound), size_arg, "$source")
 end
 
 function safe_slider(label::String, source::AbstractFloat, lower_bound::Real, upper_bound::Real, display_format::String)
