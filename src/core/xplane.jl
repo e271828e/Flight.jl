@@ -87,8 +87,8 @@ function IODevices.update!(xp::XPConnect, out::Sim.Output)
     GLFW.PollEvents() #see if we got a shutdown request
 end
 
-#this is a purely display interface, so we don't assign to any target, this method
-#simply inhibits the warning from the default one
+#this is a purely display interface, so we don't assign to any target, this
+#method simply inhibits the warning from the default one
 IODevices.assign!(::Any, xp::XPConnect, mapping::InputMapping) = nothing
 
 IODevices.should_close(xp::XPConnect) = GLFW.WindowShouldClose(xp.window)

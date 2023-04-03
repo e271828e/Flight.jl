@@ -6,7 +6,6 @@ using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 using Flight.FlightCore
 using Flight.FlightPhysics
 using ..Aircraft
-using ..C172R
 
 export SimpleWorld
 
@@ -16,9 +15,9 @@ abstract type AbstractWorld <: Component end
 ################################################################################
 ############################### SimpleWorld #####################################
 
-Base.@kwdef struct SimpleWorld{A <: AircraftTemplate, E <: AbstractEnvironment} <: AbstractWorld
-    ac::A = Cessna172R()
-    env::E = SimpleEnvironment()
+struct SimpleWorld{A <: AircraftTemplate, E <: AbstractEnvironment} <: AbstractWorld
+    ac::A
+    env::E
 end
 
 struct SimpleWorldY{A, E}

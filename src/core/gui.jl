@@ -258,8 +258,9 @@ function dynamic_button(label::String, hue::AbstractFloat)
     CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(hue, 0.7, 0.7))
     CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(hue, 0.8, 0.8))
     CImGui.Button((label))
+    is_pressed = CImGui.IsItemActive()
     CImGui.PopStyleColor(3)
-    return CImGui.IsItemActive()
+    return is_pressed
 end
 
 function safe_slider(label::String, source::AbstractFloat, lower_bound::Real, upper_bound::Real, display_format::String)

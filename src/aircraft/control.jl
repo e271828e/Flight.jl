@@ -6,7 +6,7 @@ using ControlSystemsBase: ControlSystemsBase, ss
 
 using Flight.FlightCore
 
-export LinearStateSpace, PICompensator
+export LinearStateSpace, PIContinuous
 
 ################################################################################
 ########################### LinearStateSpace ###################################
@@ -109,27 +109,27 @@ end
 ####################### Proportional-Integral Compensator ######################
 ################################################################################
 
-struct PICompensator{N} <: Component
+struct PIContinuous{N} <: Component #Parallel form
     k_p::SVector{N,Float64} #proportional gain
     k_i::SVector{N,Float64} #integral gain
     k_l::SVector{N,Float64} #integrator leak factor
     bounds::NTuple{2,MVector{N,Float64}} #output bounds
 end
 
-function PICompensator{N}(; k_p::Real = 1.0, k_i::Real = 0.1, k_l::Real = 0.0,
+function PIContinuous{N}(; k_p::Real = 1.0, k_i::Real = 0.1, k_l::Real = 0.0,
                             bounds::NTuple{2,Real} = (-1.0, 1.0)) where {N}
     s2v = (x)->fill(x,N)
-    PICompensator{N}(s2v(k_p), s2v(k_i), s2v(k_l), (s2v(bounds[1]), s2v(bounds[2])))
+    PIContinuous{N}(s2v(k_p), s2v(k_i), s2v(k_l), (s2v(bounds[1]), s2v(bounds[2])))
 end
 
-Base.@kwdef struct PICompensatorU{N}
+Base.@kwdef struct PIContinuousU{N}
     input::MVector{N,Float64} = zeros(N)
     hold::MVector{N,Bool} = zeros(Bool, N)
     reset::MVector{N,Bool} = zeros(Bool, N)
     sat_enable::MVector{N,Bool} = ones(Bool, N)
 end
 
-Base.@kwdef struct PICompensatorY{N}
+Base.@kwdef struct PIContinuousY{N}
     hold::SVector{N,Bool} = zeros(SVector{N, Bool}) #hold integrator state
     reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset integrator state
     input::SVector{N,Float64} = zeros(SVector{N}) #input signal
@@ -143,11 +143,11 @@ Base.@kwdef struct PICompensatorY{N}
     int_status::SVector{N,Bool} = zeros(SVector{N, Bool}) #integrator accumulating
 end
 
-Systems.init(::SystemX, ::PICompensator{N}) where {N} = zeros(N)
-Systems.init(::SystemY, ::PICompensator{N}) where {N} = PICompensatorY{N}()
-Systems.init(::SystemU, ::PICompensator{N}) where {N} = PICompensatorU{N}()
+Systems.init(::SystemX, ::PIContinuous{N}) where {N} = zeros(N)
+Systems.init(::SystemY, ::PIContinuous{N}) where {N} = PIContinuousY{N}()
+Systems.init(::SystemU, ::PIContinuous{N}) where {N} = PIContinuousU{N}()
 
-function Systems.f_ode!(sys::System{<:PICompensator{N}}) where {N}
+function Systems.f_ode!(sys::System{<:PIContinuous{N}}) where {N}
 
     @unpack k_p, k_i, k_l, bounds = sys.params
     @unpack sat_enable = sys.u
@@ -172,12 +172,12 @@ function Systems.f_ode!(sys::System{<:PICompensator{N}}) where {N}
 
     sys.ẋ .= (input .* int_status - k_l .* state) .* .!reset .* .!hold
 
-    sys.y = PICompensatorY(; hold, reset, input, state, out_p, out_i,
+    sys.y = PIContinuousY(; hold, reset, input, state, out_p, out_i,
                             out_free, out, sat_enable, sat_status, int_status)
 
 end
 
-function Systems.f_step!(sys::System{<:PICompensator{N}}) where {N}
+function Systems.f_step!(sys::System{<:PIContinuous{N}}) where {N}
 
     x = SVector{N,Float64}(sys.x)
     x_new = x .* .!sys.u.reset
@@ -191,7 +191,7 @@ end
 
 # ############################## Plotting ########################################
 
-function Plotting.make_plots(th::TimeHistory{<:PICompensatorY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:PIContinuousY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -207,7 +207,7 @@ function Plotting.make_plots(th::TimeHistory{<:PICompensatorY}; kwargs...)
     splt_y_i = plot(th.out_i; title = "Integral Term",
         ylabel = L"$y_i$", kwargs...)
 
-    splt_y_free = plot(th.out_free; title = "Free Output",
+    splt_y_free = plot(th.out_free; title = "Unbounded Output",
         ylabel = L"$y_{free}$", kwargs...)
 
     splt_y = plot(th.out; title = "Actual Output",
@@ -238,7 +238,7 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw!(sys::System{<:PICompensator{N}}, label::String = "PICompensator{$N}") where {N}
+function GUI.draw!(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{$N}") where {N}
 
     GUI.draw(sys, label)
 
@@ -269,7 +269,7 @@ function GUI.draw!(sys::System{<:PICompensator{N}}, label::String = "PICompensat
 
 end
 
-function GUI.draw(sys::System{<:PICompensator{N}}, label::String = "PICompensator{$N}") where {N}
+function GUI.draw(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{$N}") where {N}
 
     @unpack y, params = sys
 

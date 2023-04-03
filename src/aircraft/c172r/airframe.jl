@@ -57,6 +57,8 @@ RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
 struct MechanicalActuation <: Component end
 
 Base.@kwdef mutable struct MechanicalActuationU
+    eng_start::Bool = false
+    eng_stop::Bool = false
     throttle::Ranged{Float64, 0, 1} = 0.0
     mixture::Ranged{Float64, 0, 1} = 0.5
     aileron::Ranged{Float64, -1, 1} = 0.0
@@ -71,6 +73,8 @@ Base.@kwdef mutable struct MechanicalActuationU
 end
 
 Base.@kwdef struct MechanicalActuationY
+    eng_start::Bool = false
+    eng_stop::Bool = false
     throttle::Float64 = 0.0
     mixture::Float64 = 0.5
     aileron::Float64 = 0.0
@@ -93,11 +97,13 @@ RigidBody.WrenchTrait(::System{MechanicalActuation}) = GetsNoExternalWrench()
 
 function Systems.f_ode!(act::System{MechanicalActuation})
 
-    @unpack throttle, mixture, aileron, elevator, rudder,
+    @unpack eng_start, eng_stop,
+            throttle, mixture, aileron, elevator, rudder,
             aileron_trim, elevator_trim, rudder_trim,
             flaps, brake_left, brake_right= act.u
 
-    act.y = MechanicalActuationY(; throttle, mixture, aileron, elevator, rudder,
+    act.y = MechanicalActuationY(; eng_start, eng_stop,
+            throttle, mixture, aileron, elevator, rudder,
             aileron_trim, elevator_trim, rudder_trim,
             flaps, brake_left, brake_right)
 
@@ -110,6 +116,13 @@ function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172
     CImGui.Begin(label)
 
     CImGui.PushItemWidth(-60)
+
+    # override = @cstatic check=false @c CImGui.Checkbox("Override", &check)
+    # CImGui.SameLine()
+    # show_help_marker("Overrides avionics and sets actuation inputs directly")
+
+    u.eng_start = dynamic_button("Engine Start", 0.4); CImGui.SameLine()
+    u.eng_stop = dynamic_button("Engine Stop", 0.0)
 
     u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
     @running_plot("Throttle", u.throttle, 0, 1, 0.0, 120)
@@ -131,6 +144,7 @@ function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172
     CImGui.PopItemWidth()
 
     CImGui.End()
+
 
 end
 
@@ -858,10 +872,13 @@ function assign!(aero::System{<:Aero},
                 pwp::System{<:Piston.Thruster},
                 act::System{<:MechanicalActuation})
 
-    @unpack throttle, mixture, aileron, elevator, rudder,
+    @unpack eng_start, eng_stop,
+            throttle, mixture, aileron, elevator, rudder,
             aileron_trim, elevator_trim, rudder_trim,
             brake_left, brake_right, flaps = act.y
 
+    pwp.u.engine.start = eng_start
+    pwp.u.engine.stop = eng_stop
     pwp.u.engine.throttle = throttle
     pwp.u.engine.mixture = mixture
     ldg.u.nose.steering[] = (rudder_trim + rudder)
@@ -980,7 +997,7 @@ function GUI.draw!(sys::System{<:C172RAirframe}, window_label::String = "Cessna 
     show_act && GUI.draw!(act)
     show_aero && GUI.draw(aero)
     show_ldg && GUI.draw(ldg)
-    show_pwp && GUI.draw!(pwp)
+    show_pwp && GUI.draw(pwp)
     show_fuel && GUI.draw(fuel)
     show_pld && GUI.draw!(pld)
 

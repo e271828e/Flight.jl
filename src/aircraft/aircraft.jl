@@ -115,7 +115,7 @@ function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractE
 
 end
 
-function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt, env::System{<:AbstractEnvironment})
+function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt::Real, env::System{<:AbstractEnvironment})
 
     @unpack airframe, avionics = sys.subsystems
     @unpack kinematics, rigidbody, air = sys.y
@@ -125,8 +125,11 @@ function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt, env::System{<:Abs
     x_mod = false
     #in principle, only avionics should have discrete dynamics (it's the only
     #aircraft subsystem in which discretized algorithms should live)
+    # @show typeof(kinematics)
+    # @show kinematics isa KinematicData
     x_mod |= f_disc!(avionics, Δt, airframe, kinematics, air, rigidbody, trn)
     map_controls!(airframe, avionics)
+    # println("This runs")
 
     #avionics might have modified its outputs, so we need to reassemble everything
     sys.y = AircraftTemplateY(kinematics, airframe.y, avionics.y, rigidbody, air)

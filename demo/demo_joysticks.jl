@@ -5,13 +5,13 @@ using CImGui
 using CImGui.CSyntax
 
 using Flight
-using Flight.FlightAircraft.Control: PICompensator, PICompensatorU, PICompensatorY
+using Flight.FlightAircraft.Control: PIContinuous, PIContinuousU, PIContinuousY
 
 export demo_joysticks
 
 struct TestMapping <: InputMapping end
 
-function IODevices.assign!(u::PICompensatorU{N},
+function IODevices.assign!(u::PIContinuousU{N},
                             joystick::Joystick{XBoxControllerID},
                             ::TestMapping) where {N}
 
@@ -20,7 +20,7 @@ end
 
 function demo_joysticks()
 
-    sys = PICompensator{2}(k_p = 0, k_i = 0.2) |> System
+    sys = PIContinuous{2}(k_p = 0, k_i = 0.2) |> System
     sim = Simulation(sys; t_end = 100, dt = 0.02)
 
     joy_interfaces = Vector{IODevices.Interface}()

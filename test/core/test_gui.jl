@@ -6,18 +6,12 @@ using Flight
 
 export test_gui
 
-# function test_gui()
-#     ctl = C172RDirect.FeedthroughActuation() |> System
-#     r = Renderer()
-#     GUI.init!(r)
-#     GUI.run(r, GUI.draw!, ctl)
-# end
-
 function test_gui()
-    world = SimpleWorld() |> System
+    # target = SimpleWorld(Cessna172Rv1(), SimpleEnvironment()) |> System
+    target = Cessna172Rv1() |> System
     r = Renderer()
     GUI.init!(r)
-    GUI.run(r, GUI.draw!, world)
+    GUI.run(r, GUI.draw!, target)
 end
 
 end

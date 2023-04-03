@@ -3,7 +3,7 @@ using Flight
 
 function test(save = true)
 
-    ac = Cessna172R(LTF()) |> System
+    ac = Cessna172Rv0(LTF()) |> System
     env = SimpleEnvironment() |> System
     trim_params = C172RDirect.Trim.Parameters(
         loc = LatLon(),
@@ -27,7 +27,7 @@ function test(save = true)
     save && save_plots(plots, save_folder = joinpath("tmp", "trim_sim_test"))
 
     #recreate the aircraft with NED kinematics, suitable for linearization
-    ac = Cessna172R(NED()) |> System
+    ac = Cessna172Rv0(NED()) |> System
     lm = linearize(ac; env, trim_params) #retrims
 
     #the couplings of a specific state S into the time derivative of any other

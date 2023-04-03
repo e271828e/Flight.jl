@@ -3,7 +3,7 @@ using OrdinaryDiffEq
 
 function benchmark_pi()
 
-    sys = PICompensator{1}() |> System
+    sys = PIContinuous{1}() |> System
     sys_reinit! = (s) -> nothing #avoid reinit! warnings
     sys_reinit!(sys) #not called automatically by the Simulation constructor
     sim = Simulation(sys; t_end = 100, sys_reinit!)
@@ -14,7 +14,7 @@ end
 
 function benchmark_ac()
 
-    ac = System(Cessna172R())
+    ac = System(Cessna172Rv0())
     env = System(SimpleEnvironment())
     kin_init = KinematicInit( v_eOb_n = [30, 0, 0], h = HOrth(1.8 + 2000))
 

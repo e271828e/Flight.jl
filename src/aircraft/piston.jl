@@ -9,7 +9,7 @@ using Flight.FlightPhysics
 using Flight.FlightPhysics.Atmosphere: R
 
 using ..Propellers: AbstractPropeller, Propeller
-using ..Control: PICompensator, PICompensatorU, PICompensatorY
+using ..Control: PIContinuous, PIContinuousU, PIContinuousY
 
 
 ################################################################################
@@ -81,8 +81,8 @@ struct Engine{L} <: AbstractPistonEngine
     ω_idle::Float64 #target idle speed
     M_start::Float64 #starter torque
     J::Float64 #equivalent axial moment of inertia of the engine shaft
-    idle::PICompensator{1} #idle MAP control compensator
-    frc::PICompensator{1} #friction constraint compensator
+    idle::PIContinuous{1} #idle MAP control compensator
+    frc::PIContinuous{1} #friction constraint compensator
     lookup::L #performance lookup table
 end
 
@@ -94,8 +94,8 @@ function Engine(;
     ω_idle = RPM2radpersec(600),
     M_start = 40,
     J = 0.05,
-    idle = PICompensator{1}(k_p = 4.0, k_i = 2.0, bounds = (-0.5, 0.5)),
-    frc =  PICompensator{1}(k_p = 5.0, k_i = 200.0, k_l = 0.0, bounds = (-1.0, 1.0))
+    idle = PIContinuous{1}(k_p = 4.0, k_i = 2.0, bounds = (-0.5, 0.5)),
+    frc =  PIContinuous{1}(k_p = 5.0, k_i = 200.0, k_l = 0.0, bounds = (-1.0, 1.0))
     )
 
     n_stall = ω_stall / ω_rated
@@ -123,8 +123,8 @@ Base.@kwdef mutable struct PistonEngineU
     stop::Bool = false
     throttle::Ranged{Float64, 0, 1} = 0.0 #throttle setting
     mixture::Ranged{Float64, 0, 1} = 0.5 #mixture setting
-    idle::PICompensatorU{1} = PICompensatorU{1}()
-    frc::PICompensatorU{1} = PICompensatorU{1}()
+    idle::PIContinuousU{1} = PIContinuousU{1}()
+    frc::PIContinuousU{1} = PIContinuousU{1}()
 end
 
 Base.@kwdef struct PistonEngineY
@@ -139,8 +139,8 @@ Base.@kwdef struct PistonEngineY
     P_shaft::Float64 = 0.0 #shaft power
     SFC::Float64 = 0.0 #specific fuel consumption
     ṁ::Float64 = 0.0 #fuel consumption
-    idle::PICompensatorY{1} = PICompensatorY{1}()
-    frc::PICompensatorY{1} = PICompensatorY{1}()
+    idle::PIContinuousY{1} = PIContinuousY{1}()
+    frc::PIContinuousY{1} = PIContinuousY{1}()
 end
 
 Systems.init(::SystemX, eng::Engine) = ComponentVector(
@@ -417,7 +417,7 @@ function compute_π_ISA_pow(lookup, n, μ, δ)
 end
 
 
-function GUI.draw!(sys::System{<:Engine}, window_label::String = "Piston Engine")
+function GUI.draw(sys::System{<:Engine}, window_label::String = "Piston Engine")
 
     @unpack u, y, params = sys
     @unpack idle, frc = sys
@@ -425,8 +425,8 @@ function GUI.draw!(sys::System{<:Engine}, window_label::String = "Piston Engine"
 
     CImGui.Begin(window_label)
 
-        u.start = dynamic_button("Start", 0.4); CImGui.SameLine()
-        u.stop = dynamic_button("Stop", 0.0)
+        CImGui.Text("Start: $start")
+        CImGui.Text("Stop: $stop")
         CImGui.Text("State: $state")
         CImGui.Text(@sprintf("Throttle: %.3f", throttle))
         CImGui.Text(@sprintf("Mixture: %.3f", mixture))
@@ -520,15 +520,15 @@ RigidBody.get_hr_b(sys::System{<:Thruster}) = get_hr_b(sys.propeller)
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw!(sys::System{<:Thruster}, window_label::String = "Piston Thruster")
+function GUI.draw(sys::System{<:Thruster}, window_label::String = "Piston Thruster")
 
     CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
         show_eng = @cstatic check=false @c CImGui.Checkbox("Engine", &check)
         show_prop = @cstatic check=false @c CImGui.Checkbox("Propeller", &check)
     CImGui.End()
 
-    show_eng && GUI.draw!(sys.engine)
-    show_prop && GUI.draw!(sys.propeller)
+    show_eng && GUI.draw(sys.engine)
+    show_prop && GUI.draw(sys.propeller)
 
 end
 

@@ -7,7 +7,7 @@ using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 using Flight.FlightCore
 using Flight.FlightPhysics
 
-using ..Control: PICompensator, PICompensatorY
+using ..Control: PIContinuous, PIContinuousY
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 
@@ -159,7 +159,7 @@ Base.@kwdef struct Strut{D<:AbstractDamper} <: Component
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
     l_0::Float64 = 0.0 #strut natural length from airframe attachment point to wheel endpoint
     damper::D = SimpleDamper()
-    frc::PICompensator{2} = PICompensator{2}( #friction constraint compensator
+    frc::PIContinuous{2} = PIContinuous{2}( #friction constraint compensator
         k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
 end
 
@@ -182,7 +182,7 @@ Base.@kwdef struct StrutY #defaults should be consistent with wow = 0
     f_c::SVector{3,Float64} = zeros(SVector{3}) #normalized contact force
     F_c::SVector{3,Float64} = zeros(SVector{3}) #contact force
     wr_b::Wrench = Wrench() #resulting Wrench on the vehicle frame
-    frc::PICompensatorY{2} = PICompensatorY{2}()
+    frc::PIContinuousY{2} = PIContinuousY{2}()
 end
 
 Systems.init(::SystemY, ::Strut) = StrutY()

@@ -86,9 +86,9 @@ end
 
 function test_pi_compensator(save = false)
 
-    @testset verbose = true "PICompensator" begin
+    @testset verbose = true "PIContinuous" begin
 
-        comp = PICompensator{3}(k_p = 1.0, k_i = 1.0, k_l = 0.0, bounds = (-1, 2));
+        comp = PIContinuous{3}(k_p = 1.0, k_i = 1.0, k_l = 0.0, bounds = (-1, 2));
         sys = System(comp)
         sim = Simulation(sys)
 
