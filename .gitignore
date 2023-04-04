@@ -1,7 +1,7 @@
 /old
 /sketches
 /precompile
-/cimgui
+/CImGui.jl
 /.vscode
 /.VSCodeCounter
 

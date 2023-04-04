@@ -3,14 +3,14 @@ module GUI
 using UnPack
 using Reexport
 
-using CImGui.GLFWBackend
-using CImGui.OpenGLBackend
-using CImGui.GLFWBackend.GLFW
-using CImGui.OpenGLBackend.ModernGL
-
 #these are needed by any module extending GUI draw methods
 @reexport using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 @reexport using Printf
+using ImGuiGLFWBackend
+using ImGuiGLFWBackend.LibGLFW #defines GLFWwindow
+using ImGuiGLFWBackend.LibCImGui
+using ImGuiOpenGLBackend
+using ImGuiOpenGLBackend.ModernGL
 
 export CImGuiStyle, Renderer
 export dynamic_button, display_bar, safe_slider, safe_input, @running_plot
@@ -36,8 +36,10 @@ mutable struct Renderer
     refresh::Integer
     _enabled::Bool
     _initialized::Bool
-    _window::GLFW.Window
-    _context::Ptr{CImGui.LibCImGui.ImGuiContext}
+    _window::Ptr{ImGuiGLFWBackend.GLFWwindow}
+    _window_ctx::ImGuiGLFWBackend.Context
+    _opengl_ctx::ImGuiOpenGLBackend.Context
+    _cimgui_ctx::Ptr{CImGui.LibCImGui.ImGuiContext}
 
     function Renderer(; label = "Renderer", wsize = (1280, 720),
                         style = dark, refresh = 0)
@@ -71,47 +73,60 @@ function init!(renderer::Renderer)
 
     _enabled || return
 
-    @static if Sys.isapple()
-        # OpenGL 3.2 + GLSL 150
-        glsl_version = 150
-        GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, 3)
-        GLFW.WindowHint(GLFW.CONTEXT_VERSION_MINOR, 2)
-        GLFW.WindowHint(GLFW.OPENGL_PROFILE, GLFW.OPENGL_CORE_PROFILE) # 3.2+ only
-        GLFW.WindowHint(GLFW.OPENGL_FORWARD_COMPAT, GL_TRUE) # required on Mac
-    else
-        # OpenGL 3.0 + GLSL 130
-        glsl_version = 130
-        GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, 3)
-        GLFW.WindowHint(GLFW.CONTEXT_VERSION_MINOR, 0)
-        # GLFW.WindowHint(GLFW.OPENGL_PROFILE, GLFW.OPENGL_CORE_PROFILE) # 3.2+ only
-        # GLFW.WindowHint(GLFW.OPENGL_FORWARD_COMPAT, GL_TRUE) # 3.0+ only
+    glfwDefaultWindowHints()
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3)
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2)
+    if Sys.isapple()
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE) # 3.2+ only
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE) # required on Mac
     end
 
-    # setup GLFW error callback
-    error_callback(err::GLFW.GLFWError) = @error "GLFW ERROR: code $(err.code) msg: $(err.description)"
-    GLFW.SetErrorCallback(error_callback)
+    # # setup GLFW error callback
+    # error_callback(err::GLFW.GLFWError) = @error "GLFW ERROR: code $(err.code) msg: $(err.description)"
+    # GLFW.SetErrorCallback(error_callback)
 
     # create window
-    _window = GLFW.CreateWindow(wsize[1], wsize[2], label)
+    _window = glfwCreateWindow(wsize[1], wsize[2], label, C_NULL, C_NULL)
     @assert _window != C_NULL
-    GLFW.MakeContextCurrent(_window)
-    GLFW.SwapInterval(refresh)
+    glfwMakeContextCurrent(_window)
+    glfwSwapInterval(refresh)
+
+    # create OpenGL and GLFW context
+    _window_ctx = ImGuiGLFWBackend.create_context(_window)
+    _opengl_ctx = ImGuiOpenGLBackend.create_context()
 
     # setup Dear ImGui context
-    _context = CImGui.CreateContext()
+    _cimgui_ctx = CImGui.CreateContext()
+
+    #comment when not using docking and multiviewports
+    #enable docking and multi-viewport
+    io = CImGui.GetIO()
+    io.ConfigFlags = unsafe_load(io.ConfigFlags) | CImGui.ImGuiConfigFlags_DockingEnable
+    io.ConfigFlags = unsafe_load(io.ConfigFlags) | CImGui.ImGuiConfigFlags_ViewportsEnable
 
     # setup Dear ImGui style
     style === classic && CImGui.StyleColorsClassic()
     style === dark && CImGui.StyleColorsDark()
     style === light && CImGui.StyleColorsLight()
 
+    #comment when not using docking and multiviewports
+    # When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+    style = Ptr{ImGuiStyle}(CImGui.GetStyle())
+    if unsafe_load(io.ConfigFlags) & ImGuiConfigFlags_ViewportsEnable == ImGuiConfigFlags_ViewportsEnable
+        style.WindowRounding = 5.0f0
+        col = CImGui.c_get(style.Colors, CImGui.ImGuiCol_WindowBg)
+        CImGui.c_set!(style.Colors, CImGui.ImGuiCol_WindowBg, ImVec4(col.x, col.y, col.z, 1.0f0))
+    end
+
     # setup Platform/Renderer bindings
-    ImGui_ImplGlfw_InitForOpenGL(_window, true)
-    ImGui_ImplOpenGL3_Init(glsl_version)
+    ImGuiGLFWBackend.init(_window_ctx)
+    ImGuiOpenGLBackend.init(_opengl_ctx)
 
     setfield!(renderer, :_initialized, true)
     setfield!(renderer, :_window, _window)
-    setfield!(renderer, :_context, _context)
+    setfield!(renderer, :_window_ctx, _window_ctx)
+    setfield!(renderer, :_opengl_ctx, _opengl_ctx)
+    setfield!(renderer, :_cimgui_ctx, _cimgui_ctx)
 
     return nothing
 
@@ -122,38 +137,42 @@ function render(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
     renderer._enabled || return
 
-    @unpack _initialized, _window = renderer
+    @unpack _initialized, _window, _window_ctx, _opengl_ctx = renderer
 
     @assert _initialized "Renderer not initialized, call init! before update!"
 
-    try
+        glfwPollEvents() #maybe on top???
+
         # start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame()
-        ImGui_ImplGlfw_NewFrame()
+        ImGuiOpenGLBackend.new_frame(_opengl_ctx)
+        ImGuiGLFWBackend.new_frame(_window_ctx)
         CImGui.NewFrame()
 
-        #draw the frame and apply user inputs to arguments
+        # #draw the frame and apply user inputs to arguments
         fdraw!(fdraw_args...)
 
         CImGui.Render()
-        GLFW.MakeContextCurrent(_window)
+        glfwMakeContextCurrent(_window)
 
-        display_w, display_h = GLFW.GetFramebufferSize(_window)
+        width, height = Ref{Cint}(), Ref{Cint}() #! need helper fcn
+        glfwGetFramebufferSize(_window, width, height)
+        display_w = width[]
+        display_h = height[]
+
         glViewport(0, 0, display_w, display_h)
+        # glClearColor(clear_color...)
         glClear(GL_COLOR_BUFFER_BIT)
-        ImGui_ImplOpenGL3_RenderDrawData(CImGui.GetDrawData())
+        ImGuiOpenGLBackend.render(_opengl_ctx)
 
-        GLFW.MakeContextCurrent(_window)
-        GLFW.SwapBuffers(_window)
-        GLFW.PollEvents() #essential to catch window close requests
+        #comment when not using docking and multiviewport
+        if (unsafe_load(igGetIO().ConfigFlags) & ImGuiConfigFlags_ViewportsEnable) == ImGuiConfigFlags_ViewportsEnable
+            ctx_backup = glfwGetCurrentContext()
+            igUpdatePlatformWindows()
+            GC.@preserve _opengl_ctx igRenderPlatformWindowsDefault(C_NULL, pointer_from_objref(_opengl_ctx))
+            glfwMakeContextCurrent(ctx_backup)
+        end
 
-    catch e
-
-        @error "Error while updating window" exception=e
-        Base.show_backtrace(stderr, catch_backtrace())
-        shutdown!(renderer)
-
-    end
+        glfwSwapBuffers(_window)
 
     return nothing
 
@@ -165,11 +184,16 @@ function run(renderer::Renderer, fdraw!::Function, fdraw_args...)
     renderer._enabled || return
     renderer._initialized || init!(renderer)
 
-    while !GLFW.WindowShouldClose(renderer._window)
-        render(renderer, fdraw!, fdraw_args...)
+    try
+        while glfwWindowShouldClose(renderer._window) == 0
+            render(renderer, fdraw!, fdraw_args...)
+        end
+    catch e
+        @error "Error while updating window" exception=e
+        Base.show_backtrace(stderr, catch_backtrace())
+    finally
+        shutdown!(renderer)
     end
-
-    shutdown!(renderer)
 
 end
 
@@ -177,7 +201,7 @@ end
 function should_close(renderer::Renderer)
 
     renderer._enabled || return false
-    renderer._initialized ? GLFW.WindowShouldClose(renderer._window) : false
+    renderer._initialized ? Bool(glfwWindowShouldClose(renderer._window)) : false
 
 end
 
@@ -187,10 +211,10 @@ function shutdown!(renderer::Renderer)
     renderer._enabled || return
     @assert renderer._initialized "Cannot shutdown an uninitialized renderer"
 
-    ImGui_ImplOpenGL3_Shutdown()
-    ImGui_ImplGlfw_Shutdown()
-    CImGui.DestroyContext(renderer._context)
-    GLFW.DestroyWindow(renderer._window)
+    ImGuiOpenGLBackend.shutdown(renderer._opengl_ctx)
+    ImGuiGLFWBackend.shutdown(renderer._window_ctx)
+    CImGui.DestroyContext(renderer._cimgui_ctx)
+    glfwDestroyWindow(renderer._window)
     setfield!(renderer, :_initialized, false)
 
     return nothing
@@ -227,11 +251,11 @@ function draw(v::AbstractVector{<:Real}, label::String, units::String = "")
 
 end
 
-function draw_test()
+function fdraw_test(number::Real)
 
     output = @cstatic f=Cfloat(0.0) begin
         CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
-        CImGui.Text("This is some useful text.")  # display some text
+        CImGui.Text("I got this number: $number")  # display some text
         @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
         CImGui.End()
     end

@@ -5,7 +5,7 @@ function test(save = true)
 
     ac = Cessna172Rv0(LTF()) |> System
     env = SimpleEnvironment() |> System
-    trim_params = C172RDirect.Trim.Parameters(
+    trim_params = C172Rv0.TrimParameters(
         loc = LatLon(),
         h = HOrth(1000),
         ψ_nb = 0.0,
@@ -18,7 +18,7 @@ function test(save = true)
         mixture = 0.5,
         flaps = 0.0)
 
-    C172RDirect.Trim.trim!(ac, env, trim_params)
+    C172Rv0.trim!(ac, env, trim_params)
 
     sim = Simulation(ac; args_ode = (env, ), t_end = 150, adaptive = true)
     Sim.run!(sim, verbose = true)
@@ -28,7 +28,7 @@ function test(save = true)
 
     #recreate the aircraft with NED kinematics, suitable for linearization
     ac = Cessna172Rv0(NED()) |> System
-    lm = linearize(ac; env, trim_params) #retrims
+    lm = C172Rv0.linearize!(; ac, env, trim_params) #retrims
 
     #the couplings of a specific state S into the time derivative of any other
     #state can be examined in the column of A corresponding to S. from this, we
@@ -55,7 +55,7 @@ function test(save = true)
     ss_long = ss(long_dyn)
     tf_long = tf(ss_long)
 
-    # return lm
+    return lm
     # return long_dyn
 
     #let's get the transfer function from elevator input to q. we have chosen q

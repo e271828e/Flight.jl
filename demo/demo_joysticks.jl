@@ -11,17 +11,17 @@ export demo_joysticks
 
 struct TestMapping <: InputMapping end
 
-function IODevices.assign!(u::PIContinuousU{N},
-                            joystick::Joystick{XBoxControllerID},
+function IODevices.assign!(sys::System{<:PIContinuous{N}},
+                            joystick::T16000M,
                             ::TestMapping) where {N}
 
-    u.input .= get_axis_value(joystick, :right_analog_y)
+    sys.u.input .= get_axis_value(joystick, :stick_y)
 end
 
 function demo_joysticks()
 
     sys = PIContinuous{2}(k_p = 0, k_i = 0.2) |> System
-    sim = Simulation(sys; t_end = 100, dt = 0.02)
+    sim = Simulation(sys; t_end = 30, dt = 0.02)
 
     joy_interfaces = Vector{IODevices.Interface}()
     for joystick in get_connected_joysticks()

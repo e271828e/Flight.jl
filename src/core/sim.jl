@@ -296,7 +296,13 @@ enable_gui!(sim::Simulation) = GUI.enable!(sim.gui)
 disable_gui!(sim::Simulation) = GUI.disable!(sim.gui)
 
 function update!(sys::System, info::Info, gui::Renderer)
-    GUI.render(gui, GUI.draw!, sys, info)
+    try
+        GUI.render(gui, GUI.draw!, sys, info)
+    catch e
+        @error "Error while updating window" exception=e
+        Base.show_backtrace(stderr, catch_backtrace())
+        shutdown!(renderer)
+    end
 end
 
 function GUI.draw!(sys::System, info::Info)
@@ -316,8 +322,8 @@ function GUI.draw(info::Info)
         CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
         CImGui.Text(@sprintf("Simulation rate: x%.3f", (t - t_start) / τ))
         CImGui.Text(@sprintf("Dashboard Framerate: %.3f ms/frame (%.1f FPS)",
-                            1000 / CImGui.GetIO().Framerate,
-                            CImGui.GetIO().Framerate))
+                            1000 / unsafe_load(CImGui.GetIO().Framerate),
+                            unsafe_load(CImGui.GetIO().Framerate)))
     CImGui.End()
 
 end

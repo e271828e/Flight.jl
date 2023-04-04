@@ -257,6 +257,7 @@ function GUI.draw!(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous
                 CImGui.Checkbox("Reset", reset_ref)
                 CImGui.SameLine()
                 CImGui.Checkbox("Enable Saturation", sat_ref)
+                hold[i] = hold_ref[]
                 reset[i] = reset_ref[]
                 sat_enable[i] = sat_ref[]
                 CImGui.TreePop()
