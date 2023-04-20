@@ -29,6 +29,7 @@ Cessna172Rv0(kinematics = LTF()) = AircraftTemplate(kinematics, C172RAirframe(),
 
 ############################ Joystick Mappings #################################
 
+#redirect input assignments directly to the airframe
 function IODevices.assign!(sys::System{<:Cessna172Rv0}, joystick::Joystick,
                            mapping::InputMapping)
     IODevices.assign!(sys.airframe, joystick, mapping)
@@ -66,7 +67,6 @@ function TrimState(; α_a = 0.1, φ_nb = 0.0, n_eng = 0.75,
 
 end
 
-#first 5 are aircraft-agnostic
 struct TrimParameters
     Ob::Geographic{NVector, Ellipsoidal} #position
     ψ_nb::Float64 #geographic heading
@@ -102,25 +102,29 @@ function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
 
 end
 
-function Kinematics.Initializer(state::TrimState, params::TrimParameters,
+function Kinematics.Initializer(trim_state::TrimState,
+                                trim_params::TrimParameters,
                                 env::System{<:AbstractEnvironment})
 
-    v_wOb_a = Atmosphere.get_velocity_vector(params.TAS, state.α_a, params.β_a)
+    @unpack TAS, β_a, γ_wOb_n, ψ_nb, ψ_lb_dot, θ_lb_dot, Ob = trim_params
+    @unpack α_a, φ_nb = trim_state
+
+    v_wOb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
     v_wOb_b = C172Rv0.Airframe.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
 
-    θ_nb = θ_constraint(; v_wOb_b, params.γ_wOb_n, state.φ_nb)
-    e_nb = REuler(params.ψ_nb, θ_nb, state.φ_nb)
+    θ_nb = θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
+    e_nb = REuler(ψ_nb, θ_nb, φ_nb)
     q_nb = RQuat(e_nb)
 
     e_lb = e_nb #initialize LTF arbitrarily to NED
-    ė_lb = SVector(params.ψ_lb_dot, params.θ_lb_dot, 0.0)
+    ė_lb = SVector(ψ_lb_dot, θ_lb_dot, 0.0)
     ω_lb_b = Attitude.ω(e_lb, ė_lb)
 
-    loc = NVector(params.Ob)
-    h = HEllip(params.Ob)
+    loc = NVector(Ob)
+    h = HEllip(Ob)
 
     v_wOb_n = q_nb(v_wOb_b) #wind-relative aircraft velocity, NED frame
-    v_ew_n = AtmosphericData(env.atm, params.Ob).wind.v_ew_n
+    v_ew_n = AtmosphericData(env.atm, Ob).wind.v_ew_n
     v_eOb_n = v_ew_n + v_wOb_n
 
     Kinematics.Initializer(; q_nb, loc, h, ω_lb_b, v_eOb_n, Δx = 0.0, Δy = 0.0)
@@ -129,24 +133,29 @@ end
 
 #assigns trim state and parameters to the aircraft system, and then updates it
 #by calling f_ode!
-function assign!(ac::System{<:Cessna172Rv0}, env::System{<:AbstractEnvironment},
-    params::TrimParameters, state::TrimState)
+function assign!(ac::System{<:Cessna172Rv0},
+                env::System{<:AbstractEnvironment},
+                trim_params::TrimParameters,
+                trim_state::TrimState)
 
-    init_kinematics!(ac, Kinematics.Initializer(state, params, env))
+    @unpack TAS, β_a, fuel, flaps, mixture = trim_params
+    @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
 
-    ω_eng = state.n_eng * ac.airframe.pwp.engine.params.ω_rated
+    init_kinematics!(ac, Kinematics.Initializer(trim_state, trim_params, env))
 
-    ac.x.airframe.aero.α_filt = state.α_a #ensures zero state derivative
-    ac.x.airframe.aero.β_filt = params.β_a #ensures zero state derivative
+    ω_eng = n_eng * ac.airframe.pwp.engine.params.ω_rated
+
+    ac.x.airframe.aero.α_filt = α_a #ensures zero state derivative
+    ac.x.airframe.aero.β_filt = β_a #ensures zero state derivative
     ac.x.airframe.pwp.engine.ω = ω_eng
-    ac.x.airframe.fuel .= params.fuel
+    ac.x.airframe.fuel .= fuel
 
-    ac.u.airframe.act.throttle = state.throttle
-    ac.u.airframe.act.aileron_trim = state.aileron
-    ac.u.airframe.act.elevator_trim = state.elevator
-    ac.u.airframe.act.rudder_trim = state.rudder
-    ac.u.airframe.act.flaps = params.flaps
-    ac.u.airframe.act.mixture = params.mixture
+    ac.u.airframe.act.throttle = throttle
+    ac.u.airframe.act.aileron_trim = aileron
+    ac.u.airframe.act.elevator_trim = elevator
+    ac.u.airframe.act.rudder_trim = rudder
+    ac.u.airframe.act.flaps = flaps
+    ac.u.airframe.act.mixture = mixture
 
     #incremental control inputs to zero
     ac.u.airframe.act.elevator = 0
@@ -191,37 +200,35 @@ function cost(ac::System{<:Cessna172Rv0})
 end
 
 function get_target_function(ac::System{<:Cessna172Rv0},
-    env::System{<:AbstractEnvironment}, params::TrimParameters = TrimParameters())
+    env::System{<:AbstractEnvironment}, trim_params::TrimParameters = TrimParameters())
 
-    let ac = ac, env = env, params = params
+    let ac = ac, env = env, trim_params = trim_params
         function (x::TrimState)
-            assign!(ac, env, params, x)
+            assign!(ac, env, trim_params, x)
             return cost(ac)
         end
     end
 
 end
 
-#for multiple calls, these Systems should be created in advance to avoid having
-#to do it on each call
-function trim!(ac::System{<:Cessna172Rv0} = System(Cessna172Rv0()),
-    env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
-    params::TrimParameters = TrimParameters(),
-    state::TrimState = TrimState()) #optional initial guess
+function trim!( ac::System{<:Cessna172Rv0};
+                env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
+                trim_params::TrimParameters = TrimParameters())
 
-    f_target = get_target_function(ac, env, params)
+    f_target = get_target_function(ac, env, trim_params)
 
     #wrapper around f_target with the interface required by NLopt
-    ax = getaxes(state)
+    trim_state = TrimState() #could define this initial condition as an optional input
+    ax = getaxes(trim_state)
     function f_opt(x::Vector{Float64}, ::Vector{Float64})
         s = ComponentVector(x, ax)
         return f_target(s)
     end
 
-    n = length(state)
+    n = length(trim_state)
     x0 = zeros(n); lower_bounds = similar(x0); upper_bounds = similar(x0); initial_step = similar(x0)
 
-    x0[:] .= state
+    x0[:] .= trim_state
 
     lower_bounds[:] .= TrimState(
         α_a = -π/12,
@@ -261,13 +268,22 @@ function trim!(ac::System{<:Cessna172Rv0} = System(Cessna172Rv0()),
 
     (minf, minx, exit_flag) = optimize(opt, x0)
 
-    if exit_flag != :STOPVAL_REACHED
-        println("Warning: Optimization did not converge")
+    success = (exit_flag === :STOPVAL_REACHED)
+    if !success
+        println("Warning: Optimization failed with exit_flag $exit_flag")
     end
-    state_opt = ComponentVector(minx, ax)
-    assign!(ac, env, params, state_opt)
-    return (exit_flag = exit_flag, result = state_opt)
+    trim_state_opt = ComponentVector(minx, ax)
+    assign!(ac, env, trim_params, trim_state_opt)
+    return (success = success, result = trim_state_opt)
 
+
+end
+
+function trim!(
+    world::System{<:SimpleWorld{<:Cessna172Rv0, <:AbstractEnvironment}};
+    trim_params::TrimParameters = TrimParameters())
+
+    trim!(world.ac; env = world.env, trim_params = trim_params)
 
 end
 
@@ -349,12 +365,11 @@ function assign!(y::LinearY, ac::System{<:Cessna172Rv0})
 
 end
 
-function linearize!(;   ac::System{<:Cessna172Rv0{NED}} = System(Cessna172Rv0(NED())),
-                        env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
-                        trim_params::TrimParameters = TrimParameters(),
-                        trim_state::TrimState = TrimState())
+function linearize!(ac::System{<:Cessna172Rv0{NED}};
+    env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
+    trim_params::TrimParameters = TrimParameters())
 
-    (_, trim_state) = trim!(ac, env, trim_params, trim_state)
+    (_, trim_state) = trim!(ac; env, trim_params)
 
     #save the trimmed aircraft's ẋ, x, u and y for later
     ẋ0_full = copy(ac.ẋ)

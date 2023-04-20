@@ -1,8 +1,8 @@
 module LandingGear
 
 using StaticArrays, ComponentArrays, LinearAlgebra, UnPack
-using Printf
 using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
+using Printf
 
 using Flight.FlightCore
 using Flight.FlightPhysics
@@ -182,7 +182,7 @@ Base.@kwdef struct StrutY #defaults should be consistent with wow = 0
     f_c::SVector{3,Float64} = zeros(SVector{3}) #normalized contact force
     F_c::SVector{3,Float64} = zeros(SVector{3}) #contact force
     wr_b::Wrench = Wrench() #resulting Wrench on the vehicle frame
-    frc::PIContinuousY{2} = PIContinuousY{2}()
+    frc::PIContinuousY{2} = PIContinuousY{2}() #contact friction regulator
 end
 
 Systems.init(::SystemY, ::Strut) = StrutY()

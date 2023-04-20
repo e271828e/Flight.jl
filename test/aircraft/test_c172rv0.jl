@@ -141,14 +141,14 @@ function test_trimming()
 
         ac = System(Cessna172Rv0())
         env = System(SimpleEnvironment())
-        params = C172Rv0.TrimParameters()
+        trim_params = C172Rv0.TrimParameters()
         state = C172Rv0.TrimState()
 
-        f_target = C172Rv0.get_target_function(ac, env, params)
+        f_target = C172Rv0.get_target_function(ac, env, trim_params)
 
         @test @ballocated($f_target($state)) === 0
 
-        exit_flag, _ = C172Rv0.trim!(ac, env, params, state)
+        exit_flag, _ = C172Rv0.trim!(ac; env, trim_params)
 
         @test exit_flag === :STOPVAL_REACHED
 

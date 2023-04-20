@@ -1,10 +1,11 @@
-using ControlSystemsBase
+using ControlSystems
 using Flight
 
 function test(save = true)
 
     ac = Cessna172Rv0(LTF()) |> System
     env = SimpleEnvironment() |> System
+
     trim_params = C172Rv0.TrimParameters(
         loc = LatLon(),
         h = HOrth(1000),
@@ -26,9 +27,9 @@ function test(save = true)
     plots = make_plots(TimeHistory(sim).kinematics; Plotting.defaults...)
     save && save_plots(plots, save_folder = joinpath("tmp", "trim_sim_test"))
 
-    #recreate the aircraft with NED kinematics, suitable for linearization
+    #recreate the aircraft with NED kinematics (necessary for linearization)
     ac = Cessna172Rv0(NED()) |> System
-    lm = C172Rv0.linearize!(; ac, env, trim_params) #retrims
+    lm = C172Rv0.linearize!(ac, env; trim_params) #retrims
 
     #the couplings of a specific state S into the time derivative of any other
     #state can be examined in the column of A corresponding to S. from this, we
