@@ -165,18 +165,18 @@ function test_strut()
         @test strut.y.μ_eff[2] == 0 #no lateral motion, no lateral effective friction
         #longitudinal effective friction should be small and negative
         @test strut.y.μ_eff[1] < 0 && abs(strut.y.μ_eff[1]) < strut.y.μ_max[1]
-        @test strut.ẋ[1] > 0 #longitudinal velocity integral should be increasing
+        @test strut.ẋ[1] < 0 #longitudinal velocity error integral should be increasing
 
         #low positive lateral velocity
         kin = KinematicInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1e-4, 0] ) |> KinematicData
         f_ode!(strut, steering, braking, terrain, kin)
         @test strut.y.wr_b.F[2] > 0
-        @test strut.ẋ[2] < 0 #lateral velocity integral should be decreasing
+        @test strut.ẋ[2] > 0 #lateral velocity error integral should be increasing
 
         #large positive lateral velocity
         kin = KinematicInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> KinematicData
         f_ode!(strut, steering, braking, terrain, kin)
-        @test strut.frc.y.sat_status[2] == -1 #large velocity saturates
+        @test strut.frc.y.sat_status[2] == 1 #large velocity saturates
         @test strut.ẋ[2] == 0 #lateral velocity integral should be decreasing
 
         #advancing motion with compression

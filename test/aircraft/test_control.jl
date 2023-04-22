@@ -88,27 +88,29 @@ function test_pi_compensator(save = false)
 
     @testset verbose = true "PIContinuous" begin
 
-        comp = PIContinuous{3}(k_p = 1.0, k_i = 1.0, k_l = 0.0, bounds = (-1, 2));
+        comp = PIContinuous{3}(k_p = 1.0, k_i = 1.0, k_l = 0.0, bounds = (-2, 1));
         sys = System(comp)
         sim = Simulation(sys)
 
-        sys.u.input .= 1.0
+        sys.u.setpoint .= 0.0
+
+        sys.u.feedback .= 1.0
         sys.u.sat_enable[2:3] .= false
         step!(sim, 2, true)
-        @test sys.y.out[1] == 2.0
-        @test sys.y.sat_status[1] == 1
-        @test sys.y.out[2] == sys.y.out[3] > sys.y.out[1]
-
-        sys.u.input .= -1.0
-        step!(sim, 3, true)
-        @test sys.y.out[1] == -1.0
+        @test sys.y.out[1] == -2.0
         @test sys.y.sat_status[1] == -1
+        @test sys.y.out[2] == sys.y.out[3] < sys.y.out[1]
+
+        sys.u.feedback .= -1.0
+        step!(sim, 3, true)
+        @test sys.y.out[1] == 1.0
+        @test sys.y.sat_status[1] == 1
 
         sys.u.reset[2] = true
         step!(sim, 2, true)
         @test sys.y.out[2] != 0 #integrator disabled, but we still get proportional output
 
-        sys.u.input[3] = 0
+        sys.u.feedback[3] = 0
         sys.u.reset[3] = true
         @test f_step!(sys) == true
         @test sys.x[3] == 0 #sys.x changes immediately
@@ -117,11 +119,11 @@ function test_pi_compensator(save = false)
         @test sys.y.out[3] == 0 #but sys.y needs f_ode! to update
         @test f_step!(sys) == false #once reset, no further changes to sys.x[3]
 
-        sys.u.input .= 1e-1
+        sys.u.feedback .= 1e-1
         sys.u.reset .= false
         sys.u.hold .= false
         step!(sim, 1, true)
-        @test sys.y.state[2] > 0 #integrator accumulates
+        @test sys.y.state[2] < 0 #integrator accumulates
         sys.u.hold .= true
         #let hold input propagate
         step!(sim, 1, true)

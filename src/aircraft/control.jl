@@ -123,24 +123,25 @@ function PIContinuous{N}(; k_p::Real = 1.0, k_i::Real = 0.1, k_l::Real = 0.0,
 end
 
 Base.@kwdef struct PIContinuousU{N}
-    input::MVector{N,Float64} = zeros(N)
-    hold::MVector{N,Bool} = zeros(Bool, N)
-    reset::MVector{N,Bool} = zeros(Bool, N)
+    setpoint::MVector{N,Float64} = zeros(N) #commanded setpoint
+    feedback::MVector{N,Float64} = zeros(N) #plant feedback (non-inverted)
+    hold::MVector{N,Bool} = zeros(Bool, N) #hold integrator state
+    reset::MVector{N,Bool} = zeros(Bool, N) #reset integrator state
     sat_enable::MVector{N,Bool} = ones(Bool, N)
 end
 
 Base.@kwdef struct PIContinuousY{N}
     hold::SVector{N,Bool} = zeros(SVector{N, Bool}) #hold integrator state
     reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset integrator state
-    input::SVector{N,Float64} = zeros(SVector{N}) #input signal
+    error::SVector{N,Float64} = zeros(SVector{N}) #error = setpoint-feedback
     state::SVector{N,Float64} = zeros(SVector{N}) #integrator state
     out_p::SVector{N,Float64} = zeros(SVector{N}) #proportional term
     out_i::SVector{N,Float64} = zeros(SVector{N}) #integral term
     out_free::SVector{N,Float64} = zeros(SVector{N}) #total output, free
-    out::SVector{N,Float64} = zeros(SVector{N}) #total output
-    sat_enable::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation status
+    out::SVector{N,Float64} = zeros(SVector{N}) #actual output
+    sat_enable::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation enabled
     sat_status::SVector{N,Int64} = zeros(SVector{N, Int64}) #saturation status
-    int_status::SVector{N,Bool} = zeros(SVector{N, Bool}) #integrator accumulating
+    int_status::SVector{N,Bool} = zeros(SVector{N, Bool}) #integrator active
 end
 
 Systems.init(::SystemX, ::PIContinuous{N}) where {N} = zeros(N)
@@ -149,17 +150,18 @@ Systems.init(::SystemU, ::PIContinuous{N}) where {N} = PIContinuousU{N}()
 
 function Systems.f_ode!(sys::System{<:PIContinuous{N}}) where {N}
 
-    @unpack k_p, k_i, k_l, bounds = sys.params
-    @unpack sat_enable = sys.u
+    @unpack ẋ, x, u, params = sys
+    @unpack k_p, k_i, k_l, bounds = params
 
-    state = SVector{N, Float64}(sys.x)
+    state = SVector{N, Float64}(x)
+    setpoint = SVector(u.setpoint)
+    feedback = SVector(u.feedback)
+    hold = SVector(u.hold)
+    reset = SVector(u.reset)
+    sat_enable = SVector(u.sat_enable)
 
-    hold = SVector(sys.u.hold)
-    reset = SVector(sys.u.reset)
-    input = SVector(sys.u.input)
-    sat_enable = SVector(sys.u.sat_enable)
-
-    out_p = k_p .* input
+    error = setpoint - feedback
+    out_p = k_p .* error
     out_i = k_i .* state
     out_free = out_p + out_i #raw output
     out_clamped = clamp.(out_free, bounds[1], bounds[2]) #clamped output
@@ -168,11 +170,11 @@ function Systems.f_ode!(sys::System{<:PIContinuous{N}}) where {N}
     sat_upper = (out_free .>= bounds[2]) .* sat_enable
     sat_lower = (out_free .<= bounds[1]) .* sat_enable
     sat_status = sat_upper - sat_lower
-    int_status = sign.(input .* sat_status) .<= 0 #enable integrator?
+    int_status = sign.(error .* sat_status) .<= 0 #enable integrator?
 
-    sys.ẋ .= (input .* int_status - k_l .* state) .* .!reset .* .!hold
+    ẋ .= (error .* int_status - k_l .* state) .* .!reset .* .!hold
 
-    sys.y = PIContinuousY(; hold, reset, input, state, out_p, out_i,
+    sys.y = PIContinuousY(; hold, reset, error, state, out_p, out_i,
                             out_free, out, sat_enable, sat_status, int_status)
 
 end
@@ -195,8 +197,8 @@ function Plotting.make_plots(th::TimeHistory{<:PIContinuousY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    splt_u = plot(th.input; title = "Input",
-        ylabel = L"$u$", kwargs...)
+    splt_e = plot(th.error; title = "Error",
+        ylabel = L"$e$", kwargs...)
 
     splt_s = plot(th.state; title = "Integrator State",
         ylabel = L"$s$", kwargs...)
@@ -216,8 +218,8 @@ function Plotting.make_plots(th::TimeHistory{<:PIContinuousY}; kwargs...)
     splt_sat = plot(th.sat_status; title = "Saturation Status",
         ylabel = L"$S$", kwargs...)
 
-    pd[:us] = plot(splt_u, splt_s, splt_sat;
-        plot_title = "Input & Integrator State",
+    pd[:es] = plot(splt_e, splt_s, splt_sat;
+        plot_title = "Error & Integrator State",
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
@@ -287,10 +289,10 @@ function GUI.draw(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{
 
 
     if CImGui.TreeNode("Outputs")
-        @unpack hold, reset, input, sat_enable, sat_status, out_free, out = y
+        @unpack hold, reset, error, sat_enable, sat_status, out_free, out = y
         CImGui.Text("Hold = $hold")
         CImGui.Text("Reset = $reset")
-        CImGui.Text("Input = $input")
+        CImGui.Text("Error = $error")
         CImGui.Text("Unbounded Output = $out_free")
         CImGui.Text("Output = $out")
         CImGui.Text("Saturation Enabled = $sat_enable")
@@ -301,5 +303,121 @@ function GUI.draw(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{
     CImGui.End()
 
 end #function
+
+
+################# Proportional-Integral-Derivative Compensator #################
+################################################################################
+
+struct PIDDiscrete{N} <: Component #Parallel form
+    k_p::SVector{N,Float64} #proportional gain
+    k_i::SVector{N,Float64} #integral gain
+    k_d::SVector{N,Float64} #derivative gain
+    τ_d::SVector{N,Float64} #derivative filter time constant
+    β_p::SVector{N,Float64} #proportional path setpoint weighting factor
+    β_d::SVector{N,Float64} #derivative path setpoint weighting factor
+    bounds::NTuple{2,MVector{N,Float64}} #output bounds
+end
+
+function PIDDiscrete{N}(; k_p::Real = 1.0, k_i::Real = 0.1,
+                        k_d::Real = 0, τ_d::Real = 0.05,
+                        β_p::Real = 1.0, β_d::Real = 0,
+                        bounds::NTuple{2,Real} = (-1.0, 1.0)) where {N}
+    s2v = (x)->fill(x,N)
+    PIDDiscrete{N}( s2v(k_p), s2v(k_i),
+                   s2v(k_d), s2v(τ_d),
+                   s2v(β_p), s2v(β_d),
+                   (s2v(bounds[1]), s2v(bounds[2])))
+end
+
+Base.@kwdef struct PIDDiscreteU{N}
+    setpoint::MVector{N,Float64} = zeros(N) #commanded setpoint
+    feedback::MVector{N,Float64} = zeros(N) #plant feedback (non-inverted)
+    sat_enable::MVector{N,Bool} = ones(Bool, N) #enable PID output saturation
+    int_hold::MVector{N,Bool} = zeros(Bool, N) #hold integrator state
+    reset::MVector{N,Bool} = zeros(Bool, N) #reset PID
+end
+
+Base.@kwdef struct PIDDiscreteS{N}
+    y_i0::MVector{N,Float64} = zeros(N) #previous integrator path output
+    y_d0::MVector{N,Float64} = zeros(N) #previous derivative path output
+    u_d0::MVector{N,Float64} = zeros(N) #previous derivative path input
+    sat_status_0::MVector{N,Int64} = zeros(N) #previous PID saturation status
+end
+
+Base.@kwdef struct PIDDiscreteY{N}
+    setpoint::SVector{N,Float64} = zeros(SVector{N}) #commanded setpoint
+    feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
+    sat_enable::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation enabled
+    int_hold::SVector{N,Bool} = zeros(SVector{N, Bool}) #integrator state hold
+    reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID
+    u_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path input
+    u_i::SVector{N,Float64} = zeros(SVector{N}) #integral path input
+    u_d::SVector{N,Float64} = zeros(SVector{N}) #derivative path input
+    y_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path output
+    y_i::SVector{N,Float64} = zeros(SVector{N}) #integral path output
+    y_d::SVector{N,Float64} = zeros(SVector{N}) #derivative path output
+    out_free::SVector{N,Float64} = zeros(SVector{N}) #non-clamped PID output
+    out::SVector{N,Float64} = zeros(SVector{N}) #actual PID output
+    sat_status::SVector{N,Int64} = zeros(SVector{N, Int64}) #current saturation status
+    int_active::SVector{N,Bool} = zeros(SVector{N, Bool}) #integrator active
+end
+
+Systems.init(::SystemY, ::PIDDiscrete{N}) where {N} = PIDDiscreteY{N}()
+Systems.init(::SystemU, ::PIDDiscrete{N}) where {N} = PIDDiscreteU{N}()
+Systems.init(::SystemS, ::PIDDiscrete{N}) where {N} = PIDDiscreteS{N}()
+
+function Systems.f_disc!(sys::System{<:PIDDiscrete{N}}, Δt::Real) where {N}
+
+    @unpack s, u, params = sys
+    @unpack k_p, k_i, k_d, τ_d, β_p, β_d, bounds = params
+
+    setpoint = SVector(u.setpoint)
+    feedback = SVector(u.feedback)
+    sat_enable = SVector(u.sat_enable)
+    int_hold = SVector(u.int_hold)
+    reset = SVector(u.reset)
+
+    y_i0 = SVector(s.y_i0)
+    y_d0 = SVector(s.y_d0)
+    u_d0 = SVector(s.u_d0)
+    sat_status_0 = SVector(s.sat_status_0)
+
+    u_p = β_p .* setpoint - feedback
+    u_d = β_d .* setpoint - feedback
+    u_i = setpoint - feedback
+
+    #integration must only operate in those components for which:
+    # -integrator path input does not have the same sign as PID output saturation
+    # -integrator state is not being held
+    int_active = (sign.(u_i .* sat_status_0) .<= 0) .* .!int_hold
+
+    α = 1 ./ (τ_d + Δt)
+    y_p = k_p .* u_p
+    y_i = y_i0 + Δt * k_i .* u_i .* int_active
+    y_d = α * τ_d .* y_d0 + α * k_d .* (u_d - u_d0)
+
+    y_p = y_p .* .!reset
+    y_i = y_i .* .!reset
+    y_d = y_d .* .!reset
+
+    out_free = y_p + y_i + y_d
+    out_clamped = clamp.(out_free, bounds[1], bounds[2])
+    out = (out_free .* .!sat_enable) .+ (out_clamped .* sat_enable)
+
+    sat_upper = (out_free .>= bounds[2]) .* sat_enable
+    sat_lower = (out_free .<= bounds[1]) .* sat_enable
+    sat_status = sat_upper - sat_lower
+
+    y_i0 .= y_i
+    y_d0 .= y_d
+    u_d0 .= u_d
+    sat_status_0 .= sat_status
+
+    sys.y = PIDDiscreteY(; setpoint, feedback, sat_enable, int_hold, reset,
+                            u_p, u_i, u_d, y_p, y_i, y_d,
+                            out_free, out, sat_status, int_active)
+
+end
+
 
 end #module

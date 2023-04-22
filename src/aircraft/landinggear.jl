@@ -195,7 +195,10 @@ function Systems.f_ode!(sys::System{<:Strut},
 
     @unpack t_bs, l_0, damper = sys.params
     @unpack q_eb, q_nb, q_en, n_e, h_e, r_eOb_e, v_eOb_b, ω_eb_b = kin
+
     frc = sys.frc
+    frc.u.sat_enable .= true #this must always be enabled (could also be set in init_u)
+    frc.u.setpoint .= 0
 
     q_bs = t_bs.q #body frame to strut frame rotation
     r_ObOs_b = t_bs.r #strut frame origin
@@ -225,7 +228,7 @@ function Systems.f_ode!(sys::System{<:Strut},
     ξ = min(0.0, Δl)
     wow = (Δl <= 0)
     if !wow #no contact, compute any non-default outputs and return
-        frc.u.input .= 0 #if !wow, v_eOc_c = [0,0]
+        frc.u.feedback .= 0 #if !wow, v_eOc_c = [0,0]
         f_ode!(frc) #update frc.y
         sys.y = StrutY(; wow, Δl, frc = frc.y)
         return
@@ -304,12 +307,11 @@ function Systems.f_ode!(sys::System{<:Strut},
     μ_max *= min(1, μ_skid / norm(μ_max)) #scale μ_max so norm(μ_max) does not exceed μ_skid
 
     #update friction constraint compensator
-    frc.u.sat_enable .= true #this must always be enabled (could also be set in init_u)
-    frc.u.input .= v_eOc_c #if !wow, v_eOc_c = [0,0]
+    frc.u.feedback .= v_eOc_c #if !wow, v_eOc_c = [0,0]
     f_ode!(frc) #now frc.y is up to date
 
     #scale μ_max with the feedback from the friction constraint compensator
-    μ_eff = -frc.y.out .* μ_max
+    μ_eff = frc.y.out .* μ_max
 
     #normalized contact force projected on the contact frame
     f_c = SVector{3,Float64}(μ_eff[1], μ_eff[2], -1)
