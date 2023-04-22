@@ -15,7 +15,7 @@ function IODevices.assign!(sys::System{<:PIContinuous{N}},
                             joystick::T16000M,
                             ::TestMapping) where {N}
 
-    sys.u.input .= get_axis_value(joystick, :stick_y)
+    sys.u.feedback .= get_axis_value(joystick, :stick_y)
 end
 
 function demo_joysticks()

@@ -12,7 +12,7 @@ export test_control
 function test_control()
     @testset verbose = true "Control" begin
         test_state_space()
-        test_pi_compensator()
+        test_pi_continuous()
     end
 end
 
@@ -83,32 +83,33 @@ function test_state_space()
 
 end
 
-
-function test_pi_compensator(save = false)
+function test_pi_continuous(save = false)
 
     @testset verbose = true "PIContinuous" begin
 
-        comp = PIContinuous{3}(k_p = 1.0, k_i = 1.0, k_l = 0.0, bounds = (-1, 2));
+        comp = PIContinuous{3}(k_p = 1.0, k_i = 1.0, k_l = 0.0, bounds = (-2, 1));
         sys = System(comp)
         sim = Simulation(sys)
 
-        sys.u.input .= 1.0
+        sys.u.setpoint .= 0.0
+
+        sys.u.feedback .= 1.0
         sys.u.sat_enable[2:3] .= false
         step!(sim, 2, true)
-        @test sys.y.out[1] == 2.0
-        @test sys.y.sat_status[1] == 1
-        @test sys.y.out[2] == sys.y.out[3] > sys.y.out[1]
-
-        sys.u.input .= -1.0
-        step!(sim, 3, true)
-        @test sys.y.out[1] == -1.0
+        @test sys.y.out[1] == -2.0
         @test sys.y.sat_status[1] == -1
+        @test sys.y.out[2] == sys.y.out[3] < sys.y.out[1]
+
+        sys.u.feedback .= -1.0
+        step!(sim, 3, true)
+        @test sys.y.out[1] == 1.0
+        @test sys.y.sat_status[1] == 1
 
         sys.u.reset[2] = true
         step!(sim, 2, true)
         @test sys.y.out[2] != 0 #integrator disabled, but we still get proportional output
 
-        sys.u.input[3] = 0
+        sys.u.feedback[3] = 0
         sys.u.reset[3] = true
         @test f_step!(sys) == true
         @test sys.x[3] == 0 #sys.x changes immediately
@@ -117,11 +118,11 @@ function test_pi_compensator(save = false)
         @test sys.y.out[3] == 0 #but sys.y needs f_ode! to update
         @test f_step!(sys) == false #once reset, no further changes to sys.x[3]
 
-        sys.u.input .= 1e-1
+        sys.u.feedback .= 1e-1
         sys.u.reset .= false
         sys.u.hold .= false
         step!(sim, 1, true)
-        @test sys.y.state[2] > 0 #integrator accumulates
+        @test sys.y.state[2] < 0 #integrator accumulates
         sys.u.hold .= true
         #let hold input propagate
         step!(sim, 1, true)
@@ -135,11 +136,69 @@ function test_pi_compensator(save = false)
         plots = make_plots(TimeHistory(sim); Plotting.defaults...)
         save && save_plots(plots, save_folder = joinpath("tmp", "pi_test"))
 
-    end
+    end #testset
+
+end #function
 
 
-end
+function test_pid_discrete(save = false)
 
+    @testset verbose = true "PIContinuous" begin
+
+        sys = PIDDiscrete{2}(k_p = 1.0, k_i = 1.0, k_d = 0.0, bounds = (-1, 1)) |> System;
+        sim = Simulation(sys; Δt = 0.01)
+
+        sys.u.setpoint .= 0.0
+        sys.u.feedback .= 1.0
+
+        sys.u.sat_enable[1] = true
+        sys.u.sat_enable[2] = false
+        step!(sim, 2, true)
+
+        @test abs(sys.y.y_i[1]) < 0.1 #integrator 1 should have been halted
+        @test sys.y.y_i[2] .≈ -2.0 #integrator 2 should have not
+        @test sys.y.sat[1] == -1
+        @test sys.y.sat[2] == 0
+        @test sys.y.out[1] ≈ -1.0
+        @test sys.y.out[2] ≈ -3.0
+        y_i0 = sys.y.y_i
+
+        sys.u.setpoint .= 2.0
+        sys.u.int_hold[1] = true
+        step!(sim, 2, true)
+        @test sys.y.y_i[1] == y_i0[1] #integrator 1 should have been halted
+        y_0 = sys.y.out
+
+        sys.u.reset[2] = true
+        step!(sim, 1, true) #let it propagate
+        @test sys.s.x_i0[2] == 0 #state must have been reset
+        @test sys.y.out[2] == 0 #output is nulled
+        @test sys.s.x_i0[2] == 0 #on component 1, integrator state is preserved
+        @test sys.y.out[1] == y_0[1] #and output remains unchanged
+
+        # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+        # save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
+
+        #operate PID as a filtered derivative
+        sys = PIDDiscrete{1}(k_p = 0.0, k_i = 0.0, k_d = 1.0, τ_d = 0.2, β_d = 1.0, bounds = (-1, 1)) |> System;
+        sim = Simulation(sys; Δt = 0.01)
+
+        step!(sim, 1, true)
+        sys.u.setpoint .= 0.0
+        sys.u.feedback .= 1.0
+        step!(sim, 0.02, true)
+        @test sys.y.y_d[1] < 0.0 #feedback is positive, error has decreased, derivative path output must be negative
+        step!(sim, 5, true)
+        @test sys.y.y_d[1] ≈ 0.0 atol = 1e-6 #must have returned to zero
+
+        plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+        save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
+
+        return
+
+    end #testset
+
+end #function
 
 
 end #module

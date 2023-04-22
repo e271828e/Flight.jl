@@ -162,11 +162,13 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
     ω = eng.x.ω
 
     #update friction constraint compensator
-    frc.u.input .= ω
+    frc.u.setpoint .= 0.0
+    frc.u.feedback .= ω
     frc.u.sat_enable .= true
     f_ode!(frc)
 
-    idle.u.input .= (ω_idle - ω) / ω_idle #normalized ω idle error
+    idle.u.setpoint .= 1 #normalized ω idle
+    idle.u.feedback .= ω / ω_idle #normalized ω
     idle.u.sat_enable .= true
     f_ode!(idle) #update idle compensator
 
@@ -191,7 +193,7 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
         #the engine running, all friction is assumed to be already accounted for
         #in the performance tables
         M_fr_max = 0.01 * P_rated / ω_rated #1% of rated torque
-        M_fr = -frc.y.out[1] .* M_fr_max #scale M_fr_max with compensator feedback
+        M_fr = frc.y.out[1] .* M_fr_max #scale M_fr_max with compensator feedback
 
         MAP = air.p
         M_shaft = M_fr
