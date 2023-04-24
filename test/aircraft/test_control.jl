@@ -13,6 +13,7 @@ function test_control()
     @testset verbose = true "Control" begin
         test_state_space()
         test_pi_continuous()
+        test_pid_discrete()
     end
 end
 
