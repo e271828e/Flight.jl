@@ -144,7 +144,7 @@ end #function
 
 function test_pid_discrete(save = false)
 
-    @testset verbose = true "PIContinuous" begin
+    @testset verbose = true "PIDDiscrete" begin
 
         sys = PIDDiscrete{2}(k_p = 1.0, k_i = 1.0, k_d = 0.0, bounds = (-1, 1)) |> System;
         sim = Simulation(sys; Δt = 0.01)

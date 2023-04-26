@@ -211,7 +211,7 @@ function get_target_function(ac::System{<:Cessna172Rv0},
 
 end
 
-function trim!( ac::System{<:Cessna172Rv0};
+function Aircraft.trim!( ac::System{<:Cessna172Rv0};
                 env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
                 trim_params::TrimParameters = TrimParameters())
 
@@ -279,7 +279,7 @@ function trim!( ac::System{<:Cessna172Rv0};
 
 end
 
-function trim!(
+function Aircraft.trim!(
     world::System{<:SimpleWorld{<:Cessna172Rv0, <:AbstractEnvironment}};
     trim_params::TrimParameters = TrimParameters())
 
@@ -365,7 +365,7 @@ function assign!(y::LinearY, ac::System{<:Cessna172Rv0})
 
 end
 
-function linearize!(ac::System{<:Cessna172Rv0{NED}};
+function Aircraft.linearize!(ac::System{<:Cessna172Rv0{NED}};
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
     trim_params::TrimParameters = TrimParameters())
 

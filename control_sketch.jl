@@ -19,7 +19,7 @@ function test(save = true)
         mixture = 0.5,
         flaps = 0.0)
 
-    C172Rv0.trim!(ac, env, trim_params)
+    trim!(ac, env, trim_params)
 
     sim = Simulation(ac; args_ode = (env, ), t_end = 150, adaptive = true)
     Sim.run!(sim, verbose = true)
@@ -29,7 +29,7 @@ function test(save = true)
 
     #recreate the aircraft with NED kinematics (necessary for linearization)
     ac = Cessna172Rv0(NED()) |> System
-    lm = C172Rv0.linearize!(ac, env; trim_params) #retrims
+    lm = linearize!(ac, env; trim_params) #retrims
 
     #the couplings of a specific state S into the time derivative of any other
     #state can be examined in the column of A corresponding to S. from this, we

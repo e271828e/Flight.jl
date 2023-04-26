@@ -9,7 +9,7 @@ using Flight.FlightCore
 using Flight.FlightPhysics
 
 export AbstractAirframe, EmptyAirframe, AbstractAvionics, NoAvionics, AircraftTemplate
-export init_kinematics!
+export init_kinematics!, trim!, linearize!
 
 
 ###############################################################################
@@ -194,6 +194,17 @@ function XPlane.set_position!(xp::XPConnect, y::AircraftTemplateY)
 
     XPlane.set_position!(xp; lat, lon, h, psi, theta, phi, aircraft)
 
+end
+
+
+################################# Tools ########################################
+
+function trim!( ac::System{<:AircraftTemplate}, args...; kwargs...)
+    MethodError(trim!, (ac, args...)) > throw
+end
+
+function linearize!(ac::System{<:AircraftTemplate}, args...; kwargs...)
+    MethodError(trim!, (ac, args...)) > throw
 end
 
 
