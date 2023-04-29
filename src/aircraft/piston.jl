@@ -94,8 +94,8 @@ function Engine(;
     ω_idle = RPM2radpersec(600),
     M_start = 40,
     J = 0.05,
-    idle = PIContinuous{1}(k_p = 4.0, k_i = 2.0, bounds = (-0.5, 0.5)),
-    frc =  PIContinuous{1}(k_p = 5.0, k_i = 200.0, k_l = 0.0, bounds = (-1.0, 1.0))
+    idle = PIContinuous{1}(k_p = 4.0, k_i = 2.0),
+    frc =  PIContinuous{1}(k_p = 5.0, k_i = 200.0, k_l = 0.0)
     )
 
     n_stall = ω_stall / ω_rated
@@ -164,13 +164,16 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
     #update friction constraint compensator
     frc.u.setpoint .= 0.0
     frc.u.feedback .= ω
-    frc.u.sat_enable .= true
+    frc.u.bound_lo .= -1
+    frc.u.bound_hi .= 1
     f_ode!(frc)
 
+    #update idle compensator
     idle.u.setpoint .= 1 #normalized ω idle
     idle.u.feedback .= ω / ω_idle #normalized ω
-    idle.u.sat_enable .= true
-    f_ode!(idle) #update idle compensator
+    idle.u.bound_lo .= -0.5
+    idle.u.bound_hi .= 0.5
+    f_ode!(idle)
 
     μ_ratio_idle = 0.5 + idle.y.out[1]
 

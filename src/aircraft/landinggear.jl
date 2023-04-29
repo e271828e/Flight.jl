@@ -160,7 +160,7 @@ Base.@kwdef struct Strut{D<:AbstractDamper} <: Component
     l_0::Float64 = 0.0 #strut natural length from airframe attachment point to wheel endpoint
     damper::D = SimpleDamper()
     frc::PIContinuous{2} = PIContinuous{2}( #friction constraint compensator
-        k_p = 5.0, k_i = 400.0, k_l = 0.2, bounds = (-1.0, 1.0))
+        k_p = 5.0, k_i = 400.0, k_l = 0.2)
 end
 
 Base.@kwdef struct StrutY #defaults should be consistent with wow = 0
@@ -196,8 +196,9 @@ function Systems.f_ode!(sys::System{<:Strut},
     @unpack t_bs, l_0, damper = sys.params
     @unpack q_eb, q_nb, q_en, n_e, h_e, r_eOb_e, v_eOb_b, ω_eb_b = kin
 
-    frc = sys.frc
-    frc.u.sat_enable .= true #this must always be enabled (could also be set in init_u)
+    frc = sys.frc #set up PI inputs
+    frc.u.bound_lo .= -1
+    frc.u.bound_hi .= 1
     frc.u.setpoint .= 0
 
     q_bs = t_bs.q #body frame to strut frame rotation

@@ -63,7 +63,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         args_disc::Tuple = (), #externally supplied arguments to System's f_disc!
         sys_reinit!::Function = no_sys_reinit!, #System initialization function
         sys_io!::Function = no_sys_io!, #System I/O function
-        gui::Renderer = Renderer(wsize = (1920, 1080), label = "Simulation"),
+        gui::Renderer = Renderer(wsize = (1920, 1080), label = "Simulation", refresh = 0),
         started::Base.Event = Base.Event(), #to be shared with input interfaces
         stepping::ReentrantLock = ReentrantLock(), #to be shared with input interfaces
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),

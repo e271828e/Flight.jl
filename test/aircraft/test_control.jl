@@ -88,54 +88,54 @@ function test_pi_continuous(save = false)
 
     @testset verbose = true "PIContinuous" begin
 
-        comp = PIContinuous{3}(k_p = 1.0, k_i = 1.0, k_l = 0.0, bounds = (-2, 1));
+        comp = PIContinuous{2}(k_p = 1.0, k_i = 1.0, k_l = 0.0);
         sys = System(comp)
         sim = Simulation(sys)
 
         sys.u.setpoint .= 0.0
-
         sys.u.feedback .= 1.0
-        sys.u.sat_enable[2:3] .= false
+        sys.u.bound_lo[1] = -1
+        sys.u.bound_hi[1] = 1
         step!(sim, 2, true)
-        @test sys.y.out[1] == -2.0
-        @test sys.y.sat_status[1] == -1
-        @test sys.y.out[2] == sys.y.out[3] < sys.y.out[1]
 
-        sys.u.feedback .= -1.0
-        step!(sim, 3, true)
-        @test sys.y.out[1] == 1.0
-        @test sys.y.sat_status[1] == 1
+        @test sys.y.sat_out[1] == -1
+        @test sys.y.int_halt[1] #integrator 1 should have been halted
+        @test abs(sys.y.y_i[1]) < 0.1
+        @test sys.y.out[1] ≈ -1.0
+
+        @test sys.y.sat_out[2] == 0
+        @test !sys.y.int_halt[2] #integrator 2 should have not
+        @test sys.y.y_i[2] ≈ -2.0 atol = 1e-2
+        @test sys.y.out[2] ≈ -3.0 atol = 1e-2
+        y_i0 = sys.y.y_i
+
+        sys.u.sat_ext[2] = -sign(sys.y.u_i[2]) #set opposite external saturation
+        step!(sim, 1, true)
+        @test !sys.y.int_halt[2] #integrator 2 should have not halted
+        sys.u.sat_ext[2] = sign(sys.y.u_i[1]) #set same sign saturation
+        step!(sim, 1, true)
+        @test sys.y.int_halt[2] #integrator 2 should have halted
+
+        sys.u.anti_windup[1] = false #disable anti-windup in the first component
+        step!(sim, 2, true)
+        @test sys.y.sat_out[1] == -1 #output still saturated
+        @test !sys.y.int_halt[1] #but integrator no longer halted
+        @test abs(sys.y.y_i[1]) > abs(y_i0[1]) #integrator should have kept accumulating
 
         sys.u.reset[2] = true
-        step!(sim, 2, true)
-        @test sys.y.out[2] != 0 #integrator disabled, but we still get proportional output
-
-        sys.u.feedback[3] = 0
-        sys.u.reset[3] = true
         @test f_step!(sys) == true
-        @test sys.x[3] == 0 #sys.x changes immediately
+        @test sys.x[2] == 0 #sys.x changes immediately
         f_ode!(sys)
-        @test sys.y.state[3] == 0 #but sys.y needs f_ode! to update
-        @test sys.y.out[3] == 0 #but sys.y needs f_ode! to update
+        @test sys.y.y_i[2] == 0 #but sys.y needs f_ode! to update
+        @test sys.y.out[2] == 0 #idem
         @test f_step!(sys) == false #once reset, no further changes to sys.x[3]
 
-        sys.u.feedback .= 1e-1
-        sys.u.reset .= false
-        sys.u.hold .= false
-        step!(sim, 1, true)
-        @test sys.y.state[2] < 0 #integrator accumulates
-        sys.u.hold .= true
-        #let hold input propagate
-        step!(sim, 1, true)
-        last_state = sys.y.state[2]
-        step!(sim, 1, true)
-        @test sys.y.state[2] == last_state
-
         @test @ballocated($f_ode!($sys)) == 0
+        @test @ballocated($f_disc!($sys, 1)) == 0
         @test @ballocated($f_step!($sys)) == 0
 
         plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-        save && save_plots(plots, save_folder = joinpath("tmp", "pi_test"))
+        save && save_plots(plots, save_folder = joinpath("tmp", "pi_continuous_test"))
 
     end #testset
 
@@ -163,8 +163,16 @@ function test_pid_discrete(save = false)
 
         @test sys.y.sat_out[2] == 0
         @test !sys.y.int_halt[2] #integrator 2 should have not
-        @test sys.y.y_i[2] .≈ -2.0
+        @test sys.y.y_i[2] ≈ -2.0
         @test sys.y.out[2] ≈ -3.0
+
+        sys.u.sat_ext[2] = -sign(sys.y.u_i[2]) #set opposite external saturation
+        step!(sim, 1, true)
+        @test !sys.y.int_halt[2] #integrator 2 should have not halted
+        sys.u.sat_ext[2] = sign(sys.y.u_i[1]) #set same sign saturation
+        step!(sim, 1, true)
+        @test sys.y.int_halt[2] #integrator 2 should have halted
+
         y_i0 = sys.y.y_i
 
         sys.u.anti_windup[1] = false #disable anti-windup in the first component
@@ -180,6 +188,11 @@ function test_pid_discrete(save = false)
         @test all(sys.s.x_i0 .== 0) #state must have been reset
         @test all(sys.y.out .== 0) #output is nulled
         sys.u.reset .= false
+
+        @test @ballocated($f_ode!($sys)) == 0
+        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_step!($sys)) == 0
+
         plots = make_plots(TimeHistory(sim); Plotting.defaults...)
         save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
 

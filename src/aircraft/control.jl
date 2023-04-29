@@ -113,35 +113,41 @@ struct PIContinuous{N} <: Component #Parallel form
     k_p::SVector{N,Float64} #proportional gain
     k_i::SVector{N,Float64} #integral gain
     k_l::SVector{N,Float64} #integrator leak factor
-    bounds::NTuple{2,MVector{N,Float64}} #output bounds
+    β_p::SVector{N,Float64} #proportional path input weighting factor
 end
 
 function PIContinuous{N}(; k_p::Real = 1.0, k_i::Real = 0.1, k_l::Real = 0.0,
-                            bounds::NTuple{2,Real} = (-1.0, 1.0)) where {N}
+                           β_p::Real = 1.0) where {N}
     s2v = (x)->fill(x,N)
-    PIContinuous{N}(s2v(k_p), s2v(k_i), s2v(k_l), (s2v(bounds[1]), s2v(bounds[2])))
+    PIContinuous{N}(s2v(k_p), s2v(k_i), s2v(k_l), s2v(β_p))
 end
 
 Base.@kwdef struct PIContinuousU{N}
     setpoint::MVector{N,Float64} = zeros(N) #commanded setpoint
     feedback::MVector{N,Float64} = zeros(N) #plant feedback (non-inverted)
-    hold::MVector{N,Bool} = zeros(Bool, N) #hold integrator state
-    reset::MVector{N,Bool} = zeros(Bool, N) #reset integrator state
-    sat_enable::MVector{N,Bool} = ones(Bool, N)
+    bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
+    bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
+    sat_ext::MVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
+    anti_windup::MVector{N,Bool} = ones(Bool, N) #enable anti wind-up
+    reset::MVector{N,Bool} = zeros(Bool, N) #reset PID states and null outputs
 end
 
 Base.@kwdef struct PIContinuousY{N}
-    hold::SVector{N,Bool} = zeros(SVector{N, Bool}) #hold integrator state
-    reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset integrator state
-    error::SVector{N,Float64} = zeros(SVector{N}) #error = setpoint-feedback
-    state::SVector{N,Float64} = zeros(SVector{N}) #integrator state
-    out_p::SVector{N,Float64} = zeros(SVector{N}) #proportional term
-    out_i::SVector{N,Float64} = zeros(SVector{N}) #integral term
+    setpoint::SVector{N,Float64} = zeros(SVector{N}) #commanded setpoint
+    feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
+    bound_lo::SVector{N,Float64} = fill(-Inf, N) #lower output bounds
+    bound_hi::SVector{N,Float64} = fill(Inf, N) #higher output bounds
+    sat_ext::SVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
+    anti_windup::SVector{N,Bool} = zeros(SVector{N, Bool}) #anti wind-up enabled
+    reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID states and null outputs
+    u_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path input
+    y_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path output
+    u_i::SVector{N,Float64} = zeros(SVector{N}) #integral path input
+    y_i::SVector{N,Float64} = zeros(SVector{N}) #integral path output
+    int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
     out_free::SVector{N,Float64} = zeros(SVector{N}) #total output, free
     out::SVector{N,Float64} = zeros(SVector{N}) #actual output
-    sat_enable::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation enabled
-    sat_status::SVector{N,Int64} = zeros(SVector{N, Int64}) #saturation status
-    int_status::SVector{N,Bool} = zeros(SVector{N, Bool}) #integrator active
+    sat_out::SVector{N,Int64} = zeros(SVector{N, Int64}) #current output saturation status
 end
 
 Systems.init(::SystemX, ::PIContinuous{N}) where {N} = zeros(N)
@@ -151,31 +157,36 @@ Systems.init(::SystemU, ::PIContinuous{N}) where {N} = PIContinuousU{N}()
 function Systems.f_ode!(sys::System{<:PIContinuous{N}}) where {N}
 
     @unpack ẋ, x, u, params = sys
-    @unpack k_p, k_i, k_l, bounds = params
+    @unpack k_p, k_i, k_l, β_p = params
 
-    state = SVector{N, Float64}(x)
+    x_i = SVector{N, Float64}(x)
     setpoint = SVector(u.setpoint)
     feedback = SVector(u.feedback)
-    hold = SVector(u.hold)
+    bound_lo = SVector(u.bound_lo)
+    bound_hi = SVector(u.bound_hi)
+    anti_windup = SVector(u.anti_windup)
+    sat_ext = SVector(u.sat_ext)
     reset = SVector(u.reset)
-    sat_enable = SVector(u.sat_enable)
 
-    error = setpoint - feedback
-    out_p = k_p .* error
-    out_i = k_i .* state
-    out_free = out_p + out_i #raw output
-    out_clamped = clamp.(out_free, bounds[1], bounds[2]) #clamped output
-    out = (out_free .* .!sat_enable) .+ (out_clamped .* sat_enable)
+    u_p = β_p .* setpoint - feedback
+    u_i = setpoint - feedback
 
-    sat_upper = (out_free .>= bounds[2]) .* sat_enable
-    sat_lower = (out_free .<= bounds[1]) .* sat_enable
-    sat_status = sat_upper - sat_lower
-    int_status = sign.(error .* sat_status) .<= 0 #enable integrator?
+    y_p = k_p .* u_p .* .!reset
+    y_i = k_i .* x_i .* .!reset
+    out_free = y_p + y_i #raw output
+    out = clamp.(out_free, bound_lo, bound_hi) #clamped output
 
-    ẋ .= (error .* int_status - k_l .* state) .* .!reset .* .!hold
+    sat_hi = out_free .>= bound_hi
+    sat_lo = out_free .<= bound_lo
+    sat_out = sat_hi - sat_lo
+    int_halt = ((sign.(u_i .* sat_out) .> 0) .|| (sign.(u_i .* sat_ext) .> 0)) .&& anti_windup
 
-    sys.y = PIContinuousY(; hold, reset, error, state, out_p, out_i,
-                            out_free, out, sat_enable, sat_status, int_status)
+    ẋ .= (u_i .* .!int_halt - k_l .* x_i) .* .!reset
+
+    sys.y = PIContinuousY(; setpoint, feedback, bound_lo, bound_hi,
+                            sat_ext, anti_windup, reset,
+                            u_p, y_p, u_i, y_i, int_halt,
+                            out_free, out, sat_out)
 
 end
 
@@ -197,40 +208,51 @@ function Plotting.make_plots(th::TimeHistory{<:PIContinuousY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    splt_e = plot(th.error; title = "Error",
-        ylabel = L"$e$", kwargs...)
+    setpoint = plot(th.setpoint; title = "Setpoint", ylabel = L"$r$", kwargs...)
+    feedback = plot(th.feedback; title = "Feedback", ylabel = L"$f$", kwargs...)
 
-    splt_s = plot(th.state; title = "Integrator State",
-        ylabel = L"$s$", kwargs...)
+    pd[:sf] = plot(setpoint, feedback;
+        plot_title = "Setpoint & Feedback",
+        layout = (1,2),
+        link = :y,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    splt_y_p = plot(th.out_p; title = "Proportional Term",
-        ylabel = L"$y_p$", kwargs...)
+    sat_ext = plot(th.sat_ext; title = "External Saturation", ylabel = "", kwargs...)
+    anti_windup = plot(th.anti_windup; title = "Anti-Windup Enable", ylabel = "", kwargs...)
+    reset = plot(th.reset; title = "Reset", ylabel = "", kwargs...)
 
-    splt_y_i = plot(th.out_i; title = "Integral Term",
-        ylabel = L"$y_i$", kwargs...)
-
-    splt_y_free = plot(th.out_free; title = "Unbounded Output",
-        ylabel = L"$y_{free}$", kwargs...)
-
-    splt_y = plot(th.out; title = "Actual Output",
-        ylabel = L"$y$", kwargs...)
-
-    splt_sat = plot(th.sat_status; title = "Saturation Status",
-        ylabel = L"$S$", kwargs...)
-
-    pd[:es] = plot(splt_e, splt_s, splt_sat;
-        plot_title = "Error & Integrator State",
+    pd[:ctl] = plot(anti_windup, sat_ext, reset;
+        plot_title = "External Control Signals",
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd[:pi] = plot(splt_y_p, splt_y_i, splt_sat;
-        plot_title = "Proportional & Integral Terms",
-        layout = (1,3),
+    u_p = plot(th.u_p; title = "Input", ylabel = L"$u_p$", kwargs...)
+    y_p = plot(th.y_p; title = "Output", ylabel = L"$y_p$", kwargs...)
+
+    pd[:prop] = plot(u_p, y_p;
+        plot_title = "Proportional Path",
+        layout = (1,2),
+        link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd[:out] = plot(splt_y_free, splt_y, splt_sat;
-        plot_title = "Total Output",
+    u_i = plot(th.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
+    y_i = plot(th.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
+    int_halt = plot(th.int_halt; title = "Integrator Halted", ylabel = "", kwargs...)
+
+    pd[:int] = plot(u_i, y_i, int_halt;
+        plot_title = "Integral Path",
         layout = (1,3),
+        link = :y,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    out_free = plot(th.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
+    out = plot(th.out; title = "Actual", ylabel = L"$y$", kwargs...)
+    sat_out = plot(th.sat_out; title = "Saturation", ylabel = L"$S$", kwargs...)
+
+    pd[:out] = plot(out_free, out, sat_out;
+        plot_title = "PID Output",
+        layout = (1,3),
+        link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     return pd
@@ -247,24 +269,34 @@ function GUI.draw(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{
     CImGui.Begin(label)
 
     if CImGui.TreeNode("Params")
-        @unpack k_p, k_i, k_l, bounds = params
+        @unpack k_p, k_i, k_l, β_p = params
         CImGui.Text("Proportional Gain: $k_p")
         CImGui.Text("Integral Gain: $k_i")
         CImGui.Text("Leak Factor: = $k_l")
-        CImGui.Text("Output Bounds = $bounds")
+        CImGui.Text("Proportional Path Weighting Factor: = $β_p")
         CImGui.TreePop()
     end
 
 
     if CImGui.TreeNode("Outputs")
-        @unpack hold, reset, error, sat_enable, sat_status, out_free, out = y
-        CImGui.Text("Hold = $hold")
+        @unpack setpoint, feedback, bound_lo, bound_hi, sat_ext, anti_windup, reset,
+                u_p, y_p, u_i, y_i, int_halt, out_free, out, sat_out = y
+
+        CImGui.Text("Setpoint = $setpoint")
+        CImGui.Text("Feedback = $feedback")
+        CImGui.Text("Lower Bound = $bound_lo")
+        CImGui.Text("Upper Bound = $bound_hi")
+        CImGui.Text("External Saturation = $sat_ext")
+        CImGui.Text("Anti Wind-up = $anti_windup")
         CImGui.Text("Reset = $reset")
-        CImGui.Text("Error = $error")
-        CImGui.Text("Unbounded Output = $out_free")
-        CImGui.Text("Output = $out")
-        CImGui.Text("Saturation Enabled = $sat_enable")
-        CImGui.Text("Saturation Status = $sat_status")
+        CImGui.Text("Proportional Path Input = $u_p")
+        CImGui.Text("Proportional Path Output = $y_p")
+        CImGui.Text("Integral Path Input = $u_i")
+        CImGui.Text("Integral Path Output = $y_i")
+        CImGui.Text("Integrator Halted = $int_halt")
+        CImGui.Text("Free Output = $out_free")
+        CImGui.Text("Actual Output = $out")
+        CImGui.Text("Output Saturation = $sat_out")
         CImGui.TreePop()
     end
 
@@ -282,18 +314,10 @@ function GUI.draw!(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous
     if CImGui.TreeNode("Inputs")
         for i in 1:N
             if CImGui.TreeNode("[$i]")
-                @unpack hold, reset, sat_enable = sys.u
-                hold_ref = Ref(hold[i])
+                @unpack reset = sys.u
                 reset_ref = Ref(reset[i])
-                sat_ref = Ref(sat_enable[i])
-                CImGui.Checkbox("Hold", hold_ref)
-                CImGui.SameLine()
-                CImGui.Checkbox("Reset", reset_ref)
-                CImGui.SameLine()
-                CImGui.Checkbox("Enable Saturation", sat_ref)
-                hold[i] = hold_ref[]
+                CImGui.Checkbox("Reset", reset_ref) #; CImGui.SameLine()
                 reset[i] = reset_ref[]
-                sat_enable[i] = sat_ref[]
                 CImGui.TreePop()
             end
         end

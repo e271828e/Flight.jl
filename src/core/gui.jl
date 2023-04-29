@@ -27,7 +27,8 @@ end
 #refresh: number of display updates per frame render:
 #T_render = T_display * refresh (where typically T_display = 16.67ms).
 #refresh = 1 syncs the render frame rate to the display rate (vsync)
-#refresh = 0 uncaps the render frame rate (use judiciously!)
+#refresh = 0 uncaps the render frame rate (WARNING: an independent scheduling
+#mechanism should be used)
 
 mutable struct Renderer
     label::String
@@ -42,7 +43,7 @@ mutable struct Renderer
     _cimgui_ctx::Ptr{CImGui.LibCImGui.ImGuiContext}
 
     function Renderer(; label = "Renderer", wsize = (1280, 720),
-                        style = dark, refresh = 0)
+                        style = dark, refresh = 1)
         _enabled = true
         _initialized = false
         new(label, wsize, style, refresh, _enabled, _initialized)
@@ -183,8 +184,14 @@ function run(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
     renderer._enabled || return
     renderer._initialized || init!(renderer)
-
     try
+        @assert renderer.refresh > 0 "The standalone run() must not be called "*
+        "an unsynced Renderer (refresh = 0). Use scheduled calls to render() instead."
+        #this is because a Renderer with refresh=0 does not wait for monitor refresh
+        #when glfwSwapBuffers is called within render(), which means its frame rate
+        #is effectively uncapped. this causes issues, so the calls to render must be
+        #limited in frequency by some other means
+
         while glfwWindowShouldClose(renderer._window) == 0
             render(renderer, fdraw!, fdraw_args...)
         end
@@ -233,6 +240,7 @@ draw(args...) = nothing
 #generic mutating draw function, to be extended by users
 draw!(args...) = nothing
 
+#must be used within a CImGui.Begin() / CImGui.End() context
 function draw(v::AbstractVector{<:Real}, label::String, units::String = "")
 
     N = length(v)
@@ -253,12 +261,12 @@ end
 
 function fdraw_test(number::Real)
 
-    output = @cstatic f=Cfloat(0.0) begin
-        CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
-        CImGui.Text("I got this number: $number")  # display some text
-        @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
-        CImGui.End()
-    end
+    CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
+        output = @cstatic f=Cfloat(0.0) begin
+            CImGui.Text("I got this number: $number")  # display some text
+            @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
+        end
+    CImGui.End()
 
 end
 

@@ -11,11 +11,12 @@ export demo_joysticks
 
 struct TestMapping <: InputMapping end
 
-function IODevices.assign!(sys::System{<:PIContinuous{N}},
+function IODevices.assign!(sys::System{<:PIContinuous{2}},
                             joystick::T16000M,
                             ::TestMapping) where {N}
 
-    sys.u.feedback .= get_axis_value(joystick, :stick_y)
+    sys.u.setpoint[1] .= get_axis_value(joystick, :stick_x)
+    sys.u.setpoint[2] .= get_axis_value(joystick, :stick_y)
 end
 
 function demo_joysticks()
