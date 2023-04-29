@@ -333,8 +333,8 @@ Base.@kwdef struct PIDDiscreteU{N}
     setpoint::MVector{N,Float64} = zeros(N) #commanded setpoint
     feedback::MVector{N,Float64} = zeros(N) #plant feedback (non-inverted)
     sat_enable::MVector{N,Bool} = ones(Bool, N) #enable PID output saturation
-    int_hold::MVector{N,Bool} = zeros(Bool, N) #hold integrator state
-    reset::MVector{N,Bool} = zeros(Bool, N) #reset PID
+    int_hold::MVector{N,Bool} = zeros(Bool, N) #request integrator state hold
+    reset::MVector{N,Bool} = zeros(Bool, N) #reset PID states and null outputs
 end
 
 Base.@kwdef struct PIDDiscreteS{N}
