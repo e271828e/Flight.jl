@@ -146,54 +146,60 @@ function test_pid_discrete(save = false)
 
     @testset verbose = true "PIDDiscrete" begin
 
-        sys = PIDDiscrete{2}(k_p = 1.0, k_i = 1.0, k_d = 0.0, bounds = (-1, 1)) |> System;
+        sys = PIDDiscrete{2}(k_p = 1.0, k_i = 1.0, k_d = 0.0) |> System;
         sim = Simulation(sys; Δt = 0.01)
 
         sys.u.setpoint .= 0.0
         sys.u.feedback .= 1.0
 
-        sys.u.sat_enable[1] = true
-        sys.u.sat_enable[2] = false
+        sys.u.bound_lo[1] = -1
+        sys.u.bound_hi[1] = 1
         step!(sim, 2, true)
 
-        @test abs(sys.y.y_i[1]) < 0.1 #integrator 1 should have been halted
-        @test sys.y.y_i[2] .≈ -2.0 #integrator 2 should have not
-        @test sys.y.sat[1] == -1
-        @test sys.y.sat[2] == 0
+        @test sys.y.sat_out[1] == -1
+        @test sys.y.int_halt[1] #integrator 1 should have been halted
+        @test abs(sys.y.y_i[1]) < 0.1
         @test sys.y.out[1] ≈ -1.0
+
+        @test sys.y.sat_out[2] == 0
+        @test !sys.y.int_halt[2] #integrator 2 should have not
+        @test sys.y.y_i[2] .≈ -2.0
         @test sys.y.out[2] ≈ -3.0
         y_i0 = sys.y.y_i
 
-        sys.u.setpoint .= 2.0
-        sys.u.int_hold[1] = true
+        sys.u.anti_windup[1] = false #disable anti-windup in the first component
         step!(sim, 2, true)
-        @test sys.y.y_i[1] == y_i0[1] #integrator 1 should have been halted
-        y_0 = sys.y.out
+        @test sys.y.sat_out[1] == -1 #output still saturated
+        @test !sys.y.int_halt[1] #but integrator no longer halted
+        @test abs(sys.y.y_i[1]) > abs(y_i0[1]) #integrator should have kept accumulating
 
-        sys.u.reset[2] = true
-        step!(sim, 1, true) #let it propagate
-        @test sys.s.x_i0[2] == 0 #state must have been reset
-        @test sys.y.out[2] == 0 #output is nulled
-        @test sys.s.x_i0[2] == 0 #on component 1, integrator state is preserved
-        @test sys.y.out[1] == y_0[1] #and output remains unchanged
+        sys.u.anti_windup[1] = true
+        sys.u.reset .= true
+        step!(sim) #let it propagate
 
-        # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-        # save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
+        @test all(sys.s.x_i0 .== 0) #state must have been reset
+        @test all(sys.y.out .== 0) #output is nulled
+        sys.u.reset .= false
+        plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+        save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
 
         #operate PID as a filtered derivative
-        sys = PIDDiscrete{1}(k_p = 0.0, k_i = 0.0, k_d = 1.0, τ_d = 0.2, β_d = 1.0, bounds = (-1, 1)) |> System;
+        sys = PIDDiscrete{1}(k_p = 0.0, k_i = 0.0, k_d = 1.0, τ_d = 0.2, β_d = 1.0) |> System;
         sim = Simulation(sys; Δt = 0.01)
 
         step!(sim, 1, true)
         sys.u.setpoint .= 0.0
         sys.u.feedback .= 1.0
+        sys.u.bound_lo[1] = -1
+        sys.u.bound_hi[1] = 1
+
         step!(sim, 0.02, true)
         @test sys.y.y_d[1] < 0.0 #feedback is positive, error has decreased, derivative path output must be negative
         step!(sim, 5, true)
         @test sys.y.y_d[1] ≈ 0.0 atol = 1e-6 #must have returned to zero
 
-        plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-        save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
+        # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+        # save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
 
         return
 

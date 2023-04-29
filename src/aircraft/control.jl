@@ -315,50 +315,51 @@ struct PIDDiscrete{N} <: Component #Parallel form
     τ_d::SVector{N,Float64} #derivative filter time constant
     β_p::SVector{N,Float64} #proportional path setpoint weighting factor
     β_d::SVector{N,Float64} #derivative path setpoint weighting factor
-    bounds::NTuple{2,MVector{N,Float64}} #output bounds
 end
 
 function PIDDiscrete{N}(; k_p::Real = 1.0, k_i::Real = 0.1,
                         k_d::Real = 0, τ_d::Real = 0.05,
-                        β_p::Real = 1.0, β_d::Real = 0,
-                        bounds::NTuple{2,Real} = (-1.0, 1.0)) where {N}
+                        β_p::Real = 1.0, β_d::Real = 0) where {N}
     s2v = (x)->fill(x,N)
     PIDDiscrete{N}( s2v(k_p), s2v(k_i),
                    s2v(k_d), s2v(τ_d),
-                   s2v(β_p), s2v(β_d),
-                   (s2v(bounds[1]), s2v(bounds[2])))
+                   s2v(β_p), s2v(β_d),)
 end
 
 Base.@kwdef struct PIDDiscreteU{N}
     setpoint::MVector{N,Float64} = zeros(N) #commanded setpoint
     feedback::MVector{N,Float64} = zeros(N) #plant feedback (non-inverted)
-    sat_enable::MVector{N,Bool} = ones(Bool, N) #enable PID output saturation
-    int_hold::MVector{N,Bool} = zeros(Bool, N) #request integrator state hold
+    bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
+    bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
+    sat_ext::MVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
+    anti_windup::MVector{N,Bool} = ones(Bool, N) #enable anti wind-up
     reset::MVector{N,Bool} = zeros(Bool, N) #reset PID states and null outputs
 end
 
 Base.@kwdef struct PIDDiscreteS{N}
     x_i0::MVector{N,Float64} = zeros(N) #previous integrator path state
     x_d0::MVector{N,Float64} = zeros(N) #previous derivative path state
-    sat_0::MVector{N,Int64} = zeros(N) #previous PID saturation status
+    sat_out_0::MVector{N,Int64} = zeros(N) #previous output saturation status
 end
 
 Base.@kwdef struct PIDDiscreteY{N}
     setpoint::SVector{N,Float64} = zeros(SVector{N}) #commanded setpoint
     feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
-    sat_enable::SVector{N,Bool} = zeros(SVector{N, Bool}) #saturation enabled
-    int_hold::SVector{N,Bool} = zeros(SVector{N, Bool}) #integrator state hold
-    reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID
+    bound_lo::SVector{N,Float64} = fill(-Inf, N) #lower output bounds
+    bound_hi::SVector{N,Float64} = fill(Inf, N) #higher output bounds
+    sat_ext::SVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
+    anti_windup::SVector{N,Bool} = zeros(SVector{N, Bool}) #anti wind-up enabled
+    reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID states and null outputs
     u_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path input
     u_i::SVector{N,Float64} = zeros(SVector{N}) #integral path input
     u_d::SVector{N,Float64} = zeros(SVector{N}) #derivative path input
-    int_active::SVector{N,Bool} = zeros(SVector{N, Bool}) #integrator active
+    int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
     y_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path output
     y_i::SVector{N,Float64} = zeros(SVector{N}) #integral path output
     y_d::SVector{N,Float64} = zeros(SVector{N}) #derivative path output
     out_free::SVector{N,Float64} = zeros(SVector{N}) #non-clamped PID output
     out::SVector{N,Float64} = zeros(SVector{N}) #actual PID output
-    sat::SVector{N,Int64} = zeros(SVector{N, Int64}) #current saturation status
+    sat_out::SVector{N,Int64} = zeros(SVector{N, Int64}) #current output saturation status
 end
 
 Systems.init(::SystemY, ::PIDDiscrete{N}) where {N} = PIDDiscreteY{N}()
@@ -368,29 +369,32 @@ Systems.init(::SystemS, ::PIDDiscrete{N}) where {N} = PIDDiscreteS{N}()
 function Systems.f_disc!(sys::System{<:PIDDiscrete{N}}, Δt::Real) where {N}
 
     @unpack s, u, params = sys
-    @unpack k_p, k_i, k_d, τ_d, β_p, β_d, bounds = params
+    @unpack k_p, k_i, k_d, τ_d, β_p, β_d = params
 
     setpoint = SVector(u.setpoint)
     feedback = SVector(u.feedback)
-    sat_enable = SVector(u.sat_enable)
-    int_hold = SVector(u.int_hold)
+    bound_lo = SVector(u.bound_lo)
+    bound_hi = SVector(u.bound_hi)
+    anti_windup = SVector(u.anti_windup)
+    sat_ext = SVector(u.sat_ext)
     reset = SVector(u.reset)
 
     x_i0 = SVector(s.x_i0)
     x_d0 = SVector(s.x_d0)
-    sat_0 = SVector(s.sat_0)
+    sat_out_0 = SVector(s.sat_out_0)
 
     u_p = β_p .* setpoint - feedback
     u_d = β_d .* setpoint - feedback
     u_i = setpoint - feedback
 
-    #integration must only operate in those components for which:
-    # -integrator path input does not have the same sign as PID output saturation
-    # -integrator state is not being held
-    int_active = (sign.(u_i .* sat_0) .<= 0) .* .!int_hold
+    #integration is halted in those components for which:
+    #((output saturation has the same sign as integrator path input) OR
+    #(external saturation signal has the same sign as integrator path input))
+    #AND (anti_windup is enabled)
+    int_halt = ((sign.(u_i .* sat_out_0) .> 0) .|| (sign.(u_i .* sat_ext) .> 0)) .&& anti_windup
     α = 1 ./ (τ_d .+ Δt)
 
-    x_i = x_i0 + Δt * k_i .* u_i .* int_active
+    x_i = x_i0 + Δt * k_i .* u_i .* .!int_halt
     x_d = α .* τ_d .* x_d0 + Δt * α .* k_d .* u_d
 
     y_p = k_p .* u_p
@@ -405,20 +409,20 @@ function Systems.f_disc!(sys::System{<:PIDDiscrete{N}}, Δt::Real) where {N}
     y_d = y_d .* .!reset
 
     out_free = y_p + y_i + y_d
-    out_clamped = clamp.(out_free, bounds[1], bounds[2])
-    out = (out_free .* .!sat_enable) .+ (out_clamped .* sat_enable)
+    out = clamp.(out_free, bound_lo, bound_hi)
 
-    sat_upper = (out_free .>= bounds[2]) .* sat_enable
-    sat_lower = (out_free .<= bounds[1]) .* sat_enable
-    sat = sat_upper - sat_lower
+    sat_hi = out_free .>= bound_hi
+    sat_lo = out_free .<= bound_lo
+    sat_out = sat_hi - sat_lo
 
     s.x_i0 .= x_i
     s.x_d0 .= x_d
-    s.sat_0 .= sat
+    s.sat_out_0 .= sat_out
 
-    sys.y = PIDDiscreteY(; setpoint, feedback, sat_enable, int_hold, reset,
-                           u_p, u_i, u_d, int_active, y_p, y_i, y_d,
-                           out_free, out, sat)
+    sys.y = PIDDiscreteY(; setpoint, feedback, bound_lo, bound_hi,
+                           sat_ext, anti_windup, reset,
+                           u_p, u_i, u_d, int_halt, y_p, y_i, y_d,
+                           out_free, out, sat_out)
 
     return false
 
@@ -434,14 +438,15 @@ function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteY}; kwargs...)
     pd[:sf] = plot(setpoint, feedback;
         plot_title = "Setpoint & Feedback",
         layout = (1,2),
+        link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    sat_enable = plot(th.sat_enable; title = "Saturation Enabled", ylabel = "", kwargs...)
-    int_hold = plot(th.int_hold; title = "Integrator Hold", ylabel = "", kwargs...)
+    sat_ext = plot(th.sat_ext; title = "External Saturation", ylabel = "", kwargs...)
+    anti_windup = plot(th.anti_windup; title = "Anti-Windup Enable", ylabel = "", kwargs...)
     reset = plot(th.reset; title = "Reset", ylabel = "", kwargs...)
 
-    pd[:ctl] = plot(sat_enable, int_hold, reset;
-        plot_title = "Control Flags",
+    pd[:ctl] = plot(anti_windup, sat_ext, reset;
+        plot_title = "External Control Signals",
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
@@ -451,14 +456,17 @@ function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteY}; kwargs...)
     pd[:prop] = plot(u_p, y_p;
         plot_title = "Proportional Path",
         layout = (1,2),
+        link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     u_i = plot(th.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
     y_i = plot(th.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
+    int_halt = plot(th.int_halt; title = "Integrator Halted", ylabel = "", kwargs...)
 
-    pd[:int] = plot(u_i, y_i;
+    pd[:int] = plot(u_i, y_i, int_halt;
         plot_title = "Integral Path",
-        layout = (1,2),
+        layout = (1,3),
+        link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     u_d = plot(th.u_d; title = "Input", ylabel = L"$u_d$", kwargs...)
@@ -467,15 +475,17 @@ function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteY}; kwargs...)
     pd[:der] = plot(u_d, y_d;
         plot_title = "Derivative Path",
         layout = (1,2),
+        link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    y_free = plot(th.out_free; title = "Unclamped", ylabel = L"$y_{free}$", kwargs...)
-    y = plot(th.out; title = "Actual", ylabel = L"$y$", kwargs...)
-    sat = plot(th.sat; title = "Saturation Status", ylabel = L"$S$", kwargs...)
+    out_free = plot(th.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
+    out = plot(th.out; title = "Actual", ylabel = L"$y$", kwargs...)
+    sat_out = plot(th.sat_out; title = "Saturation", ylabel = L"$S$", kwargs...)
 
-    pd[:out] = plot(y_free, y, sat;
+    pd[:out] = plot(out_free, out, sat_out;
         plot_title = "PID Output",
         layout = (1,3),
+        link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     return pd
