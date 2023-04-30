@@ -33,7 +33,7 @@ end
 ######################## AbstractTerrain ##########################
 
 abstract type AbstractTerrain <: Component end
-TerrainData(::System{<:AbstractTerrain}, args...) = throw(MethodError(TerrainData, args))
+TerrainData(::System{<:AbstractTerrain}, loc::Abstract2DLocation) = throw(MethodError(TerrainData, loc))
 
 struct DummyTerrain <: AbstractTerrain end
 

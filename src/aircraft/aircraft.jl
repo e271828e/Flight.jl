@@ -66,7 +66,7 @@ struct NoAvionics <: AbstractAvionics end
 function Systems.f_disc!(::System{NoAvionics}, ::Real,
                         ::System{<:AbstractAirframe},
                         ::KinematicData, ::RigidBodyData, ::AirData,
-                        trn::System{<:AbstractTerrain})
+                        ::TerrainData)
     return false
 end
 
@@ -139,18 +139,18 @@ end
 function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt::Real, env::System{<:AbstractEnvironment})
 
     @unpack airframe, avionics, kinematics = sys.subsystems
-    @unpack trn = env
     y = sys.y
 
     kin_data = y.kinematics.common
     rb_data = y.rigidbody
     air_data = y.air
+    trn_data = TerrainData(env.trn, kin_data.n_e)
 
     #could use chained | instead, but this is clearer
     x_mod = false
     #in principle, only avionics should have discrete dynamics (it's the only
     #aircraft subsystem in which discretized algorithms should live)
-    x_mod |= f_disc!(avionics, Δt, airframe, kin_data, rb_data, air_data, trn)
+    x_mod |= f_disc!(avionics, Δt, airframe, kin_data, rb_data, air_data, trn_data)
     map_controls!(airframe, avionics)
 
     #avionics might have modified its outputs, so we need to reassemble everything

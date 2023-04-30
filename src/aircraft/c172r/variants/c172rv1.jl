@@ -61,7 +61,7 @@ Systems.init(::SystemY, ::DirectControls) = DirectControlsY()
 
 function Systems.f_disc!(avionics::System{<:DirectControls}, ::Real,
                         ::System{<:C172RAirframe}, ::KinematicData,
-                        ::RigidBodyData, ::AirData, ::System{<:AbstractTerrain})
+                        ::RigidBodyData, ::AirData, ::TerrainData)
 
     #DirectControls has no internal dynamics, just input-output feedthrough
     @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,

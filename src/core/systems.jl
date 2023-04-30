@@ -128,10 +128,16 @@ function System(comp::Component,
     params = NamedTuple(n=>getfield(comp,n) for n in propertynames(comp) if !(n in child_names))
     params = (!isempty(params) ? params : nothing)
 
-    System{map(typeof, (comp, x, y, u, s, params, subsystems))...}(
-                         ẋ, x, y, u, s, t, params, subsystems)
+    sys = System{map(typeof, (comp, x, y, u, s, params, subsystems))...}(
+                    ẋ, x, y, u, s, t, params, subsystems)
+
+    init!(sys)
+
+    return sys
 
 end
+
+init!(::System) = nothing
 
 Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
 Base.setproperty!(sys::System, name::Symbol, value) = setproperty!(sys, Val(name), value)

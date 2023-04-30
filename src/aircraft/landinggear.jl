@@ -46,6 +46,14 @@ end
 
 get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
 
+function GUI.draw(sys::System{DirectSteering}, window_label::String = "Direct Steering")
+
+    CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
+        CImGui.Text("Steering Input: $(Float64(sys.u[]))")
+        CImGui.Text("Steering Angle: $(rad2deg(sys.y.ψ)) deg")
+    CImGui.End()
+
+end
 
 ################################################################################
 ################################# Braking ######################################
@@ -79,6 +87,14 @@ end
 
 get_braking_factor(sys::System{DirectBraking}) = sys.y.κ_br
 
+function GUI.draw(sys::System{DirectBraking}, window_label::String = "Direct Steering")
+
+    CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
+        CImGui.Text("Braking Input: $(Float64(sys.u[]))")
+        CImGui.Text("Braking Coefficient: $(sys.y.κ_br)")
+    CImGui.End()
+
+end
 
 ################################################################################
 ################################## Strut #######################################
@@ -478,15 +494,9 @@ function GUI.draw(sys::System{<:LandingGearUnit}, window_label::String = "Landin
 
     @unpack steering, braking, strut = sys
 
-    CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
-        show_steering = @cstatic check=false @c CImGui.Checkbox("Steering", &check)
-        show_braking = @cstatic check=false @c CImGui.Checkbox("Braking", &check)
-        show_strut = @cstatic check=false @c CImGui.Checkbox("Strut", &check)
-    CImGui.End()
-
-    show_steering && GUI.draw(sys.steering, window_label*" Steering")
-    show_braking && GUI.draw(sys.braking, window_label*" Braking")
-    show_strut && GUI.draw(sys.strut, window_label*" Strut")
+    GUI.draw(sys.steering, window_label*" Steering")
+    GUI.draw(sys.braking, window_label*" Braking")
+    GUI.draw(sys.strut, window_label*" Strut")
 
 end
 
