@@ -35,6 +35,7 @@ struct SystemY <: SystemTrait end
 struct SystemU <: SystemTrait end
 struct SystemS <: SystemTrait end
 
+system_traits() = (SystemẊ(), SystemX(), SystemY(), SystemU(), SystemS())
 
 ################################################################################
 ################################### System #####################################
@@ -98,31 +99,39 @@ init_y(cmp::Component) = init(SystemY(), cmp)
 init_u(cmp::Component) = init(SystemU(), cmp)
 init_s(cmp::Component) = init(SystemS(), cmp)
 
-#need a custom getproperty to address the following scenario: we have a System a
-#with children b and c. if neither b and c have inputs, u = init(a, SystemU())
-#will return nothing. when the System constructor for a retrieves a.u.b and
-#a.u.c to pass them along as inputs for subsystems b and c, it will be accessing
-#fields b and c of a Nothing variable, and fail
-function maybe_getproperty(input, label)
-    !isnothing(input) && (label in propertynames(input)) ? getproperty(input, label) : nothing
-end
+function System(comp::Component,
+                ẋ = init_ẋ(comp), x = init_x(comp), y = init_y(comp),
+                u = init_u(comp), s = init_s(comp), t = Ref(0.0))
 
-function System(cmp::Component,
-                ẋ = init_ẋ(cmp), x = init_x(cmp), y = init_y(cmp),
-                u = init_u(cmp), s = init_s(cmp), t = Ref(0.0))
+    #construct subsystems from Component fields
+    child_names = filter(p -> (p.second isa Component), OrderedDict(comp)) |> keys |> Tuple
 
-    child_names = filter(p -> (p.second isa Component), OrderedDict(cmp)) |> keys |> Tuple
-    child_systems = (System(map((λ)->maybe_getproperty(λ, name), (cmp, ẋ, x, y, u, s))..., t) for name in child_names) |> Tuple
+    child_systems = map(child_names) do child_name
+
+        child_component = getproperty(comp, child_name)
+
+        child_properties = map((ẋ, x, y, u, s), system_traits()) do parent, trait
+            if !isnothing(parent) && (child_name in propertynames(parent))
+                getproperty(parent, child_name)
+            else
+                init(trait, child_component)
+            end
+        end
+
+        System(child_component, child_properties..., t)
+
+    end
+
     subsystems = NamedTuple{child_names}(child_systems)
 
-    params = NamedTuple(n=>getfield(cmp,n) for n in propertynames(cmp) if !(n in child_names))
+    #the remaining fields are saved as parameters
+    params = NamedTuple(n=>getfield(comp,n) for n in propertynames(comp) if !(n in child_names))
     params = (!isempty(params) ? params : nothing)
 
-    System{map(typeof, (cmp, x, y, u, s, params, subsystems))...}(
+    System{map(typeof, (comp, x, y, u, s, params, subsystems))...}(
                          ẋ, x, y, u, s, t, params, subsystems)
 
 end
-
 
 Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
 Base.setproperty!(sys::System, name::Symbol, value) = setproperty!(sys, Val(name), value)

@@ -148,9 +148,9 @@ function test_trimming()
 
         @test @ballocated($f_target($state)) === 0
 
-        exit_flag, _ = C172Rv0.trim!(ac; env, trim_params)
+        success, _ = C172Rv0.trim!(ac; env, trim_params)
 
-        @test exit_flag === :STOPVAL_REACHED
+        @test success
 
     end
 

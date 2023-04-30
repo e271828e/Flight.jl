@@ -176,7 +176,7 @@ function test_strut()
         #large positive lateral velocity
         kin = KinematicInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> KinematicData
         f_ode!(strut, steering, braking, terrain, kin)
-        @test strut.frc.y.sat_status[2] == 1 #large velocity saturates
+        @test strut.frc.y.sat_out[2] == 1 #large velocity saturates
         @test strut.ẋ[2] == 0 #lateral velocity integral should be decreasing
 
         #advancing motion with compression
