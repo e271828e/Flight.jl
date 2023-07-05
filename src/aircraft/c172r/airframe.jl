@@ -451,7 +451,9 @@ Base.@kwdef struct AeroCoeffs
     C_n::Float64 = 0.0
 end
 
-function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
+#need to pass aerodynamic data as an input, because since Julia 1.9 accessing
+#the fields of a global const allocates
+function get_aero_coeffs(lookup = aero_lookup; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
 
     #set sensible bounds
     α = clamp(α, -0.1, 0.36) #0.36 is the highest value (post-stall) tabulated for C_L
@@ -459,7 +461,7 @@ function get_aero_coeffs(; α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_
     α_dot_nd = clamp(α_dot_nd, -0.04, 0.04)
     β_dot_nd = clamp(β_dot_nd, -0.2, 0.2)
 
-    @unpack C_D, C_Y, C_L, C_l, C_m, C_n = aero_lookup
+    @unpack C_D, C_Y, C_L, C_l, C_m, C_n = lookup
 
     AeroCoeffs(
         C_D = C_D.z + C_D.ge(Δh_nd) * (C_D.α_δf(α,δf) + C_D.δf(δf)) + C_D.δe(δe) + C_D.β(β),

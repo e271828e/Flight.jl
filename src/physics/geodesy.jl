@@ -15,7 +15,7 @@ using ..Attitude
 export Abstract2DLocation, NVector, LatLon
 export Altitude, Ellipsoidal, Orthometric, Geopotential, HEllip, HOrth, HGeop
 export Abstract3DPosition, Geographic, Cartesian
-export ω_ie, gravity, g_n, G_n, ltf, radii, get_ψ_nl, get_geoid_offset
+export ω_ie, gravity, g_n, G_n, ltf, radii, get_ψ_nl, get_geoid_height
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -165,12 +165,13 @@ struct Geopotential <: AbstractAltitudeDatum end
 
 const h_min = -1000 #helps catch numerical catastrophes
 
-#equivalent to load_geoid_data_hdf5 but with the additional hash check
-function load_geoid_data_bin(file_path = joinpath(dirname(@__FILE__), "data", "ww15mgh_le.bin"))
+#equivalent to egm_interp_from_hdf5 but with the additional hash check
+function egm96_interp_from_bin()
     #the target file stores a 721x1441 Matrix{Float32} in low-endian binary
-    #format. the matrix holds the data points for the EGM96 geoid height offset
-    #with respect to the WGS84 ellipsoid in 15 arc-minute resolution. latitude
+    #format. the matrix holds the data points for the EGM96 geoid height
+    #measured from the WGS84 ellipsoid in 15 arc-minute resolution. latitude
     #goes from -π/2 to π/2, longitude from 0 to 2π
+    file_path = joinpath(dirname(@__FILE__), "data", "ww15mgh_le.bin")
     tmp = Matrix{Float32}(undef, 721, 1441)
     open(file_path) do file
         if file |> sha2_256 |> bytes2hex != "9d190e021672769b508547021bcaebcc7d13558d66d215d019675a5f595f5cae"
@@ -182,35 +183,37 @@ function load_geoid_data_bin(file_path = joinpath(dirname(@__FILE__), "data", "w
     end
     #convert matrix elements to host's endianness and cast to Matrix{Float64}
     data = convert(Matrix{Float64}, ltoh.(tmp))
-    ϕ_range = LinRange(-π/2, π/2, size(data, 1))
-    λ_range = LinRange(0, 2π, size(data, 2))
+    ϕ_range = range(-π/2, π/2, size(data, 1))
+    λ_range = range(0, 2π, size(data, 2))
 
     #return interpolator with extrapolation enabled to avoid machine precision
     #issues due to the boundaries being multiples of π
     linear_interpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
-    # CubicSplineInterpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
 end
 
-function load_geoid_data_hdf5(file_path = joinpath(dirname(@__FILE__), "data", "ww15mgh_hdf5.h5"))
+function egm96_interp_from_hdf5()
 
     data = Matrix{Float32}(undef, 721, 1441)
+    file_path = joinpath(dirname(@__FILE__), "data", "ww15mgh_hdf5.h5")
     h5open(file_path) do file
         data .= file["geoid_height"] |> read
     end
-    ϕ_range = LinRange(-π/2, π/2, size(data, 1))
-    λ_range = LinRange(0, 2π, size(data, 2))
+    ϕ_range = range(-π/2, π/2, size(data, 1))
+    λ_range = range(0, 2π, size(data, 2))
     linear_interpolation((ϕ_range, λ_range), data, extrapolation_bc = Line())
 end
 
-const geoid_data = load_geoid_data_hdf5()
+const egm96_interp = egm96_interp_from_hdf5() #geoid height interpolator
 
-function get_geoid_offset(loc::Abstract2DLocation)
+#need to pass geoid interpolator as an input, because since Julia 1.9 accessing
+#the fields of a global const allocates
+function get_geoid_height(loc::Abstract2DLocation, geoid_height_interp = egm96_interp)
     #our longitude interval is [-π,π], but the table uses [0,2π], so we need to
     #correct for that
     latlon = LatLon(loc)
     ϕ = latlon.ϕ
     λ = mod(latlon.λ + 2π, 2π)
-    geoid_data(ϕ, λ)
+    geoid_height_interp(ϕ, λ)
 end
 
 Base.@kwdef struct Altitude{D<:AbstractAltitudeDatum}
@@ -230,10 +233,10 @@ const HGeop = Altitude{Geopotential}
 
 Altitude{D}(h::Altitude{D}, args...) where {D} = Altitude{D}(h._val)
 
-#Ellipsoidal and Orthometric altitudes are related by the geoid's offset at a
+#Ellipsoidal and Orthometric altitudes are related by the geoid's height at a
 #given 2D location
-Altitude{Ellipsoidal}(h::HOrth, loc::Abstract2DLocation) = HEllip(h._val + get_geoid_offset(loc))
-Altitude{Orthometric}(h::HEllip, loc::Abstract2DLocation) = HOrth(h._val - get_geoid_offset(loc))
+Altitude{Ellipsoidal}(h::HOrth, loc::Abstract2DLocation) = HEllip(h._val + get_geoid_height(loc))
+Altitude{Orthometric}(h::HEllip, loc::Abstract2DLocation) = HOrth(h._val - get_geoid_height(loc))
 
 #Orthometric and Geopotential are directly related by the point-mass gravity
 #approximation, 2D location not required
