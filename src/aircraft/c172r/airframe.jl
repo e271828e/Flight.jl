@@ -1,15 +1,17 @@
 module Airframe
 
-using StaticArrays
-using ComponentArrays
-using UnPack
-using HDF5
-using Interpolations
-using Printf
-using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
+using StaticArrays, ComponentArrays, UnPack, HDF5, Interpolations
 
-using Flight.FlightCore
-using Flight.FlightPhysics
+using Flight.FlightCore.Systems
+using Flight.FlightCore.GUI
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.Joysticks
+using Flight.FlightCore.Utils: Ranged, linear_scaling
+
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
+using Flight.FlightPhysics.Environment
 
 using Flight.FlightAircraft.LandingGear
 using Flight.FlightAircraft.Propellers
@@ -121,22 +123,21 @@ function GUI.draw(sys::System{MechanicalActuation}, label::String = "Cessna 172R
     CImGui.Text("Engine Stop: $(y.eng_stop)")
 
     @running_plot("Throttle", y.throttle, 0, 1, 0.0, 120)
-    GUI.display_bar("Throttle", y.throttle, 0, 1)
+    display_bar("Throttle", y.throttle, 0, 1)
     @running_plot("Aileron", y.aileron, -1, 1, 0.0, 120)
-    GUI.display_bar("Aileron", y.aileron, -1, 1)
+    display_bar("Aileron", y.aileron, -1, 1)
     @running_plot("Elevator", y.elevator, -1, 1, 0.0, 120)
-    GUI.display_bar("Elevator", y.elevator, -1, 1)
+    display_bar("Elevator", y.elevator, -1, 1)
     @running_plot("Rudder", y.rudder, -1, 1, 0.0, 120)
-    GUI.display_bar("Rudder", y.rudder, -1, 1)
+    display_bar("Rudder", y.rudder, -1, 1)
 
-
-    safe_slider("Aileron Trim", y.aileron_trim, -1, 1, "%.6f")
-    safe_slider("Elevator Trim", y.elevator_trim, -1, 1, "%.6f")
-    safe_slider("Rudder Trim", y.rudder_trim, -1, 1, "%.6f")
-    safe_slider("Flaps", y.flaps, 0, 1, "%.6f")
-    safe_slider("Mixture", y.mixture, 0, 1, "%.6f")
-    safe_slider("Left Brake", y.brake_left, 0, 1, "%.6f")
-    safe_slider("Right Brake", y.brake_right, 0, 1, "%.6f")
+    display_bar("Aileron Trim", y.aileron_trim, -1, 1)
+    display_bar("Elevator Trim", y.elevator_trim, -1, 1)
+    display_bar("Rudder Trim", y.rudder_trim, -1, 1)
+    display_bar("Flaps", y.flaps, 0, 1)
+    display_bar("Mixture", y.mixture, 0, 1)
+    display_bar("Left Brake", y.brake_left, 0, 1)
+    display_bar("Right Brake", y.brake_right, 0, 1)
 
     CImGui.PopItemWidth()
 

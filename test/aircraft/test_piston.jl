@@ -5,8 +5,18 @@ using UnPack
 using BenchmarkTools
 using LinearAlgebra
 
-using Flight
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Sim
+using Flight.FlightCore.Plotting
+
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
+using Flight.FlightPhysics.Atmosphere
 using Flight.FlightPhysics.Atmosphere: p_std, T_std
+
+using Flight.FlightAircraft.Propellers
+using Flight.FlightAircraft.Piston
 using Flight.FlightAircraft.Piston: Engine, Thruster, MagicFuelSupply
 using Flight.FlightAircraft.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
 using Flight.FlightAircraft.Piston: eng_off, eng_starting, eng_running

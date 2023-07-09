@@ -6,7 +6,13 @@ using LinearAlgebra
 using Interpolations: bounds
 using FiniteDiff: finite_difference_derivative
 
-using Flight
+using Flight.FlightCore.Systems
+
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
+using Flight.FlightPhysics.Atmosphere
+
+using Flight.FlightAircraft.Propellers
 using Flight.FlightAircraft.Propellers: DefaultAirfoil, cL, cD, cL_α
 using Flight.FlightAircraft.Propellers: Blade, Coefficients, Lookup
 

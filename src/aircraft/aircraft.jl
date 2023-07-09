@@ -1,16 +1,22 @@
 module Aircraft
 
-using LinearAlgebra
-using UnPack
-using StaticArrays, ComponentArrays
-using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
+using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 
-using Flight.FlightCore
-using Flight.FlightPhysics
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.GUI
+using Flight.FlightCore.XPC
 
-export AbstractAirframe, EmptyAirframe, AbstractAvionics, NoAvionics, AircraftTemplate
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
+using Flight.FlightPhysics.Environment
+
+export AbstractAirframe, EmptyAirframe
+export AbstractAvionics, NoAvionics
+export AircraftTemplate
 export init_kinematics!, trim!, linearize!
-
 
 ###############################################################################
 ############################## Airframe #######################################
@@ -175,7 +181,7 @@ end
 
 ############################# XPlaneConnect ####################################
 
-function XPlane.set_position!(xp::XPConnect, y::AircraftTemplateY)
+function XPC.set_position!(xp::XPCInterface, y::AircraftTemplateY)
 
     aircraft = 0
 
@@ -192,7 +198,7 @@ function XPlane.set_position!(xp::XPConnect, y::AircraftTemplateY)
     theta = rad2deg(e_nb.θ)
     phi = rad2deg(e_nb.φ)
 
-    XPlane.set_position!(xp; lat, lon, h, psi, theta, phi, aircraft)
+    XPC.set_position!(xp; lat, lon, h, psi, theta, phi, aircraft)
 
 end
 

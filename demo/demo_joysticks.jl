@@ -1,10 +1,8 @@
 module DemoJoysticks
 
 using UnPack
-using CImGui
-using CImGui.CSyntax
 
-using Flight
+using Flight.FlightCore.GUI
 using Flight.FlightAircraft.Control: PIContinuous, PIContinuousU, PIContinuousY
 
 export demo_joysticks

@@ -3,11 +3,15 @@ module Propellers
 using LinearAlgebra, StaticArrays, StructArrays, Interpolations, UnPack
 using Roots: find_zero
 using Trapz: trapz
-using Printf
-using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.FlightCore
-using Flight.FlightPhysics
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.GUI
+using Flight.FlightCore.Utils: Ranged, linear_scaling
+
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
+using Flight.FlightPhysics.Atmosphere
 
 export FixedPitch, VariablePitch, Propeller
 

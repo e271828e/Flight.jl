@@ -1,10 +1,16 @@
 module Atmosphere
 
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
-# using CImGui, CImGui.CSyntax, Printf
 
-using Flight.FlightCore
-using Flight.FlightPhysics
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.GUI
+using Flight.FlightCore.Utils: Ranged
+
+using Flight.FlightPhysics.Attitude
+
+using ..Geodesy
+using ..Kinematics
 
 export AbstractSeaLevelConditions, TunableSeaLevelConditions
 export AbstractWind, TunableWind

@@ -1,10 +1,16 @@
 module World
 
 using UnPack
-using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.FlightCore
-using Flight.FlightPhysics
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.GUI
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.Joysticks
+using Flight.FlightCore.XPC
+
+using Flight.FlightPhysics.Environment
+
 using ..Aircraft
 
 export SimpleWorld
@@ -72,7 +78,7 @@ end
 
 ############################# XPlaneConnect ####################################
 
-XPlane.set_position!(xp::XPConnect, y::SimpleWorldY) = XPlane.set_position!(xp, y.ac)
+XPC.set_position!(xp::XPCInterface, y::SimpleWorldY) = XPC.set_position!(xp, y.ac)
 
 
 ################################### GUI ########################################

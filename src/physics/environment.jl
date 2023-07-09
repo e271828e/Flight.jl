@@ -1,9 +1,10 @@
 module Environment
 
 using Reexport
-using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.FlightCore
+using Flight.FlightCore.Systems
+using Flight.FlightCore.GUI
+
 @reexport using ..Atmosphere
 @reexport using ..Terrain
 

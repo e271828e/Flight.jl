@@ -2,7 +2,10 @@ module TestGUI
 
 using Test
 
-using Flight
+using Flight.FlightCore.Systems
+using Flight.FlightCore.GUI
+
+using Flight.FlightAircraft.Control
 
 export test_gui
 

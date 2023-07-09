@@ -3,7 +3,6 @@ module Systems
 using ComponentArrays
 using DataStructures
 using AbstractTrees
-using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
 using ..GUI
 

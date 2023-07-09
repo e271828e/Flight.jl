@@ -4,7 +4,7 @@ using Test
 using LinearAlgebra
 using StaticArrays
 
-using Flight
+using Flight.FlightPhysics.Quaternions
 
 export test_quaternions
 

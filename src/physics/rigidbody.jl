@@ -1,10 +1,10 @@
 module RigidBody
 
-using StaticArrays
-using LinearAlgebra, UnPack
-using CImGui, CImGui.CSyntax, Printf
+using StaticArrays, LinearAlgebra, UnPack
 
-using Flight.FlightCore
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.GUI
 
 using ..Attitude
 using ..Geodesy

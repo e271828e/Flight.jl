@@ -1,13 +1,8 @@
 module Sim
 
-using UnPack
-using Reexport
-using StructArrays
-using CImGui
-using Printf
+using UnPack, Reexport, StructArrays
 using OrdinaryDiffEq: OrdinaryDiffEq, OrdinaryDiffEqAlgorithm, ODEProblem,
                       ODEIntegrator, RK4, u_modified!, init as init_integrator
-
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback,
                        CallbackSet, SavedValues
 

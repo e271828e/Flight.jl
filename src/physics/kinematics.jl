@@ -1,10 +1,10 @@
 module Kinematics
 
-using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra
-using UnPack
-using CImGui, CImGui.CSyntax, Printf
+using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
 
-using Flight.FlightCore
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.GUI
 
 using ..Attitude
 using ..Geodesy
@@ -147,10 +147,10 @@ end
 #NED-based mechanization. Instead, the vertical component of the LTF's transport
 #rate is arbitrarily set to zero. This avoids polar singularities, but also
 #means that the azimuth angle of the LTF with respect to the geographic North
-#will fluctuate as the vehicle moves around the Earth's surface. The resulting
-#LTF is sometimes known as Wander Azimuth Frame. Position is defined by the
-#rotation from the ECEF axes to the LTF axes, and attitude is defined by the
-#rotation from the LTF axes to the vehicle axes.
+#will drift as the vehicle moves around the Earth's surface. The resulting LTF
+#is sometimes known as Wander Azimuth Frame. Position is defined by the rotation
+#from the ECEF axes to the LTF axes, and attitude is defined by the rotation
+#from the LTF axes to the vehicle axes.
 
 struct LTF <: AbstractKinematicDescriptor end
 
@@ -360,8 +360,8 @@ end
 ################################ NED Kinematics ################################
 ################################################################################
 
-#non singularity-free kinematic mechanization. useful mostly for analysis and
-#control design
+#non singularity-free kinematic mechanization. useful mostly for aircraft
+#control analysis and design
 
 struct NED <: AbstractKinematicDescriptor end
 
@@ -447,7 +447,7 @@ function KinematicsY(x::XNED)
 
 end
 
-#only updates xpos_dot, xvel_dot update can only be performed by f_rigidbody!
+#only updates xpos_dot, xvel_dot update is performed by f_rigidbody!
 function Systems.f_ode!(sys::System{NED})
 
     #compute and update y

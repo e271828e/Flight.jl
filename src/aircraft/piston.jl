@@ -1,11 +1,16 @@
 module Piston
 
 using Interpolations, StaticArrays, StructArrays, ComponentArrays, UnPack
-using Printf
-using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 
-using Flight.FlightCore
-using Flight.FlightPhysics
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.GUI
+using Flight.FlightCore.Utils: Ranged
+
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
+using Flight.FlightPhysics.Atmosphere
 using Flight.FlightPhysics.Atmosphere: R
 
 using ..Propellers: AbstractPropeller, Propeller

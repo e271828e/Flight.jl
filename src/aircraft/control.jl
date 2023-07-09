@@ -1,10 +1,11 @@
 module Control
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
-using CImGui, CImGui.CSyntax
 using ControlSystems: ControlSystems, ss
 
-using Flight.FlightCore
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.GUI
 
 export LinearStateSpace, PIContinuous, PIDDiscrete
 

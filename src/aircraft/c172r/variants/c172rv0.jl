@@ -1,18 +1,21 @@
 module C172Rv0
 
-using UnPack
-using Printf
-using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
-
-using LinearAlgebra
-using StaticArrays
-using ComponentArrays
+using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using NLopt
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
-using Flight.FlightCore
-using Flight.FlightPhysics
-using Flight.FlightAircraft
+using Flight.FlightCore.Systems
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.Joysticks
+
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.Environment
+
+using Flight.FlightAircraft.Piston
+using Flight.FlightAircraft.Aircraft
+using Flight.FlightAircraft.World
 
 using ..Airframe
 

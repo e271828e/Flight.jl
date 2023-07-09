@@ -3,7 +3,8 @@ module TestGeodesy
 using Test
 using LinearAlgebra
 
-using Flight
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
 
 export test_geodesy
 

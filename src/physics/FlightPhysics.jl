@@ -2,13 +2,13 @@ module FlightPhysics
 
 using Reexport
 
-include("quaternions.jl"); @reexport using .Quaternions
-include("attitude.jl"); @reexport using .Attitude
-include("geodesy.jl"); @reexport using .Geodesy
-include("kinematics.jl"); @reexport using .Kinematics
-include("rigidbody.jl"); @reexport using .RigidBody
-include("atmosphere.jl"); @reexport using .Atmosphere
-include("terrain.jl"); @reexport using .Terrain
-include("environment.jl"); @reexport using .Environment
+include("quaternions.jl"); using .Quaternions
+include("attitude.jl"); using .Attitude
+include("geodesy.jl"); using .Geodesy
+include("kinematics.jl"); using .Kinematics
+include("rigidbody.jl"); using .RigidBody
+include("atmosphere.jl"); using .Atmosphere
+include("terrain.jl"); using .Terrain
+include("environment.jl"); using .Environment
 
 end

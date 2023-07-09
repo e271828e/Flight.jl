@@ -5,7 +5,11 @@ using BenchmarkTools
 using UnPack
 using ComponentArrays
 
-using Flight
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Sim
+using Flight.FlightCore.Plotting
+
+using Flight.FlightAircraft.Control
 
 export test_control
 

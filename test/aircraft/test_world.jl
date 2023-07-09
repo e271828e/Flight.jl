@@ -3,9 +3,17 @@ module TestWorld
 using Test
 using UnPack
 using BenchmarkTools
-using Sockets
 
-using Flight
+using Flight.FlightCore.Systems
+
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.Environment
+
+using Flight.FlightAircraft.Aircraft
+using Flight.FlightAircraft.C172R
+using Flight.FlightAircraft.World
 
 export test_world
 
@@ -21,7 +29,7 @@ function test_system_methods()
 
     h_trn = HOrth(608.55);
 
-    ac = Cessna172Rv0();
+    ac = AircraftTemplate(LTF(), EmptyAirframe(), NoAvionics())
     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
     world = SimpleWorld(ac, env) |> System
 
@@ -66,8 +74,6 @@ function test_system_methods()
         @test x_mod == true
         @test world.ac.x.kinematics.pos.q_lb[1] ≈ 1
 
-        #make sure we are on the ground to ensure landing gear code coverage
-        @test world.ac.y.airframe.ldg.left.strut.wow == true
         @test @ballocated(f_ode!($world)) == 0
         @test @ballocated(f_step!($world)) == 0
         @test @ballocated(f_disc!($world, 0.2)) == 0

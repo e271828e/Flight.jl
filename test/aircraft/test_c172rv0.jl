@@ -5,7 +5,22 @@ using UnPack
 using BenchmarkTools
 using Sockets
 
-using Flight
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Sim
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.Joysticks
+using Flight.FlightCore.XPC
+
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.Environment
+
+using Flight.FlightAircraft.Aircraft
+using Flight.FlightAircraft.World
+
+using Flight.FlightAircraft.C172R
 
 export test_c172rv0
 
@@ -38,7 +53,8 @@ function test_system_methods()
             init_kinematics!(ac_ECEF, kin_init)
             init_kinematics!(ac_NED, kin_init)
 
-            f_ode!(ac_LTF, env) #make sure we're on the ground
+            f_ode!(ac_LTF, env)
+            #make sure we are on the ground to ensure landing gear code coverage
             @test ac_LTF.y.airframe.ldg.left.strut.wow == true
 
             #all three kinematics implementations must be supported, no allocations
@@ -234,8 +250,8 @@ function test_sim_paced(; save::Bool = true)
         push!(interfaces, attach_io!(sim, joystick))
     end
 
-    # xp = XPConnect()
-    xp = XPConnect(host = IPv4("192.168.1.2"))
+    # xp = XPCInterface()
+    xp = XPCInterface(host = IPv4("192.168.1.2"))
     push!(interfaces, attach_io!(sim, xp))
 
     @sync begin

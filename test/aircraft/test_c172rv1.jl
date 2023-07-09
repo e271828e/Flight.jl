@@ -1,11 +1,23 @@
 module TestC172Rv1
 
-using Test
-using UnPack
-using BenchmarkTools
-using Sockets
+using Test, UnPack, BenchmarkTools, Sockets
 
-using Flight
+using Flight.FlightCore.Systems
+using Flight.FlightCore.Sim
+using Flight.FlightCore.Plotting
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.Joysticks
+using Flight.FlightCore.XPC
+
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.Environment
+
+using Flight.FlightAircraft.Aircraft
+using Flight.FlightAircraft.World
+
+using Flight.FlightAircraft.C172R
 
 export test_c172rv1
 
@@ -120,8 +132,8 @@ function test_sim_paced(; save::Bool = true)
         push!(interfaces, attach_io!(sim, joystick))
     end
 
-    # xp = XPConnect()
-    xp = XPConnect(host = IPv4("192.168.1.2"))
+    # xp = XPCInterface()
+    xp = XPCInterface(host = IPv4("192.168.1.2"))
     push!(interfaces, attach_io!(sim, xp))
 
     @sync begin

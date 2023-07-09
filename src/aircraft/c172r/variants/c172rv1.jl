@@ -1,16 +1,20 @@
 module C172Rv1
 
-using UnPack
-using Printf
-using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
+using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 
-using LinearAlgebra
-using StaticArrays
-using ComponentArrays
+using Flight.FlightCore.Systems
+using Flight.FlightCore.GUI
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.Joysticks
+using Flight.FlightCore.Utils: Ranged
 
-using Flight.FlightCore
-using Flight.FlightPhysics
-using Flight.FlightAircraft
+using Flight.FlightPhysics.Kinematics
+using Flight.FlightPhysics.RigidBody
+using Flight.FlightPhysics.Environment
+
+using Flight.FlightAircraft.Piston
+using Flight.FlightAircraft.Aircraft
+using Flight.FlightAircraft.World
 
 using ..Airframe
 
