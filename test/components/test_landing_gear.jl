@@ -12,8 +12,8 @@ using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.Terrain
 
-using Flight.FlightAircraft.LandingGear
-using Flight.FlightAircraft.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
+using Flight.FlightComponents.LandingGear
+using Flight.FlightComponents.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
 
 export test_landing_gear
 

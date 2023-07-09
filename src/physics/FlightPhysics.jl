@@ -1,7 +1,5 @@
 module FlightPhysics
 
-using Reexport
-
 include("quaternions.jl"); using .Quaternions
 include("attitude.jl"); using .Attitude
 include("geodesy.jl"); using .Geodesy

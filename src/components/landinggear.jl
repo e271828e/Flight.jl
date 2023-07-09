@@ -25,7 +25,7 @@ const e3 = SVector{3,Float64}(0,0,1)
 ################################################################################
 ################################# Steering #####################################
 
-abstract type AbstractSteering <: Component end
+abstract type AbstractSteering <: SystemDefinition end
 
 ################################ NoSteering ####################################
 
@@ -64,7 +64,7 @@ end
 ################################################################################
 ################################# Braking ######################################
 
-abstract type AbstractBraking <: Component end
+abstract type AbstractBraking <: SystemDefinition end
 
 
 ############################### NoBraking ######################################
@@ -177,7 +177,7 @@ end
 
 ################################## Strut #######################################
 
-Base.@kwdef struct Strut{D<:AbstractDamper} <: Component
+Base.@kwdef struct Strut{D<:AbstractDamper} <: SystemDefinition
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
     l_0::Float64 = 0.0 #strut natural length from airframe attachment point to wheel endpoint
     damper::D = SimpleDamper()
@@ -209,6 +209,14 @@ end
 
 Systems.init(::SystemY, ::Strut) = StrutY()
 
+function Systems.init!(sys::System{<:Strut})
+    #set up friction constraint compensator
+    frc = sys.frc
+    frc.u.bound_lo .= -1
+    frc.u.bound_hi .= 1
+    frc.u.setpoint .= 0
+end
+
 function Systems.f_ode!(sys::System{<:Strut},
                         steering::System{<:AbstractSteering},
                         braking::System{<:AbstractBraking},
@@ -218,10 +226,7 @@ function Systems.f_ode!(sys::System{<:Strut},
     @unpack t_bs, l_0, damper = sys.params
     @unpack q_eb, q_nb, q_en, n_e, h_e, r_eOb_e, v_eOb_b, ω_eb_b = kin
 
-    frc = sys.frc #set up PI inputs
-    frc.u.bound_lo .= -1
-    frc.u.bound_hi .= 1
-    frc.u.setpoint .= 0
+    frc = sys.frc
 
     q_bs = t_bs.q #body frame to strut frame rotation
     r_ObOs_b = t_bs.r #strut frame origin
@@ -369,7 +374,7 @@ end
 ############################ LandingGearUnit ###################################
 
 Base.@kwdef struct LandingGearUnit{S <: AbstractSteering,
-                            B <: AbstractBraking, L<:Strut} <: Component
+                            B <: AbstractBraking, L<:Strut} <: SystemDefinition
     steering::S = NoSteering()
     braking::B = NoBraking()
     strut::L = Strut()

@@ -15,7 +15,7 @@ export KinematicInit, KinematicData, KinematicSystem
 ########################## AbstractKinematicDescriptor #############################
 ##############################################################################
 
-abstract type AbstractKinematicDescriptor <: Component end
+abstract type AbstractKinematicDescriptor <: SystemDefinition end
 const KinematicSystem = System{<:AbstractKinematicDescriptor}
 
 #user-friendly conditions for kinematic state initialization

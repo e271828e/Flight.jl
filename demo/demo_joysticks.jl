@@ -3,7 +3,7 @@ module DemoJoysticks
 using UnPack
 
 using Flight.FlightCore.GUI
-using Flight.FlightAircraft.Control: PIContinuous, PIContinuousU, PIContinuousY
+using Flight.FlightComponents.Control: PIContinuous, PIContinuousU, PIContinuousY
 
 export demo_joysticks
 

@@ -2,7 +2,7 @@ using Flight
 
 #Example of how to define and simulate a purely discrete system
 
-struct DiscreteTestComponent <: Component end
+struct DiscreteTestComponent <: SystemDefinition end
 
 Base.@kwdef struct DiscreteTestComponentY
     a::Float64 = 0

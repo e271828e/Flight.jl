@@ -21,7 +21,7 @@ export init_kinematics!, trim!, linearize!
 ###############################################################################
 ############################## Airframe #######################################
 
-abstract type AbstractAirframe <: Component end
+abstract type AbstractAirframe <: SystemDefinition end
 RigidBody.MassTrait(::System{<:AbstractAirframe}) = HasMass()
 RigidBody.AngMomTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
 RigidBody.WrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
@@ -50,7 +50,7 @@ end
 ###############################################################################
 ######################### AbstractAvionics ####################################
 
-abstract type AbstractAvionics <: Component end
+abstract type AbstractAvionics <: SystemDefinition end
 
 function Systems.f_disc!(avionics::System{<:AbstractAvionics}, Δt::Real,
                         airframe::System{<:AbstractAirframe},
@@ -84,7 +84,7 @@ map_controls!(::System{<:AbstractAirframe}, ::System{<:NoAvionics}) = nothing
 
 struct AircraftTemplate{K <: AbstractKinematicDescriptor,
                 F <: AbstractAirframe,
-                A <: AbstractAvionics} <: Component
+                A <: AbstractAvionics} <: SystemDefinition
     kinematics::K
     airframe::F
     avionics::A
@@ -181,7 +181,7 @@ end
 
 ############################# XPlaneConnect ####################################
 
-function XPC.set_position!(xp::XPCInterface, y::AircraftTemplateY)
+function XPC.set_position!(xp::XPCDevice, y::AircraftTemplateY)
 
     aircraft = 0
 

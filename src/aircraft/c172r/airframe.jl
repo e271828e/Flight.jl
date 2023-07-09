@@ -13,10 +13,10 @@ using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.RigidBody
 using Flight.FlightPhysics.Environment
 
-using Flight.FlightAircraft.LandingGear
-using Flight.FlightAircraft.Propellers
-using Flight.FlightAircraft.Piston
-using Flight.FlightAircraft.Aircraft
+using Flight.FlightComponents.LandingGear
+using Flight.FlightComponents.Propellers
+using Flight.FlightComponents.Piston
+using Flight.FlightComponents.Aircraft
 
 export C172RAirframe
 
@@ -24,7 +24,7 @@ export C172RAirframe
 ################################################################################
 ################################ Structure #####################################
 
-struct Structure <: Component end
+struct Structure <: SystemDefinition end
 
 # This component represents the airframe structure, together with any components
 # rigidly attached to it, such as powerplant or landing gear, but not payload or
@@ -56,7 +56,7 @@ RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
 ################################################################################
 ############################# MechanicalActuation ##################################
 
-struct MechanicalActuation <: Component end
+struct MechanicalActuation <: SystemDefinition end
 
 Base.@kwdef mutable struct MechanicalActuationU
     eng_start::Bool = false
@@ -475,7 +475,7 @@ function get_aero_coeffs(lookup = aero_lookup; α, β, p_nd, q_nd, r_nd, δa, δ
 
 end
 
-Base.@kwdef struct Aero <: Component
+Base.@kwdef struct Aero <: SystemDefinition
     S::Float64 = 16.165 #wing area
     b::Float64 = 10.912 #wingspan
     c::Float64 = 1.494 #mean aerodynamic chord
@@ -668,7 +668,7 @@ end
 ###############################################################################
 ############################# Landing Gear ####################################
 
-struct Ldg <: Component
+struct Ldg <: SystemDefinition
     left::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
     right::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
     nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
@@ -735,7 +735,7 @@ end
 ################################################################################
 ################################# Payload ######################################
 
-Base.@kwdef struct Payload <: Component
+Base.@kwdef struct Payload <: SystemDefinition
     pilot_slot::FrameTransform = FrameTransform(r = SVector{3}(0.183, -0.356, 0.899))
     copilot_slot::FrameTransform = FrameTransform(r = SVector{3}(0.183, 0.356, 0.899))
     lpass_slot::FrameTransform = FrameTransform(r = SVector{3}(-0.681, -0.356, 0.899))

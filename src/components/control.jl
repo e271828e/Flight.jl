@@ -17,7 +17,7 @@ const tM = AbstractMatrix{<:Float64}
 
 struct LinearStateSpace{ LX, LU, LY, #state, input and output vector lengths
                         tX <: tV, tU <: tV, tY <: tV,
-                        tA <: tM, tB <: tM, tC <: tM, tD <: tM} <: Component
+                        tA <: tM, tB <: tM, tC <: tM, tD <: tM} <: SystemDefinition
 
     ẋ0::tX; x0::tX; u0::tU; y0::tY; #reference values (for linearized systems)
     A::tA; B::tB; C::tC; D::tD; #state-space matrices
@@ -110,7 +110,7 @@ end
 ####################### Proportional-Integral Compensator ######################
 ################################################################################
 
-struct PIContinuous{N} <: Component #Parallel form
+struct PIContinuous{N} <: SystemDefinition #Parallel form
     k_p::SVector{N,Float64} #proportional gain
     k_i::SVector{N,Float64} #integral gain
     k_l::SVector{N,Float64} #integrator leak factor
@@ -333,7 +333,7 @@ end
 ################################################################################
 
 
-struct PIDDiscrete{N} <: Component #Parallel form
+struct PIDDiscrete{N} <: SystemDefinition #Parallel form
     k_p::SVector{N,Float64} #proportional gain
     k_i::SVector{N,Float64} #integral gain
     k_d::SVector{N,Float64} #derivative gain

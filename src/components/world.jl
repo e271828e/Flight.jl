@@ -15,7 +15,7 @@ using ..Aircraft
 
 export SimpleWorld
 
-abstract type AbstractWorld <: Component end
+abstract type AbstractWorld <: SystemDefinition end
 
 
 ################################################################################
@@ -78,7 +78,7 @@ end
 
 ############################# XPlaneConnect ####################################
 
-XPC.set_position!(xp::XPCInterface, y::SimpleWorldY) = XPC.set_position!(xp, y.ac)
+XPC.set_position!(xp::XPCDevice, y::SimpleWorldY) = XPC.set_position!(xp, y.ac)
 
 
 ################################### GUI ########################################

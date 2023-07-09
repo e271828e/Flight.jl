@@ -14,8 +14,8 @@ using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.Environment
 
-using Flight.FlightAircraft.Aircraft
-using Flight.FlightAircraft.World
+using Flight.FlightComponents.Aircraft
+using Flight.FlightComponents.World
 
 using Flight.FlightAircraft.C172R
 
@@ -132,8 +132,8 @@ function test_sim_paced(; save::Bool = true)
         push!(interfaces, attach_io!(sim, joystick))
     end
 
-    # xp = XPCInterface()
-    xp = XPCInterface(host = IPv4("192.168.1.2"))
+    # xp = XPCDevice()
+    xp = XPCDevice(host = IPv4("192.168.1.2"))
     push!(interfaces, attach_io!(sim, xp))
 
     @sync begin

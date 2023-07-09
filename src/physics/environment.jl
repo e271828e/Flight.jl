@@ -10,7 +10,7 @@ using Flight.FlightCore.GUI
 
 export AbstractEnvironment, SimpleEnvironment
 
-abstract type AbstractEnvironment <: Component end
+abstract type AbstractEnvironment <: SystemDefinition end
 
 get_atmosphere(::System{<:AbstractEnvironment}) = throw(MethodError(get_atmosphere, sys))
 get_terrain(::System{<:AbstractEnvironment}) = throw(MethodError(get_terrain, sys))

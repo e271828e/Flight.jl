@@ -70,3 +70,11 @@ Where $c_{L}(\alpha)$, $c_{D}(\alpha)$ and $c_{L,\alpha}(\alpha)$ were the airfo
 To account for compressibility, we can replace the incompressible airfoil coefficients with suitable functions $c_L(M, \alpha)$, $c_D(M, \alpha)$ and $c_{L,\alpha}(M, \alpha)$.  The same can be done in the equation for $\varepsilon_i$.
 
 Now the propeller coefficients will be functions of $J$ and $M_{tip}$, so they must be computed and tabulated as such.
+
+
+Note: the number of blades affects the total blade section circulation at a
+given radial distance in the Goldstein's condition, and therefore the more
+blades we have, the larger the induced velocity will be, and the less is to be
+gained from adding further blades. in fact, while the traction coefficient
+increases with the number of blades, the propulsive efficiency is optimal for a
+single blade and decreases from there

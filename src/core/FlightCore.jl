@@ -1,7 +1,5 @@
 module FlightCore
 
-using Reexport
-
 include("iodevices.jl"); using .IODevices
 include("gui.jl"); using .GUI
 include("utils.jl"); using .Utils

@@ -12,10 +12,10 @@ using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.RigidBody
 using Flight.FlightPhysics.Environment
 
-using Flight.FlightAircraft.Control
-using Flight.FlightAircraft.Aircraft
-using Flight.FlightAircraft.World
-using Flight.FlightAircraft.Control: PIDDiscreteY
+using Flight.FlightComponents.Control
+using Flight.FlightComponents.Aircraft
+using Flight.FlightComponents.World
+using Flight.FlightComponents.Control: PIDDiscreteY
 
 using ..Airframe
 
@@ -24,7 +24,7 @@ export Cessna172Rv2
 ################################################################################
 ############################### Avionics #################################
 
-Base.@kwdef struct PitchRateControl <: Component
+Base.@kwdef struct PitchRateControl <: SystemDefinition
     c1::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0, k_i = 1, k_d = 0) #pure integrator
     c2::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 10, k_i = 20, k_d = 0.5, τ_d = 0.05, β_p = 1, β_d = 1) #see notebook
 end
@@ -83,13 +83,13 @@ function Systems.f_disc!(sys::System{PitchRateControl}, Δt::Real)
 
 end
 
-struct RollRateControl <: Component end
+struct RollRateControl <: SystemDefinition end
 struct RollRateControlY end
 
 #rationale for beta control in the inner CAS is that the user is likely to
 #desire automatic turn combination in conjunction with roll rate and pitch rate
 #augmentation, while yaw rate augmentation is not useful by itself
-struct SideslipControl <: Component end
+struct SideslipControl <: SystemDefinition end
 struct SideslipControlY end
 
 ################################ Avionics ######################################

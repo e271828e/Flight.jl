@@ -5,7 +5,7 @@ using Test
 using Flight.FlightCore.Systems
 using Flight.FlightCore.GUI
 
-using Flight.FlightAircraft.Control
+using Flight.FlightComponents.Control
 
 export test_gui
 

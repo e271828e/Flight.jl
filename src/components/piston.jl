@@ -20,7 +20,7 @@ using ..Control: PIContinuous, PIContinuousU, PIContinuousY
 ################################################################################
 ########################### AbstractFuelSupply #################################
 
-abstract type AbstractFuelSupply <: Component end
+abstract type AbstractFuelSupply <: SystemDefinition end
 
 RigidBody.MassTrait(::System{<:AbstractFuelSupply}) = HasMass()
 RigidBody.AngMomTrait(::System{<:AbstractFuelSupply}) = HasNoAngularMomentum()
@@ -43,7 +43,7 @@ fuel_available(f::System{MagicFuelSupply}) = f.u[]
 ################################################################################
 ########################### AbstractPistonEngine ###############################
 
-abstract type AbstractPistonEngine <: Component end
+abstract type AbstractPistonEngine <: SystemDefinition end
 
 const β = ISA_layers[1].β
 
@@ -474,7 +474,7 @@ end
 #with the propeller driving the engine instead of the other way around
 
 Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
-                            P <: AbstractPropeller} <: Component
+                            P <: AbstractPropeller} <: SystemDefinition
     engine::E = Engine()
     propeller::P = Propeller()
     gear_ratio::Float64 = 1.0 #gear ratio

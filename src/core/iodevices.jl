@@ -55,7 +55,7 @@ function start!(io::Interface{D}; verbose = true) where {D}
 
     @unpack device, target, mapping, channel, start, target_lock, ext_shutdown = io
 
-    verbose && println("Interface: Starting on thread $(Threads.threadid())...")
+    verbose && println("$D Interface: Starting on thread $(Threads.threadid())...")
 
     init!(device)
     wait(start)
@@ -72,7 +72,7 @@ function start!(io::Interface{D}; verbose = true) where {D}
             unlock(target_lock)
 
             if ext_shutdown && should_close(device)
-                println("Interface: Shutdown requested")
+                println("$D Interface: Shutdown requested")
                 break
             end
 
@@ -81,14 +81,14 @@ function start!(io::Interface{D}; verbose = true) where {D}
     catch ex
 
         if ex isa InvalidStateException
-            println("Interface: Channel closed")
+            println("$D Interface: Channel closed")
         else
-            println("Interface: Error during execution: $ex")
+            println("$D Interface: Error during execution: $ex")
         end
 
     finally
-        println("Interface: Exiting...")
         shutdown!(device)
+        println("$D Interface: Closed")
     end
 
 end

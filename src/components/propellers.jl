@@ -112,13 +112,6 @@ get_βa(b::Blade, ζ::Real, Δβ::Real) = get_βc(b, ζ, Δβ) - α_0(b.airfoil)
 ################################################################################
 ############################ Coefficients ##################################
 
-#note: the number of blades affects the total blade section circulation at a
-#given radial distance in the Goldstein's condition, and therefore the more
-#blades we have, the larger the induced velocity will be, and the less is to be
-#gained from adding further blades. in fact, while the traction coefficient
-#increases with the number of blades, the propulsive efficiency is optimal for a
-#single blade and decreases from there
-
 Base.@kwdef struct Coefficients{T}
     C_Fx::T
     C_Mx::T
@@ -291,7 +284,7 @@ end
     CCW = -1
 end
 
-abstract type AbstractPropeller <: Component end
+abstract type AbstractPropeller <: SystemDefinition end
 
 RigidBody.MassTrait(::System{<:AbstractPropeller}) = HasNoMass()
 RigidBody.AngMomTrait(::System{<:AbstractPropeller}) = HasAngularMomentum()
@@ -395,7 +388,7 @@ RigidBody.get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 ################################################################################
 ####################### ConstantSpeedPropeller #################################
 
-# abstract type AbstractGovernor <: Component end
+# abstract type AbstractGovernor <: SystemDefinition end
 
 # struct ConstantSpeedPropeller{P <: Propeller{VariablePitch}, G <: AbstractGovernor} <: AbstractPropeller
 #     propeller::P

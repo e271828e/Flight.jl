@@ -41,7 +41,7 @@ const g_std = 9.80665
 ################################################################################
 ############################ SeaLevelConditions ################################
 
-abstract type AbstractSeaLevelConditions <: Component end
+abstract type AbstractSeaLevelConditions <: SystemDefinition end
 
 Base.@kwdef struct SeaLevelData
     p::Float64 = p_std
@@ -174,7 +174,7 @@ end
 ################################################################################
 ################################# Wind #########################################
 
-abstract type AbstractWind <: Component end
+abstract type AbstractWind <: SystemDefinition end
 
 Base.@kwdef struct WindData
     v_ew_n::SVector{3,Float64} = zeros(SVector{3})
@@ -226,7 +226,7 @@ end
 ################################################################################
 ############################ AbstractAtmosphere ################################
 
-abstract type AbstractAtmosphere <: Component end
+abstract type AbstractAtmosphere <: SystemDefinition end
 
 Base.@kwdef struct AtmosphericData
     ISA::ISAData = ISAData()

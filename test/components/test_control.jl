@@ -9,7 +9,7 @@ using Flight.FlightCore.Systems
 using Flight.FlightCore.Sim
 using Flight.FlightCore.Plotting
 
-using Flight.FlightAircraft.Control
+using Flight.FlightComponents.Control
 
 export test_control
 

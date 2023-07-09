@@ -13,9 +13,9 @@ using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.Environment
 
-using Flight.FlightAircraft.Piston
-using Flight.FlightAircraft.Aircraft
-using Flight.FlightAircraft.World
+using Flight.FlightComponents.Piston
+using Flight.FlightComponents.Aircraft
+using Flight.FlightComponents.World
 
 using ..Airframe
 

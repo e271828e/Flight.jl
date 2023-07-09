@@ -11,9 +11,9 @@ using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.Environment
 
-using Flight.FlightAircraft.Aircraft
+using Flight.FlightComponents.Aircraft
 using Flight.FlightAircraft.C172R
-using Flight.FlightAircraft.World
+using Flight.FlightComponents.World
 
 export test_world
 
