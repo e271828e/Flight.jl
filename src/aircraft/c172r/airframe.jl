@@ -884,14 +884,20 @@ end
 
 ############################# Update Methods ###################################
 
-#pitch up -> Cm↑ -> trailing edge up -> δe↓ -> aero.e↓ -> -act.elevator↑ ###
-#act-aero inversion required
+#pitch up -> Cm↑ -> trailing edge up -> δe↓ -> aero.e↓
+### in order for a positive elevator actuation input (stick back) to
+#produce a positive pitching moment, we need an inversion from elevator
+#actuation input to actual elevator deflection (aero.e = -act.elevator). then we
+#get: act.elevator↑ -> aero.e↓ -> pitch up
 
 #roll right -> Cl↑ -> left trailing edge down, right up -> δa↑ -> aero.a↑ ->
 #act.aileron↑ ### no act-aero inversion
 
-#yaw right -> Cn↑ -> rudder trailing edge right -> δr↓ -> aero.r↓ -> -act.rudder↑
-#(right pedal forward) ### act-aero inversion required
+#yaw right -> Cn↑ -> rudder trailing edge right -> δr↓ -> aero.r↓
+### in order for a positive rudder actuation input (right pedal forward) to
+#produce a positive yawing moment, we need an inversion from rudder actuation
+#input to actual rudder deflection (aero.r = -act.rudder). then we get:
+#act.rudder↑ -> aero.r↓ -> yaw right
 
 #yaw right -> nose wheel steering right -> act.rudder↑ (right pedal forward) ### no
 #act-nws inversion
