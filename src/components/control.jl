@@ -1,7 +1,7 @@
 module Control
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
-using ControlSystems: ControlSystems, ss
+using ControlSystems: ControlSystemsBase, ControlSystems, ss
 
 using Flight.FlightCore.Systems
 using Flight.FlightCore.Plotting
@@ -42,6 +42,12 @@ end
 LinearStateSpace(; ẋ0, x0, u0, y0, A, B, C, D) = LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
 ControlSystems.ss(cmp::LinearStateSpace) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
+
+function LinearStateSpace(sys::ControlSystemsBase.StateSpace{ControlSystemsBase.Continuous, <:AbstractFloat})
+    @unpack A, B, C, D, nx, nu, ny = sys
+    ẋ0 = zeros(nx); x0 = zeros(nx); u0 = zeros(nu); y0 = zeros(ny)
+    LinearStateSpace(; ẋ0, x0, u0, y0, A, B, C, D)
+end
 
 Systems.init(::SystemX, cmp::LinearStateSpace) = copy(cmp.x0)
 Systems.init(::SystemU, cmp::LinearStateSpace) = copy(cmp.u0)
@@ -344,7 +350,7 @@ end
 
 function PIDDiscrete{N}(; k_p::Real = 1.0, k_i::Real = 0.1,
                         k_d::Real = 0, τ_d::Real = 0.05,
-                        β_p::Real = 1.0, β_d::Real = 0) where {N}
+                        β_p::Real = 1.0, β_d::Real = 1.0) where {N}
     s2v = (x)->fill(x,N)
     PIDDiscrete{N}( s2v(k_p), s2v(k_i),
                    s2v(k_d), s2v(τ_d),

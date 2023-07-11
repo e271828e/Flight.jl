@@ -474,7 +474,7 @@ end
 mutable struct TimeHistory{V, T <: AbstractVector{Float64}, D <: AbstractVector{V}}
     _t::T
     _data::D
-    function TimeHistory(t::T, data::D) where {T, D <: AbstractVector{V}} where {V}
+    function TimeHistory(t::T, data::D) where {T <: AbstractVector{<:AbstractFloat}, D <: AbstractVector{V}} where {V}
         @assert length(t) == length(data)
         new{V, T, D}(t, data)
     end
@@ -504,7 +504,12 @@ end
 get_timestamps(th::TimeHistory) = getfield(th, :_t)
 get_data(th::TimeHistory) = getfield(th, :_data)
 
-Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._data[i])
+function Base.getindex(th::TimeHistory, i)
+    TimeHistory(th._t[i], th._data[i])
+end
+function Base.lastindex(th::TimeHistory)
+    lastindex(th._t)
+end
 Base.view(th::TimeHistory, i) = TimeHistory(view(th._t, i), view(th._data, i))
 
 #for inspection

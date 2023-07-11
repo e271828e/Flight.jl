@@ -4,6 +4,7 @@ using Test
 using BenchmarkTools
 using UnPack
 using ComponentArrays
+using ControlSystems
 
 using Flight.FlightCore.Systems
 using Flight.FlightCore.Sim
@@ -218,11 +219,41 @@ function test_pid_discrete(save = false)
         # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
         # save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
 
-        return
+        #test the numerical correctness of the PID discretization
 
-    end #testset
+        #first, define an arbitrary PID through its transfer function, convert
+        #it to a continuous LinearStateSpace System and simulate it for a unit
+        #step input
+        k_p = 1
+        k_i = 1
+        k_d = 0.2
+        τ_d = 0.1
+        pid_tf = k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_d, 1])
+
+        pid_ss = ss(pid_tf)
+        pid_lss = LinearStateSpace(pid_ss) |> System
+        pid_lss.u .= 1
+        sim = Simulation(pid_lss; dt = 0.0001, t_end = 2)
+        Sim.run!(sim)
+        th_lss = TimeHistory(sim)
+        th_y_lss = (Sim.get_components(th_lss) |> collect)[1]
+        y_lss_last = Sim.get_data(th_y_lss)[end]
+
+        #then, define the equivalent discrete PID and simulate it for a unit
+        #step input
+        pid_disc = PIDDiscrete{1}(; k_p, k_i, k_d, τ_d) |> System
+        pid_disc.u.setpoint .= 1
+        sim = Simulation(pid_disc; Δt = 0.0001, t_end = 2)
+        Sim.run!(sim)
+        th_disc = TimeHistory(sim)
+        th_y_disc = (Sim.get_components(th_disc.out) |> collect)[1]
+        y_disc_last = Sim.get_data(th_y_disc)[end]
+
+        #compare the final values
+        @test y_lss_last ≈ y_disc_last atol=1e-4
+
+        end #testset
 
 end #function
-
 
 end #module
