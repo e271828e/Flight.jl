@@ -485,7 +485,7 @@ Base.@kwdef struct Aero <: SystemDefinition
     δf_range::NTuple{2,Float64} = deg2rad.((0, 30)) #flap deflection range (rad)
     α_stall::NTuple{2,Float64} = (0.09, 0.36) #α values for stall hysteresis switching
     V_min::Float64 = 1.0 #lower airspeed threshold for non-dimensional angle rates
-    τ::Float64 = 0.05 #time constant for filtered airflow angle derivatives
+    τ::Float64 = 0.02 #time constant for filtered airflow angle derivatives
 end
 
 #e↑ -> δe↑ -> trailing edge down -> Cm↓ -> pitch down
