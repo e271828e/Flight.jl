@@ -107,7 +107,9 @@ function GUI.draw!(avionics::System{<:DirectControls}, airframe::System{<:C172RA
     CImGui.PushItemWidth(-60)
 
     u.eng_start = dynamic_button("Engine Start", 0.4); CImGui.SameLine()
-    u.eng_stop = dynamic_button("Engine Stop", 0.0)
+    u.eng_stop = dynamic_button("Engine Stop", 0.0); CImGui.SameLine()
+    CImGui.Text(@sprintf("Engine Speed: %.3f RPM", Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
+
     u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
     u.aileron = safe_slider("Aileron", u.aileron, "%.6f")
     u.elevator = safe_slider("Elevator", u.elevator, "%.6f")
@@ -120,8 +122,6 @@ function GUI.draw!(avionics::System{<:DirectControls}, airframe::System{<:C172RA
     u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
     u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
 
-    CImGui.Text(@sprintf("Engine Speed: %.3f RPM",
-                        Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
 
     CImGui.PopItemWidth()
 

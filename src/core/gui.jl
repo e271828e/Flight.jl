@@ -13,7 +13,7 @@ using ImGuiOpenGLBackend
 using ImGuiOpenGLBackend.ModernGL
 
 export CImGuiStyle, Renderer
-export dynamic_button, display_bar, safe_slider, safe_input, @running_plot
+export dynamic_button, toggle_switch, display_bar, safe_slider, safe_input, @running_plot
 
 ################################################################################
 ############################# Renderer####################################
@@ -285,11 +285,24 @@ function show_help_marker(desc::String)
 end
 
 #changes shade when hovered and pushed
-function dynamic_button(label::String, hue::AbstractFloat)
+function toggle_switch(label::String, hue::AbstractFloat, enabled::Bool)
+    if enabled
+        CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(hue, 0.8, 0.8))
+    else
+        CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(hue, 0.2, 0.2))
+    end
+    CImGui.Button(label)
+    CImGui.PopStyleColor(1)
+    enable = CImGui.IsItemActive()
+    return enable
+end
+
+#changes shade when hovered and pushed
+function dynamic_button(label::String, hue::AbstractFloat = 0.4)
     CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(hue, 0.6, 0.6))
     CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(hue, 0.7, 0.7))
     CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(hue, 0.8, 0.8))
-    CImGui.Button((label))
+    CImGui.Button(label)
     is_pressed = CImGui.IsItemActive()
     CImGui.PopStyleColor(3)
     return is_pressed
@@ -301,6 +314,9 @@ function display_bar(label::String, source::Real, lower_bound::Real, upper_bound
     CImGui.ProgressBar((source - lower_bound)/(upper_bound - lower_bound), size_arg, "$source")
 end
 
+#the string after ## is not shown, but is part of the widget's ID, which must be
+#unique to avoid conflicts. an alternative solution is to use PushID and PopID.
+#See DearImGui FAQ
 function safe_slider(label::String, source::AbstractFloat, lower_bound::Real, upper_bound::Real, display_format::String)
     ref = Ref(Cfloat(source))
     CImGui.Text(label)

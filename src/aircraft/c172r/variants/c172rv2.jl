@@ -22,21 +22,23 @@ using ..Airframe
 export Cessna172Rv2
 
 ################################################################################
-############################### Avionics #################################
+################################# Avionics #####################################
 
-Base.@kwdef struct PitchRateControl <: SystemDefinition
+############################# PitchRateControl #################################
+
+@kwdef struct PitchRateControl <: SystemDefinition
     c1::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0, k_i = 1, k_d = 0) #pure integrator
     c2::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 10, k_i = 20, k_d = 0.5, τ_d = 0.05, β_p = 1, β_d = 1) #see notebook
 end
 
 #overrides the default NamedTuple built from subsystem u's
-Base.@kwdef mutable struct PitchRateControlU
+@kwdef mutable struct PitchRateControlU
     q_cmd::Float64 = 0.0
     q_fbk::Float64 = 0.0
     reset::Bool = false
 end
 
-Base.@kwdef struct PitchRateControlY
+@kwdef struct PitchRateControlY
     q_cmd::Float64 = 0.0
     q_fbk::Float64 = 0.0
     e_cmd::Float64 = 0.0 #elevator command
@@ -57,8 +59,6 @@ function Systems.init!(sys::System{PitchRateControl})
     c2.u.bound_lo .= -1 #lower bound for MechanicalActuation's normalized elevator input
     c2.u.bound_hi .= 1 #upper bound for MechanicalActuation's normalized elevator input
     c2.u.anti_windup .= true
-
-    println("Try setting β_d = 0 in c2")
 end
 
 function Systems.f_disc!(sys::System{PitchRateControl}, Δt::Real)
@@ -83,14 +83,105 @@ function Systems.f_disc!(sys::System{PitchRateControl}, Δt::Real)
 
 end
 
-struct RollRateControl <: SystemDefinition end
-struct RollRateControlY end
+
+############################## RollRateControl #################################
+
+@kwdef struct RollRateControl <: SystemDefinition
+    c::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0.5, k_i = 10, k_d = 0.05, τ_d = 0.05) #see notebook
+end
+
+#overrides the default NamedTuple built from subsystem u's
+@kwdef mutable struct RollRateControlU
+    p_cmd::Float64 = 0.0
+    p_fbk::Float64 = 0.0
+    reset::Bool = false
+end
+
+@kwdef struct RollRateControlY
+    p_cmd::Float64 = 0.0
+    p_fbk::Float64 = 0.0
+    a_cmd::Float64 = 0.0 #aileron command
+    reset::Bool = false
+    c::PIDDiscreteY{1} = PIDDiscreteY{1}()
+end
+
+Systems.init(::SystemU, ::RollRateControl) = RollRateControlU()
+Systems.init(::SystemY, ::RollRateControl) = RollRateControlY()
+
+function Systems.init!(sys::System{RollRateControl})
+    @unpack c = sys.subsystems
+    c.u.bound_lo .= -1 #lower bound for MechanicalActuation's normalized aileron input
+    c.u.bound_hi .= 1 #upper bound for MechanicalActuation's normalized aileron input
+    c.u.sat_ext .= 0 #only output saturation required
+    c.u.anti_windup .= true
+end
+
+function Systems.f_disc!(sys::System{RollRateControl}, Δt::Real)
+    @unpack p_cmd, p_fbk, reset = sys.u
+    @unpack c = sys.subsystems
+
+    c.u.setpoint .= p_cmd
+    c.u.feedback .= p_fbk
+    c.u.reset .= reset
+    f_disc!(c, Δt)
+
+    a_cmd = c.y.out[1]
+
+    sys.y = RollRateControlY(; p_cmd, p_fbk, a_cmd, reset, c = c.y)
+
+end
+
+
+############################## SideslipControl #################################
 
 #rationale for beta control in the inner CAS is that the user is likely to
 #desire automatic turn combination in conjunction with roll rate and pitch rate
 #augmentation, while yaw rate augmentation is not useful by itself
-struct SideslipControl <: SystemDefinition end
-struct SideslipControlY end
+@kwdef struct SideslipControl <: SystemDefinition
+    c::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 10, k_i = 25, k_d = 5, τ_d = 0.05) #see notebook
+end
+
+#overrides the default NamedTuple built from subsystem u's
+@kwdef mutable struct SideslipControlU
+    β_cmd::Float64 = 0.0
+    β_fbk::Float64 = 0.0
+    reset::Bool = false
+end
+
+@kwdef struct SideslipControlY
+    β_cmd::Float64 = 0.0
+    β_fbk::Float64 = 0.0
+    r_cmd::Float64 = 0.0 #rudder command
+    reset::Bool = false
+    c::PIDDiscreteY{1} = PIDDiscreteY{1}()
+end
+
+Systems.init(::SystemU, ::SideslipControl) = SideslipControlU()
+Systems.init(::SystemY, ::SideslipControl) = SideslipControlY()
+
+function Systems.init!(sys::System{SideslipControl})
+    @unpack c = sys.subsystems
+    c.u.bound_lo .= -1 #lower bound for MechanicalActuation's normalized aileron input
+    c.u.bound_hi .= 1 #upper bound for MechanicalActuation's normalized aileron input
+    c.u.sat_ext .= 0 #only output saturation required
+    c.u.anti_windup .= true
+end
+
+function Systems.f_disc!(sys::System{SideslipControl}, Δt::Real)
+    @unpack β_cmd, β_fbk, reset = sys.u
+    @unpack c = sys.subsystems
+
+    c.u.setpoint .= β_cmd
+    c.u.feedback .= β_fbk
+    c.u.reset .= reset
+    f_disc!(c, Δt)
+
+    #note the sign inversion, see design notebook!
+    r_cmd = -c.y.out[1]
+
+    sys.y = SideslipControlY(; β_cmd, β_fbk, r_cmd, reset, c = c.y)
+
+end
 
 ################################ Avionics ######################################
 
@@ -105,7 +196,7 @@ end
     CAS_active = 2
 end
 
-Base.@kwdef mutable struct AvionicsInterfaceU
+@kwdef mutable struct AvionicsInterfaceU
     eng_start::Bool = false
     eng_stop::Bool = false
     CAS_enable::Bool = false
@@ -122,7 +213,7 @@ Base.@kwdef mutable struct AvionicsInterfaceU
     brake_right::Ranged{Float64, 0, 1} = 0.0
 end
 
-Base.@kwdef struct AvionicsInterfaceY
+@kwdef struct AvionicsInterfaceY
     eng_start::Bool = false
     eng_stop::Bool = false
     CAS_enable::Bool = false
@@ -139,15 +230,15 @@ Base.@kwdef struct AvionicsInterfaceY
     brake_right::Float64 = 0.0
 end
 
-Base.@kwdef struct AvionicsLogicY
+@kwdef struct AvionicsLogicY
     flight_phase::FlightPhase = phase_gnd
     CAS_state::CASState = CAS_disabled
 end
 
-Base.@kwdef struct Avionics <: AbstractAvionics
+@kwdef struct Avionics <: AbstractAvionics
     p_cmd_sf::Float64 = 0.2 #roll_input to p_cmd scale factor (roll_input ∈ [-1, 1])
     q_cmd_sf::Float64 = 0.2 #pitch_input to q_cmd scale factor (pitch_input ∈ [-1, 1])
-    β_cmd_sf::Float64 = 0.1 #yaw_input to β_cmd scale factor (yaw_input ∈ [-1, 1])
+    β_cmd_sf::Float64 = 0.2 #yaw_input to β_cmd scale factor (yaw_input ∈ [-1, 1])
     p_control::RollRateControl = RollRateControl()
     q_control::PitchRateControl = PitchRateControl()
     β_control::SideslipControl = SideslipControl()
@@ -155,7 +246,7 @@ end
 
 const AvionicsU = AvionicsInterfaceU
 
-Base.@kwdef struct AvionicsY
+@kwdef struct AvionicsY
     interface::AvionicsInterfaceY = AvionicsInterfaceY()
     logic::AvionicsLogicY = AvionicsLogicY()
     p_control::RollRateControlY = RollRateControlY()
@@ -185,7 +276,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     lmain_wow = airframe.y.ldg.left.strut.wow
     rmain_wow = airframe.y.ldg.right.strut.wow
 
-    flight_phase = (nlg_wow && lmain_wow && rmain_wow) ? phase_air : phase_gnd
+    flight_phase = (!nlg_wow && !lmain_wow && !rmain_wow) ? phase_air : phase_gnd
 
     if !CAS_enable
         CAS_state = CAS_disabled
@@ -196,9 +287,9 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     p, q, _ = kinematics.ω_lb_b
     β = air.β_b
 
-    # p_control.u.reset = (CAS_state === CAS_active ? false : true)
-    # p_control.u.p_cmd = p_cmd_sf * Float64(roll_input)
-    # p_control.u.p_fbk = p
+    p_control.u.reset = (CAS_state === CAS_active ? false : true)
+    p_control.u.p_cmd = p_cmd_sf * Float64(roll_input)
+    p_control.u.p_fbk = p
     f_disc!(p_control, Δt)
 
     q_control.u.reset = (CAS_state === CAS_active ? false : true)
@@ -206,10 +297,21 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     q_control.u.q_fbk = q
     f_disc!(q_control, Δt)
 
-    # β_control.u.reset = (CAS_state === CAS_active ? false : true)
-    # β_control.u.β_cmd = β_cmd * Float64(yaw_input)
-    # β_control.u.β_fbk = β
+    β_control.u.reset = (CAS_state === CAS_active ? false : true)
+    β_control.u.β_cmd = β_cmd_sf * Float64(yaw_input)
+    β_control.u.β_fbk = β
     f_disc!(β_control, Δt)
+
+    # @show CAS_state
+    # @show q_control.y.reset
+    # @show q_control.y.e_cmd
+    # @show p_control.y.a_cmd
+    # @show β_control.y.β_cmd
+    # @show β_control.y.β_fbk
+    # @show β_control.y.r_cmd
+    # @show q_control.y.q_cmd
+    # @show q_control.y.q_fbk
+    # @show q_control.y.e_cmd
 
     interface_y = AvionicsInterfaceY(;
             eng_start, eng_stop, CAS_enable, throttle, mixture,
@@ -240,11 +342,11 @@ function Aircraft.map_controls!(airframe::System{<:C172RAirframe},
     u_act = airframe.act.u
 
     if avionics.y.logic.CAS_state === CAS_active
-        # u_act.aileron = avionics.y.p_control.a_cmd
-        u_act.aileron = roll_input #roll_input maps directly to elevator
+        u_act.aileron = avionics.y.p_control.a_cmd
+        # u_act.aileron = roll_input #roll_input maps directly to elevator
         u_act.elevator = avionics.y.q_control.e_cmd
-        # u_act.rudder = avionics.y.β_control.r_cmd
-        u_act.rudder = yaw_input #yaw_input maps directly to elevator
+        u_act.rudder = avionics.y.β_control.r_cmd
+        # u_act.rudder = yaw_input #yaw_input maps directly to elevator
     else #disabled or standby
         u_act.aileron = roll_input #roll_input maps directly to elevator
         u_act.elevator = pitch_input #pitch_input maps directly to elevator
@@ -262,20 +364,30 @@ end
 ################################## GUI #########################################
 
 function GUI.draw!(avionics::System{<:Avionics}, airframe::System{<:C172RAirframe},
-                    label::String = "Cessna 172R Direct Controls")
+                    label::String = "Cessna 172R CAS Avionics")
 
     u = avionics.u
+    y = avionics.y
 
     CImGui.Begin(label)
 
     CImGui.PushItemWidth(-60)
 
     u.eng_start = dynamic_button("Engine Start", 0.4); CImGui.SameLine()
-    u.eng_stop = dynamic_button("Engine Stop", 0.0)
+    u.eng_stop = dynamic_button("Engine Stop", 0.0); CImGui.SameLine()
+    CImGui.Text(@sprintf("Engine Speed: %.3f RPM", Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
+
+    u.CAS_enable = toggle_switch("CAS", 0.4, u.CAS_enable)
+    CImGui.Text("Flight Phase: $(y.logic.flight_phase)")
+    CImGui.Text("CAS State: $(y.logic.CAS_state)")
+
+    #maybe make the displayed variables depend on CAS state and mode
+    #(aileron input vs roll rate demand vs bank angle demand)
+
     u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
-    u.aileron = safe_slider("Aileron", u.aileron, "%.6f")
-    u.elevator = safe_slider("Elevator", u.elevator, "%.6f")
-    u.rudder = safe_slider("Rudder", u.rudder, "%.6f")
+    u.roll_input = safe_slider("Roll Input", u.roll_input, "%.6f")
+    u.pitch_input = safe_slider("Pitch Input", u.pitch_input, "%.6f")
+    u.yaw_input = safe_slider("Yaw Input", u.yaw_input, "%.6f")
     u.aileron_trim = safe_input("Aileron Trim", u.aileron_trim, 0.001, 0.1, "%.6f")
     u.elevator_trim = safe_input("Elevator Trim", u.elevator_trim, 0.001, 0.1, "%.6f")
     u.rudder_trim = safe_input("Rudder Trim", u.rudder_trim, 0.001, 0.1, "%.6f")
@@ -284,8 +396,6 @@ function GUI.draw!(avionics::System{<:Avionics}, airframe::System{<:C172RAirfram
     u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
     u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
 
-    CImGui.Text(@sprintf("Engine Speed: %.3f RPM",
-                        Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
 
     CImGui.PopItemWidth()
 
@@ -319,9 +429,9 @@ function IODevices.assign!(sys::System{Avionics},
 
     u = sys.u
 
-    u.aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.elevator = get_axis_value(joystick, :right_analog_y) |> elevator_curve
-    u.rudder = get_axis_value(joystick, :left_analog_x) |> rudder_curve
+    u.roll_input = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.pitch_input = get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.yaw_input = get_axis_value(joystick, :left_analog_x) |> rudder_curve
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
@@ -345,9 +455,9 @@ function IODevices.assign!(sys::System{Avionics},
     u = sys.u
 
     u.throttle = get_axis_value(joystick, :throttle)
-    u.aileron = get_axis_value(joystick, :stick_x) |> aileron_curve
-    u.elevator = get_axis_value(joystick, :stick_y) |> elevator_curve
-    u.rudder = get_axis_value(joystick, :stick_z) |> rudder_curve
+    u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
+    u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
+    u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
 
     u.brake_left = is_pressed(joystick, :button_1)
     u.brake_right = is_pressed(joystick, :button_1)
