@@ -378,19 +378,19 @@ Base.@kwdef struct PIDDiscreteY{N}
     feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
     bound_lo::SVector{N,Float64} = fill(-Inf, N) #lower output bounds
     bound_hi::SVector{N,Float64} = fill(Inf, N) #higher output bounds
-    sat_ext::SVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
     anti_windup::SVector{N,Bool} = zeros(SVector{N, Bool}) #anti wind-up enabled
     reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID states and null outputs
     u_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path input
     u_i::SVector{N,Float64} = zeros(SVector{N}) #integral path input
     u_d::SVector{N,Float64} = zeros(SVector{N}) #derivative path input
-    int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
     y_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path output
     y_i::SVector{N,Float64} = zeros(SVector{N}) #integral path output
     y_d::SVector{N,Float64} = zeros(SVector{N}) #derivative path output
     out_free::SVector{N,Float64} = zeros(SVector{N}) #non-clamped PID output
     out::SVector{N,Float64} = zeros(SVector{N}) #actual PID output
+    sat_ext::SVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
     sat_out::SVector{N,Int64} = zeros(SVector{N, Int64}) #current output saturation status
+    int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
 Systems.init(::SystemY, ::PIDDiscrete{N}) where {N} = PIDDiscreteY{N}()
@@ -450,10 +450,9 @@ function Systems.f_disc!(sys::System{<:PIDDiscrete{N}}, Δt::Real) where {N}
     s.x_d0 .= x_d
     s.sat_out_0 .= sat_out
 
-    sys.y = PIDDiscreteY(; setpoint, feedback, bound_lo, bound_hi,
-                           sat_ext, anti_windup, reset,
-                           u_p, u_i, u_d, int_halt, y_p, y_i, y_d,
-                           out_free, out, sat_out)
+    sys.y = PIDDiscreteY(; setpoint, feedback, bound_lo, bound_hi, anti_windup,
+                           reset, u_p, u_i, u_d, y_p, y_i, y_d,
+                           out_free, out, sat_ext, sat_out, int_halt)
 
     return false
 
