@@ -326,7 +326,7 @@ Base.@kwdef struct PropellerY
 end
 
 Systems.init(::SystemU, ::Propeller{FixedPitch}) = nothing
-Systems.init(::SystemU, ::Propeller{VariablePitch}) = Ref(Ranged(0.0, 0, 1))
+Systems.init(::SystemU, ::Propeller{VariablePitch}) = Ref(Ranged(0.0, 0., 1.))
 Systems.init(::SystemY, ::Propeller) = PropellerY()
 
 get_Δβ(sys::System{<:Propeller{FixedPitch}}) = 0.0

@@ -64,8 +64,8 @@ struct TunableSeaLevelConditions <: AbstractSeaLevelConditions end
 
 #these probably should be defined as Ranged
 Base.@kwdef mutable struct TunableSeaLevelConditionsU
-    T::Ranged{Float64, T_std - 50, T_std + 50} = T_std
-    p::Ranged{Float64, p_std - 10000, p_std + 10000} = p_std
+    T::Ranged{Float64, T_std - 50.0, T_std + 50.0} = T_std
+    p::Ranged{Float64, p_std - 10000.0, p_std + 10000.0} = p_std
 end
 
 const TunableSeaLevelConditionsY = SeaLevelData

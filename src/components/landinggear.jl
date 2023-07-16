@@ -43,7 +43,7 @@ Base.@kwdef struct DirectSteeringY
     ψ::Float64 = 0.0
 end
 #the contents of u must be mutable
-Systems.init(::SystemU, ::DirectSteering) = Ref(Ranged(0.0, -1, 1))
+Systems.init(::SystemU, ::DirectSteering) = Ref(Ranged(0.0, -1., 1.))
 Systems.init(::SystemY, ::DirectSteering) = DirectSteeringY(0.0) #steering angle
 
 function Systems.f_ode!(sys::System{DirectSteering})
@@ -84,7 +84,7 @@ Base.@kwdef struct DirectBrakingY
    κ_br::Float64 = 0.0 #braking coefficient
 end
 
-Systems.init(::SystemU, ::DirectBraking) = Ref(Ranged(0.0, 0, 1))
+Systems.init(::SystemU, ::DirectBraking) = Ref(Ranged(0.0, 0., 1.))
 Systems.init(::SystemY, ::DirectBraking) = DirectBrakingY()
 
 function Systems.f_ode!(sys::System{DirectBraking})

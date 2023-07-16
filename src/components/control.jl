@@ -389,7 +389,7 @@ Base.@kwdef struct PIDDiscreteY{N}
     out_free::SVector{N,Float64} = zeros(SVector{N}) #non-clamped PID output
     out::SVector{N,Float64} = zeros(SVector{N}) #actual PID output
     sat_ext::SVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
-    sat_out::SVector{N,Int64} = zeros(SVector{N, Int64}) #current output saturation status
+    sat_out::SVector{N,Int64} = zeros(SVector{N, Int64}) #output saturation status
     int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
@@ -414,18 +414,19 @@ function Systems.f_disc!(sys::System{<:PIDDiscrete{N}}, Δt::Real) where {N}
     x_d0 = SVector(s.x_d0)
     sat_out_0 = SVector(s.sat_out_0)
 
+    α = 1 ./ (τ_d .+ Δt)
+
     u_p = β_p .* setpoint - feedback
     u_d = β_d .* setpoint - feedback
     u_i = setpoint - feedback
 
     #integration is halted in those components for which:
-    #((output saturation has the same sign as integrator path input) OR
-    #(external saturation signal has the same sign as integrator path input))
+    #((output saturation has the same sign as integrator path output increment) OR
+    #(external saturation signal has the same sign as integrator path output increment))
     #AND (anti_windup is enabled)
-    int_halt = ((sign.(u_i .* sat_out_0) .> 0) .|| (sign.(u_i .* sat_ext) .> 0)) .&& anti_windup
-    α = 1 ./ (τ_d .+ Δt)
-
-    x_i = x_i0 + Δt * k_i .* u_i .* .!int_halt
+    Δx_i = Δt * k_i .* u_i
+    int_halt = ((sign.(Δx_i .* sat_out_0) .> 0) .|| (sign.(Δx_i .* sat_ext) .> 0)) .&& anti_windup
+    x_i = x_i0 + Δx_i .* .!int_halt
     x_d = α .* τ_d .* x_d0 + Δt * α .* k_d .* u_d
 
     y_p = k_p .* u_p

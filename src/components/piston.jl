@@ -126,8 +126,8 @@ end
 Base.@kwdef mutable struct PistonEngineU
     start::Bool = false
     stop::Bool = false
-    throttle::Ranged{Float64, 0, 1} = 0.0 #throttle setting
-    mixture::Ranged{Float64, 0, 1} = 0.5 #mixture setting
+    throttle::Ranged{Float64, 0., 1.} = 0.0 #throttle setting
+    mixture::Ranged{Float64, 0., 1.} = 0.5 #mixture setting
     idle::PIContinuousU{1} = PIContinuousU{1}()
     frc::PIContinuousU{1} = PIContinuousU{1}()
 end

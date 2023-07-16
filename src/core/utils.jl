@@ -14,15 +14,20 @@ export MovingAverage
 #needs some unit tests
 struct Ranged{T<:Real, Min, Max}
     val::T
-    function Ranged(val::T, min_val::Real, max_val::Real) where {T}
+    function Ranged(val::T, min_val::T, max_val::T) where {T <: Real}
         new{T, min_val, max_val}(min(max(val, min_val), max_val))
     end
 end
 
+Ranged(val::T, vmin::Real, vmax::Real) where {T} = Ranged(val, T(vmin), T(vmax))
 Ranged{T}(x::Ranged) where {T} = convert(Ranged{T}, x)
 Ranged{T,Min,Max}(x::Ranged) where {T,Min,Max} = convert(Ranged{T,Min,Max}, x)
 (T::Type{<:Real})(x::Ranged) = convert(T, x)
 
+Base.typemin(::Type{Ranged{T,Min,Max}}) where {T, Min, Max} = Min
+Base.typemin(::T) where {T <: Ranged} = typemin(T)
+Base.typemax(::Type{Ranged{T,Min,Max}}) where {T, Min, Max} = Max
+Base.typemax(::T) where {T <: Ranged} = typemax(T)
 Base.convert(::Type{T}, x::Ranged) where {T<:Real} = T(x.val)
 Base.convert(::Type{Ranged{T,Min,Max}}, x::Real) where {T, Min, Max} = Ranged(T(x), Min, Max)
 

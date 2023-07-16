@@ -28,17 +28,17 @@ struct DirectControls <: AbstractAvionics end
 Base.@kwdef mutable struct DirectControlsU
     eng_start::Bool = false
     eng_stop::Bool = false
-    throttle::Ranged{Float64, 0, 1} = 0.0
-    mixture::Ranged{Float64, 0, 1} = 0.5
-    aileron::Ranged{Float64, -1, 1} = 0.0
-    elevator::Ranged{Float64, -1, 1} = 0.0
-    rudder::Ranged{Float64, -1, 1} = 0.0
-    aileron_trim::Ranged{Float64, -1, 1} = 0.0
-    elevator_trim::Ranged{Float64, -1, 1} = 0.0
-    rudder_trim::Ranged{Float64, -1, 1} = 0.0
-    flaps::Ranged{Float64, 0, 1} = 0.0
-    brake_left::Ranged{Float64, 0, 1} = 0.0
-    brake_right::Ranged{Float64, 0, 1} = 0.0
+    throttle::Ranged{Float64, 0., 1.} = 0.0
+    mixture::Ranged{Float64, 0., 1.} = 0.5
+    aileron::Ranged{Float64, -1., 1.} = 0.0
+    elevator::Ranged{Float64, -1., 1.} = 0.0
+    rudder::Ranged{Float64, -1., 1.} = 0.0
+    aileron_trim::Ranged{Float64, -1., 1.} = 0.0
+    elevator_trim::Ranged{Float64, -1., 1.} = 0.0
+    rudder_trim::Ranged{Float64, -1., 1.} = 0.0
+    flaps::Ranged{Float64, 0., 1.} = 0.0
+    brake_left::Ranged{Float64, 0., 1.} = 0.0
+    brake_right::Ranged{Float64, 0., 1.} = 0.0
 end
 
 Base.@kwdef struct DirectControlsY
