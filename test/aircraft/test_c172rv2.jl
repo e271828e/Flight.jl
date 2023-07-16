@@ -79,6 +79,9 @@ function test_pitch_rate_cas(; save::Bool = true)
 
         world.u.ac.avionics.eng_start = true #engine start switch on
         world.u.ac.avionics.CAS_enable = true #enable CAS
+        world.u.ac.avionics.roll_control_mode_select = C172Rv2.bank_mode
+        world.u.ac.avionics.pitch_control_mode_select = C172Rv2.inclination_mode
+        world.u.ac.avionics.yaw_control_mode_select = C172Rv2.sideslip_mode
         world.u.ac.avionics.throttle = 1
         world.u.env.atm.wind.v_ew_n .= [0, 0, 0]
 
@@ -87,16 +90,16 @@ function test_pitch_rate_cas(; save::Bool = true)
             function (u, s, y, t, params)
 
                 if 0 < t < 10
-                    u.ac.avionics.pitch_input = 0
                     u.ac.avionics.roll_input = 0
+                    u.ac.avionics.pitch_input = 0
                     u.ac.avionics.yaw_input = 0
                 elseif 10 < t < 15
-                    u.ac.avionics.pitch_input = 0.1
-                    # u.ac.avionics.roll_input = 0.1
-                    # u.ac.avionics.yaw_input = 0.5
+                    u.ac.avionics.roll_input = 0.5
+                    u.ac.avionics.pitch_input = 0.
+                    u.ac.avionics.yaw_input = 0.
                 else #t>15
-                    u.ac.avionics.pitch_input = 0
-                    u.ac.avionics.roll_input = 0
+                    u.ac.avionics.roll_input = 0.5
+                    u.ac.avionics.pitch_input = 0.
                     u.ac.avionics.yaw_input = 0
                 end
             end

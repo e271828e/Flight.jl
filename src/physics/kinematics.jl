@@ -514,6 +514,8 @@ Systems.f_step!(sys::System{NED}, args...) = false
     ylims --> y_bounds
     zlims --> z_bounds
 
+    yflip --> true #needed for local NED frame
+
     #marker projection lines
     linecolor --> :lightgray
     for i in (1,n)

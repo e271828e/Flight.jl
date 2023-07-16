@@ -8,6 +8,7 @@ using Flight.FlightCore.IODevices
 using Flight.FlightCore.Joysticks
 using Flight.FlightCore.Utils: Ranged
 
+using Flight.FlightPhysics.Attitude
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.RigidBody
 using Flight.FlightPhysics.Environment
@@ -100,7 +101,7 @@ end
 
 #overrides the default NamedTuple built from subsystem u's
 @kwdef mutable struct PitchControlU
-    pitch_control_mode::PitchControlMode = elevator_mode
+    mode::PitchControlMode = elevator_mode
     e_cmd::Float64 = 0.0
     q_cmd::Float64 = 0.0
     θ_cmd::Float64 = 0.0
@@ -139,7 +140,7 @@ function Systems.f_disc!(sys::System{PitchControl}, Δt::Real)
         f_disc!(q_comp, Δt)
         e_out = Ranged(q_comp.y.out, -1., 1.)
     end
-    # @show typeof(e_out)
+
     e_sat = (e_out == typemax(e_out)) - (e_out == typemin(e_out))
     q_comp.u.sat = e_sat #will take effect on the next call
 
@@ -163,7 +164,7 @@ end
 
 #overrides the default NamedTuple built from subsystem u's
 @kwdef mutable struct RollControlU
-    roll_control_mode::RollControlMode = aileron_mode
+    mode::RollControlMode = aileron_mode
     a_cmd::Float64 = 0.0
     p_cmd::Float64 = 0.0
     φ_cmd::Float64 = 0.0
@@ -229,7 +230,7 @@ end
 
 #overrides the default NamedTuple built from subsystem u's
 @kwdef mutable struct YawControlU
-    yaw_control_mode::YawControlMode = rudder_mode
+    mode::YawControlMode = rudder_mode
     r_cmd::Float64 = 0.0
     β_cmd::Float64 = 0.0
     β::Float64 = 0.0
@@ -274,7 +275,8 @@ function Systems.f_disc!(sys::System{YawControl}, Δt::Real)
 
 end
 
-# ################################ Avionics ######################################
+##################################################################################
+################################## Avionics ######################################
 
 @enum FlightPhase begin
     phase_gnd = 0
@@ -313,7 +315,7 @@ end
     CAS_enable::Bool = false
     roll_control_mode::RollControlMode = aileron_mode #actual roll axis mode
     pitch_control_mode::PitchControlMode = elevator_mode #actual pitch axis mode
-    yaw_control_mode::PitchControlMode = rudder_mode #actual yaw axis mode
+    yaw_control_mode::YawControlMode = rudder_mode #actual yaw axis mode
     throttle::Float64 = 0.0
     mixture::Float64 = 0.5
     roll_input::Float64 = 0.0
@@ -335,9 +337,9 @@ end
 @kwdef struct Avionics <: AbstractAvionics
     p_input_sf::Float64 = 0.2 #external roll axis input to p_cmd scale factor
     q_input_sf::Float64 = 0.2 #external pitch axis input to q_cmd scale factor
-    φ_input_sf::Float64 = 0.4 #external roll axis input to φ_cmd scale factor
-    θ_input_sf::Float64 = 0.4 #external pitch axis input to θ_cmd scale factor
-    β_input_sf::Float64 = 0.2 #external yaw axis input to β_cmd scale factor
+    φ_input_sf::Float64 = deg2rad(60) #external roll axis input to φ_cmd scale factor
+    θ_input_sf::Float64 = deg2rad(20) #external pitch axis input to θ_cmd scale factor
+    β_input_sf::Float64 = deg2rad(10) #external yaw axis input to β_cmd scale factor
     roll_control::RollControl = RollControl()
     pitch_control::PitchControl = PitchControl()
     yaw_control::YawControl = YawControl()
@@ -365,10 +367,11 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
                         ::RigidBodyData, air::AirData, ::TerrainData)
 
     @unpack roll_control, pitch_control, yaw_control = avionics.subsystems
-    @unpack eng_start, eng_stop, CAS_enable, roll_control_mode, pitch_control_mode, yaw_control_mode,
+    @unpack eng_start, eng_stop, CAS_enable,
+            roll_control_mode_select, pitch_control_mode_select, yaw_control_mode_select,
             throttle, mixture, roll_input, pitch_input, yaw_input,
             aileron_trim, elevator_trim, rudder_trim, flaps, brake_left, brake_right = avionics.u
-    @unpack p_input_sf, q_input_sf, φ_input_sf, θ_input_sf, β_input_sf = sys.params
+    @unpack p_input_sf, q_input_sf, φ_input_sf, θ_input_sf, β_input_sf = avionics.params
 
     nlg_wow = airframe.y.ldg.nose.strut.wow
     lmain_wow = airframe.y.ldg.left.strut.wow
@@ -383,7 +386,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     end
 
     if CAS_state == CAS_active
-        roll_control_mode = roll_mode_select
+        roll_control_mode = roll_control_mode_select
         pitch_control_mode = pitch_control_mode_select
         yaw_control_mode = yaw_control_mode_select
     else
@@ -397,24 +400,28 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     p, q, _ = kinematics.ω_lb_b
     β = air.β_b
 
-    a_cmd = (roll_control_mode == aileron_mode) * Float64(roll_input) #already ∈ [-1, 1]
-    p_cmd = (roll_control_mode == roll_rate_mode) * p_input_sf * Float64(roll_input)
-    φ_cmd = (roll_control_mode == bank_mode) * φ_input_sf * Float64(roll_input)
-    @pack! roll_control.u = roll_control_mode, a_cmd, p_cmd, φ_cmd, p, φ
+    a_cmd = Float64(roll_input) #already ∈ [-1, 1]
+    p_cmd = p_input_sf * Float64(roll_input)
+    φ_cmd = φ_input_sf * Float64(roll_input)
+    roll_control.u.mode = roll_control_mode
+    @pack! roll_control.u = a_cmd, p_cmd, φ_cmd, p, φ
     f_disc!(roll_control, Δt)
 
-    e_cmd = (pitch_control_mode == elevator_mode) * Float64(pitch_input) #already ∈ [-1, 1]
-    q_cmd = (pitch_control_mode == pitch_rate_mode) * q_input_sf * Float64(pitch_input)
-    θ_cmd = (pitch_control_mode == inclination_mode) * θ_input_sf * Float64(pitch_input)
-    @pack! pitch_control.u = pitch_control_mode, e_cmd, q_cmd, θ_cmd, q, θ
+    e_cmd = Float64(pitch_input) #already ∈ [-1, 1]
+    q_cmd = q_input_sf * Float64(pitch_input)
+    θ_cmd = θ_input_sf * Float64(pitch_input)
+    pitch_control.u.mode = pitch_control_mode
+    @pack! pitch_control.u = e_cmd, q_cmd, θ_cmd, q, θ
     f_disc!(pitch_control, Δt)
 
-    r_cmd = (yaw_control_mode == rudder_mode) * Float64(yaw_input) #already ∈ [-1, 1]
-    β_cmd = (yaw_control_mode == sideslip_mode) * β_input_sf * Float64(yaw_input)
-    @pack! yaw_control.u = yaw_control_mode, r_cmd, β_cmd, β
+    r_cmd = Float64(yaw_input) #already ∈ [-1, 1]
+    β_cmd = β_input_sf * Float64(yaw_input)
+    yaw_control.u.mode = yaw_control_mode
+    @pack! yaw_control.u = r_cmd, β_cmd, β
     f_disc!(yaw_control, Δt)
 
-    # @show CAS_state
+    # @show β
+    # @show θ
 
     interface_y = AvionicsInterfaceY(;
             eng_start, eng_stop, CAS_enable,
@@ -454,54 +461,54 @@ function Aircraft.map_controls!(airframe::System{<:C172RAirframe},
 end
 
 
-# ################################## GUI #########################################
+################################## GUI #########################################
 
-# function GUI.draw!(avionics::System{<:Avionics}, airframe::System{<:C172RAirframe},
-#                     label::String = "Cessna 172R CAS Avionics")
+function GUI.draw!(avionics::System{<:Avionics}, airframe::System{<:C172RAirframe},
+                    label::String = "Cessna 172R CAS Avionics")
 
-#     u = avionics.u
-#     y = avionics.y
+    u = avionics.u
+    y = avionics.y
 
-#     CImGui.Begin(label)
+    CImGui.Begin(label)
 
-#     CImGui.PushItemWidth(-60)
+    CImGui.PushItemWidth(-60)
 
-#     u.eng_start = dynamic_button("Engine Start", 0.4); CImGui.SameLine()
-#     u.eng_stop = dynamic_button("Engine Stop", 0.0); CImGui.SameLine()
-#     CImGui.Text(@sprintf("Engine Speed: %.3f RPM", Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
+    u.eng_start = dynamic_button("Engine Start", 0.4); CImGui.SameLine()
+    u.eng_stop = dynamic_button("Engine Stop", 0.0); CImGui.SameLine()
+    CImGui.Text(@sprintf("Engine Speed: %.3f RPM", Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
 
-#     u.CAS_enable = toggle_switch("CAS", 0.4, u.CAS_enable)
-#     CImGui.Text("Flight Phase: $(y.logic.flight_phase)")
-#     CImGui.Text("CAS State: $(y.logic.CAS_state)")
+    u.CAS_enable = toggle_switch("CAS", 0.4, u.CAS_enable)
+    CImGui.Text("Flight Phase: $(y.logic.flight_phase)")
+    CImGui.Text("CAS State: $(y.logic.CAS_state)")
 
-#     #maybe make the displayed variables depend on CAS state and mode
-#     #(aileron input vs roll rate demand vs bank angle demand)
+    #maybe make the displayed variables depend on CAS state and mode
+    #(aileron input vs roll rate demand vs bank angle demand)
 
-#     u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
-#     u.roll_input = safe_slider("Roll Input", u.roll_input, "%.6f")
-#     u.pitch_input = safe_slider("Pitch Input", u.pitch_input, "%.6f")
-#     u.yaw_input = safe_slider("Yaw Input", u.yaw_input, "%.6f")
-#     u.aileron_trim = safe_input("Aileron Trim", u.aileron_trim, 0.001, 0.1, "%.6f")
-#     u.elevator_trim = safe_input("Elevator Trim", u.elevator_trim, 0.001, 0.1, "%.6f")
-#     u.rudder_trim = safe_input("Rudder Trim", u.rudder_trim, 0.001, 0.1, "%.6f")
-#     u.flaps = safe_slider("Flaps", u.flaps, "%.6f")
-#     u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
-#     u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
-#     u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
+    u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
+    u.roll_input = safe_slider("Roll Input", u.roll_input, "%.6f")
+    u.pitch_input = safe_slider("Pitch Input", u.pitch_input, "%.6f")
+    u.yaw_input = safe_slider("Yaw Input", u.yaw_input, "%.6f")
+    u.aileron_trim = safe_input("Aileron Trim", u.aileron_trim, 0.001, 0.1, "%.6f")
+    u.elevator_trim = safe_input("Elevator Trim", u.elevator_trim, 0.001, 0.1, "%.6f")
+    u.rudder_trim = safe_input("Rudder Trim", u.rudder_trim, 0.001, 0.1, "%.6f")
+    u.flaps = safe_slider("Flaps", u.flaps, "%.6f")
+    u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
+    u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
+    u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
 
 
-#     CImGui.PopItemWidth()
+    CImGui.PopItemWidth()
 
-#     CImGui.End()
+    CImGui.End()
 
-# end
+end
 
-# ################################################################################
-# ############################# Cessna172Rv2 #####################################
+################################################################################
+############################# Cessna172Rv2 #####################################
 
-# #Cessna172R variant with Avionics avionics
-# const Cessna172Rv2{K, F} = AircraftTemplate{K, F, Avionics} where {K, F <: C172RAirframe}
-# Cessna172Rv2(kinematics = LTF()) = AircraftTemplate(kinematics, C172RAirframe(), Avionics())
+#Cessna172R variant with Avionics avionics
+const Cessna172Rv2{K, F} = AircraftTemplate{K, F, Avionics} where {K, F <: C172RAirframe}
+Cessna172Rv2(kinematics = LTF()) = AircraftTemplate(kinematics, C172RAirframe(), Avionics())
 
 
 # ############################ Joystick Mappings #################################
