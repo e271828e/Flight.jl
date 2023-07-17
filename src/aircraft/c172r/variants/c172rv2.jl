@@ -98,7 +98,7 @@ end
 
 @kwdef struct PitchControl <: SystemDefinition
     q_comp::PitchRateComp = PitchRateComp()
-    θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4, k_i = 0.3, k_d = 0.3, τ_d = 0.05, β_p = 1, β_d = 1) #see notebook
+    θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4, k_i = 2, k_d = 0.35, τ_d = 0.02, β_p = 1, β_d = 1) #see notebook
 end
 
 #overrides the default NamedTuple built from subsystem u's

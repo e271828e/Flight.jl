@@ -94,18 +94,18 @@ function test_pitch_rate_cas(; save::Bool = true)
                     u.ac.avionics.pitch_input = 0
                     u.ac.avionics.yaw_input = 0
                 elseif 10 < t < 15
-                    u.ac.avionics.roll_input = 1.0
-                    u.ac.avionics.pitch_input = 0.2
+                    u.ac.avionics.roll_input = 1
+                    u.ac.avionics.pitch_input = 0.0
                     u.ac.avionics.yaw_input = 0.
                 else #t>15
-                    u.ac.avionics.roll_input = 1.0
-                    u.ac.avionics.pitch_input = 0.
+                    u.ac.avionics.roll_input = 1
+                    u.ac.avionics.pitch_input = 0.0
                     u.ac.avionics.yaw_input = 0
                 end
             end
         end
 
-        sim = Simulation(world; Δt = 0.02, t_end = 40, sys_io!, adaptive = false)
+        sim = Simulation(world; Δt = 0.02, t_end = 18, sys_io!, adaptive = false)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
