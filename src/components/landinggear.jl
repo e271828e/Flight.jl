@@ -245,6 +245,9 @@ function Systems.f_ode!(sys::System{<:Strut},
     Ot = Geographic(loc_Ot, h_Ot)
     r_eOt_e = Cartesian(Ot)[:]
 
+    # if h_Ow0 >
+    #     l =l0
+
     r_eOs_e = r_eOb_e + r_ObOs_e
     r_OtOs_e = r_eOs_e - r_eOt_e
 

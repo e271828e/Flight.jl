@@ -44,14 +44,14 @@ end
     setpoint::Float64 = 0.0
     feedback::Float64 = 0.0
     reset::Bool = false
-    sat::Int64 = 0.0
+    sat_ext::Int64 = 0.0
 end
 
 @kwdef struct PitchRateCompY
     setpoint::Float64 = 0.0
     feedback::Float64 = 0.0
     reset::Bool = false
-    sat::Int64 = 0.0
+    sat_ext::Int64 = 0.0
     out::Float64 = 0.0 #elevator command
     c1::PIDDiscreteY{1} = PIDDiscreteY{1}()
     c2::PIDDiscreteY{1} = PIDDiscreteY{1}()
@@ -63,6 +63,8 @@ Systems.init(::SystemY, ::PitchRateComp) = PitchRateCompY()
 #here, we are leaving the compensators' outputs unbounded, relying only on the
 #external saturation input coming from the elevator to stop the integrators
 function Systems.init!(sys::System{PitchRateComp})
+    sys.c1.u.reset .= true
+    sys.c2.u.reset .= true
     sys.c1.u.anti_windup .= true
     sys.c2.u.anti_windup .= true
 end
@@ -70,24 +72,24 @@ end
 #if c2's output saturates positively, then both c2 and c1's integrators must
 #stop accumulating positively, and viceversa.
 function Systems.f_disc!(sys::System{PitchRateComp}, Δt::Real)
-    @unpack setpoint, feedback, reset, sat = sys.u
+    @unpack setpoint, feedback, reset, sat_ext = sys.u
     @unpack c1, c2 = sys.subsystems
 
     c1.u.setpoint .= setpoint
     c1.u.feedback .= feedback
     c1.u.reset .= reset
-    c1.u.sat_ext .= sat
+    c1.u.sat_ext .= sat_ext
     f_disc!(c1, Δt)
 
     c2.u.setpoint .= c1.y.out #connected to c1's output
     c2.u.feedback .= 0.0 #no feedback, just feedforward path
     c2.u.reset .= reset
-    c2.u.sat_ext .= sat
+    c2.u.sat_ext .= sat_ext
     f_disc!(c2, Δt)
 
     out = c2.y.out[1]
 
-    sys.y = PitchRateCompY(; setpoint, feedback, reset, sat, out, c1 = c1.y, c2 = c2.y)
+    sys.y = PitchRateCompY(; setpoint, feedback, reset, sat_ext, out, c1 = c1.y, c2 = c2.y)
 
 end
 
@@ -96,7 +98,7 @@ end
 
 @kwdef struct PitchControl <: SystemDefinition
     q_comp::PitchRateComp = PitchRateComp()
-    k_θ::Float64 = 2.8 #θ loop gain, see notebook
+    θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4, k_i = 0.3, k_d = 0.3, τ_d = 0.05, β_p = 1, β_d = 1) #see notebook
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -109,42 +111,65 @@ end
     θ::Float64 = 0.0
 end
 
+@kwdef mutable struct PitchControlS
+    mode_prev::PitchControlMode = elevator_mode
+end
+
 @kwdef struct PitchControlY
     mode::PitchControlMode = elevator_mode
+    mode_prev::PitchControlMode = elevator_mode
     e_out::Ranged{Float64, -1., 1.} = 0.0 #elevator output
     e_sat::Int64 = 0 #elevator saturation state
     q_comp::PitchRateCompY = PitchRateCompY()
+    θ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
 end
 
 Systems.init(::SystemU, ::PitchControl) = PitchControlU()
 Systems.init(::SystemY, ::PitchControl) = PitchControlY()
+Systems.init(::SystemS, ::PitchControl) = PitchControlS()
+
+function Systems.init!(sys::System{PitchControl})
+    Systems.init!(sys.q_comp)
+    sys.θ_comp.u.reset .= true
+    sys.θ_comp.u.anti_windup .= true
+end
 
 function Systems.f_disc!(sys::System{PitchControl}, Δt::Real)
 
     @unpack mode, e_cmd, q_cmd, θ_cmd, q, θ = sys.u
-    @unpack q_comp = sys.subsystems
-    @unpack k_θ = sys.params
+    @unpack mode_prev = sys.s
+    @unpack q_comp, θ_comp = sys.subsystems
 
-    if mode == elevator_mode
-        q_comp.u.reset = true
-        f_disc!(q_comp, Δt)
+    if mode != mode_prev #reset compensators on mode change
+        q_comp.u.reset = true; f_disc!(q_comp, Δt)
+        θ_comp.u.reset .= true; f_disc!(θ_comp, Δt)
+    end
+
+    if mode === elevator_mode
         e_out = Ranged(e_cmd, -1., 1.)
-    else
+    else #pitch rate compensator active
         q_comp.u.reset = false
-        if mode == pitch_rate_mode
-            q_comp.u.setpoint = q_cmd
-        else #mode == inclination_mode
-            q_comp.u.setpoint = k_θ * (θ_cmd - θ)
-        end
         q_comp.u.feedback = q
+        if mode === pitch_rate_mode
+            q_comp.u.setpoint = q_cmd
+        else #inclination_mode
+            θ_comp.u.reset .= false
+            θ_comp.u.setpoint .= θ_cmd
+            θ_comp.u.feedback .= θ
+            f_disc!(θ_comp, Δt)
+            q_comp.u.setpoint = θ_comp.y.out[1]
+        end
         f_disc!(q_comp, Δt)
         e_out = Ranged(q_comp.y.out, -1., 1.)
     end
 
     e_sat = (e_out == typemax(e_out)) - (e_out == typemin(e_out))
-    q_comp.u.sat = e_sat #will take effect on the next call
+    q_comp.u.sat_ext = e_sat #will take effect on the next call
+    θ_comp.u.sat_ext .= e_sat #will take effect on the next call
 
-    sys.y = PitchControlY(; mode, e_out, e_sat, q_comp = q_comp.y)
+    mode_prev = mode
+    sys.s.mode_prev = mode_prev
+    sys.y = PitchControlY(; mode, mode_prev, e_out, e_sat, q_comp = q_comp.y, θ_comp = θ_comp.y)
 
 end
 
@@ -183,6 +208,7 @@ Systems.init(::SystemU, ::RollControl) = RollControlU()
 Systems.init(::SystemY, ::RollControl) = RollControlY()
 
 function Systems.init!(sys::System{RollControl})
+    sys.p_comp.u.reset .= true
     sys.p_comp.u.anti_windup .= true
     println("Bank gain adjustment pending")
 end
@@ -247,6 +273,7 @@ Systems.init(::SystemU, ::YawControl) = YawControlU()
 Systems.init(::SystemY, ::YawControl) = YawControlY()
 
 function Systems.init!(sys::System{YawControl})
+    sys.β_comp.u.reset .= true
     sys.β_comp.u.anti_windup .= true
 end
 
