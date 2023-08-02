@@ -62,7 +62,7 @@ Where $\Delta h_{max}$ is a suitable chosen threshold. If this doesn't hold, we 
 
 The equation satisfied by a point $P$ contained in the local ground tangent plane is:
 
-$$ (u_t^e)^T (r_{O_eP}^e - r_{O_eO_t}^e) = (u_t^e)^T r_{O_tP}^e  = 0 $$
+$$ (u_t^e)^T r_{O_tP}^e  = (u_t^e)^T (r_{O_eP}^e - r_{O_eO_t}^e) = 0 $$
 
 Now, we find $l$ by imposing that $O_c$ be contained in this plane:
 

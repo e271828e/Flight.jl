@@ -32,7 +32,8 @@ end
 
 mutable struct Renderer
     label::String
-    wsize::Tuple{Int, Int}
+    window_size::Tuple{Int, Int}
+    font_size::Int
     style::CImGuiStyle
     refresh::Integer
     _enabled::Bool
@@ -42,16 +43,16 @@ mutable struct Renderer
     _opengl_ctx::ImGuiOpenGLBackend.Context
     _cimgui_ctx::Ptr{CImGui.LibCImGui.ImGuiContext}
 
-    function Renderer(; label = "Renderer", wsize = (1280, 720),
+    function Renderer(; label = "Renderer", window_size = (1280, 720), font_size = 20,
                         style = dark, refresh = 1)
         _enabled = true
         _initialized = false
-        new(label, wsize, style, refresh, _enabled, _initialized)
+        new(label, window_size, font_size, style, refresh, _enabled, _initialized)
     end
 
 end
 
-Base.propertynames(::Renderer) = (:label, :wsize, :style, :refresh)
+Base.propertynames(::Renderer) = (:label, :window_size, :font_size, :style, :refresh)
 
 function Base.setproperty!(renderer::Renderer, name::Symbol, value)
     if name ∈ propertynames(renderer)
@@ -70,7 +71,7 @@ enable!(renderer::Renderer) = setfield!(renderer, :_enabled, true)
 
 function init!(renderer::Renderer)
 
-    @unpack label, wsize, style, refresh, _enabled = renderer
+    @unpack label, window_size, font_size, style, refresh, _enabled = renderer
 
     _enabled || return
 
@@ -87,7 +88,7 @@ function init!(renderer::Renderer)
     # GLFW.SetErrorCallback(error_callback)
 
     # create window
-    _window = glfwCreateWindow(wsize[1], wsize[2], label, C_NULL, C_NULL)
+    _window = glfwCreateWindow(window_size[1], window_size[2], label, C_NULL, C_NULL)
     @assert _window != C_NULL
     glfwMakeContextCurrent(_window)
     glfwSwapInterval(refresh)
@@ -118,6 +119,11 @@ function init!(renderer::Renderer)
         col = CImGui.c_get(style.Colors, CImGui.ImGuiCol_WindowBg)
         CImGui.c_set!(style.Colors, CImGui.ImGuiCol_WindowBg, ImVec4(col.x, col.y, col.z, 1.0f0))
     end
+
+    fonts_dir = joinpath(@__DIR__, "gui", "fonts")
+    fonts = unsafe_load(CImGui.GetIO().Fonts)
+    @assert (CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Sans Linear-Regular.ttf"), font_size) != C_NULL)
+    # @show (CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Mono Linear-Regular.ttf"), font_size) != C_NULL)
 
     # setup Platform/Renderer bindings
     ImGuiGLFWBackend.init(_window_ctx)
