@@ -184,7 +184,7 @@ end
 
 @kwdef struct RollControl <: SystemDefinition
     p_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0.5, k_i = 10, k_d = 0.05, τ_d = 0.05) #roll rate compensator, see notebook
-    k_φ::Float64 = 2.0 #bank gain (no compensation, only proportional control needed)
+    k_φ::Float64 = 4.0 #bank gain (no compensation, only proportional control)
 end
 
 #overrides the default NamedTuple built from subsystem u's
