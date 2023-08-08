@@ -89,10 +89,6 @@ function test_pitch_rate_cas(; save::Bool = true)
 
             function (u, s, y, t, params)
 
-                e_nb = y.ac.kinematics.common.q_nb |> REuler
-                println(e_nb.φ |> rad2deg)
-                println(y.ac.airframe.aero.β |> rad2deg)
-
                 if 0 < t < 10
                     u.ac.avionics.roll_input = 0
                     u.ac.avionics.pitch_input = 0
