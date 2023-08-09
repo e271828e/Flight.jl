@@ -261,9 +261,9 @@ function test_harness()
 
     #by default LandingGearUnit is initialized with r_ObOs_b = [0,0,0], so
     #h_Os=h_Ob
-    h = h_trn + 0.9
-    θ = 0
-    φ = 0
+    h = h_trn + 0.8
+    θ = deg2rad(0)
+    φ = deg2rad(0)
     q_nb = REuler(; θ, φ)
     v_eOb_n = [0,0,0]
     ω_lb_b = [0,0,0]

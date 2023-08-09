@@ -186,8 +186,8 @@ Base.@kwdef struct Strut{D<:AbstractDamper} <: SystemDefinition
 end
 
 Base.@kwdef struct StrutY #defaults should be consistent with wow = 0
+    Δh::Float64 = 0.0 #height above ground
     wow::Bool = false #weight-on-wheel flag
-    Δl::Float64 = 0.0 #distance to ground along strut z-axis
     ξ::Float64 = 0.0 #damper elongation
     ξ_dot::Float64 = 0.0 #damper elongation rate
     F::Float64 = 0.0 #axial damper force
@@ -231,39 +231,52 @@ function Systems.f_ode!(sys::System{<:Strut},
     q_bs = t_bs.q #body frame to strut frame rotation
     r_ObOs_b = t_bs.r #strut frame origin
 
-    #do we have ground contact?
+    #do we have weight on wheel?
     q_es = q_eb ∘ q_bs
     ks_e = q_es(e3)
     r_ObOs_e = q_eb(r_ObOs_b)
     r_OsOw0_e = l_0 * ks_e
     r_eOw0_e = r_eOb_e + r_ObOs_e + r_OsOw0_e
     Ow0 = r_eOw0_e |> Cartesian |> Geographic
+    h_Ow0 = HEllip(Ow0)
 
     loc_Ot = NVector(Ow0)
     trn_data = TerrainData(terrain, loc_Ot)
     h_Ot = HEllip(trn_data)
+
+    Δh = h_Ow0 - h_Ot
+    wow = Δh <= 0
+
+    if !wow
+        #we do not reset the compensator here, because f_ode! will be called
+        #multiple times within a single time step, some of which may yield
+        #contact and some not. therefore, we should wait until the time step is
+        #done and do it within f_step! instead
+        frc.u.feedback .= 0 #if !wow, v_eOc_c = [0,0]
+        f_ode!(frc) #update frc.y
+        sys.y = StrutY(; Δh, wow, frc = frc.y) #everything else by default
+        return
+    end
+
     Ot = Geographic(loc_Ot, h_Ot)
     r_eOt_e = Cartesian(Ot)[:]
 
-    # if h_Ow0 >
-    #     l =l0
-
     r_eOs_e = r_eOb_e + r_ObOs_e
-    r_OtOs_e = r_eOs_e - r_eOt_e
+    r_OsOt_e = r_eOt_e - r_eOs_e
 
     ut_n = trn_data.normal
     ut_e = q_en(ut_n)
-    l = -(ut_e ⋅ r_OtOs_e) / (ut_e ⋅ ks_e)
+    ut_ks = ut_e ⋅ ks_e #angle between strut and terrain normal
+    l = (ut_e ⋅ r_OsOt_e) / ut_ks
 
-    Δl = l - l_0
-    ξ = min(0.0, Δl)
-    wow = (Δl <= 0)
-    if !wow #no contact, compute any non-default outputs and return
-        frc.u.feedback .= 0 #if !wow, v_eOc_c = [0,0]
-        f_ode!(frc) #update frc.y
-        sys.y = StrutY(; wow, Δl, frc = frc.y)
-        return
-    end
+    #if we are here, it means that Δh < 0, so in theory we should have l < l_0.
+    #however due to numerical error we might get a small ξ > 0
+    ξ = min(0.0, l - l_0)
+
+    #sanity check: we should not be hitting the ground at an angle larger than
+    #some threshold. beyond it, we declare a crash
+    max_contact_angle_deg = 60
+    @assert ut_ks > cosd(max_contact_angle_deg) "Maximum strut contact angle exceeded"
 
     #wheel frame axes
     ψ_sw = get_steering_angle(steering)
@@ -293,6 +306,12 @@ function Systems.f_ode!(sys::System{<:Strut},
     #contact frame origin velocity due to rigid body vehicle motion
     v_eOc_veh_b = v_eOb_b + ω_eb_b × r_ObOc_b
     v_eOc_veh_c = q_bc'(v_eOc_veh_b)
+
+    #sanity check: the velocity of the contact point along the contact frame
+    #z-axis due to vehicle motion should not exceed some threshold. beyond it,
+    #we declare a crash
+    max_normal_velocity = 10
+    @assert v_eOc_veh_c[3] < max_normal_velocity "Maximum normal velocity exceeded"
 
     #compute the damper elongation rate required to cancel the vehicle
     #contribution to the contact point velocity along the contact frame z axis
@@ -359,7 +378,7 @@ function Systems.f_ode!(sys::System{<:Strut},
     wr_c = Wrench(F = F_c)
     wr_b = t_bc(wr_c)
 
-    sys.y = StrutY(; wow, Δl, ξ, ξ_dot, t_sc, t_bc, v_eOc_c, trn_data, μ_roll, μ_skid,
+    sys.y = StrutY(; Δh, wow, ξ, ξ_dot, t_sc, t_bc, v_eOc_c, trn_data, μ_roll, μ_skid,
                      κ_br, ψ_cv, μ_max, μ_eff, f_c, F, F_c, wr_b, frc = frc.y)
 
 end
@@ -517,13 +536,13 @@ end
 function GUI.draw(sys::System{<:Strut}, window_label::String = "Strut")
 
     frc = sys.frc
-    @unpack wow, Δl, ξ, ξ_dot, v_eOc_c, trn_data, μ_roll, μ_skid, κ_br, ψ_cv,
+    @unpack Δh, wow, ξ, ξ_dot, v_eOc_c, trn_data, μ_roll, μ_skid, κ_br, ψ_cv,
             μ_max, μ_eff, f_c, F, F_c, wr_b = sys.y
 
     CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
 
+        CImGui.Text(@sprintf("Height Above Ground: %.7f m", Δh))
         CImGui.Text("Weight on Wheel: $wow")
-        CImGui.Text(@sprintf("Distance to Ground: %.7f m", Δl))
         CImGui.Text(@sprintf("Damper Elongation: %.7f m", ξ))
         CImGui.Text(@sprintf("Damper Elongation Rate: %.7f m/s", ξ_dot))
         CImGui.Text(@sprintf("Axial Damper Force: %.7f N", F))

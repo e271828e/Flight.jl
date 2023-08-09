@@ -7,4 +7,12 @@ include(normpath("physics/FlightPhysics.jl")); @reexport using .FlightPhysics
 include(normpath("components/FlightComponents.jl")); @reexport using .FlightComponents
 include(normpath("aircraft/FlightAircraft.jl")); @reexport using .FlightAircraft
 
+@reexport using .FlightCore.Systems
+@reexport using .FlightCore.Sim
+
+@reexport using .FlightPhysics.Attitude
+@reexport using .FlightPhysics.Kinematics
+@reexport using .FlightPhysics.Geodesy
+
+
 end
