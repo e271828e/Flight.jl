@@ -163,9 +163,10 @@ function Systems.f_disc!(sys::System{PitchControl}, Δt::Real)
         e_out = Ranged(q_comp.y.out, -1., 1.)
     end
 
+    #determine elevator saturation state and assign it to the compensators
     e_sat = (e_out == typemax(e_out)) - (e_out == typemin(e_out))
     q_comp.u.sat_ext = e_sat #will take effect on the next call
-    θ_comp.u.sat_ext .= e_sat #will take effect on the next call
+    θ_comp.u.sat_ext .= e_sat #idem
 
     mode_prev = mode
     sys.s.mode_prev = mode_prev
@@ -184,7 +185,7 @@ end
 
 @kwdef struct RollControl <: SystemDefinition
     p_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0.5, k_i = 10, k_d = 0.05, τ_d = 0.05) #roll rate compensator, see notebook
-    k_φ::Float64 = 4.0 #bank gain (no compensation, only proportional control)
+    φ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4, k_i = 0, k_d = 0, τ_d = 0.05) #bank angle compensator, see notebook
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -197,48 +198,67 @@ end
     φ::Float64 = 0.0
 end
 
+@kwdef mutable struct RollControlS
+    mode_prev::RollControlMode = aileron_mode
+end
+
 @kwdef struct RollControlY
     mode::RollControlMode = aileron_mode
+    mode_prev::RollControlMode = aileron_mode
     a_out::Ranged{Float64, -1., 1.} = 0.0 #direct aileron command
     a_sat::Int64 = 0 #aileron saturation state
     p_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    φ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
 end
 
 Systems.init(::SystemU, ::RollControl) = RollControlU()
 Systems.init(::SystemY, ::RollControl) = RollControlY()
+Systems.init(::SystemS, ::RollControl) = RollControlS()
 
 function Systems.init!(sys::System{RollControl})
     sys.p_comp.u.reset .= true
     sys.p_comp.u.anti_windup .= true
-    println("Bank gain adjustment pending")
+    sys.φ_comp.u.reset .= true
+    sys.φ_comp.u.anti_windup .= true
 end
 
 function Systems.f_disc!(sys::System{RollControl}, Δt::Real)
 
     @unpack mode, a_cmd, p_cmd, φ_cmd, p, φ = sys.u
-    @unpack p_comp = sys.subsystems
-    @unpack k_φ = sys.params
+    @unpack mode_prev = sys.s
+    @unpack p_comp, φ_comp = sys.subsystems
+
+    if mode != mode_prev #reset compensators on mode change
+        p_comp.u.reset .= true; f_disc!(p_comp, Δt)
+        φ_comp.u.reset .= true; f_disc!(φ_comp, Δt)
+    end
 
     if mode == aileron_mode
-        p_comp.u.reset .= true
-        f_disc!(p_comp, Δt)
         a_out = Ranged(a_cmd, -1., 1.)
-    else
+    else #roll rate compensator active
         p_comp.u.reset .= false
+        p_comp.u.feedback .= p
         if mode == roll_rate_mode
             p_comp.u.setpoint .= p_cmd
-        else #mode == inclination_mode
-            p_comp.u.setpoint .= k_φ * (φ_cmd - φ)
+        else #bank angle mode
+            φ_comp.u.reset .= false
+            φ_comp.u.setpoint .= φ_cmd
+            φ_comp.u.feedback .= φ
+            f_disc!(φ_comp, Δt)
+            p_comp.u.setpoint .= φ_comp.y.out[1]
         end
-        p_comp.u.feedback .= p
         f_disc!(p_comp, Δt)
         a_out = Ranged(p_comp.y.out[1], -1., 1.)
     end
 
+    #determine aileron saturation state and assign it to the compensators
     a_sat = (a_out == typemax(a_out)) - (a_out == typemin(a_out))
     p_comp.u.sat_ext .= a_sat #will take effect on the next call
+    φ_comp.u.sat_ext .= a_sat #idem
 
-    sys.y = RollControlY(; mode, a_out, a_sat, p_comp = p_comp.y)
+    mode_prev = mode
+    sys.s.mode_prev = mode_prev
+    sys.y = RollControlY(; mode, mode_prev, a_out, a_sat, p_comp = p_comp.y, φ_comp = φ_comp.y)
 
 end
 
@@ -262,8 +282,13 @@ end
     β::Float64 = 0.0
 end
 
+@kwdef mutable struct YawControlS
+    mode_prev::YawControlMode = rudder_mode
+end
+
 @kwdef struct YawControlY
     mode::YawControlMode = rudder_mode
+    mode_prev::YawControlMode = rudder_mode
     r_out::Ranged{Float64, -1., 1.} = 0.0 #rudder output
     r_sat::Int64 = 0 #rudder saturation state
     β_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
@@ -271,6 +296,7 @@ end
 
 Systems.init(::SystemU, ::YawControl) = YawControlU()
 Systems.init(::SystemY, ::YawControl) = YawControlY()
+Systems.init(::SystemS, ::YawControl) = YawControlS()
 
 function Systems.init!(sys::System{YawControl})
     sys.β_comp.u.reset .= true
@@ -278,14 +304,18 @@ function Systems.init!(sys::System{YawControl})
 end
 
 function Systems.f_disc!(sys::System{YawControl}, Δt::Real)
+
     @unpack mode, r_cmd, β_cmd, β = sys.u
+    @unpack mode_prev = sys.s
     @unpack β_comp = sys.subsystems
 
+    if mode != mode_prev #reset compensators on mode change
+        β_comp.u.reset .= true; f_disc!(β_comp, Δt)
+    end
+
     if mode == rudder_mode
-        β_comp.u.reset .= true
-        f_disc!(β_comp, Δt)
         r_out = Ranged(r_cmd, -1., 1.)
-    else #mode == sideslip_mode
+    else #sideslip_mode
         β_comp.u.reset .= false
         β_comp.u.setpoint .= β_cmd
         β_comp.u.feedback .= β
@@ -293,11 +323,14 @@ function Systems.f_disc!(sys::System{YawControl}, Δt::Real)
         r_out = Ranged(-β_comp.y.out[1], -1., 1.) #note sign inversion, see design notebook
     end
 
-    #rudder output is inverted from β_comp's output, so we need to invert the
-    #rudder saturation signal as well before assigning it back to β_comp
+    #determine rudder saturation status and assign it to the compensator. since
+    #rudder output is inverted from β_comp's output, we need to invert the
+    #rudder saturation signal as well
     r_sat = (r_out == typemax(r_out)) - (r_out == typemin(r_out))
     β_comp.u.sat_ext .= -r_sat #will take effect on the next call
 
+    mode_prev = mode
+    sys.s.mode_prev = mode_prev
     sys.y = YawControlY(; mode, r_out, r_sat, β_comp = β_comp.y)
 
 end
@@ -412,6 +445,8 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
         CAS_state = (flight_phase == phase_gnd ? CAS_standby : CAS_active)
     end
 
+    # CAS_state = CAS_active
+
     if CAS_state == CAS_active
         roll_control_mode = roll_control_mode_select
         pitch_control_mode = pitch_control_mode_select
@@ -447,8 +482,9 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     @pack! yaw_control.u = r_cmd, β_cmd, β
     f_disc!(yaw_control, Δt)
 
-    # @show β
-    # @show θ
+    @show β
+    @show θ
+    @show φ
 
     interface_y = AvionicsInterfaceY(;
             eng_start, eng_stop, CAS_enable,

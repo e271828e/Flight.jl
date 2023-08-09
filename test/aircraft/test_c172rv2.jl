@@ -39,14 +39,31 @@ function test_system_methods()
 
             loc = NVector()
             trn_data = TerrainData(env.trn, loc)
-            kin_init = KinematicInit( h = trn_data.altitude + 1.8);
+            kin_init_gnd = KinematicInit( h = trn_data.altitude + 1.8);
+            kin_init_air = KinematicInit( h = trn_data.altitude + 1000);
 
             ac = System(Cessna172Rv2());
 
-            init_kinematics!(ac, kin_init)
-
+            #to exercise all landing gear functionality we need to be on ground
+            init_kinematics!(ac, kin_init_gnd)
             f_ode!(ac, env) #make sure we're on the ground
             @test ac.y.airframe.ldg.left.strut.wow == true
+
+            @test @ballocated(f_ode!($ac, $env)) == 0
+            @test @ballocated(f_step!($ac)) == 0
+            @test @ballocated(f_disc!($ac, 0.02, $env)) == 0
+
+            #to exercise all CAS functionality we need to be airborne and select
+            #the outer control loops for all axes
+            init_kinematics!(ac, kin_init_air)
+            f_ode!(ac, env)
+            @test ac.y.airframe.ldg.left.strut.wow == false
+
+            ac.avionics.u.pitch_control_mode_select = C172Rv2.inclination_mode
+            ac.avionics.u.roll_control_mode_select = C172Rv2.bank_mode
+            ac.avionics.u.yaw_control_mode_select = C172Rv2.sideslip_mode
+            f_disc!(ac, 0.02, env)
+            @test ac.avionics.y.logic.flight_phase == C172Rv2.phase_air
 
             @test @ballocated(f_ode!($ac, $env)) == 0
             @test @ballocated(f_step!($ac)) == 0
@@ -96,11 +113,11 @@ function test_pitch_rate_cas(; save::Bool = true)
                 elseif 10 < t < 15
                     u.ac.avionics.roll_input = 1
                     u.ac.avionics.pitch_input = 0.0
-                    u.ac.avionics.yaw_input = 0.
+                    u.ac.avionics.yaw_input = 0.1
                 else #t>15
                     u.ac.avionics.roll_input = 1
-                    u.ac.avionics.pitch_input = 0.0
-                    u.ac.avionics.yaw_input = 0
+                    u.ac.avionics.pitch_input = 0.1
+                    u.ac.avionics.yaw_input = 0.1
                 end
             end
         end

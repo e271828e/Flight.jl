@@ -249,4 +249,33 @@ function test_landing_gear_unit()
 
 end
 
+function test_harness()
+
+    trn = System(HorizontalTerrain())
+    loc = LatLon()
+    h_trn = Terrain.TerrainData(trn, loc).altitude
+
+    damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
+    strut = Strut(l_0 = 1.0, damper = damper)
+    ldg = LandingGearUnit(; strut) |> System
+
+    #by default LandingGearUnit is initialized with r_ObOs_b = [0,0,0], so
+    #h_Os=h_Ob
+    h = h_trn + 0.9
+    θ = 0
+    φ = 0
+    q_nb = REuler(; θ, φ)
+    v_eOb_n = [0,0,0]
+    ω_lb_b = [0,0,0]
+    kin = KinematicInit(; h, v_eOb_n, ω_lb_b, q_nb) |> KinematicData
+    f_ode!(ldg, kin, trn)
+    f_step!(ldg)
+    @show ldg.strut.y.wow
+    @show ldg.strut.y.wr_b.F
+    @show ldg.strut.y.wr_b.M
+    return
+
+end
+
+
 end #module
