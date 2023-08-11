@@ -47,7 +47,7 @@ end
 #set to zero. when a simulation is run from a trimmed state, leaving the
 #controller at a neutral position, which means zero aileron, elevator and
 #rudder, means that the control surfaces will be left at their trimmed values
-#aileron_trim, elevator_trim and rudder_trim
+#aileron_offset, elevator_offset and rudder_offset
 
 #first 2 are aircraft-agnostic
 const TrimStateTemplate = ComponentVector(
@@ -155,9 +155,9 @@ function assign!(ac::System{<:Cessna172Rv0},
     ac.x.airframe.fuel .= fuel
 
     ac.u.airframe.act.throttle = throttle
-    ac.u.airframe.act.aileron_trim = aileron
-    ac.u.airframe.act.elevator_trim = elevator
-    ac.u.airframe.act.rudder_trim = rudder
+    ac.u.airframe.act.aileron_offset = aileron
+    ac.u.airframe.act.elevator_offset = elevator
+    ac.u.airframe.act.rudder_offset = rudder
     ac.u.airframe.act.flaps = flaps
     ac.u.airframe.act.mixture = mixture
 

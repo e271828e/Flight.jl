@@ -271,23 +271,10 @@ end
 
 function GUI.draw(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{$N}") where {N}
 
-    @unpack y, params = sys
+    @unpack setpoint, feedback, bound_lo, bound_hi, sat_ext, anti_windup, reset,
+            u_p, y_p, u_i, y_i, int_halt, out_free, out, sat_out = sys.y
 
     CImGui.Begin(label)
-
-    if CImGui.TreeNode("Params")
-        @unpack k_p, k_i, k_l, β_p = params
-        CImGui.Text("Proportional Gain: $k_p")
-        CImGui.Text("Integral Gain: $k_i")
-        CImGui.Text("Leak Factor: = $k_l")
-        CImGui.Text("Proportional Path Weighting Factor: = $β_p")
-        CImGui.TreePop()
-    end
-
-
-    if CImGui.TreeNode("Outputs")
-        @unpack setpoint, feedback, bound_lo, bound_hi, sat_ext, anti_windup, reset,
-                u_p, y_p, u_i, y_i, int_halt, out_free, out, sat_out = y
 
         CImGui.Text("Setpoint = $setpoint")
         CImGui.Text("Feedback = $feedback")
@@ -304,8 +291,6 @@ function GUI.draw(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{
         CImGui.Text("Free Output = $out_free")
         CImGui.Text("Actual Output = $out")
         CImGui.Text("Output Saturation = $sat_out")
-        CImGui.TreePop()
-    end
 
     CImGui.End()
 
@@ -313,10 +298,12 @@ end #function
 
 function GUI.draw!(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{$N}") where {N}
 
-    GUI.draw(sys, label)
-
     CImGui.Begin(label)
 
+    if CImGui.TreeNode("Outputs")
+        GUI.draw(sys, label)
+        CImGui.TreePop()
+    end
     #this shows how to get input from widgets without the @cstatic and @c macros
     if CImGui.TreeNode("Inputs")
         for i in 1:N

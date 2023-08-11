@@ -539,7 +539,7 @@ function GUI.draw(sys::System{<:Strut}, window_label::String = "Strut")
     @unpack Δh, wow, ξ, ξ_dot, v_eOc_c, trn_data, μ_roll, μ_skid, κ_br, ψ_cv,
             μ_max, μ_eff, f_c, F, F_c, wr_b = sys.y
 
-    CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
+    CImGui.Begin(window_label)
 
         CImGui.Text(@sprintf("Height Above Ground: %.7f m", Δh))
         CImGui.Text("Weight on Wheel: $wow")

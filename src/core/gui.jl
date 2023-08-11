@@ -2,6 +2,7 @@ module GUI
 
 using UnPack
 using Reexport
+using StaticArrays
 
 #these are needed by any module extending GUI draw methods
 @reexport using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
@@ -14,6 +15,7 @@ using ImGuiOpenGLBackend.ModernGL
 
 export CImGuiStyle, Renderer
 export dynamic_button, toggle_switch, display_bar, safe_slider, safe_input, @running_plot
+export HSV_amber, HSV_gray, HSV_green, HSV_red
 
 ################################################################################
 ############################# Renderer####################################
@@ -277,7 +279,12 @@ function fdraw_test(number::Real)
 end
 
 ################################################################################
-################################ Macros ########################################
+################################ Helpers #######################################
+
+const HSV_gray = (0.0, 0.0, 0.3)
+const HSV_amber = (0.13, 0.6, 0.6)
+const HSV_green = (0.4, 0.6, 0.6)
+const HSV_red = (0.0, 0.6, 0.6)
 
 function show_help_marker(desc::String)
     CImGui.TextDisabled("(?)")
@@ -303,16 +310,38 @@ function toggle_switch(label::String, hue::AbstractFloat, enabled::Bool)
     return enable
 end
 
+function dynamic_button(label::String,
+                        idle_HSV::NTuple{3,Real},
+                        hover_HSV::NTuple{3,Real},
+                        push_HSV::NTuple{3,Real})
+
+    idle_HSV_bnd = min.(max.(SVector{3, Float64}(idle_HSV), 0.0), 1.0)
+    hover_HSV_bnd = min.(max.(SVector{3, Float64}(hover_HSV), 0.0), 1.0)
+    push_HSV_bnd = min.(max.(SVector{3, Float64}(push_HSV), 0.0), 1.0)
+    CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(idle_HSV_bnd...))
+    CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(hover_HSV_bnd...))
+    CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(push_HSV_bnd...))
+    CImGui.Button(label)
+    CImGui.PopStyleColor(3)
+    return nothing
+end
+
+function dynamic_button(label::String,
+                        idle_HSV::NTuple{3,Real},
+                        Δ_hover::Real = 0.1,
+                        Δ_push::Real = 0.2)
+
+    hover_HSV = (idle_HSV[1], idle_HSV[2] + Δ_hover, idle_HSV[3] + Δ_hover)
+    push_HSV = (idle_HSV[1], idle_HSV[2] + Δ_push, idle_HSV[3] + Δ_push)
+    dynamic_button(label, idle_HSV, hover_HSV, push_HSV)
+
+end
+
 #changes shade when hovered and pushed
 function dynamic_button(label::String, hue::AbstractFloat = 0.4)
-    CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(hue, 0.6, 0.6))
-    CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(hue, 0.7, 0.7))
-    CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(hue, 0.8, 0.8))
-    CImGui.Button(label)
-    is_pressed = CImGui.IsItemActive()
-    CImGui.PopStyleColor(3)
-    return is_pressed
+    dynamic_button(label, (hue, 0.6, 0.6))
 end
+
 
 function display_bar(label::String, source::Real, lower_bound::Real, upper_bound::Real, size_arg = (0, 0))
     CImGui.Text(label)

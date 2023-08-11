@@ -5,12 +5,15 @@ using Test
 using Flight.FlightCore.Systems
 using Flight.FlightCore.GUI
 
+using Flight.FlightPhysics.Environment
 using Flight.FlightComponents.Control
+using Flight.FlightComponents.World
+using Flight.FlightAircraft.C172Rv2
 
 export test_gui
 
 function test_gui()
-    # target = SimpleWorld(Cessna172Rv0(), SimpleEnvironment()) |> System
+    # target = SimpleWorld(Cessna172Rv2(), SimpleEnvironment()) |> System
     target = PIContinuous{2}() |> System
     r = Renderer()
     GUI.init!(r)

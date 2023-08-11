@@ -66,9 +66,9 @@ Base.@kwdef mutable struct MechanicalActuationU
     aileron::Ranged{Float64, -1., 1.} = 0.0
     elevator::Ranged{Float64, -1., 1.} = 0.0
     rudder::Ranged{Float64, -1., 1.} = 0.0
-    aileron_trim::Ranged{Float64, -1., 1.} = 0.0
-    elevator_trim::Ranged{Float64, -1., 1.} = 0.0
-    rudder_trim::Ranged{Float64, -1., 1.} = 0.0
+    aileron_offset::Ranged{Float64, -1., 1.} = 0.0
+    elevator_offset::Ranged{Float64, -1., 1.} = 0.0
+    rudder_offset::Ranged{Float64, -1., 1.} = 0.0
     flaps::Ranged{Float64, 0., 1.} = 0.0
     brake_left::Ranged{Float64, 0., 1.} = 0.0
     brake_right::Ranged{Float64, 0., 1.} = 0.0
@@ -82,9 +82,9 @@ Base.@kwdef struct MechanicalActuationY
     aileron::Float64 = 0.0
     elevator::Float64 = 0.0
     rudder::Float64 = 0.0
-    aileron_trim::Float64 = 0.0
-    elevator_trim::Float64 = 0.0
-    rudder_trim::Float64 = 0.0
+    aileron_offset::Float64 = 0.0
+    elevator_offset::Float64 = 0.0
+    rudder_offset::Float64 = 0.0
     flaps::Float64 = 0.0
     brake_left::Float64 = 0.0
     brake_right::Float64 = 0.0
@@ -101,12 +101,12 @@ function Systems.f_ode!(act::System{MechanicalActuation})
 
     @unpack eng_start, eng_stop,
             throttle, mixture, aileron, elevator, rudder,
-            aileron_trim, elevator_trim, rudder_trim,
+            aileron_offset, elevator_offset, rudder_offset,
             flaps, brake_left, brake_right= act.u
 
     act.y = MechanicalActuationY(; eng_start, eng_stop,
             throttle, mixture, aileron, elevator, rudder,
-            aileron_trim, elevator_trim, rudder_trim,
+            aileron_offset, elevator_offset, rudder_offset,
             flaps, brake_left, brake_right)
 
 end
@@ -131,9 +131,9 @@ function GUI.draw(sys::System{MechanicalActuation}, label::String = "Cessna 172R
     @running_plot("Rudder", y.rudder, -1, 1, 0.0, 120)
     display_bar("Rudder", y.rudder, -1, 1)
 
-    display_bar("Aileron Trim", y.aileron_trim, -1, 1)
-    display_bar("Elevator Trim", y.elevator_trim, -1, 1)
-    display_bar("Rudder Trim", y.rudder_trim, -1, 1)
+    display_bar("Aileron Offset", y.aileron_offset, -1, 1)
+    display_bar("Elevator Offset", y.elevator_offset, -1, 1)
+    display_bar("Rudder Offset", y.rudder_offset, -1, 1)
     display_bar("Flaps", y.flaps, 0, 1)
     display_bar("Mixture", y.mixture, 0, 1)
     display_bar("Left Brake", y.brake_left, 0, 1)
@@ -165,9 +165,9 @@ function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172
     u.rudder = safe_slider("Rudder", u.rudder, "%.6f")
     @running_plot("Rudder", u.rudder, -1, 1, 0.0, 120)
 
-    u.aileron_trim = safe_input("Aileron Trim", u.aileron_trim, 0.001, 0.1, "%.6f")
-    u.elevator_trim = safe_input("Elevator Trim", u.elevator_trim, 0.001, 0.1, "%.6f")
-    u.rudder_trim = safe_input("Rudder Trim", u.rudder_trim, 0.001, 0.1, "%.6f")
+    u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.001, 0.1, "%.6f")
+    u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.001, 0.1, "%.6f")
+    u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.001, 0.1, "%.6f")
     u.flaps = safe_slider("Flaps", u.flaps, "%.6f")
     u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
     u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
@@ -914,19 +914,19 @@ function assign!(aero::System{<:Aero},
 
     @unpack eng_start, eng_stop,
             throttle, mixture, aileron, elevator, rudder,
-            aileron_trim, elevator_trim, rudder_trim,
+            aileron_offset, elevator_offset, rudder_offset,
             brake_left, brake_right, flaps = act.y
 
     pwp.u.engine.start = eng_start
     pwp.u.engine.stop = eng_stop
     pwp.u.engine.throttle = throttle
     pwp.u.engine.mixture = mixture
-    ldg.u.nose.steering[] = (rudder_trim + rudder)
+    ldg.u.nose.steering[] = (rudder_offset + rudder)
     ldg.u.left.braking[] = brake_left
     ldg.u.right.braking[] = brake_right
-    aero.u.e = -(elevator_trim + elevator)
-    aero.u.a = (aileron_trim + aileron)
-    aero.u.r = -(rudder_trim + rudder)
+    aero.u.e = -(elevator_offset + elevator)
+    aero.u.a = (aileron_offset + aileron)
+    aero.u.r = -(rudder_offset + rudder)
     aero.u.f = flaps
 
     return nothing
@@ -980,10 +980,10 @@ function IODevices.assign!(sys::System{<:C172RAirframe},
     u.act.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.act.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    u.act.aileron_trim -= 0.01 * was_released(joystick, :dpad_left)
-    u.act.aileron_trim += 0.01 * was_released(joystick, :dpad_right)
-    u.act.elevator_trim += 0.01 * was_released(joystick, :dpad_down)
-    u.act.elevator_trim -= 0.01 * was_released(joystick, :dpad_up)
+    u.act.aileron_offset -= 0.01 * was_released(joystick, :dpad_left)
+    u.act.aileron_offset += 0.01 * was_released(joystick, :dpad_right)
+    u.act.elevator_offset += 0.01 * was_released(joystick, :dpad_down)
+    u.act.elevator_offset -= 0.01 * was_released(joystick, :dpad_up)
 
     u.act.flaps += 0.3333 * was_released(joystick, :right_bumper)
     u.act.flaps -= 0.3333 * was_released(joystick, :left_bumper)
@@ -1006,10 +1006,10 @@ function IODevices.assign!(sys::System{<:C172RAirframe},
     u.act.brake_left = is_pressed(joystick, :button_1)
     u.act.brake_right = is_pressed(joystick, :button_1)
 
-    u.act.aileron_trim -= 2e-4 * is_pressed(joystick, :hat_left)
-    u.act.aileron_trim += 2e-4 * is_pressed(joystick, :hat_right)
-    u.act.elevator_trim += 2e-4 * is_pressed(joystick, :hat_down)
-    u.act.elevator_trim -= 2e-4 * is_pressed(joystick, :hat_up)
+    u.act.aileron_offset -= 2e-4 * is_pressed(joystick, :hat_left)
+    u.act.aileron_offset += 2e-4 * is_pressed(joystick, :hat_right)
+    u.act.elevator_offset += 2e-4 * is_pressed(joystick, :hat_down)
+    u.act.elevator_offset -= 2e-4 * is_pressed(joystick, :hat_up)
 
     u.act.flaps += 0.3333 * was_released(joystick, :button_3)
     u.act.flaps -= 0.3333 * was_released(joystick, :button_2)

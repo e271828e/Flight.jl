@@ -59,9 +59,9 @@ function test_system_methods()
             f_ode!(ac, env)
             @test ac.y.airframe.ldg.left.strut.wow == false
 
-            ac.avionics.u.pitch_control_mode_select = C172Rv2.inclination_mode
-            ac.avionics.u.roll_control_mode_select = C172Rv2.bank_mode
-            ac.avionics.u.yaw_control_mode_select = C172Rv2.sideslip_mode
+            ac.avionics.u.pitch_mode_select = C172Rv2.pitch_angle_mode
+            ac.avionics.u.roll_mode_select = C172Rv2.roll_angle_mode
+            ac.avionics.u.yaw_mode_select = C172Rv2.sideslip_mode
             f_disc!(ac, 0.02, env)
             @test ac.avionics.y.logic.flight_phase == C172Rv2.phase_air
 
@@ -96,9 +96,9 @@ function test_pitch_rate_cas(; save::Bool = true)
 
         world.u.ac.avionics.eng_start = true #engine start switch on
         world.u.ac.avionics.CAS_enable = true #enable CAS
-        world.u.ac.avionics.roll_control_mode_select = C172Rv2.bank_mode
-        world.u.ac.avionics.pitch_control_mode_select = C172Rv2.inclination_mode
-        world.u.ac.avionics.yaw_control_mode_select = C172Rv2.sideslip_mode
+        world.u.ac.avionics.roll_mode_select = C172Rv2.roll_angle_mode
+        world.u.ac.avionics.pitch_mode_select = C172Rv2.pitch_angle_mode
+        world.u.ac.avionics.yaw_mode_select = C172Rv2.sideslip_mode
         world.u.ac.avionics.throttle = 1
         world.u.env.atm.wind.v_ew_n .= [0, 0, 0]
 
@@ -186,48 +186,48 @@ end
 
 # end
 
-# function test_sim_paced(; save::Bool = true)
+function test_sim_paced(; save::Bool = true)
 
-#     h_trn = HOrth(601.55);
+    h_trn = HOrth(601.55);
 
-#     ac = Cessna172Rv1();
-#     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
-#     world = SimpleWorld(ac, env) |> System;
+    ac = Cessna172Rv2();
+    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
+    world = SimpleWorld(ac, env) |> System;
 
-#     kin_init = KinematicInit(
-#         v_eOb_n = [0, 0, 0],
-#         ω_lb_b = [0, 0, 0],
-#         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.3),
-#         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-#         h = h_trn + 1.9 + 0);
+    kin_init = KinematicInit(
+        v_eOb_n = [0, 0, 0],
+        ω_lb_b = [0, 0, 0],
+        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.3),
+        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        h = h_trn + 1.9 + 0);
 
-#     init_kinematics!(world, kin_init)
+    init_kinematics!(world, kin_init)
 
-#     sim = Simulation(world; Δt = 0.02, t_end = 300)
+    sim = Simulation(world; Δt = 0.02, t_end = 300)
 
-#     interfaces = Vector{IODevices.Interface}()
-#     for joystick in get_connected_joysticks()
-#         push!(interfaces, attach_io!(sim, joystick))
-#     end
+    interfaces = Vector{IODevices.Interface}()
+    for joystick in get_connected_joysticks()
+        push!(interfaces, attach_io!(sim, joystick))
+    end
 
-#     # xp = XPCDevice()
-#     xp = XPCDevice(host = IPv4("192.168.1.2"))
-#     push!(interfaces, attach_io!(sim, xp))
+    # xp = XPCDevice()
+    xp = XPCDevice(host = IPv4("192.168.1.2"))
+    push!(interfaces, attach_io!(sim, xp))
 
-#     @sync begin
-#         for interface in interfaces
-#             Threads.@spawn IODevices.start!(interface)
-#         end
-#         Threads.@spawn Sim.run_paced!(sim; rate = 1, verbose = true)
-#     end
+    @sync begin
+        for interface in interfaces
+            Threads.@spawn IODevices.start!(interface)
+        end
+        Threads.@spawn Sim.run_paced!(sim; rate = 1, verbose = true)
+    end
 
-#     plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
-#     # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-#     save && save_plots(plots, save_folder = joinpath("tmp", "paced_sim_test"))
+    plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
+    # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+    save && save_plots(plots, save_folder = joinpath("tmp", "paced_sim_test"))
 
-#     return nothing
+    return nothing
 
-# end
+end
 
 
 end #module
