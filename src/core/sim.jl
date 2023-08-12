@@ -18,7 +18,7 @@ export TimeHistory, get_timestamps, get_data, get_components, get_child_names
 ################################################################################
 ################################# Info ########################################
 
-Base.@kwdef struct Info
+@kwdef struct Info
     algorithm::String = "No info"
     t_start::Float64 = 0.0
     t_end::Float64 = 0.0
@@ -32,7 +32,7 @@ end
 ################################################################################
 ############################### Output #########################################
 
-Base.@kwdef struct Output{Y}
+@kwdef struct Output{Y}
     t::Float64
     y::Y #System's y
 end
@@ -224,10 +224,10 @@ function f_cb_io!(integrator)
 
     @unpack sys, sys_io! = integrator.p
 
-    sys_io!(sys.u, sys.s, sys.y, sys.t[], sys.params)
+    sys_io!(sys)
 
-    #a System control function will never modify the System's continuous state,
-    #so we may as well tell the integrator to avoid any performance hit
+    #a System I/O function should never modify the System's continuous state, so
+    #we may as well tell the integrator to avoid any performance hit
     u_modified!(integrator, false)
 
 end
@@ -236,21 +236,12 @@ end
 #and/or f_step!
 f_cb_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
 
-#function signature a System initialization function must adhere to.
-#x: System's continuous state, which the function may modify
-#u: System's control input, which the function may modify
-#s: System's discrete state, which the function may modify
-#t: (dereferenced) System's t field
-#params: (immutable) System's params field
-no_sys_reinit!(sys::System; kwargs...) = nothing
+#function signature for a System initialization function
+no_sys_reinit!(::System; kwargs...) = nothing
 
-#function signature a System I/O function must adhere to.
-#u: (mutable) System's control input, which the function may modify
-#s: (mutable) System's discrete state, which the function may modify
-#y: (immutable) System's output
-#t: (dereferenced) System's t field
-#params: (immutable) System's params field
-no_sys_io!(u, s, y, t::Float64, params) = nothing
+#function signature for a System I/O function. note: an I/O function MUST NOT
+#modify a System's ẋ, x or t
+no_sys_io!(::System) = nothing
 
 
 ####################### OrdinaryDiffEq extensions ##############################

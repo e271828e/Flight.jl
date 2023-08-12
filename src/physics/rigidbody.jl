@@ -31,7 +31,7 @@ Frame `fc(Oc, Ɛc)` is defined by:
   axes εb (`r_ObOc_b`)
 - The rotation quaternion from fb's axes εb to fc's axes εc (`q_bc`)
 """
-Base.@kwdef struct FrameTransform
+@kwdef struct FrameTransform
     r::SVector{3,Float64} = zeros(SVector{3})
     q::RQuat = RQuat()
 end
@@ -103,7 +103,7 @@ Force and torque combination defined on a concrete reference frame
 A `Wrench` is defined on reference frame fc(Oc,εc) when it is applied at its
 origin Oc and projected on its axes εc
 """
-Base.@kwdef struct Wrench
+@kwdef struct Wrench
     F::SVector{3,Float64} = zeros(SVector{3})
     M::SVector{3,Float64} = zeros(SVector{3})
  end
@@ -187,7 +187,7 @@ Notes:
   elements. As long as rotating elements have axial symmetry around their axes
   of rotation, their contributions to `J_O` will be constant.
 """
-Base.@kwdef struct MassProperties
+@kwdef struct MassProperties
     m::Float64 = 0.0
     J_O::SMatrix{3, 3, Float64, 9} = zeros(SMatrix{3,3,Float64,9})
     r_OG::SVector{3, Float64} = zeros(SVector{3})
@@ -502,7 +502,7 @@ end
 ###################### Acceleration Outputs #####################
 
 #all magnitudes resolved in body axes unless otherwise noted
-Base.@kwdef struct RigidBodyData
+@kwdef struct RigidBodyData
     mp_Ob::MassProperties = MassProperties() #aircraft mass properties at Ob
     wr_g_Ob::Wrench = Wrench() #gravity wrench at Ob
     wr_in_Ob::Wrench = Wrench() #inertia wrench at Ob

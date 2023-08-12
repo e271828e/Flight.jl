@@ -129,7 +129,7 @@ function PIContinuous{N}(; k_p::Real = 1.0, k_i::Real = 0.1, k_l::Real = 0.0,
     PIContinuous{N}(s2v(k_p), s2v(k_i), s2v(k_l), s2v(β_p))
 end
 
-Base.@kwdef struct PIContinuousU{N}
+@kwdef struct PIContinuousU{N}
     setpoint::MVector{N,Float64} = zeros(N) #commanded setpoint
     feedback::MVector{N,Float64} = zeros(N) #plant feedback (non-inverted)
     bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
@@ -139,7 +139,7 @@ Base.@kwdef struct PIContinuousU{N}
     reset::MVector{N,Bool} = zeros(Bool, N) #reset PID states and null outputs
 end
 
-Base.@kwdef struct PIContinuousY{N}
+@kwdef struct PIContinuousY{N}
     setpoint::SVector{N,Float64} = zeros(SVector{N}) #commanded setpoint
     feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
     bound_lo::SVector{N,Float64} = fill(-Inf, N) #lower output bounds
@@ -344,7 +344,7 @@ function PIDDiscrete{N}(; k_p::Real = 1.0, k_i::Real = 0.1,
                    s2v(β_p), s2v(β_d),)
 end
 
-Base.@kwdef struct PIDDiscreteU{N}
+@kwdef struct PIDDiscreteU{N}
     setpoint::MVector{N,Float64} = zeros(N) #commanded setpoint
     feedback::MVector{N,Float64} = zeros(N) #plant feedback (non-inverted)
     bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
@@ -354,13 +354,13 @@ Base.@kwdef struct PIDDiscreteU{N}
     reset::MVector{N,Bool} = zeros(Bool, N) #reset PID states and null outputs
 end
 
-Base.@kwdef struct PIDDiscreteS{N}
+@kwdef struct PIDDiscreteS{N}
     x_i0::MVector{N,Float64} = zeros(N) #previous integrator path state
     x_d0::MVector{N,Float64} = zeros(N) #previous derivative path state
     sat_out_0::MVector{N,Int64} = zeros(N) #previous output saturation status
 end
 
-Base.@kwdef struct PIDDiscreteY{N}
+@kwdef struct PIDDiscreteY{N}
     setpoint::SVector{N,Float64} = zeros(SVector{N}) #commanded setpoint
     feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
     bound_lo::SVector{N,Float64} = fill(-Inf, N) #lower output bounds

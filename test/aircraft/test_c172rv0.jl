@@ -131,10 +131,10 @@ function test_trimming()
         @test e_nb.φ ≈ state.φ_nb
         @test ac.y.airframe.aero.α ≈ state.α_a
         @test ac.y.airframe.pwp.engine.ω == state.n_eng * ac.airframe.pwp.engine.params.ω_rated
-        @test ac.u.airframe.act.throttle == state.throttle
-        @test ac.u.airframe.act.aileron_offset == state.aileron
-        @test ac.u.airframe.act.elevator_offset == state.elevator
-        @test ac.u.airframe.act.rudder_offset == state.rudder
+        @test ac.airframe.act.u.throttle == state.throttle
+        @test ac.airframe.act.u.aileron_offset == state.aileron
+        @test ac.airframe.act.u.elevator_offset == state.elevator
+        @test ac.airframe.act.u.rudder_offset == state.rudder
 
         @test e_nb.ψ ≈ params.ψ_nb
         @test Attitude.inclination(v_wOb_n) ≈ params.γ_wOb_n atol = 1e-12
@@ -142,8 +142,8 @@ function test_trimming()
         @test ac.y.air.TAS ≈ params.TAS
         @test ac.y.airframe.aero.β ≈ params.β_a
         @test ac.x.airframe.fuel[1] == params.fuel
-        @test ac.u.airframe.act.mixture == params.mixture
-        @test ac.u.airframe.act.flaps == params.flaps
+        @test ac.airframe.act.u.mixture == params.mixture
+        @test ac.airframe.act.u.flaps == params.flaps
 
         #setting α_filt = α and β_filt = β should have zeroed their derivatives
         @test ac.ẋ.airframe.aero.α_filt ≈ 0.0 atol = 1e-12
@@ -194,19 +194,22 @@ function test_sim(; save::Bool = true)
 
         init_kinematics!(world, kin_init)
 
-        world.u.ac.airframe.act.eng_start = true #engine start switch on
-        world.u.env.atm.wind.v_ew_n .= [0, 0, 0]
+        world.ac.airframe.act.u.eng_start = true #engine start switch on
+        world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 
         sys_io! = let
 
-            function (u, s, y, t, params)
+            function (world)
 
-                u.ac.airframe.act.throttle = 0.2
-                u.ac.airframe.act.aileron = (t < 5 ? 0.25 : 0.0)
-                u.ac.airframe.act.elevator = 0.0
-                u.ac.airframe.act.rudder = 0.0
-                u.ac.airframe.act.brake_left = 1
-                u.ac.airframe.act.brake_right = 1
+                u_act = world.ac.airframe.act.u
+                t = world.t[]
+
+                u_act.throttle = 0.2
+                u_act.aileron = (t < 5 ? 0.25 : 0.0)
+                u_act.elevator = 0.0
+                u_act.rudder = 0.0
+                u_act.brake_left = 1
+                u_act.brake_right = 1
 
             end
         end
@@ -216,10 +219,10 @@ function test_sim(; save::Bool = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
         plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
-        save && save_plots(plots, save_folder = joinpath("tmp", "sim_test"))
+        save && save_plots(plots, save_folder = joinpath("tmp", "test_c172rv0", "sim_test"))
 
         # return sim
-        return world
+        # return world
 
     end
 

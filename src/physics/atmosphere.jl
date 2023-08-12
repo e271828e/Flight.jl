@@ -43,7 +43,7 @@ const g_std = 9.80665
 
 abstract type AbstractSeaLevelConditions <: SystemDefinition end
 
-Base.@kwdef struct SeaLevelData
+@kwdef struct SeaLevelData
     p::Float64 = p_std
     T::Float64 = T_std
 end
@@ -63,7 +63,7 @@ end
 struct TunableSeaLevelConditions <: AbstractSeaLevelConditions end
 
 #these probably should be defined as Ranged
-Base.@kwdef mutable struct TunableSeaLevelConditionsU
+@kwdef mutable struct TunableSeaLevelConditionsU
     T::Ranged{Float64, T_std - 50.0, T_std + 50.0} = T_std
     p::Ranged{Float64, p_std - 10000.0, p_std + 10000.0} = p_std
 end
@@ -176,7 +176,7 @@ end
 
 abstract type AbstractWind <: SystemDefinition end
 
-Base.@kwdef struct WindData
+@kwdef struct WindData
     v_ew_n::SVector{3,Float64} = zeros(SVector{3})
 end
 
@@ -188,7 +188,7 @@ end
 
 struct TunableWind <: AbstractWind end
 
-Base.@kwdef mutable struct TunableWindU
+@kwdef mutable struct TunableWindU
     v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
 end
 
@@ -228,7 +228,7 @@ end
 
 abstract type AbstractAtmosphere <: SystemDefinition end
 
-Base.@kwdef struct AtmosphericData
+@kwdef struct AtmosphericData
     ISA::ISAData = ISAData()
     wind::WindData = WindData()
 end
@@ -240,7 +240,7 @@ end
 ################################################################################
 ############################## SimpleAtmosphere ################################
 
-Base.@kwdef struct SimpleAtmosphere{S <: AbstractSeaLevelConditions,
+@kwdef struct SimpleAtmosphere{S <: AbstractSeaLevelConditions,
                                    W <: AbstractWind} <: AbstractAtmosphere
     sl::S = TunableSeaLevelConditions()
     wind::W = TunableWind()

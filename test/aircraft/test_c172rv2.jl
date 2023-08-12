@@ -94,30 +94,33 @@ function test_pitch_rate_cas(; save::Bool = true)
 
         init_kinematics!(world, kin_init)
 
-        world.u.ac.avionics.eng_start = true #engine start switch on
-        world.u.ac.avionics.CAS_enable = true #enable CAS
-        world.u.ac.avionics.roll_mode_select = C172Rv2.roll_angle_mode
-        world.u.ac.avionics.pitch_mode_select = C172Rv2.pitch_angle_mode
-        world.u.ac.avionics.yaw_mode_select = C172Rv2.sideslip_mode
-        world.u.ac.avionics.throttle = 1
-        world.u.env.atm.wind.v_ew_n .= [0, 0, 0]
+        world.ac.avionics.u.eng_start = true #engine start switch on
+        world.ac.avionics.u.CAS_enable = true #enable CAS
+        world.ac.avionics.u.roll_mode_select = C172Rv2.roll_angle_mode
+        world.ac.avionics.u.pitch_mode_select = C172Rv2.pitch_angle_mode
+        world.ac.avionics.u.yaw_mode_select = C172Rv2.sideslip_mode
+        world.ac.avionics.u.throttle = 1
+        world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 
         sys_io! = let
 
-            function (u, s, y, t, params)
+            function (world)
+
+                u_avionics = world.ac.avionics.u
+                t = world.t[]
 
                 if 0 < t < 10
-                    u.ac.avionics.roll_input = 0
-                    u.ac.avionics.pitch_input = 0
-                    u.ac.avionics.yaw_input = 0
+                    u_avionics.roll_input = 0
+                    u_avionics.pitch_input = 0
+                    u_avionics.yaw_input = 0
                 elseif 10 < t < 15
-                    u.ac.avionics.roll_input = 1
-                    u.ac.avionics.pitch_input = 0.0
-                    u.ac.avionics.yaw_input = 0.1
+                    u_avionics.roll_input = 1
+                    u_avionics.pitch_input = 0.0
+                    u_avionics.yaw_input = 0.1
                 else #t>15
-                    u.ac.avionics.roll_input = 1
-                    u.ac.avionics.pitch_input = 0.1
-                    u.ac.avionics.yaw_input = 0.1
+                    u_avionics.roll_input = 1
+                    u_avionics.pitch_input = 0.0
+                    u_avionics.yaw_input = 0.0
                 end
             end
         end

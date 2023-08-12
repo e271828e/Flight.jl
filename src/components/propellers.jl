@@ -37,7 +37,7 @@ struct ConstantDistribution <: AbstractDistribution{1}
 end
 get_value(f::ConstantDistribution, ::Real) = f.a
 
-Base.@kwdef struct EllipticDistribution <: AbstractDistribution{1}
+@kwdef struct EllipticDistribution <: AbstractDistribution{1}
     a::Float64 = 0.075
 end
 get_value(f::EllipticDistribution, ζ::Real) = f.a*√(1 - ζ^2)
@@ -95,7 +95,7 @@ function cD(::DefaultAirfoil, α::Real, M::Real = 0.0)
 
 end
 
-Base.@kwdef struct Blade{C, P, A <: AbstractAirfoil}
+@kwdef struct Blade{C, P, A <: AbstractAirfoil}
     ζ_h::Float64 = 0.2 #hub diameter to blade diameter ratio, ζ ∈ [ζ_h, 1]
     c̃::C = EllipticDistribution(0.075) #chord to diameter ratio c_d(ζ)
     p̃::P = ConstantDistribution(0.8)#chord-line-pitch to diameter ratio k_c(ζ)
@@ -112,7 +112,7 @@ get_βa(b::Blade, ζ::Real, Δβ::Real) = get_βc(b, ζ, Δβ) - α_0(b.airfoil)
 ################################################################################
 ############################ Coefficients ##################################
 
-Base.@kwdef struct Coefficients{T}
+@kwdef struct Coefficients{T}
     C_Fx::T
     C_Mx::T
     C_Fz_α::T
@@ -206,7 +206,7 @@ abstract type PitchControl end
 
 struct FixedPitch <: PitchControl end
 
-Base.@kwdef struct VariablePitch <: PitchControl
+@kwdef struct VariablePitch <: PitchControl
     bounds::NTuple{2, Float64} = (deg2rad(0), deg2rad(10))
 end
 
@@ -311,7 +311,7 @@ function Propeller(; pitch = FixedPitch(), blade = Blade(), n_blades = 2,
 end
 
 
-Base.@kwdef struct PropellerY
+@kwdef struct PropellerY
     v_wOp_p::SVector{3,Float64} = zeros(SVector{3}) #local aerodynamic velocity, propeller axes
     ω::Float64 = 0 #angular velocity
     J::Float64 = 0 #advance ratio
@@ -343,8 +343,8 @@ function Systems.f_ode!(sys::System{<:Propeller}, kin::KinematicData, air::AirDa
 
     #compute advance ratio. here we use the velocity vector magnitude rather
     #than its axial component. J must be positive, so we need the abs for CCW
-    #propellers. also, prevent division by zero in a non-rotating propeller
-    abs_ω_min = 1.0
+    #propellers
+    abs_ω_min = 1.0 #prevent division by zero in a non-rotating propeller
     v_J = norm(v_wOp_p)
     ω_J = max(abs(ω), abs_ω_min)
     J = 2π * v_J / (ω_J * d)

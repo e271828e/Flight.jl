@@ -4,7 +4,7 @@ using Flight
 
 struct DiscreteTestComponent <: SystemDefinition end
 
-Base.@kwdef struct DiscreteTestComponentY
+@kwdef struct DiscreteTestComponentY
     a::Float64 = 0
     b::Float64 = 0
 end

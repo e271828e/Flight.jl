@@ -199,7 +199,7 @@ function test_thruster_dynamics()
         thr = Thruster() |> System
         sim = Simulation(thr, args_ode = (air, kin), args_step = (fuel,), t_end = 100)
 
-        sim.u.engine.start = true
+        thr.engine.u.start = true
 
         #take two steps for the start command to take effect
         step!(sim)
@@ -210,7 +210,7 @@ function test_thruster_dynamics()
         step!(sim, 10, true)
         @test sim.y.engine.state === eng_running
         @test sim.y.engine.ω ≈ thr.engine.params.ω_idle atol = 1
-        sim.u.engine.start = false
+        thr.engine.u.start = false
 
         #thruster should be pushing
         @test get_wr_b(sim.sys).F[1] > 0
@@ -218,13 +218,13 @@ function test_thruster_dynamics()
         @test get_wr_b(sim.sys).M[1] < 0
 
         #give it some throttle and see the RPMs increase
-        sim.u.engine.throttle = 1
+        thr.engine.u.throttle = 1
         step!(sim, 5, true)
         @test sim.y.engine.ω > 2thr.engine.params.ω_idle
 
         #back to idle, make sure the idle controller kicks back in and idle RPMs
         #stabilize around their target value
-        sim.u.engine.throttle = 0
+        thr.engine.u.throttle = 0
         step!(sim, 5, true)
         @test sim.y.engine.ω ≈ thr.engine.params.ω_idle atol = 1
 
@@ -249,26 +249,26 @@ function test_thruster_dynamics()
 
         sim = Simulation(thr, args_ode = (air, kin), args_step = (fuel,), t_end = 100)
 
-        sim.u.propeller[] = 0
-        sim.u.engine.start = true
+        thr.propeller.u[] = 0
+        thr.engine.u.start = true
         step!(sim, 5, true) #give it a few seconds to get to stable idle RPMs
-        sim.u.engine.start = false
-        @test sim.y.engine.state === eng_running
+        thr.engine.u.start = false
+        @test thr.y.engine.state === eng_running
 
-        @test sim.y.propeller.ω ≈ -sim.y.engine.ω
+        @test thr.y.propeller.ω ≈ -sim.y.engine.ω
         @test get_wr_b(sim.sys).F[1] > 0
         @test get_wr_b(sim.sys).M[1] > 0 #CW opposing torque
 
 
         #change propeller pitch and check that the idle controller raises the
         #idle manifold pressure to hold the target idle RPMs
-        sim.u.propeller[] = 0.1
+        thr.propeller.u[] = 0.1
         step!(sim, 5, true)
         @test sim.y.engine.ω ≈ thr.engine.params.ω_idle atol = 1
 
         #with the throttle well above idle, the idle controller will not be
         #holding RPMs anymore
-        sim.u.engine.throttle = 0.5
+        thr.engine.u.throttle = 0.5
         step!(sim, 5, true)
 
         #now, increasing pitch gives a higher thrust coefficient, but also a
@@ -276,7 +276,7 @@ function test_thruster_dynamics()
         #reduces absolute thrust. in general, whether absolute thrust increases
         #or decreases with propeller pitch depends on operating conditions.
         ω_tmp = sim.y.engine.ω
-        sim.u.propeller[] = 0.2
+        thr.propeller.u[] = 0.2
         step!(sim, 5, true)
         @test sim.y.engine.ω < ω_tmp
 
@@ -291,9 +291,9 @@ function test_thruster_dynamics()
         @test sim.y.engine.ω ≈ 0.0 atol = 1e-10
 
         #start the engine again to test for allocations
-        sim.u.engine.start = true
+        thr.engine.u.start = true
         step!(sim, 5, true)
-        sim.u.engine.start = false
+        thr.engine.u.start = false
 
         @test @ballocated(f_ode!($thr, $air, $kin)) == 0
         @test @ballocated(f_step!($thr, $fuel)) == 0

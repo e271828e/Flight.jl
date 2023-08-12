@@ -35,11 +35,11 @@ get_steering_angle(::System{NoSteering}) = 0.0
 
 ############################### DirectSteering #################################
 
-Base.@kwdef struct DirectSteering <: AbstractSteering
+@kwdef struct DirectSteering <: AbstractSteering
     ψ_max::Float64 = π/6
 end
 
-Base.@kwdef struct DirectSteeringY
+@kwdef struct DirectSteeringY
     ψ::Float64 = 0.0
 end
 #the contents of u must be mutable
@@ -76,11 +76,11 @@ get_braking_factor(::System{NoBraking}) = 0.0
 
 ############################# DirectBraking ####################################
 
-Base.@kwdef struct DirectBraking <: AbstractBraking
+@kwdef struct DirectBraking <: AbstractBraking
    η_br::Float64 = 1.0 #braking efficiency
 end
 
-Base.@kwdef struct DirectBrakingY
+@kwdef struct DirectBrakingY
    κ_br::Float64 = 0.0 #braking coefficient
 end
 
@@ -111,7 +111,7 @@ abstract type AbstractDamper end #not a System!
 
 get_force(args...) = throw(MethodError(get_force, args))
 
-Base.@kwdef struct SimpleDamper <: AbstractDamper
+@kwdef struct SimpleDamper <: AbstractDamper
     k_s::Float64 = 25000 #spring constant
     k_d_ext::Float64 = 1000 #extension damping coefficient
     k_d_cmp::Float64 = 1000 #compression damping coefficient
@@ -177,7 +177,7 @@ end
 
 ################################## Strut #######################################
 
-Base.@kwdef struct Strut{D<:AbstractDamper} <: SystemDefinition
+@kwdef struct Strut{D<:AbstractDamper} <: SystemDefinition
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
     l_0::Float64 = 0.0 #strut natural length from airframe attachment point to wheel endpoint
     damper::D = SimpleDamper()
@@ -185,7 +185,7 @@ Base.@kwdef struct Strut{D<:AbstractDamper} <: SystemDefinition
         k_p = 5.0, k_i = 400.0, k_l = 0.2)
 end
 
-Base.@kwdef struct StrutY #defaults should be consistent with wow = 0
+@kwdef struct StrutY #defaults should be consistent with wow = 0
     Δh::Float64 = 0.0 #height above ground
     wow::Bool = false #weight-on-wheel flag
     ξ::Float64 = 0.0 #damper elongation
@@ -395,7 +395,7 @@ end
 ################################################################################
 ############################ LandingGearUnit ###################################
 
-Base.@kwdef struct LandingGearUnit{S <: AbstractSteering,
+@kwdef struct LandingGearUnit{S <: AbstractSteering,
                             B <: AbstractBraking, L<:Strut} <: SystemDefinition
     steering::S = NoSteering()
     braking::B = NoBraking()

@@ -154,20 +154,20 @@ function assign!(ac::System{<:Cessna172Rv0},
     ac.x.airframe.pwp.engine.ω = ω_eng
     ac.x.airframe.fuel .= fuel
 
-    ac.u.airframe.act.throttle = throttle
-    ac.u.airframe.act.aileron_offset = aileron
-    ac.u.airframe.act.elevator_offset = elevator
-    ac.u.airframe.act.rudder_offset = rudder
-    ac.u.airframe.act.flaps = flaps
-    ac.u.airframe.act.mixture = mixture
+    ac.airframe.act.u.throttle = throttle
+    ac.airframe.act.u.aileron_offset = aileron
+    ac.airframe.act.u.elevator_offset = elevator
+    ac.airframe.act.u.rudder_offset = rudder
+    ac.airframe.act.u.flaps = flaps
+    ac.airframe.act.u.mixture = mixture
 
     #incremental control inputs to zero
-    ac.u.airframe.act.elevator = 0
-    ac.u.airframe.act.aileron = 0
-    ac.u.airframe.act.rudder = 0
+    ac.airframe.act.u.elevator = 0
+    ac.airframe.act.u.aileron = 0
+    ac.airframe.act.u.rudder = 0
 
     #engine must be running, no way to trim otherwise
-    ac.s.airframe.pwp.engine.state = Piston.eng_running
+    ac.airframe.pwp.engine.s.state = Piston.eng_running
     @assert ac.x.airframe.pwp.engine.ω > ac.airframe.pwp.engine.params.ω_idle
 
     #engine idle compensator: as long as the engine remains at normal
@@ -339,7 +339,7 @@ const x_labels = (
 
 function assign!(u::LinearU, ac::System{<:Cessna172Rv0})
 
-    @unpack throttle, aileron, elevator, rudder = ac.u.airframe.act
+    @unpack throttle, aileron, elevator, rudder = ac.airframe.act.u
     @pack! u = throttle, aileron, elevator, rudder
 
 end
@@ -347,7 +347,7 @@ end
 function assign!(ac::System{<:Cessna172Rv0}, u::LinearU)
 
     @unpack throttle, aileron, elevator, rudder = u
-    @pack! ac.u.airframe.act = throttle, aileron, elevator, rudder
+    @pack! ac.airframe.act.u = throttle, aileron, elevator, rudder
 
 end
 

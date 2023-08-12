@@ -25,7 +25,7 @@ export Cessna172Rv1
 
 struct DirectControls <: AbstractAvionics end
 
-Base.@kwdef mutable struct DirectControlsU
+@kwdef mutable struct DirectControlsU
     eng_start::Bool = false
     eng_stop::Bool = false
     throttle::Ranged{Float64, 0., 1.} = 0.0
@@ -41,7 +41,7 @@ Base.@kwdef mutable struct DirectControlsU
     brake_right::Ranged{Float64, 0., 1.} = 0.0
 end
 
-Base.@kwdef struct DirectControlsY
+@kwdef struct DirectControlsY
     eng_start::Bool = false
     eng_stop::Bool = false
     throttle::Float64 = 0.0
@@ -88,7 +88,7 @@ function Aircraft.map_controls!(airframe::System{<:C172RAirframe},
             aileron_offset, elevator_offset, rudder_offset, flaps,
             brake_left, brake_right = avionics.y
 
-    @pack!  airframe.u.act = eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
+    @pack!  airframe.act.u = eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
             aileron_offset, elevator_offset, rudder_offset, flaps,
             brake_left, brake_right
 

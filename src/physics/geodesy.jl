@@ -48,7 +48,7 @@ Base.convert(::Type{L}, loc::L) where {L<:Abstract2DLocation} = loc
 
 #### NVector ####
 
-Base.@kwdef struct NVector <: Abstract2DLocation
+@kwdef struct NVector <: Abstract2DLocation
     data::SVector{3,Float64} = SVector{3}(1.0, 0.0, 0.0)
     function NVector(data::AbstractVector{T} where {T<:Real}; normalization::Bool = true)
         data = SVector{3,Float64}(data) #normalization will be faster for an SVector
@@ -87,7 +87,7 @@ LinearAlgebra.normalize(n::NVector) = NVector(getfield(n, :data)) #let the const
 
 #### LatLon ####
 
-Base.@kwdef struct LatLon <: Abstract2DLocation
+@kwdef struct LatLon <: Abstract2DLocation
     ϕ::Float64 = 0.0
     λ::Float64 = 0.0
     function LatLon(ϕ::Real, λ::Real)
@@ -214,7 +214,7 @@ function get_geoid_height(loc::Abstract2DLocation, geoid_height_interp = egm96_i
     geoid_height_interp(ϕ, λ)
 end
 
-Base.@kwdef struct Altitude{D<:AbstractAltitudeDatum}
+@kwdef struct Altitude{D<:AbstractAltitudeDatum}
     _val::Float64 = 0.0
     #this constructor prevents the user from passing an Altitude with a
     #different datum, which would get implicitly converted to Float64 without
@@ -292,7 +292,7 @@ Base.convert(::Type{P}, p::P) where {P<:Abstract3DPosition} = p
 
 ########################### Geographic ###############################
 
-Base.@kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DPosition
+@kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DPosition
     loc::L = NVector()
     h::Altitude{H} = HOrth()
 end

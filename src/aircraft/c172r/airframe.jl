@@ -58,7 +58,7 @@ RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
 
 struct MechanicalActuation <: SystemDefinition end
 
-Base.@kwdef mutable struct MechanicalActuationU
+@kwdef mutable struct MechanicalActuationU
     eng_start::Bool = false
     eng_stop::Bool = false
     throttle::Ranged{Float64, 0., 1.} = 0.0
@@ -74,7 +74,7 @@ Base.@kwdef mutable struct MechanicalActuationU
     brake_right::Ranged{Float64, 0., 1.} = 0.0
 end
 
-Base.@kwdef struct MechanicalActuationY
+@kwdef struct MechanicalActuationY
     eng_start::Bool = false
     eng_stop::Bool = false
     throttle::Float64 = 0.0
@@ -153,8 +153,10 @@ function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172
 
     CImGui.PushItemWidth(-60)
 
-    u.eng_start = dynamic_button("Engine Start", 0.4); CImGui.SameLine()
-    u.eng_stop = dynamic_button("Engine Stop", 0.0)
+    dynamic_button("Engine Start", 0.4); CImGui.SameLine()
+    u.eng_start = CImGui.IsItemActive()
+    dynamic_button("Engine Stop", 0.0)
+    u.eng_stop = CImGui.IsItemActive()
 
     u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
     @running_plot("Throttle", u.throttle, 0, 1, 0.0, 120)
@@ -443,7 +445,7 @@ const aero_lookup = generate_aero_lookup()
 # v_wOa_b = v_wOb_b + ω_eb_b × r_ObOa_b
 # v_wOa_a = q_ba'(v_wOa_b)
 
-Base.@kwdef struct AeroCoeffs
+@kwdef struct AeroCoeffs
     C_D::Float64 = 0.0
     C_Y::Float64 = 0.0
     C_L::Float64 = 0.0
@@ -475,7 +477,7 @@ function get_aero_coeffs(lookup = aero_lookup; α, β, p_nd, q_nd, r_nd, δa, δ
 
 end
 
-Base.@kwdef struct Aero <: SystemDefinition
+@kwdef struct Aero <: SystemDefinition
     S::Float64 = 16.165 #wing area
     b::Float64 = 10.912 #wingspan
     c::Float64 = 1.494 #mean aerodynamic chord
@@ -493,18 +495,18 @@ end
 #r↑ -> δr↑ -> rudder trailing edge left -> Cn↓ -> yaw left
 #f↑ -> δf↑ -> flap trailing edge down -> CL↑
 
-Base.@kwdef mutable struct AeroU
+@kwdef mutable struct AeroU
     e::Ranged{Float64, -1., 1.} = 0.0
     a::Ranged{Float64, -1., 1.} = 0.0
     r::Ranged{Float64, -1., 1.} = 0.0
     f::Ranged{Float64, 0., 1.} = 0.0
 end
 
-Base.@kwdef mutable struct AeroS #discrete state
+@kwdef mutable struct AeroS #discrete state
     stall::Bool = false
 end
 
-Base.@kwdef struct AeroY
+@kwdef struct AeroY
     e::Float64 = 0.0 #normalized elevator control input
     a::Float64 = 0.0 #normalized aileron control input
     r::Float64 = 0.0 #normalized rudder control input
@@ -735,7 +737,7 @@ end
 ################################################################################
 ################################# Payload ######################################
 
-Base.@kwdef struct Payload <: SystemDefinition
+@kwdef struct Payload <: SystemDefinition
     pilot_slot::FrameTransform = FrameTransform(r = SVector{3}(0.183, -0.356, 0.899))
     copilot_slot::FrameTransform = FrameTransform(r = SVector{3}(0.183, 0.356, 0.899))
     lpass_slot::FrameTransform = FrameTransform(r = SVector{3}(-0.681, -0.356, 0.899))
@@ -743,7 +745,7 @@ Base.@kwdef struct Payload <: SystemDefinition
     baggage_slot::FrameTransform = FrameTransform(r = SVector{3}(-1.316, 0, 0.899))
 end
 
-Base.@kwdef mutable struct PayloadU
+@kwdef mutable struct PayloadU
     m_pilot::Ranged{Float64, 0., 100.} = 75.0
     m_copilot::Ranged{Float64, 0., 100.} = 75.0
     m_lpass::Ranged{Float64, 0., 100.} = 0.0
@@ -799,12 +801,12 @@ end
 
 #assumes fuel is drawn equally from both tanks, no need to model them
 #individually for now
-Base.@kwdef struct Fuel <: Piston.AbstractFuelSupply
+@kwdef struct Fuel <: Piston.AbstractFuelSupply
     m_full::Float64 = 114.4 #maximum fuel mass (42 gal * 6 lb/gal * 0.454 kg/lb)
     m_res::Float64 = 1.0 #residual fuel mass
 end
 
-Base.@kwdef struct FuelY
+@kwdef struct FuelY
     m_total::Float64 = 0.0 #total fuel mass
     m_avail::Float64 = 0.0 #available fuel mass
 end
@@ -870,7 +872,7 @@ Pwp() = Piston.Thruster(propeller = Propeller(t_bp = FrameTransform(r = [2.055, 
 
 #P is introduced as a type parameter, because Piston.Thruster is itself a
 #parametric type, and therefore not concrete
-Base.@kwdef struct C172RAirframe{P} <: AbstractAirframe
+@kwdef struct C172RAirframe{P} <: AbstractAirframe
     str::Structure = Structure()
     act::MechanicalActuation = MechanicalActuation()
     aero::Aero = Aero()
@@ -917,13 +919,13 @@ function assign!(aero::System{<:Aero},
             aileron_offset, elevator_offset, rudder_offset,
             brake_left, brake_right, flaps = act.y
 
-    pwp.u.engine.start = eng_start
-    pwp.u.engine.stop = eng_stop
-    pwp.u.engine.throttle = throttle
-    pwp.u.engine.mixture = mixture
-    ldg.u.nose.steering[] = (rudder_offset + rudder)
-    ldg.u.left.braking[] = brake_left
-    ldg.u.right.braking[] = brake_right
+    pwp.engine.u.start = eng_start
+    pwp.engine.u.stop = eng_stop
+    pwp.engine.u.throttle = throttle
+    pwp.engine.u.mixture = mixture
+    ldg.nose.steering.u[] = (rudder_offset + rudder)
+    ldg.left.braking.u[] = brake_left
+    ldg.right.braking.u[] = brake_right
     aero.u.e = -(elevator_offset + elevator)
     aero.u.a = (aileron_offset + aileron)
     aero.u.r = -(rudder_offset + rudder)
@@ -972,47 +974,47 @@ function IODevices.assign!(sys::System{<:C172RAirframe},
                            joystick::XBoxController,
                            ::DefaultMapping)
 
-    u = sys.u
+    u = sys.act.u
 
-    u.act.aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.act.elevator = get_axis_value(joystick, :right_analog_y) |> elevator_curve
-    u.act.rudder = get_axis_value(joystick, :left_analog_x) |> rudder_curve
-    u.act.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
-    u.act.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
+    u.aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.elevator = get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.rudder = get_axis_value(joystick, :left_analog_x) |> rudder_curve
+    u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
+    u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    u.act.aileron_offset -= 0.01 * was_released(joystick, :dpad_left)
-    u.act.aileron_offset += 0.01 * was_released(joystick, :dpad_right)
-    u.act.elevator_offset += 0.01 * was_released(joystick, :dpad_down)
-    u.act.elevator_offset -= 0.01 * was_released(joystick, :dpad_up)
+    u.aileron_offset -= 0.01 * was_released(joystick, :dpad_left)
+    u.aileron_offset += 0.01 * was_released(joystick, :dpad_right)
+    u.elevator_offset += 0.01 * was_released(joystick, :dpad_down)
+    u.elevator_offset -= 0.01 * was_released(joystick, :dpad_up)
 
-    u.act.flaps += 0.3333 * was_released(joystick, :right_bumper)
-    u.act.flaps -= 0.3333 * was_released(joystick, :left_bumper)
+    u.flaps += 0.3333 * was_released(joystick, :right_bumper)
+    u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
 
-    u.act.throttle += 0.1 * was_released(joystick, :button_Y)
-    u.act.throttle -= 0.1 * was_released(joystick, :button_A)
+    u.throttle += 0.1 * was_released(joystick, :button_Y)
+    u.throttle -= 0.1 * was_released(joystick, :button_A)
 end
 
 function IODevices.assign!(sys::System{<:C172RAirframe},
                            joystick::T16000M,
                            ::DefaultMapping)
 
-    u = sys.u
+    u = sys.act.u
 
-    u.act.throttle = get_axis_value(joystick, :throttle)
-    u.act.aileron = get_axis_value(joystick, :stick_x) |> aileron_curve
-    u.act.elevator = get_axis_value(joystick, :stick_y) |> elevator_curve
-    u.act.rudder = get_axis_value(joystick, :stick_z) |> rudder_curve
+    u.throttle = get_axis_value(joystick, :throttle)
+    u.aileron = get_axis_value(joystick, :stick_x) |> aileron_curve
+    u.elevator = get_axis_value(joystick, :stick_y) |> elevator_curve
+    u.rudder = get_axis_value(joystick, :stick_z) |> rudder_curve
 
-    u.act.brake_left = is_pressed(joystick, :button_1)
-    u.act.brake_right = is_pressed(joystick, :button_1)
+    u.brake_left = is_pressed(joystick, :button_1)
+    u.brake_right = is_pressed(joystick, :button_1)
 
-    u.act.aileron_offset -= 2e-4 * is_pressed(joystick, :hat_left)
-    u.act.aileron_offset += 2e-4 * is_pressed(joystick, :hat_right)
-    u.act.elevator_offset += 2e-4 * is_pressed(joystick, :hat_down)
-    u.act.elevator_offset -= 2e-4 * is_pressed(joystick, :hat_up)
+    u.aileron_offset -= 2e-4 * is_pressed(joystick, :hat_left)
+    u.aileron_offset += 2e-4 * is_pressed(joystick, :hat_right)
+    u.elevator_offset += 2e-4 * is_pressed(joystick, :hat_down)
+    u.elevator_offset -= 2e-4 * is_pressed(joystick, :hat_up)
 
-    u.act.flaps += 0.3333 * was_released(joystick, :button_3)
-    u.act.flaps -= 0.3333 * was_released(joystick, :button_2)
+    u.flaps += 0.3333 * was_released(joystick, :button_3)
+    u.flaps -= 0.3333 * was_released(joystick, :button_2)
 
 end
 

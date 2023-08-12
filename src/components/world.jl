@@ -21,7 +21,7 @@ abstract type AbstractWorld <: SystemDefinition end
 ################################################################################
 ############################### SimpleWorld #####################################
 
-Base.@kwdef struct SimpleWorld{A <: AircraftTemplate, E <: AbstractEnvironment} <: AbstractWorld
+@kwdef struct SimpleWorld{A <: AircraftTemplate, E <: AbstractEnvironment} <: AbstractWorld
     ac::A
     env::E
 end

@@ -106,7 +106,7 @@ function test_strut()
         strut = Strut(l_0 = 1.0, damper = damper) |> System
 
         @test length(strut.x) == 2
-        @test length(strut.u.frc.reset) == 2
+        @test length(strut.frc.u.reset) == 2
 
         steering = System(DirectSteering(ψ_max = π/6))
         braking = System(DirectBraking())
@@ -124,7 +124,7 @@ function test_strut()
         #when f_step! executes after the simulation step, the friction
         #compensator reset input will be set
         @test f_step!(strut) == false
-        @test strut.u.frc.reset == [true, true]
+        @test strut.frc.u.reset == [true, true]
         #but it will not take effect until the next call to f_ode!
         @test strut.y.frc.reset == [false, false]
         f_ode!(strut, steering, braking, terrain, kin)
@@ -150,7 +150,7 @@ function test_strut()
         #reset input was set in the previous wow==false test, it takes a call to
         #f_step! to set it back to false
         f_step!(strut)
-        @test strut.u.frc.reset == [false, false]
+        @test strut.frc.u.reset == [false, false]
 
         #oblique static load
         kin = KinematicInit(; h, q_nb = REuler(0, 0, π/12)) |> KinematicData

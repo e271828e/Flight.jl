@@ -34,7 +34,7 @@ end
 
 ########################## EmptyAirframe ###########################
 
-Base.@kwdef struct EmptyAirframe <: AbstractAirframe
+@kwdef struct EmptyAirframe <: AbstractAirframe
     mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
 end
 
@@ -97,7 +97,7 @@ function AircraftTemplate(kinematics::K = LTF(),
 end
 
 #override the generic NamedTuple to include stuff besides subsystem outputs
-Base.@kwdef struct AircraftTemplateY{K, F, A}
+@kwdef struct AircraftTemplateY{K, F, A}
     kinematics::K
     airframe::F
     avionics::A

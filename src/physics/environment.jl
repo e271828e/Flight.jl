@@ -19,7 +19,7 @@ get_terrain(::System{<:AbstractEnvironment}) = throw(MethodError(get_terrain, sy
 ################################################################################
 ############################# SimpleEnvironment #################################
 
-Base.@kwdef struct SimpleEnvironment{A <: AbstractAtmosphere, T <: AbstractTerrain} <: AbstractEnvironment
+@kwdef struct SimpleEnvironment{A <: AbstractAtmosphere, T <: AbstractTerrain} <: AbstractEnvironment
     atm::A = SimpleAtmosphere()
     trn::T = HorizontalTerrain()
 end

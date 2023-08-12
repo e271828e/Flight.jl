@@ -54,10 +54,33 @@ mutable struct System{SD <: SystemDefinition, X <: XType, Y, U, S, P, B}
     subsystems::B
 end
 
+############################ Old Initialization ################################
+#ẋ and x of a system are constructed as ComponentVectors from the ẋ's and x's of
+#its subsystems
+#by default, y is constructed as a NamedTuple from the y's of its subsystems
+#by default, u and s are also constructed as NamedTuples from u's and s's
+
 #default trait initializer. if the descriptor has any SystemDefinition fields of
 #its own, these are considered children and traits are (recursively) initialized
 #from them
-function init(trait::SystemTrait, sd::SystemDefinition)
+# function init(trait::SystemTrait, sd::SystemDefinition)
+#     #get those fields that are themselves SystemDefinitions
+#     children = filter(p -> isa(p.second, SystemDefinition), OrderedDict(sd))
+#     #build an OrderedDict with the initialized traits for each of those
+#     trait_dict = OrderedDict(k => init(trait, v) for (k, v) in pairs(children))
+#     #forward it to the OrderedDict initializers
+#     init(trait, trait_dict)
+# end
+
+############################# New Initialization ###############################
+#ẋ, x and y are handled in the same way, but u and s are not constructed as
+#NamedTuples by default. instead, they default to nothing. if a parent
+#subsystems wants its u or s to be assembled from its subsystems's u and s, it
+#has to do it explicitly. all the code should still work with the old
+#initialization.
+init(::Union{SystemU, SystemS}, ::SystemDefinition) = nothing
+
+function init(trait::Union{SystemẊ, SystemX, SystemY}, sd::SystemDefinition)
     #get those fields that are themselves SystemDefinitions
     children = filter(p -> isa(p.second, SystemDefinition), OrderedDict(sd))
     #build an OrderedDict with the initialized traits for each of those
@@ -65,6 +88,8 @@ function init(trait::SystemTrait, sd::SystemDefinition)
     #forward it to the OrderedDict initializers
     init(trait, trait_dict)
 end
+
+################################################################################
 
 #fallback method for state vector derivative initialization
 function init(::SystemẊ, sd::SystemDefinition)
@@ -75,10 +100,10 @@ end
 #initialize traits from OrderedDict
 function init(::SystemTrait, dict::OrderedDict)
     filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
-    isempty(dict) && return nothing
-    if all(v -> isa(v, AbstractVector), values(dict))
+    isempty(dict) && return nothing #all entries were Nothing
+    if all(v -> isa(v, AbstractVector), values(dict)) #x and ẋ
         return ComponentVector(dict)
-    else
+    else #u, s and y
         return NamedTuple(dict)
     end
 end
@@ -239,7 +264,7 @@ end
 ################################################################################
 ############################## Visualization ###################################
 
-Base.@kwdef struct SystemTreeNode
+@kwdef struct SystemTreeNode
     label::Symbol = :root
     type::DataType #SystemDefinition type
     function SystemTreeNode(label::Symbol, type::DataType)
@@ -265,70 +290,5 @@ AbstractTrees.print_tree(sd::Type{SD}; kwargs...) where {SD <: SystemDefinition}
 
 AbstractTrees.print_tree(::SD; kwargs...) where {SD <: SystemDefinition} = print_tree(SD; kwargs...)
 AbstractTrees.print_tree(::System{SD}; kwargs...) where {SD} = print_tree(SD; kwargs...)
-
-
-################################################################################
-#################################### GUI #######################################
-
-#none of these work
-
-#this one doesn't work because the checkbox state is not preserved from one
-#execution to the next without the @cstatic macro
-
-# @generated function (GUI.draw!(sys::System{T, X, Y, U, S, P, B}, label::String = "System")
-#     where {T<:SystemDefinition, X, Y, U, S, P, B})
-
-#     ex = Expr(:block)
-
-#     push!(ex.args, :(CImGui.Begin(label)))
-
-#     for ss_key in fieldnames(B)
-#         ss_show = gensym(ss_key)
-#         ss_label = string(ss_key)
-#         Core.print(ss_label)
-#         ss_expr = quote
-#             $ss_show = Ref(false)
-#             println($ss_label)
-#             CImGui.Checkbox($ss_label, $ss_show)
-#             println($ss_show[])
-#         end
-#         push!(ex.args, ss_expr)
-
-#     end
-
-#     push!(ex.args, :(CImGui.End()))
-
-#     return ex
-
-# end
-
-# function GUI.draw!(sys::System, gui_input::Bool = true, label::String = "Generic System")
-
-#     isempty(sys.subsystems) && return
-#     should_draw = falses(length(sys.subsystems))
-#     CImGui.Begin(label)
-#     for (i, k) in enumerate(keys(sys.subsystems))
-#         should_draw[i] = @cstatic check=false @c CImGui.Checkbox(string(k), &check)
-#         # should_draw[2] = @cstatic check=false @c CImGui.Checkbox(string(k), &check)
-#     end
-#     CImGui.End()
-#     println(should_draw)
-
-
-# end
-
-
-# function GUI.draw!(sys::System, gui_input::Bool = true, label::String = "Generic System")
-
-#     isempty(sys.subsystems) && return
-#     should_draw = falses(3)
-#     CImGui.Begin(label)
-#         should_draw[1] = @cstatic check=false @c CImGui.Checkbox("One", &check)
-#         should_draw[2] = @cstatic check=false @c CImGui.Checkbox("Two", &check)
-#         should_draw[3] = @cstatic check=false @c CImGui.Checkbox("Trhee", &check)
-#     CImGui.End()
-#     println(should_draw)
-
-# end
 
 end #module

@@ -159,7 +159,7 @@ const XLTFTemplate = ComponentVector(pos = similar(XPosLTFTemplate), vel = simil
 const XLTF{T, D} = ComponentVector{T, D, typeof(getaxes(XLTFTemplate))} where {T, D}
 
 #LTF-specific outputs
-Base.@kwdef struct LTFSpecific
+@kwdef struct LTFSpecific
     q_lb::RQuat
     q_el::RQuat
     ω_el_l::SVector{3,Float64}
@@ -267,7 +267,7 @@ const XECEFTemplate = ComponentVector(pos = similar(XPosECEFTemplate), vel = sim
 const XECEF{T, D} = ComponentVector{T, D, typeof(getaxes(XECEFTemplate))} where {T, D}
 
 #ECEF-specific outputs
-Base.@kwdef struct ECEFSpecific
+@kwdef struct ECEFSpecific
     q_en::RQuat
     ω_el_n::SVector{3,Float64}
 end
@@ -371,7 +371,7 @@ const XNEDTemplate = ComponentVector(pos = similar(XPosNEDTemplate), vel = simil
 const XNED{T, D} = ComponentVector{T, D, typeof(getaxes(XNEDTemplate))} where {T, D}
 
 #NED-specific outputs
-Base.@kwdef struct NEDSpecific
+@kwdef struct NEDSpecific
     e_nb::REuler
     ϕ_λ::LatLon
     ω_nb_b::SVector{3,Float64}

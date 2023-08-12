@@ -117,13 +117,13 @@ end
     eng_running = 2
 end
 
-Base.@kwdef mutable struct PistonEngineS
+@kwdef mutable struct PistonEngineS
     state::EngineState = eng_off
 end
 
 #best economy: mixture around 0.1
 #best power: mixture around 0.5
-Base.@kwdef mutable struct PistonEngineU
+@kwdef mutable struct PistonEngineU
     start::Bool = false
     stop::Bool = false
     throttle::Ranged{Float64, 0., 1.} = 0.0 #throttle setting
@@ -132,7 +132,7 @@ Base.@kwdef mutable struct PistonEngineU
     frc::PIContinuousU{1} = PIContinuousU{1}()
 end
 
-Base.@kwdef struct PistonEngineY
+@kwdef struct PistonEngineY
     start::Bool = false #start control
     stop::Bool = false #stop control
     throttle::Float64 = 0.0 #throttle setting
@@ -473,7 +473,7 @@ end
 #the sign of M_prop may be inverted under negative propeller thrust conditions,
 #with the propeller driving the engine instead of the other way around
 
-Base.@kwdef struct Thruster{E <: AbstractPistonEngine,
+@kwdef struct Thruster{E <: AbstractPistonEngine,
                             P <: AbstractPropeller} <: SystemDefinition
     engine::E = Engine()
     propeller::P = Propeller()

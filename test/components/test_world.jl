@@ -48,7 +48,7 @@ function test_system_methods()
         @test y0 == world.y
 
         #modify inputs and call f_ode!
-        world.u.env.atm.wind.v_ew_n[1] = -5
+        world.env.atm.wind.u.v_ew_n[1] = -5
 
         #if the right method is called, the modified inputs must propagate to
         #the outputs

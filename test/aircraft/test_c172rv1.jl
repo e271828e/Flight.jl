@@ -77,19 +77,22 @@ function test_sim(; save::Bool = true)
 
         init_kinematics!(world, kin_init)
 
-        world.u.ac.avionics.eng_start = true #engine start switch on
-        world.u.env.atm.wind.v_ew_n .= [0, 0, 0]
+        world.ac.avionics.u.eng_start = true #engine start switch on
+        world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 
         sys_io! = let
 
-            function (u, s, y, t, params)
+            function (world)
 
-                u.ac.avionics.throttle = 0.2
-                u.ac.avionics.aileron = (t < 5 ? 0.25 : 0.0)
-                u.ac.avionics.elevator = 0.0
-                u.ac.avionics.rudder = 0.0
-                u.ac.avionics.brake_left = 1
-                u.ac.avionics.brake_right = 1
+                u_avionics = world.ac.avionics.u
+                t = world.t[]
+
+                u_avionics.throttle = 0.2
+                u_avionics.aileron = (t < 5 ? 0.25 : 0.0)
+                u_avionics.elevator = 0.0
+                u_avionics.rudder = 0.0
+                u_avionics.brake_left = 1
+                u_avionics.brake_right = 1
 
             end
         end
@@ -99,7 +102,7 @@ function test_sim(; save::Bool = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
         plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
-        save && save_plots(plots, save_folder = joinpath("tmp", "sim_test"))
+        save && save_plots(plots, save_folder = joinpath("tmp", "test_c172rv1", "sim_test"))
 
         # return sim
         return world
@@ -145,7 +148,7 @@ function test_sim_paced(; save::Bool = true)
 
     plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
     # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-    save && save_plots(plots, save_folder = joinpath("tmp", "paced_sim_test"))
+    save && save_plots(plots, save_folder = joinpath("tmp", "test_c172rv1", "paced_sim_test"))
 
     return nothing
 
