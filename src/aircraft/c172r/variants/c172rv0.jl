@@ -186,8 +186,8 @@ function assign!(ac::System{<:Cessna172Rv0},
     f_ode!(ac, env)
 
     #check assumptions concerning airframe systems states & derivatives
-    wow = reduce(|, SVector{3,Bool}(leg.strut.wow for leg in ac.y.airframe.ldg))
-    @assert wow === false
+    any_wow = any(SVector{3}(leg.strut.wow for leg in ac.airframe.ldg.y))
+    @assert !any_wow
     @assert ac.ẋ.airframe.pwp.engine.idle[1] .== 0
     @assert ac.ẋ.airframe.pwp.engine.frc[1] .== 0
 

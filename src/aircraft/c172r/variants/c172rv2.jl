@@ -439,11 +439,8 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
             aileron_offset, elevator_offset, rudder_offset, flaps, brake_left, brake_right = avionics.u
     @unpack p_input_sf, q_input_sf, φ_input_sf, θ_input_sf, β_input_sf = avionics.params
 
-    nlg_wow = airframe.y.ldg.nose.strut.wow
-    lmain_wow = airframe.y.ldg.left.strut.wow
-    rmain_wow = airframe.y.ldg.right.strut.wow
-
-    flight_phase = (!nlg_wow && !lmain_wow && !rmain_wow) ? phase_air : phase_gnd
+    any_wow = any(SVector{3}(leg.strut.wow for leg in airframe.ldg.y))
+    flight_phase = any_wow ? phase_gnd : phase_air
 
     if !CAS_enable
         CAS_state = CAS_disabled
@@ -466,33 +463,26 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     p, q, _ = kinematics.ω_lb_b
     β = air.β_b
 
-    a_cmd = Float64(roll_input) #already ∈ [-1, 1]
-    p_cmd = p_input_sf * Float64(roll_input)
-    φ_cmd = φ_input_sf * Float64(roll_input)
+    a_cmd, p_cmd, φ_cmd = (1.0, φ_input_sf, p_input_sf) .* Float64(roll_input)
     roll_control.u.mode = roll_mode
     @pack! roll_control.u = a_cmd, p_cmd, φ_cmd, p, φ
     f_disc!(roll_control, Δt)
 
-    e_cmd = Float64(pitch_input) #already ∈ [-1, 1]
-    q_cmd = q_input_sf * Float64(pitch_input)
-    θ_cmd = θ_input_sf * Float64(pitch_input)
+    e_cmd, q_cmd, θ_cmd = (1.0, q_input_sf, θ_input_sf) .* Float64(pitch_input)
     pitch_control.u.mode = pitch_mode
     @pack! pitch_control.u = e_cmd, q_cmd, θ_cmd, q, θ
     f_disc!(pitch_control, Δt)
 
-    r_cmd = Float64(yaw_input) #already ∈ [-1, 1]
-    β_cmd = β_input_sf * Float64(-yaw_input)
+    #the sideslip controller provides a positive β from a positive β_cmd input.
+    #when in direct rudder command mode, a positive yaw input causes a positive
+    #yaw rate. however, a positive β_cmd increment initially requires a negative
+    #yaw rate. the sign inversion from yaw_input to β_cmd keeps the consistency
+    #in the perceived behaviour between both yaw control modes.
+
+    r_cmd, β_cmd = (1.0, -β_input_sf) .* Float64(yaw_input) #already ∈ [-1, 1]
     yaw_control.u.mode = yaw_mode
     @pack! yaw_control.u = r_cmd, β_cmd, β
     f_disc!(yaw_control, Δt)
-
-    #note: the sign inversions in the sideslip compensator are meant to achieve
-    #a positive β from a positive β_cmd input. here, we have an additional sign
-    #inversion when translating yaw_input to β_cmd. the reason is that, when in
-    #direct rudder command mode, a positive yaw input causes a positive yaw
-    #rate. however, a positive β increment initiallyrequires a negative yaw
-    #rate. this sign inversion keeps the consistency in perceived behaviour
-    #between both yaw control modes.
 
     interface_y = AvionicsInterfaceY(;
             eng_start, eng_stop, CAS_state,
