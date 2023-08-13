@@ -1,4 +1,4 @@
-module C172Rv0
+module C172RBase
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using NLopt
@@ -18,25 +18,26 @@ using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
 
-using ..Airframe
+using ...C172
+using ..C172R
 
-export Cessna172Rv0
+export Cessna172RBase
 
 
 ################################################################################
-############################### Cessna172Rv0 #####################################
+############################### Cessna172RBase #####################################
 
-#Barebones Cessna172R variant, with NoAvionics and manual control over the
-#airframe's MechanicalActuation
-const Cessna172Rv0{K, F} = AircraftTemplate{K, F, NoAvionics} where {K, F <: C172RAirframe}
-Cessna172Rv0(kinematics = LTF()) = AircraftTemplate(kinematics, C172RAirframe(), NoAvionics())
+#Cessna172R with NoAvionics
+const Cessna172RBase{K} = C172R.Template{K, NoAvionics} where {K}
+Cessna172RBase(kinematics = LTF()) = C172R.Template(kinematics, NoAvionics())
+
 
 ############################ Joystick Mappings #################################
 
-#redirect input assignments directly to the airframe
-function IODevices.assign!(sys::System{<:Cessna172Rv0}, joystick::Joystick,
+#redirect input assignments directly to the actuation system
+function IODevices.assign!(sys::System{<:Cessna172RBase}, joystick::Joystick,
                            mapping::InputMapping)
-    IODevices.assign!(sys.airframe, joystick, mapping)
+    IODevices.assign!(sys.airframe.act, joystick, mapping)
 end
 
 
@@ -114,7 +115,7 @@ function Kinematics.Initializer(trim_state::TrimState,
     @unpack α_a, φ_nb = trim_state
 
     v_wOb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
-    v_wOb_b = C172Rv0.Airframe.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
+    v_wOb_b = C172.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
 
     θ_nb = θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
     e_nb = REuler(ψ_nb, θ_nb, φ_nb)
@@ -137,7 +138,7 @@ end
 
 #assigns trim state and parameters to the aircraft system, and then updates it
 #by calling f_ode!
-function assign!(ac::System{<:Cessna172Rv0},
+function assign!(ac::System{<:Cessna172RBase},
                 env::System{<:AbstractEnvironment},
                 trim_params::TrimParameters,
                 trim_state::TrimState)
@@ -193,7 +194,7 @@ function assign!(ac::System{<:Cessna172Rv0},
 
 end
 
-function cost(ac::System{<:Cessna172Rv0})
+function cost(ac::System{<:Cessna172RBase})
 
     v_nd_dot = SVector{3}(ac.ẋ.kinematics.vel.v_eOb_b) / norm(ac.y.kinematics.common.v_eOb_b)
     ω_dot = SVector{3}(ac.ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
@@ -203,7 +204,7 @@ function cost(ac::System{<:Cessna172Rv0})
 
 end
 
-function get_target_function(ac::System{<:Cessna172Rv0},
+function get_target_function(ac::System{<:Cessna172RBase},
     env::System{<:AbstractEnvironment}, trim_params::TrimParameters = TrimParameters())
 
     let ac = ac, env = env, trim_params = trim_params
@@ -215,7 +216,7 @@ function get_target_function(ac::System{<:Cessna172Rv0},
 
 end
 
-function Aircraft.trim!( ac::System{<:Cessna172Rv0};
+function Aircraft.trim!( ac::System{<:Cessna172RBase};
                 env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
                 trim_params::TrimParameters = TrimParameters())
 
@@ -284,7 +285,7 @@ function Aircraft.trim!( ac::System{<:Cessna172Rv0};
 end
 
 function Aircraft.trim!(
-    world::System{<:SimpleWorld{<:Cessna172Rv0, <:AbstractEnvironment}};
+    world::System{<:SimpleWorld{<:Cessna172RBase, <:AbstractEnvironment}};
     trim_params::TrimParameters = TrimParameters())
 
     trim!(world.ac; env = world.env, trim_params = trim_params)
@@ -327,7 +328,7 @@ const LinearU{T, D} = ComponentVector{T, D, typeof(getaxes(LinearUTemplate))} wh
 const LinearX{T, D} = ComponentVector{T, D, typeof(getaxes(LinearXTemplate))} where {T, D}
 const LinearY{T, D} = ComponentVector{T, D, typeof(getaxes(LinearYTemplate))} where {T, D}
 
-#access labels for LinearX components within the overall Cessna172Rv0{NED} state vector
+#access labels for LinearX components within the overall Cessna172RBase{NED} state vector
 const x_labels = (
         "kinematics.pos.ψ_nb", "kinematics.pos.θ_nb", "kinematics.pos.φ_nb",
         "kinematics.pos.ϕ", "kinematics.pos.λ", "kinematics.pos.h_e",
@@ -337,21 +338,21 @@ const x_labels = (
         "airframe.pwp.engine.ω", "airframe.fuel[1]",
     )
 
-function assign!(u::LinearU, ac::System{<:Cessna172Rv0})
+function assign!(u::LinearU, ac::System{<:Cessna172RBase})
 
     @unpack throttle, aileron, elevator, rudder = ac.airframe.act.u
     @pack! u = throttle, aileron, elevator, rudder
 
 end
 
-function assign!(ac::System{<:Cessna172Rv0}, u::LinearU)
+function assign!(ac::System{<:Cessna172RBase}, u::LinearU)
 
     @unpack throttle, aileron, elevator, rudder = u
     @pack! ac.airframe.act.u = throttle, aileron, elevator, rudder
 
 end
 
-function assign!(y::LinearY, ac::System{<:Cessna172Rv0})
+function assign!(y::LinearY, ac::System{<:Cessna172RBase})
 
     @unpack q_nb, n_e, h_e, ω_eb_b = ac.y.kinematics
     @unpack α, β = ac.y.airframe.aero
@@ -369,7 +370,7 @@ function assign!(y::LinearY, ac::System{<:Cessna172Rv0})
 
 end
 
-function Aircraft.linearize!(ac::System{<:Cessna172Rv0{NED}};
+function Aircraft.linearize!(ac::System{<:Cessna172RBase{NED}};
     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
     trim_params::TrimParameters = TrimParameters())
 

@@ -11,8 +11,8 @@ include(normpath("components/test_landing_gear.jl")); using .TestLandingGear
 include(normpath("components/test_piston.jl")); using .TestPiston
 include(normpath("components/test_world.jl")); using .TestWorld
 
-include(normpath("aircraft/test_c172rv0.jl")); using .TestC172Rv0
-include(normpath("aircraft/test_c172rv1.jl")); using .TestC172Rv1
+include(normpath("aircraft/test_c172r_base.jl")); using .TestC172RBase
+include(normpath("aircraft/test_c172r_direct.jl")); using .TestC172RDirect
 
 test_quaternions()
 test_attitude()
@@ -25,6 +25,6 @@ test_landing_gear()
 test_piston()
 test_world()
 
-test_c172rv0()
-test_c172rv1()
+test_c172r_base()
+test_c172r_direct()
 # test_c172rv2()

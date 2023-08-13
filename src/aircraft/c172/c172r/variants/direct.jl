@@ -1,4 +1,4 @@
-module C172Rv1
+module C172RDirect
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 
@@ -16,9 +16,10 @@ using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
 
-using ..Airframe
+using ...C172
+using ..C172R
 
-export Cessna172Rv1
+export Cessna172RDirect
 
 ################################################################################
 ############################### DirectControls #################################
@@ -64,7 +65,7 @@ Systems.init(::SystemY, ::DirectControls) = DirectControlsY()
 ########################### Update Methods #####################################
 
 function Systems.f_disc!(avionics::System{<:DirectControls}, ::Real,
-                        ::System{<:C172RAirframe}, ::KinematicData,
+                        ::System{<:C172.Airframe}, ::KinematicData,
                         ::RigidBodyData, ::AirData, ::TerrainData)
 
     #DirectControls has no internal dynamics, just input-output feedthrough
@@ -81,7 +82,7 @@ function Systems.f_disc!(avionics::System{<:DirectControls}, ::Real,
 
 end
 
-function Aircraft.map_controls!(airframe::System{<:C172RAirframe},
+function Aircraft.map_controls!(airframe::System{<:C172.Airframe},
                                 avionics::System{DirectControls})
 
     @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
@@ -97,7 +98,7 @@ end
 
 ################################## GUI #########################################
 
-function GUI.draw!(avionics::System{<:DirectControls}, airframe::System{<:C172RAirframe},
+function GUI.draw!(avionics::System{<:DirectControls}, airframe::System{<:C172.Airframe},
                     label::String = "Cessna 172R Direct Controls")
 
     u = avionics.u
@@ -142,16 +143,16 @@ function GUI.draw!(avionics::System{<:DirectControls}, airframe::System{<:C172RA
 end
 
 ################################################################################
-############################# Cessna172Rv1 #####################################
+############################# Cessna172RDirect #################################
 
-#Cessna172R variant with DirectControls avionics
-const Cessna172Rv1{K, F} = AircraftTemplate{K, F, DirectControls} where {K, F <: C172RAirframe}
-Cessna172Rv1(kinematics = LTF()) = AircraftTemplate(kinematics, C172RAirframe(), DirectControls())
+#Cessna172R with direct control Avionics
+const Cessna172RDirect{K} = C172R.Template{K, DirectControls} where {K}
+Cessna172RDirect(kinematics = LTF()) = C172R.Template(kinematics, DirectControls())
 
 
 ############################ Joystick Mappings #################################
 
-function IODevices.assign!(sys::System{<:Cessna172Rv1}, joystick::Joystick,
+function IODevices.assign!(sys::System{<:Cessna172RDirect}, joystick::Joystick,
                            mapping::InputMapping)
     IODevices.assign!(sys.avionics, joystick, mapping)
 end

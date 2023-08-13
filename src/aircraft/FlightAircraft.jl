@@ -2,6 +2,6 @@ module FlightAircraft
 
 using Reexport
 
-include(normpath("c172r/c172r.jl")); @reexport using .C172R
+include(normpath("c172/c172.jl")); @reexport using .C172
 
 end

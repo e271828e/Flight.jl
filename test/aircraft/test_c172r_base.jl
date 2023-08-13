@@ -1,4 +1,4 @@
-module TestC172Rv0
+module TestC172RBase
 
 using Test
 using UnPack
@@ -20,13 +20,14 @@ using Flight.FlightPhysics.Environment
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
 
-using Flight.FlightAircraft.C172R
+using Flight.FlightAircraft.C172
+using Flight.FlightAircraft.C172RBase
 
-export test_c172rv0
+export test_c172r_base
 
 
-function test_c172rv0()
-    @testset verbose = true "Cessna172Rv0" begin
+function test_c172r_base()
+    @testset verbose = true "Cessna172RBase" begin
 
         test_system_methods()
         test_trimming()
@@ -45,9 +46,9 @@ function test_system_methods()
             trn_data = TerrainData(env.trn, loc)
             kin_init = KinematicInit( h = trn_data.altitude + 1.8);
 
-            ac_LTF = System(Cessna172Rv0(LTF()));
-            ac_ECEF = System(Cessna172Rv0(ECEF()));
-            ac_NED = System(Cessna172Rv0(NED()));
+            ac_LTF = System(Cessna172RBase(LTF()));
+            ac_ECEF = System(Cessna172RBase(ECEF()));
+            ac_NED = System(Cessna172RBase(NED()));
 
             init_kinematics!(ac_LTF, kin_init)
             init_kinematics!(ac_ECEF, kin_init)
@@ -88,13 +89,13 @@ function test_trimming()
         β_a = -0.11
         TAS = 100
         v_wOa_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
-        v_wOb_b = C172Rv0.Airframe.f_ba.q(v_wOa_a)
+        v_wOb_b = C172.f_ba.q(v_wOa_a)
 
         #set γ_wOb_n and φ_nb arbitrarily and compute θ_nb
         γ_wOb_n = -0.07 #set arbitrarily
         ψ_nb = 0.3 #inconsequential
         φ_nb = 0.7
-        θ_nb = C172Rv0.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
+        θ_nb = C172RBase.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
 
         #then construct e_nb, transform v_wOb_b to v_wOb_n, recompute γ_wOb_n
         #and check it matches the original value
@@ -103,19 +104,19 @@ function test_trimming()
         γ_wOb_n_test = Attitude.inclination(v_wOb_n)
 
         @test γ_wOb_n_test ≈ γ_wOb_n
-        @test @ballocated(C172Rv0.θ_constraint(; v_wOb_b = $v_wOb_b, γ_wOb_n = $γ_wOb_n, φ_nb = $φ_nb)) === 0
+        @test @ballocated(C172RBase.θ_constraint(; v_wOb_b = $v_wOb_b, γ_wOb_n = $γ_wOb_n, φ_nb = $φ_nb)) === 0
 
     end
 
     @testset verbose = true "Assignment" begin
 
-        ac = System(Cessna172Rv0())
+        ac = System(Cessna172RBase())
 
-        state = C172Rv0.TrimState(;
+        state = C172RBase.TrimState(;
             α_a = 0.08, φ_nb = 0.3, n_eng = 0.8,
             throttle = 0.61, aileron = 0.01, elevator = -0.025, rudder = 0.0)
 
-        params = C172Rv0.TrimParameters(;
+        params = C172RBase.TrimParameters(;
             loc = LatLon(), h = HOrth(1000),
             ψ_nb = 0.2, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.2, θ_lb_dot = 0.2,
             β_a = 0.3, fuel = 0.5, mixture = 0.5, flaps = 0.0)
@@ -123,7 +124,7 @@ function test_trimming()
         env = SimpleEnvironment() |> System
         # env.atm.u.wind.v_ew_n = [4, 2, 4]
 
-        C172Rv0.assign!(ac, env, params, state)
+        C172RBase.assign!(ac, env, params, state)
 
         e_lb = e_nb = REuler(ac.y.kinematics.q_nb)
         v_wOb_n = e_nb(ac.y.air.v_wOb_b)
@@ -149,22 +150,22 @@ function test_trimming()
         @test ac.ẋ.airframe.aero.α_filt ≈ 0.0 atol = 1e-12
         @test ac.ẋ.airframe.aero.β_filt ≈ 0.0 atol = 1e-12
 
-        @test (@ballocated C172Rv0.assign!($ac, $env, $params, $state))===0
+        @test (@ballocated C172RBase.assign!($ac, $env, $params, $state))===0
 
     end
 
     @testset verbose = true "Optimization" begin
 
-        ac = System(Cessna172Rv0())
+        ac = System(Cessna172RBase())
         env = System(SimpleEnvironment())
-        trim_params = C172Rv0.TrimParameters()
-        state = C172Rv0.TrimState()
+        trim_params = C172RBase.TrimParameters()
+        state = C172RBase.TrimState()
 
-        f_target = C172Rv0.get_target_function(ac, env, trim_params)
+        f_target = C172RBase.get_target_function(ac, env, trim_params)
 
         @test @ballocated($f_target($state)) === 0
 
-        success, _ = C172Rv0.trim!(ac; env, trim_params)
+        success, _ = C172RBase.trim!(ac; env, trim_params)
 
         @test success
 
@@ -181,7 +182,7 @@ function test_sim(; save::Bool = true)
 
         h_trn = HOrth(608.55);
 
-        ac = Cessna172Rv0();
+        ac = Cessna172RBase();
         env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
         world = SimpleWorld(ac, env) |> System;
 
@@ -219,7 +220,7 @@ function test_sim(; save::Bool = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
         plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
-        save && save_plots(plots, save_folder = joinpath("tmp", "test_c172rv0", "sim_test"))
+        save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_base", "sim"))
 
         # return sim
         # return world
@@ -233,7 +234,7 @@ function test_sim_paced(; save::Bool = true)
 
     h_trn = HOrth(601.55);
 
-    ac = Cessna172Rv0();
+    ac = Cessna172RBase();
     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
     world = SimpleWorld(ac, env) |> System;
 
@@ -266,7 +267,7 @@ function test_sim_paced(; save::Bool = true)
 
     plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
     # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-    save && save_plots(plots, save_folder = joinpath("tmp", "paced_sim_test"))
+    save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_base", "sim_paced"))
 
     return nothing
 

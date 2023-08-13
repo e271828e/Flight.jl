@@ -1,4 +1,4 @@
-module TestC172Rv1
+module TestC172RDirect
 
 using Test, UnPack, BenchmarkTools, Sockets
 
@@ -18,12 +18,13 @@ using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
 
 using Flight.FlightAircraft.C172R
+using Flight.FlightAircraft.C172RDirect
 
-export test_c172rv1
+export test_c172r_direct
 
 
-function test_c172rv1()
-    @testset verbose = true "Cessna172Rv1" begin
+function test_c172r_direct()
+    @testset verbose = true "Cessna172RDirect" begin
 
         test_system_methods()
         test_sim(save = false)
@@ -41,7 +42,7 @@ function test_system_methods()
             trn_data = TerrainData(env.trn, loc)
             kin_init = KinematicInit( h = trn_data.altitude + 1.8);
 
-            ac = System(Cessna172Rv1());
+            ac = System(Cessna172RDirect());
 
             init_kinematics!(ac, kin_init)
 
@@ -64,7 +65,7 @@ function test_sim(; save::Bool = true)
 
         h_trn = HOrth(608.55);
 
-        ac = Cessna172Rv1();
+        ac = Cessna172RDirect();
         env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
         world = SimpleWorld(ac, env) |> System;
 
@@ -102,10 +103,7 @@ function test_sim(; save::Bool = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
         plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
-        save && save_plots(plots, save_folder = joinpath("tmp", "test_c172rv1", "sim_test"))
-
-        # return sim
-        return world
+        save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_direct", "sim"))
 
     end
 
@@ -115,7 +113,7 @@ function test_sim_paced(; save::Bool = true)
 
     h_trn = HOrth(601.55);
 
-    ac = Cessna172Rv1();
+    ac = Cessna172RDirect();
     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
     world = SimpleWorld(ac, env) |> System;
 
@@ -148,7 +146,7 @@ function test_sim_paced(; save::Bool = true)
 
     plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
     # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-    save && save_plots(plots, save_folder = joinpath("tmp", "test_c172rv1", "paced_sim_test"))
+    save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_direct", "sim_paced"))
 
     return nothing
 

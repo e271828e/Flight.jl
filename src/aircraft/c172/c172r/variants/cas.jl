@@ -1,4 +1,4 @@
-module C172Rv2
+module C172RCAS
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 
@@ -19,12 +19,11 @@ using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
 using Flight.FlightComponents.Control: PIDDiscreteY
 
-using ..Airframe
+using ...C172
+using ..C172R
 
-export Cessna172Rv2
+export Cessna172RCAS
 
-################################################################################
-################################# Avionics #####################################
 
 ################################################################################
 ################################ PitchRateComp #################################
@@ -429,7 +428,7 @@ Systems.init(::SystemS, ::Avionics) = nothing #keep subsystems local
 ########################### Update Methods #####################################
 
 function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
-                        airframe::System{<:C172RAirframe}, kinematics::KinematicData,
+                        airframe::System{<:C172.Airframe}, kinematics::KinematicData,
                         ::RigidBodyData, air::AirData, ::TerrainData)
 
     @unpack roll_control, pitch_control, yaw_control = avionics.subsystems
@@ -502,7 +501,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
 end
 
-function Aircraft.map_controls!(airframe::System{<:C172RAirframe},
+function Aircraft.map_controls!(airframe::System{<:C172.Airframe},
                                 avionics::System{Avionics})
 
     @unpack eng_start, eng_stop, throttle, mixture,
@@ -534,7 +533,7 @@ function control_mode_HSV(mode, selected_mode, active_mode)
     end
 end
 
-function GUI.draw!(avionics::System{<:Avionics}, airframe::System{<:C172RAirframe},
+function GUI.draw!(avionics::System{<:Avionics}, airframe::System{<:C172.Airframe},
                     label::String = "Cessna 172R CAS Avionics")
 
     u = avionics.u
@@ -618,16 +617,16 @@ function GUI.draw!(avionics::System{<:Avionics}, airframe::System{<:C172RAirfram
 end
 
 ################################################################################
-############################# Cessna172Rv2 #####################################
+############################# Cessna172RCAS #####################################
 
-#Cessna172R variant with Avionics avionics
-const Cessna172Rv2{K, F} = AircraftTemplate{K, F, Avionics} where {K, F <: C172RAirframe}
-Cessna172Rv2(kinematics = LTF()) = AircraftTemplate(kinematics, C172RAirframe(), Avionics())
+#Cessna172R with control augmenting Avionics
+const Cessna172RCAS{K} = C172R.Template{K, Avionics} where {K}
+Cessna172RCAS(kinematics = LTF()) = C172R.Template(kinematics, Avionics())
 
 
 # ############################ Joystick Mappings #################################
 
-function IODevices.assign!(sys::System{<:Cessna172Rv2}, joystick::Joystick,
+function IODevices.assign!(sys::System{<:Cessna172RCAS}, joystick::Joystick,
                            mapping::InputMapping)
     IODevices.assign!(sys.avionics, joystick, mapping)
 end

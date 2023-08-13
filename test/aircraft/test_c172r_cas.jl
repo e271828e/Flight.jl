@@ -1,4 +1,4 @@
-module TestC172Rv2
+module TestC172RCAS
 
 using Test, UnPack, BenchmarkTools, Sockets
 
@@ -18,12 +18,13 @@ using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
 
 using Flight.FlightAircraft.C172R
+using Flight.FlightAircraft.C172RCAS
 
-export test_c172rv2
+export test_c172r_cas
 
 
-function test_c172rv2()
-    @testset verbose = true "Cessna172Rv2" begin
+function test_c172r_cas()
+    @testset verbose = true "Cessna172RCAS" begin
 
         test_system_methods()
         test_sim(save = false)
@@ -42,7 +43,7 @@ function test_system_methods()
             kin_init_gnd = KinematicInit( h = trn_data.altitude + 1.8);
             kin_init_air = KinematicInit( h = trn_data.altitude + 1000);
 
-            ac = System(Cessna172Rv2());
+            ac = System(Cessna172RCAS());
 
             #to exercise all landing gear functionality we need to be on ground
             init_kinematics!(ac, kin_init_gnd)
@@ -59,11 +60,11 @@ function test_system_methods()
             f_ode!(ac, env)
             @test ac.y.airframe.ldg.left.strut.wow == false
 
-            ac.avionics.u.pitch_mode_select = C172Rv2.pitch_angle_mode
-            ac.avionics.u.roll_mode_select = C172Rv2.roll_angle_mode
-            ac.avionics.u.yaw_mode_select = C172Rv2.sideslip_mode
+            ac.avionics.u.pitch_mode_select = C172RCAS.pitch_angle_mode
+            ac.avionics.u.roll_mode_select = C172RCAS.roll_angle_mode
+            ac.avionics.u.yaw_mode_select = C172RCAS.sideslip_mode
             f_disc!(ac, 0.02, env)
-            @test ac.avionics.y.logic.flight_phase == C172Rv2.phase_air
+            @test ac.avionics.y.logic.flight_phase == C172RCAS.phase_air
 
             @test @ballocated(f_ode!($ac, $env)) == 0
             @test @ballocated(f_step!($ac)) == 0
@@ -75,13 +76,13 @@ function test_system_methods()
 
 end
 
-function test_pitch_rate_cas(; save::Bool = true)
+function test_cas(; save::Bool = true)
 
-    @testset verbose = true "Pitch Rate CAS" begin
+    @testset verbose = true "CAS" begin
 
         h_trn = HOrth(608.55);
 
-        ac = Cessna172Rv2();
+        ac = Cessna172RCAS();
         env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
         world = SimpleWorld(ac, env) |> System;
 
@@ -96,9 +97,9 @@ function test_pitch_rate_cas(; save::Bool = true)
 
         world.ac.avionics.u.eng_start = true #engine start switch on
         world.ac.avionics.u.CAS_enable = true #enable CAS
-        world.ac.avionics.u.roll_mode_select = C172Rv2.roll_angle_mode
-        world.ac.avionics.u.pitch_mode_select = C172Rv2.pitch_angle_mode
-        world.ac.avionics.u.yaw_mode_select = C172Rv2.sideslip_mode
+        world.ac.avionics.u.roll_mode_select = C172RCAS.roll_angle_mode
+        world.ac.avionics.u.pitch_mode_select = C172RCAS.pitch_angle_mode
+        world.ac.avionics.u.yaw_mode_select = C172RCAS.sideslip_mode
         world.ac.avionics.u.throttle = 1
         world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 
@@ -130,7 +131,7 @@ function test_pitch_rate_cas(; save::Bool = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
         plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
-        save && save_plots(plots, save_folder = joinpath("tmp", "test_c172rv2", "pitch_rate_CAS"))
+        save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_cas", "cas"))
 
         # return sim
         # return world
@@ -193,7 +194,7 @@ function test_sim_paced(; save::Bool = true)
 
     h_trn = HOrth(601.55);
 
-    ac = Cessna172Rv2();
+    ac = Cessna172RCAS();
     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
     world = SimpleWorld(ac, env) |> System;
 
@@ -226,7 +227,7 @@ function test_sim_paced(; save::Bool = true)
 
     plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
     # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-    save && save_plots(plots, save_folder = joinpath("tmp", "paced_sim_test"))
+    save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_cas", "sim_paced"))
 
     return nothing
 
