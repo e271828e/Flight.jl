@@ -462,7 +462,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     p, q, _ = kinematics.ω_lb_b
     β = air.β_b
 
-    a_cmd, p_cmd, φ_cmd = (1.0, φ_input_sf, p_input_sf) .* Float64(roll_input)
+    a_cmd, p_cmd, φ_cmd = (1.0, p_input_sf, φ_input_sf) .* Float64(roll_input)
     roll_control.u.mode = roll_mode
     @pack! roll_control.u = a_cmd, p_cmd, φ_cmd, p, φ
     f_disc!(roll_control, Δt)
@@ -684,6 +684,36 @@ function IODevices.assign!(sys::System{Avionics},
     u.flaps -= 0.3333 * was_released(joystick, :button_2)
 
 end
+
+function IODevices.assign!(sys::System{Avionics},
+                           joystick::GladiatorNXTEvo,
+                           ::DefaultMapping)
+
+    u = sys.u
+
+    u.throttle = get_axis_value(joystick, :throttle)
+    u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
+    u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
+    u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
+
+    u.brake_left = is_pressed(joystick, :red_trigger_half)
+    u.brake_right = is_pressed(joystick, :red_trigger_half)
+
+    u.aileron_offset -= 2e-4 * is_pressed(joystick, :A3_left)
+    u.aileron_offset += 2e-4 * is_pressed(joystick, :A3_right)
+    u.elevator_offset += 2e-4 * is_pressed(joystick, :A3_down)
+    u.elevator_offset -= 2e-4 * is_pressed(joystick, :A3_up)
+
+    if is_pressed(joystick, :A3_press)
+        u.aileron_offset = 0
+        u.elevator_offset = 0
+    end
+
+    u.flaps += 0.3333 * was_released(joystick, :switch_down)
+    u.flaps -= 0.3333 * was_released(joystick, :switch_up)
+
+end
+
 
 
 end #module

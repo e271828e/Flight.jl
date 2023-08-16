@@ -14,7 +14,7 @@ export get_axis_value, exp_axis_curve
 export get_button_state, is_pressed, is_released
 export get_button_change, was_pressed, was_released
 
-export AbstractJoystickID, XBoxController, T16000M
+export AbstractJoystickID, XBoxController, T16000M, GladiatorNXTEvo
 
 
 ################################################################################
@@ -89,7 +89,7 @@ end
 ButtonSet{N}() where {N} = ButtonSet(default_button_labels(N))
 ButtonSet(N::Integer) = ButtonSet{N}()
 
-default_button_labels(N::Integer) = Symbol.("axis_".*string.(Tuple(1:N)))
+default_button_labels(N::Integer) = Symbol.("button_".*string.(Tuple(1:N)))
 
 function update!(buttons::ButtonSet{N, L}, slot::JoystickSlot) where {N, L}
 
@@ -266,14 +266,17 @@ function add_joystick(slot::JoystickSlot)
         return
     end
 
-    joystick_model = GetJoystickName(slot)
+    joystick_model = GetJoystickName(slot) |> strip
 
-    if joystick_model === "Xbox Controller"
+    if joystick_model == "Xbox Controller"
         joystick = XBoxController(slot)
         println("XBoxController active at slot $slot")
-    elseif joystick_model === "T.16000M"
+    elseif joystick_model == "T.16000M"
         joystick = T16000M(slot)
-        println("T16000M active at slot $slot")
+        println("Thrustmaster T16000M active at slot $slot")
+    elseif joystick_model == "VKBsim Gladiator EVO  R"
+        joystick = GladiatorNXTEvo(slot)
+        println("VKBSim Gladiator NXT Evo active at slot $slot")
     else
         println("$joystick_model not supported")
         return
@@ -345,6 +348,42 @@ AxisSet(::T16000M_ID) = AxisSet(T16000MAxisLabels)
 ButtonSet(::T16000M_ID) = ButtonSet(T16000MButtonLabels)
 
 function rescale!(axes::AxisSet, ::T16000M_ID)
+    axes[:throttle] = 0.5*(1 - axes[:throttle])
+end
+
+################################################################################
+######################## VKBSim Gladiator NXT Evo ##############################
+
+############################# Axes & Buttons ###################################
+
+#factory defaults
+const GladiatorNXTEvoAxisLabels = (
+    :stick_x, :stick_y, :throttle, :analog_hat_x, :analog_hat_y, :stick_z,
+)
+
+function gen_GladiatorNXTEvoButtonLabels()
+    labels = Symbol.("unmapped_".*string.(1:132))
+    labels[1:29] .= (:red_trigger_half, :red_trigger_full, :A2, :B1, :D1,
+    :A3_up, :A3_right, :A3_down, :A3_left, :A3_press,
+    :A4_up, :A4_right, :A4_down, :A4_left, :A4_press,
+    :C1_up, :C1_right, :C1_down, :C1_left, :C1_press,
+    :black_trigger_up, :black_trigger_down, :encoder_up, :encoder_down,
+    :switch_up, :switch_down, :F1, :F2, :F3)
+    return Tuple(labels)
+end
+
+#factory defaults
+const GladiatorNXTEvoButtonLabels = gen_GladiatorNXTEvoButtonLabels()
+
+############################## Controller #####################################
+
+struct GladiatorNXTEvo_ID <: AbstractJoystickID end
+const GladiatorNXTEvo = Joystick{GladiatorNXTEvo_ID}
+
+AxisSet(::GladiatorNXTEvo_ID) = AxisSet(GladiatorNXTEvoAxisLabels)
+ButtonSet(::GladiatorNXTEvo_ID) = ButtonSet(GladiatorNXTEvoButtonLabels)
+
+function rescale!(axes::AxisSet, ::GladiatorNXTEvo_ID)
     axes[:throttle] = 0.5*(1 - axes[:throttle])
 end
 

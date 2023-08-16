@@ -214,8 +214,8 @@ function test_sim_paced(; save::Bool = true)
         push!(interfaces, attach_io!(sim, joystick))
     end
 
-    # xp = XPCDevice()
-    xp = XPCDevice(host = IPv4("192.168.1.2"))
+    xp = XPCDevice()
+    # xp = XPCDevice(host = IPv4("192.168.1.2"))
     push!(interfaces, attach_io!(sim, xp))
 
     @sync begin
