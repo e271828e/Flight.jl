@@ -93,6 +93,17 @@ function Systems.f_disc!(sys::System{PitchRateComp}, Δt::Real)
 
 end
 
+function GUI.draw(pitch_rate_comp::System{<:PitchRateComp})
+    if CImGui.TreeNode("Integrator")
+        GUI.draw(pitch_rate_comp.c1)
+        CImGui.TreePop()
+    end
+    if CImGui.TreeNode("PID")
+        GUI.draw(pitch_rate_comp.c2)
+        CImGui.TreePop()
+    end
+end
+
 ################################################################################
 ############################### PitchAxisControl ###############################
 
@@ -175,6 +186,19 @@ function Systems.f_disc!(sys::System{PitchControl}, Δt::Real)
     sys.s.mode_prev = mode_prev
     sys.y = PitchControlY(; mode, mode_prev, e_out, e_sat, q_comp = q_comp.y, θ_comp = θ_comp.y)
 
+end
+
+function GUI.draw(pitch_control::System{<:PitchControl})
+    CImGui.Begin("Pitch Control")
+    if CImGui.TreeNode("Pitch Rate Compensator")
+        GUI.draw(pitch_control.q_comp)
+        CImGui.TreePop()
+    end
+    if CImGui.TreeNode("Pitch Angle Compensator")
+        GUI.draw(pitch_control.θ_comp)
+        CImGui.TreePop()
+    end
+    CImGui.End()
 end
 
 ################################################################################
@@ -268,6 +292,19 @@ function Systems.f_disc!(sys::System{RollControl}, Δt::Real)
 
 end
 
+function GUI.draw(roll_control::System{<:RollControl})
+    CImGui.Begin("Roll Control")
+    if CImGui.TreeNode("Roll Rate Compensator")
+        GUI.draw(roll_control.p_comp)
+        CImGui.TreePop()
+    end
+    if CImGui.TreeNode("Bank Angle Compensator")
+        GUI.draw(roll_control.φ_comp)
+        CImGui.TreePop()
+    end
+    CImGui.End()
+end
+
 ################################################################################
 ############################## YawAxisControl ##################################
 
@@ -340,6 +377,16 @@ function Systems.f_disc!(sys::System{YawControl}, Δt::Real)
     sys.y = YawControlY(; mode, r_out, r_sat, β_comp = β_comp.y)
 
 end
+
+function GUI.draw(yaw_control::System{<:YawControl})
+    CImGui.Begin("Yaw Control")
+    if CImGui.TreeNode("Sideslip Compensator")
+        GUI.draw(yaw_control.β_comp)
+        CImGui.TreePop()
+    end
+    CImGui.End()
+end
+
 
 ##################################################################################
 ################################## Avionics ######################################
@@ -572,7 +619,6 @@ function GUI.draw!(avionics::System{<:Avionics}, airframe::System{<:C172.Airfram
 
     @unpack roll_mode, pitch_mode, yaw_mode = avionics.y.interface
 
-    CImGui.Separator()
     CImGui.Text("Roll Control Mode: "); CImGui.SameLine()
     dynamic_button("Aileron", control_mode_HSV(aileron_mode, u.roll_mode_select, roll_mode), 0.1, 0.1); CImGui.SameLine()
     CImGui.IsItemActive() ? u.roll_mode_select = aileron_mode : nothing
@@ -609,6 +655,21 @@ function GUI.draw!(avionics::System{<:Avionics}, airframe::System{<:C172.Airfram
     u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
     u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
     u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
+
+    #Internals
+    CImGui.Separator()
+    @unpack roll_control, pitch_control, yaw_control = avionics.subsystems
+
+    if CImGui.TreeNode("Internals")
+        show_roll_control = @cstatic check=false @c CImGui.Checkbox("Roll Control", &check); CImGui.SameLine()
+        show_roll_control && GUI.draw(roll_control)
+        show_pitch_control = @cstatic check=false @c CImGui.Checkbox("Pitch Control", &check); CImGui.SameLine()
+        show_pitch_control && GUI.draw(pitch_control)
+        show_yaw_control = @cstatic check=false @c CImGui.Checkbox("Yaw Control", &check); CImGui.SameLine()
+        show_yaw_control && GUI.draw(yaw_control)
+        CImGui.TreePop()
+    end
+
 
     CImGui.PopItemWidth()
 

@@ -144,17 +144,17 @@ end
     feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
     bound_lo::SVector{N,Float64} = fill(-Inf, N) #lower output bounds
     bound_hi::SVector{N,Float64} = fill(Inf, N) #higher output bounds
-    sat_ext::SVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
     anti_windup::SVector{N,Bool} = zeros(SVector{N, Bool}) #anti wind-up enabled
     reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID states and null outputs
     u_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path input
-    y_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path output
     u_i::SVector{N,Float64} = zeros(SVector{N}) #integral path input
+    y_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path output
     y_i::SVector{N,Float64} = zeros(SVector{N}) #integral path output
-    int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
     out_free::SVector{N,Float64} = zeros(SVector{N}) #total output, free
     out::SVector{N,Float64} = zeros(SVector{N}) #actual output
+    sat_ext::SVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
     sat_out::SVector{N,Int64} = zeros(SVector{N, Int64}) #current output saturation status
+    int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
 Systems.init(::SystemX, ::PIContinuous{N}) where {N} = zeros(N)
@@ -274,25 +274,25 @@ function GUI.draw(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{
     @unpack setpoint, feedback, bound_lo, bound_hi, sat_ext, anti_windup, reset,
             u_p, y_p, u_i, y_i, int_halt, out_free, out, sat_out = sys.y
 
-    CImGui.Begin(label)
+    # CImGui.Begin(label)
 
         CImGui.Text("Setpoint = $setpoint")
         CImGui.Text("Feedback = $feedback")
         CImGui.Text("Lower Bound = $bound_lo")
         CImGui.Text("Upper Bound = $bound_hi")
-        CImGui.Text("External Saturation = $sat_ext")
         CImGui.Text("Anti Wind-up = $anti_windup")
         CImGui.Text("Reset = $reset")
         CImGui.Text("Proportional Path Input = $u_p")
         CImGui.Text("Proportional Path Output = $y_p")
         CImGui.Text("Integral Path Input = $u_i")
         CImGui.Text("Integral Path Output = $y_i")
-        CImGui.Text("Integrator Halted = $int_halt")
         CImGui.Text("Free Output = $out_free")
         CImGui.Text("Actual Output = $out")
+        CImGui.Text("External Saturation = $sat_ext")
         CImGui.Text("Output Saturation = $sat_out")
+        CImGui.Text("Integrator Halted = $int_halt")
 
-    CImGui.End()
+    # CImGui.End()
 
 end #function
 
@@ -510,5 +510,36 @@ function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteY}; kwargs...)
 
 end
 
+#################################### GUI #######################################
+
+
+function GUI.draw(sys::System{<:PIDDiscrete{N}}, label::String = "PIDDiscrete{$N}") where {N}
+
+    @unpack setpoint, feedback, bound_lo, bound_hi, anti_windup, reset,
+            u_p, u_i, u_d, y_p, y_i, y_d, out_free, out, sat_ext, sat_out, int_halt = sys.y
+
+    # CImGui.Begin(label)
+
+        CImGui.Text("Setpoint = $setpoint")
+        CImGui.Text("Feedback = $feedback")
+        CImGui.Text("Lower Bound = $bound_lo")
+        CImGui.Text("Upper Bound = $bound_hi")
+        CImGui.Text("Anti Wind-up = $anti_windup")
+        CImGui.Text("Reset = $reset")
+        CImGui.Text("Proportional Path Input = $u_p")
+        CImGui.Text("Proportional Path Output = $y_p")
+        CImGui.Text("Integral Path Input = $u_i")
+        CImGui.Text("Integral Path Output = $y_i")
+        CImGui.Text("Derivative Path Input = $u_d")
+        CImGui.Text("Derivative Path Output = $y_d")
+        CImGui.Text("Free Output = $out_free")
+        CImGui.Text("Actual Output = $out")
+        CImGui.Text("External Saturation = $sat_ext")
+        CImGui.Text("Output Saturation = $sat_out")
+        CImGui.Text("Integrator Halted = $int_halt")
+
+    # CImGui.End()
+
+end #function
 
 end #module

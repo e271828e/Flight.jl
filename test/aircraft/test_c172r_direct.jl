@@ -126,7 +126,7 @@ function test_sim_paced(; save::Bool = true)
 
     init_kinematics!(world, kin_init)
 
-    sim = Simulation(world; Δt = 0.02, t_end = 300)
+    sim = Simulation(world; dt = 0.02, Δt = 0.02, t_end = 300)
 
     interfaces = Vector{IODevices.Interface}()
     for joystick in get_connected_joysticks()
@@ -141,7 +141,7 @@ function test_sim_paced(; save::Bool = true)
         for interface in interfaces
             Threads.@spawn IODevices.start!(interface)
         end
-        Threads.@spawn Sim.run_paced!(sim; rate = 1, verbose = true)
+        Threads.@spawn Sim.run_paced!(sim; pace = 1, verbose = true)
     end
 
     plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)

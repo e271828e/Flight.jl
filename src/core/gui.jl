@@ -26,18 +26,17 @@ export HSV_amber, HSV_gray, HSV_green, HSV_red
     light = 2
 end
 
-#refresh: number of display updates per frame render:
-#T_render = T_display * refresh (where typically T_display = 16.67ms).
-#refresh = 1 syncs the render frame rate to the display rate (vsync)
-#refresh = 0 uncaps the render frame rate (WARNING: an independent scheduling
-#mechanism should be used)
+#if sync > 0:
+#T_render = T_display * sync (where typically T_display = 16.67ms).
+#sync = 1 syncs the render frame rate to the display rate (vsync)
+#f sync = 0)
+#uncaps the render frame rate (an independent scheduling mechanism should be used)
 
 mutable struct Renderer
     label::String
-    window_size::Tuple{Int, Int}
-    font_size::Int
-    style::CImGuiStyle
-    refresh::Integer
+    monitor::UInt8 #which monitor to render on when multiple monitors available
+    font_size::UInt8 #will be scaled by the display's content scale
+    sync::UInt8 #number of display updates per frame render
     _enabled::Bool
     _initialized::Bool
     _window::Ptr{ImGuiGLFWBackend.GLFWwindow}
@@ -45,16 +44,15 @@ mutable struct Renderer
     _opengl_ctx::ImGuiOpenGLBackend.Context
     _cimgui_ctx::Ptr{CImGui.LibCImGui.ImGuiContext}
 
-    function Renderer(; label = "Renderer", window_size = (1280, 720), font_size = 20,
-                        style = dark, refresh = 1)
+    function Renderer(; label = "Renderer", monitor = 1, font_size = 16, sync = 1)
         _enabled = true
         _initialized = false
-        new(label, window_size, font_size, style, refresh, _enabled, _initialized)
+        new(label, monitor, font_size, sync, _enabled, _initialized)
     end
 
 end
 
-Base.propertynames(::Renderer) = (:label, :window_size, :font_size, :style, :refresh)
+Base.propertynames(::Renderer) = (:label, :monitor, :font_size, :sync)
 
 function Base.setproperty!(renderer::Renderer, name::Symbol, value)
     if name ∈ propertynames(renderer)
@@ -73,7 +71,7 @@ enable!(renderer::Renderer) = setfield!(renderer, :_enabled, true)
 
 function init!(renderer::Renderer)
 
-    @unpack label, window_size, font_size, style, refresh, _enabled = renderer
+    @unpack label, monitor, font_size, sync, _enabled = renderer
 
     _enabled || return
 
@@ -89,11 +87,33 @@ function init!(renderer::Renderer)
     # error_callback(err::GLFW.GLFWError) = @error "GLFW ERROR: code $(err.code) msg: $(err.description)"
     # GLFW.SetErrorCallback(error_callback)
 
-    # create window
-    _window = glfwCreateWindow(window_size[1], window_size[2], label, C_NULL, C_NULL)
+    n_monitors = Ref{Cint}()
+    monitors = glfwGetMonitors(n_monitors)
+    monitor_sel = unsafe_load(monitors, min(monitor, n_monitors[])) #
+    vmode = unsafe_load(glfwGetVideoMode(monitor_sel), 1)
+
+    if n_monitors[] > 1 #create full borderless window in primary monitor
+        glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE)
+        glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_TRUE)
+        _window = glfwCreateWindow(vmode.width, vmode.height, label, monitor_sel, C_NULL)
+    else #create non-maximized window occuppying half the screen width
+        glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE)
+        glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE)
+        _window = glfwCreateWindow(vmode.width//2, vmode.height, label, C_NULL, C_NULL)
+    end
+
     @assert _window != C_NULL
+    x_pos, y_pos = Ref{Cint}(), Ref{Cint}()
+    glfwGetWindowPos(_window, x_pos, y_pos)
+    glfwSetWindowPos(_window, 0, y_pos[]) #no effect on borderless window
+
+    x_scale, y_scale = Ref{Cfloat}(), Ref{Cfloat}()
+    glfwGetMonitorContentScale(monitor_sel, x_scale, y_scale)
+    font_scaling = max(x_scale[], y_scale[])
+    scaled_font_size = round(font_scaling * font_size)
+
     glfwMakeContextCurrent(_window)
-    glfwSwapInterval(refresh)
+    glfwSwapInterval(sync)
 
     # create OpenGL and GLFW context
     _window_ctx = ImGuiGLFWBackend.create_context(_window)
@@ -102,16 +122,17 @@ function init!(renderer::Renderer)
     # setup Dear ImGui context
     _cimgui_ctx = CImGui.CreateContext()
 
-    #comment when not using docking and multiviewports
-    #enable docking and multi-viewport
-    io = CImGui.GetIO()
-    io.ConfigFlags = unsafe_load(io.ConfigFlags) | CImGui.ImGuiConfigFlags_DockingEnable
-    io.ConfigFlags = unsafe_load(io.ConfigFlags) | CImGui.ImGuiConfigFlags_ViewportsEnable
-
     # setup Dear ImGui style
+    style = dark
     style === classic && CImGui.StyleColorsClassic()
     style === dark && CImGui.StyleColorsDark()
     style === light && CImGui.StyleColorsLight()
+
+    #enable docking and multi-viewport
+    #multi-viewport disabled because here it's more trouble than it's worth it
+    io = CImGui.GetIO()
+    io.ConfigFlags = unsafe_load(io.ConfigFlags) | CImGui.ImGuiConfigFlags_DockingEnable
+    # io.ConfigFlags = unsafe_load(io.ConfigFlags) | CImGui.ImGuiConfigFlags_ViewportsEnable
 
     #comment when not using docking and multiviewports
     # When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
@@ -124,8 +145,8 @@ function init!(renderer::Renderer)
 
     fonts_dir = joinpath(@__DIR__, "gui", "fonts")
     fonts = unsafe_load(CImGui.GetIO().Fonts)
-    @assert (CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Sans Linear-Regular.ttf"), font_size) != C_NULL)
-    # @show (CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Mono Linear-Regular.ttf"), font_size) != C_NULL)
+    @assert (CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Sans Linear-Regular.ttf"), scaled_font_size) != C_NULL)
+    # @show (CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Mono Linear-Regular.ttf"), scaled_font_size) != C_NULL)
 
     # setup Platform/Renderer bindings
     ImGuiGLFWBackend.init(_window_ctx)
@@ -193,9 +214,9 @@ function run(renderer::Renderer, fdraw!::Function, fdraw_args...)
     renderer._enabled || return
     renderer._initialized || init!(renderer)
     try
-        @assert renderer.refresh > 0 "The standalone run() must not be called "*
-        "an unsynced Renderer (refresh = 0). Use scheduled calls to render() instead."
-        #this is because a Renderer with refresh=0 does not wait for monitor refresh
+        @assert renderer.sync > 0 "The standalone run() must not be called "*
+        "an unsynced Renderer (sync = 0). Use scheduled calls to render() instead."
+        #this is because a Renderer with sync=0 does not wait for monitor sync
         #when glfwSwapBuffers is called within render(), which means its frame rate
         #is effectively uncapped. this causes issues, so the calls to render must be
         #limited in frequency by some other means

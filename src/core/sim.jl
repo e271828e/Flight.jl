@@ -49,8 +49,8 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     started::Base.Event #signals that execution has started
     stepping::ReentrantLock #must be acquired by IO interfaces to modify the system
 
-    #set refresh = 0 so that SwapBuffers returns immediately and doesn't slow
-    #down the sim loop
+    #set sync = 0 so that SwapBuffers returns immediately and doesn't slow down
+    #the sim loop; for paced simulations, scheduling is taken care of
     function Simulation(
         sys::System;
         args_ode::Tuple = (), #externally supplied arguments to System's f_ode!
@@ -58,7 +58,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         args_disc::Tuple = (), #externally supplied arguments to System's f_disc!
         sys_reinit!::Function = no_sys_reinit!, #System initialization function
         sys_io!::Function = no_sys_io!, #System I/O function
-        gui::Renderer = Renderer(window_size = (1920, 1080), label = "Simulation", refresh = 0),
+        gui::Renderer = Renderer(label = "Simulation", sync = 0),
         started::Base.Event = Base.Event(), #to be shared with input interfaces
         stepping::ReentrantLock = ReentrantLock(), #to be shared with input interfaces
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
@@ -304,12 +304,12 @@ function GUI.draw(info::Info)
         CImGui.Text("Algorithm: " * algorithm)
         CImGui.Text("Step size: $dt")
         CImGui.Text("Iterations: $iter")
-        CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
-        CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
-        CImGui.Text(@sprintf("Simulation rate: x%.3f", (t - t_start) / τ))
-        CImGui.Text(@sprintf("Dashboard Framerate: %.3f ms/frame (%.1f FPS)",
+        CImGui.Text(@sprintf("Simulation framerate: %.3f ms/frame (%.1f FPS)",
                             1000 / unsafe_load(CImGui.GetIO().Framerate),
                             unsafe_load(CImGui.GetIO().Framerate)))
+        CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
+        CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
+        CImGui.Text(@sprintf("Simulation pace: x%.3f", (t - t_start) / τ))
     CImGui.End()
 
 end
@@ -388,7 +388,7 @@ end
 run_paced_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run_paced!(sim; kwargs...)))
 
 function run_paced!(sim::Simulation;
-                    rate::Real = 1,
+                    pace::Real = 1,
                     verbose::Bool = true)
 
     !isdone_wrn(sim) || return
@@ -399,7 +399,7 @@ function run_paced!(sim::Simulation;
     t_start, t_end = integrator.sol.prob.tspan
     algorithm = algorithm_type(sim) |> string
 
-    gui.refresh == 0 || println("Warning: GUI Renderer refresh interval ",
+    gui.sync == 0 || println("Warning: GUI Renderer sync ",
         "should be set to 0 to avoid interfering with simulation scheduling")
 
     GUI.init!(gui)
@@ -417,10 +417,10 @@ function run_paced!(sim::Simulation;
         while sim.t[] < t_end
 
             #simulation time t and wall-clock time τ are related by:
-            #t_next = t_start + rate * τ_next
+            #t_next = t_start + pace * τ_next
 
             t_next = sim.t[] + get_proposed_dt(sim)
-            τ_next = (t_next - t_start) / rate
+            τ_next = (t_next - t_start) / pace
             while τ_next > τ() end #busy wait (disgusting, needs to do better)
 
             lock(stepping)

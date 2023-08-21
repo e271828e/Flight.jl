@@ -33,7 +33,7 @@ function demo_joysticks()
         end
 
         # disable_gui!(sim)
-        Threads.@spawn Sim.run_paced!(sim; rate = 1, verbose = true)
+        Threads.@spawn Sim.run_paced!(sim; pace = 1, verbose = true)
     end
 
 end
