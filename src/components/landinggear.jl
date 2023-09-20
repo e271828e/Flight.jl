@@ -52,12 +52,10 @@ end
 
 get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
 
-function GUI.draw(sys::System{DirectSteering}, window_label::String = "Direct Steering")
+function GUI.draw(sys::System{DirectSteering})
 
-    CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
-        CImGui.Text("Steering Input: $(Float64(sys.u[]))")
-        CImGui.Text("Steering Angle: $(rad2deg(sys.y.ψ)) deg")
-    CImGui.End()
+    CImGui.Text("Steering Input: $(Float64(sys.u[]))")
+    CImGui.Text("Steering Angle: $(rad2deg(sys.y.ψ)) deg")
 
 end
 
@@ -93,12 +91,10 @@ end
 
 get_braking_factor(sys::System{DirectBraking}) = sys.y.κ_br
 
-function GUI.draw(sys::System{DirectBraking}, window_label::String = "Direct Steering")
+function GUI.draw(sys::System{DirectBraking})
 
-    CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
-        CImGui.Text("Braking Input: $(Float64(sys.u[]))")
-        CImGui.Text("Braking Coefficient: $(sys.y.κ_br)")
-    CImGui.End()
+    CImGui.Text("Braking Input: $(Float64(sys.u[]))")
+    CImGui.Text("Braking Coefficient: $(sys.y.κ_br)")
 
 end
 
@@ -527,9 +523,20 @@ function GUI.draw(sys::System{<:LandingGearUnit}, window_label::String = "Landin
 
     @unpack steering, braking, strut = sys
 
-    GUI.draw(sys.steering, window_label*" Steering")
-    GUI.draw(sys.braking, window_label*" Braking")
-    GUI.draw(sys.strut, window_label*" Strut")
+    CImGui.Begin(window_label)
+        if CImGui.TreeNode("Strut")
+            GUI.draw(sys.strut)
+            CImGui.TreePop()
+        end
+        if CImGui.TreeNode("Steering")
+            GUI.draw(sys.steering)
+            CImGui.TreePop()
+        end
+        if CImGui.TreeNode("Braking")
+            GUI.draw(sys.braking)
+            CImGui.TreePop()
+        end
+    CImGui.End()
 
 end
 
@@ -538,8 +545,6 @@ function GUI.draw(sys::System{<:Strut}, window_label::String = "Strut")
     frc = sys.frc
     @unpack Δh, wow, ξ, ξ_dot, v_eOc_c, trn_data, μ_roll, μ_skid, κ_br, ψ_cv,
             μ_max, μ_eff, f_c, F, F_c, wr_b = sys.y
-
-    CImGui.Begin(window_label)
 
         CImGui.Text(@sprintf("Height Above Ground: %.7f m", Δh))
         CImGui.Text("Weight on Wheel: $wow")
@@ -574,8 +579,6 @@ function GUI.draw(sys::System{<:Strut}, window_label::String = "Strut")
             GUI.draw(frc, window_label)
             CImGui.TreePop()
         end
-
-    CImGui.End()
 
 
 end
