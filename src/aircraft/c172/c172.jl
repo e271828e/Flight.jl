@@ -825,6 +825,7 @@ end
 
 ################################################################################
 ############################## C172 Template ###################################
+
 const Template{K, P, A, V} = AircraftTemplate{K, Airframe{P, A}, V} where {K, P, A, V}
 Template(kinematics, pwp, act, avionics) = AircraftTemplate(kinematics, Airframe(pwp, act), avionics)
 

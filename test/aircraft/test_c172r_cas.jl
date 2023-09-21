@@ -76,7 +76,7 @@ function test_system_methods()
 
 end
 
-function test_cas(; save::Bool = true)
+function test_sim(; save::Bool = true)
 
     @testset verbose = true "CAS" begin
 
@@ -133,62 +133,11 @@ function test_cas(; save::Bool = true)
         plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
         save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_cas", "cas"))
 
-        # return sim
-        # return world
         return nothing
 
     end
 end
 
-# function test_sim(; save::Bool = true)
-
-#     @testset verbose = true "Simulation" begin
-
-#         h_trn = HOrth(608.55);
-
-#         ac = Cessna172Rv1();
-#         env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
-#         world = SimpleWorld(ac, env) |> System;
-
-#         kin_init = KinematicInit(
-#             v_eOb_n = [30, 0, 0],
-#             ω_lb_b = [0, 0, 0],
-#             q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-#             loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-#             h = h_trn + 1.9 + 2200.5);
-
-#         init_kinematics!(world, kin_init)
-
-#         world.u.ac.avionics.eng_start = true #engine start switch on
-#         world.u.env.atm.wind.v_ew_n .= [0, 0, 0]
-
-#         sys_io! = let
-
-#             function (u, s, y, t, params)
-
-#                 u.ac.avionics.throttle = 0.2
-#                 u.ac.avionics.aileron = (t < 5 ? 0.25 : 0.0)
-#                 u.ac.avionics.elevator = 0.0
-#                 u.ac.avionics.rudder = 0.0
-#                 u.ac.avionics.brake_left = 1
-#                 u.ac.avionics.brake_right = 1
-
-#             end
-#         end
-
-#         sim = Simulation(world; Δt = 0.02, t_end = 300, sys_io!, adaptive = false)
-#         Sim.run!(sim, verbose = true)
-
-#         # plots = make_plots(sim; Plotting.defaults...)
-#         plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
-#         save && save_plots(plots, save_folder = joinpath("tmp", "sim_test"))
-
-#         # return sim
-#         return world
-
-#     end
-
-# end
 
 function test_sim_paced(; save::Bool = true)
 

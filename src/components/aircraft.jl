@@ -205,14 +205,26 @@ end
 
 ################################# Tools ########################################
 
-function trim!( ac::System{<:AircraftTemplate}, args...; kwargs...)
-    MethodError(trim!, (ac, args...)) > throw
+#given the body-axes wind-relative velocity, the wind-relative flight path angle
+#and the bank angle, the pitch angle is unambiguously determined
+function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
+    TAS = norm(v_wOb_b)
+    a = v_wOb_b[1] / TAS
+    b = (v_wOb_b[2] * sin(φ_nb) + v_wOb_b[3] * cos(φ_nb)) / TAS
+    sγ = sin(γ_wOb_n)
+
+    return atan((a*b + sγ*√(a^2 + b^2 - sγ^2))/(a^2 - sγ^2))
+    # return asin((a*sγ + b*√(a^2 + b^2 - sγ^2))/(a^2 + b^2)) #equivalent
+
 end
 
-function linearize!(ac::System{<:AircraftTemplate}, args...; kwargs...)
-    MethodError(trim!, (ac, args...)) > throw
+function trim!( ac::System, args...; kwargs...)
+    MethodError(trim!, (ac, args...)) |> throw
 end
 
+function linearize!(ac::System, args...; kwargs...)
+    MethodError(trim!, (ac, args...)) |> throw
+end
 
 ############################### Plotting #######################################
 

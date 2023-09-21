@@ -1,4 +1,4 @@
-module TestC172RBase
+module TestC172FBWBase
 
 using Test
 using UnPack
@@ -20,17 +20,15 @@ using Flight.FlightPhysics.Environment
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
 
-using Flight.FlightAircraft.C172
-using Flight.FlightAircraft.C172RBase
+using Flight.FlightAircraft.C172FBWBase
 
-export test_c172r_base
+export test_c172fbw_base
 
 
-function test_c172r_base()
-    @testset verbose = true "Cessna172RBase" begin
+function test_c172fbw_base()
+    @testset verbose = true "Cessna172FBWBase" begin
 
         test_system_methods()
-        test_trimming()
         test_sim(save = false)
 
     end
@@ -46,9 +44,9 @@ function test_system_methods()
             trn_data = TerrainData(env.trn, loc)
             kin_init = KinematicInit( h = trn_data.altitude + 1.8);
 
-            ac_LTF = System(Cessna172RBase(LTF()));
-            ac_ECEF = System(Cessna172RBase(ECEF()));
-            ac_NED = System(Cessna172RBase(NED()));
+            ac_LTF = System(Cessna172FBWBase(LTF()));
+            ac_ECEF = System(Cessna172FBWBase(ECEF()));
+            ac_NED = System(Cessna172FBWBase(NED()));
 
             init_kinematics!(ac_LTF, kin_init)
             init_kinematics!(ac_ECEF, kin_init)
@@ -77,86 +75,13 @@ function test_system_methods()
 
 end
 
-
-function test_trimming()
-
-    @testset verbose = true "Trimming" begin
-
-    @testset verbose = true "Assignment" begin
-
-        ac = System(Cessna172RBase())
-
-        state = C172RBase.TrimState(;
-            α_a = 0.08, φ_nb = 0.3, n_eng = 0.8,
-            throttle = 0.61, aileron = 0.01, elevator = -0.025, rudder = 0.0)
-
-        params = C172RBase.TrimParameters(;
-            loc = LatLon(), h = HOrth(1000),
-            ψ_nb = 0.2, TAS = 40.0, γ_wOb_n = 0.0, ψ_lb_dot = 0.2, θ_lb_dot = 0.2,
-            β_a = 0.3, fuel = 0.5, mixture = 0.5, flaps = 0.0)
-
-        env = SimpleEnvironment() |> System
-        # env.atm.u.wind.v_ew_n = [4, 2, 4]
-
-        C172RBase.assign!(ac, env, params, state)
-
-        e_lb = e_nb = REuler(ac.y.kinematics.q_nb)
-        v_wOb_n = e_nb(ac.y.air.v_wOb_b)
-
-        @test e_nb.φ ≈ state.φ_nb
-        @test ac.y.airframe.aero.α ≈ state.α_a
-        @test ac.y.airframe.pwp.engine.ω == state.n_eng * ac.airframe.pwp.engine.params.ω_rated
-        @test ac.airframe.act.u.throttle == state.throttle
-        @test ac.airframe.act.u.aileron_offset == state.aileron
-        @test ac.airframe.act.u.elevator_offset == state.elevator
-        @test ac.airframe.act.u.rudder_offset == state.rudder
-
-        @test e_nb.ψ ≈ params.ψ_nb
-        @test Attitude.inclination(v_wOb_n) ≈ params.γ_wOb_n atol = 1e-12
-        @test ac.y.kinematics.common.ω_lb_b ≈ Attitude.ω(e_lb, [params.ψ_lb_dot, params.θ_lb_dot, 0])
-        @test ac.y.air.TAS ≈ params.TAS
-        @test ac.y.airframe.aero.β ≈ params.β_a
-        @test ac.x.airframe.fuel[1] == params.fuel
-        @test ac.airframe.act.u.mixture == params.mixture
-        @test ac.airframe.act.u.flaps == params.flaps
-
-        #setting α_filt = α and β_filt = β should have zeroed their derivatives
-        @test ac.ẋ.airframe.aero.α_filt ≈ 0.0 atol = 1e-12
-        @test ac.ẋ.airframe.aero.β_filt ≈ 0.0 atol = 1e-12
-
-        @test (@ballocated C172RBase.assign!($ac, $env, $params, $state))===0
-
-    end
-
-    @testset verbose = true "Optimization" begin
-
-        ac = System(Cessna172RBase())
-        env = System(SimpleEnvironment())
-        trim_params = C172RBase.TrimParameters()
-        state = C172RBase.TrimState()
-
-        f_target = C172RBase.get_target_function(ac, env, trim_params)
-
-        @test @ballocated($f_target($state)) === 0
-
-        success, _ = trim!(ac; env, trim_params)
-
-        @test success
-
-    end
-
-    end #testset
-
-end #function
-
-
 function test_sim(; save::Bool = true)
 
     @testset verbose = true "Simulation" begin
 
         h_trn = HOrth(608.55);
 
-        ac = Cessna172RBase();
+        ac = Cessna172FBWBase();
         env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
         world = SimpleWorld(ac, env) |> System;
 
@@ -179,10 +104,10 @@ function test_sim(; save::Bool = true)
                 u_act = world.ac.airframe.act.u
                 t = world.t[]
 
-                u_act.throttle = 0.2
-                u_act.aileron = (t < 5 ? 0.25 : 0.0)
-                u_act.elevator = 0.0
-                u_act.rudder = 0.0
+                u_act.throttle_cmd = 0.2
+                u_act.aileron_cmd = (t < 5 ? 0.25 : 0.0)
+                u_act.elevator_cmd = 0.0
+                u_act.rudder_cmd = 0.0
                 u_act.brake_left = 1
                 u_act.brake_right = 1
 
@@ -196,9 +121,6 @@ function test_sim(; save::Bool = true)
         plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
         save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_base", "sim"))
 
-        # return sim
-        # return world
-
     end
 
 end
@@ -208,7 +130,7 @@ function test_sim_paced(; save::Bool = true)
 
     h_trn = HOrth(601.55);
 
-    ac = Cessna172RBase();
+    ac = Cessna172FBWBase();
     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
     world = SimpleWorld(ac, env) |> System;
 

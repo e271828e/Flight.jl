@@ -94,19 +94,6 @@ function TrimParameters(;
     TrimParameters(Ob, ψ_nb, TAS, γ_wOb_n, ψ_lb_dot, θ_lb_dot, β_a, fuel, mixture, flaps)
 end
 
-#given the body-axes wind-relative velocity, the wind-relative flight path angle
-#and the bank angle, the pitch angle is unambiguously determined
-function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
-    TAS = norm(v_wOb_b)
-    a = v_wOb_b[1] / TAS
-    b = (v_wOb_b[2] * sin(φ_nb) + v_wOb_b[3] * cos(φ_nb)) / TAS
-    sγ = sin(γ_wOb_n)
-
-    return atan((a*b + sγ*√(a^2 + b^2 - sγ^2))/(a^2 - sγ^2))
-    # return asin((a*sγ + b*√(a^2 + b^2 - sγ^2))/(a^2 + b^2)) #equivalent
-
-end
-
 function Kinematics.Initializer(trim_state::TrimState,
                                 trim_params::TrimParameters,
                                 env::System{<:AbstractEnvironment})
@@ -117,7 +104,7 @@ function Kinematics.Initializer(trim_state::TrimState,
     v_wOb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
     v_wOb_b = C172.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
 
-    θ_nb = θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
+    θ_nb = Aircraft.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
     e_nb = REuler(ψ_nb, θ_nb, φ_nb)
     q_nb = RQuat(e_nb)
 

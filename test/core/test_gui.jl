@@ -19,8 +19,8 @@ function test_gui()
     target = C172FBW.FlyByWireActuation() |> System
     r = Renderer()
     GUI.init!(r)
-    GUI.run(r, GUI.draw!, target)
-    # GUI.run(r, GUI.draw, target)
+    # GUI.run(r, GUI.draw!, target)
+    GUI.run(r, GUI.draw, target)
 end
 
 end
