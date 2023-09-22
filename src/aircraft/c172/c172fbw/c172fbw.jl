@@ -19,6 +19,7 @@ using Flight.FlightPhysics.Environment
 using Flight.FlightComponents.Propellers
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
+using Flight.FlightComponents.Control
 using Flight.FlightComponents.World
 
 using ..C172
@@ -598,8 +599,8 @@ end
 # ############################### Linearization ##################################
 
 #labels corresponding to LinearX components within the overall
-#Cessna172RBase{NED} state vector
-const XLabels = (
+#C172FBW.Template{NED} state vector
+const LinearXLabels = (
         "kinematics.pos.ψ_nb", "kinematics.pos.θ_nb", "kinematics.pos.φ_nb",
         "kinematics.pos.ϕ", "kinematics.pos.λ", "kinematics.pos.h_e",
         "kinematics.vel.ω_eb_b[1]", "kinematics.vel.ω_eb_b[2]", "kinematics.vel.ω_eb_b[3]",
@@ -612,189 +613,178 @@ const XLabels = (
         "airframe.act.rudder_act.v", "airframe.act.rudder_act.p",
     )
 
-@kwdef mutable struct LinearX <: FieldVector{24, Float64}
-    ψ::Float64 = 0.0 #heading
-    θ::Float64 = 0.0 #inclination
-    φ::Float64 = 0.0 #bank
-    ϕ::Float64 = 0.0 #latitude
-    λ::Float64 = 0.0 #longitude
-    h::Float64 = 0.0 #ellipsoidal altitude
-    p::Float64 = 0.0 #roll rate (ω_eb_b)
-    q::Float64 = 0.0 #pitch rate (ω_eb_b)
-    r::Float64 = 0.0 #yaw rate (ω_eb_b)
-    v_x::Float64 = 0.0 #Ob/ECEF velocity, x-body
-    v_y::Float64 = 0.0 #Ob/ECEF velocity, y-body
-    v_z::Float64 = 0.0 #Ob/ECEF velocity, z-body
-    α_filt::Float64 = 0.0 #filtered AoA
-    β_filt::Float64 = 0.0 #filtered AoS
-    ω_eng::Float64 = 0.0 #engine speed
-    fuel::Float64 = 0.0 #fuel fraction
-    thr_v::Float64 = 0.0 #throttle actuator velocity
-    thr_p::Float64 = 0.0 #throttle actuator position
-    ail_v::Float64 = 0.0 #aileron actuator velocity
-    ail_p::Float64 = 0.0 #aileron actuator position
-    ele_v::Float64 = 0.0 #elevator actuator velocity
-    ele_p::Float64 = 0.0 #elevator actuator position
-    rud_v::Float64 = 0.0 #rudder actuator velocity
-    rud_p::Float64 = 0.0 #rudder actuator position
-end
+const LinearXTemplate = ComponentVector(
+    ψ = 0.0, θ = 0.0, φ = 0.0, #heading, inclination, bank (body/NED)
+    ϕ = 0.0, λ = 0.0, h = 0.0, #latitude, longitude, ellipsoidal altitude
+    p = 0.0, q = 0.0, r = 0.0, #angular rates (ω_eb_b)
+    v_x = 0.0, v_y = 0.0, v_z = 0.0, #Ob/ECEF velocity, body axes
+    α_filt = 0.0, β_filt = 0.0, #filtered airflow angles
+    ω_eng = 0.0, fuel = 0.0, #engine speed, fuel fraction
+    thr_v = 0.0, thr_p = 0.0, #throttle actuator states
+    ail_v = 0.0, ail_p = 0.0, #aileron actuator states
+    ele_v = 0.0, ele_p = 0.0, #elevator actuator states
+    rud_v = 0.0, rud_p = 0.0, #rudder actuator states
+    )
 
 #flaps and mixture are omitted from the control vector and treated as parameters
-@kwdef mutable struct LinearU <: FieldVector{4, Float64}
-    throttle_cmd::Float64 = 0.0
-    aileron_cmd::Float64 = 0.0
-    elevator_cmd::Float64 = 0.0
-    rudder_cmd::Float64 = 0.0
+const LinearUTemplate = ComponentVector(
+    throttle_cmd = 0.0,
+    aileron_cmd = 0.0,
+    elevator_cmd = 0.0,
+    rudder_cmd = 0.0,
+    )
+
+const LinearYTemplate = ComponentVector(
+    ψ = 0.0, θ = 0.0, φ = 0.0, #heading, inclination, bank (body/NED)
+    ϕ = 0.0, λ = 0.0, h = 0.0, #latitude, longitude, ellipsoidal altitude
+    p = 0.0, q = 0.0, r = 0.0, #angular rates (ω_eb_b)
+    TAS = 0.0, α = 0.0, β = 0.0, #airspeed, AoA, AoS
+    f_x = 0.0, f_y = 0.0, f_z = 0.0, #specific force at G (f_iG_b)
+    v_N = 0.0, v_E = 0.0, v_D = 0.0, #Ob/ECEF velocity, NED axes
+    ω_eng = 0.0, m_fuel = 0.0, #engine speed, fuel mass
+)
+
+const LinearU{T, D} = ComponentVector{T, D, typeof(getaxes(LinearUTemplate))} where {T, D}
+const LinearX{T, D} = ComponentVector{T, D, typeof(getaxes(LinearXTemplate))} where {T, D}
+const LinearY{T, D} = ComponentVector{T, D, typeof(getaxes(LinearYTemplate))} where {T, D}
+
+function assign!(u::LinearU, ac::System{<:C172FBW.Template})
+
+    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ac.airframe.act.u
+    @pack! u = throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd
+
+end
+
+function assign!(ac::System{<:C172FBW.Template}, u::LinearU)
+
+    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = u
+    @pack! ac.airframe.act.u = throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd
+
+end
+
+function assign!(y::LinearY, ac::System{<:C172FBW.Template})
+
+    @unpack q_nb, n_e, h_e, ω_eb_b, v_eOb_n = ac.y.kinematics
+    @unpack α, β = ac.y.airframe.aero
+    @unpack ψ, θ, φ = REuler(q_nb)
+    @unpack ϕ, λ = LatLon(n_e)
+
+    h = h_e
+    p, q, r = ω_eb_b
+    v_N, v_E, v_D = v_eOb_n
+    f_x, f_y, f_z = ac.y.rigidbody.f_G_b
+    TAS = ac.y.air.TAS
+    ω_eng = ac.y.airframe.pwp.engine.ω
+    m_fuel = ac.y.airframe.fuel.m_avail
+
+    @pack! y = ψ, θ, φ, ϕ, λ, h, p, q, r, TAS, α, β, f_x, f_y, f_z, v_N, v_E, v_D, ω_eng, m_fuel
+
+end
+
+function Aircraft.linearize!(ac::System{<:C172FBW.Template{NED}};
+    env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
+    trim_params::TrimParameters = TrimParameters())
+
+    (_, trim_state) = trim!(ac; env, trim_params)
+
+    #save the trimmed aircraft's ẋ, x, u and y for later
+    ẋ0_full = copy(ac.ẋ)
+    x0_full = copy(ac.x)
+    u0 = similar(LinearUTemplate); assign!(u0, ac) #get reference value from trimmed aircraft
+    y0 = similar(LinearYTemplate); assign!(y0, ac) #idem
+
+    #function wrapper around f_ode!(), mutates ẋ and y.
+    f_nonlinear! = let ac = ac, env = env,
+                       trim_params = trim_params, trim_state = trim_state,
+                       u_axes = getaxes(u0), y_axes = getaxes(y0)
+
+        function (ẋ, y, x, u)
+
+            # cast y and u into ComponentVectors in case we get generic Vectors
+            # from FiniteDiff. these do not allocate, because the underlying
+            #data is already in u and y
+            u_cv = ComponentVector(u, u_axes)
+            y_cv = ComponentVector(y, y_axes)
+
+            #make sure any input or state not set by x and u is at its reference
+            #trim value. this reverts any potential changes to the aircraft done
+            #by functions sharing the same aircraft instance
+            assign!(ac, env, trim_params, trim_state)
+
+            assign!(ac, u_cv)
+            ac.x .= x
+            f_ode!(ac, env)
+
+            ẋ .= ac.ẋ
+            assign!(y_cv, ac) #this also updates y (shares its data with y_cv)
+
+        end
+
+    end
+
+    (A_full, B_full, C_full, D_full) = ss_matrices(f_nonlinear!;
+                                            ẋ0 = ẋ0_full, y0, x0 = x0_full, u0)
+
+    #once we're done, ensure the aircraft is restored to its trimmed status, so
+    #the response can be compared with that of its linear counterpart
+    assign!(ac, env, trim_params, trim_state)
+
+    #find the indices for the components in the reduced LinearX state vector
+    #within the overall aircraft state vector
+    x_indices = [ComponentArrays.label2index(x0_full, s)[1] for s in LinearXLabels]
+
+    x_axis = getaxes(LinearXTemplate)[1]
+
+    #extract the required elements from ẋ0_full and x0_full and rebuild them
+    #with the LinearX axis
+    ẋ0 = ComponentVector(ẋ0_full[x_indices], x_axis)
+    x0 = ComponentVector(x0_full[x_indices], x_axis)
+
+    #extract the required rows and columns from A, the required rows from B, and
+    #the required columns from C. then rebuild them with the new x_axis and the
+    #previous u_axis and y_axis
+    A = ComponentMatrix(A_full[x_indices, x_indices], x_axis, x_axis)
+    B = ComponentMatrix(B_full[x_indices, :], x_axis, getaxes(u0)[1])
+    C = ComponentMatrix(C_full[:, x_indices], getaxes(y0)[1], x_axis)
+    D = D_full
+
+    return LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+
 end
 
 
-# @kwdef mutable struct LinearY <: FieldVector
-#     ψ = 0.0, θ = 0.0, φ = 0.0, #heading, inclination, bank (body/NED)
-#     ϕ = 0.0, λ = 0.0, h = 0.0, #latitude, longitude, ellipsoidal altitude
-#     p = 0.0, q = 0.0, r = 0.0, #angular rates (ω_eb_b)
-#     TAS = 0.0, α = 0.0, β = 0.0, #airspeed, AoA, AoS
-#     f_x = 0.0, f_y = 0.0, f_z = 0.0, #specific force at G (f_iG_b)
-#     ω_eng = 0.0, m_fuel = 0.0 #engine speed, fuel mass
-#     v_N = 0.0, v_E = 0.0, v_D = 0.0 #Ob/ECEF velocity, NED axes
-# end
+function ss_matrices(f_nonlinear!::Function; ẋ0, y0, x0, u0)
 
+    f_A! = let u = u0, y = similar(y0) #y is discarded
+        (ẋ, x) -> f_nonlinear!(ẋ, y, x, u)
+    end
 
-# function assign!(u::LinearU, ac::System{<:Cessna172RBase})
+    f_B! = let x = x0, y = similar(y0) #y is discarded
+        (ẋ, u) -> f_nonlinear!(ẋ, y, x, u)
+    end
 
-#     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ac.airframe.act.u
-#     @pack! u = throttle, aileron, elevator, rudder
+    f_C! = let u = u0, ẋ = similar(ẋ0) #ẋ is discarded
+        (y, x) -> f_nonlinear!(ẋ, y, x, u)
+    end
 
-# end
+    f_D! = let x = x0, ẋ = similar(ẋ0) #ẋ is discarded
+        (y, u) -> f_nonlinear!(ẋ, y, x, u)
+    end
 
-# function assign!(ac::System{<:Cessna172RBase}, u::LinearU)
+    #preallocate
+    A = x0 * x0'
+    B = x0 * u0'
+    C = y0 * x0'
+    D = y0 * u0'
 
-#     @unpack throttle, aileron, elevator, rudder = u
-#     @pack! ac.airframe.act.u = throttle, aileron, elevator, rudder
+    jacobian!(A, f_A!, x0)
+    jacobian!(B, f_B!, u0)
+    jacobian!(C, f_C!, x0)
+    jacobian!(D, f_D!, u0)
 
-# end
+    return (A, B, C, D)
 
-# function assign!(y::LinearY, ac::System{<:Cessna172RBase})
-
-#     @unpack q_nb, n_e, h_e, ω_eb_b = ac.y.kinematics
-#     @unpack α, β = ac.y.airframe.aero
-#     @unpack ψ, θ, φ = REuler(q_nb)
-#     @unpack ϕ, λ = LatLon(n_e)
-
-#     h = h_e
-#     p, q, r = ω_eb_b
-#     f_x, f_y, f_z = ac.y.rigidbody.f_G_b
-#     TAS = ac.y.air.TAS
-#     ω_eng = ac.y.airframe.pwp.engine.ω
-#     m_fuel = ac.y.airframe.fuel.m_avail
-
-#     @pack! y = ψ, θ, φ, ϕ, λ, h, p, q, r, TAS, α, β, f_x, f_y, f_z, ω_eng, m_fuel
-
-# end
-
-# function Aircraft.linearize!(ac::System{<:Cessna172RBase{NED}};
-#     env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
-#     trim_params::TrimParameters = TrimParameters())
-
-#     (_, trim_state) = trim!(ac; env, trim_params)
-
-#     #save the trimmed aircraft's ẋ, x, u and y for later
-#     ẋ0_full = copy(ac.ẋ)
-#     x0_full = copy(ac.x)
-#     u0 = similar(LinearUTemplate); assign!(u0, ac) #get reference value from trimmed aircraft
-#     y0 = similar(LinearYTemplate); assign!(y0, ac) #idem
-
-#     #function wrapper around f_ode!(), mutates ẋ and y.
-#     f_nonlinear! = let ac = ac, env = env,
-#                        trim_params = trim_params, trim_state = trim_state,
-#                        u_axes = getaxes(u0), y_axes = getaxes(y0)
-
-#         function (ẋ, y, x, u)
-
-#             # cast y and u into ComponentVectors in case we get generic Vectors
-#             # from FiniteDiff. these do not allocate, because the underlying
-#             #data is already in u and y
-#             u_cv = ComponentVector(u, u_axes)
-#             y_cv = ComponentVector(y, y_axes)
-
-#             #make sure any input or state not set by x and u is at its reference
-#             #trim value. this reverts any potential changes to the aircraft done
-#             #by functions sharing the same aircraft instance
-#             assign!(ac, env, trim_params, trim_state)
-
-#             assign!(ac, u_cv)
-#             ac.x .= x
-#             f_ode!(ac, env)
-
-#             ẋ .= ac.ẋ
-#             assign!(y_cv, ac) #this also updates y (shares its data with y_cv)
-
-#         end
-
-#     end
-
-#     (A_full, B_full, C_full, D_full) = ss_matrices(f_nonlinear!;
-#                                             ẋ0 = ẋ0_full, y0, x0 = x0_full, u0)
-
-#     #once we're done, ensure the aircraft is restored to its trimmed status, so
-#     #the response can be compared with that of its linear counterpart
-#     assign!(ac, env, trim_params, trim_state)
-
-#     #find the indices for the components in the reduced LinearX state vector
-#     #within the overall aircraft state vector
-#     x_indices = [ComponentArrays.label2index(x0_full, s)[1] for s in x_labels]
-
-#     x_axis = getaxes(LinearXTemplate)[1]
-
-#     #extract the required elements from ẋ0_full and x0_full and rebuild them
-#     #with the LinearX axis
-#     ẋ0 = ComponentVector(ẋ0_full[x_indices], x_axis)
-#     x0 = ComponentVector(x0_full[x_indices], x_axis)
-
-#     #extract the required rows and columns from A, the required rows from B, and
-#     #the required columns from C. then rebuild them with the new x_axis and the
-#     #previous u_axis and y_axis
-#     A = ComponentMatrix(A_full[x_indices, x_indices], x_axis, x_axis)
-#     B = ComponentMatrix(B_full[x_indices, :], x_axis, getaxes(u0)[1])
-#     C = ComponentMatrix(C_full[:, x_indices], getaxes(y0)[1], x_axis)
-#     D = D_full
-
-#     return LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
-
-# end
-
-
-# function ss_matrices(f_nonlinear!::Function; ẋ0, y0, x0, u0)
-
-#     f_A! = let u = u0, y = similar(y0) #y is discarded
-#         (ẋ, x) -> f_nonlinear!(ẋ, y, x, u)
-#     end
-
-#     f_B! = let x = x0, y = similar(y0) #y is discarded
-#         (ẋ, u) -> f_nonlinear!(ẋ, y, x, u)
-#     end
-
-#     f_C! = let u = u0, ẋ = similar(ẋ0) #ẋ is discarded
-#         (y, x) -> f_nonlinear!(ẋ, y, x, u)
-#     end
-
-#     f_D! = let x = x0, ẋ = similar(ẋ0) #ẋ is discarded
-#         (y, u) -> f_nonlinear!(ẋ, y, x, u)
-#     end
-
-#     #preallocate
-#     A = x0 * x0'
-#     B = x0 * u0'
-#     C = y0 * x0'
-#     D = y0 * u0'
-
-#     jacobian!(A, f_A!, x0)
-#     jacobian!(B, f_B!, u0)
-#     jacobian!(C, f_C!, x0)
-#     jacobian!(D, f_D!, u0)
-
-#     return (A, B, C, D)
-
-# end
+end
 
 ################################################################################
 ################################## Variants ####################################
