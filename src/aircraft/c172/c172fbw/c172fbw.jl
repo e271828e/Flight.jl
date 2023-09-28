@@ -389,7 +389,7 @@ end
     ψ_nb::Float64 = 0.0 #geographic heading
     TAS::Float64 = 40.0 #true airspeed
     γ_wOb_n::Float64 = 0.0 #wind-relative flight path angle
-    ψ_lb_dot::Float64 = 0.0 #LTF-relative turn rate
+    ψ_lb_dot::Float64 = 0.2 #LTF-relative turn rate
     θ_lb_dot::Float64 = 0.0 #LTF-relative pitch rate
     β_a::Float64 = 0.0 #sideslip angle measured in the aerodynamic reference frame
     fuel::Float64 = 0.5 #fuel load, 0 to 1
@@ -790,6 +790,6 @@ end
 ################################## Variants ####################################
 
 include(normpath("variants/base.jl")); @reexport using .C172FBWBase
-# include(normpath("variants/cas.jl")); @reexport using .C172FBWCAS
+include(normpath("variants/cas.jl")); @reexport using .C172FBWCAS
 
 end
