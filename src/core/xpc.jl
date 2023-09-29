@@ -55,15 +55,13 @@ end
 
 disable_physics!(xp::XPCDevice) = set_dref(xp, "sim/operation/override/override_planepath", 1)
 
-function set_position!(xp::XPCDevice; lat = -998, lon = -998, h = -998,
-                       psi = -998, theta = -998, phi = -998,
-                       aircraft::Integer = 0)
+function set_position!(xp::XPCDevice; lat, lon, h_o, psi, theta, phi, aircraft::Integer = 0)
 
     #all angles must be provided in degrees
     buffer = IOBuffer()
     write(buffer,
         b"POSI\0", UInt8(aircraft),
-        Float64(lat), Float64(lon), Float64(h),
+        Float64(lat), Float64(lon), Float64(h_o),
         Float32(theta), Float32(phi), Float32(psi),
         Float32(-998)) #last one is landing gear (?!)
 

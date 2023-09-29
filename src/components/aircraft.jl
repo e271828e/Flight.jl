@@ -185,20 +185,16 @@ function XPC.set_position!(xp::XPCDevice, y::AircraftTemplateY)
 
     aircraft = 0
 
-    kin = y.kinematics
+    @unpack ϕ_λ, e_nb, h_o = y.kinematics
 
-    ll = LatLon(kin.n_e)
-    e_nb = REuler(kin.q_nb)
-
-    lat = rad2deg(ll.ϕ)
-    lon = rad2deg(ll.λ)
-    h = kin.h_o
+    lat = rad2deg(ϕ_λ.ϕ)
+    lon = rad2deg(ϕ_λ.λ)
 
     psi = rad2deg(e_nb.ψ)
     theta = rad2deg(e_nb.θ)
     phi = rad2deg(e_nb.φ)
 
-    XPC.set_position!(xp; lat, lon, h, psi, theta, phi, aircraft)
+    XPC.set_position!(xp; lat, lon, h_o, psi, theta, phi, aircraft)
 
 end
 

@@ -504,8 +504,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
         yaw_mode = rudder_mode
     end
 
-    e_nb = REuler(kinematics.q_nb)
-    @unpack θ, φ = e_nb
+    @unpack θ, φ = kinematics.e_nb
     p, q, _ = kinematics.ω_lb_b
     β = air.β_b
 

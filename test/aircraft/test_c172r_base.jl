@@ -100,7 +100,7 @@ function test_trimming()
 
         C172RBase.assign!(ac, env, params, state)
 
-        e_lb = e_nb = REuler(ac.y.kinematics.q_nb)
+        e_lb = e_nb = ac.y.kinematics.e_nb
         v_wOb_n = e_nb(ac.y.air.v_wOb_b)
 
         @test e_nb.φ ≈ state.φ_nb

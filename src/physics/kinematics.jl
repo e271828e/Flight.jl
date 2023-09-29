@@ -43,9 +43,11 @@ init!(sys::KinematicSystem, ic::Initializer = Initializer()) = init!(sys.x, ic)
 
 #implementation-independent outputs
 struct Common
+    e_nb::REuler
     q_nb::RQuat
     q_eb::RQuat
     q_en::RQuat
+    ϕ_λ::LatLon
     n_e::NVector
     h_e::Altitude{Ellipsoidal}
     h_o::Altitude{Orthometric}
@@ -204,8 +206,10 @@ function KinematicsY(x::XLTF)
     q_nb = q_nl ∘ q_lb
     q_eb = q_el ∘ q_lb
     q_en = q_eb ∘ q_nb'
+    e_nb = REuler(q_nb)
 
     n_e = NVector(q_el)
+    ϕ_λ = LatLon(n_e)
     h_o = HOrth(h_e, n_e)
 
     v_eOb_n = q_nb(v_eOb_b)
@@ -222,7 +226,7 @@ function KinematicsY(x::XLTF)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     return KinematicsY(
-        Common( q_nb, q_eb, q_en, n_e, h_e, h_o, Δxy, r_eOb_e,
+        Common( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
                  ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
         LTFSpecific(; q_lb, q_el, ω_el_l)
     )
@@ -309,9 +313,11 @@ function KinematicsY(x::XECEF)
     Δxy = SVector(x_pos.Δx, x_pos.Δy)
     h_e = HEllip(x_pos.h_e[1])
     h_o = HOrth(h_e, n_e)
+    ϕ_λ = LatLon(n_e)
 
     q_en = ltf(n_e)
     q_nb = q_en' ∘ q_eb
+    e_nb = REuler(q_nb)
 
     Ob = Geographic(n_e, h_e)
     r_eOb_e = Cartesian(Ob)
@@ -325,7 +331,7 @@ function KinematicsY(x::XECEF)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     return KinematicsY(
-        Common( q_nb, q_eb, q_en, n_e, h_e, h_o, Δxy, r_eOb_e,
+        Common( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
                  ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
         ECEFSpecific(; q_en, ω_el_n)
     )
@@ -372,8 +378,6 @@ const XNED{T, D} = ComponentVector{T, D, typeof(getaxes(XNEDTemplate))} where {T
 
 #NED-specific outputs
 @kwdef struct NEDSpecific
-    e_nb::REuler
-    ϕ_λ::LatLon
     ω_nb_b::SVector{3,Float64}
     ω_en_n::SVector{3,Float64}
 end
@@ -440,9 +444,9 @@ function KinematicsY(x::XNED)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     return KinematicsY(
-        Common( q_nb, q_eb, q_en, n_e, h_e, h_o, Δxy, r_eOb_e,
+        Common( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
                  ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
-        NEDSpecific(; e_nb, ϕ_λ, ω_nb_b, ω_en_n)
+        NEDSpecific(; ω_nb_b, ω_en_n)
     )
 
 end
