@@ -641,6 +641,7 @@ const LinearYTemplate = ComponentVector(
     TAS = 0.0, α = 0.0, β = 0.0, #airspeed, AoA, AoS
     f_x = 0.0, f_y = 0.0, f_z = 0.0, #specific force at G (f_iG_b)
     v_N = 0.0, v_E = 0.0, v_D = 0.0, #Ob/ECEF velocity, NED axes
+    χ = 0.0, γ = 0.0, #track and flight path angles
     ω_eng = 0.0, m_fuel = 0.0, #engine speed, fuel mass
 )
 
@@ -672,12 +673,15 @@ function assign!(y::LinearY, ac::System{<:C172FBW.Template})
     h = h_e
     p, q, r = ω_eb_b
     v_N, v_E, v_D = v_eOb_n
+    χ = Attitude.azimuth(v_eOb_n)
+    γ = Attitude.inclination(v_eOb_n)
     f_x, f_y, f_z = ac.y.rigidbody.f_G_b
     TAS = ac.y.air.TAS
     ω_eng = ac.y.airframe.pwp.engine.ω
     m_fuel = ac.y.airframe.fuel.m_avail
 
-    @pack! y = ψ, θ, φ, ϕ, λ, h, p, q, r, TAS, α, β, f_x, f_y, f_z, v_N, v_E, v_D, ω_eng, m_fuel
+    @pack! y = ψ, θ, φ, ϕ, λ, h, p, q, r, TAS, α, β,
+               f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, ω_eng, m_fuel
 
 end
 

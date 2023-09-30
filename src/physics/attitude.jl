@@ -314,8 +314,8 @@ inclination(v::AbstractVector{<:Real}) = atan(-v[3], √(v[1]^2 + v[2]^2))
 ############################# REuler #############################
 
 """
-Euler angle representation. Rotation order is ZYX, so when packed in a Vector,
-angles must follow the ordering ψ, θ, φ.
+Euler angle representation. Rotation order is ZYX, so angles follow the ordering
+ψ (heading), θ (inclination), φ (bank).
 """
 struct REuler <: Abstract3DRotation
     ψ::Float64 #heading

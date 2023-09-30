@@ -4,7 +4,7 @@ using StaticArrays, StructArrays
 
 using ..GUI
 
-export Ranged, linear_scaling
+export Ranged, linear_scaling, wrap_to_π
 export MovingAverage
 
 
@@ -70,21 +70,20 @@ function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, step::Real, fa
     safe_input(label, Float64(source), step, fast_step, display_format)
 end
 
-function test()
+# function test()
 
-    a = Ranged(1, 0, 2)
-    b = Ranged(2.0, 0, 2)
-    A = fill(a, 100)
-    B = fill(b, 100)
-    C = copy(B)
+#     a = Ranged(1, 0, 2)
+#     b = Ranged(2.0, 0, 2)
+#     A = fill(a, 100)
+#     B = fill(b, 100)
+#     C = copy(B)
 
-    C .= A .+ B #no allocations
+#     C .= A .+ B #no allocations
 
-end
+# end
 
 ################################################################################
 ############################ MovingAverage #####################################
-
 
 struct MovingAverage{N}
     samples::MVector{N,Float64}
@@ -104,5 +103,9 @@ function Base.push!(ma::MovingAverage{N}, x::Real) where {N}
     return ma()
 end
 
+################################################################################
+################################ Misc ##########################################
+
+wrap_to_π(x) = x + 2π*floor((π-x)/(2π))
 
 end #module
