@@ -32,8 +32,8 @@ const KinematicInit = Initializer
 
 function Initializer(;
     q_nb::Abstract3DRotation = RQuat(), loc::Abstract2DLocation = LatLon(),
-    h::Altitude = HOrth(), ω_lb_b::AbstractVector{<:Real} = zeros(3),
-    v_eOb_n::AbstractVector{<:Real} = zeros(3), Δx::Real = 0.0, Δy::Real = 0.0)
+    h::Altitude = HOrth(), ω_lb_b::AbstractVector{<:Real} = zeros(SVector{3}),
+    v_eOb_n::AbstractVector{<:Real} = zeros(SVector{3}), Δx::Real = 0.0, Δy::Real = 0.0)
 
     Ob = Geographic(loc, h)
     Initializer(q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy)

@@ -57,6 +57,8 @@ Base.:-(x::Ranged{T1,Min,Max}, y::Ranged{T2,Min,Max}) where {T1,T2,Min,Max} = Ra
 #basic equality
 Base.:(==)(x::Ranged{T1}, y::Real) where {T1} = (==)(promote(x.val, y)...)
 
+saturation(x::Ranged)::Int64 = (x == typemax(x)) - (x == typemin(x))
+
 function linear_scaling(u::Ranged{T, UMin, UMax}, range::NTuple{2,Real}) where {T, UMin, UMax}
     @assert UMin != UMax
     return range[1] + (range[2] - range[1])/(UMax - UMin) * (T(u) - UMin)

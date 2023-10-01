@@ -6,7 +6,7 @@ using Flight.FlightCore.Systems
 using Flight.FlightCore.GUI
 using Flight.FlightCore.IODevices
 using Flight.FlightCore.Joysticks
-using Flight.FlightCore.Utils: Ranged, wrap_to_π
+using Flight.FlightCore.Utils: Ranged, saturation, wrap_to_π
 
 using Flight.FlightPhysics.Attitude
 using Flight.FlightPhysics.Kinematics
@@ -30,13 +30,91 @@ export Cessna172FBWCAS
 
 abstract type AbstractControlChannel <: SystemDefinition end
 
-function reset!(sys::System{<:AbstractControlChannel})
-    for ss in sys.subsystems
-        reset_prev = ss.u.reset[1]
-        ss.u.reset .= true
-        f_disc!(ss, 1.0)
-        ss.u.reset .= reset_prev
+################################################################################
+################################## ThrottleControl #############################
+
+@enum ThrottleMode begin
+    direct_throttle_mode = 0
+    airspeed_throttle_mode = 1
+end
+
+@kwdef struct ThrottleControl <: AbstractControlChannel
+    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.2, k_i = 0.1, k_d = 0.0, τ_d = 0.04)
+end
+
+@kwdef mutable struct ThrottleControlU
+    mode::ThrottleMode = direct_throttle_mode #throttle control mode
+    thr_dmd::Ranged{Float64, 0., 1.} = 0.0 #throttle actuation demand
+    TAS_dmd::Float64 = 0.0 #airspeed demand
+end
+
+@kwdef struct ThrottleControlY
+    mode::ThrottleMode = direct_throttle_mode
+    thr_dmd::Ranged{Float64, 0., 1.} = 0.0
+    TAS_dmd::Float64 = 0.0
+    thr_cmd::Ranged{Float64, 0., 1.} = 0.0 #throttle actuation command
+    thr_sat::Int64 = 0 #throttle saturation state
+    TAS_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+end
+
+Systems.init(::SystemU, ::ThrottleControl) = ThrottleControlU()
+Systems.init(::SystemY, ::ThrottleControl) = ThrottleControlY()
+
+function Control.reset!(sys::System{<:ThrottleControl})
+    #set default inputs and states
+    sys.u.mode = direct_throttle_mode
+    sys.u.thr_dmd = 0
+    sys.u.TAS_dmd = 0
+    #reset compensators
+    Control.reset!.(values(sys.subsystems))
+    #set default outputs
+    sys.y = ThrottleControlY()
+end
+
+function Systems.f_disc!(sys::System{ThrottleControl}, air::AirData, Δt::Real)
+
+    @unpack mode, thr_dmd, TAS_dmd = sys.u
+    @unpack TAS_comp = sys.subsystems
+
+    TAS_comp.u.feedback .= air.TAS
+
+    if mode === direct_throttle_mode
+        thr_cmd = thr_dmd
+    else #airspeed mode
+        TAS_comp.u.setpoint .= TAS_dmd
+        f_disc!(TAS_comp, Δt)
+        thr_cmd = Ranged(TAS_comp.y.out[1], 0., 1.) #compensator sign inversion
     end
+
+    thr_sat = saturation(thr_cmd)
+    TAS_comp.u.sat_ext .= thr_sat #saturation must also be inverted!
+
+    sys.y = ThrottleControlY(; mode, thr_dmd, TAS_dmd,
+                            thr_cmd, thr_sat, TAS_comp = TAS_comp.y)
+
+end
+
+function GUI.draw(sys::System{<:ThrottleControl})
+
+    @unpack TAS_comp = sys.subsystems
+    @unpack mode, thr_dmd, TAS_dmd, thr_cmd, thr_sat = sys.y
+
+    CImGui.Begin("Throttle Control")
+
+    CImGui.Text("Mode: $mode")
+    CImGui.Text(@sprintf("Throttle demand: %.3f", Float64(thr_dmd)))
+    CImGui.Text(@sprintf("Airspeed demand: %.3f m/s", rad2deg(TAS_dmd)))
+
+    CImGui.Text(@sprintf("Throttle command: %.3f", Float64(thr_cmd)))
+    CImGui.Text("Throttle saturation: $r_sat")
+
+    if CImGui.TreeNode("Airspeed Compensator")
+        GUI.draw(TAS_comp)
+        CImGui.TreePop()
+    end
+
+    CImGui.End()
+
 end
 
 ################################################################################
@@ -60,14 +138,12 @@ end
 @kwdef mutable struct PitchRateCmpU
     setpoint::MVector{1,Float64} = zeros(MVector{1})
     feedback::MVector{1,Float64} = zeros(MVector{1})
-    reset::MVector{1,Bool} = zeros(MVector{1, Bool})
     sat_ext::MVector{1,Int64} = zeros(MVector{1, Int64})
 end
 
 @kwdef struct PitchRateCmpY
     setpoint::SVector{1,Float64} = zeros(SVector{1})
     feedback::SVector{1,Float64} = zeros(SVector{1})
-    reset::SVector{1,Bool} = zeros(SVector{1, Bool})
     sat_ext::SVector{1,Int64} = zeros(SVector{1, Int64})
     out::SVector{1,Float64} = zeros(SVector{1})
     c1::PIDDiscreteY{1} = PIDDiscreteY{1}()
@@ -77,27 +153,32 @@ end
 Systems.init(::SystemU, ::PitchRateCmp) = PitchRateCmpU()
 Systems.init(::SystemY, ::PitchRateCmp) = PitchRateCmpY()
 
+function Control.reset!(sys::System{<:PitchRateCmp})
+    sys.u.setpoint .= 0
+    sys.u.feedback .= 0
+    sys.u.sat_ext .= 0
+    Control.reset!.(values(sys.subsystems))
+end
+
 #we leave the compensators' outputs unbounded (the default at initialization),
 #the integrators will halt only when required by sat_ext
 function Systems.f_disc!(sys::System{PitchRateCmp}, Δt::Real)
-    @unpack setpoint, feedback, reset, sat_ext = sys.u
+    @unpack setpoint, feedback, sat_ext = sys.u
     @unpack c1, c2 = sys.subsystems
 
     c1.u.setpoint .= setpoint
     c1.u.feedback .= feedback
-    c1.u.reset .= reset
     c1.u.sat_ext .= sat_ext
     f_disc!(c1, Δt)
 
     c2.u.setpoint .= c1.y.out #connected to c1's output
     c2.u.feedback .= 0.0 #no feedback, just feedforward path
-    c2.u.reset .= reset
     c2.u.sat_ext .= sat_ext
     f_disc!(c2, Δt)
 
     out = c2.y.out
 
-    sys.y = PitchRateCmpY(; setpoint, feedback, reset, sat_ext, out, c1 = c1.y, c2 = c2.y)
+    sys.y = PitchRateCmpY(; setpoint, feedback, sat_ext, out, c1 = c1.y, c2 = c2.y)
 
 end
 
@@ -117,21 +198,21 @@ end
 @kwdef struct PitchControl <: AbstractControlChannel
     q_comp::PitchRateCmp = PitchRateCmp()
     θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 2.5, k_i = 1.7, k_d = 0.18, τ_d = 0.04) #replace design with pure pitch rate feedback
-    c_comp::PIDDiscrete{1} = PIDDiscrete{1}() #TO DO
+    c_comp::PIDDiscrete{1} = PIDDiscrete{1}() ##########################TO DO
 end
 
 #overrides the default NamedTuple built from subsystem u's
 @kwdef mutable struct PitchControlU
-    mode::PitchMode = direct_elevator_mode
+    mode::PitchMode = direct_elevator_mode #pitch control mode
     e_dmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation demand
-    q_dmd::Float64 = 0.0
-    θ_dmd::Float64 = 0.0
-    c_dmd::Float64 = 0.0
+    q_dmd::Float64 = 0.0 #pitch rate demand
+    θ_dmd::Float64 = 0.0 #pitch angle demand
+    c_dmd::Float64 = 0.0 #climb rate demand
 end
 
 @kwdef struct PitchControlY
     mode::PitchMode = direct_elevator_mode
-    e_dmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation demand
+    e_dmd::Ranged{Float64, -1., 1.} = 0.0
     q_dmd::Float64 = 0.0
     θ_dmd::Float64 = 0.0
     c_dmd::Float64 = 0.0
@@ -145,13 +226,17 @@ end
 Systems.init(::SystemU, ::PitchControl) = PitchControlU()
 Systems.init(::SystemY, ::PitchControl) = PitchControlY()
 
-function reset!(sys::System{PitchControl})
-    for ss in sys.subsystems
-        reset_prev = ss.u.reset[1]
-        ss.u.reset .= true
-        f_disc!(ss, 1.0)
-        ss.u.reset .= reset_prev
-    end
+function Control.reset!(sys::System{<:PitchControl})
+    #set default inputs and states
+    sys.u.mode = direct_elevator_mode
+    sys.u.e_dmd = 0
+    sys.u.q_dmd = 0
+    sys.u.θ_dmd = 0
+    sys.u.c_dmd = 0
+    #reset compensators
+    Control.reset!.(values(sys.subsystems))
+    #set default outputs
+    sys.y = PitchControlY()
 end
 
 function Systems.f_disc!(sys::System{PitchControl}, kin::KinematicData, Δt::Real)
@@ -167,26 +252,25 @@ function Systems.f_disc!(sys::System{PitchControl}, kin::KinematicData, Δt::Rea
         e_cmd = e_dmd
     else
         if mode === pitch_rate_mode
-            q_comp.u.setpoint = q_dmd
+            q_comp.u.setpoint .= q_dmd
         else #pitch_angle, climb_rate
             if mode === pitch_angle_mode
-                θ_comp.u.setpoint = θ_dmd
+                θ_comp.u.setpoint .= θ_dmd
             else #climb rate
-                c_comp.u.setpoint = c_dmd
+                c_comp.u.setpoint .= c_dmd
                 f_disc!(c_comp, Δt)
-                θ_comp.u.setpoint = θ_comp.y.out[1]
+                θ_comp.u.setpoint .= c_comp.y.out[1]
             end
             f_disc!(θ_comp, Δt)
-            q_comp.u.setpoint = θ_comp.y.out[1]
+            q_comp.u.setpoint .= θ_comp.y.out[1]
         end
         f_disc!(q_comp, Δt)
         e_cmd = Ranged(q_comp.y.out[1], -1., 1.)
     end
 
-    #determine elevator saturation state
-    e_sat = (e_cmd == typemax(e_cmd)) - (e_cmd == typemin(e_cmd))
+    e_sat = saturation(e_cmd)
 
-    #assign to compensators (will take effect on the next call)
+    #will take effect on the next call
     q_comp.u.sat_ext .= e_sat
     θ_comp.u.sat_ext .= e_sat
     c_comp.u.sat_ext .= e_sat
@@ -233,16 +317,7 @@ end
 
 
 ################################################################################
-################################## ThrottleControl #############################
-
-@enum ThrottleMode begin
-    direct_throttle_mode = 0
-    airspeed_throttle_mode = 1
-end
-
-
-################################################################################
-#################################### RollControl ###############################
+################################## RollControl #################################
 
 @enum RollMode begin
     direct_aileron_mode = 0
@@ -261,26 +336,45 @@ end
 @kwdef mutable struct RollControlU
     mode::RollMode = direct_aileron_mode
     a_dmd::Ranged{Float64, -1., 1.} = 0.0 #aileron actuation demand
-    p_dmd::Float64 = 0.0
-    φ_dmd::Float64 = 0.0
-    χ_dmd::Float64 = 0.0
+    p_dmd::Float64 = 0.0 #roll rate demand
+    φ_dmd::Float64 = 0.0 #bank angle demand
+    χ_dmd::Float64 = 0.0 #track angle demand
 end
 
 @kwdef struct RollControlY
     mode::RollMode = direct_aileron_mode
-    a_dmd::Ranged{Float64, -1., 1.} = 0.0 #aileron actuation demand
+    a_dmd::Ranged{Float64, -1., 1.} = Ranged(0.0, -1.0, 1.0) #aileron actuation demand
     p_dmd::Float64 = 0.0
     φ_dmd::Float64 = 0.0
     χ_dmd::Float64 = 0.0
-    a_cmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation command
-    a_sat::Int64 = 0 #elevator saturation state
-    p_comp::PitchRateCmpY = PIDDiscreteY{1}()
+    a_cmd::Ranged{Float64, -1., 1.} = Ranged(0.0, -1.0, 1.0) #aileron actuation command
+    a_sat::Int64 = 0 #aileron saturation state
+    p_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
     φ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
     χ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
 end
 
 Systems.init(::SystemU, ::RollControl) = RollControlU()
 Systems.init(::SystemY, ::RollControl) = RollControlY()
+
+function Systems.init!(sys::System{RollControl})
+    #initialize track angle compensator bank angle demand output limits
+    sys.χ_comp.u.bound_lo .= -π/4
+    sys.χ_comp.u.bound_hi .= π/4
+end
+
+function Control.reset!(sys::System{<:RollControl})
+    #set default inputs and states
+    sys.u.mode = direct_aileron_mode
+    sys.u.a_dmd = 0
+    sys.u.p_dmd = 0
+    sys.u.φ_dmd = 0
+    sys.u.χ_dmd = 0
+    #reset compensators
+    Control.reset!.(values(sys.subsystems))
+    #set default outputs
+    sys.y = RollControlY()
+end
 
 function Systems.f_disc!(sys::System{RollControl}, kin::KinematicData, Δt::Real)
 
@@ -298,35 +392,34 @@ function Systems.f_disc!(sys::System{RollControl}, kin::KinematicData, Δt::Real
         a_cmd = a_dmd
     else
         if mode === roll_rate_mode
-            p_comp.u.setpoint = p_dmd
-        else #bank angle
-            if mode === pitch_angle_mode
-                φ_comp.u.setpoint = θ_dmd
+            p_comp.u.setpoint .= p_dmd
+        else
+            if mode === bank_angle_mode
+                φ_comp.u.setpoint .= φ_dmd
             else #track angle
                 χ = Attitude.azimuth(kin.v_eOb_n)
                 χ_err = wrap_to_π(χ_dmd - χ)
-                χ_comp.u.setpoint = χ_err #use error as setpoint
+                χ_comp.u.setpoint .= χ_err #use error as setpoint
                 f_disc!(χ_comp, Δt)
-                φ.u.setpoint = χ_comp.y.out[1]
+                φ_comp.u.setpoint .= χ_comp.y.out[1]
             end
             f_disc!(φ_comp, Δt)
-            p_comp.u.setpoint = φ_comp.y.out[1]
+            p_comp.u.setpoint .= φ_comp.y.out[1]
         end
         f_disc!(p_comp, Δt)
         a_cmd = Ranged(p_comp.y.out[1], -1., 1.)
     end
 
-    #determine elevator saturation state
-    a_sat = (a_cmd == typemax(a_cmd)) - (a_cmd == typemin(a_cmd))
+    a_sat = saturation(a_cmd)
 
-    #assign to compensators (will take effect on the next call)
+    #will take effect on the next call
     p_comp.u.sat_ext .= a_sat
     φ_comp.u.sat_ext .= a_sat
     χ_comp.u.sat_ext .= a_sat
 
-    sys.y = PitchControlY(; mode, a_dmd, p_dmd, φ_dmd, χ_dmd,
-                            a_cmd, a_sat, p_comp = p_comp.y,
-                            φ_comp = φ_comp.y, χ_comp = χ_comp.y)
+    sys.y = RollControlY(; mode, a_dmd, p_dmd, φ_dmd, χ_dmd,
+                        a_cmd, a_sat, p_comp = p_comp.y,
+                        φ_comp = φ_comp.y, χ_comp = χ_comp.y)
 
 end
 
@@ -364,6 +457,94 @@ function GUI.draw(sys::System{<:RollControl})
 
 end
 
+
+################################################################################
+#################################### YawControl ################################
+
+@enum YawMode begin
+    direct_rudder_mode = 0
+    sideslip_mode = 1
+end
+
+@kwdef struct YawControl <: AbstractControlChannel
+    β_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 8, k_i = 20, k_d = 5, τ_d = 0.04)
+end
+
+@kwdef mutable struct YawControlU
+    mode::YawMode = direct_rudder_mode #yaw control mode
+    r_dmd::Ranged{Float64, -1., 1.} = 0.0 #aileron actuation demand
+    β_dmd::Float64 = 0.0 #sideslip angle demand
+end
+
+@kwdef struct YawControlY
+    mode::YawMode = direct_rudder_mode
+    r_dmd::Ranged{Float64, -1., 1.} = 0.0
+    β_dmd::Float64 = 0.0
+    r_cmd::Ranged{Float64, -1., 1.} = 0.0 #rudder actuation command
+    r_sat::Int64 = 0 #rudder saturation state
+    β_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+end
+
+Systems.init(::SystemU, ::YawControl) = YawControlU()
+Systems.init(::SystemY, ::YawControl) = YawControlY()
+
+function Control.reset!(sys::System{<:YawControl})
+    #set default inputs and states
+    sys.u.mode = direct_rudder_mode
+    sys.u.r_dmd = 0
+    sys.u.β_dmd = 0
+    #reset compensators
+    Control.reset!.(values(sys.subsystems))
+    #set default outputs
+    sys.y = YawControlY()
+end
+
+function Systems.f_disc!(sys::System{YawControl}, air::AirData, Δt::Real)
+
+    @unpack mode, r_dmd, β_dmd = sys.u
+    @unpack β_comp = sys.subsystems
+
+    β_comp.u.feedback .= air.β_b
+
+    if mode === direct_rudder_mode
+        r_cmd = r_dmd
+    else #sideslip mode
+        β_comp.u.setpoint .= β_dmd
+        f_disc!(β_comp, Δt)
+        r_cmd = Ranged(-β_comp.y.out[1], -1., 1.) #compensator sign inversion
+    end
+
+    r_sat = saturation(r_cmd)
+    β_comp.u.sat_ext .= -r_sat #saturation must also be inverted!
+
+    sys.y = YawControlY(; mode, r_dmd, β_dmd, r_cmd, r_sat, β_comp = β_comp.y)
+
+end
+
+
+function GUI.draw(sys::System{<:YawControl})
+
+    @unpack β_comp = sys.subsystems
+    @unpack mode, r_dmd, β_dmd, r_cmd, r_sat = sys.y
+
+    CImGui.Begin("Yaw Control")
+
+    CImGui.Text("Mode: $mode")
+    CImGui.Text(@sprintf("Rudder demand: %.3f", Float64(r_dmd)))
+    CImGui.Text(@sprintf("Sideslip angle demand: %.3f deg", rad2deg(β_dmd)))
+
+    CImGui.Text(@sprintf("Rudder command: %.3f", Float64(r_cmd)))
+    CImGui.Text("Rudder saturation: $r_sat")
+
+    if CImGui.TreeNode("Sideslip Angle Compensator")
+        GUI.draw(β_comp)
+        CImGui.TreePop()
+    end
+
+    CImGui.End()
+
+end
+
 ################################################################################
 ########################## Longitudinal Control ################################
 
@@ -391,12 +572,7 @@ end
 #was already at the commanded value. what we should probably do is design these
 #compensators to have a relatively soft response
 
-@enum LongMode begin
-    long_semi = 0
-    long_auto = 1
-end
-
-@enum LongControlAutoState begin
+@enum LonControlAutoState begin
     altitude_acquire = 0
     altitude_hold = 1
 end
@@ -406,33 +582,36 @@ end
     orthometric = 1
 end
 
-@kwdef struct LongControlAuto <: AbstractControlChannel
-    h_comp::PIDDiscrete{1} = PIDDiscrete{1}() #TO DO
-    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}() #TO DO
+@kwdef struct LonControlAuto <: AbstractControlChannel
+    h_comp::PIDDiscrete{1} = PIDDiscrete{1}() #altitude to climb rate compensator ########### TO DO
+    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}() #airspeed to θ compensator ############TO DO
 end
 
-@kwdef mutable struct LongControlAutoU
-    h_dmd::Tuple{Float64, AltitudeDatum} = (0.0, ellipsoidal)
-    TAS_dmd::Float64 = 0.0
+@kwdef mutable struct LonControlAutoU
+    h_dmd::Tuple{Float64, AltitudeDatum} = (0.0, ellipsoidal) #altitude demand
+    TAS_dmd::Float64 = 0.0 #airspeed demand
 end
 
-@kwdef struct LongControlAutoY
-    state::LongControlAutoState = altitude_acquire
-    throttle_mode::ThrottleMode = direct_throttle
+@kwdef struct LonControlAutoY
+    state::LonControlAutoState = altitude_acquire
+    throttle_mode::ThrottleMode = direct_throttle_mode
     pitch_mode::PitchMode = pitch_angle_mode
-    thr_dmd::Float64
-    θ_dmd::Float64
-    TAS_dmd::Float64
-    c_dmd::Float64
+    thr_dmd::Float64 = 0.0
+    θ_dmd::Float64 = 0.0
+    TAS_dmd::Float64 = 0.0
+    c_dmd::Float64 = 0.0
     h_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
     TAS_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
 end
 
-function Systems.f_disc!(sys::System{LongControlAuto}, kin::KinematicData, air::AirData, Δt::Real)
+Systems.init(::SystemU, ::LonControlAuto) = LonControlAutoU()
+Systems.init(::SystemY, ::LonControlAuto) = LonControlAutoY()
 
-    @unpack h_dmd, TAS_dmd, e_sat, h_threshold = sys.u
+
+function Systems.f_disc!(sys::System{LonControlAuto}, kin::KinematicData, air::AirData, Δt::Real)
+
+    @unpack h_dmd, TAS_dmd = sys.u
     @unpack h_comp, TAS_comp = sys.subsystems
-    @unpack state_prev = sys.s
 
     h_threshold = 20 #within 20 m we switch to altitude_hold
     h = (h_dmd[2] === ellipsoidal) ? Float64(kin.h_e) : Float64(kin.h_o)
@@ -440,7 +619,7 @@ function Systems.f_disc!(sys::System{LongControlAuto}, kin::KinematicData, air::
 
     if state === altitude_acquire
 
-        throttle_mode = direct_throttle
+        throttle_mode = direct_throttle_mode
         pitch_mode = pitch_angle_mode
 
         TAS_comp.u.setpoint .= TAS_dmd
@@ -454,7 +633,7 @@ function Systems.f_disc!(sys::System{LongControlAuto}, kin::KinematicData, air::
 
     else #altitude_hold
 
-        throttle_mode = airspeed_throttle
+        throttle_mode = airspeed_throttle_mode
         pitch_mode = climb_rate_mode
 
         h_comp.u.setpoint .= h_dmd[1]
@@ -468,7 +647,9 @@ function Systems.f_disc!(sys::System{LongControlAuto}, kin::KinematicData, air::
     end
 
     #note: in altitude_hold mode, TAS_dmd just passes through to ThrottleControl
-    sys.y = PitchControlY(; state, throttle_mode, pitch_mode, thr_dmd, θ_dmd, TAS_dmd, c_dmd)
+    sys.y = LonControlAutoY(; state, throttle_mode, pitch_mode,
+                            thr_dmd, θ_dmd, TAS_dmd, c_dmd,
+                            h_comp = h_comp.y, TAS_comp = TAS_comp.y)
 
 end
 
@@ -480,12 +661,21 @@ end
     phase_air = 1
 end
 
+@enum LonMode begin
+    lon_mode_semi = 0
+    lon_mode_auto = 1
+end
+
+@enum LatMode begin
+    lat_mode_semi = 0
+end
+
 @kwdef struct Avionics <: AbstractAvionics
     throttle_ctl::ThrottleControl = ThrottleControl()
-    # roll_ctl::RollControl = RollControl()
+    roll_ctl::RollControl = RollControl()
     pitch_ctl::PitchControl = PitchControl()
-    # yaw_ctl::YawControl = YawControl()
-    long_ctl::LongControlAuto = LongControlAuto()
+    yaw_ctl::YawControl = YawControl()
+    lon_ctl::LonControlAuto = LonControlAuto()
 end
 
 @kwdef mutable struct PhysicalInputs
@@ -512,11 +702,14 @@ end
     throttle_mode_sel::ThrottleMode = direct_throttle_mode #selected throttle channel mode
     roll_mode_sel::RollMode = direct_aileron_mode #selected roll channel mode
     pitch_mode_sel::PitchMode = direct_elevator_mode #selected pitch channel mode
-    # yaw_mode_sel::YawMode = rudder_mode #selected yaw channel mode
-    long_mode_sel::LongMode = long_semi
-    TAS_dmd::Float64 = 40.0
+    yaw_mode_sel::YawMode = direct_rudder_mode #selected yaw channel mode
+    lon_mode_sel::LonMode = lon_mode_semi #selected longitudinal control mode
+    lat_mode_sel::LatMode = lat_mode_semi #selected lateral control mode
+    TAS_dmd::Float64 = 40.0 #airspeed demand
     θ_dmd::Float64 = 0.0 #pitch angle demand
     c_dmd::Float64 = 0.0 #climb rate demand
+    φ_dmd::Float64 = 0.0 #bank angle demand
+    χ_dmd::Float64 = 0.0 #track angle demand
     h_dmd::Tuple{Float64, AltitudeDatum} = (0.0, ellipsoidal) #altitude demand
     p_dmd_sf::Float64 = 0.2 #roll_input to p_dmd scale factor
     q_dmd_sf::Float64 = 0.2 #pitch_input to q_dmd scale factor
@@ -528,13 +721,14 @@ end
     digital::DigitalInputs = DigitalInputs()
 end
 
-@kwdef struct AvionicsInternals
+@kwdef struct AvionicsModing
     flight_phase::FlightPhase = phase_gnd
-    # throttle_mode::ThrottleMode = direct_throttle
-    # roll_mode::RollMode = aileron_mode
+    throttle_mode::ThrottleMode = direct_throttle_mode
+    roll_mode::RollMode = direct_aileron_mode
     pitch_mode::PitchMode = direct_elevator_mode
-    # yaw_mode::YawMode = rudder_mode
-    long_mode::LongMode = long_semi
+    yaw_mode::YawMode = direct_rudder_mode
+    lon_mode::LonMode = lon_mode_semi
+    lat_mode::LatMode = lat_mode_semi
 end
 
 @kwdef struct ActuationCommands
@@ -554,12 +748,13 @@ end
 end
 
 @kwdef struct AvionicsY
-    internals::AvionicsInternals = AvionicsInternals()
+    moding::AvionicsModing = AvionicsModing()
     actuation::ActuationCommands = ActuationCommands()
     throttle_ctl::ThrottleControlY = ThrottleControlY()
-    # roll_ctl::RollControlY = RollControlY()
+    roll_ctl::RollControlY = RollControlY()
     pitch_ctl::PitchControlY = PitchControlY()
-    # yaw_ctl::YawControlY = YawControlY()
+    yaw_ctl::YawControlY = YawControlY()
+    lon_ctl::LonControlAutoY = LonControlAutoY()
 end
 
 Systems.init(::SystemU, ::Avionics) = AvionicsU()
@@ -573,21 +768,21 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
                         airframe::System{<:C172.Airframe}, kinematics::KinematicData,
                         ::RigidBodyData, air::AirData, ::TerrainData)
 
-    @unpack eng_start, eng_stop, throttle, mixture,
+    @unpack eng_start, eng_stop, mixture, throttle,
             roll_input, pitch_input, yaw_input,
             aileron_cmd_offset, elevator_cmd_offset, rudder_cmd_offset,
             flaps, brake_left, brake_right = avionics.u.physical
 
-    @unpack throttle_mode_sel, pitch_mode_sel, long_mode_sel,
-            TAS_dmd, θ_dmd, c_dmd, h_dmd,
+    @unpack throttle_mode_sel, roll_mode_sel, pitch_mode_sel, yaw_mode_sel,
+            lon_mode_sel, lat_mode_sel, TAS_dmd, θ_dmd, c_dmd, φ_dmd, χ_dmd, h_dmd,
             p_dmd_sf, q_dmd_sf, β_dmd_sf = avionics.u.digital
 
-    @unpack throttle_ctl, pitch_ctl, long_ctl = avionics.subsystems
+    @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl, lon_ctl = avionics.subsystems
 
-    #get low level demands from physical inputs
+    #direct surface and low level demands always come from physical inputs
     roll_ctl.u.a_dmd = roll_input
     pitch_ctl.u.e_dmd = pitch_input
-    pitch_ctl.u.e_dmd = yaw_input
+    yaw_ctl.u.r_dmd = yaw_input
 
     roll_ctl.u.p_dmd = p_dmd_sf * Float64(roll_input)
     pitch_ctl.u.q_dmd = q_dmd_sf * Float64(pitch_input)
@@ -596,34 +791,23 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     any_wow = any(SVector{3}(leg.strut.wow for leg in airframe.ldg.y))
     flight_phase = any_wow ? phase_gnd : phase_air
 
-    if flight_phase == phase_gnd
+    if flight_phase === phase_gnd
+
+        #these are irrelevant on ground, but must be defined in all paths
+        lon_mode = lon_mode_semi
+        lat_mode = lat_mode_semi
 
         throttle_ctl.u.mode = direct_throttle_mode
         roll_ctl.u.mode = direct_aileron_mode
         pitch_ctl.u.mode = direct_elevator_mode
         yaw_ctl.u.mode = direct_rudder_mode
-        long_mode = long_mode_semi
 
     else #air
 
-        long_mode = long_mode_sel
+        lon_mode = lon_mode_sel
+        lat_mode = lat_mode_sel
 
-        if long_mode === long_auto
-
-            long_ctl.u.h_dmd = h_dmd
-            long_ctl.u.TAS_dmd = TAS_dmd
-            long_ctl.u.e_sat = pitch_ctl.y.e_sat
-            f_disc!(long_ctl, kinematics, air, Δt)
-
-            throttle_ctl.u.mode = long_ctl.y.throttle_mode
-            throttle_ctl.u.thr_dmd = long_ctl.y.thr_dmd
-            throttle_ctl.u.TAS_dmd = long_ctl.y.TAS_dmd
-
-            pitch_ctl.u.mode = long_ctl.y.pitch_mode
-            pitch_ctl.u.θ_dmd = long_ctl.y.θ_dmd
-            pitch_ctl.u.c_dmd = long_ctl.y.c_dmd
-
-        else #long_mode === long_semi
+        if lon_mode === lon_mode_semi
 
             throttle_ctl.u.mode = throttle_mode_sel
             throttle_ctl.u.thr_dmd = throttle
@@ -633,39 +817,65 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
             pitch_ctl.u.θ_dmd = θ_dmd
             pitch_ctl.u.c_dmd = c_dmd
 
+        else #lon_mode === lon_auto
+
+            lon_ctl.u.h_dmd = h_dmd
+            lon_ctl.u.TAS_dmd = TAS_dmd
+            f_disc!(lon_ctl, kinematics, air, Δt)
+
+            throttle_ctl.u.mode = lon_ctl.y.throttle_mode
+            throttle_ctl.u.thr_dmd = lon_ctl.y.thr_dmd
+            throttle_ctl.u.TAS_dmd = lon_ctl.y.TAS_dmd
+
+            pitch_ctl.u.mode = lon_ctl.y.pitch_mode
+            pitch_ctl.u.θ_dmd = lon_ctl.y.θ_dmd
+            pitch_ctl.u.c_dmd = lon_ctl.y.c_dmd
+
+        end
+
+        if lat_mode === lat_mode_semi
+
+            roll_ctl.u.mode = roll_mode_sel
+            roll_ctl.u.φ_dmd = φ_dmd
+
+            yaw_ctl.u.mode = yaw_mode_sel
+
         end
 
     end
 
     f_disc!(throttle_ctl, air, Δt)
-    # f_disc!(roll_ctl, air, Δt)
+    f_disc!(roll_ctl, kinematics, Δt)
     f_disc!(pitch_ctl, kinematics, Δt)
-    # f_disc!(yaw_ctl, air, Δt)
+    f_disc!(yaw_ctl, air, Δt)
 
     throttle_cmd = throttle_ctl.y.thr_cmd
-    #aileron_cmd = roll_ctl.y.a_cmd
+    aileron_cmd = roll_ctl.y.a_cmd
     elevator_cmd = pitch_ctl.y.e_cmd
-    #rudder_cmd = yaw_ctl.y.a_cmd
+    rudder_cmd = yaw_ctl.y.r_cmd
 
-
-    internals = AvionicsInternals(; flight_phase,
+    moding = AvionicsModing(;
+        flight_phase,
         throttle_mode = throttle_ctl.y.mode,
-        # roll_mode = roll_ctl.y.mode,
+        roll_mode = roll_ctl.y.mode,
         pitch_mode = pitch_ctl.y.mode,
-        # yaw_mode = yaw_ctl.y.mode,
-        long_mode)
+        yaw_mode = yaw_ctl.y.mode,
+        lon_mode,
+        lat_mode
+      )
 
-    #all signals except for throttle, roll_input, pitch_input and yaw_input pass through
+    #all signal  except for throttle, roll_input, pitch_input and yaw_input pass through
     actuation = ActuationCommands(; eng_start, eng_stop, mixture,
                 throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd,
                 aileron_cmd_offset, elevator_cmd_offset, rudder_cmd_offset,
                 flaps, brake_left, brake_right)
 
-    avionics.y = AvionicsY(; internals, actuation,
+    avionics.y = AvionicsY(; moding, actuation,
                             throttle_ctl = throttle_ctl.y,
-                            # roll_ctl = roll_ctl.y,
+                            roll_ctl = roll_ctl.y,
                             pitch_ctl = pitch_ctl.y,
-                            # yaw_ctl = yaw_ctl.y,
+                            yaw_ctl = yaw_ctl.y,
+                            lon_ctl = lon_ctl.y
                             )
 
     return false
@@ -688,7 +898,7 @@ end
 
 # # ################################## GUI #########################################
 
-# # function control_mode_HSV(mode, selected_mode, active_mode)
+# # function mode_button_color(button_mode, selected_mode, active_mode)
 # #     if active_mode === mode
 # #         return HSV_green
 # #     elseif selected_mode === mode
@@ -795,12 +1005,12 @@ end
 
 # end
 
-# ################################################################################
-# ############################# Cessna172RCAS #####################################
+################################################################################
+############################# Cessna172RCAS #####################################
 
-# #Cessna172R with control augmenting Avionics
-# const Cessna172RCAS{K} = C172R.Template{K, Avionics} where {K}
-# Cessna172RCAS(kinematics = LTF()) = C172R.Template(kinematics, Avionics())
+#Cessna172R with control augmenting Avionics
+const Cessna172FBWCAS{K} = C172FBW.Template{K, Avionics} where {K}
+Cessna172FBWCAS(kinematics = LTF()) = C172FBW.Template(kinematics, Avionics())
 
 
 # # ############################ Joystick Mappings #################################

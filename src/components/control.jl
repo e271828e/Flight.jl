@@ -142,8 +142,8 @@ end
 @kwdef struct PIContinuousY{N}
     setpoint::SVector{N,Float64} = zeros(SVector{N}) #commanded setpoint
     feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
-    bound_lo::SVector{N,Float64} = fill(-Inf, N) #lower output bounds
-    bound_hi::SVector{N,Float64} = fill(Inf, N) #higher output bounds
+    bound_lo::SVector{N,Float64} = fill(-Inf, SVector{N}) #lower output bounds
+    bound_hi::SVector{N,Float64} = fill(Inf, SVector{N}) #higher output bounds
     anti_windup::SVector{N,Bool} = zeros(SVector{N, Bool}) #anti wind-up enabled
     reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID states and null outputs
     u_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path input
@@ -152,7 +152,7 @@ end
     y_i::SVector{N,Float64} = zeros(SVector{N}) #integral path output
     out_free::SVector{N,Float64} = zeros(SVector{N}) #total output, free
     out::SVector{N,Float64} = zeros(SVector{N}) #actual output
-    sat_ext::SVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
+    sat_ext::SVector{N,Int64} = zeros(SVector{N, Int64}) #external (signed) saturation signal
     sat_out::SVector{N,Int64} = zeros(SVector{N, Int64}) #current output saturation status
     int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
@@ -363,8 +363,8 @@ end
 @kwdef struct PIDDiscreteY{N}
     setpoint::SVector{N,Float64} = zeros(SVector{N}) #commanded setpoint
     feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
-    bound_lo::SVector{N,Float64} = fill(-Inf, N) #lower output bounds
-    bound_hi::SVector{N,Float64} = fill(Inf, N) #higher output bounds
+    bound_lo::SVector{N,Float64} = fill(-Inf, SVector{N}) #lower output bounds
+    bound_hi::SVector{N,Float64} = fill(Inf, SVector{N}) #higher output bounds
     anti_windup::SVector{N,Bool} = zeros(SVector{N, Bool}) #anti wind-up enabled
     reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID states and null outputs
     u_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path input
@@ -375,7 +375,7 @@ end
     y_d::SVector{N,Float64} = zeros(SVector{N}) #derivative path output
     out_free::SVector{N,Float64} = zeros(SVector{N}) #non-clamped PID output
     out::SVector{N,Float64} = zeros(SVector{N}) #actual PID output
-    sat_ext::SVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
+    sat_ext::SVector{N,Int64} = zeros(SVector{N, Int64}) #external (signed) saturation signal
     sat_out::SVector{N,Int64} = zeros(SVector{N, Int64}) #output saturation status
     int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
@@ -383,6 +383,16 @@ end
 Systems.init(::SystemY, ::PIDDiscrete{N}) where {N} = PIDDiscreteY{N}()
 Systems.init(::SystemU, ::PIDDiscrete{N}) where {N} = PIDDiscreteU{N}()
 Systems.init(::SystemS, ::PIDDiscrete{N}) where {N} = PIDDiscreteS{N}()
+
+function reset!(sys::System{<:PIDDiscrete{N}}) where {N}
+    sys.u.setpoint .= 0
+    sys.u.feedback .= 0
+    sys.u.sat_ext .= 0
+    reset_prev = SVector{N}(sys.u.reset)
+    sys.u.reset .= true
+    f_disc!(sys, 1.0)
+    sys.u.reset .= reset_prev
+end
 
 function Systems.f_disc!(sys::System{<:PIDDiscrete{N}}, Δt::Real) where {N}
 
