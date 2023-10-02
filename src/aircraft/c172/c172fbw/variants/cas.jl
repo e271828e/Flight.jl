@@ -39,7 +39,7 @@ abstract type AbstractControlChannel <: SystemDefinition end
 end
 
 @kwdef struct ThrottleControl <: AbstractControlChannel
-    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.5, k_i = 0.8, k_d = 0.0, τ_d = 0.04)
+    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.8, k_i = 0.6, k_d = 0.2, τ_d = 0.04)
 end
 
 @kwdef mutable struct ThrottleControlU
@@ -131,7 +131,7 @@ end
 
 @kwdef struct PitchRateCmp <: SystemDefinition
     c1::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0, k_i = 1, k_d = 0) #pure integrator
-    c2::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 5.2, k_i = 25, k_d = 0.45, τ_d = 0.04) #see notebook
+    c2::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4.8, k_i = 20, k_d = 0.2, τ_d = 0.04) #see notebook
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -197,7 +197,7 @@ end
 
 @kwdef struct PitchControl <: AbstractControlChannel
     q_comp::PitchRateCmp = PitchRateCmp()
-    θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 2.5, k_i = 1.7, k_d = 0.18, τ_d = 0.04) #replace design with pure pitch rate feedback
+    θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.8, k_i = 0.6, k_d = 0.12, τ_d = 0.04) #replace design with pure pitch rate feedback
     c_comp::PIDDiscrete{1} = PIDDiscrete{1}() ##########################TO DO
 end
 
@@ -323,14 +323,14 @@ end
     direct_aileron_mode = 0
     roll_rate_mode = 1
     bank_angle_mode = 2
-    track_angle_mode = 3
+    course_angle_mode = 3
 end
 
 #TO DO: redesign φ compensator with actual p feedback
 @kwdef struct RollControl <: AbstractControlChannel
-    p_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0.8, k_i = 10.0, k_d = 0.05, τ_d = 0.04)
+    p_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0.6, k_i = 8.0, k_d = 0.04, τ_d = 0.04)
     φ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 6.0, k_i = 1.5, k_d = 0.6, τ_d = 0.04)
-    χ_comp::PIDDiscrete{1} = PIDDiscrete{1}()
+    χ_comp::PIDDiscrete{1} = PIDDiscrete{1}() ################ TO DO
 end
 
 @kwdef mutable struct RollControlU
@@ -338,7 +338,7 @@ end
     a_dmd::Ranged{Float64, -1., 1.} = 0.0 #aileron actuation demand
     p_dmd::Float64 = 0.0 #roll rate demand
     φ_dmd::Float64 = 0.0 #bank angle demand
-    χ_dmd::Float64 = 0.0 #track angle demand
+    χ_dmd::Float64 = 0.0 #course angle demand
 end
 
 @kwdef struct RollControlY
@@ -358,7 +358,7 @@ Systems.init(::SystemU, ::RollControl) = RollControlU()
 Systems.init(::SystemY, ::RollControl) = RollControlY()
 
 function Systems.init!(sys::System{RollControl})
-    #initialize track angle compensator bank angle demand output limits
+    #initialize course angle compensator bank angle demand output limits
     sys.χ_comp.u.bound_lo .= -π/4
     sys.χ_comp.u.bound_hi .= π/4
 end
@@ -396,7 +396,7 @@ function Systems.f_disc!(sys::System{RollControl}, kin::KinematicData, Δt::Real
         else
             if mode === bank_angle_mode
                 φ_comp.u.setpoint .= φ_dmd
-            else #track angle
+            else #course angle
                 χ = Attitude.azimuth(kin.v_eOb_n)
                 χ_err = wrap_to_π(χ_dmd - χ)
                 χ_comp.u.setpoint .= χ_err #use error as setpoint
@@ -467,7 +467,7 @@ end
 end
 
 @kwdef struct YawControl <: AbstractControlChannel
-    β_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 8, k_i = 20, k_d = 5, τ_d = 0.04)
+    β_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 12, k_i = 30, k_d = 5, τ_d = 0.04)
 end
 
 @kwdef mutable struct YawControlU
@@ -709,7 +709,7 @@ end
     θ_dmd::Float64 = 0.0 #pitch angle demand
     c_dmd::Float64 = 0.0 #climb rate demand
     φ_dmd::Float64 = 0.0 #bank angle demand
-    χ_dmd::Float64 = 0.0 #track angle demand
+    χ_dmd::Float64 = 0.0 #course angle demand
     h_dmd::Tuple{Float64, AltitudeDatum} = (0.0, ellipsoidal) #altitude demand
     p_dmd_sf::Float64 = 0.2 #roll_input to p_dmd scale factor
     q_dmd_sf::Float64 = 0.2 #pitch_input to q_dmd scale factor
