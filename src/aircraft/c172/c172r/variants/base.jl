@@ -72,7 +72,7 @@ function TrimState(; α_a = 0.1, φ_nb = 0.0, n_eng = 0.75,
 
 end
 
-struct TrimParameters
+struct TrimParameters <: AbstractTrimParameters
     Ob::Geographic{NVector, Ellipsoidal} #position
     ψ_nb::Float64 #geographic heading
     TAS::Float64 #true airspeed

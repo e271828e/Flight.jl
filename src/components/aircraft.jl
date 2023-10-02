@@ -16,6 +16,7 @@ using Flight.FlightPhysics.Environment
 export AbstractAirframe, EmptyAirframe
 export AbstractAvionics, NoAvionics
 export AircraftTemplate
+export AbstractTrimParameters
 export init_kinematics!, trim!, linearize!
 
 ###############################################################################
@@ -200,6 +201,8 @@ end
 
 
 ################################# Tools ########################################
+
+abstract type AbstractTrimParameters end
 
 #given the body-axes wind-relative velocity, the wind-relative flight path angle
 #and the bank angle, the pitch angle is unambiguously determined

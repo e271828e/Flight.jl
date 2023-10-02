@@ -39,7 +39,7 @@ abstract type AbstractControlChannel <: SystemDefinition end
 end
 
 @kwdef struct ThrottleControl <: AbstractControlChannel
-    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.2, k_i = 0.1, k_d = 0.0, τ_d = 0.04)
+    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.5, k_i = 0.8, k_d = 0.0, τ_d = 0.04)
 end
 
 @kwdef mutable struct ThrottleControlU
@@ -892,6 +892,38 @@ function Aircraft.map_controls!(airframe::System{<:C172.Airframe},
     @pack! airframe.act.u = eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,
            elevator_cmd, rudder_cmd, aileron_cmd_offset, elevator_cmd_offset,
            rudder_cmd_offset, flaps, brake_left, brake_right
+
+end
+
+
+##################################### Tools ####################################
+
+#makes Avionics inputs consistent with the trim solution obtained for the
+#aircraft physics. this enables the trim condition to be preserved during
+#simulation
+function assign!(sys::System{<:Avionics},
+                trim_params::C172FBW.TrimParameters,
+                trim_state::C172FBW.TrimState)
+
+    @unpack mixture, flaps = trim_params
+    @unpack throttle, aileron, elevator, rudder = trim_state
+
+    sys.u.physical.throttle = throttle
+    sys.u.physical.roll_input = 0
+    sys.u.physical.pitch_input = 0
+    sys.u.physical.yaw_input = 0
+    sys.u.physical.aileron_cmd_offset = aileron
+    sys.u.physical.elevator_cmd_offset = elevator
+    sys.u.physical.rudder_cmd_offset = rudder
+    sys.u.physical.mixture = mixture
+    sys.u.physical.flaps = flaps
+
+    sys.u.digital.lon_mode_sel = C172FBWCAS.lon_mode_semi
+    sys.u.digital.lat_mode_sel = C172FBWCAS.lat_mode_semi
+    sys.u.digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
+    sys.u.digital.roll_mode_sel = C172FBWCAS.direct_aileron_mode
+    sys.u.digital.pitch_mode_sel = C172FBWCAS.direct_elevator_mode
+    sys.u.digital.yaw_mode_sel = C172FBWCAS.direct_rudder_mode
 
 end
 

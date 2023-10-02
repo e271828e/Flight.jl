@@ -384,7 +384,7 @@ Template(kinematics, avionics) = C172.Template(kinematics, PowerPlant(), Actuati
     rudder::Float64 = 0.02 #rudder↑ -> aero.u.r↓ -> right yaw
 end
 
-@kwdef struct TrimParameters
+@kwdef struct TrimParameters <: AbstractTrimParameters
     Ob::Geographic{NVector, Ellipsoidal} = Geographic(NVector(), HOrth(1000))
     ψ_nb::Float64 = 0.0 #geographic heading
     TAS::Float64 = 40.0 #true airspeed

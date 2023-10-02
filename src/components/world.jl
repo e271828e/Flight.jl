@@ -59,6 +59,10 @@ end
 
 #f_step! can rely on its fallback
 
+function Aircraft.trim!(world::System{<:SimpleWorld}; trim_params::AbstractTrimParameters)
+    trim!(world.ac; env = world.env, trim_params)
+end
+
 ############################### Plotting #######################################
 
 function Plotting.make_plots(th::TimeHistory{<:SimpleWorldY}; kwargs...)
