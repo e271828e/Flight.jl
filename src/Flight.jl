@@ -5,9 +5,9 @@ using Reexport
 include(normpath("core/FlightCore.jl")); @reexport using .FlightCore
 include(normpath("physics/FlightPhysics.jl")); @reexport using .FlightPhysics
 include(normpath("components/FlightComponents.jl")); @reexport using .FlightComponents
-include(normpath("aircraft/FlightAircraft.jl")); @reexport using .FlightAircraft
+# include(normpath("aircraft/FlightAircraft.jl")); @reexport using .FlightAircraft
 
-#we only reexport some essential modules
+#only reexport some essential, frequently used stuff
 @reexport using .FlightCore.Systems
 @reexport using .FlightCore.Sim
 
@@ -17,6 +17,6 @@ include(normpath("aircraft/FlightAircraft.jl")); @reexport using .FlightAircraft
 @reexport using .FlightPhysics.Environment: SimpleEnvironment
 
 @reexport using .FlightComponents.Aircraft: trim!, linearize!
-@reexport using .FlightComponents.World: SimpleWorld
+# @reexport using .FlightComponents.World: SimpleWorld
 
 end

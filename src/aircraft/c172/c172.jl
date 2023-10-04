@@ -764,13 +764,22 @@ end
 
 ############################# Update Methods ###################################
 
+function map_controls!(airframe::System{<:Airframe},
+                       avionics::System{<:AbstractAvionics})
+    MethodError(map_controls!, (airframe, avionics)) |> throw
+end
+
+map_controls!(::System{<:Airframe}, ::System{NoAvionics}) = nothing
 
 function Systems.f_ode!(airframe::System{<:Airframe},
-                        kin::KinematicData, air::AirData,
+                        avionics::System{<:AbstractAvionics},
+                        kin::KinematicData,
+                        air::AirData,
                         trn::System{<:AbstractTerrain})
 
     @unpack act, aero, pwp, ldg, fuel, pld = airframe
 
+    map_controls!(airframe, avionics) #map avionics outputs to airframe inputs
     f_ode!(act) #update actuation system outputs
     assign!(aero, ldg, pwp, act) #assign actuation system outputs to airframe subsystems
     f_ode!(aero, pwp, air, kin, trn) #update aerodynamics continuous state & outputs

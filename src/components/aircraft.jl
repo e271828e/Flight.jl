@@ -19,21 +19,15 @@ export AircraftTemplate
 export AbstractTrimParameters
 export init_kinematics!, trim!, linearize!
 
-###############################################################################
-############################## Airframe #######################################
+################################################################################
+########################### AbstractAirframe ###################################
 
 abstract type AbstractAirframe <: SystemDefinition end
 RigidBody.MassTrait(::System{<:AbstractAirframe}) = HasMass()
 RigidBody.AngMomTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
 RigidBody.WrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
 
-function Systems.f_ode!(airframe::System{<:AbstractAirframe},
-                        kin::KinematicData, air::AirData,
-                        trn::System{<:AbstractTerrain})
-    MethodError(f_ode!, (airframe, kin, air, trn)) |> throw
-end
-
-########################## EmptyAirframe ###########################
+################################ EmptyAirframe #################################
 
 @kwdef struct EmptyAirframe <: AbstractAirframe
     mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
@@ -41,84 +35,116 @@ end
 
 RigidBody.AngMomTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
 RigidBody.WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
-
 RigidBody.get_mp_Ob(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
 
-function Systems.f_ode!(::System{EmptyAirframe}, ::KinematicData, ::AirData,
-                        ::System{<:AbstractTerrain})
+################################################################################
+############################## AircraftPhysics #################################
+
+@kwdef struct AircraftPhysics{K <: AbstractKinematicDescriptor,
+                              F <: AbstractAirframe} <: SystemDefinition
+    kinematics::K = LTF()
+    airframe::F = EmptyAirframe()
+end
+
+struct AircraftPhysicsY{K, F}
+    kinematics::K
+    airframe::F
+    rigidbody::RigidBodyData
+    air::AirData
+end
+
+Systems.init(::SystemY, ac::AircraftPhysics) = AircraftPhysicsY(
+    init_y(ac.kinematics),
+    init_y(ac.airframe),
+    RigidBodyData(),
+    AirData())
+
+function init_kinematics!(sys::System{<:AircraftPhysics}, ic::KinematicInit)
+    Kinematics.init!(sys.x.kinematics, ic)
 end
 
 ###############################################################################
-######################### AbstractAvionics ####################################
+############################# AbstractAvionics #################################
 
 abstract type AbstractAvionics <: SystemDefinition end
-
-function Systems.f_disc!(avionics::System{<:AbstractAvionics}, Δt::Real,
-                        airframe::System{<:AbstractAirframe},
-                        kin::KinematicData, rb::RigidBodyData, air::AirData,
-                        trn::System{<:AbstractTerrain})
-    MethodError(f_disc!, (avionics, Δt, airframe, kin, air, rb, trn)) |> throw
-end
-
-function map_controls!(airframe::System{<:AbstractAirframe},
-                       avionics::System{<:AbstractAvionics})
-    MethodError(map_controls!, (airframe, avionics)) |> throw
-end
-
 
 ################################### NoAvionics #################################
 
 struct NoAvionics <: AbstractAvionics end
 
-function Systems.f_disc!(::System{NoAvionics}, ::Real,
-                        ::System{<:AbstractAirframe},
-                        ::KinematicData, ::RigidBodyData, ::AirData,
-                        ::TerrainData)
+
+###############################################################################
+#################### AbstractAirframe update methods ###########################
+
+#airframe update methods should only mutate the airframe System
+
+function Systems.f_ode!(airframe::System{<:AbstractAirframe},
+                        avionics::System{<:AbstractAvionics},
+                        kin::KinematicData,
+                        air::AirData,
+                        trn::System{<:AbstractTerrain})
+    MethodError(f_ode!, (airframe, avionics, kin, air, trn)) |> throw
+end
+
+function Systems.f_ode!(::System{EmptyAirframe},
+                        ::System{<:AbstractAvionics},
+                        ::KinematicData,
+                        ::AirData,
+                        ::System{<:AbstractTerrain})
+    nothing
+end
+
+#this method can be extended if required, but in principle Airframe shouldn't
+#implement discrete dynamics; discretized algorithms belong in Avionics
+function Systems.f_disc!(::System{<:AbstractAirframe},
+                        ::Real,
+                        ::System{<:AbstractAvionics},
+                        ::System{<:AbstractEnvironment})
     return false
 end
 
-map_controls!(::System{<:AbstractAirframe}, ::System{<:NoAvionics}) = nothing
+#f_step! can use the recursive fallback implementation
 
 
 ###############################################################################
-############################## AircraftTemplate ###################################
+#################### AbstractAvionics update methods ###########################
 
-struct AircraftTemplate{K <: AbstractKinematicDescriptor,
-                F <: AbstractAirframe,
-                A <: AbstractAvionics} <: SystemDefinition
-    kinematics::K
-    airframe::F
-    avionics::A
+#avionics update methods should only mutate the avionics System
+
+#this method can be extended if required, but in principle avionics shouldn't
+#involve continuous dynamics.
+function Systems.f_ode!(::System{<:AbstractAvionics},
+                        ::System{<:AircraftPhysics},
+                        ::System{<:AbstractEnvironment})
+    nothing
 end
 
-function AircraftTemplate(kinematics::K = LTF(),
-                airframe::F = EmptyAirframe(),
-                avionics::A = NoAvionics()) where {K,F,A}
-    AircraftTemplate{K,F,A}(kinematics, airframe, avionics)
+function Systems.f_disc!(avionics::System{<:AbstractAvionics},
+                        Δt::Real,
+                        physics::System{<:AircraftPhysics},
+                        env::System{<:AbstractEnvironment})
+    MethodError(f_disc!, (avionics, Δt, physics, env)) |> throw
 end
 
-#override the generic NamedTuple to include stuff besides subsystem outputs
-@kwdef struct AircraftTemplateY{K, F, A}
-    kinematics::K
-    airframe::F
-    avionics::A
-    rigidbody::RigidBodyData
-    air::AirData
+function Systems.f_disc!(::System{NoAvionics},
+                        ::Real,
+                        ::System{<:AircraftPhysics},
+                        ::System{<:AbstractEnvironment})
+    return false
 end
 
-Systems.init(::SystemY, ac::AircraftTemplate) = AircraftTemplateY(
-    init_y(ac.kinematics), init_y(ac.airframe), init_y(ac.avionics),
-    RigidBodyData(), AirData())
-
-function init_kinematics!(ac::System{<:AircraftTemplate}, ic::KinematicInit)
-    Kinematics.init!(ac.x.kinematics, ic)
-end
+#f_step! can use the recursive fallback implementation
 
 
-function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractEnvironment})
+################################################################################
+###################### AircraftPhysics Update methods ##########################
 
-    @unpack ẋ, x, subsystems = sys
-    @unpack kinematics, airframe, avionics = subsystems
+function Systems.f_ode!(physics::System{<:AircraftPhysics},
+                        avionics::System{<:AbstractAvionics},
+                        env::System{<:AbstractEnvironment})
+
+    @unpack ẋ, x, subsystems = physics
+    @unpack kinematics, airframe = subsystems
     @unpack atm, trn = env
 
     #update kinematics
@@ -126,8 +152,8 @@ function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractE
     kin_data = KinematicData(kinematics)
     air_data = AirData(kin_data, atm)
 
-    #update airframe components
-    f_ode!(airframe, kin_data, air_data, trn)
+    #update airframe
+    f_ode!(airframe, avionics, kin_data, air_data, trn)
 
     #get inputs for rigid body dynamics
     mp_Ob = get_mp_Ob(airframe)
@@ -137,52 +163,89 @@ function Systems.f_ode!(sys::System{<:AircraftTemplate}, env::System{<:AbstractE
     #update velocity derivatives and rigid body data
     rb_data = f_rigidbody!(kinematics.ẋ.vel, kin_data, mp_Ob, wr_b, hr_b)
 
-    sys.y = AircraftTemplateY(kinematics.y, airframe.y, avionics.y, rb_data, air_data)
+    physics.y = AircraftPhysicsY(kinematics.y, airframe.y, rb_data, air_data)
 
     return nothing
 
 end
 
-function Systems.f_disc!(sys::System{<:AircraftTemplate}, Δt::Real, env::System{<:AbstractEnvironment})
+#f_step! will use the recursive fallback implementation
 
-    @unpack airframe, avionics, kinematics = sys.subsystems
-    y = sys.y
+#within AircraftPhysics, only the airframe may be modified by f_disc! (and it
+#generally shouldn't)
+function Systems.f_disc!(physics::System{<:AircraftPhysics},
+                        Δt::Real,
+                        avionics::System{<:AbstractAvionics},
+                        env::System{<:AbstractEnvironment})
 
-    kin_data = y.kinematics.common
-    rb_data = y.rigidbody
-    air_data = y.air
-    trn_data = TerrainData(env.trn, kin_data.n_e)
+    @unpack kinematics, airframe = physics
+    @unpack rigidbody, air = physics.y
 
-    #could use chained | instead, but this is clearer
     x_mod = false
-    #in principle, only avionics should have discrete dynamics (it's the only
-    #aircraft subsystem in which discretized algorithms should live)
-    x_mod |= f_disc!(avionics, Δt, airframe, kin_data, rb_data, air_data, trn_data)
-    map_controls!(airframe, avionics)
+    x_mod |= f_disc!(physics.airframe, Δt, avionics, env)
 
-    #avionics might have modified its outputs, so we need to reassemble everything
-    sys.y = AircraftTemplateY(kinematics.y, airframe.y, avionics.y, rb_data, air_data)
+    #since airframe might have modified its outputs, we need to reassemble
+    physics.y = AircraftPhysicsY(kinematics.y, airframe.y, rigidbody, air)
 
     return x_mod
 end
 
-function Systems.f_step!(sys::System{<:AircraftTemplate})
 
-    @unpack kinematics, airframe, avionics = sys.subsystems
+################################################################################
+############################## AircraftTemplate ################################
 
-    #could use chained | instead, but this is clearer
+@kwdef struct AircraftTemplate{P <: AircraftPhysics,
+                               A <: AbstractAvionics} <: SystemDefinition
+    physics::P = AircraftPhysics()
+    avionics::A = NoAvionics()
+end
+
+struct AircraftTemplateY{P <: AircraftPhysicsY, A}
+    physics::P
+    avionics::A
+end
+
+Systems.init(::SystemY, ac::AircraftTemplate) = AircraftTemplateY(
+    init_y(ac.physics), init_y(ac.avionics))
+
+function init_kinematics!(ac::System{<:AircraftTemplate}, ic::KinematicInit)
+    Kinematics.init!(ac.physics, ic)
+end
+
+function Systems.f_ode!(ac::System{<:AircraftTemplate}, env::System{<:AbstractEnvironment})
+
+    @unpack physics, avionics = ac.subsystems
+
+    f_ode!(avionics, physics, env)
+    f_ode!(physics, avionics, env)
+
+    ac.y = AircraftTemplateY(physics.y, avionics.y)
+
+    return nothing
+
+end
+
+function Systems.f_disc!(ac::System{<:AircraftTemplate}, Δt::Real, env::System{<:AbstractEnvironment})
+
+    @unpack physics, avionics = ac.subsystems
+
     x_mod = false
-    x_mod |= f_step!(kinematics)
-    x_mod |= f_step!(airframe)
-    x_mod |= f_step!(avionics)
+    x_mod |= f_disc!(avionics, Δt, avionics, env)
+    x_mod |= f_disc!(physics, Δt, avionics, env)
+
+    sys.y = AircraftTemplateY(physics.y, avionics.y)
 
     return x_mod
 end
+
+#f_step! can use the recursive fallback implementation
 
 
 ############################# XPlaneConnect ####################################
 
-function XPC.set_position!(xp::XPCDevice, y::AircraftTemplateY)
+XPC.set_position!(xp::XPCDevice, y::AircraftTemplateY) = XPC.set_position!(xp, y.physics)
+
+function XPC.set_position!(xp::XPCDevice, y::AircraftPhysicsY)
 
     aircraft = 0
 
@@ -227,19 +290,28 @@ end
 
 ############################### Plotting #######################################
 
-function Plotting.make_plots(th::TimeHistory{<:AircraftTemplateY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:AircraftPhysicsY}; kwargs...)
 
     return OrderedDict(
         :kinematics => make_plots(th.kinematics; kwargs...),
         :airframe => make_plots(th.airframe; kwargs...),
-        :avionics => make_plots(th.avionics; kwargs...),
         :rigidbody => make_plots(th.rigidbody; kwargs...),
         :air => make_plots(th.air; kwargs...),
     )
 
 end
 
+function Plotting.make_plots(th::TimeHistory{<:AircraftTemplateY}; kwargs...)
+
+    return OrderedDict(
+        :physics => make_plots(th.physics; kwargs...),
+        :avionics => make_plots(th.avionics; kwargs...),
+    )
+
+end
+
 ################################### GUI ########################################
+
 
 function GUI.draw!(sys::System{<:AircraftTemplate}, label::String = "Aircraft")
 
@@ -247,21 +319,36 @@ function GUI.draw!(sys::System{<:AircraftTemplate}, label::String = "Aircraft")
 
     CImGui.Begin(label)
 
-    show_dyn = @cstatic check=false @c CImGui.Checkbox("Dynamics", &check)
-    show_kin = @cstatic check=false @c CImGui.Checkbox("Kinematics", &check)
-    show_air = @cstatic check=false @c CImGui.Checkbox("Air", &check)
-    show_airframe = @cstatic check=false @c CImGui.Checkbox("Airframe", &check)
+    show_physics = @cstatic check=false @c CImGui.Checkbox("Airframe", &check)
     show_avionics = @cstatic check=false @c CImGui.Checkbox("Avionics", &check)
 
-    show_dyn && GUI.draw(y.rigidbody, "Dynamics")
-    show_kin && GUI.draw(y.kinematics, "Kinematics")
-    show_air && GUI.draw(y.air, "Air")
-    show_airframe && GUI.draw!(sys.airframe, sys.avionics)
-    show_avionics && GUI.draw!(sys.avionics, sys.airframe)
+    show_physics && GUI.draw!(sys.physics, sys.avionics)
+    show_avionics && GUI.draw!(sys.avionics, sys.physics)
 
     CImGui.End()
 
 end
 
+function GUI.draw!(physics::System{<:AircraftPhysics},
+                   avionics::System{<:AbstractAvionics},
+                   label::String = "Aircraft Physics")
+
+    @unpack kinematics, rigidbody, air = physics.y
+
+    CImGui.Begin(label)
+
+    show_airframe = @cstatic check=false @c CImGui.Checkbox("Airframe", &check)
+    show_dyn = @cstatic check=false @c CImGui.Checkbox("Dynamics", &check)
+    show_kin = @cstatic check=false @c CImGui.Checkbox("Kinematics", &check)
+    show_air = @cstatic check=false @c CImGui.Checkbox("Air", &check)
+
+    show_airframe && GUI.draw!(sys.airframe, avionics)
+    show_dyn && GUI.draw(rigidbody, "Dynamics")
+    show_kin && GUI.draw(kinematics, "Kinematics")
+    show_air && GUI.draw(air, "Air")
+
+    CImGui.End()
+
+end
 
 end #module

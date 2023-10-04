@@ -765,8 +765,8 @@ Systems.init(::SystemS, ::Avionics) = nothing #keep subsystems local
 # ########################### Update Methods #####################################
 
 function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
-                        airframe::System{<:C172.Airframe}, kinematics::KinematicData,
-                        ::RigidBodyData, air::AirData, ::TerrainData)
+                        physics::System{<:AircraftPhysics},
+                        ::System{<:AbstractEnvironment})
 
     @unpack eng_start, eng_stop, mixture, throttle,
             roll_input, pitch_input, yaw_input,
@@ -779,6 +779,8 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl, lon_ctl = avionics.subsystems
 
+    @unpack airframe, kinematics, air = physics.y
+
     #direct surface and low level demands always come from physical inputs
     roll_ctl.u.a_dmd = roll_input
     pitch_ctl.u.e_dmd = pitch_input
@@ -788,7 +790,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     pitch_ctl.u.q_dmd = q_dmd_sf * Float64(pitch_input)
     yaw_ctl.u.β_dmd = β_dmd_sf * Float64(yaw_input)
 
-    any_wow = any(SVector{3}(leg.strut.wow for leg in airframe.ldg.y))
+    any_wow = any(SVector{3}(leg.strut.wow for leg in airframe.ldg))
     flight_phase = any_wow ? phase_gnd : phase_air
 
     if flight_phase === phase_gnd
