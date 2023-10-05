@@ -31,6 +31,11 @@ export Cessna172FBWBase
 const Cessna172FBWBase{K} = C172FBW.Template{K, NoAvionics} where {K}
 Cessna172FBWBase(kinematics = LTF()) = C172FBW.Template(kinematics, NoAvionics())
 
+################################ Tools #########################################
+
+function Aircraft.trim!(ac::System{<:Cessna172FBWBase}, args...; kwargs...)
+    trim!(ac.physics, args...; kwargs...)
+end
 
 ############################ Joystick Mappings #################################
 

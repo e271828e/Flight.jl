@@ -75,10 +75,7 @@ struct NoAvionics <: AbstractAvionics end
 ###############################################################################
 #################### AbstractAirframe update methods ###########################
 
-#airframe update methods should only mutate the airframe System
-
 function Systems.f_ode!(airframe::System{<:AbstractAirframe},
-                        avionics::System{<:AbstractAvionics},
                         kin::KinematicData,
                         air::AirData,
                         trn::System{<:AbstractTerrain})
@@ -86,7 +83,6 @@ function Systems.f_ode!(airframe::System{<:AbstractAirframe},
 end
 
 function Systems.f_ode!(::System{EmptyAirframe},
-                        ::System{<:AbstractAvionics},
                         ::KinematicData,
                         ::AirData,
                         ::System{<:AbstractTerrain})
@@ -97,7 +93,6 @@ end
 #implement discrete dynamics; discretized algorithms belong in Avionics
 function Systems.f_disc!(::System{<:AbstractAirframe},
                         ::Real,
-                        ::System{<:AbstractAvionics},
                         ::System{<:AbstractEnvironment})
     return false
 end
@@ -139,7 +134,6 @@ end
 ###################### AircraftPhysics Update methods ##########################
 
 function Systems.f_ode!(physics::System{<:Physics},
-                        avionics::System{<:AbstractAvionics},
                         env::System{<:AbstractEnvironment})
 
     @unpack ẋ, x, subsystems = physics
@@ -152,7 +146,7 @@ function Systems.f_ode!(physics::System{<:Physics},
     air_data = AirData(kin_data, atm)
 
     #update airframe
-    f_ode!(airframe, avionics, kin_data, air_data, trn)
+    f_ode!(airframe, kin_data, air_data, trn)
 
     #get inputs for rigid body dynamics
     mp_Ob = get_mp_Ob(airframe)
@@ -174,20 +168,32 @@ end
 #shouldn't)
 function Systems.f_disc!(physics::System{<:Physics},
                         Δt::Real,
-                        avionics::System{<:AbstractAvionics},
                         env::System{<:AbstractEnvironment})
 
     @unpack kinematics, airframe = physics
     @unpack rigidbody, air = physics.y
 
     x_mod = false
-    x_mod |= f_disc!(physics.airframe, Δt, avionics, env)
+    x_mod |= f_disc!(physics.airframe, Δt, env)
 
     #airframe might have modified its outputs, so we need to reassemble
     physics.y = PhysicsY(kinematics.y, airframe.y, rigidbody, air)
 
     return x_mod
 end
+
+#these are meant to map avionics outputs to airframe control inputs, they are
+#called both within the aircraft's f_ode! and f_disc! before the physics update
+function assign!(physics::System{<:Physics}, avionics::System{<:AbstractAvionics})
+    assign!(physics.airframe, avionics)
+end
+
+function assign!(airframe::System{<:AbstractAirframe},
+                avionics::System{<:AbstractAvionics})
+    MethodError(assign!, (airframe, avionics)) |> throw
+end
+
+assign!(::System{<:AbstractAirframe}, ::System{NoAvionics}) = nothing
 
 
 ################################################################################
@@ -213,7 +219,8 @@ function Systems.f_ode!(ac::System{<:Template}, env::System{<:AbstractEnvironmen
     @unpack physics, avionics = ac.subsystems
 
     f_ode!(avionics, physics, env)
-    f_ode!(physics, avionics, env)
+    assign!(physics, avionics)
+    f_ode!(physics, env)
 
     ac.y = TemplateY(physics.y, avionics.y)
 
@@ -227,7 +234,8 @@ function Systems.f_disc!(ac::System{<:Template}, Δt::Real, env::System{<:Abstra
 
     x_mod = false
     x_mod |= f_disc!(avionics, Δt, physics, env)
-    x_mod |= f_disc!(physics, Δt, avionics, env)
+    assign!(physics, avionics)
+    x_mod |= f_disc!(physics, Δt, env)
 
     ac.y = TemplateY(physics.y, avionics.y)
 
@@ -259,7 +267,7 @@ function XPC.set_position!(xp::XPCDevice, y::PhysicsY)
 end
 
 
-################################# Tools ########################################
+################################# Tools #######################################
 
 abstract type AbstractTrimParameters end
 
@@ -276,8 +284,8 @@ function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
 
 end
 
-function trim!( ac::System, args...; kwargs...)
-    MethodError(trim!, (ac, args...)) |> throw
+function trim!( physics::System, args...)
+    MethodError(trim!, (physics, args...)) |> throw
 end
 
 function linearize!(ac::System, args...; kwargs...)
@@ -315,7 +323,7 @@ function GUI.draw!(sys::System{<:Template}, label::String = "Aircraft")
 
     CImGui.Begin(label)
 
-    show_physics = @cstatic check=false @c CImGui.Checkbox("Airframe", &check)
+    show_physics = @cstatic check=false @c CImGui.Checkbox("Physics", &check)
     show_avionics = @cstatic check=false @c CImGui.Checkbox("Avionics", &check)
 
     show_physics && GUI.draw!(sys.physics, sys.avionics)
@@ -338,7 +346,7 @@ function GUI.draw!(physics::System{<:Physics},
     show_kin = @cstatic check=false @c CImGui.Checkbox("Kinematics", &check)
     show_air = @cstatic check=false @c CImGui.Checkbox("Air", &check)
 
-    show_airframe && GUI.draw!(sys.airframe, avionics)
+    show_airframe && GUI.draw!(physics.airframe, avionics)
     show_dyn && GUI.draw(rigidbody, "Dynamics")
     show_kin && GUI.draw(kinematics, "Kinematics")
     show_air && GUI.draw(air, "Air")

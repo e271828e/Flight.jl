@@ -26,16 +26,16 @@ function test_trimming()
 
     @testset verbose = true "Trimming" begin
 
-        ac = System(Cessna172FBWBase())
+        physics = System(C172FBW.Physics())
         env = System(SimpleEnvironment())
         trim_params = C172FBW.TrimParameters()
         state = C172FBW.TrimState()
 
-        f_target = C172FBW.get_f_target(ac, env, trim_params)
+        f_target = C172FBW.get_f_target(physics, trim_params, env)
 
         @test @ballocated($f_target($state)) === 0
 
-        success, _ = trim!(ac; env, trim_params)
+        success, _ = trim!(physics, trim_params, env)
 
         @test success
 

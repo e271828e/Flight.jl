@@ -94,14 +94,14 @@ function test_sim(; save::Bool = true)
 
         init_kinematics!(world, kin_init)
 
-        world.ac.airframe.act.u.eng_start = true #engine start switch on
+        world.ac.physics.airframe.act.u.eng_start = true #engine start switch on
         world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 
         sys_io! = let
 
             function (world)
 
-                u_act = world.ac.airframe.act.u
+                u_act = world.ac.physics.airframe.act.u
                 t = world.t[]
 
                 u_act.throttle_cmd = 0.2
@@ -118,7 +118,7 @@ function test_sim(; save::Bool = true)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
-        plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
+        plots = make_plots(TimeHistory(sim).ac.physics.kinematics; Plotting.defaults...)
         save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_base", "sim"))
 
     end
@@ -161,7 +161,7 @@ function test_sim_paced(; save::Bool = true)
         Threads.@spawn Sim.run_paced!(sim; pace = 1, verbose = true)
     end
 
-    plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
+    plots = make_plots(TimeHistory(sim).ac.physics.kinematics; Plotting.defaults...)
     # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
     save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_base", "sim_paced"))
 

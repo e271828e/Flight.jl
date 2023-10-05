@@ -59,8 +59,8 @@ end
 
 #f_step! can rely on its fallback
 
-function Aircraft.trim!(world::System{<:SimpleWorld}; trim_params::AbstractTrimParameters)
-    trim!(world.ac; env = world.env, trim_params)
+function Aircraft.trim!(world::System{<:SimpleWorld}, args...)
+    trim!(world.ac, args...)
 end
 
 ############################### Plotting #######################################

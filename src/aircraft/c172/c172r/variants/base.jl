@@ -266,7 +266,7 @@ function Aircraft.trim!( ac::System{<:Cessna172RBase};
     end
     trim_state_opt = ComponentVector(minx, ax)
     assign!(ac, env, trim_params, trim_state_opt)
-    return (success = success, result = trim_state_opt)
+    return (success = success, trim_state = trim_state_opt)
 
 
 end

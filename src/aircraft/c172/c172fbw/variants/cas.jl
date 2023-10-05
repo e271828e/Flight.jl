@@ -887,8 +887,8 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
 end
 
-function C172.map_controls!(airframe::System{<:C172.Airframe},
-                                avionics::System{Avionics})
+function Aircraft.assign!(airframe::System{<:C172.Airframe},
+                          avionics::System{Avionics})
 
     @unpack eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,
             elevator_cmd, rudder_cmd, aileron_cmd_offset, elevator_cmd_offset,
@@ -900,37 +900,6 @@ function C172.map_controls!(airframe::System{<:C172.Airframe},
 
 end
 
-
-##################################### Tools ####################################
-
-#makes Avionics inputs consistent with the trim solution obtained for the
-#aircraft physics. this enables the trim condition to be preserved during
-#simulation
-function assign!(sys::System{<:Avionics},
-                trim_params::C172FBW.TrimParameters,
-                trim_state::C172FBW.TrimState)
-
-    @unpack mixture, flaps = trim_params
-    @unpack throttle, aileron, elevator, rudder = trim_state
-
-    sys.u.physical.throttle = throttle
-    sys.u.physical.roll_input = 0
-    sys.u.physical.pitch_input = 0
-    sys.u.physical.yaw_input = 0
-    sys.u.physical.aileron_cmd_offset = aileron
-    sys.u.physical.elevator_cmd_offset = elevator
-    sys.u.physical.rudder_cmd_offset = rudder
-    sys.u.physical.mixture = mixture
-    sys.u.physical.flaps = flaps
-
-    sys.u.digital.lon_mode_sel = C172FBWCAS.lon_mode_semi
-    sys.u.digital.lat_mode_sel = C172FBWCAS.lat_mode_semi
-    sys.u.digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
-    sys.u.digital.roll_mode_sel = C172FBWCAS.direct_aileron_mode
-    sys.u.digital.pitch_mode_sel = C172FBWCAS.direct_elevator_mode
-    sys.u.digital.yaw_mode_sel = C172FBWCAS.direct_rudder_mode
-
-end
 
 
 # # ################################## GUI #########################################
@@ -1048,6 +1017,46 @@ end
 #Cessna172R with control augmenting Avionics
 const Cessna172FBWCAS{K} = C172FBW.Template{K, Avionics} where {K}
 Cessna172FBWCAS(kinematics = LTF()) = C172FBW.Template(kinematics, Avionics())
+
+
+##################################### Tools ####################################
+
+function Aircraft.trim!(ac::System{<:Cessna172FBWCAS},
+                        trim_params::C172FBW.TrimParameters = C172FBW.TrimParameters(),
+                        env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
+
+    result = trim!(ac.physics, trim_params, env)
+    trim_state = result[2]
+
+    #makes Avionics inputs consistent with the trim solution obtained for the
+    #aircraft physics so the trim condition is preserved during simulation
+    @unpack mixture, flaps = trim_params
+    @unpack throttle, aileron, elevator, rudder = trim_state
+
+    u = ac.avionics.u
+    u.physical.throttle = throttle
+    u.physical.roll_input = 0
+    u.physical.pitch_input = 0
+    u.physical.yaw_input = 0
+    u.physical.aileron_cmd_offset = aileron
+    u.physical.elevator_cmd_offset = elevator
+    u.physical.rudder_cmd_offset = rudder
+    u.physical.mixture = mixture
+    u.physical.flaps = flaps
+
+    u.digital.lon_mode_sel = C172FBWCAS.lon_mode_semi
+    u.digital.lat_mode_sel = C172FBWCAS.lat_mode_semi
+    u.digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
+    u.digital.roll_mode_sel = C172FBWCAS.direct_aileron_mode
+    u.digital.pitch_mode_sel = C172FBWCAS.direct_elevator_mode
+    u.digital.yaw_mode_sel = C172FBWCAS.direct_rudder_mode
+
+    #update avionics outputs
+    f_disc!(ac.avionics, 1, ac.physics, env)
+
+    return result
+
+end
 
 
 # # ############################ Joystick Mappings #################################

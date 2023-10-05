@@ -390,14 +390,14 @@ end
 @kwdef struct TrimParameters <: AbstractTrimParameters
     Ob::Geographic{NVector, Ellipsoidal} = Geographic(NVector(), HOrth(1000))
     ψ_nb::Float64 = 0.0 #geographic heading
-    TAS::Float64 = 40.0 #true airspeed
+    TAS::Float64 = 50.0 #true airspeed
     γ_wOb_n::Float64 = 0.0 #wind-relative flight path angle
-    ψ_lb_dot::Float64 = 0.2 #LTF-relative turn rate
+    ψ_lb_dot::Float64 = 0.0 #LTF-relative turn rate
     θ_lb_dot::Float64 = 0.0 #LTF-relative pitch rate
     β_a::Float64 = 0.0 #sideslip angle measured in the aerodynamic reference frame
-    fuel::Float64 = 0.5 #fuel load, 0 to 1
-    mixture::Float64 = 0.5 #engine mixture control, 0 to 1
-    flaps::Float64 = 0.0 #flap setting, 0 to 1
+    fuel_load::Ranged{Float64, 0., 1.} = 0.5 #normalized fuel load
+    mixture::Ranged{Float64, 0., 1.} = 0.5 #engine mixture control
+    flaps::Ranged{Float64, 0., 1.} = 0.0 #flap setting
 end
 
 
@@ -431,110 +431,116 @@ function Kinematics.Initializer(trim_state::TrimState,
 end
 
 #assigns trim state and parameters to the aircraft system, then updates it
-function assign!(ac::System{<:C172FBW.Template},
+function assign!(physics::System{<:C172FBW.Physics},
                 env::System{<:AbstractEnvironment},
                 trim_params::TrimParameters,
                 trim_state::TrimState)
 
-    @unpack TAS, β_a, fuel, flaps, mixture = trim_params
+    @unpack TAS, β_a, fuel_load, flaps, mixture = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
+    @unpack act, pwp, aero, fuel, ldg = physics.airframe
 
-    init_kinematics!(ac, Kinematics.Initializer(trim_state, trim_params, env))
+    init_kinematics!(physics, Kinematics.Initializer(trim_state, trim_params, env))
 
     #for trimming, control surface inputs are set to zero, and we work only with
     #their offsets
-    ac.airframe.act.u.throttle_cmd = throttle
-    ac.airframe.act.u.elevator_cmd = 0
-    ac.airframe.act.u.aileron_cmd = 0
-    ac.airframe.act.u.rudder_cmd = 0
-    ac.airframe.act.u.aileron_cmd_offset = aileron
-    ac.airframe.act.u.elevator_cmd_offset = elevator
-    ac.airframe.act.u.rudder_cmd_offset = rudder
-    ac.airframe.act.u.flaps = flaps
-    ac.airframe.act.u.mixture = mixture
+    act.u.throttle_cmd = throttle
+    act.u.elevator_cmd = 0
+    act.u.aileron_cmd = 0
+    act.u.rudder_cmd = 0
+    act.u.aileron_cmd_offset = aileron
+    act.u.elevator_cmd_offset = elevator
+    act.u.rudder_cmd_offset = rudder
+    act.u.flaps = flaps
+    act.u.mixture = mixture
 
     #engine must be running
-    ac.airframe.pwp.engine.s.state = Piston.eng_running
+    pwp.engine.s.state = Piston.eng_running
 
     #set engine speed state
-    ω_eng = n_eng * ac.airframe.pwp.engine.params.ω_rated
-    ac.x.airframe.pwp.engine.ω = ω_eng
+    ω_eng = n_eng * pwp.engine.params.ω_rated
+    pwp.x.engine.ω = ω_eng
 
     #engine idle compensator: as long as the engine remains at normal
     #operational speeds, well above its nominal idle speed, the idle controller
     #compensator's output will be saturated at its lower bound by proportional
     #error. its integrator will be disabled, its state will not change nor have
     #any effect on the engine. we can simply set it to zero
-    ac.x.airframe.pwp.engine.idle .= 0.0
+    pwp.x.engine.idle .= 0.0
 
     #engine friction compensator: with the engine running at normal operational
     #speeds, the engine's friction constraint compensator will be saturated, so
     #its integrator will be disabled and its state will not change. furthermore,
     #with the engine running friction is ignored. we can simply set it to zero.
-    ac.x.airframe.pwp.engine.frc .= 0.0
+    pwp.x.engine.frc .= 0.0
 
     #actuator states: in steady state every actuator's velocity state must be
     #zero, and its position state must be equal to the actuator command. the
     #actuator command is in turn equal to the surface command plus its offset,
     #which we have set to zero
-    ac.x.airframe.act.throttle_act.v = 0.0
-    ac.x.airframe.act.throttle_act.p = throttle
-    ac.x.airframe.act.aileron_act.v = 0.0
-    ac.x.airframe.act.aileron_act.p = aileron
-    ac.x.airframe.act.elevator_act.v = 0.0
-    ac.x.airframe.act.elevator_act.p = elevator
-    ac.x.airframe.act.rudder_act.v = 0.0
-    ac.x.airframe.act.rudder_act.p = rudder
+    act.x.throttle_act.v = 0.0
+    act.x.throttle_act.p = throttle
+    act.x.aileron_act.v = 0.0
+    act.x.aileron_act.p = aileron
+    act.x.elevator_act.v = 0.0
+    act.x.elevator_act.p = elevator
+    act.x.rudder_act.v = 0.0
+    act.x.rudder_act.p = rudder
 
-    ac.x.airframe.aero.α_filt = α_a #ensures zero state derivative
-    ac.x.airframe.aero.β_filt = β_a #ensures zero state derivative
-    ac.x.airframe.fuel .= fuel
+    aero.x.α_filt = α_a #ensures zero state derivative
+    aero.x.β_filt = β_a #ensures zero state derivative
+    fuel.x .= Float64(fuel_load)
 
-    f_ode!(ac, env)
+    f_ode!(physics, env)
+    # act.x |> display
+    # act.ẋ |> display
+    # physics.y.kinematics.common |> display
+    # # return
 
     #check assumptions concerning airframe systems states & derivatives
-    @assert !any(SVector{3}(leg.strut.wow for leg in ac.airframe.ldg.y))
-    @assert ac.x.airframe.pwp.engine.ω > ac.airframe.pwp.engine.params.ω_idle
-    @assert ac.ẋ.airframe.pwp.engine.idle[1] .== 0
-    @assert ac.ẋ.airframe.pwp.engine.frc[1] .== 0
-    @assert abs(ac.ẋ.airframe.aero.α_filt) < 1e-10
-    @assert abs(ac.ẋ.airframe.aero.β_filt) < 1e-10
+    @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
+    @assert pwp.x.engine.ω > pwp.engine.params.ω_idle
+    @assert pwp.x.engine.idle[1] .== 0
+    @assert pwp.x.engine.frc[1] .== 0
+    @assert abs(aero.ẋ.α_filt) < 1e-10
+    @assert abs(aero.ẋ.β_filt) < 1e-10
 
-    @assert all(SVector{8,Float64}(ac.ẋ.airframe.act) .== 0)
+    @assert all(SVector{8,Float64}(act.ẋ) .== 0)
 
 end
 
-function cost(ac::System{<:C172FBW.Template})
+function cost(physics::System{<:C172FBW.Physics})
 
-    v_nd_dot = SVector{3}(ac.ẋ.kinematics.vel.v_eOb_b) / norm(ac.y.kinematics.common.v_eOb_b)
-    ω_dot = SVector{3}(ac.ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
-    n_eng_dot = ac.ẋ.airframe.pwp.engine.ω / ac.airframe.pwp.engine.params.ω_rated
+    @unpack ẋ, y = physics
+
+    v_nd_dot = SVector{3}(ẋ.kinematics.vel.v_eOb_b) / norm(y.kinematics.common.v_eOb_b)
+    ω_dot = SVector{3}(ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
+    n_eng_dot = ẋ.airframe.pwp.engine.ω / physics.airframe.pwp.engine.params.ω_rated
 
     sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2
 
 end
 
-function get_f_target(ac::System{<:C172FBW.Template},
-                      env::System{<:AbstractEnvironment},
-                      trim_params::TrimParameters)
+function get_f_target(physics::System{<:C172FBW.Physics},
+                      trim_params::TrimParameters,
+                      env::System{<:AbstractEnvironment})
 
-    let ac = ac, env = env, trim_params = trim_params
+    let physics = physics, env = env, trim_params = trim_params
         function (x::TrimState)
-            assign!(ac, env, trim_params, x)
-            return cost(ac)
+            assign!(physics, env, trim_params, x)
+            return cost(physics)
         end
     end
 
 end
 
-
-function Aircraft.trim!( ac::System{<:C172FBW.Template};
-                env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
-                trim_params::TrimParameters = TrimParameters())
+function Aircraft.trim!(physics::System{<:C172FBW.Physics},
+                        trim_params::TrimParameters = TrimParameters(),
+                        env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
 
     trim_state = TrimState() #could initial condition as an optional input
 
-    f_target = get_f_target(ac, env, trim_params)
+    f_target = get_f_target(physics, trim_params, env)
 
     #wrapper with the interface expected by NLopt
     f_opt(x::Vector{Float64}, ::Vector{Float64}) = f_target(TrimState(x))
@@ -554,7 +560,7 @@ function Aircraft.trim!( ac::System{<:C172FBW.Template};
         rudder = -1)
 
     upper_bounds[:] .= TrimState(
-        α_a = ac.airframe.aero.params.α_stall[2], #critical AoA is 0.28 < 0.36
+        α_a = physics.airframe.aero.params.α_stall[2], #critical AoA is 0.28 < 0.36
         φ_nb = π/3,
         n_eng = 1.1,
         throttle = 1,
@@ -584,36 +590,45 @@ function Aircraft.trim!( ac::System{<:C172FBW.Template};
         println("Warning: Optimization failed with exit_flag $exit_flag")
     end
     trim_state_opt = TrimState(minx)
-    assign!(ac, env, trim_params, trim_state_opt)
-    return (success = success, result = trim_state_opt)
-
-
-end
-
-function Aircraft.trim!(
-    world::System{<:SimpleWorld{<:C172FBW.Template, <:AbstractEnvironment}};
-    trim_params::TrimParameters = TrimParameters())
-
-    trim!(world.ac; env = world.env, trim_params = trim_params)
+    assign!(physics, env, trim_params, trim_state_opt)
+    return (success = success, trim_state = trim_state_opt)
 
 end
 
-# ################################################################################
-# ############################### Linearization ##################################
+
+
+################################################################################
+############################### Linearization ##################################
+
+#linearize SimpleWorld{ac} instead of ac in order to have v_wind as inputs
 
 #labels corresponding to LinearX components within the overall
 #C172FBW.Template{NED} state vector
 const LinearXLabels = (
-        "kinematics.pos.ψ_nb", "kinematics.pos.θ_nb", "kinematics.pos.φ_nb",
-        "kinematics.pos.ϕ", "kinematics.pos.λ", "kinematics.pos.h_e",
-        "kinematics.vel.ω_eb_b[1]", "kinematics.vel.ω_eb_b[2]", "kinematics.vel.ω_eb_b[3]",
-        "kinematics.vel.v_eOb_b[1]", "kinematics.vel.v_eOb_b[2]", "kinematics.vel.v_eOb_b[3]",
-        "airframe.aero.α_filt", "airframe.aero.β_filt",
-        "airframe.pwp.engine.ω", "airframe.fuel[1]",
-        "airframe.act.throttle_act.v", "airframe.act.throttle_act.p",
-        "airframe.act.aileron_act.v", "airframe.act.aileron_act.p",
-        "airframe.act.elevator_act.v", "airframe.act.elevator_act.p",
-        "airframe.act.rudder_act.v", "airframe.act.rudder_act.p",
+        "physics.kinematics.pos.ψ_nb",
+        "physics.kinematics.pos.θ_nb",
+        "physics.kinematics.pos.φ_nb",
+        "physics.kinematics.pos.ϕ",
+        "physics.kinematics.pos.λ",
+        "physics.kinematics.pos.h_e",
+        "physics.kinematics.vel.ω_eb_b[1]",
+        "physics.kinematics.vel.ω_eb_b[2]",
+        "physics.kinematics.vel.ω_eb_b[3]",
+        "physics.kinematics.vel.v_eOb_b[1]",
+        "physics.kinematics.vel.v_eOb_b[2]",
+        "physics.kinematics.vel.v_eOb_b[3]",
+        "physics.airframe.aero.α_filt",
+        "physics.airframe.aero.β_filt",
+        "physics.airframe.pwp.engine.ω",
+        "physics.airframe.fuel[1]",
+        "physics.airframe.act.throttle_act.v",
+        "physics.airframe.act.throttle_act.p",
+        "physics.airframe.act.aileron_act.v",
+        "physics.airframe.act.aileron_act.p",
+        "physics.airframe.act.elevator_act.v",
+        "physics.airframe.act.elevator_act.p",
+        "physics.airframe.act.rudder_act.v",
+        "physics.airframe.act.rudder_act.p",
     )
 
 const LinearXTemplate = ComponentVector(
@@ -654,7 +669,7 @@ const LinearY{T, D} = ComponentVector{T, D, typeof(getaxes(LinearYTemplate))} wh
 
 function assign!(u::LinearU, ac::System{<:C172FBW.Template})
 
-    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ac.airframe.act.u
+    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ac.physics.airframe.act.u
     @pack! u = throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd
 
 end
@@ -662,14 +677,14 @@ end
 function assign!(ac::System{<:C172FBW.Template}, u::LinearU)
 
     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = u
-    @pack! ac.airframe.act.u = throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd
+    @pack! ac.physics.airframe.act.u = throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd
 
 end
 
 function assign!(y::LinearY, ac::System{<:C172FBW.Template})
 
-    @unpack q_nb, n_e, h_e, ω_eb_b, v_eOb_n = ac.y.kinematics
-    @unpack α, β = ac.y.airframe.aero
+    @unpack q_nb, n_e, h_e, ω_eb_b, v_eOb_n = ac.y.physics.kinematics
+    @unpack α, β = ac.y.physics.airframe.aero
     @unpack ψ, θ, φ = REuler(q_nb)
     @unpack ϕ, λ = LatLon(n_e)
 
@@ -678,21 +693,30 @@ function assign!(y::LinearY, ac::System{<:C172FBW.Template})
     v_N, v_E, v_D = v_eOb_n
     χ = Attitude.azimuth(v_eOb_n)
     γ = Attitude.inclination(v_eOb_n)
-    f_x, f_y, f_z = ac.y.rigidbody.f_G_b
-    TAS = ac.y.air.TAS
-    ω_eng = ac.y.airframe.pwp.engine.ω
-    m_fuel = ac.y.airframe.fuel.m_avail
+    f_x, f_y, f_z = ac.y.physics.rigidbody.f_G_b
+    TAS = ac.y.physics.air.TAS
+    ω_eng = ac.y.physics.airframe.pwp.engine.ω
+    m_fuel = ac.y.physics.airframe.fuel.m_avail
 
     @pack! y = ψ, θ, φ, ϕ, λ, h, p, q, r, TAS, α, β,
                f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, ω_eng, m_fuel
 
 end
 
-function Aircraft.linearize!(ac::System{<:C172FBW.Template{NED}};
-    env::System{<:AbstractEnvironment} = System(SimpleEnvironment()),
-    trim_params::TrimParameters = TrimParameters())
+#Aircraft.linearize!(world::System{<:SimpleWorld{<:Template{NED}}},
+#trim_params::TrimParameters = TrimParameters())
 
-    (_, trim_state) = trim!(ac; env, trim_params)
+# function Aircraft.linearize!(
+#             ac::System{<:C172FBW.Template{NED}},
+#             trim_params::TrimParameters = TrimParameters(),
+#             env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
+
+function Aircraft.linearize!(
+            ac::System{<:C172FBW.Template{NED}},
+            trim_params::TrimParameters = TrimParameters(),
+            env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
+
+    (_, trim_state) = trim!(ac, trim_params, env)
 
     #save the trimmed aircraft's ẋ, x, u and y for later
     ẋ0_full = copy(ac.ẋ)
@@ -716,7 +740,7 @@ function Aircraft.linearize!(ac::System{<:C172FBW.Template{NED}};
             #make sure any input or state not set by x and u is at its reference
             #trim value. this reverts any potential changes to the aircraft done
             #by functions sharing the same aircraft instance
-            assign!(ac, env, trim_params, trim_state)
+            assign!(ac.physics, env, trim_params, trim_state)
 
             assign!(ac, u_cv)
             ac.x .= x
@@ -734,7 +758,7 @@ function Aircraft.linearize!(ac::System{<:C172FBW.Template{NED}};
 
     #once we're done, ensure the aircraft is restored to its trimmed status, so
     #the response can be compared with that of its linear counterpart
-    assign!(ac, env, trim_params, trim_state)
+    assign!(ac.physics, env, trim_params, trim_state)
 
     #find the indices for the components in the reduced LinearX state vector
     #within the overall aircraft state vector

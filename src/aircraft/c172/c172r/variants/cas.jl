@@ -547,7 +547,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
 end
 
-function Aircraft.map_controls!(airframe::System{<:C172.Airframe},
+function Aircraft.assign!(airframe::System{<:C172.Airframe},
                                 avionics::System{Avionics})
 
     @unpack eng_start, eng_stop, throttle, mixture,

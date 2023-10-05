@@ -141,17 +141,14 @@ function test_sim(; save::Bool = true)
             ψ_lb_dot = 0.0,
             θ_lb_dot = 0.0,
             β_a = 0.0,
-            fuel = 1,
+            fuel_load = 1,
             mixture = 0.5,
             flaps = 0.0)
 
-        exit_flag, trim_state = trim!(world; trim_params)
+        exit_flag, trim_state = trim!(world, trim_params)
         @test exit_flag === true
 
-        C172FBWCAS.assign!(world.ac.avionics, trim_params, trim_state)
-        f_disc!(world, 1)
-
-        # return world.ac.airframe.act.y
+        # return world.ac.avionics.y.actuation
 
         sys_io! = let
 
@@ -170,11 +167,11 @@ function test_sim(; save::Bool = true)
 
                     u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
                     # u_physical.roll_input = 0.01
-                    u_digital.φ_dmd = π/6
+                    # u_digital.φ_dmd = π/6
                     # u_digital.χ_dmd = π/6
 
                     u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
-                    u_physical.yaw_input = 0.0
+                    u_physical.yaw_input = 1
 
                     # u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
                     u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
@@ -200,48 +197,49 @@ function test_sim(; save::Bool = true)
 end
 
 
-# function test_sim_paced(; save::Bool = true)
+function test_sim_paced(; save::Bool = true)
 
-#     h_trn = HOrth(601.55);
+    h_trn = HOrth(601.55);
 
-#     ac = Cessna172FBWCAS();
-#     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
-#     world = SimpleWorld(ac, env) |> System;
+    ac = Cessna172FBWCAS();
+    env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
+    world = SimpleWorld(ac, env) |> System;
 
-#     kin_init = KinematicInit(
-#         v_eOb_n = [0, 0, 0],
-#         ω_lb_b = [0, 0, 0],
-#         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.3),
-#         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-#         h = h_trn + 1.9 + 0);
+    kin_init = KinematicInit(
+        v_eOb_n = [0, 0, 0],
+        ω_lb_b = [0, 0, 0],
+        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.3),
+        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        h = h_trn + 1.9 + 0);
 
-#     init_kinematics!(world, kin_init)
+    init_kinematics!(world, kin_init)
 
-#     sim = Simulation(world; dt = 0.01, Δt = 0.02, t_end = 300)
+    sim = Simulation(world; dt = 0.01, Δt = 0.02, t_end = 300)
 
-#     interfaces = Vector{IODevices.Interface}()
-#     for joystick in get_connected_joysticks()
-#         push!(interfaces, attach_io!(sim, joystick))
-#     end
+    interfaces = Vector{IODevices.Interface}()
+    for joystick in get_connected_joysticks()
+        push!(interfaces, attach_io!(sim, joystick))
+    end
 
-#     xp = XPCDevice()
-#     # xp = XPCDevice(host = IPv4("192.168.1.2"))
-#     push!(interfaces, attach_io!(sim, xp))
+    xp = XPCDevice()
+    # xp = XPCDevice(host = IPv4("192.168.1.2"))
+    push!(interfaces, attach_io!(sim, xp))
 
-#     @sync begin
-#         for interface in interfaces
-#             Threads.@spawn IODevices.start!(interface)
-#         end
-#         Threads.@spawn Sim.run_paced!(sim; pace = 1, verbose = true)
-#     end
+    @sync begin
+        for interface in interfaces
+            Threads.@spawn IODevices.start!(interface)
+        end
+        Threads.@spawn Sim.run_paced!(sim; pace = 1, verbose = true)
+    end
 
-#     plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
-#     # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
-#     save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_cas", "sim_paced"))
+    kin_plots = make_plots(TimeHistory(sim).ac.physics.kinematics; Plotting.defaults...)
+    air_plots = make_plots(TimeHistory(sim).ac.physics.air; Plotting.defaults...)
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim_paced", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim_paced", "air"))
 
-#     return nothing
+    return nothing
 
-# end
+end
 
 
 end #module
