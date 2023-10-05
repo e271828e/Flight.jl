@@ -832,16 +832,16 @@ function GUI.draw!( airframe::System{<:Airframe}, ::System{A},
 end
 
 
-################################################################################
-############################## C172 Template ###################################
+# ################################################################################
+# ############################## C172 Template ###################################
 
-const Template{K, P, A, V} = AircraftTemplate{K, Airframe{P, A}, V} where {K, P, A, V}
-Template(kinematics, pwp, act, avionics) = AircraftTemplate(kinematics, Airframe(pwp, act), avionics)
+# const Template{K, P, A, V} = AircraftTemplate{K, Airframe{P, A}, V} where {K, P, A, V}
+# Template(kinematics, pwp, act, avionics) = AircraftTemplate(kinematics, Airframe(pwp, act), avionics)
 
 ################################################################################
 ############################### C172 Models ####################################
 
-include(normpath("c172r/c172r.jl")); @reexport using .C172R
+# include(normpath("c172r/c172r.jl")); @reexport using .C172R
 include(normpath("c172fbw/c172fbw.jl")); @reexport using .C172FBW
 
 end

@@ -55,8 +55,8 @@ function test_system_methods()
             f_step!(ac)
             f_ode!(ac, env)
             f_step!(ac)
-            @test ac.y.airframe.ldg.left.strut.wow == true
-            @test ac.y.airframe.pwp.engine.state === Piston.eng_starting
+            @test ac.y.physics.airframe.ldg.left.strut.wow == true
+            @test ac.y.physics.airframe.pwp.engine.state === Piston.eng_starting
 
             @test @ballocated(f_ode!($ac, $env)) == 0
             @test @ballocated(f_step!($ac)) == 0
@@ -65,7 +65,7 @@ function test_system_methods()
             #now we put the aircraft in flight
             init_kinematics!(ac, kin_init_air)
             f_ode!(ac, env)
-            @test ac.y.airframe.ldg.left.strut.wow == false
+            @test ac.y.physics.airframe.ldg.left.strut.wow == false
             @test @ballocated(f_ode!($ac, $env)) == 0
             @test @ballocated(f_step!($ac)) == 0
 
@@ -124,11 +124,12 @@ function test_sim(; save::Bool = true)
 
         world = SimpleWorld(Cessna172FBWCAS()) |> System;
 
-        world.ac.airframe.pld.u.m_pilot = 75
-        world.ac.airframe.pld.u.m_copilot = 75
-        world.ac.airframe.pld.u.m_lpass = 0
-        world.ac.airframe.pld.u.m_rpass = 0
-        world.ac.airframe.pld.u.m_baggage = 0
+        u_pld = world.ac.physics.airframe.pld.u
+        u_pld.m_pilot = 75
+        u_pld.m_copilot = 75
+        u_pld.m_lpass = 0
+        u_pld.m_rpass = 0
+        u_pld.m_baggage = 0
 
         world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 
@@ -188,8 +189,8 @@ function test_sim(; save::Bool = true)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
-        kin_plots = make_plots(TimeHistory(sim).ac.kinematics; Plotting.defaults...)
-        air_plots = make_plots(TimeHistory(sim).ac.air; Plotting.defaults...)
+        kin_plots = make_plots(TimeHistory(sim).ac.physics.kinematics; Plotting.defaults...)
+        air_plots = make_plots(TimeHistory(sim).ac.physics.air; Plotting.defaults...)
         save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim", "kin"))
         save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim", "air"))
 

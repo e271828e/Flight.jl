@@ -21,12 +21,12 @@ abstract type AbstractWorld <: SystemDefinition end
 ################################################################################
 ############################### SimpleWorld #####################################
 
-@kwdef struct SimpleWorld{A <: AircraftTemplate, E <: AbstractEnvironment} <: AbstractWorld
+@kwdef struct SimpleWorld{A <: Aircraft.Template, E <: AbstractEnvironment} <: AbstractWorld
     ac::A
     env::E
 end
 
-SimpleWorld(ac::AircraftTemplate) = SimpleWorld(ac, SimpleEnvironment())
+SimpleWorld(ac::Aircraft.Template) = SimpleWorld(ac, SimpleEnvironment())
 
 struct SimpleWorldY{A, E}
     ac::A

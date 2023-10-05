@@ -765,7 +765,7 @@ Systems.init(::SystemS, ::Avionics) = nothing #keep subsystems local
 # ########################### Update Methods #####################################
 
 function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
-                        physics::System{<:AircraftPhysics},
+                        physics::System{<:Aircraft.Physics},
                         ::System{<:AbstractEnvironment})
 
     @unpack eng_start, eng_stop, mixture, throttle,
@@ -779,9 +779,10 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl, lon_ctl = avionics.subsystems
 
-    @unpack airframe, kinematics, air = physics.y
+    @unpack airframe, air = physics.y
+    kinematics = physics.y.kinematics.common
 
-    #direct surface and low level demands always come from physical inputs
+    #direct surface and inner loop demands always come from physical inputs
     roll_ctl.u.a_dmd = roll_input
     pitch_ctl.u.e_dmd = pitch_input
     yaw_ctl.u.r_dmd = yaw_input
@@ -799,7 +800,9 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
         lon_mode = lon_mode_semi
         lat_mode = lat_mode_semi
 
+        throttle_ctl.u.thr_dmd = throttle
         throttle_ctl.u.mode = direct_throttle_mode
+
         roll_ctl.u.mode = direct_aileron_mode
         pitch_ctl.u.mode = direct_elevator_mode
         yaw_ctl.u.mode = direct_rudder_mode
@@ -884,7 +887,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
 end
 
-function Aircraft.map_controls!(airframe::System{<:C172.Airframe},
+function C172.map_controls!(airframe::System{<:C172.Airframe},
                                 avionics::System{Avionics})
 
     @unpack eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,

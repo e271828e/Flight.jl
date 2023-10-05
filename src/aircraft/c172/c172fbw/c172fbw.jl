@@ -365,9 +365,12 @@ end
 ################################################################################
 ################################# Template #####################################
 
-#Cessna172 with default power plant, fly-by-wire actuation and any avionics
-const Template{K, V} = C172.Template{K, typeof(PowerPlant()), Actuation, V} where {K, V}
-Template(kinematics, avionics) = C172.Template(kinematics, PowerPlant(), Actuation(), avionics)
+const Airframe = C172.Airframe{typeof(PowerPlant()), Actuation}
+const Physics{K} = Aircraft.Physics{K, Airframe}
+const Template{K, A} = Aircraft.Template{Physics{K}, A} where {K, A}
+
+Physics(kinematics = LTF()) = Aircraft.Physics(kinematics, C172.Airframe(PowerPlant(), Actuation()))
+Template(kinematics = LTF(), avionics = NoAvionics()) = Aircraft.Template(Physics(kinematics), avionics)
 
 
 ############################### Trimming #######################################
