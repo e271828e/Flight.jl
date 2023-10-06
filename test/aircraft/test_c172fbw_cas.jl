@@ -129,7 +129,7 @@ function test_sim(; save::Bool = true)
         u_pld.m_copilot = 75
         u_pld.m_lpass = 0
         u_pld.m_rpass = 0
-        u_pld.m_baggage = 0
+        u_pld.m_baggage = 100
 
         world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 
@@ -160,24 +160,25 @@ function test_sim(; save::Bool = true)
                 u_digital = world.ac.avionics.u.digital
 
                 if t > 5
+                    # u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
+                    u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
+                    # u_physical.pitch_input = 0.0
+                    u_digital.θ_dmd = 0.1
+                    # u_digital.c_dmd = π/6
+
                     # u_digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
                     u_digital.throttle_mode_sel = C172FBWCAS.airspeed_throttle_mode
                     # u_physical.throttle = 1
                     u_digital.TAS_dmd = 50
 
-                    u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
-                    # u_physical.roll_input = 0.01
-                    # u_digital.φ_dmd = π/6
-                    # u_digital.χ_dmd = π/6
+                    u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
+                    # u_physical.roll_input = 0.1
+                    # u_digital.φ_dmd = π/4
+                    u_digital.χ_dmd = π
 
                     u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
-                    u_physical.yaw_input = 1
+                    u_physical.yaw_input = 0
 
-                    # u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
-                    u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
-                    # u_physical.pitch_input = 0.02
-                    u_digital.θ_dmd = 0.0
-                    # u_digital.c_dmd = π/6
                 end
             end
         end

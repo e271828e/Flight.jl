@@ -39,7 +39,7 @@ abstract type AbstractControlChannel <: SystemDefinition end
 end
 
 @kwdef struct ThrottleControl <: AbstractControlChannel
-    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.8, k_i = 0.6, k_d = 0.2, τ_d = 0.04)
+    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.8, k_i = 0.6, k_d = 0.2, τ_d = 0.01)
 end
 
 @kwdef mutable struct ThrottleControlU
@@ -131,7 +131,7 @@ end
 
 @kwdef struct PitchRateCmp <: SystemDefinition
     c1::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0, k_i = 1, k_d = 0) #pure integrator
-    c2::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4.8, k_i = 20, k_d = 0.2, τ_d = 0.04) #see notebook
+    c2::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 6, k_i = 30, k_d = 0.35, τ_d = 0.01) #see notebook
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -197,7 +197,7 @@ end
 
 @kwdef struct PitchControl <: AbstractControlChannel
     q_comp::PitchRateCmp = PitchRateCmp()
-    θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.8, k_i = 0.6, k_d = 0.12, τ_d = 0.04) #replace design with pure pitch rate feedback
+    θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4.2, k_i = 1, k_d = 0.15, τ_d = 0.01) #replace design with pure pitch rate feedback
     c_comp::PIDDiscrete{1} = PIDDiscrete{1}() ##########################TO DO
 end
 
@@ -328,9 +328,9 @@ end
 
 #TO DO: redesign φ compensator with actual p feedback
 @kwdef struct RollControl <: AbstractControlChannel
-    p_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0.6, k_i = 8.0, k_d = 0.04, τ_d = 0.04)
-    φ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 6.0, k_i = 1.5, k_d = 0.6, τ_d = 0.04)
-    χ_comp::PIDDiscrete{1} = PIDDiscrete{1}() ################ TO DO
+    p_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0.6, k_i = 8.0, k_d = 0.02, τ_d = 0.01)
+    φ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 6.0, k_i = 1.5, k_d = 0.6, τ_d = 0.01)
+    χ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 3.0, k_i = 0.0, k_d = 0.0, τ_d = 0.01)
 end
 
 @kwdef mutable struct RollControlU
@@ -467,7 +467,7 @@ end
 end
 
 @kwdef struct YawControl <: AbstractControlChannel
-    β_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 12, k_i = 30, k_d = 5, τ_d = 0.04)
+    β_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 44, k_i = 25, k_d = 6, τ_d = 0.01)
 end
 
 @kwdef mutable struct YawControlU
@@ -842,6 +842,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
             roll_ctl.u.mode = roll_mode_sel
             roll_ctl.u.φ_dmd = φ_dmd
+            roll_ctl.u.χ_dmd = χ_dmd
 
             yaw_ctl.u.mode = yaw_mode_sel
 
