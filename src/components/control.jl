@@ -8,6 +8,7 @@ using Flight.FlightCore.Plotting
 using Flight.FlightCore.GUI
 
 export LinearStateSpace, PIContinuous, PIDDiscrete
+export DiscreteIntegrator, DiscreteLead
 
 ################################################################################
 ########################### LinearStateSpace ###################################
@@ -552,4 +553,176 @@ function GUI.draw(sys::System{<:PIDDiscrete{N}}, label::String = "PIDDiscrete{$N
 
 end #function
 
+
+################# DiscreteIntegrator #################
+################################################################################
+
+struct DiscreteIntegrator <: SystemDefinition end
+
+@kwdef mutable struct DiscreteIntegratorU
+    u1::Float64 = 0 #current input
+    sat_ext::Int64 = 0 #external (signed) saturation signal
+    bound_lo::Float64 = -Inf #lower output bound
+    bound_hi::Float64 = Inf #higher output bound
+end
+
+@kwdef mutable struct DiscreteIntegratorS
+    x0::Float64 = 0 #previous integrator state
+    sat_y0::Int64 = 0 #previous output saturation state
+end
+
+@kwdef struct DiscreteIntegratorY
+    u1::Float64 = 0
+    sat_ext::Float64 = 0
+    bound_lo::Float64 = -Inf
+    bound_hi::Float64 = Inf
+    x1::Float64 = 0 #current state
+    y1::Float64 = 0 #current output
+    sat_y1::Int64 = 0 #current output saturation status
+    halted::Bool = false #integration halted
+end
+
+Systems.init(::SystemY, ::DiscreteIntegrator) = DiscreteIntegratorY()
+Systems.init(::SystemU, ::DiscreteIntegrator) = DiscreteIntegratorU()
+Systems.init(::SystemS, ::DiscreteIntegrator) = DiscreteIntegratorS()
+
+function reset!(sys::System{<:DiscreteIntegrator})
+    sys.u.u1 = 0
+    sys.u.sat_ext = 0
+    sys.s.x0 = 0
+    sys.s.sat_y0 = 0
+    f_disc!(sys, 1.0)
+end
+
+function Systems.f_disc!(sys::System{<:DiscreteIntegrator}, Δt::Real)
+
+    @unpack s, u = sys
+    @unpack u1, sat_ext, bound_lo, bound_hi = u
+    @unpack x0, sat_y0 = s
+
+    halted = ((sign(u1 * sat_y0) > 0) || (sign(u1 * sat_ext) > 0))
+    x1 = x0 + Δt * u1 * !halted
+    y1 = clamp(x1, bound_lo, bound_hi)
+
+    sat_hi = x1 >= bound_hi
+    sat_lo = x1 <= bound_lo
+    sat_y1 = sat_hi - sat_lo
+
+    s.x0 = x1
+    s.sat_y0 = sat_y1
+
+    sys.y = DiscreteIntegratorY(; u1, sat_ext, bound_lo, bound_hi, x1, y1, sat_y1, halted)
+
+    return false
+
+end
+
+
+#################################### GUI #######################################
+
+
+function GUI.draw(sys::System{<:DiscreteIntegrator}, label::String = "DiscreteIntegrator")
+
+    @unpack x0, sat_y0 = sys.s
+    @unpack u1, sat_ext, bound_lo, bound_hi, x1, y1, sat_y1, halted = sys.y
+
+    # CImGui.Begin(label)
+
+        CImGui.Text("u1 = $u1")
+        CImGui.Text("sat_ext = $sat_ext")
+        CImGui.Text("bound_lo = $bound_lo")
+        CImGui.Text("bound_hi = $bound_hi")
+        CImGui.Text("x0 = $x0")
+        CImGui.Text("sat_y0 = $sat_y0")
+        CImGui.Text("x1 = $x1")
+        CImGui.Text("y1 = $y1")
+        CImGui.Text("sat_y1 = $sat_y1")
+        CImGui.Text("halted = $halted")
+
+    # CImGui.End()
+
+end #function
+
+
+######################### DiscreteLeadCompensator ##############################
+################################################################################
+
+#Lead / lag compensator with pole p < 0, zero z < 0, gain k. Discretized by
+#Tustin transform
+#|p| > |z|: lead
+#|p| < |z|: lag
+
+struct DiscreteLead <: SystemDefinition end
+
+@kwdef mutable struct DiscreteLeadU
+    z::Float64 = -1.0 #zero location (z < 0)
+    p::Float64 = -10.0 #pole location (p < 0)
+    k::Float64 = 1.0 #gain
+    u1::Float64 = 0.0 #input
+end
+
+@kwdef mutable struct DiscreteLeadS
+    u0::Float64 = 0.0 #previous input
+    x0::Float64 = 0.0 #previous output
+end
+
+@kwdef struct DiscreteLeadY
+    z::Float64 = -1.0
+    p::Float64 = -10.0
+    k::Float64 = 1.0
+    u1::Float64 = 0.0
+    y1::Float64 = 0.0 #current output
+end
+
+Systems.init(::SystemY, ::DiscreteLead) = DiscreteLeadY()
+Systems.init(::SystemU, ::DiscreteLead) = DiscreteLeadU()
+Systems.init(::SystemS, ::DiscreteLead) = DiscreteLeadS()
+
+function reset!(sys::System{<:DiscreteLead})
+    sys.u.u1 = 0
+    sys.s.u0 = 0
+    sys.s.x0 = 0
+    f_disc!(sys, 1.0) #update outputs (keeps the actual p and z)
+end
+
+function Systems.f_disc!(sys::System{<:DiscreteLead}, Δt::Real)
+
+    @unpack s, u = sys
+    @unpack z, p, k, u1 = u
+    @unpack u0, x0 = s
+
+    a0 = (2+p*Δt)/(2-p*Δt)
+    b1 = (2-z*Δt)/(2-p*Δt)
+    b0 = (-2-z*Δt)/(2-p*Δt)
+
+    x1 = a0 * x0 + b1 * u1 + b0 * u0
+    y1 = k * x1
+
+    sys.y = DiscreteLeadY(; z, p, k, u1, y1)
+
+    s.x0 = x1
+    s.u0 = u1
+
+    return false
+
+end
+
+
+#################################### GUI #######################################
+
+function GUI.draw(sys::System{<:DiscreteLead}, label::String = "Discrete Lead Compensator")
+
+    @unpack z, p, k, u1, y1 = sys.y
+
+    # CImGui.Begin(label)
+
+        CImGui.Text("z = $z")
+        CImGui.Text("p = $p")
+        CImGui.Text("k = $k")
+        CImGui.Text("u1 = $u1")
+        CImGui.Text("y1 = $y1")
+
+    # CImGui.End()
+
+end #function
 end #module

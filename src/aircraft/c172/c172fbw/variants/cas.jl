@@ -17,7 +17,7 @@ using Flight.FlightComponents.Control
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
-using Flight.FlightComponents.Control: PIDDiscreteY
+using Flight.FlightComponents.Control: PIDDiscreteY, DiscreteIntegratorY, DiscreteLeadY
 
 using ...C172
 using ..C172FBW
@@ -193,6 +193,95 @@ function GUI.draw(pitch_rate_comp::System{<:PitchRateCmp})
     end
 end
 
+############################### PitchRateCmpNew ################################
+
+@kwdef struct PitchRateCmpNew <: SystemDefinition
+    int1::DiscreteIntegrator = DiscreteIntegrator()
+    int2::DiscreteIntegrator = DiscreteIntegrator()
+    lead1::DiscreteLead = DiscreteLead()
+    lead2::DiscreteLead = DiscreteLead()
+end
+
+@kwdef mutable struct PitchRateCmpNewU
+    setpoint::Float64 = 0.0
+    feedback::Float64 = 0.0
+    sat_ext::Int64 = 0
+end
+
+@kwdef struct PitchRateCmpNewY
+    setpoint::Float64 = 0.0
+    feedback::Float64 = 0.0
+    sat_ext::Int64 = 0
+    out::Float64 = 0.0
+    int1::DiscreteIntegratorY = DiscreteIntegratorY()
+    int2::DiscreteIntegratorY = DiscreteIntegratorY()
+    lead1::DiscreteLeadY = DiscreteLeadY()
+    lead2::DiscreteLeadY = DiscreteLeadY()
+end
+
+Systems.init(::SystemU, ::PitchRateCmpNew) = PitchRateCmpNewU()
+Systems.init(::SystemY, ::PitchRateCmpNew) = PitchRateCmpNewY()
+
+#initialize lead compensator parameters
+function Systems.init!(sys::System{<:PitchRateCmpNew})
+    @unpack lead1, lead2 = sys
+    lead1.u.z = -0.1
+    lead1.u.p = -1.5
+    lead1.u.k = 200.0
+    lead2.u.z = -8
+    lead2.u.p = -150
+    lead2.u.k = 1.0
+end
+
+function Control.reset!(sys::System{<:PitchRateCmpNew})
+    sys.u.setpoint = 0
+    sys.u.feedback = 0
+    sys.u.sat_ext = 0
+    Control.reset!.(values(sys.subsystems))
+end
+
+#we leave the compensators' outputs unbounded (the default at initialization),
+#the integrators will halt only when required by sat_ext
+function Systems.f_disc!(sys::System{PitchRateCmpNew}, Δt::Real)
+    @unpack setpoint, feedback, sat_ext = sys.u
+    @unpack int1, int2, lead1, lead2 = sys
+
+    err = setpoint - feedback
+
+    int1.u.sat_ext = sat_ext
+    int2.u.sat_ext = sat_ext
+
+    int1.u.u1 = err
+    f_disc!(int1, Δt)
+
+    int2.u.u1 = int1.y.y1
+    f_disc!(int2, Δt)
+
+    lead1.u.u1 = int2.y.y1
+    f_disc!(lead1, Δt)
+
+    lead2.u.u1 = lead1.y.y1
+    f_disc!(lead2, Δt)
+
+    out = lead2.y.y1
+
+    sys.y = PitchRateCmpNewY(; setpoint, feedback, sat_ext, out,
+                               int1 = int1.y, int2 = int2.y,
+                               lead1 = lead1.y, lead2 = lead2.y)
+
+    return false
+
+end
+
+function GUI.draw(sys::System{<:PitchRateCmpNew})
+    for (ss_id, ss) in pairs(sys.subsystems)
+        if CImGui.TreeNode(string(ss_id))
+            GUI.draw(ss)
+            CImGui.TreePop()
+        end
+    end
+end
+
 ################################################################################
 
 @kwdef struct PitchControl <: AbstractControlChannel
@@ -314,6 +403,7 @@ function GUI.draw(sys::System{<:PitchControl})
     CImGui.End()
 
 end
+
 
 
 ################################################################################

@@ -5,6 +5,7 @@ using BenchmarkTools
 using UnPack
 using ComponentArrays
 using ControlSystems
+using StaticArrays
 
 using Flight.FlightCore.Systems
 using Flight.FlightCore.Sim
@@ -19,6 +20,8 @@ function test_control()
         test_state_space()
         test_pi_continuous()
         test_pid_discrete()
+        test_discrete_integrator()
+        test_discrete_lead()
     end
 end
 
@@ -251,6 +254,105 @@ function test_pid_discrete(save = false)
 
         #compare the final values
         @test y_lss_last ≈ y_disc_last atol=1e-4
+
+        end #testset
+
+end #function
+
+
+function test_discrete_integrator(save = false)
+
+    @testset verbose = true "DiscreteIntegrator" begin
+
+        sys = DiscreteIntegrator() |> System;
+        sim = Simulation(sys; Δt = 0.01)
+
+        sys.u.bound_lo = -1
+        sys.u.bound_hi = 2
+
+        sys.u.u1 = -1
+        step!(sim, 2, true)
+
+        @test sys.s.x0 <= -1
+        @test sys.y.y1 ≈ -1.0
+        @test sys.y.sat_y1 == -1
+        @test sys.y.halted
+
+        sys.u.u1 = 1
+        step!(sim, 2, true)
+        @test sys.y.sat_y1 == 0
+        @test !sys.y.halted
+
+        step!(sim, 2, true)
+        @test sys.y.sat_y1 == 1
+        @test sys.y.halted
+
+        sys.u.u1 = -1
+        step!(sim, 1, true)
+        @test sys.y.sat_y1 == 0
+        @test !sys.y.halted
+
+        sys.u.sat_ext = -sign(sys.u.u1)
+        step!(sim, 1, true)
+        @test !sys.y.halted
+        sys.u.sat_ext = sign(sys.u.u1)
+        step!(sim, 1, true)
+        @test sys.y.halted
+
+        Control.reset!(sys)
+
+        @test sys.s.x0 == 0
+        @test sys.s.sat_y0 == 0
+        @test sys.y.x1 == 0
+        @test sys.y.y1 == 0
+        @test sys.y.sat_y1 == 0
+        @test !sys.y.halted
+        @test sys.u.bound_lo != 0
+        @test sys.u.bound_hi != 0
+
+        @test @ballocated($f_ode!($sys)) == 0
+        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_step!($sys)) == 0
+
+        end #testset
+
+end #function
+
+
+function test_discrete_lead(save = false)
+
+    @testset verbose = true "DiscreteLead" begin
+
+        z, p, k = -1, -10, 2.5
+        sys = DiscreteLead() |> System;
+        @pack! sys.u = z, p, k
+
+        sys_io! = let
+            function (sys)
+                t = sys.t[]
+                sys.u.u1 = sin(t)
+            end
+        end
+
+        sim = Simulation(sys; Δt = 0.001, t_end = 10, sys_io!)
+        Sim.run!(sim)
+        th = TimeHistory(sim)
+
+        lead_cont = zpk([z], [p], k)
+        step_result = lsim(lead_cont, (x,t)->SVector(sin(t),), 0:0.001:10)
+        @test Sim.get_data(th.y1[end])[1] ≈ step_result.y[end] atol = 1e-3
+
+        Control.reset!(sys)
+        @test sys.s.u0 == 0
+        @test sys.s.x0 == 0
+        @test sys.y.u1 == 0
+        @test sys.y.y1 == 0
+        @test sys.y.p != 0
+        @test sys.y.z != 0
+
+        @test @ballocated($f_ode!($sys)) == 0
+        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_step!($sys)) == 0
 
         end #testset
 
