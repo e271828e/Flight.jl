@@ -196,10 +196,10 @@ end
 ############################### PitchRateCmpNew ################################
 
 @kwdef struct PitchRateCmpNew <: SystemDefinition
-    int1::DiscreteIntegrator = DiscreteIntegrator()
-    int2::DiscreteIntegrator = DiscreteIntegrator()
     lead1::DiscreteLead = DiscreteLead()
     lead2::DiscreteLead = DiscreteLead()
+    int1::DiscreteIntegrator = DiscreteIntegrator()
+    int2::DiscreteIntegrator = DiscreteIntegrator()
 end
 
 @kwdef mutable struct PitchRateCmpNewU
@@ -213,15 +213,19 @@ end
     feedback::Float64 = 0.0
     sat_ext::Int64 = 0
     out::Float64 = 0.0
-    int1::DiscreteIntegratorY = DiscreteIntegratorY()
-    int2::DiscreteIntegratorY = DiscreteIntegratorY()
     lead1::DiscreteLeadY = DiscreteLeadY()
     lead2::DiscreteLeadY = DiscreteLeadY()
+    int1::DiscreteIntegratorY = DiscreteIntegratorY()
+    int2::DiscreteIntegratorY = DiscreteIntegratorY()
 end
 
 Systems.init(::SystemU, ::PitchRateCmpNew) = PitchRateCmpNewU()
 Systems.init(::SystemY, ::PitchRateCmpNew) = PitchRateCmpNewY()
 
+#zeros: -10, -10, -0.1, -0.1
+#poles: -150, -150, -1.5, -0.01
+#grouped in:
+#ll1, ll2, ll3, ll4
 #initialize lead compensator parameters
 function Systems.init!(sys::System{<:PitchRateCmpNew})
     @unpack lead1, lead2 = sys
@@ -240,34 +244,30 @@ function Control.reset!(sys::System{<:PitchRateCmpNew})
     Control.reset!.(values(sys.subsystems))
 end
 
-#we leave the compensators' outputs unbounded (the default at initialization),
-#the integrators will halt only when required by sat_ext
 function Systems.f_disc!(sys::System{PitchRateCmpNew}, Δt::Real)
     @unpack setpoint, feedback, sat_ext = sys.u
-    @unpack int1, int2, lead1, lead2 = sys
-
-    err = setpoint - feedback
+    @unpack lead1, lead2, int1, int2 = sys
 
     int1.u.sat_ext = sat_ext
     int2.u.sat_ext = sat_ext
 
-    int1.u.u1 = err
-    f_disc!(int1, Δt)
-
-    int2.u.u1 = int1.y.y1
-    f_disc!(int2, Δt)
-
-    lead1.u.u1 = int2.y.y1
+    lead1.u.u1 = setpoint - feedback
     f_disc!(lead1, Δt)
 
     lead2.u.u1 = lead1.y.y1
     f_disc!(lead2, Δt)
 
-    out = lead2.y.y1
+    int1.u.u1 = lead2.y.y1
+    f_disc!(int1, Δt)
+
+    int2.u.u1 = int1.y.y1
+    f_disc!(int2, Δt)
+
+    out = int2.y.y1
 
     sys.y = PitchRateCmpNewY(; setpoint, feedback, sat_ext, out,
-                               int1 = int1.y, int2 = int2.y,
-                               lead1 = lead1.y, lead2 = lead2.y)
+                               lead1 = lead1.y, lead2 = lead2.y,
+                               int1 = int1.y, int2 = int2.y)
 
     return false
 
@@ -285,7 +285,7 @@ end
 ################################################################################
 
 @kwdef struct PitchControl <: AbstractControlChannel
-    q_comp::PitchRateCmp = PitchRateCmp()
+    q_comp::PitchRateCmpNew = PitchRateCmpNew()
     θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4.2, k_i = 1, k_d = 0.15, τ_d = 0.01) #replace design with pure pitch rate feedback
     c_comp::PIDDiscrete{1} = PIDDiscrete{1}() ##########################TO DO
 end
@@ -307,7 +307,7 @@ end
     c_dmd::Float64 = 0.0
     e_cmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation command
     e_sat::Int64 = 0 #elevator saturation state
-    q_comp::PitchRateCmpY = PitchRateCmpY()
+    q_comp::PitchRateCmpNewY = PitchRateCmpNewY()
     θ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
     c_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
 end
@@ -335,13 +335,13 @@ function Systems.f_disc!(sys::System{PitchControl}, kin::KinematicData, Δt::Rea
 
     c_comp.u.feedback .= -kin.v_eOb_n[3]
     θ_comp.u.feedback .= kin.e_nb.θ
-    q_comp.u.feedback .= kin.ω_lb_b[2]
+    q_comp.u.feedback = kin.ω_lb_b[2]
 
     if mode === direct_elevator_mode
         e_cmd = e_dmd
     else
         if mode === pitch_rate_mode
-            q_comp.u.setpoint .= q_dmd
+            q_comp.u.setpoint = q_dmd
         else #pitch_angle, climb_rate
             if mode === pitch_angle_mode
                 θ_comp.u.setpoint .= θ_dmd
@@ -351,16 +351,16 @@ function Systems.f_disc!(sys::System{PitchControl}, kin::KinematicData, Δt::Rea
                 θ_comp.u.setpoint .= c_comp.y.out[1]
             end
             f_disc!(θ_comp, Δt)
-            q_comp.u.setpoint .= θ_comp.y.out[1]
+            q_comp.u.setpoint = θ_comp.y.out[1]
         end
         f_disc!(q_comp, Δt)
-        e_cmd = Ranged(q_comp.y.out[1], -1., 1.)
+        e_cmd = Ranged(q_comp.y.out, -1., 1.)
     end
 
     e_sat = saturation(e_cmd)
 
     #will take effect on the next call
-    q_comp.u.sat_ext .= e_sat
+    q_comp.u.sat_ext = e_sat
     θ_comp.u.sat_ext .= e_sat
     c_comp.u.sat_ext .= e_sat
 

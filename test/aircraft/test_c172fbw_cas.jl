@@ -136,7 +136,7 @@ function test_sim(; save::Bool = true)
         trim_params = C172FBW.TrimParameters(
             Ob = Geographic(LatLon(), h_trn + 1000),
             ψ_nb = 0.0,
-            TAS = 50.0,
+            TAS = 60.0,
             γ_wOb_n = 0.0,
             ψ_lb_dot = 0.0,
             θ_lb_dot = 0.0,
@@ -159,31 +159,35 @@ function test_sim(; save::Bool = true)
                 u_physical = world.ac.avionics.u.physical
                 u_digital = world.ac.avionics.u.digital
 
-                if t > 5
-                    # u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
-                    u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
-                    # u_physical.pitch_input = 0.0
-                    u_digital.θ_dmd = 0.1
+                if 4 < t < 5
+                    # world.env.atm.wind.u.v_ew_n[3] = 5
+                    u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
+                    # u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
+                    u_physical.pitch_input = 0.5
+                    # u_digital.θ_dmd = 0.1
                     # u_digital.c_dmd = π/6
 
                     # u_digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
-                    u_digital.throttle_mode_sel = C172FBWCAS.airspeed_throttle_mode
+                    # u_digital.throttle_mode_sel = C172FBWCAS.airspeed_throttle_mode
                     # u_physical.throttle = 1
-                    u_digital.TAS_dmd = 50
+                    # u_digital.TAS_dmd = 50
 
-                    u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
+                    # u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
+                    # u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
                     # u_physical.roll_input = 0.1
-                    # u_digital.φ_dmd = π/4
-                    u_digital.χ_dmd = π
+                    # u_digital.φ_dmd = 0
+                    # u_digital.χ_dmd = π
 
-                    u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
-                    u_physical.yaw_input = 0
+                    # u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
+                    # u_physical.yaw_input = 0
+                else
+                    u_physical.pitch_input = 0
 
                 end
             end
         end
 
-        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 30, sys_io!, adaptive = false)
+        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 10, sys_io!, adaptive = false)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
