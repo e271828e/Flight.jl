@@ -196,8 +196,10 @@ end
 ############################### PitchRateCmpNew ################################
 
 @kwdef struct PitchRateCmpNew <: SystemDefinition
-    lead1::DiscreteLead = DiscreteLead()
-    lead2::DiscreteLead = DiscreteLead()
+    ll1::DiscreteLead = DiscreteLead()
+    ll2::DiscreteLead = DiscreteLead()
+    ll3::DiscreteLead = DiscreteLead()
+    ll4::DiscreteLead = DiscreteLead()
     int1::DiscreteIntegrator = DiscreteIntegrator()
     int2::DiscreteIntegrator = DiscreteIntegrator()
 end
@@ -213,8 +215,10 @@ end
     feedback::Float64 = 0.0
     sat_ext::Int64 = 0
     out::Float64 = 0.0
-    lead1::DiscreteLeadY = DiscreteLeadY()
-    lead2::DiscreteLeadY = DiscreteLeadY()
+    ll1::DiscreteLeadY = DiscreteLeadY()
+    ll2::DiscreteLeadY = DiscreteLeadY()
+    ll3::DiscreteLeadY = DiscreteLeadY()
+    ll4::DiscreteLeadY = DiscreteLeadY()
     int1::DiscreteIntegratorY = DiscreteIntegratorY()
     int2::DiscreteIntegratorY = DiscreteIntegratorY()
 end
@@ -222,19 +226,23 @@ end
 Systems.init(::SystemU, ::PitchRateCmpNew) = PitchRateCmpNewU()
 Systems.init(::SystemY, ::PitchRateCmpNew) = PitchRateCmpNewY()
 
-#zeros: -10, -10, -0.1, -0.1
-#poles: -150, -150, -1.5, -0.01
-#grouped in:
-#ll1, ll2, ll3, ll4
-#initialize lead compensator parameters
+#initialize lead/lag compensator parameters
 function Systems.init!(sys::System{<:PitchRateCmpNew})
-    @unpack lead1, lead2 = sys
-    lead1.u.z = -0.1
-    lead1.u.p = -1.5
-    lead1.u.k = 200.0
-    lead2.u.z = -8
-    lead2.u.p = -150
-    lead2.u.k = 1.0
+
+    @unpack ll1, ll2, ll3, ll4 = sys
+
+    #use ll1 to apply the loop gain (arbitrary, could use any compensator)
+    ll1.u.k = 6000
+
+    ll1.u.z = -10
+    ll2.u.z = -10
+    ll3.u.z = -0.1
+    ll4.u.z = -0.1
+
+    ll1.u.p = -150
+    ll2.u.p = -150
+    ll3.u.p = -1.5
+    ll4.u.p = -0.01
 end
 
 function Control.reset!(sys::System{<:PitchRateCmpNew})
@@ -246,27 +254,28 @@ end
 
 function Systems.f_disc!(sys::System{PitchRateCmpNew}, Δt::Real)
     @unpack setpoint, feedback, sat_ext = sys.u
-    @unpack lead1, lead2, int1, int2 = sys
+    @unpack ll1, ll2, ll3, ll4, int1, int2 = sys
 
     int1.u.sat_ext = sat_ext
     int2.u.sat_ext = sat_ext
 
-    lead1.u.u1 = setpoint - feedback
-    f_disc!(lead1, Δt)
-
-    lead2.u.u1 = lead1.y.y1
-    f_disc!(lead2, Δt)
-
-    int1.u.u1 = lead2.y.y1
+    ll1.u.u1 = setpoint - feedback
+    f_disc!(ll1, Δt)
+    ll2.u.u1 = ll1.y.y1
+    f_disc!(ll2, Δt)
+    ll3.u.u1 = ll2.y.y1
+    f_disc!(ll3, Δt)
+    ll4.u.u1 = ll3.y.y1
+    f_disc!(ll4, Δt)
+    int1.u.u1 = ll4.y.y1
     f_disc!(int1, Δt)
-
     int2.u.u1 = int1.y.y1
     f_disc!(int2, Δt)
 
     out = int2.y.y1
 
     sys.y = PitchRateCmpNewY(; setpoint, feedback, sat_ext, out,
-                               lead1 = lead1.y, lead2 = lead2.y,
+                               ll1 = ll1.y, ll2 = ll2.y, ll3 = ll3.y, ll4 = ll4.y,
                                int1 = int1.y, int2 = int2.y)
 
     return false

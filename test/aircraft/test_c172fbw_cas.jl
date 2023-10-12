@@ -159,35 +159,39 @@ function test_sim(; save::Bool = true)
                 u_physical = world.ac.avionics.u.physical
                 u_digital = world.ac.avionics.u.digital
 
-                if 4 < t < 5
+                # u_digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
+                # u_digital.throttle_mode_sel = C172FBWCAS.airspeed_throttle_mode
+                # u_physical.throttle = 1
+                # u_digital.TAS_dmd = 50
+
+                # u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
+                u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
+                # u_physical.roll_input = 0.1
+                u_digital.φ_dmd = 0
+                # u_digital.χ_dmd = π
+
+                u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
+                u_physical.yaw_input = 0
+
+                if 0 < t < 5
                     # world.env.atm.wind.u.v_ew_n[3] = 5
                     u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
                     # u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
-                    u_physical.pitch_input = 0.5
+                    u_physical.pitch_input = 0.02 * t
                     # u_digital.θ_dmd = 0.1
                     # u_digital.c_dmd = π/6
 
-                    # u_digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
-                    # u_digital.throttle_mode_sel = C172FBWCAS.airspeed_throttle_mode
-                    # u_physical.throttle = 1
-                    # u_digital.TAS_dmd = 50
-
-                    # u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
-                    # u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
-                    # u_physical.roll_input = 0.1
-                    # u_digital.φ_dmd = 0
-                    # u_digital.χ_dmd = π
-
                     # u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
                     # u_physical.yaw_input = 0
+                elseif 5 < t < 15
+                    u_physical.pitch_input = 0.1 - 0.02 * (t - 5)
                 else
                     u_physical.pitch_input = 0
-
                 end
             end
         end
 
-        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 10, sys_io!, adaptive = false)
+        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 30, sys_io!, adaptive = false)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
