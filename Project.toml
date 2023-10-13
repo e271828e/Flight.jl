@@ -41,7 +41,7 @@ UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 [compat]
 AbstractTrees = "0.4.4"
 CImGui = "1.82.0"
-ComponentArrays = "0.13.14"
+ComponentArrays = ">=0.13.4"
 ControlSystems = "1.7.4"
 DataStructures = "0.18.14"
 DiffEqCallbacks = "2.26.1"

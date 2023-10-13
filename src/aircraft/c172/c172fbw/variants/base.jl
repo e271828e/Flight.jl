@@ -37,6 +37,11 @@ function Aircraft.trim!(ac::System{<:Cessna172FBWBase}, args...; kwargs...)
     trim!(ac.physics, args...; kwargs...)
 end
 
+function Aircraft.linearize!(ac::System{<:Cessna172FBWBase}, args...; kwargs...)
+    linearize!(ac.physics, args...; kwargs...)
+end
+
+
 ############################ Joystick Mappings #################################
 
 #redirect input assignments directly to the actuation system

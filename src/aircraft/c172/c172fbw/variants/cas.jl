@@ -1158,6 +1158,10 @@ function Aircraft.trim!(ac::System{<:Cessna172FBWCAS},
 
 end
 
+function Aircraft.linearize!(ac::System{<:Cessna172FBWCAS}, args...; kwargs...)
+    linearize!(ac.physics, args...; kwargs...)
+end
+
 
 # # ############################ Joystick Mappings #################################
 

@@ -129,7 +129,7 @@ function test_sim(; save::Bool = true)
         u_pld.m_copilot = 75
         u_pld.m_lpass = 0
         u_pld.m_rpass = 0
-        u_pld.m_baggage = 100
+        u_pld.m_baggage = 0
 
         world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 

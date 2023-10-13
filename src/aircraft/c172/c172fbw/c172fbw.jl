@@ -1,6 +1,7 @@
 module C172FBW
 
 using LinearAlgebra, StaticArrays, ComponentArrays, UnPack, Reexport
+using ControlSystems, RobustAndOptimalControl
 using NLopt
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
@@ -395,9 +396,10 @@ end
     ψ_lb_dot::Float64 = 0.0 #LTF-relative turn rate
     θ_lb_dot::Float64 = 0.0 #LTF-relative pitch rate
     β_a::Float64 = 0.0 #sideslip angle measured in the aerodynamic reference frame
-    fuel_load::Ranged{Float64, 0., 1.} = 0.5 #normalized fuel load
+    x_fuel::Ranged{Float64, 0., 1.} = 0.5 #normalized fuel load
     mixture::Ranged{Float64, 0., 1.} = 0.5 #engine mixture control
     flaps::Ranged{Float64, 0., 1.} = 0.0 #flap setting
+    payload::C172.PayloadU = C172.PayloadU()
 end
 
 
@@ -436,9 +438,9 @@ function assign!(physics::System{<:C172FBW.Physics},
                 trim_params::TrimParameters,
                 trim_state::TrimState)
 
-    @unpack TAS, β_a, fuel_load, flaps, mixture = trim_params
+    @unpack TAS, β_a, x_fuel, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
-    @unpack act, pwp, aero, fuel, ldg = physics.airframe
+    @unpack act, pwp, aero, fuel, ldg, pld = physics.airframe
 
     init_kinematics!(physics, Kinematics.Initializer(trim_state, trim_params, env))
 
@@ -453,6 +455,10 @@ function assign!(physics::System{<:C172FBW.Physics},
     act.u.rudder_cmd_offset = rudder
     act.u.flaps = flaps
     act.u.mixture = mixture
+
+    #assign payload
+    @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = payload
+    @pack! pld.u = m_pilot, m_copilot, m_lpass, m_rpass, m_baggage
 
     #engine must be running
     pwp.engine.s.state = Piston.eng_running
@@ -489,15 +495,11 @@ function assign!(physics::System{<:C172FBW.Physics},
 
     aero.x.α_filt = α_a #ensures zero state derivative
     aero.x.β_filt = β_a #ensures zero state derivative
-    fuel.x .= Float64(fuel_load)
+    fuel.x .= Float64(x_fuel)
 
     f_ode!(physics, env)
-    # act.x |> display
-    # act.ẋ |> display
-    # physics.y.kinematics.common |> display
-    # # return
 
-    #check assumptions concerning airframe systems states & derivatives
+    #check essential assumptions about airframe systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
     @assert pwp.x.engine.ω > pwp.engine.params.ω_idle
     @assert pwp.x.engine.idle[1] .== 0
@@ -596,226 +598,243 @@ function Aircraft.trim!(physics::System{<:C172FBW.Physics},
 end
 
 
-
 ################################################################################
 ############################### Linearization ##################################
 
-#linearize SimpleWorld{ac} instead of ac in order to have v_wind as inputs
+#flaps and mixture are trim parameters and thus omitted from the control vector
+@kwdef struct ULinear <: FieldVector{4, Float64}
+    throttle_cmd::Float64 = 0.0
+    aileron_cmd::Float64 = 0.0
+    elevator_cmd::Float64 = 0.0
+    rudder_cmd::Float64 = 0.0
+end
 
-#labels corresponding to LinearX components within the overall
-#C172FBW.Template{NED} state vector
-const LinearXLabels = (
-        "physics.kinematics.pos.ψ_nb",
-        "physics.kinematics.pos.θ_nb",
-        "physics.kinematics.pos.φ_nb",
-        "physics.kinematics.pos.ϕ",
-        "physics.kinematics.pos.λ",
-        "physics.kinematics.pos.h_e",
-        "physics.kinematics.vel.ω_eb_b[1]",
-        "physics.kinematics.vel.ω_eb_b[2]",
-        "physics.kinematics.vel.ω_eb_b[3]",
-        "physics.kinematics.vel.v_eOb_b[1]",
-        "physics.kinematics.vel.v_eOb_b[2]",
-        "physics.kinematics.vel.v_eOb_b[3]",
-        "physics.airframe.aero.α_filt",
-        "physics.airframe.aero.β_filt",
-        "physics.airframe.pwp.engine.ω",
-        "physics.airframe.fuel[1]",
-        "physics.airframe.act.throttle_act.v",
-        "physics.airframe.act.throttle_act.p",
-        "physics.airframe.act.aileron_act.v",
-        "physics.airframe.act.aileron_act.p",
-        "physics.airframe.act.elevator_act.v",
-        "physics.airframe.act.elevator_act.p",
-        "physics.airframe.act.rudder_act.v",
-        "physics.airframe.act.rudder_act.p",
-    )
+@kwdef struct XLinear <: FieldVector{24, Float64}
+    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
+    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
+    p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
+    v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #Ob/ECEF velocity, body axes
+    α_filt::Float64 = 0.0; β_filt::Float64 = 0.0; #filtered airflow angles
+    ω_eng::Float64 = 0.0; fuel::Float64 = 0.0; #engine speed, fuel fraction
+    thr_v::Float64 = 0.0; thr_p::Float64 = 0.0; #throttle actuator states
+    ail_v::Float64 = 0.0; ail_p::Float64 = 0.0; #aileron actuator states
+    ele_v::Float64 = 0.0; ele_p::Float64 = 0.0; #elevator actuator states
+    rud_v::Float64 = 0.0; rud_p::Float64 = 0.0 #rudder actuator states
+end
 
-const LinearXTemplate = ComponentVector(
-    ψ = 0.0, θ = 0.0, φ = 0.0, #heading, inclination, bank (body/NED)
-    ϕ = 0.0, λ = 0.0, h = 0.0, #latitude, longitude, ellipsoidal altitude
-    p = 0.0, q = 0.0, r = 0.0, #angular rates (ω_eb_b)
-    v_x = 0.0, v_y = 0.0, v_z = 0.0, #Ob/ECEF velocity, body axes
-    α_filt = 0.0, β_filt = 0.0, #filtered airflow angles
-    ω_eng = 0.0, fuel = 0.0, #engine speed, fuel fraction
-    thr_v = 0.0, thr_p = 0.0, #throttle actuator states
-    ail_v = 0.0, ail_p = 0.0, #aileron actuator states
-    ele_v = 0.0, ele_p = 0.0, #elevator actuator states
-    rud_v = 0.0, rud_p = 0.0, #rudder actuator states
-    )
+@kwdef struct YLinear <: FieldVector{22, Float64}
+    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
+    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
+    p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
+    Float64AS::Float64 = 0.0; α::Float64 = 0.0; β::Float64 = 0.0; #airspeed, AoA, AoS
+    f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
+    v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
+    χ::Float64 = 0.0; γ::Float64 = 0.0; #track and flight path angles
+    ω_eng::Float64 = 0.0; m_fuel::Float64 = 0.0 #engine speed, fuel mass
+end
 
-#flaps and mixture are omitted from the control vector and treated as parameters
-const LinearUTemplate = ComponentVector(
-    throttle_cmd = 0.0,
-    aileron_cmd = 0.0,
-    elevator_cmd = 0.0,
-    rudder_cmd = 0.0,
-    )
 
-const LinearYTemplate = ComponentVector(
-    ψ = 0.0, θ = 0.0, φ = 0.0, #heading, inclination, bank (body/NED)
-    ϕ = 0.0, λ = 0.0, h = 0.0, #latitude, longitude, ellipsoidal altitude
-    p = 0.0, q = 0.0, r = 0.0, #angular rates (ω_eb_b)
-    TAS = 0.0, α = 0.0, β = 0.0, #airspeed, AoA, AoS
-    f_x = 0.0, f_y = 0.0, f_z = 0.0, #specific force at G (f_iG_b)
-    v_N = 0.0, v_E = 0.0, v_D = 0.0, #Ob/ECEF velocity, NED axes
-    χ = 0.0, γ = 0.0, #track and flight path angles
-    ω_eng = 0.0, m_fuel = 0.0, #engine speed, fuel mass
-)
+function ULinear(physics::System{<:C172FBW.Physics})
 
-const LinearU{T, D} = ComponentVector{T, D, typeof(getaxes(LinearUTemplate))} where {T, D}
-const LinearX{T, D} = ComponentVector{T, D, typeof(getaxes(LinearXTemplate))} where {T, D}
-const LinearY{T, D} = ComponentVector{T, D, typeof(getaxes(LinearYTemplate))} where {T, D}
-
-function assign!(u::LinearU, ac::System{<:C172FBW.Template})
-
-    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ac.physics.airframe.act.u
-    @pack! u = throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd
+    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = physics.airframe.act.u
+    ULinear{Float64}(; throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd)
 
 end
 
-function assign!(ac::System{<:C172FBW.Template}, u::LinearU)
+function XLinear(x_physics::ComponentVector)
 
-    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = u
-    @pack! ac.physics.airframe.act.u = throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd
+    x_kinematics = x_physics.kinematics
+    x_airframe = x_physics.airframe
+
+    @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics.pos
+    p, q, r = x_kinematics.vel.ω_eb_b
+    v_x, v_y, v_z = x_kinematics.vel.v_eOb_b
+    α_filt, β_filt = x_airframe.aero
+    ω_eng = x_airframe.pwp.engine.ω
+    fuel = x_airframe.fuel[1]
+    thr_v, thr_p = x_airframe.act.throttle_act
+    ail_v, ail_p = x_airframe.act.aileron_act
+    ele_v, ele_p = x_airframe.act.elevator_act
+    rud_v, rud_p = x_airframe.act.rudder_act
+
+    ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
+
+    XLinear{Float64}(;  ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z,
+                        α_filt, β_filt, ω_eng, fuel,
+                        thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p)
 
 end
 
-function assign!(y::LinearY, ac::System{<:C172FBW.Template})
+ẊLinear(physics::System{<:C172FBW.Physics}) = XLinear(physics.ẋ)
+XLinear(physics::System{<:C172FBW.Physics}) = XLinear(physics.x)
 
-    @unpack q_nb, n_e, h_e, ω_eb_b, v_eOb_n = ac.y.physics.kinematics
-    @unpack α, β = ac.y.physics.airframe.aero
-    @unpack ψ, θ, φ = REuler(q_nb)
-    @unpack ϕ, λ = LatLon(n_e)
+function YLinear(physics::System{<:C172FBW.Physics})
+
+    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_n = physics.y.kinematics
+    @unpack α, β = physics.y.airframe.aero
+    @unpack ψ, θ, φ = e_nb
+    @unpack ϕ, λ = ϕ_λ
 
     h = h_e
     p, q, r = ω_eb_b
     v_N, v_E, v_D = v_eOb_n
     χ = Attitude.azimuth(v_eOb_n)
     γ = Attitude.inclination(v_eOb_n)
-    f_x, f_y, f_z = ac.y.physics.rigidbody.f_G_b
-    TAS = ac.y.physics.air.TAS
-    ω_eng = ac.y.physics.airframe.pwp.engine.ω
-    m_fuel = ac.y.physics.airframe.fuel.m_avail
+    f_x, f_y, f_z = physics.y.rigidbody.f_G_b
+    TAS = physics.y.air.TAS
+    ω_eng = physics.y.airframe.pwp.engine.ω
+    m_fuel = physics.y.airframe.fuel.m_avail
 
-    @pack! y = ψ, θ, φ, ϕ, λ, h, p, q, r, TAS, α, β,
-               f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, ω_eng, m_fuel
+    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, TAS, α, β,
+            f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, ω_eng, m_fuel)
 
 end
 
-#Aircraft.linearize!(world::System{<:SimpleWorld{<:Template{NED}}},
-#trim_params::TrimParameters = TrimParameters())
+function assign!(physics::System{<:C172FBW.Physics}, u::ULinear)
 
-# function Aircraft.linearize!(
-#             ac::System{<:C172FBW.Template{NED}},
-#             trim_params::TrimParameters = TrimParameters(),
-#             env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
+    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = u
+    @pack! physics.airframe.act.u = throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd
+
+end
+
+function assign!(physics::System{<:C172FBW.Physics}, x::XLinear)
+
+    @unpack ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng,
+            fuel, thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p = x
+
+    x_kinematics = physics.x.kinematics
+    x_airframe = physics.x.airframe
+
+    ψ_nb, θ_nb, φ_nb, h_e = ψ, θ, φ, h
+
+    @pack! x_kinematics.pos = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
+    x_kinematics.vel.ω_eb_b .= p, q, r
+    x_kinematics.vel.v_eOb_b .= v_x, v_y, v_z
+    x_airframe.aero .= α_filt, β_filt
+    x_airframe.pwp.engine.ω = ω_eng
+    x_airframe.fuel .= fuel
+    x_airframe.act.throttle_act .= thr_v, thr_p
+    x_airframe.act.aileron_act .= ail_v, ail_p
+    x_airframe.act.elevator_act .= ele_v, ele_p
+    x_airframe.act.rudder_act .= rud_v, rud_p
+
+end
+
 
 function Aircraft.linearize!(
-            ac::System{<:C172FBW.Template{NED}},
+            physics::System{<:C172FBW.Physics{NED}},
             trim_params::TrimParameters = TrimParameters(),
             env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
 
-    (_, trim_state) = trim!(ac, trim_params, env)
+    (_, trim_state) = trim!(physics, trim_params, env)
 
-    #save the trimmed aircraft's ẋ, x, u and y for later
-    ẋ0_full = copy(ac.ẋ)
-    x0_full = copy(ac.x)
-    u0 = similar(LinearUTemplate); assign!(u0, ac) #get reference value from trimmed aircraft
-    y0 = similar(LinearYTemplate); assign!(y0, ac) #idem
+    ẋ0 = ẊLinear(physics)
+    x0 = XLinear(physics)
+    u0 = ULinear(physics)
+    y0 = YLinear(physics)
 
-    #function wrapper around f_ode!(), mutates ẋ and y.
-    f_nonlinear! = let ac = ac, env = env,
-                       trim_params = trim_params, trim_state = trim_state,
-                       u_axes = getaxes(u0), y_axes = getaxes(y0)
+    #f_main will not be returned for use in another scope, so we don't need to
+    #capture physics and env with a let block, because they are guaranteed not
+    #be reassigned within the scope of linearize!
+    function f_main(x, u)
 
-        function (ẋ, y, x, u)
+        assign!(physics, XLinear(x))
+        assign!(physics, ULinear(u))
+        f_ode!(physics, env)
 
-            # cast y and u into ComponentVectors in case we get generic Vectors
-            # from FiniteDiff. these do not allocate, because the underlying
-            #data is already in u and y
-            u_cv = ComponentVector(u, u_axes)
-            y_cv = ComponentVector(y, y_axes)
-
-            #make sure any input or state not set by x and u is at its reference
-            #trim value. this reverts any potential changes to the aircraft done
-            #by functions sharing the same aircraft instance
-            assign!(ac.physics, env, trim_params, trim_state)
-
-            assign!(ac, u_cv)
-            ac.x .= x
-            f_ode!(ac, env)
-
-            ẋ .= ac.ẋ
-            assign!(y_cv, ac) #this also updates y (shares its data with y_cv)
-
-        end
+        return (ẋ = ẊLinear(physics), y = YLinear(physics))
 
     end
 
-    (A_full, B_full, C_full, D_full) = ss_matrices(f_nonlinear!;
-                                            ẋ0 = ẋ0_full, y0, x0 = x0_full, u0)
+    (A, B, C, D) = ss_matrices(f_main, x0, u0)
 
-    #once we're done, ensure the aircraft is restored to its trimmed status, so
-    #the response can be compared with that of its linear counterpart
-    assign!(ac.physics, env, trim_params, trim_state)
+    #restore the System to its trimmed condition
+    assign!(physics, env, trim_params, trim_state)
 
-    #find the indices for the components in the reduced LinearX state vector
-    #within the overall aircraft state vector
-    x_indices = [ComponentArrays.label2index(x0_full, s)[1] for s in LinearXLabels]
+    #now we need to rebuild vectors and matrices for the LinearStateSpace as
+    #ComponentArrays, because we want matrix components to remain labelled,
+    #which cannot be achieved with FieldVectors
 
-    x_axis = getaxes(LinearXTemplate)[1]
+    x_axis = Axis(propertynames(x0))
+    u_axis = Axis(propertynames(u0))
+    y_axis = Axis(propertynames(y0))
 
-    #extract the required elements from ẋ0_full and x0_full and rebuild them
-    #with the LinearX axis
-    ẋ0 = ComponentVector(ẋ0_full[x_indices], x_axis)
-    x0 = ComponentVector(x0_full[x_indices], x_axis)
+    ẋ0_cv = ComponentVector(ẋ0, x_axis)
+    x0_cv = ComponentVector(x0, x_axis)
+    u0_cv = ComponentVector(u0, u_axis)
+    y0_cv = ComponentVector(y0, y_axis)
 
-    #extract the required rows and columns from A, the required rows from B, and
-    #the required columns from C. then rebuild them with the new x_axis and the
-    #previous u_axis and y_axis
-    A = ComponentMatrix(A_full[x_indices, x_indices], x_axis, x_axis)
-    B = ComponentMatrix(B_full[x_indices, :], x_axis, getaxes(u0)[1])
-    C = ComponentMatrix(C_full[:, x_indices], getaxes(y0)[1], x_axis)
-    D = D_full
+    A_cv = ComponentMatrix(A, x_axis, x_axis)
+    B_cv = ComponentMatrix(B, x_axis, u_axis)
+    C_cv = ComponentMatrix(C, y_axis, x_axis)
+    D_cv = ComponentMatrix(D, y_axis, u_axis)
 
-    return LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+    return LinearStateSpace(ẋ0_cv, x0_cv, u0_cv, y0_cv, A_cv, B_cv, C_cv, D_cv)
 
 end
 
 
-function ss_matrices(f_nonlinear!::Function; ẋ0, y0, x0, u0)
+function ss_matrices(f_main::Function, x0::XLinear, u0::ULinear)
 
-    f_A! = let u = u0, y = similar(y0) #y is discarded
-        (ẋ, x) -> f_nonlinear!(ẋ, y, x, u)
-    end
+    f_ẋ(x, u) = f_main(x, u).ẋ
+    f_y(x, u) = f_main(x, u).y
 
-    f_B! = let x = x0, y = similar(y0) #y is discarded
-        (ẋ, u) -> f_nonlinear!(ẋ, y, x, u)
-    end
+    #none of these closures will be returned for use in another scope, so we
+    #don't need to capture x0 and u0 with a let block, because they are
+    #guaranteed not be reassigned within the scope of ss_matrices
+    f_A!(ẋ, x) = (ẋ .= f_ẋ(x, u0))
+    f_B!(ẋ, u) = (ẋ .= f_ẋ(x0, u))
+    f_C!(y, x) = (y .= f_y(x, u0))
+    f_D!(y, u) = (y .= f_y(x0, u))
 
-    f_C! = let u = u0, ẋ = similar(ẋ0) #ẋ is discarded
-        (y, x) -> f_nonlinear!(ẋ, y, x, u)
-    end
+    #preallocate mutable arrays
+    A = XLinear() * XLinear()' |> Matrix
+    B = XLinear() * ULinear()' |> Matrix
+    C = YLinear() * XLinear()' |> Matrix
+    D = YLinear() * ULinear()' |> Matrix
 
-    f_D! = let x = x0, ẋ = similar(ẋ0) #ẋ is discarded
-        (y, u) -> f_nonlinear!(ẋ, y, x, u)
-    end
-
-    #preallocate
-    A = x0 * x0'
-    B = x0 * u0'
-    C = y0 * x0'
-    D = y0 * u0'
-
-    jacobian!(A, f_A!, x0)
-    jacobian!(B, f_B!, u0)
-    jacobian!(C, f_C!, x0)
-    jacobian!(D, f_D!, u0)
+    jacobian!(A, f_A!, Vector(x0))
+    jacobian!(B, f_B!, Vector(u0))
+    jacobian!(C, f_C!, Vector(x0))
+    jacobian!(D, f_D!, Vector(u0))
 
     return (A, B, C, D)
 
 end
+
+function RobustAndOptimalControl.named_ss(
+            physics::System{<:C172FBW.Physics{NED}},
+            trim_params::TrimParameters = TrimParameters(),
+            env::System{<:AbstractEnvironment} = System(SimpleEnvironment());
+            model::Symbol = :full)
+
+    lm = linearize!(physics, trim_params, env)
+
+    if model === :full
+        x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lm.x0, lm.u0, lm.y0))
+        return named_ss(ss(lm), x = x_labels, u = u_labels, y = y_labels)
+
+    elseif model === :long
+        x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
+        u_labels = [:throttle_cmd, :elevator_cmd]
+        y_labels = [:q, :θ, :α, :TAS, :f_x, :f_z, :γ, :ω_eng]
+        lm_long = submodel(lm; x = x_labels, u = u_labels, y = y_labels)
+        return named_ss(ss(lm_long), x = x_labels, u = u_labels, y = y_labels)
+
+    elseif model === :lat
+        u_labels = [:aileron_cmd, :rudder_cmd]
+        x_labels = [:p, :r, :φ, :ψ, :v_x, :v_y, :β_filt, :ail_v, :ail_p, :rud_v, :rud_p]
+        y_labels = [:p, :r, :φ, :ψ, :β, :f_y, :χ]
+        lm_lat = submodel(lm; x = x_labels, u = u_labels, y = y_labels)
+        return named_ss(ss(lm_lat), x = x_labels, u = u_labels, y = y_labels)
+
+    else
+        error("Valid model values: :full, :long, :lat")
+
+    end
+
+end
+
 
 ################################################################################
 ################################## Variants ####################################

@@ -54,7 +54,7 @@ function test_system_methods()
 
             f_ode!(ac_LTF, env)
             #make sure we are on the ground to ensure landing gear code coverage
-            @test ac_LTF.y.airframe.ldg.left.strut.wow == true
+            @test ac_LTF.y.physics.airframe.ldg.left.strut.wow == true
 
             #all three kinematics implementations must be supported, no allocations
             @test @ballocated(f_ode!($ac_LTF, $env)) == 0

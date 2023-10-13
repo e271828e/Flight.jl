@@ -72,17 +72,17 @@ function test_state_space()
             build_ss(x0[:], u0[:], y0[:]) |> test_system #with plain Vectors
         end
 
-        @testset verbose = true "Filtering" begin
+        @testset verbose = true "Submodel" begin
 
             #with ComponentVectors
             cmp = build_ss(x0, u0, y0)
-            cmp = filter(cmp; x = (:V, :q), y = (:V, :q, :f_z))
+            cmp = submodel(cmp; x = (:V, :q), y = (:V, :q, :f_z))
             @test (length(cmp.x0) == 2 && length(cmp.y0) == 3 && size(cmp.A) == (2,2) &&
                 size(cmp.B) == (2, 2) && size(cmp.C) == (3, 2) && size(cmp.D) == (3,2))
 
             #with plain Vectors
             cmp = build_ss(x0[:], u0[:], y0[:])
-            cmp = filter(cmp; x = [1, 3], u = [1], y = [1, 3, 5])
+            cmp = submodel(cmp; x = [1, 3], u = [1], y = [1, 3, 5])
             @test (length(cmp.x0) == 2 && length(cmp.u0) == 1 && length(cmp.y0) == 3 &&
             size(cmp.A) == (2,2) && size(cmp.B) == (2, 1) && size(cmp.C) == (3, 2) && size(cmp.D) == (3,1))
 

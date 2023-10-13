@@ -28,7 +28,7 @@ function test_system_methods()
 
     h_trn = HOrth(608.55);
 
-    ac = AircraftTemplate(LTF(), EmptyAirframe(), NoAvionics())
+    ac = Aircraft.Template()
     env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
     world = SimpleWorld(ac, env) |> System
 
@@ -54,7 +54,7 @@ function test_system_methods()
         #the outputs
         f_ode!(world)
         @test world.y.env.atm.wind.v_ew_n[1] == -5
-        @test world.y.ac.air.v_ew_n[1] == -5
+        @test world.y.ac.physics.air.v_ew_n[1] == -5
 
         #reset outputs to their initial value
         world.y = y0
@@ -63,15 +63,15 @@ function test_system_methods()
         #and repeat for f_disc!, which must also propagate inputs to outputs
         f_disc!(world, 0.02)
         @test world.y.env.atm.wind.v_ew_n[1] == -5
-        @test world.y.ac.air.v_ew_n[1] == -5
+        @test world.y.ac.physics.air.v_ew_n[1] == -5
 
         #mess up a quaternion norm
-        world.ac.x.kinematics.pos.q_lb[1] *= 2
+        world.ac.x.physics.kinematics.pos.q_lb[1] *= 2
 
         #and make sure the call to f_step! restores it
         x_mod = f_step!(world)
         @test x_mod == true
-        @test world.ac.x.kinematics.pos.q_lb[1] ≈ 1
+        @test world.ac.x.physics.kinematics.pos.q_lb[1] ≈ 1
 
         @test @ballocated(f_ode!($world)) == 0
         @test @ballocated(f_step!($world)) == 0

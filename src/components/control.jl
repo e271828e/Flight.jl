@@ -9,6 +9,7 @@ using Flight.FlightCore.GUI
 
 export LinearStateSpace, PIContinuous, PIDDiscrete
 export DiscreteIntegrator, DiscreteLead
+export submodel
 
 ################################################################################
 ########################### LinearStateSpace ###################################
@@ -85,9 +86,9 @@ function Systems.f_ode!(sys::System{<:LinearStateSpace{LX, LU, LY}}) where {LX, 
 
 end
 
-function Base.filter(cmp::LinearStateSpace; x = keys(cmp.x0), u = keys(cmp.u0), y = keys(cmp.y0))
+function submodel(cmp::LinearStateSpace; x = keys(cmp.x0), u = keys(cmp.u0), y = keys(cmp.y0))
 
-    #to do: make it work for scalars
+    #to do: generalize for scalars
 
     x_ind = x
     u_ind = u
