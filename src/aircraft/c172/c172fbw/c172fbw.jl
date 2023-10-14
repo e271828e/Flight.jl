@@ -626,7 +626,7 @@ end
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
-    Float64AS::Float64 = 0.0; α::Float64 = 0.0; β::Float64 = 0.0; #airspeed, AoA, AoS
+    TAS::Float64 = 0.0; α::Float64 = 0.0; β::Float64 = 0.0; #airspeed, AoA, AoS
     f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
     χ::Float64 = 0.0; γ::Float64 = 0.0; #track and flight path angles
@@ -637,7 +637,7 @@ end
 function ULinear(physics::System{<:C172FBW.Physics})
 
     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = physics.airframe.act.u
-    ULinear{Float64}(; throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd)
+    ULinear(; throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd)
 
 end
 
@@ -659,7 +659,7 @@ function XLinear(x_physics::ComponentVector)
 
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
-    XLinear{Float64}(;  ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z,
+    XLinear(;  ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z,
                         α_filt, β_filt, ω_eng, fuel,
                         thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p)
 
@@ -814,7 +814,7 @@ function RobustAndOptimalControl.named_ss(
         x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lm.x0, lm.u0, lm.y0))
         return named_ss(ss(lm), x = x_labels, u = u_labels, y = y_labels)
 
-    elseif model === :long
+    elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
         u_labels = [:throttle_cmd, :elevator_cmd]
         y_labels = [:q, :θ, :α, :TAS, :f_x, :f_z, :γ, :ω_eng]
@@ -829,12 +829,15 @@ function RobustAndOptimalControl.named_ss(
         return named_ss(ss(lm_lat), x = x_labels, u = u_labels, y = y_labels)
 
     else
-        error("Valid model values: :full, :long, :lat")
+        error("Valid model values: :full, :lon, :lat")
 
     end
 
 end
 
+function RobustAndOptimalControl.named_ss(ac::System{<:C172FBW.Template{NED}}, args...; kwargs...)
+    named_ss(ac.physics, args...; kwargs...)
+end
 
 ################################################################################
 ################################## Variants ####################################
