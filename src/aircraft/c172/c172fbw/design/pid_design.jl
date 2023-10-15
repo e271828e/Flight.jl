@@ -9,17 +9,20 @@ using Trapz: trapz
 
 @kwdef struct PIDParams <: FieldVector{3, Float64}
     k_p::Float64 = 1.0
-    T_i::Float64 = 10.0
-    T_d::Float64 = 0.1
+    k_i::Float64 = 1.0
+    k_d::Float64 = 0.1
 end
+
+T_i(pid::PIDParams) = pid.k_p / pid.k_i
+T_d(pid::PIDParams) = pid.k_d / pid.k_p
 
 @kwdef struct OptParams
     τ_f::Float64 = 0.01
     t_sim::Float64 = 5.0
     maxeval::Int64 = 5000
-    lower_bounds::PIDParams = PIDParams(; k_p = 0, T_i = 0.01, T_d = 0)
-    upper_bounds::PIDParams = PIDParams(; k_p = 50, T_i = 100, T_d = 1)
-    initial_step::PIDParams = PIDParams(; k_p = 0.1, T_i = 0.1, T_d = 0.1)
+    lower_bounds::PIDParams = PIDParams(; k_p = 0, k_i = 0, k_d = 0)
+    upper_bounds::PIDParams = PIDParams(; k_p = 50, k_i = 50, k_d = 10)
+    initial_step::PIDParams = PIDParams(; k_p = 0.1, k_i = 0.1, k_d = 0.1)
 end
 
 @kwdef struct OptMetrics <: FieldVector{3, Float64}
@@ -29,10 +32,8 @@ end
 end
 
 function build_PID(pid_params::PIDParams, opt_params::OptParams)
-    @unpack k_p, T_i, T_d = pid_params
+    @unpack k_p, k_i, k_d = pid_params
     τ_f = opt_params.τ_f
-    k_i = k_p / T_i
-    k_d = k_p * T_d
     (k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])) |> ss
 end
 
