@@ -55,7 +55,7 @@ RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
 ################################################################################
 ############################ Aerodynamics ######################################
 
-function generate_aero_data(fname = joinpath(dirname(@__FILE__), "aero.h5"))
+function generate_aero_data(fname = joinpath(@__DIR__, "aero.h5"))
 
     h5open(fname, "w") do fid
 
@@ -233,7 +233,7 @@ function generate_aero_data(fname = joinpath(dirname(@__FILE__), "aero.h5"))
 
 end
 
-function generate_aero_lookup(fname = joinpath(dirname(@__FILE__), "aero.h5"))
+function generate_aero_lookup(fname = joinpath(@__DIR__, "aero.h5"))
 
     fid = h5open(fname, "r")
 
