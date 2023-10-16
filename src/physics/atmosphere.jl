@@ -294,6 +294,9 @@ end
 
 AirData() = AirData(KinematicData(), AtmosphericData())
 
+TAS2EAS(TAS::Real; ρ::Real) = TAS * √(ρ / ρ_std)
+EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
+
 function AirData(kin::KinematicData, atm_data::AtmosphericData)
 
     v_eOb_b = kin.v_eOb_b
@@ -307,11 +310,11 @@ function AirData(kin::KinematicData, atm_data::AtmosphericData)
     M = TAS / a
     Tt = T * (1 + (γ - 1)/2 * M^2)
     pt = p * (Tt/T)^(γ/(γ-1))
-    Δp = pt - p
-    q = 1/2 * ρ * TAS^2
+    Δp = pt - p #impact pressure
+    q = 1/2 * ρ * TAS^2 #true dynamic pressure
 
-    EAS = TAS * √(ρ / ρ_std)
-    CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + q/p_std)^((γ-1)/γ) - 1) )
+    EAS = TAS2EAS(TAS; ρ)
+    CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + Δp/p_std)^((γ-1)/γ) - 1) )
 
     AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 

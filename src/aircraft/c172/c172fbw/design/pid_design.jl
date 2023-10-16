@@ -6,19 +6,23 @@ using NLopt
 using ControlSystems
 using Trapz: trapz
 
-@kwdef struct Params{T}
+@kwdef struct Params{T} <: FieldVector{4, T}
     k_p::T = 1.0
     k_i::T = 1.0
     k_d::T = 0.1
     τ_f::T = 0.01
 end
 
-T_i(pid::Params{Float64}) = pid.k_p / pid.k_i
-T_d(pid::Params{Float64}) = pid.k_d / pid.k_p
-
-function Base.Vector(params::Params)
-    @unpack k_p, k_i, k_d, τ_f = params
-    return [k_p, k_i, k_d, τ_f]
+function Base.getproperty(params::Params, s::Symbol)
+    if s ∈ fieldnames(Params)
+        getfield(params, s)
+    elseif s === :T_i
+        params.k_p / params.k_i
+    elseif s === :T_d
+        params.k_d / params.k_p
+    else
+        error("$(typeof(params)) has no property $s")
+    end
 end
 
 @kwdef struct Settings
@@ -29,13 +33,13 @@ end
     initial_step::Params = Params(; k_p = 0.1, k_i = 0.1, k_d = 0.1, τ_f = 0.01)
 end
 
-@kwdef struct Metrics <: FieldVector{3, Float64}
-    Ms::Float64 #maximum sensitivity
-    ∫e::Float64 #integrated absolute error
-    ef::Float64 #steady-state error
+@kwdef struct Metrics{T} <: FieldVector{3, T}
+    Ms::T #maximum sensitivity
+    ∫e::T #integrated absolute error
+    ef::T #steady-state error
 end
 
-function build_PID(params::Params)
+function build_PID(params::Params{<:Real})
     @unpack k_p, k_i, k_d, τ_f = params
     (k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])) |> ss
 end
@@ -66,18 +70,19 @@ function Metrics(P::AbstractStateSpace, C::AbstractStateSpace, settings::Setting
 
 end
 
-function cost(P::AbstractStateSpace, C::AbstractStateSpace, settings::Settings, weights::Metrics)
+function cost(P::AbstractStateSpace, C::AbstractStateSpace, settings::Settings, weights::Metrics{<:Real})
     costs = Metrics(P, C, settings)
     return sum(costs .* weights) / sum(weights)
 end
 
 
 function optimize_PID(  P::LTISystem;
-                        params::Params = Params(), #initial condition
+                        params_0::Params = Params(), #initial condition
                         settings::Settings = Settings(),
-                        weights::Metrics = Metrics(ones(3)))
+                        weights::Metrics{<:Real} = Metrics(ones(3)),
+                        global_search::Bool = true)
 
-    x0 = params |> Vector
+    x0 = params_0 |> Vector
     maxeval = settings.maxeval
     lower_bounds = settings.lower_bounds |> Vector
     upper_bounds = settings.upper_bounds |> Vector
@@ -93,16 +98,17 @@ function optimize_PID(  P::LTISystem;
 
     minx = x0
 
-    #global search
-    opt_glb = Opt(:GN_DIRECT_L, length(x0))
-    opt_glb.min_objective = f_opt
-    opt_glb.maxeval = maxeval
-    opt_glb.stopval = 1e-6
-    opt_glb.lower_bounds = lower_bounds
-    opt_glb.upper_bounds = upper_bounds
-    opt_glb.initial_step = initial_step
+    if global_search
+        opt_glb = Opt(:GN_DIRECT_L, length(x0))
+        opt_glb.min_objective = f_opt
+        opt_glb.maxeval = maxeval
+        opt_glb.stopval = 1e-6
+        opt_glb.lower_bounds = lower_bounds
+        opt_glb.upper_bounds = upper_bounds
+        opt_glb.initial_step = initial_step
 
-    (minf, minx, exit_flag) = optimize(opt_glb, x0)
+        (minf, minx, exit_flag) = optimize(opt_glb, x0)
+    end
 
     #second pass with local optimizer
     opt_loc = Opt(:LN_BOBYQA, length(x0))

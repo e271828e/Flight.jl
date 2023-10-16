@@ -610,7 +610,7 @@ function Aircraft.trim!(physics::System{<:C172FBW.Physics},
 
     success = (exit_flag === :STOPVAL_REACHED)
     if !success
-        println("Warning: Optimization failed with exit_flag $exit_flag")
+        println("Warning: Trimming optimization failed with exit_flag $exit_flag")
     end
     trim_state_opt = TrimState(minx)
     assign!(physics, env, trim_params, trim_state_opt)
