@@ -6,43 +6,46 @@ using NLopt
 using ControlSystems
 using Trapz: trapz
 
-
-@kwdef struct PIDParams <: FieldVector{3, Float64}
-    k_p::Float64 = 1.0
-    k_i::Float64 = 1.0
-    k_d::Float64 = 0.1
+@kwdef struct Params{T}
+    k_p::T = 1.0
+    k_i::T = 1.0
+    k_d::T = 0.1
+    τ_f::T = 0.01
 end
 
-T_i(pid::PIDParams) = pid.k_p / pid.k_i
-T_d(pid::PIDParams) = pid.k_d / pid.k_p
+T_i(pid::Params{Float64}) = pid.k_p / pid.k_i
+T_d(pid::Params{Float64}) = pid.k_d / pid.k_p
 
-@kwdef struct OptParams
-    τ_f::Float64 = 0.01
+function Base.Vector(params::Params)
+    @unpack k_p, k_i, k_d, τ_f = params
+    return [k_p, k_i, k_d, τ_f]
+end
+
+@kwdef struct Settings
     t_sim::Float64 = 5.0
     maxeval::Int64 = 5000
-    lower_bounds::PIDParams = PIDParams(; k_p = 0, k_i = 0, k_d = 0)
-    upper_bounds::PIDParams = PIDParams(; k_p = 50, k_i = 50, k_d = 10)
-    initial_step::PIDParams = PIDParams(; k_p = 0.1, k_i = 0.1, k_d = 0.1)
+    lower_bounds::Params = Params(; k_p = 0.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+    upper_bounds::Params = Params(; k_p = 50.0, k_i = 50.0, k_d = 10.0, τ_f = 0.01)
+    initial_step::Params = Params(; k_p = 0.1, k_i = 0.1, k_d = 0.1, τ_f = 0.01)
 end
 
-@kwdef struct OptMetrics <: FieldVector{3, Float64}
+@kwdef struct Metrics <: FieldVector{3, Float64}
     Ms::Float64 #maximum sensitivity
     ∫e::Float64 #integrated absolute error
     ef::Float64 #steady-state error
 end
 
-function build_PID(pid_params::PIDParams, opt_params::OptParams)
-    @unpack k_p, k_i, k_d = pid_params
-    τ_f = opt_params.τ_f
+function build_PID(params::Params)
+    @unpack k_p, k_i, k_d, τ_f = params
     (k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])) |> ss
 end
 
-function OptMetrics(P::AbstractStateSpace, C::AbstractStateSpace, opt_params::OptParams)
+function Metrics(P::AbstractStateSpace, C::AbstractStateSpace, settings::Settings)
 
     S = sensitivity(P, C) #sensitivity function
     T = output_comp_sensitivity(P, C) #complementary sensitivity function (AKA closed loop)
 
-    T_step = step(T, opt_params.t_sim)
+    T_step = step(T, settings.t_sim)
     t = T_step.t
     y = T_step.y |> vec
     e = abs.(y .- 1.0)
@@ -59,32 +62,32 @@ function OptMetrics(P::AbstractStateSpace, C::AbstractStateSpace, opt_params::Op
     ∫e = trapz(t, e)/t[end]
     ef = e[end]
 
-    OptMetrics(; Ms, ∫e, ef)
+    Metrics(; Ms, ∫e, ef)
 
 end
 
-function cost(P::AbstractStateSpace, C::AbstractStateSpace, opt_params::OptParams, weights::OptMetrics)
-    costs = OptMetrics(P, C, opt_params)
+function cost(P::AbstractStateSpace, C::AbstractStateSpace, settings::Settings, weights::Metrics)
+    costs = Metrics(P, C, settings)
     return sum(costs .* weights) / sum(weights)
 end
 
 
 function optimize_PID(  P::LTISystem;
-                        pid_params::PIDParams = PIDParams(), #initial condition
-                        opt_params::OptParams = OptParams(),
-                        weights::OptMetrics = OptMetrics(ones(3)))
+                        params::Params = Params(), #initial condition
+                        settings::Settings = Settings(),
+                        weights::Metrics = Metrics(ones(3)))
 
-    x0 = pid_params |> Vector{Float64}
-    maxeval = opt_params.maxeval
-    lower_bounds = opt_params.lower_bounds |> Vector{Float64}
-    upper_bounds = opt_params.upper_bounds |> Vector{Float64}
-    initial_step = opt_params.initial_step |> Vector{Float64}
+    x0 = params |> Vector
+    maxeval = settings.maxeval
+    lower_bounds = settings.lower_bounds |> Vector
+    upper_bounds = settings.upper_bounds |> Vector
+    initial_step = settings.initial_step |> Vector
 
     P = ss(P)
-    f_opt = let P = P, opt_params = opt_params, weights = weights
+    f_opt = let P = P, settings = settings, weights = weights
         function (x::Vector{Float64}, ::Vector{Float64})
-            C = build_PID(PIDParams(x), opt_params)
-            cost(P, C, opt_params, weights)
+            C = build_PID(Params(x...))
+            cost(P, C, settings, weights)
         end
     end
 
@@ -112,11 +115,11 @@ function optimize_PID(  P::LTISystem;
 
     (minf, minx, exit_flag) = optimize(opt_loc, minx)
 
-    pid_params_opt = PIDParams(minx)
-    pid_opt = build_PID(pid_params_opt, opt_params)
-    metrics_opt = OptMetrics(P, pid_opt, opt_params)
+    params_opt = Params(minx...)
+    pid_opt = build_PID(params_opt)
+    metrics_opt = Metrics(P, pid_opt, settings)
 
-    return (exit_flag, minf, metrics_opt, pid_params_opt, pid_opt)
+    return (exit_flag, minf, metrics_opt, params_opt, pid_opt)
 
 
 end
