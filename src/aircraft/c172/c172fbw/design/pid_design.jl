@@ -8,7 +8,7 @@ using Trapz: trapz
 
 @kwdef struct Params{T} <: FieldVector{4, T}
     k_p::T = 1.0
-    k_i::T = 1.0
+    k_i::T = 0.0
     k_d::T = 0.1
     τ_f::T = 0.01
 end
@@ -37,6 +37,13 @@ end
     Ms::T #maximum sensitivity
     ∫e::T #integrated absolute error
     ef::T #steady-state error
+end
+
+@kwdef struct Results
+    exit_flag::Symbol
+    cost::Float64
+    metrics::Metrics{Float64}
+    params::Params{Float64}
 end
 
 function build_PID(params::Params{<:Real})
@@ -102,7 +109,7 @@ function optimize_PID(  P::LTISystem;
         opt_glb = Opt(:GN_DIRECT_L, length(x0))
         opt_glb.min_objective = f_opt
         opt_glb.maxeval = maxeval
-        opt_glb.stopval = 1e-6
+        opt_glb.stopval = 1e-5
         opt_glb.lower_bounds = lower_bounds
         opt_glb.upper_bounds = upper_bounds
         opt_glb.initial_step = initial_step
@@ -112,9 +119,10 @@ function optimize_PID(  P::LTISystem;
 
     #second pass with local optimizer
     opt_loc = Opt(:LN_BOBYQA, length(x0))
+    # opt_loc = Opt(:LN_COBYLA, length(x0))
     opt_loc.min_objective = f_opt
-    opt_loc.maxeval = maxeval
-    opt_loc.stopval = 1e-6
+    opt_loc.maxeval = 5000
+    opt_loc.stopval = 1e-5
     opt_loc.lower_bounds = lower_bounds
     opt_loc.upper_bounds = upper_bounds
     opt_loc.initial_step = initial_step
@@ -125,15 +133,24 @@ function optimize_PID(  P::LTISystem;
     pid_opt = build_PID(params_opt)
     metrics_opt = Metrics(P, pid_opt, settings)
 
-    return (exit_flag, minf, metrics_opt, params_opt, pid_opt)
+    return Results(exit_flag, minf, metrics_opt, params_opt)
 
 
 end
 
-function test()
+function check_results(results::Results,
+            thresholds::Metrics{Float64} = PIDDesign.Metrics(; Ms = 1.3, ∫e = 0.05, ef = 0.01))
 
+    @unpack exit_flag, metrics = results
+
+    @assert metrics.Ms < thresholds.Ms #sensitivity function maximum magnitude
+    @assert metrics.∫e < thresholds.∫e #normalized absolute integrated error
+    @assert metrics.ef < thresholds.ef #remaining error after t_sim
+
+    @assert (exit_flag === :ROUNDOFF_LIMITED) | (exit_flag === :STOPVAL_REACHED)
 
 end
+
 
 
 end

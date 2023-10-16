@@ -136,12 +136,12 @@ function test_sim(; save::Bool = true)
         trim_params = C172FBW.TrimParameters(
             Ob = Geographic(LatLon(), h_trn + 1000),
             ψ_nb = 0.0,
-            TAS = 60.0,
+            EAS = 50.0,
             γ_wOb_n = 0.0,
             ψ_lb_dot = 0.0,
             θ_lb_dot = 0.0,
             β_a = 0.0,
-            fuel_load = 1,
+            x_fuel = 1,
             mixture = 0.5,
             flaps = 0.0)
 

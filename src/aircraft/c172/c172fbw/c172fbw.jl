@@ -412,7 +412,7 @@ end
 @kwdef struct TrimParameters <: AbstractTrimParameters
     Ob::Geographic{NVector, Ellipsoidal} = Geographic(NVector(), HOrth(1000))
     ψ_nb::Float64 = 0.0 #geographic heading
-    TAS::Float64 = 50.0 #true airspeed
+    EAS::Float64 = 50.0 #equivalent airspeed
     γ_wOb_n::Float64 = 0.0 #wind-relative flight path angle
     ψ_lb_dot::Float64 = 0.0 #LTF-relative turn rate
     θ_lb_dot::Float64 = 0.0 #LTF-relative pitch rate
@@ -428,9 +428,11 @@ function Kinematics.Initializer(trim_state::TrimState,
                                 trim_params::TrimParameters,
                                 env::System{<:AbstractEnvironment})
 
-    @unpack TAS, β_a, γ_wOb_n, ψ_nb, ψ_lb_dot, θ_lb_dot, Ob = trim_params
+    @unpack EAS, β_a, γ_wOb_n, ψ_nb, ψ_lb_dot, θ_lb_dot, Ob = trim_params
     @unpack α_a, φ_nb = trim_state
 
+    atm_data = AtmosphericData(env.atm, Ob)
+    TAS = Atmosphere.EAS2TAS(EAS; ρ = atm_data.ISA.ρ)
     v_wOb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
     v_wOb_b = C172.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
 
@@ -446,7 +448,7 @@ function Kinematics.Initializer(trim_state::TrimState,
     h = HEllip(Ob)
 
     v_wOb_n = q_nb(v_wOb_b) #wind-relative aircraft velocity, NED frame
-    v_ew_n = AtmosphericData(env.atm, Ob).wind.v_ew_n
+    v_ew_n = atm_data.wind.v_ew_n
     v_eOb_n = v_ew_n + v_wOb_n
 
     Kinematics.Initializer(; q_nb, loc, h, ω_lb_b, v_eOb_n, Δx = 0.0, Δy = 0.0)
@@ -459,7 +461,7 @@ function assign!(physics::System{<:C172FBW.Physics},
                 trim_params::TrimParameters,
                 trim_state::TrimState)
 
-    @unpack TAS, β_a, x_fuel, flaps, mixture, payload = trim_params
+    @unpack EAS, β_a, x_fuel, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
     @unpack act, pwp, aero, fuel, ldg, pld = physics.airframe
 
@@ -647,7 +649,7 @@ end
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
-    TAS::Float64 = 0.0; α::Float64 = 0.0; β::Float64 = 0.0; #airspeed, AoA, AoS
+    EAS::Float64 = 0.0; α::Float64 = 0.0; β::Float64 = 0.0; #airspeed, AoA, AoS
     f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
     χ::Float64 = 0.0; γ::Float64 = 0.0; #track and flight path angles
@@ -702,11 +704,11 @@ function YLinear(physics::System{<:C172FBW.Physics})
     χ = Attitude.azimuth(v_eOb_n)
     γ = Attitude.inclination(v_eOb_n)
     f_x, f_y, f_z = physics.y.rigidbody.f_G_b
-    TAS = physics.y.air.TAS
+    EAS = physics.y.air.EAS
     ω_eng = physics.y.airframe.pwp.engine.ω
     m_fuel = physics.y.airframe.fuel.m_avail
 
-    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, TAS, α, β,
+    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, EAS, α, β,
             f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, ω_eng, m_fuel)
 
 end
@@ -838,7 +840,7 @@ function RobustAndOptimalControl.named_ss(
     elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
         u_labels = [:throttle_cmd, :elevator_cmd]
-        y_labels = [:q, :θ, :α, :TAS, :f_x, :f_z, :γ, :ω_eng]
+        y_labels = [:q, :θ, :α, :EAS, :f_x, :f_z, :γ, :ω_eng]
         lm_long = submodel(lm; x = x_labels, u = u_labels, y = y_labels)
         return named_ss(ss(lm_long), x = x_labels, u = u_labels, y = y_labels)
 

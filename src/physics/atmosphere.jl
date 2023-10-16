@@ -150,6 +150,17 @@ end
 
 end
 
+@inline ISAData() = ISAData(HGeop(0))
+@inline ISAData(h::Real) = ISAData(HGeop(h))
+
+@inline function ISAData(sys::System{<:AbstractSeaLevelConditions}, loc::Geographic)
+
+    h_geop = Altitude{Geopotential}(loc.h, loc.loc)
+    sl = SeaLevelData(sys, loc.loc)
+    ISAData(h_geop, sl)
+
+end
+
 # #top-down / recursive implementation
 # @inline function get_tp(h::Real, T0::Real = T0_std, p0::Real = p0_std, g0::Real = g0_std)
 
@@ -160,16 +171,6 @@ end
 #     p = ISA_pressure_law(h, g0, p_b, T_b, h_b, β)
 #     return (T, p)
 # end
-
-@inline ISAData() = ISAData(HGeop(0))
-
-@inline function ISAData(sys::System{<:AbstractSeaLevelConditions}, loc::Geographic)
-
-    h_geop = Altitude{Geopotential}(loc.h, loc.loc)
-    sl = SeaLevelData(sys, loc.loc)
-    ISAData(h_geop, sl)
-
-end
 
 ################################################################################
 ################################# Wind #########################################
