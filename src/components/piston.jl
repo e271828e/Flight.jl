@@ -157,7 +157,7 @@ Systems.init(::SystemS, ::Engine) = PistonEngineS()
 function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
                         M_load::Real, J_load::Real)
 
-    @unpack ω_rated, ω_idle, P_rated, J, M_start, lookup = eng.params
+    @unpack ω_rated, ω_idle, P_rated, J, M_start, lookup = eng.constants
     @unpack idle, frc = eng.subsystems
     @unpack start, stop = eng.u
 
@@ -252,7 +252,7 @@ end
 function Systems.f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
 
     @unpack idle, frc = eng.subsystems
-    @unpack ω_stall, ω_idle = eng.params
+    @unpack ω_stall, ω_idle = eng.constants
 
     ω = eng.x.ω
 
@@ -429,7 +429,7 @@ end
 
 function GUI.draw(sys::System{<:Engine}, window_label::String = "Piston Engine")
 
-    @unpack u, y, params = sys
+    @unpack u, y, constants = sys
     @unpack idle, frc = sys
     @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ, SFC = y
 
@@ -489,7 +489,7 @@ end
 function Systems.f_ode!(sys::System{<:Thruster}, air::AirData, kin::KinematicData)
 
     @unpack engine, propeller = sys
-    @unpack gear_ratio = sys.params
+    @unpack gear_ratio = sys.constants
 
     ω_eng = engine.x.ω
     ω_prop = gear_ratio * ω_eng
@@ -499,7 +499,7 @@ function Systems.f_ode!(sys::System{<:Thruster}, air::AirData, kin::KinematicDat
     M_prop = propeller.y.wr_p.M[1]
     M_eq = gear_ratio * M_prop #load torque seen from the engine shaft
 
-    J_prop = propeller.params.J_xx
+    J_prop = propeller.constants.J_xx
     J_eq = gear_ratio^2 * J_prop #load moment of inertia seen from the engine side
 
     f_ode!(engine, air; M_load = M_eq, J_load = J_eq)

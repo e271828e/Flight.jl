@@ -105,7 +105,7 @@ function test_trimming()
 
         @test e_nb.φ ≈ state.φ_nb
         @test ac.y.airframe.aero.α ≈ state.α_a
-        @test ac.y.airframe.pwp.engine.ω == state.n_eng * ac.airframe.pwp.engine.params.ω_rated
+        @test ac.y.airframe.pwp.engine.ω == state.n_eng * ac.airframe.pwp.engine.constants.ω_rated
         @test ac.airframe.act.u.throttle == state.throttle
         @test ac.airframe.act.u.aileron_offset == state.aileron
         @test ac.airframe.act.u.elevator_offset == state.elevator
@@ -113,7 +113,7 @@ function test_trimming()
 
         @test e_nb.ψ ≈ params.ψ_nb
         @test Attitude.inclination(v_wOb_n) ≈ params.γ_wOb_n atol = 1e-12
-        @test ac.y.kinematics.common.ω_lb_b ≈ Attitude.ω(e_lb, [params.ψ_lb_dot, params.θ_lb_dot, 0])
+        @test ac.y.kinematics.common.ω_lb_b ≈ Attitude.ω(e_lb, [params.ψ_lb_dot, constants.θ_lb_dot, 0])
         @test ac.y.air.TAS ≈ params.TAS
         @test ac.y.airframe.aero.β ≈ params.β_a
         @test ac.x.airframe.fuel[1] == params.fuel

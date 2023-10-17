@@ -483,7 +483,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
             CAS_enable, roll_mode_select, pitch_mode_select, yaw_mode_select,
             throttle, mixture, roll_input, pitch_input, yaw_input,
             aileron_offset, elevator_offset, rudder_offset, flaps, brake_left, brake_right = avionics.u
-    @unpack p_input_sf, q_input_sf, φ_input_sf, θ_input_sf, β_input_sf = avionics.params
+    @unpack p_input_sf, q_input_sf, φ_input_sf, θ_input_sf, β_input_sf = avionics.constants
 
     any_wow = any(SVector{3}(leg.strut.wow for leg in airframe.ldg.y))
     flight_phase = any_wow ? phase_gnd : phase_air

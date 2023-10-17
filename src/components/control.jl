@@ -7,9 +7,11 @@ using Flight.FlightCore.Systems
 using Flight.FlightCore.Plotting
 using Flight.FlightCore.GUI
 
-export LinearStateSpace, PIContinuous, PIDDiscrete
-export DiscreteIntegrator, DiscreteLead
-export submodel
+export LinearStateSpace, submodel
+export PIContinuous, PIDDiscrete
+export PIDDiscreteNew, IntegratorDiscrete, LeadLagDiscrete
+
+export PIDOpt
 
 ################################################################################
 ########################### LinearStateSpace ###################################
@@ -57,8 +59,8 @@ Systems.init(::SystemY, cmp::LinearStateSpace) = SVector{length(cmp.y0)}(cmp.y0)
 
 function Systems.f_ode!(sys::System{<:LinearStateSpace{LX, LU, LY}}) where {LX, LU, LY}
 
-    @unpack ẋ, x, u, y, params = sys
-    @unpack ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache = params
+    @unpack ẋ, x, u, y, constants = sys
+    @unpack ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache = constants
 
     #the following is equivalent to:
     #ẋ = ẋ0 + A * (x - x0) + B * (u - u0)
@@ -165,8 +167,8 @@ Systems.init(::SystemU, ::PIContinuous{N}) where {N} = PIContinuousU{N}()
 
 function Systems.f_ode!(sys::System{<:PIContinuous{N}}) where {N}
 
-    @unpack ẋ, x, u, params = sys
-    @unpack k_p, k_i, k_l, β_p = params
+    @unpack ẋ, x, u, constants = sys
+    @unpack k_p, k_i, k_l, β_p = constants
 
     x_i = SVector{N, Float64}(x)
     setpoint = SVector(u.setpoint)
@@ -398,8 +400,8 @@ end
 
 function Systems.f_disc!(sys::System{<:PIDDiscrete{N}}, Δt::Real) where {N}
 
-    @unpack s, u, params = sys
-    @unpack k_p, k_i, k_d, τ_d, β_p, β_d = params
+    @unpack s, u, constants = sys
+    @unpack k_p, k_i, k_d, τ_d, β_p, β_d = constants
 
     setpoint = SVector(u.setpoint)
     feedback = SVector(u.feedback)
@@ -555,24 +557,24 @@ function GUI.draw(sys::System{<:PIDDiscrete{N}}, label::String = "PIDDiscrete{$N
 end #function
 
 
-################# DiscreteIntegrator #################
+################# IntegratorDiscrete #################
 ################################################################################
 
-struct DiscreteIntegrator <: SystemDefinition end
+struct IntegratorDiscrete <: SystemDefinition end
 
-@kwdef mutable struct DiscreteIntegratorU
+@kwdef mutable struct IntegratorDiscreteU
     u1::Float64 = 0 #current input
     sat_ext::Int64 = 0 #external (signed) saturation signal
     bound_lo::Float64 = -Inf #lower output bound
     bound_hi::Float64 = Inf #higher output bound
 end
 
-@kwdef mutable struct DiscreteIntegratorS
+@kwdef mutable struct IntegratorDiscreteS
     x0::Float64 = 0 #previous integrator state
     sat_y0::Int64 = 0 #previous output saturation state
 end
 
-@kwdef struct DiscreteIntegratorY
+@kwdef struct IntegratorDiscreteY
     u1::Float64 = 0
     sat_ext::Float64 = 0
     bound_lo::Float64 = -Inf
@@ -583,11 +585,11 @@ end
     halted::Bool = false #integration halted
 end
 
-Systems.init(::SystemY, ::DiscreteIntegrator) = DiscreteIntegratorY()
-Systems.init(::SystemU, ::DiscreteIntegrator) = DiscreteIntegratorU()
-Systems.init(::SystemS, ::DiscreteIntegrator) = DiscreteIntegratorS()
+Systems.init(::SystemY, ::IntegratorDiscrete) = IntegratorDiscreteY()
+Systems.init(::SystemU, ::IntegratorDiscrete) = IntegratorDiscreteU()
+Systems.init(::SystemS, ::IntegratorDiscrete) = IntegratorDiscreteS()
 
-function reset!(sys::System{<:DiscreteIntegrator})
+function reset!(sys::System{<:IntegratorDiscrete})
     sys.u.u1 = 0
     sys.u.sat_ext = 0
     sys.s.x0 = 0
@@ -595,7 +597,7 @@ function reset!(sys::System{<:DiscreteIntegrator})
     f_disc!(sys, 1.0)
 end
 
-function Systems.f_disc!(sys::System{<:DiscreteIntegrator}, Δt::Real)
+function Systems.f_disc!(sys::System{<:IntegratorDiscrete}, Δt::Real)
 
     @unpack s, u = sys
     @unpack u1, sat_ext, bound_lo, bound_hi = u
@@ -612,7 +614,7 @@ function Systems.f_disc!(sys::System{<:DiscreteIntegrator}, Δt::Real)
     s.x0 = x1
     s.sat_y0 = sat_y1
 
-    sys.y = DiscreteIntegratorY(; u1, sat_ext, bound_lo, bound_hi, x1, y1, sat_y1, halted)
+    sys.y = IntegratorDiscreteY(; u1, sat_ext, bound_lo, bound_hi, x1, y1, sat_y1, halted)
 
     return false
 
@@ -622,7 +624,7 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(sys::System{<:DiscreteIntegrator}, label::String = "DiscreteIntegrator")
+function GUI.draw(sys::System{<:IntegratorDiscrete}, label::String = "IntegratorDiscrete")
 
     @unpack x0, sat_y0 = sys.s
     @unpack u1, sat_ext, bound_lo, bound_hi, x1, y1, sat_y1, halted = sys.y
@@ -645,7 +647,7 @@ function GUI.draw(sys::System{<:DiscreteIntegrator}, label::String = "DiscreteIn
 end #function
 
 
-######################### DiscreteLeadCompensator ##############################
+######################### LeadLagDiscreteCompensator ##############################
 ################################################################################
 
 #Lead / lag compensator with pole p < 0, zero z < 0, gain k. Discretized by
@@ -653,21 +655,21 @@ end #function
 #|p| > |z|: lead
 #|p| < |z|: lag
 
-struct DiscreteLead <: SystemDefinition end
+struct LeadLagDiscrete <: SystemDefinition end
 
-@kwdef mutable struct DiscreteLeadU
+@kwdef mutable struct LeadLagDiscreteU
     z::Float64 = -1.0 #zero location (z < 0)
     p::Float64 = -10.0 #pole location (p < 0)
     k::Float64 = 1.0 #gain
     u1::Float64 = 0.0 #input
 end
 
-@kwdef mutable struct DiscreteLeadS
+@kwdef mutable struct LeadLagDiscreteS
     u0::Float64 = 0.0 #previous input
     x0::Float64 = 0.0 #previous output
 end
 
-@kwdef struct DiscreteLeadY
+@kwdef struct LeadLagDiscreteY
     z::Float64 = -1.0
     p::Float64 = -10.0
     k::Float64 = 1.0
@@ -675,18 +677,18 @@ end
     y1::Float64 = 0.0 #current output
 end
 
-Systems.init(::SystemY, ::DiscreteLead) = DiscreteLeadY()
-Systems.init(::SystemU, ::DiscreteLead) = DiscreteLeadU()
-Systems.init(::SystemS, ::DiscreteLead) = DiscreteLeadS()
+Systems.init(::SystemY, ::LeadLagDiscrete) = LeadLagDiscreteY()
+Systems.init(::SystemU, ::LeadLagDiscrete) = LeadLagDiscreteU()
+Systems.init(::SystemS, ::LeadLagDiscrete) = LeadLagDiscreteS()
 
-function reset!(sys::System{<:DiscreteLead})
+function reset!(sys::System{<:LeadLagDiscrete})
     sys.u.u1 = 0
     sys.s.u0 = 0
     sys.s.x0 = 0
     f_disc!(sys, 1.0) #update outputs (keeps the actual p and z)
 end
 
-function Systems.f_disc!(sys::System{<:DiscreteLead}, Δt::Real)
+function Systems.f_disc!(sys::System{<:LeadLagDiscrete}, Δt::Real)
 
     @unpack s, u = sys
     @unpack z, p, k, u1 = u
@@ -699,7 +701,7 @@ function Systems.f_disc!(sys::System{<:DiscreteLead}, Δt::Real)
     x1 = a0 * x0 + b1 * u1 + b0 * u0
     y1 = k * x1
 
-    sys.y = DiscreteLeadY(; z, p, k, u1, y1)
+    sys.y = LeadLagDiscreteY(; z, p, k, u1, y1)
 
     s.x0 = x1
     s.u0 = u1
@@ -711,7 +713,7 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw(sys::System{<:DiscreteLead}, label::String = "Discrete Lead Compensator")
+function GUI.draw(sys::System{<:LeadLagDiscrete}, label::String = "Discrete Lead Compensator")
 
     @unpack z, p, k, u1, y1 = sys.y
 
@@ -726,4 +728,389 @@ function GUI.draw(sys::System{<:DiscreteLead}, label::String = "Discrete Lead Co
     # CImGui.End()
 
 end #function
+
+####################### Gain-Schedulable PID Compensator #######################
+################################################################################
+
+
+@kwdef struct PIDDiscreteNew <: SystemDefinition end
+
+@kwdef mutable struct PIDDiscreteNewU
+    k_p::Float64 = 1.0 #proportional gain
+    k_i::Float64 = 0.1 #integral gain
+    k_d::Float64 = 0.1 #derivative gain
+    τ_f::Float64 = 0.01 #derivative filter time constant
+    β_p::Float64 = 1.0 #proportional path setpoint weighting factor
+    β_d::Float64 = 1.0 #derivative path setpoint weighting factor
+    bound_lo::Float64 = -Inf #lower output bound
+    bound_hi::Float64 = Inf #higher output bound
+    input::Float64 = 0.0 #current input signal
+    sat_ext::Int64 = 0 #external (signed) saturation input signal
+end
+
+@kwdef mutable struct PIDDiscreteNewS
+    x_i0::Float64 = 0.0 #previous integrator path state
+    x_d0::Float64 = 0.0 #previous derivative path state
+    sat_out_0::Int64 = 0 #previous output saturation status
+end
+
+@kwdef struct PIDDiscreteNewY
+    k_p::Float64 = 1.0 #proportional gain
+    k_i::Float64 = 0.1 #integral gain
+    k_d::Float64 = 0.1 #derivative gain
+    τ_f::Float64 = 0.01 #derivative filter time constant
+    β_p::Float64 = 1.0 #proportional path setpoint weighting factor
+    β_d::Float64 = 1.0 #derivative path setpoint weighting factor
+    bound_lo::Float64 = -Inf
+    bound_hi::Float64 = Inf
+    input::Float64 = 0.0
+    sat_ext::Float64 = 0.0
+    u_p::Float64 = 0.0 #proportional path input
+    u_i::Float64 = 0.0 #integral path input
+    u_d::Float64 = 0.0 #derivative path input
+    y_p::Float64 = 0.0 #proportional path output
+    y_i::Float64 = 0.0 #integral path output
+    y_d::Float64 = 0.0 #derivative path output
+    out_free::Float64 = 0 #unbounded output
+    sat_out::Int64 = 0 #output saturation status
+    out::Float64 = 0 #actual PID output
+    int_halted::Bool = false #integration halted
+end
+
+Systems.init(::SystemY, ::PIDDiscreteNew) = PIDDiscreteNewY()
+Systems.init(::SystemU, ::PIDDiscreteNew) = PIDDiscreteNewU()
+Systems.init(::SystemS, ::PIDDiscreteNew) = PIDDiscreteNewS()
+
+function Control.reset!(sys::System{<:PIDDiscreteNew})
+    sys.u.input = 0
+    sys.u.sat_ext = 0
+    sys.s.x_i0 = 0
+    sys.s.x_d0 = 0
+    sys.s.sat_out_0 = 0
+    f_disc!(sys, 1.0)
+end
+
+function Systems.f_disc!(sys::System{<:PIDDiscreteNew}, Δt::Real)
+
+    @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext = sys.u
+    @unpack x_i0, x_d0, sat_out_0 = sys.s
+
+    α = 1 / (τ_f + Δt)
+
+    u_p = β_p * input
+    u_d = β_d * input
+    u_i = input
+
+    int_halted = ((sign(u_i * sat_out_0) > 0) || (sign(u_i * sat_ext) > 0))
+
+    x_i = x_i0 + Δt * u_i * !int_halted
+    x_d = α * τ_f * x_d0 + Δt * α * k_d * u_d
+
+    y_p = k_p * u_p
+    y_i = k_i * x_i
+    y_d = α * (-x_d0 + k_d * u_d)
+    out_free = y_p + y_i + y_d
+
+    sat_hi = out_free >= bound_hi
+    sat_lo = out_free <= bound_lo
+    sat_out = sat_hi - sat_lo
+
+    out = clamp(out_free, bound_lo, bound_hi)
+
+    sys.y = PIDDiscreteNewY(; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
+                u_p, u_i, u_d, y_p, y_i, y_d, out_free, sat_out, out, int_halted)
+
+    sys.s.x_i0 = x_i
+    sys.s.x_d0 = x_d
+    sys.s.sat_out_0 = sat_out
+
+    return false
+
+end
+
+function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteNewY}; kwargs...)
+
+    pd = OrderedDict{Symbol, Plots.Plot}()
+
+    input = plot(th.input; title = "Input", ylabel = L"$e$", kwargs...)
+    out = plot(th.out; title = "Output", ylabel = L"$y$", kwargs...)
+
+    pd[:sf] = plot(input, out;
+        plot_title = "Input & Output",
+        layout = (1,2),
+        link = :y,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    k_p = plot(th.β_p; title = "Proportional Gain", ylabel = L"$k_p$", kwargs...)
+    k_i = plot(th.β_d; title = "Integral Gain", ylabel = L"$k_i$", kwargs...)
+    k_d = plot(th.bound_lo; title = "Derivative Gain", ylabel = L"$k_d$", kwargs...)
+    τ_f = plot(th.bound_hi; title = "Derivative Filter Time Constant", ylabel = L"$\tau_f$", kwargs...)
+
+    pd[:p1] = plot(k_p, k_i, k_d, τ_f;
+        plot_title = "Parameters",
+        layout = (4,1),
+        link = :none,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    β_p = plot(th.β_p; title = "Proportional Input Weighting", ylabel = L"$\beta_p$", kwargs...)
+    β_d = plot(th.β_d; title = "Derivative Input Weighting", ylabel = L"$\beta_d$", kwargs...)
+    bound_lo = plot(th.bound_lo; title = "Lower Output Bound", ylabel = L"$y_{min}$", kwargs...)
+    bound_hi = plot(th.bound_hi; title = "Upper Output Bound", ylabel = L"$y_{max}$", kwargs...)
+
+    pd[:p2] = plot(β_p, β_d, bound_lo, bound_hi;
+        plot_title = "Parameters",
+        layout = (4,1),
+        link = :none,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    sat_ext = plot(th.sat_ext; title = "External Saturation Input", ylabel = "", kwargs...)
+    sat_out = plot(th.sat_out; title = "Output Saturation", ylabel = "", kwargs...)
+    int_halted = plot(th.int_halted; title = "Integrator Halted", ylabel = "", kwargs...)
+
+    pd[:awu] = plot(sat_ext, sat_out, int_halted;
+        plot_title = "Anti-Windup",
+        layout = (1,3),
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    u_p = plot(th.u_p; title = "Input", ylabel = L"$u_p$", kwargs...)
+    y_p = plot(th.y_p; title = "Output", ylabel = L"$y_p$", kwargs...)
+
+    pd[:prop] = plot(u_p, y_p;
+        plot_title = "Proportional Path",
+        layout = (1,2),
+        link = :y,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    u_i = plot(th.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
+    y_i = plot(th.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
+
+    pd[:int] = plot(u_i, y_i, int_halted;
+        plot_title = "Integral Path",
+        layout = (1,3),
+        link = :y,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    u_d = plot(th.u_d; title = "Input", ylabel = L"$u_d$", kwargs...)
+    y_d = plot(th.y_d; title = "Output", ylabel = L"$y_d$", kwargs...)
+
+    pd[:der] = plot(u_d, y_d;
+        plot_title = "Derivative Path",
+        layout = (1,2),
+        link = :y,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    out_free = plot(th.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
+    out = plot(th.out; title = "Actual", ylabel = L"$y$", kwargs...)
+
+    pd[:out] = plot(out_free, out, sat_out;
+        plot_title = "PID Output",
+        layout = (1,3),
+        link = :y,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    return pd
+
+end
+
+#################################### GUI #######################################
+
+
+function GUI.draw(sys::System{<:PIDDiscreteNew}, label::String = "PIDDiscreteNew")
+
+    @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext, u_p, u_i, u_d,
+            y_p, y_i, y_d, out_free, sat_out, out, int_halted = sys.y
+
+    # CImGui.Begin(label)
+
+        CImGui.Text("Proportional Gain = $k_p")
+        CImGui.Text("Integral Gain = $k_i")
+        CImGui.Text("Derivative Gain = $k_d")
+        CImGui.Text("Derivative Filter Time Constant = $τ_f")
+        CImGui.Text("Proportional Input Weighting = $β_p")
+        CImGui.Text("Derivative Input Weighting = $β_d")
+        CImGui.Text("Lower Output Bound = $bound_lo")
+        CImGui.Text("Upper Output Bound = $bound_hi")
+        CImGui.Text("Input = $input")
+        CImGui.Text("External Saturation Input = $sat_ext")
+        CImGui.Text("Proportional Path Input = $u_p")
+        CImGui.Text("Proportional Path Output = $y_p")
+        CImGui.Text("Integral Path Input = $u_i")
+        CImGui.Text("Integral Path Output = $y_i")
+        CImGui.Text("Derivative Path Input = $u_d")
+        CImGui.Text("Derivative Path Output = $y_d")
+        CImGui.Text("Free Output = $out_free")
+        CImGui.Text("Actual Output = $out")
+        CImGui.Text("Output Saturation = $sat_out")
+        CImGui.Text("Integrator Halted = $int_halted")
+
+    # CImGui.End()
+
+end #function
+
+
+################################################################################
+############################ PID Optimization ##################################
+################################################################################
+
+module PIDOpt
+
+using StaticArrays
+using UnPack
+using NLopt
+using ControlSystems
+using Trapz: trapz
+
+using ..Control
+
+# export Params, Settings, Metrics, Results
+
+@kwdef struct Params{T} <: FieldVector{4, T} #parallel form
+    k_p::T = 1.0
+    k_i::T = 0.0
+    k_d::T = 0.1
+    τ_f::T = 0.01
+end
+
+Base.getproperty(params::Params, name::Symbol) = getproperty(params, Val(name))
+
+@generated function Base.getproperty(params::Params, ::Val{S}) where {S}
+    if S ∈ fieldnames(Params)
+        return :(getfield(params, $(QuoteNode(S))))
+    elseif S === :T_i
+        return :(params.k_p / params.k_i)
+    elseif S === :T_d
+        return :(params.k_d / params.k_p)
+    end
+end
+
+@kwdef struct Metrics{T} <: FieldVector{3, T}
+    Ms::T #maximum sensitivity
+    ∫e::T #integrated absolute error
+    ef::T #steady-state error
+end
+
+@kwdef struct Settings
+    t_sim::Float64 = 5.0
+    maxeval::Int64 = 5000
+    lower_bounds::Params = Params(; k_p = 0.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+    upper_bounds::Params = Params(; k_p = 50.0, k_i = 50.0, k_d = 10.0, τ_f = 0.01)
+    initial_step::Params = Params(; k_p = 0.1, k_i = 0.1, k_d = 0.1, τ_f = 0.01)
+end
+
+@kwdef struct Results
+    exit_flag::Symbol
+    cost::Float64
+    metrics::Metrics{Float64}
+    params::Params{Float64}
+end
+
+function build_PID(params::Params{<:Real})
+    @unpack k_p, k_i, k_d, τ_f = params
+    (k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])) |> ss
+end
+
+function Metrics(plant::AbstractStateSpace, pid::AbstractStateSpace,
+                       settings::Settings)
+
+    S = sensitivity(plant, pid) #sensitivity function
+    T = output_comp_sensitivity(plant, pid) #complementary sensitivity function (AKA closed loop)
+
+    T_step = step(T, settings.t_sim)
+    t = T_step.t
+    y = T_step.y |> vec
+    e = abs.(y .- 1.0)
+
+    #hinfnorm appears to be quite brittle, so instead we brute force the
+    #computation of maximum sensitivity transfer function magnitude
+    S_tf = tf(S)
+    iω_range = ((10^x)*im for x in range(-3, 3, length=1000))
+    S_range = [abs(S_tf.(iω)[1]) for iω in iω_range]
+    Ms = maximum(S_range)
+
+    #integrated error should be normalized with respect to the length of the
+    #time window
+    ∫e = trapz(t, e)/t[end]
+    ef = e[end]
+
+    Metrics(; Ms, ∫e, ef)
+
+end
+
+function cost(plant::AbstractStateSpace, pid::AbstractStateSpace,
+              settings::Settings, weights::Metrics{<:Real})
+    costs = Metrics(plant, pid, settings)
+    return sum(costs .* weights) / sum(weights)
+end
+
+
+function optimize_PID(  plant::LTISystem;
+                    params_0::Params = Params(), #initial condition
+                    settings::Settings = Settings(),
+                    weights::Metrics{<:Real} = Metrics(ones(3)),
+                    global_search::Bool = true)
+
+    x0 = params_0 |> Vector
+    maxeval = settings.maxeval
+    lower_bounds = settings.lower_bounds |> Vector
+    upper_bounds = settings.upper_bounds |> Vector
+    initial_step = settings.initial_step |> Vector
+
+    plant = ss(plant)
+    f_opt = let plant = plant, settings = settings, weights = weights
+        function (x::Vector{Float64}, ::Vector{Float64})
+            pid = build_PID(Params(x...))
+            cost(plant, pid, settings, weights)
+        end
+    end
+
+    minx = x0
+
+    if global_search
+        opt_glb = Opt(:GN_DIRECT_L, length(x0))
+        opt_glb.min_objective = f_opt
+        opt_glb.maxeval = maxeval
+        opt_glb.stopval = 1e-5
+        opt_glb.lower_bounds = lower_bounds
+        opt_glb.upper_bounds = upper_bounds
+        opt_glb.initial_step = initial_step
+
+        (minf, minx, exit_flag) = optimize(opt_glb, x0)
+    end
+
+    #second pass with local optimizer
+    opt_loc = Opt(:LN_BOBYQA, length(x0))
+    # opt_loc = Opt(:LN_COBYLA, length(x0))
+    opt_loc.min_objective = f_opt
+    opt_loc.maxeval = 5000
+    opt_loc.stopval = 1e-5
+    opt_loc.lower_bounds = lower_bounds
+    opt_loc.upper_bounds = upper_bounds
+    opt_loc.initial_step = initial_step
+
+    (minf, minx, exit_flag) = optimize(opt_loc, minx)
+
+    params_opt = Params(minx...)
+    pid_opt = build_PID(params_opt)
+    metrics_opt = Metrics(plant, pid_opt, settings)
+
+    return Results(exit_flag, minf, metrics_opt, params_opt)
+
+
+end
+
+function check_results(results::Results,
+            thresholds::Metrics{Float64} = Metrics(; Ms = 1.3, ∫e = 0.05, ef = 0.01))
+
+    @unpack exit_flag, metrics = results
+
+    @assert metrics.Ms < thresholds.Ms #sensitivity function maximum magnitude
+    @assert metrics.∫e < thresholds.∫e #normalized absolute integrated error
+    @assert metrics.ef < thresholds.ef #remaining error after t_sim
+
+    @assert (exit_flag === :ROUNDOFF_LIMITED) | (exit_flag === :STOPVAL_REACHED)
+
+end
+
+end ######################### submodule ########################################
+
 end #module

@@ -34,7 +34,7 @@ end
 
 RigidBody.AngMomTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
 RigidBody.WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
-RigidBody.get_mp_Ob(sys::System{EmptyAirframe}) = MassProperties(sys.params.mass_distribution)
+RigidBody.get_mp_Ob(sys::System{EmptyAirframe}) = MassProperties(sys.constants.mass_distribution)
 
 ################################################################################
 ############################## Aircraft Physics ################################

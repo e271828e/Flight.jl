@@ -164,12 +164,12 @@ function test_propeller()
 
             vp_sys.u[] = 0
             f_ode!(vp_sys, kin, air, ω)
-            @test vp_sys.y.Δβ ≈ vp_sys.params.lookup._data.Δβ_bounds[1]
+            @test vp_sys.y.Δβ ≈ vp_sys.constants.lookup._data.Δβ_bounds[1]
             Fx_0 = vp_sys.y.wr_p.F[1]
 
             vp_sys.u[] = 1
             f_ode!(vp_sys, kin, air, ω)
-            @test vp_sys.y.Δβ ≈ vp_sys.params.lookup._data.Δβ_bounds[2]
+            @test vp_sys.y.Δβ ≈ vp_sys.constants.lookup._data.Δβ_bounds[2]
             Fx_1 = vp_sys.y.wr_p.F[1]
 
             @test Fx_1 > Fx_0

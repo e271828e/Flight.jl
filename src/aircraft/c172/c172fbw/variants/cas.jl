@@ -17,7 +17,7 @@ using Flight.FlightComponents.Control
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
-using Flight.FlightComponents.Control: PIDDiscreteY, DiscreteIntegratorY, DiscreteLeadY
+using Flight.FlightComponents.Control: PIDDiscreteY, IntegratorDiscreteY, LeadLagDiscreteY
 
 using ...C172
 using ..C172FBW
@@ -196,12 +196,12 @@ end
 ############################### PitchRateCmpNew ################################
 
 @kwdef struct PitchRateCmpNew <: SystemDefinition
-    ll1::DiscreteLead = DiscreteLead()
-    ll2::DiscreteLead = DiscreteLead()
-    ll3::DiscreteLead = DiscreteLead()
-    ll4::DiscreteLead = DiscreteLead()
-    int1::DiscreteIntegrator = DiscreteIntegrator()
-    int2::DiscreteIntegrator = DiscreteIntegrator()
+    ll1::LeadLagDiscrete = LeadLagDiscrete()
+    ll2::LeadLagDiscrete = LeadLagDiscrete()
+    ll3::LeadLagDiscrete = LeadLagDiscrete()
+    ll4::LeadLagDiscrete = LeadLagDiscrete()
+    int1::IntegratorDiscrete = IntegratorDiscrete()
+    int2::IntegratorDiscrete = IntegratorDiscrete()
 end
 
 @kwdef mutable struct PitchRateCmpNewU
@@ -215,12 +215,12 @@ end
     feedback::Float64 = 0.0
     sat_ext::Int64 = 0
     out::Float64 = 0.0
-    ll1::DiscreteLeadY = DiscreteLeadY()
-    ll2::DiscreteLeadY = DiscreteLeadY()
-    ll3::DiscreteLeadY = DiscreteLeadY()
-    ll4::DiscreteLeadY = DiscreteLeadY()
-    int1::DiscreteIntegratorY = DiscreteIntegratorY()
-    int2::DiscreteIntegratorY = DiscreteIntegratorY()
+    ll1::LeadLagDiscreteY = LeadLagDiscreteY()
+    ll2::LeadLagDiscreteY = LeadLagDiscreteY()
+    ll3::LeadLagDiscreteY = LeadLagDiscreteY()
+    ll4::LeadLagDiscreteY = LeadLagDiscreteY()
+    int1::IntegratorDiscreteY = IntegratorDiscreteY()
+    int2::IntegratorDiscreteY = IntegratorDiscreteY()
 end
 
 Systems.init(::SystemU, ::PitchRateCmpNew) = PitchRateCmpNewU()

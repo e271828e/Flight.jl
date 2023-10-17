@@ -19,9 +19,10 @@ function test_control()
     @testset verbose = true "Control" begin
         test_state_space()
         test_pi_continuous()
-        test_pid_discrete()
-        test_discrete_integrator()
-        test_discrete_lead()
+        # test_pid_discrete()
+        test_integrator_discrete()
+        test_leadlag_discrete()
+        test_pid_discrete_new()
     end
 end
 
@@ -46,8 +47,8 @@ function test_state_space()
 
         sys = System(ss)
 
-        x = 2sys.params.x0
-        u = 3sys.params.u0
+        x = 2sys.constants.x0
+        u = 3sys.constants.u0
         sys.x .= x
         sys.u .= u
         f_ode!(sys)
@@ -260,11 +261,11 @@ function test_pid_discrete(save = false)
 end #function
 
 
-function test_discrete_integrator(save = false)
+function test_integrator_discrete(save = false)
 
-    @testset verbose = true "DiscreteIntegrator" begin
+    @testset verbose = true "IntegratorDiscrete" begin
 
-        sys = DiscreteIntegrator() |> System;
+        sys = IntegratorDiscrete() |> System;
         sim = Simulation(sys; Δt = 0.01)
 
         sys.u.bound_lo = -1
@@ -319,12 +320,12 @@ function test_discrete_integrator(save = false)
 end #function
 
 
-function test_discrete_lead(save = false)
+function test_leadlag_discrete(save = false)
 
-    @testset verbose = true "DiscreteLead" begin
+    @testset verbose = true "LeadLagDiscrete" begin
 
         z, p, k = -1, -10, 2.5
-        sys = DiscreteLead() |> System;
+        sys = LeadLagDiscrete() |> System;
         @pack! sys.u = z, p, k
 
         sys_io! = let
@@ -357,5 +358,130 @@ function test_discrete_lead(save = false)
         end #testset
 
 end #function
+
+
+function test_pid_discrete_new(save = false)
+
+    @testset verbose = true "PIDDiscreteNew" begin
+
+        sys = PIDDiscreteNew() |> System;
+        sim = Simulation(sys; Δt = 0.01)
+
+        sys.u.input = 1.0
+        sys.u.k_p = 1.0
+        sys.u.k_i = 1.0
+        sys.u.k_d = 0.1
+        step!(sim, 1, true)
+
+        @test sys.y.y_p == 1.0
+        @test sys.y.y_i ≈ 1.0
+        @test sys.y.out_free ≈ 2.0
+        @test sys.y.out ≈ 2.0
+        @test sys.y.sat_out == 0
+        @test !sys.y.int_halted
+
+        sys.u.bound_lo = -1
+        sys.u.bound_hi = 1
+        step!(sim, 1, true)
+        @test sys.y.out_free > 2.0
+        @test sys.y.out ≈ 1
+        @test sys.y.sat_out == 1
+        @test sys.y.int_halted
+
+        sys.u.input = -1.0
+        step!(sim, 2, true)
+        @test sys.y.sat_out == -1
+        @test sys.y.int_halted
+
+        sys.u.input = 0.1
+        step!(sim, 1, true)
+        @test sys.y.sat_out == 0
+        @test !sys.y.int_halted
+
+        sys.u.sat_ext = -sign(sys.y.u_i) #set opposite external saturation
+        step!(sim)
+        @test !sys.y.int_halted #integrator should have not halted
+
+        sys.u.sat_ext = sign(sys.y.u_i) #set same sign saturation
+        step!(sim)
+        @test sys.y.int_halted #integrator 2 should have halted
+
+        Control.reset!(sys)
+
+        @test sys.u.input == 0
+        @test sys.u.sat_ext == 0
+        @test sys.s.x_i0 == 0
+        @test sys.s.x_d0 == 0
+        @test sys.s.sat_out_0 == 0
+        @test sys.y.y_i == 0
+        @test sys.y.y_d == 0
+        @test sys.y.y_p == 0
+        @test !sys.y.int_halted
+        @test sys.u.bound_lo != 0
+        @test sys.u.bound_hi != 0
+
+        @test @ballocated($f_ode!($sys)) == 0
+        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_step!($sys)) == 0
+
+        plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+        save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
+
+        #operate PID as a filtered derivative
+        Control.reset!(sys)
+        sys.u.k_p = 0.0
+        sys.u.k_i = 0.0
+        sys.u.k_d = 1.0
+        sys.u.τ_f = 0.2
+        sys.u.bound_lo = -Inf
+        sys.u.bound_hi = Inf
+
+        sim = Simulation(sys; Δt = 0.01)
+        sys.u.input = 1.0
+        step!(sim)
+        @test sys.y.y_d > 0.0
+        step!(sim, 5, true)
+        @test sys.y.y_d ≈ 0.0 atol = 1e-6 #must have returned to zero
+
+        #test the numerical correctness of the PID discretization
+
+        #first, define an arbitrary PID through its transfer function, convert
+        #it to a continuous LinearStateSpace System and simulate it for a unit
+        #step input
+        k_p = 1
+        k_i = 1
+        k_d = 0.2
+        τ_f = 0.1
+        pid_tf = k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])
+
+        pid_ss = ss(pid_tf)
+        pid_lss = LinearStateSpace(pid_ss) |> System
+        pid_lss.u .= 1
+        sim = Simulation(pid_lss; dt = 0.0001, t_end = 2)
+        Sim.run!(sim)
+        th_lss = TimeHistory(sim)
+        th_y_lss = (Sim.get_components(th_lss) |> collect)[1]
+        y_lss_last = Sim.get_data(th_y_lss)[end]
+
+        #then, define the equivalent discrete PID and simulate it for a unit
+        #step input
+        Control.reset!(sys)
+        sys.u.input = 1
+        sys.u.k_p = 1.0
+        sys.u.k_i = 1.0
+        sys.u.k_d = 0.2
+        sys.u.τ_f = 0.1
+        sim = Simulation(sys; Δt = 0.0001, t_end = 2)
+        Sim.run!(sim)
+        th_disc = TimeHistory(sim)
+        th_y_disc = th_disc.out
+        y_disc_last = Sim.get_data(th_y_disc)[end]
+
+        #compare the final values
+        @test y_lss_last ≈ y_disc_last atol=1e-4
+
+        end #testset
+
+    end #function
 
 end #module

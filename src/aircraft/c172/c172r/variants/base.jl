@@ -135,7 +135,7 @@ function assign!(ac::System{<:Cessna172RBase},
 
     init_kinematics!(ac, Kinematics.Initializer(trim_state, trim_params, env))
 
-    ω_eng = n_eng * ac.airframe.pwp.engine.params.ω_rated
+    ω_eng = n_eng * ac.airframe.pwp.engine.constants.ω_rated
 
     ac.x.airframe.aero.α_filt = α_a #ensures zero state derivative
     ac.x.airframe.aero.β_filt = β_a #ensures zero state derivative
@@ -156,7 +156,7 @@ function assign!(ac::System{<:Cessna172RBase},
 
     #engine must be running, no way to trim otherwise
     ac.airframe.pwp.engine.s.state = Piston.eng_running
-    @assert ac.x.airframe.pwp.engine.ω > ac.airframe.pwp.engine.params.ω_idle
+    @assert ac.x.airframe.pwp.engine.ω > ac.airframe.pwp.engine.constants.ω_idle
 
     #engine idle compensator: as long as the engine remains at normal
     #operational speeds, well above its nominal idle speed, the idle controller
@@ -185,7 +185,7 @@ function cost(ac::System{<:Cessna172RBase})
 
     v_nd_dot = SVector{3}(ac.ẋ.kinematics.vel.v_eOb_b) / norm(ac.y.kinematics.common.v_eOb_b)
     ω_dot = SVector{3}(ac.ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
-    n_eng_dot = ac.ẋ.airframe.pwp.engine.ω / ac.airframe.pwp.engine.params.ω_rated
+    n_eng_dot = ac.ẋ.airframe.pwp.engine.ω / ac.airframe.pwp.engine.constants.ω_rated
 
     sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2
 
@@ -232,7 +232,7 @@ function Aircraft.trim!( ac::System{<:Cessna172RBase};
         rudder = -1)
 
     upper_bounds[:] .= TrimState(
-        α_a = ac.airframe.aero.params.α_stall[2], #critical AoA is 0.28 < 0.36
+        α_a = ac.airframe.aero.constants.α_stall[2], #critical AoA is 0.28 < 0.36
         φ_nb = π/3,
         n_eng = 1.1,
         throttle = 1,

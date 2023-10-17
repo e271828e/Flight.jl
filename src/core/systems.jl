@@ -50,7 +50,7 @@ mutable struct System{SD <: SystemDefinition, X <: XType, Y, U, S, P, B}
     u::U #control input
     s::S #discrete state
     t::Base.RefValue{Float64} #allows implicit propagation of t updates down the subsystem hierarchy
-    params::P
+    constants::P
     subsystems::B
 end
 
@@ -150,11 +150,11 @@ function System(sd::SystemDefinition,
     subsystems = NamedTuple{child_names}(child_systems)
 
     #the remaining fields of the SystemDefinition are saved as parameters
-    params = NamedTuple(n=>getfield(sd, n) for n in propertynames(sd) if !(n in child_names))
-    params = (!isempty(params) ? params : nothing)
+    constants = NamedTuple(n=>getfield(sd, n) for n in propertynames(sd) if !(n in child_names))
+    constants = (!isempty(constants) ? constants : nothing)
 
-    sys = System{map(typeof, (sd, x, y, u, s, params, subsystems))...}(
-                    ẋ, x, y, u, s, t, params, subsystems)
+    sys = System{map(typeof, (sd, x, y, u, s, constants, subsystems))...}(
+                    ẋ, x, y, u, s, t, constants, subsystems)
 
     init!(sys)
 

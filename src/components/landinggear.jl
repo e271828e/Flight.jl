@@ -47,7 +47,7 @@ Systems.init(::SystemU, ::DirectSteering) = Ref(Ranged(0.0, -1., 1.))
 Systems.init(::SystemY, ::DirectSteering) = DirectSteeringY(0.0) #steering angle
 
 function Systems.f_ode!(sys::System{DirectSteering})
-    sys.y = DirectSteeringY(Float64(sys.u[]) * sys.params.ψ_max)
+    sys.y = DirectSteeringY(Float64(sys.u[]) * sys.constants.ψ_max)
 end
 
 get_steering_angle(sys::System{DirectSteering}) = sys.y.ψ
@@ -86,7 +86,7 @@ Systems.init(::SystemU, ::DirectBraking) = Ref(Ranged(0.0, 0., 1.))
 Systems.init(::SystemY, ::DirectBraking) = DirectBrakingY()
 
 function Systems.f_ode!(sys::System{DirectBraking})
-    sys.y = DirectBrakingY(Float64(sys.u[]) * sys.params.η_br)
+    sys.y = DirectBrakingY(Float64(sys.u[]) * sys.constants.η_br)
 end
 
 get_braking_factor(sys::System{DirectBraking}) = sys.y.κ_br
@@ -219,7 +219,7 @@ function Systems.f_ode!(sys::System{<:Strut},
                         terrain::System{<:AbstractTerrain},
                         kin::KinematicData)
 
-    @unpack t_bs, l_0, damper = sys.params
+    @unpack t_bs, l_0, damper = sys.constants
     @unpack q_eb, q_nb, q_en, n_e, h_e, r_eOb_e, v_eOb_b, ω_eb_b = kin
 
     frc = sys.frc

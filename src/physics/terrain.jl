@@ -45,6 +45,6 @@ HorizontalTerrain(; altitude = HOrth(0), surface = DryTarmac) =
     HorizontalTerrain(altitude, surface)
 
 TerrainData(trn::System{<:HorizontalTerrain}, loc::Abstract2DLocation) =
-    TerrainData(loc, trn.params.altitude, SVector{3,Float64}(0,0,1), trn.params.surface)
+    TerrainData(loc, trn.constants.altitude, SVector{3,Float64}(0,0,1), trn.constants.surface)
 
 end #module

@@ -78,8 +78,8 @@ Systems.init(::SystemY, ::Actuator) = ActuatorY()
 
 function Systems.f_ode!(sys::System{Actuator})
 
-    @unpack ẋ, x, u, params = sys
-    @unpack ω_n, ζ, range = params
+    @unpack ẋ, x, u, constants = sys
+    @unpack ω_n, ζ, range = constants
 
     cmd = Float64(u[])
     pos_free = x.p
@@ -487,7 +487,7 @@ function assign!(physics::System{<:C172FBW.Physics},
     pwp.engine.s.state = Piston.eng_running
 
     #set engine speed state
-    ω_eng = n_eng * pwp.engine.params.ω_rated
+    ω_eng = n_eng * pwp.engine.constants.ω_rated
     pwp.x.engine.ω = ω_eng
 
     #engine idle compensator: as long as the engine remains at normal
@@ -524,7 +524,7 @@ function assign!(physics::System{<:C172FBW.Physics},
 
     #check essential assumptions about airframe systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
-    @assert pwp.x.engine.ω > pwp.engine.params.ω_idle
+    @assert pwp.x.engine.ω > pwp.engine.constants.ω_idle
     @assert pwp.x.engine.idle[1] .== 0
     @assert pwp.x.engine.frc[1] .== 0
     @assert abs(aero.ẋ.α_filt) < 1e-10
@@ -540,7 +540,7 @@ function cost(physics::System{<:C172FBW.Physics})
 
     v_nd_dot = SVector{3}(ẋ.kinematics.vel.v_eOb_b) / norm(y.kinematics.common.v_eOb_b)
     ω_dot = SVector{3}(ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
-    n_eng_dot = ẋ.airframe.pwp.engine.ω / physics.airframe.pwp.engine.params.ω_rated
+    n_eng_dot = ẋ.airframe.pwp.engine.ω / physics.airframe.pwp.engine.constants.ω_rated
 
     sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2
 
@@ -585,7 +585,7 @@ function Aircraft.trim!(physics::System{<:C172FBW.Physics},
         rudder = -1)
 
     upper_bounds[:] .= TrimState(
-        α_a = physics.airframe.aero.params.α_stall[2], #critical AoA is 0.28 < 0.36
+        α_a = physics.airframe.aero.constants.α_stall[2], #critical AoA is 0.28 < 0.36
         φ_nb = π/3,
         n_eng = 1.1,
         throttle = 1,
@@ -645,11 +645,12 @@ end
     rud_v::Float64 = 0.0; rud_p::Float64 = 0.0 #rudder actuator states
 end
 
-@kwdef struct YLinear <: FieldVector{22, Float64}
+@kwdef struct YLinear <: FieldVector{23, Float64}
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
-    EAS::Float64 = 0.0; α::Float64 = 0.0; β::Float64 = 0.0; #airspeed, AoA, AoS
+    EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
+    α::Float64 = 0.0; β::Float64 = 0.0; #airspeed
     f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
     χ::Float64 = 0.0; γ::Float64 = 0.0; #track and flight path angles
@@ -705,10 +706,11 @@ function YLinear(physics::System{<:C172FBW.Physics})
     γ = Attitude.inclination(v_eOb_n)
     f_x, f_y, f_z = physics.y.rigidbody.f_G_b
     EAS = physics.y.air.EAS
+    TAS = physics.y.air.TAS
     ω_eng = physics.y.airframe.pwp.engine.ω
     m_fuel = physics.y.airframe.fuel.m_avail
 
-    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, EAS, α, β,
+    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, EAS, TAS, α, β,
             f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, ω_eng, m_fuel)
 
 end
@@ -840,7 +842,7 @@ function RobustAndOptimalControl.named_ss(
     elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
         u_labels = [:throttle_cmd, :elevator_cmd]
-        y_labels = [:q, :θ, :α, :EAS, :f_x, :f_z, :γ, :ω_eng]
+        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :ω_eng]
         lm_long = submodel(lm; x = x_labels, u = u_labels, y = y_labels)
         return named_ss(ss(lm_long), x = x_labels, u = u_labels, y = y_labels)
 

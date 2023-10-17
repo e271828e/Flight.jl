@@ -403,10 +403,10 @@ RigidBody.WrenchTrait(::System{<:Aero}) = GetsExternalWrench()
 function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
     air::AirData, kinematics::KinematicData, terrain::System{<:AbstractTerrain})
 
-    @unpack ẋ, x, u, s, params = sys
+    @unpack ẋ, x, u, s, constants = sys
     @unpack α_filt, β_filt = x
     @unpack e, a, r, f = u
-    @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = params
+    @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = constants
     @unpack TAS, q, v_wOb_b = air
     @unpack ω_lb_b, n_e, h_o = kinematics
     stall = s.stall
@@ -472,7 +472,7 @@ RigidBody.get_wr_b(sys::System{Aero}) = sys.y.wr_b
 function Systems.f_step!(sys::System{Aero})
     #stall hysteresis
     α = sys.y.α
-    α_stall = sys.params.α_stall
+    α_stall = sys.constants.α_stall
     if α > α_stall[2]
         sys.s.stall = true
     elseif α < α_stall[1]
@@ -630,7 +630,7 @@ RigidBody.AngMomTrait(::System{Payload}) = HasNoAngularMomentum()
 
 function RigidBody.get_mp_Ob(sys::System{Payload})
     @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = sys.u
-    @unpack pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot = sys.params
+    @unpack pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot = sys.constants
 
     pilot = MassProperties(PointDistribution(m_pilot), pilot_slot)
     copilot = MassProperties(PointDistribution(m_copilot), copilot_slot)
@@ -686,7 +686,7 @@ Systems.init(::SystemY, ::Fuel) = FuelY()
 
 function Systems.f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 
-    @unpack m_full, m_res = sys.params #no need for subsystems
+    @unpack m_full, m_res = sys.constants #no need for subsystems
     m_total = m_res + sys.x[1] * (m_full - m_res) #current mass
     m_avail = m_total - m_res
     sys.ẋ .= -pwp.y.engine.ṁ / (m_full - m_res)
