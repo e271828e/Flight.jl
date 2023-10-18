@@ -271,42 +271,42 @@ function test_integrator_discrete(save = false)
         sys.u.bound_lo = -1
         sys.u.bound_hi = 2
 
-        sys.u.u1 = -1
+        sys.u.input = -1
         step!(sim, 2, true)
 
         @test sys.s.x0 <= -1
-        @test sys.y.y1 ≈ -1.0
-        @test sys.y.sat_y1 == -1
+        @test sys.y.output ≈ -1.0
+        @test sys.y.sat_out == -1
         @test sys.y.halted
 
-        sys.u.u1 = 1
+        sys.u.input = 1
         step!(sim, 2, true)
-        @test sys.y.sat_y1 == 0
+        @test sys.y.sat_out == 0
         @test !sys.y.halted
 
         step!(sim, 2, true)
-        @test sys.y.sat_y1 == 1
+        @test sys.y.sat_out == 1
         @test sys.y.halted
 
-        sys.u.u1 = -1
+        sys.u.input = -1
         step!(sim, 1, true)
-        @test sys.y.sat_y1 == 0
+        @test sys.y.sat_out == 0
         @test !sys.y.halted
 
-        sys.u.sat_ext = -sign(sys.u.u1)
+        sys.u.sat_ext = -sign(sys.u.input)
         step!(sim, 1, true)
         @test !sys.y.halted
-        sys.u.sat_ext = sign(sys.u.u1)
+        sys.u.sat_ext = sign(sys.u.input)
         step!(sim, 1, true)
         @test sys.y.halted
 
         Control.reset!(sys)
 
         @test sys.s.x0 == 0
-        @test sys.s.sat_y0 == 0
+        @test sys.s.sat_out_0 == 0
         @test sys.y.x1 == 0
-        @test sys.y.y1 == 0
-        @test sys.y.sat_y1 == 0
+        @test sys.y.output == 0
+        @test sys.y.sat_out == 0
         @test !sys.y.halted
         @test sys.u.bound_lo != 0
         @test sys.u.bound_hi != 0
@@ -376,7 +376,7 @@ function test_pid_discrete_new(save = false)
         @test sys.y.y_p == 1.0
         @test sys.y.y_i ≈ 1.0
         @test sys.y.out_free ≈ 2.0
-        @test sys.y.out ≈ 2.0
+        @test sys.y.output ≈ 2.0
         @test sys.y.sat_out == 0
         @test !sys.y.int_halted
 
@@ -384,7 +384,7 @@ function test_pid_discrete_new(save = false)
         sys.u.bound_hi = 1
         step!(sim, 1, true)
         @test sys.y.out_free > 2.0
-        @test sys.y.out ≈ 1
+        @test sys.y.output ≈ 1
         @test sys.y.sat_out == 1
         @test sys.y.int_halted
 
@@ -474,7 +474,7 @@ function test_pid_discrete_new(save = false)
         sim = Simulation(sys; Δt = 0.0001, t_end = 2)
         Sim.run!(sim)
         th_disc = TimeHistory(sim)
-        th_y_disc = th_disc.out
+        th_y_disc = th_disc.output
         y_disc_last = Sim.get_data(th_y_disc)[end]
 
         #compare the final values

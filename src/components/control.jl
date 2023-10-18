@@ -514,7 +514,7 @@ function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteY}; kwargs...)
     out = plot(th.out; title = "Actual", ylabel = L"$y$", kwargs...)
     sat_out = plot(th.sat_out; title = "Saturation", ylabel = L"$S$", kwargs...)
 
-    pd[:out] = plot(out_free, out, sat_out;
+    pd[:out] = plot(out_free, output, sat_out;
         plot_title = "PID Output",
         layout = (1,3),
         link = :y,
@@ -530,7 +530,7 @@ end
 function GUI.draw(sys::System{<:PIDDiscrete{N}}, label::String = "PIDDiscrete{$N}") where {N}
 
     @unpack setpoint, feedback, bound_lo, bound_hi, anti_windup, reset,
-            u_p, u_i, u_d, y_p, y_i, y_d, out_free, out, sat_ext, sat_out, int_halt = sys.y
+            u_p, u_i, u_d, y_p, y_i, y_d, out_free, output, sat_ext, sat_out, int_halt = sys.y
 
     # CImGui.Begin(label)
 
@@ -547,7 +547,7 @@ function GUI.draw(sys::System{<:PIDDiscrete{N}}, label::String = "PIDDiscrete{$N
         CImGui.Text("Derivative Path Input = $u_d")
         CImGui.Text("Derivative Path Output = $y_d")
         CImGui.Text("Free Output = $out_free")
-        CImGui.Text("Actual Output = $out")
+        CImGui.Text("Actual Output = $output")
         CImGui.Text("External Saturation = $sat_ext")
         CImGui.Text("Output Saturation = $sat_out")
         CImGui.Text("Integrator Halted = $int_halt")
@@ -563,7 +563,7 @@ end #function
 struct IntegratorDiscrete <: SystemDefinition end
 
 @kwdef mutable struct IntegratorDiscreteU
-    u1::Float64 = 0 #current input
+    input::Float64 = 0 #current input
     sat_ext::Int64 = 0 #external (signed) saturation signal
     bound_lo::Float64 = -Inf #lower output bound
     bound_hi::Float64 = Inf #higher output bound
@@ -571,17 +571,17 @@ end
 
 @kwdef mutable struct IntegratorDiscreteS
     x0::Float64 = 0 #previous integrator state
-    sat_y0::Int64 = 0 #previous output saturation state
+    sat_out_0::Int64 = 0 #previous output saturation state
 end
 
 @kwdef struct IntegratorDiscreteY
-    u1::Float64 = 0
+    input::Float64 = 0
     sat_ext::Float64 = 0
     bound_lo::Float64 = -Inf
     bound_hi::Float64 = Inf
     x1::Float64 = 0 #current state
-    y1::Float64 = 0 #current output
-    sat_y1::Int64 = 0 #current output saturation status
+    output::Float64 = 0 #current output
+    sat_out::Int64 = 0 #current output saturation status
     halted::Bool = false #integration halted
 end
 
@@ -590,31 +590,31 @@ Systems.init(::SystemU, ::IntegratorDiscrete) = IntegratorDiscreteU()
 Systems.init(::SystemS, ::IntegratorDiscrete) = IntegratorDiscreteS()
 
 function reset!(sys::System{<:IntegratorDiscrete})
-    sys.u.u1 = 0
+    sys.u.input = 0
     sys.u.sat_ext = 0
     sys.s.x0 = 0
-    sys.s.sat_y0 = 0
+    sys.s.sat_out_0 = 0
     f_disc!(sys, 1.0)
 end
 
 function Systems.f_disc!(sys::System{<:IntegratorDiscrete}, Δt::Real)
 
     @unpack s, u = sys
-    @unpack u1, sat_ext, bound_lo, bound_hi = u
-    @unpack x0, sat_y0 = s
+    @unpack input, sat_ext, bound_lo, bound_hi = u
+    @unpack x0, sat_out_0 = s
 
-    halted = ((sign(u1 * sat_y0) > 0) || (sign(u1 * sat_ext) > 0))
-    x1 = x0 + Δt * u1 * !halted
-    y1 = clamp(x1, bound_lo, bound_hi)
+    halted = ((sign(input * sat_out_0) > 0) || (sign(input * sat_ext) > 0))
+    x1 = x0 + Δt * input * !halted
+    output = clamp(x1, bound_lo, bound_hi)
 
     sat_hi = x1 >= bound_hi
     sat_lo = x1 <= bound_lo
-    sat_y1 = sat_hi - sat_lo
+    sat_out = sat_hi - sat_lo
 
     s.x0 = x1
-    s.sat_y0 = sat_y1
+    s.sat_out_0 = sat_out
 
-    sys.y = IntegratorDiscreteY(; u1, sat_ext, bound_lo, bound_hi, x1, y1, sat_y1, halted)
+    sys.y = IntegratorDiscreteY(; input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted)
 
     return false
 
@@ -626,20 +626,20 @@ end
 
 function GUI.draw(sys::System{<:IntegratorDiscrete}, label::String = "IntegratorDiscrete")
 
-    @unpack x0, sat_y0 = sys.s
-    @unpack u1, sat_ext, bound_lo, bound_hi, x1, y1, sat_y1, halted = sys.y
+    @unpack x0, sat_out_0 = sys.s
+    @unpack input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted = sys.y
 
     # CImGui.Begin(label)
 
-        CImGui.Text("u1 = $u1")
+        CImGui.Text("input = $input")
         CImGui.Text("sat_ext = $sat_ext")
         CImGui.Text("bound_lo = $bound_lo")
         CImGui.Text("bound_hi = $bound_hi")
         CImGui.Text("x0 = $x0")
-        CImGui.Text("sat_y0 = $sat_y0")
+        CImGui.Text("sat_out_0 = $sat_out_0")
         CImGui.Text("x1 = $x1")
-        CImGui.Text("y1 = $y1")
-        CImGui.Text("sat_y1 = $sat_y1")
+        CImGui.Text("output = $output")
+        CImGui.Text("sat_out = $sat_out")
         CImGui.Text("halted = $halted")
 
     # CImGui.End()
@@ -797,7 +797,7 @@ end
     y_d::Float64 = 0.0 #derivative path output
     out_free::Float64 = 0 #unbounded output
     sat_out::Int64 = 0 #output saturation status
-    out::Float64 = 0 #actual PID output
+    output::Float64 = 0 #actual PID output
     int_halted::Bool = false #integration halted
 end
 
@@ -844,10 +844,10 @@ function Systems.f_disc!(sys::System{<:PIDDiscreteNew}, Δt::Real)
     sat_lo = out_free <= bound_lo
     sat_out = sat_hi - sat_lo
 
-    out = clamp(out_free, bound_lo, bound_hi)
+    output = clamp(out_free, bound_lo, bound_hi)
 
     sys.y = PIDDiscreteNewY(; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
-                u_p, u_i, u_d, y_p, y_i, y_d, out_free, sat_out, out, int_halted)
+                u_p, u_i, u_d, y_p, y_i, y_d, out_free, sat_out, output, int_halted)
 
     sys.s.x_i0 = x_i
     sys.s.x_d0 = x_d
@@ -862,9 +862,9 @@ function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteNewY}; kwargs...)
     pd = OrderedDict{Symbol, Plots.Plot}()
 
     input = plot(th.input; title = "Input", ylabel = L"$e$", kwargs...)
-    out = plot(th.out; title = "Output", ylabel = L"$y$", kwargs...)
+    output = plot(th.output; title = "Output", ylabel = L"$y$", kwargs...)
 
-    pd[:sf] = plot(input, out;
+    pd[:sf] = plot(input, output;
         plot_title = "Input & Output",
         layout = (1,2),
         link = :y,
@@ -929,9 +929,9 @@ function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteNewY}; kwargs...)
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     out_free = plot(th.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
-    out = plot(th.out; title = "Actual", ylabel = L"$y$", kwargs...)
+    output = plot(th.output; title = "Actual", ylabel = L"$y$", kwargs...)
 
-    pd[:out] = plot(out_free, out, sat_out;
+    pd[:output] = plot(out_free, output, sat_out;
         plot_title = "PID Output",
         layout = (1,3),
         link = :y,
@@ -947,7 +947,7 @@ end
 function GUI.draw(sys::System{<:PIDDiscreteNew}, label::String = "PIDDiscreteNew")
 
     @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext, u_p, u_i, u_d,
-            y_p, y_i, y_d, out_free, sat_out, out, int_halted = sys.y
+            y_p, y_i, y_d, out_free, sat_out, output, int_halted = sys.y
 
     # CImGui.Begin(label)
 
@@ -968,7 +968,7 @@ function GUI.draw(sys::System{<:PIDDiscreteNew}, label::String = "PIDDiscreteNew
         CImGui.Text("Derivative Path Input = $u_d")
         CImGui.Text("Derivative Path Output = $y_d")
         CImGui.Text("Free Output = $out_free")
-        CImGui.Text("Actual Output = $out")
+        CImGui.Text("Actual Output = $output")
         CImGui.Text("Output Saturation = $sat_out")
         CImGui.Text("Integrator Halted = $int_halted")
 
@@ -1109,7 +1109,7 @@ function optimize_PID(  plant::LTISystem;
 end
 
 function check_results(results::Results,
-            thresholds::Metrics{Float64} = Metrics(; Ms = 1.3, ∫e = 0.05, ef = 0.01))
+            thresholds::Metrics{Float64} = Metrics(; Ms = 1.4, ∫e = 0.05, ef = 0.01))
 
     @unpack exit_flag, metrics = results
 

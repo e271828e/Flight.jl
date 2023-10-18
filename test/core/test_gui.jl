@@ -17,7 +17,7 @@ function test_gui()
     # target = SimpleWorld(Cessna172Rv2(), SimpleEnvironment()) |> System
     # target = PIContinuous{2}() |> System
     # target = C172FBW.FlyByWireActuation() |> System
-    target = C172FBWCAS.PitchRateCmpNew() |> System
+    target = C172FBWCAS.PitchControlGs() |> System
     r = Renderer()
     GUI.init!(r)
     # GUI.run(r, GUI.draw!, target)

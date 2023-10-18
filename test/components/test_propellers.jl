@@ -14,7 +14,7 @@ using Flight.FlightPhysics.Atmosphere
 
 using Flight.FlightComponents.Propellers
 using Flight.FlightComponents.Propellers: DefaultAirfoil, cL, cD, cL_α
-using Flight.FlightComponents.Propellers: Blade, Coefficients, LookupData, Lookup
+using Flight.FlightComponents.Propellers: Blade, Coefficients, Lookup
 
 export test_propellers
 
@@ -91,17 +91,16 @@ function test_lookup()
         J_range = range(0, 1.5, length = 31)
         Mt_range = range(0, 1.5, length = 21)
         Δβ_range = range(0, 0.1, length = 11)
-        ld = LookupData(Blade(), 3; J_range, Mt_range, Δβ_range)
-        lookup = Lookup(ld)
+        lookup = Lookup(Blade(), 3; J_range, Mt_range, Δβ_range)
 
         #flat extrapolation
         @test lookup.C_Fx(1.5, 1.5, 0.1) == lookup.C_Fx(3, 2, 2)
 
         #saving and loading lookup data
-        @test size(ld.coefs.C_Fx) === (31, 21, 11)
+        @test size(lookup.data.C_Fx) === (31, 21, 11)
         fname = tempname()
-        Propellers.save_lookup_data(ld, fname)
-        lookup_loaded = Lookup(Propellers.load_lookup_data(fname))
+        Propellers.save_lookup(lookup, fname)
+        lookup_loaded = Propellers.load_lookup(fname)
 
         test_point = (J = 0.123, Mt = 0.643, Δβ = 0.04)
         foreach(fieldnames(Coefficients)) do name
@@ -115,8 +114,8 @@ function test_lookup()
 
         #make sure there are no issues with the singleton Δβ dimension in a
         #fixed pitch lookup
-        lookup_fp = Lookup(LookupData(Blade(), 3;
-                           J_range, Mt_range, Δβ_range = range(0,0,length=1)))
+        lookup_fp = Lookup(Blade(), 3;
+                           J_range, Mt_range, Δβ_range = range(0,0,length=1))
         @test lookup_fp(0.1, 0.3, 0) == lookup(0.1, 0.3, 0)
 
     end #testset
@@ -136,9 +135,8 @@ function test_propeller()
         @testset verbose = true "FixedPitch" begin
 
             Δβ_range = range(0, 0, length = 1)
-            ld_fp = LookupData(; Δβ_range)
             sense = Propellers.CCW
-            fp_sys = Propeller(ld_fp; sense, t_bp) |> System
+            fp_sys = Propeller(Lookup(; Δβ_range); sense, t_bp) |> System
             @test fp_sys.u |> isnothing
 
             f_ode!(fp_sys, kin, air, -ω)
@@ -158,18 +156,17 @@ function test_propeller()
         @testset verbose = true "VariablePitch" begin
 
             Δβ_range = range(-0.1, 0.2, length = 11)
-            ld_vp = LookupData(; Δβ_range)
             sense = Propellers.CW
-            vp_sys = Propeller(ld_vp; sense, t_bp) |> System
+            vp_sys = Propeller(Lookup(; Δβ_range); sense, t_bp) |> System
 
             vp_sys.u[] = 0
             f_ode!(vp_sys, kin, air, ω)
-            @test vp_sys.y.Δβ ≈ vp_sys.constants.lookup._data.Δβ_bounds[1]
+            @test vp_sys.y.Δβ ≈ vp_sys.constants.lookup.Δβ_bounds[1]
             Fx_0 = vp_sys.y.wr_p.F[1]
 
             vp_sys.u[] = 1
             f_ode!(vp_sys, kin, air, ω)
-            @test vp_sys.y.Δβ ≈ vp_sys.constants.lookup._data.Δβ_bounds[2]
+            @test vp_sys.y.Δβ ≈ vp_sys.constants.lookup.Δβ_bounds[2]
             Fx_1 = vp_sys.y.wr_p.F[1]
 
             @test Fx_1 > Fx_0

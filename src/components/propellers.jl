@@ -210,21 +210,35 @@ function induced_angle_eq(; n_blades, c̃, airfoil, βa_t, J, Mt, βa, ε_inf, �
     return n_blades*c̃ / (8ζ) * cL(airfoil, α, M) - acos((exp(-n_blades*(1-ζ)/(2sin(βa_t))))) * tan(ε_i) * sin(ε_inf + ε_i)
 end
 
-################################################################################
-################################# LookupData ###################################
 
-struct LookupData
-    coefs::Coefficients{Array{Float64,3}}
+
+################################################################################
+################################## Lookup ######################################
+
+struct Lookup{T <: Interpolations.Extrapolation}
+    interps::Coefficients{T}
+    data::Coefficients{Array{Float64,3}}
     J_bounds::NTuple{2, Float64}
     Mt_bounds::NTuple{2, Float64}
     Δβ_bounds::NTuple{2, Float64}
 end
 
-function LookupData(blade::Blade = Blade(), n_blades::Int = 2;
-                    J_range::AbstractRange{Float64} = range(0, 1.5, length = 21),
-                    Mt_range::AbstractRange{Float64} = range(0, 1.5, length = 21),
-                    Δβ_range::AbstractRange{Float64} = range(0, 0, length = 1),
-                    n_ζ::Integer = 101)
+Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
+@generated function Base.getproperty(lookup::Lookup, ::Val{S}) where {S}
+    if S ∈ fieldnames(Lookup)
+        return :(getfield(lookup, $(QuoteNode(S))))
+    elseif S ∈ fieldnames(Coefficients)
+        return :(getfield(getfield(lookup, :interps), $(QuoteNode(S))))
+    else
+        error("Lookup has no property $S")
+    end
+end
+
+function Lookup(blade::Blade = Blade(), n_blades::Int = 2;
+                J_range::AbstractRange{Float64} = range(0, 1.5, length = 21),
+                Mt_range::AbstractRange{Float64} = range(0, 1.5, length = 21),
+                Δβ_range::AbstractRange{Float64} = range(0, 0, length = 1),
+                n_ζ::Integer = 101)
 
     data_points = [Coefficients(blade, n_blades, J, Mt, Δβ, n_ζ)
             for (J, Mt, Δβ) in Iterators.product(J_range, Mt_range, Δβ_range)]
@@ -233,72 +247,18 @@ function LookupData(blade::Blade = Blade(), n_blades::Int = 2;
     Mt_bounds = (Mt_range[1], Mt_range[end])
     Δβ_bounds = (Δβ_range[1], Δβ_range[end])
 
-    coefs = Coefficients(StructArrays.components(StructArray(data_points))...)
+    data = Coefficients(StructArrays.components(StructArray(data_points))...)
 
-    LookupData(coefs, J_bounds, Mt_bounds, Δβ_bounds)
-
-end
-
-function save_lookup_data(data::LookupData, fname::String)
-
-    fid = h5open(fname, "w")
-
-    foreach(pairs(NamedTuple(data.coefs))) do (name, data)
-        fid[string(name)] = data
-    end
-
-    fid["J_start"], fid["J_end"] = data.J_bounds
-    fid["Mt_start"], fid["Mt_end"] = data.Mt_bounds
-    fid["Δβ_start"], fid["Δβ_end"] = data.Δβ_bounds
-
-    close(fid)
-end
-
-function load_lookup_data(fname::String)
-
-    fid = h5open(fname, "r")
-
-    coef_data = map(fieldnames(Coefficients)) do name
-        read(fid, string(name))
-    end
-    coefs = Coefficients(coef_data...)
-
-    J_bounds = (read(fid["J_start"]), read(fid["J_end"]))
-    Mt_bounds = (read(fid["Mt_start"]), read(fid["Mt_end"]))
-    Δβ_bounds = (read(fid["Δβ_start"]), read(fid["Δβ_end"]))
-
-    close(fid)
-
-    return LookupData(coefs, J_bounds, Mt_bounds, Δβ_bounds)
+    Lookup(data, J_bounds, Mt_bounds, Δβ_bounds)
 
 end
 
-################################################################################
-################################## Lookup ######################################
+function Lookup(data::Coefficients{Array{Float64, 3}},
+                J_bounds::NTuple{2, Float64},
+                Mt_bounds::NTuple{2, Float64},
+                Δβ_bounds::NTuple{2, Float64})
 
-struct Lookup{T <: Interpolations.Extrapolation}
-    _data::LookupData
-    _interps::Coefficients{T}
-end
-
-Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
-@generated function Base.getproperty(lookup::Lookup, ::Val{S}) where {S}
-    if S === :_data
-        return :(getfield(lookup, :_data))
-    elseif S === :_interps
-        return :(getfield(lookup, :_interps))
-    elseif S ∈ fieldnames(Coefficients)
-        return :(getfield(getfield(lookup, :_interps), $(QuoteNode(S))))
-    else
-        error("Lookup has no property $S")
-    end
-end
-
-function Lookup(data::LookupData = LookupData())
-
-    @unpack coefs, J_bounds, Mt_bounds, Δβ_bounds = data
-
-    J_length, Mt_length, Δβ_length = size(coefs.C_Fx)
+    J_length, Mt_length, Δβ_length = size(data.C_Fx)
     J_range = range(J_bounds..., length = J_length)
     Mt_range = range(Mt_bounds..., length = Mt_length)
     Δβ_range = range(Δβ_bounds..., length = Δβ_length)
@@ -311,9 +271,9 @@ function Lookup(data::LookupData = LookupData())
     interps = [extrapolate(scale(interpolate(coef,
                                             (J.mode, Mt.mode, Δβ.mode)),
                                  J.scaling, Mt.scaling, Δβ.scaling),
-                           (Flat(), Flat(), Flat())) for coef in NamedTuple(coefs)]
+                           (Flat(), Flat(), Flat())) for coef in NamedTuple(data)]
 
-    Lookup(data, Coefficients(interps...))
+    Lookup(Coefficients(interps...), data, J_bounds, Mt_bounds, Δβ_bounds)
 
 end
 
@@ -331,6 +291,39 @@ function Coefficients(lookup::Lookup, J::Real, Mt::Real, Δβ::Real)
                     η_p = η_p(J, Mt, Δβ))
 end
 
+function save_lookup(lookup::Lookup, fname::String)
+
+    fid = h5open(fname, "w")
+
+    foreach(pairs(NamedTuple(lookup.data))) do (name, data)
+        fid[string(name)] = data
+    end
+
+    fid["J_start"], fid["J_end"] = lookup.J_bounds
+    fid["Mt_start"], fid["Mt_end"] = lookup.Mt_bounds
+    fid["Δβ_start"], fid["Δβ_end"] = lookup.Δβ_bounds
+
+    close(fid)
+end
+
+function load_lookup(fname::String)
+
+    fid = h5open(fname, "r")
+
+    coef_data = map(fieldnames(Coefficients)) do name
+        read(fid, string(name))
+    end
+    data = Coefficients(coef_data...)
+
+    J_bounds = (read(fid["J_start"]), read(fid["J_end"]))
+    Mt_bounds = (read(fid["Mt_start"]), read(fid["Mt_end"]))
+    Δβ_bounds = (read(fid["Δβ_start"]), read(fid["Δβ_end"]))
+
+    close(fid)
+
+    return Lookup(data, J_bounds, Mt_bounds, Δβ_bounds)
+
+end
 
 ################################################################################
 ################################ Propeller #####################################
@@ -363,12 +356,10 @@ function Propeller(lookup::Lookup = Lookup();
                    sense ::TurnSense = CW, d::Real = 2.0, J_xx::Real = 0.3,
                    t_bp::FrameTransform = FrameTransform())
 
-    Δβ_bounds = lookup._data.Δβ_bounds
+    Δβ_bounds = lookup.Δβ_bounds
     pitch =  Δβ_bounds[1] == Δβ_bounds[end] ? FixedPitch() : VariablePitch()
     Propeller{typeof(pitch), typeof(lookup)}(pitch, lookup, sense, d, J_xx, t_bp)
 end
-
-Propeller(data::LookupData; kwargs...) = Propeller(Lookup(data); kwargs...)
 
 @kwdef struct PropellerY
     v_wOp_p::SVector{3,Float64} = zeros(SVector{3}) #local aerodynamic velocity, propeller axes
@@ -389,13 +380,13 @@ Systems.init(::SystemU, ::Propeller{VariablePitch}) = Ref(Ranged(0.0, 0., 1.))
 Systems.init(::SystemY, ::Propeller) = PropellerY()
 
 function get_Δβ(sys::System{<:Propeller{FixedPitch}})
-    Δβ_bounds = sys.constants.lookup._data.Δβ_bounds
+    Δβ_bounds = sys.constants.lookup.Δβ_bounds
     @assert Δβ_bounds[1] == Δβ_bounds[2]
     return Δβ_bounds[1]
 end
 
 function get_Δβ(sys::System{<:Propeller{VariablePitch}})
-    Δβ_bounds = sys.constants.lookup._data.Δβ_bounds
+    Δβ_bounds = sys.constants.lookup.Δβ_bounds
     @assert Δβ_bounds[2] > Δβ_bounds[1]
     return linear_scaling(sys.u[], Δβ_bounds)
 end

@@ -1,6 +1,6 @@
 module C172FBWCAS
 
-using LinearAlgebra, UnPack, StaticArrays, ComponentArrays, HDF5
+using LinearAlgebra, UnPack, StaticArrays, ComponentArrays, HDF5, Interpolations
 
 using Flight.FlightCore.Systems
 using Flight.FlightCore.GUI
@@ -17,51 +17,96 @@ using Flight.FlightComponents.Control
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
-using Flight.FlightComponents.Control: PIDDiscreteY, IntegratorDiscreteY, LeadLagDiscreteY
+using Flight.FlightComponents.Control: PIDDiscreteY, IntegratorDiscreteY, LeadLagDiscreteY, PIDDiscreteNewY
 
 using ...C172
 using ..C172FBW
 
 export Cessna172FBWCAS
 
-################################################################################
-############################## LookupData ######################################
 
-struct LookupData
-    params::PIDParams{Array{Float64,2}}
+################################################################################
+################################ Lookup ########################################
+
+struct Lookup{T <: Interpolations.Extrapolation}
+    interps::PIDParams{T}
+    data::PIDParams{Array{Float64,2}}
     EAS_bounds::NTuple{2, Float64}
     h_bounds::NTuple{2, Float64}
 end
 
-function save_lookup_data(data::LookupData, fname::String)
+function Lookup(data::PIDParams{Array{Float64, 2}},
+                EAS_bounds::NTuple{2, Float64},
+                h_bounds::NTuple{2, Float64})
+
+    EAS_length, h_length = size(data.k_p)
+    EAS_range = range(EAS_bounds..., length = EAS_length)
+    h_range = range(h_bounds..., length = h_length)
+
+    (EAS, h) =  map((EAS_range, h_range)) do range
+        (mode, scaling) = length(range) > 1 ? (BSpline(Linear()), range) : (NoInterp(), 1:1)
+        return (mode = mode, scaling = scaling)
+    end
+
+    interps = [extrapolate(scale(interpolate(coef, (EAS.mode, h.mode)),
+        EAS.scaling, h.scaling), (Flat(), Flat())) for coef in NamedTuple(data)]
+
+    Lookup(PIDParams(interps...), data, EAS_bounds, h_bounds)
+
+end
+
+Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
+@generated function Base.getproperty(lookup::Lookup, ::Val{S}) where {S}
+    if S ∈ fieldnames(Lookup)
+        return :(getfield(lookup, $(QuoteNode(S))))
+    elseif S ∈ fieldnames(PIDParams)
+        return :(getfield(getfield(lookup, :interps), $(QuoteNode(S))))
+    else
+        error("Lookup has no property $S")
+    end
+end
+
+function Control.PIDParams(lookup::Lookup, EAS::Real, h::Real)
+
+    @unpack k_p, k_i, k_d, τ_f = lookup.interps
+    PIDParams(; k_p = k_p(EAS, h),
+                k_i = k_i(EAS, h),
+                k_d = k_d(EAS, h),
+                τ_f = τ_f(EAS, h))
+end
+
+
+(lookup::Lookup)(EAS::Real, h::Real) = PIDParams(lookup, EAS, h)
+
+function save_lookup(lookup::Lookup, fname::String)
 
     fid = h5open(fname, "w")
 
-    foreach(pairs(NamedTuple(data.params))) do (name, data)
+    foreach(pairs(NamedTuple(lookup.data))) do (name, data)
         fid[string(name)] = data
     end
 
-    fid["EAS_start"], fid["EAS_end"] = data.EAS_bounds
-    fid["h_start"], fid["h_end"] = data.h_bounds
+    fid["EAS_start"], fid["EAS_end"] = lookup.EAS_bounds
+    fid["h_start"], fid["h_end"] = lookup.h_bounds
 
     close(fid)
 end
 
-function load_lookup_data(fname::String)
+function load_lookup(fname::String)
 
     fid = h5open(fname, "r")
 
     params_data = map(fieldnames(PIDParams)) do name
         read(fid, string(name))
     end
-    params = PIDParams(params_data...)
+    data = PIDParams(params_data...)
 
     EAS_bounds = (read(fid["EAS_start"]), read(fid["EAS_end"]))
     h_bounds = (read(fid["h_start"]), read(fid["h_end"]))
 
     close(fid)
 
-    return LookupData(params, EAS_bounds, h_bounds)
+    return Lookup(data, EAS_bounds, h_bounds)
 
 end
 
@@ -167,180 +212,18 @@ end
     climb_rate_mode = 3
 end
 
-############################### PitchRateCmp ##################################
-
-@kwdef struct PitchRateCmp <: SystemDefinition
-    c1::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0, k_i = 1, k_d = 0) #pure integrator
-    c2::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 6, k_i = 30, k_d = 0.35, τ_d = 0.01) #see notebook
-end
-
-#overrides the default NamedTuple built from subsystem u's
-@kwdef mutable struct PitchRateCmpU
-    setpoint::MVector{1,Float64} = zeros(MVector{1})
-    feedback::MVector{1,Float64} = zeros(MVector{1})
-    sat_ext::MVector{1,Int64} = zeros(MVector{1, Int64})
-end
-
-@kwdef struct PitchRateCmpY
-    setpoint::SVector{1,Float64} = zeros(SVector{1})
-    feedback::SVector{1,Float64} = zeros(SVector{1})
-    sat_ext::SVector{1,Int64} = zeros(SVector{1, Int64})
-    out::SVector{1,Float64} = zeros(SVector{1})
-    c1::PIDDiscreteY{1} = PIDDiscreteY{1}()
-    c2::PIDDiscreteY{1} = PIDDiscreteY{1}()
-end
-
-Systems.init(::SystemU, ::PitchRateCmp) = PitchRateCmpU()
-Systems.init(::SystemY, ::PitchRateCmp) = PitchRateCmpY()
-
-function Control.reset!(sys::System{<:PitchRateCmp})
-    sys.u.setpoint .= 0
-    sys.u.feedback .= 0
-    sys.u.sat_ext .= 0
-    Control.reset!.(values(sys.subsystems))
-end
-
-#we leave the compensators' outputs unbounded (the default at initialization),
-#the integrators will halt only when required by sat_ext
-function Systems.f_disc!(sys::System{PitchRateCmp}, Δt::Real)
-    @unpack setpoint, feedback, sat_ext = sys.u
-    @unpack c1, c2 = sys.subsystems
-
-    c1.u.setpoint .= setpoint
-    c1.u.feedback .= feedback
-    c1.u.sat_ext .= sat_ext
-    f_disc!(c1, Δt)
-
-    c2.u.setpoint .= c1.y.out #connected to c1's output
-    c2.u.feedback .= 0.0 #no feedback, just feedforward path
-    c2.u.sat_ext .= sat_ext
-    f_disc!(c2, Δt)
-
-    out = c2.y.out
-
-    sys.y = PitchRateCmpY(; setpoint, feedback, sat_ext, out, c1 = c1.y, c2 = c2.y)
-
-end
-
-function GUI.draw(pitch_rate_comp::System{<:PitchRateCmp})
-    if CImGui.TreeNode("Integrator")
-        GUI.draw(pitch_rate_comp.c1)
-        CImGui.TreePop()
-    end
-    if CImGui.TreeNode("PID")
-        GUI.draw(pitch_rate_comp.c2)
-        CImGui.TreePop()
-    end
-end
-
-############################### PitchRateCmpNew ################################
-
-@kwdef struct PitchRateCmpNew <: SystemDefinition
-    ll1::LeadLagDiscrete = LeadLagDiscrete()
-    ll2::LeadLagDiscrete = LeadLagDiscrete()
-    ll3::LeadLagDiscrete = LeadLagDiscrete()
-    ll4::LeadLagDiscrete = LeadLagDiscrete()
-    int1::IntegratorDiscrete = IntegratorDiscrete()
-    int2::IntegratorDiscrete = IntegratorDiscrete()
-end
-
-@kwdef mutable struct PitchRateCmpNewU
-    setpoint::Float64 = 0.0
-    feedback::Float64 = 0.0
-    sat_ext::Int64 = 0
-end
-
-@kwdef struct PitchRateCmpNewY
-    setpoint::Float64 = 0.0
-    feedback::Float64 = 0.0
-    sat_ext::Int64 = 0
-    out::Float64 = 0.0
-    ll1::LeadLagDiscreteY = LeadLagDiscreteY()
-    ll2::LeadLagDiscreteY = LeadLagDiscreteY()
-    ll3::LeadLagDiscreteY = LeadLagDiscreteY()
-    ll4::LeadLagDiscreteY = LeadLagDiscreteY()
-    int1::IntegratorDiscreteY = IntegratorDiscreteY()
-    int2::IntegratorDiscreteY = IntegratorDiscreteY()
-end
-
-Systems.init(::SystemU, ::PitchRateCmpNew) = PitchRateCmpNewU()
-Systems.init(::SystemY, ::PitchRateCmpNew) = PitchRateCmpNewY()
-
-#initialize lead/lag compensator parameters
-function Systems.init!(sys::System{<:PitchRateCmpNew})
-
-    @unpack ll1, ll2, ll3, ll4 = sys
-
-    #use ll1 to apply the loop gain (arbitrary, could use any compensator)
-    ll1.u.k = 6000
-
-    ll1.u.z = -10
-    ll2.u.z = -10
-    ll3.u.z = -0.1
-    ll4.u.z = -0.1
-
-    ll1.u.p = -150
-    ll2.u.p = -150
-    ll3.u.p = -1.5
-    ll4.u.p = -0.01
-end
-
-function Control.reset!(sys::System{<:PitchRateCmpNew})
-    sys.u.setpoint = 0
-    sys.u.feedback = 0
-    sys.u.sat_ext = 0
-    Control.reset!.(values(sys.subsystems))
-end
-
-function Systems.f_disc!(sys::System{PitchRateCmpNew}, Δt::Real)
-    @unpack setpoint, feedback, sat_ext = sys.u
-    @unpack ll1, ll2, ll3, ll4, int1, int2 = sys
-
-    int1.u.sat_ext = sat_ext
-    int2.u.sat_ext = sat_ext
-
-    ll1.u.u1 = setpoint - feedback
-    f_disc!(ll1, Δt)
-    ll2.u.u1 = ll1.y.y1
-    f_disc!(ll2, Δt)
-    ll3.u.u1 = ll2.y.y1
-    f_disc!(ll3, Δt)
-    ll4.u.u1 = ll3.y.y1
-    f_disc!(ll4, Δt)
-    int1.u.u1 = ll4.y.y1
-    f_disc!(int1, Δt)
-    int2.u.u1 = int1.y.y1
-    f_disc!(int2, Δt)
-
-    out = int2.y.y1
-
-    sys.y = PitchRateCmpNewY(; setpoint, feedback, sat_ext, out,
-                               ll1 = ll1.y, ll2 = ll2.y, ll3 = ll3.y, ll4 = ll4.y,
-                               int1 = int1.y, int2 = int2.y)
-
-    return false
-
-end
-
-function GUI.draw(sys::System{<:PitchRateCmpNew})
-    for (ss_id, ss) in pairs(sys.subsystems)
-        if CImGui.TreeNode(string(ss_id))
-            GUI.draw(ss)
-            CImGui.TreePop()
-        end
-    end
-end
-
 ################################################################################
 
-@kwdef struct PitchControl <: AbstractControlChannel
-    q_comp::PitchRateCmpNew = PitchRateCmpNew()
-    θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4.2, k_i = 1, k_d = 0.15, τ_d = 0.01) #replace design with pure pitch rate feedback
-    c_comp::PIDDiscrete{1} = PIDDiscrete{1}() ##########################TO DO
+@kwdef struct PitchControlGs{LQ <: Lookup} <: AbstractControlChannel
+    q_lookup::LQ = load_lookup(joinpath(@__DIR__, "q_lookup.h5"))
+    q_int::IntegratorDiscrete = IntegratorDiscrete()
+    q_pid::PIDDiscreteNew = PIDDiscreteNew()
+    θ_pid::PIDDiscreteNew = PIDDiscreteNew()
+    c_pid::PIDDiscreteNew = PIDDiscreteNew()
 end
 
 #overrides the default NamedTuple built from subsystem u's
-@kwdef mutable struct PitchControlU
+@kwdef mutable struct PitchControlGsU
     mode::PitchMode = direct_elevator_mode #pitch control mode
     e_dmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation demand
     q_dmd::Float64 = 0.0 #pitch rate demand
@@ -348,7 +231,7 @@ end
     c_dmd::Float64 = 0.0 #climb rate demand
 end
 
-@kwdef struct PitchControlY
+@kwdef struct PitchControlGsY
     mode::PitchMode = direct_elevator_mode
     e_dmd::Ranged{Float64, -1., 1.} = 0.0
     q_dmd::Float64 = 0.0
@@ -356,15 +239,31 @@ end
     c_dmd::Float64 = 0.0
     e_cmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation command
     e_sat::Int64 = 0 #elevator saturation state
-    q_comp::PitchRateCmpNewY = PitchRateCmpNewY()
-    θ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
-    c_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    q_int::IntegratorDiscreteY = IntegratorDiscreteY()
+    q_pid::PIDDiscreteNewY = PIDDiscreteNewY()
+    θ_pid::PIDDiscreteNewY = PIDDiscreteNewY()
+    c_pid::PIDDiscreteNewY = PIDDiscreteNewY()
 end
 
-Systems.init(::SystemU, ::PitchControl) = PitchControlU()
-Systems.init(::SystemY, ::PitchControl) = PitchControlY()
+Systems.init(::SystemU, ::PitchControlGs) = PitchControlGsU()
+Systems.init(::SystemY, ::PitchControlGs) = PitchControlGsY()
 
-function Control.reset!(sys::System{<:PitchControl})
+function Systems.init!(sys::System{<:PitchControlGs})
+    @unpack q_pid, θ_pid, c_pid = sys.subsystems
+    q_pid.u.bound_lo = -1 #not essential, e_cmd is already Ranged and we're setting sat_ext anyway
+    q_pid.u.bound_hi = 1 #idem
+    θ_pid.u.k_p = 4.5
+    θ_pid.u.k_p = 4.5
+    θ_pid.u.k_i = 0
+    θ_pid.u.k_d = 0.6
+    θ_pid.u.τ_f = 0.01
+    # c_pid.u.k_p = 4.5
+    # c_pid.u.k_i = 0
+    # c_pid.u.k_d = 0.6
+    # c_pid.u.τ_f = 0.01
+end
+
+function Control.reset!(sys::System{<:PitchControlGs})
     #set default inputs and states
     sys.u.mode = direct_elevator_mode
     sys.u.e_dmd = 0
@@ -374,55 +273,66 @@ function Control.reset!(sys::System{<:PitchControl})
     #reset compensators
     Control.reset!.(values(sys.subsystems))
     #set default outputs
-    sys.y = PitchControlY()
+    sys.y = PitchControlGsY()
 end
 
-function Systems.f_disc!(sys::System{PitchControl}, kin::KinematicData, Δt::Real)
+function Systems.f_disc!(sys::System{<:PitchControlGs}, kin::KinematicData, air::AirData, Δt::Real)
 
     @unpack mode, e_dmd, q_dmd, θ_dmd, c_dmd = sys.u
-    @unpack q_comp, θ_comp, c_comp = sys.subsystems
+    @unpack q_int, q_pid, θ_pid, c_pid = sys.subsystems
+    q_lookup = sys.constants.q_lookup
 
-    c_comp.u.feedback .= -kin.v_eOb_n[3]
-    θ_comp.u.feedback .= kin.e_nb.θ
-    q_comp.u.feedback = kin.ω_lb_b[2]
+    #retrieve and assign interpolated pitch rate PID parameters
+    q_params = q_lookup(air.EAS, Float64(kin.h_o))
+    Control.assign!(q_pid, q_params)
+
+    c = -kin.v_eOb_n[3] #climb rate
+    @unpack θ, φ = kin.e_nb
+    _, q, r = kin.ω_lb_b
 
     if mode === direct_elevator_mode
         e_cmd = e_dmd
     else
         if mode === pitch_rate_mode
-            q_comp.u.setpoint = q_dmd
+            q_int.u.input = q_dmd - q
         else #pitch_angle, climb_rate
             if mode === pitch_angle_mode
-                θ_comp.u.setpoint .= θ_dmd
+                θ_pid.u.input = θ_dmd - θ
             else #climb rate
-                c_comp.u.setpoint .= c_dmd
-                f_disc!(c_comp, Δt)
-                θ_comp.u.setpoint .= c_comp.y.out[1]
+                c_pid.u.input = c_dmd - c
+                f_disc!(c_pid, Δt)
+                θ_pid.u.input = c_pid.y.output - θ
             end
-            f_disc!(θ_comp, Δt)
-            q_comp.u.setpoint = θ_comp.y.out[1]
+            f_disc!(θ_pid, Δt)
+            θ_dot_dmd = θ_pid.y.output
+            φ_bnd = clamp(φ, -π/3, π/3)
+            q_θ = 1/cos(φ_bnd) * θ_dot_dmd + r * tan(φ_bnd)
+            q_int.u.input = q_θ - q
         end
-        f_disc!(q_comp, Δt)
-        e_cmd = Ranged(q_comp.y.out, -1., 1.)
+        f_disc!(q_int, Δt)
+        q_pid.u.input = q_int.y.output
+        f_disc!(q_pid, Δt)
+        e_cmd = Ranged(q_pid.y.output, -1., 1.)
     end
 
     e_sat = saturation(e_cmd)
 
     #will take effect on the next call
-    q_comp.u.sat_ext = e_sat
-    θ_comp.u.sat_ext .= e_sat
-    c_comp.u.sat_ext .= e_sat
+    q_int.u.sat_ext = e_sat
+    q_pid.u.sat_ext = e_sat
+    θ_pid.u.sat_ext = e_sat
+    c_pid.u.sat_ext = e_sat
 
-    sys.y = PitchControlY(; mode, e_dmd, q_dmd, θ_dmd, c_dmd,
-                            e_cmd, e_sat, q_comp = q_comp.y,
-                            θ_comp = θ_comp.y, c_comp = c_comp.y)
+    sys.y = PitchControlGsY(; mode, e_dmd, q_dmd, θ_dmd, c_dmd,
+                            e_cmd, e_sat, q_int = q_int.y, q_pid = q_pid.y,
+                            θ_pid = θ_pid.y, c_pid = c_pid.y)
 
 end
 
 
-function GUI.draw(sys::System{<:PitchControl})
+function GUI.draw(sys::System{<:PitchControlGs})
 
-    @unpack q_comp, θ_comp, c_comp = sys.subsystems
+    @unpack q_int, q_pid, θ_pid, c_pid = sys.subsystems
     @unpack mode, e_dmd, q_dmd, θ_dmd, c_dmd, e_cmd, e_sat = sys.y
 
     CImGui.Begin("Pitch Control")
@@ -436,24 +346,26 @@ function GUI.draw(sys::System{<:PitchControl})
     CImGui.Text(@sprintf("Elevator command: %.3f", Float64(e_cmd)))
     CImGui.Text("Elevator saturation: $e_sat")
 
+    if CImGui.TreeNode("Pitch Rate Integrator")
+        GUI.draw(q_int)
+        CImGui.TreePop()
+    end
     if CImGui.TreeNode("Pitch Rate Compensator")
-        GUI.draw(q_comp)
+        GUI.draw(q_pid)
         CImGui.TreePop()
     end
     if CImGui.TreeNode("Pitch Angle Compensator")
-        GUI.draw(θ_comp)
+        GUI.draw(θ_pid)
         CImGui.TreePop()
     end
     if CImGui.TreeNode("Climb Rate Compensator")
-        GUI.draw(c_comp)
+        GUI.draw(c_pid)
         CImGui.TreePop()
     end
 
     CImGui.End()
 
 end
-
-
 
 ################################################################################
 ################################## RollControl #################################
@@ -812,7 +724,7 @@ end
 @kwdef struct Avionics <: AbstractAvionics
     throttle_ctl::ThrottleControl = ThrottleControl()
     roll_ctl::RollControl = RollControl()
-    pitch_ctl::PitchControl = PitchControl()
+    pitch_ctl::PitchControlGs = PitchControlGs()
     yaw_ctl::YawControl = YawControl()
     lon_ctl::LonControlAuto = LonControlAuto()
 end
@@ -891,7 +803,7 @@ end
     actuation::ActuationCommands = ActuationCommands()
     throttle_ctl::ThrottleControlY = ThrottleControlY()
     roll_ctl::RollControlY = RollControlY()
-    pitch_ctl::PitchControlY = PitchControlY()
+    pitch_ctl::PitchControlGsY = PitchControlGsY()
     yaw_ctl::YawControlY = YawControlY()
     lon_ctl::LonControlAutoY = LonControlAutoY()
 end
@@ -991,7 +903,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
     f_disc!(throttle_ctl, air, Δt)
     f_disc!(roll_ctl, kinematics, Δt)
-    f_disc!(pitch_ctl, kinematics, Δt)
+    f_disc!(pitch_ctl, kinematics, air, Δt)
     f_disc!(yaw_ctl, air, Δt)
 
     throttle_cmd = throttle_ctl.y.thr_cmd

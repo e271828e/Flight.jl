@@ -35,13 +35,13 @@ function PowerPlant()
     #Propellers module are modified, the cache file must be regenerated
     # cache_file = joinpath(@__DIR__, "prop.h5")
     # if !isfile(cache_file)
-    #     prop_data = Propellers.LookupData(Propellers.Blade(), 2)
-    #     Propellers.save_lookup_data(prop_data, cache_file)
+    #     prop_data = Propellers.Lookup(Propellers.Blade(), 2)
+    #     Propellers.save_lookup(prop_data, cache_file)
     # end
-    # prop_data = Propellers.load_lookup_data(cache_file)
+    # prop_data = Propellers.load_lookup(cache_file)
 
     #always generate the lookup data from scratch
-    prop_data = Propellers.LookupData(Propellers.Blade(), 2)
+    prop_data = Propellers.Lookup(Propellers.Blade(), 2)
 
     propeller = Propeller(prop_data;
         sense = Propellers.CW, d = 2.0, J_xx = 0.3,
