@@ -9,7 +9,7 @@ using Flight.FlightCore.GUI
 
 export LinearStateSpace, submodel
 export PIContinuous, PIDDiscrete
-export PIDDiscreteNew, IntegratorDiscrete, LeadLagDiscrete
+export PIDParams, PIDDiscreteNew, IntegratorDiscrete, LeadLagDiscrete
 
 export PIDOpt
 
@@ -732,6 +732,30 @@ end #function
 ####################### Gain-Schedulable PID Compensator #######################
 ################################################################################
 
+@kwdef struct PIDParams{T} <: FieldVector{4, T} #parallel form
+    k_p::T = 1.0
+    k_i::T = 0.0
+    k_d::T = 0.1
+    τ_f::T = 0.01
+end
+
+function Base.NamedTuple(params::PIDParams)
+    names = fieldnames(typeof(params))
+    fields = map(n -> getfield(params, n), names)
+    NamedTuple{names}(fields)
+end
+
+Base.getproperty(params::PIDParams, name::Symbol) = getproperty(params, Val(name))
+
+@generated function Base.getproperty(params::PIDParams, ::Val{S}) where {S}
+    if S ∈ fieldnames(PIDParams)
+        return :(getfield(params, $(QuoteNode(S))))
+    elseif S === :T_i
+        return :(params.k_p / params.k_i)
+    elseif S === :T_d
+        return :(params.k_d / params.k_p)
+    end
+end
 
 @kwdef struct PIDDiscreteNew <: SystemDefinition end
 
@@ -781,13 +805,18 @@ Systems.init(::SystemY, ::PIDDiscreteNew) = PIDDiscreteNewY()
 Systems.init(::SystemU, ::PIDDiscreteNew) = PIDDiscreteNewU()
 Systems.init(::SystemS, ::PIDDiscreteNew) = PIDDiscreteNewS()
 
-function Control.reset!(sys::System{<:PIDDiscreteNew})
+function reset!(sys::System{<:PIDDiscreteNew})
     sys.u.input = 0
     sys.u.sat_ext = 0
     sys.s.x_i0 = 0
     sys.s.x_d0 = 0
     sys.s.sat_out_0 = 0
     f_disc!(sys, 1.0)
+end
+
+function assign!(sys::System{<:PIDDiscreteNew}, params::PIDParams{<:Real})
+    @unpack k_p, k_i, k_d, τ_f = params
+    @pack! sys.u = k_p, k_i, k_d, τ_f
 end
 
 function Systems.f_disc!(sys::System{<:PIDDiscreteNew}, Δt::Real)
@@ -962,27 +991,6 @@ using Trapz: trapz
 
 using ..Control
 
-# export Params, Settings, Metrics, Results
-
-@kwdef struct Params{T} <: FieldVector{4, T} #parallel form
-    k_p::T = 1.0
-    k_i::T = 0.0
-    k_d::T = 0.1
-    τ_f::T = 0.01
-end
-
-Base.getproperty(params::Params, name::Symbol) = getproperty(params, Val(name))
-
-@generated function Base.getproperty(params::Params, ::Val{S}) where {S}
-    if S ∈ fieldnames(Params)
-        return :(getfield(params, $(QuoteNode(S))))
-    elseif S === :T_i
-        return :(params.k_p / params.k_i)
-    elseif S === :T_d
-        return :(params.k_d / params.k_p)
-    end
-end
-
 @kwdef struct Metrics{T} <: FieldVector{3, T}
     Ms::T #maximum sensitivity
     ∫e::T #integrated absolute error
@@ -992,19 +1000,19 @@ end
 @kwdef struct Settings
     t_sim::Float64 = 5.0
     maxeval::Int64 = 5000
-    lower_bounds::Params = Params(; k_p = 0.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-    upper_bounds::Params = Params(; k_p = 50.0, k_i = 50.0, k_d = 10.0, τ_f = 0.01)
-    initial_step::Params = Params(; k_p = 0.1, k_i = 0.1, k_d = 0.1, τ_f = 0.01)
+    lower_bounds::PIDParams = PIDParams(; k_p = 0.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+    upper_bounds::PIDParams = PIDParams(; k_p = 50.0, k_i = 50.0, k_d = 10.0, τ_f = 0.01)
+    initial_step::PIDParams = PIDParams(; k_p = 0.01, k_i = 0.01, k_d = 0.01, τ_f = 0.01)
 end
 
 @kwdef struct Results
     exit_flag::Symbol
     cost::Float64
     metrics::Metrics{Float64}
-    params::Params{Float64}
+    params::PIDParams{Float64}
 end
 
-function build_PID(params::Params{<:Real})
+function build_PID(params::PIDParams{<:Real})
     @unpack k_p, k_i, k_d, τ_f = params
     (k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])) |> ss
 end
@@ -1044,21 +1052,23 @@ end
 
 
 function optimize_PID(  plant::LTISystem;
-                    params_0::Params = Params(), #initial condition
+                    params_0::PIDParams = PIDParams(), #initial condition
                     settings::Settings = Settings(),
                     weights::Metrics{<:Real} = Metrics(ones(3)),
                     global_search::Bool = true)
 
     x0 = params_0 |> Vector
-    maxeval = settings.maxeval
     lower_bounds = settings.lower_bounds |> Vector
     upper_bounds = settings.upper_bounds |> Vector
     initial_step = settings.initial_step |> Vector
+    maxeval = settings.maxeval
+
+    x0 = clamp.(x0, lower_bounds, upper_bounds)
 
     plant = ss(plant)
     f_opt = let plant = plant, settings = settings, weights = weights
         function (x::Vector{Float64}, ::Vector{Float64})
-            pid = build_PID(Params(x...))
+            pid = build_PID(PIDParams(x...))
             cost(plant, pid, settings, weights)
         end
     end
@@ -1089,7 +1099,7 @@ function optimize_PID(  plant::LTISystem;
 
     (minf, minx, exit_flag) = optimize(opt_loc, minx)
 
-    params_opt = Params(minx...)
+    params_opt = PIDParams(minx...)
     pid_opt = build_PID(params_opt)
     metrics_opt = Metrics(plant, pid_opt, settings)
 

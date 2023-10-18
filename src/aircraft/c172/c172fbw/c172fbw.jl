@@ -868,6 +868,6 @@ end
 ################################## Variants ####################################
 
 include(normpath("variants/base.jl")); @reexport using .C172FBWBase
-include(normpath("variants/cas.jl")); @reexport using .C172FBWCAS
+include(normpath("variants/cas/cas.jl")); @reexport using .C172FBWCAS
 
 end
