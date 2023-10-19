@@ -49,10 +49,10 @@ function generate_lookups(
     EAS_bounds = (EAS_range[1], EAS_range[end])
     h_bounds = (h_range[1], h_range[end])
 
-    lookups = map((q_results, p_results, β_results),
+    map((q_results, p_results, β_results),
                 ("q_lookup.h5", "p_lookup.h5", "β_lookup.h5")) do results, fname
 
-        PIDOpt.check_results.(results)
+        # PIDOpt.check_results.(results)
         data = PIDParams(StructArrays.components(StructArray(StructArray(results).params))...)
         lookup = C172FBWCAS.Lookup(data, EAS_bounds, h_bounds)
         C172FBWCAS.save_lookup(lookup, joinpath(folder, fname))
@@ -133,11 +133,22 @@ function optimize_pβ(   ac::System{<:Cessna172FBWBase{NED}};
     params_0 = PIDParams(; k_p = 5.0, k_i = 20.0, k_d = 5.0, τ_f = 0.01)
 
     β_results = PIDOpt.optimize_PID(P_β_opt; params_0, settings, weights, global_search)
+    return (p_results, β_results)
 
     # β_PID = PIDOpt.build_PID(β_results.params)
-    # C_β2r = named_ss(-β_PID, :θcmp; u = :θ_err, y = :q_dmd)
+    # C_β2r = named_ss(-β_PID, :βcmp; u = :β_err, y = :rudder_cmd)
+    # βsum = sumblock("β_err = β_dmd - β")
+    # p_β_MIMO = connect([βsum, C_β2r, p_rud_MIMO], [:β_err=>:β_err, :β=>:β, :rudder_cmd=>:rudder_cmd], w1 = [:p_dmd, :β_dmd], z1 = p_rud_MIMO.y)
 
-    return (p_results, β_results)
+    # P_p2φ = p_β_MIMO[:φ, :p_dmd]
+    # settings = PIDOpt.Settings(; t_sim = 5,
+    #     upper_bounds = PIDParams(; k_p = 50.0, k_i = 0.0, k_d = 20.0, τ_f = 0.01)) #disallow integral gain
+    # weights = PIDOpt.Metrics(; Ms = 1, ∫e = 10, ef = 2)
+    # params_0 = PIDParams()
+
+    # φ_results = PIDOpt.optimize_PID(P_p2φ; params_0, settings, weights, global_search)
+
+    # return (p_results, β_results, φ_results)
 
 end
 

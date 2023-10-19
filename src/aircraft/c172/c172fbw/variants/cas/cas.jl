@@ -250,13 +250,15 @@ Systems.init(::SystemY, ::PitchControlGs) = PitchControlGsY()
 
 function Systems.init!(sys::System{<:PitchControlGs})
     @unpack q_pid, θ_pid, c_pid = sys.subsystems
-    q_pid.u.bound_lo = -1 #not essential, e_cmd is already Ranged and we're setting sat_ext anyway
-    q_pid.u.bound_hi = 1 #idem
-    θ_pid.u.k_p = 4.5
+
+    q_pid.u.bound_lo = -1
+    q_pid.u.bound_hi = 1
+
     θ_pid.u.k_p = 4.5
     θ_pid.u.k_i = 0
     θ_pid.u.k_d = 0.6
     θ_pid.u.τ_f = 0.01
+
     # c_pid.u.k_p = 4.5
     # c_pid.u.k_i = 0
     # c_pid.u.k_d = 0.6
@@ -286,9 +288,9 @@ function Systems.f_disc!(sys::System{<:PitchControlGs}, kin::KinematicData, air:
     q_params = q_lookup(air.EAS, Float64(kin.h_o))
     Control.assign!(q_pid, q_params)
 
-    c = -kin.v_eOb_n[3] #climb rate
-    @unpack θ, φ = kin.e_nb
     _, q, r = kin.ω_lb_b
+    @unpack θ, φ = kin.e_nb
+    c = -kin.v_eOb_n[3] #climb rate
 
     if mode === direct_elevator_mode
         e_cmd = e_dmd
@@ -368,7 +370,7 @@ function GUI.draw(sys::System{<:PitchControlGs})
 end
 
 ################################################################################
-################################## RollControl #################################
+################################## RollControlGs ###############################
 
 @enum RollMode begin
     direct_aileron_mode = 0
@@ -377,14 +379,14 @@ end
     course_angle_mode = 3
 end
 
-#TO DO: redesign φ compensator with actual p feedback
-@kwdef struct RollControl <: AbstractControlChannel
-    p_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0.6, k_i = 8.0, k_d = 0.02, τ_d = 0.01)
-    φ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 6.0, k_i = 1.5, k_d = 0.6, τ_d = 0.01)
-    χ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 3.0, k_i = 0.0, k_d = 0.0, τ_d = 0.01)
+@kwdef struct RollControlGs{LP <: Lookup} <: AbstractControlChannel
+    p_lookup::LP = load_lookup(joinpath(@__DIR__, "p_lookup.h5"))
+    p_pid::PIDDiscreteNew = PIDDiscreteNew()
+    φ_pid::PIDDiscreteNew = PIDDiscreteNew()
+    χ_pid::PIDDiscreteNew = PIDDiscreteNew()
 end
 
-@kwdef mutable struct RollControlU
+@kwdef mutable struct RollControlGsU
     mode::RollMode = direct_aileron_mode
     a_dmd::Ranged{Float64, -1., 1.} = 0.0 #aileron actuation demand
     p_dmd::Float64 = 0.0 #roll rate demand
@@ -392,7 +394,7 @@ end
     χ_dmd::Float64 = 0.0 #course angle demand
 end
 
-@kwdef struct RollControlY
+@kwdef struct RollControlGsY
     mode::RollMode = direct_aileron_mode
     a_dmd::Ranged{Float64, -1., 1.} = Ranged(0.0, -1.0, 1.0) #aileron actuation demand
     p_dmd::Float64 = 0.0
@@ -400,21 +402,35 @@ end
     χ_dmd::Float64 = 0.0
     a_cmd::Ranged{Float64, -1., 1.} = Ranged(0.0, -1.0, 1.0) #aileron actuation command
     a_sat::Int64 = 0 #aileron saturation state
-    p_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
-    φ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
-    χ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    p_pid::PIDDiscreteNewY = PIDDiscreteNewY()
+    φ_pid::PIDDiscreteNewY = PIDDiscreteNewY()
+    χ_pid::PIDDiscreteNewY = PIDDiscreteNewY()
 end
 
-Systems.init(::SystemU, ::RollControl) = RollControlU()
-Systems.init(::SystemY, ::RollControl) = RollControlY()
+Systems.init(::SystemU, ::RollControlGs) = RollControlGsU()
+Systems.init(::SystemY, ::RollControlGs) = RollControlGsY()
 
-function Systems.init!(sys::System{RollControl})
-    #initialize course angle compensator bank angle demand output limits
-    sys.χ_comp.u.bound_lo .= -π/4
-    sys.χ_comp.u.bound_hi .= π/4
+function Systems.init!(sys::System{<:RollControlGs})
+    @unpack p_pid, φ_pid, χ_pid = sys.subsystems
+
+    #p_pid gains will be assigned by gain scheduling
+    p_pid.u.bound_lo = -1
+    p_pid.u.bound_hi = 1
+
+    φ_pid.u.k_p = 7.0
+    φ_pid.u.k_i = 0
+    φ_pid.u.k_d = 1.0
+    φ_pid.u.τ_f = 0.01
+
+    χ_pid.u.k_p = 5.0
+    χ_pid.u.k_i = 0.2
+    χ_pid.u.k_d = 0.0
+    χ_pid.u.τ_f = 0.01
+    χ_pid.u.bound_lo = -π/4
+    χ_pid.u.bound_hi = π/4
 end
 
-function Control.reset!(sys::System{<:RollControl})
+function Control.reset!(sys::System{<:RollControlGs})
     #set default inputs and states
     sys.u.mode = direct_aileron_mode
     sys.u.a_dmd = 0
@@ -424,60 +440,62 @@ function Control.reset!(sys::System{<:RollControl})
     #reset compensators
     Control.reset!.(values(sys.subsystems))
     #set default outputs
-    sys.y = RollControlY()
+    sys.y = RollControlGsY()
 end
 
-function Systems.f_disc!(sys::System{RollControl}, kin::KinematicData, Δt::Real)
+function Systems.f_disc!(sys::System{<:RollControlGs}, kin::KinematicData, air::AirData, Δt::Real)
 
     @unpack mode, a_dmd, p_dmd, φ_dmd, χ_dmd = sys.u
-    @unpack p_comp, φ_comp, χ_comp = sys.subsystems
+    @unpack p_pid, φ_pid, χ_pid = sys.subsystems
+    p_lookup = sys.constants.p_lookup
+
+    #retrieve and assign interpolated pitch rate PID parameters
+    p_params = p_lookup(air.EAS, Float64(kin.h_o))
+    Control.assign!(p_pid, p_params)
 
     #χ_err = χ_dmd - χ must be wrapped between -π and π. so instead of letting
     #the PID subtract them internally, we set the feedback to zero and pass
     #χ_err directly as the setpoint
-    p_comp.u.feedback .= kin.ω_lb_b[1]
-    φ_comp.u.feedback .= kin.e_nb.φ
-    χ_comp.u.feedback .= 0
+    p = kin.ω_lb_b[1]
+    φ = kin.e_nb.φ
+    χ = Attitude.azimuth(kin.v_eOb_n)
 
     if mode === direct_aileron_mode
         a_cmd = a_dmd
     else
         if mode === roll_rate_mode
-            p_comp.u.setpoint .= p_dmd
-        else
+            p_pid.u.input = p_dmd
+        else #bank angle, course angle
             if mode === bank_angle_mode
-                φ_comp.u.setpoint .= φ_dmd
+                φ_pid.u.input = φ_dmd - φ
             else #course angle
-                χ = Attitude.azimuth(kin.v_eOb_n)
-                χ_err = wrap_to_π(χ_dmd - χ)
-                χ_comp.u.setpoint .= χ_err #use error as setpoint
-                f_disc!(χ_comp, Δt)
-                φ_comp.u.setpoint .= χ_comp.y.out[1]
+                χ_pid.u.input = wrap_to_π(χ_dmd - χ)
+                f_disc!(χ_pid, Δt)
+                φ_pid.u.input = χ_pid.y.output - φ
             end
-            f_disc!(φ_comp, Δt)
-            p_comp.u.setpoint .= φ_comp.y.out[1]
+            f_disc!(φ_pid, Δt)
+            p_pid.u.input = φ_pid.y.output - p
         end
-        f_disc!(p_comp, Δt)
-        a_cmd = Ranged(p_comp.y.out[1], -1., 1.)
+        f_disc!(p_pid, Δt)
+        a_cmd = Ranged(p_pid.y.output, -1., 1.)
     end
 
     a_sat = saturation(a_cmd)
 
     #will take effect on the next call
-    p_comp.u.sat_ext .= a_sat
-    φ_comp.u.sat_ext .= a_sat
-    χ_comp.u.sat_ext .= a_sat
+    p_pid.u.sat_ext = a_sat
+    φ_pid.u.sat_ext = a_sat
+    χ_pid.u.sat_ext = a_sat
 
-    sys.y = RollControlY(; mode, a_dmd, p_dmd, φ_dmd, χ_dmd,
-                        a_cmd, a_sat, p_comp = p_comp.y,
-                        φ_comp = φ_comp.y, χ_comp = χ_comp.y)
+    sys.y = RollControlGsY(; mode, a_dmd, p_dmd, φ_dmd, χ_dmd, a_cmd, a_sat,
+                             p_pid = p_pid.y, φ_pid = φ_pid.y, χ_pid = χ_pid.y)
 
 end
 
 
-function GUI.draw(sys::System{<:RollControl})
+function GUI.draw(sys::System{<:RollControlGs})
 
-    @unpack p_comp, φ_comp, χ_comp = sys.subsystems
+    @unpack p_pid, φ_pid, χ_pid = sys.subsystems
     @unpack mode, a_dmd, p_dmd, φ_dmd, χ_dmd, a_cmd, a_sat = sys.y
 
     CImGui.Begin("Roll Control")
@@ -492,15 +510,15 @@ function GUI.draw(sys::System{<:RollControl})
     CImGui.Text("Aileron saturation: $a_sat")
 
     if CImGui.TreeNode("Roll Rate Compensator")
-        GUI.draw(p_comp)
+        GUI.draw(p_pid)
         CImGui.TreePop()
     end
     if CImGui.TreeNode("Bank Angle Compensator")
-        GUI.draw(φ_comp)
+        GUI.draw(φ_pid)
         CImGui.TreePop()
     end
     if CImGui.TreeNode("Track Angle Compensator")
-        GUI.draw(χ_comp)
+        GUI.draw(χ_pid)
         CImGui.TreePop()
     end
 
@@ -723,7 +741,7 @@ end
 
 @kwdef struct Avionics <: AbstractAvionics
     throttle_ctl::ThrottleControl = ThrottleControl()
-    roll_ctl::RollControl = RollControl()
+    roll_ctl::RollControlGs = RollControlGs()
     pitch_ctl::PitchControlGs = PitchControlGs()
     yaw_ctl::YawControl = YawControl()
     lon_ctl::LonControlAuto = LonControlAuto()
@@ -802,7 +820,7 @@ end
     moding::AvionicsModing = AvionicsModing()
     actuation::ActuationCommands = ActuationCommands()
     throttle_ctl::ThrottleControlY = ThrottleControlY()
-    roll_ctl::RollControlY = RollControlY()
+    roll_ctl::RollControlGsY = RollControlGsY()
     pitch_ctl::PitchControlGsY = PitchControlGsY()
     yaw_ctl::YawControlY = YawControlY()
     lon_ctl::LonControlAutoY = LonControlAutoY()
@@ -902,7 +920,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     end
 
     f_disc!(throttle_ctl, air, Δt)
-    f_disc!(roll_ctl, kinematics, Δt)
+    f_disc!(roll_ctl, kinematics, air, Δt)
     f_disc!(pitch_ctl, kinematics, air, Δt)
     f_disc!(yaw_ctl, air, Δt)
 

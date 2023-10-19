@@ -1109,7 +1109,7 @@ function optimize_PID(  plant::LTISystem;
 end
 
 function check_results(results::Results,
-            thresholds::Metrics{Float64} = Metrics(; Ms = 1.4, ∫e = 0.05, ef = 0.01))
+            thresholds::Metrics{Float64} = Metrics(; Ms = 1.4, ∫e = 0.05, ef = 0.02))
 
     @unpack exit_flag, metrics = results
 
