@@ -695,7 +695,6 @@ XLinear(physics::System{<:C172FBW.Physics}) = XLinear(physics.x)
 function YLinear(physics::System{<:C172FBW.Physics})
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_n = physics.y.kinematics
-    @unpack α, β = physics.y.airframe.aero
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
 
@@ -707,6 +706,8 @@ function YLinear(physics::System{<:C172FBW.Physics})
     f_x, f_y, f_z = physics.y.rigidbody.f_G_b
     EAS = physics.y.air.EAS
     TAS = physics.y.air.TAS
+    α = physics.y.air.α_b
+    β = physics.y.air.β_b
     ω_eng = physics.y.airframe.pwp.engine.ω
     m_fuel = physics.y.airframe.fuel.m_avail
 

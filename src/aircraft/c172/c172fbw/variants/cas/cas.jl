@@ -251,6 +251,7 @@ Systems.init(::SystemY, ::PitchControlGs) = PitchControlGsY()
 function Systems.init!(sys::System{<:PitchControlGs})
     @unpack q_pid, θ_pid, c_pid = sys.subsystems
 
+    #p_pid gains not set here, they will be assigned by gain scheduling
     q_pid.u.bound_lo = -1
     q_pid.u.bound_hi = 1
 
@@ -413,7 +414,7 @@ Systems.init(::SystemY, ::RollControlGs) = RollControlGsY()
 function Systems.init!(sys::System{<:RollControlGs})
     @unpack p_pid, φ_pid, χ_pid = sys.subsystems
 
-    #p_pid gains will be assigned by gain scheduling
+    #p_pid gains not set here, they will be assigned by gain scheduling
     p_pid.u.bound_lo = -1
     p_pid.u.bound_hi = 1
 
@@ -464,7 +465,7 @@ function Systems.f_disc!(sys::System{<:RollControlGs}, kin::KinematicData, air::
         a_cmd = a_dmd
     else
         if mode === roll_rate_mode
-            p_pid.u.input = p_dmd
+            p_pid.u.input = p_dmd - p
         else #bank angle, course angle
             if mode === bank_angle_mode
                 φ_pid.u.input = φ_dmd - φ
@@ -535,65 +536,80 @@ end
     sideslip_mode = 1
 end
 
-@kwdef struct YawControl <: AbstractControlChannel
-    β_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 44, k_i = 25, k_d = 6, τ_d = 0.01)
+@kwdef struct YawControlGs{LB <: Lookup} <: AbstractControlChannel
+    β_lookup::LB = load_lookup(joinpath(@__DIR__, "β_lookup.h5"))
+    β_pid::PIDDiscreteNew = PIDDiscreteNew()
 end
 
-@kwdef mutable struct YawControlU
+@kwdef mutable struct YawControlGsU
     mode::YawMode = direct_rudder_mode #yaw control mode
     r_dmd::Ranged{Float64, -1., 1.} = 0.0 #aileron actuation demand
     β_dmd::Float64 = 0.0 #sideslip angle demand
 end
 
-@kwdef struct YawControlY
+@kwdef struct YawControlGsY
     mode::YawMode = direct_rudder_mode
     r_dmd::Ranged{Float64, -1., 1.} = 0.0
     β_dmd::Float64 = 0.0
     r_cmd::Ranged{Float64, -1., 1.} = 0.0 #rudder actuation command
     r_sat::Int64 = 0 #rudder saturation state
-    β_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    β_pid::PIDDiscreteNewY = PIDDiscreteNewY()
 end
 
-Systems.init(::SystemU, ::YawControl) = YawControlU()
-Systems.init(::SystemY, ::YawControl) = YawControlY()
+Systems.init(::SystemU, ::YawControlGs) = YawControlGsU()
+Systems.init(::SystemY, ::YawControlGs) = YawControlGsY()
 
-function Control.reset!(sys::System{<:YawControl})
+function Systems.init!(sys::System{<:YawControlGs})
+    #β_pid gains not set here, they will be assigned by gain scheduling
+    β_pid = sys.subsystems.β_pid
+    β_pid.u.bound_lo = -1 #rudder command limits
+    β_pid.u.bound_hi = 1
+end
+
+function Control.reset!(sys::System{<:YawControlGs})
     #set default inputs and states
     sys.u.mode = direct_rudder_mode
     sys.u.r_dmd = 0
     sys.u.β_dmd = 0
-    #reset compensators
+    #reset pid
     Control.reset!.(values(sys.subsystems))
     #set default outputs
-    sys.y = YawControlY()
+    sys.y = YawControlGsY()
 end
 
-function Systems.f_disc!(sys::System{YawControl}, air::AirData, Δt::Real)
+function Systems.f_disc!(sys::System{<:YawControlGs}, kin::KinematicData, air::AirData, Δt::Real)
 
     @unpack mode, r_dmd, β_dmd = sys.u
-    @unpack β_comp = sys.subsystems
+    β_pid = sys.subsystems.β_pid
+    β_lookup = sys.constants.β_lookup
 
-    β_comp.u.feedback .= air.β_b
+    #retrieve and assign interpolated PID parameters
+    # β_params = β_lookup(air.EAS, Float64(kin.h_o))
+    # β_params = PIDParams(k_p = 30.0, k_i = 40.0, k_d = 5.0, τ_f = 0.01) #for 55 EAS
+    β_params = PIDParams(k_p = 150.0, k_i = 120.0, k_d = 20.0, τ_f = 0.01) #for 25 EAS
+    Control.assign!(β_pid, β_params)
+
+    β = air.β_b
 
     if mode === direct_rudder_mode
         r_cmd = r_dmd
     else #sideslip mode
-        β_comp.u.setpoint .= β_dmd
-        f_disc!(β_comp, Δt)
-        r_cmd = Ranged(-β_comp.y.out[1], -1., 1.) #compensator sign inversion
+        β_pid.u.input = β_dmd - β
+        f_disc!(β_pid, Δt)
+        r_cmd = Ranged(-β_pid.y.output, -1., 1.) #note sign inversion!
     end
 
     r_sat = saturation(r_cmd)
-    β_comp.u.sat_ext .= -r_sat #saturation must also be inverted!
+    β_pid.u.sat_ext = -r_sat #saturation must also be inverted!
 
-    sys.y = YawControlY(; mode, r_dmd, β_dmd, r_cmd, r_sat, β_comp = β_comp.y)
+    sys.y = YawControlGsY(; mode, r_dmd, β_dmd, r_cmd, r_sat, β_pid = β_pid.y)
 
 end
 
 
-function GUI.draw(sys::System{<:YawControl})
+function GUI.draw(sys::System{<:YawControlGs})
 
-    @unpack β_comp = sys.subsystems
+    @unpack β_pid = sys.subsystems
     @unpack mode, r_dmd, β_dmd, r_cmd, r_sat = sys.y
 
     CImGui.Begin("Yaw Control")
@@ -606,7 +622,7 @@ function GUI.draw(sys::System{<:YawControl})
     CImGui.Text("Rudder saturation: $r_sat")
 
     if CImGui.TreeNode("Sideslip Angle Compensator")
-        GUI.draw(β_comp)
+        GUI.draw(β_pid)
         CImGui.TreePop()
     end
 
@@ -617,29 +633,6 @@ end
 ################################################################################
 ########################## Longitudinal Control ################################
 
-#with θ-based airspeed control there is no risk of stalling. θ will be reduced
-#as required to hold the requested airspeed. when the aircraft cannot climb any
-#further, it will simply remain in acquire mode at constant altitude.
-
-#but what if we are descending at some given speed and then when we reach the
-#target altitude and switch to altitude hold we cannot hold that altitude at
-#maximum throttle above the stall speed? this is theoretically possible, but it
-#should not happen in practice, because how would we have climbed above it in
-#the first place?
-
-# we need e_sat to halt integration in case elevator saturates after enabling
-#acquire mode, but we don't need throttle saturation, since in acquire mode we
-#are setting it manually, and in hold mode we have no control over v_dmd, which
-#is what ultimately affects thr_cmd via autothrottle
-
-#do we need to reset the compensators on each state change? airspeed2theta: if
-#we are at altitude hold and h_dmd changes, we will switch to airspeed2theta. if
-#airspeed2theta retains its previous states, what theta will it command by
-#default? that which achieved the previous airspeed at the previous altitude
-#altitude2climbrate: what climbrate will it command? in principle zero, because
-#the last time we disabled it, we were in altitude_hold, and therefore altitude
-#was already at the commanded value. what we should probably do is design these
-#compensators to have a relatively soft response
 
 @enum LonControlAutoState begin
     altitude_acquire = 0
@@ -659,6 +652,7 @@ end
 @kwdef mutable struct LonControlAutoU
     h_dmd::Tuple{Float64, AltitudeDatum} = (0.0, ellipsoidal) #altitude demand
     TAS_dmd::Float64 = 0.0 #airspeed demand
+    e_sat::Int64 = 0 #elevator saturation state, input to airspeed2θ  and h2climbrate compensators
 end
 
 @kwdef struct LonControlAutoY
@@ -679,7 +673,7 @@ Systems.init(::SystemY, ::LonControlAuto) = LonControlAutoY()
 
 function Systems.f_disc!(sys::System{LonControlAuto}, kin::KinematicData, air::AirData, Δt::Real)
 
-    @unpack h_dmd, TAS_dmd = sys.u
+    @unpack h_dmd, TAS_dmd, e_sat = sys.u
     @unpack h_comp, TAS_comp = sys.subsystems
 
     h_threshold = 20 #within 20 m we switch to altitude_hold
@@ -691,10 +685,11 @@ function Systems.f_disc!(sys::System{LonControlAuto}, kin::KinematicData, air::A
         throttle_mode = direct_throttle_mode
         pitch_mode = pitch_angle_mode
 
+        print("Remember sign inversion in θ_dmd from TAS_comp output, DC gain will be negative. Also on saturation!!")
         TAS_comp.u.setpoint .= TAS_dmd
         TAS_comp.u.feedback .= air.TAS
+        TAS_comp.u.sat_ext = -e_sat
         f_disc!(TAS_comp, Δt)
-        print("Remember sign inversion in θ_dmd from TAS, DC gain will be negative")
 
         thr_dmd = h_dmd[1] > h ? 1.0 : 0.0 #full throttle to climb, idle to descend
         θ_dmd = TAS_comp.y.out[1]
@@ -707,6 +702,7 @@ function Systems.f_disc!(sys::System{LonControlAuto}, kin::KinematicData, air::A
 
         h_comp.u.setpoint .= h_dmd[1]
         h_comp.u.feedback .= h
+        h_comp.u.sat_ext = e_sat
         f_disc!(h_comp, Δt)
 
         thr_dmd = 0.0 #no effect
@@ -743,11 +739,11 @@ end
     throttle_ctl::ThrottleControl = ThrottleControl()
     roll_ctl::RollControlGs = RollControlGs()
     pitch_ctl::PitchControlGs = PitchControlGs()
-    yaw_ctl::YawControl = YawControl()
+    yaw_ctl::YawControlGs = YawControlGs()
     lon_ctl::LonControlAuto = LonControlAuto()
 end
 
-@kwdef mutable struct PhysicalInputs
+@kwdef mutable struct Inceptors
     eng_start::Bool = false
     eng_stop::Bool = false
     mixture::Ranged{Float64, 0., 1.} = 0.5
@@ -780,13 +776,13 @@ end
     φ_dmd::Float64 = 0.0 #bank angle demand
     χ_dmd::Float64 = 0.0 #course angle demand
     h_dmd::Tuple{Float64, AltitudeDatum} = (0.0, ellipsoidal) #altitude demand
-    p_dmd_sf::Float64 = 0.2 #roll_input to p_dmd scale factor
-    q_dmd_sf::Float64 = 0.2 #pitch_input to q_dmd scale factor
-    β_dmd_sf::Float64 = -deg2rad(10) #yaw_input β_dmd scale factor, sign inverted
+    p_dmd_sf::Float64 = 1.0 #roll_input to p_dmd scale factor (0.2)
+    q_dmd_sf::Float64 = 1.0 #pitch_input to q_dmd scale factor (0.2)
+    β_dmd_sf::Float64 = 1.0 #yaw_input β_dmd scale factor, sign inverted -deg2rad(10)
 end
 
 @kwdef struct AvionicsU
-    physical::PhysicalInputs = PhysicalInputs()
+    inceptors::Inceptors = Inceptors()
     digital::DigitalInputs = DigitalInputs()
 end
 
@@ -822,7 +818,7 @@ end
     throttle_ctl::ThrottleControlY = ThrottleControlY()
     roll_ctl::RollControlGsY = RollControlGsY()
     pitch_ctl::PitchControlGsY = PitchControlGsY()
-    yaw_ctl::YawControlY = YawControlY()
+    yaw_ctl::YawControlGsY = YawControlGsY()
     lon_ctl::LonControlAutoY = LonControlAutoY()
 end
 
@@ -840,7 +836,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     @unpack eng_start, eng_stop, mixture, throttle,
             roll_input, pitch_input, yaw_input,
             aileron_cmd_offset, elevator_cmd_offset, rudder_cmd_offset,
-            flaps, brake_left, brake_right = avionics.u.physical
+            flaps, brake_left, brake_right = avionics.u.inceptors
 
     @unpack throttle_mode_sel, roll_mode_sel, pitch_mode_sel, yaw_mode_sel,
             lon_mode_sel, lat_mode_sel, TAS_dmd, θ_dmd, c_dmd, φ_dmd, χ_dmd, h_dmd,
@@ -851,7 +847,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     @unpack airframe, air = physics.y
     kinematics = physics.y.kinematics.common
 
-    #direct surface and inner loop demands always come from physical inputs
+    #direct surface and inner loop demands always come from inceptors
     roll_ctl.u.a_dmd = roll_input
     pitch_ctl.u.e_dmd = pitch_input
     yaw_ctl.u.r_dmd = yaw_input
@@ -922,7 +918,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
     f_disc!(throttle_ctl, air, Δt)
     f_disc!(roll_ctl, kinematics, air, Δt)
     f_disc!(pitch_ctl, kinematics, air, Δt)
-    f_disc!(yaw_ctl, air, Δt)
+    f_disc!(yaw_ctl, kinematics, air, Δt)
 
     throttle_cmd = throttle_ctl.y.thr_cmd
     aileron_cmd = roll_ctl.y.a_cmd
@@ -1104,15 +1100,15 @@ function Aircraft.trim!(ac::System{<:Cessna172FBWCAS},
     @unpack throttle, aileron, elevator, rudder = trim_state
 
     u = ac.avionics.u
-    u.physical.throttle = throttle
-    u.physical.roll_input = 0
-    u.physical.pitch_input = 0
-    u.physical.yaw_input = 0
-    u.physical.aileron_cmd_offset = aileron
-    u.physical.elevator_cmd_offset = elevator
-    u.physical.rudder_cmd_offset = rudder
-    u.physical.mixture = mixture
-    u.physical.flaps = flaps
+    u.inceptors.throttle = throttle
+    u.inceptors.roll_input = 0
+    u.inceptors.pitch_input = 0
+    u.inceptors.yaw_input = 0
+    u.inceptors.aileron_cmd_offset = aileron
+    u.inceptors.elevator_cmd_offset = elevator
+    u.inceptors.rudder_cmd_offset = rudder
+    u.inceptors.mixture = mixture
+    u.inceptors.flaps = flaps
 
     u.digital.lon_mode_sel = C172FBWCAS.lon_mode_semi
     u.digital.lat_mode_sel = C172FBWCAS.lat_mode_semi

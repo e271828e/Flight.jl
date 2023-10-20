@@ -18,6 +18,7 @@ using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.World
 
+using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
 using Flight.FlightAircraft.C172FBWCAS
 
@@ -49,7 +50,7 @@ function test_system_methods()
             #to exercise all airframe functionality, including landing gear, we
             #need to be on the ground with the engine running
             init_kinematics!(ac, kin_init_gnd)
-            ac.avionics.u.physical.eng_start = true #engine start switch on
+            ac.avionics.u.inceptors.eng_start = true #engine start switch on
             f_disc!(ac, 0.02, env) #run avionics for the engine start signal to propagate
             f_ode!(ac, env)
             f_step!(ac)
@@ -71,7 +72,7 @@ function test_system_methods()
 
             #testing the different avionics modes for allocations is a bit more
             #involved
-            u_physical = ac.avionics.u.physical
+            u_inceptors = ac.avionics.u.inceptors
             u_digital = ac.avionics.u.digital
 
             #we start by testing semiautomatic modes. enabling the outermost
@@ -87,7 +88,7 @@ function test_system_methods()
             u_digital.TAS_dmd = 40
             u_digital.φ_dmd = 0.1
             u_digital.c_dmd = 1
-            u_physical.yaw_input = 0.02
+            u_inceptors.yaw_input = 0.02
 
             f_disc!(ac, 0.02, env)
 
@@ -120,30 +121,19 @@ function test_sim(; save::Bool = true)
 
     @testset verbose = true "Simulation" begin
 
-        h_trn = HOrth(608.55);
-
         world = SimpleWorld(Cessna172FBWCAS()) |> System;
 
-        u_pld = world.ac.physics.airframe.pld.u
-        u_pld.m_pilot = 75
-        u_pld.m_copilot = 75
-        u_pld.m_lpass = 0
-        u_pld.m_rpass = 0
-        u_pld.m_baggage = 0
+        mid_cg_pld = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50)
 
         world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 
         trim_params = C172FBW.TrimParameters(
-            Ob = Geographic(LatLon(), h_trn + 1000),
-            ψ_nb = 0.0,
-            EAS = 55.0,
-            γ_wOb_n = 0.0,
-            ψ_lb_dot = 0.0,
-            θ_lb_dot = 0.0,
-            β_a = 0.0,
-            x_fuel = 1,
-            mixture = 0.5,
-            flaps = 0.0)
+        Ob = Geographic(LatLon(), HOrth(1000)),
+        EAS = 25.0,
+        γ_wOb_n = 0.0,
+        x_fuel = 0.5,
+        flaps = 1.0,
+        payload = mid_cg_pld)
 
         exit_flag, trim_state = trim!(world, trim_params)
         @test exit_flag === true
@@ -156,48 +146,54 @@ function test_sim(; save::Bool = true)
 
                 t = world.t[]
 
-                u_physical = world.ac.avionics.u.physical
+                u_inceptors = world.ac.avionics.u.inceptors
                 u_digital = world.ac.avionics.u.digital
 
                 # u_digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
                 # u_digital.throttle_mode_sel = C172FBWCAS.airspeed_throttle_mode
-                # u_physical.throttle = 1
-                # u_digital.TAS_dmd = 25
+                # u_inceptors.throttle = 1
+                # u_digital.TAS_dmd = 65
 
-                # u_digital.roll_mode_sel = C172FBWCAS.roll_rate_mode
-                u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
+                u_digital.roll_mode_sel = C172FBWCAS.roll_rate_mode
+                # u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
                 # u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
-                # # u_physical.roll_input = 0.1
-                u_digital.φ_dmd = 0
+                # u_inceptors.roll_input = 0.0
+                # u_digital.φ_dmd = 0
                 # u_digital.χ_dmd = 0
 
-                # u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
-                u_digital.yaw_mode_sel = C172FBWCAS.direct_rudder_mode
-                u_physical.yaw_input = 0
+                u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
+                # u_digital.yaw_mode_sel = C172FBWCAS.direct_rudder_mode
+                # u_inceptors.yaw_input = 0.1
 
-                u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
-                u_digital.θ_dmd = 0.0
+                # u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
+                # u_inceptors.pitch_input = 0.0
+                # u_digital.θ_dmd = 0.0
 
-                if 0 < t <= 7
-                    world.env.atm.wind.u.v_ew_n[1] = 10
-                elseif 7 < t < 15
-                    world.env.atm.wind.u.v_ew_n[1] = 10
+                if 0 < t <= 5
+                    world.env.atm.wind.u.v_ew_n[1] = 0
+                    # u_inceptors.roll_input = .1
+                    u_inceptors.yaw_input = .1
+                    # u_inceptors.pitch_input = .1
+                elseif 5 < t < 15
+                    world.env.atm.wind.u.v_ew_n[1] = 0
+                    # u_inceptors.yaw_input = 1
+                    # u_inceptors.pitch_input = 0.1
                 else
-                    u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
-                    u_digital.χ_dmd = π/2
-                    world.env.atm.wind.u.v_ew_n[1] = 10
+                    world.env.atm.wind.u.v_ew_n[1] = 0
                 end
             end
         end
 
-        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 120, sys_io!, adaptive = false)
+        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 5, sys_io!, adaptive = false)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
         kin_plots = make_plots(TimeHistory(sim).ac.physics.kinematics; Plotting.defaults...)
         air_plots = make_plots(TimeHistory(sim).ac.physics.air; Plotting.defaults...)
+        rb_plots = make_plots(TimeHistory(sim).ac.physics.rigidbody; Plotting.defaults...)
         save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim", "kin"))
         save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim", "air"))
+        save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim", "rigidbody"))
 
         return nothing
 

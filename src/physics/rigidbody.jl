@@ -676,7 +676,7 @@ function Plotting.make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
             L"$f_{Ob}^{x_b} \ (g)$",
             L"$f_{Ob}^{y_b} \ (g)$",
             L"$f_{Ob}^{z_b} \ (g)$"),
-        th_split = :h,
+        th_split = :h, link = :none,
         kwargs...)
 
     pd[:f_G_b] = plot(TimeHistory(th._t, th.f_G_b._data / g₀);
@@ -685,7 +685,7 @@ function Plotting.make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
             L"$f_{G}^{x_b} \ (g)$",
             L"$f_{G}^{y_b} \ (g)$",
             L"$f_{G}^{z_b} \ (g)$"),
-        th_split = :h,
+        th_split = :h, link = :none,
         kwargs...)
 
     return pd
