@@ -43,4 +43,25 @@ function test_trimming()
 
 end #function
 
+function test_linearization()
+
+    @testset verbose = true "Linearization" begin
+
+        # physics = System(C172FBW.Physics())
+        # env = System(SimpleEnvironment())
+        # trim_params = C172FBW.TrimParameters()
+        # state = C172FBW.TrimState()
+
+        # f_target = C172FBW.get_f_target(physics, trim_params, env)
+
+        # @test @ballocated($f_target($state)) === 0
+
+        # success, _ = trim!(physics, trim_params, env)
+
+        # @test success
+
+    end #testset
+
+end #function
+
 end #module

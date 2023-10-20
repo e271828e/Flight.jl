@@ -586,8 +586,10 @@ function Systems.f_disc!(sys::System{<:YawControlGs}, kin::KinematicData, air::A
     #retrieve and assign interpolated PID parameters
     # β_params = β_lookup(air.EAS, Float64(kin.h_o))
     # β_params = PIDParams(k_p = 30.0, k_i = 40.0, k_d = 5.0, τ_f = 0.01) #for 55 EAS
-    β_params = PIDParams(k_p = 150.0, k_i = 120.0, k_d = 20.0, τ_f = 0.01) #for 25 EAS
+    # β_params = PIDParams(k_p = 150.0, k_i = 120.0, k_d = 20.0, τ_f = 0.01) #for 25 EAS
+    β_params = PIDParams(k_p = 30.0, k_i = 10., k_d = 2.0, τ_f = 0.01) #for 25 EAS
     Control.assign!(β_pid, β_params)
+    # β_pid.u.β_d = 0.
 
     β = air.β_b
 
@@ -595,8 +597,11 @@ function Systems.f_disc!(sys::System{<:YawControlGs}, kin::KinematicData, air::A
         r_cmd = r_dmd
     else #sideslip mode
         β_pid.u.input = β_dmd - β
+        # β_pid.u.input = β_dmd
         f_disc!(β_pid, Δt)
         r_cmd = Ranged(-β_pid.y.output, -1., 1.) #note sign inversion!
+        # r_cmd = Ranged(β_pid.y.output, -1., 1.) #note sign inversion!
+        @show β_dmd, r_cmd
     end
 
     r_sat = saturation(r_cmd)

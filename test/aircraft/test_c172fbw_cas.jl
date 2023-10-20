@@ -161,7 +161,7 @@ function test_sim(; save::Bool = true)
                 # u_digital.φ_dmd = 0
                 # u_digital.χ_dmd = 0
 
-                u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
+                # u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
                 # u_digital.yaw_mode_sel = C172FBWCAS.direct_rudder_mode
                 # u_inceptors.yaw_input = 0.1
 
@@ -171,9 +171,9 @@ function test_sim(; save::Bool = true)
 
                 if 0 < t <= 5
                     world.env.atm.wind.u.v_ew_n[1] = 0
-                    # u_inceptors.roll_input = .1
-                    u_inceptors.yaw_input = .1
+                    u_inceptors.roll_input = .1
                     # u_inceptors.pitch_input = .1
+                    # u_inceptors.yaw_input = .01
                 elseif 5 < t < 15
                     world.env.atm.wind.u.v_ew_n[1] = 0
                     # u_inceptors.yaw_input = 1

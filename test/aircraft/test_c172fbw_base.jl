@@ -20,6 +20,8 @@ using Flight.FlightPhysics.Environment
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
 
+using Flight.FlightAircraft.C172
+using Flight.FlightAircraft.C172FBW
 using Flight.FlightAircraft.C172FBWBase
 
 export test_c172fbw_base
@@ -79,23 +81,22 @@ function test_sim(; save::Bool = true)
 
     @testset verbose = true "Simulation" begin
 
-        h_trn = HOrth(608.55);
+        world = SimpleWorld(Cessna172FBWBase()) |> System;
 
-        ac = Cessna172FBWBase();
-        env = SimpleEnvironment(trn = HorizontalTerrain(altitude = h_trn))
-        world = SimpleWorld(ac, env) |> System;
+        mid_cg_pld = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50)
 
-        kin_init = KinematicInit(
-            v_eOb_n = [30, 0, 0],
-            ω_lb_b = [0, 0, 0],
-            q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.),
-            loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-            h = h_trn + 1.9 + 2200.5);
-
-        init_kinematics!(world, kin_init)
-
-        world.ac.physics.airframe.act.u.eng_start = true #engine start switch on
         world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
+
+        trim_params = C172FBW.TrimParameters(
+        Ob = Geographic(LatLon(), HOrth(1000)),
+        EAS = 25.0,
+        γ_wOb_n = 0.0,
+        x_fuel = 0.5,
+        flaps = 1.0,
+        payload = mid_cg_pld)
+
+        exit_flag, trim_state = trim!(world, trim_params)
+        @test exit_flag === true
 
         sys_io! = let
 
@@ -104,22 +105,27 @@ function test_sim(; save::Bool = true)
                 u_act = world.ac.physics.airframe.act.u
                 t = world.t[]
 
-                u_act.throttle_cmd = 0.2
-                u_act.aileron_cmd = (t < 5 ? 0.25 : 0.0)
-                u_act.elevator_cmd = 0.0
-                u_act.rudder_cmd = 0.0
-                u_act.brake_left = 1
-                u_act.brake_right = 1
+                # u_act.throttle_cmd = 0.2
+                # u_act.aileron_cmd = (t < 5 ? 0.25 : 0.0)
+                # u_act.elevator_cmd = 0.0
+                u_act.rudder_cmd = 0.1
+                # u_act.aileron_cmd = 0.1
+                # u_act.brake_left = 1
+                # u_act.brake_right = 1
 
             end
         end
 
-        sim = Simulation(world; t_end = 300, sys_io!, adaptive = true)
+        sim = Simulation(world; t_end = 5, sys_io!, adaptive = true)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
-        plots = make_plots(TimeHistory(sim).ac.physics.kinematics; Plotting.defaults...)
-        save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_base", "sim"))
+        kin_plots = make_plots(TimeHistory(sim).ac.physics.kinematics; Plotting.defaults...)
+        air_plots = make_plots(TimeHistory(sim).ac.physics.air; Plotting.defaults...)
+        rb_plots = make_plots(TimeHistory(sim).ac.physics.rigidbody; Plotting.defaults...)
+        save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172fbw_base", "sim", "kin"))
+        save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172fbw_base", "sim", "air"))
+        save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172fbw_base", "sim", "rigidbody"))
 
     end
 

@@ -676,10 +676,14 @@ function XLinear(x_physics::ComponentVector)
     α_filt, β_filt = x_airframe.aero
     ω_eng = x_airframe.pwp.engine.ω
     fuel = x_airframe.fuel[1]
-    thr_v, thr_p = x_airframe.act.throttle_act
-    ail_v, ail_p = x_airframe.act.aileron_act
-    ele_v, ele_p = x_airframe.act.elevator_act
-    rud_v, rud_p = x_airframe.act.rudder_act
+    thr_v = x_airframe.act.throttle_act.v
+    thr_p = x_airframe.act.throttle_act.p
+    ail_v = x_airframe.act.aileron_act.v
+    ail_p = x_airframe.act.aileron_act.p
+    ele_v = x_airframe.act.elevator_act.v
+    ele_p = x_airframe.act.elevator_act.p
+    rud_v = x_airframe.act.rudder_act.v
+    rud_p = x_airframe.act.rudder_act.p
 
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
@@ -739,10 +743,14 @@ function assign!(physics::System{<:C172FBW.Physics}, x::XLinear)
     x_airframe.aero .= α_filt, β_filt
     x_airframe.pwp.engine.ω = ω_eng
     x_airframe.fuel .= fuel
-    x_airframe.act.throttle_act .= thr_v, thr_p
-    x_airframe.act.aileron_act .= ail_v, ail_p
-    x_airframe.act.elevator_act .= ele_v, ele_p
-    x_airframe.act.rudder_act .= rud_v, rud_p
+    x_airframe.act.throttle_act.v = thr_v
+    x_airframe.act.throttle_act.p = thr_p
+    x_airframe.act.aileron_act.v = ail_v
+    x_airframe.act.aileron_act.p = ail_p
+    x_airframe.act.elevator_act.v = ele_v
+    x_airframe.act.elevator_act.p = ele_p
+    x_airframe.act.rudder_act.v = rud_v
+    x_airframe.act.rudder_act.p = rud_p
 
 end
 
