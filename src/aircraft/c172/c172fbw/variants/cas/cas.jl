@@ -17,7 +17,7 @@ using Flight.FlightComponents.Control
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
-using Flight.FlightComponents.Control: PIDDiscreteY, IntegratorDiscreteY, LeadLagDiscreteY, PIDDiscreteNewY
+using Flight.FlightComponents.Control: PIDDiscreteVectorY, IntegratorDiscreteY, LeadLagDiscreteY, PIDDiscreteY
 
 using ...C172
 using ..C172FBW
@@ -124,7 +124,7 @@ abstract type AbstractControlChannel <: SystemDefinition end
 end
 
 @kwdef struct ThrottleControl <: AbstractControlChannel
-    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.8, k_i = 0.6, k_d = 0.2, τ_d = 0.01)
+    TAS_pid::PIDDiscrete = PIDDiscrete()
 end
 
 @kwdef mutable struct ThrottleControlU
@@ -139,11 +139,21 @@ end
     TAS_dmd::Float64 = 0.0
     thr_cmd::Ranged{Float64, 0., 1.} = 0.0 #throttle actuation command
     thr_sat::Int64 = 0 #throttle saturation state
-    TAS_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    TAS_pid::PIDDiscreteY = PIDDiscreteY()
 end
 
 Systems.init(::SystemU, ::ThrottleControl) = ThrottleControlU()
 Systems.init(::SystemY, ::ThrottleControl) = ThrottleControlY()
+
+function Systems.init!(sys::System{<:ThrottleControl})
+
+    TAS_pid = sys.TAS_pid
+
+    TAS_pid.u.k_p = 1.8
+    TAS_pid.u.k_i = 0.6
+    TAS_pid.u.k_d = 0.2
+    TAS_pid.u.τ_f = 0.01
+end
 
 function Control.reset!(sys::System{<:ThrottleControl})
     #set default inputs and states
@@ -159,29 +169,27 @@ end
 function Systems.f_disc!(sys::System{ThrottleControl}, air::AirData, Δt::Real)
 
     @unpack mode, thr_dmd, TAS_dmd = sys.u
-    @unpack TAS_comp = sys.subsystems
-
-    TAS_comp.u.feedback .= air.TAS
+    @unpack TAS_pid = sys.subsystems
 
     if mode === direct_throttle_mode
         thr_cmd = thr_dmd
     else #airspeed mode
-        TAS_comp.u.setpoint .= TAS_dmd
-        f_disc!(TAS_comp, Δt)
-        thr_cmd = Ranged(TAS_comp.y.out[1], 0., 1.) #compensator sign inversion
+        TAS_pid.u.input = TAS_dmd - air.TAS
+        f_disc!(TAS_pid, Δt)
+        thr_cmd = Ranged(TAS_pid.y.output, 0., 1.) #compensator sign inversion
     end
 
     thr_sat = saturation(thr_cmd)
-    TAS_comp.u.sat_ext .= thr_sat #saturation must also be inverted!
+    TAS_pid.u.sat_ext = thr_sat #saturation must also be inverted!
 
     sys.y = ThrottleControlY(; mode, thr_dmd, TAS_dmd,
-                            thr_cmd, thr_sat, TAS_comp = TAS_comp.y)
+                            thr_cmd, thr_sat, TAS_pid = TAS_pid.y)
 
 end
 
 function GUI.draw(sys::System{<:ThrottleControl})
 
-    @unpack TAS_comp = sys.subsystems
+    @unpack TAS_pid = sys.subsystems
     @unpack mode, thr_dmd, TAS_dmd, thr_cmd, thr_sat = sys.y
 
     CImGui.Begin("Throttle Control")
@@ -194,7 +202,7 @@ function GUI.draw(sys::System{<:ThrottleControl})
     CImGui.Text("Throttle saturation: $r_sat")
 
     if CImGui.TreeNode("Airspeed Compensator")
-        GUI.draw(TAS_comp)
+        GUI.draw(TAS_pid)
         CImGui.TreePop()
     end
 
@@ -217,9 +225,9 @@ end
 @kwdef struct PitchControlGs{LQ <: Lookup} <: AbstractControlChannel
     q_lookup::LQ = load_lookup(joinpath(@__DIR__, "q_lookup.h5"))
     q_int::IntegratorDiscrete = IntegratorDiscrete()
-    q_pid::PIDDiscreteNew = PIDDiscreteNew()
-    θ_pid::PIDDiscreteNew = PIDDiscreteNew()
-    c_pid::PIDDiscreteNew = PIDDiscreteNew()
+    q_pid::PIDDiscrete = PIDDiscrete()
+    θ_pid::PIDDiscrete = PIDDiscrete()
+    c_pid::PIDDiscrete = PIDDiscrete()
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -240,9 +248,9 @@ end
     e_cmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation command
     e_sat::Int64 = 0 #elevator saturation state
     q_int::IntegratorDiscreteY = IntegratorDiscreteY()
-    q_pid::PIDDiscreteNewY = PIDDiscreteNewY()
-    θ_pid::PIDDiscreteNewY = PIDDiscreteNewY()
-    c_pid::PIDDiscreteNewY = PIDDiscreteNewY()
+    q_pid::PIDDiscreteY = PIDDiscreteY()
+    θ_pid::PIDDiscreteY = PIDDiscreteY()
+    c_pid::PIDDiscreteY = PIDDiscreteY()
 end
 
 Systems.init(::SystemU, ::PitchControlGs) = PitchControlGsU()
@@ -382,9 +390,9 @@ end
 
 @kwdef struct RollControlGs{LP <: Lookup} <: AbstractControlChannel
     p_lookup::LP = load_lookup(joinpath(@__DIR__, "p_lookup.h5"))
-    p_pid::PIDDiscreteNew = PIDDiscreteNew()
-    φ_pid::PIDDiscreteNew = PIDDiscreteNew()
-    χ_pid::PIDDiscreteNew = PIDDiscreteNew()
+    p_pid::PIDDiscrete = PIDDiscrete()
+    φ_pid::PIDDiscrete = PIDDiscrete()
+    χ_pid::PIDDiscrete = PIDDiscrete()
 end
 
 @kwdef mutable struct RollControlGsU
@@ -403,9 +411,9 @@ end
     χ_dmd::Float64 = 0.0
     a_cmd::Ranged{Float64, -1., 1.} = Ranged(0.0, -1.0, 1.0) #aileron actuation command
     a_sat::Int64 = 0 #aileron saturation state
-    p_pid::PIDDiscreteNewY = PIDDiscreteNewY()
-    φ_pid::PIDDiscreteNewY = PIDDiscreteNewY()
-    χ_pid::PIDDiscreteNewY = PIDDiscreteNewY()
+    p_pid::PIDDiscreteY = PIDDiscreteY()
+    φ_pid::PIDDiscreteY = PIDDiscreteY()
+    χ_pid::PIDDiscreteY = PIDDiscreteY()
 end
 
 Systems.init(::SystemU, ::RollControlGs) = RollControlGsU()
@@ -420,7 +428,7 @@ function Systems.init!(sys::System{<:RollControlGs})
 
     φ_pid.u.k_p = 7.0
     φ_pid.u.k_i = 0
-    φ_pid.u.k_d = 1.0
+    φ_pid.u.k_d = 0.8
     φ_pid.u.τ_f = 0.01
 
     χ_pid.u.k_p = 5.0
@@ -529,6 +537,94 @@ end
 
 
 ################################################################################
+########################## Longitudinal Control ################################
+
+
+@enum LonControlAutoState begin
+    altitude_acquire = 0
+    altitude_hold = 1
+end
+
+@enum AltitudeDatum begin
+    ellipsoidal = 0
+    orthometric = 1
+end
+
+@kwdef struct LonControlAuto <: AbstractControlChannel
+    h_pid::PIDDiscrete = PIDDiscrete() #altitude to climb rate compensator ########### TO DO
+    TAS_pid::PIDDiscrete = PIDDiscrete() #airspeed to θ compensator ############TO DO
+end
+
+@kwdef mutable struct LonControlAutoU
+    h_dmd::Tuple{Float64, AltitudeDatum} = (0.0, ellipsoidal) #altitude demand
+    TAS_dmd::Float64 = 0.0 #airspeed demand
+    e_sat::Int64 = 0 #elevator saturation state, input to airspeed2θ  and h2climbrate compensators
+end
+
+@kwdef struct LonControlAutoY
+    state::LonControlAutoState = altitude_acquire
+    throttle_mode::ThrottleMode = direct_throttle_mode
+    pitch_mode::PitchMode = pitch_angle_mode
+    thr_dmd::Float64 = 0.0
+    θ_dmd::Float64 = 0.0
+    TAS_dmd::Float64 = 0.0
+    c_dmd::Float64 = 0.0
+    h_pid::PIDDiscrete = PIDDiscrete()
+    TAS_pid::PIDDiscrete = PIDDiscrete()
+end
+
+Systems.init(::SystemU, ::LonControlAuto) = LonControlAutoU()
+Systems.init(::SystemY, ::LonControlAuto) = LonControlAutoY()
+
+
+function Systems.f_disc!(sys::System{LonControlAuto}, kin::KinematicData, air::AirData, Δt::Real)
+
+    @unpack TAS_dmd, e_sat = sys.u
+    @unpack h_pid, TAS_pid = sys.subsystems
+
+    h_threshold = 20 #within 20 m we switch to altitude_hold
+    h_dmd = sys.u.h_dmd[1]
+    h = (sys.u.h_dmd[2] === ellipsoidal) ? Float64(kin.h_e) : Float64(kin.h_o)
+    state = abs(h_dmd - h) > h_threshold ? altitude_acquire : altitude_hold
+
+    if state === altitude_acquire
+
+        throttle_mode = direct_throttle_mode
+        pitch_mode = pitch_angle_mode
+
+        println("note sign inversion in saturation from θ")
+        TAS_pid.u.input = TAS_dmd - air.TAS
+        TAS_pid.u.sat_ext = -e_sat
+        f_disc!(TAS_pid, Δt)
+
+        println("note sign inversion in θ_dmd from TAS_pid output")
+        thr_dmd = h_dmd > h ? 1.0 : 0.0 #full throttle to climb, idle to descend
+        θ_dmd = -TAS_pid.y.output
+        c_dmd = 0.0 #no effect
+
+    else #altitude_hold
+
+        #here TAS_dmd just passes through to ThrottleControl as an output
+        throttle_mode = airspeed_throttle_mode
+        pitch_mode = climb_rate_mode
+
+        h_pid.u.input = h_dmd - h
+        h_pid.u.sat_ext = e_sat
+        f_disc!(h_pid, Δt)
+
+        thr_dmd = 0.0 #no effect
+        θ_dmd = 0.0 #no effect
+        c_dmd = h_pid.y.output
+
+    end
+
+    sys.y = LonControlAutoY(; state, throttle_mode, pitch_mode,
+                            thr_dmd, θ_dmd, TAS_dmd, c_dmd,
+                            h_pid = h_pid.y, TAS_pid = TAS_pid.y)
+
+end
+
+################################################################################
 #################################### YawControl ################################
 
 @enum YawMode begin
@@ -536,9 +632,8 @@ end
     sideslip_mode = 1
 end
 
-@kwdef struct YawControlGs{LB <: Lookup} <: AbstractControlChannel
-    β_lookup::LB = load_lookup(joinpath(@__DIR__, "β_lookup.h5"))
-    β_pid::PIDDiscreteNew = PIDDiscreteNew()
+@kwdef struct YawControlGs <: AbstractControlChannel
+    β_pid::PIDDiscrete = PIDDiscrete()
 end
 
 @kwdef mutable struct YawControlGsU
@@ -553,7 +648,7 @@ end
     β_dmd::Float64 = 0.0
     r_cmd::Ranged{Float64, -1., 1.} = 0.0 #rudder actuation command
     r_sat::Int64 = 0 #rudder saturation state
-    β_pid::PIDDiscreteNewY = PIDDiscreteNewY()
+    β_pid::PIDDiscreteY = PIDDiscreteY()
 end
 
 Systems.init(::SystemU, ::YawControlGs) = YawControlGsU()
@@ -581,15 +676,10 @@ function Systems.f_disc!(sys::System{<:YawControlGs}, kin::KinematicData, air::A
 
     @unpack mode, r_dmd, β_dmd = sys.u
     β_pid = sys.subsystems.β_pid
-    β_lookup = sys.constants.β_lookup
 
     #retrieve and assign interpolated PID parameters
-    # β_params = β_lookup(air.EAS, Float64(kin.h_o))
-    # β_params = PIDParams(k_p = 30.0, k_i = 40.0, k_d = 5.0, τ_f = 0.01) #for 55 EAS
-    # β_params = PIDParams(k_p = 150.0, k_i = 120.0, k_d = 20.0, τ_f = 0.01) #for 25 EAS
-    β_params = PIDParams(k_p = 30.0, k_i = 10., k_d = 2.0, τ_f = 0.01) #for 25 EAS
+    β_params = PIDParams(k_p = 3, k_i = 8, k_d = 2, τ_f = 0.01) #for 25 EAS
     Control.assign!(β_pid, β_params)
-    # β_pid.u.β_d = 0.
 
     β = air.β_b
 
@@ -597,11 +687,8 @@ function Systems.f_disc!(sys::System{<:YawControlGs}, kin::KinematicData, air::A
         r_cmd = r_dmd
     else #sideslip mode
         β_pid.u.input = β_dmd - β
-        # β_pid.u.input = β_dmd
         f_disc!(β_pid, Δt)
         r_cmd = Ranged(-β_pid.y.output, -1., 1.) #note sign inversion!
-        # r_cmd = Ranged(β_pid.y.output, -1., 1.) #note sign inversion!
-        @show β_dmd, r_cmd
     end
 
     r_sat = saturation(r_cmd)
@@ -632,94 +719,6 @@ function GUI.draw(sys::System{<:YawControlGs})
     end
 
     CImGui.End()
-
-end
-
-################################################################################
-########################## Longitudinal Control ################################
-
-
-@enum LonControlAutoState begin
-    altitude_acquire = 0
-    altitude_hold = 1
-end
-
-@enum AltitudeDatum begin
-    ellipsoidal = 0
-    orthometric = 1
-end
-
-@kwdef struct LonControlAuto <: AbstractControlChannel
-    h_comp::PIDDiscrete{1} = PIDDiscrete{1}() #altitude to climb rate compensator ########### TO DO
-    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}() #airspeed to θ compensator ############TO DO
-end
-
-@kwdef mutable struct LonControlAutoU
-    h_dmd::Tuple{Float64, AltitudeDatum} = (0.0, ellipsoidal) #altitude demand
-    TAS_dmd::Float64 = 0.0 #airspeed demand
-    e_sat::Int64 = 0 #elevator saturation state, input to airspeed2θ  and h2climbrate compensators
-end
-
-@kwdef struct LonControlAutoY
-    state::LonControlAutoState = altitude_acquire
-    throttle_mode::ThrottleMode = direct_throttle_mode
-    pitch_mode::PitchMode = pitch_angle_mode
-    thr_dmd::Float64 = 0.0
-    θ_dmd::Float64 = 0.0
-    TAS_dmd::Float64 = 0.0
-    c_dmd::Float64 = 0.0
-    h_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
-    TAS_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
-end
-
-Systems.init(::SystemU, ::LonControlAuto) = LonControlAutoU()
-Systems.init(::SystemY, ::LonControlAuto) = LonControlAutoY()
-
-
-function Systems.f_disc!(sys::System{LonControlAuto}, kin::KinematicData, air::AirData, Δt::Real)
-
-    @unpack h_dmd, TAS_dmd, e_sat = sys.u
-    @unpack h_comp, TAS_comp = sys.subsystems
-
-    h_threshold = 20 #within 20 m we switch to altitude_hold
-    h = (h_dmd[2] === ellipsoidal) ? Float64(kin.h_e) : Float64(kin.h_o)
-    state = abs(h_dmd[1] - h) > h_threshold ? altitude_acquire : altitude_hold
-
-    if state === altitude_acquire
-
-        throttle_mode = direct_throttle_mode
-        pitch_mode = pitch_angle_mode
-
-        print("Remember sign inversion in θ_dmd from TAS_comp output, DC gain will be negative. Also on saturation!!")
-        TAS_comp.u.setpoint .= TAS_dmd
-        TAS_comp.u.feedback .= air.TAS
-        TAS_comp.u.sat_ext = -e_sat
-        f_disc!(TAS_comp, Δt)
-
-        thr_dmd = h_dmd[1] > h ? 1.0 : 0.0 #full throttle to climb, idle to descend
-        θ_dmd = TAS_comp.y.out[1]
-        c_dmd = 0.0 #no effect
-
-    else #altitude_hold
-
-        throttle_mode = airspeed_throttle_mode
-        pitch_mode = climb_rate_mode
-
-        h_comp.u.setpoint .= h_dmd[1]
-        h_comp.u.feedback .= h
-        h_comp.u.sat_ext = e_sat
-        f_disc!(h_comp, Δt)
-
-        thr_dmd = 0.0 #no effect
-        θ_dmd = 0.0 #no effect
-        c_dmd = h_comp.y.out[1]
-
-    end
-
-    #note: in altitude_hold mode, TAS_dmd just passes through to ThrottleControl
-    sys.y = LonControlAutoY(; state, throttle_mode, pitch_mode,
-                            thr_dmd, θ_dmd, TAS_dmd, c_dmd,
-                            h_comp = h_comp.y, TAS_comp = TAS_comp.y)
 
 end
 

@@ -55,7 +55,7 @@ end
 ################################## Actuator ####################################
 
 @kwdef struct Actuator <: SystemDefinition #second order linear actuator model
-    ω_n::Float64 = 10*2π #natural frequency (default: 10 Hz)
+    ω_n::Float64 = 5*2π #natural frequency (default: 10 Hz)
     ζ::Float64 = 0.6 #damping ratio (default: underdamped with minimal resonance)
     range::Tuple{Float64, Float64} = (-1.0, 1.0)
 end

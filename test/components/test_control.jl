@@ -153,9 +153,9 @@ end #function
 
 function test_pid_discrete(save = false)
 
-    @testset verbose = true "PIDDiscrete" begin
+    @testset verbose = true "PIDDiscreteVector" begin
 
-        sys = PIDDiscrete{2}(k_p = 1.0, k_i = 1.0, k_d = 0.0) |> System;
+        sys = PIDDiscreteVector{2}(k_p = 1.0, k_i = 1.0, k_d = 0.0) |> System;
         sim = Simulation(sys; Δt = 0.01)
 
         sys.u.setpoint .= 0.0
@@ -206,7 +206,7 @@ function test_pid_discrete(save = false)
         save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
 
         #operate PID as a filtered derivative
-        sys = PIDDiscrete{1}(k_p = 0.0, k_i = 0.0, k_d = 1.0, τ_d = 0.2, β_d = 1.0) |> System;
+        sys = PIDDiscreteVector{1}(k_p = 0.0, k_i = 0.0, k_d = 1.0, τ_d = 0.2, β_d = 1.0) |> System;
         sim = Simulation(sys; Δt = 0.01)
 
         step!(sim, 1, true)
@@ -245,7 +245,7 @@ function test_pid_discrete(save = false)
 
         #then, define the equivalent discrete PID and simulate it for a unit
         #step input
-        pid_disc = PIDDiscrete{1}(; k_p, k_i, k_d, τ_d) |> System
+        pid_disc = PIDDiscreteVector{1}(; k_p, k_i, k_d, τ_d) |> System
         pid_disc.u.setpoint .= 1
         sim = Simulation(pid_disc; Δt = 0.0001, t_end = 2)
         Sim.run!(sim)
@@ -362,9 +362,9 @@ end #function
 
 function test_pid_discrete_new(save = false)
 
-    @testset verbose = true "PIDDiscreteNew" begin
+    @testset verbose = true "PIDDiscrete" begin
 
-        sys = PIDDiscreteNew() |> System;
+        sys = PIDDiscrete() |> System;
         sim = Simulation(sys; Δt = 0.01)
 
         sys.u.input = 1.0

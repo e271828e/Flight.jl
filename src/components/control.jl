@@ -8,8 +8,8 @@ using Flight.FlightCore.Plotting
 using Flight.FlightCore.GUI
 
 export LinearStateSpace, submodel
-export PIContinuous, PIDDiscrete
-export PIDParams, PIDDiscreteNew, IntegratorDiscrete, LeadLagDiscrete
+export PIContinuous, PIDDiscreteVector
+export PIDParams, PIDDiscrete, IntegratorDiscrete, LeadLagDiscrete
 
 export PIDOpt
 
@@ -330,7 +330,7 @@ end
 ################################################################################
 
 
-struct PIDDiscrete{N} <: SystemDefinition #Parallel form
+struct PIDDiscreteVector{N} <: SystemDefinition #Parallel form
     k_p::SVector{N,Float64} #proportional gain
     k_i::SVector{N,Float64} #integral gain
     k_d::SVector{N,Float64} #derivative gain
@@ -339,16 +339,16 @@ struct PIDDiscrete{N} <: SystemDefinition #Parallel form
     β_d::SVector{N,Float64} #derivative path setpoint weighting factor
 end
 
-function PIDDiscrete{N}(; k_p::Real = 1.0, k_i::Real = 0.1,
+function PIDDiscreteVector{N}(; k_p::Real = 1.0, k_i::Real = 0.1,
                         k_d::Real = 0, τ_d::Real = 0.05,
                         β_p::Real = 1.0, β_d::Real = 1.0) where {N}
     s2v = (x)->fill(x,N)
-    PIDDiscrete{N}( s2v(k_p), s2v(k_i),
+    PIDDiscreteVector{N}( s2v(k_p), s2v(k_i),
                    s2v(k_d), s2v(τ_d),
                    s2v(β_p), s2v(β_d),)
 end
 
-@kwdef struct PIDDiscreteU{N}
+@kwdef struct PIDDiscreteVectorU{N}
     setpoint::MVector{N,Float64} = zeros(N) #commanded setpoint
     feedback::MVector{N,Float64} = zeros(N) #plant feedback (non-inverted)
     bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
@@ -358,13 +358,13 @@ end
     reset::MVector{N,Bool} = zeros(Bool, N) #reset PID states and null outputs
 end
 
-@kwdef struct PIDDiscreteS{N}
+@kwdef struct PIDDiscreteVectorS{N}
     x_i0::MVector{N,Float64} = zeros(N) #previous integrator path state
     x_d0::MVector{N,Float64} = zeros(N) #previous derivative path state
     sat_out_0::MVector{N,Int64} = zeros(N) #previous output saturation status
 end
 
-@kwdef struct PIDDiscreteY{N}
+@kwdef struct PIDDiscreteVectorY{N}
     setpoint::SVector{N,Float64} = zeros(SVector{N}) #commanded setpoint
     feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
     bound_lo::SVector{N,Float64} = fill(-Inf, SVector{N}) #lower output bounds
@@ -384,11 +384,11 @@ end
     int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
-Systems.init(::SystemY, ::PIDDiscrete{N}) where {N} = PIDDiscreteY{N}()
-Systems.init(::SystemU, ::PIDDiscrete{N}) where {N} = PIDDiscreteU{N}()
-Systems.init(::SystemS, ::PIDDiscrete{N}) where {N} = PIDDiscreteS{N}()
+Systems.init(::SystemY, ::PIDDiscreteVector{N}) where {N} = PIDDiscreteVectorY{N}()
+Systems.init(::SystemU, ::PIDDiscreteVector{N}) where {N} = PIDDiscreteVectorU{N}()
+Systems.init(::SystemS, ::PIDDiscreteVector{N}) where {N} = PIDDiscreteVectorS{N}()
 
-function reset!(sys::System{<:PIDDiscrete{N}}) where {N}
+function reset!(sys::System{<:PIDDiscreteVector{N}}) where {N}
     sys.u.setpoint .= 0
     sys.u.feedback .= 0
     sys.u.sat_ext .= 0
@@ -398,7 +398,7 @@ function reset!(sys::System{<:PIDDiscrete{N}}) where {N}
     sys.u.reset .= reset_prev
 end
 
-function Systems.f_disc!(sys::System{<:PIDDiscrete{N}}, Δt::Real) where {N}
+function Systems.f_disc!(sys::System{<:PIDDiscreteVector{N}}, Δt::Real) where {N}
 
     @unpack s, u, constants = sys
     @unpack k_p, k_i, k_d, τ_d, β_p, β_d = constants
@@ -452,7 +452,7 @@ function Systems.f_disc!(sys::System{<:PIDDiscrete{N}}, Δt::Real) where {N}
     s.x_d0 .= x_d
     s.sat_out_0 .= sat_out
 
-    sys.y = PIDDiscreteY(; setpoint, feedback, bound_lo, bound_hi, anti_windup,
+    sys.y = PIDDiscreteVectorY(; setpoint, feedback, bound_lo, bound_hi, anti_windup,
                            reset, u_p, u_i, u_d, y_p, y_i, y_d,
                            out_free, out, sat_ext, sat_out, int_halt)
 
@@ -460,7 +460,7 @@ function Systems.f_disc!(sys::System{<:PIDDiscrete{N}}, Δt::Real) where {N}
 
 end
 
-function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteVectorY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -527,7 +527,7 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(sys::System{<:PIDDiscrete{N}}, label::String = "PIDDiscrete{$N}") where {N}
+function GUI.draw(sys::System{<:PIDDiscreteVector{N}}, label::String = "PIDDiscreteVector{$N}") where {N}
 
     @unpack setpoint, feedback, bound_lo, bound_hi, anti_windup, reset,
             u_p, u_i, u_d, y_p, y_i, y_d, out_free, output, sat_ext, sat_out, int_halt = sys.y
@@ -729,6 +729,7 @@ function GUI.draw(sys::System{<:LeadLagDiscrete}, label::String = "Discrete Lead
 
 end #function
 
+
 ####################### Gain-Schedulable PID Compensator #######################
 ################################################################################
 
@@ -757,9 +758,9 @@ Base.getproperty(params::PIDParams, name::Symbol) = getproperty(params, Val(name
     end
 end
 
-@kwdef struct PIDDiscreteNew <: SystemDefinition end
+@kwdef struct PIDDiscrete <: SystemDefinition end
 
-@kwdef mutable struct PIDDiscreteNewU
+@kwdef mutable struct PIDDiscreteU
     k_p::Float64 = 1.0 #proportional gain
     k_i::Float64 = 0.1 #integral gain
     k_d::Float64 = 0.1 #derivative gain
@@ -772,13 +773,13 @@ end
     sat_ext::Int64 = 0 #external (signed) saturation input signal
 end
 
-@kwdef mutable struct PIDDiscreteNewS
+@kwdef mutable struct PIDDiscreteS
     x_i0::Float64 = 0.0 #previous integrator path state
     x_d0::Float64 = 0.0 #previous derivative path state
     sat_out_0::Int64 = 0 #previous output saturation status
 end
 
-@kwdef struct PIDDiscreteNewY
+@kwdef struct PIDDiscreteY
     k_p::Float64 = 1.0 #proportional gain
     k_i::Float64 = 0.1 #integral gain
     k_d::Float64 = 0.1 #derivative gain
@@ -801,11 +802,11 @@ end
     int_halted::Bool = false #integration halted
 end
 
-Systems.init(::SystemY, ::PIDDiscreteNew) = PIDDiscreteNewY()
-Systems.init(::SystemU, ::PIDDiscreteNew) = PIDDiscreteNewU()
-Systems.init(::SystemS, ::PIDDiscreteNew) = PIDDiscreteNewS()
+Systems.init(::SystemY, ::PIDDiscrete) = PIDDiscreteY()
+Systems.init(::SystemU, ::PIDDiscrete) = PIDDiscreteU()
+Systems.init(::SystemS, ::PIDDiscrete) = PIDDiscreteS()
 
-function reset!(sys::System{<:PIDDiscreteNew})
+function reset!(sys::System{<:PIDDiscrete})
     sys.u.input = 0
     sys.u.sat_ext = 0
     sys.s.x_i0 = 0
@@ -814,12 +815,12 @@ function reset!(sys::System{<:PIDDiscreteNew})
     f_disc!(sys, 1.0)
 end
 
-function assign!(sys::System{<:PIDDiscreteNew}, params::PIDParams{<:Real})
+function assign!(sys::System{<:PIDDiscrete}, params::PIDParams{<:Real})
     @unpack k_p, k_i, k_d, τ_f = params
     @pack! sys.u = k_p, k_i, k_d, τ_f
 end
 
-function Systems.f_disc!(sys::System{<:PIDDiscreteNew}, Δt::Real)
+function Systems.f_disc!(sys::System{<:PIDDiscrete}, Δt::Real)
 
     @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext = sys.u
     @unpack x_i0, x_d0, sat_out_0 = sys.s
@@ -846,7 +847,7 @@ function Systems.f_disc!(sys::System{<:PIDDiscreteNew}, Δt::Real)
 
     output = clamp(out_free, bound_lo, bound_hi)
 
-    sys.y = PIDDiscreteNewY(; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
+    sys.y = PIDDiscreteY(; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
                 u_p, u_i, u_d, y_p, y_i, y_d, out_free, sat_out, output, int_halted)
 
     sys.s.x_i0 = x_i
@@ -857,7 +858,7 @@ function Systems.f_disc!(sys::System{<:PIDDiscreteNew}, Δt::Real)
 
 end
 
-function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteNewY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -944,7 +945,7 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(sys::System{<:PIDDiscreteNew}, label::String = "PIDDiscreteNew")
+function GUI.draw(sys::System{<:PIDDiscrete}, label::String = "PIDDiscrete")
 
     @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext, u_p, u_i, u_d,
             y_p, y_i, y_d, out_free, sat_out, output, int_halted = sys.y
@@ -991,10 +992,12 @@ using Trapz: trapz
 
 using ..Control
 
-@kwdef struct Metrics{T} <: FieldVector{3, T}
+@kwdef struct Metrics{T} <: FieldVector{5, T}
     Ms::T #maximum sensitivity
     ∫e::T #integrated absolute error
-    ef::T #steady-state error
+    ef::T #absolute steady-state error
+    ∫u::T #integrated absolute control effort
+    up::T #absolute peak control effort
 end
 
 @kwdef struct Settings
@@ -1020,27 +1023,32 @@ end
 function Metrics(plant::AbstractStateSpace, pid::AbstractStateSpace,
                        settings::Settings)
 
-    S = sensitivity(plant, pid) #sensitivity function
-    T = output_comp_sensitivity(plant, pid) #complementary sensitivity function (AKA closed loop)
-
-    T_step = step(T, settings.t_sim)
-    t = T_step.t
-    y = T_step.y |> vec
-    e = abs.(y .- 1.0)
-
     #hinfnorm appears to be quite brittle, so instead we brute force the
     #computation of maximum sensitivity transfer function magnitude
+    S = sensitivity(plant, pid) #sensitivity function
     S_tf = tf(S)
     iω_range = ((10^x)*im for x in range(-3, 3, length=1000))
     S_range = [abs(S_tf.(iω)[1]) for iω in iω_range]
     Ms = maximum(S_range)
 
-    #integrated error should be normalized with respect to the length of the
-    #time window
-    ∫e = trapz(t, e)/t[end]
-    ef = e[end]
+    T = output_comp_sensitivity(plant, pid) #complementary sensitivity function (AKA closed loop)
+    T_step = step(T, settings.t_sim)
+    t = T_step.t
+    y = T_step.y |> vec
+    abs_e = abs.(y .- 1.0)
+    #integrated error normalized with respect to the length of the time window
+    ∫e = trapz(t, abs_e)/t[end]
+    ef = abs_e[end]
 
-    Metrics(; Ms, ∫e, ef)
+    CS = G_CS(plant, pid) #reference to control input
+    CS_step = step(CS, settings.t_sim)
+    t = CS_step.t
+    y = CS_step.y |> vec
+    abs_u = abs.(y .- 1.0)
+    ∫u = trapz(t, abs_u)/t[end]
+    up = maximum(abs_u)
+
+    Metrics(; Ms, ∫e, ef, ∫u, up)
 
 end
 
@@ -1054,7 +1062,7 @@ end
 function optimize_PID(  plant::LTISystem;
                     params_0::PIDParams = PIDParams(), #initial condition
                     settings::Settings = Settings(),
-                    weights::Metrics{<:Real} = Metrics(ones(3)),
+                    weights::Metrics{<:Real} = Metrics(ones(5)),
                     global_search::Bool = true)
 
     x0 = params_0 |> Vector
@@ -1108,16 +1116,15 @@ function optimize_PID(  plant::LTISystem;
 
 end
 
-function check_results(results::Results,
-            thresholds::Metrics{Float64} = Metrics(; Ms = 1.4, ∫e = 0.05, ef = 0.02))
+function check_results(results::Results, thresholds::Metrics{Float64})
 
     @unpack exit_flag, metrics = results
 
-    @assert metrics.Ms < thresholds.Ms #sensitivity function maximum magnitude
-    @assert metrics.∫e < thresholds.∫e #normalized absolute integrated error
-    @assert metrics.ef < thresholds.ef #remaining error after t_sim
-
-    @assert (exit_flag === :ROUNDOFF_LIMITED) | (exit_flag === :STOPVAL_REACHED)
+    success = true
+    success && (exit_flag === :ROUNDOFF_LIMITED) | (exit_flag === :STOPVAL_REACHED)
+    success && (metrics.Ms < thresholds.Ms) #sensitivity function maximum magnitude
+    success && (metrics.∫e < thresholds.∫e) #normalized absolute integrated error
+    success && (metrics.ef < thresholds.ef) #remaining error after t_sim
 
 end
 

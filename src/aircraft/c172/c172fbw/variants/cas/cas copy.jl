@@ -17,7 +17,7 @@ using Flight.FlightComponents.Control
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
-using Flight.FlightComponents.Control: PIDDiscreteY, IntegratorDiscreteY, LeadLagDiscreteY, PIDDiscreteNewY
+using Flight.FlightComponents.Control: PIDDiscreteVectorY, IntegratorDiscreteY, LeadLagDiscreteY, PIDDiscreteY
 
 using ...C172
 using ..C172FBW
@@ -124,7 +124,7 @@ abstract type AbstractControlChannel <: SystemDefinition end
 end
 
 @kwdef struct ThrottleControl <: AbstractControlChannel
-    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 1.8, k_i = 0.6, k_d = 0.2, τ_d = 0.01)
+    TAS_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 1.8, k_i = 0.6, k_d = 0.2, τ_d = 0.01)
 end
 
 @kwdef mutable struct ThrottleControlU
@@ -139,7 +139,7 @@ end
     TAS_dmd::Float64 = 0.0
     thr_cmd::Ranged{Float64, 0., 1.} = 0.0 #throttle actuation command
     thr_sat::Int64 = 0 #throttle saturation state
-    TAS_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    TAS_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
 end
 
 Systems.init(::SystemU, ::ThrottleControl) = ThrottleControlU()
@@ -217,9 +217,9 @@ end
 @kwdef struct PitchControlGs{LQ <: Lookup} <: AbstractControlChannel
     q_lookup::LQ = load_lookup(joinpath(@__DIR__, "q_lookup.h5"))
     q_int::IntegratorDiscrete = IntegratorDiscrete()
-    q_pid::PIDDiscreteNew = PIDDiscreteNew()
-    θ_pid::PIDDiscreteNew = PIDDiscreteNew()
-    c_pid::PIDDiscreteNew = PIDDiscreteNew()
+    q_pid::PIDDiscrete = PIDDiscrete()
+    θ_pid::PIDDiscrete = PIDDiscrete()
+    c_pid::PIDDiscrete = PIDDiscrete()
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -240,9 +240,9 @@ end
     e_cmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation command
     e_sat::Int64 = 0 #elevator saturation state
     q_int::IntegratorDiscreteY = IntegratorDiscreteY()
-    q_pid::PIDDiscreteNewY = PIDDiscreteNewY()
-    θ_pid::PIDDiscreteNewY = PIDDiscreteNewY()
-    c_pid::PIDDiscreteNewY = PIDDiscreteNewY()
+    q_pid::PIDDiscreteY = PIDDiscreteY()
+    θ_pid::PIDDiscreteY = PIDDiscreteY()
+    c_pid::PIDDiscreteY = PIDDiscreteY()
 end
 
 Systems.init(::SystemU, ::PitchControlGs) = PitchControlGsU()
@@ -379,9 +379,9 @@ end
 
 #TO DO: redesign φ compensator with actual p feedback
 @kwdef struct RollControl <: AbstractControlChannel
-    p_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0.6, k_i = 8.0, k_d = 0.02, τ_d = 0.01)
-    φ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 6.0, k_i = 1.5, k_d = 0.6, τ_d = 0.01)
-    χ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 3.0, k_i = 0.0, k_d = 0.0, τ_d = 0.01)
+    p_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 0.6, k_i = 8.0, k_d = 0.02, τ_d = 0.01)
+    φ_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 6.0, k_i = 1.5, k_d = 0.6, τ_d = 0.01)
+    χ_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 3.0, k_i = 0.0, k_d = 0.0, τ_d = 0.01)
 end
 
 @kwdef mutable struct RollControlU
@@ -400,9 +400,9 @@ end
     χ_dmd::Float64 = 0.0
     a_cmd::Ranged{Float64, -1., 1.} = Ranged(0.0, -1.0, 1.0) #aileron actuation command
     a_sat::Int64 = 0 #aileron saturation state
-    p_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
-    φ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
-    χ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    p_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
+    φ_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
+    χ_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
 end
 
 Systems.init(::SystemU, ::RollControl) = RollControlU()
@@ -518,7 +518,7 @@ end
 end
 
 @kwdef struct YawControl <: AbstractControlChannel
-    β_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 44, k_i = 25, k_d = 6, τ_d = 0.01)
+    β_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 44, k_i = 25, k_d = 6, τ_d = 0.01)
 end
 
 @kwdef mutable struct YawControlU
@@ -533,7 +533,7 @@ end
     β_dmd::Float64 = 0.0
     r_cmd::Ranged{Float64, -1., 1.} = 0.0 #rudder actuation command
     r_sat::Int64 = 0 #rudder saturation state
-    β_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    β_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
 end
 
 Systems.init(::SystemU, ::YawControl) = YawControlU()
@@ -634,8 +634,8 @@ end
 end
 
 @kwdef struct LonControlAuto <: AbstractControlChannel
-    h_comp::PIDDiscrete{1} = PIDDiscrete{1}() #altitude to climb rate compensator ########### TO DO
-    TAS_comp::PIDDiscrete{1} = PIDDiscrete{1}() #airspeed to θ compensator ############TO DO
+    h_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}() #altitude to climb rate compensator ########### TO DO
+    TAS_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}() #airspeed to θ compensator ############TO DO
 end
 
 @kwdef mutable struct LonControlAutoU
@@ -651,8 +651,8 @@ end
     θ_dmd::Float64 = 0.0
     TAS_dmd::Float64 = 0.0
     c_dmd::Float64 = 0.0
-    h_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
-    TAS_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    h_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
+    TAS_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
 end
 
 Systems.init(::SystemU, ::LonControlAuto) = LonControlAutoU()

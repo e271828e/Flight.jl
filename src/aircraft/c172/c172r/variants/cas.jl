@@ -17,7 +17,7 @@ using Flight.FlightComponents.Control
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.World
-using Flight.FlightComponents.Control: PIDDiscreteY
+using Flight.FlightComponents.Control: PIDDiscreteVectorY
 
 using ...C172
 using ..C172R
@@ -35,8 +35,8 @@ export Cessna172RCAS
 end
 
 @kwdef struct PitchRateComp <: SystemDefinition
-    c1::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0, k_i = 1, k_d = 0) #pure integrator
-    c2::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 10, k_i = 20, k_d = 0.5, τ_d = 0.05, β_p = 1, β_d = 1) #see notebook
+    c1::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 0, k_i = 1, k_d = 0) #pure integrator
+    c2::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 10, k_i = 20, k_d = 0.5, τ_d = 0.05, β_p = 1, β_d = 1) #see notebook
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -53,8 +53,8 @@ end
     reset::Bool = false
     sat_ext::Int64 = 0.0
     out::Float64 = 0.0 #elevator command
-    c1::PIDDiscreteY{1} = PIDDiscreteY{1}()
-    c2::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    c1::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
+    c2::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
 end
 
 Systems.init(::SystemU, ::PitchRateComp) = PitchRateCompU()
@@ -109,7 +109,7 @@ end
 
 @kwdef struct PitchControl <: SystemDefinition
     q_comp::PitchRateComp = PitchRateComp()
-    θ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4, k_i = 2, k_d = 0.35, τ_d = 0.02, β_p = 1, β_d = 1) #see notebook
+    θ_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 4, k_i = 2, k_d = 0.35, τ_d = 0.02, β_p = 1, β_d = 1) #see notebook
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -132,7 +132,7 @@ end
     e_out::Ranged{Float64, -1., 1.} = 0.0 #elevator output
     e_sat::Int64 = 0 #elevator saturation state
     q_comp::PitchRateCompY = PitchRateCompY()
-    θ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    θ_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
 end
 
 Systems.init(::SystemU, ::PitchControl) = PitchControlU()
@@ -211,8 +211,8 @@ end
 end
 
 @kwdef struct RollControl <: SystemDefinition
-    p_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 0.5, k_i = 10, k_d = 0.05, τ_d = 0.05) #roll rate compensator, see notebook
-    φ_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 4, k_i = 0, k_d = 0, τ_d = 0.05) #bank angle compensator, see notebook
+    p_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 0.5, k_i = 10, k_d = 0.05, τ_d = 0.05) #roll rate compensator, see notebook
+    φ_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 4, k_i = 0, k_d = 0, τ_d = 0.05) #bank angle compensator, see notebook
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -234,8 +234,8 @@ end
     mode_prev::RollMode = aileron_mode
     a_out::Ranged{Float64, -1., 1.} = 0.0 #direct aileron command
     a_sat::Int64 = 0 #aileron saturation state
-    p_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
-    φ_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    p_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
+    φ_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
 end
 
 Systems.init(::SystemU, ::RollControl) = RollControlU()
@@ -314,7 +314,7 @@ end
 end
 
 @kwdef struct YawControl <: SystemDefinition
-    β_comp::PIDDiscrete{1} = PIDDiscrete{1}(k_p = 10, k_i = 25, k_d = 5, τ_d = 0.05) #see notebook
+    β_comp::PIDDiscreteVector{1} = PIDDiscreteVector{1}(k_p = 10, k_i = 25, k_d = 5, τ_d = 0.05) #see notebook
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -334,7 +334,7 @@ end
     mode_prev::YawMode = rudder_mode
     r_out::Ranged{Float64, -1., 1.} = 0.0 #rudder output
     r_sat::Int64 = 0 #rudder saturation state
-    β_comp::PIDDiscreteY{1} = PIDDiscreteY{1}()
+    β_comp::PIDDiscreteVectorY{1} = PIDDiscreteVectorY{1}()
 end
 
 Systems.init(::SystemU, ::YawControl) = YawControlU()
