@@ -850,7 +850,7 @@ function Control.LinearStateSpace(
     elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
         u_labels = [:throttle_cmd, :elevator_cmd]
-        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :ω_eng]
+        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :ω_eng, :v_D]
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat
