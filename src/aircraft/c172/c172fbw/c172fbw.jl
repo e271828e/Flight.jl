@@ -836,7 +836,7 @@ function ss_matrices(f_main::Function, x0::XLinear, u0::ULinear)
 
 end
 
-function RobustAndOptimalControl.named_ss(
+function Control.LinearStateSpace(
             physics::System{<:C172FBW.Physics{NED}},
             trim_params::TrimParameters = TrimParameters(),
             env::System{<:AbstractEnvironment} = System(SimpleEnvironment());
@@ -845,28 +845,37 @@ function RobustAndOptimalControl.named_ss(
     lm = linearize!(physics, trim_params, env)
 
     if model === :full
-        x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lm.x0, lm.u0, lm.y0))
-        return named_ss(ss(lm), x = x_labels, u = u_labels, y = y_labels)
+        return lm
 
     elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
         u_labels = [:throttle_cmd, :elevator_cmd]
         y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :ω_eng]
-        lm_long = submodel(lm; x = x_labels, u = u_labels, y = y_labels)
-        return named_ss(ss(lm_long), x = x_labels, u = u_labels, y = y_labels)
+        return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat
         u_labels = [:aileron_cmd, :rudder_cmd]
         x_labels = [:p, :r, :φ, :ψ, :v_x, :v_y, :β_filt, :ail_v, :ail_p, :rud_v, :rud_p]
         y_labels = [:p, :r, :φ, :ψ, :β, :f_y, :χ]
-        lm_lat = submodel(lm; x = x_labels, u = u_labels, y = y_labels)
-        return named_ss(ss(lm_lat), x = x_labels, u = u_labels, y = y_labels)
+        return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     else
-        error("Valid model values: :full, :lon, :lat")
+        error("Valid model keyword values: :full, :lon, :lat")
 
     end
 
+end
+
+function Control.LinearStateSpace(ac::System{<:C172FBW.Template{NED}}, args...; kwargs...)
+    LinearStateSpace(ac.physics, args...; kwargs...)
+end
+
+function RobustAndOptimalControl.named_ss(
+            physics::System{<:C172FBW.Physics{NED}}, args...; kwargs...)
+
+    lss = LinearStateSpace(physics, args...; kwargs...)
+    x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lss.x0, lss.u0, lss.y0))
+    return named_ss(ss(lss), x = x_labels, u = u_labels, y = y_labels)
 end
 
 function RobustAndOptimalControl.named_ss(ac::System{<:C172FBW.Template{NED}}, args...; kwargs...)

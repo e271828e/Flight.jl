@@ -223,7 +223,7 @@ end
 ################################################################################
 
 @kwdef struct PitchControlGs{LQ <: Lookup} <: AbstractControlChannel
-    q_lookup::LQ = load_lookup(joinpath(@__DIR__, "q_lookup.h5"))
+    q_lookup::LQ = load_lookup(joinpath(@__DIR__, "q2e_lookup.h5"))
     q_int::IntegratorDiscrete = IntegratorDiscrete()
     q_pid::PIDDiscrete = PIDDiscrete()
     θ_pid::PIDDiscrete = PIDDiscrete()
@@ -389,7 +389,7 @@ end
 end
 
 @kwdef struct RollControlGs{LP <: Lookup} <: AbstractControlChannel
-    p_lookup::LP = load_lookup(joinpath(@__DIR__, "p_lookup.h5"))
+    p_lookup::LP = load_lookup(joinpath(@__DIR__, "p2a_lookup.h5"))
     p_pid::PIDDiscrete = PIDDiscrete()
     φ_pid::PIDDiscrete = PIDDiscrete()
     χ_pid::PIDDiscrete = PIDDiscrete()
