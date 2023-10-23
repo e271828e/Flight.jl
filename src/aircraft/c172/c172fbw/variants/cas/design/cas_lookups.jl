@@ -71,10 +71,11 @@ function optimize_q(ac::System{<:Cessna172FBWBase{NED}};
     P_q_opt = series(q_int, ss(P_e2q))
 
     t_sim_q = 10
-    settings = PIDOpt.Settings(; t_sim = t_sim_q, maxeval = 5000)
-    weights = PIDOpt.Metrics(; Ms = 1, ∫e = 10, ef = 2, ∫u = 0, up = 0.00)
+    lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.05)
+    upper_bounds = PIDParams(; k_p = 50.0, k_i = 35.0, k_d = 1.5, τ_f = 0.05)
+    settings = PIDOpt.Settings(; t_sim = t_sim_q, lower_bounds, upper_bounds)
+    weights = PIDOpt.Metrics(; Ms = 2, ∫e = 10, ef = 2, ∫u = 0.1, up = 0.00)
     params_0 = PIDParams(; k_p = 3, k_i = 15, k_d = 0.5, τ_f = 0.01)
-    # params_0 = PIDParams()
     q_results = PIDOpt.optimize_PID(P_q_opt; params_0, settings, weights, global_search)
 
     if !PIDOpt.check_results(q_results, PIDOpt.Metrics(; Ms = 1.4, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
@@ -116,8 +117,9 @@ function optimize_p(   ac::System{<:Cessna172FBWBase{NED}};
     P_a2p = ail_rud_MIMO[:p, :aileron_cmd]
 
     t_sim_p = 5
-    settings = PIDOpt.Settings(; t_sim = t_sim_p, maxeval = 5000)
-    weights = PIDOpt.Metrics(; Ms = 1, ∫e = 10, ef = 1, ∫u = 0, up = 0.0)
+    upper_bounds = PIDParams(; k_p = 50.0, k_i = 20.0, k_d = 0.0, τ_f = 0.01)
+    settings = PIDOpt.Settings(; t_sim = t_sim_p, maxeval = 5000, upper_bounds)
+    weights = PIDOpt.Metrics(; Ms = 1, ∫e = 10, ef = 1, ∫u = 0, up = 0.1)
     params_0 = PIDParams(; k_p = 1, k_i = 5, k_d = 0.01, τ_f = 0.01)
 
     p_results = PIDOpt.optimize_PID(P_a2p; params_0, settings, weights, global_search)

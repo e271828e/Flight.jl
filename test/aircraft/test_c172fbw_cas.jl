@@ -157,27 +157,28 @@ function test_sim(; save::Bool = true)
                 # u_digital.roll_mode_sel = C172FBWCAS.roll_rate_mode
                 u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
                 # u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
-                u_digital.φ_dmd = π/4
+                u_digital.φ_dmd = π/6
                 # u_digital.χ_dmd = π/2
 
                 # u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
                 # u_digital.yaw_mode_sel = C172FBWCAS.direct_rudder_mode
                 # u_inceptors.yaw_input = 0.1
 
+                # u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
                 u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
-                u_inceptors.pitch_input = 0.0
-                # u_digital.θ_dmd = 0.0
+                # u_inceptors.pitch_input = 0.01
+                u_digital.θ_dmd = 0.01π
 
                 if 0 < t <= 5
                     world.env.atm.wind.u.v_ew_n[1] = 0
-                    # u_inceptors.roll_input = .1
-                    # u_inceptors.pitch_input = .1
+                    u_inceptors.roll_input = .0
+                    u_inceptors.pitch_input = .0
                     # u_inceptors.yaw_input = .01
                 elseif 5 < t < 15
                     world.env.atm.wind.u.v_ew_n[1] = 0
-                    # u_inceptors.roll_input = 0.0
+                    u_inceptors.roll_input = 0.0
+                    u_inceptors.pitch_input = 0.0
                     # u_inceptors.yaw_input = 1
-                    # u_inceptors.pitch_input = 0.1
                 else
                     world.env.atm.wind.u.v_ew_n[1] = 0
                 end
