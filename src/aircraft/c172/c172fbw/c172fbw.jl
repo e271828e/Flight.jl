@@ -645,7 +645,7 @@ end
     rud_v::Float64 = 0.0; rud_p::Float64 = 0.0 #rudder actuator states
 end
 
-@kwdef struct YLinear <: FieldVector{23, Float64}
+@kwdef struct YLinear <: FieldVector{24, Float64}
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
@@ -653,7 +653,7 @@ end
     α::Float64 = 0.0; β::Float64 = 0.0; #airspeed
     f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
-    χ::Float64 = 0.0; γ::Float64 = 0.0; #track and flight path angles
+    χ::Float64 = 0.0; γ::Float64 = 0.0; c::Float64 = 0.0; #track and flight path angles, climb rate
     ω_eng::Float64 = 0.0; m_fuel::Float64 = 0.0 #engine speed, fuel mass
 end
 
@@ -707,6 +707,7 @@ function YLinear(physics::System{<:C172FBW.Physics})
     v_N, v_E, v_D = v_eOb_n
     χ = Attitude.azimuth(v_eOb_n)
     γ = Attitude.inclination(v_eOb_n)
+    c = -v_D
     f_x, f_y, f_z = physics.y.rigidbody.f_G_b
     EAS = physics.y.air.EAS
     TAS = physics.y.air.TAS
@@ -716,7 +717,7 @@ function YLinear(physics::System{<:C172FBW.Physics})
     m_fuel = physics.y.airframe.fuel.m_avail
 
     YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, EAS, TAS, α, β,
-            f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, ω_eng, m_fuel)
+            f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, c, ω_eng, m_fuel)
 
 end
 
@@ -850,7 +851,7 @@ function Control.LinearStateSpace(
     elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
         u_labels = [:throttle_cmd, :elevator_cmd]
-        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :ω_eng, :v_D]
+        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D]
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat
