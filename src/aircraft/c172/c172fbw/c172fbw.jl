@@ -388,8 +388,8 @@ end
 ################################# Template #####################################
 
 const Airframe = C172.Airframe{typeof(PowerPlant()), Actuation}
-const Physics{K} = Aircraft.Physics{K, Airframe}
-const Template{K, A} = Aircraft.Template{Physics{K}, A} where {K, A}
+const Physics{K} = Aircraft.Physics{K, Airframe} where {K <: AbstractKinematicDescriptor}
+const Template{K, A} = Aircraft.Template{Physics{K}, A} where {K <: AbstractKinematicDescriptor, A <: AbstractAvionics}
 
 Physics(kinematics = LTF()) = Aircraft.Physics(kinematics, C172.Airframe(PowerPlant(), Actuation()))
 Template(kinematics = LTF(), avionics = NoAvionics()) = Aircraft.Template(Physics(kinematics), avionics)
@@ -849,9 +849,9 @@ function Control.LinearStateSpace(
         return lm
 
     elseif model === :lon
-        x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
+        x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
         u_labels = [:throttle_cmd, :elevator_cmd]
-        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D]
+        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D, :h]
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat

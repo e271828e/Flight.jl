@@ -259,7 +259,7 @@ function optimize_roll(   ac::System{<:Cessna172FBWBase{NED}};
     χ2φ_PID = PIDOpt.build_PID(χ2φ_results.params)
     C_χ2φ = named_ss(χ2φ_PID, :C_χ2φ; u = :χ_err, y = :p_dmd);
 
-    return (p2a = p2a_results, ϕ2p = φ2p_results, χ2ϕ = χ2φ_results)
+    return (p2a = p2a_results, φ2p = φ2p_results, χ2ϕ = χ2φ_results)
 
 end
 

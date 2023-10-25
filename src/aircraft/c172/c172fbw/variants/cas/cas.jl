@@ -123,7 +123,8 @@ abstract type AbstractControlChannel <: SystemDefinition end
     airspeed_throttle_mode = 1
 end
 
-@kwdef struct ThrottleControl <: AbstractControlChannel
+@kwdef struct ThrottleControl{L <: Lookup} <: AbstractControlChannel
+    v2t_lookup::L = load_lookup(joinpath(@__DIR__, "data", "v2t_lookup.h5"))
     v2t::PIDDiscrete = PIDDiscrete()
 end
 
@@ -146,13 +147,11 @@ Systems.init(::SystemU, ::ThrottleControl) = ThrottleControlU()
 Systems.init(::SystemY, ::ThrottleControl) = ThrottleControlY()
 
 function Systems.init!(sys::System{<:ThrottleControl})
-
+    #set throttle command limits (not strictly necessary, since the
+    #compensator's output is converted to a Ranged type downstream anyway)
     v2t = sys.v2t
-
-    v2t.u.k_p = 1.8
-    v2t.u.k_i = 0.6
-    v2t.u.k_d = 0.2
-    v2t.u.τ_f = 0.01
+    v2t.u.bound_lo = 0
+    v2t.u.bound_hi = 1
 end
 
 function Control.reset!(sys::System{<:ThrottleControl})
@@ -166,10 +165,13 @@ function Control.reset!(sys::System{<:ThrottleControl})
     sys.y = ThrottleControlY()
 end
 
-function Systems.f_disc!(sys::System{ThrottleControl}, air::AirData, Δt::Real)
+function Systems.f_disc!(sys::System{ThrottleControl}, kin::KinematicData, air::AirData, Δt::Real)
 
     @unpack mode, thr_dmd, TAS_dmd = sys.u
     @unpack v2t = sys.subsystems
+    @unpack v2t_lookup = sys.constants
+
+    Control.assign!(v2t, v2t_lookup(air.EAS, Float64(kin.h_o)))
 
     if mode === direct_throttle_mode
         thr_cmd = thr_dmd
@@ -223,10 +225,11 @@ end
 
 ################################################################################
 
-@kwdef struct PitchControlGs{LQ <: Lookup, LT <: Lookup, LV <: Lookup} <: AbstractControlChannel
-    q2e_lookup::LQ = load_lookup(joinpath(@__DIR__, "q2e_lookup.h5"))
-    θ2q_lookup::LT = load_lookup(joinpath(@__DIR__, "θ2q_lookup.h5"))
-    v2θ_lookup::LV = load_lookup(joinpath(@__DIR__, "v2θ_lookup.h5"))
+@kwdef struct PitchControl{L <: Lookup} <: AbstractControlChannel
+    q2e_lookup::L = load_lookup(joinpath(@__DIR__, "data", "q2e_lookup.h5"))
+    θ2q_lookup::L = load_lookup(joinpath(@__DIR__, "data", "θ2q_lookup.h5"))
+    c2θ_lookup::L = load_lookup(joinpath(@__DIR__, "data", "c2θ_lookup.h5"))
+    v2θ_lookup::L = load_lookup(joinpath(@__DIR__, "data", "v2θ_lookup.h5"))
     q2e_int::IntegratorDiscrete = IntegratorDiscrete() #pitch rate integrator
     q2e::PIDDiscrete = PIDDiscrete() #pitch rate to elevator compensator
     θ2q::PIDDiscrete = PIDDiscrete() #pitch angle to pitch rate compensator
@@ -235,7 +238,7 @@ end
 end
 
 #overrides the default NamedTuple built from subsystem u's
-@kwdef mutable struct PitchControlGsU
+@kwdef mutable struct PitchControlU
     mode::PitchMode = direct_elevator_mode #pitch control mode
     e_dmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation demand
     q_dmd::Float64 = 0.0 #pitch rate demand
@@ -244,7 +247,7 @@ end
     TAS_dmd::Float64 = 0.0 #TAS demand
 end
 
-@kwdef struct PitchControlGsY
+@kwdef struct PitchControlY
     mode::PitchMode = direct_elevator_mode
     e_dmd::Ranged{Float64, -1., 1.} = 0.0
     q_dmd::Float64 = 0.0
@@ -260,23 +263,17 @@ end
     v2θ::PIDDiscreteY = PIDDiscreteY()
 end
 
-Systems.init(::SystemU, ::PitchControlGs) = PitchControlGsU()
-Systems.init(::SystemY, ::PitchControlGs) = PitchControlGsY()
+Systems.init(::SystemU, ::PitchControl) = PitchControlU()
+Systems.init(::SystemY, ::PitchControl) = PitchControlY()
 
-function Systems.init!(sys::System{<:PitchControlGs})
+function Systems.init!(sys::System{<:PitchControl})
     @unpack q2e, θ2q, c2θ, v2θ = sys.subsystems
-
     #gains not set here, they will be assigned by gain scheduling
     q2e.u.bound_lo = -1
     q2e.u.bound_hi = 1
-
-    # c_pid.u.k_p = 4.5
-    # c_pid.u.k_i = 0
-    # c_pid.u.k_d = 0.6
-    # c_pid.u.τ_f = 0.01
 end
 
-function Control.reset!(sys::System{<:PitchControlGs})
+function Control.reset!(sys::System{<:PitchControl})
     #set default inputs and states
     sys.u.mode = direct_elevator_mode
     sys.u.e_dmd = 0
@@ -286,18 +283,18 @@ function Control.reset!(sys::System{<:PitchControlGs})
     #reset compensators
     Control.reset!.(values(sys.subsystems))
     #set default outputs
-    sys.y = PitchControlGsY()
+    sys.y = PitchControlY()
 end
 
-function Systems.f_disc!(sys::System{<:PitchControlGs}, kin::KinematicData, air::AirData, Δt::Real)
+function Systems.f_disc!(sys::System{<:PitchControl}, kin::KinematicData, air::AirData, Δt::Real)
 
-    @unpack mode, e_dmd, q_dmd, θ_dmd, c_dmd = sys.u
+    @unpack mode, e_dmd, q_dmd, θ_dmd, c_dmd, TAS_dmd = sys.u
     @unpack q2e_int, q2e, θ2q, c2θ, v2θ = sys.subsystems
-    @unpack q2e_lookup, θ2q_lookup, v2θ_lookup = sys.constants
+    @unpack q2e_lookup, θ2q_lookup, c2θ_lookup, v2θ_lookup = sys.constants
 
-    #retrieve and assign gain scheduled PID parameters
     Control.assign!(q2e, q2e_lookup(air.EAS, Float64(kin.h_o)))
     Control.assign!(θ2q, θ2q_lookup(air.EAS, Float64(kin.h_o)))
+    Control.assign!(c2θ, c2θ_lookup(air.EAS, Float64(kin.h_o)))
     Control.assign!(v2θ, v2θ_lookup(air.EAS, Float64(kin.h_o)))
 
     _, q, r = kin.ω_lb_b
@@ -345,14 +342,14 @@ function Systems.f_disc!(sys::System{<:PitchControlGs}, kin::KinematicData, air:
     c2θ.u.sat_ext = e_sat
     v2θ.u.sat_ext = -e_sat #sign inversion!
 
-    sys.y = PitchControlGsY(; mode, e_dmd, q_dmd, θ_dmd, c_dmd, TAS_dmd,
+    sys.y = PitchControlY(; mode, e_dmd, q_dmd, θ_dmd, c_dmd, TAS_dmd,
                             e_cmd, e_sat, q2e_int = q2e_int.y, q2e = q2e.y,
                             θ2q = θ2q.y, c2θ = c2θ.y, v2θ = v2θ.y)
 
 end
 
 
-function GUI.draw(sys::System{<:PitchControlGs})
+function GUI.draw(sys::System{<:PitchControl})
 
     @unpack q2e_int, q2e, θ2q, c2θ, v2θ = sys.subsystems
     @unpack mode, e_dmd, q_dmd, θ_dmd, c_dmd, TAS_dmd, e_cmd, e_sat = sys.y
@@ -395,7 +392,7 @@ function GUI.draw(sys::System{<:PitchControlGs})
 end
 
 ################################################################################
-################################## RollControlGs ###############################
+################################## RollControl ###############################
 
 @enum RollMode begin
     direct_aileron_mode = 0
@@ -404,14 +401,16 @@ end
     course_angle_mode = 3
 end
 
-@kwdef struct RollControlGs{LP <: Lookup} <: AbstractControlChannel
-    p_lookup::LP = load_lookup(joinpath(@__DIR__, "p2a_lookup.h5"))
-    p_pid::PIDDiscrete = PIDDiscrete()
-    φ_pid::PIDDiscrete = PIDDiscrete()
-    χ_pid::PIDDiscrete = PIDDiscrete()
+@kwdef struct RollControl{L <: Lookup} <: AbstractControlChannel
+    p2a_lookup::L = load_lookup(joinpath(@__DIR__, "data", "p2a_lookup.h5"))
+    φ2p_lookup::L = load_lookup(joinpath(@__DIR__, "data", "φ2p_lookup.h5"))
+    χ2φ_lookup::L = load_lookup(joinpath(@__DIR__, "data", "χ2φ_lookup.h5"))
+    p2a::PIDDiscrete = PIDDiscrete()
+    φ2p::PIDDiscrete = PIDDiscrete()
+    χ2φ::PIDDiscrete = PIDDiscrete()
 end
 
-@kwdef mutable struct RollControlGsU
+@kwdef mutable struct RollControlU
     mode::RollMode = direct_aileron_mode
     a_dmd::Ranged{Float64, -1., 1.} = 0.0 #aileron actuation demand
     p_dmd::Float64 = 0.0 #roll rate demand
@@ -419,7 +418,7 @@ end
     χ_dmd::Float64 = 0.0 #course angle demand
 end
 
-@kwdef struct RollControlGsY
+@kwdef struct RollControlY
     mode::RollMode = direct_aileron_mode
     a_dmd::Ranged{Float64, -1., 1.} = Ranged(0.0, -1.0, 1.0) #aileron actuation demand
     p_dmd::Float64 = 0.0
@@ -427,35 +426,27 @@ end
     χ_dmd::Float64 = 0.0
     a_cmd::Ranged{Float64, -1., 1.} = Ranged(0.0, -1.0, 1.0) #aileron actuation command
     a_sat::Int64 = 0 #aileron saturation state
-    p_pid::PIDDiscreteY = PIDDiscreteY()
-    φ_pid::PIDDiscreteY = PIDDiscreteY()
-    χ_pid::PIDDiscreteY = PIDDiscreteY()
+    p2a::PIDDiscreteY = PIDDiscreteY()
+    φ2p::PIDDiscreteY = PIDDiscreteY()
+    χ2φ::PIDDiscreteY = PIDDiscreteY()
 end
 
-Systems.init(::SystemU, ::RollControlGs) = RollControlGsU()
-Systems.init(::SystemY, ::RollControlGs) = RollControlGsY()
+Systems.init(::SystemU, ::RollControl) = RollControlU()
+Systems.init(::SystemY, ::RollControl) = RollControlY()
 
-function Systems.init!(sys::System{<:RollControlGs})
-    @unpack p_pid, φ_pid, χ_pid = sys.subsystems
+function Systems.init!(sys::System{<:RollControl})
+    @unpack p2a, φ2p, χ2φ = sys.subsystems
 
-    #p_pid gains not set here, they will be assigned by gain scheduling
-    p_pid.u.bound_lo = -1
-    p_pid.u.bound_hi = 1
+    #gains not set here, they will be assigned by gain scheduling
+    p2a.u.bound_lo = -1
+    p2a.u.bound_hi = 1
 
-    φ_pid.u.k_p = 7.0
-    φ_pid.u.k_i = 0
-    φ_pid.u.k_d = 0.8
-    φ_pid.u.τ_f = 0.01
-
-    χ_pid.u.k_p = 5.0
-    χ_pid.u.k_i = 0.2
-    χ_pid.u.k_d = 0.0
-    χ_pid.u.τ_f = 0.01
-    χ_pid.u.bound_lo = -π/4
-    χ_pid.u.bound_hi = π/4
+    #set φ demand limits for the course angle compensator output
+    χ2φ.u.bound_lo = -π/4
+    χ2φ.u.bound_hi = π/4
 end
 
-function Control.reset!(sys::System{<:RollControlGs})
+function Control.reset!(sys::System{<:RollControl})
     #set default inputs and states
     sys.u.mode = direct_aileron_mode
     sys.u.a_dmd = 0
@@ -465,22 +456,19 @@ function Control.reset!(sys::System{<:RollControlGs})
     #reset compensators
     Control.reset!.(values(sys.subsystems))
     #set default outputs
-    sys.y = RollControlGsY()
+    sys.y = RollControlY()
 end
 
-function Systems.f_disc!(sys::System{<:RollControlGs}, kin::KinematicData, air::AirData, Δt::Real)
+function Systems.f_disc!(sys::System{<:RollControl}, kin::KinematicData, air::AirData, Δt::Real)
 
     @unpack mode, a_dmd, p_dmd, φ_dmd, χ_dmd = sys.u
-    @unpack p_pid, φ_pid, χ_pid = sys.subsystems
-    p_lookup = sys.constants.p_lookup
+    @unpack p2a, φ2p, χ2φ = sys.subsystems
+    @unpack p2a_lookup, φ2p_lookup, χ2φ_lookup = sys.constants
 
-    #retrieve and assign interpolated pitch rate PID parameters
-    p_params = p_lookup(air.EAS, Float64(kin.h_o))
-    Control.assign!(p_pid, p_params)
+    Control.assign!(p2a, p2a_lookup(air.EAS, Float64(kin.h_o)))
+    Control.assign!(φ2p, φ2p_lookup(air.EAS, Float64(kin.h_o)))
+    Control.assign!(χ2φ, χ2φ_lookup(air.EAS, Float64(kin.h_o)))
 
-    #χ_err = χ_dmd - χ must be wrapped between -π and π. so instead of letting
-    #the PID subtract them internally, we set the feedback to zero and pass
-    #χ_err directly as the setpoint
     p = kin.ω_lb_b[1]
     φ = kin.e_nb.φ
     χ = Attitude.azimuth(kin.v_eOb_n)
@@ -489,38 +477,38 @@ function Systems.f_disc!(sys::System{<:RollControlGs}, kin::KinematicData, air::
         a_cmd = a_dmd
     else
         if mode === roll_rate_mode
-            p_pid.u.input = p_dmd - p
+            p2a.u.input = p_dmd - p
         else #bank angle, course angle
             if mode === bank_angle_mode
-                φ_pid.u.input = φ_dmd - φ
+                φ2p.u.input = φ_dmd - φ
             else #course angle
-                χ_pid.u.input = wrap_to_π(χ_dmd - χ)
-                f_disc!(χ_pid, Δt)
-                φ_pid.u.input = χ_pid.y.output - φ
+                χ2φ.u.input = wrap_to_π(χ_dmd - χ)
+                f_disc!(χ2φ, Δt)
+                φ2p.u.input = χ2φ.y.output - φ
             end
-            f_disc!(φ_pid, Δt)
-            p_pid.u.input = φ_pid.y.output - p
+            f_disc!(φ2p, Δt)
+            p2a.u.input = φ2p.y.output - p
         end
-        f_disc!(p_pid, Δt)
-        a_cmd = Ranged(p_pid.y.output, -1., 1.)
+        f_disc!(p2a, Δt)
+        a_cmd = Ranged(p2a.y.output, -1., 1.)
     end
 
     a_sat = saturation(a_cmd)
 
     #will take effect on the next call
-    p_pid.u.sat_ext = a_sat
-    φ_pid.u.sat_ext = a_sat
-    χ_pid.u.sat_ext = a_sat
+    p2a.u.sat_ext = a_sat
+    φ2p.u.sat_ext = a_sat
+    χ2φ.u.sat_ext = a_sat
 
-    sys.y = RollControlGsY(; mode, a_dmd, p_dmd, φ_dmd, χ_dmd, a_cmd, a_sat,
-                             p_pid = p_pid.y, φ_pid = φ_pid.y, χ_pid = χ_pid.y)
+    sys.y = RollControlY(; mode, a_dmd, p_dmd, φ_dmd, χ_dmd, a_cmd, a_sat,
+                             p2a = p2a.y, φ2p = φ2p.y, χ2φ = χ2φ.y)
 
 end
 
 
-function GUI.draw(sys::System{<:RollControlGs})
+function GUI.draw(sys::System{<:RollControl})
 
-    @unpack p_pid, φ_pid, χ_pid = sys.subsystems
+    @unpack p2a, φ2p, χ2φ = sys.subsystems
     @unpack mode, a_dmd, p_dmd, φ_dmd, χ_dmd, a_cmd, a_sat = sys.y
 
     CImGui.Begin("Roll Control")
@@ -535,15 +523,15 @@ function GUI.draw(sys::System{<:RollControlGs})
     CImGui.Text("Aileron saturation: $a_sat")
 
     if CImGui.TreeNode("Roll Rate Compensator")
-        GUI.draw(p_pid)
+        GUI.draw(p2a)
         CImGui.TreePop()
     end
     if CImGui.TreeNode("Bank Angle Compensator")
-        GUI.draw(φ_pid)
+        GUI.draw(φ2p)
         CImGui.TreePop()
     end
     if CImGui.TreeNode("Track Angle Compensator")
-        GUI.draw(χ_pid)
+        GUI.draw(χ2φ)
         CImGui.TreePop()
     end
 
@@ -565,8 +553,9 @@ end
     orthometric = 1
 end
 
+#we don't need a dynamic compensator for altitude hold, a simple gain is sufficient
 @kwdef struct AltControl <: AbstractControlChannel
-    h2c::PIDDiscrete = PIDDiscrete() #altitude to climb rate compensator ########### TO DO
+    k_h2c::Float64 = 0.2
 end
 
 @kwdef mutable struct AltControlU
@@ -579,17 +568,15 @@ end
     pitch_mode::PitchMode = pitch_angle_mode
     thr_dmd::Float64 = 0.0
     c_dmd::Float64 = 0.0
-    h2c::PIDDiscrete = PIDDiscrete()
 end
 
 Systems.init(::SystemU, ::AltControl) = AltControlU()
 Systems.init(::SystemY, ::AltControl) = AltControlY()
 
-
-function Systems.f_disc!(sys::System{AltControl}, kin::KinematicData, air::AirData, Δt::Real)
+function Systems.f_disc!(sys::System{AltControl}, kin::KinematicData, ::AirData, Δt::Real)
 
     @unpack h_dmd = sys.u
-    @unpack h2c = sys.subsystems
+    @unpack k_h2c = sys.constants
 
     h_threshold = 20 #within 20 m we switch to altitude_hold
     h_dmd = sys.u.h_dmd[1]
@@ -599,23 +586,18 @@ function Systems.f_disc!(sys::System{AltControl}, kin::KinematicData, air::AirDa
     if state === altitude_acquire
 
         throttle_mode = direct_throttle_mode
-        thr_dmd = h_dmd > h ? 1.0 : 0.0 #full throttle to climb, idle to descend
-
         pitch_mode = airspeed_pitch_mode #TAS_dmd set independently
 
-        c_dmd = 0.0 #no effect
+        thr_dmd = h_dmd > h ? 1.0 : 0.0 #full throttle to climb, idle to descend
+        c_dmd = 0.0 #no effect, v2θ active
 
     else #altitude_hold
 
         throttle_mode = airspeed_throttle_mode #TAS_dmd set independently
-        thr_dmd = 0.0 #no effect
-
         pitch_mode = climb_rate_mode
-        h2c.u.input = h_dmd - h
-        f_disc!(h2c, Δt)
-        println("Note: h2c shouldn't need e_sat unless it is a PI")
 
-        c_dmd = h2c.y.output
+        thr_dmd = 0.0 #no effect, v2t active
+        c_dmd = k_h2c * (h_dmd - h)
 
     end
 
@@ -628,94 +610,64 @@ end
 
 @enum YawMode begin
     direct_rudder_mode = 0
-    sideslip_mode = 1
 end
 
-@kwdef struct YawControlGs <: AbstractControlChannel
-    β_pid::PIDDiscrete = PIDDiscrete()
-end
+@kwdef struct YawControl <: AbstractControlChannel end
 
-@kwdef mutable struct YawControlGsU
+@kwdef mutable struct YawControlU
     mode::YawMode = direct_rudder_mode #yaw control mode
     r_dmd::Ranged{Float64, -1., 1.} = 0.0 #aileron actuation demand
-    β_dmd::Float64 = 0.0 #sideslip angle demand
 end
 
-@kwdef struct YawControlGsY
+@kwdef struct YawControlY
     mode::YawMode = direct_rudder_mode
     r_dmd::Ranged{Float64, -1., 1.} = 0.0
-    β_dmd::Float64 = 0.0
     r_cmd::Ranged{Float64, -1., 1.} = 0.0 #rudder actuation command
     r_sat::Int64 = 0 #rudder saturation state
-    β_pid::PIDDiscreteY = PIDDiscreteY()
 end
 
-Systems.init(::SystemU, ::YawControlGs) = YawControlGsU()
-Systems.init(::SystemY, ::YawControlGs) = YawControlGsY()
+Systems.init(::SystemU, ::YawControl) = YawControlU()
+Systems.init(::SystemY, ::YawControl) = YawControlY()
 
-function Systems.init!(sys::System{<:YawControlGs})
-    #β_pid gains not set here, they will be assigned by gain scheduling
-    β_pid = sys.subsystems.β_pid
-    β_pid.u.bound_lo = -1 #rudder command limits
-    β_pid.u.bound_hi = 1
+function Systems.init!(sys::System{<:YawControl})
 end
 
-function Control.reset!(sys::System{<:YawControlGs})
+function Control.reset!(sys::System{<:YawControl})
     #set default inputs and states
     sys.u.mode = direct_rudder_mode
     sys.u.r_dmd = 0
-    sys.u.β_dmd = 0
     #reset pid
     Control.reset!.(values(sys.subsystems))
     #set default outputs
-    sys.y = YawControlGsY()
+    sys.y = YawControlY()
 end
 
-function Systems.f_disc!(sys::System{<:YawControlGs}, kin::KinematicData, air::AirData, Δt::Real)
+function Systems.f_disc!(sys::System{<:YawControl}, kin::KinematicData, air::AirData, Δt::Real)
 
-    @unpack mode, r_dmd, β_dmd = sys.u
-    β_pid = sys.subsystems.β_pid
-
-    #retrieve and assign interpolated PID parameters
-    β_params = PIDParams(k_p = 3, k_i = 8, k_d = 2, τ_f = 0.01) #for 25 EAS
-    Control.assign!(β_pid, β_params)
-
-    β = air.β_b
+    @unpack mode, r_dmd = sys.u
 
     if mode === direct_rudder_mode
         r_cmd = r_dmd
-    else #sideslip mode
-        β_pid.u.input = β_dmd - β
-        f_disc!(β_pid, Δt)
-        r_cmd = Ranged(-β_pid.y.output, -1., 1.) #note sign inversion!
+    else
+        r_cmd = r_dmd
     end
 
     r_sat = saturation(r_cmd)
-    β_pid.u.sat_ext = -r_sat #saturation must also be inverted!
-
-    sys.y = YawControlGsY(; mode, r_dmd, β_dmd, r_cmd, r_sat, β_pid = β_pid.y)
+    sys.y = YawControlY(; mode, r_dmd, r_cmd, r_sat)
 
 end
 
 
-function GUI.draw(sys::System{<:YawControlGs})
+function GUI.draw(sys::System{<:YawControl})
 
-    @unpack β_pid = sys.subsystems
-    @unpack mode, r_dmd, β_dmd, r_cmd, r_sat = sys.y
+    @unpack mode, r_dmd, r_cmd, r_sat = sys.y
 
     CImGui.Begin("Yaw Control")
 
     CImGui.Text("Mode: $mode")
     CImGui.Text(@sprintf("Rudder demand: %.3f", Float64(r_dmd)))
-    CImGui.Text(@sprintf("Sideslip angle demand: %.3f deg", rad2deg(β_dmd)))
-
     CImGui.Text(@sprintf("Rudder command: %.3f", Float64(r_cmd)))
     CImGui.Text("Rudder saturation: $r_sat")
-
-    if CImGui.TreeNode("Sideslip Angle Compensator")
-        GUI.draw(β_pid)
-        CImGui.TreePop()
-    end
 
     CImGui.End()
 
@@ -740,9 +692,9 @@ end
 
 @kwdef struct Avionics <: AbstractAvionics
     throttle_ctl::ThrottleControl = ThrottleControl()
-    roll_ctl::RollControlGs = RollControlGs()
-    pitch_ctl::PitchControlGs = PitchControlGs()
-    yaw_ctl::YawControlGs = YawControlGs()
+    roll_ctl::RollControl = RollControl()
+    pitch_ctl::PitchControl = PitchControl()
+    yaw_ctl::YawControl = YawControl()
     alt_ctl::AltControl = AltControl()
 end
 
@@ -762,10 +714,6 @@ end
     brake_right::Ranged{Float64, 0., 1.} = 0.0
 end
 
-#the β control loop tracks the β_dmd input. a positive β_dmd increment initially
-#produces a negative yaw rate. the sign inversion β_dmd_sf keeps consistency in
-#the perceived behaviour between direct rudder and β control modes.
-
 @kwdef mutable struct DigitalInputs
     throttle_mode_sel::ThrottleMode = direct_throttle_mode #selected throttle channel mode
     roll_mode_sel::RollMode = direct_aileron_mode #selected roll channel mode
@@ -781,7 +729,6 @@ end
     h_dmd::Tuple{Float64, AltitudeDatum} = (0.0, ellipsoidal) #altitude demand
     p_dmd_sf::Float64 = 1.0 #roll_input to p_dmd scale factor (0.2)
     q_dmd_sf::Float64 = 1.0 #pitch_input to q_dmd scale factor (0.2)
-    β_dmd_sf::Float64 = 1.0 #yaw_input β_dmd scale factor, sign inverted -deg2rad(10)
 end
 
 @kwdef struct AvionicsU
@@ -819,9 +766,9 @@ end
     moding::AvionicsModing = AvionicsModing()
     actuation::ActuationCommands = ActuationCommands()
     throttle_ctl::ThrottleControlY = ThrottleControlY()
-    roll_ctl::RollControlGsY = RollControlGsY()
-    pitch_ctl::PitchControlGsY = PitchControlGsY()
-    yaw_ctl::YawControlGsY = YawControlGsY()
+    roll_ctl::RollControlY = RollControlY()
+    pitch_ctl::PitchControlY = PitchControlY()
+    yaw_ctl::YawControlY = YawControlY()
     alt_ctl::AltControlY = AltControlY()
 end
 
@@ -832,8 +779,8 @@ Systems.init(::SystemS, ::Avionics) = nothing #keep subsystems local
 
 # ########################### Update Methods #####################################
 
-function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
-                        physics::System{<:Aircraft.Physics},
+function Systems.f_disc!(avionics::System{<:C172FBWCAS.Avionics}, Δt::Real,
+                        physics::System{<:C172FBW.Physics},
                         ::System{<:AbstractEnvironment})
 
     @unpack eng_start, eng_stop, mixture, throttle,
@@ -843,7 +790,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
     @unpack throttle_mode_sel, roll_mode_sel, pitch_mode_sel, yaw_mode_sel,
             lon_mode_sel, lat_mode_sel, TAS_dmd, θ_dmd, c_dmd, φ_dmd, χ_dmd, h_dmd,
-            p_dmd_sf, q_dmd_sf, β_dmd_sf = avionics.u.digital
+            p_dmd_sf, q_dmd_sf = avionics.u.digital
 
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl, alt_ctl = avionics.subsystems
 
@@ -858,7 +805,6 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
     roll_ctl.u.p_dmd = p_dmd_sf * Float64(roll_input)
     pitch_ctl.u.q_dmd = q_dmd_sf * Float64(pitch_input)
-    yaw_ctl.u.β_dmd = β_dmd_sf * Float64(yaw_input)
 
     #digital inputs, may be overridden by high level modes (like AltControl)
     throttle_ctl.u.TAS_dmd = TAS_dmd
@@ -921,7 +867,7 @@ function Systems.f_disc!(avionics::System{<:Avionics}, Δt::Real,
 
     end
 
-    f_disc!(throttle_ctl, air, Δt)
+    f_disc!(throttle_ctl, kinematics, air, Δt)
     f_disc!(roll_ctl, kinematics, air, Δt)
     f_disc!(pitch_ctl, kinematics, air, Δt)
     f_disc!(yaw_ctl, kinematics, air, Δt)
@@ -1087,7 +1033,7 @@ end
 ############################# Cessna172RCAS #####################################
 
 #Cessna172R with control augmenting Avionics
-const Cessna172FBWCAS{K} = C172FBW.Template{K, Avionics} where {K}
+const Cessna172FBWCAS{K} = C172FBW.Template{K, Avionics} where {K <: AbstractKinematicDescriptor}
 Cessna172FBWCAS(kinematics = LTF()) = C172FBW.Template(kinematics, Avionics())
 
 
