@@ -37,7 +37,7 @@ function test_θ_constraint()
         #and check it matches the original value
         e_nb = REuler(ψ_nb, θ_nb, φ_nb)
         v_wOb_n = e_nb(v_wOb_b)
-        γ_wOb_n_test = Attitude.inclination(v_wOb_n)
+        γ_wOb_n_test = inclination(v_wOb_n)
 
         @test γ_wOb_n_test ≈ γ_wOb_n
         @test @ballocated(Aircraft.θ_constraint(; v_wOb_b = $v_wOb_b, γ_wOb_n = $γ_wOb_n, φ_nb = $φ_nb)) === 0

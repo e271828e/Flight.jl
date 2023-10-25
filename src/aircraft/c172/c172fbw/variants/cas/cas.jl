@@ -471,7 +471,7 @@ function Systems.f_disc!(sys::System{<:RollControl}, kin::KinematicData, air::Ai
 
     p = kin.ω_lb_b[1]
     φ = kin.e_nb.φ
-    χ = Attitude.azimuth(kin.v_eOb_n)
+    χ = kin.χ_gnd
 
     if mode === direct_aileron_mode
         a_cmd = a_dmd

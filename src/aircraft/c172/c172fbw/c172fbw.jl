@@ -698,15 +698,15 @@ XLinear(physics::System{<:C172FBW.Physics}) = XLinear(physics.x)
 
 function YLinear(physics::System{<:C172FBW.Physics})
 
-    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_n = physics.y.kinematics
+    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_n, χ_gnd, γ_gnd = physics.y.kinematics
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
 
     h = h_e
     p, q, r = ω_eb_b
     v_N, v_E, v_D = v_eOb_n
-    χ = Attitude.azimuth(v_eOb_n)
-    γ = Attitude.inclination(v_eOb_n)
+    χ = χ_gnd
+    γ = γ_gnd
     c = -v_D
     f_x, f_y, f_z = physics.y.rigidbody.f_G_b
     EAS = physics.y.air.EAS

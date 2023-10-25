@@ -42,7 +42,7 @@ end
 init!(sys::KinematicSystem, ic::Initializer = Initializer()) = init!(sys.x, ic)
 
 #implementation-independent outputs
-struct Common
+struct YCommon
     e_nb::REuler
     q_nb::RQuat
     q_eb::RQuat
@@ -59,15 +59,18 @@ struct Common
     ω_ib_b::SVector{3,Float64}
     v_eOb_b::SVector{3,Float64}
     v_eOb_n::SVector{3,Float64}
+    v_gnd::Float64 #ground speed
+    χ_gnd::Float64 #course angle
+    γ_gnd::Float64 #flight path angle
 end
 
-const KinematicData = Common
+const KinematicData = YCommon
 
-Common(ic::Initializer = Initializer()) = KinematicsY(LTF(), ic).common
-Common(sys::KinematicSystem) = sys.y.common
+YCommon(ic::Initializer = Initializer()) = KinematicsY(LTF(), ic).common
+YCommon(sys::KinematicSystem) = sys.y.common
 
 struct KinematicsY{S}
-    common::Common
+    common::YCommon
     specific::S
 end
 
@@ -76,7 +79,7 @@ Base.getproperty(y::KinematicsY, s::Symbol) = getproperty(y, Val(s))
 @generated function Base.getproperty(y::KinematicsY{T}, ::Val{S}) where {T, S}
     if S === :common || S === :specific
         return :(getfield(y, $(QuoteNode(S))))
-    elseif S ∈ fieldnames(Common)
+    elseif S ∈ fieldnames(YCommon)
         return :(getfield(getfield(y, :common), $(QuoteNode(S))))
     elseif S ∈ fieldnames(T)
         return :(getfield(getfield(y, :specific), $(QuoteNode(S))))
@@ -161,7 +164,7 @@ const XLTFTemplate = ComponentVector(pos = similar(XPosLTFTemplate), vel = simil
 const XLTF{T, D} = ComponentVector{T, D, typeof(getaxes(XLTFTemplate))} where {T, D}
 
 #LTF-specific outputs
-@kwdef struct LTFSpecific
+@kwdef struct YLTF
     q_lb::RQuat
     q_el::RQuat
     ω_el_l::SVector{3,Float64}
@@ -225,10 +228,14 @@ function KinematicsY(x::XLTF)
     ω_ie_b = q_eb'(ω_ie_e)
     ω_ib_b = ω_ie_b + ω_eb_b
 
+    v_gnd = norm(v_eOb_n)
+    χ_gnd = azimuth(v_eOb_n)
+    γ_gnd = inclination(v_eOb_n)
+
     return KinematicsY(
-        Common( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
-        LTFSpecific(; q_lb, q_el, ω_el_l)
+        YCommon( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+        YLTF(; q_lb, q_el, ω_el_l)
     )
 
 end
@@ -271,7 +278,7 @@ const XECEFTemplate = ComponentVector(pos = similar(XPosECEFTemplate), vel = sim
 const XECEF{T, D} = ComponentVector{T, D, typeof(getaxes(XECEFTemplate))} where {T, D}
 
 #ECEF-specific outputs
-@kwdef struct ECEFSpecific
+@kwdef struct YECEF
     q_en::RQuat
     ω_el_n::SVector{3,Float64}
 end
@@ -330,10 +337,14 @@ function KinematicsY(x::XECEF)
     ω_ie_b = q_eb'(ω_ie_e)
     ω_ib_b = ω_ie_b + ω_eb_b
 
+    v_gnd = norm(v_eOb_n)
+    χ_gnd = azimuth(v_eOb_n)
+    γ_gnd = inclination(v_eOb_n)
+
     return KinematicsY(
-        Common( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
-        ECEFSpecific(; q_en, ω_el_n)
+        YCommon( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+        YECEF(; q_en, ω_el_n)
     )
 
 end
@@ -377,7 +388,7 @@ const XNEDTemplate = ComponentVector(pos = similar(XPosNEDTemplate), vel = simil
 const XNED{T, D} = ComponentVector{T, D, typeof(getaxes(XNEDTemplate))} where {T, D}
 
 #NED-specific outputs
-@kwdef struct NEDSpecific
+@kwdef struct YNED
     ω_nb_b::SVector{3,Float64}
     ω_en_n::SVector{3,Float64}
 end
@@ -443,10 +454,14 @@ function KinematicsY(x::XNED)
     ω_ie_b = q_eb'(ω_ie_e)
     ω_ib_b = ω_ie_b + ω_eb_b
 
+    v_gnd = norm(v_eOb_n)
+    χ_gnd = azimuth(v_eOb_n)
+    γ_gnd = inclination(v_eOb_n)
+
     return KinematicsY(
-        Common( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n),
-        NEDSpecific(; ω_nb_b, ω_en_n)
+        YCommon( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+        YNED(; ω_nb_b, ω_en_n)
     )
 
 end
@@ -575,7 +590,7 @@ function Plotting.make_plots(th::TimeHistory{<:KinematicsY}; kwargs...)
 
 end
 
-function Plotting.make_plots(th::TimeHistory{<:Common}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:YCommon}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -648,6 +663,19 @@ function Plotting.make_plots(th::TimeHistory{<:Common}; kwargs...)
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{eb}^{N} \ (m/s)$" L"$v_{eb}^{E} \ (m/s)$" L"$v_{eb}^{D} \ (m/s)$"],
         th_split = :h,
+        kwargs...)
+
+    subplot_v_gnd = plot(th.v_gnd; title = "Ground Speed",
+        ylabel = L"$v_{gnd} \ (m/s)$", label = "", kwargs...)
+    subplot_χ = plot(th._t, rad2deg.(th.χ_gnd._data); title = "Course Angle",
+        ylabel = L"$\chi_{gnd} \ (deg)$", label = "", kwargs...)
+    subplot_γ = plot(th._t, rad2deg.(th.γ_gnd._data); title = "Flight Path Angle",
+        ylabel = L"$\gamma_{cv} \ (deg)$", label = "", kwargs...)
+
+    pd[:vχγ] = plot(subplot_v_gnd, subplot_χ, subplot_γ;
+        plot_title = "Velocity (Vehicle/ECEF) [NED Axes]",
+        layout = (1,3),
+        link = :none,
         kwargs...)
 
     pd[:v_eOb_b] = plot(
