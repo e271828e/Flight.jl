@@ -165,7 +165,7 @@ function Control.reset!(sys::System{<:ThrottleControl})
     sys.y = ThrottleControlY()
 end
 
-function Systems.f_disc!(sys::System{ThrottleControl}, kin::KinematicData, air::AirData, Δt::Real)
+function Systems.f_disc!(sys::System{<:ThrottleControl}, kin::KinematicData, air::AirData, Δt::Real)
 
     @unpack mode, thr_dmd, TAS_dmd = sys.u
     @unpack v2t = sys.subsystems
@@ -325,7 +325,7 @@ function Systems.f_disc!(sys::System{<:PitchControl}, kin::KinematicData, air::A
             θ_dot_dmd = θ2q.y.output
             φ_bnd = clamp(φ, -π/3, π/3)
             q_θ_dmd = 1/cos(φ_bnd) * θ_dot_dmd + r * tan(φ_bnd)
-            q2e.u.input = q_θ_dmd - q
+            q2e_int.u.input = q_θ_dmd - q
         end
         f_disc!(q2e_int, Δt)
         q2e.u.input = q2e_int.y.output
@@ -573,7 +573,7 @@ end
 Systems.init(::SystemU, ::AltControl) = AltControlU()
 Systems.init(::SystemY, ::AltControl) = AltControlY()
 
-function Systems.f_disc!(sys::System{AltControl}, kin::KinematicData, ::AirData, Δt::Real)
+function Systems.f_disc!(sys::System{<:AltControl}, kin::KinematicData, ::AirData, Δt::Real)
 
     @unpack h_dmd = sys.u
     @unpack k_h2c = sys.constants
@@ -601,7 +601,7 @@ function Systems.f_disc!(sys::System{AltControl}, kin::KinematicData, ::AirData,
 
     end
 
-    sys.y = AltControlY(; state, throttle_mode, pitch_mode, thr_dmd, c_dmd, h2c = h2c.y)
+    sys.y = AltControlY(; state, throttle_mode, pitch_mode, thr_dmd, c_dmd)
 
 end
 

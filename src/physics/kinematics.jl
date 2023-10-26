@@ -662,7 +662,7 @@ function Plotting.make_plots(th::TimeHistory{<:YCommon}; kwargs...)
         plot_title = "Velocity (Vehicle/ECEF) [NED Axes]",
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{eb}^{N} \ (m/s)$" L"$v_{eb}^{E} \ (m/s)$" L"$v_{eb}^{D} \ (m/s)$"],
-        th_split = :h,
+        th_split = :h, link = :none,
         kwargs...)
 
     subplot_v_gnd = plot(th.v_gnd; title = "Ground Speed",
