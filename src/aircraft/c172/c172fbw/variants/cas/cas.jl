@@ -120,7 +120,7 @@ abstract type AbstractControlChannel <: SystemDefinition end
 
 @enum ThrottleMode begin
     direct_throttle_mode = 0
-    airspeed_throttle_mode = 1
+    EAS_throttle_mode = 1
 end
 
 @kwdef struct ThrottleControl{L <: Lookup} <: AbstractControlChannel
@@ -131,13 +131,13 @@ end
 @kwdef mutable struct ThrottleControlU
     mode::ThrottleMode = direct_throttle_mode #throttle control mode
     thr_dmd::Ranged{Float64, 0., 1.} = 0.0 #throttle actuation demand
-    TAS_dmd::Float64 = 0.0 #airspeed demand
+    EAS_dmd::Float64 = 0.0 #equivalent airspeed demand
 end
 
 @kwdef struct ThrottleControlY
     mode::ThrottleMode = direct_throttle_mode
     thr_dmd::Ranged{Float64, 0., 1.} = 0.0
-    TAS_dmd::Float64 = 0.0
+    EAS_dmd::Float64 = 0.0
     thr_cmd::Ranged{Float64, 0., 1.} = 0.0 #throttle actuation command
     thr_sat::Int64 = 0 #throttle saturation state
     v2t::PIDDiscreteY = PIDDiscreteY()
@@ -158,7 +158,7 @@ function Control.reset!(sys::System{<:ThrottleControl})
     #set default inputs and states
     sys.u.mode = direct_throttle_mode
     sys.u.thr_dmd = 0
-    sys.u.TAS_dmd = 0
+    sys.u.EAS_dmd = 0
     #reset compensators
     Control.reset!.(values(sys.subsystems))
     #set default outputs
@@ -167,7 +167,7 @@ end
 
 function Systems.f_disc!(sys::System{<:ThrottleControl}, kin::KinematicData, air::AirData, Δt::Real)
 
-    @unpack mode, thr_dmd, TAS_dmd = sys.u
+    @unpack mode, thr_dmd, EAS_dmd = sys.u
     @unpack v2t = sys.subsystems
     @unpack v2t_lookup = sys.constants
 
@@ -175,8 +175,8 @@ function Systems.f_disc!(sys::System{<:ThrottleControl}, kin::KinematicData, air
 
     if mode === direct_throttle_mode
         thr_cmd = thr_dmd
-    else #airspeed mode
-        v2t.u.input = TAS_dmd - air.TAS
+    else #equivalent airspeed mode
+        v2t.u.input = EAS_dmd - air.EAS
         f_disc!(v2t, Δt)
         thr_cmd = Ranged(v2t.y.output, 0., 1.) #compensator sign inversion
     end
@@ -184,7 +184,7 @@ function Systems.f_disc!(sys::System{<:ThrottleControl}, kin::KinematicData, air
     thr_sat = saturation(thr_cmd)
     v2t.u.sat_ext = thr_sat #saturation must also be inverted!
 
-    sys.y = ThrottleControlY(; mode, thr_dmd, TAS_dmd,
+    sys.y = ThrottleControlY(; mode, thr_dmd, EAS_dmd,
                             thr_cmd, thr_sat, v2t = v2t.y)
 
 end
@@ -192,18 +192,18 @@ end
 function GUI.draw(sys::System{<:ThrottleControl})
 
     @unpack v2t = sys.subsystems
-    @unpack mode, thr_dmd, TAS_dmd, thr_cmd, thr_sat = sys.y
+    @unpack mode, thr_dmd, EAS_dmd, thr_cmd, thr_sat = sys.y
 
     CImGui.Begin("Throttle Control")
 
     CImGui.Text("Mode: $mode")
     CImGui.Text(@sprintf("Throttle demand: %.3f", Float64(thr_dmd)))
-    CImGui.Text(@sprintf("Airspeed demand: %.3f m/s", rad2deg(TAS_dmd)))
+    CImGui.Text(@sprintf("EAS demand: %.3f m/s", rad2deg(EAS_dmd)))
 
     CImGui.Text(@sprintf("Throttle command: %.3f", Float64(thr_cmd)))
     CImGui.Text("Throttle saturation: $r_sat")
 
-    if CImGui.TreeNode("Airspeed Compensator")
+    if CImGui.TreeNode("EAS Compensator")
         GUI.draw(v2t)
         CImGui.TreePop()
     end
@@ -220,7 +220,7 @@ end
     pitch_rate_mode = 1
     pitch_angle_mode = 2
     climb_rate_mode = 3
-    airspeed_pitch_mode = 4
+    EAS_pitch_mode = 4
 end
 
 ################################################################################
@@ -234,7 +234,7 @@ end
     q2e::PIDDiscrete = PIDDiscrete() #pitch rate to elevator compensator
     θ2q::PIDDiscrete = PIDDiscrete() #pitch angle to pitch rate compensator
     c2θ::PIDDiscrete = PIDDiscrete() #climb rate to pitch angle compensator
-    v2θ::PIDDiscrete = PIDDiscrete() #TAS to pitch angle compensator
+    v2θ::PIDDiscrete = PIDDiscrete() #EAS to pitch angle compensator
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -244,7 +244,7 @@ end
     q_dmd::Float64 = 0.0 #pitch rate demand
     θ_dmd::Float64 = 0.0 #pitch angle demand
     c_dmd::Float64 = 0.0 #climb rate demand
-    TAS_dmd::Float64 = 0.0 #TAS demand
+    EAS_dmd::Float64 = 0.0 #EAS demand
 end
 
 @kwdef struct PitchControlY
@@ -253,7 +253,7 @@ end
     q_dmd::Float64 = 0.0
     θ_dmd::Float64 = 0.0
     c_dmd::Float64 = 0.0
-    TAS_dmd::Float64 = 0.0
+    EAS_dmd::Float64 = 0.0
     e_cmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation command
     e_sat::Int64 = 0 #elevator saturation state
     q2e_int::IntegratorDiscreteY = IntegratorDiscreteY()
@@ -288,7 +288,7 @@ end
 
 function Systems.f_disc!(sys::System{<:PitchControl}, kin::KinematicData, air::AirData, Δt::Real)
 
-    @unpack mode, e_dmd, q_dmd, θ_dmd, c_dmd, TAS_dmd = sys.u
+    @unpack mode, e_dmd, q_dmd, θ_dmd, c_dmd, EAS_dmd = sys.u
     @unpack q2e_int, q2e, θ2q, c2θ, v2θ = sys.subsystems
     @unpack q2e_lookup, θ2q_lookup, c2θ_lookup, v2θ_lookup = sys.constants
 
@@ -300,14 +300,14 @@ function Systems.f_disc!(sys::System{<:PitchControl}, kin::KinematicData, air::A
     _, q, r = kin.ω_lb_b
     @unpack θ, φ = kin.e_nb
     c = -kin.v_eOb_n[3] #climb rate
-    TAS = air.TAS
+    EAS = air.EAS
 
     if mode === direct_elevator_mode
         e_cmd = e_dmd
     else
         if mode === pitch_rate_mode
             q2e_int.u.input = q_dmd - q
-        else #pitch_angle, climb_rate, airspeed
+        else #pitch_angle, climb_rate, EAS
             if mode === pitch_angle_mode
                 θ2q.u.input = θ_dmd - θ
             else #climb rate to θ
@@ -315,8 +315,8 @@ function Systems.f_disc!(sys::System{<:PitchControl}, kin::KinematicData, air::A
                     c2θ.u.input = c_dmd - c
                     f_disc!(c2θ, Δt)
                     θ2q.u.input = c2θ.y.output - θ
-                else #airspeed to θ
-                    v2θ.u.input = TAS_dmd - TAS
+                else #EAS to θ
+                    v2θ.u.input = EAS_dmd - EAS
                     f_disc!(v2θ, Δt)
                     θ2q.u.input = -v2θ.y.output - θ #sign inversion!
                 end
@@ -342,7 +342,7 @@ function Systems.f_disc!(sys::System{<:PitchControl}, kin::KinematicData, air::A
     c2θ.u.sat_ext = e_sat
     v2θ.u.sat_ext = -e_sat #sign inversion!
 
-    sys.y = PitchControlY(; mode, e_dmd, q_dmd, θ_dmd, c_dmd, TAS_dmd,
+    sys.y = PitchControlY(; mode, e_dmd, q_dmd, θ_dmd, c_dmd, EAS_dmd,
                             e_cmd, e_sat, q2e_int = q2e_int.y, q2e = q2e.y,
                             θ2q = θ2q.y, c2θ = c2θ.y, v2θ = v2θ.y)
 
@@ -352,7 +352,7 @@ end
 function GUI.draw(sys::System{<:PitchControl})
 
     @unpack q2e_int, q2e, θ2q, c2θ, v2θ = sys.subsystems
-    @unpack mode, e_dmd, q_dmd, θ_dmd, c_dmd, TAS_dmd, e_cmd, e_sat = sys.y
+    @unpack mode, e_dmd, q_dmd, θ_dmd, c_dmd, EAS_dmd, e_cmd, e_sat = sys.y
 
     CImGui.Begin("Pitch Control")
 
@@ -361,7 +361,7 @@ function GUI.draw(sys::System{<:PitchControl})
     CImGui.Text(@sprintf("Pitch rate demand: %.3f deg/s", rad2deg(q_dmd)))
     CImGui.Text(@sprintf("Pitch angle demand: %.3f deg", rad2deg(θ_dmd)))
     CImGui.Text(@sprintf("Climb rate demand: %.3f m/s", c_dmd))
-    CImGui.Text(@sprintf("True airspeed demand: %.3f m/s", TAS_dmd))
+    CImGui.Text(@sprintf("EAS demand: %.3f m/s", EAS_dmd))
 
     CImGui.Text(@sprintf("Elevator command: %.3f", Float64(e_cmd)))
     CImGui.Text("Elevator saturation: $e_sat")
@@ -382,7 +382,7 @@ function GUI.draw(sys::System{<:PitchControl})
         GUI.draw(c2θ)
         CImGui.TreePop()
     end
-    if CImGui.TreeNode("True Airspeed Compensator")
+    if CImGui.TreeNode("EAS Compensator")
         GUI.draw(v2θ)
         CImGui.TreePop()
     end
@@ -586,14 +586,14 @@ function Systems.f_disc!(sys::System{<:AltControl}, kin::KinematicData, ::AirDat
     if state === altitude_acquire
 
         throttle_mode = direct_throttle_mode
-        pitch_mode = airspeed_pitch_mode #TAS_dmd set independently
+        pitch_mode = EAS_pitch_mode #EAS_dmd set independently
 
         thr_dmd = h_dmd > h ? 1.0 : 0.0 #full throttle to climb, idle to descend
         c_dmd = 0.0 #no effect, v2θ active
 
     else #altitude_hold
 
-        throttle_mode = airspeed_throttle_mode #TAS_dmd set independently
+        throttle_mode = EAS_throttle_mode #EAS_dmd set independently
         pitch_mode = climb_rate_mode
 
         thr_dmd = 0.0 #no effect, v2t active
@@ -721,7 +721,7 @@ end
     yaw_mode_sel::YawMode = direct_rudder_mode #selected yaw channel mode
     lon_mode_sel::LonMode = lon_mode_semi #selected longitudinal control mode
     lat_mode_sel::LatMode = lat_mode_semi #selected lateral control mode
-    TAS_dmd::Float64 = 40.0 #airspeed demand
+    EAS_dmd::Float64 = 40.0 #equivalent airspeed demand
     θ_dmd::Float64 = 0.0 #pitch angle demand
     c_dmd::Float64 = 0.0 #climb rate demand
     φ_dmd::Float64 = 0.0 #bank angle demand
@@ -789,7 +789,7 @@ function Systems.f_disc!(avionics::System{<:C172FBWCAS.Avionics}, Δt::Real,
             flaps, brake_left, brake_right = avionics.u.inceptors
 
     @unpack throttle_mode_sel, roll_mode_sel, pitch_mode_sel, yaw_mode_sel,
-            lon_mode_sel, lat_mode_sel, TAS_dmd, θ_dmd, c_dmd, φ_dmd, χ_dmd, h_dmd,
+            lon_mode_sel, lat_mode_sel, EAS_dmd, θ_dmd, c_dmd, φ_dmd, χ_dmd, h_dmd,
             p_dmd_sf, q_dmd_sf = avionics.u.digital
 
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl, alt_ctl = avionics.subsystems
@@ -807,10 +807,10 @@ function Systems.f_disc!(avionics::System{<:C172FBWCAS.Avionics}, Δt::Real,
     pitch_ctl.u.q_dmd = q_dmd_sf * Float64(pitch_input)
 
     #digital inputs, may be overridden by high level modes (like AltControl)
-    throttle_ctl.u.TAS_dmd = TAS_dmd
+    throttle_ctl.u.EAS_dmd = EAS_dmd
     pitch_ctl.u.θ_dmd = θ_dmd
     pitch_ctl.u.c_dmd = c_dmd
-    pitch_ctl.u.TAS_dmd = TAS_dmd
+    pitch_ctl.u.EAS_dmd = EAS_dmd
     roll_ctl.u.φ_dmd = φ_dmd
     roll_ctl.u.χ_dmd = χ_dmd
     alt_ctl.u.h_dmd = h_dmd
@@ -837,8 +837,8 @@ function Systems.f_disc!(avionics::System{<:C172FBWCAS.Avionics}, Δt::Real,
         if lon_mode === lon_mode_semi
 
             #prioritize airspeed control via throttle
-            if throttle_mode_sel === airspeed_throttle_mode && pitch_mode_sel === airspeed_pitch_mode
-                throttle_ctl.u.mode = airspeed_throttle_mode
+            if throttle_mode_sel === EAS_throttle_mode && pitch_mode_sel === EAS_pitch_mode
+                throttle_ctl.u.mode = EAS_throttle_mode
                 pitch_ctl.u.mode = pitch_rate_mode
             else
                 throttle_ctl.u.mode = throttle_mode_sel
