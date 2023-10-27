@@ -375,6 +375,7 @@ end
 #See DearImGui FAQ
 function safe_slider(label::String, source::AbstractFloat, lower_bound::Real, upper_bound::Real, display_format::String)
     ref = Ref(Cfloat(source))
+    CImGui.AlignTextToFramePadding()
     CImGui.Text(label)
     CImGui.SameLine()
     CImGui.SliderFloat("##"*(label), ref, lower_bound, upper_bound, display_format)
@@ -385,6 +386,7 @@ end
 
 function safe_input(label::String, source::AbstractFloat, step::Real, fast_step::Real, display_format::String)
     ref = Ref(Cdouble(source))
+    CImGui.AlignTextToFramePadding()
     CImGui.Text(label)
     CImGui.SameLine()
     CImGui.InputDouble("##"*(label), ref, step, fast_step, display_format)

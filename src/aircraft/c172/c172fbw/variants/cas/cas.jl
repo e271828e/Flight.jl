@@ -920,117 +920,153 @@ end
 
 
 
-# # ################################## GUI #########################################
+################################## GUI #########################################
 
-# # function mode_button_color(button_mode, selected_mode, active_mode)
-# #     if active_mode === mode
-# #         return HSV_green
-# #     elseif selected_mode === mode
-# #         return HSV_amber
-# #     else
-# #         return HSV_gray
-# #     end
-# # end
+function mode_button_HSV(button_mode, selected_mode, active_mode)
+    if active_mode === button_mode
+        return HSV_green
+    elseif selected_mode === button_mode
+        return HSV_amber
+    else
+        return HSV_gray
+    end
+end
 
-# function GUI.draw!(avionics::System{<:Avionics}, airframe::System{<:C172.Airframe},
-#                     label::String = "Cessna 172 FBW CAS Avionics")
+function GUI.draw!(avionics::System{<:C172FBWCAS.Avionics},
+                    physics::System{<:C172FBW.Physics},
+                    label::String = "Cessna 172 FBW CAS Avionics")
 
-#     u = avionics.u
+    @unpack airframe = physics
+    u = avionics.u
+    u_inc = avionics.u.inceptors
+    u_dig = avionics.u.digital
+    y_mod = avionics.y.moding
+    y_act = avionics.y.actuation
 
-#     CImGui.Begin(label)
+    CImGui.Begin(label)
 
-#     CImGui.PushItemWidth(-60)
+    CImGui.PushItemWidth(-60)
 
-#     if airframe.y.pwp.engine.state === Piston.eng_off
-#         eng_start_HSV = HSV_gray
-#     elseif airframe.y.pwp.engine.state === Piston.eng_starting
-#         eng_start_HSV = HSV_amber
-#     else
-#         eng_start_HSV = HSV_green
-#     end
-#     dynamic_button("Engine Start", eng_start_HSV, 0.1, 0.2)
-#     u.eng_start = CImGui.IsItemActive()
-#     CImGui.SameLine()
-#     dynamic_button("Engine Stop", HSV_gray, (HSV_gray[1], HSV_gray[2], HSV_gray[3] + 0.1), (0.0, 0.8, 0.8))
-#     u.eng_stop = CImGui.IsItemActive()
-#     CImGui.SameLine()
-#     CImGui.Text(@sprintf("%.3f RPM", Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
-#     CImGui.Separator()
+    show_inceptors = @cstatic check=false @c CImGui.Checkbox("Inceptors", &check)
+    show_digital = @cstatic check=false @c CImGui.Checkbox("Digital", &check)
 
-#     if avionics.y.interface.CAS_state === CAS_disabled
-#         CAS_HSV = HSV_gray
-#     elseif avionics.y.interface.CAS_state === CAS_standby
-#         CAS_HSV = HSV_amber
-#     else
-#         CAS_HSV = HSV_green
-#     end
-#     dynamic_button("CAS", CAS_HSV, 0.1, 0.1)
-#     CImGui.IsItemActivated() ? u.CAS_enable = !u.CAS_enable : nothing
-#     CImGui.SameLine()
-#     CImGui.Text("Flight Phase: $(avionics.y.logic.flight_phase)")
-
-#     @unpack roll_mode, pitch_mode, yaw_mode = avionics.y.interface
-
-#     CImGui.Text("Roll Control Mode: "); CImGui.SameLine()
-#     dynamic_button("Aileron", control_mode_HSV(aileron_mode, u.roll_mode_select, roll_mode), 0.1, 0.1); CImGui.SameLine()
-#     CImGui.IsItemActive() ? u.roll_mode_select = aileron_mode : nothing
-#     dynamic_button("Roll Rate", control_mode_HSV(roll_rate_mode, u.roll_mode_select, roll_mode), 0.1, 0.1); CImGui.SameLine()
-#     CImGui.IsItemActive() ? u.roll_mode_select = roll_rate_mode : nothing
-#     dynamic_button("Roll Angle", control_mode_HSV(roll_angle_mode, u.roll_mode_select, roll_mode), 0.1, 0.1); CImGui.SameLine()
-#     CImGui.IsItemActive() ? u.roll_mode_select = roll_angle_mode : nothing
-
-#     CImGui.Separator()
-#     CImGui.Text("Pitch Control Mode: "); CImGui.SameLine()
-#     dynamic_button("Elevator", control_mode_HSV(elevator_mode, u.pitch_mode_select, pitch_mode), 0.1, 0.1); CImGui.SameLine()
-#     CImGui.IsItemActive() ? u.pitch_mode_select = elevator_mode : nothing
-#     dynamic_button("Pitch Rate", control_mode_HSV(pitch_rate_mode, u.pitch_mode_select, pitch_mode), 0.1, 0.1); CImGui.SameLine()
-#     CImGui.IsItemActive() ? u.pitch_mode_select = pitch_rate_mode : nothing
-#     dynamic_button("Pitch Angle", control_mode_HSV(pitch_angle_mode, u.pitch_mode_select, pitch_mode), 0.1, 0.1); CImGui.SameLine()
-#     CImGui.IsItemActive() ? u.pitch_mode_select = pitch_angle_mode : nothing
-
-#     CImGui.Separator()
-#     CImGui.Text("Yaw Control Mode: "); CImGui.SameLine()
-#     dynamic_button("Rudder", control_mode_HSV(rudder_mode, u.yaw_mode_select, yaw_mode), 0.1, 0.1); CImGui.SameLine()
-#     CImGui.IsItemActive() ? u.yaw_mode_select = rudder_mode : nothing
-#     dynamic_button("Sideslip", control_mode_HSV(sideslip_mode, u.yaw_mode_select, yaw_mode), 0.1, 0.1); CImGui.SameLine()
-#     CImGui.IsItemActive() ? u.yaw_mode_select = sideslip_mode : nothing
-
-#     CImGui.Separator()
-#     u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
-#     u.roll_input = safe_slider("Roll Input", u.roll_input, "%.6f")
-#     u.pitch_input = safe_slider("Pitch Input", u.pitch_input, "%.6f")
-#     u.yaw_input = safe_slider("Yaw Input", u.yaw_input, "%.6f")
-#     u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.001, 0.1, "%.6f")
-#     u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.001, 0.1, "%.6f")
-#     u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.001, 0.1, "%.6f")
-#     u.flaps = safe_slider("Flaps", u.flaps, "%.6f")
-#     u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
-#     u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
-#     u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
-
-#     #Internals
-#     CImGui.Separator()
-#     @unpack roll_control, pitch_control, yaw_control = avionics.subsystems
-
-#     if CImGui.TreeNode("Internals")
-#         show_roll_control = @cstatic check=false @c CImGui.Checkbox("Roll Control", &check); CImGui.SameLine()
-#         show_roll_control && GUI.draw(roll_control)
-#         show_pitch_control = @cstatic check=false @c CImGui.Checkbox("Pitch Control", &check); CImGui.SameLine()
-#         show_pitch_control && GUI.draw(pitch_control)
-#         show_yaw_control = @cstatic check=false @c CImGui.Checkbox("Yaw Control", &check); CImGui.SameLine()
-#         show_yaw_control && GUI.draw(yaw_control)
-#         CImGui.TreePop()
-#     end
+    if show_inceptors
+        CImGui.Separator()
+        if airframe.y.pwp.engine.state === Piston.eng_off
+            eng_start_HSV = HSV_gray
+        elseif airframe.y.pwp.engine.state === Piston.eng_starting
+            eng_start_HSV = HSV_amber
+        else
+            eng_start_HSV = HSV_green
+        end
+        dynamic_button("Engine Start", eng_start_HSV, 0.1, 0.2)
+        u_inc.eng_start = CImGui.IsItemActive()
+        CImGui.SameLine()
+        dynamic_button("Engine Stop", HSV_gray, (HSV_gray[1], HSV_gray[2], HSV_gray[3] + 0.1), (0.0, 0.8, 0.8))
+        u_inc.eng_stop = CImGui.IsItemActive()
+        CImGui.SameLine()
+        u_inc.mixture = safe_slider("Mixture", u_inc.mixture, "%.6f")
+        # CImGui.Text(@sprintf("%.3f RPM", Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
+        CImGui.Separator()
+        u_inc.throttle = safe_slider("Throttle", u_inc.throttle, "%.6f")
+        u_inc.roll_input = safe_slider("Roll Input", u_inc.roll_input, "%.6f")
+        u_inc.pitch_input = safe_slider("Pitch Input", u_inc.pitch_input, "%.6f")
+        u_inc.yaw_input = safe_slider("Yaw Input", u_inc.yaw_input, "%.6f")
+        CImGui.Separator()
+        u_inc.aileron_cmd_offset = safe_input("Aileron Offset", u_inc.aileron_cmd_offset, 0.001, 0.1, "%.6f")
+        u_inc.elevator_cmd_offset = safe_input("Elevator Offset", u_inc.elevator_cmd_offset, 0.001, 0.1, "%.6f")
+        u_inc.rudder_cmd_offset = safe_input("Rudder Offset", u_inc.rudder_cmd_offset, 0.001, 0.1, "%.6f")
+        u_inc.flaps = safe_slider("Flaps", u_inc.flaps, "%.6f")
+        CImGui.Separator()
+        u_inc.brake_left = safe_slider("Left Brake", u_inc.brake_left, "%.6f")
+        u_inc.brake_right = safe_slider("Right Brake", u_inc.brake_right, "%.6f")
+    end
 
 
-#     CImGui.PopItemWidth()
+    if show_digital
+        CImGui.Separator()
+        CImGui.AlignTextToFramePadding()
+        CImGui.Text("Throttle Control Mode")
+        dynamic_button("Direct", mode_button_HSV(direct_throttle_mode, u_dig.throttle_mode_sel, y_mod.throttle_mode), 0.1, 0.1)
+        CImGui.IsItemActive() ? u_dig.throttle_mode_sel = direct_throttle_mode : nothing
 
-#     CImGui.End()
+        dynamic_button("EAS", mode_button_HSV(EAS_throttle_mode, u_dig.throttle_mode_sel, y_mod.throttle_mode), 0.1, 0.1)
+        CImGui.SameLine()
+        CImGui.IsItemActive() ? u_dig.throttle_mode_sel = EAS_throttle_mode : nothing
+        CImGui.SameLine()
+        u_dig.EAS_dmd = safe_input("EAS Demand (m/s)", u_dig.EAS_dmd, 0.1, 1.0, "%.3f")
 
-# end
+        CImGui.Separator()
+        CImGui.AlignTextToFramePadding()
+        CImGui.Text("Roll Control Mode")
+
+        dynamic_button("Aileron", mode_button_HSV(direct_aileron_mode, u_dig.roll_mode_sel, y_mod.roll_mode), 0.1, 0.1)
+        CImGui.IsItemActive() ? u_dig.roll_mode_sel = direct_aileron_mode : nothing
+
+        dynamic_button("Roll Rate", mode_button_HSV(roll_rate_mode, u_dig.roll_mode_sel, y_mod.roll_mode), 0.1, 0.1)
+        CImGui.IsItemActive() ? u_dig.roll_mode_sel = roll_rate_mode : nothing
+        CImGui.SameLine()
+        u_dig.p_dmd_sf = safe_input("Input Sensitivity (s/deg)", rad2deg(u_dig.p_dmd_sf), 0.01, 1.0, "%.3f") |> deg2rad
+
+        dynamic_button("Bank Angle", mode_button_HSV(bank_angle_mode, u_dig.roll_mode_sel, y_mod.roll_mode), 0.1, 0.1)
+        CImGui.IsItemActive() ? u_dig.roll_mode_sel = bank_angle_mode : nothing
+        CImGui.SameLine()
+        u_dig.φ_dmd = safe_input("Bank Angle Demand (deg)", rad2deg(u_dig.φ_dmd), 0.01, 1.0, "%.3f") |> deg2rad
+
+        dynamic_button("Course Angle", mode_button_HSV(course_angle_mode, u_dig.roll_mode_sel, y_mod.roll_mode), 0.1, 0.1)
+        CImGui.IsItemActive() ? u_dig.roll_mode_sel = course_angle_mode : nothing
+        CImGui.SameLine()
+        u_dig.χ_dmd = safe_input("Course Angle Demand (deg)", rad2deg(u_dig.χ_dmd), 0.01, 1.0, "%.3f") |> deg2rad
+    end
+
+    # CImGui.Text("Roll Control Mode: "); CImGui.SameLine()
+    # dynamic_button("Aileron", control_mode_HSV(aileron_mode, u.roll_mode_select, roll_mode), 0.1, 0.1); CImGui.SameLine()
+    # CImGui.IsItemActive() ? u.roll_mode_select = aileron_mode : nothing
+    # dynamic_button("Roll Rate", control_mode_HSV(roll_rate_mode, u.roll_mode_select, roll_mode), 0.1, 0.1); CImGui.SameLine()
+    # CImGui.IsItemActive() ? u.roll_mode_select = roll_rate_mode : nothing
+    # dynamic_button("Roll Angle", control_mode_HSV(roll_angle_mode, u.roll_mode_select, roll_mode), 0.1, 0.1); CImGui.SameLine()
+    # CImGui.IsItemActive() ? u.roll_mode_select = roll_angle_mode : nothing
+
+    # CImGui.Separator()
+    # CImGui.Text("Pitch Control Mode: "); CImGui.SameLine()
+    # dynamic_button("Elevator", control_mode_HSV(elevator_mode, u.pitch_mode_select, pitch_mode), 0.1, 0.1); CImGui.SameLine()
+    # CImGui.IsItemActive() ? u.pitch_mode_select = elevator_mode : nothing
+    # dynamic_button("Pitch Rate", control_mode_HSV(pitch_rate_mode, u.pitch_mode_select, pitch_mode), 0.1, 0.1); CImGui.SameLine()
+    # CImGui.IsItemActive() ? u.pitch_mode_select = pitch_rate_mode : nothing
+    # dynamic_button("Pitch Angle", control_mode_HSV(pitch_angle_mode, u.pitch_mode_select, pitch_mode), 0.1, 0.1); CImGui.SameLine()
+    # CImGui.IsItemActive() ? u.pitch_mode_select = pitch_angle_mode : nothing
+
+    # CImGui.Separator()
+    # CImGui.Text("Yaw Control Mode: "); CImGui.SameLine()
+    # dynamic_button("Rudder", control_mode_HSV(rudder_mode, u.yaw_mode_select, yaw_mode), 0.1, 0.1); CImGui.SameLine()
+    # CImGui.IsItemActive() ? u.yaw_mode_select = rudder_mode : nothing
+    # dynamic_button("Sideslip", control_mode_HSV(sideslip_mode, u.yaw_mode_select, yaw_mode), 0.1, 0.1); CImGui.SameLine()
+    # CImGui.IsItemActive() ? u.yaw_mode_select = sideslip_mode : nothing
+
+
+    # #Internals
+    # CImGui.Separator()
+    # @unpack roll_control, pitch_control, yaw_control = avionics.subsystems
+
+    # if CImGui.TreeNode("Internals")
+    #     show_roll_control = @cstatic check=false @c CImGui.Checkbox("Roll Control", &check); CImGui.SameLine()
+    #     show_roll_control && GUI.draw(roll_control)
+    #     show_pitch_control = @cstatic check=false @c CImGui.Checkbox("Pitch Control", &check); CImGui.SameLine()
+    #     show_pitch_control && GUI.draw(pitch_control)
+    #     show_yaw_control = @cstatic check=false @c CImGui.Checkbox("Yaw Control", &check); CImGui.SameLine()
+    #     show_yaw_control && GUI.draw(yaw_control)
+    #     CImGui.TreePop()
+    # end
+
+
+    CImGui.PopItemWidth()
+
+    CImGui.End()
+
+end
 
 ################################################################################
-############################# Cessna172RCAS #####################################
+############################# Cessna172FBWCAS ##################################
 
 #Cessna172R with control augmenting Avionics
 const Cessna172FBWCAS{K} = C172FBW.Template{K, Avionics} where {K <: AbstractKinematicDescriptor}
