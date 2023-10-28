@@ -233,7 +233,7 @@ function test_sim_paced(; save::Bool = true)
 
     init_kinematics!(world, kin_init)
 
-    sim = Simulation(world; dt = 0.01, Δt = 0.02, t_end = 300)
+    sim = Simulation(world; dt = 0.01, Δt = 0.02, t_end = 600)
 
     interfaces = Vector{IODevices.Interface}()
     for joystick in get_connected_joysticks()
