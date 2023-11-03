@@ -1052,9 +1052,9 @@ function GUI.draw!(avionics::System{<:C172FBWCAS.Avionics},
         dynamic_button("Rudder", mode_button_HSV(direct_rudder_mode, u_dig.yaw_mode_sel, y_mod.yaw_mode), 0.1, 0.1)
         IsItemActive() ? u_dig.yaw_mode_sel = direct_rudder_mode : nothing
 
-        u_dig.p_dmd_sf = safe_input("Roll Rate Sensitivity (s/deg)", rad2deg(u_dig.p_dmd_sf), 0.01, 1.0, "%.3f") |> deg2rad
-        u_dig.φ_dmd = safe_input("Bank Angle Demand (deg)", rad2deg(u_dig.φ_dmd), 0.01, 1.0, "%.3f") |> deg2rad
-        u_dig.χ_dmd = safe_input("Course Angle Demand (deg)", rad2deg(u_dig.χ_dmd), 0.01, 1.0, "%.3f") |> deg2rad
+        u_dig.p_dmd_sf = safe_input("Roll Rate Sensitivity (s/deg)", rad2deg(u_dig.p_dmd_sf), 0.1, 1.0, "%.3f") |> deg2rad
+        u_dig.φ_dmd = safe_input("Bank Angle Demand (deg)", rad2deg(u_dig.φ_dmd), 0.1, 1.0, "%.3f") |> deg2rad
+        u_dig.χ_dmd = safe_input("Course Angle Demand (deg)", rad2deg(u_dig.χ_dmd), 0.1, 1.0, "%.3f") |> deg2rad
     end
 
     if show_internals
@@ -1082,32 +1082,6 @@ function GUI.draw!(avionics::System{<:C172FBWCAS.Avionics},
 
 end
 
-
-# @kwdef struct AvionicsModing
-#     flight_phase::FlightPhase = phase_gnd
-#     throttle_mode::ThrottleMode = direct_throttle_mode
-#     roll_mode::RollMode = direct_aileron_mode
-#     pitch_mode::PitchMode = direct_elevator_mode
-#     yaw_mode::YawMode = direct_rudder_mode
-#     lon_mode::LonMode = lon_mode_semi
-#     lat_mode::LatMode = lat_mode_semi
-# end
-
-# @kwdef struct ActuationCommands
-#     eng_start::Bool = false
-#     eng_stop::Bool = false
-#     mixture::Ranged{Float64, 0., 1.} = 0.5
-#     throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
-#     aileron_cmd::Ranged{Float64, -1., 1.} = 0.0
-#     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
-#     rudder_cmd::Ranged{Float64, -1., 1.} = 0.0
-#     aileron_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-#     elevator_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-#     rudder_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-#     flaps::Ranged{Float64, 0., 1.} = 0.0
-#     brake_left::Ranged{Float64, 0., 1.} = 0.0
-#     brake_right::Ranged{Float64, 0., 1.} = 0.0
-# end
 function GUI.draw(moding::AvionicsModing)
 
     @unpack flight_phase, throttle_mode, roll_mode, pitch_mode, yaw_mode, lon_mode, lat_mode = moding
@@ -1177,95 +1151,95 @@ function Aircraft.linearize!(ac::System{<:Cessna172FBWCAS}, args...; kwargs...)
 end
 
 
-# # ############################ Joystick Mappings #################################
+# ############################ Joystick Mappings #################################
 
-# function IODevices.assign!(sys::System{<:Cessna172RCAS}, joystick::Joystick,
-#                            mapping::InputMapping)
-#     IODevices.assign!(sys.avionics, joystick, mapping)
-# end
+function IODevices.assign!(sys::System{<:Cessna172FBWCAS}, joystick::Joystick,
+                           mapping::InputMapping)
+    IODevices.assign!(sys.avionics, joystick, mapping)
+end
 
-# elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-# aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-# rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
-# brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
+brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-# function IODevices.assign!(sys::System{Avionics},
-#                            joystick::XBoxController,
-#                            ::DefaultMapping)
+function IODevices.assign!(sys::System{Avionics},
+                           joystick::XBoxController,
+                           ::DefaultMapping)
 
-#     u = sys.u
+    u = sys.u.inceptors
 
-#     u.roll_input = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-#     u.pitch_input = get_axis_value(joystick, :right_analog_y) |> elevator_curve
-#     u.yaw_input = get_axis_value(joystick, :left_analog_x) |> rudder_curve
-#     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
-#     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
+    u.roll_input = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.pitch_input = get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.yaw_input = get_axis_value(joystick, :left_analog_x) |> rudder_curve
+    u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
+    u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-#     u.aileron_offset -= 0.01 * was_released(joystick, :dpad_left)
-#     u.aileron_offset += 0.01 * was_released(joystick, :dpad_right)
-#     u.elevator_offset += 0.01 * was_released(joystick, :dpad_down)
-#     u.elevator_offset -= 0.01 * was_released(joystick, :dpad_up)
+    u.aileron_cmd_offset -= 0.01 * was_released(joystick, :dpad_left)
+    u.aileron_cmd_offset += 0.01 * was_released(joystick, :dpad_right)
+    u.elevator_cmd_offset += 0.01 * was_released(joystick, :dpad_down)
+    u.elevator_cmd_offset -= 0.01 * was_released(joystick, :dpad_up)
 
-#     u.throttle += 0.1 * was_released(joystick, :button_Y)
-#     u.throttle -= 0.1 * was_released(joystick, :button_A)
+    u.throttle += 0.1 * was_released(joystick, :button_Y)
+    u.throttle -= 0.1 * was_released(joystick, :button_A)
 
-#     u.flaps += 0.3333 * was_released(joystick, :right_bumper)
-#     u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
+    u.flaps += 0.3333 * was_released(joystick, :right_bumper)
+    u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
 
-# end
+end
 
-# function IODevices.assign!(sys::System{Avionics},
-#                            joystick::T16000M,
-#                            ::DefaultMapping)
+function IODevices.assign!(sys::System{Avionics},
+                           joystick::T16000M,
+                           ::DefaultMapping)
 
-#     u = sys.u
+    u = sys.u.inceptors
 
-#     u.throttle = get_axis_value(joystick, :throttle)
-#     u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
-#     u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
-#     u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
+    u.throttle = get_axis_value(joystick, :throttle)
+    u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
+    u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
+    u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
 
-#     u.brake_left = is_pressed(joystick, :button_1)
-#     u.brake_right = is_pressed(joystick, :button_1)
+    u.brake_left = is_pressed(joystick, :button_1)
+    u.brake_right = is_pressed(joystick, :button_1)
 
-#     u.aileron_offset -= 2e-4 * is_pressed(joystick, :hat_left)
-#     u.aileron_offset += 2e-4 * is_pressed(joystick, :hat_right)
-#     u.elevator_offset += 2e-4 * is_pressed(joystick, :hat_down)
-#     u.elevator_offset -= 2e-4 * is_pressed(joystick, :hat_up)
+    u.aileron_cmd_offset -= 2e-4 * is_pressed(joystick, :hat_left)
+    u.aileron_cmd_offset += 2e-4 * is_pressed(joystick, :hat_right)
+    u.elevator_cmd_offset += 2e-4 * is_pressed(joystick, :hat_down)
+    u.elevator_cmd_offset -= 2e-4 * is_pressed(joystick, :hat_up)
 
-#     u.flaps += 0.3333 * was_released(joystick, :button_3)
-#     u.flaps -= 0.3333 * was_released(joystick, :button_2)
+    u.flaps += 0.3333 * was_released(joystick, :button_3)
+    u.flaps -= 0.3333 * was_released(joystick, :button_2)
 
-# end
+end
 
-# function IODevices.assign!(sys::System{Avionics},
-#                            joystick::GladiatorNXTEvo,
-#                            ::DefaultMapping)
+function IODevices.assign!(sys::System{Avionics},
+                           joystick::GladiatorNXTEvo,
+                           ::DefaultMapping)
 
-#     u = sys.u
+    u = sys.u.inceptors
 
-#     u.throttle = get_axis_value(joystick, :throttle)
-#     u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
-#     u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
-#     u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
+    u.throttle = get_axis_value(joystick, :throttle)
+    u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
+    u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
+    u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
 
-#     u.brake_left = is_pressed(joystick, :red_trigger_half)
-#     u.brake_right = is_pressed(joystick, :red_trigger_half)
+    u.brake_left = is_pressed(joystick, :red_trigger_half)
+    u.brake_right = is_pressed(joystick, :red_trigger_half)
 
-#     u.aileron_offset -= 2e-4 * is_pressed(joystick, :A3_left)
-#     u.aileron_offset += 2e-4 * is_pressed(joystick, :A3_right)
-#     u.elevator_offset += 2e-4 * is_pressed(joystick, :A3_down)
-#     u.elevator_offset -= 2e-4 * is_pressed(joystick, :A3_up)
+    u.aileron_cmd_offset -= 2e-4 * is_pressed(joystick, :A3_left)
+    u.aileron_cmd_offset += 2e-4 * is_pressed(joystick, :A3_right)
+    u.elevator_cmd_offset += 2e-4 * is_pressed(joystick, :A3_down)
+    u.elevator_cmd_offset -= 2e-4 * is_pressed(joystick, :A3_up)
 
-#     if is_pressed(joystick, :A3_press)
-#         u.aileron_offset = 0
-#         u.elevator_offset = 0
-#     end
+    if is_pressed(joystick, :A3_press)
+        u.aileron_offset = 0
+        u.elevator_offset = 0
+    end
 
-#     u.flaps += 0.3333 * was_released(joystick, :switch_down)
-#     u.flaps -= 0.3333 * was_released(joystick, :switch_up)
+    u.flaps += 0.3333 * was_released(joystick, :switch_down)
+    u.flaps -= 0.3333 * was_released(joystick, :switch_up)
 
-# end
+end
 
 
 
