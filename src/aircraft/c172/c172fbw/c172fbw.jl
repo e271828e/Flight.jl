@@ -388,8 +388,8 @@ end
 ################################# Template #####################################
 
 const Airframe = C172.Airframe{typeof(PowerPlant()), Actuation}
-const Physics{K} = Aircraft.Physics{K, Airframe}
-const Template{K, A} = Aircraft.Template{Physics{K}, A} where {K, A}
+const Physics{K} = Aircraft.Physics{K, Airframe} where {K <: AbstractKinematicDescriptor}
+const Template{K, A} = Aircraft.Template{Physics{K}, A} where {K <: AbstractKinematicDescriptor, A <: AbstractAvionics}
 
 Physics(kinematics = LTF()) = Aircraft.Physics(kinematics, C172.Airframe(PowerPlant(), Actuation()))
 Template(kinematics = LTF(), avionics = NoAvionics()) = Aircraft.Template(Physics(kinematics), avionics)
@@ -698,15 +698,15 @@ XLinear(physics::System{<:C172FBW.Physics}) = XLinear(physics.x)
 
 function YLinear(physics::System{<:C172FBW.Physics})
 
-    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_n = physics.y.kinematics
+    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_n, χ_gnd, γ_gnd = physics.y.kinematics
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
 
     h = h_e
     p, q, r = ω_eb_b
     v_N, v_E, v_D = v_eOb_n
-    χ = Attitude.azimuth(v_eOb_n)
-    γ = Attitude.inclination(v_eOb_n)
+    χ = χ_gnd
+    γ = γ_gnd
     c = -v_D
     f_x, f_y, f_z = physics.y.rigidbody.f_G_b
     EAS = physics.y.air.EAS
@@ -849,9 +849,9 @@ function Control.LinearStateSpace(
         return lm
 
     elseif model === :lon
-        x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
+        x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
         u_labels = [:throttle_cmd, :elevator_cmd]
-        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D]
+        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D, :h]
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat

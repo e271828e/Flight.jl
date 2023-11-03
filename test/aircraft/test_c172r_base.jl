@@ -112,7 +112,7 @@ function test_trimming()
         @test ac.airframe.act.u.rudder_offset == state.rudder
 
         @test e_nb.ψ ≈ params.ψ_nb
-        @test Attitude.inclination(v_wOb_n) ≈ params.γ_wOb_n atol = 1e-12
+        @test inclination(v_wOb_n) ≈ params.γ_wOb_n atol = 1e-12
         @test ac.y.kinematics.common.ω_lb_b ≈ Attitude.ω(e_lb, [params.ψ_lb_dot, constants.θ_lb_dot, 0])
         @test ac.y.air.TAS ≈ params.TAS
         @test ac.y.airframe.aero.β ≈ params.β_a

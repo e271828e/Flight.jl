@@ -33,6 +33,7 @@ using Flight.FlightCore.Plotting
 using ..Quaternions
 
 export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz
+export azimuth, inclination
 
 const half_π = π/2
 

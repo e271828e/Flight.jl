@@ -108,7 +108,7 @@ function test_sim(; save::Bool = true)
                 # u_act.throttle_cmd = 0.2
                 # u_act.aileron_cmd = (t < 5 ? 0.25 : 0.0)
                 # u_act.elevator_cmd = 0.0
-                u_act.rudder_cmd = 0.1
+                # u_act.rudder_cmd = 0.1
                 # u_act.aileron_cmd = 0.1
                 # u_act.brake_left = 1
                 # u_act.brake_right = 1
@@ -116,7 +116,7 @@ function test_sim(; save::Bool = true)
             end
         end
 
-        sim = Simulation(world; t_end = 5, sys_io!, adaptive = true)
+        sim = Simulation(world; t_end = 30, sys_io!, adaptive = true)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)

@@ -120,7 +120,7 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     thr_θ_MIMO = connect([θ2q_sum, C_θ2q, thr_q_MIMO], [:θ_err=>:θ_err, :θ=>:θ, :q_dmd=>:q_dmd], w1 = [:throttle_cmd, :θ_dmd], z1 = thr_q_MIMO.y)
 
     ################################ v2t #######################################
-    P_t2v = thr_θ_MIMO[:TAS, :throttle_cmd]
+    P_t2v = thr_θ_MIMO[:EAS, :throttle_cmd]
 
     t_sim_v2t = 10
     lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
@@ -140,9 +140,9 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     end
 
     v2t_PID = PIDOpt.build_PID(v2t_results.params)
-    C_v2t = named_ss(ss(v2t_PID), :C_v2t; u = :TAS_err, y = :throttle_cmd)
-    v2t_sum = sumblock("TAS_err = TAS_dmd - TAS")
-    v_θ_MIMO = connect([v2t_sum, C_v2t, thr_θ_MIMO], [:TAS_err=>:TAS_err, :TAS=>:TAS, :throttle_cmd=>:throttle_cmd], w1 = [:TAS_dmd, :θ_dmd], z1 = thr_θ_MIMO.y)
+    C_v2t = named_ss(ss(v2t_PID), :C_v2t; u = :EAS_err, y = :throttle_cmd)
+    v2t_sum = sumblock("EAS_err = EAS_dmd - EAS")
+    v_θ_MIMO = connect([v2t_sum, C_v2t, thr_θ_MIMO], [:EAS_err=>:EAS_err, :EAS=>:EAS, :throttle_cmd=>:throttle_cmd], w1 = [:EAS_dmd, :θ_dmd], z1 = thr_θ_MIMO.y)
 
     ################################ c2θ #######################################
 
@@ -165,11 +165,11 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     c2θ_PID = PIDOpt.build_PID(c2θ_results.params)
     C_c2θ = named_ss(ss(c2θ_PID), :C_c2θ; u = :c_err, y = :θ_dmd)
     c2θ_sum = sumblock("c_err = c_dmd - c")
-    v_c_MIMO = connect([c2θ_sum, C_c2θ, v_θ_MIMO], [:c_err=>:c_err, :c=>:c, :θ_dmd =>:θ_dmd], w1 = [:TAS_dmd, :c_dmd], z1 = thr_θ_MIMO.y)
+    v_c_MIMO = connect([c2θ_sum, C_c2θ, v_θ_MIMO], [:c_err=>:c_err, :c=>:c, :θ_dmd =>:θ_dmd], w1 = [:EAS_dmd, :c_dmd], z1 = thr_θ_MIMO.y)
 
 
     ################################ v2θ #######################################
-    P_θ2v = thr_θ_MIMO[:TAS, :θ_dmd]
+    P_θ2v = thr_θ_MIMO[:EAS, :θ_dmd]
     P_θ2v_opt = -P_θ2v #sign inversion on account of negative DC gain
 
     t_sim_v2θ = 20
@@ -259,7 +259,7 @@ function optimize_roll(   ac::System{<:Cessna172FBWBase{NED}};
     χ2φ_PID = PIDOpt.build_PID(χ2φ_results.params)
     C_χ2φ = named_ss(χ2φ_PID, :C_χ2φ; u = :χ_err, y = :p_dmd);
 
-    return (p2a = p2a_results, ϕ2p = φ2p_results, χ2ϕ = χ2φ_results)
+    return (p2a = p2a_results, φ2p = φ2p_results, χ2ϕ = χ2φ_results)
 
 end
 

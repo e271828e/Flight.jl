@@ -81,11 +81,11 @@ function test_system_methods()
             u_digital.lon_mode_sel = C172FBWCAS.lon_mode_semi
             u_digital.lat_mode_sel = C172FBWCAS.lat_mode_semi
 
-            u_digital.throttle_mode_sel = C172FBWCAS.airspeed_throttle_mode
+            u_digital.throttle_mode_sel = C172FBWCAS.EAS_throttle_mode
             u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
             u_digital.pitch_mode_sel = C172FBWCAS.climb_rate_mode
             u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
-            u_digital.TAS_dmd = 40
+            u_digital.EAS_dmd = 40
             u_digital.φ_dmd = 0.1
             u_digital.c_dmd = 1
             u_inceptors.yaw_input = 0.02
@@ -96,7 +96,7 @@ function test_system_methods()
             y_act = ac.avionics.y.actuation
 
             @test y_mod.flight_phase == C172FBWCAS.phase_air
-            @test y_mod.throttle_mode === C172FBWCAS.airspeed_throttle_mode
+            @test y_mod.throttle_mode === C172FBWCAS.EAS_throttle_mode
             @test y_mod.roll_mode === C172FBWCAS.bank_angle_mode
             @test y_mod.pitch_mode === C172FBWCAS.climb_rate_mode
             @test y_mod.yaw_mode === C172FBWCAS.sideslip_mode
@@ -138,8 +138,6 @@ function test_sim(; save::Bool = true)
         exit_flag, trim_state = trim!(world, trim_params)
         @test exit_flag === true
 
-        # return world.ac.avionics.y.actuation
-
         sys_io! = let
 
             function (world)
@@ -149,43 +147,59 @@ function test_sim(; save::Bool = true)
                 u_inceptors = world.ac.avionics.u.inceptors
                 u_digital = world.ac.avionics.u.digital
 
+                # @show world.ac.avionics.y.actuation.throttle_cmd
+
                 # u_digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
-                u_digital.throttle_mode_sel = C172FBWCAS.airspeed_throttle_mode
+                # u_digital.throttle_mode_sel = C172FBWCAS.EAS_throttle_mode
                 # u_inceptors.throttle = 1
-                u_digital.TAS_dmd = 65
+                # u_digital.EAS_dmd = 25
+
+                # u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
+                # u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
+                # u_digital.pitch_mode_sel = C172FBWCAS.climb_rate_mode
+                # u_digital.pitch_mode_sel = C172FBWCAS.EAS_pitch_mode
+                # @show world.ac.avionics.y.moding.pitch_mode
+                # u_inceptors.pitch_input = 0.005
+                # u_digital.θ_dmd = 0.01π
+                u_digital.c_dmd = 0.0
+
+                u_digital.EAS_dmd = 30.0
+                u_inceptors.flaps = 1
+                u_digital.lon_mode_sel = C172FBWCAS.lon_mode_alt
+                u_digital.h_dmd = (1000.0, C172FBWCAS.orthometric)
 
                 # u_digital.roll_mode_sel = C172FBWCAS.roll_rate_mode
                 u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
                 # u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
+                # u_inceptors.roll_input = 0.0
                 u_digital.φ_dmd = π/6
-                # u_digital.χ_dmd = π/2
+                # u_digital.χ_dmd = π
 
                 # u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
                 # u_digital.yaw_mode_sel = C172FBWCAS.direct_rudder_mode
                 # u_inceptors.yaw_input = 0.1
 
-                # u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
-                u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
-                # u_inceptors.pitch_input = 0.01
-                u_digital.θ_dmd = 0.01π
 
-                if 0 < t <= 5
-                    world.env.atm.wind.u.v_ew_n[1] = 0
-                    u_inceptors.roll_input = .0
-                    u_inceptors.pitch_input = .0
+                if 0 < t <= 10
+                    # world.env.atm.wind.u.v_ew_n[1] = 0
+                    # u_inceptors.roll_input = .0
+                    # u_inceptors.pitch_input = .0
                     # u_inceptors.yaw_input = .01
-                elseif 5 < t < 15
+                elseif 10 < t < 45
                     world.env.atm.wind.u.v_ew_n[1] = 0
-                    u_inceptors.roll_input = 0.0
-                    u_inceptors.pitch_input = 0.0
+                    # u_inceptors.roll_input = 0.0
+                    # u_inceptors.pitch_input = 0.0
                     # u_inceptors.yaw_input = 1
+                    # u_digital.EAS_dmd = 45
                 else
-                    world.env.atm.wind.u.v_ew_n[1] = 0
+                    # f = 0.5
+                    # world.env.atm.wind.u.v_ew_n[3] = 1*sin(2π*f*t)
+                    # u_digital.EAS_dmd = 50
                 end
             end
         end
 
-        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 20, sys_io!, adaptive = false)
+        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 60, sys_io!, adaptive = false)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
@@ -219,7 +233,7 @@ function test_sim_paced(; save::Bool = true)
 
     init_kinematics!(world, kin_init)
 
-    sim = Simulation(world; dt = 0.01, Δt = 0.02, t_end = 300)
+    sim = Simulation(world; dt = 0.01, Δt = 0.02, t_end = 600)
 
     interfaces = Vector{IODevices.Interface}()
     for joystick in get_connected_joysticks()
