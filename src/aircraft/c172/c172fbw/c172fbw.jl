@@ -849,8 +849,9 @@ function Control.LinearStateSpace(
         return lm
 
     elseif model === :lon
-        x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
-        u_labels = [:throttle_cmd, :elevator_cmd]
+        # x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
+        x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ele_v, :ele_p, :ω_eng, :h, :thr_v, :thr_p]
+        u_labels = [:elevator_cmd, :throttle_cmd]
         y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D, :h]
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
@@ -867,20 +868,24 @@ function Control.LinearStateSpace(
 
 end
 
-function Control.LinearStateSpace(ac::System{<:C172FBW.Template{NED}}, args...; kwargs...)
+function Control.LinearStateSpace(
+            ac::System{<:C172FBW.Template{NED}}, args...; kwargs...)
     LinearStateSpace(ac.physics, args...; kwargs...)
 end
 
 function RobustAndOptimalControl.named_ss(
-            physics::System{<:C172FBW.Physics{NED}}, args...; kwargs...)
-
-    lss = LinearStateSpace(physics, args...; kwargs...)
-    x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lss.x0, lss.u0, lss.y0))
-    return named_ss(ss(lss), x = x_labels, u = u_labels, y = y_labels)
+            ac::System{<:C172FBW.Template{NED}}, args...; kwargs...)
+    named_ss(ac.physics, args...; kwargs...)
 end
 
-function RobustAndOptimalControl.named_ss(ac::System{<:C172FBW.Template{NED}}, args...; kwargs...)
-    named_ss(ac.physics, args...; kwargs...)
+function RobustAndOptimalControl.named_ss(
+            physics::System{<:C172FBW.Physics{NED}}, args...; kwargs...)
+    return named_ss(LinearStateSpace(physics, args...; kwargs...))
+end
+
+function RobustAndOptimalControl.named_ss(lss::Control.LinearStateSpace)
+    x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lss.x0, lss.u0, lss.y0))
+    return named_ss(ss(lss), x = x_labels, u = u_labels, y = y_labels)
 end
 
 ################################################################################
