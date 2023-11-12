@@ -285,10 +285,10 @@ Template(kinematics = LTF(), avionics = NoAvionics()) = Aircraft.Template(Physic
 ################################################################################
 
 #assigns trim state and parameters to aircraft physics, then updates aircraft physics
-function C172.assign!(physics::System{<:C172R.Physics},
+function Aircraft.assign!(physics::System{<:C172R.Physics},
                 env::System{<:AbstractEnvironment},
-                trim_params::TrimParameters,
-                trim_state::TrimState)
+                trim_params::C172.TrimParameters,
+                trim_state::C172.TrimState)
 
     @unpack EAS, β_a, x_fuel, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
@@ -350,11 +350,151 @@ function C172.assign!(physics::System{<:C172R.Physics},
 
 end
 
+################################################################################
+############################### Linearization ##################################
 
+@kwdef struct XLinear <: FieldVector{16, Float64}
+    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
+    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
+    p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
+    v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #Ob/ECEF velocity, body axes
+    α_filt::Float64 = 0.0; β_filt::Float64 = 0.0; #filtered airflow angles
+    ω_eng::Float64 = 0.0; fuel::Float64 = 0.0 #engine speed, fuel fraction
+end
+
+#flaps and mixture are trim parameters and thus omitted from the control vector
+@kwdef struct ULinear <: FieldVector{4, Float64}
+    throttle::Float64 = 0.0
+    aileron::Float64 = 0.0
+    elevator::Float64 = 0.0
+    rudder::Float64 = 0.0
+end
+
+@kwdef struct YLinear <: FieldVector{24, Float64}
+    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
+    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
+    p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
+    EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
+    α::Float64 = 0.0; β::Float64 = 0.0; #airflow angles
+    f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
+    v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
+    χ::Float64 = 0.0; γ::Float64 = 0.0; c::Float64 = 0.0; #track and flight path angles, climb rate
+    ω_eng::Float64 = 0.0; m_fuel::Float64 = 0.0 #engine speed, fuel mass
+end
+
+
+function XLinear(x_physics::ComponentVector)
+
+    x_kinematics = x_physics.kinematics
+    x_airframe = x_physics.airframe
+
+    @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics.pos
+    p, q, r = x_kinematics.vel.ω_eb_b
+    v_x, v_y, v_z = x_kinematics.vel.v_eOb_b
+    α_filt, β_filt = x_airframe.aero
+    ω_eng = x_airframe.pwp.engine.ω
+    fuel = x_airframe.fuel[1]
+    ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
+
+    XLinear(;  ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel)
+
+end
+
+function ULinear(physics::System{<:C172R.Physics{NED}})
+
+    @unpack throttle, aileron, elevator, rudder = physics.airframe.act.u
+    ULinear(; throttle, aileron, elevator, rudder)
+
+end
+
+function YLinear(physics::System{<:C172R.Physics{NED}})
+
+    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_n, χ_gnd, γ_gnd = physics.y.kinematics
+    @unpack ψ, θ, φ = e_nb
+    @unpack ϕ, λ = ϕ_λ
+
+    h = h_e
+    p, q, r = ω_eb_b
+    v_N, v_E, v_D = v_eOb_n
+    χ = χ_gnd
+    γ = γ_gnd
+    c = -v_D
+    f_x, f_y, f_z = physics.y.rigidbody.f_G_b
+    EAS = physics.y.air.EAS
+    TAS = physics.y.air.TAS
+    α = physics.y.air.α_b
+    β = physics.y.air.β_b
+    ω_eng = physics.y.airframe.pwp.engine.ω
+    m_fuel = physics.y.airframe.fuel.m_avail
+
+    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, EAS, TAS, α, β,
+            f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, c, ω_eng, m_fuel)
+
+end
+
+Aircraft.ẋ_linear(physics::System{<:C172R.Physics{NED}}) = XLinear(physics.ẋ)
+Aircraft.x_linear(physics::System{<:C172R.Physics{NED}}) = XLinear(physics.x)
+Aircraft.u_linear(physics::System{<:C172R.Physics{NED}}) = ULinear(physics)
+Aircraft.y_linear(physics::System{<:C172R.Physics{NED}}) = YLinear(physics)
+
+function Aircraft.assign_u!(physics::System{<:C172R.Physics{NED}}, u::AbstractVector{Float64})
+
+    @unpack throttle, aileron, elevator, rudder = ULinear(u)
+    @pack! physics.airframe.act.u = throttle, aileron, elevator, rudder
+
+end
+
+function Aircraft.assign_x!(physics::System{<:C172R.Physics{NED}}, x::AbstractVector{Float64})
+
+    @unpack ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel = XLinear(x)
+
+    x_kinematics = physics.x.kinematics
+    x_airframe = physics.x.airframe
+
+    ψ_nb, θ_nb, φ_nb, h_e = ψ, θ, φ, h
+
+    @pack! x_kinematics.pos = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
+    x_kinematics.vel.ω_eb_b .= p, q, r
+    x_kinematics.vel.v_eOb_b .= v_x, v_y, v_z
+    x_airframe.aero .= α_filt, β_filt
+    x_airframe.pwp.engine.ω = ω_eng
+    x_airframe.fuel .= fuel
+
+end
+
+function Control.LinearStateSpace(
+            physics::System{<:C172R.Physics{NED}},
+            trim_params::C172.TrimParameters = C172.TrimParameters(),
+            env::System{<:AbstractEnvironment} = System(SimpleEnvironment());
+            model::Symbol = :full)
+
+    lm = linearize!(physics, trim_params, env)
+
+    if model === :full
+        return lm
+
+    elseif model === :lon
+        x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :h]
+        u_labels = [:elevator, :throttle]
+        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D, :h]
+        return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
+
+    elseif model === :lat
+        u_labels = [:aileron, :rudder]
+        x_labels = [:p, :r, :φ, :ψ, :v_x, :v_y, :β_filt]
+        y_labels = [:p, :r, :φ, :ψ, :β, :f_y, :χ]
+        return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
+
+    else
+        error("Valid model keyword values: :full, :lon, :lat")
+
+    end
+
+end
 
 
 include(normpath("variants/base.jl")); @reexport using .C172RBase
+include(normpath("variants/direct.jl")); @reexport using .C172RDirect
 # include(normpath("variants/cas.jl")); @reexport using .C172RCAS
-# include(normpath("variants/direct.jl")); @reexport using .C172RDirect
 
 end

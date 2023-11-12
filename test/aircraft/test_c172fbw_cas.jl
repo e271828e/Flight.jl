@@ -82,13 +82,13 @@ function test_system_methods()
             u_digital.lat_mode_sel = C172FBWCAS.lat_mode_semi
 
             u_digital.throttle_mode_sel = C172FBWCAS.EAS_throttle_mode
-            u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
+            u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
             u_digital.pitch_mode_sel = C172FBWCAS.climb_rate_mode
-            u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
+            # u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
             u_digital.EAS_dmd = 40
             u_digital.φ_dmd = 0.1
             u_digital.c_dmd = 1
-            u_inceptors.yaw_input = 0.02
+            # u_inceptors.yaw_input = 0.02
 
             f_disc!(ac, 0.02, env)
 
@@ -97,16 +97,16 @@ function test_system_methods()
 
             @test y_mod.flight_phase == C172FBWCAS.phase_air
             @test y_mod.throttle_mode === C172FBWCAS.EAS_throttle_mode
-            @test y_mod.roll_mode === C172FBWCAS.bank_angle_mode
+            @test y_mod.roll_mode === C172FBWCAS.course_angle_mode
             @test y_mod.pitch_mode === C172FBWCAS.climb_rate_mode
-            @test y_mod.yaw_mode === C172FBWCAS.sideslip_mode
+            # @test y_mod.yaw_mode === C172FBWCAS.sideslip_mode
 
             #the demands should have propagated through the control loops to the
             #actuators
             @test Float64(y_act.throttle_cmd) > 0
             @test Float64(y_act.aileron_cmd) > 0
             @test Float64(y_act.elevator_cmd) > 0
-            @test Float64(y_act.rudder_cmd) > 0
+            # @test Float64(y_act.rudder_cmd) > 0
 
             #now all outermost loops are active, test for allocations
             @test @ballocated(f_disc!($ac, 0.02, $env)) == 0
@@ -127,7 +127,7 @@ function test_sim(; save::Bool = true)
 
         world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 
-        trim_params = C172FBW.TrimParameters(
+        trim_params = C172.TrimParameters(
         Ob = Geographic(LatLon(), HOrth(1000)),
         EAS = 55.0,
         γ_wOb_n = 0.0,

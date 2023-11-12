@@ -65,8 +65,8 @@ Systems.init(::SystemY, ::DirectControls) = DirectControlsY()
 ########################### Update Methods #####################################
 
 function Systems.f_disc!(avionics::System{<:DirectControls}, ::Real,
-                        ::System{<:C172.Airframe}, ::KinematicData,
-                        ::RigidBodyData, ::AirData, ::TerrainData)
+                        ::System{<:C172R.Physics},
+                        ::System{<:AbstractEnvironment})
 
     #DirectControls has no internal dynamics, just input-output feedthrough
     @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
@@ -82,7 +82,7 @@ function Systems.f_disc!(avionics::System{<:DirectControls}, ::Real,
 
 end
 
-function Aircraft.map_controls!(airframe::System{<:C172.Airframe},
+function Aircraft.assign!(airframe::System{<:C172.Airframe},
                                 avionics::System{DirectControls})
 
     @unpack eng_start, eng_stop, throttle, mixture, aileron, elevator, rudder,
@@ -98,9 +98,11 @@ end
 
 ################################## GUI #########################################
 
-function GUI.draw!(avionics::System{<:DirectControls}, airframe::System{<:C172.Airframe},
+function GUI.draw!(avionics::System{<:DirectControls},
+                    physics::System{<:C172R.Physics},
                     label::String = "Cessna 172R Direct Controls")
 
+    @unpack airframe = physics
     u = avionics.u
 
     CImGui.Begin(label)
@@ -148,7 +150,6 @@ end
 #Cessna172R with direct control Avionics
 const Cessna172RDirect{K} = C172R.Template{K, DirectControls} where {K}
 Cessna172RDirect(kinematics = LTF()) = C172R.Template(kinematics, DirectControls())
-
 
 ############################ Joystick Mappings #################################
 

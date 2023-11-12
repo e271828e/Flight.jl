@@ -1082,32 +1082,6 @@ function GUI.draw!(avionics::System{<:C172FBWCAS.Avionics},
 
 end
 
-
-# @kwdef struct AvionicsModing
-#     flight_phase::FlightPhase = phase_gnd
-#     throttle_mode::ThrottleMode = direct_throttle_mode
-#     roll_mode::RollMode = direct_aileron_mode
-#     pitch_mode::PitchMode = direct_elevator_mode
-#     yaw_mode::YawMode = direct_rudder_mode
-#     lon_mode::LonMode = lon_mode_semi
-#     lat_mode::LatMode = lat_mode_semi
-# end
-
-# @kwdef struct ActuationCommands
-#     eng_start::Bool = false
-#     eng_stop::Bool = false
-#     mixture::Ranged{Float64, 0., 1.} = 0.5
-#     throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
-#     aileron_cmd::Ranged{Float64, -1., 1.} = 0.0
-#     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
-#     rudder_cmd::Ranged{Float64, -1., 1.} = 0.0
-#     aileron_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-#     elevator_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-#     rudder_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-#     flaps::Ranged{Float64, 0., 1.} = 0.0
-#     brake_left::Ranged{Float64, 0., 1.} = 0.0
-#     brake_right::Ranged{Float64, 0., 1.} = 0.0
-# end
 function GUI.draw(moding::AvionicsModing)
 
     @unpack flight_phase, throttle_mode, roll_mode, pitch_mode, yaw_mode, lon_mode, lat_mode = moding
@@ -1136,7 +1110,7 @@ Cessna172FBWCAS(kinematics = LTF()) = C172FBW.Template(kinematics, Avionics())
 ##################################### Tools ####################################
 
 function Aircraft.trim!(ac::System{<:Cessna172FBWCAS},
-                        trim_params::C172FBW.TrimParameters = C172FBW.TrimParameters(),
+                        trim_params::C172.TrimParameters = C172.TrimParameters(),
                         env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
 
     result = trim!(ac.physics, trim_params, env)

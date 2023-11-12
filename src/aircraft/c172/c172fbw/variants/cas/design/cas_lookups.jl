@@ -44,7 +44,7 @@ function generate_lookups(
 
         flaps = EAS < 30 ? 1.0 : 0.0
 
-        point = C172FBW.TrimParameters(; Ob = Geographic(LatLon(), HOrth(h)),
+        point = C172.TrimParameters(; Ob = Geographic(LatLon(), HOrth(h)),
             EAS, flaps, γ_wOb_n = 0.0, x_fuel = 0.5, payload = mid_cg_pld)
 
         results = f_opt(ac; point, global_search)
@@ -69,7 +69,7 @@ end
 
 #optimizes PID parameters in the pitch channel compensators
 function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
-                    point::C172FBW.TrimParameters = C172FBW.TrimParameters(),
+                    point::C172.TrimParameters = C172.TrimParameters(),
                     global_search::Bool = false)
 
     thr_ele_MIMO = named_ss(ac, point; model = :lon);
@@ -194,7 +194,7 @@ end
 
 #optimizes PID parameters in the roll channel compensators
 function optimize_roll(   ac::System{<:Cessna172FBWBase{NED}};
-                        point::C172FBW.TrimParameters = C172FBW.TrimParameters(),
+                        point::C172.TrimParameters = C172.TrimParameters(),
                         global_search::Bool = false)
 
     ail_rud_MIMO = named_ss(ac, point; model = :lat);

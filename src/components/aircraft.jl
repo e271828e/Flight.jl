@@ -1,7 +1,8 @@
 module Aircraft
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
-using RobustAndOptimalControl
+# using RobustAndOptimalControl
+using FiniteDiff: finite_difference_jacobian! as jacobian!
 
 using Flight.FlightCore.Systems
 using Flight.FlightCore.Plotting
@@ -18,7 +19,7 @@ using Flight.FlightComponents.Control
 
 export AbstractAirframe, EmptyAirframe
 export AbstractAvionics, NoAvionics
-export AbstractTrimParameters
+export AbstractTrimParameters, AbstractTrimState
 export init_kinematics!, trim!, linearize!
 
 ################################################################################
@@ -270,10 +271,11 @@ function XPC.set_position!(xp::XPCDevice, y::PhysicsY)
 end
 
 
-########################### Trimming & Linearization ###########################
-###############################################################################
+################################### Trimming ###################################
+################################################################################
 
 abstract type AbstractTrimParameters end
+const AbstractTrimState{N} = FieldVector{N, Float64}
 
 #given the body-axes wind-relative velocity, the wind-relative flight path angle
 #and the bank angle, the pitch angle is unambiguously determined
@@ -288,13 +290,115 @@ function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
 
 end
 
-function trim!( physics::System, args...)
+trim!( ac::System{<:Template}, args...; kwargs...) = trim!(ac.physics, args...; kwargs...)
+
+function trim!( physics::System{<:Physics}, args...)
     MethodError(trim!, (physics, args...)) |> throw
 end
 
-function linearize!(ac::System, args...; kwargs...)
-    MethodError(trim!, (ac, args...)) |> throw
+function assign!(::System{<:Physics}, ::System{<:AbstractEnvironment},
+                ::AbstractTrimParameters, ::AbstractTrimState)
+    error("An assign! method must be defined by each Aircraft.Physics subtype")
 end
+
+
+################################################################################
+################################ Linearization #################################
+
+ẋ_linear(physics::System{<:Physics})::FieldVector = throw(MethodError(ẋ_linear!, (physics,)))
+x_linear(physics::System{<:Physics})::FieldVector = throw(MethodError(x_linear!, (physics,)))
+u_linear(physics::System{<:Physics})::FieldVector = throw(MethodError(u_linear!, (physics,)))
+y_linear(physics::System{<:Physics})::FieldVector = throw(MethodError(y_linear!, (physics,)))
+
+assign_x!(physics::System{<:Physics}, x::AbstractVector{Float64}) = throw(MethodError(assign_x!, (physics, x)))
+assign_u!(physics::System{<:Physics}, u::AbstractVector{Float64}) = throw(MethodError(assign_u!, (physics, u)))
+
+linearize!(ac::System{<:Aircraft.Template}, args...) = linearize!(ac.physics, args...)
+
+function Aircraft.linearize!( physics::System{<:Aircraft.Physics},
+            trim_params::AbstractTrimParameters,
+            env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
+
+    (_, trim_state) = trim!(physics, trim_params, env)
+
+    ẋ0 = ẋ_linear(physics)::FieldVector
+    x0 = x_linear(physics)::FieldVector
+    u0 = u_linear(physics)::FieldVector
+    y0 = y_linear(physics)::FieldVector
+
+    #f_main will not be returned for use in another scope, so we don't need to
+    #capture physics and env with a let block, because they are guaranteed not
+    #be reassigned within the scope of linearize!
+    function f_main(x, u)
+
+        assign_x!(physics, x)
+        assign_u!(physics, u)
+        f_ode!(physics, env)
+
+        return (ẋ = ẋ_linear(physics), y = y_linear(physics))
+
+    end
+
+    (A, B, C, D) = ss_matrices(f_main, x0, u0)
+
+    #restore the System to its trimmed condition
+    assign!(physics, env, trim_params, trim_state)
+
+    #now we need to rebuild vectors and matrices for the LinearStateSpace as
+    #ComponentArrays, because we want matrix components to remain labelled,
+    #which cannot be achieved with FieldVectors
+
+    x_axis = Axis(propertynames(x0))
+    u_axis = Axis(propertynames(u0))
+    y_axis = Axis(propertynames(y0))
+
+    ẋ0_cv = ComponentVector(ẋ0, x_axis)
+    x0_cv = ComponentVector(x0, x_axis)
+    u0_cv = ComponentVector(u0, u_axis)
+    y0_cv = ComponentVector(y0, y_axis)
+
+    A_cv = ComponentMatrix(A, x_axis, x_axis)
+    B_cv = ComponentMatrix(B, x_axis, u_axis)
+    C_cv = ComponentMatrix(C, y_axis, x_axis)
+    D_cv = ComponentMatrix(D, y_axis, u_axis)
+
+    return LinearStateSpace(ẋ0_cv, x0_cv, u0_cv, y0_cv, A_cv, B_cv, C_cv, D_cv)
+
+end
+
+#given a trim point (x0, u0) for the nonlinear system (ẋ, y) = f(x,u), compute
+#the state space matrices (A, B, C, D) for the system's linearization around
+#(x0, u0), given by: Δẋ = AΔx + BΔu; Δy = CΔx + DΔu
+function ss_matrices(f_main::Function, x0::AbstractVector{Float64},
+                                       u0::AbstractVector{Float64})
+
+    f_ẋ(x, u) = f_main(x, u).ẋ
+    f_y(x, u) = f_main(x, u).y
+    y0 = f_y(x0, u0)
+
+    #none of these closures will be returned for use in another scope, so we
+    #don't need to capture x0 and u0 with a let block, because they are
+    #guaranteed not be reassigned within the scope of ss_matrices
+    f_A!(ẋ, x) = (ẋ .= f_ẋ(x, u0))
+    f_B!(ẋ, u) = (ẋ .= f_ẋ(x0, u))
+    f_C!(y, x) = (y .= f_y(x, u0))
+    f_D!(y, u) = (y .= f_y(x0, u))
+
+    #preallocate mutable arrays
+    A = (x0 * x0') |> Matrix
+    B = (x0 * u0') |> Matrix
+    C = (y0 * x0') |> Matrix
+    D = (y0 * u0') |> Matrix
+
+    jacobian!(A, f_A!, Vector(x0))
+    jacobian!(B, f_B!, Vector(u0))
+    jacobian!(C, f_C!, Vector(x0))
+    jacobian!(D, f_D!, Vector(u0))
+
+    return (A, B, C, D)
+
+end
+
 
 function Control.LinearStateSpace(
             ac::System{<:Aircraft.Template}, args...; kwargs...)

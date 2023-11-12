@@ -837,7 +837,7 @@ const Physics{K, A} = Aircraft.Physics{K, A} where {K <: AbstractKinematicDescri
 ################################################################################
 
 #first 2 are aircraft-agnostic
-@kwdef struct TrimState <: FieldVector{7, Float64}
+@kwdef struct TrimState <: AbstractTrimState{7}
     α_a::Float64 = 0.1 #angle of attack, aerodynamic axes
     φ_nb::Float64 = 0.0 #bank angle
     n_eng::Float64 = 0.75 #normalized engine speed (ω/ω_rated)
@@ -893,10 +893,6 @@ function Kinematics.Initializer(trim_state::TrimState,
 
 end
 
-function assign!(::System{<:C172.Physics}, ::System{<:AbstractEnvironment},
-                ::TrimParameters, ::TrimState)
-    error("An assign! method must be defined by each C172.Physics subtype")
-end
 
 function cost(physics::System{<:C172.Physics})
 
@@ -916,7 +912,7 @@ function get_f_target(physics::System{<:C172.Physics},
 
     let physics = physics, env = env, trim_params = trim_params
         function (x::TrimState)
-            C172.assign!(physics, env, trim_params, x)
+            Aircraft.assign!(physics, env, trim_params, x)
             return cost(physics)
         end
     end
@@ -979,15 +975,16 @@ function Aircraft.trim!(physics::System{<:C172.Physics},
         println("Warning: Trimming optimization failed with exit_flag $exit_flag")
     end
     trim_state_opt = TrimState(minx)
-    C172.assign!(physics, env, trim_params, trim_state_opt)
+    Aircraft.assign!(physics, env, trim_params, trim_state_opt)
     return (success = success, trim_state = trim_state_opt)
 
 end
 
+
 ################################################################################
 ############################### C172 Variants ##################################
 
-# include(normpath("c172r/c172r.jl")); @reexport using .C172R
+include(normpath("c172r/c172r.jl")); @reexport using .C172R
 include(normpath("c172fbw/c172fbw.jl")); @reexport using .C172FBW
 
 end

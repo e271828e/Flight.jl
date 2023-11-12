@@ -87,7 +87,7 @@ function test_sim(; save::Bool = true)
 
         world.env.atm.wind.u.v_ew_n .= [0, 0, 0]
 
-        trim_params = C172FBW.TrimParameters(
+        trim_params = C172.TrimParameters(
         Ob = Geographic(LatLon(), HOrth(1000)),
         EAS = 25.0,
         γ_wOb_n = 0.0,
