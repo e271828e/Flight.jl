@@ -1,7 +1,9 @@
 module C172R
 
-using LinearAlgebra, StaticArrays, ComponentArrays
-using UnPack, Reexport
+using LinearAlgebra, StaticArrays, ComponentArrays, UnPack, Reexport
+using ControlSystems, RobustAndOptimalControl
+using NLopt
+using FiniteDiff: finite_difference_jacobian! as jacobian!
 
 using Flight.FlightCore.Systems
 using Flight.FlightCore.GUI
@@ -9,6 +11,8 @@ using Flight.FlightCore.IODevices
 using Flight.FlightCore.Joysticks
 using Flight.FlightCore.Utils: Ranged
 
+using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.RigidBody
 using Flight.FlightPhysics.Environment
@@ -16,16 +20,29 @@ using Flight.FlightPhysics.Environment
 using Flight.FlightComponents.Propellers
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
+using Flight.FlightComponents.Control
+using Flight.FlightComponents.World
 
 using ..C172
+
 
 ################################################################################
 ################################ Powerplant ####################################
 
-PowerPlant() = Piston.Thruster(propeller = Propeller(t_bp = FrameTransform(r = [2.055, 0, 0.833])))
+function PowerPlant()
+
+    prop_data = Propellers.Lookup(Propellers.Blade(), 2)
+
+    propeller = Propeller(prop_data;
+        sense = Propellers.CW, d = 2.0, J_xx = 0.3,
+        t_bp = FrameTransform(r = [2.055, 0, 0.833]))
+
+    Piston.Thruster(; propeller)
+
+end
 
 ################################################################################
-############################# MechanicalActuation ##################################
+############################# Actuation ##################################
 
 #pitch up -> Cm↑ -> trailing edge up -> δe↓ -> aero.e↓
 ### in order for a positive elevator actuation input (stick back) to
@@ -48,9 +65,11 @@ PowerPlant() = Piston.Thruster(propeller = Propeller(t_bp = FrameTransform(r = [
 #more lift -> CL↑ -> flap trailing edge down -> δf↑ -> aero.f↑ -> act.flaps↑ ### no
 #act-aero inversion
 
-struct MechanicalActuation <: C172.Actuation end
+#Reversible actuation system
 
-@kwdef mutable struct MechanicalActuationU
+struct Actuation <: C172.Actuation end
+
+@kwdef mutable struct ActuationU
     eng_start::Bool = false
     eng_stop::Bool = false
     throttle::Ranged{Float64, 0., 1.} = 0.0
@@ -66,7 +85,7 @@ struct MechanicalActuation <: C172.Actuation end
     brake_right::Ranged{Float64, 0., 1.} = 0.0
 end
 
-@kwdef struct MechanicalActuationY
+@kwdef struct ActuationY
     eng_start::Bool = false
     eng_stop::Bool = false
     throttle::Float64 = 0.0
@@ -82,21 +101,17 @@ end
     brake_right::Float64 = 0.0
 end
 
-Systems.init(::SystemU, ::MechanicalActuation) = MechanicalActuationU()
-Systems.init(::SystemY, ::MechanicalActuation) = MechanicalActuationY()
+Systems.init(::SystemU, ::Actuation) = ActuationU()
+Systems.init(::SystemY, ::Actuation) = ActuationY()
 
-RigidBody.MassTrait(::System{MechanicalActuation}) = HasNoMass()
-RigidBody.AngMomTrait(::System{MechanicalActuation}) = HasNoAngularMomentum()
-RigidBody.WrenchTrait(::System{MechanicalActuation}) = GetsNoExternalWrench()
-
-function Systems.f_ode!(act::System{MechanicalActuation})
+function Systems.f_ode!(act::System{Actuation})
 
     @unpack eng_start, eng_stop,
             throttle, mixture, aileron, elevator, rudder,
             aileron_offset, elevator_offset, rudder_offset,
             flaps, brake_left, brake_right= act.u
 
-    act.y = MechanicalActuationY(; eng_start, eng_stop,
+    act.y = ActuationY(; eng_start, eng_stop,
             throttle, mixture, aileron, elevator, rudder,
             aileron_offset, elevator_offset, rudder_offset,
             flaps, brake_left, brake_right)
@@ -106,7 +121,7 @@ end
 function C172.assign!(aero::System{<:C172.Aero},
                 ldg::System{<:C172.Ldg},
                 pwp::System{<:Piston.Thruster},
-                act::System{<:MechanicalActuation})
+                act::System{<:Actuation})
 
     @unpack eng_start, eng_stop,
             throttle, mixture, aileron, elevator, rudder,
@@ -129,7 +144,7 @@ function C172.assign!(aero::System{<:C172.Aero},
 end
 
 
-function GUI.draw(sys::System{MechanicalActuation}, label::String = "Cessna 172R Mechanical Actuation")
+function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172R Actuation")
 
     y = sys.y
 
@@ -163,7 +178,7 @@ function GUI.draw(sys::System{MechanicalActuation}, label::String = "Cessna 172R
 
 end
 
-function GUI.draw!(sys::System{MechanicalActuation}, label::String = "Cessna 172R Mechanical Actuation")
+function GUI.draw!(sys::System{Actuation}, label::String = "Cessna 172R Actuation")
 
     u = sys.u
 
@@ -206,7 +221,7 @@ aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function IODevices.assign!(sys::System{<:MechanicalActuation},
+function IODevices.assign!(sys::System{<:Actuation},
                            joystick::XBoxController,
                            ::DefaultMapping)
 
@@ -230,7 +245,7 @@ function IODevices.assign!(sys::System{<:MechanicalActuation},
     u.throttle -= 0.1 * was_released(joystick, :button_A)
 end
 
-function IODevices.assign!(sys::System{<:MechanicalActuation},
+function IODevices.assign!(sys::System{<:Actuation},
                            joystick::T16000M,
                            ::DefaultMapping)
 
@@ -258,12 +273,88 @@ end
 ################################################################################
 ################################# Template #####################################
 
-#Cessna172 with default power plant and mechanical actuation
-const Template{K, V} = C172.Template{K, typeof(PowerPlant()), MechanicalActuation, V} where {K, V}
-Template(kinematics, avionics) = C172.Template(kinematics, PowerPlant(), MechanicalActuation(), avionics)
+const Airframe = C172.Airframe{typeof(PowerPlant()), Actuation}
+const Physics{K} = Aircraft.Physics{K, Airframe} where {K <: AbstractKinematicDescriptor}
+const Template{K, A} = Aircraft.Template{Physics{K}, A} where {K <: AbstractKinematicDescriptor, A <: AbstractAvionics}
+
+Physics(kinematics = LTF()) = Aircraft.Physics(kinematics, C172.Airframe(PowerPlant(), Actuation()))
+Template(kinematics = LTF(), avionics = NoAvionics()) = Aircraft.Template(Physics(kinematics), avionics)
+
+
+############################### Trimming #######################################
+################################################################################
+
+#assigns trim state and parameters to aircraft physics, then updates aircraft physics
+function C172.assign!(physics::System{<:C172R.Physics},
+                env::System{<:AbstractEnvironment},
+                trim_params::TrimParameters,
+                trim_state::TrimState)
+
+    @unpack EAS, β_a, x_fuel, flaps, mixture, payload = trim_params
+    @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
+    @unpack act, pwp, aero, fuel, ldg, pld = physics.airframe
+
+    init_kinematics!(physics, Kinematics.Initializer(trim_state, trim_params, env))
+
+    #for trimming, control surface inputs are set to zero, and we work only with
+    #their offsets
+    act.u.throttle = throttle
+    act.u.elevator = 0
+    act.u.aileron = 0
+    act.u.rudder = 0
+    act.u.aileron_offset = aileron
+    act.u.elevator_offset = elevator
+    act.u.rudder_offset = rudder
+    act.u.flaps = flaps
+    act.u.mixture = mixture
+
+    #assign payload
+    @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = payload
+    @pack! pld.u = m_pilot, m_copilot, m_lpass, m_rpass, m_baggage
+
+    #engine must be running
+    pwp.engine.s.state = Piston.eng_running
+
+    #set engine speed state
+    ω_eng = n_eng * pwp.engine.constants.ω_rated
+    pwp.x.engine.ω = ω_eng
+
+    #engine idle compensator: as long as the engine remains at normal
+    #operational speeds, well above its nominal idle speed, the idle controller
+    #compensator's output will be saturated at its lower bound by proportional
+    #error. its integrator will be disabled, its state will not change nor have
+    #any effect on the engine. we can simply set it to zero
+    pwp.x.engine.idle .= 0.0
+
+    #engine friction compensator: with the engine running at normal operational
+    #speeds, the engine's friction constraint compensator will be saturated, so
+    #its integrator will be disabled and its state will not change. furthermore,
+    #with the engine running friction is ignored. we can simply set it to zero.
+    pwp.x.engine.frc .= 0.0
+
+    #fuel content
+    fuel.x .= Float64(x_fuel)
+
+    aero.x.α_filt = α_a #ensures zero state derivative
+    aero.x.β_filt = β_a #ensures zero state derivative
+
+    f_ode!(physics, env)
+
+    #check essential assumptions about airframe systems states & derivatives
+    @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
+    @assert pwp.x.engine.ω > pwp.engine.constants.ω_idle
+    @assert pwp.x.engine.idle[1] .== 0
+    @assert pwp.x.engine.frc[1] .== 0
+    @assert abs(aero.ẋ.α_filt) < 1e-10
+    @assert abs(aero.ẋ.β_filt) < 1e-10
+
+end
+
+
+
 
 include(normpath("variants/base.jl")); @reexport using .C172RBase
-include(normpath("variants/cas.jl")); @reexport using .C172RCAS
-include(normpath("variants/direct.jl")); @reexport using .C172RDirect
+# include(normpath("variants/cas.jl")); @reexport using .C172RCAS
+# include(normpath("variants/direct.jl")); @reexport using .C172RDirect
 
 end

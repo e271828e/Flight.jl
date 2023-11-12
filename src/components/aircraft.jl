@@ -1,6 +1,7 @@
 module Aircraft
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
+using RobustAndOptimalControl
 
 using Flight.FlightCore.Systems
 using Flight.FlightCore.Plotting
@@ -12,6 +13,8 @@ using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.RigidBody
 using Flight.FlightPhysics.Environment
+
+using Flight.FlightComponents.Control
 
 export AbstractAirframe, EmptyAirframe
 export AbstractAvionics, NoAvionics
@@ -267,7 +270,8 @@ function XPC.set_position!(xp::XPCDevice, y::PhysicsY)
 end
 
 
-################################# Tools #######################################
+########################### Trimming & Linearization ###########################
+###############################################################################
 
 abstract type AbstractTrimParameters end
 
@@ -290,6 +294,11 @@ end
 
 function linearize!(ac::System, args...; kwargs...)
     MethodError(trim!, (ac, args...)) |> throw
+end
+
+function Control.LinearStateSpace(
+            ac::System{<:Aircraft.Template}, args...; kwargs...)
+    LinearStateSpace(ac.physics, args...; kwargs...)
 end
 
 ############################### Plotting #######################################

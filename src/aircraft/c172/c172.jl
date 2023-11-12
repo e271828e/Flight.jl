@@ -1,7 +1,8 @@
 module C172
 
-using StaticArrays, ComponentArrays, UnPack, HDF5, Interpolations
+using LinearAlgebra, StaticArrays, ComponentArrays, UnPack, HDF5, Interpolations
 using Reexport
+using NLopt
 
 using Flight.FlightCore.Systems
 using Flight.FlightCore.GUI
@@ -10,6 +11,7 @@ using Flight.FlightCore.Joysticks
 using Flight.FlightCore.Utils: Ranged, linear_scaling
 
 using Flight.FlightPhysics.Attitude
+using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.RigidBody
 using Flight.FlightPhysics.Environment
@@ -741,6 +743,9 @@ function assign!(aero::System{<:Aero}, ldg::System{<:Ldg},
     throw(MethodError(C172.assign!, (aero, ldg, pwp, act)))
 end
 
+RigidBody.MassTrait(::System{<:Actuation}) = HasNoMass()
+RigidBody.AngMomTrait(::System{<:Actuation}) = HasNoAngularMomentum()
+RigidBody.WrenchTrait(::System{<:Actuation}) = GetsNoExternalWrench()
 
 ################################################################################
 ################################ Airframe ######################################
@@ -822,6 +827,162 @@ function GUI.draw!( airframe::System{<:Airframe}, ::System{A},
 
 end
 
+
+################################################################################
+################################# Templates ####################################
+
+const Physics{K, A} = Aircraft.Physics{K, A} where {K <: AbstractKinematicDescriptor, A <: Airframe}
+
+############################### Trimming #######################################
+################################################################################
+
+#first 2 are aircraft-agnostic
+@kwdef struct TrimState <: FieldVector{7, Float64}
+    α_a::Float64 = 0.1 #angle of attack, aerodynamic axes
+    φ_nb::Float64 = 0.0 #bank angle
+    n_eng::Float64 = 0.75 #normalized engine speed (ω/ω_rated)
+    throttle::Float64 = 0.47
+    aileron::Float64 = 0.014
+    elevator::Float64 = -0.0015
+    rudder::Float64 = 0.02 #rudder↑ -> aero.u.r↓ -> right yaw
+end
+
+@kwdef struct TrimParameters <: AbstractTrimParameters
+    Ob::Geographic{NVector, Ellipsoidal} = Geographic(NVector(), HOrth(1000))
+    ψ_nb::Float64 = 0.0 #geographic heading
+    EAS::Float64 = 50.0 #equivalent airspeed
+    γ_wOb_n::Float64 = 0.0 #wind-relative flight path angle
+    ψ_lb_dot::Float64 = 0.0 #LTF-relative turn rate
+    θ_lb_dot::Float64 = 0.0 #LTF-relative pitch rate
+    β_a::Float64 = 0.0 #sideslip angle measured in the aerodynamic reference frame
+    x_fuel::Ranged{Float64, 0., 1.} = 0.5 #normalized fuel load
+    mixture::Ranged{Float64, 0., 1.} = 0.5 #engine mixture control
+    flaps::Ranged{Float64, 0., 1.} = 0.0 #flap setting
+    payload::C172.PayloadU = C172.PayloadU()
+end
+
+
+function Kinematics.Initializer(trim_state::TrimState,
+                                trim_params::TrimParameters,
+                                env::System{<:AbstractEnvironment})
+
+    @unpack EAS, β_a, γ_wOb_n, ψ_nb, ψ_lb_dot, θ_lb_dot, Ob = trim_params
+    @unpack α_a, φ_nb = trim_state
+
+    atm_data = AtmosphericData(env.atm, Ob)
+    TAS = Atmosphere.EAS2TAS(EAS; ρ = atm_data.ISA.ρ)
+    v_wOb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
+    v_wOb_b = C172.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
+
+    θ_nb = Aircraft.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
+    e_nb = REuler(ψ_nb, θ_nb, φ_nb)
+    q_nb = RQuat(e_nb)
+
+    e_lb = e_nb #initialize LTF arbitrarily to NED
+    ė_lb = SVector(ψ_lb_dot, θ_lb_dot, 0.0)
+    ω_lb_b = Attitude.ω(e_lb, ė_lb)
+
+    loc = NVector(Ob)
+    h = HEllip(Ob)
+
+    v_wOb_n = q_nb(v_wOb_b) #wind-relative aircraft velocity, NED frame
+    v_ew_n = atm_data.wind.v_ew_n
+    v_eOb_n = v_ew_n + v_wOb_n
+
+    Kinematics.Initializer(; q_nb, loc, h, ω_lb_b, v_eOb_n, Δx = 0.0, Δy = 0.0)
+
+end
+
+function assign!(::System{<:C172.Physics}, ::System{<:AbstractEnvironment},
+                ::TrimParameters, ::TrimState)
+    error("An assign! method must be defined by each C172.Physics subtype")
+end
+
+function cost(physics::System{<:C172.Physics})
+
+    @unpack ẋ, y = physics
+
+    v_nd_dot = SVector{3}(ẋ.kinematics.vel.v_eOb_b) / norm(y.kinematics.common.v_eOb_b)
+    ω_dot = SVector{3}(ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
+    n_eng_dot = ẋ.airframe.pwp.engine.ω / physics.airframe.pwp.engine.constants.ω_rated
+
+    sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2
+
+end
+
+function get_f_target(physics::System{<:C172.Physics},
+                      trim_params::TrimParameters,
+                      env::System{<:AbstractEnvironment})
+
+    let physics = physics, env = env, trim_params = trim_params
+        function (x::TrimState)
+            C172.assign!(physics, env, trim_params, x)
+            return cost(physics)
+        end
+    end
+
+end
+
+function Aircraft.trim!(physics::System{<:C172.Physics},
+                        trim_params::TrimParameters = TrimParameters(),
+                        env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
+
+    trim_state = TrimState() #could provide initial condition as an optional input
+
+    f_target = get_f_target(physics, trim_params, env)
+
+    #wrapper with the interface expected by NLopt
+    f_opt(x::Vector{Float64}, ::Vector{Float64}) = f_target(TrimState(x))
+
+    n = length(trim_state)
+    x0 = zeros(n); lower_bounds = similar(x0); upper_bounds = similar(x0); initial_step = similar(x0)
+
+    x0[:] .= trim_state
+
+    lower_bounds[:] .= TrimState(
+        α_a = -π/12,
+        φ_nb = -π/3,
+        n_eng = 0.4,
+        throttle = 0,
+        aileron = -1,
+        elevator = -1,
+        rudder = -1)
+
+    upper_bounds[:] .= TrimState(
+        α_a = physics.airframe.aero.constants.α_stall[2], #critical AoA is 0.28 < 0.36
+        φ_nb = π/3,
+        n_eng = 1.1,
+        throttle = 1,
+        aileron = 1,
+        elevator = 1,
+        rudder = 1)
+
+    initial_step[:] .= 0.05 #safe value for all optimization variables
+
+    #any of these three algorithms works
+    # opt = Opt(:LN_NELDERMEAD, length(x0))
+    opt = Opt(:LN_BOBYQA, length(x0))
+    # opt = Opt(:GN_CRS2_LM, length(x0))
+    opt.min_objective = f_opt
+    opt.maxeval = 100000
+    opt.stopval = 1e-14
+    opt.lower_bounds = lower_bounds
+    opt.upper_bounds = upper_bounds
+    opt.initial_step = initial_step
+
+    # @btime optimize($opt, $x0)
+
+    (minf, minx, exit_flag) = optimize(opt, x0)
+
+    success = (exit_flag === :STOPVAL_REACHED)
+    if !success
+        println("Warning: Trimming optimization failed with exit_flag $exit_flag")
+    end
+    trim_state_opt = TrimState(minx)
+    C172.assign!(physics, env, trim_params, trim_state_opt)
+    return (success = success, trim_state = trim_state_opt)
+
+end
 
 ################################################################################
 ############################### C172 Variants ##################################

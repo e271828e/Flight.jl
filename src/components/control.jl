@@ -2,6 +2,7 @@ module Control
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using ControlSystems: ControlSystemsBase, ControlSystems, ss
+using RobustAndOptimalControl
 
 using Flight.FlightCore.Systems
 using Flight.FlightCore.Plotting
@@ -46,6 +47,11 @@ end
 LinearStateSpace(; ẋ0, x0, u0, y0, A, B, C, D) = LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
 
 ControlSystems.ss(cmp::LinearStateSpace) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
+
+function RobustAndOptimalControl.named_ss(lss::Control.LinearStateSpace)
+    x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lss.x0, lss.u0, lss.y0))
+    named_ss(ss(lss), x = x_labels, u = u_labels, y = y_labels)
+end
 
 function LinearStateSpace(sys::ControlSystemsBase.StateSpace{ControlSystemsBase.Continuous, <:AbstractFloat})
     @unpack A, B, C, D, nx, nu, ny = sys

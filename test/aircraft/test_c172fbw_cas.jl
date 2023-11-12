@@ -166,7 +166,8 @@ function test_sim(; save::Bool = true)
                 u_digital.EAS_dmd = 30.0
                 u_inceptors.flaps = 1
                 u_digital.lon_mode_sel = C172FBWCAS.lon_mode_alt
-                u_digital.h_dmd = (1000.0, C172FBWCAS.orthometric)
+                u_digital.h_dmd = 1000.0
+                u_digital.h_ref = C172FBWCAS.orthometric
 
                 # u_digital.roll_mode_sel = C172FBWCAS.roll_rate_mode
                 u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode

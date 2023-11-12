@@ -12,6 +12,7 @@ using Flight.FlightPhysics.Environment
 
 using Flight.FlightComponents.Aircraft
 
+using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
 
 export test_c172fbw
@@ -31,7 +32,7 @@ function test_trimming()
         trim_params = C172FBW.TrimParameters()
         state = C172FBW.TrimState()
 
-        f_target = C172FBW.get_f_target(physics, trim_params, env)
+        f_target = C172.get_f_target(physics, trim_params, env)
 
         @test @ballocated($f_target($state)) === 0
 
