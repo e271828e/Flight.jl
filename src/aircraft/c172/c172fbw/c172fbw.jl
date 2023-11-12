@@ -200,7 +200,7 @@ function C172.assign!(aero::System{<:C172.Aero},
 end
 
 
-function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172R Fly-By-Wire Actuation")
+function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172 Fly-By-Wire Actuation")
 
     @unpack eng_start, eng_stop, throttle_cmd, mixture,
             aileron_cmd, elevator_cmd, rudder_cmd,
@@ -220,35 +220,35 @@ function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172R Fly-By-Wi
     CImGui.Separator()
 
      if CImGui.CollapsingHeader("Throttle")
-        CImGui.Text("Throttle Actuator Command"); CImGui.SameLine(200); display_bar("", throttle_act.cmd, 0, 1)
-        CImGui.Text("Throttle Actuator Position"); CImGui.SameLine(200); display_bar("", throttle_act.pos, 0, 1)
+        CImGui.Text("Throttle Actuator Command"); CImGui.SameLine(300); display_bar("", throttle_act.cmd, 0, 1)
+        CImGui.Text("Throttle Actuator Position"); CImGui.SameLine(300); display_bar("", throttle_act.pos, 0, 1)
         @running_plot("Throttle Actuator Position", throttle_act.pos, 0, 1, 0.0, 120)
         CImGui.Dummy(10.0, 10.0);
     end
 
     if CImGui.CollapsingHeader("Aileron")
-        CImGui.Text("Aileron Command"); CImGui.SameLine(200); display_bar("", aileron_cmd, -1, 1)
-        CImGui.Text("Aileron Command Offset"); CImGui.SameLine(200); display_bar("", aileron_cmd_offset, -1, 1)
-        CImGui.Text("Aileron Actuator Command"); CImGui.SameLine(200); display_bar("", aileron_act.cmd, -1, 1)
-        CImGui.Text("Aileron Actuator Position"); CImGui.SameLine(200); display_bar("", aileron_act.pos, -1, 1)
+        CImGui.Text("Aileron Command"); CImGui.SameLine(300); display_bar("", aileron_cmd, -1, 1)
+        CImGui.Text("Aileron Command Offset"); CImGui.SameLine(300); display_bar("", aileron_cmd_offset, -1, 1)
+        CImGui.Text("Aileron Actuator Command"); CImGui.SameLine(300); display_bar("", aileron_act.cmd, -1, 1)
+        CImGui.Text("Aileron Actuator Position"); CImGui.SameLine(300); display_bar("", aileron_act.pos, -1, 1)
         @running_plot("Aileron Actuator Position", aileron_act.pos, -1, 1, 0.0, 120)
         CImGui.Dummy(10.0, 10.0);
     end
 
     if CImGui.CollapsingHeader("Elevator")
-        CImGui.Text("Elevator Command"); CImGui.SameLine(200); display_bar("", elevator_cmd, -1, 1)
-        CImGui.Text("Elevator Command Offset"); CImGui.SameLine(200); display_bar("", elevator_cmd_offset, -1, 1)
-        CImGui.Text("Elevator Actuator Command"); CImGui.SameLine(200); display_bar("", elevator_act.cmd, -1, 1)
-        CImGui.Text("Elevator Actuator Position"); CImGui.SameLine(200); display_bar("", elevator_act.pos, -1, 1)
+        CImGui.Text("Elevator Command"); CImGui.SameLine(300); display_bar("", elevator_cmd, -1, 1)
+        CImGui.Text("Elevator Command Offset"); CImGui.SameLine(300); display_bar("", elevator_cmd_offset, -1, 1)
+        CImGui.Text("Elevator Actuator Command"); CImGui.SameLine(300); display_bar("", elevator_act.cmd, -1, 1)
+        CImGui.Text("Elevator Actuator Position"); CImGui.SameLine(300); display_bar("", elevator_act.pos, -1, 1)
         @running_plot("Elevator Actuator Position", elevator_act.pos, -1, 1, 0.0, 120)
         CImGui.Dummy(10.0, 10.0)
     end
 
     if CImGui.CollapsingHeader("Rudder")
-        CImGui.Text("Rudder Command"); CImGui.SameLine(200); display_bar("", rudder_cmd, -1, 1)
-        CImGui.Text("Rudder Command Offset"); CImGui.SameLine(200); display_bar("", rudder_cmd_offset, -1, 1)
-        CImGui.Text("Rudder Actuator Command"); CImGui.SameLine(200); display_bar("", rudder_act.cmd, -1, 1)
-        CImGui.Text("Rudder Actuator Position"); CImGui.SameLine(200); display_bar("", rudder_act.pos, -1, 1)
+        CImGui.Text("Rudder Command"); CImGui.SameLine(300); display_bar("", rudder_cmd, -1, 1)
+        CImGui.Text("Rudder Command Offset"); CImGui.SameLine(300); display_bar("", rudder_cmd_offset, -1, 1)
+        CImGui.Text("Rudder Actuator Command"); CImGui.SameLine(300); display_bar("", rudder_act.cmd, -1, 1)
+        CImGui.Text("Rudder Actuator Position"); CImGui.SameLine(300); display_bar("", rudder_act.pos, -1, 1)
         @running_plot("Rudder Position", rudder_act.pos, -1, 1, 0.0, 120)
         CImGui.Dummy(10.0, 10.0)
     end
@@ -267,7 +267,7 @@ function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172R Fly-By-Wi
 
 end
 
-function GUI.draw!(sys::System{Actuation}, label::String = "Cessna 172R Fly By Wire Actuation")
+function GUI.draw!(sys::System{Actuation}, label::String = "Cessna 172 Fly-By-Wire Actuation")
 
     @unpack u, y = sys
 
@@ -284,29 +284,29 @@ function GUI.draw!(sys::System{Actuation}, label::String = "Cessna 172R Fly By W
 
     CImGui.Separator()
     u.throttle_cmd = safe_slider("Throttle Command", u.throttle_cmd, "%.6f")
-    CImGui.Text("Throttle Actuator Command"); CImGui.SameLine(200); display_bar("", y.throttle_act.cmd, 0, 1)
-    CImGui.Text("Throttle Actuator Position"); CImGui.SameLine(200); display_bar("", y.throttle_act.pos, 0, 1)
+    CImGui.Text("Throttle Actuator Command"); CImGui.SameLine(300); display_bar("", y.throttle_act.cmd, 0, 1)
+    CImGui.Text("Throttle Actuator Position"); CImGui.SameLine(300); display_bar("", y.throttle_act.pos, 0, 1)
     @running_plot("Throttle Actuator Position", y.throttle_act.pos, 0, 1, 0.0, 120)
     CImGui.Dummy(10.0, 10.0)
 
     u.aileron_cmd = safe_slider("Aileron Command", u.aileron_cmd, "%.6f")
     u.aileron_cmd_offset = safe_input("Aileron Command Offset", u.aileron_cmd_offset, 0.001, 0.1, "%.6f")
-    CImGui.Text("Aileron Actuator Command"); CImGui.SameLine(200); display_bar("", y.aileron_act.cmd, -1, 1)
-    CImGui.Text("Aileron Actuator Position"); CImGui.SameLine(200); display_bar("", y.aileron_act.pos, -1, 1)
+    CImGui.Text("Aileron Actuator Command"); CImGui.SameLine(300); display_bar("", y.aileron_act.cmd, -1, 1)
+    CImGui.Text("Aileron Actuator Position"); CImGui.SameLine(300); display_bar("", y.aileron_act.pos, -1, 1)
     @running_plot("Aileron Actuator Position", y.aileron_act.pos, -1, 1, 0.0, 120)
     CImGui.Dummy(10.0, 10.0)
 
     u.elevator_cmd = safe_slider("Elevator Command", u.elevator_cmd, "%.6f")
     u.elevator_cmd_offset = safe_input("Elevator Command Offset", u.elevator_cmd_offset, 0.001, 0.1, "%.6f")
-    CImGui.Text("Elevator Actuator Command"); CImGui.SameLine(200); display_bar("", y.elevator_act.cmd, -1, 1)
-    CImGui.Text("Elevator Actuator Position"); CImGui.SameLine(200); display_bar("", y.elevator_act.pos, -1, 1)
+    CImGui.Text("Elevator Actuator Command"); CImGui.SameLine(300); display_bar("", y.elevator_act.cmd, -1, 1)
+    CImGui.Text("Elevator Actuator Position"); CImGui.SameLine(300); display_bar("", y.elevator_act.pos, -1, 1)
     @running_plot("Elevator Position", y.elevator_act.pos, -1, 1, 0.0, 120)
     CImGui.Dummy(10.0, 10.0)
 
     u.rudder_cmd = safe_slider("Rudder Command", u.rudder_cmd, "%.6f")
     u.rudder_cmd_offset = safe_input("Rudder Command Offset", u.rudder_cmd_offset, 0.001, 0.1, "%.6f")
-    CImGui.Text("Rudder Actuator Command"); CImGui.SameLine(200); display_bar("", y.rudder_act.cmd, -1, 1)
-    CImGui.Text("Rudder Actuator Position"); CImGui.SameLine(200); display_bar("", y.rudder_act.pos, -1, 1)
+    CImGui.Text("Rudder Actuator Command"); CImGui.SameLine(300); display_bar("", y.rudder_act.cmd, -1, 1)
+    CImGui.Text("Rudder Actuator Position"); CImGui.SameLine(300); display_bar("", y.rudder_act.pos, -1, 1)
     @running_plot("Rudder Position", y.rudder_act.pos, -1, 1, 0.0, 120)
     CImGui.Separator()
 
