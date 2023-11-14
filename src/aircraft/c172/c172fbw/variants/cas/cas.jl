@@ -903,7 +903,7 @@ function Systems.f_disc!(avionics::System{<:C172FBWCAS.Avionics}, Δt::Real,
 
 end
 
-function Aircraft.assign!(airframe::System{<:C172.Airframe},
+function Aircraft.assign!(airframe::System{<:C172FBW.Airframe},
                           avionics::System{Avionics})
 
     @unpack eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,
