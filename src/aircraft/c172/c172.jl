@@ -986,6 +986,5 @@ end
 
 include(normpath("c172r/c172r.jl")); @reexport using .C172R
 include(normpath("c172fbw/c172fbw.jl")); @reexport using .C172FBW
-include(normpath("c172mcs/c172mcs.jl")); @reexport using .C172MCS
 
 end

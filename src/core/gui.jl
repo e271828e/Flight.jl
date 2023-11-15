@@ -44,7 +44,7 @@ mutable struct Renderer
     _opengl_ctx::ImGuiOpenGLBackend.Context
     _cimgui_ctx::Ptr{CImGui.LibCImGui.ImGuiContext}
 
-    function Renderer(; label = "Renderer", monitor = 1, font_size = 16, sync = 1)
+    function Renderer(; label = "Renderer", monitor = 2, font_size = 16, sync = 1)
         _enabled = true
         _initialized = false
         new(label, monitor, font_size, sync, _enabled, _initialized)
@@ -92,10 +92,11 @@ function init!(renderer::Renderer)
     monitor_sel = unsafe_load(monitors, min(monitor, n_monitors[])) #
     vmode = unsafe_load(glfwGetVideoMode(monitor_sel), 1)
 
-    if n_monitors[] > 1 #create full borderless window in primary monitor
+    if n_monitors[] > 1 #create full borderless window in selected monitor
         glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE)
         glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_TRUE)
         _window = glfwCreateWindow(vmode.width, vmode.height, label, monitor_sel, C_NULL)
+        # _window = glfwCreateWindow(vmode.width//2, vmode.height, label, monitor_sel, C_NULL)
     else #create non-maximized window occuppying half the screen width
         glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE)
         glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE)

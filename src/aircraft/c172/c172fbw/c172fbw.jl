@@ -116,9 +116,6 @@ end
     aileron_cmd::Ranged{Float64, -1., 1.} = 0.0
     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
     rudder_cmd::Ranged{Float64, -1., 1.} = 0.0
-    aileron_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-    elevator_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-    rudder_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
     flaps::Ranged{Float64, 0., 1.} = 0.0
     brake_left::Ranged{Float64, 0., 1.} = 0.0
     brake_right::Ranged{Float64, 0., 1.} = 0.0
@@ -132,9 +129,6 @@ end
     aileron_cmd::Float64 = 0.0
     elevator_cmd::Float64 = 0.0
     rudder_cmd::Float64 = 0.0
-    aileron_cmd_offset::Float64 = 0.0
-    elevator_cmd_offset::Float64 = 0.0
-    rudder_cmd_offset::Float64 = 0.0
     flaps::Float64 = 0.0
     brake_left::Float64 = 0.0
     brake_right::Float64 = 0.0
@@ -153,14 +147,13 @@ function Systems.f_ode!(sys::System{Actuation})
 
     @unpack eng_start, eng_stop, throttle_cmd, mixture,
             aileron_cmd, elevator_cmd, rudder_cmd,
-            aileron_cmd_offset, elevator_cmd_offset, rudder_cmd_offset,
             flaps, brake_left, brake_right = sys.u
 
     #assign inputs to actuator subsystems
     throttle_act.u[] = Float64(throttle_cmd)
-    aileron_act.u[] = Float64(aileron_cmd + aileron_cmd_offset)
-    elevator_act.u[] = Float64(elevator_cmd + elevator_cmd_offset)
-    rudder_act.u[] = Float64(rudder_cmd + rudder_cmd_offset)
+    aileron_act.u[] = Float64(aileron_cmd)
+    elevator_act.u[] = Float64(elevator_cmd)
+    rudder_act.u[] = Float64(rudder_cmd)
 
     #update actuator subsystems
     f_ode!(throttle_act)
@@ -171,7 +164,6 @@ function Systems.f_ode!(sys::System{Actuation})
     sys.y = ActuationY(;
             eng_start, eng_stop, throttle_cmd, mixture,
             aileron_cmd, elevator_cmd, rudder_cmd,
-            aileron_cmd_offset, elevator_cmd_offset, rudder_cmd_offset,
             flaps, brake_left, brake_right,
             throttle_act = throttle_act.y, aileron_act = aileron_act.y,
             elevator_act = elevator_act.y, rudder_act = rudder_act.y)
@@ -206,7 +198,6 @@ function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172 Fly-By-Wir
 
     @unpack eng_start, eng_stop, throttle_cmd, mixture,
             aileron_cmd, elevator_cmd, rudder_cmd,
-            aileron_cmd_offset, elevator_cmd_offset, rudder_cmd_offset,
             flaps, brake_left, brake_right,
             throttle_act, aileron_act, elevator_act, rudder_act = sys.y
 
@@ -230,7 +221,6 @@ function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172 Fly-By-Wir
 
     if CImGui.CollapsingHeader("Aileron")
         CImGui.Text("Aileron Command"); CImGui.SameLine(300); display_bar("", aileron_cmd, -1, 1)
-        CImGui.Text("Aileron Command Offset"); CImGui.SameLine(300); display_bar("", aileron_cmd_offset, -1, 1)
         CImGui.Text("Aileron Actuator Command"); CImGui.SameLine(300); display_bar("", aileron_act.cmd, -1, 1)
         CImGui.Text("Aileron Actuator Position"); CImGui.SameLine(300); display_bar("", aileron_act.pos, -1, 1)
         @running_plot("Aileron Actuator Position", aileron_act.pos, -1, 1, 0.0, 120)
@@ -239,7 +229,6 @@ function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172 Fly-By-Wir
 
     if CImGui.CollapsingHeader("Elevator")
         CImGui.Text("Elevator Command"); CImGui.SameLine(300); display_bar("", elevator_cmd, -1, 1)
-        CImGui.Text("Elevator Command Offset"); CImGui.SameLine(300); display_bar("", elevator_cmd_offset, -1, 1)
         CImGui.Text("Elevator Actuator Command"); CImGui.SameLine(300); display_bar("", elevator_act.cmd, -1, 1)
         CImGui.Text("Elevator Actuator Position"); CImGui.SameLine(300); display_bar("", elevator_act.pos, -1, 1)
         @running_plot("Elevator Actuator Position", elevator_act.pos, -1, 1, 0.0, 120)
@@ -248,7 +237,6 @@ function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172 Fly-By-Wir
 
     if CImGui.CollapsingHeader("Rudder")
         CImGui.Text("Rudder Command"); CImGui.SameLine(300); display_bar("", rudder_cmd, -1, 1)
-        CImGui.Text("Rudder Command Offset"); CImGui.SameLine(300); display_bar("", rudder_cmd_offset, -1, 1)
         CImGui.Text("Rudder Actuator Command"); CImGui.SameLine(300); display_bar("", rudder_act.cmd, -1, 1)
         CImGui.Text("Rudder Actuator Position"); CImGui.SameLine(300); display_bar("", rudder_act.pos, -1, 1)
         @running_plot("Rudder Position", rudder_act.pos, -1, 1, 0.0, 120)
@@ -292,21 +280,18 @@ function GUI.draw!(sys::System{Actuation}, label::String = "Cessna 172 Fly-By-Wi
     CImGui.Dummy(10.0, 10.0)
 
     u.aileron_cmd = safe_slider("Aileron Command", u.aileron_cmd, "%.6f")
-    u.aileron_cmd_offset = safe_input("Aileron Command Offset", u.aileron_cmd_offset, 0.001, 0.1, "%.6f")
     CImGui.Text("Aileron Actuator Command"); CImGui.SameLine(300); display_bar("", y.aileron_act.cmd, -1, 1)
     CImGui.Text("Aileron Actuator Position"); CImGui.SameLine(300); display_bar("", y.aileron_act.pos, -1, 1)
     @running_plot("Aileron Actuator Position", y.aileron_act.pos, -1, 1, 0.0, 120)
     CImGui.Dummy(10.0, 10.0)
 
     u.elevator_cmd = safe_slider("Elevator Command", u.elevator_cmd, "%.6f")
-    u.elevator_cmd_offset = safe_input("Elevator Command Offset", u.elevator_cmd_offset, 0.001, 0.1, "%.6f")
     CImGui.Text("Elevator Actuator Command"); CImGui.SameLine(300); display_bar("", y.elevator_act.cmd, -1, 1)
     CImGui.Text("Elevator Actuator Position"); CImGui.SameLine(300); display_bar("", y.elevator_act.pos, -1, 1)
     @running_plot("Elevator Position", y.elevator_act.pos, -1, 1, 0.0, 120)
     CImGui.Dummy(10.0, 10.0)
 
     u.rudder_cmd = safe_slider("Rudder Command", u.rudder_cmd, "%.6f")
-    u.rudder_cmd_offset = safe_input("Rudder Command Offset", u.rudder_cmd_offset, 0.001, 0.1, "%.6f")
     CImGui.Text("Rudder Actuator Command"); CImGui.SameLine(300); display_bar("", y.rudder_act.cmd, -1, 1)
     CImGui.Text("Rudder Actuator Position"); CImGui.SameLine(300); display_bar("", y.rudder_act.pos, -1, 1)
     @running_plot("Rudder Position", y.rudder_act.pos, -1, 1, 0.0, 120)
@@ -343,11 +328,6 @@ function IODevices.assign!(sys::System{<:Actuation},
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    u.aileron_cmd_offset -= 0.01 * was_released(joystick, :dpad_left)
-    u.aileron_cmd_offset += 0.01 * was_released(joystick, :dpad_right)
-    u.elevator_cmd_offset += 0.01 * was_released(joystick, :dpad_down)
-    u.elevator_cmd_offset -= 0.01 * was_released(joystick, :dpad_up)
-
     u.flaps += 0.3333 * was_released(joystick, :right_bumper)
     u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
 
@@ -368,11 +348,6 @@ function IODevices.assign!(sys::System{<:Actuation},
 
     u.brake_left = is_pressed(joystick, :button_1)
     u.brake_right = is_pressed(joystick, :button_1)
-
-    u.aileron_cmd_offset -= 2e-4 * is_pressed(joystick, :hat_left)
-    u.aileron_cmd_offset += 2e-4 * is_pressed(joystick, :hat_right)
-    u.elevator_cmd_offset += 2e-4 * is_pressed(joystick, :hat_down)
-    u.elevator_cmd_offset -= 2e-4 * is_pressed(joystick, :hat_up)
 
     u.flaps += 0.3333 * was_released(joystick, :button_3)
     u.flaps -= 0.3333 * was_released(joystick, :button_2)
@@ -409,12 +384,9 @@ function Aircraft.assign!(physics::System{<:C172FBW.Physics},
     #for trimming, control surface inputs are set to zero, and we work only with
     #their offsets
     act.u.throttle_cmd = throttle
-    act.u.elevator_cmd = 0
-    act.u.aileron_cmd = 0
-    act.u.rudder_cmd = 0
-    act.u.aileron_cmd_offset = aileron
-    act.u.elevator_cmd_offset = elevator
-    act.u.rudder_cmd_offset = rudder
+    act.u.aileron_cmd = aileron
+    act.u.elevator_cmd = elevator
+    act.u.rudder_cmd = rudder
     act.u.flaps = flaps
     act.u.mixture = mixture
 
@@ -443,9 +415,7 @@ function Aircraft.assign!(physics::System{<:C172FBW.Physics},
     pwp.x.engine.frc .= 0.0
 
     #actuator states: in steady state every actuator's velocity state must be
-    #zero, and its position state must be equal to the actuator command. the
-    #actuator command is in turn equal to the surface command plus its offset,
-    #which we have set to zero
+    #zero, and its position state must be equal to the actuator command.
     act.x.throttle_act.v = 0.0
     act.x.throttle_act.p = throttle
     act.x.aileron_act.v = 0.0
@@ -623,7 +593,7 @@ function Control.LinearStateSpace(
         return lm
 
     elseif model === :lon
-        x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ele_v, :ele_p, :ω_eng, :h, :thr_v, :thr_p]
+        x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :ele_v, :ele_p, :thr_v, :thr_p, :h]
         u_labels = [:elevator_cmd, :throttle_cmd]
         y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D, :h]
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)

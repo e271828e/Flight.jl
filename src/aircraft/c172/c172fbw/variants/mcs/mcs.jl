@@ -1,4 +1,4 @@
-module C172MCSAuto
+module C172FBWMCS
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays, HDF5, Interpolations
 
@@ -20,9 +20,9 @@ using Flight.FlightComponents.World
 using Flight.FlightComponents.Control: PIDDiscreteVectorY, IntegratorDiscreteY, LeadLagDiscreteY, PIDDiscreteY
 
 using ...C172
-using ..C172MCS
+using ..C172FBW
 
-export Cessna172MCSAuto
+export Cessna172FBWMCS
 
 
 ################################################################################
@@ -172,8 +172,8 @@ Systems.init(::SystemS, ::Avionics) = nothing #keep subsystems local
 
 # ########################### Update Methods #####################################
 
-function Systems.f_disc!(avionics::System{<:C172MCSAuto.Avionics}, Δt::Real,
-                        physics::System{<:C172MCS.Physics},
+function Systems.f_disc!(avionics::System{<:C172FBWMCS.Avionics}, Δt::Real,
+                        physics::System{<:C172FBW.Physics},
                         ::System{<:AbstractEnvironment})
 
     @unpack eng_start, eng_stop, mixture, throttle,
@@ -299,7 +299,7 @@ function Systems.f_disc!(avionics::System{<:C172MCSAuto.Avionics}, Δt::Real,
 
 end
 
-function Aircraft.assign!(airframe::System{<:C172MCS.Airframe},
+function Aircraft.assign!(airframe::System{<:C172FBW.Airframe},
                           avionics::System{Avionics})
 
     @unpack eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,
@@ -329,8 +329,8 @@ function mode_button_HSV(button_mode, selected_mode, active_mode)
     end
 end
 
-function GUI.draw!(avionics::System{<:C172MCSAuto.Avionics},
-                    physics::System{<:C172MCS.Physics},
+function GUI.draw!(avionics::System{<:C172FBWMCS.Avionics},
+                    physics::System{<:C172FBW.Physics},
                     label::String = "Cessna 172 SS CAS Avionics")
 
     @unpack airframe = physics
@@ -496,16 +496,16 @@ function GUI.draw(moding::AvionicsModing)
 end
 
 ################################################################################
-############################# Cessna172MCSAuto ##################################
+############################# Cessna172FBWMCS ##################################
 
 #Cessna172R with control augmenting Avionics
-const Cessna172MCSAuto{K} = C172MCS.Template{K, Avionics} where {K <: AbstractKinematicDescriptor}
-Cessna172MCSAuto(kinematics = LTF()) = C172MCS.Template(kinematics, Avionics())
+const Cessna172FBWMCS{K} = C172FBW.Template{K, Avionics} where {K <: AbstractKinematicDescriptor}
+Cessna172FBWMCS(kinematics = LTF()) = C172FBW.Template(kinematics, Avionics())
 
 
 ##################################### Tools ####################################
 
-function Aircraft.trim!(ac::System{<:Cessna172MCSAuto},
+function Aircraft.trim!(ac::System{<:Cessna172FBWMCS},
                         trim_params::C172.TrimParameters = C172.TrimParameters(),
                         env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
 
@@ -525,12 +525,12 @@ function Aircraft.trim!(ac::System{<:Cessna172MCSAuto},
     u.inceptors.mixture = mixture
     u.inceptors.flaps = flaps
 
-    u.digital.lon_mode_sel = C172MCSAuto.lon_mode_semi
-    u.digital.lat_mode_sel = C172MCSAuto.lat_mode_semi
-    u.digital.throttle_mode_sel = C172MCSAuto.direct_throttle_mode
-    u.digital.roll_mode_sel = C172MCSAuto.direct_aileron_mode
-    u.digital.pitch_mode_sel = C172MCSAuto.direct_elevator_mode
-    u.digital.yaw_mode_sel = C172MCSAuto.direct_rudder_mode
+    u.digital.lon_mode_sel = C172FBWMCS.lon_mode_semi
+    u.digital.lat_mode_sel = C172FBWMCS.lat_mode_semi
+    u.digital.throttle_mode_sel = C172FBWMCS.direct_throttle_mode
+    u.digital.roll_mode_sel = C172FBWMCS.direct_aileron_mode
+    u.digital.pitch_mode_sel = C172FBWMCS.direct_elevator_mode
+    u.digital.yaw_mode_sel = C172FBWMCS.direct_rudder_mode
 
     #update avionics outputs
     f_disc!(ac.avionics, 1, ac.physics, env)
@@ -539,14 +539,14 @@ function Aircraft.trim!(ac::System{<:Cessna172MCSAuto},
 
 end
 
-function Aircraft.linearize!(ac::System{<:Cessna172MCSAuto}, args...; kwargs...)
+function Aircraft.linearize!(ac::System{<:Cessna172FBWMCS}, args...; kwargs...)
     linearize!(ac.physics, args...; kwargs...)
 end
 
 
 # ############################ Joystick Mappings #################################
 
-function IODevices.assign!(sys::System{<:Cessna172MCSAuto}, joystick::Joystick,
+function IODevices.assign!(sys::System{<:Cessna172FBWMCS}, joystick::Joystick,
                            mapping::InputMapping)
     IODevices.assign!(sys.avionics, joystick, mapping)
 end

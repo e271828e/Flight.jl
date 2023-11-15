@@ -86,7 +86,7 @@ function test_system_methods()
             u_digital.pitch_mode_sel = C172FBWCAS.climb_rate_mode
             # u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
             u_digital.EAS_dmd = 40
-            u_digital.φ_dmd = 0.1
+            u_digital.χ_dmd = 0.1
             u_digital.c_dmd = 1
             # u_inceptors.yaw_input = 0.02
 
@@ -200,7 +200,8 @@ function test_sim(; save::Bool = true)
             end
         end
 
-        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 60, sys_io!, adaptive = false)
+        # sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 60, sys_io!, adaptive = false)
+        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 60, adaptive = false)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)

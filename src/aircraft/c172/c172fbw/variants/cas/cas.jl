@@ -702,9 +702,9 @@ end
     roll_input::Ranged{Float64, -1., 1.} = 0.0 #used in aileron_mode and roll_rate_mode
     pitch_input::Ranged{Float64, -1., 1.} = 0.0 #used in direct_elevator_mode and pitch_rate_mode
     yaw_input::Ranged{Float64, -1., 1.} = 0.0 #used in rudder_mode and sideslip_mode
-    aileron_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-    elevator_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-    rudder_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
+    aileron_cmd_offset::Ranged{Float64, -1., 1.} = 0.0 #only for direct mode
+    elevator_cmd_offset::Ranged{Float64, -1., 1.} = 0.0 #only for direct mode
+    rudder_cmd_offset::Ranged{Float64, -1., 1.} = 0.0 #only for direct mode
     flaps::Ranged{Float64, 0., 1.} = 0.0
     brake_left::Ranged{Float64, 0., 1.} = 0.0
     brake_right::Ranged{Float64, 0., 1.} = 0.0
@@ -751,9 +751,6 @@ end
     aileron_cmd::Ranged{Float64, -1., 1.} = 0.0
     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
     rudder_cmd::Ranged{Float64, -1., 1.} = 0.0
-    aileron_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-    elevator_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
-    rudder_cmd_offset::Ranged{Float64, -1., 1.} = 0.0
     flaps::Ranged{Float64, 0., 1.} = 0.0
     brake_left::Ranged{Float64, 0., 1.} = 0.0
     brake_right::Ranged{Float64, 0., 1.} = 0.0
@@ -795,9 +792,9 @@ function Systems.f_disc!(avionics::System{<:C172FBWCAS.Avionics}, Δt::Real,
     kinematics = physics.y.kinematics.common
 
     #direct surface and inner loop demands always come from inceptors
-    roll_ctl.u.a_dmd = roll_input
-    pitch_ctl.u.e_dmd = pitch_input
-    yaw_ctl.u.r_dmd = yaw_input
+    roll_ctl.u.a_dmd = roll_input + aileron_cmd_offset
+    pitch_ctl.u.e_dmd = pitch_input + elevator_cmd_offset
+    yaw_ctl.u.r_dmd = yaw_input + rudder_cmd_offset
     throttle_ctl.u.thr_dmd = throttle
 
     roll_ctl.u.p_dmd = p_dmd_sf * Float64(roll_input)
@@ -888,7 +885,6 @@ function Systems.f_disc!(avionics::System{<:C172FBWCAS.Avionics}, Δt::Real,
     #all signal  except for throttle, roll_input, pitch_input and yaw_input pass through
     actuation = ActuationCommands(; eng_start, eng_stop, mixture,
                 throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd,
-                aileron_cmd_offset, elevator_cmd_offset, rudder_cmd_offset,
                 flaps, brake_left, brake_right)
 
     avionics.y = AvionicsY(; moding, actuation,
@@ -907,12 +903,10 @@ function Aircraft.assign!(airframe::System{<:C172FBW.Airframe},
                           avionics::System{Avionics})
 
     @unpack eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,
-            elevator_cmd, rudder_cmd, aileron_cmd_offset, elevator_cmd_offset,
-            rudder_cmd_offset, flaps, brake_left, brake_right = avionics.y.actuation
+            elevator_cmd, rudder_cmd, flaps, brake_left, brake_right = avionics.y.actuation
 
     @pack! airframe.act.u = eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,
-           elevator_cmd, rudder_cmd, aileron_cmd_offset, elevator_cmd_offset,
-           rudder_cmd_offset, flaps, brake_left, brake_right
+           elevator_cmd, rudder_cmd, flaps, brake_left, brake_right
 
 end
 
@@ -1123,12 +1117,9 @@ function Aircraft.trim!(ac::System{<:Cessna172FBWCAS},
 
     u = ac.avionics.u
     u.inceptors.throttle = throttle
-    u.inceptors.roll_input = 0
-    u.inceptors.pitch_input = 0
-    u.inceptors.yaw_input = 0
-    u.inceptors.aileron_cmd_offset = aileron
-    u.inceptors.elevator_cmd_offset = elevator
-    u.inceptors.rudder_cmd_offset = rudder
+    u.inceptors.roll_input = aileron
+    u.inceptors.pitch_input = elevator
+    u.inceptors.yaw_input = rudder
     u.inceptors.mixture = mixture
     u.inceptors.flaps = flaps
 
@@ -1232,8 +1223,8 @@ function IODevices.assign!(sys::System{Avionics},
     u.elevator_cmd_offset -= 2e-4 * is_pressed(joystick, :A3_up)
 
     if is_pressed(joystick, :A3_press)
-        u.aileron_offset = 0
-        u.elevator_offset = 0
+        u.aileron_cmd_offset = 0
+        u.elevator_cmd_offset = 0
     end
 
     u.flaps += 0.3333 * was_released(joystick, :switch_down)

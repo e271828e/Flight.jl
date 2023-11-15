@@ -33,11 +33,11 @@ include(normpath("aircraft/test_c172fbw_cas.jl")); using .TestC172FBWCAS
 # test_piston()
 # test_world()
 
-test_c172r()
+# test_c172r()
 # test_c172r_base()
 # test_c172r_direct()
 # test_c172r_cas()
 
-# test_c172fbw()
-# test_c172fbw_base()
+test_c172fbw()
+test_c172fbw_base()
 test_c172fbw_cas()
