@@ -595,6 +595,7 @@ function Control.LinearStateSpace(
     elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :ele_v, :ele_p, :thr_v, :thr_p, :h]
         u_labels = [:elevator_cmd, :throttle_cmd]
+        # y_labels = vcat(x_labels, [:α, :EAS, :TAS, :f_x, :f_z, :γ, :c])
         y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D, :h]
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
@@ -617,5 +618,6 @@ end
 
 include(normpath("variants/base.jl")); @reexport using .C172FBWBase
 include(normpath("variants/cas/cas.jl")); @reexport using .C172FBWCAS
+include(normpath("variants/mcs/mcs.jl")); @reexport using .C172FBWMCS
 
 end
