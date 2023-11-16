@@ -469,16 +469,23 @@ end
     rudder_cmd::Float64 = 0.0
 end
 
-@kwdef struct YLinear <: FieldVector{24, Float64}
+#all states (for full-state feedback), plus other useful stuff
+@kwdef struct YLinear <: FieldVector{37, Float64}
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
+    v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #Ob/ECEF velocity, body axes
+    α_filt::Float64 = 0.0; β_filt::Float64 = 0.0; #filtered airflow angles
+    ω_eng::Float64 = 0.0; fuel::Float64 = 0.0; #engine speed, available fuel fraction
+    thr_v::Float64 = 0.0; thr_p::Float64 = 0.0; #throttle actuator states
+    ail_v::Float64 = 0.0; ail_p::Float64 = 0.0; #aileron actuator states
+    ele_v::Float64 = 0.0; ele_p::Float64 = 0.0; #elevator actuator states
+    rud_v::Float64 = 0.0; rud_p::Float64 = 0.0; #rudder actuator states
+    f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
     EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
     α::Float64 = 0.0; β::Float64 = 0.0; #airspeed
-    f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
     χ::Float64 = 0.0; γ::Float64 = 0.0; c::Float64 = 0.0; #track and flight path angles, climb rate
-    ω_eng::Float64 = 0.0; m_fuel::Float64 = 0.0 #engine speed, fuel mass
 end
 
 
@@ -504,9 +511,8 @@ function XLinear(x_physics::ComponentVector)
 
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
-    XLinear(;  ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z,
-                        α_filt, β_filt, ω_eng, fuel,
-                        thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p)
+    XLinear(;  ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel,
+                thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p)
 
 end
 
@@ -519,26 +525,43 @@ end
 
 function YLinear(physics::System{<:C172FBW.Physics{NED}})
 
-    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_n, χ_gnd, γ_gnd = physics.y.kinematics
+    @unpack airframe, air, rigidbody, kinematics = physics.y
+    @unpack pwp, fuel, aero,act = airframe
+
+    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_b, v_eOb_n, χ_gnd, γ_gnd = kinematics
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
 
     h = h_e
     p, q, r = ω_eb_b
+    v_x, v_y, v_z = v_eOb_b
     v_N, v_E, v_D = v_eOb_n
-    χ = χ_gnd
-    γ = γ_gnd
-    c = -v_D
+    ω_eng = pwp.engine.ω
+    fuel = fuel.x_avail
+    α_filt = aero.α_filt
+    β_filt = aero.β_filt
+
+    thr_v = act.throttle_act.vel
+    thr_p = act.throttle_act.pos
+    ail_v = act.aileron_act.vel
+    ail_p = act.aileron_act.pos
+    ele_v = act.elevator_act.vel
+    ele_p = act.elevator_act.pos
+    rud_v = act.rudder_act.vel
+    rud_p = act.rudder_act.pos
+
     f_x, f_y, f_z = physics.y.rigidbody.f_G_b
     EAS = physics.y.air.EAS
     TAS = physics.y.air.TAS
     α = physics.y.air.α_b
     β = physics.y.air.β_b
-    ω_eng = physics.y.airframe.pwp.engine.ω
-    m_fuel = physics.y.airframe.fuel.m_avail
+    χ = χ_gnd
+    γ = γ_gnd
+    c = -v_D
 
-    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, EAS, TAS, α, β,
-            f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, c, ω_eng, m_fuel)
+    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel,
+            thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p,
+            f_x, f_y, f_z, EAS, TAS, α, β, v_N, v_E, v_D, χ, γ, c)
 
 end
 
@@ -595,14 +618,13 @@ function Control.LinearStateSpace(
     elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :ele_v, :ele_p, :thr_v, :thr_p, :h]
         u_labels = [:elevator_cmd, :throttle_cmd]
-        # y_labels = vcat(x_labels, [:α, :EAS, :TAS, :f_x, :f_z, :γ, :c])
-        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D, :h]
+        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :c])
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat
-        u_labels = [:aileron_cmd, :rudder_cmd]
         x_labels = [:p, :r, :φ, :ψ, :v_x, :v_y, :β_filt, :ail_v, :ail_p, :rud_v, :rud_p]
-        y_labels = [:p, :r, :φ, :ψ, :β, :f_y, :χ]
+        u_labels = [:aileron_cmd, :rudder_cmd]
+        y_labels = vcat(y_labels, [:f_y, :β, :χ])
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     else

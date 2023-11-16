@@ -678,6 +678,7 @@ end
 end
 
 @kwdef struct FuelY
+    x_avail::Float64 = 0.0 #available fuel fraction
     m_total::Float64 = 0.0 #total fuel mass
     m_avail::Float64 = 0.0 #available fuel mass
 end
@@ -689,10 +690,11 @@ Systems.init(::SystemY, ::Fuel) = FuelY()
 function Systems.f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 
     @unpack m_full, m_res = sys.constants #no need for subsystems
-    m_total = m_res + sys.x[1] * (m_full - m_res) #current mass
+    x_avail = sys.x[1]
+    m_total = m_res + x_avail * (m_full - m_res) #current mass
     m_avail = m_total - m_res
     sys.ẋ .= -pwp.y.engine.ṁ / (m_full - m_res)
-    sys.y = FuelY(; m_total, m_avail)
+    sys.y = FuelY(; x_avail, m_total, m_avail)
 
 end
 

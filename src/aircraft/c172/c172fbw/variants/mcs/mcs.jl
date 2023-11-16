@@ -161,7 +161,7 @@ end
 
 @kwdef struct Avionics <: AbstractAvionics
     lon_ctl::LonControl = LonControl()
-    lat_ctl::LatControl = LonControl()
+    lat_ctl::LatControl = LatControl()
 end
 
 @kwdef mutable struct Inceptors
