@@ -216,7 +216,7 @@ end
 function Systems.f_ode!(sys::System{<:Strut},
                         steering::System{<:AbstractSteering},
                         braking::System{<:AbstractBraking},
-                        terrain::System{<:AbstractTerrain},
+                        terrain::AbstractTerrain,
                         kin::KinematicData)
 
     @unpack t_bs, l_0, damper = sys.constants
@@ -407,7 +407,7 @@ RigidBody.WrenchTrait(::System{<:LandingGearUnit}) = GetsExternalWrench()
 RigidBody.get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.strut.wr_b
 
 function Systems.f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinematicData,
-                terrain::System{<:AbstractTerrain})
+                terrain::AbstractTerrain)
 
     @unpack strut, steering, braking = sys
 

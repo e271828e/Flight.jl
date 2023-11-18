@@ -31,8 +31,8 @@ end
 
 ######################## AbstractTerrain ##########################
 
-abstract type AbstractTerrain <: SystemDefinition end
-TerrainData(::System{<:AbstractTerrain}, loc::Abstract2DLocation) = throw(MethodError(TerrainData, loc))
+abstract type AbstractTerrain end
+TerrainData(::AbstractTerrain, loc::Abstract2DLocation) = throw(MethodError(TerrainData, loc))
 
 struct DummyTerrain <: AbstractTerrain end
 
@@ -41,10 +41,12 @@ struct HorizontalTerrain <: AbstractTerrain
     surface::SurfaceType
 end
 
-HorizontalTerrain(; altitude = HOrth(0), surface = DryTarmac) =
+function HorizontalTerrain(; altitude = HOrth(0), surface = DryTarmac)
     HorizontalTerrain(altitude, surface)
+end
 
-TerrainData(trn::System{<:HorizontalTerrain}, loc::Abstract2DLocation) =
-    TerrainData(loc, trn.constants.altitude, SVector{3,Float64}(0,0,1), trn.constants.surface)
+function TerrainData(trn::HorizontalTerrain, loc::Abstract2DLocation)
+    TerrainData(loc, trn.altitude, SVector{3,Float64}(0,0,1), trn.surface)
+end
 
 end #module

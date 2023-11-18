@@ -8,8 +8,6 @@ using Sockets
 using Flight.FlightCore.Systems
 using Flight.FlightCore.Sim
 
-using Flight.FlightPhysics.Environment
-
 using Flight.FlightComponents.Aircraft
 
 using Flight.FlightAircraft.C172
@@ -28,15 +26,14 @@ function test_trimming()
     @testset verbose = true "Trimming" begin
 
         physics = System(C172R.Physics())
-        env = System(SimpleEnvironment())
         trim_params = C172.TrimParameters()
         state = C172.TrimState()
 
-        f_target = C172.get_f_target(physics, trim_params, env)
+        f_target = C172.get_f_target(physics, trim_params)
 
         @test @ballocated($f_target($state)) === 0
 
-        success, _ = trim!(physics, trim_params, env)
+        success, _ = trim!(physics, trim_params)
 
         @test success
 

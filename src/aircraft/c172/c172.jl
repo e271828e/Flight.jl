@@ -14,7 +14,8 @@ using Flight.FlightPhysics.Attitude
 using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Environment
+using Flight.FlightPhysics.Terrain
+using Flight.FlightPhysics.Atmosphere
 
 using Flight.FlightComponents.LandingGear
 using Flight.FlightComponents.Propellers
@@ -403,7 +404,7 @@ RigidBody.AngMomTrait(::System{<:Aero}) = HasNoAngularMomentum()
 RigidBody.WrenchTrait(::System{<:Aero}) = GetsExternalWrench()
 
 function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
-    air::AirData, kinematics::KinematicData, terrain::System{<:AbstractTerrain})
+    air::AirData, kinematics::KinematicData, terrain::AbstractTerrain)
 
     @unpack ẋ, x, u, s, constants = sys
     @unpack α_filt, β_filt = x
@@ -774,7 +775,7 @@ end
 function Systems.f_ode!(airframe::System{<:Airframe},
                         kin::KinematicData,
                         air::AirData,
-                        trn::System{<:AbstractTerrain})
+                        trn::AbstractTerrain)
 
     @unpack act, aero, pwp, ldg, fuel, pld = airframe
 
@@ -833,7 +834,8 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Physics{K, A} = Aircraft.Physics{K, A} where {K <: AbstractKinematicDescriptor, A <: Airframe}
+const Physics{F, K, T} = Aircraft.Physics{F, K, T} where {F <: Airframe, K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+# const Physics{K, A} = Aircraft.Physics{K, A} where {K <: AbstractKinematicDescriptor, A <: Airframe}
 
 ############################### Trimming #######################################
 ################################################################################
@@ -866,13 +868,12 @@ end
 
 function Kinematics.Initializer(trim_state::TrimState,
                                 trim_params::TrimParameters,
-                                env::System{<:AbstractEnvironment})
+                                atm_data::LocalAtmosphericData)
 
     @unpack EAS, β_a, γ_wOb_n, ψ_nb, ψ_lb_dot, θ_lb_dot, Ob = trim_params
     @unpack α_a, φ_nb = trim_state
 
-    atm_data = AtmosphericData(env.atm, Ob)
-    TAS = Atmosphere.EAS2TAS(EAS; ρ = atm_data.ISA.ρ)
+    TAS = Atmosphere.EAS2TAS(EAS; ρ = ISAData(Ob, atm_data).ρ)
     v_wOb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
     v_wOb_b = C172.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
 
@@ -888,7 +889,7 @@ function Kinematics.Initializer(trim_state::TrimState,
     h = HEllip(Ob)
 
     v_wOb_n = q_nb(v_wOb_b) #wind-relative aircraft velocity, NED frame
-    v_ew_n = atm_data.wind.v_ew_n
+    v_ew_n = atm_data.v_ew_n
     v_eOb_n = v_ew_n + v_wOb_n
 
     Kinematics.Initializer(; q_nb, loc, h, ω_lb_b, v_eOb_n, Δx = 0.0, Δy = 0.0)
@@ -909,12 +910,11 @@ function cost(physics::System{<:C172.Physics})
 end
 
 function get_f_target(physics::System{<:C172.Physics},
-                      trim_params::TrimParameters,
-                      env::System{<:AbstractEnvironment})
+                      trim_params::TrimParameters)
 
-    let physics = physics, env = env, trim_params = trim_params
+    let physics = physics, trim_params = trim_params
         function (x::TrimState)
-            Aircraft.assign!(physics, env, trim_params, x)
+            Aircraft.assign!(physics, trim_params, x)
             return cost(physics)
         end
     end
@@ -922,12 +922,11 @@ function get_f_target(physics::System{<:C172.Physics},
 end
 
 function Aircraft.trim!(physics::System{<:C172.Physics},
-                        trim_params::TrimParameters = TrimParameters(),
-                        env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
+                        trim_params::TrimParameters = TrimParameters())
 
     trim_state = TrimState() #could provide initial condition as an optional input
 
-    f_target = get_f_target(physics, trim_params, env)
+    f_target = get_f_target(physics, trim_params)
 
     #wrapper with the interface expected by NLopt
     f_opt(x::Vector{Float64}, ::Vector{Float64}) = f_target(TrimState(x))
@@ -977,7 +976,7 @@ function Aircraft.trim!(physics::System{<:C172.Physics},
         println("Warning: Trimming optimization failed with exit_flag $exit_flag")
     end
     trim_state_opt = TrimState(minx)
-    Aircraft.assign!(physics, env, trim_params, trim_state_opt)
+    Aircraft.assign!(physics, trim_params, trim_state_opt)
     return (success = success, trim_state = trim_state_opt)
 
 end

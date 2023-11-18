@@ -8,15 +8,11 @@ using Flight.FlightCore.Systems
 using Flight.FlightCore.IODevices
 using Flight.FlightCore.Joysticks
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.Environment
+using Flight.FlightPhysics.Terrain
 
-using Flight.FlightComponents.Control
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
-using Flight.FlightComponents.World
 
 using ..C172R
 
@@ -27,9 +23,12 @@ export Cessna172RBase
 ############################### Cessna172RBase #####################################
 
 #Cessna172R with NoAvionics
-const Cessna172RBase{K} = C172R.Template{K, NoAvionics} where {K}
-Cessna172RBase(kinematics = LTF()) = C172R.Template(kinematics, NoAvionics())
+const Cessna172RBase{K, T} = C172R.Template{K, T, NoAvionics} where {
+    K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
+function Cessna172RBase(kinematics = LTF(), terrain = HorizontalTerrain())
+    C172R.Template(kinematics, terrain, NoAvionics())
+end
 
 ############################ Joystick Mappings #################################
 

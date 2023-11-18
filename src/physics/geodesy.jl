@@ -8,9 +8,9 @@ using Flight.FlightCore.GUI
 
 using ..Attitude
 
-export Abstract2DLocation, NVector, LatLon
+export Abstract2DLocation, Abstract3DLocation, NVector, LatLon
 export Altitude, Ellipsoidal, Orthometric, Geopotential, HEllip, HOrth, HGeop
-export Abstract3DPosition, Geographic, Cartesian
+export Abstract3DLocation, Geographic, Cartesian
 export ω_ie, gravity, g_n, G_n, ltf, radii, get_ψ_nl, get_geoid_height
 
 #WGS84 fundamental constants, SI units
@@ -283,22 +283,22 @@ Base.:>(h1::Real, h2::Altitude{D}) where {D} = h2 < h1
 Base.:<(h1::Real, h2::Altitude{D}) where {D} = h2 > h1
 
 
-########################## Abstract3DPosition ##########################
+########################## Abstract3DLocation ##########################
 
-abstract type Abstract3DPosition end
+abstract type Abstract3DLocation end
 
 #avoid infinite recursion
-Base.convert(::Type{P}, p::P) where {P<:Abstract3DPosition} = p
+Base.convert(::Type{P}, p::P) where {P<:Abstract3DLocation} = p
 
 ########################### Geographic ###############################
 
-@kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DPosition
+@kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DLocation
     loc::L = NVector()
     h::Altitude{H} = HOrth()
 end
 Geographic(loc::Abstract2DLocation) = Geographic(loc, HOrth())
-Geographic(pos::Abstract3DPosition) = Geographic{NVector,Ellipsoidal}(pos)
-Geographic{L,H}(pos::Abstract3DPosition) where {L,H} = convert(Geographic{L,H}, pos)
+Geographic(pos::Abstract3DLocation) = Geographic{NVector,Ellipsoidal}(pos)
+Geographic{L,H}(pos::Abstract3DLocation) where {L,H} = convert(Geographic{L,H}, pos)
 
 function Base.convert(::Type{Geographic{L,H}}, geo::Geographic) where {L,H}
     Geographic(convert(L, geo.loc), Altitude{H}(geo))
@@ -316,23 +316,23 @@ function Base.:(≈)(geo1::Geographic{L,H}, geo2::Geographic{L,H}; kwargs...) wh
     return ≈(geo1.h, geo2.h; kwargs...) && ≈(geo1.loc, geo2.loc; kwargs...)
 end
 
-function Base.:(≈)(loc1::Abstract3DPosition, loc2::Abstract3DPosition; kwargs...)
+function Base.:(≈)(loc1::Abstract3DLocation, loc2::Abstract3DLocation; kwargs...)
     ≈(Cartesian(loc1), Cartesian(loc2); kwargs...)
 end
 
-function Base.:(==)(loc1::Abstract3DPosition, loc2::Abstract3DPosition)
+function Base.:(==)(loc1::Abstract3DLocation, loc2::Abstract3DLocation)
     throw(ArgumentError("Exact comparison between $(typeof(loc1)) and $(typeof(loc2)) not defined, use ≈ instead"))
 end
 
-Base.:(-)(pos::T) where {T<:Abstract3DPosition} = convert(T, -Cartesian(pos))
+Base.:(-)(pos::T) where {T<:Abstract3DLocation} = convert(T, -Cartesian(pos))
 
 
 ############################# Cartesian #############################
 
-struct Cartesian <: Abstract3DPosition
+struct Cartesian <: Abstract3DLocation
     data::SVector{3,Float64}
 end
-Cartesian(pos::Abstract3DPosition) = convert(Cartesian, pos)
+Cartesian(pos::Abstract3DLocation) = convert(Cartesian, pos)
 Cartesian() = Cartesian(Geographic())
 
 NVector(r::Cartesian) = Geographic{NVector, Ellipsoidal}(r).loc
@@ -418,16 +418,16 @@ end
 
 Base.convert(::Type{SVector{3,Float64}}, r::Cartesian) = r.data
 
-##### Generic Abstract3DPosition methods ####
+##### Generic Abstract3DLocation methods ####
 
 #general conversion from 3D to 2D location
-(::Type{L})(pos::Abstract3DPosition) where {L<:Abstract2DLocation} = Geographic{L,Ellipsoidal}(pos).loc
+(::Type{L})(pos::Abstract3DLocation) where {L<:Abstract2DLocation} = Geographic{L,Ellipsoidal}(pos).loc
 
-ltf(pos::Abstract3DPosition, ψ_nl::Real = 0.0) = ltf(Geographic{NVector,Ellipsoidal}(pos).loc, ψ_nl)
-radii(pos::Abstract3DPosition) = radii(Geographic{NVector,Ellipsoidal}(pos).loc)
+ltf(pos::Abstract3DLocation, ψ_nl::Real = 0.0) = ltf(Geographic{NVector,Ellipsoidal}(pos).loc, ψ_nl)
+radii(pos::Abstract3DLocation) = radii(Geographic{NVector,Ellipsoidal}(pos).loc)
 
 """
-    gravity(p::Abstract3DPosition)
+    gravity(p::Abstract3DLocation)
 
 Compute normal gravity.
 
@@ -437,7 +437,7 @@ above the WGS84 ellipsoid (h<<a). Direction is assumed normal to the WGS84
 ellipsoid, a good enough approximation for most navigation applications. See
 Hoffmann & Moritz.
 """
-function gravity(pos::Abstract3DPosition)
+function gravity(pos::Abstract3DLocation)
 
     p_nve = Geographic{NVector,Ellipsoidal}(pos)
     n_e = p_nve.loc
@@ -457,18 +457,18 @@ function gravity(pos::Abstract3DPosition)
 end
 
 """
-    g_n(p::Abstract3DPosition)
+    g_n(p::Abstract3DLocation)
 
 Compute gravity vector resolved in the NED frame.
 """
-g_n(pos::Abstract3DPosition) = SVector{3}(0, 0, gravity(pos))
+g_n(pos::Abstract3DLocation) = SVector{3}(0, 0, gravity(pos))
 
 """
-    G_n(p::Abstract3DPosition)
+    G_n(p::Abstract3DLocation)
 
 Compute gravitational attraction resolved in the NED frame.
 """
-function G_n(pos::Abstract3DPosition)
+function G_n(pos::Abstract3DLocation)
 
     q_en = ltf(pos)
     ω_ie_e = SVector{3, Float64}(0,0,ω_ie)

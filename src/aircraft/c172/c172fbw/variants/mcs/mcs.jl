@@ -11,12 +11,12 @@ using Flight.FlightCore.Utils: Ranged, saturation, wrap_to_π
 using Flight.FlightPhysics.Attitude
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Environment
+using Flight.FlightPhysics.Terrain
+using Flight.FlightPhysics.Atmosphere
 
 using Flight.FlightComponents.Control
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
-using Flight.FlightComponents.World
 using Flight.FlightComponents.Control: PIDDiscreteVectorY, IntegratorDiscreteY, LeadLagDiscreteY, PIDDiscreteY
 
 using ...C172
@@ -238,9 +238,8 @@ Systems.init(::SystemS, ::Avionics) = nothing #keep subsystems local
 
 # ########################### Update Methods #####################################
 
-function Systems.f_disc!(avionics::System{<:C172FBWMCS.Avionics}, Δt::Real,
-                        physics::System{<:C172FBW.Physics},
-                        ::System{<:AbstractEnvironment})
+function Systems.f_disc!(avionics::System{<:C172FBWMCS.Avionics},
+                        physics::System{<:C172FBW.Physics}, Δt::Real)
 
     @unpack eng_start, eng_stop, mixture, throttle_input,
             roll_input, pitch_input, yaw_input,
@@ -554,10 +553,9 @@ Cessna172FBWMCS(kinematics = LTF()) = C172FBW.Template(kinematics, Avionics())
 ##################################### Tools ####################################
 
 function Aircraft.trim!(ac::System{<:Cessna172FBWMCS},
-                        trim_params::C172.TrimParameters = C172.TrimParameters(),
-                        env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
+                        trim_params::C172.TrimParameters = C172.TrimParameters())
 
-    result = trim!(ac.physics, trim_params, env)
+    result = trim!(ac.physics, trim_params)
     trim_state = result[2]
 
     #makes Avionics inputs consistent with the trim solution obtained for the
@@ -581,7 +579,7 @@ function Aircraft.trim!(ac::System{<:Cessna172FBWMCS},
     u.digital.yaw_mode_sel = C172FBWMCS.direct_rudder_mode
 
     #update avionics outputs
-    f_disc!(ac.avionics, 1, ac.physics, env)
+    f_disc!(ac.avionics, 1, ac.physics)
 
     return result
 

@@ -15,13 +15,13 @@ using Flight.FlightPhysics.Attitude
 using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Environment
+using Flight.FlightPhysics.Terrain
+using Flight.FlightPhysics.Atmosphere
 
 using Flight.FlightComponents.Propellers
 using Flight.FlightComponents.Piston
 using Flight.FlightComponents.Aircraft
 using Flight.FlightComponents.Control
-using Flight.FlightComponents.World
 
 using ..C172
 
@@ -274,11 +274,16 @@ end
 ################################# Template #####################################
 
 const Airframe = C172.Airframe{typeof(PowerPlant()), Actuation}
-const Physics{K} = Aircraft.Physics{K, Airframe} where {K <: AbstractKinematicDescriptor}
-const Template{K, A} = Aircraft.Template{Physics{K}, A} where {K <: AbstractKinematicDescriptor, A <: AbstractAvionics}
+const Physics{K, T} = Aircraft.Physics{Airframe, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Template{K, T, A} = Aircraft.Template{Physics{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 
-Physics(kinematics = LTF()) = Aircraft.Physics(kinematics, C172.Airframe(PowerPlant(), Actuation()))
-Template(kinematics = LTF(), avionics = NoAvionics()) = Aircraft.Template(Physics(kinematics), avionics)
+function Physics(kinematics = LTF(), terrain = HorizontalTerrain())
+    Aircraft.Physics(C172.Airframe(PowerPlant(), Actuation()), kinematics, terrain, LocalAtmosphere())
+end
+
+function Template(kinematics = LTF(), terrain = HorizontalTerrain(), avionics = NoAvionics())
+    Aircraft.Template(Physics(kinematics, terrain), avionics)
+end
 
 
 ############################### Trimming #######################################
@@ -286,15 +291,15 @@ Template(kinematics = LTF(), avionics = NoAvionics()) = Aircraft.Template(Physic
 
 #assigns trim state and parameters to aircraft physics, then updates aircraft physics
 function Aircraft.assign!(physics::System{<:C172R.Physics},
-                env::System{<:AbstractEnvironment},
-                trim_params::C172.TrimParameters,
-                trim_state::C172.TrimState)
+                        trim_params::C172.TrimParameters,
+                        trim_state::C172.TrimState)
 
     @unpack EAS, β_a, x_fuel, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
     @unpack act, pwp, aero, fuel, ldg, pld = physics.airframe
 
-    init_kinematics!(physics, Kinematics.Initializer(trim_state, trim_params, env))
+    atm_data = LocalAtmosphericData(physics.atmosphere)
+    init_kinematics!(physics, Kinematics.Initializer(trim_state, trim_params, atm_data))
 
     #for trimming, control surface inputs are set to zero, and we work only with
     #their offsets
@@ -338,7 +343,7 @@ function Aircraft.assign!(physics::System{<:C172R.Physics},
     aero.x.α_filt = α_a #ensures zero state derivative
     aero.x.β_filt = β_a #ensures zero state derivative
 
-    f_ode!(physics, env)
+    f_ode!(physics)
 
     #check essential assumptions about airframe systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
@@ -464,11 +469,10 @@ end
 
 function Control.LinearStateSpace(
             physics::System{<:C172R.Physics{NED}},
-            trim_params::C172.TrimParameters = C172.TrimParameters(),
-            env::System{<:AbstractEnvironment} = System(SimpleEnvironment());
+            trim_params::C172.TrimParameters = C172.TrimParameters();
             model::Symbol = :full)
 
-    lm = linearize!(physics, trim_params, env)
+    lm = linearize!(physics, trim_params)
 
     if model === :full
         return lm
@@ -492,9 +496,6 @@ function Control.LinearStateSpace(
 
 end
 
-
 include(normpath("variants/base.jl")); @reexport using .C172RBase
-include(normpath("variants/direct.jl")); @reexport using .C172RDirect
-# include(normpath("variants/cas.jl")); @reexport using .C172RCAS
 
 end

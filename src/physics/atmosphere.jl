@@ -12,11 +12,7 @@ using Flight.FlightPhysics.Attitude
 using ..Geodesy
 using ..Kinematics
 
-export AbstractSeaLevelConditions, TunableSeaLevelConditions
-export AbstractWind, TunableWind
-export AbstractAtmosphere, SimpleAtmosphere
-
-export SeaLevelData, ISAData, WindData, AtmosphericData, AirData
+export LocalAtmosphere, LocalAtmosphericData, ISAData, AirData
 export p_std, T_std, g_std, ρ_std, ISA_layers
 export get_velocity_vector, get_airflow_angles, get_wind_axes, get_stability_axes
 
@@ -39,60 +35,46 @@ const g_std = 9.80665
 
 
 ################################################################################
-############################ SeaLevelConditions ################################
+############################## LocalAtmosphere #################################
 
-abstract type AbstractSeaLevelConditions <: SystemDefinition end
+struct LocalAtmosphere <: SystemDefinition end
 
-@kwdef struct SeaLevelData
-    p::Float64 = p_std
-    T::Float64 = T_std
+const T_sl_min = T_std - 50.0
+const T_sl_max = T_std + 50.0
+const p_sl_min = p_std - 10000.0
+const p_sl_max = p_std + 10000.0
+
+@kwdef mutable struct LocalAtmosphereU
+    T_sl::Ranged{Float64, T_sl_min, T_sl_max} = T_std
+    p_sl::Ranged{Float64, p_sl_min, p_sl_max} = p_std
+    v_ew_n::MVector{3,Float64} = zeros(MVector{3})
 end
 
-#an AbstractSeaLevelConditions System must return SeaLevelData at any queried 2D
-#location. these may be stationary or time-evolving.
-function SeaLevelData(::T, ::Abstract2DLocation) where {T<:System{<:AbstractSeaLevelConditions}}
-    error("SeaLevelData constructor not implemented for $T")
+@kwdef struct LocalAtmosphericData
+    T_sl::Float64 = T_std
+    p_sl::Float64 = p_std
+    v_ew_n::SVector{3,Float64} = zeros(SVector{3})
 end
 
-######################## TunableSeaLevelConditions #############################
+Systems.init(::SystemU, ::LocalAtmosphere) = LocalAtmosphereU()
 
-#a simple SeaLevelConditions model. it does not have a state and therefore
-#cannot evolve on its own, but its input vector can be used to manually tune
-#SeaLevelData during simulation
-
-struct TunableSeaLevelConditions <: AbstractSeaLevelConditions end
-
-#these probably should be defined as Ranged
-@kwdef mutable struct TunableSeaLevelConditionsU
-    T::Ranged{Float64, T_std - 50.0, T_std + 50.0} = T_std
-    p::Ranged{Float64, p_std - 10000.0, p_std + 10000.0} = p_std
+function LocalAtmosphericData(sys::System{LocalAtmosphere})
+    @unpack T_sl, p_sl, v_ew_n = sys.u
+    LocalAtmosphericData(; T_sl, p_sl, v_ew_n = SVector{3,Float64}(v_ew_n))
 end
 
-const TunableSeaLevelConditionsY = SeaLevelData
-
-Systems.init(::SystemU, ::TunableSeaLevelConditions) = TunableSeaLevelConditionsU()
-Systems.init(::SystemY, ::TunableSeaLevelConditions) = TunableSeaLevelConditionsY()
-
-function Systems.f_ode!(sys::System{TunableSeaLevelConditions})
-    @unpack T, p = sys.u
-    sys.y = TunableSeaLevelConditionsY(; T, p)
-end
-
-function SeaLevelData(sys::System{<:TunableSeaLevelConditions}, ::Abstract2DLocation)
-    SeaLevelData(T = sys.u.T, p = sys.u.p)
-    #alternative using actual local SL gravity:
-    # return (T = s.u.T, p = s.u.p, g = gravity(Geographic(loc, HOrth(0.0))))
-end
-
-function GUI.draw!(sys::System{<:TunableSeaLevelConditions}, label::String = "Sea Level Conditions")
+function GUI.draw!(sys::System{<:LocalAtmosphere}, label::String = "Local Atmosphere")
 
     u = sys.u
 
     CImGui.Begin(label)
 
     CImGui.PushItemWidth(-60)
-    u.T = GUI.safe_slider("Temperature (K)", u.T, "%.3f")
-    u.p = GUI.safe_slider("Pressure (Pa)", u.p, "%.3f")
+    u.T_sl = GUI.safe_slider("Temperature (K)", u.T_sl, "%.3f")
+    u.p_sl = GUI.safe_slider("Pressure (Pa)", u.p_sl, "%.3f")
+    u.v_ew_n[1] = GUI.safe_slider("North Wind (m/s)", u.v_ew_n[1], -30, 30, "%.3f")
+    u.v_ew_n[2] = GUI.safe_slider("East Wind (m/s)", u.v_ew_n[2], -30, 30, "%.3f")
+    u.v_ew_n[3] = GUI.safe_slider("Down Wind (m/s)", u.v_ew_n[3], -30, 30, "%.3f")
     CImGui.PopItemWidth()
 
     CImGui.End()
@@ -116,9 +98,9 @@ const ISA_layers = StructArray(
     β =      SVector{7,Float64}([-6.5e-3, 0, 1e-3, 2.8e-3, 0, -2.8e-3, -2e-3]),
     h_ceil = SVector{7,Float64}([11000, 20000, 32000, 47000, 51000, 71000, 84852]))
 
-@inline ISA_temperature_law(h::Real, T_b, h_b, β)::Float64 = T_b + β * (h - h_b)
+ISA_temperature_law(h::Real, T_b, h_b, β)::Float64 = T_b + β * (h - h_b)
 
-@inline function ISA_pressure_law(h::Real, g0, p_b, T_b, h_b, β)::Float64
+function ISA_pressure_law(h::Real, g0, p_b, T_b, h_b, β)::Float64
     if β != 0.0
         p_b * (1 + β/T_b * (h - h_b)) ^ (-g0/(β*R))
     else
@@ -129,10 +111,10 @@ end
 #compute ISAData at a given geopotential altitude, using ISA_temperature_law and
 #ISA_pressure_law to propagate the given sea level conditions upwards through
 #the successive ISA_layers up to the requested altitude
-@inline function ISAData(h_geo::HGeop, sl::SeaLevelData = SeaLevelData())
+function ISAData(h_geo::HGeop; T_sl::Real = T_std, p_sl::Real = p_std)
 
     h = Float64(h_geo)
-    h_base = 0; T_base = sl.T; p_base = sl.p; g0 = g_std #g0 = sl.g
+    h_base = 0; T_base = T_sl; p_base = p_sl; g0 = g_std #g0 = sl.g
 
     for i in eachindex(ISA_layers)
         β, h_ceil = ISA_layers[i]
@@ -150,15 +132,13 @@ end
 
 end
 
-@inline ISAData() = ISAData(HGeop(0))
-@inline ISAData(h::Real) = ISAData(HGeop(h))
+ISAData(; kwargs...) = ISAData(HGeop(0); kwargs...)
+ISAData(h::Real; kwargs...) = ISAData(HGeop(h); kwargs...)
+ISAData(h_orth::HOrth; kwargs...) = ISAData(HGeop(h_orth); kwargs...)
+ISAData(loc::Abstract3DLocation; kwargs...) = ISAData(HGeop(loc); kwargs...)
 
-@inline function ISAData(sys::System{<:AbstractSeaLevelConditions}, loc::Geographic)
-
-    h_geop = Altitude{Geopotential}(loc.h, loc.loc)
-    sl = SeaLevelData(sys, loc.loc)
-    ISAData(h_geop, sl)
-
+function ISAData(loc::Abstract3DLocation, atm::LocalAtmosphericData)
+    ISAData(loc; T_sl = atm.T_sl, p_sl = atm.p_sl)
 end
 
 # #top-down / recursive implementation
@@ -171,101 +151,6 @@ end
 #     p = ISA_pressure_law(h, g0, p_b, T_b, h_b, β)
 #     return (T, p)
 # end
-
-################################################################################
-################################# Wind #########################################
-
-abstract type AbstractWind <: SystemDefinition end
-
-@kwdef struct WindData
-    v_ew_n::SVector{3,Float64} = zeros(SVector{3})
-end
-
-function WindData(::T, ::Abstract3DPosition) where {T<:System{<:AbstractWind}}
-    error("WindData constructor not implemented for $T")
-end
-
-############################### TunableWind ####################################
-
-struct TunableWind <: AbstractWind end
-
-@kwdef mutable struct TunableWindU
-    v_ew_n::MVector{3,Float64} = zeros(MVector{3}) #MVector allows changing single components
-end
-
-const TunableWindY = WindData
-
-Systems.init(::SystemU, ::TunableWind) = TunableWindU()
-Systems.init(::SystemY, ::TunableWind) = TunableWindY()
-
-WindData(wind::System{<:TunableWind}, ::Abstract3DPosition) = WindData(wind)
-WindData(wind::System{<:TunableWind}) = (wind.u.v_ew_n |> SVector{3,Float64} |> WindData)
-
-function Systems.f_ode!(sys::System{TunableWind})
-    sys.y = TunableWindY(sys)
-end
-
-function GUI.draw!(sys::System{<:TunableWind}, label::String = "Wind")
-
-    v = sys.u.v_ew_n
-
-    CImGui.Begin(label)
-
-    CImGui.PushItemWidth(-60)
-    v[1] = GUI.safe_slider("North (m/s)", v[1], -30, 30, "%.3f")
-    v[2] = GUI.safe_slider("East (m/s)", v[2], -30, 30, "%.3f")
-    v[3] = GUI.safe_slider("Down (m/s)", v[3], -30, 30, "%.3f")
-    CImGui.PopItemWidth()
-
-    CImGui.End()
-
-    GUI.draw(sys, label)
-
-end
-
-
-################################################################################
-############################ AbstractAtmosphere ################################
-
-abstract type AbstractAtmosphere <: SystemDefinition end
-
-@kwdef struct AtmosphericData
-    ISA::ISAData = ISAData()
-    wind::WindData = WindData()
-end
-
-function AtmosphericData(::T, ::Abstract3DPosition) where {T<:System{<:AbstractAtmosphere}}
-    error("AtmosphericData constructor not implemented for $T")
-end
-
-################################################################################
-############################## SimpleAtmosphere ################################
-
-@kwdef struct SimpleAtmosphere{S <: AbstractSeaLevelConditions,
-                                   W <: AbstractWind} <: AbstractAtmosphere
-    sl::S = TunableSeaLevelConditions()
-    wind::W = TunableWind()
-end
-
-function AtmosphericData(atm::System{<:SimpleAtmosphere}, loc::Geographic)
-    AtmosphericData( ISAData(atm.sl, loc), WindData(atm.wind, loc))
-end
-
-################################# GUI ##########################################
-
-function GUI.draw!(sys::System{<:SimpleAtmosphere}, label::String = "Environment")
-
-    CImGui.Begin(label)
-
-    show_sl = @cstatic check=false @c CImGui.Checkbox("Sea Level Conditions", &check)
-    show_wind = @cstatic check=false @c CImGui.Checkbox("Wind", &check)
-
-    show_sl && GUI.draw!(sys.sl, "Sea Level Conditions")
-    show_wind && GUI.draw!(sys.wind, "Wind")
-
-    CImGui.End()
-
-end
 
 
 ################################################################################
@@ -293,20 +178,21 @@ struct AirData
     CAS::Float64 #calibrated airspeed
 end
 
-AirData() = AirData(KinematicData(), AtmosphericData())
+AirData() = AirData(KinematicData(), LocalAtmosphericData())
 
 TAS2EAS(TAS::Real; ρ::Real) = TAS * √(ρ / ρ_std)
 EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
 
-function AirData(kin::KinematicData, atm_data::AtmosphericData)
+function AirData(kin::KinematicData, atm::LocalAtmosphericData)
 
-    v_eOb_b = kin.v_eOb_b
-    v_ew_n = atm_data.wind.v_ew_n
-    v_ew_b = kin.q_nb'(v_ew_n)
+    @unpack h_o, v_eOb_b, q_nb = kin
+    @unpack T_sl, p_sl, v_ew_n = atm
+
+    v_ew_b = q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
     α_b, β_b = get_airflow_angles(v_wOb_b)
 
-    @unpack T, p, ρ, a, μ = atm_data.ISA
+    @unpack T, p, ρ, a, μ = ISAData(h_o; T_sl, p_sl)
     TAS = norm(v_wOb_b)
     M = TAS / a
     Tt = T * (1 + (γ - 1)/2 * M^2)
@@ -319,15 +205,6 @@ function AirData(kin::KinematicData, atm_data::AtmosphericData)
 
     AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
-end
-
-function AirData(kin_data::KinematicData, atm_sys::System{<:AbstractAtmosphere})
-
-    pos = Geographic(kin_data.n_e, kin_data.h_o)
-
-    #query the atmospheric System for the atmospheric data at our position
-    atm_data = AtmosphericData(atm_sys, pos)
-    AirData(kin_data, atm_data)
 end
 
 #compute aerodynamic velocity vector from TAS and airflow angles
@@ -490,6 +367,9 @@ function GUI.draw(air::AirData, label::String = "Air")
     CImGui.Text(@sprintf("Density: %.3f kg/m3", ρ))
     CImGui.Text(@sprintf("Speed of Sound: %.3f m/s", a))
     CImGui.Text(@sprintf("Mach: %.3f", M))
+    CImGui.Text(@sprintf("CAS: %.3f m/s", CAS))
+    CImGui.Text(@sprintf("EAS: %.3f m/s", EAS))
+    CImGui.Text(@sprintf("TAS: %.3f m/s", TAS))
     CImGui.Text(@sprintf("CAS: %.3f kts", SI2kts(CAS)))
     CImGui.Text(@sprintf("EAS: %.3f kts", SI2kts(EAS)))
     CImGui.Text(@sprintf("TAS: %.3f kts", SI2kts(TAS)))

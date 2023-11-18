@@ -1,7 +1,6 @@
 module Aircraft
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
-# using RobustAndOptimalControl
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
 using Flight.FlightCore.Systems
@@ -13,7 +12,8 @@ using Flight.FlightPhysics.Attitude
 using Flight.FlightPhysics.Geodesy
 using Flight.FlightPhysics.Kinematics
 using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Environment
+using Flight.FlightPhysics.Atmosphere
+using Flight.FlightPhysics.Terrain
 
 using Flight.FlightComponents.Control
 
@@ -43,22 +43,25 @@ RigidBody.get_mp_Ob(sys::System{EmptyAirframe}) = MassProperties(sys.constants.m
 ################################################################################
 ############################## Aircraft Physics ################################
 
-@kwdef struct Physics{K <: AbstractKinematicDescriptor,
-                              F <: AbstractAirframe} <: SystemDefinition
-    kinematics::K = LTF()
+@kwdef struct Physics{F <: AbstractAirframe,
+                      K <: AbstractKinematicDescriptor,
+                      T <: AbstractTerrain} <: SystemDefinition
     airframe::F = EmptyAirframe()
+    kinematics::K = LTF()
+    terrain::T = HorizontalTerrain() #shared with other aircraft instances
+    atmosphere::LocalAtmosphere = LocalAtmosphere() #externally controlled
 end
 
-struct PhysicsY{K, F}
-    kinematics::K
+struct PhysicsY{F, K}
     airframe::F
+    kinematics::K
     rigidbody::RigidBodyData
     air::AirData
 end
 
 Systems.init(::SystemY, ac::Physics) = PhysicsY(
-    init_y(ac.kinematics),
     init_y(ac.airframe),
+    init_y(ac.kinematics),
     RigidBodyData(),
     AirData())
 
@@ -82,27 +85,24 @@ struct NoAvionics <: AbstractAvionics end
 function Systems.f_ode!(airframe::System{<:AbstractAirframe},
                         kin::KinematicData,
                         air::AirData,
-                        trn::System{<:AbstractTerrain})
+                        trn::AbstractTerrain)
     MethodError(f_ode!, (airframe, avionics, kin, air, trn)) |> throw
 end
 
 function Systems.f_ode!(::System{EmptyAirframe},
                         ::KinematicData,
                         ::AirData,
-                        ::System{<:AbstractTerrain})
+                        ::AbstractTerrain)
     nothing
 end
 
 #this method can be extended if required, but in principle Airframe shouldn't
 #implement discrete dynamics; discretized algorithms belong in Avionics
-function Systems.f_disc!(::System{<:AbstractAirframe},
-                        ::Real,
-                        ::System{<:AbstractEnvironment})
+function Systems.f_disc!(::System{<:AbstractAirframe}, ::Real)
     return false
 end
 
-#f_step! can use the recursive fallback implementation
-
+#f_step! may use the recursive fallback implementation
 
 ###############################################################################
 #################### AbstractAvionics update methods ###########################
@@ -112,22 +112,19 @@ end
 #this method can be extended if required, but in principle avionics shouldn't
 #involve continuous dynamics.
 function Systems.f_ode!(::System{<:AbstractAvionics},
-                        ::System{<:Physics},
-                        ::System{<:AbstractEnvironment})
+                        ::System{<:Physics})
     nothing
 end
 
 function Systems.f_disc!(avionics::System{<:AbstractAvionics},
-                        Δt::Real,
                         physics::System{<:Physics},
-                        env::System{<:AbstractEnvironment})
-    MethodError(f_disc!, (avionics, Δt, physics, env)) |> throw
+                        Δt::Real)
+    MethodError(f_disc!, (avionics, physics, Δt)) |> throw
 end
 
 function Systems.f_disc!(::System{NoAvionics},
-                        ::Real,
                         ::System{<:Physics},
-                        ::System{<:AbstractEnvironment})
+                        ::Real)
     return false
 end
 
@@ -137,20 +134,21 @@ end
 ################################################################################
 ###################### AircraftPhysics Update methods ##########################
 
-function Systems.f_ode!(physics::System{<:Physics},
-                        env::System{<:AbstractEnvironment})
+function Systems.f_ode!(physics::System{<:Physics})
 
-    @unpack ẋ, x, subsystems = physics
-    @unpack kinematics, airframe = subsystems
-    @unpack atm, trn = env
+    @unpack ẋ, x, subsystems, constants = physics
+    @unpack kinematics, airframe, atmosphere = subsystems
+    @unpack terrain = constants
 
-    #update kinematics
     f_ode!(kinematics)
+    f_ode!(atmosphere) #currently does nothing
     kin_data = KinematicData(kinematics)
-    air_data = AirData(kin_data, atm)
+    atm_data = LocalAtmosphericData(atmosphere)
+
+    air_data = AirData(kin_data, atm_data)
 
     #update airframe
-    f_ode!(airframe, kin_data, air_data, trn)
+    f_ode!(airframe, kin_data, air_data, terrain)
 
     #get inputs for rigid body dynamics
     mp_Ob = get_mp_Ob(airframe)
@@ -160,7 +158,7 @@ function Systems.f_ode!(physics::System{<:Physics},
     #update velocity derivatives and rigid body data
     rb_data = f_rigidbody!(kinematics.ẋ.vel, kin_data, mp_Ob, wr_b, hr_b)
 
-    physics.y = PhysicsY(kinematics.y, airframe.y, rb_data, air_data)
+    physics.y = PhysicsY(airframe.y, kinematics.y, rb_data, air_data)
 
     return nothing
 
@@ -170,18 +168,16 @@ end
 
 #within Physics, only the airframe may be modified by f_disc! (and it generally
 #shouldn't)
-function Systems.f_disc!(physics::System{<:Physics},
-                        Δt::Real,
-                        env::System{<:AbstractEnvironment})
+function Systems.f_disc!(physics::System{<:Physics}, Δt::Real)
 
     @unpack kinematics, airframe = physics
     @unpack rigidbody, air = physics.y
 
     x_mod = false
-    x_mod |= f_disc!(physics.airframe, Δt, env)
+    x_mod |= f_disc!(airframe, Δt)
 
-    #airframe might have modified its outputs, so we need to reassemble
-    physics.y = PhysicsY(kinematics.y, airframe.y, rigidbody, air)
+    #airframe might have modified its outputs, so we need to reassemble our y
+    physics.y = PhysicsY(airframe.y, kinematics.y, rigidbody, air)
 
     return x_mod
 end
@@ -213,18 +209,17 @@ struct TemplateY{P <: PhysicsY, A}
     avionics::A
 end
 
-Systems.init(::SystemY, ac::Template) = TemplateY(
-    init_y(ac.physics), init_y(ac.avionics))
+Systems.init(::SystemY, ac::Template) = TemplateY(init_y(ac.physics), init_y(ac.avionics))
 
 init_kinematics!(ac::System{<:Template}, ic::KinematicInit) = init_kinematics!(ac.physics, ic)
 
-function Systems.f_ode!(ac::System{<:Template}, env::System{<:AbstractEnvironment})
+function Systems.f_ode!(ac::System{<:Template})
 
     @unpack physics, avionics = ac.subsystems
 
-    f_ode!(avionics, physics, env)
+    f_ode!(avionics, physics)
     assign!(physics, avionics)
-    f_ode!(physics, env)
+    f_ode!(physics)
 
     ac.y = TemplateY(physics.y, avionics.y)
 
@@ -232,14 +227,14 @@ function Systems.f_ode!(ac::System{<:Template}, env::System{<:AbstractEnvironmen
 
 end
 
-function Systems.f_disc!(ac::System{<:Template}, Δt::Real, env::System{<:AbstractEnvironment})
+function Systems.f_disc!(ac::System{<:Template}, Δt::Real)
 
     @unpack physics, avionics = ac.subsystems
 
     x_mod = false
-    x_mod |= f_disc!(avionics, Δt, physics, env)
+    x_mod |= f_disc!(avionics, physics, Δt)
     assign!(physics, avionics)
-    x_mod |= f_disc!(physics, Δt, env)
+    x_mod |= f_disc!(physics, Δt)
 
     ac.y = TemplateY(physics.y, avionics.y)
 
@@ -296,8 +291,7 @@ function trim!( physics::System{<:Physics}, args...)
     MethodError(trim!, (physics, args...)) |> throw
 end
 
-function assign!(::System{<:Physics}, ::System{<:AbstractEnvironment},
-                ::AbstractTrimParameters, ::AbstractTrimState)
+function assign!(::System{<:Physics}, ::AbstractTrimParameters, ::AbstractTrimState)
     error("An assign! method must be defined by each Aircraft.Physics subtype")
 end
 
@@ -316,10 +310,9 @@ assign_u!(physics::System{<:Physics}, u::AbstractVector{Float64}) = throw(Method
 linearize!(ac::System{<:Aircraft.Template}, args...) = linearize!(ac.physics, args...)
 
 function Aircraft.linearize!( physics::System{<:Aircraft.Physics},
-            trim_params::AbstractTrimParameters,
-            env::System{<:AbstractEnvironment} = System(SimpleEnvironment()))
+                            trim_params::AbstractTrimParameters)
 
-    (_, trim_state) = trim!(physics, trim_params, env)
+    (_, trim_state) = trim!(physics, trim_params)
 
     ẋ0 = ẋ_linear(physics)::FieldVector
     x0 = x_linear(physics)::FieldVector
@@ -327,13 +320,13 @@ function Aircraft.linearize!( physics::System{<:Aircraft.Physics},
     y0 = y_linear(physics)::FieldVector
 
     #f_main will not be returned for use in another scope, so we don't need to
-    #capture physics and env with a let block, because they are guaranteed not
-    #be reassigned within the scope of linearize!
+    #capture physics with a let block, because they are guaranteed not be
+    #reassigned within the scope of linearize!
     function f_main(x, u)
 
         assign_x!(physics, x)
         assign_u!(physics, u)
-        f_ode!(physics, env)
+        f_ode!(physics)
 
         return (ẋ = ẋ_linear(physics), y = y_linear(physics))
 
@@ -342,7 +335,7 @@ function Aircraft.linearize!( physics::System{<:Aircraft.Physics},
     (A, B, C, D) = ss_matrices(f_main, x0, u0)
 
     #restore the System to its trimmed condition
-    assign!(physics, env, trim_params, trim_state)
+    assign!(physics, trim_params, trim_state)
 
     #now we need to rebuild vectors and matrices for the LinearStateSpace as
     #ComponentArrays, because we want matrix components to remain labelled,
@@ -410,8 +403,8 @@ end
 function Plotting.make_plots(th::TimeHistory{<:PhysicsY}; kwargs...)
 
     return OrderedDict(
-        :kinematics => make_plots(th.kinematics; kwargs...),
         :airframe => make_plots(th.airframe; kwargs...),
+        :kinematics => make_plots(th.kinematics; kwargs...),
         :rigidbody => make_plots(th.rigidbody; kwargs...),
         :air => make_plots(th.air; kwargs...),
     )
@@ -450,16 +443,22 @@ function GUI.draw!(physics::System{<:Physics},
                    avionics::System{<:AbstractAvionics},
                    label::String = "Aircraft Physics")
 
+    @unpack airframe, atmosphere = physics.subsystems
+    @unpack terrain = physics.constants
     @unpack kinematics, rigidbody, air = physics.y
 
     CImGui.Begin(label)
 
     show_airframe = @cstatic check=false @c CImGui.Checkbox("Airframe", &check)
+    show_atmosphere = @cstatic check=false @c CImGui.Checkbox("Local Atmosphere", &check)
+    show_terrain = @cstatic check=false @c CImGui.Checkbox("Terrain", &check)
     show_dyn = @cstatic check=false @c CImGui.Checkbox("Dynamics", &check)
     show_kin = @cstatic check=false @c CImGui.Checkbox("Kinematics", &check)
     show_air = @cstatic check=false @c CImGui.Checkbox("Air", &check)
 
     show_airframe && GUI.draw!(physics.airframe, avionics)
+    show_atmosphere && GUI.draw!(physics.atmosphere)
+    show_terrain && GUI.draw(terrain)
     show_dyn && GUI.draw(rigidbody, "Dynamics")
     show_kin && GUI.draw(kinematics, "Kinematics")
     show_air && GUI.draw(air, "Air")
