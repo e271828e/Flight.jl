@@ -248,8 +248,8 @@ function test_sim_paced(; save::Bool = true)
         Threads.@spawn Sim.run_paced!(sim; pace = 1, verbose = true)
     end
 
-    kin_plots = make_plots(TimeHistory(sim).ac.physics.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeHistory(sim).ac.physics.air; Plotting.defaults...)
+    kin_plots = make_plots(TimeHistory(sim).physics.kinematics; Plotting.defaults...)
+    air_plots = make_plots(TimeHistory(sim).physics.air; Plotting.defaults...)
     save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim_paced", "kin"))
     save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim_paced", "air"))
 

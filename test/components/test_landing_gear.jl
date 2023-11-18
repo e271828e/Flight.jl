@@ -110,7 +110,7 @@ function test_strut()
 
         steering = System(DirectSteering(ψ_max = π/6))
         braking = System(DirectBraking())
-        terrain = System(HorizontalTerrain())
+        terrain = HorizontalTerrain()
         loc = NVector()
 
         #set the initial 2D Location
@@ -234,7 +234,7 @@ function test_landing_gear_unit()
 
         ldg = System(LandingGearUnit())
 
-        trn = System(HorizontalTerrain())
+        trn = HorizontalTerrain()
 
         loc = LatLon()
         h_trn = Terrain.TerrainData(trn, loc).altitude
@@ -251,7 +251,7 @@ end
 
 function test_harness()
 
-    trn = System(HorizontalTerrain())
+    trn = HorizontalTerrain()
     loc = LatLon()
     h_trn = Terrain.TerrainData(trn, loc).altitude
 

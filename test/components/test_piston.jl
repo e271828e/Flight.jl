@@ -108,7 +108,7 @@ function test_engine_dynamics()
     @testset verbose = true "EngineDynamics" begin
 
         kin = KinematicInit(h = HEllip(), v_eOb_n = [50, 0, 0]) |> KinematicData
-        atm = SimpleAtmosphere() |> System
+        atm = LocalAtmosphericData()
         air = AirData(kin, atm)
         eng = Engine() |> System
         fuel = System(MagicFuelSupply())
@@ -193,7 +193,7 @@ function test_thruster_dynamics()
 
         #initialize auxiliary elements
         kin = KinematicInit(v_eOb_n = [0, 0, 0]) |> KinematicData
-        atm = SimpleAtmosphere() |> System
+        atm = LocalAtmosphericData()
         air = AirData(kin, atm)
         fuel = System(MagicFuelSupply())
         thr = Thruster() |> System
