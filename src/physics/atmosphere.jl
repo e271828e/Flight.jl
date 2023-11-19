@@ -2,13 +2,10 @@ module Atmosphere
 
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.GUI
+using Flight.FlightCore
 using Flight.FlightCore.Utils: Ranged
 
-using Flight.FlightPhysics.Attitude
-
+using ..Attitude
 using ..Geodesy
 using ..Kinematics
 

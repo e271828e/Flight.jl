@@ -6,7 +6,7 @@ using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
         GetJoystickAxes, GetJoystickButtons, GetJoystickName, SetJoystickCallback
 
 using ..IODevices
-using ..Utils: Ranged
+using ..Utils
 
 export JoystickSlot, Joystick
 export get_connected_joysticks

@@ -4,15 +4,9 @@ using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using NLopt
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.IODevices
-using Flight.FlightCore.Joysticks
-
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.Terrain
-
-using Flight.FlightComponents.Piston
-using Flight.FlightComponents.Aircraft
+using Flight.FlightCore
+using Flight.FlightPhysics
+using Flight.FlightComponents
 
 using ..C172FBW
 

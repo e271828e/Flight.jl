@@ -4,9 +4,7 @@ using StaticArrays, StructArrays
 
 using ..GUI
 
-export Ranged, linear_scaling, wrap_to_π
-export MovingAverage
-
+export Ranged, saturation, linear_scaling, wrap_to_π
 
 ################################################################################
 ################################ Ranged ########################################
@@ -84,26 +82,6 @@ end
 
 # end
 
-################################################################################
-############################ MovingAverage #####################################
-
-struct MovingAverage{N}
-    samples::MVector{N,Float64}
-end
-
-MovingAverage(v::AbstractVector{<:Real}) = MovingAverage(MVector{length(v), Float64}(v))
-MovingAverage{N}() where {N} = MovingAverage(zeros(MVector{N}))
-
-(ma::MovingAverage{N})() where {N} = sum(ma.samples) / N
-
-function Base.push!(ma::MovingAverage{N}, x::Real) where {N}
-    samples = ma.samples
-    for i in N-1:-1:1
-        samples[i+1] = samples[i]
-    end
-    samples[1] = x
-    return ma()
-end
 
 ################################################################################
 ################################ Misc ##########################################

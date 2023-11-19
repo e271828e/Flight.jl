@@ -16,7 +16,7 @@ include(normpath("aircraft/FlightAircraft.jl")); @reexport using .FlightAircraft
 @reexport using .FlightPhysics.Geodesy
 @reexport using .FlightPhysics.Atmosphere
 
-@reexport using .FlightComponents.Control
-@reexport using .FlightComponents.Aircraft
+# @reexport using .FlightComponents.Control
+# @reexport using .FlightComponents.Aircraft
 
 end

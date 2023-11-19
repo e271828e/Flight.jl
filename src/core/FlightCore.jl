@@ -1,12 +1,14 @@
 module FlightCore
 
-include("iodevices.jl"); using .IODevices
-include("gui.jl"); using .GUI
+using Reexport
+
+include("iodevices.jl"); @reexport using .IODevices
+include("gui.jl"); @reexport using .GUI
 include("utils.jl"); using .Utils
-include("systems.jl"); using .Systems
+include("systems.jl"); @reexport using .Systems
 include("sim.jl"); using .Sim
-include("plotting.jl"); using .Plotting
-include("joysticks.jl"); using .Joysticks
-include("xpc.jl"); using .XPC
+include("plotting.jl"); @reexport using .Plotting
+include("joysticks.jl"); @reexport using .Joysticks
+include("visualization.jl"); @reexport using .Visualization
 
 end

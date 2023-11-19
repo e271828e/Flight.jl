@@ -2,21 +2,13 @@ module TestC172FBWCAS
 
 using Test, UnPack, BenchmarkTools, Sockets
 
-using Flight.FlightCore.Systems
+using Flight.FlightCore
 using Flight.FlightCore.Sim
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.IODevices
-using Flight.FlightCore.Joysticks
-using Flight.FlightCore.XPC
+using Flight.FlightCore.Visualization
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.Terrain
-using Flight.FlightPhysics.Atmosphere
+using Flight.FlightPhysics
 
-using Flight.FlightComponents.Aircraft
-using Flight.FlightComponents.Piston
+using Flight.FlightComponents
 
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
@@ -219,7 +211,7 @@ function test_sim_paced(; save::Bool = true)
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172FBWBase(LTF(), trn) |> System;
+    ac = Cessna172FBWCAS(LTF(), trn) |> System;
 
     kin_init = KinematicInit(
         v_eOb_n = [0, 0, 0],

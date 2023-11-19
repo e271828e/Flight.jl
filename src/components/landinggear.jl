@@ -2,16 +2,10 @@ module LandingGear
 
 using StaticArrays, ComponentArrays, LinearAlgebra, UnPack
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.GUI
-using Flight.FlightCore.Utils: Ranged
+using Flight.FlightCore
+using Flight.FlightCore.Utils
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Terrain
+using Flight.FlightPhysics
 
 using ..Control: PIContinuous, PIContinuousY
 

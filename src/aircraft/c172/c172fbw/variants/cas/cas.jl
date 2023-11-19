@@ -2,22 +2,13 @@ module C172FBWCAS
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays, HDF5, Interpolations
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.GUI
-using Flight.FlightCore.IODevices
-using Flight.FlightCore.Joysticks
-using Flight.FlightCore.Utils: Ranged, saturation, wrap_to_π
+using Flight.FlightCore
+using Flight.FlightCore.Utils
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Terrain
-using Flight.FlightPhysics.Atmosphere
+using Flight.FlightPhysics
 
-using Flight.FlightComponents.Control
-using Flight.FlightComponents.Piston
-using Flight.FlightComponents.Aircraft
-using Flight.FlightComponents.Control: PIDDiscreteVectorY, IntegratorDiscreteY, LeadLagDiscreteY, PIDDiscreteY
+using Flight.FlightComponents
+using Flight.FlightComponents.Control: IntegratorDiscreteY, PIDDiscreteY
 
 using ...C172
 using ..C172FBW

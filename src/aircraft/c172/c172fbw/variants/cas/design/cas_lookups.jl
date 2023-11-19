@@ -1,14 +1,11 @@
 module CASLookups
 
 using Flight
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
+using Flight.FlightCore
 
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightComponents.Aircraft
-using Flight.FlightComponents.Control
-using Flight.FlightComponents.Aircraft
+using Flight.FlightPhysics
+using Flight.FlightComponents
+
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
 using Flight.FlightAircraft.C172FBWCAS

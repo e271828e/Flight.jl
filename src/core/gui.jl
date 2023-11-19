@@ -18,7 +18,7 @@ export dynamic_button, toggle_switch, display_bar, safe_slider, safe_input, @run
 export HSV_amber, HSV_gray, HSV_green, HSV_red
 
 ################################################################################
-############################# Renderer####################################
+############################### Renderer #######################################
 
 @enum CImGuiStyle begin
     classic = 0

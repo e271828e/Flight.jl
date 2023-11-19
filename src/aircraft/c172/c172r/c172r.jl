@@ -5,23 +5,11 @@ using ControlSystems, RobustAndOptimalControl
 using NLopt
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.GUI
-using Flight.FlightCore.IODevices
-using Flight.FlightCore.Joysticks
-using Flight.FlightCore.Utils: Ranged
+using Flight.FlightCore
+using Flight.FlightCore.Utils
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Terrain
-using Flight.FlightPhysics.Atmosphere
-
-using Flight.FlightComponents.Propellers
-using Flight.FlightComponents.Piston
-using Flight.FlightComponents.Aircraft
-using Flight.FlightComponents.Control
+using Flight.FlightPhysics
+using Flight.FlightComponents
 
 using ..C172
 

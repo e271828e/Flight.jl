@@ -2,9 +2,7 @@ module Geodesy
 
 using LinearAlgebra, StaticArrays, ComponentArrays, SHA, UnPack, Interpolations, HDF5
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.GUI
+using Flight.FlightCore
 
 using ..Attitude
 

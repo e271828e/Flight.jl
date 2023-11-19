@@ -4,23 +4,11 @@ using LinearAlgebra, StaticArrays, ComponentArrays, UnPack, HDF5, Interpolations
 using Reexport
 using NLopt
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.GUI
-using Flight.FlightCore.IODevices
-using Flight.FlightCore.Joysticks
-using Flight.FlightCore.Utils: Ranged, linear_scaling
+using Flight.FlightCore
+using Flight.FlightCore.Utils
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Terrain
-using Flight.FlightPhysics.Atmosphere
-
-using Flight.FlightComponents.LandingGear
-using Flight.FlightComponents.Propellers
-using Flight.FlightComponents.Piston
-using Flight.FlightComponents.Aircraft
+using Flight.FlightPhysics
+using Flight.FlightComponents
 
 
 ################################################################################
@@ -862,7 +850,7 @@ end
     x_fuel::Ranged{Float64, 0., 1.} = 0.5 #normalized fuel load
     mixture::Ranged{Float64, 0., 1.} = 0.5 #engine mixture control
     flaps::Ranged{Float64, 0., 1.} = 0.0 #flap setting
-    payload::C172.PayloadU = C172.PayloadU()
+    payload::C172.PayloadU = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50)
 end
 
 

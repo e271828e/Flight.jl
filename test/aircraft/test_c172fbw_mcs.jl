@@ -2,20 +2,12 @@ module TestC172FBWMCS
 
 using Test, UnPack, BenchmarkTools, Sockets
 
-using Flight.FlightCore.Systems
+using Flight.FlightCore
 using Flight.FlightCore.Sim
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.IODevices
-using Flight.FlightCore.Joysticks
-using Flight.FlightCore.XPC
+using Flight.FlightCore.Visualization
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.Terrain
-
-using Flight.FlightComponents.Aircraft
-using Flight.FlightComponents.Piston
+using Flight.FlightPhysics
+using Flight.FlightComponents
 
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW

@@ -29,7 +29,8 @@ module Attitude
 using StaticArrays, ComponentArrays, StructArrays
 using LinearAlgebra
 
-using Flight.FlightCore.Plotting
+using Flight.FlightCore
+
 using ..Quaternions
 
 export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz

@@ -4,8 +4,7 @@ using Test
 using UnPack
 using BenchmarkTools
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Atmosphere
+using Flight.FlightPhysics
 using Flight.FlightComponents.Aircraft
 
 export test_aircraft

@@ -5,14 +5,10 @@ using UnPack
 using BenchmarkTools
 using LinearAlgebra
 
-using Flight.FlightCore.Systems
+using Flight.FlightCore
 using Flight.FlightCore.Sim
-using Flight.FlightCore.Plotting
 
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Atmosphere
+using Flight.FlightPhysics
 using Flight.FlightPhysics.Atmosphere: p_std, T_std
 
 using Flight.FlightComponents.Propellers

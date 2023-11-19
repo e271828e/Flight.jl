@@ -2,7 +2,6 @@ module Terrain
 
 using StaticArrays
 
-using Flight.FlightCore.Systems
 using ..Geodesy
 
 export AbstractTerrain, DummyTerrain, HorizontalTerrain

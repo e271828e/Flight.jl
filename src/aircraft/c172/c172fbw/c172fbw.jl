@@ -3,23 +3,11 @@ module C172FBW
 using LinearAlgebra, StaticArrays, ComponentArrays, UnPack, Reexport
 using ControlSystems, RobustAndOptimalControl
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.GUI
-using Flight.FlightCore.IODevices
-using Flight.FlightCore.Joysticks
-using Flight.FlightCore.Utils: Ranged
+using Flight.FlightCore
+using Flight.FlightCore.Utils
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Terrain
-using Flight.FlightPhysics.Atmosphere
-
-using Flight.FlightComponents.Propellers
-using Flight.FlightComponents.Piston
-using Flight.FlightComponents.Aircraft
-using Flight.FlightComponents.Control
+using Flight.FlightPhysics
+using Flight.FlightComponents
 
 using ..C172
 
@@ -521,7 +509,11 @@ function XLinear(x_physics::ComponentVector)
 end
 
 function ULinear(physics::System{<:C172FBW.Physics{NED}})
-
+    #The velocity states in the linearized model are meant to be aerodynamic, so
+    #they can be readily used for flight control design. Since the velocity
+    #states in the nonlinear model are Earth-relative, we need to ensure wind
+    #velocity is set to zero for linearization.
+    physics.atmosphere.u.v_ew_n .= 0
     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = physics.airframe.act.u
     ULinear(; throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd)
 

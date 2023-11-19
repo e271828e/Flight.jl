@@ -4,9 +4,7 @@ using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using ControlSystems: ControlSystemsBase, ControlSystems, ss
 using RobustAndOptimalControl
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.GUI
+using Flight.FlightCore
 
 export LinearStateSpace, submodel
 export PIContinuous, PIDDiscreteVector

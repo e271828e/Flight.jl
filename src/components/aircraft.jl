@@ -3,19 +3,10 @@ module Aircraft
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.GUI
-using Flight.FlightCore.XPC
+using Flight.FlightCore
+using Flight.FlightPhysics
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.RigidBody
-using Flight.FlightPhysics.Atmosphere
-using Flight.FlightPhysics.Terrain
-
-using Flight.FlightComponents.Control
+using ..Control
 
 export AbstractAirframe, EmptyAirframe
 export AbstractAvionics, NoAvionics
@@ -246,9 +237,9 @@ end
 
 ############################# XPlaneConnect ####################################
 
-XPC.set_position!(xp::XPCDevice, y::TemplateY) = XPC.set_position!(xp, y.physics)
+Visualization.set_position!(xpc::XPCDevice, y::TemplateY) = Visualization.set_position!(xpc, y.physics)
 
-function XPC.set_position!(xp::XPCDevice, y::PhysicsY)
+function Visualization.set_position!(xpc::XPCDevice, y::PhysicsY)
 
     aircraft = 0
 
@@ -261,7 +252,7 @@ function XPC.set_position!(xp::XPCDevice, y::PhysicsY)
     theta = rad2deg(e_nb.θ)
     phi = rad2deg(e_nb.φ)
 
-    XPC.set_position!(xp; lat, lon, h_o, psi, theta, phi, aircraft)
+    Visualization.set_position!(xpc; lat, lon, h_o, psi, theta, phi, aircraft)
 
 end
 

@@ -2,9 +2,7 @@ module RigidBody
 
 using StaticArrays, LinearAlgebra, UnPack
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Plotting
-using Flight.FlightCore.GUI
+using Flight.FlightCore
 
 using ..Attitude
 using ..Geodesy
