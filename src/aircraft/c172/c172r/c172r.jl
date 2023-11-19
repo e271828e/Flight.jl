@@ -350,9 +350,9 @@ end
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
-    v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #Ob/ECEF velocity, body axes
+    v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
     α_filt::Float64 = 0.0; β_filt::Float64 = 0.0; #filtered airflow angles
-    ω_eng::Float64 = 0.0; fuel::Float64 = 0.0 #engine speed, fuel fraction
+    ω_eng::Float64 = 0.0; fuel::Float64 = 0.0; #engine speed, fuel fraction
 end
 
 #flaps and mixture are trim parameters and thus omitted from the control vector
@@ -363,16 +363,21 @@ end
     rudder::Float64 = 0.0
 end
 
-@kwdef struct YLinear <: FieldVector{24, Float64}
+#all states (for full-state feedback), plus other useful stuff, plus control inputs
+@kwdef struct YLinear <: FieldVector{33, Float64}
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
-    EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
-    α::Float64 = 0.0; β::Float64 = 0.0; #airflow angles
+    v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
+    α_filt::Float64 = 0.0; β_filt::Float64 = 0.0; #filtered airflow angles
+    ω_eng::Float64 = 0.0; fuel::Float64 = 0.0; #engine speed, available fuel fraction
     f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
+    EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
+    α::Float64 = 0.0; β::Float64 = 0.0; #unfiltered airflow angles
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
     χ::Float64 = 0.0; γ::Float64 = 0.0; c::Float64 = 0.0; #track and flight path angles, climb rate
-    ω_eng::Float64 = 0.0; m_fuel::Float64 = 0.0 #engine speed, fuel mass
+    throttle::Float64 = 0.0; aileron::Float64 = 0.0; #control inputs
+    elevator::Float64 = 0.0; rudder::Float64 = 0.0; #control inputs
 end
 
 
@@ -402,26 +407,36 @@ end
 
 function YLinear(physics::System{<:C172R.Physics{NED}})
 
-    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_n, χ_gnd, γ_gnd = physics.y.kinematics
+    @unpack throttle, aileron, elevator, rudder = physics.airframe.act.u
+    @unpack airframe, air, rigidbody, kinematics = physics.y
+    @unpack pwp, fuel, aero,act = airframe
+
+    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_b, v_eOb_n, χ_gnd, γ_gnd = kinematics
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
 
     h = h_e
     p, q, r = ω_eb_b
+    v_x, v_y, v_z = v_eOb_b
     v_N, v_E, v_D = v_eOb_n
-    χ = χ_gnd
-    γ = γ_gnd
-    c = -v_D
+    ω_eng = pwp.engine.ω
+    fuel = fuel.x_avail
+    α_filt = aero.α_filt
+    β_filt = aero.β_filt
+
     f_x, f_y, f_z = physics.y.rigidbody.f_G_b
     EAS = physics.y.air.EAS
     TAS = physics.y.air.TAS
     α = physics.y.air.α_b
     β = physics.y.air.β_b
-    ω_eng = physics.y.airframe.pwp.engine.ω
-    m_fuel = physics.y.airframe.fuel.m_avail
+    χ = χ_gnd
+    γ = γ_gnd
+    c = -v_D
 
-    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, EAS, TAS, α, β,
-            f_x, f_y, f_z, v_N, v_E, v_D, χ, γ, c, ω_eng, m_fuel)
+    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel,
+            f_x, f_y, f_z, EAS, TAS, α, β, v_N, v_E, v_D, χ, γ, c,
+            throttle, aileron, elevator, rudder)
+
 
 end
 
@@ -432,6 +447,11 @@ Aircraft.y_linear(physics::System{<:C172R.Physics{NED}}) = YLinear(physics)
 
 function Aircraft.assign_u!(physics::System{<:C172R.Physics{NED}}, u::AbstractVector{Float64})
 
+    #The velocity states in the linearized model are meant to be aerodynamic so
+    #they can be readily used for flight control design. Since the velocity
+    #states in the nonlinear model are Earth-relative, we need to ensure wind
+    #velocity is set to zero for linearization.
+    physics.atmosphere.u.v_ew_n .= 0
     @unpack throttle, aileron, elevator, rudder = ULinear(u)
     @pack! physics.airframe.act.u = throttle, aileron, elevator, rudder
 
@@ -466,15 +486,15 @@ function Control.LinearStateSpace(
         return lm
 
     elseif model === :lon
-        x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :h]
+        x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng]
         u_labels = [:elevator, :throttle]
-        y_labels = [:q, :θ, :α, :EAS, :TAS, :f_x, :f_z, :γ, :c, :ω_eng, :v_D, :h]
+        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :c, :elevator, :throttle])
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat
-        u_labels = [:aileron, :rudder]
         x_labels = [:p, :r, :φ, :ψ, :v_x, :v_y, :β_filt]
-        y_labels = [:p, :r, :φ, :ψ, :β, :f_y, :χ]
+        u_labels = [:aileron, :rudder]
+        y_labels = vcat(y_labels, [:f_y, :β, :χ, :aileron, :rudder])
         return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     else
