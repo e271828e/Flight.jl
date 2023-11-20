@@ -13,12 +13,13 @@ using Flight.FlightCore.Plotting
 
 #avoid namespace conflicts with ControlSystems
 using Flight.FlightComponents.Control
-import Flight.FlightComponents.Control.Continuous: PIContinuous as PIContinuous
+import Flight.FlightComponents.Control.Continuous: PIVector as PIContinuous
 import Flight.FlightComponents.Control.Continuous: LinearizedSS
 import Flight.FlightComponents.Control.Discrete: PID as PIDDiscrete
 import Flight.FlightComponents.Control.Discrete: PIDVector as PIDDiscreteVector
 import Flight.FlightComponents.Control.Discrete: LeadLag as LeadLagDiscrete
 import Flight.FlightComponents.Control.Discrete: Integrator as IntegratorDiscrete
+import Flight.FlightComponents.Control.Discrete: IntegratorVector as IntegratorDiscreteVector
 
 export test_control
 
@@ -29,6 +30,7 @@ function test_control()
         test_discrete_pid()
         test_discrete_pid_vector()
         test_discrete_integrator()
+        test_discrete_integrator_vector()
         test_discrete_leadlag()
     end
 end
@@ -102,48 +104,42 @@ end
 
 function test_continuous_pi(save = false)
 
-    @testset verbose = true "Continuous PI" begin
+    @testset verbose = true "Continuous PIVector" begin
 
-        comp = PIContinuous{2}(k_p = 1.0, k_i = 1.0, k_l = 0.0);
+        comp = PIContinuous{2}();
         sys = System(comp)
         sim = Simulation(sys)
 
-        sys.u.setpoint .= 0.0
-        sys.u.feedback .= 1.0
+        sys.u.k_p .= 1.0
+        sys.u.k_i .= 1.0
+        sys.u.input .= -1.0
         sys.u.bound_lo[1] = -1
         sys.u.bound_hi[1] = 1
         step!(sim, 2, true)
 
         @test sys.y.sat_out[1] == -1
-        @test sys.y.int_halt[1] #integrator 1 should have been halted
+        @test sys.y.int_halted[1] #integrator 1 should have been halted
         @test abs(sys.y.y_i[1]) < 0.1
-        @test sys.y.out[1] ≈ -1.0
+        @test sys.y.output[1] ≈ -1.0
 
         @test sys.y.sat_out[2] == 0
-        @test !sys.y.int_halt[2] #integrator 2 should have not
+        @test !sys.y.int_halted[2] #integrator 2 should have not
         @test sys.y.y_i[2] ≈ -2.0 atol = 1e-2
-        @test sys.y.out[2] ≈ -3.0 atol = 1e-2
-        y_i0 = sys.y.y_i
+        @test sys.y.output[2] ≈ -3.0 atol = 1e-2
 
         sys.u.sat_ext[2] = -sign(sys.y.u_i[2]) #set opposite external saturation
         step!(sim, 1, true)
-        @test !sys.y.int_halt[2] #integrator 2 should have not halted
+        @test !sys.y.int_halted[2] #integrator 2 should have not halted
         sys.u.sat_ext[2] = sign(sys.y.u_i[1]) #set same sign saturation
         step!(sim, 1, true)
-        @test sys.y.int_halt[2] #integrator 2 should have halted
-
-        sys.u.anti_windup[1] = false #disable anti-windup in the first component
-        step!(sim, 2, true)
-        @test sys.y.sat_out[1] == -1 #output still saturated
-        @test !sys.y.int_halt[1] #but integrator no longer halted
-        @test abs(sys.y.y_i[1]) > abs(y_i0[1]) #integrator should have kept accumulating
+        @test sys.y.int_halted[2] #integrator 2 should have halted
 
         sys.u.reset[2] = true
         @test f_step!(sys) == true
         @test sys.x[2] == 0 #sys.x changes immediately
         f_ode!(sys)
         @test sys.y.y_i[2] == 0 #but sys.y needs f_ode! to update
-        @test sys.y.out[2] == 0 #idem
+        @test sys.y.output[2] == 0 #idem
         @test f_step!(sys) == false #once reset, no further changes to sys.x[3]
 
         @test @ballocated($f_ode!($sys)) == 0
@@ -401,7 +397,6 @@ function test_discrete_pid_vector(save = false)
 
 end #function
 
-
 function test_discrete_integrator()
 
     @testset verbose = true "Discrete Integrator" begin
@@ -451,6 +446,66 @@ function test_discrete_integrator()
         @test !sys.y.halted
         @test sys.u.bound_lo != 0
         @test sys.u.bound_hi != 0
+
+        @test @ballocated($f_ode!($sys)) == 0
+        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_step!($sys)) == 0
+
+        end #testset
+
+end #function
+
+
+
+function test_discrete_integrator_vector()
+
+    @testset verbose = true "Discrete Vector Integrator" begin
+
+        sys = IntegratorDiscreteVector{2}() |> System;
+        sim = Simulation(sys; Δt = 0.01)
+
+        sys.u.bound_lo .= -1
+        sys.u.bound_hi .= 2
+
+        sys.u.input .= -1
+        step!(sim, 2, true)
+
+        @test sys.s.x0[2] <= -1
+        @test sys.y.output[2] ≈ -1.0
+        @test sys.y.sat_out[2] == -1
+        @test sys.y.halted[2]
+
+        sys.u.input .= 1
+        step!(sim, 2, true)
+        @test sys.y.sat_out[1] == 0
+        @test !sys.y.halted[1]
+
+        step!(sim, 2, true)
+        @test sys.y.sat_out[2] == 1
+        @test sys.y.halted[2]
+
+        sys.u.input .= -1
+        step!(sim, 1, true)
+        @test sys.y.sat_out[1] == 0
+        @test !sys.y.halted[1]
+
+        sys.u.sat_ext[1] = -sign(sys.u.input[1])
+        step!(sim, 1, true)
+        @test !sys.y.halted[1]
+        sys.u.sat_ext[1] = sign(sys.u.input[1])
+        step!(sim, 1, true)
+        @test sys.y.halted[1]
+
+        Control.Discrete.reset!(sys)
+
+        @test sys.s.x0[2] == 0
+        @test sys.s.sat_out_0[2] == 0
+        @test sys.y.x1[2] == 0
+        @test sys.y.output[2] == 0
+        @test sys.y.sat_out[2] == 0
+        @test !sys.y.halted[2]
+        @test sys.u.bound_lo[2] != 0
+        @test sys.u.bound_hi[2] != 0
 
         @test @ballocated($f_ode!($sys)) == 0
         @test @ballocated($f_disc!($sys, 1)) == 0

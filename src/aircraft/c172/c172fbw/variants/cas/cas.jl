@@ -8,7 +8,7 @@ using Flight.FlightCore.Utils
 using Flight.FlightPhysics
 
 using Flight.FlightComponents
-using Flight.FlightComponents.Control.Discrete: Integrator, PID, IntegratorOutput, PIDOutput
+using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput, PID, PIDOutput
 import Flight.FlightComponents.Control.PIDOpt
 
 using ...C172

@@ -298,88 +298,80 @@ end
 ####################### Proportional-Integral Compensator ######################
 ################################################################################
 
-struct PIContinuous{N} <: SystemDefinition #Parallel form
-    k_p::SVector{N,Float64} #proportional gain
-    k_i::SVector{N,Float64} #integral gain
-    k_l::SVector{N,Float64} #integrator leak factor
-    β_p::SVector{N,Float64} #proportional path input weighting factor
-end
+struct PIVector{N} <: SystemDefinition end
 
-function PIContinuous{N}(; k_p::Real = 1.0, k_i::Real = 0.1, k_l::Real = 0.0,
-                           β_p::Real = 1.0) where {N}
-    s2v = (x)->fill(x,N)
-    PIContinuous{N}(s2v(k_p), s2v(k_i), s2v(k_l), s2v(β_p))
-end
-
-@kwdef struct PIContinuousU{N}
-    setpoint::MVector{N,Float64} = zeros(N) #commanded setpoint
-    feedback::MVector{N,Float64} = zeros(N) #plant feedback (non-inverted)
+@kwdef struct PIVectorInput{N}
+    k_p::MVector{N,Float64} = ones(N) #proportional gain
+    k_i::MVector{N,Float64} = zeros(N) #integral gain
+    k_l::MVector{N,Float64} = zeros(N) #integrator leak factor
+    β_p::MVector{N,Float64} = ones(N) #proportional path setpoint weighting factor
     bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
     bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
+    input::MVector{N,Float64} = zeros(N) #input (setpoint - feedback)
     sat_ext::MVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
-    anti_windup::MVector{N,Bool} = ones(Bool, N) #enable anti wind-up
-    reset::MVector{N,Bool} = zeros(Bool, N) #reset PID states and null outputs
+    reset::MVector{N,Bool} = zeros(Bool, N) #reset PID continuous state
 end
 
-@kwdef struct PIContinuousY{N}
-    setpoint::SVector{N,Float64} = zeros(SVector{N}) #commanded setpoint
-    feedback::SVector{N,Float64} = zeros(SVector{N}) #plant feedback (non-inverted)
+@kwdef struct PIVectorOutput{N}
+    k_p::SVector{N,Float64} = ones(SVector{N})
+    k_i::SVector{N,Float64} = zeros(SVector{N})
+    k_l::SVector{N,Float64} = zeros(SVector{N})
+    β_p::SVector{N,Float64} = ones(SVector{N})
     bound_lo::SVector{N,Float64} = fill(-Inf, SVector{N}) #lower output bounds
     bound_hi::SVector{N,Float64} = fill(Inf, SVector{N}) #higher output bounds
-    anti_windup::SVector{N,Bool} = zeros(SVector{N, Bool}) #anti wind-up enabled
+    input::SVector{N,Float64} = zeros(SVector{N})
+    sat_ext::SVector{N,Int64} = zeros(SVector{N, Int64}) #external (signed) saturation signal
     reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID states and null outputs
     u_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path input
     u_i::SVector{N,Float64} = zeros(SVector{N}) #integral path input
     y_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path output
     y_i::SVector{N,Float64} = zeros(SVector{N}) #integral path output
     out_free::SVector{N,Float64} = zeros(SVector{N}) #total output, free
-    out::SVector{N,Float64} = zeros(SVector{N}) #actual output
-    sat_ext::SVector{N,Int64} = zeros(SVector{N, Int64}) #external (signed) saturation signal
     sat_out::SVector{N,Int64} = zeros(SVector{N, Int64}) #current output saturation status
-    int_halt::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
+    output::SVector{N,Float64} = zeros(SVector{N}) #actual output
+    int_halted::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
-Systems.init(::SystemX, ::PIContinuous{N}) where {N} = zeros(N)
-Systems.init(::SystemY, ::PIContinuous{N}) where {N} = PIContinuousY{N}()
-Systems.init(::SystemU, ::PIContinuous{N}) where {N} = PIContinuousU{N}()
+Systems.init(::SystemX, ::PIVector{N}) where {N} = zeros(N)
+Systems.init(::SystemY, ::PIVector{N}) where {N} = PIVectorOutput{N}()
+Systems.init(::SystemU, ::PIVector{N}) where {N} = PIVectorInput{N}()
 
-function Systems.f_ode!(sys::System{<:PIContinuous{N}}) where {N}
+function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
 
-    @unpack ẋ, x, u, constants = sys
-    @unpack k_p, k_i, k_l, β_p = constants
+    @unpack ẋ, x, u = sys
 
     x_i = SVector{N, Float64}(x)
-    setpoint = SVector(u.setpoint)
-    feedback = SVector(u.feedback)
+    k_p = SVector(u.k_p)
+    k_i = SVector(u.k_i)
+    k_l = SVector(u.k_l)
+    β_p = SVector(u.β_p)
+    input = SVector(u.input)
     bound_lo = SVector(u.bound_lo)
     bound_hi = SVector(u.bound_hi)
-    anti_windup = SVector(u.anti_windup)
     sat_ext = SVector(u.sat_ext)
     reset = SVector(u.reset)
 
-    u_p = β_p .* setpoint - feedback
-    u_i = setpoint - feedback
+    u_p = β_p .* input
+    u_i = input
 
     y_p = k_p .* u_p .* .!reset
     y_i = k_i .* x_i .* .!reset
     out_free = y_p + y_i #raw output
-    out = clamp.(out_free, bound_lo, bound_hi) #clamped output
+    output = clamp.(out_free, bound_lo, bound_hi) #clamped output
 
     sat_hi = out_free .>= bound_hi
     sat_lo = out_free .<= bound_lo
     sat_out = sat_hi - sat_lo
-    int_halt = ((sign.(u_i .* sat_out) .> 0) .|| (sign.(u_i .* sat_ext) .> 0)) .&& anti_windup
+    int_halted = ((sign.(u_i .* sat_out) .> 0) .|| (sign.(u_i .* sat_ext) .> 0))
 
-    ẋ .= (u_i .* .!int_halt - k_l .* x_i) .* .!reset
+    ẋ .= (u_i .* .!int_halted - k_l .* x_i) .* .!reset
 
-    sys.y = PIContinuousY(; setpoint, feedback, bound_lo, bound_hi,
-                            sat_ext, anti_windup, reset,
-                            u_p, y_p, u_i, y_i, int_halt,
-                            out_free, out, sat_out)
+    sys.y = PIVectorOutput(; k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext, reset,
+                     u_p, u_i, y_p, y_i, out_free, sat_out, output, int_halted)
 
 end
 
-function Systems.f_step!(sys::System{<:PIContinuous{N}}) where {N}
+function Systems.f_step!(sys::System{<:PIVector{N}}) where {N}
 
     x = SVector{N,Float64}(sys.x)
     x_new = x .* .!sys.u.reset
@@ -393,25 +385,46 @@ end
 
 # ############################## Plotting ########################################
 
-function Plotting.make_plots(th::TimeHistory{<:PIContinuousY}; kwargs...)
+function Plotting.make_plots(th::TimeHistory{<:PIVectorOutput}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    setpoint = plot(th.setpoint; title = "Setpoint", ylabel = L"$r$", kwargs...)
-    feedback = plot(th.feedback; title = "Feedback", ylabel = L"$f$", kwargs...)
+    input = plot(th.input; title = "Input", ylabel = L"$e$", kwargs...)
+    output = plot(th.output; title = "Output", ylabel = L"$y$", kwargs...)
+    reset = plot(th.reset; title = "Reset", ylabel = L"$r$", kwargs...)
 
-    pd[:sf] = plot(setpoint, feedback;
-        plot_title = "Setpoint & Feedback",
-        layout = (1,2),
+    pd[:sf] = plot(input, output, reset;
+        plot_title = "Input, Output & Reset",
+        layout = (1,3),
         link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    sat_ext = plot(th.sat_ext; title = "External Saturation", ylabel = "", kwargs...)
-    anti_windup = plot(th.anti_windup; title = "Anti-Windup Enable", ylabel = "", kwargs...)
-    reset = plot(th.reset; title = "Reset", ylabel = "", kwargs...)
+    k_p = plot(th.k_p; title = "Proportional Gain", ylabel = L"$k_p$", kwargs...)
+    k_i = plot(th.k_i; title = "Integral Gain", ylabel = L"$k_i$", kwargs...)
+    k_l = plot(th.k_l; title = "Leak Factor", ylabel = L"$k_d$", kwargs...)
 
-    pd[:ctl] = plot(anti_windup, sat_ext, reset;
-        plot_title = "External Control Signals",
+    pd[:p1] = plot(k_p, k_i, k_l;
+        plot_title = "Parameters",
+        layout = (3,1),
+        link = :none,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    β_p = plot(th.β_p; title = "Proportional Input Weighting", ylabel = L"$\beta_p$", kwargs...)
+    bound_lo = plot(th.bound_lo; title = "Lower Output Bound", ylabel = L"$y_{min}$", kwargs...)
+    bound_hi = plot(th.bound_hi; title = "Upper Output Bound", ylabel = L"$y_{max}$", kwargs...)
+
+    pd[:p2] = plot(β_p, bound_lo, bound_hi;
+        plot_title = "Parameters",
+        layout = (3,1),
+        link = :none,
+        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+
+    sat_ext = plot(th.sat_ext; title = "External Saturation Input", ylabel = "", kwargs...)
+    sat_out = plot(th.sat_out; title = "Output Saturation", ylabel = "", kwargs...)
+    int_halted = plot(th.int_halted; title = "Integrator Halted", ylabel = "", kwargs...)
+
+    pd[:awu] = plot(sat_ext, sat_out, int_halted;
+        plot_title = "Anti-Windup",
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
@@ -426,19 +439,17 @@ function Plotting.make_plots(th::TimeHistory{<:PIContinuousY}; kwargs...)
 
     u_i = plot(th.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
     y_i = plot(th.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
-    int_halt = plot(th.int_halt; title = "Integrator Halted", ylabel = "", kwargs...)
 
-    pd[:int] = plot(u_i, y_i, int_halt;
+    pd[:int] = plot(u_i, y_i, int_halted;
         plot_title = "Integral Path",
         layout = (1,3),
         link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
     out_free = plot(th.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
-    out = plot(th.out; title = "Actual", ylabel = L"$y$", kwargs...)
-    sat_out = plot(th.sat_out; title = "Saturation", ylabel = L"$S$", kwargs...)
+    output = plot(th.output; title = "Actual", ylabel = L"$y$", kwargs...)
 
-    pd[:out] = plot(out_free, out, sat_out;
+    pd[:output] = plot(out_free, output, sat_out;
         plot_title = "PID Output",
         layout = (1,3),
         link = :y,
@@ -451,34 +462,36 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{$N}") where {N}
+function GUI.draw(sys::System{<:PIVector{N}}, label::String = "PIVector{$N}") where {N}
 
-    @unpack setpoint, feedback, bound_lo, bound_hi, sat_ext, anti_windup, reset,
-            u_p, y_p, u_i, y_i, int_halt, out_free, out, sat_out = sys.y
+    @unpack k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext, reset,
+            u_p, u_i, y_p, y_i, out_free, sat_out, output, int_halted = sys.y
 
     # CImGui.Begin(label)
 
-        CImGui.Text("Setpoint = $setpoint")
-        CImGui.Text("Feedback = $feedback")
-        CImGui.Text("Lower Bound = $bound_lo")
-        CImGui.Text("Upper Bound = $bound_hi")
-        CImGui.Text("Anti Wind-up = $anti_windup")
-        CImGui.Text("Reset = $reset")
+        CImGui.Text("Proportional Gain = $k_p")
+        CImGui.Text("Integral Gain = $k_i")
+        CImGui.Text("Integrator Leak Factor = $k_l")
+        CImGui.Text("Proportional Input Weighting = $β_p")
+        CImGui.Text("Lower Output Bound = $bound_lo")
+        CImGui.Text("Upper Output Bound = $bound_hi")
+        CImGui.Text("Input = $input")
+        CImGui.Text("External Saturation Input = $sat_ext")
+        CImGui.Text("Reset Input = $reset")
         CImGui.Text("Proportional Path Input = $u_p")
         CImGui.Text("Proportional Path Output = $y_p")
         CImGui.Text("Integral Path Input = $u_i")
         CImGui.Text("Integral Path Output = $y_i")
         CImGui.Text("Free Output = $out_free")
-        CImGui.Text("Actual Output = $out")
-        CImGui.Text("External Saturation = $sat_ext")
         CImGui.Text("Output Saturation = $sat_out")
-        CImGui.Text("Integrator Halted = $int_halt")
+        CImGui.Text("Actual Output = $output")
+        CImGui.Text("Integrator Halted = $int_halted")
 
     # CImGui.End()
 
 end #function
 
-function GUI.draw!(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous{$N}") where {N}
+function GUI.draw!(sys::System{<:PIVector{N}}, label::String = "PIVector{$N}") where {N}
 
     CImGui.Begin(label)
 
@@ -486,7 +499,7 @@ function GUI.draw!(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous
         GUI.draw(sys, label)
         CImGui.TreePop()
     end
-    #this shows how to get input from widgets without the @cstatic and @c macros
+    #shows how to get input from widgets without the @cstatic and @c macros
     if CImGui.TreeNode("Inputs")
         for i in 1:N
             if CImGui.TreeNode("[$i]")
@@ -584,11 +597,80 @@ function Systems.f_disc!(sys::System{<:Integrator}, Δt::Real)
 
 end
 
+################################################################################
+
+struct IntegratorVector{N} <: SystemDefinition end
+
+@kwdef mutable struct IntegratorVectorInput{N}
+    input::MVector{N,Float64} = zeros(Float64, N)
+    sat_ext::MVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
+    bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
+    bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
+end
+
+@kwdef mutable struct IntegratorVectorState{N}
+    x0::MVector{N,Float64} = zeros(N) #previous integrator state
+    sat_out_0::MVector{N,Int64} = zeros(N) #previous output saturation status
+end
+
+@kwdef struct IntegratorVectorOutput{N}
+    input::SVector{N,Float64} = zeros(SVector{N})
+    sat_ext::SVector{N,Int64} = zeros(SVector{N, Int64}) #external (signed) saturation signal
+    bound_lo::SVector{N,Float64} = fill(-Inf, SVector{N}) #lower output bounds
+    bound_hi::SVector{N,Float64} = fill(Inf, SVector{N}) #higher output bounds
+    x1::SVector{N,Float64} = zeros(N) #current integrator state
+    output::SVector{N,Float64} = zeros(SVector{N}) #actual PID output
+    sat_out::SVector{N,Int64} = zeros(SVector{N, Int64}) #output saturation status
+    halted::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
+end
+
+Systems.init(::SystemY, ::IntegratorVector{N}) where {N} = IntegratorVectorOutput{N}()
+Systems.init(::SystemU, ::IntegratorVector{N}) where {N} = IntegratorVectorInput{N}()
+Systems.init(::SystemS, ::IntegratorVector{N}) where {N} = IntegratorVectorState{N}()
+
+function reset!(sys::System{<:IntegratorVector})
+    sys.u.input .= 0
+    sys.u.sat_ext .= 0
+    sys.s.x0 .= 0
+    sys.s.sat_out_0 .= 0
+    f_disc!(sys, 1.0)
+end
+
+function Systems.f_disc!(sys::System{<:IntegratorVector}, Δt::Real)
+
+    @unpack s, u = sys
+
+    input = SVector(u.input)
+    bound_lo = SVector(u.bound_lo)
+    bound_hi = SVector(u.bound_hi)
+    sat_ext = SVector(u.sat_ext)
+
+    x0 = SVector(s.x0)
+    sat_out_0 = SVector(s.sat_out_0)
+
+    halted = ((sign.(input .* sat_out_0) .> 0) .|| (sign.(input .* sat_ext) .> 0))
+    x1 = x0 + Δt .* input .* .!halted
+    output = clamp.(x1, bound_lo, bound_hi)
+
+    sat_hi = x1 .>= bound_hi
+    sat_lo = x1 .<= bound_lo
+    sat_out = sat_hi - sat_lo
+
+    s.x0 .= x1
+    s.sat_out_0 .= sat_out
+
+    sys.y = IntegratorVectorOutput(; input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted)
+
+    return false
+
+end
+
 
 #################################### GUI #######################################
 
 
-function GUI.draw(sys::System{<:Integrator}, label::String = "Integrator")
+function GUI.draw(sys::Union{System{<:Integrator}, System{<:IntegratorVector}},
+                    label::String = "Integrator")
 
     @unpack x0, sat_out_0 = sys.s
     @unpack input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted = sys.y
@@ -812,7 +894,7 @@ struct PIDVector{N} <: SystemDefinition end
     β_d::MVector{N,Float64} = ones(N) #derivative path setpoint weighting factor
     bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
     bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
-    input::MVector{N,Float64} = zeros(Float64, N) #reset PID states and null outputs
+    input::MVector{N,Float64} = zeros(Float64, N) #input
     sat_ext::MVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
 end
 
@@ -1033,6 +1115,32 @@ function GUI.draw(sys::Union{System{<:PID}, System{<:PIDVector}},
     # CImGui.End()
 
 end #function
+
+
+############################## LQRTracker ######################################
+################################################################################
+
+struct LQRTracker{NX, NU, NY, NUX, NUY} <: SystemDefinition
+    integrator::IntegratorVector{NY}
+
+    function LQRTracker{NX, NU, NY}() where {NX, NU, NY}
+        @assert NY <= NU "Can't have more command variables than control inputs"
+        NUX = NU * NX
+        NUY = NU * NY
+        integrator = IntegratorVector{NY}()
+        new{NX, NU, NY, NUX, NUY}(integrator)
+    end
+end
+
+
+@kwdef struct LQRTrackerU{NX, NU, NY, NUX, NUY}
+    x_trim::MVector{NX, Float64} = zeros(NX)
+    u_trim::MVector{NU, Float64} = zeros(NU)
+    y_trim::MVector{NY, Float64} = zeros(NY)
+    C_fbk::MMatrix{NU, NX, Float64, NUX} = zeros(NU, NX)
+    C_fwd::MMatrix{NU, NY, Float64, NUY} = zeros(NU, NY)
+    C_int::MMatrix{NU, NY, Float64, NUY} = zeros(NU, NY)
+end
 
 
 end #submodule

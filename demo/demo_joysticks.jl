@@ -3,13 +3,13 @@ module DemoJoysticks
 using UnPack
 
 using Flight.FlightCore.GUI
-using Flight.FlightComponents.Control.Continuous: PIContinuous
+using Flight.FlightComponents.Control.Continuous: PIVector
 
 export demo_joysticks
 
 struct TestMapping <: InputMapping end
 
-function IODevices.assign!(sys::System{<:PIContinuous{2}},
+function IODevices.assign!(sys::System{<:PIVector{2}},
                             joystick::T16000M,
                             ::TestMapping) where {N}
 
@@ -19,7 +19,7 @@ end
 
 function demo_joysticks()
 
-    sys = PIContinuous{2}(k_p = 0, k_i = 0.2) |> System
+    sys = PIVector{2}(k_p = 0, k_i = 0.2) |> System
     sim = Simulation(sys; t_end = 30, dt = 0.02)
 
     joy_interfaces = Vector{IODevices.Interface}()

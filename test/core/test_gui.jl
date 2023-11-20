@@ -14,11 +14,12 @@ using Flight.FlightAircraft.C172RBase
 export test_gui
 
 function test_gui()
-    # target = PIContinuous{2}() |> System
+    # target = PIVector{2}() |> System
     # target = C172FBWCAS.PitchControl() |> System
     # target = Cessna172FBWCAS() |> System
     # target = Cessna172RBase() |> System
-    target = Control.Discrete.PIDVector{3}() |> System
+    # target = Control.Discrete.PIDVector{3}() |> System
+    target = Control.Continuous.PIVector{3}() |> System
     r = Renderer()
     GUI.init!(r)
     # GUI.run(r, GUI.draw!, target)

@@ -441,7 +441,7 @@ function GUI.draw!(physics::System{<:Physics},
     CImGui.Begin(label)
 
     show_airframe = @cstatic check=false @c CImGui.Checkbox("Airframe", &check)
-    show_atmosphere = @cstatic check=false @c CImGui.Checkbox("Local Atmosphere", &check)
+    show_atmosphere = @cstatic check=false @c CImGui.Checkbox("Atmosphere", &check)
     show_terrain = @cstatic check=false @c CImGui.Checkbox("Terrain", &check)
     show_dyn = @cstatic check=false @c CImGui.Checkbox("Dynamics", &check)
     show_kin = @cstatic check=false @c CImGui.Checkbox("Kinematics", &check)

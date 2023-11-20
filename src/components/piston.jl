@@ -9,7 +9,7 @@ using Flight.FlightPhysics
 using Flight.FlightPhysics.Atmosphere: R
 
 using ..Propellers: AbstractPropeller, Propeller
-using ..Control.Continuous: PIContinuous, PIContinuousU, PIContinuousY
+using ..Control.Continuous: PIVector, PIVectorInput, PIVectorOutput
 
 
 ################################################################################
@@ -81,8 +81,8 @@ struct Engine{L} <: AbstractPistonEngine
     ω_idle::Float64 #target idle speed
     M_start::Float64 #starter torque
     J::Float64 #equivalent axial moment of inertia of the engine shaft
-    idle::PIContinuous{1} #idle MAP control compensator
-    frc::PIContinuous{1} #friction constraint compensator
+    idle::PIVector{1} #idle MAP control compensator
+    frc::PIVector{1} #friction constraint compensator
     lookup::L #performance lookup table
 end
 
@@ -94,8 +94,8 @@ function Engine(;
     ω_idle = RPM2radpersec(600),
     M_start = 40,
     J = 0.05,
-    idle = PIContinuous{1}(k_p = 4.0, k_i = 2.0),
-    frc =  PIContinuous{1}(k_p = 5.0, k_i = 200.0, k_l = 0.0)
+    idle = PIVector{1}(),
+    frc =  PIVector{1}()
     )
 
     n_stall = ω_stall / ω_rated
@@ -123,8 +123,8 @@ end
     stop::Bool = false
     throttle::Ranged{Float64, 0., 1.} = 0.0 #throttle setting
     mixture::Ranged{Float64, 0., 1.} = 0.5 #mixture setting
-    idle::PIContinuousU{1} = PIContinuousU{1}()
-    frc::PIContinuousU{1} = PIContinuousU{1}()
+    # idle::PIVectorInput{1} = PIVectorInput{1}()
+    # frc::PIVectorInput{1} = PIVectorInput{1}()
 end
 
 @kwdef struct PistonEngineY
@@ -139,8 +139,8 @@ end
     P_shaft::Float64 = 0.0 #shaft power
     SFC::Float64 = 0.0 #specific fuel consumption
     ṁ::Float64 = 0.0 #fuel consumption
-    idle::PIContinuousY{1} = PIContinuousY{1}()
-    frc::PIContinuousY{1} = PIContinuousY{1}()
+    idle::PIVectorOutput{1} = PIVectorOutput{1}()
+    frc::PIVectorOutput{1} = PIVectorOutput{1}()
 end
 
 Systems.init(::SystemX, eng::Engine) = ComponentVector(
@@ -148,6 +148,21 @@ Systems.init(::SystemX, eng::Engine) = ComponentVector(
 Systems.init(::SystemU, ::Engine) = PistonEngineU()
 Systems.init(::SystemY, ::Engine) = PistonEngineY()
 Systems.init(::SystemS, ::Engine) = PistonEngineS()
+
+function Systems.init!(sys::System{<:Engine})
+    #set up friction constraint compensator
+    @unpack idle, frc = sys.subsystems
+
+    idle.u.k_p .= 4.0
+    idle.u.k_i .= 2.0
+    idle.u.bound_lo .= -0.5
+    idle.u.bound_hi .= 0.5
+
+    frc.u.k_p .= 5.0
+    frc.u.k_i .= 200.0
+    frc.u.bound_lo .= -1
+    frc.u.bound_hi .= 1
+end
 
 function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
                         M_load::Real, J_load::Real)
@@ -162,20 +177,14 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
     ω = eng.x.ω
 
     #update friction constraint compensator
-    frc.u.setpoint .= 0.0
-    frc.u.feedback .= ω
-    frc.u.bound_lo .= -1
-    frc.u.bound_hi .= 1
+    frc.u.input .= -ω
     f_ode!(frc)
 
     #update idle compensator
-    idle.u.setpoint .= 1 #normalized ω idle
-    idle.u.feedback .= ω / ω_idle #normalized ω
-    idle.u.bound_lo .= -0.5
-    idle.u.bound_hi .= 0.5
+    idle.u.input .= 1 - ω / ω_idle #normalized ω error
     f_ode!(idle)
 
-    μ_ratio_idle = 0.5 + idle.y.out[1]
+    μ_ratio_idle = 0.5 + idle.y.output[1]
 
     #normalized engine speed
     n = ω / ω_rated
@@ -196,7 +205,7 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
         #the engine running, all friction is assumed to be already accounted for
         #in the performance tables
         M_fr_max = 0.01 * P_rated / ω_rated #1% of rated torque
-        M_fr = frc.y.out[1] .* M_fr_max #scale M_fr_max with compensator feedback
+        M_fr = frc.y.output[1] .* M_fr_max #scale M_fr_max with compensator feedback
 
         MAP = air.p
         M_shaft = M_fr

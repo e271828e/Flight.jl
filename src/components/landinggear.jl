@@ -7,7 +7,7 @@ using Flight.FlightCore.Utils
 
 using Flight.FlightPhysics
 
-using ..Control.Continuous: PIContinuous, PIContinuousY
+using ..Control.Continuous: PIVector, PIVectorOutput
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 
@@ -171,8 +171,7 @@ end
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
     l_0::Float64 = 0.0 #strut natural length from airframe attachment point to wheel endpoint
     damper::D = SimpleDamper()
-    frc::PIContinuous{2} = PIContinuous{2}( #friction constraint compensator
-        k_p = 5.0, k_i = 400.0, k_l = 0.2)
+    frc::PIVector{2} = PIVector{2}() #friction constraint compensator
 end
 
 @kwdef struct StrutY #defaults should be consistent with wow = 0
@@ -194,7 +193,7 @@ end
     f_c::SVector{3,Float64} = zeros(SVector{3}) #normalized contact force
     F_c::SVector{3,Float64} = zeros(SVector{3}) #contact force
     wr_b::Wrench = Wrench() #resulting Wrench on the vehicle frame
-    frc::PIContinuousY{2} = PIContinuousY{2}() #contact friction regulator
+    frc::PIVectorOutput{2} = PIVectorOutput{2}() #contact friction regulator
 end
 
 Systems.init(::SystemY, ::Strut) = StrutY()
@@ -202,9 +201,11 @@ Systems.init(::SystemY, ::Strut) = StrutY()
 function Systems.init!(sys::System{<:Strut})
     #set up friction constraint compensator
     frc = sys.frc
+    frc.u.k_p .= 5.0
+    frc.u.k_i .= 400.0
+    frc.u.k_l .= 0.2
     frc.u.bound_lo .= -1
     frc.u.bound_hi .= 1
-    frc.u.setpoint .= 0
 end
 
 function Systems.f_ode!(sys::System{<:Strut},
@@ -242,7 +243,7 @@ function Systems.f_ode!(sys::System{<:Strut},
         #multiple times within a single time step, some of which may yield
         #contact and some not. therefore, we should wait until the time step is
         #done and do it within f_step! instead
-        frc.u.feedback .= 0 #if !wow, v_eOc_c = [0,0]
+        frc.u.input .= 0 #if !wow, v_eOc_c = [0,0]
         f_ode!(frc) #update frc.y
         sys.y = StrutY(; Δh, wow, frc = frc.y) #everything else by default
         return
@@ -347,11 +348,11 @@ function Systems.f_ode!(sys::System{<:Strut},
     μ_max *= min(1, μ_skid / norm(μ_max)) #scale μ_max so norm(μ_max) does not exceed μ_skid
 
     #update friction constraint compensator
-    frc.u.feedback .= v_eOc_c #if !wow, v_eOc_c = [0,0]
+    frc.u.input .= -v_eOc_c #if !wow, v_eOc_c = [0,0]
     f_ode!(frc) #now frc.y is up to date
 
     #scale μ_max with the feedback from the friction constraint compensator
-    μ_eff = frc.y.out .* μ_max
+    μ_eff = frc.y.output .* μ_max
 
     #normalized contact force projected on the contact frame
     f_c = SVector{3,Float64}(μ_eff[1], μ_eff[2], -1)
