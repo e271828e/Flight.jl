@@ -98,6 +98,9 @@ The augmented system is
 $$
 \begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} F & 0\\ H_x & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} G \\ H_u \end{pmatrix} \Delta \tilde{u}
 $$
+$$
+ \Delta {\tilde{y}} = \begin{pmatrix} H_x & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + H_u \Delta \tilde{u}
+$$
 
 Defining:
 $$ F_{aug} \triangleq \begin{pmatrix} F & 0\\ H_x & 0 \end{pmatrix}$$
@@ -106,10 +109,13 @@ $$ x_{aug} \triangleq \begin{pmatrix} \Delta \tilde{x} \\ \xi \end{pmatrix} $$
 
 We can write:
 $$\dot{x}_{aug} = F_{aug} x_{aug} + G_{aug} \Delta \tilde{u}$$
+$$
+ \Delta {\tilde{y}} = \begin{pmatrix} H_x & 0 \end{pmatrix} x_{aug} + H_u \Delta \tilde{u}
+$$
 
 Now, if we design a LQR for the augmented system:
-$$\Delta \tilde{u} = -C x_{aug} = \begin{pmatrix} C_x & C_{\xi}\end{pmatrix} x_{aug}$$
-$$\dot{x}_{aug} = (F_{aug} - GC)x_{aug}$$
+$$\Delta \tilde{u} = -C_{aug} x_{aug} = \begin{pmatrix} C_x & C_{\xi}\end{pmatrix} x_{aug}$$
+$$\dot{x}_{aug} = (F_{aug} - G_{aug}C)x_{aug}$$
 
 This system is guaranteed to be stable by the LQR, so in the steady-state we have:
 $$\dot{x}_{aug}=0$$
@@ -124,12 +130,12 @@ $$
 $$
 
 The closed-loop system is now:
-$$\dot{x}_{aug} = (F_{aug} - GC)x_{aug} + \begin{pmatrix} L w \\ 0 \end{pmatrix}$$
+$$\dot{x}_{aug} = (F_{aug} - G_{aug}C_{aug})x_{aug} + \begin{pmatrix} L w \\ 0 \end{pmatrix}$$
 
-Stability depends only on the dynamics matrix $F_{aug} - GC$, so this system will still be asymptotically stable. This means that in the steady state $\dot{x}_{aug} = 0$, so $\dot{\xi} = 0$, and therefore necessarily $y = y*$. Because the system is no longer homogeneous, in general we will have $x_{aug} \neq 0$. In particular, $\xi$ will converge to the values required by $\Delta \tilde{y} = 0$.
+Stability depends only on the dynamics matrix $F_{aug} - G_{aug}C_{aug}$, so this system will still be asymptotically stable. This means that in the steady state $\dot{x}_{aug} = 0$, so $\dot{\xi} = 0$, and therefore necessarily $y = y*$. Because the system is no longer homogeneous, in general we will have $x_{aug} \neq 0$. In particular, $\xi$ will converge to the values required by $\Delta \tilde{y} = 0$.
 
 The optimal control law is implemented as:
-$$\Delta u = \Delta u^* - Cx_{aug} = \Delta u^* - C_x \Delta \tilde{x} - C_{\xi} \xi = \Delta u^* - C_x \Delta x + C_x \Delta x^* - C_{\xi} \xi = (B_{22} + C_x B_{12}) \Delta y^* - C_x \Delta x - C_{\xi} \xi$$
+$$\Delta u = \Delta u^* - C_{aug}x_{aug} = \Delta u^* - C_x \Delta \tilde{x} - C_{\xi} \xi = \Delta u^* - C_x \Delta x + C_x \Delta x^* - C_{\xi} \xi = (B_{22} + C_x B_{12}) \Delta y^* - C_x \Delta x - C_{\xi} \xi$$
 $$\Delta u = C_{fwd} \Delta y^* - C_{fbk} \Delta x - C_{\xi} \xi$$
 $$u = u_{trim} + C_{fwd}(y^* - y_{trim}) - C_{fbk} (x - x_{trim}) - C_{\xi} \xi$$
 
