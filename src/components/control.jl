@@ -1,26 +1,198 @@
 module Control
 
+
+################################################################################
+############################ PID Optimization ##################################
+################################################################################
+
+module PIDOpt
+
+using StaticArrays, UnPack, NLopt, ControlSystems
+using Trapz: trapz
+
+@kwdef struct Params{T} <: FieldVector{4, T} #parallel form
+    k_p::T = 1.0
+    k_i::T = 0.0
+    k_d::T = 0.1
+    τ_f::T = 0.01
+end
+
+function Base.NamedTuple(params::Params)
+    names = fieldnames(typeof(params))
+    fields = map(n -> getfield(params, n), names)
+    NamedTuple{names}(fields)
+end
+
+Base.getproperty(params::Params, name::Symbol) = getproperty(params, Val(name))
+
+@generated function Base.getproperty(params::Params, ::Val{S}) where {S}
+    if S ∈ fieldnames(Params)
+        return :(getfield(params, $(QuoteNode(S))))
+    elseif S === :T_i
+        return :(params.k_p / params.k_i)
+    elseif S === :T_d
+        return :(params.k_d / params.k_p)
+    end
+end
+
+@kwdef struct Metrics{T} <: FieldVector{5, T}
+    Ms::T #maximum sensitivity
+    ∫e::T #integrated absolute error
+    ef::T #absolute steady-state error
+    ∫u::T #integrated absolute control effort
+    up::T #absolute peak control effort
+end
+
+@kwdef struct Settings
+    t_sim::Float64 = 5.0
+    maxeval::Int64 = 5000
+    lower_bounds::Params = Params(; k_p = 0.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+    upper_bounds::Params = Params(; k_p = 50.0, k_i = 50.0, k_d = 10.0, τ_f = 0.01)
+    initial_step::Params = Params(; k_p = 0.01, k_i = 0.01, k_d = 0.01, τ_f = 0.01)
+end
+
+@kwdef struct Results
+    exit_flag::Symbol
+    cost::Float64
+    metrics::Metrics{Float64}
+    params::Params{Float64}
+end
+
+function build_PID(params::Params{<:Real})
+    @unpack k_p, k_i, k_d, τ_f = params
+    (k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])) |> ss
+end
+
+function Metrics(plant::AbstractStateSpace, pid::AbstractStateSpace,
+                       settings::Settings)
+
+    #hinfnorm appears to be quite brittle, so instead we brute force the
+    #computation of maximum sensitivity transfer function magnitude
+    S = sensitivity(plant, pid) #sensitivity function
+    S_tf = tf(S)
+    iω_range = ((10^x)*im for x in range(-3, 3, length=1000))
+    S_range = [abs(S_tf.(iω)[1]) for iω in iω_range]
+    Ms = maximum(S_range)
+
+    T = output_comp_sensitivity(plant, pid) #complementary sensitivity function (AKA closed loop)
+    T_step = step(T, settings.t_sim)
+    t = T_step.t
+    y = T_step.y |> vec
+    abs_e = abs.(y .- 1.0)
+    #integrated error normalized with respect to the length of the time window
+    ∫e = trapz(t, abs_e)/t[end]
+    ef = abs_e[end]
+
+    CS = G_CS(plant, pid) #reference to control input
+    CS_step = step(CS, settings.t_sim)
+    t = CS_step.t
+    y = CS_step.y |> vec
+    abs_u = abs.(y .- 1.0)
+    ∫u = trapz(t, abs_u)/t[end]
+    up = maximum(abs_u)
+
+    Metrics(; Ms, ∫e, ef, ∫u, up)
+
+end
+
+function cost(plant::AbstractStateSpace, pid::AbstractStateSpace,
+              settings::Settings, weights::Metrics{<:Real})
+    costs = Metrics(plant, pid, settings)
+    return sum(costs .* weights) / sum(weights)
+end
+
+
+function optimize_PID(  plant::LTISystem;
+                    params_0::Params = Params(), #initial condition
+                    settings::Settings = Settings(),
+                    weights::Metrics{<:Real} = Metrics(ones(5)),
+                    global_search::Bool = true)
+
+    x0 = params_0 |> Vector
+    lower_bounds = settings.lower_bounds |> Vector
+    upper_bounds = settings.upper_bounds |> Vector
+    initial_step = settings.initial_step |> Vector
+    maxeval = settings.maxeval
+
+    x0 = clamp.(x0, lower_bounds, upper_bounds)
+
+    plant = ss(plant)
+    f_opt = let plant = plant, settings = settings, weights = weights
+        function (x::Vector{Float64}, ::Vector{Float64})
+            pid = build_PID(Params(x...))
+            cost(plant, pid, settings, weights)
+        end
+    end
+
+    minx = x0
+
+    if global_search
+        opt_glb = Opt(:GN_DIRECT_L, length(x0))
+        opt_glb.min_objective = f_opt
+        opt_glb.maxeval = maxeval
+        opt_glb.stopval = 1e-5
+        opt_glb.lower_bounds = lower_bounds
+        opt_glb.upper_bounds = upper_bounds
+        opt_glb.initial_step = initial_step
+
+        (minf, minx, exit_flag) = optimize(opt_glb, x0)
+    end
+
+    #second pass with local optimizer
+    opt_loc = Opt(:LN_BOBYQA, length(x0))
+    # opt_loc = Opt(:LN_COBYLA, length(x0))
+    opt_loc.min_objective = f_opt
+    opt_loc.maxeval = 5000
+    opt_loc.stopval = 1e-5
+    opt_loc.lower_bounds = lower_bounds
+    opt_loc.upper_bounds = upper_bounds
+    opt_loc.initial_step = initial_step
+
+    (minf, minx, exit_flag) = optimize(opt_loc, minx)
+
+    params_opt = Params(minx...)
+    pid_opt = build_PID(params_opt)
+    metrics_opt = Metrics(plant, pid_opt, settings)
+
+    return Results(exit_flag, minf, metrics_opt, params_opt)
+
+
+end
+
+function check_results(results::Results, thresholds::Metrics{Float64})
+
+    @unpack exit_flag, metrics = results
+
+    success = true
+    success && (exit_flag === :ROUNDOFF_LIMITED) | (exit_flag === :STOPVAL_REACHED)
+    success && (metrics.Ms < thresholds.Ms) #sensitivity function maximum magnitude
+    success && (metrics.∫e < thresholds.∫e) #normalized absolute integrated error
+    success && (metrics.ef < thresholds.ef) #remaining error after t_sim
+
+end
+
+end #submodule
+
+
+################################################################################
+########################## Continuous Systems ##################################
+################################################################################
+
+module Continuous
+
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using ControlSystems: ControlSystemsBase, ControlSystems, ss
 using RobustAndOptimalControl
 
 using Flight.FlightCore
 
-export LinearStateSpace, submodel
-export PIContinuous, PIDDiscreteVector
-export PIDParams, PIDDiscrete, IntegratorDiscrete, LeadLagDiscrete
-
-export PIDOpt
-
-
-
 ################################################################################
-########################### LinearStateSpace ###################################
+########################### LinearizedSS ###################################
 
 const tV = AbstractVector{<:Float64}
 const tM = AbstractMatrix{<:Float64}
 
-struct LinearStateSpace{ LX, LU, LY, #state, input and output vector lengths
+struct LinearizedSS{ LX, LU, LY, #state, input and output vector lengths
                         tX <: tV, tU <: tV, tY <: tV,
                         tA <: tM, tB <: tM, tC <: tM, tD <: tM} <: SystemDefinition
 
@@ -29,7 +201,7 @@ struct LinearStateSpace{ LX, LU, LY, #state, input and output vector lengths
     x_cache::tX; y_cache::tY; y_cache_out::tY;
     Δx_cache::tX; Δu_cache::tU
 
-    function LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+    function LinearizedSS(ẋ0, x0, u0, y0, A, B, C, D)
 
         lengths = map(length, (x0, u0, y0))
         types = map(typeof, (x0, u0, y0, A, B, C, D))
@@ -44,26 +216,26 @@ struct LinearStateSpace{ LX, LU, LY, #state, input and output vector lengths
 
 end
 
-LinearStateSpace(; ẋ0, x0, u0, y0, A, B, C, D) = LinearStateSpace(ẋ0, x0, u0, y0, A, B, C, D)
+LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D) = LinearizedSS(ẋ0, x0, u0, y0, A, B, C, D)
 
-ControlSystems.ss(cmp::LinearStateSpace) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
+ControlSystems.ss(cmp::LinearizedSS) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
 
-function RobustAndOptimalControl.named_ss(lss::Control.LinearStateSpace)
+function RobustAndOptimalControl.named_ss(lss::LinearizedSS)
     x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lss.x0, lss.u0, lss.y0))
     named_ss(ss(lss), x = x_labels, u = u_labels, y = y_labels)
 end
 
-function LinearStateSpace(sys::ControlSystemsBase.StateSpace{ControlSystemsBase.Continuous, <:AbstractFloat})
+function LinearizedSS(sys::ControlSystemsBase.StateSpace{ControlSystemsBase.Continuous, <:AbstractFloat})
     @unpack A, B, C, D, nx, nu, ny = sys
     ẋ0 = zeros(nx); x0 = zeros(nx); u0 = zeros(nu); y0 = zeros(ny)
-    LinearStateSpace(; ẋ0, x0, u0, y0, A, B, C, D)
+    LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 end
 
-Systems.init(::SystemX, cmp::LinearStateSpace) = copy(cmp.x0)
-Systems.init(::SystemU, cmp::LinearStateSpace) = copy(cmp.u0)
-Systems.init(::SystemY, cmp::LinearStateSpace) = SVector{length(cmp.y0)}(cmp.y0)
+Systems.init(::SystemX, cmp::LinearizedSS) = copy(cmp.x0)
+Systems.init(::SystemU, cmp::LinearizedSS) = copy(cmp.u0)
+Systems.init(::SystemY, cmp::LinearizedSS) = SVector{length(cmp.y0)}(cmp.y0)
 
-function Systems.f_ode!(sys::System{<:LinearStateSpace{LX, LU, LY}}) where {LX, LU, LY}
+function Systems.f_ode!(sys::System{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, LY}
 
     @unpack ẋ, x, u, y, constants = sys
     @unpack ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache = constants
@@ -94,7 +266,7 @@ function Systems.f_ode!(sys::System{<:LinearStateSpace{LX, LU, LY}}) where {LX, 
 
 end
 
-function submodel(cmp::LinearStateSpace; x = keys(cmp.x0), u = keys(cmp.u0), y = keys(cmp.y0))
+function submodel(cmp::LinearizedSS; x = keys(cmp.x0), u = keys(cmp.u0), y = keys(cmp.y0))
 
     #to do: generalize for scalars
 
@@ -111,7 +283,7 @@ function submodel(cmp::LinearStateSpace; x = keys(cmp.x0), u = keys(cmp.u0), y =
     C = cmp.C[y_ind, x_ind]
     D = cmp.D[y_ind, u_ind]
 
-    return LinearStateSpace(; ẋ0, x0, u0, y0, A, B, C, D)
+    return LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 
 end
 
@@ -332,9 +504,24 @@ function GUI.draw!(sys::System{<:PIContinuous{N}}, label::String = "PIContinuous
 
 end
 
-################# Proportional-Integral-Derivative Compensator #################
+end #submodule
+
+
+################################################################################
+############################# Discrete Systems #################################
 ################################################################################
 
+module Discrete
+
+using StaticArrays, UnPack, LinearAlgebra
+using RobustAndOptimalControl
+
+using Flight.FlightCore
+
+using ..Control
+
+################# Proportional-Integral-Derivative Compensator #################
+################################################################################
 
 struct PIDDiscreteVector{N} <: SystemDefinition #Parallel form
     k_p::SVector{N,Float64} #proportional gain
@@ -520,7 +707,7 @@ function Plotting.make_plots(th::TimeHistory{<:PIDDiscreteVectorY}; kwargs...)
     out = plot(th.out; title = "Actual", ylabel = L"$y$", kwargs...)
     sat_out = plot(th.sat_out; title = "Saturation", ylabel = L"$S$", kwargs...)
 
-    pd[:out] = plot(out_free, output, sat_out;
+    pd[:out] = plot(out_free, out, sat_out;
         plot_title = "PID Output",
         layout = (1,3),
         link = :y,
@@ -563,7 +750,7 @@ function GUI.draw(sys::System{<:PIDDiscreteVector{N}}, label::String = "PIDDiscr
 end #function
 
 
-################# IntegratorDiscrete #################
+############################# IntegratorDiscrete ###############################
 ################################################################################
 
 struct IntegratorDiscrete <: SystemDefinition end
@@ -739,30 +926,6 @@ end #function
 ####################### Gain-Schedulable PID Compensator #######################
 ################################################################################
 
-@kwdef struct PIDParams{T} <: FieldVector{4, T} #parallel form
-    k_p::T = 1.0
-    k_i::T = 0.0
-    k_d::T = 0.1
-    τ_f::T = 0.01
-end
-
-function Base.NamedTuple(params::PIDParams)
-    names = fieldnames(typeof(params))
-    fields = map(n -> getfield(params, n), names)
-    NamedTuple{names}(fields)
-end
-
-Base.getproperty(params::PIDParams, name::Symbol) = getproperty(params, Val(name))
-
-@generated function Base.getproperty(params::PIDParams, ::Val{S}) where {S}
-    if S ∈ fieldnames(PIDParams)
-        return :(getfield(params, $(QuoteNode(S))))
-    elseif S === :T_i
-        return :(params.k_p / params.k_i)
-    elseif S === :T_d
-        return :(params.k_d / params.k_p)
-    end
-end
 
 @kwdef struct PIDDiscrete <: SystemDefinition end
 
@@ -821,7 +984,7 @@ function reset!(sys::System{<:PIDDiscrete})
     f_disc!(sys, 1.0)
 end
 
-function assign!(sys::System{<:PIDDiscrete}, params::PIDParams{<:Real})
+function assign!(sys::System{<:PIDDiscrete}, params::Control.PIDOpt.Params{<:Real})
     @unpack k_p, k_i, k_d, τ_f = params
     @pack! sys.u = k_p, k_i, k_d, τ_f
 end
@@ -983,157 +1146,18 @@ function GUI.draw(sys::System{<:PIDDiscrete}, label::String = "PIDDiscrete")
 
 end #function
 
+end #submodule
 
 ################################################################################
-############################ PID Optimization ##################################
+################################################################################
 ################################################################################
 
-module PIDOpt
-
-using StaticArrays
-using UnPack
-using NLopt
-using ControlSystems
-using Trapz: trapz
-
-using ..Control
-
-@kwdef struct Metrics{T} <: FieldVector{5, T}
-    Ms::T #maximum sensitivity
-    ∫e::T #integrated absolute error
-    ef::T #absolute steady-state error
-    ∫u::T #integrated absolute control effort
-    up::T #absolute peak control effort
-end
-
-@kwdef struct Settings
-    t_sim::Float64 = 5.0
-    maxeval::Int64 = 5000
-    lower_bounds::PIDParams = PIDParams(; k_p = 0.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-    upper_bounds::PIDParams = PIDParams(; k_p = 50.0, k_i = 50.0, k_d = 10.0, τ_f = 0.01)
-    initial_step::PIDParams = PIDParams(; k_p = 0.01, k_i = 0.01, k_d = 0.01, τ_f = 0.01)
-end
-
-@kwdef struct Results
-    exit_flag::Symbol
-    cost::Float64
-    metrics::Metrics{Float64}
-    params::PIDParams{Float64}
-end
-
-function build_PID(params::PIDParams{<:Real})
-    @unpack k_p, k_i, k_d, τ_f = params
-    (k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])) |> ss
-end
-
-function Metrics(plant::AbstractStateSpace, pid::AbstractStateSpace,
-                       settings::Settings)
-
-    #hinfnorm appears to be quite brittle, so instead we brute force the
-    #computation of maximum sensitivity transfer function magnitude
-    S = sensitivity(plant, pid) #sensitivity function
-    S_tf = tf(S)
-    iω_range = ((10^x)*im for x in range(-3, 3, length=1000))
-    S_range = [abs(S_tf.(iω)[1]) for iω in iω_range]
-    Ms = maximum(S_range)
-
-    T = output_comp_sensitivity(plant, pid) #complementary sensitivity function (AKA closed loop)
-    T_step = step(T, settings.t_sim)
-    t = T_step.t
-    y = T_step.y |> vec
-    abs_e = abs.(y .- 1.0)
-    #integrated error normalized with respect to the length of the time window
-    ∫e = trapz(t, abs_e)/t[end]
-    ef = abs_e[end]
-
-    CS = G_CS(plant, pid) #reference to control input
-    CS_step = step(CS, settings.t_sim)
-    t = CS_step.t
-    y = CS_step.y |> vec
-    abs_u = abs.(y .- 1.0)
-    ∫u = trapz(t, abs_u)/t[end]
-    up = maximum(abs_u)
-
-    Metrics(; Ms, ∫e, ef, ∫u, up)
-
-end
-
-function cost(plant::AbstractStateSpace, pid::AbstractStateSpace,
-              settings::Settings, weights::Metrics{<:Real})
-    costs = Metrics(plant, pid, settings)
-    return sum(costs .* weights) / sum(weights)
-end
 
 
-function optimize_PID(  plant::LTISystem;
-                    params_0::PIDParams = PIDParams(), #initial condition
-                    settings::Settings = Settings(),
-                    weights::Metrics{<:Real} = Metrics(ones(5)),
-                    global_search::Bool = true)
+using Reexport
 
-    x0 = params_0 |> Vector
-    lower_bounds = settings.lower_bounds |> Vector
-    upper_bounds = settings.upper_bounds |> Vector
-    initial_step = settings.initial_step |> Vector
-    maxeval = settings.maxeval
-
-    x0 = clamp.(x0, lower_bounds, upper_bounds)
-
-    plant = ss(plant)
-    f_opt = let plant = plant, settings = settings, weights = weights
-        function (x::Vector{Float64}, ::Vector{Float64})
-            pid = build_PID(PIDParams(x...))
-            cost(plant, pid, settings, weights)
-        end
-    end
-
-    minx = x0
-
-    if global_search
-        opt_glb = Opt(:GN_DIRECT_L, length(x0))
-        opt_glb.min_objective = f_opt
-        opt_glb.maxeval = maxeval
-        opt_glb.stopval = 1e-5
-        opt_glb.lower_bounds = lower_bounds
-        opt_glb.upper_bounds = upper_bounds
-        opt_glb.initial_step = initial_step
-
-        (minf, minx, exit_flag) = optimize(opt_glb, x0)
-    end
-
-    #second pass with local optimizer
-    opt_loc = Opt(:LN_BOBYQA, length(x0))
-    # opt_loc = Opt(:LN_COBYLA, length(x0))
-    opt_loc.min_objective = f_opt
-    opt_loc.maxeval = 5000
-    opt_loc.stopval = 1e-5
-    opt_loc.lower_bounds = lower_bounds
-    opt_loc.upper_bounds = upper_bounds
-    opt_loc.initial_step = initial_step
-
-    (minf, minx, exit_flag) = optimize(opt_loc, minx)
-
-    params_opt = PIDParams(minx...)
-    pid_opt = build_PID(params_opt)
-    metrics_opt = Metrics(plant, pid_opt, settings)
-
-    return Results(exit_flag, minf, metrics_opt, params_opt)
-
-
-end
-
-function check_results(results::Results, thresholds::Metrics{Float64})
-
-    @unpack exit_flag, metrics = results
-
-    success = true
-    success && (exit_flag === :ROUNDOFF_LIMITED) | (exit_flag === :STOPVAL_REACHED)
-    success && (metrics.Ms < thresholds.Ms) #sensitivity function maximum magnitude
-    success && (metrics.∫e < thresholds.∫e) #normalized absolute integrated error
-    success && (metrics.ef < thresholds.ef) #remaining error after t_sim
-
-end
-
-end ######################### submodule ########################################
+using .Continuous
+using .Discrete
+using .PIDOpt
 
 end #module

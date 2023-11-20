@@ -8,7 +8,8 @@ using Flight.FlightCore.Utils
 using Flight.FlightPhysics
 
 using Flight.FlightComponents
-using Flight.FlightComponents.Control: IntegratorDiscreteY, PIDDiscreteY
+using Flight.FlightComponents.Control.Discrete: IntegratorDiscrete, PIDDiscrete, IntegratorDiscreteY, PIDDiscreteY
+import Flight.FlightComponents.Control.PIDOpt
 
 using ...C172
 using ..C172FBW
@@ -20,13 +21,13 @@ export Cessna172FBWCAS
 ################################ Lookup ########################################
 
 struct Lookup{T <: Interpolations.Extrapolation}
-    interps::PIDParams{T}
-    data::PIDParams{Array{Float64,2}}
+    interps::PIDOpt.Params{T}
+    data::PIDOpt.Params{Array{Float64,2}}
     EAS_bounds::NTuple{2, Float64}
     h_bounds::NTuple{2, Float64}
 end
 
-function Lookup(data::PIDParams{Array{Float64, 2}},
+function Lookup(data::PIDOpt.Params{Array{Float64, 2}},
                 EAS_bounds::NTuple{2, Float64},
                 h_bounds::NTuple{2, Float64})
 
@@ -42,7 +43,7 @@ function Lookup(data::PIDParams{Array{Float64, 2}},
     interps = [extrapolate(scale(interpolate(coef, (EAS.mode, h.mode)),
         EAS.scaling, h.scaling), (Flat(), Flat())) for coef in NamedTuple(data)]
 
-    Lookup(PIDParams(interps...), data, EAS_bounds, h_bounds)
+    Lookup(PIDOpt.Params(interps...), data, EAS_bounds, h_bounds)
 
 end
 
@@ -50,24 +51,24 @@ Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
 @generated function Base.getproperty(lookup::Lookup, ::Val{S}) where {S}
     if S ∈ fieldnames(Lookup)
         return :(getfield(lookup, $(QuoteNode(S))))
-    elseif S ∈ fieldnames(PIDParams)
+    elseif S ∈ fieldnames(PIDOpt.Params)
         return :(getfield(getfield(lookup, :interps), $(QuoteNode(S))))
     else
         error("Lookup has no property $S")
     end
 end
 
-function Control.PIDParams(lookup::Lookup, EAS::Real, h::Real)
+function Control.PIDOpt.Params(lookup::Lookup, EAS::Real, h::Real)
 
     @unpack k_p, k_i, k_d, τ_f = lookup.interps
-    PIDParams(; k_p = k_p(EAS, h),
+    PIDOpt.Params(; k_p = k_p(EAS, h),
                 k_i = k_i(EAS, h),
                 k_d = k_d(EAS, h),
                 τ_f = τ_f(EAS, h))
 end
 
 
-(lookup::Lookup)(EAS::Real, h::Real) = PIDParams(lookup, EAS, h)
+(lookup::Lookup)(EAS::Real, h::Real) = PIDOpt.Params(lookup, EAS, h)
 
 function save_lookup(lookup::Lookup, fname::String)
 
@@ -87,10 +88,10 @@ function load_lookup(fname::String)
 
     fid = h5open(fname, "r")
 
-    params_data = map(fieldnames(PIDParams)) do name
+    params_data = map(fieldnames(PIDOpt.Params)) do name
         read(fid, string(name))
     end
-    data = PIDParams(params_data...)
+    data = PIDOpt.Params(params_data...)
 
     EAS_bounds = (read(fid["EAS_start"]), read(fid["EAS_end"]))
     h_bounds = (read(fid["h_start"]), read(fid["h_end"]))
@@ -145,13 +146,13 @@ function Systems.init!(sys::System{<:ThrottleControl})
     v2t.u.bound_hi = 1
 end
 
-function Control.reset!(sys::System{<:ThrottleControl})
+function Control.Discrete.reset!(sys::System{<:ThrottleControl})
     #set default inputs and states
     sys.u.mode = direct_throttle_mode
     sys.u.thr_dmd = 0
     sys.u.EAS_dmd = 0
     #reset compensators
-    Control.reset!.(values(sys.subsystems))
+    Control.Discrete.reset!.(values(sys.subsystems))
     #set default outputs
     sys.y = ThrottleControlY()
 end
@@ -162,7 +163,7 @@ function Systems.f_disc!(sys::System{<:ThrottleControl}, kin::KinematicData, air
     @unpack v2t = sys.subsystems
     @unpack v2t_lookup = sys.constants
 
-    Control.assign!(v2t, v2t_lookup(air.EAS, Float64(kin.h_o)))
+    Control.Discrete.assign!(v2t, v2t_lookup(air.EAS, Float64(kin.h_o)))
 
     if mode === direct_throttle_mode
         thr_cmd = thr_dmd
@@ -263,7 +264,7 @@ function Systems.init!(sys::System{<:PitchControl})
     q2e.u.bound_hi = 1
 end
 
-function Control.reset!(sys::System{<:PitchControl})
+function Control.Discrete.reset!(sys::System{<:PitchControl})
     #set default inputs and states
     sys.u.mode = direct_elevator_mode
     sys.u.e_dmd = 0
@@ -271,7 +272,7 @@ function Control.reset!(sys::System{<:PitchControl})
     sys.u.θ_dmd = 0
     sys.u.c_dmd = 0
     #reset compensators
-    Control.reset!.(values(sys.subsystems))
+    Control.Discrete.reset!.(values(sys.subsystems))
     #set default outputs
     sys.y = PitchControlY()
 end
@@ -282,10 +283,10 @@ function Systems.f_disc!(sys::System{<:PitchControl}, kin::KinematicData, air::A
     @unpack q2e_int, q2e, θ2q, c2θ, v2θ = sys.subsystems
     @unpack q2e_lookup, θ2q_lookup, c2θ_lookup, v2θ_lookup = sys.constants
 
-    Control.assign!(q2e, q2e_lookup(air.EAS, Float64(kin.h_o)))
-    Control.assign!(θ2q, θ2q_lookup(air.EAS, Float64(kin.h_o)))
-    Control.assign!(c2θ, c2θ_lookup(air.EAS, Float64(kin.h_o)))
-    Control.assign!(v2θ, v2θ_lookup(air.EAS, Float64(kin.h_o)))
+    Control.Discrete.assign!(q2e, q2e_lookup(air.EAS, Float64(kin.h_o)))
+    Control.Discrete.assign!(θ2q, θ2q_lookup(air.EAS, Float64(kin.h_o)))
+    Control.Discrete.assign!(c2θ, c2θ_lookup(air.EAS, Float64(kin.h_o)))
+    Control.Discrete.assign!(v2θ, v2θ_lookup(air.EAS, Float64(kin.h_o)))
 
     _, q, r = kin.ω_lb_b
     @unpack θ, φ = kin.e_nb
@@ -435,7 +436,7 @@ function Systems.init!(sys::System{<:RollControl})
     χ2φ.u.bound_hi = π/4
 end
 
-function Control.reset!(sys::System{<:RollControl})
+function Control.Discrete.reset!(sys::System{<:RollControl})
     #set default inputs and states
     sys.u.mode = direct_aileron_mode
     sys.u.a_dmd = 0
@@ -443,7 +444,7 @@ function Control.reset!(sys::System{<:RollControl})
     sys.u.φ_dmd = 0
     sys.u.χ_dmd = 0
     #reset compensators
-    Control.reset!.(values(sys.subsystems))
+    Control.Discrete.reset!.(values(sys.subsystems))
     #set default outputs
     sys.y = RollControlY()
 end
@@ -454,9 +455,9 @@ function Systems.f_disc!(sys::System{<:RollControl}, kin::KinematicData, air::Ai
     @unpack p2a, φ2p, χ2φ = sys.subsystems
     @unpack p2a_lookup, φ2p_lookup, χ2φ_lookup = sys.constants
 
-    Control.assign!(p2a, p2a_lookup(air.EAS, Float64(kin.h_o)))
-    Control.assign!(φ2p, φ2p_lookup(air.EAS, Float64(kin.h_o)))
-    Control.assign!(χ2φ, χ2φ_lookup(air.EAS, Float64(kin.h_o)))
+    Control.Discrete.assign!(p2a, p2a_lookup(air.EAS, Float64(kin.h_o)))
+    Control.Discrete.assign!(φ2p, φ2p_lookup(air.EAS, Float64(kin.h_o)))
+    Control.Discrete.assign!(χ2φ, χ2φ_lookup(air.EAS, Float64(kin.h_o)))
 
     p = kin.ω_lb_b[1]
     φ = kin.e_nb.φ
@@ -619,12 +620,12 @@ Systems.init(::SystemY, ::YawControl) = YawControlY()
 function Systems.init!(sys::System{<:YawControl})
 end
 
-function Control.reset!(sys::System{<:YawControl})
+function Control.Discrete.reset!(sys::System{<:YawControl})
     #set default inputs and states
     sys.u.mode = direct_rudder_mode
     sys.u.r_dmd = 0
     #reset pid
-    Control.reset!.(values(sys.subsystems))
+    Control.Discrete.reset!.(values(sys.subsystems))
     #set default outputs
     sys.y = YawControlY()
 end

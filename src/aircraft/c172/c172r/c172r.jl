@@ -376,8 +376,8 @@ end
     α::Float64 = 0.0; β::Float64 = 0.0; #unfiltered airflow angles
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
     χ::Float64 = 0.0; γ::Float64 = 0.0; c::Float64 = 0.0; #track and flight path angles, climb rate
-    throttle::Float64 = 0.0; aileron::Float64 = 0.0; #control inputs
-    elevator::Float64 = 0.0; rudder::Float64 = 0.0; #control inputs
+    throttle_out::Float64 = 0.0; aileron_out::Float64 = 0.0; #control inputs
+    elevator_out::Float64 = 0.0; rudder_out::Float64 = 0.0; #control inputs
 end
 
 
@@ -433,9 +433,14 @@ function YLinear(physics::System{<:C172R.Physics{NED}})
     γ = γ_gnd
     c = -v_D
 
+    throttle_out = throttle
+    aileron_out = aileron
+    elevator_out = elevator
+    rudder_out = rudder
+
     YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel,
             f_x, f_y, f_z, EAS, TAS, α, β, v_N, v_E, v_D, χ, γ, c,
-            throttle, aileron, elevator, rudder)
+            throttle_out, aileron_out, elevator_out, rudder_out)
 
 
 end
@@ -475,7 +480,7 @@ function Aircraft.assign_x!(physics::System{<:C172R.Physics{NED}}, x::AbstractVe
 
 end
 
-function Control.LinearStateSpace(
+function Control.Continuous.LinearizedSS(
             physics::System{<:C172R.Physics{NED}},
             trim_params::C172.TrimParameters = C172.TrimParameters();
             model::Symbol = :full)
@@ -488,14 +493,14 @@ function Control.LinearStateSpace(
     elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng]
         u_labels = [:elevator, :throttle]
-        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :c, :elevator, :throttle])
-        return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
+        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :c, :elevator_out, :throttle_out])
+        return Control.Continuous.submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat
         x_labels = [:p, :r, :φ, :ψ, :v_x, :v_y, :β_filt]
         u_labels = [:aileron, :rudder]
-        y_labels = vcat(y_labels, [:f_y, :β, :χ, :aileron, :rudder])
-        return submodel(lm; x = x_labels, u = u_labels, y = y_labels)
+        y_labels = vcat(x_labels, [:f_y, :β, :χ, :aileron_out, :rudder_out])
+        return Control.Continuous.submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     else
         error("Valid model keyword values: :full, :lon, :lat")

@@ -328,7 +328,7 @@ function Aircraft.linearize!( physics::System{<:Aircraft.Physics},
     #restore the System to its trimmed condition
     assign!(physics, trim_params, trim_state)
 
-    #now we need to rebuild vectors and matrices for the LinearStateSpace as
+    #now we need to rebuild vectors and matrices for the LinearizedSS as
     #ComponentArrays, because we want matrix components to remain labelled,
     #which cannot be achieved with FieldVectors
 
@@ -346,7 +346,7 @@ function Aircraft.linearize!( physics::System{<:Aircraft.Physics},
     C_cv = ComponentMatrix(C, y_axis, x_axis)
     D_cv = ComponentMatrix(D, y_axis, u_axis)
 
-    return LinearStateSpace(ẋ0_cv, x0_cv, u0_cv, y0_cv, A_cv, B_cv, C_cv, D_cv)
+    return Control.Continuous.LinearizedSS(ẋ0_cv, x0_cv, u0_cv, y0_cv, A_cv, B_cv, C_cv, D_cv)
 
 end
 
@@ -384,9 +384,9 @@ function ss_matrices(f_main::Function, x0::AbstractVector{Float64},
 end
 
 
-function Control.LinearStateSpace(
+function Control.Continuous.LinearizedSS(
             ac::System{<:Aircraft.Template}, args...; kwargs...)
-    LinearStateSpace(ac.physics, args...; kwargs...)
+    Control.Continuous.LinearizedSS(ac.physics, args...; kwargs...)
 end
 
 ############################### Plotting #######################################

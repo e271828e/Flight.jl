@@ -7,7 +7,7 @@ using Flight.FlightCore.Utils
 
 using Flight.FlightPhysics
 
-using ..Control: PIContinuous, PIContinuousY
+using ..Control.Continuous: PIContinuous, PIContinuousY
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 

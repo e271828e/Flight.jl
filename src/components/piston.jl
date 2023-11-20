@@ -9,7 +9,7 @@ using Flight.FlightPhysics
 using Flight.FlightPhysics.Atmosphere: R
 
 using ..Propellers: AbstractPropeller, Propeller
-using ..Control: PIContinuous, PIContinuousU, PIContinuousY
+using ..Control.Continuous: PIContinuous, PIContinuousU, PIContinuousY
 
 
 ################################################################################
