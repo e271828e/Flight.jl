@@ -88,23 +88,26 @@ $$\Delta u = \Delta u^* - C\Delta x + \Delta x^*= (B_{22} + CB_{12}) \Delta y^* 
 $$u = u_{trim} + C_{fwd}(y^* - y_{trim}) - C_{fbk} (x - x_{trim})$$
 
 ## LQR Tracker With Integral Compensation
+We choose the subset $y_{i}$ of the command variables for which we want to include integral compensation.
 We augment the system dynamics with an integral state vector $\xi$ such that:
-$$ \dot{\xi} = \Delta \tilde{y} = H_x \Delta \tilde{x} + H_u \Delta \tilde{u}$$
+$$ \dot{\xi} = \Delta \tilde{y}_{i} = H_{x,i} \Delta \tilde{x} + H_{u,i} \Delta \tilde{u}$$
+
+Where and are respectively the row blocks of Hx and Hu corresponding to yi
 
 This integral state is computed as:
-$$ \xi = \xi(0) + \int^t_{0} \Delta \tilde{y} d\tau = \xi(0) + \int_0^t (\Delta y - \Delta y^*) d\tau = \xi(0) + \int_0^t (y - y^*) d\tau $$
+$$ \xi = \xi(0) + \int^t_{0} \Delta \tilde{y}_{i} d\tau = \xi(0) + \int_0^t (\Delta y_i - \Delta y_i^*) d\tau = \xi(0) + \int_0^t (y_i - y_i^*) d\tau $$
 
 The augmented system is
 $$
-\begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} F & 0\\ H_x & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} G \\ H_u \end{pmatrix} \Delta \tilde{u}
+\begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} F & 0\\ H_{x,i} & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} G \\ H_{u,i} \end{pmatrix} \Delta \tilde{u}
 $$
 $$
  \Delta {\tilde{y}} = \begin{pmatrix} H_x & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + H_u \Delta \tilde{u}
 $$
 
 Defining:
-$$ F_{aug} \triangleq \begin{pmatrix} F & 0\\ H_x & 0 \end{pmatrix}$$
-$$ G_{aug} \triangleq \begin{pmatrix} G \\ H_u \end{pmatrix} $$
+$$ F_{aug} \triangleq \begin{pmatrix} F & 0\\ H_{x,i} & 0 \end{pmatrix}$$
+$$ G_{aug} \triangleq \begin{pmatrix} G \\ H_{u,i} \end{pmatrix} $$
 $$ x_{aug} \triangleq \begin{pmatrix} \Delta \tilde{x} \\ \xi \end{pmatrix} $$
 
 We can write:
@@ -122,17 +125,17 @@ $$\dot{x}_{aug}=0$$
 
 Which means:
 $$\Delta \dot{\tilde{x}} = 0$$
-$$\dot{\xi} = \Delta \tilde{y}=0 = y - y^*$$
+$$\dot{\xi} = \Delta \tilde{y}_i =0 = y_i - y_i^*$$
 
 Let's assume we have an external disturbance such that the actual system dynamics are instead:
 $$
-\begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} F & 0\\ H_x & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} G \\ H_u \end{pmatrix} \Delta \tilde{u} + \begin{pmatrix} L w \\ 0 \end{pmatrix}
+\begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} F & 0\\ H_{x,i} & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} G \\ H_{u,i} \end{pmatrix} \Delta \tilde{u} + \begin{pmatrix} L w \\ 0 \end{pmatrix}
 $$
 
 The closed-loop system is now:
 $$\dot{x}_{aug} = (F_{aug} - G_{aug}C_{aug})x_{aug} + \begin{pmatrix} L w \\ 0 \end{pmatrix}$$
 
-Stability depends only on the dynamics matrix $F_{aug} - G_{aug}C_{aug}$, so this system will still be asymptotically stable. This means that in the steady state $\dot{x}_{aug} = 0$, so $\dot{\xi} = 0$, and therefore necessarily $y = y*$. Because the system is no longer homogeneous, in general we will have $x_{aug} \neq 0$. In particular, $\xi$ will converge to the values required by $\Delta \tilde{y} = 0$.
+Stability depends only on the dynamics matrix $F_{aug} - G_{aug}C_{aug}$, so this system will still be asymptotically stable. This means that in the steady state $\dot{x}_{aug} = 0$, so $\dot{\xi} = 0$, and therefore necessarily $y = y*$. Because the system is no longer homogeneous, in general we will have $x_{aug} \neq 0$. In particular, $\xi$ will converge to the values required by $\Delta \tilde{y}_i = 0$.
 
 The optimal control law is implemented as:
 $$\Delta u = \Delta u^* - C_{aug}x_{aug} = \Delta u^* - C_x \Delta \tilde{x} - C_{\xi} \xi = \Delta u^* - C_x \Delta x + C_x \Delta x^* - C_{\xi} \xi = (B_{22} + C_x B_{12}) \Delta y^* - C_x \Delta x - C_{\xi} \xi$$
@@ -142,4 +145,12 @@ $$u = u_{trim} + C_{fwd}(y^* - y_{trim}) - C_{fbk} (x - x_{trim}) - C_{\xi} \xi$
 With:
 $$C_{fwd} = B_{22} + C_x B_{12}$$
 $$C_{fbk} = C_x$$
-$$ \xi = \xi(0) + \int_0^t (y - y^*) d\tau $$
+$$ \xi = \xi(0) + \int_0^t (y_i - y_i^*) d\tau $$
+
+For a practical implementation, we write:
+$$u = u_{trim} + C_{fwd}(y^* - y_{trim}) - C_{fbk} (x - x_{trim}) + u_{int}$$
+
+Where:
+$$u_{int} = -C_{\xi} \xi(0) - \int_0^t C_{\xi} (y_i - y_i^*) d\tau = u_{int}(0)  - \int_0^t C_{\xi} (y_i - y_i^*) d\tau = u_{int}(0) - \int_0^t C_{int} (y - y^*) d\tau$$
+
+That is, we move $C_\xi$ inside the integrator, which will now have dimension $n_u$ instead of $n_i$. The practical advantage is that having an integration path per control input allows to handle saturation of each control input independently. We also define a $C_{int}$ is a $n_u \times n_y$ matrix with all rows set to zero except for those $n_i$ rows corresponding to the integrated command variables, which will be taken from $C_{\xi}$. This allows for a more general LQR tracker implementation in which the integral gain matrix always has size $n_u \times n_y$ and always multiplies the complete command vector.
