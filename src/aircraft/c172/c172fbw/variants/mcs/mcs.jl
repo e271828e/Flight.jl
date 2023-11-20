@@ -7,7 +7,7 @@ using Flight.FlightCore.Utils
 
 using Flight.FlightPhysics
 using Flight.FlightComponents
-using Flight.FlightComponents.Control: IntegratorDiscreteY, PIDDiscreteY
+using Flight.FlightComponents.Control: IntegratorOutput, PIDOutput
 
 using ...C172
 using ..C172FBW

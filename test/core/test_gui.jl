@@ -17,11 +17,12 @@ function test_gui()
     # target = PIContinuous{2}() |> System
     # target = C172FBWCAS.PitchControl() |> System
     # target = Cessna172FBWCAS() |> System
-    target = Cessna172RBase() |> System
+    # target = Cessna172RBase() |> System
+    target = Control.Discrete.PIDVector{3}() |> System
     r = Renderer()
     GUI.init!(r)
-    GUI.run(r, GUI.draw!, target)
-    # GUI.run(r, GUI.draw, target)
+    # GUI.run(r, GUI.draw!, target)
+    GUI.run(r, GUI.draw, target)
 end
 
 end

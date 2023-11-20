@@ -8,7 +8,7 @@ using Flight.FlightCore.Utils
 using Flight.FlightPhysics
 
 using Flight.FlightComponents
-using Flight.FlightComponents.Control.Discrete: IntegratorDiscrete, PIDDiscrete, IntegratorDiscreteY, PIDDiscreteY
+using Flight.FlightComponents.Control.Discrete: Integrator, PID, IntegratorOutput, PIDOutput
 import Flight.FlightComponents.Control.PIDOpt
 
 using ...C172
@@ -117,7 +117,7 @@ end
 
 @kwdef struct ThrottleControl{L <: Lookup} <: AbstractControlChannel
     v2t_lookup::L = load_lookup(joinpath(@__DIR__, "data", "v2t_lookup.h5"))
-    v2t::PIDDiscrete = PIDDiscrete()
+    v2t::PID = PID()
 end
 
 @kwdef mutable struct ThrottleControlU
@@ -132,7 +132,7 @@ end
     EAS_dmd::Float64 = 0.0
     thr_cmd::Ranged{Float64, 0., 1.} = 0.0 #throttle actuation command
     thr_sat::Int64 = 0 #throttle saturation state
-    v2t::PIDDiscreteY = PIDDiscreteY()
+    v2t::PIDOutput = PIDOutput()
 end
 
 Systems.init(::SystemU, ::ThrottleControl) = ThrottleControlU()
@@ -221,11 +221,11 @@ end
     θ2q_lookup::L = load_lookup(joinpath(@__DIR__, "data", "θ2q_lookup.h5"))
     c2θ_lookup::L = load_lookup(joinpath(@__DIR__, "data", "c2θ_lookup.h5"))
     v2θ_lookup::L = load_lookup(joinpath(@__DIR__, "data", "v2θ_lookup.h5"))
-    q2e_int::IntegratorDiscrete = IntegratorDiscrete() #pitch rate integrator
-    q2e::PIDDiscrete = PIDDiscrete() #pitch rate to elevator compensator
-    θ2q::PIDDiscrete = PIDDiscrete() #pitch angle to pitch rate compensator
-    c2θ::PIDDiscrete = PIDDiscrete() #climb rate to pitch angle compensator
-    v2θ::PIDDiscrete = PIDDiscrete() #EAS to pitch angle compensator
+    q2e_int::Integrator = Integrator() #pitch rate integrator
+    q2e::PID = PID() #pitch rate to elevator compensator
+    θ2q::PID = PID() #pitch angle to pitch rate compensator
+    c2θ::PID = PID() #climb rate to pitch angle compensator
+    v2θ::PID = PID() #EAS to pitch angle compensator
 end
 
 #overrides the default NamedTuple built from subsystem u's
@@ -247,11 +247,11 @@ end
     EAS_dmd::Float64 = 0.0
     e_cmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation command
     e_sat::Int64 = 0 #elevator saturation state
-    q2e_int::IntegratorDiscreteY = IntegratorDiscreteY()
-    q2e::PIDDiscreteY = PIDDiscreteY()
-    θ2q::PIDDiscreteY = PIDDiscreteY()
-    c2θ::PIDDiscreteY = PIDDiscreteY()
-    v2θ::PIDDiscreteY = PIDDiscreteY()
+    q2e_int::IntegratorOutput = IntegratorOutput()
+    q2e::PIDOutput = PIDOutput()
+    θ2q::PIDOutput = PIDOutput()
+    c2θ::PIDOutput = PIDOutput()
+    v2θ::PIDOutput = PIDOutput()
 end
 
 Systems.init(::SystemU, ::PitchControl) = PitchControlU()
@@ -395,9 +395,9 @@ end
     p2a_lookup::L = load_lookup(joinpath(@__DIR__, "data", "p2a_lookup.h5"))
     φ2p_lookup::L = load_lookup(joinpath(@__DIR__, "data", "φ2p_lookup.h5"))
     χ2φ_lookup::L = load_lookup(joinpath(@__DIR__, "data", "χ2φ_lookup.h5"))
-    p2a::PIDDiscrete = PIDDiscrete()
-    φ2p::PIDDiscrete = PIDDiscrete()
-    χ2φ::PIDDiscrete = PIDDiscrete()
+    p2a::PID = PID()
+    φ2p::PID = PID()
+    χ2φ::PID = PID()
 end
 
 @kwdef mutable struct RollControlU
@@ -416,9 +416,9 @@ end
     χ_dmd::Float64 = 0.0
     a_cmd::Ranged{Float64, -1., 1.} = Ranged(0.0, -1.0, 1.0) #aileron actuation command
     a_sat::Int64 = 0 #aileron saturation state
-    p2a::PIDDiscreteY = PIDDiscreteY()
-    φ2p::PIDDiscreteY = PIDDiscreteY()
-    χ2φ::PIDDiscreteY = PIDDiscreteY()
+    p2a::PIDOutput = PIDOutput()
+    φ2p::PIDOutput = PIDOutput()
+    χ2φ::PIDOutput = PIDOutput()
 end
 
 Systems.init(::SystemU, ::RollControl) = RollControlU()

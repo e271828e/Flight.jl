@@ -18,12 +18,12 @@ include(normpath("aircraft/test_c172fbw.jl")); using .TestC172FBW
 include(normpath("aircraft/test_c172fbw_base.jl")); using .TestC172FBWBase
 include(normpath("aircraft/test_c172fbw_cas.jl")); using .TestC172FBWCAS
 
-# test_quaternions()
-# test_attitude()
-# test_geodesy()
-# test_kinematics()
+test_quaternions()
+test_attitude()
+test_geodesy()
+test_kinematics()
 
-# test_aircraft()
+test_aircraft()
 test_control()
 test_propellers()
 test_landing_gear()
