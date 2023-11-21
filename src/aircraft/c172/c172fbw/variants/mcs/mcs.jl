@@ -7,7 +7,7 @@ using Flight.FlightCore.Utils
 
 using Flight.FlightPhysics
 using Flight.FlightComponents
-using Flight.FlightComponents.Control: IntegratorOutput, PIDOutput
+using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput, LQRTracker, LQRTrackerOutput
 
 using ...C172
 using ..C172FBW
