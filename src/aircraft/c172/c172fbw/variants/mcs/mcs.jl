@@ -16,29 +16,165 @@ export Cessna172FBWMCS
 
 
 ################################################################################
-########################## AbstractControlChannel ##############################
+########################## AbstractControlMode #################################
 
-abstract type AbstractControlChannel <: SystemDefinition end
+#a discrete system implementing a specific longitudinal or lateral control mode
+abstract type AbstractControlMode <: SystemDefinition end
 
 ################################################################################
 ############################# Longitudinal Control #############################
 
-@kwdef struct LonControl <: AbstractControlChannel end
+#state vector for all longitudinal controllers
+@kwdef struct XLon <: FieldVector{10, Float64}
+    q::Float64 = 0.0; θ::Float64 = 0.0; #pitch rate, pitch angle
+    v_x::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
+    α_filt::Float64 = 0.0; ω_eng::Float64 = 0.0; #filtered airflow angles
+    thr_v::Float64 = 0.0; thr_p::Float64 = 0.0; #throttle actuator states
+    ele_v::Float64 = 0.0; ele_p::Float64 = 0.0; #elevator actuator states
+end
+
+#control input vector for longitudinal controllers
+@kwdef struct ULon{T} <: FieldVector{2, T}
+    throttle_cmd::T = 0.0
+    elevator_cmd::T = 0.0
+end
+
+#assemble state vector from aircraft physics
+function XLon(physics::System{<:C172FBW.Physics})
+
+    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = physics.airframe.act.u
+    @unpack airframe, air, rigidbody, kinematics = physics.y
+    @unpack pwp, aero, act = airframe
+    @unpack e_nb, ω_eb_b = kinematics
+
+    q = ω_eb_b[2]
+    θ = e_nb.θ
+    v_x, _, v_z = air.v_wOb_b
+    ω_eng = pwp.engine.ω
+    α_filt = aero.α_filt
+    thr_v = act.throttle_act.vel
+    thr_p = act.throttle_act.pos
+    ele_v = act.elevator_act.vel
+    ele_p = act.elevator_act.pos
+
+    XLon(; q, θ, v_x, v_z, α_filt, ω_eng, thr_v, thr_p, ele_v, ele_p)
+
+end
+
+################################################################################
+################################## θEASCtl #####################################
+
+#command vector for θ/EAS controller
+@kwdef struct ZθEAS <: FieldVector{2, Float64}
+    θ::Float64 = 0.0
+    EAS::Float64 = 0.0
+end
+
+#assemble command vector from aircraft physics
+function ZθEAS(physics::System{<:C172FBW.Physics})
+    @unpack air, kinematics = physics.y
+    θ = kinematics.e_nb.θ
+    EAS = air.EAS
+    ZθEAS(; θ, EAS)
+end
+
+###############################
+
+@kwdef struct θEASCtl <: AbstractControlMode
+    lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+end
+
+@kwdef mutable struct θEASCtlInputs
+    θ_sp::Float64 = 0.0
+    EAS_sp::Float64 = 0.0
+end
+
+@kwdef struct θEASCtlOutputs
+    θ_sp::Float64 = 0.0
+    EAS_sp::Float64 = 0.0
+    u_lon::ULon{Float64} = ULon(0.0, 0.0)
+    u_lon_sat::ULon{Int64} = ULon(0, 0)
+    lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
+end
+
+Systems.init(::SystemU, ::θEASCtl) = θEASCtlInputs()
+Systems.init(::SystemY, ::θEASCtl) = θEASCtlOutputs()
+
+function Systems.init!(sys::System{<:θEASCtl})
+    #let the LQRTracker handle saturation
+    @unpack bound_lo, bound_hi = sys.lqr.u
+    bound_lo .= ULon(; throttle_cmd = 0, elevator_cmd = -1)
+    bound_hi .=  ULon(; throttle_cmd = 1, elevator_cmd = 1)
+end
+
+Control.Discrete.reset!(sys::System{<:θEASCtl}) = Control.Discrete.reset!(sys.lqr)
+
+function Systems.f_disc!(sys::System{<:θEASCtl},
+                         physics::System{<:C172FBW.Physics}, Δt::Real)
+
+    @unpack θ_sp, EAS_sp = sys.u
+    @unpack lqr = sys
+    @unpack x_trim, u_trim, z_trim, C_fbk, C_fwd, C_int, z_sp, z, x = lqr.u
+
+    #Lookup will have to be parametric with parameters XTrim, CFBK, CFWD, etc.
+    #We will do:
+    # x_trim .= lookup.x_trim(EAS, h_o)
+    # u_trim .= lookup.u_trim(EAS, h_o)
+
+    #create a function assign!(lqr, lookup, args...) that internally does
+    #lqr.x_trim .= lookup.x_trim(args...), etc. try different options, see how
+    #far it can be streamlined without allocating
+
+    #these will eventually come from lookup tables
+    x_trim .= XLon(; q = -8.283340369112567e-6, θ = 0.023553480271892083,
+                        v_x = 52.472488387730245, v_z = 1.236138810758686,
+                        α_filt = 0.023553489660139648, ω_eng = 248.097186418114,
+                        thr_v = 0.0, thr_p = 0.6489929542635975,
+                        ele_v = 0.0, ele_p = -0.2424771622783136)
+
+    u_trim .= ULon(; throttle_cmd = 0.6489929542635975, elevator_cmd = -0.2424771622783136)
+    z_trim .= ZθEAS(; θ = 0.023553480271892083, EAS = 50)
+
+    C_fbk .= @SMatrix[0.0324562  -0.56216   0.0767795   0.00818343  -0.0297093   0.000135349   0.000166313   0.00628894  -3.31639e-5  -0.00286731;
+                  2.59501     9.94617  -0.269466   -0.117464     7.67692    -1.95015e-5   -0.000331639  -0.00602097   0.0294353    1.53726]
+    C_fwd .= @SMatrix[4.04034   0.108129;
+                  9.50847  -0.327379]
+    C_int .= 0
+
+    z_sp .= ZθEAS(; θ = θ_sp, EAS = EAS_sp)
+    # z_sp .= z_trim
+    z .= ZθEAS(physics)
+    x .= XLon(physics)
+
+    f_disc!(lqr, Δt)
+
+    u_lon = ULon(lqr.y.output)
+    u_lon_sat = ULon(lqr.y.out_sat)
+
+    sys.y = θEASCtlOutputs(; θ_sp, EAS_sp, u_lon, u_lon_sat, lqr = lqr.y)
+
+end
+
+function GUI.draw(sys::System{<:θEASCtl})
+end
+
+
+################################################################################
+
+@kwdef struct LonControl <: SystemDefinition
+    θEAS::θEASCtl = θEASCtl()
+end
 
 @kwdef mutable struct LonControlU
-#     mode::PitchMode = direct_elevator_mode
-    e_dmd::Ranged{Float64, -1., 1.} = 0.0 #aileron actuation demand
-    thr_dmd::Ranged{Float64, 0., 1.} = 0.0 #throttle actuation demand
+    throttle_sp::Ranged{Float64, 0., 1.} = 0.0 #throttle set point (for direct mode)
+    elevator_sp::Ranged{Float64, -1., 1.} = 0.0 #elevator set point (for direct mode)
 end
 
 @kwdef struct LonControlY
-#     mode::PitchMode = direct_elevator_mode
-#     θ_dmd::Float64 = 0.0
-#     EAS_dmd::Float64 = 0.0
-    e_cmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation command
-    thr_cmd::Ranged{Float64, 0., 1.} = 0.0
-    e_sat::Int64 = 0 #elevator saturation state
-    thr_sat::Int64 = 0 #throttle saturation state
+    throttle_cmd::Ranged{Float64, 0., 1.} = 0.0 #throttle actuation command
+    elevator_cmd::Ranged{Float64, -1., 1.} = 0.0 #elevator actuation command
+    elevator_sat::Int64 = 0 #elevator saturation state
+    throttle_sat::Int64 = 0 #throttle saturation state
 end
 
 Systems.init(::SystemU, ::LonControl) = LonControlU()
@@ -47,17 +183,21 @@ Systems.init(::SystemY, ::LonControl) = LonControlY()
 function Systems.init!(sys::System{<:LonControl})
 end
 
-function Control.reset!(sys::System{<:LonControl})
+function Control.Discrete.reset!(sys::System{<:LonControl})
 end
 
 function Systems.f_disc!(sys::System{<:LonControl},
-                        physics::System{<:C172FBW.Physics}, Δt::Real)
+                         physics::System{<:C172FBW.Physics}, Δt::Real)
 
     #these are the control inputs and states for the longitudinal control
     #design, and therefore the ones that we need to store in the trim condition.
     #for the inner control modes we remove h from the state vector,
     #because it worsens F's conditioning and we have no need for it until we
     #design the high-level altitude mode
+    x_trim =
+    u_trim = ULon(; )
+    z_trim = Z
+    C_fwd
 
     # u_labels = [:elevator_cmd, :throttle_cmd]
     # x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :ele_v, :ele_p, :thr_v, :thr_p]
@@ -88,7 +228,7 @@ end
 ################################################################################
 ############################# Longitudinal Control #############################
 
-@kwdef struct LatControl <: AbstractControlChannel end
+@kwdef struct LatControl <: SystemDefinition end
 
 @kwdef mutable struct LatControlU
 #     mode::PitchMode = direct_elevator_mode
@@ -112,14 +252,11 @@ Systems.init(::SystemY, ::LatControl) = LatControlY()
 function Systems.init!(sys::System{<:LatControl})
 end
 
-function Control.reset!(sys::System{<:LatControl})
+function Control.Discrete.reset!(sys::System{<:LatControl})
 end
 
 function Systems.f_disc!(sys::System{<:LatControl},
                         physics::System{<:C172FBW.Physics}, Δt::Real)
-
-    # u_labels = [:elevator_cmd, :throttle_cmd]
-    # x_labels = [:q, :θ, :v_x, :v_z, :α_filt, :ω_eng, :ele_v, :ele_p, :thr_v, :thr_p]
 
     # x_trim = ComponentVector()
     # u_trim = ComponentVector()
@@ -369,209 +506,28 @@ end
 function GUI.draw!(avionics::System{<:C172FBWMCS.Avionics},
                     physics::System{<:C172FBW.Physics},
                     label::String = "Cessna 172 SS CAS Avionics")
-
-    @unpack airframe = physics
-    @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl = avionics.subsystems
-
-    u_inc = avionics.u.inceptors
-    u_dig = avionics.u.digital
-    y_mod = avionics.y.moding
-    y_act = avionics.y.actuation
-
-    Begin(label)
-
-    PushItemWidth(-60)
-
-    show_inceptors = @cstatic check=false @c Checkbox("Inceptors", &check); SameLine()
-    show_digital = @cstatic check=false @c Checkbox("Digital", &check); SameLine()
-    show_internals = @cstatic check=false @c Checkbox("Internals", &check)
-
-    if show_inceptors
-        Separator()
-        if airframe.y.pwp.engine.state === Piston.eng_off
-            eng_start_HSV = HSV_gray
-        elseif airframe.y.pwp.engine.state === Piston.eng_starting
-            eng_start_HSV = HSV_amber
-        else
-            eng_start_HSV = HSV_green
-        end
-        dynamic_button("Engine Start", eng_start_HSV, 0.1, 0.2)
-        u_inc.eng_start = IsItemActive()
-        SameLine()
-        dynamic_button("Engine Stop", HSV_gray, (HSV_gray[1], HSV_gray[2], HSV_gray[3] + 0.1), (0.0, 0.8, 0.8))
-        u_inc.eng_stop = IsItemActive()
-        SameLine()
-        u_inc.mixture = safe_slider("Mixture", u_inc.mixture, "%.6f")
-        # Text(@sprintf("%.3f RPM", Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
-        Separator()
-        u_inc.throttle = safe_slider("Throttle", u_inc.throttle, "%.6f")
-        u_inc.roll_input = safe_slider("Roll Input", u_inc.roll_input, "%.6f")
-        u_inc.pitch_input = safe_slider("Pitch Input", u_inc.pitch_input, "%.6f")
-        u_inc.yaw_input = safe_slider("Yaw Input", u_inc.yaw_input, "%.6f")
-        Separator()
-        u_inc.aileron_cmd_offset = safe_input("Aileron Offset", u_inc.aileron_cmd_offset, 0.001, 0.1, "%.6f")
-        u_inc.elevator_cmd_offset = safe_input("Elevator Offset", u_inc.elevator_cmd_offset, 0.001, 0.1, "%.6f")
-        u_inc.rudder_cmd_offset = safe_input("Rudder Offset", u_inc.rudder_cmd_offset, 0.001, 0.1, "%.6f")
-        u_inc.flaps = safe_slider("Flaps", u_inc.flaps, "%.6f")
-        Separator()
-        u_inc.brake_left = safe_slider("Left Brake", u_inc.brake_left, "%.6f")
-        u_inc.brake_right = safe_slider("Right Brake", u_inc.brake_right, "%.6f")
-    end
-
-    if show_digital
-        Separator()
-        AlignTextToFramePadding()
-        Text("Longitudinal Control Mode")
-        SameLine()
-        dynamic_button("Semi-Automatic", mode_button_HSV(lon_mode_semi, u_dig.lon_mode_sel, y_mod.lon_mode), 0.1, 0.1)
-        IsItemActive() ? u_dig.lon_mode_sel = lon_mode_semi : nothing
-        SameLine()
-        dynamic_button("Automatic", mode_button_HSV(lon_mode_alt, u_dig.lon_mode_sel, y_mod.lon_mode), 0.1, 0.1)
-        IsItemActive() ? u_dig.lon_mode_sel = lon_mode_alt : nothing
-
-        AlignTextToFramePadding()
-        Text("Throttle Control Mode")
-        SameLine()
-        dynamic_button("Direct", mode_button_HSV(direct_throttle_mode, u_dig.throttle_mode_sel, y_mod.throttle_mode), 0.1, 0.1)
-        IsItemActive() ? u_dig.throttle_mode_sel = direct_throttle_mode : nothing
-        SameLine()
-        dynamic_button("EAS##Throttle", mode_button_HSV(EAS_throttle_mode, u_dig.throttle_mode_sel, y_mod.throttle_mode), 0.1, 0.1)
-        IsItemActive() ? u_dig.throttle_mode_sel = EAS_throttle_mode : nothing
-
-        AlignTextToFramePadding()
-        Text("Pitch Control Mode")
-        SameLine()
-        foreach(("Elevator", "Pitch Rate", "Pitch Angle", "Climb Rate", "EAS##Pitch"),
-                (direct_elevator_mode, pitch_rate_mode, pitch_angle_mode, climb_rate_mode, EAS_pitch_mode)) do label, mode
-            dynamic_button(label, mode_button_HSV(mode, u_dig.pitch_mode_sel, y_mod.pitch_mode), 0.1, 0.1)
-            IsItemActive() ? u_dig.pitch_mode_sel = mode : nothing
-            SameLine()
-        end
-        NewLine()
-
-        u_dig.q_dmd_sf = safe_input("Pitch Rate Sensitivity (s/deg)", rad2deg(u_dig.q_dmd_sf), 0.01, 1.0, "%.3f") |> deg2rad
-        u_dig.θ_dmd = safe_input("Pitch Angle Demand (deg)", rad2deg(u_dig.θ_dmd), 0.01, 1.0, "%.3f") |> deg2rad
-        u_dig.c_dmd = safe_input("Climb Rate Demand (m/s)", u_dig.c_dmd, 0.01, 1.0, "%.3f")
-        u_dig.EAS_dmd = safe_input("EAS Demand (m/s)", u_dig.EAS_dmd, 0.1, 1.0, "%.3f")
-        u_dig.h_dmd = safe_input("Altitude Demand (m)", u_dig.h_dmd, 0.1, 1.0, "%.3f")
-        AlignTextToFramePadding()
-        Text("Altitude Reference")
-        SameLine()
-        RadioButton("Ellipsoidal", u_dig.h_ref === ellipsoidal) ? u_dig.h_ref = ellipsoidal : nothing
-        SameLine()
-        RadioButton("Orthometric", u_dig.h_ref === orthometric) ? u_dig.h_ref = orthometric : nothing
-
-        Separator()
-        AlignTextToFramePadding()
-        Text("Lateral Control")
-        SameLine()
-        dynamic_button("Semi-Automatic", mode_button_HSV(lat_mode_semi, u_dig.lat_mode_sel, y_mod.lat_mode), 0.1, 0.1)
-        IsItemActive() ? u_dig.lat_mode_sel = lat_mode_semi : nothing
-
-        AlignTextToFramePadding()
-        Text("Roll Control Mode")
-        SameLine()
-        foreach(("Aileron", "Roll Rate", "Bank Angle", "Course Angle"),
-                (direct_aileron_mode, roll_rate_mode, bank_angle_mode, course_angle_mode)) do label, mode
-            dynamic_button(label, mode_button_HSV(mode, u_dig.roll_mode_sel, y_mod.roll_mode), 0.1, 0.1)
-            IsItemActive() ? u_dig.roll_mode_sel = mode : nothing
-            SameLine()
-        end
-        NewLine()
-
-        AlignTextToFramePadding()
-        Text("Yaw Control Mode")
-        SameLine()
-        dynamic_button("Rudder", mode_button_HSV(direct_rudder_mode, u_dig.yaw_mode_sel, y_mod.yaw_mode), 0.1, 0.1)
-        IsItemActive() ? u_dig.yaw_mode_sel = direct_rudder_mode : nothing
-
-        u_dig.p_dmd_sf = safe_input("Roll Rate Sensitivity (s/deg)", rad2deg(u_dig.p_dmd_sf), 0.1, 1.0, "%.3f") |> deg2rad
-        u_dig.φ_dmd = safe_input("Bank Angle Demand (deg)", rad2deg(u_dig.φ_dmd), 0.1, 1.0, "%.3f") |> deg2rad
-        u_dig.χ_dmd = safe_input("Course Angle Demand (deg)", rad2deg(u_dig.χ_dmd), 0.1, 1.0, "%.3f") |> deg2rad
-    end
-
-    if show_internals
-        Begin("Internals")
-        Separator()
-        show_throttle_ctl = @cstatic check=false @c Checkbox("Throttle Control", &check); SameLine()
-        show_roll_ctl = @cstatic check=false @c Checkbox("Roll Control", &check); SameLine()
-        show_pitch_ctl = @cstatic check=false @c Checkbox("Pitch Control", &check); SameLine()
-        show_yaw_ctl = @cstatic check=false @c Checkbox("Yaw Control", &check); SameLine()
-        show_moding = @cstatic check=false @c Checkbox("Moding", &check); SameLine()
-        # show_actuation = @cstatic check=false @c Checkbox("Actuation", &check); SameLine()
-        show_throttle_ctl && GUI.draw(throttle_ctl)
-        show_roll_ctl && GUI.draw(roll_ctl)
-        show_pitch_ctl && GUI.draw(pitch_ctl)
-        show_yaw_ctl && GUI.draw(yaw_ctl)
-        show_moding && GUI.draw(y_mod)
-        # show_actuation && GUI.draw(y_act)
-        End()
-    end
-
-
-    PopItemWidth()
-
-    End()
-
 end
 
 function GUI.draw(moding::AvionicsModing)
 
-    @unpack flight_phase, throttle_mode, roll_mode, pitch_mode, yaw_mode, lon_mode, lat_mode = moding
-
-    Begin("Moding")
-    Text("Flight Phase: $flight_phase")
-    Text("Throttle Mode: $throttle_mode")
-    Text("Roll Mode: $roll_mode")
-    Text("Pitch Mode: $pitch_mode")
-    Text("Yaw Mode: $yaw_mode")
-    Text("Longitudinal Mode: $lon_mode")
-    Text("Lateral Mode: $lat_mode")
-
-    CImGui.End()
 
 end
 
 ################################################################################
 ############################# Cessna172FBWMCS ##################################
 
-#Cessna172R with control augmenting Avionics
-const Cessna172FBWMCS{K} = C172FBW.Template{K, Avionics} where {K <: AbstractKinematicDescriptor}
-Cessna172FBWMCS(kinematics = LTF()) = C172FBW.Template(kinematics, Avionics())
+const Cessna172FBWMCS{K, T} = C172FBW.Template{K, T, C172FBWMCS.Avionics} where {
+    K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+
+function Cessna172FBWMCS(kinematics = LTF(), terrain = HorizontalTerrain())
+    C172FBW.Template(kinematics, terrain, C172FBWMCS.Avionics())
+end
 
 
 ##################################### Tools ####################################
 
 function Aircraft.trim!(ac::System{<:Cessna172FBWMCS},
                         trim_params::C172.TrimParameters = C172.TrimParameters())
-
-    result = trim!(ac.physics, trim_params)
-    trim_state = result[2]
-
-    #makes Avionics inputs consistent with the trim solution obtained for the
-    #aircraft physics so the trim condition is preserved during simulation
-    @unpack mixture, flaps = trim_params
-    @unpack throttle, aileron, elevator, rudder = trim_state
-
-    u = ac.avionics.u
-    u.inceptors.throttle = throttle
-    u.inceptors.roll_input = aileron
-    u.inceptors.pitch_input = elevator
-    u.inceptors.yaw_input = rudder
-    u.inceptors.mixture = mixture
-    u.inceptors.flaps = flaps
-
-    u.digital.lon_mode_sel = C172FBWMCS.lon_mode_semi
-    u.digital.lat_mode_sel = C172FBWMCS.lat_mode_semi
-    u.digital.throttle_mode_sel = C172FBWMCS.direct_throttle_mode
-    u.digital.roll_mode_sel = C172FBWMCS.direct_aileron_mode
-    u.digital.pitch_mode_sel = C172FBWMCS.direct_elevator_mode
-    u.digital.yaw_mode_sel = C172FBWMCS.direct_rudder_mode
-
-    #update avionics outputs
-    f_disc!(ac.avionics, 1, ac.physics)
-
-    return result
 
 end
 

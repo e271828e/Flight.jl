@@ -1120,14 +1120,13 @@ end #function
 ############################## LQRTracker ######################################
 ################################################################################
 
-struct LQRTracker{NX, NU, NY, NUX, NUY} <: SystemDefinition
+struct LQRTracker{NX, NU, NY, NUX, NUY} <: SystemDefinition end
 
-    function LQRTracker{NX, NU, NY}() where {NX, NU, NY}
-        @assert NY <= NU "Can't have more command variables than control inputs"
-        NUX = NU * NX
-        NUY = NU * NY
-        new{NX, NU, NY, NUX, NUY}()
-    end
+function LQRTracker{NX, NU, NY}() where {NX, NU, NY}
+    @assert NY <= NU "Can't have more command variables than control inputs"
+    NUX = NU * NX
+    NUY = NU * NY
+    LQRTracker{NX, NU, NY, NUX, NUY}()
 end
 
 @kwdef struct LQRTrackerInput{NX, NU, NY, NUX, NUY}
@@ -1136,13 +1135,19 @@ end
     C_int::MMatrix{NU, NY, Float64, NUY} = zeros(NU, NY) #integrator gain matrix
     x_trim::MVector{NX, Float64} = zeros(NX) #trim point state
     u_trim::MVector{NU, Float64} = zeros(NU) #trim point control input
-    y_trim::MVector{NY, Float64} = zeros(NY) #trim point command variable
+    z_trim::MVector{NY, Float64} = zeros(NY) #trim point command vector
     bound_lo::MVector{NU,Float64} = fill(-Inf, NU) #lower output bounds
     bound_hi::MVector{NU,Float64} = fill(Inf, NU) #upper output bounds
     sat_ext::MVector{NU,Int64} = zeros(Int64, NU) #saturation input signal
-    y_sp::MVector{NY, Float64} = zeros(NY) #command variable set point
-    y_fbk::MVector{NY, Float64} = zeros(NY) #command variable feedback
-    x_fbk::MVector{NX, Float64} = zeros(NX) #state feedback
+    z_sp::MVector{NY, Float64} = zeros(NY) #command vector set point
+    z::MVector{NY, Float64} = zeros(NY) #current command vector value
+    x::MVector{NX, Float64} = zeros(NX) #current state vector value
+end
+
+function LQRTrackerInput{NX, NU, NY}(args...; kwargs...) where {NX, NU, NY}
+    NUX = NU * NX
+    NUY = NU * NY
+    LQRTrackerInput{NX, NU, NY, NUX, NUY}(args...; kwargs...)
 end
 
 @kwdef struct LQRTrackerOutput{NX, NU, NY, NUX, NUY}
@@ -1151,19 +1156,25 @@ end
     C_int::SMatrix{NU, NY, Float64, NUY} = zeros(SMatrix{NU, NY}) #integrator gain matrix
     x_trim::SVector{NX, Float64} = zeros(SVector{NX}) #trim point state
     u_trim::SVector{NU, Float64} = zeros(SVector{NU}) #trim point control input
-    y_trim::SVector{NY, Float64} = zeros(SVector{NY}) #trim point command variable
+    z_trim::SVector{NY, Float64} = zeros(SVector{NY}) #trim point command variable
     bound_lo::SVector{NU,Float64} = fill(-Inf, SVector{NU}) #lower output bounds
     bound_hi::SVector{NU,Float64} = fill(Inf, SVector{NU}) #upper output bounds
     sat_ext::SVector{NU,Int64} = zeros(SVector{NU, Int64}) #saturation input signal
-    y_sp::SVector{NY, Float64} = zeros(SVector{NY}) #command variable set point
-    y_fbk::SVector{NY, Float64} = zeros(SVector{NY}) #command variable feedback
-    x_fbk::SVector{NX, Float64} = zeros(SVector{NX}) #state feedback
+    z_sp::SVector{NY, Float64} = zeros(SVector{NY}) #command variable set point
+    z::SVector{NY, Float64} = zeros(SVector{NY}) #current command vector value
+    x::SVector{NX, Float64} = zeros(SVector{NX}) #current state vector value
     int_in::SVector{NU,Float64} = zeros(SVector{NU}) #integrator input
     int_halted::SVector{NU,Bool} = zeros(SVector{NU, Bool}) #integration halted
     int_out::SVector{NU,Float64} = zeros(SVector{NU}) #integrator output
     out_free::SVector{NU,Float64} = zeros(SVector{NU}) #total output, free
     out_sat::SVector{NU,Int64} = zeros(SVector{NU, Int64}) #current output saturation status
     output::SVector{NU,Float64} = zeros(SVector{NU}) #actual output
+end
+
+function LQRTrackerOutput{NX, NU, NY}(args...; kwargs...) where {NX, NU, NY}
+    NUX = NU * NX
+    NUY = NU * NY
+    LQRTrackerOutput{NX, NU, NY, NUX, NUY}(args...; kwargs...)
 end
 
 @kwdef struct LQRTrackerState{NX, NU}
@@ -1184,9 +1195,9 @@ function Systems.init(::SystemS, ::LQRTracker{NX, NU, NY, NUX, NUY}) where {NX, 
 end
 
 function reset!(sys::System{<:LQRTracker})
-    sys.u.y_sp .= 0
-    sys.u.y_fbk .= 0
-    sys.u.x_fbk .= 0
+    sys.u.z_sp .= 0
+    sys.u.z .= 0
+    sys.u.x .= 0
     sys.u.sat_ext .= 0
     sys.s.int_out_0 .= 0
     sys.s.out_sat_0 .= 0
@@ -1198,18 +1209,18 @@ function Systems.f_disc!(sys::System{<:LQRTracker}, Δt::Real)
     @unpack s, u = sys
 
     C_fbk, C_fwd, C_int = map(SMatrix, (u.C_fbk, u.C_fwd, u.C_int))
-    x_trim, u_trim, y_trim = map(SVector, (u.x_trim, u.u_trim, u.y_trim))
+    x_trim, u_trim, z_trim = map(SVector, (u.x_trim, u.u_trim, u.z_trim))
     bound_lo, bound_hi, sat_ext = map(SVector, (u.bound_lo, u.bound_hi, u.sat_ext))
-    y_sp, y_fbk, x_fbk = map(SVector, (u.y_sp, u.y_fbk, u.x_fbk))
+    z_sp, z, x = map(SVector, (u.z_sp, u.z, u.x))
 
     int_out_0 = SVector(s.int_out_0)
     out_sat_0 = SVector(s.out_sat_0)
 
-    int_in = C_int * (y_sp - y_fbk)
+    int_in = C_int * (z_sp - z)
     int_halted = ((sign.(int_in .* out_sat_0) .> 0) .|| (sign.(int_in .* sat_ext) .> 0))
     int_out = int_out_0 + Δt * int_in .* .!int_halted
 
-    out_free = u_trim + int_out + C_fwd * (y_sp - y_trim) - C_fbk * (x_fbk - x_trim)
+    out_free = u_trim + int_out + C_fwd * (z_sp - z_trim) - C_fbk * (x - x_trim)
 
     out_sat = (out_free .>= bound_hi) - (out_free .<= bound_lo)
     output = clamp.(out_free, bound_lo, bound_hi)
@@ -1217,13 +1228,41 @@ function Systems.f_disc!(sys::System{<:LQRTracker}, Δt::Real)
     s.int_out_0 .= int_out
     s.out_sat_0 .= out_sat
 
-    sys.y = LQRTrackerOutput(; C_fbk, C_fwd, C_int, x_trim, u_trim, y_trim,
-        bound_lo, bound_hi, sat_ext, y_sp, y_fbk, x_fbk,
+    sys.y = LQRTrackerOutput(; C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim,
+        bound_lo, bound_hi, sat_ext, z_sp, z, x,
         int_in, int_out, int_halted, out_free, out_sat, output)
 
     return false
 
 end
+
+function GUI.draw(sys::System{<:LQRTracker})
+
+    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim, bound_lo, bound_hi,
+            sat_ext, z_sp, z, x, int_in, int_halted, int_out,
+            out_free, out_sat, output = sys.y
+
+        CImGui.Text("Feedback Gain = $C_fbk")
+        CImGui.Text("Forward Gain = $C_fwd")
+        CImGui.Text("Integral Gain = $C_int")
+        CImGui.Text("Trim State Vector = $x_trim")
+        CImGui.Text("Trim Control Vector = $u_trim")
+        CImGui.Text("Trim Command Vector = $z_trim")
+        CImGui.Text("Lower Output Bound = $bound_lo")
+        CImGui.Text("Upper Output Bound = $bound_hi")
+        CImGui.Text("External Saturation Input = $sat_ext")
+        CImGui.Text("Set Point Command Vector = $z_sp")
+        CImGui.Text("Current Command Vector = $z")
+        CImGui.Text("Current State Vector = $x")
+        CImGui.Text("Integrator Input = $int_in")
+        CImGui.Text("Integrator Halted = $int_halted")
+        CImGui.Text("Integrator Output = $int_out")
+        CImGui.Text("Free Output = $out_free")
+        CImGui.Text("Output Saturation = $out_sat")
+        CImGui.Text("Actual Output = $output")
+
+end #function
+
 
 end #submodule
 

@@ -441,10 +441,10 @@ end
 ############################### Linearization ##################################
 
 @kwdef struct XLinear <: FieldVector{24, Float64}
-    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
-    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
+    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
+    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     α_filt::Float64 = 0.0; β_filt::Float64 = 0.0; #filtered airflow angles
     ω_eng::Float64 = 0.0; fuel::Float64 = 0.0; #engine speed, fuel fraction
     thr_v::Float64 = 0.0; thr_p::Float64 = 0.0; #throttle actuator states
@@ -463,10 +463,10 @@ end
 
 #all states (for full-state feedback), plus other useful stuff, plus control inputs
 @kwdef struct YLinear <: FieldVector{41, Float64}
-    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
-    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
+    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
+    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     α_filt::Float64 = 0.0; β_filt::Float64 = 0.0; #filtered airflow angles
     ω_eng::Float64 = 0.0; fuel::Float64 = 0.0; #engine speed, available fuel fraction
     thr_v::Float64 = 0.0; thr_p::Float64 = 0.0; #throttle actuator states
@@ -474,8 +474,8 @@ end
     ele_v::Float64 = 0.0; ele_p::Float64 = 0.0; #elevator actuator states
     rud_v::Float64 = 0.0; rud_p::Float64 = 0.0; #rudder actuator states
     f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
-    EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
     α::Float64 = 0.0; β::Float64 = 0.0; #unfiltered airflow angles
+    EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
     χ::Float64 = 0.0; γ::Float64 = 0.0; c::Float64 = 0.0; #track and flight path angles, climb rate
     throttle_cmd_out::Float64 = 0.0; aileron_cmd_out::Float64 = 0.0; #control inputs
@@ -505,8 +505,8 @@ function XLinear(x_physics::ComponentVector)
 
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
-    XLinear(;  ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel,
-                thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p)
+    XLinear(;  p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt,
+        ω_eng, fuel, thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p)
 
 end
 
@@ -559,8 +559,8 @@ function YLinear(physics::System{<:C172FBW.Physics{NED}})
     elevator_cmd_out = elevator_cmd
     rudder_cmd_out = rudder_cmd
 
-    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel,
-            thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p,
+    YLinear(; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt,
+            ω_eng, fuel, thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p,
             f_x, f_y, f_z, EAS, TAS, α, β, v_N, v_E, v_D, χ, γ, c,
             throttle_cmd_out, aileron_cmd_out, elevator_cmd_out, rudder_cmd_out)
 
@@ -585,7 +585,7 @@ end
 
 function Aircraft.assign_x!(physics::System{<:C172FBW.Physics{NED}}, x::AbstractVector{Float64})
 
-    @unpack ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng,
+    @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng,
             fuel, thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p = XLinear(x)
 
     x_kinematics = physics.x.kinematics
@@ -620,14 +620,15 @@ function Control.Continuous.LinearizedSS(
     if model === :full
         return lm
 
+    #preserve the ordering of the complete linearized state and output vectors
     elseif model === :lon
-        x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng, :ele_v, :ele_p, :thr_v, :thr_p]
-        u_labels = [:elevator_cmd, :throttle_cmd]
-        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :c, :elevator_cmd_out, :throttle_cmd_out])
+        x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
+        u_labels = [:throttle_cmd, :elevator_cmd]
+        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :c, :throttle_cmd_out, :elevator_cmd_out])
         return Control.Continuous.submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat
-        x_labels = [:p, :r, :φ, :ψ, :v_x, :v_y, :β_filt, :ail_v, :ail_p, :rud_v, :rud_p]
+        x_labels = [:p, :r, :ψ, :φ, :v_x, :v_y, :β_filt, :ail_v, :ail_p, :rud_v, :rud_p]
         u_labels = [:aileron_cmd, :rudder_cmd]
         y_labels = vcat(x_labels, [:f_y, :β, :χ, :aileron_cmd_out, :rudder_cmd_out])
         return Control.Continuous.submodel(lm; x = x_labels, u = u_labels, y = y_labels)
@@ -645,6 +646,6 @@ end
 
 include(normpath("variants/base.jl")); @reexport using .C172FBWBase
 include(normpath("variants/cas/cas.jl")); @reexport using .C172FBWCAS
-# include(normpath("variants/mcs/mcs.jl")); @reexport using .C172FBWMCS
+include(normpath("variants/mcs/mcs.jl")); @reexport using .C172FBWMCS
 
 end

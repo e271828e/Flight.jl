@@ -347,10 +347,10 @@ end
 ############################### Linearization ##################################
 
 @kwdef struct XLinear <: FieldVector{16, Float64}
-    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
-    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
+    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
+    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     α_filt::Float64 = 0.0; β_filt::Float64 = 0.0; #filtered airflow angles
     ω_eng::Float64 = 0.0; fuel::Float64 = 0.0; #engine speed, fuel fraction
 end
@@ -365,15 +365,15 @@ end
 
 #all states (for full-state feedback), plus other useful stuff, plus control inputs
 @kwdef struct YLinear <: FieldVector{33, Float64}
-    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
-    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
+    ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
+    ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     α_filt::Float64 = 0.0; β_filt::Float64 = 0.0; #filtered airflow angles
     ω_eng::Float64 = 0.0; fuel::Float64 = 0.0; #engine speed, available fuel fraction
     f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
-    EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
     α::Float64 = 0.0; β::Float64 = 0.0; #unfiltered airflow angles
+    EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
     χ::Float64 = 0.0; γ::Float64 = 0.0; c::Float64 = 0.0; #track and flight path angles, climb rate
     throttle_out::Float64 = 0.0; aileron_out::Float64 = 0.0; #control inputs
@@ -394,7 +394,7 @@ function XLinear(x_physics::ComponentVector)
     fuel = x_airframe.fuel[1]
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
-    XLinear(;  ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel)
+    XLinear(; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng, fuel)
 
 end
 
@@ -438,7 +438,7 @@ function YLinear(physics::System{<:C172R.Physics{NED}})
     elevator_out = elevator
     rudder_out = rudder
 
-    YLinear(; ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel,
+    YLinear(; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng, fuel,
             f_x, f_y, f_z, EAS, TAS, α, β, v_N, v_E, v_D, χ, γ, c,
             throttle_out, aileron_out, elevator_out, rudder_out)
 
@@ -464,7 +464,7 @@ end
 
 function Aircraft.assign_x!(physics::System{<:C172R.Physics{NED}}, x::AbstractVector{Float64})
 
-    @unpack ψ, θ, φ, ϕ, λ, h, p, q, r, v_x, v_y, v_z, α_filt, β_filt, ω_eng, fuel = XLinear(x)
+    @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng, fuel = XLinear(x)
 
     x_kinematics = physics.x.kinematics
     x_airframe = physics.x.airframe
@@ -492,12 +492,12 @@ function Control.Continuous.LinearizedSS(
 
     elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng]
-        u_labels = [:elevator, :throttle]
-        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :c, :elevator_out, :throttle_out])
+        u_labels = [:throttle, :elevator]
+        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :c, :throttle_out, :elevator_out])
         return Control.Continuous.submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat
-        x_labels = [:p, :r, :φ, :ψ, :v_x, :v_y, :β_filt]
+        x_labels = [:p, :r, :ψ, :φ, :v_x, :v_y, :β_filt]
         u_labels = [:aileron, :rudder]
         y_labels = vcat(x_labels, [:f_y, :β, :χ, :aileron_out, :rudder_out])
         return Control.Continuous.submodel(lm; x = x_labels, u = u_labels, y = y_labels)

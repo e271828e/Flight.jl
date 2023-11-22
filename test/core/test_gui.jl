@@ -19,7 +19,8 @@ function test_gui()
     # target = Cessna172FBWCAS() |> System
     # target = Cessna172RBase() |> System
     # target = Control.Discrete.PIDVector{3}() |> System
-    target = Control.Continuous.PIVector{3}() |> System
+    # target = Control.Continuous.PIVector{3}() |> System
+    target = Control.Discrete.LQRTracker{10, 2, 2}() |> System
     r = Renderer()
     GUI.init!(r)
     # GUI.run(r, GUI.draw!, target)
