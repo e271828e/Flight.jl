@@ -85,10 +85,24 @@ function test_cas(; save::Bool = true)
 
                 t = ac.t[]
 
+                u_inceptors = ac.avionics.u.inceptors
+                u_digital = ac.avionics.u.digital
+
+                u_digital.lon_mode_sel = C172FBWMCS.lon_θ_EAS
+
+                # u_digital.lon_mode_sel = C172FBWMCS.lon_q_EAS
+                # if 5 < t < 15
+                #     u_inceptors.pitch_input = 0.001
+                # elseif 15 < t < 25
+                #     u_inceptors.pitch_input = -0.001
+                # else
+                #     u_inceptors.pitch_input = 0
+                # end
+
             end
         end
 
-        sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 20, sys_io!, adaptive = false)
+        sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 30, sys_io!, adaptive = false)
         # sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 60, adaptive = false)
         Sim.run!(sim, verbose = true)
 

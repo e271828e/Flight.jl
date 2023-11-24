@@ -566,10 +566,10 @@ Systems.init(::SystemY, ::Integrator) = IntegratorOutput()
 Systems.init(::SystemU, ::Integrator) = IntegratorInput()
 Systems.init(::SystemS, ::Integrator) = IntegratorState()
 
-function reset!(sys::System{<:Integrator})
+function reset!(sys::System{<:Integrator}, x0::Real = 0.0)
     sys.u.input = 0
     sys.u.sat_ext = 0
-    sys.s.x0 = 0
+    sys.s.x0 = x0
     sys.s.sat_out_0 = 0
     f_disc!(sys, 1.0)
 end
@@ -628,10 +628,10 @@ Systems.init(::SystemY, ::IntegratorVector{N}) where {N} = IntegratorVectorOutpu
 Systems.init(::SystemU, ::IntegratorVector{N}) where {N} = IntegratorVectorInput{N}()
 Systems.init(::SystemS, ::IntegratorVector{N}) where {N} = IntegratorVectorState{N}()
 
-function reset!(sys::System{<:IntegratorVector})
+function reset!(sys::System{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
     sys.u.input .= 0
     sys.u.sat_ext .= 0
-    sys.s.x0 .= 0
+    sys.s.x0 .= x0
     sys.s.sat_out_0 .= 0
     f_disc!(sys, 1.0)
 end
