@@ -72,36 +72,30 @@ function test_cas(; save::Bool = true)
 
     @testset verbose = true "Simulation" begin
 
-        world = SimpleWorld(Cessna172FBWMCS()) |> System;
+        ac = Cessna172FBWMCS() |> System;
+        design_condition = C172.TrimParameters()
 
-        design_condition = C172.TrimParameters(
-            Ob = Geographic(LatLon(), HOrth(1000)),
-            EAS = 40.0,
-            γ_wOb_n = 0.0,
-            x_fuel = 0.5,
-            flaps = 0.0,
-            payload = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50))
+        exit_flag, trim_state = trim!(ac, design_condition)
 
-        exit_flag, trim_state = trim!(design_condition, trim_params)
         @test exit_flag === true
 
         sys_io! = let
 
-            function (world)
+            function (ac)
 
-                t = world.t[]
+                t = ac.t[]
 
             end
         end
 
-        sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 60, sys_io!, adaptive = false)
-        # sim = Simulation(world; dt = 0.01, Δt = 0.01, t_end = 60, adaptive = false)
+        sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 20, sys_io!, adaptive = false)
+        # sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 60, adaptive = false)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
-        kin_plots = make_plots(TimeHistory(sim).ac.physics.kinematics; Plotting.defaults...)
-        air_plots = make_plots(TimeHistory(sim).ac.physics.air; Plotting.defaults...)
-        rb_plots = make_plots(TimeHistory(sim).ac.physics.rigidbody; Plotting.defaults...)
+        kin_plots = make_plots(TimeHistory(sim).physics.kinematics; Plotting.defaults...)
+        air_plots = make_plots(TimeHistory(sim).physics.air; Plotting.defaults...)
+        rb_plots = make_plots(TimeHistory(sim).physics.rigidbody; Plotting.defaults...)
         save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172fbw_mcs", "cas", "kin"))
         save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172fbw_mcs", "cas", "air"))
         save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172fbw_mcs", "cas", "rigidbody"))

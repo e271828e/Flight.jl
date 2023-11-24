@@ -78,6 +78,84 @@ function ZθEAS(physics::System{<:C172FBW.Physics})
     ZθEAS(; θ, EAS)
 end
 
+###############################
+
+@kwdef struct θEASCtl <: AbstractControlMode
+    lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+end
+
+@kwdef struct θEASCtlOutputs
+    u::ULon{Float64} = ULon(0.0, 0.0)
+    u_sat::ULon{Int64} = ULon(0, 0)
+    lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
+end
+
+Systems.init(::SystemU, ::θEASCtl) = Ref(ZθEAS())
+Systems.init(::SystemY, ::θEASCtl) = θEASCtlOutputs()
+
+function Systems.init!(sys::System{<:θEASCtl})
+    #let the LQRTracker handle saturation
+    @unpack bound_lo, bound_hi = sys.lqr.u
+    bound_lo .= ULon(; throttle_cmd = 0, elevator_cmd = -1)
+    bound_hi .=  ULon(; throttle_cmd = 1, elevator_cmd = 1)
+end
+
+Control.Discrete.reset!(sys::System{<:θEASCtl}) = Control.Discrete.reset!(sys.lqr)
+
+#smooth reset, assigns the current values of the command variables as inputs
+function Control.Discrete.reset!(sys::System{<:θEASCtl}, physics::System{<:C172FBW.Physics})
+    reset!(sys)
+    sys.u[] = ZθEAS(physics)
+end
+
+function Systems.f_disc!(sys::System{<:θEASCtl},
+                         physics::System{<:C172FBW.Physics}, Δt::Real)
+
+    @unpack lqr = sys
+    # @unpack x_trim, u_trim, z_trim, C_fbk, C_fwd, C_int, z_sp, z, x = lqr.u
+
+    #Lookup will have to be parametric with parameters XTrim, CFBK, CFWD, etc.
+    #We will do:
+    # x_trim .= lookup.x_trim(EAS, h_o)
+    # u_trim .= lookup.u_trim(EAS, h_o)
+
+    #create a function assign!(lqr, lookup, args...) that internally does
+    #lqr.x_trim .= lookup.x_trim(args...), etc. try different options, see how
+    #far it can be streamlined without allocating
+
+    #these will eventually come from lookup tables
+    lqr.u.x_trim .= XLon(; q = -8.283340369112567e-6, θ = 0.023553480271892083,
+                    v_x = 52.472488387730245, v_z = 1.236138810758686,
+                    α_filt = 0.023553489660139648, ω_eng = 248.097186418114,
+                    thr_v = 0.0, thr_p = 0.6489929542635975,
+                    ele_v = 0.0, ele_p = -0.2424771622783136)
+
+    lqr.u.u_trim .= ULon(; throttle_cmd = 0.6489929542635975, elevator_cmd = -0.2424771622783136)
+    lqr.u.z_trim .= ZθEAS(; θ = 0.023553480271892083, EAS = 50)
+
+    lqr.u.C_fbk .= @SMatrix[0.0324562  -0.56216   0.0767795   0.00818343  -0.0297093   0.000135349   0.000166313   0.00628894  -3.31639e-5  -0.00286731;
+                  2.59501     9.94617  -0.269466   -0.117464     7.67692    -1.95015e-5   -0.000331639  -0.00602097   0.0294353    1.53726]
+    lqr.u.C_fwd .= @SMatrix[4.04034   0.108129;
+                  9.50847  -0.327379]
+    lqr.u.C_int .= 0
+
+    # lqr.u.z_sp .= sys.u[]
+    lqr.u.z_sp .= lqr.u.z_trim
+    lqr.u.z .= ZθEAS(physics)
+    lqr.u.x .= XLon(physics)
+
+    f_disc!(lqr, Δt)
+
+    u = ULon(lqr.y.output)
+    u_sat = ULon(lqr.y.out_sat)
+
+    sys.y = θEASCtlOutputs(; u, u_sat, lqr = lqr.y)
+
+end
+
+function GUI.draw(sys::System{<:θEASCtl})
+end
+
 
 ################################################################################
 ################################## Avionics ####################################
@@ -104,21 +182,20 @@ end
 end
 
 @kwdef struct Avionics <: AbstractAvionics
-    θEAS_ctl::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+    θEAS_ctl::θEASCtl = θEASCtl()
 end
 
 @kwdef mutable struct Inceptors
     eng_start::Bool = false
     eng_stop::Bool = false
     mixture::Ranged{Float64, 0., 1.} = 0.5
-    throttle_input::Ranged{Float64, 0., 1.} = 0.0 #sets throttle_sp
-    roll_input::Ranged{Float64, -1., 1.} = 0.0 #sets aileron_sp or p_sp
-    pitch_input::Ranged{Float64, -1., 1.} = 0.0 #sets elevator_sp or q_sp
-    yaw_input::Ranged{Float64, -1., 1.} = 0.0 #sets rudder_sp or β_sp
-    throttle_sp_offset::Ranged{Float64, 0., 1.} = 0.0 #for direct throttle only
-    aileron_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct aileron only
-    elevator_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct elevator only
-    rudder_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct rudder only
+    throttle_input::Ranged{Float64, 0., 1.} = 0.0 #used in direct_throttle_mode
+    roll_input::Ranged{Float64, -1., 1.} = 0.0 #used in aileron_mode and roll_rate_mode
+    pitch_input::Ranged{Float64, -1., 1.} = 0.0 #used in direct_elevator_mode and pitch_rate_mode
+    yaw_input::Ranged{Float64, -1., 1.} = 0.0 #used in rudder_mode and sideslip_mode
+    aileron_sp_offset::Ranged{Float64, -1., 1.} = 0.0
+    elevator_sp_offset::Ranged{Float64, -1., 1.} = 0.0
+    rudder_sp_offset::Ranged{Float64, -1., 1.} = 0.0
     flaps::Ranged{Float64, 0., 1.} = 0.0
     brake_left::Ranged{Float64, 0., 1.} = 0.0
     brake_right::Ranged{Float64, 0., 1.} = 0.0
@@ -126,12 +203,12 @@ end
 
 
 @kwdef mutable struct DigitalInputs
-    lon_mode_sel::LonMode = lon_direct #selected longitudinal control mode
-    lat_mode_sel::LatMode = lat_direct #selected lateral control mode
+    lon_mode_sel::LonMode = lon_mode_semi #selected longitudinal control mode
+    lat_mode_sel::LatMode = lat_mode_semi #selected lateral control mode
     p_sf::Float64 = 1.0 #roll_input to p_sp scale factor (0.2)
     q_sf::Float64 = 1.0 #pitch_input to q_sp scale factor (0.2)
     β_sf::Float64 = 1.0 #yaw input to β_sp scale factor (0.1)
-    EAS_sp::Float64 = 50.0 #equivalent airspeed setpoint
+    EAS_sp::Float64 = 40.0 #equivalent airspeed setpoint
     θ_sp::Float64 = 0.0 #pitch angle setpoint
 #     c_dmd::Float64 = 0.0 #climb rate demand
 #     φ_dmd::Float64 = 0.0 #bank angle demand
@@ -143,11 +220,6 @@ end
 @kwdef struct AvionicsU
     inceptors::Inceptors = Inceptors()
     digital::DigitalInputs = DigitalInputs()
-end
-
-@kwdef struct AvionicsS
-    lon_mode_prev::LonMode = lon_direct
-    lat_mode_prev::LatMode = lat_direct
 end
 
 @kwdef struct AvionicsModing
@@ -169,40 +241,12 @@ end
 @kwdef struct AvionicsY
     moding::AvionicsModing = AvionicsModing()
     actuation::ActuationCommands = ActuationCommands()
-    θEAS_ctl::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
 end
 
 Systems.init(::SystemU, ::Avionics) = AvionicsU()
 Systems.init(::SystemY, ::Avionics) = AvionicsY()
-Systems.init(::SystemS, ::Avionics) = AvionicsS()
+Systems.init(::SystemS, ::Avionics) = nothing #keep subsystems local
 
-function Systems.init!(sys::System{<:Avionics})
-
-    @unpack θEAS_ctl = sys.subsystems
-    θEAS_ctl.u.bound_lo .= ULon(; throttle_cmd = 0, elevator_cmd = -1)
-    θEAS_ctl.u.bound_hi .=  ULon(; throttle_cmd = 1, elevator_cmd = 1)
-
-    #these will be moved to f_disc! for gain scheduling
-    θEAS_ctl.u.x_trim .= XLon(; q = -8.283340369112567e-6, θ = 0.023553480271892083,
-                    v_x = 52.472488387730245, v_z = 1.236138810758686,
-                    α_filt = 0.023553489660139648, ω_eng = 248.097186418114,
-                    thr_v = 0.0, thr_p = 0.6489929542635975,
-                    ele_v = 0.0, ele_p = -0.2424771622783136)
-
-    θEAS_ctl.u.u_trim .= ULon(; throttle_cmd = 0.6489929542635975, elevator_cmd = -0.2424771622783136)
-    θEAS_ctl.u.z_trim .= ZθEAS(; θ = 0.023553480271892083, EAS = 50)
-
-    θEAS_ctl.u.C_fbk .= @SMatrix[0.0324562  -0.56216   0.0767795   0.00818343  -0.0297093   0.000135349   0.000166313   0.00628894  -3.31639e-5  -0.00286731;
-                                2.59501     9.94617  -0.269466   -0.117464     7.67692    -1.95015e-5   -0.000331639  -0.00602097   0.0294353    1.53726]
-    θEAS_ctl.u.C_fwd .= @SMatrix[4.04034   0.108129;
-                                9.50847  -0.327379]
-    θEAS_ctl.u.C_int .= 0
-
-end
-
-function Control.Discrete.reset!(sys::System{<:C172FBWMCS.Avionics})
-    Control.Discrete.reset!(sys.θEAS_ctl)
-end
 
 ########################### Update Methods #####################################
 
@@ -211,19 +255,18 @@ function Systems.f_disc!(avionics::System{<:C172FBWMCS.Avionics},
 
     @unpack θEAS_ctl = avionics.subsystems
 
-    @unpack eng_start, eng_stop, mixture,
-            throttle_input, roll_input, pitch_input, yaw_input,
-            throttle_sp_offset, aileron_sp_offset, elevator_sp_offset, rudder_sp_offset,
+    @unpack eng_start, eng_stop, mixture, throttle_input,
+            roll_input, pitch_input, yaw_input,
+            aileron_cmd_offset, elevator_cmd_offset, rudder_cmd_offset,
             flaps, brake_left, brake_right = avionics.u.inceptors
 
     @unpack lon_mode_sel, lat_mode_sel, p_sf, q_sf, β_sf, EAS_sp, θ_sp = avionics.u.digital
 
-    @unpack lon_mode_prev, lat_mode_prev = avionics.s
-
     @unpack airframe, air = physics.y
     kinematics = physics.y.kinematics.common
 
-    throttle_sp = throttle_input + throttle_sp_offset
+    #direct surface and inner loop demands always come from inceptors
+    throttle_sp = throttle_input
     elevator_sp = pitch_input + elevator_sp_offset
     aileron_sp = roll_input + aileron_sp_offset
     rudder_sp = yaw_input + rudder_sp_offset
@@ -252,23 +295,17 @@ function Systems.f_disc!(avionics::System{<:C172FBWMCS.Avionics},
     #the GUI can read it and decide whether it respects it and reassigns it to u
     #on the next call, or overwrites with a different value
 
-    lon_mode = lon_θ_EAS
-
     if lon_mode === lon_direct
         throttle_cmd = throttle_sp
         elevator_cmd = elevator_sp
     else #lon_mode === lon_θ_EAS
-
-        # if lon_mode != lon_mode_prev
-        #     reset!(θEAS_ctl, physics)
-        #     @unpack θ_sp, EAS_sp = ZθEAS(physics)
-        # end
-        #assign!(θEAS_ctl, θEAS_lookup)
-        # θEAS_ctl.u.z_sp .= θEAS_ctl.u.z_trim
-        θEAS_ctl.u.z_sp .= ZθEAS(θ = θ_sp, EAS = 45)
-        θEAS_ctl.u.x .= XLon(physics)
+        if lon_mode != lon_mode_prev
+            reset!(θEAS_ctl, physics)
+            @unpack θ_sp, EAS_sp = ZθEAS(physics)
+        end
+        θEAS_ctl.u[] = ZθEAS(θ = θ_sp, EAS = EAS_sp)
         f_disc!(θEAS_ctl, Δt)
-        @unpack throttle_cmd, elevator_cmd = ULon(θEAS_ctl.y.output)
+        @unpack throttle_cmd, elevator_cmd = θEAS_ctl.u
     end
 
     # if lat_mode === lat_direct
@@ -276,10 +313,6 @@ function Systems.f_disc!(avionics::System{<:C172FBWMCS.Avionics},
         rudder_cmd = rudder_sp
     # else
     # end
-
-
-    #if we need to know the saturation state for ULon we can either get it from
-    #the active Lon controller or simply do saturation(throttle_cmd), etc
 
     moding = AvionicsModing(;
       )
@@ -289,7 +322,7 @@ function Systems.f_disc!(avionics::System{<:C172FBWMCS.Avionics},
                 flaps, brake_left, brake_right)
 
     avionics.y = AvionicsY(; moding, actuation,
-                            θEAS_ctl = θEAS_ctl.y,
+                            lon_ctl = throttle_ctl.y,
                             )
 
     return false
@@ -350,35 +383,6 @@ end
 function Aircraft.trim!(ac::System{<:Cessna172FBWMCS},
                         trim_params::C172.TrimParameters = C172.TrimParameters())
 
-    result = trim!(ac.physics, trim_params)
-    trim_state = result[2]
-
-    #makes Avionics inputs consistent with the trim solution obtained for the
-    #aircraft physics so the trim condition is preserved upon simulation start
-    #when direct control modes are selected
-    @unpack mixture, flaps = trim_params
-    @unpack throttle, aileron, elevator, rudder = trim_state
-
-    u = ac.avionics.u
-    u.inceptors.throttle_input = 0
-    u.inceptors.roll_input = 0
-    u.inceptors.pitch_input = 0
-    u.inceptors.yaw_input = 0
-    u.inceptors.throttle_sp_offset = throttle
-    u.inceptors.aileron_sp_offset = aileron
-    u.inceptors.elevator_sp_offset = elevator
-    u.inceptors.rudder_sp_offset = rudder
-    u.inceptors.mixture = mixture
-    u.inceptors.flaps = flaps
-
-    u.digital.lon_mode_sel = lon_direct
-    u.digital.lat_mode_sel = lat_direct
-
-    #update avionics outputs
-    f_disc!(ac.avionics, ac.physics, 1)
-
-    return result
-
 end
 
 function Aircraft.linearize!(ac::System{<:Cessna172FBWMCS}, args...; kwargs...)
@@ -410,13 +414,13 @@ function IODevices.assign!(sys::System{Avionics},
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    u.aileron_sp_offset -= 0.01 * was_released(joystick, :dpad_left)
-    u.aileron_sp_offset += 0.01 * was_released(joystick, :dpad_right)
-    u.elevator_sp_offset += 0.01 * was_released(joystick, :dpad_down)
-    u.elevator_sp_offset -= 0.01 * was_released(joystick, :dpad_up)
+    u.aileron_cmd_offset -= 0.01 * was_released(joystick, :dpad_left)
+    u.aileron_cmd_offset += 0.01 * was_released(joystick, :dpad_right)
+    u.elevator_cmd_offset += 0.01 * was_released(joystick, :dpad_down)
+    u.elevator_cmd_offset -= 0.01 * was_released(joystick, :dpad_up)
 
-    u.throttle_input += 0.1 * was_released(joystick, :button_Y)
-    u.throttle_input -= 0.1 * was_released(joystick, :button_A)
+    u.throttle += 0.1 * was_released(joystick, :button_Y)
+    u.throttle -= 0.1 * was_released(joystick, :button_A)
 
     u.flaps += 0.3333 * was_released(joystick, :right_bumper)
     u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
@@ -429,7 +433,7 @@ function IODevices.assign!(sys::System{Avionics},
 
     u = sys.u.inceptors
 
-    u.throttle_input = get_axis_value(joystick, :throttle)
+    u.throttle = get_axis_value(joystick, :throttle)
     u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
     u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
     u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
@@ -437,10 +441,10 @@ function IODevices.assign!(sys::System{Avionics},
     u.brake_left = is_pressed(joystick, :button_1)
     u.brake_right = is_pressed(joystick, :button_1)
 
-    u.aileron_sp_offset -= 2e-4 * is_pressed(joystick, :hat_left)
-    u.aileron_sp_offset += 2e-4 * is_pressed(joystick, :hat_right)
-    u.elevator_sp_offset += 2e-4 * is_pressed(joystick, :hat_down)
-    u.elevator_sp_offset -= 2e-4 * is_pressed(joystick, :hat_up)
+    u.aileron_cmd_offset -= 2e-4 * is_pressed(joystick, :hat_left)
+    u.aileron_cmd_offset += 2e-4 * is_pressed(joystick, :hat_right)
+    u.elevator_cmd_offset += 2e-4 * is_pressed(joystick, :hat_down)
+    u.elevator_cmd_offset -= 2e-4 * is_pressed(joystick, :hat_up)
 
     u.flaps += 0.3333 * was_released(joystick, :button_3)
     u.flaps -= 0.3333 * was_released(joystick, :button_2)
@@ -453,7 +457,7 @@ function IODevices.assign!(sys::System{Avionics},
 
     u = sys.u.inceptors
 
-    u.throttle_input = get_axis_value(joystick, :throttle)
+    u.throttle = get_axis_value(joystick, :throttle)
     u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
     u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
     u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
@@ -461,10 +465,10 @@ function IODevices.assign!(sys::System{Avionics},
     u.brake_left = is_pressed(joystick, :red_trigger_half)
     u.brake_right = is_pressed(joystick, :red_trigger_half)
 
-    u.aileron_sp_offset -= 2e-4 * is_pressed(joystick, :A3_left)
-    u.aileron_sp_offset += 2e-4 * is_pressed(joystick, :A3_right)
-    u.elevator_sp_offset += 2e-4 * is_pressed(joystick, :A3_down)
-    u.elevator_sp_offset -= 2e-4 * is_pressed(joystick, :A3_up)
+    u.aileron_cmd_offset -= 2e-4 * is_pressed(joystick, :A3_left)
+    u.aileron_cmd_offset += 2e-4 * is_pressed(joystick, :A3_right)
+    u.elevator_cmd_offset += 2e-4 * is_pressed(joystick, :A3_down)
+    u.elevator_cmd_offset -= 2e-4 * is_pressed(joystick, :A3_up)
 
     if is_pressed(joystick, :A3_press)
         u.aileron_offset = 0

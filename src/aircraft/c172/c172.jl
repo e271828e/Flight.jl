@@ -950,7 +950,7 @@ function Aircraft.trim!(physics::System{<:C172.Physics},
     # opt = Opt(:GN_CRS2_LM, length(x0))
     opt.min_objective = f_opt
     opt.maxeval = 100000
-    opt.stopval = 1e-14
+    opt.stopval = 1e-16
     opt.lower_bounds = lower_bounds
     opt.upper_bounds = upper_bounds
     opt.initial_step = initial_step
