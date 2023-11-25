@@ -477,9 +477,9 @@ end
     α::Float64 = 0.0; β::Float64 = 0.0; #unfiltered airflow angles
     EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
-    χ::Float64 = 0.0; γ::Float64 = 0.0; c::Float64 = 0.0; #track and flight path angles, climb rate
-    throttle_cmd_out::Float64 = 0.0; aileron_cmd_out::Float64 = 0.0; #control inputs
-    elevator_cmd_out::Float64 = 0.0; rudder_cmd_out::Float64 = 0.0; #control inputs
+    χ::Float64 = 0.0; γ::Float64 = 0.0; climb_rate::Float64 = 0.0; #track and flight path angles, climb rate
+    throttle_cmd::Float64 = 0.0; aileron_cmd::Float64 = 0.0; #actuator commands
+    elevator_cmd::Float64 = 0.0; rudder_cmd::Float64 = 0.0; #actuator commands
 end
 
 
@@ -552,17 +552,12 @@ function YLinear(physics::System{<:C172FBW.Physics{NED}})
     β = physics.y.air.β_b
     χ = χ_gnd
     γ = γ_gnd
-    c = -v_D
-
-    throttle_cmd_out = throttle_cmd
-    aileron_cmd_out = aileron_cmd
-    elevator_cmd_out = elevator_cmd
-    rudder_cmd_out = rudder_cmd
+    climb_rate = -v_D
 
     YLinear(; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt,
             ω_eng, fuel, thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p,
-            f_x, f_y, f_z, EAS, TAS, α, β, v_N, v_E, v_D, χ, γ, c,
-            throttle_cmd_out, aileron_cmd_out, elevator_cmd_out, rudder_cmd_out)
+            f_x, f_y, f_z, EAS, TAS, α, β, v_N, v_E, v_D, χ, γ, climb_rate,
+            throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd)
 
 end
 
@@ -624,13 +619,13 @@ function Control.Continuous.LinearizedSS(
     elseif model === :lon
         x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng, :thr_v, :thr_p, :ele_v, :ele_p]
         u_labels = [:throttle_cmd, :elevator_cmd]
-        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :c, :throttle_cmd_out, :elevator_cmd_out])
+        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :climb_rate, :throttle_cmd, :elevator_cmd])
         return Control.Continuous.submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat
         x_labels = [:p, :r, :ψ, :φ, :v_x, :v_y, :β_filt, :ail_v, :ail_p, :rud_v, :rud_p]
         u_labels = [:aileron_cmd, :rudder_cmd]
-        y_labels = vcat(x_labels, [:f_y, :β, :χ, :aileron_cmd_out, :rudder_cmd_out])
+        y_labels = vcat(x_labels, [:f_y, :β, :χ, :aileron_cmd, :rudder_cmd])
         return Control.Continuous.submodel(lm; x = x_labels, u = u_labels, y = y_labels)
 
     else
