@@ -28,7 +28,7 @@ abstract type AbstractControlMode <: SystemDefinition end
 @kwdef struct XLon <: FieldVector{10, Float64}
     q::Float64 = 0.0; θ::Float64 = 0.0; #pitch rate, pitch angle
     v_x::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
-    α_filt::Float64 = 0.0; ω_eng::Float64 = 0.0; #filtered airflow angles
+    α_filt::Float64 = 0.0; ω_eng::Float64 = 0.0; #filtered AoS, engine speed
     thr_v::Float64 = 0.0; thr_p::Float64 = 0.0; #throttle actuator states
     ele_v::Float64 = 0.0; ele_p::Float64 = 0.0; #elevator actuator states
 end
@@ -42,7 +42,7 @@ end
 #assemble state vector from aircraft physics
 function XLon(physics::System{<:C172FBW.Physics})
 
-    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = physics.airframe.act.u
+    @unpack throttle_cmd, elevator_cmd = physics.airframe.act.u
     @unpack airframe, air, rigidbody, kinematics = physics.y
     @unpack pwp, aero, act = airframe
     @unpack e_nb, ω_eb_b = kinematics
@@ -60,9 +60,6 @@ function XLon(physics::System{<:C172FBW.Physics})
     XLon(; q, θ, v_x, v_z, α_filt, ω_eng, thr_v, thr_p, ele_v, ele_p)
 
 end
-
-################################################################################
-################################## LonModes ####################################
 
 #command vector for throttle + elevator SAS mode
 @kwdef struct ZLonThrEle <: FieldVector{2, Float64}
@@ -102,6 +99,57 @@ function ZLonEASThr(physics::System{<:C172FBW.Physics})
 end
 
 ################################################################################
+############################### Lateral Control ################################
+
+#state vector for all lateral controllers
+@kwdef struct XLat <: FieldVector{10, Float64}
+    p::Float64 = 0.0; r::Float64 = 0.0; φ::Float64 = 0.0; #roll rate, yaw rate, bank angle
+    v_x::Float64 = 0.0; v_y::Float64 = 0.0; β_filt::Float64 = 0.0; #aerodynamic velocity, body axes, filtered AoS
+    ail_v::Float64 = 0.0; ail_p::Float64 = 0.0; #aileron actuator states
+    rud_v::Float64 = 0.0; rud_p::Float64 = 0.0; #rudder actuator states
+end
+
+#control input vector for lateral controllers
+@kwdef struct ULat{T} <: FieldVector{2, T}
+    aileron_cmd::T = 0.0
+    rudder_cmd::T = 0.0
+end
+
+#assemble state vector from aircraft physics
+function XLat(physics::System{<:C172FBW.Physics})
+
+    @unpack aileron_cmd, rudder_cmd = physics.airframe.act.u
+    @unpack airframe, air, rigidbody, kinematics = physics.y
+    @unpack aero, act = airframe
+    @unpack e_nb, ω_eb_b = kinematics
+
+    p, _, r = ω_eb_b
+    φ = e_nb.φ
+    v_x, v_y, _ = air.v_wOb_b
+    β_filt = aero.β_filt
+    ail_v = act.aileron_act.vel
+    ail_p = act.aileron_act.pos
+    rud_v = act.rudder_act.vel
+    rud_p = act.rudder_act.pos
+
+    XLat(; p, r, φ, v_x, v_y, β_filt, ail_v, ail_p, rud_v, rud_p)
+
+end
+
+#command vector for throttle + elevator SAS mode
+@kwdef struct ZLatPhiBeta <: FieldVector{2, Float64}
+    φ::Float64 = 0.0
+    β::Float64 = 0.0
+end
+
+function ZLatPhiBeta(physics::System{<:C172FBW.Physics})
+    φ = physics.y.kinematics.common.e_nb.φ
+    β = physics.y.air.β_b
+    ZLatPhiBeta(; φ, β)
+end
+
+
+################################################################################
 ################################## Avionics ####################################
 
 @enum FlightPhase begin
@@ -121,9 +169,8 @@ end
 
 @enum LatMode begin
     lat_SAS_off = 0
-    lat_ail_β = 1 #MIMO aileron + β_sp
-    lat_p_β = 2 #SISO roll rate to aileron
-    lat_φ_β = 3 #MIMO
+    lat_p_β = 1 #SISO roll rate over φ + β
+    lat_φ_β = 2 #MIMO
     lat_AP_χ_β = 4
 end
 

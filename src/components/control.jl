@@ -341,15 +341,9 @@ function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
     @unpack ẋ, x, u = sys
 
     x_i = SVector{N, Float64}(x)
-    k_p = SVector(u.k_p)
-    k_i = SVector(u.k_i)
-    k_l = SVector(u.k_l)
-    β_p = SVector(u.β_p)
-    input = SVector(u.input)
-    bound_lo = SVector(u.bound_lo)
-    bound_hi = SVector(u.bound_hi)
-    sat_ext = SVector(u.sat_ext)
-    reset = SVector(u.reset)
+    k_p, k_i, k_l, β_p = map(SVector, (u.k_p, u.k_i, u.k_l, u.β_p))
+    input, bound_lo, bound_hi, sat_ext, reset = map(SVector, (
+        u.input, u.bound_lo, u.bound_hi, u.sat_ext, u.reset))
 
     u_p = β_p .* input
     u_i = input
@@ -640,10 +634,8 @@ function Systems.f_disc!(sys::System{<:IntegratorVector}, Δt::Real)
 
     @unpack s, u = sys
 
-    input = SVector(u.input)
-    bound_lo = SVector(u.bound_lo)
-    bound_hi = SVector(u.bound_hi)
-    sat_ext = SVector(u.sat_ext)
+    input, bound_lo, bound_hi, sat_ext = map(SVector, (
+        u.input, u.bound_lo, u.bound_hi, u.sat_ext))
 
     x0 = SVector(s.x0)
     sat_out_0 = SVector(s.sat_out_0)
@@ -944,20 +936,14 @@ function Systems.f_disc!(sys::System{<:PIDVector{N}}, Δt::Real) where {N}
 
     @unpack s, u = sys
 
-    k_p = SVector(u.k_p)
-    k_i = SVector(u.k_i)
-    k_d = SVector(u.k_d)
-    τ_f = SVector(u.τ_f)
-    β_p = SVector(u.β_p)
-    β_d = SVector(u.β_d)
-    input = SVector(u.input)
-    bound_lo = SVector(u.bound_lo)
-    bound_hi = SVector(u.bound_hi)
-    sat_ext = SVector(u.sat_ext)
+    k_p, k_i, k_d, τ_f, β_p, β_d = map(SVector, (
+        u.k_p, u.k_i, u.k_d, u.τ_f, u.β_p, u.β_d))
 
-    x_i0 = SVector(s.x_i0)
-    x_d0 = SVector(s.x_d0)
-    sat_out_0 = SVector(s.sat_out_0)
+    input, bound_lo, bound_hi, sat_ext = map(SVector, (
+        u.input, u.bound_lo, u.bound_hi, u.sat_ext))
+
+    x_i0, x_d0, sat_out_0 = map(SVector, (
+        s.x_i0, s.x_d0, s.sat_out_0))
 
     α = 1 ./ (τ_f .+ Δt)
 
