@@ -1106,48 +1106,48 @@ end #function
 ############################## LQRTracker ######################################
 ################################################################################
 
-struct LQRTracker{NX, NU, NY, NUX, NUY} <: SystemDefinition end
+struct LQRTracker{NX, NU, NZ, NUX, NUZ} <: SystemDefinition end
 
-function LQRTracker{NX, NU, NY}() where {NX, NU, NY}
-    @assert NY <= NU "Can't have more command variables than control inputs"
+function LQRTracker{NX, NU, NZ}() where {NX, NU, NZ}
+    @assert NZ <= NU "Can't have more command variables than control inputs"
     NUX = NU * NX
-    NUY = NU * NY
-    LQRTracker{NX, NU, NY, NUX, NUY}()
+    NUZ = NU * NZ
+    LQRTracker{NX, NU, NZ, NUX, NUZ}()
 end
 
-@kwdef struct LQRTrackerInput{NX, NU, NY, NUX, NUY}
+@kwdef struct LQRTrackerInput{NX, NU, NZ, NUX, NUZ}
     C_fbk::MMatrix{NU, NX, Float64, NUX} = zeros(NU, NX) #state feedback matrix
-    C_fwd::MMatrix{NU, NY, Float64, NUY} = zeros(NU, NY) #feedforward matrix
-    C_int::MMatrix{NU, NY, Float64, NUY} = zeros(NU, NY) #integrator gain matrix
+    C_fwd::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #feedforward matrix
+    C_int::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #integrator gain matrix
     x_trim::MVector{NX, Float64} = zeros(NX) #trim point state
     u_trim::MVector{NU, Float64} = zeros(NU) #trim point control input
-    z_trim::MVector{NY, Float64} = zeros(NY) #trim point command vector
+    z_trim::MVector{NZ, Float64} = zeros(NZ) #trim point command vector
     bound_lo::MVector{NU,Float64} = fill(-Inf, NU) #lower output bounds
     bound_hi::MVector{NU,Float64} = fill(Inf, NU) #upper output bounds
     sat_ext::MVector{NU,Int64} = zeros(Int64, NU) #saturation input signal
-    z_sp::MVector{NY, Float64} = zeros(NY) #command vector set point
-    z::MVector{NY, Float64} = zeros(NY) #current command vector value
+    z_sp::MVector{NZ, Float64} = zeros(NZ) #command vector set point
+    z::MVector{NZ, Float64} = zeros(NZ) #current command vector value
     x::MVector{NX, Float64} = zeros(NX) #current state vector value
 end
 
-function LQRTrackerInput{NX, NU, NY}(args...; kwargs...) where {NX, NU, NY}
+function LQRTrackerInput{NX, NU, NZ}(args...; kwargs...) where {NX, NU, NZ}
     NUX = NU * NX
-    NUY = NU * NY
-    LQRTrackerInput{NX, NU, NY, NUX, NUY}(args...; kwargs...)
+    NUZ = NU * NZ
+    LQRTrackerInput{NX, NU, NZ, NUX, NUZ}(args...; kwargs...)
 end
 
-@kwdef struct LQRTrackerOutput{NX, NU, NY, NUX, NUY}
+@kwdef struct LQRTrackerOutput{NX, NU, NZ, NUX, NUZ}
     C_fbk::SMatrix{NU, NX, Float64, NUX} = zeros(SMatrix{NU, NX}) #state feedback matrix
-    C_fwd::SMatrix{NU, NY, Float64, NUY} = zeros(SMatrix{NU, NY}) #feedforward matrix
-    C_int::SMatrix{NU, NY, Float64, NUY} = zeros(SMatrix{NU, NY}) #integrator gain matrix
+    C_fwd::SMatrix{NU, NZ, Float64, NUZ} = zeros(SMatrix{NU, NZ}) #feedforward matrix
+    C_int::SMatrix{NU, NZ, Float64, NUZ} = zeros(SMatrix{NU, NZ}) #integrator gain matrix
     x_trim::SVector{NX, Float64} = zeros(SVector{NX}) #trim point state
     u_trim::SVector{NU, Float64} = zeros(SVector{NU}) #trim point control input
-    z_trim::SVector{NY, Float64} = zeros(SVector{NY}) #trim point command variable
+    z_trim::SVector{NZ, Float64} = zeros(SVector{NZ}) #trim point command variable
     bound_lo::SVector{NU,Float64} = fill(-Inf, SVector{NU}) #lower output bounds
     bound_hi::SVector{NU,Float64} = fill(Inf, SVector{NU}) #upper output bounds
     sat_ext::SVector{NU,Int64} = zeros(SVector{NU, Int64}) #saturation input signal
-    z_sp::SVector{NY, Float64} = zeros(SVector{NY}) #command variable set point
-    z::SVector{NY, Float64} = zeros(SVector{NY}) #current command vector value
+    z_sp::SVector{NZ, Float64} = zeros(SVector{NZ}) #command variable set point
+    z::SVector{NZ, Float64} = zeros(SVector{NZ}) #current command vector value
     x::SVector{NX, Float64} = zeros(SVector{NX}) #current state vector value
     int_in::SVector{NU,Float64} = zeros(SVector{NU}) #integrator input
     int_halted::SVector{NU,Bool} = zeros(SVector{NU, Bool}) #integration halted
@@ -1157,10 +1157,10 @@ end
     output::SVector{NU,Float64} = zeros(SVector{NU}) #actual output
 end
 
-function LQRTrackerOutput{NX, NU, NY}(args...; kwargs...) where {NX, NU, NY}
+function LQRTrackerOutput{NX, NU, NZ}(args...; kwargs...) where {NX, NU, NZ}
     NUX = NU * NX
-    NUY = NU * NY
-    LQRTrackerOutput{NX, NU, NY, NUX, NUY}(args...; kwargs...)
+    NUZ = NU * NZ
+    LQRTrackerOutput{NX, NU, NZ, NUX, NUZ}(args...; kwargs...)
 end
 
 @kwdef struct LQRTrackerState{NX, NU}
@@ -1168,15 +1168,15 @@ end
     out_sat_0::MVector{NU,Int64} = zeros(NU) #previous output saturation status
 end
 
-function Systems.init(::SystemY, ::LQRTracker{NX, NU, NY, NUX, NUY}) where {NX, NU, NY, NUX, NUY}
-    LQRTrackerOutput{NX, NU, NY, NUX, NUY}()
+function Systems.init(::SystemY, ::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+    LQRTrackerOutput{NX, NU, NZ, NUX, NUZ}()
 end
 
-function Systems.init(::SystemU, ::LQRTracker{NX, NU, NY, NUX, NUY}) where {NX, NU, NY, NUX, NUY}
-    LQRTrackerInput{NX, NU, NY, NUX, NUY}()
+function Systems.init(::SystemU, ::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+    LQRTrackerInput{NX, NU, NZ, NUX, NUZ}()
 end
 
-function Systems.init(::SystemS, ::LQRTracker{NX, NU, NY, NUX, NUY}) where {NX, NU, NY, NUX, NUY}
+function Systems.init(::SystemS, ::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
     LQRTrackerState{NX, NU}()
 end
 
@@ -1249,6 +1249,22 @@ function GUI.draw(sys::System{<:LQRTracker})
 
 end #function
 
+@kwdef struct LQRTrackerParams{CB, CF, CI, X, U, Z}
+    C_fbk::CB
+    C_fwd::CF
+    C_int::CI
+    x_trim::X
+    u_trim::U
+    z_trim::Z
+end
+
+const LQRTrackerStaticParams{NX, NU, NZ, NUX, NUZ} = LQRTrackerParams{
+    SMatrix{NU, NX, Float64, NUX},
+    SMatrix{NU, NZ, Float64, NUZ},
+    SMatrix{NU, NZ, Float64, NUZ},
+    SVector{NX, Float64},
+    SVector{NU, Float64},
+    SVector{NZ, Float64}}
 
 end #submodule
 

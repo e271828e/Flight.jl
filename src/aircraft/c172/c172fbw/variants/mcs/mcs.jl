@@ -175,7 +175,7 @@ end
 end
 
 @kwdef struct Avionics <: AbstractAvionics
-    lon_SAS::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+    thr_ele::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
     EAS_clm::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
     EAS_thr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
     q2e_int::Integrator = Integrator()
@@ -349,7 +349,7 @@ function Systems.f_disc!(avionics::System{<:C172FBWMCS.Avionics},
         #elevator_sp overridden by q tracker
         if lon_mode === lon_thr_q || lon_mode === lon_EAS_q
 
-            elevator_cmd_sat = ULon(lon_sas.y.out_sat).elevator_cmd
+            elevator_cmd_sat = ULon(thr_ele.y.out_sat).elevator_cmd
 
             q2e_int.u.input = q_sp - q
             q2e_int.u.sat_ext = elevator_cmd_sat
@@ -364,7 +364,7 @@ function Systems.f_disc!(avionics::System{<:C172FBWMCS.Avionics},
             #throttle_sp overridden by EAS tracker
             if lon_mode === lon_EAS_q
 
-                throttle_cmd_sat = ULon(lon_sas.y.out_sat).throttle_cmd
+                throttle_cmd_sat = ULon(thr_ele.y.out_sat).throttle_cmd
                 v2t.u.input = EAS_sp
                 v2t.u.sat_ext = throttle_cmd_sat
                 # assign!(v2t, v2t_lookup)
@@ -376,12 +376,12 @@ function Systems.f_disc!(avionics::System{<:C172FBWMCS.Avionics},
         end
 
         #SAS has no integral action, so it doesn't need to be reset
-        lon_sas.u.x .= XLon(physics) #state feedback
-        lon_sas.u.z .= ZLonThrEle(physics) #command variable feedback
-        lon_sas.u.z_sp .= ZLonThrEle(; throttle_sp, elevator_sp) #command variable setpoint
-        # assign!(lon_sas, lon_sas_lookup)
-        f_disc!(lon_sas, Δt)
-        @unpack throttle_cmd, elevator_cmd = ULon(lon_sas.y.output)
+        thr_ele.u.x .= XLon(physics) #state feedback
+        thr_ele.u.z .= ZLonThrEle(physics) #command variable feedback
+        thr_ele.u.z_sp .= ZLonThrEle(; throttle_sp, elevator_sp) #command variable setpoint
+        # assign!(thr_ele, thr_ele_lookup)
+        f_disc!(thr_ele, Δt)
+        @unpack throttle_cmd, elevator_cmd = ULon(thr_ele.y.output)
 
     elseif lon_mode === lon_EAS_clm || lon_mode === lon_EAS_thr || lon_mode == lon_EAS_alt
 
