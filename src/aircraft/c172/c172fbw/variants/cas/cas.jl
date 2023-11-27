@@ -8,7 +8,7 @@ using Flight.FlightCore.Utils
 using Flight.FlightPhysics
 
 using Flight.FlightComponents
-using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput, PID, PIDOutput
+using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput, PID, PIDOutput, PIDParams
 import Flight.FlightComponents.Control.PIDOpt
 
 using ...C172
@@ -21,13 +21,13 @@ export Cessna172FBWCAS
 ################################ Lookup ########################################
 
 struct Lookup{T <: Interpolations.Extrapolation}
-    interps::PIDOpt.Params{T}
-    data::PIDOpt.Params{Array{Float64,2}}
+    interps::PIDParams{T}
+    data::PIDParams{Array{Float64,2}}
     EAS_bounds::NTuple{2, Float64}
     h_bounds::NTuple{2, Float64}
 end
 
-function Lookup(data::PIDOpt.Params{Array{Float64, 2}},
+function Lookup(data::PIDParams{Array{Float64, 2}},
                 EAS_bounds::NTuple{2, Float64},
                 h_bounds::NTuple{2, Float64})
 
@@ -43,7 +43,7 @@ function Lookup(data::PIDOpt.Params{Array{Float64, 2}},
     interps = [extrapolate(scale(interpolate(coef, (EAS.mode, h.mode)),
         EAS.scaling, h.scaling), (Flat(), Flat())) for coef in NamedTuple(data)]
 
-    Lookup(PIDOpt.Params(interps...), data, EAS_bounds, h_bounds)
+    Lookup(PIDParams(interps...), data, EAS_bounds, h_bounds)
 
 end
 
@@ -51,24 +51,24 @@ Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
 @generated function Base.getproperty(lookup::Lookup, ::Val{S}) where {S}
     if S ∈ fieldnames(Lookup)
         return :(getfield(lookup, $(QuoteNode(S))))
-    elseif S ∈ fieldnames(PIDOpt.Params)
+    elseif S ∈ fieldnames(PIDParams)
         return :(getfield(getfield(lookup, :interps), $(QuoteNode(S))))
     else
         error("Lookup has no property $S")
     end
 end
 
-function Control.PIDOpt.Params(lookup::Lookup, EAS::Real, h::Real)
+function Control.Discrete.PIDParams(lookup::Lookup, EAS::Real, h::Real)
 
     @unpack k_p, k_i, k_d, τ_f = lookup.interps
-    PIDOpt.Params(; k_p = k_p(EAS, h),
+    PIDParams(; k_p = k_p(EAS, h),
                 k_i = k_i(EAS, h),
                 k_d = k_d(EAS, h),
                 τ_f = τ_f(EAS, h))
 end
 
 
-(lookup::Lookup)(EAS::Real, h::Real) = PIDOpt.Params(lookup, EAS, h)
+(lookup::Lookup)(EAS::Real, h::Real) = PIDParams(lookup, EAS, h)
 
 function save_lookup(lookup::Lookup, fname::String)
 
@@ -88,10 +88,10 @@ function load_lookup(fname::String)
 
     fid = h5open(fname, "r")
 
-    params_data = map(fieldnames(PIDOpt.Params)) do name
+    params_data = map(fieldnames(PIDParams)) do name
         read(fid, string(name))
     end
-    data = PIDOpt.Params(params_data...)
+    data = PIDParams(params_data...)
 
     EAS_bounds = (read(fid["EAS_start"]), read(fid["EAS_end"]))
     h_bounds = (read(fid["h_start"]), read(fid["h_end"]))

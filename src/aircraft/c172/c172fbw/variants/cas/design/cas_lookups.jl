@@ -5,7 +5,8 @@ using Flight.FlightCore
 
 using Flight.FlightPhysics
 using Flight.FlightComponents
-using Flight.FlightComponents.Control.PIDOpt: Params, Settings, Metrics, optimize_PID, build_PID, check_results
+using Flight.FlightComponents.Control.Discrete: PIDParams
+using Flight.FlightComponents.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
@@ -57,7 +58,7 @@ function generate_lookups(
 
     map(values(results), filenames) do results, fname
 
-        data = Params(StructArrays.components(StructArray(StructArray(results).params))...)
+        data = PIDParams(StructArrays.components(StructArray(StructArray(results).params))...)
         lookup = C172FBWCAS.Lookup(data, EAS_bounds, h_bounds)
         C172FBWCAS.save_lookup(lookup, joinpath(folder, fname))
         return lookup
@@ -78,11 +79,11 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     P_q2e_opt = series(q2e_int, ss(P_e2q))
 
     t_sim_q2e = 10
-    lower_bounds = Params(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-    upper_bounds = Params(; k_p = 50.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
+    lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+    upper_bounds = PIDParams(; k_p = 50.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
     settings = Settings(; t_sim = t_sim_q2e, lower_bounds, upper_bounds)
     weights = Metrics(; Ms = 2, ∫e = 10, ef = 2, ∫u = 0.1, up = 0.00)
-    params_0 = Params(; k_p = 3, k_i = 15, k_d = 0.5, τ_f = 0.01)
+    params_0 = PIDParams(; k_p = 3, k_i = 15, k_d = 0.5, τ_f = 0.01)
 
     q2e_results = optimize_PID(P_q2e_opt; params_0, settings, weights, global_search)
 
@@ -100,10 +101,10 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     P_q2θ = thr_q_MIMO[:θ, :q_dmd]
 
     t_sim_θ2q = 10
-    upper_bounds = Params(; k_p = 50.0, k_i = 0.0, k_d = 5.0, τ_f = 0.01)
+    upper_bounds = PIDParams(; k_p = 50.0, k_i = 0.0, k_d = 5.0, τ_f = 0.01)
     settings = Settings(; t_sim = t_sim_θ2q, maxeval = 5000, upper_bounds)
     weights = Metrics(; Ms = 2.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.1)
-    params_0 = Params(; k_p = 2.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+    params_0 = PIDParams(; k_p = 2.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
 
     θ2q_results = optimize_PID(P_q2θ; params_0, settings, weights, global_search)
 
@@ -121,11 +122,11 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     P_t2v = thr_θ_MIMO[:EAS, :throttle_cmd]
 
     t_sim_v2t = 10
-    lower_bounds = Params(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-    upper_bounds = Params(; k_p = 4.0, k_i = 0.5, k_d = 0.0, τ_f = 0.01)
+    lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+    upper_bounds = PIDParams(; k_p = 4.0, k_i = 0.5, k_d = 0.0, τ_f = 0.01)
     settings = Settings(; t_sim = t_sim_v2t, maxeval = 5000, lower_bounds, upper_bounds)
     weights = Metrics(; Ms = 1.0, ∫e = 10.0, ef = 1.0, ∫u = 0.0, up = 0.0)
-    params_0 = Params(; k_p = 0.5, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
+    params_0 = PIDParams(; k_p = 0.5, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
 
     v2t_results = optimize_PID(P_t2v; params_0, settings, weights, global_search = false)
     v2t_PID = build_PID(v2t_results.params)
@@ -146,12 +147,12 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
 
     P_θ2c = v_θ_MIMO[:c, :θ_dmd]
     t_sim_c2θ = 20
-    lower_bounds = Params(; k_p = 0.001, k_i = 0.001, k_d = 0.0, τ_f = 0.01)
-    upper_bounds = Params(; k_p = 0.03, k_i = 0.015, k_d = 0.0, τ_f = 0.01)
-    initial_step = Params(; k_p = 0.001, k_i = 0.001, k_d = 0.001, τ_f = 0.001)
+    lower_bounds = PIDParams(; k_p = 0.001, k_i = 0.001, k_d = 0.0, τ_f = 0.01)
+    upper_bounds = PIDParams(; k_p = 0.03, k_i = 0.015, k_d = 0.0, τ_f = 0.01)
+    initial_step = PIDParams(; k_p = 0.001, k_i = 0.001, k_d = 0.001, τ_f = 0.001)
     settings = Settings(; t_sim = t_sim_c2θ, lower_bounds, upper_bounds, initial_step)
     weights = Metrics(; Ms = 1.5, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.1)
-    params_0 = Params(; k_p = 0.5, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
+    params_0 = PIDParams(; k_p = 0.5, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
 
     c2θ_results = optimize_PID(P_θ2c; params_0, settings, weights, global_search = false)
 
@@ -171,11 +172,11 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     P_θ2v_opt = -P_θ2v #sign inversion on account of negative DC gain
 
     t_sim_v2θ = 20
-    lower_bounds = Params(; k_p = 0.01, k_i = 0.001, k_d = 0.0, τ_f = 0.01)
-    upper_bounds = Params(; k_p = 0.2, k_i = 0.05, k_d = 0.0, τ_f = 0.01)
+    lower_bounds = PIDParams(; k_p = 0.01, k_i = 0.001, k_d = 0.0, τ_f = 0.01)
+    upper_bounds = PIDParams(; k_p = 0.2, k_i = 0.05, k_d = 0.0, τ_f = 0.01)
     settings = Settings(; t_sim = t_sim_v2θ, lower_bounds, upper_bounds)
     weights = Metrics(; Ms = 2.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.0)
-    params_0 = Params(; k_p = 0.05, k_i = 0.01, k_d = 0.0, τ_f = 0.01)
+    params_0 = PIDParams(; k_p = 0.05, k_i = 0.01, k_d = 0.0, τ_f = 0.01)
 
     v2θ_results = optimize_PID(P_θ2v_opt; params_0, settings, weights, global_search)
 
@@ -200,10 +201,10 @@ function optimize_roll(   ac::System{<:Cessna172FBWBase{NED}};
     P_a2p = ail_rud_MIMO[:p, :aileron_cmd]
 
     t_sim_p2a = 5
-    upper_bounds = Params(; k_p = 50.0, k_i = 20.0, k_d = 0.0, τ_f = 0.01)
+    upper_bounds = PIDParams(; k_p = 50.0, k_i = 20.0, k_d = 0.0, τ_f = 0.01)
     settings = Settings(; t_sim = t_sim_p2a, upper_bounds)
     weights = Metrics(; Ms = 1, ∫e = 10, ef = 1, ∫u = 0, up = 0.1)
-    params_0 = Params(; k_p = 1, k_i = 5, k_d = 0.01, τ_f = 0.01)
+    params_0 = PIDParams(; k_p = 1, k_i = 5, k_d = 0.01, τ_f = 0.01)
 
     p2a_results = optimize_PID(P_a2p; params_0, settings, weights, global_search)
 
@@ -220,11 +221,11 @@ function optimize_roll(   ac::System{<:Cessna172FBWBase{NED}};
     P_p2φ = p_rud_MIMO[:φ, :p_dmd]
 
     t_sim_φ2p = 5
-    lower_bounds = Params(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-    upper_bounds = Params(; k_p = 50.0, k_i = 10.0, k_d = 0.5, τ_f = 0.01)
+    lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+    upper_bounds = PIDParams(; k_p = 50.0, k_i = 10.0, k_d = 0.5, τ_f = 0.01)
     settings = Settings(; t_sim = t_sim_φ2p, lower_bounds, upper_bounds)
     weights = Metrics(; Ms = 2, ∫e = 10, ef = 1, ∫u = 0.00, up = 0.1)
-    params_0 = Params(; k_p = 2., k_i = 0., k_d = 0.0, τ_f = 0.01)
+    params_0 = PIDParams(; k_p = 2., k_i = 0., k_d = 0.0, τ_f = 0.01)
 
     φ2p_results = optimize_PID(P_p2φ; params_0, settings, weights, global_search = false)
 
@@ -241,11 +242,11 @@ function optimize_roll(   ac::System{<:Cessna172FBWBase{NED}};
     P_φ2χ = φ_rud_MIMO[:χ, :φ_dmd]
 
     t_sim_χ2φ = 30
-    lower_bounds = Params(; k_p = 0.1, k_i = 0.3, k_d = 0.0, τ_f = 0.01)
-    upper_bounds = Params(; k_p = 10.0, k_i = 5.0, k_d = 0.5, τ_f = 0.01)
+    lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.3, k_d = 0.0, τ_f = 0.01)
+    upper_bounds = PIDParams(; k_p = 10.0, k_i = 5.0, k_d = 0.5, τ_f = 0.01)
     settings = Settings(; t_sim = t_sim_χ2φ, lower_bounds, upper_bounds)
     weights = Metrics(; Ms = 2, ∫e = 10, ef = 1, ∫u = 0.00, up = 0.1)
-    params_0 = Params(; k_p = 3., k_i = 0., k_d = 0.0, τ_f = 0.01)
+    params_0 = PIDParams(; k_p = 3., k_i = 0., k_d = 0.0, τ_f = 0.01)
 
     χ2φ_results = optimize_PID(P_φ2χ; params_0, settings, weights, global_search = false)
 
