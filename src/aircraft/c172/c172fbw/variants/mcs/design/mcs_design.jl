@@ -1,4 +1,4 @@
-module MCSLatDesign
+module MCSDesign
 
 using Flight
 using Flight.FlightCore
@@ -22,6 +22,7 @@ using StaticArrays
 using StructArrays
 using ComponentArrays
 using LinearAlgebra
+using Interpolations
 
 
 function generate_lookups(
@@ -40,7 +41,7 @@ function generate_lookups(
 
     results = map(Iterators.product(EAS_range, h_range)) do (EAS, h)
 
-        println("Designing controllers for EAS = $EAS, h = $h")
+        println("Designing $channel controllers for EAS = $EAS, h = $h")
 
         #all other design point parameters at default
         flaps = EAS < 30 ? 1.0 : 0.0
@@ -51,76 +52,15 @@ function generate_lookups(
 
     end |> StructArray |> StructArrays.components
 
-    return results
-
     filenames = joinpath.(dirname(@__DIR__), "data", string.(keys(results)) .* "_lookup.h5")
 
-    bounds = (EAS = (EAS_range[1], EAS_range[end]), h = (h_range[1], h_range[end]))
+    bounds = ((EAS_range[1], EAS_range[end]), (h_range[1], h_range[end]))
 
-    foreach(values(results), filenames) do results, fname
-
-        save_lookup(data, bounds, joinpath(folder, fname))
+    foreach(values(results), filenames) do data, fname
+        C172FBWMCS.save_lookup(data, bounds, joinpath(folder, fname))
     end
 
-end
-
-#save lookup. assumes uniformly scaled grid.
-
-#this would work for a Union of Array{<:LQRTrackerParams} and PID Params
-
-function save_lookup(data::Array{<:LQRTrackerParams, N}) where {N}
-# function save_lookup(data::Array{<:LQRTrackerParams, N},
-#                     bounds::NTuple{N, Tuple{Real,Real}},
-#                     fname::String) where {N}
-
-    data_nt = StructArrays.components(StructArray(data))
-
-    fname = joinpath.(dirname(@__DIR__), "data", "test_lookup2.h5")
-
-    fid = h5open(fname, "w")
-    foreach(keys(data_nt), values(data_nt)) do k, v
-        fid[string(k)] = stack(v)
-    end
-    close(fid)
-
-
-
-    ############################## READBACK ####################################
-    fid = h5open(fname, "r")
-
-    #read fieldnames as ordered in LQRTrackerParams and into an instance
-    params_stacked = LQRTrackerParams(map(name -> read(fid[string(name)]), fieldnames(LQRTrackerParams))...)
-
-    close(fid)
-
-    @unpack x_trim, u_trim, z_trim, C_fbk, C_fwd, C_int = params_stacked
-
-    #from each 1+N dimensional stacked array (x_trim, u_trim, z_trim) read from
-    #the HDF5, generate a N-dimensional array of SVectors of appropriate size
-    x_trim_data, u_trim_data, z_trim_data = map((x_trim, u_trim, z_trim)) do a
-        map(SVector{size(a)[1]}, eachslice(a; dims = Tuple(2:ndims(a))))
-    end
-
-    #from each 2+N dimensional stacked array (C_fbk, C_fwd, C_int) read from the
-    #HDF5, generate a N-dimensional array of SMatrices of appropriate size
-    C_fbk_data, C_fwd_data, C_int_data = map((C_fbk, C_fwd, C_int)) do a
-        map(SMatrix{size(a)[1], size(a)[2]}, eachslice(a; dims = Tuple(3:ndims(a))))
-    end
-
-    #sizes of interpolating dimensions
-    interp_sizes = size(x_trim_data)
-    return interp_sizes
-
-
-    # return LQRTrackerParams(; x_trim, u_trim, z_trim, C_fbk, C_fwd, C_int)
-
-    #now we generate the interpolators. we can also do it for an arbitrary
-    #number of interpolation dimensions.
-
-end
-
-function Control.Discrete.LQRTrackerParams(a::Array{<:LQRTrackerParams, N}) where {N}
-    println("Hi")
+    return results
 
 end
 
@@ -261,6 +201,8 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
         Pair.(u_labels_int_u, u_labels_int_u),
         )
 
+    #disable warning about connecting single output to multiple inputs (here,
+    #φ goes both to state feedback and command variable error junction)
     Logging.disable_logging(Logging.Warn)
     P_nss_φβ = connect([P_nss, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
                         φ_err_sum, β_err_sum,
@@ -279,7 +221,7 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
 
     t_sim_p2φ = 10
     lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-    upper_bounds = PIDParams(; k_p = 10.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
+    upper_bounds = PIDParams(; k_p = 15.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
     settings = Settings(; t_sim = t_sim_p2φ, lower_bounds, upper_bounds)
     weights = Metrics(; Ms = 1, ∫e = 10, ef = 2, ∫u = 0.1, up = 0.00)
     params_0 = PIDParams(; k_p = 1.5, k_i = 3, k_d = 0.1, τ_f = 0.01)

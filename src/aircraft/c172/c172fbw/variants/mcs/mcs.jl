@@ -1,19 +1,159 @@
 module C172FBWMCS
 
-using LinearAlgebra, UnPack, StaticArrays, ComponentArrays, HDF5, Interpolations
+using LinearAlgebra, UnPack, StaticArrays, ComponentArrays, HDF5,
+    Interpolations, StructArrays
 
 using Flight.FlightCore
 using Flight.FlightCore.Utils
 
 using Flight.FlightPhysics
 using Flight.FlightComponents
-using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput, PID, PIDOutput, LQRTracker, LQRTrackerOutput
+using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput,
+    PID, PIDOutput, PIDParams, LQRTracker, LQRTrackerOutput, LQRTrackerParams
 
 using ...C172
 using ..C172FBW
 
 export Cessna172FBWMCS
 
+
+################################################################################
+############################# Lookups ##########################################
+
+const PIDLookup = PIDParams{T} where {T <: AbstractInterpolation}
+
+const LQRTrackerLookup = LQRTrackerParams{CB, CF, CI, X, U, Z} where {
+    CB <: AbstractInterpolation,
+    CF <: AbstractInterpolation,
+    CI <: AbstractInterpolation,
+    X <: AbstractInterpolation,
+    U <: AbstractInterpolation,
+    Z <: AbstractInterpolation}
+
+function (lookup::PIDLookup)(EAS::Real, h::Real)
+    @unpack k_p, k_i, k_d, τ_f = lookup
+    PIDParams(; k_p = k_p(EAS, h),
+                k_i = k_i(EAS, h),
+                k_d = k_d(EAS, h),
+                τ_f = τ_f(EAS, h)
+                )
+end
+
+function (lookup::LQRTrackerLookup)(EAS::Real, h::Real)
+    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = lookup
+    LQRTrackerParams(;
+        C_fbk = C_fbk(EAS, h),
+        C_fwd = C_fwd(EAS, h),
+        C_int = C_int(EAS, h),
+        x_trim = x_trim(EAS, h),
+        u_trim = u_trim(EAS, h),
+        z_trim = z_trim(EAS, h),
+        )
+end
+
+#save and load functions are agnostic about the number and lengths of
+#interpolation dimensions
+function save_lookup(params::Union{Array{<:LQRTrackerParams, N}, Array{<:PIDParams, N}},
+                    bounds::NTuple{N, Tuple{Real, Real}},
+                    fname::String = joinpath(@__DIR__, "test.h5")) where {N}
+
+    params_nt = StructArrays.components(StructArray(params))
+
+    fid = h5open(fname, "w")
+
+    create_group(fid, "params")
+    foreach(keys(params_nt), values(params_nt)) do k, v
+        fid["params"][string(k)] = stack(v)
+    end
+
+    fid["bounds"] = stack(bounds) #2xN matrix
+
+    close(fid)
+end
+
+
+function load_pid_lookup(fname::String = joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
+
+    fid = h5open(fname, "r")
+
+    #read fieldnames as ordered in LQRTrackerParams and into an instance
+    params_stacked = map(name -> read(fid["params"][string(name)]), fieldnames(PIDParams))
+    bounds_stacked = read(fid["bounds"])
+
+    close(fid)
+
+    #arrange bounds back into a Tuple of 2-Tuples
+    bounds = mapslices(x->tuple(x...), bounds_stacked, dims = 1) |> vec |> Tuple
+    N = length(bounds) #number of interpolation dimensions
+
+    #PID parameters are scalars, so these are already N-dimensional arrays
+    params = params_stacked
+    @assert allequal(size.(params))
+    itp_lengths = size(params[1])
+
+    #define interpolation mode and ranges, handling singleton dimensions
+    itp_args = map(bounds, itp_lengths) do b, l
+        r = range(b..., length = l)
+        (mode, scaling) = length(r) > 1 ? (BSpline(Linear()), r) : (NoInterp(), 1:1)
+        return (mode = mode, scaling = scaling)
+    end |> collect |> StructArray
+
+    @unpack mode, scaling = itp_args
+    interps = [extrapolate(scale(interpolate(p, tuple(mode...)), scaling...), Flat())
+                for p in params]
+
+    return PIDParams(interps...)
+
+end
+
+
+function load_lqr_tracker_lookup(fname::String = joinpath(@__DIR__, "data", "φβ_lookup.h5"))
+
+    fid = h5open(fname, "r")
+
+    #read fieldnames as ordered in LQRTrackerParams and into an instance
+    params_stacked = map(name -> read(fid["params"][string(name)]), fieldnames(LQRTrackerParams))
+    bounds_stacked = read(fid["bounds"])
+
+    close(fid)
+
+    #arrange bounds back into a Tuple of 2-Tuples
+    bounds = mapslices(x->tuple(x...), bounds_stacked, dims = 1) |> vec |> Tuple
+    N = length(bounds) #number of interpolation dimensions
+
+    #generate N-dimensional arrays of either SVectors (for x_trim, u_trim and
+    #z_trim) or SMatrices (for C_fbk, C_fwd and C_int)
+    params_static = map(params_stacked) do p_stacked
+        if ndims(p_stacked) == N+1 #vector parameter
+            return map(SVector{size(p_stacked)[1]}, eachslice(p_stacked; dims = Tuple(2:N+1)))
+        elseif ndims(p_stacked) == N+2 #matrix parameter
+            return map(SMatrix{size(p_stacked)[1:2]...}, eachslice(p_stacked; dims = Tuple(3:N+2)))
+        else
+            error("Number of interpolation dimensions was determined as $N, "*
+                "so stacked arrays must be either either $(N+1)-dimensional "*
+                "for vector parameters or $(N+2)-dimensional for matrix parameters. "*
+                "Stacked array is $(ndims(p_stacked))-dimensional for $p_name")
+        end
+    end
+
+    #lengths of N interpolation dimensions must be consistent among params
+    @assert allequal(size.(params_static))
+    itp_lengths = size(params_static[1])
+
+    #define interpolation mode and ranges, handling singleton dimensions
+    itp_args = map(bounds, itp_lengths) do b, l
+        r = range(b..., length = l)
+        (mode, scaling) = length(r) > 1 ? (BSpline(Linear()), r) : (NoInterp(), 1:1)
+        return (mode = mode, scaling = scaling)
+    end |> collect |> StructArray
+
+    @unpack mode, scaling = itp_args
+    interps = [extrapolate(scale(interpolate(p, tuple(mode...)), scaling...), Flat())
+                for p in params_static]
+
+    return LQRTrackerParams(interps...)
+
+end
 
 ################################################################################
 ########################## AbstractControlMode #################################
@@ -181,6 +321,9 @@ end
     q2e_int::Integrator = Integrator()
     q2e_pid::PID = PID()
     v2t_pid::PID = PID()
+    φ_β::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+    p2φ_int::Integrator = Integrator()
+    p2φ_pid::PID = PID()
 end
 
 @kwdef mutable struct Inceptors

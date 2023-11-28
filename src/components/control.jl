@@ -1110,18 +1110,32 @@ end #function
     z_trim::Z
 end
 
-const LQRTrackerParamsStatic{NX, NU, NZ, NUX, NUZ} = LQRTrackerParams{
-    SMatrix{NU, NX, Float64, NUX},
-    SMatrix{NU, NZ, Float64, NUZ},
-    SMatrix{NU, NZ, Float64, NUZ},
-    SVector{NX, Float64},
-    SVector{NU, Float64},
-    SVector{NZ, Float64}}
+const LQRTrackerPoint = LQRTrackerParams{CB, CF, CI, X, U, Z} where {
+    CB <: AbstractMatrix,
+    CF <: AbstractMatrix,
+    CI <: AbstractMatrix,
+    X <: AbstractVector,
+    U <: AbstractVector,
+    Z <: AbstractVector}
 
-# function LQRTrackerParamsStatic{NX, NU, NZ}(
 
-# )
-# end
+function assign!(lqr::System{<:LQRTracker}, params::LQRTrackerPoint)
+    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = params
+    lqr.u.C_fbk .= C_fbk
+    lqr.u.C_fwd .= C_fwd
+    lqr.u.C_int .= C_int
+    lqr.u.x_trim .= x_trim
+    lqr.u.u_trim .= u_trim
+    lqr.u.z_trim .= z_trim
+end
+
+# const LQRTrackerParamsStatic{NX, NU, NZ, NUX, NUZ} = LQRTrackerParams{
+#     SMatrix{NU, NX, Float64, NUX},
+#     SMatrix{NU, NZ, Float64, NUZ},
+#     SMatrix{NU, NZ, Float64, NUZ},
+#     SVector{NX, Float64},
+#     SVector{NU, Float64},
+#     SVector{NZ, Float64}}
 
 end #submodule
 
