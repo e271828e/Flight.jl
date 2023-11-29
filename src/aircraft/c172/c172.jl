@@ -840,7 +840,7 @@ const Physics{F, K, T} = Aircraft.Physics{F, K, T} where {F <: Airframe, K <: Ab
 end
 
 @kwdef struct TrimParameters <: AbstractTrimParameters
-    Ob::Geographic{NVector, Ellipsoidal} = Geographic(NVector(), HOrth(1000))
+    Ob::Geographic{NVector, Ellipsoidal} = Geographic(NVector(), HEllip(1000))
     ψ_nb::Float64 = 0.0 #geographic heading
     EAS::Float64 = 50.0 #equivalent airspeed
     γ_wOb_n::Float64 = 0.0 #wind-relative flight path angle
