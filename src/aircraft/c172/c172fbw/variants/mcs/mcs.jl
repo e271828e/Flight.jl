@@ -161,8 +161,20 @@ end
 #a discrete system implementing a specific longitudinal or lateral control mode
 abstract type AbstractControlChannel <: SystemDefinition end
 
+
 ################################################################################
-############################# Longitudinal Control #############################
+################################## LonControl ##################################
+
+@enum LonControlMode begin
+    lon_SAS_off = 0
+    lon_thr_ele = 1
+    lon_thr_q = 2
+    lon_EAS_q = 3
+    lon_EAS_clm = 4
+    lon_EAS_thr = 5
+end
+
+############################## FieldVectors ####################################
 
 #state vector for all longitudinal controllers
 @kwdef struct XLon <: FieldVector{10, Float64}
@@ -175,8 +187,22 @@ end
 
 #control input vector for longitudinal controllers
 @kwdef struct ULon{T} <: FieldVector{2, T}
-    throttle_cmd::T = 0.0
-    elevator_cmd::T = 0.0
+    throttle_cmd::T = 0.0; elevator_cmd::T = 0.0
+end
+
+#command vector for throttle + elevator SAS mode
+@kwdef struct ZLonThrEle <: FieldVector{2, Float64}
+    throttle_cmd::Float64 = 0.0; elevator_cmd::Float64 = 50.0
+end
+
+#command vector for EAS + climb rate mode
+@kwdef struct ZLonEASClm <: FieldVector{2, Float64}
+    EAS::Float64 = 50.0; climb_rate::Float64 = 0.0
+end
+
+#command vector for EAS + throttle mode
+@kwdef struct ZLonEASThr <: FieldVector{2, Float64}
+    EAS::Float64 = 50.0; throttle_cmd::Float64 = 0.0
 end
 
 #assemble state vector from aircraft physics
@@ -200,23 +226,11 @@ function XLon(physics::System{<:C172FBW.Physics})
 
 end
 
-#command vector for throttle + elevator SAS mode
-@kwdef struct ZLonThrEle <: FieldVector{2, Float64}
-    throttle_cmd::Float64 = 0.0
-    elevator_cmd::Float64 = 50.0
-end
-
 function ZLonThrEle(physics::System{<:C172FBW.Physics})
     @unpack act = physics.y.airframe
     throttle_cmd = act.throttle_act.cmd
     elevator_cmd = act.elevator_act.cmd
     ZLonThrEle(; throttle_cmd, elevator_cmd)
-end
-
-#command vector for EAS + climb rate mode
-@kwdef struct ZLonEASClm <: FieldVector{2, Float64}
-    EAS::Float64 = 50.0
-    climb_rate::Float64 = 0.0
 end
 
 function ZLonEASClm(physics::System{<:C172FBW.Physics})
@@ -225,87 +239,13 @@ function ZLonEASClm(physics::System{<:C172FBW.Physics})
     ZLonEASClm(; EAS, climb_rate)
 end
 
-#command vector for EAS + throttle mode
-@kwdef struct ZLonEASThr <: FieldVector{2, Float64}
-    EAS::Float64 = 50.0
-    throttle_cmd::Float64 = 0.0
-end
-
 function ZLonEASThr(physics::System{<:C172FBW.Physics})
     EAS = physics.y.air.EAS
     throttle_cmd = physics.y.airframe.act.throttle_act.cmd
     ZLonEASThr(; EAS, throttle_cmd)
 end
 
-################################################################################
-############################### Lateral Control ################################
-
-#state vector for all lateral controllers
-@kwdef struct XLat <: FieldVector{10, Float64}
-    p::Float64 = 0.0; r::Float64 = 0.0; φ::Float64 = 0.0; #roll rate, yaw rate, bank angle
-    v_x::Float64 = 0.0; v_y::Float64 = 0.0; β_filt::Float64 = 0.0; #aerodynamic velocity, body axes, filtered AoS
-    ail_v::Float64 = 0.0; ail_p::Float64 = 0.0; #aileron actuator states
-    rud_v::Float64 = 0.0; rud_p::Float64 = 0.0; #rudder actuator states
-end
-
-#control input vector for lateral controllers
-@kwdef struct ULat{T} <: FieldVector{2, T}
-    aileron_cmd::T = 0.0
-    rudder_cmd::T = 0.0
-end
-
-#assemble state vector from aircraft physics
-function XLat(physics::System{<:C172FBW.Physics})
-
-    @unpack airframe, air, kinematics = physics.y
-    @unpack aero, act = airframe
-    @unpack e_nb, ω_eb_b = kinematics
-
-    p, _, r = ω_eb_b
-    φ = e_nb.φ
-    v_x, v_y, _ = air.v_wOb_b
-    β_filt = aero.β_filt
-    ail_v = act.aileron_act.vel
-    ail_p = act.aileron_act.pos
-    rud_v = act.rudder_act.vel
-    rud_p = act.rudder_act.pos
-
-    XLat(; p, r, φ, v_x, v_y, β_filt, ail_v, ail_p, rud_v, rud_p)
-
-end
-
-#command vector for throttle + elevator SAS mode
-@kwdef struct ZLatPhiBeta <: FieldVector{2, Float64}
-    φ::Float64 = 0.0
-    β::Float64 = 0.0
-end
-
-function ZLatPhiBeta(physics::System{<:C172FBW.Physics})
-    φ = physics.y.kinematics.common.e_nb.φ
-    β = physics.y.air.β_b
-    ZLatPhiBeta(; φ, β)
-end
-
-
-################################################################################
-################################## Avionics ####################################
-
-@enum FlightPhase begin
-    phase_gnd = 0
-    phase_air = 1
-end
-
-################################################################################
-################################## LonControl ##################################
-
-@enum LonControlMode begin
-    lon_SAS_off = 0
-    lon_thr_ele = 1
-    lon_thr_q = 2
-    lon_EAS_q = 3
-    lon_EAS_clm = 4
-    lon_EAS_thr = 5
-end
+################################## System ######################################
 
 #since all LQRTrackers have the same dimensions, all LQRTrackerLookup parametric
 #types should be the same. to be confirmed. same with PIDLookup types.
@@ -463,6 +403,56 @@ end
     lat_χ_β = 4
 end
 
+################################# FieldVectors #################################
+
+#state vector for all lateral controllers
+@kwdef struct XLat <: FieldVector{10, Float64}
+    p::Float64 = 0.0; r::Float64 = 0.0; φ::Float64 = 0.0; #roll rate, yaw rate, bank angle
+    v_x::Float64 = 0.0; v_y::Float64 = 0.0; β_filt::Float64 = 0.0; #aerodynamic velocity, body axes, filtered AoS
+    ail_v::Float64 = 0.0; ail_p::Float64 = 0.0; #aileron actuator states
+    rud_v::Float64 = 0.0; rud_p::Float64 = 0.0; #rudder actuator states
+end
+
+#control input vector for lateral controllers
+@kwdef struct ULat{T} <: FieldVector{2, T}
+    aileron_cmd::T = 0.0
+    rudder_cmd::T = 0.0
+end
+
+#command vector for φ + β SAS
+@kwdef struct ZLatPhiBeta <: FieldVector{2, Float64}
+    φ::Float64 = 0.0; β::Float64 = 0.0
+end
+
+
+#assemble state vector from aircraft physics
+function XLat(physics::System{<:C172FBW.Physics})
+
+    @unpack airframe, air, kinematics = physics.y
+    @unpack aero, act = airframe
+    @unpack e_nb, ω_eb_b = kinematics
+
+    p, _, r = ω_eb_b
+    φ = e_nb.φ
+    v_x, v_y, _ = air.v_wOb_b
+    β_filt = aero.β_filt
+    ail_v = act.aileron_act.vel
+    ail_p = act.aileron_act.pos
+    rud_v = act.rudder_act.vel
+    rud_p = act.rudder_act.pos
+
+    XLat(; p, r, φ, v_x, v_y, β_filt, ail_v, ail_p, rud_v, rud_p)
+
+end
+
+function ZLatPhiBeta(physics::System{<:C172FBW.Physics})
+    φ = physics.y.kinematics.common.e_nb.φ
+    β = physics.y.air.β_b
+    ZLatPhiBeta(; φ, β)
+end
+
+################################## System ######################################
+
 @kwdef struct LatControl{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
     φ_β_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "φ_β_lookup.h5"))
     p2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
@@ -478,14 +468,9 @@ end
     aileron_sp::Ranged{Float64, -1., 1.} = 0.0 #aileron command setpoint
     rudder_sp::Ranged{Float64, -1., 1.} = 0.0 #rudder command setpoint
     p_sp::Float64 = 0.0 #roll rate setpoint
+    β_sp::Float64 = 0.0 #sideslip angle setpoint
     φ_sp::Float64 = 0.0 #bank angle setpoint
     χ_sp::Float64 = 0.0 #course angle setpoint
-end
-
-#might not be necessary, we can just compare u.mode with y.mode (which holds the
-#value from the previous execution)
-@kwdef mutable struct LatControlS
-    lat_mode_prev::LatControlMode = lat_SAS_off
 end
 
 @kwdef struct LatControlY
@@ -498,54 +483,234 @@ end
     χ2φ_pid::PIDOutput = PIDOutput()
 end
 
-#################################### UPDATED UP TO HERE ########################
-#################################### UPDATED UP TO HERE ########################
-#################################### UPDATED UP TO HERE ########################
-#################################### UPDATED UP TO HERE ########################
-#################################### UPDATED UP TO HERE ########################
+Systems.init(::SystemU, ::LatControl) = LatControlU()
+Systems.init(::SystemY, ::LatControl) = LatControlY()
 
-################################################################################
-################################ FlightManagement #################################
+function Systems.f_disc!(sys::System{<:LatControl},
+                        physics::System{<:C172FBW.Physics}, Δt::Real)
 
-#if longitudinal guidance is off, we simply take the longitudinal setpoints in
-#flight_manager.u root and pack them into lon_ctl.u and let the lon_ctl_mode_sel
-#determine which one is used within lon_ctl. if lon_guidance is on, we call
-#lon_guidance and assign its outputs to loncontrol.u, both lon_mode and
-#seetpoints. flight phase may override the selected guidance and control modes.
-#for example, take off, landing, slave to sensor, etc. in fact, only in route
-#phase should we obey those selections
+    @unpack mode, aileron_sp, rudder_sp, p_sp, φ_sp, χ_sp = sys.u
+    @unpack φ_β_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
+    @unpack φ_β_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
 
-@kwdef struct FlightManager <: SystemDefinition
-    lon_ctl::LonControl = LonControl()
-    lat_ctl::LatControl = LonControl()
-    # lon_gdc::LonGuidance = LonGuidance()
-    # lat_gdc::LatGuidance = LatGuidance()
+    EAS = physics.y.air.EAS
+    h_e = Float64(physics.y.kinematics.h_e)
+    mode_prev = sys.y.mode
+
+    if mode === lat_SAS_off
+        aileron_cmd = aileron_sp
+        rudder_cmd = rudder_sp
+
+    #compute φ_sp depending on active roll path
+    else #lat_p_β || lat_φ_β || lat_χ_β
+
+        u_lat_sat = ULat(φ_β_lqr.y.out_sat)
+
+        #φ_sp computed by roll rate tracker
+        if mode === lat_p_β
+
+            if mode != mode_prev
+                Control.Discrete.reset!(p2φ_int)
+                Control.Discrete.reset!(p2φ_pid)
+            end
+
+            p2φ_int.u.input = p_sp - p
+            p2φ_int.u.sat_ext = u_lat_sat.aileron_cmd
+            f_disc!(p2φ_int, Δt)
+
+            Control.Discrete.assign!(p2φ_pid, p2φ_pid_lookup(EAS, Float64(h_e)))
+            p2φ_pid.u.input = p2φ_int.y.output
+            p2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
+            f_disc!(p2φ_pid, Δt)
+            φ_sp = p2φ_pid.y.output
+
+        elseif mode === lat_χ_β
+
+            # Control.Discrete.assign!(χ2φ_pid, χ2φ_pid_lookup(EAS, Float64(h_e)))
+            # χ2φ_pid.u.input = wrap_to_π(χ_sp - χ)
+            # χ2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
+            # f_disc!(χ2φ_pid, Δt)
+            # φ_sp = χ2φ_pid.y.output
+
+        else #mode === lat_φ_β
+
+            #φ_sp and β_sp directly set by input values, nothing to do here
+
+        end
+
+        if lon_mode != lon_mode_prev
+            reset!(φ_β_lqr)
+        end
+
+        Control.Discrete.assign!(φ_β_lqr, φ_β_lqr_lookup(EAS, Float64(h_e)))
+        φ_β_lqr.u.x .= XLat(physics)
+        φ_β_lqr.u.z .= ZLatPhiBeta(physics)
+        φ_β_lqr.u.z_sp .= ZLatPhiBeta(; φ = φ_sp, β = β_sp)
+        f_disc!(φ_β_lqr, Δt)
+        @unpack aileron_cmd, rudder_cmd = ULat(φ_β_lqr.y.output)
+
+    end
+
+    sys.y = LatControlY(; mode, aileron_cmd, rudder_cmd,
+                        φ_β_lqr = φ_β_lqr.y,
+                        p2φ_int = p2φ_int.y,
+                        p2φ_pid = p2φ_pid.y,
+                        χ2φ_pid = χ2φ_pid.y)
+
 end
 
 
-@kwdef mutable struct FlightManagerInputs
+
+################################################################################
+############################### Guidance Modes #################################
+
+@kwdef struct AltitudeGuidance <: SystemDefinition end
+
+@kwdef struct AltitudeGuidanceU
+    h_sp::Float64 = 0.0 #climb rate setpoint
+end
+
+@kwdef struct AltitudeGuidanceY end
+
+@kwdef struct SegmentGuidance <: SystemDefinition end
+@kwdef struct SegmentGuidanceY end
+
+
+################################################################################
+################################# FlightGuidance ###############################
+
+@enum FlightPhase begin
+    phase_gnd = 0
+    phase_air = 1
+end
+
+@enum VerticalGuidanceMode begin
+    vert_gdc_off = 0
+    vert_gdc_alt = 1
+end
+
+@enum HorizontalGuidanceMode begin
+    horz_gdc_off = 0
+    horz_gdc_line = 1
+end
+
+@kwdef struct FlightGuidance <: SystemDefinition
+    lon_ctl::LonControl = LonControl()
+    lat_ctl::LatControl = LatControl()
+    alt_gdc::AltitudeGuidance = AltitudeGuidance()
+    seg_gdc::SegmentGuidance = SegmentGuidance()
+end
+
+@kwdef mutable struct FlightGuidanceInputs
     phase::FlightPhase = phase_gnd #slave to sensor might go here
-    # lon_gdc_mode_sel::LonGuidanceMode = lon_guidance_off #selected longitudinal guidance mode
-    # lat_gdc_mode_sel::LonGuidanceMode = lat_guidance_off #selected lateral guidance mode
-    lon_ctl_mode_sel::LonControlMode = lon_SAS_off #selected longitudinal control mode
-    lat_ctl_mode_sel::LatControlMode = lat_SAS_off #selected lateral control mode
+    vert_gdc_mode_req::VerticalGuidanceMode = vert_gdc_off #requested vertical guidance mode
+    horz_gdc_mode_req::HorizontalGuidanceMode = horz_gdc_off #requested horizontal guidance mode
+    lon_ctl_mode_req::LonControlMode = lon_SAS_off #requested longitudinal control mode
+    lat_ctl_mode_req::LatControlMode = lat_SAS_off #requested lateral control mode
     throttle_sp::Ranged{Float64, 0., 1.} = 0.0 #throttle command setpoint
     elevator_sp::Ranged{Float64, -1., 1.} = 0.0 #elevator command setpoint
     aileron_sp::Ranged{Float64, -1., 1.} = 0.0 #aileron command setpoint
     rudder_sp::Ranged{Float64, -1., 1.} = 0.0 #rudder command setpoint
-    p_sp::Float64 = 50.0 #roll rate setpoint
     q_sp::Float64 = 0.0 #pitch rate setpoint
     EAS_sp::Float64 = 50.0 #equivalent airspeed setpoint
     clm_sp::Float64 = 0.0 #climb rate setpoint
+    p_sp::Float64 = 0.0 #roll rate setpoint
+    β_sp::Float64 = 0.0 #sideslip angle setpoint
     φ_sp::Float64 = 0.0 #bank angle demand
     χ_sp::Float64 = 0.0 #course angle demand
-    # h_sp::Float64 = 0.0 #altitude demand (ellipsoidal)
+    h_sp::Union{HEllip, HOrth} = 0.0 #altitude setpoint
+    # seg_sp::Segment = 0.0 #line segment setpoint
 end
+
+@kwdef struct FlightGuidanceOutputs
+    vert_gdc_mode::VerticalGuidanceMode = vert_gdc_off #active vertical guidance mode
+    horz_gdc_mode::HorizontalGuidanceMode = horz_gdc_off #active horizontal guidance mode
+    lon_ctl_mode::LonControlMode = lon_SAS_off #active longitudinal control mode
+    lat_ctl_mode::LatControlMode = lat_SAS_off #active lateral control mode
+    throttle_cmd::Ranged{Float64, 0., 1.} = 0.0 #throttle command
+    elevator_cmd::Ranged{Float64, -1., 1.} = 0.0 #elevator command
+    aileron_cmd::Ranged{Float64, -1., 1.} = 0.0 #aileron command
+    rudder_cmd::Ranged{Float64, -1., 1.} = 0.0 #rudder command
+    lon_ctl::LonControlY = LonControlY()
+    lat_ctl::LatControlY = LatControlY()
+    alt_gdc::AltitudeGuidanceY = AltitudeGuidanceY()
+    seg_gdc::SegmentGuidanceY = SegmentGuidanceY()
+end
+
+function Systems.f_disc!(sys::System{<:FlightGuidance},
+                        physics::System{<:C172FBW.Physics}, Δt::Real)
+
+    @unpack phase, vert_gdc_mode_req, lon_ctl_mode_req,
+            throttle_sp, elevator_sp, q_sp, EAS_sp, clm_sp, h_sp = sys.u
+    @unpack lon_ctl, alt_gdc = sys.subsystems
+
+    if phase === phase_gnd
+
+        vert_gdc_mode = vert_gdc_off
+        hor_gdc_mode = hor_gdc_off
+        lon_ctl_mode = lon_SAS_off
+        lat_ctl_mode = lat_SAS_off
+
+    elseif phase === phase_air
+
+        vert_gdc_mode = vert_gdc_mode_req
+        hor_gdc_mode = hor_gdc_mode_req
+
+        if vert_gdc_mode === vert_gdc_off
+
+            lon_ctl_mode = lon_ctl_mode_req
+
+        else #vert_gdc_mode === vert_gdc_alt
+
+            # alt_gdc.u.h_sp = h_sp
+            # f_disc!(alt_gdc, physics, Δt)
+
+            # lon_ctl_mode = alt_gdc.y.lon_ctl_mode
+            # EAS_sp = alt_gdc.y.EAS_sp
+            # clm_sp = alt_gdc.y.clm_sp
+
+        end
+
+        if hor_gdc_mode === hor_gdc_off
+
+            lat_ctl_mode = lat_ctl_mode_req
+
+        else #hor_gdc_mode === hor_gdc_line
+
+            # seg_gdc.u.line_sp = line_sp
+            # f_disc!(seg_gdc, physics, Δt)
+
+            # lat_ctl_mode = seg_gdc.y.lat_ctl_mode
+            # χ_sp = seg_gdc.y.χ_sp
+            # β_sp = 0.0
+
+        end
+
+    end
+
+    lon_ctl.u.mode = lon_ctl_mode
+    @pack! lon_ctl.u = throttle_sp, elevator_sp, q_sp, EAS_sp, clm_sp
+    f_disc!(lon_ctl, physics, Δt)
+    @unpack throttle_cmd, elevator_cmd = lon_ctl.y
+
+    lat_ctl.u.mode = lat_ctl_mode
+    @pack! lat_ctl.u = aileron_sp, rudder_sp, p_sp, φ_sp, β_sp, χ_sp
+    f_disc!(lat_sp, physics, Δt)
+    @unpack aileron_cmd, rudder_cmd = lat_ctl.y
+
+    sys.y = FlightGuidanceOutputs(; vert_gdc_mode, horz_gdc_mode,
+        lon_ctl_mode, lat_ctl_mode,
+        throttle_cmd, elevator_cmd, aileron_cmd, rudder_cmd,
+        lon_ctl = lon_ctl.y, lat_ctl = lat_ctl.y,
+        alt_gdc = alt_gdc.y, seg_gdc = seg_gdc.y)
+
+end
+
 
 ################################################################################
 
 @kwdef struct Avionics <: AbstractAvionics
-    flight::FlightManager = FlightManager()
+    flight::FlightGuidance = FlightGuidance()
 end
 
 @kwdef mutable struct CockpitInputs
@@ -569,9 +734,24 @@ end
 end
 
 
+#include everything required by FlightGuidance, except for the stuff
+#actually related to inceptors
+    # vert_gdc_mode_req::VerticalGuidanceMode = vert_gdc_off #requested vertical guidance mode
+    # horz_gdc_mode_req::HorizontalGuidanceMode = horz_gdc_off #requested horizontal guidance mode
+    # lon_ctl_mode_req::LonControlMode = lon_SAS_off #requested longitudinal control mode
+    # lat_ctl_mode_req::LatControlMode = lat_SAS_off #requested lateral control mode
+    # EAS_sp::Float64 = 50.0 #equivalent airspeed setpoint
+    # clm_sp::Float64 = 0.0 #climb rate setpoint
+    # β_sp::Float64 = 0.0 #sideslip angle setpoint
+    # φ_sp::Float64 = 0.0 #bank angle demand
+    # χ_sp::Float64 = 0.0 #course angle demand
+    # h_sp::Union{HEllip, HOrth} = 0.0 #altitude setpoint
+    # # seg_sp::Segment = 0.0 #line segment setpoint
+
+
 @kwdef struct AvionicsU
     cockpit::CockpitInputs = CockpitInputs()
-    flight::FlightManagerInputs = FlightManagerInputs()
+    # flight::FlightGuidanceInputs = FlightGuidanceInputs()
 end
 
 @kwdef struct ActuationCommands
@@ -593,7 +773,8 @@ end
 end
 
 #shared flight management subsystem inputs
-Systems.init(::SystemU, sd::Avionics) = AvionicsU(; cockpit, flight = init_u(sd.flight))
+# Systems.init(::SystemU, sd::Avionics) = AvionicsU(; cockpit, flight = init_u(sd.flight))
+Systems.init(::SystemU, ::Avionics) = AvionicsU()
 Systems.init(::SystemY, ::Avionics) = AvionicsY()
 Systems.init(::SystemS, ::Avionics) = AvionicsS()
 
