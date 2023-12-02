@@ -620,6 +620,8 @@ Base.getproperty(params::PIDParams, name::Symbol) = getproperty(params, Val(name
         return :(params.k_p / params.k_i)
     elseif S === :T_d
         return :(params.k_d / params.k_p)
+    else
+        return :(error("PIDParams has no property $S"))
     end
 end
 

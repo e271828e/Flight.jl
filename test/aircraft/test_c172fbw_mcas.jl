@@ -1,4 +1,4 @@
-module TestC172MCAS
+module TestC172MCS
 
 using Test, UnPack, BenchmarkTools, Sockets
 
@@ -11,13 +11,13 @@ using Flight.FlightComponents
 
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
-using Flight.FlightAircraft.C172MCAS
+using Flight.FlightAircraft.C172MCS
 
 export test_c172_mcas
 
 
 function test_c172_mcas()
-    @testset verbose = true "Cessna172 MCAS" begin
+    @testset verbose = true "Cessna172 MCS" begin
 
         test_system_methods()
         test_sim(save = false)
@@ -58,7 +58,7 @@ function test_system_methods()
             kin_init_gnd = KinematicInit( h = trn_data.altitude + 1.8);
             kin_init_air = KinematicInit( h = trn_data.altitude + 1000);
 
-            ac = System(Cessna172MCAS());
+            ac = System(Cessna172MCS());
 
             #to exercise all airframe functionality, including landing gear, we
             #need to be on the ground with the engine running
@@ -95,7 +95,7 @@ function test_cas(; save::Bool = true)
 
     @testset verbose = true "Simulation" begin
 
-        ac = Cessna172MCAS() |> System;
+        ac = Cessna172MCS() |> System;
         design_condition = C172.TrimParameters()
 
         exit_flag, trim_state = trim!(ac, design_condition)
@@ -111,9 +111,9 @@ function test_cas(; save::Bool = true)
                 u_inceptors = ac.avionics.u.inceptors
                 u_digital = ac.avionics.u.digital
 
-                u_digital.lon_mode_sel = C172MCAS.lon_θ_EAS
+                u_digital.lon_mode_sel = C172MCS.lon_θ_EAS
 
-                # u_digital.lon_mode_sel = C172MCAS.lon_q_EAS
+                # u_digital.lon_mode_sel = C172MCS.lon_q_EAS
                 # if 5 < t < 15
                 #     u_inceptors.pitch_input = 0.001
                 # elseif 15 < t < 25
