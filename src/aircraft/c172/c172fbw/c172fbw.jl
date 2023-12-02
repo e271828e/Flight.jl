@@ -641,6 +641,6 @@ end
 
 include(normpath("variants/base.jl")); @reexport using .C172FBWBase
 include(normpath("variants/cas/cas.jl")); @reexport using .C172FBWCAS
-include(normpath("variants/mcs/mcs.jl")); @reexport using .C172FBWMCS
+include(normpath("variants/mcas/mcas.jl")); @reexport using .C172MCAS
 
 end
