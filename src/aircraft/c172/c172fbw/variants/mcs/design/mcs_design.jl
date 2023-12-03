@@ -74,8 +74,12 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
     y_labels_lon = keys(lss_lon.y0) |> collect
     u_labels_lon = keys(lss_lon.u0) |> collect
 
-    x_labels = deleteat!(x_labels_lon, findfirst(isequal(:h), x_labels_lon))
-    y_labels = deleteat!(y_labels_lon, findfirst(isequal(:h), y_labels_lon))
+    x_labels = copy(x_labels_lon)
+    y_labels = copy(y_labels_lon)
+    u_labels = copy(u_labels_lon)
+
+    x_labels = deleteat!(x_labels, findfirst(isequal(:h), x_labels))
+    y_labels = deleteat!(y_labels, findfirst(isequal(:h), y_labels))
     u_labels = u_labels_lon
 
     #ensure consistency in component selection and ordering between our design model
@@ -83,14 +87,15 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
     @assert tuple(x_labels...) === propertynames(C172MCS.XLon())
     @assert tuple(u_labels...) === propertynames(C172MCS.ULon())
 
-    #design model
-    lss = Control.Continuous.submodel(lss_lon; x = x_labels, u = u_labels, y = y_labels)
-    x_trim = lss.x0
-    u_trim = lss.u0
-    n_x = length(lss.x0)
-    n_u = length(lss.u0)
+    lss_red = Control.Continuous.submodel(lss_lon; x = x_labels, u = u_labels, y = y_labels)
+    x_trim = lss_red.x0
+    u_trim = lss_red.u0
 
-    P = named_ss(lss);
+    n_x = length(lss_red.x0)
+    n_u = length(lss_red.u0)
+
+    P_lon = named_ss(lss_lon)
+    P_red = named_ss(lss_red);
 
     ############################ thr+ele SAS ###################################
 
@@ -99,15 +104,15 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
         z_labels = [:throttle_cmd, :elevator_cmd]
 
         @assert tuple(z_labels...) === propertynames(C172MCS.ZLonThrEle())
-        z_trim = lss.y0[z_labels]
+        z_trim = lss_red.y0[z_labels]
         n_z = length(z_labels)
 
-        F = lss.A
-        G = lss.B
-        Hx = lss.C[z_labels, :]
-        Hu = lss.D[z_labels, :]
+        F = lss_red.A
+        G = lss_red.B
+        Hx = lss_red.C[z_labels, :]
+        Hu = lss_red.D[z_labels, :]
 
-        @unpack v_x, v_z = lss.x0
+        @unpack v_x, v_z = lss_red.x0
         v_norm = norm([v_x, v_z])
 
         #weight matrices
@@ -116,7 +121,7 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
         R = C172MCS.ULon(throttle_cmd = 2, elevator_cmd = 2) |> diagm
 
         #feedback gain matrix
-        C_fbk = lqr(P, Q, R)
+        C_fbk = lqr(P_red, Q, R)
 
         #forward gain matrix
         A = [F G; Hx Hu]
@@ -153,8 +158,8 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
             Pair.(u_labels_fwd, u_labels_fwd)
             )
 
-        P_te = connect([P, throttle_sum, elevator_sum, C_fbk_ss, C_fwd_ss],
-            connections; w1 = z_labels_sp, z1 = P.y)
+        P_te = connect([P_lon, throttle_sum, elevator_sum, C_fbk_ss, C_fwd_ss],
+            connections; w1 = z_labels_sp, z1 = P_lon.y)
 
         params_te = LQRTrackerParams(; #export everything as plain arrays
             C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
@@ -221,7 +226,7 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
         C_v2t = named_ss(ss(v2t_pid), :C_v2t; u = :EAS_err, y = :throttle_cmd_sp)
 
         v2t_sum = sumblock("EAS_err = EAS_sp - EAS")
-        P_vq = connect([v2t_sum, C_v2t, P_tq],
+        P_vq = connect([P_tq, v2t_sum, C_v2t],
             [:EAS_err=>:EAS_err, :EAS=>:EAS, :throttle_cmd_sp=>:throttle_cmd_sp],
             w1 = [:EAS_sp, :q_sp], z1 = P_tq.y)
 
@@ -234,13 +239,13 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
         z_labels = [:EAS, :climb_rate]
 
         @assert tuple(z_labels...) === propertynames(C172MCS.ZLonEASClm())
-        z_trim = lss.y0[z_labels]
+        z_trim = lss_red.y0[z_labels]
         n_z = length(z_labels)
 
-        F = lss.A
-        G = lss.B
-        Hx = lss.C[z_labels, :]
-        Hu = lss.D[z_labels, :]
+        F = lss_red.A
+        G = lss_red.B
+        Hx = lss_red.C[z_labels, :]
+        Hu = lss_red.D[z_labels, :]
 
         Hx_int = Hx[z_labels, :]
         Hu_int = Hu[z_labels, :]
@@ -253,7 +258,7 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
 
         P_aug = ss(F_aug, G_aug, Hx_aug, Hu_aug)
 
-        @unpack v_x, v_z = lss.x0
+        @unpack v_x, v_z = lss_red.x0
         v_norm = norm([v_x, v_z])
 
         #weight matrices
@@ -325,11 +330,11 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
 
         #disable warning about connecting single output to multiple inputs (here,
         #φ goes both to state feedback and command variable error junction)
-        P_vc = connect([P, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
+        P_vc = connect([P_lon, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
                             EAS_err_sum, climb_rate_err_sum,
                             throttle_cmd_sum, elevator_cmd_sum,
                             EAS_sp_splitter, climb_rate_sp_splitter], connections;
-                            w1 = z_labels_sp, z1 = P.y)
+                            w1 = z_labels_sp, z1 = P_lon.y)
 
         #convert everything to plain arrays
         params_vc2te = LQRTrackerParams(;
@@ -344,13 +349,13 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
         z_labels = [:EAS, :throttle_cmd]
 
         @assert tuple(z_labels...) === propertynames(C172MCS.ZLonEASThr())
-        z_trim = lss.y0[z_labels]
+        z_trim = lss_red.y0[z_labels]
         n_z = length(z_labels)
 
-        F = lss.A
-        G = lss.B
-        Hx = lss.C[z_labels, :]
-        Hu = lss.D[z_labels, :]
+        F = lss_red.A
+        G = lss_red.B
+        Hx = lss_red.C[z_labels, :]
+        Hu = lss_red.D[z_labels, :]
 
         #define the blocks corresponding to the subset of the command variables for
         #which integral compensation is required. in this case, only one of them (EAS).
@@ -367,7 +372,7 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
 
         P_aug = ss(F_aug, G_aug, Hx_aug, Hu_aug)
 
-        @unpack v_x, v_z = lss.x0
+        @unpack v_x, v_z = lss_red.x0
         v_norm = norm([v_x, v_z])
 
         #weight matrices
@@ -438,11 +443,11 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
             Pair.(u_labels_int_u, u_labels_int_u),
             )
 
-        P_vt = connect([P, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
+        P_vt = connect([P_lon, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
                         EAS_err_sum, throttle_cmd_err_sum,
                         throttle_cmd_sum, elevator_cmd_sum,
                         EAS_sp_splitter, throttle_cmd_sp_splitter], connections;
-                        w1 = z_labels_sp, z1 = vcat(y_labels))
+                        w1 = z_labels_sp, z1 = P_lon.y)
 
         #convert everything to plain arrays
         params_vt2te = LQRTrackerParams(;
@@ -457,6 +462,7 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
 
 end
 
+
 function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
 
     ac = Cessna172FBWBase(NED()) |> System #linearization requires NED kinematics
@@ -467,10 +473,13 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
     y_labels_lat = keys(lss_lat.y0) |> collect
     u_labels_lat = keys(lss_lat.u0) |> collect
 
-    #remove heading from state vector to avoid quasi-static equilibrium
-    x_labels = deleteat!(x_labels_lat, findfirst(isequal(:ψ), x_labels_lat))
-    y_labels = deleteat!(y_labels_lat, findfirst(isequal(:ψ), y_labels_lat))
-    u_labels = u_labels_lat
+    x_labels = copy(x_labels_lat)
+    y_labels = copy(y_labels_lat)
+    u_labels = copy(u_labels_lat)
+
+    x_labels = deleteat!(x_labels, findfirst(isequal(:ψ), x_labels))
+    y_labels = deleteat!(y_labels, findfirst(isequal(:ψ), y_labels))
+    y_labels = deleteat!(y_labels, findfirst(isequal(:χ), y_labels))
 
     #ensure consistency in component selection and ordering between our design model
     #and MCS avionics implementation for state and control vectors
@@ -478,13 +487,15 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
     @assert tuple(u_labels...) === propertynames(C172MCS.ULat())
 
     #extract design model
-    lss = Control.Continuous.submodel(lss_lat; x = x_labels, u = u_labels, y = y_labels)
-    x_trim = lss.x0
-    u_trim = lss.u0
-    n_x = length(lss.x0)
-    n_u = length(lss.u0)
+    lss_red = Control.Continuous.submodel(lss_lat; x = x_labels, u = u_labels, y = y_labels)
+    x_trim = lss_red.x0
+    u_trim = lss_red.u0
 
-    P = named_ss(lss)
+    n_x = length(lss_red.x0)
+    n_u = length(lss_red.u0)
+
+    P_lat = named_ss(lss_lat)
+    P_red = named_ss(lss_red);
 
     ############################### φ + β ######################################
 
@@ -493,13 +504,13 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
         z_labels = [:φ, :β]
 
         @assert tuple(z_labels...) === propertynames(C172MCS.ZLatPhiBeta())
-        z_trim = lss.y0[z_labels]
+        z_trim = lss_red.y0[z_labels]
         n_z = length(z_labels)
 
-        F = lss.A
-        G = lss.B
-        Hx = lss.C[z_labels, :]
-        Hu = lss.D[z_labels, :]
+        F = lss_red.A
+        G = lss_red.B
+        Hx = lss_red.C[z_labels, :]
+        Hu = lss_red.D[z_labels, :]
 
         Hx_int = Hx[:β, :]'
         Hu_int = Hu[:β, :]'
@@ -512,7 +523,7 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
 
         P_aug = ss(F_aug, G_aug, Hx_aug, Hu_aug)
 
-        @unpack v_x, v_y = lss.x0
+        @unpack v_x, v_y = lss_red.x0
         v_norm = norm([v_x, v_y])
 
         #weight matrices
@@ -587,11 +598,11 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
         #disable warning about connecting single output to multiple inputs (here,
         #φ goes both to state feedback and command variable error junction)
         Logging.disable_logging(Logging.Warn)
-        P_φβ = connect([P, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
+        P_φβ = connect([P_lat, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
                             φ_err_sum, β_err_sum,
                             aileron_cmd_sum, rudder_cmd_sum,
                             φ_sp_splitter, β_sp_splitter], connections;
-                            w1 = z_labels_sp, z1 = P.y)
+                            w1 = z_labels_sp, z1 = P_lat.y)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
@@ -631,7 +642,7 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
         C_p2φ = named_ss(series(p2φ_int, p2φ_PID), :C_p2φ; u = :p_err, y = :φ_sp)
 
         p2φ_sum = sumblock("p_err = p_sp - p")
-        P_pβ = connect([p2φ_sum, C_p2φ, P_φβ], [:p_err=>:p_err, :p=>:p, :φ_sp=>:φ_sp], w1 = [:p_sp, :β_sp], z1 = P_φβ.y)
+        P_pβ = connect([P_φβ, p2φ_sum, C_p2φ], [:p_err=>:p_err, :p=>:p, :φ_sp=>:φ_sp], w1 = [:p_sp, :β_sp], z1 = P_φβ.y)
 
         (P_pβ, params_p2φ)
 
