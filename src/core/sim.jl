@@ -252,7 +252,7 @@ OrdinaryDiffEq.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator
 
 OrdinaryDiffEq.add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 
-function OrdinaryDiffEq.reinit!(sim::Simulation; sys_reinit_kwargs...)
+function OrdinaryDiffEq.reinit!(sim::Simulation, sys_reinit_args...; sys_reinit_kwargs...)
 
     @unpack integrator, log = sim
     @unpack p = integrator
@@ -263,7 +263,7 @@ function OrdinaryDiffEq.reinit!(sim::Simulation; sys_reinit_kwargs...)
     end
 
     #initialize the System's x, u and s
-    p.sys_reinit!(p.sys; sys_reinit_kwargs...)
+    p.sys_reinit!(p.sys, sys_reinit_args...; sys_reinit_kwargs...)
 
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
     #reinit! calls f_ode_wrapper!, so the System's ẋ and y are updated in the

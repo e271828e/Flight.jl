@@ -133,7 +133,7 @@ function test_sim_paced(; save::Bool = true)
     kin_init = KinematicInit(
         v_eOb_n = [0, 0, 0],
         ω_lb_b = [0, 0, 0],
-        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.3),
+        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.9 + 0);
 

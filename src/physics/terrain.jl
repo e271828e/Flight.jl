@@ -35,16 +35,12 @@ TerrainData(::AbstractTerrain, loc::Abstract2DLocation) = throw(MethodError(Terr
 
 struct DummyTerrain <: AbstractTerrain end
 
-struct HorizontalTerrain <: AbstractTerrain
-    altitude::Altitude{Orthometric}
-    surface::SurfaceType
+@kwdef struct HorizontalTerrain <: AbstractTerrain
+    altitude::Altitude{Orthometric} = HOrth(0)
+    surface::SurfaceType = DryTarmac
 end
 
-function HorizontalTerrain(; altitude = HOrth(0), surface = DryTarmac)
-    HorizontalTerrain(altitude, surface)
-end
-
-function TerrainData(trn::HorizontalTerrain, loc::Abstract2DLocation)
+function TerrainData(trn::HorizontalTerrain, loc::Abstract2DLocation = NVector())
     TerrainData(loc, trn.altitude, SVector{3,Float64}(0,0,1), trn.surface)
 end
 

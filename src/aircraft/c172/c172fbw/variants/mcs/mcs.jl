@@ -16,7 +16,6 @@ using ..C172FBW
 
 export Cessna172MCS
 
-
 ################################################################################
 ############################# Lookups ##########################################
 
@@ -226,6 +225,11 @@ function XLon(physics::System{<:C172FBW.Physics})
 
 end
 
+function ULon(physics::System{<:C172FBW.Physics})
+    @unpack throttle_cmd, elevator_cmd = physics.y.airframe.act
+    ULon(; throttle_cmd, elevator_cmd)
+end
+
 function ZLonThrEle(physics::System{<:C172FBW.Physics})
     @unpack act = physics.y.airframe
     throttle_cmd = act.throttle_act.cmd
@@ -265,8 +269,8 @@ end
 
 @kwdef mutable struct LonControlU
     mode::LonControlMode = lon_SAS_off #selected control mode
-    throttle_sp::Ranged{Float64, 0., 1.} = 0.0
-    elevator_sp::Ranged{Float64, -1., 1.} = 0.0
+    throttle_sp::Float64 = 0.0
+    elevator_sp::Float64 = 0.0
     q_sp::Float64 = 0.0
     EAS_sp::Float64 = 50.0 #equivalent airspeed setpoint
     clm_sp::Float64 = 0.0 #climb rate setpoint
@@ -305,6 +309,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
 
     EAS = physics.y.air.EAS
     h_e = Float64(physics.y.kinematics.h_e)
+    _, q, _ = physics.y.kinematics.ω_lb_b
     mode_prev = sys.y.mode
 
     #actuation commands from pilot inceptor set points
@@ -321,16 +326,20 @@ function Systems.f_disc!(sys::System{<:LonControl},
         #elevator_sp computed by q tracker
         if mode === lon_thr_q || mode === lon_EAS_q
 
+            Control.Discrete.assign!(q2e_pid, q2e_lookup(EAS, h_e))
+
             if mode != mode_prev
                 Systems.reset!(q2e_int)
                 Systems.reset!(q2e_pid)
+                #set the PID integrator's state to the value that yields a
+                #steady-state output equal to the previous elevator_cmd
+                q2e_pid.s.x_i0 = Float64(sys.y.elevator_cmd) / q2e_pid.u.k_i
             end
 
             q2e_int.u.input = q_sp - q
             q2e_int.u.sat_ext = u_lon_sat.elevator_cmd
             f_disc!(q2e_int, Δt)
 
-            Control.Discrete.assign!(q2e_pid, q2e_lookup(EAS, h_e))
             q2e_pid.u.input = q2e_int.y.output
             q2e_pid.u.sat_ext = u_lon_sat.elevator_cmd
             f_disc!(q2e_pid, Δt)
@@ -339,11 +348,15 @@ function Systems.f_disc!(sys::System{<:LonControl},
             #throttle_sp computed by EAS tracker
             if mode === lon_EAS_q
 
+                Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, h_e))
+
                 if mode != mode_prev
                     Systems.reset!(v2t_pid)
+                    #set the PID integrator's state to the value that yields a
+                    #steady-state output equal to the previous throttle_cmd
+                    v2t_pid.s.x_i0 = Float64(sys.y.throttle_cmd) / v2t_pid.u.k_i
                 end
 
-                Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, h_e))
                 v2t_pid.u.input = EAS_sp - EAS
                 v2t_pid.u.sat_ext = u_lon_sat.throttle_cmd
                 f_disc!(v2t_pid, Δt)
@@ -357,7 +370,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
         Control.Discrete.assign!(te2te_lqr, te2te_lookup(EAS, h_e))
         te2te_lqr.u.x .= XLon(physics) #state feedback
         te2te_lqr.u.z .= ZLonThrEle(physics) #command variable feedback
-        te2te_lqr.u.z_sp .= ZLonThrEle(; throttle_sp, elevator_sp) #command variable setpoint
+        te2te_lqr.u.z_sp .= ZLonThrEle(; throttle_cmd = throttle_sp, elevator_cmd = elevator_sp) #command variable setpoint
         f_disc!(te2te_lqr, Δt)
         @unpack throttle_cmd, elevator_cmd = ULon(te2te_lqr.y.output)
 
@@ -474,8 +487,8 @@ end
 
 @kwdef mutable struct LatControlU
     mode::LatControlMode = lat_SAS_off #lateral control mode
-    aileron_sp::Ranged{Float64, -1., 1.} = 0.0 #aileron command setpoint
-    rudder_sp::Ranged{Float64, -1., 1.} = 0.0 #rudder command setpoint
+    aileron_sp::Float64 = 0.0 #aileron command setpoint
+    rudder_sp::Float64 = 0.0 #rudder command setpoint
     p_sp::Float64 = 0.0 #roll rate setpoint
     β_sp::Float64 = 0.0 #sideslip angle setpoint
     φ_sp::Float64 = 0.0 #bank angle setpoint
@@ -517,6 +530,7 @@ function Systems.f_disc!(sys::System{<:LatControl},
 
     EAS = physics.y.air.EAS
     h_e = Float64(physics.y.kinematics.h_e)
+    @unpack φ = physics.y.kinematics.e_nb
     mode_prev = sys.y.mode
 
     if mode === lat_SAS_off
@@ -531,22 +545,31 @@ function Systems.f_disc!(sys::System{<:LatControl},
         #φ_sp computed by roll rate tracker
         if mode === lat_p_β
 
+            Control.Discrete.assign!(p2φ_pid, p2φ_lookup(EAS, Float64(h_e)))
+
             if mode != mode_prev
                 Systems.reset!(p2φ_int)
                 Systems.reset!(p2φ_pid)
+                #set the PID integrator's state to the value that yields a
+                #steady-state output equal to the current φ
+                p2φ_pid.s.x_i0 = φ / p2φ_pid.u.k_i
             end
 
             p2φ_int.u.input = p_sp - p
             p2φ_int.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(p2φ_int, Δt)
 
-            Control.Discrete.assign!(p2φ_pid, p2φ_lookup(EAS, Float64(h_e)))
             p2φ_pid.u.input = p2φ_int.y.output
             p2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(p2φ_pid, Δt)
             φ_sp = p2φ_pid.y.output
 
         elseif mode === lat_χ_β
+
+            if mode != mode_prev
+                Systems.reset!(χ2φ_pid)
+                # χ2φ_pid.s.x_i0 = φ / χ2φ_pid.u.k_i #not really essential
+            end
 
             Control.Discrete.assign!(χ2φ_pid, χ2φ_lookup(EAS, Float64(h_e)))
             χ2φ_pid.u.input = wrap_to_π(χ_sp - χ)
@@ -629,10 +652,10 @@ end
     hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
     lon_ctl_mode_req::LonControlMode = lon_SAS_off #requested longitudinal control mode
     lat_ctl_mode_req::LatControlMode = lat_SAS_off #requested lateral control mode
-    throttle_sp::Ranged{Float64, 0., 1.} = 0.0 #throttle command setpoint
-    elevator_sp::Ranged{Float64, -1., 1.} = 0.0 #elevator command setpoint
-    aileron_sp::Ranged{Float64, -1., 1.} = 0.0 #aileron command setpoint
-    rudder_sp::Ranged{Float64, -1., 1.} = 0.0 #rudder command setpoint
+    throttle_sp::Float64 = 0.0 #throttle command setpoint
+    elevator_sp::Float64 = 0.0 #elevator command setpoint
+    aileron_sp::Float64 = 0.0 #aileron command setpoint
+    rudder_sp::Float64 = 0.0 #rudder command setpoint
     p_sp::Float64 = 0.0 #roll rate setpoint
     q_sp::Float64 = 0.0 #pitch rate setpoint
     β_sp::Float64 = 0.0 #sideslip angle setpoint
@@ -640,7 +663,7 @@ end
     clm_sp::Float64 = 0.0 #climb rate setpoint
     φ_sp::Float64 = 0.0 #bank angle demand
     χ_sp::Float64 = 0.0 #course angle demand
-    h_sp::Union{HEllip, HOrth} = 0.0 #altitude setpoint
+    h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
     # seg_sp::Segment = 0.0 #line segment setpoint
 end
 
@@ -659,6 +682,9 @@ end
     seg_gdc::SegmentGuidanceY = SegmentGuidanceY()
 end
 
+Systems.init(::SystemU, ::FlightGuidance) = FlightGuidanceInputs()
+Systems.init(::SystemY, ::FlightGuidance) = FlightGuidanceOutputs()
+
 function Systems.f_disc!(sys::System{<:FlightGuidance},
                         physics::System{<:C172FBW.Physics}, Δt::Real)
 
@@ -666,7 +692,7 @@ function Systems.f_disc!(sys::System{<:FlightGuidance},
             lon_ctl_mode_req, lat_ctl_mode_req,
             throttle_sp, elevator_sp, aileron_sp, rudder_sp,
             p_sp, q_sp, β_sp, EAS_sp, clm_sp, φ_sp, χ_sp, h_sp = sys.u
-    @unpack lon_ctl, alt_gdc = sys.subsystems
+    @unpack lon_ctl, lat_ctl, alt_gdc, seg_gdc = sys.subsystems
 
     if flight_phase === phase_gnd
 
@@ -719,11 +745,11 @@ function Systems.f_disc!(sys::System{<:FlightGuidance},
 
     lat_ctl.u.mode = lat_ctl_mode
     @pack! lat_ctl.u = aileron_sp, rudder_sp, p_sp, φ_sp, β_sp, χ_sp
-    f_disc!(lat_sp, physics, Δt)
+    f_disc!(lat_ctl, physics, Δt)
     @unpack aileron_cmd, rudder_cmd = lat_ctl.y
 
-    sys.y = FlightGuidanceOutputs(; ver_gdc_mode, hor_gdc_mode,
-        lon_ctl_mode, lat_ctl_mode,
+    sys.y = FlightGuidanceOutputs(;
+        ver_gdc_mode, hor_gdc_mode, lon_ctl_mode, lat_ctl_mode,
         throttle_cmd, elevator_cmd, aileron_cmd, rudder_cmd,
         lon_ctl = lon_ctl.y, lat_ctl = lat_ctl.y,
         alt_gdc = alt_gdc.y, seg_gdc = seg_gdc.y)
@@ -746,10 +772,10 @@ end
     roll_input::Ranged{Float64, -1., 1.} = 0.0 #sets aileron_sp or p_sp
     pitch_input::Ranged{Float64, -1., 1.} = 0.0 #sets elevator_sp or q_sp
     yaw_input::Ranged{Float64, -1., 1.} = 0.0 #sets rudder_sp or β_sp
-    throttle_sp_offset::Ranged{Float64, 0., 1.} = 0.0 #for direct throttle only
-    aileron_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct aileron only
-    elevator_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct elevator only
-    rudder_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct rudder only
+    throttle_sp_offset::Ranged{Float64, 0., 1.} = 0.0 #for direct throttle control only
+    aileron_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct aileron control only
+    elevator_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct elevator control only
+    rudder_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct rudder control only
     flaps::Ranged{Float64, 0., 1.} = 0.0
     brake_left::Ranged{Float64, 0., 1.} = 0.0
     brake_right::Ranged{Float64, 0., 1.} = 0.0
@@ -782,6 +808,7 @@ end
 end
 
 @kwdef struct AvionicsY
+    flight_phase::FlightPhase = phase_gnd
     actuation::ActuationCommands = ActuationCommands()
     flight::FlightGuidanceOutputs = FlightGuidanceOutputs()
 end
@@ -832,7 +859,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
                 throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd,
                 flaps, brake_left, brake_right)
 
-    avionics.y = AvionicsY(; actuation, flight = flight.y)
+    avionics.y = AvionicsY(; flight_phase, actuation, flight = flight.y)
 
     return false
 
@@ -897,6 +924,8 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
     @unpack mixture, flaps = trim_params
     @unpack throttle, aileron, elevator, rudder = trim_state
 
+    Systems.reset!(ac.avionics)
+
     u = ac.avionics.u
     u.throttle_input = 0
     u.roll_input = 0
@@ -914,8 +943,8 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
     u.lon_ctl_mode_req = lon_SAS_off
     u.lat_ctl_mode_req = lat_SAS_off
 
-    # #update avionics outputs
-    # f_disc!(ac.avionics, ac.physics, 1)
+    #IMPORTANT: update avionics outputs
+    f_disc!(ac.avionics, ac.physics, 1)
 
     return result
 
@@ -1016,6 +1045,6 @@ function IODevices.assign!(sys::System{Avionics},
 
 end
 
-
+# include(joinpath(@__DIR__, "design", "mcs_design.jl")); using .MCSDesign
 
 end #module
