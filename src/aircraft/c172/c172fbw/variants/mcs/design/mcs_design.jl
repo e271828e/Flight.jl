@@ -26,8 +26,8 @@ using Interpolations
 
 
 function generate_lookups(
-    EAS_range::AbstractRange{Float64} = range(25, 50, length = 2),
-    h_range::AbstractRange{Float64} = range(100, 1000, length = 2);
+    EAS_range::AbstractRange{Float64} = range(25, 55, length = 7),
+    h_range::AbstractRange{Float64} = range(50, 3050, length = 4);
     channel::Symbol = :lat,
     folder::String = dirname(@__DIR__)) #save to parent folder by default
 

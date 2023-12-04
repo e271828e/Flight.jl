@@ -126,8 +126,7 @@ function test_avionics()
 
     # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
-    error("Test lateral control modes first and then test longitudinal modes with φ and β control enabled")
-
+    # error("Test lateral control modes first and then test longitudinal modes with φ and β control enabled")
     ############################test thr+ele SAS mode #######################
     reinit!(sim)
     av.u.lon_ctl_mode_req = C172MCS.lon_thr_ele
