@@ -200,19 +200,21 @@ function test_discrete_pid(save = false)
         step!(sim)
         @test sys.y.int_halted #integrator 2 should have halted
 
-        Control.Discrete.reset!(sys)
+        Systems.reset!(sys)
 
         @test sys.u.input == 0
         @test sys.u.sat_ext == 0
+        @test sys.u.bound_lo != 0
+        @test sys.u.bound_hi != 0
         @test sys.s.x_i0 == 0
         @test sys.s.x_d0 == 0
         @test sys.s.sat_out_0 == 0
+
+        f_disc!(sys, 1)
         @test sys.y.y_i == 0
         @test sys.y.y_d == 0
         @test sys.y.y_p == 0
         @test !sys.y.int_halted
-        @test sys.u.bound_lo != 0
-        @test sys.u.bound_hi != 0
 
         @test @ballocated($f_ode!($sys)) == 0
         @test @ballocated($f_disc!($sys, 1)) == 0
@@ -222,7 +224,7 @@ function test_discrete_pid(save = false)
         save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
 
         #operate PID as a filtered derivative
-        Control.Discrete.reset!(sys)
+        Systems.reset!(sys)
         sys.u.k_p = 0.0
         sys.u.k_i = 0.0
         sys.u.k_d = 1.0
@@ -257,12 +259,13 @@ function test_discrete_pid(save = false)
         y_lss_last = Sim.get_data(th_y_lss)[end]
 
         #define the equivalent discrete PID and simulate it for a unit step input
-        Control.Discrete.reset!(sys)
-        sys.u.input = 1
+        Systems.reset!(sys)
         sys.u.k_p = k_p
         sys.u.k_i = k_i
         sys.u.k_d = k_d
         sys.u.τ_f = τ_f
+
+        sys.u.input = 1
         sim = Simulation(sys; Δt = 0.0001, t_end = 2)
         Sim.run!(sim)
         th_disc = TimeHistory(sim)
@@ -322,19 +325,21 @@ function test_discrete_pid_vector(save = false)
         step!(sim)
         @test sys.y.int_halted[1] #integrator 2 should have halted
 
-        Control.Discrete.reset!(sys)
+        Systems.reset!(sys)
 
         @test sys.u.input[1] == 0
         @test sys.u.sat_ext[1] == 0
+        @test sys.u.bound_lo[1] != 0
+        @test sys.u.bound_hi[1] != 0
         @test sys.s.x_i0[1] == 0
         @test sys.s.x_d0[1] == 0
         @test sys.s.sat_out_0[1] == 0
+
+        f_disc!(sys, 1)
         @test sys.y.y_i[1] == 0
         @test sys.y.y_d[1] == 0
         @test sys.y.y_p[1] == 0
         @test !sys.y.int_halted[1]
-        @test sys.u.bound_lo[1] != 0
-        @test sys.u.bound_hi[1] != 0
 
         @test @ballocated($f_ode!($sys)) == 0
         @test @ballocated($f_disc!($sys, 1)) == 0
@@ -344,7 +349,8 @@ function test_discrete_pid_vector(save = false)
         save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_vector_test"))
 
         #operate PID as a filtered derivative
-        Control.Discrete.reset!(sys)
+        Systems.reset!(sys)
+        sys.u.input .= 1.0
         sys.u.k_p .= 0.0
         sys.u.k_i .= 0.0
         sys.u.k_d .= 1.0
@@ -353,7 +359,6 @@ function test_discrete_pid_vector(save = false)
         sys.u.bound_hi .= Inf
 
         sim = Simulation(sys; Δt = 0.01)
-        sys.u.input .= 1.0
         step!(sim)
         @test sys.y.y_d[1] > 0.0
         step!(sim, 5, true)
@@ -436,16 +441,18 @@ function test_discrete_integrator()
         step!(sim, 1, true)
         @test sys.y.halted
 
-        Control.Discrete.reset!(sys)
+        Systems.reset!(sys)
 
         @test sys.s.x0 == 0
         @test sys.s.sat_out_0 == 0
+        @test sys.u.bound_lo != 0
+        @test sys.u.bound_hi != 0
+
+        f_disc!(sys, 1)
         @test sys.y.x1 == 0
         @test sys.y.output == 0
         @test sys.y.sat_out == 0
         @test !sys.y.halted
-        @test sys.u.bound_lo != 0
-        @test sys.u.bound_hi != 0
 
         @test @ballocated($f_ode!($sys)) == 0
         @test @ballocated($f_disc!($sys, 1)) == 0
@@ -496,16 +503,18 @@ function test_discrete_integrator_vector()
         step!(sim, 1, true)
         @test sys.y.halted[1]
 
-        Control.Discrete.reset!(sys)
+        Systems.reset!(sys)
 
         @test sys.s.x0[2] == 0
         @test sys.s.sat_out_0[2] == 0
+        @test sys.u.bound_lo[2] != 0
+        @test sys.u.bound_hi[2] != 0
+
+        f_disc!(sys, 1)
         @test sys.y.x1[2] == 0
         @test sys.y.output[2] == 0
         @test sys.y.sat_out[2] == 0
         @test !sys.y.halted[2]
-        @test sys.u.bound_lo[2] != 0
-        @test sys.u.bound_hi[2] != 0
 
         @test @ballocated($f_ode!($sys)) == 0
         @test @ballocated($f_disc!($sys, 1)) == 0
@@ -539,9 +548,11 @@ function test_discrete_leadlag(save = false)
         step_result = lsim(lead_cont, (x,t)->SVector(sin(t),), 0:0.001:10)
         @test Sim.get_data(th.y1[end])[1] ≈ step_result.y[end] atol = 1e-3
 
-        Control.Discrete.reset!(sys)
+        Systems.reset!(sys)
         @test sys.s.u0 == 0
         @test sys.s.x0 == 0
+
+        f_disc!(sys, 1)
         @test sys.y.u1 == 0
         @test sys.y.y1 == 0
         @test sys.y.p != 0

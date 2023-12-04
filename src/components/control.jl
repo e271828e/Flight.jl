@@ -387,12 +387,11 @@ Systems.init(::SystemY, ::Integrator) = IntegratorOutput()
 Systems.init(::SystemU, ::Integrator) = IntegratorInput()
 Systems.init(::SystemS, ::Integrator) = IntegratorState()
 
-function reset!(sys::System{<:Integrator}, x0::Real = 0.0)
+function Systems.reset!(sys::System{<:Integrator}, x0::Real = 0.0)
     sys.u.input = 0
     sys.u.sat_ext = 0
     sys.s.x0 = x0
     sys.s.sat_out_0 = 0
-    f_disc!(sys, 1.0)
 end
 
 function Systems.f_disc!(sys::System{<:Integrator}, Δt::Real)
@@ -449,12 +448,11 @@ Systems.init(::SystemY, ::IntegratorVector{N}) where {N} = IntegratorVectorOutpu
 Systems.init(::SystemU, ::IntegratorVector{N}) where {N} = IntegratorVectorInput{N}()
 Systems.init(::SystemS, ::IntegratorVector{N}) where {N} = IntegratorVectorState{N}()
 
-function reset!(sys::System{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
+function Systems.reset!(sys::System{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
     sys.u.input .= 0
     sys.u.sat_ext .= 0
     sys.s.x0 .= x0
     sys.s.sat_out_0 .= 0
-    f_disc!(sys, 1.0)
 end
 
 function Systems.f_disc!(sys::System{<:IntegratorVector}, Δt::Real)
@@ -546,11 +544,10 @@ Systems.init(::SystemY, ::LeadLag) = LeadLagOutput()
 Systems.init(::SystemU, ::LeadLag) = LeadLagInput()
 Systems.init(::SystemS, ::LeadLag) = LeadLagState()
 
-function reset!(sys::System{<:LeadLag})
+function Systems.reset!(sys::System{<:LeadLag})
     sys.u.u1 = 0
     sys.s.u0 = 0
     sys.s.x0 = 0
-    f_disc!(sys, 1.0) #update outputs (keeps the actual p and z)
 end
 
 function Systems.f_disc!(sys::System{<:LeadLag}, Δt::Real)
@@ -675,13 +672,12 @@ Systems.init(::SystemY, ::PID) = PIDOutput()
 Systems.init(::SystemU, ::PID) = PIDInput()
 Systems.init(::SystemS, ::PID) = PIDState()
 
-function reset!(sys::System{<:PID})
+function Systems.reset!(sys::System{<:PID})
     sys.u.input = 0
     sys.u.sat_ext = 0
     sys.s.x_i0 = 0
     sys.s.x_d0 = 0
     sys.s.sat_out_0 = 0
-    f_disc!(sys, 1.0)
 end
 
 function assign!(sys::System{<:PID}, params::PIDParams{<:Real})
@@ -777,13 +773,12 @@ Systems.init(::SystemY, ::PIDVector{N}) where {N} = PIDVectorOutput{N}()
 Systems.init(::SystemU, ::PIDVector{N}) where {N} = PIDVectorInput{N}()
 Systems.init(::SystemS, ::PIDVector{N}) where {N} = PIDVectorState{N}()
 
-function reset!(sys::System{<:PIDVector{N}}) where {N}
+function Systems.reset!(sys::System{<:PIDVector{N}}) where {N}
     sys.u.input .= 0
     sys.u.sat_ext .= 0
     sys.s.x_i0 .= 0
     sys.s.x_d0 .= 0
     sys.s.sat_out_0 .= 0
-    f_disc!(sys, 1.0)
 end
 
 function Systems.f_disc!(sys::System{<:PIDVector{N}}, Δt::Real) where {N}
@@ -1034,14 +1029,13 @@ function Systems.init(::SystemS, ::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, 
     LQRTrackerState{NX, NU}()
 end
 
-function reset!(sys::System{<:LQRTracker})
+function Systems.reset!(sys::System{<:LQRTracker})
     sys.u.z_sp .= 0
     sys.u.z .= 0
     sys.u.x .= 0
     sys.u.sat_ext .= 0
     sys.s.int_out_0 .= 0
     sys.s.out_sat_0 .= 0
-    f_disc!(sys, 1.0)
 end
 
 function Systems.f_disc!(sys::System{<:LQRTracker}, Δt::Real)

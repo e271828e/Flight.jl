@@ -146,13 +146,13 @@ function Systems.init!(sys::System{<:ThrottleControl})
     v2t.u.bound_hi = 1
 end
 
-function Control.Discrete.reset!(sys::System{<:ThrottleControl})
+function Systems.reset!(sys::System{<:ThrottleControl})
     #set default inputs and states
     sys.u.mode = direct_throttle_mode
     sys.u.thr_dmd = 0
     sys.u.EAS_dmd = 0
     #reset compensators
-    Control.Discrete.reset!.(values(sys.subsystems))
+    Systems.reset!.(values(sys.subsystems))
     #set default outputs
     sys.y = ThrottleControlY()
 end
@@ -264,7 +264,7 @@ function Systems.init!(sys::System{<:PitchControl})
     q2e.u.bound_hi = 1
 end
 
-function Control.Discrete.reset!(sys::System{<:PitchControl})
+function Systems.reset!(sys::System{<:PitchControl})
     #set default inputs and states
     sys.u.mode = direct_elevator_mode
     sys.u.e_dmd = 0
@@ -272,7 +272,7 @@ function Control.Discrete.reset!(sys::System{<:PitchControl})
     sys.u.θ_dmd = 0
     sys.u.c_dmd = 0
     #reset compensators
-    Control.Discrete.reset!.(values(sys.subsystems))
+    Systems.reset!.(values(sys.subsystems))
     #set default outputs
     sys.y = PitchControlY()
 end
@@ -436,7 +436,7 @@ function Systems.init!(sys::System{<:RollControl})
     χ2φ.u.bound_hi = π/4
 end
 
-function Control.Discrete.reset!(sys::System{<:RollControl})
+function Systems.reset!(sys::System{<:RollControl})
     #set default inputs and states
     sys.u.mode = direct_aileron_mode
     sys.u.a_dmd = 0
@@ -444,7 +444,7 @@ function Control.Discrete.reset!(sys::System{<:RollControl})
     sys.u.φ_dmd = 0
     sys.u.χ_dmd = 0
     #reset compensators
-    Control.Discrete.reset!.(values(sys.subsystems))
+    Systems.reset!.(values(sys.subsystems))
     #set default outputs
     sys.y = RollControlY()
 end
@@ -620,12 +620,12 @@ Systems.init(::SystemY, ::YawControl) = YawControlY()
 function Systems.init!(sys::System{<:YawControl})
 end
 
-function Control.Discrete.reset!(sys::System{<:YawControl})
+function Systems.reset!(sys::System{<:YawControl})
     #set default inputs and states
     sys.u.mode = direct_rudder_mode
     sys.u.r_dmd = 0
     #reset pid
-    Control.Discrete.reset!.(values(sys.subsystems))
+    Systems.reset!.(values(sys.subsystems))
     #set default outputs
     sys.y = YawControlY()
 end

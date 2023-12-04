@@ -166,12 +166,12 @@ abstract type AbstractControlChannel <: SystemDefinition end
 ################################## LonControl ##################################
 
 @enum LonControlMode begin
-    lon_SAS_off = 0
-    lon_thr_ele = 1
-    lon_thr_q = 2
-    lon_EAS_q = 3
-    lon_EAS_clm = 4
-    lon_EAS_thr = 5
+    lon_SAS_off = 0 #direct throttle_cmd + elevator_cmd
+    lon_thr_ele = 1 #throttle_cmd + elevator_cmd via SAS
+    lon_thr_q = 2 #throttle_cmd + pitch rate
+    lon_EAS_q = 3 #EAS + pitch rate
+    lon_EAS_clm = 4 #EAS + climb rate
+    lon_EAS_thr = 5 #EAS + throttle
 end
 
 ############################## FieldVectors ####################################
@@ -250,14 +250,14 @@ end
 #since all LQRTrackers have the same dimensions, all LQRTrackerLookup parametric
 #types should be the same. to be confirmed. same with PIDLookup types.
 @kwdef struct LonControl{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
-    thr_ele_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "te2te_lookup.h5"))
-    EAS_clm_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "vc2te_lookup.h5"))
-    EAS_thr_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "vt2te_lookup.h5"))
+    te2te_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "te2te_lookup.h5"))
+    vc2te_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "vc2te_lookup.h5"))
+    vt2te_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "vt2te_lookup.h5"))
     q2e_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "q2e_lookup.h5"))
     v2t_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2t_lookup.h5"))
-    thr_ele_lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
-    EAS_clm_lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
-    EAS_thr_lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+    te2te_lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+    vc2te_lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+    vt2te_lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
     q2e_int::Integrator = Integrator()
     q2e_pid::PID = PID()
     v2t_pid::PID = PID()
@@ -276,9 +276,9 @@ end
     mode::LonControlMode = lon_SAS_off
     throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
-    thr_ele_lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
-    EAS_clm_lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
-    EAS_thr_lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
+    te2te_lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
+    vc2te_lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
+    vt2te_lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
     q2e_int::IntegratorOutput = IntegratorOutput()
     q2e_pid::PIDOutput = PIDOutput()
     v2t_pid::PIDOutput = PIDOutput()
@@ -289,7 +289,7 @@ Systems.init(::SystemY, ::LonControl) = LonControlY()
 
 function Systems.init!(sys::System{<:LonControl})
     #set output bounds in all LQR Trackers so they can handle saturation
-    foreach((sys.thr_ele_lqr, sys.EAS_clm_lqr, sys.EAS_thr_lqr)) do lqr
+    foreach((sys.te2te_lqr, sys.vc2te_lqr, sys.vt2te_lqr)) do lqr
         lqr.u.bound_lo .= ULon(; throttle_cmd = 0, elevator_cmd = -1)
         lqr.u.bound_hi .= ULon(; throttle_cmd = 1, elevator_cmd = 1)
     end
@@ -300,8 +300,8 @@ function Systems.f_disc!(sys::System{<:LonControl},
                         physics::System{<:C172FBW.Physics}, Δt::Real)
 
     @unpack mode, throttle_sp, elevator_sp, q_sp, EAS_sp, clm_sp = sys.u
-    @unpack thr_ele_lqr, EAS_clm_lqr, EAS_thr_lqr, q2e_int, q2e_pid, v2t_pid= sys.subsystems
-    @unpack thr_ele_lookup, EAS_clm_lookup, EAS_thr_lookup, q2e_lookup, v2t_lookup = sys.constants
+    @unpack te2te_lqr, vc2te_lqr, vt2te_lqr, q2e_int, q2e_pid, v2t_pid= sys.subsystems
+    @unpack te2te_lookup, vc2te_lookup, vt2te_lookup, q2e_lookup, v2t_lookup = sys.constants
 
     EAS = physics.y.air.EAS
     h_e = Float64(physics.y.kinematics.h_e)
@@ -313,17 +313,17 @@ function Systems.f_disc!(sys::System{<:LonControl},
         throttle_cmd = throttle_sp
         elevator_cmd = elevator_sp
 
-    #actuation commands computed by throttle/elevator SAS
+    #actuation commands computed by thr+ele SAS
     elseif mode === lon_thr_ele || mode === lon_thr_q || mode === lon_EAS_q
 
-        u_lon_sat = ULon(thr_ele_lqr.y.out_sat)
+        u_lon_sat = ULon(te2te_lqr.y.out_sat)
 
         #elevator_sp computed by q tracker
         if mode === lon_thr_q || mode === lon_EAS_q
 
             if mode != mode_prev
-                Control.Discrete.reset!(q2e_int)
-                Control.Discrete.reset!(q2e_pid)
+                Systems.reset!(q2e_int)
+                Systems.reset!(q2e_pid)
             end
 
             q2e_int.u.input = q_sp - q
@@ -340,7 +340,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
             if mode === lon_EAS_q
 
                 if mode != mode_prev
-                    Control.Discrete.reset!(v2t_pid)
+                    Systems.reset!(v2t_pid)
                 end
 
                 Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, h_e))
@@ -353,48 +353,48 @@ function Systems.f_disc!(sys::System{<:LonControl},
 
         end
 
-        #thr/ele SAS is purely proportional, so it doesn't need resetting
-        Control.Discrete.assign!(thr_ele_lqr, thr_ele_lookup(EAS, h_e))
-        thr_ele_lqr.u.x .= XLon(physics) #state feedback
-        thr_ele_lqr.u.z .= ZLonThrEle(physics) #command variable feedback
-        thr_ele_lqr.u.z_sp .= ZLonThrEle(; throttle_sp, elevator_sp) #command variable setpoint
-        f_disc!(thr_ele_lqr, Δt)
-        @unpack throttle_cmd, elevator_cmd = ULon(thr_ele_lqr.y.output)
+        #thr+ele SAS is purely proportional, so it doesn't need resetting
+        Control.Discrete.assign!(te2te_lqr, te2te_lookup(EAS, h_e))
+        te2te_lqr.u.x .= XLon(physics) #state feedback
+        te2te_lqr.u.z .= ZLonThrEle(physics) #command variable feedback
+        te2te_lqr.u.z_sp .= ZLonThrEle(; throttle_sp, elevator_sp) #command variable setpoint
+        f_disc!(te2te_lqr, Δt)
+        @unpack throttle_cmd, elevator_cmd = ULon(te2te_lqr.y.output)
 
-    #actuation commands computed by EAS/climb_rate LQRTracker
+    #actuation commands computed by EAS+climb_rate to thr+ele LQRTracker
     elseif mode === lon_EAS_clm
 
         if mode != mode_prev
-            reset!(EAS_clm_lqr)
+            Systems.reset!(vc2te_lqr)
         end
 
-        Control.Discrete.assign!(EAS_clm_lqr, EAS_clm_lookup(EAS, h_e))
-        EAS_clm_lqr.u.x .= XLon(physics) #state feedback
-        EAS_clm_lqr.u.z .= ZLonEASClm(physics) #command variable feedback
-        EAS_clm_lqr.u.z_sp .= ZLonEASClm(; EAS = EAS_sp, climb_rate = clm_sp) #command variable setpoint
-        f_disc!(EAS_clm_lqr, Δt)
-        @unpack throttle_cmd, elevator_cmd = ULon(EAS_clm_lqr.y.output)
+        Control.Discrete.assign!(vc2te_lqr, vc2te_lookup(EAS, h_e))
+        vc2te_lqr.u.x .= XLon(physics) #state feedback
+        vc2te_lqr.u.z .= ZLonEASClm(physics) #command variable feedback
+        vc2te_lqr.u.z_sp .= ZLonEASClm(; EAS = EAS_sp, climb_rate = clm_sp) #command variable setpoint
+        f_disc!(vc2te_lqr, Δt)
+        @unpack throttle_cmd, elevator_cmd = ULon(vc2te_lqr.y.output)
 
-    #actuation commands computed by EAS/throttle LQRTracker
+    #actuation commands computed by EAS+throttle to thr+ele LQRTracker
     else #mode == lon_EAS_thr
 
         if mode != mode_prev
-            reset!(EAS_thr)
+            Systems.reset!(vt2te_lookup)
         end
 
-        Control.Discrete.assign!(EAS_thr_lqr, EAS_thr_lookup(EAS, h_e))
-        EAS_thr_lqr.u.x .= XLon(physics) #state feedback
-        EAS_thr_lqr.u.z .= ZLonEASThr(physics) #command variable feedback
-        EAS_thr_lqr.u.z_sp .= ZLonEASThr(; EAS = EAS_sp, throttle_cmd = throttle_sp) #command variable setpoint
-        f_disc!(EAS_thr_lqr, Δt)
-        @unpack throttle_cmd, elevator_cmd = ULon(EAS_thr_lqr.y.output)
+        Control.Discrete.assign!(vt2te_lqr, vt2te_lookup(EAS, h_e))
+        vt2te_lqr.u.x .= XLon(physics) #state feedback
+        vt2te_lqr.u.z .= ZLonEASThr(physics) #command variable feedback
+        vt2te_lqr.u.z_sp .= ZLonEASThr(; EAS = EAS_sp, throttle_cmd = throttle_sp) #command variable setpoint
+        f_disc!(vt2te_lqr, Δt)
+        @unpack throttle_cmd, elevator_cmd = ULon(vt2te_lqr.y.output)
 
     end
 
     sys.y = LonControlY(; mode, throttle_cmd, elevator_cmd,
-                        thr_ele_lqr = thr_ele_lqr.y,
-                        EAS_clm_lqr = EAS_clm_lqr.y,
-                        EAS_thr_lqr = EAS_thr_lqr.y,
+                        te2te_lqr = te2te_lqr.y,
+                        vc2te_lqr = vc2te_lqr.y,
+                        vt2te_lqr = vt2te_lqr.y,
                         q2e_int = q2e_int.y,
                         q2e_pid = q2e_pid.y,
                         v2t_pid = v2t_pid.y)
@@ -406,10 +406,10 @@ end
 ################################# LatControl ###################################
 
 @enum LatControlMode begin
-    lat_SAS_off = 0
-    lat_p_β = 1 #SISO roll rate over φ + β
-    lat_φ_β = 2 #MIMO
-    lat_χ_β = 4
+    lat_SAS_off = 0 #direct aileron_cmd + rudder_cmd
+    lat_p_β = 1 #roll rate + sideslip
+    lat_φ_β = 2 #bank angle + sideslip
+    lat_χ_β = 4 #couse angle + sideslip
 end
 
 ################################# FieldVectors #################################
@@ -463,10 +463,10 @@ end
 ################################## System ######################################
 
 @kwdef struct LatControl{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
-    φ_β_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "φβ2ar_lookup.h5"))
+    φβ2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "φβ2ar_lookup.h5"))
     p2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
     χ2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "χ2φ_lookup.h5"))
-    φ_β_lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+    φβ2ar_lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
     p2φ_int::Integrator = Integrator()
     p2φ_pid::PID = PID()
     χ2φ_pid::PID = PID()
@@ -486,7 +486,7 @@ end
     mode::LatControlMode = lat_SAS_off
     aileron_cmd::Ranged{Float64, -1., 1.} = 0.0
     rudder_cmd::Ranged{Float64, -1., 1.} = 0.0
-    φ_β_lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
+    φβ2ar_lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
     p2φ_int::IntegratorOutput = IntegratorOutput()
     p2φ_pid::PIDOutput = PIDOutput()
     χ2φ_pid::PIDOutput = PIDOutput()
@@ -497,10 +497,14 @@ Systems.init(::SystemY, ::LatControl) = LatControlY()
 
 function Systems.init!(sys::System{<:LatControl})
 
-    foreach((sys.φ_β_loqr, )) do lqr
+    foreach((sys.φβ2ar_lqr, )) do lqr
         lqr.u.bound_lo .= ULat(; aileron_cmd = -1, rudder_cmd = -1)
         lqr.u.bound_hi .= ULat(; aileron_cmd = 1, rudder_cmd = 1)
     end
+
+    #set φ demand limits for the course angle compensator output
+    sys.χ2φ_pid.u.bound_lo = -π/4
+    sys.χ2φ_pid.u.bound_hi = π/4
 
 end
 
@@ -508,8 +512,8 @@ function Systems.f_disc!(sys::System{<:LatControl},
                         physics::System{<:C172FBW.Physics}, Δt::Real)
 
     @unpack mode, aileron_sp, rudder_sp, p_sp, φ_sp, χ_sp = sys.u
-    @unpack φ_β_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
-    @unpack φ_β_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
+    @unpack φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
+    @unpack φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
 
     EAS = physics.y.air.EAS
     h_e = Float64(physics.y.kinematics.h_e)
@@ -522,21 +526,21 @@ function Systems.f_disc!(sys::System{<:LatControl},
     #compute φ_sp depending on active roll path
     else #lat_p_β || lat_φ_β || lat_χ_β
 
-        u_lat_sat = ULat(φ_β_lqr.y.out_sat)
+        u_lat_sat = ULat(φβ2ar_lqr.y.out_sat)
 
         #φ_sp computed by roll rate tracker
         if mode === lat_p_β
 
             if mode != mode_prev
-                Control.Discrete.reset!(p2φ_int)
-                Control.Discrete.reset!(p2φ_pid)
+                Systems.reset!(p2φ_int)
+                Systems.reset!(p2φ_pid)
             end
 
             p2φ_int.u.input = p_sp - p
             p2φ_int.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(p2φ_int, Δt)
 
-            Control.Discrete.assign!(p2φ_pid, p2φ_pid_lookup(EAS, Float64(h_e)))
+            Control.Discrete.assign!(p2φ_pid, p2φ_lookup(EAS, Float64(h_e)))
             p2φ_pid.u.input = p2φ_int.y.output
             p2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(p2φ_pid, Δt)
@@ -544,11 +548,11 @@ function Systems.f_disc!(sys::System{<:LatControl},
 
         elseif mode === lat_χ_β
 
-            # Control.Discrete.assign!(χ2φ_pid, χ2φ_pid_lookup(EAS, Float64(h_e)))
-            # χ2φ_pid.u.input = wrap_to_π(χ_sp - χ)
-            # χ2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
-            # f_disc!(χ2φ_pid, Δt)
-            # φ_sp = χ2φ_pid.y.output
+            Control.Discrete.assign!(χ2φ_pid, χ2φ_lookup(EAS, Float64(h_e)))
+            χ2φ_pid.u.input = wrap_to_π(χ_sp - χ)
+            χ2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
+            f_disc!(χ2φ_pid, Δt)
+            φ_sp = χ2φ_pid.y.output
 
         else #mode === lat_φ_β
 
@@ -556,21 +560,21 @@ function Systems.f_disc!(sys::System{<:LatControl},
 
         end
 
-        if lon_mode != lon_mode_prev
-            reset!(φ_β_lqr)
+        if mode != mode_prev
+            Systems.reset!(φβ2ar_lqr)
         end
 
-        Control.Discrete.assign!(φ_β_lqr, φ_β_lqr_lookup(EAS, Float64(h_e)))
-        φ_β_lqr.u.x .= XLat(physics)
-        φ_β_lqr.u.z .= ZLatPhiBeta(physics)
-        φ_β_lqr.u.z_sp .= ZLatPhiBeta(; φ = φ_sp, β = β_sp)
-        f_disc!(φ_β_lqr, Δt)
-        @unpack aileron_cmd, rudder_cmd = ULat(φ_β_lqr.y.output)
+        Control.Discrete.assign!(φβ2ar_lqr, φβ2ar_lookup(EAS, Float64(h_e)))
+        φβ2ar_lqr.u.x .= XLat(physics)
+        φβ2ar_lqr.u.z .= ZLatPhiBeta(physics)
+        φβ2ar_lqr.u.z_sp .= ZLatPhiBeta(; φ = φ_sp, β = β_sp)
+        f_disc!(φβ2ar_lqr, Δt)
+        @unpack aileron_cmd, rudder_cmd = ULat(φβ2ar_lqr.y.output)
 
     end
 
     sys.y = LatControlY(; mode, aileron_cmd, rudder_cmd,
-                        φ_β_lqr = φ_β_lqr.y,
+                        φβ2ar_lqr = φβ2ar_lqr.y,
                         p2φ_int = p2φ_int.y,
                         p2φ_pid = p2φ_pid.y,
                         χ2φ_pid = χ2φ_pid.y)
@@ -603,13 +607,13 @@ end
 end
 
 @enum VerticalGuidanceMode begin
-    vert_gdc_off = 0
-    vert_gdc_alt = 1
+    ver_gdc_off = 0
+    ver_gdc_alt = 1
 end
 
 @enum HorizontalGuidanceMode begin
-    horz_gdc_off = 0
-    horz_gdc_line = 1
+    hor_gdc_off = 0
+    hor_gdc_line = 1
 end
 
 @kwdef struct FlightGuidance <: SystemDefinition
@@ -621,8 +625,8 @@ end
 
 @kwdef mutable struct FlightGuidanceInputs
     flight_phase::FlightPhase = phase_gnd #slave to sensor might go here
-    vert_gdc_mode_req::VerticalGuidanceMode = vert_gdc_off #requested vertical guidance mode
-    horz_gdc_mode_req::HorizontalGuidanceMode = horz_gdc_off #requested horizontal guidance mode
+    ver_gdc_mode_req::VerticalGuidanceMode = ver_gdc_off #requested vertical guidance mode
+    hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
     lon_ctl_mode_req::LonControlMode = lon_SAS_off #requested longitudinal control mode
     lat_ctl_mode_req::LatControlMode = lat_SAS_off #requested lateral control mode
     throttle_sp::Ranged{Float64, 0., 1.} = 0.0 #throttle command setpoint
@@ -641,8 +645,8 @@ end
 end
 
 @kwdef struct FlightGuidanceOutputs
-    vert_gdc_mode::VerticalGuidanceMode = vert_gdc_off #active vertical guidance mode
-    horz_gdc_mode::HorizontalGuidanceMode = horz_gdc_off #active horizontal guidance mode
+    ver_gdc_mode::VerticalGuidanceMode = ver_gdc_off #active vertical guidance mode
+    hor_gdc_mode::HorizontalGuidanceMode = hor_gdc_off #active horizontal guidance mode
     lon_ctl_mode::LonControlMode = lon_SAS_off #active longitudinal control mode
     lat_ctl_mode::LatControlMode = lat_SAS_off #active lateral control mode
     throttle_cmd::Ranged{Float64, 0., 1.} = 0.0 #throttle command
@@ -658,7 +662,7 @@ end
 function Systems.f_disc!(sys::System{<:FlightGuidance},
                         physics::System{<:C172FBW.Physics}, Δt::Real)
 
-    @unpack flight_phase, vert_gdc_mode_req, horz_gdc_mode_req,
+    @unpack flight_phase, ver_gdc_mode_req, hor_gdc_mode_req,
             lon_ctl_mode_req, lat_ctl_mode_req,
             throttle_sp, elevator_sp, aileron_sp, rudder_sp,
             p_sp, q_sp, β_sp, EAS_sp, clm_sp, φ_sp, χ_sp, h_sp = sys.u
@@ -666,21 +670,21 @@ function Systems.f_disc!(sys::System{<:FlightGuidance},
 
     if flight_phase === phase_gnd
 
-        vert_gdc_mode = vert_gdc_off
+        ver_gdc_mode = ver_gdc_off
         hor_gdc_mode = hor_gdc_off
         lon_ctl_mode = lon_SAS_off
         lat_ctl_mode = lat_SAS_off
 
     elseif flight_phase === phase_air
 
-        vert_gdc_mode = vert_gdc_mode_req
+        ver_gdc_mode = ver_gdc_mode_req
         hor_gdc_mode = hor_gdc_mode_req
 
-        if vert_gdc_mode === vert_gdc_off
+        if ver_gdc_mode === ver_gdc_off
 
             lon_ctl_mode = lon_ctl_mode_req
 
-        else #vert_gdc_mode === vert_gdc_alt
+        else #ver_gdc_mode === ver_gdc_alt
 
             # alt_gdc.u.h_sp = h_sp
             # f_disc!(alt_gdc, physics, Δt)
@@ -718,7 +722,7 @@ function Systems.f_disc!(sys::System{<:FlightGuidance},
     f_disc!(lat_sp, physics, Δt)
     @unpack aileron_cmd, rudder_cmd = lat_ctl.y
 
-    sys.y = FlightGuidanceOutputs(; vert_gdc_mode, horz_gdc_mode,
+    sys.y = FlightGuidanceOutputs(; ver_gdc_mode, hor_gdc_mode,
         lon_ctl_mode, lat_ctl_mode,
         throttle_cmd, elevator_cmd, aileron_cmd, rudder_cmd,
         lon_ctl = lon_ctl.y, lat_ctl = lat_ctl.y,
@@ -752,8 +756,8 @@ end
     p_sf::Float64 = 1.0 #roll input to roll rate scale factor (0.1)
     q_sf::Float64 = 1.0 #pitch input to pitch rate scale factor (0.1)
     β_sf::Float64 = 1.0 #yaw input to β_sp scale factor (0.1)
-    vert_gdc_mode_req::VerticalGuidanceMode = vert_gdc_off #requested vertical guidance mode
-    horz_gdc_mode_req::HorizontalGuidanceMode = horz_gdc_off #requested horizontal guidance mode
+    ver_gdc_mode_req::VerticalGuidanceMode = ver_gdc_off #requested vertical guidance mode
+    hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
     lon_ctl_mode_req::LonControlMode = lon_SAS_off #requested longitudinal control mode
     lat_ctl_mode_req::LatControlMode = lat_SAS_off #requested lateral control mode
     EAS_sp::Float64 = 50.0 #equivalent airspeed setpoint
@@ -761,7 +765,7 @@ end
     β_sp::Float64 = 0.0 #sideslip angle setpoint
     φ_sp::Float64 = 0.0 #bank angle demand
     χ_sp::Float64 = 0.0 #course angle demand
-    h_sp::Union{HEllip, HOrth} = 0.0 #altitude setpoint
+    h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
 end
 
 @kwdef struct ActuationCommands
@@ -784,11 +788,7 @@ end
 
 Systems.init(::SystemU, ::Avionics) = AvionicsU()
 Systems.init(::SystemY, ::Avionics) = AvionicsY()
-Systems.init(::SystemS, ::Avionics) = AvionicsS()
 
-# function Control.Discrete.reset!(sys::System{<:C172MCS.Avionics})
-#     Control.Discrete.reset!(sys.θEAS_ctl)
-# end
 
 ########################### Update Methods #####################################
 
@@ -803,7 +803,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
 
     @unpack eng_start, eng_stop, mixture, throttle_input, roll_input, pitch_input, yaw_input,
             throttle_sp_offset, aileron_sp_offset, elevator_sp_offset, rudder_sp_offset,
-            flaps, brake_left, brake_right, vert_gdc_mode_req, horz_gdc_mode_req,
+            flaps, brake_left, brake_right, ver_gdc_mode_req, hor_gdc_mode_req,
             lon_ctl_mode_req, lat_ctl_mode_req, p_sf, q_sf, β_sf, EAS_sp, clm_sp,
             β_sp, φ_sp, χ_sp, h_sp = avionics.u
 
@@ -821,7 +821,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
 
     @pack! flight.u = flight_phase, throttle_sp, elevator_sp, #computed
         aileron_sp, rudder_sp, p_sp, q_sp, β_sp, #computed
-        vert_gdc_mode_req, horz_gdc_mode_req, #forwarded
+        ver_gdc_mode_req, hor_gdc_mode_req, #forwarded
         lon_ctl_mode_req, lat_ctl_mode_req, EAS_sp, clm_sp, φ_sp, χ_sp, h_sp #forwarded
 
     #for now, brakes, nws, flaps and mixture do not go through FlightGuidance
@@ -906,16 +906,16 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
     u.aileron_sp_offset = aileron
     u.elevator_sp_offset = elevator
     u.rudder_sp_offset = rudder
-    u.mixture = mixture
     u.flaps = flaps
+    u.mixture = mixture
 
-    u.vert_gdc_mode_req = vert_gdc_off
-    u.horz_gdc_mode_req = horz_gdc_off
+    u.ver_gdc_mode_req = ver_gdc_off
+    u.hor_gdc_mode_req = hor_gdc_off
     u.lon_ctl_mode_req = lon_SAS_off
     u.lat_ctl_mode_req = lat_SAS_off
 
-    #update avionics outputs
-    f_disc!(ac.avionics, ac.physics, 1)
+    # #update avionics outputs
+    # f_disc!(ac.avionics, ac.physics, 1)
 
     return result
 

@@ -648,7 +648,38 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
 
     end
 
-    return (φβ2ar = params_φβ2ar, p2φ = params_p2φ)
+    ############################### χ + β ######################################
+
+    P_χβ, params_χ2φ = let
+
+        P_φ2χ = P_φβ[:χ, :φ_sp];
+
+        t_sim_χ2φ = 30
+        lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.3, k_d = 0.0, τ_f = 0.01)
+        upper_bounds = PIDParams(; k_p = 10.0, k_i = 0.3, k_d = 0.0, τ_f = 0.01)
+        settings = Settings(; t_sim = t_sim_χ2φ, lower_bounds, upper_bounds)
+        weights = Metrics(; Ms = 3, ∫e = 10, ef = 1, ∫u = 0.00, up = 0.01)
+        params_0 = PIDParams(; k_p = 3., k_i = 0.3, k_d = 0.0, τ_f = 0.01)
+
+        χ2φ_results = optimize_PID(P_φ2χ; params_0, settings, weights, global_search = false)
+
+        params_χ2φ = χ2φ_results.params
+        if !check_results(χ2φ_results, Metrics(; Ms = 1.4, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
+            println("Warning: Checks failed for course angle control PID, design point $(design_point)")
+            println(χ2φ_results.metrics)
+        end
+
+        χ2φ_PID = build_PID(χ2φ_results.params)
+        C_χ2φ = named_ss(χ2φ_PID, :C_χ2φ; u = :χ_err, y = :φ_sp);
+
+        χ2φ_sum = sumblock("χ_err = χ_sp - χ")
+        P_χβ = connect([P_φβ, χ2φ_sum, C_χ2φ], [:χ_err=>:χ_err, :χ=>:χ, :φ_sp=>:φ_sp], w1 = [:χ_sp, :β_sp], z1 = P_φβ.y)
+
+        (P_χβ, params_χ2φ)
+
+    end
+
+    return (φβ2ar = params_φβ2ar, p2φ = params_p2φ, χ2φ = params_χ2φ)
 
 end
 
