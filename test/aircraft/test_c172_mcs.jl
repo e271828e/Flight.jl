@@ -355,6 +355,11 @@ function test_avionics()
     @test all(isapprox.(y_kin(ac).v_eOb_n[3], -av.u.clm_sp; atol = 1e-2))
     @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
+    kin_plots = make_plots(TimeHistory(sim).physics.kinematics; Plotting.defaults...)
+    air_plots = make_plots(TimeHistory(sim).physics.air; Plotting.defaults...)
+    save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "kin"))
+    save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "air"))
+
     # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
 
@@ -379,25 +384,12 @@ function test_avionics()
 
     #correct tracking
     av.u.EAS_sp = 45
-    av.u.throttle_input = 1
+    # av.u.throttle_input = 1
     step!(sim, 30, true)
     @test all(isapprox.(ac.y.physics.airframe.act.throttle_cmd, av.flight.u.throttle_sp; atol = 1e-2))
     @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
-    return
     # @test @ballocated(f_disc!($ac, 0.01)) == 0
-
-
-    kin_plots = make_plots(TimeHistory(sim).physics.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeHistory(sim).physics.air; Plotting.defaults...)
-    save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "kin"))
-    save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "air"))
-
-    #note: throttle_cmd != throttle_input, because we have a SAS in between!
-
-    # @test @ballocated(f_disc!($ac, 0.01)) == 0
-
-
 
     end #testset
 

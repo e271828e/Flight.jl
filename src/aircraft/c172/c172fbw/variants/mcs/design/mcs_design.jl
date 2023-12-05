@@ -357,12 +357,8 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
         Hx = lss_red.C[z_labels, :]
         Hu = lss_red.D[z_labels, :]
 
-        #define the blocks corresponding to the subset of the command variables for
-        #which integral compensation is required. in this case, only one of them (EAS).
-        #Since the resulting blocks have only one row, we get vectors, which we need to
-        #transpose to get the desired row matrices back.
-        Hx_int = Hx[:EAS, :]'
-        Hu_int = Hu[:EAS, :]'
+        Hx_int = Hx[z_labels, :]
+        Hu_int = Hu[z_labels, :]
         n_int, _ = size(Hx_int)
 
         F_aug = [F zeros(n_x, n_int); Hx_int zeros(n_int, n_int)]
@@ -376,8 +372,8 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
         v_norm = norm([v_x, v_z])
 
         #weight matrices
-        Q = ComponentVector(q = 1, θ = 100, v_x = 10/v_norm, v_z = 1/v_norm, α_filt = 1, ω_eng = 0, thr_v = 0.0, thr_p = 0, ele_v = 0, ele_p = 0, ξ_EAS = 0.005) |> diagm
-        R = C172MCS.ULon(throttle_cmd = 1, elevator_cmd = 1) |> diagm
+        Q = ComponentVector(q = 1, θ = 100, v_x = 10/v_norm, v_z = 1/v_norm, α_filt = 1, ω_eng = 0, thr_v = 0.0, thr_p = 0, ele_v = 0, ele_p = 0, ξ_EAS = 0.005, ξ_thr = 0.005) |> diagm
+        R = C172MCS.ULon(throttle_cmd = 1, elevator_cmd = 3) |> diagm
 
         #compute gain matrix
         C_aug = lqr(P_aug, Q, R)
@@ -394,8 +390,7 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
 
         C_fbk = C_x
         C_fwd = B_22 + C_x * B_12
-        C_int = ComponentMatrix(zeros(n_u, n_z), Axis(u_labels), Axis(z_labels))
-        C_int[:, :EAS] .= C_ξ
+        C_int = C_ξ
 
         u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk")
         u_labels_fwd = Symbol.(string.(u_labels) .* "_fwd")

@@ -601,10 +601,6 @@ function Systems.f_disc!(sys::System{<:LatControl},
             Systems.reset!(φβ2ar_lqr)
         end
 
-        # @show p_sp
-        # @show β_sp
-        # @show physics.y.kinematics.ω_lb_b[1]
-
         Control.Discrete.assign!(φβ2ar_lqr, φβ2ar_lookup(EAS, Float64(h_e)))
         φβ2ar_lqr.u.x .= XLat(physics)
         φβ2ar_lqr.u.z .= ZLatPhiBeta(physics)
