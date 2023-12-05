@@ -371,7 +371,7 @@ function Aircraft.assign!(physics::System{<:C172FBW.Physics},
     @unpack act, pwp, aero, fuel, ldg, pld = physics.airframe
 
     atm_data = LocalAtmosphericData(physics.atmosphere)
-    init_kinematics!(physics, Kinematics.Initializer(trim_state, trim_params, atm_data))
+    Systems.init!(physics.kinematics, Kinematics.Initializer(trim_state, trim_params, atm_data))
 
     #for trimming, control surface inputs are set to zero, and we work only with
     #their offsets

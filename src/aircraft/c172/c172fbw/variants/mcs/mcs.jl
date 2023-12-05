@@ -333,7 +333,8 @@ function Systems.f_disc!(sys::System{<:LonControl},
                 Systems.reset!(q2e_pid)
                 #set the PID integrator's state to the value that yields a
                 #steady-state output equal to the previous elevator_cmd
-                q2e_pid.s.x_i0 = Float64(sys.y.elevator_cmd) / q2e_pid.u.k_i
+                k_i = q2e_pid.u.k_i
+                (k_i != 0) && (q2e_pid.s.x_i0 = Float64(sys.y.elevator_cmd) / k_i)
             end
 
             q2e_int.u.input = q_sp - q
@@ -354,7 +355,8 @@ function Systems.f_disc!(sys::System{<:LonControl},
                     Systems.reset!(v2t_pid)
                     #set the PID integrator's state to the value that yields a
                     #steady-state output equal to the previous throttle_cmd
-                    v2t_pid.s.x_i0 = Float64(sys.y.throttle_cmd) / v2t_pid.u.k_i
+                    k_i = v2t_pid.u.k_i
+                    (k_i != 0) && (v2t_pid.s.x_i0 = Float64(sys.y.throttle_cmd) / k_i)
                 end
 
                 v2t_pid.u.input = EAS_sp - EAS
@@ -524,13 +526,14 @@ end
 function Systems.f_disc!(sys::System{<:LatControl},
                         physics::System{<:C172FBW.Physics}, Δt::Real)
 
-    @unpack mode, aileron_sp, rudder_sp, p_sp, φ_sp, χ_sp = sys.u
+    @unpack mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp = sys.u
     @unpack φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
     @unpack φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
+    @unpack air, kinematics = physics.y
 
-    EAS = physics.y.air.EAS
-    h_e = Float64(physics.y.kinematics.h_e)
-    @unpack φ = physics.y.kinematics.e_nb
+    EAS = air.EAS
+    h_e = Float64(kinematics.h_e)
+    φ = kinematics.e_nb.φ
     mode_prev = sys.y.mode
 
     if mode === lat_SAS_off
@@ -552,9 +555,11 @@ function Systems.f_disc!(sys::System{<:LatControl},
                 Systems.reset!(p2φ_pid)
                 #set the PID integrator's state to the value that yields a
                 #steady-state output equal to the current φ
-                p2φ_pid.s.x_i0 = φ / p2φ_pid.u.k_i
+                k_i = p2φ_pid.u.k_i
+                (k_i != 0) && (p2φ_pid.s.x_i0 = φ / k_i)
             end
 
+            p = kinematics.ω_lb_b[1]
             p2φ_int.u.input = p_sp - p
             p2φ_int.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(p2φ_int, Δt)
@@ -566,12 +571,15 @@ function Systems.f_disc!(sys::System{<:LatControl},
 
         elseif mode === lat_χ_β
 
+            Control.Discrete.assign!(χ2φ_pid, χ2φ_lookup(EAS, Float64(h_e)))
+
             if mode != mode_prev
                 Systems.reset!(χ2φ_pid)
-                # χ2φ_pid.s.x_i0 = φ / χ2φ_pid.u.k_i #not really essential
+                k_i = χ2φ_pid.u.k_i
+                (k_i != 0) && (χ2φ_pid.s.x_i0 = φ / k_i)
             end
 
-            Control.Discrete.assign!(χ2φ_pid, χ2φ_lookup(EAS, Float64(h_e)))
+            χ = kinematics.χ_gnd
             χ2φ_pid.u.input = wrap_to_π(χ_sp - χ)
             χ2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(χ2φ_pid, Δt)
@@ -586,6 +594,10 @@ function Systems.f_disc!(sys::System{<:LatControl},
         if mode != mode_prev
             Systems.reset!(φβ2ar_lqr)
         end
+
+        # @show p_sp
+        # @show β_sp
+        # @show physics.y.kinematics.ω_lb_b[1]
 
         Control.Discrete.assign!(φβ2ar_lqr, φβ2ar_lookup(EAS, Float64(h_e)))
         φβ2ar_lqr.u.x .= XLat(physics)
@@ -788,7 +800,6 @@ end
     lat_ctl_mode_req::LatControlMode = lat_SAS_off #requested lateral control mode
     EAS_sp::Float64 = 50.0 #equivalent airspeed setpoint
     clm_sp::Float64 = 0.0 #climb rate setpoint
-    β_sp::Float64 = 0.0 #sideslip angle setpoint
     φ_sp::Float64 = 0.0 #bank angle demand
     χ_sp::Float64 = 0.0 #course angle demand
     h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
@@ -832,7 +843,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
             throttle_sp_offset, aileron_sp_offset, elevator_sp_offset, rudder_sp_offset,
             flaps, brake_left, brake_right, ver_gdc_mode_req, hor_gdc_mode_req,
             lon_ctl_mode_req, lat_ctl_mode_req, p_sf, q_sf, β_sf, EAS_sp, clm_sp,
-            β_sp, φ_sp, χ_sp, h_sp = avionics.u
+            φ_sp, χ_sp, h_sp = avionics.u
 
     throttle_sp = throttle_input + throttle_sp_offset
     elevator_sp = pitch_input + elevator_sp_offset

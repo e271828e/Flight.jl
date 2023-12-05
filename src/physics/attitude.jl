@@ -447,12 +447,12 @@ end
 @recipe function f(th::TimeHistory{<:REuler}; rot_ref = "", rot_target = "")
 
     label --> ["Heading" "Inclination" "Bank"]
-    yguide --> hcat(L"$\psi_{%$rot_ref %$rot_target} \ (\pi \ rad)$",
-                    L"$\theta_{%$rot_ref %$rot_target} \ (\pi \ rad)$",
-                    L"$\phi_{%$rot_ref %$rot_target} \ (\pi \ rad)$")
+    yguide --> hcat(L"$\psi_{%$rot_ref %$rot_target} \ (deg)$",
+                    L"$\theta_{%$rot_ref %$rot_target} \ (deg)$",
+                    L"$\phi_{%$rot_ref %$rot_target} \ (deg)$")
     th_split --> :h #custom TimeHistory attribute
 
-    data = hcat(th.ψ._data, th.θ._data, th.φ._data)'/π #plot as π factors
+    data = rad2deg.(hcat(th.ψ._data, th.θ._data, th.φ._data)') #plot as π factors
     return TimeHistory(th._t, data)
 
 end

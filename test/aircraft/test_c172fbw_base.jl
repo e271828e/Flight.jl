@@ -41,9 +41,9 @@ function test_system_methods()
             ac_ECEF = Cessna172FBWBase(ECEF(), trn) |> System;
             ac_NED = Cessna172FBWBase(NED(), trn) |> System;
 
-            init_kinematics!(ac_LTF, kin_init)
-            init_kinematics!(ac_ECEF, kin_init)
-            init_kinematics!(ac_NED, kin_init)
+            Systems.init!(ac_LTF, kin_init)
+            Systems.init!(ac_ECEF, kin_init)
+            Systems.init!(ac_NED, kin_init)
 
             f_ode!(ac_LTF)
             #make sure we are on the ground to ensure landing gear code coverage
@@ -137,7 +137,7 @@ function test_sim_paced(; save::Bool = true)
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.9 + 0);
 
-    init_kinematics!(ac, kin_init)
+    Systems.init!(ac, kin_init)
 
     sim = Simulation(ac; dt = 0.02, Δt = 0.02, t_end = 300)
 

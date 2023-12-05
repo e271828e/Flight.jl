@@ -56,7 +56,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         args_ode::Tuple = (), #externally supplied arguments to System's f_ode!
         args_step::Tuple = (), #externally supplied arguments to System's f_step!
         args_disc::Tuple = (), #externally supplied arguments to System's f_disc!
-        sys_reinit!::Function = no_sys_reinit!, #System initialization function
+        sys_init!::Function = Systems.init!, #default System initialization function
         sys_io!::Function = no_sys_io!, #System I/O function
         gui::Renderer = Renderer(label = "Simulation", sync = 0),
         started::Base.Event = Base.Event(), #to be shared with input interfaces
@@ -75,7 +75,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
                                         than the discrete dynamics update period"
 
-        params = (sys = sys, sys_reinit! = sys_reinit!, sys_io! = sys_io!, Δt = Δt,
+        params = (sys = sys, sys_init! = sys_init!, sys_io! = sys_io!, Δt = Δt,
                   args_ode = args_ode, args_step = args_step, args_disc = args_disc)
 
         cb_cont = DiscreteCallback((u, t, integrator)->true, f_cb_cont!)
@@ -236,9 +236,6 @@ end
 #and/or f_step!
 f_cb_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
 
-#function signature for a System initialization function
-no_sys_reinit!(::System; kwargs...) = nothing
-
 #function signature for a System I/O function. note: an I/O function MUST NOT
 #modify a System's ẋ, x or t
 no_sys_io!(::System) = nothing
@@ -252,18 +249,13 @@ OrdinaryDiffEq.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator
 
 OrdinaryDiffEq.add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 
-function OrdinaryDiffEq.reinit!(sim::Simulation, sys_reinit_args...; sys_reinit_kwargs...)
+function OrdinaryDiffEq.reinit!(sim::Simulation, sys_init_args...; sys_init_kwargs...)
 
     @unpack integrator, log = sim
     @unpack p = integrator
 
-    if p.sys_reinit! === no_sys_reinit!
-        println("Warning: Simulation has no sys_reinit! method; the System's ",
-        "states and inputs will remain at their latest values")
-    end
-
     #initialize the System's x, u and s
-    p.sys_reinit!(p.sys, sys_reinit_args...; sys_reinit_kwargs...)
+    p.sys_init!(p.sys, sys_init_args...; sys_init_kwargs...)
 
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
     #reinit! calls f_ode_wrapper!, so the System's ẋ and y are updated in the

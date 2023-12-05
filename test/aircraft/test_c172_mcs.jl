@@ -48,15 +48,13 @@ function terrain_init()
     @show kin_init_1
     @show kin_init_2
 
-    init_kinematics!(ac, kin_init_1)
-    # @show ac.x.physics.kinematics
+    Systems.init!(ac, kin_init_1)
     sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600)
     step!(sim, 10, true)
     kin_plots = make_plots(TimeHistory(sim).physics.kinematics; Plotting.defaults...)
     save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_mcs", "trn_init", "1"))
 
-    init_kinematics!(ac, kin_init_2)
-    # @show ac.x.physics.kinematics
+    Systems.init!(ac, kin_init_2)
     sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600)
     step!(sim, 10, true)
     kin_plots = make_plots(TimeHistory(sim).physics.kinematics; Plotting.defaults...)
@@ -69,20 +67,32 @@ function test_avionics()
     data_folder = joinpath(dirname(dirname(@__DIR__)),
         normpath("src/aircraft/c172/c172fbw/variants/mcs/data"))
 
+    y_kin(ac::System{<:Cessna172MCS}) = ac.y.physics.kinematics
+    y_air(ac::System{<:Cessna172MCS}) = ac.y.physics.air
+
     @testset verbose = true "Avionics" begin
 
     h_trn = HOrth(0)
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172MCS(LTF(), trn) |> System;
+    design_point = C172.TrimParameters()
     av = ac.avionics
 
-    kin_init_gnd = KinematicInit( h = TerrainData(trn).altitude + 1.9);
-    init_kinematics!(ac, kin_init_gnd)
+    ############################################################################
+    ############################## Ground ######################################
 
-    sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600, sys_reinit! = trim!)
+    @testset verbose = true "Ground" begin
+
+    #we don't really need to provide a specific sys_init! function, because
+    #sys_init! defaults to Systems.init!, which for Aircraft has methods
+    #accepting both a Kinematics.Initializer and an AbstractTrimParameters
+    sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600)
+    kin_init_gnd = KinematicInit( h = TerrainData(trn).altitude + 1.9);
+    reinit!(sim, kin_init_gnd)
+
     step!(sim, 1, true)
 
-    @test av.y.flight_phase === C172MCS.phase_gnd
+    @test ac.avionics.y.flight_phase === C172MCS.phase_gnd
 
     #set arbitrary control and guidance modes
     av.u.ver_gdc_mode_req = C172MCS.ver_gdc_alt
@@ -108,92 +118,229 @@ function test_avionics()
     # @test @ballocated(f_step!($ac)) == 0
     # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
-    #trim! without arguments puts the aircraft in its nominal design condition
-    reinit!(sim)
-    y_kin_trim = ac.y.physics.kinematics.common
+    end #testset
 
-    ############################test direct control mode #######################
-    reinit!(sim)
+    ############################################################################
+    ################################# Air ######################################
+
+    @testset verbose = true "Air" begin
+
+    #create a simulation with trim! as System reinitializer
+    sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600)
+
+    #put the aircraft in its nominal design point
+    reinit!(sim, design_point)
+    y_kin_trim = y_kin(ac)
+    y_air_trim = y_air(ac)
+
+    ############################### direct control #############################
+    reinit!(sim, design_point)
     step!(sim, 0.01, true)
     @test av.y.flight.lon_ctl_mode === C172MCS.lon_SAS_off
     @test av.y.flight.lat_ctl_mode === C172MCS.lat_SAS_off
 
     #with direct surface control, trim state must be initially preserved
     step!(sim, 10, true)
-    y_kin = ac.y.physics.kinematics.common
-    @test all(isapprox.(y_kin.ω_lb_b, y_kin_trim.ω_lb_b; atol = 1e-5))
-    @test all(isapprox.(y_kin.v_eOb_b, y_kin_trim.v_eOb_b; atol = 1e-2))
+    @test all(isapprox.(y_kin(ac).ω_lb_b, y_kin_trim.ω_lb_b; atol = 1e-5))
+    @test all(isapprox.(y_kin(ac).v_eOb_b, y_kin_trim.v_eOb_b; atol = 1e-2))
 
     # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
-    # error("Test lateral control modes first and then test longitudinal modes with φ and β control enabled")
-    ############################test thr+ele SAS mode #######################
-    reinit!(sim)
+    ############################ thr+ele SAS mode ##############################
+    #we test the longitudinal SAS first, because we want to test the lateral
+    #modes with it enabled
+    reinit!(sim, design_point)
     av.u.lon_ctl_mode_req = C172MCS.lon_thr_ele
     step!(sim, 0.01, true)
     @test av.y.flight.lon_ctl_mode === C172MCS.lon_thr_ele
 
     #check the correct parameters are loaded and assigned to the controller
     te2te_lookup = C172MCS.load_lqr_tracker_lookup(joinpath(data_folder, "te2te_lookup.h5"))
-    C_fwd = te2te_lookup(ac.y.physics.air.EAS, Float64(ac.y.physics.kinematics.common.h_e)).C_fwd
+    C_fwd = te2te_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
     @test all(isapprox.(av.y.flight.lon_ctl.te2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 
     #with thr+ele SAS active, trim state must be preserved for longer
     step!(sim, 30, true)
-    y_kin = ac.y.physics.kinematics.common
-    @test all(isapprox.(y_kin.ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
-    @test all(isapprox.(y_kin.v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+    @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+    @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
     # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
-    ############################test thr+ele SAS mode #######################
-    reinit!(sim)
+    ################################ φ + β #####################################
+    reinit!(sim, design_point)
+    av.u.lon_ctl_mode_req = C172MCS.lon_thr_ele
+    av.u.lat_ctl_mode_req = C172MCS.lat_φ_β
+    step!(sim, 0.01, true)
+    @test av.y.flight.lat_ctl_mode === C172MCS.lat_φ_β
+
+    #check the correct parameters are loaded and assigned to the controller
+    φβ2ar_lookup = C172MCS.load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
+    C_fwd = φβ2ar_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
+    @test all(isapprox.(av.y.flight.lat_ctl.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
+
+    #with setpoints matching their trim values, the control mode must activate
+    #without transients
+    av.u.φ_sp = y_kin_trim.e_nb.φ
+    av.u.β_sf = 1.0
+    av.u.yaw_input = y_air_trim.β_b
+    step!(sim, 1, true)
+    @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+    @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+
+    #correct tracking
+    av.u.φ_sp = 0.1π
+    av.u.β_sf = 1.0
+    av.u.yaw_input = 0.05
+    step!(sim, 5, true)
+    @test av.flight.lat_ctl.u.φ_sp != 0
+    @test av.flight.lat_ctl.u.β_sp != 0
+    @test isapprox(av.u.φ_sp, y_kin(ac).e_nb.φ; atol = 1e-3)
+    @test isapprox(Float64(av.u.yaw_input), y_air(ac).β_b; atol = 1e-3)
+
+    # @test @ballocated(f_disc!($ac, 0.01)) == 0
+
+    ################################ p + β ######################################
+    reinit!(sim, design_point)
+    av.u.lon_ctl_mode_req = C172MCS.lon_thr_ele
+    av.u.lat_ctl_mode_req = C172MCS.lat_p_β
+    step!(sim, 0.01, true)
+    @test av.y.flight.lat_ctl_mode === C172MCS.lat_p_β
+
+    #check the correct parameters are loaded and assigned to the controllers
+    φβ2ar_lookup = C172MCS.load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
+    C_fwd = φβ2ar_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
+    @test all(isapprox.(av.y.flight.lat_ctl.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
+
+    #the control mode must activate without transients
+    step!(sim, 1, true)
+    @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+    @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+
+    #the controller must keep trim values in steady state
+    step!(sim, 10, true)
+    @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+    @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+
+    av.u.p_sf = 1.0
+    av.u.β_sf = 1.0
+    av.u.roll_input = 0.01
+    av.u.yaw_input = 0.05
+    step!(sim, 10, true)
+    @test av.flight.lat_ctl.u.p_sp != 0
+    @test av.flight.lat_ctl.u.β_sp != 0
+    @test isapprox(Float64(av.u.roll_input), y_kin(ac).ω_lb_b[1]; atol = 1e-3)
+    @test isapprox(Float64(av.u.yaw_input), y_air(ac).β_b; atol = 1e-3)
+
+    # @test @ballocated(f_disc!($ac, 0.01)) == 0
+
+    ################################ χ + β #####################################
+    reinit!(sim, design_point)
+    av.u.lon_ctl_mode_req = C172MCS.lon_thr_ele
+    av.u.lat_ctl_mode_req = C172MCS.lat_χ_β
+    step!(sim, 0.01, true)
+    @test av.y.flight.lat_ctl_mode === C172MCS.lat_χ_β
+
+    #check the correct parameters are loaded and assigned to the controller
+    χ2φ_lookup = C172MCS.load_pid_lookup(joinpath(data_folder, "χ2φ_lookup.h5"))
+    k_p = χ2φ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
+    @test all(isapprox.(av.y.flight.lat_ctl.χ2φ_pid.k_p, k_p; atol = 1e-6))
+
+    #with setpoints matching their trim values, the control mode must activate
+    #without transients
+    av.u.χ_sp = y_kin_trim.χ_gnd
+    av.u.β_sf = 1.0
+    av.u.yaw_input = y_air_trim.β_b
+    step!(sim, 1, true)
+    @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+    @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+
+    #correct tracking
+    av.u.χ_sp = π/2
+    av.u.β_sf = 1.0
+    av.u.yaw_input = 0.0
+    step!(sim, 29, true)
+    @test av.flight.lat_ctl.u.χ_sp != 0
+    @test isapprox(av.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
+    # @test isapprox(Float64(av.u.yaw_input), y_air(ac).β_b; atol = 1e-3)
+
+    #correct tracking with 10m/s of crosswind
+    ac.physics.atmosphere.u.v_ew_n[1] = 10
+    step!(sim, 10, true)
+    @test isapprox(av.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
+    ac.physics.atmosphere.u.v_ew_n[1] = 0
+
+    # @test @ballocated(f_disc!($ac, 0.01)) == 0
+
+
+    ############################################################################
+    #the rest of longitudinal modes we test with lateral SAS enabled
+
+    ################################# thr+q ####################################
+    reinit!(sim, design_point)
+
     av.u.lon_ctl_mode_req = C172MCS.lon_thr_q
+    av.u.lat_ctl_mode_req = C172MCS.lat_p_β
     step!(sim, 0.01, true)
     @test av.y.flight.lon_ctl_mode === C172MCS.lon_thr_q
 
     #check the correct parameters are loaded and assigned to the controller
     q2e_lookup = C172MCS.load_pid_lookup(joinpath(data_folder, "q2e_lookup.h5"))
-    k_p = q2e_lookup(ac.y.physics.air.EAS, Float64(ac.y.physics.kinematics.common.h_e)).k_p
+    k_p = q2e_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
     @test all(isapprox.(av.y.flight.lon_ctl.q2e_pid.k_p, k_p; atol = 1e-6))
 
+    #when trim setpoints are kept, the control mode must activate without
+    #transients
+    step!(sim, 1, true)
+    @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+    @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+
+    #correct tracking
+    av.u.q_sf = 1.0
     av.u.pitch_input = 0.01
     step!(sim, 10, true)
 
     @test av.flight.lon_ctl.u.q_sp != 0
-    @test isapprox(av.flight.lon_ctl.u.q_sp, ac.y.physics.kinematics.common.ω_lb_b[2]; atol = 1e-3)
+    @test isapprox(av.flight.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
 
     #note: throttle_cmd != throttle_input, because we have a SAS in between!
 
     # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
-
-    ############################test thr+ele SAS mode #######################
-    reinit!(sim)
+    ################################ EAS + q ###################################
+    reinit!(sim, design_point)
     av.u.lon_ctl_mode_req = C172MCS.lon_EAS_q
+    av.u.lat_ctl_mode_req = C172MCS.lat_p_β
     step!(sim, 0.01, true)
     @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_q
 
     #check the correct parameters are loaded and assigned to the controller
     v2t_lookup = C172MCS.load_pid_lookup(joinpath(data_folder, "v2t_lookup.h5"))
-    k_p = v2t_lookup(ac.y.physics.air.EAS, Float64(ac.y.physics.kinematics.common.h_e)).k_p
+    k_p = v2t_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
     @test all(isapprox.(av.y.flight.lon_ctl.v2t_pid.k_p, k_p; atol = 1e-6))
 
-    av.u.pitch_input = -0.01
-    # av.u.EAS_sp = 50
-    step!(sim, 10, true)
-    av.u.pitch_input = 0
-    step!(sim, 30, true)
+    #when trim setpoints are kept, the control mode must activate without
+    #transients
+    step!(sim, 1, true)
+    @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+    @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
-    # # @test @ballocated(f_disc!($ac, 0.01)) == 0
-
-    ############################test thr+ele SAS mode #######################
+    #correct tracking
+    av.u.pitch_input = 0.0
+    av.u.EAS_sp = 45
+    step!(sim, 60, true)
+    @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+    @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
     kin_plots = make_plots(TimeHistory(sim).physics.kinematics; Plotting.defaults...)
     air_plots = make_plots(TimeHistory(sim).physics.air; Plotting.defaults...)
     save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "kin"))
     save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "air"))
+    # # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
+    ############################ EAS + climb rate ##############################
+
+
+    end #testset
 
     end #testset
 

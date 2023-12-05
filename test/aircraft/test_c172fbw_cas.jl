@@ -40,7 +40,7 @@ function test_system_methods()
 
             #to exercise all airframe functionality, including landing gear, we
             #need to be on the ground with the engine running
-            init_kinematics!(ac, kin_init_gnd)
+            Systems.init!(ac, kin_init_gnd)
             ac.avionics.u.inceptors.eng_start = true #engine start switch on
             f_disc!(ac, 0.02) #run avionics for the engine start signal to propagate
             f_ode!(ac)
@@ -55,7 +55,7 @@ function test_system_methods()
             @test @ballocated(f_disc!($ac, 0.02)) == 0
 
             #now we put the aircraft in flight
-            init_kinematics!(ac, kin_init_air)
+            Systems.init!(ac, kin_init_air)
             f_ode!(ac)
             @test ac.y.physics.airframe.ldg.left.strut.wow == false
             @test @ballocated(f_ode!($ac)) == 0
@@ -220,7 +220,7 @@ function test_sim_paced(; save::Bool = true)
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.9 + 0);
 
-    init_kinematics!(ac, kin_init)
+    Systems.init!(ac, kin_init)
 
     sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600)
 

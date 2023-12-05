@@ -42,9 +42,9 @@ function test_kinematics()
                 ω_lb_b = [0.1, 0.1, -0.2],
                 v_eOb_n = [100, 10, -4])
 
-            Kinematics.init!(sys_ECEF, kin_init)
-            Kinematics.init!(sys_LTF, kin_init)
-            Kinematics.init!(sys_NED, kin_init)
+            Systems.init!(sys_ECEF, kin_init)
+            Systems.init!(sys_LTF, kin_init)
+            Systems.init!(sys_NED, kin_init)
 
             #let the kinematic state propagate to y
             f_ode!(sys_ECEF)

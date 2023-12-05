@@ -11,7 +11,7 @@ using ..Control
 export AbstractAirframe, EmptyAirframe
 export AbstractAvionics, NoAvionics
 export AbstractTrimParameters, AbstractTrimState
-export init_kinematics!, trim!, linearize!
+export trim!, linearize!
 
 ################################################################################
 ########################### AbstractAirframe ###################################
@@ -56,8 +56,9 @@ Systems.init(::SystemY, ac::Physics) = PhysicsY(
     RigidBodyData(),
     AirData())
 
-function init_kinematics!(sys::System{<:Physics}, ic::KinematicInit)
-    Kinematics.init!(sys.x.kinematics, ic)
+function Systems.init!(sys::System{<:Physics}, ic::KinematicInit)
+    Systems.init!(sys.kinematics, ic)
+    f_ode!(sys) #update state derivatives and outputs
 end
 
 ###############################################################################
@@ -202,7 +203,10 @@ end
 
 Systems.init(::SystemY, ac::Template) = TemplateY(init_y(ac.physics), init_y(ac.avionics))
 
-init_kinematics!(ac::System{<:Template}, ic::KinematicInit) = init_kinematics!(ac.physics, ic)
+function Systems.init!(ac::System{<:Template}, ic::KinematicInit)
+    Systems.init!(ac.physics, ic)
+    f_ode!(ac) #update state derivatives and outputs
+end
 
 function Systems.f_ode!(ac::System{<:Template})
 
@@ -275,6 +279,8 @@ function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
     # return asin((a*sγ + b*√(a^2 + b^2 - sγ^2))/(a^2 + b^2)) #equivalent
 
 end
+
+Systems.init!( ac::System{<:Template}, params::AbstractTrimParameters) = trim!(ac, params)
 
 trim!( ac::System{<:Template}, args...; kwargs...) = trim!(ac.physics, args...; kwargs...)
 

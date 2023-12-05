@@ -37,7 +37,10 @@ function Initializer(;
     Initializer(q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy)
 end
 
-init!(sys::KinematicSystem, ic::Initializer = Initializer()) = init!(sys.x, ic)
+function Systems.init!(sys::KinematicSystem, ic::Initializer = Initializer())
+    init_x!(sys.x, ic)
+    f_ode!(sys) #update state derivatives and outputs
+end
 
 #implementation-independent outputs
 struct YCommon
@@ -89,7 +92,7 @@ end
 function Systems.init(::SystemX, kin::AbstractKinematicDescriptor,
                       ic::Initializer = Initializer())
     x = similar(x_template(kin))
-    init!(x, ic)
+    init_x!(x, ic)
     return x
 end
 
@@ -170,7 +173,7 @@ end
 
 x_template(::LTF) = XLTFTemplate
 
-function init!(x::XLTF, ic::Initializer = Initializer())
+function init_x!(x::XLTF, ic::Initializer = Initializer())
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
 
@@ -283,7 +286,7 @@ end
 
 x_template(::ECEF) = XECEFTemplate
 
-function init!(x::XECEF, ic::Initializer = Initializer())
+function init_x!(x::XECEF, ic::Initializer = Initializer())
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
 
@@ -394,7 +397,7 @@ end
 x_template(::NED) = XNEDTemplate
 
 
-function init!(x::XNED, ic::Initializer = Initializer())
+function init_x!(x::XNED, ic::Initializer = Initializer())
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
 
