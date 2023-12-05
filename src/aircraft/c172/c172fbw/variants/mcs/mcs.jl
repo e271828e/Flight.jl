@@ -191,17 +191,17 @@ end
 
 #command vector for throttle + elevator SAS mode
 @kwdef struct ZLonThrEle <: FieldVector{2, Float64}
-    throttle_cmd::Float64 = 0.0; elevator_cmd::Float64 = 50.0
+    throttle_cmd::Float64 = 0.0; elevator_cmd::Float64 = 0.0
 end
 
 #command vector for EAS + climb rate mode
 @kwdef struct ZLonEASClm <: FieldVector{2, Float64}
-    EAS::Float64 = 50.0; climb_rate::Float64 = 0.0
+    EAS::Float64 = C172.TrimParameters().EAS; climb_rate::Float64 = 0.0
 end
 
 #command vector for EAS + throttle mode
 @kwdef struct ZLonEASThr <: FieldVector{2, Float64}
-    EAS::Float64 = 50.0; throttle_cmd::Float64 = 0.0
+    EAS::Float64 = C172.TrimParameters().EAS; throttle_cmd::Float64 = 0.0
 end
 
 #assemble state vector from aircraft physics
@@ -272,7 +272,7 @@ end
     throttle_sp::Float64 = 0.0
     elevator_sp::Float64 = 0.0
     q_sp::Float64 = 0.0
-    EAS_sp::Float64 = 50.0 #equivalent airspeed setpoint
+    EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
     clm_sp::Float64 = 0.0 #climb rate setpoint
 end
 
@@ -376,6 +376,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
         f_disc!(te2te_lqr, Δt)
         @unpack throttle_cmd, elevator_cmd = ULon(te2te_lqr.y.output)
 
+
     #actuation commands computed by EAS+climb_rate to thr+ele LQRTracker
     elseif mode === lon_EAS_clm
 
@@ -394,7 +395,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
     else #mode == lon_EAS_thr
 
         if mode != mode_prev
-            Systems.reset!(vt2te_lookup)
+            Systems.reset!(vt2te_lqr)
         end
 
         Control.Discrete.assign!(vt2te_lqr, vt2te_lookup(EAS, h_e))
@@ -403,6 +404,9 @@ function Systems.f_disc!(sys::System{<:LonControl},
         vt2te_lqr.u.z_sp .= ZLonEASThr(; EAS = EAS_sp, throttle_cmd = throttle_sp) #command variable setpoint
         f_disc!(vt2te_lqr, Δt)
         @unpack throttle_cmd, elevator_cmd = ULon(vt2te_lqr.y.output)
+
+        # @show throttle_sp
+        # @show throttle_cmd
 
     end
 
@@ -413,6 +417,8 @@ function Systems.f_disc!(sys::System{<:LonControl},
                         q2e_int = q2e_int.y,
                         q2e_pid = q2e_pid.y,
                         v2t_pid = v2t_pid.y)
+
+
 
 end
 
@@ -671,7 +677,7 @@ end
     p_sp::Float64 = 0.0 #roll rate setpoint
     q_sp::Float64 = 0.0 #pitch rate setpoint
     β_sp::Float64 = 0.0 #sideslip angle setpoint
-    EAS_sp::Float64 = 50.0 #equivalent airspeed setpoint
+    EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
     clm_sp::Float64 = 0.0 #climb rate setpoint
     φ_sp::Float64 = 0.0 #bank angle demand
     χ_sp::Float64 = 0.0 #course angle demand
@@ -697,6 +703,31 @@ end
 Systems.init(::SystemU, ::FlightGuidance) = FlightGuidanceInputs()
 Systems.init(::SystemY, ::FlightGuidance) = FlightGuidanceOutputs()
 
+# function Systems.reset!(sys::System{<:FlightGuidance})
+
+#     #reset subsystems (this is the default implementation)
+#     foreach(sys.subsystems) do ss
+#         Systems.reset!(ss)
+#     end
+
+#     #also set default inputs
+#     flight_phase = phase_gnd
+#     ver_gdc_mode_req = ver_gdc_off; hor_gdc_mode_req = hor_gdc_off
+#     lon_ctl_mode_req = lon_SAS_off; lat_ctl_mode_req = lat_SAS_off
+#     throttle_sp = 0.0; elevator_sp = 0.0; aileron_sp = 0.0; rudder_sp = 0.0
+#     p_sp = 0.0; q_sp = 0.0; β_sp = 0.0;
+#     EAS_sp = C172.TrimParameters().EAS; clm_sp = 0.0
+#     φ_sp = 0.0; χ_sp = 0.0; h_sp = HEllip(0.0); seg_sp = 0.0
+
+#     @pack! sys.u = flight_phase, ver_gdc_mode_req, hor_gdc_mode_req,
+#                    lon_ctl_mode_req, lat_ctl_mode_req,
+#                    throttle_sp, elevator_sp, aileron_sp, rudder_sp,
+#                    p_sp, q_sp, β_sp, EAS_sp, clm_sp, φ_sp, χ_sp,
+#                    h_sp#, seg_sp
+
+# end
+
+
 function Systems.f_disc!(sys::System{<:FlightGuidance},
                         physics::System{<:C172FBW.Physics}, Δt::Real)
 
@@ -705,6 +736,7 @@ function Systems.f_disc!(sys::System{<:FlightGuidance},
             throttle_sp, elevator_sp, aileron_sp, rudder_sp,
             p_sp, q_sp, β_sp, EAS_sp, clm_sp, φ_sp, χ_sp, h_sp = sys.u
     @unpack lon_ctl, lat_ctl, alt_gdc, seg_gdc = sys.subsystems
+
 
     if flight_phase === phase_gnd
 
@@ -798,7 +830,7 @@ end
     hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
     lon_ctl_mode_req::LonControlMode = lon_SAS_off #requested longitudinal control mode
     lat_ctl_mode_req::LatControlMode = lat_SAS_off #requested lateral control mode
-    EAS_sp::Float64 = 50.0 #equivalent airspeed setpoint
+    EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
     clm_sp::Float64 = 0.0 #climb rate setpoint
     φ_sp::Float64 = 0.0 #bank angle demand
     χ_sp::Float64 = 0.0 #course angle demand
@@ -827,6 +859,35 @@ end
 Systems.init(::SystemU, ::Avionics) = AvionicsU()
 Systems.init(::SystemY, ::Avionics) = AvionicsY()
 
+# function Systems.reset!(sys::System{<:Avionics})
+
+#     #reset subsystems (this is the default implementation)
+#     foreach(sys.subsystems) do ss
+#         Systems.reset!(ss)
+#     end
+
+#     #also set default inputs
+#     eng_start = false; eng_stop = false; mixture = 0.5
+#     throttle_input = 0.0; roll_input = 0.0; pitch_input = 0.0; yaw_input = 0.0;
+#     throttle_sp_offset = 0.0; aileron_sp_offset = 0.0;
+#     elevator_sp_offset = 0.0; rudder_sp_offset = 0.0;
+#     flaps = 0.0; brake_left = 0.0; brake_right = 0.0;
+#     p_sf = 1.0; q_sf = 1.0; β_sf = 1.0;
+#     ver_gdc_mode_req = ver_gdc_off; hor_gdc_mode_req = hor_gdc_off;
+#     lon_ctl_mode_req = lon_SAS_off; lat_ctl_mode_req = lat_SAS_off;
+#     EAS_sp = C172.TrimParameters().EAS; clm_sp = 0.0;
+#     φ_sp = 0.0; χ_sp = 0.0; h_sp = HEllip(0.0);
+
+#     @pack! sys.u = eng_start, eng_stop, mixture,
+#         throttle_input, roll_input, pitch_input, yaw_input,
+#         throttle_sp_offset, aileron_sp_offset,
+#         elevator_sp_offset, rudder_sp_offset,
+#         flaps, brake_left, brake_right, p_sf, q_sf, β_sf,
+#         ver_gdc_mode_req, hor_gdc_mode_req,
+#         lon_ctl_mode_req, lat_ctl_mode_req,
+#         EAS_sp, clm_sp, φ_sp, χ_sp, h_sp
+
+# end
 
 ########################### Update Methods #####################################
 
@@ -926,15 +987,21 @@ end
 function Aircraft.trim!(ac::System{<:Cessna172MCS},
                         trim_params::C172.TrimParameters = C172.TrimParameters())
 
+
     result = trim!(ac.physics, trim_params)
+
+    #only ac.physics.y has been updated by the previous call, we need to update
+    #ac.y as well
+    f_ode!(ac)
+
     trim_state = result[2]
+    @unpack mixture, flaps, EAS = trim_params
+    @unpack throttle, aileron, elevator, rudder = trim_state
+    @unpack v_eOb_n, e_nb, χ_gnd, h_e = ac.y.physics.kinematics
 
     #makes Avionics inputs consistent with the trim solution obtained for the
-    #aircraft physics so the trim condition is preserved upon simulation start
-    #when direct control modes are selected
-    @unpack mixture, flaps = trim_params
-    @unpack throttle, aileron, elevator, rudder = trim_state
-
+    #aircraft physics, so the trim condition is preserved upon simulation start
+    #when the corresponding control modes are selected
     Systems.reset!(ac.avionics)
 
     u = ac.avionics.u
@@ -954,8 +1021,13 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
     u.lon_ctl_mode_req = lon_SAS_off
     u.lat_ctl_mode_req = lat_SAS_off
 
-    #IMPORTANT: update avionics outputs
-    f_disc!(ac.avionics, ac.physics, 1)
+    u.EAS_sp = EAS
+    u.clm_sp = -v_eOb_n[3]
+    u.φ_sp = e_nb.φ
+    u.χ_sp = χ_gnd
+    u.h_sp = h_e
+
+    f_disc!(ac.avionics, ac.physics, 1) #IMPORTANT: update avionics outputs
 
     return result
 

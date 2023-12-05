@@ -131,7 +131,6 @@ function test_avionics()
     #put the aircraft in its nominal design point
     reinit!(sim, design_point)
     y_kin_trim = y_kin(ac)
-    y_air_trim = y_air(ac)
 
     ############################### direct control #############################
     reinit!(sim, design_point)
@@ -180,9 +179,6 @@ function test_avionics()
 
     #with setpoints matching their trim values, the control mode must activate
     #without transients
-    av.u.φ_sp = y_kin_trim.e_nb.φ
-    av.u.β_sf = 1.0
-    av.u.yaw_input = y_air_trim.β_b
     step!(sim, 1, true)
     @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
     @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
@@ -247,9 +243,6 @@ function test_avionics()
 
     #with setpoints matching their trim values, the control mode must activate
     #without transients
-    av.u.χ_sp = y_kin_trim.χ_gnd
-    av.u.β_sf = 1.0
-    av.u.yaw_input = y_air_trim.β_b
     step!(sim, 1, true)
     @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
     @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
@@ -297,6 +290,7 @@ function test_avionics()
     #correct tracking
     av.u.q_sf = 1.0
     av.u.pitch_input = 0.01
+    av.u.throttle_input = 1
     step!(sim, 10, true)
 
     @test av.flight.lon_ctl.u.q_sp != 0
@@ -308,6 +302,7 @@ function test_avionics()
 
     ################################ EAS + q ###################################
     reinit!(sim, design_point)
+
     av.u.lon_ctl_mode_req = C172MCS.lon_EAS_q
     av.u.lat_ctl_mode_req = C172MCS.lat_p_β
     step!(sim, 0.01, true)
@@ -331,13 +326,77 @@ function test_avionics()
     @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
     @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
+    # @test @ballocated(f_disc!($ac, 0.01)) == 0
+
+
+    ############################ EAS + climb rate ##############################
+    reinit!(sim, design_point)
+
+    av.u.lon_ctl_mode_req = C172MCS.lon_EAS_clm
+    av.u.lat_ctl_mode_req = C172MCS.lat_p_β
+    step!(sim, 0.01, true)
+    @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_clm
+
+    #check the correct parameters are loaded and assigned to the controller
+    vc2te_lookup = C172MCS.load_lqr_tracker_lookup(joinpath(data_folder, "vc2te_lookup.h5"))
+    C_fwd = vc2te_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
+    @test all(isapprox.(av.y.flight.lon_ctl.vc2te_lqr.C_fwd, C_fwd; atol = 1e-6))
+
+    #when trim setpoints are kept, the control mode must activate without
+    #transients
+    step!(sim, 1, true)
+    @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+    @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+
+    #correct tracking
+    av.u.EAS_sp = 45
+    av.u.clm_sp = 2
+    step!(sim, 20, true)
+    @test all(isapprox.(y_kin(ac).v_eOb_n[3], -av.u.clm_sp; atol = 1e-2))
+    @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
+
+    # @test @ballocated(f_disc!($ac, 0.01)) == 0
+
+
+    ############################## EAS + throttle ##############################
+    reinit!(sim, design_point)
+
+    av.u.lon_ctl_mode_req = C172MCS.lon_EAS_thr
+    av.u.lat_ctl_mode_req = C172MCS.lat_p_β
+    step!(sim, 0.01, true)
+    @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_thr
+
+    #check the correct parameters are loaded and assigned to the controller
+    vt2te_lookup = C172MCS.load_lqr_tracker_lookup(joinpath(data_folder, "vt2te_lookup.h5"))
+    C_fwd = vt2te_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
+    @test all(isapprox.(av.y.flight.lon_ctl.vt2te_lqr.C_fwd, C_fwd; atol = 1e-6))
+
+    #when trim setpoints are kept, the control mode must activate without
+    #transients
+    step!(sim, 1, true)
+    @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+    @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+
+    #correct tracking
+    av.u.EAS_sp = 45
+    av.u.throttle_input = 1
+    step!(sim, 30, true)
+    @test all(isapprox.(ac.y.physics.airframe.act.throttle_cmd, av.flight.u.throttle_sp; atol = 1e-2))
+    @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
+
+    return
+    # @test @ballocated(f_disc!($ac, 0.01)) == 0
+
+
     kin_plots = make_plots(TimeHistory(sim).physics.kinematics; Plotting.defaults...)
     air_plots = make_plots(TimeHistory(sim).physics.air; Plotting.defaults...)
     save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "kin"))
     save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "air"))
-    # # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
-    ############################ EAS + climb rate ##############################
+    #note: throttle_cmd != throttle_input, because we have a SAS in between!
+
+    # @test @ballocated(f_disc!($ac, 0.01)) == 0
+
 
 
     end #testset
