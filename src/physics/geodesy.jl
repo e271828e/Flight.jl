@@ -479,31 +479,31 @@ end
 ############################### Plotting #######################################
 
 #if no specific method available, convert to LatLon for plotting
-@recipe function fp(th::TimeHistory{<:Abstract2DLocation})
+@recipe function fp(ts::TimeSeries{<:Abstract2DLocation})
 
-    return TimeHistory(th._t, [LatLon(v) for v in th._data])
+    return TimeSeries(ts._t, [LatLon(v) for v in ts._data])
 
 end
 
-@recipe function fp(th::TimeHistory{<:LatLon})
+@recipe function fp(ts::TimeSeries{<:LatLon})
 
     title --> ["Latitude" "Longitude"]
     label --> ["Latitude" "Longitude"]
     yguide --> [L"$\varphi \ (\pi \ rad)$" L"$\lambda \ (\pi \ rad)$"]
-    th_split --> :v
+    ts_split --> :v
 
-    data = hcat(th.ϕ._data, th.λ._data)'/π |> collect
-    return TimeHistory(th._t, data)
+    data = hcat(ts.ϕ._data, ts.λ._data)'/π |> collect
+    return TimeSeries(ts._t, data)
 
 end
 
-@recipe function fp(th::TimeHistory{<:Altitude{D}}) where {D}
+@recipe function fp(ts::TimeSeries{<:Altitude{D}}) where {D}
 
     title --> "Altitude ($(string(D)))"
     label --> "Altitude ($(string(D)))"
     yguide --> L"$h \ (m)$"
 
-    return TimeHistory(th._t, Float64.(th._data))
+    return TimeSeries(ts._t, Float64.(ts._data))
 
 end
 

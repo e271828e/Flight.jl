@@ -235,40 +235,40 @@ end
 
 ################################## Plotting ####################################
 
-function Plotting.make_plots(th::TimeHistory{<:AirData}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    pd[:v_ew_n] = plot(th.v_ew_n;
+    pd[:v_ew_n] = plot(ts.v_ew_n;
         plot_title = "Velocity (Wind / ECEF) [NED Axes]",
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{ew}^{N} \ (m/s)$" L"$v_{ew}^{E} \ (m/s)$" L"$v_{ew}^{D} \ (m/s)$"],
-        th_split = :h,
+        ts_split = :h,
         kwargs...)
 
-    pd[:v_ew_b] = plot(th.v_ew_b;
+    pd[:v_ew_b] = plot(ts.v_ew_b;
         plot_title = "Velocity (Wind / ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{ew}^{x_b} \ (m/s)$" L"$v_{ew}^{y_b} \ (m/s)$" L"$v_{ew}^{z_b} \ (m/s)$"],
-        th_split = :h,
+        ts_split = :h,
         kwargs...)
 
-    pd[:v_eOb_b] = plot(th.v_eOb_b;
+    pd[:v_eOb_b] = plot(ts.v_eOb_b;
         plot_title = "Velocity (Vehicle / ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
+        ts_split = :h,
         kwargs...)
 
-    pd[:v_wOb_b] = plot(th.v_wOb_b;
+    pd[:v_wOb_b] = plot(ts.v_wOb_b;
         plot_title = "Velocity (Vehicle / Wind) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
+        ts_split = :h,
         kwargs...)
 
-        subplot_α = plot(th.α_b;
+        subplot_α = plot(ts.α_b;
             title = "Angle of Attack", ylabel = L"$α_b \ (rad)$",
             label = "", kwargs...)
 
-        subplot_β = plot(th.β_b;
+        subplot_β = plot(ts.β_b;
             title = "Angle of Sideslip", ylabel = L"$β_b \ (rad)$",
             label = "", kwargs...)
 
@@ -277,15 +277,15 @@ function Plotting.make_plots(th::TimeHistory{<:AirData}; kwargs...)
         layout = (1,2),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-        subplot_a = plot(th.a;
+        subplot_a = plot(ts.a;
             title = "Speed of Sound", ylabel = L"$a \ (m/s)$",
             label = "", kwargs...)
 
-        subplot_ρ = plot(th.ρ;
+        subplot_ρ = plot(ts.ρ;
             title = "Density", ylabel = L"$\rho \ (kg/m^3)$",
             label = "", kwargs...)
 
-        subplot_μ = plot(th.μ;
+        subplot_μ = plot(ts.μ;
             title = "Dynamic Viscosity", ylabel = L"$\mu \ (Pa \ s)$",
             label = "", kwargs...)
 
@@ -296,18 +296,18 @@ function Plotting.make_plots(th::TimeHistory{<:AirData}; kwargs...)
 
 
         subplot_T = plot(
-            TimeHistory(th._t, hcat(th.T._data, th.Tt._data)' |> collect);
+            TimeSeries(ts._t, hcat(ts.T._data, ts.Tt._data)' |> collect);
             title = "Temperature",
             label = ["Static"  "Total"],
             ylabel = L"$T \ (K)$",
-            th_split = :none, kwargs...)
+            ts_split = :none, kwargs...)
 
         subplot_p = plot(
-            TimeHistory(th._t, 1e-3*hcat(th.p._data, th.pt._data)' |> collect);
+            TimeSeries(ts._t, 1e-3*hcat(ts.p._data, ts.pt._data)' |> collect);
             title = "Pressure",
             label = ["Static"  "Total"],
             ylabel = L"$p \ (kPa)$",
-            th_split = :none, kwargs...)
+            ts_split = :none, kwargs...)
 
     pd[:T_p] = plot(subplot_T, subplot_p;
         plot_title = "Freestream Properties",
@@ -315,17 +315,17 @@ function Plotting.make_plots(th::TimeHistory{<:AirData}; kwargs...)
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
         subplot_airspeed = plot(
-            TimeHistory(th._t, hcat(th.TAS._data, th.EAS._data, th.CAS._data)' |> collect);
+            TimeSeries(ts._t, hcat(ts.TAS._data, ts.EAS._data, ts.CAS._data)' |> collect);
             title = "Airspeed",
             label = ["True" "Equivalent" "Calibrated"],
             ylabel = L"$v \ (m/s)$",
-            th_split = :none, kwargs...)
+            ts_split = :none, kwargs...)
 
-        subplot_Mach = plot(th.M;
+        subplot_Mach = plot(ts.M;
             title = "Mach", ylabel = L"M",
             label = "", kwargs...)
 
-        subplot_q = plot(th._t, th.q._data/1000;
+        subplot_q = plot(ts._t, ts.q._data/1000;
             title = "Dynamic Pressure", ylabel = L"$q \ (kPa)$",
             label = "", kwargs...)
 

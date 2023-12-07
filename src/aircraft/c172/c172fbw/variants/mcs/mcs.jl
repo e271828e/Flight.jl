@@ -341,7 +341,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
             if mode != mode_prev
                 Systems.reset!(v2t_pid)
                 k_i = v2t_pid.u.k_i
-                (k_i != 0) && (v2t_pid.s.x_i0 = Float64(sys.y.throttle_cmd) / k_i)
+                (k_i != 0) && (v2t_pid.s.x_i0 = Float64(sys.y.throttle_cmd))
             end
 
             v2t_pid.u.input = EAS_sp - EAS
@@ -359,7 +359,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
                 Systems.reset!(q2e_int)
                 Systems.reset!(q2e_pid)
                 k_i = q2e_pid.u.k_i
-                (k_i != 0) && (q2e_pid.s.x_i0 = Float64(sys.y.elevator_cmd) / k_i)
+                (k_i != 0) && (q2e_pid.s.x_i0 = Float64(sys.y.elevator_cmd))
             end
 
             if θ2q_enabled(mode) #q_sp overridden by θ2q
@@ -371,7 +371,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
                     if mode != mode_prev
                         Systems.reset!(v2θ_pid)
                         k_i = v2θ_pid.u.k_i
-                        (k_i != 0) && (v2θ_pid.s.x_i0 = -θ / k_i)
+                        (k_i != 0) && (v2θ_pid.s.x_i0 = -θ) #sign inversion!
                     end
 
                     v2θ_pid.u.input = EAS_sp - EAS
@@ -568,7 +568,7 @@ function Systems.f_disc!(sys::System{<:LatControl},
                 Systems.reset!(p2φ_int)
                 Systems.reset!(p2φ_pid)
                 k_i = p2φ_pid.u.k_i
-                (k_i != 0) && (p2φ_pid.s.x_i0 = φ / k_i)
+                (k_i != 0) && (p2φ_pid.s.x_i0 = φ)
             end
 
             p = kinematics.ω_lb_b[1]
@@ -588,7 +588,7 @@ function Systems.f_disc!(sys::System{<:LatControl},
             if mode != mode_prev
                 Systems.reset!(χ2φ_pid)
                 k_i = χ2φ_pid.u.k_i
-                (k_i != 0) && (χ2φ_pid.s.x_i0 = φ / k_i)
+                (k_i != 0) && (χ2φ_pid.s.x_i0 = φ)
             end
 
             χ = kinematics.χ_gnd
@@ -971,6 +971,7 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
     u.lon_ctl_mode_req = lon_direct
     u.lat_ctl_mode_req = lat_direct
 
+    u.θ_sp = e_nb.θ
     u.EAS_sp = EAS
     u.clm_sp = -v_eOb_n[3]
     u.φ_sp = e_nb.φ

@@ -583,15 +583,15 @@ Systems.f_step!(sys::System{NED}, args...) = false
 
 end
 
-function Plotting.make_plots(th::TimeHistory{<:KinematicsY}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:KinematicsY}; kwargs...)
 
     return OrderedDict(
-        :common => make_plots(th.common; kwargs...),
+        :common => make_plots(ts.common; kwargs...),
     )
 
 end
 
-function Plotting.make_plots(th::TimeHistory{<:YCommon}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:YCommon}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -603,24 +603,24 @@ function Plotting.make_plots(th::TimeHistory{<:YCommon}; kwargs...)
     end
 
     pd[:e_nb] = plot(
-        th.q_nb; #will automatically be converted to REuler for plotting
+        ts.q_nb; #will automatically be converted to REuler for plotting
         plot_title = "Attitude (Vehicle/NED)",
         rot_ref = "n", rot_target = "b",
         kwargs...)
 
     #will be automatically converted to LatLon for plotting
     #remove the title added by the LatLon TH recipe
-    subplot_latlon = plot(th.n_e; title = "", th_split = :v, kwargs...)
+    subplot_latlon = plot(ts.n_e; title = "", ts_split = :v, kwargs...)
 
     #remove the title added by the Altitude TH recipe
-    subplot_h = plot(th.h_e; title = "", kwargs...)
-                plot!(th.h_o; title = "", kwargs...)
+    subplot_h = plot(ts.h_e; title = "", kwargs...)
+                plot!(ts.h_o; title = "", kwargs...)
 
     subplot_xy = plot(
-        th.Δxy;
+        ts.Δxy;
         label = [L"$\int v_{eb}^{x_n} dt$" L"$\int v_{eb}^{y_n} dt$"],
         ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$"],
-        th_split = :h, link = :none, kwargs...)
+        ts_split = :h, link = :none, kwargs...)
 
     pd[:Ob_geo] = plot(
         subplot_latlon, subplot_h;
@@ -638,8 +638,8 @@ function Plotting.make_plots(th::TimeHistory{<:YCommon}; kwargs...)
     #attribute no longer works, and it is titlefontisze what determines the font
     #size of the overall figure title (which normally is used for subplots).
 
-    th_Δx, th_Δy = get_components(th.Δxy)
-    path = StructArray((x = th_Δx._data, y = th_Δy._data, z = Float64.(th.h_e._data)))
+    ts_Δx, ts_Δy = get_components(ts.Δxy)
+    path = StructArray((x = ts_Δx._data, y = ts_Δy._data, z = Float64.(ts.h_e._data)))
 
     pd[:Ob_t3d] = plot(
         Trajectory3D(path);
@@ -651,26 +651,26 @@ function Plotting.make_plots(th::TimeHistory{<:YCommon}; kwargs...)
         )
 
     pd[:ω_lb_b] = plot(
-        th.ω_lb_b;
+        ts.ω_lb_b;
         plot_title = "Angular Velocity (Vehicle/LTF) [Vehicle Axes]",
         label = ["Roll Rate" "Pitch Rate" "Yaw Rate"],
         ylabel = [L"$p \ (rad/s)$" L"$q \ (rad/s)$" L"$r \ (rad/s)$"],
-        th_split = :h,
+        ts_split = :h,
         kwargs...)
 
     pd[:v_eOb_n] = plot(
-        th.v_eOb_n;
+        ts.v_eOb_n;
         plot_title = "Velocity (Vehicle/ECEF) [NED Axes]",
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{eb}^{N} \ (m/s)$" L"$v_{eb}^{E} \ (m/s)$" L"$v_{eb}^{D} \ (m/s)$"],
-        th_split = :h, link = :none,
+        ts_split = :h, link = :none,
         kwargs...)
 
-    subplot_v_gnd = plot(th.v_gnd; title = "Ground Speed",
+    subplot_v_gnd = plot(ts.v_gnd; title = "Ground Speed",
         ylabel = L"$v_{gnd} \ (m/s)$", label = "", kwargs...)
-    subplot_χ = plot(th._t, rad2deg.(th.χ_gnd._data); title = "Course Angle",
+    subplot_χ = plot(ts._t, rad2deg.(ts.χ_gnd._data); title = "Course Angle",
         ylabel = L"$\chi_{gnd} \ (deg)$", label = "", kwargs...)
-    subplot_γ = plot(th._t, rad2deg.(th.γ_gnd._data); title = "Flight Path Angle",
+    subplot_γ = plot(ts._t, rad2deg.(ts.γ_gnd._data); title = "Flight Path Angle",
         ylabel = L"$\gamma_{cv} \ (deg)$", label = "", kwargs...)
 
     pd[:vχγ] = plot(subplot_v_gnd, subplot_χ, subplot_γ;
@@ -680,17 +680,17 @@ function Plotting.make_plots(th::TimeHistory{<:YCommon}; kwargs...)
         kwargs...)
 
     pd[:v_eOb_b] = plot(
-        th.v_eOb_b;
+        ts.v_eOb_b;
         plot_title = "Velocity (Vehicle/ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        th_split = :h,
+        ts_split = :h,
         kwargs...)
 
     # pd[:ω_el_n] = plot(
-    #     th.ω_el_n;
+    #     ts.ω_el_n;
     #     plot_title = "Local Tangent Frame Transport Rate (LTF/ECEF) [NED Axes]",
     #     ylabel = L"$\omega_{el}^{l} \ (rad/s)$",
-    #     th_split = :h,
+    #     ts_split = :h,
     #     kwargs...)
 
     return pd

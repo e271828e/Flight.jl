@@ -29,6 +29,7 @@ function generate_lookups(
     EAS_range::AbstractRange{Float64} = range(25, 55, length = 7),
     h_range::AbstractRange{Float64} = range(50, 3050, length = 4);
     channel::Symbol = :lat,
+    global_search::Bool = false,
     folder::String = dirname(@__DIR__)) #save to parent folder by default
 
     if channel === :lon
@@ -47,7 +48,7 @@ function generate_lookups(
         flaps = EAS < 30 ? 1.0 : 0.0
         design_point = C172.TrimParameters(; Ob = Geographic(LatLon(), HEllip(h)), EAS, flaps)
 
-        results = f_opt(design_point)
+        results = f_opt(; design_point, global_search)
         return results
 
     end |> StructArray |> StructArrays.components
@@ -64,7 +65,8 @@ function generate_lookups(
 
 end
 
-function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
+function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
+                    global_search = false)
 
     ac = Cessna172FBWBase(NED()) |> System #linearization requires NED kinematics
 
@@ -186,12 +188,12 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
 
         t_sim_q2e = 10
         lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-        upper_bounds = PIDParams(; k_p = 10.0, k_i = 30.0, k_d = 1.5, τ_f = 0.01)
+        upper_bounds = PIDParams(; k_p = 10.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_q2e, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 1, ∫e = 10, ef = 2, ∫u = 0.1, up = 0.00)
         params_0 = PIDParams(; k_p = 2.0, k_i = 15, k_d = 0.4, τ_f = 0.01)
 
-        q2e_results = optimize_PID(P_q2e_opt; params_0, settings, weights, global_search = false)
+        q2e_results = optimize_PID(P_q2e_opt; params_0, settings, weights, global_search)
 
         params_q2e = q2e_results.params
         if !check_results(q2e_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
@@ -236,7 +238,7 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
         weights = Metrics(; Ms = 2.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.0)
         params_0 = PIDParams(; k_p = 0.05, k_i = 0.01, k_d = 0.0, τ_f = 0.01)
 
-        v2θ_results = optimize_PID(P_θ2v_opt; params_0, settings, weights, global_search = false)
+        v2θ_results = optimize_PID(P_θ2v_opt; params_0, settings, weights, global_search)
 
         params_v2θ = v2θ_results.params
         if !check_results(v2θ_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
@@ -261,13 +263,13 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
         P_t2v = P_tq[:EAS, :throttle_cmd]
 
         t_sim_v2t = 10
-        lower_bounds = PIDParams(; k_p = 0.01, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-        upper_bounds = PIDParams(; k_p = 1.0, k_i = 2.0, k_d = 0.0, τ_f = 0.01)
+        lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+        upper_bounds = PIDParams(; k_p = 1.0, k_i = 0.5, k_d = 0.0, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_v2t, maxeval = 5000, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 2.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.0)
         params_0 = PIDParams(; k_p = 0.2, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
 
-        v2t_results = optimize_PID(P_t2v; params_0, settings, weights, global_search = false)
+        v2t_results = optimize_PID(P_t2v; params_0, settings, weights, global_search)
 
         params_v2t = v2t_results.params
         if !check_results(v2t_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
@@ -401,7 +403,8 @@ function design_lon(design_point::C172.TrimParameters = C172.TrimParameters())
 end
 
 
-function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
+function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
+                    global_search::Bool = false)
 
     ac = Cessna172FBWBase(NED()) |> System #linearization requires NED kinematics
 
@@ -564,12 +567,12 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
 
         t_sim_p2φ = 10
         lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-        upper_bounds = PIDParams(; k_p = 15.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
+        upper_bounds = PIDParams(; k_p = 10.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_p2φ, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 1, ∫e = 10, ef = 2, ∫u = 0.1, up = 0.00)
         params_0 = PIDParams(; k_p = 1.5, k_i = 3, k_d = 0.1, τ_f = 0.01)
 
-        p2φ_results = optimize_PID(P_p2φ_opt; params_0, settings, weights, global_search = false)
+        p2φ_results = optimize_PID(P_p2φ_opt; params_0, settings, weights, global_search)
         params_p2φ = p2φ_results.params
         if !check_results(p2φ_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
             println("Warning: Checks failed for roll rate control PID, design point $(design_point)")
@@ -599,7 +602,7 @@ function design_lat(design_point::C172.TrimParameters = C172.TrimParameters())
         weights = Metrics(; Ms = 3, ∫e = 10, ef = 1, ∫u = 0.00, up = 0.01)
         params_0 = PIDParams(; k_p = 3., k_i = 0.3, k_d = 0.0, τ_f = 0.01)
 
-        χ2φ_results = optimize_PID(P_φ2χ; params_0, settings, weights, global_search = false)
+        χ2φ_results = optimize_PID(P_φ2χ; params_0, settings, weights, global_search)
 
         params_χ2φ = χ2φ_results.params
         if !check_results(χ2φ_results, Metrics(; Ms = 1.4, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))

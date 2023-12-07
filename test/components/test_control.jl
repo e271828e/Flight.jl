@@ -146,7 +146,7 @@ function test_continuous_pi(save = false)
         @test @ballocated($f_disc!($sys, 1)) == 0
         @test @ballocated($f_step!($sys)) == 0
 
-        plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+        plots = make_plots(TimeSeries(sim); Plotting.defaults...)
         save && save_plots(plots, save_folder = joinpath("tmp", "pi_continuous_test"))
 
     end #testset
@@ -220,7 +220,7 @@ function test_discrete_pid(save = false)
         @test @ballocated($f_disc!($sys, 1)) == 0
         @test @ballocated($f_step!($sys)) == 0
 
-        plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+        plots = make_plots(TimeSeries(sim); Plotting.defaults...)
         save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_test"))
 
         #operate PID as a filtered derivative
@@ -254,9 +254,9 @@ function test_discrete_pid(save = false)
         pid_lss.u .= 1
         sim = Simulation(pid_lss; dt = 0.0001, t_end = 2)
         Sim.run!(sim)
-        th_lss = TimeHistory(sim)
-        th_y_lss = (Sim.get_components(th_lss) |> collect)[1]
-        y_lss_last = Sim.get_data(th_y_lss)[end]
+        ts_lss = TimeSeries(sim)
+        ts_y_lss = (Sim.get_components(ts_lss) |> collect)[1]
+        y_lss_last = Sim.get_data(ts_y_lss)[end]
 
         #define the equivalent discrete PID and simulate it for a unit step input
         Systems.reset!(sys)
@@ -268,9 +268,9 @@ function test_discrete_pid(save = false)
         sys.u.input = 1
         sim = Simulation(sys; Δt = 0.0001, t_end = 2)
         Sim.run!(sim)
-        th_disc = TimeHistory(sim)
-        th_y_disc = th_disc.output
-        y_disc_last = Sim.get_data(th_y_disc)[end]
+        ts_disc = TimeSeries(sim)
+        ts_y_disc = ts_disc.output
+        y_disc_last = Sim.get_data(ts_y_disc)[end]
 
         #compare the final values
         @test y_lss_last ≈ y_disc_last atol=1e-3
@@ -345,7 +345,7 @@ function test_discrete_pid_vector(save = false)
         @test @ballocated($f_disc!($sys, 1)) == 0
         @test @ballocated($f_step!($sys)) == 0
 
-        plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+        plots = make_plots(TimeSeries(sim); Plotting.defaults...)
         save && save_plots(plots, save_folder = joinpath("tmp", "pid_discrete_vector_test"))
 
         #operate PID as a filtered derivative
@@ -379,9 +379,9 @@ function test_discrete_pid_vector(save = false)
         pid_lss.u .= 1
         sim = Simulation(pid_lss; dt = 0.0001, t_end = 2)
         Sim.run!(sim)
-        th_lss = TimeHistory(sim)
-        th_y_lss = (Sim.get_components(th_lss) |> collect)[1]
-        y_lss_last = Sim.get_data(th_y_lss)[end]
+        ts_lss = TimeSeries(sim)
+        ts_y_lss = (Sim.get_components(ts_lss) |> collect)[1]
+        y_lss_last = Sim.get_data(ts_y_lss)[end]
 
         #define the equivalent discrete PID and simulate it
         pid_disc = PIDDiscreteVector{1}() |> System
@@ -391,9 +391,9 @@ function test_discrete_pid_vector(save = false)
         pid_disc.u.k_d .= k_d
         sim = Simulation(pid_disc; Δt = 0.0001, t_end = 2)
         Sim.run!(sim)
-        th_disc = TimeHistory(sim)
-        th_y_disc = (Sim.get_components(th_disc.output) |> collect)[1]
-        y_disc_last = Sim.get_data(th_y_disc)[end]
+        ts_disc = TimeSeries(sim)
+        ts_y_disc = (Sim.get_components(ts_disc.output) |> collect)[1]
+        y_disc_last = Sim.get_data(ts_y_disc)[end]
 
         #compare the final values
         @test y_lss_last ≈ y_disc_last atol=1e-3
@@ -542,11 +542,11 @@ function test_discrete_leadlag(save = false)
 
         sim = Simulation(sys; Δt = 0.001, t_end = 10, sys_io!)
         Sim.run!(sim)
-        th = TimeHistory(sim)
+        ts = TimeSeries(sim)
 
         lead_cont = zpk([z], [p], k)
         step_result = lsim(lead_cont, (x,t)->SVector(sin(t),), 0:0.001:10)
-        @test Sim.get_data(th.y1[end])[1] ≈ step_result.y[end] atol = 1e-3
+        @test Sim.get_data(ts.y1[end])[1] ≈ step_result.y[end] atol = 1e-3
 
         Systems.reset!(sys)
         @test sys.s.u0 == 0

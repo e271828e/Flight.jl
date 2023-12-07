@@ -438,22 +438,22 @@ end
 ################################# Plotting #####################################
 
 #if no specific method available, convert to REuler for plotting
-@recipe function f(th::TimeHistory{<:Abstract3DRotation}; rot_ref = "", rot_target = "")
+@recipe function f(ts::TimeSeries{<:Abstract3DRotation}; rot_ref = "", rot_target = "")
 
-    return TimeHistory(th._t, [REuler(v) for v in th._data])
+    return TimeSeries(ts._t, [REuler(v) for v in ts._data])
 
 end
 
-@recipe function f(th::TimeHistory{<:REuler}; rot_ref = "", rot_target = "")
+@recipe function f(ts::TimeSeries{<:REuler}; rot_ref = "", rot_target = "")
 
     label --> ["Heading" "Inclination" "Bank"]
     yguide --> hcat(L"$\psi_{%$rot_ref %$rot_target} \ (deg)$",
                     L"$\theta_{%$rot_ref %$rot_target} \ (deg)$",
                     L"$\phi_{%$rot_ref %$rot_target} \ (deg)$")
-    th_split --> :h #custom TimeHistory attribute
+    ts_split --> :h #custom TimeSeries attribute
 
-    data = rad2deg.(hcat(th.ψ._data, th.θ._data, th.φ._data)') #plot as π factors
-    return TimeHistory(th._t, data)
+    data = rad2deg.(hcat(ts.ψ._data, ts.θ._data, ts.φ._data)') #plot as π factors
+    return TimeSeries(ts._t, data)
 
 end
 

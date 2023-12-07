@@ -585,7 +585,7 @@ end
 
 ################################# RigidBody #####################################
 
-@recipe function f(th::TimeHistory{<:Wrench}; wr_frame = "", wr_source = "")
+@recipe function f(ts::TimeSeries{<:Wrench}; wr_frame = "", wr_source = "")
 
     layout := (1, 2)
     seriestype --> :path
@@ -594,96 +594,96 @@ end
         subplot := 1
         title --> "Force"
         yguide --> L"$F_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N)$"
-        th_split --> :none
-        th.F
+        ts_split --> :none
+        ts.F
     end
 
     @series begin
         subplot := 2
         title --> "Torque"
         yguide --> L"$M_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N \ m)$"
-        th_split --> :none
-        th.M
+        ts_split --> :none
+        ts.M
     end
 
 end
 
-function Plotting.make_plots(th::TimeHistory{<:RigidBodyData}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:RigidBodyData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    pd[:wr_g_Ob] = plot(th.wr_g_Ob;
+    pd[:wr_g_Ob] = plot(ts.wr_g_Ob;
         plot_title = "Gravity Wrench at Ob [Vehicle Axes]",
         wr_source = "g", wr_frame = "b",
         kwargs...)
 
-    pd[:wr_in_Ob] = plot(th.wr_in_Ob;
+    pd[:wr_in_Ob] = plot(ts.wr_in_Ob;
         plot_title = "Inertia Wrench at Ob [Vehicle Axes]",
         wr_source = "in", wr_frame = "b",
         kwargs...)
 
-    pd[:wr_ext_Ob] = plot(th.wr_ext_Ob;
+    pd[:wr_ext_Ob] = plot(ts.wr_ext_Ob;
         plot_title = "External Wrench at Ob [Vehicle Axes]",
         wr_source = "ext", wr_frame = "b",
         kwargs...)
 
-    pd[:wr_net_Ob] = plot(th.wr_net_Ob;
+    pd[:wr_net_Ob] = plot(ts.wr_net_Ob;
         plot_title = "Total Wrench at Ob [Vehicle Axes]",
         wr_source = "ext", wr_frame = "b",
         kwargs...)
 
-    pd[:hr_b] = plot(th.hr_b;
+    pd[:hr_b] = plot(ts.hr_b;
         plot_title = "Angular Momentum from Rotating Components [Vehicle Axes]",
         ylabel = hcat(
             L"$h_{Ob \ (r)}^{x_b} \ (kg \ m^2 / s)$",
             L"$h_{Ob \ (r)}^{y_b} \ (kg \ m^2 / s)$",
             L"$h_{Ob \ (r)}^{z_b} \ (kg \ m^2 / s)$"),
-        th_split = :h, link = :none,
+        ts_split = :h, link = :none,
         kwargs...)
 
-    pd[:α_eb_b] = plot(th.α_eb_b;
+    pd[:α_eb_b] = plot(ts.α_eb_b;
         plot_title = "Angular Acceleration (Vehicle/ECEF) [Vehicle Axes]",
         ylabel = hcat(
             L"$\alpha_{eb}^{x_b} \ (rad/s^2)$",
             L"$\alpha_{eb}^{y_b} \ (rad/s^2)$",
             L"$\alpha_{eb}^{z_b} \ (rad/s^2)$"),
-        th_split = :h,
+        ts_split = :h,
         kwargs...)
 
-    pd[:a_eOb_b] = plot(th.a_eOb_b;
+    pd[:a_eOb_b] = plot(ts.a_eOb_b;
         plot_title = "Linear Acceleration (Ob/ECEF) [Vehicle Axes]",
         ylabel = hcat(
             L"$a_{eb}^{x_b} \ (m/s^{2})$",
             L"$a_{eb}^{y_b} \ (m/s^{2})$",
             L"$a_{eb}^{z_b} \ (m/s^{2})$"),
-        th_split = :h,
+        ts_split = :h,
         kwargs...)
 
-    pd[:a_eOb_n] = plot(th.a_eOb_n;
+    pd[:a_eOb_n] = plot(ts.a_eOb_n;
         plot_title = "Linear Acceleration (Ob/ECEF) [NED Axes]",
         ylabel = hcat(
             L"$a_{eb}^{N} \ (m/s^{2})$",
             L"$a_{eb}^{E} \ (m/s^{2})$",
             L"$a_{eb}^{D} \ (m/s^{2})$"),
-        th_split = :h, link = :none,
+        ts_split = :h, link = :none,
         kwargs...)
 
-    pd[:f_Ob_b] = plot(TimeHistory(th._t, th.f_Ob_b._data / g₀);
+    pd[:f_Ob_b] = plot(TimeSeries(ts._t, ts.f_Ob_b._data / g₀);
         plot_title = "Specific Force (Ob) [Vehicle Axes]",
         ylabel = hcat(
             L"$f_{Ob}^{x_b} \ (g)$",
             L"$f_{Ob}^{y_b} \ (g)$",
             L"$f_{Ob}^{z_b} \ (g)$"),
-        th_split = :h, link = :none,
+        ts_split = :h, link = :none,
         kwargs...)
 
-    pd[:f_G_b] = plot(TimeHistory(th._t, th.f_G_b._data / g₀);
+    pd[:f_G_b] = plot(TimeSeries(ts._t, ts.f_G_b._data / g₀);
         plot_title = "Specific Force (Center of Mass) [Vehicle Axes]",
         ylabel = hcat(
             L"$f_{G}^{x_b} \ (g)$",
             L"$f_{G}^{y_b} \ (g)$",
             L"$f_{G}^{z_b} \ (g)$"),
-        th_split = :h, link = :none,
+        ts_split = :h, link = :none,
         kwargs...)
 
     return pd

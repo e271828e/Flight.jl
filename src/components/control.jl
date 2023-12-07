@@ -176,7 +176,7 @@ function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
     u_i = input
 
     y_p = k_p .* u_p .* .!reset
-    y_i = k_i .* x_i .* .!reset
+    y_i = x_i .* .!reset
     out_free = y_p + y_i #raw output
     output = clamp.(out_free, bound_lo, bound_hi) #clamped output
 
@@ -185,7 +185,7 @@ function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
     sat_out = sat_hi - sat_lo
     int_halted = ((sign.(u_i .* sat_out) .> 0) .|| (sign.(u_i .* sat_ext) .> 0))
 
-    ẋ .= (u_i .* .!int_halted - k_l .* x_i) .* .!reset
+    ẋ .= (k_i .* u_i .* .!int_halted - k_l .* x_i) .* .!reset
 
     sys.y = PIVectorOutput(; k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext, reset,
                      u_p, u_i, y_p, y_i, out_free, sat_out, output, int_halted)
@@ -206,13 +206,13 @@ end
 
 # ############################## Plotting ########################################
 
-function Plotting.make_plots(th::TimeHistory{<:PIVectorOutput}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:PIVectorOutput}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    input = plot(th.input; title = "Input", ylabel = L"$e$", kwargs...)
-    output = plot(th.output; title = "Output", ylabel = L"$y$", kwargs...)
-    reset = plot(th.reset; title = "Reset", ylabel = L"$r$", kwargs...)
+    input = plot(ts.input; title = "Input", ylabel = L"$e$", kwargs...)
+    output = plot(ts.output; title = "Output", ylabel = L"$y$", kwargs...)
+    reset = plot(ts.reset; title = "Reset", ylabel = L"$r$", kwargs...)
 
     pd[:sf] = plot(input, output, reset;
         plot_title = "Input, Output & Reset",
@@ -220,9 +220,9 @@ function Plotting.make_plots(th::TimeHistory{<:PIVectorOutput}; kwargs...)
         link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    k_p = plot(th.k_p; title = "Proportional Gain", ylabel = L"$k_p$", kwargs...)
-    k_i = plot(th.k_i; title = "Integral Gain", ylabel = L"$k_i$", kwargs...)
-    k_l = plot(th.k_l; title = "Leak Factor", ylabel = L"$k_d$", kwargs...)
+    k_p = plot(ts.k_p; title = "Proportional Gain", ylabel = L"$k_p$", kwargs...)
+    k_i = plot(ts.k_i; title = "Integral Gain", ylabel = L"$k_i$", kwargs...)
+    k_l = plot(ts.k_l; title = "Leak Factor", ylabel = L"$k_d$", kwargs...)
 
     pd[:p1] = plot(k_p, k_i, k_l;
         plot_title = "Parameters",
@@ -230,9 +230,9 @@ function Plotting.make_plots(th::TimeHistory{<:PIVectorOutput}; kwargs...)
         link = :none,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    β_p = plot(th.β_p; title = "Proportional Input Weighting", ylabel = L"$\beta_p$", kwargs...)
-    bound_lo = plot(th.bound_lo; title = "Lower Output Bound", ylabel = L"$y_{min}$", kwargs...)
-    bound_hi = plot(th.bound_hi; title = "Upper Output Bound", ylabel = L"$y_{max}$", kwargs...)
+    β_p = plot(ts.β_p; title = "Proportional Input Weighting", ylabel = L"$\beta_p$", kwargs...)
+    bound_lo = plot(ts.bound_lo; title = "Lower Output Bound", ylabel = L"$y_{min}$", kwargs...)
+    bound_hi = plot(ts.bound_hi; title = "Upper Output Bound", ylabel = L"$y_{max}$", kwargs...)
 
     pd[:p2] = plot(β_p, bound_lo, bound_hi;
         plot_title = "Parameters",
@@ -240,17 +240,17 @@ function Plotting.make_plots(th::TimeHistory{<:PIVectorOutput}; kwargs...)
         link = :none,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    sat_ext = plot(th.sat_ext; title = "External Saturation Input", ylabel = "", kwargs...)
-    sat_out = plot(th.sat_out; title = "Output Saturation", ylabel = "", kwargs...)
-    int_halted = plot(th.int_halted; title = "Integrator Halted", ylabel = "", kwargs...)
+    sat_ext = plot(ts.sat_ext; title = "External Saturation Input", ylabel = "", kwargs...)
+    sat_out = plot(ts.sat_out; title = "Output Saturation", ylabel = "", kwargs...)
+    int_halted = plot(ts.int_halted; title = "Integrator Halted", ylabel = "", kwargs...)
 
     pd[:awu] = plot(sat_ext, sat_out, int_halted;
         plot_title = "Anti-Windup",
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    u_p = plot(th.u_p; title = "Input", ylabel = L"$u_p$", kwargs...)
-    y_p = plot(th.y_p; title = "Output", ylabel = L"$y_p$", kwargs...)
+    u_p = plot(ts.u_p; title = "Input", ylabel = L"$u_p$", kwargs...)
+    y_p = plot(ts.y_p; title = "Output", ylabel = L"$y_p$", kwargs...)
 
     pd[:prop] = plot(u_p, y_p;
         plot_title = "Proportional Path",
@@ -258,8 +258,8 @@ function Plotting.make_plots(th::TimeHistory{<:PIVectorOutput}; kwargs...)
         link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    u_i = plot(th.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
-    y_i = plot(th.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
+    u_i = plot(ts.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
+    y_i = plot(ts.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
 
     pd[:int] = plot(u_i, y_i, int_halted;
         plot_title = "Integral Path",
@@ -267,8 +267,8 @@ function Plotting.make_plots(th::TimeHistory{<:PIVectorOutput}; kwargs...)
         link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    out_free = plot(th.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
-    output = plot(th.output; title = "Actual", ylabel = L"$y$", kwargs...)
+    out_free = plot(ts.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
+    output = plot(ts.output; title = "Actual", ylabel = L"$y$", kwargs...)
 
     pd[:output] = plot(out_free, output, sat_out;
         plot_title = "PID Output",
@@ -698,11 +698,11 @@ function Systems.f_disc!(sys::System{<:PID}, Δt::Real)
 
     int_halted = ((sign(u_i * sat_out_0) > 0) || (sign(u_i * sat_ext) > 0))
 
-    x_i = x_i0 + Δt * u_i * !int_halted
+    x_i = x_i0 + Δt * k_i * u_i * !int_halted
     x_d = α * τ_f * x_d0 + Δt * α * k_d * u_d
 
     y_p = k_p * u_p
-    y_i = k_i * x_i
+    y_i = x_i
     y_d = α * (-x_d0 + k_d * u_d)
     out_free = y_p + y_i + y_d
 
@@ -802,11 +802,11 @@ function Systems.f_disc!(sys::System{<:PIDVector{N}}, Δt::Real) where {N}
 
     int_halted = ((sign.(u_i .* sat_out_0) .> 0) .|| (sign.(u_i .* sat_ext) .> 0))
 
-    x_i = x_i0 + Δt * u_i .* .!int_halted
+    x_i = x_i0 + Δt * k_i .* u_i .* .!int_halted
     x_d = α .* τ_f .* x_d0 + Δt * α .* k_d .* u_d
 
     y_p = k_p .* u_p
-    y_i = k_i .* x_i
+    y_i = x_i
     y_d = α .* (-x_d0 + k_d .* u_d)
     out_free = y_p + y_i + y_d
 
@@ -830,13 +830,13 @@ end
 
 ################################### Plots ######################################
 
-function Plotting.make_plots(th::Union{TimeHistory{<:PIDOutput},
-                                       TimeHistory{<:PIDVectorOutput}}; kwargs...)
+function Plotting.make_plots(ts::Union{TimeSeries{<:PIDOutput},
+                                       TimeSeries{<:PIDVectorOutput}}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    input = plot(th.input; title = "Input", ylabel = L"$e$", kwargs...)
-    output = plot(th.output; title = "Output", ylabel = L"$y$", kwargs...)
+    input = plot(ts.input; title = "Input", ylabel = L"$e$", kwargs...)
+    output = plot(ts.output; title = "Output", ylabel = L"$y$", kwargs...)
 
     pd[:sf] = plot(input, output;
         plot_title = "Input & Output",
@@ -844,10 +844,10 @@ function Plotting.make_plots(th::Union{TimeHistory{<:PIDOutput},
         link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    k_p = plot(th.k_p; title = "Proportional Gain", ylabel = L"$k_p$", kwargs...)
-    k_i = plot(th.k_i; title = "Integral Gain", ylabel = L"$k_i$", kwargs...)
-    k_d = plot(th.k_d; title = "Derivative Gain", ylabel = L"$k_d$", kwargs...)
-    τ_f = plot(th.τ_f; title = "Derivative Filter Time Constant", ylabel = L"$\tau_f$", kwargs...)
+    k_p = plot(ts.k_p; title = "Proportional Gain", ylabel = L"$k_p$", kwargs...)
+    k_i = plot(ts.k_i; title = "Integral Gain", ylabel = L"$k_i$", kwargs...)
+    k_d = plot(ts.k_d; title = "Derivative Gain", ylabel = L"$k_d$", kwargs...)
+    τ_f = plot(ts.τ_f; title = "Derivative Filter Time Constant", ylabel = L"$\tau_f$", kwargs...)
 
     pd[:p1] = plot(k_p, k_i, k_d, τ_f;
         plot_title = "Parameters",
@@ -855,10 +855,10 @@ function Plotting.make_plots(th::Union{TimeHistory{<:PIDOutput},
         link = :none,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    β_p = plot(th.β_p; title = "Proportional Input Weighting", ylabel = L"$\beta_p$", kwargs...)
-    β_d = plot(th.β_d; title = "Derivative Input Weighting", ylabel = L"$\beta_d$", kwargs...)
-    bound_lo = plot(th.bound_lo; title = "Lower Output Bound", ylabel = L"$y_{min}$", kwargs...)
-    bound_hi = plot(th.bound_hi; title = "Upper Output Bound", ylabel = L"$y_{max}$", kwargs...)
+    β_p = plot(ts.β_p; title = "Proportional Input Weighting", ylabel = L"$\beta_p$", kwargs...)
+    β_d = plot(ts.β_d; title = "Derivative Input Weighting", ylabel = L"$\beta_d$", kwargs...)
+    bound_lo = plot(ts.bound_lo; title = "Lower Output Bound", ylabel = L"$y_{min}$", kwargs...)
+    bound_hi = plot(ts.bound_hi; title = "Upper Output Bound", ylabel = L"$y_{max}$", kwargs...)
 
     pd[:p2] = plot(β_p, β_d, bound_lo, bound_hi;
         plot_title = "Parameters",
@@ -866,17 +866,17 @@ function Plotting.make_plots(th::Union{TimeHistory{<:PIDOutput},
         link = :none,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    sat_ext = plot(th.sat_ext; title = "External Saturation Input", ylabel = "", kwargs...)
-    sat_out = plot(th.sat_out; title = "Output Saturation", ylabel = "", kwargs...)
-    int_halted = plot(th.int_halted; title = "Integrator Halted", ylabel = "", kwargs...)
+    sat_ext = plot(ts.sat_ext; title = "External Saturation Input", ylabel = "", kwargs...)
+    sat_out = plot(ts.sat_out; title = "Output Saturation", ylabel = "", kwargs...)
+    int_halted = plot(ts.int_halted; title = "Integrator Halted", ylabel = "", kwargs...)
 
     pd[:awu] = plot(sat_ext, sat_out, int_halted;
         plot_title = "Anti-Windup",
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    u_p = plot(th.u_p; title = "Input", ylabel = L"$u_p$", kwargs...)
-    y_p = plot(th.y_p; title = "Output", ylabel = L"$y_p$", kwargs...)
+    u_p = plot(ts.u_p; title = "Input", ylabel = L"$u_p$", kwargs...)
+    y_p = plot(ts.y_p; title = "Output", ylabel = L"$y_p$", kwargs...)
 
     pd[:prop] = plot(u_p, y_p;
         plot_title = "Proportional Path",
@@ -884,8 +884,8 @@ function Plotting.make_plots(th::Union{TimeHistory{<:PIDOutput},
         link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    u_i = plot(th.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
-    y_i = plot(th.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
+    u_i = plot(ts.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
+    y_i = plot(ts.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
 
     pd[:int] = plot(u_i, y_i, int_halted;
         plot_title = "Integral Path",
@@ -893,8 +893,8 @@ function Plotting.make_plots(th::Union{TimeHistory{<:PIDOutput},
         link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    u_d = plot(th.u_d; title = "Input", ylabel = L"$u_d$", kwargs...)
-    y_d = plot(th.y_d; title = "Output", ylabel = L"$y_d$", kwargs...)
+    u_d = plot(ts.u_d; title = "Input", ylabel = L"$u_d$", kwargs...)
+    y_d = plot(ts.y_d; title = "Output", ylabel = L"$y_d$", kwargs...)
 
     pd[:der] = plot(u_d, y_d;
         plot_title = "Derivative Path",
@@ -902,8 +902,8 @@ function Plotting.make_plots(th::Union{TimeHistory{<:PIDOutput},
         link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    out_free = plot(th.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
-    output = plot(th.output; title = "Actual", ylabel = L"$y$", kwargs...)
+    out_free = plot(ts.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
+    output = plot(ts.output; title = "Actual", ylabel = L"$y$", kwargs...)
 
     pd[:output] = plot(out_free, output, sat_out;
         plot_title = "PID Output",

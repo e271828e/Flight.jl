@@ -13,7 +13,7 @@ using ..GUI
 
 @reexport using OrdinaryDiffEq: step!, reinit!, add_tstop!, get_proposed_dt
 export Simulation, enable_gui!, disable_gui!, attach_io!
-export TimeHistory, get_time, get_data, get_components, get_child_names
+export TimeSeries, get_time, get_data, get_components, get_child_names
 
 
 ################################################################################
@@ -453,68 +453,68 @@ end
 
 
 ################################################################################
-############################### TimeHistory ####################################
+############################### TimeSeries ####################################
 
-mutable struct TimeHistory{V, T <: AbstractVector{Float64}, D <: AbstractVector{V}}
+mutable struct TimeSeries{V, T <: AbstractVector{Float64}, D <: AbstractVector{V}}
     _t::T
     _data::D
-    function TimeHistory(t::T, data::D) where {T <: AbstractVector{<:AbstractFloat}, D <: AbstractVector{V}} where {V}
+    function TimeSeries(t::T, data::D) where {T <: AbstractVector{<:AbstractFloat}, D <: AbstractVector{V}} where {V}
         @assert length(t) == length(data)
         new{V, T, D}(t, data)
     end
 end
 
-TimeHistory(t::Real, data) = TimeHistory([Float64(t)], [data])
+TimeSeries(t::Real, data) = TimeSeries([Float64(t)], [data])
 
-function TimeHistory(t::AbstractVector, M::Matrix)
+function TimeSeries(t::AbstractVector, M::Matrix)
     #each Matrix column interpreted as one Vector value
-    TimeHistory(t, [M[:, i] for i in 1:size(M,2)])
+    TimeSeries(t, [M[:, i] for i in 1:size(M,2)])
 end
 
-Base.length(th::TimeHistory) = length(th._t)
+Base.length(ts::TimeSeries) = length(ts._t)
 
-function Base.getproperty(th::TimeHistory, s::Symbol)
-    t = getfield(th, :_t)
-    data = getfield(th, :_data)
+function Base.getproperty(ts::TimeSeries, s::Symbol)
+    t = getfield(ts, :_t)
+    data = getfield(ts, :_data)
     if s === :_t
         return t
     elseif s === :_data
         return data
     else
-        return TimeHistory(t, getproperty(StructArray(data), s))
+        return TimeSeries(t, getproperty(StructArray(data), s))
     end
 end
 
-get_time(th::TimeHistory) = getfield(th, :_t)
-get_data(th::TimeHistory) = getfield(th, :_data)
+get_time(ts::TimeSeries) = getfield(ts, :_t)
+get_data(ts::TimeSeries) = getfield(ts, :_data)
 
-Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._data[i])
+Base.getindex(ts::TimeSeries, i) = TimeSeries(ts._t[i], ts._data[i])
 
-function Base.getindex(th::TimeHistory{<:AbstractArray{T, N}}, time_ind, comp_ind::Vararg{Any, N}) where {T, N}
+function Base.getindex(ts::TimeSeries{<:AbstractArray{T, N}}, time_ind, comp_ind::Vararg{Any, N}) where {T, N}
 
-    t = th._t[time_ind]
-    data_voa = VectorOfArray(th._data)[comp_ind..., time_ind]
+    t = ts._t[time_ind]
+    data_voa = VectorOfArray(ts._data)[comp_ind..., time_ind]
     data = ndims(data_voa) == 1 ? data_voa : eachslice(data_voa; dims = ndims(data_voa))
 
-    TimeHistory(t, data)
+    TimeSeries(t, data)
 
 end
 
-function Base.lastindex(th::TimeHistory)
-    lastindex(th._t)
+function Base.lastindex(ts::TimeSeries)
+    lastindex(ts._t)
 end
-Base.view(th::TimeHistory, i) = TimeHistory(view(th._t, i), view(th._data, i))
+Base.view(ts::TimeSeries, i) = TimeSeries(view(ts._t, i), view(ts._data, i))
 
 #for inspection
-get_child_names(::T) where {T <: TimeHistory} = get_child_names(T)
-get_child_names(::Type{<:TimeHistory{V}}) where {V} = fieldnames(V)
+get_child_names(::T) where {T <: TimeSeries} = get_child_names(T)
+get_child_names(::Type{<:TimeSeries{V}}) where {V} = fieldnames(V)
 
 #could be rewritten as @generated to avoid allocation
-function get_components(th::TimeHistory{<:AbstractVector{T}}) where {T<:Real}
-    (TimeHistory(th._t, y) for y in th._data |> StructArray |> StructArrays.components)
+function get_components(ts::TimeSeries{<:AbstractVector{T}}) where {T<:Real}
+    (TimeSeries(ts._t, y) for y in ts._data |> StructArray |> StructArrays.components)
 end
 
-TimeHistory(sim::Simulation) = TimeHistory(sim.log.t, sim.log.saveval)
+TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
 
 
 end #module

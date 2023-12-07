@@ -430,19 +430,19 @@ end
 ################################################################################
 ############################ Plotting ##########################################
 
-function Plotting.make_plots(th::TimeHistory{<:StrutY}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:StrutY}; kwargs...)
 
     pd = OrderedDict{Symbol, Any}()
 
-    subplot_ξ = plot(th.ξ;
+    subplot_ξ = plot(ts.ξ;
         title = "Elongation", ylabel = L"$\xi \ (m)$",
         label = "", kwargs...)
 
-    subplot_ξ_dot = plot(th.ξ_dot;
+    subplot_ξ_dot = plot(ts.ξ_dot;
         title = "Elongation Rate", ylabel = L"$\dot{\xi} \ (m/s)$",
         label = "", kwargs...)
 
-    subplot_F = plot(th.F;
+    subplot_F = plot(ts.F;
         title = "Force", ylabel = L"$F \ (N)$",
         label = "", kwargs...)
 
@@ -451,12 +451,12 @@ function Plotting.make_plots(th::TimeHistory{<:StrutY}; kwargs...)
         layout = (1,3), link = :none,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    (μ_max_x, μ_max_y) = get_components(th.μ_max)
-    (μ_eff_x, μ_eff_y) = get_components(th.μ_eff)
+    (μ_max_x, μ_max_y) = get_components(ts.μ_max)
+    (μ_eff_x, μ_eff_y) = get_components(ts.μ_eff)
 
-    subplot_μ_roll = plot(th.μ_roll; title = "Rolling Friction Coefficient",
+    subplot_μ_roll = plot(ts.μ_roll; title = "Rolling Friction Coefficient",
         ylabel = L"$\mu_{roll}$", label = "", kwargs...)
-    subplot_μ_skid = plot(th.μ_skid; title = "Skidding Friction Coefficient",
+    subplot_μ_skid = plot(ts.μ_skid; title = "Skidding Friction Coefficient",
         ylabel = L"$\mu_{skid}$", label = "", kwargs...)
 
     pd[:srf] = plot(subplot_μ_roll, subplot_μ_skid;
@@ -464,7 +464,7 @@ function Plotting.make_plots(th::TimeHistory{<:StrutY}; kwargs...)
         layout = (1,2), link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    subplot_κ_br = plot(th.κ_br; title = "Braking Coefficient",
+    subplot_κ_br = plot(ts.κ_br; title = "Braking Coefficient",
         ylabel = L"$\alpha_{br}$", label = "", kwargs...)
     subplot_μ_max_x = plot(μ_max_x; title = "Maximum Friction Coefficient",
         ylabel = L"$\mu_{max}^{x}$", label = "", kwargs...)
@@ -476,7 +476,7 @@ function Plotting.make_plots(th::TimeHistory{<:StrutY}; kwargs...)
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    subplot_ψ_cv = plot(th._t, rad2deg.(th.ψ_cv._data); title = "Tire Slip Angle",
+    subplot_ψ_cv = plot(ts._t, rad2deg.(ts.ψ_cv._data); title = "Tire Slip Angle",
         ylabel = L"$\psi_{cv} \ (deg)$", label = "", kwargs...)
     subplot_μ_max_y = plot(μ_max_y; title = "Maximum Friction Coefficient",
         ylabel = L"$\mu_{max}^{y}$", label = "", kwargs...)
@@ -488,24 +488,24 @@ function Plotting.make_plots(th::TimeHistory{<:StrutY}; kwargs...)
         layout = (1,3),
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
-    pd[:f_c] = plot(th.f_c;
+    pd[:f_c] = plot(ts.f_c;
         plot_title = "Normalized Contact Force",
         ylabel = [L"$f_{Oc \ (trn)}^{c}$" L"$f_{Oc \ (trn)}^{c}$" L"$f_{Oc \ (trn)}^{c}$"],
-        th_split = :h, link = :none,
+        ts_split = :h, link = :none,
         kwargs...)
 
-    pd[:F_c] = plot(th.F_c;
+    pd[:F_c] = plot(ts.F_c;
         plot_title = "Contact Force",
         ylabel = [L"$F_{Oc \ (trn)}^{c} \ (N)$" L"$F_{Oc \ (trn)}^{c} \ (N)$" L"$F_{Oc \ (trn)}^{c} \ (N)$"],
-        th_split = :h, link = :none,
+        ts_split = :h, link = :none,
         kwargs...)
 
-    pd[:wr_b] = plot(th.wr_b;
+    pd[:wr_b] = plot(ts.wr_b;
         plot_title = "Wrench [Vehicle Axes]",
         wr_source = "trn", wr_frame = "b",
         kwargs...)
 
-    pd[:frc] = make_plots(th.frc; kwargs...)
+    pd[:frc] = make_plots(ts.frc; kwargs...)
 
     return pd
 

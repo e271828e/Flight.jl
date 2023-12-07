@@ -397,22 +397,22 @@ end
 
 ############################### Plotting #######################################
 
-function Plotting.make_plots(th::TimeHistory{<:PhysicsY}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:PhysicsY}; kwargs...)
 
     return OrderedDict(
-        :airframe => make_plots(th.airframe; kwargs...),
-        :kinematics => make_plots(th.kinematics; kwargs...),
-        :rigidbody => make_plots(th.rigidbody; kwargs...),
-        :air => make_plots(th.air; kwargs...),
+        :airframe => make_plots(ts.airframe; kwargs...),
+        :kinematics => make_plots(ts.kinematics; kwargs...),
+        :rigidbody => make_plots(ts.rigidbody; kwargs...),
+        :air => make_plots(ts.air; kwargs...),
     )
 
 end
 
-function Plotting.make_plots(th::TimeHistory{<:TemplateY}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:TemplateY}; kwargs...)
 
     return OrderedDict(
-        :physics => make_plots(th.physics; kwargs...),
-        :avionics => make_plots(th.avionics; kwargs...),
+        :physics => make_plots(ts.physics; kwargs...),
+        :avionics => make_plots(ts.avionics; kwargs...),
     )
 
 end

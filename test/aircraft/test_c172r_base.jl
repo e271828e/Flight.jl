@@ -103,9 +103,9 @@ function test_sim(; save::Bool = true)
         Sim.run!(sim, verbose = true)
 
         # plots = make_plots(sim; Plotting.defaults...)
-        kin_plots = make_plots(TimeHistory(sim).physics.kinematics; Plotting.defaults...)
-        air_plots = make_plots(TimeHistory(sim).physics.air; Plotting.defaults...)
-        rb_plots = make_plots(TimeHistory(sim).physics.rigidbody; Plotting.defaults...)
+        kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
+        air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
+        rb_plots = make_plots(TimeSeries(sim).physics.rigidbody; Plotting.defaults...)
         save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172r_base", "sim", "kin"))
         save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172r_base", "sim", "air"))
         save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172r_base", "sim", "rigidbody"))
@@ -149,8 +149,8 @@ function test_sim_paced(; save::Bool = true)
         Threads.@spawn Sim.run_paced!(sim; pace = 1, verbose = true)
     end
 
-    plots = make_plots(TimeHistory(sim).physics.kinematics; Plotting.defaults...)
-    # plots = make_plots(TimeHistory(sim); Plotting.defaults...)
+    plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
+    # plots = make_plots(TimeSeries(sim); Plotting.defaults...)
     save && save_plots(plots, save_folder = joinpath("tmp", "test_c172r_base", "sim_paced"))
 
     return nothing
