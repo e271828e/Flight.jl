@@ -5,6 +5,7 @@ using OrdinaryDiffEq: OrdinaryDiffEq, OrdinaryDiffEqAlgorithm, ODEProblem,
                       ODEIntegrator, Heun, RK4, u_modified!, init as init_integrator
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback,
                        CallbackSet, SavedValues
+using RecursiveArrayTools
 
 using ..Systems
 using ..IODevices
@@ -12,7 +13,7 @@ using ..GUI
 
 @reexport using OrdinaryDiffEq: step!, reinit!, add_tstop!, get_proposed_dt
 export Simulation, enable_gui!, disable_gui!, attach_io!
-export TimeHistory, get_timestamps, get_data, get_components, get_child_names
+export TimeHistory, get_time, get_data, get_components, get_child_names
 
 
 ################################################################################
@@ -474,22 +475,31 @@ Base.length(th::TimeHistory) = length(th._t)
 
 function Base.getproperty(th::TimeHistory, s::Symbol)
     t = getfield(th, :_t)
-    y = getfield(th, :_data)
+    data = getfield(th, :_data)
     if s === :_t
         return t
     elseif s === :_data
-        return y
+        return data
     else
-        return TimeHistory(t, getproperty(StructArray(y), s))
+        return TimeHistory(t, getproperty(StructArray(data), s))
     end
 end
 
-get_timestamps(th::TimeHistory) = getfield(th, :_t)
+get_time(th::TimeHistory) = getfield(th, :_t)
 get_data(th::TimeHistory) = getfield(th, :_data)
 
-function Base.getindex(th::TimeHistory, i)
-    TimeHistory(th._t[i], th._data[i])
+Base.getindex(th::TimeHistory, i) = TimeHistory(th._t[i], th._data[i])
+
+function Base.getindex(th::TimeHistory{<:AbstractArray{T, N}}, time_ind, comp_ind::Vararg{Any, N}) where {T, N}
+
+    t = th._t[time_ind]
+    data_voa = VectorOfArray(th._data)[comp_ind..., time_ind]
+    data = ndims(data_voa) == 1 ? data_voa : eachslice(data_voa; dims = ndims(data_voa))
+
+    TimeHistory(t, data)
+
 end
+
 function Base.lastindex(th::TimeHistory)
     lastindex(th._t)
 end
