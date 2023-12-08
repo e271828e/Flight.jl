@@ -1,4 +1,4 @@
-module TestC172FBWCAS
+module TestC172CAS
 
 using Test, UnPack, BenchmarkTools, Sockets
 
@@ -12,12 +12,12 @@ using Flight.FlightComponents
 
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
-using Flight.FlightAircraft.C172FBWCAS
+using Flight.FlightAircraft.C172CAS
 
-export test_c172fbw_cas
+export test_c172cas
 
 
-function test_c172fbw_cas()
+function test_c172cas()
     @testset verbose = true "Cessna172FBW CAS" begin
 
         test_system_methods()
@@ -36,7 +36,7 @@ function test_system_methods()
             kin_init_gnd = KinematicInit( h = trn_data.altitude + 1.8);
             kin_init_air = KinematicInit( h = trn_data.altitude + 1000);
 
-            ac = System(Cessna172FBWCAS());
+            ac = System(Cessna172CAS());
 
             #to exercise all airframe functionality, including landing gear, we
             #need to be on the ground with the engine running
@@ -69,13 +69,13 @@ function test_system_methods()
             #we start by testing semiautomatic modes. enabling the outermost
             #loop for each control channel will prompt execution of all inner
             #control loops
-            u_digital.lon_mode_sel = C172FBWCAS.lon_mode_semi
-            u_digital.lat_mode_sel = C172FBWCAS.lat_mode_semi
+            u_digital.lon_mode_sel = C172CAS.lon_mode_semi
+            u_digital.lat_mode_sel = C172CAS.lat_mode_semi
 
-            u_digital.throttle_mode_sel = C172FBWCAS.EAS_throttle_mode
-            u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
-            u_digital.pitch_mode_sel = C172FBWCAS.climb_rate_mode
-            # u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
+            u_digital.throttle_mode_sel = C172CAS.EAS_throttle_mode
+            u_digital.roll_mode_sel = C172CAS.course_angle_mode
+            u_digital.pitch_mode_sel = C172CAS.climb_rate_mode
+            # u_digital.yaw_mode_sel = C172CAS.sideslip_mode
             u_digital.EAS_dmd = 40
             u_digital.χ_dmd = 0.1
             u_digital.c_dmd = 1
@@ -86,11 +86,11 @@ function test_system_methods()
             y_mod = ac.avionics.y.moding
             y_act = ac.avionics.y.actuation
 
-            @test y_mod.flight_phase == C172FBWCAS.phase_air
-            @test y_mod.throttle_mode === C172FBWCAS.EAS_throttle_mode
-            @test y_mod.roll_mode === C172FBWCAS.course_angle_mode
-            @test y_mod.pitch_mode === C172FBWCAS.climb_rate_mode
-            # @test y_mod.yaw_mode === C172FBWCAS.sideslip_mode
+            @test y_mod.flight_phase == C172CAS.phase_air
+            @test y_mod.throttle_mode === C172CAS.EAS_throttle_mode
+            @test y_mod.roll_mode === C172CAS.course_angle_mode
+            @test y_mod.pitch_mode === C172CAS.climb_rate_mode
+            # @test y_mod.yaw_mode === C172CAS.sideslip_mode
 
             #the demands should have propagated through the control loops to the
             #actuators
@@ -112,7 +112,7 @@ function test_sim(; save::Bool = true)
 
     @testset verbose = true "Simulation" begin
 
-        ac = Cessna172FBWCAS() |> System;
+        ac = Cessna172CAS() |> System;
 
         mid_cg_pld = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50)
 
@@ -140,15 +140,15 @@ function test_sim(; save::Bool = true)
 
                 # @show ac.avionics.y.actuation.throttle_cmd
 
-                # u_digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
-                # u_digital.throttle_mode_sel = C172FBWCAS.EAS_throttle_mode
+                # u_digital.throttle_mode_sel = C172CAS.direct_throttle_mode
+                # u_digital.throttle_mode_sel = C172CAS.EAS_throttle_mode
                 # u_inceptors.throttle = 1
                 # u_digital.EAS_dmd = 25
 
-                # u_digital.pitch_mode_sel = C172FBWCAS.pitch_rate_mode
-                # u_digital.pitch_mode_sel = C172FBWCAS.pitch_angle_mode
-                # u_digital.pitch_mode_sel = C172FBWCAS.climb_rate_mode
-                # u_digital.pitch_mode_sel = C172FBWCAS.EAS_pitch_mode
+                # u_digital.pitch_mode_sel = C172CAS.pitch_rate_mode
+                # u_digital.pitch_mode_sel = C172CAS.pitch_angle_mode
+                # u_digital.pitch_mode_sel = C172CAS.climb_rate_mode
+                # u_digital.pitch_mode_sel = C172CAS.EAS_pitch_mode
                 # @show ac.avionics.y.moding.pitch_mode
                 # u_inceptors.pitch_input = 0.005
                 # u_digital.θ_dmd = 0.01π
@@ -156,19 +156,19 @@ function test_sim(; save::Bool = true)
 
                 u_digital.EAS_dmd = 30.0
                 u_inceptors.flaps = 1
-                u_digital.lon_mode_sel = C172FBWCAS.lon_mode_alt
+                u_digital.lon_mode_sel = C172CAS.lon_mode_alt
                 u_digital.h_dmd = 1000.0
-                u_digital.h_ref = C172FBWCAS.orthometric
+                u_digital.h_ref = C172CAS.orthometric
 
-                # u_digital.roll_mode_sel = C172FBWCAS.roll_rate_mode
-                u_digital.roll_mode_sel = C172FBWCAS.bank_angle_mode
-                # u_digital.roll_mode_sel = C172FBWCAS.course_angle_mode
+                # u_digital.roll_mode_sel = C172CAS.roll_rate_mode
+                u_digital.roll_mode_sel = C172CAS.bank_angle_mode
+                # u_digital.roll_mode_sel = C172CAS.course_angle_mode
                 # u_inceptors.roll_input = 0.0
                 u_digital.φ_dmd = π/6
                 # u_digital.χ_dmd = π
 
-                # u_digital.yaw_mode_sel = C172FBWCAS.sideslip_mode
-                # u_digital.yaw_mode_sel = C172FBWCAS.direct_rudder_mode
+                # u_digital.yaw_mode_sel = C172CAS.sideslip_mode
+                # u_digital.yaw_mode_sel = C172CAS.direct_rudder_mode
                 # u_inceptors.yaw_input = 0.1
 
 
@@ -196,9 +196,9 @@ function test_sim(; save::Bool = true)
         kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
         air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
         rb_plots = make_plots(TimeSeries(sim).physics.rigidbody; Plotting.defaults...)
-        save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim", "kin"))
-        save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim", "air"))
-        save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim", "rigidbody"))
+        save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172cas", "sim", "kin"))
+        save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172cas", "sim", "air"))
+        save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172cas", "sim", "rigidbody"))
 
         return nothing
 
@@ -211,7 +211,7 @@ function test_sim_paced(; save::Bool = true)
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172FBWCAS(LTF(), trn) |> System;
+    ac = Cessna172CAS(LTF(), trn) |> System;
 
     kin_init = KinematicInit(
         v_eOb_n = [0, 0, 0],
@@ -242,8 +242,8 @@ function test_sim_paced(; save::Bool = true)
 
     kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
     air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim_paced", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172fbw_cas", "sim_paced", "air"))
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172cas", "sim_paced", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172cas", "sim_paced", "air"))
 
     return nothing
 

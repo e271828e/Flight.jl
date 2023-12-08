@@ -16,7 +16,7 @@ include(normpath("aircraft/test_c172r_base.jl")); using .TestC172RBase
 
 include(normpath("aircraft/test_c172fbw.jl")); using .TestC172FBW
 include(normpath("aircraft/test_c172fbw_base.jl")); using .TestC172FBWBase
-include(normpath("aircraft/test_c172fbw_cas.jl")); using .TestC172FBWCAS
+include(normpath("aircraft/test_c172cas.jl")); using .TestC172CAS
 include(normpath("aircraft/test_c172mcs.jl")); using .TestC172MCS
 
 test_quaternions()
@@ -35,5 +35,5 @@ test_c172r_base()
 
 test_c172fbw()
 test_c172fbw_base()
-test_c172fbw_cas()
+test_c172cas()
 test_c172mcs()

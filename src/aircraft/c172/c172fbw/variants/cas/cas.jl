@@ -1,4 +1,4 @@
-module C172FBWCAS
+module C172CAS
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays, HDF5, Interpolations
 
@@ -14,7 +14,7 @@ import Flight.FlightComponents.Control.PIDOpt
 using ...C172
 using ..C172FBW
 
-export Cessna172FBWCAS
+export Cessna172CAS
 
 
 ################################################################################
@@ -765,7 +765,7 @@ Systems.init(::SystemS, ::Avionics) = nothing #keep subsystems local
 
 # ########################### Update Methods #####################################
 
-function Systems.f_disc!(avionics::System{<:C172FBWCAS.Avionics},
+function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
                         physics::System{<:C172FBW.Physics},
                         Δt::Real)
 
@@ -919,7 +919,7 @@ function mode_button_HSV(button_mode, selected_mode, active_mode)
     end
 end
 
-function GUI.draw!(avionics::System{<:C172FBWCAS.Avionics},
+function GUI.draw!(avionics::System{<:C172CAS.Avionics},
                     physics::System{<:C172FBW.Physics},
                     label::String = "Cessna 172 FBW CAS Avionics")
 
@@ -1086,19 +1086,19 @@ function GUI.draw(moding::AvionicsModing)
 end
 
 ################################################################################
-############################# Cessna172FBWCAS ##################################
+############################# Cessna172CAS ##################################
 
-const Cessna172FBWCAS{K, T} = C172FBW.Template{K, T, C172FBWCAS.Avionics} where {
+const Cessna172CAS{K, T} = C172FBW.Template{K, T, C172CAS.Avionics} where {
     K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
-function Cessna172FBWCAS(kinematics = LTF(), terrain = HorizontalTerrain())
-    C172FBW.Template(kinematics, terrain, C172FBWCAS.Avionics())
+function Cessna172CAS(kinematics = LTF(), terrain = HorizontalTerrain())
+    C172FBW.Template(kinematics, terrain, C172CAS.Avionics())
 end
 
 
 ##################################### Tools ####################################
 
-function Aircraft.trim!(ac::System{<:Cessna172FBWCAS},
+function Aircraft.trim!(ac::System{<:Cessna172CAS},
                         trim_params::C172.TrimParameters = C172.TrimParameters())
 
     result = trim!(ac.physics, trim_params)
@@ -1117,12 +1117,12 @@ function Aircraft.trim!(ac::System{<:Cessna172FBWCAS},
     u.inceptors.mixture = mixture
     u.inceptors.flaps = flaps
 
-    u.digital.lon_mode_sel = C172FBWCAS.lon_mode_semi
-    u.digital.lat_mode_sel = C172FBWCAS.lat_mode_semi
-    u.digital.throttle_mode_sel = C172FBWCAS.direct_throttle_mode
-    u.digital.roll_mode_sel = C172FBWCAS.direct_aileron_mode
-    u.digital.pitch_mode_sel = C172FBWCAS.direct_elevator_mode
-    u.digital.yaw_mode_sel = C172FBWCAS.direct_rudder_mode
+    u.digital.lon_mode_sel = C172CAS.lon_mode_semi
+    u.digital.lat_mode_sel = C172CAS.lat_mode_semi
+    u.digital.throttle_mode_sel = C172CAS.direct_throttle_mode
+    u.digital.roll_mode_sel = C172CAS.direct_aileron_mode
+    u.digital.pitch_mode_sel = C172CAS.direct_elevator_mode
+    u.digital.yaw_mode_sel = C172CAS.direct_rudder_mode
 
     #update avionics outputs
     f_disc!(ac.avionics, 1, ac.physics)
@@ -1131,14 +1131,14 @@ function Aircraft.trim!(ac::System{<:Cessna172FBWCAS},
 
 end
 
-function Aircraft.linearize!(ac::System{<:Cessna172FBWCAS}, args...; kwargs...)
+function Aircraft.linearize!(ac::System{<:Cessna172CAS}, args...; kwargs...)
     linearize!(ac.physics, args...; kwargs...)
 end
 
 
 # ############################ Joystick Mappings #################################
 
-function IODevices.assign!(sys::System{<:Cessna172FBWCAS}, joystick::Joystick,
+function IODevices.assign!(sys::System{<:Cessna172CAS}, joystick::Joystick,
                            mapping::InputMapping)
     IODevices.assign!(sys.avionics, joystick, mapping)
 end

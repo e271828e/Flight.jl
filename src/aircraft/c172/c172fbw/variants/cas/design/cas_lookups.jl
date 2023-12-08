@@ -10,7 +10,7 @@ using Flight.FlightComponents.Control.PIDOpt: Settings, Metrics, optimize_PID, b
 
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
-using Flight.FlightAircraft.C172FBWCAS
+using Flight.FlightAircraft.C172CAS
 
 using UnPack
 using ControlSystems
@@ -59,8 +59,8 @@ function generate_lookups(
     map(values(results), filenames) do results, fname
 
         data = PIDParams(StructArrays.components(StructArray(StructArray(results).params))...)
-        lookup = C172FBWCAS.Lookup(data, EAS_bounds, h_bounds)
-        C172FBWCAS.save_lookup(lookup, joinpath(folder, fname))
+        lookup = C172CAS.Lookup(data, EAS_bounds, h_bounds)
+        C172CAS.save_lookup(lookup, joinpath(folder, fname))
         return lookup
     end
 

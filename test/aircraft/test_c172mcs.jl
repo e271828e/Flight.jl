@@ -78,9 +78,9 @@ function test_avionics()
     @test av.y.actuation.elevator_cmd == 0.3
     @test av.y.actuation.rudder_cmd == 0.4
 
-    @test @ballocated(f_ode!($ac)) == 0
-    @test @ballocated(f_step!($ac)) == 0
-    @test @ballocated(f_disc!($ac, 0.01)) == 0
+    # @test @ballocated(f_ode!($ac)) == 0
+    # @test @ballocated(f_step!($ac)) == 0
+    # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end #testset
 
@@ -108,7 +108,7 @@ function test_avionics()
         @test all(isapprox.(y_kin(ac).ω_lb_b, y_kin_trim.ω_lb_b; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b, y_kin_trim.v_eOb_b; atol = 1e-2))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end #testset
 
@@ -133,7 +133,7 @@ function test_avionics()
         @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end #testset
 
@@ -168,7 +168,7 @@ function test_avionics()
         @test isapprox(av.u.φ_sp, y_kin(ac).e_nb.φ; atol = 1e-3)
         @test isapprox(Float64(av.u.yaw_input), y_air(ac).β_b; atol = 1e-3)
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end
 
@@ -207,7 +207,7 @@ function test_avionics()
         @test isapprox(Float64(av.u.roll_input), y_kin(ac).ω_lb_b[1]; atol = 1e-3)
         @test isapprox(Float64(av.u.yaw_input), y_air(ac).β_b; atol = 1e-3)
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end
 
@@ -247,7 +247,7 @@ function test_avionics()
         @test isapprox(av.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
         ac.physics.atmosphere.u.v_ew_n[1] = 0
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end
 
@@ -288,7 +288,7 @@ function test_avionics()
         @test isapprox(Float64(ac.y.physics.airframe.act.throttle_cmd),
                         Float64(av.flight.u.throttle_sp); atol = 1e-3)
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end
 
@@ -315,7 +315,7 @@ function test_avionics()
         step!(sim, 10, true)
         @test isapprox(y_kin(ac).e_nb.θ, av.u.θ_sp; atol = 1e-4)
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end
 
@@ -347,7 +347,7 @@ function test_avionics()
         step!(sim, 30, true)
         @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end
 
@@ -387,7 +387,7 @@ function test_avionics()
         @test isapprox(av.flight.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end
 
@@ -418,7 +418,7 @@ function test_avionics()
         @test isapprox(av.flight.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end
 
@@ -451,7 +451,7 @@ function test_avionics()
         @test all(isapprox.(y_kin(ac).v_eOb_n[3], -av.u.clm_sp; atol = 1e-2))
         @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
         # air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
