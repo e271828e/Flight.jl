@@ -19,21 +19,21 @@ export test_c172mcs
 function test_c172mcs()
     @testset verbose = true "Cessna172 MCS" begin
 
-        test_avionics()
+        test_control_modes()
+        test_guidance_modes()
 
     end
 end
 
+y_kin(ac::System{<:Cessna172MCS}) = ac.y.physics.kinematics
+y_air(ac::System{<:Cessna172MCS}) = ac.y.physics.air
 
-function test_avionics()
+function test_control_modes()
 
     data_folder = joinpath(dirname(dirname(@__DIR__)),
         normpath("src/aircraft/c172/c172fbw/variants/mcs/data"))
 
-    y_kin(ac::System{<:Cessna172MCS}) = ac.y.physics.kinematics
-    y_air(ac::System{<:Cessna172MCS}) = ac.y.physics.air
-
-    @testset verbose = true "Avionics" begin
+    @testset verbose = true "Control Modes" begin
 
     h_trn = HOrth(0)
     trn = HorizontalTerrain(altitude = h_trn)
@@ -59,7 +59,7 @@ function test_avionics()
     @test ac.avionics.y.flight_phase === C172MCS.phase_gnd
 
     #set arbitrary control and guidance modes
-    av.u.ver_gdc_mode_req = C172MCS.ver_gdc_alt
+    av.u.vrt_gdc_mode_req = C172MCS.vrt_gdc_alt
     av.u.hor_gdc_mode_req = C172MCS.hor_gdc_line
     av.u.lon_ctl_mode_req = C172MCS.lon_EAS_clm
     av.u.lat_ctl_mode_req = C172MCS.lat_p_β
@@ -69,7 +69,7 @@ function test_avionics()
     av.u.yaw_input = 0.4
     step!(sim, 1, true)
 
-    @test av.y.flight.ver_gdc_mode === C172MCS.ver_gdc_off
+    @test av.y.flight.vrt_gdc_mode === C172MCS.vrt_gdc_off
     @test av.y.flight.hor_gdc_mode === C172MCS.hor_gdc_off
     @test av.y.flight.lon_ctl_mode === C172MCS.lon_direct
     @test av.y.flight.lat_ctl_mode === C172MCS.lat_direct
@@ -263,7 +263,7 @@ function test_avionics()
         reinit!(sim, design_point)
 
         av.u.lon_ctl_mode_req = C172MCS.lon_thr_q
-        av.u.lat_ctl_mode_req = C172MCS.lat_p_β
+        av.u.lat_ctl_mode_req = C172MCS.lat_φ_β
         step!(sim, 0.01, true)
         @test av.y.flight.lon_ctl_mode === C172MCS.lon_thr_q
 
@@ -278,7 +278,8 @@ function test_avionics()
         @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
-        #correct tracking
+        #correct tracking while turning
+        av.u.φ_sp = π/12
         av.u.q_sf = 1.0
         av.u.pitch_input = 0.01
         step!(sim, 10, true)
@@ -290,6 +291,7 @@ function test_avionics()
 
         # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
+
     end
 
 
@@ -300,7 +302,7 @@ function test_avionics()
         reinit!(sim, design_point)
 
         av.u.lon_ctl_mode_req = C172MCS.lon_thr_θ
-        av.u.lat_ctl_mode_req = C172MCS.lat_p_β
+        av.u.lat_ctl_mode_req = C172MCS.lat_φ_β
         step!(sim, 0.01, true)
         @test av.y.flight.lon_ctl_mode === C172MCS.lon_thr_θ
 
@@ -310,12 +312,14 @@ function test_avionics()
         @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
-        #correct tracking
-        av.u.θ_sp = 0.1
+        #correct tracking while turning
+        av.u.φ_sp = π/6
+        av.u.θ_sp = deg2rad(5)
         step!(sim, 10, true)
         @test isapprox(y_kin(ac).e_nb.θ, av.u.θ_sp; atol = 1e-4)
 
         # @test @ballocated(f_disc!($ac, 0.01)) == 0
+
 
     end
 
@@ -327,7 +331,7 @@ function test_avionics()
         reinit!(sim, design_point)
 
         av.u.lon_ctl_mode_req = C172MCS.lon_thr_EAS
-        av.u.lat_ctl_mode_req = C172MCS.lat_p_β
+        av.u.lat_ctl_mode_req = C172MCS.lat_φ_β
         step!(sim, 0.01, true)
         @test av.y.flight.lon_ctl_mode === C172MCS.lon_thr_EAS
 
@@ -342,12 +346,14 @@ function test_avionics()
         @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
-        #correct tracking
+        #correct tracking while turning
+        av.u.φ_sp = π/6
         av.u.EAS_sp = 45
         step!(sim, 30, true)
         @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
         # @test @ballocated(f_disc!($ac, 0.01)) == 0
+
 
     end
 
@@ -358,7 +364,7 @@ function test_avionics()
         reinit!(sim, design_point)
 
         av.u.lon_ctl_mode_req = C172MCS.lon_EAS_q
-        av.u.lat_ctl_mode_req = C172MCS.lat_p_β
+        av.u.lat_ctl_mode_req = C172MCS.lat_φ_β
         step!(sim, 0.01, true)
         @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_q
 
@@ -382,7 +388,7 @@ function test_avionics()
         av.u.pitch_input = 0.005
         step!(sim, 10, true)
         av.u.pitch_input = 0.0
-        step!(sim, 40, true)
+        step!(sim, 20, true)
 
         @test isapprox(av.flight.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
@@ -399,7 +405,7 @@ function test_avionics()
         reinit!(sim, design_point)
 
         av.u.lon_ctl_mode_req = C172MCS.lon_EAS_θ
-        av.u.lat_ctl_mode_req = C172MCS.lat_p_β
+        av.u.lat_ctl_mode_req = C172MCS.lat_φ_β
         step!(sim, 0.01, true)
         @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_θ
 
@@ -409,13 +415,14 @@ function test_avionics()
         @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
-        #correct tracking
+        #correct tracking while turning
+        av.u.φ_sp = π/6
         av.u.θ_sp = deg2rad(3)
         step!(sim, 10, true)
         av.u.θ_sp = -deg2rad(3)
         step!(sim, 60, true)
 
-        @test isapprox(av.flight.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
+        @test isapprox(av.flight.lon_ctl.u.θ_sp, y_kin(ac).e_nb.θ; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
         # @test @ballocated(f_disc!($ac, 0.01)) == 0
@@ -429,7 +436,7 @@ function test_avionics()
         reinit!(sim, design_point)
 
         av.u.lon_ctl_mode_req = C172MCS.lon_EAS_clm
-        av.u.lat_ctl_mode_req = C172MCS.lat_p_β
+        av.u.lat_ctl_mode_req = C172MCS.lat_φ_β
         step!(sim, 0.01, true)
         @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_clm
 
@@ -444,11 +451,12 @@ function test_avionics()
         @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
-        #correct tracking
+        #correct tracking while turning
+        av.u.φ_sp = π/6
         av.u.EAS_sp = 45
         av.u.clm_sp = 2
-        step!(sim, 20, true)
-        @test all(isapprox.(y_kin(ac).v_eOb_n[3], -av.u.clm_sp; atol = 1e-2))
+        step!(sim, 30, true)
+        @test all(isapprox.(y_kin(ac).v_eOb_n[3], -av.u.clm_sp; atol = 1e-1))
         @test all(isapprox.(y_air(ac).EAS, av.u.EAS_sp; atol = 1e-1))
 
         # @test @ballocated(f_disc!($ac, 0.01)) == 0
@@ -459,14 +467,85 @@ function test_avionics()
         # save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "air"))
         # return TimeSeries(sim)
 
-    end #testset
 
     end #testset
 
     end #testset
 
-    return
+    end #testset
 
+end #function
+
+
+function test_guidance_modes()
+
+    @testset verbose = true "Guidance Modes" begin
+
+    h_trn = HOrth(0)
+    trn = HorizontalTerrain(altitude = h_trn)
+    ac = Cessna172MCS(LTF(), trn) |> System;
+    av = ac.avionics
+    design_point = C172.TrimParameters()
+
+    sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600)
+
+    @testset verbose = true "Altitude Guidance" begin
+
+        reinit!(sim, design_point)
+        y_kin_trim = y_kin(ac)
+
+        av.u.vrt_gdc_mode_req = C172MCS.vrt_gdc_alt
+        av.u.lat_ctl_mode_req = C172MCS.lat_φ_β
+        step!(sim, 0.01, true)
+        @test av.y.flight.vrt_gdc_mode === C172MCS.vrt_gdc_alt
+        @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_clm
+
+        #when trim setpoints are kept, the guidance mode must activate without
+        #transients
+        step!(sim, 1, true)
+        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+
+        #all tests while turning
+        av.u.φ_sp = π/12
+
+        av.u.h_sp = y_kin_trim.h_e + 100
+        step!(sim, 1, true)
+        @test av.y.flight.lon_ctl_mode === C172MCS.lon_thr_EAS
+        step!(sim, 60, true) #altitude is captured
+        @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_clm
+        @test isapprox.(y_kin(ac).h_e - av.u.h_sp, 0.0; atol = 1e-1)
+
+        #setpoint changes within the current threshold do not prompt a mode change
+        av.u.h_sp = y_kin(ac).h_e - av.flight.alt_gdc.s.h_thr / 2
+        step!(sim, 1, true)
+        @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_clm
+        step!(sim, 30, true) #altitude is captured
+        @test isapprox.(y_kin(ac).h_e - av.u.h_sp, 0.0; atol = 1e-1)
+
+        av.u.h_sp = y_kin_trim.h_e - 100
+        step!(sim, 1, true)
+        @test av.y.flight.lon_ctl_mode === C172MCS.lon_thr_EAS
+        step!(sim, 80, true) #altitude is captured
+        @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_clm
+        @test isapprox.(y_kin(ac).h_e - av.u.h_sp, 0.0; atol = 1e-1)
+
+        @test av.y.flight.lon_ctl_mode === C172MCS.lon_EAS_clm
+        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        av.u.h_sp = y_kin_trim.h_e + 100
+        step!(sim, 1, true)
+        @test av.y.flight.lon_ctl_mode === C172MCS.lon_thr_EAS
+        @test @ballocated(f_disc!($ac, 0.01)) == 0
+
+        # kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
+        # air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
+        # save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "kin"))
+        # save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "air"))
+        # return TimeSeries(sim)
+
+    end
+
+    end #testset
 
 end
 

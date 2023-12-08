@@ -628,13 +628,67 @@ end
 ################################################################################
 ############################### Guidance Modes #################################
 
-@kwdef struct AltitudeGuidance <: SystemDefinition end
-
-@kwdef struct AltitudeGuidanceU
-    h_sp::Float64 = 0.0 #climb rate setpoint
+@enum AltGuidanceState begin
+    alt_acquire = 0
+    alt_hold = 1
 end
 
-@kwdef struct AltitudeGuidanceY end
+@kwdef struct AltitudeGuidance <: AbstractControlChannel
+    k_h2c::Float64 = 0.2 #good margins for the whole envelope
+end
+
+@kwdef mutable struct AltitudeGuidanceU
+    h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
+end
+
+@kwdef mutable struct AltitudeGuidanceS
+    state::AltGuidanceState = alt_hold
+    h_thr::Float64 = 10.0 #current a
+end
+
+@kwdef struct AltitudeGuidanceY
+    state::AltGuidanceState = alt_hold
+    h_thr::Float64 = 0.0 #current altitude switching threshold
+    lon_ctl_mode::LonControlMode = lon_EAS_clm
+    throttle_sp::Float64 = 0.0
+    clm_sp::Float64 = 0.0
+end
+
+Systems.init(::SystemU, ::AltitudeGuidance) = AltitudeGuidanceU()
+Systems.init(::SystemS, ::AltitudeGuidance) = AltitudeGuidanceS()
+Systems.init(::SystemY, ::AltitudeGuidance) = AltitudeGuidanceY()
+
+get_Δh(h_sp::HEllip, physics::System{<:C172FBW.Physics}) = h_sp - physics.y.kinematics.h_e
+get_Δh(h_sp::HOrth, physics::System{<:C172FBW.Physics}) = h_sp - physics.y.kinematics.h_o
+
+function Systems.f_disc!(sys::System{<:AltitudeGuidance},
+                        physics::System{<:C172FBW.Physics}, ::Real)
+
+    Δh = get_Δh(sys.u.h_sp, physics)
+    clm_sp = sys.constants.k_h2c * Δh
+    clm = -physics.y.kinematics.v_eOb_n[3]
+    @unpack state, h_thr = sys.s
+    # @show Δh
+    # @show state
+
+    if state === alt_acquire
+
+        lon_ctl_mode = lon_thr_EAS
+        throttle_sp = Δh > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
+        sys.s.h_thr = abs(Δh)
+        (abs(clm_sp) < abs(clm)) && (sys.s.state = alt_hold)
+
+    else #alt_hold
+
+        lon_ctl_mode = lon_EAS_clm
+        throttle_sp = 0.0 #no effect, controlled by EAS_clm
+        (abs(Δh) > h_thr) && (sys.s.state = alt_acquire)
+
+    end
+
+    sys.y = AltitudeGuidanceY(; state, h_thr, lon_ctl_mode, throttle_sp, clm_sp)
+
+end
 
 @kwdef struct SegmentGuidance <: SystemDefinition end
 @kwdef struct SegmentGuidanceY end
@@ -649,8 +703,8 @@ end
 end
 
 @enum VerticalGuidanceMode begin
-    ver_gdc_off = 0
-    ver_gdc_alt = 1
+    vrt_gdc_off = 0
+    vrt_gdc_alt = 1
 end
 
 @enum HorizontalGuidanceMode begin
@@ -667,7 +721,7 @@ end
 
 @kwdef mutable struct FlightGuidanceInputs
     flight_phase::FlightPhase = phase_gnd #slave to sensor might go here
-    ver_gdc_mode_req::VerticalGuidanceMode = ver_gdc_off #requested vertical guidance mode
+    vrt_gdc_mode_req::VerticalGuidanceMode = vrt_gdc_off #requested vertical guidance mode
     hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
     lon_ctl_mode_req::LonControlMode = lon_direct #requested longitudinal control mode
     lat_ctl_mode_req::LatControlMode = lat_direct #requested lateral control mode
@@ -688,7 +742,7 @@ end
 end
 
 @kwdef struct FlightGuidanceOutputs
-    ver_gdc_mode::VerticalGuidanceMode = ver_gdc_off #active vertical guidance mode
+    vrt_gdc_mode::VerticalGuidanceMode = vrt_gdc_off #active vertical guidance mode
     hor_gdc_mode::HorizontalGuidanceMode = hor_gdc_off #active horizontal guidance mode
     lon_ctl_mode::LonControlMode = lon_direct #active longitudinal control mode
     lat_ctl_mode::LatControlMode = lat_direct #active lateral control mode
@@ -709,7 +763,7 @@ Systems.init(::SystemY, ::FlightGuidance) = FlightGuidanceOutputs()
 function Systems.f_disc!(sys::System{<:FlightGuidance},
                         physics::System{<:C172FBW.Physics}, Δt::Real)
 
-    @unpack flight_phase, ver_gdc_mode_req, hor_gdc_mode_req,
+    @unpack flight_phase, vrt_gdc_mode_req, hor_gdc_mode_req,
             lon_ctl_mode_req, lat_ctl_mode_req,
             throttle_sp, elevator_sp, aileron_sp, rudder_sp,
             p_sp, q_sp, β_sp, EAS_sp, θ_sp, clm_sp, φ_sp, χ_sp, h_sp = sys.u
@@ -718,28 +772,28 @@ function Systems.f_disc!(sys::System{<:FlightGuidance},
 
     if flight_phase === phase_gnd
 
-        ver_gdc_mode = ver_gdc_off
+        vrt_gdc_mode = vrt_gdc_off
         hor_gdc_mode = hor_gdc_off
         lon_ctl_mode = lon_direct
         lat_ctl_mode = lat_direct
 
     elseif flight_phase === phase_air
 
-        ver_gdc_mode = ver_gdc_mode_req
+        vrt_gdc_mode = vrt_gdc_mode_req
         hor_gdc_mode = hor_gdc_mode_req
 
-        if ver_gdc_mode === ver_gdc_off
+        if vrt_gdc_mode === vrt_gdc_off
 
             lon_ctl_mode = lon_ctl_mode_req
 
-        else #ver_gdc_mode === ver_gdc_alt
+        else #vrt_gdc_mode === vrt_gdc_alt
 
-            # alt_gdc.u.h_sp = h_sp
-            # f_disc!(alt_gdc, physics, Δt)
+            alt_gdc.u.h_sp = h_sp
+            f_disc!(alt_gdc, physics, Δt)
 
-            # lon_ctl_mode = alt_gdc.y.lon_ctl_mode
-            # EAS_sp = alt_gdc.y.EAS_sp
-            # clm_sp = alt_gdc.y.clm_sp
+            lon_ctl_mode = alt_gdc.y.lon_ctl_mode
+            throttle_sp = alt_gdc.y.throttle_sp
+            clm_sp = alt_gdc.y.clm_sp
 
         end
 
@@ -771,7 +825,7 @@ function Systems.f_disc!(sys::System{<:FlightGuidance},
     @unpack aileron_cmd, rudder_cmd = lat_ctl.y
 
     sys.y = FlightGuidanceOutputs(;
-        ver_gdc_mode, hor_gdc_mode, lon_ctl_mode, lat_ctl_mode,
+        vrt_gdc_mode, hor_gdc_mode, lon_ctl_mode, lat_ctl_mode,
         throttle_cmd, elevator_cmd, aileron_cmd, rudder_cmd,
         lon_ctl = lon_ctl.y, lat_ctl = lat_ctl.y,
         alt_gdc = alt_gdc.y, seg_gdc = seg_gdc.y)
@@ -804,7 +858,7 @@ end
     p_sf::Float64 = 1.0 #roll input to roll rate scale factor (0.1)
     q_sf::Float64 = 1.0 #pitch input to pitch rate scale factor (0.1)
     β_sf::Float64 = 1.0 #yaw input to β_sp scale factor (0.1)
-    ver_gdc_mode_req::VerticalGuidanceMode = ver_gdc_off #requested vertical guidance mode
+    vrt_gdc_mode_req::VerticalGuidanceMode = vrt_gdc_off #requested vertical guidance mode
     hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
     lon_ctl_mode_req::LonControlMode = lon_direct #requested longitudinal control mode
     lat_ctl_mode_req::LatControlMode = lat_direct #requested lateral control mode
@@ -852,7 +906,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
 
     @unpack eng_start, eng_stop, mixture, throttle_input, roll_input, pitch_input, yaw_input,
             throttle_sp_offset, aileron_sp_offset, elevator_sp_offset, rudder_sp_offset,
-            flaps, brake_left, brake_right, ver_gdc_mode_req, hor_gdc_mode_req,
+            flaps, brake_left, brake_right, vrt_gdc_mode_req, hor_gdc_mode_req,
             lon_ctl_mode_req, lat_ctl_mode_req, p_sf, q_sf, β_sf, EAS_sp, θ_sp,
             clm_sp, φ_sp, χ_sp, h_sp = avionics.u
 
@@ -870,7 +924,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
 
     @pack! flight.u = flight_phase, throttle_sp, elevator_sp, #computed
         aileron_sp, rudder_sp, p_sp, q_sp, β_sp, #computed
-        ver_gdc_mode_req, hor_gdc_mode_req, #forwarded
+        vrt_gdc_mode_req, hor_gdc_mode_req, #forwarded
         lon_ctl_mode_req, lat_ctl_mode_req, EAS_sp, θ_sp, clm_sp, φ_sp, χ_sp, h_sp #forwarded
 
     #for now, brakes, nws, flaps and mixture do not go through FlightGuidance
@@ -966,7 +1020,7 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
     u.flaps = flaps
     u.mixture = mixture
 
-    u.ver_gdc_mode_req = ver_gdc_off
+    u.vrt_gdc_mode_req = vrt_gdc_off
     u.hor_gdc_mode_req = hor_gdc_off
     u.lon_ctl_mode_req = lon_direct
     u.lat_ctl_mode_req = lat_direct
