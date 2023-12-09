@@ -84,7 +84,6 @@ function test_system_methods()
             f_disc!(ac, 0.02)
 
             y_mod = ac.avionics.y.moding
-            y_act = ac.avionics.y.actuation
 
             @test y_mod.flight_phase == C172CAS.phase_air
             @test y_mod.throttle_mode === C172CAS.EAS_throttle_mode
@@ -92,11 +91,10 @@ function test_system_methods()
             @test y_mod.pitch_mode === C172CAS.climb_rate_mode
             # @test y_mod.yaw_mode === C172CAS.sideslip_mode
 
-            #the demands should have propagated through the control loops to the
-            #actuators
-            @test Float64(y_act.throttle_cmd) > 0
-            @test Float64(y_act.aileron_cmd) > 0
-            @test Float64(y_act.elevator_cmd) > 0
+            #the demands should have propagated through the control loops
+            @test Float64(ac.y.avionics.throttle_ctl.thr_cmd) > 0
+            @test Float64(ac.y.avionics.roll_ctl.a_cmd) > 0
+            @test Float64(ac.y.avionics.pitch_ctl.e_cmd) > 0
             # @test Float64(y_act.rudder_cmd) > 0
 
             #now all outermost loops are active, test for allocations

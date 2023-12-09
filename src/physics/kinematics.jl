@@ -703,7 +703,7 @@ end
 
 function GUI.draw(kin::KinematicsY, label::String = "Kinematics")
 
-    @unpack q_nb, n_e, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ib_b, v_eOb_b, v_eOb_n  = kin.common
+    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ib_b, v_eOb_b, v_eOb_n  = kin.common
 
     CImGui.Begin(label)
 
@@ -723,7 +723,7 @@ function GUI.draw(kin::KinematicsY, label::String = "Kinematics")
 
     if CImGui.TreeNode("Attitude (Body / NED)")
 
-        @unpack ψ, θ, φ = REuler(q_nb)
+        @unpack ψ, θ, φ = e_nb
         CImGui.Text(@sprintf("Heading: %.7f deg", rad2deg(ψ)))
         CImGui.Text(@sprintf("Inclination: %.7f deg", rad2deg(θ)))
         CImGui.Text(@sprintf("Bank: %.7f deg", rad2deg(φ)))
@@ -736,7 +736,7 @@ function GUI.draw(kin::KinematicsY, label::String = "Kinematics")
 
     if CImGui.TreeNode("Position (O / ECEF)")
 
-        @unpack ϕ, λ = LatLon(n_e)
+        @unpack ϕ, λ = ϕ_λ
         CImGui.Text(@sprintf("Latitude: %.7f deg", rad2deg(ϕ)))
         CImGui.Text(@sprintf("Longitude: %.7f deg", rad2deg(λ)))
         CImGui.Text(@sprintf("Northward Increment: %.7f m", Δxy[1]))

@@ -7,8 +7,8 @@ using Flight.FlightCore.GUI
 
 using Flight.FlightComponents.Control
 
-# using Flight.FlightAircraft.C172CAS
-# using Flight.FlightAircraft.C172RBase
+using Flight.FlightAircraft.C172CAS
+using Flight.FlightAircraft.C172RBase
 using Flight.FlightAircraft.C172FBW
 
 export test_gui
@@ -20,11 +20,12 @@ function test_gui()
     # target = Cessna172RBase() |> System
     # target = Control.Discrete.PIDVector{3}() |> System
     # target = Control.Continuous.PIVector{3}() |> System
-    target = C172FBW.Actuation() |> System;
+    # target = C172FBW.Actuation() |> System;
+    target = Cessna172MCS() |> System
     r = Renderer()
     GUI.init!(r)
-    GUI.run(r, GUI.draw, target)
-    # GUI.run(r, GUI.draw!, target)
+    # GUI.run(r, GUI.draw, target)
+    GUI.run(r, GUI.draw!, target)
 end
 
 end

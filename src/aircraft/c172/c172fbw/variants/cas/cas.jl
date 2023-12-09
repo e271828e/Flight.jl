@@ -698,6 +698,7 @@ end
     elevator_cmd_offset::Ranged{Float64, -1., 1.} = 0.0 #only for direct mode
     rudder_cmd_offset::Ranged{Float64, -1., 1.} = 0.0 #only for direct mode
     flaps::Ranged{Float64, 0., 1.} = 0.0
+    steering::Ranged{Float64, -1., 1.} = 0.0
     brake_left::Ranged{Float64, 0., 1.} = 0.0
     brake_right::Ranged{Float64, 0., 1.} = 0.0
 end
@@ -735,22 +736,8 @@ end
     lat_mode::LatMode = lat_mode_semi
 end
 
-@kwdef struct ActuationCommands
-    eng_start::Bool = false
-    eng_stop::Bool = false
-    mixture::Ranged{Float64, 0., 1.} = 0.5
-    throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
-    aileron_cmd::Ranged{Float64, -1., 1.} = 0.0
-    elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
-    rudder_cmd::Ranged{Float64, -1., 1.} = 0.0
-    flaps::Ranged{Float64, 0., 1.} = 0.0
-    brake_left::Ranged{Float64, 0., 1.} = 0.0
-    brake_right::Ranged{Float64, 0., 1.} = 0.0
-end
-
 @kwdef struct AvionicsY
     moding::AvionicsModing = AvionicsModing()
-    actuation::ActuationCommands = ActuationCommands()
     throttle_ctl::ThrottleControlY = ThrottleControlY()
     roll_ctl::RollControlY = RollControlY()
     pitch_ctl::PitchControlY = PitchControlY()
@@ -859,33 +846,13 @@ function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
     f_disc!(pitch_ctl, kinematics, air, Δt)
     f_disc!(yaw_ctl, kinematics, air, Δt)
 
-    throttle_cmd = throttle_ctl.y.thr_cmd
-    aileron_cmd = roll_ctl.y.a_cmd
-    elevator_cmd = pitch_ctl.y.e_cmd
-    rudder_cmd = yaw_ctl.y.r_cmd
-
     moding = AvionicsModing(;
-        flight_phase,
-        throttle_mode = throttle_ctl.y.mode,
-        roll_mode = roll_ctl.y.mode,
-        pitch_mode = pitch_ctl.y.mode,
-        yaw_mode = yaw_ctl.y.mode,
-        lon_mode,
-        lat_mode
-      )
+        flight_phase, throttle_mode = throttle_ctl.y.mode, roll_mode = roll_ctl.y.mode,
+        pitch_mode = pitch_ctl.y.mode, yaw_mode = yaw_ctl.y.mode, lon_mode, lat_mode)
 
-    #all signal  except for throttle, roll_input, pitch_input and yaw_input pass through
-    actuation = ActuationCommands(; eng_start, eng_stop, mixture,
-                throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd,
-                flaps, brake_left, brake_right)
-
-    avionics.y = AvionicsY(; moding, actuation,
-                            throttle_ctl = throttle_ctl.y,
-                            roll_ctl = roll_ctl.y,
-                            pitch_ctl = pitch_ctl.y,
-                            yaw_ctl = yaw_ctl.y,
-                            alt_ctl = alt_ctl.y
-                            )
+    avionics.y = AvionicsY(;
+        moding, throttle_ctl = throttle_ctl.y, roll_ctl = roll_ctl.y,
+        pitch_ctl = pitch_ctl.y, yaw_ctl = yaw_ctl.y, alt_ctl = alt_ctl.y)
 
     return false
 
@@ -894,11 +861,21 @@ end
 function Aircraft.assign!(airframe::System{<:C172FBW.Airframe},
                           avionics::System{Avionics})
 
-    @unpack eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,
-            elevator_cmd, rudder_cmd, flaps, brake_left, brake_right = avionics.y.actuation
+    @unpack act, pwp, ldg = airframe.subsystems
+    @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right = avionics.u.inceptors
+    @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl = avionics.y
 
-    @pack! airframe.act.u = eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,
-           elevator_cmd, rudder_cmd, flaps, brake_left, brake_right
+    act.throttle.u[] = throttle_ctl.thr_cmd
+    act.aileron.u[] = roll_ctl.a_cmd
+    act.elevator.u[] = pitch_ctl.e_cmd
+    act.rudder.u[] = yaw_ctl.r_cmd
+    act.flaps.u[] = flaps
+    act.steering.u[] = steering
+    pwp.engine.u.start = eng_start
+    pwp.engine.u.stop = eng_stop
+    pwp.engine.u.mixture = mixture
+    ldg.left.braking.u[] = brake_left
+    ldg.right.braking.u[] = brake_right
 
 end
 
@@ -929,7 +906,6 @@ function GUI.draw!(avionics::System{<:C172CAS.Avionics},
     u_inc = avionics.u.inceptors
     u_dig = avionics.u.digital
     y_mod = avionics.y.moding
-    y_act = avionics.y.actuation
 
     Begin(label)
 

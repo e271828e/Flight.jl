@@ -374,23 +374,19 @@ end
 #the string after ## is not shown, but is part of the widget's ID, which must be
 #unique to avoid conflicts. an alternative solution is to use PushID and PopID.
 #See DearImGui FAQ
-function safe_slider(label::String, source::AbstractFloat, lower_bound::Real, upper_bound::Real, display_format::String)
+function safe_slider(label::String, source::AbstractFloat, lower_bound::Real, upper_bound::Real, display_format::String, show_label = false)
     ref = Ref(Cfloat(source))
-    CImGui.AlignTextToFramePadding()
-    CImGui.Text(label)
-    CImGui.SameLine()
-    CImGui.SliderFloat("##"*(label), ref, lower_bound, upper_bound, display_format)
+    slider_label = show_label ? label : "##"*label
+    CImGui.SliderFloat(slider_label, ref, lower_bound, upper_bound, display_format)
     CImGui.SameLine()
     show_help_marker("Ctrl+Click for keyboard input")
     return ref[]
 end
 
-function safe_input(label::String, source::AbstractFloat, step::Real, fast_step::Real, display_format::String)
+function safe_input(label::String, source::AbstractFloat, step::Real, fast_step::Real, display_format::String, show_label = false)
     ref = Ref(Cdouble(source))
-    CImGui.AlignTextToFramePadding()
-    CImGui.Text(label)
-    CImGui.SameLine()
-    CImGui.InputDouble("##"*(label), ref, step, fast_step, display_format)
+    input_label = show_label ? label : "##"*label
+    CImGui.InputDouble(input_label, ref, step, fast_step, display_format)
     return ref[]
 end
 

@@ -974,7 +974,7 @@ end
 function Aircraft.assign!(airframe::System{<:C172FBW.Airframe},
                           avionics::System{Avionics})
 
-    @unpack act, aero, pwp, ldg = airframe.subsystems
+    @unpack act, pwp, ldg = airframe.subsystems
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right = avionics.u
     @unpack throttle_cmd, elevator_cmd = avionics.lon_ctl.y
     @unpack aileron_cmd, rudder_cmd = avionics.lat_ctl.y
@@ -1070,7 +1070,7 @@ end
 ################################## GUI #########################################
 
 using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
-        SameLine, NewLine, IsItemActive, Separator, Text, Checkbox, RadioButton
+        Dummy, SameLine, NewLine, IsItemActive, Separator, Text, Checkbox, RadioButton
 
 function mode_button_HSV(button_mode, selected_mode, active_mode)
     if active_mode === button_mode
@@ -1086,67 +1086,274 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
                     physics::System{<:C172FBW.Physics},
                     label::String = "Cessna 172 MCS Avionics")
 
-    # @unpack airframe = physics
-    #qué u necesito? sólo la de avionics.
-    #qué u necesito? kinematics, air, rigidbody, airframe, atmosphere
-    @unpack airframe, kinematics, rigidbody, air = physics.y
     u = avionics.u
+    y = avionics.y
+
+    @unpack airframe, kinematics, rigidbody, air = physics.y
+    @unpack act, pwp, fuel, ldg = airframe
+
+    @unpack e_nb, ω_lb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eOb_n = kinematics
+    @unpack EAS, TAS, α_b, β_b, T, p, pt = air
+    @unpack ψ, θ, φ = e_nb
+    @unpack ϕ, λ = ϕ_λ
+    clm = -v_eOb_n[3]
+
 
     Begin(label)
 
-    PushItemWidth(-60)
-        CImGui.Dummy(10.0, 10.0)
-        CImGui.Text("Dummy 1")
-        CImGui.Text("Dummy 2")
-        CImGui.Dummy(10.0, 10.0);
+    ################################# Engine ###################################
 
-        if airframe.y.pwp.engine.state === Piston.eng_off
+        if pwp.engine.state === Piston.eng_off
             eng_start_HSV = HSV_gray
-        elseif airframe.y.pwp.engine.state === Piston.eng_starting
+        elseif pwp.engine.state === Piston.eng_starting
             eng_start_HSV = HSV_amber
         else
             eng_start_HSV = HSV_green
         end
-        dynamic_button("Engine Start", eng_start_HSV, 0.1, 0.2)
-        u_inc.eng_start = IsItemActive()
+
+        PushItemWidth(-100)
+        dynamic_button("Engine Start", eng_start_HSV, 0.1, 0.1)
+        u.eng_start = IsItemActive()
         SameLine()
         dynamic_button("Engine Stop", HSV_gray, (HSV_gray[1], HSV_gray[2], HSV_gray[3] + 0.1), (0.0, 0.8, 0.8))
-        u_inc.eng_stop = IsItemActive()
+        u.eng_stop = IsItemActive()
         SameLine()
-        u_inc.mixture = safe_slider("Mixture", u_inc.mixture, "%.6f")
+        u.mixture = safe_slider("Mixture", u.mixture, "%.6f", true)
+        PopItemWidth()
+
+        @unpack state, throttle, ω, MAP, M_shaft, P_shaft, ṁ = pwp.engine
+        if CImGui.BeginTable("Engine Data", 4)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("State: $(state)")
+                CImGui.TableNextColumn(); Text(@sprintf("Throttle: %.3f %%", 100*throttle))
+                CImGui.TableNextColumn(); Text(@sprintf("Speed: %.3f RPM", Piston.radpersec2RPM(ω)))
+                CImGui.TableNextColumn(); Text(@sprintf("Manifold Pressure: %.0f Pa", MAP))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text(@sprintf("Shaft Torque: %.3f Nm", M_shaft))
+                CImGui.TableNextColumn(); Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
+                CImGui.TableNextColumn(); Text(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3)); SameLine(250)
+                CImGui.TableNextColumn(); Text(@sprintf("Remaining Fuel: %.3f kg", fuel.m_avail))
+            CImGui.EndTable()
+        end
 
         Separator()
 
-        Text("Engine Status: ")
+    ################################# Air ###################################
 
-    show_internals = @cstatic check=false @c Checkbox("Internals", &check)
+        if CImGui.BeginTable("Air Data", 4)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text(@sprintf("EAS: %.3f m/s | %.3f kts", EAS, Atmosphere.SI2kts(EAS)))
+                CImGui.TableNextColumn(); Text(@sprintf("TAS: %.3f m/s | %.3f kts", TAS, Atmosphere.SI2kts(TAS)))
+                CImGui.TableNextColumn(); Text(@sprintf("AoA: %.3f deg", rad2deg(α_b)))
+                CImGui.TableNextColumn(); Text(@sprintf("AoS: %.3f deg", rad2deg(β_b)))
+            CImGui.EndTable()
+        end
+
+        Text(@sprintf("Static Temperature: %.3f K", T))
+        Text(@sprintf("Static Pressure: %.3f Pa", p))
+        Text(@sprintf("Total Pressure: %.3f Pa", pt))
+
+        Separator()
+
+    ################################# Ground ###################################
+
+        Text(@sprintf("Latitude: %.6f deg", rad2deg(ϕ)))
+        Text(@sprintf("Longitude: %.6f deg", rad2deg(λ)))
+        Text(@sprintf("Altitude (Ellipsoidal): %.3f m", Float64(h_e)))
+        Text(@sprintf("Altitude (Orthometric): %.3f m", Float64(h_o)))
+
+        Δh = h_o - TerrainData(physics.constants.terrain, n_e).altitude
+        Text(@sprintf("Height Over Ground: %.3f m", Δh))
+
+        Separator()
+
+        Text(@sprintf("Heading: %.3f deg", rad2deg(ψ)))
+        Text(@sprintf("Inclination: %.3f deg", rad2deg(θ)))
+        Text(@sprintf("Bank: %.3f deg", rad2deg(φ)))
+
+        Text(@sprintf("Yaw Rate: %.3f deg/s", rad2deg(ω_lb_b[1])))
+        Text(@sprintf("Pitch Rate: %.3f deg/s", rad2deg(ω_lb_b[2])))
+        Text(@sprintf("Roll Rate: %.3f deg/s", rad2deg(ω_lb_b[3])))
+
+        Separator()
 
 
-    #Essentials
-    #Flight Phase
-    #Basic Engine display with engine start / stop buttons, and Mixture:
-    #Second line: status, RPM, Manifold pressure, fuel flow, Shaft Torque, Shaft Power
-    #Air: EAS, TAS, alpha, beta, air temperature, air pressure
-    #Attitude: Heading, Pitch, Bank
-    #Angular Rates:
-    #Velocity: Speed, Course Angle, Flight Path Angle
-    #Position: Lat, Lon, AltOrth, AltEllip
-    #Height over Ground: promedio de las tres patas
+    ############################################################################
 
-    #####################################
-    #how do we arrange this?
-    #Inceptors always shown
+        PushItemWidth(-100)
 
-    #Essentials
-    #Flight Phase
-    #Basic Engine display with engine start / stop buttons, and Mixture:
-    #Second line: status, RPM, Manifold pressure, fuel flow, Shaft Torque, Shaft Power
-    #Air: EAS, TAS, alpha, beta, air temperature, air pressure
-    #Attitude: Heading, Pitch, Bank
-    #Angular Rates:
-    #Velocity: Speed, Course Angle, Flight Path Angle
-    #Position: Lat, Lon, AltOrth, AltEllip
-    #Height over Ground: promedio de las tres patas
+    ############################## Inceptors ###################################
+
+        AlignTextToFramePadding(); Text("Throttle Input"); SameLine(160)
+        u.throttle_input = safe_slider("Throttle Input", u.throttle_input, "%.6f")
+        AlignTextToFramePadding(); Text("Roll Input"); SameLine(160)
+        u.roll_input = safe_slider("Roll Input", u.roll_input, "%.6f")
+        AlignTextToFramePadding(); Text("Pitch Input"); SameLine(160)
+        u.pitch_input = safe_slider("Pitch Input", u.pitch_input, "%.6f")
+        AlignTextToFramePadding(); Text("Yaw Input"); SameLine(160)
+        u.yaw_input = safe_slider("Yaw Input", u.yaw_input, "%.6f")
+        AlignTextToFramePadding(); Text("Flaps"); SameLine(160)
+        u.flaps = safe_slider("Flaps Input", u.flaps, "%.6f")
+
+        Separator()
+
+        AlignTextToFramePadding(); Text("Throttle Offset"); SameLine(160)
+        u.throttle_sp_offset = safe_input("Throttle_Offset", u.throttle_sp_offset, 0.001, 0.1, "%.3f")
+        AlignTextToFramePadding(); Text("Aileron Offset"); SameLine(160)
+        u.aileron_sp_offset = safe_input("Aileron Offset", u.aileron_sp_offset, 0.001, 0.1, "%.3f")
+        AlignTextToFramePadding(); Text("Elevator Offset"); SameLine(160)
+        u.elevator_sp_offset = safe_input("Elevator Offset", u.elevator_sp_offset, 0.001, 0.1, "%.3f")
+        AlignTextToFramePadding(); Text("Rudder Offset"); SameLine(160)
+        u.rudder_sp_offset = safe_input("Rudder Offset", u.rudder_sp_offset, 0.001, 0.1, "%.3f")
+
+        Separator()
+
+        AlignTextToFramePadding(); Text("Steering"); SameLine(160)
+        u.steering = safe_slider("Steering", u.steering, "%.6f")
+        AlignTextToFramePadding(); Text("Left Brake"); SameLine(160)
+        u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
+        AlignTextToFramePadding(); Text("Right Brake"); SameLine(160)
+        u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
+        Separator()
+
+
+    ############################### Guidance ###################################
+
+
+        AlignTextToFramePadding(); Text("Vertical Guidance"); SameLine(160)
+
+        dynamic_button("Off", mode_button_HSV(vrt_gdc_off, u.vrt_gdc_mode_req, y.vrt_gdc_mode), 0.1, 0.1)
+        IsItemActive() && (u.vrt_gdc_mode_req = vrt_gdc_off); SameLine()
+
+        dynamic_button("Altitude", mode_button_HSV(vrt_gdc_alt, u.vrt_gdc_mode_req, y.vrt_gdc_mode), 0.1, 0.1)
+        IsItemActive() && (u.vrt_gdc_mode_req = vrt_gdc_alt)
+
+
+        AlignTextToFramePadding(); Text("Altitude (m)"); SameLine(160)
+        CImGui.BeginGroup()
+        h_val = safe_input("Altitude Setpoint", Float64(u.h_sp), 1, 1.0, "%.3f"); SameLine()
+        isa(u.h_sp, HEllip) && Text(@sprintf("%.3f", Float64(h_e)))
+        isa(u.h_sp, HOrth) && Text(@sprintf("%.3f", Float64(h_o)))
+        RadioButton("Ellipsoidal", isa(u.h_sp, HEllip)) && (u.h_sp = HEllip(h_val))
+        SameLine(0)
+        RadioButton("Orthometric", isa(u.h_sp, HOrth)) && (u.h_sp = HOrth(h_val))
+        CImGui.EndGroup()
+
+        # AlignTextToFramePadding()
+        # Text("Horizontal Guidance")
+        # SameLine(160)
+        # dynamic_button("Off", mode_button_HSV(hor_gdc_off, u.hor_gdc_mode_req, y.hor_gdc_mode), 0.1, 0.1)
+        # IsItemActive() && (u.hor_gdc_mode_req = hor_gdc_off)
+
+        Separator()
+
+        ########################## Longitudinal Control ########################
+
+        AlignTextToFramePadding(); Text("Longitudinal Control"); SameLine(160)
+
+        CImGui.BeginGroup()
+
+            dynamic_button("Direct##Lon", mode_button_HSV(lon_direct, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lon_ctl_mode_req = lon_direct); SameLine()
+
+            dynamic_button("Throttle + Pitch SAS", mode_button_HSV(lon_thr_ele, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lon_ctl_mode_req = lon_thr_ele); SameLine()
+
+            dynamic_button("Throttle + Pitch Rate", mode_button_HSV(lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q); SameLine()
+
+            dynamic_button("Throttle + Pitch Angle", mode_button_HSV(lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_sp = θ)
+
+            dynamic_button("EAS + Throttle", mode_button_HSV(lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_sp = EAS); SameLine()
+
+            dynamic_button("EAS + Pitch Rate", mode_button_HSV(lon_EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_q; u.EAS_sp = EAS); SameLine()
+
+            dynamic_button("EAS + Pitch Angle", mode_button_HSV(lon_EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_θ; u.EAS_sp = EAS; u.θ_sp = θ); SameLine()
+
+            dynamic_button("EAS + Climb Rate", mode_button_HSV(lon_EAS_clm, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_clm; u.EAS_sp = EAS; u.clm_sp = clm)
+
+        CImGui.EndGroup()
+
+        PushItemWidth(-100)
+
+            AlignTextToFramePadding(); Text("Pitch Rate SF (s/deg)"); SameLine(160)
+            u.q_sf = safe_input("Pitch Rate SF", rad2deg(u.q_sf), 1, 1.0, "%.3f") |> deg2rad
+
+            AlignTextToFramePadding(); Text("Pitch Angle (deg)"); SameLine(160)
+            u.θ_sp = safe_input("Pitch Angle", rad2deg(u.θ_sp), 0.1, 1.0, "%.3f") |> deg2rad
+            SameLine(); Text(@sprintf("%.3f", rad2deg(θ)))
+
+            AlignTextToFramePadding(); Text("EAS (m/s)"); SameLine(160)
+            u.EAS_sp = safe_input("EAS", u.EAS_sp, 0.1, 1.0, "%.3f")
+            SameLine(); Text(@sprintf("%.3f", EAS))
+
+            AlignTextToFramePadding(); Text("Climb Rate (m/s)"); SameLine(160)
+            u.clm_sp = safe_input("Climb Rate", u.clm_sp, 0.1, 1.0, "%.3f")
+            SameLine(); Text(@sprintf("%.3f", clm))
+
+
+        # PopItemWidth()
+
+        Separator()
+
+        ############################### Lateral Control ########################
+
+        AlignTextToFramePadding(); Text("Lateral Control"); SameLine(160)
+
+        CImGui.BeginGroup()
+
+            dynamic_button("Direct##Lat", mode_button_HSV(lat_direct, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lat_ctl_mode_req = lat_direct)
+            SameLine()
+
+            dynamic_button("Roll Rate + AoS", mode_button_HSV(lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.β_sp = 0)
+            SameLine()
+
+            dynamic_button("Bank Angle + AoS", mode_button_HSV(lat_φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lat_ctl_mode_req = lat_φ_β; u.φ_sp = φ; u.β_sp = 0)
+            SameLine()
+
+            dynamic_button("Course Angle + AoS", mode_button_HSV(lat_χ_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
+            IsItemActive() && (u.lat_ctl_mode_req = lat_χ_β; u.χ_sp = χ_gnd; u.β_sp = 0)
+
+        CImGui.EndGroup()
+
+        # PushItemWidth(-100)
+
+            AlignTextToFramePadding(); Text("Roll Rate SF (s/deg)"); SameLine(160)
+            u.p_sf = safe_input("Roll Rate SF", rad2deg(u.p_sf), 1, 1.0, "%.3f") |> deg2rad
+
+            AlignTextToFramePadding(); Text("Bank Angle (deg)"); SameLine(160)
+            u.φ_sp = safe_input("Bank Angle", rad2deg(u.φ_sp), 0.1, 1.0, "%.3f") |> deg2rad
+            SameLine(); Text(@sprintf("%.3f", rad2deg(φ)))
+
+            AlignTextToFramePadding(); Text("Course Angle (deg)"); SameLine(160)
+            u.χ_sp = safe_input("Course Angle", rad2deg(u.χ_sp), 0.1, 1.0, "%.3f") |> deg2rad
+            SameLine(); Text(@sprintf("%.3f", rad2deg(χ_gnd)))
+
+            AlignTextToFramePadding(); Text("Sideslip Angle (deg)"); SameLine(160)
+            u.β_sp = safe_input("Sideslip Angle", rad2deg(u.β_sp), 0.1, 1.0, "%.3f") |> deg2rad
+            SameLine(); Text(@sprintf("%.3f", rad2deg(β_b)))
+
+
+
+    ############################################################################
+        PopItemWidth()
+    ############################################################################
+
+        # Dummy(10.0, 10.0)
+
+        Separator()
+
+        show_internals = @cstatic check=false @c Checkbox("Internals", &check)
+
+
 
     ########
     #Inceptors en tres secciones:
@@ -1219,42 +1426,41 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
     # χ_sp::Float64 = 0.0 #course angle demand
     # h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
 
-    show_internals = @cstatic check=false @c Checkbox("Internals", &check)
+    # show_internals = @cstatic check=false @c Checkbox("Internals", &check)
 
-    u_inc.throttle = safe_slider("Throttle", u_inc.throttle, "%.6f")
-    u_inc.roll_input = safe_slider("Roll Input", u_inc.roll_input, "%.6f")
-    u_inc.pitch_input = safe_slider("Pitch Input", u_inc.pitch_input, "%.6f")
-    u_inc.yaw_input = safe_slider("Yaw Input", u_inc.yaw_input, "%.6f")
-    Separator()
-    u_inc.aileron_cmd_offset = safe_input("Aileron Offset", u_inc.aileron_cmd_offset, 0.001, 0.1, "%.6f")
-    u_inc.elevator_cmd_offset = safe_input("Elevator Offset", u_inc.elevator_cmd_offset, 0.001, 0.1, "%.6f")
-    u_inc.rudder_cmd_offset = safe_input("Rudder Offset", u_inc.rudder_cmd_offset, 0.001, 0.1, "%.6f")
-    u_inc.flaps = safe_slider("Flaps", u_inc.flaps, "%.6f")
-    Separator()
-    u_inc.brake_left = safe_slider("Left Brake", u_inc.brake_left, "%.6f")
-    u_inc.brake_right = safe_slider("Right Brake", u_inc.brake_right, "%.6f")
-
-
-    if show_internals
-        Begin("Internals")
-        Separator()
-        show_throttle_ctl = @cstatic check=false @c Checkbox("Throttle Control", &check); SameLine()
-        show_roll_ctl = @cstatic check=false @c Checkbox("Roll Control", &check); SameLine()
-        show_pitch_ctl = @cstatic check=false @c Checkbox("Pitch Control", &check); SameLine()
-        show_yaw_ctl = @cstatic check=false @c Checkbox("Yaw Control", &check); SameLine()
-        show_moding = @cstatic check=false @c Checkbox("Moding", &check); SameLine()
-        # show_actuation = @cstatic check=false @c Checkbox("Actuation", &check); SameLine()
-        show_throttle_ctl && GUI.draw(throttle_ctl)
-        show_roll_ctl && GUI.draw(roll_ctl)
-        show_pitch_ctl && GUI.draw(pitch_ctl)
-        show_yaw_ctl && GUI.draw(yaw_ctl)
-        show_moding && GUI.draw(y_mod)
-        # show_actuation && GUI.draw(y_act)
-        End()
-    end
+    # u_inc.throttle = safe_slider("Throttle", u_inc.throttle, "%.6f")
+    # u_inc.roll_input = safe_slider("Roll Input", u_inc.roll_input, "%.6f")
+    # u_inc.pitch_input = safe_slider("Pitch Input", u_inc.pitch_input, "%.6f")
+    # u_inc.yaw_input = safe_slider("Yaw Input", u_inc.yaw_input, "%.6f")
+    # Separator()
+    # u_inc.aileron_cmd_offset = safe_input("Aileron Offset", u_inc.aileron_cmd_offset, 0.001, 0.1, "%.6f")
+    # u_inc.elevator_cmd_offset = safe_input("Elevator Offset", u_inc.elevator_cmd_offset, 0.001, 0.1, "%.6f")
+    # u_inc.rudder_cmd_offset = safe_input("Rudder Offset", u_inc.rudder_cmd_offset, 0.001, 0.1, "%.6f")
+    # u_inc.flaps = safe_slider("Flaps", u_inc.flaps, "%.6f")
+    # Separator()
+    # u_inc.brake_left = safe_slider("Left Brake", u_inc.brake_left, "%.6f")
+    # u_inc.brake_right = safe_slider("Right Brake", u_inc.brake_right, "%.6f")
 
 
-    PopItemWidth()
+    # if show_internals
+    #     Begin("Internals")
+    #     Separator()
+    #     show_throttle_ctl = @cstatic check=false @c Checkbox("Throttle Control", &check); SameLine()
+    #     show_roll_ctl = @cstatic check=false @c Checkbox("Roll Control", &check); SameLine()
+    #     show_pitch_ctl = @cstatic check=false @c Checkbox("Pitch Control", &check); SameLine()
+    #     show_yaw_ctl = @cstatic check=false @c Checkbox("Yaw Control", &check); SameLine()
+    #     show_moding = @cstatic check=false @c Checkbox("Moding", &check); SameLine()
+    #     # show_actuation = @cstatic check=false @c Checkbox("Actuation", &check); SameLine()
+    #     show_throttle_ctl && GUI.draw(throttle_ctl)
+    #     show_roll_ctl && GUI.draw(roll_ctl)
+    #     show_pitch_ctl && GUI.draw(pitch_ctl)
+    #     show_yaw_ctl && GUI.draw(yaw_ctl)
+    #     show_moding && GUI.draw(y_mod)
+    #     # show_actuation && GUI.draw(y_act)
+    #     End()
+    # end
+
+
 
     End()
 
