@@ -215,10 +215,10 @@ function XLon(physics::System{<:C172FBW.Physics})
     v_x, _, v_z = air.v_wOb_b
     ω_eng = pwp.engine.ω
     α_filt = aero.α_filt
-    thr_v = act.throttle_act.vel
-    thr_p = act.throttle_act.pos
-    ele_v = act.elevator_act.vel
-    ele_p = act.elevator_act.pos
+    thr_v = act.throttle.vel
+    thr_p = act.throttle.pos
+    ele_v = act.elevator.vel
+    ele_p = act.elevator.pos
 
     XLon(; q, θ, v_x, v_z, α_filt, ω_eng, thr_v, thr_p, ele_v, ele_p)
 
@@ -226,29 +226,24 @@ end
 
 #control input vector for longitudinal controllers
 @kwdef struct ULon{T} <: FieldVector{2, T}
-    throttle_cmd::T = 0.0; elevator_cmd::T = 0.0
+    throttle_cmd::T = 0.0
+    elevator_cmd::T = 0.0
 end
 
-function ULon(physics::System{<:C172FBW.Physics})
-    @unpack throttle_cmd, elevator_cmd = physics.y.airframe.act
+function ULon{Float64}(physics::System{<:C172FBW.Physics})
+    @unpack act = physics.y.airframe
+    throttle_cmd = Float64(act.throttle.cmd)
+    elevator_cmd = Float64(act.elevator.cmd)
     ULon(; throttle_cmd, elevator_cmd)
 end
 
 #command vector for throttle + elevator SAS mode
-@kwdef struct ZLonThrEle <: FieldVector{2, Float64}
-    throttle_cmd::Float64 = 0.0; elevator_cmd::Float64 = 0.0
-end
-
-function ZLonThrEle(physics::System{<:C172FBW.Physics})
-    @unpack act = physics.y.airframe
-    throttle_cmd = act.throttle_act.cmd
-    elevator_cmd = act.elevator_act.cmd
-    ZLonThrEle(; throttle_cmd, elevator_cmd)
-end
+const ZLonThrEle = ULon{Float64}
 
 #command vector for EAS + climb rate mode
 @kwdef struct ZLonEASClm <: FieldVector{2, Float64}
-    EAS::Float64 = C172.TrimParameters().EAS; climb_rate::Float64 = 0.0
+    EAS::Float64 = C172.TrimParameters().EAS
+    climb_rate::Float64 = 0.0
 end
 
 function ZLonEASClm(physics::System{<:C172FBW.Physics})
@@ -474,10 +469,10 @@ function XLat(physics::System{<:C172FBW.Physics})
     φ = e_nb.φ
     v_x, v_y, _ = air.v_wOb_b
     β_filt = aero.β_filt
-    ail_v = act.aileron_act.vel
-    ail_p = act.aileron_act.pos
-    rud_v = act.rudder_act.vel
-    rud_p = act.rudder_act.pos
+    ail_v = act.aileron.vel
+    ail_p = act.aileron.pos
+    rud_v = act.rudder.vel
+    rud_p = act.rudder.pos
 
     XLat(; p, r, φ, v_x, v_y, β_filt, ail_v, ail_p, rud_v, rud_p)
 
@@ -531,7 +526,7 @@ function Systems.init!(sys::System{<:LatControl})
         lqr.u.bound_hi .= ULat(; aileron_cmd = 1, rudder_cmd = 1)
     end
 
-    #set φ demand limits for the course angle compensator output
+    #set φ setpoint limits for the course angle compensator output
     sys.χ2φ_pid.u.bound_lo = -π/4
     sys.χ2φ_pid.u.bound_hi = π/4
 
@@ -735,8 +730,8 @@ end
     EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
     θ_sp::Float64 = 0.0 #pitch angle setpoint
     clm_sp::Float64 = 0.0 #climb rate setpoint
-    φ_sp::Float64 = 0.0 #bank angle demand
-    χ_sp::Float64 = 0.0 #course angle demand
+    φ_sp::Float64 = 0.0 #bank angle setpoint
+    χ_sp::Float64 = 0.0 #course angle setpoint
     h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
     # seg_sp::Segment = 0.0 #line segment setpoint
 end
@@ -836,14 +831,21 @@ end
 ################################################################################
 
 @kwdef struct Avionics <: AbstractAvionics
-    flight::FlightGuidance = FlightGuidance()
+    lon_ctl::LonControl = LonControl()
+    lat_ctl::LatControl = LatControl()
+    alt_gdc::AltitudeGuidance = AltitudeGuidance()
+    seg_gdc::SegmentGuidance = SegmentGuidance()
 end
 
 #CockpitInputs
 @kwdef mutable struct AvionicsU
-    eng_start::Bool = false
-    eng_stop::Bool = false
-    mixture::Ranged{Float64, 0., 1.} = 0.5
+    eng_start::Bool = false #passthrough
+    eng_stop::Bool = false #passthrough
+    mixture::Ranged{Float64, 0., 1.} = 0.5 #passthrough
+    flaps::Ranged{Float64, 0., 1.} = 0.0 #passthrough
+    steering::Ranged{Float64, -1., 1.} = 0.0 #passthrough
+    brake_left::Ranged{Float64, 0., 1.} = 0.0 #passthrough
+    brake_right::Ranged{Float64, 0., 1.} = 0.0 #passthrough
     throttle_input::Ranged{Float64, 0., 1.} = 0.0 #sets throttle_sp
     roll_input::Ranged{Float64, -1., 1.} = 0.0 #sets aileron_sp or p_sp
     pitch_input::Ranged{Float64, -1., 1.} = 0.0 #sets elevator_sp or q_sp
@@ -852,12 +854,8 @@ end
     aileron_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct aileron control only
     elevator_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct elevator control only
     rudder_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct rudder control only
-    flaps::Ranged{Float64, 0., 1.} = 0.0
-    brake_left::Ranged{Float64, 0., 1.} = 0.0
-    brake_right::Ranged{Float64, 0., 1.} = 0.0
     p_sf::Float64 = 1.0 #roll input to roll rate scale factor (0.1)
     q_sf::Float64 = 1.0 #pitch input to pitch rate scale factor (0.1)
-    β_sf::Float64 = 1.0 #yaw input to β_sp scale factor (0.1)
     vrt_gdc_mode_req::VerticalGuidanceMode = vrt_gdc_off #requested vertical guidance mode
     hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
     lon_ctl_mode_req::LonControlMode = lon_direct #requested longitudinal control mode
@@ -865,28 +863,22 @@ end
     EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
     θ_sp::Float64 = 0 #pitch angle setpoint
     clm_sp::Float64 = 0.0 #climb rate setpoint
-    φ_sp::Float64 = 0.0 #bank angle demand
-    χ_sp::Float64 = 0.0 #course angle demand
+    φ_sp::Float64 = 0.0 #bank angle setpoint
+    χ_sp::Float64 = 0.0 #course angle setpoint
+    β_sp::Float64 = 0.0 #sideslip angle setpoint
     h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
-end
-
-@kwdef struct ActuationCommands
-    eng_start::Bool = false
-    eng_stop::Bool = false
-    mixture::Ranged{Float64, 0., 1.} = 0.5
-    throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
-    aileron_cmd::Ranged{Float64, -1., 1.} = 0.0
-    elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
-    rudder_cmd::Ranged{Float64, -1., 1.} = 0.0
-    flaps::Ranged{Float64, 0., 1.} = 0.0
-    brake_left::Ranged{Float64, 0., 1.} = 0.0
-    brake_right::Ranged{Float64, 0., 1.} = 0.0
 end
 
 @kwdef struct AvionicsY
     flight_phase::FlightPhase = phase_gnd
-    actuation::ActuationCommands = ActuationCommands()
-    flight::FlightGuidanceOutputs = FlightGuidanceOutputs()
+    vrt_gdc_mode::VerticalGuidanceMode = vrt_gdc_off #active vertical guidance mode
+    hor_gdc_mode::HorizontalGuidanceMode = hor_gdc_off #active horizontal guidance mode
+    lon_ctl_mode::LonControlMode = lon_direct #active longitudinal control mode
+    lat_ctl_mode::LatControlMode = lat_direct #active lateral control mode
+    alt_gdc::AltitudeGuidanceY = AltitudeGuidanceY()
+    seg_gdc::SegmentGuidanceY = SegmentGuidanceY()
+    lon_ctl::LonControlY = LonControlY()
+    lat_ctl::LatControlY = LatControlY()
 end
 
 Systems.init(::SystemU, ::Avionics) = AvionicsU()
@@ -899,16 +891,13 @@ Systems.init(::SystemY, ::Avionics) = AvionicsY()
 function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
                         physics::System{<:C172FBW.Physics}, Δt::Real)
 
-    @unpack subsystems, u = avionics
-    flight = avionics.flight
-
-    @unpack airframe, air = physics.y
-
-    @unpack eng_start, eng_stop, mixture, throttle_input, roll_input, pitch_input, yaw_input,
+    @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right,
+            throttle_input, roll_input, pitch_input, yaw_input,
             throttle_sp_offset, aileron_sp_offset, elevator_sp_offset, rudder_sp_offset,
-            flaps, brake_left, brake_right, vrt_gdc_mode_req, hor_gdc_mode_req,
-            lon_ctl_mode_req, lat_ctl_mode_req, p_sf, q_sf, β_sf, EAS_sp, θ_sp,
-            clm_sp, φ_sp, χ_sp, h_sp = avionics.u
+            vrt_gdc_mode_req, hor_gdc_mode_req, lon_ctl_mode_req, lat_ctl_mode_req,
+            p_sf, q_sf, EAS_sp, θ_sp, clm_sp, φ_sp, χ_sp, β_sp, h_sp = avionics.u
+
+    @unpack lon_ctl, lat_ctl, alt_gdc, seg_gdc = avionics.subsystems
 
     throttle_sp = throttle_input + throttle_sp_offset
     elevator_sp = pitch_input + elevator_sp_offset
@@ -917,25 +906,66 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
 
     p_sp = p_sf * Float64(roll_input)
     q_sp = q_sf * Float64(pitch_input)
-    β_sp = β_sf * Float64(yaw_input)
 
-    any_wow = any(SVector{3}(leg.strut.wow for leg in airframe.ldg))
+    any_wow = any(SVector{3}(leg.strut.wow for leg in physics.y.airframe.ldg))
     flight_phase = any_wow ? phase_gnd : phase_air
 
-    @pack! flight.u = flight_phase, throttle_sp, elevator_sp, #computed
-        aileron_sp, rudder_sp, p_sp, q_sp, β_sp, #computed
-        vrt_gdc_mode_req, hor_gdc_mode_req, #forwarded
-        lon_ctl_mode_req, lat_ctl_mode_req, EAS_sp, θ_sp, clm_sp, φ_sp, χ_sp, h_sp #forwarded
+    if flight_phase === phase_gnd
 
-    #for now, brakes, nws, flaps and mixture do not go through FlightGuidance
-    f_disc!(flight, physics, Δt)
-    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = flight.y
+        vrt_gdc_mode = vrt_gdc_off
+        hor_gdc_mode = hor_gdc_off
+        lon_ctl_mode = lon_direct
+        lat_ctl_mode = lat_direct
 
-    actuation = ActuationCommands(; eng_start, eng_stop, mixture,
-                throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd,
-                flaps, brake_left, brake_right)
+    elseif flight_phase === phase_air
 
-    avionics.y = AvionicsY(; flight_phase, actuation, flight = flight.y)
+        vrt_gdc_mode = vrt_gdc_mode_req
+        hor_gdc_mode = hor_gdc_mode_req
+
+        if vrt_gdc_mode === vrt_gdc_off
+
+            lon_ctl_mode = lon_ctl_mode_req
+
+        else #vrt_gdc_mode === vrt_gdc_alt
+
+            alt_gdc.u.h_sp = h_sp
+            f_disc!(alt_gdc, physics, Δt)
+
+            lon_ctl_mode = alt_gdc.y.lon_ctl_mode
+            throttle_sp = alt_gdc.y.throttle_sp
+            clm_sp = alt_gdc.y.clm_sp
+
+        end
+
+        if hor_gdc_mode === hor_gdc_off
+
+            lat_ctl_mode = lat_ctl_mode_req
+
+        else #hor_gdc_mode === hor_gdc_line
+
+            # seg_gdc.u.line_sp = line_sp
+            # f_disc!(seg_gdc, physics, Δt)
+
+            # lat_ctl_mode = seg_gdc.y.lat_ctl_mode
+            # χ_sp = seg_gdc.y.χ_sp
+            # β_sp = 0.0
+
+        end
+
+    end
+
+    lon_ctl.u.mode = lon_ctl_mode
+    @pack! lon_ctl.u = throttle_sp, elevator_sp, q_sp, θ_sp, EAS_sp, clm_sp
+    f_disc!(lon_ctl, physics, Δt)
+
+    lat_ctl.u.mode = lat_ctl_mode
+    @pack! lat_ctl.u = aileron_sp, rudder_sp, p_sp, φ_sp, β_sp, χ_sp
+    f_disc!(lat_ctl, physics, Δt)
+
+    avionics.y = AvionicsY(; flight_phase,
+        vrt_gdc_mode, hor_gdc_mode, lon_ctl_mode, lat_ctl_mode,
+        lon_ctl = lon_ctl.y, lat_ctl = lat_ctl.y,
+        alt_gdc = alt_gdc.y, seg_gdc = seg_gdc.y)
 
     return false
 
@@ -944,35 +974,26 @@ end
 function Aircraft.assign!(airframe::System{<:C172FBW.Airframe},
                           avionics::System{Avionics})
 
-    @unpack eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,
-            elevator_cmd, rudder_cmd, flaps, brake_left, brake_right = avionics.y.actuation
+    @unpack act, aero, pwp, ldg = airframe.subsystems
+    @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right = avionics.u
+    @unpack throttle_cmd, elevator_cmd = avionics.lon_ctl.y
+    @unpack aileron_cmd, rudder_cmd = avionics.lat_ctl.y
 
-    @pack! airframe.act.u = eng_start, eng_stop, mixture, throttle_cmd, aileron_cmd,
-           elevator_cmd, rudder_cmd, flaps, brake_left, brake_right
+    act.throttle.u[] = throttle_cmd
+    act.aileron.u[] = aileron_cmd
+    act.elevator.u[] = elevator_cmd
+    act.rudder.u[] = rudder_cmd
+    act.flaps.u[] = flaps
+    act.steering.u[] = steering
+    pwp.engine.u.start = eng_start
+    pwp.engine.u.stop = eng_stop
+    pwp.engine.u.mixture = mixture
+    ldg.left.braking.u[] = brake_left
+    ldg.right.braking.u[] = brake_right
 
 end
 
 
-
-################################## GUI #########################################
-
-using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
-        SameLine, NewLine, IsItemActive, Separator, Text, Checkbox, RadioButton
-
-function mode_button_HSV(button_mode, selected_mode, active_mode)
-    if active_mode === button_mode
-        return HSV_green
-    elseif selected_mode === button_mode
-        return HSV_amber
-    else
-        return HSV_gray
-    end
-end
-
-function GUI.draw!(avionics::System{<:C172MCS.Avionics},
-                    physics::System{<:C172FBW.Physics},
-                    label::String = "Cessna 172 SS CAS Avionics")
-end
 
 
 ################################################################################
@@ -1002,6 +1023,7 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
     @unpack mixture, flaps, EAS = trim_params
     @unpack throttle, aileron, elevator, rudder = trim_state
     @unpack v_eOb_n, e_nb, χ_gnd, h_e = ac.y.physics.kinematics
+    @unpack β_b = ac.y.physics.air
 
     #makes Avionics inputs consistent with the trim solution obtained for the
     #aircraft physics, so the trim condition is preserved upon simulation start
@@ -1029,6 +1051,7 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
     u.EAS_sp = EAS
     u.clm_sp = -v_eOb_n[3]
     u.φ_sp = e_nb.φ
+    u.β_sp = β_b
     u.χ_sp = χ_gnd
     u.h_sp = h_e
 
@@ -1040,6 +1063,201 @@ end
 
 function Aircraft.linearize!(ac::System{<:Cessna172MCS}, args...; kwargs...)
     linearize!(ac.physics, args...; kwargs...)
+end
+
+
+################################################################################
+################################## GUI #########################################
+
+using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
+        SameLine, NewLine, IsItemActive, Separator, Text, Checkbox, RadioButton
+
+function mode_button_HSV(button_mode, selected_mode, active_mode)
+    if active_mode === button_mode
+        return HSV_green
+    elseif selected_mode === button_mode
+        return HSV_amber
+    else
+        return HSV_gray
+    end
+end
+
+function GUI.draw!(avionics::System{<:C172MCS.Avionics},
+                    physics::System{<:C172FBW.Physics},
+                    label::String = "Cessna 172 MCS Avionics")
+
+    # @unpack airframe = physics
+    #qué u necesito? sólo la de avionics.
+    #qué u necesito? kinematics, air, rigidbody, airframe, atmosphere
+    @unpack airframe, kinematics, rigidbody, air = physics.y
+    u = avionics.u
+
+    Begin(label)
+
+    PushItemWidth(-60)
+        CImGui.Dummy(10.0, 10.0)
+        CImGui.Text("Dummy 1")
+        CImGui.Text("Dummy 2")
+        CImGui.Dummy(10.0, 10.0);
+
+        if airframe.y.pwp.engine.state === Piston.eng_off
+            eng_start_HSV = HSV_gray
+        elseif airframe.y.pwp.engine.state === Piston.eng_starting
+            eng_start_HSV = HSV_amber
+        else
+            eng_start_HSV = HSV_green
+        end
+        dynamic_button("Engine Start", eng_start_HSV, 0.1, 0.2)
+        u_inc.eng_start = IsItemActive()
+        SameLine()
+        dynamic_button("Engine Stop", HSV_gray, (HSV_gray[1], HSV_gray[2], HSV_gray[3] + 0.1), (0.0, 0.8, 0.8))
+        u_inc.eng_stop = IsItemActive()
+        SameLine()
+        u_inc.mixture = safe_slider("Mixture", u_inc.mixture, "%.6f")
+
+        Separator()
+
+        Text("Engine Status: ")
+
+    show_internals = @cstatic check=false @c Checkbox("Internals", &check)
+
+
+    #Essentials
+    #Flight Phase
+    #Basic Engine display with engine start / stop buttons, and Mixture:
+    #Second line: status, RPM, Manifold pressure, fuel flow, Shaft Torque, Shaft Power
+    #Air: EAS, TAS, alpha, beta, air temperature, air pressure
+    #Attitude: Heading, Pitch, Bank
+    #Angular Rates:
+    #Velocity: Speed, Course Angle, Flight Path Angle
+    #Position: Lat, Lon, AltOrth, AltEllip
+    #Height over Ground: promedio de las tres patas
+
+    #####################################
+    #how do we arrange this?
+    #Inceptors always shown
+
+    #Essentials
+    #Flight Phase
+    #Basic Engine display with engine start / stop buttons, and Mixture:
+    #Second line: status, RPM, Manifold pressure, fuel flow, Shaft Torque, Shaft Power
+    #Air: EAS, TAS, alpha, beta, air temperature, air pressure
+    #Attitude: Heading, Pitch, Bank
+    #Angular Rates:
+    #Velocity: Speed, Course Angle, Flight Path Angle
+    #Position: Lat, Lon, AltOrth, AltEllip
+    #Height over Ground: promedio de las tres patas
+
+    ########
+    #Inceptors en tres secciones:
+    #throttle, roll, pitch y yaw inputs
+    #offsets
+    #flaps y brakes
+
+    #Route
+
+    #Guidance (mode buttons)
+    #Vertical: Off / Altitude #setpoint: value
+    #Horizontal: Off
+
+    #Longitudinal Control (mode buttons)
+    #Direct / Throttle + Pitch SAS / Throttle + Pitch Rate / Throttle + Pitch #Angle
+    # Throttle + EAS / EAS + Pitch Rate / EAS + Pitch Angle / EAS + Clm
+
+    #Lateral Control (mode buttons)
+    #Direct / Roll Rate + Sideslip / Bank Angle + Sideslip / Course Angle + Sideslip
+
+    #Command Variables considered in FlightGuidance, para cada una tenemos un
+    #setpoint y un current value. ver si se
+
+    #throttle_sp, aileron_cmd_sp, elevator_cmd_sp y rudder_sp no tienen casilla para
+    #setpoint, vienen de input + offset. A la derecha ponemos los commands
+
+    #p_sp, q_sp, β_sp tampoco tienen casilla, vienen de los inputs. A partir de
+    #ahi, vienen las command variables con input directo. Para
+
+    # throttle_sp::Float64 = 0.0 #throttle command setpoint
+    # elevator_sp::Float64 = 0.0 #elevator command setpoint
+    # aileron_sp::Float64 = 0.0 #aileron command setpoint
+    # rudder_sp::Float64 = 0.0 #rudder command setpoint
+    # p_sp::Float64 = 0.0 #roll rate setpoint
+    # q_sp::Float64 = 0.0 #pitch rate setpoint
+    # β_sp::Float64 = 0.0 #sideslip angle setpoint
+    # EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
+    # θ_sp::Float64 = 0.0 #pitch angle setpoint
+    # clm_sp::Float64 = 0.0 #climb rate setpoint
+    # φ_sp::Float64 = 0.0 #bank angle demand
+    # χ_sp::Float64 = 0.0 #course angle demand
+    # h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
+
+
+    # eng_start::Bool = false
+    # eng_stop::Bool = false
+    # mixture::Ranged{Float64, 0., 1.} = 0.5
+    # throttle_input::Ranged{Float64, 0., 1.} = 0.0 #sets throttle_sp
+    # roll_input::Ranged{Float64, -1., 1.} = 0.0 #sets aileron_sp or p_sp
+    # pitch_input::Ranged{Float64, -1., 1.} = 0.0 #sets elevator_sp or q_sp
+    # yaw_input::Ranged{Float64, -1., 1.} = 0.0 #sets rudder_sp or β_sp
+    # throttle_sp_offset::Ranged{Float64, 0., 1.} = 0.0 #for direct throttle control only
+    # aileron_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct aileron control only
+    # elevator_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct elevator control only
+    # rudder_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct rudder control only
+    # flaps::Ranged{Float64, 0., 1.} = 0.0
+    # brake_left::Ranged{Float64, 0., 1.} = 0.0
+    # brake_right::Ranged{Float64, 0., 1.} = 0.0
+    # p_sf::Float64 = 1.0 #roll input to roll rate scale factor (0.1)
+    # q_sf::Float64 = 1.0 #pitch input to pitch rate scale factor (0.1)
+    # β_sf::Float64 = 1.0 #yaw input to β_sp scale factor (0.1)
+    # vrt_gdc_mode_req::VerticalGuidanceMode = vrt_gdc_off #requested vertical guidance mode
+    # hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
+    # lon_ctl_mode_req::LonControlMode = lon_direct #requested longitudinal control mode
+    # lat_ctl_mode_req::LatControlMode = lat_direct #requested lateral control mode
+    # EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
+    # θ_sp::Float64 = 0 #pitch angle setpoint
+    # clm_sp::Float64 = 0.0 #climb rate setpoint
+    # φ_sp::Float64 = 0.0 #bank angle demand
+    # χ_sp::Float64 = 0.0 #course angle demand
+    # h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
+
+    show_internals = @cstatic check=false @c Checkbox("Internals", &check)
+
+    u_inc.throttle = safe_slider("Throttle", u_inc.throttle, "%.6f")
+    u_inc.roll_input = safe_slider("Roll Input", u_inc.roll_input, "%.6f")
+    u_inc.pitch_input = safe_slider("Pitch Input", u_inc.pitch_input, "%.6f")
+    u_inc.yaw_input = safe_slider("Yaw Input", u_inc.yaw_input, "%.6f")
+    Separator()
+    u_inc.aileron_cmd_offset = safe_input("Aileron Offset", u_inc.aileron_cmd_offset, 0.001, 0.1, "%.6f")
+    u_inc.elevator_cmd_offset = safe_input("Elevator Offset", u_inc.elevator_cmd_offset, 0.001, 0.1, "%.6f")
+    u_inc.rudder_cmd_offset = safe_input("Rudder Offset", u_inc.rudder_cmd_offset, 0.001, 0.1, "%.6f")
+    u_inc.flaps = safe_slider("Flaps", u_inc.flaps, "%.6f")
+    Separator()
+    u_inc.brake_left = safe_slider("Left Brake", u_inc.brake_left, "%.6f")
+    u_inc.brake_right = safe_slider("Right Brake", u_inc.brake_right, "%.6f")
+
+
+    if show_internals
+        Begin("Internals")
+        Separator()
+        show_throttle_ctl = @cstatic check=false @c Checkbox("Throttle Control", &check); SameLine()
+        show_roll_ctl = @cstatic check=false @c Checkbox("Roll Control", &check); SameLine()
+        show_pitch_ctl = @cstatic check=false @c Checkbox("Pitch Control", &check); SameLine()
+        show_yaw_ctl = @cstatic check=false @c Checkbox("Yaw Control", &check); SameLine()
+        show_moding = @cstatic check=false @c Checkbox("Moding", &check); SameLine()
+        # show_actuation = @cstatic check=false @c Checkbox("Actuation", &check); SameLine()
+        show_throttle_ctl && GUI.draw(throttle_ctl)
+        show_roll_ctl && GUI.draw(roll_ctl)
+        show_pitch_ctl && GUI.draw(pitch_ctl)
+        show_yaw_ctl && GUI.draw(yaw_ctl)
+        show_moding && GUI.draw(y_mod)
+        # show_actuation && GUI.draw(y_act)
+        End()
+    end
+
+
+    PopItemWidth()
+
+    End()
+
 end
 
 

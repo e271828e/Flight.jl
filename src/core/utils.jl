@@ -20,6 +20,7 @@ end
 Ranged(val::T, vmin::Real, vmax::Real) where {T} = Ranged(val, T(vmin), T(vmax))
 Ranged{T}(x::Ranged) where {T} = convert(Ranged{T}, x)
 Ranged{T,Min,Max}(x::Ranged) where {T,Min,Max} = convert(Ranged{T,Min,Max}, x)
+Ranged{T,Min,Max}(x::Real) where {T,Min,Max} = Ranged(x, Min, Max)
 (T::Type{<:Real})(x::Ranged) = convert(T, x)
 
 Base.typemin(::Type{Ranged{T,Min,Max}}) where {T, Min, Max} = Min
@@ -62,12 +63,17 @@ function linear_scaling(u::Ranged{T, UMin, UMax}, range::NTuple{2,Real}) where {
     return range[1] + (range[2] - range[1])/(UMax - UMin) * (T(u) - UMin)
 end
 
-function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, display_format::String) where {T<:AbstractFloat,Min,Max}
-    safe_slider(label, Float64(source), Min, Max, display_format)
+
+function GUI.display_bar(label::String, source::Ranged{T,Min,Max}, args...) where {T<:AbstractFloat,Min,Max}
+    display_bar(label, Float64(source), Min, Max, args...)
 end
 
-function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, step::Real, fast_step::Real, display_format::String) where {T<:AbstractFloat,Min,Max}
-    safe_input(label, Float64(source), step, fast_step, display_format)
+function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, args...) where {T<:AbstractFloat,Min,Max}
+    safe_slider(label, Float64(source), Min, Max, args...)
+end
+
+function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, args...) where {T<:AbstractFloat,Min,Max}
+    safe_input(label, Float64(source), args...)
 end
 
 # function test()

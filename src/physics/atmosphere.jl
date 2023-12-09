@@ -264,12 +264,12 @@ function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
         ts_split = :h,
         kwargs...)
 
-        subplot_α = plot(ts.α_b;
-            title = "Angle of Attack", ylabel = L"$α_b \ (rad)$",
+        subplot_α = plot(TimeSeries(ts._t, rad2deg.(ts.α_b._data));
+            title = "Angle of Attack", ylabel = L"$α_b \ (deg)$",
             label = "", kwargs...)
 
-        subplot_β = plot(ts.β_b;
-            title = "Angle of Sideslip", ylabel = L"$β_b \ (rad)$",
+        subplot_β = plot(TimeSeries(ts._t, rad2deg.(ts.β_b._data));
+            title = "Angle of Sideslip", ylabel = L"$β_b \ (deg)$",
             label = "", kwargs...)
 
     pd[:α_β] = plot(subplot_α, subplot_β;
