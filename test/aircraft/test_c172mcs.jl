@@ -540,5 +540,42 @@ function test_guidance_modes()
 
 end
 
+function test_sim_paced(; save::Bool = true)
+
+    h_trn = HOrth(601.55);
+
+    trn = HorizontalTerrain(altitude = h_trn)
+    ac = Cessna172MCS(LTF(), trn) |> System;
+    sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600)
+
+    kin_init = KinematicInit(
+        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        h = h_trn + 1.9);
+
+    reinit!(sim, kin_init)
+
+    interfaces = Vector{IODevices.Interface}()
+    for joystick in get_connected_joysticks()
+        push!(interfaces, attach_io!(sim, joystick))
+    end
+
+    xp = XPCDevice()
+    # xp = XPCDevice(host = IPv4("192.168.1.2"))
+    push!(interfaces, attach_io!(sim, xp))
+
+    @sync begin
+        for interface in interfaces
+            Threads.@spawn IODevices.start!(interface)
+        end
+        Threads.@spawn Sim.run_paced!(sim; pace = 1, verbose = true)
+    end
+
+    kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
+    air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172mcs", "sim_paced", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172mcs", "sim_paced", "air"))
+
+    return nothing
+
 
 end #module

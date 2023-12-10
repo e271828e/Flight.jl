@@ -1067,6 +1067,101 @@ end
 
 
 ################################################################################
+############################ Joystick Mappings #################################
+
+function IODevices.assign!(sys::System{<:Cessna172MCS}, joystick::Joystick,
+                           mapping::InputMapping)
+    IODevices.assign!(sys.avionics, joystick, mapping)
+end
+
+elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
+brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+
+
+function IODevices.assign!(sys::System{Avionics},
+                           joystick::XBoxController,
+                           ::DefaultMapping)
+
+    u = sys.u
+
+    u.roll_input = get_axis_value(joystick, :right_analog_x) |> aileron_curve
+    u.pitch_input = get_axis_value(joystick, :right_analog_y) |> elevator_curve
+    u.yaw_input = get_axis_value(joystick, :left_analog_x) |> rudder_curve
+    u.steering = get_axis_value(joystick, :left_analog_x) |> rudder_curve
+    u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
+    u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
+
+    u.aileron_sp_offset -= 0.01 * was_released(joystick, :dpad_left)
+    u.aileron_sp_offset += 0.01 * was_released(joystick, :dpad_right)
+    u.elevator_sp_offset += 0.01 * was_released(joystick, :dpad_down)
+    u.elevator_sp_offset -= 0.01 * was_released(joystick, :dpad_up)
+
+    u.throttle_input += 0.1 * was_released(joystick, :button_Y)
+    u.throttle_input -= 0.1 * was_released(joystick, :button_A)
+
+    u.flaps += 0.3333 * was_released(joystick, :right_bumper)
+    u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
+
+end
+
+function IODevices.assign!(sys::System{Avionics},
+                           joystick::T16000M,
+                           ::DefaultMapping)
+
+    u = sys.u
+
+    u.throttle_input = get_axis_value(joystick, :throttle)
+    u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
+    u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
+    u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
+    u.steering = get_axis_value(joystick, :stick_z) |> rudder_curve
+
+    u.brake_left = is_pressed(joystick, :button_1)
+    u.brake_right = is_pressed(joystick, :button_1)
+
+    u.aileron_sp_offset -= 2e-4 * is_pressed(joystick, :hat_left)
+    u.aileron_sp_offset += 2e-4 * is_pressed(joystick, :hat_right)
+    u.elevator_sp_offset += 2e-4 * is_pressed(joystick, :hat_down)
+    u.elevator_sp_offset -= 2e-4 * is_pressed(joystick, :hat_up)
+
+    u.flaps += 0.3333 * was_released(joystick, :button_3)
+    u.flaps -= 0.3333 * was_released(joystick, :button_2)
+
+end
+
+function IODevices.assign!(sys::System{Avionics},
+                           joystick::GladiatorNXTEvo,
+                           ::DefaultMapping)
+
+    u = sys.u.inceptors
+
+    u.throttle_input = get_axis_value(joystick, :throttle)
+    u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
+    u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
+    u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
+    u.steering = get_axis_value(joystick, :stick_z) |> rudder_curve
+
+    u.brake_left = is_pressed(joystick, :red_trigger_half)
+    u.brake_right = is_pressed(joystick, :red_trigger_half)
+
+    u.aileron_sp_offset -= 2e-4 * is_pressed(joystick, :A3_left)
+    u.aileron_sp_offset += 2e-4 * is_pressed(joystick, :A3_right)
+    u.elevator_sp_offset += 2e-4 * is_pressed(joystick, :A3_down)
+    u.elevator_sp_offset -= 2e-4 * is_pressed(joystick, :A3_up)
+
+    if is_pressed(joystick, :A3_press)
+        u.aileron_sp_offset = 0
+        u.elevator_sp_offset = 0
+    end
+
+    u.flaps += 0.3333 * was_released(joystick, :switch_down)
+    u.flaps -= 0.3333 * was_released(joystick, :switch_up)
+
+end
+
+################################################################################
 ################################## GUI #########################################
 
 using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
@@ -1082,6 +1177,42 @@ function mode_button_HSV(button_mode, selected_mode, active_mode)
     end
 end
 
+
+function GUI.draw(sys::System{<:LonControl})
+    Begin("Longitudinal Control")
+        Text("Mode: $(sys.y.mode)")
+        foreach(keys(sys.subsystems), values(sys.subsystems)) do label, ss
+            if CImGui.TreeNode(string(label))
+                GUI.draw(ss)
+                CImGui.TreePop()
+            end
+        end
+    End()
+end
+
+function GUI.draw(sys::System{<:LatControl})
+    Begin("Lateral Control")
+        Text("Mode: $(sys.y.mode)")
+        foreach(keys(sys.subsystems), values(sys.subsystems)) do label, ss
+            if CImGui.TreeNode(string(label))
+                GUI.draw(ss)
+                CImGui.TreePop()
+            end
+        end
+    End()
+end
+
+function GUI.draw(sys::System{<:AltitudeGuidance})
+    Begin("Altitude Guidance")
+        Text("State: $(sys.y.state)")
+        Text("Control Mode: $(sys.y.lon_ctl_mode)")
+        Text("Altitude Threshold: $(sys.y.h_thr)")
+        Text("Throttle Setpoint: $(sys.y.throttle_sp)")
+        Text("Climb Rate Setpoint: $(sys.y.clm_sp)")
+    End()
+end
+
+
 function GUI.draw!(avionics::System{<:C172MCS.Avionics},
                     physics::System{<:C172FBW.Physics},
                     label::String = "Cessna 172 MCS Avionics")
@@ -1096,7 +1227,9 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
     @unpack EAS, TAS, α_b, β_b, T, p, pt = air
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
+
     clm = -v_eOb_n[3]
+    Δh = h_o - TerrainData(physics.constants.terrain, n_e).altitude
 
 
     Begin(label)
@@ -1149,38 +1282,62 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
             CImGui.EndTable()
         end
 
-        Text(@sprintf("Static Temperature: %.3f K", T))
-        Text(@sprintf("Static Pressure: %.3f Pa", p))
-        Text(@sprintf("Total Pressure: %.3f Pa", pt))
+        Separator()
+
+        if CImGui.BeginTable("Position", 3)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text(@sprintf("Latitude: %.6f deg", rad2deg(ϕ)))
+                CImGui.TableNextColumn(); Text(@sprintf("Longitude: %.6f deg", rad2deg(λ)))
+                CImGui.TableNextColumn(); Text(@sprintf("Altitude (Ellipsoidal): %.3f m", Float64(h_e)))
+            CImGui.EndTable()
+        end
 
         Separator()
 
-    ################################# Ground ###################################
-
-        Text(@sprintf("Latitude: %.6f deg", rad2deg(ϕ)))
-        Text(@sprintf("Longitude: %.6f deg", rad2deg(λ)))
-        Text(@sprintf("Altitude (Ellipsoidal): %.3f m", Float64(h_e)))
-        Text(@sprintf("Altitude (Orthometric): %.3f m", Float64(h_o)))
-
-        Δh = h_o - TerrainData(physics.constants.terrain, n_e).altitude
-        Text(@sprintf("Height Over Ground: %.3f m", Δh))
+        if CImGui.BeginTable("Terrain Reference", 3)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text(@sprintf("Altitude (Orthometric): %.3f m", Float64(h_o)))
+                CImGui.TableNextColumn(); Text(@sprintf("Height Over Ground: %.3f m", Δh))
+                CImGui.TableNextColumn(); Text("Flight Phase: $(y.flight_phase)")
+            CImGui.EndTable()
+        end
 
         Separator()
 
-        Text(@sprintf("Heading: %.3f deg", rad2deg(ψ)))
-        Text(@sprintf("Inclination: %.3f deg", rad2deg(θ)))
-        Text(@sprintf("Bank: %.3f deg", rad2deg(φ)))
+        if CImGui.BeginTable("Ground Velocity", 3)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text(@sprintf("Ground Speed: %.3f m", v_gnd))
+                CImGui.TableNextColumn(); Text(@sprintf("Course Angle: %.3f m", χ_gnd))
+                CImGui.TableNextColumn(); Text(@sprintf("Flight Path Angle: %.3f m", γ_gnd))
+            CImGui.EndTable()
+        end
 
-        Text(@sprintf("Yaw Rate: %.3f deg/s", rad2deg(ω_lb_b[1])))
-        Text(@sprintf("Pitch Rate: %.3f deg/s", rad2deg(ω_lb_b[2])))
-        Text(@sprintf("Roll Rate: %.3f deg/s", rad2deg(ω_lb_b[3])))
+        Separator()
+
+        if CImGui.BeginTable("Attitude", 3)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text(@sprintf("Heading: %.3f deg", rad2deg(ψ)))
+                CImGui.TableNextColumn(); Text(@sprintf("Inclination: %.3f deg", rad2deg(θ)))
+                CImGui.TableNextColumn(); Text(@sprintf("Bank: %.3f deg", rad2deg(φ)))
+            CImGui.EndTable()
+        end
+
+        Separator()
+
+        if CImGui.BeginTable("Angular Rates", 3, CImGui.ImGuiTableFlags_Resizable | CImGui.ImGuiTableFlags_SizingFixedFit | CImGui.ImGuiTableFlags_Hideable)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text(@sprintf("Yaw Rate: %.3f deg/s", rad2deg(ω_lb_b[1])))
+                CImGui.TableNextColumn(); Text(@sprintf("Pitch Rate: %.3f deg/s", rad2deg(ω_lb_b[2])))
+                CImGui.TableNextColumn(); Text(@sprintf("Roll Rate: %.3f deg/s", rad2deg(ω_lb_b[3])))
+            CImGui.EndTable()
+        end
 
         Separator()
 
 
     ############################################################################
 
-        PushItemWidth(-100)
+        # PushItemWidth(-100)
 
     ############################## Inceptors ###################################
 
@@ -1194,6 +1351,24 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
         u.yaw_input = safe_slider("Yaw Input", u.yaw_input, "%.6f")
         AlignTextToFramePadding(); Text("Flaps"); SameLine(160)
         u.flaps = safe_slider("Flaps Input", u.flaps, "%.6f")
+        AlignTextToFramePadding(); Text("Steering"); SameLine(160)
+        u.steering = safe_slider("Steering", u.steering, "%.6f")
+
+        if CImGui.BeginTable("Actuation", 3, CImGui.ImGuiTableFlags_Resizable | CImGui.ImGuiTableFlags_SizingFixedFit | CImGui.ImGuiTableFlags_Hideable)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                AlignTextToFramePadding(); Text("Throttle Input"); SameLine(160)
+                u.throttle_input = safe_slider("Throttle Input", u.throttle_input, "%.6f")
+                CImGui.TableNextColumn(); Text(@sprintf("Throttle Cmd: %.3f", act.throttle.cmd))
+                CImGui.TableNextColumn(); Text(@sprintf("Throttle Pos: %.3f", act.throttle.pos))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                AlignTextToFramePadding(); Text("Roll Input"); SameLine(160)
+                u.throttle_input = safe_slider("Roll Input", u.throttle_input, "%.6f")
+                CImGui.TableNextColumn(); Text(@sprintf("Cmd: %.3f", act.throttle.cmd))
+                CImGui.TableNextColumn(); Text(@sprintf("Pos: %.3f", act.throttle.pos))
+            CImGui.EndTable()
+        end
 
         Separator()
 
@@ -1201,6 +1376,11 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
         u.throttle_sp_offset = safe_input("Throttle_Offset", u.throttle_sp_offset, 0.001, 0.1, "%.3f")
         AlignTextToFramePadding(); Text("Aileron Offset"); SameLine(160)
         u.aileron_sp_offset = safe_input("Aileron Offset", u.aileron_sp_offset, 0.001, 0.1, "%.3f")
+            AlignTextToFramePadding(); Text("Pitch Rate SF (s/deg)"); SameLine(160)
+            u.q_sf = safe_input("Pitch Rate SF", rad2deg(u.q_sf), 1, 1.0, "%.3f") |> deg2rad
+            AlignTextToFramePadding(); Text("Roll Rate SF (s/deg)"); SameLine(160)
+            u.p_sf = safe_input("Roll Rate SF", rad2deg(u.p_sf), 1, 1.0, "%.3f") |> deg2rad
+
         AlignTextToFramePadding(); Text("Elevator Offset"); SameLine(160)
         u.elevator_sp_offset = safe_input("Elevator Offset", u.elevator_sp_offset, 0.001, 0.1, "%.3f")
         AlignTextToFramePadding(); Text("Rudder Offset"); SameLine(160)
@@ -1208,8 +1388,6 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
 
         Separator()
 
-        AlignTextToFramePadding(); Text("Steering"); SameLine(160)
-        u.steering = safe_slider("Steering", u.steering, "%.6f")
         AlignTextToFramePadding(); Text("Left Brake"); SameLine(160)
         u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
         AlignTextToFramePadding(); Text("Right Brake"); SameLine(160)
@@ -1281,9 +1459,6 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
 
         PushItemWidth(-100)
 
-            AlignTextToFramePadding(); Text("Pitch Rate SF (s/deg)"); SameLine(160)
-            u.q_sf = safe_input("Pitch Rate SF", rad2deg(u.q_sf), 1, 1.0, "%.3f") |> deg2rad
-
             AlignTextToFramePadding(); Text("Pitch Angle (deg)"); SameLine(160)
             u.θ_sp = safe_input("Pitch Angle", rad2deg(u.θ_sp), 0.1, 1.0, "%.3f") |> deg2rad
             SameLine(); Text(@sprintf("%.3f", rad2deg(θ)))
@@ -1297,8 +1472,6 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
             SameLine(); Text(@sprintf("%.3f", clm))
 
 
-        # PopItemWidth()
-
         Separator()
 
         ############################### Lateral Control ########################
@@ -1308,26 +1481,18 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
         CImGui.BeginGroup()
 
             dynamic_button("Direct##Lat", mode_button_HSV(lat_direct, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lat_ctl_mode_req = lat_direct)
-            SameLine()
+            IsItemActive() && (u.lat_ctl_mode_req = lat_direct); SameLine()
 
             dynamic_button("Roll Rate + AoS", mode_button_HSV(lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.β_sp = 0)
-            SameLine()
+            IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.β_sp = 0); SameLine()
 
             dynamic_button("Bank Angle + AoS", mode_button_HSV(lat_φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lat_ctl_mode_req = lat_φ_β; u.φ_sp = φ; u.β_sp = 0)
-            SameLine()
+            IsItemActive() && (u.lat_ctl_mode_req = lat_φ_β; u.φ_sp = φ; u.β_sp = 0); SameLine()
 
             dynamic_button("Course Angle + AoS", mode_button_HSV(lat_χ_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
             IsItemActive() && (u.lat_ctl_mode_req = lat_χ_β; u.χ_sp = χ_gnd; u.β_sp = 0)
 
         CImGui.EndGroup()
-
-        # PushItemWidth(-100)
-
-            AlignTextToFramePadding(); Text("Roll Rate SF (s/deg)"); SameLine(160)
-            u.p_sf = safe_input("Roll Rate SF", rad2deg(u.p_sf), 1, 1.0, "%.3f") |> deg2rad
 
             AlignTextToFramePadding(); Text("Bank Angle (deg)"); SameLine(160)
             u.φ_sp = safe_input("Bank Angle", rad2deg(u.φ_sp), 0.1, 1.0, "%.3f") |> deg2rad
@@ -1342,218 +1507,25 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
             SameLine(); Text(@sprintf("%.3f", rad2deg(β_b)))
 
 
-
-    ############################################################################
-        PopItemWidth()
     ############################################################################
 
-        # Dummy(10.0, 10.0)
+        # PopItemWidth()
+
+    ############################################################################
 
         Separator()
 
-        show_internals = @cstatic check=false @c Checkbox("Internals", &check)
-
-
-
-    ########
-    #Inceptors en tres secciones:
-    #throttle, roll, pitch y yaw inputs
-    #offsets
-    #flaps y brakes
-
-    #Route
-
-    #Guidance (mode buttons)
-    #Vertical: Off / Altitude #setpoint: value
-    #Horizontal: Off
-
-    #Longitudinal Control (mode buttons)
-    #Direct / Throttle + Pitch SAS / Throttle + Pitch Rate / Throttle + Pitch #Angle
-    # Throttle + EAS / EAS + Pitch Rate / EAS + Pitch Angle / EAS + Clm
-
-    #Lateral Control (mode buttons)
-    #Direct / Roll Rate + Sideslip / Bank Angle + Sideslip / Course Angle + Sideslip
-
-    #Command Variables considered in FlightGuidance, para cada una tenemos un
-    #setpoint y un current value. ver si se
-
-    #throttle_sp, aileron_cmd_sp, elevator_cmd_sp y rudder_sp no tienen casilla para
-    #setpoint, vienen de input + offset. A la derecha ponemos los commands
-
-    #p_sp, q_sp, β_sp tampoco tienen casilla, vienen de los inputs. A partir de
-    #ahi, vienen las command variables con input directo. Para
-
-    # throttle_sp::Float64 = 0.0 #throttle command setpoint
-    # elevator_sp::Float64 = 0.0 #elevator command setpoint
-    # aileron_sp::Float64 = 0.0 #aileron command setpoint
-    # rudder_sp::Float64 = 0.0 #rudder command setpoint
-    # p_sp::Float64 = 0.0 #roll rate setpoint
-    # q_sp::Float64 = 0.0 #pitch rate setpoint
-    # β_sp::Float64 = 0.0 #sideslip angle setpoint
-    # EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
-    # θ_sp::Float64 = 0.0 #pitch angle setpoint
-    # clm_sp::Float64 = 0.0 #climb rate setpoint
-    # φ_sp::Float64 = 0.0 #bank angle demand
-    # χ_sp::Float64 = 0.0 #course angle demand
-    # h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
-
-
-    # eng_start::Bool = false
-    # eng_stop::Bool = false
-    # mixture::Ranged{Float64, 0., 1.} = 0.5
-    # throttle_input::Ranged{Float64, 0., 1.} = 0.0 #sets throttle_sp
-    # roll_input::Ranged{Float64, -1., 1.} = 0.0 #sets aileron_sp or p_sp
-    # pitch_input::Ranged{Float64, -1., 1.} = 0.0 #sets elevator_sp or q_sp
-    # yaw_input::Ranged{Float64, -1., 1.} = 0.0 #sets rudder_sp or β_sp
-    # throttle_sp_offset::Ranged{Float64, 0., 1.} = 0.0 #for direct throttle control only
-    # aileron_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct aileron control only
-    # elevator_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct elevator control only
-    # rudder_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct rudder control only
-    # flaps::Ranged{Float64, 0., 1.} = 0.0
-    # brake_left::Ranged{Float64, 0., 1.} = 0.0
-    # brake_right::Ranged{Float64, 0., 1.} = 0.0
-    # p_sf::Float64 = 1.0 #roll input to roll rate scale factor (0.1)
-    # q_sf::Float64 = 1.0 #pitch input to pitch rate scale factor (0.1)
-    # β_sf::Float64 = 1.0 #yaw input to β_sp scale factor (0.1)
-    # vrt_gdc_mode_req::VerticalGuidanceMode = vrt_gdc_off #requested vertical guidance mode
-    # hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
-    # lon_ctl_mode_req::LonControlMode = lon_direct #requested longitudinal control mode
-    # lat_ctl_mode_req::LatControlMode = lat_direct #requested lateral control mode
-    # EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
-    # θ_sp::Float64 = 0 #pitch angle setpoint
-    # clm_sp::Float64 = 0.0 #climb rate setpoint
-    # φ_sp::Float64 = 0.0 #bank angle demand
-    # χ_sp::Float64 = 0.0 #course angle demand
-    # h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
-
-    # show_internals = @cstatic check=false @c Checkbox("Internals", &check)
-
-    # u_inc.throttle = safe_slider("Throttle", u_inc.throttle, "%.6f")
-    # u_inc.roll_input = safe_slider("Roll Input", u_inc.roll_input, "%.6f")
-    # u_inc.pitch_input = safe_slider("Pitch Input", u_inc.pitch_input, "%.6f")
-    # u_inc.yaw_input = safe_slider("Yaw Input", u_inc.yaw_input, "%.6f")
-    # Separator()
-    # u_inc.aileron_cmd_offset = safe_input("Aileron Offset", u_inc.aileron_cmd_offset, 0.001, 0.1, "%.6f")
-    # u_inc.elevator_cmd_offset = safe_input("Elevator Offset", u_inc.elevator_cmd_offset, 0.001, 0.1, "%.6f")
-    # u_inc.rudder_cmd_offset = safe_input("Rudder Offset", u_inc.rudder_cmd_offset, 0.001, 0.1, "%.6f")
-    # u_inc.flaps = safe_slider("Flaps", u_inc.flaps, "%.6f")
-    # Separator()
-    # u_inc.brake_left = safe_slider("Left Brake", u_inc.brake_left, "%.6f")
-    # u_inc.brake_right = safe_slider("Right Brake", u_inc.brake_right, "%.6f")
-
-
-    # if show_internals
-    #     Begin("Internals")
-    #     Separator()
-    #     show_throttle_ctl = @cstatic check=false @c Checkbox("Throttle Control", &check); SameLine()
-    #     show_roll_ctl = @cstatic check=false @c Checkbox("Roll Control", &check); SameLine()
-    #     show_pitch_ctl = @cstatic check=false @c Checkbox("Pitch Control", &check); SameLine()
-    #     show_yaw_ctl = @cstatic check=false @c Checkbox("Yaw Control", &check); SameLine()
-    #     show_moding = @cstatic check=false @c Checkbox("Moding", &check); SameLine()
-    #     # show_actuation = @cstatic check=false @c Checkbox("Actuation", &check); SameLine()
-    #     show_throttle_ctl && GUI.draw(throttle_ctl)
-    #     show_roll_ctl && GUI.draw(roll_ctl)
-    #     show_pitch_ctl && GUI.draw(pitch_ctl)
-    #     show_yaw_ctl && GUI.draw(yaw_ctl)
-    #     show_moding && GUI.draw(y_mod)
-    #     # show_actuation && GUI.draw(y_act)
-    #     End()
-    # end
-
-
-
-    End()
-
-end
-
-
-# ############################ Joystick Mappings #################################
-
-function IODevices.assign!(sys::System{<:Cessna172MCS}, joystick::Joystick,
-                           mapping::InputMapping)
-    IODevices.assign!(sys.avionics, joystick, mapping)
-end
-
-elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
-brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-
-function IODevices.assign!(sys::System{Avionics},
-                           joystick::XBoxController,
-                           ::DefaultMapping)
-
-    u = sys.u.inceptors
-
-    u.roll_input = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.pitch_input = get_axis_value(joystick, :right_analog_y) |> elevator_curve
-    u.yaw_input = get_axis_value(joystick, :left_analog_x) |> rudder_curve
-    u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
-    u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
-
-    u.aileron_sp_offset -= 0.01 * was_released(joystick, :dpad_left)
-    u.aileron_sp_offset += 0.01 * was_released(joystick, :dpad_right)
-    u.elevator_sp_offset += 0.01 * was_released(joystick, :dpad_down)
-    u.elevator_sp_offset -= 0.01 * was_released(joystick, :dpad_up)
-
-    u.throttle_input += 0.1 * was_released(joystick, :button_Y)
-    u.throttle_input -= 0.1 * was_released(joystick, :button_A)
-
-    u.flaps += 0.3333 * was_released(joystick, :right_bumper)
-    u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
-
-end
-
-function IODevices.assign!(sys::System{Avionics},
-                           joystick::T16000M,
-                           ::DefaultMapping)
-
-    u = sys.u.inceptors
-
-    u.throttle_input = get_axis_value(joystick, :throttle)
-    u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
-    u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
-    u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
-
-    u.brake_left = is_pressed(joystick, :button_1)
-    u.brake_right = is_pressed(joystick, :button_1)
-
-    u.aileron_sp_offset -= 2e-4 * is_pressed(joystick, :hat_left)
-    u.aileron_sp_offset += 2e-4 * is_pressed(joystick, :hat_right)
-    u.elevator_sp_offset += 2e-4 * is_pressed(joystick, :hat_down)
-    u.elevator_sp_offset -= 2e-4 * is_pressed(joystick, :hat_up)
-
-    u.flaps += 0.3333 * was_released(joystick, :button_3)
-    u.flaps -= 0.3333 * was_released(joystick, :button_2)
-
-end
-
-function IODevices.assign!(sys::System{Avionics},
-                           joystick::GladiatorNXTEvo,
-                           ::DefaultMapping)
-
-    u = sys.u.inceptors
-
-    u.throttle_input = get_axis_value(joystick, :throttle)
-    u.roll_input = get_axis_value(joystick, :stick_x) |> aileron_curve
-    u.pitch_input = get_axis_value(joystick, :stick_y) |> elevator_curve
-    u.yaw_input = get_axis_value(joystick, :stick_z) |> rudder_curve
-
-    u.brake_left = is_pressed(joystick, :red_trigger_half)
-    u.brake_right = is_pressed(joystick, :red_trigger_half)
-
-    u.aileron_sp_offset -= 2e-4 * is_pressed(joystick, :A3_left)
-    u.aileron_sp_offset += 2e-4 * is_pressed(joystick, :A3_right)
-    u.elevator_sp_offset += 2e-4 * is_pressed(joystick, :A3_down)
-    u.elevator_sp_offset -= 2e-4 * is_pressed(joystick, :A3_up)
-
-    if is_pressed(joystick, :A3_press)
-        u.aileron_offset = 0
-        u.elevator_offset = 0
+    if CImGui.TreeNode("Internals")
+        show_lon_ctl = @cstatic check=false @c Checkbox("Longitudinal Control", &check); SameLine()
+        show_lat_ctl = @cstatic check=false @c Checkbox("Lateral Control", &check); SameLine()
+        show_alt_gdc = @cstatic check=false @c Checkbox("Altitude Guidance", &check); SameLine()
+        show_lon_ctl && GUI.draw(avionics.lon_ctl)
+        show_lat_ctl && GUI.draw(avionics.lat_ctl)
+        show_alt_gdc && GUI.draw(avionics.alt_gdc)
+        CImGui.TreePop()
     end
 
-    u.flaps += 0.3333 * was_released(joystick, :switch_down)
-    u.flaps -= 0.3333 * was_released(joystick, :switch_up)
+    End()
 
 end
 
