@@ -10,11 +10,16 @@ using ..Geodesy
 export AbstractKinematicDescriptor, ECEF, LTF, NED
 export KinematicInit, KinematicData, KinematicSystem
 
-########################## AbstractKinematicDescriptor #############################
-##############################################################################
+const v_min_χγ = 0.1 #minimum speed for valid χ, γ
+
+######################### AbstractKinematicDescriptor ##########################
+################################################################################
 
 abstract type AbstractKinematicDescriptor <: SystemDefinition end
 const KinematicSystem = System{<:AbstractKinematicDescriptor}
+
+############################## Initialization ##################################
+################################################################################
 
 #user-friendly conditions for kinematic state initialization
 struct Initializer
@@ -41,6 +46,9 @@ function Systems.init!(sys::KinematicSystem, ic::Initializer = Initializer())
     init_x!(sys.x, ic)
     f_ode!(sys) #update state derivatives and outputs
 end
+
+############################## Common Definitions ##############################
+################################################################################
 
 #implementation-independent outputs
 struct YCommon
@@ -230,8 +238,8 @@ function KinematicsY(x::XLTF)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     v_gnd = norm(v_eOb_n)
-    χ_gnd = azimuth(v_eOb_n)
-    γ_gnd = inclination(v_eOb_n)
+    χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
+    γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
     return KinematicsY(
         YCommon( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
@@ -339,8 +347,8 @@ function KinematicsY(x::XECEF)
     ω_ib_b = ω_ie_b + ω_eb_b
 
     v_gnd = norm(v_eOb_n)
-    χ_gnd = azimuth(v_eOb_n)
-    γ_gnd = inclination(v_eOb_n)
+    χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
+    γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
     return KinematicsY(
         YCommon( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,

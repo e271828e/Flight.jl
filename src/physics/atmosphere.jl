@@ -153,6 +153,8 @@ end
 ################################################################################
 ############################### AirData ########################################
 
+const TAS_min_αβ = 0.1 #minimum TAS for valid α, β computation
+
 struct AirData
     v_ew_n::SVector{3,Float64} #wind velocity, NED axes
     v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
@@ -212,9 +214,13 @@ end
 
 #compute airflow angles at frame c from the c-frame aerodynamic velocity
 @inline function get_airflow_angles(v_wOc_c::AbstractVector{<:Real})::Tuple{Float64, Float64}
-    α = atan(v_wOc_c[3], v_wOc_c[1])
-    β = atan(v_wOc_c[2], √(v_wOc_c[1]^2 + v_wOc_c[3]^2))
-    return (α, β)
+    if norm(v_wOc_c) < TAS_min_αβ
+        return (0.0, 0.0)
+    else
+        α = atan(v_wOc_c[3], v_wOc_c[1])
+        β = atan(v_wOc_c[2], √(v_wOc_c[1]^2 + v_wOc_c[3]^2))
+        return (α, β)
+    end
 end
 
 @inline function get_wind_axes(v_wOc_c::AbstractVector{<:Real})

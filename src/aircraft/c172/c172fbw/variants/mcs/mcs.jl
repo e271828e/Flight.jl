@@ -907,7 +907,7 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
     trim_state = result[2]
     @unpack mixture, flaps, EAS = trim_params
     @unpack throttle, aileron, elevator, rudder = trim_state
-    @unpack v_eOb_n, e_nb, χ_gnd, h_e = ac.y.physics.kinematics
+    @unpack ω_lb_b, v_eOb_n, e_nb, χ_gnd, h_e = ac.y.physics.kinematics
     @unpack β_b = ac.y.physics.air
 
     #makes Avionics inputs consistent with the trim solution obtained for the
@@ -932,9 +932,11 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
     u.lon_ctl_mode_req = lon_direct
     u.lat_ctl_mode_req = lat_direct
 
+    u.q_sp = ω_lb_b[2]
     u.θ_sp = e_nb.θ
     u.EAS_sp = EAS
     u.clm_sp = -v_eOb_n[3]
+    u.p_sp = ω_lb_b[1]
     u.φ_sp = e_nb.φ
     u.β_sp = β_b
     u.χ_sp = χ_gnd
