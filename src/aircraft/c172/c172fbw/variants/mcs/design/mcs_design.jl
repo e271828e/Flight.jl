@@ -453,8 +453,8 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         Hx = lss_red.C[z_labels, :]
         Hu = lss_red.D[z_labels, :]
 
-        Hx_int = Hx[:β, :]'
-        Hu_int = Hu[:β, :]'
+        Hx_int = Hx[z_labels, :]
+        Hu_int = Hu[z_labels, :]
         n_int, _ = size(Hx_int)
 
         F_aug = [F zeros(n_x, n_int); Hx_int zeros(n_int, n_int)]
@@ -468,8 +468,8 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         v_norm = norm([v_x, v_y])
 
         #weight matrices
-        Q = ComponentVector(p = 0, r = 0.1, φ = 0.15, v_x = 0/v_norm, v_y = 0.1/v_norm, β_filt = 0, ail_v = 0, ail_p = 0, rud_v = 0, rud_p = 0, ξ_β = 0.001) |> diagm
-        R = C172MCS.ULat(aileron_cmd = 0.1, rudder_cmd = 0.05) |> diagm
+        Q = ComponentVector(p = 0, r = 0.1, φ = 0.25, v_x = 0/v_norm, v_y = 0.1/v_norm, β_filt = 0, ail_v = 0, ail_p = 0, rud_v = 0, rud_p = 0, ξ_φ = 0.1, ξ_β = 0.001) |> diagm
+        R = C172MCS.ULat(aileron_cmd = 0.05, rudder_cmd = 0.05) |> diagm
 
         #compute gain matrix
         C_aug = lqr(P_aug, Q, R)
@@ -486,8 +486,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         C_fbk = C_x
         C_fwd = B_22 + C_x * B_12
-        C_int = ComponentMatrix(zeros(n_u, n_z), Axis(u_labels), Axis(z_labels))
-        C_int[:, :β] .= C_ξ
+        C_int = C_ξ
 
         #some useful signal labels
         u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk")

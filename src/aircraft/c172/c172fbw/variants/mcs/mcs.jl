@@ -1095,7 +1095,7 @@ function mode_button_HSV(button_mode, selected_mode, active_mode)
 end
 
 
-function GUI.draw(sys::System{<:LonControl}, p_open::Ref{Bool})
+function GUI.draw(sys::System{<:LonControl}, p_open::Ref{Bool} = Ref(true))
     Begin("Longitudinal Control", p_open)
         Text("Mode: $(sys.y.mode)")
         foreach(keys(sys.subsystems), values(sys.subsystems)) do label, ss
@@ -1107,7 +1107,7 @@ function GUI.draw(sys::System{<:LonControl}, p_open::Ref{Bool})
     End()
 end
 
-function GUI.draw(sys::System{<:LatControl}, p_open::Ref{Bool})
+function GUI.draw(sys::System{<:LatControl}, p_open::Ref{Bool} = Ref(true))
     Begin("Lateral Control", p_open)
         Text("Mode: $(sys.y.mode)")
         foreach(keys(sys.subsystems), values(sys.subsystems)) do label, ss
@@ -1119,7 +1119,7 @@ function GUI.draw(sys::System{<:LatControl}, p_open::Ref{Bool})
     End()
 end
 
-function GUI.draw(sys::System{<:AltitudeGuidance}, p_open::Ref{Bool})
+function GUI.draw(sys::System{<:AltitudeGuidance}, p_open::Ref{Bool} = Ref(true))
     Begin("Altitude Guidance", p_open)
         Text("State: $(sys.y.state)")
         Text("Control Mode: $(sys.y.lon_ctl_mode)")
@@ -1132,6 +1132,7 @@ end
 
 function GUI.draw!(avionics::System{<:C172MCS.Avionics},
                     physics::System{<:C172FBW.Physics},
+                    p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172 MCS Avionics")
 
     u = avionics.u
@@ -1149,7 +1150,7 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
     clm = -v_eOb_n[3]
     Δh = h_o - TerrainData(physics.constants.terrain, n_e).altitude
 
-    Begin(label)
+    Begin(label, p_open)
 
     ############################# Engine Control ###############################
 
@@ -1378,22 +1379,22 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
                 CImGui.TableNextColumn(); Text("Rudder")
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); Text("Setpoint")
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(y.lon_ctl.throttle_sp))))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(y.lon_ctl.elevator_sp))))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(y.lat_ctl.aileron_sp))))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(y.lat_ctl.rudder_sp))))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_sp)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_sp)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_sp)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_sp)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); Text("Command")
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(y.lon_ctl.throttle_cmd))))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(y.lon_ctl.elevator_cmd))))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(y.lat_ctl.aileron_cmd))))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(y.lat_ctl.rudder_cmd))))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_cmd)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); Text("Position")
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(act.throttle.pos))))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(act.elevator.pos))))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(act.aileron.pos))))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(Float64(act.rudder.pos))))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.throttle.pos)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.elevator.pos)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.aileron.pos)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.rudder.pos)))
             CImGui.EndTable()
         end
     end
@@ -1435,6 +1436,8 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
                 Text(@sprintf("%.3f deg", rad2deg(χ_gnd)))
                 Text("Flight Path Angle"); SameLine(240)
                 Text(@sprintf("%.3f deg", rad2deg(γ_gnd)))
+                Text("Climb Rate"); SameLine(240)
+                Text(@sprintf("%.3f m/s", clm))
 
             CImGui.TableNextColumn();
                 Text("Heading"); SameLine(240);
@@ -1468,19 +1471,15 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
     end
 
     if CImGui.CollapsingHeader("Internals")
-        @cstatic check=false begin
-            @c Checkbox("Longitudinal Control##Internals", &check)
-            check && @c GUI.draw(avionics.lon_ctl, &check)
-        end
-        SameLine()
-        @cstatic check=false begin
-            @c Checkbox("Lateral Control##Internals", &check)
-            check && @c GUI.draw(avionics.lat_ctl, &check)
-        end
-        SameLine()
-        @cstatic check=false begin
-            @c Checkbox("Altitude Guidance##Internals", &check)
-            check && @c GUI.draw(avionics.alt_gdc, &check)
+        @cstatic c_lon=false c_lat=false c_alt=false begin
+            @c Checkbox("Longitudinal Control##Internals", &c_lon)
+            SameLine()
+            @c Checkbox("Lateral Control##Internals", &c_lat)
+            SameLine()
+            @c Checkbox("Altitude Guidance##Internals", &c_alt)
+            c_lon && @c GUI.draw(avionics.lon_ctl, &c_lon)
+            c_lat && @c GUI.draw(avionics.lat_ctl, &c_lat)
+            c_alt && @c GUI.draw(avionics.alt_gdc, &c_alt)
         end
     end
 

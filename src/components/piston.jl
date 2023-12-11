@@ -431,13 +431,14 @@ function compute_π_ISA_pow(lookup, n, μ, δ)
 end
 
 
-function GUI.draw(sys::System{<:Engine}, window_label::String = "Piston Engine")
+function GUI.draw(sys::System{<:Engine}, p_open::Ref{Bool} = Ref(true),
+                window_label::String = "Piston Engine")
 
     @unpack u, y, constants = sys
     @unpack idle, frc = sys
     @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ, SFC = y
 
-    CImGui.Begin(window_label)
+    CImGui.Begin(window_label, p_open)
 
         CImGui.Text("Start: $start")
         CImGui.Text("Stop: $stop")
@@ -534,15 +535,17 @@ RigidBody.get_hr_b(sys::System{<:Thruster}) = get_hr_b(sys.propeller)
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(sys::System{<:Thruster}, window_label::String = "Piston Thruster")
+function GUI.draw(sys::System{<:Thruster}, p_open::Ref{Bool} = Ref(true),
+                window_label::String = "Piston Thruster")
 
-    CImGui.Begin(window_label) #this should go within pwp's own draw, see airframe
-        show_eng = @cstatic check=false @c CImGui.Checkbox("Engine", &check)
-        show_prop = @cstatic check=false @c CImGui.Checkbox("Propeller", &check)
+    CImGui.Begin(window_label, p_open) #this should go within pwp's own draw, see airframe
+        @cstatic c_eng=false c_prop=false begin
+            @c CImGui.Checkbox("Engine", &c_eng)
+            @c CImGui.Checkbox("Propeller", &c_prop)
+            c_eng && @c GUI.draw(sys.engine, &c_eng)
+            c_prop && @c GUI.draw(sys.propeller, &c_prop)
+        end
     CImGui.End()
-
-    show_eng && GUI.draw(sys.engine)
-    show_prop && GUI.draw(sys.propeller)
 
 end
 

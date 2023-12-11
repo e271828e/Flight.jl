@@ -14,7 +14,7 @@ using ImGuiOpenGLBackend
 using ImGuiOpenGLBackend.ModernGL
 
 export CImGuiStyle, Renderer
-export dynamic_button, toggle_switch, display_bar, safe_slider, safe_input, @running_plot
+export dynamic_button, toggle_switch, display_bar, safe_slider, safe_input
 export HSV_amber, HSV_gray, HSV_green, HSV_red
 
 ################################################################################
@@ -265,12 +265,11 @@ function disable!(renderer::Renderer)
 end
 
 #generic non-mutating frame draw function, to be extended by users
-draw(args...) = nothing
+draw(args...; kwargs...) = nothing
 
 #generic mutating draw function, to be extended by users
-draw!(args...) = nothing
+draw!(args...; kwargs...) = nothing
 
-#must be used within a CImGui.Begin() / CImGui.End() context
 function draw(v::AbstractVector{<:Real}, label::String, units::String = "")
 
     N = length(v)
@@ -388,31 +387,6 @@ function safe_input(label::String, source::AbstractFloat, step::Real, fast_step:
     input_label = show_label ? label : "##"*label
     CImGui.InputDouble(input_label, ref, step, fast_step, display_format)
     return ref[]
-end
-
-#inactive while not enabled; overwrites target while enabled
-macro enabled_slider(label, target, lower_bound, upper_bound, default)
-    enable = gensym(:enable)
-    value = gensym(:value)
-    return esc(quote
-        $enable = @cstatic check=false @c CImGui.Checkbox($label, &check)
-        CImGui.SameLine()
-        $value = @cstatic f=Cfloat($default) @c CImGui.SliderFloat("##"*($label), &f, $lower_bound, $upper_bound)
-        $enable && ($target = $value)
-    end)
-end
-
-macro running_plot(label, source, lower_bound, upper_bound, initial_value, window_height)
-    values = gensym(:values)
-    offset = gensym(:offset)
-    return esc(quote
-        @cstatic $values=fill(Cfloat($initial_value),90) $offset=Cint(0) begin
-            $values[$offset+1] = $source
-            $offset = ($offset+1) % length($values)
-            CImGui.PlotLines(string($source |> Float32), $values, length($values), $offset,
-                             $label, $lower_bound, $upper_bound, (0, $window_height))
-        end
-    end)
 end
 
 

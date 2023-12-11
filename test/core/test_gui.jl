@@ -21,8 +21,9 @@ function test_gui()
     # target = Control.Discrete.PIDVector{3}() |> System
     # target = Control.Continuous.PIVector{3}() |> System
     # target = C172FBW.Actuation() |> System;
-    target = Cessna172MCS() |> System
+    # target = Cessna172MCS() |> System
     # target = C172MCS.LonControl() |> System
+    target = Cessna172FBWBase() |> System
     r = Renderer()
     GUI.init!(r)
     # GUI.run(r, GUI.draw, target)

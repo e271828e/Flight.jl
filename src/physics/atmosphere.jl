@@ -60,18 +60,20 @@ function LocalAtmosphericData(sys::System{LocalAtmosphere})
     LocalAtmosphericData(; T_sl, p_sl, v_ew_n = SVector{3,Float64}(v_ew_n))
 end
 
-function GUI.draw!(sys::System{<:LocalAtmosphere}, label::String = "Local Atmosphere")
+function GUI.draw!(sys::System{<:LocalAtmosphere},
+                    p_open::Ref{Bool} = Ref(true),
+                    label::String = "Local Atmosphere")
 
     u = sys.u
 
-    CImGui.Begin(label)
+    CImGui.Begin(label, p_open)
 
-    CImGui.PushItemWidth(-60)
-    u.T_sl = GUI.safe_slider("Sea Level Temperature (K)", u.T_sl, "%.3f")
-    u.p_sl = GUI.safe_slider("Sea Level Pressure (Pa)", u.p_sl, "%.3f")
-    u.v_ew_n[1] = GUI.safe_slider("North Wind (m/s)", u.v_ew_n[1], -30, 30, "%.3f")
-    u.v_ew_n[2] = GUI.safe_slider("East Wind (m/s)", u.v_ew_n[2], -30, 30, "%.3f")
-    u.v_ew_n[3] = GUI.safe_slider("Down Wind (m/s)", u.v_ew_n[3], -30, 30, "%.3f")
+    CImGui.PushItemWidth(-250)
+    u.T_sl = GUI.safe_slider("Sea Level Temperature (K)", u.T_sl, "%.3f", true)
+    u.p_sl = GUI.safe_slider("Sea Level Pressure (Pa)", u.p_sl, "%.3f", true)
+    u.v_ew_n[1] = GUI.safe_slider("North Wind (m/s)", u.v_ew_n[1], -30, 30, "%.3f", true)
+    u.v_ew_n[2] = GUI.safe_slider("East Wind (m/s)", u.v_ew_n[2], -30, 30, "%.3f", true)
+    u.v_ew_n[3] = GUI.safe_slider("Down Wind (m/s)", u.v_ew_n[3], -30, 30, "%.3f", true)
     CImGui.PopItemWidth()
 
     CImGui.End()
@@ -349,11 +351,11 @@ end
 
 ################################# GUI ##########################################
 
-function GUI.draw(air::AirData, label::String = "Air")
+function GUI.draw(air::AirData, p_open::Ref{Bool} = Ref(true), label::String = "Air")
 
     @unpack v_ew_n, v_ew_b, v_wOb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
 
-    CImGui.Begin(label)
+    CImGui.Begin(label, p_open)
 
     GUI.draw(v_ew_n, "Velocity (Wind/ECEF) [NED]", "m/s")
     GUI.draw(v_ew_b, "Velocity (Wind/ECEF) [Body]", "m/s")

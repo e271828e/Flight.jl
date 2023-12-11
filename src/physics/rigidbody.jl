@@ -693,7 +693,8 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(rb::RigidBodyData, label::String = "Rigid Body")
+function GUI.draw(rb::RigidBodyData, p_open::Ref{Bool} = Ref(true),
+                    label::String = "Rigid Body")
 
     @unpack mp_Ob, wr_net_Ob, hr_b, α_eb_b, a_eOb_b, f_Ob_b, f_G_b = rb
 
@@ -701,7 +702,7 @@ function GUI.draw(rb::RigidBodyData, label::String = "Rigid Body")
     mp_Gb = t_GbOb(mp_Ob)
     wr_net_Gb = t_GbOb(wr_net_Ob)
 
-    CImGui.Begin(label)
+    CImGui.Begin(label, p_open)
 
     CImGui.Text(@sprintf("Mass: %.3f kg", mp_Ob.m))
     GUI.draw(mp_Ob.r_OG, "CG Position (O) [Body]", "m")

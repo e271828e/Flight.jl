@@ -514,11 +514,12 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(sys::System{<:LandingGearUnit}, window_label::String = "Landing Gear Unit")
+function GUI.draw(sys::System{<:LandingGearUnit}, p_open::Ref{Bool} = Ref(true),
+                 window_label::String = "Landing Gear Unit")
 
     @unpack steering, braking, strut = sys
 
-    CImGui.Begin(window_label)
+    CImGui.Begin(window_label, p_open)
         if CImGui.TreeNode("Strut")
             GUI.draw(sys.strut)
             CImGui.TreePop()

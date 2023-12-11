@@ -420,17 +420,19 @@ end
 ################################### GUI ########################################
 
 
-function GUI.draw!(sys::System{<:Template}, label::String = "Aircraft")
+function GUI.draw!(sys::System{<:Template};
+                    p_open::Ref{Bool} = Ref(true), label::String = "Aircraft")
 
     @unpack y = sys
 
-    CImGui.Begin(label)
+    CImGui.Begin(label, p_open)
 
-    show_physics = @cstatic check=false @c CImGui.Checkbox("Physics", &check)
-    show_avionics = @cstatic check=false @c CImGui.Checkbox("Avionics", &check)
-
-    show_physics && GUI.draw!(sys.physics, sys.avionics)
-    show_avionics && GUI.draw!(sys.avionics, sys.physics)
+    @cstatic c_phy=false c_avs=false begin
+        @c CImGui.Checkbox("Physics", &c_phy)
+        c_phy && @c GUI.draw!(sys.physics, sys.avionics, &c_phy)
+        @c CImGui.Checkbox("Avionics", &c_avs)
+        c_avs && @c GUI.draw!(sys.avionics, sys.physics, &c_avs)
+    end
 
     CImGui.End()
 
@@ -438,27 +440,30 @@ end
 
 function GUI.draw!(physics::System{<:Physics},
                    avionics::System{<:AbstractAvionics},
+                   p_open::Ref{Bool} = Ref(true),
                    label::String = "Aircraft Physics")
 
     @unpack airframe, atmosphere = physics.subsystems
     @unpack terrain = physics.constants
     @unpack kinematics, rigidbody, air = physics.y
 
-    CImGui.Begin(label)
+    CImGui.Begin(label, p_open)
 
-    show_airframe = @cstatic check=false @c CImGui.Checkbox("Airframe", &check)
-    show_atmosphere = @cstatic check=false @c CImGui.Checkbox("Atmosphere", &check)
-    show_terrain = @cstatic check=false @c CImGui.Checkbox("Terrain", &check)
-    show_dyn = @cstatic check=false @c CImGui.Checkbox("Dynamics", &check)
-    show_kin = @cstatic check=false @c CImGui.Checkbox("Kinematics", &check)
-    show_air = @cstatic check=false @c CImGui.Checkbox("Air", &check)
-
-    show_airframe && GUI.draw!(physics.airframe, avionics)
-    show_atmosphere && GUI.draw!(physics.atmosphere)
-    show_terrain && GUI.draw(terrain)
-    show_dyn && GUI.draw(rigidbody, "Dynamics")
-    show_kin && GUI.draw(kinematics, "Kinematics")
-    show_air && GUI.draw(air, "Air")
+    @cstatic(c_afm=false, c_atm=false, c_trn=false, c_dyn =false, c_kin=false, c_air=false,
+    begin
+            @c CImGui.Checkbox("Airframe", &c_afm)
+            @c CImGui.Checkbox("Atmosphere", &c_atm)
+            @c CImGui.Checkbox("Terrain", &c_trn)
+            @c CImGui.Checkbox("Dynamics", &c_dyn)
+            @c CImGui.Checkbox("Kinematics", &c_kin)
+            @c CImGui.Checkbox("Air", &c_air)
+            c_afm && @c GUI.draw!(physics.airframe, avionics, &c_afm)
+            c_atm && @c GUI.draw!(physics.atmosphere, &c_atm)
+            c_trn && @c GUI.draw(terrain, &c_trn)
+            c_dyn && @c GUI.draw(rigidbody, &c_dyn)
+            c_kin && @c GUI.draw(kinematics, &c_kin)
+            c_air && @c GUI.draw(air, &c_air)
+    end)
 
     CImGui.End()
 

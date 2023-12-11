@@ -580,11 +580,12 @@ function plot_J_M(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
 
 end
 
-function GUI.draw(sys::System{<:Propeller}, window_label::String = "Propeller")
+function GUI.draw(sys::System{<:Propeller}, p_open::Ref{Bool} = Ref(true),
+                    window_label::String = "Propeller")
 
     @unpack ω, J, Mt, Δβ, wr_p, hr_p, P, η_p = sys.y
 
-    CImGui.Begin(window_label)
+    CImGui.Begin(window_label, p_open)
 
         CImGui.Text(@sprintf("Angular Rate (Propeller/Body): %.7f RPM", radpersec2RPM(ω)))
         CImGui.Text(@sprintf("Advance Ratio: %.7f", J))

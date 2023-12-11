@@ -476,12 +476,13 @@ end
 ################################# GUI ##########################################
 
 
-function GUI.draw(sys::System{<:Aero}, window_label::String = "Cessna 172R Aerodynamics")
+function GUI.draw(sys::System{<:Aero}, p_open::Ref{Bool} = Ref(true),
+                window_label::String = "Cessna 172R Aerodynamics")
 
     @unpack e, a, r, f, α, β, α_filt, β_filt, stall, coeffs, wr_b = sys.y
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
 
-    CImGui.Begin(window_label)
+    CImGui.Begin(window_label, p_open)
 
         CImGui.Text(@sprintf("Elevator Input: %.7f", e))
         CImGui.Text(@sprintf("Aileron Input: %.7f", a))
@@ -511,20 +512,6 @@ function GUI.draw(sys::System{<:Aero}, window_label::String = "Cessna 172R Aerod
     CImGui.End()
 
 end
-
-
-# # splt_α = thplot(t, rad2deg.(α_b);
-# #     title = "Angle of Attack", ylabel = L"$\alpha \ (deg)$",
-# #     label = "", kwargs...)
-
-# # splt_β = thplot(t, rad2deg.(β_b);
-# #     title = "Angle of Sideslip", ylabel = L"$\beta \ (deg)$",
-# #     label = "", kwargs...)
-
-# # pd["05_α_β"] = plot(splt_α, splt_β;
-# #     plot_title = "Airflow Angles [Airframe]",
-# #     layout = (1,2),
-# #     kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
 
 ###############################################################################
@@ -576,21 +563,23 @@ function Ldg()
 
 end
 
-function GUI.draw(sys::System{<:Ldg}, window_label::String = "Cessna 172R Landing Gear")
+function GUI.draw(sys::System{<:Ldg}, p_open::Ref{Bool} = Ref(true),
+                window_label::String = "Cessna 172R Landing Gear")
 
     @unpack left, right, nose = sys
 
-    CImGui.Begin(window_label)
+    CImGui.Begin(window_label, p_open)
 
-        show_left = @cstatic check=false @c CImGui.Checkbox("Left Main", &check)
-        show_right = @cstatic check=false @c CImGui.Checkbox("Right Main", &check)
-        show_nose = @cstatic check=false @c CImGui.Checkbox("Nose", &check)
+        @cstatic(c_left=false, c_right=false, c_nose = false, begin
+            @c CImGui.Checkbox("Left Main", &c_left)
+            @c CImGui.Checkbox("Right Main", &c_right)
+            @c CImGui.Checkbox("Nose", &c_nose)
+            c_left && @c GUI.draw(left, &c_left)
+            c_right && @c GUI.draw(right, &c_right)
+            c_nose && @c GUI.draw(nose, &c_nose)
+        end)
 
     CImGui.End()
-
-    show_left && GUI.draw(left, "Left Main")
-    show_right && GUI.draw(right, "Right Main")
-    show_nose && GUI.draw(nose, "Nose")
 
 end
 
@@ -635,19 +624,21 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw!(sys::System{<:Payload}, label::String = "Cessna 172R Payload")
+function GUI.draw!(sys::System{<:Payload},
+                    p_open::Ref{Bool} = Ref(true),
+                    label::String = "Cessna 172R Payload")
 
     u = sys.u
 
-    CImGui.Begin(label)
+    CImGui.Begin(label, p_open)
 
-    CImGui.PushItemWidth(-60)
+    CImGui.PushItemWidth(-250)
 
-    u.m_pilot = GUI.safe_slider("Pilot Mass (kg)", u.m_pilot, "%.3f")
-    u.m_copilot = GUI.safe_slider("Copilot Mass (kg)", u.m_copilot, "%.3f")
-    u.m_lpass = GUI.safe_slider("Left Passenger Mass (kg)", u.m_lpass, "%.3f")
-    u.m_rpass = GUI.safe_slider("Right Passenger Mass (kg)", u.m_rpass, "%.3f")
-    u.m_baggage = GUI.safe_slider("Baggage Mass (kg)", u.m_baggage, "%.3f")
+    u.m_pilot = GUI.safe_slider("Pilot Mass (kg)", u.m_pilot, "%.3f", true)
+    u.m_copilot = GUI.safe_slider("Copilot Mass (kg)", u.m_copilot, "%.3f", true)
+    u.m_lpass = GUI.safe_slider("Left Passenger Mass (kg)", u.m_lpass, "%.3f", true)
+    u.m_rpass = GUI.safe_slider("Right Passenger Mass (kg)", u.m_rpass, "%.3f", true)
+    u.m_baggage = GUI.safe_slider("Baggage Mass (kg)", u.m_baggage, "%.3f", true)
 
     CImGui.PopItemWidth()
 
@@ -709,11 +700,12 @@ function RigidBody.get_mp_Ob(fuel::System{Fuel})
     return mp_Ob
 end
 
-function GUI.draw(sys::System{Fuel}, window_label::String = "Cessna 172R Fuel System")
+function GUI.draw(sys::System{Fuel}, p_open::Ref{Bool} = Ref(true),
+                window_label::String = "Cessna 172R Fuel System")
 
     @unpack m_total, m_avail = sys.y
 
-    CImGui.Begin(window_label)
+    CImGui.Begin(window_label, p_open)
 
         CImGui.Text(@sprintf("Total Fuel: %.6f kg", m_total))
         CImGui.Text(@sprintf("Available Fuel: %.6f kg", m_avail))
@@ -794,27 +786,36 @@ end
 #################################### GUI #######################################
 
 function GUI.draw!( airframe::System{<:Airframe}, ::System{A},
-                    window_label::String = "Cessna 172 Airframe") where {A<:AbstractAvionics}
+                    p_open::Ref{Bool} = Ref(true),
+                    label::String = "Cessna 172 Airframe") where {A<:AbstractAvionics}
 
     @unpack act, pwp, ldg, aero, fuel, pld = airframe
 
-    CImGui.Begin(window_label)
+    CImGui.Begin(label, p_open)
 
-        show_act = @cstatic check=false @c CImGui.Checkbox("Actuation", &check)
-        show_aero = @cstatic check=false @c CImGui.Checkbox("Aerodynamics", &check)
-        show_ldg = @cstatic check=false @c CImGui.Checkbox("Landing Gear", &check)
-        show_pwp = @cstatic check=false @c CImGui.Checkbox("Powerplant", &check)
-        show_fuel = @cstatic check=false @c CImGui.Checkbox("Fuel", &check)
-        show_pld = @cstatic check=false @c CImGui.Checkbox("Payload", &check)
+        @cstatic(c_act=false, c_aero=false, c_ldg=false, c_pwp=false, c_fuel=false, c_pld=false,
+        begin
+            @c CImGui.Checkbox("Actuation", &c_act)
+            @c CImGui.Checkbox("Aerodynamics", &c_aero)
+            @c CImGui.Checkbox("Landing Gear", &c_ldg)
+            @c CImGui.Checkbox("Power Plant", &c_pwp)
+            @c CImGui.Checkbox("Fuel", &c_fuel)
+            @c CImGui.Checkbox("Payload", &c_pld)
+            if c_act
+                if A === NoAvionics
+                    @c GUI.draw!(act, &c_act)
+                else
+                    @c GUI.draw(act, &c_act)
+                end
+            end
+            c_aero && @c GUI.draw(aero, &c_aero)
+            c_ldg && @c GUI.draw(ldg, &c_ldg)
+            c_pwp && @c GUI.draw(pwp, &c_pwp)
+            c_fuel && @c GUI.draw(fuel, &c_fuel)
+            c_pld && @c GUI.draw!(pld, &c_pld)
+        end)
 
     CImGui.End()
-
-    show_act && (A === NoAvionics ? GUI.draw!(act) : GUI.draw(act))
-    show_aero && GUI.draw(aero)
-    show_ldg && GUI.draw(ldg)
-    show_pwp && GUI.draw(pwp)
-    show_fuel && GUI.draw(fuel)
-    show_pld && GUI.draw!(pld)
 
 end
 

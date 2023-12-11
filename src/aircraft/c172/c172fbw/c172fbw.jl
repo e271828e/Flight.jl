@@ -85,18 +85,6 @@ function Systems.f_ode!(sys::System{Actuator{R}}) where {R}
 
 end
 
-function GUI.draw(sys::System{<:Actuator})
-    CImGui.Text("Actuator Command"); CImGui.SameLine(200); display_bar("", sys.y.cmd)
-    CImGui.Text("Actuator Position"); CImGui.SameLine(200); display_bar("", sys.y.pos)
-    @running_plot("Actuator Position", Float64(sys.y.pos), typemin(sys.y.pos), typemax(sys.y.pos), 0.0, 120)
-end
-
-function GUI.draw!(sys::System{<:Actuator})
-    sys.u[] = safe_slider("Actuator Command", sys.u[], "%.6f")
-    CImGui.Text("Actuator Command"); CImGui.SameLine(150); display_bar("", sys.y.cmd)
-    CImGui.Text("Actuator Position"); CImGui.SameLine(150); display_bar("", sys.y.pos)
-    @running_plot("Actuator Position", Float64(sys.y.pos), typemin(sys.y.pos), typemax(sys.y.pos), 0.0, 120)
-end
 
 ################################################################################
 #################################### Actuation #################################
@@ -129,39 +117,98 @@ function C172.assign!(aero::System{<:C172.Aero},
 
 end
 
-function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172 Fly-By-Wire Actuation")
+################################### GUI ########################################
 
-    CImGui.Begin(label)
+function GUI.draw(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
+                    label::String = "Cessna 172 Fly-By-Wire Actuation")
+
+    CImGui.Begin(label, p_open)
     CImGui.PushItemWidth(-60)
 
-    foreach(keys(sys.subsystems), values(sys.subsystems)) do k, ss
-        if CImGui.CollapsingHeader(uppercasefirst(string(k)))
-            GUI.draw(ss)
-            CImGui.Dummy(10.0, 10.0);
-        end
-    end
+    #because @cstatic allocates storage using global variables, functions using
+    #it are not reentrant; calls to such functions will share the same storage.
+
+    labels = uppercasefirst.(string.(keys(sys.subsystems)))
+    commands = map(ss->ss.y.cmd, values(sys.subsystems))
+    positions = map(ss->ss.y.pos, values(sys.subsystems))
+
+    @cstatic(
+        thr_buffer = fill(Cfloat(0),90), thr_offset = Ref(Cint(0)),
+        ail_buffer = fill(Cfloat(0),90), ail_offset = Ref(Cint(0)),
+        ele_buffer = fill(Cfloat(0),90), ele_offset = Ref(Cint(0)),
+        rud_buffer = fill(Cfloat(0),90), rud_offset = Ref(Cint(0)),
+        flp_buffer = fill(Cfloat(0),90), flp_offset = Ref(Cint(0)),
+        str_buffer = fill(Cfloat(0),90), str_offset = Ref(Cint(0)),
+
+        begin
+
+            buffers = (thr_buffer, ail_buffer, ele_buffer, rud_buffer, flp_buffer, str_buffer)
+            offsets = (thr_offset, ail_offset, ele_offset, rud_offset, flp_offset, str_offset)
+
+            foreach(labels, commands, positions, buffers, offsets) do label, command, position, buffer, offset
+
+                CImGui.Text("$label Command"); CImGui.SameLine(200); display_bar("", command)
+                CImGui.Text("$label Position"); CImGui.SameLine(200); display_bar("", position)
+                buffer[offset[]+1] = Cfloat(position)
+                offset[] = (offset[]+1) % length(buffer)
+                CImGui.PlotLines("$label Position", buffer, length(buffer), offset[], "$label Position",
+                                 Cfloat(typemin(position)), Cfloat(typemax(position)),
+                                 (Cint(0), Cint(120)))
+            end
+
+        end)
 
     CImGui.PopItemWidth()
     CImGui.End()
 
 end
 
-function GUI.draw!(sys::System{Actuation}, label::String = "Cessna 172 Fly-By-Wire Actuation")
+function GUI.draw!(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
+                    label::String = "Cessna 172 Fly-By-Wire Actuation")
 
-    CImGui.Begin(label)
+    CImGui.Begin(label, p_open)
     CImGui.PushItemWidth(-60)
 
-    foreach(keys(sys.subsystems), values(sys.subsystems)) do k, ss
-        if CImGui.CollapsingHeader(uppercasefirst(string(k)))
-            GUI.draw!(ss)
-            CImGui.Dummy(10.0, 10.0);
-        end
-    end
+    #because @cstatic allocates storage using global variables, functions using
+    #it are not reentrant; calls to such functions will share the same storage.
+
+    labels = uppercasefirst.(string.(keys(sys.subsystems)))
+    inputs = map(ss->ss.u, values(sys.subsystems))
+    commands = map(ss->ss.y.cmd, values(sys.subsystems))
+    positions = map(ss->ss.y.pos, values(sys.subsystems))
+
+    @cstatic(
+        thr_buffer = fill(Cfloat(0),90), thr_offset = Ref(Cint(0)),
+        ail_buffer = fill(Cfloat(0),90), ail_offset = Ref(Cint(0)),
+        ele_buffer = fill(Cfloat(0),90), ele_offset = Ref(Cint(0)),
+        rud_buffer = fill(Cfloat(0),90), rud_offset = Ref(Cint(0)),
+        flp_buffer = fill(Cfloat(0),90), flp_offset = Ref(Cint(0)),
+        str_buffer = fill(Cfloat(0),90), str_offset = Ref(Cint(0)),
+
+        begin
+
+            buffers = (thr_buffer, ail_buffer, ele_buffer, rud_buffer, flp_buffer, str_buffer)
+            offsets = (thr_offset, ail_offset, ele_offset, rud_offset, flp_offset, str_offset)
+
+            foreach(labels, inputs, commands, positions, buffers, offsets) do label, input, command, position, buffer, offset
+
+                input[] = safe_slider("$label Command", input[], "%.6f")
+                CImGui.Text("$label Command"); CImGui.SameLine(200); display_bar("", command)
+                CImGui.Text("$label Position"); CImGui.SameLine(200); display_bar("", position)
+                buffer[offset[]+1] = Cfloat(position)
+                offset[] = (offset[]+1) % length(buffer)
+                CImGui.PlotLines("$label Position", buffer, length(buffer), offset[], "$label Position",
+                                 Cfloat(typemin(position)), Cfloat(typemax(position)),
+                                 (Cint(0), Cint(120)))
+            end
+
+        end)
 
     CImGui.PopItemWidth()
     CImGui.End()
 
 end
+
 
 # ################################## IODevices ###################################
 
