@@ -29,7 +29,7 @@ end
 #redirect input assignments directly to the actuation system
 function IODevices.assign!(sys::System{<:Cessna172RBase}, joystick::Joystick,
                            mapping::InputMapping)
-    IODevices.assign!(sys.airframe.act, joystick, mapping)
+    IODevices.assign!(sys.physics.airframe.act, joystick, mapping)
 end
 
 end #module

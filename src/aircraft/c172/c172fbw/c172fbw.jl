@@ -212,46 +212,48 @@ end
 
 # ################################## IODevices ###################################
 
-elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
-brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+pitch_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+roll_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
+yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
+# brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 function IODevices.assign!(sys::System{<:Actuation},
                            joystick::XBoxController,
                            ::DefaultMapping)
 
-    u = sys.u
+    @unpack throttle, aileron, elevator, rudder, steering, flaps = sys.subsystems
 
-    u.aileron_cmd = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.elevator_cmd = get_axis_value(joystick, :right_analog_y) |> elevator_curve
-    u.rudder_cmd = get_axis_value(joystick, :left_analog_x) |> rudder_curve
-    u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
-    u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
+    throttle.u[] = get_axis_value(joystick, :right_analog_x) |> roll_curve
+    elevator.u[] = get_axis_value(joystick, :right_analog_y) |> pitch_curve
+    rudder.u[] = get_axis_value(joystick, :left_analog_x) |> yaw_curve
+    # u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
+    # u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
+    steering.u[] = get_axis_value(joystick, :left_analog_x) |> yaw_curve
 
-    u.flaps += 0.3333 * was_released(joystick, :right_bumper)
-    u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
+    flaps.u[] += 0.3333 * was_released(joystick, :right_bumper)
+    flaps.u[] -= 0.3333 * was_released(joystick, :left_bumper)
 
-    u.throttle_cmd += 0.1 * was_released(joystick, :button_Y)
-    u.throttle_cmd -= 0.1 * was_released(joystick, :button_A)
+    throttle.u[] += 0.1 * was_released(joystick, :button_Y)
+    throttle.u[] -= 0.1 * was_released(joystick, :button_A)
 end
 
 function IODevices.assign!(sys::System{<:Actuation},
                            joystick::T16000M,
                            ::DefaultMapping)
 
-    u = sys.u
+    @unpack throttle, aileron, elevator, rudder, steering, flaps = sys.subsystems
 
-    u.throttle_cmd = get_axis_value(joystick, :throttle)
-    u.aileron_cmd = get_axis_value(joystick, :stick_x) |> aileron_curve
-    u.elevator_cmd = get_axis_value(joystick, :stick_y) |> elevator_curve
-    u.rudder_cmd = get_axis_value(joystick, :stick_z) |> rudder_curve
+    throttle.u[] = get_axis_value(joystick, :throttle)
+    aileron.u[] = get_axis_value(joystick, :stick_x) |> roll_curve
+    elevator.u[] = get_axis_value(joystick, :stick_y) |> pitch_curve
+    rudder.u[] = get_axis_value(joystick, :stick_z) |> yaw_curve
+    steering.u[] = get_axis_value(joystick, :stick_z) |> yaw_curve
 
-    u.brake_left = is_pressed(joystick, :button_1)
-    u.brake_right = is_pressed(joystick, :button_1)
+    # u.brake_left = is_pressed(joystick, :button_1)
+    # u.brake_right = is_pressed(joystick, :button_1)
 
-    u.flaps += 0.3333 * was_released(joystick, :button_3)
-    u.flaps -= 0.3333 * was_released(joystick, :button_2)
+    flaps.u[] += 0.3333 * was_released(joystick, :button_3)
+    flaps.u[] -= 0.3333 * was_released(joystick, :button_2)
 
 end
 

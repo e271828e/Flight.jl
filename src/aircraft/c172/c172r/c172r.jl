@@ -132,11 +132,12 @@ function C172.assign!(aero::System{<:C172.Aero},
 end
 
 
-function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172R Actuation")
+function GUI.draw(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
+                label::String = "Cessna 172R Actuation")
 
     y = sys.y
 
-    CImGui.Begin(label)
+    CImGui.Begin(label, p_open)
 
     CImGui.PushItemWidth(-60)
 
@@ -166,35 +167,36 @@ function GUI.draw(sys::System{Actuation}, label::String = "Cessna 172R Actuation
 
 end
 
-function GUI.draw!(sys::System{Actuation}, label::String = "Cessna 172R Actuation")
+function GUI.draw!(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
+                label::String = "Cessna 172R Actuation")
 
     u = sys.u
 
-    CImGui.Begin(label)
+    CImGui.Begin(label, p_open)
 
-    CImGui.PushItemWidth(-60)
+    CImGui.PushItemWidth(-150)
 
     dynamic_button("Engine Start", 0.4); CImGui.SameLine()
     u.eng_start = CImGui.IsItemActive()
     dynamic_button("Engine Stop", 0.0)
     u.eng_stop = CImGui.IsItemActive()
 
-    u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
+    u.throttle = safe_slider("Throttle", u.throttle, "%.6f", true)
     # @running_plot("Throttle", u.throttle, 0, 1, 0.0, 120)
-    u.aileron = safe_slider("Aileron", u.aileron, "%.6f")
+    u.aileron = safe_slider("Aileron", u.aileron, "%.6f", true)
     # @running_plot("Aileron", u.aileron, -1, 1, 0.0, 120)
-    u.elevator = safe_slider("Elevator", u.elevator, "%.6f")
-    # @running_plot("Elevator", u.elevator, -1, 1, 0.0, 120)
-    u.rudder = safe_slider("Rudder", u.rudder, "%.6f")
+    u.elevator = safe_slider("Elevator", u.elevator, "%.6f", true)
+    # @running_plot("Elevator", u.elevator, -1, 1, 0.0, 120, true)
+    u.rudder = safe_slider("Rudder", u.rudder, "%.6f", true)
     # @running_plot("Rudder", u.rudder, -1, 1, 0.0, 120)
 
-    u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.001, 0.1, "%.6f")
-    u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.001, 0.1, "%.6f")
-    u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.001, 0.1, "%.6f")
-    u.flaps = safe_slider("Flaps", u.flaps, "%.6f")
-    u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
-    u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
-    u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
+    u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.001, 0.1, "%.6f", true)
+    u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.001, 0.1, "%.6f", true)
+    u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.001, 0.1, "%.6f", true)
+    u.flaps = safe_slider("Flaps", u.flaps, "%.6f", true)
+    u.mixture = safe_slider("Mixture", u.mixture, "%.6f", true)
+    u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f", true)
+    u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f", true)
 
     CImGui.PopItemWidth()
 
