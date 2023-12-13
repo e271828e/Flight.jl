@@ -262,7 +262,7 @@ end
 function add_joystick(slot::JoystickSlot)
 
     if !JoystickPresent(slot)
-        println("Could not add joystick at slot $slot: not found")
+        @error("Could not add joystick at slot $slot: not found")
         return
     end
 
@@ -270,15 +270,15 @@ function add_joystick(slot::JoystickSlot)
 
     if joystick_model == "Xbox Controller"
         joystick = XBoxController(slot)
-        println("XBoxController active at slot $slot")
+        @info("XBoxController active at slot $slot")
     elseif joystick_model == "T.16000M"
         joystick = T16000M(slot)
-        println("Thrustmaster T16000M active at slot $slot")
+        @info("Thrustmaster T16000M active at slot $slot")
     elseif joystick_model == "VKBsim Gladiator EVO  R"
         joystick = GladiatorNXTEvo(slot)
-        println("VKBSim Gladiator NXT Evo active at slot $slot")
+        @info("VKBSim Gladiator NXT Evo active at slot $slot")
     else
-        println("$joystick_model not supported")
+        @error("$joystick_model not supported")
         return
     end
 

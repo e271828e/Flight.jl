@@ -1,6 +1,7 @@
 module Propellers
 
 using LinearAlgebra, StaticArrays, StructArrays, Interpolations, UnPack
+using Logging
 using HDF5
 using Roots: find_zero
 using Trapz: trapz
@@ -149,7 +150,7 @@ function Coefficients(blade::Blade, n_blades::Int, J::Real, Mt::Real, Δβ::Real
         βa = get_βa(blade, ζ, Δβ)
         c̃ = blade.c̃(ζ)
 
-        (βa > π/2) &&  println("Warning: Aerodynamic AoA at $ζ is $(rad2deg(βa))° " *
+        (βa > π/2) &&  @warn("Aerodynamic AoA at $ζ is $(rad2deg(βa))° " *
             "for pitch offset $(rad2deg(Δβ))°")
 
         f = let n_blades = n_blades, c̃ = c̃, airfoil = airfoil, βa_t = βa_t, J = J, Mt = Mt, βa = βa, ε_inf = ε_inf, ζ = ζ

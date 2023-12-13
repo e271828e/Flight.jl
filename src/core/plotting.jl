@@ -4,6 +4,7 @@ using Reexport
 using Dates
 using UnPack
 using StructArrays
+using Logging
 using RecursiveArrayTools: VectorOfArray
 @reexport using Plots
 @reexport using LaTeXStrings
@@ -73,7 +74,7 @@ end
 ################################################################################
 ######################### Multi-Plot Specifications ############################
 
-make_plots(::T; kwargs...) where {T<:TimeSeries} = println("Method make_plots not extended for $T")
+make_plots(::T; kwargs...) where {T<:TimeSeries} = @warn("Method make_plots not extended for $T")
 
 #these yield a single figure so they can be handled directly by the Plots
 #pipeline directly as recipes
@@ -123,10 +124,10 @@ function save_plots(dict::OrderedDict{Symbol, T} where {T};
             n += 1
             plot_filename = joinpath(save_folder, string(n, pad = 2)*"_"*String(label)*"."*String(format))
             savefig(child, plot_filename)
-            println("Saved figure $plot_filename")
+            @info("Saved figure $plot_filename")
 
         elseif !isnothing(child)
-            error("Invalid entry type ($(typeof(child))")
+            @error("Invalid entry type ($(typeof(child))")
 
         end
     end

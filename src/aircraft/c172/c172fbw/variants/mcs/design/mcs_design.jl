@@ -37,12 +37,13 @@ function generate_lookups(
     elseif channel === :lat
         f_opt = design_lat
     else
-        error("Valid values for channel keyword: :lon, :lat")
+        @error("Valid values for channel keyword: :lon, :lat")
+        return
     end
 
     results = map(Iterators.product(EAS_range, h_range)) do (EAS, h)
 
-        println("Designing $channel controllers for EAS = $EAS, h = $h")
+        @info("Designing $channel controllers for EAS = $EAS, h = $h")
 
         #all other design point parameters at default
         flaps = EAS < 30 ? 1.0 : 0.0
@@ -197,8 +198,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         params_q2e = q2e_results.params
         if !check_results(q2e_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-            println("Warning: Checks failed for pitch rate control PID, design point $(design_point)")
-            println(q2e_results.metrics)
+            @warn("Checks failed for pitch rate PID, design point $(design_point), final metrics $(q2e_results.metrics)")
         end
 
         q2e_pid = build_PID(q2e_results.params)
@@ -242,8 +242,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         params_v2θ = v2θ_results.params
         if !check_results(v2θ_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-            println("Warning: Checks failed for pitch rate control PID, design point $(design_point)")
-            println(v2θ_results.metrics)
+            @warn("Checks failed for EAS to θ PID, design point $(design_point), final metrics $(v2θ_results.metrics)")
         end
 
         v2θ_pid = build_PID(v2θ_results.params)
@@ -273,8 +272,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         params_v2t = v2t_results.params
         if !check_results(v2t_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-            println("Warning: Checks failed for pitch rate control PID, design point $(design_point)")
-            println(v2t_results.metrics)
+            @warn("Checks failed for EAS to throttle PID, design point $(design_point), final metrics $(v2t_results.metrics)")
         end
 
         v2t_pid = build_PID(v2t_results.params)
@@ -574,8 +572,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         p2φ_results = optimize_PID(P_p2φ_opt; params_0, settings, weights, global_search)
         params_p2φ = p2φ_results.params
         if !check_results(p2φ_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-            println("Warning: Checks failed for roll rate control PID, design point $(design_point)")
-            println(p2φ_results.metrics)
+            @warn("Checks failed for p to φ PID, design point $(design_point), final metrics $(p2φ_results.metrics)")
         end
 
         p2φ_PID = build_PID(p2φ_results.params)
@@ -605,8 +602,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         params_χ2φ = χ2φ_results.params
         if !check_results(χ2φ_results, Metrics(; Ms = 1.4, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
-            println("Warning: Checks failed for course angle control PID, design point $(design_point)")
-            println(χ2φ_results.metrics)
+            @warn("Checks failed for χ to φ PID, design point $(design_point), final metrics $(χ2φ_results.metrics)")
         end
 
         χ2φ_PID = build_PID(χ2φ_results.params)

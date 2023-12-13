@@ -1,6 +1,7 @@
 module C172
 
 using LinearAlgebra, StaticArrays, ComponentArrays, UnPack, HDF5, Interpolations
+using Logging
 using Reexport
 using NLopt
 
@@ -962,7 +963,7 @@ function Aircraft.trim!(physics::System{<:C172.Physics},
 
     success = (exit_flag === :STOPVAL_REACHED)
     if !success
-        println("Warning: Trimming optimization failed with exit_flag $exit_flag")
+        @warn("Trimming optimization failed with exit_flag $exit_flag")
     end
     trim_state_opt = TrimState(minx)
     Aircraft.assign!(physics, trim_params, trim_state_opt)

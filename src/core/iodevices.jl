@@ -2,6 +2,7 @@ module IODevices
 
 using StaticArrays
 using UnPack
+using Logging
 
 export IODevice, InputMapping, DefaultMapping
 
@@ -26,7 +27,7 @@ update!(device::D, data) where {D<:IODevice} = MethodError(update!, (device, dat
 #argument. for alternative mappings, it can define additional subtypes of
 #InputMapping and their corresponding assign! methods
 function assign!(target::Any, device::IODevice, mapping::InputMapping)
-    println("Warning: Assigment method for target $(typeof(target)) from device"*
+    @warn("Assigment method for target $(typeof(target)) from device"*
     "$(typeof(device)) with mapping $(typeof(mapping)) not implemented")
 end
 
@@ -49,13 +50,13 @@ struct Interface{D <: IODevice, T,  M <: InputMapping, C <: Channel}
     ext_shutdown::Bool #whether to observe shutdown requests received by the IO device
 end
 
-start_thr!(io::Interface; verbose = true) = Threads.@spawn _start!(io; verbose)
+start_thr!(io::Interface) = Threads.@spawn start!(io)
 
-function start!(io::Interface{D}; verbose = true) where {D}
+function start!(io::Interface{D}) where {D}
 
     @unpack device, target, mapping, channel, start, target_lock, ext_shutdown = io
 
-    verbose && println("$D Interface: Starting on thread $(Threads.threadid())...")
+    @info("$D Interface: Starting on thread $(Threads.threadid())...")
 
     init!(device)
     wait(start)
@@ -72,7 +73,7 @@ function start!(io::Interface{D}; verbose = true) where {D}
             unlock(target_lock)
 
             if ext_shutdown && should_close(device)
-                println("$D Interface: Shutdown requested")
+                @info("$D Interface: Shutdown requested")
                 break
             end
 
@@ -81,14 +82,14 @@ function start!(io::Interface{D}; verbose = true) where {D}
     catch ex
 
         if ex isa InvalidStateException
-            println("$D Interface: Channel closed")
+            @info("$D Interface: Channel closed")
         else
-            println("$D Interface: Error during execution: $ex")
+            @error("$D Interface: Error during execution: $ex")
         end
 
     finally
         shutdown!(device)
-        println("$D Interface: Closed")
+        @info("$D Interface: Closed")
     end
 
 end

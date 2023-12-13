@@ -3,6 +3,7 @@ module GUI
 using UnPack
 using Reexport
 using StaticArrays
+using Logging
 
 #these are needed by any module extending GUI draw methods
 @reexport using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
@@ -57,13 +58,13 @@ Base.propertynames(::Renderer) = (:label, :monitor, :font_size, :sync)
 function Base.setproperty!(renderer::Renderer, name::Symbol, value)
     if name ∈ propertynames(renderer)
         if renderer._initialized
-            println("Cannot set property $name for an initialized Renderer, ",
+            @error("Cannot set property $name for an initialized Renderer, ",
             "call shutdown! first")
         else
             setfield!(renderer, name, value)
         end
     else
-        error("Unsupported property: $name")
+        @error("Unsupported property: $name")
     end
 end
 
@@ -259,7 +260,7 @@ function shutdown!(renderer::Renderer)
 end
 
 function disable!(renderer::Renderer)
-    !renderer._initialized ? setfield!(renderer, :_enabled, false) : println(
+    !renderer._initialized ? setfield!(renderer, :_enabled, false) : @error(
         "Cannot disable an already initialized renderer, call shutdown! first")
     return nothing
 end

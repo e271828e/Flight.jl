@@ -108,7 +108,7 @@ function test_sim(; save::Bool = true)
         end
 
         sim = Simulation(ac; t_end = 30, sys_io!, adaptive = true)
-        Sim.run!(sim, verbose = true)
+        Sim.run!(sim)
 
         # plots = make_plots(sim; Plotting.defaults...)
         kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
@@ -154,7 +154,7 @@ function test_sim_paced(; save::Bool = true)
         for interface in interfaces
             Threads.@spawn IODevices.start!(interface)
         end
-        Threads.@spawn Sim.run_paced!(sim; pace = 1, verbose = true)
+        Threads.@spawn Sim.run_paced!(sim; pace = 1)
     end
 
     plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)

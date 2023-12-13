@@ -563,7 +563,7 @@ function test_sim_paced(; save::Bool = true)
         for interface in interfaces
             Threads.@spawn IODevices.start!(interface)
         end
-        Threads.@spawn Sim.run_paced!(sim; pace = 1, verbose = true)
+        Threads.@spawn Sim.run_paced!(sim; pace = 1)
     end
 
     kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)

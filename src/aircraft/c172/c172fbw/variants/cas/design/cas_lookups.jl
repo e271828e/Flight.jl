@@ -34,12 +34,13 @@ function generate_lookups(
     elseif channel === :roll
         f_opt = optimize_roll
     else
-        error("Valid values for channel keyword: :pitch, :roll")
+        @error("Valid values for channel keyword: :pitch, :roll")
+        return
     end
 
     results = map(Iterators.product(EAS_range, h_range)) do (EAS, h)
 
-        println("Optimizing for EAS = $EAS, h = $h")
+        @info("Optimizing for EAS = $EAS, h = $h")
 
         flaps = EAS < 30 ? 1.0 : 0.0
 
@@ -88,8 +89,7 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     q2e_results = optimize_PID(P_q2e_opt; params_0, settings, weights, global_search)
 
     if !check_results(q2e_results, Metrics(; Ms = 1.5, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-        println("Warning: Checks failed for q design point $point")
-        println(q2e_results.metrics)
+        @warn("Checks failed for q design point $point")
     end
 
     q2e_PID = build_PID(q2e_results.params)
@@ -109,8 +109,7 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     θ2q_results = optimize_PID(P_q2θ; params_0, settings, weights, global_search)
 
     if !check_results(θ2q_results, Metrics(; Ms = 1.5, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-        println("Warning: Checks failed for θ2q design point $point")
-        println(θ2q_results.metrics)
+        @warn("Checks failed for θ2q design point $point")
     end
 
     θ2q_PID = build_PID(θ2q_results.params)
@@ -134,8 +133,7 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     v2t_results = optimize_PID(P_t2v; params_0, settings, weights, global_search)
 
     if !check_results(v2t_results, Metrics(; Ms = 1.5, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-        println("Warning: Checks failed for v2t design point $point")
-        println(v2t_results.metrics)
+        @warn("Checks failed for v2t design point $point")
     end
 
     v2t_PID = build_PID(v2t_results.params)
@@ -157,8 +155,7 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     c2θ_results = optimize_PID(P_θ2c; params_0, settings, weights, global_search = false)
 
     if !check_results(c2θ_results, Metrics(; Ms = 1.5, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-        println("Warning: Checks failed for c2θ design point $point")
-        println(c2θ_results.metrics)
+        @warn("Checks failed for c2θ design point $point")
     end
 
     c2θ_PID = build_PID(c2θ_results.params)
@@ -181,8 +178,7 @@ function optimize_pitch(ac::System{<:Cessna172FBWBase{NED}};
     v2θ_results = optimize_PID(P_θ2v_opt; params_0, settings, weights, global_search)
 
     if !check_results(v2θ_results, Metrics(; Ms = 1.5, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-        println("Warning: Checks failed for v2θ design point $point")
-        println(v2θ_results.metrics)
+        @warn("Checks failed for v2θ design point $point")
     end
 
     v2θ_PID = build_PID(v2θ_results.params)
@@ -209,8 +205,7 @@ function optimize_roll(   ac::System{<:Cessna172FBWBase{NED}};
     p2a_results = optimize_PID(P_a2p; params_0, settings, weights, global_search)
 
     if !check_results(p2a_results, Metrics(; Ms = 1.4, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-        println("Warning: Checks failed for p2a design point $point")
-        println(p2a_results.metrics)
+        @warn("Checks failed for p2a design point $point")
     end
 
     p2a_PID = build_PID(p2a_results.params)
@@ -230,8 +225,7 @@ function optimize_roll(   ac::System{<:Cessna172FBWBase{NED}};
     φ2p_results = optimize_PID(P_p2φ; params_0, settings, weights, global_search = false)
 
     if !check_results(φ2p_results, Metrics(; Ms = 1.4, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-        println("Warning: Checks failed for φ2p design point $point")
-        println(φ2p_results.metrics)
+        @warn("Checks failed for φ2p design point $point")
     end
 
     φ2p_PID = build_PID(φ2p_results.params)
@@ -251,8 +245,7 @@ function optimize_roll(   ac::System{<:Cessna172FBWBase{NED}};
     χ2φ_results = optimize_PID(P_φ2χ; params_0, settings, weights, global_search = false)
 
     if !check_results(χ2φ_results, Metrics(; Ms = 1.4, ∫e = 0.15, ef = 0.02, ∫u = Inf, up = Inf))
-        println("Warning: Checks failed for χ2φ design point $point")
-        println(χ2φ_results.metrics)
+        @warn("Checks failed for χ2φ design point $point")
     end
 
     χ2φ_PID = build_PID(χ2φ_results.params)

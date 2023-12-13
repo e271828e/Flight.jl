@@ -6,6 +6,7 @@ using OrdinaryDiffEq: OrdinaryDiffEq, OrdinaryDiffEqAlgorithm, ODEProblem,
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback,
                        CallbackSet, SavedValues
 using RecursiveArrayTools
+using Logging
 
 using ..Systems
 using ..IODevices
@@ -17,9 +18,9 @@ export TimeSeries, get_time, get_data, get_components, get_child_names
 
 
 ################################################################################
-################################# Info ########################################
+################################# SimInfo ########################################
 
-@kwdef struct Info
+@kwdef struct SimInfo
     algorithm::String = "No info"
     t_start::Float64 = 0.0
     t_end::Float64 = 0.0
@@ -274,7 +275,7 @@ end
 enable_gui!(sim::Simulation) = GUI.enable!(sim.gui)
 disable_gui!(sim::Simulation) = GUI.disable!(sim.gui)
 
-function update!(sys::System, info::Info, gui::Renderer)
+function update!(sys::System, info::SimInfo, gui::Renderer)
     try
         GUI.render(gui, GUI.draw!, sys, info)
     catch e
@@ -284,12 +285,12 @@ function update!(sys::System, info::Info, gui::Renderer)
     end
 end
 
-function GUI.draw!(sys::System, info::Info)
+function GUI.draw!(sys::System, info::SimInfo)
     GUI.draw(info)
     GUI.draw!(sys)
 end
 
-function GUI.draw(info::Info)
+function GUI.draw(info::SimInfo)
 
     @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
 
@@ -343,21 +344,21 @@ end
 
 isdone(sim::Simulation) = isempty(sim.integrator.opts.tstops)
 
-function isdone_wrn(sim::Simulation)
+function isdone_err(sim::Simulation)
     sim_done = isdone(sim)
-    sim_done && println("Simulation has hit its end time, call reinit! ",
+    sim_done && @error("Simulation has hit its end time, call reinit! ",
                         "or add further tstops using add_tstop!")
     return sim_done
 end
 
 run_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run!(sim; kwargs...)))
 
-function run!(sim::Simulation; verbose::Bool = false)
+function run!(sim::Simulation)
 
     @unpack integrator, channels, started, stepping = sim
     t_end = integrator.sol.prob.tspan[2]
 
-    isdone_wrn(sim) && return
+    isdone_err(sim) && return
 
     notify(started)
 
@@ -371,7 +372,7 @@ function run!(sim::Simulation; verbose::Bool = false)
         end
     end
 
-    verbose && println("Simulation: Finished in $τ seconds")
+    @info("Simulation: Finished in $τ seconds")
 end
 
 #apparently, if a task is launched from the main thread and it doesn't ever
@@ -381,18 +382,17 @@ end
 run_paced_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run_paced!(sim; kwargs...)))
 
 function run_paced!(sim::Simulation;
-                    pace::Real = 1,
-                    verbose::Bool = true)
+                    pace::Real = 1)
 
-    !isdone_wrn(sim) || return
-    verbose && println("Simulation: Starting on thread $(Threads.threadid())...")
+    isdone_err(sim) && return
+    @info("Simulation: Starting on thread $(Threads.threadid())...")
 
     @unpack sys, integrator, gui, channels, started, stepping = sim
 
     t_start, t_end = integrator.sol.prob.tspan
     algorithm = algorithm_type(sim) |> string
 
-    gui.sync == 0 || println("Warning: GUI Renderer sync ",
+    gui.sync == 0 || @warn("GUI Renderer sync ",
         "should be set to 0 to avoid interfering with simulation scheduling")
 
     GUI.init!(gui)
@@ -419,7 +419,7 @@ function run_paced!(sim::Simulation;
             lock(stepping)
                 step!(sim)
                 τ_last = τ()
-                info = Info(; algorithm, t_start, t_end, dt = integrator.dt,
+                info = SimInfo(; algorithm, t_start, t_end, dt = integrator.dt,
                               iter = integrator.iter, t = sim.t[], τ = τ_last)
                 update!(sys, info, gui)
             unlock(stepping)
@@ -428,7 +428,7 @@ function run_paced!(sim::Simulation;
             put_no_block!(sim.channels, output)
 
             if GUI.should_close(gui)
-                println("Simulation: Aborted at t = $(sim.t[])")
+                @info("Simulation: Aborted at t = $(sim.t[])")
                 break
             end
 
@@ -436,7 +436,7 @@ function run_paced!(sim::Simulation;
 
     catch ex
 
-        println("Simulation: Error during execution: $ex")
+        @error("Simulation: Error during execution: $ex")
         Base.show_backtrace(stderr, catch_backtrace())
 
     finally
@@ -446,7 +446,7 @@ function run_paced!(sim::Simulation;
 
     end
 
-    verbose && println("Simulation: Finished in $τ_last seconds")
+    @info("Simulation: Finished in $τ_last seconds")
 
 end
 
