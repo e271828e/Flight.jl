@@ -377,8 +377,8 @@ function safe_slider(label::String, source::AbstractFloat, lower_bound::Real, up
     ref = Ref(Cfloat(source))
     slider_label = show_label ? label : "##"*label
     CImGui.SliderFloat(slider_label, ref, lower_bound, upper_bound, display_format)
-    CImGui.SameLine()
-    show_help_marker("Ctrl+Click for keyboard input")
+    # CImGui.SameLine()
+    # show_help_marker("Ctrl+Click for keyboard input")
     return ref[]
 end
 

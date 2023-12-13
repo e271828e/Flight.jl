@@ -994,10 +994,10 @@ function IODevices.assign!(sys::System{Avionics},
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    u.aileron_sp_offset -= 0.01 * was_released(joystick, :dpad_left)
-    u.aileron_sp_offset += 0.01 * was_released(joystick, :dpad_right)
-    u.elevator_sp_offset += 0.01 * was_released(joystick, :dpad_down)
-    u.elevator_sp_offset -= 0.01 * was_released(joystick, :dpad_up)
+    u.aileron_sp_offset -= 1e-3 * was_released(joystick, :dpad_left)
+    u.aileron_sp_offset += 1e-3 * was_released(joystick, :dpad_right)
+    u.elevator_sp_offset += 1e-3 * was_released(joystick, :dpad_down)
+    u.elevator_sp_offset -= 1e-3 * was_released(joystick, :dpad_up)
 
     u.flaps += 0.3333 * was_released(joystick, :right_bumper)
     u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
@@ -1030,10 +1030,10 @@ function IODevices.assign!(sys::System{Avionics},
     u.brake_left = is_pressed(joystick, :button_1)
     u.brake_right = is_pressed(joystick, :button_1)
 
-    u.aileron_sp_offset -= 2e-4 * is_pressed(joystick, :hat_left)
-    u.aileron_sp_offset += 2e-4 * is_pressed(joystick, :hat_right)
-    u.elevator_sp_offset += 2e-4 * is_pressed(joystick, :hat_down)
-    u.elevator_sp_offset -= 2e-4 * is_pressed(joystick, :hat_up)
+    u.aileron_sp_offset -= 1e-3 * is_pressed(joystick, :hat_left)
+    u.aileron_sp_offset += 1e-3 * is_pressed(joystick, :hat_right)
+    u.elevator_sp_offset += 1e-3 * is_pressed(joystick, :hat_down)
+    u.elevator_sp_offset -= 1e-3 * is_pressed(joystick, :hat_up)
 
     u.flaps += 0.3333 * was_released(joystick, :button_3)
     u.flaps -= 0.3333 * was_released(joystick, :button_2)
@@ -1045,6 +1045,9 @@ function IODevices.assign!(sys::System{Avionics},
                            ::DefaultMapping)
 
     u = sys.u
+
+    p_sf = 0.5 #roll rate sensitivity
+    q_sf = 0.5 #pitch rate sensitivity
 
     throttle_input = get_axis_value(joystick, :throttle)
     roll_input = get_axis_value(joystick, :stick_x) |> roll_curve
@@ -1063,10 +1066,10 @@ function IODevices.assign!(sys::System{Avionics},
     u.brake_left = is_pressed(joystick, :red_trigger_half)
     u.brake_right = is_pressed(joystick, :red_trigger_half)
 
-    u.aileron_sp_offset -= 2e-4 * is_pressed(joystick, :A3_left)
-    u.aileron_sp_offset += 2e-4 * is_pressed(joystick, :A3_right)
-    u.elevator_sp_offset += 2e-4 * is_pressed(joystick, :A3_down)
-    u.elevator_sp_offset -= 2e-4 * is_pressed(joystick, :A3_up)
+    u.aileron_sp_offset -= 1e-3 * is_pressed(joystick, :A3_left)
+    u.aileron_sp_offset += 1e-3 * is_pressed(joystick, :A3_right)
+    u.elevator_sp_offset += 1e-3 * is_pressed(joystick, :A3_down)
+    u.elevator_sp_offset -= 1e-3 * is_pressed(joystick, :A3_up)
 
     if is_pressed(joystick, :A3_press)
         u.aileron_sp_offset = 0
@@ -1230,63 +1233,118 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
     ########################## Longitudinal Control ########################
 
     if CImGui.CollapsingHeader("Longitudinal Control")
-        AlignTextToFramePadding(); Text("Mode"); SameLine(160)
+        # AlignTextToFramePadding(); Text("Mode"); SameLine(160)
 
-        CImGui.BeginGroup()
+        # CImGui.BeginGroup()
 
-            dynamic_button("Direct##Lon", mode_button_HSV(lon_direct, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lon_ctl_mode_req = lon_direct); SameLine()
+            # dynamic_button("Direct##Lon", mode_button_HSV(lon_direct, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            # IsItemActive() && (u.lon_ctl_mode_req = lon_direct); SameLine()
 
-            dynamic_button("Throttle + Pitch SAS", mode_button_HSV(lon_thr_ele, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lon_ctl_mode_req = lon_thr_ele); SameLine()
+            # dynamic_button("Throttle + Pitch SAS", mode_button_HSV(lon_thr_ele, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            # IsItemActive() && (u.lon_ctl_mode_req = lon_thr_ele); SameLine()
 
-            dynamic_button("Throttle + Pitch Rate", mode_button_HSV(lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_sp = 0); SameLine()
+            # dynamic_button("Throttle + Pitch Rate", mode_button_HSV(lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            # IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_sp = 0); SameLine()
 
-            dynamic_button("Throttle + Pitch Angle", mode_button_HSV(lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_sp = θ)
+            # dynamic_button("Throttle + Pitch Angle", mode_button_HSV(lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            # IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_sp = θ)
 
-            dynamic_button("EAS + Throttle", mode_button_HSV(lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_sp = EAS); SameLine()
+            # dynamic_button("EAS + Throttle", mode_button_HSV(lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            # IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_sp = EAS); SameLine()
 
-            dynamic_button("EAS + Pitch Rate", mode_button_HSV(lon_EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_q; u.q_sp = 0; u.EAS_sp = EAS); SameLine()
+            # dynamic_button("EAS + Pitch Rate", mode_button_HSV(lon_EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            # IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_q; u.q_sp = 0; u.EAS_sp = EAS); SameLine()
 
-            dynamic_button("EAS + Pitch Angle", mode_button_HSV(lon_EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_θ; u.EAS_sp = EAS; u.θ_sp = θ); SameLine()
+            # dynamic_button("EAS + Pitch Angle", mode_button_HSV(lon_EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            # IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_θ; u.EAS_sp = EAS; u.θ_sp = θ); SameLine()
 
-            dynamic_button("EAS + Climb Rate", mode_button_HSV(lon_EAS_clm, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_clm; u.EAS_sp = EAS; u.clm_sp = clm)
+            # dynamic_button("EAS + Climb Rate", mode_button_HSV(lon_EAS_clm, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+            # IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_clm; u.EAS_sp = EAS; u.clm_sp = clm)
 
-        CImGui.EndGroup()
+        # CImGui.EndGroup()
 
-        AlignTextToFramePadding(); Text("Throttle Input"); SameLine(160)
-        u.throttle_sp_input = safe_slider("Throttle Input", u.throttle_sp_input, "%.6f")
-
-        AlignTextToFramePadding(); Text("Throttle Offset"); SameLine(160)
-        u.throttle_sp_offset = safe_input("Throttle_Offset", u.throttle_sp_offset, 0.001, 0.1, "%.3f")
-
-        AlignTextToFramePadding(); Text("Elevator Input"); SameLine(160)
-        u.elevator_sp_input = safe_slider("Elevator Input", u.elevator_sp_input, "%.6f")
-
-        AlignTextToFramePadding(); Text("Elevator Offset"); SameLine(160)
-        u.elevator_sp_offset = safe_input("Elevator Offset", u.elevator_sp_offset, 0.001, 0.1, "%.3f")
-
-        AlignTextToFramePadding(); Text("Pitch Rate (deg/s)"); SameLine(160)
-        u.q_sp = safe_input("Pitch Rate", rad2deg(u.q_sp), 0.1, 1.0, "%.3f") |> deg2rad
-        SameLine(); Text(@sprintf("%.3f", rad2deg(q)))
-
-        AlignTextToFramePadding(); Text("Pitch Angle (deg)"); SameLine(160)
-        u.θ_sp = safe_input("Pitch Angle", rad2deg(u.θ_sp), 0.1, 1.0, "%.3f") |> deg2rad
-        SameLine(); Text(@sprintf("%.3f", rad2deg(θ)))
-
-        AlignTextToFramePadding(); Text("EAS (m/s)"); SameLine(160)
-        u.EAS_sp = safe_input("EAS", u.EAS_sp, 0.1, 1.0, "%.3f")
-        SameLine(); Text(@sprintf("%.3f", EAS))
-
-        AlignTextToFramePadding(); Text("Climb Rate (m/s)"); SameLine(160)
-        u.clm_sp = safe_input("Climb Rate", u.clm_sp, 0.1, 1.0, "%.3f")
-        SameLine(); Text(@sprintf("%.3f", clm))
+        if CImGui.BeginTable("LonCtlModes", 3, CImGui.ImGuiTableFlags_SizingFixedFit | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    Text("Mode")
+                CImGui.TableNextColumn();
+                    dynamic_button("Direct##Lon", mode_button_HSV(lon_direct, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_direct); SameLine()
+                    dynamic_button("Throttle + Pitch SAS", mode_button_HSV(lon_thr_ele, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_ele); SameLine()
+                    dynamic_button("Throttle + Pitch Rate", mode_button_HSV(lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_sp = 0); SameLine()
+                    dynamic_button("Throttle + Pitch Angle", mode_button_HSV(lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_sp = θ)
+                    dynamic_button("EAS + Throttle", mode_button_HSV(lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_sp = EAS); SameLine()
+                    dynamic_button("EAS + Pitch Rate", mode_button_HSV(lon_EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_q; u.q_sp = 0; u.EAS_sp = EAS); SameLine()
+                    dynamic_button("EAS + Pitch Angle", mode_button_HSV(lon_EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_θ; u.EAS_sp = EAS; u.θ_sp = θ); SameLine()
+                    dynamic_button("EAS + Climb Rate", mode_button_HSV(lon_EAS_clm, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_clm; u.EAS_sp = EAS; u.clm_sp = clm)
+                CImGui.TableNextColumn();
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    AlignTextToFramePadding(); Text("Throttle Input")
+                    AlignTextToFramePadding(); Text("Throttle Offset")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.throttle_sp_input = safe_slider("Throttle Input", u.throttle_sp_input, "%.6f")
+                    u.throttle_sp_offset = safe_input("Throttle_Offset", u.throttle_sp_offset, 0.1, 0.1, "%.3f")
+                    PopItemWidth()
+                CImGui.TableNextColumn();
+                    Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_sp)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    AlignTextToFramePadding(); Text("Elevator Input")
+                    AlignTextToFramePadding(); Text("Elevator Offset")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.elevator_sp_input = safe_slider("Elevator Input", u.elevator_sp_input, "%.6f")
+                    u.elevator_sp_offset = safe_input("Elevator Offset", u.elevator_sp_offset, 0.1, 0.1, "%.3f")
+                    PopItemWidth()
+                CImGui.TableNextColumn();
+                    Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_sp)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    AlignTextToFramePadding(); Text("Pitch Rate (deg/s)")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.q_sp = safe_input("Pitch Rate", rad2deg(u.q_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    PopItemWidth()
+                CImGui.TableNextColumn();
+                    Text(@sprintf("%.3f", rad2deg(q)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    AlignTextToFramePadding(); Text("Pitch Angle (deg)"); SameLine(160)
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.θ_sp = safe_input("Pitch Angle", rad2deg(u.θ_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    PopItemWidth()
+                CImGui.TableNextColumn();
+                    Text(@sprintf("%.3f", rad2deg(θ)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    AlignTextToFramePadding(); Text("EAS (m/s)"); SameLine(160)
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.EAS_sp = safe_input("EAS", u.EAS_sp, 0.1, 1.0, "%.3f")
+                    PopItemWidth()
+                CImGui.TableNextColumn();
+                    Text(@sprintf("%.3f", EAS))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    AlignTextToFramePadding(); Text("Climb Rate (m/s)"); SameLine(160)
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.clm_sp = safe_input("Climb Rate", u.clm_sp, 0.1, 1.0, "%.3f")
+                    PopItemWidth()
+                CImGui.TableNextColumn();
+                     Text(@sprintf("%.3f", clm))
+            CImGui.EndTable()
+        end
 
         Separator()
 

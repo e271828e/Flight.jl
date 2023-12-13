@@ -542,7 +542,7 @@ function test_sim_paced(; save::Bool = true)
 
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172MCS(LTF(), trn) |> System;
-    sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600)
+    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 600)
 
     kin_init = KinematicInit(
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
