@@ -1195,34 +1195,44 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
 
     ############################### Guidance ###################################
 
+    @cstatic h_datum=Int32(0) begin
     if CImGui.CollapsingHeader("Vertical Guidance")
 
-        AlignTextToFramePadding(); Text("Mode"); SameLine(160)
-
-        dynamic_button("Off", mode_button_HSV(vrt_gdc_off, u.vrt_gdc_mode_req, y.vrt_gdc_mode), 0.1, 0.1)
-        IsItemActive() && (u.vrt_gdc_mode_req = vrt_gdc_off); SameLine()
-
-        @cstatic h_datum=Int32(0) begin
-            dynamic_button("Altitude", mode_button_HSV(vrt_gdc_alt, u.vrt_gdc_mode_req, y.vrt_gdc_mode), 0.1, 0.1)
-            if IsItemActive()
-                u.vrt_gdc_mode_req = vrt_gdc_alt
-                u.h_sp = h_datum == 0 ? h_e : h_o
-            end
-            AlignTextToFramePadding(); Text("Altitude (m)"); SameLine(160)
-            CImGui.BeginGroup()
-                h_val = safe_input("Altitude Setpoint", Float64(u.h_sp), 1, 1.0, "%.3f")
-                SameLine()
-                isa(u.h_sp, HEllip) && Text(@sprintf("%.3f", Float64(h_e)))
-                isa(u.h_sp, HOrth) && Text(@sprintf("%.3f", Float64(h_o)))
-                @c RadioButton("Ellipsoidal", &h_datum, 0); SameLine()
-                @c RadioButton("Orthometric", &h_datum, 1)
-                u.h_sp = h_datum == 0 ? HEllip(h_val) : HOrth(h_val)
-            CImGui.EndGroup()
-        end
+        if CImGui.BeginTable("VerticalGuidance", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    Text("Mode")
+                CImGui.TableNextColumn();
+                    dynamic_button("Off", mode_button_HSV(vrt_gdc_off, u.vrt_gdc_mode_req, y.vrt_gdc_mode), 0.1, 0.1)
+                    IsItemActive() && (u.vrt_gdc_mode_req = vrt_gdc_off); SameLine()
+                    dynamic_button("Altitude", mode_button_HSV(vrt_gdc_alt, u.vrt_gdc_mode_req, y.vrt_gdc_mode), 0.1, 0.1)
+                    if IsItemActive()
+                        u.vrt_gdc_mode_req = vrt_gdc_alt
+                        u.h_sp = h_datum == 0 ? h_e : h_o
+                    end
+                CImGui.TableNextColumn();
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    h_val = safe_input("Altitude Setpoint", Float64(u.h_sp), 1, 1.0, "%.3f")
+                    PopItemWidth()
+                CImGui.TableNextColumn();
+                    isa(u.h_sp, HEllip) && Text(@sprintf("%.3f", Float64(h_e)))
+                    isa(u.h_sp, HOrth) && Text(@sprintf("%.3f", Float64(h_o)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                CImGui.TableNextColumn();
+                    @c RadioButton("Ellipsoidal", &h_datum, 0); SameLine()
+                    @c RadioButton("Orthometric", &h_datum, 1)
+                    u.h_sp = h_datum == 0 ? HEllip(h_val) : HOrth(h_val)
+            CImGui.EndTable()
+        end #table
 
         Separator()
 
-    end
+    end #header
+    end #cstatic
 
     # AlignTextToFramePadding()
     # Text("Horizontal Guidance")
@@ -1233,37 +1243,8 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
     ########################## Longitudinal Control ########################
 
     if CImGui.CollapsingHeader("Longitudinal Control")
-        # AlignTextToFramePadding(); Text("Mode"); SameLine(160)
 
-        # CImGui.BeginGroup()
-
-            # dynamic_button("Direct##Lon", mode_button_HSV(lon_direct, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            # IsItemActive() && (u.lon_ctl_mode_req = lon_direct); SameLine()
-
-            # dynamic_button("Throttle + Pitch SAS", mode_button_HSV(lon_thr_ele, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            # IsItemActive() && (u.lon_ctl_mode_req = lon_thr_ele); SameLine()
-
-            # dynamic_button("Throttle + Pitch Rate", mode_button_HSV(lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            # IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_sp = 0); SameLine()
-
-            # dynamic_button("Throttle + Pitch Angle", mode_button_HSV(lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            # IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_sp = θ)
-
-            # dynamic_button("EAS + Throttle", mode_button_HSV(lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            # IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_sp = EAS); SameLine()
-
-            # dynamic_button("EAS + Pitch Rate", mode_button_HSV(lon_EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            # IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_q; u.q_sp = 0; u.EAS_sp = EAS); SameLine()
-
-            # dynamic_button("EAS + Pitch Angle", mode_button_HSV(lon_EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            # IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_θ; u.EAS_sp = EAS; u.θ_sp = θ); SameLine()
-
-            # dynamic_button("EAS + Climb Rate", mode_button_HSV(lon_EAS_clm, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
-            # IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_clm; u.EAS_sp = EAS; u.clm_sp = clm)
-
-        # CImGui.EndGroup()
-
-        if CImGui.BeginTable("LonCtlModes", 3, CImGui.ImGuiTableFlags_SizingFixedFit | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+        if CImGui.BeginTable("LonCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
                     Text("Mode")
@@ -1308,41 +1289,33 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
                 CImGui.TableNextColumn();
                     Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_sp)))
             CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                    AlignTextToFramePadding(); Text("Pitch Rate (deg/s)")
+                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Rate (deg/s)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
                     u.q_sp = safe_input("Pitch Rate", rad2deg(u.q_sp), 0.1, 1.0, "%.3f") |> deg2rad
                     PopItemWidth()
-                CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", rad2deg(q)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(q)))
             CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                    AlignTextToFramePadding(); Text("Pitch Angle (deg)"); SameLine(160)
+                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Angle (deg)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
                     u.θ_sp = safe_input("Pitch Angle", rad2deg(u.θ_sp), 0.1, 1.0, "%.3f") |> deg2rad
                     PopItemWidth()
-                CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", rad2deg(θ)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(θ)))
             CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                    AlignTextToFramePadding(); Text("EAS (m/s)"); SameLine(160)
+                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("EAS (m/s)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
                     u.EAS_sp = safe_input("EAS", u.EAS_sp, 0.1, 1.0, "%.3f")
                     PopItemWidth()
-                CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", EAS))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", EAS))
             CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                    AlignTextToFramePadding(); Text("Climb Rate (m/s)"); SameLine(160)
+                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Climb Rate (m/s)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
                     u.clm_sp = safe_input("Climb Rate", u.clm_sp, 0.1, 1.0, "%.3f")
                     PopItemWidth()
-                CImGui.TableNextColumn();
-                     Text(@sprintf("%.3f", clm))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", clm))
             CImGui.EndTable()
         end
 
@@ -1350,76 +1323,114 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
 
     end
 
-    ############################### Lateral Control ########################
+    ############################### Lateral Control ############################
 
     if CImGui.CollapsingHeader("Lateral Control")
 
-        AlignTextToFramePadding(); Text("Mode"); SameLine(160)
-
-        CImGui.BeginGroup()
-
-            dynamic_button("Direct##Lat", mode_button_HSV(lat_direct, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lat_ctl_mode_req = lat_direct); SameLine()
-
-            dynamic_button("Roll Rate + AoS", mode_button_HSV(lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.p_sp = 0; u.β_sp = 0); SameLine()
-
-            dynamic_button("Bank Angle + AoS", mode_button_HSV(lat_φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lat_ctl_mode_req = lat_φ_β; u.φ_sp = φ; u.β_sp = 0); SameLine()
-
-            dynamic_button("Course Angle + AoS", mode_button_HSV(lat_χ_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1)
-            IsItemActive() && (u.lat_ctl_mode_req = lat_χ_β; u.χ_sp = χ_gnd; u.β_sp = 0)
-
-        CImGui.EndGroup()
-
-
-        AlignTextToFramePadding(); Text("Aileron Input"); SameLine(160)
-        u.aileron_sp_input = safe_slider("Aileron Input", u.aileron_sp_input, "%.6f")
-
-        AlignTextToFramePadding(); Text("Aileron Offset"); SameLine(160)
-        u.aileron_sp_offset = safe_input("Aileron Offset", u.aileron_sp_offset, 0.001, 0.1, "%.3f")
-
-        AlignTextToFramePadding(); Text("Rudder Input"); SameLine(160)
-        u.rudder_sp_input = safe_slider("Rudder Input", u.rudder_sp_input, "%.6f")
-
-        AlignTextToFramePadding(); Text("Rudder Offset"); SameLine(160)
-        u.rudder_sp_offset = safe_input("Rudder Offset", u.rudder_sp_offset, 0.001, 0.1, "%.3f")
-
-        AlignTextToFramePadding(); Text("Roll Rate (deg/s)"); SameLine(160)
-        u.p_sp = safe_input("Roll Rate", rad2deg(u.p_sp), 0.1, 1.0, "%.3f") |> deg2rad
-        SameLine(); Text(@sprintf("%.3f", rad2deg(p)))
-
-        AlignTextToFramePadding(); Text("Bank Angle (deg)"); SameLine(160)
-        u.φ_sp = safe_input("Bank Angle", rad2deg(u.φ_sp), 0.1, 1.0, "%.3f") |> deg2rad
-        SameLine(); Text(@sprintf("%.3f", rad2deg(φ)))
-
-        AlignTextToFramePadding(); Text("Course Angle (deg)"); SameLine(160)
-        u.χ_sp = safe_input("Course Angle", rad2deg(u.χ_sp), 0.1, 1.0, "%.3f") |> deg2rad
-        SameLine(); Text(@sprintf("%.3f", rad2deg(χ_gnd)))
-
-        AlignTextToFramePadding(); Text("Sideslip Angle (deg)"); SameLine(160)
-        u.β_sp = safe_input("Sideslip Angle", rad2deg(u.β_sp), 0.1, 1.0, "%.3f") |> deg2rad
-        SameLine(); Text(@sprintf("%.3f", rad2deg(β_b)))
+        if CImGui.BeginTable("LatCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    Text("Mode")
+                CImGui.TableNextColumn();
+                    dynamic_button("Direct##Lat", mode_button_HSV(lat_direct, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1); SameLine()
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_direct)
+                    dynamic_button("Roll Rate + AoS", mode_button_HSV(lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1); SameLine()
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.p_sp = 0; u.β_sp = 0)
+                    dynamic_button("Bank Angle + AoS", mode_button_HSV(lat_φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1); SameLine()
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_φ_β; u.φ_sp = φ; u.β_sp = 0)
+                    dynamic_button("Course Angle + AoS", mode_button_HSV(lat_χ_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1); SameLine()
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_χ_β; u.χ_sp = χ_gnd; u.β_sp = 0)
+                CImGui.TableNextColumn();
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    AlignTextToFramePadding(); Text("Aileron Input")
+                    AlignTextToFramePadding(); Text("Aileron Offset")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.aileron_sp_input = safe_slider("Aileron Input", u.aileron_sp_input, "%.6f")
+                    u.aileron_sp_offset = safe_input("Aileron Offset", u.aileron_sp_offset, 0.001, 0.1, "%.3f")
+                    PopItemWidth()
+                CImGui.TableNextColumn();
+                    Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_sp)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    AlignTextToFramePadding(); Text("Rudder Input")
+                    AlignTextToFramePadding(); Text("Rudder Offset")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.rudder_sp_input = safe_slider("Rudder Input", u.rudder_sp_input, "%.6f")
+                    u.rudder_sp_offset = safe_input("Rudder Offset", u.rudder_sp_offset, 0.001, 0.1, "%.3f")
+                    PopItemWidth()
+                CImGui.TableNextColumn();
+                    Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_sp)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Roll Rate (deg/s)")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.p_sp = safe_input("Roll Rate", rad2deg(u.p_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    PopItemWidth()
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(p)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Bank Angle (deg)")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.φ_sp = safe_input("Bank Angle", rad2deg(u.φ_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    PopItemWidth()
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(φ)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Course Angle (deg)")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.χ_sp = safe_input("Course Angle", rad2deg(u.χ_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    PopItemWidth()
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(χ_gnd)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Sideslip Angle (deg)")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.β_sp = safe_input("Sideslip Angle", rad2deg(u.β_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    PopItemWidth()
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(β_b)))
+            CImGui.EndTable()
+        end
 
         Separator()
 
     end
 
+
     ############################################################################
 
     if CImGui.CollapsingHeader("Secondary Actuation")
 
-        AlignTextToFramePadding(); Text("Flaps"); SameLine(160)
-        u.flaps = safe_slider("Flaps Input", u.flaps, "%.6f")
+        if CImGui.BeginTable("SecondaryActuation", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Flaps")
+                CImGui.TableNextColumn();
+                PushItemWidth(-10)
+                u.flaps = safe_slider("Flaps Input", u.flaps, "%.6f")
+                PopItemWidth()
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Steering")
+                CImGui.TableNextColumn();
+                PushItemWidth(-10)
+                u.steering = safe_slider("Steering", u.steering, "%.6f")
+                PopItemWidth()
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Left Brake")
+                CImGui.TableNextColumn();
+                PushItemWidth(-10)
+                u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
+                PopItemWidth()
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Right Brake")
+                CImGui.TableNextColumn();
+                PushItemWidth(-10)
+                u.brake_right = safe_slider("Left Brake", u.brake_right, "%.6f")
+                PopItemWidth()
+            CImGui.EndTable()
+        end
 
-        AlignTextToFramePadding(); Text("Steering"); SameLine(160)
-        u.steering = safe_slider("Steering", u.steering, "%.6f")
-
-        AlignTextToFramePadding(); Text("Left Brake"); SameLine(160)
-        u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
-
-        AlignTextToFramePadding(); Text("Right Brake"); SameLine(160)
-        u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
         Separator()
 
     end
@@ -1428,7 +1439,7 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
     ############################################################################
 
     if CImGui.CollapsingHeader("Primary Actuator Data")
-        if CImGui.BeginTable("Primary Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame | CImGui.ImGuiTableFlags_BordersInner)
+        if CImGui.BeginTable("Primary Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
                 CImGui.TableNextColumn(); Text("Throttle")
@@ -1476,6 +1487,17 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
                 Text(@sprintf("%.3f deg", rad2deg(β_b)))
                 Separator()
 
+                Text("Ground Speed"); SameLine(240)
+                Text(@sprintf("%.3f m/s | %.3f kts", v_gnd, Atmosphere.SI2kts(v_gnd)))
+                Text("Course Angle"); SameLine(240)
+                Text(@sprintf("%.3f deg", rad2deg(χ_gnd)))
+                Text("Flight Path Angle"); SameLine(240)
+                Text(@sprintf("%.3f deg", rad2deg(γ_gnd)))
+                Text("Climb Rate"); SameLine(240)
+                Text(@sprintf("%.3f m/s", clm))
+
+            CImGui.TableNextColumn();
+
                 Text("Latitude"); SameLine(240)
                 Text(@sprintf("%.6f deg", rad2deg(ϕ)))
                 Text("Longitude"); SameLine(240)
@@ -1488,16 +1510,6 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
                 Text(@sprintf("%.3f m | %.3f ft", Δh, Δh/0.3048))
                 Separator()
 
-                Text("Ground Speed"); SameLine(240)
-                Text(@sprintf("%.3f m/s | %.3f kts", v_gnd, Atmosphere.SI2kts(v_gnd)))
-                Text("Course Angle"); SameLine(240)
-                Text(@sprintf("%.3f deg", rad2deg(χ_gnd)))
-                Text("Flight Path Angle"); SameLine(240)
-                Text(@sprintf("%.3f deg", rad2deg(γ_gnd)))
-                Text("Climb Rate"); SameLine(240)
-                Text(@sprintf("%.3f m/s", clm))
-
-            CImGui.TableNextColumn();
                 Text("Heading"); SameLine(240);
                 Text(@sprintf("%.3f deg", rad2deg(ψ)))
                 Text("Inclination"); SameLine(240)
@@ -1505,22 +1517,23 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
                 Text("Bank"); SameLine(240)
                 Text(@sprintf("%.3f deg", rad2deg(φ)))
 
-        Separator()
+        CImGui.TableNextRow()
+            CImGui.TableNextColumn();
+
                 Text("Roll Rate"); SameLine(240)
                 Text(@sprintf("%.3f deg/s", rad2deg(p)))
                 Text("Pitch Rate"); SameLine(240)
                 Text(@sprintf("%.3f deg/s", rad2deg(q)))
                 Text("Yaw Rate"); SameLine(240)
                 Text(@sprintf("%.3f deg/s", rad2deg(r)))
-                Separator()
 
+            CImGui.TableNextColumn();
                 Text("Specific Force (x)"); SameLine(240)
                 Text(@sprintf("%.3f g", rigidbody.f_G_b[1]/RigidBody.g₀))
                 Text("Specific Force (y)"); SameLine(240)
                 Text(@sprintf("%.3f g", rigidbody.f_G_b[2]/RigidBody.g₀))
                 Text("Specific Force (z)"); SameLine(240)
                 Text(@sprintf("%.3f g", rigidbody.f_G_b[3]/RigidBody.g₀))
-                Separator()
 
             CImGui.EndTable()
         end
