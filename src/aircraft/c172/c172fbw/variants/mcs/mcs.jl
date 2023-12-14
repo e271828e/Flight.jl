@@ -248,7 +248,7 @@ end
 
 function ZLonEASClm(physics::System{<:C172FBW.Physics})
     EAS = physics.y.air.EAS
-    climb_rate = -physics.y.kinematics.common.v_eOb_n[3]
+    climb_rate = -physics.y.kinematics.data.v_eOb_n[3]
     ZLonEASClm(; EAS, climb_rate)
 end
 
@@ -484,7 +484,7 @@ function XLat(physics::System{<:C172FBW.Physics})
 end
 
 function ZLatPhiBeta(physics::System{<:C172FBW.Physics})
-    φ = physics.y.kinematics.common.e_nb.φ
+    φ = physics.y.kinematics.data.e_nb.φ
     β = physics.y.air.β_b
     ZLatPhiBeta(; φ, β)
 end

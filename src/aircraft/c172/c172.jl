@@ -891,7 +891,7 @@ function cost(physics::System{<:C172.Physics})
 
     @unpack ẋ, y = physics
 
-    v_nd_dot = SVector{3}(ẋ.kinematics.vel.v_eOb_b) / norm(y.kinematics.common.v_eOb_b)
+    v_nd_dot = SVector{3}(ẋ.kinematics.vel.v_eOb_b) / norm(y.kinematics.data.v_eOb_b)
     ω_dot = SVector{3}(ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
     n_eng_dot = ẋ.airframe.pwp.engine.ω / physics.airframe.pwp.engine.constants.ω_rated
 

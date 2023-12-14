@@ -768,7 +768,7 @@ function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl, alt_ctl = avionics.subsystems
 
     @unpack airframe, air = physics.y
-    kinematics = physics.y.kinematics.common
+    kinematics = physics.y.kinematics.data
 
     #direct surface and inner loop demands always come from inceptors
     roll_ctl.u.a_dmd = roll_input + aileron_cmd_offset

@@ -50,8 +50,7 @@ end
 ############################## Common Definitions ##############################
 ################################################################################
 
-#implementation-independent outputs
-struct YCommon
+struct KinematicData
     e_nb::REuler
     q_nb::RQuat
     q_eb::RQuat
@@ -73,25 +72,23 @@ struct YCommon
     γ_gnd::Float64 #flight path angle
 end
 
-const KinematicData = YCommon
+KinematicData(ic::Initializer = Initializer()) = KinematicOutputs(LTF(), ic).data
+KinematicData(sys::KinematicSystem) = sys.y.data
 
-YCommon(ic::Initializer = Initializer()) = KinematicsY(LTF(), ic).common
-YCommon(sys::KinematicSystem) = sys.y.common
-
-struct KinematicsY{S}
-    common::YCommon
-    specific::S
+struct KinematicOutputs{S}
+    data::KinematicData #general, implementation-agnostic kinematic data
+    spec::S #implementation-specific outputs
 end
 
-Base.getproperty(y::KinematicsY, s::Symbol) = getproperty(y, Val(s))
+Base.getproperty(y::KinematicOutputs, s::Symbol) = getproperty(y, Val(s))
 
-@generated function Base.getproperty(y::KinematicsY{T}, ::Val{S}) where {T, S}
-    if S === :common || S === :specific
+@generated function Base.getproperty(y::KinematicOutputs{T}, ::Val{S}) where {T, S}
+    if S === :data || S === :specific
         return :(getfield(y, $(QuoteNode(S))))
-    elseif S ∈ fieldnames(YCommon)
-        return :(getfield(getfield(y, :common), $(QuoteNode(S))))
+    elseif S ∈ fieldnames(KinematicData)
+        return :(getfield(getfield(y, :data), $(QuoteNode(S))))
     elseif S ∈ fieldnames(T)
-        return :(getfield(getfield(y, :specific), $(QuoteNode(S))))
+        return :(getfield(getfield(y, :spec), $(QuoteNode(S))))
     else
         error("$(typeof(y)) has no property $S")
     end
@@ -106,13 +103,13 @@ end
 
 function Systems.init(::SystemY, kin::AbstractKinematicDescriptor,
                       ic::Initializer = Initializer())
-    return KinematicsY(kin, ic)
+    return KinematicOutputs(kin, ic)
 end
 
-function KinematicsY(kin::AbstractKinematicDescriptor,
+function KinematicOutputs(kin::AbstractKinematicDescriptor,
                      ic::Initializer = Initializer())
     x = Systems.init(SystemX(), kin, ic)
-    return KinematicsY(x)
+    return KinematicOutputs(x)
 end
 
 #for dispatching
@@ -173,7 +170,7 @@ const XLTFTemplate = ComponentVector(pos = similar(XPosLTFTemplate), vel = simil
 const XLTF{T, D} = ComponentVector{T, D, typeof(getaxes(XLTFTemplate))} where {T, D}
 
 #LTF-specific outputs
-@kwdef struct YLTF
+@kwdef struct LTFData
     q_lb::RQuat
     q_el::RQuat
     ω_el_l::SVector{3,Float64}
@@ -203,7 +200,7 @@ function init_x!(x::XLTF, ic::Initializer = Initializer())
 
 end
 
-function KinematicsY(x::XLTF)
+function KinematicOutputs(x::XLTF)
 
     x_pos = x.pos; x_vel = x.vel
     q_lb = RQuat(x_pos.q_lb, normalization = false)
@@ -241,10 +238,10 @@ function KinematicsY(x::XLTF)
     χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
-    return KinematicsY(
-        YCommon( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+    return KinematicOutputs(
+        KinematicData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
                  ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
-        YLTF(; q_lb, q_el, ω_el_l)
+        LTFData(; q_lb, q_el, ω_el_l)
     )
 
 end
@@ -253,7 +250,7 @@ end
 function Systems.f_ode!(sys::System{LTF})
 
     #compute and update y
-    sys.y = KinematicsY(sys.x)
+    sys.y = KinematicOutputs(sys.x)
 
     @unpack q_lb, q_el, ω_lb_b, ω_el_l, v_eOb_n = sys.y
 
@@ -287,7 +284,7 @@ const XECEFTemplate = ComponentVector(pos = similar(XPosECEFTemplate), vel = sim
 const XECEF{T, D} = ComponentVector{T, D, typeof(getaxes(XECEFTemplate))} where {T, D}
 
 #ECEF-specific outputs
-@kwdef struct YECEF
+@kwdef struct ECEFData
     q_en::RQuat
     ω_el_n::SVector{3,Float64}
 end
@@ -319,7 +316,7 @@ function init_x!(x::XECEF, ic::Initializer = Initializer())
 
 end
 
-function KinematicsY(x::XECEF)
+function KinematicOutputs(x::XECEF)
 
     x_pos = x.pos; x_vel = x.vel
     q_eb = RQuat(x_pos.q_eb, normalization = false)
@@ -350,10 +347,10 @@ function KinematicsY(x::XECEF)
     χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
-    return KinematicsY(
-        YCommon( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+    return KinematicOutputs(
+        KinematicData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
                  ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
-        YECEF(; q_en, ω_el_n)
+        ECEFData(; q_en, ω_el_n)
     )
 
 end
@@ -362,7 +359,7 @@ end
 function Systems.f_ode!(sys::System{ECEF})
 
     #compute and update y
-    sys.y = KinematicsY(sys.x)
+    sys.y = KinematicOutputs(sys.x)
 
     @unpack q_eb, q_en, ω_el_n, ω_eb_b, v_eOb_n = sys.y
 
@@ -397,7 +394,7 @@ const XNEDTemplate = ComponentVector(pos = similar(XPosNEDTemplate), vel = simil
 const XNED{T, D} = ComponentVector{T, D, typeof(getaxes(XNEDTemplate))} where {T, D}
 
 #NED-specific outputs
-@kwdef struct YNED
+@kwdef struct NEDData
     ω_nb_b::SVector{3,Float64}
     ω_en_n::SVector{3,Float64}
 end
@@ -431,7 +428,7 @@ function init_x!(x::XNED, ic::Initializer = Initializer())
 
 end
 
-function KinematicsY(x::XNED)
+function KinematicOutputs(x::XNED)
 
     e_nb = REuler(x.pos.ψ_nb, x.pos.θ_nb, x.pos.φ_nb)
     ϕ_λ = LatLon(x.pos.ϕ, x.pos.λ)
@@ -467,10 +464,10 @@ function KinematicsY(x::XNED)
     χ_gnd = azimuth(v_eOb_n)
     γ_gnd = inclination(v_eOb_n)
 
-    return KinematicsY(
-        YCommon( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+    return KinematicOutputs(
+        KinematicData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
                  ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
-        YNED(; ω_nb_b, ω_en_n)
+        NEDData(; ω_nb_b, ω_en_n)
     )
 
 end
@@ -479,7 +476,7 @@ end
 function Systems.f_ode!(sys::System{NED})
 
     #compute and update y
-    sys.y = KinematicsY(sys.x)
+    sys.y = KinematicOutputs(sys.x)
 
     @unpack e_nb, ϕ_λ, ω_nb_b, ω_en_n, v_eOb_n = sys.y
 
@@ -591,15 +588,15 @@ Systems.f_step!(sys::System{NED}, args...) = false
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:KinematicsY}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:KinematicOutputs}; kwargs...)
 
     return OrderedDict(
-        :common => make_plots(ts.common; kwargs...),
+        :data => make_plots(ts.data; kwargs...),
     )
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:YCommon}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:KinematicData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -709,10 +706,10 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(kin::KinematicsY, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(kin::KinematicOutputs, p_open::Ref{Bool} = Ref(true),
                     label::String = "Kinematics")
 
-    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ib_b, v_eOb_b, v_eOb_n  = kin.common
+    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ib_b, v_eOb_b, v_eOb_n  = kin.data
 
     CImGui.Begin(label, p_open)
 
