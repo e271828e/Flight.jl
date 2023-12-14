@@ -1,4 +1,4 @@
-module RigidBody
+module Dynamics
 
 using StaticArrays, LinearAlgebra, UnPack
 
@@ -14,7 +14,7 @@ export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassP
 export HasMass, HasNoMass, get_mp_Ob
 export GetsExternalWrench, GetsNoExternalWrench, get_wr_b
 export HasAngularMomentum, HasNoAngularMomentum, get_hr_b
-export RigidBodyData, f_rigidbody!
+export DynamicsData
 
 #standard gravity for specific force normalization
 const g₀ = 9.80665
@@ -319,7 +319,7 @@ Notes:
 """
 
 MassTrait(::S) where {S<:System} = error(
-    "Please extend RigidBody.MassTrait for $S")
+    "Please extend Dynamics.MassTrait for $S")
 
 get_mp_Ob(sys::System) = get_mp_Ob(MassTrait(sys), sys)
 
@@ -347,18 +347,18 @@ get_mp_Ob(::HasNoMass, sys::System) = MassProperties()
 
 end
 
-###################### AngMomTrait ##########################
+###################### AngularMomentumTrait ##########################
 
 #accounts only for additional angular momentum due to rotating components
-abstract type AngMomTrait end
-struct HasAngularMomentum <: AngMomTrait end
-struct HasNoAngularMomentum <: AngMomTrait end
+abstract type AngularMomentumTrait end
+struct HasAngularMomentum <: AngularMomentumTrait end
+struct HasNoAngularMomentum <: AngularMomentumTrait end
 
 #prevents the trait system from failing silently when wrongly extended
-AngMomTrait(::S) where {S<:System} = error(
-    "Please extend RigidBody.AngMomTrait for $S")
+AngularMomentumTrait(::S) where {S<:System} = error(
+    "Please extend Dynamics.AngularMomentumTrait for $S")
 
-get_hr_b(sys::System) = get_hr_b(AngMomTrait(sys), sys)
+get_hr_b(sys::System) = get_hr_b(AngularMomentumTrait(sys), sys)
 
 get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
 
@@ -387,17 +387,17 @@ get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
 end
 
 
-###################### WrenchTrait ##########################
+###################### ExternalWrenchTrait ##########################
 
-abstract type WrenchTrait end
-struct GetsExternalWrench <: WrenchTrait end
-struct GetsNoExternalWrench <: WrenchTrait end
+abstract type ExternalWrenchTrait end
+struct GetsExternalWrench <: ExternalWrenchTrait end
+struct GetsNoExternalWrench <: ExternalWrenchTrait end
 
 #prevents the trait system from failing silently when wrongly extended
-WrenchTrait(::S) where {S<:System} = error(
-    "Please extend RigidBody.WrenchTrait for $S")
+ExternalWrenchTrait(::S) where {S<:System} = error(
+    "Please extend Dynamics.ExternalWrenchTrait for $S")
 
-get_wr_b(sys::System) = get_wr_b(WrenchTrait(sys), sys)
+get_wr_b(sys::System) = get_wr_b(ExternalWrenchTrait(sys), sys)
 
 get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
 
@@ -500,7 +500,7 @@ end
 ###################### Acceleration Outputs #####################
 
 #all magnitudes resolved in body axes unless otherwise noted
-@kwdef struct RigidBodyData
+@kwdef struct DynamicsData
     mp_Ob::MassProperties = MassProperties() #aircraft mass properties at Ob
     wr_g_Ob::Wrench = Wrench() #gravity wrench at Ob
     wr_in_Ob::Wrench = Wrench() #inertia wrench at Ob
@@ -518,7 +518,7 @@ end
     f_G_b::SVector{3,Float64} = zeros(SVector{3}) #specific force at G
 end
 
-function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_Ob::MassProperties,
+function update!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_Ob::MassProperties,
     wr_ext_Ob::Wrench, hr_b::AbstractVector{<:Real})
 
     #wr_ext_Ob: Total external wrench on the vehicle
@@ -577,13 +577,13 @@ function f_rigidbody!(ẋ_vel::Kinematics.XVel, kin::KinematicData, mp_Ob::MassP
     f_Ob_b = a_iOb_b - G_Ob_b
     f_G_b = a_iG_b - G_Ob_b #G ≈ Ob
 
-    return RigidBodyData(; mp_Ob, wr_g_Ob, wr_in_Ob, wr_ext_Ob, wr_net_Ob, hr_b,
+    return DynamicsData(; mp_Ob, wr_g_Ob, wr_in_Ob, wr_ext_Ob, wr_net_Ob, hr_b,
                            α_eb_b, α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n,
                            a_iOb_b, f_Ob_b, a_iG_b, f_G_b)
 
 end
 
-################################# RigidBody #####################################
+################################# Dynamics #####################################
 
 @recipe function f(ts::TimeSeries{<:Wrench}; wr_frame = "", wr_source = "")
 
@@ -608,7 +608,7 @@ end
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:RigidBodyData}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:DynamicsData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -693,7 +693,7 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(rb::RigidBodyData, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(rb::DynamicsData, p_open::Ref{Bool} = Ref(true),
                     label::String = "Rigid Body")
 
     @unpack mp_Ob, wr_net_Ob, hr_b, α_eb_b, a_eOb_b, f_Ob_b, f_G_b = rb

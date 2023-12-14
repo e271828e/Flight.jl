@@ -17,9 +17,9 @@ using ..Control.Continuous: PIVector, PIVectorInput, PIVectorOutput
 
 abstract type AbstractFuelSupply <: SystemDefinition end
 
-RigidBody.MassTrait(::System{<:AbstractFuelSupply}) = HasMass()
-RigidBody.AngMomTrait(::System{<:AbstractFuelSupply}) = HasNoAngularMomentum()
-RigidBody.WrenchTrait(::System{<:AbstractFuelSupply}) = GetsNoExternalWrench()
+Dynamics.MassTrait(::System{<:AbstractFuelSupply}) = HasMass()
+Dynamics.AngularMomentumTrait(::System{<:AbstractFuelSupply}) = HasNoAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{<:AbstractFuelSupply}) = GetsNoExternalWrench()
 
 #to be extended by concrete subtypes
 fuel_available(f::System{<:AbstractFuelSupply}) = throw(
@@ -31,7 +31,7 @@ struct MagicFuelSupply <: AbstractFuelSupply end
 Systems.init(::SystemU, ::MagicFuelSupply) = Ref(true)
 Systems.f_ode!(::System{MagicFuelSupply}) = nothing
 
-RigidBody.get_mp_Ob(::System{MagicFuelSupply}) = MassProperties()
+Dynamics.get_mp_Ob(::System{MagicFuelSupply}) = MassProperties()
 fuel_available(f::System{MagicFuelSupply}) = f.u[]
 
 
@@ -60,11 +60,11 @@ end
 
 #by default, engine mass is assumed to be accounted for in the vehicle's
 #structure
-RigidBody.MassTrait(::System{<:AbstractPistonEngine}) = HasNoMass()
+Dynamics.MassTrait(::System{<:AbstractPistonEngine}) = HasNoMass()
 #assumed to be negligible by default
-RigidBody.AngMomTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
+Dynamics.AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
 #no direct external wrench on the engine
-RigidBody.WrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
+Dynamics.ExternalWrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
 
 
 ################################################################################
@@ -524,12 +524,12 @@ function Systems.f_step!(sys::System{<:Thruster}, fuel::System{<:AbstractFuelSup
 
 end
 
-RigidBody.MassTrait(::System{<:Thruster}) = HasNoMass()
-RigidBody.AngMomTrait(::System{<:Thruster}) = HasAngularMomentum()
-RigidBody.WrenchTrait(::System{<:Thruster}) = GetsExternalWrench()
+Dynamics.MassTrait(::System{<:Thruster}) = HasNoMass()
+Dynamics.AngularMomentumTrait(::System{<:Thruster}) = HasAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{<:Thruster}) = GetsExternalWrench()
 
-RigidBody.get_wr_b(sys::System{<:Thruster}) = get_wr_b(sys.propeller) #only external
-RigidBody.get_hr_b(sys::System{<:Thruster}) = get_hr_b(sys.propeller)
+Dynamics.get_wr_b(sys::System{<:Thruster}) = get_wr_b(sys.propeller) #only external
+Dynamics.get_hr_b(sys::System{<:Thruster}) = get_hr_b(sys.propeller)
 
 
 ################################################################################

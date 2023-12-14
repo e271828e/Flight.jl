@@ -183,7 +183,7 @@ function Coefficients(blade::Blade, n_blades::Int, J::Real, Mt::Real, Δβ::Real
     end
 
     #these are for a CW propeller, we'll deal with the CCW case through symmetry
-    #inside the propeller dynamics update function
+    #inside the propeller update function
     C_Fx = trapz(ζ, dC_Fx)
     C_Mx = trapz(ζ, dC_Mx)
     C_Fz_α = trapz(ζ, dC_Fz_α)
@@ -336,9 +336,9 @@ struct VariablePitch <: PitchStyle end
 
 abstract type AbstractPropeller <: SystemDefinition end
 
-RigidBody.MassTrait(::System{<:AbstractPropeller}) = HasNoMass()
-RigidBody.AngMomTrait(::System{<:AbstractPropeller}) = HasAngularMomentum()
-RigidBody.WrenchTrait(::System{<:AbstractPropeller}) = GetsExternalWrench()
+Dynamics.MassTrait(::System{<:AbstractPropeller}) = HasNoMass()
+Dynamics.AngularMomentumTrait(::System{<:AbstractPropeller}) = HasAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{<:AbstractPropeller}) = GetsExternalWrench()
 
 struct Propeller{P <: PitchStyle, L <: Lookup} <: AbstractPropeller
     pitch::P
@@ -437,8 +437,8 @@ function Systems.f_ode!(sys::System{<:Propeller}, kin::KinematicData, air::AirDa
 
 end
 
-RigidBody.get_wr_b(sys::System{<:Propeller}) = sys.y.wr_b
-RigidBody.get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
+Dynamics.get_wr_b(sys::System{<:Propeller}) = sys.y.wr_b
+Dynamics.get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 
 
 ################################################################################

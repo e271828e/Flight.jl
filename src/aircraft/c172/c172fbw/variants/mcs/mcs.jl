@@ -1141,7 +1141,7 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
     u = avionics.u
     y = avionics.y
 
-    @unpack airframe, kinematics, rigidbody, air = physics.y
+    @unpack airframe, kinematics, dynamics, air = physics.y
     @unpack act, pwp, fuel, ldg = airframe
 
     @unpack e_nb, ω_lb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eOb_n = kinematics
@@ -1529,11 +1529,11 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
 
             CImGui.TableNextColumn();
                 Text("Specific Force (x)"); SameLine(240)
-                Text(@sprintf("%.3f g", rigidbody.f_G_b[1]/RigidBody.g₀))
+                Text(@sprintf("%.3f g", dynamics.f_G_b[1]/Dynamics.g₀))
                 Text("Specific Force (y)"); SameLine(240)
-                Text(@sprintf("%.3f g", rigidbody.f_G_b[2]/RigidBody.g₀))
+                Text(@sprintf("%.3f g", dynamics.f_G_b[2]/Dynamics.g₀))
                 Text("Specific Force (z)"); SameLine(240)
-                Text(@sprintf("%.3f g", rigidbody.f_G_b[3]/RigidBody.g₀))
+                Text(@sprintf("%.3f g", dynamics.f_G_b[3]/Dynamics.g₀))
 
             CImGui.EndTable()
         end

@@ -440,7 +440,7 @@ end
 
 function YLinear(physics::System{<:C172FBW.Physics{NED}})
 
-    @unpack airframe, air, rigidbody, kinematics = physics.y
+    @unpack airframe, air, dynamics, kinematics = physics.y
     @unpack pwp, fuel, aero,act = airframe
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_b, v_eOb_n, χ_gnd, γ_gnd = kinematics
@@ -465,7 +465,7 @@ function YLinear(physics::System{<:C172FBW.Physics{NED}})
     rud_v = act.rudder.vel
     rud_p = act.rudder.pos
 
-    f_x, f_y, f_z = physics.y.rigidbody.f_G_b
+    f_x, f_y, f_z = physics.y.dynamics.f_G_b
     EAS = physics.y.air.EAS
     TAS = physics.y.air.TAS
     α = physics.y.air.α_b

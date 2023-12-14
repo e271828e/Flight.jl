@@ -17,9 +17,9 @@ export trim!, linearize!
 ########################### AbstractAirframe ###################################
 
 abstract type AbstractAirframe <: SystemDefinition end
-RigidBody.MassTrait(::System{<:AbstractAirframe}) = HasMass()
-RigidBody.AngMomTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
-RigidBody.WrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
+Dynamics.MassTrait(::System{<:AbstractAirframe}) = HasMass()
+Dynamics.AngularMomentumTrait(::System{<:AbstractAirframe}) = HasAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
 
 ################################ EmptyAirframe #################################
 
@@ -27,9 +27,9 @@ RigidBody.WrenchTrait(::System{<:AbstractAirframe}) = GetsExternalWrench()
     mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
 end
 
-RigidBody.AngMomTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
-RigidBody.WrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
-RigidBody.get_mp_Ob(sys::System{EmptyAirframe}) = MassProperties(sys.constants.mass_distribution)
+Dynamics.AngularMomentumTrait(::System{EmptyAirframe}) = HasNoAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{EmptyAirframe}) = GetsNoExternalWrench()
+Dynamics.get_mp_Ob(sys::System{EmptyAirframe}) = MassProperties(sys.constants.mass_distribution)
 
 ################################################################################
 ############################## Aircraft Physics ################################
@@ -46,14 +46,14 @@ end
 struct PhysicsY{F, K}
     airframe::F
     kinematics::K
-    rigidbody::RigidBodyData
+    dynamics::DynamicsData
     air::AirData
 end
 
 Systems.init(::SystemY, ac::Physics) = PhysicsY(
     init_y(ac.airframe),
     init_y(ac.kinematics),
-    RigidBodyData(),
+    DynamicsData(),
     AirData())
 
 function Systems.init!(sys::System{<:Physics}, ic::KinematicInit)
@@ -148,7 +148,7 @@ function Systems.f_ode!(physics::System{<:Physics})
     hr_b = get_hr_b(airframe)
 
     #update velocity derivatives and rigid body data
-    rb_data = f_rigidbody!(kinematics.ẋ.vel, kin_data, mp_Ob, wr_b, hr_b)
+    rb_data = Dynamics.update!(kinematics.ẋ.vel, kin_data, mp_Ob, wr_b, hr_b)
 
     physics.y = PhysicsY(airframe.y, kinematics.y, rb_data, air_data)
 
@@ -163,13 +163,13 @@ end
 function Systems.f_disc!(physics::System{<:Physics}, Δt::Real)
 
     @unpack kinematics, airframe = physics
-    @unpack rigidbody, air = physics.y
+    @unpack dynamics, air = physics.y
 
     x_mod = false
     x_mod |= f_disc!(airframe, Δt)
 
     #airframe might have modified its outputs, so we need to reassemble our y
-    physics.y = PhysicsY(airframe.y, kinematics.y, rigidbody, air)
+    physics.y = PhysicsY(airframe.y, kinematics.y, dynamics, air)
 
     return x_mod
 end
@@ -402,7 +402,7 @@ function Plotting.make_plots(ts::TimeSeries{<:PhysicsY}; kwargs...)
     return OrderedDict(
         :airframe => make_plots(ts.airframe; kwargs...),
         :kinematics => make_plots(ts.kinematics; kwargs...),
-        :rigidbody => make_plots(ts.rigidbody; kwargs...),
+        :dynamics => make_plots(ts.dynamics; kwargs...),
         :air => make_plots(ts.air; kwargs...),
     )
 
@@ -445,7 +445,7 @@ function GUI.draw!(physics::System{<:Physics},
 
     @unpack airframe, atmosphere = physics.subsystems
     @unpack terrain = physics.constants
-    @unpack kinematics, rigidbody, air = physics.y
+    @unpack kinematics, dynamics, air = physics.y
 
     CImGui.Begin(label, p_open)
 
@@ -460,7 +460,7 @@ function GUI.draw!(physics::System{<:Physics},
             c_afm && @c GUI.draw!(physics.airframe, avionics, &c_afm)
             c_atm && @c GUI.draw!(physics.atmosphere, &c_atm)
             c_trn && @c GUI.draw(terrain, &c_trn)
-            c_dyn && @c GUI.draw(rigidbody, &c_dyn)
+            c_dyn && @c GUI.draw(dynamics, &c_dyn)
             c_kin && @c GUI.draw(kinematics, &c_kin)
             c_air && @c GUI.draw(air, &c_air)
     end)

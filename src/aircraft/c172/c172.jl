@@ -33,15 +33,15 @@ const mp_Ob_str = let
     MassProperties(str_G, t_Ob_G)
 end
 
-RigidBody.MassTrait(::System{Structure}) = HasMass()
+Dynamics.MassTrait(::System{Structure}) = HasMass()
 
 #the structure itself receives no external actions. these are considered to act
 #upon the vehicle's aerodynamics, power plant and landing gear. the same goes
 #for rotational angular momentum.
-RigidBody.WrenchTrait(::System{Structure}) = GetsNoExternalWrench()
-RigidBody.AngMomTrait(::System{Structure}) = HasNoAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{Structure}) = GetsNoExternalWrench()
+Dynamics.AngularMomentumTrait(::System{Structure}) = HasNoAngularMomentum()
 
-RigidBody.get_mp_Ob(::System{Structure}) = mp_Ob_str
+Dynamics.get_mp_Ob(::System{Structure}) = mp_Ob_str
 
 
 ################################################################################
@@ -388,9 +388,9 @@ Systems.init(::SystemY, ::Aero) = AeroY()
 Systems.init(::SystemU, ::Aero) = AeroU()
 Systems.init(::SystemS, ::Aero) = AeroS()
 
-RigidBody.MassTrait(::System{<:Aero}) = HasNoMass()
-RigidBody.AngMomTrait(::System{<:Aero}) = HasNoAngularMomentum()
-RigidBody.WrenchTrait(::System{<:Aero}) = GetsExternalWrench()
+Dynamics.MassTrait(::System{<:Aero}) = HasNoMass()
+Dynamics.AngularMomentumTrait(::System{<:Aero}) = HasNoAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{<:Aero}) = GetsExternalWrench()
 
 function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
     air::AirData, kinematics::KinematicData, terrain::AbstractTerrain)
@@ -459,7 +459,7 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
 
 end
 
-RigidBody.get_wr_b(sys::System{Aero}) = sys.y.wr_b
+Dynamics.get_wr_b(sys::System{Aero}) = sys.y.wr_b
 
 function Systems.f_step!(sys::System{Aero})
     #stall hysteresis
@@ -524,9 +524,9 @@ struct Ldg <: SystemDefinition
     nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
 end
 
-RigidBody.MassTrait(::System{Ldg}) = HasNoMass()
-RigidBody.WrenchTrait(::System{Ldg}) = GetsExternalWrench()
-RigidBody.AngMomTrait(::System{Ldg}) = HasNoAngularMomentum()
+Dynamics.MassTrait(::System{Ldg}) = HasNoMass()
+Dynamics.ExternalWrenchTrait(::System{Ldg}) = GetsExternalWrench()
+Dynamics.AngularMomentumTrait(::System{Ldg}) = HasNoAngularMomentum()
 
 function Ldg()
 
@@ -605,11 +605,11 @@ end
 
 Systems.init(::SystemU, ::Payload) = PayloadU()
 
-RigidBody.MassTrait(::System{Payload}) = HasMass()
-RigidBody.WrenchTrait(::System{Payload}) = GetsNoExternalWrench()
-RigidBody.AngMomTrait(::System{Payload}) = HasNoAngularMomentum()
+Dynamics.MassTrait(::System{Payload}) = HasMass()
+Dynamics.ExternalWrenchTrait(::System{Payload}) = GetsNoExternalWrench()
+Dynamics.AngularMomentumTrait(::System{Payload}) = HasNoAngularMomentum()
 
-function RigidBody.get_mp_Ob(sys::System{Payload})
+function Dynamics.get_mp_Ob(sys::System{Payload})
     @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = sys.u
     @unpack pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot = sys.constants
 
@@ -681,7 +681,7 @@ end
 
 Piston.fuel_available(sys::System{<:Fuel}) = (sys.y.m_avail > 0)
 
-function RigidBody.get_mp_Ob(fuel::System{Fuel})
+function Dynamics.get_mp_Ob(fuel::System{Fuel})
 
     #in case x becomes negative (fuel consumed beyond x=0 before the engine
     #dies)
@@ -727,9 +727,9 @@ function assign!(aero::System{<:Aero}, ldg::System{<:Ldg},
     throw(MethodError(C172.assign!, (aero, ldg, pwp, act)))
 end
 
-RigidBody.MassTrait(::System{<:Actuation}) = HasNoMass()
-RigidBody.AngMomTrait(::System{<:Actuation}) = HasNoAngularMomentum()
-RigidBody.WrenchTrait(::System{<:Actuation}) = GetsNoExternalWrench()
+Dynamics.MassTrait(::System{<:Actuation}) = HasNoMass()
+Dynamics.AngularMomentumTrait(::System{<:Actuation}) = HasNoAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{<:Actuation}) = GetsNoExternalWrench()
 
 ################################################################################
 ################################ Airframe ######################################

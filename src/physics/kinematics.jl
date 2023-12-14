@@ -77,18 +77,18 @@ KinematicData(sys::KinematicSystem) = sys.y.data
 
 struct KinematicOutputs{S}
     data::KinematicData #general, implementation-agnostic kinematic data
-    spec::S #implementation-specific outputs
+    impl::S #implementation-specific outputs
 end
 
 Base.getproperty(y::KinematicOutputs, s::Symbol) = getproperty(y, Val(s))
 
 @generated function Base.getproperty(y::KinematicOutputs{T}, ::Val{S}) where {T, S}
-    if S === :data || S === :specific
+    if S === :data || S === :impl
         return :(getfield(y, $(QuoteNode(S))))
     elseif S ∈ fieldnames(KinematicData)
         return :(getfield(getfield(y, :data), $(QuoteNode(S))))
     elseif S ∈ fieldnames(T)
-        return :(getfield(getfield(y, :spec), $(QuoteNode(S))))
+        return :(getfield(getfield(y, :impl), $(QuoteNode(S))))
     else
         error("$(typeof(y)) has no property $S")
     end
@@ -246,7 +246,7 @@ function KinematicOutputs(x::XLTF)
 
 end
 
-#only updates xpos_dot, f_rigidbody! performs the xvel_dot update
+#only updates xpos_dot, Dynamics.update! performs the xvel_dot update
 function Systems.f_ode!(sys::System{LTF})
 
     #compute and update y
@@ -355,7 +355,7 @@ function KinematicOutputs(x::XECEF)
 
 end
 
-#only updates xpos_dot, xvel_dot update can only be performed by f_rigidbody!
+#only updates xpos_dot, xvel_dot update can only be performed by Dynamics.update!
 function Systems.f_ode!(sys::System{ECEF})
 
     #compute and update y
@@ -472,7 +472,7 @@ function KinematicOutputs(x::XNED)
 
 end
 
-#only updates xpos_dot, xvel_dot update is performed by f_rigidbody!
+#only updates xpos_dot, xvel_dot update is performed by Dynamics.update!
 function Systems.f_ode!(sys::System{NED})
 
     #compute and update y

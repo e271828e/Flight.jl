@@ -22,8 +22,8 @@ export test_piston
 function test_piston()
     @testset verbose = true "Piston" begin
         test_engine_lookup()
-        test_engine_dynamics()
-        test_thruster_dynamics()
+        test_engine_response()
+        test_thruster_response()
     end
 end
 
@@ -99,7 +99,7 @@ function test_engine_lookup()
 end #function
 
 
-function test_engine_dynamics()
+function test_engine_response()
 
     @testset verbose = true "EngineDynamics" begin
 
@@ -183,7 +183,7 @@ function test_engine_dynamics()
 
 end #function
 
-function test_thruster_dynamics()
+function test_thruster_response()
 
     @testset verbose = true "ThrusterDynamics" begin
 

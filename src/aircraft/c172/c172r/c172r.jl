@@ -410,7 +410,7 @@ end
 function YLinear(physics::System{<:C172R.Physics{NED}})
 
     @unpack throttle, aileron, elevator, rudder = physics.airframe.act.u
-    @unpack airframe, air, rigidbody, kinematics = physics.y
+    @unpack airframe, air, dynamics, kinematics = physics.y
     @unpack pwp, fuel, aero,act = airframe
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_b, v_eOb_n, χ_gnd, γ_gnd = kinematics
@@ -426,7 +426,7 @@ function YLinear(physics::System{<:C172R.Physics{NED}})
     α_filt = aero.α_filt
     β_filt = aero.β_filt
 
-    f_x, f_y, f_z = physics.y.rigidbody.f_G_b
+    f_x, f_y, f_z = physics.y.dynamics.f_G_b
     EAS = physics.y.air.EAS
     TAS = physics.y.air.TAS
     α = physics.y.air.α_b

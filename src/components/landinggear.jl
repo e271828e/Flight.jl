@@ -395,11 +395,11 @@ end
 
 #override the generic fallback for composite Systems so we don't need to define
 #traits for Steering, Braking or Strut
-RigidBody.MassTrait(::System{<:LandingGearUnit}) = HasNoMass()
-RigidBody.AngMomTrait(::System{<:LandingGearUnit}) = HasNoAngularMomentum()
-RigidBody.WrenchTrait(::System{<:LandingGearUnit}) = GetsExternalWrench()
+Dynamics.MassTrait(::System{<:LandingGearUnit}) = HasNoMass()
+Dynamics.AngularMomentumTrait(::System{<:LandingGearUnit}) = HasNoAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{<:LandingGearUnit}) = GetsExternalWrench()
 
-RigidBody.get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.strut.wr_b
+Dynamics.get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.strut.wr_b
 
 function Systems.f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinematicData,
                 terrain::AbstractTerrain)

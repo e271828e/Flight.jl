@@ -105,10 +105,10 @@ function test_sim(; save::Bool = true)
         # plots = make_plots(sim; Plotting.defaults...)
         kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
         air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
-        rb_plots = make_plots(TimeSeries(sim).physics.rigidbody; Plotting.defaults...)
+        rb_plots = make_plots(TimeSeries(sim).physics.dynamics; Plotting.defaults...)
         save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172r_base", "sim", "kin"))
         save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172r_base", "sim", "air"))
-        save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172r_base", "sim", "rigidbody"))
+        save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172r_base", "sim", "dynamics"))
 
     end
 
