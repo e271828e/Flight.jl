@@ -9,8 +9,8 @@ struct DiscreteTestComponent <: SystemDefinition end
     b::Float64 = 0
 end
 
-Systems.init(::SystemX, ::DiscreteTestComponent) = ComponentVector(a = 0.0, b = 0.0)
-Systems.init(::SystemY, ::DiscreteTestComponent) = DiscreteTestComponentY()
+Systems.X(::DiscreteTestComponent) = ComponentVector(a = 0.0, b = 0.0)
+Systems.Y(::DiscreteTestComponent) = DiscreteTestComponentY()
 
 function Systems.f_disc!(sys::System{DiscreteTestComponent}, Δt)
     sys.x.a += 1

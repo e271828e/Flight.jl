@@ -28,7 +28,7 @@ fuel_available(f::System{<:AbstractFuelSupply}) = throw(
 #a massless, infinite fuel supply, for testing purposes
 struct MagicFuelSupply <: AbstractFuelSupply end
 
-Systems.init(::SystemU, ::MagicFuelSupply) = Ref(true)
+Systems.U(::MagicFuelSupply) = Ref(true)
 Systems.f_ode!(::System{MagicFuelSupply}) = nothing
 
 Dynamics.get_mp_Ob(::System{MagicFuelSupply}) = MassProperties()
@@ -143,11 +143,12 @@ end
     frc::PIVectorOutput{1} = PIVectorOutput{1}()
 end
 
-Systems.init(::SystemX, eng::Engine) = ComponentVector(
-    ω = 0.0, idle = init_x(eng.idle), frc = init_x(eng.frc))
-Systems.init(::SystemU, ::Engine) = PistonEngineU()
-Systems.init(::SystemY, ::Engine) = PistonEngineY()
-Systems.init(::SystemS, ::Engine) = PistonEngineS()
+Systems.X(eng::Engine) = ComponentVector( ω = 0.0,
+                                          idle = Systems.X(eng.idle),
+                                          frc = Systems.X(eng.frc))
+Systems.U(::Engine) = PistonEngineU()
+Systems.Y(::Engine) = PistonEngineY()
+Systems.S(::Engine) = PistonEngineS()
 
 function Systems.init!(sys::System{<:Engine})
     #set up friction constraint compensator

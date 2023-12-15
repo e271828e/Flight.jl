@@ -65,9 +65,9 @@ end
     sat::Int64 = 0
 end
 
-Systems.init(::SystemX, ::Actuator) = ComponentVector(v = 0.0, p = 0.0)
-Systems.init(::SystemU, ::Actuator{R}) where {R} = Ref(R(0.0))
-Systems.init(::SystemY, ::Actuator{R}) where {R} = ActuatorY{R}()
+Systems.X(::Actuator) = ComponentVector(v = 0.0, p = 0.0)
+Systems.U(::Actuator{R}) where {R} = Ref(R(0.0))
+Systems.Y(::Actuator{R}) where {R} = ActuatorY{R}()
 
 function Systems.f_ode!(sys::System{Actuator{R}}) where {R}
 

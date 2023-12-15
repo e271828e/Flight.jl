@@ -94,21 +94,19 @@ Base.getproperty(y::KinematicOutputs, s::Symbol) = getproperty(y, Val(s))
     end
 end
 
-function Systems.init(::SystemX, kin::AbstractKinematicDescriptor,
-                      ic::Initializer = Initializer())
+function Systems.X(kin::AbstractKinematicDescriptor, ic::Initializer = Initializer())
     x = similar(x_template(kin))
     init_x!(x, ic)
     return x
 end
 
-function Systems.init(::SystemY, kin::AbstractKinematicDescriptor,
-                      ic::Initializer = Initializer())
+function Systems.Y(kin::AbstractKinematicDescriptor, ic::Initializer = Initializer())
     return KinematicOutputs(kin, ic)
 end
 
 function KinematicOutputs(kin::AbstractKinematicDescriptor,
                      ic::Initializer = Initializer())
-    x = Systems.init(SystemX(), kin, ic)
+    x = Systems.X(kin, ic)
     return KinematicOutputs(x)
 end
 

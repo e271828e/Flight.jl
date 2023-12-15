@@ -385,10 +385,10 @@ end
     wr_b::Wrench = Wrench() #aerodynamic Wrench, vehicle frame
 end
 
-Systems.init(::SystemX, ::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
-Systems.init(::SystemY, ::Aero) = AeroY()
-Systems.init(::SystemU, ::Aero) = AeroU()
-Systems.init(::SystemS, ::Aero) = AeroS()
+Systems.X(::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+Systems.Y(::Aero) = AeroY()
+Systems.U(::Aero) = AeroU()
+Systems.S(::Aero) = AeroS()
 
 Dynamics.MassTrait(::System{<:Aero}) = HasNoMass()
 Dynamics.AngularMomentumTrait(::System{<:Aero}) = HasNoAngularMomentum()
@@ -605,7 +605,7 @@ end
     m_baggage::Ranged{Float64, 0., 100.} = 50.0
 end
 
-Systems.init(::SystemU, ::Payload) = PayloadU()
+Systems.U(::Payload) = PayloadU()
 
 Dynamics.MassTrait(::System{Payload}) = HasMass()
 Dynamics.ExternalWrenchTrait(::System{Payload}) = GetsNoExternalWrench()
@@ -667,8 +667,8 @@ end
 end
 
 #normalized fuel content (0: residual, 1: full)
-Systems.init(::SystemX, ::Fuel) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
-Systems.init(::SystemY, ::Fuel) = FuelY()
+Systems.X(::Fuel) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
+Systems.Y(::Fuel) = FuelY()
 
 function Systems.f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 

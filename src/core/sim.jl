@@ -129,9 +129,6 @@ Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
     end
 end
 
-#get underlying component type
-component_type(::Simulation{<:System{C}}) where {C} = C
-
 #get ODE algorithm type
 algorithm_type(sim::Simulation) = sim.integrator.alg |> typeof
 

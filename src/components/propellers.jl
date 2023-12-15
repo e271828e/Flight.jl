@@ -372,9 +372,9 @@ end
     η_p::Float64 = 0.0 #propulsive efficiency
 end
 
-Systems.init(::SystemU, ::Propeller{FixedPitch}) = nothing
-Systems.init(::SystemU, ::Propeller{VariablePitch}) = Ref(Ranged(0.0, 0., 1.))
-Systems.init(::SystemY, ::Propeller) = PropellerY()
+Systems.U(::Propeller{FixedPitch}) = nothing
+Systems.U(::Propeller{VariablePitch}) = Ref(Ranged(0.0, 0., 1.))
+Systems.Y(::Propeller) = PropellerY()
 
 function get_Δβ(sys::System{<:Propeller{FixedPitch}})
     Δβ_bounds = sys.constants.lookup.Δβ_bounds

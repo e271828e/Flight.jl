@@ -58,9 +58,9 @@ function LinearizedSS(sys::ControlSystemsBase.StateSpace{ControlSystemsBase.Cont
     LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 end
 
-Systems.init(::SystemX, cmp::LinearizedSS) = copy(cmp.x0)
-Systems.init(::SystemU, cmp::LinearizedSS) = copy(cmp.u0)
-Systems.init(::SystemY, cmp::LinearizedSS) = SVector{length(cmp.y0)}(cmp.y0)
+Systems.X(cmp::LinearizedSS) = copy(cmp.x0)
+Systems.U(cmp::LinearizedSS) = copy(cmp.u0)
+Systems.Y(cmp::LinearizedSS) = SVector{length(cmp.y0)}(cmp.y0)
 
 function Systems.f_ode!(sys::System{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, LY}
 
@@ -159,9 +159,9 @@ end
     int_halted::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
-Systems.init(::SystemX, ::PIVector{N}) where {N} = zeros(N)
-Systems.init(::SystemY, ::PIVector{N}) where {N} = PIVectorOutput{N}()
-Systems.init(::SystemU, ::PIVector{N}) where {N} = PIVectorInput{N}()
+Systems.X(::PIVector{N}) where {N} = zeros(N)
+Systems.Y(::PIVector{N}) where {N} = PIVectorOutput{N}()
+Systems.U(::PIVector{N}) where {N} = PIVectorInput{N}()
 
 function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
 
@@ -383,9 +383,9 @@ end
     halted::Bool = false #integration halted
 end
 
-Systems.init(::SystemY, ::Integrator) = IntegratorOutput()
-Systems.init(::SystemU, ::Integrator) = IntegratorInput()
-Systems.init(::SystemS, ::Integrator) = IntegratorState()
+Systems.Y(::Integrator) = IntegratorOutput()
+Systems.U(::Integrator) = IntegratorInput()
+Systems.S(::Integrator) = IntegratorState()
 
 function Systems.reset!(sys::System{<:Integrator}, x0::Real = 0.0)
     sys.u.input = 0
@@ -444,9 +444,9 @@ end
     halted::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
-Systems.init(::SystemY, ::IntegratorVector{N}) where {N} = IntegratorVectorOutput{N}()
-Systems.init(::SystemU, ::IntegratorVector{N}) where {N} = IntegratorVectorInput{N}()
-Systems.init(::SystemS, ::IntegratorVector{N}) where {N} = IntegratorVectorState{N}()
+Systems.Y(::IntegratorVector{N}) where {N} = IntegratorVectorOutput{N}()
+Systems.U(::IntegratorVector{N}) where {N} = IntegratorVectorInput{N}()
+Systems.S(::IntegratorVector{N}) where {N} = IntegratorVectorState{N}()
 
 function Systems.reset!(sys::System{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
     sys.u.input .= 0
@@ -540,9 +540,9 @@ end
     y1::Float64 = 0.0 #current output
 end
 
-Systems.init(::SystemY, ::LeadLag) = LeadLagOutput()
-Systems.init(::SystemU, ::LeadLag) = LeadLagInput()
-Systems.init(::SystemS, ::LeadLag) = LeadLagState()
+Systems.Y(::LeadLag) = LeadLagOutput()
+Systems.U(::LeadLag) = LeadLagInput()
+Systems.S(::LeadLag) = LeadLagState()
 
 function Systems.reset!(sys::System{<:LeadLag})
     sys.u.u1 = 0
@@ -668,9 +668,9 @@ end
     int_halted::Bool = false #integration halted
 end
 
-Systems.init(::SystemY, ::PID) = PIDOutput()
-Systems.init(::SystemU, ::PID) = PIDInput()
-Systems.init(::SystemS, ::PID) = PIDState()
+Systems.Y(::PID) = PIDOutput()
+Systems.U(::PID) = PIDInput()
+Systems.S(::PID) = PIDState()
 
 function Systems.reset!(sys::System{<:PID})
     sys.u.input = 0
@@ -769,9 +769,9 @@ end
     int_halted::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
-Systems.init(::SystemY, ::PIDVector{N}) where {N} = PIDVectorOutput{N}()
-Systems.init(::SystemU, ::PIDVector{N}) where {N} = PIDVectorInput{N}()
-Systems.init(::SystemS, ::PIDVector{N}) where {N} = PIDVectorState{N}()
+Systems.Y(::PIDVector{N}) where {N} = PIDVectorOutput{N}()
+Systems.U(::PIDVector{N}) where {N} = PIDVectorInput{N}()
+Systems.S(::PIDVector{N}) where {N} = PIDVectorState{N}()
 
 function Systems.reset!(sys::System{<:PIDVector{N}}) where {N}
     sys.u.input .= 0
@@ -1017,15 +1017,15 @@ end
     out_sat_0::MVector{NU,Int64} = zeros(NU) #previous output saturation status
 end
 
-function Systems.init(::SystemY, ::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+function Systems.Y(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
     LQRTrackerOutput{NX, NU, NZ, NUX, NUZ}()
 end
 
-function Systems.init(::SystemU, ::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+function Systems.U(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
     LQRTrackerInput{NX, NU, NZ, NUX, NUZ}()
 end
 
-function Systems.init(::SystemS, ::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+function Systems.S(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
     LQRTrackerState{NX, NU}()
 end
 

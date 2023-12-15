@@ -136,8 +136,8 @@ end
     v2t::PIDOutput = PIDOutput()
 end
 
-Systems.init(::SystemU, ::ThrottleControl) = ThrottleControlU()
-Systems.init(::SystemY, ::ThrottleControl) = ThrottleControlY()
+Systems.U(::ThrottleControl) = ThrottleControlU()
+Systems.Y(::ThrottleControl) = ThrottleControlY()
 
 function Systems.init!(sys::System{<:ThrottleControl})
     #set throttle command limits (not strictly necessary, since the
@@ -255,8 +255,8 @@ end
     v2θ::PIDOutput = PIDOutput()
 end
 
-Systems.init(::SystemU, ::PitchControl) = PitchControlU()
-Systems.init(::SystemY, ::PitchControl) = PitchControlY()
+Systems.U(::PitchControl) = PitchControlU()
+Systems.Y(::PitchControl) = PitchControlY()
 
 function Systems.init!(sys::System{<:PitchControl})
     @unpack q2e, θ2q, c2θ, v2θ = sys.subsystems
@@ -422,8 +422,8 @@ end
     χ2φ::PIDOutput = PIDOutput()
 end
 
-Systems.init(::SystemU, ::RollControl) = RollControlU()
-Systems.init(::SystemY, ::RollControl) = RollControlY()
+Systems.U(::RollControl) = RollControlU()
+Systems.Y(::RollControl) = RollControlY()
 
 function Systems.init!(sys::System{<:RollControl})
     @unpack p2a, φ2p, χ2φ = sys.subsystems
@@ -560,8 +560,8 @@ end
     c_dmd::Float64 = 0.0
 end
 
-Systems.init(::SystemU, ::AltControl) = AltControlU()
-Systems.init(::SystemY, ::AltControl) = AltControlY()
+Systems.U(::AltControl) = AltControlU()
+Systems.Y(::AltControl) = AltControlY()
 
 function Systems.f_disc!(sys::System{<:AltControl}, kin::KinematicData, ::AirData, Δt::Real)
 
@@ -615,8 +615,8 @@ end
     r_sat::Int64 = 0 #rudder saturation state
 end
 
-Systems.init(::SystemU, ::YawControl) = YawControlU()
-Systems.init(::SystemY, ::YawControl) = YawControlY()
+Systems.U(::YawControl) = YawControlU()
+Systems.Y(::YawControl) = YawControlY()
 
 function Systems.init!(sys::System{<:YawControl})
 end
@@ -746,9 +746,9 @@ end
     alt_ctl::AltControlY = AltControlY()
 end
 
-Systems.init(::SystemU, ::Avionics) = AvionicsU()
-Systems.init(::SystemY, ::Avionics) = AvionicsY()
-Systems.init(::SystemS, ::Avionics) = nothing #keep subsystems local
+Systems.U(::Avionics) = AvionicsU()
+Systems.Y(::Avionics) = AvionicsY()
+Systems.S(::Avionics) = nothing #keep subsystems local
 
 
 # ########################### Update Methods #####################################

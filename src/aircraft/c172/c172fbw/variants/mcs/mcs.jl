@@ -300,8 +300,8 @@ end
     v2t_pid::PIDOutput = PIDOutput()
 end
 
-Systems.init(::SystemU, ::LonControl) = LonControlU()
-Systems.init(::SystemY, ::LonControl) = LonControlY()
+Systems.U(::LonControl) = LonControlU()
+Systems.Y(::LonControl) = LonControlY()
 
 function Systems.init!(sys::System{<:LonControl})
     #set output bounds in all LQR Trackers so they can handle saturation
@@ -528,8 +528,8 @@ end
     χ2φ_pid::PIDOutput = PIDOutput()
 end
 
-Systems.init(::SystemU, ::LatControl) = LatControlU()
-Systems.init(::SystemY, ::LatControl) = LatControlY()
+Systems.U(::LatControl) = LatControlU()
+Systems.Y(::LatControl) = LatControlY()
 
 function Systems.init!(sys::System{<:LatControl})
 
@@ -659,9 +659,9 @@ end
     clm_sp::Float64 = 0.0
 end
 
-Systems.init(::SystemU, ::AltitudeGuidance) = AltitudeGuidanceU()
-Systems.init(::SystemS, ::AltitudeGuidance) = AltitudeGuidanceS()
-Systems.init(::SystemY, ::AltitudeGuidance) = AltitudeGuidanceY()
+Systems.U(::AltitudeGuidance) = AltitudeGuidanceU()
+Systems.S(::AltitudeGuidance) = AltitudeGuidanceS()
+Systems.Y(::AltitudeGuidance) = AltitudeGuidanceY()
 
 get_Δh(h_sp::HEllip, physics::System{<:C172FBW.Physics}) = h_sp - physics.y.kinematics.h_e
 get_Δh(h_sp::HOrth, physics::System{<:C172FBW.Physics}) = h_sp - physics.y.kinematics.h_o
@@ -770,8 +770,8 @@ end
     lat_ctl::LatControlY = LatControlY()
 end
 
-Systems.init(::SystemU, ::Avionics) = AvionicsU()
-Systems.init(::SystemY, ::Avionics) = AvionicsY()
+Systems.U(::Avionics) = AvionicsU()
+Systems.Y(::Avionics) = AvionicsY()
 
 
 ########################### Update Methods #####################################

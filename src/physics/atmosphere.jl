@@ -53,7 +53,7 @@ end
     v_ew_n::SVector{3,Float64} = zeros(SVector{3})
 end
 
-Systems.init(::SystemU, ::LocalAtmosphere) = LocalAtmosphereU()
+Systems.U(::LocalAtmosphere) = LocalAtmosphereU()
 
 function LocalAtmosphericData(sys::System{LocalAtmosphere})
     @unpack T_sl, p_sl, v_ew_n = sys.u

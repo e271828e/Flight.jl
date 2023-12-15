@@ -49,9 +49,9 @@ struct PhysicsY{F, K}
     air::AirData
 end
 
-Systems.init(::SystemY, ac::Physics) = PhysicsY(
-    init_y(ac.platform),
-    init_y(ac.kinematics),
+Systems.Y(ac::Physics) = PhysicsY(
+    Systems.Y(ac.platform),
+    Systems.Y(ac.kinematics),
     DynamicsData(),
     AirData())
 
@@ -200,7 +200,7 @@ struct AircraftY{P <: PhysicsY, A}
     avionics::A
 end
 
-Systems.init(::SystemY, ac::Aircraft) = AircraftY(init_y(ac.physics), init_y(ac.avionics))
+Systems.Y(ac::Aircraft) = AircraftY(Systems.Y(ac.physics), Systems.Y(ac.avionics))
 
 function Systems.init!(ac::System{<:Aircraft}, ic::KinematicInit)
     Systems.init!(ac.physics, ic)

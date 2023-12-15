@@ -7,8 +7,6 @@ using AbstractTrees
 using ..GUI
 
 export SystemDefinition, SystemTrait, System
-export SystemẊ, SystemX, SystemY, SystemU, SystemS
-export init_ẋ, init_x, init_y, init_u, init_s
 export f_ode!, f_step!, f_disc!, update_y!
 
 
@@ -17,10 +15,16 @@ export f_ode!, f_step!, f_disc!, update_y!
 
 abstract type SystemDefinition end
 
-function DataStructures.OrderedDict(sd::SystemDefinition)
-    fields = propertynames(sd)
-    values = map(λ -> getproperty(sd, λ), fields)
-    OrderedDict(k => v for (k, v) in zip(fields, values))
+function Base.NamedTuple(sd::SystemDefinition)
+    ks = propertynames(sd)
+    vs = map(λ -> getproperty(sd, λ), ks)
+    NamedTuple{ks}(vs)
+end
+
+function delete_nothings(nt::NamedTuple)
+    valid_keys = filter(k -> !isnothing(getproperty(nt, k)), keys(nt))
+    valid_values = map(λ -> getproperty(nt, λ), valid_keys)
+    NamedTuple{valid_keys}(valid_values)
 end
 
 ################################################################################
@@ -28,13 +32,50 @@ end
 
 abstract type SystemTrait end
 
-struct SystemẊ <: SystemTrait end
-struct SystemX <: SystemTrait end
-struct SystemY <: SystemTrait end
-struct SystemU <: SystemTrait end
-struct SystemS <: SystemTrait end
+struct Ẋ <: SystemTrait end
+struct X <: SystemTrait end
+struct Y <: SystemTrait end
+struct U <: SystemTrait end
+struct S <: SystemTrait end
 
-system_traits() = (SystemẊ(), SystemX(), SystemY(), SystemU(), SystemS())
+#default trait constructors
+(::Union{Type{U}, Type{S}})(::SystemDefinition) = nothing
+
+function (trait::Union{Type{Ẋ}, Type{X}, Type{Y}})(sd::SystemDefinition)
+    #get those fields that are themselves SystemDefinitions
+    children_keys = filter(propertynames(sd)) do name
+        getproperty(sd, name) isa SystemDefinition
+    end
+    children = map(λ -> getproperty(sd, λ), children_keys)
+    children_traits = map(child-> trait(child), children)
+    nt = NamedTuple{children_keys}(children_traits)
+    return trait(nt)
+end
+
+#from NamedTuple
+function (::Type{<:SystemTrait})(nt::NamedTuple)
+    filtered_nt = delete_nothings(nt)
+    isempty(filtered_nt) && return nothing
+    if all(v -> isa(v, AbstractVector), values(filtered_nt)) #x and ẋ
+        return ComponentVector(filtered_nt)
+    else #u, s and y
+        return filtered_nt
+    end
+end
+
+#y must always be a NamedTuple, even if all subsystem's y are StaticArrays;
+#otherwise update_y! does not work
+function Y(nt::NamedTuple)
+    filtered_nt = delete_nothings(nt)
+    return !isempty(filtered_nt) ? filtered_nt : nothing
+end
+
+#fallback method for state vector derivative initialization
+function Ẋ(sd::SystemDefinition)
+    x = X(sd)
+    return (!isnothing(x) ? (x |> zero) : nothing)
+end
+
 
 ################################################################################
 ################################### System #####################################
@@ -54,92 +95,26 @@ mutable struct System{SD <: SystemDefinition, X <: XType, Y, U, S, P, B}
     subsystems::B
 end
 
-############################ Old Initialization ################################
-#ẋ and x of a system are constructed as ComponentVectors from the ẋ's and x's of
-#its subsystems
-#by default, y is constructed as a NamedTuple from the y's of its subsystems
-#by default, u and s are also constructed as NamedTuples from u's and s's
-
-#default trait initializer. if the descriptor has any SystemDefinition fields of
-#its own, these are considered children and traits are (recursively) initialized
-#from them
-# function init(trait::SystemTrait, sd::SystemDefinition)
-#     #get those fields that are themselves SystemDefinitions
-#     children = filter(p -> isa(p.second, SystemDefinition), OrderedDict(sd))
-#     #build an OrderedDict with the initialized traits for each of those
-#     trait_dict = OrderedDict(k => init(trait, v) for (k, v) in pairs(children))
-#     #forward it to the OrderedDict initializers
-#     init(trait, trait_dict)
-# end
-
-############################# New Initialization ###############################
-#ẋ, x and y are handled in the same way, but u and s are not constructed as
-#NamedTuples by default. instead, they default to nothing. if a parent
-#subsystems wants its u or s to be assembled from its subsystems's u and s, it
-#has to do it explicitly. all the code should still work with the old
-#initialization.
-init(::Union{SystemU, SystemS}, ::SystemDefinition) = nothing
-
-function init(trait::Union{SystemẊ, SystemX, SystemY}, sd::SystemDefinition)
-    #get those fields that are themselves SystemDefinitions
-    children = filter(p -> isa(p.second, SystemDefinition), OrderedDict(sd))
-    #build an OrderedDict with the initialized traits for each of those
-    trait_dict = OrderedDict(k => init(trait, v) for (k, v) in pairs(children))
-    #forward it to the OrderedDict initializers
-    init(trait, trait_dict)
-end
-
-################################################################################
-
-#fallback method for state vector derivative initialization
-function init(::SystemẊ, sd::SystemDefinition)
-    x = init(SystemX(), sd)
-    return (!isnothing(x) ? (x |> zero) : nothing)
-end
-
-#initialize traits from OrderedDict
-function init(::SystemTrait, dict::OrderedDict)
-    filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
-    isempty(dict) && return nothing #all entries were Nothing
-    if all(v -> isa(v, AbstractVector), values(dict)) #x and ẋ
-        return ComponentVector(dict)
-    else #u, s and y
-        return NamedTuple(dict)
-    end
-end
-
-#y must always be a NamedTuple, even if all subsystem's y are StaticArrays;
-#otherwise update_y! will not work
-function init(::SystemY, dict::OrderedDict)
-    filter!(p -> !isnothing(p.second), dict) #drop Nothing entries
-    isempty(dict) && return nothing
-    return NamedTuple(dict)
-end
-
-#shorthands (do not extend these)
-init_ẋ(sd::SystemDefinition) = init(SystemẊ(), sd)
-init_x(sd::SystemDefinition) = init(SystemX(), sd)
-init_y(sd::SystemDefinition) = init(SystemY(), sd)
-init_u(sd::SystemDefinition) = init(SystemU(), sd)
-init_s(sd::SystemDefinition) = init(SystemS(), sd)
 
 function System(sd::SystemDefinition,
-                ẋ = init_ẋ(sd), x = init_x(sd), y = init_y(sd),
-                u = init_u(sd), s = init_s(sd), t = Ref(0.0))
+                ẋ = Ẋ(sd), x = X(sd), y = Y(sd),
+                u = U(sd), s = S(sd), t = Ref(0.0))
 
     #construct subsystems from those fields of sd which are themselves
     #SystemDefinitions
-    child_names = filter(p -> (p.second isa SystemDefinition), OrderedDict(sd)) |> keys |> Tuple
+    children_names = filter(propertynames(sd)) do name
+        getproperty(sd, name) isa SystemDefinition
+    end
 
-    child_systems = map(child_names) do child_name
+    children_systems = map(children_names) do child_name
 
         child_definition = getproperty(sd, child_name)
 
-        child_properties = map((ẋ, x, y, u, s), system_traits()) do parent, trait
+        child_properties = map((ẋ, x, y, u, s), (Ẋ, X, Y, U, S)) do parent, trait
             if !isnothing(parent) && (child_name in propertynames(parent))
                 getproperty(parent, child_name)
             else
-                init(trait, child_definition)
+                trait(child_definition)
             end
         end
 
@@ -147,10 +122,10 @@ function System(sd::SystemDefinition,
 
     end
 
-    subsystems = NamedTuple{child_names}(child_systems)
+    subsystems = NamedTuple{children_names}(children_systems)
 
     #the remaining fields of the SystemDefinition are saved as parameters
-    constants = NamedTuple(n=>getfield(sd, n) for n in propertynames(sd) if !(n in child_names))
+    constants = NamedTuple(n=>getfield(sd, n) for n in propertynames(sd) if !(n in children_names))
     constants = (!isempty(constants) ? constants : nothing)
 
     sys = System{map(typeof, (sd, x, y, u, s, constants, subsystems))...}(
@@ -197,12 +172,12 @@ end
 #f_ode! must update sys.ẋ, compute and reassign sys.y, then return nothing
 
 #f_step! and f_disc! are allowed to modify a System's u, s and x. if they do
-#so, they must return true, otherwise false
+#modify x, they must return true, otherwise false
 
 #caution: if a System subtype defines a f_ode!, f_disc! or f_step! method, but
 #its interface is incorrectly specified, dispatch will silently revert to the
-#fallback. this has potential to cause subtle bugs. a test should be used to
-#confirm that the desired method is indeed being dispatched to!
+#fallback. this has potential to cause subtle bugs. a test using @which should
+#be used to confirm that the desired method is indeed being dispatched to!
 
 #fallback method for node Systems. tries calling f_ode! on all subsystems with
 #the same arguments provided to the parent System, then assembles a NamedTuple

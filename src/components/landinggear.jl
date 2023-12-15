@@ -37,8 +37,8 @@ end
     ψ::Float64 = 0.0
 end
 #the contents of u must be mutable
-Systems.init(::SystemU, ::DirectSteering) = Ref(Ranged(0.0, -1., 1.))
-Systems.init(::SystemY, ::DirectSteering) = DirectSteeringY(0.0) #steering angle
+Systems.U(::DirectSteering) = Ref(Ranged(0.0, -1., 1.))
+Systems.Y(::DirectSteering) = DirectSteeringY() #steering angle
 
 function Systems.f_ode!(sys::System{DirectSteering})
     sys.y = DirectSteeringY(Float64(sys.u[]) * sys.constants.ψ_max)
@@ -76,8 +76,8 @@ end
    κ_br::Float64 = 0.0 #braking coefficient
 end
 
-Systems.init(::SystemU, ::DirectBraking) = Ref(Ranged(0.0, 0., 1.))
-Systems.init(::SystemY, ::DirectBraking) = DirectBrakingY()
+Systems.U(::DirectBraking) = Ref(Ranged(0.0, 0., 1.))
+Systems.Y(::DirectBraking) = DirectBrakingY()
 
 function Systems.f_ode!(sys::System{DirectBraking})
     sys.y = DirectBrakingY(Float64(sys.u[]) * sys.constants.η_br)
@@ -196,7 +196,7 @@ end
     frc::PIVectorOutput{2} = PIVectorOutput{2}() #contact friction regulator
 end
 
-Systems.init(::SystemY, ::Strut) = StrutY()
+Systems.Y(::Strut) = StrutY()
 
 function Systems.init!(sys::System{<:Strut})
     #set up friction constraint compensator

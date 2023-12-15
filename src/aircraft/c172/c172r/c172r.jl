@@ -90,8 +90,8 @@ end
     brake_right::Float64 = 0.0
 end
 
-Systems.init(::SystemU, ::Actuation) = ActuationU()
-Systems.init(::SystemY, ::Actuation) = ActuationY()
+Systems.U(::Actuation) = ActuationU()
+Systems.Y(::Actuation) = ActuationY()
 
 function Systems.f_ode!(act::System{Actuation})
 
