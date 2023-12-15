@@ -15,35 +15,35 @@ using ..AircraftBase
 
 
 ################################################################################
-################################ Structure #####################################
+################################ Airframe #####################################
 
-struct Structure <: SystemDefinition end
+struct Airframe <: SystemDefinition end
 
-# This component represents the airframe structure, together with any components
-# rigidly attached to it, such as powerplant or landing gear, but not payload or
-# fuel contents. Its mass corresponds roughly to the aircraft's Standard Empty
-# Weight
+# This component represents the platform's structure, together with any
+# components rigidly attached to it, such as powerplant or landing gear, but not
+# payload or fuel contents. Its mass corresponds roughly to the aircraft's
+# Standard Empty Weight
 
-#Structure mass properties computed in the vehicle reference frame b
+#Airframe mass properties computed in the vehicle reference frame b
 const mp_Ob_str = let
-    #define the structure as a RigidBodyDistribution
+    #define the airframe as a RigidBodyDistribution
     str_G = RigidBodyDistribution(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
     #define the transform from the origin of the vehicle reference frame (Ob)
-    #to the structure's center of mass (G)
+    #to the airframe's center of mass (G)
     t_Ob_G = FrameTransform(r = SVector{3}(0.056, 0, 0.582))
-    #compute the structure's mass properties at Ob
+    #compute the airframe's mass properties at Ob
     MassProperties(str_G, t_Ob_G)
 end
 
-Dynamics.MassTrait(::System{Structure}) = HasMass()
+Dynamics.MassTrait(::System{Airframe}) = HasMass()
 
-#the structure itself receives no external actions. these are considered to act
+#the airframe itself receives no external actions. these are considered to act
 #upon the vehicle's aerodynamics, power plant and landing gear. the same goes
 #for rotational angular momentum.
-Dynamics.ExternalWrenchTrait(::System{Structure}) = GetsNoExternalWrench()
-Dynamics.AngularMomentumTrait(::System{Structure}) = HasNoAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{Airframe}) = GetsNoExternalWrench()
+Dynamics.AngularMomentumTrait(::System{Airframe}) = HasNoAngularMomentum()
 
-Dynamics.get_mp_Ob(::System{Structure}) = mp_Ob_str
+Dynamics.get_mp_Ob(::System{Airframe}) = mp_Ob_str
 
 
 ################################################################################
@@ -721,7 +721,7 @@ end
 ################################################################################
 ################################# Actuation ####################################
 
-#any Actuation system suitable for the C172 Airframe
+#any Actuation system suitable for the C172 Platform
 abstract type Actuation <: SystemDefinition end
 
 function assign!(aero::System{<:Aero}, ldg::System{<:Ldg},
@@ -734,12 +734,12 @@ Dynamics.AngularMomentumTrait(::System{<:Actuation}) = HasNoAngularMomentum()
 Dynamics.ExternalWrenchTrait(::System{<:Actuation}) = GetsNoExternalWrench()
 
 ################################################################################
-################################ Airframe ######################################
+################################ Platform ######################################
 
 #P is introduced as a type parameter, because Piston.Thruster is itself a
 #parametric type, and therefore not concrete
-struct Airframe{P <: Piston.Thruster, A <: Actuation} <: AbstractAirframe
-    str::Structure
+struct Platform{P <: Piston.Thruster, A <: Actuation} <: AbstractPlatform
+    afm::Airframe
     aero::Aero
     ldg::Ldg
     fuel::Fuel
@@ -748,33 +748,33 @@ struct Airframe{P <: Piston.Thruster, A <: Actuation} <: AbstractAirframe
     act::A
 end
 
-function Airframe(pwp::Piston.Thruster, act::Actuation)
-    Airframe(Structure(), Aero(), Ldg(), Fuel(), Payload(), pwp, act)
+function Platform(pwp::Piston.Thruster, act::Actuation)
+    Platform(Airframe(), Aero(), Ldg(), Fuel(), Payload(), pwp, act)
 end
 
 
 ############################# Update Methods ###################################
 
-function Systems.f_ode!(airframe::System{<:Airframe},
+function Systems.f_ode!(platform::System{<:Platform},
                         kin::KinematicData,
                         air::AirData,
                         trn::AbstractTerrain)
 
-    @unpack act, aero, pwp, ldg, fuel, pld = airframe
+    @unpack act, aero, pwp, ldg, fuel, pld = platform
 
     f_ode!(act) #update actuation system outputs
-    assign!(aero, ldg, pwp, act) #assign actuation system outputs to airframe subsystems
+    assign!(aero, ldg, pwp, act) #assign actuation system outputs to platform subsystems
     f_ode!(aero, pwp, air, kin, trn) #update aerodynamics continuous state & outputs
     f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
-    update_y!(airframe)
+    update_y!(platform)
 
 end
 
-function Systems.f_step!(airframe::System{<:Airframe})
-    @unpack aero, ldg, pwp, fuel = airframe
+function Systems.f_step!(platform::System{<:Platform})
+    @unpack aero, ldg, pwp, fuel = platform
 
     x_mod = false
     x_mod |= f_step!(aero)
@@ -788,11 +788,11 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw!( airframe::System{<:Airframe}, ::System{A},
+function GUI.draw!( platform::System{<:Platform}, ::System{A},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 Airframe") where {A<:AbstractAvionics}
+                    label::String = "Cessna 172 Platform") where {A<:AbstractAvionics}
 
-    @unpack act, pwp, ldg, aero, fuel, pld = airframe
+    @unpack act, pwp, ldg, aero, fuel, pld = platform
 
     CImGui.Begin(label, p_open)
 
@@ -826,7 +826,7 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Physics{F, K, T} = AircraftBase.Physics{F, K, T} where {F <: Airframe, K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Physics{F, K, T} = AircraftBase.Physics{F, K, T} where {F <: Platform, K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
 ############################### Trimming #######################################
 ################################################################################
@@ -894,7 +894,7 @@ function cost(physics::System{<:C172.Physics})
 
     v_nd_dot = SVector{3}(ẋ.kinematics.vel.v_eOb_b) / norm(y.kinematics.data.v_eOb_b)
     ω_dot = SVector{3}(ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
-    n_eng_dot = ẋ.airframe.pwp.engine.ω / physics.airframe.pwp.engine.constants.ω_rated
+    n_eng_dot = ẋ.platform.pwp.engine.ω / physics.platform.pwp.engine.constants.ω_rated
 
     sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2
 
@@ -937,7 +937,7 @@ function AircraftBase.trim!(physics::System{<:C172.Physics},
         rudder = -1)
 
     upper_bounds[:] .= TrimState(
-        α_a = physics.airframe.aero.constants.α_stall[2], #critical AoA is 0.28 < 0.36
+        α_a = physics.platform.aero.constants.α_stall[2], #critical AoA is 0.28 < 0.36
         φ_nb = π/3,
         n_eng = 1.1,
         throttle = 1,

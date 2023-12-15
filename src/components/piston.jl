@@ -59,7 +59,7 @@ function h2δ(h)
 end
 
 #by default, engine mass is assumed to be accounted for in the vehicle's
-#structure
+#airframe
 Dynamics.MassTrait(::System{<:AbstractPistonEngine}) = HasNoMass()
 #assumed to be negligible by default
 Dynamics.AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
@@ -538,7 +538,7 @@ Dynamics.get_hr_b(sys::System{<:Thruster}) = get_hr_b(sys.propeller)
 function GUI.draw(sys::System{<:Thruster}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Thruster")
 
-    CImGui.Begin(window_label, p_open) #this should go within pwp's own draw, see airframe
+    CImGui.Begin(window_label, p_open) #this should go within pwp's own draw, see platform
         @cstatic c_eng=false c_prop=false begin
             @c CImGui.Checkbox("Engine", &c_eng)
             @c CImGui.Checkbox("Propeller", &c_prop)

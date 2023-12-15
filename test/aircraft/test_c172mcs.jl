@@ -74,10 +74,10 @@ function test_control_modes()
     @test av.y.hor_gdc_mode === C172MCS.hor_gdc_off
     @test av.y.lon_ctl_mode === C172MCS.lon_direct
     @test av.y.lat_ctl_mode === C172MCS.lat_direct
-    @test ac.y.physics.airframe.act.throttle.cmd == 0.1
-    @test ac.y.physics.airframe.act.aileron.cmd == 0.2
-    @test ac.y.physics.airframe.act.elevator.cmd == 0.3
-    @test ac.y.physics.airframe.act.rudder.cmd == 0.4
+    @test ac.y.physics.platform.act.throttle.cmd == 0.1
+    @test ac.y.physics.platform.act.aileron.cmd == 0.2
+    @test ac.y.physics.platform.act.elevator.cmd == 0.3
+    @test ac.y.physics.platform.act.rudder.cmd == 0.4
 
     # @test @ballocated(f_ode!($ac)) == 0
     # @test @ballocated(f_step!($ac)) == 0
@@ -276,7 +276,7 @@ function test_control_modes()
 
         @test av.lon_ctl.u.q_sp != 0
         @test isapprox(av.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
-        @test isapprox(Float64(ac.y.physics.airframe.act.throttle.cmd),
+        @test isapprox(Float64(ac.y.physics.platform.act.throttle.cmd),
                         Float64(av.u.throttle_sp_input + av.u.throttle_sp_offset); atol = 1e-3)
 
         # @test @ballocated(f_disc!($ac, 0.01)) == 0

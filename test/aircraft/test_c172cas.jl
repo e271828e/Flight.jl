@@ -39,7 +39,7 @@ function test_system_methods()
 
             ac = System(Cessna172CAS());
 
-            #to exercise all airframe functionality, including landing gear, we
+            #to exercise all platform functionality, including landing gear, we
             #need to be on the ground with the engine running
             Systems.init!(ac, kin_init_gnd)
             ac.avionics.u.inceptors.eng_start = true #engine start switch on
@@ -48,8 +48,8 @@ function test_system_methods()
             f_step!(ac)
             f_ode!(ac)
             f_step!(ac)
-            @test ac.y.physics.airframe.ldg.left.strut.wow == true
-            @test ac.y.physics.airframe.pwp.engine.state === Piston.eng_starting
+            @test ac.y.physics.platform.ldg.left.strut.wow == true
+            @test ac.y.physics.platform.pwp.engine.state === Piston.eng_starting
 
             @test @ballocated(f_ode!($ac)) == 0
             @test @ballocated(f_step!($ac)) == 0
@@ -58,7 +58,7 @@ function test_system_methods()
             #now we put the aircraft in flight
             Systems.init!(ac, kin_init_air)
             f_ode!(ac)
-            @test ac.y.physics.airframe.ldg.left.strut.wow == false
+            @test ac.y.physics.platform.ldg.left.strut.wow == false
             @test @ballocated(f_ode!($ac)) == 0
             @test @ballocated(f_step!($ac)) == 0
 

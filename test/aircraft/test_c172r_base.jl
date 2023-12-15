@@ -48,7 +48,7 @@ function test_system_methods()
 
             f_ode!(ac_LTF)
             #make sure we are on the ground to ensure landing gear code coverage
-            @test ac_LTF.y.physics.airframe.ldg.left.strut.wow == true
+            @test ac_LTF.y.physics.platform.ldg.left.strut.wow == true
 
             #all three kinematics implementations must be supported, no allocations
             @test @ballocated(f_ode!($ac_LTF)) == 0
@@ -94,7 +94,7 @@ function test_sim(; save::Bool = true)
 
             function (ac)
 
-                u_act = ac.physics.airframe.act.u
+                u_act = ac.physics.platform.act.u
                 t = ac.t[]
 
             end

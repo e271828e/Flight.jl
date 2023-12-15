@@ -262,16 +262,16 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Airframe = C172.Airframe{typeof(PowerPlant()), C172FBW.Actuation}
-const Physics{K, T} = AircraftBase.Physics{C172FBW.Airframe, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-const Template{K, T, A} = AircraftBase.Template{C172FBW.Physics{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
+const Platform = C172.Platform{typeof(PowerPlant()), C172FBW.Actuation}
+const Physics{K, T} = AircraftBase.Physics{C172FBW.Platform, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Aircraft{K, T, A} = AircraftBase.Aircraft{C172FBW.Physics{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 
 function Physics(kinematics = LTF(), terrain = HorizontalTerrain())
-    AircraftBase.Physics(C172.Airframe(PowerPlant(), Actuation()), kinematics, terrain, LocalAtmosphere())
+    AircraftBase.Physics(C172.Platform(PowerPlant(), Actuation()), kinematics, terrain, LocalAtmosphere())
 end
 
-function Template(kinematics = LTF(), terrain = HorizontalTerrain(), avionics = NoAvionics())
-    AircraftBase.Template(Physics(kinematics, terrain), avionics)
+function Aircraft(kinematics = LTF(), terrain = HorizontalTerrain(), avionics = NoAvionics())
+    AircraftBase.Aircraft(Physics(kinematics, terrain), avionics)
 end
 
 ############################### Trimming #######################################
@@ -284,7 +284,7 @@ function AircraftBase.assign!(physics::System{<:C172FBW.Physics},
 
     @unpack EAS, β_a, x_fuel, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
-    @unpack act, pwp, aero, fuel, ldg, pld = physics.airframe
+    @unpack act, pwp, aero, fuel, ldg, pld = physics.platform
 
     atm_data = LocalAtmosphericData(physics.atmosphere)
     Systems.init!(physics.kinematics, Kinematics.Initializer(trim_state, trim_params, atm_data))
@@ -341,7 +341,7 @@ function AircraftBase.assign!(physics::System{<:C172FBW.Physics},
 
     f_ode!(physics)
 
-    #check essential assumptions about airframe systems states & derivatives
+    #check essential assumptions about platform systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
     @assert pwp.x.engine.ω > pwp.engine.constants.ω_idle
     @assert pwp.x.engine.idle[1] .== 0
@@ -404,22 +404,22 @@ end
 function XLinear(x_physics::ComponentVector)
 
     x_kinematics = x_physics.kinematics
-    x_airframe = x_physics.airframe
+    x_platform = x_physics.platform
 
     @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics.pos
     p, q, r = x_kinematics.vel.ω_eb_b
     v_x, v_y, v_z = x_kinematics.vel.v_eOb_b
-    α_filt, β_filt = x_airframe.aero
-    ω_eng = x_airframe.pwp.engine.ω
-    fuel = x_airframe.fuel[1]
-    thr_v = x_airframe.act.throttle.v
-    thr_p = x_airframe.act.throttle.p
-    ail_v = x_airframe.act.aileron.v
-    ail_p = x_airframe.act.aileron.p
-    ele_v = x_airframe.act.elevator.v
-    ele_p = x_airframe.act.elevator.p
-    rud_v = x_airframe.act.rudder.v
-    rud_p = x_airframe.act.rudder.p
+    α_filt, β_filt = x_platform.aero
+    ω_eng = x_platform.pwp.engine.ω
+    fuel = x_platform.fuel[1]
+    thr_v = x_platform.act.throttle.v
+    thr_p = x_platform.act.throttle.p
+    ail_v = x_platform.act.aileron.v
+    ail_p = x_platform.act.aileron.p
+    ele_v = x_platform.act.elevator.v
+    ele_p = x_platform.act.elevator.p
+    rud_v = x_platform.act.rudder.v
+    rud_p = x_platform.act.rudder.p
 
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
@@ -430,7 +430,7 @@ end
 
 function ULinear(physics::System{<:C172FBW.Physics{NED}})
 
-    @unpack throttle, aileron, elevator, rudder = physics.airframe.act.subsystems
+    @unpack throttle, aileron, elevator, rudder = physics.platform.act.subsystems
     throttle_cmd = throttle.u[]
     aileron_cmd = aileron.u[]
     elevator_cmd = elevator.u[]
@@ -441,8 +441,8 @@ end
 
 function YLinear(physics::System{<:C172FBW.Physics{NED}})
 
-    @unpack airframe, air, dynamics, kinematics = physics.y
-    @unpack pwp, fuel, aero,act = airframe
+    @unpack platform, air, dynamics, kinematics = physics.y
+    @unpack pwp, fuel, aero,act = platform
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_b, v_eOb_n, χ_gnd, γ_gnd = kinematics
     @unpack ψ, θ, φ = e_nb
@@ -495,7 +495,7 @@ function AircraftBase.assign_u!(physics::System{<:C172FBW.Physics{NED}}, u::Abst
     #they can be readily used for flight control design. Since the velocity
     #states in the nonlinear model are Earth-relative, we need to ensure wind
     #velocity is set to zero for linearization.
-    @unpack throttle, aileron, elevator, rudder = physics.airframe.act.subsystems
+    @unpack throttle, aileron, elevator, rudder = physics.platform.act.subsystems
     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ULinear(u)
     throttle.u[] = throttle_cmd
     aileron.u[] = aileron_cmd
@@ -512,24 +512,24 @@ function AircraftBase.assign_x!(physics::System{<:C172FBW.Physics{NED}}, x::Abst
             fuel, thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p = XLinear(x)
 
     x_kinematics = physics.x.kinematics
-    x_airframe = physics.x.airframe
+    x_platform = physics.x.platform
 
     ψ_nb, θ_nb, φ_nb, h_e = ψ, θ, φ, h
 
     @pack! x_kinematics.pos = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
     x_kinematics.vel.ω_eb_b .= p, q, r
     x_kinematics.vel.v_eOb_b .= v_x, v_y, v_z
-    x_airframe.aero .= α_filt, β_filt
-    x_airframe.pwp.engine.ω = ω_eng
-    x_airframe.fuel .= fuel
-    x_airframe.act.throttle.v = thr_v
-    x_airframe.act.throttle.p = thr_p
-    x_airframe.act.aileron.v = ail_v
-    x_airframe.act.aileron.p = ail_p
-    x_airframe.act.elevator.v = ele_v
-    x_airframe.act.elevator.p = ele_p
-    x_airframe.act.rudder.v = rud_v
-    x_airframe.act.rudder.p = rud_p
+    x_platform.aero .= α_filt, β_filt
+    x_platform.pwp.engine.ω = ω_eng
+    x_platform.fuel .= fuel
+    x_platform.act.throttle.v = thr_v
+    x_platform.act.throttle.p = thr_p
+    x_platform.act.aileron.v = ail_v
+    x_platform.act.aileron.p = ail_p
+    x_platform.act.elevator.v = ele_v
+    x_platform.act.elevator.p = ele_p
+    x_platform.act.rudder.v = rud_v
+    x_platform.act.rudder.p = rud_p
 
 end
 

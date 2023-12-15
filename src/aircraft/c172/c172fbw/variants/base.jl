@@ -18,11 +18,11 @@ export Cessna172FBWBase
 ############################### Cessna172FBWBase ###############################
 
 #Cessna172FBW with NoAvionics
-const Cessna172FBWBase{K, T} = C172FBW.Template{K, T, NoAvionics} where {
+const Cessna172FBWBase{K, T} = C172FBW.Aircraft{K, T, NoAvionics} where {
     K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
 function Cessna172FBWBase(kinematics = LTF(), terrain = HorizontalTerrain())
-    C172FBW.Template(kinematics, terrain, NoAvionics())
+    C172FBW.Aircraft(kinematics, terrain, NoAvionics())
 end
 
 ############################ Joystick Mappings #################################
@@ -30,7 +30,7 @@ end
 #redirect input assignments directly to the actuation system
 function IODevices.assign!(sys::System{<:Cessna172FBWBase}, joystick::Joystick,
                            mapping::InputMapping)
-    IODevices.assign!(sys.physics.airframe.act, joystick, mapping)
+    IODevices.assign!(sys.physics.platform.act, joystick, mapping)
 end
 
 end #module

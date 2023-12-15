@@ -264,16 +264,16 @@ end
 ################################################################################
 ################################# Template #####################################
 
-const Airframe = C172.Airframe{typeof(PowerPlant()), Actuation}
-const Physics{K, T} = AircraftBase.Physics{Airframe, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-const Template{K, T, A} = AircraftBase.Template{Physics{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
+const Platform = C172.Platform{typeof(PowerPlant()), Actuation}
+const Physics{K, T} = AircraftBase.Physics{Platform, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Aircraft{K, T, A} = AircraftBase.Aircraft{Physics{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 
 function Physics(kinematics = LTF(), terrain = HorizontalTerrain())
-    AircraftBase.Physics(C172.Airframe(PowerPlant(), Actuation()), kinematics, terrain, LocalAtmosphere())
+    AircraftBase.Physics(C172.Platform(PowerPlant(), Actuation()), kinematics, terrain, LocalAtmosphere())
 end
 
-function Template(kinematics = LTF(), terrain = HorizontalTerrain(), avionics = NoAvionics())
-    AircraftBase.Template(Physics(kinematics, terrain), avionics)
+function Aircraft(kinematics = LTF(), terrain = HorizontalTerrain(), avionics = NoAvionics())
+    AircraftBase.Aircraft(Physics(kinematics, terrain), avionics)
 end
 
 
@@ -287,7 +287,7 @@ function AircraftBase.assign!(physics::System{<:C172R.Physics},
 
     @unpack EAS, β_a, x_fuel, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
-    @unpack act, pwp, aero, fuel, ldg, pld = physics.airframe
+    @unpack act, pwp, aero, fuel, ldg, pld = physics.platform
 
     atm_data = LocalAtmosphericData(physics.atmosphere)
     Systems.init!(physics.kinematics, Kinematics.Initializer(trim_state, trim_params, atm_data))
@@ -336,7 +336,7 @@ function AircraftBase.assign!(physics::System{<:C172R.Physics},
 
     f_ode!(physics)
 
-    #check essential assumptions about airframe systems states & derivatives
+    #check essential assumptions about platform systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
     @assert pwp.x.engine.ω > pwp.engine.constants.ω_idle
     @assert pwp.x.engine.idle[1] .== 0
@@ -387,14 +387,14 @@ end
 function XLinear(x_physics::ComponentVector)
 
     x_kinematics = x_physics.kinematics
-    x_airframe = x_physics.airframe
+    x_platform = x_physics.platform
 
     @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics.pos
     p, q, r = x_kinematics.vel.ω_eb_b
     v_x, v_y, v_z = x_kinematics.vel.v_eOb_b
-    α_filt, β_filt = x_airframe.aero
-    ω_eng = x_airframe.pwp.engine.ω
-    fuel = x_airframe.fuel[1]
+    α_filt, β_filt = x_platform.aero
+    ω_eng = x_platform.pwp.engine.ω
+    fuel = x_platform.fuel[1]
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
     XLinear(; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng, fuel)
@@ -403,16 +403,16 @@ end
 
 function ULinear(physics::System{<:C172R.Physics{NED}})
 
-    @unpack throttle, aileron, elevator, rudder = physics.airframe.act.u
+    @unpack throttle, aileron, elevator, rudder = physics.platform.act.u
     ULinear(; throttle, aileron, elevator, rudder)
 
 end
 
 function YLinear(physics::System{<:C172R.Physics{NED}})
 
-    @unpack throttle, aileron, elevator, rudder = physics.airframe.act.u
-    @unpack airframe, air, dynamics, kinematics = physics.y
-    @unpack pwp, fuel, aero,act = airframe
+    @unpack throttle, aileron, elevator, rudder = physics.platform.act.u
+    @unpack platform, air, dynamics, kinematics = physics.y
+    @unpack pwp, fuel, aero,act = platform
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_b, v_eOb_n, χ_gnd, γ_gnd = kinematics
     @unpack ψ, θ, φ = e_nb
@@ -461,7 +461,7 @@ function AircraftBase.assign_u!(physics::System{<:C172R.Physics{NED}}, u::Abstra
     #velocity is set to zero for linearization.
     physics.atmosphere.u.v_ew_n .= 0
     @unpack throttle, aileron, elevator, rudder = ULinear(u)
-    @pack! physics.airframe.act.u = throttle, aileron, elevator, rudder
+    @pack! physics.platform.act.u = throttle, aileron, elevator, rudder
 
 end
 
@@ -470,16 +470,16 @@ function AircraftBase.assign_x!(physics::System{<:C172R.Physics{NED}}, x::Abstra
     @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng, fuel = XLinear(x)
 
     x_kinematics = physics.x.kinematics
-    x_airframe = physics.x.airframe
+    x_platform = physics.x.platform
 
     ψ_nb, θ_nb, φ_nb, h_e = ψ, θ, φ, h
 
     @pack! x_kinematics.pos = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
     x_kinematics.vel.ω_eb_b .= p, q, r
     x_kinematics.vel.v_eOb_b .= v_x, v_y, v_z
-    x_airframe.aero .= α_filt, β_filt
-    x_airframe.pwp.engine.ω = ω_eng
-    x_airframe.fuel .= fuel
+    x_platform.aero .= α_filt, β_filt
+    x_platform.pwp.engine.ω = ω_eng
+    x_platform.fuel .= fuel
 
 end
 

@@ -768,7 +768,7 @@ function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
 
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl, alt_ctl = avionics.subsystems
 
-    @unpack airframe, air = physics.y
+    @unpack platform, air = physics.y
     kinematics = physics.y.kinematics.data
 
     #direct surface and inner loop demands always come from inceptors
@@ -790,7 +790,7 @@ function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
     alt_ctl.u.h_dmd = h_dmd
     alt_ctl.u.h_ref = h_ref
 
-    any_wow = any(SVector{3}(leg.strut.wow for leg in airframe.ldg))
+    any_wow = any(SVector{3}(leg.strut.wow for leg in platform.ldg))
     flight_phase = any_wow ? phase_gnd : phase_air
 
     if flight_phase === phase_gnd
@@ -859,10 +859,10 @@ function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
 
 end
 
-function AircraftBase.assign!(airframe::System{<:C172FBW.Airframe},
+function AircraftBase.assign!(platform::System{<:C172FBW.Platform},
                           avionics::System{Avionics})
 
-    @unpack act, pwp, ldg = airframe.subsystems
+    @unpack act, pwp, ldg = platform.subsystems
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right = avionics.u.inceptors
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl = avionics.y
 
@@ -901,7 +901,7 @@ function GUI.draw!(avionics::System{<:C172CAS.Avionics},
                     physics::System{<:C172FBW.Physics},
                     label::String = "Cessna 172 FBW CAS Avionics")
 
-    @unpack airframe = physics
+    @unpack platform = physics
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl = avionics.subsystems
 
     u_inc = avionics.u.inceptors
@@ -918,9 +918,9 @@ function GUI.draw!(avionics::System{<:C172CAS.Avionics},
 
     if show_inceptors
         Separator()
-        if airframe.y.pwp.engine.state === Piston.eng_off
+        if platform.y.pwp.engine.state === Piston.eng_off
             eng_start_HSV = HSV_gray
-        elseif airframe.y.pwp.engine.state === Piston.eng_starting
+        elseif platform.y.pwp.engine.state === Piston.eng_starting
             eng_start_HSV = HSV_amber
         else
             eng_start_HSV = HSV_green
@@ -932,7 +932,7 @@ function GUI.draw!(avionics::System{<:C172CAS.Avionics},
         u_inc.eng_stop = IsItemActive()
         SameLine()
         u_inc.mixture = safe_slider("Mixture", u_inc.mixture, "%.6f")
-        # Text(@sprintf("%.3f RPM", Piston.radpersec2RPM(airframe.y.pwp.engine.ω)))
+        # Text(@sprintf("%.3f RPM", Piston.radpersec2RPM(platform.y.pwp.engine.ω)))
         Separator()
         u_inc.throttle = safe_slider("Throttle", u_inc.throttle, "%.6f")
         u_inc.roll_input = safe_slider("Roll Input", u_inc.roll_input, "%.6f")
@@ -1065,11 +1065,11 @@ end
 ################################################################################
 ############################# Cessna172CAS ##################################
 
-const Cessna172CAS{K, T} = C172FBW.Template{K, T, C172CAS.Avionics} where {
+const Cessna172CAS{K, T} = C172FBW.Aircraft{K, T, C172CAS.Avionics} where {
     K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
 function Cessna172CAS(kinematics = LTF(), terrain = HorizontalTerrain())
-    C172FBW.Template(kinematics, terrain, C172CAS.Avionics())
+    C172FBW.Aircraft(kinematics, terrain, C172CAS.Avionics())
 end
 
 

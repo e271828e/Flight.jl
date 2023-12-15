@@ -207,8 +207,8 @@ end
 #assemble state vector from aircraft physics
 function XLon(physics::System{<:C172FBW.Physics})
 
-    @unpack airframe, air, kinematics = physics.y
-    @unpack pwp, aero, act = airframe
+    @unpack platform, air, kinematics = physics.y
+    @unpack pwp, aero, act = platform
     @unpack e_nb, ω_eb_b = kinematics
 
     q = ω_eb_b[2]
@@ -232,7 +232,7 @@ end
 end
 
 function ULon{Float64}(physics::System{<:C172FBW.Physics})
-    @unpack act = physics.y.airframe
+    @unpack act = physics.y.platform
     throttle_cmd = Float64(act.throttle.cmd)
     elevator_cmd = Float64(act.elevator.cmd)
     ULon(; throttle_cmd, elevator_cmd)
@@ -467,8 +467,8 @@ end
 #assemble state vector from aircraft physics
 function XLat(physics::System{<:C172FBW.Physics})
 
-    @unpack airframe, air, kinematics = physics.y
-    @unpack aero, act = airframe
+    @unpack platform, air, kinematics = physics.y
+    @unpack aero, act = platform
     @unpack e_nb, ω_eb_b = kinematics
 
     p, _, r = ω_eb_b
@@ -793,7 +793,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
     aileron_sp = aileron_sp_input + aileron_sp_offset
     rudder_sp = rudder_sp_input + rudder_sp_offset
 
-    any_wow = any(SVector{3}(leg.strut.wow for leg in physics.y.airframe.ldg))
+    any_wow = any(SVector{3}(leg.strut.wow for leg in physics.y.platform.ldg))
     flight_phase = any_wow ? phase_gnd : phase_air
 
     if flight_phase === phase_gnd
@@ -857,10 +857,10 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
 
 end
 
-function AircraftBase.assign!(airframe::System{<:C172FBW.Airframe},
+function AircraftBase.assign!(platform::System{<:C172FBW.Platform},
                           avionics::System{Avionics})
 
-    @unpack act, pwp, ldg = airframe.subsystems
+    @unpack act, pwp, ldg = platform.subsystems
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right = avionics.u
     @unpack throttle_cmd, elevator_cmd = avionics.lon_ctl.y
     @unpack aileron_cmd, rudder_cmd = avionics.lat_ctl.y
@@ -885,11 +885,11 @@ end
 ################################################################################
 ############################# Cessna172MCS ##################################
 
-const Cessna172MCS{K, T} = C172FBW.Template{K, T, C172MCS.Avionics} where {
+const Cessna172MCS{K, T} = C172FBW.Aircraft{K, T, C172MCS.Avionics} where {
     K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
 function Cessna172MCS(kinematics = LTF(), terrain = HorizontalTerrain())
-    C172FBW.Template(kinematics, terrain, C172MCS.Avionics())
+    C172FBW.Aircraft(kinematics, terrain, C172MCS.Avionics())
 end
 
 
@@ -1142,8 +1142,8 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
     u = avionics.u
     y = avionics.y
 
-    @unpack airframe, kinematics, dynamics, air = physics.y
-    @unpack act, pwp, fuel, ldg = airframe
+    @unpack platform, kinematics, dynamics, air = physics.y
+    @unpack act, pwp, fuel, ldg = platform
 
     @unpack e_nb, ω_lb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eOb_n = kinematics
     @unpack CAS, EAS, TAS, α_b, β_b, T, p, pt = air
