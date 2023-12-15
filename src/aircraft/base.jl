@@ -1,12 +1,11 @@
-module Aircraft
+module AircraftBase
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
 using Flight.FlightCore
 using Flight.FlightPhysics
-
-using ..Control
+using Flight.FlightComponents
 
 export AbstractAirframe, EmptyAirframe
 export AbstractAvionics, NoAvionics
@@ -148,9 +147,9 @@ function Systems.f_ode!(physics::System{<:Physics})
     hr_b = get_hr_b(airframe)
 
     #update velocity derivatives and rigid body data
-    rb_data = Dynamics.update!(kinematics.ẋ.vel, kin_data, mp_Ob, wr_b, hr_b)
+    dyn_data = Dynamics.update!(kinematics.ẋ.vel, kin_data, mp_Ob, wr_b, hr_b)
 
-    physics.y = PhysicsY(airframe.y, kinematics.y, rb_data, air_data)
+    physics.y = PhysicsY(airframe.y, kinematics.y, dyn_data, air_data)
 
     return nothing
 
@@ -289,7 +288,7 @@ function trim!( physics::System{<:Physics}, args...)
 end
 
 function assign!(::System{<:Physics}, ::AbstractTrimParameters, ::AbstractTrimState)
-    error("An assign! method must be defined by each Aircraft.Physics subtype")
+    error("An assign! method must be defined by each AircraftBase.Physics subtype")
 end
 
 
@@ -304,9 +303,9 @@ y_linear(physics::System{<:Physics})::FieldVector = throw(MethodError(y_linear!,
 assign_x!(physics::System{<:Physics}, x::AbstractVector{Float64}) = throw(MethodError(assign_x!, (physics, x)))
 assign_u!(physics::System{<:Physics}, u::AbstractVector{Float64}) = throw(MethodError(assign_u!, (physics, u)))
 
-linearize!(ac::System{<:Aircraft.Template}, args...) = linearize!(ac.physics, args...)
+linearize!(ac::System{<:AircraftBase.Template}, args...) = linearize!(ac.physics, args...)
 
-function Aircraft.linearize!( physics::System{<:Aircraft.Physics},
+function AircraftBase.linearize!( physics::System{<:AircraftBase.Physics},
                             trim_params::AbstractTrimParameters)
 
     (_, trim_state) = trim!(physics, trim_params)
@@ -391,7 +390,7 @@ end
 
 
 function Control.Continuous.LinearizedSS(
-            ac::System{<:Aircraft.Template}, args...; kwargs...)
+            ac::System{<:AircraftBase.Template}, args...; kwargs...)
     Control.Continuous.LinearizedSS(ac.physics, args...; kwargs...)
 end
 

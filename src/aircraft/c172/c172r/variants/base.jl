@@ -8,6 +8,7 @@ using Flight.FlightCore
 using Flight.FlightPhysics
 using Flight.FlightComponents
 
+using ..AircraftBase
 using ..C172R
 
 export Cessna172RBase

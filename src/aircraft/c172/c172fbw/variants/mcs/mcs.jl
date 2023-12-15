@@ -11,6 +11,7 @@ using Flight.FlightComponents
 using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput,
     PID, PIDOutput, PIDParams, LQRTracker, LQRTrackerOutput, LQRTrackerParams
 
+using ...AircraftBase
 using ...C172
 using ..C172FBW
 
@@ -856,7 +857,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
 
 end
 
-function Aircraft.assign!(airframe::System{<:C172FBW.Airframe},
+function AircraftBase.assign!(airframe::System{<:C172FBW.Airframe},
                           avionics::System{Avionics})
 
     @unpack act, pwp, ldg = airframe.subsystems
@@ -894,7 +895,7 @@ end
 
 ##################################### Tools ####################################
 
-function Aircraft.trim!(ac::System{<:Cessna172MCS},
+function AircraftBase.trim!(ac::System{<:Cessna172MCS},
                         trim_params::C172.TrimParameters = C172.TrimParameters())
 
 
@@ -948,7 +949,7 @@ function Aircraft.trim!(ac::System{<:Cessna172MCS},
 
 end
 
-function Aircraft.linearize!(ac::System{<:Cessna172MCS}, args...; kwargs...)
+function AircraftBase.linearize!(ac::System{<:Cessna172MCS}, args...; kwargs...)
     linearize!(ac.physics, args...; kwargs...)
 end
 

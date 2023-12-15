@@ -9,6 +9,7 @@ using Flight.FlightComponents.Control.Continuous: LinearizedSS
 using Flight.FlightComponents.Control.Discrete: PIDParams, LQRTrackerParams
 using Flight.FlightComponents.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
+using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
 using Flight.FlightAircraft.C172MCS

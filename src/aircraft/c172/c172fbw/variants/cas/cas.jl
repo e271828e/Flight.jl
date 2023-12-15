@@ -11,6 +11,7 @@ using Flight.FlightComponents
 using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput, PID, PIDOutput, PIDParams
 import Flight.FlightComponents.Control.PIDOpt
 
+using ...AircraftBase
 using ...C172
 using ..C172FBW
 
@@ -858,7 +859,7 @@ function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
 
 end
 
-function Aircraft.assign!(airframe::System{<:C172FBW.Airframe},
+function AircraftBase.assign!(airframe::System{<:C172FBW.Airframe},
                           avionics::System{Avionics})
 
     @unpack act, pwp, ldg = airframe.subsystems
@@ -1074,7 +1075,7 @@ end
 
 ##################################### Tools ####################################
 
-function Aircraft.trim!(ac::System{<:Cessna172CAS},
+function AircraftBase.trim!(ac::System{<:Cessna172CAS},
                         trim_params::C172.TrimParameters = C172.TrimParameters())
 
     result = trim!(ac.physics, trim_params)
@@ -1107,7 +1108,7 @@ function Aircraft.trim!(ac::System{<:Cessna172CAS},
 
 end
 
-function Aircraft.linearize!(ac::System{<:Cessna172CAS}, args...; kwargs...)
+function AircraftBase.linearize!(ac::System{<:Cessna172CAS}, args...; kwargs...)
     linearize!(ac.physics, args...; kwargs...)
 end
 

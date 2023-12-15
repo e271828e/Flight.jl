@@ -5,11 +5,11 @@ using UnPack
 using BenchmarkTools
 
 using Flight.FlightPhysics
-using Flight.FlightComponents.Aircraft
+using Flight.FlightAircraft.AircraftBase
 
-export test_aircraft
+export test_aircraft_base
 
-function test_aircraft()
+function test_aircraft_base()
     @testset verbose = true "Aircraft" begin
         test_θ_constraint()
     end
@@ -30,7 +30,7 @@ function test_θ_constraint()
         γ_wOb_n = -0.07 #set arbitrarily
         ψ_nb = 0.3 #inconsequential
         φ_nb = 0.7
-        θ_nb = Aircraft.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
+        θ_nb = AircraftBase.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
 
         #then construct e_nb, transform v_wOb_b to v_wOb_n, recompute γ_wOb_n
         #and check it matches the original value
@@ -39,7 +39,7 @@ function test_θ_constraint()
         γ_wOb_n_test = inclination(v_wOb_n)
 
         @test γ_wOb_n_test ≈ γ_wOb_n
-        @test @ballocated(Aircraft.θ_constraint(; v_wOb_b = $v_wOb_b, γ_wOb_n = $γ_wOb_n, φ_nb = $φ_nb)) === 0
+        @test @ballocated(AircraftBase.θ_constraint(; v_wOb_b = $v_wOb_b, γ_wOb_n = $γ_wOb_n, φ_nb = $φ_nb)) === 0
 
     end
 

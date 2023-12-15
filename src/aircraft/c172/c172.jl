@@ -11,6 +11,8 @@ using Flight.FlightCore.Utils
 using Flight.FlightPhysics
 using Flight.FlightComponents
 
+using ..AircraftBase
+
 
 ################################################################################
 ################################ Structure #####################################
@@ -824,8 +826,7 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Physics{F, K, T} = Aircraft.Physics{F, K, T} where {F <: Airframe, K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-# const Physics{K, A} = Aircraft.Physics{K, A} where {K <: AbstractKinematicDescriptor, A <: Airframe}
+const Physics{F, K, T} = AircraftBase.Physics{F, K, T} where {F <: Airframe, K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
 ############################### Trimming #######################################
 ################################################################################
@@ -867,7 +868,7 @@ function Kinematics.Initializer(trim_state::TrimState,
     v_wOb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
     v_wOb_b = C172.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
 
-    θ_nb = Aircraft.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
+    θ_nb = AircraftBase.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
     e_nb = REuler(ψ_nb, θ_nb, φ_nb)
     q_nb = RQuat(e_nb)
 
@@ -904,14 +905,14 @@ function get_f_target(physics::System{<:C172.Physics},
 
     let physics = physics, trim_params = trim_params
         function (x::TrimState)
-            Aircraft.assign!(physics, trim_params, x)
+            AircraftBase.assign!(physics, trim_params, x)
             return cost(physics)
         end
     end
 
 end
 
-function Aircraft.trim!(physics::System{<:C172.Physics},
+function AircraftBase.trim!(physics::System{<:C172.Physics},
                         trim_params::TrimParameters = TrimParameters())
 
     trim_state = TrimState() #could provide initial condition as an optional input
@@ -966,7 +967,7 @@ function Aircraft.trim!(physics::System{<:C172.Physics},
         @warn("Trimming optimization failed with exit_flag $exit_flag")
     end
     trim_state_opt = TrimState(minx)
-    Aircraft.assign!(physics, trim_params, trim_state_opt)
+    AircraftBase.assign!(physics, trim_params, trim_state_opt)
     return (success = success, trim_state = trim_state_opt)
 
 end

@@ -9,6 +9,7 @@ using Flight.FlightCore.Visualization
 using Flight.FlightPhysics
 using Flight.FlightComponents
 
+using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
 using Flight.FlightAircraft.C172MCS

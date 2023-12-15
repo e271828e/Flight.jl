@@ -9,6 +9,7 @@ using Flight.FlightCore.Utils
 using Flight.FlightPhysics
 using Flight.FlightComponents
 
+using ..AircraftBase
 using ..C172
 
 ################################################################################
@@ -262,22 +263,22 @@ end
 ################################# Templates ####################################
 
 const Airframe = C172.Airframe{typeof(PowerPlant()), C172FBW.Actuation}
-const Physics{K, T} = Aircraft.Physics{C172FBW.Airframe, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-const Template{K, T, A} = Aircraft.Template{C172FBW.Physics{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
+const Physics{K, T} = AircraftBase.Physics{C172FBW.Airframe, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Template{K, T, A} = AircraftBase.Template{C172FBW.Physics{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 
 function Physics(kinematics = LTF(), terrain = HorizontalTerrain())
-    Aircraft.Physics(C172.Airframe(PowerPlant(), Actuation()), kinematics, terrain, LocalAtmosphere())
+    AircraftBase.Physics(C172.Airframe(PowerPlant(), Actuation()), kinematics, terrain, LocalAtmosphere())
 end
 
 function Template(kinematics = LTF(), terrain = HorizontalTerrain(), avionics = NoAvionics())
-    Aircraft.Template(Physics(kinematics, terrain), avionics)
+    AircraftBase.Template(Physics(kinematics, terrain), avionics)
 end
 
 ############################### Trimming #######################################
 ################################################################################
 
 #assigns trim state and parameters to aircraft physics, then updates aircraft physics
-function Aircraft.assign!(physics::System{<:C172FBW.Physics},
+function AircraftBase.assign!(physics::System{<:C172FBW.Physics},
                         trim_params::C172.TrimParameters,
                         trim_state::C172.TrimState)
 
@@ -483,12 +484,12 @@ function YLinear(physics::System{<:C172FBW.Physics{NED}})
 
 end
 
-Aircraft.ẋ_linear(physics::System{<:C172FBW.Physics{NED}}) = XLinear(physics.ẋ)
-Aircraft.x_linear(physics::System{<:C172FBW.Physics{NED}}) = XLinear(physics.x)
-Aircraft.u_linear(physics::System{<:C172FBW.Physics{NED}}) = ULinear(physics)
-Aircraft.y_linear(physics::System{<:C172FBW.Physics{NED}}) = YLinear(physics)
+AircraftBase.ẋ_linear(physics::System{<:C172FBW.Physics{NED}}) = XLinear(physics.ẋ)
+AircraftBase.x_linear(physics::System{<:C172FBW.Physics{NED}}) = XLinear(physics.x)
+AircraftBase.u_linear(physics::System{<:C172FBW.Physics{NED}}) = ULinear(physics)
+AircraftBase.y_linear(physics::System{<:C172FBW.Physics{NED}}) = YLinear(physics)
 
-function Aircraft.assign_u!(physics::System{<:C172FBW.Physics{NED}}, u::AbstractVector{Float64})
+function AircraftBase.assign_u!(physics::System{<:C172FBW.Physics{NED}}, u::AbstractVector{Float64})
 
     #The velocity states in the linearized model are meant to be aerodynamic so
     #they can be readily used for flight control design. Since the velocity
@@ -505,7 +506,7 @@ function Aircraft.assign_u!(physics::System{<:C172FBW.Physics{NED}}, u::Abstract
 
 end
 
-function Aircraft.assign_x!(physics::System{<:C172FBW.Physics{NED}}, x::AbstractVector{Float64})
+function AircraftBase.assign_x!(physics::System{<:C172FBW.Physics{NED}}, x::AbstractVector{Float64})
 
     @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng,
             fuel, thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p = XLinear(x)
