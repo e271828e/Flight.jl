@@ -159,7 +159,8 @@ Base.:∘(r1::Abstract3DRotation, r2::Abstract3DRotation) = RQuat(r1) ∘ RQuat(
 struct RMatrix <: Abstract3DRotation
     _mat::SMatrix{3, 3, Float64, 9}
     function RMatrix(input::AbstractArray{<:Real, 2}; normalization::Bool = true)
-        return normalization ? new(qr(input).Q) : new(input)
+        sm = SMatrix{3,3}(input)
+        return normalization ? new(qr(sm).Q) : new(sm)
     end
 end
 

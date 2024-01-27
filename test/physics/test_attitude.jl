@@ -263,7 +263,7 @@ function test_RMatrix()
         0.657604 0.927693 0.218535;
         0.370707  0.481724  0.10268]
 
-    A_orth = qr(A).Q
+    A_orth = qr(A).Q |> Matrix
     r_ab = RMatrix(A_orth)
     r_bc = RMatrix(sin.(A_orth)) #generate a different matrix and let the constructor normalize
     x_c = [-1, 2, 3]
