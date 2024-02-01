@@ -1427,7 +1427,7 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
                 CImGui.TableNextColumn(); Text("Right Brake")
                 CImGui.TableNextColumn();
                 PushItemWidth(-10)
-                u.brake_right = safe_slider("Left Brake", u.brake_right, "%.6f")
+                u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
                 PopItemWidth()
             CImGui.EndTable()
         end
