@@ -7,7 +7,7 @@ using Sockets
 
 using Flight.FlightCore
 using Flight.FlightCore.Sim
-using Flight.FlightCore.Visualization
+using Flight.FlightCore.Networking
 
 using Flight.FlightPhysics
 using Flight.FlightComponents
@@ -142,21 +142,15 @@ function test_sim_paced(; save::Bool = true)
 
     sim = Simulation(ac; dt = 0.02, Δt = 0.02, t_end = 300)
 
-    interfaces = Vector{IODevices.Interface}()
     for joystick in get_connected_joysticks()
-        push!(interfaces, attach_io!(sim, joystick))
+        Sim.attach!(sim, joystick)
     end
 
-    # xp = XPCDevice()
-    xp = XPCDevice(host = IPv4("192.168.1.2"))
-    push!(interfaces, attach_io!(sim, xp))
+    xpc = XPCDevice()
+    # xpc = XPCDevice(host = IPv4("192.168.1.2"))
+    Sim.attach!(sim, xpc)
 
-    @sync begin
-        for interface in interfaces
-            Threads.@spawn IODevices.start!(interface)
-        end
-        Threads.@spawn Sim.run_paced!(sim; pace = 1)
-    end
+    Sim.run_paced!(sim)
 
     plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
     # plots = make_plots(TimeSeries(sim); Plotting.defaults...)

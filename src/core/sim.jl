@@ -13,7 +13,7 @@ using ..IODevices
 using ..GUI
 
 @reexport using OrdinaryDiffEq: step!, reinit!, add_tstop!, get_proposed_dt
-export Simulation, enable_gui!, disable_gui!, attach_io!
+export Simulation, enable_gui!, disable_gui!, attach_input, attach_output!
 export TimeSeries, get_time, get_data, get_components, get_child_names
 
 
@@ -47,8 +47,11 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     integrator::I
     log::L
     gui::Renderer
-    channels::Vector{Channel{Output{Y}}}
-    started::Base.Event #signals that execution has started
+    input_interfaces::Vector{InputInterface}
+    output_interfaces::Vector{OutputInterface}
+    # channels::Vector{Channel{Output{Y}}}
+    started::Base.Event #signals that simulation execution has started
+    running::ReentrantLock #while locked it signals that simulation execution is in progress
     stepping::ReentrantLock #must be acquired by IO interfaces to modify the system
 
     #set sync = 0 so that SwapBuffers returns immediately and doesn't slow down
@@ -62,6 +65,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         sys_io!::Function = no_sys_io!, #System I/O function
         gui::Renderer = Renderer(label = "Simulation", sync = 0),
         started::Base.Event = Base.Event(), #to be shared with input interfaces
+        running::ReentrantLock = ReentrantLock(), #to be shared with all interfaces
         stepping::ReentrantLock = ReentrantLock(), #to be shared with input interfaces
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
@@ -109,10 +113,12 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #should be made available in its (immutable) output y, logged via
         #SavingCallback
 
-        channels = Channel{Output{typeof(sys.y)}}[]
+        # channels = Channel{Output{typeof(sys.y)}}[]
+        input_interfaces = InputInterface[]
+        output_interfaces = OutputInterface[]
 
         new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
-            sys, integrator, log, gui, channels, started, stepping)
+            sys, integrator, log, gui, input_interfaces, output_interfaces, started, running, stepping)
     end
 
 end
@@ -310,83 +316,140 @@ end
 
 #attaches an input device to the Simulation, enabling it to safely modify the
 #System's input during paced or full speed execution, and returns its interface
-function attach_io!(sim::Simulation, device::IODevice;
-                    mapping::InputMapping = DefaultMapping(),
-                    ext_shutdown::Bool = true)
+function attach!(sim::Simulation, device::InputDevice;
+                    mapping::InputMapping = DefaultMapping())
 
-    channel = add_output_channel!(sim)
-    IODevices.Interface(device, sim.sys, mapping, channel,
-                        sim.started, sim.stepping, ext_shutdown)
+    interface = InputInterface(device, sim.sys, mapping, sim.started, sim.running, sim.stepping)
+    push!(sim.input_interfaces, interface)
+
 end
 
-add_output_channel!(sim::Simulation) = push!(sim.channels, eltype(sim.channels)(1))[end]
+#attaches an output device to the Simulation, linking it to a dedicated channel
+#for simulation output.
 
-pop_output_channel!(sim::Simulation) = pop!(sim.channels)
-
-#for buffered channels, isready returns 1 if there is at least one value in the
-#channel. if there is one value and we try to put! another, the simulation loop
-#will block. to avoid this, we only put! if !isready. we wait for no one!
-@inline function put_no_block!(channel::Channel{T}, data::T) where {T}
-    (isopen(channel) && !isready(channel)) && put!(channel, data)
+# the channel must be buffered. an unbuffered channel returns isready only if
+#there is another task waiting on it. however, to prevent the simulation loop
+#from blocking, we need the channel to return isready when it is holding data,
+#regardless of whether the output interface is currently waiting on it
+function attach!(sim::Simulation, device::OutputDevice)
+    channel = Channel{Output{typeof(sim.sys.y)}}(1)
+    interface = OutputInterface(device, channel, sim.started, sim.running)
+    push!(sim.output_interfaces, interface)
 end
 
-@inline function put_no_block!(channels::Vector{Channel{T}}, data::T) where {T}
-    for channel in channels
-        put_no_block!(channel, data)
+function IODevices.put_no_wait!(sim::Simulation)
+    output = Output(sim.t[], sim.y)
+    for interface in sim.output_interfaces
+        put_no_wait!(interface, output)
     end
 end
 
 
 ################################ Execution #####################################
 
+#compare the following:
+# @time sleep(2)
+
+# @time @async sleep(2)
+# @time Threads.@spawn sleep(2)
+
+# wait(@time @async sleep(2))
+# wait(@time Threads.@spawn sleep(2))
+
+# @time wait(@async sleep(2))
+# @time wait(Threads.@spawn @sleep(2))
+
 isdone(sim::Simulation) = isempty(sim.integrator.opts.tstops)
 
 function isdone_err(sim::Simulation)
-    sim_done = isdone(sim)
-    sim_done && @error("Simulation has hit its end time, call reinit! ",
+    isdone(sim) && @error("Simulation has hit its end time, call reinit! ",
                         "or add further tstops using add_tstop!")
-    return sim_done
 end
 
-run_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run!(sim; kwargs...)))
-
+#for non-paced simulations, we ignore input devices and only start output
+#interfaces
 function run!(sim::Simulation)
-
-    @unpack integrator, channels, started, stepping = sim
-    t_end = integrator.sol.prob.tspan[2]
-
-    isdone_err(sim) && return
-
-    notify(started)
-
-    τ = @elapsed begin
-        while sim.t[] < t_end
-            lock(stepping)
-                step!(sim)
-            unlock(stepping)
-            output = Output(sim.t[], sim.y)
-            put_no_block!(channels, output)
+    @sync begin
+        for output in sim.output_interfaces
+            Threads.@spawn IODevices.start!(output)
         end
+        Threads.@spawn run_loop!(sim)
+    end
+end
+
+function run_loop!(sim::Simulation)
+
+    @unpack integrator, output_interfaces, started, running, stepping = sim
+
+    t_end = integrator.sol.prob.tspan[2]
+    τ = 0
+
+    try
+
+        isdone_err(sim)
+        @info("Simulation: Starting on thread $(Threads.threadid())...")
+
+        lock(running)
+        notify(started)
+
+        τ = @elapsed begin
+            while sim.t[] < t_end
+                lock(stepping)
+                    step!(sim)
+                unlock(stepping)
+                put_no_wait!(sim)
+            end
+        end
+
+    catch ex
+
+        @error("Simulation: Error during execution: $ex")
+        Base.show_backtrace(stderr, catch_backtrace())
+
+    finally
+
+        #signal all interfaces to shut down
+        islocked(running) && unlock(running)
+
+        #unblock any interfaces waiting for simulation to start in case we
+        #exited with isdone_err and we didn't get to notify them
+        notify(started)
+
+        #reset the event for the next sim execution
+        reset(started)
+
+        #unblock any output interfaces waiting for a take!
+        put_no_wait!(sim)
+
     end
 
     @info("Simulation: Finished in $τ seconds")
+
 end
 
 #apparently, if a task is launched from the main thread and it doesn't ever
 #block, no other thread will get CPU time until it's done. threfore, we should
 #never call _run_paced! directly from the main thread, because it will starve
 #all IO threads. it must always be run from a Threads.@spawn'ed thread
-run_paced_thr!(sim::Simulation; kwargs...) = wait(Threads.@spawn(run_paced!(sim; kwargs...)))
+function run_paced!(sim::Simulation; kwargs...)
+    @sync begin
+        for input in sim.input_interfaces
+            Threads.@spawn IODevices.start!(input)
+        end
+        for output in sim.output_interfaces
+            Threads.@spawn IODevices.start!(output)
+        end
+        Threads.@spawn run_loop_paced!(sim; kwargs...)
+    end
+end
 
-function run_paced!(sim::Simulation;
+function run_loop_paced!(sim::Simulation;
                     pace::Real = 1)
 
-    isdone_err(sim) && return
-    @info("Simulation: Starting on thread $(Threads.threadid())...")
+    @unpack sys, integrator, gui, output_interfaces, started, running, stepping = sim
 
-    @unpack sys, integrator, gui, channels, started, stepping = sim
-
-    t_start, t_end = integrator.sol.prob.tspan
+    t_start = sim.t[]
+    t_end = integrator.sol.prob.tspan[2]
     algorithm = algorithm_type(sim) |> string
 
     gui.sync == 0 || @warn("GUI Renderer sync ",
@@ -402,6 +465,10 @@ function run_paced!(sim::Simulation;
 
     try
 
+        isdone_err(sim)
+        @info("Simulation: Starting on thread $(Threads.threadid())...")
+
+        lock(running)
         notify(started)
 
         while sim.t[] < t_end
@@ -411,7 +478,7 @@ function run_paced!(sim::Simulation;
 
             t_next = sim.t[] + get_proposed_dt(sim)
             τ_next = (t_next - t_start) / pace
-            while τ_next > τ() end #busy wait (disgusting, needs to do better)
+            while τ_next > τ() end #busy wait (ugly, should do better but it's not easy)
 
             lock(stepping)
                 step!(sim)
@@ -421,8 +488,7 @@ function run_paced!(sim::Simulation;
                 update!(sys, info, gui)
             unlock(stepping)
 
-            output = Output(sim.t[], sim.y)
-            put_no_block!(sim.channels, output)
+            put_no_wait!(sim)
 
             if GUI.should_close(gui)
                 @info("Simulation: Aborted at t = $(sim.t[])")
@@ -438,7 +504,19 @@ function run_paced!(sim::Simulation;
 
     finally
 
-        close.(channels)
+        #signal all interfaces to shut down
+        islocked(running) && unlock(running)
+
+        #unblock any interfaces waiting for simulation to start in case we
+        #exited with error and didn't get to notify them
+        notify(started)
+
+        #reset the event for the next sim execution
+        reset(started)
+
+        #unblock any output interfaces waiting for a take!
+        put_no_wait!(sim)
+
         GUI.shutdown!(gui)
 
     end

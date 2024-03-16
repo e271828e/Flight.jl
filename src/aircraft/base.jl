@@ -240,9 +240,9 @@ end
 
 ############################# XPlaneConnect ####################################
 
-Visualization.set_position!(xpc::XPCDevice, y::AircraftY) = Visualization.set_position!(xpc, y.physics)
+Networking.set_position!(xpc::XPCDevice, y::AircraftY) = Networking.set_position!(xpc, y.physics)
 
-function Visualization.set_position!(xpc::XPCDevice, y::PhysicsY)
+function Networking.set_position!(xpc::XPCDevice, y::PhysicsY)
 
     aircraft = 0
 
@@ -255,7 +255,7 @@ function Visualization.set_position!(xpc::XPCDevice, y::PhysicsY)
     theta = rad2deg(e_nb.θ)
     phi = rad2deg(e_nb.φ)
 
-    Visualization.set_position!(xpc; lat, lon, h_o, psi, theta, phi, aircraft)
+    Networking.set_position!(xpc; lat, lon, h_o, psi, theta, phi, aircraft)
 
 end
 

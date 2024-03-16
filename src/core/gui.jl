@@ -30,7 +30,7 @@ end
 #if sync > 0:
 #T_render = T_display * sync (where typically T_display = 16.67ms).
 #sync = 1 syncs the render frame rate to the display rate (vsync)
-#f sync = 0)
+#if sync = 0:
 #uncaps the render frame rate (an independent scheduling mechanism should be used)
 
 mutable struct Renderer

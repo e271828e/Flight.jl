@@ -9,6 +9,6 @@ include("systems.jl"); @reexport using .Systems
 include("sim.jl"); using .Sim
 include("plotting.jl"); @reexport using .Plotting
 include("joysticks.jl"); @reexport using .Joysticks
-include("visualization.jl"); @reexport using .Visualization
+include("networking.jl"); @reexport using .Networking
 
 end

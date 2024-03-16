@@ -119,7 +119,7 @@ abstract type AbstractJoystickID end
 #T_update = T_display * update_interval (where typically T_display =
 #16.67ms). update_interval=0 uncaps the update rate (not recommended!)
 
-mutable struct Joystick{T <: AbstractJoystickID, A <: AxisSet, B <: ButtonSet} <: IODevice
+mutable struct Joystick{T <: AbstractJoystickID, A <: AxisSet, B <: ButtonSet} <: InputDevice
     id::T
     axes::A
     buttons::B
@@ -229,7 +229,7 @@ function IODevices.init!(joystick::Joystick)
 end
 
 function IODevices.update!(joystick::Joystick, args...)
-    GLFW.SwapBuffers(joystick.window) #honor the requested update_interval
+    GLFW.SwapBuffers(joystick.window) #blocks to achieve the requested update_interval
     update!(joystick)
     GLFW.PollEvents() #see if we got a shutdown request
 end
@@ -270,15 +270,15 @@ function add_joystick(slot::JoystickSlot)
 
     if joystick_model == "Xbox Controller"
         joystick = XBoxController(slot)
-        @info("XBoxController active at slot $slot")
+        @info("Adding XBoxController at slot $slot")
     elseif joystick_model == "T.16000M"
         joystick = T16000M(slot)
-        @info("Thrustmaster T16000M active at slot $slot")
+        @info("Adding Thrustmaster T16000M at slot $slot")
     elseif joystick_model == "VKBsim Gladiator EVO  R"
         joystick = GladiatorNXTEvo(slot)
-        @info("VKBSim Gladiator NXT Evo active at slot $slot")
+        @info("Adding VKBSim Gladiator NXT Evo at slot $slot")
     else
-        @error("$joystick_model not supported")
+        @warn("Failed to add $joystick_model at slot $slot, device not supported")
         return
     end
 

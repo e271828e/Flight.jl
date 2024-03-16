@@ -2,6 +2,7 @@ module DemoJoysticks
 
 using UnPack
 
+using Flight.FlightCore.Sim
 using Flight.FlightCore.GUI
 using Flight.FlightComponents.Control.Continuous: PIVector
 
@@ -22,19 +23,11 @@ function demo_joysticks()
     sys = PIVector{2}(k_p = 0, k_i = 0.2) |> System
     sim = Simulation(sys; t_end = 30, dt = 0.02)
 
-    joy_interfaces = Vector{IODevices.Interface}()
     for joystick in get_connected_joysticks()
-        push!(joy_interfaces, attach_io!(sim, joystick; mapping = TestMapping()))
+        Sim.attach!(sim, joystick)
     end
 
-    @sync begin
-        for interface in joy_interfaces
-            Threads.@spawn IODevices.start!(interface)
-        end
-
-        # disable_gui!(sim)
-        Threads.@spawn Sim.run_paced!(sim; pace = 1)
-    end
+    Sim.run_paced!(sim)
 
 end
 
