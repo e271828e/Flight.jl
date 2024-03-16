@@ -26,7 +26,6 @@ function IODevices.init!(receiver::DummyUDPReceiver)
     if !bind(socket, host, port; reuseaddr=true)
         @error( "Failed to bind socket to host $host, port $port")
     end
-    # println("DummyUDPReceiver initialized")
 end
 
 IODevices.assign!(::Any, ::DummyUDPReceiver, ::DefaultMapping) = nothing
@@ -36,12 +35,11 @@ function IODevices.update!(receiver::DummyUDPReceiver)
     # println("DummyUDPReceiver got this message: $data")
 end
 
-function IODevices.shutdown!(receiver::DummyUDPReceiver)
-    # println("DummyUDPReceiver shutting down")
-    close(receiver.socket)
-end
+IODevices.shutdown!(receiver::DummyUDPReceiver) = close(receiver.socket)
 
 IODevices.should_close(::DummyUDPReceiver) = false
+
+################################################################################
 
 @kwdef mutable struct DummyUDPSender <: OutputDevice
     socket::UDPSocket = UDPSocket()
@@ -51,7 +49,6 @@ end
 
 function IODevices.init!(sender::DummyUDPSender)
     sender.socket = UDPSocket() #create a new socket on each execution
-    # println("DummyUDPSender initialized")
 end
 
 function IODevices.update!(sender::DummyUDPSender, ::Any)
@@ -59,28 +56,20 @@ function IODevices.update!(sender::DummyUDPSender, ::Any)
     send(socket, host, port, "Hello")
 end
 
-function IODevices.shutdown!(::DummyUDPSender)
-    # println("DummyUDPSender shutting down")
-end
-
+IODevices.shutdown!(::DummyUDPSender) = nothing
 IODevices.should_close(::DummyUDPSender) = false
 
 
 ################################################################################
 ############################### XPCDevice ####################################
 
-mutable struct XPCDevice <: OutputDevice
-    socket::UDPSocket
-    host::IPv4
-    port::Int64
-    update_interval::Int64
-    window::GLFW.Window
-    function XPCDevice(; socket = UDPSocket(), host = IPv4("127.0.0.1"), port = 49009, update_interval = 1)
-        new(socket, host, port, update_interval) #window uninitialized
-    end
+@kwdef mutable struct XPCDevice <: OutputDevice
+    socket::UDPSocket = UDPSocket()
+    host::IPv4 = IPv4("127.0.0.1")
+    port::Int64 = 49009
 end
 
-function set_dref(xp::XPCDevice, dref_id::AbstractString, dref_value::Real)
+function set_dref(xpc::XPCDevice, dref_id::AbstractString, dref_value::Real)
 
     #ascii() ensures ASCII data, codeunits returns a CodeUnits object, which
     #behaves similarly to a byte array. this is equivalent to b"text".
@@ -93,10 +82,10 @@ function set_dref(xp::XPCDevice, dref_id::AbstractString, dref_value::Real)
         UInt8(1),
         Float32(dref_value))
 
-    send(xp.socket, xp.host, xp.port, buffer.data)
+    send(xpc.socket, xpc.host, xpc.port, buffer.data)
 end
 
-function set_dref(xp::XPCDevice, dref_id::AbstractString, dref_value::AbstractVector{<:Real})
+function set_dref(xpc::XPCDevice, dref_id::AbstractString, dref_value::AbstractVector{<:Real})
 
     buffer = IOBuffer()
     write(buffer,
@@ -106,12 +95,12 @@ function set_dref(xp::XPCDevice, dref_id::AbstractString, dref_value::AbstractVe
         dref_value |> length |> UInt8,
         Vector{Float32}(dref_value))
 
-    send(xp.socket, xp.host, xp.port, buffer.data)
+    send(xpc.socket, xpc.host, xpc.port, buffer.data)
 end
 
-disable_physics!(xp::XPCDevice) = set_dref(xp, "sim/operation/override/override_planepath", 1)
+disable_physics!(xpc::XPCDevice) = set_dref(xpc, "sim/operation/override/override_planepath", 1)
 
-function set_position!(xp::XPCDevice; lat, lon, h_o, psi, theta, phi, aircraft::Integer = 0)
+function set_position!(xpc::XPCDevice; lat, lon, h_o, psi, theta, phi, aircraft::Integer = 0)
 
     #all angles must be provided in degrees
     buffer = IOBuffer()
@@ -121,27 +110,20 @@ function set_position!(xp::XPCDevice; lat, lon, h_o, psi, theta, phi, aircraft::
         Float32(theta), Float32(phi), Float32(psi),
         Float32(-998)) #last one is landing gear (?!)
 
-    send(xp.socket, xp.host, xp.port, buffer.data)
+    send(xpc.socket, xpc.host, xpc.port, buffer.data)
 
 end
 ########################### IODevices extensions ###############################
 
-function IODevices.init!(xp::XPCDevice)
-    xp.window = GLFW.CreateWindow(640, 480, "XPCDevice")
-    @unpack window, update_interval = xp
-    # GLFW.HideWindow(window)
-    GLFW.MakeContextCurrent(window)
-    GLFW.SwapInterval(update_interval)
-    disable_physics!(xp)
+function IODevices.init!(xpc::XPCDevice)
+    xpc.socket = UDPSocket() #create a new socket on each execution
+    disable_physics!(xpc)
 end
 
-function IODevices.update!(xp::XPCDevice, out::Sim.Output)
-    # GLFW.SwapBuffers(xp.window) #honor the requested update_interval
-    set_position!(xp, out.y) #to be overridden for each System's y
-    GLFW.PollEvents() #see if we got a shutdown request
-end
+ #to be overridden for each System's y
+IODevices.update!(xpc::XPCDevice, out::Sim.Output) = set_position!(xpc, out.y)
 
-IODevices.should_close(xp::XPCDevice) = GLFW.WindowShouldClose(xp.window)
-IODevices.shutdown!(xp::XPCDevice) = GLFW.DestroyWindow(xp.window)
+IODevices.should_close(xpc::XPCDevice) = false #handled
+IODevices.shutdown!(::XPCDevice) = nothing
 
 end #module
