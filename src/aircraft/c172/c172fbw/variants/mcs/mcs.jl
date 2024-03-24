@@ -671,7 +671,6 @@ function Systems.f_disc!(sys::System{<:AltitudeGuidance},
 
     Δh = get_Δh(sys.u.h_sp, physics)
     clm_sp = sys.constants.k_h2c * Δh
-    clm = -physics.y.kinematics.v_eOb_n[3]
     @unpack state, h_thr = sys.s
     # @show Δh
     # @show state
@@ -680,14 +679,16 @@ function Systems.f_disc!(sys::System{<:AltitudeGuidance},
 
         lon_ctl_mode = lon_thr_EAS
         throttle_sp = Δh > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
-        sys.s.h_thr = abs(Δh)
-        (abs(clm_sp) < abs(clm)) && (sys.s.state = alt_hold)
+        (abs(Δh) + 1 < h_thr) && (sys.s.state = alt_hold)
+        # sys.s.h_thr = abs(Δh)
+        # clm = -physics.y.kinematics.v_eOb_n[3]
+        # (abs(clm_sp) < abs(clm)) && (sys.s.state = alt_hold)
 
     else #alt_hold
 
         lon_ctl_mode = lon_EAS_clm
         throttle_sp = 0.0 #no effect, controlled by EAS_clm
-        (abs(Δh) > h_thr) && (sys.s.state = alt_acquire)
+        (abs(Δh) - 1 > h_thr) && (sys.s.state = alt_acquire)
 
     end
 
