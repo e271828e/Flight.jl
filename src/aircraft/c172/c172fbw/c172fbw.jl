@@ -39,7 +39,9 @@ function PowerPlant()
 end
 
 ################################################################################
-################################## Actuator ####################################
+################################## Actuator2 ###################################
+
+#second order linear actuator model
 
 #with an underdamped actuator, the position state can still transiently exceed
 #the intended range due to overshoot. the true actuator position should
@@ -49,27 +51,27 @@ end
 
 #saturate on command, not on position, which only tends asymptotically to cmd!
 
-struct Actuator{R} <: SystemDefinition #second order linear actuator model
+struct Actuator2{R} <: SystemDefinition #second order linear actuator model
     ω_n::Float64 #natural frequency (default: 10 Hz)
     ζ::Float64 #damping ratio (default: underdamped with minimal resonance)
-    function Actuator(; ω_n::Real = 5*2π, ζ::Real = 0.6,
+    function Actuator2(; ω_n::Real = 5*2π, ζ::Real = 0.6,
                         range::Tuple{Real, Real} = (-1.0, 1.0))
         new{Ranged{Float64, range[1], range[2]}}(ω_n, ζ)
     end
 end
 
-@kwdef struct ActuatorY{R}
+@kwdef struct Actuator2Y{R}
     cmd::R = R(0.0)
     pos::R = R(0.0)
     vel::Float64 = 0.0
     sat::Int64 = 0
 end
 
-Systems.X(::Actuator) = ComponentVector(v = 0.0, p = 0.0)
-Systems.U(::Actuator{R}) where {R} = Ref(R(0.0))
-Systems.Y(::Actuator{R}) where {R} = ActuatorY{R}()
+Systems.X(::Actuator2) = ComponentVector(v = 0.0, p = 0.0)
+Systems.U(::Actuator2{R}) where {R} = Ref(R(0.0))
+Systems.Y(::Actuator2{R}) where {R} = Actuator2Y{R}()
 
-function Systems.f_ode!(sys::System{Actuator{R}}) where {R}
+function Systems.f_ode!(sys::System{Actuator2{R}}) where {R}
 
     @unpack ẋ, x, u, constants = sys
     @unpack ω_n, ζ = constants
@@ -82,7 +84,7 @@ function Systems.f_ode!(sys::System{Actuator{R}}) where {R}
     ẋ.v = ω_n^2 * (Float64(cmd) - x.p) - 2ζ*ω_n*x.v
     ẋ.p = x.v
 
-    sys.y = ActuatorY(; cmd, pos, vel, sat)
+    sys.y = Actuator2Y(; cmd, pos, vel, sat)
 
 end
 
@@ -94,12 +96,12 @@ end
 #controlled via actuators, the rest of are direct feedthrough
 
 @kwdef struct Actuation <: C172.Actuation
-    throttle::Actuator = Actuator(range = (0.0, 1.0))
-    aileron::Actuator = Actuator(range = (-1.0, 1.0))
-    elevator::Actuator = Actuator(range = (-1.0, 1.0))
-    rudder::Actuator = Actuator(range = (-1.0, 1.0))
-    flaps::Actuator = Actuator(range = (0.0, 1.0))
-    steering::Actuator = Actuator(range = (-1.0, 1.0))
+    throttle::Actuator2 = Actuator2(range = (0.0, 1.0))
+    aileron::Actuator2 = Actuator2(range = (-1.0, 1.0))
+    elevator::Actuator2 = Actuator2(range = (-1.0, 1.0))
+    rudder::Actuator2 = Actuator2(range = (-1.0, 1.0))
+    flaps::Actuator2 = Actuator2(range = (0.0, 1.0))
+    steering::Actuator2 = Actuator2(range = (-1.0, 1.0))
 end
 
 function C172.assign!(aero::System{<:C172.Aero},
@@ -224,7 +226,7 @@ function IODevices.assign!(sys::System{<:Actuation},
 
     @unpack throttle, aileron, elevator, rudder, steering, flaps = sys.subsystems
 
-    throttle.u[] = get_axis_value(joystick, :right_analog_x) |> roll_curve
+    aileron.u[] = get_axis_value(joystick, :right_analog_x) |> roll_curve
     elevator.u[] = get_axis_value(joystick, :right_analog_y) |> pitch_curve
     rudder.u[] = get_axis_value(joystick, :left_analog_x) |> yaw_curve
     # u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
@@ -262,32 +264,32 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Platform = C172.Platform{typeof(PowerPlant()), C172FBW.Actuation}
-const Physics{K, T} = AircraftBase.Physics{C172FBW.Platform, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-const Aircraft{K, T, A} = AircraftBase.Aircraft{C172FBW.Physics{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
+const Components = C172.Components{typeof(PowerPlant()), C172FBW.Actuation}
+const Vehicle{K, T} = AircraftBase.Vehicle{C172FBW.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Aircraft{K, T, A} = AircraftBase.Aircraft{C172FBW.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 
-function Physics(kinematics = LTF(), terrain = HorizontalTerrain())
-    AircraftBase.Physics(C172.Platform(PowerPlant(), Actuation()), kinematics, terrain, LocalAtmosphere())
+function Vehicle(kinematics = LTF(), terrain = HorizontalTerrain())
+    AircraftBase.Vehicle(C172.Components(PowerPlant(), Actuation()), kinematics, terrain, LocalAtmosphere())
 end
 
 function Aircraft(kinematics = LTF(), terrain = HorizontalTerrain(), avionics = NoAvionics())
-    AircraftBase.Aircraft(Physics(kinematics, terrain), avionics)
+    AircraftBase.Aircraft(Vehicle(kinematics, terrain), avionics)
 end
 
 ############################### Trimming #######################################
 ################################################################################
 
-#assigns trim state and parameters to aircraft physics, then updates aircraft physics
-function AircraftBase.assign!(physics::System{<:C172FBW.Physics},
+#assigns trim state and parameters to vehicle, then updates vehicle
+function AircraftBase.assign!(vehicle::System{<:C172FBW.Vehicle},
                         trim_params::C172.TrimParameters,
                         trim_state::C172.TrimState)
 
     @unpack EAS, β_a, x_fuel, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
-    @unpack act, pwp, aero, fuel, ldg, pld = physics.platform
+    @unpack act, pwp, aero, fuel, ldg, pld = vehicle.components
 
-    atm_data = LocalAtmosphericData(physics.atmosphere)
-    Systems.init!(physics.kinematics, Kinematics.Initializer(trim_state, trim_params, atm_data))
+    atm_data = LocalAtmosphericData(vehicle.atmosphere)
+    Systems.init!(vehicle.kinematics, Kinematics.Initializer(trim_state, trim_params, atm_data))
 
     act.throttle.u[] = throttle
     act.aileron.u[] = aileron
@@ -339,9 +341,9 @@ function AircraftBase.assign!(physics::System{<:C172FBW.Physics},
     aero.x.β_filt = β_a #ensures zero state derivative
     fuel.x .= Float64(x_fuel)
 
-    f_ode!(physics)
+    f_ode!(vehicle)
 
-    #check essential assumptions about platform systems states & derivatives
+    #check essential assumptions about components systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
     @assert pwp.x.engine.ω > pwp.engine.constants.ω_idle
     @assert pwp.x.engine.idle[1] .== 0
@@ -401,25 +403,25 @@ end
 end
 
 
-function XLinear(x_physics::ComponentVector)
+function XLinear(x_vehicle::ComponentVector)
 
-    x_kinematics = x_physics.kinematics
-    x_platform = x_physics.platform
+    x_kinematics = x_vehicle.kinematics
+    x_components = x_vehicle.components
 
     @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics.pos
     p, q, r = x_kinematics.vel.ω_eb_b
     v_x, v_y, v_z = x_kinematics.vel.v_eOb_b
-    α_filt, β_filt = x_platform.aero
-    ω_eng = x_platform.pwp.engine.ω
-    fuel = x_platform.fuel[1]
-    thr_v = x_platform.act.throttle.v
-    thr_p = x_platform.act.throttle.p
-    ail_v = x_platform.act.aileron.v
-    ail_p = x_platform.act.aileron.p
-    ele_v = x_platform.act.elevator.v
-    ele_p = x_platform.act.elevator.p
-    rud_v = x_platform.act.rudder.v
-    rud_p = x_platform.act.rudder.p
+    α_filt, β_filt = x_components.aero
+    ω_eng = x_components.pwp.engine.ω
+    fuel = x_components.fuel[1]
+    thr_v = x_components.act.throttle.v
+    thr_p = x_components.act.throttle.p
+    ail_v = x_components.act.aileron.v
+    ail_p = x_components.act.aileron.p
+    ele_v = x_components.act.elevator.v
+    ele_p = x_components.act.elevator.p
+    rud_v = x_components.act.rudder.v
+    rud_p = x_components.act.rudder.p
 
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
@@ -428,9 +430,9 @@ function XLinear(x_physics::ComponentVector)
 
 end
 
-function ULinear(physics::System{<:C172FBW.Physics{NED}})
+function ULinear(vehicle::System{<:C172FBW.Vehicle{NED}})
 
-    @unpack throttle, aileron, elevator, rudder = physics.platform.act.subsystems
+    @unpack throttle, aileron, elevator, rudder = vehicle.components.act.subsystems
     throttle_cmd = throttle.u[]
     aileron_cmd = aileron.u[]
     elevator_cmd = elevator.u[]
@@ -439,10 +441,10 @@ function ULinear(physics::System{<:C172FBW.Physics{NED}})
 
 end
 
-function YLinear(physics::System{<:C172FBW.Physics{NED}})
+function YLinear(vehicle::System{<:C172FBW.Vehicle{NED}})
 
-    @unpack platform, air, dynamics, kinematics = physics.y
-    @unpack pwp, fuel, aero,act = platform
+    @unpack components, air, dynamics, kinematics = vehicle.y
+    @unpack pwp, fuel, aero,act = components
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_b, v_eOb_n, χ_gnd, γ_gnd = kinematics
     @unpack ψ, θ, φ = e_nb
@@ -466,16 +468,16 @@ function YLinear(physics::System{<:C172FBW.Physics{NED}})
     rud_v = act.rudder.vel
     rud_p = act.rudder.pos
 
-    f_x, f_y, f_z = physics.y.dynamics.f_G_b
-    EAS = physics.y.air.EAS
-    TAS = physics.y.air.TAS
-    α = physics.y.air.α_b
-    β = physics.y.air.β_b
+    f_x, f_y, f_z = vehicle.y.dynamics.f_G_b
+    EAS = vehicle.y.air.EAS
+    TAS = vehicle.y.air.TAS
+    α = vehicle.y.air.α_b
+    β = vehicle.y.air.β_b
     χ = χ_gnd
     γ = γ_gnd
     climb_rate = -v_D
 
-    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ULinear(physics)
+    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ULinear(vehicle)
 
     YLinear(; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt,
             ω_eng, fuel, thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p,
@@ -484,61 +486,61 @@ function YLinear(physics::System{<:C172FBW.Physics{NED}})
 
 end
 
-AircraftBase.ẋ_linear(physics::System{<:C172FBW.Physics{NED}}) = XLinear(physics.ẋ)
-AircraftBase.x_linear(physics::System{<:C172FBW.Physics{NED}}) = XLinear(physics.x)
-AircraftBase.u_linear(physics::System{<:C172FBW.Physics{NED}}) = ULinear(physics)
-AircraftBase.y_linear(physics::System{<:C172FBW.Physics{NED}}) = YLinear(physics)
+AircraftBase.ẋ_linear(vehicle::System{<:C172FBW.Vehicle{NED}}) = XLinear(vehicle.ẋ)
+AircraftBase.x_linear(vehicle::System{<:C172FBW.Vehicle{NED}}) = XLinear(vehicle.x)
+AircraftBase.u_linear(vehicle::System{<:C172FBW.Vehicle{NED}}) = ULinear(vehicle)
+AircraftBase.y_linear(vehicle::System{<:C172FBW.Vehicle{NED}}) = YLinear(vehicle)
 
-function AircraftBase.assign_u!(physics::System{<:C172FBW.Physics{NED}}, u::AbstractVector{Float64})
+function AircraftBase.assign_u!(vehicle::System{<:C172FBW.Vehicle{NED}}, u::AbstractVector{Float64})
 
     #The velocity states in the linearized model are meant to be aerodynamic so
     #they can be readily used for flight control design. Since the velocity
     #states in the nonlinear model are Earth-relative, we need to ensure wind
     #velocity is set to zero for linearization.
-    @unpack throttle, aileron, elevator, rudder = physics.platform.act.subsystems
+    @unpack throttle, aileron, elevator, rudder = vehicle.components.act.subsystems
     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ULinear(u)
     throttle.u[] = throttle_cmd
     aileron.u[] = aileron_cmd
     elevator.u[] = elevator_cmd
     rudder.u[] = rudder_cmd
 
-    physics.atmosphere.u.v_ew_n .= 0
+    vehicle.atmosphere.u.v_ew_n .= 0
 
 end
 
-function AircraftBase.assign_x!(physics::System{<:C172FBW.Physics{NED}}, x::AbstractVector{Float64})
+function AircraftBase.assign_x!(vehicle::System{<:C172FBW.Vehicle{NED}}, x::AbstractVector{Float64})
 
     @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng,
             fuel, thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p = XLinear(x)
 
-    x_kinematics = physics.x.kinematics
-    x_platform = physics.x.platform
+    x_kinematics = vehicle.x.kinematics
+    x_components = vehicle.x.components
 
     ψ_nb, θ_nb, φ_nb, h_e = ψ, θ, φ, h
 
     @pack! x_kinematics.pos = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
     x_kinematics.vel.ω_eb_b .= p, q, r
     x_kinematics.vel.v_eOb_b .= v_x, v_y, v_z
-    x_platform.aero .= α_filt, β_filt
-    x_platform.pwp.engine.ω = ω_eng
-    x_platform.fuel .= fuel
-    x_platform.act.throttle.v = thr_v
-    x_platform.act.throttle.p = thr_p
-    x_platform.act.aileron.v = ail_v
-    x_platform.act.aileron.p = ail_p
-    x_platform.act.elevator.v = ele_v
-    x_platform.act.elevator.p = ele_p
-    x_platform.act.rudder.v = rud_v
-    x_platform.act.rudder.p = rud_p
+    x_components.aero .= α_filt, β_filt
+    x_components.pwp.engine.ω = ω_eng
+    x_components.fuel .= fuel
+    x_components.act.throttle.v = thr_v
+    x_components.act.throttle.p = thr_p
+    x_components.act.aileron.v = ail_v
+    x_components.act.aileron.p = ail_p
+    x_components.act.elevator.v = ele_v
+    x_components.act.elevator.p = ele_p
+    x_components.act.rudder.v = rud_v
+    x_components.act.rudder.p = rud_p
 
 end
 
 function Control.Continuous.LinearizedSS(
-            physics::System{<:C172FBW.Physics{NED}},
+            vehicle::System{<:C172FBW.Vehicle{NED}},
             trim_params::C172.TrimParameters = C172.TrimParameters();
             model::Symbol = :full)
 
-    lm = linearize!(physics, trim_params)
+    lm = linearize!(vehicle, trim_params)
 
     if model === :full
         return lm
@@ -565,9 +567,29 @@ end
 
 
 ################################################################################
+############################### Cessna172FBW ###############################
+
+export Cessna172FBW
+
+#C172FBW.Vehicle with NoAvionics
+const Cessna172FBW{K, T} = C172FBW.Aircraft{K, T, NoAvionics} where {
+    K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+
+function Cessna172FBW(kinematics = LTF(), terrain = HorizontalTerrain())
+    C172FBW.Aircraft(kinematics, terrain, NoAvionics())
+end
+
+############################ Joystick Mappings #################################
+
+#map input assignments directly to the actuation system
+function IODevices.assign!(sys::System{<:Cessna172FBW}, joystick::Joystick,
+                           mapping::InputMapping)
+    IODevices.assign!(sys.vehicle.components.act, joystick, mapping)
+end
+
+################################################################################
 ################################## Variants ####################################
 
-include(normpath("variants/base.jl")); @reexport using .C172FBWBase
 include(normpath("variants/cas/cas.jl")); @reexport using .C172CAS
 include(normpath("variants/mcs/mcs.jl")); @reexport using .C172MCS
 

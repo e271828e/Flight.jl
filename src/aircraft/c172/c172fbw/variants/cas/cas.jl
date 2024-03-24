@@ -754,7 +754,7 @@ Systems.S(::Avionics) = nothing #keep subsystems local
 # ########################### Update Methods #####################################
 
 function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
-                        physics::System{<:C172FBW.Physics},
+                        vehicle::System{<:C172FBW.Vehicle},
                         Δt::Real)
 
     @unpack eng_start, eng_stop, mixture, throttle,
@@ -768,8 +768,8 @@ function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
 
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl, alt_ctl = avionics.subsystems
 
-    @unpack platform, air = physics.y
-    kinematics = physics.y.kinematics.data
+    @unpack components, air = vehicle.y
+    kinematics = vehicle.y.kinematics.data
 
     #direct surface and inner loop demands always come from inceptors
     roll_ctl.u.a_dmd = roll_input + aileron_cmd_offset
@@ -790,7 +790,7 @@ function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
     alt_ctl.u.h_dmd = h_dmd
     alt_ctl.u.h_ref = h_ref
 
-    any_wow = any(SVector{3}(leg.strut.wow for leg in platform.ldg))
+    any_wow = any(SVector{3}(leg.strut.wow for leg in components.ldg))
     flight_phase = any_wow ? phase_gnd : phase_air
 
     if flight_phase === phase_gnd
@@ -859,10 +859,10 @@ function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
 
 end
 
-function AircraftBase.assign!(platform::System{<:C172FBW.Platform},
+function AircraftBase.assign!(components::System{<:C172FBW.Components},
                           avionics::System{Avionics})
 
-    @unpack act, pwp, ldg = platform.subsystems
+    @unpack act, pwp, ldg = components.subsystems
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right = avionics.u.inceptors
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl = avionics.y
 
@@ -898,10 +898,10 @@ function mode_button_HSV(button_mode, selected_mode, active_mode)
 end
 
 function GUI.draw!(avionics::System{<:C172CAS.Avionics},
-                    physics::System{<:C172FBW.Physics},
+                    vehicle::System{<:C172FBW.Vehicle},
                     label::String = "Cessna 172 FBW CAS Avionics")
 
-    @unpack platform = physics
+    @unpack components = vehicle
     @unpack throttle_ctl, roll_ctl, pitch_ctl, yaw_ctl = avionics.subsystems
 
     u_inc = avionics.u.inceptors
@@ -918,9 +918,9 @@ function GUI.draw!(avionics::System{<:C172CAS.Avionics},
 
     if show_inceptors
         Separator()
-        if platform.y.pwp.engine.state === Piston.eng_off
+        if components.y.pwp.engine.state === Piston.eng_off
             eng_start_HSV = HSV_gray
-        elseif platform.y.pwp.engine.state === Piston.eng_starting
+        elseif components.y.pwp.engine.state === Piston.eng_starting
             eng_start_HSV = HSV_amber
         else
             eng_start_HSV = HSV_green
@@ -932,7 +932,7 @@ function GUI.draw!(avionics::System{<:C172CAS.Avionics},
         u_inc.eng_stop = IsItemActive()
         SameLine()
         u_inc.mixture = safe_slider("Mixture", u_inc.mixture, "%.6f")
-        # Text(@sprintf("%.3f RPM", Piston.radpersec2RPM(platform.y.pwp.engine.ω)))
+        # Text(@sprintf("%.3f RPM", Piston.radpersec2RPM(components.y.pwp.engine.ω)))
         Separator()
         u_inc.throttle = safe_slider("Throttle", u_inc.throttle, "%.6f")
         u_inc.roll_input = safe_slider("Roll Input", u_inc.roll_input, "%.6f")
@@ -1078,11 +1078,11 @@ end
 function AircraftBase.trim!(ac::System{<:Cessna172CAS},
                         trim_params::C172.TrimParameters = C172.TrimParameters())
 
-    result = trim!(ac.physics, trim_params)
+    result = trim!(ac.vehicle, trim_params)
     trim_state = result[2]
 
     #makes Avionics inputs consistent with the trim solution obtained for the
-    #aircraft physics so the trim condition is preserved during simulation
+    #vehicle so the trim condition is preserved during simulation
     @unpack mixture, flaps = trim_params
     @unpack throttle, aileron, elevator, rudder = trim_state
 
@@ -1102,14 +1102,14 @@ function AircraftBase.trim!(ac::System{<:Cessna172CAS},
     u.digital.yaw_mode_sel = C172CAS.direct_rudder_mode
 
     #update avionics outputs
-    f_disc!(ac.avionics, 1, ac.physics)
+    f_disc!(ac.avionics, 1, ac.vehicle)
 
     return result
 
 end
 
 function AircraftBase.linearize!(ac::System{<:Cessna172CAS}, args...; kwargs...)
-    linearize!(ac.physics, args...; kwargs...)
+    linearize!(ac.vehicle, args...; kwargs...)
 end
 
 

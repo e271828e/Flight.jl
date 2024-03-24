@@ -539,7 +539,7 @@ Dynamics.get_hr_b(sys::System{<:Thruster}) = get_hr_b(sys.propeller)
 function GUI.draw(sys::System{<:Thruster}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Thruster")
 
-    CImGui.Begin(window_label, p_open) #this should go within pwp's own draw, see platform
+    CImGui.Begin(window_label, p_open) #this should go within pwp's own draw, see components
         @cstatic c_eng=false c_prop=false begin
             @c CImGui.Checkbox("Engine", &c_eng)
             @c CImGui.Checkbox("Propeller", &c_prop)

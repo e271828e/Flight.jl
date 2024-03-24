@@ -26,8 +26,8 @@ function test_c172mcs()
     end
 end
 
-y_kin(ac::System{<:Cessna172MCS}) = ac.y.physics.kinematics
-y_air(ac::System{<:Cessna172MCS}) = ac.y.physics.air
+y_kin(ac::System{<:Cessna172MCS}) = ac.y.vehicle.kinematics
+y_air(ac::System{<:Cessna172MCS}) = ac.y.vehicle.air
 
 function test_control_modes()
 
@@ -74,10 +74,10 @@ function test_control_modes()
     @test av.y.hor_gdc_mode === C172MCS.hor_gdc_off
     @test av.y.lon_ctl_mode === C172MCS.lon_direct
     @test av.y.lat_ctl_mode === C172MCS.lat_direct
-    @test ac.y.physics.platform.act.throttle.cmd == 0.1
-    @test ac.y.physics.platform.act.aileron.cmd == 0.2
-    @test ac.y.physics.platform.act.elevator.cmd == 0.3
-    @test ac.y.physics.platform.act.rudder.cmd == 0.4
+    @test ac.y.vehicle.components.act.throttle.cmd == 0.1
+    @test ac.y.vehicle.components.act.aileron.cmd == 0.2
+    @test ac.y.vehicle.components.act.elevator.cmd == 0.3
+    @test ac.y.vehicle.components.act.rudder.cmd == 0.4
 
     # @test @ballocated(f_ode!($ac)) == 0
     # @test @ballocated(f_step!($ac)) == 0
@@ -233,10 +233,10 @@ function test_control_modes()
         # @test isapprox(Float64(av.u.yaw_input), y_air(ac).β_b; atol = 1e-3)
 
         #correct tracking with 10m/s of crosswind
-        ac.physics.atmosphere.u.v_ew_n[1] = 10
+        ac.vehicle.atmosphere.u.v_ew_n[1] = 10
         step!(sim, 10, true)
         @test isapprox(av.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
-        ac.physics.atmosphere.u.v_ew_n[1] = 0
+        ac.vehicle.atmosphere.u.v_ew_n[1] = 0
 
         # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
@@ -276,7 +276,7 @@ function test_control_modes()
 
         @test av.lon_ctl.u.q_sp != 0
         @test isapprox(av.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
-        @test isapprox(Float64(ac.y.physics.platform.act.throttle.cmd),
+        @test isapprox(Float64(ac.y.vehicle.components.act.throttle.cmd),
                         Float64(av.u.throttle_sp_input + av.u.throttle_sp_offset); atol = 1e-3)
 
         # @test @ballocated(f_disc!($ac, 0.01)) == 0
@@ -449,8 +449,8 @@ function test_control_modes()
 
         # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
-        # kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
-        # air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
+        # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
+        # air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
         # save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "kin"))
         # save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "air"))
         # return TimeSeries(sim)
@@ -525,8 +525,8 @@ function test_guidance_modes()
         @test av.y.lon_ctl_mode === C172MCS.lon_thr_EAS
         # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
-        # kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
-        # air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
+        # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
+        # air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
         # save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "kin"))
         # save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_mcs", "avionics", "air"))
         # return TimeSeries(sim)
@@ -561,8 +561,8 @@ function test_sim_paced(; save::Bool = true)
 
     Sim.run_paced!(sim)
 
-    kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
+    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
+    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
     save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172mcs", "sim_paced", "kin"))
     save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172mcs", "sim_paced", "air"))
 

@@ -39,7 +39,7 @@ function test_system_methods()
 
             ac = System(Cessna172CAS());
 
-            #to exercise all platform functionality, including landing gear, we
+            #to exercise all components functionality, including landing gear, we
             #need to be on the ground with the engine running
             Systems.init!(ac, kin_init_gnd)
             ac.avionics.u.inceptors.eng_start = true #engine start switch on
@@ -48,8 +48,8 @@ function test_system_methods()
             f_step!(ac)
             f_ode!(ac)
             f_step!(ac)
-            @test ac.y.physics.platform.ldg.left.strut.wow == true
-            @test ac.y.physics.platform.pwp.engine.state === Piston.eng_starting
+            @test ac.y.vehicle.components.ldg.left.strut.wow == true
+            @test ac.y.vehicle.components.pwp.engine.state === Piston.eng_starting
 
             @test @ballocated(f_ode!($ac)) == 0
             @test @ballocated(f_step!($ac)) == 0
@@ -58,7 +58,7 @@ function test_system_methods()
             #now we put the aircraft in flight
             Systems.init!(ac, kin_init_air)
             f_ode!(ac)
-            @test ac.y.physics.platform.ldg.left.strut.wow == false
+            @test ac.y.vehicle.components.ldg.left.strut.wow == false
             @test @ballocated(f_ode!($ac)) == 0
             @test @ballocated(f_step!($ac)) == 0
 
@@ -115,7 +115,7 @@ function test_sim(; save::Bool = true)
 
         mid_cg_pld = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50)
 
-        ac.physics.atmosphere.u.v_ew_n .= [0, 0, 0]
+        ac.vehicle.atmosphere.u.v_ew_n .= [0, 0, 0]
 
         trim_params = C172.TrimParameters(
         Ob = Geographic(LatLon(), HOrth(1000)),
@@ -192,9 +192,9 @@ function test_sim(; save::Bool = true)
         Sim.run!(sim)
 
         # plots = make_plots(sim; Plotting.defaults...)
-        kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
-        air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
-        rb_plots = make_plots(TimeSeries(sim).physics.dynamics; Plotting.defaults...)
+        kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
+        air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
+        rb_plots = make_plots(TimeSeries(sim).vehicle.dynamics; Plotting.defaults...)
         save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172cas", "sim", "kin"))
         save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172cas", "sim", "air"))
         save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172cas", "sim", "dynamics"))
@@ -233,8 +233,8 @@ function test_sim_paced(; save::Bool = true)
 
     Sim.run_paced!(sim)
 
-    kin_plots = make_plots(TimeSeries(sim).physics.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeSeries(sim).physics.air; Plotting.defaults...)
+    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
+    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
     save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172cas", "sim_paced", "kin"))
     save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172cas", "sim_paced", "air"))
 

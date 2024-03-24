@@ -23,7 +23,7 @@ function test_gui()
     # target = C172FBW.Actuation() |> System;
     target = Cessna172MCS() |> System
     # target = C172MCS.LonControl() |> System
-    # target = Cessna172FBWBase() |> System
+    # target = Cessna172FBW() |> System
     r = Renderer()
     GUI.init!(r)
     # GUI.run(r, GUI.draw, target)

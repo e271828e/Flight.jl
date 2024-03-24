@@ -10,14 +10,15 @@ include(normpath("components/test_propellers.jl")); using .TestPropellers
 include(normpath("components/test_landing_gear.jl")); using .TestLandingGear
 include(normpath("components/test_piston.jl")); using .TestPiston
 
-include(normpath("aircraft/test_c172r.jl")); using .TestC172R
-include(normpath("aircraft/test_c172r_base.jl")); using .TestC172RBase
-
 include(normpath("aircraft/test_aircraft_base.jl")); using .TestAircraft
+
+include(normpath("aircraft/test_c172r.jl")); using .TestC172R
+
 include(normpath("aircraft/test_c172fbw.jl")); using .TestC172FBW
-include(normpath("aircraft/test_c172fbw_base.jl")); using .TestC172FBWBase
 include(normpath("aircraft/test_c172cas.jl")); using .TestC172CAS
 include(normpath("aircraft/test_c172mcs.jl")); using .TestC172MCS
+
+include(normpath("aircraft/test_c172rpa.jl")); using .TestC172RPA
 
 test_quaternions()
 test_attitude()
@@ -32,9 +33,9 @@ test_piston()
 test_aircraft_base()
 
 test_c172r()
-test_c172r_base()
 
 test_c172fbw()
-test_c172fbw_base()
 test_c172cas()
 test_c172mcs()
+
+test_c172rpa()

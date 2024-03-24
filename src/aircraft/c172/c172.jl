@@ -721,7 +721,7 @@ end
 ################################################################################
 ################################# Actuation ####################################
 
-#any Actuation system suitable for the C172 Platform
+#any Actuation system suitable for the C172 Components
 abstract type Actuation <: SystemDefinition end
 
 function assign!(aero::System{<:Aero}, ldg::System{<:Ldg},
@@ -734,11 +734,11 @@ Dynamics.AngularMomentumTrait(::System{<:Actuation}) = HasNoAngularMomentum()
 Dynamics.ExternalWrenchTrait(::System{<:Actuation}) = GetsNoExternalWrench()
 
 ################################################################################
-################################ Platform ######################################
+################################ Components ######################################
 
 #P is introduced as a type parameter, because Piston.Thruster is itself a
 #parametric type, and therefore not concrete
-struct Platform{P <: Piston.Thruster, A <: Actuation} <: AbstractPlatform
+struct Components{P <: Piston.Thruster, A <: Actuation} <: AbstractComponents
     afm::Airframe
     aero::Aero
     ldg::Ldg
@@ -748,33 +748,33 @@ struct Platform{P <: Piston.Thruster, A <: Actuation} <: AbstractPlatform
     act::A
 end
 
-function Platform(pwp::Piston.Thruster, act::Actuation)
-    Platform(Airframe(), Aero(), Ldg(), Fuel(), Payload(), pwp, act)
+function Components(pwp::Piston.Thruster, act::Actuation)
+    Components(Airframe(), Aero(), Ldg(), Fuel(), Payload(), pwp, act)
 end
 
 
 ############################# Update Methods ###################################
 
-function Systems.f_ode!(platform::System{<:Platform},
+function Systems.f_ode!(components::System{<:Components},
                         kin::KinematicData,
                         air::AirData,
                         trn::AbstractTerrain)
 
-    @unpack act, aero, pwp, ldg, fuel, pld = platform
+    @unpack act, aero, pwp, ldg, fuel, pld = components
 
     f_ode!(act) #update actuation system outputs
-    assign!(aero, ldg, pwp, act) #assign actuation system outputs to platform subsystems
+    assign!(aero, ldg, pwp, act) #assign actuation system outputs to components subsystems
     f_ode!(aero, pwp, air, kin, trn) #update aerodynamics continuous state & outputs
     f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
-    update_y!(platform)
+    update_y!(components)
 
 end
 
-function Systems.f_step!(platform::System{<:Platform})
-    @unpack aero, ldg, pwp, fuel = platform
+function Systems.f_step!(components::System{<:Components})
+    @unpack aero, ldg, pwp, fuel = components
 
     x_mod = false
     x_mod |= f_step!(aero)
@@ -788,11 +788,11 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw!( platform::System{<:Platform}, ::System{A},
+function GUI.draw!( components::System{<:Components}, ::System{A},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 Platform") where {A<:AbstractAvionics}
+                    label::String = "Cessna 172 Components") where {A<:AbstractAvionics}
 
-    @unpack act, pwp, ldg, aero, fuel, pld = platform
+    @unpack act, pwp, ldg, aero, fuel, pld = components
 
     CImGui.Begin(label, p_open)
 
@@ -826,7 +826,7 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Physics{F, K, T} = AircraftBase.Physics{F, K, T} where {F <: Platform, K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Vehicle{F, K, T} = AircraftBase.Vehicle{F, K, T} where {F <: Components, K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
 ############################### Trimming #######################################
 ################################################################################
@@ -888,36 +888,36 @@ function Kinematics.Initializer(trim_state::TrimState,
 end
 
 
-function cost(physics::System{<:C172.Physics})
+function cost(vehicle::System{<:C172.Vehicle})
 
-    @unpack ẋ, y = physics
+    @unpack ẋ, y = vehicle
 
     v_nd_dot = SVector{3}(ẋ.kinematics.vel.v_eOb_b) / norm(y.kinematics.data.v_eOb_b)
     ω_dot = SVector{3}(ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
-    n_eng_dot = ẋ.platform.pwp.engine.ω / physics.platform.pwp.engine.constants.ω_rated
+    n_eng_dot = ẋ.components.pwp.engine.ω / vehicle.components.pwp.engine.constants.ω_rated
 
     sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2
 
 end
 
-function get_f_target(physics::System{<:C172.Physics},
+function get_f_target(vehicle::System{<:C172.Vehicle},
                       trim_params::TrimParameters)
 
-    let physics = physics, trim_params = trim_params
+    let vehicle = vehicle, trim_params = trim_params
         function (x::TrimState)
-            AircraftBase.assign!(physics, trim_params, x)
-            return cost(physics)
+            AircraftBase.assign!(vehicle, trim_params, x)
+            return cost(vehicle)
         end
     end
 
 end
 
-function AircraftBase.trim!(physics::System{<:C172.Physics},
+function AircraftBase.trim!(vehicle::System{<:C172.Vehicle},
                         trim_params::TrimParameters = TrimParameters())
 
     trim_state = TrimState() #could provide initial condition as an optional input
 
-    f_target = get_f_target(physics, trim_params)
+    f_target = get_f_target(vehicle, trim_params)
 
     #wrapper with the interface expected by NLopt
     f_opt(x::Vector{Float64}, ::Vector{Float64}) = f_target(TrimState(x))
@@ -937,7 +937,7 @@ function AircraftBase.trim!(physics::System{<:C172.Physics},
         rudder = -1)
 
     upper_bounds[:] .= TrimState(
-        α_a = physics.platform.aero.constants.α_stall[2], #critical AoA is 0.28 < 0.36
+        α_a = vehicle.components.aero.constants.α_stall[2], #critical AoA is 0.28 < 0.36
         φ_nb = π/3,
         n_eng = 1.1,
         throttle = 1,
@@ -967,7 +967,7 @@ function AircraftBase.trim!(physics::System{<:C172.Physics},
         @warn("Trimming optimization failed with exit_flag $exit_flag")
     end
     trim_state_opt = TrimState(minx)
-    AircraftBase.assign!(physics, trim_params, trim_state_opt)
+    AircraftBase.assign!(vehicle, trim_params, trim_state_opt)
     return (success = success, trim_state = trim_state_opt)
 
 end
@@ -978,5 +978,6 @@ end
 
 include(normpath("c172r/c172r.jl")); @reexport using .C172R
 include(normpath("c172fbw/c172fbw.jl")); @reexport using .C172FBW
+include(normpath("c172rpa/c172rpa.jl")); @reexport using .C172RPA
 
 end

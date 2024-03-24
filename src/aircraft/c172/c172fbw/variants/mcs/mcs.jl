@@ -204,11 +204,11 @@ v2t_enabled(mode::LonControlMode) = (mode === lon_EAS_q || mode === lon_EAS_θ)
     ele_v::Float64 = 0.0; ele_p::Float64 = 0.0; #elevator actuator states
 end
 
-#assemble state vector from aircraft physics
-function XLon(physics::System{<:C172FBW.Physics})
+#assemble state vector from vehicle
+function XLon(vehicle::System{<:C172FBW.Vehicle})
 
-    @unpack platform, air, kinematics = physics.y
-    @unpack pwp, aero, act = platform
+    @unpack components, air, kinematics = vehicle.y
+    @unpack pwp, aero, act = components
     @unpack e_nb, ω_eb_b = kinematics
 
     q = ω_eb_b[2]
@@ -231,8 +231,8 @@ end
     elevator_cmd::T = 0.0
 end
 
-function ULon{Float64}(physics::System{<:C172FBW.Physics})
-    @unpack act = physics.y.platform
+function ULon{Float64}(vehicle::System{<:C172FBW.Vehicle})
+    @unpack act = vehicle.y.components
     throttle_cmd = Float64(act.throttle.cmd)
     elevator_cmd = Float64(act.elevator.cmd)
     ULon(; throttle_cmd, elevator_cmd)
@@ -247,9 +247,9 @@ const ZLonThrEle = ULon{Float64}
     climb_rate::Float64 = 0.0
 end
 
-function ZLonEASClm(physics::System{<:C172FBW.Physics})
-    EAS = physics.y.air.EAS
-    climb_rate = -physics.y.kinematics.data.v_eOb_n[3]
+function ZLonEASClm(vehicle::System{<:C172FBW.Vehicle})
+    EAS = vehicle.y.air.EAS
+    climb_rate = -vehicle.y.kinematics.data.v_eOb_n[3]
     ZLonEASClm(; EAS, climb_rate)
 end
 
@@ -314,16 +314,16 @@ end
 
 
 function Systems.f_disc!(sys::System{<:LonControl},
-                        physics::System{<:C172FBW.Physics}, Δt::Real)
+                        vehicle::System{<:C172FBW.Vehicle}, Δt::Real)
 
     @unpack mode, throttle_sp, elevator_sp, q_sp, θ_sp, EAS_sp, clm_sp = sys.u
     @unpack te2te_lqr, vc2te_lqr, q2e_int, q2e_pid, v2θ_pid, v2t_pid = sys.subsystems
     @unpack te2te_lookup, vc2te_lookup, q2e_lookup, v2θ_lookup, v2t_lookup = sys.constants
 
-    EAS = physics.y.air.EAS
-    h_e = Float64(physics.y.kinematics.h_e)
-    _, q, r = physics.y.kinematics.ω_lb_b
-    @unpack θ, φ = physics.y.kinematics.e_nb
+    EAS = vehicle.y.air.EAS
+    h_e = Float64(vehicle.y.kinematics.h_e)
+    _, q, r = vehicle.y.kinematics.ω_lb_b
+    @unpack θ, φ = vehicle.y.kinematics.e_nb
     mode_prev = sys.y.mode
 
 
@@ -405,8 +405,8 @@ function Systems.f_disc!(sys::System{<:LonControl},
 
         #te2te is purely proportional, so it doesn't need resetting
 
-        te2te_lqr.u.x .= XLon(physics) #state feedback
-        te2te_lqr.u.z .= ZLonThrEle(physics) #command variable feedback
+        te2te_lqr.u.x .= XLon(vehicle) #state feedback
+        te2te_lqr.u.z .= ZLonThrEle(vehicle) #command variable feedback
         te2te_lqr.u.z_sp .= ZLonThrEle(; throttle_cmd = throttle_sp, elevator_cmd = elevator_sp) #command variable setpoint
         f_disc!(te2te_lqr, Δt)
         @unpack throttle_cmd, elevator_cmd = ULon(te2te_lqr.y.output)
@@ -417,8 +417,8 @@ function Systems.f_disc!(sys::System{<:LonControl},
 
         (mode != mode_prev) && Systems.reset!(vc2te_lqr)
 
-        vc2te_lqr.u.x .= XLon(physics) #state feedback
-        vc2te_lqr.u.z .= ZLonEASClm(physics) #command variable feedback
+        vc2te_lqr.u.x .= XLon(vehicle) #state feedback
+        vc2te_lqr.u.z .= ZLonEASClm(vehicle) #command variable feedback
         vc2te_lqr.u.z_sp .= ZLonEASClm(; EAS = EAS_sp, climb_rate = clm_sp) #command variable setpoint
         f_disc!(vc2te_lqr, Δt)
         @unpack throttle_cmd, elevator_cmd = ULon(vc2te_lqr.y.output)
@@ -464,11 +464,11 @@ end
 end
 
 
-#assemble state vector from aircraft physics
-function XLat(physics::System{<:C172FBW.Physics})
+#assemble state vector from vehicle
+function XLat(vehicle::System{<:C172FBW.Vehicle})
 
-    @unpack platform, air, kinematics = physics.y
-    @unpack aero, act = platform
+    @unpack components, air, kinematics = vehicle.y
+    @unpack aero, act = components
     @unpack e_nb, ω_eb_b = kinematics
 
     p, _, r = ω_eb_b
@@ -484,9 +484,9 @@ function XLat(physics::System{<:C172FBW.Physics})
 
 end
 
-function ZLatPhiBeta(physics::System{<:C172FBW.Physics})
-    φ = physics.y.kinematics.data.e_nb.φ
-    β = physics.y.air.β_b
+function ZLatPhiBeta(vehicle::System{<:C172FBW.Vehicle})
+    φ = vehicle.y.kinematics.data.e_nb.φ
+    β = vehicle.y.air.β_b
     ZLatPhiBeta(; φ, β)
 end
 
@@ -545,12 +545,12 @@ function Systems.init!(sys::System{<:LatControl})
 end
 
 function Systems.f_disc!(sys::System{<:LatControl},
-                        physics::System{<:C172FBW.Physics}, Δt::Real)
+                        vehicle::System{<:C172FBW.Vehicle}, Δt::Real)
 
     @unpack mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp = sys.u
     @unpack φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
     @unpack φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
-    @unpack air, kinematics = physics.y
+    @unpack air, kinematics = vehicle.y
 
     EAS = air.EAS
     h_e = Float64(kinematics.h_e)
@@ -614,8 +614,8 @@ function Systems.f_disc!(sys::System{<:LatControl},
 
         (mode != mode_prev) && Systems.reset!(φβ2ar_lqr)
 
-        φβ2ar_lqr.u.x .= XLat(physics)
-        φβ2ar_lqr.u.z .= ZLatPhiBeta(physics)
+        φβ2ar_lqr.u.x .= XLat(vehicle)
+        φβ2ar_lqr.u.z .= ZLatPhiBeta(vehicle)
         φβ2ar_lqr.u.z_sp .= ZLatPhiBeta(; φ = φ_sp, β = β_sp)
         f_disc!(φβ2ar_lqr, Δt)
         @unpack aileron_cmd, rudder_cmd = ULat(φβ2ar_lqr.y.output)
@@ -663,13 +663,13 @@ Systems.U(::AltitudeGuidance) = AltitudeGuidanceU()
 Systems.S(::AltitudeGuidance) = AltitudeGuidanceS()
 Systems.Y(::AltitudeGuidance) = AltitudeGuidanceY()
 
-get_Δh(h_sp::HEllip, physics::System{<:C172FBW.Physics}) = h_sp - physics.y.kinematics.h_e
-get_Δh(h_sp::HOrth, physics::System{<:C172FBW.Physics}) = h_sp - physics.y.kinematics.h_o
+get_Δh(h_sp::HEllip, vehicle::System{<:C172FBW.Vehicle}) = h_sp - vehicle.y.kinematics.h_e
+get_Δh(h_sp::HOrth, vehicle::System{<:C172FBW.Vehicle}) = h_sp - vehicle.y.kinematics.h_o
 
 function Systems.f_disc!(sys::System{<:AltitudeGuidance},
-                        physics::System{<:C172FBW.Physics}, ::Real)
+                        vehicle::System{<:C172FBW.Vehicle}, ::Real)
 
-    Δh = get_Δh(sys.u.h_sp, physics)
+    Δh = get_Δh(sys.u.h_sp, vehicle)
     clm_sp = sys.constants.k_h2c * Δh
     @unpack state, h_thr = sys.s
     # @show Δh
@@ -681,7 +681,7 @@ function Systems.f_disc!(sys::System{<:AltitudeGuidance},
         throttle_sp = Δh > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
         (abs(Δh) + 1 < h_thr) && (sys.s.state = alt_hold)
         # sys.s.h_thr = abs(Δh)
-        # clm = -physics.y.kinematics.v_eOb_n[3]
+        # clm = -vehicle.y.kinematics.v_eOb_n[3]
         # (abs(clm_sp) < abs(clm)) && (sys.s.state = alt_hold)
 
     else #alt_hold
@@ -779,7 +779,7 @@ Systems.Y(::Avionics) = AvionicsY()
 
 
 function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
-                        physics::System{<:C172FBW.Physics}, Δt::Real)
+                        vehicle::System{<:C172FBW.Vehicle}, Δt::Real)
 
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right,
             throttle_sp_input, aileron_sp_input, elevator_sp_input, rudder_sp_input,
@@ -794,7 +794,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
     aileron_sp = aileron_sp_input + aileron_sp_offset
     rudder_sp = rudder_sp_input + rudder_sp_offset
 
-    any_wow = any(SVector{3}(leg.strut.wow for leg in physics.y.platform.ldg))
+    any_wow = any(SVector{3}(leg.strut.wow for leg in vehicle.y.components.ldg))
     flight_phase = any_wow ? phase_gnd : phase_air
 
     if flight_phase === phase_gnd
@@ -816,7 +816,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
         else #vrt_gdc_mode === vrt_gdc_alt
 
             alt_gdc.u.h_sp = h_sp
-            f_disc!(alt_gdc, physics, Δt)
+            f_disc!(alt_gdc, vehicle, Δt)
 
             lon_ctl_mode = alt_gdc.y.lon_ctl_mode
             throttle_sp = alt_gdc.y.throttle_sp
@@ -831,7 +831,7 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
         else #hor_gdc_mode === hor_gdc_line
 
             # seg_gdc.u.line_sp = line_sp
-            # f_disc!(seg_gdc, physics, Δt)
+            # f_disc!(seg_gdc, vehicle, Δt)
 
             # lat_ctl_mode = seg_gdc.y.lat_ctl_mode
             # χ_sp = seg_gdc.y.χ_sp
@@ -843,11 +843,11 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
 
     lon_ctl.u.mode = lon_ctl_mode
     @pack! lon_ctl.u = throttle_sp, elevator_sp, q_sp, θ_sp, EAS_sp, clm_sp
-    f_disc!(lon_ctl, physics, Δt)
+    f_disc!(lon_ctl, vehicle, Δt)
 
     lat_ctl.u.mode = lat_ctl_mode
     @pack! lat_ctl.u = aileron_sp, rudder_sp, p_sp, φ_sp, β_sp, χ_sp
-    f_disc!(lat_ctl, physics, Δt)
+    f_disc!(lat_ctl, vehicle, Δt)
 
     avionics.y = AvionicsY(; flight_phase,
         vrt_gdc_mode, hor_gdc_mode, lon_ctl_mode, lat_ctl_mode,
@@ -858,10 +858,10 @@ function Systems.f_disc!(avionics::System{<:C172MCS.Avionics},
 
 end
 
-function AircraftBase.assign!(platform::System{<:C172FBW.Platform},
+function AircraftBase.assign!(components::System{<:C172FBW.Components},
                           avionics::System{Avionics})
 
-    @unpack act, pwp, ldg = platform.subsystems
+    @unpack act, pwp, ldg = components.subsystems
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right = avionics.u
     @unpack throttle_cmd, elevator_cmd = avionics.lon_ctl.y
     @unpack aileron_cmd, rudder_cmd = avionics.lat_ctl.y
@@ -900,20 +900,20 @@ function AircraftBase.trim!(ac::System{<:Cessna172MCS},
                         trim_params::C172.TrimParameters = C172.TrimParameters())
 
 
-    result = trim!(ac.physics, trim_params)
+    result = trim!(ac.vehicle, trim_params)
 
-    #only ac.physics.y has been updated by the previous call, we need to update
+    #only ac.vehicle.y has been updated by the previous call, we need to update
     #ac.y as well
     f_ode!(ac)
 
     trim_state = result[2]
     @unpack mixture, flaps, EAS = trim_params
     @unpack throttle, aileron, elevator, rudder = trim_state
-    @unpack ω_lb_b, v_eOb_n, e_nb, χ_gnd, h_e = ac.y.physics.kinematics
-    @unpack β_b = ac.y.physics.air
+    @unpack ω_lb_b, v_eOb_n, e_nb, χ_gnd, h_e = ac.y.vehicle.kinematics
+    @unpack β_b = ac.y.vehicle.air
 
     #makes Avionics inputs consistent with the trim solution obtained for the
-    #aircraft physics, so the trim condition is preserved upon simulation start
+    #vehicle, so the trim condition is preserved upon simulation start
     #when the corresponding control modes are selected
     Systems.reset!(ac.avionics)
 
@@ -944,14 +944,14 @@ function AircraftBase.trim!(ac::System{<:Cessna172MCS},
     u.χ_sp = χ_gnd
     u.h_sp = h_e
 
-    f_disc!(ac.avionics, ac.physics, 1) #IMPORTANT: update avionics outputs
+    f_disc!(ac.avionics, ac.vehicle, 1) #IMPORTANT: update avionics outputs
 
     return result
 
 end
 
 function AircraftBase.linearize!(ac::System{<:Cessna172MCS}, args...; kwargs...)
-    linearize!(ac.physics, args...; kwargs...)
+    linearize!(ac.vehicle, args...; kwargs...)
 end
 
 
@@ -1136,15 +1136,15 @@ end
 
 
 function GUI.draw!(avionics::System{<:C172MCS.Avionics},
-                    physics::System{<:C172FBW.Physics},
+                    vehicle::System{<:C172FBW.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172 MCS Avionics")
 
     u = avionics.u
     y = avionics.y
 
-    @unpack platform, kinematics, dynamics, air = physics.y
-    @unpack act, pwp, fuel, ldg = platform
+    @unpack components, kinematics, dynamics, air = vehicle.y
+    @unpack act, pwp, fuel, ldg = components
 
     @unpack e_nb, ω_lb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eOb_n = kinematics
     @unpack CAS, EAS, TAS, α_b, β_b, T, p, pt = air
@@ -1153,7 +1153,7 @@ function GUI.draw!(avionics::System{<:C172MCS.Avionics},
 
     p, q, r = ω_lb_b
     clm = -v_eOb_n[3]
-    Δh = h_o - TerrainData(physics.constants.terrain, n_e).altitude
+    Δh = h_o - TerrainData(vehicle.constants.terrain, n_e).altitude
 
     Begin(label, p_open)
 
