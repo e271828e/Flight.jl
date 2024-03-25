@@ -571,4 +571,9 @@ function IODevices.assign!(sys::System{<:Cessna172RPA}, joystick::Joystick,
     IODevices.assign!(sys.vehicle.components.act, joystick, mapping)
 end
 
+################################################################################
+################################## Variants ####################################
+
+include(normpath("v1/c172rpa_v1.jl")); @reexport using .C172RPAv1
+
 end
