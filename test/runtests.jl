@@ -39,3 +39,4 @@ test_c172cas()
 test_c172mcs()
 
 test_c172rpa()
+test_c172rpa_v1()

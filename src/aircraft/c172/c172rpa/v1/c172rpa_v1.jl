@@ -39,6 +39,9 @@ abstract type AbstractControlChannel <: SystemDefinition end
     lon_EAS_clm = 7
 end
 
+#elevator pitch SAS always enabled except for direct mode
+e2e_enabled(mode::LonControlMode) = (mode != lon_direct)
+
 function q2e_enabled(mode::LonControlMode)
     mode === lon_thr_q || mode === lon_thr_θ || mode === lon_thr_EAS ||
     mode === lon_EAS_q || mode === lon_EAS_θ || mode === lon_EAS_clm
@@ -85,19 +88,6 @@ function XPitch(vehicle::System{<:C172RPA.Vehicle})
 
 end
 
-#control input vector for longitudinal LQR SAS
-@kwdef struct UPitch{T} <: FieldVector{1, T}
-    elevator_cmd::T = 0.0
-end
-
-function UPitch{Float64}(vehicle::System{<:C172RPA.Vehicle})
-    @unpack act = vehicle.y.components
-    elevator_cmd = Float64(act.elevator.cmd)
-    UPitch(; elevator_cmd)
-end
-
-#command vector for longitudinal LQR SAS
-const ZPitch = UPitch{Float64}
 
 ################################## System ######################################
 
@@ -107,9 +97,9 @@ const ZPitch = UPitch{Float64}
     e2e_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "e2e_lookup.h5"))
     q2e_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "q2e_lookup.h5"))
     v2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2θ_lookup.h5"))
-    c2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2t_lookup.h5"))
+    c2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "c2θ_lookup.h5"))
     v2t_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2t_lookup.h5"))
-    e2e_lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+    e2e_lqr::LQRTracker{6, 1, 1, 6, 1} = LQRTracker{6, 1, 1}()
     q2e_int::Integrator = Integrator()
     q2e_pid::PID = PID()
     v2θ_pid::PID = PID()
@@ -137,7 +127,7 @@ end
     clm_sp::Float64 = 0.0 #climb rate setpoint
     throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
-    e2e_lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
+    e2e_lqr::LQRTrackerOutput{6, 1, 1, 6, 1} = LQRTrackerOutput{6, 1, 1}()
     q2e_int::IntegratorOutput = IntegratorOutput()
     q2e_pid::PIDOutput = PIDOutput()
     v2θ_pid::PIDOutput = PIDOutput()
@@ -150,9 +140,9 @@ Systems.Y(::LonControl) = LonControlY()
 
 function Systems.init!(sys::System{<:LonControl})
     #e2e determines elevator saturation for all pitch control loops (q2e, c2θ,
-    #v2θ), so we don't need to set bounds for these
-    sys.e2e_lqr.u.bound_lo .= UPitch(; elevator_cmd = -1)
-    sys.e2e_lqr.u.bound_hi .= UPitch(; elevator_cmd = 1)
+    #v2θ), so we don't need to set bounds for those
+    sys.e2e_lqr.u.bound_lo .= -1
+    sys.e2e_lqr.u.bound_hi .= 1
     #we do need to set bounds for v2t, so it can handle throttle saturation
     sys.v2t_pid.u.bound_lo = 0
     sys.v2t_pid.u.bound_hi = 1
@@ -173,31 +163,30 @@ function Systems.f_disc!(sys::System{<:LonControl},
     clm = -vehicle.y.kinematics.data.v_eOb_n[3]
     mode_prev = sys.y.mode
 
+    #if not overridden by the control modes, actuation commands are simply
+    #their respective setpoints
+    throttle_cmd = throttle_sp
+    elevator_cmd = elevator_sp
 
-    if mode === lon_direct #actuation commands set from pilot setpoints
+    if v2t_enabled(mode) #throttle_cmd overridden by v2t
 
-        throttle_cmd = throttle_sp
-        elevator_cmd = elevator_sp
+        Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, h_e))
 
-    else # e2e_enabled, actuation commands computed by e2e SAS
-
-        elevator_cmd_sat = UPitch(e2e_lqr.y.out_sat).elevator_cmd
-
-        if v2t_enabled(mode) #throttle_sp overridden by v2t
-
-            Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, h_e))
-
-            if mode != mode_prev
-                Systems.reset!(v2t_pid)
-                k_i = v2t_pid.u.k_i
-                (k_i != 0) && (v2t_pid.s.x_i0 = Float64(sys.y.throttle_cmd))
-            end
-
-            v2t_pid.u.input = EAS_sp - EAS
-            f_disc!(v2t_pid, Δt)
-            throttle_sp = v2t_pid.y.output
-
+        if mode != mode_prev
+            Systems.reset!(v2t_pid)
+            k_i = v2t_pid.u.k_i
+            (k_i != 0) && (v2t_pid.s.x_i0 = Float64(sys.y.throttle_cmd))
         end
+
+        v2t_pid.u.input = EAS_sp - EAS
+        f_disc!(v2t_pid, Δt)
+        throttle_cmd = v2t_pid.y.output
+
+    end
+
+    if e2e_enabled(mode) #elevator_cmd overridden by e2e SAS
+
+        elevator_cmd_sat = e2e_lqr.y.out_sat[1]
 
         if q2e_enabled(mode) #elevator_sp overridden by q2e
 
@@ -234,7 +223,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
                     if mode != mode_prev
                         Systems.reset!(c2θ_pid)
                         k_i = c2θ_pid.u.k_i
-                        (k_i != 0) && (c2θ.s.x_i0 = θ)
+                        (k_i != 0) && (c2θ_pid.s.x_i0 = θ)
                     end
 
                     c2θ_pid.u.input = clm_sp - clm
@@ -267,10 +256,10 @@ function Systems.f_disc!(sys::System{<:LonControl},
         #e2e is purely proportional, so it doesn't need resetting
 
         e2e_lqr.u.x .= XPitch(vehicle) #state feedback
-        e2e_lqr.u.z .= ZPitch(vehicle) #command variable feedback
-        e2e_lqr.u.z_sp .= ZPitch(; elevator_cmd = elevator_sp) #command variable setpoint
+        e2e_lqr.u.z .= Float64(vehicle.y.components.act.elevator.cmd) #command variable feedback
+        e2e_lqr.u.z_sp .= elevator_sp #command variable setpoint
         f_disc!(e2e_lqr, Δt)
-        @unpack elevator_cmd = UPitch(e2e_lqr.y.output)
+        elevator_cmd = e2e_lqr.y.output[1]
 
     end
 
@@ -349,7 +338,7 @@ end
     φβ2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "φβ2ar_lookup.h5"))
     p2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
     χ2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "χ2φ_lookup.h5"))
-    φβ2ar_lqr::LQRTracker{10, 2, 2, 20, 4} = LQRTracker{10, 2, 2}()
+    φβ2ar_lqr::LQRTracker{8, 2, 2, 16, 4} = LQRTracker{8, 2, 2}()
     p2φ_int::Integrator = Integrator()
     p2φ_pid::PID = PID()
     χ2φ_pid::PID = PID()
@@ -375,7 +364,7 @@ end
     χ_sp::Float64 = 0.0 #course angle setpoint
     aileron_cmd::Ranged{Float64, -1., 1.} = 0.0
     rudder_cmd::Ranged{Float64, -1., 1.} = 0.0
-    φβ2ar_lqr::LQRTrackerOutput{10, 2, 2, 20, 4} = LQRTrackerOutput{10, 2, 2}()
+    φβ2ar_lqr::LQRTrackerOutput{8, 2, 2, 16, 4} = LQRTrackerOutput{8, 2, 2}()
     p2φ_int::IntegratorOutput = IntegratorOutput()
     p2φ_pid::PIDOutput = PIDOutput()
     χ2φ_pid::PIDOutput = PIDOutput()

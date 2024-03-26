@@ -8,6 +8,7 @@ using Flight.FlightCore.Networking
 
 using Flight.FlightPhysics
 using Flight.FlightComponents
+using Flight.FlightComponents.Control.Discrete: load_pid_lookup, load_lqr_tracker_lookup
 
 using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172
@@ -124,7 +125,7 @@ function test_control_modes()
         @test av.y.lon_ctl_mode === C172MCS.lon_thr_ele
 
         #check the correct parameters are loaded and assigned to the controller
-        te2te_lookup = C172MCS.load_lqr_tracker_lookup(joinpath(data_folder, "te2te_lookup.h5"))
+        te2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "te2te_lookup.h5"))
         C_fwd = te2te_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
         @test all(isapprox.(av.y.lon_ctl.te2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 
@@ -148,7 +149,7 @@ function test_control_modes()
         @test av.y.lat_ctl_mode === C172MCS.lat_φ_β
 
         #check the correct parameters are loaded and assigned to the controller
-        φβ2ar_lookup = C172MCS.load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
+        φβ2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
         C_fwd = φβ2ar_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
         @test all(isapprox.(av.y.lat_ctl.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
 
@@ -180,7 +181,7 @@ function test_control_modes()
         @test av.y.lat_ctl_mode === C172MCS.lat_p_β
 
         #check the correct parameters are loaded and assigned to the controllers
-        φβ2ar_lookup = C172MCS.load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
+        φβ2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
         C_fwd = φβ2ar_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
         @test all(isapprox.(av.y.lat_ctl.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
 
@@ -215,7 +216,7 @@ function test_control_modes()
         @test av.y.lat_ctl_mode === C172MCS.lat_χ_β
 
         #check the correct parameters are loaded and assigned to the controller
-        χ2φ_lookup = C172MCS.load_pid_lookup(joinpath(data_folder, "χ2φ_lookup.h5"))
+        χ2φ_lookup = load_pid_lookup(joinpath(data_folder, "χ2φ_lookup.h5"))
         k_p = χ2φ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
         @test all(isapprox.(av.y.lat_ctl.χ2φ_pid.k_p, k_p; atol = 1e-6))
 
@@ -259,7 +260,7 @@ function test_control_modes()
         @test av.y.lon_ctl_mode === C172MCS.lon_thr_q
 
         #check the correct parameters are loaded and assigned to the controller
-        q2e_lookup = C172MCS.load_pid_lookup(joinpath(data_folder, "q2e_lookup.h5"))
+        q2e_lookup = load_pid_lookup(joinpath(data_folder, "q2e_lookup.h5"))
         k_p = q2e_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
         @test all(isapprox.(av.y.lon_ctl.q2e_pid.k_p, k_p; atol = 1e-6))
 
@@ -326,7 +327,7 @@ function test_control_modes()
         @test av.y.lon_ctl_mode === C172MCS.lon_thr_EAS
 
         #check the correct parameters are loaded and assigned to the controller
-        v2θ_lookup = C172MCS.load_pid_lookup(joinpath(data_folder, "v2θ_lookup.h5"))
+        v2θ_lookup = load_pid_lookup(joinpath(data_folder, "v2θ_lookup.h5"))
         k_p = v2θ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
         @test all(isapprox.(av.y.lon_ctl.v2θ_pid.k_p, k_p; atol = 1e-6))
 
@@ -360,7 +361,7 @@ function test_control_modes()
 
         #check the correct parameters are loaded and assigned to v2t, the q
         #tracker is shared with other modes
-        v2t_lookup = C172MCS.load_pid_lookup(joinpath(data_folder, "v2t_lookup.h5"))
+        v2t_lookup = load_pid_lookup(joinpath(data_folder, "v2t_lookup.h5"))
         k_p = v2t_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
         @test all(isapprox.(av.y.lon_ctl.v2t_pid.k_p, k_p; atol = 1e-6))
 
@@ -429,7 +430,7 @@ function test_control_modes()
         @test av.y.lon_ctl_mode === C172MCS.lon_EAS_clm
 
         #check the correct parameters are loaded and assigned to the controller
-        vc2te_lookup = C172MCS.load_lqr_tracker_lookup(joinpath(data_folder, "vc2te_lookup.h5"))
+        vc2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "vc2te_lookup.h5"))
         C_fwd = vc2te_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
         @test all(isapprox.(av.y.lon_ctl.vc2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 

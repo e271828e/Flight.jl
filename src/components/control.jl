@@ -348,7 +348,7 @@ end #submodule
 module Discrete
 
 using StaticArrays, UnPack, LinearAlgebra
-using Interpolations, HDF5 #for lookups
+using StructArrays, Interpolations, HDF5 #for lookups
 using RobustAndOptimalControl
 
 using Flight.FlightCore
