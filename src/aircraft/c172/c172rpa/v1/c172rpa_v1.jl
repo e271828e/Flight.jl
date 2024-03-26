@@ -196,7 +196,8 @@ function Systems.f_disc!(sys::System{<:LonControl},
                 Systems.reset!(q2e_int)
                 Systems.reset!(q2e_pid)
                 k_i = q2e_pid.u.k_i
-                (k_i != 0) && (q2e_pid.s.x_i0 = Float64(sys.y.elevator_cmd))
+                (k_i != 0) && (q2e_pid.s.x_i0 = e2e_lqr.u.z_sp[1])
+                # (k_i != 0) && (q2e_pid.s.x_i0 = Float64(sys.y.elevator_cmd))
             end
 
             if θ2q_enabled(mode) #q_sp overridden by θ2q
@@ -230,6 +231,10 @@ function Systems.f_disc!(sys::System{<:LonControl},
                     c2θ_pid.u.sat_ext = elevator_cmd_sat
                     f_disc!(c2θ_pid, Δt)
                     θ_sp = c2θ_pid.y.output
+
+                else #lon_EAS_θ || lon_thr_θ
+
+                    #θ_sp unmodified, input value is kept
 
                 end
 
@@ -278,12 +283,16 @@ end
     lat_direct = 0 #direct aileron_cmd + rudder_cmd
     lat_p_β = 1 #roll rate + sideslip
     lat_φ_β = 2 #bank angle + sideslip
-    lat_χ_β = 4 #couse angle + sideslip
+    lat_χ_β = 4 #course angle + sideslip
 end
+
+φβ2ar_enabled(mode::LatControlMode) = (mode != lat_direct)
+p2φ_enabled(mode::LatControlMode) = (mode === lat_p_β)
+χ2φ_enabled(mode::LatControlMode) = (mode === lat_χ_β)
 
 ################################# FieldVectors #################################
 
-#state vector for all lateral controllers
+#state vector for φβ LQR tracker
 @kwdef struct XLat <: FieldVector{8, Float64}
     p::Float64 = 0.0 #roll rate
     r::Float64 = 0.0 #yaw rate
@@ -295,20 +304,18 @@ end
     rud_p::Float64 = 0.0; #rudder actuator states
 end
 
-#control input vector for lateral controllers
+#control input vector for φβ LQR tracker
 @kwdef struct ULat{T} <: FieldVector{2, T}
     aileron_cmd::T = 0.0
     rudder_cmd::T = 0.0
 end
 
-#command vector for φ + β SAS
-@kwdef struct ZLatPhiBeta <: FieldVector{2, Float64}
+#command vector for φβ LQR tracker
+@kwdef struct ZLat <: FieldVector{2, Float64}
     φ::Float64 = 0.0
     β::Float64 = 0.0
 end
 
-
-#assemble state vector from vehicle
 function XLat(vehicle::System{<:C172RPA.Vehicle})
 
     @unpack components, air, kinematics = vehicle.y
@@ -326,10 +333,10 @@ function XLat(vehicle::System{<:C172RPA.Vehicle})
 
 end
 
-function ZLatPhiBeta(vehicle::System{<:C172RPA.Vehicle})
+function ZLat(vehicle::System{<:C172RPA.Vehicle})
     φ = vehicle.y.kinematics.data.e_nb.φ
     β = vehicle.y.air.β_b
-    ZLatPhiBeta(; φ, β)
+    ZLat(; φ, β)
 end
 
 ################################## System ######################################
@@ -399,25 +406,23 @@ function Systems.f_disc!(sys::System{<:LatControl},
     φ = kinematics.e_nb.φ
     mode_prev = sys.y.mode
 
-    if mode === lat_direct
-        aileron_cmd = aileron_sp
-        rudder_cmd = rudder_sp
+    aileron_cmd = aileron_sp
+    rudder_cmd = rudder_sp
 
-    #compute φ_sp depending on active roll path
-    else #lat_p_β || lat_φ_β || lat_χ_β
+    if φβ2ar_enabled(mode) #aileron_cmd and #rudder_cmd overridden by φβ2ar
 
         u_lat_sat = ULat(φβ2ar_lqr.y.out_sat)
 
-        #φ_sp computed by roll rate tracker
-        if mode === lat_p_β
+        if p2φ_enabled(mode) #φ_sp overridden by roll rate tracker
 
             Control.Discrete.assign!(p2φ_pid, p2φ_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
+                #our next φ output must match φ setpoint at φβ2ar input
                 Systems.reset!(p2φ_int)
                 Systems.reset!(p2φ_pid)
                 k_i = p2φ_pid.u.k_i
-                (k_i != 0) && (p2φ_pid.s.x_i0 = φ)
+                (k_i != 0) && (p2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_sp).φ)
             end
 
             p = kinematics.ω_lb_b[1]
@@ -430,14 +435,15 @@ function Systems.f_disc!(sys::System{<:LatControl},
             f_disc!(p2φ_pid, Δt)
             φ_sp = p2φ_pid.y.output
 
-        elseif mode === lat_χ_β
+        elseif χ2φ_enabled(mode) #φ_sp overridden by course angle tracker
 
             Control.Discrete.assign!(χ2φ_pid, χ2φ_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
+                #our next φ output must match φ setpoint at φβ2ar input
                 Systems.reset!(χ2φ_pid)
                 k_i = χ2φ_pid.u.k_i
-                (k_i != 0) && (χ2φ_pid.s.x_i0 = φ)
+                (k_i != 0) && (χ2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_sp).φ)
             end
 
             χ = kinematics.χ_gnd
@@ -446,7 +452,7 @@ function Systems.f_disc!(sys::System{<:LatControl},
             f_disc!(χ2φ_pid, Δt)
             φ_sp = χ2φ_pid.y.output
 
-        else #mode === lat_φ_β
+        else #lat_φ_β
 
             #φ_sp and β_sp directly set by input values, nothing to do here
 
@@ -457,8 +463,8 @@ function Systems.f_disc!(sys::System{<:LatControl},
         (mode != mode_prev) && Systems.reset!(φβ2ar_lqr)
 
         φβ2ar_lqr.u.x .= XLat(vehicle)
-        φβ2ar_lqr.u.z .= ZLatPhiBeta(vehicle)
-        φβ2ar_lqr.u.z_sp .= ZLatPhiBeta(; φ = φ_sp, β = β_sp)
+        φβ2ar_lqr.u.z .= ZLat(vehicle)
+        φβ2ar_lqr.u.z_sp .= ZLat(; φ = φ_sp, β = β_sp)
         f_disc!(φβ2ar_lqr, Δt)
         @unpack aileron_cmd, rudder_cmd = ULat(φβ2ar_lqr.y.output)
 
@@ -670,6 +676,11 @@ function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
 
             lat_ctl_mode = lat_ctl_mode_req
 
+            #below a v_gnd threshold, override χ mode and revert to φ
+            if (lat_ctl_mode === lat_χ_β) && (vehicle.y.kinematics.v_gnd < 10.0)
+                lat_ctl_mode = lat_φ_β
+            end
+
         else #hor_gdc_mode === hor_gdc_line
 
             # seg_gdc.u.line_sp = line_sp
@@ -759,22 +770,19 @@ function AircraftBase.trim!(ac::System{<:Cessna172RPAv1},
     #when the corresponding control modes are selected
     Systems.reset!(ac.avionics)
 
+    #in a fly-by-wire implementation, it makes more sense to assign the trim
+    #values to the inputs rather to the offsets
     u = ac.avionics.u
-    u.throttle_sp_input = 0
-    u.aileron_sp_input = 0
-    u.elevator_sp_input = 0
-    u.rudder_sp_input = 0
-    u.throttle_sp_offset = throttle
-    u.aileron_sp_offset = aileron
-    u.elevator_sp_offset = elevator
-    u.rudder_sp_offset = rudder
+    u.throttle_sp_input = throttle
+    u.aileron_sp_input = aileron
+    u.elevator_sp_input = elevator
+    u.rudder_sp_input = rudder
+    u.throttle_sp_offset = 0
+    u.aileron_sp_offset = 0
+    u.elevator_sp_offset = 0
+    u.rudder_sp_offset = 0
     u.flaps = flaps
     u.mixture = mixture
-
-    u.vrt_gdc_mode_req = vrt_gdc_off
-    u.hor_gdc_mode_req = hor_gdc_off
-    u.lon_ctl_mode_req = lon_direct
-    u.lat_ctl_mode_req = lat_direct
 
     u.q_sp = ω_lb_b[2]
     u.θ_sp = e_nb.θ
@@ -786,6 +794,20 @@ function AircraftBase.trim!(ac::System{<:Cessna172RPAv1},
     u.χ_sp = χ_gnd
     u.h_sp = h_e
 
+    u.vrt_gdc_mode_req = vrt_gdc_off
+    u.hor_gdc_mode_req = hor_gdc_off
+
+    #enable internal SAS and do an update so that their input setpoints are
+    #initialized to the trim values
+    u.lon_ctl_mode_req = lon_thr_ele
+    u.lat_ctl_mode_req = lat_φ_β
+    f_disc!(ac.avionics, ac.vehicle, 1)
+
+    #do another update with direct control so that the trim actuator commands
+    #are updated on avionics outputs. IMPORTANT: must be done AFTER SAS
+    #initialization
+    u.lon_ctl_mode_req = lon_direct
+    u.lat_ctl_mode_req = lat_direct
     f_disc!(ac.avionics, ac.vehicle, 1) #IMPORTANT: update avionics outputs
 
     return result

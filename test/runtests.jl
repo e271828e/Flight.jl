@@ -19,6 +19,7 @@ include(normpath("aircraft/test_c172cas.jl")); using .TestC172CAS
 include(normpath("aircraft/test_c172mcs.jl")); using .TestC172MCS
 
 include(normpath("aircraft/test_c172rpa.jl")); using .TestC172RPA
+include(normpath("aircraft/test_c172rpa_v1.jl")); using .TestC172RPAv1
 
 test_quaternions()
 test_attitude()

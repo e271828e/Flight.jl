@@ -348,7 +348,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         z_labels = [:φ, :β]
 
-        @assert tuple(z_labels...) === propertynames(C172RPAv1.ZLatPhiBeta())
+        @assert tuple(z_labels...) === propertynames(C172RPAv1.ZLat())
         z_trim = lss_red.y0[z_labels]
         n_z = length(z_labels)
 

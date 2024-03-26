@@ -33,7 +33,7 @@ y_air(ac::System{<:Cessna172MCS}) = ac.y.vehicle.air
 function test_control_modes()
 
     data_folder = joinpath(dirname(dirname(@__DIR__)),
-        normpath("src/aircraft/c172/c172fbw/variants/mcs/data"))
+        normpath("src/aircraft/c172/c172fbw/mcs/data"))
 
     @testset verbose = true "Control Modes" begin
 
@@ -546,9 +546,14 @@ function test_sim_paced(; save::Bool = true)
     ac = Cessna172MCS(LTF(), trn) |> System;
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 600)
 
-    kin_init = KinematicInit(
-        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-        h = h_trn + 1.81);
+    # #on ground
+    # kin_init = KinematicInit(
+    #     loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+    #     h = h_trn + 1.81);
+
+    #on air, automatically trimmed by reinit!
+    kin_init = C172.TrimParameters(
+        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
 
     reinit!(sim, kin_init)
 

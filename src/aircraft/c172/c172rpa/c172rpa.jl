@@ -147,13 +147,15 @@ function GUI.draw(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
 
             foreach(labels, commands, positions, buffers, offsets) do label, command, position, buffer, offset
 
-                CImGui.Text("$label Command"); CImGui.SameLine(200); display_bar("", command)
-                CImGui.Text("$label Position"); CImGui.SameLine(200); display_bar("", position)
-                buffer[offset[]+1] = Cfloat(position)
-                offset[] = (offset[]+1) % length(buffer)
-                CImGui.PlotLines("$label Position", buffer, length(buffer), offset[], "$label Position",
-                                 Cfloat(typemin(position)), Cfloat(typemax(position)),
-                                 (Cint(0), Cint(120)))
+                if CImGui.CollapsingHeader(label)
+                    CImGui.Text("$label Command"); CImGui.SameLine(200); display_bar("", command)
+                    CImGui.Text("$label Position"); CImGui.SameLine(200); display_bar("", position)
+                    buffer[offset[]+1] = Cfloat(position)
+                    offset[] = (offset[]+1) % length(buffer)
+                    CImGui.PlotLines("$label Position", buffer, length(buffer), offset[], "$label Position",
+                                    Cfloat(typemin(position)), Cfloat(typemax(position)),
+                                    (Cint(0), Cint(120)))
+                end
             end
 
         end)
@@ -195,14 +197,16 @@ function GUI.draw!(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
 
             foreach(labels, inputs, commands, positions, buffers, offsets) do label, input, command, position, buffer, offset
 
-                input[] = safe_slider("$label Command", input[], "%.6f")
-                CImGui.Text("$label Command"); CImGui.SameLine(200); display_bar("", command)
-                CImGui.Text("$label Position"); CImGui.SameLine(200); display_bar("", position)
-                buffer[offset[]+1] = Cfloat(position)
-                offset[] = (offset[]+1) % length(buffer)
-                CImGui.PlotLines("$label Position", buffer, length(buffer), offset[], "$label Position",
-                                 Cfloat(typemin(position)), Cfloat(typemax(position)),
-                                 (Cint(0), Cint(120)))
+                if CImGui.CollapsingHeader(label)
+                    input[] = safe_slider("$label Command", input[], "%.6f")
+                    CImGui.Text("$label Command"); CImGui.SameLine(200); display_bar("", command)
+                    CImGui.Text("$label Position"); CImGui.SameLine(200); display_bar("", position)
+                    buffer[offset[]+1] = Cfloat(position)
+                    offset[] = (offset[]+1) % length(buffer)
+                    CImGui.PlotLines("$label Position", buffer, length(buffer), offset[], "$label Position",
+                                    Cfloat(typemin(position)), Cfloat(typemax(position)),
+                                    (Cint(0), Cint(120)))
+                end
             end
 
         end)
