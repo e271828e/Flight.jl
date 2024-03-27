@@ -113,9 +113,13 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #should be made available in its (immutable) output y, logged via
         #SavingCallback
 
-        # channels = Channel{Output{typeof(sys.y)}}[]
         input_interfaces = InputInterface[]
         output_interfaces = OutputInterface[]
+
+        #uncap the refresh rate so that calls to render() return immediately
+        #without blocking, so that they do not interfere with simulation
+        #scheduling
+        gui.sync = UInt8(0)
 
         new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
             sys, integrator, log, gui, input_interfaces, output_interfaces, started, running, stepping)
@@ -443,6 +447,7 @@ function run_paced!(sim::Simulation; kwargs...)
     end
 end
 
+
 function run_loop_paced!(sim::Simulation;
                     pace::Real = 1)
 
@@ -452,18 +457,16 @@ function run_loop_paced!(sim::Simulation;
     t_end = integrator.sol.prob.tspan[2]
     algorithm = algorithm_type(sim) |> string
 
-    gui.sync == 0 || @warn("GUI Renderer sync ",
-        "should be set to 0 to avoid interfering with simulation scheduling")
+    try
 
-    GUI.init!(gui)
+        @assert gui.sync == 0
+        GUI.init!(gui)
 
-    τ = let wall_time_ref = time()
+        τ = let wall_time_ref = time()
             ()-> time() - wall_time_ref
         end
 
-    τ_last = τ()
-
-    try
+        τ_last = τ()
 
         isdone_err(sim)
         @info("Simulation: Starting on thread $(Threads.threadid())...")
@@ -497,10 +500,12 @@ function run_loop_paced!(sim::Simulation;
 
         end
 
+        @info("Simulation: Finished in $τ_last seconds")
+
     catch ex
 
-        @error("Simulation: Error during execution: $ex")
-        Base.show_backtrace(stderr, catch_backtrace())
+        st = stacktrace(catch_backtrace())
+        @error("Simulation: Terminated with $ex in $(st[1])")
 
     finally
 
@@ -517,14 +522,11 @@ function run_loop_paced!(sim::Simulation;
         #unblock any output interfaces waiting for a take!
         put_no_wait!(sim)
 
-        GUI.shutdown!(gui)
+        gui._initialized && GUI.shutdown!(gui)
 
     end
 
-    @info("Simulation: Finished in $τ_last seconds")
-
 end
-
 
 
 ################################################################################

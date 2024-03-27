@@ -71,10 +71,10 @@ function start!(interface::InputInterface{D}) where {D}
 
     @info("$D Interface: Starting on thread $(Threads.threadid())...")
 
-    init!(device)
-    wait(start)
-
     try
+
+        init!(device)
+        wait(start)
 
         while true
 
@@ -144,10 +144,10 @@ function start!(interface::OutputInterface{D}) where {D}
 
     @info("$D Interface: Starting on thread $(Threads.threadid())...")
 
-    init!(device)
-    wait(start)
-
     try
+
+        init!(device)
+        wait(start)
 
         while true
 

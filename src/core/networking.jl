@@ -16,7 +16,7 @@ export XPCDevice
 @kwdef mutable struct DummyUDPReceiver <: InputDevice
     socket::UDPSocket = UDPSocket()
     host::IPv4 = IPv4("127.0.0.1")
-    port::Int64 = 49016
+    port::Int64 = 49017
 end
 
 function IODevices.init!(receiver::DummyUDPReceiver)
@@ -33,6 +33,7 @@ IODevices.assign!(::Any, ::DummyUDPReceiver, ::DefaultMapping) = nothing
 function IODevices.update!(receiver::DummyUDPReceiver)
     data = recv(receiver.socket)
     # println("DummyUDPReceiver got this message: $data")
+    println("""{"eng_start": true}""")
 end
 
 IODevices.shutdown!(receiver::DummyUDPReceiver) = close(receiver.socket)
@@ -44,7 +45,7 @@ IODevices.should_close(::DummyUDPReceiver) = false
 @kwdef mutable struct DummyUDPSender <: OutputDevice
     socket::UDPSocket = UDPSocket()
     host::IPv4 = IPv4("127.0.0.1")
-    port::Int64 = 49016
+    port::Int64 = 49017
 end
 
 function IODevices.init!(sender::DummyUDPSender)

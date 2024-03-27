@@ -499,21 +499,21 @@ function test_guidance_modes()
         @test av.y.lon_ctl_mode === C172RPAv1.lon_thr_EAS
         step!(sim, 60, true) #altitude is captured
         @test av.y.lon_ctl_mode === C172RPAv1.lon_EAS_clm
-        @test isapprox.(y_kin(ac).h_e - av.u.h_sp, 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(ac).h_e - HEllip(av.u.h_sp), 0.0; atol = 1e-1)
 
         #setpoint changes within the current threshold do not prompt a mode change
         av.u.h_sp = y_kin(ac).h_e - av.alt_gdc.s.h_thr / 2
         step!(sim, 1, true)
         @test av.y.lon_ctl_mode === C172RPAv1.lon_EAS_clm
         step!(sim, 30, true) #altitude is captured
-        @test isapprox.(y_kin(ac).h_e - av.u.h_sp, 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(ac).h_e - HEllip(av.u.h_sp), 0.0; atol = 1e-1)
 
         av.u.h_sp = y_kin_trim.h_e - 100
         step!(sim, 1, true)
         @test av.y.lon_ctl_mode === C172RPAv1.lon_thr_EAS
         step!(sim, 80, true) #altitude is captured
         @test av.y.lon_ctl_mode === C172RPAv1.lon_EAS_clm
-        @test isapprox.(y_kin(ac).h_e - av.u.h_sp, 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(ac).h_e - HEllip(av.u.h_sp), 0.0; atol = 1e-1)
 
         @test av.y.lon_ctl_mode === C172RPAv1.lon_EAS_clm
         @test @ballocated(f_disc!($ac, 0.01)) == 0

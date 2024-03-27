@@ -1,15 +1,17 @@
 module DemoUDP
 
+using StructTypes, JSON3
+
 using Flight
 using Flight.FlightCore.Sim
-using Flight.FlightComponents.Control.Continuous: PIVector
+using Flight.FlightComponents.Control.Continuous: PIVector, PIVectorInput
 
 export demo_udp
 
 function demo_udp()
 
     sys = PIVector{1}() |> System
-    sim = Simulation(sys; t_end = 10, dt = 0.02)
+    sim = Simulation(sys; t_end = 1, dt = 0.02)
 
     Sim.attach!(sim, Networking.DummyUDPSender())
     Sim.attach!(sim, Networking.DummyUDPReceiver())

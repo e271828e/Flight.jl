@@ -1,6 +1,7 @@
 module C172RPAv1
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
+using StructTypes
 
 using Flight.FlightCore
 using Flight.FlightCore.Utils
@@ -283,7 +284,7 @@ end
     lat_direct = 0 #direct aileron_cmd + rudder_cmd
     lat_p_β = 1 #roll rate + sideslip
     lat_φ_β = 2 #bank angle + sideslip
-    lat_χ_β = 4 #course angle + sideslip
+    lat_χ_β = 3 #course angle + sideslip
 end
 
 φβ2ar_enabled(mode::LatControlMode) = (mode != lat_direct)
@@ -486,12 +487,20 @@ end
     alt_hold = 1
 end
 
+@enum AltDatum begin
+    ellipsoidal = 0
+    orthometric = 1
+end
+
+################################################################################
+
 @kwdef struct AltitudeGuidance <: AbstractControlChannel
     k_h2c::Float64 = 0.2 #good margins for the whole envelope
 end
 
 @kwdef mutable struct AltitudeGuidanceU
-    h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
+    h_sp::Float64 = 0.0 #altitude setpoint
+    h_datum::AltDatum = ellipsoidal
 end
 
 @kwdef mutable struct AltitudeGuidanceS
@@ -501,8 +510,9 @@ end
 
 @kwdef struct AltitudeGuidanceY
     state::AltGuidanceState = alt_hold
-    h_thr::Float64 = 0.0 #current altitude switching threshold
     lon_ctl_mode::LonControlMode = lon_EAS_clm
+    Δh::Float64 = 0.0 #current altitude error
+    h_thr::Float64 = 0.0 #current altitude switching threshold
     throttle_sp::Float64 = 0.0
     clm_sp::Float64 = 0.0
 end
@@ -511,17 +521,17 @@ Systems.U(::AltitudeGuidance) = AltitudeGuidanceU()
 Systems.S(::AltitudeGuidance) = AltitudeGuidanceS()
 Systems.Y(::AltitudeGuidance) = AltitudeGuidanceY()
 
-get_Δh(h_sp::HEllip, vehicle::System{<:C172RPA.Vehicle}) = h_sp - vehicle.y.kinematics.h_e
-get_Δh(h_sp::HOrth, vehicle::System{<:C172RPA.Vehicle}) = h_sp - vehicle.y.kinematics.h_o
 
 function Systems.f_disc!(sys::System{<:AltitudeGuidance},
                         vehicle::System{<:C172RPA.Vehicle}, ::Real)
 
-    Δh = get_Δh(sys.u.h_sp, vehicle)
-    clm_sp = sys.constants.k_h2c * Δh
     @unpack state, h_thr = sys.s
-    # @show Δh
-    # @show state
+    @unpack h_sp, h_datum = sys.u
+    @unpack h_e, h_o, v_eOb_n = vehicle.y.kinematics
+
+    h = h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o)
+    Δh = h_sp - h
+    clm_sp = sys.constants.k_h2c * Δh
 
     if state === alt_acquire
 
@@ -540,7 +550,7 @@ function Systems.f_disc!(sys::System{<:AltitudeGuidance},
 
     end
 
-    sys.y = AltitudeGuidanceY(; state, h_thr, lon_ctl_mode, throttle_sp, clm_sp)
+    sys.y = AltitudeGuidanceY(; state, lon_ctl_mode, Δh, h_thr, throttle_sp, clm_sp)
 
 end
 
@@ -604,7 +614,8 @@ end
     φ_sp::Float64 = 0.0 #bank angle setpoint
     χ_sp::Float64 = 0.0 #course angle setpoint
     β_sp::Float64 = 0.0 #sideslip angle setpoint
-    h_sp::Union{HEllip, HOrth} = HEllip(0.0) #altitude setpoint
+    h_sp::Float64 = 0.0 #altitude setpoint
+    h_datum::AltDatum = ellipsoidal #altitude datum
 end
 
 @kwdef struct AvionicsY
@@ -633,7 +644,7 @@ function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
             throttle_sp_input, aileron_sp_input, elevator_sp_input, rudder_sp_input,
             throttle_sp_offset, aileron_sp_offset, elevator_sp_offset, rudder_sp_offset,
             vrt_gdc_mode_req, hor_gdc_mode_req, lon_ctl_mode_req, lat_ctl_mode_req,
-            q_sp, EAS_sp, θ_sp, clm_sp, p_sp, φ_sp, χ_sp, β_sp, h_sp = avionics.u
+            q_sp, EAS_sp, θ_sp, clm_sp, p_sp, φ_sp, χ_sp, β_sp, h_sp, h_datum = avionics.u
 
     @unpack lon_ctl, lat_ctl, alt_gdc, seg_gdc = avionics.subsystems
 
@@ -664,6 +675,7 @@ function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
         else #vrt_gdc_mode === vrt_gdc_alt
 
             alt_gdc.u.h_sp = h_sp
+            alt_gdc.u.h_datum = h_datum
             f_disc!(alt_gdc, vehicle, Δt)
 
             lon_ctl_mode = alt_gdc.y.lon_ctl_mode
@@ -792,7 +804,8 @@ function AircraftBase.trim!(ac::System{<:Cessna172RPAv1},
     u.φ_sp = e_nb.φ
     u.β_sp = β_b
     u.χ_sp = χ_gnd
-    u.h_sp = h_e
+    u.h_sp = Float64(h_e)
+    u.h_datum = ellipsoidal
 
     u.vrt_gdc_mode_req = vrt_gdc_off
     u.hor_gdc_mode_req = hor_gdc_off
@@ -989,12 +1002,17 @@ function GUI.draw(sys::System{<:LatControl}, p_open::Ref{Bool} = Ref(true))
 end
 
 function GUI.draw(sys::System{<:AltitudeGuidance}, p_open::Ref{Bool} = Ref(true))
+
+    @unpack state, lon_ctl_mode, Δh, h_thr, throttle_sp, clm_sp = sys.y
+
     Begin("Altitude Guidance", p_open)
-        Text("State: $(sys.y.state)")
-        Text("Control Mode: $(sys.y.lon_ctl_mode)")
-        Text("Altitude Threshold: $(sys.y.h_thr)")
-        Text("Throttle Setpoint: $(sys.y.throttle_sp)")
-        Text("Climb Rate Setpoint: $(sys.y.clm_sp)")
+
+        Text("State: $state")
+        Text("Control Mode: $lon_ctl_mode")
+        Text("Altitude Error: $Δh")
+        Text("Altitude Threshold: $h_thr")
+        Text("Throttle Setpoint: $throttle_sp")
+        Text("Climb Rate Setpoint: $clm_sp")
     End()
 end
 
@@ -1074,24 +1092,24 @@ function GUI.draw!(avionics::System{<:C172RPAv1.Avionics},
                     dynamic_button("Altitude", mode_button_HSV(vrt_gdc_alt, u.vrt_gdc_mode_req, y.vrt_gdc_mode), 0.1, 0.1)
                     if IsItemActive()
                         u.vrt_gdc_mode_req = vrt_gdc_alt
-                        u.h_sp = h_datum == 0 ? h_e : h_o
+                        u.h_sp = (u.h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o))
                     end
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    h_val = safe_input("Altitude Setpoint", Float64(u.h_sp), 1, 1.0, "%.3f")
+                    u.h_sp = safe_input("Altitude Setpoint", Float64(u.h_sp), 1, 1.0, "%.3f")
                     PopItemWidth()
                 CImGui.TableNextColumn();
-                    isa(u.h_sp, HEllip) && Text(@sprintf("%.3f", Float64(h_e)))
-                    isa(u.h_sp, HOrth) && Text(@sprintf("%.3f", Float64(h_o)))
+                    u.h_datum === ellipsoidal && Text(@sprintf("%.3f", Float64(h_e)))
+                    u.h_datum === orthometric && Text(@sprintf("%.3f", Float64(h_o)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
                 CImGui.TableNextColumn();
                     @c RadioButton("Ellipsoidal", &h_datum, 0); SameLine()
                     @c RadioButton("Orthometric", &h_datum, 1)
-                    u.h_sp = h_datum == 0 ? HEllip(h_val) : HOrth(h_val)
+                    u.h_datum = (h_datum == 0 ? ellipsoidal : orthometric)
             CImGui.EndTable()
         end #table
 
@@ -1422,6 +1440,56 @@ function GUI.draw!(avionics::System{<:C172RPAv1.Avionics},
 
 end
 
-# include(joinpath(@__DIR__, "design", "mcs_design.jl")); using .MCSDesign
+################################################################################
+################################## JSON3  ######################################
+
+#declare AvionicsU as mutable
+StructTypes.StructType(::Type{AvionicsU}) = StructTypes.Mutable()
+
+#enable JSON parsing of integers as LonControlMode
+StructTypes.StructType(::Type{LonControlMode}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{LonControlMode}) = Int32 #default enum type
+StructTypes.lower(x::LonControlMode) = Int32(x)
+
+#enable JSON parsing of integers as LatControlMode
+StructTypes.StructType(::Type{LatControlMode}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{LatControlMode}) = Int32 #default enum type
+StructTypes.lower(x::LatControlMode) = Int32(x)
+
+#enable JSON parsing of integers as VerticalGuidanceMode
+StructTypes.StructType(::Type{VerticalGuidanceMode}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{VerticalGuidanceMode}) = Int32 #default enum type
+StructTypes.lower(x::VerticalGuidanceMode) = Int32(x)
+
+#enable JSON parsing of integers as HorizontalGuidanceMode
+StructTypes.StructType(::Type{HorizontalGuidanceMode}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{HorizontalGuidanceMode}) = Int32 #default enum type
+StructTypes.lower(x::HorizontalGuidanceMode) = Int32(x)
+
+#enable JSON parsing of integers as HorizontalGuidanceMode
+StructTypes.StructType(::Type{AltDatum}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{AltDatum}) = Int32 #default enum type
+StructTypes.lower(x::AltDatum) = Int32(x)
+
+#now we can do:
+# JSON3.read(JSON3.write(AvionicsU()), AvionicsU)
+# JSON3.read!(JSON3.write(AvionicsU()), AvionicsU())
+
+#more compact, but horribly long compilation time:
+
+# #enable JSON3 parsing of integers into these enum types
+# const ParseableEnum = Union{
+#     LonControlMode,
+#     LatControlMode,
+#     VerticalGuidanceMode,
+#     HorizontalGuidanceMode,
+#     AltDatum,
+# }
+
+# StructTypes.StructType(::Type{<:ParseableEnum}) = StructTypes.CustomStruct()
+# StructTypes.lowertype(::Type{ParseableEnum}) = Int32 #default enum type
+# StructTypes.lower(x::ParseableEnum) = Int32(x)
+
+
 
 end #module

@@ -262,7 +262,7 @@ end
 function add_joystick(slot::JoystickSlot)
 
     if !JoystickPresent(slot)
-        @error("Could not add joystick at slot $slot: not found")
+        @warn("Could not add joystick at slot $slot: not found")
         return
     end
 
