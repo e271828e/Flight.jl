@@ -32,8 +32,8 @@ IODevices.assign!(::Any, ::DummyUDPReceiver, ::DefaultMapping) = nothing
 
 function IODevices.update!(receiver::DummyUDPReceiver)
     data = recv(receiver.socket)
-    # println("DummyUDPReceiver got this message: $data")
-    println("""{"eng_start": true}""")
+    println("DummyUDPReceiver got this message: $data")
+    # println("""{"eng_start": true}""")
 end
 
 IODevices.shutdown!(receiver::DummyUDPReceiver) = close(receiver.socket)

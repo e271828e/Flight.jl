@@ -953,6 +953,9 @@ function GUI.draw(sys::Union{System{<:PID}, System{<:PIDVector}},
 end #function
 
 
+GUI.draw!(sys::System{<:PID}, label::String = "Discrete PID") = GUI.draw(sys, label)
+
+
 ############################## LQRTracker ######################################
 ################################################################################
 
