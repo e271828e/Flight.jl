@@ -533,14 +533,14 @@ function test_discrete_leadlag(save = false)
         sys = LeadLagDiscrete() |> System;
         @pack! sys.u = z, p, k
 
-        sys_io! = let
+        user_callback! = let
             function (sys)
                 t = sys.t[]
                 sys.u.u1 = sin(t)
             end
         end
 
-        sim = Simulation(sys; Δt = 0.001, t_end = 10, sys_io!)
+        sim = Simulation(sys; Δt = 0.001, t_end = 10, user_callback!)
         Sim.run!(sim)
         ts = TimeSeries(sim)
 

@@ -4,7 +4,14 @@ using StaticArrays, StructArrays, StructTypes
 
 using ..GUI
 
-export Ranged, saturation, linear_scaling, wrap_to_π
+export wrap_to_π
+export Ranged, saturation, linear_scaling
+
+################################################################################
+################################ Misc ##########################################
+
+wrap_to_π(x) = x + 2π*floor((π-x)/(2π))
+
 
 ################################################################################
 ################################ Ranged ########################################
@@ -108,10 +115,5 @@ StructTypes.construct(::Type{Ranged{T,Min,Max}}, x::Real) where {T, Min, Max} = 
 
 #     C .= A .+ B #no allocations
 # end
-
-################################################################################
-################################ Misc ##########################################
-
-wrap_to_π(x) = x + 2π*floor((π-x)/(2π))
 
 end #module

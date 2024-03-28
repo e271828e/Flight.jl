@@ -119,7 +119,7 @@ function test_sim(; save::Bool = true)
         exit_flag, trim_state = trim!(ac, trim_params)
         @test exit_flag === true
 
-        sys_io! = let
+        user_callback! = let
 
             function (ac)
 
@@ -129,7 +129,7 @@ function test_sim(; save::Bool = true)
             end
         end
 
-        sim = Simulation(ac; t_end = 30, sys_io!, adaptive = true)
+        sim = Simulation(ac; t_end = 30, user_callback!, adaptive = true)
         Sim.run!(sim)
 
         # plots = make_plots(sim; Plotting.defaults...)

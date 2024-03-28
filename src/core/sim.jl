@@ -49,7 +49,6 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     gui::Renderer
     input_interfaces::Vector{InputInterface}
     output_interfaces::Vector{OutputInterface}
-    # channels::Vector{Channel{Output{Y}}}
     started::Base.Event #signals that simulation execution has started
     running::ReentrantLock #while locked it signals that simulation execution is in progress
     stepping::ReentrantLock #must be acquired by IO interfaces to modify the system
@@ -62,11 +61,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         args_step::Tuple = (), #externally supplied arguments to System's f_step!
         args_disc::Tuple = (), #externally supplied arguments to System's f_disc!
         sys_init!::Function = Systems.init!, #default System initialization function
-        sys_io!::Function = no_sys_io!, #System I/O function
-        gui::Renderer = Renderer(label = "Simulation", sync = 0),
-        started::Base.Event = Base.Event(), #to be shared with input interfaces
-        running::ReentrantLock = ReentrantLock(), #to be shared with all interfaces
-        stepping::ReentrantLock = ReentrantLock(), #to be shared with input interfaces
+        user_callback!::Function = user_callback!, #user-specified callback
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
         dt::Real = 0.02, #continuous dynamics integration step
@@ -81,13 +76,13 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
                                         than the discrete dynamics update period"
 
-        params = (sys = sys, sys_init! = sys_init!, sys_io! = sys_io!, Δt = Δt,
+        params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!, Δt = Δt,
                   args_ode = args_ode, args_step = args_step, args_disc = args_disc)
 
         cb_cont = DiscreteCallback((u, t, integrator)->true, f_cb_cont!)
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_disc = PeriodicCallback(f_cb_disc!, Δt)
-        cb_io = DiscreteCallback((u, t, integrator)->true, f_cb_io!)
+        cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
 
         log = SavedValues(Float64, typeof(sys.y))
         saveat_arr = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
@@ -95,9 +90,9 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
                                     saveat = saveat_arr, save_everystep)
 
         if save_on
-            cb_set = CallbackSet(cb_cont, cb_step, cb_disc, cb_io, cb_save)
+            cb_set = CallbackSet(cb_cont, cb_step, cb_disc, cb_user, cb_save)
         else
-            cb_set = CallbackSet(cb_cont, cb_step, cb_disc, cb_io)
+            cb_set = CallbackSet(cb_cont, cb_step, cb_disc, cb_user)
         end
 
         #the current System's x value is used as initial condition. a copy is
@@ -113,16 +108,15 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #should be made available in its (immutable) output y, logged via
         #SavingCallback
 
-        input_interfaces = InputInterface[]
-        output_interfaces = OutputInterface[]
-
-        #uncap the refresh rate so that calls to render() return immediately
-        #without blocking, so that they do not interfere with simulation
-        #scheduling
-        gui.sync = UInt8(0)
+        #the GUI Renderer's refresh rate must be uncapped so that calls to
+        #render() return immediately without blocking, so that they do not
+        #interfere with simulation scheduling
 
         new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
-            sys, integrator, log, gui, input_interfaces, output_interfaces, started, running, stepping)
+            sys, integrator, log,
+            Renderer(label = "Simulation", sync = UInt8(0)),
+            InputInterface[], OutputInterface[],
+            Base.Event(), ReentrantLock(), ReentrantLock())
     end
 
 end
@@ -142,6 +136,9 @@ end
 #get ODE algorithm type
 algorithm_type(sim::Simulation) = sim.integrator.alg |> typeof
 
+#function signature for a user callback function, called after every integration
+#step. this function MUST NEVER modify the System's ẋ, x or t
+user_callback!(::System) = nothing
 
 ############################ Stepping functions ################################
 
@@ -229,11 +226,11 @@ end
 
 #DiscreteCallback function, calls the user-specified System I/O function after
 #every integration step
-function f_cb_io!(integrator)
+function f_cb_user!(integrator)
 
-    @unpack sys, sys_io! = integrator.p
+    @unpack sys, user_callback! = integrator.p
 
-    sys_io!(sys)
+    user_callback!(sys)
 
     #a System I/O function should never modify the System's continuous state, so
     #we may as well tell the integrator to avoid any performance hit
@@ -244,10 +241,6 @@ end
 #SavingCallback function, gets called at the end of each step after f_disc!
 #and/or f_step!
 f_cb_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
-
-#function signature for a System I/O function. note: an I/O function MUST NOT
-#modify a System's ẋ, x or t
-no_sys_io!(::System) = nothing
 
 
 ####################### OrdinaryDiffEq extensions ##############################
@@ -405,29 +398,18 @@ function run_loop!(sim::Simulation)
             end
         end
 
+        @info("Simulation: Finished in $τ seconds")
+
     catch ex
 
-        @error("Simulation: Error during execution: $ex")
-        Base.show_backtrace(stderr, catch_backtrace())
+        st = stacktrace(catch_backtrace())
+        @error("Simulation: Terminated with $ex in $(st[1])")
 
     finally
 
-        #signal all interfaces to shut down
-        islocked(running) && unlock(running)
-
-        #unblock any interfaces waiting for simulation to start in case we
-        #exited with isdone_err and we didn't get to notify them
-        notify(started)
-
-        #reset the event for the next sim execution
-        reset(started)
-
-        #unblock any output interfaces waiting for a take!
-        put_no_wait!(sim)
+        sim_cleanup!(sim)
 
     end
-
-    @info("Simulation: Finished in $τ seconds")
 
 end
 
@@ -509,24 +491,32 @@ function run_loop_paced!(sim::Simulation;
 
     finally
 
-        #signal all interfaces to shut down
-        islocked(running) && unlock(running)
-
-        #unblock any interfaces waiting for simulation to start in case we
-        #exited with error and didn't get to notify them
-        notify(started)
-
-        #reset the event for the next sim execution
-        reset(started)
-
-        #unblock any output interfaces waiting for a take!
-        put_no_wait!(sim)
-
-        gui._initialized && GUI.shutdown!(gui)
+        sim_cleanup!(sim)
 
     end
 
 end
+
+function sim_cleanup!(sim::Simulation)
+
+    @unpack gui, started, running = sim
+
+    #signal all interfaces to shut down
+    islocked(running) && unlock(running)
+
+    #unblock any interfaces waiting for simulation to start in case we
+    #exited with error and didn't get to notify them
+    notify(started)
+
+    #reset the event for the next sim execution
+    reset(started)
+
+    #unblock any output interfaces waiting for a take!
+    put_no_wait!(sim)
+
+    gui._initialized && GUI.shutdown!(gui)
+end
+
 
 
 ################################################################################

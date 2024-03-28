@@ -3,71 +3,141 @@ module Networking
 using Sockets
 using UnPack
 using GLFW
+using JSON3
 
 using ..Sim
+using ..Systems
 using ..IODevices
 
-export XPCDevice
+export UDPSender, UDPReceiver, XPCDevice, UDPServer, UDPClient
 
 
 ################################################################################
-############################### UDPDummies #################################
+################################### UDP ########################################
 
-@kwdef mutable struct DummyUDPReceiver <: InputDevice
-    socket::UDPSocket = UDPSocket()
-    host::IPv4 = IPv4("127.0.0.1")
-    port::Int64 = 49017
+mutable struct UDPSender{T <: IPAddr}
+    socket::UDPSocket
+    host::T
+    port::Int
+    function UDPSender(; host::T = IPv4("127.0.0.1"),
+                         port::Integer = 49017) where {T <: IPAddr}
+        new{T}(UDPSocket(), host, port)
+    end
 end
 
-function IODevices.init!(receiver::DummyUDPReceiver)
-    receiver.socket = UDPSocket() #create a new socket on each execution
+init!(sender::UDPSender) = (sender.socket = UDPSocket()) #new socket
 
+function Sockets.send(sender::UDPSender, msg)
+    @unpack socket, host, port = sender
+    send(socket, host, port, msg)
+end
+
+shutdown!(::UDPSender) = nothing
+
+################################################################################
+
+mutable struct UDPReceiver{T <: IPAddr}
+    socket::UDPSocket
+    host::T
+    port::Int
+    function UDPReceiver(; host::T = IPv4("127.0.0.1"),
+                           port::Integer = 49017) where {T <: IPAddr}
+        new{T}(UDPSocket(), host, port)
+    end
+end
+
+function init!(receiver::UDPReceiver)
+    receiver.socket = UDPSocket() #create a new socket on each initialization
     @unpack socket, host, port = receiver
     if !bind(socket, host, port; reuseaddr=true)
         @error( "Failed to bind socket to host $host, port $port")
     end
 end
 
-IODevices.assign!(::Any, ::DummyUDPReceiver, ::DefaultMapping) = nothing
+#apparently, there is currently no in place version of recv, so each call
+#allocates a new Vector{UInt8}. this is not ideal, because it will continuously
+#trigger the garbage collector
+Sockets.recv(receiver::UDPReceiver) = recv(receiver.socket)
+shutdown!(receiver::UDPReceiver) = close(receiver.socket)
 
-function IODevices.update!(receiver::DummyUDPReceiver)
-    data = recv(receiver.socket)
-    println("DummyUDPReceiver got this message: $data")
-    # println("""{"eng_start": true}""")
-end
-
-IODevices.shutdown!(receiver::DummyUDPReceiver) = close(receiver.socket)
-
-IODevices.should_close(::DummyUDPReceiver) = false
 
 ################################################################################
 
-@kwdef mutable struct DummyUDPSender <: OutputDevice
-    socket::UDPSocket = UDPSocket()
-    host::IPv4 = IPv4("127.0.0.1")
-    port::Int64 = 49017
+struct UDPClient{F <: Function} <: OutputDevice
+    callback::F
+    sender::UDPSender
+    function UDPClient(; callback::F = client_callback,
+                        kwargs...) where {F <: Function}
+        new{F}(callback, UDPSender(; kwargs...))
+    end
 end
 
-function IODevices.init!(sender::DummyUDPSender)
-    sender.socket = UDPSocket() #create a new socket on each execution
+IODevices.init!(client::UDPClient) = init!(client.sender)
+
+function IODevices.update!(client::UDPClient, data::Sim.Output)
+    try
+        str = client.callback(data)
+        send(client.sender, str)
+    catch ex
+        st = stacktrace(catch_backtrace())
+        @warn("Client update failed with $ex in $(st[1])")
+    end
 end
 
-function IODevices.update!(sender::DummyUDPSender, ::Any)
-    @unpack socket, host, port = sender
-    send(socket, host, port, "Hello")
+IODevices.shutdown!(client::UDPClient) = shutdown!(client.sender)
+IODevices.should_close(::UDPClient) = false
+
+#client callback signature; the output string is the result of some
+#user-specified serialization of simulation output (typically via JSON)
+client_callback(::Sim.Output)::String = ""
+
+
+################################################################################
+
+mutable struct UDPServer{F <: Function} <: InputDevice
+    callback::F
+    receiver::UDPReceiver
+    buffer::Vector{UInt8}
+    function UDPServer(; callback::F = server_callback!,
+                        buffer_size::Integer = 1024,
+                        kwargs...) where {F <: Function}
+        new{F}(callback, UDPReceiver(; kwargs...), zeros(UInt8, buffer_size))
+    end
 end
 
-IODevices.shutdown!(::DummyUDPSender) = nothing
-IODevices.should_close(::DummyUDPSender) = false
+IODevices.init!(server::UDPServer) = init!(server.receiver)
+
+#discards previous contents
+IODevices.update!(server::UDPServer) = (server.buffer = recv(server.receiver))
+
+#this one queues new data
+# IODevices.update!(server::UDPServer) = (append!(server.buffer, recv(server.socket)))
+
+function IODevices.assign!(sys::System, server::UDPServer, mapping::InputMapping)
+    try
+        server.callback(sys, String(server.buffer), mapping)
+    catch ex
+        st = stacktrace(catch_backtrace())
+        @warn("Server callback failed with $ex in $(st[1])")
+    end
+end
+
+IODevices.shutdown!(server::UDPServer) = shutdown!(server.receiver)
+IODevices.should_close(::UDPServer) = false
+
+#server callback signature; the input string is deserialized and used to update
+#the simulated System according to the specified InputMapping
+server_callback!(::System, ::String, ::InputMapping) = nothing
 
 
 ################################################################################
 ############################### XPCDevice ####################################
 
-@kwdef mutable struct XPCDevice <: OutputDevice
-    socket::UDPSocket = UDPSocket()
-    host::IPv4 = IPv4("127.0.0.1")
-    port::Int64 = 49009
+struct XPCDevice <: OutputDevice
+    sender::UDPSender
+    function XPCDevice(; host::IPAddr = IPv4("127.0.0.1"), port::Integer = 49009)
+        new(UDPSender(; host, port))
+    end
 end
 
 function set_dref(xpc::XPCDevice, dref_id::AbstractString, dref_value::Real)
@@ -83,7 +153,7 @@ function set_dref(xpc::XPCDevice, dref_id::AbstractString, dref_value::Real)
         UInt8(1),
         Float32(dref_value))
 
-    send(xpc.socket, xpc.host, xpc.port, buffer.data)
+    send(xpc.sender, buffer.data)
 end
 
 function set_dref(xpc::XPCDevice, dref_id::AbstractString, dref_value::AbstractVector{<:Real})
@@ -96,10 +166,12 @@ function set_dref(xpc::XPCDevice, dref_id::AbstractString, dref_value::AbstractV
         dref_value |> length |> UInt8,
         Vector{Float32}(dref_value))
 
-    send(xpc.socket, xpc.host, xpc.port, buffer.data)
+    send(xpc.sender, buffer.data)
 end
 
-disable_physics!(xpc::XPCDevice) = set_dref(xpc, "sim/operation/override/override_planepath", 1)
+function disable_physics!(xpc::XPCDevice)
+    set_dref(xpc, "sim/operation/override/override_planepath", 1)
+end
 
 function set_position!(xpc::XPCDevice; lat, lon, h_o, psi, theta, phi, aircraft::Integer = 0)
 
@@ -111,13 +183,12 @@ function set_position!(xpc::XPCDevice; lat, lon, h_o, psi, theta, phi, aircraft:
         Float32(theta), Float32(phi), Float32(psi),
         Float32(-998)) #last one is landing gear (?!)
 
-    send(xpc.socket, xpc.host, xpc.port, buffer.data)
+    send(xpc.sender, buffer.data)
 
 end
-########################### IODevices extensions ###############################
 
 function IODevices.init!(xpc::XPCDevice)
-    xpc.socket = UDPSocket() #create a new socket on each execution
+    init!(xpc.sender)
     disable_physics!(xpc)
 end
 
@@ -125,6 +196,6 @@ end
 IODevices.update!(xpc::XPCDevice, out::Sim.Output) = set_position!(xpc, out.y)
 
 IODevices.should_close(xpc::XPCDevice) = false #handled
-IODevices.shutdown!(::XPCDevice) = nothing
+IODevices.shutdown!(xpc::XPCDevice) = shutdown!(xpc.sender)
 
 end #module
