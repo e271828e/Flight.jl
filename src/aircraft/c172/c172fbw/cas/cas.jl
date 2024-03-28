@@ -1115,9 +1115,9 @@ end
 
 # ############################ Joystick Mappings #################################
 
-function IODevices.assign!(sys::System{<:Cessna172CAS}, joystick::Joystick,
+function IODevices.assign_input!(sys::System{<:Cessna172CAS}, joystick::Joystick,
                            mapping::InputMapping)
-    IODevices.assign!(sys.avionics, joystick, mapping)
+    IODevices.assign_input!(sys.avionics, joystick, mapping)
 end
 
 elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
@@ -1125,7 +1125,7 @@ aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function IODevices.assign!(sys::System{Avionics},
+function IODevices.assign_input!(sys::System{Avionics},
                            joystick::XBoxController,
                            ::DefaultMapping)
 
@@ -1150,7 +1150,7 @@ function IODevices.assign!(sys::System{Avionics},
 
 end
 
-function IODevices.assign!(sys::System{Avionics},
+function IODevices.assign_input!(sys::System{Avionics},
                            joystick::T16000M,
                            ::DefaultMapping)
 
@@ -1174,7 +1174,7 @@ function IODevices.assign!(sys::System{Avionics},
 
 end
 
-function IODevices.assign!(sys::System{Avionics},
+function IODevices.assign_input!(sys::System{Avionics},
                            joystick::GladiatorNXTEvo,
                            ::DefaultMapping)
 

@@ -28,29 +28,31 @@ abstract type InputDevice <: IODevice end
 abstract type InputMapping end
 struct DefaultMapping <: InputMapping end
 
+#an input device must control its own update rate through calls to blocking
+#functions from within the update_input! method (such as GLFW.SwapBuffers with
+#GLFW.SwapInterval > 0 or a socket receive)
+function update_input!(device::D) where {D<:InputDevice}
+    MethodError(update_input!, (device, )) |> throw
+end
+
 #for every input device it wants to support, the target type should at least
 #extend the three argument assign! method below with a ::DefaultMapping
 #argument. for alternative mappings, it can define additional subtypes of
 #InputMapping and their corresponding assign! methods
-function assign!(target::Any, device::InputDevice, mapping::InputMapping)
+function assign_input!(target::Any, device::InputDevice, mapping::InputMapping)
     @warn("Assigment method for target $(typeof(target)) from device"*
     "$(typeof(device)) with mapping $(typeof(mapping)) not implemented")
 end
 
-function assign!(target, device::InputDevice)
-    assign!(target, device, DefaultMapping())
+function assign_input!(target, device::InputDevice)
+    assign_input!(target, device, DefaultMapping())
 end
-
-#an input device must control its own update rate through calls to blocking
-#functions from within the update! method (such as GLFW.SwapBuffers with
-#GLFW.SwapInterval > 0 or a socket receive)
-update!(device::D) where {D<:InputDevice} = MethodError(update!, (device, )) |> throw
 
 struct DummyInputDevice <: InputDevice end
 
 init!(::DummyInputDevice) = println("DummyInputDevice initialized")
-assign!(::Any, ::DummyInputDevice, ::DefaultMapping) = nothing
-update!(::DummyInputDevice) = (sleep(1); println("DummyInputDevice updated"))
+update_input!(::DummyInputDevice) = (sleep(1); println("DummyInputDevice updated"))
+assign_input!(::Any, ::DummyInputDevice, ::DefaultMapping) = nothing
 shutdown!(::DummyInputDevice) = println("DummyInputDevice shutting down")
 should_close(::DummyInputDevice) = false
 
@@ -83,9 +85,9 @@ function start!(interface::InputInterface{D}) where {D}
                 break
             end
 
-            update!(device)
+            update_input!(device)
             lock(stepping) #ensure the Simulation is not currently stepping
-                assign!(target, device, mapping)
+                assign_input!(target, device, mapping)
             unlock(stepping)
 
         end
@@ -106,12 +108,14 @@ end
 
 abstract type OutputDevice <: IODevice end
 
-update!(device::D, data) where {D<:OutputDevice} = MethodError(update!, (device, data)) |> throw
+function process_output!(device::D, data) where {D<:OutputDevice}
+    MethodError(process_output!, (device, data)) |> throw
+end
 
 struct DummyOutputDevice <: OutputDevice end
 
 init!(::DummyOutputDevice) = println("DummyOutputDevice initialized")
-update!(::DummyOutputDevice, data) = (sleep(1); println("DummyOutputDevice updated"))
+process_output!(::DummyOutputDevice, data) = (sleep(1); println("DummyOutputDevice updated"))
 shutdown!(::DummyOutputDevice) = println("DummyOutputDevice shutting down")
 should_close(::DummyOutputDevice) = false
 
@@ -158,8 +162,8 @@ function start!(interface::OutputInterface{D}) where {D}
                 break
             end
 
-            data = take!(channel)
-            update!(device, data)
+            output = take!(channel) #blocks until simulation writes its output
+            process_output!(device, output)
 
         end
 

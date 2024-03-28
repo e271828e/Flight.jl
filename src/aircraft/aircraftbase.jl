@@ -240,9 +240,9 @@ end
 
 ############################# XPlaneConnect ####################################
 
-Networking.set_position!(xpc::XPCDevice, y::AircraftY) = Networking.set_position!(xpc, y.vehicle)
+Networking.set_position!(xpc::XPCClient, y::AircraftY) = Networking.set_position!(xpc, y.vehicle)
 
-function Networking.set_position!(xpc::XPCDevice, y::VehicleY)
+function Networking.set_position!(xpc::XPCClient, y::VehicleY)
 
     aircraft = 0
 

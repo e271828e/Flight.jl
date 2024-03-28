@@ -10,7 +10,7 @@ export demo_joysticks
 
 struct TestMapping <: InputMapping end
 
-function IODevices.assign!(sys::System{<:PIVector{2}},
+function IODevices.assign_input!(sys::System{<:PIVector{2}},
                             joystick::T16000M,
                             ::TestMapping) where {N}
 

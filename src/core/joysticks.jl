@@ -228,7 +228,7 @@ function IODevices.init!(joystick::Joystick)
     GLFW.SwapInterval(update_interval)
 end
 
-function IODevices.update!(joystick::Joystick, args...)
+function IODevices.update_input!(joystick::Joystick, args...)
     GLFW.SwapBuffers(joystick.window) #blocks to achieve the requested update_interval
     update!(joystick)
     GLFW.PollEvents() #see if we got a shutdown request

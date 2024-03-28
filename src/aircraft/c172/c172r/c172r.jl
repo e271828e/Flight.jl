@@ -212,7 +212,7 @@ aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function IODevices.assign!(sys::System{<:Actuation},
+function IODevices.assign_input!(sys::System{<:Actuation},
                            joystick::XBoxController,
                            ::DefaultMapping)
 
@@ -236,7 +236,7 @@ function IODevices.assign!(sys::System{<:Actuation},
     u.throttle -= 0.1 * was_released(joystick, :button_A)
 end
 
-function IODevices.assign!(sys::System{<:Actuation},
+function IODevices.assign_input!(sys::System{<:Actuation},
                            joystick::T16000M,
                            ::DefaultMapping)
 
@@ -529,9 +529,9 @@ end
 ############################ Joystick Mappings #################################
 
 #redirect input assignments directly to the actuation system
-function IODevices.assign!(sys::System{<:Cessna172R}, joystick::Joystick,
+function IODevices.assign_input!(sys::System{<:Cessna172R}, joystick::Joystick,
                            mapping::InputMapping)
-    IODevices.assign!(sys.vehicle.components.act, joystick, mapping)
+    IODevices.assign_input!(sys.vehicle.components.act, joystick, mapping)
 end
 
 

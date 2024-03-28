@@ -557,8 +557,8 @@ function test_sim_paced(; save::Bool = true)
         Sim.attach!(sim, joystick)
     end
 
-    xpc = XPCDevice()
-    # xpc = XPCDevice(host = IPv4("192.168.1.2"))
+    xpc = XPCClient()
+    # xpc = XPCClient(host = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
 
     Sim.run_paced!(sim)
