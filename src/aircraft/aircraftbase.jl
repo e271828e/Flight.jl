@@ -240,13 +240,11 @@ end
 
 ############################# XPlaneConnect ####################################
 
-Networking.set_position!(xpc::XPCClient, y::AircraftY) = Networking.set_position!(xpc, y.vehicle)
-
-function Networking.set_position!(xpc::XPCClient, y::VehicleY)
+function Networking.set_xpc_pos!(y::AircraftY)
 
     aircraft = 0
 
-    @unpack ϕ_λ, e_nb, h_o = y.kinematics
+    @unpack ϕ_λ, e_nb, h_o = y.vehicle.kinematics
 
     lat = rad2deg(ϕ_λ.ϕ)
     lon = rad2deg(ϕ_λ.λ)
@@ -255,7 +253,7 @@ function Networking.set_position!(xpc::XPCClient, y::VehicleY)
     theta = rad2deg(e_nb.θ)
     phi = rad2deg(e_nb.φ)
 
-    Networking.set_position!(xpc; lat, lon, h_o, psi, theta, phi, aircraft)
+    Networking.set_xpc_pos!(; lat, lon, h_o, psi, theta, phi, aircraft)
 
 end
 

@@ -79,27 +79,18 @@ output_callback(::Sim.Output)::Vector{UInt8} = UInt8[]
 
 ############################### XPCClient ####################################
 
-struct XPCClient <: OutputDevice
-    sender::UDPSender
-    function XPCClient(; host::IPAddr = IPv4("127.0.0.1"), port::Integer = 49009)
-        new(UDPSender(; host, port))
-    end
+function XPCClient(; host::IPAddr = IPv4("127.0.0.1"), port::Integer = 49009)
+    UDPClient(; init_callback = xpc_init_callback,
+                output_callback = xpc_output_callback,
+                host, port)
 end
 
-function IODevices.init!(xpc::XPCClient)
-    init!(xpc.sender)
-    disable_physics!(xpc)
-end
+#to be overridden for each System's y
+xpc_output_callback(out::Sim.Output) = set_xpc_pos!(out.y)
+#disables physics
+xpc_init_callback() = set_xpc_dref("sim/operation/override/override_planepath", 1)
 
- #to be overridden for each System's y
-function IODevices.process_output!(xpc::XPCClient, out::Sim.Output)
-    set_position!(xpc, out.y)
-end
-
-IODevices.should_close(xpc::XPCClient) = false #handled
-IODevices.shutdown!(xpc::XPCClient) = shutdown!(xpc.sender)
-
-function set_dref(xpc::XPCClient, dref_id::AbstractString, dref_value::Real)
+function set_xpc_dref(dref_id::AbstractString, dref_value::Real)
 
     #ascii() ensures ASCII data, codeunits returns a CodeUnits object, which
     #behaves similarly to a byte array. this is equivalent to b"text".
@@ -112,10 +103,10 @@ function set_dref(xpc::XPCClient, dref_id::AbstractString, dref_value::Real)
         UInt8(1),
         Float32(dref_value))
 
-    send(xpc.sender, take!(buffer))
+    return take!(buffer)
 end
 
-function set_dref(xpc::XPCClient, dref_id::AbstractString, dref_value::AbstractVector{<:Real})
+function set_xpc_dref(dref_id::AbstractString, dref_value::AbstractVector{<:Real})
 
     buffer = IOBuffer()
     write(buffer,
@@ -125,16 +116,13 @@ function set_dref(xpc::XPCClient, dref_id::AbstractString, dref_value::AbstractV
         dref_value |> length |> UInt8,
         Vector{Float32}(dref_value))
 
-    send(xpc.sender, take!(buffer))
+    return take!(buffer)
 end
 
-function disable_physics!(xpc::XPCClient)
-    set_dref(xpc, "sim/operation/override/override_planepath", 1)
-end
+#this needs to be extended in AircraftBase
+function set_xpc_pos!(; lat, lon, h_o, psi, theta, phi, aircraft::Integer = 0)
 
-function set_position!(xpc::XPCClient; lat, lon, h_o, psi, theta, phi, aircraft::Integer = 0)
-
-    #all angles must be provided in degrees
+    #all angles expected in degrees
     buffer = IOBuffer()
     write(buffer,
         b"POSI\0", UInt8(aircraft),
@@ -142,10 +130,9 @@ function set_position!(xpc::XPCClient; lat, lon, h_o, psi, theta, phi, aircraft:
         Float32(theta), Float32(phi), Float32(psi),
         Float32(-998)) #last one is landing gear (?!)
 
-    send(xpc.sender, take!(buffer))
+    return take!(buffer)
 
 end
-
 
 
 ################################################################################
@@ -175,7 +162,6 @@ end
 Sockets.recv(receiver::UDPReceiver) = recv(receiver.socket)
 shutdown!(receiver::UDPReceiver) = close(receiver.socket)
 
-
 ############################## UDPServer #######################################
 
 mutable struct UDPServer{F <: Function} <: InputDevice
@@ -191,18 +177,17 @@ end
 IODevices.init!(server::UDPServer) = init!(server.receiver)
 
 function IODevices.update_input!(server::UDPServer)
-    #will always write something, because recv blocks until something is
+    #will always write something, because recv blocks until an UDP packet is
     #actually received
     write(server.buffer, recv(server.receiver))
 end
 
 function IODevices.assign_input!(sys::System, server::UDPServer, mapping::InputMapping)
     try
-        #because update_input! blocks waiting for an UDP packet and this
-        #function is called immediately after update_input!, we can count on
-        #input_data not being empty
+        #since update_input! blocks waiting for an UDP packet, and this is
+        #called immediately afterwards, we can assume input_data is never empty
         input_data = take!(server.buffer)
-        server.assign_callback!(sys, input_data, mapping)
+        !isempty(input_data) && server.assign_callback!(sys, input_data, mapping)
     catch ex
         st = stacktrace(catch_backtrace())
         @warn("Server assign callback failed with $ex in $(st[1])")
