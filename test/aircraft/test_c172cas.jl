@@ -228,7 +228,7 @@ function test_sim_paced(; save::Bool = true)
     end
 
     xpc = XPCClient()
-    # xpc = XPCClient(host = IPv4("192.168.1.2"))
+    # xpc = XPCClient(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
 
     Sim.run_paced!(sim)
