@@ -1,0 +1,97 @@
+module JSONSketch3
+
+using Sockets, UnPack
+using StructTypes, JSON3
+
+using Flight
+using Flight.FlightCore.Sim
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.Networking
+using Flight.FlightAircraft.C172RPAv1
+
+export json_sketch3
+
+function output_callback(sim_out::Sim.Output)::Vector{UInt8}
+
+    @unpack vehicle, avionics = sim_out.y
+    @unpack kinematics, air, components = vehicle
+
+    #these are all valid empty JSON entities. when passed to JSON3.write, they
+    #yield respectively "\"\"", "[]" and "{}", all of length 2
+    output = ""
+    # output = []
+    # output = Dict()
+
+    if sim_out.t > 5
+        #these enums will be automatically cast to Ints per the StructTypes
+        #methods defined in C172RPAv1
+        output = (
+            lat = kinematics.ϕ_λ.ϕ,
+            lon = kinematics.ϕ_λ.λ,
+            h_ellip = Float64(kinematics.h_e),
+            h_orth = Float64(kinematics.h_o),
+            v_gnd_NED = kinematics.v_eOb_n,
+            v_wind_NED = air.v_ew_n,
+            h_trn = components.ldg.left.strut.Δh,
+            wow = components.ldg.left.strut.wow,
+        )
+    end
+
+    json_out = JSON3.write(output)
+    return Vector{UInt8}(json_out)
+end
+
+#AvionicsU is declared as StructTypes.Mutable() in C172RPAv1, so JSON3 can
+#automatically read a JSON string into one or more of its fields
+function assign_callback!(sys::System{<:Cessna172RPAv1}, data::Vector{UInt8}, ::InputMapping)
+    str = String(data)
+    # JSON3.read(str) |> println
+end
+
+function json_sketch3(; save::Bool = true)
+
+    h_trn = HOrth(601.55);
+
+    trn = HorizontalTerrain(altitude = h_trn)
+    sys = Cessna172RPAv1(LTF(), trn) |> System;
+    sim = Simulation(sys; dt = 1/60, Δt = 1/60, t_end = 20)
+
+    # #on ground
+    # kin_init = KinematicInit(
+    #     loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+    #     h = h_trn + 1.81);
+
+    #on air, automatically trimmed by reinit!
+    kin_init = C172.TrimParameters(
+        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
+
+    #initialize simulated system
+    reinit!(sim, kin_init)
+
+    #setup IO devices
+    for joystick in get_connected_joysticks()
+        Sim.attach!(sim, joystick)
+    end
+    xpc = XPCClient()
+    # xpc = XPCClient(address = IPv4("192.168.1.2"))
+    Sim.attach!(sim, xpc)
+    Sim.attach!(sim, UDPClient(; port = 49017, output_callback))
+    Sim.attach!(sim, UDPServer(; port = 49017, assign_callback!))
+
+    #trigger compilation of parsing methods for AvionicsU before launching the
+    #simulation
+    JSON3.read!(JSON3.write(sys.avionics.u, allow_inf=true), sys.avionics.u; allow_inf=true)
+
+    # return
+    Sim.run_paced!(sim)
+
+    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
+    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_paced", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_paced", "air"))
+
+    return nothing
+
+end
+
+end #module
