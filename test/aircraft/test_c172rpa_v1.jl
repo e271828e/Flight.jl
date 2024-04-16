@@ -542,14 +542,14 @@ function test_sim_paced(; save::Bool = true)
     ac = Cessna172RPAv1(LTF(), trn) |> System;
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 600)
 
-    # #on ground
-    # kin_init = KinematicInit(
-    #     loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-    #     h = h_trn + 1.81);
+    #on ground
+    kin_init = KinematicInit(
+        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        h = h_trn + 1.81);
 
-    #on air, automatically trimmed by reinit!
-    kin_init = C172.TrimParameters(
-        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
+    # #on air, automatically trimmed by reinit!
+    # kin_init = C172.TrimParameters(
+    #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
 
     reinit!(sim, kin_init)
 

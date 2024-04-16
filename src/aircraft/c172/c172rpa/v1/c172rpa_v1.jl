@@ -695,6 +695,8 @@ function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
 
         else #hor_gdc_mode === hor_gdc_line
 
+            #remove this when implemented
+            lat_ctl_mode = lat_ctl_mode_req
             # seg_gdc.u.line_sp = line_sp
             # f_disc!(seg_gdc, vehicle, Δt)
 
