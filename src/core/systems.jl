@@ -187,39 +187,28 @@ end
 
     map(ss-> f_ode!(ss, args...), values(sys.subsystems))
     update_y!(sys)
-    return nothing
+
+end
+
+#fallback method for node Systems. tries calling f_disc! on all subsystems with
+#the same arguments provided to the parent System. also updates y, since f_disc!
+#is where discrete Systems are expected to update their output. override as
+#required.
+@inline function (f_disc!(sys::System{SD, X, Y, U, S, P, B}, Δt, args...)
+                    where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
+
+    map(ss-> f_disc!(ss, Δt, args...), values(sys.subsystems))
+    update_y!(sys)
 
 end
 
 #fallback method for node Systems. tries calling f_step! on all subsystems with
-#the same arguments provided to the parent System, then ORs their outputs. does
-#NOT update y. override as required
+#the same arguments provided to the parent System. does NOT update y. override
+#as required
 @inline function (f_step!(sys::System{SD, X, Y, U, S, P, B}, args...)
                     where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
 
-    x_mod = false
-    #we need a bitwise OR to avoid calls being skipped after x_mod == true
-    for ss in sys.subsystems
-        x_mod |= f_step!(ss, args...)
-    end
-    return x_mod
-
-end
-
-#fallback method for node Systems. tries calling f_disc! on all subsystems
-#with the same arguments provided to the parent System, then ORs their outputs.
-#updates y, since f_disc! is where discrete Systems should update their
-#output. override as required.
-@inline function (f_disc!(sys::System{SD, X, Y, U, S, P, B}, Δt, args...)
-                    where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
-
-    x_mod = false
-    #we need a bitwise OR to avoid calls being skipped after x_mod == true
-    for ss in sys.subsystems
-        x_mod |= f_disc!(ss, Δt, args...)
-    end
-    update_y!(sys)
-    return x_mod
+    map(ss-> f_step!(ss, args...), values(sys.subsystems))
 
 end
 
@@ -238,7 +227,6 @@ end
     #the same type
     ys = map(id -> getproperty(sys.subsystems[id], :y), L)
     sys.y = NamedTuple{L}(ys)
-    return nothing
 
 end
 

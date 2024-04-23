@@ -196,10 +196,7 @@ function Systems.f_step!(sys::System{<:PIVector{N}}) where {N}
 
     x = SVector{N,Float64}(sys.x)
     x_new = x .* .!sys.u.reset
-    x_mod = any(x .!= x_new)
-
     sys.x .= x_new
-    return x_mod
 
 end
 
@@ -414,8 +411,6 @@ function Systems.f_disc!(sys::System{<:Integrator}, Δt::Real)
 
     sys.y = IntegratorOutput(; input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted)
 
-    return false
-
 end
 
 ################################################################################
@@ -478,8 +473,6 @@ function Systems.f_disc!(sys::System{<:IntegratorVector}, Δt::Real)
     s.sat_out_0 .= sat_out
 
     sys.y = IntegratorVectorOutput(; input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted)
-
-    return false
 
 end
 
@@ -568,8 +561,6 @@ function Systems.f_disc!(sys::System{<:LeadLag}, Δt::Real)
 
     s.x0 = x1
     s.u0 = u1
-
-    return false
 
 end
 
@@ -720,8 +711,6 @@ function Systems.f_disc!(sys::System{<:PID}, Δt::Real)
     sys.s.x_d0 = x_d
     sys.s.sat_out_0 = sat_out
 
-    return false
-
 end
 
 ############################## Vector Version ##################################
@@ -823,8 +812,6 @@ function Systems.f_disc!(sys::System{<:PIDVector{N}}, Δt::Real) where {N}
 
     sys.y = PIDVectorOutput(; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
                 u_p, u_i, u_d, y_p, y_i, y_d, out_free, sat_out, output, int_halted)
-
-    return false
 
 end
 
@@ -1069,8 +1056,6 @@ function Systems.f_disc!(sys::System{<:LQRTracker}, Δt::Real)
     sys.y = LQRTrackerOutput(; C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim,
         bound_lo, bound_hi, sat_ext, z_sp, z, x,
         int_in, int_out, int_halted, out_free, out_sat, output)
-
-    return false
 
 end
 

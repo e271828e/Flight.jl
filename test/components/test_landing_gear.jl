@@ -119,7 +119,7 @@ function test_strut()
         @test strut.y.wow === false
         #when f_step! executes after the simulation step, the friction
         #compensator reset input will be set
-        @test f_step!(strut) == false
+        f_step!(strut)
         @test strut.frc.u.reset == [true, true]
         #but it will not take effect until the next call to f_ode!
         @test strut.y.frc.reset == [false, false]
@@ -129,9 +129,9 @@ function test_strut()
         @test all(strut.x .== 1)
         strut.x .= 0
         @test all(strut.x .== 0) #state has not been modified yet
-        @test f_step!(strut) == false #x was already 0, not modified
+        f_step!(strut) #x was already 0, not modified
         strut.x[1] = 1
-        @test f_step!(strut) == true #now it has
+        f_step!(strut) == true #now it has been
         @test all(strut.x .== 0)
 
         #normal static load

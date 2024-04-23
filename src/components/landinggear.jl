@@ -378,8 +378,7 @@ end
 #last integration step
 function Systems.f_step!(sys::System{<:Strut})
     sys.frc.u.reset .= !sys.y.wow #if !wow, reset friction regulator
-    x_mod = false
-    x_mod |= f_step!(sys.frc)
+    f_step!(sys.frc)
 end
 
 
@@ -416,13 +415,9 @@ end
 
 function Systems.f_step!(sys::System{<:LandingGearUnit})
 
-    x_mod = false
-
-    x_mod |= f_step!(sys.steering)
-    x_mod |= f_step!(sys.braking)
-    x_mod |= f_step!(sys.strut)
-
-    return x_mod
+    f_step!(sys.steering)
+    f_step!(sys.braking)
+    f_step!(sys.strut)
 
 end
 

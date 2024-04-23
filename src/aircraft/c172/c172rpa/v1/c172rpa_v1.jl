@@ -721,8 +721,6 @@ function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
         lon_ctl = lon_ctl.y, lat_ctl = lat_ctl.y,
         alt_gdc = alt_gdc.y, seg_gdc = seg_gdc.y)
 
-    return false
-
 end
 
 function AircraftBase.assign!(components::System{<:C172RPA.Components},

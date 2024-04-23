@@ -278,10 +278,8 @@ function Systems.f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSuppl
 
     end
 
-    x_mod = false
-    x_mod |= f_step!(idle)
-    x_mod |= f_step!(frc)
-    return x_mod
+    f_step!(idle)
+    f_step!(frc)
 
 end
 
@@ -518,10 +516,8 @@ function Systems.f_step!(sys::System{<:Thruster}, fuel::System{<:AbstractFuelSup
 
     @unpack engine, propeller = sys
 
-    x_mod = false
-    x_mod |= f_step!(engine, fuel)
-    x_mod |= f_step!(propeller)
-    return x_mod
+    f_step!(engine, fuel)
+    f_step!(propeller)
 
 end
 

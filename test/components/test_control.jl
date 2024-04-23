@@ -135,12 +135,11 @@ function test_continuous_pi(save = false)
         @test sys.y.int_halted[2] #integrator 2 should have halted
 
         sys.u.reset[2] = true
-        @test f_step!(sys) == true
+        f_step!(sys)
         @test sys.x[2] == 0 #sys.x changes immediately
         f_ode!(sys)
         @test sys.y.y_i[2] == 0 #but sys.y needs f_ode! to update
         @test sys.y.output[2] == 0 #idem
-        @test f_step!(sys) == false #once reset, no further changes to sys.x[3]
 
         @test @ballocated($f_ode!($sys)) == 0
         @test @ballocated($f_disc!($sys, 1)) == 0

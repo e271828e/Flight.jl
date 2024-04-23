@@ -90,7 +90,6 @@ end
 #this method can be extended if required, but in principle Components shouldn't
 #implement discrete dynamics; discretized algorithms belong in Avionics
 function Systems.f_disc!(::System{<:AbstractComponents}, ::Real)
-    return false
 end
 
 #f_step! may use the recursive fallback implementation
@@ -116,7 +115,6 @@ end
 function Systems.f_disc!(::System{NoAvionics},
                         ::System{<:Vehicle},
                         ::Real)
-    return false
 end
 
 #f_step! can use the recursive fallback implementation
@@ -164,13 +162,11 @@ function Systems.f_disc!(vehicle::System{<:Vehicle}, Δt::Real)
     @unpack kinematics, components = vehicle
     @unpack dynamics, air = vehicle.y
 
-    x_mod = false
-    x_mod |= f_disc!(components, Δt)
+    f_disc!(components, Δt)
 
     #components might have modified its outputs, so we need to reassemble our y
     vehicle.y = VehicleY(components.y, kinematics.y, dynamics, air)
 
-    return x_mod
 end
 
 #these are meant to map avionics outputs to components control inputs, they are
@@ -216,23 +212,17 @@ function Systems.f_ode!(ac::System{<:Aircraft})
     f_ode!(vehicle)
 
     ac.y = AircraftY(vehicle.y, avionics.y)
-
-    return nothing
-
 end
 
 function Systems.f_disc!(ac::System{<:Aircraft}, Δt::Real)
 
     @unpack vehicle, avionics = ac.subsystems
 
-    x_mod = false
-    x_mod |= f_disc!(avionics, vehicle, Δt)
+    f_disc!(avionics, vehicle, Δt)
     assign!(vehicle, avionics)
-    x_mod |= f_disc!(vehicle, Δt)
+    f_disc!(vehicle, Δt)
 
     ac.y = AircraftY(vehicle.y, avionics.y)
-
-    return x_mod
 end
 
 #f_step! can use the recursive fallback implementation

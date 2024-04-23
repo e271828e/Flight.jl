@@ -192,16 +192,10 @@ function f_cb_step!(integrator)
     @unpack u, p = integrator
     @unpack sys, args_step = p
 
-    x_mod = f_step!(sys, args_step...)
+    f_step!(sys, args_step...)
 
-    @assert x_mod isa Bool
-
-    u_modified!(integrator, x_mod)
-
-    #assign the modified sys.x back to the integrator
-    has_x(sys) && x_mod && (u .= sys.x)
-
-    return nothing
+    #assign the (potentially) modified sys.x back to the integrator
+    has_x(sys) && (u .= sys.x)
 
 end
 
@@ -213,14 +207,10 @@ function f_cb_disc!(integrator)
     @unpack u, p = integrator
     @unpack sys, Δt, args_disc = p
 
-    x_mod = f_disc!(sys, Δt, args_disc...)
+    f_disc!(sys, Δt, args_disc...)
 
-    @assert x_mod isa Bool
-
-    u_modified!(integrator, x_mod)
-
-    #assign the modified sys.x back to the integrator
-    has_x(sys) && x_mod && (u .= sys.x)
+    #assign the (potentially) modified sys.x back to the integrator
+    has_x(sys) && (u .= sys.x)
 
 end
 
@@ -228,13 +218,13 @@ end
 #every integration step
 function f_cb_user!(integrator)
 
-    @unpack sys, user_callback! = integrator.p
+    @unpack u, p = integrator
+    @unpack sys, user_callback! = p
 
     user_callback!(sys)
 
-    #a System I/O function should never modify the System's continuous state, so
-    #we may as well tell the integrator to avoid any performance hit
-    u_modified!(integrator, false)
+    #assign the (potentially) modified sys.x back to the integrator
+    has_x(sys) && (u .= sys.x)
 
 end
 

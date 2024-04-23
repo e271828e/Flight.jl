@@ -855,8 +855,6 @@ function Systems.f_disc!(avionics::System{<:C172CAS.Avionics},
         moding, throttle_ctl = throttle_ctl.y, roll_ctl = roll_ctl.y,
         pitch_ctl = pitch_ctl.y, yaw_ctl = yaw_ctl.y, alt_ctl = alt_ctl.y)
 
-    return false
-
 end
 
 function AircraftBase.assign!(components::System{<:C172FBW.Components},
