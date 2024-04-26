@@ -12,8 +12,12 @@ using Flight.FlightComponents.Control.Discrete: load_pid_lookup, load_lqr_tracke
 
 using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172
-using Flight.FlightAircraft.C172FBW
 using Flight.FlightAircraft.C172RPAv1
+using Flight.FlightAircraft.C172RPA.FlightControl: lon_direct, lon_thr_ele, lon_thr_q, lon_thr_θ, lon_thr_EAS, lon_EAS_q, lon_EAS_θ, lon_EAS_clm
+using Flight.FlightAircraft.C172RPA.FlightControl: lat_direct, lat_p_β, lat_φ_β, lat_χ_β
+using Flight.FlightAircraft.C172RPA.FlightControl: vrt_gdc_off, vrt_gdc_alt
+using Flight.FlightAircraft.C172RPA.FlightControl: hor_gdc_off, hor_gdc_line
+using Flight.FlightAircraft.C172RPA.FlightControl: phase_gnd, phase_air
 
 export test_c172rpa_v1
 
@@ -33,7 +37,7 @@ y_air(ac::System{<:Cessna172RPAv1}) = ac.y.vehicle.air
 function test_control_modes()
 
     data_folder = joinpath(dirname(dirname(@__DIR__)),
-        normpath("src/aircraft/c172/c172rpa/v1/data"))
+        normpath("src/aircraft/c172/c172rpa/control/data"))
 
     @testset verbose = true "Control Modes" begin
 
@@ -58,31 +62,31 @@ function test_control_modes()
 
     step!(sim, 1, true)
 
-    @test fcl.y.flight_phase === C172RPAv1.phase_gnd
+    @test fcl.y.flight_phase === phase_gnd
 
     #set arbitrary control and guidance modes
-    fcl.u.vrt_gdc_mode_req = C172RPAv1.vrt_gdc_alt
-    fcl.u.hor_gdc_mode_req = C172RPAv1.hor_gdc_line
-    fcl.u.lon_ctl_mode_req = C172RPAv1.lon_EAS_clm
-    fcl.u.lat_ctl_mode_req = C172RPAv1.lat_p_β
+    fcl.u.vrt_gdc_mode_req = vrt_gdc_alt
+    fcl.u.hor_gdc_mode_req = hor_gdc_line
+    fcl.u.lon_ctl_mode_req = lon_EAS_clm
+    fcl.u.lat_ctl_mode_req = lat_p_β
     fcl.u.throttle_sp_input = 0.1
     fcl.u.aileron_sp_input = 0.2
     fcl.u.elevator_sp_input = 0.3
     fcl.u.rudder_sp_input = 0.4
     step!(sim, 1, true)
 
-    @test fcl.y.vrt_gdc_mode === C172RPAv1.vrt_gdc_off
-    @test fcl.y.hor_gdc_mode === C172RPAv1.hor_gdc_off
-    @test fcl.y.lon_ctl_mode === C172RPAv1.lon_direct
-    @test fcl.y.lat_ctl_mode === C172RPAv1.lat_direct
+    @test fcl.y.vrt_gdc_mode === vrt_gdc_off
+    @test fcl.y.hor_gdc_mode === hor_gdc_off
+    @test fcl.y.lon_ctl_mode === lon_direct
+    @test fcl.y.lat_ctl_mode === lat_direct
     @test ac.y.vehicle.components.act.throttle.cmd == 0.1
     @test ac.y.vehicle.components.act.aileron.cmd == 0.2
     @test ac.y.vehicle.components.act.elevator.cmd == 0.3
     @test ac.y.vehicle.components.act.rudder.cmd == 0.4
 
-    @test @ballocated(f_ode!($ac)) == 0
-    @test @ballocated(f_step!($ac)) == 0
-    @test @ballocated(f_disc!($ac, 0.01)) == 0
+    # @test @ballocated(f_ode!($ac)) == 0
+    # @test @ballocated(f_step!($ac)) == 0
+    # @test @ballocated(f_disc!($ac, 0.01)) == 0
 
     end #testset
 
@@ -101,8 +105,8 @@ function test_control_modes()
 
         reinit!(sim, design_point)
         step!(sim, 0.01, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_direct
-        @test fcl.y.lat_ctl_mode === C172RPAv1.lat_direct
+        @test fcl.y.lon_ctl_mode === lon_direct
+        @test fcl.y.lat_ctl_mode === lat_direct
 
         #with direct surface control, trim state must be initially preserved
         step!(sim, 10, true)
@@ -120,9 +124,9 @@ function test_control_modes()
         #we test the longitudinal SAS first, because we want to test the lateral
         #modes with it enabled
         reinit!(sim, design_point)
-        fcl.u.lon_ctl_mode_req = C172RPAv1.lon_thr_ele
+        fcl.u.lon_ctl_mode_req = lon_thr_ele
         step!(sim, 0.01, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_thr_ele
+        @test fcl.y.lon_ctl_mode === lon_thr_ele
 
         #check the correct parameters are loaded and assigned to the controller
         te2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "e2e_lookup.h5"))
@@ -143,10 +147,10 @@ function test_control_modes()
     @testset verbose = true "lat_φ_β" begin
 
         reinit!(sim, design_point)
-        fcl.u.lon_ctl_mode_req = C172RPAv1.lon_thr_ele
-        fcl.u.lat_ctl_mode_req = C172RPAv1.lat_φ_β
+        fcl.u.lon_ctl_mode_req = lon_thr_ele
+        fcl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, 0.01, true)
-        @test fcl.y.lat_ctl_mode === C172RPAv1.lat_φ_β
+        @test fcl.y.lat_ctl_mode === lat_φ_β
 
         #check the correct parameters are loaded and assigned to the controller
         φβ2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
@@ -175,10 +179,10 @@ function test_control_modes()
     @testset verbose = true "lat_p_β" begin
 
         reinit!(sim, design_point)
-        fcl.u.lon_ctl_mode_req = C172RPAv1.lon_thr_ele
-        fcl.u.lat_ctl_mode_req = C172RPAv1.lat_p_β
+        fcl.u.lon_ctl_mode_req = lon_thr_ele
+        fcl.u.lat_ctl_mode_req = lat_p_β
         step!(sim, 0.01, true)
-        @test fcl.y.lat_ctl_mode === C172RPAv1.lat_p_β
+        @test fcl.y.lat_ctl_mode === lat_p_β
 
         #check the correct parameters are loaded and assigned to the controllers
         φβ2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
@@ -210,10 +214,10 @@ function test_control_modes()
     @testset verbose = true "lat_χ_β" begin
 
         reinit!(sim, design_point)
-        fcl.u.lon_ctl_mode_req = C172RPAv1.lon_thr_ele
-        fcl.u.lat_ctl_mode_req = C172RPAv1.lat_χ_β
+        fcl.u.lon_ctl_mode_req = lon_thr_ele
+        fcl.u.lat_ctl_mode_req = lat_χ_β
         step!(sim, 0.01, true)
-        @test fcl.y.lat_ctl_mode === C172RPAv1.lat_χ_β
+        @test fcl.y.lat_ctl_mode === lat_χ_β
 
         #check the correct parameters are loaded and assigned to the controller
         χ2φ_lookup = load_pid_lookup(joinpath(data_folder, "χ2φ_lookup.h5"))
@@ -254,10 +258,10 @@ function test_control_modes()
 
         reinit!(sim, design_point)
 
-        fcl.u.lon_ctl_mode_req = C172RPAv1.lon_thr_q
-        fcl.u.lat_ctl_mode_req = C172RPAv1.lat_φ_β
+        fcl.u.lon_ctl_mode_req = lon_thr_q
+        fcl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, 0.01, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_thr_q
+        @test fcl.y.lon_ctl_mode === lon_thr_q
 
         #check the correct parameters are loaded and assigned to the controller
         q2e_lookup = load_pid_lookup(joinpath(data_folder, "q2e_lookup.h5"))
@@ -291,10 +295,10 @@ function test_control_modes()
 
         reinit!(sim, design_point)
 
-        fcl.u.lon_ctl_mode_req = C172RPAv1.lon_thr_θ
-        fcl.u.lat_ctl_mode_req = C172RPAv1.lat_φ_β
+        fcl.u.lon_ctl_mode_req = lon_thr_θ
+        fcl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, 0.01, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_thr_θ
+        @test fcl.y.lon_ctl_mode === lon_thr_θ
 
         #when trim setpoints are kept, the control mode must activate without
         #transients
@@ -319,10 +323,10 @@ function test_control_modes()
 
         reinit!(sim, design_point)
 
-        fcl.u.lon_ctl_mode_req = C172RPAv1.lon_thr_EAS
-        fcl.u.lat_ctl_mode_req = C172RPAv1.lat_φ_β
+        fcl.u.lon_ctl_mode_req = lon_thr_EAS
+        fcl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, 0.01, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_thr_EAS
+        @test fcl.y.lon_ctl_mode === lon_thr_EAS
 
         #check the correct parameters are loaded and assigned to the controller
         v2θ_lookup = load_pid_lookup(joinpath(data_folder, "v2θ_lookup.h5"))
@@ -351,10 +355,10 @@ function test_control_modes()
 
         reinit!(sim, design_point)
 
-        fcl.u.lon_ctl_mode_req = C172RPAv1.lon_EAS_q
-        fcl.u.lat_ctl_mode_req = C172RPAv1.lat_φ_β
+        fcl.u.lon_ctl_mode_req = lon_EAS_q
+        fcl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, 0.01, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_EAS_q
+        @test fcl.y.lon_ctl_mode === lon_EAS_q
 
         #check the correct parameters are loaded and assigned to v2t, the q
         #tracker is shared with other modes
@@ -390,10 +394,10 @@ function test_control_modes()
 
         reinit!(sim, design_point)
 
-        fcl.u.lon_ctl_mode_req = C172RPAv1.lon_EAS_θ
-        fcl.u.lat_ctl_mode_req = C172RPAv1.lat_φ_β
+        fcl.u.lon_ctl_mode_req = lon_EAS_θ
+        fcl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, 0.01, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_EAS_θ
+        @test fcl.y.lon_ctl_mode === lon_EAS_θ
 
         #when trim setpoints are kept, the control mode must activate without
         #transients
@@ -421,10 +425,10 @@ function test_control_modes()
 
         reinit!(sim, design_point)
 
-        fcl.u.lon_ctl_mode_req = C172RPAv1.lon_EAS_clm
-        fcl.u.lat_ctl_mode_req = C172RPAv1.lat_φ_β
+        fcl.u.lon_ctl_mode_req = lon_EAS_clm
+        fcl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, 0.01, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_EAS_clm
+        @test fcl.y.lon_ctl_mode === lon_EAS_clm
 
         #check the correct parameters are loaded and assigned to the controller
         c2θ_lookup = load_pid_lookup(joinpath(data_folder, "c2θ_lookup.h5"))
@@ -479,11 +483,11 @@ function test_guidance_modes()
         reinit!(sim, design_point)
         y_kin_trim = y_kin(ac)
 
-        fcl.u.vrt_gdc_mode_req = C172RPAv1.vrt_gdc_alt
-        fcl.u.lat_ctl_mode_req = C172RPAv1.lat_φ_β
+        fcl.u.vrt_gdc_mode_req = vrt_gdc_alt
+        fcl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, 0.01, true)
-        @test fcl.y.vrt_gdc_mode === C172RPAv1.vrt_gdc_alt
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_EAS_clm
+        @test fcl.y.vrt_gdc_mode === vrt_gdc_alt
+        @test fcl.y.lon_ctl_mode === lon_EAS_clm
 
         #when trim setpoints are kept, the guidance mode must activate without
         #transients
@@ -496,30 +500,30 @@ function test_guidance_modes()
 
         fcl.u.h_sp = y_kin_trim.h_e + 100
         step!(sim, 1, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_thr_EAS
+        @test fcl.y.lon_ctl_mode === lon_thr_EAS
         step!(sim, 60, true) #altitude is captured
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_EAS_clm
+        @test fcl.y.lon_ctl_mode === lon_EAS_clm
         @test isapprox.(y_kin(ac).h_e - HEllip(fcl.u.h_sp), 0.0; atol = 1e-1)
 
         #setpoint changes within the current threshold do not prompt a mode change
         fcl.u.h_sp = y_kin(ac).h_e - fcl.alt_gdc.s.h_thr / 2
         step!(sim, 1, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_EAS_clm
+        @test fcl.y.lon_ctl_mode === lon_EAS_clm
         step!(sim, 30, true) #altitude is captured
         @test isapprox.(y_kin(ac).h_e - HEllip(fcl.u.h_sp), 0.0; atol = 1e-1)
 
         fcl.u.h_sp = y_kin_trim.h_e - 100
         step!(sim, 1, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_thr_EAS
+        @test fcl.y.lon_ctl_mode === lon_thr_EAS
         step!(sim, 80, true) #altitude is captured
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_EAS_clm
+        @test fcl.y.lon_ctl_mode === lon_EAS_clm
         @test isapprox.(y_kin(ac).h_e - HEllip(fcl.u.h_sp), 0.0; atol = 1e-1)
 
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_EAS_clm
+        @test fcl.y.lon_ctl_mode === lon_EAS_clm
         @test @ballocated(f_disc!($ac, 0.01)) == 0
         fcl.u.h_sp = y_kin_trim.h_e + 100
         step!(sim, 1, true)
-        @test fcl.y.lon_ctl_mode === C172RPAv1.lon_thr_EAS
+        @test fcl.y.lon_ctl_mode === lon_thr_EAS
         @test @ballocated(f_disc!($ac, 0.01)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)

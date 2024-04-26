@@ -578,12 +578,8 @@ end
 ################################################################################
 ################################## Variants ####################################
 
-include(normpath("v1/c172rpa_v1.jl")); @reexport using .C172RPAv1
+include(normpath("control/c172rpa_fc.jl"))
 
-module TestModule
-
-    ftest() = println("Hi")
-
-end
+include(normpath("versions/c172rpa_v1.jl")); @reexport using .C172RPAv1
 
 end

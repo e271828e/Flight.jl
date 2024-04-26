@@ -1,4 +1,4 @@
-module C172RPAv1
+module FlightControl
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using StructTypes
@@ -15,9 +15,6 @@ using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput,
 using ...AircraftBase
 using ...C172
 using ..C172RPA
-using ..TestModule
-
-export Cessna172RPAv1
 
 
 ################################################################################
@@ -560,7 +557,7 @@ end
 
 
 ################################################################################
-################################# FlightControl ##################################
+################################# FlightController ##################################
 
 @enum FlightPhase begin
     phase_gnd = 0
@@ -579,7 +576,7 @@ end
 
 ################################################################################
 
-@kwdef struct FlightControl{C1 <: LonControl, C2 <: LatControl} <: SystemDefinition
+@kwdef struct FlightController{C1 <: LonControl, C2 <: LatControl} <: SystemDefinition
     lon_ctl::C1 = LonControl()
     lat_ctl::C2 = LatControl()
     alt_gdc::AltitudeGuidance = AltitudeGuidance()
@@ -587,7 +584,7 @@ end
 end
 
 #CockpitInputs
-@kwdef mutable struct FlightControlU
+@kwdef mutable struct FlightControllerU
     eng_start::Bool = false #passthrough
     eng_stop::Bool = false #passthrough
     mixture::Ranged{Float64, 0., 1.} = 0.5 #passthrough
@@ -619,7 +616,7 @@ end
     h_datum::AltDatum = ellipsoidal #altitude datum
 end
 
-@kwdef struct FlightControlY
+@kwdef struct FlightControllerY
     flight_phase::FlightPhase = phase_gnd
     vrt_gdc_mode::VerticalGuidanceMode = vrt_gdc_off #active vertical guidance mode
     hor_gdc_mode::HorizontalGuidanceMode = hor_gdc_off #active horizontal guidance mode
@@ -631,14 +628,14 @@ end
     lat_ctl::LatControlY = LatControlY()
 end
 
-Systems.U(::FlightControl) = FlightControlU()
-Systems.Y(::FlightControl) = FlightControlY()
+Systems.U(::FlightController) = FlightControllerU()
+Systems.Y(::FlightController) = FlightControllerY()
 
 
 ########################### Update Methods #####################################
 
 
-function Systems.f_disc!(fcl::System{<:C172RPAv1.FlightControl},
+function Systems.f_disc!(fcl::System{<:FlightController},
                         vehicle::System{<:C172RPA.Vehicle}, Δt::Real)
 
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right,
@@ -717,7 +714,7 @@ function Systems.f_disc!(fcl::System{<:C172RPAv1.FlightControl},
     @pack! lat_ctl.u = aileron_sp, rudder_sp, p_sp, φ_sp, β_sp, χ_sp
     f_disc!(lat_ctl, vehicle, Δt)
 
-    fcl.y = FlightControlY(; flight_phase,
+    fcl.y = FlightControllerY(; flight_phase,
         vrt_gdc_mode, hor_gdc_mode, lon_ctl_mode, lat_ctl_mode,
         lon_ctl = lon_ctl.y, lat_ctl = lat_ctl.y,
         alt_gdc = alt_gdc.y, seg_gdc = seg_gdc.y)
@@ -725,7 +722,7 @@ function Systems.f_disc!(fcl::System{<:C172RPAv1.FlightControl},
 end
 
 function AircraftBase.assign!(components::System{<:C172RPA.Components},
-                          fcl::System{<:C172RPAv1.FlightControl})
+                          fcl::System{<:FlightController})
 
     @unpack act, pwp, ldg = components.subsystems
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right = fcl.u
@@ -749,7 +746,7 @@ end
 
 ##################################### Tools ####################################
 
-function AircraftBase.trim!(fcl::System{<:C172RPAv1.FlightControl},
+function AircraftBase.trim!(fcl::System{<:FlightController},
                             vehicle::System{<:C172RPA.Vehicle})
 
     #here we assume that the vehicle's y has already been updated to its trim
@@ -758,9 +755,9 @@ function AircraftBase.trim!(fcl::System{<:C172RPAv1.FlightControl},
     @unpack ω_lb_b, v_eOb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
     @unpack EAS, β_b = vehicle.y.air
 
-    #makes FlightControl inputs consistent with the trim solution obtained for
-    #the vehicle, so the trim condition is preserved upon simulation start when
-    #the corresponding control modes are selected
+    #makes FlightController inputs consistent with the trim solution obtained
+    #for the vehicle, so the trim condition is preserved upon simulation start
+    #when the corresponding control modes are selected
     Systems.reset!(fcl)
 
     #in a fly-by-wire implementation, it makes more sense to assign the trim
@@ -817,7 +814,7 @@ yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 
-function IODevices.assign_input!(sys::System{<:FlightControl},
+function IODevices.assign_input!(sys::System{<:FlightController},
                            joystick::XBoxController,
                            ::DefaultMapping)
 
@@ -854,7 +851,7 @@ function IODevices.assign_input!(sys::System{<:FlightControl},
 
 end
 
-function IODevices.assign_input!(sys::System{<:FlightControl},
+function IODevices.assign_input!(sys::System{<:FlightController},
                            joystick::T16000M,
                            ::DefaultMapping)
 
@@ -890,7 +887,7 @@ function IODevices.assign_input!(sys::System{<:FlightControl},
 
 end
 
-function IODevices.assign_input!(sys::System{<:FlightControl},
+function IODevices.assign_input!(sys::System{<:FlightController},
                            joystick::GladiatorNXTEvo,
                            ::DefaultMapping)
 
@@ -988,10 +985,10 @@ function GUI.draw(sys::System{<:AltitudeGuidance}, p_open::Ref{Bool} = Ref(true)
 end
 
 
-function GUI.draw!(fcl::System{<:C172RPAv1.FlightControl},
+function GUI.draw!(fcl::System{<:FlightController},
                     vehicle::System{<:C172RPA.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 RPAv1 FlightControl")
+                    label::String = "Cessna 172 RPAv1 FlightController")
 
     u = fcl.u
     y = fcl.y
@@ -1414,8 +1411,8 @@ end
 ################################################################################
 ################################## JSON3  ######################################
 
-#declare FlightControlU as mutable
-StructTypes.StructType(::Type{FlightControlU}) = StructTypes.Mutable()
+#declare FlightControllerU as mutable
+StructTypes.StructType(::Type{FlightControllerU}) = StructTypes.Mutable()
 
 #enable JSON parsing of integers as LonControlMode
 StructTypes.StructType(::Type{LonControlMode}) = StructTypes.CustomStruct()
@@ -1443,86 +1440,9 @@ StructTypes.lowertype(::Type{AltDatum}) = Int32 #default enum type
 StructTypes.lower(x::AltDatum) = Int32(x)
 
 #now we can do:
-# JSON3.read(JSON3.write(FlightControlU()), FlightControlU)
-# JSON3.read!(JSON3.write(FlightControlU()), FlightControlU())
+# JSON3.read(JSON3.write(FlightControllerU()), FlightControllerU)
+# JSON3.read!(JSON3.write(FlightControllerU()), FlightControllerU())
 
-
-################################################################################
-############################### Avionics #######################################
-
-@kwdef struct Avionics{C <: FlightControl} <: AbstractAvionics
-    N_fcl::Int = 1
-    fcl::C = FlightControl()
-end
-
-@kwdef struct AvionicsY
-    fcl::FlightControlY = FlightControlY()
-end
-
-Systems.Y(::Avionics) = AvionicsY()
-
-################################## Update ######################################
-
-function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
-                        vehicle::System{<:C172RPA.Vehicle}, Δt::Real)
-
-    #CAUTION: When scheduling is added, must ensure call scheduling is
-    #consistent with the Δt passed
-    f_disc!(avionics.fcl, vehicle, avionics.constants.N_fcl*Δt)
-end
-
-function AircraftBase.assign!(components::System{<:C172RPA.Components},
-                          avionics::System{<:C172RPAv1.Avionics})
-    AircraftBase.assign!(components, avionics.fcl)
-end
-
-
-################################# Trimming #####################################
-
-function AircraftBase.trim!(avionics::System{<:C172RPAv1.Avionics},
-                            vehicle::System{<:C172RPA.Vehicle})
-    trim!(avionics.fcl, vehicle)
-    avionics.y = AvionicsY(avionics.fcl.y)
-end
-
-
-################################## GUI #########################################
-
-function GUI.draw!(avionics::System{<:C172RPAv1.Avionics},
-                    vehicle::System{<:C172RPA.Vehicle},
-                    p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 RPAv1 Avionics")
-
-    CImGui.Begin(label, p_open)
-
-    @cstatic c_fcl=false begin
-        @c CImGui.Checkbox("Flight Control", &c_fcl)
-        c_fcl && @c GUI.draw!(avionics.fcl, vehicle, &c_fcl)
-    end
-
-    CImGui.End()
-
-end
-
-
-################################################################################
-############################# Cessna172RPAv1 ###################################
-
-const Cessna172RPAv1{K, T, A} = C172RPA.Aircraft{K, T, A} where {
-    K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: C172RPAv1.Avionics}
-
-function Cessna172RPAv1(kinematics = LTF(), terrain = HorizontalTerrain())
-    C172RPA.Aircraft(kinematics, terrain, C172RPAv1.Avionics())
-end
-
-
-################################################################################
-############################ Joystick Mappings #################################
-
-function IODevices.assign_input!(sys::System{<:Cessna172RPAv1}, joystick::Joystick,
-                           mapping::InputMapping)
-    IODevices.assign_input!(sys.avionics.fcl, joystick, mapping)
-end
 
 
 
