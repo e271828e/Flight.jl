@@ -972,6 +972,10 @@ function AircraftBase.trim!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}})
     trim!(ac, TrimParameters())
 end
 
+function AircraftBase.linearize!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}})
+    linearize!(ac, TrimParameters())
+end
+
 
 ################################################################################
 ############################### C172 Variants ##################################

@@ -829,11 +829,6 @@ function AircraftBase.trim!(avionics::System{<:C172FBWv1.Avionics},
 end
 
 
-function AircraftBase.linearize!(ac::System{<:Cessna172FBWv1}, args...; kwargs...)
-    linearize!(ac.vehicle, args...; kwargs...)
-end
-
-
 ################################################################################
 ############################ Joystick Mappings #################################
 

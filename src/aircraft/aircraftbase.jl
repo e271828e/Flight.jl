@@ -302,8 +302,7 @@ assign_u!(vehicle::System{<:Vehicle}, u::AbstractVector{Float64}) = throw(Method
 
 linearize!(ac::System{<:AircraftBase.Aircraft}, args...) = linearize!(ac.vehicle, args...)
 
-function AircraftBase.linearize!( vehicle::System{<:AircraftBase.Vehicle},
-                            trim_params::AbstractTrimParameters)
+function linearize!( vehicle::System{<:AircraftBase.Vehicle}, trim_params::AbstractTrimParameters)
 
     (_, trim_state) = trim!(vehicle, trim_params)
 

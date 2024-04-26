@@ -580,4 +580,10 @@ end
 
 include(normpath("v1/c172rpa_v1.jl")); @reexport using .C172RPAv1
 
+module TestModule
+
+    ftest() = println("Hi")
+
+end
+
 end

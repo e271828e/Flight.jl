@@ -59,7 +59,7 @@ function assign_callback!(sys::System{<:Cessna172RPAv1}, data::Vector{UInt8}, ::
 
     # JSON3.read(clean_str) |> println
 
-    length(clean_str) > 2 && JSON3.read!(clean_str, sys.avionics.u)
+    length(clean_str) > 2 && JSON3.read!(clean_str, sys.avionics.fcl.u)
 end
 
 function json_sketch3(; save::Bool = true)
@@ -97,7 +97,7 @@ function json_sketch3(; save::Bool = true)
 
     #trigger compilation of parsing methods for AvionicsU before launching the
     #simulation
-    JSON3.read!(JSON3.write(sys.avionics.u, allow_inf=true), sys.avionics.u; allow_inf=true)
+    JSON3.read!(JSON3.write(sys.avionics.fcl.u, allow_inf=true), sys.avionics.fcl.u; allow_inf=true)
 
     # return
     Sim.run_paced!(sim; pace = 5)

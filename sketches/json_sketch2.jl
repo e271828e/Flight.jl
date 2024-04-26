@@ -22,7 +22,7 @@ function output_callback(sim_out::Sim.Output)::Vector{UInt8}
     # cmd = []
     # cmd = Dict()
 
-    if sim_out.t > 10
+    if sim_out.t > 5
         #these enums will be automatically cast to Ints per the StructTypes
         #methods defined in C172RPAv1
         cmd = (
@@ -52,7 +52,7 @@ function assign_callback!(sys::System{<:Cessna172RPAv1}, data::Vector{UInt8}, ::
     #it is an empty JSON entity (either string, object or array). instead of
     #this check we could simply call do isempty(JSON3.read(str)) but that would
     #mean parsing the string twice
-    length(str) > 2 && JSON3.read!(str, sys.avionics.u)
+    length(str) > 2 && JSON3.read!(str, sys.avionics.fcl.u)
 
     # isempty(str) |> println
     # JSON3.read(str) |> isempty |> println
@@ -90,7 +90,7 @@ function json_sketch2(; save::Bool = true)
 
     #trigger compilation of parsing methods for AvionicsU before launching the
     #simulation
-    JSON3.read!(JSON3.write(sys.avionics.u, allow_inf=true), sys.avionics.u; allow_inf=true)
+    JSON3.read!(JSON3.write(sys.avionics.fcl.u, allow_inf=true), sys.avionics.fcl.u; allow_inf=true)
 
     # return
     Sim.run_paced!(sim)
