@@ -269,7 +269,13 @@ end
 
 Systems.init!( ac::System{<:Aircraft}, params::AbstractTrimParameters) = trim!(ac, params)
 
-trim!( ac::System{<:Aircraft}, args...; kwargs...) = trim!(ac.vehicle, args...; kwargs...)
+function trim!( ac::System{<:Aircraft}, params::AbstractTrimParameters)
+    result = trim!(ac.vehicle, params) #compute vehicle trim state
+    trim!(ac.avionics, ac.vehicle) #make avionics consistent with vehicle trim state
+    ac.y = AircraftY(ac.vehicle.y, ac.avionics.y)
+    # update_y!(ac)
+    return result
+end
 
 function trim!( vehicle::System{<:Vehicle}, args...)
     MethodError(trim!, (vehicle, args...)) |> throw
@@ -277,6 +283,9 @@ end
 
 function assign!(::System{<:Vehicle}, ::AbstractTrimParameters, ::AbstractTrimState)
     error("An assign! method must be defined by each AircraftBase.Vehicle subtype")
+end
+
+function trim!( ::System{NoAvionics}, ::System{<:Vehicle})
 end
 
 

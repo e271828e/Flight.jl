@@ -968,6 +968,10 @@ function AircraftBase.trim!(vehicle::System{<:C172.Vehicle},
 
 end
 
+function AircraftBase.trim!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}})
+    trim!(ac, TrimParameters())
+end
+
 
 ################################################################################
 ############################### C172 Variants ##################################

@@ -594,7 +594,6 @@ end
 ################################################################################
 ################################## Variants ####################################
 
-include(normpath("cas/cas.jl")); @reexport using .C172CAS
 include(normpath("mcs/mcs.jl")); @reexport using .C172MCS
 
 end

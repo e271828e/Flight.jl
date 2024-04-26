@@ -15,7 +15,6 @@ include(normpath("aircraft/test_aircraft_base.jl")); using .TestAircraft
 include(normpath("aircraft/test_c172r.jl")); using .TestC172R
 
 include(normpath("aircraft/test_c172fbw.jl")); using .TestC172FBW
-include(normpath("aircraft/test_c172cas.jl")); using .TestC172CAS
 include(normpath("aircraft/test_c172mcs.jl")); using .TestC172MCS
 
 include(normpath("aircraft/test_c172rpa.jl")); using .TestC172RPA
@@ -36,7 +35,6 @@ test_aircraft_base()
 test_c172r()
 
 test_c172fbw()
-test_c172cas()
 test_c172mcs()
 
 test_c172rpa()

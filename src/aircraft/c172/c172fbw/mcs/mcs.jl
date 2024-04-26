@@ -278,6 +278,10 @@ function Systems.f_disc!(sys::System{<:LonControl},
 
         Control.Discrete.assign!(vc2te_lqr, vc2te_lookup(EAS, h_e))
 
+        #we don't need anything else for a smooth mode transition; as long as we
+        #are in steady state and EAS_sp and clm_sp are set to the current EAS
+        #and clm values, the throttle and elevator commands from the LQR should
+        #match its current values
         (mode != mode_prev) && Systems.reset!(vc2te_lqr)
 
         vc2te_lqr.u.x .= XLon(vehicle) #state feedback
@@ -762,40 +766,33 @@ end
 
 ##################################### Tools ####################################
 
-function AircraftBase.trim!(ac::System{<:Cessna172MCS},
-                        trim_params::C172.TrimParameters = C172.TrimParameters())
+function AircraftBase.trim!(avionics::System{<:C172MCS.Avionics},
+                            vehicle::System{<:C172FBW.Vehicle})
 
-
-    result = trim!(ac.vehicle, trim_params)
-
-    #only ac.vehicle.y has been updated by the previous call, we need to update
-    #ac.y as well
-    f_ode!(ac)
-
-    trim_state = result[2]
-    @unpack mixture, flaps, EAS = trim_params
-    @unpack throttle, aileron, elevator, rudder = trim_state
-    @unpack ω_lb_b, v_eOb_n, e_nb, χ_gnd, h_e = ac.y.vehicle.kinematics
-    @unpack β_b = ac.y.vehicle.air
+    #here we assume that the vehicle's y has already been updated to its trim
+    #value by trim!(vehicle, params)
+    y_act = vehicle.y.components.act
+    @unpack ω_lb_b, v_eOb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
+    @unpack EAS, β_b = vehicle.y.air
 
     #makes Avionics inputs consistent with the trim solution obtained for the
     #vehicle, so the trim condition is preserved upon simulation start
     #when the corresponding control modes are selected
-    Systems.reset!(ac.avionics)
+    Systems.reset!(avionics)
 
     #in a fly-by-wire implementation, it makes more sense to assign the trim
     #values to the inputs rather to the offsets
-    u = ac.avionics.u
-    u.throttle_sp_input = throttle
-    u.aileron_sp_input = aileron
-    u.elevator_sp_input = elevator
-    u.rudder_sp_input = rudder
+    u = avionics.u
+    u.throttle_sp_input = y_act.throttle.pos
+    u.aileron_sp_input = y_act.aileron.pos
+    u.elevator_sp_input = y_act.elevator.pos
+    u.rudder_sp_input = y_act.rudder.pos
     u.throttle_sp_offset = 0
     u.aileron_sp_offset = 0
     u.elevator_sp_offset = 0
     u.rudder_sp_offset = 0
-    u.flaps = flaps
-    u.mixture = mixture
+    u.flaps = y_act.flaps.pos
+    u.mixture = vehicle.y.components.pwp.engine.mixture
 
     u.q_sp = ω_lb_b[2]
     u.θ_sp = e_nb.θ
@@ -810,22 +807,27 @@ function AircraftBase.trim!(ac::System{<:Cessna172MCS},
     u.vrt_gdc_mode_req = vrt_gdc_off
     u.hor_gdc_mode_req = hor_gdc_off
 
-    #enable internal SAS and do an update so that their input setpoints are
-    #initialized to the trim values
+    #do an update with the inner SAS loops enabled so that their internal
+    #setpoints are made consistent with the trim values. this should propagate
+    #to the actuator commands produced by the control laws, making them
+    #consistent with the trim state ones
     u.lon_ctl_mode_req = lon_thr_ele
     u.lat_ctl_mode_req = lat_φ_β
-    f_disc!(ac.avionics, ac.vehicle, 1)
+    f_disc!(avionics, vehicle, 1)
 
-    #do another update with direct control so that the trim actuator commands
-    #are updated on avionics outputs. IMPORTANT: must be done AFTER SAS
-    #initialization
+    #restore direct modes
     u.lon_ctl_mode_req = lon_direct
     u.lat_ctl_mode_req = lat_direct
-    f_disc!(ac.avionics, ac.vehicle, 1) #IMPORTANT: update avionics outputs
+    f_disc!(avionics, vehicle, 1)
 
-    return result
+    #do another update with SAS disabled so that trim actuator commands are
+    #used as setpoints and directly applied at the control laws' outputs. this
+    #should not make a noticeable difference after the previous update
+    # f_disc!(ac.avionics, ac.vehicle, 1) #IMPORTANT: update avionics outputs
+    # return result
 
 end
+
 
 function AircraftBase.linearize!(ac::System{<:Cessna172MCS}, args...; kwargs...)
     linearize!(ac.vehicle, args...; kwargs...)
