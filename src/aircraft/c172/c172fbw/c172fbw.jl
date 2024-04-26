@@ -594,6 +594,6 @@ end
 ################################################################################
 ################################## Variants ####################################
 
-include(normpath("mcs/mcs.jl")); @reexport using .C172MCS
+include(normpath("v1/c172fbw_v1.jl")); @reexport using .C172FBWv1
 
 end

@@ -212,27 +212,15 @@ end
 
 end
 
+#fallback for Systems with generic output
 @inline function (update_y!(sys::System{SD, X, Y})
     where {SD <: SystemDefinition, X, Y})
-    # println("For Anything")
-    # println("Hi")
 end
 
-# @inline function (update_y!(sys::System{SD, X, Nothing})
-#     where {SD <: SystemDefinition, X})
-#     println("Ho")
-# end
-
-#fallback method for updating a System's NamedTuple output. it assembles the
-#outputs from its subsystems into a NamedTuple, then assigns it to the System's
-#y field
+#fallback for Systems with NamedTuple output
 @inline function (update_y!(sys::System{SD, X, Y})
     where {SD <: SystemDefinition, X, Y <: NamedTuple{L, M}} where {L, M})
 
-    # println("For NT")
-    #the keys of NamedTuple sys.y identify those subsystems with non-null
-    #outputs; retrieve their updated ys and assemble them into a NamedTuple of
-    #the same type
     ys = map(id -> getproperty(sys.subsystems[id], :y), L)
     sys.y = NamedTuple{L}(ys)
 
