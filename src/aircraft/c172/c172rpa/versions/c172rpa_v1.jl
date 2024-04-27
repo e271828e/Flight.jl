@@ -12,7 +12,8 @@ using Flight.FlightComponents
 using ...AircraftBase
 using ...C172
 using ..C172RPA
-using ..C172RPA.FlightControl: FlightController, FlightControllerY
+using ..C172RPA.FlightControl: Controller, ControllerY
+using ..C172RPA.Navigation: Navigator, NavigatorY
 
 export Cessna172RPAv1
 
@@ -20,25 +21,55 @@ export Cessna172RPAv1
 ################################################################################
 ############################### Avionics #######################################
 
-@kwdef struct Avionics{C <: FlightController} <: AbstractAvionics
-    N_fcl::Int = 1
-    fcl::C = FlightController()
+@kwdef struct Avionics{C <: Controller, N <: Navigator} <: AbstractAvionics
+    N_fcl::Int = 2
+    N_nav::Int = 2
+    fcl::C = Controller()
+    nav::N = Navigator()
 end
 
-@kwdef struct AvionicsY
-    fcl::FlightControllerY = FlightControllerY()
+@kwdef mutable struct AvionicsS
+    n_disc::Int = 0 #number of f_disc! epochs, for scheduling purposes
 end
 
+@kwdef struct AvionicsY{C <: ControllerY, N <: NavigatorY}
+    n_disc::Int = 0
+    fcl::C = ControllerY()
+    nav::N = NavigatorY()
+end
+
+Systems.S(::Avionics) = AvionicsS()
 Systems.Y(::Avionics) = AvionicsY()
 
-################################## Update ######################################
+
+############################### Update methods #################################
+
+function Systems.update_y!(sys::System{<:C172RPAv1.Avionics})
+    @unpack fcl, nav = sys.subsystems
+    sys.y = AvionicsY(; n_disc = sys.s.n_disc, fcl = fcl.y, nav = nav.y)
+end
+
+
+function Systems.reset!(sys::System{<:C172RPAv1.Avionics})
+    sys.s.n_disc = 0 #reset scheduler
+    foreach(ss -> Systems.reset!(ss), sys.subsystems) #reset algorithms
+end
+
 
 function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
                         vehicle::System{<:C172RPA.Vehicle}, Δt::Real)
 
-    #CAUTION: When scheduling is added, ensure call scheduling is consistent
-    #with the Δt we are passing
-    f_disc!(avionics.fcl, vehicle, avionics.constants.N_fcl*Δt)
+    @unpack N_fcl, N_nav = avionics.constants
+    @unpack fcl, nav = avionics.subsystems
+    @unpack n_disc = avionics.s
+
+    (n_disc % N_fcl == 0) && f_disc!(fcl, vehicle, N_fcl*Δt)
+    (n_disc % N_nav == 0) && f_disc!(nav, N_nav*Δt)
+
+    avionics.s.n_disc += 1
+
+    update_y!(avionics)
+
 end
 
 function AircraftBase.assign!(components::System{<:C172RPA.Components},
@@ -51,12 +82,21 @@ end
 
 function AircraftBase.trim!(avionics::System{<:C172RPAv1.Avionics},
                             vehicle::System{<:C172RPA.Vehicle})
-    trim!(avionics.fcl, vehicle)
-    avionics.y = AvionicsY(avionics.fcl.y)
+
+    @unpack fcl, nav = avionics
+
+    Systems.reset!(avionics)
+    trim!(fcl, vehicle)
+    # trim!(nav, vehicle)
+    update_y!(avionics)
+
 end
 
 
 ################################## GUI #########################################
+
+using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
+        Dummy, SameLine, NewLine, IsItemActive, Separator, Text, Checkbox, RadioButton
 
 function GUI.draw!(avionics::System{<:C172RPAv1.Avionics},
                     vehicle::System{<:C172RPA.Vehicle},
@@ -65,6 +105,7 @@ function GUI.draw!(avionics::System{<:C172RPAv1.Avionics},
 
     CImGui.Begin(label, p_open)
 
+    Text(@sprintf("Epoch: %d", avionics.y.n_disc))
     @cstatic c_fcl=false begin
         @c CImGui.Checkbox("Flight Control", &c_fcl)
         c_fcl && @c GUI.draw!(avionics.fcl, vehicle, &c_fcl)

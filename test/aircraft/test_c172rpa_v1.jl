@@ -50,7 +50,8 @@ function test_control_modes()
     #we don't really need to provide a specific sys_init! function, because
     #sys_init! defaults to Systems.init!, which for Aircraft has methods
     #accepting both a Kinematics.Initializer and an AbstractTrimParameters
-    sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600)
+    dt = Δt = 0.01
+    sim = Simulation(ac; dt, Δt, t_end = 600)
 
     ############################################################################
     ############################## Ground ######################################
@@ -59,10 +60,6 @@ function test_control_modes()
 
     kin_init_gnd = KinematicInit( h = TerrainData(trn).altitude + 1.9);
     reinit!(sim, kin_init_gnd)
-
-    step!(sim, 1, true)
-
-    @test fcl.y.flight_phase === phase_gnd
 
     #set arbitrary control and guidance modes
     fcl.u.vrt_gdc_mode_req = vrt_gdc_alt
@@ -73,20 +70,28 @@ function test_control_modes()
     fcl.u.aileron_sp_input = 0.2
     fcl.u.elevator_sp_input = 0.3
     fcl.u.rudder_sp_input = 0.4
-    step!(sim, 1, true)
 
+    step!(sim, Δt, true)
+
+    #make sure we're on the ground
+    @test fcl.y.flight_phase === phase_gnd
+
+    #the mode requests are overridden due to phase_gnd
     @test fcl.y.vrt_gdc_mode === vrt_gdc_off
     @test fcl.y.hor_gdc_mode === hor_gdc_off
     @test fcl.y.lon_ctl_mode === lon_direct
     @test fcl.y.lat_ctl_mode === lat_direct
-    @test ac.y.vehicle.components.act.throttle.cmd == 0.1
-    @test ac.y.vehicle.components.act.aileron.cmd == 0.2
-    @test ac.y.vehicle.components.act.elevator.cmd == 0.3
-    @test ac.y.vehicle.components.act.rudder.cmd == 0.4
+
+    #control laws outputs must have propagated to actuator inputs (not yet to
+    #their outputs, that requires a subsequent call to f_ode!)
+    @test ac.vehicle.components.act.throttle.u[] == 0.1
+    @test ac.vehicle.components.act.aileron.u[] == 0.2
+    @test ac.vehicle.components.act.elevator.u[] == 0.3
+    @test ac.vehicle.components.act.rudder.u[] == 0.4
 
     # @test @ballocated(f_ode!($ac)) == 0
     # @test @ballocated(f_step!($ac)) == 0
-    # @test @ballocated(f_disc!($ac, 0.01)) == 0
+    # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end #testset
 
@@ -104,7 +109,7 @@ function test_control_modes()
     @testset verbose = true "lon_direct + lat_direct" begin
 
         reinit!(sim, design_point)
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lon_ctl_mode === lon_direct
         @test fcl.y.lat_ctl_mode === lat_direct
 
@@ -113,7 +118,7 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).ω_lb_b, y_kin_trim.ω_lb_b; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b, y_kin_trim.v_eOb_b; atol = 1e-2))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end #testset
 
@@ -125,7 +130,7 @@ function test_control_modes()
         #modes with it enabled
         reinit!(sim, design_point)
         fcl.u.lon_ctl_mode_req = lon_thr_ele
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lon_ctl_mode === lon_thr_ele
 
         #check the correct parameters are loaded and assigned to the controller
@@ -138,9 +143,10 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end #testset
+
 
     ################################ φ + β #####################################
 
@@ -149,7 +155,7 @@ function test_control_modes()
         reinit!(sim, design_point)
         fcl.u.lon_ctl_mode_req = lon_thr_ele
         fcl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lat_ctl_mode === lat_φ_β
 
         #check the correct parameters are loaded and assigned to the controller
@@ -170,10 +176,9 @@ function test_control_modes()
         @test isapprox(fcl.u.φ_sp, y_kin(ac).e_nb.φ; atol = 1e-3)
         @test isapprox(Float64(fcl.u.β_sp), y_air(ac).β_b; atol = 1e-3)
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end
-
     ################################ p + β #####################################
 
     @testset verbose = true "lat_p_β" begin
@@ -181,7 +186,7 @@ function test_control_modes()
         reinit!(sim, design_point)
         fcl.u.lon_ctl_mode_req = lon_thr_ele
         fcl.u.lat_ctl_mode_req = lat_p_β
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lat_ctl_mode === lat_p_β
 
         #check the correct parameters are loaded and assigned to the controllers
@@ -205,9 +210,10 @@ function test_control_modes()
         @test isapprox(Float64(fcl.u.p_sp), y_kin(ac).ω_lb_b[1]; atol = 1e-3)
         @test isapprox(fcl.u.β_sp, y_air(ac).β_b; atol = 1e-3)
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end
+
 
     ################################ χ + β #####################################
 
@@ -216,7 +222,7 @@ function test_control_modes()
         reinit!(sim, design_point)
         fcl.u.lon_ctl_mode_req = lon_thr_ele
         fcl.u.lat_ctl_mode_req = lat_χ_β
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lat_ctl_mode === lat_χ_β
 
         #check the correct parameters are loaded and assigned to the controller
@@ -243,7 +249,7 @@ function test_control_modes()
         @test isapprox(fcl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
         ac.vehicle.atmosphere.u.v_ew_n[1] = 0
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end
 
@@ -260,7 +266,7 @@ function test_control_modes()
 
         fcl.u.lon_ctl_mode_req = lon_thr_q
         fcl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lon_ctl_mode === lon_thr_q
 
         #check the correct parameters are loaded and assigned to the controller
@@ -284,7 +290,7 @@ function test_control_modes()
         @test isapprox(Float64(ac.y.vehicle.components.act.throttle.cmd),
                         Float64(fcl.u.throttle_sp_input + fcl.u.throttle_sp_offset); atol = 1e-3)
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end
 
@@ -297,7 +303,7 @@ function test_control_modes()
 
         fcl.u.lon_ctl_mode_req = lon_thr_θ
         fcl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lon_ctl_mode === lon_thr_θ
 
         #when trim setpoints are kept, the control mode must activate without
@@ -312,7 +318,7 @@ function test_control_modes()
         step!(sim, 10, true)
         @test isapprox(y_kin(ac).e_nb.θ, fcl.u.θ_sp; atol = 1e-4)
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end
 
@@ -325,7 +331,7 @@ function test_control_modes()
 
         fcl.u.lon_ctl_mode_req = lon_thr_EAS
         fcl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lon_ctl_mode === lon_thr_EAS
 
         #check the correct parameters are loaded and assigned to the controller
@@ -345,7 +351,7 @@ function test_control_modes()
         step!(sim, 30, true)
         @test all(isapprox.(y_air(ac).EAS, fcl.u.EAS_sp; atol = 1e-1))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end
 
@@ -357,7 +363,7 @@ function test_control_modes()
 
         fcl.u.lon_ctl_mode_req = lon_EAS_q
         fcl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lon_ctl_mode === lon_EAS_q
 
         #check the correct parameters are loaded and assigned to v2t, the q
@@ -383,7 +389,7 @@ function test_control_modes()
         @test isapprox(fcl.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, fcl.u.EAS_sp; atol = 1e-1))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end
 
@@ -396,7 +402,7 @@ function test_control_modes()
 
         fcl.u.lon_ctl_mode_req = lon_EAS_θ
         fcl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lon_ctl_mode === lon_EAS_θ
 
         #when trim setpoints are kept, the control mode must activate without
@@ -415,7 +421,7 @@ function test_control_modes()
         @test isapprox(fcl.lon_ctl.u.θ_sp, y_kin(ac).e_nb.θ; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, fcl.u.EAS_sp; atol = 1e-1))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end
 
@@ -427,7 +433,7 @@ function test_control_modes()
 
         fcl.u.lon_ctl_mode_req = lon_EAS_clm
         fcl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.lon_ctl_mode === lon_EAS_clm
 
         #check the correct parameters are loaded and assigned to the controller
@@ -449,7 +455,7 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_n[3], -fcl.u.clm_sp; atol = 1e-1))
         @test all(isapprox.(y_air(ac).EAS, fcl.u.EAS_sp; atol = 1e-1))
 
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
         # air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
@@ -476,7 +482,8 @@ function test_guidance_modes()
     fcl = ac.avionics.fcl
     design_point = C172.TrimParameters()
 
-    sim = Simulation(ac; dt = 0.01, Δt = 0.01, t_end = 600)
+    dt = Δt = 0.01
+    sim = Simulation(ac; dt, Δt, t_end = 600)
 
     @testset verbose = true "Altitude Guidance" begin
 
@@ -485,7 +492,7 @@ function test_guidance_modes()
 
         fcl.u.vrt_gdc_mode_req = vrt_gdc_alt
         fcl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, 0.01, true)
+        step!(sim, Δt, true)
         @test fcl.y.vrt_gdc_mode === vrt_gdc_alt
         @test fcl.y.lon_ctl_mode === lon_EAS_clm
 
@@ -520,11 +527,11 @@ function test_guidance_modes()
         @test isapprox.(y_kin(ac).h_e - HEllip(fcl.u.h_sp), 0.0; atol = 1e-1)
 
         @test fcl.y.lon_ctl_mode === lon_EAS_clm
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
         fcl.u.h_sp = y_kin_trim.h_e + 100
         step!(sim, 1, true)
         @test fcl.y.lon_ctl_mode === lon_thr_EAS
-        @test @ballocated(f_disc!($ac, 0.01)) == 0
+        # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
         # air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)

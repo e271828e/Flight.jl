@@ -578,7 +578,8 @@ end
 ################################################################################
 ################################## Variants ####################################
 
-include(normpath("control/c172rpa_fc.jl"))
+include(normpath("control/c172rpa_ctl.jl"))
+include(normpath("navigation/c172rpa_nav.jl"))
 
 include(normpath("versions/c172rpa_v1.jl")); @reexport using .C172RPAv1
 
