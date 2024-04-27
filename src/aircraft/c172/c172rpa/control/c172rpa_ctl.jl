@@ -4,8 +4,6 @@ using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using StructTypes
 
 using Flight.FlightCore
-# using Flight.FlightCore.Utils
-
 using Flight.FlightPhysics
 using Flight.FlightComponents
 using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput,
@@ -988,7 +986,7 @@ end
 function GUI.draw!(sys::System{<:Controller},
                     vehicle::System{<:C172RPA.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 RPAv1 Controller")
+                    label::String = "Cessna 172 RPA Controller")
 
     u = sys.u
     y = sys.y

@@ -107,7 +107,7 @@ function GUI.draw!(avionics::System{<:C172RPAv1.Avionics},
 
     Text(@sprintf("Epoch: %d", avionics.y.n_disc))
     @cstatic c_fcl=false begin
-        @c CImGui.Checkbox("Flight Control", &c_fcl)
+        @c CImGui.Checkbox("Flight Controller", &c_fcl)
         c_fcl && @c GUI.draw!(avionics.fcl, vehicle, &c_fcl)
     end
 
