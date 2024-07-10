@@ -272,9 +272,6 @@ end
 
 ################################# GUI ##########################################
 
-enable_gui!(sim::Simulation) = GUI.enable!(sim.gui)
-disable_gui!(sim::Simulation) = GUI.disable!(sim.gui)
-
 function update!(sys::System, info::SimInfo, gui::Renderer)
     try
         GUI.render(gui, GUI.draw!, sys, info)

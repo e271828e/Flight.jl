@@ -38,7 +38,6 @@ mutable struct Renderer
     monitor::UInt8 #which monitor to render on when multiple monitors available
     font_size::UInt8 #will be scaled by the display's content scale
     sync::UInt8 #number of display updates per frame render
-    _enabled::Bool
     _initialized::Bool
     _window::Ptr{ImGuiGLFWBackend.GLFWwindow}
     _window_ctx::ImGuiGLFWBackend.Context
@@ -46,9 +45,8 @@ mutable struct Renderer
     _cimgui_ctx::Ptr{CImGui.LibCImGui.ImGuiContext}
 
     function Renderer(; label = "Renderer", monitor = 2, font_size = 16, sync = 1)
-        _enabled = true
         _initialized = false
-        new(label, monitor, font_size, sync, _enabled, _initialized)
+        new(label, monitor, font_size, sync, _initialized)
     end
 
 end
@@ -68,13 +66,9 @@ function Base.setproperty!(renderer::Renderer, name::Symbol, value)
     end
 end
 
-enable!(renderer::Renderer) = setfield!(renderer, :_enabled, true)
-
 function init!(renderer::Renderer)
 
-    @unpack label, monitor, font_size, sync, _enabled = renderer
-
-    _enabled || return
+    @unpack label, monitor, font_size, sync = renderer
 
     glfwDefaultWindowHints()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3)
@@ -83,10 +77,6 @@ function init!(renderer::Renderer)
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE) # 3.2+ only
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE) # required on Mac
     end
-
-    # # setup GLFW error callback
-    # error_callback(err::GLFW.GLFWError) = @error "GLFW ERROR: code $(err.code) msg: $(err.description)"
-    # GLFW.SetErrorCallback(error_callback)
 
     n_monitors = Ref{Cint}()
     monitors = glfwGetMonitors(n_monitors)
@@ -167,13 +157,11 @@ end
 
 function render(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
-    renderer._enabled || return
-
     @unpack _initialized, _window, _window_ctx, _opengl_ctx = renderer
 
     @assert _initialized "Renderer not initialized, call init! before update!"
 
-        glfwPollEvents() #maybe on top???
+        glfwPollEvents()
 
         # start the Dear ImGui frame
         ImGuiOpenGLBackend.new_frame(_opengl_ctx)
@@ -213,7 +201,6 @@ end
 
 function run(renderer::Renderer, fdraw!::Function, fdraw_args...)
 
-    renderer._enabled || return
     renderer._initialized || init!(renderer)
     try
         @assert renderer.sync > 0 "The standalone run() must not be called "*
@@ -237,16 +224,12 @@ end
 
 
 function should_close(renderer::Renderer)
-
-    renderer._enabled || return false
     renderer._initialized ? Bool(glfwWindowShouldClose(renderer._window)) : false
-
 end
 
 
 function shutdown!(renderer::Renderer)
 
-    renderer._enabled || return
     @assert renderer._initialized "Cannot shutdown an uninitialized renderer"
 
     ImGuiOpenGLBackend.shutdown(renderer._opengl_ctx)
@@ -259,17 +242,11 @@ function shutdown!(renderer::Renderer)
 
 end
 
-function disable!(renderer::Renderer)
-    !renderer._initialized ? setfield!(renderer, :_enabled, false) : @error(
-        "Cannot disable an already initialized renderer, call shutdown! first")
-    return nothing
-end
+#generic mutating draw function, to be extended by users
+draw!(args...; kwargs...) = draw(args...; kwargs...)
 
 #generic non-mutating frame draw function, to be extended by users
 draw(args...; kwargs...) = nothing
-
-#generic mutating draw function, to be extended by users
-draw!(args...; kwargs...) = nothing
 
 function draw(v::AbstractVector{<:Real}, label::String, units::String = "")
 
@@ -291,7 +268,7 @@ end
 
 function fdraw_test(number::Real)
 
-    CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
+    CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append to it.
         output = @cstatic f=Cfloat(0.0) begin
             CImGui.Text("I got this number: $number")  # display some text
             @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1

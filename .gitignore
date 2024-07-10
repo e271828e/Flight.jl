@@ -1,6 +1,6 @@
 /old
 /precompile
-/CImGui.jl
+/CImGui*
 /.vscode
 /.VSCodeCounter
 
