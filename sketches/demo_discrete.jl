@@ -16,10 +16,6 @@ function Systems.f_disc!(sys::System{DiscreteTestComponent}, Δt)
     sys.x.a += 1
     sys.x.b -= 1
     sys.y = DiscreteTestComponentY(a = x.a, b = x.b)
-
-    #x was modified (irrelevant due to the lack of continuous dynamics, but we
-    #must still return a Bool)
-    return true
 end
 
 function f_dtc()

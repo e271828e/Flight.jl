@@ -90,7 +90,6 @@ end
 #this method can be extended if required, but in principle Components shouldn't
 #implement discrete dynamics; discretized algorithms belong in Avionics
 function Systems.f_disc!(::System{<:AbstractComponents}, ::Real)
-    return false
 end
 
 #f_step! may use the recursive fallback implementation
@@ -116,7 +115,6 @@ end
 function Systems.f_disc!(::System{NoAvionics},
                         ::System{<:Vehicle},
                         ::Real)
-    return false
 end
 
 #f_step! can use the recursive fallback implementation
@@ -164,13 +162,11 @@ function Systems.f_disc!(vehicle::System{<:Vehicle}, Δt::Real)
     @unpack kinematics, components = vehicle
     @unpack dynamics, air = vehicle.y
 
-    x_mod = false
-    x_mod |= f_disc!(components, Δt)
+    f_disc!(components, Δt)
 
     #components might have modified its outputs, so we need to reassemble our y
     vehicle.y = VehicleY(components.y, kinematics.y, dynamics, air)
 
-    return x_mod
 end
 
 #these are meant to map avionics outputs to components control inputs, they are
@@ -216,23 +212,17 @@ function Systems.f_ode!(ac::System{<:Aircraft})
     f_ode!(vehicle)
 
     ac.y = AircraftY(vehicle.y, avionics.y)
-
-    return nothing
-
 end
 
 function Systems.f_disc!(ac::System{<:Aircraft}, Δt::Real)
 
     @unpack vehicle, avionics = ac.subsystems
 
-    x_mod = false
-    x_mod |= f_disc!(avionics, vehicle, Δt)
+    f_disc!(avionics, vehicle, Δt)
     assign!(vehicle, avionics)
-    x_mod |= f_disc!(vehicle, Δt)
+    f_disc!(vehicle, Δt)
 
     ac.y = AircraftY(vehicle.y, avionics.y)
-
-    return x_mod
 end
 
 #f_step! can use the recursive fallback implementation
@@ -279,7 +269,13 @@ end
 
 Systems.init!( ac::System{<:Aircraft}, params::AbstractTrimParameters) = trim!(ac, params)
 
-trim!( ac::System{<:Aircraft}, args...; kwargs...) = trim!(ac.vehicle, args...; kwargs...)
+function trim!( ac::System{<:Aircraft}, params::AbstractTrimParameters)
+    result = trim!(ac.vehicle, params) #compute vehicle trim state
+    trim!(ac.avionics, ac.vehicle) #make avionics consistent with vehicle trim state
+    ac.y = AircraftY(ac.vehicle.y, ac.avionics.y)
+    # update_y!(ac)
+    return result
+end
 
 function trim!( vehicle::System{<:Vehicle}, args...)
     MethodError(trim!, (vehicle, args...)) |> throw
@@ -287,6 +283,9 @@ end
 
 function assign!(::System{<:Vehicle}, ::AbstractTrimParameters, ::AbstractTrimState)
     error("An assign! method must be defined by each AircraftBase.Vehicle subtype")
+end
+
+function trim!( ::System{NoAvionics}, ::System{<:Vehicle})
 end
 
 
@@ -303,8 +302,7 @@ assign_u!(vehicle::System{<:Vehicle}, u::AbstractVector{Float64}) = throw(Method
 
 linearize!(ac::System{<:AircraftBase.Aircraft}, args...) = linearize!(ac.vehicle, args...)
 
-function AircraftBase.linearize!( vehicle::System{<:AircraftBase.Vehicle},
-                            trim_params::AbstractTrimParameters)
+function linearize!( vehicle::System{<:AircraftBase.Vehicle}, trim_params::AbstractTrimParameters)
 
     (_, trim_state) = trim!(vehicle, trim_params)
 

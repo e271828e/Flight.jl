@@ -472,7 +472,6 @@ function Systems.f_step!(sys::System{Aero})
     elseif α < α_stall[1]
         sys.s.stall = false
     end
-    return false
 end
 
 
@@ -776,12 +775,9 @@ end
 function Systems.f_step!(components::System{<:Components})
     @unpack aero, ldg, pwp, fuel = components
 
-    x_mod = false
-    x_mod |= f_step!(aero)
-    x_mod |= f_step!(ldg)
-    x_mod |= f_step!(pwp, fuel)
-
-    return x_mod
+    f_step!(aero)
+    f_step!(ldg)
+    f_step!(pwp, fuel)
 
 end
 
@@ -970,6 +966,14 @@ function AircraftBase.trim!(vehicle::System{<:C172.Vehicle},
     AircraftBase.assign!(vehicle, trim_params, trim_state_opt)
     return (success = success, trim_state = trim_state_opt)
 
+end
+
+function AircraftBase.trim!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}})
+    trim!(ac, TrimParameters())
+end
+
+function AircraftBase.linearize!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}})
+    linearize!(ac, TrimParameters())
 end
 
 

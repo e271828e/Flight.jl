@@ -65,13 +65,15 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
         dt::Real = 0.02, #continuous dynamics integration step
-        Δt::Real = dt, #discrete dynamics execution period (do not set to Inf!)
+        Δt::Real = 0.02, #discrete dynamics execution period (do not set to Inf!)
         t_start::Real = 0.0,
         t_end::Real = 10.0,
         save_on::Bool = true,
         saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
+        save_everystep::Bool = isempty(saveat),
         save_start::Bool = false, #initial System's outputs might not be up to date
-        save_everystep::Bool = isempty(saveat),)
+        save_end::Bool = false,
+        )
 
         @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
                                         than the discrete dynamics update period"
@@ -85,9 +87,8 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
 
         log = SavedValues(Float64, typeof(sys.y))
-        saveat_arr = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
-        cb_save = SavingCallback(f_cb_save, log; save_start = save_start,
-                                    saveat = saveat_arr, save_everystep)
+        saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
+        cb_save = SavingCallback(f_cb_save, log; saveat, save_everystep, save_start, save_end)
 
         if save_on
             cb_set = CallbackSet(cb_cont, cb_step, cb_disc, cb_user, cb_save)
@@ -192,16 +193,10 @@ function f_cb_step!(integrator)
     @unpack u, p = integrator
     @unpack sys, args_step = p
 
-    x_mod = f_step!(sys, args_step...)
+    f_step!(sys, args_step...)
 
-    @assert x_mod isa Bool
-
-    u_modified!(integrator, x_mod)
-
-    #assign the modified sys.x back to the integrator
-    has_x(sys) && x_mod && (u .= sys.x)
-
-    return nothing
+    #assign the (potentially) modified sys.x back to the integrator
+    has_x(sys) && (u .= sys.x)
 
 end
 
@@ -213,14 +208,10 @@ function f_cb_disc!(integrator)
     @unpack u, p = integrator
     @unpack sys, Δt, args_disc = p
 
-    x_mod = f_disc!(sys, Δt, args_disc...)
+    f_disc!(sys, Δt, args_disc...)
 
-    @assert x_mod isa Bool
-
-    u_modified!(integrator, x_mod)
-
-    #assign the modified sys.x back to the integrator
-    has_x(sys) && x_mod && (u .= sys.x)
+    #assign the (potentially) modified sys.x back to the integrator
+    has_x(sys) && (u .= sys.x)
 
 end
 
@@ -228,13 +219,13 @@ end
 #every integration step
 function f_cb_user!(integrator)
 
-    @unpack sys, user_callback! = integrator.p
+    @unpack u, p = integrator
+    @unpack sys, user_callback! = p
 
     user_callback!(sys)
 
-    #a System I/O function should never modify the System's continuous state, so
-    #we may as well tell the integrator to avoid any performance hit
-    u_modified!(integrator, false)
+    #assign the (potentially) modified sys.x back to the integrator
+    has_x(sys) && (u .= sys.x)
 
 end
 

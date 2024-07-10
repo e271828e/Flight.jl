@@ -114,7 +114,7 @@ end
 const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
 const XVel{T, D} = ComponentVector{T, D, typeof(getaxes(XVelTemplate))} where {T, D}
 
-function renormalize_block!(x, ε) #returns true if norm was corrected
+function normalize_block!(x, ε) #returns true if norm was corrected
     norm_x = norm(x)
     abs(norm_x - 1.0) > ε ? (x ./= norm_x; return true) : return false
 end
@@ -263,9 +263,9 @@ function Systems.f_ode!(sys::System{LTF})
 end
 
 function Systems.f_step!(sys::System{LTF}, ε = 1e-8)
-    #we need both calls executed, so | must be used here instead of ||
     x_pos = sys.x.pos
-    renormalize_block!(x_pos.q_lb, ε) | renormalize_block!(x_pos.q_el, ε)
+    normalize_block!(x_pos.q_lb, ε)
+    normalize_block!(x_pos.q_el, ε)
 end
 
 
@@ -373,8 +373,8 @@ end
 
 function Systems.f_step!(sys::System{ECEF}, ε = 1e-8)
     x_pos = sys.x.pos
-    #we need both calls executed, so | must be used here instead of ||
-    renormalize_block!(x_pos.q_eb, ε) | renormalize_block!(x_pos.n_e, ε)
+    normalize_block!(x_pos.q_eb, ε)
+    normalize_block!(x_pos.n_e, ε)
 end
 
 
