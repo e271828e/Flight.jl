@@ -13,7 +13,7 @@ using ..IODevices
 using ..GUI
 
 @reexport using OrdinaryDiffEq: step!, reinit!, add_tstop!, get_proposed_dt
-export Simulation, enable_gui!, disable_gui!, attach_input, attach_output!
+export Simulation, enable_gui!, disable_gui!, attach!
 export TimeSeries, get_time, get_data, get_components, get_child_names
 
 
@@ -21,7 +21,7 @@ export TimeSeries, get_time, get_data, get_components, get_child_names
 ################################# SimInfo ########################################
 
 @kwdef struct SimInfo
-    algorithm::String = "No info"
+    algorithm::String = "Undefined"
     t_start::Float64 = 0.0
     t_end::Float64 = 0.0
     dt::Float64 = 0.0 #last time step
@@ -32,9 +32,9 @@ end
 
 
 ################################################################################
-############################### Output #########################################
+############################### SimData #########################################
 
-@kwdef struct Output{Y}
+@kwdef struct SimData{Y}
     t::Float64
     y::Y #System's y
 end
@@ -47,11 +47,12 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     integrator::I
     log::L
     gui::Renderer
-    input_interfaces::Vector{InputInterface}
-    output_interfaces::Vector{OutputInterface}
+    info::Ref{SimInfo}
+    inputs::Vector{SimInput}
+    outputs::Vector{SimOutput}
     started::Base.Event #signals that simulation execution has started
     running::ReentrantLock #while locked it signals that simulation execution is in progress
-    stepping::ReentrantLock #must be acquired by IO interfaces to modify the system
+    stepping::ReentrantLock #must be acquired by simulation inputs to modify the system
 
     #set sync = 0 so that SwapBuffers returns immediately and doesn't slow down
     #the sim loop; for paced simulations, scheduling is taken care of
@@ -110,13 +111,19 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #SavingCallback
 
         #the GUI Renderer's refresh rate must be uncapped so that calls to
-        #render() return immediately without blocking, so that they do not
+        #update!() return immediately without blocking, so that they do not
         #interfere with simulation scheduling
 
+        info = Ref(SimInfo())
+
+        f_draw = let sys = sys, info = info
+            () -> GUI.draw!(sys, info[])
+        end
+
+        gui = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
+
         new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
-            sys, integrator, log,
-            Renderer(label = "Simulation", sync = UInt8(0)),
-            InputInterface[], OutputInterface[],
+            sys, integrator, log, gui, info, SimInput[], SimOutput[],
             Base.Event(), ReentrantLock(), ReentrantLock())
     end
 
@@ -133,9 +140,6 @@ Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
         return :(getfield(sim, $(QuoteNode(S))))
     end
 end
-
-#get ODE algorithm type
-algorithm_type(sim::Simulation) = sim.integrator.alg |> typeof
 
 #function signature for a user callback function, called after every integration
 #step. this function MUST NEVER modify the System's ẋ, x or t
@@ -253,7 +257,11 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, sys_init_args...; sys_init_kwar
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
     #reinit! calls f_ode_wrapper!, so the System's ẋ and y are updated in the
     #process, no need to do it explicitly
-    OrdinaryDiffEq.reinit!(integrator, p.sys.x)
+    if has_x(p.sys)
+        OrdinaryDiffEq.reinit!(integrator, p.sys.x)
+    else
+        OrdinaryDiffEq.reinit!(integrator)
+    end
 
     resize!(log.t, 1)
     resize!(log.saveval, 1)
@@ -262,16 +270,6 @@ end
 
 
 ################################# GUI ##########################################
-
-function update!(sys::System, info::SimInfo, gui::Renderer)
-    try
-        GUI.render(gui, GUI.draw!, sys, info)
-    catch e
-        @error "Error while updating window" exception=e
-        Base.show_backtrace(stderr, catch_backtrace())
-        shutdown!(renderer)
-    end
-end
 
 function GUI.draw!(sys::System, info::SimInfo)
     GUI.draw(info)
@@ -300,32 +298,32 @@ end
 ################################### I/O #######################################
 
 #attaches an input device to the Simulation, enabling it to safely modify the
-#System's input during paced or full speed execution, and returns its interface
+#System's input during paced or full speed execution
 function attach!(sim::Simulation, device::InputDevice;
                     mapping::InputMapping = DefaultMapping())
 
-    interface = InputInterface(device, sim.sys, mapping, sim.started, sim.running, sim.stepping)
-    push!(sim.input_interfaces, interface)
+    input = SimInput(device, sim.sys, mapping, sim.started, sim.running, sim.stepping)
+    push!(sim.inputs, input)
 
 end
 
 #attaches an output device to the Simulation, linking it to a dedicated channel
-#for simulation output.
+#for simulation output data
 
 # the channel must be buffered. an unbuffered channel returns isready only if
 #there is another task waiting on it. however, to prevent the simulation loop
 #from blocking, we need the channel to return isready when it is holding data,
 #regardless of whether the output interface is currently waiting on it
 function attach!(sim::Simulation, device::OutputDevice)
-    channel = Channel{Output{typeof(sim.sys.y)}}(1)
-    interface = OutputInterface(device, channel, sim.started, sim.running)
-    push!(sim.output_interfaces, interface)
+    channel = Channel{SimData{typeof(sim.sys.y)}}(1)
+    output = SimOutput(device, channel, sim.started, sim.running)
+    push!(sim.outputs, output)
 end
 
 function IODevices.put_no_wait!(sim::Simulation)
-    output = Output(sim.t[], sim.y)
-    for interface in sim.output_interfaces
-        put_no_wait!(interface, output)
+    data = SimData(sim.t[], sim.y)
+    for output in sim.outputs
+        put_no_wait!(output, data)
     end
 end
 
@@ -355,16 +353,16 @@ end
 #interfaces
 function run!(sim::Simulation)
     @sync begin
-        for output in sim.output_interfaces
+        for output in sim.outputs
             Threads.@spawn IODevices.start!(output)
         end
-        Threads.@spawn run_loop!(sim)
+        Threads.@spawn sim_loop!(sim)
     end
 end
 
-function run_loop!(sim::Simulation)
+function sim_loop!(sim::Simulation)
 
-    @unpack integrator, output_interfaces, started, running, stepping = sim
+    @unpack integrator, started, running, stepping = sim
 
     t_end = integrator.sol.prob.tspan[2]
     τ = 0
@@ -407,25 +405,25 @@ end
 #all IO threads. it must always be run from a Threads.@spawn'ed thread
 function run_paced!(sim::Simulation; kwargs...)
     @sync begin
-        for input in sim.input_interfaces
+        for input in sim.inputs
             Threads.@spawn IODevices.start!(input)
         end
-        for output in sim.output_interfaces
+        for output in sim.outputs
             Threads.@spawn IODevices.start!(output)
         end
-        Threads.@spawn run_loop_paced!(sim; kwargs...)
+        Threads.@spawn sim_loop_paced!(sim; kwargs...)
     end
 end
 
 
-function run_loop_paced!(sim::Simulation;
+function sim_loop_paced!(sim::Simulation;
                     pace::Real = 1)
 
-    @unpack sys, integrator, gui, output_interfaces, started, running, stepping = sim
+    @unpack sys, integrator, gui, info, started, running, stepping = sim
 
     t_start = sim.t[]
     t_end = integrator.sol.prob.tspan[2]
-    algorithm = algorithm_type(sim) |> string
+    algorithm = sim.integrator.alg |> typeof |> string
 
     try
 
@@ -455,10 +453,9 @@ function run_loop_paced!(sim::Simulation;
 
             lock(stepping)
                 step!(sim)
-                τ_last = τ()
-                info = SimInfo(; algorithm, t_start, t_end, dt = integrator.dt,
+                info[] = SimInfo(; algorithm, t_start, t_end, dt = integrator.dt,
                               iter = integrator.iter, t = sim.t[], τ = τ_last)
-                update!(sys, info, gui)
+                GUI.update!(gui)
             unlock(stepping)
 
             put_no_wait!(sim)

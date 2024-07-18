@@ -38,20 +38,22 @@ mutable struct Renderer
     monitor::UInt8 #which monitor to render on when multiple monitors available
     font_size::UInt8 #will be scaled by the display's content scale
     sync::UInt8 #number of display updates per frame render
+    f_draw::Function #GUI function to be called
     _initialized::Bool
     _window::Ptr{ImGuiGLFWBackend.GLFWwindow}
     _window_ctx::ImGuiGLFWBackend.Context
     _opengl_ctx::ImGuiOpenGLBackend.Context
     _cimgui_ctx::Ptr{CImGui.LibCImGui.ImGuiContext}
 
-    function Renderer(; label = "Renderer", monitor = 2, font_size = 16, sync = 1)
+    function Renderer(; label = "Renderer", monitor = 2, font_size = 16,
+        sync = 1, f_draw = ()->nothing)
         _initialized = false
-        new(label, monitor, font_size, sync, _initialized)
+        new(label, monitor, font_size, sync, f_draw, _initialized)
     end
 
 end
 
-Base.propertynames(::Renderer) = (:label, :monitor, :font_size, :sync)
+Base.propertynames(::Renderer) = (:label, :monitor, :font_size, :sync, :f_draw)
 
 function Base.setproperty!(renderer::Renderer, name::Symbol, value)
     if name ∈ propertynames(renderer)
@@ -155,9 +157,9 @@ function init!(renderer::Renderer)
 end
 
 
-function render(renderer::Renderer, fdraw!::Function, fdraw_args...)
+function update!(renderer::Renderer)
 
-    @unpack _initialized, _window, _window_ctx, _opengl_ctx = renderer
+    @unpack f_draw, _initialized, _window, _window_ctx, _opengl_ctx = renderer
 
     @assert _initialized "Renderer not initialized, call init! before update!"
 
@@ -168,8 +170,8 @@ function render(renderer::Renderer, fdraw!::Function, fdraw_args...)
         ImGuiGLFWBackend.new_frame(_window_ctx)
         CImGui.NewFrame()
 
-        # #draw the frame and apply user inputs to arguments
-        fdraw!(fdraw_args...)
+        #draw the frame and apply user inputs to arguments
+        f_draw()
 
         CImGui.Render()
         glfwMakeContextCurrent(_window)
@@ -199,19 +201,19 @@ function render(renderer::Renderer, fdraw!::Function, fdraw_args...)
 end
 
 
-function run(renderer::Renderer, fdraw!::Function, fdraw_args...)
+function render_loop(renderer::Renderer)
 
     renderer._initialized || init!(renderer)
     try
-        @assert renderer.sync > 0 "The standalone run() must not be called "*
-        "an unsynced Renderer (sync = 0). Use scheduled calls to render() instead."
+        @assert renderer.sync > 0 "The standalone render_loop() must not be called "*
+        "an unsynced Renderer (sync = 0). Use scheduled calls to update!() instead."
         #this is because a Renderer with sync=0 does not wait for monitor sync
-        #when glfwSwapBuffers is called within render(), which means its frame rate
-        #is effectively uncapped. this causes issues, so the calls to render must be
+        #when glfwSwapBuffers is called within update!(), which means its frame rate
+        #is effectively uncapped. this causes issues, so the calls to update! must be
         #limited in frequency by some other means
 
         while glfwWindowShouldClose(renderer._window) == 0
-            render(renderer, fdraw!, fdraw_args...)
+            update!(renderer)
         end
     catch e
         @error "Error while updating window" exception=e
@@ -274,6 +276,52 @@ function fdraw_test(number::Real)
             @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
         end
     CImGui.End()
+
+end
+
+
+################################# SimGUI #######################################
+
+struct SimGUI
+    renderer::Renderer
+    start::Base.Event #to be waited on before entering the update loop
+    running::ReentrantLock #to be checked on each loop iteration for termination
+    stepping::ReentrantLock #to acquire before modifying the target
+end
+
+function start!(gui::SimGUI)
+
+    @unpack device, target, mapping, start, running, stepping = gui
+
+    @info("$D Interface: Starting on thread $(Threads.threadid())...")
+
+    try
+
+        init!(device)
+        wait(start)
+
+        while true
+
+            if !islocked(running) || should_close(device)
+                @info("$D Interface: Shutdown requested")
+                break
+            end
+
+            update_input!(device)
+            lock(stepping) #ensure the Simulation is not currently stepping
+                assign_input!(target, device, mapping)
+            unlock(stepping)
+
+        end
+
+    catch ex
+
+        @error("$D Interface: Error during execution: $ex")
+
+    finally
+        shutdown!(device)
+        @info("$D Interface: Closed")
+    end
 
 end
 

@@ -4,8 +4,8 @@ using StaticArrays
 using UnPack
 using Logging
 
-export InputDevice, InputMapping, DefaultMapping, InputInterface
-export OutputDevice, OutputInterface
+export InputDevice, InputMapping, DefaultMapping, SimInput
+export OutputDevice, SimOutput
 export put_no_wait!
 
 
@@ -22,7 +22,7 @@ shutdown!(device::D) where {D<:IODevice} = MethodError(shutdown!, (device, )) |>
 should_close(device::D) where {D<:IODevice} = MethodError(should_close, (device, )) |> throw
 
 ################################################################################
-############################ InputInterface ####################################
+############################ SimInput ####################################
 
 abstract type InputDevice <: IODevice end
 abstract type InputMapping end
@@ -58,7 +58,7 @@ should_close(::DummyInputDevice) = false
 
 ################################################################################
 
-struct InputInterface{D <: InputDevice, T,  M <: InputMapping}
+struct SimInput{D <: InputDevice, T,  M <: InputMapping}
     device::D
     target::T #target for input assignment, typically the simulated System
     mapping::M #selected device-to-target mapping, used for dispatch on assign!
@@ -67,9 +67,9 @@ struct InputInterface{D <: InputDevice, T,  M <: InputMapping}
     stepping::ReentrantLock #to acquire before modifying the target
 end
 
-function start!(interface::InputInterface{D}) where {D}
+function start!(input::SimInput{D}) where {D}
 
-    @unpack device, target, mapping, start, running, stepping = interface
+    @unpack device, target, mapping, start, running, stepping = input
 
     @info("$D Interface: Starting on thread $(Threads.threadid())...")
 
@@ -104,7 +104,7 @@ function start!(interface::InputInterface{D}) where {D}
 end
 
 ################################################################################
-############################ OutputInterface ###################################
+############################ SimOutput ###################################
 
 abstract type OutputDevice <: IODevice end
 
@@ -121,7 +121,7 @@ should_close(::DummyOutputDevice) = false
 
 ################################################################################
 
-struct OutputInterface{D <: OutputDevice, C <: Channel}
+struct SimOutput{D <: OutputDevice, C <: Channel}
     device::D
     channel::C #channel to which Simulation's output will be put!
     start::Base.Event #to be waited on before entering the update loop
@@ -135,16 +135,16 @@ end
     (isopen(channel) && !isready(channel)) && put!(channel, data)
 end
 
-@inline function put_no_wait!(interface::OutputInterface, data)
-    put_no_wait!(interface.channel, data)
+@inline function put_no_wait!(output::SimOutput, data)
+    put_no_wait!(output.channel, data)
 end
 
 #the update rate for an output device is implicitly controlled by the simulation
 #loop. the call to take! below will block until the simulation writes a new
 #output to the channel
-function start!(interface::OutputInterface{D}) where {D}
+function start!(output::SimOutput{D}) where {D}
 
-    @unpack device, channel, start, running = interface
+    @unpack device, channel, start, running = output
 
     @info("$D Interface: Starting on thread $(Threads.threadid())...")
 

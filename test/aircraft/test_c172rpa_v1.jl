@@ -550,7 +550,7 @@ end
 
 function test_json_loopback(; save::Bool = true)
 
-    function output_callback(sim_out::Sim.Output)::Vector{UInt8}
+    function output_callback(sim_out::Sim.SimData)::Vector{UInt8}
         freq = 0.1
         φ_sp_max = π/6
         φ_sp = φ_sp_max * sin(2π*freq*sim_out.t)

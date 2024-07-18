@@ -41,7 +41,7 @@ function IODevices.init!(client::UDPClient)
     end
 end
 
-function IODevices.process_output!(client::UDPClient, output::Sim.Output)
+function IODevices.process_output!(client::UDPClient, output::Sim.SimData)
     try
         data = client.output_callback(output)
         !isempty(data) && send(client.socket, client.address, client.port, data)
@@ -57,7 +57,7 @@ IODevices.should_close(::UDPClient) = false
 init_callback()::Vector{UInt8} = UInt8[]
 #output_callback signature; the output is the result of some user-specified
 #serialization of simulation output (typically via JSON)
-output_callback(::Sim.Output)::Vector{UInt8} = UInt8[]
+output_callback(::Sim.SimData)::Vector{UInt8} = UInt8[]
 
 
 ############################### XPCClient ####################################
@@ -69,7 +69,7 @@ function XPCClient(; address::IPAddr = IPv4("127.0.0.1"), port::Integer = 49009)
 end
 
 #to be overridden for each System's y
-xpc_output_callback(out::Sim.Output) = set_xpc_pos!(out.y)
+xpc_output_callback(out::Sim.SimData) = set_xpc_pos!(out.y)
 #disables physics
 xpc_init_callback() = set_xpc_dref("sim/operation/override/override_planepath", 1)
 

@@ -11,9 +11,9 @@ using Flight.FlightAircraft.C172RPAv1
 
 export json_fms_sketch
 
-function output_callback(sim_out::Sim.Output)::Vector{UInt8}
+function output_callback(sim_data::Sim.SimData)::Vector{UInt8}
 
-    @unpack vehicle, avionics = sim_out.y
+    @unpack vehicle, avionics = sim_data.y
     @unpack kinematics, air, components = vehicle
 
     output = (

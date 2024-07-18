@@ -34,7 +34,7 @@ function test_json_loopback1()
     #field of the simulated System's input, which is a TestSystemU struct. note:
     #JSON3 parses only the first JSON message in a string. apparently, it
     #starts parsing and once it finds the closing brace, it discards the rest
-    function output_callback(::Sim.Output)::Vector{UInt8}
+    function output_callback(::Sim.SimData)::Vector{UInt8}
         value = 2.4
         return Vector{UInt8}("""{"input": $value}""")
     end
