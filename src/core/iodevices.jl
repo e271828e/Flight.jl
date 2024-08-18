@@ -4,8 +4,8 @@ using StaticArrays
 using UnPack
 using Logging
 
-export InputDevice, InputMapping, DefaultMapping, SimInput
-export OutputDevice, SimOutput
+export InputDevice, InputMapping, DefaultMapping
+export OutputDevice
 export put_no_wait!
 
 
@@ -22,7 +22,7 @@ shutdown!(device::D) where {D<:IODevice} = MethodError(shutdown!, (device, )) |>
 should_close(device::D) where {D<:IODevice} = MethodError(should_close, (device, )) |> throw
 
 ################################################################################
-############################ SimInput ####################################
+############################### InputDevice ####################################
 
 abstract type InputDevice <: IODevice end
 abstract type InputMapping end
@@ -56,55 +56,9 @@ assign_input!(::Any, ::DummyInputDevice, ::DefaultMapping) = nothing
 shutdown!(::DummyInputDevice) = println("DummyInputDevice shutting down")
 should_close(::DummyInputDevice) = false
 
-################################################################################
-
-struct SimInput{D <: InputDevice, T,  M <: InputMapping}
-    device::D
-    target::T #target for input assignment, typically the simulated System
-    mapping::M #selected device-to-target mapping, used for dispatch on assign!
-    start::Base.Event #to be waited on before entering the update loop
-    running::ReentrantLock #to be checked on each loop iteration for termination
-    stepping::ReentrantLock #to acquire before modifying the target
-end
-
-function start!(input::SimInput{D}) where {D}
-
-    @unpack device, target, mapping, start, running, stepping = input
-
-    @info("$D Interface: Starting on thread $(Threads.threadid())...")
-
-    try
-
-        init!(device)
-        wait(start)
-
-        while true
-
-            if !islocked(running) || should_close(device)
-                @info("$D Interface: Shutdown requested")
-                break
-            end
-
-            update_input!(device)
-            lock(stepping) #ensure the Simulation is not currently stepping
-                assign_input!(target, device, mapping)
-            unlock(stepping)
-
-        end
-
-    catch ex
-
-        @error("$D Interface: Error during execution: $ex")
-
-    finally
-        shutdown!(device)
-        @info("$D Interface: Closed")
-    end
-
-end
 
 ################################################################################
-############################ SimOutput ###################################
+############################### OutputDevice ###################################
 
 abstract type OutputDevice <: IODevice end
 
@@ -118,70 +72,6 @@ init!(::DummyOutputDevice) = println("DummyOutputDevice initialized")
 process_output!(::DummyOutputDevice, data) = (sleep(1); println("DummyOutputDevice updated"))
 shutdown!(::DummyOutputDevice) = println("DummyOutputDevice shutting down")
 should_close(::DummyOutputDevice) = false
-
-################################################################################
-
-struct SimOutput{D <: OutputDevice, C <: Channel}
-    device::D
-    channel::C #channel to which Simulation's output will be put!
-    start::Base.Event #to be waited on before entering the update loop
-    running::ReentrantLock #to be checked on each loop iteration for termination
-end
-
-#for buffered channels, isready returns 1 if there is at least one value in the
-#channel. if there is one value and we try to put! another, the simulation loop
-#will block. to avoid this, we should only put! if our channel !isready
-@inline function put_no_wait!(channel::Channel{T}, data::T) where {T}
-    (isopen(channel) && !isready(channel)) && put!(channel, data)
-end
-
-@inline function put_no_wait!(output::SimOutput, data)
-    put_no_wait!(output.channel, data)
-end
-
-#the update rate for an output device is implicitly controlled by the simulation
-#loop. the call to take! below will block until the simulation writes a new
-#output to the channel
-function start!(output::SimOutput{D}) where {D}
-
-    @unpack device, channel, start, running = output
-
-    @info("$D Interface: Starting on thread $(Threads.threadid())...")
-
-    try
-
-        init!(device)
-        wait(start)
-
-        while true
-
-            #if sim loop is not running, break immediately to avoid getting
-            #stuck on take!
-            if !islocked(running) || should_close(device)
-                @info("$D Interface: Shutdown requested")
-                break
-            end
-
-            output = take!(channel) #blocks until simulation writes its output
-            process_output!(device, output)
-
-        end
-
-    catch ex
-
-        if ex isa InvalidStateException
-            @info("$D Interface: Channel closed")
-        else
-            @error("$D Interface: Error during execution: $ex")
-        end
-
-    finally
-        # close(channel)
-        shutdown!(device)
-        @info("$D Interface: Closed")
-    end
-
-end
 
 
 

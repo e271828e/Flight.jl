@@ -32,6 +32,121 @@ end
 
 
 ################################################################################
+################################ SimInput ######################################
+
+struct SimInput{D <: InputDevice, T,  M <: InputMapping}
+    device::D
+    target::T #target for input assignment, typically the simulated System
+    mapping::M #selected device-to-target mapping, used for dispatch on assign!
+    sim_started::Base.Event #to be waited on before entering the update loop
+    sim_running::ReentrantLock #to be checked on each loop iteration for termination
+    sim_stepping::ReentrantLock #to acquire before modifying the target
+end
+
+
+function start!(input::SimInput{D}) where {D}
+
+    @unpack device, target, mapping, sim_started, sim_running, sim_stepping = input
+
+    @info("$D Interface: Starting on thread $(Threads.threadid())...")
+
+    try
+
+        IODevices.init!(device)
+        wait(sim_started)
+
+        while true
+
+            if !islocked(sim_running) || IODevices.should_close(device)
+                @info("$D Interface: Shutdown requested")
+                break
+            end
+
+            IODevices.update_input!(device)
+            lock(sim_stepping) #ensure the Simulation is not currently stepping
+                IODevices.assign_input!(target, device, mapping)
+            unlock(sim_stepping)
+
+        end
+
+    catch ex
+
+        @error("$D Interface: Error during execution: $ex")
+
+    finally
+        IODevices.shutdown!(device)
+        @info("$D Interface: Closed")
+    end
+
+end
+
+################################################################################
+############################### SimOutput ######################################
+
+struct SimOutput{D <: OutputDevice, C <: Channel}
+    device::D
+    channel::C #channel to which Simulation's output will be put!
+    sim_started::Base.Event #to be waited on before entering the update loop
+    sim_running::ReentrantLock #to be checked on each loop iteration for termination
+end
+
+#for buffered channels, isready returns 1 if there is at least one value in the
+#channel. our channel is of length 1. if it contains 1 value and we try to put!
+#another, the simulation loop will block. to avoid this, we should only put! if
+#the channel !isready
+@inline function put_no_wait!(channel::Channel{T}, data::T) where {T}
+    (isopen(channel) && !isready(channel)) && put!(channel, data)
+end
+
+@inline function put_no_wait!(output::SimOutput, data)
+    put_no_wait!(output.channel, data)
+end
+
+
+#the update rate for an output device is implicitly controlled by the simulation
+#loop. the call to take! below will block until the simulation writes a new
+#output to the channel
+function start!(output::SimOutput{D}) where {D}
+
+    @unpack device, channel, sim_started, sim_running = output
+
+    @info("$D Interface: Starting on thread $(Threads.threadid())...")
+
+    try
+
+        IODevices.init!(device)
+        wait(sim_started)
+
+        while true
+
+            if !islocked(sim_running) || IODevices.should_close(device)
+                @info("$D Interface: Shutdown requested")
+                break
+            end
+
+            output = take!(channel) #blocks until simulation writes its output
+            IODevices.process_output!(device, output)
+
+        end
+
+    catch ex
+
+        if ex isa InvalidStateException
+            @info("$D Interface: Channel closed")
+        else
+            @error("$D Interface: Error during execution: $ex")
+        end
+
+    finally
+        # close(channel)
+        IODevices.shutdown!(device)
+        @info("$D Interface: Closed")
+    end
+
+end
+
+
+################################################################################
 ############################### SimData #########################################
 
 @kwdef struct SimData{Y}
@@ -142,8 +257,44 @@ Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
 end
 
 #function signature for a user callback function, called after every integration
-#step. this function MUST NEVER modify the System's ẋ, x or t
+#step. this function MUST NOT modify the System's ẋ, x or t
 user_callback!(::System) = nothing
+
+
+################################ I/O ###########################################
+
+#attaches an input device to the Simulation, enabling it to safely modify the
+#System's input during paced or full speed execution
+function attach!(sim::Simulation, device::InputDevice;
+                    mapping::InputMapping = DefaultMapping())
+
+    input = SimInput(device, sim.sys, mapping, sim.started, sim.running, sim.stepping)
+    push!(sim.inputs, input)
+
+end
+
+#attaches an output device to the Simulation, linking it to a dedicated channel
+#for simulation output data. on each step, the simulation loop will try to write
+#the updated output data on each output channel. if any of the output devices
+#still has not consumed the item from the previous step, the simulation will
+#block. to avoid this, the simulation should only write to the channel when it
+#has no data pending, that is, when !isready(channel). for this to work, the
+#channel must be buffered. if the channel were unbuffered, !isready(channel)
+#would be true whenever the output thread is NOT blocked waiting for new data.
+#this may cause the sim thread to block when it shouldn't
+function attach!(sim::Simulation, device::OutputDevice)
+    channel = Channel{SimData{typeof(sim.sys.y)}}(1)
+    output = SimOutput(device, channel, sim.started, sim.running)
+    push!(sim.outputs, output)
+end
+
+function put_no_wait!(sim::Simulation)
+    data = SimData(sim.t[], sim.y)
+    for output in sim.outputs
+        put_no_wait!(output, data)
+    end
+end
+
 
 ############################ Stepping functions ################################
 
@@ -294,40 +445,6 @@ function GUI.draw(info::SimInfo)
 
 end
 
-
-################################### I/O #######################################
-
-#attaches an input device to the Simulation, enabling it to safely modify the
-#System's input during paced or full speed execution
-function attach!(sim::Simulation, device::InputDevice;
-                    mapping::InputMapping = DefaultMapping())
-
-    input = SimInput(device, sim.sys, mapping, sim.started, sim.running, sim.stepping)
-    push!(sim.inputs, input)
-
-end
-
-#attaches an output device to the Simulation, linking it to a dedicated channel
-#for simulation output data
-
-# the channel must be buffered. an unbuffered channel returns isready only if
-#there is another task waiting on it. however, to prevent the simulation loop
-#from blocking, we need the channel to return isready when it is holding data,
-#regardless of whether the output interface is currently waiting on it
-function attach!(sim::Simulation, device::OutputDevice)
-    channel = Channel{SimData{typeof(sim.sys.y)}}(1)
-    output = SimOutput(device, channel, sim.started, sim.running)
-    push!(sim.outputs, output)
-end
-
-function IODevices.put_no_wait!(sim::Simulation)
-    data = SimData(sim.t[], sim.y)
-    for output in sim.outputs
-        put_no_wait!(output, data)
-    end
-end
-
-
 ################################ Execution #####################################
 
 #compare the following:
@@ -354,7 +471,7 @@ end
 function run!(sim::Simulation)
     @sync begin
         for output in sim.outputs
-            Threads.@spawn IODevices.start!(output)
+            Threads.@spawn start!(output)
         end
         Threads.@spawn sim_loop!(sim)
     end
@@ -406,10 +523,10 @@ end
 function run_paced!(sim::Simulation; kwargs...)
     @sync begin
         for input in sim.inputs
-            Threads.@spawn IODevices.start!(input)
+            Threads.@spawn start!(input)
         end
         for output in sim.outputs
-            Threads.@spawn IODevices.start!(output)
+            Threads.@spawn start!(output)
         end
         Threads.@spawn sim_loop_paced!(sim; kwargs...)
     end
@@ -453,8 +570,13 @@ function sim_loop_paced!(sim::Simulation;
 
             lock(stepping)
                 step!(sim)
+                τ_last = τ()
                 info[] = SimInfo(; algorithm, t_start, t_end, dt = integrator.dt,
                               iter = integrator.iter, t = sim.t[], τ = τ_last)
+                # info.dt = integrator.dt
+                # info.iter = integrator.iter
+                # info.t = sim.t[]
+                # info.τ = τ_last
                 GUI.update!(gui)
             unlock(stepping)
 
