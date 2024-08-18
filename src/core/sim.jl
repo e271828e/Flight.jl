@@ -145,6 +145,56 @@ function start!(output::SimOutput{D}) where {D}
 
 end
 
+################################################################################
+################################# SimGUI #######################################
+
+struct SimGUI
+    renderer::Renderer
+    sim_started::Base.Event #to be waited on before entering the update loop
+    sim_running::ReentrantLock #to be checked on each loop iteration for termination
+    sim_stepping::ReentrantLock #to acquire before modifying the target
+end
+
+function start!(gui::SimGUI)
+
+    @unpack renderer, sim_started, sim_running, sim_stepping = gui
+
+    @info("SimGUI: Starting on thread $(Threads.threadid())...")
+
+    try
+
+        #ensure VSync is disabled. otherwise, the call to GUI.update! will block
+        #while holding the sim_stepping lock, and therefore the sim loop will
+        #not be able to step in the meantime
+        @assert renderer.sync == 0
+        GUI.init!(renderer)
+        wait(sim_started)
+
+        while true
+
+            if !islocked(sim_running) || GUI.should_close(renderer)
+                @info("SimGUI: Shutdown requested")
+                break
+            end
+
+            lock(sim_stepping)
+                GUI.update!(renderer)
+            unlock(sim_stepping)
+
+        end
+
+    catch ex
+
+        @error("SimGUI: Error during execution: $ex")
+
+    finally
+        renderer._initialized && GUI.shutdown!(renderer)
+        @info("SimGUI: Closed")
+    end
+
+end
+
+
 
 ################################################################################
 ############################### SimData #########################################
@@ -161,7 +211,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     sys::S
     integrator::I
     log::L
-    gui::Renderer
+    gui::SimGUI
     info::SimInfo
     inputs::Vector{SimInput}
     outputs::Vector{SimOutput}
@@ -169,8 +219,6 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     running::ReentrantLock #while locked it signals that simulation execution is in progress
     stepping::ReentrantLock #must be acquired by simulation inputs to modify the system
 
-    #set sync = 0 so that SwapBuffers returns immediately and doesn't slow down
-    #the sim loop; for paced simulations, scheduling is taken care of
     function Simulation(
         sys::System;
         args_ode::Tuple = (), #externally supplied arguments to System's f_ode!
@@ -225,9 +273,9 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #should be made available in its (immutable) output y, logged via
         #SavingCallback
 
-        #the GUI Renderer's refresh rate must be uncapped so that calls to
-        #update!() return immediately without blocking, so that they do not
-        #interfere with simulation scheduling
+        started = Base.Event()
+        running = ReentrantLock()
+        stepping = ReentrantLock()
 
         info = SimInfo()
 
@@ -235,11 +283,15 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
             () -> GUI.draw!(sys, info)
         end
 
-        gui = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
+        #the GUI Renderer's refresh rate must be uncapped (no VSync), so that
+        #calls to GUI.update!() return immediately without blocking and
+        #therefore do not interfere with simulation stepping
+        r = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
+        gui = SimGUI(r, started, running, stepping)
 
         new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
             sys, integrator, log, gui, info, SimInput[], SimOutput[],
-            Base.Event(), ReentrantLock(), ReentrantLock())
+            started, running, stepping)
     end
 
 end
@@ -435,12 +487,12 @@ function GUI.draw(info::SimInfo)
         CImGui.Text("Algorithm: " * algorithm)
         CImGui.Text("Step size: $dt")
         CImGui.Text("Iterations: $iter")
-        CImGui.Text(@sprintf("Simulation framerate: %.3f ms/frame (%.1f FPS)",
-                            1000 / unsafe_load(CImGui.GetIO().Framerate),
-                            unsafe_load(CImGui.GetIO().Framerate)))
         CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
         CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
         CImGui.Text(@sprintf("Simulation pace: x%.3f", (t - t_start) / τ))
+        CImGui.Text(@sprintf("GUI framerate: %.3f ms/frame (%.1f FPS)",
+                            1000 / unsafe_load(CImGui.GetIO().Framerate),
+                            unsafe_load(CImGui.GetIO().Framerate)))
     CImGui.End()
 
 end
@@ -528,6 +580,7 @@ function run_paced!(sim::Simulation; kwargs...)
         for output in sim.outputs
             Threads.@spawn start!(output)
         end
+        Threads.@spawn start!(sim.gui)
         Threads.@spawn sim_loop_paced!(sim; kwargs...)
     end
 end
@@ -544,9 +597,6 @@ function sim_loop_paced!(sim::Simulation;
     @pack! info = t_start, t_end, algorithm
 
     try
-
-        @assert gui.sync == 0
-        GUI.init!(gui)
 
         τ = let wall_time_ref = time()
             ()-> time() - wall_time_ref
@@ -578,15 +628,9 @@ function sim_loop_paced!(sim::Simulation;
                 info.t = sim.t[]
                 info.τ = τ_last
 
-                GUI.update!(gui)
             unlock(stepping)
 
             put_no_wait!(sim)
-
-            if GUI.should_close(gui)
-                @info("Simulation: Aborted at t = $(sim.t[])")
-                break
-            end
 
         end
 
@@ -607,7 +651,7 @@ end
 
 function sim_cleanup!(sim::Simulation)
 
-    @unpack gui, started, running = sim
+    @unpack started, running = sim
 
     #signal all interfaces to shut down
     islocked(running) && unlock(running)
@@ -621,8 +665,6 @@ function sim_cleanup!(sim::Simulation)
 
     #unblock any output interfaces waiting for a take!
     put_no_wait!(sim)
-
-    gui._initialized && GUI.shutdown!(gui)
 end
 
 

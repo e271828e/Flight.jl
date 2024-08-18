@@ -268,62 +268,6 @@ function draw(v::AbstractVector{<:Real}, label::String, units::String = "")
 
 end
 
-function fdraw_test(number::Real)
-
-    CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append to it.
-        output = @cstatic f=Cfloat(0.0) begin
-            CImGui.Text("I got this number: $number")  # display some text
-            @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
-        end
-    CImGui.End()
-
-end
-
-
-################################# SimGUI #######################################
-
-struct SimGUI
-    renderer::Renderer
-    start::Base.Event #to be waited on before entering the update loop
-    running::ReentrantLock #to be checked on each loop iteration for termination
-    stepping::ReentrantLock #to acquire before modifying the target
-end
-
-function start!(gui::SimGUI)
-
-    @unpack device, target, mapping, start, running, stepping = gui
-
-    @info("$D Interface: Starting on thread $(Threads.threadid())...")
-
-    try
-
-        init!(device)
-        wait(start)
-
-        while true
-
-            if !islocked(running) || should_close(device)
-                @info("$D Interface: Shutdown requested")
-                break
-            end
-
-            update_input!(device)
-            lock(stepping) #ensure the Simulation is not currently stepping
-                assign_input!(target, device, mapping)
-            unlock(stepping)
-
-        end
-
-    catch ex
-
-        @error("$D Interface: Error during execution: $ex")
-
-    finally
-        shutdown!(device)
-        @info("$D Interface: Closed")
-    end
-
-end
 
 ################################################################################
 ################################ Helpers #######################################
