@@ -20,7 +20,7 @@ export TimeSeries, get_time, get_data, get_components, get_child_names
 ################################################################################
 ################################# SimInfo ########################################
 
-@kwdef struct SimInfo
+@kwdef mutable struct SimInfo
     algorithm::String = "Undefined"
     t_start::Float64 = 0.0
     t_end::Float64 = 0.0
@@ -162,7 +162,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     integrator::I
     log::L
     gui::Renderer
-    info::Ref{SimInfo}
+    info::SimInfo
     inputs::Vector{SimInput}
     outputs::Vector{SimOutput}
     started::Base.Event #signals that simulation execution has started
@@ -229,10 +229,10 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #update!() return immediately without blocking, so that they do not
         #interfere with simulation scheduling
 
-        info = Ref(SimInfo())
+        info = SimInfo()
 
         f_draw = let sys = sys, info = info
-            () -> GUI.draw!(sys, info[])
+            () -> GUI.draw!(sys, info)
         end
 
         gui = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
@@ -541,6 +541,7 @@ function sim_loop_paced!(sim::Simulation;
     t_start = sim.t[]
     t_end = integrator.sol.prob.tspan[2]
     algorithm = sim.integrator.alg |> typeof |> string
+    @pack! info = t_start, t_end, algorithm
 
     try
 
@@ -571,12 +572,12 @@ function sim_loop_paced!(sim::Simulation;
             lock(stepping)
                 step!(sim)
                 τ_last = τ()
-                info[] = SimInfo(; algorithm, t_start, t_end, dt = integrator.dt,
-                              iter = integrator.iter, t = sim.t[], τ = τ_last)
-                # info.dt = integrator.dt
-                # info.iter = integrator.iter
-                # info.t = sim.t[]
-                # info.τ = τ_last
+
+                info.dt = integrator.dt
+                info.iter = integrator.iter
+                info.t = sim.t[]
+                info.τ = τ_last
+
                 GUI.update!(gui)
             unlock(stepping)
 
