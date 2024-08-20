@@ -30,42 +30,67 @@ export TimeSeries, get_time, get_data, get_components, get_child_names
     τ::Float64 = 0.0 #wall-clock time
 end
 
+function GUI.draw(info::SimInfo)
+
+    @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
+
+    CImGui.Begin("Simulation")
+        CImGui.Text("Algorithm: " * algorithm)
+        CImGui.Text("Step size: $dt")
+        CImGui.Text("Iterations: $iter")
+        CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
+        CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
+        CImGui.Text(@sprintf("Simulation pace: x%.3f", (t - t_start) / τ))
+        CImGui.Text(@sprintf("GUI framerate: %.3f ms/frame (%.1f FPS)",
+                            1000 / unsafe_load(CImGui.GetIO().Framerate),
+                            unsafe_load(CImGui.GetIO().Framerate)))
+    CImGui.End()
+
+end
+
+################################################################################
+################################# SimInfo ########################################
+
+@kwdef mutable struct SimControl
+    const system_lock::ReentrantLock = ReentrantLock() #to acquire before modifying the simulated System
+    const started::Base.Event = Base.Event() #to be waited on by IO devices before entering their update loop
+    running::ReentrantLock = ReentrantLock() #to be checked on each loop iteration for termination
+end
+
 
 ################################################################################
 ################################ SimInput ######################################
 
 struct SimInput{D <: InputDevice, T,  M <: InputMapping}
     device::D
-    target::T #target for input assignment, typically the simulated System
-    mapping::M #selected device-to-target mapping, used for dispatch on assign!
-    sim_started::Base.Event #to be waited on before entering the update loop
-    sim_running::ReentrantLock #to be checked on each loop iteration for termination
-    sim_stepping::ReentrantLock #to acquire before modifying the target
+    system::T #target System for input assignment
+    mapping::M #selected device-to-target mapping, used for dispatch on assign_input!
+    control::SimControl
 end
 
 
 function start!(input::SimInput{D}) where {D}
 
-    @unpack device, target, mapping, sim_started, sim_running, sim_stepping = input
+    @unpack device, system, mapping, control = input
 
     @info("$D Interface: Starting on thread $(Threads.threadid())...")
 
     try
 
         IODevices.init!(device)
-        wait(sim_started)
+        wait(control.started)
 
         while true
 
-            if !islocked(sim_running) || IODevices.should_close(device)
+            if !islocked(control.running) || IODevices.should_close(device)
                 @info("$D Interface: Shutdown requested")
                 break
             end
 
             IODevices.update_input!(device)
-            lock(sim_stepping) #ensure the Simulation is not currently stepping
-                IODevices.assign_input!(target, device, mapping)
-            unlock(sim_stepping)
+            lock(control.system_lock) #ensure the target System is not currently being updated by the sim loop
+                IODevices.assign_input!(system, device, mapping)
+            unlock(control.system_lock)
 
         end
 
@@ -86,8 +111,7 @@ end
 struct SimOutput{D <: OutputDevice, C <: Channel}
     device::D
     channel::C #channel to which Simulation's output will be put!
-    sim_started::Base.Event #to be waited on before entering the update loop
-    sim_running::ReentrantLock #to be checked on each loop iteration for termination
+    control::SimControl
 end
 
 #for buffered channels, isready returns 1 if there is at least one value in the
@@ -108,18 +132,18 @@ end
 #output to the channel
 function start!(output::SimOutput{D}) where {D}
 
-    @unpack device, channel, sim_started, sim_running = output
+    @unpack device, channel, control = output
 
     @info("$D Interface: Starting on thread $(Threads.threadid())...")
 
     try
 
         IODevices.init!(device)
-        wait(sim_started)
+        wait(control.started)
 
         while true
 
-            if !islocked(sim_running) || IODevices.should_close(device)
+            if !islocked(control.running) || IODevices.should_close(device)
                 @info("$D Interface: Shutdown requested")
                 break
             end
@@ -150,36 +174,34 @@ end
 
 struct SimGUI
     renderer::Renderer
-    sim_started::Base.Event #to be waited on before entering the update loop
-    sim_running::ReentrantLock #to be checked on each loop iteration for termination
-    sim_stepping::ReentrantLock #to acquire before modifying the target
+    control::SimControl
 end
 
 function start!(gui::SimGUI)
 
-    @unpack renderer, sim_started, sim_running, sim_stepping = gui
+    @unpack renderer, control = gui
 
     @info("SimGUI: Starting on thread $(Threads.threadid())...")
 
     try
 
         #ensure VSync is disabled. otherwise, the call to GUI.update! will block
-        #while holding the sim_stepping lock, and therefore the sim loop will
+        #while holding the system lock, and therefore the sim loop will
         #not be able to step in the meantime
         @assert renderer.sync == 0
         GUI.init!(renderer)
-        wait(sim_started)
+        wait(control.started)
 
         while true
 
-            if !islocked(sim_running) || GUI.should_close(renderer)
+            if !islocked(control.running) || GUI.should_close(renderer)
                 @info("SimGUI: Shutdown requested")
                 break
             end
 
-            lock(sim_stepping)
+            lock(control.system_lock)
                 GUI.update!(renderer)
-            unlock(sim_stepping)
+            unlock(control.system_lock)
 
         end
 
@@ -213,11 +235,9 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     log::L
     gui::SimGUI
     info::SimInfo
+    control::SimControl
     inputs::Vector{SimInput}
     outputs::Vector{SimOutput}
-    started::Base.Event #signals that simulation execution has started
-    running::ReentrantLock #while locked it signals that simulation execution is in progress
-    stepping::ReentrantLock #must be acquired by simulation inputs to modify the system
 
     function Simulation(
         sys::System;
@@ -272,12 +292,8 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #System's state vector; everything we need to know about the System
         #should be made available in its (immutable) output y, logged via
         #SavingCallback
-
-        started = Base.Event()
-        running = ReentrantLock()
-        stepping = ReentrantLock()
-
         info = SimInfo()
+        control = SimControl()
 
         f_draw = let sys = sys, info = info
             () -> GUI.draw!(sys, info)
@@ -286,12 +302,10 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #the GUI Renderer's refresh rate must be uncapped (no VSync), so that
         #calls to GUI.update!() return immediately without blocking and
         #therefore do not interfere with simulation stepping
-        r = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
-        gui = SimGUI(r, started, running, stepping)
+        gui = SimGUI(Renderer(; label = "Simulation", sync = UInt8(0), f_draw), control)
 
         new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
-            sys, integrator, log, gui, info, SimInput[], SimOutput[],
-            started, running, stepping)
+            sys, integrator, log, gui, info, control,SimInput[], SimOutput[])
     end
 
 end
@@ -320,7 +334,7 @@ user_callback!(::System) = nothing
 function attach!(sim::Simulation, device::InputDevice;
                     mapping::InputMapping = DefaultMapping())
 
-    input = SimInput(device, sim.sys, mapping, sim.started, sim.running, sim.stepping)
+    input = SimInput(device, sim.sys, mapping, sim.control)
     push!(sim.inputs, input)
 
 end
@@ -336,7 +350,7 @@ end
 #this may cause the sim thread to block when it shouldn't
 function attach!(sim::Simulation, device::OutputDevice)
     channel = Channel{SimData{typeof(sim.sys.y)}}(1)
-    output = SimOutput(device, channel, sim.started, sim.running)
+    output = SimOutput(device, channel, sim.control)
     push!(sim.outputs, output)
 end
 
@@ -479,23 +493,6 @@ function GUI.draw!(sys::System, info::SimInfo)
     GUI.draw!(sys)
 end
 
-function GUI.draw(info::SimInfo)
-
-    @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
-
-    CImGui.Begin("Simulation")
-        CImGui.Text("Algorithm: " * algorithm)
-        CImGui.Text("Step size: $dt")
-        CImGui.Text("Iterations: $iter")
-        CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
-        CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
-        CImGui.Text(@sprintf("Simulation pace: x%.3f", (t - t_start) / τ))
-        CImGui.Text(@sprintf("GUI framerate: %.3f ms/frame (%.1f FPS)",
-                            1000 / unsafe_load(CImGui.GetIO().Framerate),
-                            unsafe_load(CImGui.GetIO().Framerate)))
-    CImGui.End()
-
-end
 
 ################################ Execution #####################################
 
@@ -531,7 +528,7 @@ end
 
 function sim_loop!(sim::Simulation)
 
-    @unpack integrator, started, running, stepping = sim
+    @unpack integrator, control = sim
 
     t_end = integrator.sol.prob.tspan[2]
     τ = 0
@@ -541,14 +538,14 @@ function sim_loop!(sim::Simulation)
         isdone_err(sim)
         @info("Simulation: Starting on thread $(Threads.threadid())...")
 
-        lock(running)
-        notify(started)
+        lock(control.running)
+        notify(control.started)
 
         τ = @elapsed begin
             while sim.t[] < t_end
-                lock(stepping)
+                lock(control.system_lock)
                     step!(sim)
-                unlock(stepping)
+                unlock(control.system_lock)
                 put_no_wait!(sim)
             end
         end
@@ -589,7 +586,7 @@ end
 function sim_loop_paced!(sim::Simulation;
                     pace::Real = 1)
 
-    @unpack sys, integrator, gui, info, started, running, stepping = sim
+    @unpack sys, integrator, gui, info, control = sim
 
     t_start = sim.t[]
     t_end = integrator.sol.prob.tspan[2]
@@ -607,8 +604,8 @@ function sim_loop_paced!(sim::Simulation;
         isdone_err(sim)
         @info("Simulation: Starting on thread $(Threads.threadid())...")
 
-        lock(running)
-        notify(started)
+        lock(control.running)
+        notify(control.started)
 
         while sim.t[] < t_end
 
@@ -619,7 +616,7 @@ function sim_loop_paced!(sim::Simulation;
             τ_next = (t_next - t_start) / pace
             while τ_next > τ() end #busy wait (ugly, should do better but it's not easy)
 
-            lock(stepping)
+            lock(control.system_lock)
                 step!(sim)
                 τ_last = τ()
 
@@ -628,7 +625,7 @@ function sim_loop_paced!(sim::Simulation;
                 info.t = sim.t[]
                 info.τ = τ_last
 
-            unlock(stepping)
+            unlock(control.system_lock)
 
             put_no_wait!(sim)
 
@@ -651,17 +648,17 @@ end
 
 function sim_cleanup!(sim::Simulation)
 
-    @unpack started, running = sim
+    @unpack control = sim
 
     #signal all interfaces to shut down
-    islocked(running) && unlock(running)
+    islocked(control.running) && unlock(control.running)
 
     #unblock any interfaces waiting for simulation to start in case we
     #exited with error and didn't get to notify them
-    notify(started)
+    notify(control.started)
 
     #reset the event for the next sim execution
-    reset(started)
+    reset(control.started)
 
     #unblock any output interfaces waiting for a take!
     put_no_wait!(sim)
