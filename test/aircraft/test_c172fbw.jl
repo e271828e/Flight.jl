@@ -151,7 +151,7 @@ function test_sim(; save::Bool = true)
 end
 
 
-function test_sim_paced(; save::Bool = true)
+function test_sim_interactive(; save::Bool = true)
 
     h_trn = HOrth(601.55);
 
@@ -177,11 +177,11 @@ function test_sim_paced(; save::Bool = true)
     # xpc = XPCClient(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
 
-    Sim.run_paced!(sim)
+    Sim.run_interactive!(sim)
 
     plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
     # plots = make_plots(TimeSeries(sim); Plotting.defaults...)
-    save && save_plots(plots, save_folder = joinpath("tmp", "test_c172fbw", "sim_paced"))
+    save && save_plots(plots, save_folder = joinpath("tmp", "test_c172fbw", "sim_interactive"))
 
     return nothing
 

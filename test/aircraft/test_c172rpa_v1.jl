@@ -632,19 +632,19 @@ function test_json_loopback(; save::Bool = true)
     JSON3.read!(JSON3.write(sys.avionics.fcl.u, allow_inf=true), sys.avionics.fcl.u; allow_inf=true)
 
     # return
-    Sim.run_paced!(sim)
+    Sim.run_interactive!(sim)
 
     kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
     air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_paced", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_paced", "air"))
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "air"))
 
     return nothing
 
 end
 
 
-function test_sim_paced(; save::Bool = true)
+function test_sim_interactive(; save::Bool = true)
 
     h_trn = HOrth(601.55);
 
@@ -671,12 +671,12 @@ function test_sim_paced(; save::Bool = true)
     # xpc = XPCClient(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
 
-    Sim.run_paced!(sim)
+    Sim.run_interactive!(sim)
 
     kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
     air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_paced", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_paced", "air"))
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "air"))
 
     return nothing
 

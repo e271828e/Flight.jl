@@ -34,7 +34,7 @@ function GUI.draw(info::SimInfo)
 
     @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
 
-    CImGui.Begin("Simulation")
+    CImGui.Begin("Sim Info")
         CImGui.Text("Algorithm: " * algorithm)
         CImGui.Text("Step size: $dt")
         CImGui.Text("Iterations: $iter")
@@ -49,14 +49,34 @@ function GUI.draw(info::SimInfo)
 end
 
 ################################################################################
-################################# SimInfo ########################################
+############################ SimControl ########################################
 
-@kwdef mutable struct SimControl
-    const system_lock::ReentrantLock = ReentrantLock() #to acquire before modifying the simulated System
-    const started::Base.Event = Base.Event() #to be waited on by IO devices before entering their update loop
-    running::ReentrantLock = ReentrantLock() #to be checked on each loop iteration for termination
+#the @atomic fields are so declared because they are accessed both from the GUI
+#thread (within the call to GUI.update!) and the simulation thread (within the
+#main loop)
+mutable struct SimControl
+    const system_lock::ReentrantLock #to be acquired before modifying the simulated System
+    const io_start::Base.Event #to be waited on by IO devices and GUI before entering their update loops
+    const sim_resume::Base.Event #to pause or unpause the simulation through notify or reset
+    @atomic running::Bool #to be checked on each loop iteration for termination
+    @atomic pace::Float64 #to be set by the SimControl GUI
 end
 
+#no-argument constructor because @kwdef doesn't work with @atomic fields
+SimControl() = SimControl(ReentrantLock(), Base.Event(), Base.Event(), false, 1.0)
+
+function GUI.draw!(control::SimControl)
+
+    @unpack sim_resume, running, pace = control
+
+    CImGui.Begin("Sim Control")
+        # CImGui.Text("Algorithm: " * algorithm)
+        # CImGui.Text("Step size: $dt")
+        # CImGui.Text("Iterations: $iter")
+        CImGui.Text(@sprintf("Pace: %.3f s", pace))
+    CImGui.End()
+
+end
 
 ################################################################################
 ################################ SimInput ######################################
@@ -78,12 +98,12 @@ function start!(input::SimInput{D}) where {D}
     try
 
         IODevices.init!(device)
-        wait(control.started)
+        wait(control.io_start)
 
         while true
 
-            if !islocked(control.running) || IODevices.should_close(device)
-                @info("$D Interface: Shutdown requested")
+            if !(@atomic control.running) || IODevices.should_close(device)
+                @info("$D: Shutdown requested")
                 break
             end
 
@@ -96,11 +116,11 @@ function start!(input::SimInput{D}) where {D}
 
     catch ex
 
-        @error("$D Interface: Error during execution: $ex")
+        @error("$D: Error during execution: $ex")
 
     finally
         IODevices.shutdown!(device)
-        @info("$D Interface: Closed")
+        @info("$D: Closed")
     end
 
 end
@@ -128,27 +148,26 @@ end
 
 
 #the update rate for an output device is implicitly controlled by the simulation
-#loop. the call to take! below will block until the simulation writes a new
-#output to the channel
+#loop. the call to take! below will block until the simulation writes new data
 function start!(output::SimOutput{D}) where {D}
 
     @unpack device, channel, control = output
 
-    @info("$D Interface: Starting on thread $(Threads.threadid())...")
+    @info("$D: Starting on thread $(Threads.threadid())...")
 
     try
 
         IODevices.init!(device)
-        wait(control.started)
+        wait(control.io_start)
 
         while true
 
-            if !islocked(control.running) || IODevices.should_close(device)
-                @info("$D Interface: Shutdown requested")
+            if !(@atomic control.running) || IODevices.should_close(device)
+                @info("$D: Shutdown requested")
                 break
             end
 
-            output = take!(channel) #blocks until simulation writes its output
+            output = take!(channel) #blocks until simulation writes new data
             IODevices.process_output!(device, output)
 
         end
@@ -156,15 +175,15 @@ function start!(output::SimOutput{D}) where {D}
     catch ex
 
         if ex isa InvalidStateException
-            @info("$D Interface: Channel closed")
+            @info("$D: Channel closed")
         else
-            @error("$D Interface: Error during execution: $ex")
+            @error("$D: Error during execution: $ex")
         end
 
     finally
         # close(channel)
         IODevices.shutdown!(device)
-        @info("$D Interface: Closed")
+        @info("$D: Closed")
     end
 
 end
@@ -190,11 +209,11 @@ function start!(gui::SimGUI)
         #not be able to step in the meantime
         @assert renderer.sync == 0
         GUI.init!(renderer)
-        wait(control.started)
+        wait(control.io_start)
 
         while true
 
-            if !islocked(control.running) || GUI.should_close(renderer)
+            if !(@atomic control.running) || GUI.should_close(renderer)
                 @info("SimGUI: Shutdown requested")
                 break
             end
@@ -295,8 +314,8 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         info = SimInfo()
         control = SimControl()
 
-        f_draw = let sys = sys, info = info
-            () -> GUI.draw!(sys, info)
+        f_draw = let info = info, control = control, sys = sys
+            () -> GUI.draw!(info, control, sys)
         end
 
         #the GUI Renderer's refresh rate must be uncapped (no VSync), so that
@@ -330,7 +349,7 @@ user_callback!(::System) = nothing
 ################################ I/O ###########################################
 
 #attaches an input device to the Simulation, enabling it to safely modify the
-#System's input during paced or full speed execution
+#System's input
 function attach!(sim::Simulation, device::InputDevice;
                     mapping::InputMapping = DefaultMapping())
 
@@ -354,7 +373,7 @@ function attach!(sim::Simulation, device::OutputDevice)
     push!(sim.outputs, output)
 end
 
-function put_no_wait!(sim::Simulation)
+function write_data!(sim::Simulation)
     data = SimData(sim.t[], sim.y)
     for output in sim.outputs
         put_no_wait!(output, data)
@@ -488,8 +507,9 @@ end
 
 ################################# GUI ##########################################
 
-function GUI.draw!(sys::System, info::SimInfo)
+function GUI.draw!(info::SimInfo, control::SimControl, sys::System)
     GUI.draw(info)
+    GUI.draw!(control)
     GUI.draw!(sys)
 end
 
@@ -515,78 +535,9 @@ function isdone_err(sim::Simulation)
                         "or add further tstops using add_tstop!")
 end
 
-#for non-paced simulations, we ignore input devices and only start output
-#interfaces
-function run!(sim::Simulation)
-    @sync begin
-        for output in sim.outputs
-            Threads.@spawn start!(output)
-        end
-        Threads.@spawn sim_loop!(sim)
-    end
-end
-
 function sim_loop!(sim::Simulation)
 
-    @unpack integrator, control = sim
-
-    t_end = integrator.sol.prob.tspan[2]
-    τ = 0
-
-    try
-
-        isdone_err(sim)
-        @info("Simulation: Starting on thread $(Threads.threadid())...")
-
-        lock(control.running)
-        notify(control.started)
-
-        τ = @elapsed begin
-            while sim.t[] < t_end
-                lock(control.system_lock)
-                    step!(sim)
-                unlock(control.system_lock)
-                put_no_wait!(sim)
-            end
-        end
-
-        @info("Simulation: Finished in $τ seconds")
-
-    catch ex
-
-        st = stacktrace(catch_backtrace())
-        @error("Simulation: Terminated with $ex in $(st[1])")
-
-    finally
-
-        sim_cleanup!(sim)
-
-    end
-
-end
-
-#apparently, if a task is launched from the main thread and it doesn't ever
-#block, no other thread will get CPU time until it's done. threfore, we should
-#never call _run_paced! directly from the main thread, because it will starve
-#all IO threads. it must always be run from a Threads.@spawn'ed thread
-function run_paced!(sim::Simulation; kwargs...)
-    @sync begin
-        for input in sim.inputs
-            Threads.@spawn start!(input)
-        end
-        for output in sim.outputs
-            Threads.@spawn start!(output)
-        end
-        Threads.@spawn start!(sim.gui)
-        Threads.@spawn sim_loop_paced!(sim; kwargs...)
-    end
-end
-
-
-function sim_loop_paced!(sim::Simulation;
-                    pace::Real = 1)
-
-    @unpack sys, integrator, gui, info, control = sim
+    @unpack integrator, gui, info, control = sim
 
     t_start = sim.t[]
     t_end = integrator.sol.prob.tspan[2]
@@ -604,30 +555,37 @@ function sim_loop_paced!(sim::Simulation;
         isdone_err(sim)
         @info("Simulation: Starting on thread $(Threads.threadid())...")
 
-        lock(control.running)
-        notify(control.started)
+        @atomic control.running = true
+        notify(control.sim_resume)
+        notify(control.io_start)
 
         while sim.t[] < t_end
+
+            if !(@atomic control.running)
+                @info("Simulation: Aborted at t = $(sim.t[])")
+                break
+            end
+
+            wait(control.sim_resume)
 
             #simulation time t and wall-clock time τ are related by:
             #t_next = t_start + pace * τ_next
 
             t_next = sim.t[] + get_proposed_dt(sim)
-            τ_next = (t_next - t_start) / pace
-            while τ_next > τ() end #busy wait (ugly, should do better but it's not easy)
+            τ_next = (t_next - t_start) / (@atomic control.pace)
+            while τ_next > τ() end #busy wait (ugly, should do better but it's not that easy)
 
             lock(control.system_lock)
                 step!(sim)
-                τ_last = τ()
-
-                info.dt = integrator.dt
-                info.iter = integrator.iter
-                info.t = sim.t[]
-                info.τ = τ_last
-
             unlock(control.system_lock)
 
-            put_no_wait!(sim)
+            write_data!(sim)
+
+            τ_last = τ()
+            info.dt = integrator.dt
+            info.iter = integrator.iter
+            info.t = sim.t[]
+            info.τ = τ_last
 
         end
 
@@ -646,24 +604,55 @@ function sim_loop_paced!(sim::Simulation;
 
 end
 
+
 function sim_cleanup!(sim::Simulation)
 
     @unpack control = sim
 
-    #signal all interfaces to shut down
-    islocked(control.running) && unlock(control.running)
+    #if the simulation ran to conclusion, this will still be true. set it to
+    #false to signal IO threads to shut down
+    @atomic control.running = false
 
     #unblock any interfaces waiting for simulation to start in case we
     #exited with error and didn't get to notify them
-    notify(control.started)
+    notify(control.io_start)
 
     #reset the event for the next sim execution
-    reset(control.started)
+    reset(control.io_start)
 
     #unblock any output interfaces waiting for a take!
-    put_no_wait!(sim)
+    write_data!(sim)
+
 end
 
+
+#apparently, if a task is launched from the main thread and it doesn't ever
+#block, no other thread will get CPU time until it's done. threfore, we should
+#never call sim_loop! directly from the main thread, because it will starve
+#all IO threads. it must always be run from a Threads.@spawn'ed thread
+
+function run!(sim::Simulation)
+    @sync begin
+        for output in sim.outputs
+            Threads.@spawn start!(output)
+        end
+        Threads.@spawn sim_loop!(sim)
+    end
+end
+
+function run_interactive!(sim::Simulation; pace = 1.0)
+    @atomic sim.control.pace = pace
+    @sync begin
+        for input in sim.inputs
+            Threads.@spawn start!(input)
+        end
+        for output in sim.outputs
+            Threads.@spawn start!(output)
+        end
+        Threads.@spawn start!(sim.gui)
+        Threads.@spawn sim_loop!(sim)
+    end
+end
 
 
 ################################################################################

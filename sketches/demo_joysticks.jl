@@ -27,7 +27,7 @@ function demo_joysticks()
         Sim.attach!(sim, joystick)
     end
 
-    Sim.run_paced!(sim)
+    Sim.run_interactive!(sim)
 
 end
 

@@ -56,7 +56,7 @@ function test_json_loopback1()
 
     Sim.attach!(sim, UDPClient(; port = 49017, output_callback))
     Sim.attach!(sim, UDPServer(; port = 49017, assign_callback!))
-    Sim.run_paced!(sim)
+    Sim.run_interactive!(sim)
 
     @test get_data(TimeSeries(sim))[end] == 2.4
 
