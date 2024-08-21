@@ -87,7 +87,7 @@ function GUI.draw!(control::SimControl)
 
         pace = @atomic control.pace
         @atomic control.pace = safe_input("Pace", pace, 0.1, 1.0, "%.3f")
-        # control.pace = safe_slider("Pace", control.pace, 1e-2, 1e3, "%.3f", ImGuiSliderFlags_Logarithmic)
+        # CImGui.Text(@sprintf("Pace: %.3f s", @atomic control.pace))
     CImGui.End()
 
 end
@@ -575,9 +575,9 @@ function start!(sim::Simulation)
     t_end = integrator.sol.prob.tspan[2]
     algorithm = sim.integrator.alg |> typeof |> string
 
-    # @atomic info.t_start = t_start
-    # @atomic info.t_end = t_end
-    # @atomic info.algorithm = algorithm
+    @atomic info.t_start = t_start
+    @atomic info.t_end = t_end
+    @atomic info.algorithm = algorithm
 
     try
 
@@ -598,33 +598,21 @@ function start!(sim::Simulation)
 
             while sim.t[] < t_end
 
-                #maybe yield here
-
-                #lock(io_lock)
-
-
-                #extract running, paused and pace from control to local variables, and write info fields
-
-                #unlock(io_lock)
-
-                # @atomic info.dt = integrator.dt
-                # @atomic info.iter = integrator.iter
-                # @atomic info.t = sim.t[]
-                # @atomic info.τ = τ_last
                 if !(@atomic control.running)
                     @info("Simulation: Aborted at t = $(sim.t[])")
                     break
                 end
 
-                # while (@atomic control.paused)
-                #     τ_last = τ()
-                #     # @atomic info.τ = τ_last
-                # end
-
-                if (@atomic control.paused)
+                while (@atomic control.paused)
                     τ_last = τ()
-                    continue
+                    # @atomic info.τ = τ_last
                 end
+
+                #this should work, but it hangs
+                # if (@atomic control.paused)
+                #     τ_last = τ()
+                #     continue
+                # end
 
                 τ_next = τ_last + get_proposed_dt(sim) / (@atomic control.pace)
                 while τ_next > τ() end #busy wait (should do better, but it's not that easy)
@@ -636,6 +624,11 @@ function start!(sim::Simulation)
                 write_data!(sim)
 
                 τ_last = τ_next
+
+                # @atomic info.dt = integrator.dt
+                # @atomic info.iter = integrator.iter
+                # @atomic info.t = sim.t[]
+                # @atomic info.τ = τ_last
 
             end
 

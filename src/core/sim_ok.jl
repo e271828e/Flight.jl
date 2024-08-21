@@ -20,64 +20,59 @@ export TimeSeries, get_time, get_data, get_components, get_child_names
 ################################################################################
 ################################# SimInfo ########################################
 
-mutable struct SimInfo
-    @atomic algorithm::String
-    @atomic t_start::Float64
-    @atomic t_end::Float64
-    @atomic dt::Float64 #last time step
-    @atomic iter::Int64 #total iterations
-    @atomic t::Float64 #simulation time
-    @atomic τ::Float64 #wall-clock time
+@kwdef mutable struct SimInfo
+    algorithm::String = "Undefined"
+    t_start::Float64 = 0.0
+    t_end::Float64 = 0.0
+    dt::Float64 = 0.0 #last time step
+    iter::Int64 = 0 #total iterations
+    t::Float64 = 0.0 #simulation time
+    τ::Float64 = 0.0 #wall-clock time
 end
-
-SimInfo() = SimInfo("", 0.0, 0.0, 0.0, 0, 0.0, 0.0)
 
 function GUI.draw(info::SimInfo)
 
-    # algorithm = @atomic info.algorithm
-    # t_start = @atomic info.t_start
-    # t_end = @atomic info.t_end
-    # dt = @atomic info.dt
-    # iter = @atomic info.iter
-    # t = @atomic info.t
-    # τ = @atomic info.τ
+    @unpack algorithm, t_start, t_end, dt, iter, t, τ = info
 
-    # CImGui.Begin("Sim Info")
-    #     CImGui.Text("Algorithm: " * algorithm)
-    #     CImGui.Text("Step size: $dt")
-    #     CImGui.Text("Iterations: $iter")
-    #     CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
-    #     CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
-    #     CImGui.Text(@sprintf("GUI framerate: %.3f ms/frame (%.1f FPS)",
-    #                         1000 / unsafe_load(CImGui.GetIO().Framerate),
-    #                         unsafe_load(CImGui.GetIO().Framerate)))
-    # CImGui.End()
+    CImGui.Begin("Sim Info")
+        CImGui.Text("Algorithm: " * algorithm)
+        CImGui.Text("Step size: $dt")
+        CImGui.Text("Iterations: $iter")
+        CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
+        CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
+        CImGui.Text(@sprintf("GUI framerate: %.3f ms/frame (%.1f FPS)",
+                            1000 / unsafe_load(CImGui.GetIO().Framerate),
+                            unsafe_load(CImGui.GetIO().Framerate)))
+    CImGui.End()
 
 end
 
 ################################################################################
 ############################ SimControl ########################################
 
-#the @atomic fields are declared as such because they are accessed concurrently
-#both from the GUI thread (within the call to GUI.update!) and the simulation
-#thread (within the main loop)
+#the @atomic fields are so declared because they are accessed both from the GUI
+#thread (within the call to GUI.update!) and the simulation thread (within the
+#main loop)
 mutable struct SimControl
+    const system_lock::ReentrantLock #to be acquired before modifying the simulated System
+    const io_start::Base.Event #to be waited on by IO devices and GUI before entering their update loops
     @atomic running::Bool #to be checked on each loop iteration for termination
     @atomic paused::Bool #to pause or unpause the simulation
     @atomic pace::Float64 #to be set by the SimControl GUI
 end
 
 #no-argument constructor because @kwdef doesn't work with @atomic fields
-SimControl() = SimControl(false, false, 1.0)
+SimControl() = SimControl(ReentrantLock(), Base.Event(), false, false, 1.0)
 
 function GUI.draw!(control::SimControl)
 
+    paused = @atomic control.paused
+    pace = @atomic control.pace
+
     CImGui.Begin("Sim Control")
 
-        mode_button("Pause", true, false, (@atomic control.paused); HSV_active = HSV_amber)
-        CImGui.IsItemClicked() && (@atomic control.paused = true); CImGui.SameLine()
-        mode_button("Resume", true, false, !(@atomic control.paused); HSV_active = HSV_green)
-        CImGui.IsItemClicked() && (@atomic control.paused = false); CImGui.SameLine()
+        mode_button("Pause", true, false, paused; HSV_active = HSV_amber)
+        CImGui.IsItemClicked() && (@atomic control.paused = !paused); CImGui.SameLine()
         dynamic_button("Abort", HSV_red)
         if CImGui.IsItemClicked()
             @atomic control.paused = false
@@ -85,9 +80,8 @@ function GUI.draw!(control::SimControl)
         end
         CImGui.SameLine()
 
-        pace = @atomic control.pace
         @atomic control.pace = safe_input("Pace", pace, 0.1, 1.0, "%.3f")
-        # control.pace = safe_slider("Pace", control.pace, 1e-2, 1e3, "%.3f", ImGuiSliderFlags_Logarithmic)
+        # CImGui.Text(@sprintf("Pace: %.3f s", @atomic control.pace))
     CImGui.End()
 
 end
@@ -95,13 +89,11 @@ end
 ################################################################################
 ################################ SimInput ######################################
 
-struct SimInput{D <: InputDevice,  M <: InputMapping, S}
+struct SimInput{D <: InputDevice, T,  M <: InputMapping}
     device::D
+    system::T #target System for input assignment
     mapping::M #selected device-to-target mapping, used for dispatch on assign_input!
-    system::S #target System for input assignment
     control::SimControl
-    io_start::Base.Event
-    sys_lock::ReentrantLock
 end
 
 
@@ -112,7 +104,6 @@ struct SimOutput{D <: OutputDevice, C <: Channel}
     device::D
     channel::C #channel to which Simulation's output will be put!
     control::SimControl
-    io_start::Base.Event
 end
 
 #for buffered channels, isready returns 1 if there is at least one value in the
@@ -134,8 +125,6 @@ end
 struct SimGUI
     renderer::Renderer
     control::SimControl
-    io_start::Base.Event
-    sys_lock::ReentrantLock
 end
 
 
@@ -157,8 +146,6 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     gui::SimGUI
     info::SimInfo
     control::SimControl
-    io_start::Base.Event #to be waited on by IO devices and GUI before entering their update loops
-    sys_lock::ReentrantLock #to be acquired before modifying the simulated System
     inputs::Vector{SimInput}
     outputs::Vector{SimOutput}
 
@@ -217,8 +204,6 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #SavingCallback
         info = SimInfo()
         control = SimControl()
-        io_start = Base.Event()
-        sys_lock = ReentrantLock()
 
         f_draw = let info = info, control = control, sys = sys
             () -> GUI.draw!(info, control, sys)
@@ -227,12 +212,10 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         #the GUI Renderer's refresh rate must be uncapped (no VSync), so that
         #calls to GUI.update!() return immediately without blocking and
         #therefore do not interfere with simulation stepping
-        gui = SimGUI(Renderer(; label = "Simulation", sync = UInt8(0), f_draw),
-                    control, io_start, sys_lock)
+        gui = SimGUI(Renderer(; label = "Simulation", sync = UInt8(0), f_draw), control)
 
         new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
-            sys, integrator, log, gui, info, control, io_start, sys_lock,
-            SimInput[], SimOutput[])
+            sys, integrator, log, gui, info, control,SimInput[], SimOutput[])
     end
 
 end
@@ -261,7 +244,7 @@ user_callback!(::System) = nothing
 function attach!(sim::Simulation, device::InputDevice;
                     mapping::InputMapping = DefaultMapping())
 
-    input = SimInput(device, mapping, sim.sys, sim.control, sim.io_start, sim.sys_lock)
+    input = SimInput(device, sim.sys, mapping, sim.control)
     push!(sim.inputs, input)
 
 end
@@ -277,7 +260,7 @@ end
 #this may cause the sim thread to block when it shouldn't
 function attach!(sim::Simulation, device::OutputDevice)
     channel = Channel{SimData{typeof(sim.sys.y)}}(1)
-    output = SimOutput(device, channel, sim.control, sim.io_start)
+    output = SimOutput(device, channel, sim.control)
     push!(sim.outputs, output)
 end
 
@@ -429,14 +412,14 @@ end
 
 function start!(input::SimInput{D}) where {D}
 
-    @unpack device, mapping, system, control, io_start, sys_lock = input
+    @unpack device, system, mapping, control = input
 
     @info("$D Interface: Starting on thread $(Threads.threadid())...")
 
     try
 
         IODevices.init!(device)
-        wait(io_start)
+        wait(control.io_start)
 
         while true
 
@@ -446,9 +429,9 @@ function start!(input::SimInput{D}) where {D}
             end
 
             IODevices.update_input!(device)
-            lock(sys_lock) #ensure the target System is not currently being updated by the sim loop
+            lock(control.system_lock) #ensure the target System is not currently being updated by the sim loop
                 IODevices.assign_input!(system, device, mapping)
-            unlock(sys_lock)
+            unlock(control.system_lock)
 
         end
 
@@ -470,14 +453,14 @@ end
 #loop. the call to take! below will block until the simulation writes new data
 function start!(output::SimOutput{D}) where {D}
 
-    @unpack device, channel, control, io_start = output
+    @unpack device, channel, control = output
 
     @info("$D: Starting on thread $(Threads.threadid())...")
 
     try
 
         IODevices.init!(device)
-        wait(io_start)
+        wait(control.io_start)
 
         while true
 
@@ -512,7 +495,7 @@ end
 
 function start!(gui::SimGUI)
 
-    @unpack renderer, control, io_start, sys_lock = gui
+    @unpack renderer, control = gui
 
     @info("SimGUI: Starting on thread $(Threads.threadid())...")
 
@@ -523,7 +506,7 @@ function start!(gui::SimGUI)
         #not be able to step in the meantime
         @assert renderer.sync == 0
         GUI.init!(renderer)
-        wait(io_start)
+        wait(control.io_start)
 
         while true
 
@@ -532,9 +515,9 @@ function start!(gui::SimGUI)
                 break
             end
 
-            lock(sys_lock)
+            lock(control.system_lock)
                 GUI.update!(renderer)
-            unlock(sys_lock)
+            unlock(control.system_lock)
 
         end
 
@@ -569,15 +552,12 @@ end
 
 function start!(sim::Simulation)
 
-    @unpack integrator, gui, info, control, io_start, sys_lock = sim
+    @unpack integrator, gui, info, control = sim
 
     t_start = sim.t[]
     t_end = integrator.sol.prob.tspan[2]
     algorithm = sim.integrator.alg |> typeof |> string
-
-    # @atomic info.t_start = t_start
-    # @atomic info.t_end = t_end
-    # @atomic info.algorithm = algorithm
+    @pack! info = t_start, t_end, algorithm
 
     try
 
@@ -590,7 +570,7 @@ function start!(sim::Simulation)
 
         @atomic control.running = true
         @atomic control.paused = false
-        notify(io_start)
+        notify(control.io_start)
 
         τ_last = τ()
 
@@ -598,44 +578,30 @@ function start!(sim::Simulation)
 
             while sim.t[] < t_end
 
-                #maybe yield here
-
-                #lock(io_lock)
-
-
-                #extract running, paused and pace from control to local variables, and write info fields
-
-                #unlock(io_lock)
-
-                # @atomic info.dt = integrator.dt
-                # @atomic info.iter = integrator.iter
-                # @atomic info.t = sim.t[]
-                # @atomic info.τ = τ_last
                 if !(@atomic control.running)
                     @info("Simulation: Aborted at t = $(sim.t[])")
                     break
                 end
 
-                # while (@atomic control.paused)
-                #     τ_last = τ()
-                #     # @atomic info.τ = τ_last
-                # end
-
-                if (@atomic control.paused)
+                while (@atomic control.paused)
                     τ_last = τ()
-                    continue
                 end
 
                 τ_next = τ_last + get_proposed_dt(sim) / (@atomic control.pace)
                 while τ_next > τ() end #busy wait (should do better, but it's not that easy)
 
-                lock(sys_lock)
+                lock(control.system_lock)
                     step!(sim)
-                unlock(sys_lock)
+                unlock(control.system_lock)
+
+                τ_last = τ_next
 
                 write_data!(sim)
 
-                τ_last = τ_next
+                info.dt = integrator.dt
+                info.iter = integrator.iter
+                info.t = sim.t[]
+                info.τ = τ_last
 
             end
 
@@ -658,19 +624,18 @@ end
 
 function sim_cleanup!(sim::Simulation)
 
-    @unpack control, io_start = sim
+    @unpack control = sim
 
-    #if the simulation ran to conclusion, running will still be true. set it to
+    #if the simulation ran to conclusion, this will still be true. set it to
     #false to signal IO threads to shut down
-    @atomic control.paused = false
     @atomic control.running = false
 
     #unblock any interfaces waiting for simulation to start in case we
     #exited with error and didn't get to notify them
-    notify(io_start)
+    notify(control.io_start)
 
     #reset the event for the next sim execution
-    reset(io_start)
+    reset(control.io_start)
 
     #unblock any output interfaces waiting for a take!
     write_data!(sim)
