@@ -40,7 +40,6 @@ function GUI.draw(info::SimInfo)
         CImGui.Text("Iterations: $iter")
         CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
         CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
-        CImGui.Text(@sprintf("Simulation pace: x%.3f", (t - t_start) / τ))
         CImGui.Text(@sprintf("GUI framerate: %.3f ms/frame (%.1f FPS)",
                             1000 / unsafe_load(CImGui.GetIO().Framerate),
                             unsafe_load(CImGui.GetIO().Framerate)))
@@ -67,13 +66,22 @@ SimControl() = SimControl(ReentrantLock(), Base.Event(), false, false, 1.0)
 
 function GUI.draw!(control::SimControl)
 
-    #do not unpack, we need to modify the struct fields themselves
+    paused = @atomic control.paused
+    pace = @atomic control.pace
 
     CImGui.Begin("Sim Control")
-        # CImGui.Text("Algorithm: " * algorithm)
-        # CImGui.Text("Step size: $dt")
-        # CImGui.Text("Iterations: $iter")
-        CImGui.Text(@sprintf("Pace: %.3f s", @atomic control.pace))
+
+        mode_button("Pause", true, false, paused; HSV_active = HSV_amber)
+        CImGui.IsItemClicked() && (@atomic control.paused = !paused); CImGui.SameLine()
+        dynamic_button("Abort", HSV_red)
+        if CImGui.IsItemClicked()
+            @atomic control.paused = false
+            @atomic control.running = false
+        end
+        CImGui.SameLine()
+
+        @atomic control.pace = safe_input("Pace", pace, 0.1, 1.0, "%.3f")
+        # CImGui.Text(@sprintf("Pace: %.3f s", @atomic control.pace))
     CImGui.End()
 
 end
@@ -518,6 +526,9 @@ function start!(gui::SimGUI)
         @error("SimGUI: Error during execution: $ex")
 
     finally
+        #abort simulation when GUI is closed
+        @atomic control.paused = false #important!
+        @atomic control.running = false
         renderer._initialized && GUI.shutdown!(renderer)
         @info("SimGUI: Closed")
     end
@@ -574,7 +585,6 @@ function start!(sim::Simulation)
 
                 while (@atomic control.paused)
                     τ_last = τ()
-                    println(τ_last)
                 end
 
                 τ_next = τ_last + get_proposed_dt(sim) / (@atomic control.pace)

@@ -177,9 +177,9 @@ function GUI.draw!(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
 
     CImGui.PushItemWidth(-150)
 
-    dynamic_button("Engine Start", 0.4); CImGui.SameLine()
+    mode_button("Engine Start", true, u.eng_start, false; HSV_requested = HSV_green); CImGui.SameLine()
     u.eng_start = CImGui.IsItemActive()
-    dynamic_button("Engine Stop", 0.0)
+    mode_button("Engine Stop", true, u.eng_stop, false; HSV_requested = HSV_red); CImGui.SameLine()
     u.eng_stop = CImGui.IsItemActive()
 
     u.throttle = safe_slider("Throttle", u.throttle, "%.6f", true)

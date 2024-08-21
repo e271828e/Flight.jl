@@ -15,7 +15,7 @@ using ImGuiOpenGLBackend
 using ImGuiOpenGLBackend.ModernGL
 
 export CImGuiStyle, Renderer
-export dynamic_button, toggle_switch, display_bar, safe_slider, safe_input
+export mode_button, dynamic_button, toggle_switch, display_bar, safe_slider, safe_input
 export HSV_amber, HSV_gray, HSV_green, HSV_red
 
 ################################################################################
@@ -275,7 +275,7 @@ end
 const HSV_gray = (0.0, 0.0, 0.3)
 const HSV_amber = (0.13, 0.6, 0.6)
 const HSV_green = (0.4, 0.6, 0.6)
-const HSV_red = (0.0, 0.6, 0.6)
+const HSV_red = (0.0, 0.7, 0.7)
 
 function show_help_marker(desc::String)
     CImGui.TextDisabled("(?)")
@@ -318,20 +318,36 @@ function dynamic_button(label::String,
 end
 
 function dynamic_button(label::String,
-                        idle_HSV::NTuple{3,Real},
-                        Δ_hover::Real = 0.1,
-                        Δ_push::Real = 0.2)
+                        idle_HSV::NTuple{3,Real};
+                        ΔSV_hover::Real = 0.1,
+                        ΔSV_push::Real = 0.2)
 
-    hover_HSV = (idle_HSV[1], idle_HSV[2] + Δ_hover, idle_HSV[3] + Δ_hover)
-    push_HSV = (idle_HSV[1], idle_HSV[2] + Δ_push, idle_HSV[3] + Δ_push)
+    hover_HSV = (idle_HSV[1], idle_HSV[2] + ΔSV_hover, idle_HSV[3] + ΔSV_hover)
+    push_HSV = (idle_HSV[1], idle_HSV[2] + ΔSV_push, idle_HSV[3] + ΔSV_push)
     dynamic_button(label, idle_HSV, hover_HSV, push_HSV)
 
 end
 
-#changes shade when hovered and pushed
-function dynamic_button(label::String, hue::AbstractFloat = 0.4)
-    dynamic_button(label, (hue, 0.6, 0.6))
+function mode_button(label::String,
+                    button_mode::T,
+                    requested_mode::T,
+                    active_mode::T;
+                    HSV_none::NTuple{3,Real} = HSV_gray,
+                    HSV_requested::NTuple{3,Real} = HSV_amber,
+                    HSV_active::NTuple{3,Real} = HSV_green, kwargs...) where {T}
+
+    if active_mode === button_mode
+        HSV_button = HSV_active
+    elseif requested_mode === button_mode
+        HSV_button = HSV_requested
+    else
+        HSV_button = HSV_none
+    end
+
+    dynamic_button(label, HSV_button, kwargs...)
+
 end
+
 
 
 function display_bar(label::String, source::Real, lower_bound::Real, upper_bound::Real, size_arg = (0, 0))

@@ -944,16 +944,6 @@ end
 using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
         Dummy, SameLine, NewLine, IsItemActive, Separator, Text, Checkbox, RadioButton
 
-function mode_button_HSV(button_mode, selected_mode, active_mode)
-    if active_mode === button_mode
-        return HSV_green
-    elseif selected_mode === button_mode
-        return HSV_amber
-    else
-        return HSV_gray
-    end
-end
-
 
 function GUI.draw(sys::System{<:LonControl}, p_open::Ref{Bool} = Ref(true))
     Begin("Longitudinal Control", p_open)
@@ -1014,20 +1004,12 @@ function GUI.draw!(sys::System{<:Controller},
 
     ############################# Engine Control ###############################
 
-    if pwp.engine.state === Piston.eng_off
-        eng_start_HSV = HSV_gray
-    elseif pwp.engine.state === Piston.eng_starting
-        eng_start_HSV = HSV_amber
-    else
-        eng_start_HSV = HSV_green
-    end
-
     if CImGui.CollapsingHeader("Engine")
         PushItemWidth(-100)
-        dynamic_button("Engine Start", eng_start_HSV, 0.1, 0.1)
+        mode_button("Engine Start", true, pwp.engine.state === Piston.eng_starting, pwp.engine.state === Piston.eng_running)
         u.eng_start = IsItemActive()
         SameLine()
-        dynamic_button("Engine Stop", HSV_gray, (HSV_gray[1], HSV_gray[2], HSV_gray[3] + 0.1), (0.0, 0.8, 0.8))
+        mode_button("Engine Stop", true, u.eng_stop, false; HSV_requested = HSV_red)
         u.eng_stop = IsItemActive()
         SameLine()
         u.mixture = safe_slider("Mixture", u.mixture, "%.6f", true)
@@ -1060,9 +1042,9 @@ function GUI.draw!(sys::System{<:Controller},
                 CImGui.TableNextColumn();
                     Text("Mode")
                 CImGui.TableNextColumn();
-                    dynamic_button("Off", mode_button_HSV(vrt_gdc_off, u.vrt_gdc_mode_req, y.vrt_gdc_mode), 0.1, 0.1)
+                    mode_button("Off", vrt_gdc_off, u.vrt_gdc_mode_req, y.vrt_gdc_mode)
                     IsItemActive() && (u.vrt_gdc_mode_req = vrt_gdc_off); SameLine()
-                    dynamic_button("Altitude", mode_button_HSV(vrt_gdc_alt, u.vrt_gdc_mode_req, y.vrt_gdc_mode), 0.1, 0.1)
+                    mode_button("Altitude", vrt_gdc_alt, u.vrt_gdc_mode_req, y.vrt_gdc_mode)
                     if IsItemActive()
                         u.vrt_gdc_mode_req = vrt_gdc_alt
                         u.h_sp = h_datum == 0 ? h_e : h_o
@@ -1091,11 +1073,6 @@ function GUI.draw!(sys::System{<:Controller},
     end #header
     end #cstatic
 
-    # AlignTextToFramePadding()
-    # Text("Horizontal Guidance")
-    # SameLine(160)
-    # dynamic_button("Off", mode_button_HSV(hor_gdc_off, u.hor_gdc_mode_req, y.hor_gdc_mode), 0.1, 0.1)
-    # IsItemActive() && (u.hor_gdc_mode_req = hor_gdc_off)
 
     ########################## Longitudinal Control ########################
 
@@ -1106,21 +1083,21 @@ function GUI.draw!(sys::System{<:Controller},
                 CImGui.TableNextColumn();
                     Text("Mode")
                 CImGui.TableNextColumn();
-                    dynamic_button("Direct##Lon", mode_button_HSV(lon_direct, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    mode_button("Direct##Lon", lon_direct, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_direct); SameLine()
-                    dynamic_button("Throttle + Pitch SAS", mode_button_HSV(lon_thr_ele, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    mode_button("Throttle + Pitch SAS", lon_thr_ele, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_thr_ele); SameLine()
-                    dynamic_button("Throttle + Pitch Rate", mode_button_HSV(lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    mode_button("Throttle + Pitch Rate", lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_sp = 0); SameLine()
-                    dynamic_button("Throttle + Pitch Angle", mode_button_HSV(lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    mode_button("Throttle + Pitch Angle", lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_sp = θ)
-                    dynamic_button("EAS + Throttle", mode_button_HSV(lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    mode_button("EAS + Throttle", lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_sp = EAS); SameLine()
-                    dynamic_button("EAS + Pitch Rate", mode_button_HSV(lon_EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    mode_button("EAS + Pitch Rate", lon_EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_q; u.q_sp = 0; u.EAS_sp = EAS); SameLine()
-                    dynamic_button("EAS + Pitch Angle", mode_button_HSV(lon_EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    mode_button("EAS + Pitch Angle", lon_EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_θ; u.EAS_sp = EAS; u.θ_sp = θ); SameLine()
-                    dynamic_button("EAS + Climb Rate", mode_button_HSV(lon_EAS_clm, u.lon_ctl_mode_req, y.lon_ctl_mode), 0.1, 0.1)
+                    mode_button("EAS + Climb Rate", lon_EAS_clm, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_clm; u.EAS_sp = EAS; u.clm_sp = clm)
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
@@ -1189,13 +1166,13 @@ function GUI.draw!(sys::System{<:Controller},
                 CImGui.TableNextColumn();
                     Text("Mode")
                 CImGui.TableNextColumn();
-                    dynamic_button("Direct##Lat", mode_button_HSV(lat_direct, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1); SameLine()
+                    mode_button("Direct##Lat", lat_direct, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_direct)
-                    dynamic_button("Roll Rate + AoS", mode_button_HSV(lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1); SameLine()
+                    mode_button("Roll Rate + AoS", lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.p_sp = 0; u.β_sp = 0)
-                    dynamic_button("Bank Angle + AoS", mode_button_HSV(lat_φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1); SameLine()
+                    mode_button("Bank Angle + AoS", lat_φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_φ_β; u.φ_sp = φ; u.β_sp = 0)
-                    dynamic_button("Course Angle + AoS", mode_button_HSV(lat_χ_β, u.lat_ctl_mode_req, y.lat_ctl_mode), 0.1, 0.1); SameLine()
+                    mode_button("Course Angle + AoS", lat_χ_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_χ_β; u.χ_sp = χ_gnd; u.β_sp = 0)
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
