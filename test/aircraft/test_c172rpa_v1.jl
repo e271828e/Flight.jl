@@ -631,7 +631,6 @@ function test_json_loopback(; save::Bool = true)
     #simulation
     JSON3.read!(JSON3.write(sys.avionics.fcl.u, allow_inf=true), sys.avionics.fcl.u; allow_inf=true)
 
-    # return
     Sim.run_interactive!(sim)
 
     kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
@@ -652,14 +651,14 @@ function test_sim(; save::Bool = true)
     ac = Cessna172RPAv1(LTF(), trn) |> System;
     sim = Simulation(ac; t_end = 30)
 
-    # #on ground
-    # kin_init = KinematicInit(
-    #     loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-    #     h = h_trn + 1.81);
+    #on ground
+    kin_init = KinematicInit(
+        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+        h = h_trn + 1.81);
 
     #on air, automatically trimmed by reinit!
-    kin_init = C172.TrimParameters(
-        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
+    # kin_init = C172.TrimParameters(
+    #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
 
     reinit!(sim, kin_init)
 

@@ -167,6 +167,10 @@ end
 
 ################################## Strut #######################################
 
+@kwdef struct GroundCrash <: Exception
+    msg::String = ""
+end
+
 @kwdef struct Strut{D<:AbstractDamper} <: SystemDefinition
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
     l_0::Float64 = 0.0 #strut natural length from airframe attachment point to wheel endpoint
@@ -180,6 +184,7 @@ end
     ξ::Float64 = 0.0 #damper elongation
     ξ_dot::Float64 = 0.0 #damper elongation rate
     F::Float64 = 0.0 #axial damper force
+    α_ts::Float64 = 0.0 #angle from terrain normal to strut axis
     t_sc::FrameTransform = FrameTransform() #strut to contact frame transform
     t_bc::FrameTransform = FrameTransform() #body to contact frame transform
     v_eOc_c::SVector{2,Float64} = zeros(SVector{2}) #contact point velocity
@@ -257,17 +262,13 @@ function Systems.f_ode!(sys::System{<:Strut},
 
     ut_n = trn_data.normal
     ut_e = q_en(ut_n)
-    ut_ks = ut_e ⋅ ks_e #angle between strut and terrain normal
+    ut_ks = ut_e ⋅ ks_e #cosine of angle between strut and terrain normal
     l = (ut_e ⋅ r_OsOt_e) / ut_ks
+    α_ts = acos(max(min(ut_ks, 1), -1))
 
     #if we are here, it means that Δh < 0, so in theory we should have l < l_0.
     #however due to numerical error we might get a small ξ > 0
     ξ = min(0.0, l - l_0)
-
-    #sanity check: we should not be hitting the ground at an angle larger than
-    #some threshold. beyond it, we declare a crash
-    max_contact_angle_deg = 60
-    @assert ut_ks > cosd(max_contact_angle_deg) "Maximum strut contact angle exceeded"
 
     #wheel frame axes
     ψ_sw = get_steering_angle(steering)
@@ -297,12 +298,6 @@ function Systems.f_ode!(sys::System{<:Strut},
     #contact frame origin velocity due to rigid body vehicle motion
     v_eOc_veh_b = v_eOb_b + ω_eb_b × r_ObOc_b
     v_eOc_veh_c = q_bc'(v_eOc_veh_b)
-
-    #sanity check: the velocity of the contact point along the contact frame
-    #z-axis due to vehicle motion should not exceed some threshold. beyond it,
-    #we declare a crash
-    max_normal_velocity = 10
-    @assert v_eOc_veh_c[3] < max_normal_velocity "Maximum normal velocity exceeded"
 
     #compute the damper elongation rate required to cancel the vehicle
     #contribution to the contact point velocity along the contact frame z axis
@@ -369,16 +364,31 @@ function Systems.f_ode!(sys::System{<:Strut},
     wr_c = Wrench(F = F_c)
     wr_b = t_bc(wr_c)
 
-    sys.y = StrutY(; Δh, wow, ξ, ξ_dot, t_sc, t_bc, v_eOc_c, trn_data, μ_roll, μ_skid,
-                     κ_br, ψ_cv, μ_max, μ_eff, f_c, F, F_c, wr_b, frc = frc.y)
+    sys.y = StrutY(; Δh, wow, ξ, ξ_dot, F, α_ts, t_sc, t_bc, v_eOc_c, trn_data, μ_roll, μ_skid,
+                     κ_br, ψ_cv, μ_max, μ_eff, f_c, F_c, wr_b, frc = frc.y)
 
 end
 
 #this will be called after f_cb_step, so wow will have the final value for the
 #last integration step
 function Systems.f_step!(sys::System{<:Strut})
+
     sys.frc.u.reset .= !sys.y.wow #if !wow, reset friction regulator
     f_step!(sys.frc)
+
+    #sanity checks for crash detection
+    @unpack wow, α_ts, ξ_dot = sys.y
+
+    #we should not be hitting the ground at an angle larger than some threshold
+    (wow && rad2deg(α_ts) > 60) && throw(GroundCrash(
+        "Terrain normal to strut angle α_ts = $(rad2deg(α_ts)) deg " *
+        "at t = $(sys.t[]) s"))
+
+    #damper compression rate should not exceed some threshold
+    (-ξ_dot > 10) && throw(GroundCrash(
+        "Damper compression rate ξ_dot = $(-sys.y.ξ_dot) m/s " *
+        "at t = $(sys.t[]) s"))
+
 end
 
 
