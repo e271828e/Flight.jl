@@ -644,13 +644,43 @@ function test_json_loopback(; save::Bool = true)
 end
 
 
+function test_sim(; save::Bool = true)
+
+    h_trn = HOrth(601.55);
+
+    trn = HorizontalTerrain(altitude = h_trn)
+    ac = Cessna172RPAv1(LTF(), trn) |> System;
+    sim = Simulation(ac; t_end = 30)
+
+    # #on ground
+    # kin_init = KinematicInit(
+    #     loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
+    #     h = h_trn + 1.81);
+
+    #on air, automatically trimmed by reinit!
+    kin_init = C172.TrimParameters(
+        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
+
+    reinit!(sim, kin_init)
+
+    Sim.run!(sim)
+
+    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
+    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim", "air"))
+
+    return nothing
+
+end
+
 function test_sim_interactive(; save::Bool = true)
 
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172RPAv1(LTF(), trn) |> System;
-    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 60)
+    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 10)
 
     #on ground
     kin_init = KinematicInit(
@@ -670,6 +700,7 @@ function test_sim_interactive(; save::Bool = true)
     xpc = XPCClient()
     # xpc = XPCClient(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
+    Sim.attach!(sim, IODevices.DummyInputDevice())
 
     Sim.run_interactive!(sim)
 
