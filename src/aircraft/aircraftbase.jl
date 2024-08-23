@@ -273,7 +273,6 @@ function trim!( ac::System{<:Aircraft}, params::AbstractTrimParameters)
     result = trim!(ac.vehicle, params) #compute vehicle trim state
     trim!(ac.avionics, ac.vehicle) #make avionics consistent with vehicle trim state
     ac.y = AircraftY(ac.vehicle.y, ac.avionics.y)
-    # update_y!(ac)
     return result
 end
 
