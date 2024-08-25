@@ -158,7 +158,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         save_on::Bool = true,
         saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
         save_everystep::Bool = isempty(saveat),
-        save_start::Bool = false, #initial System's outputs might not be up to date
+        save_start::Bool = true,
         save_end::Bool = false,
         )
 
@@ -168,19 +168,21 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!, Δt = Δt,
                   args_ode = args_ode, args_step = args_step, args_disc = args_disc)
 
-        cb_cont = DiscreteCallback((u, t, integrator)->true, f_cb_cont!)
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_disc = PeriodicCallback(f_cb_disc!, Δt)
         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
 
+        #before initializing the log, compute and assign y, so its initial value
+        #is consistent with x, u and s
+        f_ode!(sys)
         log = SavedValues(Float64, typeof(sys.y))
         saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
         cb_save = SavingCallback(f_cb_save, log; saveat, save_everystep, save_start, save_end)
 
         if save_on
-            cb_set = CallbackSet(cb_cont, cb_step, cb_disc, cb_user, cb_save)
+            cb_set = CallbackSet(cb_step, cb_disc, cb_user, cb_save)
         else
-            cb_set = CallbackSet(cb_cont, cb_step, cb_disc, cb_user)
+            cb_set = CallbackSet(cb_step, cb_disc, cb_user)
         end
 
         #the current System's x value is used as initial condition. a copy is
@@ -290,28 +292,6 @@ function f_ode_wrapper!(u̇, u, p, t)
 
 end
 
-#System update function, called on every integration step. brings the
-#System's internal x and y up to date with the last integrator's solution step
-function f_cb_cont!(integrator)
-
-    @unpack t, u, p = integrator
-    @unpack sys, args_ode = p
-
-    #assign final integrator solution for this epoch to System's continuous state
-    has_x(sys) && (sys.x .= u)
-
-    #same with time
-    sys.t[] = t
-
-    #at this point sys.y and sys.ẋ hold the values from the last algorithm
-    #evaluation of f_ode!, not the one corresponding to the updated x. with x
-    #up to date, we can now compute the final sys.y and sys.ẋ for this epoch
-    f_ode!(sys, args_ode...)
-
-    u_modified!(integrator, false)
-
-end
-
 #DiscreteCallback function, called on every integration step. calls the System's
 #own f_step!. modifications to x or s will not propagate to y until the next
 #integration step
@@ -369,22 +349,23 @@ OrdinaryDiffEq.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator
 
 OrdinaryDiffEq.add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 
-function OrdinaryDiffEq.reinit!(sim::Simulation, sys_init_args...; sys_init_kwargs...)
+function OrdinaryDiffEq.reinit!(sim::Simulation, sys_init! = Systems.init!)
 
-    @unpack integrator, log = sim
+    @unpack sys, integrator, log = sim
     @unpack p = integrator
 
     #initialize the System's x, u and s
-    p.sys_init!(p.sys, sys_init_args...; sys_init_kwargs...)
+    sys_init!(sys)
 
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
-    #reinit! calls f_ode_wrapper!, so the System's ẋ and y are updated in the
-    #process, no need to do it explicitly
+    #reinit! calls f_ode_wrapper!, so ẋ and y are updated in the process
     if has_x(p.sys)
         OrdinaryDiffEq.reinit!(integrator, p.sys.x)
     else
         OrdinaryDiffEq.reinit!(integrator)
     end
+
+    # f_ode!(sys)
 
     resize!(log.t, 1)
     resize!(log.saveval, 1)

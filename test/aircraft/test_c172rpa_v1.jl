@@ -47,7 +47,11 @@ function test_control_modes()
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172RPAv1(LTF(), trn) |> System;
     fcl = ac.avionics.fcl
+
+    kin_init_gnd = KinematicInit( h = TerrainData(trn).altitude + 1.9);
     design_point = C172.TrimParameters()
+    f_init_gnd! = (ac) -> Systems.init!(ac, kin_init_gnd)
+    f_init_air! = (ac) -> Systems.init!(ac, design_point)
 
     #we don't really need to provide a specific sys_init! function, because
     #sys_init! defaults to Systems.init!, which for Aircraft has methods
@@ -60,8 +64,8 @@ function test_control_modes()
 
     @testset verbose = true "Ground" begin
 
-    kin_init_gnd = KinematicInit( h = TerrainData(trn).altitude + 1.9);
-    reinit!(sim, kin_init_gnd)
+
+    reinit!(sim, f_init_gnd!)
 
     #set arbitrary control and guidance modes
     fcl.u.vrt_gdc_mode_req = vrt_gdc_alt
@@ -103,14 +107,14 @@ function test_control_modes()
     @testset verbose = true "Air" begin
 
     #put the aircraft in its nominal design point
-    reinit!(sim, design_point)
+    reinit!(sim, f_init_air!)
     y_kin_trim = y_kin(ac)
 
     ############################### direct control #############################
 
     @testset verbose = true "lon_direct + lat_direct" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
         step!(sim, Δt, true)
         @test fcl.y.lon_ctl_mode === lon_direct
         @test fcl.y.lat_ctl_mode === lat_direct
@@ -130,7 +134,7 @@ function test_control_modes()
 
         #we test the longitudinal SAS first, because we want to test the lateral
         #modes with it enabled
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
         fcl.u.lon_ctl_mode_req = lon_thr_ele
         step!(sim, Δt, true)
         @test fcl.y.lon_ctl_mode === lon_thr_ele
@@ -149,12 +153,11 @@ function test_control_modes()
 
     end #testset
 
-
     ################################ φ + β #####################################
 
     @testset verbose = true "lat_φ_β" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
         fcl.u.lon_ctl_mode_req = lon_thr_ele
         fcl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, Δt, true)
@@ -185,7 +188,7 @@ function test_control_modes()
 
     @testset verbose = true "lat_p_β" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
         fcl.u.lon_ctl_mode_req = lon_thr_ele
         fcl.u.lat_ctl_mode_req = lat_p_β
         step!(sim, Δt, true)
@@ -221,7 +224,7 @@ function test_control_modes()
 
     @testset verbose = true "lat_χ_β" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
         fcl.u.lon_ctl_mode_req = lon_thr_ele
         fcl.u.lat_ctl_mode_req = lat_χ_β
         step!(sim, Δt, true)
@@ -264,7 +267,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_thr_q" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
 
         fcl.u.lon_ctl_mode_req = lon_thr_q
         fcl.u.lat_ctl_mode_req = lat_φ_β
@@ -301,7 +304,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_thr_θ" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
 
         fcl.u.lon_ctl_mode_req = lon_thr_θ
         fcl.u.lat_ctl_mode_req = lat_φ_β
@@ -329,7 +332,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_thr_EAS" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
 
         fcl.u.lon_ctl_mode_req = lon_thr_EAS
         fcl.u.lat_ctl_mode_req = lat_φ_β
@@ -361,7 +364,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_EAS_q" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
 
         fcl.u.lon_ctl_mode_req = lon_EAS_q
         fcl.u.lat_ctl_mode_req = lat_φ_β
@@ -400,7 +403,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_EAS_θ" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
 
         fcl.u.lon_ctl_mode_req = lon_EAS_θ
         fcl.u.lat_ctl_mode_req = lat_φ_β
@@ -431,7 +434,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_EAS_clm" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
 
         fcl.u.lon_ctl_mode_req = lon_EAS_clm
         fcl.u.lat_ctl_mode_req = lat_φ_β
@@ -483,13 +486,14 @@ function test_guidance_modes()
     ac = Cessna172RPAv1(LTF(), trn) |> System;
     fcl = ac.avionics.fcl
     design_point = C172.TrimParameters()
+    f_init_air! = (ac) -> Systems.init!(ac, design_point)
 
     dt = Δt = 0.01
     sim = Simulation(ac; dt, Δt, t_end = 600)
 
     @testset verbose = true "Altitude Guidance" begin
 
-        reinit!(sim, design_point)
+        reinit!(sim, f_init_air!)
         y_kin_trim = y_kin(ac)
 
         fcl.u.vrt_gdc_mode_req = vrt_gdc_alt
@@ -613,9 +617,10 @@ function test_json_loopback(; save::Bool = true)
     #on air, automatically trimmed by reinit!
     kin_init = C172.TrimParameters(
         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
+    f_init_air! = (ac) -> Systems.init!(ac, kin_init)
 
     #initialize simulated system
-    reinit!(sim, kin_init)
+    reinit!(sim, f_init_air!)
 
     #setup IO devices
     for joystick in get_connected_joysticks()
@@ -652,15 +657,17 @@ function test_sim(; save::Bool = true)
     sim = Simulation(ac; t_end = 30)
 
     #on ground
-    kin_init = KinematicInit(
+    initializer = KinematicInit(
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.81);
 
-    #on air, automatically trimmed by reinit!
-    # kin_init = C172.TrimParameters(
+    #on air, automatically trimmed
+    # initializer = C172.TrimParameters(
     #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
 
-    reinit!(sim, kin_init)
+    f_init! = (ac) -> Systems.init!(ac, initializer)
+
+    reinit!(sim, f_init!)
 
     Sim.run!(sim)
 
@@ -682,15 +689,17 @@ function test_sim_interactive(; save::Bool = true)
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 10)
 
     #on ground
-    kin_init = KinematicInit(
+    initializer = KinematicInit(
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.81);
 
-    # #on air, automatically trimmed by reinit!
-    # kin_init = C172.TrimParameters(
+    # #on air, automatically trimmed
+    # initializer = C172.TrimParameters(
     #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
 
-    reinit!(sim, kin_init)
+    f_init! = (ac) -> Systems.init!(ac, initializer)
+
+    reinit!(sim, f_init!)
 
     for joystick in get_connected_joysticks()
         Sim.attach!(sim, joystick)

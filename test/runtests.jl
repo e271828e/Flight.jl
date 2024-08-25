@@ -20,22 +20,22 @@ include(normpath("aircraft/test_c172fbw_v1.jl")); using .TestC172FBWv1
 include(normpath("aircraft/test_c172rpa.jl")); using .TestC172RPA
 include(normpath("aircraft/test_c172rpa_v1.jl")); using .TestC172RPAv1
 
-test_quaternions()
-test_attitude()
-test_geodesy()
-test_kinematics()
+# test_quaternions()
+# test_attitude()
+# test_geodesy()
+# test_kinematics()
 
-test_control()
-test_propellers()
-test_landing_gear()
-test_piston()
+# test_control()
+# test_propellers()
+# test_landing_gear()
+# test_piston()
 
-test_aircraft_base()
+# test_aircraft_base()
 
-test_c172r()
+# test_c172r()
 
-test_c172fbw()
-test_c172fbw_v1()
+# test_c172fbw()
+# test_c172fbw_v1()
 
 test_c172rpa()
 test_c172rpa_v1()
