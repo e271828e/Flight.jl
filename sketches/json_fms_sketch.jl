@@ -60,7 +60,7 @@ function json_fms_sketch(; save::Bool = true)
     sim = Simulation(sys; dt = 1/60, Δt = 1/60, t_end = 3600)
 
     #on ground
-    kin_init = KinematicInit(
+    kin_init = KinInit(
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.81);
 

@@ -179,12 +179,12 @@ struct AirData
     CAS::Float64 #calibrated airspeed
 end
 
-AirData() = AirData(KinematicData(), LocalAtmosphericData())
+AirData() = AirData(KinData(), LocalAtmosphericData())
 
 TAS2EAS(TAS::Real; ρ::Real) = TAS * √(ρ / ρ_std)
 EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
 
-function AirData(kin::KinematicData, atm::LocalAtmosphericData)
+function AirData(kin::KinData, atm::LocalAtmosphericData)
 
     @unpack h_o, v_eOb_b, q_nb = kin
     @unpack T_sl, p_sl, v_ew_n = atm

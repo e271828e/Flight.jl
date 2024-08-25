@@ -48,7 +48,7 @@ function test_control_modes()
     ac = Cessna172RPAv1(LTF(), trn) |> System;
     fcl = ac.avionics.fcl
 
-    kin_init_gnd = KinematicInit( h = TerrainData(trn).altitude + 1.9);
+    kin_init_gnd = KinInit( h = TerrainData(trn).altitude + 1.9);
     design_point = C172.TrimParameters()
     f_init_gnd! = (ac) -> Systems.init!(ac, kin_init_gnd)
     f_init_air! = (ac) -> Systems.init!(ac, design_point)
@@ -610,7 +610,7 @@ function test_json_loopback(; save::Bool = true)
     sim = Simulation(sys; dt = 1/60, Δt = 1/60, t_end = 20)
 
     # #on ground
-    # kin_init = KinematicInit(
+    # kin_init = KinInit(
     #     loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
     #     h = h_trn + 1.81);
 
@@ -657,7 +657,7 @@ function test_sim(; save::Bool = true)
     sim = Simulation(ac; t_end = 30)
 
     #on ground
-    initializer = KinematicInit(
+    initializer = KinInit(
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.81);
 
@@ -689,7 +689,7 @@ function test_sim_interactive(; save::Bool = true)
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 10)
 
     #on ground
-    initializer = KinematicInit(
+    initializer = KinInit(
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.81);
 

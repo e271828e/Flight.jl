@@ -8,7 +8,7 @@ using ..Attitude
 using ..Geodesy
 
 export AbstractKinematicDescriptor, ECEF, LTF, NED
-export KinematicInit, KinematicData, KinematicSystem
+export KinInit, KinData, KinSystem
 
 const v_min_χγ = 0.1 #minimum speed for valid χ, γ
 
@@ -16,7 +16,7 @@ const v_min_χγ = 0.1 #minimum speed for valid χ, γ
 ################################################################################
 
 abstract type AbstractKinematicDescriptor <: SystemDefinition end
-const KinematicSystem = System{<:AbstractKinematicDescriptor}
+const KinSystem = System{<:AbstractKinematicDescriptor}
 
 ############################## Initialization ##################################
 ################################################################################
@@ -31,7 +31,7 @@ struct Initializer
     Δy::Float64
 end
 
-const KinematicInit = Initializer
+const KinInit = Initializer
 
 function Initializer(;
     q_nb::Abstract3DRotation = RQuat(), loc::Abstract2DLocation = LatLon(),
@@ -42,7 +42,7 @@ function Initializer(;
     Initializer(q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy)
 end
 
-function Systems.init!(sys::KinematicSystem, ic::Initializer = Initializer())
+function Systems.init!(sys::KinSystem, ic::Initializer = Initializer())
     init_x!(sys.x, ic)
     f_ode!(sys) #update state derivatives and outputs
 end
@@ -50,7 +50,7 @@ end
 ############################## Common Definitions ##############################
 ################################################################################
 
-struct KinematicData
+struct KinData
     e_nb::REuler
     q_nb::RQuat
     q_eb::RQuat
@@ -72,11 +72,11 @@ struct KinematicData
     γ_gnd::Float64 #flight path angle
 end
 
-KinematicData(ic::Initializer = Initializer()) = KinematicOutputs(LTF(), ic).data
-KinematicData(sys::KinematicSystem) = sys.y.data
+KinData(ic::Initializer = Initializer()) = KinematicOutputs(LTF(), ic).data
+KinData(sys::KinSystem) = sys.y.data
 
 struct KinematicOutputs{S}
-    data::KinematicData #general, implementation-agnostic kinematic data
+    data::KinData #general, implementation-agnostic kinematic data
     impl::S #implementation-specific outputs
 end
 
@@ -85,7 +85,7 @@ Base.getproperty(y::KinematicOutputs, s::Symbol) = getproperty(y, Val(s))
 @generated function Base.getproperty(y::KinematicOutputs{T}, ::Val{S}) where {T, S}
     if S === :data || S === :impl
         return :(getfield(y, $(QuoteNode(S))))
-    elseif S ∈ fieldnames(KinematicData)
+    elseif S ∈ fieldnames(KinData)
         return :(getfield(getfield(y, :data), $(QuoteNode(S))))
     elseif S ∈ fieldnames(T)
         return :(getfield(getfield(y, :impl), $(QuoteNode(S))))
@@ -237,7 +237,7 @@ function KinematicOutputs(x::XLTF)
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
     return KinematicOutputs(
-        KinematicData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+        KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
                  ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
         LTFData(; q_lb, q_el, ω_el_l)
     )
@@ -346,7 +346,7 @@ function KinematicOutputs(x::XECEF)
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
     return KinematicOutputs(
-        KinematicData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+        KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
                  ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
         ECEFData(; q_en, ω_el_n)
     )
@@ -463,7 +463,7 @@ function KinematicOutputs(x::XNED)
     γ_gnd = inclination(v_eOb_n)
 
     return KinematicOutputs(
-        KinematicData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+        KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
                  ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
         NEDData(; ω_nb_b, ω_en_n)
     )
@@ -594,7 +594,7 @@ function Plotting.make_plots(ts::TimeSeries{<:KinematicOutputs}; kwargs...)
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:KinematicData}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 

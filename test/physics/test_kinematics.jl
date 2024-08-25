@@ -36,7 +36,7 @@ function test_kinematics()
 
         @testset verbose = true "Initialization" begin
 
-            kin_init = KinematicInit(
+            kin_init = KinInit(
                 loc = LatLon(π/3, -π/6),
                 h = HOrth(12354),
                 ω_lb_b = [0.1, 0.1, -0.2],

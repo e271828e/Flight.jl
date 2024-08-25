@@ -490,7 +490,7 @@ end
 end
 
 
-function Systems.f_ode!(sys::System{<:Thruster}, air::AirData, kin::KinematicData)
+function Systems.f_ode!(sys::System{<:Thruster}, air::AirData, kin::KinData)
 
     @unpack engine, propeller = sys
     @unpack gear_ratio = sys.constants

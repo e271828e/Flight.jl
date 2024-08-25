@@ -55,7 +55,7 @@ Systems.Y(ac::Vehicle) = VehicleY(
     DynamicsData(),
     AirData())
 
-function Systems.init!(sys::System{<:Vehicle}, ic::KinematicInit)
+function Systems.init!(sys::System{<:Vehicle}, ic::KinInit)
     Systems.init!(sys.kinematics, ic)
     f_ode!(sys) #update state derivatives and outputs
 end
@@ -74,14 +74,14 @@ struct NoAvionics <: AbstractAvionics end
 #################### AbstractComponents update methods ###########################
 
 function Systems.f_ode!(components::System{<:AbstractComponents},
-                        kin::KinematicData,
+                        kin::KinData,
                         air::AirData,
                         trn::AbstractTerrain)
     MethodError(f_ode!, (components, avionics, kin, air, trn)) |> throw
 end
 
 function Systems.f_ode!(::System{NoComponents},
-                        ::KinematicData,
+                        ::KinData,
                         ::AirData,
                         ::AbstractTerrain)
     nothing
@@ -131,7 +131,7 @@ function Systems.f_ode!(vehicle::System{<:Vehicle})
 
     f_ode!(kinematics)
     f_ode!(atmosphere) #currently does nothing
-    kin_data = KinematicData(kinematics)
+    kin_data = KinData(kinematics)
     atm_data = LocalAtmosphericData(atmosphere)
 
     air_data = AirData(kin_data, atm_data)
@@ -198,7 +198,7 @@ end
 
 Systems.Y(ac::Aircraft) = AircraftY(Systems.Y(ac.vehicle), Systems.Y(ac.avionics))
 
-function Systems.init!(ac::System{<:Aircraft}, ic::KinematicInit)
+function Systems.init!(ac::System{<:Aircraft}, ic::KinInit)
     Systems.init!(ac.vehicle, ic)
     f_ode!(ac) #update state derivatives and outputs
 end

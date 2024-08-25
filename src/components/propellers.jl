@@ -388,7 +388,7 @@ function get_Δβ(sys::System{<:Propeller{VariablePitch}})
     return linear_scaling(sys.u[], Δβ_bounds)
 end
 
-function Systems.f_ode!(sys::System{<:Propeller}, kin::KinematicData, air::AirData, ω::Real)
+function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
 
     @unpack d, J_xx, t_bp, sense, lookup = sys.constants
     #remove this, it may happen due to friction overshoot at low RPMs

@@ -114,7 +114,7 @@ function test_strut()
         h = h_trn + 0.9
 
         #wow = false
-        kin = KinematicInit(; h = h_trn + 1.1) |> KinematicData
+        kin = KinInit(; h = h_trn + 1.1) |> KinData
         f_ode!(strut, steering, braking, terrain, kin) #update Strut
         @test strut.y.wow === false
         #when f_step! executes after the simulation step, the friction
@@ -135,7 +135,7 @@ function test_strut()
         @test all(strut.x .== 0)
 
         #normal static load
-        kin = KinematicInit(; h ) |> KinematicData
+        kin = KinInit(; h ) |> KinData
         f_ode!(strut, steering, braking, terrain, kin)
         @test strut.y.ξ ≈ -0.1 #strut is compressed
         @test strut.y.F ≈ 2500 #pure elastic force, positive along the strut's z axis
@@ -149,19 +149,19 @@ function test_strut()
         @test strut.frc.u.reset == [false, false]
 
         #oblique static load
-        kin = KinematicInit(; h, q_nb = REuler(0, 0, π/12)) |> KinematicData
+        kin = KinInit(; h, q_nb = REuler(0, 0, π/12)) |> KinData
         f_ode!(strut, steering, braking, terrain, kin)
         @test strut.y.ξ > -0.1 #strut is less compressed
         @test strut.y.F < 2500 #force is smaller
 
         #axial compressing load
-        kin = KinematicInit(; h, v_eOb_n = [0,0,1]) |> KinematicData
+        kin = KinInit(; h, v_eOb_n = [0,0,1]) |> KinData
         f_ode!(strut, steering, braking, terrain, kin)
         @test strut.y.ξ_dot < 0 #strut is compressing
         @test strut.y.F ≈ 3500 #damping force is added to elastic force
 
         #low positive longitudinal velocity
-        kin = KinematicInit(; h, v_eOb_n = [1e-4, 0, 0] ) |> KinematicData
+        kin = KinInit(; h, v_eOb_n = [1e-4, 0, 0] ) |> KinData
         f_ode!(strut, steering, braking, terrain, kin)
         @test isapprox.(strut.y.v_eOc_c, [1e-4, 0], atol = 1e-6) |> all
         @test strut.y.μ_max[1] <= strut.y.μ_roll
@@ -171,34 +171,34 @@ function test_strut()
         @test strut.ẋ[1] < 0 #longitudinal velocity error integral should be increasing
 
         #low positive lateral velocity
-        kin = KinematicInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1e-4, 0] ) |> KinematicData
+        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1e-4, 0] ) |> KinData
         f_ode!(strut, steering, braking, terrain, kin)
         @test strut.y.wr_b.F[2] > 0
         @test strut.ẋ[2] > 0 #lateral velocity error integral should be increasing
 
         #large positive lateral velocity
-        kin = KinematicInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> KinematicData
+        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> KinData
         f_ode!(strut, steering, braking, terrain, kin)
         @test strut.frc.y.sat_out[2] == 1 #large velocity saturates
         @test strut.ẋ[2] == 0 #lateral velocity integral should be decreasing
 
         #advancing motion with compression
-        kin = KinematicInit(; h, v_eOb_n = [10,0,1]) |> KinematicData
+        kin = KinInit(; h, v_eOb_n = [10,0,1]) |> KinData
         f_ode!(strut, steering, braking, terrain, kin)
         @test isapprox.(strut.y.v_eOc_c, [10, 0], atol = 1e-5) |> all
 
         #lateral motion with compression
-        kin = KinematicInit(; h, ω_lb_b = [1,0,0]) |> KinematicData
+        kin = KinInit(; h, ω_lb_b = [1,0,0]) |> KinData
         f_ode!(strut, steering, braking, terrain, kin)
         @test isapprox.(strut.y.v_eOc_c, [0, -0.9], atol = 1e-5) |> all
 
         #off-axis load, forward motion
-        kin = KinematicInit(; h, q_nb = REuler(φ = π/12), v_eOb_n = [1e-4, 0, 0] ) |> KinematicData
+        kin = KinInit(; h, q_nb = REuler(φ = π/12), v_eOb_n = [1e-4, 0, 0] ) |> KinData
         f_ode!(strut, steering, braking, terrain, kin)
         @test strut.y.wr_b.F[2] < 0
 
         #steering
-        kin = KinematicInit(; h, v_eOb_n = [10,0,1]) |> KinematicData
+        kin = KinInit(; h, v_eOb_n = [10,0,1]) |> KinData
         steering.u[] = 0.5
         f_ode!(steering)
         f_ode!(strut, steering, braking, terrain, kin)
@@ -206,7 +206,7 @@ function test_strut()
         @test strut.y.v_eOc_c[2] < 0
 
         #braking
-        kin = KinematicInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [1e-4, 0, 0] ) |> KinematicData
+        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [1e-4, 0, 0] ) |> KinData
         braking.u[] = 1
         f_ode!(braking)
         f_ode!(strut, steering, braking, terrain, kin)
@@ -236,7 +236,7 @@ function test_landing_gear_unit()
         h_trn = Terrain.TerrainData(trn, loc).altitude
 
         #wow = true
-        kin = KinematicInit(; h = h_trn + 0.9, v_eOb_n = [0,1,0]) |> KinematicData
+        kin = KinInit(; h = h_trn + 0.9, v_eOb_n = [0,1,0]) |> KinData
 
         @test (@ballocated f_ode!($ldg, $kin, $trn)) == 0
         @test @ballocated(f_step!($ldg)) == 0
@@ -263,7 +263,7 @@ function test_harness()
     q_nb = REuler(; θ, φ)
     v_eOb_n = [0,0,0]
     ω_lb_b = [0,0,0]
-    kin = KinematicInit(; h, v_eOb_n, ω_lb_b, q_nb) |> KinematicData
+    kin = KinInit(; h, v_eOb_n, ω_lb_b, q_nb) |> KinData
     f_ode!(ldg, kin, trn)
     f_step!(ldg)
     @show ldg.strut.y.wow

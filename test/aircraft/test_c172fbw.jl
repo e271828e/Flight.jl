@@ -63,7 +63,7 @@ function test_system_methods()
             trn = HorizontalTerrain()
             loc = NVector()
             trn_data = TerrainData(trn, loc)
-            kin_init = KinematicInit( h = trn_data.altitude + 1.8);
+            kin_init = KinInit( h = trn_data.altitude + 1.8);
 
             ac_LTF = Cessna172FBW(LTF(), trn) |> System;
             ac_ECEF = Cessna172FBW(ECEF(), trn) |> System;
@@ -158,7 +158,7 @@ function test_sim_interactive(; save::Bool = true)
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172FBW(LTF(), trn) |> System
 
-    kin_init = KinematicInit(
+    kin_init = KinInit(
         v_eOb_n = [0, 0, 0],
         ω_lb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),

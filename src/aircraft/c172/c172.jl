@@ -395,7 +395,7 @@ Dynamics.AngularMomentumTrait(::System{<:Aero}) = HasNoAngularMomentum()
 Dynamics.ExternalWrenchTrait(::System{<:Aero}) = GetsExternalWrench()
 
 function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
-    air::AirData, kinematics::KinematicData, terrain::AbstractTerrain)
+    air::AirData, kinematics::KinData, terrain::AbstractTerrain)
 
     @unpack ẋ, x, u, s, constants = sys
     @unpack α_filt, β_filt = x
@@ -755,7 +755,7 @@ end
 ############################# Update Methods ###################################
 
 function Systems.f_ode!(components::System{<:Components},
-                        kin::KinematicData,
+                        kin::KinData,
                         air::AirData,
                         trn::AbstractTerrain)
 
