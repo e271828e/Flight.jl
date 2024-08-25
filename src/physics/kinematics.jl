@@ -12,11 +12,6 @@ export KinInit, KinData, KinSystem
 
 const v_min_χγ = 0.1 #minimum speed for valid χ, γ
 
-######################### AbstractKinematicDescriptor ##########################
-################################################################################
-
-abstract type AbstractKinematicDescriptor <: SystemDefinition end
-const KinSystem = System{<:AbstractKinematicDescriptor}
 
 ############################## Initialization ##################################
 ################################################################################
@@ -42,47 +37,89 @@ function Initializer(;
     Initializer(q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy)
 end
 
-function Systems.init!(sys::KinSystem, ic::Initializer = Initializer())
-    init_x!(sys.x, ic)
-    f_ode!(sys) #update state derivatives and outputs
-end
 
-############################## Common Definitions ##############################
+######################### AbstractKinematicDescriptor ##########################
 ################################################################################
 
-struct KinData
-    e_nb::REuler
-    q_nb::RQuat
-    q_eb::RQuat
-    q_en::RQuat
-    ϕ_λ::LatLon
-    n_e::NVector
-    h_e::Altitude{Ellipsoidal}
-    h_o::Altitude{Orthometric}
-    Δxy::SVector{2,Float64}
-    r_eOb_e::SVector{3,Float64}
-    ω_lb_b::SVector{3,Float64}
-    ω_eb_b::SVector{3,Float64}
-    ω_ie_b::SVector{3,Float64}
-    ω_ib_b::SVector{3,Float64}
-    v_eOb_b::SVector{3,Float64}
-    v_eOb_n::SVector{3,Float64}
-    v_gnd::Float64 #ground speed
-    χ_gnd::Float64 #course angle
-    γ_gnd::Float64 #flight path angle
+abstract type AbstractKinematicDescriptor <: SystemDefinition end
+const KinSystem = System{<:AbstractKinematicDescriptor}
+
+const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
+Systems.U(::AbstractKinematicDescriptor) = zero(XVelTemplate)
+
+
+################################# KinematicsY ##################################
+################################################################################
+
+@kwdef struct KinData
+    e_nb::REuler = REuler()
+    q_nb::RQuat = RQuat()
+    q_eb::RQuat = RQuat()
+    q_en::RQuat = RQuat()
+    ϕ_λ::LatLon = LatLon()
+    n_e::NVector = NVector()
+    h_e::Altitude{Ellipsoidal} = HEllip(0.0)
+    h_o::Altitude{Orthometric} = HOrth(0.0)
+    Δxy::SVector{2,Float64} = zeros(SVector{2})
+    r_eOb_e::SVector{3,Float64} = zeros(SVector{3})
+    ω_lb_b::SVector{3,Float64} = zeros(SVector{3})
+    ω_eb_b::SVector{3,Float64} = zeros(SVector{3})
+    ω_ie_b::SVector{3,Float64} = zeros(SVector{3})
+    ω_ib_b::SVector{3,Float64} = zeros(SVector{3})
+    v_eOb_b::SVector{3,Float64} = zeros(SVector{3})
+    v_eOb_n::SVector{3,Float64} = zeros(SVector{3})
+    v_gnd::Float64 = 0.0 #ground speed
+    χ_gnd::Float64 = 0.0 #course angle
+    γ_gnd::Float64 = 0.0 #flight path angle
 end
 
-KinData(ic::Initializer = Initializer()) = KinematicOutputs(LTF(), ic).data
-KinData(sys::KinSystem) = sys.y.data
+function KinData(ic::KinInit)
 
-struct KinematicOutputs{S}
+    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
+
+    e_nb = REuler(q_nb)
+    q_en = ltf(Ob)
+    q_eb = q_en ∘ q_nb
+
+    n_e = NVector(Ob)
+    ϕ_λ = LatLon(Ob)
+    h_e = HEllip(Ob)
+    h_o = HOrth(h_e, n_e)
+    Δxy = SVector(Δx, Δy)
+    r_eOb_e = Cartesian(Ob)
+
+    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
+    ω_el_b = q_nb'(ω_el_n)
+    ω_eb_b = ω_el_b + ω_lb_b
+
+    ω_ie_e = SVector(0., 0., ω_ie)
+    ω_ie_b = q_eb'(ω_ie_e)
+    ω_ib_b = ω_ie_b + ω_eb_b
+
+    v_eOb_b = q_nb'(v_eOb_n)
+
+    v_gnd = norm(v_eOb_n)
+    χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
+    γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
+
+    KinData(;   e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+                ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b,
+                v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd)
+
+end
+
+
+struct KinematicsY{S}
     data::KinData #general, implementation-agnostic kinematic data
     impl::S #implementation-specific outputs
 end
 
-Base.getproperty(y::KinematicOutputs, s::Symbol) = getproperty(y, Val(s))
+KinData(y::KinematicsY) = y.data
+KinData(sys::KinSystem) = KinData(sys.y)
 
-@generated function Base.getproperty(y::KinematicOutputs{T}, ::Val{S}) where {T, S}
+Base.getproperty(y::KinematicsY, s::Symbol) = getproperty(y, Val(s))
+
+@generated function Base.getproperty(y::KinematicsY{T}, ::Val{S}) where {T, S}
     if S === :data || S === :impl
         return :(getfield(y, $(QuoteNode(S))))
     elseif S ∈ fieldnames(KinData)
@@ -94,54 +131,17 @@ Base.getproperty(y::KinematicOutputs, s::Symbol) = getproperty(y, Val(s))
     end
 end
 
-function Systems.X(kin::AbstractKinematicDescriptor, ic::Initializer = Initializer())
-    x = similar(x_template(kin))
-    init_x!(x, ic)
-    return x
-end
-
-function Systems.Y(kin::AbstractKinematicDescriptor, ic::Initializer = Initializer())
-    return KinematicOutputs(kin, ic)
-end
-
-function KinematicOutputs(kin::AbstractKinematicDescriptor,
-                     ic::Initializer = Initializer())
-    x = Systems.X(kin, ic)
-    return KinematicOutputs(x)
-end
-
-#for dispatching
-const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
-const XVel{T, D} = ComponentVector{T, D, typeof(getaxes(XVelTemplate))} where {T, D}
-
 function normalize_block!(x, ε) #returns true if norm was corrected
     norm_x = norm(x)
     abs(norm_x - 1.0) > ε ? (x ./= norm_x; return true) : return false
 end
 
-@inline function get_ω_el_n(v_eOb_n::AbstractVector{<:Real}, Ob::Geographic)
-
-    (R_N, R_E) = radii(Ob)
-    h_e = HEllip(Ob)
-
-    return SVector{3}(
-        v_eOb_n[2] / (R_E + Float64(h_e)),
-        -v_eOb_n[1] / (R_N + Float64(h_e)),
-        0.0)
-
+function Geodesy.gravity(kin_data::KinData)
+    gravity(Geographic(kin_data.n_e, kin_data.h_e))
 end
 
-@inline function get_ω_en_n(v_eOb_n::AbstractVector{<:Real}, Ob::Geographic)
-
-    (R_N, R_E) = radii(Ob)
-    h_e = HEllip(Ob)
-    ϕ = LatLon(Ob).ϕ
-
-    return SVector{3}(
-        v_eOb_n[2] / (R_E + Float64(h_e)),
-        -v_eOb_n[1] / (R_N + Float64(h_e)),
-        -v_eOb_n[2] * tan(ϕ) / (R_E + Float64(h_e))
-        )
+function Geodesy.G_n(kin_data::KinData)
+    G_n(Geographic(kin_data.n_e, kin_data.h_e))
 end
 
 
@@ -149,35 +149,24 @@ end
 ##########################################################################
 
 #fast, singularity-free (all-attitude, all-latitude) kinematic mechanization,
-#appropriate for simulation.
-
-#The characteristic feature of this mechanization is that the azimuth of the
-#local tangent frame (LTF) is not slaved to the geographic North, as it is in a
-#NED-based mechanization. Instead, the vertical component of the LTF's transport
-#rate is arbitrarily set to zero. This avoids polar singularities, but also
-#means that the azimuth angle of the LTF with respect to the geographic North
-#will drift as the vehicle moves around the Earth's surface. The resulting LTF
-#is sometimes known as Wander Azimuth Frame. Position is defined by the rotation
-#from the ECEF axes to the LTF axes, and attitude is defined by the rotation
-#from the LTF axes to the vehicle axes.
+#appropriate for simulation. local tangent frame is the wander-azimuth frame
 
 struct LTF <: AbstractKinematicDescriptor end
 
-const XPosLTFTemplate = ComponentVector(q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
-const XLTFTemplate = ComponentVector(pos = similar(XPosLTFTemplate), vel = similar(XVelTemplate))
-const XLTF{T, D} = ComponentVector{T, D, typeof(getaxes(XLTFTemplate))} where {T, D}
-
-#LTF-specific outputs
 @kwdef struct LTFData
-    q_lb::RQuat
-    q_el::RQuat
-    ω_el_l::SVector{3,Float64}
+    q_lb::RQuat = RQuat()
+    q_el::RQuat = RQuat()
+    ω_el_l::SVector{3,Float64} = zeros(SVector{3})
 end
 
-x_template(::LTF) = XLTFTemplate
+Systems.X(::LTF) = ComponentVector(
+    q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
 
-function init_x!(x::XLTF, ic::Initializer = Initializer())
+Systems.Y(::LTF) = KinematicsY(KinData(), LTFData())
 
+function Systems.init!(sys::System{LTF}, ic::Initializer = Initializer())
+
+    @unpack x, u = sys
     @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
 
     ω_el_n = get_ω_el_n(v_eOb_n, Ob)
@@ -186,27 +175,32 @@ function init_x!(x::XLTF, ic::Initializer = Initializer())
     v_eOb_b = q_nb'(v_eOb_n)
     h_e = HEllip(Ob)
 
-    q_lb = q_nb #arbitrarily initialize ψ_nl to 1
+    q_lb = q_nb #arbitrarily initializes wander angle ψ_nl to 1
 
-    x.pos.q_lb .= q_lb[:]
-    x.pos.q_el .= ltf(Ob)[:]
-    x.pos.Δx = Δx
-    x.pos.Δy = Δy
-    x.pos.h_e = h_e
-    x.vel.ω_eb_b .= ω_eb_b
-    x.vel.v_eOb_b .= v_eOb_b
+    u.ω_eb_b = ω_eb_b
+    u.v_eOb_b = v_eOb_b
+
+    x.q_lb = q_lb[:]
+    x.q_el = ltf(Ob)[:]
+    x.Δx = Δx
+    x.Δy = Δy
+    x.h_e = h_e
+
+    f_ode!(sys) #update ẋ and y, not strictly necessary
 
 end
 
-function KinematicOutputs(x::XLTF)
 
-    x_pos = x.pos; x_vel = x.vel
-    q_lb = RQuat(x_pos.q_lb, normalization = false)
-    q_el = RQuat(x_pos.q_el, normalization = false)
-    ω_eb_b = SVector{3}(x_vel.ω_eb_b)
-    v_eOb_b = SVector{3}(x_vel.v_eOb_b)
-    h_e = HEllip(x_pos.h_e[1])
-    Δxy = SVector(x_pos.Δx, x_pos.Δy)
+function Systems.f_ode!(sys::System{LTF})
+
+    @unpack ẋ, x, u = sys
+
+    q_lb = RQuat(x.q_lb, normalization = false)
+    q_el = RQuat(x.q_el, normalization = false)
+    ω_eb_b = SVector{3}(u.ω_eb_b)
+    v_eOb_b = SVector{3}(u.v_eOb_b)
+    h_e = HEllip(x.h_e[1])
+    Δxy = SVector(x.Δx, x.Δy)
 
     ψ_nl = get_ψ_nl(q_el)
     q_nl = Rz(ψ_nl)
@@ -236,38 +230,40 @@ function KinematicOutputs(x::XLTF)
     χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
-    return KinematicOutputs(
+    ẋ.q_lb = Attitude.dt(q_lb, ω_lb_b)
+    ẋ.q_el = Attitude.dt(q_el, ω_el_l)
+
+    ẋ.Δx = v_eOb_n[1]
+    ẋ.Δy = v_eOb_n[2]
+    ẋ.h_e = -v_eOb_n[3]
+
+    sys.y = KinematicsY(
         KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b,
+                 v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
         LTFData(; q_lb, q_el, ω_el_l)
     )
 
 end
 
-#only updates xpos_dot, Dynamics.update! performs the xvel_dot update
-function Systems.f_ode!(sys::System{LTF})
-
-    #compute and update y
-    sys.y = KinematicOutputs(sys.x)
-
-    @unpack q_lb, q_el, ω_lb_b, ω_el_l, v_eOb_n = sys.y
-
-    #update ẋ_pos
-    ẋ_pos = sys.ẋ.pos
-    ẋ_pos.q_lb .= Attitude.dt(q_lb, ω_lb_b)
-    ẋ_pos.q_el .= Attitude.dt(q_el, ω_el_l)
-    ẋ_pos.Δx = v_eOb_n[1]
-    ẋ_pos.Δy = v_eOb_n[2]
-    ẋ_pos.h_e = -v_eOb_n[3]
-
-end
 
 function Systems.f_step!(sys::System{LTF}, ε = 1e-8)
-    x_pos = sys.x.pos
-    normalize_block!(x_pos.q_lb, ε)
-    normalize_block!(x_pos.q_el, ε)
+    normalize_block!(sys.x.q_lb, ε)
+    normalize_block!(sys.x.q_el, ε)
 end
 
+
+@inline function get_ω_el_n(v_eOb_n::AbstractVector{<:Real}, Ob::Geographic)
+
+    (R_N, R_E) = radii(Ob)
+    h_e = HEllip(Ob)
+
+    return SVector{3}(
+        v_eOb_n[2] / (R_E + Float64(h_e)),
+        -v_eOb_n[1] / (R_N + Float64(h_e)),
+        0.0)
+
+end
 
 ########################## ECEF-based Kinematics #########################
 ##########################################################################
@@ -277,20 +273,19 @@ end
 
 struct ECEF <: AbstractKinematicDescriptor end
 
-const XPosECEFTemplate = ComponentVector(q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0)
-const XECEFTemplate = ComponentVector(pos = similar(XPosECEFTemplate), vel = similar(XVelTemplate))
-const XECEF{T, D} = ComponentVector{T, D, typeof(getaxes(XECEFTemplate))} where {T, D}
-
-#ECEF-specific outputs
 @kwdef struct ECEFData
-    q_en::RQuat
-    ω_el_n::SVector{3,Float64}
+    q_en::RQuat = RQuat()
+    ω_el_n::SVector{3,Float64} = zeros(SVector{3})
 end
 
-x_template(::ECEF) = XECEFTemplate
+Systems.X(::ECEF) = ComponentVector(
+    q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0)
 
-function init_x!(x::XECEF, ic::Initializer = Initializer())
+Systems.Y(::ECEF) = KinematicsY(KinData(), ECEFData())
 
+function Systems.init!(sys::System{ECEF}, ic::Initializer = Initializer())
+
+    @unpack x, u = sys
     @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
 
     n_e = NVector(Ob)
@@ -304,25 +299,29 @@ function init_x!(x::XECEF, ic::Initializer = Initializer())
     ω_eb_b = ω_el_b + ω_lb_b
     v_eOb_b = q_nb'(v_eOb_n)
 
-    x.pos.q_eb .= q_eb[:]
-    x.pos.n_e .= n_e[:]
-    x.pos.Δx = Δx
-    x.pos.Δy = Δy
-    x.pos.h_e = h_e
-    x.vel.ω_eb_b .= ω_eb_b
-    x.vel.v_eOb_b .= v_eOb_b
+    u.ω_eb_b = ω_eb_b
+    u.v_eOb_b = v_eOb_b
+
+    x.q_eb = q_eb[:]
+    x.n_e = n_e[:]
+    x.Δx = Δx
+    x.Δy = Δy
+    x.h_e = h_e
+
+    f_ode!(sys) #update ẋ and y, not strictly necessary
 
 end
 
-function KinematicOutputs(x::XECEF)
+function Systems.f_ode!(sys::System{ECEF})
 
-    x_pos = x.pos; x_vel = x.vel
-    q_eb = RQuat(x_pos.q_eb, normalization = false)
-    n_e = NVector(x_pos.n_e, normalization = false)
-    ω_eb_b = SVector{3}(x_vel.ω_eb_b)
-    v_eOb_b = SVector{3}(x_vel.v_eOb_b)
-    Δxy = SVector(x_pos.Δx, x_pos.Δy)
-    h_e = HEllip(x_pos.h_e[1])
+    @unpack ẋ, x, u = sys
+
+    q_eb = RQuat(x.q_eb, normalization = false)
+    n_e = NVector(x.n_e, normalization = false)
+    ω_eb_b = SVector{3}(u.ω_eb_b)
+    v_eOb_b = SVector{3}(u.v_eOb_b)
+    Δxy = SVector(x.Δx, x.Δy)
+    h_e = HEllip(x.h_e[1])
     h_o = HOrth(h_e, n_e)
     ϕ_λ = LatLon(n_e)
 
@@ -345,36 +344,25 @@ function KinematicOutputs(x::XECEF)
     χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
-    return KinematicOutputs(
-        KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+    ẋ.q_eb = Attitude.dt(q_eb, ω_eb_b)
+    ẋ.n_e = q_en(ω_el_n × SVector{3,Float64}(0,0,-1))
+    ẋ.Δx = v_eOb_n[1]
+    ẋ.Δy = v_eOb_n[2]
+    ẋ.h_e = -v_eOb_n[3]
+
+    sys.y = KinematicsY(
+        KinData(e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+                ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b,
+                v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
         ECEFData(; q_en, ω_el_n)
     )
 
 end
 
-#only updates xpos_dot, xvel_dot update can only be performed by Dynamics.update!
-function Systems.f_ode!(sys::System{ECEF})
-
-    #compute and update y
-    sys.y = KinematicOutputs(sys.x)
-
-    @unpack q_eb, q_en, ω_el_n, ω_eb_b, v_eOb_n = sys.y
-
-    #update ẋ_pos
-    ẋ_pos = sys.ẋ.pos
-    ẋ_pos.q_eb .= Attitude.dt(q_eb, ω_eb_b)
-    ẋ_pos.n_e .= q_en(ω_el_n × SVector{3,Float64}(0,0,-1))
-    ẋ_pos.Δx = v_eOb_n[1]
-    ẋ_pos.Δy = v_eOb_n[2]
-    ẋ_pos.h_e = -v_eOb_n[3]
-
-end
 
 function Systems.f_step!(sys::System{ECEF}, ε = 1e-8)
-    x_pos = sys.x.pos
-    normalize_block!(x_pos.q_eb, ε)
-    normalize_block!(x_pos.n_e, ε)
+    normalize_block!(sys.x.q_eb, ε)
+    normalize_block!(sys.x.n_e, ε)
 end
 
 
@@ -386,22 +374,20 @@ end
 
 struct NED <: AbstractKinematicDescriptor end
 
-const XPosNEDTemplate = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
-                                ϕ = 0.0, λ = 0.0, Δx = 0.0, Δy = 0.0, h_e = 0.0)
-const XNEDTemplate = ComponentVector(pos = similar(XPosNEDTemplate), vel = similar(XVelTemplate))
-const XNED{T, D} = ComponentVector{T, D, typeof(getaxes(XNEDTemplate))} where {T, D}
-
-#NED-specific outputs
 @kwdef struct NEDData
-    ω_nb_b::SVector{3,Float64}
-    ω_en_n::SVector{3,Float64}
+    ω_nb_b::SVector{3,Float64} = zeros(SVector{3})
+    ω_en_n::SVector{3,Float64} = zeros(SVector{3})
 end
 
-x_template(::NED) = XNEDTemplate
+Systems.X(::NED) = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
+                                ϕ = 0.0, λ = 0.0, Δx = 0.0, Δy = 0.0, h_e = 0.0)
+
+Systems.Y(::NED) = KinematicsY(KinData(), NEDData())
 
 
-function init_x!(x::XNED, ic::Initializer = Initializer())
+function Systems.init!(sys::System{NED}, ic::Initializer = Initializer())
 
+    @unpack x, u = sys
     @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
 
     ω_el_n = get_ω_el_n(v_eOb_n, Ob)
@@ -413,27 +399,32 @@ function init_x!(x::XNED, ic::Initializer = Initializer())
     ϕ_λ = LatLon(Ob)
     h_e = HEllip(Ob)
 
-    x.pos.ψ_nb = e_nb.ψ
-    x.pos.θ_nb = e_nb.θ
-    x.pos.φ_nb = e_nb.φ
-    x.pos.ϕ = ϕ_λ.ϕ
-    x.pos.λ = ϕ_λ.λ
-    x.pos.Δx = Δx
-    x.pos.Δy = Δy
-    x.pos.h_e = h_e
-    x.vel.ω_eb_b .= ω_eb_b
-    x.vel.v_eOb_b .= v_eOb_b
+    u.ω_eb_b = ω_eb_b
+    u.v_eOb_b = v_eOb_b
+
+    x.ψ_nb = e_nb.ψ
+    x.θ_nb = e_nb.θ
+    x.φ_nb = e_nb.φ
+    x.ϕ = ϕ_λ.ϕ
+    x.λ = ϕ_λ.λ
+    x.Δx = Δx
+    x.Δy = Δy
+    x.h_e = h_e
+
+    f_ode!(sys) #update ẋ and y, not strictly necessary
 
 end
 
-function KinematicOutputs(x::XNED)
+function Systems.f_ode!(sys::System{NED})
 
-    e_nb = REuler(x.pos.ψ_nb, x.pos.θ_nb, x.pos.φ_nb)
-    ϕ_λ = LatLon(x.pos.ϕ, x.pos.λ)
-    h_e = HEllip(x.pos.h_e[1])
-    Δxy = SVector(x.pos.Δx, x.pos.Δy)
-    ω_eb_b = SVector{3}(x.vel.ω_eb_b)
-    v_eOb_b = SVector{3}(x.vel.v_eOb_b)
+    @unpack ẋ, x, u = sys
+
+    e_nb = REuler(x.ψ_nb, x.θ_nb, x.φ_nb)
+    ϕ_λ = LatLon(x.ϕ, x.λ)
+    h_e = HEllip(x.h_e[1])
+    Δxy = SVector(x.Δx, x.Δy)
+    ω_eb_b = SVector{3}(u.ω_eb_b)
+    v_eOb_b = SVector{3}(u.v_eOb_b)
 
     n_e = NVector(ϕ_λ)
     h_o = HOrth(h_e, n_e)
@@ -462,41 +453,42 @@ function KinematicOutputs(x::XNED)
     χ_gnd = azimuth(v_eOb_n)
     γ_gnd = inclination(v_eOb_n)
 
-    return KinematicOutputs(
+    ė_nb = Attitude.dt(e_nb, ω_nb_b)
+    ϕ_λ_dot = Geodesy.dt(ϕ_λ, ω_en_n)
+
+    ẋ.ψ_nb = ė_nb.ψ
+    ẋ.θ_nb = ė_nb.θ
+    ẋ.φ_nb = ė_nb.φ
+    ẋ.ϕ = ϕ_λ_dot.ϕ
+    ẋ.λ = ϕ_λ_dot.λ
+    ẋ.Δx = v_eOb_n[1]
+    ẋ.Δy = v_eOb_n[2]
+    ẋ.h_e = -v_eOb_n[3]
+
+    sys.y = KinematicsY(
         KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b,
+                 v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
         NEDData(; ω_nb_b, ω_en_n)
     )
 
 end
 
-#only updates xpos_dot, xvel_dot update is performed by Dynamics.update!
-function Systems.f_ode!(sys::System{NED})
+Systems.f_step!(::System{NED}) = nothing
 
-    #compute and update y
-    sys.y = KinematicOutputs(sys.x)
 
-    @unpack e_nb, ϕ_λ, ω_nb_b, ω_en_n, v_eOb_n = sys.y
+@inline function get_ω_en_n(v_eOb_n::AbstractVector{<:Real}, Ob::Geographic)
 
-    #update ẋ_pos
-    ė_nb = Attitude.dt(e_nb, ω_nb_b)
-    ϕ_λ_dot = Geodesy.dt(ϕ_λ, ω_en_n)
-    # @show ė_nb
+    (R_N, R_E) = radii(Ob)
+    h_e = HEllip(Ob)
+    ϕ = LatLon(Ob).ϕ
 
-    ẋ_pos = sys.ẋ.pos
-    ẋ_pos.ψ_nb = ė_nb.ψ
-    ẋ_pos.θ_nb = ė_nb.θ
-    ẋ_pos.φ_nb = ė_nb.φ
-    ẋ_pos.ϕ = ϕ_λ_dot.ϕ
-    ẋ_pos.λ = ϕ_λ_dot.λ
-    ẋ_pos.Δx = v_eOb_n[1]
-    ẋ_pos.Δy = v_eOb_n[2]
-    ẋ_pos.h_e = -v_eOb_n[3]
-
+    return SVector{3}(
+        v_eOb_n[2] / (R_E + Float64(h_e)),
+        -v_eOb_n[1] / (R_N + Float64(h_e)),
+        -v_eOb_n[2] * tan(ϕ) / (R_E + Float64(h_e))
+        )
 end
-
-#no need for normalization in this case
-Systems.f_step!(sys::System{NED}, args...) = false
 
 
 ################################# Plotting #####################################
@@ -586,7 +578,7 @@ Systems.f_step!(sys::System{NED}, args...) = false
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:KinematicOutputs}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:KinematicsY}; kwargs...)
 
     return OrderedDict(
         :data => make_plots(ts.data; kwargs...),
@@ -704,10 +696,10 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(kin::KinematicOutputs, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(sys::KinSystem, p_open::Ref{Bool} = Ref(true),
                     label::String = "Kinematics")
 
-    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ib_b, v_eOb_b, v_eOb_n  = kin.data
+    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ib_b, v_eOb_b, v_eOb_n  = sys.y.data
 
     CImGui.Begin(label, p_open)
 

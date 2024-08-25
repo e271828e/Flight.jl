@@ -26,8 +26,8 @@ function test_kinematics()
             @test (@ballocated f_ode!($sys_LTF)) == 0
             @test (@ballocated f_ode!($sys_NED)) == 0
 
-            sys_LTF.x.pos.q_lb[1] = 3 #force renormalization in f_step!
-            sys_ECEF.x.pos.q_eb[1] = 3 #force renormalization in f_step!
+            sys_LTF.x.q_lb[1] = 3 #force renormalization in f_step!
+            sys_ECEF.x.q_eb[1] = 3 #force renormalization in f_step!
             @test @ballocated(f_step!($sys_LTF)) == 0
             @test @ballocated(f_step!($sys_ECEF)) == 0
             @test @ballocated(f_step!($sys_NED)) == 0
@@ -57,6 +57,14 @@ function test_kinematics()
             @test sys_ECEF.y.h_e ≈ sys_LTF.y.h_e
             @test sys_ECEF.y.v_eOb_b ≈ sys_LTF.y.v_eOb_b
             @test sys_ECEF.y.ω_eb_b ≈ sys_LTF.y.ω_eb_b
+
+            #check that direct KinData initialization is equivalent
+            kin_data = KinData(kin_init)
+            @test kin_data.q_nb ≈ sys_LTF.y.q_nb
+            @test kin_data.n_e ≈ sys_LTF.y.n_e
+            @test kin_data.h_e ≈ sys_LTF.y.h_e
+            @test kin_data.v_eOb_b ≈ sys_LTF.y.v_eOb_b
+            @test kin_data.ω_eb_b ≈ sys_LTF.y.ω_eb_b
 
         end
 
