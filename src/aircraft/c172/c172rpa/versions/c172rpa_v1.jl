@@ -44,7 +44,7 @@ Systems.Y(::Avionics) = AvionicsY()
 
 ############################### Update methods #################################
 
-function Systems.update_y!(sys::System{<:C172RPAv1.Avionics})
+function Systems.assemble_y!(sys::System{<:C172RPAv1.Avionics})
     @unpack fcl, nav = sys.subsystems
     sys.y = AvionicsY(; n_disc = sys.s.n_disc, fcl = fcl.y, nav = nav.y)
 end
@@ -68,7 +68,7 @@ function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
 
     avionics.s.n_disc += 1
 
-    update_y!(avionics)
+    assemble_y!(avionics)
 
 end
 
@@ -88,7 +88,7 @@ function AircraftBase.trim!(avionics::System{<:C172RPAv1.Avionics},
     Systems.reset!(avionics)
     trim!(fcl, vehicle)
     # trim!(nav, vehicle)
-    update_y!(avionics)
+    assemble_y!(avionics)
 
 end
 

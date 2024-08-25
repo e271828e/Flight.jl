@@ -34,7 +34,7 @@ function PowerPlant()
         sense = Propellers.CW, d = 2.0, J_xx = 0.3,
         t_bp = FrameTransform(r = [2.055, 0, 0.833]))
 
-    Piston.Thruster(; propeller)
+    PistonThruster(; propeller)
 
 end
 
@@ -95,7 +95,7 @@ end
 
 function C172.assign!(aero::System{<:C172.Aero},
                     ldg::System{<:C172.Ldg},
-                    pwp::System{<:Piston.Thruster},
+                    pwp::System{<:PistonThruster},
                     act::System{<:Actuation})
 
     @unpack throttle, mixture, aileron, elevator, rudder, flaps, steering,
@@ -295,7 +295,7 @@ function AircraftBase.assign!(vehicle::System{<:C172RPA.Vehicle},
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
     @unpack act, pwp, aero, fuel, ldg, pld = vehicle.components
 
-    atm_data = LocalAtmosphericData(vehicle.atmosphere)
+    atm_data = AtmData(vehicle.atmosphere)
     Systems.init!(vehicle.kinematics, Kinematics.Initializer(trim_state, trim_params, atm_data))
 
     act.throttle.u[] = throttle

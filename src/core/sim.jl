@@ -144,9 +144,6 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
 
     function Simulation(
         sys::System;
-        args_ode::Tuple = (), #externally supplied arguments to System's f_ode!
-        args_step::Tuple = (), #externally supplied arguments to System's f_step!
-        args_disc::Tuple = (), #externally supplied arguments to System's f_disc!
         sys_init!::Function = Systems.init!, #default System initialization function
         user_callback!::Function = user_callback!, #user-specified callback
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
@@ -165,8 +162,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
         @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
                                         than the discrete dynamics update period"
 
-        params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!, Δt = Δt,
-                  args_ode = args_ode, args_step = args_step, args_disc = args_disc)
+        params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!, Δt = Δt)
 
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_disc = PeriodicCallback(f_cb_disc!, Δt)
@@ -250,12 +246,10 @@ end
 #attaches an output device to the Simulation, linking it to a dedicated channel
 #for simulation output data. on each step, the simulation loop will try to write
 #the updated output data on each output channel. if any of the output devices
-#still has not consumed the item from the previous step, the simulation will
-#block. to avoid this, the simulation should only write to the channel when it
-#has no data pending, that is, when !isready(channel). for this to work, the
-#channel must be buffered. if the channel were unbuffered, !isready(channel)
-#would be true whenever the output thread is NOT blocked waiting for new data.
-#this may cause the sim thread to block when it shouldn't
+#still has not consumed the item from the previous step, the simulation thread
+#would potentially block. to avoid this, the simulation should only write to the
+#channel when it has no data pending, that is, when !isready(channel). for this
+#to work, the channel must be buffered
 function attach!(sim::Simulation, device::OutputDevice)
     channel = Channel{SimData{typeof(sim.sys.y)}}(1)
     output = SimOutput(device, channel, sim.control, sim.io_start, sim.io_lock)
@@ -278,7 +272,7 @@ end
 #System's ẋ and y as a side effect
 function f_ode_wrapper!(u̇, u, p, t)
 
-    @unpack sys, args_ode = p
+    @unpack sys = p
 
     #assign current integrator solution to System's continuous state
     has_x(sys) && (sys.x .= u)
@@ -286,7 +280,7 @@ function f_ode_wrapper!(u̇, u, p, t)
     #same with time
     sys.t[] = t
 
-    f_ode!(sys, args_ode...) #call continuous dynamics, updates sys.ẋ and sys.y
+    f_ode!(sys) #call continuous dynamics, updates sys.ẋ and sys.y
 
     has_x(sys) && (u̇ .= sys.ẋ) #update the integrator's derivative
 
@@ -298,9 +292,9 @@ end
 function f_cb_step!(integrator)
 
     @unpack u, p = integrator
-    @unpack sys, args_step = p
+    @unpack sys = p
 
-    f_step!(sys, args_step...)
+    f_step!(sys)
 
     #assign the (potentially) modified sys.x back to the integrator
     has_x(sys) && (u .= sys.x)
@@ -313,9 +307,9 @@ end
 function f_cb_disc!(integrator)
 
     @unpack u, p = integrator
-    @unpack sys, Δt, args_disc = p
+    @unpack sys, Δt = p
 
-    f_disc!(sys, Δt, args_disc...)
+    f_disc!(sys, Δt)
 
     #assign the (potentially) modified sys.x back to the integrator
     has_x(sys) && (u .= sys.x)
@@ -364,8 +358,6 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, sys_init! = Systems.init!)
     else
         OrdinaryDiffEq.reinit!(integrator)
     end
-
-    # f_ode!(sys)
 
     resize!(log.t, 1)
     resize!(log.saveval, 1)

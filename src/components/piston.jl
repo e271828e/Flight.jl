@@ -9,30 +9,9 @@ using Flight.FlightPhysics
 using Flight.FlightPhysics.Atmosphere: R
 
 using ..Propellers: AbstractPropeller, Propeller
-using ..Control.Continuous: PIVector, PIVectorInput, PIVectorOutput
+using ..Control.Continuous: PIVector, PIVectorU, PIVectorY
 
-
-################################################################################
-########################### AbstractFuelSupply #################################
-
-abstract type AbstractFuelSupply <: SystemDefinition end
-
-Dynamics.MassTrait(::System{<:AbstractFuelSupply}) = HasMass()
-Dynamics.AngularMomentumTrait(::System{<:AbstractFuelSupply}) = HasNoAngularMomentum()
-Dynamics.ExternalWrenchTrait(::System{<:AbstractFuelSupply}) = GetsNoExternalWrench()
-
-#to be extended by concrete subtypes
-fuel_available(f::System{<:AbstractFuelSupply}) = throw(
-    MethodError(fuel_available, (f,)))
-
-#a massless, infinite fuel supply, for testing purposes
-struct MagicFuelSupply <: AbstractFuelSupply end
-
-Systems.U(::MagicFuelSupply) = Ref(true)
-Systems.f_ode!(::System{MagicFuelSupply}) = nothing
-
-Dynamics.get_mp_Ob(::System{MagicFuelSupply}) = MassProperties()
-fuel_available(f::System{MagicFuelSupply}) = f.u[]
+export PistonEngine, PistonThruster
 
 
 ################################################################################
@@ -68,12 +47,12 @@ Dynamics.ExternalWrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalW
 
 
 ################################################################################
-################################# Engine #######################################
+############################## PistonEngine ####################################
 
 #represents a family of naturally aspirated, fuel-injected aviation engines.
 #based on performance data available for the Lycoming IO-360A engine, normalized
 #with rated power and rated speed to allow for arbitrary engine sizing
-struct Engine{L} <: AbstractPistonEngine
+struct PistonEngine{L} <: AbstractPistonEngine
     P_rated::Float64
     ω_rated::Float64
     ω_stall::Float64 #speed below which engine shuts down
@@ -86,7 +65,7 @@ struct Engine{L} <: AbstractPistonEngine
     lookup::L #performance lookup table
 end
 
-function Engine(;
+function PistonEngine(;
     P_rated= hp2W(200),
     ω_rated = RPM2radpersec(2700), #IO 360
     ω_stall = RPM2radpersec(300),
@@ -102,7 +81,7 @@ function Engine(;
     n_cutoff = ω_cutoff / ω_rated
     lookup = generate_lookup(; n_stall, n_cutoff)
 
-    Engine{typeof(lookup)}(
+    PistonEngine{typeof(lookup)}(
         P_rated, ω_rated, ω_stall, ω_cutoff, ω_idle, M_start, J, idle, frc, lookup)
 end
 
@@ -123,8 +102,8 @@ end
     stop::Bool = false
     throttle::Ranged{Float64, 0., 1.} = 0.0 #throttle setting
     mixture::Ranged{Float64, 0., 1.} = 0.5 #mixture setting
-    # idle::PIVectorInput{1} = PIVectorInput{1}()
-    # frc::PIVectorInput{1} = PIVectorInput{1}()
+    M_load::Float64 = 0.0
+    J_load::Float64 = 0.0
 end
 
 @kwdef struct PistonEngineY
@@ -139,18 +118,18 @@ end
     P_shaft::Float64 = 0.0 #shaft power
     SFC::Float64 = 0.0 #specific fuel consumption
     ṁ::Float64 = 0.0 #fuel consumption
-    idle::PIVectorOutput{1} = PIVectorOutput{1}()
-    frc::PIVectorOutput{1} = PIVectorOutput{1}()
+    idle::PIVectorY{1} = PIVectorY{1}()
+    frc::PIVectorY{1} = PIVectorY{1}()
 end
 
-Systems.X(eng::Engine) = ComponentVector( ω = 0.0,
+Systems.X(eng::PistonEngine) = ComponentVector( ω = 0.0,
                                           idle = Systems.X(eng.idle),
                                           frc = Systems.X(eng.frc))
-Systems.U(::Engine) = PistonEngineU()
-Systems.Y(::Engine) = PistonEngineY()
-Systems.S(::Engine) = PistonEngineS()
+Systems.U(::PistonEngine) = PistonEngineU()
+Systems.Y(::PistonEngine) = PistonEngineY()
+Systems.S(::PistonEngine) = PistonEngineS()
 
-function Systems.init!(sys::System{<:Engine})
+function Systems.init!(sys::System{<:PistonEngine})
     #set up friction constraint compensator
     @unpack idle, frc = sys.subsystems
 
@@ -165,12 +144,11 @@ function Systems.init!(sys::System{<:Engine})
     frc.u.bound_hi .= 1
 end
 
-function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
-                        M_load::Real, J_load::Real)
+function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirData)
 
     @unpack ω_rated, ω_idle, P_rated, J, M_start, lookup = eng.constants
     @unpack idle, frc = eng.subsystems
-    @unpack start, stop = eng.u
+    @unpack start, stop, M_load, J_load = eng.u
 
     throttle = Float64(eng.u.throttle)
     mixture = Float64(eng.u.mixture)
@@ -191,7 +169,7 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
     n = ω / ω_rated
 
     #inlet air parameter for ISA conditions
-    δ = p2δ(air.p)
+    δ = p2δ(air_data.p)
 
     #normalized MAP at wide open throttle
     μ_wot = lookup.μ_wot(n, δ)
@@ -208,7 +186,7 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
         M_fr_max = 0.01 * P_rated / ω_rated #1% of rated torque
         M_fr = frc.y.output[1] .* M_fr_max #scale M_fr_max with compensator feedback
 
-        MAP = air.p
+        MAP = air_data.p
         M_shaft = M_fr
         P_shaft = 0.0
         SFC = 0.0
@@ -229,7 +207,7 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
         π_ISA_pow = compute_π_ISA_pow(lookup, n, μ, δ)
 
         #correction for non-ISA conditions
-        π_pow = π_ISA_pow * √(T_ISA(air.p)/air.T)
+        π_pow = π_ISA_pow * √(T_ISA(air_data.p)/air_data.T)
 
         #correction for arbitrary mixture setting
         π_actual = π_pow * lookup.π_ratio(mixture)
@@ -254,7 +232,7 @@ function Systems.f_ode!(eng::System{<:Engine}, air::AirData;
 
 end
 
-function Systems.f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSupply})
+function Systems.f_step!(eng::System{<:PistonEngine}, fuel_available::Bool = true)
 
     @unpack idle, frc = eng.subsystems
     @unpack ω_stall, ω_idle = eng.constants
@@ -264,17 +242,15 @@ function Systems.f_step!(eng::System{<:Engine}, fuel::System{<:AbstractFuelSuppl
     if eng.s.state === eng_off
 
         eng.u.start && (eng.s.state = eng_starting)
-        # frc.u.reset .= true
-        # idle.u.reset .= true
 
     elseif eng.s.state === eng_starting
 
         !eng.u.start && (eng.s.state = eng_off)
-        (ω > ω_idle && fuel_available(fuel)) && (eng.s.state = eng_running)
+        (ω > ω_idle && fuel_available) && (eng.s.state = eng_running)
 
     else #eng_running
 
-        (eng.u.stop || ω < ω_stall || !fuel_available(fuel)) && (eng.s.state = eng_off)
+        (eng.u.stop || ω < ω_stall || !fuel_available) && (eng.s.state = eng_off)
 
     end
 
@@ -430,7 +406,7 @@ function compute_π_ISA_pow(lookup, n, μ, δ)
 end
 
 
-function GUI.draw(sys::System{<:Engine}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(sys::System{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Engine")
 
     @unpack u, y, constants = sys
@@ -467,7 +443,7 @@ end
 
 
 ################################################################################
-############################### Thruster #######################################
+########################## PistonThruster ######################################
 
 #M_shaft is always positive. for a CW thruster, the gear ratio should be
 #positive as well and, under normal operating, conditions M_prop will be
@@ -477,28 +453,27 @@ end
 #the sign of M_prop may be inverted under negative propeller thrust conditions,
 #with the propeller driving the engine instead of the other way around
 
-@kwdef struct Thruster{E <: AbstractPistonEngine,
+@kwdef struct PistonThruster{E <: AbstractPistonEngine,
                             P <: AbstractPropeller} <: SystemDefinition
-    engine::E = Engine()
+    engine::E = PistonEngine()
     propeller::P = Propeller()
     gear_ratio::Float64 = 1.0 #gear ratio
-    function Thruster(eng::E, prop::P, gear_ratio) where {E, P}
-        @assert sign(gear_ratio) * Int(prop.sense) > 0 "Thruster gear ratio sign "*
+    function PistonThruster(eng::E, prop::P, gear_ratio) where {E, P}
+        @assert sign(gear_ratio) * Int(prop.sense) > 0 "PistonThruster gear ratio sign "*
         "does not match propeller turn sign"
         new{E,P}(eng, prop, gear_ratio)
     end
 end
 
 
-function Systems.f_ode!(sys::System{<:Thruster}, air::AirData, kin::KinData)
+function Systems.f_ode!(sys::System{<:PistonThruster}, air_data::AirData, kin_data::KinData)
 
     @unpack engine, propeller = sys
     @unpack gear_ratio = sys.constants
 
     ω_eng = engine.x.ω
     ω_prop = gear_ratio * ω_eng
-
-    f_ode!(propeller, kin, air, ω_prop)
+    f_ode!(propeller, kin_data, air_data, ω_prop)
 
     M_prop = propeller.y.wr_p.M[1]
     M_eq = gear_ratio * M_prop #load torque seen from the engine shaft
@@ -506,33 +481,35 @@ function Systems.f_ode!(sys::System{<:Thruster}, air::AirData, kin::KinData)
     J_prop = propeller.constants.J_xx
     J_eq = gear_ratio^2 * J_prop #load moment of inertia seen from the engine side
 
-    f_ode!(engine, air; M_load = M_eq, J_load = J_eq)
+    engine.u.M_load = M_eq
+    engine.u.J_load = J_eq
+    f_ode!(engine, air_data)
 
-    update_y!(sys)
+    assemble_y!(sys)
 
 end
 
-function Systems.f_step!(sys::System{<:Thruster}, fuel::System{<:AbstractFuelSupply})
+function Systems.f_step!(sys::System{<:PistonThruster}, fuel_available::Bool = true)
 
     @unpack engine, propeller = sys
 
-    f_step!(engine, fuel)
+    f_step!(engine, fuel_available)
     f_step!(propeller)
 
 end
 
-Dynamics.MassTrait(::System{<:Thruster}) = HasNoMass()
-Dynamics.AngularMomentumTrait(::System{<:Thruster}) = HasAngularMomentum()
-Dynamics.ExternalWrenchTrait(::System{<:Thruster}) = GetsExternalWrench()
+Dynamics.MassTrait(::System{<:PistonThruster}) = HasNoMass()
+Dynamics.AngularMomentumTrait(::System{<:PistonThruster}) = HasAngularMomentum()
+Dynamics.ExternalWrenchTrait(::System{<:PistonThruster}) = GetsExternalWrench()
 
-Dynamics.get_wr_b(sys::System{<:Thruster}) = get_wr_b(sys.propeller) #only external
-Dynamics.get_hr_b(sys::System{<:Thruster}) = get_hr_b(sys.propeller)
+Dynamics.get_wr_b(sys::System{<:PistonThruster}) = get_wr_b(sys.propeller) #only external
+Dynamics.get_hr_b(sys::System{<:PistonThruster}) = get_hr_b(sys.propeller)
 
 
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(sys::System{<:Thruster}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(sys::System{<:PistonThruster}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Thruster")
 
     CImGui.Begin(window_label, p_open) #this should go within pwp's own draw, see components

@@ -7,7 +7,7 @@ using Flight.FlightCore.Utils
 
 using Flight.FlightPhysics
 
-using ..Control.Continuous: PIVector, PIVectorOutput
+using ..Control.Continuous: PIVector, PIVectorY
 
 export LandingGearUnit, Strut, SimpleDamper, NoSteering, NoBraking, DirectSteering, DirectBraking
 
@@ -198,7 +198,7 @@ end
     f_c::SVector{3,Float64} = zeros(SVector{3}) #normalized contact force
     F_c::SVector{3,Float64} = zeros(SVector{3}) #contact force
     wr_b::Wrench = Wrench() #resulting Wrench on the vehicle frame
-    frc::PIVectorOutput{2} = PIVectorOutput{2}() #contact friction regulator
+    frc::PIVectorY{2} = PIVectorY{2}() #contact friction regulator
 end
 
 Systems.Y(::Strut) = StrutY()
@@ -419,7 +419,7 @@ function Systems.f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinData,
     f_ode!(braking)
     f_ode!(strut, steering, braking, terrain, kinematics)
 
-    update_y!(sys)
+    assemble_y!(sys)
 
 end
 

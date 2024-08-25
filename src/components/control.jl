@@ -67,10 +67,9 @@ function Systems.f_ode!(sys::System{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, 
     @unpack ẋ, x, u, y, constants = sys
     @unpack ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache = constants
 
-    #the following is equivalent to:
+    #non-allocating equivalent of:
     #ẋ = ẋ0 + A * (x - x0) + B * (u - u0)
     #y = y0 + C * (x - x0) + D * (u - u0)
-    #... but without allocations
 
     @. Δx_cache = x - x0
     @. Δu_cache = u - u0
@@ -127,7 +126,7 @@ end
 
 struct PIVector{N} <: SystemDefinition end
 
-@kwdef struct PIVectorInput{N}
+@kwdef struct PIVectorU{N}
     k_p::MVector{N,Float64} = ones(N) #proportional gain
     k_i::MVector{N,Float64} = zeros(N) #integral gain
     k_l::MVector{N,Float64} = zeros(N) #integrator leak factor
@@ -139,7 +138,7 @@ struct PIVector{N} <: SystemDefinition end
     reset::MVector{N,Bool} = zeros(Bool, N) #reset PID continuous state
 end
 
-@kwdef struct PIVectorOutput{N}
+@kwdef struct PIVectorY{N}
     k_p::SVector{N,Float64} = ones(SVector{N})
     k_i::SVector{N,Float64} = zeros(SVector{N})
     k_l::SVector{N,Float64} = zeros(SVector{N})
@@ -151,6 +150,7 @@ end
     reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID states and null outputs
     u_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path input
     u_i::SVector{N,Float64} = zeros(SVector{N}) #integral path input
+    x_i::SVector{N,Float64} = zeros(SVector{N}) #integrator state
     y_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path output
     y_i::SVector{N,Float64} = zeros(SVector{N}) #integral path output
     out_free::SVector{N,Float64} = zeros(SVector{N}) #total output, free
@@ -160,8 +160,8 @@ end
 end
 
 Systems.X(::PIVector{N}) where {N} = zeros(N)
-Systems.Y(::PIVector{N}) where {N} = PIVectorOutput{N}()
-Systems.U(::PIVector{N}) where {N} = PIVectorInput{N}()
+Systems.Y(::PIVector{N}) where {N} = PIVectorY{N}()
+Systems.U(::PIVector{N}) where {N} = PIVectorU{N}()
 
 function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
 
@@ -187,8 +187,8 @@ function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
 
     ẋ .= (k_i .* u_i .* .!int_halted - k_l .* x_i) .* .!reset
 
-    sys.y = PIVectorOutput(; k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext, reset,
-                     u_p, u_i, y_p, y_i, out_free, sat_out, output, int_halted)
+    sys.y = PIVectorY(; k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext, reset,
+                     u_p, u_i, x_i, y_p, y_i, out_free, sat_out, output, int_halted)
 
 end
 
@@ -203,7 +203,7 @@ end
 
 # ############################## Plotting ########################################
 
-function Plotting.make_plots(ts::TimeSeries{<:PIVectorOutput}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:PIVectorY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -298,6 +298,7 @@ function GUI.draw(sys::System{<:PIVector{N}}, label::String = "PIVector{$N}") wh
         CImGui.Text("Reset Input = $reset")
         CImGui.Text("Proportional Path Input = $u_p")
         CImGui.Text("Proportional Path Output = $y_p")
+        CImGui.Text("Integrator State = $x_i")
         CImGui.Text("Integral Path Input = $u_i")
         CImGui.Text("Integral Path Output = $y_i")
         CImGui.Text("Free Output = $out_free")

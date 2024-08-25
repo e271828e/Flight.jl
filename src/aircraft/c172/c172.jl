@@ -394,7 +394,7 @@ Dynamics.MassTrait(::System{<:Aero}) = HasNoMass()
 Dynamics.AngularMomentumTrait(::System{<:Aero}) = HasNoAngularMomentum()
 Dynamics.ExternalWrenchTrait(::System{<:Aero}) = GetsExternalWrench()
 
-function Systems.f_ode!(sys::System{Aero}, ::System{<:Piston.Thruster},
+function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     air::AirData, kinematics::KinData, terrain::AbstractTerrain)
 
     @unpack ẋ, x, u, s, constants = sys
@@ -669,7 +669,7 @@ end
 Systems.X(::Fuel) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
 Systems.Y(::Fuel) = FuelY()
 
-function Systems.f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
+function Systems.f_ode!(sys::System{Fuel}, pwp::System{<:PistonThruster})
 
     @unpack m_full, m_res = sys.constants #no need for subsystems
     x_avail = sys.x[1]
@@ -680,7 +680,7 @@ function Systems.f_ode!(sys::System{Fuel}, pwp::System{<:Piston.Thruster})
 
 end
 
-Piston.fuel_available(sys::System{<:Fuel}) = (sys.y.m_avail > 0)
+is_fuel_available(sys::System{<:Fuel}) = (sys.y.m_avail > 0)
 
 function Dynamics.get_mp_Ob(fuel::System{Fuel})
 
@@ -724,7 +724,7 @@ end
 abstract type Actuation <: SystemDefinition end
 
 function assign!(aero::System{<:Aero}, ldg::System{<:Ldg},
-                pwp::System{<:Piston.Thruster}, act::System{<:Actuation})
+                pwp::System{<:PistonThruster}, act::System{<:Actuation})
     throw(MethodError(C172.assign!, (aero, ldg, pwp, act)))
 end
 
@@ -735,9 +735,9 @@ Dynamics.ExternalWrenchTrait(::System{<:Actuation}) = GetsNoExternalWrench()
 ################################################################################
 ################################ Components ######################################
 
-#P is introduced as a type parameter, because Piston.Thruster is itself a
+#P is introduced as a type parameter, because PistonThruster is itself a
 #parametric type, and therefore not concrete
-struct Components{P <: Piston.Thruster, A <: Actuation} <: AbstractComponents
+struct Components{P <: PistonThruster, A <: Actuation} <: AbstractComponents
     afm::Airframe
     aero::Aero
     ldg::Ldg
@@ -747,7 +747,7 @@ struct Components{P <: Piston.Thruster, A <: Actuation} <: AbstractComponents
     act::A
 end
 
-function Components(pwp::Piston.Thruster, act::Actuation)
+function Components(pwp::PistonThruster, act::Actuation)
     Components(Airframe(), Aero(), Ldg(), Fuel(), Payload(), pwp, act)
 end
 
@@ -768,7 +768,7 @@ function Systems.f_ode!(components::System{<:Components},
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
-    update_y!(components)
+    assemble_y!(components)
 
 end
 
@@ -777,7 +777,7 @@ function Systems.f_step!(components::System{<:Components})
 
     f_step!(aero)
     f_step!(ldg)
-    f_step!(pwp, fuel)
+    f_step!(pwp, is_fuel_available(fuel))
 
 end
 
@@ -855,7 +855,7 @@ end
 
 function Kinematics.Initializer(trim_state::TrimState,
                                 trim_params::TrimParameters,
-                                atm_data::LocalAtmosphericData)
+                                atm_data::AtmData)
 
     @unpack EAS, β_a, γ_wOb_n, ψ_nb, ψ_lb_dot, θ_lb_dot, Ob = trim_params
     @unpack α_a, φ_nb = trim_state

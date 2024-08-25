@@ -14,7 +14,7 @@ export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassP
 export HasMass, HasNoMass, get_mp_Ob
 export GetsExternalWrench, GetsNoExternalWrench, get_wr_b
 export HasAngularMomentum, HasNoAngularMomentum, get_hr_b
-export DynamicsData
+export RigidBodyData, RigidBodyDynamics, RigidBodyDynamicsY
 
 #standard gravity for specific force normalization
 const g₀ = 9.80665
@@ -301,27 +301,10 @@ function transform(t_bc::FrameTransform, p_c::MassProperties)
 
 end
 
-############################ MassTrait #################################
 
 ################################################################################
 ############################### RigidBodyData ##################################
 
-"""
-Notes:
-- When get_mp_b is called on a System, the returned MassProperties instance must
-  be expressed in the System's parent reference frame.
-- At the root of the component hierarchy we have the vehicle. The vehicle is
-  its own parent, so the MassProperties it returns must be expressed in its own
-  reference frame: total vehicle mass, position vector from the vehicle origin
-  Ob to the vehicle center of mass G expressed in vehicle axes, and inertia
-  tensor of the vehicle with respect to its origin, expressed in vehicle axes.
-  These are the properties expected by the dynamics equations.
-- Aircraft dynamics and kinematics are formulated on the vehicle origin Ob
-  instead of the overall aircraft's center of mass G. This allows for any of the
-  overall aircraft's mass properties to change, either gradually (for example, due to
-  fuel consumption) or suddenly (due to a payload release), without having to
-  worry about discontinuities in the kinematic state vector.
-"""
 
 #mp_Ob: Mass properties of the System, translated to the vehicle frame
 
@@ -349,6 +332,38 @@ function RigidBodyData(sys::System)
     hr_b = get_hr_b(sys)
     RigidBodyData(mp_Ob, wr_ext_Ob, hr_b)
 end
+
+
+################################################################################
+################################## MassTrait ###################################
+
+abstract type MassTrait end
+struct HasMass <: MassTrait end
+struct HasNoMass <: MassTrait end
+
+"""
+Notes:
+- When get_mp_Ob is called on a System, the returned MassProperties instance must
+  be expressed in the System's parent reference frame.
+- At the root of the component hierarchy we have the vehicle. The vehicle is
+  its own parent, so the MassProperties it returns must be expressed in its own
+  reference frame: total vehicle mass, position vector from the vehicle origin
+  Ob to the vehicle center of mass G expressed in vehicle axes, and inertia
+  tensor of the vehicle with respect to its origin, expressed in vehicle axes.
+  These are the properties expected by the dynamics equations.
+- Aircraft dynamics and kinematics are formulated on the vehicle origin Ob
+  instead of the overall aircraft's center of mass G. This allows for any of the
+  overall aircraft's mass properties to change, either gradually (for example, due to
+  fuel consumption) or suddenly (due to a payload release), without having to
+  worry about discontinuities in the kinematic state vector.
+"""
+
+MassTrait(::S) where {S<:System} = error(
+    "Please extend Dynamics.MassTrait for $S")
+
+get_mp_Ob(sys::System) = get_mp_Ob(MassTrait(sys), sys)
+
+get_mp_Ob(::HasNoMass, sys::System) = MassProperties()
 
 #default implementation for a System with the HasMass trait tries to compute
 #the aggregate mass properties for all its the subsystems
@@ -555,6 +570,8 @@ function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, rb_da
 
     @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b = kin_data
     @unpack mp_Ob, wr_ext_Ob, hr_b = rb_data
+    @unpack ẋ = sys
+
     m = mp_Ob.m; J_Ob_b = mp_Ob.J_O; r_ObG_b = mp_Ob.r_OG
 
     r_ObG_b_sk = Attitude.v2skew(r_ObG_b)
@@ -570,7 +587,7 @@ function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, rb_da
     wr_net_Ob = wr_ext_Ob + wr_g_Ob + wr_in_Ob
     b = SVector{6}(vcat(wr_net_Ob.M, wr_net_Ob.F))
 
-    sys.ẋ = A\b
+    ẋ .= A\b
 
     wr_g_Ob = gravity_wrench(mp_Ob, kin_data)
     wr_in_Ob = inertia_wrench(mp_Ob, kin_data, hr_b)

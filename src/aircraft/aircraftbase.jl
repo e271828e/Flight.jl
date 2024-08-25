@@ -129,23 +129,25 @@ function Systems.f_ode!(vehicle::System{<:Vehicle})
     @unpack kinematics, components, atmosphere = subsystems
     @unpack terrain = constants
 
+    kinematics.u .= dynamics.x
     f_ode!(kinematics)
     f_ode!(atmosphere) #currently does nothing
     kin_data = KinData(kinematics)
-    atm_data = LocalAtmosphericData(atmosphere)
+    atm_data = AtmData(atmosphere)
 
     air_data = AirData(kin_data, atm_data)
 
-    #update components
+    #update components ẋ and y
     f_ode!(components, kin_data, air_data, terrain)
 
-    #get inputs for rigid body dynamics
+    #now we can fetch their inputs to rigid body dynamics
     mp_Ob = get_mp_Ob(components)
     wr_b = get_wr_b(components)
     hr_b = get_hr_b(components)
+    rb_data = RigidBodyData(mp_Ob, wr_b, hr_b)
 
     #update velocity derivatives and rigid body data
-    dyn_data = Dynamics.update!(kinematics.ẋ.vel, kin_data, mp_Ob, wr_b, hr_b)
+    f_ode!(dynamics, kin_data, rb_data)
 
     vehicle.y = VehicleY(components.y, kinematics.y, dyn_data, air_data)
 

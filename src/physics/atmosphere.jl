@@ -9,7 +9,7 @@ using ..Attitude
 using ..Geodesy
 using ..Kinematics
 
-export LocalAtmosphere, LocalAtmosphericData, ISAData, AirData
+export LocalAtmosphere, AtmData, ISAData, AirData
 export p_std, T_std, g_std, ρ_std, ISA_layers
 export get_velocity_vector, get_airflow_angles, get_wind_axes, get_stability_axes
 
@@ -47,7 +47,7 @@ const p_sl_max = p_std + 10000.0
     v_ew_n::MVector{3,Float64} = zeros(MVector{3})
 end
 
-@kwdef struct LocalAtmosphericData
+@kwdef struct AtmData
     T_sl::Float64 = T_std
     p_sl::Float64 = p_std
     v_ew_n::SVector{3,Float64} = zeros(SVector{3})
@@ -55,9 +55,9 @@ end
 
 Systems.U(::LocalAtmosphere) = LocalAtmosphereU()
 
-function LocalAtmosphericData(sys::System{LocalAtmosphere})
+function AtmData(sys::System{LocalAtmosphere})
     @unpack T_sl, p_sl, v_ew_n = sys.u
-    LocalAtmosphericData(; T_sl, p_sl, v_ew_n = SVector{3,Float64}(v_ew_n))
+    AtmData(; T_sl, p_sl, v_ew_n = SVector{3,Float64}(v_ew_n))
 end
 
 function GUI.draw!(sys::System{<:LocalAtmosphere},
@@ -136,7 +136,7 @@ ISAData(h::Real; kwargs...) = ISAData(HGeop(h); kwargs...)
 ISAData(h_orth::HOrth; kwargs...) = ISAData(HGeop(h_orth); kwargs...)
 ISAData(loc::Abstract3DLocation; kwargs...) = ISAData(HGeop(loc); kwargs...)
 
-function ISAData(loc::Abstract3DLocation, atm::LocalAtmosphericData)
+function ISAData(loc::Abstract3DLocation, atm::AtmData)
     ISAData(loc; T_sl = atm.T_sl, p_sl = atm.p_sl)
 end
 
@@ -179,12 +179,12 @@ struct AirData
     CAS::Float64 #calibrated airspeed
 end
 
-AirData() = AirData(KinData(), LocalAtmosphericData())
+AirData() = AirData(KinData(), AtmData())
 
 TAS2EAS(TAS::Real; ρ::Real) = TAS * √(ρ / ρ_std)
 EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
 
-function AirData(kin::KinData, atm::LocalAtmosphericData)
+function AirData(kin::KinData, atm::AtmData)
 
     @unpack h_o, v_eOb_b, q_nb = kin
     @unpack T_sl, p_sl, v_ew_n = atm

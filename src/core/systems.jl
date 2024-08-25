@@ -7,7 +7,7 @@ using AbstractTrees
 using ..GUI
 
 export SystemDefinition, SystemTrait, System
-export f_ode!, f_step!, f_disc!, update_y!
+export f_ode!, f_step!, f_disc!, assemble_y!
 
 
 ################################################################################
@@ -64,7 +64,7 @@ function (::Type{<:SystemTrait})(nt::NamedTuple)
 end
 
 #y must always be a NamedTuple, even if all subsystem's y are StaticArrays;
-#otherwise update_y! does not work
+#otherwise assemble_y! does not work
 function Y(nt::NamedTuple)
     filtered_nt = delete_nothings(nt)
     return !isempty(filtered_nt) ? filtered_nt : nothing
@@ -186,7 +186,7 @@ end
                 where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
 
     map(ss-> f_ode!(ss, args...), values(sys.subsystems))
-    update_y!(sys)
+    assemble_y!(sys)
 
 end
 
@@ -198,7 +198,7 @@ end
                     where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
 
     map(ss-> f_disc!(ss, Δt, args...), values(sys.subsystems))
-    update_y!(sys)
+    assemble_y!(sys)
 
 end
 
@@ -213,12 +213,12 @@ end
 end
 
 #fallback for Systems with generic output
-@inline function (update_y!(sys::System{SD, X, Y})
+@inline function (assemble_y!(sys::System{SD, X, Y})
     where {SD <: SystemDefinition, X, Y})
 end
 
 #fallback for Systems with NamedTuple output
-@inline function (update_y!(sys::System{SD, X, Y})
+@inline function (assemble_y!(sys::System{SD, X, Y})
     where {SD <: SystemDefinition, X, Y <: NamedTuple{L, M}} where {L, M})
 
     ys = map(id -> getproperty(sys.subsystems[id], :y), L)
