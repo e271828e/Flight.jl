@@ -35,15 +35,10 @@ const mp_Ob_str = let
     MassProperties(str_G, t_Ob_G)
 end
 
-Dynamics.MassTrait(::System{Airframe}) = HasMass()
-
 #the airframe itself receives no external actions. these are considered to act
 #upon the vehicle's aerodynamics, power plant and landing gear. the same goes
 #for rotational angular momentum.
-Dynamics.ExternalWrenchTrait(::System{Airframe}) = GetsNoExternalWrench()
-Dynamics.AngularMomentumTrait(::System{Airframe}) = HasNoAngularMomentum()
-
-Dynamics.get_mp_Ob(::System{Airframe}) = mp_Ob_str
+Dynamics.get_mp_b(::System{Airframe}) = mp_Ob_str
 
 
 ################################################################################
@@ -390,10 +385,6 @@ Systems.Y(::Aero) = AeroY()
 Systems.U(::Aero) = AeroU()
 Systems.S(::Aero) = AeroS()
 
-Dynamics.MassTrait(::System{<:Aero}) = HasNoMass()
-Dynamics.AngularMomentumTrait(::System{<:Aero}) = HasNoAngularMomentum()
-Dynamics.ExternalWrenchTrait(::System{<:Aero}) = GetsExternalWrench()
-
 function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     air::AirData, kinematics::KinData, terrain::AbstractTerrain)
 
@@ -461,7 +452,6 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
 
 end
 
-Dynamics.get_wr_b(sys::System{Aero}) = sys.y.wr_b
 
 function Systems.f_step!(sys::System{Aero})
     #stall hysteresis
@@ -473,6 +463,10 @@ function Systems.f_step!(sys::System{Aero})
         sys.s.stall = false
     end
 end
+
+Dynamics.get_mp_b(::System{<:Aero}) = MassProperties()
+Dynamics.get_hr_b(::System{<:Aero}) = zeros(SVector{3})
+Dynamics.get_wr_b(sys::System{Aero}) = sys.y.wr_b
 
 
 ################################# GUI ##########################################
@@ -524,10 +518,6 @@ struct Ldg <: SystemDefinition
     right::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
     nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
 end
-
-Dynamics.MassTrait(::System{Ldg}) = HasNoMass()
-Dynamics.ExternalWrenchTrait(::System{Ldg}) = GetsExternalWrench()
-Dynamics.AngularMomentumTrait(::System{Ldg}) = HasNoAngularMomentum()
 
 function Ldg()
 
@@ -606,11 +596,7 @@ end
 
 Systems.U(::Payload) = PayloadU()
 
-Dynamics.MassTrait(::System{Payload}) = HasMass()
-Dynamics.ExternalWrenchTrait(::System{Payload}) = GetsNoExternalWrench()
-Dynamics.AngularMomentumTrait(::System{Payload}) = HasNoAngularMomentum()
-
-function Dynamics.get_mp_Ob(sys::System{Payload})
+function Dynamics.get_mp_b(sys::System{Payload})
     @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = sys.u
     @unpack pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot = sys.constants
 
@@ -654,7 +640,7 @@ end
 
 #assumes fuel is drawn equally from both tanks, no need to model them
 #individually for now
-@kwdef struct Fuel <: Piston.AbstractFuelSupply
+@kwdef struct Fuel <: SystemDefinition
     m_full::Float64 = 114.4 #maximum fuel mass (42 gal * 6 lb/gal * 0.454 kg/lb)
     m_res::Float64 = 1.0 #residual fuel mass
 end
@@ -680,9 +666,7 @@ function Systems.f_ode!(sys::System{Fuel}, pwp::System{<:PistonThruster})
 
 end
 
-is_fuel_available(sys::System{<:Fuel}) = (sys.y.m_avail > 0)
-
-function Dynamics.get_mp_Ob(fuel::System{Fuel})
+function Dynamics.get_mp_b(fuel::System{Fuel})
 
     #in case x becomes negative (fuel consumed beyond x=0 before the engine
     #dies)
@@ -701,6 +685,8 @@ function Dynamics.get_mp_Ob(fuel::System{Fuel})
 
     return mp_Ob
 end
+
+is_fuel_available(sys::System{<:Fuel}) = (sys.y.m_avail > 0)
 
 function GUI.draw(sys::System{Fuel}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Cessna 172R Fuel System")
@@ -727,10 +713,6 @@ function assign!(aero::System{<:Aero}, ldg::System{<:Ldg},
                 pwp::System{<:PistonThruster}, act::System{<:Actuation})
     throw(MethodError(C172.assign!, (aero, ldg, pwp, act)))
 end
-
-Dynamics.MassTrait(::System{<:Actuation}) = HasNoMass()
-Dynamics.AngularMomentumTrait(::System{<:Actuation}) = HasNoAngularMomentum()
-Dynamics.ExternalWrenchTrait(::System{<:Actuation}) = GetsNoExternalWrench()
 
 ################################################################################
 ################################ Components ######################################
@@ -888,8 +870,8 @@ function cost(vehicle::System{<:C172.Vehicle})
 
     @unpack ẋ, y = vehicle
 
-    v_nd_dot = SVector{3}(ẋ.kinematics.vel.v_eOb_b) / norm(y.kinematics.data.v_eOb_b)
-    ω_dot = SVector{3}(ẋ.kinematics.vel.ω_eb_b) #ω should already of order 1
+    v_nd_dot = SVector{3}(ẋ.dynamics.v_eOb_b) / norm(y.kinematics.data.v_eOb_b)
+    ω_dot = SVector{3}(ẋ.dynamics.ω_eb_b) #ω should already of order 1
     n_eng_dot = ẋ.components.pwp.engine.ω / vehicle.components.pwp.engine.constants.ω_rated
 
     sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2

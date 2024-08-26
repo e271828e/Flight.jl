@@ -55,7 +55,6 @@ function Systems.reset!(sys::System{<:C172RPAv1.Avionics})
     foreach(ss -> Systems.reset!(ss), sys.subsystems) #reset algorithms
 end
 
-
 function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
                         vehicle::System{<:C172RPA.Vehicle}, Δt::Real)
 

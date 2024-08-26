@@ -273,7 +273,12 @@ const Vehicle{K, T} = AircraftBase.Vehicle{C172FBW.Components, K, T} where {K <:
 const Aircraft{K, T, A} = AircraftBase.Aircraft{C172FBW.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 
 function Vehicle(kinematics = LTF(), terrain = HorizontalTerrain())
-    AircraftBase.Vehicle(C172.Components(PowerPlant(), Actuation()), kinematics, terrain, LocalAtmosphere())
+    AircraftBase.Vehicle(
+        C172.Components(PowerPlant(), Actuation()),
+        kinematics,
+        RigidBodyDynamics(),
+        terrain,
+        LocalAtmosphere())
 end
 
 function Aircraft(kinematics = LTF(), terrain = HorizontalTerrain(), avionics = NoAvionics())
@@ -293,7 +298,7 @@ function AircraftBase.assign!(vehicle::System{<:C172FBW.Vehicle},
     @unpack act, pwp, aero, fuel, ldg, pld = vehicle.components
 
     atm_data = AtmData(vehicle.atmosphere)
-    Systems.init!(vehicle.kinematics, Kinematics.Initializer(trim_state, trim_params, atm_data))
+    Systems.init!(vehicle, KinInit(trim_state, trim_params, atm_data))
 
     act.throttle.u[] = throttle
     act.aileron.u[] = aileron
@@ -410,11 +415,12 @@ end
 function XLinear(x_vehicle::ComponentVector)
 
     x_kinematics = x_vehicle.kinematics
+    x_dynamics = x_vehicle.dynamics
     x_components = x_vehicle.components
 
-    @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics.pos
-    p, q, r = x_kinematics.vel.ω_eb_b
-    v_x, v_y, v_z = x_kinematics.vel.v_eOb_b
+    @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics
+    p, q, r = x_dynamics.ω_eb_b
+    v_x, v_y, v_z = x_dynamics.v_eOb_b
     α_filt, β_filt = x_components.aero
     ω_eng = x_components.pwp.engine.ω
     fuel = x_components.fuel[1]
@@ -472,7 +478,7 @@ function YLinear(vehicle::System{<:C172FBW.Vehicle{NED}})
     rud_v = act.rudder.vel
     rud_p = act.rudder.pos
 
-    f_x, f_y, f_z = vehicle.y.dynamics.f_G_b
+    f_x, f_y, f_z = vehicle.y.dynamics.f_Gb_b
     EAS = vehicle.y.air.EAS
     TAS = vehicle.y.air.TAS
     α = vehicle.y.air.α_b
@@ -518,13 +524,14 @@ function AircraftBase.assign_x!(vehicle::System{<:C172FBW.Vehicle{NED}}, x::Abst
             fuel, thr_v, thr_p, ail_v, ail_p, ele_v, ele_p, rud_v, rud_p = XLinear(x)
 
     x_kinematics = vehicle.x.kinematics
+    x_dynamics = vehicle.x.dynamics
     x_components = vehicle.x.components
 
     ψ_nb, θ_nb, φ_nb, h_e = ψ, θ, φ, h
 
-    @pack! x_kinematics.pos = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
-    x_kinematics.vel.ω_eb_b .= p, q, r
-    x_kinematics.vel.v_eOb_b .= v_x, v_y, v_z
+    @pack! x_kinematics = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
+    x_dynamics.ω_eb_b .= p, q, r
+    x_dynamics.v_eOb_b .= v_x, v_y, v_z
     x_components.aero .= α_filt, β_filt
     x_components.pwp.engine.ω = ω_eng
     x_components.fuel .= fuel

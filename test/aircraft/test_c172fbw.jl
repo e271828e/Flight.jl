@@ -22,6 +22,7 @@ function test_c172fbw()
     @testset verbose = true "Cessna172FBW" begin
 
         test_trimming()
+        test_linearization()
         test_system_methods()
         test_sim(save = false)
 
@@ -50,7 +51,10 @@ end #function
 
 function test_linearization()
 
+    #needs actual tests
+
     @testset verbose = true "Linearization" begin
+        ss = Cessna172FBW(NED()) |> System |> Control.Continuous.LinearizedSS
 
     end #testset
 

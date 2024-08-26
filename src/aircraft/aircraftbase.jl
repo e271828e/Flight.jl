@@ -12,79 +12,17 @@ export AbstractAvionics, NoAvionics
 export AbstractTrimParameters, AbstractTrimState
 export trim!, linearize!
 
+
 ################################################################################
 ########################### AbstractComponents ###################################
 
 abstract type AbstractComponents <: SystemDefinition end
-Dynamics.MassTrait(::System{<:AbstractComponents}) = HasMass()
-Dynamics.AngularMomentumTrait(::System{<:AbstractComponents}) = HasAngularMomentum()
-Dynamics.ExternalWrenchTrait(::System{<:AbstractComponents}) = GetsExternalWrench()
-
-################################ NoComponents #################################
-
-@kwdef struct NoComponents <: AbstractComponents
-    mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
-end
-
-Dynamics.AngularMomentumTrait(::System{NoComponents}) = HasNoAngularMomentum()
-Dynamics.ExternalWrenchTrait(::System{NoComponents}) = GetsNoExternalWrench()
-Dynamics.get_mp_Ob(sys::System{NoComponents}) = MassProperties(sys.constants.mass_distribution)
-
-################################################################################
-############################## Vehicle ################################
-
-@kwdef struct Vehicle{F <: AbstractComponents,
-                      K <: AbstractKinematicDescriptor,
-                      T <: AbstractTerrain} <: SystemDefinition
-    components::F = NoComponents()
-    kinematics::K = LTF()
-    terrain::T = HorizontalTerrain() #shared with other aircraft instances
-    atmosphere::LocalAtmosphere = LocalAtmosphere() #externally controlled
-end
-
-struct VehicleY{F, K}
-    components::F
-    kinematics::K
-    dynamics::DynamicsData
-    air::AirData
-end
-
-Systems.Y(ac::Vehicle) = VehicleY(
-    Systems.Y(ac.components),
-    Systems.Y(ac.kinematics),
-    DynamicsData(),
-    AirData())
-
-function Systems.init!(sys::System{<:Vehicle}, ic::KinInit)
-    Systems.init!(sys.kinematics, ic)
-    f_ode!(sys) #update state derivatives and outputs
-end
-
-###############################################################################
-############################# AbstractAvionics #################################
-
-abstract type AbstractAvionics <: SystemDefinition end
-
-################################### NoAvionics #################################
-
-struct NoAvionics <: AbstractAvionics end
-
-
-###############################################################################
-#################### AbstractComponents update methods ###########################
 
 function Systems.f_ode!(components::System{<:AbstractComponents},
                         kin::KinData,
                         air::AirData,
                         trn::AbstractTerrain)
     MethodError(f_ode!, (components, avionics, kin, air, trn)) |> throw
-end
-
-function Systems.f_ode!(::System{NoComponents},
-                        ::KinData,
-                        ::AirData,
-                        ::AbstractTerrain)
-    nothing
 end
 
 #this method can be extended if required, but in principle Components shouldn't
@@ -94,13 +32,80 @@ end
 
 #f_step! may use the recursive fallback implementation
 
+################################ NoComponents #################################
+
+@kwdef struct NoComponents <: AbstractComponents
+    mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
+end
+
+Dynamics.get_hr_b(::System{NoComponents}) = zeros(SVector{3})
+Dynamics.get_wr_b(::System{NoComponents}) = Wrench()
+Dynamics.get_mp_b(sys::System{NoComponents}) = MassProperties(sys.constants.mass_distribution)
+
+function Systems.f_ode!(::System{NoComponents},
+                        ::KinData,
+                        ::AirData,
+                        ::AbstractTerrain)
+    nothing
+end
+
+
+
+################################################################################
+############################## Vehicle ################################
+
+@kwdef struct Vehicle{F <: AbstractComponents,
+                      K <: AbstractKinematicDescriptor,
+                      T <: AbstractTerrain} <: SystemDefinition
+    components::F = NoComponents()
+    kinematics::K = LTF()
+    dynamics::RigidBodyDynamics = RigidBodyDynamics()
+    terrain::T = HorizontalTerrain() #shared with other aircraft instances
+    atmosphere::LocalAtmosphere = LocalAtmosphere() #externally controlled
+end
+
+struct VehicleY{F, K}
+    components::F
+    kinematics::K
+    dynamics::RigidBodyDynamicsY
+    air::AirData
+end
+
+Systems.Y(ac::Vehicle) = VehicleY(
+    Systems.Y(ac.components),
+    Systems.Y(ac.kinematics),
+    RigidBodyDynamicsY(),
+    AirData())
+
+function Systems.init!(sys::System{<:Vehicle}, ic::KinInit)
+    @unpack kinematics, dynamics = sys.subsystems
+    Systems.init!(kinematics, ic)
+    dynamics.x .= kinematics.u #ESSENTIAL!
+    f_ode!(sys) #update ẋ and y
+end
+
+
 ###############################################################################
-#################### AbstractAvionics update methods ###########################
+############################# AbstractAvionics #################################
 
-#avionics update methods should only mutate the avionics System
+abstract type AbstractAvionics <: SystemDefinition end
 
-#this method can be extended if required, but in principle avionics shouldn't
-#involve continuous dynamics.
+Systems.init!( ::System{<:AbstractAvionics}, ic::KinInit) = nothing
+
+################################### NoAvionics #################################
+
+struct NoAvionics <: AbstractAvionics end
+
+
+################################################################################
+######################## Vehicle/Avionics update methods #######################
+
+#in order to be able to trim the standalone Vehicle without any auxiliary
+#Avionics, the Vehicle's update methods must not require Avionics as an
+#argument. to make this possible, any changes to Vehicle should be done through
+#the joint assign! methods. accordingly, Avionics update methods should only
+#mutate the Avionics System itself, not the Vehicle
+
 function Systems.f_ode!(::System{<:AbstractAvionics},
                         ::System{<:Vehicle})
     nothing
@@ -119,37 +124,27 @@ end
 
 #f_step! can use the recursive fallback implementation
 
-
-################################################################################
-###################### AircraftVehicle Update methods ##########################
-
 function Systems.f_ode!(vehicle::System{<:Vehicle})
 
     @unpack ẋ, x, subsystems, constants = vehicle
-    @unpack kinematics, components, atmosphere = subsystems
+    @unpack kinematics, dynamics, components, atmosphere = subsystems
     @unpack terrain = constants
 
     kinematics.u .= dynamics.x
-    f_ode!(kinematics)
-    f_ode!(atmosphere) #currently does nothing
+    f_ode!(kinematics) #update ẋ and y before extracting kinematics data
+    f_ode!(atmosphere) #update ẋ and y before extracting atmospheric data
     kin_data = KinData(kinematics)
     atm_data = AtmData(atmosphere)
-
     air_data = AirData(kin_data, atm_data)
 
     #update components ẋ and y
     f_ode!(components, kin_data, air_data, terrain)
-
-    #now we can fetch their inputs to rigid body dynamics
-    mp_Ob = get_mp_Ob(components)
-    wr_b = get_wr_b(components)
-    hr_b = get_hr_b(components)
-    rb_data = RigidBodyData(mp_Ob, wr_b, hr_b)
+    rb_data = RigidBodyData(components)
 
     #update velocity derivatives and rigid body data
     f_ode!(dynamics, kin_data, rb_data)
 
-    vehicle.y = VehicleY(components.y, kinematics.y, dyn_data, air_data)
+    vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, air_data)
 
     return nothing
 
@@ -157,22 +152,22 @@ end
 
 #f_step! will use the recursive fallback implementation
 
-#within Vehicle, only the components may be modified by f_disc! (and it generally
-#shouldn't)
+#within Vehicle, only the components may be modified by f_disc!
 function Systems.f_disc!(vehicle::System{<:Vehicle}, Δt::Real)
 
-    @unpack kinematics, components = vehicle
-    @unpack dynamics, air = vehicle.y
+    @unpack kinematics, dynamics, components = vehicle
+    @unpack air = vehicle.y
 
     f_disc!(components, Δt)
 
     #components might have modified its outputs, so we need to reassemble our y
-    vehicle.y = VehicleY(components.y, kinematics.y, dynamics, air)
+    vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, air)
 
 end
 
-#these are meant to map avionics outputs to components control inputs, they are
-#called both within the aircraft's f_ode! and f_disc! before the vehicle update
+#these are meant to map avionics outputs to the vehicle, and in particular to
+#components inputs. they are called both within the aircraft's f_ode! and
+#f_disc! before the vehicle update
 function assign!(vehicle::System{<:Vehicle}, avionics::System{<:AbstractAvionics})
     assign!(vehicle.components, avionics)
 end
@@ -202,6 +197,7 @@ Systems.Y(ac::Aircraft) = AircraftY(Systems.Y(ac.vehicle), Systems.Y(ac.avionics
 
 function Systems.init!(ac::System{<:Aircraft}, ic::KinInit)
     Systems.init!(ac.vehicle, ic)
+    Systems.init!(ac.avionics, ic)
     f_ode!(ac) #update state derivatives and outputs
 end
 
@@ -439,9 +435,9 @@ function GUI.draw!(vehicle::System{<:Vehicle},
                    p_open::Ref{Bool} = Ref(true),
                    label::String = "Vehicle")
 
-    @unpack components, atmosphere = vehicle.subsystems
+    @unpack components, kinematics, dynamics, atmosphere = vehicle.subsystems
     @unpack terrain = vehicle.constants
-    @unpack kinematics, dynamics, air = vehicle.y
+    @unpack air = vehicle.y
 
     CImGui.Begin(label, p_open)
 
@@ -453,8 +449,8 @@ function GUI.draw!(vehicle::System{<:Vehicle},
             @c CImGui.Checkbox("Dynamics", &c_dyn)
             @c CImGui.Checkbox("Kinematics", &c_kin)
             @c CImGui.Checkbox("Air", &c_air)
-            c_afm && @c GUI.draw!(vehicle.components, avionics, &c_afm)
-            c_atm && @c GUI.draw!(vehicle.atmosphere, &c_atm)
+            c_afm && @c GUI.draw!(components, avionics, &c_afm)
+            c_atm && @c GUI.draw!(atmosphere, &c_atm)
             c_trn && @c GUI.draw(terrain, &c_trn)
             c_dyn && @c GUI.draw(dynamics, &c_dyn)
             c_kin && @c GUI.draw(kinematics, &c_kin)

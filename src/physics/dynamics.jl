@@ -11,10 +11,8 @@ using ..Kinematics
 export FrameTransform, transform
 export Wrench
 export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
-export HasMass, HasNoMass, get_mp_Ob
-export GetsExternalWrench, GetsNoExternalWrench, get_wr_b
-export HasAngularMomentum, HasNoAngularMomentum, get_hr_b
 export RigidBodyData, RigidBodyDynamics, RigidBodyDynamicsY
+export get_mp_b, get_wr_b, get_hr_b
 
 #standard gravity for specific force normalization
 const g₀ = 9.80665
@@ -305,6 +303,23 @@ end
 ################################################################################
 ############################### RigidBodyData ##################################
 
+"""
+Notes:
+- When get_mp_b is called on a System, the returned MassProperties instance must
+  be expressed in the System's parent reference frame.
+- At the root of the component hierarchy we have the vehicle. The vehicle is
+  its own parent, so the MassProperties it returns must be expressed in its own
+  reference frame: total vehicle mass, position vector from the vehicle origin
+  Ob to the vehicle center of mass G expressed in vehicle axes, and inertia
+  tensor of the vehicle with respect to its origin, expressed in vehicle axes.
+  These are the properties expected by the dynamics equations.
+- Aircraft dynamics and kinematics are formulated on the vehicle origin Ob
+  instead of the overall aircraft's center of mass G. This allows for any of the
+  overall aircraft's mass properties to change, either gradually (for example, due to
+  fuel consumption) or suddenly (due to a payload release), without having to
+  worry about discontinuities in the kinematic state vector.
+"""
+
 
 #mp_Ob: Mass properties of the System, translated to the vehicle frame
 
@@ -333,78 +348,32 @@ function RigidBodyData(sys::System)
     RigidBodyData(mp_Ob, wr_ext_Ob, hr_b)
 end
 
-
-################################################################################
-################################## MassTrait ###################################
-
-abstract type MassTrait end
-struct HasMass <: MassTrait end
-struct HasNoMass <: MassTrait end
-
-"""
-Notes:
-- When get_mp_Ob is called on a System, the returned MassProperties instance must
-  be expressed in the System's parent reference frame.
-- At the root of the component hierarchy we have the vehicle. The vehicle is
-  its own parent, so the MassProperties it returns must be expressed in its own
-  reference frame: total vehicle mass, position vector from the vehicle origin
-  Ob to the vehicle center of mass G expressed in vehicle axes, and inertia
-  tensor of the vehicle with respect to its origin, expressed in vehicle axes.
-  These are the properties expected by the dynamics equations.
-- Aircraft dynamics and kinematics are formulated on the vehicle origin Ob
-  instead of the overall aircraft's center of mass G. This allows for any of the
-  overall aircraft's mass properties to change, either gradually (for example, due to
-  fuel consumption) or suddenly (due to a payload release), without having to
-  worry about discontinuities in the kinematic state vector.
-"""
-
-MassTrait(::S) where {S<:System} = error(
-    "Please extend Dynamics.MassTrait for $S")
-
-get_mp_Ob(sys::System) = get_mp_Ob(MassTrait(sys), sys)
-
-get_mp_Ob(::HasNoMass, sys::System) = MassProperties()
-
-#default implementation for a System with the HasMass trait tries to compute
-#the aggregate mass properties for all its the subsystems
-@inline @generated function (get_mp_Ob(::HasMass, sys::System{T, X, Y, U, S, P, B})
+# default implementation tries to compute the aggregate mass properties for all
+# its the subsystems
+@inline @generated function (get_mp_b(sys::System{T, X, Y, U, S, P, B})
     where {T<:SystemDefinition, X, Y, U, S, P, B})
 
     ex = Expr(:block)
 
     if isempty(fieldnames(B))
         push!(ex.args,
-            :(error("System{$(T)} has the HasMass trait and no subsystems, "*
-                "but it does not extend the get_mp_Ob method")))
+            :(error("System{$(T)} is a leaf System "*
+                "but it does not extend the get_mp_b method")))
     else
         push!(ex.args, :(p = MassProperties()))
         for label in fieldnames(B)
             push!(ex.args,
-                :(p += get_mp_Ob(sys.subsystems[$(QuoteNode(label))])))
+                :(p += get_mp_b(sys.subsystems[$(QuoteNode(label))])))
         end
     end
     return ex
 
 end
 
-###################### AngularMomentumTrait ##########################
 
-#accounts only for additional angular momentum due to rotating components
-abstract type AngularMomentumTrait end
-struct HasAngularMomentum <: AngularMomentumTrait end
-struct HasNoAngularMomentum <: AngularMomentumTrait end
-
-#prevents the trait system from failing silently when wrongly extended
-AngularMomentumTrait(::S) where {S<:System} = error(
-    "Please extend Dynamics.AngularMomentumTrait for $S")
-
-get_hr_b(sys::System) = get_hr_b(AngularMomentumTrait(sys), sys)
-
-get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
-
-#default implementation for a System with the HasAngularMomentum trait, tries to
-#sum the angular momentum from its individual components. override as required
-@inline @generated function (get_hr_b(::HasAngularMomentum, sys::System{T, X, Y, U, S, P, B})
+#default implementation tries to sum the angular momentum from its individual
+#components. override as required
+@inline @generated function (get_hr_b(sys::System{T, X, Y, U, S, P, B})
     where {T<:SystemDefinition, X, Y, U, S, P, B})
 
     # Core.print("Generated function called")
@@ -412,7 +381,7 @@ get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
 
     if isempty(fieldnames(B))
         push!(ex.args,
-            :(error("System{$(T)} has the HasAngularMomentum trait and no subsystems, "*
+            :(error("System{$(T)} is a leaf System "*
                 "but it does not extend the get_hr_b method")))
     else
         push!(ex.args, :(h = SVector(0., 0., 0.))) #initialize
@@ -426,24 +395,9 @@ get_hr_b(::HasNoAngularMomentum, sys::System) = zeros(SVector{3})
 
 end
 
-
-###################### ExternalWrenchTrait ##########################
-
-abstract type ExternalWrenchTrait end
-struct GetsExternalWrench <: ExternalWrenchTrait end
-struct GetsNoExternalWrench <: ExternalWrenchTrait end
-
-#prevents the trait system from failing silently when wrongly extended
-ExternalWrenchTrait(::S) where {S<:System} = error(
-    "Please extend Dynamics.ExternalWrenchTrait for $S")
-
-get_wr_b(sys::System) = get_wr_b(ExternalWrenchTrait(sys), sys)
-
-get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
-
-#default implementation for a System with the GetsExternalWrench trait, tries
-#to sum all the Wrenches from its individual components. override as required
-@inline @generated function (get_wr_b(::GetsExternalWrench, sys::System{T, X, Y, U, S, P, B})
+#default implementation tries to sum all the Wrenches from its individual
+#components. override as required
+@inline @generated function (get_wr_b(sys::System{T, X, Y, U, S, P, B})
     where {T<:SystemDefinition, X, Y, U, S, P, B})
 
     # Core.print("Generated function called")
@@ -452,7 +406,7 @@ get_wr_b(::GetsNoExternalWrench, sys::System) = Wrench()
 
     if isempty(fieldnames(B))
         push!(ex.args,
-            :(error("System{$(T)} has the GetsExternalWrench trait and no subsystems, "*
+            :(error("System{$(T)} is a leaf System, "*
                 "but it does not extend the get_wr_b method")))
     else
         push!(ex.args, :(wr = Wrench())) #initialize a zero wrench
@@ -737,7 +691,7 @@ end
 function GUI.draw(sys::System{RigidBodyDynamics}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Rigid Body")
 
-    @unpack mp_Ob, mp_Gb, wr_net_Ob, hr_b, α_eb_b, a_eOb_b, f_Ob_b, f_Gb_b = sys.y
+    @unpack mp_Ob, mp_Gb, wr_net_Ob, wr_net_Gb, hr_b, α_eb_b, a_eOb_b, f_Ob_b, f_Gb_b = sys.y
 
     CImGui.Begin(label, p_open)
 

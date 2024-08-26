@@ -14,6 +14,8 @@ using Flight.FlightPhysics.Dynamics
 
 export test_dynamics
 
+#needs more exhaustive tests!
+
 function test_dynamics()
 
     @testset verbose = true "Dynamics" begin

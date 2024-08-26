@@ -1356,11 +1356,11 @@ function GUI.draw!(sys::System{<:Controller},
 
             CImGui.TableNextColumn();
                 Text("Specific Force (x)"); SameLine(240)
-                Text(@sprintf("%.3f g", dynamics.f_G_b[1]/Dynamics.g₀))
+                Text(@sprintf("%.3f g", dynamics.f_Gb_b[1]/Dynamics.g₀))
                 Text("Specific Force (y)"); SameLine(240)
-                Text(@sprintf("%.3f g", dynamics.f_G_b[2]/Dynamics.g₀))
+                Text(@sprintf("%.3f g", dynamics.f_Gb_b[2]/Dynamics.g₀))
                 Text("Specific Force (z)"); SameLine(240)
-                Text(@sprintf("%.3f g", dynamics.f_G_b[3]/Dynamics.g₀))
+                Text(@sprintf("%.3f g", dynamics.f_Gb_b[3]/Dynamics.g₀))
 
             CImGui.EndTable()
         end

@@ -7,6 +7,7 @@ using Flight.FlightCore.GUI
 
 using Flight.FlightComponents.Control
 
+using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172R
 using Flight.FlightAircraft.C172FBW
 using Flight.FlightAircraft.C172RPA
@@ -20,8 +21,8 @@ function test_gui()
     # target = Cessna172CAS() |> System
     # target = Cessna172RBase() |> System
     # target = C172FBW.Actuation() |> System;
-    target = Cessna172RPAv1() |> System
-    # target = Cessna172R() |> System
+    # target = Cessna172RPAv1() |> System
+    target = Cessna172R() |> System
     f_draw = let target = target
         () -> GUI.draw!(target)
         # return () -> GUI.draw!(target)

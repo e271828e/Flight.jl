@@ -21,6 +21,7 @@ export test_c172rpa
 function test_c172rpa()
     @testset verbose = true "Cessna 172RPA" begin
         test_trimming()
+        test_linearization()
         test_system_methods()
         test_sim(save = false)
     end
@@ -52,6 +53,8 @@ end #function
 function test_linearization()
 
     @testset verbose = true "Linearization" begin
+
+        ss = Cessna172RPA(NED()) |> System |> Control.Continuous.LinearizedSS
 
     end #testset
 

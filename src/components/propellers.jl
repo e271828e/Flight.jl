@@ -336,10 +336,6 @@ struct VariablePitch <: PitchStyle end
 
 abstract type AbstractPropeller <: SystemDefinition end
 
-Dynamics.MassTrait(::System{<:AbstractPropeller}) = HasNoMass()
-Dynamics.AngularMomentumTrait(::System{<:AbstractPropeller}) = HasAngularMomentum()
-Dynamics.ExternalWrenchTrait(::System{<:AbstractPropeller}) = GetsExternalWrench()
-
 struct Propeller{P <: PitchStyle, L <: Lookup} <: AbstractPropeller
     pitch::P
     lookup::L

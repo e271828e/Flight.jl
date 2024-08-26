@@ -37,13 +37,9 @@ function h2δ(h)
     p / p_std / √(T / T_std)
 end
 
-#by default, engine mass is assumed to be accounted for in the vehicle's
-#airframe
-Dynamics.MassTrait(::System{<:AbstractPistonEngine}) = HasNoMass()
-#assumed to be negligible by default
-Dynamics.AngularMomentumTrait(::System{<:AbstractPistonEngine}) = HasNoAngularMomentum()
-#no direct external wrench on the engine
-Dynamics.ExternalWrenchTrait(::System{<:AbstractPistonEngine}) = GetsNoExternalWrench()
+#by default, engine mass is assumed to be accounted for in the airframe, its
+#angular momentum is assumed to be negligible by default, and it receives no
+#direct external wrench. so no RigidBodyData extensions
 
 
 ################################################################################
@@ -497,10 +493,6 @@ function Systems.f_step!(sys::System{<:PistonThruster}, fuel_available::Bool = t
     f_step!(propeller)
 
 end
-
-Dynamics.MassTrait(::System{<:PistonThruster}) = HasNoMass()
-Dynamics.AngularMomentumTrait(::System{<:PistonThruster}) = HasAngularMomentum()
-Dynamics.ExternalWrenchTrait(::System{<:PistonThruster}) = GetsExternalWrench()
 
 Dynamics.get_wr_b(sys::System{<:PistonThruster}) = get_wr_b(sys.propeller) #only external
 Dynamics.get_hr_b(sys::System{<:PistonThruster}) = get_hr_b(sys.propeller)

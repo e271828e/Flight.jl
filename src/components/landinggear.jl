@@ -21,6 +21,7 @@ const e3 = SVector{3,Float64}(0,0,1)
 
 abstract type AbstractSteering <: SystemDefinition end
 
+
 ################################ NoSteering ####################################
 
 struct NoSteering <: AbstractSteering end
@@ -402,14 +403,6 @@ end
     strut::L = Strut()
 end
 
-#override the generic fallback for composite Systems so we don't need to define
-#traits for Steering, Braking or Strut
-Dynamics.MassTrait(::System{<:LandingGearUnit}) = HasNoMass()
-Dynamics.AngularMomentumTrait(::System{<:LandingGearUnit}) = HasNoAngularMomentum()
-Dynamics.ExternalWrenchTrait(::System{<:LandingGearUnit}) = GetsExternalWrench()
-
-Dynamics.get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.strut.wr_b
-
 function Systems.f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinData,
                 terrain::AbstractTerrain)
 
@@ -431,6 +424,7 @@ function Systems.f_step!(sys::System{<:LandingGearUnit})
 
 end
 
+Dynamics.get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.strut.wr_b
 
 ################################################################################
 ############################ Plotting ##########################################
