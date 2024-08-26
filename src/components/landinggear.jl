@@ -424,6 +424,8 @@ function Systems.f_step!(sys::System{<:LandingGearUnit})
 
 end
 
+Dynamics.get_mp_b(::System{<:LandingGearUnit}) = MassProperties()
+Dynamics.get_hr_b(::System{<:LandingGearUnit}) = zeros(SVector{3})
 Dynamics.get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.strut.wr_b
 
 ################################################################################

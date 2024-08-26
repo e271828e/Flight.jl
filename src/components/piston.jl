@@ -40,6 +40,9 @@ end
 #by default, engine mass is assumed to be accounted for in the airframe, its
 #angular momentum is assumed to be negligible by default, and it receives no
 #direct external wrench. so no RigidBodyData extensions
+Dynamics.get_mp_b(::System{<:AbstractPistonEngine}) = MassProperties()
+Dynamics.get_wr_b(::System{<:AbstractPistonEngine}) = Wrench()
+Dynamics.get_hr_b(::System{<:AbstractPistonEngine}) = zeros(SVector{3})
 
 
 ################################################################################
@@ -494,6 +497,7 @@ function Systems.f_step!(sys::System{<:PistonThruster}, fuel_available::Bool = t
 
 end
 
+Dynamics.get_mp_b(::System{<:PistonThruster}) = MassProperties()
 Dynamics.get_wr_b(sys::System{<:PistonThruster}) = get_wr_b(sys.propeller) #only external
 Dynamics.get_hr_b(sys::System{<:PistonThruster}) = get_hr_b(sys.propeller)
 

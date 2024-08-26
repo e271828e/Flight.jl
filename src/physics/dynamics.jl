@@ -340,7 +340,6 @@ Notes:
     hr_b::SVector{3,Float64} = zeros(SVector{3})
 end
 
-#default implementation
 function RigidBodyData(sys::System)
     mp_Ob = get_mp_b(sys)
     wr_ext_Ob = get_wr_b(sys)
@@ -348,8 +347,11 @@ function RigidBodyData(sys::System)
     RigidBodyData(mp_Ob, wr_ext_Ob, hr_b)
 end
 
+#generated functions are needed here because type inference does not work
+#throughout the whole System hierarchy
+
 # default implementation tries to compute the aggregate mass properties for all
-# its the subsystems
+# its subsystems. override if possible to reduce compilation time
 @inline @generated function (get_mp_b(sys::System{T, X, Y, U, S, P, B})
     where {T<:SystemDefinition, X, Y, U, S, P, B})
 
@@ -372,7 +374,7 @@ end
 
 
 #default implementation tries to sum the angular momentum from its individual
-#components. override as required
+#components. override if possible to reduce compilation time
 @inline @generated function (get_hr_b(sys::System{T, X, Y, U, S, P, B})
     where {T<:SystemDefinition, X, Y, U, S, P, B})
 
@@ -396,7 +398,7 @@ end
 end
 
 #default implementation tries to sum all the Wrenches from its individual
-#components. override as required
+#components. override if possible to reduce compilation time
 @inline @generated function (get_wr_b(sys::System{T, X, Y, U, S, P, B})
     where {T<:SystemDefinition, X, Y, U, S, P, B})
 

@@ -39,6 +39,8 @@ end
 #upon the vehicle's aerodynamics, power plant and landing gear. the same goes
 #for rotational angular momentum.
 Dynamics.get_mp_b(::System{Airframe}) = mp_Ob_str
+Dynamics.get_wr_b(::System{Airframe}) = Wrench()
+Dynamics.get_hr_b(::System{Airframe}) = zeros(SVector{3})
 
 
 ################################################################################
@@ -555,6 +557,9 @@ function Ldg()
 
 end
 
+Dynamics.get_mp_b(::System{Ldg}) = MassProperties()
+Dynamics.get_hr_b(::System{Ldg}) = zeros(SVector{3})
+
 function GUI.draw(sys::System{<:Ldg}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Cessna 172R Landing Gear")
 
@@ -609,6 +614,9 @@ function Dynamics.get_mp_b(sys::System{Payload})
     mp_Ob = MassProperties() + pilot + copilot + lpass + rpass + baggage
     return mp_Ob
 end
+
+Dynamics.get_wr_b(::System{Payload}) = Wrench()
+Dynamics.get_hr_b(::System{Payload}) = zeros(SVector{3})
 
 #################################### GUI #######################################
 
@@ -686,6 +694,9 @@ function Dynamics.get_mp_b(fuel::System{Fuel})
     return mp_Ob
 end
 
+Dynamics.get_wr_b(::System{Fuel}) = Wrench()
+Dynamics.get_hr_b(::System{Fuel}) = zeros(SVector{3})
+
 is_fuel_available(sys::System{<:Fuel}) = (sys.y.m_avail > 0)
 
 function GUI.draw(sys::System{Fuel}, p_open::Ref{Bool} = Ref(true),
@@ -713,6 +724,10 @@ function assign!(aero::System{<:Aero}, ldg::System{<:Ldg},
                 pwp::System{<:PistonThruster}, act::System{<:Actuation})
     throw(MethodError(C172.assign!, (aero, ldg, pwp, act)))
 end
+
+Dynamics.get_mp_b(::System{<:Actuation}) = MassProperties()
+Dynamics.get_wr_b(::System{<:Actuation}) = Wrench()
+Dynamics.get_hr_b(::System{<:Actuation}) = zeros(SVector{3})
 
 ################################################################################
 ################################ Components ######################################

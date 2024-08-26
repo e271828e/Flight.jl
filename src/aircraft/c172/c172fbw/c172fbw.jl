@@ -603,6 +603,6 @@ end
 
 include(normpath("control/c172fbw_ctl.jl"))
 
-include(normpath("versions/c172fbw_v1.jl")); @reexport using .C172FBWv1
+include(normpath("c172fbw_v1.jl")); @reexport using .C172FBWv1
 
 end

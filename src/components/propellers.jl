@@ -433,6 +433,7 @@ function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω
 
 end
 
+Dynamics.get_mp_b(::System{<:Propeller}) = MassProperties()
 Dynamics.get_wr_b(sys::System{<:Propeller}) = sys.y.wr_b
 Dynamics.get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 
