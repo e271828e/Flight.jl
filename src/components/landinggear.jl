@@ -390,6 +390,8 @@ function Systems.f_step!(sys::System{<:Strut})
         "Damper compression rate ξ_dot = $(-sys.y.ξ_dot) m/s " *
         "at t = $(sys.t[]) s"))
 
+    return nothing
+
 end
 
 

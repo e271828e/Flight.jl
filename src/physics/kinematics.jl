@@ -133,7 +133,8 @@ end
 
 function normalize_block!(x, ε) #returns true if norm was corrected
     norm_x = norm(x)
-    abs(norm_x - 1.0) > ε ? (x ./= norm_x; return true) : return false
+    (abs(norm_x - 1.0) > ε) && (x ./= norm_x)
+    return nothing
 end
 
 function Geodesy.gravity(kin_data::KinData)

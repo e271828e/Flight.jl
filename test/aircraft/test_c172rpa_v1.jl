@@ -95,9 +95,9 @@ function test_control_modes()
     @test ac.vehicle.components.act.elevator.u[] == 0.3
     @test ac.vehicle.components.act.rudder.u[] == 0.4
 
-    # @test @ballocated(f_ode!($ac)) == 0
-    # @test @ballocated(f_step!($ac)) == 0
-    # @test @ballocated(f_disc!($ac, $Δt)) == 0
+    @test @ballocated(f_ode!($ac)) == 0
+    @test @ballocated(f_step!($ac)) == 0
+    @test @ballocated(f_disc!($ac, $Δt)) == 0
 
     end #testset
 
@@ -460,7 +460,7 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_n[3], -fcl.u.clm_sp; atol = 1e-1))
         @test all(isapprox.(y_air(ac).EAS, fcl.u.EAS_sp; atol = 1e-1))
 
-        # @test @ballocated(f_disc!($ac, $Δt)) == 0
+        @test @ballocated(f_disc!($ac, $Δt)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
         # air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
@@ -533,11 +533,11 @@ function test_guidance_modes()
         @test isapprox.(y_kin(ac).h_e - HEllip(fcl.u.h_sp), 0.0; atol = 1e-1)
 
         @test fcl.y.lon_ctl_mode === lon_EAS_clm
-        # @test @ballocated(f_disc!($ac, $Δt)) == 0
+        @test @ballocated(f_disc!($ac, $Δt)) == 0
         fcl.u.h_sp = y_kin_trim.h_e + 100
         step!(sim, 1, true)
         @test fcl.y.lon_ctl_mode === lon_thr_EAS
-        # @test @ballocated(f_disc!($ac, $Δt)) == 0
+        @test @ballocated(f_disc!($ac, $Δt)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
         # air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)

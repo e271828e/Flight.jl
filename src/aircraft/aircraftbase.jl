@@ -18,19 +18,20 @@ export trim!, linearize!
 
 abstract type AbstractComponents <: SystemDefinition end
 
+#we cannot rely on the fallback here
 function Systems.f_ode!(components::System{<:AbstractComponents},
                         kin::KinData,
                         air::AirData,
                         trn::AbstractTerrain)
-    MethodError(f_ode!, (components, avionics, kin, air, trn)) |> throw
+    MethodError(f_ode!, (components, kin, air, trn)) |> throw
 end
 
-#this method can be extended if required, but in principle Components shouldn't
-#implement discrete dynamics; discretized algorithms belong in Avionics
-function Systems.f_disc!(::System{<:AbstractComponents}, ::Real)
-end
+#disallow using the fallback method for efficiency (it would traverse the whole
+#Components System hierarchy). this is reasonable because in principle
+#Components shouldn't implement discrete dynamics; discretized algorithms belong
+#in Avionics. however, it can still be overridden by subtypes if required
 
-#f_step! may use the recursive fallback implementation
+Systems.f_disc!(::System{<:AbstractComponents}, ::Real) = nothing
 
 ################################ NoComponents #################################
 
@@ -160,7 +161,7 @@ function Systems.f_disc!(vehicle::System{<:Vehicle}, Δt::Real)
 
     f_disc!(components, Δt)
 
-    #components might have modified its outputs, so we need to reassemble our y
+    # components might have modified its outputs, so we need to reassemble our y
     vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, air)
 
 end

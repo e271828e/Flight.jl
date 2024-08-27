@@ -185,8 +185,15 @@ end
 @inline function (f_ode!(sys::System{SD, X, Y, U, S, P, B}, args...)
                 where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
 
-    map(ss-> f_ode!(ss, args...), values(sys.subsystems))
+
+    #for some reason, map and foreach allocate when the recursion reaches
+    #further down the subsystem hierarchy
+    # sys.subsystems |> keys |> println
+    for ss in sys.subsystems
+        f_ode!(ss, args...)
+    end
     assemble_y!(sys)
+    return nothing
 
 end
 
@@ -197,8 +204,14 @@ end
 @inline function (f_disc!(sys::System{SD, X, Y, U, S, P, B}, Δt, args...)
                     where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
 
-    map(ss-> f_disc!(ss, Δt, args...), values(sys.subsystems))
+    #for some reason, map and foreach allocate when the recursion reaches
+    #further down the subsystem hierarchy
+    # sys.subsystems |> keys |> println
+    for ss in sys.subsystems
+        f_disc!(ss, Δt, args...)
+    end
     assemble_y!(sys)
+    return nothing
 
 end
 
@@ -208,7 +221,13 @@ end
 @inline function (f_step!(sys::System{SD, X, Y, U, S, P, B}, args...)
                     where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
 
-    map(ss-> f_step!(ss, args...), values(sys.subsystems))
+    #for some reason, map and foreach allocate when the recursion reaches
+    #further down the subsystem hierarchy
+    # sys.subsystems |> keys |> println
+    for ss in sys.subsystems
+        f_step!(ss, args...)
+    end
+    return nothing
 
 end
 
