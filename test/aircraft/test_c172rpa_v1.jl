@@ -686,7 +686,7 @@ function test_sim_interactive(; save::Bool = true)
 
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172RPAv1(LTF(), trn) |> System;
-    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 10)
+    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 100)
 
     #on ground
     initializer = KinInit(
@@ -708,9 +708,9 @@ function test_sim_interactive(; save::Bool = true)
     xpc = XPCClient()
     # xpc = XPCClient(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
-    Sim.attach!(sim, IODevices.DummyInputDevice())
+    # Sim.attach!(sim, IODevices.DummyInputDevice())
 
-    Sim.run_interactive!(sim)
+    Sim.run_interactive!(sim; pace = 1)
 
     kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
     air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)

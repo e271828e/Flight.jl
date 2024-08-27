@@ -51,7 +51,7 @@ function GUI.draw!(control::SimControl)
         end
         CImGui.SameLine()
 
-        control.pace = safe_slider("Pace", control.pace, 1e-2, 1e3, "%.3f",
+        control.pace = safe_slider("Pace", control.pace, 0.1, 20.0, "%.3f",
         ImGuiSliderFlags_Logarithmic; show_label = true)
 
         @unpack algorithm, t_start, t_end, dt, iter, t, τ = control
@@ -130,6 +130,90 @@ end
 
 ################################################################################
 ############################# Simulation #######################################
+
+struct SimulationNew{D <: SystemDefinition, Y, I <: ODEIntegrator}
+    sys::System{D, Y}
+    integrator::I
+    log::SavedValues{Float64, Y}
+    gui::SimGUI
+    control::SimControl
+    io_start::Base.Event #to be waited on by IO devices and GUI before entering their update loops
+    io_lock::ReentrantLock #to be acquired before modifying the simulated System or SimControl
+    inputs::Vector{SimInput}
+    outputs::Vector{SimOutput}
+
+    function SimulationNew(
+        sys::System{D, Y};
+        sys_init!::Function = Systems.init!, #default System initialization function
+        user_callback!::Function = user_callback!, #user-specified callback
+        algorithm::OrdinaryDiffEqAlgorithm = RK4(),
+        adaptive::Bool = false,
+        dt::Real = 0.02, #continuous dynamics integration step
+        Δt::Real = 0.02, #discrete dynamics execution period (do not set to Inf!)
+        t_start::Real = 0.0,
+        t_end::Real = 10.0,
+        save_on::Bool = true,
+        saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
+        save_everystep::Bool = isempty(saveat),
+        save_start::Bool = true,
+        save_end::Bool = false,
+        ) where {D, Y}
+
+        @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
+                                        than the discrete dynamics update period"
+
+        params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!, Δt = Δt)
+
+        cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
+        cb_disc = PeriodicCallback(f_cb_disc!, Δt)
+        cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
+
+        #before initializing the log, compute and assign y, so its initial value
+        #is consistent with x, u and s
+        f_ode!(sys)
+        log = SavedValues(Float64, Y)
+        saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
+        cb_save = SavingCallback(f_cb_save, log; saveat, save_everystep, save_start, save_end)
+
+        if save_on
+            cb_set = CallbackSet(cb_step, cb_disc, cb_user, cb_save)
+        else
+            cb_set = CallbackSet(cb_step, cb_disc, cb_user)
+        end
+
+        #the current System's x value is used as initial condition. a copy is
+        #needed, otherwise it's just a reference and will get overwritten during
+        #simulation. if the System has no continuous state, provide a dummy one
+        x0 = (has_x(sys) ? copy(sys.x) : [0.0])
+        problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
+        integrator = init_integrator(problem, algorithm; save_on = false,
+                                     callback = cb_set, adaptive, dt)
+
+        #save_on = false because we are not interested in logging the plain
+        #System's state vector; everything we need to know about the System
+        #should be made available in its (immutable) output y, logged via
+        #SavingCallback
+        control = SimControl()
+        io_start = Base.Event()
+        io_lock = ReentrantLock()
+
+        f_draw = let control = control, sys = sys
+            () -> GUI.draw!(control, sys)
+        end
+
+        #the GUI Renderer's refresh rate must be uncapped (no VSync), so that
+        #calls to GUI.update!() return immediately without blocking and
+        #therefore do not interfere with simulation stepping
+        gui = SimGUI(Renderer(; label = "Simulation", sync = UInt8(0), f_draw),
+                    control, io_start, io_lock)
+
+        new{D, Y, typeof(integrator)}(
+            sys, integrator, log, gui, control, io_start, io_lock,
+            SimInput[], SimOutput[])
+    end
+
+end
+
 
 struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     sys::S
@@ -255,6 +339,13 @@ function attach!(sim::Simulation, device::OutputDevice)
     output = SimOutput(device, channel, sim.control, sim.io_start, sim.io_lock)
     push!(sim.outputs, output)
 end
+
+function attach!(sim::SimulationNew{D, Y}, device::OutputDevice) where {D, Y}
+    channel = Channel{SimData{Y}}(1)
+    output = SimOutput(device, channel, sim.control, sim.io_start, sim.io_lock)
+    push!(sim.outputs, output)
+end
+
 
 function write_data!(sim::Simulation)
     data = SimData(sim.t[], sim.y)
@@ -399,6 +490,7 @@ function start!(input::SimInput{D}) where {D}
                 break
             end
 
+            yield()
             IODevices.update_input!(device)
 
             @lock io_lock IODevices.assign_input!(system, device, mapping)
@@ -444,6 +536,7 @@ function start!(output::SimOutput{D}) where {D}
 
             output = take!(channel) #blocks until simulation writes new data
             IODevices.process_output!(device, output)
+            yield()
 
         end
 
@@ -490,6 +583,7 @@ function start!(gui::SimGUI)
                 break
             end
 
+            yield()
             @lock io_lock GUI.update!(renderer)
         end
 
@@ -561,7 +655,7 @@ function start!(sim::Simulation)
                     control.dt = integrator.dt
                     control.iter = integrator.iter
                     control.t = sim.t[]
-                    control.τ = τ_last
+                    control.τ = τ()
                 unlock(io_lock)
 
                 if !running

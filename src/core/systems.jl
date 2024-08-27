@@ -80,25 +80,27 @@ end
 ################################################################################
 ################################### System #####################################
 
-const XType = Union{Nothing, AbstractVector{Float64}}
+#D type parameter is needed for dispatching, the rest for type stability.
+#mutability required for y updates; reassigning any other field is disallowed to
+#avoid breaking the references with the subsystem hierarchy
 
-#needs the SD type parameter for dispatch, the rest for type stability
-#must be mutable to allow y updates
-mutable struct System{SD <: SystemDefinition, X <: XType, Y, U, S, P, B}
-    ẋ::X #continuous state derivative
-    x::X #continuous state
+#storing t as a RefValue allows implicit propagation of t updates down the
+#subsystem hierarchy
+
+mutable struct System{D <: SystemDefinition, Y, U, X, S, C, B}
     y::Y #output
-    u::U #control input
-    s::S #discrete state
-    t::Base.RefValue{Float64} #allows implicit propagation of t updates down the subsystem hierarchy
-    constants::P
-    subsystems::B
+    const u::U #input
+    const ẋ::X #continuous state derivative
+    const x::X #continuous state
+    const s::S #discrete state
+    const t::Base.RefValue{Float64} #simulation time
+    const constants::C
+    const subsystems::B
 end
 
 
 function System(sd::SystemDefinition,
-                ẋ = Ẋ(sd), x = X(sd), y = Y(sd),
-                u = U(sd), s = S(sd), t = Ref(0.0))
+                y = Y(sd), u = U(sd), ẋ = Ẋ(sd), x = X(sd), s = S(sd), t = Ref(0.0))
 
     #construct subsystems from those fields of sd which are themselves
     #SystemDefinitions
@@ -110,7 +112,7 @@ function System(sd::SystemDefinition,
 
         child_definition = getproperty(sd, child_name)
 
-        child_properties = map((ẋ, x, y, u, s), (Ẋ, X, Y, U, S)) do parent, trait
+        child_properties = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent, trait
             if !isnothing(parent) && (child_name in propertynames(parent))
                 getproperty(parent, child_name)
             else
@@ -128,8 +130,8 @@ function System(sd::SystemDefinition,
     constants = NamedTuple(n=>getfield(sd, n) for n in propertynames(sd) if !(n in children_names))
     constants = (!isempty(constants) ? constants : nothing)
 
-    sys = System{map(typeof, (sd, x, y, u, s, constants, subsystems))...}(
-                    ẋ, x, y, u, s, t, constants, subsystems)
+    sys = System{map(typeof, (sd, y, u, x, s, constants, subsystems))...}(
+                    y, u, ẋ, x, s, t, constants, subsystems)
 
     init!(sys)
 
@@ -145,9 +147,7 @@ function reset!(sys::System)
     end
 end
 
-
 Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
-Base.setproperty!(sys::System, name::Symbol, value) = setproperty!(sys, Val(name), value)
 
 @generated function Base.getproperty(sys::System, ::Val{S}) where {S}
     if S ∈ fieldnames(System)
@@ -157,17 +157,9 @@ Base.setproperty!(sys::System, name::Symbol, value) = setproperty!(sys, Val(name
     end
 end
 
-#disallow setting any System field other than y to avoid breaking the references
-#with its subsystems' fields
-@generated function Base.setproperty!(sys::System, ::Val{S}, value) where {S}
-    if S === :y
-        return :(setfield!(sys, $(QuoteNode(S)), value))
-    else
-        return :(error("A System's $S cannot be reassigned, only mutated in place"))
-    end
-end
 
-######################## f_ode! f_step! f_disc! ############################
+################################################################################
+######################## f_ode! f_step! f_disc! ################################
 
 #f_ode! must update sys.ẋ, compute and reassign sys.y, then return nothing
 
@@ -179,15 +171,16 @@ end
 #fallback. this has potential to cause subtle bugs. a test using @which should
 #be used to confirm that the desired method is indeed being dispatched to!
 
-#fallback method for node Systems. tries calling f_ode! on all subsystems with
-#the same arguments provided to the parent System, then assembles a NamedTuple
-#from the subsystems' outputs. override as required.
-@inline function (f_ode!(sys::System{SD, X, Y, U, S, P, B}, args...)
-                where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
+#note: for some reason, map and foreach tend to allocate as the recursion
+#reaches further down the subsystem hierarchy
 
 
-    #for some reason, map and foreach allocate when the recursion reaches
-    #further down the subsystem hierarchy
+############################ Fallback methods ##################################
+
+#tries calling f_ode! on all subsystems with the same arguments provided to the
+#parent System, then assembles a NamedTuple from the subsystems' outputs.
+#override as required.
+@inline function f_ode!(sys::System, args...)
     # sys.subsystems |> keys |> println
     for ss in sys.subsystems
         f_ode!(ss, args...)
@@ -197,15 +190,10 @@ end
 
 end
 
-#fallback method for node Systems. tries calling f_disc! on all subsystems with
-#the same arguments provided to the parent System. also updates y, since f_disc!
-#is where discrete Systems are expected to update their output. override as
-#required.
-@inline function (f_disc!(sys::System{SD, X, Y, U, S, P, B}, Δt, args...)
-                    where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
-
-    #for some reason, map and foreach allocate when the recursion reaches
-    #further down the subsystem hierarchy
+#tries calling f_disc! on all subsystems with the same arguments provided to the
+#parent System. also updates y, since f_disc! is where discrete Systems are
+#expected to update their output. override as required.
+@inline function f_disc!(sys::System, Δt, args...)
     # sys.subsystems |> keys |> println
     for ss in sys.subsystems
         f_disc!(ss, Δt, args...)
@@ -215,15 +203,9 @@ end
 
 end
 
-#fallback method for node Systems. tries calling f_step! on all subsystems with
-#the same arguments provided to the parent System. does NOT update y. override
-#as required
-@inline function (f_step!(sys::System{SD, X, Y, U, S, P, B}, args...)
-                    where {SD <: SystemDefinition, X <: XType, Y, U, S, P, B})
-
-    #for some reason, map and foreach allocate when the recursion reaches
-    #further down the subsystem hierarchy
-    # sys.subsystems |> keys |> println
+#tries calling f_step! on all subsystems with the same arguments provided to the
+#parent System. does NOT update y. override as required
+@inline function f_step!(sys::System, args...)
     for ss in sys.subsystems
         f_step!(ss, args...)
     end
@@ -231,18 +213,20 @@ end
 
 end
 
-#fallback for Systems with generic output
-@inline function (assemble_y!(sys::System{SD, X, Y})
-    where {SD <: SystemDefinition, X, Y})
-end
-
-#fallback for Systems with NamedTuple output
-@inline function (assemble_y!(sys::System{SD, X, Y})
-    where {SD <: SystemDefinition, X, Y <: NamedTuple{L, M}} where {L, M})
+#fallback method for node Systems with NamedTuple output
+@inline function (assemble_y!(sys::System{D, Y})
+    where {D <: SystemDefinition, Y <: NamedTuple{L, M}} where {L, M})
 
     ys = map(id -> getproperty(sys.subsystems[id], :y), L)
     sys.y = NamedTuple{L}(ys)
 
+end
+
+@inline function assemble_y!(sys::System{D}) where {D}
+    if !isempty(sys.subsystems)
+        error("An assemble_y! method must be explicitly implemented for node "*
+        "Systems with an output type other than NamedTuple, $D doesn't have one")
+    end
 end
 
 
@@ -258,7 +242,7 @@ end
     end
 end
 
-SystemTreeNode(::Type{SD}) where {SD <: SystemDefinition} = SystemTreeNode(type = SD)
+SystemTreeNode(::Type{D}) where {D <: SystemDefinition} = SystemTreeNode(type = D)
 
 function AbstractTrees.children(node::SystemTreeNode)
     return [SystemTreeNode(name, type) for (name, type) in zip(
@@ -270,10 +254,10 @@ function AbstractTrees.printnode(io::IO, node::SystemTreeNode)
     print(io, ":"*string(node.label)*" ($(node.type))")
 end
 
-AbstractTrees.print_tree(sd::Type{SD}; kwargs...) where {SD <: SystemDefinition} =
+AbstractTrees.print_tree(sd::Type{D}; kwargs...) where {D <: SystemDefinition} =
     print_tree(SystemTreeNode(sd); kwargs...)
 
-AbstractTrees.print_tree(::SD; kwargs...) where {SD <: SystemDefinition} = print_tree(SD; kwargs...)
-AbstractTrees.print_tree(::System{SD}; kwargs...) where {SD} = print_tree(SD; kwargs...)
+AbstractTrees.print_tree(::D; kwargs...) where {D <: SystemDefinition} = print_tree(D; kwargs...)
+AbstractTrees.print_tree(::System{D}; kwargs...) where {D} = print_tree(D; kwargs...)
 
 end #module

@@ -38,6 +38,8 @@ Systems.Y(harness::TestHarness) = (thruster = Systems.Y(harness.thruster),)
 function Systems.f_ode!(harness::System{<:TestHarness})
     @unpack air_data, kin_data, fuel_available = harness.u
     f_ode!(harness.thruster, air_data, kin_data)
+    assemble_y!(harness)
+    #alternatively, harness.y = (thruster = thruster.y,)
 end
 
 function Systems.f_step!(harness::System{<:TestHarness})
@@ -45,6 +47,7 @@ function Systems.f_step!(harness::System{<:TestHarness})
     f_step!(harness.thruster, fuel_available)
 end
 
+Systems.f_disc!(::System{<:TestHarness}, ::Real) = nothing
 
 ################################################################################
 
@@ -257,7 +260,6 @@ function test_thruster_response()
         @test_throws AssertionError PistonThruster(
             propeller = Propeller(sense = Propellers.CCW),
             gear_ratio = 1)
-
 
         ################### Variable pitch CCW thruster ########################
 
