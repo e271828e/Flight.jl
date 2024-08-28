@@ -71,41 +71,15 @@ function GUI.draw!(control::SimControl)
 end
 
 ################################################################################
-################################ SimInput ######################################
+############################### SimInterface ###################################
 
-struct SimInput{D <: InputDevice,  M <: InputMapping, S}
+struct SimInterface{D <: IODevice, T, M <: IOMapping}
     device::D
-    mapping::M #selected device-to-target mapping, used for dispatch on assign_input!
-    system::S #target System for input assignment
+    channel::Channel{T}
+    mapping::M
     control::SimControl
     io_start::Base.Event
     io_lock::ReentrantLock
-end
-
-
-################################################################################
-############################### SimOutput ######################################
-
-struct SimOutput{D <: OutputDevice, C <: Channel}
-    device::D
-    channel::C #channel to which Simulation's output will be put!
-    control::SimControl
-    io_start::Base.Event
-    io_lock::ReentrantLock
-end
-
-#for buffered channels, isready returns 1 if there is at least one value in the
-#channel. our channel is of length 1. if it contains 1 value and we try to put!
-#another, the simulation loop will block. to avoid this, we should only put! if
-#the channel !isready
-@inline function put_no_wait!(channel::Channel{T}, data::T) where {T}
-    lock(channel) #ensure Channel is not modified while we're checking its state
-        (isopen(channel) && !isready(channel)) && put!(channel, data)
-    unlock(channel)
-end
-
-@inline function put_no_wait!(output::SimOutput, data)
-    put_no_wait!(output.channel, data)
 end
 
 
@@ -128,91 +102,8 @@ end
     y::Y #System's y
 end
 
-################################################################################
-############################# Simulation #######################################
-
-struct SimulationNew{D <: SystemDefinition, Y, I <: ODEIntegrator}
-    sys::System{D, Y}
-    integrator::I
-    log::SavedValues{Float64, Y}
-    gui::SimGUI
-    control::SimControl
-    io_start::Base.Event #to be waited on by IO devices and GUI before entering their update loops
-    io_lock::ReentrantLock #to be acquired before modifying the simulated System or SimControl
-    inputs::Vector{SimInput}
-    outputs::Vector{SimOutput}
-
-    function SimulationNew(
-        sys::System{D, Y};
-        sys_init!::Function = Systems.init!, #default System initialization function
-        user_callback!::Function = user_callback!, #user-specified callback
-        algorithm::OrdinaryDiffEqAlgorithm = RK4(),
-        adaptive::Bool = false,
-        dt::Real = 0.02, #continuous dynamics integration step
-        Δt::Real = 0.02, #discrete dynamics execution period (do not set to Inf!)
-        t_start::Real = 0.0,
-        t_end::Real = 10.0,
-        save_on::Bool = true,
-        saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
-        save_everystep::Bool = isempty(saveat),
-        save_start::Bool = true,
-        save_end::Bool = false,
-        ) where {D, Y}
-
-        @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
-                                        than the discrete dynamics update period"
-
-        params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!, Δt = Δt)
-
-        cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
-        cb_disc = PeriodicCallback(f_cb_disc!, Δt)
-        cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
-
-        #before initializing the log, compute and assign y, so its initial value
-        #is consistent with x, u and s
-        f_ode!(sys)
-        log = SavedValues(Float64, Y)
-        saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
-        cb_save = SavingCallback(f_cb_save, log; saveat, save_everystep, save_start, save_end)
-
-        if save_on
-            cb_set = CallbackSet(cb_step, cb_disc, cb_user, cb_save)
-        else
-            cb_set = CallbackSet(cb_step, cb_disc, cb_user)
-        end
-
-        #the current System's x value is used as initial condition. a copy is
-        #needed, otherwise it's just a reference and will get overwritten during
-        #simulation. if the System has no continuous state, provide a dummy one
-        x0 = (has_x(sys) ? copy(sys.x) : [0.0])
-        problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
-        integrator = init_integrator(problem, algorithm; save_on = false,
-                                     callback = cb_set, adaptive, dt)
-
-        #save_on = false because we are not interested in logging the plain
-        #System's state vector; everything we need to know about the System
-        #should be made available in its (immutable) output y, logged via
-        #SavingCallback
-        control = SimControl()
-        io_start = Base.Event()
-        io_lock = ReentrantLock()
-
-        f_draw = let control = control, sys = sys
-            () -> GUI.draw!(control, sys)
-        end
-
-        #the GUI Renderer's refresh rate must be uncapped (no VSync), so that
-        #calls to GUI.update!() return immediately without blocking and
-        #therefore do not interfere with simulation stepping
-        gui = SimGUI(Renderer(; label = "Simulation", sync = UInt8(0), f_draw),
-                    control, io_start, io_lock)
-
-        new{D, Y, typeof(integrator)}(
-            sys, integrator, log, gui, control, io_start, io_lock,
-            SimInput[], SimOutput[])
-    end
-
-end
+# ################################################################################
+# ############################# Simulation #######################################
 
 
 struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
@@ -223,8 +114,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
     control::SimControl
     io_start::Base.Event #to be waited on by IO devices and GUI before entering their update loops
     io_lock::ReentrantLock #to be acquired before modifying the simulated System or SimControl
-    inputs::Vector{SimInput}
-    outputs::Vector{SimOutput}
+    interfaces::Vector{SimInterface}
 
     function Simulation(
         sys::System;
@@ -292,8 +182,7 @@ struct Simulation{S <: System, I <: ODEIntegrator, L <: SavedValues, Y}
                     control, io_start, io_lock)
 
         new{typeof(sys), typeof(integrator), typeof(log), typeof(sys.y)}(
-            sys, integrator, log, gui, control, io_start, io_lock,
-            SimInput[], SimOutput[])
+            sys, integrator, log, gui, control, io_start, io_lock, SimInterface[])
     end
 
 end
@@ -317,41 +206,23 @@ user_callback!(::System) = nothing
 
 ################################ I/O ###########################################
 
-#attaches an input device to the Simulation, enabling it to safely modify the
-#System's input
-function attach!(sim::Simulation, device::InputDevice;
-                    mapping::InputMapping = DefaultMapping())
+#the Channel for an OutputInterface must be buffered (size > 0), so that the
+#Simulation thread can write at least one output data item without blocking.
+#this is because there is no straightforward way to check whether the output
+#thread is blocked on a take! call to the output Channel. in contrast, the
+#Channel for an InputInterface could be unbuffered (although it does not have to
+#be), because by calling isready the simulation loop can tell whether the input
+#thread is already blocked on a put! call on that Channel, and may therefore
+#take! from it without blocking
 
-    input = SimInput(device, mapping, sim.sys, sim.control, sim.io_start, sim.io_lock)
-    push!(sim.inputs, input)
+function attach!(sim::Simulation, device::IODevice,
+                 mapping::IOMapping = DefaultMapping())
 
-end
+    interface = SimInterface(device, Channel(device, 1), mapping,
+                            sim.control, sim.io_start, sim.io_lock)
 
-#attaches an output device to the Simulation, linking it to a dedicated channel
-#for simulation output data. on each step, the simulation loop will try to write
-#the updated output data on each output channel. if any of the output devices
-#still has not consumed the item from the previous step, the simulation thread
-#would potentially block. to avoid this, the simulation should only write to the
-#channel when it has no data pending, that is, when !isready(channel). for this
-#to work, the channel must be buffered
-function attach!(sim::Simulation, device::OutputDevice)
-    channel = Channel{SimData{typeof(sim.sys.y)}}(1)
-    output = SimOutput(device, channel, sim.control, sim.io_start, sim.io_lock)
-    push!(sim.outputs, output)
-end
+    push!(sim.interfaces, interface)
 
-function attach!(sim::SimulationNew{D, Y}, device::OutputDevice) where {D, Y}
-    channel = Channel{SimData{Y}}(1)
-    output = SimOutput(device, channel, sim.control, sim.io_start, sim.io_lock)
-    push!(sim.outputs, output)
-end
-
-
-function write_data!(sim::Simulation)
-    data = SimData(sim.t[], sim.y)
-    for output in sim.outputs
-        put_no_wait!(output, data)
-    end
 end
 
 
@@ -465,98 +336,9 @@ end
 
 
 ################################################################################
-################################## Loops #######################################
+############################# Threaded loops ###################################
 
-################################ SimInput ######################################
-
-function start!(input::SimInput{D}) where {D}
-
-    @unpack device, mapping, system, control, io_start, io_lock = input
-
-    @info("$D: Starting on thread $(Threads.threadid())...")
-
-    try
-
-        IODevices.init!(device)
-
-        @info("$D: Waiting for Simulation...")
-        wait(io_start)
-        @info("$D: Running...")
-
-        while true
-
-            if !(@lock io_lock control.running) || IODevices.should_close(device)
-                @info("$D: Shutting down...")
-                break
-            end
-
-            yield()
-            IODevices.update_input!(device)
-
-            @lock io_lock IODevices.assign_input!(system, device, mapping)
-
-        end
-
-    catch ex
-
-        @error("$D: Error during execution: $ex")
-
-    finally
-        IODevices.shutdown!(device)
-        @info("$D: Closed")
-    end
-
-end
-
-
-################################ SimOutput #####################################
-
-#the update rate for an output device is implicitly controlled by the simulation
-#loop. the call to take! below will block until the simulation writes new data
-function start!(output::SimOutput{D}) where {D}
-
-    @unpack device, channel, control, io_start, io_lock = output
-
-    @info("$D: Starting on thread $(Threads.threadid())...")
-
-    try
-
-        IODevices.init!(device)
-
-        @info("$D: Waiting for Simulation...")
-        wait(io_start)
-        @info("$D: Running...")
-
-        while true
-
-            if !(@lock io_lock control.running) || IODevices.should_close(device)
-                @info("$D: Shutting down...")
-                break
-            end
-
-            output = take!(channel) #blocks until simulation writes new data
-            IODevices.process_output!(device, output)
-            yield()
-
-        end
-
-    catch ex
-
-        if ex isa InvalidStateException
-            @info("$D: Channel closed")
-        else
-            @error("$D: Error during execution: $ex")
-        end
-
-    finally
-        IODevices.shutdown!(device)
-        @info("$D: Closed")
-    end
-
-end
-
-
-################################## SimGUI ######################################
+################################ SimGUI ########################################
 
 function start!(gui::SimGUI)
 
@@ -583,6 +365,10 @@ function start!(gui::SimGUI)
                 break
             end
 
+            #we need a yield here, because the GUI thread never sleeps or blocks
+            #by itself, and therefore tends to slow down the simulation thread.
+            #this is because the framerate is uncapped, precisely to prevent the
+            #GUI thread from blocking for VSync while holding the sys_lock
             yield()
             @lock io_lock GUI.update!(renderer)
         end
@@ -604,6 +390,60 @@ function start!(gui::SimGUI)
 end
 
 
+################################ SimInterface ##################################
+
+function start!(interface::SimInterface{D}) where {D <: InputDevice}
+
+    @unpack device, channel, mapping, control, io_start, io_lock = interface
+
+    @info("$D: Starting on thread $(Threads.threadid())...")
+
+    try
+
+        IODevices.init!(device)
+
+        @info("$D: Waiting for Simulation...")
+        wait(io_start)
+        @info("$D: Running...")
+
+        while true
+
+            if !(@lock io_lock control.running) || IODevices.should_close(device)
+                @info("$D: Shutting down...")
+                break
+            end
+
+            #we need a yield, because this loop is not guaranteed to block at
+            #any point, and therefore could slow down the simulation thread
+            yield()
+            update!(device, channel)
+
+        end
+
+    catch ex
+
+        @error("$D: Error during execution: $ex")
+
+    finally
+        IODevices.shutdown!(device)
+        @info("$D: Closed")
+    end
+
+end
+
+function update!(device::InputDevice, channel::Channel)
+    #this may block, either on get_data because the InputDevice is itself
+    #blocked, or on put! because the Simulation has yet to take!
+    put!(channel, get_data(device))
+end
+
+function update!(device::OutputDevice, channel::Channel)
+    #this may block, either on handle_data because the OutputDevice is itself
+    #blocked, or on take! because the Simulation loop has yet to put!
+    handle_data(device, take!(channel))
+end
+
+
 ################################ Simulation ####################################
 
 #compare the following:
@@ -620,11 +460,14 @@ end
 
 function start!(sim::Simulation)
 
-    @unpack integrator, gui, control, io_start, io_lock = sim
+    @unpack sys, integrator, gui, control, io_start, io_lock, interfaces = sim
 
     try
 
-        isdone_err(sim)
+        if isempty(sim.integrator.opts.tstops)
+            @error("Simulation has hit its end time, call reinit! ",
+                   "or add further tstops using add_tstop!")
+        end
 
         τ = let wall_time_ref = time()
             ()-> time() - wall_time_ref
@@ -632,6 +475,7 @@ function start!(sim::Simulation)
 
         t_start = integrator.sol.prob.tspan[1]
         t_end = integrator.sol.prob.tspan[2]
+
         lock(io_lock)
             control.running = true
             control.paused = false
@@ -672,8 +516,7 @@ function start!(sim::Simulation)
                 while τ_next > τ() end #busy wait (should do better, but it's not that easy)
 
                 @lock io_lock step!(sim)
-
-                write_data!(sim)
+                update!.(interfaces, sys)
 
                 τ_last = τ_next
 
@@ -698,7 +541,7 @@ end
 
 function sim_cleanup!(sim::Simulation)
 
-    @unpack control, io_start, io_lock = sim
+    @unpack sys, control, io_start, io_lock = sim
 
     #if the simulation ran to conclusion, signal IO threads to shut down
     @lock io_lock begin
@@ -710,18 +553,67 @@ function sim_cleanup!(sim::Simulation)
     notify(io_start)
     reset(io_start)
 
-    #unblock any SimOutputs waiting for a take!
-    write_data!(sim)
+    #unblock any SimInterface waiting on a put! or a take! so it can reach its
+    #loop's break
+    update!.(sys, interfaces)
 
 end
 
 
-function isdone_err(sim::Simulation)
-    isempty(sim.integrator.opts.tstops) &&
-    @error("Simulation has hit its end time, call reinit! ",
-            "or add further tstops using add_tstop!")
+function update!(interface::SimInterface{<:InputDevice}, sys::System)
+    @unpack channel, mapping = interface
+    data = take_nonblocking!(channel)
+    !isnothing(data) && assign_input!(sys, data, mapping)
 end
 
+
+function update!(interface::SimInterface{<:OutputDevice}, sys::System)
+    @unpack channel, mapping = interface
+    data = extract_output(sys, mapping)
+    put_nonblocking!(channel, data)
+end
+
+
+#for every InputDevice it wants to support, the System should at least extend
+#this with a ::DefaultMapping argument. for alternative mappings, it can define
+#additional subtypes of IOMapping and their corresponding methods
+function assign_input!(sys::System, data::Any, mapping::IOMapping)
+    MethodError(assign_input, (sys, data, mapping)) |> throw
+end
+
+
+#for every OutputDevice it wants to support, the System should at least extend
+#this with a ::DefaultMapping argument. for alternative mappings, it can define
+#additional subtypes of IOMapping and their corresponding methods
+function extract_output(sys::System, mapping::IOMapping)
+    MethodError(extract_output, (sys, input, mapping)) |> throw
+end
+
+
+function take_nonblocking!(channel::Channel)
+    #unlike lock, trylock avoids blocking if the Channel is already locked,
+    #while also ensuring it is not modified while we're checking its state
+    if trylock(channel)
+        data = (isready(channel) ? take!(channel) : nothing)
+        unlock(channel)
+    end
+    return data
+end
+
+
+function put_nonblocking!(channel::Channel{T}, data::T) where {T}
+    #unlike lock, trylock avoids blocking if the Channel is already locked,
+    #while also ensuring it is not modified while we're checking its state
+    if trylock(channel) #ensure Channel is not modified while we're checking its state
+        (isopen(channel) && !isready(channel)) && put!(channel, data)
+        unlock(channel)
+    end
+end
+
+
+
+################################################################################
+############################### Execution ######################################
 
 #apparently, if a task is launched from the main thread and it doesn't ever
 #block, no other thread will get CPU time until it's done. threfore, we should
@@ -733,8 +625,8 @@ function run!(sim::Simulation)
     sim.control.pace = Inf
 
     @sync begin
-        for output in sim.outputs
-            Threads.@spawn start!(output)
+        for interface in sim.interfaces
+            Threads.@spawn start!(interface)
         end
         Threads.@spawn start!(sim)
     end
@@ -746,11 +638,8 @@ function run_interactive!(sim::Simulation; pace = 1.0)
     sim.control.pace = pace
 
     @sync begin
-        for input in sim.inputs
-            Threads.@spawn start!(input)
-        end
-        for output in sim.outputs
-            Threads.@spawn start!(output)
+        for interface in sim.interfaces
+            Threads.@spawn start!(interface)
         end
         Threads.@spawn start!(sim.gui)
         Threads.@spawn start!(sim)
@@ -825,3 +714,85 @@ TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
 
 
 end #module
+
+
+# struct SimulationNew{D <: SystemDefinition, Y, I <: ODEIntegrator}
+#     sys::System{D, Y}
+#     integrator::I
+#     log::SavedValues{Float64, Y}
+#     gui::SimGUI
+#     control::SimControl
+#     io_start::Base.Event #to be waited on by IO devices and GUI before entering their update loops
+#     io_lock::ReentrantLock #to be acquired before modifying the simulated System or SimControl
+#     interfaces::Vector{SimInterface}
+
+#     function SimulationNew(
+#         sys::System{D, Y};
+#         sys_init!::Function = Systems.init!, #default System initialization function
+#         user_callback!::Function = user_callback!, #user-specified callback
+#         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
+#         adaptive::Bool = false,
+#         dt::Real = 0.02, #continuous dynamics integration step
+#         Δt::Real = 0.02, #discrete dynamics execution period (do not set to Inf!)
+#         t_start::Real = 0.0,
+#         t_end::Real = 10.0,
+#         save_on::Bool = true,
+#         saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
+#         save_everystep::Bool = isempty(saveat),
+#         save_start::Bool = true,
+#         save_end::Bool = false,
+#         ) where {D, Y}
+
+#         @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
+#                                         than the discrete dynamics update period"
+
+#         params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!, Δt = Δt)
+
+#         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
+#         cb_disc = PeriodicCallback(f_cb_disc!, Δt)
+#         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
+
+#         #before initializing the log, compute and assign y, so its initial value
+#         #is consistent with x, u and s
+#         f_ode!(sys)
+#         log = SavedValues(Float64, Y)
+#         saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
+#         cb_save = SavingCallback(f_cb_save, log; saveat, save_everystep, save_start, save_end)
+
+#         if save_on
+#             cb_set = CallbackSet(cb_step, cb_disc, cb_user, cb_save)
+#         else
+#             cb_set = CallbackSet(cb_step, cb_disc, cb_user)
+#         end
+
+#         #the current System's x value is used as initial condition. a copy is
+#         #needed, otherwise it's just a reference and will get overwritten during
+#         #simulation. if the System has no continuous state, provide a dummy one
+#         x0 = (has_x(sys) ? copy(sys.x) : [0.0])
+#         problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
+#         integrator = init_integrator(problem, algorithm; save_on = false,
+#                                      callback = cb_set, adaptive, dt)
+
+#         #save_on = false because we are not interested in logging the plain
+#         #System's state vector; everything we need to know about the System
+#         #should be made available in its (immutable) output y, logged via
+#         #SavingCallback
+#         control = SimControl()
+#         io_start = Base.Event()
+#         io_lock = ReentrantLock()
+
+#         f_draw = let control = control, sys = sys
+#             () -> GUI.draw!(control, sys)
+#         end
+
+#         #the GUI Renderer's refresh rate must be uncapped (no VSync), so that
+#         #calls to GUI.update!() return immediately without blocking and
+#         #therefore do not interfere with simulation stepping
+#         gui = SimGUI(Renderer(; label = "Simulation", sync = UInt8(0), f_draw),
+#                     control, io_start, io_lock)
+
+#         new{D, Y, typeof(integrator)}(
+#             sys, integrator, log, gui, control, io_start, io_lock, SimInterface[])
+#     end
+
+# end

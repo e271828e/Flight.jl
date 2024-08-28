@@ -3,6 +3,7 @@ module TestSim
 using Flight.FlightCore
 
 export test_sim_standalone
+
 ################################################################################
 ############################### FirstOrder #####################################
 
@@ -32,6 +33,61 @@ function Systems.f_disc!(sys::System{FirstOrder}, ::Real)
 end
 
 Systems.init!(sys::System{FirstOrder}, x0::Real = 0.0) = (sys.x .= x0)
+
+
+################################################################################
+################################# TestSystem ###################################
+
+#discrete system. it simply outputs simulation time and its IO-loopback echo
+@kwdef struct TestSystem <: SystemDefinition end
+
+@kwdef mutable struct TestSystemY
+    output::Float64 = 0.0
+    echo::Float64 = 0.0
+end
+
+Systems.U(::TestSystem) = Ref(0.0)
+Systems.Y(::TestSystem) = TestSystemY()
+
+function Systems.f_disc!(sys::TestSystem, ::Real)
+    @info sys.y
+    sys.y = TestSystemY(; output = sys.t[], echo = sys.u[])
+end
+
+
+################################################################################
+################################## TestInput ###################################
+
+#the internal Channel for this Device is NOT the one to be used by the SimInput
+#wrapper, it is meant to be shared with a TestOutput{T} to emulate a loopback
+@kwdef struct TestInput{T} <: InputDevice
+    channel::Channel{T} = Channel{T}()
+end
+
+IODevices.get_data(input::TestInput) = take!(input.channel)
+function Sim.assign_input!(sys::System{TestSystem}, data::Float64, ::DefaultMapping)
+    sys.u[] = data
+end
+
+Base.Channel(::TestInput{T}, size::Int) where {T} = Channel{T}(size)
+
+
+################################################################################
+################################## TestOutput ##################################
+
+@kwdef struct TestOutput{T} <: OutputDevice
+    channel::Channel{T} = Channel{T}()
+end
+
+IODevices.handle_data(output::TestOutput{T}, ::T) = put!(output.channel)
+function Sim.extract_output(sys::System{TestSystem}, data::Float64, ::DefaultMapping)
+    sys.u[] = data
+end
+
+Base.Channel(::TestOutput{T}, size::Int) where {T} = Channel{T}(size)
+
+
+
 
 
 function test_sim_standalone()
