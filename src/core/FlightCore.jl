@@ -8,7 +8,7 @@ include("iodevices.jl"); @reexport using .IODevices
 include("systems.jl"); @reexport using .Systems
 include("sim.jl"); @reexport using .Sim
 include("plotting.jl"); @reexport using .Plotting
-# include("networking.jl"); @reexport using .Networking
+include("network.jl"); @reexport using .Network
 # include("joysticks.jl"); @reexport using .Joysticks
 
 end

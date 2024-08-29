@@ -6,7 +6,7 @@ using Test, UnPack, BenchmarkTools, Sockets, JSON3
 using Flight.FlightCore
 using Flight.FlightCore.Sim
 using Flight.FlightCore.IODevices
-using Flight.FlightCore.Networking
+using Flight.FlightCore.Network
 
 using Flight.FlightPhysics
 using Flight.FlightComponents

@@ -73,109 +73,35 @@ function Systems.f_disc!(sys::System{<:TestSystem}, ::Real)
     sys.y = TestSystemY(; output = sys.u.output, echo = sys.u.echo)
 end
 
+struct UDPTestMapping <: IOMapping end
 
-################################################################################
-################################## TestInput ###################################
-
-@kwdef struct TestInput{T} <: InputDevice
-    channel::Channel{T} = Channel{T}(1)
+function Sim.assign_data!(sys::System{TestSystem}, data::Vector{UInt8}, ::UDPTestMapping)
+    @info "Got assigned $data"
 end
 
-IODevices.init!(::TestInput) = nothing
-IODevices.shutdown!(::TestInput) = nothing
-
-#may block on the loopback channel
-IODevices.get_data(input::TestInput) = Sim.take!(input.channel)
-
-function Sim.assign_input!(sys::System{TestSystem}, data::Float64, ::DefaultMapping)
-    sys.u.echo = data
-    # @show sys.u.echo
+function Sim.extract_data(sys::System{TestSystem}, ::UDPTestMapping)
+    data = UInt8[3, 2, 1]
+    @info "Extracting $data"
+    return data
 end
 
-Base.Channel(::TestInput{T}, size::Int) where {T} = Channel{T}(size)
+function basic_udp_loopback()
 
+    @testset verbose = true "UDP Loopback" begin
 
-################################################################################
-################################## TestOutput ##################################
-
-@kwdef struct TestOutput{T} <: OutputDevice
-    channel::Channel{T} = Channel{T}(1)
-end
-
-IODevices.init!(::TestOutput) = nothing
-IODevices.shutdown!(::TestOutput) = nothing
-
-#will NOT block on the loopback channel
-function IODevices.handle_data(output::TestOutput{T}, v::T) where {T}
-    Sim.put_nonblocking!(output.channel, v)
-end
-
-function Sim.extract_output(sys::System{TestSystem}, ::DefaultMapping)
-    # @show sys.y.output
-    return sys.y.output
-end
-
-Base.Channel(::TestOutput{T}, size::Int) where {T} = Channel{T}(size)
-
-################################################################################
-
-
-function test_basic_io()
-
-    @testset verbose = true "Channel loopback" begin
-
-        c = Channel{Float64}(1)
+        port = 14143
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
-        Sim.attach!(sim, TestInput(c))
-        Sim.attach!(sim, TestOutput(c))
+        Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
+        Sim.attach!(sim, UDPOutput(; port), UDPTestMapping())
         input_interface = sim.interfaces[1]
         output_interface = sim.interfaces[2]
-
-        step!(sim)
-        @test sim.y.output == 1.0
-        @test sim.y.echo == 0.0
-
-        #extracts sys.y.output as a Float64 and puts it into the output
-        #SimInterface's channel
-        Sim.update!(output_interface, sys)
-        @test isready(output_interface.channel)
-
-        #TestOutput takes this value from its parent SimInterface's channel and
-        #handles it, which here means putting it into the loopback Channel
-        Sim.update!(output_interface)
-        @test !isready(output_interface.channel)
-        @test isready(output_interface.device.channel)
-
-        #TestInput gets new input data, which here means taking it from the
-        #loopback Channel, and then puts it into its parent SimInterface's
-        #channel
-        Sim.update!(input_interface)
-        @test !isready(input_interface.device.channel)
-        @test isready(input_interface.channel)
-
-        #reads the pending input from the input SimInterface's channel and assigns
-        #it to the System as specified by the SimInterface's mapping
-        Sim.update!(input_interface, sys)
-        @test !isready(input_interface.channel)
-
-        @test sim.u.echo == 1.0
-        step!(sim)
-        @test sim.y.output == 2.0
-        @test sim.y.echo == 1.0
-
-        #run to completion
-        Sim.run!(sim)
-        #we should expect the echo value to have increased, but not necessarily
-        #to match output-1, because due to the non-blocking SimOutput policy
-        #some of the sim.y updates may be skipped
 
         return sim
 
     end
 
 end
-
 
 
 

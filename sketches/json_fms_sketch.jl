@@ -6,7 +6,7 @@ using StructTypes, JSON3
 using Flight
 using Flight.FlightCore.Sim
 using Flight.FlightCore.IODevices
-using Flight.FlightCore.Networking
+using Flight.FlightCore.Network
 using Flight.FlightAircraft.C172RPAv1
 
 export json_fms_sketch

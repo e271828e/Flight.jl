@@ -86,51 +86,45 @@ end
 const SimInput = SimInterface{<:InputDevice}
 const SimOutput = SimInterface{<:OutputDevice}
 
-#called from the SimInterface loop thread
-function update!(interface::SimInterface{<:InputDevice})
-    @unpack device, channel = interface
-    #this may block, either on get_data because the InputDevice is itself
-    #blocked, or on put! because the Simulation has yet to take!
-    put!(channel, IODevices.get_data(device))
+#called from the SimInterface loop thread. this may block, either on get_data
+#because the InputDevice is itself blocked, or on put! because the Simulation
+#has yet to take!
+function update!(input::SimInput)
+    put!(input.channel, IODevices.get_data(input.device))
 end
 
-#called from the SimInterface loop thread
-function update!(interface::SimInterface{<:OutputDevice})
-    @unpack device, channel = interface
-    #this may block, either on handle_data because the OutputDevice is itself
-    #blocked, or on take! because the Simulation loop has yet to put!
-    IODevices.handle_data(device, take!(channel))
+#called from the SimInterface loop thread. this may block, either on handle_data
+#because the OutputDevice is itself blocked, or on take! because the Simulation
+#loop has yet to put!
+function update!(output::SimOutput)
+    IODevices.handle_data(output.device, take!(output.channel))
 end
 
-#called from the Simulation loop thread
-function update!(interface::SimInterface{<:InputDevice}, sys::System)
-    @unpack channel, mapping = interface
-    data = take_nonblocking!(channel)
-    assign_input!(sys, data, mapping)
+#called from the Simulation loop thread, will never block
+function update!(input::SimInput, sys::System)
+    assign_data!(sys, take_nonblocking!(input.channel), input.mapping)
 end
 
-#called from the Simulation loop thread
-function update!(interface::SimInterface{<:OutputDevice}, sys::System)
-    @unpack channel, mapping = interface
-    data = extract_output(sys, mapping)
-    put_nonblocking!(channel, data)
+#called from the Simulation loop thread, will never block
+function update!(output::SimOutput, sys::System)
+    put_nonblocking!(output.channel, extract_data(sys, output.mapping))
 end
 
 #for every InputDevice it wants to support, the System should at least extend
 #this with a ::DefaultMapping argument. for alternative mappings, it can define
 #additional subtypes of IOMapping and their corresponding methods
-function assign_input!(sys::System, data::Any, mapping::IOMapping)
-    MethodError(assign_input, (sys, data, mapping)) |> throw
+function assign_data!(sys::System, data::Any, mapping::IOMapping)
+    MethodError(assign_data!, (sys, data, mapping)) |> throw
 end
 
-#fallback method in case the InputDevice returns nothing
-Sim.assign_input!(::System, ::Nothing, ::IOMapping) = nothing
+#fallback method in case get_data returns nothing
+Sim.assign_data!(::System, ::Nothing, ::IOMapping) = nothing
 
 #for every OutputDevice it wants to support, the System should at least extend
 #this with a ::DefaultMapping argument. for alternative mappings, it can define
 #additional subtypes of IOMapping and their corresponding methods
-function extract_output(sys::System, mapping::IOMapping)
-    MethodError(extract_output, (sys, input, mapping)) |> throw
+function extract_data(sys::System, mapping::IOMapping)
+    MethodError(extract_data, (sys, mapping)) |> throw
 end
 
 function take_nonblocking!(channel::Channel)
@@ -612,15 +606,18 @@ function sim_cleanup!(sim::Simulation)
         control.running = false
     end
 
-    #unblock any IO threads still waiting for Simulation start
-    notify(io_start)
     # reset(io_start)
     #maybe we should't call reset(io_start) immediately afterwards, because it
     #might be executed before all waiting threads have had time to unblock
 
+    #make sure all IO Channels are emptied so any IO threads do not block on
+    #them or they unblock if they were blocked
     for interface in interfaces
         update!(interface, sys)
     end
+
+    #unblock any IO threads still waiting for Simulation start
+    notify(io_start)
 
 end
 

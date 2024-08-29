@@ -4,7 +4,7 @@ using Test, UnPack, BenchmarkTools, Sockets
 
 using Flight.FlightCore
 using Flight.FlightCore.Sim
-using Flight.FlightCore.Networking
+using Flight.FlightCore.Network
 
 using Flight.FlightPhysics
 using Flight.FlightComponents

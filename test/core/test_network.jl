@@ -1,4 +1,4 @@
-module TestNetworking
+module TestNetwork
 
 using Test
 using Sockets, UnPack
@@ -7,7 +7,7 @@ using StructTypes, JSON3
 using Flight
 using Flight.FlightCore.Sim
 using Flight.FlightCore.IODevices
-using Flight.FlightCore.Networking
+using Flight.FlightCore.Network
 
 export test_json_loopback1
 

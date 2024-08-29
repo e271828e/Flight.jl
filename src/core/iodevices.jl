@@ -8,16 +8,16 @@ export IODevice, InputDevice, OutputDevice, IOMapping, DefaultMapping
 
 
 ################################################################################
-################################# IODevice #####################################
-
-abstract type IODevice end
+################################# IOMapping ####################################
 
 abstract type IOMapping end
 struct DefaultMapping <: IOMapping end
 
-# init!(device::D) where {D<:IODevice} = MethodError(init!, (device, )) |> throw
-# shutdown!(device::D) where {D<:IODevice} = MethodError(shutdown!, (device, )) |> throw
-# should_close(device::D) where {D<:IODevice} = MethodError(should_close, (device, )) |> throw
+################################################################################
+################################# IODevice #####################################
+
+abstract type IODevice end
+
 init!(::D) where {D<:IODevice} = nothing
 shutdown!(::D) where {D<:IODevice} = nothing
 should_close(::D) where {D<:IODevice} = false
