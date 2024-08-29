@@ -16,6 +16,7 @@ using ..GUI
 @reexport using OrdinaryDiffEq: step!, reinit!, add_tstop!, get_proposed_dt
 export Simulation, enable_gui!, disable_gui!, attach!
 export TimeSeries, get_time, get_data, get_components, get_child_names
+export take_nonblocking!, put_nonblocking!
 
 
 ################################################################################
@@ -81,6 +82,78 @@ struct SimInterface{D <: IODevice, T, M <: IOMapping}
     io_start::Base.Event
     io_lock::ReentrantLock
 end
+
+const SimInput = SimInterface{<:InputDevice}
+const SimOutput = SimInterface{<:OutputDevice}
+
+#called from the SimInterface loop thread
+function update!(interface::SimInterface{<:InputDevice})
+    @unpack device, channel = interface
+    #this may block, either on get_data because the InputDevice is itself
+    #blocked, or on put! because the Simulation has yet to take!
+    put!(channel, IODevices.get_data(device))
+end
+
+#called from the SimInterface loop thread
+function update!(interface::SimInterface{<:OutputDevice})
+    @unpack device, channel = interface
+    #this may block, either on handle_data because the OutputDevice is itself
+    #blocked, or on take! because the Simulation loop has yet to put!
+    IODevices.handle_data(device, take!(channel))
+end
+
+#called from the Simulation loop thread
+function update!(interface::SimInterface{<:InputDevice}, sys::System)
+    @unpack channel, mapping = interface
+    data = take_nonblocking!(channel)
+    assign_input!(sys, data, mapping)
+end
+
+#called from the Simulation loop thread
+function update!(interface::SimInterface{<:OutputDevice}, sys::System)
+    @unpack channel, mapping = interface
+    data = extract_output(sys, mapping)
+    put_nonblocking!(channel, data)
+end
+
+#for every InputDevice it wants to support, the System should at least extend
+#this with a ::DefaultMapping argument. for alternative mappings, it can define
+#additional subtypes of IOMapping and their corresponding methods
+function assign_input!(sys::System, data::Any, mapping::IOMapping)
+    MethodError(assign_input, (sys, data, mapping)) |> throw
+end
+
+#fallback method in case the InputDevice returns nothing
+Sim.assign_input!(::System, ::Nothing, ::IOMapping) = nothing
+
+#for every OutputDevice it wants to support, the System should at least extend
+#this with a ::DefaultMapping argument. for alternative mappings, it can define
+#additional subtypes of IOMapping and their corresponding methods
+function extract_output(sys::System, mapping::IOMapping)
+    MethodError(extract_output, (sys, input, mapping)) |> throw
+end
+
+function take_nonblocking!(channel::Channel)
+    #unlike lock, trylock avoids blocking if the Channel is already locked,
+    #while also ensuring it is not modified while we're checking its state
+    if trylock(channel)
+        data = (isready(channel) ? take!(channel) : nothing)
+        unlock(channel)
+        return data
+    else
+        return nothing
+    end
+end
+
+function put_nonblocking!(channel::Channel{T}, data::T) where {T}
+    #unlike lock, trylock avoids blocking if the Channel is already locked,
+    #while also ensuring it is not modified while we're checking its state
+    if trylock(channel) #ensure Channel is not modified while we're checking its state
+        (isopen(channel) && !isready(channel)) && put!(channel, data)
+        unlock(channel)
+    end
+end
+
 
 
 ################################################################################
@@ -392,9 +465,9 @@ end
 
 ################################ SimInterface ##################################
 
-function start!(interface::SimInterface{D}) where {D <: InputDevice}
+function start!(interface::SimInterface{D}) where {D <: IODevice}
 
-    @unpack device, channel, mapping, control, io_start, io_lock = interface
+    @unpack device, control, io_start, io_lock = interface
 
     @info("$D: Starting on thread $(Threads.threadid())...")
 
@@ -416,7 +489,7 @@ function start!(interface::SimInterface{D}) where {D <: InputDevice}
             #we need a yield, because this loop is not guaranteed to block at
             #any point, and therefore could slow down the simulation thread
             yield()
-            update!(device, channel)
+            update!(interface)
 
         end
 
@@ -429,18 +502,6 @@ function start!(interface::SimInterface{D}) where {D <: InputDevice}
         @info("$D: Closed")
     end
 
-end
-
-function update!(device::InputDevice, channel::Channel)
-    #this may block, either on get_data because the InputDevice is itself
-    #blocked, or on put! because the Simulation has yet to take!
-    put!(channel, get_data(device))
-end
-
-function update!(device::OutputDevice, channel::Channel)
-    #this may block, either on handle_data because the OutputDevice is itself
-    #blocked, or on take! because the Simulation loop has yet to put!
-    handle_data(device, take!(channel))
 end
 
 
@@ -516,7 +577,9 @@ function start!(sim::Simulation)
                 while τ_next > τ() end #busy wait (should do better, but it's not that easy)
 
                 @lock io_lock step!(sim)
-                update!.(interfaces, sys)
+                for interface in interfaces
+                    update!(interface, sys)
+                end
 
                 τ_last = τ_next
 
@@ -541,7 +604,7 @@ end
 
 function sim_cleanup!(sim::Simulation)
 
-    @unpack sys, control, io_start, io_lock = sim
+    @unpack sys, control, io_start, io_lock, interfaces = sim
 
     #if the simulation ran to conclusion, signal IO threads to shut down
     @lock io_lock begin
@@ -549,67 +612,17 @@ function sim_cleanup!(sim::Simulation)
         control.running = false
     end
 
-    #unblock any IO threads still waiting for Simulation start, then reset event
+    #unblock any IO threads still waiting for Simulation start
     notify(io_start)
-    reset(io_start)
+    # reset(io_start)
+    #maybe we should't call reset(io_start) immediately afterwards, because it
+    #might be executed before all waiting threads have had time to unblock
 
-    #unblock any SimInterface waiting on a put! or a take! so it can reach its
-    #loop's break
-    update!.(sys, interfaces)
-
-end
-
-
-function update!(interface::SimInterface{<:InputDevice}, sys::System)
-    @unpack channel, mapping = interface
-    data = take_nonblocking!(channel)
-    !isnothing(data) && assign_input!(sys, data, mapping)
-end
-
-
-function update!(interface::SimInterface{<:OutputDevice}, sys::System)
-    @unpack channel, mapping = interface
-    data = extract_output(sys, mapping)
-    put_nonblocking!(channel, data)
-end
-
-
-#for every InputDevice it wants to support, the System should at least extend
-#this with a ::DefaultMapping argument. for alternative mappings, it can define
-#additional subtypes of IOMapping and their corresponding methods
-function assign_input!(sys::System, data::Any, mapping::IOMapping)
-    MethodError(assign_input, (sys, data, mapping)) |> throw
-end
-
-
-#for every OutputDevice it wants to support, the System should at least extend
-#this with a ::DefaultMapping argument. for alternative mappings, it can define
-#additional subtypes of IOMapping and their corresponding methods
-function extract_output(sys::System, mapping::IOMapping)
-    MethodError(extract_output, (sys, input, mapping)) |> throw
-end
-
-
-function take_nonblocking!(channel::Channel)
-    #unlike lock, trylock avoids blocking if the Channel is already locked,
-    #while also ensuring it is not modified while we're checking its state
-    if trylock(channel)
-        data = (isready(channel) ? take!(channel) : nothing)
-        unlock(channel)
+    for interface in interfaces
+        update!(interface, sys)
     end
-    return data
+
 end
-
-
-function put_nonblocking!(channel::Channel{T}, data::T) where {T}
-    #unlike lock, trylock avoids blocking if the Channel is already locked,
-    #while also ensuring it is not modified while we're checking its state
-    if trylock(channel) #ensure Channel is not modified while we're checking its state
-        (isopen(channel) && !isready(channel)) && put!(channel, data)
-        unlock(channel)
-    end
-end
-
 
 
 ################################################################################
@@ -624,6 +637,8 @@ function run!(sim::Simulation)
 
     sim.control.pace = Inf
 
+    reset(sim.io_start)
+
     @sync begin
         for interface in sim.interfaces
             Threads.@spawn start!(interface)
@@ -636,6 +651,8 @@ end
 function run_interactive!(sim::Simulation; pace = 1.0)
 
     sim.control.pace = pace
+
+    reset(sim.io_start)
 
     @sync begin
         for interface in sim.interfaces

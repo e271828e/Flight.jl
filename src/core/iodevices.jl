@@ -4,7 +4,7 @@ using StaticArrays
 using UnPack
 using Logging
 
-export InputDevice, OutputDevice, IOMapping, DefaultMapping
+export IODevice, InputDevice, OutputDevice, IOMapping, DefaultMapping
 
 
 ################################################################################
@@ -15,12 +15,12 @@ abstract type IODevice end
 abstract type IOMapping end
 struct DefaultMapping <: IOMapping end
 
-#each device should control its own update rate from within the update! method,
-#preferably via calls to blocking functions (such as GLFW.SwapBuffers with
-#GLFW.SwapInterval > 0)
-init!(device::D) where {D<:IODevice} = MethodError(init!, (device, )) |> throw
-shutdown!(device::D) where {D<:IODevice} = MethodError(shutdown!, (device, )) |> throw
-should_close(device::D) where {D<:IODevice} = MethodError(should_close, (device, )) |> throw
+# init!(device::D) where {D<:IODevice} = MethodError(init!, (device, )) |> throw
+# shutdown!(device::D) where {D<:IODevice} = MethodError(shutdown!, (device, )) |> throw
+# should_close(device::D) where {D<:IODevice} = MethodError(should_close, (device, )) |> throw
+init!(::D) where {D<:IODevice} = nothing
+shutdown!(::D) where {D<:IODevice} = nothing
+should_close(::D) where {D<:IODevice} = false
 
 #returns a Channel suitable for the type of data produced or expected by the
 #IODevice. this should be called by the SimInput or SimOutput constructors.
