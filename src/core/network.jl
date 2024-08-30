@@ -7,34 +7,8 @@ using JSON3
 
 using ..IODevices
 
-export UDPOutput, UDPInput, XPCClient
-
-
-################################################################################
-################################# UDPOutput ####################################
-
-@kwdef mutable struct UDPOutput{T <: IPAddr} <: OutputDevice
-    socket::UDPSocket = UDPSocket()
-    address::T = IPv4("127.0.0.1") #IP address we'll be sending to
-    port::Int = 49017 #port we'll be sending to
-end
-
-function IODevices.init!(output::UDPOutput)
-    output.socket = UDPSocket() #get a new socket on each initialization
-end
-
-function IODevices.handle_data(output::UDPOutput, data::Vector{UInt8})
-    try
-        !isempty(data) && send(output.socket, output.address, output.port, data)
-    catch ex
-        st = stacktrace(catch_backtrace())
-        @warn("UDPOutput failed with $ex in $(st[1])")
-    end
-end
-
-IODevices.shutdown!(output::UDPOutput) = close(output.socket)
-
-Base.Channel(::UDPOutput, size::Int) = Channel{Vector{UInt8}}(size)
+export UDPOutput, UDPInput
+export XPCClient, XPCPosition
 
 
 ################################################################################
@@ -54,78 +28,104 @@ function IODevices.init!(input::UDPInput)
     end
 end
 
-#will either block or write something to the buffer, because recv blocks until
-#an UDP packet is actually received
+IODevices.shutdown!(input::UDPInput) = close(input.socket)
+IODevices.data_type(::UDPInput) = Vector{UInt8}
+
 function IODevices.get_data(input::UDPInput)
-    #there is currently no in place version of recv, so each call allocates a
-    #new Vector{UInt8}. not ideal
     data = recv(input.socket)
-    @info "Got $data"
     return data
 end
 
-IODevices.shutdown!(input::UDPInput) = close(input.socket)
 
-Base.Channel(::UDPInput, size::Int) = Channel{Vector{UInt8}}(size)
+################################################################################
+################################# UDPOutput ####################################
 
-# ############################### XPCClient ####################################
+@kwdef mutable struct UDPOutput{T <: IPAddr} <: OutputDevice
+    socket::UDPSocket = UDPSocket()
+    address::T = IPv4("127.0.0.1") #IP address we'll be sending to
+    port::Int = 49017 #port we'll be sending to
+end
 
-# function XPCClient(; address::IPAddr = IPv4("127.0.0.1"), port::Integer = 49009)
-#     UDPClient(; address, port,
-#                 init_callback = xpc_init_callback,
-#                 output_callback = xpc_output_callback)
-# end
+function IODevices.init!(output::UDPOutput)
+    output.socket = UDPSocket() #get a new socket on each initialization
+end
 
-# #to be overridden for each System's y
-# xpc_output_callback(out::Sim.SimData) = set_xpc_pos!(out.y)
-# #disables physics
-# xpc_init_callback() = set_xpc_dref("sim/operation/override/override_planepath", 1)
+IODevices.shutdown!(output::UDPOutput) = close(output.socket)
+IODevices.data_type(::UDPOutput) = Vector{UInt8}
 
-# function set_xpc_dref(dref_id::AbstractString, dref_value::Real)
-
-#     #ascii() ensures ASCII data, codeunits returns a CodeUnits object, which
-#     #behaves similarly to a byte array. this is equivalent to b"text".
-#     #Vector{UInt8}(dref_id) would also work
-#     buffer = IOBuffer()
-#     write(buffer,
-#         b"DREF\0",
-#         dref_id |> length |> UInt8,
-#         dref_id |> ascii |> codeunits,
-#         UInt8(1),
-#         Float32(dref_value))
-
-#     return take!(buffer)
-# end
-
-# function set_xpc_dref(dref_id::AbstractString, dref_value::AbstractVector{<:Real})
-
-#     buffer = IOBuffer()
-#     write(buffer,
-#         b"DREF\0",
-#         dref_id |> length |> UInt8,
-#         dref_id |> ascii |> codeunits,
-#         dref_value |> length |> UInt8,
-#         Vector{Float32}(dref_value))
-
-#     return take!(buffer)
-# end
-
-# #this needs to be extended in AircraftBase
-# function set_xpc_pos!(; lat, lon, h_o, psi, theta, phi, aircraft::Integer = 0)
-
-#     #all angles expected in degrees
-#     buffer = IOBuffer()
-#     write(buffer,
-#         b"POSI\0", UInt8(aircraft),
-#         Float64(lat), Float64(lon), Float64(h_o),
-#         Float32(theta), Float32(phi), Float32(psi),
-#         Float32(-998)) #last one is landing gear (?!)
-
-#     return take!(buffer)
-
-# end
+function IODevices.handle_data(output::UDPOutput, data::Vector{UInt8})
+    try
+        # @info "Sending $(length(data)) bytes"
+        !isempty(data) && send(output.socket, output.address, output.port, data)
+    catch ex
+        st = stacktrace(catch_backtrace())
+        @warn("UDPOutput failed with $ex in $(st[1])")
+    end
+end
 
 
+################################################################################
+################################# XPCClient ####################################
 
+@kwdef struct XPCPosition
+    ϕ::Float64 = 0.0 #degrees
+    λ::Float64 = 0.0 #degrees
+    h::Float64 = 0.0 #meters
+    ψ::Float32 = 0.0 #degrees
+    θ::Float32 = 0.0 #degrees
+    φ::Float32 = 0.0 #degrees
+    aircraft::UInt8 = 0 #aircraft number
+end
+
+struct XPCClient{T <: IPAddr} <: OutputDevice
+    udp::UDPOutput{T}
+end
+
+XPCClient(args...; kwargs...) = XPCClient(UDPOutput(args...; kwargs...))
+
+#disable X-Plane physics
+function IODevices.init!(xpc::XPCClient)
+    IODevices.init!(xpc.udp)
+    IODevices.handle_data(xpc.udp, dref_cmd(
+        "sim/operation/override/override_planepath", 1))
+end
+
+IODevices.shutdown!(xpc::XPCClient) = IODevices.shutdown!(xpc.udp)
+IODevices.data_type(::XPCClient) = XPCPosition
+
+function IODevices.handle_data(xpc::XPCClient, data::XPCPosition)
+    IODevices.handle_data(xpc.udp, pos_cmd(data))
+end
+
+############################ XPC Command Messages ##############################
+
+#write a scalar or vector value to an arbitrary DREF
+function dref_cmd(id::AbstractString, value::Union{Real, AbstractVector{<:Real}})
+
+    #ascii() ensures ASCII data, codeunits returns a CodeUnits object, which
+    #behaves similarly to a byte array. this is equivalent to b"text".
+    #Vector{UInt8}(id) would also work
+    buffer = IOBuffer()
+    write(buffer,
+        b"DREF\0",
+        id |> length |> UInt8,
+        id |> ascii |> codeunits,
+        value |> length |> UInt8,
+        Float32.(value))
+
+    return take!(buffer)
+end
+
+#set aircraft position and attitude
+function pos_cmd(pos::XPCPosition)
+
+    @unpack ϕ, λ, h, ψ, θ, φ, aircraft = pos
+
+    buffer = IOBuffer(sizehint = 64)
+    write(buffer, b"POSI\0", aircraft, ϕ, λ, h, θ, φ, ψ, Float32(-998))
+
+    return take!(buffer)
+
+end
 
 end #module

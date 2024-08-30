@@ -5,6 +5,7 @@ using DataStructures
 using AbstractTrees
 
 using ..GUI
+using ..IODevices
 
 export SystemDefinition, SystemTrait, System
 export f_ode!, f_step!, f_disc!, assemble_y!
@@ -227,6 +228,26 @@ end
         error("An assemble_y! method must be explicitly implemented for node "*
         "Systems with an output type other than NamedTuple, $D doesn't have one")
     end
+end
+
+
+################################################################################
+#################################### I/O #######################################
+
+#to add support for an InputDevice, the System should extend this function for
+#an IOMapping specific to that InputDevice and the data type expected from it.
+#note that InputDevice is passed only for dispatch
+function assign_data!(sys::System, data::Any, device::InputDevice, mapping::IOMapping)
+    MethodError(assign_data!, (sys, data, device, mapping)) |> throw
+end
+
+assign_data!(::System, ::Nothing, ::InputDevice, ::IOMapping) = nothing
+
+#to add support for an OutputDevice, the System should extend this function for
+#an IOMapping specific to that OutputDevice and return the data it expects. note
+#that OutputDevice is passed only for dispatch
+function extract_data(sys::System, device::OutputDevice, mapping::IOMapping)
+    MethodError(extract_data, (sys, device, mapping)) |> throw
 end
 
 

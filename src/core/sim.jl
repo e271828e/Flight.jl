@@ -88,7 +88,7 @@ const SimOutput = SimInterface{<:OutputDevice}
 
 #called from the SimInterface loop thread. this may block, either on get_data
 #because the InputDevice is itself blocked, or on put! because the Simulation
-#has yet to take!
+#loop has yet to take!
 function update!(input::SimInput)
     put!(input.channel, IODevices.get_data(input.device))
 end
@@ -102,29 +102,14 @@ end
 
 #called from the Simulation loop thread, will never block
 function update!(input::SimInput, sys::System)
-    assign_data!(sys, take_nonblocking!(input.channel), input.mapping)
+    @unpack device, channel, mapping = input
+    Systems.assign_data!(sys, take_nonblocking!(channel), device, mapping)
 end
 
 #called from the Simulation loop thread, will never block
 function update!(output::SimOutput, sys::System)
-    put_nonblocking!(output.channel, extract_data(sys, output.mapping))
-end
-
-#for every InputDevice it wants to support, the System should at least extend
-#this with a ::DefaultMapping argument. for alternative mappings, it can define
-#additional subtypes of IOMapping and their corresponding methods
-function assign_data!(sys::System, data::Any, mapping::IOMapping)
-    MethodError(assign_data!, (sys, data, mapping)) |> throw
-end
-
-#fallback method in case get_data returns nothing
-Sim.assign_data!(::System, ::Nothing, ::IOMapping) = nothing
-
-#for every OutputDevice it wants to support, the System should at least extend
-#this with a ::DefaultMapping argument. for alternative mappings, it can define
-#additional subtypes of IOMapping and their corresponding methods
-function extract_data(sys::System, mapping::IOMapping)
-    MethodError(extract_data, (sys, mapping)) |> throw
+    @unpack device, channel, mapping = output
+    put_nonblocking!(channel, Systems.extract_data(sys, device, mapping))
 end
 
 function take_nonblocking!(channel::Channel)
@@ -186,8 +171,6 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator}
         save_on::Bool = true,
         saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
         save_everystep::Bool = isempty(saveat),
-        save_start::Bool = true,
-        save_end::Bool = false,
         ) where {D, Y}
 
         @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
@@ -204,7 +187,7 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator}
         f_ode!(sys)
         log = SavedValues(Float64, Y)
         saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
-        cb_save = SavingCallback(f_cb_save, log; saveat, save_everystep, save_start, save_end)
+        cb_save = SavingCallback(f_cb_save, log; saveat, save_everystep)
 
         if save_on
             cb_set = CallbackSet(cb_step, cb_disc, cb_user, cb_save)
@@ -275,7 +258,8 @@ user_callback!(::System) = nothing
 function attach!(sim::Simulation, device::IODevice,
                  mapping::IOMapping = DefaultMapping())
 
-    interface = SimInterface(device, Channel(device, 1), mapping,
+    channel = Channel{IODevices.data_type(device)}(1)
+    interface = SimInterface(device, channel, mapping,
                             sim.control, sim.io_start, sim.io_lock)
 
     push!(sim.interfaces, interface)
@@ -370,6 +354,10 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, sys_init! = Systems.init!)
     #initialize the System's x, u and s
     sys_init!(sys)
 
+    #let it propagate to y. within its reinit! method, the integrator will call
+    #the SavingCallback to set the first entry in the log, which is sys.y
+    f_ode!(sys)
+
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
     #reinit! calls f_ode_wrapper!, so ẋ and y are updated in the process
     if has_x(p.sys)
@@ -378,8 +366,10 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, sys_init! = Systems.init!)
         OrdinaryDiffEq.reinit!(integrator)
     end
 
+    #drop the log entries from the last run and keep the newly initialized one
     resize!(log.t, 1)
     resize!(log.saveval, 1)
+
     return nothing
 end
 

@@ -48,7 +48,7 @@ const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eOb_b = zeros(3))
 Systems.U(::AbstractKinematicDescriptor) = zero(XVelTemplate)
 
 
-################################# KinematicsY ##################################
+################################### KinData ####################################
 ################################################################################
 
 @kwdef struct KinData
@@ -108,6 +108,28 @@ function KinData(ic::KinInit)
 
 end
 
+Base.getproperty(data::KinData, s::Symbol) = getproperty(data, Val(s))
+
+@generated function Base.getproperty(data::KinData, ::Val{S}) where {S}
+    if S ∈ fieldnames(KinData)
+        return :(getfield(data, $(QuoteNode(S))))
+    elseif S === :psi || S === :ψ
+        return :(getfield(data, :e_nb).ψ)
+    elseif S === :theta || S === :θ
+        return :(getfield(data, :e_nb).θ)
+    elseif S === :phi || S === :φ
+        return :(getfield(data, :e_nb).φ)
+    elseif S === :lat || S === :ϕ
+        return :(getfield(data, :ϕ_λ).ϕ)
+    elseif S === :lon || S === :λ
+        return :(getfield(data, :ϕ_λ).λ)
+    else
+        error("$(typeof(data)) has no property $S")
+    end
+end
+
+################################# KinematicsY ##################################
+################################################################################
 
 struct KinematicsY{S}
     data::KinData #general, implementation-agnostic kinematic data
@@ -745,5 +767,24 @@ function GUI.draw(sys::KinSystem, p_open::Ref{Bool} = Ref(true),
 
 end
 
+
+################################################################################
+############################### XPCClient ######################################
+
+function Network.XPCPosition(kin_data::KinData, aircraft = 0)
+
+    @unpack ϕ_λ, e_nb, h_o = kin_data
+
+    ϕ = rad2deg(ϕ_λ.ϕ)
+    λ = rad2deg(ϕ_λ.λ)
+    h = Float64(h_o)
+
+    ψ = rad2deg(e_nb.ψ)
+    θ = rad2deg(e_nb.θ)
+    φ = rad2deg(e_nb.φ)
+
+    Network.XPCPosition(ϕ, λ, h, ψ, θ, φ, aircraft)
+
+end
 
 end #module

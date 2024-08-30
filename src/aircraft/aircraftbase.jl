@@ -226,24 +226,13 @@ end
 
 #f_step! can use the recursive fallback implementation
 
+Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.y.vehicle.kinematics)
 
-############################# XPlaneConnect ####################################
 
-function Network.set_xpc_pos!(y::AircraftY)
+################################# XPCClient ####################################
 
-    aircraft = 0
-
-    @unpack ϕ_λ, e_nb, h_o = y.vehicle.kinematics
-
-    lat = rad2deg(ϕ_λ.ϕ)
-    lon = rad2deg(ϕ_λ.λ)
-
-    psi = rad2deg(e_nb.ψ)
-    theta = rad2deg(e_nb.θ)
-    phi = rad2deg(e_nb.φ)
-
-    Network.set_xpc_pos!(; lat, lon, h_o, psi, theta, phi, aircraft)
-
+function Systems.extract_data(ac::System{<:Aircraft}, ::XPCClient, ::IOMapping)
+    return XPCPosition(KinData(ac))
 end
 
 

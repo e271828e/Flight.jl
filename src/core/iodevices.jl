@@ -22,10 +22,9 @@ init!(::D) where {D<:IODevice} = nothing
 shutdown!(::D) where {D<:IODevice} = nothing
 should_close(::D) where {D<:IODevice} = false
 
-#returns a Channel suitable for the type of data produced or expected by the
-#IODevice. this should be called by the SimInput or SimOutput constructors.
-function Base.Channel(device::D, size::Int) where {D <: IODevice}
-    MethodError(Base.Channel, (device, size)) |> throw
+#data type produced or expected by the IODevice
+function data_type(device::D) where {D <: IODevice}
+    MethodError(data_type, (device)) |> throw
 end
 
 
