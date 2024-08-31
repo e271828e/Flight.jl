@@ -300,13 +300,13 @@ end
 ############################# Axes & Buttons ###################################
 
 const XBoxAxisLabels = (
-    :left_analog_x, :left_analog_y, :right_analog_x, :right_analog_y,
+    :left_stick_x, :left_stick_y, :right_analog_x, :right_analog_y,
     :left_trigger, :right_trigger
 )
 
 const XBoxButtonLabels = (
     :button_A, :button_B, :button_X, :button_Y, :left_bumper, :right_bumper,
-    :view, :menu, :left_analog, :right_analog,
+    :view, :menu, :left_stick, :right_analog,
     :dpad_up, :dpad_right, :dpad_down, :dpad_left
 )
 

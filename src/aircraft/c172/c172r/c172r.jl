@@ -218,9 +218,9 @@ function IODevices.assign_input!(sys::System{<:Actuation},
 
     u = sys.u
 
-    u.aileron = get_axis_value(joystick, :right_analog_x) |> aileron_curve
-    u.elevator = get_axis_value(joystick, :right_analog_y) |> elevator_curve
-    u.rudder = get_axis_value(joystick, :left_analog_x) |> rudder_curve
+    u.aileron = get_axis_value(joystick, :right_stick_x) |> aileron_curve
+    u.elevator = get_axis_value(joystick, :right_stick_y) |> elevator_curve
+    u.rudder = get_axis_value(joystick, :left_stick_x) |> rudder_curve
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 

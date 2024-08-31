@@ -230,12 +230,12 @@ function IODevices.assign_input!(sys::System{<:Actuation},
 
     @unpack throttle, aileron, elevator, rudder, steering, flaps = sys.subsystems
 
-    aileron.u[] = get_axis_value(joystick, :right_analog_x) |> roll_curve
-    elevator.u[] = get_axis_value(joystick, :right_analog_y) |> pitch_curve
-    rudder.u[] = get_axis_value(joystick, :left_analog_x) |> yaw_curve
+    aileron.u[] = get_axis_value(joystick, :right_stick_x) |> roll_curve
+    elevator.u[] = get_axis_value(joystick, :right_stick_y) |> pitch_curve
+    rudder.u[] = get_axis_value(joystick, :left_stick_x) |> yaw_curve
     # u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     # u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
-    steering.u[] = get_axis_value(joystick, :left_analog_x) |> yaw_curve
+    steering.u[] = get_axis_value(joystick, :left_stick_x) |> yaw_curve
 
     flaps.u[] += 0.3333 * was_released(joystick, :right_bumper)
     flaps.u[] -= 0.3333 * was_released(joystick, :left_bumper)

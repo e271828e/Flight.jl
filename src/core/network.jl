@@ -14,10 +14,13 @@ export XPCClient, XPCPosition
 ################################################################################
 ################################# UDInput ######################################
 
-@kwdef mutable struct UDPInput{T <: IPAddr} <: InputDevice
+@kwdef mutable struct UDPInput{T, A <: IPAddr} <: InputDevice{T}
     socket::UDPSocket = UDPSocket()
-    address::T = IPv4("127.0.0.1") #IP address we'll be listening at
+    address::A = IPv4("127.0.0.1")#IP address we'll be listening at
     port::Int = 49017 #port we'll be listening at
+    function UDPInput(socket::UDPSocket, address::A, port::Integer) where {A <: IPAddr}
+        new{Vector{UInt8}, A}(socket, address, port)
+    end
 end
 
 function IODevices.init!(input::UDPInput)
@@ -29,9 +32,9 @@ function IODevices.init!(input::UDPInput)
 end
 
 IODevices.shutdown!(input::UDPInput) = close(input.socket)
-IODevices.data_type(::UDPInput) = Vector{UInt8}
+# IODevices.data_type(::UDPInput) = Vector{UInt8}
 
-function IODevices.get_data(input::UDPInput)
+function IODevices.get_data!(input::UDPInput)
     data = recv(input.socket)
     return data
 end
@@ -40,10 +43,13 @@ end
 ################################################################################
 ################################# UDPOutput ####################################
 
-@kwdef mutable struct UDPOutput{T <: IPAddr} <: OutputDevice
+@kwdef mutable struct UDPOutput{T, A <: IPAddr} <: OutputDevice{T}
     socket::UDPSocket = UDPSocket()
-    address::T = IPv4("127.0.0.1") #IP address we'll be sending to
-    port::Int = 49017 #port we'll be sending to
+    address::A = IPv4("127.0.0.1")#IP address we'll be listening at
+    port::Int = 49017 #port we'll be listening at
+    function UDPOutput(socket::UDPSocket, address::A, port::Integer) where {A <: IPAddr}
+        new{Vector{UInt8}, A}(socket, address, port)
+    end
 end
 
 function IODevices.init!(output::UDPOutput)
@@ -51,9 +57,9 @@ function IODevices.init!(output::UDPOutput)
 end
 
 IODevices.shutdown!(output::UDPOutput) = close(output.socket)
-IODevices.data_type(::UDPOutput) = Vector{UInt8}
+# IODevices.data_type(::UDPOutput) = Vector{UInt8}
 
-function IODevices.handle_data(output::UDPOutput, data::Vector{UInt8})
+function IODevices.handle_data!(output::UDPOutput, data::Vector{UInt8})
     try
         # @info "Sending $(length(data)) bytes"
         !isempty(data) && send(output.socket, output.address, output.port, data)
@@ -77,8 +83,11 @@ end
     aircraft::UInt8 = 0 #aircraft number
 end
 
-struct XPCClient{T <: IPAddr} <: OutputDevice
-    udp::UDPOutput{T}
+struct XPCClient{T, U <: UDPOutput} <: OutputDevice{T}
+    udp::U
+    function XPCClient(udp::U) where {U <: UDPOutput}
+        new{XPCPosition, U}(udp)
+    end
 end
 
 XPCClient(args...; kwargs...) = XPCClient(UDPOutput(args...; kwargs...))
@@ -86,15 +95,15 @@ XPCClient(args...; kwargs...) = XPCClient(UDPOutput(args...; kwargs...))
 #disable X-Plane physics
 function IODevices.init!(xpc::XPCClient)
     IODevices.init!(xpc.udp)
-    IODevices.handle_data(xpc.udp, dref_cmd(
+    IODevices.handle_data!(xpc.udp, dref_cmd(
         "sim/operation/override/override_planepath", 1))
 end
 
 IODevices.shutdown!(xpc::XPCClient) = IODevices.shutdown!(xpc.udp)
-IODevices.data_type(::XPCClient) = XPCPosition
+# IODevices.data_type(::XPCClient) = XPCPosition
 
-function IODevices.handle_data(xpc::XPCClient, data::XPCPosition)
-    IODevices.handle_data(xpc.udp, pos_cmd(data))
+function IODevices.handle_data!(xpc::XPCClient, data::XPCPosition)
+    IODevices.handle_data!(xpc.udp, pos_cmd(data))
 end
 
 ############################ XPC Command Messages ##############################

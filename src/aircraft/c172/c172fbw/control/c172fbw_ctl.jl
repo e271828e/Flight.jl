@@ -833,9 +833,9 @@ function IODevices.assign_input!(sys::System{Controller},
     p_sf = 0.5 #roll rate sensitivity
     q_sf = 0.5 #pitch rate sensitivity
 
-    roll_input = get_axis_value(joystick, :right_analog_x) |> roll_curve
-    pitch_input = get_axis_value(joystick, :right_analog_y) |> pitch_curve
-    yaw_input = get_axis_value(joystick, :left_analog_x) |> yaw_curve
+    roll_input = get_axis_value(joystick, :right_stick_x) |> roll_curve
+    pitch_input = get_axis_value(joystick, :right_stick_y) |> pitch_curve
+    yaw_input = get_axis_value(joystick, :left_stick_x) |> yaw_curve
 
     u.throttle_sp_input += 0.1 * was_released(joystick, :button_Y)
     u.throttle_sp_input -= 0.1 * was_released(joystick, :button_A)
@@ -847,7 +847,7 @@ function IODevices.assign_input!(sys::System{Controller},
     u.p_sp = p_sf * roll_input
     u.q_sp = q_sf * pitch_input
 
-    u.steering = get_axis_value(joystick, :left_analog_x) |> yaw_curve
+    u.steering = get_axis_value(joystick, :left_stick_x) |> yaw_curve
     u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
     u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
 
