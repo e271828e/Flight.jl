@@ -1,6 +1,6 @@
 module TestSim
 
-using Test, Logging
+using Test, Logging, StructTypes, JSON3
 
 using Flight.FlightCore
 using Flight.FlightPhysics
@@ -57,13 +57,13 @@ Systems.init!(sys::System{FirstOrder}, x0::Real = 0.0) = (sys.x .= x0)
 @kwdef struct TestSystem <: SystemDefinition end
 
 @kwdef mutable struct TestSystemU
-    output::UInt8 = 0
-    echo::UInt8 = 0
+    output::Int = 0
+    echo::Int = 0
 end
 
 @kwdef struct TestSystemY
-    output::UInt8 = 0
-    echo::UInt8 = 0
+    output::Int = 0
+    echo::Int = 0
 end
 
 Systems.U(::TestSystem) = TestSystemU()
@@ -87,7 +87,7 @@ end
 #needs to provide a Vector{UInt8}, which is what UDPOutput expects
 function Systems.extract_data(sys::System{TestSystem},
                             ::UDPOutput, ::UDPTestMapping)
-    data = [sys.y.output]
+    data = UInt8[sys.y.output]
     @debug "Extracted $data"
     return data
 end
@@ -99,14 +99,14 @@ function udp_loopback()
         port = 14149
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
-        sim.u.output = UInt8(37)
+        sim.u.output = 37
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
         Sim.attach!(sim, UDPOutput(; port), UDPTestMapping())
         Sim.run!(sim)
 
         #sys.u.output must have propagated to sys.y.output within f_disc!, then
         #to sys.u.echo via loopback, and finally to sys.y.echo within f_disc!
-        @test sim.y.output === UInt8(37)
+        @test sim.y.echo === 37
 
         return sim
 
@@ -116,7 +116,9 @@ end
 
 ################################ XPC Loopback ##################################
 
-function Systems.extract_data(::System{TestSystem}, ::XPCClient, ::IOMapping)
+struct XPCTestMapping <: IOMapping end
+
+function Systems.extract_data(::System{TestSystem}, ::XPCClient, ::XPCTestMapping)
     data = KinData() |> XPCPosition
     @debug "Extracted $data"
     return data
@@ -130,14 +132,14 @@ function xpc_loopback()
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
-        Sim.attach!(sim, XPCClient(; port))
+        Sim.attach!(sim, XPCClient(; port), XPCTestMapping())
         Sim.run!(sim)
 
         cmd = KinData() |> XPCPosition |> Network.pos_cmd
         #extract_data returns an XPCPosition instance, from which handle_data
         #constructs a position command, which propagates to sys.u.echo via
         #loopback, and finally to sys.y.echo within f_disc!
-        @test sim.y.echo === cmd[1]
+        @test sim.y.echo === Int(cmd[1])
 
         return sim
 
@@ -147,6 +149,55 @@ end
 
 
 ################################ JSON Loopback #################################
+
+#declare TestSystemY as immutable for JSON3 parsing
+StructTypes.StructType(::Type{TestSystemY}) = StructTypes.Struct()
+StructTypes.excludes(::Type{TestSystemY}) = (:echo,) #only extract :output
+
+#declare TestSystemU as mutable so that JSON3 can read into it
+StructTypes.StructType(::Type{TestSystemU}) = StructTypes.Mutable()
+
+#this doesn't work for switching field values via loopback, because the
+#inversion applies both to serializing and deserializing, so it cancels out
+
+# StructTypes.names(::Type{TestSystemU}) = ((:echo, :output), (:output,  :echo))
+
+struct JSONTestMapping <: IOMapping end
+
+function Systems.extract_data(sys::System{TestSystem}, ::UDPOutput, ::JSONTestMapping)
+    data = JSON3.write(sys.y)
+    @debug "Extracted $data"
+    return Vector{UInt8}(data)
+end
+
+function Systems.assign_data!(sys::System{TestSystem}, data::Vector{UInt8}, ::UDPInput, ::JSONTestMapping)
+    #we could simply do the following instead, but that wouldn't test direct
+    #deserialization into a custom type:
+    # sys.u.echo = JSON3.read(String(data)).output
+    echo_str = (echo = JSON3.read(String(data)).output, ) |> JSON3.write
+    JSON3.read!(echo_str, sys.u)
+    @debug "Echo is now $(sys.u.echo)"
+end
+
+function json_loopback()
+
+    @testset verbose = true "JSON Loopback" begin
+
+        port = 14149
+        sys = TestSystem() |> System
+        sim = Simulation(sys; t_end = 1.0)
+        sim.u.output = 45
+        Sim.attach!(sim, UDPInput(; port), JSONTestMapping())
+        Sim.attach!(sim, UDPOutput(; port), JSONTestMapping())
+        Sim.run!(sim)
+
+        @test sim.y.echo === 45
+
+        return sim
+
+    end
+
+end
 
 
 function test_sim_standalone()
