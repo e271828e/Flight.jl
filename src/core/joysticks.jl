@@ -16,6 +16,67 @@ export get_button_change, was_pressed, was_released
 
 export AbstractJoystickID, XBoxController, T16000M, GladiatorNXTEvo
 
+# ############################# Initialization ###################################
+
+#declare as const
+active_slots = Dict{JoystickSlot, Joystick}()
+
+#specify a Joystick constructor for each joystick model
+supported_joysticks = (
+    ("Xbox Controller", XBoxController), #XBox 360 Controller
+    ("T.16000M", T16000M), #Thrustmaster T16000M
+    ("VKBsim Gladiator EVO  R", GladiatorNXTEvo), #VKBSim Gladiator NXT Evo
+)
+
+function refresh_joysticks()
+
+    #calling PollEvents refreshes all the joystick slots, so JoystickPresent
+    #then returns their updated states. no need to explicitly handle the
+    #addition or removal of joysticks directly from a joystick_callback, which
+    #also requires a PollEvents to work
+    GLFW.PollEvents()
+    empty!(active_slots)
+    for slot in instances(JoystickSlot)
+        JoystickPresent(slot) && add_joystick(slot)
+    end
+
+    return active_slots
+end
+
+function add_joystick(slot::JoystickSlot)
+
+    if !JoystickPresent(slot)
+        @warn("Failed to add joystick at slot $slot: not found")
+        return
+    end
+
+    joystick_model = GetJoystickName(slot) |> strip
+
+    if joystick_model == "Xbox Controller"
+        joystick = XBoxController(slot)
+        @info("Adding XBoxController at slot $slot")
+    elseif joystick_model == "T.16000M"
+        joystick = T16000M(slot)
+        @info("Adding Thrustmaster T16000M at slot $slot")
+    elseif joystick_model == "VKBsim Gladiator EVO  R"
+        joystick = GladiatorNXTEvo(slot)
+        @info("Adding VKBSim Gladiator NXT Evo at slot $slot")
+    else
+        @warn("Failed to add $joystick_model at slot $slot, device not supported")
+        return
+    end
+
+    active_slots[slot] = joystick
+
+end
+
+function get_connected_joysticks()
+
+    active_slots = refresh_joystick_slots()
+    return Tuple(jref[] for jref in values(active_slots))
+
+end
+
 
 ################################################################################
 ################################ AxisSet #######################################
@@ -25,14 +86,101 @@ export AbstractJoystickID, XBoxController, T16000M, GladiatorNXTEvo
     pressed = 1
     released = 2
 end
-Base.convert(::Type{ButtonChange}, n::Integer) = ButtonChange(n)
-Base.zero(::Type{ButtonChange}) = unchanged
+# Base.convert(::Type{ButtonChange}, n::Integer) = ButtonChange(n)
+# Base.zero(::Type{ButtonChange}) = unchanged
 
 abstract type AbstractAxisSet{N} <: FieldVector{N, Float32} end
 
 abstract type AbstractButtonSet{N, T <: Union{Bool, ButtonChange}} <: FieldVector{N, T} end
 
+struct JoystickData{A <: AbstractAxisSet, BS <: AbstractButtonSet, BC <: AbstractButtonSet}
+    axes::A
+    button_state::BS
+    button_change::BC
+end
 
+mutable struct Joystick{T <: JoystickData}
+    slot::JoystickSlot
+    cache::T
+    # function Joystick(cache::T, slot::JoystickSlot = GLFW.JOYSTICK_1) where {T<:JoystickData}
+    #     new{T}(cache, slot)
+    # end
+end
+
+
+function IODevices.get_data!(joystick::Joystick{T}) where {T <: JoystickData{A, BS, BC}} where {A, BS, BC}
+    @unpack slot, cache = joystick
+    button_state_current = BS(GetJoystickButtons(slot))
+    button_state_last = joystick.data.button_state
+    #using SAcollect, construct a tuple of all the button changes
+    button_change = map(button_state_current, button_state_last) do current, last
+        current
+    end |> BS
+    joystick
+
+end
+
+
+########################################
+
+@kwdef struct T16000MAxes <: AbstractAxisSet{4}
+    stick_x::Float32 = 0.0
+    stick_y::Float32 = 0.0
+    stick_z::Float32 = 0.0
+    throttle::Float32 = 0.0
+end
+
+@kwdef struct T16000MButtons{T} <: AbstractButtonSet{20, T}
+    button_0::T = false
+    button_1::T = false
+    button_2::T = false
+    button_3::T = false
+    button_4::T = false
+    button_5::T = false
+    button_6::T = false
+    button_7::T = false
+    button_8::T = false
+    button_9::T = false
+    button_10::T = false
+    button_11::T = false
+    button_12::T = false
+    button_13::T = false
+    button_14::T = false
+    button_15::T = false
+    hat_up::T = false
+    hat_right::T = false
+    hat_down::T = false
+    hat_left::T = false
+end
+
+#ideally we would like JoystickData to be immutable. to compute the values of
+#button_change, we need to construct a button_change based on the previous
+#values of
+
+#we could store an instance of JoystickData within Joystick, along with the
+#slot.
+#when get_data is called, we compare
+
+T16000MData() = JoystickData(T16000MAxes(), T16000MButtons{Bool}(), T16000MButtons{ButtonChange}())
+
+
+# mutable struct Joystick{T <: JoystickData, BS <: AbstractButtonSet}
+#     slot::JoystickSlot
+#     button_state_last::BS
+#     function Joystick(data::T, slot::JoystickSlot = GLFW.JOYSTICK_1) where {T<:JoystickData{NA, NB, A, BS, BC}} where {NA, NB, A, BS, BC}
+#         new{T, BS}(slot, data.button_state)
+#     end
+# end
+
+
+
+
+# XBoxController = Joystick{JoystickData{XBox360ControllerAxes, XBox360ControllerButtons}}
+
+# function JoystickData(joystick::Joystick{A, B}) where {A <: AbstractAxisSet, B <: AbstractButtonSet}
+#     button_state = A{Bool}()
+
+# end
 ########################################
 
 @kwdef struct XBox360ControllerAxes <: AbstractAxisSet{6}
@@ -64,103 +212,8 @@ end
 
 
 
-########################################
-
-@kwdef struct T16000Axes <: AbstractAxisSet{4}
-    stick_x::Float32 = 0.0
-    stick_y::Float32 = 0.0
-    stick_z::Float32 = 0.0
-    throttle::Float32 = 0.0
-end
 
 
-@kwdef struct T16000Buttons{T} <: AbstractButtonSet{20, T}
-    button_0::T = false
-    button_1::T = false
-    button_2::T = false
-    button_3::T = false
-    button_4::T = false
-    button_5::T = false
-    button_6::T = false
-    button_7::T = false
-    button_8::T = false
-    button_9::T = false
-    button_10::T = false
-    button_11::T = false
-    button_12::T = false
-    button_13::T = false
-    button_14::T = false
-    button_15::T = false
-    hat_up::T = false
-    hat_right::T = false
-    hat_down::T = false
-    hat_left::T = false
-end
-
-#ideally we would like JoystickData to be immutable. to compute the values of
-#button_change, we need to construct a button_change based on the previous
-#values of
-
-#we could store an instance of JoystickData within Joystick, along with the
-#slot.
-#when get_data is called, we compare
-
-struct JoystickData{NA, NB, A <: AbstractAxisSet{NA}, BS <: AbstractButtonSet{NB, Bool}, BC <: AbstractButtonSet{NB, ButtonChange}}
-    axes::A
-    button_state::BS
-    button_change::BC
-end
-
-T16000Data() = JoystickData(T16000Axes(), T16000Buttons{Bool}(), T16000Buttons{ButtonChange}())
-
-# mutable struct Joystick{T <: JoystickData, BS <: AbstractButtonSet}
-#     slot::JoystickSlot
-#     button_state_last::BS
-#     function Joystick(data::T, slot::JoystickSlot = GLFW.JOYSTICK_1) where {T<:JoystickData{NA, NB, A, BS, BC}} where {NA, NB, A, BS, BC}
-#         new{T, BS}(slot, data.button_state)
-#     end
-# end
-
-
-@kwdef mutable struct Joystick{T <: JoystickData}
-    data::T
-    slot::JoystickSlot = GLFW.JOYSTICK_1
-    function Joystick(data::T, slot::JoystickSlot = GLFW.JOYSTICK_1) where {T<:JoystickData}
-        new{T}(data, slot)
-    end
-end
-
-# function IODevices.get_data!(joystick::Joystick{T}) where {T <: JoystickData{NA, NB, A, BS, BC}} where {NA, NB, A, BS, BC}
-#     button_state_current = BS()
-#     button_state_last = joystick.data.button_state
-#     #using SAcollect, construct a tuple of all the button changes
-#     button_change = map(button_state_current, button_state_last) do current, last
-#         current
-#     end |> BS
-#     joystick
-
-# end
-
-
-# struct Joystick{T, A <: AbstractAxisSet, BS <: AbstractButtonSet{Bool}, BC <: AbstractButtonSet{Float64}}
-#     slot::JoystickSlot
-#     axes::A
-#     button_state_last::BS
-#     button_change::BC
-#     function Joystick{A, B}() where {A <: AbstractAxisSet, B <: AbstractButtonSet}
-#         data_type =
-
-#     end
-# end
-
-
-
-# XBoxController = Joystick{JoystickData{XBox360ControllerAxes, XBox360ControllerButtons}}
-
-# function JoystickData(joystick::Joystick{A, B}) where {A <: AbstractAxisSet, B <: AbstractButtonSet}
-#     button_state = A{Bool}()
-
-# end
 
 ###################
 
