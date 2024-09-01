@@ -82,7 +82,7 @@ Systems.U(::TestSystem) = TestSystemU()
 Systems.Y(::TestSystem) = TestSystemY()
 
 function Systems.f_disc!(sys::System{<:TestSystem}, ::Real)
-    sleep(0.01)
+    # sleep(0.01)
     sys.y = TestSystemY(; input = sys.u.input)
 end
 
@@ -96,7 +96,6 @@ function Systems.assign_data!(sys::System{TestSystem}, data::Vector{UInt8},
     sys.u.input = data[1]
 end
 
-#needs to provide a Vector{UInt8}, which is what UDPOutput expects
 function Systems.extract_data(::System{TestSystem},
                             ::Type{Vector{UInt8}}, ::UDPTestMapping)
     data = UInt8[37]
@@ -229,7 +228,7 @@ function joystick_input()
     @testset verbose = true "Joystick Input" begin
 
         sys = TestSystem() |> System
-        sim = Simulation(sys; t_end = 10.0)
+        sim = Simulation(sys; t_end = 1.0)
         joystick = get_connected_joysticks()[1]
         Sim.attach!(sim, joystick)
 
@@ -240,6 +239,11 @@ function joystick_input()
     end
 
 end
+
+#REPL:
+# with_logger(ConsoleLogger(Logging.Debug)) do
+#     sim = TestSim.joystick_input()
+# end
 
 
 

@@ -8,7 +8,7 @@ using Flight.FlightComponents.Control.Continuous: PIVector
 
 export demo_joysticks
 
-struct TestMapping <: InputMapping end
+struct TestMapping <: IOMapping end
 
 function IODevices.assign_input!(sys::System{<:PIVector{2}},
                             joystick::T16000M,

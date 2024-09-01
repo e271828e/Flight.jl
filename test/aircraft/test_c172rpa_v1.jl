@@ -588,7 +588,7 @@ function test_json_loopback(; save::Bool = true)
 
     #ControllerU is declared as StructTypes.Mutable() in C172RPA.FlightControl, so
     #JSON3 can automatically read a JSON string into one or more of its fields
-    function assign_callback!(sys::System{<:Cessna172RPAv1}, data::Vector{UInt8}, ::InputMapping)
+    function assign_callback!(sys::System{<:Cessna172RPAv1}, data::Vector{UInt8}, ::IOMapping)
         #warning! String(data) empties the original data::Vector{UInt8}, so further
         #calls would return an empty string
         str = String(data)

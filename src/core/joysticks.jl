@@ -2,8 +2,8 @@ module Joysticks
 
 using StaticArrays
 using UnPack
-using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
-        GetJoystickAxes, GetJoystickButtons, GetJoystickName, SetJoystickCallback
+using GLFW: GLFW, Joystick as JoystickSlot, JoystickPresent,
+        GetJoystickAxes, GetJoystickButtons, GetJoystickName
 
 using ..IODevices
 using ..Utils
@@ -14,7 +14,9 @@ export get_axis_value, exp_axis_curve
 export get_button_state, is_pressed
 export get_button_change, was_pressed, was_released
 
-export XBoxController, T16000M, GladiatorNXTEvo
+export XBoxController, XBoxControllerData
+export T16000M, T16000MData
+export GladiatorNXTEvo, GladiatorNXTEvoData
 
 
 ################################################################################
@@ -60,22 +62,6 @@ get_button_change(data::JoystickData, s::Symbol) = getproperty(data.button_chang
 was_pressed(data::JoystickData, s::Symbol) = get_button_change(data, s) === ButtonPressed
 was_released(data::JoystickData, s::Symbol) = get_button_change(data, s) === ButtonReleased
 
-# function Base.show(::IO, data::JoystickData)
-
-#     @unpack axes, button_state, button_change = data
-#     println()
-#     println("Axes:")
-#     for label in propertynames(axes)
-#         println("  ", label, ": ", getproperty(axes,label))
-#     end
-#     println("Buttons:")
-#     for label in propertynames(button_state)
-#         println("  ", label, ": ", getproperty(button_state, label),
-#                             ", ", getproperty(button_change, label))
-#     end
-
-# end
-
 
 ################################################################################
 ################################# Joystick #####################################
@@ -83,32 +69,9 @@ was_released(data::JoystickData, s::Symbol) = get_button_change(data, s) === But
 mutable struct Joystick{T <: JoystickData} <: InputDevice{T}
     slot::JoystickSlot
     cache::T
-    window::GLFW.Window
-    function Joystick(slot::JoystickSlot, cache::T) where {T <: JoystickData}
-        new{T}(slot, cache) #window is left uninitialized
-    end
-end
-
-
-#n_update: number of display updates per input device update:
-#T_update = T_display * n_update (where typically T_display =
-#16.67ms). n_update=0 uncaps the update rate (not recommended!)
-
-function IODevices.init!(joystick::Joystick)
-    n_update = 1
-    joystick.window = GLFW.CreateWindow(640, 480, "$(string(typeof(joystick)))")
-    # GLFW.HideWindow(joystick.window)
-    GLFW.MakeContextCurrent(joystick.window)
-    GLFW.SwapInterval(n_update)
 end
 
 function IODevices.get_data!(joystick::Joystick{T}) where {T <: JoystickData{A, BS, BC}} where {A, BS, BC}
-
-    #we use the GLFWWindow as a means to cap the Joystick's update rate; this
-    #call blocks for the duration of the configured SwapInterval, yielding
-    #execution to another thread
-    GLFW.SwapBuffers(joystick.window)
-    GLFW.PollEvents() #see if we got a shutdown request
 
     #from the axis values returned by GetJoystickAxes we only keep as many
     #as defined by our AbstractButtonSet
@@ -132,9 +95,6 @@ function IODevices.get_data!(joystick::Joystick{T}) where {T <: JoystickData{A, 
 
     return data
 end
-
-IODevices.should_close(joystick::Joystick) = GLFW.WindowShouldClose(joystick.window)
-IODevices.shutdown!(joystick::Joystick) = GLFW.DestroyWindow(joystick.window)
 
 ################################################################################
 ########################### Thrustmaster T.16000M ##############################

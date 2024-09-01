@@ -125,7 +125,7 @@ end
 ############################ Joystick Mappings #################################
 
 function IODevices.assign_input!(sys::System{<:Cessna172FBWv1}, joystick::Joystick,
-                           mapping::InputMapping)
+                           mapping::IOMapping)
     IODevices.assign_input!(sys.avionics.fcl, joystick, mapping)
 end
 

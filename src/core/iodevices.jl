@@ -4,14 +4,13 @@ using StaticArrays
 using UnPack
 using Logging
 
-export IODevice, InputDevice, OutputDevice, IOMapping, DefaultMapping
+export IODevice, InputDevice, OutputDevice, IOMapping
 
 
 ################################################################################
 ################################# IOMapping ####################################
 
 abstract type IOMapping end
-struct DefaultMapping <: IOMapping end
 
 ################################################################################
 ################################# IODevice #####################################

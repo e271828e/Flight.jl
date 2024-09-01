@@ -41,7 +41,7 @@ function test_json_loopback1()
 
     #once TestSystemU has been declared, JSON3 can automatically read a JSON
     #string into one or more of its fields
-    function assign_callback!(sys::System{TestSystem}, data::Vector{UInt8}, ::InputMapping)
+    function assign_callback!(sys::System{TestSystem}, data::Vector{UInt8}, ::IOMapping)
         JSON3.read!(String(data), sys.u)
         # println(sys.u.input)
         # println(sys.y)

@@ -594,7 +594,7 @@ end
 
 #map input assignments directly to the actuation system
 function IODevices.assign_input!(sys::System{<:Cessna172FBW}, joystick::Joystick,
-                           mapping::InputMapping)
+                           mapping::IOMapping)
     IODevices.assign_input!(sys.vehicle.components.act, joystick, mapping)
 end
 
