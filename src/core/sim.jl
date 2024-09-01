@@ -83,8 +83,8 @@ struct SimInterface{D <: IODevice, T, M <: IOMapping}
     io_lock::ReentrantLock
 end
 
-const SimInput = SimInterface{<:InputDevice}
-const SimOutput = SimInterface{<:OutputDevice}
+const SimInput{D, T, M} = SimInterface{D, T, M} where {D <: InputDevice, T, M}
+const SimOutput{D, T, M} = SimInterface{D, T, M} where {D <: OutputDevice, T, M}
 
 #called from the SimInterface loop thread. this may block, either on get_data
 #because the InputDevice is itself blocked, or on put! because the Simulation
@@ -102,14 +102,14 @@ end
 
 #called from the Simulation loop thread, will never block
 function update!(input::SimInput, sys::System)
-    @unpack device, channel, mapping = input
-    Systems.assign_data!(sys, take_nonblocking!(channel), device, mapping)
+    @unpack channel, mapping = input
+    Systems.assign_data!(sys, take_nonblocking!(channel), mapping)
 end
 
 #called from the Simulation loop thread, will never block
-function update!(output::SimOutput, sys::System)
-    @unpack device, channel, mapping = output
-    put_nonblocking!(channel, Systems.extract_data(sys, device, mapping))
+function update!(output::SimOutput{D, T}, sys::System) where {D, T}
+    @unpack channel, mapping = output
+    put_nonblocking!(channel, Systems.extract_data(sys, T, mapping))
 end
 
 function take_nonblocking!(channel::Channel)

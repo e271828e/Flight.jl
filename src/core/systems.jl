@@ -235,19 +235,19 @@ end
 #################################### I/O #######################################
 
 #to add support for an InputDevice, the System should extend this function for
-#an IOMapping specific to that InputDevice and the data type expected from it.
-#note that InputDevice is passed only for dispatch
-function assign_data!(sys::System, data::Any, device::InputDevice, mapping::IOMapping)
-    MethodError(assign_data!, (sys, data, device, mapping)) |> throw
+#the data type produced by that InputDevice. additional customization is
+#possible by dispatching on a specific IOMapping subtype
+function assign_data!(sys::System, data::Any, mapping::IOMapping)
+    MethodError(assign_data!, (sys, data, mapping)) |> throw
 end
 
-assign_data!(::System, ::Nothing, ::InputDevice, ::IOMapping) = nothing
+assign_data!(::System, ::Nothing, ::IOMapping) = nothing
 
 #to add support for an OutputDevice, the System should extend this function for
-#an IOMapping specific to that OutputDevice and return the data it expects. note
-#that OutputDevice is passed only for dispatch
-function extract_data(sys::System, device::OutputDevice, mapping::IOMapping)
-    MethodError(extract_data, (sys, device, mapping)) |> throw
+#the Type expected by that OutputDevice. additional customization is possible
+#by dispatching on a specific IOMapping subtype
+function extract_data(sys::System, type::Type{<:Any}, mapping::IOMapping)
+    MethodError(extract_data, (sys, type, mapping)) |> throw
 end
 
 

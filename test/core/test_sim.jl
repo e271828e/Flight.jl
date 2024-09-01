@@ -38,11 +38,28 @@ end
 Systems.init!(sys::System{FirstOrder}, x0::Real = 0.0) = (sys.x .= x0)
 
 
-#lesson learned: for a loopback test, it's essential that the input and output
-#devices are not mutually locking. otherwise, at least one of them will block
-#irrecoverably when the simulation terminates. this coupling may happen for
-#example if input and output share a loopback Channel and they make blocking
-#put! and take! calls on it.
+function test_sim_standalone()
+
+    sys = FirstOrder() |> System
+    sim = Simulation(sys; dt = 0.1, Δt = 1.0, t_end = 5)
+    x0 = 1.0
+    f_init! = (sys)->Systems.init!(sys, x0)
+    reinit!(sim, f_init!)
+    return sim
+    # Sim.run!(sim)
+
+end
+
+
+
+################################################################################
+################################# TestSystem ###################################
+
+#for a loopback test, it's essential that the input and output devices are not
+#mutually locking. otherwise, at least one of them will block irrecoverably when
+#the simulation terminates. this coupling may happen for example if input and
+#output share a loopback Channel and they make blocking put! and take! calls on
+#it.
 
 #to avoid this, it is enough that at least one of them can only block when
 #waiting on its SimInterface, but not on the loopback interface. this is
@@ -51,19 +68,14 @@ Systems.init!(sys::System{FirstOrder}, x0::Real = 0.0) = (sys.x .= x0)
 #nonblocking.
 
 
-################################################################################
-################################# TestSystem ###################################
-
 @kwdef struct TestSystem <: SystemDefinition end
 
 @kwdef mutable struct TestSystemU
-    output::Int = 0
-    echo::Int = 0
+    input::Float64 = 0
 end
 
 @kwdef struct TestSystemY
-    output::Int = 0
-    echo::Int = 0
+    input::Float64 = 0
 end
 
 Systems.U(::TestSystem) = TestSystemU()
@@ -71,7 +83,7 @@ Systems.Y(::TestSystem) = TestSystemY()
 
 function Systems.f_disc!(sys::System{<:TestSystem}, ::Real)
     sleep(0.01)
-    sys.y = TestSystemY(; output = sys.u.output, echo = sys.u.echo)
+    sys.y = TestSystemY(; input = sys.u.input)
 end
 
 ################################ UDP Loopback ##################################
@@ -79,15 +91,15 @@ end
 struct UDPTestMapping <: IOMapping end
 
 function Systems.assign_data!(sys::System{TestSystem}, data::Vector{UInt8},
-                            ::UDPInput, ::UDPTestMapping)
+                            ::UDPTestMapping)
     @debug "Got $data"
-    sys.u.echo = data[1]
+    sys.u.input = data[1]
 end
 
 #needs to provide a Vector{UInt8}, which is what UDPOutput expects
-function Systems.extract_data(sys::System{TestSystem},
-                            ::UDPOutput, ::UDPTestMapping)
-    data = UInt8[sys.y.output]
+function Systems.extract_data(::System{TestSystem},
+                            ::Type{Vector{UInt8}}, ::UDPTestMapping)
+    data = UInt8[37]
     @debug "Extracted $data"
     return data
 end
@@ -99,14 +111,15 @@ function udp_loopback()
         port = 14149
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
-        sim.u.output = 37
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
         Sim.attach!(sim, UDPOutput(; port), UDPTestMapping())
+
+        # return sim
         Sim.run!(sim)
 
-        #sys.u.output must have propagated to sys.y.output within f_disc!, then
-        #to sys.u.echo via loopback, and finally to sys.y.echo within f_disc!
-        @test sim.y.echo === 37
+        #sys.y.output must have propagated to sys.u.input via loopback, and then
+        #to sys.y.input within f_disc!
+        @test sim.y.input == 37.0
 
         return sim
 
@@ -116,9 +129,7 @@ end
 
 ################################ XPC Loopback ##################################
 
-struct XPCTestMapping <: IOMapping end
-
-function Systems.extract_data(::System{TestSystem}, ::XPCClient, ::XPCTestMapping)
+function Systems.extract_data(::System{TestSystem}, ::Type{XPCPosition}, ::IOMapping)
     data = KinData() |> XPCPosition
     @debug "Extracted $data"
     return data
@@ -132,14 +143,14 @@ function xpc_loopback()
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
-        Sim.attach!(sim, XPCClient(; port), XPCTestMapping())
+        Sim.attach!(sim, XPCClient(; port))
         Sim.run!(sim)
 
         cmd = KinData() |> XPCPosition |> Network.pos_cmd
         #extract_data returns an XPCPosition instance, from which handle_data
-        #constructs a position command, which propagates to sys.u.echo via
-        #loopback, and finally to sys.y.echo within f_disc!
-        @test sim.y.echo === Int(cmd[1])
+        #constructs a position command, which propagates to sys.u.input via
+        #loopback, and finally to sys.y.input within f_disc!
+        @test sim.y.input === Float64(cmd[1])
 
         return sim
 
@@ -152,7 +163,7 @@ end
 
 #declare TestSystemY as immutable for JSON3 parsing
 StructTypes.StructType(::Type{TestSystemY}) = StructTypes.Struct()
-StructTypes.excludes(::Type{TestSystemY}) = (:echo,) #only extract :output
+StructTypes.excludes(::Type{TestSystemY}) = (:input,) #only extract :output
 
 #declare TestSystemU as mutable so that JSON3 can read into it
 StructTypes.StructType(::Type{TestSystemU}) = StructTypes.Mutable()
@@ -160,23 +171,21 @@ StructTypes.StructType(::Type{TestSystemU}) = StructTypes.Mutable()
 #this doesn't work for switching field values via loopback, because the
 #inversion applies both to serializing and deserializing, so it cancels out
 
-# StructTypes.names(::Type{TestSystemU}) = ((:echo, :output), (:output,  :echo))
+# StructTypes.names(::Type{TestSystemU}) = ((:input, :output), (:output,  :input))
 
 struct JSONTestMapping <: IOMapping end
 
-function Systems.extract_data(sys::System{TestSystem}, ::UDPOutput, ::JSONTestMapping)
-    data = JSON3.write(sys.y)
+function Systems.extract_data(::System{TestSystem}, ::Type{Vector{UInt8}},
+                            ::JSONTestMapping)
+    data = (input = 37.0,) |> JSON3.write
     @debug "Extracted $data"
     return Vector{UInt8}(data)
 end
 
-function Systems.assign_data!(sys::System{TestSystem}, data::Vector{UInt8}, ::UDPInput, ::JSONTestMapping)
-    #we could simply do the following instead, but that wouldn't test direct
-    #deserialization into a custom type:
-    # sys.u.echo = JSON3.read(String(data)).output
-    echo_str = (echo = JSON3.read(String(data)).output, ) |> JSON3.write
-    JSON3.read!(echo_str, sys.u)
-    @debug "Echo is now $(sys.u.echo)"
+function Systems.assign_data!(sys::System{TestSystem}, data::Vector{UInt8},
+                            ::JSONTestMapping)
+    JSON3.read!(String(data), sys.u)
+    @debug "Echo is now $(sys.u.input)"
 end
 
 function json_loopback()
@@ -186,12 +195,11 @@ function json_loopback()
         port = 14149
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
-        sim.u.output = 45
         Sim.attach!(sim, UDPInput(; port), JSONTestMapping())
         Sim.attach!(sim, UDPOutput(; port), JSONTestMapping())
         Sim.run!(sim)
 
-        @test sim.y.echo === 45
+        @test sim.y.input == 37.0
 
         return sim
 
@@ -200,16 +208,39 @@ function json_loopback()
 end
 
 
-function test_sim_standalone()
+################################## Joystick ####################################
 
-    sys = FirstOrder() |> System
-    sim = Simulation(sys; dt = 0.1, Δt = 1.0, t_end = 5)
-    x0 = 1.0
-    f_init! = (sys)->Systems.init!(sys, x0)
-    reinit!(sim, f_init!)
-    return sim
-    # Sim.run!(sim)
+function Systems.assign_data!(sys::System{TestSystem},
+                            data::Joysticks.T16000MData,
+                            ::IOMapping)
+    sys.u.input = get_axis_value(data, :stick_x)
+    @debug "Input $(sys.u.input)"
+end
+
+function Systems.assign_data!(sys::System{TestSystem},
+                            data::Joysticks.XBoxControllerData,
+                            ::IOMapping)
+    sys.u.input = get_axis_value(data, :left_stick_x)
+    @debug "Input $(sys.u.input)"
+end
+
+function joystick_input()
+
+    @testset verbose = true "Joystick Input" begin
+
+        sys = TestSystem() |> System
+        sim = Simulation(sys; t_end = 10.0)
+        joystick = get_connected_joysticks()[1]
+        Sim.attach!(sim, joystick)
+
+        Sim.run_interactive!(sim)
+
+        return sim
+
+    end
 
 end
+
+
 
 end #module
