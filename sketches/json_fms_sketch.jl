@@ -29,12 +29,12 @@ function output_callback(sim_data::Sim.SimData)::Vector{UInt8}
     )
 
     json_out = JSON3.write(output)
-    return Vector{UInt8}(json_out)
+    return json_out
 end
 
 #ControllerU is declared as StructTypes.Mutable() in C172RPA.FlightControl, so
 #JSON3 can automatically read a JSON string into one or more of its fields
-function assign_callback!(sys::System{<:Cessna172RPAv1}, data::Vector{UInt8}, ::IOMapping)
+function assign_callback!(sys::System{<:Cessna172RPAv1}, data::String, ::IOMapping)
 
     raw_str = String(data)
     json_dict = raw_str |> JSON3.read |> Dict

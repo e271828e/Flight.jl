@@ -554,7 +554,7 @@ end
 struct JSONTestMapping <: IOMapping end
 
 function Systems.extract_output(sys::System{<:Cessna172RPAv1},
-                        ::Type{Vector{UInt8}},
+                        ::Type{String},
                         ::JSONTestMapping)
     freq = 0.1
     φ_sp_max = π/6
@@ -583,12 +583,11 @@ function Systems.extract_output(sys::System{<:Cessna172RPAv1},
         # )
     end
 
-    json_cmd = JSON3.write(cmd)
-    return Vector{UInt8}(json_cmd)
+    return JSON3.write(cmd)
 end
 
 function Systems.assign_input!(sys::System{<:Cessna172RPAv1},
-                                data::Vector{UInt8},
+                                data::String,
                                 ::JSONTestMapping)
     #ControllerU is declared as StructTypes.Mutable() in C172RPA.FlightControl,
     #so JSON3 can automatically read a JSON string into one or more of its

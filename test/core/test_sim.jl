@@ -82,7 +82,7 @@ Systems.U(::TestSystem) = TestSystemU()
 Systems.Y(::TestSystem) = TestSystemY()
 
 function Systems.f_disc!(sys::System{<:TestSystem}, ::Real)
-    # sleep(0.01)
+    sleep(0.01)
     sys.y = TestSystemY(; input = sys.u.input)
 end
 
@@ -90,15 +90,17 @@ end
 
 struct UDPTestMapping <: IOMapping end
 
-function Systems.assign_input!(sys::System{TestSystem}, data::Vector{UInt8},
+function Systems.assign_input!(sys::System{TestSystem}, data::String,
                             ::UDPTestMapping)
-    @debug "Got $data"
-    sys.u.input = data[1]
+    # @info "Got $data"
+    sys.u.input = Vector{UInt8}(data)[1]
+    # sys.u.input = "Hi"
 end
 
 function Systems.extract_output(::System{TestSystem},
-                            ::Type{Vector{UInt8}}, ::UDPTestMapping)
-    data = UInt8[37]
+                            ::Type{String}, ::UDPTestMapping)
+    data = UInt8[37] |> String
+    # data = String([0x04]) #EOT character
     @debug "Extracted $data"
     return data
 end
@@ -113,7 +115,6 @@ function udp_loopback()
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
         Sim.attach!(sim, UDPOutput(; port), UDPTestMapping())
 
-        # return sim
         Sim.run!(sim)
 
         #sys.y.output must have propagated to sys.u.input via loopback, and then
@@ -147,8 +148,9 @@ function xpc_loopback()
 
         cmd = KinData() |> XPCPosition |> Network.pos_cmd
         #extract_output returns an XPCPosition instance, from which handle_data
-        #constructs a position command, which propagates to sys.u.input via
-        #loopback, and finally to sys.y.input within f_disc!
+        #constructs a position command string, which reaches assign_input! via
+        #loopback. the first character is converted to Float64 and assigned to
+        #sys.u.input, and it finally propagates to sys.y.input within f_disc!
         @test sim.y.input === Float64(cmd[1])
 
         return sim
@@ -174,14 +176,14 @@ StructTypes.StructType(::Type{TestSystemU}) = StructTypes.Mutable()
 
 struct JSONTestMapping <: IOMapping end
 
-function Systems.extract_output(::System{TestSystem}, ::Type{Vector{UInt8}},
+function Systems.extract_output(::System{TestSystem}, ::Type{String},
                             ::JSONTestMapping)
     data = (input = 37.0,) |> JSON3.write
     @debug "Extracted $data"
-    return Vector{UInt8}(data)
+    return data
 end
 
-function Systems.assign_input!(sys::System{TestSystem}, data::Vector{UInt8},
+function Systems.assign_input!(sys::System{TestSystem}, data::String,
                             ::JSONTestMapping)
     JSON3.read!(String(data), sys.u)
     @debug "Echo is now $(sys.u.input)"

@@ -824,7 +824,7 @@ yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 
-function Systems.assign_input!(sys::System{Controller},
+function Systems.assign_input!(sys::System{<:Controller},
                            data::XBoxController, ::IOMapping)
 
     u = sys.u
@@ -860,7 +860,7 @@ function Systems.assign_input!(sys::System{Controller},
 
 end
 
-function Systems.assign_input!(sys::System{Controller},
+function Systems.assign_input!(sys::System{<:Controller},
                                 data::T16000MData, ::IOMapping)
 
     u = sys.u
@@ -895,7 +895,7 @@ function Systems.assign_input!(sys::System{Controller},
 
 end
 
-function Systems.assign_input!(sys::System{Controller},
+function Systems.assign_input!(sys::System{<:Controller},
                            data::GladiatorNXTEvoData, ::IOMapping)
 
     u = sys.u

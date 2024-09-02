@@ -103,7 +103,13 @@ end
 #called from the Simulation loop thread, will never block
 function update!(input::SimInput, sys::System)
     @unpack channel, mapping = input
-    Systems.assign_input!(sys, take_nonblocking!(channel), mapping)
+    data = take_nonblocking!(channel)
+    try
+        Systems.assign_input!(sys, data, mapping)
+    catch ex
+        @warn("Failed to assign input data $data to System")
+        # println(ex)
+    end
 end
 
 #called from the Simulation loop thread, will never block
@@ -417,8 +423,10 @@ function start!(gui::SimGUI)
 
         while true
 
-            if !(@lock io_lock control.running) || GUI.should_close(renderer)
-                @info("SimGUI: Shutting down...")
+            !(@lock io_lock control.running) && break
+
+            if GUI.should_close(renderer)
+                @info("SimGUI: Shutdown request received...")
                 break
             end
 
@@ -440,6 +448,7 @@ function start!(gui::SimGUI)
             control.paused = false
             control.running = false
         end
+        @info("SimGUI: Shutting down...")
         renderer._initialized && GUI.shutdown!(renderer)
         @info("SimGUI: Closed")
     end
@@ -465,8 +474,10 @@ function start!(interface::SimInterface{D}) where {D <: IODevice}
 
         while true
 
-            if !(@lock io_lock control.running) || IODevices.should_close(device)
-                @info("$D: Shutting down...")
+            !(@lock io_lock control.running) && break
+
+            if IODevices.should_close(device)
+                @info("$D: Shutdown request received...")
                 break
             end
 
@@ -482,6 +493,7 @@ function start!(interface::SimInterface{D}) where {D <: IODevice}
         @error("$D: Error during execution: $ex")
 
     finally
+        @info("$D: Shutting down...")
         IODevices.shutdown!(device)
         @info("$D: Closed")
     end
@@ -600,8 +612,8 @@ function sim_cleanup!(sim::Simulation)
     #maybe we should't call reset(io_start) immediately afterwards, because it
     #might be executed before all waiting threads have had time to unblock
 
-    #make sure all IO Channels are emptied so any IO threads do not block on
-    #them or they unblock if they were blocked
+    #make sure all IO Channels are emptied so IO threads no longer block on
+    #them, or they unblock if they were blocked
     for interface in interfaces
         update!(interface, sys)
     end

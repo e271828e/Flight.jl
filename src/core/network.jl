@@ -18,8 +18,10 @@ export XPCClient, XPCPosition
     socket::UDPSocket = UDPSocket()
     address::A = IPv4("127.0.0.1")#IP address we'll be listening at
     port::Int = 49017 #port we'll be listening at
-    function UDPInput(socket::UDPSocket, address::A, port::Integer) where {A <: IPAddr}
-        new{Vector{UInt8}, A}(socket, address, port)
+    should_close::Bool = false
+    function UDPInput(socket::UDPSocket, address::A, port::Integer,
+                      should_close::Bool) where {A <: IPAddr}
+        new{String, A}(socket, address, port, should_close)
     end
 end
 
@@ -31,11 +33,12 @@ function IODevices.init!(input::UDPInput)
     end
 end
 
+IODevices.should_close(input::UDPInput) = input.should_close
 IODevices.shutdown!(input::UDPInput) = close(input.socket)
-# IODevices.data_type(::UDPInput) = Vector{UInt8}
 
 function IODevices.get_data!(input::UDPInput)
-    data = recv(input.socket)
+    data = recv(input.socket) |> String
+    (data === "\x04") && (input.should_close = true) #received EOT character
     return data
 end
 
@@ -48,25 +51,24 @@ end
     address::A = IPv4("127.0.0.1")#IP address we'll be listening at
     port::Int = 49017 #port we'll be listening at
     function UDPOutput(socket::UDPSocket, address::A, port::Integer) where {A <: IPAddr}
-        new{Vector{UInt8}, A}(socket, address, port)
+        new{String, A}(socket, address, port)
     end
 end
 
-function IODevices.init!(output::UDPOutput)
-    output.socket = UDPSocket() #get a new socket on each initialization
+function IODevices.init!(device::UDPOutput)
+    device.socket = UDPSocket() #get a new socket on each initialization
 end
 
-IODevices.shutdown!(output::UDPOutput) = close(output.socket)
-# IODevices.data_type(::UDPOutput) = Vector{UInt8}
+function IODevices.shutdown!(device::UDPOutput)
+    IODevices.handle_data!(device, "\x04") #send EOT character
+    close(device.socket)
+end
 
-function IODevices.handle_data!(output::UDPOutput, data::Vector{UInt8})
-    try
-        # @info "Sending $(length(data)) bytes"
-        !isempty(data) && send(output.socket, output.address, output.port, data)
-    catch ex
-        st = stacktrace(catch_backtrace())
-        @warn("UDPOutput failed with $ex in $(st[1])")
-    end
+function IODevices.handle_data!(device::UDPOutput, data::String)
+    @unpack socket, address, port = device
+    # @info "UDPOutput: Sending $(length(data)) bytes"
+    # @info "UDPOutput: Sending $data"
+    !isempty(data) && send(socket, address, port, data)
 end
 
 
@@ -122,7 +124,7 @@ function dref_cmd(id::AbstractString, value::Union{Real, AbstractVector{<:Real}}
         value |> length |> UInt8,
         Float32.(value))
 
-    return take!(buffer)
+    return String(take!(buffer))
 end
 
 #set aircraft position and attitude
@@ -133,7 +135,7 @@ function pos_cmd(pos::XPCPosition)
     buffer = IOBuffer(sizehint = 64)
     write(buffer, b"POSI\0", aircraft, ϕ, λ, h, θ, φ, ψ, Float32(-998))
 
-    return take!(buffer)
+    return String(take!(buffer))
 
 end
 
