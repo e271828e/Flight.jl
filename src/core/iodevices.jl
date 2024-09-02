@@ -23,11 +23,6 @@ init!(::D) where {D<:IODevice} = nothing
 shutdown!(::D) where {D<:IODevice} = nothing
 should_close(::D) where {D<:IODevice} = false
 
-#data type produced or expected by the IODevice
-# function data_type(device::D) where {D <: IODevice}
-#     MethodError(data_type, (device)) |> throw
-# end
-
 ################################################################################
 ############################### InputDevice ####################################
 

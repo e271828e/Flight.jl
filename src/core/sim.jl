@@ -261,17 +261,6 @@ user_callback!(::System) = nothing
 #thread is already blocked on a put! call on that Channel, and may therefore
 #take! from it without blocking
 
-# function attach!(sim::Simulation, device::IODevice,
-#                  mapping::IOMapping = DefaultMapping())
-
-#     channel = Channel{IODevices.data_type(device)}(1)
-#     interface = SimInterface(device, channel, mapping,
-#                             sim.control, sim.io_start, sim.io_lock)
-
-#     push!(sim.interfaces, interface)
-
-# end
-
 function attach!(sim::Simulation, device::IODevice{T},
                  mapping::IOMapping = DefaultMapping()) where {T}
 

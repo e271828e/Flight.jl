@@ -11,10 +11,10 @@ export UDPOutput, UDPInput
 export XPCClient, XPCPosition
 
 #UDPInput and UDPOutput both use the EOT character as a shutdown request. This
-#provides a means to prevent the UDPInput thread to get stuck in the blocking
-#recv call indefinitely. Any source providing data to the Simulation via
-#UDPInput should send an EOT character before shutting down. This is also done
-#by UDPOutput, preventing issues during loopback tests.
+#provides a means to prevent the UDPInput thread from getting stuck in the
+#blocking recv call indefinitely. Any source providing data to the Simulation
+#via UDPInput should send an EOT character before shutting down. This is done by
+#UDPOutput, which avoids issues during loopback tests.
 
 ################################################################################
 ################################# UDInput ######################################
@@ -107,7 +107,6 @@ function IODevices.init!(xpc::XPCClient)
 end
 
 IODevices.shutdown!(xpc::XPCClient) = IODevices.shutdown!(xpc.udp)
-# IODevices.data_type(::XPCClient) = XPCPosition
 
 function IODevices.handle_data!(xpc::XPCClient, data::XPCPosition)
     IODevices.handle_data!(xpc.udp, pos_cmd(data))
@@ -120,7 +119,7 @@ function dref_cmd(id::AbstractString, value::Union{Real, AbstractVector{<:Real}}
 
     #ascii() ensures ASCII data, codeunits returns a CodeUnits object, which
     #behaves similarly to a byte array. this is equivalent to b"text".
-    #Vector{UInt8}(id) would also work
+    #casting to Vector{UInt8} would also work
     buffer = IOBuffer()
     write(buffer,
         b"DREF\0",
