@@ -362,13 +362,13 @@ OrdinaryDiffEq.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator
 
 OrdinaryDiffEq.add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 
-function OrdinaryDiffEq.reinit!(sim::Simulation, sys_init! = Systems.init!)
+function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
 
     @unpack sys, integrator, log = sim
     @unpack p = integrator
 
     #initialize the System's x, u and s
-    sys_init!(sys)
+    Systems.init!(sys, init_args...; init_kwargs...)
 
     #let it propagate to y. within its reinit! method, the integrator will call
     #the SavingCallback to set the first entry in the log, which is sys.y

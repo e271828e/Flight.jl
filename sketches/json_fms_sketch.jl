@@ -35,20 +35,7 @@ end
 #ControllerU is declared as StructTypes.Mutable() in C172RPA.FlightControl, so
 #JSON3 can automatically read a JSON string into one or more of its fields
 function assign_callback!(sys::System{<:Cessna172RPAv1}, data::String, ::IOMapping)
-
-    raw_str = String(data)
-    json_dict = raw_str |> JSON3.read |> Dict
-    if (:chi_sp in keys(json_dict))
-        json_dict[:χ_sp] = json_dict[:chi_sp]
-        delete!(json_dict, :chi_sp)
-    end
-    if (:theta_sp in keys(json_dict))
-        json_dict[:θ_sp] = json_dict[:theta_sp]
-        delete!(json_dict, :theta_sp)
-    end
-    clean_str = JSON3.write(json_dict)
-
-    length(clean_str) > 2 && JSON3.read!(clean_str, sys.avionics.fcl.u)
+    length(data) > 2 && JSON3.read!(data, sys.avionics.fcl.u)
 end
 
 function json_fms_sketch(; save::Bool = true)

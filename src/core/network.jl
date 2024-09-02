@@ -10,6 +10,11 @@ using ..IODevices
 export UDPOutput, UDPInput
 export XPCClient, XPCPosition
 
+#UDPInput and UDPOutput both use the EOT character as a shutdown request. This
+#provides a means to prevent the UDPInput thread to get stuck in the blocking
+#recv call indefinitely. Any source providing data to the Simulation via
+#UDPInput should send an EOT character before shutting down. This is also done
+#by UDPOutput, preventing issues during loopback tests.
 
 ################################################################################
 ################################# UDInput ######################################
@@ -25,20 +30,20 @@ export XPCClient, XPCPosition
     end
 end
 
-function IODevices.init!(input::UDPInput)
-    input.socket = UDPSocket() #create a new socket on each initialization
-    @unpack socket, address, port = input
+function IODevices.init!(device::UDPInput)
+    device.socket = UDPSocket() #create a new socket on each initialization
+    @unpack socket, address, port = device
     if !bind(socket, address, port; reuseaddr=true)
         @error( "Failed to bind socket to address $address, port $port")
     end
 end
 
-IODevices.should_close(input::UDPInput) = input.should_close
-IODevices.shutdown!(input::UDPInput) = close(input.socket)
+IODevices.should_close(device::UDPInput) = device.should_close
+IODevices.shutdown!(device::UDPInput) = close(device.socket)
 
-function IODevices.get_data!(input::UDPInput)
-    data = recv(input.socket) |> String
-    (data === "\x04") && (input.should_close = true) #received EOT character
+function IODevices.get_data!(device::UDPInput)
+    data = recv(device.socket) |> String
+    (data === "\x04") && (device.should_close = true) #received EOT character
     return data
 end
 

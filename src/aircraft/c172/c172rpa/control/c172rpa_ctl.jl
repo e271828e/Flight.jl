@@ -1385,6 +1385,9 @@ end
 
 #declare ControllerU as mutable
 StructTypes.StructType(::Type{ControllerU}) = StructTypes.Mutable()
+#avoid Greek characters in the JSON string
+StructTypes.names(::Type{ControllerU}) = ((:χ_sp, :chi_sp), (:θ_sp, :theta_sp),
+    (:φ_sp, :phi_sp), (:β_sp, :beta_sp))
 
 #enable JSON parsing of integers as LonControlMode
 StructTypes.StructType(::Type{LonControlMode}) = StructTypes.CustomStruct()
