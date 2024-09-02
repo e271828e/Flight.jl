@@ -103,13 +103,13 @@ end
 #called from the Simulation loop thread, will never block
 function update!(input::SimInput, sys::System)
     @unpack channel, mapping = input
-    Systems.assign_data!(sys, take_nonblocking!(channel), mapping)
+    Systems.assign_input!(sys, take_nonblocking!(channel), mapping)
 end
 
 #called from the Simulation loop thread, will never block
 function update!(output::SimOutput{D, T}, sys::System) where {D, T}
     @unpack channel, mapping = output
-    put_nonblocking!(channel, Systems.extract_data(sys, T, mapping))
+    put_nonblocking!(channel, Systems.extract_output(sys, T, mapping))
 end
 
 function take_nonblocking!(channel::Channel)

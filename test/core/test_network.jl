@@ -54,8 +54,8 @@ function test_json_loopback1()
     #trigger compilation of parsing methods before launching the simulation
     JSON3.read!(JSON3.write(sys.u, allow_inf=true), sys.u; allow_inf=true)
 
-    Sim.attach!(sim, UDPClient(; port = 49017, output_callback))
-    Sim.attach!(sim, UDPServer(; port = 49017, assign_callback!))
+    Sim.attach!(sim, UDPOutput(; port = 49017, output_callback))
+    Sim.attach!(sim, UDPInput(; port = 49017, assign_callback!))
     Sim.run_interactive!(sim)
 
     @test get_data(TimeSeries(sim))[end] == 2.4

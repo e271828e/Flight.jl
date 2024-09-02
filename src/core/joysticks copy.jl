@@ -1,7 +1,6 @@
 module Joysticks
 
-using StaticArrays
-using UnPack
+using StaticArrays, UnPack
 using GLFW: GLFW, Joystick as JoystickSlot, DeviceConfigEvent, JoystickPresent,
         GetJoystickAxes, GetJoystickButtons, GetJoystickName, SetJoystickCallback
 

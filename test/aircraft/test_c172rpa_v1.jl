@@ -551,57 +551,65 @@ function test_guidance_modes()
 
 end
 
+struct JSONTestMapping <: IOMapping end
+
+function Systems.extract_output(sys::System{<:Cessna172RPAv1},
+                        ::Type{Vector{UInt8}},
+                        ::JSONTestMapping)
+    freq = 0.1
+    φ_sp_max = π/6
+    φ_sp = φ_sp_max * sin(2π*freq*sys.t[])
+
+    #these are all valid empty JSON entities. when passed to JSON3.write, they
+    #yield respectively "\"\"", "[]" and "{}", all of length 2
+    cmd = ""
+    # cmd = []
+    # cmd = Dict()
+
+    if sys.t[] > 5
+        #these enums will be automatically cast to Ints per the StructTypes
+        #methods defined in C172RPA.FlightControl
+        cmd = (
+            vrt_gdc_mode_req = vrt_gdc_alt,
+            lat_ctl_mode_req = lat_φ_β,
+            φ_sp = φ_sp,
+        )
+
+        #therefore, these would also work
+        # cmd = (
+        #     vrt_gdc_mode_req = 1,
+        #     lat_ctl_mode_req = 2,
+        #     φ_sp = φ_sp,
+        # )
+    end
+
+    json_cmd = JSON3.write(cmd)
+    return Vector{UInt8}(json_cmd)
+end
+
+function Systems.assign_input!(sys::System{<:Cessna172RPAv1},
+                                data::Vector{UInt8},
+                                ::JSONTestMapping)
+    #ControllerU is declared as StructTypes.Mutable() in C172RPA.FlightControl,
+    #so JSON3 can automatically read a JSON string into one or more of its
+    #fields
+
+    #caution: String(data) empties the original data::Vector{UInt8}, so
+    #further calls would return an empty string
+    str = String(data)
+
+    #if length(str) < 2, it cannot be a valid JSON string. if length(str) == 2
+    #it is an empty JSON entity (either string, object or array). instead of
+    #this check we could simply call do isempty(JSON3.read(str)) but that would
+    #mean parsing the string twice
+    length(str) > 2 && JSON3.read!(str, sys.avionics.fcl.u)
+
+    # isempty(str) |> println
+    # JSON3.read(str) |> isempty |> println
+end
 
 function test_json_loopback(; save::Bool = true)
 
-    function output_callback(sim_out::Sim.SimData)::Vector{UInt8}
-        freq = 0.1
-        φ_sp_max = π/6
-        φ_sp = φ_sp_max * sin(2π*freq*sim_out.t)
-
-        #these are all valid empty JSON entities. when passed to JSON3.write, they
-        #yield respectively "\"\"", "[]" and "{}", all of length 2
-        cmd = ""
-        # cmd = []
-        # cmd = Dict()
-
-        if sim_out.t > 5
-            #these enums will be automatically cast to Ints per the StructTypes
-            #methods defined in C172RPA.FlightControl
-            cmd = (
-                vrt_gdc_mode_req = vrt_gdc_alt,
-                lat_ctl_mode_req = lat_φ_β,
-                φ_sp = φ_sp,
-            )
-
-            #therefore, these would also work
-            # cmd = (
-            #     vrt_gdc_mode_req = 1,
-            #     lat_ctl_mode_req = 2,
-            #     φ_sp = φ_sp,
-            # )
-        end
-
-        json_cmd = JSON3.write(cmd)
-        return Vector{UInt8}(json_cmd)
-    end
-
-    #ControllerU is declared as StructTypes.Mutable() in C172RPA.FlightControl, so
-    #JSON3 can automatically read a JSON string into one or more of its fields
-    function assign_callback!(sys::System{<:Cessna172RPAv1}, data::Vector{UInt8}, ::IOMapping)
-        #warning! String(data) empties the original data::Vector{UInt8}, so further
-        #calls would return an empty string
-        str = String(data)
-
-        #if length(str) < 2, it cannot be a valid JSON string. if length(str) == 2
-        #it is an empty JSON entity (either string, object or array). instead of
-        #this check we could simply call do isempty(JSON3.read(str)) but that would
-        #mean parsing the string twice
-        length(str) > 2 && JSON3.read!(str, sys.avionics.fcl.u)
-
-        # isempty(str) |> println
-        # JSON3.read(str) |> isempty |> println
-    end
 
     h_trn = HOrth(601.55);
 
@@ -613,24 +621,28 @@ function test_json_loopback(; save::Bool = true)
     # kin_init = KinInit(
     #     loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
     #     h = h_trn + 1.81);
+    # f_init! = (ac) -> Systems.init!(ac, kin_init)
 
     #on air, automatically trimmed by reinit!
-    kin_init = C172.TrimParameters(
+    trim_params = C172.TrimParameters(
         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
-    f_init_air! = (ac) -> Systems.init!(ac, kin_init)
+    f_init! = (ac) -> Systems.init!(ac, trim_params)
 
     #initialize simulated system
-    reinit!(sim, f_init_air!)
+    reinit!(sim, f_init!)
 
-    #setup IO devices
-    for joystick in get_connected_joysticks()
-        Sim.attach!(sim, joystick)
-    end
-    xpc = XPCClient()
-    # xpc = XPCClient(address = IPv4("192.168.1.2"))
+    # #setup IO devices
+    # for joystick in get_connected_joysticks()
+    #     Sim.attach!(sim, joystick)
+    # end
+
+    #we need different ports for XPC and the loopback interface
+    xpc = XPCClient(; port = 49016)
+    xpc = XPCClient(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
-    Sim.attach!(sim, UDPClient(; port = 49017, output_callback))
-    Sim.attach!(sim, UDPServer(; port = 49017, assign_callback!))
+
+    Sim.attach!(sim, UDPInput(; port = 49017), JSONTestMapping())
+    Sim.attach!(sim, UDPOutput(; port = 49017), JSONTestMapping())
 
     #trigger compilation of parsing methods for AvionicsU before launching the
     #simulation

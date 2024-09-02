@@ -231,7 +231,7 @@ Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.y.vehicle.kinematics)
 
 ################################# XPCClient ####################################
 
-function Systems.extract_data(ac::System{<:Aircraft}, ::Type{XPCPosition}, ::IOMapping)
+function Systems.extract_output(ac::System{<:Aircraft}, ::Type{XPCPosition}, ::IOMapping)
     return XPCPosition(KinData(ac))
 end
 

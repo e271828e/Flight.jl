@@ -78,8 +78,8 @@ function json_fms_sketch(; save::Bool = true)
     xpc = XPCClient()
     # xpc = XPCClient(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
-    Sim.attach!(sim, UDPClient(; address = IPv4("192.168.1.2"), port = 5004, output_callback))
-    Sim.attach!(sim, UDPServer(; address = IPv4("192.168.1.3"), port = 2004, assign_callback!))
+    Sim.attach!(sim, UDPOutput(; address = IPv4("192.168.1.2"), port = 5004, output_callback))
+    Sim.attach!(sim, UDPInput(; address = IPv4("192.168.1.3"), port = 2004, assign_callback!))
 
     #trigger compilation of parsing methods for AvionicsU before launching the
     #simulation

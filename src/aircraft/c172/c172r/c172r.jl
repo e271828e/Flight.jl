@@ -205,58 +205,56 @@ function GUI.draw!(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
 
 end
 
-################################## IODevices ###################################
+################################## Joysticks ###################################
 
 elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function IODevices.assign_input!(sys::System{<:Actuation},
-                           joystick::XBoxController,
-                           ::DefaultMapping)
+function Systems.assign_input!(sys::System{<:Actuation},
+                           data::XBoxControllerData, ::IOMapping)
 
     u = sys.u
 
-    u.aileron = get_axis_value(joystick, :right_stick_x) |> aileron_curve
-    u.elevator = get_axis_value(joystick, :right_stick_y) |> elevator_curve
-    u.rudder = get_axis_value(joystick, :left_stick_x) |> rudder_curve
-    u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
-    u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
+    u.aileron = get_axis_value(data, :right_stick_x) |> aileron_curve
+    u.elevator = get_axis_value(data, :right_stick_y) |> elevator_curve
+    u.rudder = get_axis_value(data, :left_stick_x) |> rudder_curve
+    u.brake_left = get_axis_value(data, :left_trigger) |> brake_curve
+    u.brake_right = get_axis_value(data, :right_trigger) |> brake_curve
 
-    u.aileron_offset -= 0.01 * was_released(joystick, :dpad_left)
-    u.aileron_offset += 0.01 * was_released(joystick, :dpad_right)
-    u.elevator_offset += 0.01 * was_released(joystick, :dpad_down)
-    u.elevator_offset -= 0.01 * was_released(joystick, :dpad_up)
+    u.aileron_offset -= 0.01 * was_released(data, :dpad_left)
+    u.aileron_offset += 0.01 * was_released(data, :dpad_right)
+    u.elevator_offset += 0.01 * was_released(data, :dpad_down)
+    u.elevator_offset -= 0.01 * was_released(data, :dpad_up)
 
-    u.flaps += 0.3333 * was_released(joystick, :right_bumper)
-    u.flaps -= 0.3333 * was_released(joystick, :left_bumper)
+    u.flaps += 0.3333 * was_released(data, :right_bumper)
+    u.flaps -= 0.3333 * was_released(data, :left_bumper)
 
-    u.throttle += 0.1 * was_released(joystick, :button_Y)
-    u.throttle -= 0.1 * was_released(joystick, :button_A)
+    u.throttle += 0.1 * was_released(data, :button_Y)
+    u.throttle -= 0.1 * was_released(data, :button_A)
 end
 
-function IODevices.assign_input!(sys::System{<:Actuation},
-                           joystick::T16000M,
-                           ::DefaultMapping)
+function Systems.assign_input!(sys::System{<:Actuation},
+                           data::T16000MData, ::IOMapping)
 
     u = sys.u
 
-    u.throttle = get_axis_value(joystick, :throttle)
-    u.aileron = get_axis_value(joystick, :stick_x) |> aileron_curve
-    u.elevator = get_axis_value(joystick, :stick_y) |> elevator_curve
-    u.rudder = get_axis_value(joystick, :stick_z) |> rudder_curve
+    u.throttle = get_axis_value(data, :throttle)
+    u.aileron = get_axis_value(data, :stick_x) |> aileron_curve
+    u.elevator = get_axis_value(data, :stick_y) |> elevator_curve
+    u.rudder = get_axis_value(data, :stick_z) |> rudder_curve
 
-    u.brake_left = is_pressed(joystick, :button_1)
-    u.brake_right = is_pressed(joystick, :button_1)
+    u.brake_left = is_pressed(data, :button_1)
+    u.brake_right = is_pressed(data, :button_1)
 
-    u.aileron_offset -= 2e-4 * is_pressed(joystick, :hat_left)
-    u.aileron_offset += 2e-4 * is_pressed(joystick, :hat_right)
-    u.elevator_offset += 2e-4 * is_pressed(joystick, :hat_down)
-    u.elevator_offset -= 2e-4 * is_pressed(joystick, :hat_up)
+    u.aileron_offset -= 2e-4 * is_pressed(data, :hat_left)
+    u.aileron_offset += 2e-4 * is_pressed(data, :hat_right)
+    u.elevator_offset += 2e-4 * is_pressed(data, :hat_down)
+    u.elevator_offset -= 2e-4 * is_pressed(data, :hat_up)
 
-    u.flaps += 0.3333 * was_released(joystick, :button_3)
-    u.flaps -= 0.3333 * was_released(joystick, :button_2)
+    u.flaps += 0.3333 * was_released(data, :button_3)
+    u.flaps -= 0.3333 * was_released(data, :button_2)
 
 end
 
@@ -531,9 +529,10 @@ end
 ############################ Joystick Mappings #################################
 
 #redirect input assignments directly to the actuation system
-function IODevices.assign_input!(sys::System{<:Cessna172R}, joystick::Joystick,
-                           mapping::IOMapping)
-    IODevices.assign_input!(sys.vehicle.components.act, joystick, mapping)
+function Systems.assign_input!(sys::System{<:Cessna172R},
+                                data::JoystickData,
+                                mapping::IOMapping)
+    Systems.assign_input!(sys.vehicle.components.act, data, mapping)
 end
 
 

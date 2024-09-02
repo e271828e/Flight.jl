@@ -217,50 +217,48 @@ function GUI.draw!(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
 end
 
 
-# ################################## IODevices ###################################
+################################## Joysticks ###################################
 
 pitch_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 roll_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 # brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function IODevices.assign_input!(sys::System{<:Actuation},
-                           joystick::XBoxController,
-                           ::DefaultMapping)
+function Systems.assign_input!(sys::System{<:Actuation},
+                                data::XBoxControllerData, ::IOMapping)
 
     @unpack throttle, aileron, elevator, rudder, steering, flaps = sys.subsystems
 
-    aileron.u[] = get_axis_value(joystick, :right_stick_x) |> roll_curve
-    elevator.u[] = get_axis_value(joystick, :right_stick_y) |> pitch_curve
-    rudder.u[] = get_axis_value(joystick, :left_stick_x) |> yaw_curve
-    # u.brake_left = get_axis_value(joystick, :left_trigger) |> brake_curve
-    # u.brake_right = get_axis_value(joystick, :right_trigger) |> brake_curve
-    steering.u[] = get_axis_value(joystick, :left_stick_x) |> yaw_curve
+    aileron.u[] = get_axis_value(data, :right_stick_x) |> roll_curve
+    elevator.u[] = get_axis_value(data, :right_stick_y) |> pitch_curve
+    rudder.u[] = get_axis_value(data, :left_stick_x) |> yaw_curve
+    # u.brake_left = get_axis_value(data, :left_trigger) |> brake_curve
+    # u.brake_right = get_axis_value(data, :right_trigger) |> brake_curve
+    steering.u[] = get_axis_value(data, :left_stick_x) |> yaw_curve
 
-    flaps.u[] += 0.3333 * was_released(joystick, :right_bumper)
-    flaps.u[] -= 0.3333 * was_released(joystick, :left_bumper)
+    flaps.u[] += 0.3333 * was_released(data, :right_bumper)
+    flaps.u[] -= 0.3333 * was_released(data, :left_bumper)
 
-    throttle.u[] += 0.1 * was_released(joystick, :button_Y)
-    throttle.u[] -= 0.1 * was_released(joystick, :button_A)
+    throttle.u[] += 0.1 * was_released(data, :button_Y)
+    throttle.u[] -= 0.1 * was_released(data, :button_A)
 end
 
-function IODevices.assign_input!(sys::System{<:Actuation},
-                           joystick::T16000M,
-                           ::DefaultMapping)
+function Systems.assign_input!(sys::System{<:Actuation},
+                                data::T16000MData, ::IOMapping)
 
     @unpack throttle, aileron, elevator, rudder, steering, flaps = sys.subsystems
 
-    throttle.u[] = get_axis_value(joystick, :throttle)
-    aileron.u[] = get_axis_value(joystick, :stick_x) |> roll_curve
-    elevator.u[] = get_axis_value(joystick, :stick_y) |> pitch_curve
-    rudder.u[] = get_axis_value(joystick, :stick_z) |> yaw_curve
-    steering.u[] = get_axis_value(joystick, :stick_z) |> yaw_curve
+    throttle.u[] = get_axis_value(data, :throttle)
+    aileron.u[] = get_axis_value(data, :stick_x) |> roll_curve
+    elevator.u[] = get_axis_value(data, :stick_y) |> pitch_curve
+    rudder.u[] = get_axis_value(data, :stick_z) |> yaw_curve
+    steering.u[] = get_axis_value(data, :stick_z) |> yaw_curve
 
-    # u.brake_left = is_pressed(joystick, :button_1)
-    # u.brake_right = is_pressed(joystick, :button_1)
+    # u.brake_left = is_pressed(data, :button_1)
+    # u.brake_right = is_pressed(data, :button_1)
 
-    flaps.u[] += 0.3333 * was_released(joystick, :button_3)
-    flaps.u[] -= 0.3333 * was_released(joystick, :button_2)
+    flaps.u[] += 0.3333 * was_released(data, :button_3)
+    flaps.u[] -= 0.3333 * was_released(data, :button_2)
 
 end
 
@@ -593,9 +591,11 @@ end
 ############################ Joystick Mappings #################################
 
 #map input assignments directly to the actuation system
-function IODevices.assign_input!(sys::System{<:Cessna172FBW}, joystick::Joystick,
-                           mapping::IOMapping)
-    IODevices.assign_input!(sys.vehicle.components.act, joystick, mapping)
+function Systems.assign_input!(sys::System{<:Cessna172FBW},
+                                data::JoystickData,
+                                mapping::IOMapping)
+
+    Systems.assign_input!(sys.vehicle.components.act, data, mapping)
 end
 
 ################################################################################

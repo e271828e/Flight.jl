@@ -217,16 +217,16 @@ function GUI.draw!(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
 end
 
 
-# ################################## IODevices ###################################
+################################## Joysticks ###################################
 
 pitch_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 roll_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function IODevices.assign_input!(sys::System{<:Actuation},
+function Systems.assign_input!(sys::System{<:Actuation},
                            joystick::XBoxController,
-                           ::DefaultMapping)
+                           ::IOMapping)
 
     #mixture and brakes will not be assigned
     @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
@@ -246,9 +246,9 @@ function IODevices.assign_input!(sys::System{<:Actuation},
     throttle.u[] -= 0.1 * was_released(joystick, :button_A)
 end
 
-function IODevices.assign_input!(sys::System{<:Actuation},
+function Systems.assign_input!(sys::System{<:Actuation},
                            joystick::T16000M,
-                           ::DefaultMapping)
+                           ::IOMapping)
 
     #mixture and brakes will not be assigned
     @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
@@ -577,9 +577,10 @@ end
 ############################ Joystick Mappings #################################
 
 #map input assignments directly to the actuation system
-function IODevices.assign_input!(sys::System{<:Cessna172RPA}, joystick::Joystick,
-                           mapping::IOMapping)
-    IODevices.assign_input!(sys.vehicle.components.act, joystick, mapping)
+function Systems.assign_input!(sys::System{<:Cessna172RPA},
+                                joystick::JoystickData,
+                                mapping::IOMapping)
+    Systems.assign_input!(sys.vehicle.components.act, joystick, mapping)
 end
 
 ################################################################################

@@ -90,13 +90,13 @@ end
 
 struct UDPTestMapping <: IOMapping end
 
-function Systems.assign_data!(sys::System{TestSystem}, data::Vector{UInt8},
+function Systems.assign_input!(sys::System{TestSystem}, data::Vector{UInt8},
                             ::UDPTestMapping)
     @debug "Got $data"
     sys.u.input = data[1]
 end
 
-function Systems.extract_data(::System{TestSystem},
+function Systems.extract_output(::System{TestSystem},
                             ::Type{Vector{UInt8}}, ::UDPTestMapping)
     data = UInt8[37]
     @debug "Extracted $data"
@@ -128,7 +128,7 @@ end
 
 ################################ XPC Loopback ##################################
 
-function Systems.extract_data(::System{TestSystem}, ::Type{XPCPosition}, ::IOMapping)
+function Systems.extract_output(::System{TestSystem}, ::Type{XPCPosition}, ::IOMapping)
     data = KinData() |> XPCPosition
     @debug "Extracted $data"
     return data
@@ -146,7 +146,7 @@ function xpc_loopback()
         Sim.run!(sim)
 
         cmd = KinData() |> XPCPosition |> Network.pos_cmd
-        #extract_data returns an XPCPosition instance, from which handle_data
+        #extract_output returns an XPCPosition instance, from which handle_data
         #constructs a position command, which propagates to sys.u.input via
         #loopback, and finally to sys.y.input within f_disc!
         @test sim.y.input === Float64(cmd[1])
@@ -174,14 +174,14 @@ StructTypes.StructType(::Type{TestSystemU}) = StructTypes.Mutable()
 
 struct JSONTestMapping <: IOMapping end
 
-function Systems.extract_data(::System{TestSystem}, ::Type{Vector{UInt8}},
+function Systems.extract_output(::System{TestSystem}, ::Type{Vector{UInt8}},
                             ::JSONTestMapping)
     data = (input = 37.0,) |> JSON3.write
     @debug "Extracted $data"
     return Vector{UInt8}(data)
 end
 
-function Systems.assign_data!(sys::System{TestSystem}, data::Vector{UInt8},
+function Systems.assign_input!(sys::System{TestSystem}, data::Vector{UInt8},
                             ::JSONTestMapping)
     JSON3.read!(String(data), sys.u)
     @debug "Echo is now $(sys.u.input)"
@@ -209,14 +209,14 @@ end
 
 ################################## Joystick ####################################
 
-function Systems.assign_data!(sys::System{TestSystem},
+function Systems.assign_input!(sys::System{TestSystem},
                             data::Joysticks.T16000MData,
                             ::IOMapping)
     sys.u.input = get_axis_value(data, :stick_x)
     @debug "Input $(sys.u.input)"
 end
 
-function Systems.assign_data!(sys::System{TestSystem},
+function Systems.assign_input!(sys::System{TestSystem},
                             data::Joysticks.XBoxControllerData,
                             ::IOMapping)
     sys.u.input = get_axis_value(data, :left_stick_x)
