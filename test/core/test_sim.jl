@@ -104,7 +104,7 @@ struct UDPTestMapping <: IOMapping end
 
 function Systems.assign_input!(sys::System{TestSystem}, data::String,
                             ::UDPTestMapping)
-    @debug "Got $data"
+    # @debug "Got $data"
     sys.u.input = Vector{UInt8}(data)[1]
     # sys.u.input = "Hi"
 end
@@ -113,7 +113,7 @@ function Systems.extract_output(::System{TestSystem},
                             ::Type{String}, ::UDPTestMapping)
     data = UInt8[37] |> String
     # data = String([0x04]) #EOT character
-    @debug "Extracted $data"
+    # @debug "Extracted $data"
     return data
 end
 
@@ -123,13 +123,14 @@ function udp_loopback()
 
         port = 14141
         sys = TestSystem() |> System
-        sim = Simulation(sys; t_end = 10.0)
+        sim = Simulation(sys; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
         Sim.attach!(sim, UDPOutput(; port), UDPTestMapping())
 
         # return sim
 
-        Sim.run_interactive!(sim)
+        # Sim.run_interactive!(sim)
+        Sim.run!(sim)
 
         #sys.y.output must have propagated to sys.u.input via loopback, and then
         #to sys.y.input within f_disc!
@@ -192,14 +193,16 @@ struct JSONTestMapping <: IOMapping end
 function Systems.extract_output(::System{TestSystem}, ::Type{String},
                             ::JSONTestMapping)
     data = (input = 37.0,) |> JSON3.write
-    @debug "Extracted $data"
+    # @info "Extracted $data"
     return data
 end
 
 function Systems.assign_input!(sys::System{TestSystem}, data::String,
                             ::JSONTestMapping)
-    JSON3.read!(String(data), sys.u)
-    @debug "Echo is now $(sys.u.input)"
+
+    # @info "Got $data"
+    JSON3.read!(data, sys.u)
+    # @info "Echo is now $(sys.u.input)"
 end
 
 function json_loopback()
@@ -211,6 +214,10 @@ function json_loopback()
         sim = Simulation(sys; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), JSONTestMapping())
         Sim.attach!(sim, UDPOutput(; port), JSONTestMapping())
+
+        #trigger method precompilation
+        JSON3.read!(JSON3.write((input = 0.0,)), sys.u)
+
         Sim.run!(sim)
 
         @test sim.y.input == 37.0
@@ -228,14 +235,12 @@ function Systems.assign_input!(sys::System{TestSystem},
                             data::Joysticks.T16000MData,
                             ::IOMapping)
     sys.u.input = get_axis_value(data, :stick_x)
-    @debug "Input $(sys.u.input)"
 end
 
 function Systems.assign_input!(sys::System{TestSystem},
                             data::Joysticks.XBoxControllerData,
                             ::IOMapping)
     sys.u.input = get_axis_value(data, :left_stick_x)
-    @debug "Input $(sys.u.input)"
 end
 
 function joystick_input()

@@ -74,10 +74,9 @@ end
 ################################################################################
 ############################### SimInterface ###################################
 
-struct SimInterface{D <: IODevice, S <: System, T, M <: IOMapping}
+struct SimInterface{D <: IODevice, S <: System, M <: IOMapping}
     device::D
     sys::S
-    channel::Channel{T}
     mapping::M
     control::SimControl
     io_start::Base.Event
@@ -85,74 +84,57 @@ struct SimInterface{D <: IODevice, S <: System, T, M <: IOMapping}
     should_abort::Bool #aborts Simulation when closed
 end
 
-const SimInput{D, S, T, M} = SimInterface{D, S, T, M} where {D <: InputDevice, S, T, M}
-const SimOutput{D, S, T, M} = SimInterface{D, S, T, M} where {D <: OutputDevice, S, T, M}
-const SimGUI{D, S, T, M} = SimInterface{D, S, T, M} where {D <: Renderer, S, T, M}
+const SimInput{D} = SimInterface{D} where {D <: InputDevice}
+const SimOutput{D} = SimInterface{D} where {D <: OutputDevice}
+const SimGUI{D} = SimInterface{D} where {D <: Renderer}
+
 
 #called from the SimInterface loop thread. this may block, either on get_data
-#because the InputDevice is itself blocked, or on put! because the Simulation
-#loop has yet to take!
-function update!(input::SimInput)
-    put!(input.channel, IODevices.get_data!(input.device))
+#because the InputDevice is itself blocked, on or lock(io_lock) because the
+#Simulation loop is currently stepping
+function update!(interface::SimInput)
+
+    @unpack device, sys, mapping, io_lock = interface
+    data = IODevices.get_data!(device)
+
+    #the data we got from the InputDevice might be something we're not able to
+    #assign to the System (for example, an EOT character). we need to handle
+    #that scenario
+    try
+        lock(io_lock)
+        Systems.assign_input!(sys, data, mapping)
+    catch ex
+        @warn("Failed to assign input data $data to System")
+        # println(ex)
+    finally
+        unlock(io_lock)
+    end
+
 end
+
 
 #called from the SimInterface loop thread. this may block, either on handle_data
-#because the OutputDevice is itself blocked, or on take! because the Simulation
-#loop has yet to put!
-function update!(output::SimOutput)
-    # @lock io_lock Systems.extract_output(sys, T, mapping) #this MUST NOT BLOCK
-    IODevices.handle_data!(output.device, take!(output.channel))
+#because the OutputDevice is itself blocked, or on lock(io_lock) because the
+#Simulation loop is currently stepping
+function update!(interface::SimOutput{<:OutputDevice{T}}) where {T}
+
+    @unpack device, sys, mapping, io_lock = interface
+
+    lock(io_lock)
+        #this call should never block and always return some usable output
+        data = Systems.extract_output(sys, T, mapping)
+    unlock(io_lock)
+
+    IODevices.handle_data!(device, data)
 end
 
+
 function update!(gui::SimGUI)
-    # @info "Updating SimGUI"
     @unpack device, io_lock = gui
     #this may modify the System or SimControl, so we need to grab the IO_lock
     @lock io_lock GUI.render!(device)
 end
 
-
-#called from the Simulation loop thread, will never block
-function sync!(input::SimInput)
-    @unpack sys, channel, mapping = input
-    data = take_nonblocking!(channel)
-    try
-        Systems.assign_input!(sys, data, mapping)
-    catch ex
-        @warn("Failed to assign input data $data to System")
-        # println(ex)
-    end
-end
-
-#called from the Simulation loop thread, will never block
-function sync!(output::SimOutput{D, S, T}) where {D, S, T}
-    @unpack sys, channel, mapping = output
-    put_nonblocking!(channel, Systems.extract_output(sys, T, mapping))
-end
-
-#for SimGUI there is no data transfer, everything happens in the IO thread
-sync!(::SimGUI) = nothing
-
-function take_nonblocking!(channel::Channel)
-    #unlike lock, trylock avoids blocking if the Channel is already locked,
-    #while also ensuring it is not modified while we're checking its state
-    if trylock(channel)
-        data = (isready(channel) ? take!(channel) : nothing)
-        unlock(channel)
-        return data
-    else
-        return nothing
-    end
-end
-
-function put_nonblocking!(channel::Channel{T}, data::T) where {T}
-    #unlike lock, trylock avoids blocking if the Channel is already locked,
-    #while also ensuring it is not modified while we're checking its state
-    if trylock(channel) #ensure Channel is not modified while we're checking its state
-        (isopen(channel) && !isready(channel)) && put!(channel, data)
-        unlock(channel)
-    end
-end
 
 
 ################################################################################
@@ -231,7 +213,7 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         #will block for a whole display refresh interval while holding the
         #io_lock, leaving the sim loop unable to step in the meantime
         renderer = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
-        gui = SimInterface(renderer, sys, Channel{Nothing}(1), DefaultMapping(),
+        gui = SimInterface(renderer, sys, DefaultMapping(),
                            control, io_start, io_lock, true)
 
         new{D, Y, typeof(integrator), typeof(gui)}(
@@ -268,10 +250,10 @@ user_callback!(::System) = nothing
 #thread is already blocked on a put! call on that Channel, and may therefore
 #take! from it without blocking
 
-function attach!(sim::Simulation, device::IODevice{T},
-                 mapping::IOMapping = DefaultMapping(); should_abort = false) where {T}
+function attach!(sim::Simulation, device::IODevice,
+                mapping::IOMapping = DefaultMapping(); should_abort = false)
 
-    interface = SimInterface(device, sim.sys, Channel{T}(1), mapping,
+    interface = SimInterface(device, sim.sys, mapping,
                             sim.control, sim.io_start, sim.io_lock, should_abort)
 
     push!(sim.interfaces, interface)
@@ -524,10 +506,6 @@ function start!(sim::Simulation)
 
                 @lock io_lock step!(sim)
 
-                for interface in interfaces
-                    sync!(interface)
-                end
-
                 τ_last = τ_next
 
             end
@@ -565,9 +543,9 @@ function sim_cleanup!(sim::Simulation)
 
     #make sure all IO Channels are emptied so IO threads no longer block on
     #them, or they unblock if they were blocked
-    for interface in interfaces
-        sync!(interface)
-    end
+    # for interface in interfaces
+    #     sync!(interface)
+    # end
 
     #unblock any IO threads still waiting for Simulation start
     notify(io_start)
