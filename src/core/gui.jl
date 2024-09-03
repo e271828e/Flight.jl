@@ -8,11 +8,14 @@ using Logging
 #these are needed by any module extending GUI draw methods
 @reexport using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
 @reexport using Printf
+
 using ImGuiGLFWBackend
 using ImGuiGLFWBackend.LibGLFW #defines GLFWwindow
 using ImGuiGLFWBackend.LibCImGui
 using ImGuiOpenGLBackend
 using ImGuiOpenGLBackend.ModernGL
+
+using ..IODevices
 
 export CImGuiStyle, Renderer
 export mode_button, dynamic_button, toggle_switch, display_bar, safe_slider, safe_input
@@ -33,7 +36,7 @@ end
 #if sync = 0:
 #uncaps the refresh rate (to be used only with scheduled calls to render())
 
-mutable struct Renderer
+mutable struct Renderer{T} <: IODevice{T}
     label::String
     monitor::UInt8 #which monitor to render on when multiple monitors available
     font_size::UInt8 #will be scaled by the display's content scale
@@ -48,7 +51,7 @@ mutable struct Renderer
     function Renderer(; label = "Renderer", monitor = 2, font_size = 16,
         sync = 1, f_draw = ()->nothing)
         _initialized = false
-        new(label, monitor, font_size, sync, f_draw, _initialized)
+        new{Nothing}(label, monitor, font_size, sync, f_draw, _initialized)
     end
 
 end
@@ -68,7 +71,7 @@ function Base.setproperty!(renderer::Renderer, name::Symbol, value)
     end
 end
 
-function init!(renderer::Renderer)
+function IODevices.init!(renderer::Renderer)
 
     @unpack label, monitor, font_size, sync = renderer
 
@@ -157,7 +160,7 @@ function init!(renderer::Renderer)
 end
 
 
-function update!(renderer::Renderer)
+function render!(renderer::Renderer)
 
     @unpack f_draw, _initialized, _window, _window_ctx, _opengl_ctx = renderer
 
@@ -213,7 +216,7 @@ function render_loop(renderer::Renderer)
         #limited in frequency by some other means
 
         while glfwWindowShouldClose(renderer._window) == 0
-            update!(renderer)
+            render!(renderer)
         end
     catch e
         @error "Error while updating window" exception=e
@@ -225,12 +228,12 @@ function render_loop(renderer::Renderer)
 end
 
 
-function should_close(renderer::Renderer)
+function IODevices.should_close(renderer::Renderer)
     renderer._initialized ? Bool(glfwWindowShouldClose(renderer._window)) : false
 end
 
 
-function shutdown!(renderer::Renderer)
+function IODevices.shutdown!(renderer::Renderer)
 
     @assert renderer._initialized "Cannot shutdown an uninitialized renderer"
 

@@ -1,6 +1,6 @@
 module TestSim
 
-using Test, Logging, StructTypes, JSON3
+using Test, UnPack, Logging, StructTypes, JSON3
 
 using Flight.FlightCore
 using Flight.FlightPhysics
@@ -43,8 +43,7 @@ function test_sim_standalone()
     sys = FirstOrder() |> System
     sim = Simulation(sys; dt = 0.1, Δt = 1.0, t_end = 5)
     x0 = 1.0
-    f_init! = (sys)->Systems.init!(sys, x0)
-    reinit!(sim, f_init!)
+    reinit!(sim, x0)
     return sim
     # Sim.run!(sim)
 
@@ -86,13 +85,26 @@ function Systems.f_disc!(sys::System{<:TestSystem}, ::Real)
     sys.y = TestSystemY(; input = sys.u.input)
 end
 
+function GUI.draw(sys::System{TestSystem}, label::String = "TestSystem")
+
+    @unpack input = sys.y
+
+    CImGui.Begin(label)
+
+        CImGui.Text("input = $input")
+
+    CImGui.End()
+
+end #function
+
+
 ################################ UDP Loopback ##################################
 
 struct UDPTestMapping <: IOMapping end
 
 function Systems.assign_input!(sys::System{TestSystem}, data::String,
                             ::UDPTestMapping)
-    # @info "Got $data"
+    @debug "Got $data"
     sys.u.input = Vector{UInt8}(data)[1]
     # sys.u.input = "Hi"
 end
@@ -109,13 +121,15 @@ function udp_loopback()
 
     @testset verbose = true "UDP Loopback" begin
 
-        port = 14149
+        port = 14141
         sys = TestSystem() |> System
-        sim = Simulation(sys; t_end = 1.0)
+        sim = Simulation(sys; t_end = 10.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
         Sim.attach!(sim, UDPOutput(; port), UDPTestMapping())
 
-        Sim.run!(sim)
+        # return sim
+
+        Sim.run_interactive!(sim)
 
         #sys.y.output must have propagated to sys.u.input via loopback, and then
         #to sys.y.input within f_disc!
@@ -131,15 +145,14 @@ end
 
 function Systems.extract_output(::System{TestSystem}, ::Type{XPCPosition}, ::IOMapping)
     data = KinData() |> XPCPosition
-    @debug "Extracted $data"
     return data
 end
 
 function xpc_loopback()
 
-    @testset verbose = true "UDP Loopback" begin
+    @testset verbose = true "XPC Loopback" begin
 
-        port = 14149
+        port = 14143
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
@@ -193,7 +206,7 @@ function json_loopback()
 
     @testset verbose = true "JSON Loopback" begin
 
-        port = 14149
+        port = 14142
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), JSONTestMapping())

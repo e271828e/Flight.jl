@@ -567,9 +567,7 @@ function test_sim_interactive(; save::Bool = true)
     initializer = C172.TrimParameters(
         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
 
-    f_init! = (ac)->Systems.init!(ac, initializer)
-
-    reinit!(sim, f_init!)
+    reinit!(sim, initializer)
 
     for joystick in get_connected_joysticks()
         Sim.attach!(sim, joystick)

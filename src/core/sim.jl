@@ -74,17 +74,20 @@ end
 ################################################################################
 ############################### SimInterface ###################################
 
-struct SimInterface{D <: IODevice, T, M <: IOMapping}
+struct SimInterface{D <: IODevice, S <: System, T, M <: IOMapping}
     device::D
+    sys::S
     channel::Channel{T}
     mapping::M
     control::SimControl
     io_start::Base.Event
     io_lock::ReentrantLock
+    should_abort::Bool #aborts Simulation when closed
 end
 
-const SimInput{D, T, M} = SimInterface{D, T, M} where {D <: InputDevice, T, M}
-const SimOutput{D, T, M} = SimInterface{D, T, M} where {D <: OutputDevice, T, M}
+const SimInput{D, S, T, M} = SimInterface{D, S, T, M} where {D <: InputDevice, S, T, M}
+const SimOutput{D, S, T, M} = SimInterface{D, S, T, M} where {D <: OutputDevice, S, T, M}
+const SimGUI{D, S, T, M} = SimInterface{D, S, T, M} where {D <: Renderer, S, T, M}
 
 #called from the SimInterface loop thread. this may block, either on get_data
 #because the InputDevice is itself blocked, or on put! because the Simulation
@@ -97,12 +100,21 @@ end
 #because the OutputDevice is itself blocked, or on take! because the Simulation
 #loop has yet to put!
 function update!(output::SimOutput)
+    # @lock io_lock Systems.extract_output(sys, T, mapping) #this MUST NOT BLOCK
     IODevices.handle_data!(output.device, take!(output.channel))
 end
 
+function update!(gui::SimGUI)
+    # @info "Updating SimGUI"
+    @unpack device, io_lock = gui
+    #this may modify the System or SimControl, so we need to grab the IO_lock
+    @lock io_lock GUI.render!(device)
+end
+
+
 #called from the Simulation loop thread, will never block
-function update!(input::SimInput, sys::System)
-    @unpack channel, mapping = input
+function sync!(input::SimInput)
+    @unpack sys, channel, mapping = input
     data = take_nonblocking!(channel)
     try
         Systems.assign_input!(sys, data, mapping)
@@ -113,10 +125,13 @@ function update!(input::SimInput, sys::System)
 end
 
 #called from the Simulation loop thread, will never block
-function update!(output::SimOutput{D, T}, sys::System) where {D, T}
-    @unpack channel, mapping = output
+function sync!(output::SimOutput{D, S, T}) where {D, S, T}
+    @unpack sys, channel, mapping = output
     put_nonblocking!(channel, Systems.extract_output(sys, T, mapping))
 end
+
+#for SimGUI there is no data transfer, everything happens in the IO thread
+sync!(::SimGUI) = nothing
 
 function take_nonblocking!(channel::Channel)
     #unlike lock, trylock avoids blocking if the Channel is already locked,
@@ -141,24 +156,13 @@ end
 
 
 ################################################################################
-################################# SimGUI #######################################
-
-struct SimGUI
-    renderer::Renderer
-    control::SimControl
-    io_start::Base.Event
-    io_lock::ReentrantLock
-end
-
-
-################################################################################
 ############################# Simulation #######################################
 
-struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator}
+struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
     sys::System{D, Y}
     integrator::I
     log::SavedValues{Float64, Y}
-    gui::SimGUI
+    gui::G
     control::SimControl
     io_start::Base.Event #to be waited on by IO devices and GUI before entering their update loops
     io_lock::ReentrantLock #to be acquired before modifying the simulated System or SimControl
@@ -217,17 +221,20 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator}
         io_start = Base.Event()
         io_lock = ReentrantLock()
 
-        f_draw = let control = control, sys = sys
-            () -> GUI.draw!(control, sys)
-        end
-
         #the GUI Renderer's refresh rate must be uncapped (no VSync), so that
         #calls to GUI.update!() return immediately without blocking and
         #therefore do not interfere with simulation stepping
-        gui = SimGUI(Renderer(; label = "Simulation", sync = UInt8(0), f_draw),
-                    control, io_start, io_lock)
+        f_draw = let control = control, sys = sys
+            () -> GUI.draw!(control, sys)
+        end
+        #sync must be set to 0 to disable VSync. otherwise, the call to update!
+        #will block for a whole display refresh interval while holding the
+        #io_lock, leaving the sim loop unable to step in the meantime
+        renderer = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
+        gui = SimInterface(renderer, sys, Channel{Nothing}(1), DefaultMapping(),
+                           control, io_start, io_lock, true)
 
-        new{D, Y, typeof(integrator)}(
+        new{D, Y, typeof(integrator), typeof(gui)}(
             sys, integrator, log, gui, control, io_start, io_lock, SimInterface[])
     end
 
@@ -262,10 +269,10 @@ user_callback!(::System) = nothing
 #take! from it without blocking
 
 function attach!(sim::Simulation, device::IODevice{T},
-                 mapping::IOMapping = DefaultMapping()) where {T}
+                 mapping::IOMapping = DefaultMapping(); should_abort = false) where {T}
 
-    interface = SimInterface(device, Channel{T}(1), mapping,
-                            sim.control, sim.io_start, sim.io_lock)
+    interface = SimInterface(device, sim.sys, Channel{T}(1), mapping,
+                            sim.control, sim.io_start, sim.io_lock, should_abort)
 
     push!(sim.interfaces, interface)
 
@@ -390,66 +397,11 @@ end
 ################################################################################
 ############################# Threaded loops ###################################
 
-################################ SimGUI ########################################
-
-function start!(gui::SimGUI)
-
-    @unpack renderer, control, io_start, io_lock = gui
-
-    @info("SimGUI: Starting on thread $(Threads.threadid())...")
-
-    try
-
-        #ensure VSync is disabled. otherwise, the call to GUI.update! will block
-        #while holding the system lock, and therefore the sim loop will
-        #not be able to step in the meantime
-        @assert renderer.sync == 0
-        GUI.init!(renderer)
-
-        @info("SimGUI: Waiting for Simulation...")
-        wait(io_start)
-        @info("SimGUI: Running...")
-
-        while true
-
-            !(@lock io_lock control.running) && break
-
-            if GUI.should_close(renderer)
-                @info("SimGUI: Shutdown request received...")
-                break
-            end
-
-            #we need a yield here, because the GUI thread never sleeps or blocks
-            #by itself, and therefore tends to slow down the simulation thread.
-            #this is because the framerate is uncapped, precisely to prevent the
-            #GUI thread from blocking for VSync while holding the sys_lock
-            yield()
-            @lock io_lock GUI.update!(renderer)
-        end
-
-    catch ex
-
-        @error("SimGUI: Error during execution: $ex")
-
-    finally
-        #abort simulation upon closing the GUI
-        @lock io_lock begin
-            control.paused = false
-            control.running = false
-        end
-        @info("SimGUI: Shutting down...")
-        renderer._initialized && GUI.shutdown!(renderer)
-        @info("SimGUI: Closed")
-    end
-
-end
-
-
 ################################ SimInterface ##################################
 
 function start!(interface::SimInterface{D}) where {D <: IODevice}
 
-    @unpack device, control, io_start, io_lock = interface
+    @unpack device, control, io_start, io_lock, should_abort = interface
 
     @info("$D: Starting on thread $(Threads.threadid())...")
 
@@ -470,8 +422,11 @@ function start!(interface::SimInterface{D}) where {D <: IODevice}
                 break
             end
 
-            #we need a yield, because this loop is not guaranteed to block at
-            #any point, and therefore could slow down the simulation thread
+            #we need to yield somewhere because this loop is not guaranteed to
+            #block at any point, and therefore could slow down the simulation
+            #thread significantly. in the case of SimGUI, this is by design: the
+            #framerate is uncapped precisely to prevent the renderer from
+            #blocking for VSync while update! is holding the io_lock
             yield()
             update!(interface)
 
@@ -482,6 +437,12 @@ function start!(interface::SimInterface{D}) where {D <: IODevice}
         @error("$D: Error during execution: $ex")
 
     finally
+        if should_abort
+            @lock io_lock begin
+                control.paused = false
+                control.running = false
+            end
+        end
         @info("$D: Shutting down...")
         IODevices.shutdown!(device)
         @info("$D: Closed")
@@ -562,8 +523,9 @@ function start!(sim::Simulation)
                 while τ_next > τ() end #busy wait (should do better, but it's not that easy)
 
                 @lock io_lock step!(sim)
+
                 for interface in interfaces
-                    update!(interface, sys)
+                    sync!(interface)
                 end
 
                 τ_last = τ_next
@@ -604,7 +566,7 @@ function sim_cleanup!(sim::Simulation)
     #make sure all IO Channels are emptied so IO threads no longer block on
     #them, or they unblock if they were blocked
     for interface in interfaces
-        update!(interface, sys)
+        sync!(interface)
     end
 
     #unblock any IO threads still waiting for Simulation start

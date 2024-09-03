@@ -616,15 +616,13 @@ function test_json_loopback(; save::Bool = true)
     # kin_init = KinInit(
     #     loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
     #     h = h_trn + 1.81);
-    # f_init! = (ac) -> Systems.init!(ac, kin_init)
 
     #on air, automatically trimmed by reinit!
     trim_params = C172.TrimParameters(
         Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
-    f_init! = (ac) -> Systems.init!(ac, trim_params)
 
     #initialize simulated system
-    reinit!(sim, f_init!)
+    reinit!(sim, trim_params)
 
     # #setup IO devices
     # for joystick in get_connected_joysticks()
@@ -672,9 +670,7 @@ function test_sim(; save::Bool = true)
     # initializer = C172.TrimParameters(
     #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
 
-    f_init! = (ac) -> Systems.init!(ac, initializer)
-
-    reinit!(sim, f_init!)
+    reinit!(sim, initializer)
 
     Sim.run!(sim)
 
@@ -693,7 +689,7 @@ function test_sim_interactive(; save::Bool = true)
 
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172RPAv1(LTF(), trn) |> System;
-    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 100)
+    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 30)
 
     #on ground
     initializer = KinInit(
@@ -704,9 +700,7 @@ function test_sim_interactive(; save::Bool = true)
     # initializer = C172.TrimParameters(
     #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
 
-    f_init! = (ac) -> Systems.init!(ac, initializer)
-
-    reinit!(sim, f_init!)
+    reinit!(sim, initializer)
 
     for joystick in get_connected_joysticks()
         Sim.attach!(sim, joystick)
