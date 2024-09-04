@@ -97,7 +97,9 @@ struct XPCClient{T, U <: UDPOutput} <: OutputDevice{T}
     end
 end
 
-XPCClient(args...; kwargs...) = XPCClient(UDPOutput(args...; kwargs...))
+function XPCClient(; address = IPv4("127.0.0.1"), port = 49009, kwargs...)
+    XPCClient(UDPOutput(; address, port, kwargs...))
+end
 
 #disable X-Plane physics
 function IODevices.init!(xpc::XPCClient)
@@ -109,6 +111,9 @@ end
 IODevices.shutdown!(xpc::XPCClient) = IODevices.shutdown!(xpc.udp)
 
 function IODevices.handle_data!(xpc::XPCClient, data::XPCPosition)
+    #give some breating room to the X-Plane interface (limit the update rate to
+    #200Hz)
+    sleep(0.005)
     IODevices.handle_data!(xpc.udp, pos_cmd(data))
 end
 
