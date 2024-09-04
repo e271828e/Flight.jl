@@ -256,9 +256,9 @@ get_GladiatorNXTEvoData() = JoystickData(GladiatorNXTEvoAxes(),
 get_GladiatorNXTEvo(slot::JoystickSlot) = Joystick(slot, get_GladiatorNXTEvoData())
 
 function rescale(axes::GladiatorNXTEvoAxes)
-    @unpack stick_x, stick_y, throttle, analog_hat_x, analog_y, stick_z = axes
+    @unpack stick_x, stick_y, throttle, analog_hat_x, analog_hat_y, stick_z = axes
     GladiatorNXTEvoAxes(; stick_x, stick_y, throttle = 0.5*(1 - throttle),
-                        analog_hat_x, analog_y, stick_z)
+                        analog_hat_x, analog_hat_y, stick_z)
 end
 
 
