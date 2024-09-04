@@ -689,7 +689,7 @@ function test_sim_interactive(; save::Bool = true)
 
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172RPAv1(LTF(), trn) |> System;
-    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 300)
+    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
 
     #on ground
     initializer = KinInit(

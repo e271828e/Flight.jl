@@ -90,12 +90,13 @@ function IODevices.init!(renderer::Renderer)
 
     if n_monitors[] > 1 #create full borderless window in selected monitor
         glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE)
-        glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_TRUE)
+        glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE)
         _window = glfwCreateWindow(vmode.width, vmode.height, label, monitor_sel, C_NULL)
+        # _window = glfwCreateWindow(1024, 768, label, monitor_sel, C_NULL)
         # _window = glfwCreateWindow(vmode.width//2, vmode.height, label, monitor_sel, C_NULL)
     else #create non-maximized window occuppying half the screen width
         glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE)
-        glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE)
+        glfwWindowHint(GLFW_MAXIMIZED, GLFW_FALSE)
         _window = glfwCreateWindow(vmode.width//2, vmode.height, label, C_NULL, C_NULL)
     end
 
