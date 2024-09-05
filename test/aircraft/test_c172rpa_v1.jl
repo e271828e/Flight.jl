@@ -46,7 +46,7 @@ function test_control_modes()
     h_trn = HOrth(0)
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172RPAv1(LTF(), trn) |> System;
-    fcl = ac.avionics.fcl
+    ctl = ac.avionics.ctl
 
     init_gnd = KinInit( h = TerrainData(trn).altitude + 1.9);
     init_air = C172.TrimParameters()
@@ -65,25 +65,25 @@ function test_control_modes()
     reinit!(sim, init_gnd)
 
     #set arbitrary control and guidance modes
-    fcl.u.vrt_gdc_mode_req = vrt_gdc_alt
-    fcl.u.hor_gdc_mode_req = hor_gdc_line
-    fcl.u.lon_ctl_mode_req = lon_EAS_clm
-    fcl.u.lat_ctl_mode_req = lat_p_β
-    fcl.u.throttle_sp_input = 0.1
-    fcl.u.aileron_sp_input = 0.2
-    fcl.u.elevator_sp_input = 0.3
-    fcl.u.rudder_sp_input = 0.4
+    ctl.u.vrt_gdc_mode_req = vrt_gdc_alt
+    ctl.u.hor_gdc_mode_req = hor_gdc_line
+    ctl.u.lon_ctl_mode_req = lon_EAS_clm
+    ctl.u.lat_ctl_mode_req = lat_p_β
+    ctl.u.throttle_sp_input = 0.1
+    ctl.u.aileron_sp_input = 0.2
+    ctl.u.elevator_sp_input = 0.3
+    ctl.u.rudder_sp_input = 0.4
 
     step!(sim, Δt, true)
 
     #make sure we're on the ground
-    @test fcl.y.flight_phase === phase_gnd
+    @test ctl.y.flight_phase === phase_gnd
 
     #the mode requests are overridden due to phase_gnd
-    @test fcl.y.vrt_gdc_mode === vrt_gdc_off
-    @test fcl.y.hor_gdc_mode === hor_gdc_off
-    @test fcl.y.lon_ctl_mode === lon_direct
-    @test fcl.y.lat_ctl_mode === lat_direct
+    @test ctl.y.vrt_gdc_mode === vrt_gdc_off
+    @test ctl.y.hor_gdc_mode === hor_gdc_off
+    @test ctl.y.lon_ctl_mode === lon_direct
+    @test ctl.y.lat_ctl_mode === lat_direct
 
     #control laws outputs must have propagated to actuator inputs (not yet to
     #their outputs, that requires a subsequent call to f_ode!)
@@ -113,8 +113,8 @@ function test_control_modes()
 
         reinit!(sim, init_air)
         step!(sim, Δt, true)
-        @test fcl.y.lon_ctl_mode === lon_direct
-        @test fcl.y.lat_ctl_mode === lat_direct
+        @test ctl.y.lon_ctl_mode === lon_direct
+        @test ctl.y.lat_ctl_mode === lat_direct
 
         #with direct surface control, trim state must be initially preserved
         step!(sim, 10, true)
@@ -132,14 +132,14 @@ function test_control_modes()
         #we test the longitudinal SAS first, because we want to test the lateral
         #modes with it enabled
         reinit!(sim, init_air)
-        fcl.u.lon_ctl_mode_req = lon_thr_ele
+        ctl.u.lon_ctl_mode_req = lon_thr_ele
         step!(sim, Δt, true)
-        @test fcl.y.lon_ctl_mode === lon_thr_ele
+        @test ctl.y.lon_ctl_mode === lon_thr_ele
 
         #check the correct parameters are loaded and assigned to the controller
         te2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "e2e_lookup.h5"))
         C_fwd = te2te_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
-        @test all(isapprox.(fcl.y.lon_ctl.e2e_lqr.C_fwd, C_fwd; atol = 1e-6))
+        @test all(isapprox.(ctl.y.lon_ctl.e2e_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #with thr+ele SAS active, trim state must be preserved for longer
         step!(sim, 30, true)
@@ -155,15 +155,15 @@ function test_control_modes()
     @testset verbose = true "lat_φ_β" begin
 
         reinit!(sim, init_air)
-        fcl.u.lon_ctl_mode_req = lon_thr_ele
-        fcl.u.lat_ctl_mode_req = lat_φ_β
+        ctl.u.lon_ctl_mode_req = lon_thr_ele
+        ctl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, Δt, true)
-        @test fcl.y.lat_ctl_mode === lat_φ_β
+        @test ctl.y.lat_ctl_mode === lat_φ_β
 
         #check the correct parameters are loaded and assigned to the controller
         φβ2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
         C_fwd = φβ2ar_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
-        @test all(isapprox.(fcl.y.lat_ctl.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
+        @test all(isapprox.(ctl.y.lat_ctl.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #with setpoints matching their trim values, the control mode must activate
         #without transients
@@ -172,11 +172,11 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        fcl.u.φ_sp = π/12
-        fcl.u.β_sp = deg2rad(3)
+        ctl.u.φ_sp = π/12
+        ctl.u.β_sp = deg2rad(3)
         step!(sim, 10, true)
-        @test isapprox(fcl.u.φ_sp, y_kin(ac).e_nb.φ; atol = 1e-3)
-        @test isapprox(Float64(fcl.u.β_sp), y_air(ac).β_b; atol = 1e-3)
+        @test isapprox(ctl.u.φ_sp, y_kin(ac).e_nb.φ; atol = 1e-3)
+        @test isapprox(Float64(ctl.u.β_sp), y_air(ac).β_b; atol = 1e-3)
 
         # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
@@ -186,15 +186,15 @@ function test_control_modes()
     @testset verbose = true "lat_p_β" begin
 
         reinit!(sim, init_air)
-        fcl.u.lon_ctl_mode_req = lon_thr_ele
-        fcl.u.lat_ctl_mode_req = lat_p_β
+        ctl.u.lon_ctl_mode_req = lon_thr_ele
+        ctl.u.lat_ctl_mode_req = lat_p_β
         step!(sim, Δt, true)
-        @test fcl.y.lat_ctl_mode === lat_p_β
+        @test ctl.y.lat_ctl_mode === lat_p_β
 
         #check the correct parameters are loaded and assigned to the controllers
         φβ2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
         C_fwd = φβ2ar_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
-        @test all(isapprox.(fcl.y.lat_ctl.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
+        @test all(isapprox.(ctl.y.lat_ctl.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #the control mode must activate without transients
         step!(sim, 1, true)
@@ -206,11 +206,11 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
-        fcl.u.p_sp = 0.02
-        fcl.u.β_sp = deg2rad(3)
+        ctl.u.p_sp = 0.02
+        ctl.u.β_sp = deg2rad(3)
         step!(sim, 10, true)
-        @test isapprox(Float64(fcl.u.p_sp), y_kin(ac).ω_lb_b[1]; atol = 1e-3)
-        @test isapprox(fcl.u.β_sp, y_air(ac).β_b; atol = 1e-3)
+        @test isapprox(Float64(ctl.u.p_sp), y_kin(ac).ω_lb_b[1]; atol = 1e-3)
+        @test isapprox(ctl.u.β_sp, y_air(ac).β_b; atol = 1e-3)
 
         # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
@@ -222,15 +222,15 @@ function test_control_modes()
     @testset verbose = true "lat_χ_β" begin
 
         reinit!(sim, init_air)
-        fcl.u.lon_ctl_mode_req = lon_thr_ele
-        fcl.u.lat_ctl_mode_req = lat_χ_β
+        ctl.u.lon_ctl_mode_req = lon_thr_ele
+        ctl.u.lat_ctl_mode_req = lat_χ_β
         step!(sim, Δt, true)
-        @test fcl.y.lat_ctl_mode === lat_χ_β
+        @test ctl.y.lat_ctl_mode === lat_χ_β
 
         #check the correct parameters are loaded and assigned to the controller
         χ2φ_lookup = load_pid_lookup(joinpath(data_folder, "χ2φ_lookup.h5"))
         k_p = χ2φ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
-        @test all(isapprox.(fcl.y.lat_ctl.χ2φ_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.lat_ctl.χ2φ_pid.k_p, k_p; atol = 1e-6))
 
         #with setpoints matching their trim values, the control mode must activate
         #without transients
@@ -239,16 +239,16 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking
-        fcl.u.χ_sp = π/2
+        ctl.u.χ_sp = π/2
         step!(sim, 29, true)
-        @test fcl.lat_ctl.u.χ_sp != 0
-        @test isapprox(fcl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
-        # @test isapprox(Float64(fcl.u.yaw_input), y_air(ac).β_b; atol = 1e-3)
+        @test ctl.lat_ctl.u.χ_sp != 0
+        @test isapprox(ctl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
+        # @test isapprox(Float64(ctl.u.yaw_input), y_air(ac).β_b; atol = 1e-3)
 
         #correct tracking with 10m/s of crosswind
         ac.vehicle.atmosphere.u.v_ew_n[1] = 10
         step!(sim, 10, true)
-        @test isapprox(fcl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
+        @test isapprox(ctl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
         ac.vehicle.atmosphere.u.v_ew_n[1] = 0
 
         # @test @ballocated(f_disc!($ac, $Δt)) == 0
@@ -266,15 +266,15 @@ function test_control_modes()
 
         reinit!(sim, init_air)
 
-        fcl.u.lon_ctl_mode_req = lon_thr_q
-        fcl.u.lat_ctl_mode_req = lat_φ_β
+        ctl.u.lon_ctl_mode_req = lon_thr_q
+        ctl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, Δt, true)
-        @test fcl.y.lon_ctl_mode === lon_thr_q
+        @test ctl.y.lon_ctl_mode === lon_thr_q
 
         #check the correct parameters are loaded and assigned to the controller
         q2e_lookup = load_pid_lookup(joinpath(data_folder, "q2e_lookup.h5"))
         k_p = q2e_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
-        @test all(isapprox.(fcl.y.lon_ctl.q2e_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.lon_ctl.q2e_pid.k_p, k_p; atol = 1e-6))
 
         #when trim setpoints are kept, the control mode must activate without
         #transients
@@ -283,14 +283,14 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        fcl.u.φ_sp = π/12
-        fcl.u.q_sp = 0.01
+        ctl.u.φ_sp = π/12
+        ctl.u.q_sp = 0.01
         step!(sim, 10, true)
 
-        @test fcl.lon_ctl.u.q_sp != 0
-        @test isapprox(fcl.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
+        @test ctl.lon_ctl.u.q_sp != 0
+        @test isapprox(ctl.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
         @test isapprox(Float64(ac.y.vehicle.components.act.throttle.cmd),
-                        Float64(fcl.u.throttle_sp_input + fcl.u.throttle_sp_offset); atol = 1e-3)
+                        Float64(ctl.u.throttle_sp_input + ctl.u.throttle_sp_offset); atol = 1e-3)
 
         # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
@@ -303,10 +303,10 @@ function test_control_modes()
 
         reinit!(sim, init_air)
 
-        fcl.u.lon_ctl_mode_req = lon_thr_θ
-        fcl.u.lat_ctl_mode_req = lat_φ_β
+        ctl.u.lon_ctl_mode_req = lon_thr_θ
+        ctl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, Δt, true)
-        @test fcl.y.lon_ctl_mode === lon_thr_θ
+        @test ctl.y.lon_ctl_mode === lon_thr_θ
 
         #when trim setpoints are kept, the control mode must activate without
         #transients
@@ -315,10 +315,10 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        fcl.u.φ_sp = π/6
-        fcl.u.θ_sp = deg2rad(5)
+        ctl.u.φ_sp = π/6
+        ctl.u.θ_sp = deg2rad(5)
         step!(sim, 10, true)
-        @test isapprox(y_kin(ac).e_nb.θ, fcl.u.θ_sp; atol = 1e-4)
+        @test isapprox(y_kin(ac).e_nb.θ, ctl.u.θ_sp; atol = 1e-4)
 
         # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
@@ -331,15 +331,15 @@ function test_control_modes()
 
         reinit!(sim, init_air)
 
-        fcl.u.lon_ctl_mode_req = lon_thr_EAS
-        fcl.u.lat_ctl_mode_req = lat_φ_β
+        ctl.u.lon_ctl_mode_req = lon_thr_EAS
+        ctl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, Δt, true)
-        @test fcl.y.lon_ctl_mode === lon_thr_EAS
+        @test ctl.y.lon_ctl_mode === lon_thr_EAS
 
         #check the correct parameters are loaded and assigned to the controller
         v2θ_lookup = load_pid_lookup(joinpath(data_folder, "v2θ_lookup.h5"))
         k_p = v2θ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
-        @test all(isapprox.(fcl.y.lon_ctl.v2θ_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.lon_ctl.v2θ_pid.k_p, k_p; atol = 1e-6))
 
         #when trim setpoints are kept, the control mode must activate without
         #transients
@@ -348,10 +348,10 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        fcl.u.φ_sp = π/6
-        fcl.u.EAS_sp = 45
+        ctl.u.φ_sp = π/6
+        ctl.u.EAS_sp = 45
         step!(sim, 30, true)
-        @test all(isapprox.(y_air(ac).EAS, fcl.u.EAS_sp; atol = 1e-1))
+        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
 
         # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
@@ -363,16 +363,16 @@ function test_control_modes()
 
         reinit!(sim, init_air)
 
-        fcl.u.lon_ctl_mode_req = lon_EAS_q
-        fcl.u.lat_ctl_mode_req = lat_φ_β
+        ctl.u.lon_ctl_mode_req = lon_EAS_q
+        ctl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, Δt, true)
-        @test fcl.y.lon_ctl_mode === lon_EAS_q
+        @test ctl.y.lon_ctl_mode === lon_EAS_q
 
         #check the correct parameters are loaded and assigned to v2t, the q
         #tracker is shared with other modes
         v2t_lookup = load_pid_lookup(joinpath(data_folder, "v2t_lookup.h5"))
         k_p = v2t_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
-        @test all(isapprox.(fcl.y.lon_ctl.v2t_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.lon_ctl.v2t_pid.k_p, k_p; atol = 1e-6))
 
         #when trim setpoints are kept, the control mode must activate without
         #transients
@@ -381,15 +381,15 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking
-        fcl.u.q_sp = -0.01
+        ctl.u.q_sp = -0.01
         step!(sim, 10, true)
-        fcl.u.q_sp = 0.005
+        ctl.u.q_sp = 0.005
         step!(sim, 10, true)
-        fcl.u.q_sp = 0.0
+        ctl.u.q_sp = 0.0
         step!(sim, 20, true)
 
-        @test isapprox(fcl.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
-        @test all(isapprox.(y_air(ac).EAS, fcl.u.EAS_sp; atol = 1e-1))
+        @test isapprox(ctl.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
+        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
 
         # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
@@ -402,10 +402,10 @@ function test_control_modes()
 
         reinit!(sim, init_air)
 
-        fcl.u.lon_ctl_mode_req = lon_EAS_θ
-        fcl.u.lat_ctl_mode_req = lat_φ_β
+        ctl.u.lon_ctl_mode_req = lon_EAS_θ
+        ctl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, Δt, true)
-        @test fcl.y.lon_ctl_mode === lon_EAS_θ
+        @test ctl.y.lon_ctl_mode === lon_EAS_θ
 
         #when trim setpoints are kept, the control mode must activate without
         #transients
@@ -414,14 +414,14 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        fcl.u.φ_sp = π/6
-        fcl.u.θ_sp = deg2rad(3)
+        ctl.u.φ_sp = π/6
+        ctl.u.θ_sp = deg2rad(3)
         step!(sim, 10, true)
-        fcl.u.θ_sp = -deg2rad(3)
+        ctl.u.θ_sp = -deg2rad(3)
         step!(sim, 60, true)
 
-        @test isapprox(fcl.lon_ctl.u.θ_sp, y_kin(ac).e_nb.θ; atol = 1e-3)
-        @test all(isapprox.(y_air(ac).EAS, fcl.u.EAS_sp; atol = 1e-1))
+        @test isapprox(ctl.lon_ctl.u.θ_sp, y_kin(ac).e_nb.θ; atol = 1e-3)
+        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
 
         # @test @ballocated(f_disc!($ac, $Δt)) == 0
 
@@ -433,15 +433,15 @@ function test_control_modes()
 
         reinit!(sim, init_air)
 
-        fcl.u.lon_ctl_mode_req = lon_EAS_clm
-        fcl.u.lat_ctl_mode_req = lat_φ_β
+        ctl.u.lon_ctl_mode_req = lon_EAS_clm
+        ctl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, Δt, true)
-        @test fcl.y.lon_ctl_mode === lon_EAS_clm
+        @test ctl.y.lon_ctl_mode === lon_EAS_clm
 
         #check the correct parameters are loaded and assigned to the controller
         c2θ_lookup = load_pid_lookup(joinpath(data_folder, "c2θ_lookup.h5"))
         k_p = c2θ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
-        @test all(isapprox.(fcl.y.lon_ctl.c2θ_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.lon_ctl.c2θ_pid.k_p, k_p; atol = 1e-6))
 
         #when trim setpoints are kept, the control mode must activate without
         #transients
@@ -450,12 +450,12 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        fcl.u.φ_sp = π/6
-        fcl.u.EAS_sp = 45
-        fcl.u.clm_sp = 2
+        ctl.u.φ_sp = π/6
+        ctl.u.EAS_sp = 45
+        ctl.u.clm_sp = 2
         step!(sim, 30, true)
-        @test all(isapprox.(y_kin(ac).v_eOb_n[3], -fcl.u.clm_sp; atol = 1e-1))
-        @test all(isapprox.(y_air(ac).EAS, fcl.u.EAS_sp; atol = 1e-1))
+        @test all(isapprox.(y_kin(ac).v_eOb_n[3], -ctl.u.clm_sp; atol = 1e-1))
+        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
 
         @test @ballocated(f_disc!($ac, $Δt)) == 0
 
@@ -481,7 +481,7 @@ function test_guidance_modes()
     h_trn = HOrth(0)
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172RPAv1(LTF(), trn) |> System;
-    fcl = ac.avionics.fcl
+    ctl = ac.avionics.ctl
     init_air = C172.TrimParameters()
 
     dt = Δt = 0.01
@@ -492,11 +492,11 @@ function test_guidance_modes()
         reinit!(sim, init_air)
         y_kin_trim = y_kin(ac)
 
-        fcl.u.vrt_gdc_mode_req = vrt_gdc_alt
-        fcl.u.lat_ctl_mode_req = lat_φ_β
+        ctl.u.vrt_gdc_mode_req = vrt_gdc_alt
+        ctl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, Δt, true)
-        @test fcl.y.vrt_gdc_mode === vrt_gdc_alt
-        @test fcl.y.lon_ctl_mode === lon_EAS_clm
+        @test ctl.y.vrt_gdc_mode === vrt_gdc_alt
+        @test ctl.y.lon_ctl_mode === lon_EAS_clm
 
         #when trim setpoints are kept, the guidance mode must activate without
         #transients
@@ -505,34 +505,34 @@ function test_guidance_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #all tests while turning
-        fcl.u.φ_sp = π/12
+        ctl.u.φ_sp = π/12
 
-        fcl.u.h_sp = y_kin_trim.h_e + 100
+        ctl.u.h_sp = y_kin_trim.h_e + 100
         step!(sim, 1, true)
-        @test fcl.y.lon_ctl_mode === lon_thr_EAS
+        @test ctl.y.lon_ctl_mode === lon_thr_EAS
         step!(sim, 60, true) #altitude is captured
-        @test fcl.y.lon_ctl_mode === lon_EAS_clm
-        @test isapprox.(y_kin(ac).h_e - HEllip(fcl.u.h_sp), 0.0; atol = 1e-1)
+        @test ctl.y.lon_ctl_mode === lon_EAS_clm
+        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_sp), 0.0; atol = 1e-1)
 
         #setpoint changes within the current threshold do not prompt a mode change
-        fcl.u.h_sp = y_kin(ac).h_e - fcl.alt_gdc.s.h_thr / 2
+        ctl.u.h_sp = y_kin(ac).h_e - ctl.alt_gdc.s.h_thr / 2
         step!(sim, 1, true)
-        @test fcl.y.lon_ctl_mode === lon_EAS_clm
+        @test ctl.y.lon_ctl_mode === lon_EAS_clm
         step!(sim, 30, true) #altitude is captured
-        @test isapprox.(y_kin(ac).h_e - HEllip(fcl.u.h_sp), 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_sp), 0.0; atol = 1e-1)
 
-        fcl.u.h_sp = y_kin_trim.h_e - 100
+        ctl.u.h_sp = y_kin_trim.h_e - 100
         step!(sim, 1, true)
-        @test fcl.y.lon_ctl_mode === lon_thr_EAS
+        @test ctl.y.lon_ctl_mode === lon_thr_EAS
         step!(sim, 80, true) #altitude is captured
-        @test fcl.y.lon_ctl_mode === lon_EAS_clm
-        @test isapprox.(y_kin(ac).h_e - HEllip(fcl.u.h_sp), 0.0; atol = 1e-1)
+        @test ctl.y.lon_ctl_mode === lon_EAS_clm
+        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_sp), 0.0; atol = 1e-1)
 
-        @test fcl.y.lon_ctl_mode === lon_EAS_clm
+        @test ctl.y.lon_ctl_mode === lon_EAS_clm
         @test @ballocated(f_disc!($ac, $Δt)) == 0
-        fcl.u.h_sp = y_kin_trim.h_e + 100
+        ctl.u.h_sp = y_kin_trim.h_e + 100
         step!(sim, 1, true)
-        @test fcl.y.lon_ctl_mode === lon_thr_EAS
+        @test ctl.y.lon_ctl_mode === lon_thr_EAS
         @test @ballocated(f_disc!($ac, $Δt)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
@@ -597,7 +597,7 @@ function Systems.assign_input!(sys::System{<:Cessna172RPAv1},
     #it is an empty JSON entity (either string, object or array). instead of
     #this check we could simply call do isempty(JSON3.read(str)) but that would
     #mean parsing the string twice
-    length(str) > 2 && JSON3.read!(str, sys.avionics.fcl.u)
+    length(str) > 2 && JSON3.read!(str, sys.avionics.ctl.u)
 
     # isempty(str) |> println
     # JSON3.read(str) |> isempty |> println
@@ -639,7 +639,7 @@ function test_json_loopback(; save::Bool = true)
 
     #trigger compilation of parsing methods for AvionicsU before launching the
     #simulation
-    JSON3.read!(JSON3.write(sys.avionics.fcl.u, allow_inf=true), sys.avionics.fcl.u; allow_inf=true)
+    JSON3.read!(JSON3.write(sys.avionics.ctl.u, allow_inf=true), sys.avionics.ctl.u; allow_inf=true)
 
     Sim.run_interactive!(sim)
 

@@ -20,8 +20,8 @@ export Cessna172FBWv1
 ############################### Avionics #######################################
 
 @kwdef struct Avionics{C <: Controller} <: AbstractAvionics
-    N_fcl::Int = 1
-    fcl::C = Controller()
+    N_ctl::Int = 1
+    ctl::C = Controller()
 end
 
 @kwdef mutable struct AvionicsS
@@ -30,7 +30,7 @@ end
 
 @kwdef struct AvionicsY{C <: ControllerY}
     n_disc::Int = 0
-    fcl::C = ControllerY()
+    ctl::C = ControllerY()
 end
 
 Systems.S(::Avionics) = AvionicsS()
@@ -40,8 +40,8 @@ Systems.Y(::Avionics) = AvionicsY()
 ############################### Update methods #################################
 
 function Systems.assemble_y!(sys::System{<:C172FBWv1.Avionics})
-    @unpack fcl = sys.subsystems
-    sys.y = AvionicsY(; n_disc = sys.s.n_disc, fcl = fcl.y)
+    @unpack ctl = sys.subsystems
+    sys.y = AvionicsY(; n_disc = sys.s.n_disc, ctl = ctl.y)
 end
 
 
@@ -54,11 +54,11 @@ end
 function Systems.f_disc!(avionics::System{<:C172FBWv1.Avionics},
                         vehicle::System{<:C172FBW.Vehicle}, Δt::Real)
 
-    @unpack N_fcl = avionics.constants
-    @unpack fcl = avionics.subsystems
+    @unpack N_ctl = avionics.constants
+    @unpack ctl = avionics.subsystems
     @unpack n_disc = avionics.s
 
-    (n_disc % N_fcl == 0) && f_disc!(fcl, vehicle, N_fcl*Δt)
+    (n_disc % N_ctl == 0) && f_disc!(ctl, vehicle, N_ctl*Δt)
 
     avionics.s.n_disc += 1
 
@@ -68,7 +68,7 @@ end
 
 function AircraftBase.assign!(components::System{<:C172FBW.Components},
                           avionics::System{<:C172FBWv1.Avionics})
-    AircraftBase.assign!(components, avionics.fcl)
+    AircraftBase.assign!(components, avionics.ctl)
 end
 
 
@@ -77,10 +77,10 @@ end
 function AircraftBase.trim!(avionics::System{<:C172FBWv1.Avionics},
                             vehicle::System{<:C172FBW.Vehicle})
 
-    @unpack fcl = avionics
+    @unpack ctl = avionics
 
     Systems.reset!(avionics)
-    trim!(fcl, vehicle)
+    trim!(ctl, vehicle)
     assemble_y!(avionics)
 
 end
@@ -99,9 +99,9 @@ function GUI.draw!(avionics::System{<:C172FBWv1.Avionics},
     CImGui.Begin(label, p_open)
 
     Text(@sprintf("Epoch: %d", avionics.y.n_disc))
-    @cstatic c_fcl=false begin
-        @c CImGui.Checkbox("Flight Controller", &c_fcl)
-        c_fcl && @c GUI.draw!(avionics.fcl, vehicle, &c_fcl)
+    @cstatic c_ctl=false begin
+        @c CImGui.Checkbox("Flight Controller", &c_ctl)
+        c_ctl && @c GUI.draw!(avionics.ctl, vehicle, &c_ctl)
     end
 
     CImGui.End()
@@ -128,7 +128,7 @@ function Systems.assign_input!(sys::System{<:Cessna172FBWv1},
                                 data::JoystickData,
                                 mapping::IOMapping)
 
-    Systems.assign_input!(sys.avionics.fcl, data, mapping)
+    Systems.assign_input!(sys.avionics.ctl, data, mapping)
 end
 
 

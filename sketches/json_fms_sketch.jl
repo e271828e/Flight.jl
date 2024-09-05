@@ -35,7 +35,7 @@ end
 #ControllerU is declared as StructTypes.Mutable() in C172RPA.FlightControl, so
 #JSON3 can automatically read a JSON string into one or more of its fields
 function assign_callback!(sys::System{<:Cessna172RPAv1}, data::String, ::IOMapping)
-    length(data) > 2 && JSON3.read!(data, sys.avionics.fcl.u)
+    length(data) > 2 && JSON3.read!(data, sys.avionics.ctl.u)
 end
 
 function json_fms_sketch(; save::Bool = true)
@@ -70,7 +70,7 @@ function json_fms_sketch(; save::Bool = true)
 
     #trigger compilation of parsing methods for AvionicsU before launching the
     #simulation
-    JSON3.read!(JSON3.write(sys.avionics.fcl.u, allow_inf=true), sys.avionics.fcl.u; allow_inf=true)
+    JSON3.read!(JSON3.write(sys.avionics.ctl.u, allow_inf=true), sys.avionics.ctl.u; allow_inf=true)
 
     Sim.run_interactive!(sim; pace = 5)
 
