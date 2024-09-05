@@ -6,6 +6,7 @@ using Flight.FlightCore.Systems
 using Flight.FlightCore.GUI
 
 using Flight.FlightComponents.Control
+using Flight.FlightComponents.LandingGear
 
 using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172R
@@ -21,8 +22,9 @@ function test_gui()
     # target = Cessna172CAS() |> System
     # target = Cessna172RBase() |> System
     # target = C172FBW.Actuation() |> System;
-    # target = Cessna172RPAv1() |> System
-    target = Cessna172R() |> System
+    target = Cessna172RPAv1() |> System
+    # target = Cessna172R() |> System
+    # target = LandingGearUnit() |> System
     f_draw = let target = target
         () -> GUI.draw!(target)
         # return () -> GUI.draw!(target)
@@ -30,9 +32,7 @@ function test_gui()
     # target = C172FBWv1.LonControl() |> System
     # target = Cessna172FBW() |> System
     r = Renderer(; f_draw)
-    GUI.init!(r)
     GUI.render_loop(r)
-    # GUI.shutdown!(r)
     # GUI.run(r, GUI.draw!, target)
 end
 

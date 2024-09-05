@@ -283,7 +283,7 @@ end
 function GUI.draw(sys::System{<:PIVector{N}}, label::String = "PIVector{$N}") where {N}
 
     @unpack k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext, reset,
-            u_p, u_i, y_p, y_i, out_free, sat_out, output, int_halted = sys.y
+            u_p, u_i, x_i, y_p, y_i, out_free, sat_out, output, int_halted = sys.y
 
     # CImGui.Begin(label)
 

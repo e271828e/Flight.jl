@@ -93,16 +93,16 @@ function linear_scaling(u::Ranged{T, UMin, UMax}, range::NTuple{2,Real}) where {
 end
 
 
-function GUI.display_bar(label::String, source::Ranged{T,Min,Max}, args...) where {T<:AbstractFloat,Min,Max}
-    display_bar(label, Float64(source), Min, Max, args...)
+function GUI.display_bar(label::String, source::Ranged{T,Min,Max}, args...; kwargs...) where {T<:AbstractFloat,Min,Max}
+    display_bar(label, Float64(source), Min, Max, args...; kwargs...)
 end
 
-function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, args...) where {T<:AbstractFloat,Min,Max}
-    safe_slider(label, Float64(source), Min, Max, args...)
+function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, args...; kwargs...) where {T<:AbstractFloat,Min,Max}
+    safe_slider(label, Float64(source), Min, Max, args...; kwargs...)
 end
 
-function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, args...) where {T<:AbstractFloat,Min,Max}
-    safe_input(label, Float64(source), args...)
+function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, args...; kwargs...) where {T<:AbstractFloat,Min,Max}
+    safe_input(label, Float64(source), args...; kwargs...)
 end
 
 #enable JSON3 parsing

@@ -97,7 +97,8 @@ function IODevices.init!(renderer::Renderer)
     else #create non-maximized window occuppying half the screen width
         glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE)
         glfwWindowHint(GLFW_MAXIMIZED, GLFW_FALSE)
-        _window = glfwCreateWindow(vmode.width//2, vmode.height, label, C_NULL, C_NULL)
+        _window = glfwCreateWindow(vmode.width, vmode.height, label, C_NULL, C_NULL)
+        # _window = glfwCreateWindow(vmode.width//2, vmode.height, label, C_NULL, C_NULL)
     end
 
     @assert _window != C_NULL
@@ -207,7 +208,7 @@ end
 
 function render_loop(renderer::Renderer)
 
-    renderer._initialized || init!(renderer)
+    renderer._initialized || IODevices.init!(renderer)
     try
         @assert renderer.sync > 0 "The standalone render_loop() must not be called "*
         "an unsynced Renderer (sync = 0). Use scheduled calls to update!() instead."
@@ -216,14 +217,14 @@ function render_loop(renderer::Renderer)
         #is effectively uncapped. this causes issues, so the calls to update! must be
         #limited in frequency by some other means
 
-        while glfwWindowShouldClose(renderer._window) == 0
+        while !IODevices.should_close(renderer)
             render!(renderer)
         end
     catch e
-        @error "Error while updating window" exception=e
-        Base.show_backtrace(stderr, catch_backtrace())
+        @warn "Error while updating window" exception=e
+        # Base.show_backtrace(stderr, catch_backtrace())
     finally
-        shutdown!(renderer)
+        IODevices.shutdown!(renderer)
     end
 
 end

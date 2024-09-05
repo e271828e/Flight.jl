@@ -1002,7 +1002,7 @@ function GUI.draw!(sys::System{<:Controller},
         mode_button("Engine Stop", true, u.eng_stop, false; HSV_requested = HSV_red)
         u.eng_stop = IsItemActive()
         SameLine()
-        u.mixture = safe_slider("Mixture", u.mixture, "%.6f", true)
+        u.mixture = safe_slider("Mixture", u.mixture, "%.6f"; show_label = true)
         @unpack state, throttle, ω, MAP, M_shaft, P_shaft, ṁ = pwp.engine
 
         if CImGui.BeginTable("Engine Data", 4)
