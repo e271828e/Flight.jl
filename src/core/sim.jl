@@ -165,14 +165,19 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         save_everystep::Bool = isempty(saveat),
         ) where {D, Y}
 
-        @assert (t_end - t_start >= Δt) "Simulation timespan cannot be shorter "* "
-                                        than the discrete dynamics update period"
+        t_end - t_start < Δt && @warn(
+        "Simulation timespan is shorter than the discrete dynamics update period")
 
-        params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!, Δt = Δt)
+        params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!)
 
+        #initial_affect=true causes f_disc! to be called before the initial step
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
-        cb_disc = PeriodicCallback(f_cb_disc!, Δt)
+        cb_disc = PeriodicCallback(f_cb_disc!, Δt; initial_affect = false)
         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
+
+        #set System's root Δt and discrete iteration counter
+        sys.Δt_root[] = Δt
+        sys.n[] = 0
 
         #before initializing the log, compute and assign y, so its initial value
         #is consistent with x, u and s
@@ -304,9 +309,12 @@ end
 function f_cb_disc!(integrator)
 
     @unpack u, p = integrator
-    @unpack sys, Δt = p
+    @unpack sys = p
 
-    f_disc!(sys, Δt)
+    f_disc!(sys)
+
+    #increment the discrete iteration counter
+    sys.n[] += 1
 
     #assign the (potentially) modified sys.x back to the integrator
     has_x(sys) && (u .= sys.x)
@@ -347,6 +355,9 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
 
     #initialize the System's x, u and s
     Systems.init!(sys, init_args...; init_kwargs...)
+
+    #reset discrete iteration counter
+    sys.n[] = 0
 
     #let it propagate to y. within its reinit! method, the integrator will call
     #the SavingCallback to set the first entry in the log, which is sys.y

@@ -8,6 +8,7 @@ using ..GUI
 using ..IODevices
 
 export SystemDefinition, SystemTrait, System
+export Scheduled
 export f_ode!, f_step!, f_disc!, assemble_y!
 
 
@@ -29,6 +30,15 @@ function delete_nothings(nt::NamedTuple)
 end
 
 ################################################################################
+############################## SystemDefinition ################################
+
+@kwdef struct Child{D <: SystemDefinition}
+    sd::D
+    N_rel::Int = 1 #parent-relative discrete sampling period multiplier
+end
+
+
+################################################################################
 ############################## SystemTrait #####################################
 
 abstract type SystemTrait end
@@ -43,12 +53,11 @@ struct S <: SystemTrait end
 (::Union{Type{U}, Type{S}})(::SystemDefinition) = nothing
 
 function (trait::Union{Type{Ẋ}, Type{X}, Type{Y}})(sd::SystemDefinition)
-    #get those fields that are themselves SystemDefinitions
     children_keys = filter(propertynames(sd)) do name
-        getproperty(sd, name) isa SystemDefinition
+        getproperty(sd, name) isa Child
     end
-    children = map(λ -> getproperty(sd, λ), children_keys)
-    children_traits = map(child-> trait(child), children)
+    children_definitions = map(λ -> getproperty(getproperty(sd, λ), :sd), children_keys)
+    children_traits = map(child-> trait(child), children_definitions)
     nt = NamedTuple{children_keys}(children_traits)
     return trait(nt)
 end
@@ -94,24 +103,29 @@ mutable struct System{D <: SystemDefinition, Y, U, X, S, C, B}
     const ẋ::X #continuous state derivative
     const x::X #continuous state
     const s::S #discrete state
+    const N::Int #discrete sampling period multipler
+    const Δt_root::Base.RefValue{Float64} #root system discrete sampling period
     const t::Base.RefValue{Float64} #simulation time
+    const n::Base.RefValue{Int} #simulation discrete iteration counter
     const constants::C
     const subsystems::B
 end
 
 
 function System(sd::SystemDefinition,
-                y = Y(sd), u = U(sd), ẋ = Ẋ(sd), x = X(sd), s = S(sd), t = Ref(0.0))
+                y = Y(sd), u = U(sd), ẋ = Ẋ(sd), x = X(sd), s = S(sd),
+                N = 1, Δt_root = Ref(1.0), t = Ref(0.0), n = Ref(0))
 
-    #construct subsystems from those fields of sd which are themselves
-    #SystemDefinitions
+    #construct subsystems from Child fields
     children_names = filter(propertynames(sd)) do name
-        getproperty(sd, name) isa SystemDefinition
+        getproperty(sd, name) isa Child
     end
 
     children_systems = map(children_names) do child_name
 
-        child_definition = getproperty(sd, child_name)
+        child = getproperty(sd, child_name)
+        child_definition = getproperty(child, :sd)
+        N_child = N * getproperty(child, :N_rel)
 
         child_properties = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent, trait
             if !isnothing(parent) && (child_name in propertynames(parent))
@@ -121,7 +135,7 @@ function System(sd::SystemDefinition,
             end
         end
 
-        System(child_definition, child_properties..., t)
+        System(child_definition, child_properties..., N_child, Δt_root, t, n)
 
     end
 
@@ -132,7 +146,7 @@ function System(sd::SystemDefinition,
     constants = (!isempty(constants) ? constants : nothing)
 
     sys = System{map(typeof, (sd, y, u, x, s, constants, subsystems))...}(
-                    y, u, ẋ, x, s, t, constants, subsystems)
+                    y, u, ẋ, x, s, N, Δt_root, t, n, constants, subsystems)
 
     init!(sys)
 
@@ -162,6 +176,10 @@ end
 ################################################################################
 ######################## f_ode! f_step! f_disc! ################################
 
+abstract type IsScheduled end
+struct Unscheduled <: IsScheduled end
+struct Scheduled <: IsScheduled end
+
 #f_ode! must update sys.ẋ, compute and reassign sys.y, then return nothing
 
 #f_step! and f_disc! are allowed to modify a System's u, s and x. if they do
@@ -176,11 +194,11 @@ end
 #reaches further down the subsystem hierarchy
 
 
-############################ Fallback methods ##################################
+############################## Update methods ##################################
 
-#tries calling f_ode! on all subsystems with the same arguments provided to the
-#parent System, then assembles a NamedTuple from the subsystems' outputs.
-#override as required.
+#fallback: tries calling f_ode! on all subsystems with the same arguments
+#provided to the parent System, then assembles a NamedTuple from the subsystems'
+#outputs. override as required.
 @inline function f_ode!(sys::System, args...)
     # sys.subsystems |> keys |> println
     for ss in sys.subsystems
@@ -191,21 +209,27 @@ end
 
 end
 
-#tries calling f_disc! on all subsystems with the same arguments provided to the
-#parent System. also updates y, since f_disc! is where discrete Systems are
-#expected to update their output. override as required.
-@inline function f_disc!(sys::System, Δt, args...)
+@inline f_disc!(sys::System, args...) = f_disc!(Unscheduled(), sys, args...)
+
+function f_disc!(::Unscheduled, sys::System, args...)
+    (sys.n[] % sys.N == 0) && f_disc!(Scheduled(), sys, args...)
+end
+
+#fallback: tries calling f_disc! on all subsystems with the same arguments
+#provided to the parent System. also updates y, since f_disc! is where discrete
+#Systems are expected to update their output. override as required.
+@inline function f_disc!(::Scheduled, sys::System, args...)
     # sys.subsystems |> keys |> println
     for ss in sys.subsystems
-        f_disc!(ss, Δt, args...)
+        f_disc!(ss, args...)
     end
     assemble_y!(sys)
     return nothing
 
 end
 
-#tries calling f_step! on all subsystems with the same arguments provided to the
-#parent System. does NOT update y. override as required
+#fallback: tries calling f_step! on all subsystems with the same arguments
+#provided to the parent System. does NOT update y. override as required
 @inline function f_step!(sys::System, args...)
     for ss in sys.subsystems
         f_step!(ss, args...)
@@ -214,7 +238,7 @@ end
 
 end
 
-#fallback method for node Systems with NamedTuple output
+#fallback for node Systems with NamedTuple output
 @inline function (assemble_y!(sys::System{D, Y})
     where {D <: SystemDefinition, Y <: NamedTuple{L, M}} where {L, M})
 
