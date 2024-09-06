@@ -30,7 +30,7 @@ function test_braking()
         nb_sys = System(NoBraking())
         @test isnothing(nb_sys.x)
         @test isnothing(nb_sys.u)
-        @test isnothing(nb_sys.y)
+        # @test isnothing(nb_sys.y)
         @test LandingGear.get_braking_factor(nb_sys) == 0
         @test @ballocated(f_ode!($nb_sys)) == 0
         @test @ballocated(f_step!($nb_sys)) == 0
@@ -57,20 +57,24 @@ function test_steering()
         ns_sys = System(NoSteering())
         @test isnothing(ns_sys.x)
         @test isnothing(ns_sys.u)
-        @test isnothing(ns_sys.y)
+        # @test isnothing(ns_sys.y)
         @test LandingGear.get_steering_angle(ns_sys) == 0
         @test @ballocated(f_ode!($ns_sys)) == 0
         @test @ballocated(f_step!($ns_sys)) == 0
 
         ds_sys = System(DirectSteering(ψ_max = π/8))
-        ds_sys.u[] = -2
-        @test ds_sys.u[] == -1
-        ds_sys.u[] = 1.3
-        @test ds_sys.u[] == 1
-        ds_sys.u[] = 0.5
-        @test ds_sys.u[] == 0.5
+        ds_sys.u.engaged = true
+        ds_sys.u.input = -2
+        @test ds_sys.u.input == -1
+        ds_sys.u.input = 1.3
+        @test ds_sys.u.input == 1
+        ds_sys.u.input = 0.5
+        @test ds_sys.u.input == 0.5
         f_ode!(ds_sys)
-        @test LandingGear.get_steering_angle(ds_sys) == π/8 * 0.5
+        @test LandingGear.get_steering_angle(ds_sys, 0.54) == π/8 * 0.5
+        ds_sys.u.engaged = false
+        f_ode!(ds_sys)
+        @test LandingGear.get_steering_angle(ds_sys, 1.0) == 1.0
         @test @ballocated(f_ode!($ds_sys)) == 0
         @test @ballocated(f_step!($ds_sys)) == 0
     end
@@ -210,7 +214,7 @@ function test_landing_gear_unit()
 
         #steering
         kin = KinInit(; h, v_eOb_n = [10,0,1]) |> KinData
-        steering.u[] = 0.5
+        steering.u.input = 0.5
         f_ode!(ldg, kin, terrain)
         @test ldg.y.strut.v_eOc_xy[1] < 10
         @test ldg.y.strut.v_eOc_xy[2] < 0

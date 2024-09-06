@@ -23,8 +23,8 @@ export take_nonblocking!, put_nonblocking!
 ############################ SimControl ########################################
 
 #this struct will be accessed concurrently by the simulation (within the main
-#loop) and GUI (within the call to GUI.update!) threads. therefore, access to it
-#must be guarded by acquisition of io_lock
+#loop) and GUI (within the call to GUI.update!), so access to it must be guarded
+#by io_lock
 @kwdef mutable struct SimControl
     running::Bool = false #to be checked on each loop iteration for termination
     paused::Bool = false #to pause or unpause the simulation
@@ -529,23 +529,13 @@ end
 
 function sim_cleanup!(sim::Simulation)
 
-    @unpack sys, control, io_start, io_lock, interfaces = sim
+    @unpack control, io_start, io_lock = sim
 
     #if the simulation ran to conclusion, signal IO threads to shut down
     @lock io_lock begin
         control.paused = false
         control.running = false
     end
-
-    # reset(io_start)
-    #maybe we should't call reset(io_start) immediately afterwards, because it
-    #might be executed before all waiting threads have had time to unblock
-
-    #make sure all IO Channels are emptied so IO threads no longer block on
-    #them, or they unblock if they were blocked
-    # for interface in interfaces
-    #     sync!(interface)
-    # end
 
     #unblock any IO threads still waiting for Simulation start
     notify(io_start)

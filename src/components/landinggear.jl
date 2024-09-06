@@ -27,15 +27,12 @@ abstract type AbstractSteering <: SystemDefinition end
 
 struct NoSteering <: AbstractSteering end
 
+struct NoSteeringY end
+
+Systems.Y(::NoSteering) = NoSteeringY()
+
 get_steering_angle(::System{NoSteering}, args...) = 0.0
 
-################################ FreeSteering ##################################
-
-@kwdef struct FreeSteering <: AbstractSteering end
-
-function get_steering_angle(::System{FreeSteering}, v_eOc_rb_s::SVector{3, Float64})
-    atan(v_eOc_rb_s[2], v_eOc_rb_s[1])
-end
 
 ############################### DirectSteering #################################
 
@@ -43,23 +40,36 @@ end
     ψ_max::Float64 = π/6
 end
 
-@kwdef struct DirectSteeringY
-    ψ::Float64 = 0.0
+@kwdef mutable struct DirectSteeringU
+    engaged::Bool = true
+    input::Ranged{Float64, -1., 1.} = Ranged(0.0, -1., 1.)
 end
-#the contents of u must be mutable
-Systems.U(::DirectSteering) = Ref(Ranged(0.0, -1., 1.))
+
+@kwdef struct DirectSteeringY
+    engaged::Bool = true
+    input::Float64 = 0.0
+end
+
+Systems.U(::DirectSteering) = DirectSteeringU()
 Systems.Y(::DirectSteering) = DirectSteeringY() #steering angle
 
 function Systems.f_ode!(sys::System{DirectSteering})
-    sys.y = DirectSteeringY(Float64(sys.u[]) * sys.constants.ψ_max)
+    @unpack engaged, input = sys.u
+    sys.y = DirectSteeringY(; engaged, input)
 end
 
-get_steering_angle(sys::System{DirectSteering}, args...) = sys.y.ψ
+function get_steering_angle(sys::System{DirectSteering}, ψ_v::Real)
+    @unpack engaged, input = sys.y
+    ψ_sw = engaged ? Float64(input) * sys.constants.ψ_max : ψ_v
+    return ψ_sw
+end
 
 function GUI.draw(sys::System{DirectSteering})
 
-    CImGui.Text("Steering Input: $(Float64(sys.u[]))")
-    CImGui.Text("Steering Angle: $(rad2deg(sys.y.ψ)) deg")
+    @unpack engaged, input = sys.y
+    CImGui.Text("Engaged: $engaged")
+    CImGui.Text("Steering Input: $(Float64(input))")
+    # CImGui.Text("Steering Angle: $(rad2deg(sys.y.ψ)) deg")
 
 end
 
@@ -73,6 +83,10 @@ abstract type AbstractBraking <: SystemDefinition end
 ############################### NoBraking ######################################
 
 struct NoBraking <: AbstractBraking end
+
+struct NoBrakingY end
+
+Systems.Y(::NoBraking) = NoBrakingY()
 
 get_braking_factor(::System{NoBraking}) = 0.0
 
@@ -126,12 +140,6 @@ end
 function get_force(c::SimpleDamper, ξ::Real, ξ_dot::Real)
     k_d = (ξ_dot > 0 ? c.k_d_ext : c.k_d_cmp)
     F = -(c.k_s * ξ + k_d * ξ_dot)
-    if abs(F) > c.F_max
-        # println("Maximum allowable damper force exceeded, looks like a ground crash. Press Enter to abort...")
-        # readline()
-        # error("Ground Crash")
-    end
-    # @assert abs(F) < c.F_max "Maximum allowable damper force exceeded, looks like a ground crash."
     return F
 end
 
@@ -260,9 +268,10 @@ function Systems.f_ode!(sys::System{<:Strut},
     #contact frame origin velocity due to rigid body motion, strut frame
     v_eOc_rb_b = v_eOb_b + ω_eb_b × r_ObOc_b
     v_eOc_rb_s = q_bs'(v_eOc_rb_b)
+    ψ_v = atan(v_eOc_rb_s[2], v_eOc_rb_s[1]) #azimuth
 
     #wheel frame axes
-    ψ_sw = get_steering_angle(steering, v_eOc_rb_s)
+    ψ_sw = get_steering_angle(steering, ψ_v)
     q_sw = Rz(ψ_sw) #rotate strut axes to get wheel axes
     q_ns = q_nb ∘ q_bs
     q_nw = q_ns ∘ q_sw #NED to contact axes rotation
@@ -306,8 +315,6 @@ function Systems.f_ode!(sys::System{<:Strut},
 
 end
 
-#this will be called after f_cb_step, so wow will have the final value for the
-#last integration step
 function Systems.f_step!(sys::System{<:Strut})
 
     #sanity checks for crash detection
@@ -484,6 +491,8 @@ function Systems.f_ode!(sys::System{Contact},
 
 end
 
+#this will be called after f_cb_step, so wow will have the final value for the
+#current integration step
 function Systems.f_step!(contact::System{<:Contact}, strut::System{<:Strut})
 
     contact.frc.u.reset .= !strut.y.wow #if !wow, reset friction regulator

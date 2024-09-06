@@ -107,7 +107,7 @@ function C172.assign!(aero::System{<:C172.Aero},
     aero.u.f = flaps.pos
     pwp.engine.u.throttle = throttle.pos
     pwp.engine.u.mixture = mixture.pos
-    ldg.nose.steering.u[] = steering.pos
+    ldg.nose.steering.u.input = steering.pos
     ldg.left.braking.u[] = brake_left.pos
     ldg.right.braking.u[] = brake_right.pos
 

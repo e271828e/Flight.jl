@@ -59,7 +59,7 @@ function (::Type{<:SystemTrait})(nt::NamedTuple)
     isempty(filtered_nt) && return nothing
     if all(v -> isa(v, AbstractVector), values(filtered_nt)) #x and ẋ
         return ComponentVector(filtered_nt)
-    else #u, s and y
+    else #u, s
         return filtered_nt
     end
 end
