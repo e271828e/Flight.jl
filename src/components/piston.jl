@@ -59,8 +59,8 @@ struct PistonEngine{L} <: AbstractPistonEngine
     ω_idle::Float64 #target idle speed
     M_start::Float64 #starter torque
     J::Float64 #equivalent axial moment of inertia of the engine shaft
-    idle::PIVector{1} #idle MAP control compensator
-    frc::PIVector{1} #friction constraint compensator
+    idle::ChildDef{PIVector{1}} #idle MAP control compensator
+    frc::ChildDef{PIVector{1}} #friction constraint compensator
     lookup::L #performance lookup table
 end
 
@@ -72,8 +72,8 @@ function PistonEngine(;
     ω_idle = RPM2radpersec(600),
     M_start = 40,
     J = 0.05,
-    idle = PIVector{1}(),
-    frc =  PIVector{1}()
+    idle = ChildDef(PIVector{1}()),
+    frc =  ChildDef(PIVector{1}())
     )
 
     n_stall = ω_stall / ω_rated
@@ -122,8 +122,8 @@ end
 end
 
 Systems.X(eng::PistonEngine) = ComponentVector( ω = 0.0,
-                                          idle = Systems.X(eng.idle),
-                                          frc = Systems.X(eng.frc))
+                                          idle = Systems.X(SystemDefinition(eng.idle)),
+                                          frc = Systems.X(SystemDefinition(eng.frc)))
 Systems.U(::PistonEngine) = PistonEngineU()
 Systems.Y(::PistonEngine) = PistonEngineY()
 Systems.S(::PistonEngine) = PistonEngineS()
@@ -441,8 +441,8 @@ function GUI.draw(sys::System{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
 end
 
 
-################################################################################
-########################## PistonThruster ######################################
+# ################################################################################
+# ########################## PistonThruster ######################################
 
 #M_shaft is always positive. for a CW thruster, the gear ratio should be
 #positive as well and, under normal operating, conditions M_prop will be
@@ -452,17 +452,22 @@ end
 #the sign of M_prop may be inverted under negative propeller thrust conditions,
 #with the propeller driving the engine instead of the other way around
 
-@kwdef struct PistonThruster{E <: AbstractPistonEngine,
-                            P <: AbstractPropeller} <: SystemDefinition
-    engine::E = PistonEngine()
-    propeller::P = Propeller()
-    gear_ratio::Float64 = 1.0 #gear ratio
+struct PistonThruster{E <: ChildDef{<:AbstractPistonEngine},
+                        P <: ChildDef{<:AbstractPropeller}} <: SystemDefinition
+    engine::E
+    propeller::P
+    gear_ratio::Float64
+
     function PistonThruster(eng::E, prop::P, gear_ratio) where {E, P}
-        @assert sign(gear_ratio) * Int(prop.sense) > 0 "PistonThruster gear ratio sign "*
-        "does not match propeller turn sign"
+        @assert(sign(gear_ratio) * Int(SystemDefinition(prop).sense) > 0,
+            "PistonThruster gear ratio sign does not match propeller turn sign")
         new{E,P}(eng, prop, gear_ratio)
     end
+
 end
+
+PistonThruster(; engine = ChildDef(PistonEngine()), propeller = ChildDef(Propeller()),
+                gear_ratio = 1.0) = PistonThruster(engine, propeller, gear_ratio)
 
 
 function Systems.f_ode!(sys::System{<:PistonThruster}, air_data::AirData, kin_data::KinData)

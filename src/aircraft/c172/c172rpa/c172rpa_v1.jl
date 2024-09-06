@@ -56,14 +56,14 @@ function Systems.reset!(sys::System{<:C172RPAv1.Avionics})
 end
 
 function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
-                        vehicle::System{<:C172RPA.Vehicle}, Δt::Real)
+                        vehicle::System{<:C172RPA.Vehicle})
 
     @unpack N_ctl, N_nav = avionics.constants
     @unpack ctl, nav = avionics.subsystems
     @unpack n_disc = avionics.s
 
-    (n_disc % N_ctl == 0) && f_disc!(ctl, vehicle, N_ctl*Δt)
-    (n_disc % N_nav == 0) && f_disc!(nav, N_nav*Δt)
+    (n_disc % N_ctl == 0) && f_disc!(ctl, vehicle)
+    (n_disc % N_nav == 0) && f_disc!(nav)
 
     avionics.s.n_disc += 1
 

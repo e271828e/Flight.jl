@@ -81,15 +81,15 @@ function test_system_methods()
             #all three kinematics implementations must be supported, no allocations
             @test @ballocated(f_ode!($ac_LTF)) == 0
             @test @ballocated(f_step!($ac_LTF)) == 0
-            @test @ballocated(f_disc!($ac_LTF, 1)) == 0
+            @test @ballocated(f_disc!($ac_LTF)) == 0
 
             @test @ballocated(f_ode!($ac_ECEF)) == 0
             @test @ballocated(f_step!($ac_ECEF)) == 0
-            @test @ballocated(f_disc!($ac_ECEF, 1)) == 0
+            @test @ballocated(f_disc!($ac_ECEF)) == 0
 
             @test @ballocated(f_ode!($ac_NED)) == 0
             @test @ballocated(f_step!($ac_NED)) == 0
-            @test @ballocated(f_disc!($ac_NED, 1)) == 0
+            @test @ballocated(f_disc!($ac_NED)) == 0
 
         end
 

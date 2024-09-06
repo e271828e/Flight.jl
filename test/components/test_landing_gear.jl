@@ -104,10 +104,10 @@ function test_landing_gear_unit()
 
 
         ldg = LandingGearUnit(;
-            steering = DirectSteering(ψ_max = π/6),
-            braking = DirectBraking(),
-            strut = Strut(l_0 = 1.0, damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)),
-            contact = Contact()) |> System
+            steering = DirectSteering(ψ_max = π/6) |> ChildDef,
+            braking = DirectBraking() |> ChildDef,
+            strut = Strut(l_0 = 1.0, damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)) |> ChildDef,
+            contact = Contact() |> ChildDef) |> System
 
         @unpack steering, braking, strut, contact = ldg
 
@@ -136,7 +136,6 @@ function test_landing_gear_unit()
         @test ldg.y.contact.frc.reset == [false, false]
         f_ode!(ldg, kin, terrain)
         @test ldg.y.contact.frc.reset == [true, true]
-
 
         #ensure that the friction regulator does reset
         ldg.x.contact.frc .= 1

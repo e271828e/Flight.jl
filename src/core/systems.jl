@@ -7,7 +7,7 @@ using AbstractTrees
 using ..GUI
 using ..IODevices
 
-export SystemDefinition, SystemTrait, System
+export SystemDefinition, ChildDef, SystemTrait, System
 export Scheduled
 export f_ode!, f_step!, f_disc!, assemble_y!
 
@@ -32,11 +32,13 @@ end
 ################################################################################
 ############################## SystemDefinition ################################
 
-@kwdef struct Child{D <: SystemDefinition}
+struct ChildDef{D <: SystemDefinition}
     sd::D
-    N_rel::Int = 1 #parent-relative discrete sampling period multiplier
+    N_rel::Int #parent-relative discrete sampling period multiplier
 end
 
+ChildDef(sd::SD) where {SD <: SystemDefinition} = ChildDef{SD}(sd, 1)
+SystemDefinition(child::ChildDef) = child.sd
 
 ################################################################################
 ############################## SystemTrait #####################################
@@ -54,7 +56,7 @@ struct S <: SystemTrait end
 
 function (trait::Union{Type{Ẋ}, Type{X}, Type{Y}})(sd::SystemDefinition)
     children_keys = filter(propertynames(sd)) do name
-        getproperty(sd, name) isa Child
+        getproperty(sd, name) isa ChildDef
     end
     children_definitions = map(λ -> getproperty(getproperty(sd, λ), :sd), children_keys)
     children_traits = map(child-> trait(child), children_definitions)
@@ -116,9 +118,9 @@ function System(sd::SystemDefinition,
                 y = Y(sd), u = U(sd), ẋ = Ẋ(sd), x = X(sd), s = S(sd),
                 N = 1, Δt_root = Ref(1.0), t = Ref(0.0), n = Ref(0))
 
-    #construct subsystems from Child fields
+    #construct subsystems from ChildDef fields
     children_names = filter(propertynames(sd)) do name
-        getproperty(sd, name) isa Child
+        getproperty(sd, name) isa ChildDef
     end
 
     children_systems = map(children_names) do child_name
@@ -167,6 +169,8 @@ Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
 @generated function Base.getproperty(sys::System, ::Val{S}) where {S}
     if S ∈ fieldnames(System)
         return :(getfield(sys, $(QuoteNode(S))))
+    elseif S === :Δt
+        return :(getfield(sys, :Δt_root)[] * getfield(sys, :N))
     else
         return :(getfield(getfield(sys, :subsystems), $(QuoteNode(S))))
     end

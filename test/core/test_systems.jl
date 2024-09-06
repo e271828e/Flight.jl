@@ -32,15 +32,15 @@ Systems.init!(sys::System{FirstOrder}, x0::Real = 0.0) = (sys.x .= x0)
 
 
 @kwdef struct Node <: SystemDefinition
-    a::Systems.Child{FirstOrder} = Systems.Child(FirstOrder(), 2)
-    b::Systems.Child{FirstOrder} = Systems.Child(FirstOrder(), 4)
+    a::ChildDef{FirstOrder} = ChildDef(FirstOrder(), 2)
+    b::ChildDef{FirstOrder} = ChildDef(FirstOrder(), 4)
 end
 
 Systems.init!(sys::System{Node}, x0::Real = 0.0) = (sys.x .= x0)
 
 @kwdef struct Root <: SystemDefinition
-    a::Systems.Child{FirstOrder} = Systems.Child(FirstOrder(), 2)
-    b::Systems.Child{Node} = Systems.Child(Node(), 3)
+    a::ChildDef{FirstOrder} = ChildDef(FirstOrder(), 2)
+    b::ChildDef{Node} = ChildDef(Node(), 3)
 end
 
 Systems.init!(sys::System{Root}, x0::Real = 0.0) = (sys.x .= x0)

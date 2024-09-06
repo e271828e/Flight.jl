@@ -173,7 +173,7 @@ end
 
 
 function Systems.f_disc!(sys::System{<:LonControl},
-                        vehicle::System{<:C172FBW.Vehicle}, Δt::Real)
+                        vehicle::System{<:C172FBW.Vehicle})
 
     @unpack mode, throttle_sp, elevator_sp, q_sp, θ_sp, EAS_sp, clm_sp = sys.u
     @unpack te2te_lqr, vc2te_lqr, q2e_int, q2e_pid, v2θ_pid, v2t_pid = sys.subsystems
@@ -207,7 +207,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
 
             v2t_pid.u.input = EAS_sp - EAS
             v2t_pid.u.sat_ext = u_lon_sat.throttle_cmd
-            f_disc!(v2t_pid, Δt)
+            f_disc!(v2t_pid)
             throttle_sp = v2t_pid.y.output
 
         end
@@ -237,7 +237,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
 
                     v2θ_pid.u.input = EAS_sp - EAS
                     v2θ_pid.u.sat_ext = -u_lon_sat.elevator_cmd #sign inversion!
-                    f_disc!(v2θ_pid, Δt)
+                    f_disc!(v2θ_pid)
                     θ_sp = -v2θ_pid.y.output #sign inversion!
 
                 end
@@ -251,11 +251,11 @@ function Systems.f_disc!(sys::System{<:LonControl},
 
             q2e_int.u.input = q_sp - q
             q2e_int.u.sat_ext = u_lon_sat.elevator_cmd
-            f_disc!(q2e_int, Δt)
+            f_disc!(q2e_int)
 
             q2e_pid.u.input = q2e_int.y.output
             q2e_pid.u.sat_ext = u_lon_sat.elevator_cmd
-            f_disc!(q2e_pid, Δt)
+            f_disc!(q2e_pid)
             elevator_sp = q2e_pid.y.output
 
         end
@@ -267,7 +267,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
         te2te_lqr.u.x .= XLon(vehicle) #state feedback
         te2te_lqr.u.z .= ZLonThrEle(vehicle) #command variable feedback
         te2te_lqr.u.z_sp .= ZLonThrEle(; throttle_cmd = throttle_sp, elevator_cmd = elevator_sp) #command variable setpoint
-        f_disc!(te2te_lqr, Δt)
+        f_disc!(te2te_lqr)
         @unpack throttle_cmd, elevator_cmd = ULon(te2te_lqr.y.output)
 
     else #mode === lon_EAS_clm #actuation commands computed by vc2te
@@ -283,7 +283,7 @@ function Systems.f_disc!(sys::System{<:LonControl},
         vc2te_lqr.u.x .= XLon(vehicle) #state feedback
         vc2te_lqr.u.z .= ZLonEASClm(vehicle) #command variable feedback
         vc2te_lqr.u.z_sp .= ZLonEASClm(; EAS = EAS_sp, climb_rate = clm_sp) #command variable setpoint
-        f_disc!(vc2te_lqr, Δt)
+        f_disc!(vc2te_lqr)
         @unpack throttle_cmd, elevator_cmd = ULon(vc2te_lqr.y.output)
 
     end
@@ -408,7 +408,7 @@ function Systems.init!(sys::System{<:LatControl})
 end
 
 function Systems.f_disc!(sys::System{<:LatControl},
-                        vehicle::System{<:C172FBW.Vehicle}, Δt::Real)
+                        vehicle::System{<:C172FBW.Vehicle})
 
     @unpack mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp = sys.u
     @unpack φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
@@ -444,11 +444,11 @@ function Systems.f_disc!(sys::System{<:LatControl},
             p = kinematics.ω_lb_b[1]
             p2φ_int.u.input = p_sp - p
             p2φ_int.u.sat_ext = u_lat_sat.aileron_cmd
-            f_disc!(p2φ_int, Δt)
+            f_disc!(p2φ_int)
 
             p2φ_pid.u.input = p2φ_int.y.output
             p2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
-            f_disc!(p2φ_pid, Δt)
+            f_disc!(p2φ_pid)
             φ_sp = p2φ_pid.y.output
 
         elseif mode === lat_χ_β
@@ -464,7 +464,7 @@ function Systems.f_disc!(sys::System{<:LatControl},
             χ = kinematics.χ_gnd
             χ2φ_pid.u.input = wrap_to_π(χ_sp - χ)
             χ2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
-            f_disc!(χ2φ_pid, Δt)
+            f_disc!(χ2φ_pid)
             φ_sp = χ2φ_pid.y.output
 
         else #mode === lat_φ_β
@@ -480,7 +480,7 @@ function Systems.f_disc!(sys::System{<:LatControl},
         φβ2ar_lqr.u.x .= XLat(vehicle)
         φβ2ar_lqr.u.z .= ZLatPhiBeta(vehicle)
         φβ2ar_lqr.u.z_sp .= ZLatPhiBeta(; φ = φ_sp, β = β_sp)
-        f_disc!(φβ2ar_lqr, Δt)
+        f_disc!(φβ2ar_lqr)
         @unpack aileron_cmd, rudder_cmd = ULat(φβ2ar_lqr.y.output)
 
     end
@@ -530,7 +530,7 @@ get_Δh(h_sp::HEllip, vehicle::System{<:C172FBW.Vehicle}) = h_sp - vehicle.y.kin
 get_Δh(h_sp::HOrth, vehicle::System{<:C172FBW.Vehicle}) = h_sp - vehicle.y.kinematics.h_o
 
 function Systems.f_disc!(sys::System{<:AltitudeGuidance},
-                        vehicle::System{<:C172FBW.Vehicle}, ::Real)
+                        vehicle::System{<:C172FBW.Vehicle})
 
     Δh = get_Δh(sys.u.h_sp, vehicle)
     clm_sp = sys.constants.k_h2c * Δh
@@ -642,7 +642,7 @@ Systems.Y(::Controller) = ControllerY()
 
 
 function Systems.f_disc!(sys::System{<:Controller},
-                        vehicle::System{<:C172FBW.Vehicle}, Δt::Real)
+                        vehicle::System{<:C172FBW.Vehicle})
 
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right,
             throttle_sp_input, aileron_sp_input, elevator_sp_input, rudder_sp_input,
@@ -679,7 +679,7 @@ function Systems.f_disc!(sys::System{<:Controller},
         else #vrt_gdc_mode === vrt_gdc_alt
 
             alt_gdc.u.h_sp = h_sp
-            f_disc!(alt_gdc, vehicle, Δt)
+            f_disc!(alt_gdc, vehicle)
 
             lon_ctl_mode = alt_gdc.y.lon_ctl_mode
             throttle_sp = alt_gdc.y.throttle_sp
@@ -699,7 +699,7 @@ function Systems.f_disc!(sys::System{<:Controller},
         else #hor_gdc_mode === hor_gdc_line
 
             # seg_gdc.u.line_sp = line_sp
-            # f_disc!(seg_gdc, vehicle, Δt)
+            # f_disc!(seg_gdc, vehicle)
 
             # lat_ctl_mode = seg_gdc.y.lat_ctl_mode
             # χ_sp = seg_gdc.y.χ_sp
@@ -711,11 +711,11 @@ function Systems.f_disc!(sys::System{<:Controller},
 
     lon_ctl.u.mode = lon_ctl_mode
     @pack! lon_ctl.u = throttle_sp, elevator_sp, q_sp, θ_sp, EAS_sp, clm_sp
-    f_disc!(lon_ctl, vehicle, Δt)
+    f_disc!(lon_ctl, vehicle)
 
     lat_ctl.u.mode = lat_ctl_mode
     @pack! lat_ctl.u = aileron_sp, rudder_sp, p_sp, φ_sp, β_sp, χ_sp
-    f_disc!(lat_ctl, vehicle, Δt)
+    f_disc!(lat_ctl, vehicle)
 
     sys.y = ControllerY(; flight_phase,
         vrt_gdc_mode, hor_gdc_mode, lon_ctl_mode, lat_ctl_mode,
@@ -799,17 +799,17 @@ function AircraftBase.trim!(sys::System{<:Controller},
     #consistent with the trim state ones
     u.lon_ctl_mode_req = lon_thr_ele
     u.lat_ctl_mode_req = lat_φ_β
-    f_disc!(sys, vehicle, 1)
+    f_disc!(sys, vehicle)
 
     #restore direct modes
     u.lon_ctl_mode_req = lon_direct
     u.lat_ctl_mode_req = lat_direct
-    f_disc!(sys, vehicle, 1)
+    f_disc!(sys, vehicle)
 
     #do another update with SAS disabled so that trim actuator commands are
     #used as setpoints and directly applied at the control laws' outputs. this
     #should not make a noticeable difference after the previous update
-    # f_disc!(ac.sys, ac.vehicle, 1) #IMPORTANT: update sys outputs
+    # f_disc!(ac.sys, ac.vehicle) #IMPORTANT: update sys outputs
     # return result
 
 end

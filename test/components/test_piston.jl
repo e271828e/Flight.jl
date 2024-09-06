@@ -6,8 +6,6 @@ using BenchmarkTools
 using LinearAlgebra
 
 using Flight.FlightCore
-using Flight.FlightCore.Sim
-
 using Flight.FlightPhysics
 using Flight.FlightPhysics.Atmosphere: p_std, T_std
 
@@ -22,9 +20,11 @@ export test_piston
 ################################################################################
 ################################################################################
 
-@kwdef struct TestHarness{T <: PistonThruster} <: SystemDefinition
-    thruster::T = PistonThruster()
+struct TestHarness{T <: ChildDef{<:PistonThruster}} <: SystemDefinition
+    thruster::T
 end
+
+TestHarness() = TestHarness(ChildDef(PistonThruster()))
 
 @kwdef mutable struct TestHarnessU
     air_data::AirData = AirData()
@@ -33,7 +33,7 @@ end
 end
 
 Systems.U(::TestHarness) = TestHarnessU()
-Systems.Y(harness::TestHarness) = (thruster = Systems.Y(harness.thruster),)
+Systems.Y(sd::TestHarness) = (thruster = Systems.Y(SystemDefinition(sd.thruster)),)
 
 function Systems.f_ode!(harness::System{<:TestHarness})
     @unpack air_data, kin_data, fuel_available = harness.u
@@ -47,7 +47,7 @@ function Systems.f_step!(harness::System{<:TestHarness})
     f_step!(harness.thruster, fuel_available)
 end
 
-Systems.f_disc!(::System{<:TestHarness}, ::Real) = nothing
+Systems.f_disc!(::Scheduled, ::System{<:TestHarness}) = nothing
 
 ################################################################################
 
@@ -258,15 +258,15 @@ function test_thruster_response()
         #transmission, leads to the propeller turning in the wrong sense
 
         @test_throws AssertionError PistonThruster(
-            propeller = Propeller(sense = Propellers.CCW),
+            propeller = Propeller(sense = Propellers.CCW) |> ChildDef,
             gear_ratio = 1)
 
         ################### Variable pitch CCW thruster ########################
 
         #CCW propeller should be coupled with negative gear ratio transmission
         hrn = PistonThruster(
-            propeller = Propeller(Propellers.Lookup(Δβ_range = range(0, 0.2, length = 11)); sense = Propellers.CCW),
-            gear_ratio = -1) |> TestHarness |> System
+            propeller = Propeller(Propellers.Lookup(Δβ_range = range(0, 0.2, length = 11)); sense = Propellers.CCW) |> ChildDef,
+            gear_ratio = -1) |> ChildDef |> TestHarness |> System
 
         sim = Simulation(hrn, t_end = 100)
 

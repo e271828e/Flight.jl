@@ -34,7 +34,7 @@ function Systems.reset!(sys::System{<:Navigator})
     foreach(ss -> Systems.reset!(ss), sys.subsystems) #reset subcontrollers
 end
 
-function Systems.f_disc!(nav::System{<:Navigator}, Δt::Real)
+function Systems.f_disc!(nav::System{<:Navigator})
     nav.s.n_disc += 1
     nav.y = NavigatorY(; n_disc = nav.s.n_disc, Δt)
 end

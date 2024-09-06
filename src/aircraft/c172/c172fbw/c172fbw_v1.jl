@@ -52,13 +52,13 @@ end
 
 
 function Systems.f_disc!(avionics::System{<:C172FBWv1.Avionics},
-                        vehicle::System{<:C172FBW.Vehicle}, Δt::Real)
+                        vehicle::System{<:C172FBW.Vehicle})
 
     @unpack N_ctl = avionics.constants
     @unpack ctl = avionics.subsystems
     @unpack n_disc = avionics.s
 
-    (n_disc % N_ctl == 0) && f_disc!(ctl, vehicle, N_ctl*Δt)
+    (n_disc % N_ctl == 0) && f_disc!(ctl, vehicle)
 
     avionics.s.n_disc += 1
 

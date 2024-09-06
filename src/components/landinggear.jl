@@ -396,7 +396,7 @@ end
 ################################### Contact ####################################
 
 @kwdef struct Contact <: SystemDefinition
-    frc::PIVector{2} = PIVector{2}() #friction constraint compensator
+    frc::ChildDef{PIVector{2}} = ChildDef(PIVector{2}()) #friction constraint compensator
 end
 
 @kwdef struct ContactY #defaults should be consistent with wow = 0
@@ -595,12 +595,13 @@ end
 ################################################################################
 ############################ LandingGearUnit ###################################
 
-@kwdef struct LandingGearUnit{S <: AbstractSteering,
-                            B <: AbstractBraking, L<:Strut} <: SystemDefinition
-    steering::S = NoSteering()
-    braking::B = NoBraking()
-    strut::L = Strut()
-    contact::Contact = Contact()
+@kwdef struct LandingGearUnit{S <: ChildDef{<:AbstractSteering},
+                                B <: ChildDef{<:AbstractBraking},
+                                L<: ChildDef{<:Strut}} <: SystemDefinition
+    steering::S = ChildDef(NoSteering())
+    braking::B = ChildDef(NoBraking())
+    strut::L = ChildDef(Strut())
+    contact::ChildDef{Contact} = ChildDef(Contact())
 end
 
 function Systems.f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinData,

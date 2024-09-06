@@ -12,7 +12,7 @@ end
 Systems.X(::DiscreteTestComponent) = ComponentVector(a = 0.0, b = 0.0)
 Systems.Y(::DiscreteTestComponent) = DiscreteTestComponentY()
 
-function Systems.f_disc!(sys::System{DiscreteTestComponent}, Δt)
+function Systems.f_disc!(sys::System{DiscreteTestComponent})
     sys.x.a += 1
     sys.x.b -= 1
     sys.y = DiscreteTestComponentY(a = x.a, b = x.b)

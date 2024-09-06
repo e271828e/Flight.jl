@@ -393,9 +393,9 @@ function Systems.reset!(sys::System{<:Integrator}, x0::Real = 0.0)
     sys.s.sat_out_0 = 0
 end
 
-function Systems.f_disc!(sys::System{<:Integrator}, Δt::Real)
+function Systems.f_disc!(::Scheduled, sys::System{<:Integrator})
 
-    @unpack s, u = sys
+    @unpack s, u, Δt = sys
     @unpack input, sat_ext, bound_lo, bound_hi = u
     @unpack x0, sat_out_0 = s
 
@@ -452,9 +452,9 @@ function Systems.reset!(sys::System{<:IntegratorVector{N}}, x0::AbstractVector{<
     sys.s.sat_out_0 .= 0
 end
 
-function Systems.f_disc!(sys::System{<:IntegratorVector}, Δt::Real)
+function Systems.f_disc!(::Scheduled, sys::System{<:IntegratorVector})
 
-    @unpack s, u = sys
+    @unpack s, u, Δt = sys
 
     input, bound_lo, bound_hi, sat_ext = map(SVector, (
         u.input, u.bound_lo, u.bound_hi, u.sat_ext))
@@ -545,9 +545,9 @@ function Systems.reset!(sys::System{<:LeadLag})
     sys.s.x0 = 0
 end
 
-function Systems.f_disc!(sys::System{<:LeadLag}, Δt::Real)
+function Systems.f_disc!(::Scheduled, sys::System{<:LeadLag})
 
-    @unpack s, u = sys
+    @unpack s, u, Δt = sys
     @unpack z, p, k, u1 = u
     @unpack u0, x0 = s
 
@@ -678,8 +678,9 @@ function assign!(sys::System{<:PID}, params::PIDParams{<:Real})
     @pack! sys.u = k_p, k_i, k_d, τ_f
 end
 
-function Systems.f_disc!(sys::System{<:PID}, Δt::Real)
+function Systems.f_disc!(::Scheduled, sys::System{<:PID})
 
+    @unpack Δt = sys
     @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext = sys.u
     @unpack x_i0, x_d0, sat_out_0 = sys.s
 
@@ -772,9 +773,9 @@ function Systems.reset!(sys::System{<:PIDVector{N}}) where {N}
     sys.s.sat_out_0 .= 0
 end
 
-function Systems.f_disc!(sys::System{<:PIDVector{N}}, Δt::Real) where {N}
+function Systems.f_disc!(::Scheduled, sys::System{<:PIDVector{N}}) where {N}
 
-    @unpack s, u = sys
+    @unpack s, u, Δt = sys
 
     k_p, k_i, k_d, τ_f, β_p, β_d = map(SVector, (
         u.k_p, u.k_i, u.k_d, u.τ_f, u.β_p, u.β_d))
@@ -1030,9 +1031,9 @@ function Systems.reset!(sys::System{<:LQRTracker})
     sys.s.out_sat_0 .= 0
 end
 
-function Systems.f_disc!(sys::System{<:LQRTracker}, Δt::Real)
+function Systems.f_disc!(::Scheduled, sys::System{<:LQRTracker})
 
-    @unpack s, u = sys
+    @unpack s, u, Δt = sys
 
     C_fbk, C_fwd, C_int = map(SMatrix, (u.C_fbk, u.C_fwd, u.C_int))
     x_trim, u_trim, z_trim = map(SVector, (u.x_trim, u.u_trim, u.z_trim))

@@ -31,7 +31,7 @@ function Systems.f_step!(sys::System{FirstOrder})
     #if we want the change in x to be reflected in y at the end of this step
 end
 
-function Systems.f_disc!(sys::System{FirstOrder}, ::Real)
+function Systems.f_disc!(sys::System{FirstOrder})
     # println("Called f_disc! at t = $(sys.t[]), got y = $(sys.y)")
 end
 
@@ -80,7 +80,7 @@ end
 Systems.U(::TestSystem) = TestSystemU()
 Systems.Y(::TestSystem) = TestSystemY()
 
-function Systems.f_disc!(sys::System{<:TestSystem}, ::Real)
+function Systems.f_disc!(sys::System{<:TestSystem})
     sleep(0.01)
     sys.y = TestSystemY(; input = sys.u.input)
 end

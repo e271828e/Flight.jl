@@ -67,7 +67,7 @@ function test_continuous_lss()
 
         @test @ballocated(f_ode!($sys)) === 0
         @test @ballocated(f_step!($sys)) === 0
-        @test @ballocated(f_disc!($sys, 1)) === 0
+        @test @ballocated(f_disc!($sys)) === 0
 
     end
 
@@ -142,7 +142,7 @@ function test_continuous_pi(save = false)
         @test sys.y.output[2] == 0 #idem
 
         @test @ballocated($f_ode!($sys)) == 0
-        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_disc!($sys)) == 0
         @test @ballocated($f_step!($sys)) == 0
 
         plots = make_plots(TimeSeries(sim); Plotting.defaults...)
@@ -209,14 +209,14 @@ function test_discrete_pid(save = false)
         @test sys.s.x_d0 == 0
         @test sys.s.sat_out_0 == 0
 
-        f_disc!(sys, 1)
+        f_disc!(sys)
         @test sys.y.y_i == 0
         @test sys.y.y_d == 0
         @test sys.y.y_p == 0
         @test !sys.y.int_halted
 
         @test @ballocated($f_ode!($sys)) == 0
-        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_disc!($sys)) == 0
         @test @ballocated($f_step!($sys)) == 0
 
         plots = make_plots(TimeSeries(sim); Plotting.defaults...)
@@ -334,14 +334,14 @@ function test_discrete_pid_vector(save = false)
         @test sys.s.x_d0[1] == 0
         @test sys.s.sat_out_0[1] == 0
 
-        f_disc!(sys, 1)
+        f_disc!(sys)
         @test sys.y.y_i[1] == 0
         @test sys.y.y_d[1] == 0
         @test sys.y.y_p[1] == 0
         @test !sys.y.int_halted[1]
 
         @test @ballocated($f_ode!($sys)) == 0
-        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_disc!($sys)) == 0
         @test @ballocated($f_step!($sys)) == 0
 
         plots = make_plots(TimeSeries(sim); Plotting.defaults...)
@@ -447,14 +447,14 @@ function test_discrete_integrator()
         @test sys.u.bound_lo != 0
         @test sys.u.bound_hi != 0
 
-        f_disc!(sys, 1)
+        f_disc!(sys)
         @test sys.y.x1 == 0
         @test sys.y.output == 0
         @test sys.y.sat_out == 0
         @test !sys.y.halted
 
         @test @ballocated($f_ode!($sys)) == 0
-        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_disc!($sys)) == 0
         @test @ballocated($f_step!($sys)) == 0
 
         end #testset
@@ -509,14 +509,14 @@ function test_discrete_integrator_vector()
         @test sys.u.bound_lo[2] != 0
         @test sys.u.bound_hi[2] != 0
 
-        f_disc!(sys, 1)
+        f_disc!(sys)
         @test sys.y.x1[2] == 0
         @test sys.y.output[2] == 0
         @test sys.y.sat_out[2] == 0
         @test !sys.y.halted[2]
 
         @test @ballocated($f_ode!($sys)) == 0
-        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_disc!($sys)) == 0
         @test @ballocated($f_step!($sys)) == 0
 
         end #testset
@@ -551,14 +551,14 @@ function test_discrete_leadlag(save = false)
         @test sys.s.u0 == 0
         @test sys.s.x0 == 0
 
-        f_disc!(sys, 1)
+        f_disc!(sys)
         @test sys.y.u1 == 0
         @test sys.y.y1 == 0
         @test sys.y.p != 0
         @test sys.y.z != 0
 
         @test @ballocated($f_ode!($sys)) == 0
-        @test @ballocated($f_disc!($sys, 1)) == 0
+        @test @ballocated($f_disc!($sys)) == 0
         @test @ballocated($f_step!($sys)) == 0
 
         end #testset

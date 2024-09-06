@@ -89,7 +89,7 @@ function test_dynamics()
             rb_data = RigidBodyData()
             @test (@ballocated f_ode!($dyn, $kin_data, $rb_data)) == 0
             @test (@ballocated f_step!($dyn, $kin_data, $rb_data)) == 0
-            @test (@ballocated f_disc!($dyn, 1.0)) == 0
+            @test (@ballocated f_disc!($dyn)) == 0
 
         end
 
