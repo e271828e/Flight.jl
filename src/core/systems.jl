@@ -7,9 +7,40 @@ using AbstractTrees
 using ..GUI
 using ..IODevices
 
-export SystemDefinition, ChildDef, SystemTrait, System
-export Scheduled
+export SystemDefinition, SystemTrait, System
+export Subsampled, Scheduled
 export f_ode!, f_step!, f_disc!, assemble_y!
+
+
+
+################################################################################
+############################## SystemTrait #####################################
+
+abstract type SystemTrait end
+
+struct Ẋ <: SystemTrait end
+struct X <: SystemTrait end
+struct Y <: SystemTrait end
+struct U <: SystemTrait end
+struct S <: SystemTrait end
+
+
+function (::Type{<:SystemTrait})(nt::NamedTuple)
+    filtered_nt = delete_nothings(nt)
+    isempty(filtered_nt) && return nothing
+    if all(v -> isa(v, AbstractVector), values(filtered_nt)) #x and ẋ
+        return ComponentVector(filtered_nt)
+    else #u, s
+        return filtered_nt
+    end
+end
+
+#y must always be a NamedTuple, even if all subsystem's y are StaticArrays;
+#otherwise assemble_y! does not work
+function Y(nt::NamedTuple)
+    filtered_nt = delete_nothings(nt)
+    return !isempty(filtered_nt) ? filtered_nt : nothing
+end
 
 
 ################################################################################
@@ -29,75 +60,50 @@ function delete_nothings(nt::NamedTuple)
     NamedTuple{valid_keys}(valid_values)
 end
 
-################################################################################
-############################## SystemDefinition ################################
+########################## Default Trait Constructors ##########################
 
-struct ChildDef{D <: SystemDefinition}
-    sd::D
-    N_rel::Int #parent-relative discrete sampling period multiplier
-end
-
-ChildDef(sd::SD) where {SD <: SystemDefinition} = ChildDef{SD}(sd, 1)
-SystemDefinition(child::ChildDef) = child.sd
-
-################################################################################
-############################## SystemTrait #####################################
-
-abstract type SystemTrait end
-
-struct Ẋ <: SystemTrait end
-struct X <: SystemTrait end
-struct Y <: SystemTrait end
-struct U <: SystemTrait end
-struct S <: SystemTrait end
-
-#default trait constructors
 (::Union{Type{U}, Type{S}})(::SystemDefinition) = nothing
 
-function (trait::Union{Type{Ẋ}, Type{X}, Type{Y}})(sd::SystemDefinition)
+#returns NamedTuple
+function (trait::Union{Type{X}, Type{Y}})(sd::SystemDefinition)
     children_keys = filter(propertynames(sd)) do name
-        getproperty(sd, name) isa ChildDef
+        getproperty(sd, name) isa SystemDefinition
     end
-    children_definitions = map(λ -> getproperty(getproperty(sd, λ), :sd), children_keys)
+    children_definitions = map(λ -> getproperty(sd, λ), children_keys)
     children_traits = map(child-> trait(child), children_definitions)
     nt = NamedTuple{children_keys}(children_traits)
     return trait(nt)
 end
 
-#from NamedTuple
-function (::Type{<:SystemTrait})(nt::NamedTuple)
-    filtered_nt = delete_nothings(nt)
-    isempty(filtered_nt) && return nothing
-    if all(v -> isa(v, AbstractVector), values(filtered_nt)) #x and ẋ
-        return ComponentVector(filtered_nt)
-    else #u, s
-        return filtered_nt
-    end
-end
-
-#y must always be a NamedTuple, even if all subsystem's y are StaticArrays;
-#otherwise assemble_y! does not work
-function Y(nt::NamedTuple)
-    filtered_nt = delete_nothings(nt)
-    return !isempty(filtered_nt) ? filtered_nt : nothing
-end
-
-#fallback method for state vector derivative initialization
+#fallback method for state vector derivative
 function Ẋ(sd::SystemDefinition)
     x = X(sd)
     return (!isnothing(x) ? (x |> zero) : nothing)
 end
 
+################################################################################
+################################# Subsampled ###################################
+
+struct Subsampled{D <: SystemDefinition} <: SystemDefinition
+    sd::D
+    K::Int #parent-relative discrete sampling period multiplier
+end
+
+Subsampled(sd::SD) where {SD <: SystemDefinition} = Subsampled{SD}(sd, 1)
+
+(trait::Union{Type{U}, Type{S}})(ss::Subsampled) = trait(ss.sd)
+(trait::Union{Type{X}, Type{Y}})(ss::Subsampled) = trait(ss.sd)
+(trait::Type{Ẋ})(ss::Subsampled) = Ẋ(ss.sd)
 
 ################################################################################
 ################################### System #####################################
 
 #D type parameter is needed for dispatching, the rest for type stability.
-#mutability required for y updates; reassigning any other field is disallowed to
-#avoid breaking the references with the subsystem hierarchy
+#mutability only required for y updates; reassigning any other field is
+#disallowed to avoid breaking the references with the subsystem hierarchy
 
-#storing t as a RefValue allows implicit propagation of t updates down the
-#subsystem hierarchy
+#storing t, n and Δt_root as RefValues allows implicit propagation of updates
+#down the subsystem hierarchy
 
 mutable struct System{D <: SystemDefinition, Y, U, X, S, C, B}
     y::Y #output
@@ -113,21 +119,18 @@ mutable struct System{D <: SystemDefinition, Y, U, X, S, C, B}
     const subsystems::B
 end
 
-
 function System(sd::SystemDefinition,
                 y = Y(sd), u = U(sd), ẋ = Ẋ(sd), x = X(sd), s = S(sd),
                 N = 1, Δt_root = Ref(1.0), t = Ref(0.0), n = Ref(0))
 
-    #construct subsystems from ChildDef fields
+    #construct subsystems from SystemDefinition fields
     children_names = filter(propertynames(sd)) do name
-        getproperty(sd, name) isa ChildDef
+        getproperty(sd, name) isa SystemDefinition
     end
 
     children_systems = map(children_names) do child_name
 
-        child = getproperty(sd, child_name)
-        child_definition = getproperty(child, :sd)
-        N_child = N * getproperty(child, :N_rel)
+        child_definition = getproperty(sd, child_name)
 
         child_properties = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent, trait
             if !isnothing(parent) && (child_name in propertynames(parent))
@@ -137,7 +140,7 @@ function System(sd::SystemDefinition,
             end
         end
 
-        System(child_definition, child_properties..., N_child, Δt_root, t, n)
+        System(child_definition, child_properties..., N, Δt_root, t, n)
 
     end
 
@@ -155,6 +158,13 @@ function System(sd::SystemDefinition,
     return sys
 
 end
+
+function System(ss::Subsampled,
+                y = Y(ss), u = U(ss), ẋ = Ẋ(ss), x = X(ss), s = S(ss),
+                N = 1, Δt_root = Ref(1.0), t = Ref(0.0), n = Ref(0))
+    System(ss.sd, y, u, ẋ, x, s, N * ss.K, Δt_root, t, n)
+end
+
 
 init!(::System) = nothing
 
@@ -180,9 +190,9 @@ end
 ################################################################################
 ######################## f_ode! f_step! f_disc! ################################
 
-abstract type IsScheduled end
-struct Unscheduled <: IsScheduled end
-struct Scheduled <: IsScheduled end
+abstract type MaybeScheduled end
+struct Unscheduled <: MaybeScheduled end
+struct Scheduled <: MaybeScheduled end
 
 #f_ode! must update sys.ẋ, compute and reassign sys.y, then return nothing
 

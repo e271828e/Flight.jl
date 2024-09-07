@@ -22,7 +22,7 @@ end
 
 function Systems.f_disc!(::Systems.Scheduled, sys::System{FirstOrder})
     x_new = sys.x[1] + 0.1
-    # @info("Called f_disc! at t = $(sys.t[]), updating x = $(sys.x[1]) to x = $(x_new)")
+    @info("Called f_disc! at t = $(sys.t[]), updating x = $(sys.x[1]) to x = $(x_new)")
     sys.x .= x_new
     sys.y = sys.x[1]
     # println("Called f_disc! at t = $(sys.t[]), got y = $(sys.y)")
@@ -32,15 +32,16 @@ Systems.init!(sys::System{FirstOrder}, x0::Real = 0.0) = (sys.x .= x0)
 
 
 @kwdef struct Node <: SystemDefinition
-    a::ChildDef{FirstOrder} = ChildDef(FirstOrder(), 2)
-    b::ChildDef{FirstOrder} = ChildDef(FirstOrder(), 4)
+    a::FirstOrder = FirstOrder()
+    b::Subsampled{FirstOrder} = Subsampled(FirstOrder(), 2)
 end
 
 Systems.init!(sys::System{Node}, x0::Real = 0.0) = (sys.x .= x0)
 
 @kwdef struct Root <: SystemDefinition
-    a::ChildDef{FirstOrder} = ChildDef(FirstOrder(), 2)
-    b::ChildDef{Node} = ChildDef(Node(), 3)
+    a::FirstOrder = FirstOrder()
+    b::Subsampled{FirstOrder} = Subsampled(FirstOrder(), 2)
+    c::Subsampled{Node} = Subsampled(Node(), 3)
 end
 
 Systems.init!(sys::System{Root}, x0::Real = 0.0) = (sys.x .= x0)
