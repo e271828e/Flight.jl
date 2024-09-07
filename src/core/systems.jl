@@ -8,7 +8,7 @@ using ..GUI
 using ..IODevices
 
 export SystemDefinition, SystemTrait, System
-export Subsampled, Scheduled
+export Subsampled, Scheduling, NoScheduling
 export f_ode!, f_step!, f_disc!, assemble_y!
 
 
@@ -190,9 +190,9 @@ end
 ################################################################################
 ######################## f_ode! f_step! f_disc! ################################
 
-abstract type MaybeScheduled end
-struct Unscheduled <: MaybeScheduled end
-struct Scheduled <: MaybeScheduled end
+abstract type MaybeSchedule end
+struct Schedule <: MaybeSchedule end
+struct NoScheduling <: MaybeSchedule end
 
 #f_ode! must update sys.ẋ, compute and reassign sys.y, then return nothing
 
@@ -223,16 +223,16 @@ struct Scheduled <: MaybeScheduled end
 
 end
 
-@inline f_disc!(sys::System, args...) = f_disc!(Unscheduled(), sys, args...)
+@inline f_disc!(sys::System, args...) = f_disc!(Schedule(), sys, args...)
 
-function f_disc!(::Unscheduled, sys::System, args...)
-    (sys.n[] % sys.N == 0) && f_disc!(Scheduled(), sys, args...)
+function f_disc!(::Schedule, sys::System, args...)
+    (sys.n[] % sys.N == 0) && f_disc!(NoScheduling(), sys, args...)
 end
 
 #fallback: tries calling f_disc! on all subsystems with the same arguments
 #provided to the parent System. also updates y, since f_disc! is where discrete
 #Systems are expected to update their output. override as required.
-@inline function f_disc!(::Scheduled, sys::System, args...)
+@inline function f_disc!(::NoScheduling, sys::System, args...)
     # sys.subsystems |> keys |> println
     for ss in sys.subsystems
         f_disc!(ss, args...)

@@ -21,51 +21,20 @@ export Cessna172RPAv1
 ################################################################################
 ############################### Avionics #######################################
 
-@kwdef struct Avionics{C <: Controller, N <: Navigator} <: AbstractAvionics
-    N_ctl::Int = 2
-    N_nav::Int = 2
-    ctl::C = Controller()
-    nav::N = Navigator()
+@kwdef struct Avionics{C, N} <: AbstractAvionics
+    ctl::C = Subsampled(Controller(), 2)
+    nav::N = Subsampled(Navigator(), 1)
 end
-
-@kwdef mutable struct AvionicsS
-    n_disc::Int = 0 #number of f_disc! epochs, for scheduling purposes
-end
-
-@kwdef struct AvionicsY{C <: ControllerY, N <: NavigatorY}
-    n_disc::Int = 0
-    ctl::C = ControllerY()
-    nav::N = NavigatorY()
-end
-
-Systems.S(::Avionics) = AvionicsS()
-Systems.Y(::Avionics) = AvionicsY()
-
 
 ############################### Update methods #################################
 
-function Systems.assemble_y!(sys::System{<:C172RPAv1.Avionics})
-    @unpack ctl, nav = sys.subsystems
-    sys.y = AvionicsY(; n_disc = sys.s.n_disc, ctl = ctl.y, nav = nav.y)
-end
-
-
-function Systems.reset!(sys::System{<:C172RPAv1.Avionics})
-    sys.s.n_disc = 0 #reset scheduler
-    foreach(ss -> Systems.reset!(ss), sys.subsystems) #reset algorithms
-end
-
-function Systems.f_disc!(avionics::System{<:C172RPAv1.Avionics},
+function Systems.f_disc!(::NoScheduling, avionics::System{<:C172RPAv1.Avionics},
                         vehicle::System{<:C172RPA.Vehicle})
 
-    @unpack N_ctl, N_nav = avionics.constants
     @unpack ctl, nav = avionics.subsystems
-    @unpack n_disc = avionics.s
 
-    (n_disc % N_ctl == 0) && f_disc!(ctl, vehicle)
-    (n_disc % N_nav == 0) && f_disc!(nav)
-
-    avionics.s.n_disc += 1
+    f_disc!(ctl, vehicle)
+    f_disc!(nav)
 
     assemble_y!(avionics)
 

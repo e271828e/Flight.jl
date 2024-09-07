@@ -51,8 +51,8 @@ function Systems.reset!(sys::System{<:C172FBWv1.Avionics})
 end
 
 
-function Systems.f_disc!(avionics::System{<:C172FBWv1.Avionics},
-                        vehicle::System{<:C172FBW.Vehicle})
+function Systems.f_disc!(::NoScheduling, avionics::System{<:C172FBWv1.Avionics},
+                                      vehicle::System{<:C172FBW.Vehicle})
 
     @unpack N_ctl = avionics.constants
     @unpack ctl = avionics.subsystems

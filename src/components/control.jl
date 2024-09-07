@@ -393,7 +393,7 @@ function Systems.reset!(sys::System{<:Integrator}, x0::Real = 0.0)
     sys.s.sat_out_0 = 0
 end
 
-function Systems.f_disc!(::Scheduled, sys::System{<:Integrator})
+function Systems.f_disc!(::NoScheduling, sys::System{<:Integrator})
 
     @unpack s, u, Δt = sys
     @unpack input, sat_ext, bound_lo, bound_hi = u
@@ -452,7 +452,7 @@ function Systems.reset!(sys::System{<:IntegratorVector{N}}, x0::AbstractVector{<
     sys.s.sat_out_0 .= 0
 end
 
-function Systems.f_disc!(::Scheduled, sys::System{<:IntegratorVector})
+function Systems.f_disc!(::NoScheduling, sys::System{<:IntegratorVector})
 
     @unpack s, u, Δt = sys
 
@@ -545,7 +545,7 @@ function Systems.reset!(sys::System{<:LeadLag})
     sys.s.x0 = 0
 end
 
-function Systems.f_disc!(::Scheduled, sys::System{<:LeadLag})
+function Systems.f_disc!(::NoScheduling, sys::System{<:LeadLag})
 
     @unpack s, u, Δt = sys
     @unpack z, p, k, u1 = u
@@ -678,7 +678,7 @@ function assign!(sys::System{<:PID}, params::PIDParams{<:Real})
     @pack! sys.u = k_p, k_i, k_d, τ_f
 end
 
-function Systems.f_disc!(::Scheduled, sys::System{<:PID})
+function Systems.f_disc!(::NoScheduling, sys::System{<:PID})
 
     @unpack Δt = sys
     @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext = sys.u
@@ -773,7 +773,7 @@ function Systems.reset!(sys::System{<:PIDVector{N}}) where {N}
     sys.s.sat_out_0 .= 0
 end
 
-function Systems.f_disc!(::Scheduled, sys::System{<:PIDVector{N}}) where {N}
+function Systems.f_disc!(::NoScheduling, sys::System{<:PIDVector{N}}) where {N}
 
     @unpack s, u, Δt = sys
 
@@ -1031,7 +1031,7 @@ function Systems.reset!(sys::System{<:LQRTracker})
     sys.s.out_sat_0 .= 0
 end
 
-function Systems.f_disc!(::Scheduled, sys::System{<:LQRTracker})
+function Systems.f_disc!(::NoScheduling, sys::System{<:LQRTracker})
 
     @unpack s, u, Δt = sys
 

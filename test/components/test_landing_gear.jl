@@ -104,10 +104,10 @@ function test_landing_gear_unit()
 
 
         ldg = LandingGearUnit(;
-            steering = DirectSteering(ψ_max = π/6) |> ChildDef,
-            braking = DirectBraking() |> ChildDef,
-            strut = Strut(l_0 = 1.0, damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)) |> ChildDef,
-            contact = Contact() |> ChildDef) |> System
+            steering = DirectSteering(ψ_max = π/6),
+            braking = DirectBraking(),
+            strut = Strut(l_0 = 1.0, damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)),
+            contact = Contact()) |> System
 
         @unpack steering, braking, strut, contact = ldg
 

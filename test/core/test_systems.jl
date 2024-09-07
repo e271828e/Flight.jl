@@ -20,7 +20,7 @@ function Systems.f_ode!(sys::System{FirstOrder})
     sys.y = sys.x[1]
 end
 
-function Systems.f_disc!(::Systems.Scheduled, sys::System{FirstOrder})
+function Systems.f_disc!(::NoScheduling, sys::System{FirstOrder})
     x_new = sys.x[1] + 0.1
     @info("Called f_disc! at t = $(sys.t[]), updating x = $(sys.x[1]) to x = $(x_new)")
     sys.x .= x_new

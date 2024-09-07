@@ -146,7 +146,7 @@ function Systems.init!(sys::System{<:LonControl})
 end
 
 
-function Systems.f_disc!(sys::System{<:LonControl},
+function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
                         vehicle::System{<:C172RPA.Vehicle})
 
     @unpack mode, throttle_sp, elevator_sp, q_sp, θ_sp, EAS_sp, clm_sp = sys.u
@@ -190,10 +190,12 @@ function Systems.f_disc!(sys::System{<:LonControl},
             Control.Discrete.assign!(q2e_pid, q2e_lookup(EAS, h_e))
 
             if mode != mode_prev
+
                 Systems.reset!(q2e_int)
                 Systems.reset!(q2e_pid)
                 k_i = q2e_pid.u.k_i
                 (k_i != 0) && (q2e_pid.s.x_i0 = e2e_lqr.u.z_sp[1])
+
                 # (k_i != 0) && (q2e_pid.s.x_i0 = Float64(sys.y.elevator_cmd))
             end
 
@@ -390,7 +392,7 @@ function Systems.init!(sys::System{<:LatControl})
 
 end
 
-function Systems.f_disc!(sys::System{<:LatControl},
+function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
                         vehicle::System{<:C172RPA.Vehicle})
 
     @unpack mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp = sys.u
@@ -518,7 +520,7 @@ Systems.S(::AltitudeGuidance) = AltitudeGuidanceS()
 Systems.Y(::AltitudeGuidance) = AltitudeGuidanceY()
 
 
-function Systems.f_disc!(sys::System{<:AltitudeGuidance},
+function Systems.f_disc!(::NoScheduling, sys::System{<:AltitudeGuidance},
                         vehicle::System{<:C172RPA.Vehicle})
 
     @unpack state, h_thr = sys.s
@@ -633,7 +635,7 @@ Systems.Y(::Controller) = ControllerY()
 ########################### Update Methods #####################################
 
 
-function Systems.f_disc!(sys::System{<:Controller},
+function Systems.f_disc!(::NoScheduling, sys::System{<:Controller},
                         vehicle::System{<:C172RPA.Vehicle})
 
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right,

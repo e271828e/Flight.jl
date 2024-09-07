@@ -93,7 +93,7 @@ function test_control_modes()
 
     @test @ballocated(f_ode!($ac)) == 0
     @test @ballocated(f_step!($ac)) == 0
-    @test @ballocated(f_disc!($ac)) == 0
+    @test @ballocated(f_disc!(NoScheduling(), $ac)) == 0
 
     end #testset
 

@@ -175,10 +175,6 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         cb_disc = PeriodicCallback(f_cb_disc!, Δt; initial_affect = false)
         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
 
-        #set System's root Δt and discrete iteration counter
-        sys.Δt_root[] = Δt
-        sys.n[] = 0
-
         #before initializing the log, compute and assign y, so its initial value
         #is consistent with x, u and s
         f_ode!(sys)
@@ -199,6 +195,14 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
         integrator = init_integrator(problem, algorithm; save_on = false,
                                      callback = cb_set, adaptive, dt)
+
+
+        #when the integrator is instantiated, if initial_affect==true for
+        #cb_disc, the integrator will call f_cb_disc! and sys.n will be
+        #incremented. if we then mak reset System's root Δt and discrete iteration counter. this
+        #must be done after the integrator is instantiated, because
+        sys.Δt_root[] = Δt
+        sys.n[] = 0
 
         #save_on = false because we are not interested in logging the plain
         #System's state vector; everything we need to know about the System
@@ -353,11 +357,12 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
     @unpack sys, integrator, log = sim
     @unpack p = integrator
 
+    #reset scheduling counter (must be done before Systems.init!, in case the
+    #init methods need to call f_disc!)
+    sys.n[] = 0
+
     #initialize the System's x, u and s
     Systems.init!(sys, init_args...; init_kwargs...)
-
-    #reset discrete iteration counter
-    sys.n[] = 0
 
     #let it propagate to y. within its reinit! method, the integrator will call
     #the SavingCallback to set the first entry in the log, which is sys.y
@@ -370,6 +375,10 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
     else
         OrdinaryDiffEq.reinit!(integrator)
     end
+
+    #reset scheduling counter (also AFTER integrator reinit!, which may have
+    #called f_disc_cb! if initial_affect==true, incrementing the counter)
+    sys.n[] = 0
 
     #drop the log entries from the last run and keep the newly initialized one
     resize!(log.t, 1)

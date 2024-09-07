@@ -172,8 +172,8 @@ function Systems.init!(sys::System{<:LonControl})
 end
 
 
-function Systems.f_disc!(sys::System{<:LonControl},
-                        vehicle::System{<:C172FBW.Vehicle})
+function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
+                            vehicle::System{<:C172FBW.Vehicle})
 
     @unpack mode, throttle_sp, elevator_sp, q_sp, θ_sp, EAS_sp, clm_sp = sys.u
     @unpack te2te_lqr, vc2te_lqr, q2e_int, q2e_pid, v2θ_pid, v2t_pid = sys.subsystems
@@ -407,7 +407,7 @@ function Systems.init!(sys::System{<:LatControl})
 
 end
 
-function Systems.f_disc!(sys::System{<:LatControl},
+function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
                         vehicle::System{<:C172FBW.Vehicle})
 
     @unpack mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp = sys.u
@@ -529,7 +529,7 @@ Systems.Y(::AltitudeGuidance) = AltitudeGuidanceY()
 get_Δh(h_sp::HEllip, vehicle::System{<:C172FBW.Vehicle}) = h_sp - vehicle.y.kinematics.h_e
 get_Δh(h_sp::HOrth, vehicle::System{<:C172FBW.Vehicle}) = h_sp - vehicle.y.kinematics.h_o
 
-function Systems.f_disc!(sys::System{<:AltitudeGuidance},
+function Systems.f_disc!(::NoScheduling, sys::System{<:AltitudeGuidance},
                         vehicle::System{<:C172FBW.Vehicle})
 
     Δh = get_Δh(sys.u.h_sp, vehicle)
@@ -641,7 +641,7 @@ Systems.Y(::Controller) = ControllerY()
 ########################### Update Methods #####################################
 
 
-function Systems.f_disc!(sys::System{<:Controller},
+function Systems.f_disc!(::NoScheduling, sys::System{<:Controller},
                         vehicle::System{<:C172FBW.Vehicle})
 
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right,
@@ -805,12 +805,6 @@ function AircraftBase.trim!(sys::System{<:Controller},
     u.lon_ctl_mode_req = lon_direct
     u.lat_ctl_mode_req = lat_direct
     f_disc!(sys, vehicle)
-
-    #do another update with SAS disabled so that trim actuator commands are
-    #used as setpoints and directly applied at the control laws' outputs. this
-    #should not make a noticeable difference after the previous update
-    # f_disc!(ac.sys, ac.vehicle) #IMPORTANT: update sys outputs
-    # return result
 
 end
 

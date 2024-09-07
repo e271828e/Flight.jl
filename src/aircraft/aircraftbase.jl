@@ -31,7 +31,7 @@ end
 #Components shouldn't implement discrete dynamics; discretized algorithms belong
 #in Avionics. however, it can still be overridden by subtypes if required
 
-Systems.f_disc!(::System{<:AbstractComponents}) = nothing
+Systems.f_disc!(::NoScheduling, ::System{<:AbstractComponents}) = nothing
 
 ################################ NoComponents #################################
 
@@ -112,13 +112,12 @@ function Systems.f_ode!(::System{<:AbstractAvionics},
     nothing
 end
 
-function Systems.f_disc!(avionics::System{<:AbstractAvionics},
+function Systems.f_disc!(sch::NoScheduling, avionics::System{<:AbstractAvionics},
                         vehicle::System{<:Vehicle})
-    MethodError(f_disc!, (avionics, vehicle, Δt)) |> throw
+    MethodError(f_disc!, (sch, avionics, vehicle)) |> throw
 end
 
-function Systems.f_disc!(::System{NoAvionics},
-                        ::System{<:Vehicle})
+function Systems.f_disc!(::NoScheduling, ::System{NoAvionics}, ::System{<:Vehicle})
 end
 
 #f_step! can use the recursive fallback implementation
@@ -152,7 +151,7 @@ end
 #f_step! will use the recursive fallback implementation
 
 #within Vehicle, only the components may be modified by f_disc!
-function Systems.f_disc!(vehicle::System{<:Vehicle})
+function Systems.f_disc!(::NoScheduling, vehicle::System{<:Vehicle})
 
     @unpack kinematics, dynamics, components = vehicle
     @unpack air = vehicle.y
@@ -211,7 +210,7 @@ function Systems.f_ode!(ac::System{<:Aircraft})
     ac.y = AircraftY(vehicle.y, avionics.y)
 end
 
-function Systems.f_disc!(ac::System{<:Aircraft})
+function Systems.f_disc!(::NoScheduling, ac::System{<:Aircraft})
 
     @unpack vehicle, avionics = ac.subsystems
 
