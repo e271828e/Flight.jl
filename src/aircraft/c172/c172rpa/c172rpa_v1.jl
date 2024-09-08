@@ -13,7 +13,6 @@ using ...AircraftBase
 using ...C172
 using ..C172RPA
 using ..C172RPA.FlightControl: Controller, ControllerY
-using ..C172RPA.Navigation: Navigator, NavigatorY
 
 export Cessna172RPAv1
 
@@ -21,45 +20,29 @@ export Cessna172RPAv1
 ################################################################################
 ############################### Avionics #######################################
 
-@kwdef struct Avionics{C, N} <: AbstractAvionics
+@kwdef struct Avionics{C} <: AbstractAvionics
     ctl::C = Subsampled(Controller(), 2)
-    nav::N = Subsampled(Navigator(), 1)
 end
 
 ############################### Update methods #################################
 
-function Systems.f_disc!(::NoScheduling, avionics::System{<:C172RPAv1.Avionics},
-                        vehicle::System{<:C172RPA.Vehicle})
-
-    @unpack ctl, nav = avionics.subsystems
-
-    f_disc!(ctl, vehicle)
-    f_disc!(nav)
-
-    assemble_y!(avionics)
-
-end
+Systems.f_ode!(::System{<:C172RPAv1.Avionics}, ::System{<:C172RPA.Vehicle}) = nothing
 
 function AircraftBase.assign!(components::System{<:C172RPA.Components},
                           avionics::System{<:C172RPAv1.Avionics})
     AircraftBase.assign!(components, avionics.ctl)
 end
 
-
 ################################# Trimming #####################################
 
 function AircraftBase.trim!(avionics::System{<:C172RPAv1.Avionics},
                             vehicle::System{<:C172RPA.Vehicle})
 
-    @unpack ctl, nav = avionics
-
     Systems.reset!(avionics)
-    trim!(ctl, vehicle)
-    # trim!(nav, vehicle)
+    trim!(avionics.ctl, vehicle)
     assemble_y!(avionics)
 
 end
-
 
 ################################## GUI #########################################
 
@@ -73,9 +56,8 @@ function GUI.draw!(avionics::System{<:C172RPAv1.Avionics},
 
     CImGui.Begin(label, p_open)
 
-    Text(@sprintf("Epoch: %d", avionics.y.n_disc))
     @cstatic c_ctl=false begin
-        @c CImGui.Checkbox("Flight Controller", &c_ctl)
+        @c CImGui.Checkbox("Controller", &c_ctl)
         c_ctl && @c GUI.draw!(avionics.ctl, vehicle, &c_ctl)
     end
 

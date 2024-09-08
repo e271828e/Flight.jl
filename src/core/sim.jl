@@ -32,7 +32,8 @@ export take_nonblocking!, put_nonblocking!
     algorithm::String = ""
     t_start::Float64 = 0.0
     t_end::Float64 = 0.0
-    dt::Float64 = 0.0 #last time step
+    Δt::Float64 = 0.0 #discrete step size
+    dt::Float64 = 0.0 #last continuous integration step size
     iter::Int64 = 0 #total iterations
     t::Float64 = 0.0 #simulation time
     τ::Float64 = 0.0 #wall-clock time
@@ -55,10 +56,11 @@ function GUI.draw!(control::SimControl)
         control.pace = safe_slider("Pace", control.pace, 0.1, 20.0, "%.3f",
         ImGuiSliderFlags_Logarithmic; show_label = true)
 
-        @unpack algorithm, t_start, t_end, dt, iter, t, τ = control
+        @unpack algorithm, t_start, t_end, Δt, dt, iter, t, τ = control
 
         CImGui.Text("Algorithm: " * algorithm)
-        CImGui.Text("Step size: $dt")
+        CImGui.Text("Discrete step size: $Δt")
+        CImGui.Text("Continuous step size: $dt")
         CImGui.Text("Iterations: $iter")
         CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
         CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
@@ -491,6 +493,7 @@ function start!(sim::Simulation)
             control.algorithm = sim.integrator.alg |> typeof |> string
             control.t_start = t_start
             control.t_end = t_end
+            control.Δt = sim.Δt_root[]
         unlock(io_lock)
 
         notify(io_start)

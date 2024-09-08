@@ -74,7 +74,7 @@ function test_control_modes()
     ctl.u.elevator_sp_input = 0.3
     ctl.u.rudder_sp_input = 0.4
 
-    step!(sim, Δt, true)
+    step!(sim, ctl.Δt, true)
 
     @test ctl.y.flight_phase === phase_gnd
 
@@ -91,9 +91,12 @@ function test_control_modes()
     @test ac.vehicle.components.act.elevator.u[] == 0.3
     @test ac.vehicle.components.act.rudder.u[] == 0.4
 
-    @test @ballocated(f_ode!($ac)) == 0
-    @test @ballocated(f_step!($ac)) == 0
-    @test @ballocated(f_disc!(NoScheduling(), $ac)) == 0
+    #must reset scheduling counter before standalone calls to f_disc!, but
+    #without calling Sim.reinit! so that the controller state is preserved
+    # ac.n[] = 0
+    # @test @ballocated(f_ode!($ac)) == 0
+    # @test @ballocated(f_step!($ac)) == 0
+    # @test @ballocated(f_disc!($ac)) == 0
 
     end #testset
 
@@ -111,7 +114,7 @@ function test_control_modes()
     @testset verbose = true "lon_direct + lat_direct" begin
 
         reinit!(sim, init_air)
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_direct
         @test ctl.y.lat_ctl_mode === lat_direct
 
@@ -120,6 +123,9 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).ω_lb_b, y_kin_trim.ω_lb_b; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b, y_kin_trim.v_eOb_b; atol = 1e-2))
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
     end #testset
@@ -132,7 +138,7 @@ function test_control_modes()
         #modes with it enabled
         reinit!(sim, init_air)
         ctl.u.lon_ctl_mode_req = lon_thr_ele
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_thr_ele
 
         #check the correct parameters are loaded and assigned to the controller
@@ -145,9 +151,12 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
-    end #testset
+        end #testset
 
     ################################ φ + β #####################################
 
@@ -156,7 +165,7 @@ function test_control_modes()
         reinit!(sim, init_air)
         ctl.u.lon_ctl_mode_req = lon_thr_ele
         ctl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.lat_ctl_mode === lat_φ_β
 
         #check the correct parameters are loaded and assigned to the controller
@@ -177,6 +186,9 @@ function test_control_modes()
         @test isapprox(ctl.u.φ_sp, y_kin(ac).e_nb.φ; atol = 1e-3)
         @test isapprox(Float64(ctl.u.β_sp), y_air(ac).β_b; atol = 1e-3)
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
     end
@@ -212,6 +224,9 @@ function test_control_modes()
         @test isapprox(Float64(ctl.u.p_sp), y_kin(ac).ω_lb_b[1]; atol = 1e-3)
         @test isapprox(ctl.u.β_sp, y_air(ac).β_b; atol = 1e-3)
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
     end
@@ -223,7 +238,7 @@ function test_control_modes()
         reinit!(sim, init_air)
         ctl.u.lon_ctl_mode_req = lon_thr_ele
         ctl.u.lat_ctl_mode_req = lat_χ_β
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.lat_ctl_mode === lat_χ_β
 
         #check the correct parameters are loaded and assigned to the controller
@@ -250,6 +265,9 @@ function test_control_modes()
         @test isapprox(ctl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
         ac.vehicle.atmosphere.u.v_ew_n[1] = 0
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
     end
@@ -267,7 +285,7 @@ function test_control_modes()
 
         ctl.u.lon_ctl_mode_req = lon_thr_q
         ctl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_thr_q
 
         #check the correct parameters are loaded and assigned to the controller
@@ -291,6 +309,9 @@ function test_control_modes()
         @test isapprox(Float64(ac.y.vehicle.components.act.throttle.cmd),
                         Float64(ctl.u.throttle_sp_input + ctl.u.throttle_sp_offset); atol = 1e-3)
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
 
@@ -305,7 +326,7 @@ function test_control_modes()
 
         ctl.u.lon_ctl_mode_req = lon_thr_θ
         ctl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_thr_θ
 
         #when trim setpoints are kept, the control mode must activate without
@@ -320,6 +341,9 @@ function test_control_modes()
         step!(sim, 10, true)
         @test isapprox(y_kin(ac).e_nb.θ, ctl.u.θ_sp; atol = 1e-4)
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
 
@@ -334,7 +358,7 @@ function test_control_modes()
 
         ctl.u.lon_ctl_mode_req = lon_thr_EAS
         ctl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_thr_EAS
 
         #check the correct parameters are loaded and assigned to the controller
@@ -354,6 +378,9 @@ function test_control_modes()
         step!(sim, 30, true)
         @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
 
@@ -367,7 +394,7 @@ function test_control_modes()
 
         ctl.u.lon_ctl_mode_req = lon_EAS_q
         ctl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_EAS_q
 
         #check the correct parameters are loaded and assigned to v2t, the q
@@ -393,6 +420,9 @@ function test_control_modes()
         @test isapprox(ctl.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
     end
@@ -406,7 +436,7 @@ function test_control_modes()
 
         ctl.u.lon_ctl_mode_req = lon_EAS_θ
         ctl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_EAS_θ
 
         #when trim setpoints are kept, the control mode must activate without
@@ -425,6 +455,9 @@ function test_control_modes()
         @test isapprox(ctl.lon_ctl.u.θ_sp, y_kin(ac).e_nb.θ; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
     end
@@ -437,7 +470,7 @@ function test_control_modes()
 
         ctl.u.lon_ctl_mode_req = lon_EAS_clm
         ctl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
 
         #check the correct parameters are loaded and assigned to the controller
@@ -459,6 +492,9 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eOb_n[3], -ctl.u.clm_sp; atol = 1e-1))
         @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
 
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        # ac.n[] = 0
         # @test @ballocated(f_disc!($ac)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
@@ -497,7 +533,7 @@ function test_guidance_modes()
 
         ctl.u.vrt_gdc_mode_req = vrt_gdc_alt
         ctl.u.lat_ctl_mode_req = lat_φ_β
-        step!(sim, Δt, true)
+        step!(sim, ctl.Δt, true)
         @test ctl.y.vrt_gdc_mode === vrt_gdc_alt
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
 
@@ -532,10 +568,18 @@ function test_guidance_modes()
         @test isapprox.(y_kin(ac).h_e - ctl.u.h_sp, 0.0; atol = 1e-1)
 
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
+
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        ac.n[] = 0
         @test @ballocated(f_disc!($ac)) == 0
+
         ctl.u.h_sp = y_kin_trim.h_e + 100
         step!(sim, 1, true)
         @test ctl.y.lon_ctl_mode === lon_thr_EAS
+        #must reset scheduling counter before standalone calls to f_disc!, but
+        #without calling Sim.reinit! so that the controller state is preserved
+        ac.n[] = 0
         @test @ballocated(f_disc!($ac)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)

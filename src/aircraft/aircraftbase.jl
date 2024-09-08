@@ -18,7 +18,7 @@ export trim!, linearize!
 
 abstract type AbstractComponents <: SystemDefinition end
 
-#we cannot rely on the fallback here
+#AbstractComponents subtypes will generally be too specific for the fallback
 function Systems.f_ode!(components::System{<:AbstractComponents},
                         kin::KinData,
                         air::AirData,
@@ -26,12 +26,12 @@ function Systems.f_ode!(components::System{<:AbstractComponents},
     MethodError(f_ode!, (components, kin, air, trn)) |> throw
 end
 
-#disallow using the fallback method for efficiency (it would traverse the whole
-#Components System hierarchy). this is reasonable because in principle
-#Components shouldn't implement discrete dynamics; discretized algorithms belong
-#in Avionics. however, it can still be overridden by subtypes if required
-
+#for efficiency, we disallow using the fallback method. it would traverse the
+#whole Components System hierarchy, and without good reason, because in
+#principle Components shouldn't implement discrete dynamics; discretized
+#algorithms belong in Avionics. can still be overridden by subtypes if required
 Systems.f_disc!(::NoScheduling, ::System{<:AbstractComponents}) = nothing
+
 
 ################################ NoComponents #################################
 
@@ -49,7 +49,6 @@ function Systems.f_ode!(::System{NoComponents},
                         ::AbstractTerrain)
     nothing
 end
-
 
 
 ################################################################################
@@ -97,7 +96,6 @@ Systems.init!( ::System{<:AbstractAvionics}, ic::KinInit) = nothing
 
 struct NoAvionics <: AbstractAvionics end
 
-
 ################################################################################
 ######################## Vehicle/Avionics update methods #######################
 
@@ -107,18 +105,18 @@ struct NoAvionics <: AbstractAvionics end
 #the joint assign! methods. accordingly, Avionics update methods should only
 #mutate the Avionics System itself, not the Vehicle
 
-function Systems.f_ode!(::System{<:AbstractAvionics},
-                        ::System{<:Vehicle})
-    nothing
-end
+# function Systems.f_ode!(::System{<:AbstractAvionics},
+#                         ::System{<:Vehicle})
+#     nothing
+# end
 
-function Systems.f_disc!(sch::NoScheduling, avionics::System{<:AbstractAvionics},
-                        vehicle::System{<:Vehicle})
-    MethodError(f_disc!, (sch, avionics, vehicle)) |> throw
-end
+# function Systems.f_disc!(sch::NoScheduling, avionics::System{<:AbstractAvionics},
+#                         vehicle::System{<:Vehicle})
+#     MethodError(f_disc!, (sch, avionics, vehicle)) |> throw
+# end
 
-function Systems.f_disc!(::NoScheduling, ::System{NoAvionics}, ::System{<:Vehicle})
-end
+# function Systems.f_disc!(::NoScheduling, ::System{NoAvionics}, ::System{<:Vehicle})
+# end
 
 #f_step! can use the recursive fallback implementation
 

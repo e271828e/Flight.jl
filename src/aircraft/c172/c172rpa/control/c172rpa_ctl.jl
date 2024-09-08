@@ -972,13 +972,13 @@ function GUI.draw(sys::System{<:AltitudeGuidance}, p_open::Ref{Bool} = Ref(true)
 end
 
 
-function GUI.draw!(sys::System{<:Controller},
+function GUI.draw!(ctl::System{<:Controller},
                     vehicle::System{<:C172RPA.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172 RPA Controller")
 
-    u = sys.u
-    y = sys.y
+    @unpack u, y, Δt, subsystems = ctl
+    @unpack lon_ctl, lat_ctl, alt_gdc = subsystems
 
     @unpack components, kinematics, dynamics, air = vehicle.y
     @unpack act, pwp, fuel, ldg = components
@@ -1369,14 +1369,15 @@ function GUI.draw!(sys::System{<:Controller},
 
     if CImGui.CollapsingHeader("Internals")
         @cstatic c_lon=false c_lat=false c_alt=false begin
+            Text("Sampling Period: $Δt")
             @c Checkbox("Longitudinal Control##Internals", &c_lon)
             SameLine()
             @c Checkbox("Lateral Control##Internals", &c_lat)
             SameLine()
             @c Checkbox("Altitude Guidance##Internals", &c_alt)
-            c_lon && @c GUI.draw(sys.lon_ctl, &c_lon)
-            c_lat && @c GUI.draw(sys.lat_ctl, &c_lat)
-            c_alt && @c GUI.draw(sys.alt_gdc, &c_alt)
+            c_lon && @c GUI.draw(lon_ctl, &c_lon)
+            c_lat && @c GUI.draw(lat_ctl, &c_lat)
+            c_alt && @c GUI.draw(alt_gdc, &c_alt)
         end
     end
 

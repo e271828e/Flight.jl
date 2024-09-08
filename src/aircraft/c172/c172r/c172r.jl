@@ -121,7 +121,7 @@ function C172.assign!(aero::System{<:C172.Aero},
     pwp.engine.u.stop = eng_stop
     pwp.engine.u.throttle = throttle
     pwp.engine.u.mixture = mixture
-    ldg.nose.steering.u[] = (rudder_offset + rudder)
+    ldg.nose.steering.u.input = (rudder_offset + rudder)
     ldg.left.braking.u[] = brake_left
     ldg.right.braking.u[] = brake_right
     aero.u.e = -(elevator_offset + elevator)
