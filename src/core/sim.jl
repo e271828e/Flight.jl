@@ -571,8 +571,11 @@ end
 
 #apparently, if a task is launched from the main thread and it doesn't ever
 #block, no other thread will get CPU time until it's done. threfore, we should
-#never call start! directly from the main thread, because it will starve all IO
-#threads. it must always be run from a Threads.@spawn'ed thread
+#never call start! directly from the main thread unless we know the task will
+#block or yield at some point.
+
+#important: on platforms other than Windows, CImGui needs to run on the main
+#thread!
 
 function run!(sim::Simulation)
 
@@ -599,8 +602,8 @@ function run_interactive!(sim::Simulation; pace = 1.0)
         for interface in sim.interfaces
             Threads.@spawn start!(interface)
         end
-        Threads.@spawn start!(sim.gui)
         Threads.@spawn start!(sim)
+        start!(sim.gui) #CImGui must run on the main thread
     end
 
 end
