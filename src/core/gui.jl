@@ -1,15 +1,18 @@
 module GUI
 
-using Printf
-using CImGui
+using UnPack
+using Reexport
+using StaticArrays
+using Logging
+
+@reexport using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
+@reexport using Printf
+
+using GLFW
+using ModernGL
 using CImGui.lib
-import CImGui.CSyntax: @c, @cstatic
 
-# Load deps for the GLFW/OpenGL backend
-import GLFW
-import ModernGL
-
-export gui_test
+using ..IODevices
 
 function get_glsl_version(gl_version)
     gl2glsl = Dict(v"2.0" => 110, v"2.1" => 120, v"3.0" => 130, v"3.1" => 140, v"3.2" => 150)
@@ -20,19 +23,59 @@ function get_glsl_version(gl_version)
     end
 end
 
+#if sync > 0:
+#T_render = T_display * sync (where typically T_display = 16.67ms).
+#sync = 1 syncs the refresh rate to the display rate (vsync)
+#if sync = 0:
+#uncaps the refresh rate (to be used only with scheduled calls to render())
+
+mutable struct Renderer{T} <: IODevice{T}
+    label::String
+    monitor_pref::UInt8 #preferred monitor when multiple monitors available
+    font_size::UInt8 #will be scaled by the display's content scale
+    sync::UInt8 #number of display updates per frame render
+    f_draw::Function #GUI function to be called
+    _initialized::Bool
+    _ctx::Ptr{CImGui.lib.ImGuiContext}
+    _window::GLFW.Window
+
+    function Renderer(; label = "Renderer", monitor_pref = 2, font_size = 16,
+        sync = 1, f_draw = ()->nothing)
+        _initialized = false
+        new{Nothing}(label, monitor_pref, font_size, sync, f_draw, _initialized)
+    end
+
+end
+
+Base.propertynames(::Renderer) = (:label, :monitor_pref, :font_size, :sync, :f_draw)
+
+function Base.setproperty!(renderer::Renderer, name::Symbol, value)
+    if name ∈ propertynames(renderer)
+        if renderer._initialized
+            @error("Cannot set property $name for an initialized Renderer, ",
+            "call shutdown! first")
+        else
+            setfield!(renderer, name, value)
+        end
+    else
+        @error("Unsupported property: $name")
+    end
+end
+
+
+function IODevices.init!(renderer::Renderer)
+
+end
+
 function gui_test()
     # setup Dear ImGui context
     ctx = CImGui.CreateContext()
+    @show typeof(ctx)
 
     # enable docking and multi-viewport
     io = CImGui.GetIO()
     io.ConfigFlags = unsafe_load(io.ConfigFlags) | CImGui.ImGuiConfigFlags_DockingEnable
     io.ConfigFlags = unsafe_load(io.ConfigFlags) | CImGui.ImGuiConfigFlags_ViewportsEnable
-
-    # setup Dear ImGui style
-    CImGui.StyleColorsDark()
-    # CImGui.StyleColorsClassic()
-    # CImGui.StyleColorsLight()
 
     # When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
     style = Ptr{ImGuiStyle}(CImGui.GetStyle())
@@ -42,38 +85,38 @@ function gui_test()
         CImGui.c_set!(style.Colors, CImGui.ImGuiCol_WindowBg, ImVec4(col.x, col.y, col.z, 1.0f0))
     end
 
-    # load Fonts
-    # - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use `CImGui.PushFont/PopFont` to select them.
-    # - `CImGui.AddFontFromFileTTF` will return the `Ptr{ImFont}` so you can store it if you need to select the font among multiple.
-    # - If the file cannot be loaded, the function will return C_NULL. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
-    # - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling `CImGui.Build()`/`GetTexDataAsXXXX()``, which `ImGui_ImplXXXX_NewFrame` below will call.
-    # - Read 'fonts/README.txt' for more instructions and details.
-    fonts_dir = joinpath(@__DIR__, "..", "fonts")
-    fonts = unsafe_load(CImGui.GetIO().Fonts)
-    # default_font = CImGui.AddFontDefault(fonts)
-    # CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Cousine-Regular.ttf"), 15)
-    # CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "DroidSans.ttf"), 16)
-    # CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Karla-Regular.ttf"), 10)
-    # CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "ProggyTiny.ttf"), 10)
-    # CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Roboto-Medium.ttf"), 16)
-    CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Mono Casual-Regular.ttf"), 16)
-    CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Mono Linear-Regular.ttf"), 16)
-    CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Sans Casual-Regular.ttf"), 16)
-    CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Sans Linear-Regular.ttf"), 16)
-    # @assert default_font != C_NULL
+    # setup Dear ImGui style
+    CImGui.StyleColorsDark()
+    # CImGui.StyleColorsClassic()
+    # CImGui.StyleColorsLight()
 
-    ############### Backend-specific stuff starts here #########
-    ############### Backend-specific stuff starts here #########
-    ############### Backend-specific stuff starts here #########
-    ############### Backend-specific stuff starts here #########
-    opengl_version = v"3.2" #lowest that will work on MacOS, highest is currently 4.1
-    window_size=(1280, 720)
+    monitor_pref = 1 ##################################### UPDATE THIS
+    available_monitors = GLFW.GetMonitors()
+    monitor_pref = min(monitor_pref, length(available_monitors))
+    monitor = available_monitors[monitor_pref]
+    vmode = GLFW.GetVideoMode(monitor)
+
+    window_size=(vmode.width, vmode.height)
     window_title="CImGui"
+
+    # x_scale, y_scale = GLFW.GetMonitorContentScale(monitor)
+    # font_scaling = max(x_scale, y_scale)
+    # font_size = 12 * font_scaling
+
+    font_size = 12 * vmode.height / 1080
+    fonts_dir = joinpath(@__DIR__, "gui", "fonts")
+    fonts = unsafe_load(CImGui.GetIO().Fonts)
+    @assert (CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Sans Linear-Regular.ttf"), font_size) != C_NULL)
+    #@assert (CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Mono Linear-Regular.ttf"), font_size) != C_NULL)
+
+    opengl_version = v"3.2" #Only versions from 3.2 to 4.1 currently work on MacOS
 
     # Configure GLFW
     glsl_version = get_glsl_version(opengl_version)
     GLFW.WindowHint(GLFW.VISIBLE, true)
     GLFW.WindowHint(GLFW.DECORATED, true)
+    GLFW.WindowHint(GLFW.FOCUSED, true)
+    GLFW.WindowHint(GLFW.MAXIMIZED, false)
     GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, opengl_version.major)
     GLFW.WindowHint(GLFW.CONTEXT_VERSION_MINOR, opengl_version.minor)
 
@@ -86,6 +129,12 @@ function gui_test()
     global _window = GLFW.CreateWindow(window_size[1], window_size[2], window_title)
     window = _window
     @assert window != C_NULL
+
+    @show typeof(window)
+
+    # _, y_pos = GLFW.GetWindowPos(_window)
+    # GLFW.SetWindowPos(_window, 0, y_pos) #no effect on borderless window
+
     GLFW.MakeContextCurrent(window)
 
     ############# FIX THIS ############
