@@ -4,7 +4,6 @@ using ComponentArrays
 using DataStructures
 using AbstractTrees
 
-using ..GUI
 using ..IODevices
 
 export SystemDefinition, SystemTrait, System

@@ -17,6 +17,7 @@ export test_gui
 
 function test_gui()
     # target = Control.Discrete.PIDVector{2}() |> System
+    # target = LandingGearUnit() |> System
     # target = Control.Continuous.PIVector{3}() |> System
     # target = C172CAS.PitchControl() |> System
     # target = Cessna172CAS() |> System
@@ -24,7 +25,6 @@ function test_gui()
     # target = C172FBW.Actuation() |> System;
     target = Cessna172RPAv1() |> System
     # target = Cessna172R() |> System
-    # target = LandingGearUnit() |> System
     f_draw = let target = target
         () -> GUI.draw!(target)
         # return () -> GUI.draw!(target)

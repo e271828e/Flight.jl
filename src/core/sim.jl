@@ -7,7 +7,7 @@ using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback,
                        CallbackSet, SavedValues
 using RecursiveArrayTools
 using Logging
-using CImGui.LibCImGui
+using CImGui.lib: ImGuiSliderFlags_Logarithmic
 
 using ..Systems
 using ..IODevices
