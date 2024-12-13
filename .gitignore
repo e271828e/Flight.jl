@@ -3,6 +3,7 @@
 /CImGui*
 /.vscode
 /.VSCodeCounter
+.DS_Store
 
 #Documenter.jl
 /docs/build
