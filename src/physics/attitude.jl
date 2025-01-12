@@ -33,7 +33,7 @@ using Flight.FlightCore
 
 using ..Quaternions
 
-export Abstract3DRotation, RQuat, RAxAng, REuler, RMatrix, Rx, Ry, Rz
+export Abstract3DRotation, RQuat, RAxAng, RVec, REuler, RMatrix, Rx, Ry, Rz
 export azimuth, inclination
 
 const half_π = π/2
@@ -311,8 +311,49 @@ end
 # Inversion
 Base.adjoint(r::RAxAng) = RAxAng(r.axis, -r.angle)
 
-azimuth(v::AbstractVector{<:Real}) = atan(v[2], v[1])
-inclination(v::AbstractVector{<:Real}) = atan(-v[3], √(v[1]^2 + v[2]^2))
+############################# RAxAng ###############################
+
+"Rotation vector representation"
+@kwdef struct RVec <: Abstract3DRotation
+    _data::SVector{3, Float64} = @SVector[0.0, 0.0, 0.0]
+end
+
+RVec(r::Abstract3DRotation) = convert(RVec, r)
+
+Base.getindex(ρ::RVec, i) = getindex(ρ._data, i)
+Base.length(ρ::RVec) = length(ρ._data)
+Base.size(ρ::RVec) = size(ρ._data)
+
+#conversions to and from RQuat
+function Base.convert(::Type{RVec}, r::RQuat)
+    q_re = r._u.real
+    q_im = r._u.imag
+    norm_im = norm(q_im)
+    if norm_im > 0
+        μ = 2atan(norm_im, q_re)
+        u = q_im / norm_im
+        ρ = RVec(μ * u)
+    else
+        ρ = RVec()
+    end
+    return ρ
+end
+
+LinearAlgebra.norm(ρ::RVec) = norm(ρ._data)
+
+function Base.convert(::Type{RQuat}, ρ::RVec)
+    μ = norm(ρ._data)
+    if μ > 0
+        u = ρ._data/μ
+        r = RQuat(UnitQuat(real = cos(0.5μ), imag = u*sin(0.5μ), normalization = false))
+    else
+        r = RQuat()
+    end
+    return r
+end
+
+# Inversion
+Base.adjoint(ρ::RVec) = RVec(-ρ._data)
 
 ############################# REuler #############################
 
@@ -435,6 +476,10 @@ function ω(e_ab::REuler, ė_ab::AbstractVector{<:Real})
     return ω_ab_b
 
 end
+
+azimuth(v::AbstractVector{<:Real}) = atan(v[2], v[1])
+inclination(v::AbstractVector{<:Real}) = atan(-v[3], √(v[1]^2 + v[2]^2))
+
 
 ################################# Plotting #####################################
 
