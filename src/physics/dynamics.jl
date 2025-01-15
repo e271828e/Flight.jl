@@ -462,33 +462,60 @@ function inertia_wrench(mp_Ob::MassProperties, kin::KinData, hr_b::AbstractVecto
 
 end
 
+# function gravity_wrench_old(mp_Ob::MassProperties, kin::KinData)
+
+#     #gravity can be viewed as an entity acting on a local frame with its origin
+#     #at G and its axes aligned with the local tangent frame
+
+#     #strictly, the gravity vector should be evaluated at G, with its direction
+#     #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
+#     #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
+#     #LTF(Ob), and then apply it at G.
+#     @unpack n_e, h_e, q_nb = kin
+
+#     Ob = Geographic(n_e, h_e)
+#     g_G_n = g_Ob_n = g_n(Ob)
+
+#     #the resultant consists of the gravity force acting on G along the local
+#     #vertical and a null torque
+#     F_G_n = mp_Ob.m * g_G_n
+#     M_G_n = zeros(SVector{3})
+#     wr_G_n = Wrench(F = F_G_n, M = M_G_n)
+
+#     #with the previous assumption, the transformation from body frame to local
+#     #gravity frame is given by the translation r_ObG_b and the (passive)
+#     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by q_lb'
+#     wr_c = wr_G_n
+#     r_ObG_b = mp_Ob.r_OG
+#     t_bc = FrameTransform(r = r_ObG_b, q = q_nb')
+#     return t_bc(wr_c) #wr_b
+
+# end
+
 function gravity_wrench(mp_Ob::MassProperties, kin::KinData)
 
-    #gravity can be viewed as an entity acting on a local frame with its origin
-    #at G and its axes aligned with the local tangent frame
+    @unpack m, r_OG = mp_Ob
+    @unpack r_eOb_e, q_eb = kin
 
-    #strictly, the gravity vector should be evaluated at G, with its direction
-    #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
-    #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
-    #LTF(Ob), and then apply it at G.
-    @unpack n_e, h_e, q_nb = kin
+    #create an auxiliary frame c with origin Oc=G and axes parallel to the NED
+    #frame at G
+    r_ObOc_b = r_OG
+    r_ObOc_e = q_eb(r_ObOc_b)
+    r_eOc_e = r_eOb_e + r_ObOc_e
+    Oc = Geographic(Cartesian(r_eOc_e))
+    q_ec = ltf(Oc) #orientation of frame c is the local NED frame at G=Oc
+    q_bc = q_eb' ∘ q_ec
+    t_bc = FrameTransform(r = r_ObOc_b, q = q_bc)
 
-    Ob = Geographic(n_e, h_e)
-    g_G_n = g_Ob_n = g_n(Ob)
+    g_Oc_c = g_n(Oc) #gravity vector at Oc in c=n axes
 
-    #the resultant consists of the gravity force acting on G along the local
-    #vertical and a null torque
-    F_G_n = mp_Ob.m * g_G_n
-    M_G_n = zeros(SVector{3})
-    wr_G_n = Wrench(F = F_G_n, M = M_G_n)
+    #the resultant on the vehicle at Oc consists of the gravity force acting on
+    #Oc=G along the local vertical (z_c), and a null torque
+    F_Oc_c = m * g_Oc_c
+    M_Oc_c = zeros(SVector{3})
+    wr_Oc_c = Wrench(F = F_Oc_c, M = M_Oc_c)
 
-    #with the previous assumption, the transformation from body frame to local
-    #gravity frame is given by the translation r_ObG_b and the (passive)
-    #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by q_lb'
-    wr_c = wr_G_n
-    r_ObG_b = mp_Ob.r_OG
-    t_bc = FrameTransform(r = r_ObG_b, q = q_nb')
-    return t_bc(wr_c) #wr_b
+    return t_bc(wr_Oc_c) #wr_Ob_b
 
 end
 
@@ -545,10 +572,6 @@ function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, rb_da
 
     ẋ .= A\b
 
-    wr_g_Ob = gravity_wrench(mp_Ob, kin_data)
-    wr_in_Ob = inertia_wrench(mp_Ob, kin_data, hr_b)
-    wr_net_Ob = wr_ext_Ob + wr_g_Ob + wr_in_Ob
-
     Ob = Geographic(n_e, h_e)
     r_eOb_b = q_eb'(r_eOb_e)
     v̇_eOb_b = SVector{3}(ẋ.v_eOb_b)
@@ -565,11 +588,15 @@ function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, rb_da
     G_Ob_b = g_Ob_b + ω_ie_b × (ω_ie_b × r_eOb_b)
     f_Ob_b = a_iOb_b - G_Ob_b
 
-    #translated quantities
+    #define an auxiliary frame with origin at G and axes parallel to frame b
     r_ObG_b = mp_Ob.r_OG
     t_GbOb = FrameTransform(r = -r_ObG_b) #Gb to Ob
+
+    #translate mass properties and net wrench to G
     mp_Gb = t_GbOb(mp_Ob)
     wr_net_Gb = t_GbOb(wr_net_Ob)
+
+    #compute linear acceleration and specific force at G
     a_iG_b = a_iOb_b + ω_ib_b × (ω_ib_b × r_ObG_b) + α_ib_b × r_ObG_b
     f_Gb_b = a_iG_b - G_Ob_b #G ≈ Ob
 

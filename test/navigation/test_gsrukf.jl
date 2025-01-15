@@ -7,6 +7,12 @@ using LinearAlgebra, ComponentArrays, StaticArrays, BenchmarkTools
 using Flight.FlightPhysics.Attitude
 using Flight.FlightNavigation.GSRUKF
 
+function test_gsrukf()
+
+    @testset verbose = true "GSRUT" begin test_gsrut() end
+    @testset verbose = true "Stages" begin test_stages() end
+
+end
 
 function test_gsrut()
 
@@ -58,6 +64,11 @@ function test_gsrut()
         @test z̄ ≈ 2ū .+ 1
         @test P_δz ≈ 4*P_δu .+ P_w
         @test P_δuδz ≈ 2I
+
+        #check for allocations
+        @test (@ballocated transform!($gsrut;
+            z̄ = $z̄, S_δz = $S_δz, P_δuδz = $P_δuδz,
+            ū = $ū, S_δu = $S_δu, S_w = $S_w, f! = $f!)) == 0
 
         #ensure noiseless transforms are correctly handled
         S_w = Array{Float64}(undef, 0, 0) |> LowerTriangular #empty matrix
@@ -272,6 +283,106 @@ function test_gsrut()
             g_z_minus! = $g_x_minus!)) == 0
 
     end #testset
+
+end #function
+
+
+
+function test_stages()
+
+    @testset verbose = true "Predictor" begin
+
+        N = 3
+        pred = GSRUKF.Predictor(N_x = N, N_w = N)
+
+        f! = (x1, x0, w0) -> @. x1 = 2*x0 + 1 + w0
+
+        x̂0 = ones(N)
+        S_δx0 = 1.0 * LowerTriangular(Matrix(I, N, N))
+        S_w = 1.0 * LowerTriangular(Matrix(I, N, N))
+
+        x̂1 = copy(x̂0)
+        S_δx1 = copy(S_δx0)
+
+        P_δx0 = S_δx0 * S_δx0'
+        P_w = S_w * S_w'
+        GSRUKF.predict!(pred; x̂1, S_δx1, x̂0, S_δx0, S_w, f!)
+
+        #we know this linear transformation must yield the following
+        P_δx1 = S_δx1 * S_δx1'
+        @test x̂1 ≈ 2x̂0 .+ 1
+        @test P_δx1 ≈ 4*P_δx0 .+ P_w
+
+        # check for allocations
+        @test (@ballocated GSRUKF.predict!( $pred;
+            x̂1=$x̂1, S_δx1=$S_δx1, x̂0=$x̂0,
+            S_δx0=$S_δx0, S_w=$S_w, f! =$f!)) == 0
+
+        # @btime GSRUKF.predict!( $pred;
+        #     x̄1=$x̄1, S_δx1=$S_δx1, x̄0=$x̄0,
+        #     S_δx0=$S_δx0, S_wp0=$S_wp0, f! =$f!)
+    end
+
+    @testset verbose = true "Updater" begin
+
+        N_x = N_δx = 3
+        N_y = 2
+        N_w = 2
+
+        updater = GSRUKF.Updater(; N_x, N_y, N_w)
+
+        function h!(y, x, w)
+            y[1] = x[1] + w[1]
+            y[2] = x[2] + w[2]
+        end
+
+        function g_y_minus!(δy, y1, y0)
+            δy .= y1 .- y0
+        end
+
+        x̂m = ones(N_x)
+        S_δxm = 2.0 * LowerTriangular(Matrix(I, N_δx, N_δx))
+        S_w = LowerTriangular(diagm([1, 2]))
+
+        x̂p = copy(x̂m)
+        S_δxp = copy(S_δxm)
+
+        σ_thr = 3
+
+        #test measurement rejection
+        ỹ = [10.0, 2.0]
+        @test !GSRUKF.update!(updater; x̂p, S_δxp, x̂m, S_δxm, S_w, ỹ, h!, σ_thr)
+        @test any(updater.δη .> 3)
+
+        #test measurement acceptance
+        ỹ = @SVector[1.1, 1.1]
+        @test GSRUKF.update!(updater; x̂p, S_δxp, x̂m, S_δxm, S_w, ỹ, h!, σ_thr)
+
+        P_δxm = S_δxm * S_δxm
+        P_δxp = S_δxp * S_δxp'
+
+        #for the states included in the measurement σ must decrease, for the other
+        #one σ must remain unchanged
+        @test P_δxp[1,1] < P_δxm[1,1]
+        @test P_δxp[2,2] < P_δxm[2,2]
+        @test P_δxp[3,3] ≈ P_δxm[3,3]
+
+        #measurement noise is smaller for the first state than for the second,
+        #so its σ must decrease more and its measurement residual must be
+        #smaller
+        ŷp = zeros(N_y)
+        h!(ŷp, x̂p, zeros(N_x))
+        δỹp = ỹ - ŷp #measurement residual
+        @test P_δxp[1,1] < P_δxp[2,2]
+        @test abs(δỹp[1]) < abs(δỹp[2])
+
+        @test (@ballocated !GSRUKF.update!($updater; x̂p=$x̂p, S_δxp=$S_δxp, x̂m=$x̂m,
+            S_δxm=$S_δxm, S_w=$S_w, ỹ=$ỹ, h! = $h!, σ_thr=$σ_thr)) == 0
+
+        @btime GSRUKF.update!($updater; x̂p=$x̂p, S_δxp=$S_δxp, x̂m=$x̂m,
+            S_δxm=$S_δxm, S_w=$S_w, ỹ=$ỹ, h! = $h!, σ_thr=$σ_thr)
+
+    end
 
 end #function
 
