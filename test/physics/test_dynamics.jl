@@ -59,11 +59,10 @@ function test_dynamics()
             f_step!(dyn, kin_data, rb_data)
             @test all(dyn.y.a_eOb_b .≈ [1, 2, 1 + gravity(kin_data)])
             @test all(dyn.y.a_iOb_b .≈ [1, 2, 1 + G_n(kin_data)[3]])
-            @test all(dyn.y.f_Ob_b .≈ [1, 2, 1])
 
             #now let Gb be located 1 meter ahead from Ob along the x axis
-            r_ObG_b = [1,0,0]
-            t_ObGb = FrameTransform(r = r_ObG_b) #Ob to Gb
+            r_ObGb_b = [1,0,0]
+            t_ObGb = FrameTransform(r = r_ObGb_b) #Ob to Gb
             mp_Ob = Dynamics.transform(t_ObGb, mp_Gb)
 
             #apply a 1N force along z_b
@@ -77,9 +76,11 @@ function test_dynamics()
             @test dyn.ẋ.ω_eb_b[2] .≈ 1
             @test dyn.ẋ.v_eOb_b[3] ≈ 2 + gravity(kin_data)
 
-            f_step!(dyn, kin_data, rb_data)
-            @test all(isapprox.(dyn.y.a_eOb_b, [0, 0, 2 + gravity(kin_data)], atol = 1e-10))
-            @test all(isapprox.(dyn.y.a_iOb_b, [0, 0, 2 + G_n(kin_data)[3]], atol = 1e-10))
+            r_ObGb_e = kin_data.q_eb'(r_ObGb_b)
+            r_eGb_e = Cartesian(kin_data.r_eOb_e + r_ObGb_e)
+
+            @test isapprox(dyn.y.a_eOb_b[3], 2 + gravity(r_eGb_e), atol = 1e-10)
+            @test isapprox(dyn.y.a_iOb_b[3], 2 + G_n(r_eGb_e)[3], atol = 1e-10)
             @test all(isapprox.(dyn.y.f_Gb_b, [0, 0, 1], atol = 1e-10))
 
         end

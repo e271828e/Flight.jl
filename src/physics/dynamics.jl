@@ -422,103 +422,6 @@ end
 
 end
 
-########################### Dynamic Equations ################################
-
-"""
-    inertia_wrench(mass::MassProperties, vel::VelData, hr_b::AbstractVector{<:Real})
-
-Compute the equivalent `Wrench` arising from inertia terms in the dynamic
-equations
-
-The resulting `Wrench` is defined on the vehicle's reference frame fb.
-
-# Arguments:
-- `mp_Ob::MassProperties`: Current aircraft mass properties in frame fb
-- `vel::VelData`: Velocity outputs
-- `hr_b::AbstractVector{<:Real}`: Additional angular momentum due to the
-  angular velocity of any rotating elements with respect to the vehicle,
-  projected on vehicle axes
-
-"""
-function inertia_wrench(mp_Ob::MassProperties, kin::KinData, hr_b::AbstractVector{<:Real})
-
-    @unpack ω_ie_b, ω_eb_b, ω_ib_b, v_eOb_b = kin
-
-    m = mp_Ob.m; J_Ob_b = mp_Ob.J_O; r_ObG_b = mp_Ob.r_OG
-
-    #angular momentum of the vehicle as a rigid body (excluding rotating
-    #components)
-    h_rbd_b = J_Ob_b * ω_ib_b
-
-    #total angular momentum
-    h_all_b = h_rbd_b + SVector{3,Float64}(hr_b)
-
-    #inertia terms (exact version... overkill, but very cheap anyway)
-    a_1_b = (ω_eb_b + 2 * ω_ie_b) × v_eOb_b
-    F_in_Ob_b = -m * (a_1_b + ω_ib_b × (ω_ib_b × r_ObG_b) + r_ObG_b × (ω_eb_b × ω_ie_b ))
-    M_in_Ob_b = - ( J_Ob_b * (ω_ie_b × ω_eb_b) + ω_ib_b × h_all_b + m * r_ObG_b × a_1_b)
-
-    return Wrench(F = F_in_Ob_b, M = M_in_Ob_b)
-
-end
-
-# function gravity_wrench_old(mp_Ob::MassProperties, kin::KinData)
-
-#     #gravity can be viewed as an entity acting on a local frame with its origin
-#     #at G and its axes aligned with the local tangent frame
-
-#     #strictly, the gravity vector should be evaluated at G, with its direction
-#     #given by the z-axis of LTF(G). however, since g(G) ≈ g(Ob) and LTF(G) ≈
-#     #LTF(Ob), we can instead evaluate g at Ob, assuming its direction given by
-#     #LTF(Ob), and then apply it at G.
-#     @unpack n_e, h_e, q_nb = kin
-
-#     Ob = Geographic(n_e, h_e)
-#     g_G_n = g_Ob_n = g_n(Ob)
-
-#     #the resultant consists of the gravity force acting on G along the local
-#     #vertical and a null torque
-#     F_G_n = mp_Ob.m * g_G_n
-#     M_G_n = zeros(SVector{3})
-#     wr_G_n = Wrench(F = F_G_n, M = M_G_n)
-
-#     #with the previous assumption, the transformation from body frame to local
-#     #gravity frame is given by the translation r_ObG_b and the (passive)
-#     #rotation from b to LTF(Ob) (instead of LTF(G)), which is given by q_lb'
-#     wr_c = wr_G_n
-#     r_ObG_b = mp_Ob.r_OG
-#     t_bc = FrameTransform(r = r_ObG_b, q = q_nb')
-#     return t_bc(wr_c) #wr_b
-
-# end
-
-function gravity_wrench(mp_Ob::MassProperties, kin::KinData)
-
-    @unpack m, r_OG = mp_Ob
-    @unpack r_eOb_e, q_eb = kin
-
-    #create an auxiliary frame c with origin Oc=G and axes parallel to the NED
-    #frame at G
-    r_ObOc_b = r_OG
-    r_ObOc_e = q_eb(r_ObOc_b)
-    r_eOc_e = r_eOb_e + r_ObOc_e
-    Oc = Geographic(Cartesian(r_eOc_e))
-    q_ec = ltf(Oc) #orientation of frame c is the local NED frame at G=Oc
-    q_bc = q_eb' ∘ q_ec
-    t_bc = FrameTransform(r = r_ObOc_b, q = q_bc)
-
-    g_Oc_c = g_n(Oc) #gravity vector at Oc in c=n axes
-
-    #the resultant on the vehicle at Oc consists of the gravity force acting on
-    #Oc=G along the local vertical (z_c), and a null torque
-    F_Oc_c = m * g_Oc_c
-    M_Oc_c = zeros(SVector{3})
-    wr_Oc_c = Wrench(F = F_Oc_c, M = M_Oc_c)
-
-    return t_bc(wr_Oc_c) #wr_Ob_b
-
-end
-
 
 ################################################################################
 ############################### Dynamics #######################################
@@ -542,12 +445,12 @@ struct RigidBodyDynamics <: SystemDefinition end
     a_eOb_n::SVector{3,Float64} = zeros(SVector{3}) #ECEF-relative acceleration of Ob, NED axes
     a_iOb_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-relative acceleration of Ob
     a_iG_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-relative acceleration of G
-    f_Ob_b::SVector{3,Float64} = zeros(SVector{3}) #specific force at Ob
     f_Gb_b::SVector{3,Float64} = zeros(SVector{3}) #specific force at G
 end
 
 Systems.X(::RigidBodyDynamics) = zero(Kinematics.XVelTemplate)
 Systems.Y(::RigidBodyDynamics) = RigidBodyDynamicsY()
+
 
 function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, rb_data::RigidBodyData)
 
@@ -555,57 +458,98 @@ function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, rb_da
     @unpack mp_Ob, wr_ext_Ob, hr_b = rb_data
     @unpack ẋ = sys
 
-    m = mp_Ob.m; J_Ob_b = mp_Ob.J_O; r_ObG_b = mp_Ob.r_OG
+    m = mp_Ob.m; J_Ob_b = mp_Ob.J_O; r_ObGb_b = mp_Ob.r_OG
 
-    r_ObG_b_sk = Attitude.v2skew(r_ObG_b)
+    ######################## Gravity Wrench ####################################
+
+    #compute geographic position of Gb
+    r_ObGb_e = q_eb(r_ObGb_b)
+    r_eGb_e = r_eOb_e + r_ObGb_e
+    Gb = Cartesian(r_eGb_e)
+
+    #create an auxiliary frame c with axes parallel to the local NED frame at
+    #Gb to compute gravity vector at Gb
+    q_ec = ltf(Gb)
+    q_bc = q_eb' ∘ q_ec
+    g_Gb_c = SVector{3,Float64}(0, 0, gravity(Gb))
+    g_Gb_b = q_bc(g_Gb_c)
+
+    #the resultant from gravity on the vehicle at its center of gravity Gb
+    #consists of gravity force, plus a null torque
+    F_Gb_b = m * g_Gb_b
+    M_Gb_b = zeros(SVector{3})
+    wr_g_Gb = Wrench(F = F_Gb_b, M = M_Gb_b)
+
+    #define pure translation from Ob to Gb
+    t_ObGb = FrameTransform(r = r_ObGb_b) #Gb to Ob
+
+    #translate gravity wrench to Ob
+    wr_g_Ob = t_ObGb(wr_g_Gb)
+
+    ########################## Inertia Wrench ##################################
+
+    #angular momentum of the vehicle as a rigid body (excluding rotating
+    #components)
+    h_rbd_b = J_Ob_b * ω_ib_b
+
+    #total angular momentum
+    h_all_b = h_rbd_b + SVector{3,Float64}(hr_b)
+
+    #inertia terms (exact version... maybe overkill, but very cheap)
+    a_1_b = (ω_eb_b + 2 * ω_ie_b) × v_eOb_b
+    F_in_Ob_b = -m * (a_1_b + ω_ib_b × (ω_ib_b × r_ObGb_b) + r_ObGb_b × (ω_eb_b × ω_ie_b ))
+    M_in_Ob_b = - ( J_Ob_b * (ω_ie_b × ω_eb_b) + ω_ib_b × h_all_b + m * r_ObGb_b × a_1_b)
+
+    wr_in_Ob = Wrench(F = F_in_Ob_b, M = M_in_Ob_b)
+
+    ########################### Dynamic Equations ##############################
+
+    r_ObGb_b_sk = Attitude.v2skew(r_ObGb_b)
     A11 = J_Ob_b
-    A12 = m * r_ObG_b_sk
-    A21 = -m * r_ObG_b_sk
+    A12 = m * r_ObGb_b_sk
+    A21 = -m * r_ObGb_b_sk
     A22 = m * SMatrix{3,3,Float64}(I)
 
-    A = vcat(hcat(A11, A12), hcat(A21, A22))
+    A = vcat(hcat(A11, A12), hcat(A21, A22)) #mass matrix
 
-    wr_g_Ob = gravity_wrench(mp_Ob, kin_data)
-    wr_in_Ob = inertia_wrench(mp_Ob, kin_data, hr_b)
     wr_net_Ob = wr_ext_Ob + wr_g_Ob + wr_in_Ob
-    b = SVector{6}(vcat(wr_net_Ob.M, wr_net_Ob.F))
+    b = SVector{6}(vcat(wr_net_Ob.M, wr_net_Ob.F)) #forcing vector
 
     ẋ .= A\b
 
-    Ob = Geographic(n_e, h_e)
-    r_eOb_b = q_eb'(r_eOb_e)
-    v̇_eOb_b = SVector{3}(ẋ.v_eOb_b)
+    ########################## Additional Outputs ##############################
 
     #angular accelerations
     α_eb_b = SVector{3}(ẋ.ω_eb_b) #α_eb_b == ω_eb_b_dot
     α_ib_b = α_eb_b - ω_eb_b × ω_ie_b
 
-    #linear accelerations and specific force
+    #linear accelerations at Ob
+    v̇_eOb_b = SVector{3}(ẋ.v_eOb_b)
+    r_eOb_b = q_eb'(r_eOb_e)
     a_eOb_b = v̇_eOb_b + ω_eb_b × v_eOb_b
     a_eOb_n = q_nb(a_eOb_b)
     a_iOb_b = v̇_eOb_b + (ω_eb_b + 2ω_ie_b) × v_eOb_b + ω_ie_b × (ω_ie_b × r_eOb_b)
-    g_Ob_b = q_nb'(g_n(Ob))
-    G_Ob_b = g_Ob_b + ω_ie_b × (ω_ie_b × r_eOb_b)
-    f_Ob_b = a_iOb_b - G_Ob_b
 
-    #define an auxiliary frame with origin at G and axes parallel to frame b
-    r_ObG_b = mp_Ob.r_OG
-    t_GbOb = FrameTransform(r = -r_ObG_b) #Gb to Ob
+    #define pure translation from Gb to Ob
+    t_GbOb = FrameTransform(r = -r_ObGb_b) #Gb to Ob
 
-    #translate mass properties and net wrench to G
+    #translate mass properties and net wrench to Gb
     mp_Gb = t_GbOb(mp_Ob)
     wr_net_Gb = t_GbOb(wr_net_Ob)
 
-    #compute linear acceleration and specific force at G
-    a_iG_b = a_iOb_b + ω_ib_b × (ω_ib_b × r_ObG_b) + α_ib_b × r_ObG_b
-    f_Gb_b = a_iG_b - G_Ob_b #G ≈ Ob
+    #gravitation at Gb, body axes
+    r_eGb_b = q_eb'(r_eGb_e)
+    G_Gb_b = g_Gb_b + ω_ie_b × (ω_ie_b × r_eGb_b)
+
+    #linear acceleration and specific force at Gb
+    a_iG_b = a_iOb_b + ω_ib_b × (ω_ib_b × r_ObGb_b) + α_ib_b × r_ObGb_b
+    f_Gb_b = a_iG_b - G_Gb_b
 
     sys.y = RigidBodyDynamicsY(; mp_Ob, mp_Gb, wr_g_Ob, wr_in_Ob, wr_ext_Ob,
         wr_net_Ob, wr_net_Gb, hr_b, α_eb_b, α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n,
-        a_iOb_b, a_iG_b, f_Ob_b, f_Gb_b)
+        a_iOb_b, a_iG_b, f_Gb_b)
 
 end
-
 
 ################################# Dynamics #####################################
 
@@ -692,15 +636,6 @@ function Plotting.make_plots(ts::TimeSeries{<:RigidBodyDynamicsY}; kwargs...)
         ts_split = :h, link = :none,
         kwargs...)
 
-    pd[:f_Ob_b] = plot(TimeSeries(ts._t, ts.f_Ob_b._data / g₀);
-        plot_title = "Specific Force (Ob) [Vehicle Axes]",
-        ylabel = hcat(
-            L"$f_{Ob}^{x_b} \ (g)$",
-            L"$f_{Ob}^{y_b} \ (g)$",
-            L"$f_{Ob}^{z_b} \ (g)$"),
-        ts_split = :h, link = :none,
-        kwargs...)
-
     pd[:f_Gb_b] = plot(TimeSeries(ts._t, ts.f_Gb_b._data / g₀);
         plot_title = "Specific Force (Center of Mass) [Vehicle Axes]",
         ylabel = hcat(
@@ -720,7 +655,7 @@ end
 function GUI.draw(sys::System{RigidBodyDynamics}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Rigid Body")
 
-    @unpack mp_Ob, mp_Gb, wr_net_Ob, wr_net_Gb, hr_b, α_eb_b, a_eOb_b, f_Ob_b, f_Gb_b = sys.y
+    @unpack mp_Ob, mp_Gb, wr_net_Ob, wr_net_Gb, hr_b, α_eb_b, a_eOb_b, f_Gb_b = sys.y
 
     CImGui.Begin(label, p_open)
 
