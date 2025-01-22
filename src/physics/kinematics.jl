@@ -64,8 +64,6 @@ Systems.U(::AbstractKinematicDescriptor) = zero(XVelTemplate)
     r_eOb_e::SVector{3,Float64} = zeros(SVector{3})
     ω_lb_b::SVector{3,Float64} = zeros(SVector{3})
     ω_eb_b::SVector{3,Float64} = zeros(SVector{3})
-    ω_ie_b::SVector{3,Float64} = zeros(SVector{3})
-    ω_ib_b::SVector{3,Float64} = zeros(SVector{3})
     v_eOb_b::SVector{3,Float64} = zeros(SVector{3})
     v_eOb_n::SVector{3,Float64} = zeros(SVector{3})
     v_gnd::Float64 = 0.0 #ground speed
@@ -92,10 +90,6 @@ function KinData(ic::KinInit)
     ω_el_b = q_nb'(ω_el_n)
     ω_eb_b = ω_el_b + ω_lb_b
 
-    ω_ie_e = SVector(0., 0., ω_ie)
-    ω_ie_b = q_eb'(ω_ie_e)
-    ω_ib_b = ω_ie_b + ω_eb_b
-
     v_eOb_b = q_nb'(v_eOb_n)
 
     v_gnd = norm(v_eOb_n)
@@ -103,8 +97,7 @@ function KinData(ic::KinInit)
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
     KinData(;   e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b,
-                v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd)
+                ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
 
@@ -245,10 +238,6 @@ function Systems.f_ode!(sys::System{LTF})
     ω_el_b = q_lb'(ω_el_l)
     ω_lb_b = ω_eb_b - ω_el_b
 
-    ω_ie_e = SVector(0., 0., ω_ie)
-    ω_ie_b = q_eb'(ω_ie_e)
-    ω_ib_b = ω_ie_b + ω_eb_b
-
     v_gnd = norm(v_eOb_n)
     χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
@@ -262,8 +251,7 @@ function Systems.f_ode!(sys::System{LTF})
 
     sys.y = KinematicsY(
         KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b,
-                 v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+                 ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
         LTFData(; q_lb, q_el, ω_el_l)
     )
 
@@ -359,10 +347,6 @@ function Systems.f_ode!(sys::System{ECEF})
     ω_el_b = q_nb'(ω_el_n)
     ω_lb_b = ω_eb_b - ω_el_b
 
-    ω_ie_e = SVector(0., 0., ω_ie)
-    ω_ie_b = q_eb'(ω_ie_e)
-    ω_ib_b = ω_ie_b + ω_eb_b
-
     v_gnd = norm(v_eOb_n)
     χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
@@ -375,8 +359,7 @@ function Systems.f_ode!(sys::System{ECEF})
 
     sys.y = KinematicsY(
         KinData(e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b,
-                v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+                ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
         ECEFData(; q_en, ω_el_n)
     )
 
@@ -468,10 +451,6 @@ function Systems.f_ode!(sys::System{NED})
     ω_el_b = q_nb'(ω_el_n)
     ω_lb_b = ω_eb_b - ω_el_b
 
-    ω_ie_e = SVector{3}(0, 0, ω_ie)
-    ω_ie_b = q_eb'(ω_ie_e)
-    ω_ib_b = ω_ie_b + ω_eb_b
-
     v_gnd = norm(v_eOb_n)
     χ_gnd = azimuth(v_eOb_n)
     γ_gnd = inclination(v_eOb_n)
@@ -490,8 +469,7 @@ function Systems.f_ode!(sys::System{NED})
 
     sys.y = KinematicsY(
         KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                 ω_lb_b, ω_eb_b, ω_ie_b, ω_ib_b,
-                 v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+                 ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
         NEDData(; ω_nb_b, ω_en_n)
     )
 
@@ -722,7 +700,7 @@ end
 function GUI.draw(sys::KinSystem, p_open::Ref{Bool} = Ref(true),
                     label::String = "Kinematics")
 
-    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, ω_ib_b, v_eOb_b, v_eOb_n  = sys.y.data
+    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n  = sys.y.data
 
     CImGui.Begin(label, p_open)
 
@@ -736,7 +714,6 @@ function GUI.draw(sys::KinSystem, p_open::Ref{Bool} = Ref(true),
     end
 
     GUI.draw(rad2deg.(ω_eb_b - ω_lb_b), "Transport Rate (LTF / ECEF) [Body]", "deg/s")
-    GUI.draw(rad2deg.(ω_ib_b),"Angular Velocity (Body / ECI) [Body]", "deg/s")
     GUI.draw(v_eOb_n, "Velocity (O / ECEF) [NED]", "m/s")
     GUI.draw(v_eOb_b, "Velocity (O / ECEF) [Body]", "m/s")
 

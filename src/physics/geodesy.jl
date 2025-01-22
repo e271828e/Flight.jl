@@ -469,7 +469,7 @@ Compute gravitational attraction resolved in the NED frame.
 function G_n(pos::Abstract3DLocation)
 
     q_en = ltf(pos)
-    ω_ie_e = SVector{3, Float64}(0,0,ω_ie)
+    ω_ie_e = SVector{3, Float64}(0,0,ω_ie) #use WGS84 constant
     r_eP_e = Cartesian(pos)[:]
     G_n = g_n(pos) + q_en'(ω_ie_e × (ω_ie_e × r_eP_e))
     return G_n

@@ -454,7 +454,7 @@ Systems.Y(::RigidBodyDynamics) = RigidBodyDynamicsY()
 
 function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, rb_data::RigidBodyData)
 
-    @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, ω_ie_b, ω_ib_b, v_eOb_b = kin_data
+    @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, v_eOb_b = kin_data
     @unpack mp_Ob, wr_ext_Ob, hr_b = rb_data
     @unpack ẋ = sys
 
@@ -487,6 +487,10 @@ function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, rb_da
     wr_g_Ob = t_ObGb(wr_g_Gb)
 
     ########################## Inertia Wrench ##################################
+
+    ω_ie_e = SVector{3, Float64}(0, 0, ω_ie) #use WGS84 constant
+    ω_ie_b = q_eb'(ω_ie_e)
+    ω_ib_b = ω_ie_b + ω_eb_b
 
     #angular momentum of the vehicle as a rigid body (excluding rotating
     #components)
