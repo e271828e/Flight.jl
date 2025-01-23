@@ -67,14 +67,14 @@ end
 struct VehicleY{F, K}
     components::F
     kinematics::K
-    dynamics::RigidBodyDynamicsY
+    dynamics::DynData
     air::AirData
 end
 
 Systems.Y(ac::Vehicle) = VehicleY(
     Systems.Y(ac.components),
     Systems.Y(ac.kinematics),
-    RigidBodyDynamicsY(),
+    DynData(),
     AirData())
 
 function Systems.init!(sys::System{<:Vehicle}, ic::KinInit)

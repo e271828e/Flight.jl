@@ -72,7 +72,7 @@ end
 function RQuat(v::AbstractVector{<:Real}; normalization::Bool = true)
     RQuat(UnitQuat(SVector{4,Float64}(v); normalization))
 end
-RQuat() = RQuat(UnitQuat(1.0))
+RQuat() = RQuat(UnitQuat(1.0), normalization = false)
 RQuat(r::Abstract3DRotation) = convert(RQuat, r)
 
 Base.getindex(r::RQuat, i) = getindex(r._u, i)

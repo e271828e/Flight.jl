@@ -11,7 +11,7 @@ using ..Kinematics
 export FrameTransform, transform
 export Wrench
 export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
-export RigidBodyData, RigidBodyDynamics, RigidBodyDynamicsY
+export RigidBodyData, RigidBodyDynamics, DynData
 export get_mp_b, get_wr_b, get_hr_b
 
 #standard gravity for specific force normalization
@@ -429,7 +429,7 @@ end
 struct RigidBodyDynamics <: SystemDefinition end
 
 #all magnitudes resolved in body axes unless otherwise noted
-@kwdef struct RigidBodyDynamicsY
+@kwdef struct DynData
     mp_Ob::MassProperties = MassProperties() #aircraft mass properties at Ob
     mp_Gb::MassProperties = MassProperties() #aircraft mass properties at G
     wr_g_Ob::Wrench = Wrench() #gravity wrench at Ob
@@ -444,13 +444,14 @@ struct RigidBodyDynamics <: SystemDefinition end
     a_eOb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-relative acceleration of Ob
     a_eOb_n::SVector{3,Float64} = zeros(SVector{3}) #ECEF-relative acceleration of Ob, NED axes
     a_iOb_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-relative acceleration of Ob
-    a_iG_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-relative acceleration of G
+    a_iGb_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-relative acceleration of G
     f_Gb_b::SVector{3,Float64} = zeros(SVector{3}) #specific force at G
 end
 
-Systems.X(::RigidBodyDynamics) = zero(Kinematics.XVelTemplate)
-Systems.Y(::RigidBodyDynamics) = RigidBodyDynamicsY()
+DynData(sys::System{<:RigidBodyDynamics}) = sys.y
 
+Systems.X(::RigidBodyDynamics) = zero(Kinematics.XVelTemplate)
+Systems.Y(::RigidBodyDynamics) = DynData()
 
 function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, rb_data::RigidBodyData)
 
@@ -546,12 +547,12 @@ function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, rb_da
     G_Gb_b = g_Gb_b + ω_ie_b × (ω_ie_b × r_eGb_b)
 
     #linear acceleration and specific force at Gb
-    a_iG_b = a_iOb_b + ω_ib_b × (ω_ib_b × r_ObGb_b) + α_ib_b × r_ObGb_b
-    f_Gb_b = a_iG_b - G_Gb_b
+    a_iGb_b = a_iOb_b + ω_ib_b × (ω_ib_b × r_ObGb_b) + α_ib_b × r_ObGb_b
+    f_Gb_b = a_iGb_b - G_Gb_b
 
-    sys.y = RigidBodyDynamicsY(; mp_Ob, mp_Gb, wr_g_Ob, wr_in_Ob, wr_ext_Ob,
+    sys.y = DynData(; mp_Ob, mp_Gb, wr_g_Ob, wr_in_Ob, wr_ext_Ob,
         wr_net_Ob, wr_net_Gb, hr_b, α_eb_b, α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n,
-        a_iOb_b, a_iG_b, f_Gb_b)
+        a_iOb_b, a_iGb_b, f_Gb_b)
 
 end
 
@@ -580,7 +581,7 @@ end
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:RigidBodyDynamicsY}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:DynData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 

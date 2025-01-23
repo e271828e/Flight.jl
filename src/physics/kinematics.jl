@@ -51,27 +51,27 @@ Systems.U(::AbstractKinematicDescriptor) = zero(XVelTemplate)
 ################################### KinData ####################################
 ################################################################################
 
-@kwdef struct KinData
-    e_nb::REuler = REuler()
-    q_nb::RQuat = RQuat()
-    q_eb::RQuat = RQuat()
-    q_en::RQuat = RQuat()
-    ϕ_λ::LatLon = LatLon()
-    n_e::NVector = NVector()
-    h_e::Altitude{Ellipsoidal} = HEllip(0.0)
-    h_o::Altitude{Orthometric} = HOrth(0.0)
-    Δxy::SVector{2,Float64} = zeros(SVector{2})
-    r_eOb_e::SVector{3,Float64} = zeros(SVector{3})
-    ω_lb_b::SVector{3,Float64} = zeros(SVector{3})
-    ω_eb_b::SVector{3,Float64} = zeros(SVector{3})
-    v_eOb_b::SVector{3,Float64} = zeros(SVector{3})
-    v_eOb_n::SVector{3,Float64} = zeros(SVector{3})
-    v_gnd::Float64 = 0.0 #ground speed
-    χ_gnd::Float64 = 0.0 #course angle
-    γ_gnd::Float64 = 0.0 #flight path angle
+struct KinData
+    e_nb::REuler
+    q_nb::RQuat
+    q_eb::RQuat
+    q_en::RQuat
+    ϕ_λ::LatLon
+    n_e::NVector
+    h_e::Altitude{Ellipsoidal}
+    h_o::Altitude{Orthometric}
+    Δxy::SVector{2,Float64}
+    r_eOb_e::SVector{3,Float64}
+    ω_lb_b::SVector{3,Float64}
+    ω_eb_b::SVector{3,Float64}
+    v_eOb_b::SVector{3,Float64}
+    v_eOb_n::SVector{3,Float64}
+    v_gnd::Float64
+    χ_gnd::Float64
+    γ_gnd::Float64
 end
 
-function KinData(ic::KinInit)
+function KinData(ic::KinInit = KinInit())
 
     @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
 
@@ -96,7 +96,7 @@ function KinData(ic::KinInit)
     χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
-    KinData(;   e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
+    KinData(   e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
                 ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
