@@ -697,10 +697,10 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(sys::KinSystem, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
                     label::String = "Kinematics")
 
-    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n  = sys.y.data
+    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n  = data
 
     CImGui.Begin(label, p_open)
 

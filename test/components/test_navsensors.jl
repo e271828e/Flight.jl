@@ -24,7 +24,7 @@ struct IMUErrorsY end
     α_ib_b::SVector{3, Float64} = zeros(SVector{3}) #ECEF to vehicle frame angular acceleration, vehicle frame
 end
 
-function IMUInputs(kin::KinData, dyn::DynDataOut)
+function IMUInputs(kin::KinData, dyn::Accelerations)
     @unpack q_eb, q_nb, r_eOb_e, ω_eb_b = kin
     @unpack a_iOb_b, α_ib_b = dyn
     IMUInputs(; q_eb, q_nb, r_eOb_e, ω_eb_b, a_iOb_b, α_ib_b)
@@ -146,7 +146,7 @@ end
 
 # struct IMUTestHarnessY{K}
 #     imu::IMUOutputs
-#     dyn_data_out::DynDataOut
+#     accelerations::Accelerations
 #     kinematics::K
 # end
 
@@ -169,7 +169,7 @@ function Systems.f_ode!(sys::System{<:IMUTestHarness})
     rb_data = RigidBodyData(mp_Ob, wr_ext_Ob, zeros(SVector{3}))
     f_ode!(dyn, kin_data, rb_data)
 
-    dyn_data = DynDataOut(dyn)
+    dyn_data = Accelerations(dyn)
 
     imu.u[] = IMUInputs(kin_data, dyn_data)
     f_ode!(imu)

@@ -67,14 +67,16 @@ end
 struct VehicleY{F, K}
     components::F
     kinematics::K
-    dyn_data_out::DynDataOut
+    actions::Actions
+    accelerations::Accelerations
     air::AirData
 end
 
 Systems.Y(ac::Vehicle) = VehicleY(
     Systems.Y(ac.components),
     Systems.Y(ac.kinematics),
-    DynDataOut(),
+    Actions(),
+    Accelerations(),
     AirData())
 
 function Systems.init!(sys::System{<:Vehicle}, ic::KinInit)
@@ -137,11 +139,11 @@ function Systems.f_ode!(vehicle::System{<:Vehicle})
     f_ode!(components, kin_data, air_data, terrain)
 
     #update velocity derivatives and rigid body data
-    dyn_data_in = DynDataIn(components, kin_data)
-    f_ode!(dynamics, kin_data, dyn_data_in)
-    dyn_data_out = dynamics.y
+    actions = Actions(components, kin_data)
+    f_ode!(dynamics, kin_data, actions)
+    accelerations = dynamics.y
 
-    vehicle.y = VehicleY(components.y, kinematics.y, dyn_data_out, air_data)
+    vehicle.y = VehicleY(components.y, kinematics.y, actions, accelerations, air_data)
 
     return nothing
 
@@ -152,13 +154,13 @@ end
 #within Vehicle, only the components may be modified by f_disc!
 function Systems.f_disc!(::NoScheduling, vehicle::System{<:Vehicle})
 
-    @unpack kinematics, dynamics, components = vehicle
-    @unpack air = vehicle.y
+    @unpack components = vehicle.subsystems
+    @unpack kinematics, actions, accelerations, air = vehicle.y
 
     f_disc!(components)
 
-    # components might have modified its outputs, so we need to reassemble our y
-    vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, air)
+    # components might have modified its outputs, so we need to reassemble y
+    vehicle.y = VehicleY(components.y, kinematics, actions, accelerations, air)
 
 end
 
@@ -380,7 +382,7 @@ function Plotting.make_plots(ts::TimeSeries{<:VehicleY}; kwargs...)
     return OrderedDict(
         :components => make_plots(ts.components; kwargs...),
         :kinematics => make_plots(ts.kinematics; kwargs...),
-        :dyn_data_out => make_plots(ts.dyn_data_out; kwargs...),
+        :accelerations => make_plots(ts.accelerations; kwargs...),
         :air => make_plots(ts.air; kwargs...),
     )
 
@@ -421,26 +423,28 @@ function GUI.draw!(vehicle::System{<:Vehicle},
                    p_open::Ref{Bool} = Ref(true),
                    label::String = "Vehicle")
 
-    @unpack components, kinematics, dynamics, atmosphere = vehicle.subsystems
+    @unpack components, atmosphere = vehicle.subsystems
     @unpack terrain = vehicle.constants
-    @unpack air = vehicle.y
+    @unpack air, actions, accelerations, kinematics = vehicle.y
 
     CImGui.Begin(label, p_open)
 
-    @cstatic(c_afm=false, c_atm=false, c_trn=false, c_dyn =false, c_kin=false, c_air=false,
+    @cstatic(c_afm=false, c_atm=false, c_trn=false, c_act = false, c_acc =false, c_kin=false, c_air=false,
     begin
             @c CImGui.Checkbox("Components", &c_afm)
             @c CImGui.Checkbox("Atmosphere", &c_atm)
             @c CImGui.Checkbox("Terrain", &c_trn)
             @c CImGui.Checkbox("Air", &c_air)
-            @c CImGui.Checkbox("Dynamics Out", &c_dyn)
+            @c CImGui.Checkbox("Actions", &c_act)
+            @c CImGui.Checkbox("Accelerations", &c_acc)
             @c CImGui.Checkbox("Kinematics", &c_kin)
             c_afm && @c GUI.draw!(components, avionics, &c_afm)
             c_atm && @c GUI.draw!(atmosphere, &c_atm)
             c_trn && @c GUI.draw(terrain, &c_trn)
             c_air && @c GUI.draw(air, &c_air)
-            c_dyn && @c GUI.draw(dyn_data_out, &c_dyn)
-            c_kin && @c GUI.draw(kinematics, &c_kin)
+            c_act && @c GUI.draw(actions, &c_act)
+            c_acc && @c GUI.draw(accelerations, &c_acc)
+            c_kin && @c GUI.draw(kinematics.data, &c_kin)
     end)
 
     CImGui.End()

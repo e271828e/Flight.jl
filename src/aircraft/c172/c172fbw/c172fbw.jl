@@ -451,7 +451,7 @@ end
 
 function YLinear(vehicle::System{<:C172FBW.Vehicle{NED}})
 
-    @unpack components, air, dyn_data_out, kinematics = vehicle.y
+    @unpack components, air, accelerations, kinematics = vehicle.y
     @unpack pwp, fuel, aero,act = components
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_b, v_eOb_n, χ_gnd, γ_gnd = kinematics
@@ -476,7 +476,7 @@ function YLinear(vehicle::System{<:C172FBW.Vehicle{NED}})
     rud_v = act.rudder.vel
     rud_p = act.rudder.pos
 
-    f_x, f_y, f_z = dyn_data_out.f_Gb_b
+    f_x, f_y, f_z = accelerations.f_Gb_b
     EAS = air.EAS
     TAS = air.TAS
     α = air.α_b

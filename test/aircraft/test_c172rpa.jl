@@ -138,10 +138,10 @@ function test_sim(; save::Bool = true)
         # plots = make_plots(sim; Plotting.defaults...)
         kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
         air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-        rb_plots = make_plots(TimeSeries(sim).vehicle.dyn_data_out; Plotting.defaults...)
+        rb_plots = make_plots(TimeSeries(sim).vehicle.accelerations; Plotting.defaults...)
         save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa", "sim", "kin"))
         save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa", "sim", "air"))
-        save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172rpa", "sim", "dyn_data_out"))
+        save && save_plots(rb_plots, save_folder = joinpath("tmp", "test_c172rpa", "sim", "accelerations"))
 
     end
 

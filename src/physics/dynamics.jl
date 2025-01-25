@@ -11,7 +11,7 @@ using ..Kinematics
 export FrameTransform, transform
 export Wrench
 export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
-export RigidBodyDynamics, DynDataOut, DynDataIn
+export RigidBodyDynamics, Accelerations, Actions
 export get_mp_b, get_wr_b, get_hr_b
 
 #standard gravity for specific force normalization
@@ -410,10 +410,11 @@ end
 
 
 ################################################################################
-################################## DynDataIn ###################################
+################################## Actions ###################################
 
 #all magnitudes resolved in body axes unless otherwise noted
-@kwdef struct DynDataIn
+#of these, only mp_Ob and wr_ext_Ob are required by dynamics equations
+@kwdef struct Actions
     mp_Ob::MassProperties = MassProperties() #aircraft mass properties at Ob
     mp_Gb::MassProperties = MassProperties() #aircraft mass properties at Gb
     g_Gb_b::SVector{3,Float64} = zeros(SVector{3}) #gravity at Gb
@@ -426,7 +427,7 @@ end
     wr_net_Gb::Wrench = Wrench() #net wrench at Gb
 end
 
-function DynDataIn(sys::System, kin_data::KinData = KinData())
+function Actions(sys::System, kin_data::KinData = KinData())
 
     @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, v_eOb_b = kin_data
 
@@ -496,7 +497,7 @@ function DynDataIn(sys::System, kin_data::KinData = KinData())
     mp_Gb = t_GbOb(mp_Ob)
     wr_net_Gb = t_GbOb(wr_net_Ob)
 
-    DynDataIn(; mp_Ob, mp_Gb, g_Gb_b, G_Gb_b, hr_b,
+    Actions(; mp_Ob, mp_Gb, g_Gb_b, G_Gb_b, hr_b,
         wr_g_Ob, wr_in_Ob, wr_ext_Ob, wr_net_Ob, wr_net_Gb)
 
 end
@@ -506,7 +507,7 @@ end
 ############################### Dynamics #######################################
 
 #all magnitudes resolved in body axes unless otherwise noted
-@kwdef struct DynDataOut
+@kwdef struct Accelerations
     α_eb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-body angular acceleration
     α_ib_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-to-body angular acceleration
     v̇_eOb_b::SVector{3,Float64} = zeros(SVector{3}) #time derivative of ECEF-relative velocity
@@ -520,11 +521,11 @@ end
 struct RigidBodyDynamics <: SystemDefinition end
 
 Systems.X(::RigidBodyDynamics) = zero(Kinematics.XVelTemplate)
-Systems.Y(::RigidBodyDynamics) = DynDataOut()
+Systems.Y(::RigidBodyDynamics) = Accelerations()
 
-DynDataOut(sys::System{<:RigidBodyDynamics}) = sys.y
+Accelerations(sys::System{<:RigidBodyDynamics}) = sys.y
 
-function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, dyn_data::DynDataIn)
+function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, dyn_data::Actions)
 
     @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, v_eOb_b = kin_data
     @unpack mp_Ob, wr_net_Ob, G_Gb_b = dyn_data
@@ -566,7 +567,7 @@ function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, dyn_d
     a_iGb_b = a_iOb_b + ω_ib_b × (ω_ib_b × r_ObGb_b) + α_ib_b × r_ObGb_b
     f_Gb_b = a_iGb_b - G_Gb_b
 
-    sys.y = DynDataOut(; α_eb_b, α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n,
+    sys.y = Accelerations(; α_eb_b, α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n,
         a_iOb_b, a_iGb_b, f_Gb_b)
 
 end
@@ -596,7 +597,7 @@ end
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:DynDataOut}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:Actions}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -628,6 +629,14 @@ function Plotting.make_plots(ts::TimeSeries{<:DynDataOut}; kwargs...)
             L"$h_{Ob \ (r)}^{z_b} \ (kg \ m^2 / s)$"),
         ts_split = :h, link = :none,
         kwargs...)
+
+    return pd
+
+end
+
+function Plotting.make_plots(ts::TimeSeries{<:Accelerations}; kwargs...)
+
+    pd = OrderedDict{Symbol, Plots.Plot}()
 
     pd[:α_eb_b] = plot(ts.α_eb_b;
         plot_title = "Angular Acceleration (Vehicle/ECEF) [Vehicle Axes]",
@@ -672,8 +681,8 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(dyn::DynDataIn, p_open::Ref{Bool} = Ref(true),
-                    label::String = "Dynamics Data In")
+function GUI.draw(dyn::Actions, p_open::Ref{Bool} = Ref(true),
+                    label::String = "Actions")
 
     @unpack mp_Ob, mp_Gb, wr_net_Ob, wr_net_Gb, hr_b = dyn
 
@@ -718,16 +727,21 @@ function GUI.draw(dyn::DynDataIn, p_open::Ref{Bool} = Ref(true),
 
 end
 
-function GUI.draw(dyn::DynDataOut, p_open::Ref{Bool} = Ref(true),
-                    label::String = "Dynamics Data Out")
+function GUI.draw(dyn::Accelerations, p_open::Ref{Bool} = Ref(true),
+                    label::String = "Accelerations")
 
 
-    @unpack α_eb_b, a_eOb_b, f_Gb_b = dyn
+    @unpack α_eb_b, α_ib_b, v̇_eOb_b, a_eOb_b, a_eOb_n, a_iOb_b, a_iGb_b, f_Gb_b = dyn
 
     CImGui.Begin(label, p_open)
 
     GUI.draw(α_eb_b, "Angular Acceleration (Body / ECEF) [Body]", "rad/(s^2)")
+    GUI.draw(α_ib_b, "Angular Acceleration (Body / ECI) [Body]", "rad/(s^2)")
+    GUI.draw(v̇_eOb_b, "Velocity Time-Derivative (Body / ECEF) [Body]", "rad/(s^2)")
     GUI.draw(a_eOb_b, "Linear Acceleration (Ob / ECEF) [Body]", "m/(s^2)")
+    GUI.draw(a_eOb_n, "Linear Acceleration (Ob / ECEF) [NED]", "m/(s^2)")
+    GUI.draw(a_iOb_b, "Linear Acceleration (Ob / ECI) [Body]", "m/(s^2)")
+    GUI.draw(a_iGb_b, "Linear Acceleration (Gb / ECI) [Body]", "m/(s^2)")
     GUI.draw(f_Gb_b/g₀, "Specific Force (G) [Body]", "g")
 
     CImGui.End()
