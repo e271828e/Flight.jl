@@ -67,7 +67,7 @@ end
 struct VehicleY{F, K}
     components::F
     kinematics::K
-    dynamics::DynDataOut
+    dyn_data_out::DynDataOut
     air::AirData
 end
 
@@ -139,8 +139,9 @@ function Systems.f_ode!(vehicle::System{<:Vehicle})
     #update velocity derivatives and rigid body data
     dyn_data_in = DynDataIn(components, kin_data)
     f_ode!(dynamics, kin_data, dyn_data_in)
+    dyn_data_out = dynamics.y
 
-    vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, air_data)
+    vehicle.y = VehicleY(components.y, kinematics.y, dyn_data_out, air_data)
 
     return nothing
 
@@ -379,7 +380,7 @@ function Plotting.make_plots(ts::TimeSeries{<:VehicleY}; kwargs...)
     return OrderedDict(
         :components => make_plots(ts.components; kwargs...),
         :kinematics => make_plots(ts.kinematics; kwargs...),
-        :dynamics => make_plots(ts.dynamics; kwargs...),
+        :dyn_data_out => make_plots(ts.dyn_data_out; kwargs...),
         :air => make_plots(ts.air; kwargs...),
     )
 
@@ -438,7 +439,7 @@ function GUI.draw!(vehicle::System{<:Vehicle},
             c_atm && @c GUI.draw!(atmosphere, &c_atm)
             c_trn && @c GUI.draw(terrain, &c_trn)
             c_air && @c GUI.draw(air, &c_air)
-            c_dyn && @c GUI.draw(dynamics, &c_dyn)
+            c_dyn && @c GUI.draw(dyn_data_out, &c_dyn)
             c_kin && @c GUI.draw(kinematics, &c_kin)
     end)
 

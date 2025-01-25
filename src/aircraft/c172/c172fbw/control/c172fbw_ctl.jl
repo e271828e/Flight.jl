@@ -979,7 +979,7 @@ function GUI.draw!(sys::System{<:Controller},
     u = sys.u
     y = sys.y
 
-    @unpack components, kinematics, dynamics, air = vehicle.y
+    @unpack components, kinematics, dyn_data_out, air = vehicle.y
     @unpack act, pwp, fuel, ldg = components
 
     @unpack e_nb, ω_lb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eOb_n = kinematics
@@ -1354,11 +1354,11 @@ function GUI.draw!(sys::System{<:Controller},
 
             CImGui.TableNextColumn();
                 Text("Specific Force (x)"); SameLine(240)
-                Text(@sprintf("%.3f g", dynamics.f_Gb_b[1]/Dynamics.g₀))
+                Text(@sprintf("%.3f g", dyn_data_out.f_Gb_b[1]/Dynamics.g₀))
                 Text("Specific Force (y)"); SameLine(240)
-                Text(@sprintf("%.3f g", dynamics.f_Gb_b[2]/Dynamics.g₀))
+                Text(@sprintf("%.3f g", dyn_data_out.f_Gb_b[2]/Dynamics.g₀))
                 Text("Specific Force (z)"); SameLine(240)
-                Text(@sprintf("%.3f g", dynamics.f_Gb_b[3]/Dynamics.g₀))
+                Text(@sprintf("%.3f g", dyn_data_out.f_Gb_b[3]/Dynamics.g₀))
 
             CImGui.EndTable()
         end

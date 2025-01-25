@@ -146,7 +146,7 @@ end
 
 # struct IMUTestHarnessY{K}
 #     imu::IMUOutputs
-#     dynamics::DynDataOut
+#     dyn_data_out::DynDataOut
 #     kinematics::K
 # end
 
