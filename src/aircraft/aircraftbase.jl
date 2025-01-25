@@ -67,6 +67,7 @@ end
 struct VehicleY{F, K}
     components::F
     kinematics::K
+    mass::MassProperties #complete vehicle body mass properties
     actions::Actions
     accelerations::Accelerations
     air::AirData
@@ -75,6 +76,7 @@ end
 Systems.Y(ac::Vehicle) = VehicleY(
     Systems.Y(ac.components),
     Systems.Y(ac.kinematics),
+    MassProperties(),
     Actions(),
     Accelerations(),
     AirData())
@@ -135,15 +137,18 @@ function Systems.f_ode!(vehicle::System{<:Vehicle})
     atm_data = AtmData(atmosphere)
     air_data = AirData(kin_data, atm_data)
 
-    #update components ẋ and y
+    #update components' ẋ and y
     f_ode!(components, kin_data, air_data, terrain)
 
+    #components is the only subsystem that has mass and can receive actions
+    mass = MassProperties(components) #mp_Ob
+    actions = Actions(components, mass, kin_data)
+
     #update velocity derivatives and rigid body data
-    actions = Actions(components, kin_data)
-    f_ode!(dynamics, kin_data, actions)
+    f_ode!(dynamics, mass, kin_data, actions)
     accelerations = dynamics.y
 
-    vehicle.y = VehicleY(components.y, kinematics.y, actions, accelerations, air_data)
+    vehicle.y = VehicleY(components.y, kinematics.y, mass, actions, accelerations, air_data)
 
     return nothing
 
@@ -155,12 +160,12 @@ end
 function Systems.f_disc!(::NoScheduling, vehicle::System{<:Vehicle})
 
     @unpack components = vehicle.subsystems
-    @unpack kinematics, actions, accelerations, air = vehicle.y
+    @unpack kinematics, mass, actions, accelerations, air = vehicle.y
 
     f_disc!(components)
 
     # components might have modified its outputs, so we need to reassemble y
-    vehicle.y = VehicleY(components.y, kinematics, actions, accelerations, air)
+    vehicle.y = VehicleY(components.y, kinematics, mass, actions, accelerations, air)
 
 end
 
@@ -425,16 +430,17 @@ function GUI.draw!(vehicle::System{<:Vehicle},
 
     @unpack components, atmosphere = vehicle.subsystems
     @unpack terrain = vehicle.constants
-    @unpack air, actions, accelerations, kinematics = vehicle.y
+    @unpack mass, air, actions, accelerations, kinematics = vehicle.y
 
     CImGui.Begin(label, p_open)
 
-    @cstatic(c_afm=false, c_atm=false, c_trn=false, c_act = false, c_acc =false, c_kin=false, c_air=false,
+    @cstatic(c_afm=false, c_atm=false, c_trn=false, c_mas = false, c_act = false, c_acc =false, c_kin=false, c_air=false,
     begin
             @c CImGui.Checkbox("Components", &c_afm)
             @c CImGui.Checkbox("Atmosphere", &c_atm)
             @c CImGui.Checkbox("Terrain", &c_trn)
             @c CImGui.Checkbox("Air", &c_air)
+            @c CImGui.Checkbox("Mass", &c_mas)
             @c CImGui.Checkbox("Actions", &c_act)
             @c CImGui.Checkbox("Accelerations", &c_acc)
             @c CImGui.Checkbox("Kinematics", &c_kin)
@@ -442,6 +448,7 @@ function GUI.draw!(vehicle::System{<:Vehicle},
             c_atm && @c GUI.draw!(atmosphere, &c_atm)
             c_trn && @c GUI.draw(terrain, &c_trn)
             c_air && @c GUI.draw(air, &c_air)
+            c_mas && @c GUI.draw(mass, &c_mas)
             c_act && @c GUI.draw(actions, &c_act)
             c_acc && @c GUI.draw(accelerations, &c_acc)
             c_kin && @c GUI.draw(kinematics.data, &c_kin)

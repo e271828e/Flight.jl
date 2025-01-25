@@ -714,8 +714,8 @@ function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
     end
 
     GUI.draw(rad2deg.(ω_eb_b - ω_lb_b), "Transport Rate (LTF / ECEF) [Body]", "deg/s")
-    GUI.draw(v_eOb_n, "Velocity (O / ECEF) [NED]", "m/s")
-    GUI.draw(v_eOb_b, "Velocity (O / ECEF) [Body]", "m/s")
+    GUI.draw(v_eOb_n, "Velocity (Ob / ECEF) [NED]", "m/s")
+    GUI.draw(v_eOb_b, "Velocity (Ob / ECEF) [Body]", "m/s")
 
     if CImGui.TreeNode("Attitude (Body / NED)")
 

@@ -299,6 +299,8 @@ function transform(t_bc::FrameTransform, p_c::MassProperties)
 
 end
 
+MassProperties(sys::System) = get_mp_b(sys)
+
 
 ################################################################################
 ############################### RigidBodyData ##################################
@@ -415,27 +417,27 @@ end
 #all magnitudes resolved in body axes unless otherwise noted
 #of these, only mp_Ob and wr_ext_Ob are required by dynamics equations
 @kwdef struct Actions
-    mp_Ob::MassProperties = MassProperties() #aircraft mass properties at Ob
-    mp_Gb::MassProperties = MassProperties() #aircraft mass properties at Gb
     g_Gb_b::SVector{3,Float64} = zeros(SVector{3}) #gravity at Gb
     G_Gb_b::SVector{3,Float64} = zeros(SVector{3}) #gravitational attraction at Gb
     hr_b::SVector{3,Float64} = zeros(SVector{3}) #intrinsic angular momentum
     wr_g_Ob::Wrench = Wrench() #gravity wrench at Ob
     wr_in_Ob::Wrench = Wrench() #inertia wrench at Ob
-    wr_ext_Ob::Wrench = Wrench() #externally applied wrench at Ob
+    wr_ext_Ob::Wrench = Wrench() #external wrench at Ob
     wr_net_Ob::Wrench = Wrench() #net wrench at Ob
     wr_net_Gb::Wrench = Wrench() #net wrench at Gb
 end
 
 function Actions(sys::System, kin_data::KinData = KinData())
+    Actions(sys, get_mp_b(sys), kin_data)
+end
+
+function Actions(sys::System, mp_Ob::MassProperties, kin_data::KinData = KinData())
 
     @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, v_eOb_b = kin_data
+    m = mp_Ob.m; J_Ob_b = mp_Ob.J_O; r_ObGb_b = mp_Ob.r_OG
 
-    mp_Ob = get_mp_b(sys)
     wr_ext_Ob = get_wr_b(sys)
     hr_b = get_hr_b(sys)
-
-    m = mp_Ob.m; J_Ob_b = mp_Ob.J_O; r_ObGb_b = mp_Ob.r_OG
 
     ω_ie_e = SVector{3, Float64}(0, 0, ω_ie) #use WGS84 constant
     ω_ie_b = q_eb'(ω_ie_e)
@@ -488,17 +490,12 @@ function Actions(sys::System, kin_data::KinData = KinData())
 
     wr_net_Ob = wr_ext_Ob + wr_g_Ob + wr_in_Ob
 
-    ########################## Additional Outputs ##############################
-
     #define pure translation from Gb to Ob
     t_GbOb = FrameTransform(r = -r_ObGb_b) #Gb to Ob
-
-    #translate mass properties and net wrench to Gb
-    mp_Gb = t_GbOb(mp_Ob)
     wr_net_Gb = t_GbOb(wr_net_Ob)
 
-    Actions(; mp_Ob, mp_Gb, g_Gb_b, G_Gb_b, hr_b,
-        wr_g_Ob, wr_in_Ob, wr_ext_Ob, wr_net_Ob, wr_net_Gb)
+    Actions(; g_Gb_b, G_Gb_b, hr_b,
+            wr_g_Ob, wr_in_Ob, wr_ext_Ob, wr_net_Ob, wr_net_Gb)
 
 end
 
@@ -525,10 +522,11 @@ Systems.Y(::RigidBodyDynamics) = Accelerations()
 
 Accelerations(sys::System{<:RigidBodyDynamics}) = sys.y
 
-function Systems.f_ode!(sys::System{RigidBodyDynamics}, kin_data::KinData, dyn_data::Actions)
+function Systems.f_ode!(sys::System{RigidBodyDynamics}, mp_Ob::MassProperties,
+                        kin_data::KinData, dyn_data::Actions)
 
     @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, v_eOb_b = kin_data
-    @unpack mp_Ob, wr_net_Ob, G_Gb_b = dyn_data
+    @unpack wr_net_Ob, G_Gb_b = dyn_data
     @unpack ẋ = sys
 
     ########################### Dynamic Equations ##############################
@@ -681,47 +679,74 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(dyn::Actions, p_open::Ref{Bool} = Ref(true),
-                    label::String = "Actions")
+function GUI.draw(mp_Ob::MassProperties, p_open::Ref{Bool} = Ref(true),
+                    label::String = "Mass Properties")
 
-    @unpack mp_Ob, mp_Gb, wr_net_Ob, wr_net_Gb, hr_b = dyn
+    m = mp_Ob.m; r_ObGb_b = mp_Ob.r_OG
+
+    #define pure translation from Gb to Ob
+    t_GbOb = FrameTransform(r = -r_ObGb_b) #Gb to Ob
+
+    #translate mass properties to Gb to get inertia tensor at Gb
+    mp_Gb = t_GbOb(mp_Ob)
 
     CImGui.Begin(label, p_open)
 
-    CImGui.Text(@sprintf("Mass: %.3f kg", mp_Ob.m))
-    GUI.draw(mp_Ob.r_OG, "CG Position (O) [Body Axes]", "m")
+        CImGui.Text(@sprintf("Mass: %.3f kg", m))
+        GUI.draw(r_ObGb_b, "CG Position [Body Axes]", "m")
 
-    if CImGui.TreeNode("Properties at Ob [Body Axes]")
-        if CImGui.TreeNode("Inertia Tensor")
-            CImGui.Text(@sprintf("XX: %.3f kg m2", mp_Ob.J_O[1,1]))
-            CImGui.Text(@sprintf("YY: %.3f kg m2", mp_Ob.J_O[2,2]))
-            CImGui.Text(@sprintf("ZZ: %.3f kg m2", mp_Ob.J_O[3,3]))
-            CImGui.Text(@sprintf("XY: %.3f kg m2", mp_Ob.J_O[1,2]))
-            CImGui.Text(@sprintf("XZ: %.3f kg m2", mp_Ob.J_O[1,3]))
-            CImGui.Text(@sprintf("YZ: %.3f kg m2", mp_Ob.J_O[2,3]))
+        if CImGui.TreeNode("Inertia Tensor at Ob")
+            CImGui.Text(@sprintf("XX: %.3f kg*m2", mp_Ob.J_O[1,1]))
+            CImGui.Text(@sprintf("YY: %.3f kg*m2", mp_Ob.J_O[2,2]))
+            CImGui.Text(@sprintf("ZZ: %.3f kg*m2", mp_Ob.J_O[3,3]))
+            CImGui.Text(@sprintf("XY: %.3f kg*m2", mp_Ob.J_O[1,2]))
+            CImGui.Text(@sprintf("XZ: %.3f kg*m2", mp_Ob.J_O[1,3]))
+            CImGui.Text(@sprintf("YZ: %.3f kg*m2", mp_Ob.J_O[2,3]))
             CImGui.TreePop()
         end
-        GUI.draw(wr_net_Ob.F, "Net Force", "N")
-        GUI.draw(wr_net_Ob.M, "Net Torque", "N*m")
+
+        if CImGui.TreeNode("Inertia Tensor at Gb")
+            CImGui.Text(@sprintf("XX: %.3f kg*m2", mp_Gb.J_O[1,1]))
+            CImGui.Text(@sprintf("YY: %.3f kg*m2", mp_Gb.J_O[2,2]))
+            CImGui.Text(@sprintf("ZZ: %.3f kg*m2", mp_Gb.J_O[3,3]))
+            CImGui.Text(@sprintf("XY: %.3f kg*m2", mp_Gb.J_O[1,2]))
+            CImGui.Text(@sprintf("XZ: %.3f kg*m2", mp_Gb.J_O[1,3]))
+            CImGui.Text(@sprintf("YZ: %.3f kg*m2", mp_Gb.J_O[2,3]))
+            CImGui.TreePop()
+        end
+
+    CImGui.End()
+
+end
+
+function GUI.draw(wr::Wrench, label::String)
+
+    @unpack F, M = wr
+
+    if CImGui.TreeNode(label)
+        GUI.draw(F, "Force", "N")
+        GUI.draw(M, "Torque", "N*m")
         CImGui.TreePop()
     end
 
-    if CImGui.TreeNode("Properties at Gb [Body Axes]")
-        if CImGui.TreeNode("Inertia Tensor")
-            CImGui.Text(@sprintf("XX: %.3f kg m2", mp_Gb.J_O[1,1]))
-            CImGui.Text(@sprintf("YY: %.3f kg m2", mp_Gb.J_O[2,2]))
-            CImGui.Text(@sprintf("ZZ: %.3f kg m2", mp_Gb.J_O[3,3]))
-            CImGui.Text(@sprintf("XY: %.3f kg m2", mp_Gb.J_O[1,2]))
-            CImGui.Text(@sprintf("XZ: %.3f kg m2", mp_Gb.J_O[1,3]))
-            CImGui.Text(@sprintf("YZ: %.3f kg m2", mp_Gb.J_O[2,3]))
-            CImGui.TreePop()
-        end
-        GUI.draw(wr_net_Gb.F, "Net Force", "N")
-        GUI.draw(wr_net_Gb.M, "Net Torque", "N*m")
-        CImGui.TreePop()
-    end
+end
 
-    GUI.draw(hr_b, "Intrinsic Angular Momentum [Body]", "kg*(m^2)/s")
+
+function GUI.draw(dyn::Actions, p_open::Ref{Bool} = Ref(true),
+                    label::String = "Actions")
+
+    @unpack g_Gb_b, G_Gb_b, hr_b, wr_g_Ob, wr_in_Ob, wr_ext_Ob, wr_net_Ob, wr_net_Gb = dyn
+
+    CImGui.Begin(label, p_open)
+
+        GUI.draw(g_Gb_b, "Gravity (Gb) [Body Axes]", "m/(s^2)")
+        GUI.draw(G_Gb_b, "Gravitation (Gb) [Body Axes]", "m/(s^2)")
+        GUI.draw(wr_g_Ob, "Gravity Wrench (Ob) [Body Axes]")
+        GUI.draw(wr_in_Ob, "Inertia Wrench (Ob) [Body Axes]")
+        GUI.draw(wr_ext_Ob, "External Wrench (Ob) [Body Axes]")
+        GUI.draw(wr_net_Ob, "Net Wrench (Ob) [Body Axes]")
+        GUI.draw(wr_net_Gb, "Net Wrench (Gb) [Body Axes]")
+        GUI.draw(hr_b, "Intrinsic Angular Momentum [Body]", "kg*(m^2)/s")
 
     CImGui.End()
 
@@ -737,7 +762,7 @@ function GUI.draw(dyn::Accelerations, p_open::Ref{Bool} = Ref(true),
 
     GUI.draw(α_eb_b, "Angular Acceleration (Body / ECEF) [Body]", "rad/(s^2)")
     GUI.draw(α_ib_b, "Angular Acceleration (Body / ECI) [Body]", "rad/(s^2)")
-    GUI.draw(v̇_eOb_b, "Velocity Time-Derivative (Body / ECEF) [Body]", "rad/(s^2)")
+    GUI.draw(v̇_eOb_b, "Velocity Time-Derivative (Ob / ECEF) [Body]", "rad/(s^2)")
     GUI.draw(a_eOb_b, "Linear Acceleration (Ob / ECEF) [Body]", "m/(s^2)")
     GUI.draw(a_eOb_n, "Linear Acceleration (Ob / ECEF) [NED]", "m/(s^2)")
     GUI.draw(a_iOb_b, "Linear Acceleration (Ob / ECI) [Body]", "m/(s^2)")
