@@ -39,7 +39,7 @@ end
 
 #by default, engine mass is assumed to be accounted for in the airframe, its
 #angular momentum is assumed to be negligible by default, and it receives no
-#direct external wrench. so no RigidBodyData extensions
+#direct external wrench
 Dynamics.get_mp_b(::System{<:AbstractPistonEngine}) = MassProperties()
 Dynamics.get_wr_b(::System{<:AbstractPistonEngine}) = Wrench()
 Dynamics.get_hr_b(::System{<:AbstractPistonEngine}) = zeros(SVector{3})

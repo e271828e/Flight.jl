@@ -67,14 +67,14 @@ end
 struct VehicleY{F, K}
     components::F
     kinematics::K
-    dynamics::DynData
+    dynamics::DynDataOut
     air::AirData
 end
 
 Systems.Y(ac::Vehicle) = VehicleY(
     Systems.Y(ac.components),
     Systems.Y(ac.kinematics),
-    DynData(),
+    DynDataOut(),
     AirData())
 
 function Systems.init!(sys::System{<:Vehicle}, ic::KinInit)
@@ -135,10 +135,10 @@ function Systems.f_ode!(vehicle::System{<:Vehicle})
 
     #update components ẋ and y
     f_ode!(components, kin_data, air_data, terrain)
-    rb_data = RigidBodyData(components)
 
     #update velocity derivatives and rigid body data
-    f_ode!(dynamics, kin_data, rb_data)
+    dyn_data_in = DynDataIn(components, kin_data)
+    f_ode!(dynamics, kin_data, dyn_data_in)
 
     vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, air_data)
 
@@ -431,15 +431,15 @@ function GUI.draw!(vehicle::System{<:Vehicle},
             @c CImGui.Checkbox("Components", &c_afm)
             @c CImGui.Checkbox("Atmosphere", &c_atm)
             @c CImGui.Checkbox("Terrain", &c_trn)
-            @c CImGui.Checkbox("Dynamics", &c_dyn)
-            @c CImGui.Checkbox("Kinematics", &c_kin)
             @c CImGui.Checkbox("Air", &c_air)
+            @c CImGui.Checkbox("Dynamics Out", &c_dyn)
+            @c CImGui.Checkbox("Kinematics", &c_kin)
             c_afm && @c GUI.draw!(components, avionics, &c_afm)
             c_atm && @c GUI.draw!(atmosphere, &c_atm)
             c_trn && @c GUI.draw(terrain, &c_trn)
+            c_air && @c GUI.draw(air, &c_air)
             c_dyn && @c GUI.draw(dynamics, &c_dyn)
             c_kin && @c GUI.draw(kinematics, &c_kin)
-            c_air && @c GUI.draw(air, &c_air)
     end)
 
     CImGui.End()
