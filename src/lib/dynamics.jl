@@ -427,25 +427,15 @@ end
     wr_net_Gb::Wrench = Wrench() #net wrench at Gb
 end
 
-function Actions(sys::System, kin_data::KinData = KinData())
-    Actions(sys, get_mp_b(sys), kin_data)
-end
 
-# function Actions(sys::System,
-#     mp_Ob::MassProperties = get_mp_b(sys),
-#     hr_b::SVector{3,Float64} = get_hr_b(sys),
-#     wr_ext::Wrench = get_wr_b(sys),
-#     kin_data::KinData = KinData())
-#     Actions(sys, mp_Ob, get_wr_b(sys), get_hr_b(sys), kin_data)
-# end
-
-function Actions(sys::System, mp_Ob::MassProperties, kin_data::KinData = KinData())
+function Actions(sys::System;
+    mp_Ob::MassProperties = get_mp_b(sys),
+    wr_ext_Ob::Wrench = get_wr_b(sys),
+    hr_b::SVector{3,Float64} = get_hr_b(sys),
+    kin_data::KinData = KinData())
 
     @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, v_eOb_b = kin_data
     m = mp_Ob.m; J_Ob_b = mp_Ob.J_O; r_ObGb_b = mp_Ob.r_OG
-
-    wr_ext_Ob = get_wr_b(sys)
-    hr_b = get_hr_b(sys)
 
     ω_ie_e = SVector{3, Float64}(0, 0, ω_ie) #use WGS84 constant
     ω_ie_b = q_eb'(ω_ie_e)

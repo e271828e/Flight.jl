@@ -68,11 +68,11 @@ function GUI.draw!(sys::System{<:LocalAtmosphere},
     CImGui.Begin(label, p_open)
 
     CImGui.PushItemWidth(-250)
-    u.T_sl = GUI.safe_slider("Sea Level Temperature (K)", u.T_sl, "%.3f", true)
-    u.p_sl = GUI.safe_slider("Sea Level Pressure (Pa)", u.p_sl, "%.3f", true)
-    u.v_ew_n[1] = GUI.safe_slider("North Wind (m/s)", u.v_ew_n[1], -30, 30, "%.3f", true)
-    u.v_ew_n[2] = GUI.safe_slider("East Wind (m/s)", u.v_ew_n[2], -30, 30, "%.3f", true)
-    u.v_ew_n[3] = GUI.safe_slider("Down Wind (m/s)", u.v_ew_n[3], -30, 30, "%.3f", true)
+    u.T_sl = GUI.safe_slider("Sea Level Temperature (K)", u.T_sl, "%.3f"; show_label = true)
+    u.p_sl = GUI.safe_slider("Sea Level Pressure (Pa)", u.p_sl, "%.3f"; show_label = true)
+    u.v_ew_n[1] = GUI.safe_slider("North Wind (m/s)", u.v_ew_n[1], -30, 30, "%.3f"; show_label = true)
+    u.v_ew_n[2] = GUI.safe_slider("East Wind (m/s)", u.v_ew_n[2], -30, 30, "%.3f"; show_label = true)
+    u.v_ew_n[3] = GUI.safe_slider("Down Wind (m/s)", u.v_ew_n[3], -30, 30, "%.3f"; show_label = true)
     CImGui.PopItemWidth()
 
     CImGui.End()

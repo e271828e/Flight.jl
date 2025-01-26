@@ -140,14 +140,16 @@ function Systems.f_ode!(vehicle::System{<:Vehicle})
     f_ode!(components, kin_data, air_data, terrain)
 
     #components is the only subsystem that has mass and can receive actions
-    mass = MassProperties(components) #mp_Ob
-    actions = Actions(components, mass, kin_data)
+    mp_Ob = get_mp_b(components)
+    wr_ext_Ob = get_wr_b(components)
+    hr_b = get_hr_b(components)
+    actions = Actions(components; mp_Ob, wr_ext_Ob, hr_b, kin_data)
 
     #update velocity derivatives and rigid body data
-    f_ode!(dynamics, mass, kin_data, actions)
+    f_ode!(dynamics, mp_Ob, kin_data, actions)
     accelerations = dynamics.y
 
-    vehicle.y = VehicleY(components.y, kinematics.y, mass, actions, accelerations, air_data)
+    vehicle.y = VehicleY(components.y, kinematics.y, mp_Ob, actions, accelerations, air_data)
 
     return nothing
 
@@ -233,6 +235,7 @@ Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.y.vehicle.kinematics)
 
 ################################# XPCClient ####################################
 
+#extract attitude and position for X-Plane Connect client
 function Systems.extract_output(ac::System{<:Aircraft}, ::Type{XPCPosition}, ::IOMapping)
     return XPCPosition(KinData(ac))
 end
@@ -289,9 +292,9 @@ y_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(y_linear!,
 assign_x!(vehicle::System{<:Vehicle}, x::AbstractVector{Float64}) = throw(MethodError(assign_x!, (vehicle, x)))
 assign_u!(vehicle::System{<:Vehicle}, u::AbstractVector{Float64}) = throw(MethodError(assign_u!, (vehicle, u)))
 
-linearize!(ac::System{<:AircraftBase.Aircraft}, args...) = linearize!(ac.vehicle, args...)
+linearize!(ac::System{<:Aircraft}, args...) = linearize!(ac.vehicle, args...)
 
-function linearize!( vehicle::System{<:AircraftBase.Vehicle}, trim_params::AbstractTrimParameters)
+function linearize!( vehicle::System{<:Vehicle}, trim_params::AbstractTrimParameters)
 
     (_, trim_state) = trim!(vehicle, trim_params)
 
@@ -375,7 +378,7 @@ end
 
 
 function Control.Continuous.LinearizedSS(
-            ac::System{<:AircraftBase.Aircraft}, args...; kwargs...)
+            ac::System{<:Aircraft}, args...; kwargs...)
     Control.Continuous.LinearizedSS(ac.vehicle, args...; kwargs...)
 end
 
