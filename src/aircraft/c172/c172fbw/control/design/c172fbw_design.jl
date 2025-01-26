@@ -3,11 +3,10 @@ module C172FBWControlDesign
 using Flight
 using Flight.FlightCore
 
-using Flight.FlightPhysics
-using Flight.FlightComponents
-using Flight.FlightComponents.Control.Continuous: LinearizedSS
-using Flight.FlightComponents.Control.Discrete: PIDParams, LQRTrackerParams, save_lookup
-using Flight.FlightComponents.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
+using Flight.FlightLib
+using Flight.FlightLib.Control.Continuous: LinearizedSS
+using Flight.FlightLib.Control.Discrete: PIDParams, LQRTrackerParams, save_lookup
+using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
 using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172

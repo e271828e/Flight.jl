@@ -1,4 +1,4 @@
-module GSRUKF
+module SRUKF
 
 #efficient, non-allocating generalized square-root unscented Kalman filter
 #implementation

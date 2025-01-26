@@ -4,7 +4,7 @@ using UnPack
 
 using Flight.FlightCore.Sim
 using Flight.FlightCore.GUI
-using Flight.FlightComponents.Control.Continuous: PIVector
+using Flight.FlightLib.Control.Continuous: PIVector
 
 export demo_joysticks
 

@@ -3,7 +3,7 @@ module TestSim
 using Test, UnPack, Logging, StructTypes, JSON3
 
 using Flight.FlightCore
-using Flight.FlightPhysics
+using Flight.FlightLib
 
 export test_sim_standalone
 

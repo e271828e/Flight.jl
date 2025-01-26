@@ -3,9 +3,8 @@ module FlightControl
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 
 using Flight.FlightCore
-using Flight.FlightPhysics
-using Flight.FlightComponents
-using Flight.FlightComponents.Control.Discrete: Integrator, IntegratorOutput,
+using Flight.FlightLib
+using Flight.FlightLib.Control.Discrete: Integrator, IntegratorOutput,
     PID, PIDOutput, PIDParams, LQRTracker, LQRTrackerOutput, LQRTrackerParams,
     PIDLookup, LQRTrackerLookup, load_pid_lookup, load_lqr_tracker_lookup
 

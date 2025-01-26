@@ -11,7 +11,7 @@ using RecursiveArrayTools: VectorOfArray
 @reexport using DataStructures: OrderedDict
 
 @reexport using ..Sim: Simulation, TimeSeries, get_components, get_child_names
-using ..Utils: Ranged
+using ..Types
 
 export make_plots, save_plots
 

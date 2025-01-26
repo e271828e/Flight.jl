@@ -4,8 +4,7 @@ using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
 using Flight.FlightCore
-using Flight.FlightPhysics
-using Flight.FlightComponents
+using Flight.FlightLib
 
 export AbstractComponents, NoComponents
 export AbstractAvionics, NoAvionics

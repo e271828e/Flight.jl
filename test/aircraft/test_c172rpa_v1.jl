@@ -1,20 +1,13 @@
 module TestC172RPAv1
 
-
 using Test, UnPack, BenchmarkTools, Sockets, JSON3
 
 using Flight.FlightCore
-using Flight.FlightCore.Sim
-using Flight.FlightCore.IODevices
-using Flight.FlightCore.Network
+using Flight.FlightLib
+using Flight.FlightAircraft
 
-using Flight.FlightPhysics
-using Flight.FlightComponents
-using Flight.FlightComponents.Control.Discrete: load_pid_lookup, load_lqr_tracker_lookup
-
-using Flight.FlightAircraft.AircraftBase
-using Flight.FlightAircraft.C172
-using Flight.FlightAircraft.C172RPAv1
+#non-exported stuff
+using Flight.FlightLib.Control.Discrete: load_pid_lookup, load_lqr_tracker_lookup
 using Flight.FlightAircraft.C172RPA.FlightControl: lon_direct, lon_thr_ele, lon_thr_q, lon_thr_θ, lon_thr_EAS, lon_EAS_q, lon_EAS_θ, lon_EAS_clm
 using Flight.FlightAircraft.C172RPA.FlightControl: lat_direct, lat_p_β, lat_φ_β, lat_χ_β
 using Flight.FlightAircraft.C172RPA.FlightControl: vrt_gdc_off, vrt_gdc_alt

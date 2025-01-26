@@ -1,9 +1,9 @@
-module TestNavigationSensors
+module TestNavigation
 
 ############################# IMPLEMENTATION ###################################
 
 using Flight.FlightCore
-using Flight.FlightPhysics
+using Flight.FlightLib
 
 using StaticArrays, ComponentArrays
 using LinearAlgebra, DataStructures

@@ -3,7 +3,6 @@ module Atmosphere
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
 
 using Flight.FlightCore
-using Flight.FlightCore.Utils: Ranged
 
 using ..Attitude
 using ..Geodesy

@@ -1,13 +1,13 @@
-module TestGSRUKF
+module TestSRUKF
 
 using Test
 
 using LinearAlgebra, ComponentArrays, StaticArrays, BenchmarkTools
 
-using Flight.FlightPhysics.Attitude
-using Flight.FlightNavigation.GSRUKF
+using Flight.FlightLib.Attitude
+using Flight.FlightLib.SRUKF
 
-function test_gsrukf()
+function test_srukf()
 
     @testset verbose = true "GSRUT" begin test_gsrut() end
     @testset verbose = true "Stages" begin test_stages() end
@@ -28,13 +28,13 @@ function test_gsrut()
         R_ref = qr!(A_test).R
 
         A_test = copy(A)
-        work = zeros(GSRUKF.lwork_query(A, τ))
-        GSRUKF.dgeqrf!(A_test, τ, work)
+        work = zeros(SRUKF.lwork_query(A, τ))
+        SRUKF.dgeqrf!(A_test, τ, work)
         R_dgeqrf = UpperTriangular(@view A_test[1:N, :])
 
         @test all(isapprox(R_ref, R_dgeqrf))
 
-        b_dgeqrf = @benchmarkable GSRUKF.dgeqrf!($A_test, $τ, $work) setup=(A_test = copy($A))
+        b_dgeqrf = @benchmarkable SRUKF.dgeqrf!($A_test, $τ, $work) setup=(A_test = copy($A))
         @test memory(run(b_dgeqrf)) == 0
 
     end
@@ -293,7 +293,7 @@ function test_stages()
     @testset verbose = true "Predictor" begin
 
         N = 3
-        pred = GSRUKF.Predictor(N_x = N, N_w = N)
+        pred = SRUKF.Predictor(N_x = N, N_w = N)
 
         f! = (x1, x0, w0) -> @. x1 = 2*x0 + 1 + w0
 
@@ -306,7 +306,7 @@ function test_stages()
 
         P_δx0 = S_δx0 * S_δx0'
         P_w = S_w * S_w'
-        GSRUKF.predict!(pred; x̂1, S_δx1, x̂0, S_δx0, S_w, f!)
+        SRUKF.predict!(pred; x̂1, S_δx1, x̂0, S_δx0, S_w, f!)
 
         #we know this linear transformation must yield the following
         P_δx1 = S_δx1 * S_δx1'
@@ -314,11 +314,11 @@ function test_stages()
         @test P_δx1 ≈ 4*P_δx0 .+ P_w
 
         # check for allocations
-        @test (@ballocated GSRUKF.predict!( $pred;
+        @test (@ballocated SRUKF.predict!( $pred;
             x̂1=$x̂1, S_δx1=$S_δx1, x̂0=$x̂0,
             S_δx0=$S_δx0, S_w=$S_w, f! =$f!)) == 0
 
-        # @btime GSRUKF.predict!( $pred;
+        # @btime SRUKF.predict!( $pred;
         #     x̄1=$x̄1, S_δx1=$S_δx1, x̄0=$x̄0,
         #     S_δx0=$S_δx0, S_wp0=$S_wp0, f! =$f!)
     end
@@ -329,7 +329,7 @@ function test_stages()
         N_y = 2
         N_w = 2
 
-        updater = GSRUKF.Updater(; N_x, N_y, N_w)
+        updater = SRUKF.Updater(; N_x, N_y, N_w)
 
         function h!(y, x, w)
             y[1] = x[1] + w[1]
@@ -351,12 +351,12 @@ function test_stages()
 
         #test measurement rejection
         ỹ = [10.0, 2.0]
-        @test !GSRUKF.update!(updater; x̂p, S_δxp, x̂m, S_δxm, S_w, ỹ, h!, σ_thr)
+        @test !SRUKF.update!(updater; x̂p, S_δxp, x̂m, S_δxm, S_w, ỹ, h!, σ_thr)
         @test any(updater.δη .> 3)
 
         #test measurement acceptance
         ỹ = @SVector[1.1, 1.1]
-        @test GSRUKF.update!(updater; x̂p, S_δxp, x̂m, S_δxm, S_w, ỹ, h!, σ_thr)
+        @test SRUKF.update!(updater; x̂p, S_δxp, x̂m, S_δxm, S_w, ỹ, h!, σ_thr)
 
         P_δxm = S_δxm * S_δxm
         P_δxp = S_δxp * S_δxp'
@@ -376,10 +376,10 @@ function test_stages()
         @test P_δxp[1,1] < P_δxp[2,2]
         @test abs(δỹp[1]) < abs(δỹp[2])
 
-        @test (@ballocated !GSRUKF.update!($updater; x̂p=$x̂p, S_δxp=$S_δxp, x̂m=$x̂m,
+        @test (@ballocated !SRUKF.update!($updater; x̂p=$x̂p, S_δxp=$S_δxp, x̂m=$x̂m,
             S_δxm=$S_δxm, S_w=$S_w, ỹ=$ỹ, h! = $h!, σ_thr=$σ_thr)) == 0
 
-        @btime GSRUKF.update!($updater; x̂p=$x̂p, S_δxp=$S_δxp, x̂m=$x̂m,
+        @btime SRUKF.update!($updater; x̂p=$x̂p, S_δxp=$S_δxp, x̂m=$x̂m,
             S_δxm=$S_δxm, S_w=$S_w, ỹ=$ỹ, h! = $h!, σ_thr=$σ_thr)
 
     end

@@ -5,8 +5,8 @@ using Test
 using Flight.FlightCore.Systems
 using Flight.FlightCore.GUI
 
-using Flight.FlightComponents.Control
-using Flight.FlightComponents.LandingGear
+using Flight.FlightLib.Control
+using Flight.FlightLib.LandingGear
 
 using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172R

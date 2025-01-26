@@ -6,15 +6,8 @@ using BenchmarkTools
 using Sockets
 
 using Flight.FlightCore
-using Flight.FlightCore.Sim
-using Flight.FlightCore.Network
-
-using Flight.FlightPhysics
-using Flight.FlightComponents
-
-using Flight.FlightAircraft.AircraftBase
-using Flight.FlightAircraft.C172
-using Flight.FlightAircraft.C172RPA
+using Flight.FlightLib
+using Flight.FlightAircraft
 
 export test_c172rpa
 

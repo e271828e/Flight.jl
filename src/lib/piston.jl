@@ -3,10 +3,8 @@ module Piston
 using Interpolations, StaticArrays, StructArrays, ComponentArrays, UnPack
 
 using Flight.FlightCore
-using Flight.FlightCore.Utils
-
-using Flight.FlightPhysics
-using Flight.FlightPhysics.Atmosphere: R
+using Flight.FlightLib
+using Flight.FlightLib.Atmosphere: R
 
 using ..Propellers: AbstractPropeller, Propeller
 using ..Control.Continuous: PIVector, PIVectorU, PIVectorY

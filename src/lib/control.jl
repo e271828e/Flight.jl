@@ -2,10 +2,8 @@ module Control
 
 
 ################################################################################
-########################## Continuous Systems ##################################
 ################################################################################
-
-module Continuous
+module Continuous ##############################################################
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using ControlSystems: ControlSystemsBase, ControlSystems, ss
@@ -340,10 +338,8 @@ end #submodule
 
 
 ################################################################################
-############################# Discrete Systems #################################
 ################################################################################
-
-module Discrete
+module Discrete ###############################################################
 
 using StaticArrays, UnPack, LinearAlgebra
 using StructArrays, Interpolations, HDF5 #for lookups

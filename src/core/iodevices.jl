@@ -7,6 +7,7 @@ using Logging
 export IODevice, InputDevice, OutputDevice, IOMapping, DefaultMapping
 
 
+
 ################################################################################
 ################################# IOMapping ####################################
 
@@ -43,6 +44,7 @@ abstract type OutputDevice{T} <: IODevice{T} end
 function handle_data!(device::D, data::Any) where {D<:OutputDevice}
     MethodError(handle_data!, (device, data)) |> throw
 end
+
 
 
 end

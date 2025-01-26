@@ -4,8 +4,7 @@ using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using StructTypes
 
 using Flight.FlightCore
-using Flight.FlightPhysics
-using Flight.FlightComponents
+using Flight.FlightLib
 
 using ...AircraftBase
 using ...C172

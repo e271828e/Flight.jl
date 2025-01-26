@@ -7,10 +7,10 @@ using StaticArrays
 using UnPack
 
 using Flight.FlightCore
-using Flight.FlightPhysics
+using Flight.FlightLib
 
-using Flight.FlightComponents.LandingGear
-using Flight.FlightComponents.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
+#non-exported stuff
+using Flight.FlightLib.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
 
 export test_landing_gear
 

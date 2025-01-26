@@ -7,8 +7,7 @@ using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
     Dummy, SameLine, NewLine, IsItemActive, Separator, Text, Checkbox, RadioButton
 
 using Flight.FlightCore
-using Flight.FlightPhysics
-using Flight.FlightComponents
+using Flight.FlightLib
 
 using ...AircraftBase
 using ...C172

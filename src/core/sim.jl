@@ -138,6 +138,30 @@ function update!(gui::SimGUI)
 end
 
 
+########################## currently unused ####################################
+
+function take_nonblocking!(channel::Channel)
+    #unlike lock, trylock avoids blocking if the Channel is already locked,
+    #while also ensuring it is not modified while we're checking its state
+    if trylock(channel)
+        data = (isready(channel) ? take!(channel) : nothing)
+        unlock(channel)
+        return data
+    else
+        return nothing
+    end
+end
+
+function put_nonblocking!(channel::Channel{T}, data::T) where {T}
+    #unlike lock, trylock avoids blocking if the Channel is already locked,
+    #while also ensuring it is not modified while we're checking its state
+    if trylock(channel) #ensure Channel is not modified while we're checking its state
+        (isopen(channel) && !isready(channel)) && put!(channel, data)
+        unlock(channel)
+    end
+end
+
+
 
 ################################################################################
 ############################# Simulation #######################################

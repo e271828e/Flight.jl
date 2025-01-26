@@ -3,9 +3,7 @@ module LandingGear
 using StaticArrays, ComponentArrays, LinearAlgebra, UnPack
 
 using Flight.FlightCore
-using Flight.FlightCore.Utils
-
-using Flight.FlightPhysics
+using Flight.FlightLib
 
 using ..Control.Continuous: PIVector, PIVectorY
 

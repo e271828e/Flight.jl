@@ -7,9 +7,7 @@ using Roots: find_zero
 using Trapz: trapz
 
 using Flight.FlightCore
-using Flight.FlightCore.Utils
-
-using Flight.FlightPhysics
+using Flight.FlightLib
 
 export FixedPitch, VariablePitch, Propeller
 

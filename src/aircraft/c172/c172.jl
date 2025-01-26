@@ -6,10 +6,7 @@ using Reexport
 using NLopt
 
 using Flight.FlightCore
-using Flight.FlightCore.Utils
-
-using Flight.FlightPhysics
-using Flight.FlightComponents
+using Flight.FlightLib
 
 using ..AircraftBase
 

@@ -6,14 +6,13 @@ using BenchmarkTools
 using LinearAlgebra
 
 using Flight.FlightCore
-using Flight.FlightPhysics
-using Flight.FlightPhysics.Atmosphere: p_std, T_std
+using Flight.FlightLib
 
-using Flight.FlightComponents.Propellers
-using Flight.FlightComponents.Piston
-using Flight.FlightComponents.Piston: PistonEngine, PistonThruster
-using Flight.FlightComponents.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
-using Flight.FlightComponents.Piston: eng_off, eng_starting, eng_running
+#non-exported stuff
+using Flight.FlightLib.Atmosphere: p_std, T_std
+using Flight.FlightLib.Piston: PistonEngine, PistonThruster
+using Flight.FlightLib.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
+using Flight.FlightLib.Piston: eng_off, eng_starting, eng_running
 
 export test_piston
 

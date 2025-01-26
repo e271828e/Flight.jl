@@ -6,10 +6,7 @@ using NLopt
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 
 using Flight.FlightCore
-using Flight.FlightCore.Utils
-
-using Flight.FlightPhysics
-using Flight.FlightComponents
+using Flight.FlightLib
 
 using ..AircraftBase
 using ..C172

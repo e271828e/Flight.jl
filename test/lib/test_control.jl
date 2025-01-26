@@ -7,19 +7,17 @@ using ComponentArrays
 using ControlSystems
 using StaticArrays
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Sim
-using Flight.FlightCore.Plotting
+using Flight.FlightCore
+using Flight.FlightLib.Control
 
-#avoid namespace conflicts with ControlSystems
-using Flight.FlightComponents.Control
-import Flight.FlightComponents.Control.Continuous: PIVector as PIContinuous
-import Flight.FlightComponents.Control.Continuous: LinearizedSS
-import Flight.FlightComponents.Control.Discrete: PID as PIDDiscrete
-import Flight.FlightComponents.Control.Discrete: PIDVector as PIDDiscreteVector
-import Flight.FlightComponents.Control.Discrete: LeadLag as LeadLagDiscrete
-import Flight.FlightComponents.Control.Discrete: Integrator as IntegratorDiscrete
-import Flight.FlightComponents.Control.Discrete: IntegratorVector as IntegratorDiscreteVector
+#import individual components to avoid potential namespace conflicts with ControlSystems
+import Flight.FlightLib.Control.Continuous: PIVector as PIContinuous
+import Flight.FlightLib.Control.Continuous: LinearizedSS
+import Flight.FlightLib.Control.Discrete: PID as PIDDiscrete
+import Flight.FlightLib.Control.Discrete: PIDVector as PIDDiscreteVector
+import Flight.FlightLib.Control.Discrete: LeadLag as LeadLagDiscrete
+import Flight.FlightLib.Control.Discrete: Integrator as IntegratorDiscrete
+import Flight.FlightLib.Control.Discrete: IntegratorVector as IntegratorDiscreteVector
 
 export test_control
 

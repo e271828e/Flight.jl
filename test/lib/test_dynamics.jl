@@ -4,13 +4,8 @@ using Test
 using LinearAlgebra
 using BenchmarkTools
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.Sim
-
-using Flight.FlightPhysics.Attitude
-using Flight.FlightPhysics.Geodesy
-using Flight.FlightPhysics.Kinematics
-using Flight.FlightPhysics.Dynamics
+using Flight.FlightCore
+using Flight.FlightLib
 
 export test_dynamics
 
