@@ -11,7 +11,7 @@ using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PI
 using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172RPA
-using Flight.FlightAircraft.C172RPA.FlightControl
+using Flight.FlightAircraft.C172RPA.C172RPAControl
 
 using HDF5
 using Logging
@@ -84,8 +84,8 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     # ensure consistency in component selection and ordering between our pitch
     # design model and avionics implementation for state and control vectors
-    @assert tuple(x_labels_pit...) === propertynames(FlightControl.XPitch())
-    # @assert tuple(u_labels_pit...) === propertynames(FlightControl.UPitch())
+    @assert tuple(x_labels_pit...) === propertynames(C172RPAControl.XPitch())
+    # @assert tuple(u_labels_pit...) === propertynames(C172RPAControl.UPitch())
 
     x_trim = lss_pit.x0
     u_trim = lss_pit.u0
@@ -101,15 +101,15 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         v_norm = norm([v_x, v_z])
 
         #weight matrices
-        Q = FlightControl.XPitch(q = 1, θ = 20, v_x = 0.1/v_norm, v_z = 1/v_norm, α_filt = 0, ele_p = 0) |> diagm
-        # R = FlightControl.UPitch(elevator_cmd = 2) |> diagm
+        Q = C172RPAControl.XPitch(q = 1, θ = 20, v_x = 0.1/v_norm, v_z = 1/v_norm, α_filt = 0, ele_p = 0) |> diagm
+        # R = C172RPAControl.UPitch(elevator_cmd = 2) |> diagm
         R = [2.0] |> diagm #elevator_cmd weight
 
         #feedback gain matrix
         C_fbk = lqr(P_pit, Q, R)
 
         z_labels = [:elevator_cmd,]
-        # @assert tuple(z_labels...) === propertynames(FlightControl.ZPitch())
+        # @assert tuple(z_labels...) === propertynames(C172RPAControl.ZPitch())
         z_trim = lss_pit.y0[z_labels]
         n_z = length(z_labels)
 
@@ -328,8 +328,8 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     #ensure consistency in component selection and ordering between our design model
     #and RPAv1 avionics implementation for state and control vectors
-    @assert tuple(x_labels...) === propertynames(FlightControl.XLat())
-    @assert tuple(u_labels...) === propertynames(FlightControl.ULat())
+    @assert tuple(x_labels...) === propertynames(C172RPAControl.XLat())
+    @assert tuple(u_labels...) === propertynames(C172RPAControl.ULat())
 
     #extract design model
     lss_red = Control.Continuous.submodel(lss_lat; x = x_labels, u = u_labels, y = y_labels)
@@ -348,7 +348,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         z_labels = [:φ, :β]
 
-        @assert tuple(z_labels...) === propertynames(FlightControl.ZLat())
+        @assert tuple(z_labels...) === propertynames(C172RPAControl.ZLat())
         z_trim = lss_red.y0[z_labels]
         n_z = length(z_labels)
 
@@ -374,7 +374,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         #weight matrices
         Q = ComponentVector(p = 0, r = 0.1, φ = 0.25, v_x = 0/v_norm, v_y = 0.1/v_norm,
                             β_filt = 0, ail_p = 0, rud_p = 0, ξ_φ = 0.1, ξ_β = 0.001) |> diagm
-        R = FlightControl.ULat(aileron_cmd = 0.05, rudder_cmd = 0.05) |> diagm
+        R = C172RPAControl.ULat(aileron_cmd = 0.05, rudder_cmd = 0.05) |> diagm
 
         #compute gain matrix
         C_aug = lqr(P_aug, Q, R)

@@ -12,7 +12,7 @@ using Flight.FlightLib
 using ...AircraftBase
 using ...C172
 using ..C172RPA
-using ..C172RPA.FlightControl: Controller, ControllerY
+using ..C172RPA.C172RPAControl: Controller, ControllerY
 using ..C172RPA.Navigation: Navigator
 
 export Cessna172RPAv2

@@ -9,7 +9,7 @@ using Flight.FlightLib
 using ...AircraftBase
 using ...C172
 using ..C172FBW
-using ..C172FBW.FlightControl: Controller, ControllerY
+using ..C172FBW.C172FBWControl: Controller, ControllerY
 
 export Cessna172FBWv1
 

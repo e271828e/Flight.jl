@@ -9,7 +9,7 @@ using Flight.FlightLib
 
 export test_dynamics
 
-#needs more exhaustive tests!
+struct TestHarness <: SystemDefinition end
 
 function test_dynamics()
 
@@ -39,11 +39,12 @@ function test_dynamics()
             #properties are the same in both
             mp_Ob = mp_Gb
 
-            #apply a force along each of its axes with zero torque
-            wr_ext_Ob = Wrench(F = [1, 2, 1], M = zeros(3))
+            #apply a force along each axis with zero torque
+            Dynamics.get_wr_b(::System{TestHarness}) = Wrench(F = [1, 2, 1])
             #no internal angular momentum
-            hr_b = zeros(3)
-            rb_data = RigidBodyData(mp_Ob, wr_ext_Ob, hr_b)
+            Dynamics.get_hr_b(::System{TestHarness}) = zeros(SVector{3})
+            actions = Actions(sys, mp_Ob, kin_data)
+            return actions
 
             #we expect the angular acceleration to be zero, and linear acceleration
             #added to that of free fall

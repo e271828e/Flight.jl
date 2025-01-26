@@ -1,4 +1,4 @@
-module FlightControl
+module C172RPAControl
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using StructTypes

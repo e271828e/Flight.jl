@@ -1,4 +1,4 @@
-module FlightControl
+module C172FBWControl
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 

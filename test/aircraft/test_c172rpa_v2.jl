@@ -8,11 +8,11 @@ using Flight.FlightAircraft
 
 #non-exported stuff
 using Flight.FlightLib.Control.Discrete: load_pid_lookup, load_lqr_tracker_lookup
-using Flight.FlightAircraft.C172RPA.FlightControl: lon_direct, lon_thr_ele, lon_thr_q, lon_thr_θ, lon_thr_EAS, lon_EAS_q, lon_EAS_θ, lon_EAS_clm
-using Flight.FlightAircraft.C172RPA.FlightControl: lat_direct, lat_p_β, lat_φ_β, lat_χ_β
-using Flight.FlightAircraft.C172RPA.FlightControl: vrt_gdc_off, vrt_gdc_alt
-using Flight.FlightAircraft.C172RPA.FlightControl: hor_gdc_off, hor_gdc_line
-using Flight.FlightAircraft.C172RPA.FlightControl: phase_gnd, phase_air
+using Flight.FlightAircraft.C172RPA.C172RPAControl: lon_direct, lon_thr_ele, lon_thr_q, lon_thr_θ, lon_thr_EAS, lon_EAS_q, lon_EAS_θ, lon_EAS_clm
+using Flight.FlightAircraft.C172RPA.C172RPAControl: lat_direct, lat_p_β, lat_φ_β, lat_χ_β
+using Flight.FlightAircraft.C172RPA.C172RPAControl: vrt_gdc_off, vrt_gdc_alt
+using Flight.FlightAircraft.C172RPA.C172RPAControl: hor_gdc_off, hor_gdc_line
+using Flight.FlightAircraft.C172RPA.C172RPAControl: phase_gnd, phase_air
 
 export test_c172rpa_v2
 

@@ -11,7 +11,7 @@ using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PI
 using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172FBW
-using Flight.FlightAircraft.C172FBW.FlightControl
+using Flight.FlightAircraft.C172FBW.C172FBWControl
 
 using HDF5
 using Logging
@@ -99,8 +99,8 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     #ensure consistency in component selection and ordering between our design model
     #and FBWv1 avionics implementation for state and control vectors
-    @assert tuple(x_labels_red...) === propertynames(FlightControl.XLon())
-    @assert tuple(u_labels_red...) === propertynames(FlightControl.ULon())
+    @assert tuple(x_labels_red...) === propertynames(C172FBWControl.XLon())
+    @assert tuple(u_labels_red...) === propertynames(C172FBWControl.ULon())
 
     x_trim = lss_red.x0
     u_trim = lss_red.u0
@@ -148,7 +148,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
             connections; w1 = u_labels_red_fwd, z1 = P_red.y)
 
         z_labels = [:throttle_cmd, :elevator_cmd]
-        @assert tuple(z_labels...) === propertynames(FlightControl.ZLonThrEle())
+        @assert tuple(z_labels...) === propertynames(C172FBWControl.ZLonThrEle())
         z_trim = lss_red.y0[z_labels]
         n_z = length(z_labels)
         z_labels_sp = Symbol.(string.(z_labels) .* "_sp")
@@ -291,7 +291,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         z_labels = [:EAS, :climb_rate]
 
-        @assert tuple(z_labels...) === propertynames(FlightControl.ZLonEASClm())
+        @assert tuple(z_labels...) === propertynames(C172FBWControl.ZLonEASClm())
         z_trim = lss_red.y0[z_labels]
         n_z = length(z_labels)
 
@@ -317,7 +317,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         #weight matrices
         Q = ComponentVector(q = 1, θ = 100, v_x = 10/v_norm, v_z = 1/v_norm, α_filt = 1, ω_eng = 0,
             thr_v = 0.0, thr_p = 0, ele_v = 0, ele_p = 0, ξ_EAS = 0.005, ξ_climb_rate = 0.001) |> diagm
-        R = FlightControl.ULon(throttle_cmd = 1, elevator_cmd = 1) |> diagm
+        R = C172FBWControl.ULon(throttle_cmd = 1, elevator_cmd = 1) |> diagm
 
         C_aug = lqr(P_aug, Q, R)
 
@@ -422,8 +422,8 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     #ensure consistency in component selection and ordering between our design model
     #and FBWv1 avionics implementation for state and control vectors
-    @assert tuple(x_labels...) === propertynames(FlightControl.XLat())
-    @assert tuple(u_labels...) === propertynames(FlightControl.ULat())
+    @assert tuple(x_labels...) === propertynames(C172FBWControl.XLat())
+    @assert tuple(u_labels...) === propertynames(C172FBWControl.ULat())
 
     #extract design model
     lss_red = Control.Continuous.submodel(lss_lat; x = x_labels, u = u_labels, y = y_labels)
@@ -442,7 +442,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         z_labels = [:φ, :β]
 
-        @assert tuple(z_labels...) === propertynames(FlightControl.ZLatPhiBeta())
+        @assert tuple(z_labels...) === propertynames(C172FBWControl.ZLatPhiBeta())
         z_trim = lss_red.y0[z_labels]
         n_z = length(z_labels)
 
@@ -467,7 +467,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         #weight matrices
         Q = ComponentVector(p = 0, r = 0.1, φ = 0.25, v_x = 0/v_norm, v_y = 0.1/v_norm, β_filt = 0, ail_v = 0, ail_p = 0, rud_v = 0, rud_p = 0, ξ_φ = 0.1, ξ_β = 0.001) |> diagm
-        R = FlightControl.ULat(aileron_cmd = 0.05, rudder_cmd = 0.05) |> diagm
+        R = C172FBWControl.ULat(aileron_cmd = 0.05, rudder_cmd = 0.05) |> diagm
 
         #compute gain matrix
         C_aug = lqr(P_aug, Q, R)

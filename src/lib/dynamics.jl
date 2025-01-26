@@ -431,6 +431,14 @@ function Actions(sys::System, kin_data::KinData = KinData())
     Actions(sys, get_mp_b(sys), kin_data)
 end
 
+# function Actions(sys::System,
+#     mp_Ob::MassProperties = get_mp_b(sys),
+#     hr_b::SVector{3,Float64} = get_hr_b(sys),
+#     wr_ext::Wrench = get_wr_b(sys),
+#     kin_data::KinData = KinData())
+#     Actions(sys, mp_Ob, get_wr_b(sys), get_hr_b(sys), kin_data)
+# end
+
 function Actions(sys::System, mp_Ob::MassProperties, kin_data::KinData = KinData())
 
     @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, v_eOb_b = kin_data
@@ -523,10 +531,10 @@ Systems.Y(::RigidBodyDynamics) = Accelerations()
 Accelerations(sys::System{<:RigidBodyDynamics}) = sys.y
 
 function Systems.f_ode!(sys::System{RigidBodyDynamics}, mp_Ob::MassProperties,
-                        kin_data::KinData, dyn_data::Actions)
+                        kin_data::KinData, actions::Actions)
 
     @unpack q_eb, q_nb, n_e, h_e, r_eOb_e, ω_eb_b, v_eOb_b = kin_data
-    @unpack wr_net_Ob, G_Gb_b = dyn_data
+    @unpack wr_net_Ob, G_Gb_b = actions
     @unpack ẋ = sys
 
     ########################### Dynamic Equations ##############################
