@@ -6,7 +6,6 @@ using ControlSystems, RobustAndOptimalControl
 using Flight.FlightCore
 using Flight.FlightLib
 
-using ..AircraftBase
 using ..C172
 
 ################################################################################

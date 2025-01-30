@@ -6,7 +6,6 @@ using StructTypes
 using Flight.FlightCore
 using Flight.FlightLib
 
-using ...AircraftBase
 using ...C172
 using ..C172FBW
 using ..C172FBW.C172FBWControl: Controller, ControllerY

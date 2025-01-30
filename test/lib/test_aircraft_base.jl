@@ -5,7 +5,6 @@ using UnPack
 using BenchmarkTools
 
 using Flight.FlightLib
-using Flight.FlightAircraft.AircraftBase
 
 export test_aircraft_base
 

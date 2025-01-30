@@ -8,7 +8,6 @@ using FiniteDiff: finite_difference_jacobian! as jacobian!
 using Flight.FlightCore
 using Flight.FlightLib
 
-using ..AircraftBase
 using ..C172
 
 

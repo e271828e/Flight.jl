@@ -8,8 +8,6 @@ using NLopt
 using Flight.FlightCore
 using Flight.FlightLib
 
-using ..AircraftBase
-
 
 ################################################################################
 ################################ Airframe #####################################

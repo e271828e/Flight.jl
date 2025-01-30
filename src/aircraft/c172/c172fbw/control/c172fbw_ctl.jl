@@ -8,7 +8,6 @@ using Flight.FlightLib.Control.Discrete: Integrator, IntegratorOutput,
     PID, PIDOutput, PIDParams, LQRTracker, LQRTrackerOutput, LQRTrackerParams,
     PIDLookup, LQRTrackerLookup, load_pid_lookup, load_lqr_tracker_lookup
 
-using ...AircraftBase
 using ...C172
 using ..C172FBW
 

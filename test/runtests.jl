@@ -9,8 +9,7 @@ include(normpath("lib/test_control.jl")); using .TestControl
 include(normpath("lib/test_propellers.jl")); using .TestPropellers
 include(normpath("lib/test_piston.jl")); using .TestPiston
 include(normpath("lib/test_landing_gear.jl")); using .TestLandingGear
-
-include(normpath("aircraft/test_aircraft_base.jl")); using .TestAircraft
+include(normpath("lib/test_aircraft_base.jl")); using .TestAircraft
 
 include(normpath("aircraft/test_c172r.jl")); using .TestC172R
 
