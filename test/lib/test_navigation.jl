@@ -143,7 +143,7 @@ using Test
 
 @kwdef struct IMUTestHarness <: SystemDefinition
     imu::IMU = IMU()
-    kin::LTF = LTF()
+    kin::WA = WA()
     dyn::RigidBodyDynamics = RigidBodyDynamics()
 end
 

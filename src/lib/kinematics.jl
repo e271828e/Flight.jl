@@ -7,7 +7,7 @@ using Flight.FlightCore
 using ..Attitude
 using ..Geodesy
 
-export AbstractKinematicDescriptor, ECEF, LTF, NED
+export AbstractKinematicDescriptor, ECEF, WA, NED
 export KinInit, KinData, KinSystem
 
 const v_min_χγ = 0.1 #minimum speed for valid χ, γ
@@ -20,7 +20,7 @@ const v_min_χγ = 0.1 #minimum speed for valid χ, γ
 struct Initializer
     q_nb::RQuat
     Ob::Geographic{NVector, Ellipsoidal}
-    ω_lb_b::SVector{3, Float64}
+    ω_wb_b::SVector{3, Float64}
     v_eOb_n::SVector{3, Float64}
     Δx::Float64
     Δy::Float64
@@ -30,11 +30,11 @@ const KinInit = Initializer
 
 function Initializer(;
     q_nb::Abstract3DRotation = RQuat(), loc::Abstract2DLocation = LatLon(),
-    h::Altitude = HOrth(), ω_lb_b::AbstractVector{<:Real} = zeros(SVector{3}),
+    h::Altitude = HOrth(), ω_wb_b::AbstractVector{<:Real} = zeros(SVector{3}),
     v_eOb_n::AbstractVector{<:Real} = zeros(SVector{3}), Δx::Real = 0.0, Δy::Real = 0.0)
 
     Ob = Geographic(loc, h)
-    Initializer(q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy)
+    Initializer(q_nb, Ob, ω_wb_b, v_eOb_n, Δx, Δy)
 end
 
 
@@ -62,7 +62,7 @@ struct KinData
     h_o::Altitude{Orthometric}
     Δxy::SVector{2,Float64}
     r_eOb_e::SVector{3,Float64}
-    ω_lb_b::SVector{3,Float64}
+    ω_wb_b::SVector{3,Float64}
     ω_eb_b::SVector{3,Float64}
     v_eOb_b::SVector{3,Float64}
     v_eOb_n::SVector{3,Float64}
@@ -73,7 +73,7 @@ end
 
 function KinData(ic::KinInit = KinInit())
 
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
+    @unpack q_nb, Ob, ω_wb_b, v_eOb_n, Δx, Δy = ic
 
     e_nb = REuler(q_nb)
     q_en = ltf(Ob)
@@ -86,9 +86,9 @@ function KinData(ic::KinInit = KinInit())
     Δxy = SVector(Δx, Δy)
     r_eOb_e = Cartesian(Ob)
 
-    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
-    ω_el_b = q_nb'(ω_el_n)
-    ω_eb_b = ω_el_b + ω_lb_b
+    ω_ew_n = get_ω_ew_n(v_eOb_n, Ob)
+    ω_ew_b = q_nb'(ω_ew_n)
+    ω_eb_b = ω_ew_b + ω_wb_b
 
     v_eOb_b = q_nb'(v_eOb_n)
 
@@ -97,7 +97,7 @@ function KinData(ic::KinInit = KinInit())
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
     KinData(   e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd)
+                ω_wb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
 
@@ -161,43 +161,43 @@ function Geodesy.G_n(kin_data::KinData)
 end
 
 
-########################### LTF-based Kinematics #########################
+########################### WA-based Kinematics #########################
 ##########################################################################
 
 #fast, singularity-free (all-attitude, all-latitude) kinematic mechanization,
-#appropriate for simulation. local tangent frame is the wander-azimuth frame
+#appropriate for simulation. wander-azimuth is the wander-azimuth frame
 
-struct LTF <: AbstractKinematicDescriptor end
+struct WA <: AbstractKinematicDescriptor end
 
-@kwdef struct LTFData
-    q_lb::RQuat = RQuat()
-    q_el::RQuat = RQuat()
-    ω_el_l::SVector{3,Float64} = zeros(SVector{3})
+@kwdef struct WAData
+    q_wb::RQuat = RQuat()
+    q_ew::RQuat = RQuat()
+    ω_ew_w::SVector{3,Float64} = zeros(SVector{3})
 end
 
-Systems.X(::LTF) = ComponentVector(
-    q_lb = zeros(4), q_el = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
+Systems.X(::WA) = ComponentVector(
+    q_wb = zeros(4), q_ew = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
 
-Systems.Y(::LTF) = KinematicsY(KinData(), LTFData())
+Systems.Y(::WA) = KinematicsY(KinData(), WAData())
 
-function Systems.init!(sys::System{LTF}, ic::Initializer = Initializer())
+function Systems.init!(sys::System{WA}, ic::Initializer = Initializer())
 
     @unpack x, u = sys
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
+    @unpack q_nb, Ob, ω_wb_b, v_eOb_n, Δx, Δy = ic
 
-    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
-    ω_el_b = q_nb'(ω_el_n)
-    ω_eb_b = ω_el_b + ω_lb_b
+    ω_ew_n = get_ω_ew_n(v_eOb_n, Ob)
+    ω_ew_b = q_nb'(ω_ew_n)
+    ω_eb_b = ω_ew_b + ω_wb_b
     v_eOb_b = q_nb'(v_eOb_n)
     h_e = HEllip(Ob)
 
-    q_lb = q_nb #arbitrarily initializes wander angle ψ_nl to 1
+    q_wb = q_nb #arbitrarily initializes wander angle ψ_nw to 1
 
     u.ω_eb_b = ω_eb_b
     u.v_eOb_b = v_eOb_b
 
-    x.q_lb = q_lb[:]
-    x.q_el = ltf(Ob)[:]
+    x.q_wb = q_wb[:]
+    x.q_ew = ltf(Ob)[:]
     x.Δx = Δx
     x.Δy = Δy
     x.h_e = h_e
@@ -207,43 +207,43 @@ function Systems.init!(sys::System{LTF}, ic::Initializer = Initializer())
 end
 
 
-function Systems.f_ode!(sys::System{LTF})
+function Systems.f_ode!(sys::System{WA})
 
     @unpack ẋ, x, u = sys
 
-    q_lb = RQuat(x.q_lb, normalization = false)
-    q_el = RQuat(x.q_el, normalization = false)
+    q_wb = RQuat(x.q_wb, normalization = false)
+    q_ew = RQuat(x.q_ew, normalization = false)
     ω_eb_b = SVector{3}(u.ω_eb_b)
     v_eOb_b = SVector{3}(u.v_eOb_b)
     h_e = HEllip(x.h_e[1])
     Δxy = SVector(x.Δx, x.Δy)
 
-    ψ_nl = get_ψ_nl(q_el)
-    q_nl = Rz(ψ_nl)
-    q_nb = q_nl ∘ q_lb
-    q_eb = q_el ∘ q_lb
+    ψ_nw = get_ψ_nw(q_ew)
+    q_nw = Rz(ψ_nw)
+    q_nb = q_nw ∘ q_wb
+    q_eb = q_ew ∘ q_wb
     q_en = q_eb ∘ q_nb'
     e_nb = REuler(q_nb)
 
-    n_e = NVector(q_el)
+    n_e = NVector(q_ew)
     ϕ_λ = LatLon(n_e)
     h_o = HOrth(h_e, n_e)
 
     v_eOb_n = q_nb(v_eOb_b)
     Ob = Geographic(n_e, h_e)
     r_eOb_e = Cartesian(Ob)
-    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
+    ω_ew_n = get_ω_ew_n(v_eOb_n, Ob)
 
-    ω_el_l = q_nl'(ω_el_n)
-    ω_el_b = q_lb'(ω_el_l)
-    ω_lb_b = ω_eb_b - ω_el_b
+    ω_ew_w = q_nw'(ω_ew_n)
+    ω_ew_b = q_wb'(ω_ew_w)
+    ω_wb_b = ω_eb_b - ω_ew_b
 
     v_gnd = norm(v_eOb_n)
     χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
-    ẋ.q_lb = Attitude.dt(q_lb, ω_lb_b)
-    ẋ.q_el = Attitude.dt(q_el, ω_el_l)
+    ẋ.q_wb = Attitude.dt(q_wb, ω_wb_b)
+    ẋ.q_ew = Attitude.dt(q_ew, ω_ew_w)
 
     ẋ.Δx = v_eOb_n[1]
     ẋ.Δy = v_eOb_n[2]
@@ -251,20 +251,20 @@ function Systems.f_ode!(sys::System{LTF})
 
     sys.y = KinematicsY(
         KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                 ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
-        LTFData(; q_lb, q_el, ω_el_l)
+                 ω_wb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+        WAData(; q_wb, q_ew, ω_ew_w)
     )
 
 end
 
 
-function Systems.f_step!(sys::System{LTF}, ε = 1e-8)
-    normalize_block!(sys.x.q_lb, ε)
-    normalize_block!(sys.x.q_el, ε)
+function Systems.f_step!(sys::System{WA}, ε = 1e-8)
+    normalize_block!(sys.x.q_wb, ε)
+    normalize_block!(sys.x.q_ew, ε)
 end
 
 
-@inline function get_ω_el_n(v_eOb_n::AbstractVector{<:Real}, Ob::Geographic)
+@inline function get_ω_ew_n(v_eOb_n::AbstractVector{<:Real}, Ob::Geographic)
 
     (R_N, R_E) = radii(Ob)
     h_e = HEllip(Ob)
@@ -286,7 +286,7 @@ struct ECEF <: AbstractKinematicDescriptor end
 
 @kwdef struct ECEFData
     q_en::RQuat = RQuat()
-    ω_el_n::SVector{3,Float64} = zeros(SVector{3})
+    ω_ew_n::SVector{3,Float64} = zeros(SVector{3})
 end
 
 Systems.X(::ECEF) = ComponentVector(
@@ -297,7 +297,7 @@ Systems.Y(::ECEF) = KinematicsY(KinData(), ECEFData())
 function Systems.init!(sys::System{ECEF}, ic::Initializer = Initializer())
 
     @unpack x, u = sys
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
+    @unpack q_nb, Ob, ω_wb_b, v_eOb_n, Δx, Δy = ic
 
     n_e = NVector(Ob)
     h_e = HEllip(Ob)
@@ -305,9 +305,9 @@ function Systems.init!(sys::System{ECEF}, ic::Initializer = Initializer())
     q_en = ltf(n_e)
     q_eb = q_en ∘ q_nb
 
-    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
-    ω_el_b = q_nb'(ω_el_n)
-    ω_eb_b = ω_el_b + ω_lb_b
+    ω_ew_n = get_ω_ew_n(v_eOb_n, Ob)
+    ω_ew_b = q_nb'(ω_ew_n)
+    ω_eb_b = ω_ew_b + ω_wb_b
     v_eOb_b = q_nb'(v_eOb_n)
 
     u.ω_eb_b = ω_eb_b
@@ -343,24 +343,24 @@ function Systems.f_ode!(sys::System{ECEF})
     Ob = Geographic(n_e, h_e)
     r_eOb_e = Cartesian(Ob)
     v_eOb_n = q_nb(v_eOb_b)
-    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
-    ω_el_b = q_nb'(ω_el_n)
-    ω_lb_b = ω_eb_b - ω_el_b
+    ω_ew_n = get_ω_ew_n(v_eOb_n, Ob)
+    ω_ew_b = q_nb'(ω_ew_n)
+    ω_wb_b = ω_eb_b - ω_ew_b
 
     v_gnd = norm(v_eOb_n)
     χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eOb_n) : 0.0
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eOb_n) : 0.0
 
     ẋ.q_eb = Attitude.dt(q_eb, ω_eb_b)
-    ẋ.n_e = q_en(ω_el_n × SVector{3,Float64}(0,0,-1))
+    ẋ.n_e = q_en(ω_ew_n × SVector{3,Float64}(0,0,-1))
     ẋ.Δx = v_eOb_n[1]
     ẋ.Δy = v_eOb_n[2]
     ẋ.h_e = -v_eOb_n[3]
 
     sys.y = KinematicsY(
         KinData(e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
-        ECEFData(; q_en, ω_el_n)
+                ω_wb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+        ECEFData(; q_en, ω_ew_n)
     )
 
 end
@@ -394,11 +394,11 @@ Systems.Y(::NED) = KinematicsY(KinData(), NEDData())
 function Systems.init!(sys::System{NED}, ic::Initializer = Initializer())
 
     @unpack x, u = sys
-    @unpack q_nb, Ob, ω_lb_b, v_eOb_n, Δx, Δy = ic
+    @unpack q_nb, Ob, ω_wb_b, v_eOb_n, Δx, Δy = ic
 
-    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
-    ω_el_b = q_nb'(ω_el_n)
-    ω_eb_b = ω_el_b + ω_lb_b
+    ω_ew_n = get_ω_ew_n(v_eOb_n, Ob)
+    ω_ew_b = q_nb'(ω_ew_n)
+    ω_eb_b = ω_ew_b + ω_wb_b
     v_eOb_b = q_nb'(v_eOb_n)
 
     e_nb = REuler(q_nb)
@@ -447,9 +447,9 @@ function Systems.f_ode!(sys::System{NED})
     ω_en_b = q_nb'(ω_en_n)
     ω_nb_b = ω_eb_b - ω_en_b
 
-    ω_el_n = get_ω_el_n(v_eOb_n, Ob)
-    ω_el_b = q_nb'(ω_el_n)
-    ω_lb_b = ω_eb_b - ω_el_b
+    ω_ew_n = get_ω_ew_n(v_eOb_n, Ob)
+    ω_ew_b = q_nb'(ω_ew_n)
+    ω_wb_b = ω_eb_b - ω_ew_b
 
     v_gnd = norm(v_eOb_n)
     χ_gnd = azimuth(v_eOb_n)
@@ -469,7 +469,7 @@ function Systems.f_ode!(sys::System{NED})
 
     sys.y = KinematicsY(
         KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eOb_e,
-                 ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
+                 ω_wb_b, ω_eb_b, v_eOb_b, v_eOb_n, v_gnd, χ_gnd, γ_gnd),
         NEDData(; ω_nb_b, ω_en_n)
     )
 
@@ -646,9 +646,9 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
         size = (1920, 1920)
         )
 
-    pd[:ω_lb_b] = plot(
-        ts.ω_lb_b;
-        plot_title = "Angular Velocity (Vehicle/LTF) [Vehicle Axes]",
+    pd[:ω_wb_b] = plot(
+        ts.ω_wb_b;
+        plot_title = "Angular Velocity (Vehicle/WA) [Vehicle Axes]",
         label = ["Roll Rate" "Pitch Rate" "Yaw Rate"],
         ylabel = [L"$p \ (rad/s)$" L"$q \ (rad/s)$" L"$r \ (rad/s)$"],
         ts_split = :h,
@@ -682,9 +682,9 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
         ts_split = :h,
         kwargs...)
 
-    # pd[:ω_el_n] = plot(
-    #     ts.ω_el_n;
-    #     plot_title = "Local Tangent Frame Transport Rate (LTF/ECEF) [NED Axes]",
+    # pd[:ω_ew_n] = plot(
+    #     ts.ω_ew_n;
+    #     plot_title = "Wander-Azimuth Transport Rate (WA/ECEF) [NED Axes]",
     #     ylabel = L"$\omega_{el}^{l} \ (rad/s)$",
     #     ts_split = :h,
     #     kwargs...)
@@ -700,20 +700,20 @@ end
 function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
                     label::String = "Kinematics")
 
-    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_lb_b, ω_eb_b, v_eOb_b, v_eOb_n  = data
+    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_wb_b, ω_eb_b, v_eOb_b, v_eOb_n  = data
 
     CImGui.Begin(label, p_open)
 
-    if CImGui.TreeNode("Angular Velocity (Body / LTF) [Body]")
+    if CImGui.TreeNode("Angular Velocity (Body / WA) [Body]")
 
-        CImGui.Text(@sprintf("Yaw Rate: %.7f deg/s", rad2deg(ω_lb_b[1])))
-        CImGui.Text(@sprintf("Pitch Rate: %.7f deg/s", rad2deg(ω_lb_b[2])))
-        CImGui.Text(@sprintf("Roll Rate: %.7f deg/s", rad2deg(ω_lb_b[3])))
+        CImGui.Text(@sprintf("Yaw Rate: %.7f deg/s", rad2deg(ω_wb_b[1])))
+        CImGui.Text(@sprintf("Pitch Rate: %.7f deg/s", rad2deg(ω_wb_b[2])))
+        CImGui.Text(@sprintf("Roll Rate: %.7f deg/s", rad2deg(ω_wb_b[3])))
 
         CImGui.TreePop()
     end
 
-    GUI.draw(rad2deg.(ω_eb_b - ω_lb_b), "Transport Rate (LTF / ECEF) [Body]", "deg/s")
+    GUI.draw(rad2deg.(ω_eb_b - ω_wb_b), "Transport Rate (WA / ECEF) [Body]", "deg/s")
     GUI.draw(v_eOb_n, "Velocity (Ob / ECEF) [NED]", "m/s")
     GUI.draw(v_eOb_b, "Velocity (Ob / ECEF) [Body]", "m/s")
 

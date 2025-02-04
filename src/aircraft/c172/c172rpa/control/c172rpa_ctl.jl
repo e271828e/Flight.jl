@@ -154,7 +154,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
 
     EAS = vehicle.y.air.EAS
     h_e = Float64(vehicle.y.kinematics.h_e)
-    _, q, r = vehicle.y.kinematics.ω_lb_b
+    _, q, r = vehicle.y.kinematics.ω_wb_b
     @unpack θ, φ = vehicle.y.kinematics.e_nb
     clm = -vehicle.y.kinematics.data.v_eOb_n[3]
     mode_prev = sys.y.mode
@@ -423,7 +423,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
                 (k_i != 0) && (p2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_sp).φ)
             end
 
-            p = kinematics.ω_lb_b[1]
+            p = kinematics.ω_wb_b[1]
             p2φ_int.u.input = p_sp - p
             p2φ_int.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(p2φ_int)
@@ -751,7 +751,7 @@ function AircraftBase.trim!(sys::System{<:Controller},
     #here we assume that the vehicle's y has already been updated to its trim
     #value by trim!(vehicle, params)
     y_act = vehicle.y.components.act
-    @unpack ω_lb_b, v_eOb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
+    @unpack ω_wb_b, v_eOb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
     @unpack EAS, β_b = vehicle.y.air
 
     #makes Controller inputs consistent with the trim solution obtained
@@ -773,11 +773,11 @@ function AircraftBase.trim!(sys::System{<:Controller},
     u.flaps = y_act.flaps.pos
     u.mixture = y_act.mixture.pos
 
-    u.q_sp = ω_lb_b[2]
+    u.q_sp = ω_wb_b[2]
     u.θ_sp = e_nb.θ
     u.EAS_sp = EAS
     u.clm_sp = -v_eOb_n[3]
-    u.p_sp = ω_lb_b[1]
+    u.p_sp = ω_wb_b[1]
     u.φ_sp = e_nb.φ
     u.β_sp = β_b
     u.χ_sp = χ_gnd
@@ -982,12 +982,12 @@ function GUI.draw!(ctl::System{<:Controller},
     @unpack components, kinematics, accelerations, air = vehicle.y
     @unpack act, pwp, fuel, ldg = components
 
-    @unpack e_nb, ω_lb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eOb_n = kinematics
+    @unpack e_nb, ω_wb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eOb_n = kinematics
     @unpack CAS, EAS, TAS, α_b, β_b, T, p, pt = air
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
 
-    p, q, r = ω_lb_b
+    p, q, r = ω_wb_b
     clm = -v_eOb_n[3]
     Δh = h_o - TerrainData(vehicle.constants.terrain, n_e).altitude
 

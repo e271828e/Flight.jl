@@ -202,7 +202,7 @@ function test_landing_gear_unit()
         @test isapprox.(ldg.y.strut.v_eOc_xy, [10, 0], atol = 1e-5) |> all
 
         #lateral motion with compression
-        kin = KinInit(; h, ω_lb_b = [1,0,0]) |> KinData
+        kin = KinInit(; h, ω_wb_b = [1,0,0]) |> KinData
         f_ode!(ldg, kin, terrain)
         @test isapprox.(ldg.y.strut.v_eOc_xy, [0, -0.9], atol = 1e-5) |> all
 
@@ -253,8 +253,8 @@ function test_harness()
     φ = deg2rad(0)
     q_nb = REuler(; θ, φ)
     v_eOb_n = [0,0,0]
-    ω_lb_b = [0,0,0]
-    kin = KinInit(; h, v_eOb_n, ω_lb_b, q_nb) |> KinData
+    ω_wb_b = [0,0,0]
+    kin = KinInit(; h, v_eOb_n, ω_wb_b, q_nb) |> KinData
     f_ode!(ldg, kin, trn)
     f_step!(ldg)
     @show ldg.strut.y.wow

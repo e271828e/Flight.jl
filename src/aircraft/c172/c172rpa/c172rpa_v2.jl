@@ -134,7 +134,7 @@ end
 const Cessna172RPAv2{K, T, A} = C172RPA.Aircraft{K, T, A} where {
     K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: C172RPAv2.Avionics}
 
-function Cessna172RPAv2(kinematics = LTF(), terrain = HorizontalTerrain())
+function Cessna172RPAv2(kinematics = WA(), terrain = HorizontalTerrain())
     C172RPA.Aircraft(kinematics, terrain, C172RPAv2.Avionics())
 end
 

@@ -9,7 +9,7 @@ using ..Attitude
 export Abstract2DLocation, Abstract3DLocation, NVector, LatLon
 export Altitude, Ellipsoidal, Orthometric, Geopotential, HEllip, HOrth, HGeop
 export Abstract3DLocation, Geographic, Cartesian
-export ω_ie, gravity, g_n, G_n, ltf, radii, get_ψ_nl, get_geoid_height
+export ω_ie, gravity, g_n, G_n, ltf, radii, get_ψ_nw, get_geoid_height
 
 #WGS84 fundamental constants, SI units
 const GM = 3.986005e+14 #Gravitational constant
@@ -56,15 +56,15 @@ end
 
 NVector(loc::Abstract2DLocation) = convert(NVector, loc)
 
-#NVector from ECEF to Local Tangent Frame rotation
-NVector(r_el::Abstract3DRotation) = NVector(RMatrix(r_el))
+#NVector from ECEF to Wander-Azimuth rotation
+NVector(r_ew::Abstract3DRotation) = NVector(RMatrix(r_ew))
 
-NVector(r_el::RMatrix) = NVector( -r_el[:,3], normalization = false)
+NVector(r_ew::RMatrix) = NVector( -r_ew[:,3], normalization = false)
 
-function NVector(r_el::RQuat)
+function NVector(r_ew::RQuat)
     #n_e is simply the third column of the R_el rotation matrix. we don't need
     #the complete RQuat to RMatrix conversion
-    q = r_el[:]
+    q = r_ew[:]
     dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]
     dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4]
     NVector(-SVector{3}(dq24 + dq13, dq34 - dq12, 1 - 2*(q[2]^2 + q[3]^2)), normalization = false)
@@ -130,19 +130,19 @@ function radii(loc::Abstract2DLocation)
     return ( M = a * (1 - e²) / f_den^3, N = a / f_den ) #(R_N, R_E)
 end
 
-#local tangent frame from Abstract2DLocation
-function ltf(loc::Abstract2DLocation, ψ_nl::Real = 0.)
+#wander-azimuth from Abstract2DLocation
+function ltf(loc::Abstract2DLocation, ψ_nw::Real = 0.)
     @unpack ϕ, λ = LatLon(loc)
-    Rz(λ) ∘ Ry(-(ϕ + 0.5π)) ∘ Rz(ψ_nl)
+    Rz(λ) ∘ Ry(-(ϕ + 0.5π)) ∘ Rz(ψ_nw)
 end
 
-#extract Wander Angle from ECEF to Local Tangent Frame rotation
-get_ψ_nl(r_el::Abstract3DRotation) = get_ψ_nl(RMatrix(r_el))
-get_ψ_nl(r_el::RMatrix) = atan( -r_el[3,2], r_el[3,1] )
-function get_ψ_nl(r_el::RQuat)
+#extract Wander Angle from ECEF to Wander-Azimuth rotation
+get_ψ_nw(r_ew::Abstract3DRotation) = get_ψ_nw(RMatrix(r_ew))
+get_ψ_nw(r_ew::RMatrix) = atan( -r_ew[3,2], r_ew[3,1] )
+function get_ψ_nw(r_ew::RQuat)
     #n_e is the third column of the R_el matrix. we don't need the complete
     #RQuat to RMatrix conversion
-    q = r_el[:]
+    q = r_ew[:]
     dq12 = 2*q[1]*q[2]; dq13 = 2*q[1]*q[3]
     dq24 = 2*q[2]*q[4]; dq34 = 2*q[3]*q[4]
     atan(-(dq34 + dq12), dq24 - dq13)
@@ -421,7 +421,7 @@ Base.convert(::Type{SVector{3,Float64}}, r::Cartesian) = r.data
 #general conversion from 3D to 2D location
 (::Type{L})(pos::Abstract3DLocation) where {L<:Abstract2DLocation} = Geographic{L,Ellipsoidal}(pos).loc
 
-ltf(pos::Abstract3DLocation, ψ_nl::Real = 0.0) = ltf(Geographic{NVector,Ellipsoidal}(pos).loc, ψ_nl)
+ltf(pos::Abstract3DLocation, ψ_nw::Real = 0.0) = ltf(Geographic{NVector,Ellipsoidal}(pos).loc, ψ_nw)
 radii(pos::Abstract3DLocation) = radii(Geographic{NVector,Ellipsoidal}(pos).loc)
 
 """

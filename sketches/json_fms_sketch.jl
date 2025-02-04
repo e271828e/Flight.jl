@@ -43,7 +43,7 @@ function json_fms_sketch(; save::Bool = true)
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
-    sys = Cessna172RPAv1(LTF(), trn) |> System;
+    sys = Cessna172RPAv1(WA(), trn) |> System;
     sim = Simulation(sys; dt = 1/60, Δt = 1/60, t_end = 3600)
 
     #on ground

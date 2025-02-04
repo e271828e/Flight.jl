@@ -266,7 +266,7 @@ const Components = C172.Components{typeof(PowerPlant()), C172FBW.Actuation}
 const Vehicle{K, T} = AircraftBase.Vehicle{C172FBW.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 const Aircraft{K, T, A} = AircraftBase.Aircraft{C172FBW.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 
-function Vehicle(kinematics = LTF(), terrain = HorizontalTerrain())
+function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
     AircraftBase.Vehicle(
         C172.Components(PowerPlant(), Actuation()),
         kinematics,
@@ -275,7 +275,7 @@ function Vehicle(kinematics = LTF(), terrain = HorizontalTerrain())
         LocalAtmosphere())
 end
 
-function Aircraft(kinematics = LTF(), terrain = HorizontalTerrain(), avionics = NoAvionics())
+function Aircraft(kinematics = WA(), terrain = HorizontalTerrain(), avionics = NoAvionics())
     AircraftBase.Aircraft(Vehicle(kinematics, terrain), avionics)
 end
 
@@ -580,7 +580,7 @@ export Cessna172FBW
 const Cessna172FBW{K, T} = C172FBW.Aircraft{K, T, NoAvionics} where {
     K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
-function Cessna172FBW(kinematics = LTF(), terrain = HorizontalTerrain())
+function Cessna172FBW(kinematics = WA(), terrain = HorizontalTerrain())
     C172FBW.Aircraft(kinematics, terrain, NoAvionics())
 end
 

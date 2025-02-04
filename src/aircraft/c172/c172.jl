@@ -390,7 +390,7 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     @unpack e, a, r, f = u
     @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = constants
     @unpack TAS, q, v_wOb_b = air
-    @unpack ω_lb_b, n_e, h_o = kinematics
+    @unpack ω_wb_b, n_e, h_o = kinematics
     stall = s.stall
 
     v_wOb_a = f_ba.q'(v_wOb_b)
@@ -405,9 +405,9 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     α_filt_dot = 1/τ * (α - α_filt)
     β_filt_dot = 1/τ * (β - β_filt)
 
-    p_nd = ω_lb_b[1] * b / (2V) #non-dimensional roll rate
-    q_nd = ω_lb_b[2] * c / (2V) #non-dimensional pitch rate
-    r_nd = ω_lb_b[3] * b / (2V) #non-dimensional yaw rate
+    p_nd = ω_wb_b[1] * b / (2V) #non-dimensional roll rate
+    q_nd = ω_wb_b[2] * c / (2V) #non-dimensional pitch rate
+    r_nd = ω_wb_b[3] * b / (2V) #non-dimensional yaw rate
 
     α_dot_nd = α_filt_dot * c / (2V)
     β_dot_nd = β_filt_dot * b / (2V)
@@ -835,8 +835,8 @@ end
     ψ_nb::Float64 = 0.0 #geographic heading
     EAS::Float64 = 50.0 #equivalent airspeed
     γ_wOb_n::Float64 = 0.0 #wind-relative flight path angle
-    ψ_lb_dot::Float64 = 0.0 #LTF-relative turn rate
-    θ_lb_dot::Float64 = 0.0 #LTF-relative pitch rate
+    ψ_wb_dot::Float64 = 0.0 #WA-relative turn rate
+    θ_wb_dot::Float64 = 0.0 #WA-relative pitch rate
     β_a::Float64 = 0.0 #sideslip angle measured in the aerodynamic reference frame
     x_fuel::Ranged{Float64, 0., 1.} = 0.5 #normalized fuel load
     mixture::Ranged{Float64, 0., 1.} = 0.5 #engine mixture control
@@ -849,7 +849,7 @@ function Kinematics.Initializer(trim_state::TrimState,
                                 trim_params::TrimParameters,
                                 atm_data::AtmData)
 
-    @unpack EAS, β_a, γ_wOb_n, ψ_nb, ψ_lb_dot, θ_lb_dot, Ob = trim_params
+    @unpack EAS, β_a, γ_wOb_n, ψ_nb, ψ_wb_dot, θ_wb_dot, Ob = trim_params
     @unpack α_a, φ_nb = trim_state
 
     TAS = Atmosphere.EAS2TAS(EAS; ρ = ISAData(Ob, atm_data).ρ)
@@ -860,9 +860,9 @@ function Kinematics.Initializer(trim_state::TrimState,
     e_nb = REuler(ψ_nb, θ_nb, φ_nb)
     q_nb = RQuat(e_nb)
 
-    e_lb = e_nb #initialize LTF arbitrarily to NED
-    ė_lb = SVector(ψ_lb_dot, θ_lb_dot, 0.0)
-    ω_lb_b = Attitude.ω(e_lb, ė_lb)
+    e_wb = e_nb #initialize WA arbitrarily to NED
+    ė_wb = SVector(ψ_wb_dot, θ_wb_dot, 0.0)
+    ω_wb_b = Attitude.ω(e_wb, ė_wb)
 
     loc = NVector(Ob)
     h = HEllip(Ob)
@@ -871,7 +871,7 @@ function Kinematics.Initializer(trim_state::TrimState,
     v_ew_n = atm_data.v_ew_n
     v_eOb_n = v_ew_n + v_wOb_n
 
-    Kinematics.Initializer(; q_nb, loc, h, ω_lb_b, v_eOb_n, Δx = 0.0, Δy = 0.0)
+    Kinematics.Initializer(; q_nb, loc, h, ω_wb_b, v_eOb_n, Δx = 0.0, Δy = 0.0)
 
 end
 

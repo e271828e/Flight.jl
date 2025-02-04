@@ -63,22 +63,22 @@ function test_system_methods()
             trn_data = TerrainData(trn, loc)
             kin_init = KinInit( h = trn_data.altitude + 1.8);
 
-            ac_LTF = System(Cessna172RPA(LTF(), trn));
+            ac_WA = System(Cessna172RPA(WA(), trn));
             ac_ECEF = System(Cessna172RPA(ECEF(), trn));
             ac_NED = System(Cessna172RPA(NED(), trn));
 
-            Systems.init!(ac_LTF, kin_init)
+            Systems.init!(ac_WA, kin_init)
             Systems.init!(ac_ECEF, kin_init)
             Systems.init!(ac_NED, kin_init)
 
-            f_ode!(ac_LTF)
+            f_ode!(ac_WA)
             #make sure we are on the ground to ensure landing gear code coverage
-            @test ac_LTF.y.vehicle.components.ldg.left.strut.wow == true
+            @test ac_WA.y.vehicle.components.ldg.left.strut.wow == true
 
             #all three kinematics implementations must be supported, no allocations
-            @test @ballocated(f_ode!($ac_LTF)) == 0
-            @test @ballocated(f_step!($ac_LTF)) == 0
-            @test @ballocated(f_disc!($ac_LTF)) == 0
+            @test @ballocated(f_ode!($ac_WA)) == 0
+            @test @ballocated(f_step!($ac_WA)) == 0
+            @test @ballocated(f_disc!($ac_WA)) == 0
 
             @test @ballocated(f_ode!($ac_ECEF)) == 0
             @test @ballocated(f_step!($ac_ECEF)) == 0
@@ -146,11 +146,11 @@ function test_sim_interactive(; save::Bool = true)
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172RPA(LTF(), trn) |> System
+    ac = Cessna172RPA(WA(), trn) |> System
 
     kin_init = KinInit(
         v_eOb_n = [0, 0, 0],
-        ω_lb_b = [0, 0, 0],
+        ω_wb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
         h = h_trn + 1.9 + 0);

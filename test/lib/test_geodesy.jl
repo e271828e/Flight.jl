@@ -32,29 +32,29 @@ function test_NVector()
     @test n_e != -n_e
     @test !(n_e ≈ -n_e)
 
-    q_el = RQuat([1,2,3,4])
-    m_el = RMatrix(q_el)
-    a_el = RAxAng(q_el)
+    q_ew = RQuat([1,2,3,4])
+    m_el = RMatrix(q_ew)
+    a_el = RAxAng(q_ew)
 
-    #construction from ECEF to LTF rotation
-    @test NVector(q_el) ≈ NVector(m_el) ≈ NVector(a_el)
+    #construction from ECEF to WA rotation
+    @test NVector(q_ew) ≈ NVector(m_el) ≈ NVector(a_el)
 
-    #LTF constructors and LTF conversion
+    #WA constructors and WA conversion
     r_en = ltf(n_e, 0)
     @test r_en == ltf(n_e)
-    @test get_ψ_nl(r_en) ≈ 0
+    @test get_ψ_nw(r_en) ≈ 0
 
-    ψ_nl = π/3
-    r_nl = Rz(ψ_nl)
-    r_el = r_en ∘ r_nl
-    @test get_ψ_nl(r_el) ≈ ψ_nl
-    @test get_ψ_nl(RMatrix(r_el)) ≈ ψ_nl
-    @test get_ψ_nl(RAxAng(r_el)) ≈ ψ_nl
+    ψ_nw = π/3
+    r_nw = Rz(ψ_nw)
+    r_ew = r_en ∘ r_nw
+    @test get_ψ_nw(r_ew) ≈ ψ_nw
+    @test get_ψ_nw(RMatrix(r_ew)) ≈ ψ_nw
+    @test get_ψ_nw(RAxAng(r_ew)) ≈ ψ_nw
 
-    #r_en and r_el should return the same NVector
-    @test NVector(r_el) ≈ n_e
-    @test NVector(RMatrix(r_el)) ≈ n_e
-    @test NVector(RAxAng(r_el)) ≈ n_e
+    #r_en and r_ew should return the same NVector
+    @test NVector(r_ew) ≈ n_e
+    @test NVector(RMatrix(r_ew)) ≈ n_e
+    @test NVector(RAxAng(r_ew)) ≈ n_e
 
     #radii
     @test radii(n_e) isa NamedTuple
@@ -75,19 +75,19 @@ function test_LatLon()
 
     #ltf
     @test ltf(latlon) ≈ ltf(NVector(latlon))
-    ψ_nl = π/3
-    r_el = ltf(latlon, 0) ∘ Rz(ψ_nl)
-    @test get_ψ_nl(r_el) ≈ ψ_nl
+    ψ_nw = π/3
+    r_ew = ltf(latlon, 0) ∘ Rz(ψ_nw)
+    @test get_ψ_nw(r_ew) ≈ ψ_nw
 
-    #conversion torture test: from LatLon to NVector, to r_en, then r_el, then
+    #conversion torture test: from LatLon to NVector, to r_en, then r_ew, then
     #NVector, back to LatLon
     ϕ_range = range(-π/2, π/2, length = 10)
     λ_range = range(-π, π, length = 10)
-    ψ_nl_range = range(-π, π, length = 10)
+    ψ_nw_range = range(-π, π, length = 10)
 
-    ll_array = [LatLon(ϕ, λ) for (ϕ, λ, _) in Iterators.product(ϕ_range, λ_range, ψ_nl_range)]
-    ψ_array = [ψ_nl for (_, _, ψ_nl) in Iterators.product(ϕ_range, λ_range, ψ_nl_range)]
-    ll_array_test = [ll |> NVector |> ltf |> (r -> r ∘ Rz(ψ_nl)) |> NVector |> LatLon for (ll, ψ_nl) in zip(ll_array, ψ_array)]
+    ll_array = [LatLon(ϕ, λ) for (ϕ, λ, _) in Iterators.product(ϕ_range, λ_range, ψ_nw_range)]
+    ψ_array = [ψ_nw for (_, _, ψ_nw) in Iterators.product(ϕ_range, λ_range, ψ_nw_range)]
+    ll_array_test = [ll |> NVector |> ltf |> (r -> r ∘ Rz(ψ_nw)) |> NVector |> LatLon for (ll, ψ_nw) in zip(ll_array, ψ_array)]
 
     @test all(ll_array .≈ ll_array_test)
 

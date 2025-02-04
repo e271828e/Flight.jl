@@ -18,12 +18,12 @@ function test_dynamics()
 
         th = TestHarness() |> System;
         dyn = System(RigidBodyDynamics())
-        kin = System(LTF())
+        kin = System(WA())
 
         kin_init = KinInit(
             loc = LatLon(0, 0),
             h = HOrth(0),
-            ω_lb_b = [0.0, 0.0, 0.0],
+            ω_wb_b = [0.0, 0.0, 0.0],
             q_nb = REuler(0.0, 0.0, 0.0),
             v_eOb_n = [0, 0, 0])
 

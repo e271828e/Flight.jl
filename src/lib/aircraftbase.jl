@@ -57,7 +57,7 @@ end
                       K <: AbstractKinematicDescriptor,
                       T <: AbstractTerrain} <: SystemDefinition
     components::F = NoComponents()
-    kinematics::K = LTF()
+    kinematics::K = WA()
     dynamics::RigidBodyDynamics = RigidBodyDynamics()
     terrain::T = HorizontalTerrain() #shared with other aircraft instances
     atmosphere::LocalAtmosphere = LocalAtmosphere() #externally controlled

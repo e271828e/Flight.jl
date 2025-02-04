@@ -38,7 +38,7 @@ function test_control_modes()
 
     h_trn = HOrth(0)
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172RPAv1(LTF(), trn) |> System;
+    ac = Cessna172RPAv1(WA(), trn) |> System;
     ctl = ac.avionics.ctl
 
     init_gnd = KinInit( h = TerrainData(trn).altitude + 1.9);
@@ -116,7 +116,7 @@ function test_control_modes()
 
         #with direct surface control, trim state must be initially preserved
         step!(sim, 10, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b, y_kin_trim.ω_lb_b; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b, y_kin_trim.ω_wb_b; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b, y_kin_trim.v_eOb_b; atol = 1e-2))
 
         #must reset scheduling counter before standalone calls to f_disc!, but
@@ -144,7 +144,7 @@ function test_control_modes()
 
         #with thr+ele SAS active, trim state must be preserved for longer
         step!(sim, 30, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #must reset scheduling counter before standalone calls to f_disc!, but
@@ -172,7 +172,7 @@ function test_control_modes()
         #with setpoints matching their trim values, the control mode must activate
         #without transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
@@ -206,18 +206,18 @@ function test_control_modes()
 
         #the control mode must activate without transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #the controller must keep trim values in steady state
         step!(sim, 10, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         ctl.u.p_sp = 0.02
         ctl.u.β_sp = deg2rad(3)
         step!(sim, 10, true)
-        @test isapprox(Float64(ctl.u.p_sp), y_kin(ac).ω_lb_b[1]; atol = 1e-3)
+        @test isapprox(Float64(ctl.u.p_sp), y_kin(ac).ω_wb_b[1]; atol = 1e-3)
         @test isapprox(ctl.u.β_sp, y_air(ac).β_b; atol = 1e-3)
 
         #must reset scheduling counter before standalone calls to f_disc!, but
@@ -246,7 +246,7 @@ function test_control_modes()
         #with setpoints matching their trim values, the control mode must activate
         #without transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking
@@ -293,7 +293,7 @@ function test_control_modes()
         #when trim setpoints are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
@@ -302,7 +302,7 @@ function test_control_modes()
         step!(sim, 10, true)
 
         @test ctl.lon_ctl.u.q_sp != 0
-        @test isapprox(ctl.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
+        @test isapprox(ctl.lon_ctl.u.q_sp, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
         @test isapprox(Float64(ac.y.vehicle.components.act.throttle.cmd),
                         Float64(ctl.u.throttle_sp_input + ctl.u.throttle_sp_offset); atol = 1e-3)
 
@@ -327,7 +327,7 @@ function test_control_modes()
         #when trim setpoints are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
@@ -364,7 +364,7 @@ function test_control_modes()
         #when trim setpoints are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
@@ -400,7 +400,7 @@ function test_control_modes()
         #when trim setpoints are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking
@@ -411,7 +411,7 @@ function test_control_modes()
         ctl.u.q_sp = 0.0
         step!(sim, 20, true)
 
-        @test isapprox(ctl.lon_ctl.u.q_sp, y_kin(ac).ω_lb_b[2]; atol = 1e-3)
+        @test isapprox(ctl.lon_ctl.u.q_sp, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
 
         #must reset scheduling counter before standalone calls to f_disc!, but
@@ -436,7 +436,7 @@ function test_control_modes()
         #when trim setpoints are kept, the control mode must activate without
         #transients
         step!(sim, 0.1, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
@@ -475,7 +475,7 @@ function test_control_modes()
         #when trim setpoints are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
@@ -513,7 +513,7 @@ function test_guidance_modes()
 
     h_trn = HOrth(0)
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172RPAv1(LTF(), trn) |> System;
+    ac = Cessna172RPAv1(WA(), trn) |> System;
     ctl = ac.avionics.ctl
     init_air = C172.TrimParameters()
 
@@ -534,7 +534,7 @@ function test_guidance_modes()
         #when trim setpoints are kept, the guidance mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_lb_b[2], y_kin_trim.ω_lb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
 
         #all tests while turning
@@ -651,7 +651,7 @@ function test_json_loopback(; save::Bool = true)
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
-    sys = Cessna172RPAv1(LTF(), trn) |> System;
+    sys = Cessna172RPAv1(WA(), trn) |> System;
     sim = Simulation(sys; dt = 1/60, Δt = 1/60, t_end = 20)
 
     # #on ground
@@ -700,7 +700,7 @@ function test_sim(; save::Bool = true)
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172RPAv1(LTF(), trn) |> System;
+    ac = Cessna172RPAv1(WA(), trn) |> System;
     sim = Simulation(ac; t_end = 30)
 
     #on ground
@@ -730,7 +730,7 @@ function test_sim_interactive(; save::Bool = true)
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172RPAv1(LTF(), trn) |> System;
+    ac = Cessna172RPAv1(WA(), trn) |> System;
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
 
     #on ground

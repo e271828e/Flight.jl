@@ -34,7 +34,7 @@ function test_sim(; save::Bool = true)
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172RPAv2(LTF(), trn) |> System;
+    ac = Cessna172RPAv2(WA(), trn) |> System;
     sim = Simulation(ac; t_end = 30)
 
     #on ground
@@ -64,7 +64,7 @@ function test_sim_interactive(; save::Bool = true)
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172RPAv2(LTF(), trn) |> System;
+    ac = Cessna172RPAv2(WA(), trn) |> System;
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
 
     #on ground
