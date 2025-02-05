@@ -443,7 +443,7 @@ end
 function YLinear(vehicle::System{<:C172RPA.Vehicle{NED}})
 
     @unpack components, air, accelerations, kinematics = vehicle.y
-    @unpack pwp, fuel, aero,act = components
+    @unpack pwp, fuel, aero, act = components
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_b, v_eOb_n, χ_gnd, γ_gnd = kinematics
     @unpack ψ, θ, φ = e_nb
@@ -455,6 +455,8 @@ function YLinear(vehicle::System{<:C172RPA.Vehicle{NED}})
     v_N, v_E, v_D = v_eOb_n
     ω_eng = pwp.engine.ω
     fuel = fuel.x_avail
+    α = aero.α
+    β = aero.β
     α_filt = aero.α_filt
     β_filt = aero.β_filt
 
@@ -466,8 +468,6 @@ function YLinear(vehicle::System{<:C172RPA.Vehicle{NED}})
     f_x, f_y, f_z = accelerations.f_Gb_b
     EAS = air.EAS
     TAS = air.TAS
-    α = air.α_b
-    β = air.β_b
     χ = χ_gnd
     γ = γ_gnd
     climb_rate = -v_D

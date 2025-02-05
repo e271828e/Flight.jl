@@ -28,6 +28,7 @@ end
 
 y_kin(ac::System{<:Cessna172FBWv1}) = ac.y.vehicle.kinematics
 y_air(ac::System{<:Cessna172FBWv1}) = ac.y.vehicle.air
+y_aero(ac::System{<:Cessna172FBWv1}) = ac.y.vehicle.components.aero
 
 function test_control_modes()
 
@@ -179,7 +180,7 @@ function test_control_modes()
         ctl.u.β_sp = deg2rad(3)
         step!(sim, 10, true)
         @test isapprox(ctl.u.φ_sp, y_kin(ac).e_nb.φ; atol = 1e-3)
-        @test isapprox(Float64(ctl.u.β_sp), y_air(ac).β_b; atol = 1e-3)
+        @test isapprox(Float64(ctl.u.β_sp), y_aero(ac).β; atol = 1e-3)
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -217,7 +218,7 @@ function test_control_modes()
         ctl.u.β_sp = deg2rad(3)
         step!(sim, 10, true)
         @test isapprox(Float64(ctl.u.p_sp), y_kin(ac).ω_wb_b[1]; atol = 1e-3)
-        @test isapprox(ctl.u.β_sp, y_air(ac).β_b; atol = 1e-3)
+        @test isapprox(ctl.u.β_sp, y_aero(ac).β; atol = 1e-3)
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -252,7 +253,7 @@ function test_control_modes()
         step!(sim, 29, true)
         @test ctl.lat_ctl.u.χ_sp != 0
         @test isapprox(ctl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
-        # @test isapprox(Float64(ctl.u.yaw_input), y_air(ac).β_b; atol = 1e-3)
+        # @test isapprox(Float64(ctl.u.yaw_input), y_aero(ac).β; atol = 1e-3)
 
         #correct tracking with 10m/s of crosswind
         ac.vehicle.atmosphere.u.v_ew_n[1] = 10

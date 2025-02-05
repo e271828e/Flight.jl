@@ -382,6 +382,10 @@ Systems.Y(::Aero) = AeroY()
 Systems.U(::Aero) = AeroU()
 Systems.S(::Aero) = AeroS()
 
+#caution: do not confuse the w-frame in kinematics.ω_wb_b, which refers to the
+#wander-azimuth frame (w), with the w in air.v_wOb_b, which indicates aerodynamic
+#(wind-relative) velocity
+
 function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     air::AirData, kinematics::KinData, terrain::AbstractTerrain)
 
@@ -399,7 +403,7 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     #and π. to avoid this, we set a minimum TAS for airflow computation. in this
     #scenario dynamic pressure will be close to zero, so forces and moments will
     #vanish anyway.
-    α, β = (TAS > 0.1 ? get_airflow_angles(v_wOb_a) : (0.0, 0.0))
+    α, β = (TAS > 0.1 ? Air.get_airflow_angles(v_wOb_a) : (0.0, 0.0))
     V = max(TAS, V_min) #avoid division by zero
 
     α_filt_dot = 1/τ * (α - α_filt)
@@ -431,7 +435,7 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
 
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
 
-    q_as = get_stability_axes(α)
+    q_as = Air.get_stability_axes(α)
     F_aero_s = q * S * SVector{3,Float64}(-C_D, C_Y, -C_L)
     F_aero_a = q_as(F_aero_s)
     M_aero_a = q * S * SVector{3,Float64}(C_l * b, C_m * c, C_n * b)
@@ -852,8 +856,8 @@ function Kinematics.Initializer(trim_state::TrimState,
     @unpack EAS, β_a, γ_wOb_n, ψ_nb, ψ_wb_dot, θ_wb_dot, Ob = trim_params
     @unpack α_a, φ_nb = trim_state
 
-    TAS = Atmosphere.EAS2TAS(EAS; ρ = ISAData(Ob, atm_data).ρ)
-    v_wOb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
+    TAS = Air.EAS2TAS(EAS; ρ = ISAData(Ob, atm_data).ρ)
+    v_wOb_a = Air.get_velocity_vector(TAS, α_a, β_a)
     v_wOb_b = C172.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
 
     θ_nb = AircraftBase.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)

@@ -1,4 +1,4 @@
-module Atmosphere
+module Air
 
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
 
@@ -10,7 +10,6 @@ using ..Kinematics
 
 export LocalAtmosphere, AtmData, ISAData, AirData
 export p_std, T_std, g_std, ρ_std, ISA_layers
-export get_velocity_vector, get_airflow_angles, get_wind_axes, get_stability_axes
 
 ### see ISO 2553
 
@@ -161,8 +160,8 @@ struct AirData
     v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
     v_eOb_b::SVector{3,Float64} #vehicle velocity vector, vehicle axes
     v_wOb_b::SVector{3,Float64} #vehicle aerodynamic velocity, vehicle axes
-    α_b::Float64 #vehicle frame AoA
-    β_b::Float64 #vehicle frame AoS
+    # α_b::Float64 #vehicle frame AoA
+    # β_b::Float64 #vehicle frame AoS
     T::Float64 #static temperature
     p::Float64 #static pressure
     ρ::Float64 #density
@@ -190,7 +189,6 @@ function AirData(kin::KinData, atm::AtmData)
 
     v_ew_b = q_nb'(v_ew_n)
     v_wOb_b = v_eOb_b - v_ew_b
-    α_b, β_b = get_airflow_angles(v_wOb_b)
 
     @unpack T, p, ρ, a, μ = ISAData(h_o; T_sl, p_sl)
     TAS = norm(v_wOb_b)
@@ -203,9 +201,30 @@ function AirData(kin::KinData, atm::AtmData)
     EAS = TAS2EAS(TAS; ρ)
     CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + Δp/p_std)^((γ-1)/γ) - 1) )
 
-    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
+    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
+
+
+################################################################################
+############################## Aerodynamics ####################################
+
+#Aerodynamics frame (a): Reference frame, rigidly attached to the vehicle,
+#wherein aerodynamic forces and moments are computed. It may or may not be the
+#same as the vehicle frame b. The frame transform t_ba from b to a is constant
+#and known a priori.
+
+#Aerodynamic velocity vector (v_wa): ECEF-relative velocity of the aerodynamics
+#reference frame v_ea minus the (local) ECEF-relative wind velocity vector v_ew
+
+#Stability frame (s): Reference frame obtained from rotating the aerodynamics
+#frame around its y-axis an angle -α such that the aerodynamic velocity
+#vector lies in the resulting plane Os-xs-ys
+
+#Wind frame (w): Reference frame obtained from rotating the stability frame
+#around its z-axis an angle β such that the resulting xw axis is aligned with
+#the aerodynamic velocity vector
+
 
 #compute aerodynamic velocity vector from TAS and airflow angles
 @inline function get_velocity_vector(TAS::Real, α::Real, β::Real)
@@ -213,31 +232,36 @@ end
     return TAS * SVector(cos(α) * cos_β, sin(β), sin(α) * cos_β)
 end
 
-#compute airflow angles at frame c from the c-frame aerodynamic velocity
-@inline function get_airflow_angles(v_wOc_c::AbstractVector{<:Real})::Tuple{Float64, Float64}
-    if norm(v_wOc_c) < TAS_min_αβ
+#compute airflow angles at frame a from the a-frame aerodynamic velocity vector
+@inline function get_airflow_angles(v_wa_a::AbstractVector{<:Real})::Tuple{Float64, Float64}
+    if norm(v_wa_a) < TAS_min_αβ
         return (0.0, 0.0)
     else
-        α = atan(v_wOc_c[3], v_wOc_c[1])
-        β = atan(v_wOc_c[2], √(v_wOc_c[1]^2 + v_wOc_c[3]^2))
+        α = atan(v_wa_a[3], v_wa_a[1])
+        β = atan(v_wa_a[2], √(v_wa_a[1]^2 + v_wa_a[3]^2))
         return (α, β)
     end
 end
 
-@inline function get_wind_axes(v_wOc_c::AbstractVector{<:Real})
-    α, β = get_airflow_angles(v_wOc_c)
+#compute the rotation from a-frame to w-frame given the a-frame components of
+#the aerodynamic velocity vector
+@inline function get_wind_axes(v_wa_a::AbstractVector{<:Real})
+    α, β = get_airflow_angles(v_wa_a)
     get_wind_axes(α, β)
 end
 
+#compute the rotation from a-frame to w-frame from the a-frame airflow angles
 @inline function get_wind_axes(α::Real, β::Real)
-    q_bw = Ry(-α) ∘ Rz(β)
-    return q_bw
+    q_aw = Ry(-α) ∘ Rz(β)
+    return q_aw
 end
 
+#compute the rotation from a-frame to s-frame from the a-frame airflow angles
 @inline function get_stability_axes(α::Real)
-    q_bs = Ry(-α)
-    return q_bs
+    q_as = Ry(-α)
+    return q_as
 end
+
 
 
 ################################## Plotting ####################################
@@ -271,18 +295,18 @@ function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
         ts_split = :h,
         kwargs...)
 
-        subplot_α = plot(TimeSeries(ts._t, rad2deg.(ts.α_b._data));
-            title = "Angle of Attack", ylabel = L"$α_b \ (deg)$",
-            label = "", kwargs...)
+        # subplot_α = plot(TimeSeries(ts._t, rad2deg.(ts.α_b._data));
+        #     title = "Angle of Attack", ylabel = L"$α_b \ (deg)$",
+        #     label = "", kwargs...)
 
-        subplot_β = plot(TimeSeries(ts._t, rad2deg.(ts.β_b._data));
-            title = "Angle of Sideslip", ylabel = L"$β_b \ (deg)$",
-            label = "", kwargs...)
+        # subplot_β = plot(TimeSeries(ts._t, rad2deg.(ts.β_b._data));
+        #     title = "Angle of Sideslip", ylabel = L"$β_b \ (deg)$",
+        #     label = "", kwargs...)
 
-    pd[:α_β] = plot(subplot_α, subplot_β;
-        plot_title = "Airflow Angles [Vehicle Axes]",
-        layout = (1,2),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+    # pd[:α_β] = plot(subplot_α, subplot_β;
+    #     plot_title = "Airflow Angles [Vehicle Axes]",
+    #     layout = (1,2),
+    #     kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
 
         subplot_a = plot(ts.a;
             title = "Speed of Sound", ylabel = L"$a \ (m/s)$",

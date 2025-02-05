@@ -333,7 +333,7 @@ end
 
 function ZLat(vehicle::System{<:C172RPA.Vehicle})
     φ = vehicle.y.kinematics.data.e_nb.φ
-    β = vehicle.y.air.β_b
+    β = vehicle.y.components.aero.β
     ZLat(; φ, β)
 end
 
@@ -752,7 +752,8 @@ function AircraftBase.trim!(sys::System{<:Controller},
     #value by trim!(vehicle, params)
     y_act = vehicle.y.components.act
     @unpack ω_wb_b, v_eOb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
-    @unpack EAS, β_b = vehicle.y.air
+    @unpack EAS = vehicle.y.air
+    @unpack β = vehicle.y.components.aero
 
     #makes Controller inputs consistent with the trim solution obtained
     #for the vehicle, so the trim condition is preserved upon simulation start
@@ -779,7 +780,7 @@ function AircraftBase.trim!(sys::System{<:Controller},
     u.clm_sp = -v_eOb_n[3]
     u.p_sp = ω_wb_b[1]
     u.φ_sp = e_nb.φ
-    u.β_sp = β_b
+    u.β_sp = β
     u.χ_sp = χ_gnd
     u.h_sp = Float64(h_e)
     u.h_datum = ellipsoidal
@@ -980,10 +981,11 @@ function GUI.draw!(ctl::System{<:Controller},
     @unpack lon_ctl, lat_ctl, alt_gdc = subsystems
 
     @unpack components, kinematics, accelerations, air = vehicle.y
-    @unpack act, pwp, fuel, ldg = components
+    @unpack act, pwp, fuel, ldg, aero = components
 
     @unpack e_nb, ω_wb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eOb_n = kinematics
-    @unpack CAS, EAS, TAS, α_b, β_b, T, p, pt = air
+    @unpack α, β = aero
+    @unpack CAS, EAS, TAS, T, p, pt = air
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
 
@@ -1215,7 +1217,7 @@ function GUI.draw!(ctl::System{<:Controller},
                     PushItemWidth(-10)
                     u.β_sp = safe_input("Sideslip Angle", rad2deg(u.β_sp), 0.1, 1.0, "%.3f") |> deg2rad
                     PopItemWidth()
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(β_b)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(β)))
             CImGui.EndTable()
         end
 
@@ -1303,17 +1305,17 @@ function GUI.draw!(ctl::System{<:Controller},
                 # Text("Flight Phase"); SameLine(240)
                 # Text("$(y.flight_phase)")
                 Text("Airspeed (Equivalent)"); SameLine(240)
-                Text(@sprintf("%.3f m/s | %.3f kts", EAS, Atmosphere.SI2kts(EAS)))
+                Text(@sprintf("%.3f m/s | %.3f kts", EAS, Air.SI2kts(EAS)))
                 Text("Airspeed (True)"); SameLine(240)
-                Text(@sprintf("%.3f m/s | %.3f kts", TAS, Atmosphere.SI2kts(TAS)))
+                Text(@sprintf("%.3f m/s | %.3f kts", TAS, Air.SI2kts(TAS)))
                 Text("Angle of Attack"); SameLine(240)
-                Text(@sprintf("%.3f deg", rad2deg(α_b)))
+                Text(@sprintf("%.3f deg", rad2deg(α)))
                 Text("Angle of Sideslip"); SameLine(240)
-                Text(@sprintf("%.3f deg", rad2deg(β_b)))
+                Text(@sprintf("%.3f deg", rad2deg(β)))
                 Separator()
 
                 Text("Ground Speed"); SameLine(240)
-                Text(@sprintf("%.3f m/s | %.3f kts", v_gnd, Atmosphere.SI2kts(v_gnd)))
+                Text(@sprintf("%.3f m/s | %.3f kts", v_gnd, Air.SI2kts(v_gnd)))
                 Text("Course Angle"); SameLine(240)
                 Text(@sprintf("%.3f deg", rad2deg(χ_gnd)))
                 Text("Flight Path Angle"); SameLine(240)

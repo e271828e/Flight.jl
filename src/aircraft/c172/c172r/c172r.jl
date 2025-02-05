@@ -419,14 +419,14 @@ function YLinear(vehicle::System{<:C172R.Vehicle{NED}})
     v_N, v_E, v_D = v_eOb_n
     ω_eng = pwp.engine.ω
     fuel = fuel.x_avail
+    α = aero.α
+    β = aero.β
     α_filt = aero.α_filt
     β_filt = aero.β_filt
 
     f_x, f_y, f_z = accelerations.f_Gb_b
     EAS = air.EAS
     TAS = air.TAS
-    α = air.α_b
-    β = air.β_b
     χ = χ_gnd
     γ = γ_gnd
     c = -v_D

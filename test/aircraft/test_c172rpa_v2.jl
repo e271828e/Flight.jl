@@ -26,9 +26,6 @@ function test_c172rpa_v2()
     end
 end
 
-y_kin(ac::System{<:Cessna172RPAv2}) = ac.y.vehicle.kinematics
-y_air(ac::System{<:Cessna172RPAv2}) = ac.y.vehicle.air
-
 function test_sim(; save::Bool = true)
 
     h_trn = HOrth(601.55);
