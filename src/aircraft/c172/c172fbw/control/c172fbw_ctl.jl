@@ -70,7 +70,7 @@ function XLon(vehicle::System{<:C172FBW.Vehicle})
 
     q = ω_eb_b[2]
     θ = e_nb.θ
-    v_x, _, v_z = air.v_wOb_b
+    v_x, _, v_z = air.v_wb_b
     ω_eng = pwp.engine.ω
     α_filt = aero.α_filt
     thr_v = act.throttle.vel
@@ -106,7 +106,7 @@ end
 
 function ZLonEASClm(vehicle::System{<:C172FBW.Vehicle})
     EAS = vehicle.y.air.EAS
-    climb_rate = -vehicle.y.kinematics.data.v_eOb_n[3]
+    climb_rate = -vehicle.y.kinematics.data.v_eb_n[3]
     ZLonEASClm(; EAS, climb_rate)
 end
 
@@ -334,7 +334,7 @@ function XLat(vehicle::System{<:C172FBW.Vehicle})
 
     p, _, r = ω_eb_b
     φ = e_nb.φ
-    v_x, v_y, _ = air.v_wOb_b
+    v_x, v_y, _ = air.v_wb_b
     β_filt = aero.β_filt
     ail_v = act.aileron.vel
     ail_p = act.aileron.pos
@@ -542,7 +542,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:AltitudeGuidance},
         throttle_sp = Δh > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
         # (abs(Δh) + 1 < h_thr) && (sys.s.state = alt_hold)
         sys.s.h_thr = abs(Δh)
-        clm = -vehicle.y.kinematics.v_eOb_n[3]
+        clm = -vehicle.y.kinematics.v_eb_n[3]
         (abs(clm_sp) < abs(clm)) && (sys.s.state = alt_hold)
 
     else #alt_hold
@@ -756,7 +756,7 @@ function AircraftBase.trim!(sys::System{<:Controller},
     #here we assume that the vehicle's y has already been updated to its trim
     #value by trim!(vehicle, params)
     y_act = vehicle.y.components.act
-    @unpack ω_wb_b, v_eOb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
+    @unpack ω_wb_b, v_eb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
     @unpack EAS = vehicle.y.air
     @unpack β = vehicle.y.components.aero
 
@@ -782,7 +782,7 @@ function AircraftBase.trim!(sys::System{<:Controller},
     u.q_sp = ω_wb_b[2]
     u.θ_sp = e_nb.θ
     u.EAS_sp = EAS
-    u.clm_sp = -v_eOb_n[3]
+    u.clm_sp = -v_eb_n[3]
     u.p_sp = ω_wb_b[1]
     u.φ_sp = e_nb.φ
     u.β_sp = β
@@ -981,14 +981,14 @@ function GUI.draw!(sys::System{<:Controller},
     @unpack components, kinematics, accelerations, air = vehicle.y
     @unpack act, pwp, fuel, ldg = components
 
-    @unpack e_nb, ω_wb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eOb_n = kinematics
+    @unpack e_nb, ω_wb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eb_n = kinematics
     @unpack CAS, EAS, TAS, T, p, pt = air
     @unpack α, β = aero
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
 
     p, q, r = ω_wb_b
-    clm = -v_eOb_n[3]
+    clm = -v_eb_n[3]
     Δh = h_o - TerrainData(vehicle.constants.terrain, n_e).altitude
 
     Begin(label, p_open)
@@ -1354,11 +1354,11 @@ function GUI.draw!(sys::System{<:Controller},
 
             CImGui.TableNextColumn();
                 Text("Specific Force (x)"); SameLine(240)
-                Text(@sprintf("%.3f g", accelerations.f_Gb_b[1]/Dynamics.g₀))
+                Text(@sprintf("%.3f g", accelerations.f_G_b[1]/Dynamics.g₀))
                 Text("Specific Force (y)"); SameLine(240)
-                Text(@sprintf("%.3f g", accelerations.f_Gb_b[2]/Dynamics.g₀))
+                Text(@sprintf("%.3f g", accelerations.f_G_b[2]/Dynamics.g₀))
                 Text("Specific Force (z)"); SameLine(240)
-                Text(@sprintf("%.3f g", accelerations.f_Gb_b[3]/Dynamics.g₀))
+                Text(@sprintf("%.3f g", accelerations.f_G_b[3]/Dynamics.g₀))
 
             CImGui.EndTable()
         end

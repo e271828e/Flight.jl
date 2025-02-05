@@ -169,15 +169,15 @@ function test_landing_gear_unit()
         @test ldg.y.strut.F_dmp_zs < 2500 #force is smaller
 
         #axial compressing load
-        kin = KinInit(; h, v_eOb_n = [0,0,1]) |> KinData
+        kin = KinInit(; h, v_eb_n = [0,0,1]) |> KinData
         f_ode!(ldg, kin, terrain)
         @test ldg.y.strut.ξ_dot < 0 #strut is compressing
         @test ldg.y.strut.F_dmp_zs ≈ 3500 #damping force is added to elastic force
 
         #low positive longitudinal velocity
-        kin = KinInit(; h, v_eOb_n = [1e-4, 0, 0] ) |> KinData
+        kin = KinInit(; h, v_eb_n = [1e-4, 0, 0] ) |> KinData
         f_ode!(ldg, kin, terrain)
-        @test isapprox.(ldg.y.strut.v_eOc_xy, [1e-4, 0], atol = 1e-6) |> all
+        @test isapprox.(ldg.y.strut.v_ec_xy, [1e-4, 0], atol = 1e-6) |> all
         @test ldg.y.contact.μ_max[1] <= ldg.y.contact.μ_roll
         @test ldg.y.contact.μ_eff[2] == 0 #no lateral motion, no lateral effective friction
         #longitudinal effective friction should be small and negative
@@ -185,41 +185,41 @@ function test_landing_gear_unit()
         @test contact.ẋ[1] < 0 #longitudinal velocity error integral should be increasing
 
         #low positive lateral velocity
-        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1e-4, 0] ) |> KinData
+        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eb_n = [0, -1e-4, 0] ) |> KinData
         f_ode!(ldg, kin, terrain)
         @test ldg.y.contact.wr_b.F[2] > 0
         @test contact.ẋ[2] > 0 #lateral velocity error integral should be increasing
 
         #large positive lateral velocity
-        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [0, -1, 0] ) |> KinData
+        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eb_n = [0, -1, 0] ) |> KinData
         f_ode!(ldg, kin, terrain)
         @test contact.frc.y.sat_out[2] == 1 #large velocity saturates
         @test contact.ẋ[2] == 0 #lateral velocity integral should be decreasing
 
         #advancing motion with compression
-        kin = KinInit(; h, v_eOb_n = [10,0,1]) |> KinData
+        kin = KinInit(; h, v_eb_n = [10,0,1]) |> KinData
         f_ode!(ldg, kin, terrain)
-        @test isapprox.(ldg.y.strut.v_eOc_xy, [10, 0], atol = 1e-5) |> all
+        @test isapprox.(ldg.y.strut.v_ec_xy, [10, 0], atol = 1e-5) |> all
 
         #lateral motion with compression
         kin = KinInit(; h, ω_wb_b = [1,0,0]) |> KinData
         f_ode!(ldg, kin, terrain)
-        @test isapprox.(ldg.y.strut.v_eOc_xy, [0, -0.9], atol = 1e-5) |> all
+        @test isapprox.(ldg.y.strut.v_ec_xy, [0, -0.9], atol = 1e-5) |> all
 
         #off-axis load, forward motion
-        kin = KinInit(; h, q_nb = REuler(φ = π/12), v_eOb_n = [1e-4, 0, 0] ) |> KinData
+        kin = KinInit(; h, q_nb = REuler(φ = π/12), v_eb_n = [1e-4, 0, 0] ) |> KinData
         f_ode!(ldg, kin, terrain)
         @test ldg.y.contact.wr_b.F[2] < 0
 
         #steering
-        kin = KinInit(; h, v_eOb_n = [10,0,1]) |> KinData
+        kin = KinInit(; h, v_eb_n = [10,0,1]) |> KinData
         steering.u.input = 0.5
         f_ode!(ldg, kin, terrain)
-        @test ldg.y.strut.v_eOc_xy[1] < 10
-        @test ldg.y.strut.v_eOc_xy[2] < 0
+        @test ldg.y.strut.v_ec_xy[1] < 10
+        @test ldg.y.strut.v_ec_xy[2] < 0
 
         #braking
-        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eOb_n = [1e-4, 0, 0] ) |> KinData
+        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eb_n = [1e-4, 0, 0] ) |> KinData
         braking.u[] = 1
         f_ode!(ldg, kin, terrain)
         @test ldg.y.contact.μ_max[1] > ldg.y.contact.μ_roll
@@ -246,15 +246,15 @@ function test_harness()
     strut = Strut(l_0 = 1.0, damper = damper)
     ldg = LandingGearUnit(; strut) |> System
 
-    #by default LandingGearUnit is initialized with r_ObOs_b = [0,0,0], so
-    #h_Os=h_Ob
+    #by default LandingGearUnit is initialized with r_bs_b = [0,0,0], so
+    #h_s=h_b
     h = h_trn + 0.8
     θ = deg2rad(0)
     φ = deg2rad(0)
     q_nb = REuler(; θ, φ)
-    v_eOb_n = [0,0,0]
+    v_eb_n = [0,0,0]
     ω_wb_b = [0,0,0]
-    kin = KinInit(; h, v_eOb_n, ω_wb_b, q_nb) |> KinData
+    kin = KinInit(; h, v_eb_n, ω_wb_b, q_nb) |> KinData
     f_ode!(ldg, kin, trn)
     f_step!(ldg)
     @show ldg.strut.y.wow

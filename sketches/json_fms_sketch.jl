@@ -21,7 +21,7 @@ function output_callback(sim_data::Sim.SimData)::Vector{UInt8}
         lon = rad2deg(kinematics.ϕ_λ.λ),
         h_ellip = Float64(kinematics.h_e),
         h_orth = Float64(kinematics.h_o),
-        v_gnd_NED = kinematics.v_eOb_n,
+        v_gnd_NED = kinematics.v_eb_n,
         v_wind_NED = air.v_ew_n,
         h_trn = components.ldg.left.strut.Δh,
         wow = components.ldg.left.strut.wow,

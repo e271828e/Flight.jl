@@ -18,16 +18,16 @@ struct IMUErrorsY end
 @kwdef struct IMUInputs
     q_eb::RQuat = RQuat() #ECEF to vehicle frame rotation
     q_nb::RQuat = RQuat() #NED to vehicle frame rotation
-    r_eOb_e::SVector{3, Float64} = zeros(SVector{3}) #ECEF position vector, ECEF frame
+    r_eb_e::SVector{3, Float64} = zeros(SVector{3}) #ECEF position vector, ECEF frame
     ω_eb_b::SVector{3, Float64} = zeros(SVector{3}) #ECEF to vehicle frame angular velocity, vehicle frame
-    a_iOb_b::SVector{3, Float64} = zeros(SVector{3}) #inertial acceleration of Ob, vehicle frame
+    a_ib_b::SVector{3, Float64} = zeros(SVector{3}) #inertial acceleration of vehicle frame
     α_ib_b::SVector{3, Float64} = zeros(SVector{3}) #ECEF to vehicle frame angular acceleration, vehicle frame
 end
 
 function IMUInputs(kin::KinData, dyn::Accelerations)
-    @unpack q_eb, q_nb, r_eOb_e, ω_eb_b = kin
-    @unpack a_iOb_b, α_ib_b = dyn
-    IMUInputs(; q_eb, q_nb, r_eOb_e, ω_eb_b, a_iOb_b, α_ib_b)
+    @unpack q_eb, q_nb, r_eb_e, ω_eb_b = kin
+    @unpack a_ib_b, α_ib_b = dyn
+    IMUInputs(; q_eb, q_nb, r_eb_e, ω_eb_b, a_ib_b, α_ib_b)
 end
 
 @kwdef struct IMUSample
@@ -64,18 +64,18 @@ Systems.Y(::IMU) = IMUOutputs()
 function Systems.f_ode!(sys::System{<:IMU})
 
     @unpack ẋ, x, u, constants = sys
-    @unpack q_eb, q_nb, r_eOb_e, ω_eb_b, a_iOb_b, α_ib_b = u[]
+    @unpack q_eb, q_nb, r_eb_e, ω_eb_b, a_ib_b, α_ib_b = u[]
     @unpack t_bc = constants
 
     q_bc = t_bc.q
-    r_ObOc_b = t_bc.r
+    r_bc_b = t_bc.r
 
     q_c_cc = RQuat(x.q_c_cc, normalization = false)
 
     #compute geographic position of Oc
-    r_ObOc_e = q_eb(r_ObOc_b)
-    r_eOc_e = r_eOb_e + r_ObOc_e
-    Oc = Cartesian(r_eOc_e)
+    r_bc_e = q_eb(r_bc_b)
+    r_ec_e = r_eb_e + r_bc_e
+    Oc = Cartesian(r_ec_e)
 
     q_nc = q_nb ∘ q_bc
     G_Oc_n = G_n(Oc)
@@ -87,7 +87,7 @@ function Systems.f_ode!(sys::System{<:IMU})
     ω_ic_b = ω_ib_b
     ω_ic_c = q_bc'(ω_ic_b)
 
-    a_iOc_b = a_iOb_b + ω_ib_b × (ω_ib_b × r_ObOc_b) + α_ib_b × r_ObOc_b
+    a_iOc_b = a_ib_b + ω_ib_b × (ω_ib_b × r_bc_b) + α_ib_b × r_bc_b
     a_iOc_c = q_bc'(a_iOc_b)
     f_Oc_c = a_iOc_c - G_Oc_c
 
@@ -162,15 +162,15 @@ function Systems.f_ode!(sys::System{<:IMUTestHarness})
     @unpack ẋ, x, u, subsystems = sys
     @unpack imu, kin, dyn = subsystems
 
-    rbd_Ob = RigidBodyDistribution(1.0, diagm(ones(3)))
-    mp_Ob = MassProperties(rbd_Ob)
-    wr_ext_Ob = u[]
+    rbd_b = RigidBodyDistribution(1.0, diagm(ones(3)))
+    mp_b = MassProperties(rbd_b)
+    wr_ext_b = u[]
 
     kin.u .= dyn.x
     f_ode!(kin) #update ẋ and y before extracting kinematics data
 
     kin_data = KinData(kin)
-    rb_data = RigidBodyData(mp_Ob, wr_ext_Ob, zeros(SVector{3}))
+    rb_data = RigidBodyData(mp_b, wr_ext_b, zeros(SVector{3}))
     f_ode!(dyn, kin_data, rb_data)
 
     dyn_data = Accelerations(dyn)

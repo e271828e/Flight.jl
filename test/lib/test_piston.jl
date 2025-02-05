@@ -132,7 +132,7 @@ function test_engine_response()
 
     @testset verbose = true "Engine Response" begin
 
-        kin = KinInit(h = HEllip(), v_eOb_n = [50, 0, 0]) |> KinData
+        kin = KinInit(h = HEllip(), v_eb_n = [50, 0, 0]) |> KinData
         atm = AtmData()
         air = AirData(kin, atm)
         eng = PistonEngine() |> System

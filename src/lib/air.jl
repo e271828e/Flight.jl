@@ -158,8 +158,8 @@ const TAS_min_αβ = 0.1 #minimum TAS for valid α, β computation
 struct AirData
     v_ew_n::SVector{3,Float64} #wind velocity, NED axes
     v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
-    v_eOb_b::SVector{3,Float64} #vehicle velocity vector, vehicle axes
-    v_wOb_b::SVector{3,Float64} #vehicle aerodynamic velocity, vehicle axes
+    v_eb_b::SVector{3,Float64} #vehicle velocity vector, vehicle axes
+    v_wb_b::SVector{3,Float64} #vehicle aerodynamic velocity, vehicle axes
     # α_b::Float64 #vehicle frame AoA
     # β_b::Float64 #vehicle frame AoS
     T::Float64 #static temperature
@@ -184,14 +184,14 @@ EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
 
 function AirData(kin::KinData, atm::AtmData)
 
-    @unpack h_o, v_eOb_b, q_nb = kin
+    @unpack h_o, v_eb_b, q_nb = kin
     @unpack T_sl, p_sl, v_ew_n = atm
 
     v_ew_b = q_nb'(v_ew_n)
-    v_wOb_b = v_eOb_b - v_ew_b
+    v_wb_b = v_eb_b - v_ew_b
 
     @unpack T, p, ρ, a, μ = ISAData(h_o; T_sl, p_sl)
-    TAS = norm(v_wOb_b)
+    TAS = norm(v_wb_b)
     M = TAS / a
     Tt = T * (1 + (γ - 1)/2 * M^2)
     pt = p * (Tt/T)^(γ/(γ-1))
@@ -201,7 +201,7 @@ function AirData(kin::KinData, atm::AtmData)
     EAS = TAS2EAS(TAS; ρ)
     CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + Δp/p_std)^((γ-1)/γ) - 1) )
 
-    AirData(v_ew_n, v_ew_b, v_eOb_b, v_wOb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
+    AirData(v_ew_n, v_ew_b, v_eb_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
 
@@ -283,13 +283,13 @@ function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
         ts_split = :h,
         kwargs...)
 
-    pd[:v_eOb_b] = plot(ts.v_eOb_b;
+    pd[:v_eb_b] = plot(ts.v_eb_b;
         plot_title = "Velocity (Vehicle / ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         ts_split = :h,
         kwargs...)
 
-    pd[:v_wOb_b] = plot(ts.v_wOb_b;
+    pd[:v_wb_b] = plot(ts.v_wb_b;
         plot_title = "Velocity (Vehicle / Wind) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         ts_split = :h,
@@ -376,13 +376,13 @@ end
 
 function GUI.draw(air::AirData, p_open::Ref{Bool} = Ref(true), label::String = "Air")
 
-    @unpack v_ew_n, v_ew_b, v_wOb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
+    @unpack v_ew_n, v_ew_b, v_wb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
 
     CImGui.Begin(label, p_open)
 
     GUI.draw(v_ew_n, "Velocity (Wind/ECEF) [NED]", "m/s")
     GUI.draw(v_ew_b, "Velocity (Wind/ECEF) [Body]", "m/s")
-    GUI.draw(v_wOb_b, "Velocity (Body/Wind) [Body]", "m/s")
+    GUI.draw(v_wb_b, "Velocity (Body/Wind) [Body]", "m/s")
     CImGui.Text(@sprintf("AoA (Body/Wind): %.3f deg", rad2deg(α_b)))
     CImGui.Text(@sprintf("AoS (Body/Wind): %.3f deg", rad2deg(β_b)))
 

@@ -399,7 +399,7 @@ end
     f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
     α::Float64 = 0.0; β::Float64 = 0.0; #unfiltered airflow angles
     EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
-    v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #Ob/ECEF velocity, NED axes
+    v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #b/ECEF velocity, NED axes
     χ::Float64 = 0.0; γ::Float64 = 0.0; climb_rate::Float64 = 0.0; #track and flight path angles, climb rate
     throttle_cmd::Float64 = 0.0; aileron_cmd::Float64 = 0.0; #actuator commands
     elevator_cmd::Float64 = 0.0; rudder_cmd::Float64 = 0.0; #actuator commands
@@ -414,7 +414,7 @@ function XLinear(x_vehicle::ComponentVector)
 
     @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics
     p, q, r = x_dynamics.ω_eb_b
-    v_x, v_y, v_z = x_dynamics.v_eOb_b
+    v_x, v_y, v_z = x_dynamics.v_eb_b
     α_filt, β_filt = x_components.aero
     ω_eng = x_components.pwp.engine.ω
     fuel = x_components.fuel[1]
@@ -450,14 +450,14 @@ function YLinear(vehicle::System{<:C172FBW.Vehicle{NED}})
     @unpack components, air, accelerations, kinematics = vehicle.y
     @unpack pwp, fuel, aero, act = components
 
-    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eOb_b, v_eOb_n, χ_gnd, γ_gnd = kinematics
+    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eb_b, v_eb_n, χ_gnd, γ_gnd = kinematics
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
 
     h = h_e
     p, q, r = ω_eb_b
-    v_x, v_y, v_z = v_eOb_b
-    v_N, v_E, v_D = v_eOb_n
+    v_x, v_y, v_z = v_eb_b
+    v_N, v_E, v_D = v_eb_n
     ω_eng = pwp.engine.ω
     fuel = fuel.x_avail
     α = aero.α
@@ -474,7 +474,7 @@ function YLinear(vehicle::System{<:C172FBW.Vehicle{NED}})
     rud_v = act.rudder.vel
     rud_p = act.rudder.pos
 
-    f_x, f_y, f_z = accelerations.f_Gb_b
+    f_x, f_y, f_z = accelerations.f_G_b
     EAS = air.EAS
     TAS = air.TAS
     χ = χ_gnd
@@ -525,7 +525,7 @@ function AircraftBase.assign_x!(vehicle::System{<:C172FBW.Vehicle{NED}}, x::Abst
 
     @pack! x_kinematics = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
     x_dynamics.ω_eb_b .= p, q, r
-    x_dynamics.v_eOb_b .= v_x, v_y, v_z
+    x_dynamics.v_eb_b .= v_x, v_y, v_z
     x_components.aero .= α_filt, β_filt
     x_components.pwp.engine.ω = ω_eng
     x_components.fuel .= fuel

@@ -107,7 +107,7 @@ function test_sim(; save::Bool = true)
         trim_params = C172.TrimParameters(
         Ob = Geographic(LatLon(), HOrth(1000)),
         EAS = 25.0,
-        γ_wOb_n = 0.0,
+        γ_wb_n = 0.0,
         x_fuel = 0.5,
         flaps = 1.0,
         payload = mid_cg_pld)
@@ -149,7 +149,7 @@ function test_sim_interactive(; save::Bool = true)
     ac = Cessna172RPA(WA(), trn) |> System
 
     kin_init = KinInit(
-        v_eOb_n = [0, 0, 0],
+        v_eb_n = [0, 0, 0],
         ω_wb_b = [0, 0, 0],
         q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
         loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),

@@ -140,16 +140,16 @@ function Systems.f_ode!(vehicle::System{<:Vehicle})
     f_ode!(components, kin_data, air_data, terrain)
 
     #components is the only subsystem that has mass and can receive actions
-    mp_Ob = get_mp_b(components)
-    wr_ext_Ob = get_wr_b(components)
+    mp_b = get_mp_b(components)
+    wr_ext_b = get_wr_b(components)
     hr_b = get_hr_b(components)
-    actions = Actions(components; mp_Ob, wr_ext_Ob, hr_b, kin_data)
+    actions = Actions(components; mp_b, wr_ext_b, hr_b, kin_data)
 
     #update velocity derivatives and rigid body data
-    f_ode!(dynamics, mp_Ob, kin_data, actions)
+    f_ode!(dynamics, mp_b, kin_data, actions)
     accelerations = dynamics.y
 
-    vehicle.y = VehicleY(components.y, kinematics.y, mp_Ob, actions, accelerations, air_data)
+    vehicle.y = VehicleY(components.y, kinematics.y, mp_b, actions, accelerations, air_data)
 
     return nothing
 
@@ -249,11 +249,11 @@ const AbstractTrimState{N} = FieldVector{N, Float64}
 
 #given the body-axes wind-relative velocity, the wind-relative flight path angle
 #and the bank angle, the pitch angle is unambiguously determined
-function θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
-    TAS = norm(v_wOb_b)
-    a = v_wOb_b[1] / TAS
-    b = (v_wOb_b[2] * sin(φ_nb) + v_wOb_b[3] * cos(φ_nb)) / TAS
-    sγ = sin(γ_wOb_n)
+function θ_constraint(; v_wb_b, γ_wb_n, φ_nb)
+    TAS = norm(v_wb_b)
+    a = v_wb_b[1] / TAS
+    b = (v_wb_b[2] * sin(φ_nb) + v_wb_b[3] * cos(φ_nb)) / TAS
+    sγ = sin(γ_wb_n)
 
     return atan((a*b + sγ*√(a^2 + b^2 - sγ^2))/(a^2 - sγ^2))
     # return asin((a*sγ + b*√(a^2 + b^2 - sγ^2))/(a^2 + b^2)) #equivalent

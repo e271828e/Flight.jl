@@ -39,7 +39,7 @@ function test_kinematics()
                 loc = LatLon(π/3, -π/6),
                 h = HOrth(12354),
                 ω_wb_b = [0.1, 0.1, -0.2],
-                v_eOb_n = [100, 10, -4])
+                v_eb_n = [100, 10, -4])
 
             Systems.init!(sys_ECEF, kin_init)
             Systems.init!(sys_WA, kin_init)
@@ -54,7 +54,7 @@ function test_kinematics()
             @test sys_ECEF.y.q_nb ≈ sys_WA.y.q_nb
             @test sys_ECEF.y.n_e ≈ sys_WA.y.n_e
             @test sys_ECEF.y.h_e ≈ sys_WA.y.h_e
-            @test sys_ECEF.y.v_eOb_b ≈ sys_WA.y.v_eOb_b
+            @test sys_ECEF.y.v_eb_b ≈ sys_WA.y.v_eb_b
             @test sys_ECEF.y.ω_eb_b ≈ sys_WA.y.ω_eb_b
 
             #check that direct KinData initialization is equivalent
@@ -62,7 +62,7 @@ function test_kinematics()
             @test kin_data.q_nb ≈ sys_WA.y.q_nb
             @test kin_data.n_e ≈ sys_WA.y.n_e
             @test kin_data.h_e ≈ sys_WA.y.h_e
-            @test kin_data.v_eOb_b ≈ sys_WA.y.v_eOb_b
+            @test kin_data.v_eb_b ≈ sys_WA.y.v_eb_b
             @test kin_data.ω_eb_b ≈ sys_WA.y.ω_eb_b
 
         end
@@ -79,12 +79,12 @@ function test_kinematics()
 
             #### validate WA against ECEF
             @test sys_ECEF.y.q_nb ≈ sys_WA.y.q_nb
-            @test sys_ECEF.y.v_eOb_n ≈ sys_WA.y.v_eOb_n
+            @test sys_ECEF.y.v_eb_n ≈ sys_WA.y.v_eb_n
             @test sys_ECEF.y.h_e ≈ sys_WA.y.h_e
 
             #### validate NED against WA
             @test sys_WA.y.q_nb ≈ sys_NED.y.q_nb
-            @test sys_WA.y.v_eOb_n ≈ sys_NED.y.v_eOb_n
+            @test sys_WA.y.v_eb_n ≈ sys_NED.y.v_eb_n
             @test sys_WA.y.h_e ≈ sys_NED.y.h_e
 
         end

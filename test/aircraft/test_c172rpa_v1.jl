@@ -118,7 +118,7 @@ function test_control_modes()
         #with direct surface control, trim state must be initially preserved
         step!(sim, 10, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b, y_kin_trim.ω_wb_b; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b, y_kin_trim.v_eOb_b; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b, y_kin_trim.v_eb_b; atol = 1e-2))
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -146,7 +146,7 @@ function test_control_modes()
         #with thr+ele SAS active, trim state must be preserved for longer
         step!(sim, 30, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -174,7 +174,7 @@ function test_control_modes()
         #without transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_sp = π/12
@@ -208,12 +208,12 @@ function test_control_modes()
         #the control mode must activate without transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #the controller must keep trim values in steady state
         step!(sim, 10, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         ctl.u.p_sp = 0.02
         ctl.u.β_sp = deg2rad(3)
@@ -248,7 +248,7 @@ function test_control_modes()
         #without transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking
         ctl.u.χ_sp = π/2
@@ -295,7 +295,7 @@ function test_control_modes()
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_sp = π/12
@@ -329,7 +329,7 @@ function test_control_modes()
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_sp = π/6
@@ -366,7 +366,7 @@ function test_control_modes()
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_sp = π/6
@@ -402,7 +402,7 @@ function test_control_modes()
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking
         ctl.u.q_sp = -0.01
@@ -438,7 +438,7 @@ function test_control_modes()
         #transients
         step!(sim, 0.1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_sp = π/6
@@ -477,14 +477,14 @@ function test_control_modes()
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_sp = π/6
         ctl.u.EAS_sp = 45
         ctl.u.clm_sp = 2
         step!(sim, 30, true)
-        @test all(isapprox.(y_kin(ac).v_eOb_n[3], -ctl.u.clm_sp; atol = 1e-1))
+        @test all(isapprox.(y_kin(ac).v_eb_n[3], -ctl.u.clm_sp; atol = 1e-1))
         @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
 
         #must reset scheduling counter before standalone calls to f_disc!, but
@@ -536,7 +536,7 @@ function test_guidance_modes()
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eOb_b[1], y_kin_trim.v_eOb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #all tests while turning
         ctl.u.φ_sp = π/12

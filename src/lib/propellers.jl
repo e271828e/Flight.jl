@@ -388,7 +388,7 @@ function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω
     #remove this, it may happen due to friction overshoot at low RPMs
     # @assert sign(ω) * Int(sys.constants.sense) >= 0 "Propeller turning in the wrong sense"
 
-    v_wOp_b = air.v_wOb_b + kin.ω_eb_b × t_bp.r
+    v_wOp_b = air.v_wb_b + kin.ω_eb_b × t_bp.r
     v_wOp_p = t_bp.q'(v_wOp_b)
 
     #compute advance ratio. here we use the velocity vector magnitude rather

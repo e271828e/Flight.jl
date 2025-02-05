@@ -204,7 +204,7 @@ end
     α_ts::Float64 = 0.0 #angle from terrain normal to strut axis
     t_sc::FrameTransform = FrameTransform() #strut to contact frame transform
     t_bc::FrameTransform = FrameTransform() #body to contact frame transform
-    v_eOc_xy::SVector{2,Float64} = zeros(SVector{2}) #contact point velocity
+    v_ec_xy::SVector{2,Float64} = zeros(SVector{2}) #contact point velocity
     trn_data::TerrainData = TerrainData()
 end
 
@@ -216,18 +216,18 @@ function Systems.f_ode!(sys::System{<:Strut},
                         kin::KinData)
 
     @unpack t_bs, l_0, damper = sys.constants
-    @unpack q_eb, q_nb, q_en, n_e, h_e, r_eOb_e, v_eOb_b, ω_eb_b = kin
+    @unpack q_eb, q_nb, q_en, n_e, h_e, r_eb_e, v_eb_b, ω_eb_b = kin
 
     q_bs = t_bs.q #body frame to strut frame rotation
-    r_ObOs_b = t_bs.r #strut frame origin
+    r_bs_b = t_bs.r #strut frame origin
 
     #do we have contact
     q_es = q_eb ∘ q_bs
     ks_e = q_es(e3)
-    r_ObOs_e = q_eb(r_ObOs_b)
-    r_OsOw0_e = l_0 * ks_e
-    r_eOw0_e = r_eOb_e + r_ObOs_e + r_OsOw0_e
-    Ow0 = r_eOw0_e |> Cartesian |> Geographic
+    r_bs_e = q_eb(r_bs_b) #position of strut frame with respect to body frame
+    r_sw0_e = l_0 * ks_e #position of natural-length wheel endpoint with respect to strut frame
+    r_ew0_e = r_eb_e + r_bs_e + r_sw0_e #position of natural length wheel endpoint with respect to ECEF frame
+    Ow0 = r_ew0_e |> Cartesian |> Geographic
     h_Ow0 = HEllip(Ow0)
 
     loc_Ot = NVector(Ow0)
@@ -243,30 +243,29 @@ function Systems.f_ode!(sys::System{<:Strut},
     end
 
     Ot = Geographic(loc_Ot, h_Ot)
-    r_eOt_e = Cartesian(Ot)[:]
+    r_et_e = Cartesian(Ot)[:]
 
-    r_eOs_e = r_eOb_e + r_ObOs_e
-    r_OsOt_e = r_eOt_e - r_eOs_e
+    r_es_e = r_eb_e + r_bs_e #position of strut frame with respect to ECEF frame
+    r_st_e = r_et_e - r_es_e #position of terrain frame with respect to strut frame
 
     ut_n = trn_data.normal
     ut_e = q_en(ut_n)
     ut_ks = ut_e ⋅ ks_e #cosine of angle between strut and terrain normal
-    l = (ut_e ⋅ r_OsOt_e) / ut_ks
+    l = (ut_e ⋅ r_st_e) / ut_ks
     α_ts = acos(max(min(ut_ks, 1), -1))
 
     #if we are here, it means that Δh < 0, so in theory we should have l < l_0.
     #however due to numerical error we might get a small ξ > 0
     ξ = min(0.0, l - l_0)
 
-    #contact frame origin
-    r_OsOc_s = e3 * (l_0 + ξ)
-    r_OsOc_b = q_bs(r_OsOc_s)
-    r_ObOc_b = r_OsOc_b + r_ObOs_b
+    r_sc_s = e3 * (l_0 + ξ) #contact frame position with respect to strut frame
+    r_sc_b = q_bs(r_sc_s)
+    r_bc_b = r_sc_b + r_bs_b #contact frame position with respect to body frame
 
-    #contact frame origin velocity due to rigid body motion, strut frame
-    v_eOc_rb_b = v_eOb_b + ω_eb_b × r_ObOc_b
-    v_eOc_rb_s = q_bs'(v_eOc_rb_b)
-    ψ_v = atan(v_eOc_rb_s[2], v_eOc_rb_s[1]) #azimuth
+    #contact frame origin velocity due to rigid body motion
+    v_ec_b_body = v_eb_b + ω_eb_b × r_bc_b #body frame
+    v_ec_s_body = q_bs'(v_ec_b_body) #strut frame
+    ψ_v = atan(v_ec_s_body[2], v_ec_s_body[1]) #azimuth
 
     #wheel frame axes
     ψ_sw = get_steering_angle(steering, ψ_v)
@@ -285,31 +284,31 @@ function Systems.f_ode!(sys::System{<:Strut},
     q_bc = q_bs ∘ q_sc
 
     #construct contact frame transforms
-    t_sc = FrameTransform(r_OsOc_s, q_sc)
-    t_bc = FrameTransform(r_ObOc_b, q_bc)
+    t_sc = FrameTransform(r_sc_s, q_sc)
+    t_bc = FrameTransform(r_bc_b, q_bc)
 
     #contact frame origin velocity due to rigid body motion, contact frame
-    v_eOc_rb_c = q_bc'(v_eOc_rb_b)
+    v_ec_c_body = q_bc'(v_ec_b_body)
 
     #compute the damper elongation rate required to cancel the rigid body
     #contribution to the contact point velocity along the contact frame z axis
     q_sc = q_bs' ∘ q_bc
     ks_c = q_sc'(e3)
-    ξ_dot = -v_eOc_rb_c[3] / ks_c[3]
+    ξ_dot = -v_ec_c_body[3] / ks_c[3]
 
     #force exerted by the damper along the strut frame's z axis
     F_dmp_zs = get_force(damper, ξ, ξ_dot)
 
     #total contact point velocity, contact frame. its z-component must have been
     #cancelled out by the computed damper elongation rate
-    v_eOc_dmp_c = ks_c * ξ_dot #contact point velocity due to elongation rate
-    v_eOc_c = v_eOc_rb_c + v_eOc_dmp_c
-    @assert abs(v_eOc_c[3]) < 1e-8
+    v_ec_dmp_c = ks_c * ξ_dot #contact point velocity due to elongation rate
+    v_ec_c = v_ec_c_body + v_ec_dmp_c
+    @assert abs(v_ec_c[3]) < 1e-8
 
     #extract in-plane components
-    v_eOc_xy = v_eOc_c[SVector(1,2)]
+    v_ec_xy = v_ec_c[SVector(1,2)]
 
-    sys.y = StrutY(; Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, α_ts, t_sc, t_bc, v_eOc_xy, trn_data)
+    sys.y = StrutY(; Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, α_ts, t_sc, t_bc, v_ec_xy, trn_data)
 
 end
 
@@ -365,7 +364,7 @@ end
 
 function GUI.draw(sys::System{<:Strut}, window_label::String = "Strut")
 
-    @unpack Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, v_eOc_xy, trn_data = sys.y
+    @unpack Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, v_ec_xy, trn_data = sys.y
 
         CImGui.Text(@sprintf("Height Above Ground: %.7f m", Δh))
         CImGui.Text("Weight on Wheel: $wow")
@@ -373,7 +372,7 @@ function GUI.draw(sys::System{<:Strut}, window_label::String = "Strut")
         CImGui.Text(@sprintf("Damper Elongation Rate: %.7f m/s", ξ_dot))
         CImGui.Text(@sprintf("Axial Damper Force: %.7f N", F_dmp_zs))
         CImGui.Text(@sprintf("Wheel Steering Angle: %.7f deg", rad2deg(ψ_sw)))
-        GUI.draw(v_eOc_xy, "Contact Point Velocity (Oc / ECEF) [Contact]", "m/s")
+        GUI.draw(v_ec_xy, "Contact Point Velocity (Oc / ECEF) [Contact]", "m/s")
 
         if CImGui.TreeNode("Terrain Data")
 
@@ -426,10 +425,10 @@ function Systems.f_ode!(sys::System{Contact},
                         strut::System{<:Strut},
                         braking::System{<:AbstractBraking})
 
-    @unpack wow, F_dmp_zs, t_sc, t_bc, v_eOc_xy, trn_data = strut.y
+    @unpack wow, F_dmp_zs, t_sc, t_bc, v_ec_xy, trn_data = strut.y
 
     frc = sys.frc
-    frc.u.input .= -v_eOc_xy #if !wow, v_eOc_xy = [0,0]
+    frc.u.input .= -v_ec_xy #if !wow, v_ec_xy = [0,0]
     f_ode!(frc)
 
     if !wow
@@ -437,7 +436,7 @@ function Systems.f_ode!(sys::System{Contact},
         return
     end
 
-    norm_v = norm(v_eOc_xy)
+    norm_v = norm(v_ec_xy)
 
     μ_roll = get_μ(FrictionCoefficients(Rolling(), trn_data.surface), norm_v)
     μ_skid = get_μ(FrictionCoefficients(Skidding(), trn_data.surface), norm_v)
@@ -450,7 +449,7 @@ function Systems.f_ode!(sys::System{Contact},
     if norm_v < 1e-3 #prevents chattering in μ_y for near-zero contact velocity
         ψ_cv = π/2 #pure sideslip
     else
-        ψ_cv = atan(v_eOc_xy[2], v_eOc_xy[1])
+        ψ_cv = atan(v_ec_xy[2], v_ec_xy[1])
     end
 
     #lateral friction coefficient

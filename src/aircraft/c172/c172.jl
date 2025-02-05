@@ -20,20 +20,21 @@ struct Airframe <: SystemDefinition end
 # Standard Empty Weight
 
 #Airframe mass properties computed in the vehicle reference frame b
-const mp_Ob_str = let
+const mp_b_afm = let
     #define the airframe as a RigidBodyDistribution
-    str_G = RigidBodyDistribution(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
-    #define the transform from the origin of the vehicle reference frame (Ob)
-    #to the airframe's center of mass (G)
-    t_Ob_G = FrameTransform(r = SVector{3}(0.056, 0, 0.582))
-    #compute the airframe's mass properties at Ob
-    MassProperties(str_G, t_Ob_G)
+    afm_c = RigidBodyDistribution(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
+    #a RigidBodyDistribution is always specified in a reference frame c with
+    #origin at its center of mass. now, define the transform from vehicle
+    #reference frame b to reference frame c (pure translation)
+    t_bc = FrameTransform(r = SVector{3}(0.056, 0, 0.582))
+    #translate the airframe's mass properties to frame b
+    MassProperties(afm_c, t_bc)
 end
 
 #the airframe itself receives no external actions. these are considered to act
 #upon the vehicle's aerodynamics, power plant and landing gear. the same goes
 #for rotational angular momentum.
-Dynamics.get_mp_b(::System{Airframe}) = mp_Ob_str
+Dynamics.get_mp_b(::System{Airframe}) = mp_b_afm
 Dynamics.get_wr_b(::System{Airframe}) = Wrench()
 Dynamics.get_hr_b(::System{Airframe}) = zeros(SVector{3})
 
@@ -294,11 +295,11 @@ const aero_lookup = generate_aero_lookup()
 
 # if this weren't the case, and we cared not only about the rotation but also
 #about the velocity lever arm, here's the rigorous way of computing v_wOa_a:
-# v_wOb_b = v_eOb_b - v_ew_b
-# v_eOa_b = v_eOb_b + ω_eb_b × r_ObOa_b
-# v_wOa_b = v_eOa_b - v_ew_b = v_eOb_b + ω_eb_b × r_ObOa_b - v_ew_b
-# v_wOa_b = v_wOb_b + ω_eb_b × r_ObOa_b
-# v_wOa_a = q_ba'(v_wOa_b)
+# v_wb_b = v_eb_b - v_ew_b
+# v_ea_b = v_eb_b + ω_eb_b × r_ba_b
+# v_wa_b = v_ea_b - v_ew_b = v_eb_b + ω_eb_b × r_ba_b - v_ew_b
+# v_wa_b = v_wb_b + ω_eb_b × r_ba_b
+# v_wa_a = q_ba'(v_wa_b)
 
 @kwdef struct AeroCoeffs
     C_D::Float64 = 0.0
@@ -383,7 +384,7 @@ Systems.U(::Aero) = AeroU()
 Systems.S(::Aero) = AeroS()
 
 #caution: do not confuse the w-frame in kinematics.ω_wb_b, which refers to the
-#wander-azimuth frame (w), with the w in air.v_wOb_b, which indicates aerodynamic
+#wander-azimuth frame (w), with the w in air.v_wb_b, which indicates aerodynamic
 #(wind-relative) velocity
 
 function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
@@ -393,17 +394,17 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     @unpack α_filt, β_filt = x
     @unpack e, a, r, f = u
     @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = constants
-    @unpack TAS, q, v_wOb_b = air
+    @unpack TAS, q, v_wb_b = air
     @unpack ω_wb_b, n_e, h_o = kinematics
     stall = s.stall
 
-    v_wOb_a = f_ba.q'(v_wOb_b)
+    v_wb_a = f_ba.q'(v_wb_b)
 
     #for near-zero TAS, the airflow angles are likely to chatter between 0, -π
     #and π. to avoid this, we set a minimum TAS for airflow computation. in this
     #scenario dynamic pressure will be close to zero, so forces and moments will
     #vanish anyway.
-    α, β = (TAS > 0.1 ? Air.get_airflow_angles(v_wOb_a) : (0.0, 0.0))
+    α, β = (TAS > 0.1 ? Air.get_airflow_angles(v_wb_a) : (0.0, 0.0))
     V = max(TAS, V_min) #avoid division by zero
 
     α_filt_dot = 1/τ * (α - α_filt)
@@ -422,10 +423,10 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     δf = linear_scaling(f, δf_range)
 
     #non-dimensional height above ground
-    l2d_Oa = n_e #Oa = Ob
-    h_Oa = h_o #orthometric
-    h_trn_Oa = TerrainData(terrain, l2d_Oa).altitude #orthometric
-    Δh_nd = (h_Oa - h_trn_Oa) / b
+    loc_Oa = n_e #(2D location of aerodynamics frame, Oa = Ob)
+    h_a = h_o #orthometric
+    h_trn_a = TerrainData(terrain, loc_Oa).altitude #orthometric
+    Δh_nd = (h_a - h_trn_a) / b
 
     # T = get_wr_b(pwp).F[1]
     # C_T = T / (q * S) #thrust coefficient, not used here
@@ -610,8 +611,8 @@ function Dynamics.get_mp_b(sys::System{Payload})
     rpass = MassProperties(PointDistribution(m_rpass), rpass_slot)
     baggage = MassProperties(PointDistribution(m_baggage), baggage_slot)
 
-    mp_Ob = MassProperties() + pilot + copilot + lpass + rpass + baggage
-    return mp_Ob
+    mp_b = MassProperties() + pilot + copilot + lpass + rpass + baggage
+    return mp_b
 end
 
 Dynamics.get_wr_b(::System{Payload}) = Wrench()
@@ -686,11 +687,11 @@ function Dynamics.get_mp_b(fuel::System{Fuel})
     frame_left = FrameTransform(r = SVector{3}(0.325, -2.845, 0))
     frame_right = FrameTransform(r = SVector{3}(0.325, 2.845, 0))
 
-    mp_Ob = MassProperties()
-    mp_Ob += MassProperties(m_left, frame_left)
-    mp_Ob += MassProperties(m_right, frame_right)
+    mp_b = MassProperties()
+    mp_b += MassProperties(m_left, frame_left)
+    mp_b += MassProperties(m_right, frame_right)
 
-    return mp_Ob
+    return mp_b
 end
 
 Dynamics.get_wr_b(::System{Fuel}) = Wrench()
@@ -835,10 +836,10 @@ const Vehicle{F, K, T} = AircraftBase.Vehicle{F, K, T} where {F <: Components, K
 end
 
 @kwdef struct TrimParameters <: AbstractTrimParameters
-    Ob::Geographic{NVector, Ellipsoidal} = Geographic(NVector(), HEllip(1050))
+    Ob::Geographic{NVector, Ellipsoidal} = Geographic(NVector(), HEllip(1050)) #3D location of vehicle frame origin
     ψ_nb::Float64 = 0.0 #geographic heading
     EAS::Float64 = 50.0 #equivalent airspeed
-    γ_wOb_n::Float64 = 0.0 #wind-relative flight path angle
+    γ_wb_n::Float64 = 0.0 #wind-relative flight path angle
     ψ_wb_dot::Float64 = 0.0 #WA-relative turn rate
     θ_wb_dot::Float64 = 0.0 #WA-relative pitch rate
     β_a::Float64 = 0.0 #sideslip angle measured in the aerodynamic reference frame
@@ -853,14 +854,14 @@ function Kinematics.Initializer(trim_state::TrimState,
                                 trim_params::TrimParameters,
                                 atm_data::AtmData)
 
-    @unpack EAS, β_a, γ_wOb_n, ψ_nb, ψ_wb_dot, θ_wb_dot, Ob = trim_params
+    @unpack EAS, β_a, γ_wb_n, ψ_nb, ψ_wb_dot, θ_wb_dot, Ob = trim_params
     @unpack α_a, φ_nb = trim_state
 
     TAS = Air.EAS2TAS(EAS; ρ = ISAData(Ob, atm_data).ρ)
-    v_wOb_a = Air.get_velocity_vector(TAS, α_a, β_a)
-    v_wOb_b = C172.f_ba.q(v_wOb_a) #wind-relative aircraft velocity, body frame
+    v_wb_a = Air.get_velocity_vector(TAS, α_a, β_a)
+    v_wb_b = C172.f_ba.q(v_wb_a) #wind-relative aircraft velocity, body frame
 
-    θ_nb = AircraftBase.θ_constraint(; v_wOb_b, γ_wOb_n, φ_nb)
+    θ_nb = AircraftBase.θ_constraint(; v_wb_b, γ_wb_n, φ_nb)
     e_nb = REuler(ψ_nb, θ_nb, φ_nb)
     q_nb = RQuat(e_nb)
 
@@ -871,11 +872,11 @@ function Kinematics.Initializer(trim_state::TrimState,
     loc = NVector(Ob)
     h = HEllip(Ob)
 
-    v_wOb_n = q_nb(v_wOb_b) #wind-relative aircraft velocity, NED frame
+    v_wb_n = q_nb(v_wb_b) #wind-relative aircraft velocity, NED frame
     v_ew_n = atm_data.v_ew_n
-    v_eOb_n = v_ew_n + v_wOb_n
+    v_eb_n = v_ew_n + v_wb_n
 
-    Kinematics.Initializer(; q_nb, loc, h, ω_wb_b, v_eOb_n, Δx = 0.0, Δy = 0.0)
+    Kinematics.Initializer(; q_nb, loc, h, ω_wb_b, v_eb_n, Δx = 0.0, Δy = 0.0)
 
 end
 
@@ -884,7 +885,7 @@ function cost(vehicle::System{<:C172.Vehicle})
 
     @unpack ẋ, y = vehicle
 
-    v_nd_dot = SVector{3}(ẋ.dynamics.v_eOb_b) / norm(y.kinematics.data.v_eOb_b)
+    v_nd_dot = SVector{3}(ẋ.dynamics.v_eb_b) / norm(y.kinematics.data.v_eb_b)
     ω_dot = SVector{3}(ẋ.dynamics.ω_eb_b) #ω should already of order 1
     n_eng_dot = ẋ.components.pwp.engine.ω / vehicle.components.pwp.engine.constants.ω_rated
 

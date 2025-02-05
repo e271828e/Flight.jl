@@ -8,7 +8,6 @@ using Flight.FlightCore.GUI
 using Flight.FlightLib.Control
 using Flight.FlightLib.LandingGear
 
-using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172R
 using Flight.FlightAircraft.C172FBW
 using Flight.FlightAircraft.C172RPA
