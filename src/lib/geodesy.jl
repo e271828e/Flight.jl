@@ -31,9 +31,10 @@ const q₀ = 0.5( (1 + 3/eʹ²) * atan(eʹ) - 3/eʹ ) #[Hof06]2-113
 const q₀ʹ= 3(1 + 1/eʹ²) * (1 - 1/eʹ * atan(eʹ) ) - 1 #[Hof06]2-133 with u = b and [Hof06]2-138
 const m = ω_ie^2 * a^2 * b / GM #[Hof06] 2-70
 
-#normal gravity magnitudes
+#gravity parameters
 const γ_a = GM / (a * b) * (1 - m - m/6 * eʹ * q₀ʹ/q₀) #Normal gravity at the equator, [Hof06] 2-141
 const γ_b = GM / a² * (1 + m/3 * eʹ * q₀ʹ/q₀) #Normal gravity at the poles, [Hof06] 2-142
+const k_g = (b * γ_b - a * γ_a)/(a * γ_a) #Somigliana model constant
 
 
 
@@ -442,10 +443,9 @@ function gravity(pos::Abstract3DLocation)
     h = Float64(p_nve.h)
 
     sin²ϕ = n_e[3]^2
-    cos²ϕ = n_e[1]^2 + n_e[2]^2
 
     #gravity at the ellipsoid surface (Somigliana)
-    γ_0 = (a * γ_a * cos²ϕ + b * γ_b * sin²ϕ) / √(a² * cos²ϕ + b² * sin²ϕ) #[Hof06] 2-146
+    γ_0 = γ_a * (1 + k_g * sin²ϕ) / √(1 - e²*sin²ϕ) #[Hof06] 2-146
 
     #altitude correction
     γ = γ_0 * (1 - 2/a * (1 + f + m - 2f * sin²ϕ) * h + 3/a² * h^2)
