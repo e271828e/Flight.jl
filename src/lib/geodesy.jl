@@ -27,15 +27,12 @@ const eʹ = √eʹ² #Second eccentricity
 #convenience parameters
 const a² = a^2
 const b² = b^2
-const q₀ = 0.5( (1 + 3/eʹ²) * atan(eʹ) - 3/eʹ ) #[Hof06]2-113
-const q₀ʹ= 3(1 + 1/eʹ²) * (1 - 1/eʹ * atan(eʹ) ) - 1 #[Hof06]2-133 with u = b and [Hof06]2-138
 const m = ω_ie^2 * a^2 * b / GM #[Hof06] 2-70
 
 #gravity parameters
-const γ_a = GM / (a * b) * (1 - m - m/6 * eʹ * q₀ʹ/q₀) #Normal gravity at the equator, [Hof06] 2-141
-const γ_b = GM / a² * (1 + m/3 * eʹ * q₀ʹ/q₀) #Normal gravity at the poles, [Hof06] 2-142
-const k_g = (b * γ_b - a * γ_a)/(a * γ_a) #Somigliana model constant
-
+const g_a = 9.7803253359 #Normal gravity at the equator
+const g_b = 9.8321849378 #Normal gravity at the poles
+const k_g = b * g_b / (a * g_a) - 1 #Somigliana's gravity formula parameter
 
 
 ######################### Abstract2DLocation ###########################
@@ -434,7 +431,7 @@ Computation is based on Somigliana's formula for gravity at the ellipsoid
 surface, with a second order altitude correction, accurate for small altitudes
 above the WGS84 ellipsoid (h<<a). Direction is assumed normal to the WGS84
 ellipsoid, a good enough approximation for most navigation applications. See
-Hoffmann & Moritz.
+WGS84 and Hoffmann & Moritz.
 """
 function gravity(pos::Abstract3DLocation)
 
@@ -444,13 +441,13 @@ function gravity(pos::Abstract3DLocation)
 
     sin²ϕ = n_e[3]^2
 
-    #gravity at the ellipsoid surface (Somigliana)
-    γ_0 = γ_a * (1 + k_g * sin²ϕ) / √(1 - e²*sin²ϕ) #[Hof06] 2-146
+    #gravity at the ellipsoid surface (Somigliana's formula)
+    g_0 = g_a * (1 + k_g * sin²ϕ) / √(1 - e²*sin²ϕ)
 
     #altitude correction
-    γ = γ_0 * (1 - 2/a * (1 + f + m - 2f * sin²ϕ) * h + 3/a² * h^2)
+    g = g_0 * (1 - 2/a * (1 + f + m - 2f * sin²ϕ) * h + 3/a² * h^2)
 
-    return γ
+    return g
 
 end
 
