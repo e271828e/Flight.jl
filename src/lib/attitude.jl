@@ -311,7 +311,7 @@ end
 # Inversion
 Base.adjoint(r::RAxAng) = RAxAng(r.axis, -r.angle)
 
-############################# RAxAng ###############################
+############################# RVec ###############################
 
 "Rotation vector representation"
 @kwdef struct RVec <: Abstract3DRotation
@@ -323,6 +323,11 @@ RVec(r::Abstract3DRotation) = convert(RVec, r)
 Base.getindex(ρ::RVec, i) = getindex(ρ._data, i)
 Base.length(ρ::RVec) = length(ρ._data)
 Base.size(ρ::RVec) = size(ρ._data)
+
+Base.:+(ρ1::RVec, ρ2::RVec) = RVec(ρ1._data + ρ2._data)
+Base.:-(ρ1::RVec, ρ2::RVec) = RVec(ρ1._data - ρ2._data)
+Base.:*(a::Real, ρ::RVec) = RVec(a * ρ._data)
+Base.:*(ρ::RVec, a::Real) = a * ρ
 
 #conversions to and from RQuat
 function Base.convert(::Type{RVec}, r::RQuat)
