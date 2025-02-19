@@ -25,11 +25,11 @@ function Systems.f_ode!(::System{<:C172RPAv3.Sensors}, ::System{<:C172RPA.Vehicl
     nothing
 end
 
-function AircraftBase.trim!(sensors::System{<:C172RPAv3.Sensors},
+function Systems.init!(sensors::System{<:C172RPAv3.Sensors},
                             vehicle::System{<:C172RPA.Vehicle})
 
     Systems.reset!(sensors)
-    @warn "Sensors trim not implemented"
+    @warn "Sensors init! not implemented"
 
 end
 
@@ -49,15 +49,15 @@ function AircraftBase.assign!(components::System{<:C172RPA.Components},
     AircraftBase.assign!(components, computing.ctl)
 end
 
-function AircraftBase.trim!(computing::System{<:C172RPAv3.Computing},
+function Systems.init!(computing::System{<:C172RPAv3.Computing},
                             vehicle::System{<:C172RPA.Vehicle})
 
     @unpack ctl, nav = computing
 
     Systems.reset!(computing)
-    trim!(nav, vehicle)
-    trim!(ctl, vehicle)
-    assemble_y!(computing)
+    Systems.init!(nav, vehicle)
+    Systems.init!(ctl, vehicle)
+    Systems.update_y!(computing)
 
 end
 
@@ -95,13 +95,13 @@ function AircraftBase.assign!(components::System{<:C172RPA.Components},
     AircraftBase.assign!(components, avionics.cmp)
 end
 
-function AircraftBase.trim!(avionics::System{<:C172RPAv3.Avionics},
+function Systems.init!(avionics::System{<:C172RPAv3.Avionics},
                             vehicle::System{<:C172RPA.Vehicle})
 
-    trim!(avionics.sen, vehicle)
-    trim!(avionics.cmp, vehicle)
+    Systems.init!(avionics.sen, vehicle)
+    Systems.init!(avionics.cmp, vehicle)
 
-    assemble_y!(avionics)
+    Systems.update_y!(avionics)
 
 end
 

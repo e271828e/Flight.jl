@@ -21,10 +21,10 @@ function Systems.f_disc!(::NoScheduling, nav::System{<:Navigator},
 
 end
 
-function AircraftBase.trim!(nav::System{<:Navigator},
+function Systems.init!(nav::System{<:Navigator},
                             vehicle::System{<:C172RPA.Vehicle})
 
-    @warn "Navigator trim not implemented"
+    @warn "Navigator init! not implemented"
 
 end
 

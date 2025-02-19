@@ -8,7 +8,7 @@ using ..IODevices
 
 export SystemDefinition, SystemTrait, System
 export Subsampled, Scheduling, NoScheduling
-export f_ode!, f_step!, f_disc!, assemble_y!
+export f_ode!, f_step!, f_disc!, update_y!
 
 
 
@@ -35,7 +35,7 @@ function (::Type{<:SystemTrait})(nt::NamedTuple)
 end
 
 #y must always be a NamedTuple, even if all subsystem's y are StaticArrays;
-#otherwise assemble_y! does not work
+#otherwise update_y! does not work
 function Y(nt::NamedTuple)
     filtered_nt = delete_nothings(nt)
     return !isempty(filtered_nt) ? filtered_nt : nothing
@@ -165,7 +165,7 @@ function System(ss::Subsampled,
 end
 
 
-init!(::System) = nothing
+init!(::System, args...) = nothing
 
 function reset!(sys::System)
     foreach(sys.subsystems) do ss
@@ -217,7 +217,7 @@ struct NoScheduling <: MaybeSchedule end
     for ss in sys.subsystems
         f_ode!(ss, args...)
     end
-    assemble_y!(sys)
+    update_y!(sys)
     return nothing
 
 end
@@ -236,7 +236,7 @@ end
     for ss in sys.subsystems
         f_disc!(ss, args...)
     end
-    assemble_y!(sys)
+    update_y!(sys)
     return nothing
 
 end
@@ -252,7 +252,7 @@ end
 end
 
 #fallback for node Systems with NamedTuple output
-@inline function (assemble_y!(sys::System{D, Y})
+@inline function (update_y!(sys::System{D, Y})
     where {D <: SystemDefinition, Y <: NamedTuple{L, M}} where {L, M})
 
     ys = map(id -> getproperty(sys.subsystems[id], :y), L)
@@ -260,9 +260,9 @@ end
 
 end
 
-@inline function assemble_y!(sys::System{D}) where {D}
+@inline function update_y!(sys::System{D}) where {D}
     if !isempty(sys.subsystems)
-        error("An assemble_y! method must be explicitly implemented for node "*
+        error("An update_y! method must be explicitly implemented for node "*
         "Systems with an output type other than NamedTuple, $D doesn't have one")
     end
 end

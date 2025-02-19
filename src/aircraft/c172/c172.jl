@@ -765,7 +765,7 @@ function Systems.f_ode!(components::System{<:Components},
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
-    assemble_y!(components)
+    Systems.update_y!(components)
 
 end
 
@@ -905,8 +905,7 @@ function get_f_target(vehicle::System{<:C172.Vehicle},
 
 end
 
-function AircraftBase.trim!(vehicle::System{<:C172.Vehicle},
-                        trim_params::TrimParameters = TrimParameters())
+function Systems.init!(vehicle::System{<:C172.Vehicle}, trim_params::TrimParameters)
 
     trim_state = TrimState() #could provide initial condition as an optional input
 
@@ -965,14 +964,15 @@ function AircraftBase.trim!(vehicle::System{<:C172.Vehicle},
 
 end
 
-function AircraftBase.trim!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}})
-    trim!(ac, TrimParameters())
+function AircraftBase.trim!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}},
+                            trim_params::TrimParameters = TrimParameters())
+    Systems.init!(ac, trim_params)
 end
 
-function AircraftBase.linearize!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}})
-    linearize!(ac, TrimParameters())
+function AircraftBase.linearize!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}},
+                                trim_params::TrimParameters = TrimParameters())
+    linearize!(ac.vehicle, trim_params)
 end
-
 
 ################################################################################
 ############################### C172 Variants ##################################

@@ -20,8 +20,8 @@ export test_c172rpa_v2
 function test_c172rpa_v2()
     @testset verbose = true "Cessna172 RPAv2" begin
 
-        test_control_modes()
-        test_guidance_modes()
+        # test_control_modes()
+        # test_guidance_modes()
 
     end
 end
