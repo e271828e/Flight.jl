@@ -100,26 +100,11 @@ struct NoAvionics <: AbstractAvionics end
 ################################################################################
 ######################## Vehicle/Avionics update methods #######################
 
-#in order to be able to trim the standalone Vehicle without any auxiliary
-#Avionics, the Vehicle's update methods must not require Avionics as an
-#argument. to make this possible, any changes to Vehicle should be done through
-#the joint assign! methods. accordingly, Avionics update methods should only
-#mutate the Avionics System itself, not the Vehicle
-
-# function Systems.f_ode!(::System{<:AbstractAvionics},
-#                         ::System{<:Vehicle})
-#     nothing
-# end
-
-# function Systems.f_disc!(sch::NoScheduling, avionics::System{<:AbstractAvionics},
-#                         vehicle::System{<:Vehicle})
-#     MethodError(f_disc!, (sch, avionics, vehicle)) |> throw
-# end
-
-# function Systems.f_disc!(::NoScheduling, ::System{NoAvionics}, ::System{<:Vehicle})
-# end
-
-#f_step! can use the recursive fallback implementation
+#we want to be able to trim the standalone Vehicle without any auxiliary
+#Avionics. therefore, the Vehicle's update methods must not require Avionics as
+#an argument. to make this possible, any changes to Vehicle should be done
+#through the joint assign! methods. accordingly, Avionics update methods should
+#only mutate the Avionics System itself, not the Vehicle
 
 function Systems.f_ode!(vehicle::System{<:Vehicle})
 
@@ -168,7 +153,7 @@ function Systems.f_disc!(::NoScheduling, vehicle::System{<:Vehicle})
 
 end
 
-#these are meant to map avionics outputs to the vehicle, and in particular to
+#these map avionics outputs to the vehicle, and in particular to
 #components inputs. they are called both within the aircraft's f_ode! and
 #f_disc! before the vehicle update
 function assign!(vehicle::System{<:Vehicle}, avionics::System{<:AbstractAvionics})
@@ -191,46 +176,33 @@ assign!(::System{<:AbstractComponents}, ::System{NoAvionics}) = nothing
     avionics::A = NoAvionics()
 end
 
-struct AircraftY{P <: VehicleY, A}
-    vehicle::P
-    avionics::A
-end
-
-Systems.Y(ac::Aircraft) = AircraftY(Systems.Y(ac.vehicle), Systems.Y(ac.avionics))
-
 function Systems.init!(ac::System{<:Aircraft}, args...)
-    result = Systems.init!(ac.vehicle, args...)
-    Systems.init!(ac.avionics, ac.vehicle) #avionics update only depends on vehicle
+    @unpack vehicle, avionics = ac.subsystems
+    result = Systems.init!(vehicle, args...)
+    Systems.init!(avionics, vehicle) #avionics update only depends on vehicle
     Systems.update_y!(ac)
     return result
 end
 
 function Systems.f_ode!(ac::System{<:Aircraft})
-
     @unpack vehicle, avionics = ac.subsystems
-
     f_ode!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_ode!(vehicle)
-
-    ac.y = AircraftY(vehicle.y, avionics.y)
+    Systems.update_y!(ac)
 end
 
 function Systems.f_disc!(::NoScheduling, ac::System{<:Aircraft})
-
     @unpack vehicle, avionics = ac.subsystems
-
     f_disc!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_disc!(vehicle)
-
-    ac.y = AircraftY(vehicle.y, avionics.y)
+    Systems.update_y!(ac)
 end
 
-#f_step! can use the recursive fallback implementation
+#f_step! uses the recursive fallback method
 
 Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.y.vehicle.kinematics)
-
 
 ################################# XPCClient ####################################
 
@@ -381,14 +353,6 @@ function Plotting.make_plots(ts::TimeSeries{<:VehicleY}; kwargs...)
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:AircraftY}; kwargs...)
-
-    return OrderedDict(
-        :vehicle => make_plots(ts.vehicle; kwargs...),
-        :avionics => make_plots(ts.avionics; kwargs...),
-    )
-
-end
 
 ################################### GUI ########################################
 
