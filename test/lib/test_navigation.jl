@@ -32,7 +32,7 @@ end
 
 @kwdef struct IMUSample
     ω̄_ic_c::SVector{3, Float64} = zeros(SVector{3}) #average angular velocity in case frame
-    f̄_Oc_c::SVector{3, Float64} = zeros(SVector{3}) #average specific force in case frame
+    f̄_c_c::SVector{3, Float64} = zeros(SVector{3}) #average specific force in case frame
     ϑ_c::SVector{3, Float64} = zeros(SVector{3}) #raw angle increment
     ϑ_c_cc::SVector{3, Float64} = zeros(SVector{3}) #coning-corrected angle increment
     υ_c::SVector{3, Float64} = zeros(SVector{3}) #raw velocity increment
@@ -78,8 +78,8 @@ function Systems.f_ode!(sys::System{<:IMU})
     Oc = Cartesian(r_ec_e)
 
     q_nc = q_nb ∘ q_bc
-    G_Oc_n = G_n(Oc)
-    G_Oc_c = q_nc'(G_Oc_n)
+    G_c_n = G_n(Oc)
+    G_c_c = q_nc'(G_c_n)
 
     ω_ie_e = SVector{3, Float64}(0, 0, ω_ie) #use WGS84 constant
     ω_ie_b = q_eb'(ω_ie_e)
@@ -87,15 +87,15 @@ function Systems.f_ode!(sys::System{<:IMU})
     ω_ic_b = ω_ib_b
     ω_ic_c = q_bc'(ω_ic_b)
 
-    a_iOc_b = a_ib_b + ω_ib_b × (ω_ib_b × r_bc_b) + α_ib_b × r_bc_b
-    a_iOc_c = q_bc'(a_iOc_b)
-    f_Oc_c = a_iOc_c - G_Oc_c
+    a_ic_b = a_ib_b + ω_ib_b × (ω_ib_b × r_bc_b) + α_ib_b × r_bc_b
+    a_ic_c = q_bc'(a_ic_b)
+    f_c_c = a_ic_c - G_c_c
 
     ẋ.ϑ_c = ω_ic_c
-    ẋ.υ_c = f_Oc_c
+    ẋ.υ_c = f_c_c
 
     ẋ.q_c_cc = Attitude.dt(q_c_cc, ω_ic_c)
-    ẋ.υ_c_sc = q_c_cc(f_Oc_c)
+    ẋ.υ_c_sc = q_c_cc(f_c_c)
 
     #no updating sys.y here, only in f_disc!
 
@@ -122,10 +122,10 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:IMU})
 
     #compute average angular velocity specific force over sampling interval
     ω̄_ic_c = ϑ_c / Δt
-    f̄_Oc_c = υ_c / Δt
+    f̄_c_c = υ_c / Δt
 
     #update system outputs
-    sample = IMUSample(; ω̄_ic_c, f̄_Oc_c, ϑ_c, ϑ_c_cc, υ_c, υ_c_sc)
+    sample = IMUSample(; ω̄_ic_c, f̄_c_c, ϑ_c, ϑ_c_cc, υ_c, υ_c_sc)
     push!(buffer, sample)
 
     f_disc!(errors)
