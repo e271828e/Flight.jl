@@ -31,12 +31,12 @@ end
 
 ################################# Trimming #####################################
 
-function AircraftBase.trim!(avionics::System{<:C172FBWv1.Avionics},
+function Systems.init!(avionics::System{<:C172FBWv1.Avionics},
                             vehicle::System{<:C172FBW.Vehicle})
 
     Systems.reset!(avionics)
-    trim!(avionics.ctl, vehicle)
-    assemble_y!(avionics)
+    Systems.init!(avionics.ctl, vehicle)
+    Systems.update_y!(avionics)
 
 end
 

@@ -31,12 +31,12 @@ function test_trimming()
         vehicle = System(C172RPA.Vehicle())
         f_target = C172.get_f_target(vehicle, trim_params)
         @test @ballocated($f_target($state)) === 0
-        success, _ = trim!(vehicle, trim_params)
+        success, _ = Systems.init!(vehicle, trim_params)
         @test success
 
         #test on direct variant
         ac = System(Cessna172RPA())
-        success, _ = trim!(ac, trim_params)
+        success, _ = Systems.init!(ac, trim_params)
         @test success
 
     end #testset
@@ -112,7 +112,7 @@ function test_sim(; save::Bool = true)
         flaps = 1.0,
         payload = mid_cg_pld)
 
-        exit_flag, trim_state = trim!(ac, trim_params)
+        exit_flag, trim_state = Systems.init!(ac, trim_params)
         @test exit_flag === true
 
         user_callback! = let

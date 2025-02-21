@@ -84,7 +84,7 @@ function Systems.init!(sys::System{<:Vehicle}, ic::KinInit)
     @unpack kinematics, dynamics = sys.subsystems
     Systems.init!(kinematics, ic)
     dynamics.x .= kinematics.u #ESSENTIAL!
-    f_ode!(sys) #update ẋ and y
+    f_ode!(sys) #update vehicle's ẋ and y
 end
 
 
@@ -92,8 +92,6 @@ end
 ############################# AbstractAvionics #################################
 
 abstract type AbstractAvionics <: SystemDefinition end
-
-Systems.init!( ::System{<:AbstractAvionics}, ic::KinInit) = nothing
 
 ################################### NoAvionics #################################
 
@@ -200,10 +198,11 @@ end
 
 Systems.Y(ac::Aircraft) = AircraftY(Systems.Y(ac.vehicle), Systems.Y(ac.avionics))
 
-function Systems.init!(ac::System{<:Aircraft}, ic::KinInit)
-    Systems.init!(ac.vehicle, ic)
-    Systems.init!(ac.avionics, ic)
-    f_ode!(ac) #update state derivatives and outputs
+function Systems.init!(ac::System{<:Aircraft}, args...)
+    result = Systems.init!(ac.vehicle, args...)
+    Systems.init!(ac.avionics, ac.vehicle) #avionics update only depends on vehicle
+    Systems.update_y!(ac)
+    return result
 end
 
 function Systems.f_ode!(ac::System{<:Aircraft})
@@ -260,34 +259,21 @@ function θ_constraint(; v_wb_b, γ_wb_n, φ_nb)
 
 end
 
-Systems.init!( ac::System{<:Aircraft}, params::AbstractTrimParameters) = trim!(ac, params)
-
-function trim!( ac::System{<:Aircraft}, params::AbstractTrimParameters)
-    result = trim!(ac.vehicle, params) #compute vehicle trim state
-    trim!(ac.avionics, ac.vehicle) #make avionics consistent with vehicle trim state
-    ac.y = AircraftY(ac.vehicle.y, ac.avionics.y)
-    return result
+function trim!(aircraft::System{<:Aircraft}, args...)
+    MethodError(trim!, (aircraft, args...)) |> throw
 end
 
-function trim!( vehicle::System{<:Vehicle}, args...)
-    MethodError(trim!, (vehicle, args...)) |> throw
+function assign!(vehicle::System{<:Vehicle}, params::AbstractTrimParameters, state::AbstractTrimState)
+    MethodError(assign!, (vehicle, params, state...)) |> throw
 end
-
-function assign!(::System{<:Vehicle}, ::AbstractTrimParameters, ::AbstractTrimState)
-    error("An assign! method must be defined by each AircraftBase.Vehicle subtype")
-end
-
-function trim!( ::System{NoAvionics}, ::System{<:Vehicle})
-end
-
 
 ################################################################################
 ################################ Linearization #################################
 
-ẋ_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(ẋ_linear!, (vehicle,)))
-x_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(x_linear!, (vehicle,)))
-u_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(u_linear!, (vehicle,)))
-y_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(y_linear!, (vehicle,)))
+ẋ_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(ẋ_linear, (vehicle,)))
+x_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(x_linear, (vehicle,)))
+u_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(u_linear, (vehicle,)))
+y_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(y_linear, (vehicle,)))
 
 assign_x!(vehicle::System{<:Vehicle}, x::AbstractVector{Float64}) = throw(MethodError(assign_x!, (vehicle, x)))
 assign_u!(vehicle::System{<:Vehicle}, u::AbstractVector{Float64}) = throw(MethodError(assign_u!, (vehicle, u)))
@@ -296,7 +282,7 @@ linearize!(ac::System{<:Aircraft}, args...) = linearize!(ac.vehicle, args...)
 
 function linearize!( vehicle::System{<:Vehicle}, trim_params::AbstractTrimParameters)
 
-    (_, trim_state) = trim!(vehicle, trim_params)
+    (_, trim_state) = Systems.init!(vehicle, trim_params)
 
     ẋ0 = ẋ_linear(vehicle)::FieldVector
     x0 = x_linear(vehicle)::FieldVector

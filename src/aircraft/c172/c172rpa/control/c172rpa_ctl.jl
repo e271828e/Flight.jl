@@ -745,11 +745,11 @@ end
 
 ##################################### Tools ####################################
 
-function AircraftBase.trim!(sys::System{<:Controller},
+function Systems.init!(sys::System{<:Controller},
                             vehicle::System{<:C172RPA.Vehicle})
 
     #here we assume that the vehicle's y has already been updated to its trim
-    #value by trim!(vehicle, params)
+    #value by init!(vehicle, params)
     y_act = vehicle.y.components.act
     @unpack ω_wb_b, v_eb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
     @unpack EAS = vehicle.y.air
