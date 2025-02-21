@@ -22,7 +22,7 @@ function test_gui()
     # target = Cessna172CAS() |> System
     # target = Cessna172RBase() |> System
     # target = C172FBW.Actuation() |> System;
-    target = Cessna172RPAv1() |> System
+    target = Cessna172FBWv1() |> System
     # target = Cessna172R() |> System
     f_draw = let target = target
         () -> GUI.draw!(target)

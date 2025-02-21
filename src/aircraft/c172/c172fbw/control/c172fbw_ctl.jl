@@ -979,7 +979,7 @@ function GUI.draw!(sys::System{<:Controller},
     y = sys.y
 
     @unpack components, kinematics, accelerations, air = vehicle.y
-    @unpack act, pwp, fuel, ldg = components
+    @unpack act, pwp, fuel, ldg, aero = components
 
     @unpack e_nb, ω_wb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eb_n = kinematics
     @unpack CAS, EAS, TAS, T, p, pt = air
@@ -1378,6 +1378,8 @@ function GUI.draw!(sys::System{<:Controller},
             c_alt && @c GUI.draw(sys.alt_gdc, &c_alt)
         end
     end
+
+    End()
 
 end
 

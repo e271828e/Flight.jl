@@ -160,8 +160,6 @@ struct AirData
     v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
     v_eb_b::SVector{3,Float64} #vehicle velocity vector, vehicle axes
     v_wb_b::SVector{3,Float64} #vehicle aerodynamic velocity, vehicle axes
-    # α_b::Float64 #vehicle frame AoA
-    # β_b::Float64 #vehicle frame AoS
     T::Float64 #static temperature
     p::Float64 #static pressure
     ρ::Float64 #density
@@ -295,19 +293,6 @@ function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
         ts_split = :h,
         kwargs...)
 
-        # subplot_α = plot(TimeSeries(ts._t, rad2deg.(ts.α_b._data));
-        #     title = "Angle of Attack", ylabel = L"$α_b \ (deg)$",
-        #     label = "", kwargs...)
-
-        # subplot_β = plot(TimeSeries(ts._t, rad2deg.(ts.β_b._data));
-        #     title = "Angle of Sideslip", ylabel = L"$β_b \ (deg)$",
-        #     label = "", kwargs...)
-
-    # pd[:α_β] = plot(subplot_α, subplot_β;
-    #     plot_title = "Airflow Angles [Vehicle Axes]",
-    #     layout = (1,2),
-    #     kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
         subplot_a = plot(ts.a;
             title = "Speed of Sound", ylabel = L"$a \ (m/s)$",
             label = "", kwargs...)
@@ -376,15 +361,13 @@ end
 
 function GUI.draw(air::AirData, p_open::Ref{Bool} = Ref(true), label::String = "Air")
 
-    @unpack v_ew_n, v_ew_b, v_wb_b, α_b, β_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
+    @unpack v_ew_n, v_ew_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
 
     CImGui.Begin(label, p_open)
 
     GUI.draw(v_ew_n, "Velocity (Wind/ECEF) [NED]", "m/s")
     GUI.draw(v_ew_b, "Velocity (Wind/ECEF) [Body]", "m/s")
     GUI.draw(v_wb_b, "Velocity (Body/Wind) [Body]", "m/s")
-    CImGui.Text(@sprintf("AoA (Body/Wind): %.3f deg", rad2deg(α_b)))
-    CImGui.Text(@sprintf("AoS (Body/Wind): %.3f deg", rad2deg(β_b)))
 
     CImGui.Text(@sprintf("Static Temperature: %.3f K", T))
     CImGui.Text(@sprintf("Total Temperature: %.3f K", Tt))

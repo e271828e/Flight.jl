@@ -41,7 +41,7 @@ UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
 AbstractTrees = "0.4.4"
-CImGui = "3.1.1"
+CImGui = "5"
 ComponentArrays = "0.15.14"
 ControlSystems = "1.10.3"
 DataStructures = "0.18.15"
