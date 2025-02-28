@@ -497,7 +497,7 @@ function test_control_modes()
         # save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_rpa_v1", "avionics", "kin"))
         # save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_rpa_v1", "avionics", "air"))
         # return TimeSeries(sim)
-        return sim
+        # return sim
 
     end #testset
 

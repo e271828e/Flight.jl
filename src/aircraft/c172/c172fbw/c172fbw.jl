@@ -270,7 +270,7 @@ function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
     AircraftBase.Vehicle(
         C172.Components(PowerPlant(), Actuation()),
         kinematics,
-        RigidBodyDynamics(),
+        VehicleDynamics(),
         terrain,
         LocalAtmosphere())
 end
@@ -447,7 +447,7 @@ end
 
 function YLinear(vehicle::System{<:C172FBW.Vehicle{NED}})
 
-    @unpack components, air, accelerations, kinematics = vehicle.y
+    @unpack components, air, dynamics, kinematics = vehicle.y
     @unpack pwp, fuel, aero, act = components
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eb_b, v_eb_n, χ_gnd, γ_gnd = kinematics
@@ -474,7 +474,7 @@ function YLinear(vehicle::System{<:C172FBW.Vehicle{NED}})
     rud_v = act.rudder.vel
     rud_p = act.rudder.pos
 
-    f_x, f_y, f_z = accelerations.f_G_b
+    f_x, f_y, f_z = dynamics.f_c_c
     EAS = air.EAS
     TAS = air.TAS
     χ = χ_gnd

@@ -6,48 +6,9 @@ using FiniteDiff: finite_difference_jacobian! as jacobian!
 using Flight.FlightCore
 using Flight.FlightLib
 
-export AbstractComponents, NoComponents
 export AbstractAvionics, NoAvionics
 export AbstractTrimParameters, AbstractTrimState
 export trim!, linearize!
-
-
-################################################################################
-########################### AbstractComponents ###################################
-
-abstract type AbstractComponents <: SystemDefinition end
-
-#AbstractComponents subtypes will generally be too specific for the fallback
-function Systems.f_ode!(components::System{<:AbstractComponents},
-                        kin::KinData,
-                        air::AirData,
-                        trn::AbstractTerrain)
-    MethodError(f_ode!, (components, kin, air, trn)) |> throw
-end
-
-#for efficiency, we disallow using the fallback method. it would traverse the
-#whole Components System hierarchy, and without good reason, because in
-#principle Components shouldn't implement discrete dynamics; discretized
-#algorithms belong in Avionics. can still be overridden by subtypes if required
-Systems.f_disc!(::NoScheduling, ::System{<:AbstractComponents}) = nothing
-
-
-################################ NoComponents #################################
-
-@kwdef struct NoComponents <: AbstractComponents
-    mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
-end
-
-Dynamics.get_hr_b(::System{NoComponents}) = zeros(SVector{3})
-Dynamics.get_wr_b(::System{NoComponents}) = Wrench()
-Dynamics.get_mp_b(sys::System{NoComponents}) = MassProperties(sys.constants.mass_distribution)
-
-function Systems.f_ode!(::System{NoComponents},
-                        ::KinData,
-                        ::AirData,
-                        ::AbstractTerrain)
-    nothing
-end
 
 
 ################################################################################
@@ -58,7 +19,7 @@ end
                       T <: AbstractTerrain} <: SystemDefinition
     components::F = NoComponents()
     kinematics::K = WA()
-    dynamics::RigidBodyDynamics = RigidBodyDynamics()
+    dynamics::VehicleDynamics = VehicleDynamics()
     terrain::T = HorizontalTerrain() #shared with other aircraft instances
     atmosphere::LocalAtmosphere = LocalAtmosphere() #externally controlled
 end
@@ -66,18 +27,14 @@ end
 struct VehicleY{F, K}
     components::F
     kinematics::K
-    mass::MassProperties #complete vehicle body mass properties
-    actions::Actions
-    accelerations::Accelerations
+    dynamics::VehicleDynamicsY
     air::AirData
 end
 
 Systems.Y(ac::Vehicle) = VehicleY(
     Systems.Y(ac.components),
     Systems.Y(ac.kinematics),
-    MassProperties(),
-    Actions(),
-    Accelerations(),
+    VehicleDynamicsY(),
     AirData())
 
 function Systems.init!(sys::System{<:Vehicle}, ic::KinInit)
@@ -119,20 +76,13 @@ function Systems.f_ode!(vehicle::System{<:Vehicle})
     atm_data = AtmData(atmosphere)
     air_data = AirData(kin_data, atm_data)
 
-    #update components' ẋ and y
+    #update components
     f_ode!(components, kin_data, air_data, terrain)
 
-    #components is the only subsystem that has mass and can receive actions
-    mp_b = get_mp_b(components)
-    wr_ext_b = get_wr_b(components)
-    hr_b = get_hr_b(components)
-    actions = Actions(components; mp_b, wr_ext_b, hr_b, kin_data)
+    #update vehicle dynamics
+    f_ode!(dynamics, components, kin_data)
 
-    #update velocity derivatives and rigid body data
-    f_ode!(dynamics, mp_b, kin_data, actions)
-    accelerations = dynamics.y
-
-    vehicle.y = VehicleY(components.y, kinematics.y, mp_b, actions, accelerations, air_data)
+    vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, air_data)
 
     return nothing
 
@@ -143,13 +93,13 @@ end
 #within Vehicle, only the components may be modified by f_disc!
 function Systems.f_disc!(::NoScheduling, vehicle::System{<:Vehicle})
 
-    @unpack components = vehicle.subsystems
-    @unpack kinematics, mass, actions, accelerations, air = vehicle.y
+    @unpack components, dynamics = vehicle.subsystems
+    @unpack kinematics, air = vehicle.y
 
     f_disc!(components)
 
     # components might have modified its outputs, so we need to reassemble y
-    vehicle.y = VehicleY(components.y, kinematics, mass, actions, accelerations, air)
+    vehicle.y = VehicleY(components.y, kinematics, dynamics.y, air)
 
 end
 
@@ -347,7 +297,7 @@ function Plotting.make_plots(ts::TimeSeries{<:VehicleY}; kwargs...)
     return OrderedDict(
         :components => make_plots(ts.components; kwargs...),
         :kinematics => make_plots(ts.kinematics; kwargs...),
-        :accelerations => make_plots(ts.accelerations; kwargs...),
+        :dynamics => make_plots(ts.dynamics; kwargs...),
         :air => make_plots(ts.air; kwargs...),
     )
 
@@ -382,28 +332,24 @@ function GUI.draw!(vehicle::System{<:Vehicle},
 
     @unpack components, atmosphere = vehicle.subsystems
     @unpack terrain = vehicle.constants
-    @unpack mass, air, actions, accelerations, kinematics = vehicle.y
+    @unpack kinematics, dynamics, air = vehicle.y
 
     CImGui.Begin(label, p_open)
 
-    @cstatic(c_afm=false, c_atm=false, c_trn=false, c_mas = false, c_act = false, c_acc =false, c_kin=false, c_air=false,
+    @cstatic(c_afm=false, c_atm=false, c_trn=false, c_kin =false, c_dyn=false, c_air=false,
     begin
             @c CImGui.Checkbox("Components", &c_afm)
             @c CImGui.Checkbox("Atmosphere", &c_atm)
             @c CImGui.Checkbox("Terrain", &c_trn)
-            @c CImGui.Checkbox("Air", &c_air)
-            @c CImGui.Checkbox("Mass", &c_mas)
-            @c CImGui.Checkbox("Actions", &c_act)
-            @c CImGui.Checkbox("Accelerations", &c_acc)
             @c CImGui.Checkbox("Kinematics", &c_kin)
+            @c CImGui.Checkbox("Dynamics", &c_dyn)
+            @c CImGui.Checkbox("Air", &c_air)
             c_afm && @c GUI.draw!(components, avionics, &c_afm)
             c_atm && @c GUI.draw!(atmosphere, &c_atm)
             c_trn && @c GUI.draw(terrain, &c_trn)
-            c_air && @c GUI.draw(air, &c_air)
-            c_mas && @c GUI.draw(mass, &c_mas)
-            c_act && @c GUI.draw(actions, &c_act)
-            c_acc && @c GUI.draw(accelerations, &c_acc)
             c_kin && @c GUI.draw(kinematics.data, &c_kin)
+            c_dyn && @c GUI.draw(dynamics, &c_dyn)
+            c_air && @c GUI.draw(air, &c_air)
     end)
 
     CImGui.End()

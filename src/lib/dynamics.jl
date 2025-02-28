@@ -11,8 +11,9 @@ using ..Kinematics
 export FrameTransform, transform
 export Wrench
 export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
-export RigidBodyDynamics, Accelerations, Actions
+export AbstractComponents, NoComponents
 export get_mp_b, get_wr_b, get_hr_b
+export VehicleDynamics, VehicleDynamicsY
 
 #standard gravity for specific force normalization
 const g₀ = 9.80665
@@ -413,163 +414,156 @@ end
 
 
 ################################################################################
-################################## Actions ###################################
+########################### AbstractComponents ###################################
 
-#for dynamics computations, we define a special reference frame G, with origin
-#at the center of mass and axes parallel to the b frame axes (q_bG = 1)
+abstract type AbstractComponents <: SystemDefinition end
 
-#all magnitudes resolved in body axes unless otherwise noted
-#of these, only mp_b and wr_ext_b are required by dynamics equations
-@kwdef struct Actions
-    g_G_b::SVector{3,Float64} = zeros(SVector{3}) #gravity at G
-    G_G_b::SVector{3,Float64} = zeros(SVector{3}) #gravitational attraction at G
-    hr_b::SVector{3,Float64} = zeros(SVector{3}) #intrinsic angular momentum
-    wr_g_b::Wrench = Wrench() #gravity wrench at b
-    wr_in_b::Wrench = Wrench() #inertia wrench at b
-    wr_ext_b::Wrench = Wrench() #external wrench at b
-    wr_net_b::Wrench = Wrench() #net wrench at b
-    wr_net_G::Wrench = Wrench() #net wrench at G
+#AbstractComponents subtypes will generally be too specific for the fallback
+function Systems.f_ode!(components::System{<:AbstractComponents}, args...)
+    MethodError(f_ode!, (components, kin, air, trn)) |> throw
 end
 
+#for efficiency, we disallow using the fallback method. it would traverse the
+#whole Components System hierarchy, and without good reason, because in
+#principle Components shouldn't implement discrete dynamics; discretized
+#algorithms belong in Avionics. can still be overridden by subtypes if required
+Systems.f_disc!(::NoScheduling, ::System{<:AbstractComponents}) = nothing
 
-function Actions(sys::System;
-    mp_b::MassProperties = get_mp_b(sys),
-    wr_ext_b::Wrench = get_wr_b(sys),
-    hr_b::SVector{3,Float64} = get_hr_b(sys),
-    kin_data::KinData = KinData())
 
-    @unpack q_eb, q_nb, n_e, h_e, r_eb_e, ω_eb_b, v_eb_b = kin_data
-    m = mp_b.m; J_b_b = mp_b.J; r_bG_b = mp_b.r_OG
+################################ NoComponents #################################
 
-    ω_ie_e = SVector{3, Float64}(0, 0, ω_ie) #use WGS84 constant
-    ω_ie_b = q_eb'(ω_ie_e)
-    ω_ib_b = ω_ie_b + ω_eb_b
+@kwdef struct NoComponents <: AbstractComponents
+    mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
+end
 
-    ######################## Gravity Wrench ####################################
+get_hr_b(::System{NoComponents}) = zeros(SVector{3})
+get_wr_b(::System{NoComponents}) = Wrench()
+get_mp_b(sys::System{NoComponents}) = MassProperties(sys.constants.mass_distribution)
 
-    #compute geographic position of frame G
-    r_bG_e = q_eb(r_bG_b)
-    r_eG_e = r_eb_e + r_bG_e
-    G = Cartesian(r_eG_e)
-
-    #to compute gravity vector at G, create an auxiliary frame c with origin at
-    #G and axes parallel to the local NED frame
-    q_ec = ltf(G)
-    q_bc = q_eb' ∘ q_ec
-    g_G_c = SVector{3,Float64}(0, 0, gravity(G))
-    g_G_b = q_bc(g_G_c)
-
-    r_eG_b = q_eb'(r_eG_e)
-    G_G_b = g_G_b + ω_ie_b × (ω_ie_b × r_eG_b)
-
-    #the resultant from gravity on the vehicle at its center of gravity G
-    #consists of gravity force, plus a null torque
-    F_G_b = m * g_G_b
-    M_G_b = zeros(SVector{3})
-    wr_g_G = Wrench(F = F_G_b, M = M_G_b)
-
-    #define the transform from b to G as a pure translation
-    t_bG = FrameTransform(r = r_bG_b)
-
-    #translate gravity wrench to Ob
-    wr_g_b = t_bG(wr_g_G)
-
-    ########################## Inertia Wrench ##################################
-
-    #angular momentum of the vehicle as a rigid body (excluding intrinsic
-    #angular momentum due to rotating components)
-    h_rbd_b = J_b_b * ω_ib_b
-
-    #total angular momentum
-    h_all_b = h_rbd_b + SVector{3,Float64}(hr_b)
-
-    #inertia terms (exact version... certainly overkill, but very cheap)
-    a_1_b = (ω_eb_b + 2 * ω_ie_b) × v_eb_b
-    F_in_b = -m * (a_1_b + ω_ib_b × (ω_ib_b × r_bG_b) + r_bG_b × (ω_eb_b × ω_ie_b ))
-    M_in_b = - ( J_b_b * (ω_ie_b × ω_eb_b) + ω_ib_b × h_all_b + m * r_bG_b × a_1_b)
-
-    wr_in_b = Wrench(F = F_in_b, M = M_in_b)
-
-    wr_net_b = wr_ext_b + wr_g_b + wr_in_b
-
-    #define translation from G to b
-    t_Gb = t_bG'
-    wr_net_G = t_Gb(wr_net_b)
-
-    Actions(; g_G_b, G_G_b, hr_b, wr_g_b, wr_in_b, wr_ext_b, wr_net_b, wr_net_G)
-
+function Systems.f_ode!(::System{NoComponents}, args...)
+    nothing
 end
 
 
 ################################################################################
-############################### Dynamics #######################################
+########################### VehicleDynamics ####################################
 
-#all magnitudes resolved in body axes unless otherwise noted
-@kwdef struct Accelerations
-    α_eb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-body angular acceleration
-    α_ib_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-to-body angular acceleration
-    v̇_eb_b::SVector{3,Float64} = zeros(SVector{3}) #time derivative of ECEF-relative velocity
-    a_eb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-relative acceleration of b
-    a_eb_n::SVector{3,Float64} = zeros(SVector{3}) #ECEF-relative acceleration of b, NED axes
-    a_ib_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-relative acceleration of b
-    a_iG_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-relative acceleration of G
-    f_G_b::SVector{3,Float64} = zeros(SVector{3}) #specific force at G
+struct VehicleDynamics <: SystemDefinition end
+
+@kwdef struct VehicleDynamicsY
+    wr_Σ_c::Wrench = Wrench() #total external wrench at CoM
+    wr_Σ_b::Wrench = Wrench() #total external wrench at Body
+    mp_Σ_c::MassProperties = MassProperties() #mass properties at CoM
+    mp_Σ_b::MassProperties = MassProperties() #mass properties at Body
+    ho_Σ_b::SVector{3,Float64} = zeros(SVector{3}) #internal angular momentum, Body axes
+    ω̇_ec_c::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-CoM angular acceleration
+    v̇_ec_c::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-CoM velocity derivative
+    a_ec_c::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-CoM acceleration
+    a_ic_c::SVector{3,Float64} = zeros(SVector{3}) #ECI-to-CoM acceleration
+    g_c_c::SVector{3,Float64} = zeros(SVector{3}) #gravity at CoM
+    γ_c_c::SVector{3,Float64} = zeros(SVector{3}) #gravitational attraction at CoM
+    f_c_c::SVector{3,Float64} = zeros(SVector{3}) #specific force at CoM
+    ω̇_eb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-Body angular acceleration
+    v̇_eb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-Body velocity derivative
+    α_ib_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-to-Body angular acceleration
+    a_eb_b::SVector{3,Float64} = zeros(SVector{3}) #ECEF-to-Body acceleration
+    a_ib_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-to-Body acceleration
 end
 
-struct RigidBodyDynamics <: SystemDefinition end
+Systems.X(::VehicleDynamics) = zero(Kinematics.XVelTemplate)
+Systems.Y(::VehicleDynamics) = VehicleDynamicsY()
 
-Systems.X(::RigidBodyDynamics) = zero(Kinematics.XVelTemplate)
-Systems.Y(::RigidBodyDynamics) = Accelerations()
+function Systems.f_ode!(sys::System{VehicleDynamics},
+                        components::System{<:AbstractComponents},
+                        kin_data::KinData)
 
-Accelerations(sys::System{<:RigidBodyDynamics}) = sys.y
+    @unpack q_eb, q_nb, n_e, h_e, r_eb_e = kin_data
+    @unpack x, ẋ = sys
 
-function Systems.f_ode!(sys::System{RigidBodyDynamics}, mp_b::MassProperties,
-                        kin_data::KinData, actions::Actions)
-
-    @unpack q_eb, q_nb, n_e, h_e, r_eb_e, ω_eb_b, v_eb_b = kin_data
-    @unpack wr_net_b, G_G_b = actions
-    @unpack ẋ = sys
-
-    ########################### Dynamic Equations ##############################
-
-    m = mp_b.m; J_b_b = mp_b.J; r_bG_b = mp_b.r_OG
-
-    r_bG_b_sk = Attitude.v2skew(r_bG_b)
-    A11 = J_b_b
-    A12 = m * r_bG_b_sk
-    A21 = -m * r_bG_b_sk
-    A22 = m * SMatrix{3,3,Float64}(I)
-
-    A = vcat(hcat(A11, A12), hcat(A21, A22)) #mass matrix
-    b = SVector{6}(vcat(wr_net_b.M, wr_net_b.F)) #forcing vector
-
-    ẋ .= A\b
-
-    ########################## Additional Outputs ##############################
+    # ω_eb_b = SVector{3, Float64}(x.ω_eb_b) #could also use kin_data.ω_eb_b
+    # v_eb_b = SVector{3, Float64}(x.v_eb_b) #could also use kin_data.v_eb_b
+    @unpack ω_eb_b, v_eb_b = kin_data
 
     ω_ie_e = SVector{3, Float64}(0, 0, ω_ie) #use WGS84 constant
     ω_ie_b = q_eb'(ω_ie_e)
-    ω_ib_b = ω_ie_b + ω_eb_b
 
-    #angular accelerations
-    α_eb_b = SVector{3}(ẋ.ω_eb_b) #α_eb_b == ω_eb_b_dot
+    mp_Σ_b = get_mp_b(components) #mass properties at b projected in b
+    wr_Σ_b = get_wr_b(components) #external wrench at b projected in b
+    ho_Σ_b = get_hr_b(components) #internal angular momentum projected in b
+
+    #frame transform from c (CoM) to b (body)
+    r_bc_b = mp_Σ_b.r_OG
+    t_cb = FrameTransform(r = -r_bc_b) #pure translation
+
+
+    ###################### angular & linear momentum equations #################
+
+    #translate data to frame c
+    mp_Σ_c = t_cb(mp_Σ_b)
+    wr_Σ_c = t_cb(wr_Σ_b)
+    ho_Σ_c = ho_Σ_b
+
+    F_Σ_c = wr_Σ_c.F; τ_Σ_c = wr_Σ_c.M
+    m_Σ = mp_Σ_c.m; J_Σ_c = mp_Σ_c.J
+
+    ω_ec_c = ω_eb_b
+    v_ec_c = v_eb_b + ω_ec_c × r_bc_b
+
+    ω_ie_c = ω_ie_b
+    ω_ic_c = ω_ie_c + ω_ec_c
+
+    #compute geographic position of Oc
+    r_bc_e = q_eb(r_bc_b)
+    r_ec_e = r_eb_e + r_bc_e
+    Oc = Cartesian(r_ec_e)
+
+    #define auxiliary local-level frame l with Ol = Oc
+    q_el = ltf(Oc)
+    q_be = q_eb'
+    q_ce = q_be
+    q_cl = q_ce ∘ q_el
+
+    #compute gravity at c
+    g_c_l = SVector{3,Float64}(0, 0, gravity(Oc)) #gravity at c, l axes
+    g_c_c = q_cl(g_c_l) #gravity at c, c axes
+
+    #solve dynamic equations at c
+    hc_Σ_c = J_Σ_c * ω_ic_c + ho_Σ_c
+    ω̇_ec_c = J_Σ_c \ (τ_Σ_c - J_Σ_c * (ω_ie_c × ω_ec_c) - ω_ic_c × hc_Σ_c)
+    v̇_ec_c = 1/m_Σ * F_Σ_c + g_c_c - (ω_ec_c + 2ω_ie_c) × v_ec_c
+
+    #translate derivatives back to b
+    ω̇_eb_b = ω̇_ec_c
+    v̇_eb_b = v̇_ec_c - ω̇_ec_c × r_bc_b
+
+
+    ########################## additional outputs ##############################
+
+    r_ec_c = q_ce(r_ec_e)
+    r_eb_b = q_be(r_eb_e)
+
+    a_ec_c = v̇_ec_c + ω_ec_c × v_ec_c
+    a_ic_c = v̇_ec_c + (ω_ec_c + 2ω_ie_c) × v_ec_c + ω_ie_c × (ω_ie_c × r_ec_c)
+    γ_c_c = g_c_c + ω_ie_c × (ω_ie_c × r_ec_c)
+    f_c_c = a_ic_c - γ_c_c
+
+    α_eb_b = ω̇_eb_b
     α_ib_b = α_eb_b - ω_eb_b × ω_ie_b
-
-    #linear accelerations at b
-    v̇_eb_b = SVector{3}(ẋ.v_eb_b)
-    r_eb_b = q_eb'(r_eb_e)
     a_eb_b = v̇_eb_b + ω_eb_b × v_eb_b
-    a_eb_n = q_nb(a_eb_b)
     a_ib_b = v̇_eb_b + (ω_eb_b + 2ω_ie_b) × v_eb_b + ω_ie_b × (ω_ie_b × r_eb_b)
 
-    #linear acceleration and specific force at G
-    a_iG_b = a_ib_b + ω_ib_b × (ω_ib_b × r_bG_b) + α_ib_b × r_bG_b
-    f_G_b = a_iG_b - G_G_b
 
-    sys.y = Accelerations(; α_eb_b, α_ib_b, v̇_eb_b, a_eb_b, a_eb_n,
-        a_ib_b, a_iG_b, f_G_b)
+    ############################## System update ###############################
+
+    ẋ.ω_eb_b = ω̇_eb_b
+    ẋ.v_eb_b = v̇_eb_b
+
+    sys.y = VehicleDynamicsY(; wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b,
+        ω̇_ec_c, v̇_ec_c, a_ec_c, a_ic_c, g_c_c, γ_c_c, f_c_c,
+        ω̇_eb_b, v̇_eb_b, α_ib_b, a_eb_b, a_ib_b)
 
 end
+
 
 ################################# Dynamics #####################################
 
@@ -596,32 +590,31 @@ end
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:Actions}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:VehicleDynamicsY}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    pd[:wr_g_b] = plot(ts.wr_g_b;
-        plot_title = "Gravity Wrench at Ob [Vehicle Axes]",
-        wr_source = "g", wr_frame = "b",
+    pd[:wr_g_b] = plot(ts.g_c_c;
+        plot_title = "Gravity at CoM [CoM Axes]",
+        ylabel = hcat(
+            L"$g_{c}^{x_c} \ (m / s^2)$",
+            L"$g_{c}^{y_c} \ (m / s^2)$",
+            L"$b_{c}^{z_c} \ (m / s^2)$"),
+        ts_split = :h, link = :none,
         kwargs...)
 
-    pd[:wr_in_b] = plot(ts.wr_in_b;
-        plot_title = "Inertia Wrench at Ob [Vehicle Axes]",
-        wr_source = "in", wr_frame = "b",
+    pd[:wr_ext_b] = plot(ts.wr_Σ_c;
+        plot_title = "External Wrench at CoM [CoM Axes]",
+        wr_source = "ext", wr_frame = "c",
         kwargs...)
 
-    pd[:wr_ext_b] = plot(ts.wr_ext_b;
-        plot_title = "External Wrench at Ob [Vehicle Axes]",
+    pd[:wr_ext_b] = plot(ts.wr_Σ_b;
+        plot_title = "External Wrench at Ob [Body Axes]",
         wr_source = "ext", wr_frame = "b",
         kwargs...)
 
-    pd[:wr_net_b] = plot(ts.wr_net_b;
-        plot_title = "Total Wrench at Ob [Vehicle Axes]",
-        wr_source = "ext", wr_frame = "b",
-        kwargs...)
-
-    pd[:hr_b] = plot(ts.hr_b;
-        plot_title = "Angular Momentum from Rotating Components [Vehicle Axes]",
+    pd[:hr_b] = plot(ts.ho_Σ_b;
+        plot_title = "Internal Angular Momentum [Body Axes]",
         ylabel = hcat(
             L"$h_{Ob \ (r)}^{x_b} \ (kg \ m^2 / s)$",
             L"$h_{Ob \ (r)}^{y_b} \ (kg \ m^2 / s)$",
@@ -629,16 +622,8 @@ function Plotting.make_plots(ts::TimeSeries{<:Actions}; kwargs...)
         ts_split = :h, link = :none,
         kwargs...)
 
-    return pd
-
-end
-
-function Plotting.make_plots(ts::TimeSeries{<:Accelerations}; kwargs...)
-
-    pd = OrderedDict{Symbol, Plots.Plot}()
-
-    pd[:α_eb_b] = plot(ts.α_eb_b;
-        plot_title = "Angular Acceleration (Vehicle/ECEF) [Vehicle Axes]",
+    pd[:α_eb_b] = plot(ts.ω̇_eb_b;
+        plot_title = "Angular Acceleration (Body/ECEF) [Body Axes]",
         ylabel = hcat(
             L"$\alpha_{eb}^{x_b} \ (rad/s^2)$",
             L"$\alpha_{eb}^{y_b} \ (rad/s^2)$",
@@ -647,7 +632,7 @@ function Plotting.make_plots(ts::TimeSeries{<:Accelerations}; kwargs...)
         kwargs...)
 
     pd[:a_eb_b] = plot(ts.a_eb_b;
-        plot_title = "Linear Acceleration (Vehicle/ECEF) [Vehicle Axes]",
+        plot_title = "Linear Acceleration (Body/ECEF) [Body Axes]",
         ylabel = hcat(
             L"$a_{eb}^{x_b} \ (m/s^{2})$",
             L"$a_{eb}^{y_b} \ (m/s^{2})$",
@@ -655,21 +640,12 @@ function Plotting.make_plots(ts::TimeSeries{<:Accelerations}; kwargs...)
         ts_split = :h,
         kwargs...)
 
-    pd[:a_eb_n] = plot(ts.a_eb_n;
-        plot_title = "Linear Acceleration (Vehicle/ECEF) [NED Axes]",
+    pd[:f_c_c] = plot(TimeSeries(ts._t, ts.f_c_c._data / g₀);
+        plot_title = "Specific Force at CoM [CoM Axes]",
         ylabel = hcat(
-            L"$a_{eb}^{N} \ (m/s^{2})$",
-            L"$a_{eb}^{E} \ (m/s^{2})$",
-            L"$a_{eb}^{D} \ (m/s^{2})$"),
-        ts_split = :h, link = :none,
-        kwargs...)
-
-    pd[:f_G_b] = plot(TimeSeries(ts._t, ts.f_G_b._data / g₀);
-        plot_title = "Specific Force (Center of Mass) [Vehicle Axes]",
-        ylabel = hcat(
-            L"$f_{G}^{x_b} \ (g)$",
-            L"$f_{G}^{y_b} \ (g)$",
-            L"$f_{G}^{z_b} \ (g)$"),
+            L"$f_{c}^{x_c} \ (g)$",
+            L"$f_{c}^{y_c} \ (g)$",
+            L"$f_{c}^{z_c} \ (g)$"),
         ts_split = :h, link = :none,
         kwargs...)
 
@@ -680,50 +656,32 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(mp_b::MassProperties, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(mp::MassProperties,
                     label::String = "Mass Properties")
 
-    m = mp_b.m; r_bG_b = mp_b.r_OG
+    m = mp.m; r_bc_b = mp.r_OG
 
-    #define frame transform from G to b
-    t_Gb = FrameTransform(r = -r_bG_b)
-
-    #translate mass properties to G to get inertia tensor at G
-    mp_G = t_Gb(mp_b)
-
-    CImGui.Begin(label, p_open)
-
+    if CImGui.TreeNode(label)
         CImGui.Text(@sprintf("Mass: %.3f kg", m))
-        GUI.draw(r_bG_b, "Center of Mass Position", "m")
+        GUI.draw(r_bc_b, "CoM Position", "m")
 
-        if CImGui.TreeNode("Inertia Tensor [Origin]")
-            CImGui.Text(@sprintf("XX: %.3f kg*m2", mp_b.J[1,1]))
-            CImGui.Text(@sprintf("YY: %.3f kg*m2", mp_b.J[2,2]))
-            CImGui.Text(@sprintf("ZZ: %.3f kg*m2", mp_b.J[3,3]))
-            CImGui.Text(@sprintf("XY: %.3f kg*m2", mp_b.J[1,2]))
-            CImGui.Text(@sprintf("XZ: %.3f kg*m2", mp_b.J[1,3]))
-            CImGui.Text(@sprintf("YZ: %.3f kg*m2", mp_b.J[2,3]))
+        if CImGui.TreeNode("Inertia Tensor")
+            CImGui.Text(@sprintf("XX: %.3f kg*m2", mp.J[1,1]))
+            CImGui.Text(@sprintf("YY: %.3f kg*m2", mp.J[2,2]))
+            CImGui.Text(@sprintf("ZZ: %.3f kg*m2", mp.J[3,3]))
+            CImGui.Text(@sprintf("XY: %.3f kg*m2", mp.J[1,2]))
+            CImGui.Text(@sprintf("XZ: %.3f kg*m2", mp.J[1,3]))
+            CImGui.Text(@sprintf("YZ: %.3f kg*m2", mp.J[2,3]))
             CImGui.TreePop()
         end
-
-        if CImGui.TreeNode("Inertia Tensor [CoM]")
-            CImGui.Text(@sprintf("XX: %.3f kg*m2", mp_G.J[1,1]))
-            CImGui.Text(@sprintf("YY: %.3f kg*m2", mp_G.J[2,2]))
-            CImGui.Text(@sprintf("ZZ: %.3f kg*m2", mp_G.J[3,3]))
-            CImGui.Text(@sprintf("XY: %.3f kg*m2", mp_G.J[1,2]))
-            CImGui.Text(@sprintf("XZ: %.3f kg*m2", mp_G.J[1,3]))
-            CImGui.Text(@sprintf("YZ: %.3f kg*m2", mp_G.J[2,3]))
-            CImGui.TreePop()
-        end
-
-    CImGui.End()
+        CImGui.TreePop()
+    end
 
 end
 
 function GUI.draw(wr::Wrench, label::String)
 
     @unpack F, M = wr
-
     if CImGui.TreeNode(label)
         GUI.draw(F, "Force", "N")
         GUI.draw(M, "Torque", "N*m")
@@ -733,42 +691,29 @@ function GUI.draw(wr::Wrench, label::String)
 end
 
 
-function GUI.draw(dyn::Actions, p_open::Ref{Bool} = Ref(true),
-                    label::String = "Actions")
+function GUI.draw(dyn::VehicleDynamicsY, p_open::Ref{Bool} = Ref(true),
+                    label::String = "Vehicle Dynamics")
 
-    @unpack g_G_b, G_G_b, hr_b, wr_g_b, wr_in_b, wr_ext_b, wr_net_b, wr_net_G = dyn
-
-    CImGui.Begin(label, p_open)
-
-        GUI.draw(g_G_b, "Gravity (Vehicle Frame)", "m/(s^2)")
-        GUI.draw(G_G_b, "Gravitation (CoM)", "m/(s^2)")
-        GUI.draw(wr_g_b, "Gravity Wrench (Vehicle Frame)")
-        GUI.draw(wr_in_b, "Inertia Wrench (Vehicle Frame)")
-        GUI.draw(wr_ext_b, "External Wrench (Vehicle Frame)")
-        GUI.draw(wr_net_b, "Net Wrench (Vehicle Frame)")
-        GUI.draw(wr_net_G, "Net Wrench (CoM)")
-        GUI.draw(hr_b, "Intrinsic Angular Momentum", "kg*(m^2)/s")
-
-    CImGui.End()
-
-end
-
-function GUI.draw(dyn::Accelerations, p_open::Ref{Bool} = Ref(true),
-                    label::String = "Accelerations")
-
-
-    @unpack α_eb_b, α_ib_b, v̇_eb_b, a_eb_b, a_eb_n, a_ib_b, a_iG_b, f_G_b = dyn
+    @unpack wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b, ω̇_ec_c, v̇_ec_c,
+            a_ec_c, a_ic_c, g_c_c, γ_c_c, f_c_c, ω̇_eb_b, v̇_eb_b, α_ib_b,
+            a_eb_b, a_ib_b = dyn
 
     CImGui.Begin(label, p_open)
 
-    GUI.draw(α_eb_b, "Angular Acceleration (Vehicle / ECEF) [Vehicle]", "rad/(s^2)")
-    GUI.draw(α_ib_b, "Angular Acceleration (Vehicle / ECI) [Vehicle]", "rad/(s^2)")
-    GUI.draw(v̇_eb_b, "Velocity Time-Derivative (Vehicle / ECEF) [Vehicle]", "rad/(s^2)")
-    GUI.draw(a_eb_b, "Linear Acceleration (Vehicle / ECEF) [Vehicle]", "m/(s^2)")
-    GUI.draw(a_eb_n, "Linear Acceleration (Vehicle / ECEF) [NED]", "m/(s^2)")
-    GUI.draw(a_ib_b, "Linear Acceleration (Vehicle / ECI) [Vehicle]", "m/(s^2)")
-    GUI.draw(a_iG_b, "Linear Acceleration (CoM / ECI) [Vehicle]", "m/(s^2)")
-    GUI.draw(f_G_b/g₀, "Specific Force (CoM) [Vehicle]", "g")
+        GUI.draw(mp_Σ_b, "Mass Properties (Body)")
+        GUI.draw(mp_Σ_c, "Mass Properties (CoM)")
+        GUI.draw(wr_Σ_b, "External Wrench (Body)")
+        GUI.draw(wr_Σ_c, "External Wrench (CoM)")
+        GUI.draw(ho_Σ_b, "Internal Angular Momentum (Body)", "kg*m^2/s")
+        GUI.draw(ω̇_eb_b, "Angular Acceleration (Body / ECEF) [Body Axes]", "rad/(s^2)")
+        GUI.draw(α_ib_b, "Angular Acceleration (Body / ECI) [Body Axes]", "rad/(s^2)")
+        GUI.draw(a_ec_c, "Linear Acceleration (CoM / ECEF) [CoM Axes]", "m/(s^2)")
+        GUI.draw(a_ic_c, "Linear Acceleration (CoM / ECI) [CoM Axes]", "m/(s^2)")
+        GUI.draw(a_eb_b, "Linear Acceleration (Body / ECEF) [Body Axes]", "m/(s^2)")
+        GUI.draw(a_ib_b, "Linear Acceleration (Body / ECI) [Body Axes]", "m/(s^2)")
+        GUI.draw(g_c_c, "Gravity (CoM) [CoM Axes]", "m/s^2")
+        GUI.draw(γ_c_c, "Gravitational Attraction (CoM) [CoM Axes]", "m/s^2")
+        GUI.draw(f_c_c/g₀, "Specific Force (CoM) [CoM Axes]", "g")
 
     CImGui.End()
 

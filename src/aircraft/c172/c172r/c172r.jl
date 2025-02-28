@@ -263,7 +263,12 @@ const Vehicle{K, T} = AircraftBase.Vehicle{Components, K, T} where {K <: Abstrac
 const Aircraft{K, T, A} = AircraftBase.Aircraft{Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 
 function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
-    AircraftBase.Vehicle(C172.Components(PowerPlant(), Actuation()), kinematics, RigidBodyDynamics(), terrain, LocalAtmosphere())
+    AircraftBase.Vehicle(
+        C172.Components(PowerPlant(), Actuation()),
+        kinematics,
+        VehicleDynamics(),
+        terrain,
+        LocalAtmosphere())
 end
 
 function Aircraft(kinematics = WA(), terrain = HorizontalTerrain(), avionics = NoAvionics())
@@ -406,7 +411,7 @@ end
 function YLinear(vehicle::System{<:C172R.Vehicle{NED}})
 
     @unpack throttle, aileron, elevator, rudder = vehicle.components.act.u
-    @unpack components, air, accelerations, kinematics = vehicle.y
+    @unpack components, air, dynamics, kinematics = vehicle.y
     @unpack pwp, fuel, aero,act = components
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eb_b, v_eb_n, χ_gnd, γ_gnd = kinematics
@@ -424,7 +429,7 @@ function YLinear(vehicle::System{<:C172R.Vehicle{NED}})
     α_filt = aero.α_filt
     β_filt = aero.β_filt
 
-    f_x, f_y, f_z = accelerations.f_G_b
+    f_x, f_y, f_z = dynamics.f_c_c
     EAS = air.EAS
     TAS = air.TAS
     χ = χ_gnd

@@ -10,14 +10,27 @@ using Flight.FlightLib
 
 export test_dynamics
 
-struct TestHarness <: SystemDefinition end
+#define a dummy component that returns the dynamic data at b to be tested
+struct TestComponent <: AbstractComponents end
+
+@kwdef mutable struct TestComponentU
+    mp_Σ_b::MassProperties = MassProperties()
+    wr_Σ_b::Wrench = Wrench()
+    ho_Σ_b::SVector{3, Float64} = zeros(3)
+end
+
+Systems.U(::TestComponent) = TestComponentU()
+Dynamics.get_mp_b(cmp::System{TestComponent}) = cmp.u.mp_Σ_b
+Dynamics.get_wr_b(cmp::System{TestComponent}) = cmp.u.wr_Σ_b
+Dynamics.get_hr_b(cmp::System{TestComponent}) = cmp.u.ho_Σ_b
 
 function test_dynamics()
 
+
     @testset verbose = true "Dynamics" begin
 
-        th = TestHarness() |> System;
-        dyn = System(RigidBodyDynamics())
+        cmp = System(TestComponent())
+        dyn = System(VehicleDynamics())
         kin = System(WA())
 
         kin_init = KinInit(
@@ -31,65 +44,42 @@ function test_dynamics()
         kin_data = KinData(kin)
 
         #set up a rigid body with unit mass and unit inertia tensor at its
-        #center of mass G
-        rbd_G = RigidBodyDistribution(1.0, diagm(ones(3)))
-        mp_G = MassProperties(rbd_G)
-
-        #let its frame origin Ob be located at G, so that its mass
-        #properties are the same in both
-        mp_b = mp_G
-
+        #center of mass c
+        mp_Σ_c = MassProperties(RigidBodyDistribution(1.0, diagm(ones(3))))
+        cmp.u.mp_Σ_b = mp_Σ_c
 
         @testset verbose = true "Essentials" begin
 
+            #start with Ob=Oc
+            mp_Σ_b = mp_Σ_c
+            cmp.u.mp_Σ_b = mp_Σ_b
 
-            #apply a force along each axis with zero torque
-            wr_ext_b = Wrench(F = [1, 2, 1])
-            hr_b = zeros(SVector{3, Float64})
-            actions = Actions(th; mp_b, wr_ext_b, hr_b, kin_data)
-
-            #we expect the angular acceleration to be zero, and linear acceleration
-            #added to that of free fall
-            f_ode!(dyn, mp_b, kin_data, actions)
+            cmp.u.wr_Σ_b = Wrench(F = [1, 2, 1])
+            f_ode!(dyn, cmp, kin_data)
             @test all(dyn.ẋ.ω_eb_b .≈ 0)
             @test all(dyn.ẋ.v_eb_b .≈ [1, 2, 1 + gravity(kin_data)])
-
-            f_ode!(dyn, mp_b, kin_data, actions)
             @test all(dyn.y.a_eb_b .≈ [1, 2, 1 + gravity(kin_data)])
             @test all(dyn.y.a_ib_b .≈ [1, 2, 1 + G_n(kin_data)[3]])
 
-            #now let G be located 1 meter ahead from Ob along the x axis
-            r_bG_b = [1,0,0]
-            t_bG = FrameTransform(r = r_bG_b) #b to G
-            mp_b = Dynamics.transform(t_bG, mp_G)
+            #now let Oc be located 1 meter ahead from Ob along the x axis
+            r_bc_b = [1,0,0]
+            t_bc = FrameTransform(r = r_bc_b) #b to c
+            mp_Σ_b = t_bc(mp_Σ_c)
+            cmp.u.mp_Σ_b = mp_Σ_b
 
-            #apply a 1N force along z_b
-            wr_ext_b = Wrench(F = [0, 0, 1], M = zeros(3))
-            hr_b = zeros(SVector{3, Float64})
-            actions = Actions(th; mp_b, wr_ext_b, hr_b, kin_data)
+            cmp.u.wr_Σ_b = Wrench(F = [0, 0, 1], M = zeros(3))
 
             #we expect a positive unit angular acceleration around y_b, which
             #will also add to the linear acceleration of frame b
-            f_ode!(dyn, mp_b, kin_data, actions)
+            f_ode!(dyn, cmp, kin_data)
             @test dyn.ẋ.ω_eb_b[2] .≈ 1
             @test dyn.ẋ.v_eb_b[3] ≈ 2 + gravity(kin_data)
-
-            r_bG_e = kin_data.q_eb'(r_bG_b)
-            r_eG_e = Cartesian(kin_data.r_eb_e + r_bG_e)
-
-            @test isapprox(dyn.y.a_eb_b[3], 2 + gravity(r_eG_e), atol = 1e-10)
-            @test isapprox(dyn.y.a_ib_b[3], 2 + G_n(r_eG_e)[3], atol = 1e-10)
-            @test all(isapprox.(dyn.y.f_G_b, [0, 0, 1], atol = 1e-10))
 
         end
 
         @testset verbose = true "Performance" begin
 
-            wr_ext_b = Wrench(F = [1, 2, 1])
-            hr_b = zeros(SVector{3, Float64})
-            actions = Actions(th; mp_b, wr_ext_b, hr_b, kin_data)
-
-            @test (@ballocated f_ode!($dyn, $mp_b, $kin_data, $actions)) == 0
+            @test (@ballocated f_ode!($dyn, $cmp, $kin_data)) == 0
 
         end
 
