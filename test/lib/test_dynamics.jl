@@ -67,7 +67,7 @@ function test_dynamics()
             mp_Σ_b = t_bc(mp_Σ_c)
             cmp.u.mp_Σ_b = mp_Σ_b
 
-            cmp.u.wr_Σ_b = Wrench(F = [0, 0, 1], M = zeros(3))
+            cmp.u.wr_Σ_b = Wrench(F = [0, 0, 1], τ = zeros(3))
 
             #we expect a positive unit angular acceleration around y_b, which
             #will also add to the linear acceleration of frame b

@@ -259,7 +259,7 @@ function test_harness()
     f_step!(ldg)
     @show ldg.strut.y.wow
     @show ldg.contact.y.wr_b.F
-    @show ldg.contact.y.wr_b.M
+    @show ldg.contact.y.wr_b.τ
     return
 
 end

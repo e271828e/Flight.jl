@@ -55,7 +55,7 @@ struct PistonEngine{L} <: AbstractPistonEngine
     ω_stall::Float64 #speed below which engine shuts down
     ω_cutoff::Float64 #speed above ω_rated for which power output drops back to zero
     ω_idle::Float64 #target idle speed
-    M_start::Float64 #starter torque
+    τ_start::Float64 #starter torque
     J::Float64 #equivalent axial moment of inertia of the engine shaft
     idle::PIVector{1} #idle MAP control compensator
     frc::PIVector{1} #friction constraint compensator
@@ -68,7 +68,7 @@ function PistonEngine(;
     ω_stall = RPM2radpersec(300),
     ω_cutoff = RPM2radpersec(3100),
     ω_idle = RPM2radpersec(600),
-    M_start = 40,
+    τ_start = 40,
     J = 0.05,
     idle = PIVector{1}(),
     frc =  PIVector{1}()
@@ -79,7 +79,7 @@ function PistonEngine(;
     lookup = generate_lookup(; n_stall, n_cutoff)
 
     PistonEngine{typeof(lookup)}(
-        P_rated, ω_rated, ω_stall, ω_cutoff, ω_idle, M_start, J, idle, frc, lookup)
+        P_rated, ω_rated, ω_stall, ω_cutoff, ω_idle, τ_start, J, idle, frc, lookup)
 end
 
 @enum EngineState begin
@@ -99,7 +99,7 @@ end
     stop::Bool = false
     throttle::Ranged{Float64, 0., 1.} = 0.0 #throttle setting
     mixture::Ranged{Float64, 0., 1.} = 0.5 #mixture setting
-    M_load::Float64 = 0.0
+    τ_load::Float64 = 0.0
     J_load::Float64 = 0.0
 end
 
@@ -111,7 +111,7 @@ end
     state::EngineState = eng_off #engine discrete state
     MAP::Float64 = 0.0 #manifold air pressure
     ω::Float64 = 0.0 #angular velocity (crankshaft)
-    M_shaft::Float64 = 0.0 #shaft output torque
+    τ_shaft::Float64 = 0.0 #shaft output torque
     P_shaft::Float64 = 0.0 #shaft power
     SFC::Float64 = 0.0 #specific fuel consumption
     ṁ::Float64 = 0.0 #fuel consumption
@@ -143,9 +143,9 @@ end
 
 function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirData)
 
-    @unpack ω_rated, ω_idle, P_rated, J, M_start, lookup = eng.constants
+    @unpack ω_rated, ω_idle, P_rated, J, τ_start, lookup = eng.constants
     @unpack idle, frc = eng.subsystems
-    @unpack start, stop, M_load, J_load = eng.u
+    @unpack start, stop, τ_load, J_load = eng.u
 
     throttle = Float64(eng.u.throttle)
     mixture = Float64(eng.u.mixture)
@@ -180,11 +180,11 @@ function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirData)
         #propeller actually stop instead of slowing down asymptotically. with
         #the engine running, all friction is assumed to be already accounted for
         #in the performance tables
-        M_fr_max = 0.01 * P_rated / ω_rated #1% of rated torque
-        M_fr = frc.y.output[1] .* M_fr_max #scale M_fr_max with compensator feedback
+        τ_fr_max = 0.01 * P_rated / ω_rated #1% of rated torque
+        τ_fr = frc.y.output[1] .* τ_fr_max #scale τ_fr_max with compensator feedback
 
         MAP = air_data.p
-        M_shaft = M_fr
+        τ_shaft = τ_fr
         P_shaft = 0.0
         SFC = 0.0
         ṁ = 0.0
@@ -192,8 +192,8 @@ function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirData)
     elseif state === eng_starting
 
         MAP = μ * p_std
-        M_shaft = M_start
-        P_shaft = M_shaft * ω
+        τ_shaft = τ_start
+        P_shaft = τ_shaft * ω
         SFC = 0.0
         ṁ = 0.0
 
@@ -211,20 +211,20 @@ function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirData)
 
         MAP = μ * p_std
         P_shaft = P_rated * π_actual
-        M_shaft = (ω > 0 ? P_shaft / ω : 0.0) #for ω < ω_stall we should not even be here
+        τ_shaft = (ω > 0 ? P_shaft / ω : 0.0) #for ω < ω_stall we should not even be here
         SFC = lookup.sfc_pow(n, π_actual) * lookup.sfc_ratio(mixture)
         ṁ = SFC * P_shaft
 
     end
 
-    ΣM = M_shaft + M_load
+    Στ = τ_shaft + τ_load
     ΣJ = J + J_load
-    ω_dot = ΣM / ΣJ
+    ω_dot = Στ / ΣJ
 
     eng.ẋ.ω = ω_dot
 
     eng.y = PistonEngineY(; start, stop, throttle, mixture, state,
-                            MAP, ω, M_shaft, P_shaft, SFC, ṁ,
+                            MAP, ω, τ_shaft, P_shaft, SFC, ṁ,
                             idle = eng.idle.y, frc = eng.frc.y)
 
 end
@@ -408,7 +408,7 @@ function GUI.draw(sys::System{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
 
     @unpack u, y, constants = sys
     @unpack idle, frc = sys
-    @unpack start, stop, state, throttle, mixture, MAP, ω, M_shaft, P_shaft, ṁ, SFC = y
+    @unpack start, stop, state, throttle, mixture, MAP, ω, τ_shaft, P_shaft, ṁ, SFC = y
 
     CImGui.Begin(window_label, p_open)
 
@@ -419,7 +419,7 @@ function GUI.draw(sys::System{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
         CImGui.Text(@sprintf("Mixture: %.3f", mixture))
         CImGui.Text(@sprintf("Manifold Pressure: %.3f Pa", MAP))
         CImGui.Text(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
-        CImGui.Text(@sprintf("Shaft Torque: %.3f N*m", M_shaft))
+        CImGui.Text(@sprintf("Shaft Torque: %.3f N*m", τ_shaft))
         CImGui.Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
         CImGui.Text(@sprintf("Fuel Consumption: %.3f g/s", ṁ*1e3))
         CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
@@ -442,12 +442,12 @@ end
 # ################################################################################
 # ########################## PistonThruster ######################################
 
-#M_shaft is always positive. for a CW thruster, the gear ratio should be
-#positive as well and, under normal operating, conditions M_prop will be
-#negative. for a CCW thruster, the gear ratio should be negative and M_prop will
+#τ_shaft is always positive. for a CW thruster, the gear ratio should be
+#positive as well and, under normal operating, conditions τ_prop will be
+#negative. for a CCW thruster, the gear ratio should be negative and τ_prop will
 #be positive under normal operating conditions.
 
-#the sign of M_prop may be inverted under negative propeller thrust conditions,
+#the sign of τ_prop may be inverted under negative propeller thrust conditions,
 #with the propeller driving the engine instead of the other way around
 
 @kwdef struct PistonThruster{E <: AbstractPistonEngine,
@@ -474,13 +474,13 @@ function Systems.f_ode!(sys::System{<:PistonThruster}, air_data::AirData, kin_da
     ω_prop = gear_ratio * ω_eng
     f_ode!(propeller, kin_data, air_data, ω_prop)
 
-    M_prop = propeller.y.wr_p.M[1]
-    M_eq = gear_ratio * M_prop #load torque seen from the engine shaft
+    τ_prop = propeller.y.wr_p.τ[1]
+    τ_eq = gear_ratio * τ_prop #load torque seen from the engine shaft
 
     J_prop = propeller.constants.J_xx
     J_eq = gear_ratio^2 * J_prop #load moment of inertia seen from the engine side
 
-    engine.u.M_load = M_eq
+    engine.u.τ_load = τ_eq
     engine.u.J_load = J_eq
     f_ode!(engine, air_data)
 

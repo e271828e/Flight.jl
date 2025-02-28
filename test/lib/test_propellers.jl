@@ -141,8 +141,8 @@ function test_propeller()
             wr_p = fp_sys.y.wr_p
             @test wr_p.F[1] > 0
             @test wr_p.F[3] < 0
-            @test wr_p.M[1] > 0 #in a CCW propeller should be positive along x
-            @test wr_p.M[3] > 0 #in a CCW propeller should be positive along z
+            @test wr_p.τ[1] > 0 #in a CCW propeller should be positive along x
+            @test wr_p.τ[3] > 0 #in a CCW propeller should be positive along z
 
             @test @ballocated(f_ode!($fp_sys, $kin, $air, -$ω)) == 0
             @test @ballocated(f_step!($fp_sys)) == 0

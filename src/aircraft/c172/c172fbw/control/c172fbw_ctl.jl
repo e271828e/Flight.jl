@@ -1004,7 +1004,7 @@ function GUI.draw!(sys::System{<:Controller},
         u.eng_stop = IsItemActive()
         SameLine()
         u.mixture = safe_slider("Mixture", u.mixture, "%.6f", true)
-        @unpack state, throttle, ω, MAP, M_shaft, P_shaft, ṁ = pwp.engine
+        @unpack state, throttle, ω, MAP, τ_shaft, P_shaft, ṁ = pwp.engine
 
         if CImGui.BeginTable("Engine Data", 4)
             CImGui.TableNextRow()
@@ -1013,7 +1013,7 @@ function GUI.draw!(sys::System{<:Controller},
                 CImGui.TableNextColumn(); Text(@sprintf("Speed: %.3f RPM", Piston.radpersec2RPM(ω)))
                 CImGui.TableNextColumn(); Text(@sprintf("Manifold Pressure: %.0f Pa", MAP))
             CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text(@sprintf("Shaft Torque: %.3f Nm", M_shaft))
+                CImGui.TableNextColumn(); Text(@sprintf("Shaft Torque: %.3f Nm", τ_shaft))
                 CImGui.TableNextColumn(); Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
                 CImGui.TableNextColumn(); Text(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3)); SameLine(250)
                 CImGui.TableNextColumn(); Text(@sprintf("Remaining Fuel: %.3f kg", fuel.m_avail))

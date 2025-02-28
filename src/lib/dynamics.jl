@@ -103,7 +103,7 @@ origin Oc and projected on its axes εc
 """
 @kwdef struct Wrench
     F::SVector{3,Float64} = zeros(SVector{3})
-    M::SVector{3,Float64} = zeros(SVector{3})
+    τ::SVector{3,Float64} = zeros(SVector{3})
  end
 
 
@@ -115,7 +115,7 @@ Add two compatible `Wrench` instances.
 `Wrench` addition should only be performed between compatible `Wrench`
 instances, i.e., those defined in the same reference frame
 """
-Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(F = wr1.F + wr2.F, M = wr1.M + wr2.M)
+Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(F = wr1.F + wr2.F, τ = wr1.τ + wr2.τ)
 
 
 """
@@ -131,17 +131,17 @@ wr_c)` is the equivalent `Wrench` defined on fb.
 function transform(t_bc::FrameTransform, wr_c::Wrench)
 
     F_c_c = wr_c.F
-    M_c_c = wr_c.M
+    τ_c_c = wr_c.τ
 
     #project onto b axes
     F_c_b = t_bc.q(F_c_c)
-    M_c_b = t_bc.q(M_c_c)
+    τ_c_b = t_bc.q(τ_c_c)
 
     #translate to b origin
     F_b_b = F_c_b
-    M_b_b = M_c_b + t_bc.r × F_c_b
+    τ_b_b = τ_c_b + t_bc.r × F_c_b
 
-    return Wrench(F = F_b_b, M = M_b_b) #wr_b
+    return Wrench(F = F_b_b, τ = τ_b_b) #wr_b
 
 end
 
@@ -503,7 +503,7 @@ function Systems.f_ode!(sys::System{VehicleDynamics},
     wr_Σ_c = t_cb(wr_Σ_b)
     ho_Σ_c = ho_Σ_b
 
-    F_Σ_c = wr_Σ_c.F; τ_Σ_c = wr_Σ_c.M
+    F_Σ_c = wr_Σ_c.F; τ_Σ_c = wr_Σ_c.τ
     m_Σ = mp_Σ_c.m; J_Σ_c = mp_Σ_c.J
 
     ω_ec_c = ω_eb_b
@@ -583,9 +583,9 @@ end
     @series begin
         subplot := 2
         title --> "Torque"
-        yguide --> L"$M_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N \ m)$"
+        yguide --> L"$\tau_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N \ m)$"
         ts_split --> :none
-        ts.M
+        ts.τ
     end
 
 end
@@ -681,10 +681,10 @@ end
 
 function GUI.draw(wr::Wrench, label::String)
 
-    @unpack F, M = wr
+    @unpack F, τ = wr
     if CImGui.TreeNode(label)
         GUI.draw(F, "Force", "N")
-        GUI.draw(M, "Torque", "N*m")
+        GUI.draw(τ, "Torque", "N*m")
         CImGui.TreePop()
     end
 

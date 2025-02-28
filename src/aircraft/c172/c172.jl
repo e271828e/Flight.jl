@@ -439,10 +439,10 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     q_as = Air.get_stability_axes(α)
     F_aero_s = q * S * SVector{3,Float64}(-C_D, C_Y, -C_L)
     F_aero_a = q_as(F_aero_s)
-    M_aero_a = q * S * SVector{3,Float64}(C_l * b, C_m * c, C_n * b)
+    τ_aero_a = q * S * SVector{3,Float64}(C_l * b, C_m * c, C_n * b)
 
-    # wr_b = wr_a = Wrench(F_aero_a, M_aero_a)
-    wr_b = Wrench(F_aero_a, M_aero_a)
+    # wr_b = wr_a = Wrench(F_aero_a, τ_aero_a)
+    wr_b = Wrench(F_aero_a, τ_aero_a)
 
     ẋ.α_filt = α_filt_dot
     ẋ.β_filt = β_filt_dot
@@ -505,7 +505,7 @@ function GUI.draw(sys::System{<:Aero}, p_open::Ref{Bool} = Ref(true),
         end
 
         GUI.draw(wr_b.F, "Aerodynamic Force (O) [Body]", "N")
-        GUI.draw(wr_b.M, "Aerodynamic Torque (O) [Body]", "N*m")
+        GUI.draw(wr_b.τ, "Aerodynamic Torque (O) [Body]", "N*m")
 
     CImGui.End()
 

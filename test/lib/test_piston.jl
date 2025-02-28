@@ -137,7 +137,7 @@ function test_engine_response()
         air = AirData(kin, atm)
         eng = PistonEngine() |> System
 
-        eng.u.M_load = -10
+        eng.u.τ_load = -10
         eng.u.J_load = 0.1
 
         eng.x.ω = 100.0
@@ -148,7 +148,7 @@ function test_engine_response()
         eng.x.ω = 0.0
         eng.s.state = eng_off
         f_ode!(eng, air)
-        @test eng.y.M_shaft == 0
+        @test eng.y.τ_shaft == 0
 
         eng.u.start = true
         f_step!(eng)
@@ -158,7 +158,7 @@ function test_engine_response()
         f_step!(eng) #with ω <= ω_idle, engine won't leave the starting state
         @test eng.s.state == eng_starting
         f_ode!(eng, air)
-        @test eng.y.M_shaft > 0 #it should output the starter torque
+        @test eng.y.τ_shaft > 0 #it should output the starter torque
 
         eng.x.ω = 1.1eng.constants.ω_idle
         f_step!(eng) #engine should start now
@@ -168,7 +168,7 @@ function test_engine_response()
         #if we give it some throttle, we should get output power
         eng.u.throttle = 0.1
         f_ode!(eng, air)
-        @test eng.y.M_shaft > 0
+        @test eng.y.τ_shaft > 0
 
         #commanded stop
         eng.s.state = eng_running
@@ -235,7 +235,7 @@ function test_thruster_response()
         #thruster should be pushing
         @test get_wr_b(sim.sys.thruster).F[1] > 0
         #and receiving a CCW torque
-        @test get_wr_b(sim.sys.thruster).M[1] < 0
+        @test get_wr_b(sim.sys.thruster).τ[1] < 0
 
 
         #give it some throttle and see the RPMs increase
@@ -275,7 +275,7 @@ function test_thruster_response()
 
         @test hrn.y.thruster.propeller.ω ≈ -sim.y.thruster.engine.ω
         @test get_wr_b(sim.sys.thruster).F[1] > 0
-        @test get_wr_b(sim.sys.thruster).M[1] > 0 #CW opposing torque
+        @test get_wr_b(sim.sys.thruster).τ[1] > 0 #CW opposing torque
 
         #change propeller pitch and check that the idle controller raises the
         #idle manifold pressure to hold the target idle RPMs

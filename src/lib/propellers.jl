@@ -418,10 +418,10 @@ function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω
     d⁴ = d^4; d⁵ = d * d⁴
 
     F_Op_p = ρ * f² * d⁴ * C_F
-    M_Op_p = ρ * f² * d⁵ * C_M
+    τ_Op_p = ρ * f² * d⁵ * C_M
     P      = ρ * abs(f³) * d⁵ * C_P
 
-    wr_p = Wrench(F_Op_p, M_Op_p)
+    wr_p = Wrench(F_Op_p, τ_Op_p)
     wr_b = t_bp(wr_p)
 
     hr_p = SVector(J_xx * ω, 0, 0)
