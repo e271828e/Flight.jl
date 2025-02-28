@@ -308,33 +308,16 @@ MassProperties(sys::System) = get_mp_b(sys)
 ################################################################################
 ############################### RigidBodyData ##################################
 
-"""
-Notes:
-- When get_mp_b is called on a component, the returned MassProperties instance
-  must be expressed in the System's parent reference frame.
-- At the root of the component hierarchy lies an AbstractComponents System,
-  whose reference frame is the vehicle frame b. Therefore, the aggregate mass
-  properties for the complete component hierarchy will be expressed in the
-  vehicle frame, wherein aircraft dynamics and kinematics are formulated.
-- Having an arbitrary origin for the vehicle frame, fixed to the vehicle body,
-  instead of the current center of mass, slightly complicates the dynamics
-  equations. In exchange, it allows for the aircraft's mass properties to
-  change, either gradually (for example due to fuel consumption) or suddenly
-  (due to a payload release) without having to worry about discontinuities in
-  the kinematic state vector.
-"""
+#mp_b: Mass properties of the System, translated to the vehicle frame
 
-#mp_b: Mass properties of the System, translated to its parent's frame
-
-#wr_ext_b: Total external wrench contributed to the System, resolved in the
+#wr_b: Total external wrench contributed to the System, resolved in the
 #vehicle frame
 
-#hr_b: Intrinsic angular momentum due to the angular velocity of the rotating
-#System's components with respect to the vehicle. Computed individually by
-#each component relative to its center of mass and then summed
+#ho_b: Internal angular momentum relative to the airframe due to rotating
+#components, resolved in the vehicle frame
 
-#note: for a given J_b_b, r_bG_b cannot be arbitrarily large, because moments
-#of inertia are minimum at G. therefore, at some point J_G_b would become
+#note: for a given J_b, r_bc_b cannot be arbitrarily large, because moments
+#of inertia are minimum at G. therefore, at some point J_c would become
 #non-positive definite
 
 #generated functions are needed here because type inference does not work
@@ -694,8 +677,8 @@ end
 function GUI.draw(dyn::VehicleDynamicsY, p_open::Ref{Bool} = Ref(true),
                     label::String = "Vehicle Dynamics")
 
-    @unpack wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b, ω̇_ec_c, v̇_ec_c,
-            a_ec_c, a_ic_c, g_c_c, γ_c_c, f_c_c, ω̇_eb_b, v̇_eb_b, α_ib_b,
+    @unpack wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b,
+            a_ec_c, a_ic_c, g_c_c, γ_c_c, f_c_c, ω̇_eb_b, α_ib_b,
             a_eb_b, a_ib_b = dyn
 
     CImGui.Begin(label, p_open)
