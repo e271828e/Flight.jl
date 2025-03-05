@@ -593,7 +593,7 @@ end
 struct JSONTestMapping <: IOMapping end
 
 function Systems.extract_output(sys::System{<:Cessna172RPAv1},
-                        ::Type{String},
+                        ::UDPOutput,
                         ::JSONTestMapping)
     freq = 0.1
     φ_sp_max = π/6
@@ -753,6 +753,47 @@ function test_sim_interactive(; save::Bool = true)
     # xpc = XPCClient(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
     # Sim.attach!(sim, IODevices.DummyInputDevice())
+
+    Sim.run_interactive!(sim; pace = 1)
+
+    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
+    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "air"))
+
+    return nothing
+
+end
+
+function test_xp12(; save::Bool = true)
+
+    h_trn = HOrth(429.0);
+
+    trn = HorizontalTerrain(altitude = h_trn)
+    ac = Cessna172RPAv1(WA(), trn) |> System;
+    sim = Simulation(ac; t_end = 30)
+
+    #on ground
+    initializer = KinInit(
+        loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
+        # h = h_trn + 1.81);
+        h = h_trn + 0);
+
+    #on air, automatically trimmed
+    # initializer = C172.TrimParameters(
+    #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
+
+    reinit!(sim, initializer)
+
+    return ac
+
+    for joystick in get_connected_joysticks()
+        Sim.attach!(sim, joystick)
+    end
+
+    xpc = XP12Client()
+    # xpc = XP12Client(address = IPv4("192.168.1.2"))
+    Sim.attach!(sim, xpc)
 
     Sim.run_interactive!(sim; pace = 1)
 

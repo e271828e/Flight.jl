@@ -103,7 +103,7 @@ function _observe_async(xpc::XPlaneConnectX;delay::Float64=0.01)
     @async _observe(xpc,delay)
 
     #block the synchronous code as well to avoid that xpc.current_dref_values is read before they are ready
-    sleep(delay)    
+    sleep(delay)
     # _observe(xpc)
 end
 
@@ -133,9 +133,9 @@ function getDREF(xpc::XPlaneConnectX, dref::String)
     buffer = IOBuffer()
     write(buffer, prefix)
     write(buffer, UInt8(0))
-    write(buffer, Int32(100))         
-    write(buffer, Int32(idx))                  
-    write(buffer, dref)                       
+    write(buffer, Int32(100))
+    write(buffer, Int32(idx))
+    write(buffer, dref)
     write(buffer, repeat([UInt8(0)], 400 - length(dref)))  # pad the string to 400 bytes
     send(temp_socket, IPv4(xpc.ip), xpc.port, take!(buffer))    # send with temp_socket to avoid conflicts
 
@@ -147,7 +147,7 @@ function getDREF(xpc::XPlaneConnectX, dref::String)
             error("Received data is not 8 bytes long")
         end
         p_data = data[6:end]
-        idx_received, value = reinterpret(Int32, p_data[1:4])[1], reinterpret(Float32, p_data[5:end])[1] 
+        idx_received, value = reinterpret(Int32, p_data[1:4])[1], reinterpret(Float32, p_data[5:end])[1]
         if idx_received != idx
             error("Received a packet with invalid index.")
         end
@@ -157,12 +157,12 @@ function getDREF(xpc::XPlaneConnectX, dref::String)
     buffer = IOBuffer()
     write(buffer, prefix)
     write(buffer, UInt8(0))
-    write(buffer, Int32(0)) # set freqency to 0 to unsubscribe         
-    write(buffer, Int32(idx))                  
-    write(buffer, dref)                       
+    write(buffer, Int32(0)) # set freqency to 0 to unsubscribe
+    write(buffer, Int32(idx))
+    write(buffer, dref)
     write(buffer, repeat([UInt8(0)], 400 - length(dref)))  # pad the string to 400 bytes
-    send(temp_socket, IPv4(xpc.ip), xpc.port, take!(buffer)) 
-    
+    send(temp_socket, IPv4(xpc.ip), xpc.port, take!(buffer))
+
     return value
 end
 
@@ -313,9 +313,9 @@ function getPOSI(xpc::XPlaneConnectX)
     buffer = IOBuffer()
     write(buffer, prefix)
     write(buffer, UInt8(0))
-    write(buffer, freq)    
+    write(buffer, freq)
     write(buffer, repeat([UInt8(0)], 10 - length(freq)))    # padding
-    send(temp_socket, IPv4(xpc.ip), xpc.port, take!(buffer)) 
+    send(temp_socket, IPv4(xpc.ip), xpc.port, take!(buffer))
 
     # wait for response
     addr, data = recvfrom(temp_socket)
@@ -337,15 +337,15 @@ function getPOSI(xpc::XPlaneConnectX)
     else
         error("Received invalid header.")
     end
-    
+
     # unsubscribe
     freq = "0"    # unsubscribe by setting frequency to 0
     buffer = IOBuffer()
     write(buffer, prefix)
     write(buffer, UInt8(0))
-    write(buffer, freq)    
+    write(buffer, freq)
     write(buffer, repeat([UInt8(0)], 10 - length(freq)))    # padding
-    send(temp_socket, IPv4(xpc.ip), xpc.port, take!(buffer)) 
+    send(temp_socket, IPv4(xpc.ip), xpc.port, take!(buffer))
 
     return lat, lon, ele, y_agl, phi, theta, psi_true, vx, vy, vz, p, q, r
 end
@@ -382,7 +382,7 @@ function sendCTRL(xpc::XPlaneConnectX; lat_control::Number, lon_control::Number,
     write(buffer, Float32(lat_control))
     write(buffer, dref)
     write(buffer, repeat([UInt8(0)], 500 - length(dref)))  # pad the string to 500 bytes
-    send(xpc.sock, IPv4(xpc.ip), xpc.port, take!(buffer)) 
+    send(xpc.sock, IPv4(xpc.ip), xpc.port, take!(buffer))
 
     # longitudinal control
     dref = "sim/cockpit2/controls/yoke_pitch_ratio"
@@ -393,7 +393,7 @@ function sendCTRL(xpc::XPlaneConnectX; lat_control::Number, lon_control::Number,
     write(buffer, Float32(lon_control))
     write(buffer, dref)
     write(buffer, repeat([UInt8(0)], 500 - length(dref)))  # pad the string to 500 bytes
-    send(xpc.sock, IPv4(xpc.ip), xpc.port, take!(buffer)) 
+    send(xpc.sock, IPv4(xpc.ip), xpc.port, take!(buffer))
 
     # rudder control
     dref = "sim/cockpit2/controls/yoke_heading_ratio"
@@ -460,7 +460,7 @@ function sendCTRL(xpc::XPlaneConnectX; lat_control::Number, lon_control::Number,
     write(buffer, Float32(park_brake))
     write(buffer, dref)
     write(buffer, repeat([UInt8(0)], 500 - length(dref)))  # pad the string to 500 bytes
-    send(xpc.sock, IPv4(xpc.ip), xpc.port, take!(buffer))   
+    send(xpc.sock, IPv4(xpc.ip), xpc.port, take!(buffer))
 end
 
 """

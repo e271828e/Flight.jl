@@ -66,7 +66,7 @@ was_released(data::JoystickData, s::Symbol) = get_button_change(data, s) === But
 ################################################################################
 ################################# Joystick #####################################
 
-mutable struct Joystick{T <: JoystickData} <: InputDevice{T}
+mutable struct Joystick{T <: JoystickData} <: InputDevice
     slot::JoystickSlot
     cache::T
 end

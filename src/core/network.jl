@@ -9,6 +9,7 @@ using ..IODevices
 
 export UDPOutput, UDPInput
 export XPCClient, XPCPosition
+export XP12Client, XP12Pose
 
 #UDPInput and UDPOutput both use the EOT character as a shutdown request. This
 #provides a means to prevent the UDPInput thread from getting stuck in the
@@ -19,14 +20,14 @@ export XPCClient, XPCPosition
 ################################################################################
 ################################# UDInput ######################################
 
-@kwdef mutable struct UDPInput{T, A <: IPAddr} <: InputDevice{T}
+@kwdef mutable struct UDPInput{A <: IPAddr} <: InputDevice
     socket::UDPSocket = UDPSocket()
     address::A = IPv4("127.0.0.1")#IP address we'll be listening at
     port::Int = 49017 #port we'll be listening at
     should_close::Bool = false
     function UDPInput(socket::UDPSocket, address::A, port::Integer,
                       should_close::Bool) where {A <: IPAddr}
-        new{String, A}(socket, address, port, should_close)
+        new{A}(socket, address, port, should_close)
     end
 end
 
@@ -51,12 +52,12 @@ end
 ################################################################################
 ################################# UDPOutput ####################################
 
-@kwdef mutable struct UDPOutput{T, A <: IPAddr} <: OutputDevice{T}
+@kwdef mutable struct UDPOutput{A <: IPAddr} <: OutputDevice
     socket::UDPSocket = UDPSocket()
     address::A = IPv4("127.0.0.1")#IP address we'll be listening at
     port::Int = 49017 #port we'll be listening at
     function UDPOutput(socket::UDPSocket, address::A, port::Integer) where {A <: IPAddr}
-        new{String, A}(socket, address, port)
+        new{A}(socket, address, port)
     end
 end
 
@@ -81,19 +82,19 @@ end
 ################################# XPCClient ####################################
 
 @kwdef struct XPCPosition
+    ac::UInt8 = 0 #aircraft number
     ϕ::Float64 = 0.0 #degrees
     λ::Float64 = 0.0 #degrees
     h::Float64 = 0.0 #meters
     ψ::Float32 = 0.0 #degrees
     θ::Float32 = 0.0 #degrees
     φ::Float32 = 0.0 #degrees
-    aircraft::UInt8 = 0 #aircraft number
 end
 
-struct XPCClient{T, U <: UDPOutput} <: OutputDevice{T}
+struct XPCClient{U <: UDPOutput} <: OutputDevice
     udp::U
     function XPCClient(udp::U) where {U <: UDPOutput}
-        new{XPCPosition, U}(udp)
+        new{U}(udp)
     end
 end
 
@@ -104,7 +105,7 @@ end
 #disable X-Plane physics
 function IODevices.init!(xpc::XPCClient)
     IODevices.init!(xpc.udp)
-    IODevices.handle_data!(xpc.udp, dref_cmd(
+    IODevices.handle_data!(xpc.udp, set_dref_msg(
         "sim/operation/override/override_planepath", 1))
 end
 
@@ -114,13 +115,13 @@ function IODevices.handle_data!(xpc::XPCClient, data::XPCPosition)
     #give some breating room to the X-Plane interface (limit the update rate to
     #200Hz)
     sleep(0.005)
-    IODevices.handle_data!(xpc.udp, pos_cmd(data))
+    IODevices.handle_data!(xpc.udp, set_pos_msg(data))
 end
 
 ############################ XPC Command Messages ##############################
 
-#write a scalar or vector value to an arbitrary DREF
-function dref_cmd(id::AbstractString, value::Union{Real, AbstractVector{<:Real}})
+#construct the UDP message to write a scalar or vector value to an arbitrary DREF
+function set_dref_msg(id::AbstractString, value::Union{Real, AbstractVector{<:Real}})
 
     #ascii() ensures ASCII data, codeunits returns a CodeUnits object, which
     #behaves similarly to a byte array. this is equivalent to b"text".
@@ -136,13 +137,106 @@ function dref_cmd(id::AbstractString, value::Union{Real, AbstractVector{<:Real}}
     return String(take!(buffer))
 end
 
-#set aircraft position and attitude
-function pos_cmd(pos::XPCPosition)
+#construct the UDP message to set aircraft position and attitude
+function set_pos_msg(pos::XPCPosition)
 
-    @unpack ϕ, λ, h, ψ, θ, φ, aircraft = pos
+    @unpack ϕ, λ, h, ψ, θ, φ, ac = pos
 
     buffer = IOBuffer(sizehint = 64)
-    write(buffer, b"POSI\0", aircraft, ϕ, λ, h, θ, φ, ψ, Float32(-998))
+    write(buffer, b"POSI\0", ac, ϕ, λ, h, θ, φ, ψ, Float32(-998))
+
+    return String(take!(buffer))
+
+end
+
+################################################################################
+################################# XPCClient ####################################
+
+@kwdef struct XP12Pose
+    aircraft::Int32 = 0 #aircraft number
+    ϕ::Float64 = 47.80433 #degrees
+    λ::Float64 = 12.997 #degrees
+    h::Float64 = 429.0 #meters
+    ψ::Float32 = 157.0 #degrees
+    θ::Float32 = 3.7 #degrees
+    φ::Float32 = -0.5 #degrees
+end
+
+struct XP12Client{U <: UDPOutput} <: OutputDevice
+    udp::U
+    function XP12Client(udp::U) where {U <: UDPOutput}
+        new{U}(udp)
+    end
+end
+
+function XP12Client(; address = IPv4("127.0.0.1"), port = 49000, kwargs...)
+    XP12Client(UDPOutput(; address, port, kwargs...))
+end
+
+function IODevices.init!(xpc::XP12Client)
+    IODevices.init!(xpc.udp)
+    #disable pose updates for aircraft 0
+    IODevices.handle_data!(xpc.udp, set_dref_msg(
+        "sim/operation/override/override_planepath[0]", 1))
+end
+
+IODevices.shutdown!(xpc::XP12Client) = IODevices.shutdown!(xpc.udp)
+
+function IODevices.handle_data!(xpc::XP12Client, data::String)
+    #give X-Plane some breating room (limit the update rate to 200Hz)
+    sleep(0.005)
+    IODevices.handle_data!(xpc.udp, data)
+end
+
+############################ XPC Command Messages ##############################
+
+#construct the UDP message to write a scalar or vector value to an arbitrary DREF
+function msg_set_dref(dref_id::AbstractString, value::Real)
+# function msg_set_dref()
+
+    #ascii() ensures ASCII data, codeunits returns a CodeUnits object, which
+    #behaves similarly to a byte array. this is equivalent to b"text".
+    #casting to Vector{UInt8} would also work
+
+    #length(dref_id) returns the number of characters in dref_id, not its actual
+    #length in bytes. both of these are equal only if dref_id is pure ASCII. to
+    #pad the message, we need the actual length in bytes. therefore, we either
+    #do ascii(dref_id) (which ensures only ascii characters are present)
+    #or accept non-ascii characters and use length(dref_id |> codeunits)
+    # dref_id = "sim/operation/override/override_planepath"
+    # value = 1
+
+    buffer = IOBuffer()
+    write(buffer,
+        b"DREF\0",
+        Float32(value),
+        ascii(dref_id) * "\0", #zero-terminated dref id pure ASCII string
+        zeros(UInt8, 499-length(dref_id)) #pad the message to 509 bytes
+        )
+
+    return String(take!(buffer))
+end
+
+function msg_cmd(cmd_id::AbstractString)
+
+    buffer = IOBuffer()
+    write(buffer,
+        b"CMND\0",
+        ascii(cmd_id) * "\0", #zero-terminated command id pure ASCII string
+        zeros(UInt8, 499-length(cmd_id))) #pad the message to 509 bytes
+
+    return String(take!(buffer))
+end
+
+#construct the UDP message to set aircraft position and attitude
+# function set_xp12pos_msg(pos::XPCPosition)
+function msg_set_pose(pose::XP12Pose)
+
+    @unpack aircraft, ϕ, λ, h, ψ, θ, φ = pose
+
+    buffer = IOBuffer()
+    write(buffer, b"VEHS\0", aircraft, ϕ, λ, h, ψ, θ, φ)
+    # write(buffer, b"VEHX\0", aircraft, ϕ, λ, h, ψ, θ, φ)
 
     return String(take!(buffer))
 

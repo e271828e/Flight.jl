@@ -5,7 +5,17 @@ using Test, UnPack, Logging, StructTypes, JSON3
 using Flight.FlightCore
 using Flight.FlightLib
 
-export test_sim_standalone
+export test_sim
+
+function test_sim()
+    @testset verbose = true "Sim" begin
+
+        # udp_loopback()
+        # xpc_loopback()
+        # json_loopback()
+
+    end
+end
 
 ################################################################################
 ############################### FirstOrder #####################################
@@ -110,7 +120,7 @@ function Systems.assign_input!(sys::System{TestSystem}, data::String,
 end
 
 function Systems.extract_output(::System{TestSystem},
-                            ::Type{String}, ::UDPTestMapping)
+                            ::UDPOutput, ::UDPTestMapping)
     data = UInt8[37] |> String
     # data = String([0x04]) #EOT character
     # @debug "Extracted $data"
@@ -144,7 +154,7 @@ end
 
 ################################ XPC Loopback ##################################
 
-function Systems.extract_output(::System{TestSystem}, ::Type{XPCPosition}, ::IOMapping)
+function Systems.extract_output(::System{TestSystem}, ::XPCClient, ::IOMapping)
     data = KinData() |> XPCPosition
     return data
 end
@@ -160,7 +170,7 @@ function xpc_loopback()
         Sim.attach!(sim, XPCClient(; port))
         Sim.run!(sim)
 
-        cmd = KinData() |> XPCPosition |> Network.pos_cmd
+        cmd = KinData() |> XPCPosition |> Network.set_pos_msg
         #extract_output returns an XPCPosition instance, from which handle_data
         #constructs a position command string, which reaches assign_input! via
         #loopback. the first character is converted to Float64 and assigned to
@@ -190,8 +200,7 @@ StructTypes.StructType(::Type{TestSystemU}) = StructTypes.Mutable()
 
 struct JSONTestMapping <: IOMapping end
 
-function Systems.extract_output(::System{TestSystem}, ::Type{String},
-                            ::JSONTestMapping)
+function Systems.extract_output(::System{TestSystem}, ::UDPOutput, ::JSONTestMapping)
     data = (input = 37.0,) |> JSON3.write
     # @info "Extracted $data"
     return data

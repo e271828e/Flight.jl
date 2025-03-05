@@ -28,7 +28,7 @@ export HSV_amber, HSV_gray, HSV_green, HSV_red
 #if sync = 0:
 #uncaps the refresh rate (to be used only with scheduled calls to render())
 
-mutable struct Renderer{T} <: IODevice{T}
+mutable struct Renderer <: IODevice
     label::String
     monitor_pref::UInt8 #preferred monitor when multiple monitors available
     font_size::UInt8 #will be scaled by the display's content scale
@@ -41,7 +41,7 @@ mutable struct Renderer{T} <: IODevice{T}
     function Renderer(; label = "Renderer", monitor_pref = 2, font_size = 16,
         sync = 1, f_draw = ()->nothing)
         _initialized = false
-        new{Nothing}(label, monitor_pref, font_size, sync, f_draw, _initialized)
+        new(label, monitor_pref, font_size, sync, f_draw, _initialized)
     end
 
 end

@@ -118,13 +118,13 @@ end
 #called from the SimInterface loop thread. this may block, either on handle_data
 #because the OutputDevice is itself blocked, or on lock(io_lock) because the
 #Simulation loop is currently stepping
-function update!(interface::SimOutput{<:OutputDevice{T}}) where {T}
+function update!(interface::SimOutput)
 
     @unpack device, sys, mapping, io_lock = interface
 
     lock(io_lock)
         #this call should never block and always return some usable output
-        data = Systems.extract_output(sys, T, mapping)
+        data = Systems.extract_output(sys, device, mapping)
     unlock(io_lock)
 
     IODevices.handle_data!(device, data)

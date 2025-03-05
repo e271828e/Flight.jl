@@ -18,7 +18,7 @@ struct DefaultMapping <: IOMapping end
 ################################# IODevice #####################################
 
 #T: data type produced or expected by the IODevice
-abstract type IODevice{T} end
+abstract type IODevice end
 
 init!(::D) where {D<:IODevice} = nothing
 shutdown!(::D) where {D<:IODevice} = nothing
@@ -27,7 +27,7 @@ should_close(::D) where {D<:IODevice} = false
 ################################################################################
 ############################### InputDevice ####################################
 
-abstract type InputDevice{T} <: IODevice{T} end
+abstract type InputDevice <: IODevice end
 
 #returns a new instance of input data. may block
 function get_data!(device::D) where {D<:InputDevice}
@@ -38,7 +38,7 @@ end
 ################################################################################
 ############################## OutputDevice ####################################
 
-abstract type OutputDevice{T} <: IODevice{T} end
+abstract type OutputDevice <: IODevice end
 
 #processes an instance of output data. may block
 function handle_data!(device::D, data::Any) where {D<:OutputDevice}

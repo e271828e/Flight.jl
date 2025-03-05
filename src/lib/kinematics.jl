@@ -760,7 +760,23 @@ function Network.XPCPosition(kin_data::KinData, aircraft = 0)
     θ = rad2deg(e_nb.θ)
     φ = rad2deg(e_nb.φ)
 
-    Network.XPCPosition(ϕ, λ, h, ψ, θ, φ, aircraft)
+    Network.XPCPosition(aircraft, ϕ, λ, h, ψ, θ, φ)
+
+end
+
+function Network.XP12Pose(kin_data::KinData, aircraft = 0)
+
+    @unpack ϕ_λ, e_nb, h_o = kin_data
+
+    ϕ = rad2deg(ϕ_λ.ϕ)
+    λ = rad2deg(ϕ_λ.λ)
+    h = Float64(h_o)
+
+    ψ = rad2deg(e_nb.ψ)
+    θ = rad2deg(e_nb.θ)
+    φ = rad2deg(e_nb.φ)
+
+    Network.XP12Pose(aircraft, ϕ, λ, h, ψ, θ, φ)
 
 end
 

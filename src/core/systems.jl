@@ -283,8 +283,8 @@ assign_input!(::System, ::Nothing, ::IOMapping) = nothing
 #to add support for an OutputDevice, the System should extend this function for
 #the Type expected by that OutputDevice. additional customization is possible
 #by dispatching on a specific IOMapping subtype
-function extract_output(sys::System, type::Type{<:Any}, mapping::IOMapping)
-    MethodError(extract_output, (sys, type, mapping)) |> throw
+function extract_output(sys::System, device::OutputDevice, mapping::IOMapping)
+    MethodError(extract_output, (sys, device, mapping)) |> throw
 end
 
 
