@@ -10,9 +10,9 @@ export test_sim
 function test_sim()
     @testset verbose = true "Sim" begin
 
-        # udp_loopback()
-        # xpc_loopback()
-        # json_loopback()
+        udp_loopback()
+        xpc_loopback()
+        json_loopback()
 
     end
 end
@@ -154,8 +154,8 @@ end
 
 ################################ XPC Loopback ##################################
 
-function Systems.extract_output(::System{TestSystem}, ::XPCClient, ::IOMapping)
-    data = KinData() |> XPCPosition
+function Systems.extract_output(::System{TestSystem}, ::XP12Client, ::IOMapping)
+    data = KinData() |> XP12Pose |> Network.msg_set_pose
     return data
 end
 
@@ -167,14 +167,15 @@ function xpc_loopback()
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
-        Sim.attach!(sim, XPCClient(; port))
+        Sim.attach!(sim, XP12Client(; port))
         Sim.run!(sim)
 
-        cmd = KinData() |> XPCPosition |> Network.set_pos_msg
-        #extract_output returns an XPCPosition instance, from which handle_data
-        #constructs a position command string, which reaches assign_input! via
-        #loopback. the first character is converted to Float64 and assigned to
-        #sys.u.input, and it finally propagates to sys.y.input within f_disc!
+        cmd = KinData() |> XP12Pose |> Network.msg_set_pose
+        #extract_output returns an XP12Pose instance, from which extract_output
+        #constructs a pose command message, which is sent through UDP by
+        #handle_data! and finally reaches assign_input! via loopback. the first
+        #character is converted to Float64 and assigned to sys.u.input, and it
+        #finally propagates to sys.y.input within f_disc!
         @test sim.y.input === Float64(cmd[1])
 
         return sim

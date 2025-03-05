@@ -8,7 +8,6 @@ using JSON3
 using ..IODevices
 
 export UDPOutput, UDPInput
-export XPCClient, XPCPosition
 export XP12Client, XP12Pose
 
 #UDPInput and UDPOutput both use the EOT character as a shutdown request. This
@@ -79,78 +78,7 @@ end
 
 
 ################################################################################
-################################# XPCClient ####################################
-
-@kwdef struct XPCPosition
-    ac::UInt8 = 0 #aircraft number
-    ϕ::Float64 = 0.0 #degrees
-    λ::Float64 = 0.0 #degrees
-    h::Float64 = 0.0 #meters
-    ψ::Float32 = 0.0 #degrees
-    θ::Float32 = 0.0 #degrees
-    φ::Float32 = 0.0 #degrees
-end
-
-struct XPCClient{U <: UDPOutput} <: OutputDevice
-    udp::U
-    function XPCClient(udp::U) where {U <: UDPOutput}
-        new{U}(udp)
-    end
-end
-
-function XPCClient(; address = IPv4("127.0.0.1"), port = 49009, kwargs...)
-    XPCClient(UDPOutput(; address, port, kwargs...))
-end
-
-#disable X-Plane physics
-function IODevices.init!(xpc::XPCClient)
-    IODevices.init!(xpc.udp)
-    IODevices.handle_data!(xpc.udp, set_dref_msg(
-        "sim/operation/override/override_planepath", 1))
-end
-
-IODevices.shutdown!(xpc::XPCClient) = IODevices.shutdown!(xpc.udp)
-
-function IODevices.handle_data!(xpc::XPCClient, data::XPCPosition)
-    #give some breating room to the X-Plane interface (limit the update rate to
-    #200Hz)
-    sleep(0.005)
-    IODevices.handle_data!(xpc.udp, set_pos_msg(data))
-end
-
-############################ XPC Command Messages ##############################
-
-#construct the UDP message to write a scalar or vector value to an arbitrary DREF
-function set_dref_msg(id::AbstractString, value::Union{Real, AbstractVector{<:Real}})
-
-    #ascii() ensures ASCII data, codeunits returns a CodeUnits object, which
-    #behaves similarly to a byte array. this is equivalent to b"text".
-    #casting to Vector{UInt8} would also work
-    buffer = IOBuffer()
-    write(buffer,
-        b"DREF\0",
-        id |> length |> UInt8,
-        id |> ascii |> codeunits,
-        value |> length |> UInt8,
-        Float32.(value))
-
-    return String(take!(buffer))
-end
-
-#construct the UDP message to set aircraft position and attitude
-function set_pos_msg(pos::XPCPosition)
-
-    @unpack ϕ, λ, h, ψ, θ, φ, ac = pos
-
-    buffer = IOBuffer(sizehint = 64)
-    write(buffer, b"POSI\0", ac, ϕ, λ, h, θ, φ, ψ, Float32(-998))
-
-    return String(take!(buffer))
-
-end
-
-################################################################################
-################################# XPCClient ####################################
+################################# XP12Client ###################################
 
 @kwdef struct XP12Pose
     aircraft::Int32 = 0 #aircraft number
@@ -176,16 +104,21 @@ end
 function IODevices.init!(xpc::XP12Client)
     IODevices.init!(xpc.udp)
     #disable pose updates for aircraft 0
-    IODevices.handle_data!(xpc.udp, set_dref_msg(
+    IODevices.handle_data!(xpc.udp, msg_set_dref(
         "sim/operation/override/override_planepath[0]", 1))
+    #override control surface positions (not only visuals!)
+    IODevices.handle_data!(xpc.udp, msg_set_dref(
+        "sim/operation/override/override_control_surfaces", 1))
 end
 
 IODevices.shutdown!(xpc::XP12Client) = IODevices.shutdown!(xpc.udp)
 
 function IODevices.handle_data!(xpc::XP12Client, data::String)
-    #give X-Plane some breating room (limit the update rate to 200Hz)
-    sleep(0.005)
+    #give X-Plane some breating room (limit the update rate to 100Hz)
+    sleep(0.01)
     IODevices.handle_data!(xpc.udp, data)
+    # IODevices.handle_data!(xpc.udp, msg_set_dref(
+    #     "sim/flightmodel2/wing/rudder1_deg[10]", 30))
 end
 
 ############################ XPC Command Messages ##############################

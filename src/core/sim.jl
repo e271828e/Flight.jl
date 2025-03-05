@@ -132,9 +132,15 @@ end
 
 
 function update!(gui::SimGUI)
+
     @unpack device, io_lock = gui
-    #this may modify the System or SimControl, so we need to grab the IO_lock
+
+    #the GUI may modify the System or SimControl, so we need to grab io_lock
     @lock io_lock GUI.render!(device)
+
+    #once io_lock has been released and the simulation thread can proceed, we
+    #can sleep for a while to limit GUI framerate and save CPU time
+    sleep(0.016)
 end
 
 
@@ -238,15 +244,17 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         io_start = Base.Event()
         io_lock = ReentrantLock()
 
-        #the GUI Renderer's refresh rate must be uncapped (no VSync), so that
-        #calls to GUI.update!() return immediately without blocking and
-        #therefore do not interfere with simulation stepping
         f_draw = let control = control, sys = sys
             () -> GUI.draw!(control, sys)
         end
-        #sync must be set to 0 to disable VSync. otherwise, the call to update!
-        #will block for a whole display refresh interval while holding the
-        #io_lock, leaving the sim loop unable to step in the meantime
+
+        #sync should be set to 0 to disable VSync. otherwise, the call to
+        #GUI.render! will block for a whole display refresh interval while
+        #holding the io_lock, leaving the sim loop unable to step in the
+        #meantime. the drawback of disabling VSync is that the GUI framerate is
+        #uncapped, which unnecessarily taxes the core running the main thread.
+        #to prevent this, we can send the GUI to sleep for a while within
+        #GUI.update! once io_lock has been released
         renderer = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
         gui = SimInterface(renderer, sys, DefaultMapping(),
                            control, io_start, io_lock, true)

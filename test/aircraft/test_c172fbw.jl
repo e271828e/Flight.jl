@@ -150,35 +150,39 @@ end
 
 function test_sim_interactive(; save::Bool = true)
 
-    h_trn = HOrth(601.55);
+    h_trn = HOrth(427.2);
+
+    # # on ground
+    # initializer = KinInit(
+    #     loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
+    #     q_nb = REuler(deg2rad(157), 0, 0),
+    #     h = h_trn + 1.81);
+
+    # on air, automatically trimmed
+    initializer = C172.TrimParameters(
+        Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172FBW(WA(), trn) |> System
+    ac = Cessna172FBW(WA(), trn) |> System;
 
-    kin_init = KinInit(
-        v_eb_n = [0, 0, 0],
-        ω_wb_b = [0, 0, 0],
-        q_nb = REuler(ψ = 0, θ = 0.0, φ = 0.0),
-        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-        h = h_trn + 1.9 + 0);
+    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
 
-    Systems.init!(ac, kin_init)
-
-    sim = Simulation(ac; dt = 0.02, Δt = 0.02, t_end = 300)
+    reinit!(sim, initializer)
 
     for joystick in get_connected_joysticks()
         Sim.attach!(sim, joystick)
     end
 
-    xpc = XPCClient()
-    # xpc = XPCClient(address = IPv4("192.168.1.2"))
+    xpc = XP12Client()
+    # xpc = XP12Client(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
 
-    Sim.run_interactive!(sim)
+    Sim.run_interactive!(sim; pace = 1)
 
-    plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
-    # plots = make_plots(TimeSeries(sim); Plotting.defaults...)
-    save && save_plots(plots, save_folder = joinpath("tmp", "test_c172fbw", "sim_interactive"))
+    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
+    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "air"))
 
     return nothing
 

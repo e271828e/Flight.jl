@@ -58,20 +58,22 @@ end
 
 function test_sim_interactive(; save::Bool = true)
 
-    h_trn = HOrth(601.55);
+    h_trn = HOrth(427.2);
+
+    # on ground
+    initializer = KinInit(
+        loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
+        q_nb = REuler(deg2rad(157), 0, 0),
+        h = h_trn + 1.81);
+
+    # # on air, automatically trimmed
+    # initializer = C172.TrimParameters(
+    #     Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172RPAv2(WA(), trn) |> System;
+
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
-
-    #on ground
-    initializer = KinInit(
-        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-        h = h_trn + 1.81);
-
-    # #on air, automatically trimmed
-    # initializer = C172.TrimParameters(
-    #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
 
     reinit!(sim, initializer)
 
@@ -79,17 +81,16 @@ function test_sim_interactive(; save::Bool = true)
         Sim.attach!(sim, joystick)
     end
 
-    xpc = XPCClient()
-    # xpc = XPCClient(address = IPv4("192.168.1.2"))
+    xpc = XP12Client()
+    # xpc = XP12Client(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
-    # Sim.attach!(sim, IODevices.DummyInputDevice())
 
     Sim.run_interactive!(sim; pace = 1)
 
     kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
     air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v2", "sim_interactive", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v2", "sim_interactive", "air"))
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "air"))
 
     return nothing
 

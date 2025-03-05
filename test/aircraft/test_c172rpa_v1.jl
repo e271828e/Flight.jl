@@ -638,7 +638,7 @@ function Systems.assign_input!(sys::System{<:Cessna172RPAv1},
 
     #if length(str) < 2, it cannot be a valid JSON string. if length(str) == 2
     #it is an empty JSON entity (either string, object or array). instead of
-    #this check we could simply call do isempty(JSON3.read(str)) but that would
+    #this check we could simply call isempty(JSON3.read(str)) but that would
     #mean parsing the string twice
     length(str) > 2 && JSON3.read!(str, sys.avionics.ctl.u)
 
@@ -649,40 +649,27 @@ end
 function test_json_loopback(; save::Bool = true)
 
 
-    h_trn = HOrth(601.55);
-
+    h_trn = HOrth(427.2);
     trn = HorizontalTerrain(altitude = h_trn)
-    sys = Cessna172RPAv1(WA(), trn) |> System;
-    sim = Simulation(sys; dt = 1/60, Δt = 1/60, t_end = 20)
+    ac = Cessna172RPAv1(WA(), trn) |> System;
 
-    # #on ground
-    # kin_init = KinInit(
-    #     loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-    #     h = h_trn + 1.81);
+    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 30)
 
     #on air, automatically trimmed by reinit!
-    trim_params = C172.TrimParameters(
-        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
+    initializer = C172.TrimParameters(
+        Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
     #initialize simulated system
-    reinit!(sim, trim_params)
+    reinit!(sim, initializer)
 
-    # #setup IO devices
-    # for joystick in get_connected_joysticks()
-    #     Sim.attach!(sim, joystick)
-    # end
-
-    #we need different ports for XPC and the loopback interface
-    xpc = XPCClient(; port = 49016)
-    xpc = XPCClient(address = IPv4("192.168.1.2"))
-    Sim.attach!(sim, xpc)
-
+    #the loopback interface must not share its port with the XP12Client!
+    Sim.attach!(sim, XP12Client(; port = 49000))
     Sim.attach!(sim, UDPInput(; port = 49017), JSONTestMapping())
     Sim.attach!(sim, UDPOutput(; port = 49017), JSONTestMapping())
 
     #trigger compilation of parsing methods for AvionicsU before launching the
     #simulation
-    JSON3.read!(JSON3.write(sys.avionics.ctl.u, allow_inf=true), sys.avionics.ctl.u; allow_inf=true)
+    JSON3.read!(JSON3.write(ac.avionics.ctl.u, allow_inf=true), ac.avionics.ctl.u; allow_inf=true)
 
     Sim.run_interactive!(sim)
 
@@ -698,20 +685,22 @@ end
 
 function test_sim(; save::Bool = true)
 
-    h_trn = HOrth(601.55);
+    h_trn = HOrth(427.2);
+
+    # on ground
+    # initializer = KinInit(
+    #     loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
+    #     q_nb = REuler(deg2rad(157), 0, 0),
+    #     h = h_trn + 1.81);
+
+    # on air, automatically trimmed
+    initializer = C172.TrimParameters(
+        Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172RPAv1(WA(), trn) |> System;
+
     sim = Simulation(ac; t_end = 30)
-
-    #on ground
-    initializer = KinInit(
-        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-        h = h_trn + 1.81);
-
-    #on air, automatically trimmed
-    # initializer = C172.TrimParameters(
-    #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
 
     reinit!(sim, initializer)
 
@@ -728,64 +717,24 @@ end
 
 function test_sim_interactive(; save::Bool = true)
 
-    h_trn = HOrth(601.55);
+    h_trn = HOrth(427.2);
 
-    trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172RPAv1(WA(), trn) |> System;
-    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
-
-    #on ground
-    initializer = KinInit(
-        loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-        h = h_trn + 1.81);
-
-    # #on air, automatically trimmed
-    # initializer = C172.TrimParameters(
-    #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
-
-    reinit!(sim, initializer)
-
-    for joystick in get_connected_joysticks()
-        Sim.attach!(sim, joystick)
-    end
-
-    xpc = XPCClient()
-    # xpc = XPCClient(address = IPv4("192.168.1.2"))
-    Sim.attach!(sim, xpc)
-    # Sim.attach!(sim, IODevices.DummyInputDevice())
-
-    Sim.run_interactive!(sim; pace = 1)
-
-    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "air"))
-
-    return nothing
-
-end
-
-function test_xp12(; save::Bool = true)
-
-    h_trn = HOrth(429.0);
-
-    trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172RPAv1(WA(), trn) |> System;
-    sim = Simulation(ac; t_end = 30)
-
-    #on ground
+    # on ground
     initializer = KinInit(
         loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
-        # h = h_trn + 1.81);
-        h = h_trn + 0);
+        q_nb = REuler(deg2rad(157), 0, 0),
+        h = h_trn + 1.81);
 
-    #on air, automatically trimmed
+    # # on air, automatically trimmed
     # initializer = C172.TrimParameters(
-    #     Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
+    #     Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
+
+    trn = HorizontalTerrain(altitude = h_trn)
+    ac = Cessna172RPAv1(WA(), trn) |> System;
+
+    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
 
     reinit!(sim, initializer)
-
-    return ac
 
     for joystick in get_connected_joysticks()
         Sim.attach!(sim, joystick)
@@ -805,6 +754,7 @@ function test_xp12(; save::Bool = true)
     return nothing
 
 end
+
 
 
 end #module

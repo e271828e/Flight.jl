@@ -592,29 +592,30 @@ end
 
 function test_sim_interactive(; save::Bool = true)
 
-    h_trn = HOrth(601.55);
+    h_trn = HOrth(427.2);
+
+    # # on ground
+    # initializer = KinInit(
+    #     loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
+    #     q_nb = REuler(deg2rad(157), 0, 0),
+    #     h = h_trn + 1.81);
+
+    # on air, automatically trimmed
+    initializer = C172.TrimParameters(
+        Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172FBWv1(WA(), trn) |> System;
-    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 600)
 
-    # #on ground
-    # initializer = KinInit(
-    #     loc = LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)),
-    #     h = h_trn + 1.81);
-
-    #on air, automatically trimmed by reinit!
-    initializer = C172.TrimParameters(
-        Ob = Geographic(LatLon(ϕ = deg2rad(40.503205), λ = deg2rad(-3.574673)), HEllip(1050)))
-
+    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
     reinit!(sim, initializer)
 
     for joystick in get_connected_joysticks()
         Sim.attach!(sim, joystick)
     end
 
-    xpc = XPCClient()
-    # xpc = XPCClient(address = IPv4("192.168.1.2"))
+    xpc = XP12Client()
+    # xpc = XP12Client(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
 
     Sim.run_interactive!(sim)
