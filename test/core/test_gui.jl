@@ -9,7 +9,7 @@ using Flight.FlightLib.Control
 using Flight.FlightLib.LandingGear
 
 using Flight.FlightAircraft.C172R
-using Flight.FlightAircraft.C172RPA
+using Flight.FlightAircraft.C172X
 
 export test_gui
 
@@ -20,7 +20,7 @@ function test_gui()
     # target = C172CAS.PitchControl() |> System
     # target = Cessna172CAS() |> System
     # target = Cessna172RBase() |> System
-    # target = Cessna172R0() |> System
+    # target = Cessna172Rv0() |> System
     f_draw = let target = target
         () -> GUI.draw!(target)
         # return () -> GUI.draw!(target)

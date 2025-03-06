@@ -13,8 +13,8 @@ include(normpath("lib/test_aircraft_base.jl")); using .TestAircraft
 
 include(normpath("aircraft/test_c172r.jl")); using .TestC172R
 
-include(normpath("aircraft/test_c172rpa.jl")); using .TestC172RPA
-include(normpath("aircraft/test_c172rpa1.jl")); using .TestC172RPA1
+include(normpath("aircraft/test_c172x.jl")); using .TestC172X
+include(normpath("aircraft/test_c172x1.jl")); using .TestC172Xv1
 
 test_quaternions()
 test_attitude()
@@ -29,5 +29,5 @@ test_aircraft_base()
 
 test_c172r()
 
-test_c172rpa()
-test_c172rpa1()
+test_c172x()
+test_c172x1()

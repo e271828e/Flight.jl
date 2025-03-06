@@ -1,4 +1,4 @@
-module C172RPAv3
+module C172Xv3
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using StructTypes
@@ -10,10 +10,10 @@ using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightAircraft
 
-using Flight.FlightAircraft.C172RPA.C172RPAControl: Controller, ControllerY
-using Flight.FlightAircraft.C172RPA.Navigation: Navigator
+using Flight.FlightAircraft.C172X.C172XControl: Controller, ControllerY
+using Flight.FlightAircraft.C172X.Navigation: Navigator
 
-export Cessna172RPAv3
+export Cessna172Xv3
 
 
 ################################################################################
@@ -21,12 +21,12 @@ export Cessna172RPAv3
 
 @kwdef struct Sensors <: SystemDefinition end
 
-function Systems.f_ode!(::System{<:C172RPAv3.Sensors}, ::System{<:C172RPA.Vehicle})
+function Systems.f_ode!(::System{<:C172Xv3.Sensors}, ::System{<:C172X.Vehicle})
     nothing
 end
 
-function Systems.init!(sensors::System{<:C172RPAv3.Sensors},
-                            vehicle::System{<:C172RPA.Vehicle})
+function Systems.init!(sensors::System{<:C172Xv3.Sensors},
+                            vehicle::System{<:C172X.Vehicle})
 
     Systems.reset!(sensors)
     @warn "Sensors init! not implemented"
@@ -42,15 +42,15 @@ end
     ctl::C = Subsampled(Controller(), 2)
 end
 
-Systems.f_ode!(::System{<:C172RPAv3.Computing}, ::System{<:C172RPA.Vehicle}) = nothing
+Systems.f_ode!(::System{<:C172Xv3.Computing}, ::System{<:C172X.Vehicle}) = nothing
 
-function AircraftBase.assign!(components::System{<:C172RPA.Components},
-                          computing::System{<:C172RPAv3.Computing})
+function AircraftBase.assign!(components::System{<:C172X.Components},
+                          computing::System{<:C172Xv3.Computing})
     AircraftBase.assign!(components, computing.ctl)
 end
 
-function Systems.init!(computing::System{<:C172RPAv3.Computing},
-                            vehicle::System{<:C172RPA.Vehicle})
+function Systems.init!(computing::System{<:C172Xv3.Computing},
+                            vehicle::System{<:C172X.Vehicle})
 
     @unpack ctl, nav = computing
 
@@ -63,8 +63,8 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw!(computing::System{<:C172RPAv3.Computing},
-                    vehicle::System{<:C172RPA.Vehicle},
+function GUI.draw!(computing::System{<:C172Xv3.Computing},
+                    vehicle::System{<:C172X.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172Xv3 Computing")
 
@@ -90,13 +90,13 @@ end
     cmp::C = Computing()
 end
 
-function AircraftBase.assign!(components::System{<:C172RPA.Components},
-                          avionics::System{<:C172RPAv3.Avionics})
+function AircraftBase.assign!(components::System{<:C172X.Components},
+                          avionics::System{<:C172Xv3.Avionics})
     AircraftBase.assign!(components, avionics.cmp)
 end
 
-function Systems.init!(avionics::System{<:C172RPAv3.Avionics},
-                            vehicle::System{<:C172RPA.Vehicle})
+function Systems.init!(avionics::System{<:C172Xv3.Avionics},
+                            vehicle::System{<:C172X.Vehicle})
 
     Systems.init!(avionics.sen, vehicle)
     Systems.init!(avionics.cmp, vehicle)
@@ -108,8 +108,8 @@ end
 
 ################################## GUI #########################################
 
-function GUI.draw!(avionics::System{<:C172RPAv3.Avionics},
-                    vehicle::System{<:C172RPA.Vehicle},
+function GUI.draw!(avionics::System{<:C172Xv3.Avionics},
+                    vehicle::System{<:C172X.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172Xv3 Avionics")
 
@@ -128,20 +128,20 @@ end
 
 
 ################################################################################
-############################# Cessna172RPAv3 ###################################
+############################# Cessna172Xv3 ###################################
 
-const Cessna172RPAv3{K, T, A} = C172RPA.Aircraft{K, T, A} where {
-    K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: C172RPAv3.Avionics}
+const Cessna172Xv3{K, T, A} = C172X.Aircraft{K, T, A} where {
+    K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: C172Xv3.Avionics}
 
-function Cessna172RPAv3(kinematics = WA(), terrain = HorizontalTerrain())
-    C172RPA.Aircraft(kinematics, terrain, C172RPAv3.Avionics())
+function Cessna172Xv3(kinematics = WA(), terrain = HorizontalTerrain())
+    C172X.Aircraft(kinematics, terrain, C172Xv3.Avionics())
 end
 
 
 ################################################################################
 ############################ Joystick Mappings #################################
 
-function Systems.assign_input!(sys::System{<:Cessna172RPAv3},
+function Systems.assign_input!(sys::System{<:Cessna172Xv3},
                                 data::JoystickData,
                                 mapping::IOMapping)
     Systems.assign_input!(sys.avionics.cmp.ctl, data, mapping)

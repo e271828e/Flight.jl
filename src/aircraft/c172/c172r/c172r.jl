@@ -10,7 +10,7 @@ using Flight.FlightLib
 
 using ..C172
 
-export Cessna172R, Cessna172R0
+export Cessna172R, Cessna172Rv0
 
 ################################################################################
 ################################ Powerplant ####################################
@@ -55,18 +55,18 @@ function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
 end
 
 ################################################################################
-############################## Cessna172R0 #####################################
+############################## Cessna172Rv0 #####################################
 
-const Cessna172R0{K, T} = Cessna172R{K, T, NoAvionics} where { K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Cessna172Rv0{K, T} = Cessna172R{K, T, NoAvionics} where { K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
-function Cessna172R0(kinematics = WA(), terrain = HorizontalTerrain())
+function Cessna172Rv0(kinematics = WA(), terrain = HorizontalTerrain())
     AircraftBase.Aircraft(Vehicle(kinematics, terrain), NoAvionics())
 end
 
 ############################ Joystick Mappings #################################
 
 #with no Avionics, input assignments must go directly to the actuation system
-function Systems.assign_input!(sys::System{<:Cessna172R0},
+function Systems.assign_input!(sys::System{<:Cessna172Rv0},
                                 data::JoystickData,
                                 mapping::IOMapping)
     Systems.assign_input!(sys.vehicle.components.act, data, mapping)
