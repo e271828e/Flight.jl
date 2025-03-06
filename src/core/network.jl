@@ -8,7 +8,7 @@ using JSON3
 using ..IODevices
 
 export UDPOutput, UDPInput
-export XP12Client, XP12Pose
+export XPlaneOutput, XPlanePose
 
 #UDPInput and UDPOutput both use the EOT character as a shutdown request. This
 #provides a means to prevent the UDPInput thread from getting stuck in the
@@ -76,12 +76,17 @@ function IODevices.handle_data!(device::UDPOutput, data::String)
     !isempty(data) && send(socket, address, port, data)
 end
 
+function IODevices.handle_data!(device::UDPOutput, data::NTuple{N, String}) where N
+    foreach(data) do msg
+        IODevices.handle_data!(device, msg)
+    end
+end
+
 
 ################################################################################
-################################# XP12Client ###################################
+################################# XPlaneOutput ###################################
 
-@kwdef struct XP12Pose
-    aircraft::Int32 = 0 #aircraft number
+@kwdef struct XPlanePose
     ϕ::Float64 = 47.80433 #degrees
     λ::Float64 = 12.997 #degrees
     h::Float64 = 429.0 #meters
@@ -90,82 +95,77 @@ end
     φ::Float32 = -0.5 #degrees
 end
 
-struct XP12Client{U <: UDPOutput} <: OutputDevice
+struct XPlaneOutput{U <: UDPOutput} <: OutputDevice
     udp::U
-    function XP12Client(udp::U) where {U <: UDPOutput}
+    function XPlaneOutput(udp::U) where {U <: UDPOutput}
         new{U}(udp)
     end
 end
 
-function XP12Client(; address = IPv4("127.0.0.1"), port = 49000, kwargs...)
-    XP12Client(UDPOutput(; address, port, kwargs...))
+function XPlaneOutput(; address = IPv4("127.0.0.1"), port = 49000, kwargs...)
+    XPlaneOutput(UDPOutput(; address, port, kwargs...))
 end
 
-function IODevices.init!(xpc::XP12Client)
+function IODevices.init!(xpc::XPlaneOutput)
+
+    override_pose = "sim/operation/override/override_planepath[0]"
+    override_surf = "sim/operation/override/override_control_surfaces[0]"
+    override_prop = "sim/flightmodel2/engines/prop_disc/override[0]"
+    override_nws = "sim/operation/override/override_wheel_steer[0]"
+
     IODevices.init!(xpc.udp)
-    #disable pose updates for aircraft 0
-    IODevices.handle_data!(xpc.udp, msg_set_dref(
-        "sim/operation/override/override_planepath[0]", 1))
-    #override control surface positions (not only visuals!)
-    IODevices.handle_data!(xpc.udp, msg_set_dref(
-        "sim/operation/override/override_control_surfaces", 1))
+    msg_tuple = (
+        Network.xpmsg_set_dref(override_pose, 1),
+        Network.xpmsg_set_dref(override_surf, 1),
+        Network.xpmsg_set_dref(override_prop, 1),
+        Network.xpmsg_set_dref(override_nws, 1),
+    )
+    IODevices.handle_data!(xpc.udp, msg_tuple)
 end
 
-IODevices.shutdown!(xpc::XP12Client) = IODevices.shutdown!(xpc.udp)
+IODevices.shutdown!(xpc::XPlaneOutput) = IODevices.shutdown!(xpc.udp)
 
-function IODevices.handle_data!(xpc::XP12Client, data::String)
-    #give X-Plane some breating room (limit the update rate to 100Hz)
-    sleep(0.01)
+function IODevices.handle_data!(xpc::XPlaneOutput, data::Union{String, NTuple{N, String}}) where N
+    sleep(0.01) #give X-Plane some breathing room
     IODevices.handle_data!(xpc.udp, data)
-    # IODevices.handle_data!(xpc.udp, msg_set_dref(
-    #     "sim/flightmodel2/wing/rudder1_deg[10]", 30))
 end
 
-############################ XPC Command Messages ##############################
+############################### XPlane Messages ################################
 
-#construct the UDP message to write a scalar or vector value to an arbitrary DREF
-function msg_set_dref(dref_id::AbstractString, value::Real)
-# function msg_set_dref()
+#note: length(s::String) returns the number of characters in s, not its actual
+#length in bytes, which can be found as length(codeunits(s)) or
+#length(Vector{UInt8}(s)). these are equal only if s is pure ASCII
 
-    #ascii() ensures ASCII data, codeunits returns a CodeUnits object, which
-    #behaves similarly to a byte array. this is equivalent to b"text".
-    #casting to Vector{UInt8} would also work
+function xpmsg_cmd(cmd_id::AbstractString)
 
-    #length(dref_id) returns the number of characters in dref_id, not its actual
-    #length in bytes. both of these are equal only if dref_id is pure ASCII. to
-    #pad the message, we need the actual length in bytes. therefore, we either
-    #do ascii(dref_id) (which ensures only ascii characters are present)
-    #or accept non-ascii characters and use length(dref_id |> codeunits)
-    # dref_id = "sim/operation/override/override_planepath"
-    # value = 1
+    buffer = IOBuffer()
+    write(buffer,
+        b"CMND\0",
+        ascii(cmd_id) * "\0", #zero-terminated pure ASCII string
+        zeros(UInt8, 499-length(cmd_id))) #pad the message to 509 bytes
+
+    return String(take!(buffer))
+end
+
+#construct the UDP message to write a scalar value to an arbitrary DREF
+function xpmsg_set_dref(dref_id::AbstractString, value::Real)
 
     buffer = IOBuffer()
     write(buffer,
         b"DREF\0",
         Float32(value),
-        ascii(dref_id) * "\0", #zero-terminated dref id pure ASCII string
+        ascii(dref_id) * "\0", #zero-terminated pure ASCII string
         zeros(UInt8, 499-length(dref_id)) #pad the message to 509 bytes
         )
 
     return String(take!(buffer))
 end
 
-function msg_cmd(cmd_id::AbstractString)
-
-    buffer = IOBuffer()
-    write(buffer,
-        b"CMND\0",
-        ascii(cmd_id) * "\0", #zero-terminated command id pure ASCII string
-        zeros(UInt8, 499-length(cmd_id))) #pad the message to 509 bytes
-
-    return String(take!(buffer))
-end
-
 #construct the UDP message to set aircraft position and attitude
-# function set_xp12pos_msg(pos::XPCPosition)
-function msg_set_pose(pose::XP12Pose)
+function xpmsg_set_pose(pose::XPlanePose)
 
-    @unpack aircraft, ϕ, λ, h, ψ, θ, φ = pose
+    @unpack ϕ, λ, h, ψ, θ, φ = pose
+    aircraft = Int32(0) #aircraft index, we only support one for now
 
     buffer = IOBuffer()
     write(buffer, b"VEHS\0", aircraft, ϕ, λ, h, ψ, θ, φ)

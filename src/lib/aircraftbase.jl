@@ -154,10 +154,10 @@ end
 
 Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.y.vehicle.kinematics)
 
-################################# XP12Client ###################################
+################################# XPlaneOutput ###################################
 
-function Systems.extract_output(ac::System{<:Aircraft}, ::XP12Client, ::IOMapping)
-    return Network.msg_set_pose(XP12Pose(KinData(ac))) #UDP message
+function Systems.extract_output(ac::System{<:Aircraft}, ::XPlaneOutput, ::IOMapping)
+    return Network.xpmsg_set_pose(XPlanePose(KinData(ac))) #UDP message
 end
 
 ################################### Trimming ###################################

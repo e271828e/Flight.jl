@@ -154,8 +154,8 @@ end
 
 ################################ XPC Loopback ##################################
 
-function Systems.extract_output(::System{TestSystem}, ::XP12Client, ::IOMapping)
-    data = KinData() |> XP12Pose |> Network.msg_set_pose
+function Systems.extract_output(::System{TestSystem}, ::XPlaneOutput, ::IOMapping)
+    data = KinData() |> XPlanePose |> Network.xpmsg_set_pose
     return data
 end
 
@@ -167,11 +167,11 @@ function xpc_loopback()
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
-        Sim.attach!(sim, XP12Client(; port))
+        Sim.attach!(sim, XPlaneOutput(; port))
         Sim.run!(sim)
 
-        cmd = KinData() |> XP12Pose |> Network.msg_set_pose
-        #extract_output returns an XP12Pose instance, from which extract_output
+        cmd = KinData() |> XPlanePose |> Network.xpmsg_set_pose
+        #extract_output returns an XPlanePose instance, from which extract_output
         #constructs a pose command message, which is sent through UDP by
         #handle_data! and finally reaches assign_input! via loopback. the first
         #character is converted to Float64 and assigned to sys.u.input, and it

@@ -363,10 +363,14 @@ end
 end
 
 @kwdef struct AeroY
-    e::Float64 = 0.0 #normalized elevator control input
-    a::Float64 = 0.0 #normalized aileron control input
-    r::Float64 = 0.0 #normalized rudder control input
-    f::Float64 = 0.0 #normalized flap control input
+    e::Float64 = 0.0 #normalized elevator deflection
+    a::Float64 = 0.0 #normalized aileron deflection
+    r::Float64 = 0.0 #normalized rudder deflection
+    f::Float64 = 0.0 #normalized flap deflection
+    δe::Float64 = 0.0 #elevator deflection (rad)
+    δa::Float64 = 0.0 #aileron deflection (rad)
+    δr::Float64 = 0.0 #rudder deflection (rad)
+    δf::Float64 = 0.0 #flap deflection (rad)
     α::Float64 = 0.0 #clamped AoA, aerodynamic axes
     β::Float64 = 0.0 #clamped AoS, aerodynamic axes
     α_filt::Float64 = 0.0 #filtered AoA
@@ -447,8 +451,9 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     ẋ.α_filt = α_filt_dot
     ẋ.β_filt = β_filt_dot
 
-    sys.y = AeroY(; α, α_filt, α_filt_dot, β, β_filt, β_filt_dot,
-        e, a, r, f, stall, coeffs, wr_b)
+    sys.y = AeroY(; e, a, r, f, δe, δa, δr, δf,
+                    α, α_filt, α_filt_dot, β, β_filt, β_filt_dot,
+                    stall, coeffs, wr_b)
 
     return nothing
 
