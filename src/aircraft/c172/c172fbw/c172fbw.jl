@@ -8,31 +8,6 @@ using Flight.FlightLib
 
 using ..C172
 
-################################################################################
-################################ Powerplant ####################################
-
-function PowerPlant()
-
-    #cache propeller lookup data to speed up aircraft instantiation. WARNING: if
-    #the propeller definition or the lookup data generation methods in the
-    #Propellers module are modified, the cache file must be regenerated
-    # cache_file = joinpath(@__DIR__, "prop.h5")
-    # if !isfile(cache_file)
-    #     prop_data = Propellers.Lookup(Propellers.Blade(), 2)
-    #     Propellers.save_lookup(prop_data, cache_file)
-    # end
-    # prop_data = Propellers.load_lookup(cache_file)
-
-    #always generate the lookup data from scratch
-    prop_data = Propellers.Lookup(Propellers.Blade(), 2)
-
-    propeller = Propeller(prop_data;
-        sense = Propellers.CW, d = 2.0, J_xx = 0.3,
-        t_bp = FrameTransform(r = [2.055, 0, 0.833]))
-
-    PistonThruster(; propeller)
-
-end
 
 ################################################################################
 ################################## Actuator2 ###################################
@@ -262,21 +237,21 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Components = C172.Components{typeof(PowerPlant()), C172FBW.Actuation}
+const Components = C172.Components{typeof(C172R.PowerPlant()), C172FBW.Actuation}
 const Vehicle{K, T} = AircraftBase.Vehicle{C172FBW.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 const Aircraft{K, T, A} = AircraftBase.Aircraft{C172FBW.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 
-function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
+function C172FBW.Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
     AircraftBase.Vehicle(
-        C172.Components(PowerPlant(), Actuation()),
+        C172.Components(C172R.PowerPlant(), C172FBW.Actuation()),
         kinematics,
         VehicleDynamics(),
         terrain,
         LocalAtmosphere())
 end
 
-function Aircraft(kinematics = WA(), terrain = HorizontalTerrain(), avionics = NoAvionics())
-    AircraftBase.Aircraft(Vehicle(kinematics, terrain), avionics)
+function C172FBW.Aircraft(kinematics = WA(), terrain = HorizontalTerrain(), avionics = NoAvionics())
+    AircraftBase.Aircraft(C172FBW.Vehicle(kinematics, terrain), avionics)
 end
 
 ############################### Trimming #######################################

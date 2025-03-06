@@ -14,6 +14,18 @@ using ..C172
 ################################################################################
 ################################ Powerplant ####################################
 
+#should precompute and cache propeller lookup data to speed up aircraft
+#instantiation. WARNING: if the propeller definition or the lookup data
+#generation methods in the Propellers module are modified, the cache file must
+#be regenerated
+
+# cache_file = joinpath(@__DIR__, "prop.h5")
+# if !isfile(cache_file)
+#     prop_data = Propellers.Lookup(Propellers.Blade(), 2)
+#     Propellers.save_lookup(prop_data, cache_file)
+# end
+# prop_data = Propellers.load_lookup(cache_file)
+
 function PowerPlant()
 
     prop_data = Propellers.Lookup(Propellers.Blade(), 2)
@@ -258,21 +270,21 @@ end
 ################################################################################
 ################################# Template #####################################
 
-const Components = C172.Components{typeof(PowerPlant()), Actuation}
-const Vehicle{K, T} = AircraftBase.Vehicle{Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-const Aircraft{K, T, A} = AircraftBase.Aircraft{Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
+const Components = C172.Components{typeof(C172R.PowerPlant()), C172R.Actuation}
+const Vehicle{K, T} = AircraftBase.Vehicle{C172R.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Aircraft{K, T, A} = AircraftBase.Aircraft{C172R.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 
-function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
+function C172R.Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
     AircraftBase.Vehicle(
-        C172.Components(PowerPlant(), Actuation()),
+        C172.Components(C172R.PowerPlant(), C172R.Actuation()),
         kinematics,
         VehicleDynamics(),
         terrain,
         LocalAtmosphere())
 end
 
-function Aircraft(kinematics = WA(), terrain = HorizontalTerrain(), avionics = NoAvionics())
-    AircraftBase.Aircraft(Vehicle(kinematics, terrain), avionics)
+function C172R.Aircraft(kinematics = WA(), terrain = HorizontalTerrain(), avionics = NoAvionics())
+    AircraftBase.Aircraft(C172R.Vehicle(kinematics, terrain), avionics)
 end
 
 
