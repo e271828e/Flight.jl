@@ -975,7 +975,7 @@ end
 function GUI.draw!(ctl::System{<:Controller},
                     vehicle::System{<:C172RPA.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 RPA Controller")
+                    label::String = "Cessna172X Controller")
 
     @unpack u, y, Δt, subsystems = ctl
     @unpack lon_ctl, lat_ctl, alt_gdc = subsystems

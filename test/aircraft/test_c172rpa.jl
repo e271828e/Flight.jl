@@ -35,7 +35,7 @@ function test_trimming()
         @test success
 
         #test on direct variant
-        ac = System(Cessna172RPA())
+        ac = System(Cessna172RPA0())
         success, _ = Systems.init!(ac, trim_params)
         @test success
 
@@ -47,7 +47,7 @@ function test_linearization()
 
     @testset verbose = true "Linearization" begin
 
-        ss = Cessna172RPA(NED()) |> System |> Control.Continuous.LinearizedSS
+        ss = Cessna172RPA0(NED()) |> System |> Control.Continuous.LinearizedSS
 
     end #testset
 
@@ -63,9 +63,9 @@ function test_system_methods()
             trn_data = TerrainData(trn, loc)
             kin_init = KinInit( h = trn_data.altitude + 1.8);
 
-            ac_WA = System(Cessna172RPA(WA(), trn));
-            ac_ECEF = System(Cessna172RPA(ECEF(), trn));
-            ac_NED = System(Cessna172RPA(NED(), trn));
+            ac_WA = System(Cessna172RPA0(WA(), trn));
+            ac_ECEF = System(Cessna172RPA0(ECEF(), trn));
+            ac_NED = System(Cessna172RPA0(NED(), trn));
 
             Systems.init!(ac_WA, kin_init)
             Systems.init!(ac_ECEF, kin_init)
@@ -98,7 +98,7 @@ function test_sim(; save::Bool = true)
 
     @testset verbose = true "Simulation" begin
 
-        ac = Cessna172RPA() |> System;
+        ac = Cessna172RPA0() |> System;
 
         mid_cg_pld = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50)
 
@@ -156,7 +156,7 @@ function test_sim_interactive(; save::Bool = true)
     #     Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
     trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172RPA(WA(), trn) |> System;
+    ac = Cessna172RPA0(WA(), trn) |> System;
 
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
 
@@ -174,8 +174,8 @@ function test_sim_interactive(; save::Bool = true)
 
     kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
     air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "air"))
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa1", "sim_interactive", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa1", "sim_interactive", "air"))
 
     return nothing
 

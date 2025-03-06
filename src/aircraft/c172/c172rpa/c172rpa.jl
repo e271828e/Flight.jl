@@ -8,31 +8,7 @@ using Flight.FlightLib
 
 using ..C172
 
-################################################################################
-################################ Powerplant ####################################
-
-# function PowerPlant()
-
-#     #cache propeller lookup data to speed up aircraft instantiation. WARNING: if
-#     #the propeller definition or the lookup data generation methods in the
-#     #Propellers module are modified, the cache file must be regenerated
-#     # cache_file = joinpath(@__DIR__, "prop.h5")
-#     # if !isfile(cache_file)
-#     #     prop_data = Propellers.Lookup(Propellers.Blade(), 2)
-#     #     Propellers.save_lookup(prop_data, cache_file)
-#     # end
-#     # prop_data = Propellers.load_lookup(cache_file)
-
-#     #always generate the lookup data from scratch
-#     prop_data = Propellers.Lookup(Propellers.Blade(), 2)
-
-#     propeller = Propeller(prop_data;
-#         sense = Propellers.CW, d = 2.0, J_xx = 0.3,
-#         t_bp = FrameTransform(r = [2.055, 0, 0.833]))
-
-#     PistonThruster(; propeller)
-
-# end
+export Cessna172RPA, Cessna172RPA0
 
 ################################################################################
 ################################## Actuator1 ###################################
@@ -73,11 +49,61 @@ function Systems.f_ode!(sys::System{Actuator1{R}}) where {R}
 
 end
 
+################################################################################
+################################## Actuator2 ###################################
+
+#second order linear actuator model
+
+#with an underdamped actuator, the position state can still transiently exceed
+#the intended range due to overshoot. the true actuator position should
+#therefore be clamped. in the real world, this behaviour could correspond to a
+#clutched output actuator, where the output position saturates beyond a given
+#opposing torque (for example, if the surface's mechanical limits are hit)
+
+#saturate on command, not on position, which only tends asymptotically to cmd!
+
+struct Actuator2{R} <: SystemDefinition #second order linear actuator model
+    ω_n::Float64 #natural frequency (default: 10 Hz)
+    ζ::Float64 #damping ratio (default: underdamped with minimal resonance)
+    function Actuator2(; ω_n::Real = 5*2π, ζ::Real = 0.6,
+                        range::Tuple{Real, Real} = (-1.0, 1.0))
+        new{Ranged{Float64, range[1], range[2]}}(ω_n, ζ)
+    end
+end
+
+@kwdef struct Actuator2Y{R}
+    cmd::R = R(0.0)
+    pos::R = R(0.0)
+    vel::Float64 = 0.0
+    sat::Int64 = 0
+end
+
+Systems.X(::Actuator2) = ComponentVector(v = 0.0, p = 0.0)
+Systems.U(::Actuator2{R}) where {R} = Ref(R(0.0))
+Systems.Y(::Actuator2{R}) where {R} = Actuator2Y{R}()
+
+function Systems.f_ode!(sys::System{Actuator2{R}}) where {R}
+
+    @unpack ẋ, x, u, constants = sys
+    @unpack ω_n, ζ = constants
+
+    cmd = u[]
+    pos = R(x.p)
+    vel = x.v
+    sat = saturation(cmd)
+
+    ẋ.v = ω_n^2 * (Float64(cmd) - x.p) - 2ζ*ω_n*x.v
+    ẋ.p = x.v
+
+    sys.y = Actuator2Y(; cmd, pos, vel, sat)
+
+end
+
 
 ################################################################################
-#################################### Actuation #################################
+############################# FlyByWireActuation ###############################
 
-@kwdef struct Actuation <: C172.Actuation
+@kwdef struct FlyByWireActuation <: C172.AbstractActuation
     throttle::Actuator1 = Actuator1(range = (0.0, 1.0))
     mixture::Actuator1 = Actuator1(range = (0.0, 1.0))
     aileron::Actuator1 = Actuator1(range = (-1.0, 1.0))
@@ -92,7 +118,7 @@ end
 function C172.assign!(aero::System{<:C172.Aero},
                     ldg::System{<:C172.Ldg},
                     pwp::System{<:PistonThruster},
-                    act::System{<:Actuation})
+                    act::System{<:FlyByWireActuation})
 
     @unpack throttle, mixture, aileron, elevator, rudder, flaps, steering,
             brake_left, brake_right = act.y
@@ -112,8 +138,8 @@ end
 
 ################################### GUI ########################################
 
-function GUI.draw(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 RPA Actuation")
+function GUI.draw(sys::System{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true),
+                    label::String = "Cessna 172 Fly-By-Wire Actuation")
 
     CImGui.Begin(label, p_open)
     CImGui.PushItemWidth(-60)
@@ -161,7 +187,7 @@ function GUI.draw(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
 
 end
 
-function GUI.draw!(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw!(sys::System{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172 Fly-By-Wire Actuation")
 
     CImGui.Begin(label, p_open)
@@ -220,7 +246,7 @@ roll_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function Systems.assign_input!(sys::System{<:Actuation},
+function Systems.assign_input!(sys::System{<:FlyByWireActuation},
                            joystick::XBoxController,
                            ::IOMapping)
 
@@ -242,7 +268,7 @@ function Systems.assign_input!(sys::System{<:Actuation},
     throttle.u[] -= 0.1 * was_released(joystick, :button_A)
 end
 
-function Systems.assign_input!(sys::System{<:Actuation},
+function Systems.assign_input!(sys::System{<:FlyByWireActuation},
                            joystick::T16000M,
                            ::IOMapping)
 
@@ -267,22 +293,36 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Components = C172.Components{typeof(C172R.PowerPlant()), C172RPA.Actuation}
+#reuse C172R power plant, replace actuation system
+const Components = C172.Components{typeof(C172R.PowerPlant()), FlyByWireActuation}
 const Vehicle{K, T} = AircraftBase.Vehicle{C172RPA.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 const Aircraft{K, T, A} = AircraftBase.Aircraft{C172RPA.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
+const Cessna172RPA{K, T, A} = C172RPA.Aircraft{K, T, A}
 
-function C172RPA.Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
+function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
     AircraftBase.Vehicle(
-        C172.Components(C172R.PowerPlant(), C172RPA.Actuation()),
-        kinematics,
-        VehicleDynamics(),
-        terrain,
-        LocalAtmosphere())
+        C172.Components(C172R.PowerPlant(), FlyByWireActuation()),
+        kinematics, VehicleDynamics(), terrain, LocalAtmosphere())
 end
 
-function C172RPA.Aircraft(kinematics = WA(), terrain = HorizontalTerrain(), avionics = NoAvionics())
-    AircraftBase.Aircraft(C172RPA.Vehicle(kinematics, terrain), avionics)
+################################################################################
+################################# Cessna172RPA0 ################################
+
+const Cessna172RPA0{K, T} = Cessna172RPA{K, T, NoAvionics} where { K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+
+function Cessna172RPA0(kinematics = WA(), terrain = HorizontalTerrain())
+    AircraftBase.Aircraft(Vehicle(kinematics, terrain), NoAvionics())
 end
+
+############################ Joystick Mappings #################################
+
+#map input assignments directly to the actuation system
+function Systems.assign_input!(sys::System{<:Cessna172RPA0},
+                                joystick::JoystickData,
+                                mapping::IOMapping)
+    Systems.assign_input!(sys.vehicle.components.act, joystick, mapping)
+end
+
 
 ############################### Trimming #######################################
 ################################################################################
@@ -557,27 +597,6 @@ function Control.Continuous.LinearizedSS(
 
 end
 
-################################################################################
-############################### Cessna172RPABase ###############################
-
-export Cessna172RPA
-
-#Cessna172RPA Vehicle with NoAvionics
-const Cessna172RPA{K, T} = C172RPA.Aircraft{K, T, NoAvionics} where {
-    K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-
-function Cessna172RPA(kinematics = WA(), terrain = HorizontalTerrain())
-    C172RPA.Aircraft(kinematics, terrain, NoAvionics())
-end
-
-############################ Joystick Mappings #################################
-
-#map input assignments directly to the actuation system
-function Systems.assign_input!(sys::System{<:Cessna172RPA},
-                                joystick::JoystickData,
-                                mapping::IOMapping)
-    Systems.assign_input!(sys.vehicle.components.act, joystick, mapping)
-end
 
 ################################################################################
 ################################## Variants ####################################
@@ -585,7 +604,7 @@ end
 include(normpath("control/c172rpa_ctl.jl"))
 include(normpath("navigation/c172rpa_nav.jl"))
 
-include(normpath("c172rpa_v1.jl")); @reexport using .C172RPAv1
-include(normpath("c172rpa_v2.jl")); @reexport using .C172RPAv2
+include(normpath("c172rpa1.jl")); @reexport using .C172RPA1
+include(normpath("c172rpa2.jl")); @reexport using .C172RPA2
 
 end

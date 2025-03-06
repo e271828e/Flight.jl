@@ -66,7 +66,7 @@ end
 function GUI.draw!(computing::System{<:C172RPAv3.Computing},
                     vehicle::System{<:C172RPA.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 RPAv3 Computing")
+                    label::String = "Cessna 172Xv3 Computing")
 
     CImGui.Begin(label, p_open)
 
@@ -111,7 +111,7 @@ end
 function GUI.draw!(avionics::System{<:C172RPAv3.Avionics},
                     vehicle::System{<:C172RPA.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 RPAv3 Avionics")
+                    label::String = "Cessna 172Xv3 Avionics")
 
     CImGui.Begin(label, p_open)
 

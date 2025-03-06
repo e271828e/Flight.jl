@@ -259,8 +259,8 @@ end
 
 function generate_lookup(; n_stall, n_cutoff)
 
-    @assert n_stall < 1
-    @assert n_cutoff > 1
+    @assert n_stall < 0.667
+    @assert n_cutoff > 1.074
 
     #δ for which a given μ is the wide open throttle μ
     δ_wot = let

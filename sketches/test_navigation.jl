@@ -139,7 +139,7 @@ using Test
 
 # No tiene sentido reinventar la rueda para un nav test harness; usar
 # AircraftBase como punto de partida replicando la estructura de avionics de
-# RPAv2 pero con un Levitator como unico component
+# RPA2 pero con un Levitator como unico component
 
 @kwdef struct IMUTestHarness <: SystemDefinition
     imu::IMU = IMU()

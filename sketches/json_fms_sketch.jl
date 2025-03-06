@@ -7,7 +7,7 @@ using Flight
 using Flight.FlightCore.Sim
 using Flight.FlightCore.IODevices
 using Flight.FlightCore.Network
-using Flight.FlightAircraft.C172RPAv1
+using Flight.FlightAircraft.C172RPA1
 
 export json_fms_sketch
 
@@ -34,7 +34,7 @@ end
 
 #ControllerU is declared as StructTypes.Mutable() in C172RPA.C172RPAControl, so
 #JSON3 can automatically read a JSON string into one or more of its fields
-function assign_callback!(sys::System{<:Cessna172RPAv1}, data::String, ::IOMapping)
+function assign_callback!(sys::System{<:Cessna172RPA1}, data::String, ::IOMapping)
     length(data) > 2 && JSON3.read!(data, sys.avionics.ctl.u)
 end
 
@@ -43,7 +43,7 @@ function json_fms_sketch(; save::Bool = true)
     h_trn = HOrth(601.55);
 
     trn = HorizontalTerrain(altitude = h_trn)
-    sys = Cessna172RPAv1(WA(), trn) |> System;
+    sys = Cessna172RPA1(WA(), trn) |> System;
     sim = Simulation(sys; dt = 1/60, Δt = 1/60, t_end = 3600)
 
     #on ground
@@ -76,8 +76,8 @@ function json_fms_sketch(; save::Bool = true)
 
     kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
     air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa_v1", "sim_interactive", "air"))
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172rpa1", "sim_interactive", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172rpa1", "sim_interactive", "air"))
 
     return nothing
 

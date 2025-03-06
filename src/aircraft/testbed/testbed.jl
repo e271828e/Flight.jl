@@ -266,7 +266,6 @@ end
 ############################### C172 Variants ##################################
 
 include(normpath("c172r/c172r.jl")); @reexport using .C172R
-include(normpath("c172fbw/c172fbw.jl")); @reexport using .C172FBW
 include(normpath("c172rpa/c172rpa.jl")); @reexport using .C172RPA
 
 end

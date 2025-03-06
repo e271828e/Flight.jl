@@ -10,14 +10,15 @@ using Flight.FlightLib
 
 using ..C172
 
+export Cessna172R, Cessna172R0
 
 ################################################################################
 ################################ Powerplant ####################################
 
 #should precompute and cache propeller lookup data to speed up aircraft
-#instantiation. WARNING: if the propeller definition or the lookup data
-#generation methods in the Propellers module are modified, the cache file must
-#be regenerated
+#instantiation. if the propeller definition or the lookup data generation
+#methods in the Propellers module are modified, the cache file must be
+#regenerated
 
 # cache_file = joinpath(@__DIR__, "prop.h5")
 # if !isfile(cache_file)
@@ -38,255 +39,38 @@ function PowerPlant()
 
 end
 
-################################################################################
-############################# Actuation ##################################
-
-#pitch up -> Cm↑ -> trailing edge up -> δe↓ -> aero.e↓
-### in order for a positive elevator actuation input (stick back) to
-#produce a positive pitching moment, we need an inversion from elevator
-#actuation input to actual elevator deflection (aero.e = -act.elevator). then we
-#get: act.elevator↑ -> aero.e↓ -> pitch up
-
-#roll right -> Cl↑ -> left trailing edge down, right up -> δa↑ -> aero.a↑ ->
-#act.aileron↑ ### no act-aero inversion
-
-#yaw right -> Cn↑ -> rudder trailing edge right -> δr↓ -> aero.r↓
-### in order for a positive rudder actuation input (right pedal forward) to
-#produce a positive yawing moment, we need an inversion from rudder actuation
-#input to actual rudder deflection (aero.r = -act.rudder). then we get:
-#act.rudder↑ -> aero.r↓ -> yaw right
-
-#yaw right -> nose wheel steering right -> act.rudder↑ (right pedal forward) ### no
-#act-nws inversion
-
-#more lift -> CL↑ -> flap trailing edge down -> δf↑ -> aero.f↑ -> act.flaps↑ ### no
-#act-aero inversion
-
-#Reversible actuation system
-
-struct Actuation <: C172.Actuation end
-
-@kwdef mutable struct ActuationU
-    eng_start::Bool = false
-    eng_stop::Bool = false
-    throttle::Ranged{Float64, 0., 1.} = 0.0
-    mixture::Ranged{Float64, 0., 1.} = 0.5
-    aileron::Ranged{Float64, -1., 1.} = 0.0
-    elevator::Ranged{Float64, -1., 1.} = 0.0
-    rudder::Ranged{Float64, -1., 1.} = 0.0
-    aileron_offset::Ranged{Float64, -1., 1.} = 0.0
-    elevator_offset::Ranged{Float64, -1., 1.} = 0.0
-    rudder_offset::Ranged{Float64, -1., 1.} = 0.0
-    flaps::Ranged{Float64, 0., 1.} = 0.0
-    brake_left::Ranged{Float64, 0., 1.} = 0.0
-    brake_right::Ranged{Float64, 0., 1.} = 0.0
-end
-
-@kwdef struct ActuationY
-    eng_start::Bool = false
-    eng_stop::Bool = false
-    throttle::Float64 = 0.0
-    mixture::Float64 = 0.5
-    aileron::Float64 = 0.0
-    elevator::Float64 = 0.0
-    rudder::Float64 = 0.0
-    aileron_offset::Float64 = 0.0
-    elevator_offset::Float64 = 0.0
-    rudder_offset::Float64 = 0.0
-    flaps::Float64 = 0.0
-    brake_left::Float64 = 0.0
-    brake_right::Float64 = 0.0
-end
-
-Systems.U(::Actuation) = ActuationU()
-Systems.Y(::Actuation) = ActuationY()
-
-function Systems.f_ode!(act::System{Actuation})
-
-    @unpack eng_start, eng_stop,
-            throttle, mixture, aileron, elevator, rudder,
-            aileron_offset, elevator_offset, rudder_offset,
-            flaps, brake_left, brake_right= act.u
-
-    act.y = ActuationY(; eng_start, eng_stop,
-            throttle, mixture, aileron, elevator, rudder,
-            aileron_offset, elevator_offset, rudder_offset,
-            flaps, brake_left, brake_right)
-
-end
-
-function C172.assign!(aero::System{<:C172.Aero},
-                ldg::System{<:C172.Ldg},
-                pwp::System{<:PistonThruster},
-                act::System{<:Actuation})
-
-    @unpack eng_start, eng_stop,
-            throttle, mixture, aileron, elevator, rudder,
-            aileron_offset, elevator_offset, rudder_offset,
-            brake_left, brake_right, flaps = act.y
-
-    pwp.engine.u.start = eng_start
-    pwp.engine.u.stop = eng_stop
-    pwp.engine.u.throttle = throttle
-    pwp.engine.u.mixture = mixture
-    ldg.nose.steering.u.input = (rudder_offset + rudder)
-    ldg.left.braking.u[] = brake_left
-    ldg.right.braking.u[] = brake_right
-    aero.u.e = -(elevator_offset + elevator)
-    aero.u.a = (aileron_offset + aileron)
-    aero.u.r = -(rudder_offset + rudder)
-    aero.u.f = flaps
-
-    return nothing
-end
-
-
-function GUI.draw(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
-                label::String = "Cessna 172R Actuation")
-
-    y = sys.y
-
-    CImGui.Begin(label, p_open)
-
-    CImGui.PushItemWidth(-60)
-
-    CImGui.Text("Engine Start: $(y.eng_start)")
-    CImGui.Text("Engine Stop: $(y.eng_stop)")
-
-    # @running_plot("Throttle", y.throttle, 0, 1, 0.0, 120)
-    display_bar("Throttle", y.throttle, 0, 1)
-    # @running_plot("Aileron", y.aileron, -1, 1, 0.0, 120)
-    display_bar("Aileron", y.aileron, -1, 1)
-    # @running_plot("Elevator", y.elevator, -1, 1, 0.0, 120)
-    display_bar("Elevator", y.elevator, -1, 1)
-    # @running_plot("Rudder", y.rudder, -1, 1, 0.0, 120)
-    display_bar("Rudder", y.rudder, -1, 1)
-
-    display_bar("Aileron Offset", y.aileron_offset, -1, 1)
-    display_bar("Elevator Offset", y.elevator_offset, -1, 1)
-    display_bar("Rudder Offset", y.rudder_offset, -1, 1)
-    display_bar("Flaps", y.flaps, 0, 1)
-    display_bar("Mixture", y.mixture, 0, 1)
-    display_bar("Left Brake", y.brake_left, 0, 1)
-    display_bar("Right Brake", y.brake_right, 0, 1)
-
-    CImGui.PopItemWidth()
-
-    CImGui.End()
-
-end
-
-function GUI.draw!(sys::System{Actuation}, p_open::Ref{Bool} = Ref(true),
-                label::String = "Cessna 172R Actuation")
-
-    u = sys.u
-
-    CImGui.Begin(label, p_open)
-
-    CImGui.PushItemWidth(-150)
-
-    mode_button("Engine Start", true, u.eng_start, false; HSV_requested = HSV_green); CImGui.SameLine()
-    u.eng_start = CImGui.IsItemActive()
-    mode_button("Engine Stop", true, u.eng_stop, false; HSV_requested = HSV_red); CImGui.SameLine()
-    u.eng_stop = CImGui.IsItemActive()
-
-    u.throttle = safe_slider("Throttle", u.throttle, "%.6f", true)
-    # @running_plot("Throttle", u.throttle, 0, 1, 0.0, 120)
-    u.aileron = safe_slider("Aileron", u.aileron, "%.6f", true)
-    # @running_plot("Aileron", u.aileron, -1, 1, 0.0, 120)
-    u.elevator = safe_slider("Elevator", u.elevator, "%.6f", true)
-    # @running_plot("Elevator", u.elevator, -1, 1, 0.0, 120, true)
-    u.rudder = safe_slider("Rudder", u.rudder, "%.6f", true)
-    # @running_plot("Rudder", u.rudder, -1, 1, 0.0, 120)
-
-    u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.001, 0.1, "%.6f", true)
-    u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.001, 0.1, "%.6f", true)
-    u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.001, 0.1, "%.6f", true)
-    u.flaps = safe_slider("Flaps", u.flaps, "%.6f", true)
-    u.mixture = safe_slider("Mixture", u.mixture, "%.6f", true)
-    u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f", true)
-    u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f", true)
-
-    CImGui.PopItemWidth()
-
-    CImGui.End()
-
-end
-
-################################## Joysticks ###################################
-
-elevator_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
-brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-
-function Systems.assign_input!(sys::System{<:Actuation},
-                           data::XBoxControllerData, ::IOMapping)
-
-    u = sys.u
-
-    u.aileron = get_axis_value(data, :right_stick_x) |> aileron_curve
-    u.elevator = get_axis_value(data, :right_stick_y) |> elevator_curve
-    u.rudder = get_axis_value(data, :left_stick_x) |> rudder_curve
-    u.brake_left = get_axis_value(data, :left_trigger) |> brake_curve
-    u.brake_right = get_axis_value(data, :right_trigger) |> brake_curve
-
-    u.aileron_offset -= 0.01 * was_released(data, :dpad_left)
-    u.aileron_offset += 0.01 * was_released(data, :dpad_right)
-    u.elevator_offset += 0.01 * was_released(data, :dpad_down)
-    u.elevator_offset -= 0.01 * was_released(data, :dpad_up)
-
-    u.flaps += 0.3333 * was_released(data, :right_bumper)
-    u.flaps -= 0.3333 * was_released(data, :left_bumper)
-
-    u.throttle += 0.1 * was_released(data, :button_Y)
-    u.throttle -= 0.1 * was_released(data, :button_A)
-end
-
-function Systems.assign_input!(sys::System{<:Actuation},
-                           data::T16000MData, ::IOMapping)
-
-    u = sys.u
-
-    u.throttle = get_axis_value(data, :throttle)
-    u.aileron = get_axis_value(data, :stick_x) |> aileron_curve
-    u.elevator = get_axis_value(data, :stick_y) |> elevator_curve
-    u.rudder = get_axis_value(data, :stick_z) |> rudder_curve
-
-    u.brake_left = is_pressed(data, :button_1)
-    u.brake_right = is_pressed(data, :button_1)
-
-    u.aileron_offset -= 2e-4 * is_pressed(data, :hat_left)
-    u.aileron_offset += 2e-4 * is_pressed(data, :hat_right)
-    u.elevator_offset += 2e-4 * is_pressed(data, :hat_down)
-    u.elevator_offset -= 2e-4 * is_pressed(data, :hat_up)
-
-    u.flaps += 0.3333 * was_released(data, :button_3)
-    u.flaps -= 0.3333 * was_released(data, :button_2)
-
-end
-
 
 ################################################################################
-################################# Template #####################################
+################################# Templates ####################################
 
-const Components = C172.Components{typeof(C172R.PowerPlant()), C172R.Actuation}
+const Components = C172.Components{typeof(C172R.PowerPlant()), C172.MechanicalActuation}
 const Vehicle{K, T} = AircraftBase.Vehicle{C172R.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 const Aircraft{K, T, A} = AircraftBase.Aircraft{C172R.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
+const Cessna172R{K, T, A} = C172R.Aircraft{K, T, A}
 
-function C172R.Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
+function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
     AircraftBase.Vehicle(
-        C172.Components(C172R.PowerPlant(), C172R.Actuation()),
-        kinematics,
-        VehicleDynamics(),
-        terrain,
-        LocalAtmosphere())
+        C172.Components(C172R.PowerPlant(), C172.MechanicalActuation()),
+        kinematics, VehicleDynamics(), terrain, LocalAtmosphere())
 end
 
-function C172R.Aircraft(kinematics = WA(), terrain = HorizontalTerrain(), avionics = NoAvionics())
-    AircraftBase.Aircraft(C172R.Vehicle(kinematics, terrain), avionics)
+################################################################################
+############################## Cessna172R0 #####################################
+
+const Cessna172R0{K, T} = Cessna172R{K, T, NoAvionics} where { K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+
+function Cessna172R0(kinematics = WA(), terrain = HorizontalTerrain())
+    AircraftBase.Aircraft(Vehicle(kinematics, terrain), NoAvionics())
 end
 
+############################ Joystick Mappings #################################
+
+#with no Avionics, input assignments must go directly to the actuation system
+function Systems.assign_input!(sys::System{<:Cessna172R0},
+                                data::JoystickData,
+                                mapping::IOMapping)
+    Systems.assign_input!(sys.vehicle.components.act, data, mapping)
+end
 
 ############################### Trimming #######################################
 ################################################################################
@@ -525,28 +309,6 @@ function Control.Continuous.LinearizedSS(
 
 end
 
-
-################################################################################
-############################### Cessna172R #################################
-
-export Cessna172R
-
-#Cessna172R baseline, C172R.Vehicle with NoAvionics
-const Cessna172R{K, T} = C172R.Aircraft{K, T, NoAvionics} where {
-    K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-
-function Cessna172R(kinematics = WA(), terrain = HorizontalTerrain())
-    C172R.Aircraft(kinematics, terrain, NoAvionics())
-end
-
-############################ Joystick Mappings #################################
-
-#redirect input assignments directly to the actuation system
-function Systems.assign_input!(sys::System{<:Cessna172R},
-                                data::JoystickData,
-                                mapping::IOMapping)
-    Systems.assign_input!(sys.vehicle.components.act, data, mapping)
-end
 
 
 end

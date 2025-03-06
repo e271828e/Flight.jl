@@ -748,7 +748,7 @@ end
 ################################################################################
 ############################### XPlaneOutput ######################################
 
-function Network.XPlanePose(kin_data::KinData, aircraft = 0)
+function Network.XPlanePose(kin_data::KinData)
 
     @unpack ϕ_λ, e_nb, h_o = kin_data
 
@@ -760,7 +760,7 @@ function Network.XPlanePose(kin_data::KinData, aircraft = 0)
     θ = rad2deg(e_nb.θ)
     φ = rad2deg(e_nb.φ)
 
-    Network.XPlanePose(aircraft, ϕ, λ, h, ψ, θ, φ)
+    Network.XPlanePose(ϕ, λ, h, ψ, θ, φ)
 
 end
 

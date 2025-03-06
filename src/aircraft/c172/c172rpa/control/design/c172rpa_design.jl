@@ -69,7 +69,7 @@ end
 function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
                     global_search = false)
 
-    ac = Cessna172RPA(NED()) |> System #linearization requires NED kinematics
+    ac = Cessna172RPA0(NED()) |> System #linearization requires NED kinematics
 
     lss_lon = Control.Continuous.LinearizedSS(ac, design_point; model = :lon);
     P_lon = named_ss(lss_lon)
@@ -310,7 +310,7 @@ end
 function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
                     global_search::Bool = false)
 
-    ac = Cessna172RPA(NED()) |> System #linearization requires NED kinematics
+    ac = Cessna172RPA0(NED()) |> System #linearization requires NED kinematics
 
     lss_lat = Control.Continuous.LinearizedSS(ac, design_point; model = :lat);
 
@@ -327,7 +327,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
     y_labels = deleteat!(y_labels, findfirst(isequal(:χ), y_labels))
 
     #ensure consistency in component selection and ordering between our design model
-    #and RPAv1 avionics implementation for state and control vectors
+    #and RPA1 avionics implementation for state and control vectors
     @assert tuple(x_labels...) === propertynames(C172RPAControl.XLat())
     @assert tuple(u_labels...) === propertynames(C172RPAControl.ULat())
 
