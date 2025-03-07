@@ -345,17 +345,16 @@ abstract type PitchStyle end
 @kwdef struct FixedPitch <: PitchStyle
     value::Float64 = 0.0 #rad
 end
-Base.range(pitch::FixedPitch) = range(pitch.value, pitch.value, length = 1)
 
 struct VariablePitch{T <: AbstractRange{Float64}} <: PitchStyle
     range::T #rad
 end
 
 function VariablePitch(lower::Real, upper::Real; length::Int = 11)
-    @assert lower < upper
     VariablePitch(range(lower, upper; length))
 end
 
+Base.range(pitch::FixedPitch) = range(pitch.value, pitch.value, length = 1)
 Base.range(pitch::VariablePitch) = pitch.range
 
 abstract type AbstractPropeller <: SystemDefinition end
@@ -501,9 +500,13 @@ function plot_airfoil(airfoil::Propellers.AbstractAirfoil; plot_settings...)
 
 end
 
+#for a singleton Δβ_range, Interpolations.bounds always returns (1,1), so we
+#cannot retrieve the Δβ value for which the Lookup was generated. therefore, for
+#this function we require a non-singleton Δβ_range Lookup
 function plot_J_Δβ(lookup::Propellers.Lookup, Mt::Real = 0.0; plot_settings...)
 
     J_bounds, Mt_bounds, Δβ_bounds = bounds(lookup)
+    @assert Δβ_bounds[1] < Δβ_bounds[2] "Δβ_range must be non-singleton"
 
     @assert Mt_bounds[1] <= Mt <= Mt_bounds[2]
 
@@ -534,14 +537,18 @@ function plot_J_Δβ(lookup::Propellers.Lookup, Mt::Real = 0.0; plot_settings...
 
 end
 
+#for a singleton Δβ_range, Interpolations.bounds always returns (1,1), so we
+#cannot retrieve the Δβ value for which the Lookup was generated. therefore, for
+#this function we require a non-singleton Δβ_range Lookup
 function plot_M_J(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
 
-    @unpack J_bounds, Mt_bounds, Δβ_bounds = lookup._data
+    J_bounds, Mt_bounds, Δβ_bounds = bounds(lookup)
+    @assert Δβ_bounds[1] < Δβ_bounds[2] "Δβ_range must be non-singleton"
 
     @assert Δβ_bounds[1] <= Δβ <= Δβ_bounds[2]
 
     Mt = range(Mt_bounds..., length = 50)
-    J = range(lookup._data.J_bounds..., length = 5)
+    J = range(J_bounds..., length = 5)
 
     data = [lookup(J, Mt, Δβ) for (Mt, J) in Iterators.product(Mt, J)]
     data = data |> StructArray |> StructArrays.components
@@ -617,7 +624,7 @@ function GUI.draw(sys::System{<:Propeller}, p_open::Ref{Bool} = Ref(true),
         CImGui.Text(@sprintf("Power: %.7f kW", 1e-3*P))
         CImGui.Text(@sprintf("Propulsive Efficiency: %.7f", η_p))
         GUI.draw(wr_p.F, "Aerodynamic Force (Op) [Propeller]", "N")
-        GUI.draw(wr_p.M, "Aerodynamic Torque (Op) [Propeller]", "N*m")
+        GUI.draw(wr_p.τ, "Aerodynamic Torque (Op) [Propeller]", "N*m")
         GUI.draw(hr_p, "Axial Angular Momentum [Propeller]", "N*m")
 
     CImGui.End()

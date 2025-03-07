@@ -262,7 +262,7 @@ function test_thruster_response()
 
         #CCW propeller should be coupled with negative gear ratio transmission
         hrn = PistonThruster(
-            propeller = Propeller(Propellers.Lookup(Δβ_range = range(0, 0.2, length = 11)); sense = Propellers.CCW),
+            propeller = Propeller(VariablePitch(0, 0.2); sense = Propellers.CCW),
             gear_ratio = -1) |> TestHarness |> System
 
         sim = Simulation(hrn, t_end = 100)

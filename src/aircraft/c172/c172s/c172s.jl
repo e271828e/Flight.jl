@@ -15,27 +15,23 @@ export Cessna172S, Cessna172Sv0
 ################################################################################
 ################################ Powerplant ####################################
 
-#should precompute and cache propeller lookup data to speed up aircraft
-#instantiation. if the propeller definition or the lookup data generation
-#methods in the Propellers module are modified, the cache file must be
-#regenerated
-
-# cache_file = joinpath(@__DIR__, "prop.h5")
-# if !isfile(cache_file)
-#     prop_data = Propellers.Lookup(Propellers.Blade(), 2)
-#     Propellers.save_lookup(prop_data, cache_file)
-# end
-# prop_data = Propellers.load_lookup(cache_file)
-
 function PowerPlant()
 
-    prop_data = Propellers.Lookup(Propellers.Blade(), 2)
+    engine = PistonEngine(
+        P_rated= Piston.hp2W(200), #W
+        ω_rated = Piston.RPM2radpersec(2700),
+        ω_stall = Piston.RPM2radpersec(300),
+        ω_cutoff = Piston.RPM2radpersec(3100),
+        ω_idle = Piston.RPM2radpersec(600),
+        τ_start = 40, #N·m
+        J = 0.05, #kg·m²
+    )
 
-    propeller = Propeller(prop_data;
+    propeller = Propeller(FixedPitch(), 2;
         sense = Propellers.CW, d = 2.0, J_xx = 0.3,
         t_bp = FrameTransform(r = [2.055, 0, 0.833]))
 
-    PistonThruster(; propeller)
+    PistonThruster(; engine, propeller)
 
 end
 

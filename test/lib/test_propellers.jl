@@ -60,8 +60,8 @@ function test_coefficients()
         b = Blade()
         # b = Blade(c̃ = Propellers.ConstantDistribution(0.0573))
 
-        coeffs_static = Coefficients(b, n, 0, 0, 0.0)
-        coeffs_moving = Coefficients(b, n, 0.5, 0, 0.0)
+        coeffs_static = Coefficients(n, b, 0, 0, 0.0)
+        coeffs_moving = Coefficients(n, b, 0.5, 0, 0.0)
 
         @test coeffs_static.η_p == 0
         @test coeffs_static.C_Fx > 0
@@ -151,9 +151,8 @@ function test_propeller()
 
         @testset verbose = true "VariablePitch" begin
 
-            vp = VariablePitch(-0.1, 0.2, length = 11)
             sense = Propellers.CW
-            vp_sys = Propeller(vp; sense, t_bp) |> System
+            vp_sys = Propeller(VariablePitch(-0.1, 0.2); sense, t_bp) |> System
 
             vp_sys.u[] = 0
             f_ode!(vp_sys, kin, air, ω)
