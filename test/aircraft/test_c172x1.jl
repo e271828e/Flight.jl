@@ -719,15 +719,15 @@ function test_sim_interactive(; save::Bool = true)
 
     h_trn = HOrth(427.2);
 
-    # # on ground
-    # initializer = KinInit(
-    #     loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
-    #     q_nb = REuler(deg2rad(157), 0, 0),
-    #     h = h_trn + 1.81);
+    # on ground
+    initializer = KinInit(
+        loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
+        q_nb = REuler(deg2rad(157), 0, 0),
+        h = h_trn + 1.81);
 
-    # on air, automatically trimmed
-    initializer = C172.TrimParameters(
-        Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
+    # # on air, automatically trimmed
+    # initializer = C172.TrimParameters(
+    #     Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
     trn = HorizontalTerrain(altitude = h_trn)
     ac = Cessna172Xv1(WA(), trn) |> System;
@@ -740,8 +740,8 @@ function test_sim_interactive(; save::Bool = true)
         Sim.attach!(sim, joystick)
     end
 
-    # xpc = XPlane12Output()
-    xpc = XPlane12Output(address = IPv4("192.168.1.2"))
+    xpc = XPlane12Output()
+    # xpc = XPlane12Output(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
 
     Sim.run_interactive!(sim; pace = 1)

@@ -88,7 +88,7 @@ function test_lookup()
         J_range = range(0, 1.5, length = 31)
         Mt_range = range(0, 1.5, length = 21)
         Δβ_range = range(0, 0.1, length = 11)
-        lookup = Lookup(Blade(), 3; J_range, Mt_range, Δβ_range)
+        lookup = Lookup(3, Blade(); J_range, Mt_range, Δβ_range)
 
         #flat extrapolation
         @test lookup.C_Fx(1.5, 1.5, 0.1) == lookup.C_Fx(3, 2, 2)
@@ -111,7 +111,7 @@ function test_lookup()
 
         #make sure there are no issues with the singleton Δβ dimension in a
         #fixed pitch lookup
-        lookup_fp = Lookup(Blade(), 3;
+        lookup_fp = Lookup(3, Blade();
                            J_range, Mt_range, Δβ_range = range(0,0,length=1))
         @test lookup_fp(0.1, 0.3, 0) == lookup(0.1, 0.3, 0)
 
@@ -131,9 +131,8 @@ function test_propeller()
 
         @testset verbose = true "FixedPitch" begin
 
-            Δβ_range = range(0, 0, length = 1)
             sense = Propellers.CCW
-            fp_sys = Propeller(Lookup(; Δβ_range); sense, t_bp) |> System
+            fp_sys = Propeller(FixedPitch(); sense, t_bp) |> System
             @test fp_sys.u |> isnothing
 
             f_ode!(fp_sys, kin, air, -ω)
@@ -152,18 +151,18 @@ function test_propeller()
 
         @testset verbose = true "VariablePitch" begin
 
-            Δβ_range = range(-0.1, 0.2, length = 11)
+            vp = VariablePitch(-0.1, 0.2, length = 11)
             sense = Propellers.CW
-            vp_sys = Propeller(Lookup(; Δβ_range); sense, t_bp) |> System
+            vp_sys = Propeller(vp; sense, t_bp) |> System
 
             vp_sys.u[] = 0
             f_ode!(vp_sys, kin, air, ω)
-            @test vp_sys.y.Δβ ≈ vp_sys.constants.lookup.Δβ_bounds[1]
+            @test vp_sys.y.Δβ ≈ bounds(vp_sys.constants.lookup)[3][1] #lower Δβ bound
             Fx_0 = vp_sys.y.wr_p.F[1]
 
             vp_sys.u[] = 1
             f_ode!(vp_sys, kin, air, ω)
-            @test vp_sys.y.Δβ ≈ vp_sys.constants.lookup.Δβ_bounds[2]
+            @test vp_sys.y.Δβ ≈ bounds(vp_sys.constants.lookup)[3][2] #upper Δβ bound
             Fx_1 = vp_sys.y.wr_p.F[1]
 
             @test Fx_1 > Fx_0

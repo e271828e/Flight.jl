@@ -126,7 +126,7 @@ end
 #compute propeller coefficients for n blades with the specified properties, at a
 #given advance ratio, blade tip Mach number and blade pitch offset setting. CW
 #is assumed.
-function Coefficients(blade::Blade, n_blades::Int, J::Real, Mt::Real, Δβ::Real, n_ζ::Integer = 101)
+function Coefficients(n_blades::Int, blade::Blade, J::Real, Mt::Real, Δβ::Real, n_ζ::Integer = 101)
 
     @assert J >= 0 "Advance ratio must be 0 or positive"
     @assert Mt >= 0 "Blade tip Mach number must be 0 or positive"
@@ -213,9 +213,6 @@ end
 struct Lookup{T <: Interpolations.Extrapolation}
     interps::Coefficients{T}
     data::Coefficients{Array{Float64,3}}
-    J_bounds::NTuple{2, Float64}
-    Mt_bounds::NTuple{2, Float64}
-    Δβ_bounds::NTuple{2, Float64}
 end
 
 Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
@@ -229,13 +226,25 @@ Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
     end
 end
 
-function Lookup(blade::Blade = Blade(), n_blades::Int = 2;
+# * CAUTION
+
+# Interpolation.bounds always returns (1,1) for singleton dimensions. Therefore,
+# once the Lookup is generated for a singleton Δβ_range (which happens for a
+# FixedPitch propeller), the Δβ value cannot be later retrieved from the Lookup
+# itself. However, this doesn’t really matter, because when we evaluate the
+# Lookup, it will still return the correct coefficients for that Δβ (regardless
+# of the third argument we call it with). In a FixedPitch propeller, we could
+# retrieve this Δβ from the FixedPitch struct itself, but it should not be
+# necessary.
+Interpolations.bounds(lookup::Lookup) = bounds(lookup.interps.C_Fx.itp)
+
+function Lookup(n_blades::Int = 2, blade::Blade = Blade();
                 J_range::AbstractRange{Float64} = range(0, 1.5, length = 21),
                 Mt_range::AbstractRange{Float64} = range(0, 1.5, length = 21),
                 Δβ_range::AbstractRange{Float64} = range(0, 0, length = 1),
                 n_ζ::Integer = 101)
 
-    data_points = [Coefficients(blade, n_blades, J, Mt, Δβ, n_ζ)
+    data_points = [Coefficients(n_blades, blade, J, Mt, Δβ, n_ζ)
             for (J, Mt, Δβ) in Iterators.product(J_range, Mt_range, Δβ_range)]
 
     J_bounds = (J_range[1], J_range[end])
@@ -248,6 +257,7 @@ function Lookup(blade::Blade = Blade(), n_blades::Int = 2;
 
 end
 
+#for reconstructing the Lookup after loading raw data from HDF5
 function Lookup(data::Coefficients{Array{Float64, 3}},
                 J_bounds::NTuple{2, Float64},
                 Mt_bounds::NTuple{2, Float64},
@@ -268,7 +278,7 @@ function Lookup(data::Coefficients{Array{Float64, 3}},
                                  J.scaling, Mt.scaling, Δβ.scaling),
                            (Flat(), Flat(), Flat())) for coef in NamedTuple(data)]
 
-    Lookup(Coefficients(interps...), data, J_bounds, Mt_bounds, Δβ_bounds)
+    Lookup(Coefficients(interps...), data)
 
 end
 
@@ -294,9 +304,11 @@ function save_lookup(lookup::Lookup, fname::String)
         fid[string(name)] = data
     end
 
-    fid["J_start"], fid["J_end"] = lookup.J_bounds
-    fid["Mt_start"], fid["Mt_end"] = lookup.Mt_bounds
-    fid["Δβ_start"], fid["Δβ_end"] = lookup.Δβ_bounds
+    J_bounds, Mt_bounds, Δβ_bounds = bounds(lookup)
+
+    fid["J_start"], fid["J_end"] = J_bounds
+    fid["Mt_start"], fid["Mt_end"] = Mt_bounds
+    fid["Δβ_start"], fid["Δβ_end"] = Δβ_bounds
 
     close(fid)
 end
@@ -310,9 +322,9 @@ function load_lookup(fname::String)
     end
     data = Coefficients(coef_data...)
 
-    J_bounds = (read(fid["J_start"]), read(fid["J_end"]))
-    Mt_bounds = (read(fid["Mt_start"]), read(fid["Mt_end"]))
-    Δβ_bounds = (read(fid["Δβ_start"]), read(fid["Δβ_end"]))
+    J_bounds = Float64.((read(fid["J_start"]), read(fid["J_end"])))
+    Mt_bounds = Float64.((read(fid["Mt_start"]), read(fid["Mt_end"])))
+    Δβ_bounds = Float64.((read(fid["Δβ_start"]), read(fid["Δβ_end"])))
 
     close(fid)
 
@@ -329,8 +341,22 @@ end
 end
 
 abstract type PitchStyle end
-struct FixedPitch <: PitchStyle end
-struct VariablePitch <: PitchStyle end
+
+@kwdef struct FixedPitch <: PitchStyle
+    value::Float64 = 0.0 #rad
+end
+Base.range(pitch::FixedPitch) = range(pitch.value, pitch.value, length = 1)
+
+struct VariablePitch{T <: AbstractRange{Float64}} <: PitchStyle
+    range::T #rad
+end
+
+function VariablePitch(lower::Real, upper::Real; length::Int = 11)
+    @assert lower < upper
+    VariablePitch(range(lower, upper; length))
+end
+
+Base.range(pitch::VariablePitch) = pitch.range
 
 abstract type AbstractPropeller <: SystemDefinition end
 
@@ -343,13 +369,15 @@ struct Propeller{P <: PitchStyle, L <: Lookup} <: AbstractPropeller
     t_bp::FrameTransform #vehicle frame to propeller frame
 end
 
-function Propeller(lookup::Lookup = Lookup();
+function Propeller(pitch::PitchStyle = FixedPitch(), args...; kwargs...)
+    lookup = Lookup(args...; Δβ_range = range(pitch))
+    Propeller(pitch, lookup; kwargs...)
+end
+
+function Propeller(pitch::PitchStyle, lookup::Lookup;
                    sense ::TurnSense = CW, d::Real = 2.0, J_xx::Real = 0.3,
                    t_bp::FrameTransform = FrameTransform())
-
-    Δβ_bounds = lookup.Δβ_bounds
-    pitch =  Δβ_bounds[1] == Δβ_bounds[end] ? FixedPitch() : VariablePitch()
-    Propeller{typeof(pitch), typeof(lookup)}(pitch, lookup, sense, d, J_xx, t_bp)
+    Propeller(pitch, lookup, sense, d, J_xx, t_bp)
 end
 
 @kwdef struct PropellerY
@@ -367,19 +395,17 @@ end
 end
 
 Systems.U(::Propeller{FixedPitch}) = nothing
-Systems.U(::Propeller{VariablePitch}) = Ref(Ranged(0.0, 0., 1.))
+Systems.U(::Propeller{<:VariablePitch}) = Ref(Ranged(0.0, 0., 1.))
 Systems.Y(::Propeller) = PropellerY()
 
 function get_Δβ(sys::System{<:Propeller{FixedPitch}})
-    Δβ_bounds = sys.constants.lookup.Δβ_bounds
-    @assert Δβ_bounds[1] == Δβ_bounds[2]
-    return Δβ_bounds[1]
+    Δβ_range = range(sys.constants.pitch)
+    return Δβ_range[1]
 end
 
-function get_Δβ(sys::System{<:Propeller{VariablePitch}})
-    Δβ_bounds = sys.constants.lookup.Δβ_bounds
-    @assert Δβ_bounds[2] > Δβ_bounds[1]
-    return linear_scaling(sys.u[], Δβ_bounds)
+function get_Δβ(sys::System{<:Propeller{<:VariablePitch}})
+    Δβ_range = range(sys.constants.pitch)
+    return linear_scaling(sys.u[], Δβ_range)
 end
 
 function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
@@ -477,7 +503,7 @@ end
 
 function plot_J_Δβ(lookup::Propellers.Lookup, Mt::Real = 0.0; plot_settings...)
 
-    @unpack J_bounds, Mt_bounds, Δβ_bounds = lookup._data
+    J_bounds, Mt_bounds, Δβ_bounds = bounds(lookup)
 
     @assert Mt_bounds[1] <= Mt <= Mt_bounds[2]
 
