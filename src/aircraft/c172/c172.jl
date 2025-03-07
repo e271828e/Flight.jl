@@ -484,7 +484,7 @@ Dynamics.get_wr_b(sys::System{Aero}) = sys.y.wr_b
 
 
 function GUI.draw(sys::System{<:Aero}, p_open::Ref{Bool} = Ref(true),
-                window_label::String = "Cessna 172R Aerodynamics")
+                window_label::String = "Cessna 172S Aerodynamics")
 
     @unpack e, a, r, f, α, β, α_filt, β_filt, stall, coeffs, wr_b = sys.y
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
@@ -570,7 +570,7 @@ Dynamics.get_mp_b(::System{Ldg}) = MassProperties()
 Dynamics.get_hr_b(::System{Ldg}) = zeros(SVector{3})
 
 function GUI.draw(sys::System{<:Ldg}, p_open::Ref{Bool} = Ref(true),
-                window_label::String = "Cessna 172R Landing Gear")
+                window_label::String = "Cessna 172S Landing Gear")
 
     @unpack left, right, nose = sys
 
@@ -631,7 +631,7 @@ Dynamics.get_hr_b(::System{Payload}) = zeros(SVector{3})
 
 function GUI.draw!(sys::System{<:Payload},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172R Payload")
+                    label::String = "Cessna 172S Payload")
 
     u = sys.u
 
@@ -709,7 +709,7 @@ Dynamics.get_hr_b(::System{Fuel}) = zeros(SVector{3})
 is_fuel_available(sys::System{<:Fuel}) = (sys.y.m_avail > 0)
 
 function GUI.draw(sys::System{Fuel}, p_open::Ref{Bool} = Ref(true),
-                window_label::String = "Cessna 172R Fuel System")
+                window_label::String = "Cessna 172S Fuel System")
 
     @unpack m_total, m_avail = sys.y
 
@@ -1217,17 +1217,53 @@ end
 
 
 ################################################################################
-############################### XPlaneOutput ###################################
+############################### XPlane12Output ###################################
 
-function Systems.extract_output(ac::System{<:Cessna172}, ::XPlaneOutput, ::IOMapping)
-    Network.xpmsg_set_pose(XPlanePose(KinData(ac))) #UDP message
+function Systems.extract_output(ac::System{<:Cessna172}, ::XPlane12Output, ::IOMapping)
+
+    t = ac.t[]
+    @unpack δe, δa, δr, δf = ac.y.vehicle.components.aero
+    ψ_sw = ac.y.vehicle.components.ldg.nose.strut.ψ_sw
+    ω_prop = ac.y.vehicle.components.pwp.propeller.ω
+
+    ϕ_prop = mod(ω_prop * t, 2π)
+    prop_is_disc = (ω_prop > 10 ? true : false)
+
+    drefs = (
+        elev_left_pos = "sim/flightmodel2/wing/elevator1_deg[8]",
+        elev_right_pos = "sim/flightmodel2/wing/elevator1_deg[9]",
+        flap_left_pos = "sim/flightmodel2/wing/flap1_deg[0]",
+        flap_right_pos = "sim/flightmodel2/wing/flap1_deg[1]",
+        rudder_pos = "sim/flightmodel2/wing/rudder1_deg[10]",
+        ail_left_pos = "sim/flightmodel2/wing/aileron1_deg[2]", #not [0]!
+        ail_right_pos = "sim/flightmodel2/wing/aileron1_deg[3]", #not [1]!
+        prop_is_disc = "sim/flightmodel2/engines/prop_is_disc[0]",
+        prop_angle = "sim/flightmodel2/engines/prop_rotation_angle_deg[0]",
+        nws_angle = "sim/flightmodel2/gear/tire_steer_actual_deg[0]")
+
+    msgs = (
+        Network.xpmsg_set_dref(drefs.elev_left_pos, rad2deg(δe)),
+        Network.xpmsg_set_dref(drefs.elev_right_pos, rad2deg(δe)),
+        Network.xpmsg_set_dref(drefs.ail_left_pos, rad2deg(δa)),
+        Network.xpmsg_set_dref(drefs.ail_right_pos, rad2deg(-δa)),
+        Network.xpmsg_set_dref(drefs.flap_left_pos, rad2deg(δf)),
+        Network.xpmsg_set_dref(drefs.flap_right_pos, rad2deg(δf)),
+        Network.xpmsg_set_dref(drefs.rudder_pos, rad2deg(δr)),
+        Network.xpmsg_set_dref(drefs.prop_is_disc, prop_is_disc),
+        Network.xpmsg_set_dref(drefs.prop_angle, rad2deg(ϕ_prop)),
+        Network.xpmsg_set_dref(drefs.nws_angle, rad2deg(ψ_sw)),
+        Network.xpmsg_set_pose(XPlanePose(KinData(ac))) #UDP message
+    )
+
+    return msgs
+
 end
 
 
 ################################################################################
 ############################### C172 Variants ##################################
 
-include(normpath("c172r/c172r.jl")); @reexport using .C172R
+include(normpath("c172s/c172s.jl")); @reexport using .C172S
 include(normpath("c172x/c172x.jl")); @reexport using .C172X
 
 end

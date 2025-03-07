@@ -1,4 +1,4 @@
-module C172R
+module C172S
 
 using LinearAlgebra, StaticArrays, ComponentArrays, UnPack, Reexport
 using ControlSystems, RobustAndOptimalControl
@@ -10,7 +10,7 @@ using Flight.FlightLib
 
 using ..C172
 
-export Cessna172R, Cessna172Rv0
+export Cessna172S, Cessna172Sv0
 
 ################################################################################
 ################################ Powerplant ####################################
@@ -43,30 +43,30 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Components = C172.Components{typeof(C172R.PowerPlant()), C172.MechanicalActuation}
-const Vehicle{K, T} = AircraftBase.Vehicle{C172R.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-const Aircraft{K, T, A} = AircraftBase.Aircraft{C172R.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
-const Cessna172R{K, T, A} = C172R.Aircraft{K, T, A}
+const Components = C172.Components{typeof(C172S.PowerPlant()), C172.MechanicalActuation}
+const Vehicle{K, T} = AircraftBase.Vehicle{C172S.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Aircraft{K, T, A} = AircraftBase.Aircraft{C172S.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
+const Cessna172S{K, T, A} = C172S.Aircraft{K, T, A}
 
 function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
     AircraftBase.Vehicle(
-        C172.Components(C172R.PowerPlant(), C172.MechanicalActuation()),
+        C172.Components(C172S.PowerPlant(), C172.MechanicalActuation()),
         kinematics, VehicleDynamics(), terrain, LocalAtmosphere())
 end
 
 ################################################################################
-############################## Cessna172Rv0 #####################################
+############################## Cessna172Sv0 #####################################
 
-const Cessna172Rv0{K, T} = Cessna172R{K, T, NoAvionics} where { K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Cessna172Sv0{K, T} = Cessna172S{K, T, NoAvionics} where { K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 
-function Cessna172Rv0(kinematics = WA(), terrain = HorizontalTerrain())
+function Cessna172Sv0(kinematics = WA(), terrain = HorizontalTerrain())
     AircraftBase.Aircraft(Vehicle(kinematics, terrain), NoAvionics())
 end
 
 ############################ Joystick Mappings #################################
 
 #with no Avionics, input assignments must go directly to the actuation system
-function Systems.assign_input!(sys::System{<:Cessna172Rv0},
+function Systems.assign_input!(sys::System{<:Cessna172Sv0},
                                 data::JoystickData,
                                 mapping::IOMapping)
     Systems.assign_input!(sys.vehicle.components.act, data, mapping)
@@ -76,7 +76,7 @@ end
 ################################################################################
 
 #assigns trim state and parameters to vehicle, then updates vehicle
-function AircraftBase.assign!(vehicle::System{<:C172R.Vehicle},
+function AircraftBase.assign!(vehicle::System{<:C172S.Vehicle},
                         trim_params::C172.TrimParameters,
                         trim_state::C172.TrimState)
 
@@ -197,14 +197,14 @@ function XLinear(x_vehicle::ComponentVector)
 
 end
 
-function ULinear(vehicle::System{<:C172R.Vehicle{NED}})
+function ULinear(vehicle::System{<:C172S.Vehicle{NED}})
 
     @unpack throttle, aileron, elevator, rudder = vehicle.components.act.u
     ULinear(; throttle, aileron, elevator, rudder)
 
 end
 
-function YLinear(vehicle::System{<:C172R.Vehicle{NED}})
+function YLinear(vehicle::System{<:C172S.Vehicle{NED}})
 
     @unpack throttle, aileron, elevator, rudder = vehicle.components.act.u
     @unpack components, air, dynamics, kinematics = vehicle.y
@@ -244,12 +244,12 @@ function YLinear(vehicle::System{<:C172R.Vehicle{NED}})
 
 end
 
-AircraftBase.ẋ_linear(vehicle::System{<:C172R.Vehicle{NED}}) = XLinear(vehicle.ẋ)
-AircraftBase.x_linear(vehicle::System{<:C172R.Vehicle{NED}}) = XLinear(vehicle.x)
-AircraftBase.u_linear(vehicle::System{<:C172R.Vehicle{NED}}) = ULinear(vehicle)
-AircraftBase.y_linear(vehicle::System{<:C172R.Vehicle{NED}}) = YLinear(vehicle)
+AircraftBase.ẋ_linear(vehicle::System{<:C172S.Vehicle{NED}}) = XLinear(vehicle.ẋ)
+AircraftBase.x_linear(vehicle::System{<:C172S.Vehicle{NED}}) = XLinear(vehicle.x)
+AircraftBase.u_linear(vehicle::System{<:C172S.Vehicle{NED}}) = ULinear(vehicle)
+AircraftBase.y_linear(vehicle::System{<:C172S.Vehicle{NED}}) = YLinear(vehicle)
 
-function AircraftBase.assign_u!(vehicle::System{<:C172R.Vehicle{NED}}, u::AbstractVector{Float64})
+function AircraftBase.assign_u!(vehicle::System{<:C172S.Vehicle{NED}}, u::AbstractVector{Float64})
 
     #The velocity states in the linearized model are meant to be aerodynamic so
     #they can be readily used for flight control design. Since the velocity
@@ -261,7 +261,7 @@ function AircraftBase.assign_u!(vehicle::System{<:C172R.Vehicle{NED}}, u::Abstra
 
 end
 
-function AircraftBase.assign_x!(vehicle::System{<:C172R.Vehicle{NED}}, x::AbstractVector{Float64})
+function AircraftBase.assign_x!(vehicle::System{<:C172S.Vehicle{NED}}, x::AbstractVector{Float64})
 
     @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng, fuel = XLinear(x)
 
@@ -281,7 +281,7 @@ function AircraftBase.assign_x!(vehicle::System{<:C172R.Vehicle{NED}}, x::Abstra
 end
 
 function Control.Continuous.LinearizedSS(
-            vehicle::System{<:C172R.Vehicle{NED}},
+            vehicle::System{<:C172S.Vehicle{NED}},
             trim_params::C172.TrimParameters = C172.TrimParameters();
             model::Symbol = :full)
 

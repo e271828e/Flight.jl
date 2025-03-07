@@ -257,6 +257,7 @@ function sendPOSI(xpc::XPlaneConnectX; lat::Any, lon::Any, elev::Any, phi::Any, 
     msg = take!(buffer)
     send(xpc.sock, IPv4(xpc.ip), xpc.port, msg)
     send(xpc.sock, IPv4(xpc.ip), xpc.port, msg)   # send twice since the elevation is erroneously calculated based on initial location
+    return msg
 end
 
 """

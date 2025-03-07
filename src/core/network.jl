@@ -8,7 +8,7 @@ using JSON3
 using ..IODevices
 
 export UDPOutput, UDPInput
-export XPlaneOutput, XPlanePose
+export XPlane12Output, XPlanePose
 
 #UDPInput and UDPOutput both use the EOT character as a shutdown request. This
 #provides a means to prevent the UDPInput thread from getting stuck in the
@@ -84,29 +84,20 @@ end
 
 
 ################################################################################
-################################# XPlaneOutput ###################################
+################################# XPlane12Output ###################################
 
-@kwdef struct XPlanePose
-    ϕ::Float64 = 47.80433 #degrees
-    λ::Float64 = 12.997 #degrees
-    h::Float64 = 429.0 #meters
-    ψ::Float32 = 157.0 #degrees
-    θ::Float32 = 3.7 #degrees
-    φ::Float32 = -0.5 #degrees
-end
-
-struct XPlaneOutput{U <: UDPOutput} <: OutputDevice
+struct XPlane12Output{U <: UDPOutput} <: OutputDevice
     udp::U
-    function XPlaneOutput(udp::U) where {U <: UDPOutput}
+    function XPlane12Output(udp::U) where {U <: UDPOutput}
         new{U}(udp)
     end
 end
 
-function XPlaneOutput(; address = IPv4("127.0.0.1"), port = 49000, kwargs...)
-    XPlaneOutput(UDPOutput(; address, port, kwargs...))
+function XPlane12Output(; address = IPv4("127.0.0.1"), port = 49000, kwargs...)
+    XPlane12Output(UDPOutput(; address, port, kwargs...))
 end
 
-function IODevices.init!(xpc::XPlaneOutput)
+function IODevices.init!(xpc::XPlane12Output)
 
     override_pose = "sim/operation/override/override_planepath[0]"
     override_surf = "sim/operation/override/override_control_surfaces[0]"
@@ -123,14 +114,24 @@ function IODevices.init!(xpc::XPlaneOutput)
     IODevices.handle_data!(xpc.udp, msg_tuple)
 end
 
-IODevices.shutdown!(xpc::XPlaneOutput) = IODevices.shutdown!(xpc.udp)
+IODevices.shutdown!(xpc::XPlane12Output) = IODevices.shutdown!(xpc.udp)
 
-function IODevices.handle_data!(xpc::XPlaneOutput, data::Union{String, NTuple{N, String}}) where N
+function IODevices.handle_data!(xpc::XPlane12Output, data::Union{String, NTuple{N, String}}) where N
     sleep(0.01) #give X-Plane some breathing room
     IODevices.handle_data!(xpc.udp, data)
 end
 
 ############################### XPlane Messages ################################
+
+@kwdef struct XPlanePose
+    ϕ::Float64 = 47.80433 #degrees
+    λ::Float64 = 12.997 #degrees
+    h::Float64 = 429.0 #meters
+    ψ::Float32 = 157.0 #degrees
+    θ::Float32 = 3.7 #degrees
+    φ::Float32 = -0.5 #degrees
+end
+
 
 #note: length(s::String) returns the number of characters in s, not its actual
 #length in bytes, which can be found as length(codeunits(s)) or
@@ -169,7 +170,7 @@ function xpmsg_set_pose(pose::XPlanePose)
 
     buffer = IOBuffer()
     write(buffer, b"VEHS\0", aircraft, ϕ, λ, h, ψ, θ, φ)
-    # write(buffer, b"VEHX\0", aircraft, ϕ, λ, h, ψ, θ, φ)
+    # write(buffer, b"VEHX\0", aircraft, ϕ, λ, h, ψ, θ, φ) #for X-Plane 11
 
     return String(take!(buffer))
 

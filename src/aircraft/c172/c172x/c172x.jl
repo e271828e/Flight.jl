@@ -293,15 +293,15 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-#reuse C172R power plant, replace actuation system
-const Components = C172.Components{typeof(C172R.PowerPlant()), FlyByWireActuation}
+#reuse C172S power plant, replace actuation system
+const Components = C172.Components{typeof(C172S.PowerPlant()), FlyByWireActuation}
 const Vehicle{K, T} = AircraftBase.Vehicle{C172X.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
 const Aircraft{K, T, A} = AircraftBase.Aircraft{C172X.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
 const Cessna172X{K, T, A} = C172X.Aircraft{K, T, A}
 
 function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
     AircraftBase.Vehicle(
-        C172.Components(C172R.PowerPlant(), FlyByWireActuation()),
+        C172.Components(C172S.PowerPlant(), FlyByWireActuation()),
         kinematics, VehicleDynamics(), terrain, LocalAtmosphere())
 end
 

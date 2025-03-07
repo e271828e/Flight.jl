@@ -1162,11 +1162,11 @@ function GUI.draw!(ctl::System{<:Controller},
                     mode_button("Direct##Lat", lat_direct, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_direct)
                     mode_button("Roll Rate + AoS", lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.p_sp = 0; u.β_sp = 0)
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.p_sp = 0; u.β_sp = β)
                     mode_button("Bank Angle + AoS", lat_φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = lat_φ_β; u.φ_sp = φ; u.β_sp = 0)
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_φ_β; u.φ_sp = φ; u.β_sp = β)
                     mode_button("Course Angle + AoS", lat_χ_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = lat_χ_β; u.χ_sp = χ_gnd; u.β_sp = 0)
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_χ_β; u.χ_sp = χ_gnd; u.β_sp = β)
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();

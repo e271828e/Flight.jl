@@ -166,8 +166,8 @@ function test_sim_interactive(; save::Bool = true)
         Sim.attach!(sim, joystick)
     end
 
-    xpc = XPlaneOutput()
-    # xpc = XPlaneOutput(address = IPv4("192.168.1.2"))
+    xpc = XPlane12Output()
+    # xpc = XPlane12Output(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
 
     Sim.run_interactive!(sim; pace = 1)

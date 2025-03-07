@@ -154,7 +154,7 @@ end
 
 ################################ XPC Loopback ##################################
 
-function Systems.extract_output(::System{TestSystem}, ::XPlaneOutput, ::IOMapping)
+function Systems.extract_output(::System{TestSystem}, ::XPlane12Output, ::IOMapping)
     data = KinData() |> XPlanePose |> Network.xpmsg_set_pose
     return data
 end
@@ -167,7 +167,7 @@ function xpc_loopback()
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
-        Sim.attach!(sim, XPlaneOutput(; port))
+        Sim.attach!(sim, XPlane12Output(; port))
         Sim.run!(sim)
 
         cmd = KinData() |> XPlanePose |> Network.xpmsg_set_pose
