@@ -251,15 +251,18 @@ end
 
 end
 
-#fallback for node Systems with NamedTuple output
+#fallback for Systems with no output
+update_y!(::System{<:SystemDefinition, Nothing}) = nothing
+
+#fallback for Systems with NamedTuple output
 @inline function (update_y!(sys::System{D, Y})
     where {D <: SystemDefinition, Y <: NamedTuple{L, M}} where {L, M})
 
     ys = map(id -> getproperty(sys.subsystems[id], :y), L)
     sys.y = NamedTuple{L}(ys)
-
 end
 
+#else, we require an explicit implementation
 @inline function update_y!(sys::System{D}) where {D}
     if !isempty(sys.subsystems)
         error("An update_y! method must be explicitly implemented for node "*

@@ -128,9 +128,9 @@ function test_sim(; save::Bool = true)
         kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
         air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
         dyn_plots = make_plots(TimeSeries(sim).vehicle.dynamics; Plotting.defaults...)
-        save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172s", "sim", "kin"))
-        save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172s", "sim", "air"))
-        save && save_plots(dyn_plots, save_folder = joinpath("tmp", "test_c172s", "sim", "dyn"))
+        save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172", "sim", "kin"))
+        save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172", "sim", "air"))
+        save && save_plots(dyn_plots, save_folder = joinpath("tmp", "test_c172", "sim", "dyn"))
 
     end
 
@@ -170,8 +170,10 @@ function test_sim_interactive(; save::Bool = true)
 
     kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
     air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172x1", "sim_interactive", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172x1", "sim_interactive", "air"))
+    dyn_plots = make_plots(TimeSeries(sim).vehicle.dynamics; Plotting.defaults...)
+    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172", "sim", "kin"))
+    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172", "sim", "air"))
+    save && save_plots(dyn_plots, save_folder = joinpath("tmp", "test_c172", "sim", "dyn"))
 
     return nothing
 

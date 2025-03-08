@@ -11,10 +11,10 @@ include(normpath("lib/test_piston.jl")); using .TestPiston
 include(normpath("lib/test_landing_gear.jl")); using .TestLandingGear
 include(normpath("lib/test_aircraft_base.jl")); using .TestAircraft
 
-include(normpath("aircraft/test_c172s.jl")); using .TestC172S
+include(normpath("aircraft/c172/test_c172s.jl")); using .TestC172S
 
-include(normpath("aircraft/test_c172x.jl")); using .TestC172X
-include(normpath("aircraft/test_c172x1.jl")); using .TestC172Xv1
+include(normpath("aircraft/c172/test_c172x.jl")); using .TestC172X
+include(normpath("aircraft/c172/test_c172x1.jl")); using .TestC172Xv1
 
 test_quaternions()
 test_attitude()

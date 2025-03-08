@@ -2,13 +2,11 @@ module C172XControlDesign
 
 using Flight
 using Flight.FlightCore
-
 using Flight.FlightLib
 using Flight.FlightLib.Control.Continuous: LinearizedSS
 using Flight.FlightLib.Control.Discrete: PIDParams, LQRTrackerParams, save_lookup
 using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
-using Flight.FlightAircraft.AircraftBase
 using Flight.FlightAircraft.C172
 using Flight.FlightAircraft.C172X
 using Flight.FlightAircraft.C172X.C172XControl

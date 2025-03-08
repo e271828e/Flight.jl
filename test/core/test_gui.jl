@@ -5,11 +5,12 @@ using Test
 using Flight.FlightCore.Systems
 using Flight.FlightCore.GUI
 
-using Flight.FlightLib.Control
-using Flight.FlightLib.LandingGear
+using Flight.FlightLib
+# using Flight.FlightLib.Control
+# using Flight.FlightLib.LandingGear
 
-using Flight.FlightAircraft.C172S
-using Flight.FlightAircraft.C172X
+# using Flight.FlightAircraft.C172S
+# using Flight.FlightAircraft.C172X
 
 export test_gui
 
@@ -21,6 +22,7 @@ function test_gui()
     # target = Cessna172CAS() |> System
     # target = Cessna172SBase() |> System
     # target = Cessna172Sv0() |> System
+    target = Atmosphere.ISAModel() |> System
     f_draw = let target = target
         () -> GUI.draw!(target)
         # return () -> GUI.draw!(target)
