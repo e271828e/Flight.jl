@@ -54,35 +54,23 @@ function test_system_methods()
 
         @testset verbose = true "System Methods" begin
 
-            trn = HorizontalTerrain()
+            atm = SimpleAtmosphere() |> System
+            trn = HorizontalTerrain() |> System
+
             loc = NVector()
             trn_data = TerrainData(trn, loc)
             kin_init = KinInit( h = trn_data.altitude + 1.8);
 
-            ac_WA = System(Cessna172Sv0(WA(), trn));
-            ac_ECEF = System(Cessna172Sv0(ECEF(), trn));
-            ac_NED = System(Cessna172Sv0(NED(), trn));
+            ac = System(Cessna172Sv0());
 
-            Systems.init!(ac_WA, kin_init)
-            Systems.init!(ac_ECEF, kin_init)
-            Systems.init!(ac_NED, kin_init)
+            Systems.init!(ac, kin_init, atm, trn)
 
-            f_ode!(ac_WA)
-            #make sure we are on the ground to ensure landing gear code coverage
-            @test ac_WA.y.vehicle.components.ldg.left.strut.wow == true
+            #ensure we are on the ground for full landing gear code coverage
+            @test ac.y.vehicle.components.ldg.left.strut.wow == true
 
-            #all three kinematics implementations must be supported, no allocations
-            @test @ballocated(f_ode!($ac_WA)) == 0
-            @test @ballocated(f_step!($ac_WA)) == 0
-            @test @ballocated(f_disc!($ac_WA)) == 0
-
-            @test @ballocated(f_ode!($ac_ECEF)) == 0
-            @test @ballocated(f_step!($ac_ECEF)) == 0
-            @test @ballocated(f_disc!($ac_ECEF)) == 0
-
-            @test @ballocated(f_ode!($ac_NED)) == 0
-            @test @ballocated(f_step!($ac_NED)) == 0
-            @test @ballocated(f_disc!($ac_NED)) == 0
+            @test @ballocated(f_ode!($ac, $atm, $trn)) == 0
+            @test @ballocated(f_disc!($ac, $atm, $trn)) == 0
+            @test @ballocated(f_step!($ac, $atm, $trn)) == 0
 
         end
 

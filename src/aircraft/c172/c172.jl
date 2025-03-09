@@ -396,7 +396,7 @@ Systems.S(::Aero) = AeroS()
 #(wind-relative) velocity
 
 function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
-    air::AirData, kinematics::KinData, terrain::AbstractTerrain)
+    air::AirflowData, kinematics::KinData, terrain::System{<:AbstractTerrain})
 
     @unpack ẋ, x, u, s, constants = sys
     @unpack α_filt, β_filt = x
@@ -412,7 +412,7 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     #and π. to avoid this, we set a minimum TAS for airflow computation. in this
     #scenario dynamic pressure will be close to zero, so forces and moments will
     #vanish anyway.
-    α, β = (TAS > 0.1 ? Air.get_airflow_angles(v_wb_a) : (0.0, 0.0))
+    α, β = (TAS > 0.1 ? Atmosphere.get_airflow_angles(v_wb_a) : (0.0, 0.0))
     V = max(TAS, V_min) #avoid division by zero
 
     α_filt_dot = 1/τ * (α - α_filt)
@@ -444,7 +444,7 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
 
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
 
-    q_as = Air.get_stability_axes(α)
+    q_as = Atmosphere.get_stability_axes(α)
     F_aero_s = q * S * SVector{3,Float64}(-C_D, C_Y, -C_L)
     F_aero_a = q_as(F_aero_s)
     τ_aero_a = q * S * SVector{3,Float64}(C_l * b, C_m * c, C_n * b)
@@ -972,7 +972,7 @@ end
 
 #P is introduced as a type parameter, because PistonThruster is itself a
 #parametric type, and therefore not concrete
-struct Components{P <: PistonThruster, A <: AbstractActuation} <: AbstractComponents
+struct Components{P <: PistonThruster, A <: AbstractActuation} <: AbstractComponentSet
     afm::Airframe
     aero::Aero
     ldg::Ldg
@@ -991,8 +991,8 @@ end
 
 function Systems.f_ode!(components::System{<:Components},
                         kin::KinData,
-                        air::AirData,
-                        trn::AbstractTerrain)
+                        air::AirflowData,
+                        trn::System{<:AbstractTerrain})
 
     @unpack act, aero, pwp, ldg, fuel, pld = components
 
@@ -1090,16 +1090,21 @@ end
     payload::C172.PayloadU = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50)
 end
 
+function Atmosphere.AtmosphericData(sys::System{<:AbstractAtmosphere},
+                                    trim_params::TrimParameters)
+    AtmosphericData(sys, trim_params.Ob)
+end
 
 function Kinematics.Initializer(trim_state::TrimState,
                                 trim_params::TrimParameters,
-                                atm_data::AtmData)
+                                atmosphere::System{<:AbstractAtmosphere})
 
     @unpack EAS, β_a, γ_wb_n, ψ_nb, ψ_wb_dot, θ_wb_dot, Ob = trim_params
     @unpack α_a, φ_nb = trim_state
 
-    TAS = Air.EAS2TAS(EAS; ρ = ISAData(Ob, atm_data).ρ)
-    v_wb_a = Air.get_velocity_vector(TAS, α_a, β_a)
+    atm_data = AtmosphericData(atmosphere, Ob)
+    TAS = Atmosphere.EAS2TAS(EAS; ρ = atm_data.ρ)
+    v_wb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
     v_wb_b = C172.f_ba.q(v_wb_a) #wind-relative aircraft velocity, body frame
 
     θ_nb = AircraftBase.θ_constraint(; v_wb_b, γ_wb_n, φ_nb)
@@ -1113,8 +1118,8 @@ function Kinematics.Initializer(trim_state::TrimState,
     loc = NVector(Ob)
     h = HEllip(Ob)
 
+    v_ew_n = atm_data.v
     v_wb_n = q_nb(v_wb_b) #wind-relative aircraft velocity, NED frame
-    v_ew_n = atm_data.v_ew_n
     v_eb_n = v_ew_n + v_wb_n
 
     Kinematics.Initializer(; q_nb, loc, h, ω_wb_b, v_eb_n, Δx = 0.0, Δy = 0.0)
@@ -1135,22 +1140,28 @@ function cost(vehicle::System{<:C172.Vehicle})
 end
 
 function get_f_target(vehicle::System{<:C172.Vehicle},
-                      trim_params::TrimParameters)
+                      trim_params::TrimParameters,
+                      atmosphere::System{<:AbstractAtmosphere},
+                      terrain::System{<:AbstractTerrain})
 
     let vehicle = vehicle, trim_params = trim_params
         function (x::TrimState)
-            AircraftBase.assign!(vehicle, trim_params, x)
+            AircraftBase.assign!(vehicle, trim_params, x, atmosphere, terrain)
             return cost(vehicle)
         end
     end
 
 end
 
-function Systems.init!(vehicle::System{<:C172.Vehicle}, trim_params::TrimParameters)
+function Systems.init!(
+            vehicle::System{<:C172.Vehicle},
+            trim_params::TrimParameters,
+            atmosphere::System{<:AbstractAtmosphere} = System(SimpleAtmosphere()),
+            terrain::System{<:AbstractTerrain} = System(HorizontalTerrain()))
 
     trim_state = TrimState() #could provide initial condition as an optional input
 
-    f_target = get_f_target(vehicle, trim_params)
+    f_target = get_f_target(vehicle, trim_params, atmosphere, terrain)
 
     #wrapper with the interface expected by NLopt
     f_opt(x::Vector{Float64}, ::Vector{Float64}) = f_target(TrimState(x))
@@ -1200,21 +1211,20 @@ function Systems.init!(vehicle::System{<:C172.Vehicle}, trim_params::TrimParamet
         @warn("Trimming optimization failed with exit_flag $exit_flag")
     end
     trim_state_opt = TrimState(minx)
-    AircraftBase.assign!(vehicle, trim_params, trim_state_opt)
+    AircraftBase.assign!(vehicle, trim_params, trim_state_opt, atmosphere, terrain)
     return (success = success, trim_state = trim_state_opt)
 
 end
 
-function AircraftBase.trim!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}},
-                            trim_params::TrimParameters = TrimParameters())
-    Systems.init!(ac, trim_params)
+function AircraftBase.trim!( ac::System{<:Cessna172},
+                            tp::TrimParameters = TrimParameters(), args...)
+    Systems.init!(ac, tp, args...)
 end
 
-function AircraftBase.linearize!(ac::System{<:AircraftBase.Aircraft{<:C172.Vehicle}},
-                                trim_params::TrimParameters = TrimParameters())
-    linearize!(ac.vehicle, trim_params)
+function AircraftBase.linearize!( ac::System{<:Cessna172},
+                            tp::TrimParameters = TrimParameters(), args...)
+    AircraftBase.linearize!(ac.vehicle, tp, args...)
 end
-
 
 ################################################################################
 ############################### XPlane12Output ###################################
@@ -1264,6 +1274,6 @@ end
 ############################### C172 Variants ##################################
 
 include(normpath("c172s/c172s.jl")); @reexport using .C172S
-include(normpath("c172x/c172x.jl")); @reexport using .C172X
+# include(normpath("c172x/c172x.jl")); @reexport using .C172X
 
 end

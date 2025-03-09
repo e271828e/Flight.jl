@@ -212,7 +212,7 @@ Systems.Y(::Strut) = StrutY()
 
 function Systems.f_ode!(sys::System{<:Strut},
                         steering::System{<:AbstractSteering},
-                        terrain::AbstractTerrain,
+                        terrain::System{<:AbstractTerrain},
                         kin::KinData)
 
     @unpack t_bs, l_0, damper = sys.constants
@@ -602,7 +602,7 @@ end
 end
 
 function Systems.f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinData,
-                        terrain::AbstractTerrain)
+                        terrain::System{<:AbstractTerrain})
 
     @unpack strut, contact, steering, braking = sys
 

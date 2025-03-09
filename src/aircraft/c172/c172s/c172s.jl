@@ -40,23 +40,23 @@ end
 ################################# Templates ####################################
 
 const Components = C172.Components{typeof(C172S.PowerPlant()), C172.MechanicalActuation}
-const Vehicle{K, T} = AircraftBase.Vehicle{C172S.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-const Aircraft{K, T, A} = AircraftBase.Aircraft{C172S.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
-const Cessna172S{K, T, A} = C172S.Aircraft{K, T, A}
+const Vehicle{K} = AircraftBase.Vehicle{C172S.Components, K} where {K <: AbstractKinematicDescriptor}
+const Aircraft{K, A} = AircraftBase.Aircraft{C172S.Vehicle{K}, A} where {K <: AbstractKinematicDescriptor, A <: AbstractAvionics}
+const Cessna172S{K, A} = C172S.Aircraft{K, A}
 
-function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
+function Vehicle(kinematics = WA())
     AircraftBase.Vehicle(
         C172.Components(C172S.PowerPlant(), C172.MechanicalActuation()),
-        kinematics, VehicleDynamics(), terrain, LocalAtmosphere())
+        kinematics, VehicleDynamics())
 end
 
 ################################################################################
 ############################## Cessna172Sv0 #####################################
 
-const Cessna172Sv0{K, T} = Cessna172S{K, T, NoAvionics} where { K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Cessna172Sv0{K} = Cessna172S{K, NoAvionics} where { K <: AbstractKinematicDescriptor}
 
-function Cessna172Sv0(kinematics = WA(), terrain = HorizontalTerrain())
-    AircraftBase.Aircraft(Vehicle(kinematics, terrain), NoAvionics())
+function Cessna172Sv0(kinematics = WA())
+    AircraftBase.Aircraft(C172S.Vehicle(kinematics), NoAvionics())
 end
 
 ############################ Joystick Mappings #################################
@@ -74,14 +74,16 @@ end
 #assigns trim state and parameters to vehicle, then updates vehicle
 function AircraftBase.assign!(vehicle::System{<:C172S.Vehicle},
                         trim_params::C172.TrimParameters,
-                        trim_state::C172.TrimState)
+                        trim_state::C172.TrimState,
+                        atmosphere::System{<:AbstractAtmosphere},
+                        terrain::System{<:AbstractTerrain})
 
     @unpack EAS, β_a, x_fuel, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
     @unpack act, pwp, aero, fuel, ldg, pld = vehicle.components
 
-    atm_data = AtmData(vehicle.atmosphere)
-    Systems.init!(vehicle, KinInit(trim_state, trim_params, atm_data))
+    kin_init = KinInit(trim_state, trim_params, atmosphere)
+    Systems.init!(vehicle, kin_init, atmosphere, terrain)
 
     #for trimming, control surface inputs are set to zero, and we work only with
     #their offsets
@@ -125,7 +127,7 @@ function AircraftBase.assign!(vehicle::System{<:C172S.Vehicle},
     aero.x.α_filt = α_a #ensures zero state derivative
     aero.x.β_filt = β_a #ensures zero state derivative
 
-    f_ode!(vehicle)
+    f_ode!(vehicle, atmosphere, terrain)
 
     #check essential assumptions about components systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
@@ -203,8 +205,8 @@ end
 function YLinear(vehicle::System{<:C172S.Vehicle{NED}})
 
     @unpack throttle, aileron, elevator, rudder = vehicle.components.act.u
-    @unpack components, air, dynamics, kinematics = vehicle.y
-    @unpack pwp, fuel, aero,act = components
+    @unpack components, airflow, dynamics, kinematics = vehicle.y
+    @unpack pwp, fuel, aero, act = components
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eb_b, v_eb_n, χ_gnd, γ_gnd = kinematics
     @unpack ψ, θ, φ = e_nb
@@ -222,8 +224,8 @@ function YLinear(vehicle::System{<:C172S.Vehicle{NED}})
     β_filt = aero.β_filt
 
     f_x, f_y, f_z = dynamics.f_c_c
-    EAS = air.EAS
-    TAS = air.TAS
+    EAS = airflow.EAS
+    TAS = airflow.TAS
     χ = χ_gnd
     γ = γ_gnd
     c = -v_D
@@ -251,7 +253,7 @@ function AircraftBase.assign_u!(vehicle::System{<:C172S.Vehicle{NED}}, u::Abstra
     #they can be readily used for flight control design. Since the velocity
     #states in the nonlinear model are Earth-relative, we need to ensure wind
     #velocity is set to zero for linearization.
-    vehicle.atmosphere.u.v_ew_n .= 0
+    # vehicle.atmosphere.u.v_ew_n .= 0
     @unpack throttle, aileron, elevator, rudder = ULinear(u)
     @pack! vehicle.components.act.u = throttle, aileron, elevator, rudder
 

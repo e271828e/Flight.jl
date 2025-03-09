@@ -114,7 +114,7 @@ function test_landing_gear_unit()
         @test length(contact.x) == 2
         @test length(contact.frc.u.reset) == 2
 
-        terrain = HorizontalTerrain()
+        terrain = HorizontalTerrain() |> System
         loc = NVector()
 
         #set the initial 2D Location
@@ -224,8 +224,8 @@ function test_landing_gear_unit()
         f_ode!(ldg, kin, terrain)
         @test ldg.y.contact.μ_max[1] > ldg.y.contact.μ_roll
 
-        #check for f_ode! allocations with wow = true (wow = false exits
-        #prematurely)
+        #check for f_ode! allocations with wow = true (wow = false does not
+        #cover all the code)
         f_ode!(ldg, kin, terrain)
         @test ldg.y.strut.wow == true
         @test @ballocated(f_ode!($ldg, $kin, $terrain)) == 0

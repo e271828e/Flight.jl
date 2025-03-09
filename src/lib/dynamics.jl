@@ -11,9 +11,9 @@ using ..Kinematics
 export FrameTransform, transform
 export Wrench
 export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
-export AbstractComponents, NoComponents
+export AbstractComponentSet, NoComponents
 export get_mp_b, get_wr_b, get_hr_b
-export VehicleDynamics, VehicleDynamicsY
+export VehicleDynamics, DynamicsData
 
 #standard gravity for specific force normalization
 const g₀ = 9.80665
@@ -397,12 +397,12 @@ end
 
 
 ################################################################################
-########################### AbstractComponents ###################################
+########################### AbstractComponentSet ###################################
 
-abstract type AbstractComponents <: SystemDefinition end
+abstract type AbstractComponentSet <: SystemDefinition end
 
-#AbstractComponents subtypes will generally be too specific for the fallback
-function Systems.f_ode!(components::System{<:AbstractComponents}, args...)
+#AbstractComponentSet subtypes will generally be too specific for the fallback
+function Systems.f_ode!(components::System{<:AbstractComponentSet}, args...)
     MethodError(f_ode!, (components, kin, air, trn)) |> throw
 end
 
@@ -410,12 +410,12 @@ end
 #whole Components System hierarchy, and without good reason, because in
 #principle Components shouldn't implement discrete dynamics; discretized
 #algorithms belong in Avionics. can still be overridden by subtypes if required
-Systems.f_disc!(::NoScheduling, ::System{<:AbstractComponents}) = nothing
+Systems.f_disc!(::NoScheduling, ::System{<:AbstractComponentSet}, args...) = nothing
 
 
 ################################ NoComponents #################################
 
-@kwdef struct NoComponents <: AbstractComponents
+@kwdef struct NoComponents <: AbstractComponentSet
     mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
 end
 
@@ -433,7 +433,7 @@ end
 
 struct VehicleDynamics <: SystemDefinition end
 
-@kwdef struct VehicleDynamicsY
+@kwdef struct DynamicsData
     wr_Σ_c::Wrench = Wrench() #total external wrench at CoM
     wr_Σ_b::Wrench = Wrench() #total external wrench at Body
     mp_Σ_c::MassProperties = MassProperties() #mass properties at CoM
@@ -454,10 +454,10 @@ struct VehicleDynamics <: SystemDefinition end
 end
 
 Systems.X(::VehicleDynamics) = zero(Kinematics.XVelTemplate)
-Systems.Y(::VehicleDynamics) = VehicleDynamicsY()
+Systems.Y(::VehicleDynamics) = DynamicsData()
 
 function Systems.f_ode!(sys::System{VehicleDynamics},
-                        components::System{<:AbstractComponents},
+                        components::System{<:AbstractComponentSet},
                         kin_data::KinData)
 
     @unpack q_eb, q_nb, n_e, h_e, r_eb_e = kin_data
@@ -541,7 +541,7 @@ function Systems.f_ode!(sys::System{VehicleDynamics},
     ẋ.ω_eb_b = ω̇_eb_b
     ẋ.v_eb_b = v̇_eb_b
 
-    sys.y = VehicleDynamicsY(; wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b,
+    sys.y = DynamicsData(; wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b,
         ω̇_ec_c, v̇_ec_c, a_ec_c, a_ic_c, g_c_c, γ_c_c, f_c_c,
         ω̇_eb_b, v̇_eb_b, α_ib_b, a_eb_b, a_ib_b)
 
@@ -573,7 +573,7 @@ end
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:VehicleDynamicsY}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:DynamicsData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -673,8 +673,9 @@ function GUI.draw(wr::Wrench, label::String)
 
 end
 
+GUI.draw(dyn::System{VehicleDynamics}) = GUI.draw(dyn.y)
 
-function GUI.draw(dyn::VehicleDynamicsY, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(dyn::DynamicsData, p_open::Ref{Bool} = Ref(true),
                     label::String = "Vehicle Dynamics")
 
     @unpack wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b,

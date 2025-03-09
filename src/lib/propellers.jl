@@ -407,7 +407,7 @@ function get_Δβ(sys::System{<:Propeller{<:VariablePitch}})
     return linear_scaling(sys.u[], Δβ_range)
 end
 
-function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω::Real)
+function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirflowData, ω::Real)
 
     @unpack d, J_xx, t_bp, sense, lookup = sys.constants
     #remove this, it may happen due to friction overshoot at low RPMs
@@ -433,7 +433,7 @@ function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirData, ω
     C_Fy_β = C_Fz_α #by y/z symmetry
     C_My_β = C_Mz_α #by y/z symmetry
 
-    α_p, β_p = Air.get_airflow_angles(v_wOp_p)
+    α_p, β_p = Atmosphere.get_airflow_angles(v_wOp_p)
 
     C_F = SVector{3,Float64}(C_Fx, C_Fy_β * β_p, C_Fz_α * α_p)
     C_M = Int(sense) * SVector{3,Float64}(C_Mx, C_My_β * β_p, C_Mz_α * α_p)

@@ -141,7 +141,7 @@ function Systems.init!(sys::System{<:PistonEngine})
     frc.u.bound_hi .= 1
 end
 
-function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirData)
+function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirflowData)
 
     @unpack ω_rated, ω_idle, P_rated, J, τ_start, lookup = eng.constants
     @unpack idle, frc = eng.subsystems
@@ -465,7 +465,7 @@ end
 end
 
 
-function Systems.f_ode!(sys::System{<:PistonThruster}, air_data::AirData, kin_data::KinData)
+function Systems.f_ode!(sys::System{<:PistonThruster}, air_data::AirflowData, kin_data::KinData)
 
     @unpack engine, propeller = sys
     @unpack gear_ratio = sys.constants

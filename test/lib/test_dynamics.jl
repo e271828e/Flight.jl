@@ -11,7 +11,7 @@ using Flight.FlightLib
 export test_dynamics
 
 #define a dummy component that returns the dynamic data at b to be tested
-struct TestComponent <: AbstractComponents end
+struct TestComponent <: AbstractComponentSet end
 
 @kwdef mutable struct TestComponentU
     mp_Σ_b::MassProperties = MassProperties()

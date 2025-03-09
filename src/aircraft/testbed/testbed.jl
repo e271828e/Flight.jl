@@ -39,7 +39,7 @@ end
 ################################################################################
 ################################ Components ######################################
 
-struct DynamicInverter <: AbstractComponents end
+struct DynamicInverter <: AbstractComponentSet end
 
 Dynamics.get_mp_b(::System{DynamicInverter}) = MassProperties(RigidBodyDistribution(1.0, SA[1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]))
 Dynamics.get_wr_b(::System{DynamicInverter}) = Wrench()
@@ -50,8 +50,8 @@ Dynamics.get_hr_b(::System{DynamicInverter}) = zeros(SVector{3})
 
 function Systems.f_ode!(inverter::System{DynamicInverter},
                         kin::KinData,
-                        air::AirData,
-                        trn::AbstractTerrain)
+                        air::AirflowData,
+                        trn::System{<:AbstractTerrain})
 
     Systems.update_y!(components)
 
@@ -140,13 +140,13 @@ end
 
 function Kinematics.Initializer(trim_state::TrimState,
                                 trim_params::TrimParameters,
-                                atm_data::AtmData)
+                                atm_data::AtmosphericData)
 
     @unpack EAS, β_a, γ_wb_n, ψ_nb, ψ_wb_dot, θ_wb_dot, Ob = trim_params
     @unpack α_a, φ_nb = trim_state
 
-    TAS = Air.EAS2TAS(EAS; ρ = ISAData(Ob, atm_data).ρ)
-    v_wb_a = Air.get_velocity_vector(TAS, α_a, β_a)
+    TAS = Atmosphere.EAS2TAS(EAS; ρ = ISAData(Ob, atm_data).ρ)
+    v_wb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
     v_wb_b = C172.f_ba.q(v_wb_a) #wind-relative aircraft velocity, body frame
 
     θ_nb = AircraftBase.θ_constraint(; v_wb_b, γ_wb_n, φ_nb)

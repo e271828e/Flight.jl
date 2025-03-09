@@ -128,11 +128,11 @@ end
 ################################################################################
 ############################# Cessna172Xv2 ###################################
 
-const Cessna172Xv2{K, T, A} = Cessna172X{K, T, A} where {
-    K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: C172Xv2.Avionics}
+const Cessna172Xv2{K, A} = Cessna172X{K, A} where {
+    K <: AbstractKinematicDescriptor, A <: C172Xv2.Avionics}
 
-function Cessna172Xv2(kinematics = WA(), terrain = HorizontalTerrain())
-    AircraftBase.Aircraft(C172X.Vehicle(kinematics, terrain), C172Xv2.Avionics())
+function Cessna172Xv2(kinematics = WA())
+    AircraftBase.Aircraft(C172X.Vehicle(kinematics), C172Xv2.Avionics())
 end
 
 

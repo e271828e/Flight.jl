@@ -295,23 +295,23 @@ end
 
 #reuse C172S power plant, replace actuation system
 const Components = C172.Components{typeof(C172S.PowerPlant()), FlyByWireActuation}
-const Vehicle{K, T} = AircraftBase.Vehicle{C172X.Components, K, T} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
-const Aircraft{K, T, A} = AircraftBase.Aircraft{C172X.Vehicle{K, T}, A} where {K <: AbstractKinematicDescriptor, T <: AbstractTerrain, A <: AbstractAvionics}
-const Cessna172X{K, T, A} = C172X.Aircraft{K, T, A}
+const Vehicle{K} = AircraftBase.Vehicle{C172X.Components, K} where {K <: AbstractKinematicDescriptor}
+const Aircraft{K, A} = AircraftBase.Aircraft{C172X.Vehicle{K}, A} where {K <: AbstractKinematicDescriptor, A <: AbstractAvionics}
+const Cessna172X{K, A} = C172X.Aircraft{K, A}
 
-function Vehicle(kinematics = WA(), terrain = HorizontalTerrain())
+function Vehicle(kinematics = WA())
     AircraftBase.Vehicle(
         C172.Components(C172S.PowerPlant(), FlyByWireActuation()),
-        kinematics, VehicleDynamics(), terrain, LocalAtmosphere())
+        kinematics, VehicleDynamics())
 end
 
 ################################################################################
 ################################# Cessna172Xv0 ################################
 
-const Cessna172Xv0{K, T} = Cessna172X{K, T, NoAvionics} where { K <: AbstractKinematicDescriptor, T <: AbstractTerrain}
+const Cessna172Xv0{K} = Cessna172X{K, NoAvionics} where { K <: AbstractKinematicDescriptor}
 
-function Cessna172Xv0(kinematics = WA(), terrain = HorizontalTerrain())
-    AircraftBase.Aircraft(Vehicle(kinematics, terrain), NoAvionics())
+function Cessna172Xv0(kinematics = WA())
+    AircraftBase.Aircraft(Vehicle(kinematics), NoAvionics())
 end
 
 ############################ Joystick Mappings #################################
@@ -336,7 +336,7 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
     @unpack act, pwp, aero, fuel, ldg, pld = vehicle.components
 
-    atm_data = AtmData(vehicle.atmosphere)
+    atm_data = AtmosphericData(vehicle.atmosphere)
     Systems.init!(vehicle, KinInit(trim_state, trim_params, atm_data))
 
     act.throttle.u[] = throttle

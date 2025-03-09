@@ -697,8 +697,11 @@ end
 ################################################################################
 ################################# GUI ##########################################
 
+
+GUI.draw(dyn::System{<:AbstractKinematicDescriptor}) = GUI.draw(KinData(dyn))
+
 function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
-                    label::String = "Kinematics")
+                    label::String = "Kinematic Data")
 
     @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_wb_b, ω_eb_b, v_eb_b, v_eb_n  = data
 

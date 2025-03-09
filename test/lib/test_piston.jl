@@ -24,7 +24,7 @@ export test_piston
 end
 
 @kwdef mutable struct TestHarnessU
-    air_data::AirData = AirData()
+    air_data::AirflowData = AirflowData()
     kin_data::KinData = KinData()
     fuel_available::Bool = true
 end
@@ -133,8 +133,8 @@ function test_engine_response()
     @testset verbose = true "Engine Response" begin
 
         kin = KinInit(h = HEllip(), v_eb_n = [50, 0, 0]) |> KinData
-        atm = AtmData()
-        air = AirData(kin, atm)
+        atm = AtmosphericData()
+        air = AirflowData(atm, kin)
         eng = PistonEngine() |> System
 
         eng.u.τ_load = -10

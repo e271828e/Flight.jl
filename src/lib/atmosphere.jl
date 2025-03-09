@@ -13,7 +13,7 @@ export ISAData, AtmosphericData, AirflowData
 
 export SeaLevelStandard, TunableSeaLevel
 export NoWind, TunableWind
-export ISAModel, SimpleAtmosphere
+export AbstractAtmosphere, SimpleAtmosphere
 
 ### see ISO 2553
 
@@ -171,7 +171,7 @@ end
     ρ::Float64 = density(p_std, T_std)
     a::Float64 = speed_of_sound(T_std)
     μ::Float64 = dynamic_viscosity(T_std)
-    v::SVector{3,Float64} = SVector[0.0, 0.0, 0.0] #local wind velocity, NED axes
+    v::SVector{3,Float64} = @SVector[0.0, 0.0, 0.0] #local wind velocity, NED axes
 end
 
 ################################################################################
@@ -180,7 +180,6 @@ end
 struct AirflowData
     v_ew_n::SVector{3,Float64} #wind velocity, NED axes
     v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
-    v_eb_b::SVector{3,Float64} #vehicle velocity vector, vehicle axes
     v_wb_b::SVector{3,Float64} #vehicle aerodynamic velocity, vehicle axes
     T::Float64 #static temperature
     p::Float64 #static pressure
@@ -200,7 +199,8 @@ end
 TAS2EAS(TAS::Real; ρ::Real) = TAS * √(ρ / ρ_std)
 EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
 
-function AirflowData(atm::AtmosphericData, kin::KinData)
+function AirflowData(atm::AtmosphericData = AtmosphericData(),
+                    kin::KinData = KinData())
 
     @unpack v_eb_b, q_nb = kin
     @unpack T, p, ρ, a, μ, v  = atm
@@ -219,7 +219,7 @@ function AirflowData(atm::AtmosphericData, kin::KinData)
     EAS = TAS2EAS(TAS; ρ)
     CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + Δp/p_std)^((γ-1)/γ) - 1) )
 
-    AirflowData(v_ew_n, v_ew_b, v_eb_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
+    AirflowData(v_ew_n, v_ew_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
 
@@ -432,7 +432,8 @@ end
 
 ################################# GUI ##########################################
 
-function GUI.draw(air::AirflowData, p_open::Ref{Bool} = Ref(true), label::String = "Air")
+function GUI.draw(air::AirflowData, p_open::Ref{Bool} = Ref(true),
+                label::String = "Airflow Data")
 
     @unpack v_ew_n, v_ew_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
 
