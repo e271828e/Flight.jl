@@ -70,13 +70,13 @@ end
 #assemble state vector from vehicle
 function XPitch(vehicle::System{<:C172X.Vehicle})
 
-    @unpack components, air, kinematics = vehicle.y
+    @unpack components, airflow, kinematics = vehicle.y
     @unpack pwp, aero, act = components
     @unpack e_nb, ω_eb_b = kinematics
 
     q = ω_eb_b[2]
     θ = e_nb.θ
-    v_x, _, v_z = air.v_wb_b
+    v_x, _, v_z = airflow.v_wb_b
     α_filt = aero.α_filt
     ele_p = act.elevator.pos
 
@@ -152,7 +152,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
     @unpack e2e_lqr, q2e_int, q2e_pid, v2θ_pid, c2θ_pid, v2t_pid = sys.subsystems
     @unpack e2e_lookup, q2e_lookup, v2θ_lookup, c2θ_lookup, v2t_lookup = sys.constants
 
-    EAS = vehicle.y.air.EAS
+    EAS = vehicle.y.airflow.EAS
     h_e = Float64(vehicle.y.kinematics.h_e)
     _, q, r = vehicle.y.kinematics.ω_wb_b
     @unpack θ, φ = vehicle.y.kinematics.e_nb
@@ -316,13 +316,13 @@ end
 
 function XLat(vehicle::System{<:C172X.Vehicle})
 
-    @unpack components, air, kinematics = vehicle.y
+    @unpack components, airflow, kinematics = vehicle.y
     @unpack aero, act = components
     @unpack e_nb, ω_eb_b = kinematics
 
     p, _, r = ω_eb_b
     φ = e_nb.φ
-    v_x, v_y, _ = air.v_wb_b
+    v_x, v_y, _ = airflow.v_wb_b
     β_filt = aero.β_filt
     ail_p = act.aileron.pos
     rud_p = act.rudder.pos
@@ -397,9 +397,9 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
     @unpack mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp = sys.u
     @unpack φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
     @unpack φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
-    @unpack air, kinematics = vehicle.y
+    @unpack airflow, kinematics = vehicle.y
 
-    EAS = air.EAS
+    EAS = airflow.EAS
     h_e = Float64(kinematics.h_e)
     φ = kinematics.e_nb.φ
     mode_prev = sys.y.mode
@@ -752,7 +752,7 @@ function Systems.init!(sys::System{<:Controller},
     #value by init!(vehicle, params)
     y_act = vehicle.y.components.act
     @unpack ω_wb_b, v_eb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
-    @unpack EAS = vehicle.y.air
+    @unpack EAS = vehicle.y.airflow
     @unpack β = vehicle.y.components.aero
 
     #makes Controller inputs consistent with the trim solution obtained
@@ -980,12 +980,12 @@ function GUI.draw!(ctl::System{<:Controller},
     @unpack u, y, Δt, subsystems = ctl
     @unpack lon_ctl, lat_ctl, alt_gdc = subsystems
 
-    @unpack components, kinematics, dynamics, air = vehicle.y
+    @unpack components, kinematics, dynamics, airflow = vehicle.y
     @unpack act, pwp, fuel, ldg, aero = components
 
     @unpack e_nb, ω_wb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eb_n = kinematics
     @unpack α, β = aero
-    @unpack CAS, EAS, TAS, T, p, pt = air
+    @unpack CAS, EAS, TAS, T, p, pt = airflow
     @unpack ψ, θ, φ = e_nb
     @unpack ϕ, λ = ϕ_λ
 

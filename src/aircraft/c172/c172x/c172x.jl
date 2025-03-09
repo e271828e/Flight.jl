@@ -330,14 +330,16 @@ end
 #assigns trim state and parameters to vehicle, then updates vehicle
 function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
                         trim_params::C172.TrimParameters,
-                        trim_state::C172.TrimState)
+                        trim_state::C172.TrimState,
+                        atmosphere::System{<:AbstractAtmosphere},
+                        terrain::System{<:AbstractTerrain})
 
     @unpack EAS, β_a, x_fuel, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
     @unpack act, pwp, aero, fuel, ldg, pld = vehicle.components
 
-    atm_data = AtmosphericData(vehicle.atmosphere)
-    Systems.init!(vehicle, KinInit(trim_state, trim_params, atm_data))
+    kin_init = KinInit(trim_state, trim_params, atmosphere)
+    Systems.init!(vehicle, kin_init, atmosphere, terrain)
 
     act.throttle.u[] = throttle
     act.mixture.u[] = mixture
@@ -383,7 +385,7 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
     aero.x.β_filt = β_a #ensures zero state derivative
     fuel.x .= Float64(x_fuel)
 
-    f_ode!(vehicle)
+    f_ode!(vehicle, atmosphere, terrain)
 
     #check essential assumptions about components systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
@@ -482,7 +484,7 @@ end
 
 function YLinear(vehicle::System{<:C172X.Vehicle{NED}})
 
-    @unpack components, air, dynamics, kinematics = vehicle.y
+    @unpack components, airflow, dynamics, kinematics = vehicle.y
     @unpack pwp, fuel, aero, act = components
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eb_b, v_eb_n, χ_gnd, γ_gnd = kinematics
@@ -506,8 +508,8 @@ function YLinear(vehicle::System{<:C172X.Vehicle{NED}})
     rud_p = act.rudder.pos
 
     f_x, f_y, f_z = dynamics.f_c_c
-    EAS = air.EAS
-    TAS = air.TAS
+    EAS = airflow.EAS
+    TAS = airflow.TAS
     χ = χ_gnd
     γ = γ_gnd
     climb_rate = -v_D

@@ -182,7 +182,11 @@ function Systems.f_ode!(ac::System{<:Aircraft},
     Systems.update_y!(ac)
 end
 
-function Systems.f_disc!(::NoScheduling, ac::System{<:Aircraft})
+function Systems.f_disc!(::NoScheduling,
+                        ac::System{<:Aircraft},
+                        atmosphere::System{<:AbstractAtmosphere},
+                        terrain::System{<:AbstractTerrain})
+
     @unpack vehicle, avionics = ac.subsystems
     f_disc!(avionics, vehicle)
     assign!(vehicle, avionics)
