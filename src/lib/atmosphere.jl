@@ -10,6 +10,9 @@ using ..Kinematics
 
 export p_std, T_std, g_std, ρ_std, ISA_layers
 export ISAData, AtmosphericData, AirflowData
+
+export SeaLevelStandard, TunableSeaLevel
+export NoWind, TunableWind
 export ISAModel, SimpleAtmosphere
 
 ### see ISO 2553
@@ -36,6 +39,49 @@ const g_std = 9.80665
 @kwdef struct ISAData
     T::Float64 = T_std
     p::Float64 = p_std
+end
+
+########################## Sea Level Conditions ################################
+
+#model the behavior of SL conditions as a function of time and 2D location
+abstract type AbstractSeaLevelConditions <: SystemDefinition end
+
+function ISAData(sys::System{<:AbstractSeaLevelConditions}, loc::Abstract2DLocation)
+    MethodError(ISAData, (sys, loc,)) |> throw
+end
+
+struct SeaLevelStandard <: AbstractSeaLevelConditions end
+
+ISAData(::System{<:SeaLevelStandard}, ::Abstract2DLocation) = ISAData(T_std, p_std)
+
+#simple model providing direct control over SL conditions
+struct TunableSeaLevel <: AbstractSeaLevelConditions end
+
+const T_sl_min = T_std - 50.0
+const T_sl_max = T_std + 50.0
+const p_sl_min = p_std - 10000.0
+const p_sl_max = p_std + 10000.0
+
+@kwdef mutable struct TunableSeaLevelU
+    T::Ranged{Float64, T_sl_min, T_sl_max} = T_std
+    p::Ranged{Float64, p_sl_min, p_sl_max} = p_std
+end
+
+Systems.U(::TunableSeaLevel) = TunableSeaLevelU()
+
+function ISAData(sys::System{<:TunableSeaLevel}, ::Abstract2DLocation)
+    ISAData(sys.u.T, sys.u.p)
+end
+
+function GUI.draw!(sys::System{<:TunableSeaLevel},
+                    p_open::Ref{Bool} = Ref(true),
+                    label::String = "Sea Level Conditions")
+
+    u = sys.u
+    CImGui.PushItemWidth(-50)
+        u.T = GUI.safe_slider("T (K)", u.T, "%.3f"; show_label = true)
+        u.p = GUI.safe_slider("p (Pa)", u.p, "%.3f"; show_label = true)
+    CImGui.PopItemWidth()
 end
 
 ############################## ISA Computation #################################
@@ -82,76 +128,6 @@ ISAData(h::Real, args...) = ISAData(HGeop(h), args...)
 ISAData(h::Geodesy.AbstractAltitudeDatum, args...) = ISAData(HGeop(h), args...)
 
 
-########################## Sea Level Conditions ################################
-
-#model the behavior of SL conditions as a function of time and 2D location
-abstract type AbstractSLConditions <: SystemDefinition end
-
-function ISAData(sys::System{<:AbstractSLConditions}, loc::Abstract2DLocation)
-    MethodError(ISAData, (sys, loc,)) |> throw
-end
-
-#simple model providing direct control over SL conditions
-struct TunableSLConditions <: AbstractSLConditions end
-
-const T_sl_min = T_std - 50.0
-const T_sl_max = T_std + 50.0
-const p_sl_min = p_std - 10000.0
-const p_sl_max = p_std + 10000.0
-
-@kwdef mutable struct TunableSLConditionsU
-    T::Ranged{Float64, T_sl_min, T_sl_max} = T_std
-    p::Ranged{Float64, p_sl_min, p_sl_max} = p_std
-end
-
-Systems.U(::TunableSLConditions) = TunableSLConditionsU()
-
-function ISAData(sys::System{<:TunableSLConditions}, ::Abstract2DLocation)
-    ISAData(sys.u.T, sys.u.p)
-end
-
-function GUI.draw!(sys::System{<:TunableSLConditions},
-                    p_open::Ref{Bool} = Ref(true),
-                    label::String = "Sea Level Conditions")
-
-    u = sys.u
-    CImGui.Begin(label, p_open)
-
-    CImGui.PushItemWidth(-50)
-        u.T = GUI.safe_slider("T (K)", u.T, "%.3f"; show_label = true)
-        u.p = GUI.safe_slider("p (Pa)", u.p, "%.3f"; show_label = true)
-    CImGui.PopItemWidth()
-
-    CImGui.End()
-
-    GUI.draw(sys, label)
-
-end
-
-
-############################## ISAModel ########################################
-
-@kwdef struct ISAModel{T <: AbstractSLConditions} <: SystemDefinition
-    sl::T = TunableSLConditions()
-end
-
-function ISAData(sys::System{<:ISAModel}, loc::Abstract3DLocation = Geographic())
-    ISAData(HGeop(loc), ISAData(sys.sl, NVector(loc)))
-end
-
-function GUI.draw(sys::System{<:ISAModel}, p_open::Ref{Bool} = Ref(true),
-                window_label::String = "ISA Model")
-
-    CImGui.Begin(window_label, p_open)
-        @cstatic c_sl=false begin
-            @c CImGui.Checkbox("Sea Level Conditions", &c_sl)
-            c_sl && @c GUI.draw!(sys.sl, &c_sl)
-        end
-    CImGui.End()
-
-end
-
-
 ################################################################################
 #################################### Wind ######################################
 
@@ -165,31 +141,26 @@ end
 struct NoWind <: AbstractWind end
 get_wind(::System{NoWind}, ::Abstract3DLocation) = SVector{3,Float64}(0.0, 0.0, 0.0)
 
-error("To do")
 struct TunableWind <: AbstractWind end
-get_wind(::System{TunableWind}, ::Abstract3DLocation) = SVector{3,Float64}(0.0, 0.0, 0.0)
+get_wind(sys::System{TunableWind}, ::Abstract3DLocation) = SVector{3}(sys.u)
 
-# function GUI.draw!(sys::System{<:LocalAtmosphere},
-#                     p_open::Ref{Bool} = Ref(true),
-#                     label::String = "Local Atmosphere")
+Systems.U(::TunableWind) = ComponentVector(N= 0.0, E = 0.0, D = 0.0)
 
-#     u = sys.u
+function GUI.draw!(sys::System{<:TunableWind},
+                    p_open::Ref{Bool} = Ref(true),
+                    label::String = "Wind")
 
-#     CImGui.Begin(label, p_open)
+    u = sys.u
 
-#     CImGui.PushItemWidth(-250)
-#     u.T_sl = GUI.safe_slider("Sea Level Temperature (K)", u.T_sl, "%.3f"; show_label = true)
-#     u.p_sl = GUI.safe_slider("Sea Level Pressure (Pa)", u.p_sl, "%.3f"; show_label = true)
-#     u.v_ew_n[1] = GUI.safe_slider("North Wind (m/s)", u.v_ew_n[1], -30, 30, "%.3f"; show_label = true)
-#     u.v_ew_n[2] = GUI.safe_slider("East Wind (m/s)", u.v_ew_n[2], -30, 30, "%.3f"; show_label = true)
-#     u.v_ew_n[3] = GUI.safe_slider("Down Wind (m/s)", u.v_ew_n[3], -30, 30, "%.3f"; show_label = true)
-#     CImGui.PopItemWidth()
+    CImGui.PushItemWidth(-80)
+        u.N = GUI.safe_slider("North (m/s)", u.N, -30, 30, "%.3f"; show_label = true)
+        u.E = GUI.safe_slider("East (m/s)", u.E, -30, 30, "%.3f"; show_label = true)
+        u.D = GUI.safe_slider("Down (m/s)", u.D, -30, 30, "%.3f"; show_label = true)
+    CImGui.PopItemWidth()
 
-#     CImGui.End()
+    GUI.draw(sys, label)
 
-#     GUI.draw(sys, label)
-
-# end
+end
 
 ################################################################################
 ############################## AtmosphericData #################################
@@ -229,9 +200,9 @@ end
 TAS2EAS(TAS::Real; ρ::Real) = TAS * √(ρ / ρ_std)
 EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
 
-function AirflowData(kin::KinData, atm::AtmosphericData)
+function AirflowData(atm::AtmosphericData, kin::KinData)
 
-    @unpack h_o, v_eb_b, q_nb = kin
+    @unpack v_eb_b, q_nb = kin
     @unpack T, p, ρ, a, μ, v  = atm
 
     v_ew_n = v #ECEF-relative wind velocity, NED axes
@@ -266,17 +237,17 @@ end
 ################################################################################
 ############################## SimpleAtmosphere ################################
 
-#Combines two decoupled models:
-# - An ISA hydrostatic model
-# - A wind model (static or dynamic, uniform or non-uniform)
+#Combines an ISA hydrostatic model with an arbitrary wind model
 
-@kwdef struct SimpleAtmosphere{S <: ISAModel, W <: AbstractWind} <: AbstractAtmosphere
-    static::S = ISAModel(TunableSLConditions())
-    wind::W = NoWind()
+@kwdef struct SimpleAtmosphere{S <: AbstractSeaLevelConditions, W <: AbstractWind} <: AbstractAtmosphere
+    sl::S = TunableSeaLevel()
+    wind::W = TunableWind()
 end
 
-function AtmosphericData(sys::System{<:SimpleAtmosphere}, loc::Abstract3DLocation)
-    @unpack T, p = ISAData(sys.static, loc)
+function AtmosphericData(sys::System{<:SimpleAtmosphere},
+                        loc::Abstract3DLocation)
+
+    @unpack T, p = ISAData(HGeop(loc), ISAData(sys.sl, NVector(loc)))
     ρ = density(p, T)
     a = speed_of_sound(T)
     μ = dynamic_viscosity(T)
@@ -284,27 +255,25 @@ function AtmosphericData(sys::System{<:SimpleAtmosphere}, loc::Abstract3DLocatio
     AtmosphericData(; T, p, ρ, a, μ, v)
 end
 
-# function GUI.draw!(sys::System{<:LocalAtmosphere},
-#                     p_open::Ref{Bool} = Ref(true),
-#                     label::String = "Local Atmosphere")
+function AirflowData(sys::System{<:SimpleAtmosphere}, kin_data::KinData)
+    @unpack n_e, h_o = kin_data
+    AirflowData(AtmosphericData(sys, Geographic(n_e, h_o)), kin_data)
+end
 
-#     u = sys.u
+function GUI.draw!(sys::System{<:SimpleAtmosphere},
+                    p_open::Ref{Bool} = Ref(true),
+                    label::String = "Simple Atmosphere")
 
-#     CImGui.Begin(label, p_open)
+    CImGui.Begin(label, p_open)
+        if CImGui.CollapsingHeader("Sea-Level Conditions")
+            GUI.draw!(sys.sl)
+        end
+        if CImGui.CollapsingHeader("Wind")
+            GUI.draw!(sys.wind)
+        end
+    CImGui.End()
 
-#     CImGui.PushItemWidth(-250)
-#     u.T_sl = GUI.safe_slider("Sea Level Temperature (K)", u.T_sl, "%.3f"; show_label = true)
-#     u.p_sl = GUI.safe_slider("Sea Level Pressure (Pa)", u.p_sl, "%.3f"; show_label = true)
-#     u.v_ew_n[1] = GUI.safe_slider("North Wind (m/s)", u.v_ew_n[1], -30, 30, "%.3f"; show_label = true)
-#     u.v_ew_n[2] = GUI.safe_slider("East Wind (m/s)", u.v_ew_n[2], -30, 30, "%.3f"; show_label = true)
-#     u.v_ew_n[3] = GUI.safe_slider("Down Wind (m/s)", u.v_ew_n[3], -30, 30, "%.3f"; show_label = true)
-#     CImGui.PopItemWidth()
-
-#     CImGui.End()
-
-#     GUI.draw(sys, label)
-
-# end
+end
 
 
 ################################################################################

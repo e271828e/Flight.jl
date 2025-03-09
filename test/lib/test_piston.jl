@@ -9,7 +9,7 @@ using Flight.FlightCore
 using Flight.FlightLib
 
 #non-exported stuff
-using Flight.FlightLib.Air: p_std, T_std
+using Flight.FlightLib.Atmosphere: p_std, T_std
 using Flight.FlightLib.Piston: PistonEngine, PistonThruster
 using Flight.FlightLib.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
 using Flight.FlightLib.Piston: eng_off, eng_starting, eng_running

@@ -22,7 +22,8 @@ function test_gui()
     # target = Cessna172CAS() |> System
     # target = Cessna172SBase() |> System
     # target = Cessna172Sv0() |> System
-    target = Atmosphere.ISAModel() |> System
+    target = Atmosphere.SimpleAtmosphere() |> System
+    # target = Atmosphere.ISAModel() |> System
     f_draw = let target = target
         () -> GUI.draw!(target)
         # return () -> GUI.draw!(target)

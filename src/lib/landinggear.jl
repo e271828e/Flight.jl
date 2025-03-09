@@ -216,25 +216,25 @@ function Systems.f_ode!(sys::System{<:Strut},
                         kin::KinData)
 
     @unpack t_bs, l_0, damper = sys.constants
-    @unpack q_eb, q_nb, q_en, n_e, h_e, r_eb_e, v_eb_b, ω_eb_b = kin
+    @unpack q_eb, q_nb, q_en, r_eb_e, v_eb_b, ω_eb_b = kin
 
     q_bs = t_bs.q #body frame to strut frame rotation
     r_bs_b = t_bs.r #strut frame origin
 
-    #do we have contact
+    #do we have contact?
     q_es = q_eb ∘ q_bs
     ks_e = q_es(e3)
     r_bs_e = q_eb(r_bs_b) #position of strut frame with respect to body frame
     r_sw0_e = l_0 * ks_e #position of natural-length wheel endpoint with respect to strut frame
     r_ew0_e = r_eb_e + r_bs_e + r_sw0_e #position of natural length wheel endpoint with respect to ECEF frame
     Ow0 = r_ew0_e |> Cartesian |> Geographic
-    h_Ow0 = HEllip(Ow0)
+    he_Ow0 = HEllip(Ow0)
 
     loc_Ot = NVector(Ow0)
     trn_data = TerrainData(terrain, loc_Ot)
-    h_Ot = HEllip(trn_data)
+    he_Ot = HEllip(HOrth(trn_data), loc_Ot)
 
-    Δh = h_Ow0 - h_Ot
+    Δh = he_Ow0 - he_Ot
     wow = Δh <= 0
 
     if !wow #no contact
@@ -242,7 +242,7 @@ function Systems.f_ode!(sys::System{<:Strut},
         return
     end
 
-    Ot = Geographic(loc_Ot, h_Ot)
+    Ot = Geographic(loc_Ot, he_Ot)
     r_et_e = Cartesian(Ot)[:]
 
     r_es_e = r_eb_e + r_bs_e #position of strut frame with respect to ECEF frame

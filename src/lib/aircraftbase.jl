@@ -20,28 +20,31 @@ export trim!, linearize!
     components::F = NoComponents()
     kinematics::K = WA()
     dynamics::VehicleDynamics = VehicleDynamics()
-    terrain::T = HorizontalTerrain() #shared with other aircraft instances
-    atmosphere::LocalAtmosphere = LocalAtmosphere() #externally controlled
+    # terrain::T = HorizontalTerrain() #shared with other aircraft instances
+    # atmosphere::LocalAtmosphere = LocalAtmosphere() #externally controlled
 end
 
 struct VehicleY{F, K}
     components::F
     kinematics::K
     dynamics::VehicleDynamicsY
-    air::AirData
+    airflow::AirflowData
 end
 
 Systems.Y(ac::Vehicle) = VehicleY(
     Systems.Y(ac.components),
     Systems.Y(ac.kinematics),
     VehicleDynamicsY(),
-    AirData())
+    AirflowData())
 
-function Systems.init!(sys::System{<:Vehicle}, ic::KinInit)
+function Systems.init!( sys::System{<:Vehicle},
+                        ic::KinInit,
+                        atm::System{<:AbstractAtmosphere},
+                        trn::AbstractTerrain)
     @unpack kinematics, dynamics = sys.subsystems
     Systems.init!(kinematics, ic)
     dynamics.x .= kinematics.u #ESSENTIAL!
-    f_ode!(sys) #update vehicle's ẋ and y
+    f_ode!(sys, atm, trn) #update vehicle's ẋ and y
 end
 
 

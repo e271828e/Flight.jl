@@ -4,7 +4,7 @@ using Interpolations, StaticArrays, StructArrays, ComponentArrays, UnPack
 
 using Flight.FlightCore
 using Flight.FlightLib
-using Flight.FlightLib.Air: R
+using Flight.FlightLib.Atmosphere: R
 
 using ..Propellers: AbstractPropeller, Propeller
 using ..Control.Continuous: PIVector, PIVectorU, PIVectorY
