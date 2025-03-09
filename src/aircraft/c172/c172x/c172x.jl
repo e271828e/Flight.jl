@@ -338,9 +338,6 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
     @unpack act, pwp, aero, fuel, ldg, pld = vehicle.components
 
-    kin_init = KinInit(trim_state, trim_params, atmosphere)
-    Systems.init!(vehicle, kin_init, atmosphere, terrain)
-
     act.throttle.u[] = throttle
     act.mixture.u[] = mixture
     act.aileron.u[] = aileron
@@ -385,7 +382,11 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
     aero.x.β_filt = β_a #ensures zero state derivative
     fuel.x .= Float64(x_fuel)
 
-    f_ode!(vehicle, atmosphere, terrain)
+    kin_init = KinInit(trim_state, trim_params, atmosphere)
+
+    #initialize the vehicle with the setup above. this will call f_ode!
+    #internally, no need to do it here
+    Systems.init!(vehicle, kin_init, atmosphere, terrain)
 
     #check essential assumptions about components systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))

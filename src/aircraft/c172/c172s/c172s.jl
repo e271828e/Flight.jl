@@ -82,9 +82,6 @@ function AircraftBase.assign!(vehicle::System{<:C172S.Vehicle},
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
     @unpack act, pwp, aero, fuel, ldg, pld = vehicle.components
 
-    kin_init = KinInit(trim_state, trim_params, atmosphere)
-    Systems.init!(vehicle, kin_init, atmosphere, terrain)
-
     #for trimming, control surface inputs are set to zero, and we work only with
     #their offsets
     act.u.throttle = throttle
@@ -121,13 +118,15 @@ function AircraftBase.assign!(vehicle::System{<:C172S.Vehicle},
     #with the engine running friction is ignored. we can simply set it to zero.
     pwp.x.engine.frc .= 0.0
 
-    #fuel content
-    fuel.x .= Float64(x_fuel)
-
     aero.x.α_filt = α_a #ensures zero state derivative
     aero.x.β_filt = β_a #ensures zero state derivative
+    fuel.x .= Float64(x_fuel)
 
-    f_ode!(vehicle, atmosphere, terrain)
+    kin_init = KinInit(trim_state, trim_params, atmosphere)
+
+    #initialize the vehicle with the setup above. this will call f_ode!
+    #internally, no need to do it here
+    Systems.init!(vehicle, kin_init, atmosphere, terrain)
 
     #check essential assumptions about components systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
