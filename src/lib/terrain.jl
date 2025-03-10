@@ -19,7 +19,7 @@ end
 
 Geodesy.HOrth(data::TerrainData) = data.altitude
 
-######################## AbstractTerrain ##########################
+############################# AbstractTerrain ##################################
 
 abstract type AbstractTerrain <: SystemDefinition end
 
@@ -27,17 +27,15 @@ function TerrainData(trn::System{<:AbstractTerrain}, loc::Abstract2DLocation)
     throw(MethodError(TerrainData, (trn, loc)))
 end
 
-# struct NoTerrain <: AbstractTerrain end
-
-# function TerrainData(::NoTerrain, ::Abstract2DLocation = NVector())
-#     TerrainData(Geodesy.h_min + 1, SVector{3,Float64}(0,0,1), DryTarmac)
-# end
+############################# HorizontalTerrain ################################
 
 @kwdef struct HorizontalTerrain <: AbstractTerrain
     altitude::Altitude{Orthometric} = HOrth(0)
 end
 
 Systems.U(::HorizontalTerrain) = Ref(DryTarmac)
+
+@no_dynamics HorizontalTerrain
 
 function TerrainData(trn::System{<:HorizontalTerrain}, ::Abstract2DLocation)
     TerrainData(trn.constants.altitude, SVector{3,Float64}(0,0,1), trn.u[])

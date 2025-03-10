@@ -20,10 +20,10 @@ const e3 = SVector{3,Float64}(0,0,1)
 
 abstract type AbstractSteering <: SystemDefinition end
 
-
 ################################ NoSteering ####################################
 
 struct NoSteering <: AbstractSteering end
+@no_dynamics NoSteering
 
 struct NoSteeringY end
 
@@ -56,6 +56,8 @@ function Systems.f_ode!(sys::System{DirectSteering})
     sys.y = DirectSteeringY(; engaged, input)
 end
 
+@no_step DirectSteering
+
 function get_steering_angle(sys::System{DirectSteering}, ψ_v::Real)
     @unpack engaged, input = sys.y
     ψ_sw = engaged ? Float64(input) * sys.constants.ψ_max : ψ_v
@@ -77,10 +79,10 @@ end
 
 abstract type AbstractBraking <: SystemDefinition end
 
-
 ############################### NoBraking ######################################
 
 struct NoBraking <: AbstractBraking end
+@no_dynamics NoBraking
 
 struct NoBrakingY end
 
@@ -105,6 +107,8 @@ Systems.Y(::DirectBraking) = DirectBrakingY()
 function Systems.f_ode!(sys::System{DirectBraking})
     sys.y = DirectBrakingY(Float64(sys.u[]) * sys.constants.η_br)
 end
+
+@no_step DirectBraking
 
 get_braking_factor(sys::System{DirectBraking}) = sys.y.κ_br
 
@@ -611,7 +615,7 @@ function Systems.f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinData,
     f_ode!(strut, steering, terrain, kinematics)
     f_ode!(contact, strut, braking)
 
-    Systems.update_y!(sys)
+    update_y!(sys)
 
 end
 

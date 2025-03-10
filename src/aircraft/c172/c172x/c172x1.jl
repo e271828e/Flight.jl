@@ -22,7 +22,10 @@ end
 
 ############################### Update methods #################################
 
-Systems.f_ode!(::System{<:C172Xv1.Avionics}, ::System{<:C172X.Vehicle}) = nothing
+Systems.f_ode!(::System{<:C172Xv1.Avionics}, args...) = nothing
+Systems.f_step!(::System{<:C172Xv1.Avionics}, args...) = nothing
+
+@ss_disc C172Xv1.Avionics
 
 function AircraftBase.assign!(components::System{<:C172X.Components},
                           avionics::System{<:C172Xv1.Avionics})
