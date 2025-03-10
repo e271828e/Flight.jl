@@ -214,6 +214,8 @@ struct NoScheduling <: MaybeSchedule end
 #outputs. override as required.
 @inline function f_ode!(sys::System, args...)
     # sys.subsystems |> keys |> println
+    # println("Called for $(typeof(sys))")
+    # println()
     for ss in sys.subsystems
         f_ode!(ss, args...)
     end
@@ -233,6 +235,8 @@ end
 #Systems are expected to update their output. override as required.
 @inline function f_disc!(::NoScheduling, sys::System, args...)
     # sys.subsystems |> keys |> println
+    # println("Called for $(typeof(sys))")
+    # println()
     for ss in sys.subsystems
         f_disc!(ss, args...)
     end

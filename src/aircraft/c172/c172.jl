@@ -1131,7 +1131,7 @@ function cost(vehicle::System{<:C172.Vehicle})
 
     @unpack ẋ, y = vehicle
 
-    v_nd_dot = SVector{3}(ẋ.dynamics.v_eb_b) / norm(y.kinematics.data.v_eb_b)
+    v_nd_dot = SVector{3}(ẋ.dynamics.v_eb_b) / norm(y.kinematics.v_eb_b)
     ω_dot = SVector{3}(ẋ.dynamics.ω_eb_b) #ω should already of order 1
     n_eng_dot = ẋ.components.pwp.engine.ω / vehicle.components.pwp.engine.constants.ω_rated
 

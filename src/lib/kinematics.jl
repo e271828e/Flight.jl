@@ -38,16 +38,6 @@ function Initializer(;
 end
 
 
-######################### AbstractKinematicDescriptor ##########################
-################################################################################
-
-abstract type AbstractKinematicDescriptor <: SystemDefinition end
-const KinSystem = System{<:AbstractKinematicDescriptor}
-
-const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eb_b = zeros(3))
-Systems.U(::AbstractKinematicDescriptor) = zero(XVelTemplate)
-
-
 ################################### KinData ####################################
 ################################################################################
 
@@ -121,30 +111,6 @@ Base.getproperty(data::KinData, s::Symbol) = getproperty(data, Val(s))
     end
 end
 
-################################# KinematicsY ##################################
-################################################################################
-
-struct KinematicsY{S}
-    data::KinData #general, implementation-agnostic kinematic data
-    impl::S #implementation-specific outputs
-end
-
-KinData(y::KinematicsY) = y.data
-KinData(sys::KinSystem) = KinData(sys.y)
-
-Base.getproperty(y::KinematicsY, s::Symbol) = getproperty(y, Val(s))
-
-@generated function Base.getproperty(y::KinematicsY{T}, ::Val{S}) where {T, S}
-    if S === :data || S === :impl
-        return :(getfield(y, $(QuoteNode(S))))
-    elseif S ∈ fieldnames(KinData)
-        return :(getfield(getfield(y, :data), $(QuoteNode(S))))
-    elseif S ∈ fieldnames(T)
-        return :(getfield(getfield(y, :impl), $(QuoteNode(S))))
-    else
-        error("$(typeof(y)) has no property $S")
-    end
-end
 
 function normalize_block!(x, ε) #returns true if norm was corrected
     norm_x = norm(x)
@@ -161,6 +127,20 @@ function Geodesy.G_n(kin_data::KinData)
 end
 
 
+######################### AbstractKinematicDescriptor ##########################
+################################################################################
+
+abstract type AbstractKinematicDescriptor <: SystemDefinition end
+const KinSystem = System{<:AbstractKinematicDescriptor}
+
+const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eb_b = zeros(3))
+
+Systems.U(::AbstractKinematicDescriptor) = zero(XVelTemplate)
+Systems.Y(::AbstractKinematicDescriptor) = KinData()
+
+KinData(sys::KinSystem) = sys.y
+
+
 ########################### WA-based Kinematics #########################
 ##########################################################################
 
@@ -169,16 +149,8 @@ end
 
 struct WA <: AbstractKinematicDescriptor end
 
-@kwdef struct WAData
-    q_wb::RQuat = RQuat()
-    q_ew::RQuat = RQuat()
-    ω_ew_w::SVector{3,Float64} = zeros(SVector{3})
-end
-
 Systems.X(::WA) = ComponentVector(
     q_wb = zeros(4), q_ew = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
-
-Systems.Y(::WA) = KinematicsY(KinData(), WAData())
 
 function Systems.init!(sys::System{WA}, ic::Initializer = Initializer())
 
@@ -249,11 +221,8 @@ function Systems.f_ode!(sys::System{WA})
     ẋ.Δy = v_eb_n[2]
     ẋ.h_e = -v_eb_n[3]
 
-    sys.y = KinematicsY(
-        KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
-                 ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd),
-        WAData(; q_wb, q_ew, ω_ew_w)
-    )
+    sys.y = KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
+                 ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
 
@@ -284,15 +253,8 @@ end
 
 struct ECEF <: AbstractKinematicDescriptor end
 
-@kwdef struct ECEFData
-    q_en::RQuat = RQuat()
-    ω_ew_n::SVector{3,Float64} = zeros(SVector{3})
-end
-
 Systems.X(::ECEF) = ComponentVector(
     q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0)
-
-Systems.Y(::ECEF) = KinematicsY(KinData(), ECEFData())
 
 function Systems.init!(sys::System{ECEF}, ic::Initializer = Initializer())
 
@@ -357,14 +319,10 @@ function Systems.f_ode!(sys::System{ECEF})
     ẋ.Δy = v_eb_n[2]
     ẋ.h_e = -v_eb_n[3]
 
-    sys.y = KinematicsY(
-        KinData(e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
-                ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd),
-        ECEFData(; q_en, ω_ew_n)
-    )
+    sys.y = KinData(e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
+                ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
-
 
 function Systems.f_step!(sys::System{ECEF}, ε = 1e-8)
     normalize_block!(sys.x.q_eb, ε)
@@ -380,15 +338,8 @@ end
 
 struct NED <: AbstractKinematicDescriptor end
 
-@kwdef struct NEDData
-    ω_nb_b::SVector{3,Float64} = zeros(SVector{3})
-    ω_en_n::SVector{3,Float64} = zeros(SVector{3})
-end
-
 Systems.X(::NED) = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
                                 ϕ = 0.0, λ = 0.0, Δx = 0.0, Δy = 0.0, h_e = 0.0)
-
-Systems.Y(::NED) = KinematicsY(KinData(), NEDData())
 
 
 function Systems.init!(sys::System{NED}, ic::Initializer = Initializer())
@@ -467,11 +418,8 @@ function Systems.f_ode!(sys::System{NED})
     ẋ.Δy = v_eb_n[2]
     ẋ.h_e = -v_eb_n[3]
 
-    sys.y = KinematicsY(
-        KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
-                 ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd),
-        NEDData(; ω_nb_b, ω_en_n)
-    )
+    sys.y = KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
+                 ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
 
@@ -579,13 +527,6 @@ end
 
 end
 
-function Plotting.make_plots(ts::TimeSeries{<:KinematicsY}; kwargs...)
-
-    return OrderedDict(
-        :data => make_plots(ts.data; kwargs...),
-    )
-
-end
 
 function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
 

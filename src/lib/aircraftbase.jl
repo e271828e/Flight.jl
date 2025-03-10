@@ -54,7 +54,7 @@ end
 
 Systems.Y(ac::Vehicle) = VehicleY(
     Systems.Y(ac.components),
-    Systems.Y(ac.kinematics),
+    KinData(),
     DynamicsData(),
     AirflowData())
 
@@ -375,7 +375,7 @@ function GUI.draw!(vehicle::System{<:Vehicle},
             @c CImGui.Checkbox("Dynamics", &c_dyn)
             @c CImGui.Checkbox("Airflow", &c_air)
             c_afm && @c GUI.draw!(components, avionics, &c_afm)
-            c_kin && @c GUI.draw(kinematics.data, &c_kin)
+            c_kin && @c GUI.draw(kinematics, &c_kin)
             c_dyn && @c GUI.draw(dynamics, &c_dyn)
             c_air && @c GUI.draw(airflow, &c_air)
     end)

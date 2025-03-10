@@ -156,7 +156,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
     h_e = Float64(vehicle.y.kinematics.h_e)
     _, q, r = vehicle.y.kinematics.ω_wb_b
     @unpack θ, φ = vehicle.y.kinematics.e_nb
-    clm = -vehicle.y.kinematics.data.v_eb_n[3]
+    clm = -vehicle.y.kinematics.v_eb_n[3]
     mode_prev = sys.y.mode
 
     #if not overridden by the control modes, actuation commands are simply
@@ -332,7 +332,7 @@ function XLat(vehicle::System{<:C172X.Vehicle})
 end
 
 function ZLat(vehicle::System{<:C172X.Vehicle})
-    φ = vehicle.y.kinematics.data.e_nb.φ
+    φ = vehicle.y.kinematics.e_nb.φ
     β = vehicle.y.components.aero.β
     ZLat(; φ, β)
 end
