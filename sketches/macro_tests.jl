@@ -7,7 +7,7 @@ macro echo(input)
 
 end
 
-macro no_cont(input)
+macro no_ode(input)
     esc(:(Systems.f_ode!(::System{<:($input)}, args...) = nothing))
 end
 
@@ -21,13 +21,13 @@ end
 
 macro no_dynamics(input)
     esc(quote
-       @no_cont $input
+       @no_ode $input
        @no_step $input
        @no_disc $input
     end)
 end
 
-macro ss_cont(input)
+macro ss_ode(input)
     quote
         @inline function Systems.f_ode!(sys::System{<:($input)}, args...)
             for ss in sys.subsystems

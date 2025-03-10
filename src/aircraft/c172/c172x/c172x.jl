@@ -116,7 +116,7 @@ end
 end
 
 #delegate continuous dynamics to subsystems
-@ss_cont FlyByWireActuation
+@ss_ode FlyByWireActuation
 
 function C172.assign!(aero::System{<:C172.Aero},
                     ldg::System{<:C172.Ldg},
@@ -534,10 +534,6 @@ AircraftBase.y_linear(vehicle::System{<:C172X.Vehicle{NED}}) = YLinear(vehicle)
 
 function AircraftBase.assign_u!(vehicle::System{<:C172X.Vehicle{NED}}, u::AbstractVector{Float64})
 
-    #The velocity states in the linearized model are meant to be aerodynamic so
-    #they can be readily used for flight control design. Since the velocity
-    #states in the nonlinear model are Earth-relative, we need to ensure wind
-    #velocity is set to zero for linearization.
     @unpack throttle, aileron, elevator, rudder = vehicle.components.act.subsystems
     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ULinear(u)
     throttle.u[] = throttle_cmd
@@ -545,7 +541,6 @@ function AircraftBase.assign_u!(vehicle::System{<:C172X.Vehicle{NED}}, u::Abstra
     elevator.u[] = elevator_cmd
     rudder.u[] = rudder_cmd
 
-    vehicle.atmosphere.u.v_ew_n .= 0
 
 end
 

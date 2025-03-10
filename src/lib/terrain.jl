@@ -1,6 +1,7 @@
 module Terrain
 
 using StaticArrays
+using CImGui: IsItemActive, SameLine, Text, Begin, End, AlignTextToFramePadding
 
 using Flight.FlightCore
 using ..Geodesy
@@ -39,6 +40,23 @@ Systems.U(::HorizontalTerrain) = Ref(DryTarmac)
 
 function TerrainData(trn::System{<:HorizontalTerrain}, ::Abstract2DLocation)
     TerrainData(trn.constants.altitude, SVector{3,Float64}(0,0,1), trn.u[])
+end
+
+function GUI.draw!(sys::System{<:HorizontalTerrain},
+                    p_open::Ref{Bool} = Ref(true),
+                    label::String = "Horizontal Terrain")
+
+    u = sys.u
+    Begin(label, p_open)
+        AlignTextToFramePadding(); Text("Surface Type"); SameLine()
+        mode_button("Dry Tarmac", DryTarmac, DryTarmac, u[]; HSV_requested = HSV_gray)
+        IsItemActive() && (u[] = DryTarmac); SameLine()
+        mode_button("Wet Tarmac", WetTarmac, WetTarmac, u[]; HSV_requested = HSV_gray)
+        IsItemActive() && (u[] = WetTarmac); SameLine()
+        mode_button("Icy Tarmac", IcyTarmac, IcyTarmac, u[]; HSV_requested = HSV_gray)
+        IsItemActive() && (u[] = IcyTarmac)
+        CImGui.Text("Elevation (MSL): $(Float64(sys.constants.altitude)) m")
+    End()
 end
 
 end #module

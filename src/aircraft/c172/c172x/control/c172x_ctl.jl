@@ -991,7 +991,7 @@ function GUI.draw!(ctl::System{<:Controller},
 
     p, q, r = ω_wb_b
     clm = -v_eb_n[3]
-    Δh = h_o - TerrainData(vehicle.constants.terrain, n_e).altitude
+    hog = (ldg.left.strut.Δh + ldg.right.strut.Δh + ldg.nose.strut.Δh) / 3
 
     Begin(label, p_open)
 
@@ -1334,7 +1334,7 @@ function GUI.draw!(ctl::System{<:Controller},
                 Text("Altitude (Orthometric)"); SameLine(240)
                 Text(@sprintf("%.3f m | %.3f ft", Float64(h_o), Float64(h_o)/0.3048))
                 Text("Height Over Ground"); SameLine(240)
-                Text(@sprintf("%.3f m | %.3f ft", Δh, Δh/0.3048))
+                Text(@sprintf("%.3f m | %.3f ft", hog, hog/0.3048))
                 Separator()
 
                 Text("Heading"); SameLine(240);

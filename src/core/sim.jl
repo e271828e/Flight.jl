@@ -189,7 +189,7 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
         dt::Real = 0.02, #continuous dynamics integration step
-        Δt::Real = 0.02, #discrete dynamics execution period (do not set to Inf!)
+        Δt::Real = dt, #discrete dynamics execution period (do not set to Inf!)
         t_start::Real = 0.0,
         t_end::Real = 10.0,
         save_on::Bool = true,

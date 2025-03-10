@@ -248,11 +248,6 @@ AircraftBase.y_linear(vehicle::System{<:C172S.Vehicle{NED}}) = YLinear(vehicle)
 
 function AircraftBase.assign_u!(vehicle::System{<:C172S.Vehicle{NED}}, u::AbstractVector{Float64})
 
-    #The velocity states in the linearized model are meant to be aerodynamic so
-    #they can be readily used for flight control design. Since the velocity
-    #states in the nonlinear model are Earth-relative, we need to ensure wind
-    #velocity is set to zero for linearization.
-    # vehicle.atmosphere.u.v_ew_n .= 0
     @unpack throttle, aileron, elevator, rudder = ULinear(u)
     @pack! vehicle.components.act.u = throttle, aileron, elevator, rudder
 

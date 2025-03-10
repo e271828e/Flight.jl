@@ -27,30 +27,29 @@ function test_c172x1()
 end
 
 y_kin(ac::System{<:Cessna172Xv1}) = ac.y.vehicle.kinematics
-y_air(ac::System{<:Cessna172Xv1}) = ac.y.vehicle.air
+y_air(ac::System{<:Cessna172Xv1}) = ac.y.vehicle.airflow
 y_aero(ac::System{<:Cessna172Xv1}) = ac.y.vehicle.components.aero
 
 function test_control_modes()
 
-    data_folder = joinpath(dirname(dirname(@__DIR__)),
+    data_folder = joinpath(dirname(dirname(dirname(@__DIR__))),
         normpath("src/aircraft/c172/c172x/control/data"))
 
     @testset verbose = true "Control Modes" begin
 
-    h_trn = HOrth(0)
-    trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172Xv1(WA(), trn) |> System;
+    h_trn = HOrth(0.0)
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> System
+
+    ac = world.ac
+    act = ac.vehicle.components.act
     ctl = ac.avionics.ctl
 
-    init_gnd = KinInit( h = TerrainData(trn).altitude + 1.9);
+    init_gnd = KinInit( h = h_trn + 1.9);
     init_air = C172.TrimParameters()
 
-    #we don't really need to provide a specific sys_init! function, because
-    #sys_init! defaults to Systems.init!, which for Aircraft has methods
-    #accepting both a Kinematics.Initializer and an AbstractTrimParameters
     dt = Δt = 0.01
 
-    sim = Simulation(ac; dt, Δt, t_end = 600)
+    sim = Simulation(world; dt, Δt, t_end = 600)
 
     ############################################################################
     ############################## Ground ######################################
@@ -83,19 +82,20 @@ function test_control_modes()
 
     #control laws outputs must have propagated to actuator inputs (not yet to
     #their outputs, that requires a subsequent call to f_ode!)
-    @test ac.vehicle.components.act.throttle.u[] == 0.1
-    @test ac.vehicle.components.act.aileron.u[] == 0.2
-    @test ac.vehicle.components.act.elevator.u[] == 0.3
-    @test ac.vehicle.components.act.rudder.u[] == 0.4
+    @test act.throttle.u[] == 0.1
+    @test act.aileron.u[] == 0.2
+    @test act.elevator.u[] == 0.3
+    @test act.rudder.u[] == 0.4
 
     #must reset scheduling counter before standalone calls to f_disc!, but
     #without calling Sim.reinit! so that the controller state is preserved
-    # ac.n[] = 0
-    # @test @ballocated(f_ode!($ac)) == 0
-    # @test @ballocated(f_step!($ac)) == 0
-    # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+    # @test @ballocated(f_ode!($world)) == 0
+    # @test @ballocated(f_step!($world)) == 0
+    # @test @ballocated(f_disc!($world)) == 0
 
     end #testset
+
 
     # ############################################################################
     # ################################# Air ######################################
@@ -122,8 +122,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
     end #testset
 
@@ -150,8 +150,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
     end #testset
 
@@ -185,8 +185,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -223,8 +223,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -257,16 +257,16 @@ function test_control_modes()
         @test isapprox(ctl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
         # @test isapprox(Float64(ctl.u.yaw_input), y_aero(ac).β; atol = 1e-3)
 
-        #correct tracking with 10m/s of crosswind
-        ac.vehicle.atmosphere.u.v_ew_n[1] = 10
+        #correct tracking with 10m/s of crosswind (N, current heading is E)
+        world.atm.wind.u.N = 10
         step!(sim, 10, true)
         @test isapprox(ctl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
-        ac.vehicle.atmosphere.u.v_ew_n[1] = 0
+        world.atm.wind.u.N = 0
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -309,10 +309,10 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
     end
-
 
     ############################## lon_thr_θ ###################################
 
@@ -340,8 +340,8 @@ function test_control_modes()
         #must always reset scheduling counter before standalone calls to
         #f_disc!, but we cannot do it by a simulation reinit, otherwise the
         #current controller state is lost
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -376,8 +376,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -417,8 +417,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -452,8 +452,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -489,8 +489,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
         # air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
@@ -512,14 +512,16 @@ function test_guidance_modes()
 
     @testset verbose = true "Guidance Modes" begin
 
-    h_trn = HOrth(0)
-    trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172Xv1(WA(), trn) |> System;
-    ctl = ac.avionics.ctl
-    init_air = C172.TrimParameters()
+    h_trn = HOrth(0.0)
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> System
 
+    ac = world.ac
+    ctl = ac.avionics.ctl
+
+    init_air = C172.TrimParameters()
     dt = Δt = 0.01
-    sim = Simulation(ac; dt, Δt, t_end = 600)
+
+    sim = Simulation(world; dt, Δt, t_end = 600)
 
     @testset verbose = true "Altitude Guidance" begin
 
@@ -566,8 +568,8 @@ function test_guidance_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
         ctl.u.h_sp = y_kin_trim.h_e + 100
         step!(sim, 1, true)
@@ -575,13 +577,9 @@ function test_guidance_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # ac.n[] = 0
-        # @test @ballocated(f_disc!($ac)) == 0
+        # world.n[] = 0
+        # @test @ballocated(f_disc!($world)) == 0
 
-        # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
-        # air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-        # save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_rpa1", "avionics", "kin"))
-        # save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_rpa1", "avionics", "air"))
         # return TimeSeries(sim)
 
     end
@@ -592,7 +590,7 @@ end
 
 struct JSONTestMapping <: IOMapping end
 
-function Systems.extract_output(sys::System{<:Cessna172Xv1},
+function Systems.extract_output(sys::System{<:SimpleWorld},
                         ::UDPOutput,
                         ::JSONTestMapping)
     freq = 0.1
@@ -625,7 +623,7 @@ function Systems.extract_output(sys::System{<:Cessna172Xv1},
     return JSON3.write(cmd)
 end
 
-function Systems.assign_input!(sys::System{<:Cessna172Xv1},
+function Systems.assign_input!(world::System{<:SimpleWorld},
                                 data::String,
                                 ::JSONTestMapping)
     #ControllerU is declared as StructTypes.Mutable() in C172X.C172XControl,
@@ -640,7 +638,7 @@ function Systems.assign_input!(sys::System{<:Cessna172Xv1},
     #it is an empty JSON entity (either string, object or array). instead of
     #this check we could simply call isempty(JSON3.read(str)) but that would
     #mean parsing the string twice
-    length(str) > 2 && JSON3.read!(str, sys.avionics.ctl.u)
+    length(str) > 2 && JSON3.read!(str, world.ac.avionics.ctl.u)
 
     # isempty(str) |> println
     # JSON3.read(str) |> isempty |> println
@@ -650,10 +648,9 @@ function test_json_loopback(; save::Bool = true)
 
 
     h_trn = HOrth(427.2);
-    trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172Xv1(WA(), trn) |> System;
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> System
 
-    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 30)
+    sim = Simulation(world; dt = 1/60, Δt = 1/60, t_end = 30)
 
     #on air, automatically trimmed by reinit!
     initializer = C172.TrimParameters(
@@ -669,7 +666,7 @@ function test_json_loopback(; save::Bool = true)
 
     #trigger compilation of parsing methods for AvionicsU before launching the
     #simulation
-    JSON3.read!(JSON3.write(ac.avionics.ctl.u, allow_inf=true), ac.avionics.ctl.u; allow_inf=true)
+    JSON3.read!(JSON3.write(world.ac.avionics.ctl.u, allow_inf=true), world.ac.avionics.ctl.u; allow_inf=true)
 
     Sim.run_interactive!(sim)
 

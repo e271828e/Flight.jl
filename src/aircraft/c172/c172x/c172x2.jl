@@ -19,9 +19,9 @@ export Cessna172Xv2
 
 @kwdef struct Sensors <: SystemDefinition end
 
-function Systems.f_ode!(::System{<:C172Xv2.Sensors}, ::System{<:C172X.Vehicle})
-    nothing
-end
+@no_ode C172Xv2.Sensors
+@no_step C172Xv2.Sensors
+@ss_disc C172Xv2.Sensors
 
 function Systems.init!(sensors::System{<:C172Xv2.Sensors},
                             vehicle::System{<:C172X.Vehicle})
@@ -40,7 +40,9 @@ end
     ctl::C = Subsampled(Controller(), 2)
 end
 
-Systems.f_ode!(::System{<:C172Xv2.Computing}, ::System{<:C172X.Vehicle}) = nothing
+@no_ode C172Xv2.Computing
+@no_step C172Xv2.Computing
+@ss_disc C172Xv2.Computing
 
 function AircraftBase.assign!(components::System{<:C172X.Components},
                           computing::System{<:C172Xv2.Computing})
@@ -87,6 +89,10 @@ end
     sen::S = Sensors()
     cmp::C = Computing()
 end
+
+@no_ode C172Xv2.Avionics
+@no_step C172Xv2.Avionics
+@ss_disc C172Xv2.Avionics
 
 function AircraftBase.assign!(components::System{<:C172X.Components},
                           avionics::System{<:C172Xv2.Avionics})

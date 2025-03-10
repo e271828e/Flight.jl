@@ -9,8 +9,8 @@ using ..IODevices
 export SystemDefinition, SystemTrait, System
 export Subsampled, Scheduling, NoScheduling
 export f_ode!, f_step!, f_disc!, update_y!
-export @no_cont, @no_disc, @no_step, @no_dynamics
-export @ss_cont, @ss_disc, @ss_step, @ss_dynamics
+export @no_ode, @no_disc, @no_step, @no_dynamics
+export @ss_ode, @ss_disc, @ss_step, @ss_dynamics
 
 
 
@@ -236,7 +236,7 @@ end
 ########################## Convenience Macros ##################################
 
 #no continuous dynamics
-macro no_cont(sd)
+macro no_ode(sd)
     esc(:(Systems.f_ode!(::System{<:($sd)}, args...) = nothing))
 end
 
@@ -251,11 +251,11 @@ macro no_step(sd)
 end
 
 macro no_dynamics(sd)
-    esc(quote @no_cont $sd; @no_step $sd; @no_disc $sd end)
+    esc(quote @no_ode $sd; @no_step $sd; @no_disc $sd end)
 end
 
 #recursive fallbacks: apply the call to all subsystems and updates output
-macro ss_cont(sd)
+macro ss_ode(sd)
     esc(quote
         @inline function Systems.f_ode!(sys::System{<:($sd)}, args...)
             for ss in sys.subsystems
@@ -292,7 +292,7 @@ macro ss_step(sd)
 end
 
 macro ss_dynamics(sd)
-    esc(quote @ss_cont $sd; @ss_step $sd; @ss_disc $sd end)
+    esc(quote @ss_ode $sd; @ss_step $sd; @ss_disc $sd end)
 end
 
 ################################################################################

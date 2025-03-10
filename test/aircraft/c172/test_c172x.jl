@@ -15,8 +15,7 @@ function test_c172x()
     @testset verbose = true "Cessna 172X" begin
         test_trimming()
         test_linearization()
-        test_system_methods()
-        test_sim(save = false)
+        test_update_methods()
     end
 end
 
@@ -24,19 +23,17 @@ function test_trimming()
 
     @testset verbose = true "Trimming" begin
 
+        #test on vehicle
+        vehicle = System(C172X.Vehicle())
+        atm = SimpleAtmosphere() |> System
+        trn = HorizontalTerrain() |> System
         trim_params = C172.TrimParameters()
         state = C172.TrimState()
 
-        #test on vehicle
-        vehicle = System(C172X.Vehicle())
-        f_target = C172.get_f_target(vehicle, trim_params)
+        f_target = C172.get_f_target(vehicle, trim_params, atm, trn)
+
         @test @ballocated($f_target($state)) === 0
         success, _ = Systems.init!(vehicle, trim_params)
-        @test success
-
-        #test on direct variant
-        ac = System(Cessna172Xv0())
-        success, _ = Systems.init!(ac, trim_params)
         @test success
 
     end #testset
@@ -54,128 +51,29 @@ function test_linearization()
 end #function
 
 
-function test_system_methods()
+function test_update_methods()
 
-        @testset verbose = true "System Methods" begin
+    @testset verbose = true "Update Methods" begin
 
-            trn = HorizontalTerrain()
-            loc = NVector()
-            trn_data = TerrainData(trn, loc)
-            kin_init = KinInit( h = trn_data.altitude + 1.8);
+        atm = SimpleAtmosphere() |> System
+        trn = HorizontalTerrain() |> System
 
-            ac_WA = System(Cessna172Xv0(WA(), trn));
-            ac_ECEF = System(Cessna172Xv0(ECEF(), trn));
-            ac_NED = System(Cessna172Xv0(NED(), trn));
+        loc = NVector()
+        trn_data = TerrainData(trn, loc)
+        kin_init = KinInit( h = trn_data.altitude + 1.8);
 
-            Systems.init!(ac_WA, kin_init)
-            Systems.init!(ac_ECEF, kin_init)
-            Systems.init!(ac_NED, kin_init)
+        ac = System(Cessna172Xv0());
 
-            f_ode!(ac_WA)
-            #make sure we are on the ground to ensure landing gear code coverage
-            @test ac_WA.y.vehicle.components.ldg.left.strut.wow == true
+        Systems.init!(ac, kin_init, atm, trn)
 
-            #all three kinematics implementations must be supported, no allocations
-            @test @ballocated(f_ode!($ac_WA)) == 0
-            @test @ballocated(f_step!($ac_WA)) == 0
-            @test @ballocated(f_disc!($ac_WA)) == 0
+        #ensure we are on the ground for full landing gear code coverage
+        @test ac.y.vehicle.components.ldg.left.strut.wow == true
 
-            @test @ballocated(f_ode!($ac_ECEF)) == 0
-            @test @ballocated(f_step!($ac_ECEF)) == 0
-            @test @ballocated(f_disc!($ac_ECEF)) == 0
-
-            @test @ballocated(f_ode!($ac_NED)) == 0
-            @test @ballocated(f_step!($ac_NED)) == 0
-            @test @ballocated(f_disc!($ac_NED)) == 0
-
-        end
-
-    return nothing
-
-end
-
-function test_sim(; save::Bool = true)
-
-    @testset verbose = true "Simulation" begin
-
-        ac = Cessna172Xv0() |> System;
-
-        mid_cg_pld = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50)
-
-        ac.vehicle.atmosphere.u.v_ew_n .= [0, 0, 0]
-
-        trim_params = C172.TrimParameters(
-        Ob = Geographic(LatLon(), HOrth(1000)),
-        EAS = 25.0,
-        γ_wb_n = 0.0,
-        x_fuel = 0.5,
-        flaps = 1.0,
-        payload = mid_cg_pld)
-
-        exit_flag, trim_state = Systems.init!(ac, trim_params)
-        @test exit_flag === true
-
-        user_callback! = let
-
-            function (ac)
-
-                u_act = ac.vehicle.components.act.u
-                t = ac.t[]
-
-            end
-        end
-
-        sim = Simulation(ac; t_end = 30, user_callback!, adaptive = true)
-        Sim.run!(sim)
-
-        # plots = make_plots(sim; Plotting.defaults...)
-        kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
-        air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-        dyn_plots = make_plots(TimeSeries(sim).vehicle.dynamics; Plotting.defaults...)
-        save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172x", "sim", "kin"))
-        save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172x", "sim", "air"))
-        save && save_plots(dyn_plots, save_folder = joinpath("tmp", "test_c172x", "sim", "dyn"))
+        @test @ballocated(f_ode!($ac, $atm, $trn)) == 0
+        @test @ballocated(f_disc!($ac, $atm, $trn)) == 0
+        @test @ballocated(f_step!($ac, $atm, $trn)) == 0
 
     end
-
-end
-
-
-function test_sim_interactive(; save::Bool = true)
-
-    h_trn = HOrth(427.2);
-
-    # on ground
-    initializer = KinInit(
-        loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
-        q_nb = REuler(deg2rad(157), 0, 0),
-        h = h_trn + 1.81);
-
-    # # on air, automatically trimmed
-    # initializer = C172.TrimParameters(
-    #     Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
-
-    trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172Xv0(WA(), trn) |> System;
-
-    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
-
-    reinit!(sim, initializer)
-
-    for joystick in get_connected_joysticks()
-        Sim.attach!(sim, joystick)
-    end
-
-    xpc = XPlane12Output()
-    # xpc = XPlane12Output(address = IPv4("192.168.1.2"))
-    Sim.attach!(sim, xpc)
-
-    Sim.run_interactive!(sim; pace = 1)
-
-    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172x1", "sim_interactive", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172x1", "sim_interactive", "air"))
 
     return nothing
 

@@ -8,13 +8,14 @@ using Flight.FlightLib.AircraftBase: Aircraft
 
 export AbstractWorld, SimpleWorld
 
+
 ################################################################################
 ################################### World ######################################
 
 abstract type AbstractWorld <: SystemDefinition end
 
 ################################################################################
-################################### World ######################################
+############################## SimpleWorld #####################################
 
 @kwdef struct SimpleWorld{C <: Aircraft, A <: AbstractAtmosphere, T <: AbstractTerrain} <: AbstractWorld
     ac::C = Aircraft()
@@ -50,6 +51,45 @@ function Systems.init!( world::System{<:SimpleWorld}, args...)
     Systems.init!(atm)
     Systems.init!(trn)
     Systems.init!(ac, args...)
+end
+
+################################################################################
+############################### XPlane12Output #################################
+
+function Systems.extract_output(world::System{<:SimpleWorld},
+                                xp::XPlane12Output, mapping::IOMapping)
+    Systems.extract_output(world.ac, xp, mapping)
+end
+
+
+################################################################################
+############################ Joystick Mappings #################################
+
+function Systems.assign_input!(world::System{<:SimpleWorld},
+                                data::JoystickData,
+                                mapping::IOMapping)
+    Systems.assign_input!(world.ac, data, mapping)
+end
+
+################################################################################
+#################################### GUI #######################################
+
+function GUI.draw!(world::System{<:SimpleWorld};
+                    p_open::Ref{Bool} = Ref(true), label::String = "World")
+
+    CImGui.Begin(label, p_open)
+
+    @cstatic c_ac=false c_atm=false c_trn=false begin
+        @c CImGui.Checkbox("Aircraft", &c_ac)
+        c_ac && @c GUI.draw!(world.ac, &c_ac)
+        @c CImGui.Checkbox("Atmosphere", &c_atm)
+        c_atm && @c GUI.draw!(world.atm, &c_atm)
+        @c CImGui.Checkbox("Terrain", &c_trn)
+        c_trn && @c GUI.draw!(world.trn, &c_trn)
+    end
+
+    CImGui.End()
+
 end
 
 end

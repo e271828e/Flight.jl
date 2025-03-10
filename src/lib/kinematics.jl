@@ -138,9 +138,9 @@ const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eb_b = zeros(3))
 Systems.U(::AbstractKinematicDescriptor) = zero(XVelTemplate)
 Systems.Y(::AbstractKinematicDescriptor) = KinData()
 
-KinData(sys::KinSystem) = sys.y
-
 const KinSystem = System{<:AbstractKinematicDescriptor}
+
+KinData(sys::KinSystem) = sys.y
 
 ########################### WA-based Kinematics #########################
 ##########################################################################

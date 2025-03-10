@@ -336,6 +336,8 @@ function safe_slider(label::String, source::AbstractFloat, args...; show_label =
     return ref[]
 end
 
+#ref is a stack-allocated variable. we return the value it points to, not the
+#Ref itself
 function safe_input(label::String, source::AbstractFloat, args...; show_label = false)
     ref = Ref(Cdouble(source))
     input_label = show_label ? label : "##"*label

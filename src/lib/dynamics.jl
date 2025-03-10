@@ -423,9 +423,7 @@ get_hr_b(::System{NoComponents}) = zeros(SVector{3})
 get_wr_b(::System{NoComponents}) = Wrench()
 get_mp_b(sys::System{NoComponents}) = MassProperties(sys.constants.mass_distribution)
 
-function Systems.f_ode!(::System{NoComponents}, args...)
-    nothing
-end
+@no_dynamics NoComponents
 
 
 ################################################################################

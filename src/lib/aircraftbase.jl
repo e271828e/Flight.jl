@@ -91,6 +91,7 @@ abstract type AbstractAvionics <: SystemDefinition end
 ################################### NoAvionics #################################
 
 struct NoAvionics <: AbstractAvionics end
+@no_dynamics NoAvionics
 
 ################################################################################
 ######################## Vehicle/Avionics update methods #######################
@@ -216,14 +217,16 @@ function Systems.init!( aircraft::System{<:Aircraft},
     return result
 end
 
-Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.y.vehicle.kinematics)
+Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.vehicle.kinematics)
 
 
-################################# XPlane12Output ###################################
+################################################################################
+############################### XPlane12Output #################################
 
 function Systems.extract_output(ac::System{<:Aircraft}, ::XPlane12Output, ::IOMapping)
     return Network.xpmsg_set_pose(XPlanePose(KinData(ac))) #UDP message
 end
+
 
 ################################################################################
 ################################ Linearization #################################
@@ -239,9 +242,14 @@ assign_u!(vehicle::System{<:Vehicle}, u::AbstractVector{Float64}) = throw(Method
 linearize!(ac::System{<:Aircraft}, args...) = linearize!(ac.vehicle, args...)
 
 function linearize!( vehicle::System{<:Vehicle},
-                    trim_params::AbstractTrimParameters,
-                    atmosphere::System{<:AbstractAtmosphere} = System(SimpleAtmosphere()),
-                    terrain::System{<:AbstractTerrain} = System(HorizontalTerrain()))
+                    trim_params::AbstractTrimParameters)
+
+    #The velocity states in the linearized model must be aerodynamic so that
+    #they can be readily used for flight control design. Since the velocity
+    #states in the nonlinear model are Earth-relative, we should always set
+    #wind velocity to zero for linearization
+    atmosphere = System(SimpleAtmosphere(; wind = NoWind()))
+    terrain = System(HorizontalTerrain())
 
     (_, trim_state) = Systems.init!(vehicle, trim_params, atmosphere, terrain)
 
@@ -346,18 +354,17 @@ end
 ################################### GUI ########################################
 
 
-function GUI.draw!(sys::System{<:Aircraft};
-                    p_open::Ref{Bool} = Ref(true), label::String = "Aircraft")
+function GUI.draw!(ac::System{<:Aircraft}, p_open::Ref{Bool} = Ref(true),
+                    label::String = "Aircraft")
 
-    @unpack y = sys
-
+    @unpack vehicle, avionics = ac.subsystems
     CImGui.Begin(label, p_open)
 
     @cstatic c_phy=false c_avs=false begin
         @c CImGui.Checkbox("Vehicle", &c_phy)
-        c_phy && @c GUI.draw!(sys.vehicle, sys.avionics, &c_phy)
+        c_phy && @c GUI.draw!(vehicle, avionics, &c_phy)
         @c CImGui.Checkbox("Avionics", &c_avs)
-        c_avs && @c GUI.draw!(sys.avionics, sys.vehicle, &c_avs)
+        c_avs && @c GUI.draw!(avionics, vehicle, &c_avs)
     end
 
     CImGui.End()

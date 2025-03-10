@@ -87,7 +87,8 @@ function GUI.draw!(sys::System{<:TunableSeaLevel},
 
     u = sys.u
     CImGui.PushItemWidth(-50)
-        u.T = GUI.safe_slider("T (K)", u.T, "%.3f"; show_label = true)
+        # u.T = GUI.safe_slider("T (K)", u.T, "%.3f"; show_label = true)
+        u.T = GUI.safe_slider("T (K)", Ref(Float64(u.T)), "%.3f"; show_label = true)[]
         u.p = GUI.safe_slider("p (Pa)", u.p, "%.3f"; show_label = true)
     CImGui.PopItemWidth()
 end
@@ -260,7 +261,7 @@ end
     wind::W = TunableWind()
 end
 
-@ss_cont SimpleAtmosphere
+@ss_ode SimpleAtmosphere
 @ss_disc SimpleAtmosphere
 @no_step SimpleAtmosphere
 
@@ -371,12 +372,6 @@ function Plotting.make_plots(ts::TimeSeries{<:AirflowData}; kwargs...)
     pd[:v_ew_b] = plot(ts.v_ew_b;
         plot_title = "Velocity (Wind / ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{ew}^{x_b} \ (m/s)$" L"$v_{ew}^{y_b} \ (m/s)$" L"$v_{ew}^{z_b} \ (m/s)$"],
-        ts_split = :h,
-        kwargs...)
-
-    pd[:v_eb_b] = plot(ts.v_eb_b;
-        plot_title = "Velocity (Vehicle / ECEF) [Vehicle Axes]",
-        ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         ts_split = :h,
         kwargs...)
 
