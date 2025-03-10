@@ -131,7 +131,7 @@ end
 ################################################################################
 
 abstract type AbstractKinematicDescriptor <: SystemDefinition end
-const KinSystem = System{<:AbstractKinematicDescriptor}
+@no_disc AbstractKinematicDescriptor
 
 const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eb_b = zeros(3))
 
@@ -140,6 +140,7 @@ Systems.Y(::AbstractKinematicDescriptor) = KinData()
 
 KinData(sys::KinSystem) = sys.y
 
+const KinSystem = System{<:AbstractKinematicDescriptor}
 
 ########################### WA-based Kinematics #########################
 ##########################################################################

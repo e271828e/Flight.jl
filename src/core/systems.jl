@@ -9,6 +9,8 @@ using ..IODevices
 export SystemDefinition, SystemTrait, System
 export Subsampled, Scheduling, NoScheduling
 export f_ode!, f_step!, f_disc!, update_y!
+export @no_cont, @no_disc, @no_step, @no_dynamics
+export @ss_cont, @ss_disc, @ss_step, @ss_dynamics
 
 
 
@@ -187,41 +189,14 @@ end
 
 
 ################################################################################
-######################## f_ode! f_step! f_disc! ################################
+########################## System Update Methods ###############################
 
 abstract type MaybeSchedule end
 struct Schedule <: MaybeSchedule end
 struct NoScheduling <: MaybeSchedule end
 
-#f_ode! must update sys.ẋ, compute and reassign sys.y, then return nothing
-
-#f_step! and f_disc! are allowed to modify a System's u, s and x. if they do
-#modify x, they must return true, otherwise false
-
-#caution: if a System subtype defines a f_ode!, f_disc! or f_step! method, but
-#its interface is incorrectly specified, dispatch will silently revert to the
-#fallback. this has potential to cause subtle bugs. a test using @which should
-#be used to confirm that the desired method is indeed being dispatched to!
-
-#note: for some reason, map and foreach tend to allocate as the recursion
-#reaches further down the subsystem hierarchy
-
-
-############################## Update methods ##################################
-
-#fallback: tries calling f_ode! on all subsystems with the same arguments
-#provided to the parent System, then assembles a NamedTuple from the subsystems'
-#outputs. override as required.
-@inline function f_ode!(sys::System, args...)
-    # sys.subsystems |> keys |> println
-    # println("Called for $(typeof(sys))")
-    # println()
-    for ss in sys.subsystems
-        f_ode!(ss, args...)
-    end
-    update_y!(sys)
-    return nothing
-
+function f_ode!(sys::System, args...)
+    MethodError(f_ode!, (sys, args...)) |> throw
 end
 
 @inline f_disc!(sys::System, args...) = f_disc!(Schedule(), sys, args...)
@@ -230,35 +205,18 @@ function f_disc!(::Schedule, sys::System, args...)
     (sys.n[] % sys.N == 0) && f_disc!(NoScheduling(), sys, args...)
 end
 
-#fallback: tries calling f_disc! on all subsystems with the same arguments
-#provided to the parent System. also updates y, since f_disc! is where discrete
-#Systems are expected to update their output. override as required.
-@inline function f_disc!(::NoScheduling, sys::System, args...)
-    # sys.subsystems |> keys |> println
-    # println("Called for $(typeof(sys))")
-    # println()
-    for ss in sys.subsystems
-        f_disc!(ss, args...)
-    end
-    update_y!(sys)
-    return nothing
-
+function f_disc!(sch::NoScheduling, sys::System, args...)
+    MethodError(f_disc!, (sch, sys, args...)) |> throw
 end
 
-#fallback: tries calling f_step! on all subsystems with the same arguments
-#provided to the parent System. does NOT update y. override as required
-@inline function f_step!(sys::System, args...)
-    for ss in sys.subsystems
-        f_step!(ss, args...)
-    end
-    return nothing
-
+function f_step!(sys::System, args...)
+    MethodError(f_step!, (sys, args...)) |> throw
 end
 
-#fallback for Systems with no output
+#default for Systems with no output
 update_y!(::System{<:SystemDefinition, Nothing}) = nothing
 
-#fallback for Systems with NamedTuple output
+#default for Systems with NamedTuple output
 @inline function (update_y!(sys::System{D, Y})
     where {D <: SystemDefinition, Y <: NamedTuple{L, M}} where {L, M})
 
@@ -274,6 +232,68 @@ end
     end
 end
 
+
+########################## Convenience Macros ##################################
+
+#no continuous dynamics
+macro no_cont(sd)
+    esc(:(Systems.f_ode!(::System{<:($sd)}, args...) = nothing))
+end
+
+#no discrete dynamics
+macro no_disc(sd)
+    esc(:(Systems.f_disc!(::NoScheduling, ::System{<:($sd)}, args...) = nothing))
+end
+
+#no post-step update
+macro no_step(sd)
+    esc(:(Systems.f_step!(::System{<:($sd)}, args...) = nothing))
+end
+
+macro no_dynamics(sd)
+    esc(quote @no_cont $sd; @no_step $sd; @no_disc $sd end)
+end
+
+#recursive fallbacks: apply the call to all subsystems and updates output
+macro ss_cont(sd)
+    esc(quote
+        @inline function Systems.f_ode!(sys::System{<:($sd)}, args...)
+            for ss in sys.subsystems
+                f_ode!(ss, args...)
+            end
+            update_y!(sys)
+            return nothing
+        end
+    end)
+end
+
+macro ss_disc(sd)
+    esc(quote
+        @inline function Systems.f_disc!(::NoScheduling, sys::System{<:($sd)}, args...)
+            for ss in sys.subsystems
+                f_disc!(ss, args...)
+            end
+            update_y!(sys)
+            return nothing
+        end
+    end)
+end
+
+macro ss_step(sd)
+    esc(quote
+        @inline function Systems.f_step!(sys::System{<:($sd)}, args...)
+            for ss in sys.subsystems
+                f_step!(ss, args...)
+            end
+            # update_y!(sys) #output update not essential here
+            return nothing
+        end
+    end)
+end
+
+macro ss_dynamics(sd)
+    esc(quote @ss_cont $sd; @ss_step $sd; @ss_disc $sd end)
+end
 
 ################################################################################
 #################################### I/O #######################################

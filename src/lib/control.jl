@@ -60,6 +60,9 @@ Systems.X(cmp::LinearizedSS) = copy(cmp.x0)
 Systems.U(cmp::LinearizedSS) = copy(cmp.u0)
 Systems.Y(cmp::LinearizedSS) = SVector{length(cmp.y0)}(cmp.y0)
 
+@no_disc LinearizedSS
+@no_step LinearizedSS
+
 function Systems.f_ode!(sys::System{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, LY}
 
     @unpack ẋ, x, u, y, constants = sys
@@ -160,6 +163,8 @@ end
 Systems.X(::PIVector{N}) where {N} = zeros(N)
 Systems.Y(::PIVector{N}) where {N} = PIVectorY{N}()
 Systems.U(::PIVector{N}) where {N} = PIVectorU{N}()
+
+@no_disc PIVector
 
 function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
 
@@ -389,6 +394,9 @@ function Systems.reset!(sys::System{<:Integrator}, x0::Real = 0.0)
     sys.s.sat_out_0 = 0
 end
 
+@no_step Integrator
+@no_cont Integrator
+
 function Systems.f_disc!(::NoScheduling, sys::System{<:Integrator})
 
     @unpack s, u, Δt = sys
@@ -447,6 +455,9 @@ function Systems.reset!(sys::System{<:IntegratorVector{N}}, x0::AbstractVector{<
     sys.s.x0 .= x0
     sys.s.sat_out_0 .= 0
 end
+
+@no_cont IntegratorVector
+@no_step IntegratorVector
 
 function Systems.f_disc!(::NoScheduling, sys::System{<:IntegratorVector})
 
@@ -540,6 +551,9 @@ function Systems.reset!(sys::System{<:LeadLag})
     sys.s.u0 = 0
     sys.s.x0 = 0
 end
+
+@no_cont LeadLag
+@no_step LeadLag
 
 function Systems.f_disc!(::NoScheduling, sys::System{<:LeadLag})
 
@@ -674,6 +688,9 @@ function assign!(sys::System{<:PID}, params::PIDParams{<:Real})
     @pack! sys.u = k_p, k_i, k_d, τ_f
 end
 
+@no_cont PID
+@no_step PID
+
 function Systems.f_disc!(::NoScheduling, sys::System{<:PID})
 
     @unpack Δt = sys
@@ -768,6 +785,9 @@ function Systems.reset!(sys::System{<:PIDVector{N}}) where {N}
     sys.s.x_d0 .= 0
     sys.s.sat_out_0 .= 0
 end
+
+@no_cont PIDVector
+@no_step PIDVector
 
 function Systems.f_disc!(::NoScheduling, sys::System{<:PIDVector{N}}) where {N}
 
@@ -1026,6 +1046,9 @@ function Systems.reset!(sys::System{<:LQRTracker})
     sys.s.int_out_0 .= 0
     sys.s.out_sat_0 .= 0
 end
+
+@no_cont LQRTracker
+@no_step LQRTracker
 
 function Systems.f_disc!(::NoScheduling, sys::System{<:LQRTracker})
 

@@ -115,6 +115,9 @@ end
     brake_right::Actuator1 = Actuator1(range = (0.0, 1.0))
 end
 
+#delegate continuous dynamics to subsystems
+@ss_cont FlyByWireActuation
+
 function C172.assign!(aero::System{<:C172.Aero},
                     ldg::System{<:C172.Ldg},
                     pwp::System{<:PistonThruster},

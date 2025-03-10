@@ -15,6 +15,7 @@ include("propellers.jl"); @reexport using .Propellers
 include("piston.jl"); @reexport using .Piston
 include("landinggear.jl"); @reexport using .LandingGear
 include("aircraftbase.jl"); @reexport using .AircraftBase
+include("world.jl"); @reexport using .World
 
 include("srukf.jl"); @reexport using .SRUKF
 

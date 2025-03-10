@@ -58,7 +58,6 @@ Systems.Y(ac::Vehicle) = VehicleY(
     DynamicsData(),
     AirflowData())
 
-
 #this one is vehicle-agnostic
 function Systems.init!( sys::System{<:Vehicle},
                         condition::KinInit,
@@ -122,15 +121,17 @@ function Systems.f_ode!(vehicle::System{<:Vehicle},
 
     vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, airflow_data)
 
-    return nothing
-
 end
 
 function Systems.f_step!(vehicle::System{<:Vehicle},
-                         ::System{<:AbstractAtmosphere},
-                         ::System{<:AbstractTerrain})
+                         atm::System{<:AbstractAtmosphere},
+                         trn::System{<:AbstractTerrain})
 
-    foreach(f_step!, vehicle.subsystems) #call subsystems without extra args
+    @unpack components, kinematics, dynamics = vehicle.subsystems
+
+    f_step!(kinematics)
+    f_step!(components, atm, trn)
+
 end
 
 #within Vehicle, only the components may be modified by f_disc!
@@ -138,13 +139,12 @@ function Systems.f_disc!(::NoScheduling, vehicle::System{<:Vehicle},
                          atmosphere::System{<:AbstractAtmosphere},
                          terrain::System{<:AbstractTerrain})
 
-    @unpack components = vehicle.subsystems
-    @unpack kinematics, dynamics, airflow = vehicle.y
+    @unpack components, kinematics, dynamics = vehicle.subsystems
 
     f_disc!(components, atmosphere, terrain)
 
-    # components might have modified its outputs, so we need to reassemble y
-    vehicle.y = VehicleY(components.y, kinematics, dynamics, airflow)
+    # components.y might have changed, so we should update vehicle.y
+    vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, vehicle.y.airflow)
 
 end
 
@@ -194,9 +194,13 @@ function Systems.f_disc!(::NoScheduling,
     Systems.update_y!(ac)
 end
 
-#f_step! uses the recursive fallback method
+function Systems.f_step!(ac::System{<:Aircraft},
+                         atmosphere::System{<:AbstractAtmosphere},
+                         terrain::System{<:AbstractTerrain})
 
-Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.y.vehicle.kinematics)
+    @unpack vehicle, avionics = ac.subsystems
+    f_step!(vehicle, atmosphere, terrain)
+end
 
 #the Vehicle's initialization methods (kinematics and trimming) accept
 #atmosphere and terrain Systems as optional arguments. we pass them if provided;
@@ -211,6 +215,8 @@ function Systems.init!( aircraft::System{<:Aircraft},
     Systems.update_y!(aircraft)
     return result
 end
+
+Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.y.vehicle.kinematics)
 
 
 ################################# XPlane12Output ###################################

@@ -33,6 +33,7 @@ const g_std = 9.80665
 @inline SI2kts(v::Real) = 1.94384v
 
 
+
 ################################################################################
 ################################## ISA #########################################
 
@@ -50,12 +51,19 @@ function ISAData(sys::System{<:AbstractSeaLevelConditions}, loc::Abstract2DLocat
     MethodError(ISAData, (sys, loc,)) |> throw
 end
 
+############################## Sea Level Standard ##############################
+
 struct SeaLevelStandard <: AbstractSeaLevelConditions end
+@no_dynamics SeaLevelStandard
 
 ISAData(::System{<:SeaLevelStandard}, ::Abstract2DLocation) = ISAData(T_std, p_std)
 
+
+############################## Tunable Sea Level ################################
+
 #simple model providing direct control over SL conditions
 struct TunableSeaLevel <: AbstractSeaLevelConditions end
+@no_dynamics TunableSeaLevel
 
 const T_sl_min = T_std - 50.0
 const T_sl_max = T_std + 50.0
@@ -138,10 +146,18 @@ function get_wind(sys::System{<:AbstractWind},
     MethodError(get_wind, (sys, loc)) |> throw
 end
 
+############################## No Wind Model ###################################
+
 struct NoWind <: AbstractWind end
+@no_dynamics NoWind
+
 get_wind(::System{NoWind}, ::Abstract3DLocation) = SVector{3,Float64}(0.0, 0.0, 0.0)
 
+############################## Tunable Wind ####################################
+
 struct TunableWind <: AbstractWind end
+@no_dynamics TunableWind
+
 get_wind(sys::System{TunableWind}, ::Abstract3DLocation) = SVector{3}(sys.u)
 
 Systems.U(::TunableWind) = ComponentVector(N= 0.0, E = 0.0, D = 0.0)
@@ -243,6 +259,10 @@ end
     sl::S = TunableSeaLevel()
     wind::W = TunableWind()
 end
+
+@ss_cont SimpleAtmosphere
+@ss_disc SimpleAtmosphere
+@no_step SimpleAtmosphere
 
 function AtmosphericData(sys::System{<:SimpleAtmosphere},
                         loc::Abstract3DLocation)

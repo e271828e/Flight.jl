@@ -407,6 +407,8 @@ function get_Δβ(sys::System{<:Propeller{<:VariablePitch}})
     return linear_scaling(sys.u[], Δβ_range)
 end
 
+@no_step Propeller
+
 function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirflowData, ω::Real)
 
     @unpack d, J_xx, t_bp, sense, lookup = sys.constants

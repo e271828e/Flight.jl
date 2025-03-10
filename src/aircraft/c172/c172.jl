@@ -41,8 +41,6 @@ Dynamics.get_wr_b(::System{Airframe}) = Wrench()
 Dynamics.get_hr_b(::System{Airframe}) = zeros(SVector{3})
 
 
-
-
 ################################################################################
 ############################ Aerodynamics ######################################
 
@@ -463,7 +461,6 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
 
 end
 
-
 function Systems.f_step!(sys::System{Aero})
     #stall hysteresis
     α = sys.y.α
@@ -530,6 +527,7 @@ struct Ldg <: SystemDefinition
     nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
 end
 
+
 function Ldg()
 
     mlg_damper = SimpleDamper(k_s = 39404, #2700 lbf/ft
@@ -568,6 +566,13 @@ end
 
 Dynamics.get_mp_b(::System{Ldg}) = MassProperties()
 Dynamics.get_hr_b(::System{Ldg}) = zeros(SVector{3})
+
+#delegate continuous dynamics to subsystems
+@ss_cont Ldg
+
+function Systems.f_step!(sys::System{<:Ldg})
+    foreach(f_step!, sys.subsystems)
+end
 
 function GUI.draw(sys::System{<:Ldg}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Cessna 172S Landing Gear")
@@ -1007,7 +1012,9 @@ function Systems.f_ode!(components::System{<:Components},
 
 end
 
-function Systems.f_step!(components::System{<:Components})
+function Systems.f_step!(components::System{<:Components},
+                        ::System{<:AbstractAtmosphere},
+                        ::System{<:AbstractTerrain})
     @unpack aero, ldg, pwp, fuel = components
 
     f_step!(aero)
