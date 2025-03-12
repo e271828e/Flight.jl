@@ -12,6 +12,7 @@ using Flight.FlightAircraft
 
 export test_c172
 
+
 function test_c172()
     @testset verbose = true "Cessna 172" begin
     end
@@ -72,7 +73,6 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
     save && save_plots(dyn_plots, save_folder = joinpath("tmp", "test_c172", "sim", "dyn"))
 
 end
-
 
 
 end

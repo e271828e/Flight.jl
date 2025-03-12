@@ -1,4 +1,5 @@
 using Flight
+using Revise
 
 includet(normpath("lib/test_quaternions.jl")); using .TestQuaternions
 includet(normpath("lib/test_attitude.jl")); using .TestAttitude
