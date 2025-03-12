@@ -603,9 +603,8 @@ end
 ################################## Variants ####################################
 
 include(normpath("control/c172x_ctl.jl"))
-include(normpath("navigation/c172x_nav.jl"))
 
 include(normpath("c172x1.jl")); @reexport using .C172Xv1
-include(normpath("c172x2.jl")); @reexport using .C172Xv2
+# include(normpath("c172x2.jl")); @reexport using .C172Xv2
 
 end

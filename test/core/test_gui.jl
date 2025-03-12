@@ -1,31 +1,17 @@
 module TestGUI
 
 using Test
+using Revise
 
-using Flight.FlightCore.Systems
-using Flight.FlightCore.GUI
+using Flight.FlightCore
 
-using Flight.FlightLib
-# using Flight.FlightLib.Control
-# using Flight.FlightLib.LandingGear
+# using Flight.FlightLib
+# using Flight.FlightAircraft
 
-# using Flight.FlightAircraft.C172S
-using Flight.FlightAircraft
 
 export test_gui
 
-function test_gui()
-    # target = Control.Discrete.PIDVector{2}() |> System
-    # target = LandingGearUnit() |> System
-    # target = Control.Continuous.PIVector{3}() |> System
-    # target = C172CAS.PitchControl() |> System
-    # target = Cessna172CAS() |> System
-    # target = Cessna172SBase() |> System
-    # target = Cessna172Sv0() |> System
-    target = Atmosphere.SimpleAtmosphere() |> System
-    # target = SimpleWorld(; ac = Cessna172Xv1()) |> System
-    # target = HorizontalTerrain() |> System
-    # target = Cessna172Xv1() |> System
+function test_gui(target::System)
     f_draw = let target = target
         () -> GUI.draw!(target)
         # return () -> GUI.draw!(target)

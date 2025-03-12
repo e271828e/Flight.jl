@@ -398,10 +398,6 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
     #initialize the System's x, u and s
     Systems.init!(sys, init_args...; init_kwargs...)
 
-    #let it propagate to y. within its reinit! method, the integrator will call
-    #the SavingCallback to set the first entry in the log, which is sys.y
-    f_ode!(sys)
-
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
     #reinit! calls f_ode_wrapper!, so ẋ and y are updated in the process
     if has_x(p.sys)
