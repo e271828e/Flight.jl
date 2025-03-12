@@ -120,12 +120,18 @@ mutable struct System{D <: SystemDefinition, Y, U, X, S, C, B}
     const subsystems::B
 end
 
-function System(sd::SystemDefinition,
+function System(sd::D,
                 y = Y(sd), u = U(sd), ẋ = Ẋ(sd), x = X(sd), s = S(sd),
-                N = 1, Δt_root = Ref(1.0), t = Ref(0.0), n = Ref(0))
+                N = 1, Δt_root = Ref(1.0), t = Ref(0.0), n = Ref(0)) where {D <: SystemDefinition}
 
-    #construct subsystems from SystemDefinition fields
-    children_names = filter(propertynames(sd)) do name
+    sd_fieldnames = fieldnames(D)
+    foreach(sd_fieldnames) do name
+        name ∉ (fieldnames(System)..., :Δt) || error(
+            "Identifier $name cannot be used in a SystemDefinition field")
+    end
+
+    #construct subsystems from sd's SystemDefinition fields
+    children_names = filter(sd_fieldnames) do name
         getproperty(sd, name) isa SystemDefinition
     end
 
@@ -147,8 +153,8 @@ function System(sd::SystemDefinition,
 
     subsystems = NamedTuple{children_names}(children_systems)
 
-    #the remaining fields of the SystemDefinition are saved as parameters
-    constants = NamedTuple(n=>getfield(sd, n) for n in propertynames(sd) if !(n in children_names))
+    #the remaining fields of sd are saved as constants
+    constants = NamedTuple(n=>getfield(sd, n) for n in sd_fieldnames if !(n in children_names))
     constants = (!isempty(constants) ? constants : nothing)
 
     sys = System{map(typeof, (sd, y, u, x, s, constants, subsystems))...}(
@@ -166,7 +172,6 @@ function System(ss::Subsampled,
     System(ss.sd, y, u, ẋ, x, s, N * ss.K, Δt_root, t, n)
 end
 
-
 init!(::System, args...) = nothing
 
 function reset!(sys::System)
@@ -177,13 +182,22 @@ end
 
 Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
 
-@generated function Base.getproperty(sys::System, ::Val{S}) where {S}
-    if S ∈ fieldnames(System)
-        return :(getfield(sys, $(QuoteNode(S))))
-    elseif S === :Δt
+#there can be no clashes between constant and subsystem names, so for
+#convenience we allow direct access to both. caution: this makes type inference
+#harder, and it may cause issues in certain scenarios (see update_y!). if this
+#happens, getfield should be used instead.
+@generated function Base.getproperty(sys::System{D, Y, U, X, S, C, B}, ::Val{P}
+        ) where {D, Y, U, X, S, C, B, P}
+    if P ∈ fieldnames(System)
+        return :(getfield(sys, $(QuoteNode(P))))
+    elseif P ∈ fieldnames(B)
+        return :(getfield(getfield(sys, :subsystems), $(QuoteNode(P))))
+    elseif P ∈ fieldnames(C)
+        return :(getfield(getfield(sys, :constants), $(QuoteNode(P))))
+    elseif P === :Δt #actual discrete sampling period
         return :(getfield(sys, :Δt_root)[] * getfield(sys, :N))
     else
-        return :(getfield(getfield(sys, :subsystems), $(QuoteNode(S))))
+        return :(error("Failed to retrieve property $P from System"))
     end
 end
 
@@ -220,15 +234,15 @@ update_y!(::System{<:SystemDefinition, Nothing}) = nothing
 @inline function (update_y!(sys::System{D, Y})
     where {D <: SystemDefinition, Y <: NamedTuple{L, M}} where {L, M})
 
-    ys = map(id -> getproperty(sys.subsystems[id], :y), L)
+    ys = map(id -> getfield(getfield(getfield(sys, :subsystems), id), :y), L)
     sys.y = NamedTuple{L}(ys)
 end
 
 #else, we require an explicit implementation
 @inline function update_y!(sys::System{D}) where {D}
-    if !isempty(sys.subsystems)
+    if !isempty(getfield(sys, :subsystems))
         error("An update_y! method must be explicitly implemented for node "*
-        "Systems with an output type other than NamedTuple, $D doesn't have one")
+        "Systems with an output type other than NamedTuple; $D doesn't have one")
     end
 end
 
@@ -318,31 +332,16 @@ end
 ################################################################################
 ############################### Inspection #####################################
 
-@kwdef struct SystemTreeNode
-    label::Symbol = :root
-    type::DataType #SystemDefinition type
-    function SystemTreeNode(label::Symbol, type::DataType)
-        @assert (type <: SystemDefinition) && (!isabstracttype(type))
-        new(label, type)
-    end
+function AbstractTrees.children(node::System)
+    return node.subsystems
 end
 
-SystemTreeNode(::Type{D}) where {D <: SystemDefinition} = SystemTreeNode(type = D)
-
-function AbstractTrees.children(node::SystemTreeNode)
-    return [SystemTreeNode(name, type) for (name, type) in zip(
-            fieldnames(node.type), fieldtypes(node.type))
-            if type <: SystemDefinition]
+function AbstractTrees.printnode(io::IO, ::System{D}) where {D}
+    max_str = 100
+    str = string(D)
+    str_short = first(str, max_str)
+    length(str_short) < length(str) && (str_short *= "...")
+    print(io, str_short)
 end
-
-function AbstractTrees.printnode(io::IO, node::SystemTreeNode)
-    print(io, ":"*string(node.label)*" ($(node.type))")
-end
-
-AbstractTrees.print_tree(sd::Type{D}; kwargs...) where {D <: SystemDefinition} =
-    print_tree(SystemTreeNode(sd); kwargs...)
-
-AbstractTrees.print_tree(::D; kwargs...) where {D <: SystemDefinition} = print_tree(D; kwargs...)
-AbstractTrees.print_tree(::System{D}; kwargs...) where {D} = print_tree(D; kwargs...)
 
 end #module

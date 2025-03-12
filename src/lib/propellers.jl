@@ -398,12 +398,12 @@ Systems.U(::Propeller{<:VariablePitch}) = Ref(Ranged(0.0, 0., 1.))
 Systems.Y(::Propeller) = PropellerY()
 
 function get_Δβ(sys::System{<:Propeller{FixedPitch}})
-    Δβ_range = range(sys.constants.pitch)
+    Δβ_range = range(sys.pitch)
     return Δβ_range[1]
 end
 
 function get_Δβ(sys::System{<:Propeller{<:VariablePitch}})
-    Δβ_range = range(sys.constants.pitch)
+    Δβ_range = range(sys.pitch)
     return linear_scaling(sys.u[], Δβ_range)
 end
 
@@ -413,7 +413,7 @@ function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirflowData
 
     @unpack d, J_xx, t_bp, sense, lookup = sys.constants
     #remove this, it may happen due to friction overshoot at low RPMs
-    # @assert sign(ω) * Int(sys.constants.sense) >= 0 "Propeller turning in the wrong sense"
+    # @assert sign(ω) * Int(sys.sense) >= 0 "Propeller turning in the wrong sense"
 
     v_wOp_b = air.v_wb_b + kin.ω_eb_b × t_bp.r
     v_wOp_p = t_bp.q'(v_wOp_b)

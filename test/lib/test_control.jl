@@ -54,8 +54,8 @@ function test_continuous_lss()
 
         sys = System(ss)
 
-        x = 2sys.constants.x0
-        u = 3sys.constants.u0
+        x = 2sys.x0
+        u = 3sys.u0
         sys.x .= x
         sys.u .= u
         f_ode!(sys)

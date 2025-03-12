@@ -175,7 +175,7 @@ function cost(vehicle::System{<:C172.Vehicle})
 
     v_nd_dot = SVector{3}(ẋ.dynamics.v_eb_b) / norm(y.kinematics.v_eb_b)
     ω_dot = SVector{3}(ẋ.dynamics.ω_eb_b) #ω should already of order 1
-    n_eng_dot = ẋ.components.pwp.engine.ω / vehicle.components.pwp.engine.constants.ω_rated
+    n_eng_dot = ẋ.components.pwp.engine.ω / vehicle.components.pwp.engine.ω_rated
 
     sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2
 
@@ -217,7 +217,7 @@ function Systems.init!(vehicle::System{<:C172.Vehicle}, trim_params::TrimParamet
         rudder = -1)
 
     upper_bounds[:] .= TrimState(
-        α_a = vehicle.components.aero.constants.α_stall[2], #critical AoA is 0.28 < 0.36
+        α_a = vehicle.components.aero.α_stall[2], #critical AoA is 0.28 < 0.36
         φ_nb = π/3,
         n_eng = 1.1,
         throttle = 1,

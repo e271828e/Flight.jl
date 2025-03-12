@@ -30,7 +30,7 @@ Systems.Y(::FirstOrder) = 0.0
 
 function Systems.f_ode!(sys::System{FirstOrder})
     # @info("Called f_ode! with t = $(sys.t[]), x = $(sys.x[1]) and y = $(sys.y)")
-    sys.ẋ .= 1/sys.constants.τ * (sys.u[] - sys.x[1])
+    sys.ẋ .= 1/sys.τ * (sys.u[] - sys.x[1])
     sys.y = sys.x[1]
 end
 

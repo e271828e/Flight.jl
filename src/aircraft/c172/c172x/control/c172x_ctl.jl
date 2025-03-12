@@ -528,7 +528,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:AltitudeGuidance},
 
     h = h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o)
     Δh = h_sp - h
-    clm_sp = sys.constants.k_h2c * Δh
+    clm_sp = sys.k_h2c * Δh
 
     if state === alt_acquire
 

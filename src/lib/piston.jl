@@ -477,7 +477,7 @@ function Systems.f_ode!(sys::System{<:PistonThruster}, air_data::AirflowData, ki
     τ_prop = propeller.y.wr_p.τ[1]
     τ_eq = gear_ratio * τ_prop #load torque seen from the engine shaft
 
-    J_prop = propeller.constants.J_xx
+    J_prop = propeller.J_xx
     J_eq = gear_ratio^2 * J_prop #load moment of inertia seen from the engine side
 
     engine.u.τ_load = τ_eq

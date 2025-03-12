@@ -1,11 +1,13 @@
 module TestSRUKF
 
 using Test
+using Revise
 
 using LinearAlgebra, ComponentArrays, StaticArrays, BenchmarkTools
-
 using Flight.FlightLib.Attitude
-using Flight.FlightLib.SRUKF
+
+includet(joinpath(@__DIR__, "srukf.jl"))
+using ..SRUKF
 
 function test_srukf()
 

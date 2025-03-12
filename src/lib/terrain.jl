@@ -39,7 +39,7 @@ Systems.U(::HorizontalTerrain) = Ref(DryTarmac)
 @no_dynamics HorizontalTerrain
 
 function TerrainData(trn::System{<:HorizontalTerrain}, ::Abstract2DLocation)
-    TerrainData(trn.constants.altitude, SVector{3,Float64}(0,0,1), trn.u[])
+    TerrainData(trn.altitude, SVector{3,Float64}(0,0,1), trn.u[])
 end
 
 function GUI.draw!(sys::System{<:HorizontalTerrain},
@@ -55,7 +55,7 @@ function GUI.draw!(sys::System{<:HorizontalTerrain},
         IsItemActive() && (u[] = WetTarmac); SameLine()
         mode_button("Icy Tarmac", IcyTarmac, IcyTarmac, u[]; HSV_requested = HSV_gray)
         IsItemActive() && (u[] = IcyTarmac)
-        CImGui.Text("Elevation (MSL): $(Float64(sys.constants.altitude)) m")
+        CImGui.Text("Elevation (MSL): $(Float64(sys.altitude)) m")
     End()
 end
 

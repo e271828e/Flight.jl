@@ -60,7 +60,7 @@ end
 
 function get_steering_angle(sys::System{DirectSteering}, ψ_v::Real)
     @unpack engaged, input = sys.y
-    ψ_sw = engaged ? Float64(input) * sys.constants.ψ_max : ψ_v
+    ψ_sw = engaged ? Float64(input) * sys.ψ_max : ψ_v
     return ψ_sw
 end
 
@@ -105,7 +105,7 @@ Systems.U(::DirectBraking) = Ref(Ranged(0.0, 0., 1.))
 Systems.Y(::DirectBraking) = DirectBrakingY()
 
 function Systems.f_ode!(sys::System{DirectBraking})
-    sys.y = DirectBrakingY(Float64(sys.u[]) * sys.constants.η_br)
+    sys.y = DirectBrakingY(Float64(sys.u[]) * sys.η_br)
 end
 
 @no_step DirectBraking

@@ -356,7 +356,7 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
     pwp.engine.s.state = Piston.eng_running
 
     #set engine speed state
-    ω_eng = n_eng * pwp.engine.constants.ω_rated
+    ω_eng = n_eng * pwp.engine.ω_rated
     pwp.x.engine.ω = ω_eng
 
     #engine idle compensator: as long as the engine remains at normal
@@ -393,7 +393,7 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
 
     #check essential assumptions about components systems states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
-    @assert pwp.x.engine.ω > pwp.engine.constants.ω_idle
+    @assert pwp.x.engine.ω > pwp.engine.ω_idle
     @assert pwp.x.engine.idle[1] .== 0
     @assert pwp.x.engine.frc[1] .== 0
     @assert abs(aero.ẋ.α_filt) < 1e-10

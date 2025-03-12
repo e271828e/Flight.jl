@@ -154,13 +154,13 @@ function test_engine_response()
         f_step!(eng)
         @test eng.s.state == eng_starting
 
-        eng.x.ω = 0.9eng.constants.ω_idle
+        eng.x.ω = 0.9eng.ω_idle
         f_step!(eng) #with ω <= ω_idle, engine won't leave the starting state
         @test eng.s.state == eng_starting
         f_ode!(eng, air)
         @test eng.y.τ_shaft > 0 #it should output the starter torque
 
-        eng.x.ω = 1.1eng.constants.ω_idle
+        eng.x.ω = 1.1eng.ω_idle
         f_step!(eng) #engine should start now
         @test eng.s.state == eng_running
         f_ode!(eng, air)
@@ -179,10 +179,10 @@ function test_engine_response()
 
         #stall stop
         eng.s.state = eng_running
-        eng.x.ω = 0.95eng.constants.ω_stall
+        eng.x.ω = 0.95eng.ω_stall
         f_step!(eng)
         @test eng.s.state == eng_off
-        eng.x.ω = 1.1eng.constants.ω_idle
+        eng.x.ω = 1.1eng.ω_idle
         eng.s.state = eng_running
 
         #without fuel, the engine should shut down
@@ -229,7 +229,7 @@ function test_thruster_response()
         #give it a few seconds to get to stable idle RPMs
         step!(sim, 10, true)
         @test sim.y.thruster.engine.state === eng_running
-        @test sim.y.thruster.engine.ω ≈ hrn.thruster.engine.constants.ω_idle atol = 1
+        @test sim.y.thruster.engine.ω ≈ hrn.thruster.engine.ω_idle atol = 1
         hrn.thruster.engine.u.start = false
 
         #thruster should be pushing
@@ -241,13 +241,13 @@ function test_thruster_response()
         #give it some throttle and see the RPMs increase
         hrn.thruster.engine.u.throttle = 1
         step!(sim, 5, true)
-        @test sim.y.thruster.engine.ω > 2hrn.thruster.engine.constants.ω_idle
+        @test sim.y.thruster.engine.ω > 2hrn.thruster.engine.ω_idle
 
         #back to idle, make sure the idle controller kicks back in and idle RPMs
         #stabilize around their target value
         hrn.thruster.engine.u.throttle = 0
         step!(sim, 5, true)
-        @test sim.y.thruster.engine.ω ≈ hrn.thruster.engine.constants.ω_idle atol = 1
+        @test sim.y.thruster.engine.ω ≈ hrn.thruster.engine.ω_idle atol = 1
 
         ########## Propeller sense and transmission gear ratio mismatch ########
 
@@ -281,7 +281,7 @@ function test_thruster_response()
         #idle manifold pressure to hold the target idle RPMs
         hrn.thruster.propeller.u[] = 0.1
         step!(sim, 5, true)
-        @test sim.y.thruster.engine.ω ≈ hrn.thruster.engine.constants.ω_idle atol = 1
+        @test sim.y.thruster.engine.ω ≈ hrn.thruster.engine.ω_idle atol = 1
 
         #with the throttle well above idle, the idle controller will not be
         #holding RPMs anymore
