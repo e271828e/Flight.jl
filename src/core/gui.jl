@@ -212,7 +212,8 @@ function render_loop(renderer::Renderer)
 
 end
 
-#generic mutating draw function, to be extended by users
+#generic mutating draw function, to be extended by users. if not specialized,
+#falls back to non-mutating
 draw!(args...; kwargs...) = draw(args...; kwargs...)
 
 #generic non-mutating frame draw function, to be extended by users
@@ -238,7 +239,7 @@ end
 
 
 ################################################################################
-################################ Helpers #######################################
+########################### Custom Widgets #####################################
 
 const HSV_gray = (0.0, 0.0, 0.3)
 const HSV_amber = (0.13, 0.6, 0.6)
@@ -316,8 +317,6 @@ function mode_button(label::String,
 
 end
 
-
-
 function display_bar(label::String, source::Real, lower_bound::Real, upper_bound::Real, size_arg = (0, 0))
     CImGui.Text(label)
     CImGui.SameLine()
@@ -343,25 +342,6 @@ function safe_input(label::String, source::AbstractFloat, args...; show_label = 
     input_label = show_label ? label : "##"*label
     CImGui.InputDouble(input_label, ref, args...)
     return ref[]
-end
-
-
-function f_test()
-
-    @cstatic f=Cfloat(0.0) counter=Cint(0) begin
-        CImGui.Begin("Hello, world!")  # create a window called "Hello, world!" and append into it.
-        CImGui.Text("This is some useful text.")  # display some text
-
-        @c CImGui.SliderFloat("float", &f, 0, 1)  # edit 1 float using a slider from 0 to 1
-        CImGui.Button("Button") && (counter += 1)
-
-        CImGui.SameLine()
-        CImGui.Text("counter = $counter")
-        CImGui.Text(@sprintf("Application average %.3f ms/frame (%.1f FPS)", 1000 / unsafe_load(CImGui.GetIO().Framerate), unsafe_load(CImGui.GetIO().Framerate)))
-
-        CImGui.End()
-    end
-
 end
 
 end #module
