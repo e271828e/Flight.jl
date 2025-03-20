@@ -64,18 +64,15 @@ end
 ################################################################################
 ################################# TestSystem ###################################
 
-#for a loopback test, it's essential that the input and output devices are not
-#mutually locking. otherwise, at least one of them will block irrecoverably when
-#the simulation terminates. this coupling may happen for example if input and
-#output share a loopback Channel and they make blocking put! and take! calls on
-#it.
+#input and output devices must not be mutually locking. otherwise, at least one
+#of them may block irrecoverably when the simulation terminates. this coupling
+#may happen for example if input and output share a loopback Channel and they
+#make blocking put! and take! calls on it.
 
-#to avoid this, it is enough that at least one of them can only block when
-#waiting on its SimInterface, but not on the loopback interface. this is
-#the case with an UDP loopback, in which the UDPOutput may block when calling
-#take! on the SimInterface Channel, but not on its send() call, which is
-#nonblocking.
-
+#to avoid this, at least one of them should only block when waiting on its
+#SimInterface, but not on its external/loopback interface. this is the case with
+#an UDP loopback, in which the UDPOutput may block when calling take! on the
+#SimInterface Channel, but not on its send() call, which is nonblocking.
 
 @kwdef struct TestSystem <: SystemDefinition end
 
@@ -270,10 +267,33 @@ function joystick_input()
 
 end
 
-#REPL:
-# with_logger(ConsoleLogger(Logging.Debug)) do
-#     sim = TestSim.joystick_input()
-# end
+################################################################################
+
+function threading_sketch()
+
+    c = Channel{Int}(1)
+    @sync begin
+        Threads.@spawn begin
+            while isopen(c)
+                Core.println("Taken $(take!(c))")
+            end
+        end
+        Threads.@spawn begin
+            for i in 1:5
+                sleep(1)
+                @lock c begin
+                    if !isready(c)
+                        Core.println("Putting $i")
+                        put!(c, i)
+                    end
+                end
+            end
+            close(c)
+            Core.println("Bye")
+        end
+
+    end
+end
 
 
 
