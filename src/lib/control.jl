@@ -114,13 +114,6 @@ function submodel(cmp::LinearizedSS; x = keys(cmp.x0), u = keys(cmp.u0), y = key
 
 end
 
-# #convert a mutable ComponentVector into a (non-allocating) immutable
-# #ComponentVector with an underlying StaticVector, preserving the original
-# #ComponentVector's axes
-# function static_cv(L::Integer, x::ComponentVector)
-#     ComponentVector(SVector{L}(getdata(x)), getaxes(x))
-# end
-
 
 ####################### Proportional-Integral Compensator ######################
 ################################################################################

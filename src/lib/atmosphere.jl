@@ -182,7 +182,7 @@ end
 ################################################################################
 ############################## AtmosphericData #################################
 
-@kwdef struct AtmosphericData #local atmospheric data
+@kwdef struct AtmosphericData
     T::Float64 = T_std
     p::Float64 = p_std
     ρ::Float64 = density(p_std, T_std)

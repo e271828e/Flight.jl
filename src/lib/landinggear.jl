@@ -49,7 +49,7 @@ end
 end
 
 Systems.U(::DirectSteering) = DirectSteeringU()
-Systems.Y(::DirectSteering) = DirectSteeringY() #steering angle
+Systems.Y(::DirectSteering) = DirectSteeringY()
 
 function Systems.f_ode!(sys::System{DirectSteering})
     @unpack engaged, input = sys.u
@@ -69,8 +69,6 @@ function GUI.draw(sys::System{DirectSteering})
     @unpack engaged, input = sys.y
     CImGui.Text("Engaged: $engaged")
     CImGui.Text("Steering Input: $(Float64(input))")
-    # CImGui.Text("Steering Angle: $(rad2deg(sys.y.ψ)) deg")
-
 end
 
 
@@ -316,9 +314,9 @@ function Systems.f_ode!(sys::System{<:Strut},
 
 end
 
+#sanity checks for crash detection
 function Systems.f_step!(sys::System{<:Strut})
 
-    #sanity checks for crash detection
     @unpack wow, α_ts, ξ_dot = sys.y
 
     #we should not be hitting the ground at an angle larger than some threshold
@@ -482,7 +480,7 @@ function Systems.f_ode!(sys::System{Contact},
     #the value of the ground's normal force must be such that its projection
     #along the strut cancels the damper's force
     N = -F_dmp_zs / f_s[3]
-    N = max(0, N) #it must not be negative (might happen with large ξ_dot >0)
+    N = max(0, N) #clamp negative values (could occur for large ξ_dot >0)
     F_c = f_c * N
 
     wr_c = Wrench(F = F_c)
@@ -492,8 +490,7 @@ function Systems.f_ode!(sys::System{Contact},
 
 end
 
-#this will be called after f_cb_step, so wow will have the final value for the
-#current integration step
+#here wow has its final value for the current integration step
 function Systems.f_step!(contact::System{<:Contact}, strut::System{<:Strut})
 
     contact.frc.u.reset .= !strut.y.wow #if !wow, reset friction regulator

@@ -87,8 +87,6 @@ end
 
 ################################## System ######################################
 
-#since all LQRTrackers have the same dimensions, all LQRTrackerLookup parametric
-#types should be the same. to be confirmed. same with PIDLookup types.
 @kwdef struct LonControl{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
     e2e_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "e2e_lookup.h5"))
     q2e_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "q2e_lookup.h5"))
@@ -789,9 +787,9 @@ function Systems.init!(sys::System{<:Controller},
     u.hor_gdc_mode_req = hor_gdc_off
 
     #do an update with the inner SAS loops enabled so that their internal
-    #setpoints are made consistent with the trim values. this should propagate
-    #to the actuator commands produced by the control laws, making them
-    #consistent with the trim state ones
+    #setpoints are made consistent with the trim values. this will then make the
+    #actuator commands output by the Controller consistent with the trim state
+    #values
     u.lon_ctl_mode_req = lon_thr_ele
     u.lat_ctl_mode_req = lat_φ_β
     f_disc!(sys, vehicle)
@@ -1391,7 +1389,7 @@ end
 
 #declare ControllerU as mutable
 StructTypes.StructType(::Type{ControllerU}) = StructTypes.Mutable()
-#avoid Greek characters in the JSON string
+#replace Greek characters from ControllerU fields in the JSON string
 StructTypes.names(::Type{ControllerU}) = ((:χ_sp, :chi_sp), (:θ_sp, :theta_sp),
     (:φ_sp, :phi_sp), (:β_sp, :beta_sp))
 
@@ -1423,8 +1421,5 @@ StructTypes.lower(x::AltDatum) = Int32(x)
 #now we can do:
 # JSON3.read(JSON3.write(ControllerU()), ControllerU)
 # JSON3.read!(JSON3.write(ControllerU()), ControllerU())
-
-
-
 
 end #module

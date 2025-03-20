@@ -401,18 +401,6 @@ end
 
 abstract type AbstractComponentSet <: SystemDefinition end
 
-#AbstractComponentSet subtypes will generally be too specific for the fallback
-function Systems.f_ode!(components::System{<:AbstractComponentSet}, args...)
-    MethodError(f_ode!, (components, kin, air, trn)) |> throw
-end
-
-#for efficiency, we disallow using the fallback method. it would traverse the
-#whole Components System hierarchy, and without good reason, because in
-#principle Components shouldn't implement discrete dynamics; discretized
-#algorithms belong in Avionics. can still be overridden by subtypes if required
-Systems.f_disc!(::NoScheduling, ::System{<:AbstractComponentSet}, args...) = nothing
-
-
 ################################ NoComponents #################################
 
 @kwdef struct NoComponents <: AbstractComponentSet

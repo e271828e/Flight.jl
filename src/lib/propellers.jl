@@ -227,15 +227,13 @@ Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
 end
 
 # * CAUTION
-
 # Interpolation.bounds always returns (1,1) for singleton dimensions. Therefore,
 # once the Lookup is generated for a singleton Δβ_range (which happens for a
-# FixedPitch propeller), the Δβ value cannot be later retrieved from the Lookup
-# itself. However, this doesn’t really matter, because when we evaluate the
-# Lookup, it will still return the correct coefficients for that Δβ (regardless
-# of the third argument we call it with). In a FixedPitch propeller, we could
-# retrieve this Δβ from the FixedPitch struct itself, but it should not be
-# necessary.
+# FixedPitch propeller), the original Δβ be no longer retrieved from the Lookup
+# itself. However, this doesn’t really matter, because when evaluated, the
+# Lookup will still return the correct coefficients for that Δβ (regardless of
+# the third argument we call it with). In a FixedPitch propeller, we could
+# retrieve this Δβ from the FixedPitch struct itself, but it is not necessary.
 Interpolations.bounds(lookup::Lookup) = bounds(lookup.interps.C_Fx.itp)
 
 function Lookup(n_blades::Int = 2, blade::Blade = Blade();
@@ -257,7 +255,7 @@ function Lookup(n_blades::Int = 2, blade::Blade = Blade();
 
 end
 
-#for reconstructing the Lookup after loading raw data from HDF5
+#reconstruct the Lookup after loading raw data from HDF5
 function Lookup(data::Coefficients{Array{Float64, 3}},
                 J_bounds::NTuple{2, Float64},
                 Mt_bounds::NTuple{2, Float64},
@@ -364,7 +362,7 @@ struct Propeller{P <: PitchStyle, L <: Lookup} <: AbstractPropeller
     lookup::L
     sense::TurnSense
     d::Float64 #diameter
-    J_xx::Float64 #axial moment of inertia, J_xx label avoids confusion with advance ratio
+    J_xx::Float64 #axial moment of inertia, subscript avoids confusion with advance ratio
     t_bp::FrameTransform #vehicle frame to propeller frame
 end
 
@@ -412,14 +410,14 @@ end
 function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirflowData, ω::Real)
 
     @unpack d, J_xx, t_bp, sense, lookup = sys.constants
-    #remove this, it may happen due to friction overshoot at low RPMs
+    #this may actually happen due to friction constraint overshoot at low RPMs
     # @assert sign(ω) * Int(sys.sense) >= 0 "Propeller turning in the wrong sense"
 
     v_wOp_b = air.v_wb_b + kin.ω_eb_b × t_bp.r
     v_wOp_p = t_bp.q'(v_wOp_b)
 
     #compute advance ratio. here we use the velocity vector magnitude rather
-    #than its axial component. J must be positive, so we need the abs for CCW
+    #than its axial component. J must be positive, so abs is required for CCW
     #propellers
     abs_ω_min = 1.0 #prevent division by zero in a non-rotating propeller
     v_J = norm(v_wOp_p)
@@ -478,7 +476,6 @@ Dynamics.get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
 ################################################################################
 ############################ Plots #############################################
 
-#called as: plot_airfoil(airfoil; Plotting.defaults...)
 function plot_airfoil(airfoil::Propellers.AbstractAirfoil; plot_settings...)
 
     α = range(-π/6, π/3, length = 100)

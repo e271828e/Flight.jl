@@ -16,7 +16,6 @@ export Cessna172X, Cessna172Xv0
 #first order linear actuator model
 
 #τ has units of rad/s, not Hz: F(s) = 1/(1+sτ); F(jω) = 1/(1+jωτ).
-
 struct Actuator1{R <: Ranged} <: SystemDefinition #second order linear actuator model
     τ::Float64 #time constant (default: 0.05s)
     function Actuator1(; τ::Real = 1/20, range::Tuple{Real, Real} = (-1.0, 1.0))
@@ -115,7 +114,7 @@ end
     brake_right::Actuator1 = Actuator1(range = (0.0, 1.0))
 end
 
-#delegate continuous dynamics to subsystems
+#delegate continuous dynamics to individual actuators
 @ss_ode FlyByWireActuation
 
 function C172.assign!(aero::System{<:C172.Aero},
@@ -253,7 +252,7 @@ function Systems.assign_input!(sys::System{<:FlyByWireActuation},
                            joystick::XBoxController,
                            ::IOMapping)
 
-    #mixture and brakes will not be assigned
+    #mixture not assigned, not enough axes
     @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
             brake_left, brake_right = sys.subsystems
 
@@ -261,8 +260,8 @@ function Systems.assign_input!(sys::System{<:FlyByWireActuation},
     elevator.u[] = get_axis_value(joystick, :right_stick_y) |> pitch_curve
     rudder.u[] = get_axis_value(joystick, :left_stick_x) |> yaw_curve
     steering.u[] = get_axis_value(joystick, :left_stick_x) |> yaw_curve
-    # brake_left.u[] = get_axis_value(joystick, :left_trigger) |> brake_curve
-    # brake_right.u[] = get_axis_value(joystick, :right_trigger) |> brake_curve
+    brake_left.u[] = get_axis_value(joystick, :left_trigger) |> brake_curve
+    brake_right.u[] = get_axis_value(joystick, :right_trigger) |> brake_curve
 
     flaps.u[] += 0.3333 * was_released(joystick, :right_bumper)
     flaps.u[] -= 0.3333 * was_released(joystick, :left_bumper)
@@ -275,7 +274,7 @@ function Systems.assign_input!(sys::System{<:FlyByWireActuation},
                            joystick::T16000M,
                            ::IOMapping)
 
-    #mixture and brakes will not be assigned
+    #mixture not assigned, not enough axes
     @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
             brake_left, brake_right = sys.subsystems
 
@@ -284,8 +283,8 @@ function Systems.assign_input!(sys::System{<:FlyByWireActuation},
     elevator.u[] = get_axis_value(joystick, :stick_y) |> pitch_curve
     rudder.u[] = get_axis_value(joystick, :stick_z) |> yaw_curve
     steering.u[] = get_axis_value(joystick, :stick_z) |> yaw_curve
-    # brake_left.u[] = is_pressed(joystick, :button_1)
-    # brake_right.u[] = is_pressed(joystick, :button_1)
+    brake_left.u[] = is_pressed(joystick, :button_1)
+    brake_right.u[] = is_pressed(joystick, :button_1)
 
     flaps.u[] += 0.3333 * was_released(joystick, :button_3)
     flaps.u[] -= 0.3333 * was_released(joystick, :button_2)
@@ -441,7 +440,7 @@ end
     ail_p::Float64 = 0.0; #aileron actuator position
     ele_p::Float64 = 0.0; #elevator actuator position
     rud_p::Float64 = 0.0; #rudder actuator position
-    f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at G (f_iG_b)
+    f_x::Float64 = 0.0; f_y::Float64 = 0.0; f_z::Float64 = 0.0; #specific force at CoM
     α::Float64 = 0.0; β::Float64 = 0.0; #unfiltered airflow angles
     EAS::Float64 = 0.0; TAS::Float64 = 0.0; #airspeed
     v_N::Float64 = 0.0; v_E::Float64 = 0.0; v_D::Float64 = 0.0; #b/ECEF velocity, NED axes
@@ -605,6 +604,5 @@ end
 include(normpath("control/c172x_ctl.jl"))
 
 include(normpath("c172x1.jl")); @reexport using .C172Xv1
-# include(normpath("c172x2.jl")); @reexport using .C172Xv2
 
 end

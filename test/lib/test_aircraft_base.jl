@@ -27,7 +27,7 @@ function test_θ_constraint()
 
         #set γ_wb_n and φ_nb arbitrarily and compute θ_nb
         γ_wb_n = -0.07 #set arbitrarily
-        ψ_nb = 0.3 #inconsequential
+        ψ_nb = 0.3 #doesn't really matter
         φ_nb = 0.7
         θ_nb = AircraftBase.θ_constraint(; v_wb_b, γ_wb_n, φ_nb)
 

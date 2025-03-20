@@ -30,16 +30,17 @@ T_ISA(p) = T_std * (p / p_std) ^ (-β * R / g_std)
 #inlet parameter from static pressure assuming ISA conditions
 p2δ(p) = (p/p_std) * (T_ISA(p)/T_std)^(-0.5)
 
+#inlet parameter from altitude, assuming ISA conditions
 function h2δ(h)
     @unpack p, T = ISAData(HGeop(h))
     p / p_std / √(T / T_std)
 end
 
-#by default, engine mass is assumed to be accounted for in the airframe, its
-#angular momentum is assumed to be negligible by default, and it receives no
-#direct external wrench
+#by default, engine mass is assumed to be accounted for in the airframe
 Dynamics.get_mp_b(::System{<:AbstractPistonEngine}) = MassProperties()
+#its internal angular momentum is neglected
 Dynamics.get_wr_b(::System{<:AbstractPistonEngine}) = Wrench()
+#and it receives no direct external wrench
 Dynamics.get_hr_b(::System{<:AbstractPistonEngine}) = zeros(SVector{3})
 
 
@@ -160,6 +161,7 @@ function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirflowData)
     idle.u.input .= 1 - ω / ω_idle #normalized ω error
     f_ode!(idle)
 
+    #normalized MAP at idle throttle from idle compensator output
     μ_ratio_idle = 0.5 + idle.y.output[1]
 
     #normalized engine speed
@@ -171,7 +173,7 @@ function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirflowData)
     #normalized MAP at wide open throttle
     μ_wot = lookup.μ_wot(n, δ)
 
-    #actual, part throttle normalized MAP
+    #part throttle normalized MAP
     μ = μ_wot * (μ_ratio_idle + throttle * (1 - μ_ratio_idle))
 
     if state === eng_off
@@ -181,7 +183,7 @@ function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirflowData)
         #the engine running, all friction is assumed to be already accounted for
         #in the performance tables
         τ_fr_max = 0.01 * P_rated / ω_rated #1% of rated torque
-        τ_fr = frc.y.output[1] .* τ_fr_max #scale τ_fr_max with compensator feedback
+        τ_fr = frc.y.output[1] .* τ_fr_max #scale τ_fr_max with compensator output
 
         MAP = air_data.p
         τ_shaft = τ_fr
@@ -443,9 +445,9 @@ end
 # ########################## PistonThruster ######################################
 
 #τ_shaft is always positive. for a CW thruster, the gear ratio should be
-#positive as well and, under normal operating, conditions τ_prop will be
-#negative. for a CCW thruster, the gear ratio should be negative and τ_prop will
-#be positive under normal operating conditions.
+#positive as well and, under normal operating conditions, τ_prop will be
+#negative. for a CCW thruster, the gear ratio should be negative and, under
+#normal operating conditions, τ_prop will be positive
 
 #the sign of τ_prop may be inverted under negative propeller thrust conditions,
 #with the propeller driving the engine instead of the other way around

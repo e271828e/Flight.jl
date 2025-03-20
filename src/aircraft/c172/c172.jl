@@ -21,7 +21,7 @@ struct Airframe <: SystemDefinition end
 # payload or fuel contents. Its mass corresponds roughly to the aircraft's
 # Standard Empty Weight
 
-#Airframe mass properties computed in the vehicle reference frame b
+#compute Airframe mass properties computed in the vehicle reference frame b
 const mp_b_afm = let
     #define the airframe as a RigidBodyDistribution
     afm_c = RigidBodyDistribution(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
@@ -33,9 +33,9 @@ const mp_b_afm = let
     MassProperties(afm_c, t_bc)
 end
 
-#the airframe itself receives no external actions. these are considered to act
-#upon the vehicle's aerodynamics, power plant and landing gear. the same goes
-#for rotational angular momentum.
+#the airframe itself receives no external actions nor has any internal angular
+#momentum. these are considered individually in the vehicle's aerodynamics,
+#power plant and landing gear
 Dynamics.get_mp_b(::System{Airframe}) = mp_b_afm
 Dynamics.get_wr_b(::System{Airframe}) = Wrench()
 Dynamics.get_hr_b(::System{Airframe}) = zeros(SVector{3})
@@ -293,7 +293,7 @@ Systems.Y(::Aero) = AeroY()
 Systems.U(::Aero) = AeroU()
 Systems.S(::Aero) = AeroS()
 
-#caution: do not confuse the w-frame in kinematics.ω_wb_b, which refers to the
+#*caution: do not confuse the w-frame in kinematics.ω_wb_b, which refers to the
 #wander-azimuth frame (w), with the w in air.v_wb_b, which indicates aerodynamic
 #(wind-relative) velocity
 
@@ -311,9 +311,9 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     v_wb_a = f_ba.q'(v_wb_b)
 
     #for near-zero TAS, the airflow angles are likely to chatter between 0, -π
-    #and π. to avoid this, we set a minimum TAS for airflow computation. in this
-    #scenario dynamic pressure will be close to zero, so forces and moments will
-    #vanish anyway.
+    #and π. avoid this by setting set a minimum TAS for airflow computation. in
+    #this scenario, dynamic pressure would be close to zero, so forces and
+    #moments would vanish anyway.
     α, β = (TAS > 0.1 ? Atmosphere.get_airflow_angles(v_wb_a) : (0.0, 0.0))
     V = max(TAS, V_min) #avoid division by zero
 
@@ -920,6 +920,8 @@ function Systems.f_step!(components::System{<:Components},
 
 end
 
+@no_disc Components
+
 
 #################################### GUI #######################################
 
@@ -1166,7 +1168,7 @@ function Systems.extract_output(ac::System{<:Cessna172}, ::XPlane12Output, ::IOM
         Network.xpmsg_set_dref(drefs.prop_is_disc, prop_is_disc),
         Network.xpmsg_set_dref(drefs.prop_angle, rad2deg(ϕ_prop)),
         Network.xpmsg_set_dref(drefs.nws_angle, rad2deg(ψ_sw)),
-        Network.xpmsg_set_pose(XPlanePose(KinData(ac))) #UDP message
+        Network.xpmsg_set_pose(XPlanePose(KinData(ac)))
     )
 
     return msgs

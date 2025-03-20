@@ -112,7 +112,7 @@ Base.getproperty(data::KinData, s::Symbol) = getproperty(data, Val(s))
 end
 
 
-function normalize_block!(x, ε) #returns true if norm was corrected
+function normalize_block!(x, ε)
     norm_x = norm(x)
     (abs(norm_x - 1.0) > ε) && (x ./= norm_x)
     return nothing

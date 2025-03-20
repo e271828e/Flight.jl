@@ -76,7 +76,8 @@ Base.:(-)(n::NVector) = NVector(-n.data)
 Base.size(::NVector) = (3,)
 Base.length(::NVector) = 3
 Base.getindex(n::NVector, i) = getindex(n.data, i)
-#why does this allocate??
+
+#? why does this allocate?
 # Base.iterate(n::NVector, state = 1) = (state > 3 ? nothing : (n.data[state], state + 1))
 LinearAlgebra.norm(n::NVector) = norm(getfield(n, :data)) #uses StaticArrays implementation
 LinearAlgebra.normalize(n::NVector) = NVector(getfield(n, :data)) #let the constructor normalize
@@ -430,7 +431,7 @@ Compute normal gravity.
 Computation is based on Somigliana's formula for gravity at the ellipsoid
 surface, with a second order altitude correction, accurate for small altitudes
 above the WGS84 ellipsoid (h<<a). Direction is assumed normal to the WGS84
-ellipsoid, a good enough approximation for most navigation applications. See
+ellipsoid, a good enough approximation for most applications. See
 WGS84 and Hoffmann & Moritz.
 """
 function gravity(pos::Abstract3DLocation)
