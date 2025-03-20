@@ -22,18 +22,18 @@ export HSV_amber, HSV_gray, HSV_green, HSV_red
 ################################################################################
 ############################### Renderer #######################################
 
-#if sync > 0:
-#T_render = T_display * sync (where typically T_display = 16.67ms).
-#sync = 1 syncs the refresh rate to the display rate (vsync)
-#if sync = 0:
-#uncaps the refresh rate (to be used only with scheduled calls to render())
+#sync > 0: syncs the renderer's refresh rate to the display rate. more precisely
+#T_render = T_display * sync (where often T_display = 16.67ms).
+
+#sync = 0: uncaps the refresh rate (should only be used with independently
+#scheduled calls to render())
 
 mutable struct Renderer <: IODevice
-    label::String
+    label::String #window label
     monitor_pref::UInt8 #preferred monitor when multiple monitors available
     font_size::UInt8 #will be scaled by the display's content scale
-    sync::UInt8 #number of display updates per frame render
-    f_draw::Function #GUI function to be called
+    sync::UInt8 #see above
+    f_draw::Function #GUI IO function to be called
     _initialized::Bool
     _ctx::Ptr{CImGui.lib.ImGuiContext}
     _window::GLFW.Window
@@ -165,6 +165,7 @@ function render!(renderer::Renderer)
     CImGui.lib.ImGui_ImplGlfw_NewFrame()
     CImGui.NewFrame()
 
+    #call user-defined IO function
     f_draw()
 
     # Rendering
@@ -194,11 +195,11 @@ function render_loop(renderer::Renderer)
     renderer._initialized || IODevices.init!(renderer)
     try
         @assert renderer.sync > 0 "The standalone render_loop() must not be called "*
-        "an unsynced Renderer (sync = 0). Use scheduled calls to update!() instead."
-        #this is because a Renderer with sync=0 does not wait for monitor sync
-        #when glfwSwapBuffers is called within update!(), which means its frame rate
-        #is effectively uncapped. this causes issues, so the calls to update! must be
-        #limited in frequency by some other means
+        "for an unsynced Renderer (sync = 0). Use scheduled calls to update!() instead."
+        #a Renderer with sync=0 does not wait for monitor sync when
+        #glfwSwapBuffers is called within update!(). this means the GUI frame
+        #rate is effectively uncapped, which is generally not good. so the calls
+        #to update! must be frequency-limited by some other scheduling means
 
         while !IODevices.should_close(renderer)
             render!(renderer)
@@ -213,7 +214,7 @@ function render_loop(renderer::Renderer)
 end
 
 #generic mutating draw function, to be extended by users. if not specialized,
-#falls back to non-mutating
+#falls back to non-mutating version
 draw!(args...; kwargs...) = draw(args...; kwargs...)
 
 #generic non-mutating frame draw function, to be extended by users
@@ -257,7 +258,6 @@ function show_help_marker(desc::String)
     end
 end
 
-#changes shade when hovered and pushed
 function toggle_switch(label::String, hue::AbstractFloat, enabled::Bool)
     if enabled
         CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(hue, 0.8, 0.8))
@@ -336,7 +336,7 @@ function safe_slider(label::String, source::AbstractFloat, args...; show_label =
 end
 
 #ref is a stack-allocated variable. we return the value it points to, not the
-#Ref itself
+#Ref itself. no memory leaks here.
 function safe_input(label::String, source::AbstractFloat, args...; show_label = false)
     ref = Ref(Cdouble(source))
     input_label = show_label ? label : "##"*label

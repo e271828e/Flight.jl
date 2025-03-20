@@ -17,7 +17,6 @@ struct DefaultMapping <: IOMapping end
 ################################################################################
 ################################# IODevice #####################################
 
-#T: data type produced or expected by the IODevice
 abstract type IODevice end
 
 init!(::D) where {D<:IODevice} = nothing

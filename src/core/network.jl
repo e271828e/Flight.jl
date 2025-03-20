@@ -10,10 +10,10 @@ using ..IODevices
 export UDPOutput, UDPInput
 export XPlane12Output, XPlanePose
 
-#UDPInput and UDPOutput both use the EOT character as a shutdown request. This
-#provides a means to prevent the UDPInput thread from getting stuck in the
-#blocking recv call indefinitely. Any source providing data to the Simulation
-#via UDPInput should send an EOT character before shutting down. This is done by
+#UDPInput interprets the EOT character as a shutdown request. This provides a
+#means to prevent the UDPInput thread from getting stuck in the blocking recv
+#call indefinitely. Any source providing data to the Simulation via UDPInput
+#should send an EOT character before shutting down. This rule is followed by
 #UDPOutput, which avoids issues during loopback tests.
 
 ################################################################################
@@ -84,7 +84,7 @@ end
 
 
 ################################################################################
-################################# XPlane12Output ###################################
+################################# XPlane12Output ###############################
 
 struct XPlane12Output{U <: UDPOutput} <: OutputDevice
     udp::U
@@ -123,6 +123,7 @@ end
 
 ############################### XPlane Messages ################################
 
+#defaults correspond to LOWS, runway header 15
 @kwdef struct XPlanePose
     ϕ::Float64 = 47.80433 #degrees
     λ::Float64 = 12.997 #degrees
@@ -131,7 +132,6 @@ end
     θ::Float32 = 3.7 #degrees
     φ::Float32 = -0.5 #degrees
 end
-
 
 #note: length(s::String) returns the number of characters in s, not its actual
 #length in bytes, which can be found as length(codeunits(s)) or

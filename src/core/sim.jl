@@ -23,8 +23,7 @@ export take_nonblocking!, put_nonblocking!
 ############################ SimControl ########################################
 
 #this struct will be accessed concurrently by the simulation (within the main
-#loop) and GUI (within the call to GUI.update!), so access to it must be guarded
-#by io_lock
+#loop) and GUI (within GUI.update!), so it must be guarded by io_lock
 @kwdef mutable struct SimControl
     running::Bool = false #to be checked on each loop iteration for termination
     paused::Bool = false #to pause or unpause the simulation
@@ -32,7 +31,7 @@ export take_nonblocking!, put_nonblocking!
     algorithm::String = ""
     t_start::Float64 = 0.0
     t_end::Float64 = 0.0
-    Δt::Float64 = 0.0 #discrete step size
+    Δt::Float64 = 0.0 #root system's discrete step size
     dt::Float64 = 0.0 #last continuous integration step size
     iter::Int64 = 0 #total iterations
     t::Float64 = 0.0 #simulation time
@@ -83,13 +82,12 @@ struct SimInterface{D <: IODevice, S <: System, M <: IOMapping}
     control::SimControl
     io_start::Base.Event
     io_lock::ReentrantLock
-    should_abort::Bool #aborts Simulation when closed
+    should_abort::Bool
 end
 
 const SimInput{D} = SimInterface{D} where {D <: InputDevice}
 const SimOutput{D} = SimInterface{D} where {D <: OutputDevice}
 const SimGUI{D} = SimInterface{D} where {D <: Renderer}
-
 
 #called from the SimInterface loop thread. this may block, either on get_data
 #because the InputDevice is itself blocked, on or lock(io_lock) because the
@@ -113,7 +111,6 @@ function update!(interface::SimInput)
     end
 
 end
-
 
 #called from the SimInterface loop thread. this may block, either on handle_data
 #because the OutputDevice is itself blocked, or on lock(io_lock) because the
@@ -139,7 +136,7 @@ function update!(gui::SimGUI)
     @lock io_lock GUI.render!(device)
 
     #once io_lock has been released and the simulation thread can proceed, we
-    #can sleep for a while to limit GUI framerate and save CPU time
+    #sleep for a while to limit GUI framerate and save CPU time
     sleep(0.016)
 end
 
@@ -202,14 +199,13 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
 
         params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!)
 
-        #initial_affect=true causes f_disc! to be called before the initial step
+        #initial_affect=true causes f_disc! to be called before the initial
+        #step. we don't want to impose this. if needed, an initial call to
+        #f_ode! and/or f_disc! can be included in the user-defined Systems.init!
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_disc = PeriodicCallback(f_cb_disc!, Δt; initial_affect = false)
         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
 
-        #before initializing the log, compute and assign y, so its initial value
-        #is consistent with x, u and s
-        f_ode!(sys)
         log = SavedValues(Float64, Y)
         saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
         cb_save = SavingCallback(f_cb_save, log; saveat, save_everystep)
@@ -220,26 +216,23 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
             cb_set = CallbackSet(cb_step, cb_disc, cb_user)
         end
 
-        #the current System's x value is used as initial condition. a copy is
-        #needed, otherwise it's just a reference and will get overwritten during
-        #simulation. if the System has no continuous state, provide a dummy one
+        #the current System's x is used as an initial condition. a copy is
+        #needed, otherwise x0 will get overwritten during simulation. if the
+        #System has no continuous state, provide a dummy one
         x0 = (has_x(sys) ? copy(sys.x) : [0.0])
+
+        #save_on = false because we are not interested in logging the plain
+        #System's state vector; everything we need from the System should be
+        #made available in its (immutable) output y, logged via SavingCallback
         problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
         integrator = init_integrator(problem, algorithm; save_on = false,
                                      callback = cb_set, adaptive, dt)
 
-
-        #when the integrator is instantiated, if initial_affect==true for
-        #cb_disc, the integrator will call f_cb_disc! and sys.n will be
-        #incremented. if we then mak reset System's root Δt and discrete iteration counter. this
-        #must be done after the integrator is instantiated, because
+        #reset the discrete iteration counter in case f_disc! was called during
+        #initialization (either by the integrator or within Systems.init!)
         sys.Δt_root[] = Δt
         sys.n[] = 0
 
-        #save_on = false because we are not interested in logging the plain
-        #System's state vector; everything we need to know about the System
-        #should be made available in its (immutable) output y, logged via
-        #SavingCallback
         control = SimControl()
         io_start = Base.Event()
         io_lock = ReentrantLock()
@@ -252,9 +245,9 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         #GUI.render! will block for a whole display refresh interval while
         #holding the io_lock, leaving the sim loop unable to step in the
         #meantime. the drawback of disabling VSync is that the GUI framerate is
-        #uncapped, which unnecessarily taxes the core running the main thread.
-        #to prevent this, we can send the GUI to sleep for a while within
-        #GUI.update! once io_lock has been released
+        #uncapped, which unnecessarily taxes the CPU core running the main
+        #thread. to prevent this, we can send the GUI to sleep for a while
+        #within GUI.update! AFTER io_lock has been released
         renderer = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
         gui = SimInterface(renderer, sys, DefaultMapping(),
                            control, io_start, io_lock, true)
@@ -278,7 +271,7 @@ Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
 end
 
 #function signature for a user callback function, called after every integration
-#step. this function MUST NOT modify the System's ẋ, x or t
+#step.
 user_callback!(::System) = nothing
 
 
@@ -308,8 +301,7 @@ end
 
 @inline has_x(sys::System) = !isnothing(sys.x)
 
-#wrapper around the System's continuous dynamics function f_ode! it modifies the
-#System's ẋ and y as a side effect
+#wrapper around the System's continuous dynamics function
 function f_ode_wrapper!(u̇, u, p, t)
 
     @unpack sys = p
@@ -326,30 +318,39 @@ function f_ode_wrapper!(u̇, u, p, t)
 
 end
 
-#DiscreteCallback function, called on every integration step. calls the System's
-#own f_step!. modifications to x or s will not propagate to y until the next
-#integration step
+#DiscreteCallback wrapper around the System's post-integration step function
 function f_cb_step!(integrator)
 
     @unpack u, p = integrator
     @unpack sys = p
 
-    f_step!(sys)
+    f_step!(sys) #potentially modifies x, u, s or y
 
     #assign the (potentially) modified sys.x back to the integrator
     has_x(sys) && (u .= sys.x)
 
 end
 
-#PeriodicCallback function, calls the System's discrete dynamics update with the
-#period Δt given to the Simulation constructor. modifications to x or s will not
-#propagate to y until the next integration step
+#DiscreteCallback wrapper around the user-defined post-integration step callback
+function f_cb_user!(integrator)
+
+    @unpack u, p = integrator
+    @unpack sys, user_callback! = p
+
+    user_callback!(sys) #potentially modifies x, u, s or y
+
+    #assign the (potentially) modified sys.x back to the integrator
+    has_x(sys) && (u .= sys.x)
+
+end
+
+#PeriodicCallback wrapper around the System's discrete dynamics function
 function f_cb_disc!(integrator)
 
     @unpack u, p = integrator
     @unpack sys = p
 
-    f_disc!(sys)
+    f_disc!(sys) #call discrete dynamics, potentially updates sys.s and sys.y
 
     #increment the discrete iteration counter
     sys.n[] += 1
@@ -359,19 +360,6 @@ function f_cb_disc!(integrator)
 
 end
 
-#DiscreteCallback function, calls the user-specified System I/O function after
-#every integration step
-function f_cb_user!(integrator)
-
-    @unpack u, p = integrator
-    @unpack sys, user_callback! = p
-
-    user_callback!(sys)
-
-    #assign the (potentially) modified sys.x back to the integrator
-    has_x(sys) && (u .= sys.x)
-
-end
 
 #SavingCallback function, gets called at the end of each step after f_disc!
 #and/or f_step!
@@ -391,15 +379,16 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
     @unpack sys, integrator, log = sim
     @unpack p = integrator
 
-    #reset scheduling counter (must be done before Systems.init!, in case the
-    #init methods need to call f_disc!)
+    #reset scheduling counter before Systems.init! (in case the init methods
+    #need to call f_disc!)
     sys.n[] = 0
 
     #initialize the System's x, u and s
     Systems.init!(sys, init_args...; init_kwargs...)
 
     #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
-    #reinit! calls f_ode_wrapper!, so ẋ and y are updated in the process
+    #reinit! calls f_ode_wrapper!, so for continuous Systems ẋ and y are
+    #updated in the process
     if has_x(p.sys)
         OrdinaryDiffEq.reinit!(integrator, p.sys.x)
     else
@@ -485,18 +474,6 @@ end
 
 ################################ Simulation ####################################
 
-#compare the following:
-# @time sleep(2)
-
-# @time @async sleep(2)
-# @time Threads.@spawn sleep(2)
-
-# wait(@time @async sleep(2))
-# wait(@time Threads.@spawn sleep(2))
-
-# @time wait(@async sleep(2))
-# @time wait(Threads.@spawn @sleep(2))
-
 function start!(sim::Simulation)
 
     @unpack sys, integrator, gui, control, io_start, io_lock, interfaces = sim
@@ -549,7 +526,7 @@ function start!(sim::Simulation)
 
                 if control.paused
                     τ_last = τ()
-                    continue #skip next Simulation step, this is spinning
+                    continue #skips next Simulation step
                 end
 
                 τ_next = τ_last + get_proposed_dt(sim) / pace
@@ -602,8 +579,7 @@ end
 #never call start! directly from the main thread unless we know the task will
 #block or yield at some point.
 
-#important: on platforms other than Windows, CImGui needs to run on the main
-#thread!
+#caution: on non-Windows platforms, CImGui needs to run on the main #thread!
 
 function run!(sim::Simulation)
 
@@ -694,7 +670,6 @@ Base.view(ts::TimeSeries, i) = TimeSeries(view(ts._t, i), view(ts._data, i))
 get_child_names(::T) where {T <: TimeSeries} = get_child_names(T)
 get_child_names(::Type{<:TimeSeries{V}}) where {V} = fieldnames(V)
 
-#could be rewritten as @generated to avoid allocation
 function get_components(ts::TimeSeries{<:AbstractVector{T}}) where {T<:Real}
     (TimeSeries(ts._t, y) for y in ts._data |> StructArray |> StructArrays.components)
 end

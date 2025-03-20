@@ -267,7 +267,20 @@ function joystick_input()
 
 end
 
-################################################################################
+########################### Threading experiments ##############################
+
+#compare the following:
+# @time sleep(2)
+
+# @time @async sleep(2)
+# @time Threads.@spawn sleep(2)
+
+# wait(@time @async sleep(2))
+# wait(@time Threads.@spawn sleep(2))
+
+# @time wait(@async sleep(2))
+# @time wait(Threads.@spawn @sleep(2))
+
 
 function threading_sketch()
 

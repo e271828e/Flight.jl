@@ -66,7 +66,7 @@ function Systems.init!( sys::System{<:Vehicle},
 
     @unpack kinematics, dynamics = sys.subsystems
     Systems.init!(kinematics, condition)
-    dynamics.x .= kinematics.u #! crucial
+    dynamics.x .= kinematics.u #!essential
     f_ode!(sys, atmosphere, terrain) #update vehicle's ẋ and y
 end
 

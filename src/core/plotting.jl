@@ -76,8 +76,8 @@ end
 
 make_plots(::T; kwargs...) where {T<:TimeSeries} = @warn("Method make_plots not extended for $T")
 
-#these yield a single figure so they can be handled directly by the Plots
-#pipeline directly as recipes
+#these yield a single figure so they can be directly handled by the Plots
+#pipeline as recipes
 make_plots(ts::TimeSeries{<:Real}; kwargs...) = plot(ts; kwargs...)
 
 make_plots(ts::TimeSeries{<:AbstractVector{<:Real}}; kwargs...) = plot(ts; kwargs...)

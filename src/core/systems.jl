@@ -6,7 +6,7 @@ using AbstractTrees
 
 using ..IODevices
 
-export SystemDefinition, SystemTrait, System
+export SystemDefinition, System
 export Subsampled, Scheduling, NoScheduling
 export f_ode!, f_step!, f_disc!, update_y!
 export @no_ode, @no_disc, @no_step, @no_dynamics
@@ -15,18 +15,18 @@ export @ss_ode, @ss_disc, @ss_step, @ss_dynamics
 
 
 ################################################################################
-############################## SystemTrait #####################################
+############################## SystemProperty #####################################
 
-abstract type SystemTrait end
+abstract type SystemProperty end
 
-struct Ẋ <: SystemTrait end
-struct X <: SystemTrait end
-struct Y <: SystemTrait end
-struct U <: SystemTrait end
-struct S <: SystemTrait end
+struct Ẋ <: SystemProperty end
+struct X <: SystemProperty end
+struct Y <: SystemProperty end
+struct U <: SystemProperty end
+struct S <: SystemProperty end
 
 
-function (::Type{<:SystemTrait})(nt::NamedTuple)
+function (::Type{<:SystemProperty})(nt::NamedTuple)
     filtered_nt = delete_nothings(nt)
     isempty(filtered_nt) && return nothing
     if all(v -> isa(v, AbstractVector), values(filtered_nt)) #x and ẋ
@@ -61,19 +61,19 @@ function delete_nothings(nt::NamedTuple)
     NamedTuple{valid_keys}(valid_values)
 end
 
-########################## Default Trait Constructors ##########################
+######################## Default Property Constructors #########################
 
 (::Union{Type{U}, Type{S}})(::SystemDefinition) = nothing
 
 #returns NamedTuple
-function (trait::Union{Type{X}, Type{Y}})(sd::SystemDefinition)
+function (property::Union{Type{X}, Type{Y}})(sd::SystemDefinition)
     children_keys = filter(propertynames(sd)) do name
         getproperty(sd, name) isa SystemDefinition
     end
     children_definitions = map(λ -> getproperty(sd, λ), children_keys)
-    children_traits = map(child-> trait(child), children_definitions)
-    nt = NamedTuple{children_keys}(children_traits)
-    return trait(nt)
+    children_properties = map(child-> property(child), children_definitions)
+    nt = NamedTuple{children_keys}(children_properties)
+    return property(nt)
 end
 
 #fallback method for state vector derivative
@@ -92,16 +92,16 @@ end
 
 Subsampled(sd::SD) where {SD <: SystemDefinition} = Subsampled{SD}(sd, 1)
 
-(trait::Union{Type{U}, Type{S}})(ss::Subsampled) = trait(ss.sd)
-(trait::Union{Type{X}, Type{Y}})(ss::Subsampled) = trait(ss.sd)
-(trait::Type{Ẋ})(ss::Subsampled) = Ẋ(ss.sd)
+(property::Union{Type{U}, Type{S}})(ss::Subsampled) = property(ss.sd)
+(property::Union{Type{X}, Type{Y}})(ss::Subsampled) = property(ss.sd)
+(property::Type{Ẋ})(ss::Subsampled) = Ẋ(ss.sd)
 
 ################################################################################
 ################################### System #####################################
 
 #D type parameter is needed for dispatching, the rest for type stability.
 #mutability only required for y updates; reassigning any other field is
-#disallowed to avoid breaking the references with the subsystem hierarchy
+#disallowed to avoid breaking the references in the subsystem hierarchy
 
 #storing t, n and Δt_root as RefValues allows implicit propagation of updates
 #down the subsystem hierarchy
@@ -139,11 +139,11 @@ function System(sd::D,
 
         child_definition = getproperty(sd, child_name)
 
-        child_properties = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent, trait
+        child_properties = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent, property
             if !isnothing(parent) && (child_name in propertynames(parent))
                 getproperty(parent, child_name)
             else
-                trait(child_definition)
+                property(child_definition)
             end
         end
 
@@ -153,7 +153,7 @@ function System(sd::D,
 
     subsystems = NamedTuple{children_names}(children_systems)
 
-    #the remaining fields of sd are saved as constants
+    #the remaining fields of sd are stored as constants
     constants = NamedTuple(n=>getfield(sd, n) for n in sd_fieldnames if !(n in children_names))
     constants = (!isempty(constants) ? constants : nothing)
 
@@ -182,10 +182,10 @@ end
 
 Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
 
-#there can be no clashes between constant and subsystem names, so for
+#no clashes are possible between constant and subsystem names, so for
 #convenience we allow direct access to both. caution: this makes type inference
-#harder, and it may cause issues in certain scenarios (see update_y!). if this
-#happens, getfield should be used instead.
+#more difficult, and it may cause issues in certain scenarios (see update_y!).
+#if this happens, getfield can be used instead.
 @generated function Base.getproperty(sys::System{D, Y, U, X, S, C, B}, ::Val{P}
         ) where {D, Y, U, X, S, C, B, P}
     if P ∈ fieldnames(System)
@@ -264,11 +264,12 @@ macro no_step(sd)
     esc(:(Systems.f_step!(::System{<:($sd)}, args...) = nothing))
 end
 
+#no dynamics at all
 macro no_dynamics(sd)
     esc(quote @no_ode $sd; @no_step $sd; @no_disc $sd end)
 end
 
-#recursive fallbacks: apply the call to all subsystems and updates output
+#recursive fallbacks
 macro ss_ode(sd)
     esc(quote
         @inline function Systems.f_ode!(sys::System{<:($sd)}, args...)
@@ -321,9 +322,9 @@ end
 
 assign_input!(::System, ::Nothing, ::IOMapping) = nothing
 
-#to add support for an OutputDevice, the System should extend this function for
-#the Type expected by that OutputDevice. additional customization is possible
-#by dispatching on a specific IOMapping subtype
+#to add support for an OutputDevice, the System should extend this function.
+#additional customization is possible by dispatching on a specific IOMapping
+#subtype
 function extract_output(sys::System, device::OutputDevice, mapping::IOMapping)
     MethodError(extract_output, (sys, device, mapping)) |> throw
 end

@@ -278,8 +278,8 @@ function refresh_joysticks()
 
     #calling PollEvents refreshes all the joystick slots, so JoystickPresent
     #then returns their updated states. no need to explicitly handle the
-    #addition or removal of joysticks directly from a joystick_callback, which
-    #also requires a PollEvents to work
+    #addition or removal of joysticks directly from a joystick_callback (which
+    #would also require a PollEvents call to work)
     GLFW.PollEvents()
     empty!(connected_slots)
     for slot ∈ instances(JoystickSlot)
@@ -312,9 +312,9 @@ function add_joystick(slot::JoystickSlot)
 end
 
 function is_connected(joystick::Joystick)
-    #this joystick's slot must be listed in connected_slots, and the
-    #corresponding key must point to this joystick instance
     slot = joystick.slot
+    #this joystick's slot must be listed in connected_slots, and the
+    #corresponding key must actually point to this joystick instance
     return (slot ∈ keys(connected_slots) && connected_slots[slot] === joystick)
 end
 
