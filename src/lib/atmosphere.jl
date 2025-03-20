@@ -87,8 +87,7 @@ function GUI.draw!(sys::System{<:TunableSeaLevel},
 
     u = sys.u
     CImGui.PushItemWidth(-50)
-        # u.T = GUI.safe_slider("T (K)", u.T, "%.3f"; show_label = true)
-        u.T = GUI.safe_slider("T (K)", Ref(Float64(u.T)), "%.3f"; show_label = true)[]
+        u.T = GUI.safe_slider("T (K)", u.T, "%.3f"; show_label = true)
         u.p = GUI.safe_slider("p (Pa)", u.p, "%.3f"; show_label = true)
     CImGui.PopItemWidth()
 end
