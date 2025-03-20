@@ -182,6 +182,10 @@ end
 
 Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
 
+function Base.propertynames(sys::S) where {S <: System}
+    (fieldnames(S)..., :Δt, keys(sys.constants)..., keys(sys.subsystems)...)
+end
+
 #no clashes are possible between constant and subsystem names, so for
 #convenience we allow direct access to both. caution: this makes type inference
 #more difficult, and it may cause issues in certain scenarios (see update_y!).
