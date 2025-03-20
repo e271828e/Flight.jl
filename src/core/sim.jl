@@ -199,12 +199,18 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
 
         params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!)
 
-        #initial_affect=true causes f_disc! to be called before the initial
-        #step. we don't want to impose this. if needed, an initial call to
-        #f_ode! and/or f_disc! can be included in the user-defined Systems.init!
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
-        cb_disc = PeriodicCallback(f_cb_disc!, Δt; initial_affect = false)
         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
+
+        #we don't want to impose a call to f_disc! at t=0, so we set
+        #initial_affect=false. if needed, a call to f_disc! can be included in
+        #the user-defined sys_init!
+        cb_disc = PeriodicCallback(f_cb_disc!, Δt; initial_affect = false)
+        sys.Δt_root[] = Δt
+
+        #initialize discrete iteration counter in preparation for the first
+        #scheduled discrete step
+        sys.n[] = 1
 
         log = SavedValues(Float64, Y)
         saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
@@ -227,11 +233,6 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
         integrator = init_integrator(problem, algorithm; save_on = false,
                                      callback = cb_set, adaptive, dt)
-
-        #reset the discrete iteration counter in case f_disc! was called during
-        #initialization (either by the integrator or within Systems.init!)
-        sys.Δt_root[] = Δt
-        sys.n[] = 0
 
         control = SimControl()
         io_start = Base.Event()
@@ -379,8 +380,8 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
     @unpack sys, integrator, log = sim
     @unpack p = integrator
 
-    #reset scheduling counter before Systems.init! (in case the init methods
-    #need to call f_disc!)
+    #reset scheduling counter, so f_disc! is guaranteed to execute if called by
+    #Systems.init!
     sys.n[] = 0
 
     #initialize the System's x, u and s
@@ -395,15 +396,19 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
         OrdinaryDiffEq.reinit!(integrator)
     end
 
-    #reset scheduling counter (also AFTER integrator reinit!, which may have
-    #called f_disc_cb! if initial_affect==true, incrementing the counter)
-    sys.n[] = 0
+    #after (possibly) executing f_disc! for t=0 (n=0), set n=1 in preparation
+    #for the first scheduled discrete step
+    sys.n[] = 1
 
     #drop the log entries from the last run and keep the newly initialized one
     resize!(log.t, 1)
     resize!(log.saveval, 1)
 
     return nothing
+end
+
+function Systems.init!(sim::Simulation, args...; kwargs...)
+    OrdinaryDiffEq.reinit!(sim, args...; kwargs...)
 end
 
 
@@ -481,7 +486,7 @@ function start!(sim::Simulation)
     try
 
         if isempty(sim.integrator.opts.tstops)
-            @error("Simulation has hit its end time, call reinit! ",
+            @error("Simulation has hit its end time, call reinit! " *
                    "or add further tstops using add_tstop!")
         end
 

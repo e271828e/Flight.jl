@@ -18,7 +18,7 @@ function test_sim()
 end
 
 ################################################################################
-############################### FirstOrder #####################################
+############################### Simulation #####################################
 
 @kwdef struct FirstOrder <: SystemDefinition
     τ::Float64 = 1.0
@@ -37,8 +37,7 @@ end
 function Systems.f_step!(sys::System{FirstOrder})
     x_new = sys.x[1] + 1
     # @info("Called f_step! at t = $(sys.t[]) and x = $(sys.x[1]), x updated to $(x_new)")
-    # sys.x .= x_new
-    #if we want the change in x to be reflected in y at the end of this step
+    # sys.x .= x_new #if we want the change in x to propagate to y at the end of this step
 end
 
 function Systems.f_disc!(::NoScheduling, sys::System{FirstOrder})
@@ -62,7 +61,7 @@ end
 
 
 ################################################################################
-################################# TestSystem ###################################
+############################### IO Loopback ####################################
 
 #input and output devices must not be mutually locking. otherwise, at least one
 #of them may block irrecoverably when the simulation terminates. this coupling
@@ -86,6 +85,9 @@ end
 
 Systems.U(::TestSystem) = TestSystemU()
 Systems.Y(::TestSystem) = TestSystemY()
+
+@no_ode TestSystem
+@no_step TestSystem
 
 function Systems.f_disc!(::NoScheduling, sys::System{<:TestSystem})
     sleep(0.01)
@@ -156,9 +158,9 @@ function Systems.extract_output(::System{TestSystem}, ::XPlane12Output, ::IOMapp
     return data
 end
 
-function xpc_loopback()
+function xp12_loopback()
 
-    @testset verbose = true "XPC Loopback" begin
+    @testset verbose = true "X-Plane 12 Loopback" begin
 
         port = 14143
         sys = TestSystem() |> System
@@ -267,6 +269,7 @@ function joystick_input()
 
 end
 
+################################################################################
 ########################### Threading experiments ##############################
 
 #compare the following:

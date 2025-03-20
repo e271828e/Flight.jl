@@ -4,7 +4,8 @@ using Test, UnPack, Logging, StructTypes
 
 using Flight.FlightCore
 
-########################### Multi-rate Test ####################################
+################################################################################
+################################ Multi-rate ####################################
 
 @kwdef struct FirstOrder <: SystemDefinition
     τ::Float64 = 1.0
@@ -22,21 +23,24 @@ end
 
 function Systems.f_disc!(::NoScheduling, sys::System{FirstOrder})
     x_new = sys.x[1] + 0.1
-    @info("Called f_disc! at t = $(sys.t[]), updating x = $(sys.x[1]) to x = $(x_new)")
+    @info("Called f_disc! at t = $(sys.t[]), n = $(sys.n[]), updating x = $(sys.x[1]) to x = $(x_new)")
     sys.x .= x_new
     sys.y = sys.x[1]
     # println("Called f_disc! at t = $(sys.t[]), got y = $(sys.y)")
 end
 
-Systems.init!(sys::System{FirstOrder}, x0::Real = 0.0) = (sys.x .= x0)
+@no_step FirstOrder
 
+################################################################################
 
 @kwdef struct Node <: SystemDefinition
     a::FirstOrder = FirstOrder()
     b::Subsampled{FirstOrder} = Subsampled(FirstOrder(), 2)
 end
 
-Systems.init!(sys::System{Node}, x0::Real = 0.0) = (sys.x .= x0)
+@ss_dynamics Node
+
+################################################################################
 
 @kwdef struct Root <: SystemDefinition
     a::FirstOrder = FirstOrder()
@@ -44,17 +48,26 @@ Systems.init!(sys::System{Node}, x0::Real = 0.0) = (sys.x .= x0)
     c::Subsampled{Node} = Subsampled(Node(), 3)
 end
 
-Systems.init!(sys::System{Root}, x0::Real = 0.0) = (sys.x .= x0)
+@ss_dynamics Root
 
+function Systems.init!(sys::System{Root}, x0::Real = 0.0)
+    (sys.x .= x0)
+    # f_disc!(sys)
+end
+
+################################################################################
 
 function test_multirate()
     sys = Root() |> System;
-    sim = Simulation(sys; Δt = .25)
+    sim = Simulation(sys; Δt = 1.0, t_end = 30)
+    # Sim.reinit!(sim)
     Sim.run!(sim)
-    return TimeSeries(sim)
+    # return TimeSeries(sim)
+    return sim
 end
 
 
+################################################################################
 ########################### Discrete Dynamics ##################################
 
 struct DiscreteTestComponent <: SystemDefinition end
