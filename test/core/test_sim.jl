@@ -257,13 +257,13 @@ function joystick_input()
     @testset verbose = true "Joystick Input" begin
 
         sys = TestSystem() |> System
-        sim = Simulation(sys; t_end = 1.0)
+        sim = Simulation(sys; t_end = 10.0)
         joystick = get_connected_joysticks()[1]
         Sim.attach!(sim, joystick)
 
         Sim.run_interactive!(sim)
 
-        return sim
+        # return sim
 
     end
 

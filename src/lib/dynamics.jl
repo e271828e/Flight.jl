@@ -22,13 +22,21 @@ const g₀ = 9.80665
 ################################################################################
 ############################# FrameTransform ###################################
 
-"""
-Specifies a reference frame `fc(Oc, Ɛc)` relative to another `fb(Ob, Ɛb)`
+# """
+# Specifies a reference frame `fc(Oc, Ɛc)` with respect to another `fb(Ob, Ɛb)`
 
-Frame `fc(Oc, Ɛc)` is defined by:
-- The position vector from fb's origin Ob to fc's origin Oc, projected on fb's
-  axes εb (`r_bc_b`)
-- The rotation quaternion from fb's axes εb to fc's axes εc (`q_bc`)
+# Frame `fc(Oc, Ɛc)` is defined by:
+# - The position vector from fb's origin Ob to fc's origin Oc, projected on fb's
+#   axes Ɛb (``r_{bc}^{b}``)
+# - The rotation quaternion from fb's axes Ɛb to fc's axes Ɛc (``q^b_c``)
+# """
+"""
+Specify a reference frame ``c`` with respect to another ``b``
+
+``c`` is defined by:
+- ``r_{bc}^{b}``: Position vector from ``b``'s origin ``O_b`` to ``c``'s origin ``O_c``, projected on ``b``'s
+  axes ``Ɛ_b``
+- ``q^b_c``: Rotation quaternion from ``b``'s axes ``Ɛ_b`` to ``c``'s axes ``Ɛ_c``
 """
 @kwdef struct FrameTransform
     r::SVector{3,Float64} = zeros(SVector{3})
@@ -38,7 +46,8 @@ end
 """
     Base.:∘(t_bc::FrameTransform, t_cd::FrameTransform)
 
-Concatenate two `FrameTransform` instances.
+Concatenate two `FrameTransform` instances `t_bc` and `t_cd` to yield the
+resulting `t_bd`.
 """
 function Base.:∘(t_bc::FrameTransform, t_cd::FrameTransform)
 
