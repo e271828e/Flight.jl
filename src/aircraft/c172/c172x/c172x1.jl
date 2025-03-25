@@ -38,7 +38,7 @@ function Systems.init!(avionics::System{<:C172Xv1.Avionics},
 
     Systems.reset!(avionics)
     Systems.init!(avionics.ctl, vehicle)
-    Systems.update_y!(avionics)
+    update_output!(avionics)
 
 end
 

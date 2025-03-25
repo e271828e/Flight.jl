@@ -180,7 +180,7 @@ function Systems.f_ode!(ac::System{<:Aircraft},
     f_ode!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_ode!(vehicle, atmosphere, terrain)
-    Systems.update_y!(ac)
+    update_output!(ac)
 end
 
 function Systems.f_disc!(::NoScheduling,
@@ -192,7 +192,7 @@ function Systems.f_disc!(::NoScheduling,
     f_disc!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_disc!(vehicle, atmosphere, terrain)
-    Systems.update_y!(ac)
+    update_output!(ac)
 end
 
 function Systems.f_step!(ac::System{<:Aircraft},
@@ -213,7 +213,7 @@ function Systems.init!( aircraft::System{<:Aircraft},
     @unpack vehicle, avionics = aircraft.subsystems
     result = Systems.init!(vehicle, condition, args...)
     Systems.init!(avionics, vehicle) #avionics init only relies on vehicle
-    Systems.update_y!(aircraft)
+    update_output!(aircraft)
     return result
 end
 

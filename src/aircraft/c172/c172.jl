@@ -905,7 +905,7 @@ function Systems.f_ode!(components::System{<:Components},
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
-    Systems.update_y!(components)
+    update_output!(components)
 
 end
 

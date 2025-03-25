@@ -8,7 +8,7 @@ using ..IODevices
 
 export SystemDefinition, System
 export Subsampled, Scheduling, NoScheduling
-export f_ode!, f_step!, f_disc!, update_y!
+export f_ode!, f_step!, f_disc!, update_output!
 export @no_ode, @no_disc, @no_step, @no_dynamics
 export @ss_ode, @ss_disc, @ss_step, @ss_dynamics
 
@@ -19,11 +19,18 @@ export @ss_ode, @ss_disc, @ss_step, @ss_dynamics
 
 abstract type SystemProperty end
 
-struct Ẋ <: SystemProperty end
-struct X <: SystemProperty end
-struct Y <: SystemProperty end
-struct U <: SystemProperty end
-struct S <: SystemProperty end
+struct Ẋ <: SystemProperty end #continuous state derivative
+struct X <: SystemProperty end #continuous state
+struct Y <: SystemProperty end #output
+struct U <: SystemProperty end #input
+struct S <: SystemProperty end #discrete state
+
+
+function delete_nothings(nt::NamedTuple)
+    valid_keys = filter(k -> !isnothing(getproperty(nt, k)), keys(nt))
+    valid_values = map(λ -> getproperty(nt, λ), valid_keys)
+    NamedTuple{valid_keys}(valid_values)
+end
 
 
 function (::Type{<:SystemProperty})(nt::NamedTuple)
@@ -36,8 +43,6 @@ function (::Type{<:SystemProperty})(nt::NamedTuple)
     end
 end
 
-#y must always be a NamedTuple, even if all subsystem's y are StaticArrays;
-#otherwise update_y! does not work
 function Y(nt::NamedTuple)
     filtered_nt = delete_nothings(nt)
     return !isempty(filtered_nt) ? filtered_nt : nothing
@@ -49,34 +54,21 @@ end
 
 abstract type SystemDefinition end
 
-function Base.NamedTuple(sd::SystemDefinition)
-    ks = propertynames(sd)
-    vs = map(λ -> getproperty(sd, λ), ks)
-    NamedTuple{ks}(vs)
-end
-
-function delete_nothings(nt::NamedTuple)
-    valid_keys = filter(k -> !isnothing(getproperty(nt, k)), keys(nt))
-    valid_values = map(λ -> getproperty(nt, λ), valid_keys)
-    NamedTuple{valid_keys}(valid_values)
-end
-
-######################## Default Property Constructors #########################
+#################### Default SystemProperty Constructors #######################
 
 (::Union{Type{U}, Type{S}})(::SystemDefinition) = nothing
 
-#returns NamedTuple
-function (property::Union{Type{X}, Type{Y}})(sd::SystemDefinition)
-    children_keys = filter(propertynames(sd)) do name
-        getproperty(sd, name) isa SystemDefinition
+function (SysProp::Union{Type{X}, Type{Y}})(sd::D) where {D <: SystemDefinition}
+    children_names = filter(fieldnames(D)) do name
+        getfield(sd, name) isa SystemDefinition
     end
-    children_definitions = map(λ -> getproperty(sd, λ), children_keys)
-    children_properties = map(child-> property(child), children_definitions)
-    nt = NamedTuple{children_keys}(children_properties)
-    return property(nt)
+    children_definitions = map(λ -> getfield(sd, λ), children_names)
+    children_properties = map(child-> SysProp(child), children_definitions)
+    nt = NamedTuple{children_names}(children_properties)
+    return SysProp(nt)
 end
 
-#fallback method for state vector derivative
+#fallback for state vector derivative
 function Ẋ(sd::SystemDefinition)
     x = X(sd)
     return (!isnothing(x) ? (x |> zero) : nothing)
@@ -90,17 +82,17 @@ struct Subsampled{D <: SystemDefinition} <: SystemDefinition
     K::Int #parent-relative discrete sampling period multiplier
 end
 
-Subsampled(sd::SD) where {SD <: SystemDefinition} = Subsampled{SD}(sd, 1)
+Subsampled(sd::D) where {D <: SystemDefinition} = Subsampled{D}(sd, 1)
 
-(property::Union{Type{U}, Type{S}})(ss::Subsampled) = property(ss.sd)
-(property::Union{Type{X}, Type{Y}})(ss::Subsampled) = property(ss.sd)
-(property::Type{Ẋ})(ss::Subsampled) = Ẋ(ss.sd)
+(SysProp::Union{Type{U}, Type{S}})(ss::Subsampled) = SysProp(ss.sd)
+(SysProp::Union{Type{X}, Type{Y}})(ss::Subsampled) = SysProp(ss.sd)
+(SysProp::Type{Ẋ})(ss::Subsampled) = Ẋ(ss.sd)
 
 ################################################################################
 ################################### System #####################################
 
-#D type parameter is needed for dispatching, the rest for type stability.
-#mutability only required for y updates; reassigning any other field is
+#type parameter D is needed for dispatching, the rest for type stability.
+#System's mutability only required for y updates; reassigning any other field is
 #disallowed to avoid breaking the references in the subsystem hierarchy
 
 #storing t, n and Δt_root as RefValues allows implicit propagation of updates
@@ -124,7 +116,14 @@ function System(sd::D,
                 y = Y(sd), u = U(sd), ẋ = Ẋ(sd), x = X(sd), s = S(sd),
                 N = 1, Δt_root = Ref(1.0), t = Ref(0.0), n = Ref(0)) where {D <: SystemDefinition}
 
+    if !isbits(y)
+        @warn "The output defined for $D is not an isbits type.
+        For performance reasons, it is highly advisable to use concrete,
+        immutable, stack-allocated types for System outputs"
+    end
+
     sd_fieldnames = fieldnames(D)
+
     foreach(sd_fieldnames) do name
         name ∉ (fieldnames(System)..., :Δt) || error(
             "Identifier $name cannot be used in a SystemDefinition field")
@@ -132,18 +131,18 @@ function System(sd::D,
 
     #construct subsystems from sd's SystemDefinition fields
     children_names = filter(sd_fieldnames) do name
-        getproperty(sd, name) isa SystemDefinition
+        getfield(sd, name) isa SystemDefinition
     end
 
     children_systems = map(children_names) do child_name
 
         child_definition = getproperty(sd, child_name)
 
-        child_properties = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent, property
-            if !isnothing(parent) && (child_name in propertynames(parent))
-                getproperty(parent, child_name)
+        child_properties = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent_property, SysProp
+            if !isnothing(parent_property) && (child_name in propertynames(parent_property))
+                getproperty(parent_property, child_name)
             else
-                property(child_definition)
+                SysProp(child_definition)
             end
         end
 
@@ -153,7 +152,7 @@ function System(sd::D,
 
     subsystems = NamedTuple{children_names}(children_systems)
 
-    #the remaining fields of sd are stored as constants
+    #the remaining sd fields are stored as constants
     constants = NamedTuple(n=>getfield(sd, n) for n in sd_fieldnames if !(n in children_names))
     constants = (!isempty(constants) ? constants : nothing)
 
@@ -183,13 +182,17 @@ end
 Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
 
 function Base.propertynames(sys::S) where {S <: System}
-    (fieldnames(S)..., :Δt, keys(sys.constants)..., keys(sys.subsystems)...)
+    (fieldnames(S)...,
+    propertynames(sys.constants)...,
+    propertynames(sys.subsystems)...,
+    :Δt,
+    )
 end
 
-#no clashes are possible between constant and subsystem names, so for
-#convenience we allow direct access to both. caution: this makes type inference
-#more difficult, and it may cause issues in certain scenarios (see update_y!).
-#if this happens, getfield can be used instead.
+#no clashes can occur between constant and subsystem names. thus, for
+#convenience we allow direct access to both. as a drawback, this makes type
+#inference more difficult, and it may cause instability in some scenarios
+#(update_output! fallback). using getfield instead can help in those cases.
 @generated function Base.getproperty(sys::System{D, Y, U, X, S, C, B}, ::Val{P}
         ) where {D, Y, U, X, S, C, B, P}
     if P ∈ fieldnames(System)
@@ -213,42 +216,49 @@ abstract type MaybeSchedule end
 struct Schedule <: MaybeSchedule end
 struct NoScheduling <: MaybeSchedule end
 
+#continuous dynamics, to be extended by Systems
 function f_ode!(sys::System, args...)
     MethodError(f_ode!, (sys, args...)) |> throw
 end
 
+#post-step update, to be extended by Systems
+function f_step!(sys::System, args...)
+    MethodError(f_step!, (sys, args...)) |> throw
+end
+
+#unscheduled discrete update, to be extended by Systems
+function f_disc!(sch::NoScheduling, sys::System, args...)
+    MethodError(f_disc!, (sch, sys, args...)) |> throw
+end
+
+#scheduled discrete update, to be called (not extended!) by Systems
 @inline f_disc!(sys::System, args...) = f_disc!(Schedule(), sys, args...)
 
 function f_disc!(::Schedule, sys::System, args...)
     (sys.n[] % sys.N == 0) && f_disc!(NoScheduling(), sys, args...)
 end
 
-function f_disc!(sch::NoScheduling, sys::System, args...)
-    MethodError(f_disc!, (sch, sys, args...)) |> throw
-end
 
-function f_step!(sys::System, args...)
-    MethodError(f_step!, (sys, args...)) |> throw
-end
+########################## Convenience Methods #################################
 
-#default for Systems with no output
-update_y!(::System{<:SystemDefinition, Nothing}) = nothing
-
-#default for Systems with NamedTuple output
-@inline function (update_y!(sys::System{D, Y})
+#output update fallback, may be used by node Systems with NamedTuple output (the
+#default for node Systems)
+@inline function (update_output!(sys::System{D, Y})
     where {D <: SystemDefinition, Y <: NamedTuple{L, M}} where {L, M})
 
     ys = map(id -> getfield(getfield(getfield(sys, :subsystems), id), :y), L)
     sys.y = NamedTuple{L}(ys)
 end
 
-#else, we require an explicit implementation
-@inline function update_y!(sys::System{D}) where {D}
+#any other output type needs custom implementation
+@inline function update_output!(sys::System{D}) where {D}
     if !isempty(getfield(sys, :subsystems))
-        error("An update_y! method must be explicitly implemented for node "*
+        error("An update_output! method must be explicitly implemented for node "*
         "Systems with an output type other than NamedTuple; $D doesn't have one")
     end
 end
+
+update_output!(::System{<:SystemDefinition, Nothing}) = nothing
 
 
 ########################## Convenience Macros ##################################
@@ -280,7 +290,7 @@ macro ss_ode(sd)
             for ss in sys.subsystems
                 f_ode!(ss, args...)
             end
-            update_y!(sys)
+            update_output!(sys)
             return nothing
         end
     end)
@@ -292,7 +302,7 @@ macro ss_disc(sd)
             for ss in sys.subsystems
                 f_disc!(ss, args...)
             end
-            update_y!(sys)
+            update_output!(sys)
             return nothing
         end
     end)
@@ -304,7 +314,7 @@ macro ss_step(sd)
             for ss in sys.subsystems
                 f_step!(ss, args...)
             end
-            # update_y!(sys) #output update not essential here
+            # update_output!(sys) #output update not essential here
             return nothing
         end
     end)

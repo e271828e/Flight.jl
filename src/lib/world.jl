@@ -28,7 +28,7 @@ function Systems.f_ode!(world::System{<:SimpleWorld})
     f_ode!(atm)
     f_ode!(trn)
     f_ode!(ac, atm, trn)
-    update_y!(world)
+    update_output!(world)
 end
 
 function Systems.f_disc!(::NoScheduling, world::System{<:SimpleWorld})
@@ -36,7 +36,7 @@ function Systems.f_disc!(::NoScheduling, world::System{<:SimpleWorld})
     f_disc!(atm)
     f_disc!(trn)
     f_disc!(ac, atm, trn)
-    update_y!(world)
+    update_output!(world)
 end
 
 function Systems.f_step!(world::System{<:SimpleWorld})

@@ -15,7 +15,7 @@ using ..GUI
 
 @reexport using OrdinaryDiffEq: step!, reinit!, add_tstop!, get_proposed_dt
 export Simulation, enable_gui!, disable_gui!, attach!
-export TimeSeries, get_time, get_data, get_components, get_child_names
+export TimeSeries, get_time, get_data, get_components
 export take_nonblocking!, put_nonblocking!
 
 
@@ -141,11 +141,12 @@ function update!(gui::SimGUI)
 end
 
 
-########################## currently unused ####################################
+########################## Currently unused ####################################
+
+#unlike lock, trylock does not block if the Channel is already locked, while
+#also ensuring it is not modified while we're checking its state
 
 function take_nonblocking!(channel::Channel)
-    #unlike lock, trylock avoids blocking if the Channel is already locked,
-    #while also ensuring it is not modified while we're checking its state
     if trylock(channel)
         data = (isready(channel) ? take!(channel) : nothing)
         unlock(channel)
@@ -156,14 +157,11 @@ function take_nonblocking!(channel::Channel)
 end
 
 function put_nonblocking!(channel::Channel{T}, data::T) where {T}
-    #unlike lock, trylock avoids blocking if the Channel is already locked,
-    #while also ensuring it is not modified while we're checking its state
-    if trylock(channel) #ensure Channel is not modified while we're checking its state
+    if trylock(channel)
         (isopen(channel) && !isready(channel)) && put!(channel, data)
         unlock(channel)
     end
 end
-
 
 
 ################################################################################
@@ -229,7 +227,7 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
 
         #save_on = false because we are not interested in logging the plain
         #System's state vector; everything we need from the System should be
-        #made available in its (immutable) output y, logged via SavingCallback
+        #made available at its output, logged via SavingCallback
         problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
         integrator = init_integrator(problem, algorithm; save_on = false,
                                      callback = cb_set, adaptive, dt)
@@ -277,15 +275,6 @@ user_callback!(::System) = nothing
 
 
 ################################ I/O ###########################################
-
-#the Channel for an OutputInterface must be buffered (size > 0), so that the
-#Simulation thread can write at least one output data item without blocking.
-#this is because there is no straightforward way to check whether the output
-#thread is blocked on a take! call to the output Channel. in contrast, the
-#Channel for an InputInterface could be unbuffered (although it does not have to
-#be), because by calling isready the simulation loop can tell whether the input
-#thread is already blocked on a put! call on that Channel, and may therefore
-#take! from it without blocking
 
 function attach!(sim::Simulation, device::IODevice,
                 mapping::IOMapping = DefaultMapping(); should_abort = false)
@@ -449,8 +438,8 @@ function start!(interface::SimInterface{D}) where {D <: IODevice}
             end
 
             #we need to yield somewhere because this loop is not guaranteed to
-            #block at any point, and therefore could slow down the simulation
-            #thread significantly. in the case of SimGUI, this is by design: the
+            #block at any point, so it could slow down the simulation thread
+            #significantly. in the case of SimGUI, this is by design: the
             #framerate is uncapped precisely to prevent the renderer from
             #blocking for VSync while update! is holding the io_lock
             yield()
@@ -535,7 +524,11 @@ function start!(sim::Simulation)
                 end
 
                 τ_next = τ_last + get_proposed_dt(sim) / pace
-                while τ_next > τ() end #busy wait (should do better, but it's not that easy)
+
+                #busy wait. not ideal, but much more responsive than
+                #sleep(τ_next - τ()). sleep() only guarantees a minimum thread
+                #sleep duration, and its granularity is not great
+                while τ_next > τ() end
 
                 @lock io_lock step!(sim)
 
@@ -579,12 +572,10 @@ end
 ################################################################################
 ############################### Execution ######################################
 
-#apparently, if a task is launched from the main thread and it doesn't ever
-#block, no other thread will get CPU time until it's done. threfore, we should
-#never call start! directly from the main thread unless we know the task will
-#block or yield at some point.
+#* caution: if a task is launched from the main thread and it doesn't
+#* ever block or yield, no other thread will get CPU time until it's done.
 
-#caution: on non-Windows platforms, CImGui needs to run on the main #thread!
+#* caution: on non-Windows platforms, CImGui needs to run on the main thread!
 
 function run!(sim::Simulation)
 
@@ -654,6 +645,15 @@ end
 get_time(ts::TimeSeries) = getfield(ts, :_t)
 get_data(ts::TimeSeries) = getfield(ts, :_data)
 
+function get_components(ts::TimeSeries{<:AbstractVector{T}}) where {T<:Real}
+    (TimeSeries(ts._t, y) for y in ts._data |> StructArray |> StructArrays.components)
+end
+
+get_child_names(::T) where {T <: TimeSeries} = get_child_names(T)
+get_child_names(::Type{<:TimeSeries{V}}) where {V} = fieldnames(V)
+
+Base.propertynames(ts::TimeSeries) = get_child_names(ts)
+
 Base.getindex(ts::TimeSeries, i) = TimeSeries(ts._t[i], ts._data[i])
 
 function Base.getindex(ts::TimeSeries{<:AbstractArray{T, N}}, time_ind, comp_ind::Vararg{Any, N}) where {T, N}
@@ -671,13 +671,6 @@ function Base.lastindex(ts::TimeSeries)
 end
 Base.view(ts::TimeSeries, i) = TimeSeries(view(ts._t, i), view(ts._data, i))
 
-#for inspection
-get_child_names(::T) where {T <: TimeSeries} = get_child_names(T)
-get_child_names(::Type{<:TimeSeries{V}}) where {V} = fieldnames(V)
-
-function get_components(ts::TimeSeries{<:AbstractVector{T}}) where {T<:Real}
-    (TimeSeries(ts._t, y) for y in ts._data |> StructArray |> StructArrays.components)
-end
 
 TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
 

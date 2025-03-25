@@ -486,7 +486,7 @@ function Systems.f_ode!(sys::System{<:PistonThruster}, air_data::AirflowData, ki
     engine.u.J_load = J_eq
     f_ode!(engine, air_data)
 
-    Systems.update_y!(sys)
+    update_output!(sys)
 
 end
 

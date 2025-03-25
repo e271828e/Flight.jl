@@ -10,7 +10,7 @@ using RecursiveArrayTools: VectorOfArray
 @reexport using LaTeXStrings
 @reexport using DataStructures: OrderedDict
 
-@reexport using ..Sim: Simulation, TimeSeries, get_components, get_child_names
+@reexport using ..Sim: Simulation, TimeSeries, get_components, get_time, get_data
 using ..Types
 
 export make_plots, save_plots
@@ -88,7 +88,7 @@ make_plots(ts::TimeSeries{<:AbstractVector{<:Real}}; kwargs...) = plot(ts; kwarg
 function make_plots(ts::TimeSeries{<:NamedTuple}; kwargs...)
 
     pd = OrderedDict{Symbol, Any}()
-    for name in get_child_names(ts)
+    for name in propertynames(ts)
         child_plots = make_plots(getproperty(ts, name); kwargs...)::Union{Nothing, OrderedDict, Plots.Plot}
         !isnothing(child_plots) && (pd[name] = child_plots)
     end
