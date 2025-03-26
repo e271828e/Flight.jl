@@ -179,7 +179,6 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
 
     function Simulation(
         sys::System{D, Y};
-        sys_init!::Function = Systems.init!, #default System initialization function
         user_callback!::Function = user_callback!, #user-specified callback
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
@@ -195,14 +194,16 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         t_end - t_start < Δt && @warn(
         "Simulation timespan is shorter than the discrete dynamics update period")
 
-        params = (sys = sys, sys_init! = sys_init!, user_callback! = user_callback!)
+        #need to store a reference to sys and user_callback! in the integrator
+        #params so they can be used within the integrator callbacks
+        params = (sys = sys, user_callback! = user_callback!)
 
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
 
         #we don't want to impose a call to f_disc! at t=0, so we set
-        #initial_affect=false. if needed, a call to f_disc! can be included in
-        #the user-defined sys_init!
+        #initial_affect=false. if needed, such call can be included in the
+        #user-defined Systems.init!
         cb_disc = PeriodicCallback(f_cb_disc!, Δt; initial_affect = false)
         sys.Δt_root[] = Δt
 
@@ -350,10 +351,11 @@ function f_cb_disc!(integrator)
 
 end
 
-
 #SavingCallback function, gets called at the end of each step after f_disc!
 #and/or f_step!
-f_cb_save(x, t, integrator) = deepcopy(integrator.p.sys.y)
+function f_cb_save(x, t, integrator)
+    deepcopy(integrator.p.sys.y)
+end
 
 
 ####################### OrdinaryDiffEq extensions ##############################
@@ -367,7 +369,10 @@ OrdinaryDiffEq.add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
 
     @unpack sys, integrator, log = sim
-    @unpack p = integrator
+
+    #drop the log entries from the last run
+    resize!(log.t, 0)
+    resize!(log.saveval, 0)
 
     #reset scheduling counter, so f_disc! is guaranteed to execute if called by
     #Systems.init!
@@ -376,22 +381,16 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
     #initialize the System's x, u and s
     Systems.init!(sys, init_args...; init_kwargs...)
 
-    #initialize the ODEIntegrator with the System's initial x. ODEIntegrator's
-    #reinit! calls f_ode_wrapper!, so for continuous Systems ẋ and y are
-    #updated in the process
-    if has_x(p.sys)
-        OrdinaryDiffEq.reinit!(integrator, p.sys.x)
+    #initialize the integrator with the System's initial x. within the
+    #integrator's reinit! f_cb_save and f_ode_wrapper! are called, in that order
+    if has_x(sys)
+        OrdinaryDiffEq.reinit!(integrator, sys.x)
     else
         OrdinaryDiffEq.reinit!(integrator)
     end
 
-    #after (possibly) executing f_disc! for t=0 (n=0), set n=1 in preparation
-    #for the first scheduled discrete step
+    #prepare scheduling counter for the first integration step
     sys.n[] = 1
-
-    #drop the log entries from the last run and keep the newly initialized one
-    resize!(log.t, 1)
-    resize!(log.saveval, 1)
 
     return nothing
 end

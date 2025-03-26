@@ -51,6 +51,7 @@ function Systems.init!( world::System{<:SimpleWorld}, args...)
     Systems.init!(atm)
     Systems.init!(trn)
     Systems.init!(ac, args...)
+    update_output!(world) #!
 end
 
 ################################################################################

@@ -1023,48 +1023,6 @@ function GUI.draw!(ctl::System{<:Controller},
         PopItemWidth()
     end
 
-    ############################### Guidance ###################################
-
-    @cstatic h_datum=Int32(0) begin
-    if CImGui.CollapsingHeader("Vertical Guidance")
-
-        if CImGui.BeginTable("VerticalGuidance", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                    Text("Mode")
-                CImGui.TableNextColumn();
-                    mode_button("Off", vrt_gdc_off, u.vrt_gdc_mode_req, y.vrt_gdc_mode)
-                    IsItemActive() && (u.vrt_gdc_mode_req = vrt_gdc_off); SameLine()
-                    mode_button("Altitude", vrt_gdc_alt, u.vrt_gdc_mode_req, y.vrt_gdc_mode)
-                    if IsItemActive()
-                        u.vrt_gdc_mode_req = vrt_gdc_alt
-                        u.h_sp = (u.h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o))
-                    end
-                CImGui.TableNextColumn();
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
-                CImGui.TableNextColumn();
-                    PushItemWidth(-10)
-                    u.h_sp = safe_input("Altitude Setpoint", Float64(u.h_sp), 1, 1.0, "%.3f")
-                    PopItemWidth()
-                CImGui.TableNextColumn();
-                    u.h_datum === ellipsoidal && Text(@sprintf("%.3f", Float64(h_e)))
-                    u.h_datum === orthometric && Text(@sprintf("%.3f", Float64(h_o)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                CImGui.TableNextColumn();
-                    @c RadioButton("Ellipsoidal", &h_datum, 0); SameLine()
-                    @c RadioButton("Orthometric", &h_datum, 1)
-                    u.h_datum = (h_datum == 0 ? ellipsoidal : orthometric)
-            CImGui.EndTable()
-        end #table
-
-        Separator()
-
-    end #header
-    end #cstatic
-
-
     ########################## Longitudinal Control ########################
 
     if CImGui.CollapsingHeader("Longitudinal Control")
@@ -1222,6 +1180,50 @@ function GUI.draw!(ctl::System{<:Controller},
         Separator()
 
     end
+
+    ############################### Guidance ###################################
+
+    @cstatic h_datum=Int32(0) begin
+    if CImGui.CollapsingHeader("Vertical Guidance")
+
+        if CImGui.BeginTable("VerticalGuidance", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                    Text("Mode")
+                CImGui.TableNextColumn();
+                    mode_button("Off", vrt_gdc_off, u.vrt_gdc_mode_req, y.vrt_gdc_mode)
+                    IsItemActive() && (u.vrt_gdc_mode_req = vrt_gdc_off); SameLine()
+                    mode_button("Altitude", vrt_gdc_alt, u.vrt_gdc_mode_req, y.vrt_gdc_mode)
+                    if IsItemActive()
+                        u.vrt_gdc_mode_req = vrt_gdc_alt
+                        u.h_sp = (u.h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o))
+                        u.EAS_sp = EAS
+                    end
+                CImGui.TableNextColumn();
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
+                CImGui.TableNextColumn();
+                    PushItemWidth(-10)
+                    u.h_sp = safe_input("Altitude Setpoint", Float64(u.h_sp), 1, 1.0, "%.3f")
+                    PopItemWidth()
+                CImGui.TableNextColumn();
+                    u.h_datum === ellipsoidal && Text(@sprintf("%.3f", Float64(h_e)))
+                    u.h_datum === orthometric && Text(@sprintf("%.3f", Float64(h_o)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                CImGui.TableNextColumn();
+                    @c RadioButton("Ellipsoidal", &h_datum, 0); SameLine()
+                    @c RadioButton("Orthometric", &h_datum, 1)
+                    u.h_datum = (h_datum == 0 ? ellipsoidal : orthometric)
+            CImGui.EndTable()
+        end #table
+
+        Separator()
+
+    end #header
+    end #cstatic
+
+
 
 
     ############################################################################

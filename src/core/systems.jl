@@ -171,13 +171,7 @@ function System(ss::Subsampled,
     System(ss.sd, y, u, ẋ, x, s, N * ss.K, Δt_root, t, n)
 end
 
-init!(::System, args...) = nothing
-
-function reset!(sys::System)
-    foreach(sys.subsystems) do ss
-        Systems.reset!(ss)
-    end
-end
+################################################################################
 
 Base.getproperty(sys::System, name::Symbol) = getproperty(sys, Val(name))
 
@@ -215,6 +209,14 @@ end
 abstract type MaybeSchedule end
 struct Schedule <: MaybeSchedule end
 struct NoScheduling <: MaybeSchedule end
+
+init!(::System, args...; kwargs...) = nothing
+
+function reset!(sys::System)
+    foreach(sys.subsystems) do ss
+        Systems.reset!(ss)
+    end
+end
 
 #continuous dynamics, to be extended by Systems
 function f_ode!(sys::System, args...)
