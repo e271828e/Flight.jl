@@ -210,6 +210,7 @@ abstract type MaybeSchedule end
 struct Schedule <: MaybeSchedule end
 struct NoScheduling <: MaybeSchedule end
 
+
 init!(::System, args...; kwargs...) = nothing
 
 function reset!(sys::System)
@@ -217,7 +218,6 @@ function reset!(sys::System)
         Systems.reset!(ss)
     end
 end
-
 #continuous dynamics, to be extended by Systems
 function f_ode!(sys::System, args...)
     MethodError(f_ode!, (sys, args...)) |> throw

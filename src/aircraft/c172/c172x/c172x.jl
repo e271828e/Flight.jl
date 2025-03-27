@@ -146,13 +146,12 @@ function GUI.draw(sys::System{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true)
     CImGui.Begin(label, p_open)
     CImGui.PushItemWidth(-60)
 
-    #because @cstatic allocates storage using global variables, functions using
-    #it are not reentrant; calls to such functions will share the same storage.
-
     labels = uppercasefirst.(string.(keys(sys.subsystems)))
     commands = map(ss->ss.y.cmd, values(sys.subsystems))
     positions = map(ss->ss.y.pos, values(sys.subsystems))
 
+    #@cstatic allocates storage using global variables, so functions using
+    #it are not reentrant. no easy way of factoring this block out
     @cstatic(
         thr_buffer = fill(Cfloat(0),90), thr_offset = Ref(Cint(0)),
         mix_buffer = fill(Cfloat(0),90), mix_offset = Ref(Cint(0)),
@@ -195,14 +194,13 @@ function GUI.draw!(sys::System{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true
     CImGui.Begin(label, p_open)
     CImGui.PushItemWidth(-60)
 
-    #because @cstatic allocates storage using global variables, functions using
-    #it are not reentrant; calls to such functions will share the same storage.
-
     labels = uppercasefirst.(string.(keys(sys.subsystems)))
     inputs = map(ss->ss.u, values(sys.subsystems))
     commands = map(ss->ss.y.cmd, values(sys.subsystems))
     positions = map(ss->ss.y.pos, values(sys.subsystems))
 
+    #@cstatic allocates storage using global variables, so functions using
+    #it are not reentrant. no easy way of factoring this block out
     @cstatic(
         thr_buffer = fill(Cfloat(0),90), thr_offset = Ref(Cint(0)),
         mix_buffer = fill(Cfloat(0),90), mix_offset = Ref(Cint(0)),
@@ -241,20 +239,48 @@ function GUI.draw!(sys::System{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true
 end
 
 
-################################## Joysticks ###################################
+
+################################################################################
+################################# Templates ####################################
+
+#keep C172S power plant, replace actuation system
+const PowerPlant = C172S.PowerPlant
+
+#needed for dispatching
+const Components = C172.Components{typeof(PowerPlant()), typeof(FlyByWireActuation())}
+const Vehicle{K} = AircraftBase.Vehicle{Components, K} where {K <: AbstractKinematicDescriptor}
+const Aircraft{K, A} = AircraftBase.Aircraft{Vehicle{K}, A} where {K <: AbstractKinematicDescriptor, A <: AbstractAvionics}
+const Cessna172X{K, A} = Aircraft{K, A}
+
+function Vehicle(kinematics = WA())
+    AircraftBase.Vehicle(
+        C172.Components(PowerPlant(), FlyByWireActuation()),
+        kinematics, VehicleDynamics())
+end
+
+################################################################################
+################################# Cessna172Xv0 ################################
+
+const Cessna172Xv0{K} = Cessna172X{K, NoAvionics} where { K <: AbstractKinematicDescriptor}
+
+function Cessna172Xv0(kinematics = WA())
+    AircraftBase.Aircraft(Vehicle(kinematics), NoAvionics())
+end
+
+############################ Joystick Mappings #################################
 
 pitch_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 roll_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function Systems.assign_input!(sys::System{<:FlyByWireActuation},
+function Systems.assign_input!(sys::System{<:Cessna172Xv0},
                            joystick::XBoxController,
                            ::IOMapping)
 
-    #mixture not assigned, not enough axes
+    #mixture not assigned
     @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
-            brake_left, brake_right = sys.subsystems
+            brake_left, brake_right = sys.vehicle.components.act.subsystems
 
     aileron.u[] = get_axis_value(joystick, :right_stick_x) |> roll_curve
     elevator.u[] = get_axis_value(joystick, :right_stick_y) |> pitch_curve
@@ -270,13 +296,13 @@ function Systems.assign_input!(sys::System{<:FlyByWireActuation},
     throttle.u[] -= 0.1 * was_released(joystick, :button_A)
 end
 
-function Systems.assign_input!(sys::System{<:FlyByWireActuation},
+function Systems.assign_input!(sys::System{<:Cessna172Xv0},
                            joystick::T16000M,
                            ::IOMapping)
 
-    #mixture not assigned, not enough axes
+    #mixture not assigned
     @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
-            brake_left, brake_right = sys.subsystems
+            brake_left, brake_right = sys.vehicle.components.act.subsystems
 
     throttle.u[] = get_axis_value(joystick, :throttle)
     aileron.u[] = get_axis_value(joystick, :stick_x) |> roll_curve
@@ -291,39 +317,6 @@ function Systems.assign_input!(sys::System{<:FlyByWireActuation},
 
 end
 
-
-################################################################################
-################################# Templates ####################################
-
-#reuse C172S power plant, replace actuation system
-const Components = C172.Components{typeof(C172S.PowerPlant()), FlyByWireActuation}
-const Vehicle{K} = AircraftBase.Vehicle{C172X.Components, K} where {K <: AbstractKinematicDescriptor}
-const Aircraft{K, A} = AircraftBase.Aircraft{C172X.Vehicle{K}, A} where {K <: AbstractKinematicDescriptor, A <: AbstractAvionics}
-const Cessna172X{K, A} = C172X.Aircraft{K, A}
-
-function Vehicle(kinematics = WA())
-    AircraftBase.Vehicle(
-        C172.Components(C172S.PowerPlant(), FlyByWireActuation()),
-        kinematics, VehicleDynamics())
-end
-
-################################################################################
-################################# Cessna172Xv0 ################################
-
-const Cessna172Xv0{K} = Cessna172X{K, NoAvionics} where { K <: AbstractKinematicDescriptor}
-
-function Cessna172Xv0(kinematics = WA())
-    AircraftBase.Aircraft(Vehicle(kinematics), NoAvionics())
-end
-
-############################ Joystick Mappings #################################
-
-#map input assignments directly to the actuation system
-function Systems.assign_input!(sys::System{<:Cessna172Xv0},
-                                joystick::JoystickData,
-                                mapping::IOMapping)
-    Systems.assign_input!(sys.vehicle.components.act, joystick, mapping)
-end
 
 
 ############################### Trimming #######################################
