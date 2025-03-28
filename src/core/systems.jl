@@ -13,40 +13,16 @@ export @no_ode, @no_disc, @no_step, @no_dynamics
 export @ss_ode, @ss_disc, @ss_step, @ss_dynamics
 
 
-
 ################################################################################
-############################## SystemProperty #####################################
+############################## SystemTrait #####################################
 
-abstract type SystemProperty end
+abstract type SystemTrait end
 
-struct Ẋ <: SystemProperty end #continuous state derivative
-struct X <: SystemProperty end #continuous state
-struct Y <: SystemProperty end #output
-struct U <: SystemProperty end #input
-struct S <: SystemProperty end #discrete state
-
-
-function delete_nothings(nt::NamedTuple)
-    valid_keys = filter(k -> !isnothing(getproperty(nt, k)), keys(nt))
-    valid_values = map(λ -> getproperty(nt, λ), valid_keys)
-    NamedTuple{valid_keys}(valid_values)
-end
-
-
-function (::Type{<:SystemProperty})(nt::NamedTuple)
-    filtered_nt = delete_nothings(nt)
-    isempty(filtered_nt) && return nothing
-    if all(v -> isa(v, AbstractVector), values(filtered_nt)) #x and ẋ
-        return ComponentVector(filtered_nt)
-    else #u, s
-        return filtered_nt
-    end
-end
-
-function Y(nt::NamedTuple)
-    filtered_nt = delete_nothings(nt)
-    return !isempty(filtered_nt) ? filtered_nt : nothing
-end
+struct Ẋ <: SystemTrait end #continuous state derivative
+struct X <: SystemTrait end #continuous state
+struct Y <: SystemTrait end #output
+struct U <: SystemTrait end #input
+struct S <: SystemTrait end #discrete state
 
 
 ################################################################################
@@ -54,21 +30,32 @@ end
 
 abstract type SystemDefinition end
 
-#################### Default SystemProperty Constructors #######################
+#################### Default SystemTrait Constructors #######################
 
 (::Union{Type{U}, Type{S}})(::SystemDefinition) = nothing
 
-function (SysProp::Union{Type{X}, Type{Y}})(sd::D) where {D <: SystemDefinition}
+function (Trait::Union{Type{X}, Type{Y}})(sd::D) where {D <: SystemDefinition}
+
     children_names = filter(fieldnames(D)) do name
         getfield(sd, name) isa SystemDefinition
     end
-    children_definitions = map(λ -> getfield(sd, λ), children_names)
-    children_properties = map(child-> SysProp(child), children_definitions)
-    nt = NamedTuple{children_names}(children_properties)
-    return SysProp(nt)
+    children_fields = map(λ -> getfield(sd, λ), children_names)
+    children_traits = map(child-> Trait(child), children_fields)
+    nt = NamedTuple{children_names}(children_traits)
+
+    nonempty_names = filter(k -> !isnothing(getproperty(nt, k)), keys(nt))
+    nonempty_traits = map(λ -> getproperty(nt, λ), nonempty_names)
+    filtered_nt = NamedTuple{nonempty_names}(nonempty_traits)
+
+    if isempty(filtered_nt)
+        return nothing
+    elseif all(v -> isa(v, AbstractVector), values(filtered_nt)) #x and ẋ
+        return ComponentVector(filtered_nt)
+    else #y
+        return filtered_nt
+    end
 end
 
-#fallback for state vector derivative
 function Ẋ(sd::SystemDefinition)
     x = X(sd)
     return (!isnothing(x) ? (x |> zero) : nothing)
@@ -84,9 +71,9 @@ end
 
 Subsampled(sd::D) where {D <: SystemDefinition} = Subsampled{D}(sd, 1)
 
-(SysProp::Union{Type{U}, Type{S}})(ss::Subsampled) = SysProp(ss.sd)
-(SysProp::Union{Type{X}, Type{Y}})(ss::Subsampled) = SysProp(ss.sd)
-(SysProp::Type{Ẋ})(ss::Subsampled) = Ẋ(ss.sd)
+(Trait::Union{Type{U}, Type{S}})(ss::Subsampled) = Trait(ss.sd)
+(Trait::Union{Type{X}, Type{Y}})(ss::Subsampled) = Trait(ss.sd)
+(Trait::Type{Ẋ})(ss::Subsampled) = Ẋ(ss.sd)
 
 ################################################################################
 ################################### System #####################################
@@ -138,15 +125,15 @@ function System(sd::D,
 
         child_definition = getproperty(sd, child_name)
 
-        child_properties = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent_property, SysProp
-            if !isnothing(parent_property) && (child_name in propertynames(parent_property))
-                getproperty(parent_property, child_name)
+        child_traits = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent_trait, Trait
+            if child_name in propertynames(parent_trait)
+                getproperty(parent_trait, child_name)
             else
-                SysProp(child_definition)
+                Trait(child_definition)
             end
         end
 
-        System(child_definition, child_properties..., N, Δt_root, t, n)
+        System(child_definition, child_traits..., N, Δt_root, t, n)
 
     end
 
@@ -184,9 +171,7 @@ function Base.propertynames(sys::S) where {S <: System}
 end
 
 #no clashes can occur between constant and subsystem names. thus, for
-#convenience we allow direct access to both. as a drawback, this makes type
-#inference more difficult, and it may cause instability in some scenarios
-#(update_output! fallback). using getfield instead can help in those cases.
+#convenience we allow direct access to both
 @generated function Base.getproperty(sys::System{D, Y, U, X, S, C, B}, ::Val{P}
         ) where {D, Y, U, X, S, C, B, P}
     if P ∈ fieldnames(System)

@@ -89,10 +89,10 @@ function test_control_modes()
 
     #must reset scheduling counter before standalone calls to f_disc!, but
     #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-    # @test @ballocated(f_ode!($world)) == 0
-    # @test @ballocated(f_step!($world)) == 0
-    # @test @ballocated(f_disc!($world)) == 0
+    world.n[] = 0
+    @test @ballocated(f_ode!($world)) == 0
+    @test @ballocated(f_step!($world)) == 0
+    @test @ballocated(f_disc!($world)) == 0
 
     end #testset
 
@@ -122,8 +122,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
     end #testset
 
@@ -150,8 +150,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
     end #testset
 
@@ -185,8 +185,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -223,8 +223,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -265,8 +265,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -309,7 +309,7 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
+        world.n[] = 0
         @test @ballocated(f_disc!($world)) == 0
 
     end
@@ -340,8 +340,8 @@ function test_control_modes()
         #must always reset scheduling counter before standalone calls to
         #f_disc!, but we cannot do it by a simulation reinit, otherwise the
         #current controller state is lost
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -376,8 +376,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -417,8 +417,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -452,8 +452,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
     end
 
@@ -489,8 +489,8 @@ function test_control_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
         # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
         # air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
@@ -568,8 +568,8 @@ function test_guidance_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
         ctl.u.h_sp = y_kin_trim.h_e + 100
         step!(sim, 1, true)
@@ -577,8 +577,8 @@ function test_guidance_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        # world.n[] = 0
-        # @test @ballocated(f_disc!($world)) == 0
+        world.n[] = 0
+        @test @ballocated(f_disc!($world)) == 0
 
         # return TimeSeries(sim)
 
