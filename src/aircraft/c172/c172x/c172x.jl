@@ -274,48 +274,48 @@ roll_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function Systems.assign_input!(sys::System{<:Cessna172Xv0},
-                           joystick::XBoxController,
-                           ::IOMapping)
+# function Systems.assign_input!(sys::System{<:Cessna172Xv0},
+#                            joystick::XBoxController,
+#                            ::IOMapping)
 
-    #mixture not assigned
-    @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
-            brake_left, brake_right = sys.vehicle.components.act.subsystems
+#     #mixture not assigned
+#     @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
+#             brake_left, brake_right = sys.vehicle.components.act.subsystems
 
-    aileron.u[] = get_axis_value(joystick, :right_stick_x) |> roll_curve
-    elevator.u[] = get_axis_value(joystick, :right_stick_y) |> pitch_curve
-    rudder.u[] = get_axis_value(joystick, :left_stick_x) |> yaw_curve
-    steering.u[] = get_axis_value(joystick, :left_stick_x) |> yaw_curve
-    brake_left.u[] = get_axis_value(joystick, :left_trigger) |> brake_curve
-    brake_right.u[] = get_axis_value(joystick, :right_trigger) |> brake_curve
+#     aileron.u[] = get_axis_value(joystick, :right_stick_x) |> roll_curve
+#     elevator.u[] = get_axis_value(joystick, :right_stick_y) |> pitch_curve
+#     rudder.u[] = get_axis_value(joystick, :left_stick_x) |> yaw_curve
+#     steering.u[] = get_axis_value(joystick, :left_stick_x) |> yaw_curve
+#     brake_left.u[] = get_axis_value(joystick, :left_trigger) |> brake_curve
+#     brake_right.u[] = get_axis_value(joystick, :right_trigger) |> brake_curve
 
-    flaps.u[] += 0.3333 * was_released(joystick, :right_bumper)
-    flaps.u[] -= 0.3333 * was_released(joystick, :left_bumper)
+#     flaps.u[] += 0.3333 * was_released(joystick, :right_bumper)
+#     flaps.u[] -= 0.3333 * was_released(joystick, :left_bumper)
 
-    throttle.u[] += 0.1 * was_released(joystick, :button_Y)
-    throttle.u[] -= 0.1 * was_released(joystick, :button_A)
-end
+#     throttle.u[] += 0.1 * was_released(joystick, :button_Y)
+#     throttle.u[] -= 0.1 * was_released(joystick, :button_A)
+# end
 
-function Systems.assign_input!(sys::System{<:Cessna172Xv0},
-                           joystick::T16000M,
-                           ::IOMapping)
+# function Systems.assign_input!(sys::System{<:Cessna172Xv0},
+#                            joystick::T16000M,
+#                            ::IOMapping)
 
-    #mixture not assigned
-    @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
-            brake_left, brake_right = sys.vehicle.components.act.subsystems
+#     #mixture not assigned
+#     @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
+#             brake_left, brake_right = sys.vehicle.components.act.subsystems
 
-    throttle.u[] = get_axis_value(joystick, :throttle)
-    aileron.u[] = get_axis_value(joystick, :stick_x) |> roll_curve
-    elevator.u[] = get_axis_value(joystick, :stick_y) |> pitch_curve
-    rudder.u[] = get_axis_value(joystick, :stick_z) |> yaw_curve
-    steering.u[] = get_axis_value(joystick, :stick_z) |> yaw_curve
-    brake_left.u[] = is_pressed(joystick, :button_1)
-    brake_right.u[] = is_pressed(joystick, :button_1)
+#     throttle.u[] = get_axis_value(joystick, :throttle)
+#     aileron.u[] = get_axis_value(joystick, :stick_x) |> roll_curve
+#     elevator.u[] = get_axis_value(joystick, :stick_y) |> pitch_curve
+#     rudder.u[] = get_axis_value(joystick, :stick_z) |> yaw_curve
+#     steering.u[] = get_axis_value(joystick, :stick_z) |> yaw_curve
+#     brake_left.u[] = is_pressed(joystick, :button_1)
+#     brake_right.u[] = is_pressed(joystick, :button_1)
 
-    flaps.u[] += 0.3333 * was_released(joystick, :button_3)
-    flaps.u[] -= 0.3333 * was_released(joystick, :button_2)
+#     flaps.u[] += 0.3333 * was_released(joystick, :button_3)
+#     flaps.u[] -= 0.3333 * was_released(joystick, :button_2)
 
-end
+# end
 
 
 
