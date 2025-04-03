@@ -243,13 +243,7 @@ end
 function Systems.assign_input!(sys::System{TestSystem},
                             data::Joysticks.T16000MData,
                             ::IOMapping)
-    sys.u.input = get_axis_value(data, :stick_x)
-end
-
-function Systems.assign_input!(sys::System{TestSystem},
-                            data::Joysticks.XBoxControllerData,
-                            ::IOMapping)
-    sys.u.input = get_axis_value(data, :left_stick_x)
+    sys.u.input = data.axes.stick_x
 end
 
 function joystick_input()
@@ -258,7 +252,7 @@ function joystick_input()
 
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 10.0)
-        joystick = get_connected_joysticks()[1]
+        joystick = update_connected_joysticks()[1]
         Sim.attach!(sim, joystick)
 
         Sim.run_interactive!(sim)

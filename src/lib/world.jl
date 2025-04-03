@@ -67,7 +67,7 @@ end
 ############################ Joystick Mappings #################################
 
 function Systems.assign_input!(world::System{<:SimpleWorld},
-                                data::JoystickData,
+                                data::AbstractJoystickData,
                                 mapping::IOMapping)
     Systems.assign_input!(world.ac, data, mapping)
 end

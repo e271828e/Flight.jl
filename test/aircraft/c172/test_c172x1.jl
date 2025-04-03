@@ -733,7 +733,7 @@ function test_sim_interactive(; save::Bool = true)
 
     reinit!(sim, initializer)
 
-    for joystick in get_connected_joysticks()
+    for joystick in update_connected_joysticks()
         Sim.attach!(sim, joystick)
     end
 

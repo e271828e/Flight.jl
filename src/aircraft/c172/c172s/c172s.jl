@@ -234,48 +234,27 @@ rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 function Systems.assign_input!(sys::System{<:Cessna172Sv0},
-                           data::XBoxControllerData, ::IOMapping)
+                           data::T16000MData, ::DefaultMapping)
 
     u = sys.vehicle.components.act.u
 
-    u.aileron = get_axis_value(data, :right_stick_x) |> aileron_curve
-    u.elevator = get_axis_value(data, :right_stick_y) |> elevator_curve
-    u.rudder = get_axis_value(data, :left_stick_x) |> rudder_curve
-    u.brake_left = get_axis_value(data, :left_trigger) |> brake_curve
-    u.brake_right = get_axis_value(data, :right_trigger) |> brake_curve
+    @unpack axes, buttons, hat = data
 
-    u.aileron_offset -= 0.01 * was_released(data, :dpad_left)
-    u.aileron_offset += 0.01 * was_released(data, :dpad_right)
-    u.elevator_offset += 0.01 * was_released(data, :dpad_down)
-    u.elevator_offset -= 0.01 * was_released(data, :dpad_up)
+    u.throttle = axes.throttle
+    u.aileron = axes.stick_x |> aileron_curve
+    u.elevator = axes.stick_y |> elevator_curve
+    u.rudder = axes.stick_z |> rudder_curve
 
-    u.flaps += 0.3333 * was_released(data, :right_bumper)
-    u.flaps -= 0.3333 * was_released(data, :left_bumper)
+    u.brake_left = is_pressed(buttons.button_1)
+    u.brake_right = is_pressed(buttons.button_1)
 
-    u.throttle += 0.1 * was_released(data, :button_Y)
-    u.throttle -= 0.1 * was_released(data, :button_A)
-end
+    u.aileron_offset -= 2e-4 * was_released(hat.left)
+    u.aileron_offset += 2e-4 * was_released(hat.right)
+    u.elevator_offset += 2e-4 * was_released(hat.down)
+    u.elevator_offset -= 2e-4 * was_released(hat.up)
 
-function Systems.assign_input!(sys::System{<:Cessna172Sv0},
-                           data::T16000MData, ::IOMapping)
-
-    u = sys.vehicle.components.act.u
-
-    u.throttle = get_axis_value(data, :throttle)
-    u.aileron = get_axis_value(data, :stick_x) |> aileron_curve
-    u.elevator = get_axis_value(data, :stick_y) |> elevator_curve
-    u.rudder = get_axis_value(data, :stick_z) |> rudder_curve
-
-    u.brake_left = is_pressed(data, :button_1)
-    u.brake_right = is_pressed(data, :button_1)
-
-    u.aileron_offset -= 2e-4 * is_pressed(data, :hat_left)
-    u.aileron_offset += 2e-4 * is_pressed(data, :hat_right)
-    u.elevator_offset += 2e-4 * is_pressed(data, :hat_down)
-    u.elevator_offset -= 2e-4 * is_pressed(data, :hat_up)
-
-    u.flaps += 0.3333 * was_released(data, :button_3)
-    u.flaps -= 0.3333 * was_released(data, :button_2)
+    u.flaps += 0.3333 * was_released(buttons.button_3)
+    u.flaps -= 0.3333 * was_released(buttons.button_2)
 
 end
 
