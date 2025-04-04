@@ -4,7 +4,7 @@ using StaticArrays, StructArrays, StructTypes
 
 using ..GUI
 
-export shf, wrap_to_π
+export shf
 export Ranged, saturation, linear_scaling
 
 ################################################################################
@@ -15,8 +15,6 @@ function shf(s::S) where {S}
         println("$f: $(getfield(s,f))")
     end
 end
-
-wrap_to_π(x) = x + 2π*floor((π-x)/(2π))
 
 ################################################################################
 ################################ Ranged ########################################

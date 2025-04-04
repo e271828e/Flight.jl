@@ -58,8 +58,8 @@ end
 ############################### XPlane12Output #################################
 
 function IODevices.extract_output(world::System{<:SimpleWorld},
-                                xp::XPlane12Output, mapping::IOMapping)
-    IODevices.extract_output(world.ac, xp, mapping)
+                                mapping::XPlane12OutputMapping)
+    IODevices.extract_output(world.ac, mapping)
 end
 
 

@@ -234,7 +234,7 @@ rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 function IODevices.assign_input!(sys::System{<:Cessna172Sv0},
-                                ::GenericMapping, data::T16000MData)
+                                ::GenericInputMapping, data::T16000MData)
 
     u = sys.vehicle.components.act.u
 

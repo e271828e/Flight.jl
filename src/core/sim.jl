@@ -72,6 +72,10 @@ function GUI.draw!(control::SimControl)
 
 end
 
+#any InputDevice that wants to control the simulation needs to define its own
+#IOMapping subtype and extend this function
+IODevices.assign_input!(::SimControl, ::IOMapping, ::Any) = nothing
+
 ################################################################################
 ############################### SimInterface ###################################
 
@@ -94,7 +98,7 @@ const SimGUI{D} = SimInterface{D} where {D <: Renderer}
 #Simulation loop is currently stepping
 function update!(interface::SimInput)
 
-    @unpack device, sys, mapping, io_lock = interface
+    @unpack device, sys, mapping, control, io_lock = interface
     data = IODevices.get_data!(device)
 
     #the data we got from the InputDevice might be something we're not able to
@@ -103,6 +107,7 @@ function update!(interface::SimInput)
     try
         lock(io_lock)
         IODevices.assign_input!(sys, mapping, data)
+        IODevices.assign_input!(control, mapping, data)
     catch ex
         @warn("Failed to assign input data $data to System")
         # println(ex)
@@ -249,7 +254,7 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         #thread. to prevent this, we can send the GUI to sleep for a while
         #within GUI.update! AFTER io_lock has been released
         renderer = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
-        gui = SimInterface(renderer, sys, GenericMapping(),
+        gui = SimInterface(renderer, sys, GenericInputMapping(),
                            control, io_start, io_lock, true)
 
         new{D, Y, typeof(integrator), typeof(gui)}(

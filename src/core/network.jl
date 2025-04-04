@@ -30,9 +30,6 @@ export XPlane12Output, XPlane12OutputMapping, XPlanePose
     end
 end
 
-#we don't provide a default mapping for UDPInput, because there is no generic
-#way of assigning the incoming data to a target. it must be defined by the user
-
 function IODevices.init!(device::UDPInput)
     device.socket = UDPSocket() #create a new socket on each initialization
     @unpack socket, address, port = device
@@ -50,6 +47,9 @@ function IODevices.get_data!(device::UDPInput)
     return data
 end
 
+#no IODevices.get_default_mapping for UDPInput is provided, because there is no
+#universal way of assigning the incoming data to a target. a specific mapping
+#must be defined by the user and passed to the Simulation via the attach! method
 
 ################################################################################
 ################################# UDPOutput ####################################
@@ -85,6 +85,9 @@ function IODevices.handle_data!(device::UDPOutput, data::NTuple{N, String}) wher
     end
 end
 
+#no IODevices.get_default_mapping for UDPOutput is provided, because there is no
+#universal way of extracting UDP-suitable data from a target. a specific mapping
+#must be defined by the user and passed to the Simulation via the attach! method
 
 ################################################################################
 ################################# XPlane12Output ###############################

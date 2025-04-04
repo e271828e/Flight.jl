@@ -81,7 +81,7 @@ brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 
 function IODevices.assign_input!(sys::System{<:Cessna172Xv1},
-                           ::GenericMapping, data::T16000MData)
+                           ::GenericInputMapping, data::T16000MData)
 
     u = sys.avionics.ctl.u
 

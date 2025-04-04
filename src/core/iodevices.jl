@@ -4,7 +4,8 @@ using StaticArrays
 using UnPack
 using Logging
 
-export IODevice, InputDevice, OutputDevice, IOMapping, GenericMapping
+export IODevice, InputDevice, OutputDevice
+export IOMapping, GenericInputMapping
 export get_default_mapping
 
 
@@ -12,7 +13,8 @@ export get_default_mapping
 ################################# IOMapping ####################################
 
 abstract type IOMapping end
-struct GenericMapping <: IOMapping end
+
+struct GenericInputMapping <: IOMapping end
 
 ################################################################################
 ################################# IODevice #####################################
@@ -42,8 +44,6 @@ function assign_input!(target::Any, mapping::IOMapping, data::Any)
     MethodError(assign_input!, (target, mapping, data)) |> throw
 end
 
-assign_input!(::Any, ::GenericMapping, ::Any) = nothing
-
 ################################################################################
 ############################## OutputDevice ####################################
 
@@ -53,8 +53,6 @@ abstract type OutputDevice <: IODevice end
 function extract_output(source::Any, mapping::IOMapping)
     MethodError(extract_output, (source, mapping)) |> throw
 end
-
-extract_output(::Any, ::GenericMapping) = nothing
 
 #process an instance of the extracted output data. may block
 function handle_data!(device::D, data::Any) where {D<:OutputDevice}
