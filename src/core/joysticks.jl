@@ -173,6 +173,8 @@ mutable struct Joystick{D <: AbstractJoystickData} <: InputDevice
     cache::D
 end
 
+IODevices.get_default_mapping(::Joystick) = GenericMapping()
+
 is_connected(joy::Joystick) = is_connected(joy.ptr)
 get_instance_id(joy::Joystick) = get_instance_id(joy.ptr)
 get_guid(joy::Joystick) = get_guid(joy.ptr)

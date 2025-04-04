@@ -274,9 +274,8 @@ roll_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function Systems.assign_input!(sys::System{<:Cessna172Xv0},
-                           data::T16000MData,
-                           ::DefaultMapping)
+function IODevices.assign_input!(sys::System{<:Cessna172Xv0},
+                           ::GenericMapping, data::T16000MData)
 
     #mixture not assigned
     @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,

@@ -8,7 +8,7 @@ using JSON3
 using ..IODevices
 
 export UDPOutput, UDPInput
-export XPlane12Output, XPlanePose
+export XPlane12Output, XPlane12OutputMapping, XPlanePose
 
 #UDPInput interprets the EOT character as a shutdown request. This provides a
 #means to prevent the UDPInput thread from getting stuck in the blocking recv
@@ -29,6 +29,9 @@ export XPlane12Output, XPlanePose
         new{A}(socket, address, port, should_close)
     end
 end
+
+#we don't provide a default mapping for UDPInput, because there is no generic
+#way of assigning the incoming data to a target. it must be defined by the user
 
 function IODevices.init!(device::UDPInput)
     device.socket = UDPSocket() #create a new socket on each initialization
@@ -96,6 +99,9 @@ end
 function XPlane12Output(; address = IPv4("127.0.0.1"), port = 49000, kwargs...)
     XPlane12Output(UDPOutput(; address, port, kwargs...))
 end
+
+struct XPlane12OutputMapping <: IOMapping end
+IODevices.get_default_mapping(::XPlane12Output) = XPlane12OutputMapping()
 
 function IODevices.init!(xpc::XPlane12Output)
 

@@ -590,9 +590,7 @@ end
 
 struct JSONTestMapping <: IOMapping end
 
-function Systems.extract_output(sys::System{<:SimpleWorld},
-                        ::UDPOutput,
-                        ::JSONTestMapping)
+function IODevices.extract_output(sys::System{<:SimpleWorld}, ::JSONTestMapping)
     freq = 0.1
     φ_sp_max = π/6
     φ_sp = φ_sp_max * sin(2π*freq*sys.t[])
@@ -623,9 +621,7 @@ function Systems.extract_output(sys::System{<:SimpleWorld},
     return JSON3.write(cmd)
 end
 
-function Systems.assign_input!(world::System{<:SimpleWorld},
-                                data::String,
-                                ::JSONTestMapping)
+function IODevices.assign_input!(world::System{<:SimpleWorld}, ::JSONTestMapping, data::String)
     #ControllerU is declared as StructTypes.Mutable() in C172X.C172XControl,
     #so JSON3 can automatically read a JSON string into one or more of its
     #fields

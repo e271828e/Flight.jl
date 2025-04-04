@@ -111,15 +111,15 @@ end #function
 
 struct UDPTestMapping <: IOMapping end
 
-function Systems.assign_input!(sys::System{TestSystem}, data::String,
-                            ::UDPTestMapping)
+function IODevices.assign_input!(sys::System{TestSystem},
+                            ::UDPTestMapping,
+                            data::String)
     # @debug "Got $data"
     sys.u.input = Vector{UInt8}(data)[1]
     # sys.u.input = "Hi"
 end
 
-function Systems.extract_output(::System{TestSystem},
-                            ::UDPOutput, ::UDPTestMapping)
+function IODevices.extract_output(::System{TestSystem}, ::UDPTestMapping)
     data = UInt8[37] |> String
     # data = String([0x04]) #EOT character
     # @debug "Extracted $data"
@@ -153,7 +153,7 @@ end
 
 ################################ XPC Loopback ##################################
 
-function Systems.extract_output(::System{TestSystem}, ::XPlane12Output, ::IOMapping)
+function IODevices.extract_output(::System{TestSystem}, ::XPlane12OutputMapping)
     data = KinData() |> XPlanePose |> Network.xpmsg_set_pose
     return data
 end
@@ -200,14 +200,15 @@ StructTypes.StructType(::Type{TestSystemU}) = StructTypes.Mutable()
 
 struct JSONTestMapping <: IOMapping end
 
-function Systems.extract_output(::System{TestSystem}, ::UDPOutput, ::JSONTestMapping)
+function IODevices.extract_output(::System{TestSystem}, ::JSONTestMapping)
     data = (input = 37.0,) |> JSON3.write
     # @info "Extracted $data"
     return data
 end
 
-function Systems.assign_input!(sys::System{TestSystem}, data::String,
-                            ::JSONTestMapping)
+function IODevices.assign_input!(sys::System{TestSystem},
+                            ::JSONTestMapping,
+                            data::String)
 
     # @info "Got $data"
     JSON3.read!(data, sys.u)
@@ -240,9 +241,9 @@ end
 
 ################################## Joystick ####################################
 
-function Systems.assign_input!(sys::System{TestSystem},
-                            data::Joysticks.T16000MData,
-                            ::IOMapping)
+function IODevices.assign_input!(sys::System{TestSystem},
+                            ::IOMapping,
+                            data::Joysticks.T16000MData)
     sys.u.input = data.axes.stick_x
 end
 

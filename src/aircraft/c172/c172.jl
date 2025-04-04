@@ -913,7 +913,7 @@ end
 ################################################################################
 ############################### XPlane12Output ###################################
 
-function Systems.extract_output(ac::System{<:Cessna172}, ::XPlane12Output, ::IOMapping)
+function IODevices.extract_output(ac::System{<:Cessna172}, ::XPlane12OutputMapping)
 
     t = ac.t[]
     @unpack δe, δa, δr, δf = ac.y.vehicle.components.aero

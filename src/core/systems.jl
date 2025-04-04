@@ -191,6 +191,9 @@ end
 ################################################################################
 ########################## System Update Methods ###############################
 
+#note: for a root System, these methods must be implemented without additional
+#arguments
+
 abstract type MaybeSchedule end
 struct Schedule <: MaybeSchedule end
 struct NoScheduling <: MaybeSchedule end
@@ -311,39 +314,25 @@ macro ss_dynamics(sd)
     esc(quote @ss_ode $sd; @ss_step $sd; @ss_disc $sd end)
 end
 
-################################################################################
-#################################### I/O #######################################
-
-#to add support for an InputDevice, the System should extend this function for
-#the data type produced by that InputDevice. additional customization is
-#possible by dispatching on a specific IOMapping subtype
-function assign_input!(sys::System, data::Any, mapping::IOMapping)
-    MethodError(assign_input!, (sys, data, mapping)) |> throw
-end
-
-assign_input!(::System, ::Nothing, ::IOMapping) = nothing
-
-#to add support for an OutputDevice, the System should extend this function.
-#additional customization is possible by dispatching on a specific IOMapping
-#subtype
-function extract_output(sys::System, device::OutputDevice, mapping::IOMapping)
-    MethodError(extract_output, (sys, device, mapping)) |> throw
-end
-
 
 ################################################################################
 ############################### Inspection #####################################
 
-function AbstractTrees.children(node::System)
-    return node.subsystems
+#prevent monstrous (nested, parameterized) types from flooding the REPL
+function Base.show(io::IO, ::MIME"text/plain", x::Union{Type{<:System}, Type{<:SystemDefinition}})
+    str = sprint(show, x)
+    maxlen = 100
+    length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
 end
 
-function AbstractTrees.printnode(io::IO, ::System{D}) where {D}
-    max_str = 100
-    str = string(D)
-    str_short = first(str, max_str)
-    length(str_short) < length(str) && (str_short *= "...")
-    print(io, str_short)
+function Base.show(io::IO, ::MIME"text/plain", x::Union{System, SystemDefinition})
+    str = sprint(show, x)
+    maxlen = 200
+    length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
 end
+
+#inspect hierarchy with AbstractTrees.print_tree
+AbstractTrees.children(node::System) = node.subsystems
+AbstractTrees.printnode(io::IO, ::System{D}) where {D} = show(io, MIME"text/plain"(), D)
 
 end #module

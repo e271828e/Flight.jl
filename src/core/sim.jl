@@ -102,7 +102,7 @@ function update!(interface::SimInput)
     #that scenario
     try
         lock(io_lock)
-        Systems.assign_input!(sys, data, mapping)
+        IODevices.assign_input!(sys, mapping, data)
     catch ex
         @warn("Failed to assign input data $data to System")
         # println(ex)
@@ -121,7 +121,7 @@ function update!(interface::SimOutput)
 
     lock(io_lock)
         #this call should never block and always return some usable output
-        data = Systems.extract_output(sys, device, mapping)
+        data = IODevices.extract_output(sys, mapping)
     unlock(io_lock)
 
     IODevices.handle_data!(device, data)
@@ -249,7 +249,7 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         #thread. to prevent this, we can send the GUI to sleep for a while
         #within GUI.update! AFTER io_lock has been released
         renderer = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
-        gui = SimInterface(renderer, sys, DefaultMapping(),
+        gui = SimInterface(renderer, sys, GenericMapping(),
                            control, io_start, io_lock, true)
 
         new{D, Y, typeof(integrator), typeof(gui)}(
@@ -278,7 +278,8 @@ user_callback!(::System) = nothing
 ################################ I/O ###########################################
 
 function attach!(sim::Simulation, device::IODevice,
-                mapping::IOMapping = DefaultMapping(); should_abort = false)
+                mapping::IOMapping = get_default_mapping(device);
+                should_abort = false)
 
     interface = SimInterface(device, sim.sys, mapping,
                             sim.control, sim.io_start, sim.io_lock, should_abort)
@@ -670,8 +671,25 @@ function Base.lastindex(ts::TimeSeries)
 end
 Base.view(ts::TimeSeries, i) = TimeSeries(view(ts._t, i), view(ts._data, i))
 
-
 TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
+
+
+################################################################################
+############################### Inspection #####################################
+
+#prevent monstrous (nested, parameterized) types from flooding the REPL
+function Base.show(io::IO, ::MIME"text/plain", x::Simulation)
+    str = sprint(show, x)
+    maxlen = 200
+    length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
+end
+
+#prevent monstrous (nested, parameterized) types from flooding the REPL
+function Base.show(io::IO, ::MIME"text/plain", x::Type{<:Simulation})
+    str = sprint(show, x)
+    maxlen = 200
+    length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
+end
 
 
 end #module

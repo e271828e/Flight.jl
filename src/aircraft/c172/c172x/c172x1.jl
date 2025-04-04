@@ -80,8 +80,8 @@ yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 
-function Systems.assign_input!(sys::System{<:Cessna172Xv1},
-                           data::T16000MData, ::DefaultMapping)
+function IODevices.assign_input!(sys::System{<:Cessna172Xv1},
+                           ::GenericMapping, data::T16000MData)
 
     u = sys.avionics.ctl.u
 

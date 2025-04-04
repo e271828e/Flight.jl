@@ -57,19 +57,19 @@ end
 ################################################################################
 ############################### XPlane12Output #################################
 
-function Systems.extract_output(world::System{<:SimpleWorld},
+function IODevices.extract_output(world::System{<:SimpleWorld},
                                 xp::XPlane12Output, mapping::IOMapping)
-    Systems.extract_output(world.ac, xp, mapping)
+    IODevices.extract_output(world.ac, xp, mapping)
 end
 
 
 ################################################################################
 ############################ Joystick Mappings #################################
 
-function Systems.assign_input!(world::System{<:SimpleWorld},
-                                data::AbstractJoystickData,
-                                mapping::IOMapping)
-    Systems.assign_input!(world.ac, data, mapping)
+function IODevices.assign_input!(world::System{<:SimpleWorld},
+                                mapping::IOMapping,
+                                data::AbstractJoystickData)
+    IODevices.assign_input!(world.ac, mapping, data)
 end
 
 ################################################################################
