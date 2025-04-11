@@ -478,6 +478,9 @@ function Systems.f_step!(sys::System{<:Ldg})
     foreach(f_step!, sys.subsystems)
 end
 
+#approximate height of the aircraft frame origin to the ground
+const Δh_to_gnd = 1.81
+
 function GUI.draw(sys::System{<:Ldg}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Cessna 172S Landing Gear")
 

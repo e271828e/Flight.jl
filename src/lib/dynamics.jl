@@ -572,7 +572,7 @@ function Plotting.make_plots(ts::TimeSeries{<:DynamicsData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    pd[:wr_g_b] = plot(ts.g_c_c;
+    pd[:g_c] = plot(ts.g_c_c;
         plot_title = "Gravity at CoM [CoM Axes]",
         ylabel = hcat(
             L"$g_{c}^{x_c} \ (m / s^2)$",
@@ -581,7 +581,7 @@ function Plotting.make_plots(ts::TimeSeries{<:DynamicsData}; kwargs...)
         ts_split = :h, link = :none,
         kwargs...)
 
-    pd[:wr_ext_b] = plot(ts.wr_Σ_c;
+    pd[:wr_ext_c] = plot(ts.wr_Σ_c;
         plot_title = "External Wrench at CoM [CoM Axes]",
         wr_source = "ext", wr_frame = "c",
         kwargs...)

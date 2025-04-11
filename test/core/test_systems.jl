@@ -60,7 +60,7 @@ end
 function test_multirate()
     sys = Root() |> System;
     sim = Simulation(sys; Δt = 1.0, t_end = 30)
-    # Sim.reinit!(sim)
+    # Sim.init!(sim)
     Sim.run!(sim)
     # return TimeSeries(sim)
     return sim

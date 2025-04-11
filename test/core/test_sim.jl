@@ -52,7 +52,7 @@ function test_sim_standalone()
     sys = FirstOrder() |> System
     sim = Simulation(sys; dt = 0.1, Δt = 1.0, t_end = 5)
     x0 = 1.0
-    reinit!(sim, x0)
+    Sim.init!(sim, x0)
     return sim
     # Sim.run!(sim)
 

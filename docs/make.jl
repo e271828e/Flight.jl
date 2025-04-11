@@ -6,7 +6,9 @@ makedocs(;
     doctest = false,
     remotes = nothing,
     pages = [
-        "Readme" => "index.md",
+        "Home" => "index.md",
+        "Examples" => "examples.md",
+        "API" => "api.md",
     ],
     format = Documenter.HTML(
         prettyurls = true,

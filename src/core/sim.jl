@@ -58,8 +58,8 @@ function GUI.draw!(control::SimControl)
         @unpack algorithm, t_start, t_end, Δt, dt, iter, t, τ = control
 
         CImGui.Text("Algorithm: " * algorithm)
-        CImGui.Text("Discrete step size: $Δt")
         CImGui.Text("Continuous step size: $dt")
+        CImGui.Text("Discrete step size: $Δt")
         CImGui.Text("Iterations: $iter")
         CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
         CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
@@ -401,7 +401,7 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
     return nothing
 end
 
-function Systems.init!(sim::Simulation, args...; kwargs...)
+function init!(sim::Simulation, args...; kwargs...)
     OrdinaryDiffEq.reinit!(sim, args...; kwargs...)
 end
 

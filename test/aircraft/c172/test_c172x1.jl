@@ -56,7 +56,7 @@ function test_control_modes()
 
     @testset verbose = true "Ground" begin
 
-    reinit!(sim, init_gnd)
+    Sim.init!(sim, init_gnd)
 
     #set arbitrary control and guidance modes
     ctl.u.vrt_gdc_mode_req = vrt_gdc_alt
@@ -103,14 +103,14 @@ function test_control_modes()
     @testset verbose = true "Air" begin
 
     #put the aircraft in its nominal design point
-    reinit!(sim, init_air)
+    Sim.init!(sim, init_air)
     y_kin_trim = y_kin(ac)
 
     ############################### direct control #############################
 
     @testset verbose = true "lon_direct + lat_direct" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
         step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_direct
         @test ctl.y.lat_ctl_mode === lat_direct
@@ -133,7 +133,7 @@ function test_control_modes()
 
         #we test the longitudinal SAS first, because we want to test the lateral
         #modes with it enabled
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
         ctl.u.lon_ctl_mode_req = lon_thr_ele
         step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_thr_ele
@@ -159,7 +159,7 @@ function test_control_modes()
 
     @testset verbose = true "lat_φ_β" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
         ctl.u.lon_ctl_mode_req = lon_thr_ele
         ctl.u.lat_ctl_mode_req = lat_φ_β
         step!(sim, ctl.Δt, true)
@@ -194,7 +194,7 @@ function test_control_modes()
 
     @testset verbose = true "lat_p_β" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
         ctl.u.lon_ctl_mode_req = lon_thr_ele
         ctl.u.lat_ctl_mode_req = lat_p_β
         step!(sim, ctl.Δt, true)
@@ -233,7 +233,7 @@ function test_control_modes()
 
     @testset verbose = true "lat_χ_β" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
         ctl.u.lon_ctl_mode_req = lon_thr_ele
         ctl.u.lat_ctl_mode_req = lat_χ_β
         step!(sim, ctl.Δt, true)
@@ -279,7 +279,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_thr_q" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
 
         ctl.u.lon_ctl_mode_req = lon_thr_q
         ctl.u.lat_ctl_mode_req = lat_φ_β
@@ -318,7 +318,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_thr_θ" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
 
         ctl.u.lon_ctl_mode_req = lon_thr_θ
         ctl.u.lat_ctl_mode_req = lat_φ_β
@@ -350,7 +350,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_thr_EAS" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
 
         ctl.u.lon_ctl_mode_req = lon_thr_EAS
         ctl.u.lat_ctl_mode_req = lat_φ_β
@@ -385,7 +385,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_EAS_q" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
 
         ctl.u.lon_ctl_mode_req = lon_EAS_q
         ctl.u.lat_ctl_mode_req = lat_φ_β
@@ -427,7 +427,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_EAS_θ" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
 
         ctl.u.lon_ctl_mode_req = lon_EAS_θ
         ctl.u.lat_ctl_mode_req = lat_φ_β
@@ -461,7 +461,7 @@ function test_control_modes()
 
     @testset verbose = true "lon_EAS_clm" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
 
         ctl.u.lon_ctl_mode_req = lon_EAS_clm
         ctl.u.lat_ctl_mode_req = lat_φ_β
@@ -525,7 +525,7 @@ function test_guidance_modes()
 
     @testset verbose = true "Altitude Guidance" begin
 
-        reinit!(sim, init_air)
+        Sim.init!(sim, init_air)
         y_kin_trim = y_kin(ac)
 
         ctl.u.vrt_gdc_mode_req = vrt_gdc_alt
@@ -653,7 +653,7 @@ function test_json_loopback(; save::Bool = true)
         Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
     #initialize simulated system
-    reinit!(sim, initializer)
+    Sim.init!(sim, initializer)
 
     #the loopback interface must not share its port with the XPlane12Output!
     Sim.attach!(sim, XPlane12Output(; port = 49000))
@@ -695,7 +695,7 @@ function test_sim(; save::Bool = true)
 
     sim = Simulation(ac; t_end = 30)
 
-    reinit!(sim, initializer)
+    Sim.init!(sim, initializer)
 
     Sim.run!(sim)
 
@@ -716,7 +716,7 @@ function test_sim_interactive(; save::Bool = true)
     initializer = KinInit(
         loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
         q_nb = REuler(deg2rad(157), 0, 0),
-        h = h_trn + 1.81);
+        h = h_trn + C172.Δh_to_gnd);
 
     # # on air, automatically trimmed
     # initializer = C172.TrimParameters(
@@ -727,7 +727,7 @@ function test_sim_interactive(; save::Bool = true)
 
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
 
-    reinit!(sim, initializer)
+    Sim.init!(sim, initializer)
 
     for joystick in update_connected_joysticks()
         Sim.attach!(sim, joystick)

@@ -30,6 +30,7 @@ end
 
 ############################# HorizontalTerrain ################################
 
+#flat terrain with constant orthometric altitude
 @kwdef struct HorizontalTerrain <: AbstractTerrain
     altitude::Altitude{Orthometric} = HOrth(0)
 end

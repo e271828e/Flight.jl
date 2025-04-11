@@ -30,7 +30,8 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
     world = SimpleWorld(ac, SimpleAtmosphere(), HorizontalTerrain(altitude = h_trn)) |> System
 
     if situation === :ground
-        initializer = KinInit(; loc, q_nb = REuler(ψ, 0, 0), h = h_trn + 1.81);
+        initializer = KinInit(; loc, q_nb = REuler(ψ, 0, 0), h = h_trn + C172.Δh_to_gnd,
+            ω_wb_b = zeros(3), v_eb_n = zeros(3));
     elseif situation === :air
         EAS = 50.0
         flaps = 0.0
@@ -52,7 +53,7 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
     sim = Simulation(world; algorithm = RK4(), dt = 1/60, t_end, user_callback!)
     # sim = Simulation(world; algorithm = Tsit5(), dt = 1/60, t_end, user_callback!)
     # sim = Simulation(world; algorithm = Heun(), dt = 0.01, t_end, user_callback!)
-    reinit!(sim, initializer)
+    Sim.init!(sim, initializer)
 
     if interactive
         xp = XPlane12Output(address = IPv4("127.0.0.1"), port = 49000)
@@ -113,7 +114,7 @@ function test_xp12()
     kin_init = KinInit(
         loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
         q_nb = REuler(deg2rad(157), 0, 0),
-        h = h_trn + 1.81 + 0.5);
+        h = h_trn + C172.Δh_to_gnd + 0.5);
 
     kin_data = KinData(kin_init)
 

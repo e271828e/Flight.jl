@@ -16,14 +16,14 @@ const v_min_χγ = 0.1 #minimum speed for valid χ, γ
 ############################## Initialization ##################################
 ################################################################################
 
-#user-friendly conditions for kinematic state initialization
+#user-friendly kinematic conditions for body frame initialization
 struct Initializer
-    q_nb::RQuat
-    Ob::Geographic{NVector, Ellipsoidal}
-    ω_wb_b::SVector{3, Float64}
-    v_eb_n::SVector{3, Float64}
-    Δx::Float64
-    Δy::Float64
+    q_nb::RQuat #attitude with respect to NED frame
+    Ob::Geographic{NVector, Ellipsoidal} #3D position
+    ω_wb_b::SVector{3, Float64} #angular velocity with respect to local level frame, body coordinates
+    v_eb_n::SVector{3, Float64} #Earth-relative velocity, NED coordinates
+    Δx::Float64 #Northward velocity integral
+    Δy::Float64 #Eastward velocity integral
 end
 
 const KinInit = Initializer
@@ -42,23 +42,23 @@ end
 ################################################################################
 
 struct KinData
-    e_nb::REuler
-    q_nb::RQuat
-    q_eb::RQuat
-    q_en::RQuat
-    ϕ_λ::LatLon
-    n_e::NVector
-    h_e::Altitude{Ellipsoidal}
-    h_o::Altitude{Orthometric}
-    Δxy::SVector{2,Float64}
-    r_eb_e::SVector{3,Float64}
-    ω_wb_b::SVector{3,Float64}
-    ω_eb_b::SVector{3,Float64}
-    v_eb_b::SVector{3,Float64}
-    v_eb_n::SVector{3,Float64}
-    v_gnd::Float64
-    χ_gnd::Float64
-    γ_gnd::Float64
+    e_nb::REuler #body frame attitude with respect to NED frame, Euler angles
+    q_nb::RQuat #body frame attitude with respect to NED frame, quaternion
+    q_eb::RQuat #body frame attitude with respect to ECEF frame, quaternion
+    q_en::RQuat #NED frame attitude with respect to ECEF frame, quaternion
+    ϕ_λ::LatLon #2D location, latitude / longitude
+    n_e::NVector #2D location, n-vector
+    h_e::Altitude{Ellipsoidal} #ellipsoidal altitude
+    h_o::Altitude{Orthometric} #orthometric altitude
+    Δxy::SVector{2,Float64} #horizontal velocity integral
+    r_eb_e::SVector{3,Float64} #Cartesian ECEF position
+    ω_wb_b::SVector{3,Float64} #angular velocity with respect to local level frame, body coordinates
+    ω_eb_b::SVector{3,Float64} #angular velocity with respect to ECEF frame, body coordinates
+    v_eb_b::SVector{3,Float64} #Earth-relative velocity, body coordinates
+    v_eb_n::SVector{3,Float64} #Earth-relative velocity, NED coordinates
+    v_gnd::Float64 #Earth-relative speed
+    χ_gnd::Float64 #Earth-relative course angle
+    γ_gnd::Float64 #Earth-relative flight path angle
 end
 
 function KinData(ic::KinInit = KinInit())
