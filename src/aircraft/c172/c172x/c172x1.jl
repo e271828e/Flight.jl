@@ -52,7 +52,7 @@ function GUI.draw!(avionics::System{<:C172Xv1.Avionics},
     CImGui.Begin(label, p_open)
 
     @cstatic c_ctl=false begin
-        @c CImGui.Checkbox("Controller", &c_ctl)
+        @c CImGui.Checkbox("Flight Control", &c_ctl)
         c_ctl && @c GUI.draw!(avionics.ctl, vehicle, &c_ctl)
     end
 

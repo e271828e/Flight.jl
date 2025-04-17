@@ -27,17 +27,17 @@ abstract type AbstractControlChannel <: SystemDefinition end
 ################################## LonControl ##################################
 
 @enum LonControlMode begin
-    lon_direct = 0
-    lon_thr_ele = 1
-    lon_thr_q = 2
-    lon_thr_θ = 3
-    lon_thr_EAS = 4
-    lon_EAS_q = 5
-    lon_EAS_θ = 6
-    lon_EAS_clm = 7
+    lon_direct = 0 #direct throttle & elevator
+    lon_sas = 1 #direct throttle + pitch SAS
+    lon_thr_q = 2 #direct throttle + pitch rate
+    lon_thr_θ = 3 #direct throttle + pitch angle
+    lon_thr_EAS = 4 #direct throttle + EAS
+    lon_EAS_q = 5 #EAS + pitch rate
+    lon_EAS_θ = 6 #EAS + pitch angle
+    lon_EAS_clm = 7 #EAS + climb rate
 end
 
-#elevator pitch SAS always enabled except for direct mode
+#elevator pitch SAS always enabled except in direct mode
 e2e_enabled(mode::LonControlMode) = (mode != lon_direct)
 
 function q2e_enabled(mode::LonControlMode)
@@ -278,14 +278,14 @@ end
 ################################# LatControl ###################################
 
 @enum LatControlMode begin
-    lat_direct = 0 #direct aileron_cmd + rudder_cmd
-    lat_ail_rud = 1 #aileron + rudder SAS
+    lat_direct = 0 #direct aileron & rudder
+    lat_sas = 1 #roll & yaw SAS
     lat_p_β = 2 #roll rate + sideslip
     lat_φ_β = 3 #bank angle + sideslip
     lat_χ_β = 4 #course angle + sideslip
 end
 
-ar2ar_enabled(mode::LatControlMode) = (mode === lat_ail_rud)
+ar2ar_enabled(mode::LatControlMode) = (mode === lat_sas)
 φβ2ar_enabled(mode::LatControlMode) = (mode === lat_p_β || mode === lat_φ_β || mode === lat_χ_β)
 p2φ_enabled(mode::LatControlMode) = (mode === lat_p_β)
 χ2φ_enabled(mode::LatControlMode) = (mode === lat_χ_β)
@@ -394,12 +394,14 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
 
     @unpack mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp = sys.u
     @unpack ar2ar_lqr, φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
-    @unpack φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
+    @unpack ar2ar_lookup, φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
     @unpack airflow, kinematics, components = vehicle.y
 
     EAS = airflow.EAS
     h_e = Float64(kinematics.h_e)
-    φ = kinematics.e_nb.φ
+
+    @unpack θ, φ = kinematics.e_nb
+    p, q, r = kinematics.ω_wb_b
     β = components.aero.β
     mode_prev = sys.y.mode
 
@@ -408,9 +410,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
 
     if ar2ar_enabled(mode) #aileron_cmd and #rudder_cmd overridden by ar2ar
 
-        #no outer loops fed by this path, so no need to extract saturation state
         #no integral control, so no need for reset on mode change
-
         Control.Discrete.assign!(ar2ar_lqr, ar2ar_lookup(EAS, Float64(h_e)))
 
         ar2ar_lqr.u.x .= XLat(vehicle)
@@ -438,7 +438,6 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
                 (k_i != 0) && (p2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_sp).φ)
             end
 
-            p = kinematics.ω_wb_b[1]
             p2φ_int.u.input = p_sp - p
             p2φ_int.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(p2φ_int)
@@ -807,7 +806,7 @@ function Systems.init!(sys::System{<:Controller},
     #setpoints are made consistent with the trim values. this will then make the
     #actuator commands output by the Controller consistent with the trim state
     #values
-    u.lon_ctl_mode_req = lon_thr_ele
+    u.lon_ctl_mode_req = lon_sas
     u.lat_ctl_mode_req = lat_φ_β
     f_disc!(sys, vehicle)
 
@@ -930,8 +929,8 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn();
                     mode_button("Direct##Lon", lon_direct, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_direct); SameLine()
-                    mode_button("Throttle + Pitch SAS", lon_thr_ele, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_ele); SameLine()
+                    mode_button("Throttle + Pitch SAS", lon_sas, u.lon_ctl_mode_req, y.lon_ctl_mode)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_sas); SameLine()
                     mode_button("Throttle + Pitch Rate", lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_sp = 0); SameLine()
                     mode_button("Throttle + Pitch Angle", lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
@@ -971,7 +970,7 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Rate (deg/s)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.q_sp = safe_input("Pitch Rate", rad2deg(u.q_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    u.q_sp = safe_slider("Pitch Rate (deg/s)", rad2deg(u.q_sp), -30, 30, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(q)))
             CImGui.TableNextRow()
@@ -1013,6 +1012,8 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn();
                     mode_button("Direct##Lat", lat_direct, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_direct)
+                    mode_button("Roll & Yaw SAS", lat_sas, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_sas)
                     mode_button("Roll Rate + AoS", lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.p_sp = 0; u.β_sp = β)
                     mode_button("Bank Angle + AoS", lat_φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
@@ -1046,28 +1047,28 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Roll Rate (deg/s)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.p_sp = safe_input("Roll Rate", rad2deg(u.p_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    u.p_sp = safe_slider("Roll Rate (deg/s)", rad2deg(u.p_sp), -30, 30, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(p)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Bank Angle (deg)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.φ_sp = safe_input("Bank Angle", rad2deg(u.φ_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    u.φ_sp = safe_input("Bank Angle (deg)", rad2deg(u.φ_sp), 0.1, 1.0, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(φ)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Course Angle (deg)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.χ_sp = safe_input("Course Angle", rad2deg(u.χ_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    u.χ_sp = safe_input("Course Angle (deg)", rad2deg(u.χ_sp), 0.1, 1.0, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(χ_gnd)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Sideslip Angle (deg)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.β_sp = safe_input("Sideslip Angle", rad2deg(u.β_sp), 0.1, 1.0, "%.3f") |> deg2rad
+                    u.β_sp = safe_input("Sideslip Angle (deg)", rad2deg(u.β_sp), 0.1, 1.0, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(β)))
             CImGui.EndTable()
