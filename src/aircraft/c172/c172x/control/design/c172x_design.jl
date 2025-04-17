@@ -26,6 +26,8 @@ using Interpolations
 function generate_lookups(
     EAS_range::AbstractRange{Float64} = range(25, 55, length = 7),
     h_range::AbstractRange{Float64} = range(50, 3050, length = 4);
+    # EAS_range::AbstractRange{Float64} = range(25, 55, length = 2),
+    # h_range::AbstractRange{Float64} = range(50, 3050, length = 2);
     channel::Symbol = :lat,
     global_search::Bool = false,
     folder::String = joinpath(dirname(@__DIR__), "data"))
@@ -310,35 +312,89 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     ac = Cessna172Xv0(NED()) |> System #linearization requires NED kinematics
 
-    lss_lat = Control.Continuous.LinearizedSS(ac, design_point; model = :lat);
+    lss_full = Control.Continuous.LinearizedSS(ac, design_point; model = :lat);
+    P_full = named_ss(lss_full)
 
-    x_labels_lat = keys(lss_lat.x0) |> collect
-    y_labels_lat = keys(lss_lat.y0) |> collect
-    u_labels_lat = keys(lss_lat.u0) |> collect
+    x_labels_full = keys(lss_full.x0) |> collect
+    y_labels_full = keys(lss_full.y0) |> collect
+    u_labels = keys(lss_full.u0) |> collect
 
-    x_labels = copy(x_labels_lat)
-    y_labels = copy(y_labels_lat)
-    u_labels = copy(u_labels_lat)
+    x_labels_red = copy(x_labels_full)
+    y_labels_red = copy(y_labels_full)
 
-    x_labels = deleteat!(x_labels, findfirst(isequal(:ψ), x_labels))
-    y_labels = deleteat!(y_labels, findfirst(isequal(:ψ), y_labels))
-    y_labels = deleteat!(y_labels, findfirst(isequal(:χ), y_labels))
+    x_labels_red = deleteat!(x_labels_red, findfirst(isequal(:ψ), x_labels_red))
+    y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:ψ), y_labels_red))
+    y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:χ), y_labels_red))
 
     #ensure consistency in component selection and ordering between our design model
-    #and RPA1 avionics implementation for state and control vectors
-    @assert tuple(x_labels...) === propertynames(C172XControl.XLat())
+    #and avionics implementation for state and control vectors
+    @assert tuple(x_labels_red...) === propertynames(C172XControl.XLat())
     @assert tuple(u_labels...) === propertynames(C172XControl.ULat())
 
-    #extract design model
-    lss_red = Control.Continuous.submodel(lss_lat; x = x_labels, u = u_labels, y = y_labels)
+    #extract reduced design model
+    lss_red = Control.Continuous.submodel(lss_full; x = x_labels_red, u = u_labels, y = y_labels_full)
+    P_red = named_ss(lss_red);
+
     x_trim = lss_red.x0
     u_trim = lss_red.u0
 
     n_x = length(lss_red.x0)
     n_u = length(lss_red.u0)
 
-    P_lat = named_ss(lss_lat)
-    P_red = named_ss(lss_red);
+    ################################ SAS #######################################
+
+    P_ar, params_ar2ar = let
+
+        #useful signal labels for connections
+        z_labels = [:aileron_cmd, :rudder_cmd]
+        z_trim = lss_red.y0[z_labels]
+        n_z = length(z_labels)
+
+        @unpack v_x, v_y = lss_red.x0
+        v_norm = norm([v_x, v_y])
+
+        #weight matrices
+        Q = C172XControl.XLat(p = 0, r = 0.1, φ = 0.1, v_x = 0/v_norm, v_y = 0/v_norm, β_filt = 0, ail_p = 0, rud_p = 0) |> diagm
+        R = C172XControl.ULat(aileron_cmd = 0.1, rudder_cmd = 0.01) |> diagm
+
+        #feedback gain matrix
+        C_fbk = lqr(P_red, Q, R)
+
+        #passthrough feedforward
+        C_fwd = Matrix{Float64}(I, n_z, n_z)
+
+        #no integral control
+        C_int = zeros(n_u, n_z)
+
+        u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk")
+        u_labels_fwd = Symbol.(string.(u_labels) .* "_fwd")
+        u_labels_sum = Symbol.(string.(u_labels) .* "_sum")
+        z_labels_sp = Symbol.(string.(z_labels) .* "_sp")
+
+        C_fbk_ss = named_ss(ss(C_fbk); u = x_labels_red, y = u_labels_fbk)
+        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_sp, y = u_labels_fwd)
+
+        #summing junctions
+        aileron_sum = sumblock("aileron_cmd_sum = aileron_cmd_fwd- aileron_cmd_fbk")
+        rudder_sum = sumblock("rudder_cmd_sum = rudder_cmd_fwd - rudder_cmd_fbk")
+
+        connections_fbk = vcat(
+            Pair.(x_labels_red, x_labels_red),
+            Pair.(u_labels_fbk, u_labels_fbk),
+            Pair.(u_labels_fwd, u_labels_fwd),
+            Pair.(u_labels_sum, u_labels),
+            )
+
+        P_ar = connect([P_full, aileron_sum, rudder_sum, C_fbk_ss, C_fwd_ss],
+                        connections_fbk; w1 = z_labels_sp, z1 = P_full.y)
+
+        params_ar2ar = LQRTrackerParams(;
+            C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
+            x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
+
+        (P_ar, params_ar2ar)
+
+    end
 
     ############################### φ + β ######################################
 
@@ -407,7 +463,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         z_labels_sp_fwd = Symbol.(string.(z_labels) .* "_sp_fwd")
         z_labels_sp_sum = Symbol.(string.(z_labels) .* "_sp_sum")
 
-        C_fbk_ss = named_ss(ss(C_fbk), u = x_labels, y = u_labels_fbk)
+        C_fbk_ss = named_ss(ss(C_fbk), u = x_labels_red, y = u_labels_fbk)
         C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_sp_fwd, y = u_labels_fwd)
         C_int_ss = named_ss(ss(C_int), u = z_labels_err, y = u_labels_int_u)
 
@@ -426,7 +482,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         β_sp_splitter = splitter(:β_sp, 2)
 
         connections = vcat(
-            Pair.(x_labels, x_labels),
+            Pair.(x_labels_red, x_labels_red),
             Pair.(z_labels, z_labels_sum),
             Pair.(z_labels_sp1, z_labels_sp_sum),
             Pair.(z_labels_sp2, z_labels_sp_fwd),
@@ -441,11 +497,11 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         #disable warning about connecting single output to multiple inputs (here,
         #φ goes both to state feedback and command variable error junction)
         Logging.disable_logging(Logging.Warn)
-        P_φβ = connect([P_lat, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
+        P_φβ = connect([P_full, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
                             φ_err_sum, β_err_sum,
                             aileron_cmd_sum, rudder_cmd_sum,
                             φ_sp_splitter, β_sp_splitter], connections;
-                            w1 = z_labels_sp, z1 = P_lat.y)
+                            w1 = z_labels_sp, z1 = P_full.y)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
@@ -520,7 +576,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     end
 
-    return (φβ2ar = params_φβ2ar, p2φ = params_p2φ, χ2φ = params_χ2φ)
+    return (ar2ar = params_ar2ar, φβ2ar = params_φβ2ar, p2φ = params_p2φ, χ2φ = params_χ2φ)
 
 end
 

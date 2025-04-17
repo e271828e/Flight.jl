@@ -105,8 +105,8 @@ function System(sd::D,
 
     if !isbits(y)
         @warn "The output defined for $D is not an isbits type.
-        For performance reasons, it is highly advisable to use concrete,
-        immutable, stack-allocated types for System outputs"
+        For performance reasons, it is highly advisable to use a concrete,
+        immutable, stack-allocated type as System output"
     end
 
     sd_fieldnames = fieldnames(D)
