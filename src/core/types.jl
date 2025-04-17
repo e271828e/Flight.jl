@@ -82,12 +82,12 @@ function GUI.display_bar(label::String, source::Ranged{T,Min,Max}, args...; kwar
     display_bar(label, Float64(source), Min, Max, args...; kwargs...)
 end
 
-function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, args...; kwargs...) where {T<:AbstractFloat,Min,Max}
-    safe_slider(label, Float64(source), Min, Max, args...; kwargs...)
+function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, args...; sf::Real = 1, kwargs...) where {T<:AbstractFloat,Min,Max}
+    safe_slider(label, Float64(source) * sf, Min * sf, Max * sf, args...; kwargs...)
 end
 
-function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, args...; kwargs...) where {T<:AbstractFloat,Min,Max}
-    safe_input(label, Float64(source), args...; kwargs...)
+function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, args...; sf::Real = 1, kwargs...) where {T<:AbstractFloat,Min,Max}
+    safe_input(label, Float64(source) * sf, args...; kwargs...)
 end
 
 #enable JSON3 parsing
