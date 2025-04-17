@@ -279,12 +279,14 @@ end
 
 @enum LatControlMode begin
     lat_direct = 0 #direct aileron_cmd + rudder_cmd
-    lat_p_β = 1 #roll rate + sideslip
-    lat_φ_β = 2 #bank angle + sideslip
-    lat_χ_β = 3 #course angle + sideslip
+    lat_ail_rud = 1 #aileron + rudder SAS
+    lat_p_β = 2 #roll rate + sideslip
+    lat_φ_β = 3 #bank angle + sideslip
+    lat_χ_β = 4 #course angle + sideslip
 end
 
-φβ2ar_enabled(mode::LatControlMode) = (mode != lat_direct)
+ar2ar_enabled(mode::LatControlMode) = (mode === lat_ail_rud)
+φβ2ar_enabled(mode::LatControlMode) = (mode === lat_p_β || mode === lat_φ_β || mode === lat_χ_β)
 p2φ_enabled(mode::LatControlMode) = (mode === lat_p_β)
 χ2φ_enabled(mode::LatControlMode) = (mode === lat_χ_β)
 
@@ -300,18 +302,6 @@ p2φ_enabled(mode::LatControlMode) = (mode === lat_p_β)
     β_filt::Float64 = 0.0; #filtered AoS
     ail_p::Float64 = 0.0; #aileron actuator states
     rud_p::Float64 = 0.0; #rudder actuator states
-end
-
-#control input vector for φβ LQR tracker
-@kwdef struct ULat{T} <: FieldVector{2, T}
-    aileron_cmd::T = 0.0
-    rudder_cmd::T = 0.0
-end
-
-#command vector for φβ LQR tracker
-@kwdef struct ZLat <: FieldVector{2, Float64}
-    φ::Float64 = 0.0
-    β::Float64 = 0.0
 end
 
 function XLat(vehicle::System{<:C172X.Vehicle})
@@ -331,18 +321,25 @@ function XLat(vehicle::System{<:C172X.Vehicle})
 
 end
 
-function ZLat(vehicle::System{<:C172X.Vehicle})
-    φ = vehicle.y.kinematics.e_nb.φ
-    β = vehicle.y.components.aero.β
-    ZLat(; φ, β)
+@kwdef struct ULat{T} <: FieldVector{2, T}
+    aileron_cmd::T = 0.0
+    rudder_cmd::T = 0.0
 end
+
+@kwdef struct ZLat <: FieldVector{2, Float64}
+    φ::Float64 = 0.0
+    β::Float64 = 0.0
+end
+
 
 ################################## System ######################################
 
 @kwdef struct LatControl{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
+    ar2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "ar2ar_lookup.h5"))
     φβ2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "φβ2ar_lookup.h5"))
     p2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
     χ2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "χ2φ_lookup.h5"))
+    ar2ar_lqr::LQRTracker{8, 2, 2, 16, 4} = LQRTracker{8, 2, 2}()
     φβ2ar_lqr::LQRTracker{8, 2, 2, 16, 4} = LQRTracker{8, 2, 2}()
     p2φ_int::Integrator = Integrator()
     p2φ_pid::PID = PID()
@@ -369,6 +366,7 @@ end
     χ_sp::Float64 = 0.0 #course angle setpoint
     aileron_cmd::Ranged{Float64, -1., 1.} = 0.0
     rudder_cmd::Ranged{Float64, -1., 1.} = 0.0
+    ar2ar_lqr::LQRTrackerOutput{8, 2, 2, 16, 4} = LQRTrackerOutput{8, 2, 2}()
     φβ2ar_lqr::LQRTrackerOutput{8, 2, 2, 16, 4} = LQRTrackerOutput{8, 2, 2}()
     p2φ_int::IntegratorOutput = IntegratorOutput()
     p2φ_pid::PIDOutput = PIDOutput()
@@ -380,7 +378,7 @@ Systems.Y(::LatControl) = LatControlY()
 
 function Systems.init!(sys::System{<:LatControl})
 
-    foreach((sys.φβ2ar_lqr, )) do lqr
+    foreach((sys.φβ2ar_lqr, sys.ar2ar_lqr)) do lqr
         lqr.u.bound_lo .= ULat(; aileron_cmd = -1, rudder_cmd = -1)
         lqr.u.bound_hi .= ULat(; aileron_cmd = 1, rudder_cmd = 1)
     end
@@ -395,17 +393,34 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
                         vehicle::System{<:C172X.Vehicle})
 
     @unpack mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp = sys.u
-    @unpack φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
+    @unpack ar2ar_lqr, φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
     @unpack φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
-    @unpack airflow, kinematics = vehicle.y
+    @unpack airflow, kinematics, components = vehicle.y
 
     EAS = airflow.EAS
     h_e = Float64(kinematics.h_e)
     φ = kinematics.e_nb.φ
+    β = components.aero.β
     mode_prev = sys.y.mode
 
     aileron_cmd = aileron_sp
     rudder_cmd = rudder_sp
+
+    if ar2ar_enabled(mode) #aileron_cmd and #rudder_cmd overridden by ar2ar
+
+        #no outer loops fed by this path, so no need to extract saturation state
+        #no integral control, so no need for reset on mode change
+
+        Control.Discrete.assign!(ar2ar_lqr, ar2ar_lookup(EAS, Float64(h_e)))
+
+        ar2ar_lqr.u.x .= XLat(vehicle)
+        ar2ar_lqr.u.z .= ULat(; aileron_cmd = components.act.aileron.cmd,
+                                rudder_cmd = components.act.rudder.cmd)
+        ar2ar_lqr.u.z_sp .= ULat(; aileron_cmd = aileron_sp, rudder_cmd = rudder_sp)
+        f_disc!(ar2ar_lqr)
+        @unpack aileron_cmd, rudder_cmd = ULat(ar2ar_lqr.y.output)
+
+    end
 
     if φβ2ar_enabled(mode) #aileron_cmd and #rudder_cmd overridden by φβ2ar
 
@@ -461,7 +476,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
         (mode != mode_prev) && Systems.reset!(φβ2ar_lqr)
 
         φβ2ar_lqr.u.x .= XLat(vehicle)
-        φβ2ar_lqr.u.z .= ZLat(vehicle)
+        φβ2ar_lqr.u.z .= ZLat(; φ, β)
         φβ2ar_lqr.u.z_sp .= ZLat(; φ = φ_sp, β = β_sp)
         f_disc!(φβ2ar_lqr)
         @unpack aileron_cmd, rudder_cmd = ULat(φβ2ar_lqr.y.output)
@@ -469,8 +484,8 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
     end
 
     sys.y = LatControlY(; mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp,
-        aileron_cmd, rudder_cmd, φβ2ar_lqr = φβ2ar_lqr.y, p2φ_int = p2φ_int.y,
-        p2φ_pid = p2φ_pid.y, χ2φ_pid = χ2φ_pid.y)
+        aileron_cmd, rudder_cmd, ar2ar_lqr = ar2ar_lqr.y, φβ2ar_lqr = φβ2ar_lqr.y,
+        p2φ_int = p2φ_int.y, p2φ_pid = p2φ_pid.y, χ2φ_pid = χ2φ_pid.y)
 
 end
 
