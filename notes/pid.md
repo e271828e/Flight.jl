@@ -5,8 +5,8 @@ Parameter definitions:
 - $k_i$: Integral gain
 - $k_d$: Derivative gain
 - $\tau_d$: Derivative filter time constant
-- $\beta_p$: Proportional path setpoint weighting factor
-- $\beta_d$: Derivative path setpoint weighting factor
+- $\beta_p$: Proportional path reference weighting factor
+- $\beta_d$: Derivative path reference weighting factor
 
 Variable definitions:
 - $r$: Setpoint

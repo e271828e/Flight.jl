@@ -63,10 +63,10 @@ function test_control_modes()
     ctl.u.hor_gdc_mode_req = hor_gdc_line
     ctl.u.lon_ctl_mode_req = lon_EAS_clm
     ctl.u.lat_ctl_mode_req = lat_p_β
-    ctl.u.throttle_sp_input = 0.1
-    ctl.u.aileron_sp_input = 0.2
-    ctl.u.elevator_sp_input = 0.3
-    ctl.u.rudder_sp_input = 0.4
+    ctl.u.throttle_input = 0.1
+    ctl.u.aileron_input = 0.2
+    ctl.u.elevator_input = 0.3
+    ctl.u.rudder_input = 0.4
 
     #step for one controller sample period
     step!(sim, ctl.Δt, true)
@@ -208,11 +208,11 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).ω_wb_b[1], y_kin_trim.ω_wb_b[1]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
-        ctl.u.aileron_sp_input = 0.1
-        ctl.u.β_sp = deg2rad(3)
+        ctl.u.aileron_input = 0.1
+        ctl.u.β_ref = deg2rad(3)
         step!(sim, 10, true)
-        @test isapprox(Float64(ctl.u.p_sp), y_kin(ac).ω_wb_b[1]; atol = 1e-3)
-        @test isapprox(ctl.u.β_sp, y_aero(ac).β; atol = 1e-3)
+        @test isapprox(Float64(ctl.u.p_ref), y_kin(ac).ω_wb_b[1]; atol = 1e-3)
+        @test isapprox(ctl.u.β_ref, y_aero(ac).β; atol = 1e-3)
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -243,11 +243,11 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        ctl.u.φ_sp = π/12
-        ctl.u.β_sp = deg2rad(3)
+        ctl.u.φ_ref = π/12
+        ctl.u.β_ref = deg2rad(3)
         step!(sim, 10, true)
-        @test isapprox(ctl.u.φ_sp, y_kin(ac).e_nb.φ; atol = 1e-3)
-        @test isapprox(Float64(ctl.u.β_sp), y_aero(ac).β; atol = 1e-3)
+        @test isapprox(ctl.u.φ_ref, y_kin(ac).e_nb.φ; atol = 1e-3)
+        @test isapprox(Float64(ctl.u.β_ref), y_aero(ac).β; atol = 1e-3)
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -286,11 +286,11 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
-        ctl.u.p_sp = 0.02
-        ctl.u.β_sp = deg2rad(3)
+        ctl.u.p_ref = 0.02
+        ctl.u.β_ref = deg2rad(3)
         step!(sim, 10, true)
-        @test isapprox(Float64(ctl.u.p_sp), y_kin(ac).ω_wb_b[1]; atol = 1e-3)
-        @test isapprox(ctl.u.β_sp, y_aero(ac).β; atol = 1e-3)
+        @test isapprox(Float64(ctl.u.p_ref), y_kin(ac).ω_wb_b[1]; atol = 1e-3)
+        @test isapprox(ctl.u.β_ref, y_aero(ac).β; atol = 1e-3)
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -320,23 +320,23 @@ function test_control_modes()
         k_p = χ2φ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
         @test all(isapprox.(ctl.y.lat_ctl.χ2φ_pid.k_p, k_p; atol = 1e-6))
 
-        #with setpoints matching their trim values, the control mode must activate
+        #with reference values matching their trim values, the control mode must activate
         #without transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking
-        ctl.u.χ_sp = π/2
+        ctl.u.χ_ref = π/2
         step!(sim, 29, true)
-        @test ctl.lat_ctl.u.χ_sp != 0
-        @test isapprox(ctl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
+        @test ctl.lat_ctl.u.χ_ref != 0
+        @test isapprox(ctl.u.χ_ref, y_kin(ac).χ_gnd; atol = 1e-2)
         # @test isapprox(Float64(ctl.u.yaw_input), y_aero(ac).β; atol = 1e-3)
 
         #correct tracking with 10m/s of crosswind (N, current heading is E)
         world.atm.wind.u.N = 10
         step!(sim, 10, true)
-        @test isapprox(ctl.u.χ_sp, y_kin(ac).χ_gnd; atol = 1e-2)
+        @test isapprox(ctl.u.χ_ref, y_kin(ac).χ_gnd; atol = 1e-2)
         world.atm.wind.u.N = 0
 
         #must reset scheduling counter before standalone calls to f_disc!, but
@@ -367,21 +367,21 @@ function test_control_modes()
         k_p = q2e_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
         @test all(isapprox.(ctl.y.lon_ctl.q2e_pid.k_p, k_p; atol = 1e-6))
 
-        #when trim setpoints are kept, the control mode must activate without
+        #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        ctl.u.φ_sp = π/12
-        ctl.u.q_sp = 0.01
+        ctl.u.φ_ref = π/12
+        ctl.u.q_ref = 0.01
         step!(sim, 10, true)
 
-        @test ctl.lon_ctl.u.q_sp != 0
-        @test isapprox(ctl.lon_ctl.u.q_sp, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
+        @test ctl.lon_ctl.u.q_ref != 0
+        @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
         @test isapprox(Float64(ac.y.vehicle.components.act.throttle.cmd),
-                        Float64(ctl.u.throttle_sp_input + ctl.u.throttle_sp_offset); atol = 1e-3)
+                        Float64(ctl.u.throttle_input + ctl.u.throttle_offset); atol = 1e-3)
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -401,17 +401,17 @@ function test_control_modes()
         step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_thr_θ
 
-        #when trim setpoints are kept, the control mode must activate without
+        #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        ctl.u.φ_sp = π/6
-        ctl.u.θ_sp = deg2rad(5)
+        ctl.u.φ_ref = π/6
+        ctl.u.θ_ref = deg2rad(5)
         step!(sim, 10, true)
-        @test isapprox(y_kin(ac).e_nb.θ, ctl.u.θ_sp; atol = 1e-4)
+        @test isapprox(y_kin(ac).e_nb.θ, ctl.u.θ_ref; atol = 1e-4)
 
         #must always reset scheduling counter before standalone calls to
         #f_disc!, but we cannot do it by a simulation reinit, otherwise the
@@ -438,17 +438,17 @@ function test_control_modes()
         k_p = v2θ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
         @test all(isapprox.(ctl.y.lon_ctl.v2θ_pid.k_p, k_p; atol = 1e-6))
 
-        #when trim setpoints are kept, the control mode must activate without
+        #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        ctl.u.φ_sp = π/6
-        ctl.u.EAS_sp = 45
+        ctl.u.φ_ref = π/6
+        ctl.u.EAS_ref = 45
         step!(sim, 30, true)
-        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
+        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -474,22 +474,22 @@ function test_control_modes()
         k_p = v2t_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
         @test all(isapprox.(ctl.y.lon_ctl.v2t_pid.k_p, k_p; atol = 1e-6))
 
-        #when trim setpoints are kept, the control mode must activate without
+        #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking
-        ctl.u.q_sp = -0.01
+        ctl.u.q_ref = -0.01
         step!(sim, 10, true)
-        ctl.u.q_sp = 0.005
+        ctl.u.q_ref = 0.005
         step!(sim, 10, true)
-        ctl.u.q_sp = 0.0
+        ctl.u.q_ref = 0.0
         step!(sim, 20, true)
 
-        @test isapprox(ctl.lon_ctl.u.q_sp, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
-        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
+        @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
+        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -510,21 +510,21 @@ function test_control_modes()
         step!(sim, ctl.Δt, true)
         @test ctl.y.lon_ctl_mode === lon_EAS_θ
 
-        #when trim setpoints are kept, the control mode must activate without
+        #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 0.1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        ctl.u.φ_sp = π/6
-        ctl.u.θ_sp = deg2rad(3)
+        ctl.u.φ_ref = π/6
+        ctl.u.θ_ref = deg2rad(3)
         step!(sim, 10, true)
-        ctl.u.θ_sp = -deg2rad(3)
+        ctl.u.θ_ref = -deg2rad(3)
         step!(sim, 60, true)
 
-        @test isapprox(ctl.lon_ctl.u.θ_sp, y_kin(ac).e_nb.θ; atol = 1e-3)
-        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
+        @test isapprox(ctl.lon_ctl.u.θ_ref, y_kin(ac).e_nb.θ; atol = 1e-3)
+        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -549,19 +549,19 @@ function test_control_modes()
         k_p = c2θ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
         @test all(isapprox.(ctl.y.lon_ctl.c2θ_pid.k_p, k_p; atol = 1e-6))
 
-        #when trim setpoints are kept, the control mode must activate without
+        #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
-        ctl.u.φ_sp = π/6
-        ctl.u.EAS_sp = 45
-        ctl.u.clm_sp = 2
+        ctl.u.φ_ref = π/6
+        ctl.u.EAS_ref = 45
+        ctl.u.clm_ref = 2
         step!(sim, 30, true)
-        @test all(isapprox.(y_kin(ac).v_eb_n[3], -ctl.u.clm_sp; atol = 1e-1))
-        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_sp; atol = 1e-1))
+        @test all(isapprox.(y_kin(ac).v_eb_n[3], -ctl.u.clm_ref; atol = 1e-1))
+        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
@@ -610,35 +610,35 @@ function test_guidance_modes()
         @test ctl.y.vrt_gdc_mode === vrt_gdc_alt
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
 
-        #when trim setpoints are kept, the guidance mode must activate without
+        #when trim reference values are kept, the guidance mode must activate without
         #transients
         step!(sim, 1, true)
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #all tests while turning
-        ctl.u.φ_sp = π/12
+        ctl.u.φ_ref = π/12
 
-        ctl.u.h_sp = y_kin_trim.h_e + 100
+        ctl.u.h_ref = y_kin_trim.h_e + 100
         step!(sim, 1, true)
         @test ctl.y.lon_ctl_mode === lon_thr_EAS
         step!(sim, 60, true) #altitude is captured
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
-        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_sp), 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
 
-        #setpoint changes within the current threshold do not prompt a mode change
-        ctl.u.h_sp = y_kin(ac).h_e - ctl.alt_gdc.s.h_thr / 2
+        #reference changes within the current threshold do not prompt a mode change
+        ctl.u.h_ref = y_kin(ac).h_e - ctl.alt_gdc.s.h_thr / 2
         step!(sim, 1, true)
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
         step!(sim, 30, true) #altitude is captured
-        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_sp), 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
 
-        ctl.u.h_sp = y_kin_trim.h_e - 100
+        ctl.u.h_ref = y_kin_trim.h_e - 100
         step!(sim, 1, true)
         @test ctl.y.lon_ctl_mode === lon_thr_EAS
         step!(sim, 80, true) #altitude is captured
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
-        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_sp), 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
 
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
 
@@ -647,7 +647,7 @@ function test_guidance_modes()
         world.n[] = 0
         @test @ballocated(f_disc!($world)) == 0
 
-        ctl.u.h_sp = y_kin_trim.h_e + 100
+        ctl.u.h_ref = y_kin_trim.h_e + 100
         step!(sim, 1, true)
         @test ctl.y.lon_ctl_mode === lon_thr_EAS
 
@@ -668,8 +668,8 @@ struct JSONTestMapping <: IOMapping end
 
 function IODevices.extract_output(sys::System{<:SimpleWorld}, ::JSONTestMapping)
     freq = 0.1
-    φ_sp_max = π/6
-    φ_sp = φ_sp_max * sin(2π*freq*sys.t[])
+    φ_ref_max = π/6
+    φ_ref = φ_ref_max * sin(2π*freq*sys.t[])
 
     #these are all valid empty JSON entities. when passed to JSON3.write, they
     #yield respectively "\"\"", "[]" and "{}", all of length 2
@@ -683,14 +683,14 @@ function IODevices.extract_output(sys::System{<:SimpleWorld}, ::JSONTestMapping)
         cmd = (
             vrt_gdc_mode_req = vrt_gdc_alt,
             lat_ctl_mode_req = lat_φ_β,
-            φ_sp = φ_sp,
+            φ_ref = φ_ref,
         )
 
         #therefore, these would also work
         # cmd = (
         #     vrt_gdc_mode_req = 1,
         #     lat_ctl_mode_req = 2,
-        #     φ_sp = φ_sp,
+        #     φ_ref = φ_ref,
         # )
     end
 

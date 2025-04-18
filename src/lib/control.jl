@@ -124,10 +124,10 @@ struct PIVector{N} <: SystemDefinition end
     k_p::MVector{N,Float64} = ones(N) #proportional gain
     k_i::MVector{N,Float64} = zeros(N) #integral gain
     k_l::MVector{N,Float64} = zeros(N) #integrator leak factor
-    β_p::MVector{N,Float64} = ones(N) #proportional path setpoint weighting factor
+    β_p::MVector{N,Float64} = ones(N) #proportional path reference weighting factor
     bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
     bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
-    input::MVector{N,Float64} = zeros(N) #input (setpoint - feedback)
+    input::MVector{N,Float64} = zeros(N) #input (reference - feedback)
     sat_ext::MVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
     reset::MVector{N,Bool} = zeros(Bool, N) #reset PID continuous state
 end
@@ -627,8 +627,8 @@ end
     k_i::Float64 = 0.1 #integral gain
     k_d::Float64 = 0.1 #derivative gain
     τ_f::Float64 = 0.01 #derivative filter time constant
-    β_p::Float64 = 1.0 #proportional path setpoint weighting factor
-    β_d::Float64 = 1.0 #derivative path setpoint weighting factor
+    β_p::Float64 = 1.0 #proportional path reference weighting factor
+    β_d::Float64 = 1.0 #derivative path reference weighting factor
     bound_lo::Float64 = -Inf #lower output bound
     bound_hi::Float64 = Inf #higher output bound
     input::Float64 = 0.0 #current input signal
@@ -646,8 +646,8 @@ end
     k_i::Float64 = 0.1 #integral gain
     k_d::Float64 = 0.1 #derivative gain
     τ_f::Float64 = 0.01 #derivative filter time constant
-    β_p::Float64 = 1.0 #proportional path setpoint weighting factor
-    β_d::Float64 = 1.0 #derivative path setpoint weighting factor
+    β_p::Float64 = 1.0 #proportional path reference weighting factor
+    β_d::Float64 = 1.0 #derivative path reference weighting factor
     bound_lo::Float64 = -Inf
     bound_hi::Float64 = Inf
     input::Float64 = 0.0
@@ -730,8 +730,8 @@ struct PIDVector{N} <: SystemDefinition end
     k_i::MVector{N,Float64} = zeros(N) #integral gain
     k_d::MVector{N,Float64} = zeros(N) #derivative gain
     τ_f::MVector{N,Float64} = 0.01 * ones(N) #derivative filter time constant
-    β_p::MVector{N,Float64} = ones(N) #proportional path setpoint weighting factor
-    β_d::MVector{N,Float64} = ones(N) #derivative path setpoint weighting factor
+    β_p::MVector{N,Float64} = ones(N) #proportional path reference weighting factor
+    β_d::MVector{N,Float64} = ones(N) #derivative path reference weighting factor
     bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
     bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
     input::MVector{N,Float64} = zeros(Float64, N) #input
@@ -976,7 +976,7 @@ end
     bound_lo::MVector{NU,Float64} = fill(-Inf, NU) #lower output bounds
     bound_hi::MVector{NU,Float64} = fill(Inf, NU) #upper output bounds
     sat_ext::MVector{NU,Int64} = zeros(Int64, NU) #saturation input signal
-    z_sp::MVector{NZ, Float64} = zeros(NZ) #command vector set point
+    z_ref::MVector{NZ, Float64} = zeros(NZ) #command vector reference
     z::MVector{NZ, Float64} = zeros(NZ) #current command vector value
     x::MVector{NX, Float64} = zeros(NX) #current state vector value
 end
@@ -997,7 +997,7 @@ end
     bound_lo::SVector{NU,Float64} = fill(-Inf, SVector{NU}) #lower output bounds
     bound_hi::SVector{NU,Float64} = fill(Inf, SVector{NU}) #upper output bounds
     sat_ext::SVector{NU,Int64} = zeros(SVector{NU, Int64}) #saturation input signal
-    z_sp::SVector{NZ, Float64} = zeros(SVector{NZ}) #command variable set point
+    z_ref::SVector{NZ, Float64} = zeros(SVector{NZ}) #command variable reference
     z::SVector{NZ, Float64} = zeros(SVector{NZ}) #current command vector value
     x::SVector{NX, Float64} = zeros(SVector{NX}) #current state vector value
     int_in::SVector{NU,Float64} = zeros(SVector{NU}) #integrator input
@@ -1032,7 +1032,7 @@ function Systems.S(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, N
 end
 
 function Systems.reset!(sys::System{<:LQRTracker})
-    sys.u.z_sp .= 0
+    sys.u.z_ref .= 0
     sys.u.z .= 0
     sys.u.x .= 0
     sys.u.sat_ext .= 0
@@ -1050,16 +1050,16 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LQRTracker})
     C_fbk, C_fwd, C_int = map(SMatrix, (u.C_fbk, u.C_fwd, u.C_int))
     x_trim, u_trim, z_trim = map(SVector, (u.x_trim, u.u_trim, u.z_trim))
     bound_lo, bound_hi, sat_ext = map(SVector, (u.bound_lo, u.bound_hi, u.sat_ext))
-    z_sp, z, x = map(SVector, (u.z_sp, u.z, u.x))
+    z_ref, z, x = map(SVector, (u.z_ref, u.z, u.x))
 
     int_out_0 = SVector(s.int_out_0)
     out_sat_0 = SVector(s.out_sat_0)
 
-    int_in = C_int * (z_sp - z)
+    int_in = C_int * (z_ref - z)
     int_halted = ((sign.(int_in .* out_sat_0) .> 0) .|| (sign.(int_in .* sat_ext) .> 0))
     int_out = int_out_0 + Δt * int_in .* .!int_halted
 
-    out_free = u_trim + int_out + C_fwd * (z_sp - z_trim) - C_fbk * (x - x_trim)
+    out_free = u_trim + int_out + C_fwd * (z_ref - z_trim) - C_fbk * (x - x_trim)
 
     out_sat = (out_free .>= bound_hi) - (out_free .<= bound_lo)
     output = clamp.(out_free, bound_lo, bound_hi)
@@ -1068,7 +1068,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LQRTracker})
     s.out_sat_0 .= out_sat
 
     sys.y = LQRTrackerOutput(; C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim,
-        bound_lo, bound_hi, sat_ext, z_sp, z, x,
+        bound_lo, bound_hi, sat_ext, z_ref, z, x,
         int_in, int_out, int_halted, out_free, out_sat, output)
 
 end
@@ -1076,7 +1076,7 @@ end
 function GUI.draw(sys::System{<:LQRTracker})
 
     @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim, bound_lo, bound_hi,
-            sat_ext, z_sp, z, x, int_in, int_halted, int_out,
+            sat_ext, z_ref, z, x, int_in, int_halted, int_out,
             out_free, out_sat, output = sys.y
 
         CImGui.Text("Feedback Gain = $C_fbk")
@@ -1088,7 +1088,7 @@ function GUI.draw(sys::System{<:LQRTracker})
         CImGui.Text("Lower Output Bound = $bound_lo")
         CImGui.Text("Upper Output Bound = $bound_hi")
         CImGui.Text("External Saturation Input = $sat_ext")
-        CImGui.Text("Set Point Command Vector = $z_sp")
+        CImGui.Text("Reference Command Vector = $z_ref")
         CImGui.Text("Current Command Vector = $z")
         CImGui.Text("Current State Vector = $x")
         CImGui.Text("Integrator Input = $int_in")

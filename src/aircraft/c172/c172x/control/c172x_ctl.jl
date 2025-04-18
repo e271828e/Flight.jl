@@ -105,22 +105,22 @@ end
 
 @kwdef mutable struct LonControlU
     mode::LonControlMode = lon_direct #selected control mode
-    throttle_sp::Float64 = 0.0
-    elevator_sp::Float64 = 0.0
-    q_sp::Float64 = 0.0
-    θ_sp::Float64 = 0.0
-    EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
-    clm_sp::Float64 = 0.0 #climb rate setpoint
+    throttle_ref::Float64 = 0.0
+    elevator_ref::Float64 = 0.0
+    q_ref::Float64 = 0.0
+    θ_ref::Float64 = 0.0
+    EAS_ref::Float64 = C172.TrimParameters().EAS #equivalent airspeed reference
+    clm_ref::Float64 = 0.0 #climb rate reference
 end
 
 @kwdef struct LonControlY
     mode::LonControlMode = lon_direct
-    throttle_sp::Float64 = 0.0
-    elevator_sp::Float64 = 0.0
-    q_sp::Float64 = 0.0
-    θ_sp::Float64 = 0.0
-    EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
-    clm_sp::Float64 = 0.0 #climb rate setpoint
+    throttle_ref::Float64 = 0.0
+    elevator_ref::Float64 = 0.0
+    q_ref::Float64 = 0.0
+    θ_ref::Float64 = 0.0
+    EAS_ref::Float64 = C172.TrimParameters().EAS #equivalent airspeed reference
+    clm_ref::Float64 = 0.0 #climb rate reference
     throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
     e2e_lqr::LQRTrackerOutput{6, 1, 1, 6, 1} = LQRTrackerOutput{6, 1, 1}()
@@ -148,7 +148,7 @@ end
 function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
                         vehicle::System{<:C172X.Vehicle})
 
-    @unpack mode, throttle_sp, elevator_sp, q_sp, θ_sp, EAS_sp, clm_sp = sys.u
+    @unpack mode, throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref = sys.u
     @unpack e2e_lqr, q2e_int, q2e_pid, v2θ_pid, c2θ_pid, v2t_pid = sys.subsystems
     @unpack e2e_lookup, q2e_lookup, v2θ_lookup, c2θ_lookup, v2t_lookup = sys.constants
 
@@ -160,9 +160,9 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
     mode_prev = sys.y.mode
 
     #if not overridden by the control modes, actuation commands are simply
-    #their respective setpoints
-    throttle_cmd = throttle_sp
-    elevator_cmd = elevator_sp
+    #their respective reference values
+    throttle_cmd = throttle_ref
+    elevator_cmd = elevator_ref
 
     if v2t_enabled(mode) #throttle_cmd overridden by v2t
 
@@ -174,7 +174,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
             (k_i != 0) && (v2t_pid.s.x_i0 = Float64(sys.y.throttle_cmd))
         end
 
-        v2t_pid.u.input = EAS_sp - EAS
+        v2t_pid.u.input = EAS_ref - EAS
         f_disc!(v2t_pid)
         throttle_cmd = v2t_pid.y.output
 
@@ -184,7 +184,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
 
         elevator_cmd_sat = e2e_lqr.y.out_sat[1]
 
-        if q2e_enabled(mode) #elevator_sp overridden by q2e
+        if q2e_enabled(mode) #elevator_ref overridden by q2e
 
             Control.Discrete.assign!(q2e_pid, q2e_lookup(EAS, h_e))
 
@@ -193,14 +193,14 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
                 Systems.reset!(q2e_int)
                 Systems.reset!(q2e_pid)
                 k_i = q2e_pid.u.k_i
-                (k_i != 0) && (q2e_pid.s.x_i0 = e2e_lqr.u.z_sp[1])
+                (k_i != 0) && (q2e_pid.s.x_i0 = e2e_lqr.u.z_ref[1])
 
                 # (k_i != 0) && (q2e_pid.s.x_i0 = Float64(sys.y.elevator_cmd))
             end
 
-            if θ2q_enabled(mode) #q_sp overridden by θ2q
+            if θ2q_enabled(mode) #q_ref overridden by θ2q
 
-                if v2θ_enabled(mode) #θ_sp overridden by v2θ
+                if v2θ_enabled(mode) #θ_ref overridden by v2θ
 
                     Control.Discrete.assign!(v2θ_pid, v2θ_lookup(EAS, h_e))
 
@@ -210,12 +210,12 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
                         (k_i != 0) && (v2θ_pid.s.x_i0 = -θ) #sign inversion!
                     end
 
-                    v2θ_pid.u.input = EAS_sp - EAS
+                    v2θ_pid.u.input = EAS_ref - EAS
                     v2θ_pid.u.sat_ext = -elevator_cmd_sat #sign inversion!
                     f_disc!(v2θ_pid)
-                    θ_sp = -v2θ_pid.y.output #sign inversion!
+                    θ_ref = -v2θ_pid.y.output #sign inversion!
 
-                elseif c2θ_enabled(mode) #θ_sp overridden by c2θ
+                elseif c2θ_enabled(mode) #θ_ref overridden by c2θ
 
                     Control.Discrete.assign!(c2θ_pid, c2θ_lookup(EAS, h_e))
 
@@ -225,32 +225,32 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
                         (k_i != 0) && (c2θ_pid.s.x_i0 = θ)
                     end
 
-                    c2θ_pid.u.input = clm_sp - clm
+                    c2θ_pid.u.input = clm_ref - clm
                     c2θ_pid.u.sat_ext = elevator_cmd_sat
                     f_disc!(c2θ_pid)
-                    θ_sp = c2θ_pid.y.output
+                    θ_ref = c2θ_pid.y.output
 
                 else #lon_EAS_θ || lon_thr_θ
 
-                    #θ_sp unmodified, input value is kept
+                    #θ_ref unmodified, input value is kept
 
                 end
 
                 k_p_θ = 1.0
-                θ_dot_sp = k_p_θ * (θ_sp - θ)
+                θ_dot_ref = k_p_θ * (θ_ref - θ)
                 φ_bnd = clamp(φ, -π/3, π/3)
-                q_sp = 1/cos(φ_bnd) * θ_dot_sp + r * tan(φ_bnd)
+                q_ref = 1/cos(φ_bnd) * θ_dot_ref + r * tan(φ_bnd)
 
             end
 
-            q2e_int.u.input = q_sp - q
+            q2e_int.u.input = q_ref - q
             q2e_int.u.sat_ext = elevator_cmd_sat
             f_disc!(q2e_int)
 
             q2e_pid.u.input = q2e_int.y.output
             q2e_pid.u.sat_ext = elevator_cmd_sat
             f_disc!(q2e_pid)
-            elevator_sp = q2e_pid.y.output
+            elevator_ref = q2e_pid.y.output
 
         end
 
@@ -260,13 +260,13 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
 
         e2e_lqr.u.x .= XPitch(vehicle) #state feedback
         e2e_lqr.u.z .= Float64(vehicle.y.components.act.elevator.cmd) #command variable feedback
-        e2e_lqr.u.z_sp .= elevator_sp #command variable setpoint
+        e2e_lqr.u.z_ref .= elevator_ref #command variable reference
         f_disc!(e2e_lqr)
         elevator_cmd = e2e_lqr.y.output[1]
 
     end
 
-    sys.y = LonControlY(; mode, throttle_sp, elevator_sp, q_sp, θ_sp, EAS_sp, clm_sp,
+    sys.y = LonControlY(; mode, throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref,
         throttle_cmd, elevator_cmd, e2e_lqr = e2e_lqr.y,
         q2e_int = q2e_int.y, q2e_pid = q2e_pid.y, v2θ_pid = v2θ_pid.y,
         c2θ_pid = c2θ_pid.y, v2t_pid = v2t_pid.y)
@@ -352,22 +352,22 @@ end
 
 @kwdef mutable struct LatControlU
     mode::LatControlMode = lat_direct #lateral control mode
-    aileron_sp::Float64 = 0.0 #aileron command setpoint
-    rudder_sp::Float64 = 0.0 #rudder command setpoint
-    p_sp::Float64 = 0.0 #roll rate setpoint
-    β_sp::Float64 = 0.0 #sideslip angle setpoint
-    φ_sp::Float64 = 0.0 #bank angle setpoint
-    χ_sp::Float64 = 0.0 #course angle setpoint
+    aileron_ref::Float64 = 0.0 #aileron command reference
+    rudder_ref::Float64 = 0.0 #rudder command reference
+    p_ref::Float64 = 0.0 #roll rate reference
+    β_ref::Float64 = 0.0 #sideslip angle reference
+    φ_ref::Float64 = 0.0 #bank angle reference
+    χ_ref::Float64 = 0.0 #course angle reference
 end
 
 @kwdef struct LatControlY
     mode::LatControlMode = lat_direct
-    aileron_sp::Float64 = 0.0 #aileron command setpoint
-    rudder_sp::Float64 = 0.0 #rudder command setpoint
-    p_sp::Float64 = 0.0 #roll rate setpoint
-    β_sp::Float64 = 0.0 #sideslip angle setpoint
-    φ_sp::Float64 = 0.0 #bank angle setpoint
-    χ_sp::Float64 = 0.0 #course angle setpoint
+    aileron_ref::Float64 = 0.0 #aileron command reference
+    rudder_ref::Float64 = 0.0 #rudder command reference
+    p_ref::Float64 = 0.0 #roll rate reference
+    β_ref::Float64 = 0.0 #sideslip angle reference
+    φ_ref::Float64 = 0.0 #bank angle reference
+    χ_ref::Float64 = 0.0 #course angle reference
     aileron_cmd::Ranged{Float64, -1., 1.} = 0.0
     rudder_cmd::Ranged{Float64, -1., 1.} = 0.0
     ar2ar_lqr::LQRTrackerOutput{8, 2, 2, 16, 4} = LQRTrackerOutput{8, 2, 2}()
@@ -388,7 +388,7 @@ function Systems.init!(sys::System{<:LatControl})
         lqr.u.bound_hi .= ULat(; aileron_cmd = 1, rudder_cmd = 1)
     end
 
-    #set φ setpoint limits for the course angle compensator output
+    #set φ reference limits for the course angle compensator output
     sys.χ2φ_pid.u.bound_lo = -π/4
     sys.χ2φ_pid.u.bound_hi = π/4
 
@@ -397,7 +397,7 @@ end
 function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
                         vehicle::System{<:C172X.Vehicle})
 
-    @unpack mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp = sys.u
+    @unpack mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref = sys.u
     @unpack ar2ar_lqr, φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid, β2r_pid = sys.subsystems
     @unpack ar2ar_lookup, φβ2ar_lookup, p2φ_lookup, χ2φ_lookup, β2r_lookup = sys.constants
     @unpack airflow, kinematics, components = vehicle.y
@@ -410,27 +410,27 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
     β = components.aero.β
     mode_prev = sys.y.mode
 
-    aileron_cmd = aileron_sp
-    rudder_cmd = rudder_sp
+    aileron_cmd = aileron_ref
+    rudder_cmd = rudder_ref
 
     if ar2ar_enabled(mode) #aileron_cmd and #rudder_cmd overridden by ar2ar
 
         rudder_cmd_sat = ULat(ar2ar_lqr.y.out_sat).rudder_cmd
 
-        if β2r_enabled(mode) #rudder_cmd_sp overridden by β2r
+        if β2r_enabled(mode) #rudder_cmd_ref overridden by β2r
 
             Control.Discrete.assign!(β2r_pid, β2r_lookup(EAS, h_e))
 
             if mode != mode_prev
                 Systems.reset!(β2r_pid)
                 k_i = β2r_pid.u.k_i
-                (k_i != 0) && (β2r_pid.s.x_i0 = -ULat(ar2ar_lqr.u.z_sp).rudder_cmd) #sign inversion!
+                (k_i != 0) && (β2r_pid.s.x_i0 = -ULat(ar2ar_lqr.u.z_ref).rudder_cmd) #sign inversion!
             end
 
-            β2r_pid.u.input = β_sp - β
+            β2r_pid.u.input = β_ref - β
             β2r_pid.u.sat_ext = -rudder_cmd_sat #sign inversion!
             f_disc!(β2r_pid)
-            rudder_sp = -β2r_pid.y.output #sign inversion!
+            rudder_ref = -β2r_pid.y.output #sign inversion!
 
         end
 
@@ -440,7 +440,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
         ar2ar_lqr.u.x .= XLat(vehicle)
         ar2ar_lqr.u.z .= ULat(; aileron_cmd = components.act.aileron.cmd,
                                 rudder_cmd = components.act.rudder.cmd)
-        ar2ar_lqr.u.z_sp .= ULat(; aileron_cmd = aileron_sp, rudder_cmd = rudder_sp)
+        ar2ar_lqr.u.z_ref .= ULat(; aileron_cmd = aileron_ref, rudder_cmd = rudder_ref)
         f_disc!(ar2ar_lqr)
         @unpack aileron_cmd, rudder_cmd = ULat(ar2ar_lqr.y.output)
 
@@ -450,47 +450,47 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
 
         u_lat_sat = ULat(φβ2ar_lqr.y.out_sat)
 
-        if p2φ_enabled(mode) #φ_sp overridden by roll rate tracker
+        if p2φ_enabled(mode) #φ_ref overridden by roll rate tracker
 
             Control.Discrete.assign!(p2φ_pid, p2φ_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
-                #our next φ output must match φ setpoint at φβ2ar input
+                #our next φ output must match φ reference at φβ2ar input
                 Systems.reset!(p2φ_int)
                 Systems.reset!(p2φ_pid)
                 k_i = p2φ_pid.u.k_i
-                (k_i != 0) && (p2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_sp).φ)
+                (k_i != 0) && (p2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_ref).φ)
             end
 
-            p2φ_int.u.input = p_sp - p
+            p2φ_int.u.input = p_ref - p
             p2φ_int.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(p2φ_int)
 
             p2φ_pid.u.input = p2φ_int.y.output
             p2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(p2φ_pid)
-            φ_sp = p2φ_pid.y.output
+            φ_ref = p2φ_pid.y.output
 
-        elseif χ2φ_enabled(mode) #φ_sp overridden by course angle tracker
+        elseif χ2φ_enabled(mode) #φ_ref overridden by course angle tracker
 
             Control.Discrete.assign!(χ2φ_pid, χ2φ_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
-                #our next φ output must match φ setpoint at φβ2ar input
+                #our next φ output must match φ reference at φβ2ar input
                 Systems.reset!(χ2φ_pid)
                 k_i = χ2φ_pid.u.k_i
-                (k_i != 0) && (χ2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_sp).φ)
+                (k_i != 0) && (χ2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_ref).φ)
             end
 
             χ = kinematics.χ_gnd
-            χ2φ_pid.u.input = wrap_to_π(χ_sp - χ)
+            χ2φ_pid.u.input = wrap_to_π(χ_ref - χ)
             χ2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
             f_disc!(χ2φ_pid)
-            φ_sp = χ2φ_pid.y.output
+            φ_ref = χ2φ_pid.y.output
 
         else #lat_φ_β
 
-            #φ_sp and β_sp directly set by input values, nothing to do here
+            #φ_ref and β_ref directly set by input values, nothing to do here
 
         end
 
@@ -500,13 +500,13 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
 
         φβ2ar_lqr.u.x .= XLat(vehicle)
         φβ2ar_lqr.u.z .= ZLat(; φ, β)
-        φβ2ar_lqr.u.z_sp .= ZLat(; φ = φ_sp, β = β_sp)
+        φβ2ar_lqr.u.z_ref .= ZLat(; φ = φ_ref, β = β_ref)
         f_disc!(φβ2ar_lqr)
         @unpack aileron_cmd, rudder_cmd = ULat(φβ2ar_lqr.y.output)
 
     end
 
-    sys.y = LatControlY(; mode, aileron_sp, rudder_sp, p_sp, β_sp, φ_sp, χ_sp,
+    sys.y = LatControlY(; mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref,
         aileron_cmd, rudder_cmd, ar2ar_lqr = ar2ar_lqr.y, φβ2ar_lqr = φβ2ar_lqr.y,
         p2φ_int = p2φ_int.y, p2φ_pid = p2φ_pid.y, χ2φ_pid = χ2φ_pid.y,
         β2r_pid = β2r_pid.y)
@@ -535,7 +535,7 @@ end
 end
 
 @kwdef mutable struct AltitudeGuidanceU
-    h_sp::Float64 = 0.0 #altitude setpoint
+    h_ref::Float64 = 0.0 #altitude reference
     h_datum::AltDatum = ellipsoidal
 end
 
@@ -549,8 +549,8 @@ end
     lon_ctl_mode::LonControlMode = lon_EAS_clm
     Δh::Float64 = 0.0 #current altitude error
     h_thr::Float64 = 0.0 #current altitude switching threshold
-    throttle_sp::Float64 = 0.0
-    clm_sp::Float64 = 0.0
+    throttle_ref::Float64 = 0.0
+    clm_ref::Float64 = 0.0
 end
 
 Systems.U(::AltitudeGuidance) = AltitudeGuidanceU()
@@ -562,31 +562,31 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:AltitudeGuidance},
                         vehicle::System{<:C172X.Vehicle})
 
     @unpack state, h_thr = sys.s
-    @unpack h_sp, h_datum = sys.u
+    @unpack h_ref, h_datum = sys.u
     @unpack h_e, h_o, v_eb_n = vehicle.y.kinematics
 
     h = h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o)
-    Δh = h_sp - h
-    clm_sp = sys.k_h2c * Δh
+    Δh = h_ref - h
+    clm_ref = sys.k_h2c * Δh
 
     if state === alt_acquire
 
         lon_ctl_mode = lon_thr_EAS
-        throttle_sp = Δh > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
+        throttle_ref = Δh > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
         (abs(Δh) + 1 < h_thr) && (sys.s.state = alt_hold)
         # sys.s.h_thr = abs(Δh)
         # clm = -vehicle.y.kinematics.v_eb_n[3]
-        # (abs(clm_sp) < abs(clm)) && (sys.s.state = alt_hold)
+        # (abs(clm_ref) < abs(clm)) && (sys.s.state = alt_hold)
 
     else #alt_hold
 
         lon_ctl_mode = lon_EAS_clm
-        throttle_sp = 0.0 #no effect, controlled by EAS_clm
+        throttle_ref = 0.0 #no effect, controlled by EAS_clm
         (abs(Δh) - 1 > h_thr) && (sys.s.state = alt_acquire)
 
     end
 
-    sys.y = AltitudeGuidanceY(; state, lon_ctl_mode, Δh, h_thr, throttle_sp, clm_sp)
+    sys.y = AltitudeGuidanceY(; state, lon_ctl_mode, Δh, h_thr, throttle_ref, clm_ref)
 
 end
 
@@ -630,27 +630,27 @@ end
     steering::Ranged{Float64, -1., 1.} = 0.0 #passthrough
     brake_left::Ranged{Float64, 0., 1.} = 0.0 #passthrough
     brake_right::Ranged{Float64, 0., 1.} = 0.0 #passthrough
-    throttle_sp_input::Ranged{Float64, 0., 1.} = 0.0 #sets throttle_sp
-    aileron_sp_input::Ranged{Float64, -1., 1.} = 0.0 #sets aileron_sp or p_sp
-    elevator_sp_input::Ranged{Float64, -1., 1.} = 0.0 #sets elevator_sp or q_sp
-    rudder_sp_input::Ranged{Float64, -1., 1.} = 0.0 #sets rudder_sp or β_sp
-    throttle_sp_offset::Ranged{Float64, 0., 1.} = 0.0 #for direct throttle control only
-    aileron_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct aileron control only
-    elevator_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct elevator control only
-    rudder_sp_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct rudder control only
+    throttle_input::Ranged{Float64, 0., 1.} = 0.0 #sets throttle_ref
+    aileron_input::Ranged{Float64, -1., 1.} = 0.0 #sets aileron_ref or p_ref
+    elevator_input::Ranged{Float64, -1., 1.} = 0.0 #sets elevator_ref or q_ref
+    rudder_input::Ranged{Float64, -1., 1.} = 0.0 #sets rudder_ref or β_ref
+    throttle_offset::Ranged{Float64, 0., 1.} = 0.0 #for direct throttle control only
+    aileron_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct aileron control only
+    elevator_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct elevator control only
+    rudder_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct rudder control only
     vrt_gdc_mode_req::VerticalGuidanceMode = vrt_gdc_off #requested vertical guidance mode
     hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
     lon_ctl_mode_req::LonControlMode = lon_direct #requested longitudinal control mode
     lat_ctl_mode_req::LatControlMode = lat_direct #requested lateral control mode
-    EAS_sp::Float64 = C172.TrimParameters().EAS #equivalent airspeed setpoint
-    q_sp::Float64 = 0.0 #pitch rate setpoint
-    θ_sp::Float64 = 0.0 #pitch angle setpoint
-    clm_sp::Float64 = 0.0 #climb rate setpoint
-    p_sp::Float64 = 0.0 #roll rate setpoint
-    φ_sp::Float64 = 0.0 #bank angle setpoint
-    χ_sp::Float64 = 0.0 #course angle setpoint
-    β_sp::Float64 = 0.0 #sideslip angle setpoint
-    h_sp::Float64 = 0.0 #altitude setpoint
+    EAS_ref::Float64 = C172.TrimParameters().EAS #equivalent airspeed reference
+    q_ref::Float64 = 0.0 #pitch rate reference
+    θ_ref::Float64 = 0.0 #pitch angle reference
+    clm_ref::Float64 = 0.0 #climb rate reference
+    p_ref::Float64 = 0.0 #roll rate reference
+    φ_ref::Float64 = 0.0 #bank angle reference
+    χ_ref::Float64 = 0.0 #course angle reference
+    β_ref::Float64 = 0.0 #sideslip angle reference
+    h_ref::Float64 = 0.0 #altitude reference
     h_datum::AltDatum = ellipsoidal #altitude datum
 end
 
@@ -677,17 +677,17 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:Controller},
                         vehicle::System{<:C172X.Vehicle})
 
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right,
-            throttle_sp_input, aileron_sp_input, elevator_sp_input, rudder_sp_input,
-            throttle_sp_offset, aileron_sp_offset, elevator_sp_offset, rudder_sp_offset,
+            throttle_input, aileron_input, elevator_input, rudder_input,
+            throttle_offset, aileron_offset, elevator_offset, rudder_offset,
             vrt_gdc_mode_req, hor_gdc_mode_req, lon_ctl_mode_req, lat_ctl_mode_req,
-            q_sp, EAS_sp, θ_sp, clm_sp, p_sp, φ_sp, χ_sp, β_sp, h_sp, h_datum = sys.u
+            q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref, h_ref, h_datum = sys.u
 
     @unpack lon_ctl, lat_ctl, alt_gdc, seg_gdc = sys.subsystems
 
-    throttle_sp = throttle_sp_input + throttle_sp_offset
-    elevator_sp = elevator_sp_input + elevator_sp_offset
-    aileron_sp = aileron_sp_input + aileron_sp_offset
-    rudder_sp = rudder_sp_input + rudder_sp_offset
+    throttle_ref = throttle_input + throttle_offset
+    elevator_ref = elevator_input + elevator_offset
+    aileron_ref = aileron_input + aileron_offset
+    rudder_ref = rudder_input + rudder_offset
 
     any_wow = any(SVector{3}(leg.strut.wow for leg in vehicle.y.components.ldg))
     flight_phase = any_wow ? phase_gnd : phase_air
@@ -710,13 +710,13 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:Controller},
 
         else #vrt_gdc_mode === vrt_gdc_alt
 
-            alt_gdc.u.h_sp = h_sp
+            alt_gdc.u.h_ref = h_ref
             alt_gdc.u.h_datum = h_datum
             f_disc!(alt_gdc, vehicle)
 
             lon_ctl_mode = alt_gdc.y.lon_ctl_mode
-            throttle_sp = alt_gdc.y.throttle_sp
-            clm_sp = alt_gdc.y.clm_sp
+            throttle_ref = alt_gdc.y.throttle_ref
+            clm_ref = alt_gdc.y.clm_ref
 
         end
 
@@ -733,23 +733,23 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:Controller},
 
             #remove this when implemented
             lat_ctl_mode = lat_ctl_mode_req
-            # seg_gdc.u.line_sp = line_sp
+            # seg_gdc.u.line_ref = line_ref
             # f_disc!(seg_gdc, vehicle)
 
             # lat_ctl_mode = seg_gdc.y.lat_ctl_mode
-            # χ_sp = seg_gdc.y.χ_sp
-            # β_sp = 0.0
+            # χ_ref = seg_gdc.y.χ_ref
+            # β_ref = 0.0
 
         end
 
     end
 
     lon_ctl.u.mode = lon_ctl_mode
-    @pack! lon_ctl.u = throttle_sp, elevator_sp, q_sp, θ_sp, EAS_sp, clm_sp
+    @pack! lon_ctl.u = throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref
     f_disc!(lon_ctl, vehicle)
 
     lat_ctl.u.mode = lat_ctl_mode
-    @pack! lat_ctl.u = aileron_sp, rudder_sp, p_sp, φ_sp, β_sp, χ_sp
+    @pack! lat_ctl.u = aileron_ref, rudder_ref, p_ref, φ_ref, β_ref, χ_ref
     f_disc!(lat_ctl, vehicle)
 
     sys.y = ControllerY(; flight_phase,
@@ -802,33 +802,33 @@ function Systems.init!(sys::System{<:Controller},
     #in a fly-by-wire implementation, it makes more sense to assign the trim
     #values to the inputs rather to the offsets
     u = sys.u
-    u.throttle_sp_input = y_act.throttle.pos
-    u.aileron_sp_input = y_act.aileron.pos
-    u.elevator_sp_input = y_act.elevator.pos
-    u.rudder_sp_input = y_act.rudder.pos
-    u.throttle_sp_offset = 0
-    u.aileron_sp_offset = 0
-    u.elevator_sp_offset = 0
-    u.rudder_sp_offset = 0
+    u.throttle_input = y_act.throttle.pos
+    u.aileron_input = y_act.aileron.pos
+    u.elevator_input = y_act.elevator.pos
+    u.rudder_input = y_act.rudder.pos
+    u.throttle_offset = 0
+    u.aileron_offset = 0
+    u.elevator_offset = 0
+    u.rudder_offset = 0
     u.flaps = y_act.flaps.pos
     u.mixture = y_act.mixture.pos
 
-    u.q_sp = ω_wb_b[2]
-    u.θ_sp = e_nb.θ
-    u.EAS_sp = EAS
-    u.clm_sp = -v_eb_n[3]
-    u.p_sp = ω_wb_b[1]
-    u.φ_sp = e_nb.φ
-    u.β_sp = β
-    u.χ_sp = χ_gnd
-    u.h_sp = Float64(h_e)
+    u.q_ref = ω_wb_b[2]
+    u.θ_ref = e_nb.θ
+    u.EAS_ref = EAS
+    u.clm_ref = -v_eb_n[3]
+    u.p_ref = ω_wb_b[1]
+    u.φ_ref = e_nb.φ
+    u.β_ref = β
+    u.χ_ref = χ_gnd
+    u.h_ref = Float64(h_e)
     u.h_datum = ellipsoidal
 
     u.vrt_gdc_mode_req = vrt_gdc_off
     u.hor_gdc_mode_req = hor_gdc_off
 
     #do an update with the inner SAS loops enabled so that their internal
-    #setpoints are made consistent with the trim values. this will then make the
+    #reference values are made consistent with the trim values. this will then make the
     #actuator commands output by the Controller consistent with the trim state
     #values
     u.lon_ctl_mode_req = lon_sas
@@ -876,7 +876,7 @@ end
 
 function GUI.draw(sys::System{<:AltitudeGuidance}, p_open::Ref{Bool} = Ref(true))
 
-    @unpack state, lon_ctl_mode, Δh, h_thr, throttle_sp, clm_sp = sys.y
+    @unpack state, lon_ctl_mode, Δh, h_thr, throttle_ref, clm_ref = sys.y
 
     Begin("Altitude Guidance", p_open)
 
@@ -884,8 +884,8 @@ function GUI.draw(sys::System{<:AltitudeGuidance}, p_open::Ref{Bool} = Ref(true)
         Text("Control Mode: $lon_ctl_mode")
         Text("Altitude Error: $Δh")
         Text("Altitude Threshold: $h_thr")
-        Text("Throttle Setpoint: $throttle_sp")
-        Text("Climb Rate Setpoint: $clm_sp")
+        Text("Throttle Setpoint: $throttle_ref")
+        Text("Climb Rate Setpoint: $clm_ref")
     End()
 end
 
@@ -957,17 +957,17 @@ function GUI.draw!(ctl::System{<:Controller},
                     mode_button("Throttle + Pitch SAS", lon_sas, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_sas); SameLine()
                     mode_button("Throttle + Pitch Rate", lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_sp = 0); SameLine()
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_ref = 0); SameLine()
                     mode_button("Throttle + Pitch Angle", lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_sp = θ)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_ref = θ)
                     mode_button("EAS + Throttle", lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_sp = EAS); SameLine()
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_ref = EAS); SameLine()
                     mode_button("EAS + Pitch Rate", lon_EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_q; u.q_sp = 0; u.EAS_sp = EAS); SameLine()
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_q; u.q_ref = 0; u.EAS_ref = EAS); SameLine()
                     mode_button("EAS + Pitch Angle", lon_EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_θ; u.EAS_sp = EAS; u.θ_sp = θ); SameLine()
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_θ; u.EAS_ref = EAS; u.θ_ref = θ); SameLine()
                     mode_button("EAS + Climb Rate", lon_EAS_clm, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_clm; u.EAS_sp = EAS; u.clm_sp = clm)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_clm; u.EAS_ref = EAS; u.clm_ref = clm)
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
@@ -975,48 +975,48 @@ function GUI.draw!(ctl::System{<:Controller},
                     AlignTextToFramePadding(); Text("Throttle Offset")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.throttle_sp_input = safe_slider("Throttle Input", u.throttle_sp_input, "%.6f")
-                    u.throttle_sp_offset = safe_input("Throttle_Offset", u.throttle_sp_offset, 0.1, 0.1, "%.3f")
+                    u.throttle_input = safe_slider("Throttle Input", u.throttle_input, "%.6f")
+                    u.throttle_offset = safe_input("Throttle_Offset", u.throttle_offset, 0.1, 0.1, "%.3f")
                     PopItemWidth()
                 CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_sp)))
+                    Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_ref)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
                     AlignTextToFramePadding(); Text("Elevator Input")
                     AlignTextToFramePadding(); Text("Elevator Offset")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.elevator_sp_input = safe_slider("Elevator Input", u.elevator_sp_input, "%.6f")
-                    u.elevator_sp_offset = safe_input("Elevator Offset", u.elevator_sp_offset, 0.1, 0.1, "%.3f")
+                    u.elevator_input = safe_slider("Elevator Input", u.elevator_input, "%.6f")
+                    u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.1, 0.1, "%.3f")
                     PopItemWidth()
                 CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_sp)))
+                    Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_ref)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Rate (deg/s)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.q_sp = safe_slider("Pitch Rate", rad2deg(u.q_sp), -10, 10, "%.3f") |> deg2rad
+                    u.q_ref = safe_slider("Pitch Rate", rad2deg(u.q_ref), -10, 10, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(q)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Angle (deg)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.θ_sp = safe_slider("Pitch Angle", rad2deg(u.θ_sp), -15, 15, "%.3f") |> deg2rad
+                    u.θ_ref = safe_slider("Pitch Angle", rad2deg(u.θ_ref), -15, 15, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(θ)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("EAS (m/s)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.EAS_sp = safe_input("EAS", u.EAS_sp, 0.1, 1.0, "%.3f")
+                    u.EAS_ref = safe_input("EAS", u.EAS_ref, 0.1, 1.0, "%.3f")
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", EAS))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Climb Rate (m/s)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.clm_sp = safe_input("Climb Rate", u.clm_sp, 0.1, 1.0, "%.3f")
+                    u.clm_ref = safe_input("Climb Rate", u.clm_ref, 0.1, 1.0, "%.3f")
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", clm))
             CImGui.EndTable()
@@ -1040,13 +1040,13 @@ function GUI.draw!(ctl::System{<:Controller},
                     mode_button("SAS", lat_sas, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_sas)
                     mode_button("SAS + AoS", lat_sas_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = lat_sas_β; u.β_sp = β)
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_sas_β; u.β_ref = β)
                     mode_button("Roll Rate + AoS", lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.p_sp = 0; u.β_sp = β)
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.p_ref = 0; u.β_ref = β)
                     mode_button("Bank Angle + AoS", lat_φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = lat_φ_β; u.φ_sp = φ; u.β_sp = β)
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_φ_β; u.φ_ref = φ; u.β_ref = β)
                     mode_button("Course Angle + AoS", lat_χ_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = lat_χ_β; u.χ_sp = χ_gnd; u.β_sp = β)
+                    IsItemActive() && (u.lat_ctl_mode_req = lat_χ_β; u.χ_ref = χ_gnd; u.β_ref = β)
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
@@ -1054,48 +1054,48 @@ function GUI.draw!(ctl::System{<:Controller},
                     AlignTextToFramePadding(); Text("Aileron Offset")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.aileron_sp_input = safe_slider("Aileron Input", u.aileron_sp_input, "%.6f")
-                    u.aileron_sp_offset = safe_input("Aileron Offset", u.aileron_sp_offset, 0.001, 0.1, "%.3f")
+                    u.aileron_input = safe_slider("Aileron Input", u.aileron_input, "%.6f")
+                    u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.001, 0.1, "%.3f")
                     PopItemWidth()
                 CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_sp)))
+                    Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_ref)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
                     AlignTextToFramePadding(); Text("Rudder Input")
                     AlignTextToFramePadding(); Text("Rudder Offset")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.rudder_sp_input = safe_slider("Rudder Input", u.rudder_sp_input, "%.6f")
-                    u.rudder_sp_offset = safe_input("Rudder Offset", u.rudder_sp_offset, 0.001, 0.1, "%.3f")
+                    u.rudder_input = safe_slider("Rudder Input", u.rudder_input, "%.6f")
+                    u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.001, 0.1, "%.3f")
                     PopItemWidth()
                 CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_sp)))
+                    Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_ref)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Roll Rate (deg/s)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.p_sp = safe_slider("Roll Rate", rad2deg(u.p_sp), -30, 30, "%.3f") |> deg2rad
+                    u.p_ref = safe_slider("Roll Rate", rad2deg(u.p_ref), -30, 30, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(p)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Bank Angle (deg)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.φ_sp = safe_slider("Bank Angle", rad2deg(u.φ_sp), -60, 60, "%.3f") |> deg2rad
+                    u.φ_ref = safe_slider("Bank Angle", rad2deg(u.φ_ref), -60, 60, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(φ)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Course Angle (deg)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.χ_sp = safe_slider("Course Angle", rad2deg(u.χ_sp), -180, 180, "%.3f") |> deg2rad
+                    u.χ_ref = safe_slider("Course Angle", rad2deg(u.χ_ref), -180, 180, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(χ_gnd)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Sideslip Angle (deg)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.β_sp = safe_slider("Sideslip Angle", rad2deg(u.β_sp), -10, 10, "%.3f") |> deg2rad
+                    u.β_ref = safe_slider("Sideslip Angle", rad2deg(u.β_ref), -10, 10, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(β)))
             CImGui.EndTable()
@@ -1120,15 +1120,15 @@ function GUI.draw!(ctl::System{<:Controller},
                     mode_button("Altitude", vrt_gdc_alt, u.vrt_gdc_mode_req, y.vrt_gdc_mode)
                     if IsItemActive()
                         u.vrt_gdc_mode_req = vrt_gdc_alt
-                        u.h_sp = (u.h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o))
-                        u.EAS_sp = EAS
+                        u.h_ref = (u.h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o))
+                        u.EAS_ref = EAS
                     end
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.h_sp = safe_input("Altitude Setpoint", Float64(u.h_sp), 1, 1.0, "%.3f")
+                    u.h_ref = safe_input("Altitude Setpoint", Float64(u.h_ref), 1, 1.0, "%.3f")
                     PopItemWidth()
                 CImGui.TableNextColumn();
                     u.h_datum === ellipsoidal && Text(@sprintf("%.3f", Float64(h_e)))
@@ -1199,10 +1199,10 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn(); Text("Rudder")
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); Text("Setpoint")
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_sp)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_sp)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_sp)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_sp)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_ref)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); Text("Command")
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_cmd)))
@@ -1316,8 +1316,8 @@ end
 #declare ControllerU as mutable
 StructTypes.StructType(::Type{ControllerU}) = StructTypes.Mutable()
 #replace Greek characters from ControllerU fields in the JSON string
-StructTypes.names(::Type{ControllerU}) = ((:χ_sp, :chi_sp), (:θ_sp, :theta_sp),
-    (:φ_sp, :phi_sp), (:β_sp, :beta_sp))
+StructTypes.names(::Type{ControllerU}) = ((:χ_ref, :chi_ref), (:θ_ref, :theta_ref),
+    (:φ_ref, :phi_ref), (:β_ref, :beta_ref))
 
 #enable JSON parsing of integers as LonControlMode
 StructTypes.StructType(::Type{LonControlMode}) = StructTypes.CustomStruct()

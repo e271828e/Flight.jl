@@ -25,7 +25,7 @@ $$ \Delta z = H_x \Delta x + H_u \Delta u $$
 
 To achieve $z = z^*$, we need to drive $\Delta z$ to $\Delta z^* = z^* - z_{trim}$ in the linearized system.
 
-Now we seek an equilibrium setpoint $(\Delta x^*, \Delta u^*)$ such that:
+Now we seek an equilibrium reference $(\Delta x^*, \Delta u^*)$ such that:
 $$ 0 = F \Delta x^* + G \Delta u^* $$
 $$ \Delta z^* = H_x \Delta x^* + H_u \Delta u^* $$
 

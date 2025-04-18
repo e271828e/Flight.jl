@@ -132,10 +132,10 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         u_labels_pit_fbk = Symbol.(string.(u_labels_pit) .* "_fbk")
         u_labels_pit_fwd = Symbol.(string.(u_labels_pit) .* "_fwd")
         u_labels_pit_sum = Symbol.(string.(u_labels_pit) .* "_sum")
-        z_labels_sp = Symbol.(string.(z_labels) .* "_sp")
+        z_labels_ref = Symbol.(string.(z_labels) .* "_ref")
 
         C_fbk_ss = named_ss(ss(C_fbk), u = x_labels_pit, y = u_labels_pit_fbk)
-        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_sp, y = u_labels_pit_fwd)
+        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_ref, y = u_labels_pit_fwd)
 
         #summing junctions
         # throttle_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd- throttle_cmd_fbk")
@@ -150,12 +150,12 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         #connect to the complete longitudinal dynamics (this is the one we'll keep)
         P_te = connect([P_lon, elevator_sum, C_fbk_ss, C_fwd_ss],
-            connections; w1 = [:throttle_cmd, :elevator_cmd_sp], z1 = P_lon.y)
+            connections; w1 = [:throttle_cmd, :elevator_cmd_ref], z1 = P_lon.y)
 
-        #add dummy system to rename input throttle_cmd to throttle_cmd_sp
-        D_thr = named_ss(ss(1), u = [:throttle_cmd_sp,], y = [:throttle_cmd_sp, ])
-        P_te = connect([P_te, D_thr], [:throttle_cmd_sp => :throttle_cmd,];
-            w1 = [:throttle_cmd_sp, :elevator_cmd_sp], z1 = P_te.y)
+        #add dummy system to rename input throttle_cmd to throttle_cmd_ref
+        D_thr = named_ss(ss(1), u = [:throttle_cmd_ref,], y = [:throttle_cmd_ref, ])
+        P_te = connect([P_te, D_thr], [:throttle_cmd_ref => :throttle_cmd,];
+            w1 = [:throttle_cmd_ref, :elevator_cmd_ref], z1 = P_te.y)
 
         params_e2e = LQRTrackerParams(; #export everything as plain arrays
             C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
@@ -167,7 +167,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     P_tq, params_q2e = let
 
-        P_e2q = P_te[:q, :elevator_cmd_sp]
+        P_e2q = P_te[:q, :elevator_cmd_ref]
 
         q2e_int = tf(1, [1, 0]) |> ss
         P_q2e_opt = series(q2e_int, ss(P_e2q))
@@ -187,12 +187,12 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         end
 
         q2e_pid = build_PID(q2e_results.params)
-        C_q2e = named_ss(series(q2e_int, q2e_pid), :C_q2e; u = :q_err, y = :elevator_cmd_sp);
+        C_q2e = named_ss(series(q2e_int, q2e_pid), :C_q2e; u = :q_err, y = :elevator_cmd_ref);
 
-        q2e_sum = sumblock("q_err = q_sp - q")
+        q2e_sum = sumblock("q_err = q_ref - q")
         P_tq = connect([P_te, q2e_sum, C_q2e],
-            [:q_err=>:q_err, :q=>:q, :elevator_cmd_sp=>:elevator_cmd_sp],
-            w1 = [:throttle_cmd_sp, :q_sp], z1 = P_te.y)
+            [:q_err=>:q_err, :q=>:q, :elevator_cmd_ref=>:elevator_cmd_ref],
+            w1 = [:throttle_cmd_ref, :q_ref], z1 = P_te.y)
 
         (P_tq, params_q2e)
 
@@ -201,11 +201,11 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
     P_tθ = let
 
         k_p_θ2q = 1
-        C_θ2q = named_ss(ss(k_p_θ2q), :C_θ2q; u = :θ_err, y = :q_sp);
+        C_θ2q = named_ss(ss(k_p_θ2q), :C_θ2q; u = :θ_err, y = :q_ref);
 
-        θ2q_sum = sumblock("θ_err = θ_sp - θ")
-        P_tθ = connect([P_tq, θ2q_sum, C_θ2q], [:θ_err=>:θ_err, :θ=>:θ, :q_sp=>:q_sp],
-                        w1 = [:throttle_cmd_sp, :θ_sp], z1 = P_tq.y);
+        θ2q_sum = sumblock("θ_err = θ_ref - θ")
+        P_tθ = connect([P_tq, θ2q_sum, C_θ2q], [:θ_err=>:θ_err, :θ=>:θ, :q_ref=>:q_ref],
+                        w1 = [:throttle_cmd_ref, :θ_ref], z1 = P_tq.y);
 
         P_tθ
 
@@ -213,7 +213,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     P_tv, params_v2θ = let
 
-        P_θ2v = P_tθ[:EAS, :θ_sp]
+        P_θ2v = P_tθ[:EAS, :θ_ref]
         P_θ2v_opt = -P_θ2v
 
         t_sim_v2θ = 20
@@ -232,11 +232,11 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         v2θ_pid = build_PID(v2θ_results.params)
         C_v2θ = -v2θ_pid
-        C_v2θ = named_ss(ss(C_v2θ), :C_v2θ; u = :EAS_err, y = :θ_sp)
+        C_v2θ = named_ss(ss(C_v2θ), :C_v2θ; u = :EAS_err, y = :θ_ref)
 
-        v2θ_sum = sumblock("EAS_err = EAS_sp - EAS")
-        P_tv = connect([P_tθ, v2θ_sum, C_v2θ], [:EAS_err=>:EAS_err, :EAS=>:EAS, :θ_sp=>:θ_sp],
-        w1 = [:throttle_cmd_sp, :EAS_sp], z1 = P_tθ.y)
+        v2θ_sum = sumblock("EAS_err = EAS_ref - EAS")
+        P_tv = connect([P_tθ, v2θ_sum, C_v2θ], [:EAS_err=>:EAS_err, :EAS=>:EAS, :θ_ref=>:θ_ref],
+        w1 = [:throttle_cmd_ref, :EAS_ref], z1 = P_tθ.y)
 
         (P_tv, params_v2θ)
 
@@ -261,12 +261,12 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         end
 
         v2t_pid = build_PID(v2t_results.params)
-        C_v2t = named_ss(ss(v2t_pid), :C_v2t; u = :EAS_err, y = :throttle_cmd_sp)
+        C_v2t = named_ss(ss(v2t_pid), :C_v2t; u = :EAS_err, y = :throttle_cmd_ref)
 
-        v2t_sum = sumblock("EAS_err = EAS_sp - EAS")
+        v2t_sum = sumblock("EAS_err = EAS_ref - EAS")
         P_vθ = connect([P_tθ, v2t_sum, C_v2t],
-            [:EAS_err=>:EAS_err, :EAS=>:EAS, :throttle_cmd_sp=>:throttle_cmd_sp],
-            w1 = [:EAS_sp, :θ_sp], z1 = P_tθ.y)
+            [:EAS_err=>:EAS_err, :EAS=>:EAS, :throttle_cmd_ref=>:throttle_cmd_ref],
+            w1 = [:EAS_ref, :θ_ref], z1 = P_tθ.y)
 
         (P_vθ, params_v2t)
 
@@ -274,7 +274,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     P_vc, params_c2θ = let
 
-        P_θ2c = P_vθ[:climb_rate, :θ_sp]
+        P_θ2c = P_vθ[:climb_rate, :θ_ref]
 
         t_sim_c2θ = 10
         lower_bounds = PIDParams(; k_p = 0.001, k_i = 0.001, k_d = 0.0, τ_f = 0.01)
@@ -291,12 +291,12 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         end
 
         c2θ_PID = build_PID(c2θ_results.params)
-        C_c2θ = named_ss(ss(c2θ_PID), :C_c2θ; u = :climb_rate_err, y = :θ_sp)
+        C_c2θ = named_ss(ss(c2θ_PID), :C_c2θ; u = :climb_rate_err, y = :θ_ref)
 
-        c2θ_sum = sumblock("climb_rate_err = climb_rate_sp - climb_rate")
+        c2θ_sum = sumblock("climb_rate_err = climb_rate_ref - climb_rate")
         P_vc = connect([P_vθ, c2θ_sum, C_c2θ],
-            [:climb_rate_err=>:climb_rate_err, :climb_rate=>:climb_rate, :θ_sp=>:θ_sp],
-            w1 = [:EAS_sp, :climb_rate_sp], z1 = P_vθ.y)
+            [:climb_rate_err=>:climb_rate_err, :climb_rate=>:climb_rate, :θ_ref=>:θ_ref],
+            w1 = [:EAS_ref, :climb_rate_ref], z1 = P_vθ.y)
 
         (P_vc, params_c2θ)
     end
@@ -369,10 +369,10 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk")
         u_labels_fwd = Symbol.(string.(u_labels) .* "_fwd")
         u_labels_sum = Symbol.(string.(u_labels) .* "_sum")
-        z_labels_sp = Symbol.(string.(z_labels) .* "_sp")
+        z_labels_ref = Symbol.(string.(z_labels) .* "_ref")
 
         C_fbk_ss = named_ss(ss(C_fbk); u = x_labels_red, y = u_labels_fbk)
-        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_sp, y = u_labels_fwd)
+        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_ref, y = u_labels_fwd)
 
         #summing junctions
         aileron_sum = sumblock("aileron_cmd_sum = aileron_cmd_fwd- aileron_cmd_fbk")
@@ -386,7 +386,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
             )
 
         P_ar = connect([P_full, aileron_sum, rudder_sum, C_fbk_ss, C_fwd_ss],
-                        connections_fbk; w1 = z_labels_sp, z1 = P_full.y)
+                        connections_fbk; w1 = z_labels_ref, z1 = P_full.y)
 
         params_ar2ar = LQRTrackerParams(;
             C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
@@ -398,7 +398,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     P_aβ, params_β2r = let
 
-        P_r2β = P_ar[:β, :rudder_cmd_sp]
+        P_r2β = P_ar[:β, :rudder_cmd_ref]
         P_r2β_opt = -P_r2β
 
         t_sim_β2r = 20
@@ -423,11 +423,11 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         β2r_pid = build_PID(β2r_results.params)
         C_β2r = -β2r_pid
-        C_β2r = named_ss(ss(C_β2r), :C_β2r; u = :β_err, y = :rudder_cmd_sp)
+        C_β2r = named_ss(ss(C_β2r), :C_β2r; u = :β_err, y = :rudder_cmd_ref)
 
-        β2r_sum = sumblock("β_err = β_sp - β")
-        P_aβ = connect([P_ar, β2r_sum, C_β2r], [:β_err=>:β_err, :β=>:β, :rudder_cmd_sp=>:rudder_cmd_sp],
-        w1 = [:aileron_cmd_sp, :β_sp], z1 = P_ar.y)
+        β2r_sum = sumblock("β_err = β_ref - β")
+        P_aβ = connect([P_ar, β2r_sum, C_β2r], [:β_err=>:β_err, :β=>:β, :rudder_cmd_ref=>:rudder_cmd_ref],
+        w1 = [:aileron_cmd_ref, :β_ref], z1 = P_ar.y)
 
         (P_aβ, params_β2r)
 
@@ -492,16 +492,16 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         u_labels_int = Symbol.(string.(u_labels) .* "_int")
         u_labels_ξ = Symbol.(string.(u_labels) .* "_ξ")
 
-        z_labels_sp = Symbol.(string.(z_labels) .* "_sp")
-        z_labels_sp1 = Symbol.(string.(z_labels) .* "_sp1")
-        z_labels_sp2 = Symbol.(string.(z_labels) .* "_sp2")
+        z_labels_ref = Symbol.(string.(z_labels) .* "_ref")
+        z_labels_ref1 = Symbol.(string.(z_labels) .* "_ref1")
+        z_labels_ref2 = Symbol.(string.(z_labels) .* "_ref2")
         z_labels_err = Symbol.(string.(z_labels) .* "_err")
         z_labels_sum = Symbol.(string.(z_labels) .* "_sum")
-        z_labels_sp_fwd = Symbol.(string.(z_labels) .* "_sp_fwd")
-        z_labels_sp_sum = Symbol.(string.(z_labels) .* "_sp_sum")
+        z_labels_ref_fwd = Symbol.(string.(z_labels) .* "_ref_fwd")
+        z_labels_ref_sum = Symbol.(string.(z_labels) .* "_ref_sum")
 
         C_fbk_ss = named_ss(ss(C_fbk), u = x_labels_red, y = u_labels_fbk)
-        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_sp_fwd, y = u_labels_fwd)
+        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_ref_fwd, y = u_labels_fwd)
         C_int_ss = named_ss(ss(C_int), u = z_labels_err, y = u_labels_int_u)
 
         int_ss = named_ss(ss(tf(1, [1,0])) .* I(2),
@@ -509,20 +509,20 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
                             u = u_labels_int_u,
                             y = u_labels_int);
 
-        φ_err_sum = sumblock("φ_err = φ_sum - φ_sp_sum")
-        β_err_sum = sumblock("β_err = β_sum - β_sp_sum")
+        φ_err_sum = sumblock("φ_err = φ_sum - φ_ref_sum")
+        β_err_sum = sumblock("β_err = β_sum - β_ref_sum")
 
         aileron_cmd_sum = sumblock("aileron_cmd_sum = aileron_cmd_fwd - aileron_cmd_fbk - aileron_cmd_int")
         rudder_cmd_sum = sumblock("rudder_cmd_sum = rudder_cmd_fwd - rudder_cmd_fbk - rudder_cmd_int")
 
-        φ_sp_splitter = splitter(:φ_sp, 2)
-        β_sp_splitter = splitter(:β_sp, 2)
+        φ_ref_splitter = splitter(:φ_ref, 2)
+        β_ref_splitter = splitter(:β_ref, 2)
 
         connections = vcat(
             Pair.(x_labels_red, x_labels_red),
             Pair.(z_labels, z_labels_sum),
-            Pair.(z_labels_sp1, z_labels_sp_sum),
-            Pair.(z_labels_sp2, z_labels_sp_fwd),
+            Pair.(z_labels_ref1, z_labels_ref_sum),
+            Pair.(z_labels_ref2, z_labels_ref_fwd),
             Pair.(z_labels_err, z_labels_err),
             Pair.(u_labels_sum, u_labels),
             Pair.(u_labels_fwd, u_labels_fwd),
@@ -537,8 +537,8 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_φβ = connect([P_full, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
                             φ_err_sum, β_err_sum,
                             aileron_cmd_sum, rudder_cmd_sum,
-                            φ_sp_splitter, β_sp_splitter], connections;
-                            w1 = z_labels_sp, z1 = P_full.y)
+                            φ_ref_splitter, β_ref_splitter], connections;
+                            w1 = z_labels_ref, z1 = P_full.y)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
@@ -555,7 +555,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     P_pβ, params_p2φ = let
 
-        P_φ2p = P_φβ[:p, :φ_sp];
+        P_φ2p = P_φβ[:p, :φ_ref];
 
         p2φ_int = tf(1, [1, 0]) |> ss
         P_p2φ_opt = series(p2φ_int, ss(P_φ2p))
@@ -574,10 +574,10 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         end
 
         p2φ_PID = build_PID(p2φ_results.params)
-        C_p2φ = named_ss(series(p2φ_int, p2φ_PID), :C_p2φ; u = :p_err, y = :φ_sp)
+        C_p2φ = named_ss(series(p2φ_int, p2φ_PID), :C_p2φ; u = :p_err, y = :φ_ref)
 
-        p2φ_sum = sumblock("p_err = p_sp - p")
-        P_pβ = connect([P_φβ, p2φ_sum, C_p2φ], [:p_err=>:p_err, :p=>:p, :φ_sp=>:φ_sp], w1 = [:p_sp, :β_sp], z1 = P_φβ.y)
+        p2φ_sum = sumblock("p_err = p_ref - p")
+        P_pβ = connect([P_φβ, p2φ_sum, C_p2φ], [:p_err=>:p_err, :p=>:p, :φ_ref=>:φ_ref], w1 = [:p_ref, :β_ref], z1 = P_φβ.y)
 
         (P_pβ, params_p2φ)
 
@@ -587,7 +587,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     P_χβ, params_χ2φ = let
 
-        P_φ2χ = P_φβ[:χ, :φ_sp];
+        P_φ2χ = P_φβ[:χ, :φ_ref];
 
         t_sim_χ2φ = 30
         lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.3, k_d = 0.0, τ_f = 0.01)
@@ -604,10 +604,10 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         end
 
         χ2φ_PID = build_PID(χ2φ_results.params)
-        C_χ2φ = named_ss(χ2φ_PID, :C_χ2φ; u = :χ_err, y = :φ_sp);
+        C_χ2φ = named_ss(χ2φ_PID, :C_χ2φ; u = :χ_err, y = :φ_ref);
 
-        χ2φ_sum = sumblock("χ_err = χ_sp - χ")
-        P_χβ = connect([P_φβ, χ2φ_sum, C_χ2φ], [:χ_err=>:χ_err, :χ=>:χ, :φ_sp=>:φ_sp], w1 = [:χ_sp, :β_sp], z1 = P_φβ.y)
+        χ2φ_sum = sumblock("χ_err = χ_ref - χ")
+        P_χβ = connect([P_φβ, χ2φ_sum, C_χ2φ], [:χ_err=>:χ_err, :χ=>:χ, :φ_ref=>:φ_ref], w1 = [:χ_ref, :β_ref], z1 = P_φβ.y)
 
         (P_χβ, params_χ2φ)
 

@@ -95,22 +95,22 @@ function IODevices.assign_input!(sys::System{<:Cessna172Xv1},
     pitch_input =  pitch_curve(axes.stick_y)
     yaw_input = yaw_curve(axes.stick_z)
 
-    u.throttle_sp_input = throttle_input
-    u.aileron_sp_input = roll_input
-    u.elevator_sp_input = pitch_input
-    u.rudder_sp_input = yaw_input
+    u.throttle_input = throttle_input
+    u.aileron_input = roll_input
+    u.elevator_input = pitch_input
+    u.rudder_input = yaw_input
 
-    u.p_sp = p_sf * roll_input
-    u.q_sp = q_sf * pitch_input
+    u.p_ref = p_sf * roll_input
+    u.q_ref = q_sf * pitch_input
 
     u.steering = yaw_input
     u.brake_left = is_pressed(buttons.button_1)
     u.brake_right = is_pressed(buttons.button_1)
 
-    u.aileron_sp_offset -= 5e-3 * was_released(hat.left)
-    u.aileron_sp_offset += 5e-3 * was_released(hat.right)
-    u.elevator_sp_offset += 5e-3 * was_released(hat.down)
-    u.elevator_sp_offset -= 5e-3 * was_released(hat.up)
+    u.aileron_offset -= 5e-3 * was_released(hat.left)
+    u.aileron_offset += 5e-3 * was_released(hat.right)
+    u.elevator_offset += 5e-3 * was_released(hat.down)
+    u.elevator_offset -= 5e-3 * was_released(hat.up)
 
     u.flaps += 0.3333 * was_released(buttons.button_3)
     u.flaps -= 0.3333 * was_released(buttons.button_2)
