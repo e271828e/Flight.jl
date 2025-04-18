@@ -194,9 +194,9 @@ end
 #note: for a root System, these methods must be implemented without additional
 #arguments
 
-abstract type MaybeSchedule end
-struct Schedule <: MaybeSchedule end
-struct NoScheduling <: MaybeSchedule end
+abstract type MaybeScheduling end
+struct Scheduling <: MaybeScheduling end
+struct NoScheduling <: MaybeScheduling end
 
 
 init!(::System, args...; kwargs...) = nothing
@@ -222,9 +222,9 @@ function f_disc!(sch::NoScheduling, sys::System, args...)
 end
 
 #scheduled discrete update, to be called (not extended!) by Systems
-@inline f_disc!(sys::System, args...) = f_disc!(Schedule(), sys, args...)
+@inline f_disc!(sys::System, args...) = f_disc!(Scheduling(), sys, args...)
 
-function f_disc!(::Schedule, sys::System, args...)
+function f_disc!(::Scheduling, sys::System, args...)
     (sys.n[] % sys.N == 0) && f_disc!(NoScheduling(), sys, args...)
 end
 

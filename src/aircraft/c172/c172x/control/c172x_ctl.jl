@@ -280,14 +280,12 @@ end
 @enum LatControlMode begin
     lat_direct = 0 #direct aileron & rudder
     lat_sas = 1 #roll & yaw SAS
-    lat_sas_β = 2 #roll & yaw SAS + sideslip
-    lat_p_β = 3 #roll rate + sideslip
-    lat_φ_β = 4 #bank angle + sideslip
-    lat_χ_β = 5 #course angle + sideslip
+    lat_p_β = 2 #roll rate + sideslip
+    lat_φ_β = 3 #bank angle + sideslip
+    lat_χ_β = 4 #course angle + sideslip
 end
 
-ar2ar_enabled(mode::LatControlMode) = (mode === lat_sas || mode === lat_sas_β)
-β2r_enabled(mode::LatControlMode) = (mode === lat_sas_β)
+ar2ar_enabled(mode::LatControlMode) = (mode === lat_sas)
 φβ2ar_enabled(mode::LatControlMode) = (mode === lat_p_β || mode === lat_φ_β || mode === lat_χ_β)
 p2φ_enabled(mode::LatControlMode) = (mode === lat_p_β)
 χ2φ_enabled(mode::LatControlMode) = (mode === lat_χ_β)
@@ -341,13 +339,11 @@ end
     φβ2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "φβ2ar_lookup.h5"))
     p2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
     χ2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "χ2φ_lookup.h5"))
-    β2r_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "β2r_lookup.h5"))
     ar2ar_lqr::LQRTracker{8, 2, 2, 16, 4} = LQRTracker{8, 2, 2}()
     φβ2ar_lqr::LQRTracker{8, 2, 2, 16, 4} = LQRTracker{8, 2, 2}()
     p2φ_int::Integrator = Integrator()
     p2φ_pid::PID = PID()
     χ2φ_pid::PID = PID()
-    β2r_pid::PID = PID()
 end
 
 @kwdef mutable struct LatControlU
@@ -375,7 +371,6 @@ end
     p2φ_int::IntegratorOutput = IntegratorOutput()
     p2φ_pid::PIDOutput = PIDOutput()
     χ2φ_pid::PIDOutput = PIDOutput()
-    β2r_pid::PIDOutput = PIDOutput()
 end
 
 Systems.U(::LatControl) = LatControlU()
@@ -398,8 +393,8 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
                         vehicle::System{<:C172X.Vehicle})
 
     @unpack mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref = sys.u
-    @unpack ar2ar_lqr, φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid, β2r_pid = sys.subsystems
-    @unpack ar2ar_lookup, φβ2ar_lookup, p2φ_lookup, χ2φ_lookup, β2r_lookup = sys.constants
+    @unpack ar2ar_lqr, φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
+    @unpack ar2ar_lookup, φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
     @unpack airflow, kinematics, components = vehicle.y
 
     EAS = airflow.EAS
@@ -414,25 +409,6 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
     rudder_cmd = rudder_ref
 
     if ar2ar_enabled(mode) #aileron_cmd and #rudder_cmd overridden by ar2ar
-
-        rudder_cmd_sat = ULat(ar2ar_lqr.y.out_sat).rudder_cmd
-
-        if β2r_enabled(mode) #rudder_cmd_ref overridden by β2r
-
-            Control.Discrete.assign!(β2r_pid, β2r_lookup(EAS, h_e))
-
-            if mode != mode_prev
-                Systems.reset!(β2r_pid)
-                k_i = β2r_pid.u.k_i
-                (k_i != 0) && (β2r_pid.s.x_i0 = -ULat(ar2ar_lqr.u.z_ref).rudder_cmd) #sign inversion!
-            end
-
-            β2r_pid.u.input = β_ref - β
-            β2r_pid.u.sat_ext = -rudder_cmd_sat #sign inversion!
-            f_disc!(β2r_pid)
-            rudder_ref = -β2r_pid.y.output #sign inversion!
-
-        end
 
         #no integral control, so no need for reset on mode change
         Control.Discrete.assign!(ar2ar_lqr, ar2ar_lookup(EAS, Float64(h_e)))
@@ -508,8 +484,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
 
     sys.y = LatControlY(; mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref,
         aileron_cmd, rudder_cmd, ar2ar_lqr = ar2ar_lqr.y, φβ2ar_lqr = φβ2ar_lqr.y,
-        p2φ_int = p2φ_int.y, p2φ_pid = p2φ_pid.y, χ2φ_pid = χ2φ_pid.y,
-        β2r_pid = β2r_pid.y)
+        p2φ_int = p2φ_int.y, p2φ_pid = p2φ_pid.y, χ2φ_pid = χ2φ_pid.y)
 
 end
 
@@ -1039,8 +1014,6 @@ function GUI.draw!(ctl::System{<:Controller},
                     IsItemActive() && (u.lat_ctl_mode_req = lat_direct)
                     mode_button("SAS", lat_sas, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_sas)
-                    mode_button("SAS + AoS", lat_sas_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = lat_sas_β; u.β_ref = β)
                     mode_button("Roll Rate + AoS", lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.p_ref = 0; u.β_ref = β)
                     mode_button("Bank Angle + AoS", lat_φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()

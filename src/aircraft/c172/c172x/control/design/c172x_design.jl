@@ -396,43 +396,6 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     end
 
-    P_aβ, params_β2r = let
-
-        P_r2β = P_ar[:β, :rudder_cmd_ref]
-        P_r2β_opt = -P_r2β
-
-        t_sim_β2r = 20
-        lower_bounds = PIDParams(; k_p = 0.01, k_i = 0.000, k_d = 0.0, τ_f = 0.1)
-        upper_bounds = PIDParams(; k_p = 10.0, k_i = 20, k_d = 5, τ_f = 0.1)
-        settings = Settings(; t_sim = t_sim_β2r, lower_bounds, upper_bounds)
-        weights = Metrics(; Ms = 3.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.0)
-        params_0 = PIDParams(; k_p = 1, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
-        # t_sim_β2r = 20
-        # lower_bounds = PIDParams(; k_p = 0.01, k_i = 0.000, k_d = 0.0, τ_f = 0.01)
-        # upper_bounds = PIDParams(; k_p = 10.0, k_i = 20, k_d = 0, τ_f = 0.01)
-        # settings = Settings(; t_sim = t_sim_β2r, lower_bounds, upper_bounds)
-        # weights = Metrics(; Ms = 3.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.0)
-        # params_0 = PIDParams(; k_p = 1, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
-
-        β2r_results = optimize_PID(P_r2β_opt; params_0, settings, weights, global_search)
-
-        params_β2r = β2r_results.params
-        if !check_results(β2r_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
-            @warn("Checks failed for β to rudder PID, design point $(design_point), final metrics $(v2θ_results.metrics)")
-        end
-
-        β2r_pid = build_PID(β2r_results.params)
-        C_β2r = -β2r_pid
-        C_β2r = named_ss(ss(C_β2r), :C_β2r; u = :β_err, y = :rudder_cmd_ref)
-
-        β2r_sum = sumblock("β_err = β_ref - β")
-        P_aβ = connect([P_ar, β2r_sum, C_β2r], [:β_err=>:β_err, :β=>:β, :rudder_cmd_ref=>:rudder_cmd_ref],
-        w1 = [:aileron_cmd_ref, :β_ref], z1 = P_ar.y)
-
-        (P_aβ, params_β2r)
-
-    end
-
     ############################### φ + β ######################################
 
     P_φβ, params_φβ2ar = let
@@ -613,7 +576,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     end
 
-    return (ar2ar = params_ar2ar, β2r = params_β2r, φβ2ar = params_φβ2ar, p2φ = params_p2φ, χ2φ = params_χ2φ)
+    return (ar2ar = params_ar2ar, φβ2ar = params_φβ2ar, p2φ = params_p2φ, χ2φ = params_χ2φ)
 
 end
 

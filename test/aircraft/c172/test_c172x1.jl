@@ -9,7 +9,7 @@ using Flight.FlightAircraft
 #non-exported stuff
 using Flight.FlightLib.Control.Discrete: load_pid_lookup, load_lqr_tracker_lookup
 using Flight.FlightAircraft.C172X.C172XControl: lon_direct, lon_sas, lon_thr_q, lon_thr_θ, lon_thr_EAS, lon_EAS_q, lon_EAS_θ, lon_EAS_clm
-using Flight.FlightAircraft.C172X.C172XControl: lat_direct, lat_sas, lat_sas_β, lat_p_β, lat_φ_β, lat_χ_β
+using Flight.FlightAircraft.C172X.C172XControl: lat_direct, lat_sas, lat_p_β, lat_φ_β, lat_χ_β
 using Flight.FlightAircraft.C172X.C172XControl: vrt_gdc_off, vrt_gdc_alt
 using Flight.FlightAircraft.C172X.C172XControl: hor_gdc_off, hor_gdc_line
 using Flight.FlightAircraft.C172X.C172XControl: phase_gnd, phase_air
@@ -183,43 +183,6 @@ function test_control_modes()
 
     end
 
-    ################################ ail_rud SAS ###############################
-
-    @testset verbose = true "lat_sas_β" begin
-
-        Sim.init!(sim, init_air)
-
-        #enable SAS first and let the small initial transient die out
-        ctl.u.lon_ctl_mode_req = lon_sas
-        ctl.u.lat_ctl_mode_req = lat_sas
-        step!(sim, 1, true)
-
-        #now enable sideslip control
-        ctl.u.lat_ctl_mode_req = lat_sas_β
-        step!(sim, ctl.Δt, true)
-        @test ctl.y.lat_ctl_mode === lat_sas_β
-
-        β2r_lookup = load_pid_lookup(joinpath(data_folder, "β2r_lookup.h5"))
-        k_p = β2r_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
-        @test all(isapprox.(ctl.y.lat_ctl.β2r_pid.k_p, k_p; atol = 1e-6))
-
-        #the control mode must activate without transients
-        step!(sim, 0.5, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[1], y_kin_trim.ω_wb_b[1]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
-
-        ctl.u.aileron_input = 0.1
-        ctl.u.β_ref = deg2rad(3)
-        step!(sim, 10, true)
-        @test isapprox(Float64(ctl.u.p_ref), y_kin(ac).ω_wb_b[1]; atol = 1e-3)
-        @test isapprox(ctl.u.β_ref, y_aero(ac).β; atol = 1e-3)
-
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
-
-    end
 
     ################################ φ + β #####################################
 
