@@ -571,6 +571,9 @@ function sim_cleanup!(sim::Simulation)
     #unblock any IO threads still waiting for Simulation start
     notify(io_start)
 
+    #prepare for another run
+    reset(io_start)
+
 end
 
 
@@ -586,8 +589,6 @@ function run!(sim::Simulation)
 
     sim.control.pace = Inf
 
-    reset(sim.io_start)
-
     @sync begin
         for interface in sim.interfaces
             Threads.@spawn start!(interface)
@@ -600,8 +601,6 @@ end
 function run_interactive!(sim::Simulation; pace = 1.0)
 
     sim.control.pace = pace
-
-    reset(sim.io_start)
 
     @sync begin
         for interface in sim.interfaces
