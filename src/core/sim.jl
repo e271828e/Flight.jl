@@ -263,6 +263,10 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
 
 end
 
+function Simulation(sd::SystemDefinition, args...; kwargs...)
+    Simulation(System(sd), args...; kwargs...)
+end
+
 Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
 
 @generated function Base.getproperty(sim::Simulation, ::Val{S}) where {S}
@@ -528,14 +532,17 @@ function start!(sim::Simulation)
                     continue #skips next Simulation step
                 end
 
+                #compute wall-clock time at the end of next simulation step
                 τ_next = τ_last + get_proposed_dt(sim) / pace
 
-                #busy wait. not ideal, but much more responsive than
-                #sleep(τ_next - τ()). sleep() only guarantees a minimum thread
-                #sleep duration, and its granularity is not great
-                while τ_next > τ() end
-
+                #update simulation
                 @lock io_lock step!(sim)
+
+                #wait for wall-clock time to catch up. busy wait is not ideal,
+                #but it is more responsive than sleep(τ_next - τ()). sleep()
+                #only guarantees a minimum sleep duration, and its granularity
+                #is not good
+                while τ_next > τ() end
 
                 τ_last = τ_next
 
