@@ -1,3 +1,5 @@
+# API
+
 ```@docs
 FrameTransform
 ```
@@ -8,4 +10,7 @@ Wrench
 
 ```@docs
 Base.:∘(t_bc::FrameTransform, t_cd::FrameTransform)
+```
+
+```@index
 ```

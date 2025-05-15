@@ -6,8 +6,8 @@ makedocs(;
     doctest = false,
     remotes = nothing,
     pages = [
-        "Home" => "index.md",
-        "Examples" => "examples.md",
+        "About Flight.jl" => "index.md",
+        "Examples" => ["examples/ex01.md", "examples/ex02.md"],
         "API" => "api.md",
     ],
     format = Documenter.HTML(
