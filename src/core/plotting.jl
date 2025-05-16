@@ -74,15 +74,13 @@ end
 ################################################################################
 ######################### Multi-Plot Specifications ############################
 
-make_plots(::T; kwargs...) where {T<:TimeSeries} = @warn("Method make_plots not extended for $T")
+function make_plots(sim::Simulation;
+                    plot_level = :full, #:simplified
+                    plot_settings...)
+    make_plots(TimeSeries(sim); plot_level, plot_settings...)
+end
 
-#these yield a single figure so they can be directly handled by the Plots
-#pipeline as recipes
-make_plots(ts::TimeSeries{<:Real}; kwargs...) = plot(ts; kwargs...)
-
-make_plots(ts::TimeSeries{<:AbstractVector{<:Real}}; kwargs...) = plot(ts; kwargs...)
-
-#complex Systems whose outputs are NamedTuples will typically require multiple
+#complex Systems with NamedTuple outputs will generally require multiple
 #figures, so we cannot use a @recipe for them. we need to handle the TimeSeries
 #recursively
 function make_plots(ts::TimeSeries{<:NamedTuple}; kwargs...)
@@ -97,12 +95,13 @@ function make_plots(ts::TimeSeries{<:NamedTuple}; kwargs...)
 
 end
 
-function make_plots(sim::Simulation;
-                    plot_level = :full, #:simplified
-                    plot_settings...)
-    make_plots(TimeSeries(sim); plot_level, plot_settings...)
-end
+make_plots(::T; kwargs...) where {T<:TimeSeries} = @warn("Method make_plots not extended for $T")
 
+#these yield a single figure so they can be directly handled by the Plots
+#pipeline as recipes
+make_plots(ts::TimeSeries{<:Real}; kwargs...) = plot(ts; kwargs...)
+
+make_plots(ts::TimeSeries{<:AbstractVector{<:Real}}; kwargs...) = plot(ts; kwargs...)
 
 ################################################################################
 ############################# Plot Saving ######################################
