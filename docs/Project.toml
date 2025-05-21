@@ -1,3 +1,6 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 Flight = "e329eb8f-69f3-4234-a468-5e3889a58643"
+
+[sources]
+Flight = {path = ".."}
