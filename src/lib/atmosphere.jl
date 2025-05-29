@@ -142,8 +142,8 @@ ISAData(h::Geodesy.AbstractAltitudeDatum, args...) = ISAData(HGeop(h), args...)
 abstract type AbstractWind <: SystemDefinition end
 
 function get_wind(sys::System{<:AbstractWind},
-                  loc::Abstract3DLocation)::SVector{3,Float64}
-    MethodError(get_wind, (sys, loc)) |> throw
+                  pos::Abstract3DPosition)::SVector{3,Float64}
+    MethodError(get_wind, (sys, pos)) |> throw
 end
 
 ############################## No Wind Model ###################################
@@ -151,14 +151,14 @@ end
 struct NoWind <: AbstractWind end
 @no_dynamics NoWind
 
-get_wind(::System{NoWind}, ::Abstract3DLocation) = SVector{3,Float64}(0.0, 0.0, 0.0)
+get_wind(::System{NoWind}, ::Abstract3DPosition) = SVector{3,Float64}(0.0, 0.0, 0.0)
 
 ############################## Tunable Wind ####################################
 
 struct TunableWind <: AbstractWind end
 @no_dynamics TunableWind
 
-get_wind(sys::System{TunableWind}, ::Abstract3DLocation) = SVector{3}(sys.u)
+get_wind(sys::System{TunableWind}, ::Abstract3DPosition) = SVector{3}(sys.u)
 
 Systems.U(::TunableWind) = ComponentVector(N= 0.0, E = 0.0, D = 0.0)
 
@@ -246,8 +246,8 @@ end
 #can be static or dynamic, uniform or non-uniform
 abstract type AbstractAtmosphere <: SystemDefinition end
 
-function AtmosphericData(sys::System{<:AbstractAtmosphere}, loc::Abstract3DLocation)
-    MethodError(AtmosphericData, (sys, loc,)) |> throw
+function AtmosphericData(sys::System{<:AbstractAtmosphere}, pos::Abstract3DPosition)
+    MethodError(AtmosphericData, (sys, pos,)) |> throw
 end
 
 ################################################################################
@@ -265,13 +265,13 @@ end
 @no_step SimpleAtmosphere
 
 function AtmosphericData(sys::System{<:SimpleAtmosphere},
-                        loc::Abstract3DLocation)
+                        pos::Abstract3DPosition)
 
-    @unpack T, p = ISAData(HGeop(loc), ISAData(sys.sl, NVector(loc)))
+    @unpack T, p = ISAData(HGeop(pos), ISAData(sys.sl, NVector(pos)))
     ρ = density(p, T)
     a = speed_of_sound(T)
     μ = dynamic_viscosity(T)
-    v = get_wind(sys.wind, loc)
+    v = get_wind(sys.wind, pos)
     AtmosphericData(; T, p, ρ, a, μ, v)
 end
 
