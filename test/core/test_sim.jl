@@ -153,7 +153,7 @@ end
 
 ################################ XPC Loopback ##################################
 
-function IODevices.extract_output(::System{TestSystem}, ::XPlane12OutputMapping)
+function IODevices.extract_output(::System{TestSystem}, ::XPlane12ControlMapping)
     data = KinData() |> XPlanePose |> Network.xpmsg_set_pose
     return data
 end
@@ -166,7 +166,7 @@ function xp12_loopback()
         sys = TestSystem() |> System
         sim = Simulation(sys; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
-        Sim.attach!(sim, XPlane12Output(; port))
+        Sim.attach!(sim, XPlane12Control(; port))
         Sim.run!(sim)
 
         cmd = KinData() |> XPlanePose |> Network.xpmsg_set_pose

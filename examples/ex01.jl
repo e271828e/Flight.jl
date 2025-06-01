@@ -49,7 +49,7 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
 
     Sim.init!(sim, initializer)
 
-    xp = XPlane12Output(address = xp12_address, port = xp12_port)
+    xp = XPlane12Control(address = xp12_address, port = xp12_port)
     Sim.attach!(sim, xp)
     for joystick in update_connected_joysticks()
         Sim.attach!(sim, joystick)

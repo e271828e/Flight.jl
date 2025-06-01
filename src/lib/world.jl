@@ -55,10 +55,10 @@ function Systems.init!( world::System{<:SimpleWorld}, args...)
 end
 
 ################################################################################
-############################### XPlane12Output #################################
+############################### XPlane12Control #################################
 
 function IODevices.extract_output(world::System{<:SimpleWorld},
-                                mapping::XPlane12OutputMapping)
+                                mapping::XPlane12ControlMapping)
     IODevices.extract_output(world.ac, mapping)
 end
 

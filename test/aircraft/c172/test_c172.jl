@@ -56,7 +56,7 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
     Sim.init!(sim, initializer)
 
     if interactive
-        xp = XPlane12Output(address = IPv4("127.0.0.1"), port = 49000)
+        xp = XPlane12Control(address = IPv4("127.0.0.1"), port = 49000)
         for joystick in update_connected_joysticks()
             Sim.attach!(sim, joystick)
         end
@@ -107,7 +107,7 @@ function test_xp12()
     address = IPv4("127.0.0.1")
     # address = IPv4("192.168.1.2")
     port = 49000
-    xpc = XPlane12Output(; address, port)
+    xpc = XPlane12Control(; address, port)
     IODevices.init!(xpc)
 
     h_trn = HOrth(427.2);

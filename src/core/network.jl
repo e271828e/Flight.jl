@@ -8,7 +8,7 @@ using JSON3
 using ..IODevices
 
 export UDPOutput, UDPInput
-export XPlane12Output, XPlane12OutputMapping, XPlanePose
+export XPlane12Control, XPlane12ControlMapping, XPlanePose
 
 #UDPInput interprets the EOT character as a shutdown request. This provides a
 #means to prevent the UDPInput thread from getting stuck in the blocking recv
@@ -90,23 +90,23 @@ end
 #must be defined by the user and passed to the Simulation via the attach! method
 
 ################################################################################
-################################# XPlane12Output ###############################
+################################# XPlane12Control ###############################
 
-struct XPlane12Output{U <: UDPOutput} <: OutputDevice
+struct XPlane12Control{U <: UDPOutput} <: OutputDevice
     udp::U
-    function XPlane12Output(udp::U) where {U <: UDPOutput}
+    function XPlane12Control(udp::U) where {U <: UDPOutput}
         new{U}(udp)
     end
 end
 
-function XPlane12Output(; address = IPv4("127.0.0.1"), port = 49000, kwargs...)
-    XPlane12Output(UDPOutput(; address, port, kwargs...))
+function XPlane12Control(; address = IPv4("127.0.0.1"), port = 49000, kwargs...)
+    XPlane12Control(UDPOutput(; address, port, kwargs...))
 end
 
-struct XPlane12OutputMapping <: IOMapping end
-IODevices.get_default_mapping(::XPlane12Output) = XPlane12OutputMapping()
+struct XPlane12ControlMapping <: IOMapping end
+IODevices.get_default_mapping(::XPlane12Control) = XPlane12ControlMapping()
 
-function IODevices.init!(xpc::XPlane12Output)
+function IODevices.init!(xpc::XPlane12Control)
 
     override_pose = "sim/operation/override/override_planepath[0]"
     override_surf = "sim/operation/override/override_control_surfaces[0]"
@@ -123,9 +123,9 @@ function IODevices.init!(xpc::XPlane12Output)
     IODevices.handle_data!(xpc.udp, msg_tuple)
 end
 
-IODevices.shutdown!(xpc::XPlane12Output) = IODevices.shutdown!(xpc.udp)
+IODevices.shutdown!(xpc::XPlane12Control) = IODevices.shutdown!(xpc.udp)
 
-function IODevices.handle_data!(xpc::XPlane12Output, data::Union{String, NTuple{N, String}}) where N
+function IODevices.handle_data!(xpc::XPlane12Control, data::Union{String, NTuple{N, String}}) where N
     sleep(0.01) #give X-Plane some breathing room
     IODevices.handle_data!(xpc.udp, data)
 end

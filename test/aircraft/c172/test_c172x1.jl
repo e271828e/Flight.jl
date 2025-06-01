@@ -694,8 +694,8 @@ function test_json_loopback(; save::Bool = true)
     #initialize simulated system
     Sim.init!(sim, initializer)
 
-    #the loopback interface must not share its port with the XPlane12Output!
-    Sim.attach!(sim, XPlane12Output(; port = 49000))
+    #the loopback interface must not share its port with the XPlane12Control!
+    Sim.attach!(sim, XPlane12Control(; port = 49000))
     Sim.attach!(sim, UDPInput(; port = 49017), JSONTestMapping())
     Sim.attach!(sim, UDPOutput(; port = 49017), JSONTestMapping())
 
@@ -772,8 +772,8 @@ function test_sim_interactive(; save::Bool = true)
         Sim.attach!(sim, joystick)
     end
 
-    xpc = XPlane12Output()
-    # xpc = XPlane12Output(address = IPv4("192.168.1.2"))
+    xpc = XPlane12Control()
+    # xpc = XPlane12Control(address = IPv4("192.168.1.2"))
     Sim.attach!(sim, xpc)
 
     Sim.run_interactive!(sim; pace = 1)

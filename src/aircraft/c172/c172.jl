@@ -914,9 +914,9 @@ function AircraftBase.linearize!( ac::System{<:Cessna172},
 end
 
 ################################################################################
-############################### XPlane12Output ###################################
+############################### XPlane12Control ###################################
 
-function IODevices.extract_output(ac::System{<:Cessna172}, ::XPlane12OutputMapping)
+function IODevices.extract_output(ac::System{<:Cessna172}, ::XPlane12ControlMapping)
 
     t = ac.t[]
     @unpack δe, δa, δr, δf = ac.y.vehicle.components.aero
