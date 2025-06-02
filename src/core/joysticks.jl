@@ -247,6 +247,8 @@ end
     hat::HatButtons{ButtonData} = zeros(HatButtons{ButtonData})
 end
 
+const T16000M = Joystick{T16000MData}
+
 function T16000MData(joystick::Joystick{T16000MData})
 
     @unpack ptr, cache = joystick
@@ -303,6 +305,8 @@ end
     hat_middle::HatButtons{ButtonData} = zeros(HatButtons{ButtonData})
     hat_bottom::HatButtons{ButtonData} = zeros(HatButtons{ButtonData})
 end
+
+const TWCS = Joystick{TWCSData}
 
 function TWCSData(joystick::Joystick{TWCSData})
 

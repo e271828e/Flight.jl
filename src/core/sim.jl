@@ -690,16 +690,18 @@ TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
 
 #prevent monstrous (nested, parameterized) types from flooding the REPL
 function Base.show(io::IO, ::MIME"text/plain", x::Simulation)
-    str = sprint(show, x)
-    maxlen = 200
-    length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
+    print(io, "Simulation{...}(...)")
+    # str = sprint(show, x)
+    # maxlen = 200
+    # length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
 end
 
 #prevent monstrous (nested, parameterized) types from flooding the REPL
 function Base.show(io::IO, ::MIME"text/plain", x::Type{<:Simulation})
-    str = sprint(show, x)
-    maxlen = 200
-    length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
+    print(io, "Simulation{...}")
+    # str = sprint(show, x)
+    # maxlen = 200
+    # length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
 end
 
 

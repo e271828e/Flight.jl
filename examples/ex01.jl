@@ -52,7 +52,7 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
     xp = XPlane12Control(address = xp12_address, port = xp12_port)
     Sim.attach!(sim, xp)
     for joystick in update_connected_joysticks()
-        Sim.attach!(sim, joystick)
+        isa(joystick, Joysticks.T16000M) && Sim.attach!(sim, joystick)
     end
 
     Sim.run_interactive!(sim)
@@ -63,5 +63,7 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
     save && save_plots(kin_plots, save_folder = joinpath("tmp", "plots", "ex01", "kin"))
     save && save_plots(air_plots, save_folder = joinpath("tmp", "plots", "ex01", "air"))
     save && save_plots(dyn_plots, save_folder = joinpath("tmp", "plots", "ex01", "dyn"))
+
+    return sim
 
 end
