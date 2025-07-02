@@ -8,7 +8,7 @@ using Flight.FlightLib
 
 using ..C172
 
-export Cessna172X, Cessna172Xv0
+export Cessna172X
 
 ################################################################################
 ################################## Actuator1 ###################################
@@ -256,44 +256,6 @@ function Vehicle(kinematics = WA())
     AircraftBase.Vehicle(
         C172.Components(PowerPlant(), FlyByWireActuation()),
         kinematics, VehicleDynamics())
-end
-
-################################################################################
-################################# Cessna172Xv0 ################################
-
-const Cessna172Xv0{K} = Cessna172X{K, NoAvionics} where { K <: AbstractKinematicDescriptor}
-
-function Cessna172Xv0(kinematics = WA())
-    AircraftBase.Aircraft(Vehicle(kinematics), NoAvionics())
-end
-
-############################ Joystick Mappings #################################
-
-pitch_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-roll_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
-brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
-
-function IODevices.assign_input!(sys::System{<:Cessna172Xv0},
-                           ::GenericInputMapping, data::T16000MData)
-
-    #mixture not assigned
-    @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
-            brake_left, brake_right = sys.vehicle.components.act.subsystems
-
-    @unpack axes, buttons, hat = data
-
-    throttle.u[] = axes.throttle
-    aileron.u[] = axes.stick_x |> roll_curve
-    elevator.u[] = axes.stick_y |> pitch_curve
-    rudder.u[] = axes.stick_z |> yaw_curve
-    steering.u[] = axes.stick_z |> yaw_curve
-    brake_left.u[] = is_pressed(buttons.button_1)
-    brake_right.u[] = is_pressed(buttons.button_1)
-
-    flaps.u[] += 0.3333 * was_released(buttons.button_3)
-    flaps.u[] -= 0.3333 * was_released(buttons.button_2)
-
 end
 
 
@@ -570,10 +532,11 @@ end
 
 
 ################################################################################
-################################## Variants ####################################
+################################## Versions ####################################
 
 include(normpath("control/c172x_ctl.jl"))
 
+include(normpath("c172x0.jl")); @reexport using .C172Xv0
 include(normpath("c172x1.jl")); @reexport using .C172Xv1
 
 end

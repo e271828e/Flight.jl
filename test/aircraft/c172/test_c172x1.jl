@@ -531,11 +531,6 @@ function test_control_modes()
         world.n[] = 0
         @test @ballocated(f_disc!($world)) == 0
 
-        # kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
-        # air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-        # save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172_rpa1", "avionics", "kin"))
-        # save_plots(air_plots, save_folder = joinpath("tmp", "test_c172_rpa1", "avionics", "air"))
-        # return TimeSeries(sim)
         # return sim
 
     end #testset
@@ -705,10 +700,9 @@ function test_json_loopback(; save::Bool = true)
 
     Sim.run_interactive!(sim)
 
-    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172x1", "sim_interactive", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172x1", "sim_interactive", "air"))
+    save && save_plots(TimeSeries(sim).ac.vehicle.kinematics,
+                        normpath("tmp/plots/test_c172x1/test_json_loopback/kin");
+                        Plotting.defaults...)
 
     return nothing
 
@@ -729,19 +723,16 @@ function test_sim(; save::Bool = true)
     initializer = C172.TrimParameters(
         Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
-    trn = HorizontalTerrain(altitude = h_trn)
-    ac = Cessna172Xv1(WA(), trn) |> System;
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> System
 
-    sim = Simulation(ac; t_end = 30)
-
+    sim = Simulation(world; t_end = 30)
     Sim.init!(sim, initializer)
 
     Sim.run!(sim)
 
-    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172x1", "sim", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172x1", "sim", "air"))
+    save && save_plots(TimeSeries(sim).ac.vehicle.kinematics,
+                        normpath("tmp/plots/test_c172x1/test_sim/kin");
+                        Plotting.defaults...)
 
     return nothing
 
@@ -778,10 +769,9 @@ function test_sim_interactive(; save::Bool = true)
 
     Sim.run_interactive!(sim; pace = 1)
 
-    kin_plots = make_plots(TimeSeries(sim).vehicle.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeSeries(sim).vehicle.air; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172x1", "sim_interactive", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172x1", "sim_interactive", "air"))
+    save && save_plots(TimeSeries(sim).ac.vehicle.kinematics,
+                        normpath("tmp/plots/test_c172x1/test_sim_interactive/kin");
+                        Plotting.defaults...)
 
     return nothing
 

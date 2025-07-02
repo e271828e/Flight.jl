@@ -66,12 +66,12 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
         Sim.run!(sim)
     end
 
-    kin_plots = make_plots(TimeSeries(sim).ac.vehicle.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeSeries(sim).ac.vehicle.airflow; Plotting.defaults...)
-    dyn_plots = make_plots(TimeSeries(sim).ac.vehicle.dynamics; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "test_c172", "sim", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "test_c172", "sim", "air"))
-    save && save_plots(dyn_plots, save_folder = joinpath("tmp", "test_c172", "sim", "dyn"))
+    save && save_plots(TimeSeries(sim).ac.vehicle.kinematics,
+                        normpath("tmp/plots/test_c172/kin"); Plotting.defaults...)
+    save && save_plots(TimeSeries(sim).ac.vehicle.airflow,
+                        normpath("tmp/plots/test_c172/air"); Plotting.defaults...)
+    save && save_plots(TimeSeries(sim).ac.vehicle.dynamics,
+                        normpath("tmp/plots/test_c172/dyn"); Plotting.defaults...)
 
 end
 

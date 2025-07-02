@@ -74,11 +74,7 @@ end
 ################################################################################
 ######################### Multi-Plot Specifications ############################
 
-function make_plots(sim::Simulation;
-                    plot_level = :full, #:simplified
-                    plot_settings...)
-    make_plots(TimeSeries(sim); plot_level, plot_settings...)
-end
+make_plots(sim::Simulation; kwargs...) = make_plots(TimeSeries(sim); kwargs...)
 
 #complex Systems with NamedTuple outputs will generally require multiple
 #figures, so we cannot use a @recipe for them. we need to handle the TimeSeries
@@ -95,7 +91,7 @@ function make_plots(ts::TimeSeries{<:NamedTuple}; kwargs...)
 
 end
 
-make_plots(::T; kwargs...) where {T<:TimeSeries} = @warn("Method make_plots not extended for $T")
+make_plots(::T; kwargs...) where {T<:TimeSeries} = @warn("make_plots not implemented for $T")
 
 #these yield a single figure so they can be directly handled by the Plots
 #pipeline as recipes
@@ -106,27 +102,33 @@ make_plots(ts::TimeSeries{<:AbstractVector{<:Real}}; kwargs...) = plot(ts; kwarg
 ################################################################################
 ############################# Plot Saving ######################################
 
-function save_plots(dict::OrderedDict{Symbol, T} where {T};
-                    save_folder::Union{String, Nothing} = nothing, format = :png)
+save_plots(sim::Simulation, args...; kwargs...) = save_plots(TimeSeries(sim), args...; kwargs...)
 
-    save_folder = mkpath(save_folder === nothing ?
-        joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")) : save_folder)
+function save_plots(ts::TimeSeries, args...; kwargs...)
+    pd = make_plots(ts; kwargs...)
+    save_plots(pd, args...; kwargs...)
+end
 
-    n = 0
-    for (label, child) in zip(keys(dict), values(dict))
+function save_plots(dict::OrderedDict{Symbol, T} where {T},
+                    folder::Union{String, Nothing} = nothing,
+                    format::Symbol = :png;
+                    kwargs...)
+
+    folder = mkpath(!isnothing(folder) ? folder : joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
+
+    for (index, (label, child)) in enumerate(zip(keys(dict), values(dict)))
 
         if isa(child, OrderedDict)
-            save_subfolder = mkpath(joinpath(save_folder, String(label)))
-            save_plots(dict[label]; save_folder = save_subfolder, format)
+            subfolder = mkpath(joinpath(folder, String(label)))
+            save_plots(dict[label], subfolder, format; kwargs...)
 
         elseif isa(child, Plots.Plot)
-            n += 1
-            plot_filename = joinpath(save_folder, string(n, pad = 2)*"_"*String(label)*"."*String(format))
+            plot_filename = joinpath(folder, string(index, pad = 2)*"_"*String(label)*"."*String(format))
             savefig(child, plot_filename)
             @info("Saved figure $plot_filename")
 
         elseif !isnothing(child)
-            @error("Invalid entry type ($(typeof(child))")
+            @error("Invalid entry type: ($(typeof(child))")
 
         end
     end

@@ -5,7 +5,7 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
                 situation::Symbol = :ground,
                 xp12_address = IPv4("127.0.0.1"),
                 xp12_port = 49000,
-                save::Bool = true)
+                )
 
     #3D position and geographic heading for Salzburg airport (LOWS) runway 15
     p_LOWS15 = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HOrth(427.2))
@@ -57,12 +57,10 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
 
     Sim.run_interactive!(sim)
 
-    kin_plots = make_plots(TimeSeries(sim).ac.vehicle.kinematics; Plotting.defaults...)
-    air_plots = make_plots(TimeSeries(sim).ac.vehicle.airflow; Plotting.defaults...)
-    dyn_plots = make_plots(TimeSeries(sim).ac.vehicle.dynamics; Plotting.defaults...)
-    save && save_plots(kin_plots, save_folder = joinpath("tmp", "plots", "ex01", "kin"))
-    save && save_plots(air_plots, save_folder = joinpath("tmp", "plots", "ex01", "air"))
-    save && save_plots(dyn_plots, save_folder = joinpath("tmp", "plots", "ex01", "dyn"))
+    save_plots(TimeSeries(sim).ac.vehicle.kinematics, normpath("tmp/plots/ex01/kin"); Plotting.defaults..., linewidth = 2,)
+    save_plots(TimeSeries(sim).ac.vehicle.airflow, normpath("tmp/plots/ex01/air"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).ac.vehicle.dynamics, normpath("tmp/plots/ex01/dyn"); Plotting.defaults...)
+    # save_plots(TimeSeries(sim).ac.vehicle.dynamics; Plotting.defaults...)
 
     return sim
 
