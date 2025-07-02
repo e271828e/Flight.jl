@@ -298,18 +298,18 @@ function dynamic_button(label::String,
 end
 
 function mode_button(label::String,
-                    button_mode::T,
-                    requested_mode::T,
-                    active_mode::T;
+                    button_mode::T, #mode enabled by this button
+                    requested_mode::T, #currently requested mode
+                    active_mode::T; #currently active mode
                     HSV_none::NTuple{3,Real} = HSV_gray,
                     HSV_requested::NTuple{3,Real} = HSV_amber,
                     HSV_active::NTuple{3,Real} = HSV_green, kwargs...) where {T}
 
-    if active_mode === button_mode
+    if active_mode === button_mode #mode enabled by this button is active
         HSV_button = HSV_active
-    elseif requested_mode === button_mode
+    elseif requested_mode === button_mode #mode enabled by this button is requested but not active
         HSV_button = HSV_requested
-    else
+    else #mode enabled by this button is neither active nor requested
         HSV_button = HSV_none
     end
 

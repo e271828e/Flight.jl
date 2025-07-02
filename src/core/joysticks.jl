@@ -247,8 +247,6 @@ end
     hat::HatButtons{ButtonData} = zeros(HatButtons{ButtonData})
 end
 
-const T16000M = Joystick{T16000MData}
-
 function T16000MData(joystick::Joystick{T16000MData})
 
     @unpack ptr, cache = joystick
@@ -273,6 +271,8 @@ function rescale(data::T16000MAxes{T}) where {T<:AbstractFloat}
     @unpack stick_x, stick_y, stick_z, throttle = data
     T16000MAxes{T}(; stick_x, stick_y, stick_z, throttle = 0.5*(1 - throttle))
 end
+
+const T16000M = Joystick{T16000MData}
 
 
 ################################################################################
@@ -305,8 +305,6 @@ end
     hat_middle::HatButtons{ButtonData} = zeros(HatButtons{ButtonData})
     hat_bottom::HatButtons{ButtonData} = zeros(HatButtons{ButtonData})
 end
-
-const TWCS = Joystick{TWCSData}
 
 function TWCSData(joystick::Joystick{TWCSData})
 
@@ -346,6 +344,8 @@ function rescale(data::TWCSAxes{T}) where {T<:AbstractFloat}
     TWCSAxes{T}(; mini_stick_x, mini_stick_y, throttle = 0.5*(1 - throttle),
                 right_pedal, left_pedal, rocker, rudder, antenna = 0.5*(antenna + 1))
 end
+
+const TWCS = Joystick{TWCSData}
 
 
 ################################################################################
