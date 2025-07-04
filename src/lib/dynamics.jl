@@ -502,8 +502,8 @@ function Systems.f_ode!(sys::System{VehicleDynamics},
     q_cl = q_ce ∘ q_el
 
     #compute gravity at c
-    g_c_l = SVector{3,Float64}(0, 0, gravity(Oc)) #gravity at c, l axes
-    g_c_c = q_cl(g_c_l) #gravity at c, c axes
+    g_c_l = SVector{3,Float64}(0, 0, gravity(Oc)) #gravity at c, l coordinates\
+    g_c_c = q_cl(g_c_l) #gravity at c, c coordinates
 
     #solve dynamic equations at c
     hc_Σ_c = J_Σ_c * ω_ic_c + ho_Σ_c

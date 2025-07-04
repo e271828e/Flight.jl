@@ -45,12 +45,12 @@ function GUI.draw!(control::SimControl)
         mode_button("Pause", true, false, control.paused; HSV_active = HSV_amber)
         CImGui.IsItemClicked() && (control.paused = !control.paused); CImGui.SameLine()
 
-        dynamic_button("Abort", HSV_red)
-        if CImGui.IsItemClicked()
-            control.paused = false
-            control.running = false
-        end
-        CImGui.SameLine()
+        # dynamic_button("Abort", HSV_red)
+        # if CImGui.IsItemClicked()
+        #     control.paused = false
+        #     control.running = false
+        # end
+        # CImGui.SameLine()
 
         control.pace = safe_slider("Pace", control.pace, 0.1, 20.0, "%.3f",
         ImGuiSliderFlags_Logarithmic; show_label = true)
@@ -86,7 +86,7 @@ struct SimInterface{D <: IODevice, S <: System, M <: IOMapping}
     control::SimControl
     io_start::Base.Event
     io_lock::ReentrantLock
-    should_abort::Bool
+    should_abort::Bool #Simulation should abort when this interface shuts down
 end
 
 const SimInput{D} = SimInterface{D} where {D <: InputDevice}

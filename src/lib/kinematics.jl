@@ -146,7 +146,7 @@ KinData(sys::KinSystem) = sys.y
 ##########################################################################
 
 #fast, singularity-free (all-attitude, all-latitude) kinematic mechanization,
-#appropriate for simulation. wander-azimuth is the wander-azimuth frame
+#appropriate for simulation. WA = wander-azimuth frame
 
 struct WA <: AbstractKinematicDescriptor end
 
