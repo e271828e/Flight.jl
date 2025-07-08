@@ -76,7 +76,7 @@ end
 #################################### GUI #######################################
 
 function GUI.draw!(world::System{<:SimpleWorld};
-                    p_open::Ref{Bool} = Ref(true), label::String = "World")
+                    p_open::Ref{Bool} = Ref(true), label::String = "Simple World")
 
     CImGui.Begin(label, p_open)
 

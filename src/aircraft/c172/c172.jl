@@ -17,25 +17,25 @@ export Cessna172
 struct Airframe <: SystemDefinition end
 
 # This component represents the platform's structure, together with any
-# components rigidly attached to it, such as powerplant or landing gear, but not
-# payload or fuel contents. Its mass corresponds roughly to the aircraft's
-# Standard Empty Weight
+# components rigidly attached to it, such as the power plant or landing gear,
+# but excluding the payload and fuel load. Its mass corresponds roughly to the
+# aircraft's Standard Empty Weight
 
-#compute Airframe mass properties computed in the vehicle reference frame b
+#compute Airframe mass properties in the vehicle reference frame b
 const mp_b_afm = let
-    #define the airframe as a RigidBodyDistribution
-    afm_c = RigidBodyDistribution(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
-    #a RigidBodyDistribution is always specified in a reference frame c with
-    #origin at its center of mass. now, define the transform from vehicle
-    #reference frame b to reference frame c (pure translation)
+    #define the airframe as a RigidBodyDistribution; a RigidBodyDistribution is
+    #specified in a reference frame c with origin at its center of mass.
+    airframe_c = RigidBodyDistribution(767.0, SA[820.0 0 0; 0 1164.0 0; 0 0 1702.0])
+    #now, define the transform from vehicle reference frame b to airframe
+    #reference frame c (pure translation)
     t_bc = FrameTransform(r = SVector{3}(0.056, 0, 0.582))
-    #translate the airframe's mass properties to frame b
-    MassProperties(afm_c, t_bc)
+    #get the airframe's mass properties to frame b
+    MassProperties(airframe_c, t_bc)
 end
 
 #the airframe itself receives no external actions nor has any internal angular
-#momentum. these are considered individually in the vehicle's aerodynamics,
-#power plant and landing gear
+#momentum. these are considered separately in the vehicle's aerodynamics, power
+#plant and landing gear
 Dynamics.get_mp_b(::System{Airframe}) = mp_b_afm
 Dynamics.get_wr_b(::System{Airframe}) = Wrench()
 Dynamics.get_hr_b(::System{Airframe}) = zeros(SVector{3})

@@ -7,7 +7,7 @@ makedocs(;
     remotes = nothing,
     pages = [
         "About Flight.jl" => "index.md",
-        "Examples" => ["examples/ex01.md", "examples/ex02.md"],
+        "Showcase" => ["examples/ex01.md", "examples/ex02.md"],
         "API" => "api.md",
     ],
     format = Documenter.HTML(
