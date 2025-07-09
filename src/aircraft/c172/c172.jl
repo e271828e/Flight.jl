@@ -774,7 +774,7 @@ end
     x_fuel::Ranged{Float64, 0., 1.} = 0.5 #normalized fuel load
     mixture::Ranged{Float64, 0., 1.} = 0.5 #engine mixture control
     flaps::Ranged{Float64, 0., 1.} = 0.0 #flap setting
-    payload::C172.PayloadU = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50)
+    payload::C172.PayloadU = C172.PayloadU()
 end
 
 function Atmosphere.AtmosphericData(sys::System{<:AbstractAtmosphere},

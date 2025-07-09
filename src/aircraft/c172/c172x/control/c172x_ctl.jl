@@ -104,12 +104,12 @@ end
 end
 
 @kwdef mutable struct LonControlU
-    mode::LonControlMode = lon_direct #selected control mode
+    mode::LonControlMode = lon_direct
     throttle_ref::Float64 = 0.0
     elevator_ref::Float64 = 0.0
     q_ref::Float64 = 0.0
     θ_ref::Float64 = 0.0
-    EAS_ref::Float64 = C172.TrimParameters().EAS #equivalent airspeed reference
+    EAS_ref::Float64 = C172.TrimParameters().EAS
     clm_ref::Float64 = 0.0 #climb rate reference
 end
 
@@ -119,7 +119,7 @@ end
     elevator_ref::Float64 = 0.0
     q_ref::Float64 = 0.0
     θ_ref::Float64 = 0.0
-    EAS_ref::Float64 = C172.TrimParameters().EAS #equivalent airspeed reference
+    EAS_ref::Float64 = C172.TrimParameters().EAS
     clm_ref::Float64 = 0.0 #climb rate reference
     throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
@@ -605,14 +605,14 @@ end
     steering::Ranged{Float64, -1., 1.} = 0.0 #passthrough
     brake_left::Ranged{Float64, 0., 1.} = 0.0 #passthrough
     brake_right::Ranged{Float64, 0., 1.} = 0.0 #passthrough
-    throttle_input::Ranged{Float64, 0., 1.} = 0.0 #sets throttle_ref
-    aileron_input::Ranged{Float64, -1., 1.} = 0.0 #sets aileron_ref or p_ref
-    elevator_input::Ranged{Float64, -1., 1.} = 0.0 #sets elevator_ref or q_ref
-    rudder_input::Ranged{Float64, -1., 1.} = 0.0 #sets rudder_ref or β_ref
-    throttle_offset::Ranged{Float64, 0., 1.} = 0.0 #for direct throttle control only
-    aileron_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct aileron control only
-    elevator_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct elevator control only
-    rudder_offset::Ranged{Float64, -1., 1.} = 0.0 #for direct rudder control only
+    throttle_input::Ranged{Float64, 0., 1.} = 0.0
+    aileron_input::Ranged{Float64, -1., 1.} = 0.0
+    elevator_input::Ranged{Float64, -1., 1.} = 0.0
+    rudder_input::Ranged{Float64, -1., 1.} = 0.0
+    throttle_offset::Ranged{Float64, 0., 1.} = 0.0
+    aileron_offset::Ranged{Float64, -1., 1.} = 0.0
+    elevator_offset::Ranged{Float64, -1., 1.} = 0.0
+    rudder_offset::Ranged{Float64, -1., 1.} = 0.0
     vrt_gdc_mode_req::VerticalGuidanceMode = vrt_gdc_off #requested vertical guidance mode
     hor_gdc_mode_req::HorizontalGuidanceMode = hor_gdc_off #requested horizontal guidance mode
     lon_ctl_mode_req::LonControlMode = lon_direct #requested longitudinal control mode
@@ -775,7 +775,7 @@ function Systems.init!(sys::System{<:Controller},
     Systems.reset!(sys)
 
     #in a fly-by-wire implementation, it makes more sense to assign the trim
-    #values to the inputs rather to the offsets
+    #values to the inputs rather than the offsets
     u = sys.u
     u.throttle_input = y_act.throttle.pos
     u.aileron_input = y_act.aileron.pos
@@ -1121,6 +1121,37 @@ function GUI.draw!(ctl::System{<:Controller},
     end #cstatic
 
 
+    ############################################################################
+
+    if CImGui.CollapsingHeader("Primary Actuation")
+        if CImGui.BeginTable("Primary Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                CImGui.TableNextColumn(); Text("Throttle")
+                CImGui.TableNextColumn(); Text("Elevator")
+                CImGui.TableNextColumn(); Text("Aileron")
+                CImGui.TableNextColumn(); Text("Rudder")
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Setpoint")
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_ref)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Command")
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_cmd)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Position")
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.throttle.pos)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.elevator.pos)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.aileron.pos)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.rudder.pos)))
+            CImGui.EndTable()
+        end
+    end
 
 
     ############################################################################
@@ -1161,36 +1192,6 @@ function GUI.draw!(ctl::System{<:Controller},
 
 
     ############################################################################
-
-    if CImGui.CollapsingHeader("Primary Actuator Data")
-        if CImGui.BeginTable("Primary Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                CImGui.TableNextColumn(); Text("Throttle")
-                CImGui.TableNextColumn(); Text("Elevator")
-                CImGui.TableNextColumn(); Text("Aileron")
-                CImGui.TableNextColumn(); Text("Rudder")
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Setpoint")
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_ref)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Command")
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_cmd)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Position")
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.throttle.pos)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.elevator.pos)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.aileron.pos)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.rudder.pos)))
-            CImGui.EndTable()
-        end
-    end
 
 
     if CImGui.CollapsingHeader("Flight Data")
