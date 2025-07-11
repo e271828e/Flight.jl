@@ -63,10 +63,10 @@ function test_control_modes()
     ctl.u.hor_gdc_mode_req = hor_gdc_line
     ctl.u.lon_ctl_mode_req = lon_EAS_clm
     ctl.u.lat_ctl_mode_req = lat_p_β
-    ctl.u.throttle_input = 0.1
-    ctl.u.aileron_input = 0.2
-    ctl.u.elevator_input = 0.3
-    ctl.u.rudder_input = 0.4
+    ctl.u.throttle_axis = 0.1
+    ctl.u.aileron_axis = 0.2
+    ctl.u.elevator_axis = 0.3
+    ctl.u.rudder_axis = 0.4
 
     #step for one controller sample period
     step!(sim, ctl.Δt, true)
@@ -294,7 +294,7 @@ function test_control_modes()
         step!(sim, 29, true)
         @test ctl.lat_ctl.u.χ_ref != 0
         @test isapprox(ctl.u.χ_ref, y_kin(ac).χ_gnd; atol = 1e-2)
-        # @test isapprox(Float64(ctl.u.yaw_input), y_aero(ac).β; atol = 1e-3)
+        # @test isapprox(Float64(ctl.u.yaw_axis), y_aero(ac).β; atol = 1e-3)
 
         #correct tracking with 10m/s of crosswind (N, current heading is E)
         world.atm.wind.u.N = 10
@@ -344,7 +344,7 @@ function test_control_modes()
         @test ctl.lon_ctl.u.q_ref != 0
         @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
         @test isapprox(Float64(ac.y.vehicle.components.act.throttle.cmd),
-                        Float64(ctl.u.throttle_input + ctl.u.throttle_offset); atol = 1e-3)
+                        Float64(ctl.u.throttle_axis + ctl.u.throttle_offset); atol = 1e-3)
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved

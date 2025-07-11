@@ -90,20 +90,20 @@ function IODevices.assign_input!(sys::System{<:Cessna172Xv1},
 
     @unpack axes, buttons, hat = data
 
-    throttle_input = axes.throttle
-    roll_input = roll_curve(axes.stick_x)
-    pitch_input =  pitch_curve(axes.stick_y)
-    yaw_input = yaw_curve(axes.stick_z)
+    throttle_axis = axes.throttle
+    roll_axis = roll_curve(axes.stick_x)
+    pitch_axis =  pitch_curve(axes.stick_y)
+    yaw_axis = yaw_curve(axes.stick_z)
 
-    u.throttle_input = throttle_input
-    u.aileron_input = roll_input
-    u.elevator_input = pitch_input
-    u.rudder_input = yaw_input
+    u.throttle_axis = throttle_axis
+    u.aileron_axis = roll_axis
+    u.elevator_axis = pitch_axis
+    u.rudder_axis = yaw_axis
 
-    u.p_ref = p_sf * roll_input
-    u.q_ref = q_sf * pitch_input
+    u.p_ref = p_sf * roll_axis
+    u.q_ref = q_sf * pitch_axis
 
-    u.steering = yaw_input
+    u.steering = yaw_axis
     u.brake_left = is_pressed(buttons.button_1)
     u.brake_right = is_pressed(buttons.button_1)
 

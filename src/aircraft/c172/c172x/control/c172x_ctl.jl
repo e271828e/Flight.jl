@@ -605,10 +605,10 @@ end
     steering::Ranged{Float64, -1., 1.} = 0.0 #passthrough
     brake_left::Ranged{Float64, 0., 1.} = 0.0 #passthrough
     brake_right::Ranged{Float64, 0., 1.} = 0.0 #passthrough
-    throttle_input::Ranged{Float64, 0., 1.} = 0.0
-    aileron_input::Ranged{Float64, -1., 1.} = 0.0
-    elevator_input::Ranged{Float64, -1., 1.} = 0.0
-    rudder_input::Ranged{Float64, -1., 1.} = 0.0
+    throttle_axis::Ranged{Float64, 0., 1.} = 0.0
+    aileron_axis::Ranged{Float64, -1., 1.} = 0.0
+    elevator_axis::Ranged{Float64, -1., 1.} = 0.0
+    rudder_axis::Ranged{Float64, -1., 1.} = 0.0
     throttle_offset::Ranged{Float64, 0., 1.} = 0.0
     aileron_offset::Ranged{Float64, -1., 1.} = 0.0
     elevator_offset::Ranged{Float64, -1., 1.} = 0.0
@@ -652,17 +652,17 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:Controller},
                         vehicle::System{<:C172X.Vehicle})
 
     @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right,
-            throttle_input, aileron_input, elevator_input, rudder_input,
+            throttle_axis, aileron_axis, elevator_axis, rudder_axis,
             throttle_offset, aileron_offset, elevator_offset, rudder_offset,
             vrt_gdc_mode_req, hor_gdc_mode_req, lon_ctl_mode_req, lat_ctl_mode_req,
             q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref, h_ref, h_datum = sys.u
 
     @unpack lon_ctl, lat_ctl, alt_gdc, seg_gdc = sys.subsystems
 
-    throttle_ref = throttle_input + throttle_offset
-    elevator_ref = elevator_input + elevator_offset
-    aileron_ref = aileron_input + aileron_offset
-    rudder_ref = rudder_input + rudder_offset
+    throttle_ref = throttle_axis + throttle_offset
+    elevator_ref = elevator_axis + elevator_offset
+    aileron_ref = aileron_axis + aileron_offset
+    rudder_ref = rudder_axis + rudder_offset
 
     any_wow = any(SVector{3}(leg.strut.wow for leg in vehicle.y.components.ldg))
     flight_phase = any_wow ? phase_gnd : phase_air
@@ -777,10 +777,10 @@ function Systems.init!(sys::System{<:Controller},
     #in a fly-by-wire implementation, it makes more sense to assign the trim
     #values to the inputs rather than the offsets
     u = sys.u
-    u.throttle_input = y_act.throttle.pos
-    u.aileron_input = y_act.aileron.pos
-    u.elevator_input = y_act.elevator.pos
-    u.rudder_input = y_act.rudder.pos
+    u.throttle_axis = y_act.throttle.pos
+    u.aileron_axis = y_act.aileron.pos
+    u.elevator_axis = y_act.elevator.pos
+    u.rudder_axis = y_act.rudder.pos
     u.throttle_offset = 0
     u.aileron_offset = 0
     u.elevator_offset = 0
@@ -946,26 +946,26 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
-                    AlignTextToFramePadding(); Text("Throttle Input")
+                    AlignTextToFramePadding(); Text("Throttle Axis")
                     AlignTextToFramePadding(); Text("Throttle Offset")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.throttle_input = safe_slider("Throttle Input", u.throttle_input, "%.6f")
-                    u.throttle_offset = safe_input("Throttle_Offset", u.throttle_offset, 0.1, 0.1, "%.3f")
+                    u.throttle_axis = safe_slider("Throttle Axis", u.throttle_axis, "%.6f")
+                    u.throttle_offset = safe_input("Throttle_Offset", u.throttle_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
-                CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_ref)))
+                # CImGui.TableNextColumn();
+                #     Text(@sprintf("%.3f", Float64(u.throttle_axis)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
-                    AlignTextToFramePadding(); Text("Elevator Input")
+                    AlignTextToFramePadding(); Text("Elevator Axis")
                     AlignTextToFramePadding(); Text("Elevator Offset")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.elevator_input = safe_slider("Elevator Input", u.elevator_input, "%.6f")
-                    u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.1, 0.1, "%.3f")
+                    u.elevator_axis = safe_slider("Elevator Axis", u.elevator_axis, "%.6f")
+                    u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
-                CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_ref)))
+                # CImGui.TableNextColumn();
+                #     Text(@sprintf("%.3f", Float64(u.elevator_axis)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Rate (deg/s)")
                 CImGui.TableNextColumn();
@@ -999,6 +999,27 @@ function GUI.draw!(ctl::System{<:Controller},
 
         Separator()
 
+        if CImGui.BeginTable("Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                CImGui.TableNextColumn(); Text("Input")
+                CImGui.TableNextColumn(); Text("Command")
+                CImGui.TableNextColumn(); Text("Position")
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Throttle")
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lon_ctl.throttle_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lon_ctl.throttle_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.throttle.pos)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Elevator")
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lon_ctl.elevator_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lon_ctl.elevator_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.elevator.pos)))
+            CImGui.EndTable()
+        end
+
+        Separator()
+
     end
 
     ############################### Lateral Control ############################
@@ -1023,26 +1044,26 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
-                    AlignTextToFramePadding(); Text("Aileron Input")
+                    AlignTextToFramePadding(); Text("Aileron Axis")
                     AlignTextToFramePadding(); Text("Aileron Offset")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.aileron_input = safe_slider("Aileron Input", u.aileron_input, "%.6f")
-                    u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.001, 0.1, "%.3f")
+                    u.aileron_axis = safe_slider("Aileron Axis", u.aileron_axis, "%.6f")
+                    u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
-                CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_ref)))
+                # CImGui.TableNextColumn();
+                #     Text(@sprintf("%.3f", Float64(u.aileron_axis)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
-                    AlignTextToFramePadding(); Text("Rudder Input")
+                    AlignTextToFramePadding(); Text("Rudder Axis")
                     AlignTextToFramePadding(); Text("Rudder Offset")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.rudder_input = safe_slider("Rudder Input", u.rudder_input, "%.6f")
-                    u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.001, 0.1, "%.3f")
+                    u.rudder_axis = safe_slider("Rudder Axis", u.rudder_axis, "%.6f")
+                    u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
-                CImGui.TableNextColumn();
-                    Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_ref)))
+                # CImGui.TableNextColumn();
+                #     Text(@sprintf("%.3f", Float64(u.rudder_axis)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Roll Rate (deg/s)")
                 CImGui.TableNextColumn();
@@ -1071,6 +1092,27 @@ function GUI.draw!(ctl::System{<:Controller},
                     u.β_ref = safe_slider("Sideslip Angle", rad2deg(u.β_ref), -10, 10, "%.3f") |> deg2rad
                     PopItemWidth()
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(β)))
+            CImGui.EndTable()
+        end
+
+        Separator()
+
+        if CImGui.BeginTable("Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn();
+                CImGui.TableNextColumn(); Text("Input")
+                CImGui.TableNextColumn(); Text("Command")
+                CImGui.TableNextColumn(); Text("Position")
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Aileron")
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lat_ctl.aileron_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lat_ctl.aileron_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.aileron.pos)))
+            CImGui.TableNextRow()
+                CImGui.TableNextColumn(); Text("Rudder")
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lat_ctl.rudder_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lat_ctl.rudder_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.rudder.pos)))
             CImGui.EndTable()
         end
 
@@ -1119,39 +1161,6 @@ function GUI.draw!(ctl::System{<:Controller},
 
     end #header
     end #cstatic
-
-
-    ############################################################################
-
-    if CImGui.CollapsingHeader("Primary Actuation")
-        if CImGui.BeginTable("Primary Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                CImGui.TableNextColumn(); Text("Throttle")
-                CImGui.TableNextColumn(); Text("Elevator")
-                CImGui.TableNextColumn(); Text("Aileron")
-                CImGui.TableNextColumn(); Text("Rudder")
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Reference")
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_ref)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Command")
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.rudder_cmd)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Position")
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.throttle.pos)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.elevator.pos)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.aileron.pos)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(act.rudder.pos)))
-            CImGui.EndTable()
-        end
-    end
 
 
     ############################################################################
