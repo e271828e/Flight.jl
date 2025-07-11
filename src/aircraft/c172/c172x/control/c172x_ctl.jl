@@ -1132,7 +1132,7 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn(); Text("Aileron")
                 CImGui.TableNextColumn(); Text("Rudder")
             CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Setpoint")
+                CImGui.TableNextColumn(); Text("Reference")
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.throttle_ref)))
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lon_ctl.elevator_ref)))
                 CImGui.TableNextColumn(); Text(@sprintf("%.3f", Float64(y.lat_ctl.aileron_ref)))
