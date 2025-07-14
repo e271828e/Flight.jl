@@ -769,9 +769,9 @@ function Systems.init!(sys::System{<:Controller},
     @unpack EAS = vehicle.y.airflow
     @unpack β = vehicle.y.components.aero
 
-    #makes Controller inputs consistent with the trim solution obtained
-    #for the vehicle, so the trim condition is preserved upon simulation start
-    #when the corresponding control modes are selected
+    #we need to make Controller inputs consistent with the vehicle status, so
+    #trim conditions are preserved upon simulation start when the corresponding
+    #control modes are selected
     Systems.reset!(sys)
 
     #in a fly-by-wire implementation, it makes more sense to assign the trim
@@ -929,7 +929,7 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn();
                     mode_button("Direct##Lon", lon_direct, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_direct); SameLine()
-                    mode_button("Throttle + Pitch SAS", lon_sas, u.lon_ctl_mode_req, y.lon_ctl_mode)
+                    mode_button("Pitch SAS", lon_sas, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_sas); SameLine()
                     mode_button("Throttle + Pitch Rate", lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_ref = 0); SameLine()
@@ -1033,7 +1033,7 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn();
                     mode_button("Direct##Lat", lat_direct, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_direct)
-                    mode_button("SAS", lat_sas, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
+                    mode_button("Roll/Yaw SAS", lat_sas, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_sas)
                     mode_button("Roll Rate + AoS", lat_p_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
                     IsItemActive() && (u.lat_ctl_mode_req = lat_p_β; u.p_ref = 0; u.β_ref = β)
@@ -1217,7 +1217,7 @@ function GUI.draw!(ctl::System{<:Controller},
                 Text(@sprintf("%.3f m/s | %.3f kts", TAS, Atmosphere.SI2kts(TAS)))
                 Text("Angle of Attack"); SameLine(240)
                 Text(@sprintf("%.3f deg", rad2deg(α)))
-                Text("Angle of Sideslip"); SameLine(240)
+                Text("Sideslip Angle"); SameLine(240)
                 Text(@sprintf("%.3f deg", rad2deg(β)))
                 Separator()
 
