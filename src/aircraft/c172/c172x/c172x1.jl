@@ -36,7 +36,7 @@ end
 function Systems.init!(avionics::System{<:C172Xv1.Avionics},
                             vehicle::System{<:C172X.Vehicle})
 
-    Systems.reset!(avionics)
+    Control.reset!(avionics.ctl)
     Systems.init!(avionics.ctl, vehicle)
     update_output!(avionics)
 

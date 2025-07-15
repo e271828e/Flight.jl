@@ -169,7 +169,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
         Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, h_e))
 
         if mode != mode_prev
-            Systems.reset!(v2t_pid)
+            Control.reset!(v2t_pid)
             k_i = v2t_pid.u.k_i
             (k_i != 0) && (v2t_pid.s.x_i0 = Float64(sys.y.throttle_cmd))
         end
@@ -190,8 +190,8 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
 
             if mode != mode_prev
 
-                Systems.reset!(q2e_int)
-                Systems.reset!(q2e_pid)
+                Control.reset!(q2e_int)
+                Control.reset!(q2e_pid)
                 k_i = q2e_pid.u.k_i
                 (k_i != 0) && (q2e_pid.s.x_i0 = e2e_lqr.u.z_ref[1])
 
@@ -205,7 +205,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
                     Control.Discrete.assign!(v2θ_pid, v2θ_lookup(EAS, h_e))
 
                     if mode != mode_prev
-                        Systems.reset!(v2θ_pid)
+                        Control.reset!(v2θ_pid)
                         k_i = v2θ_pid.u.k_i
                         (k_i != 0) && (v2θ_pid.s.x_i0 = -θ) #sign inversion!
                     end
@@ -220,7 +220,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
                     Control.Discrete.assign!(c2θ_pid, c2θ_lookup(EAS, h_e))
 
                     if mode != mode_prev
-                        Systems.reset!(c2θ_pid)
+                        Control.reset!(c2θ_pid)
                         k_i = c2θ_pid.u.k_i
                         (k_i != 0) && (c2θ_pid.s.x_i0 = θ)
                     end
@@ -432,8 +432,8 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
 
             if mode != mode_prev
                 #our next φ output must match φ reference at φβ2ar input
-                Systems.reset!(p2φ_int)
-                Systems.reset!(p2φ_pid)
+                Control.reset!(p2φ_int)
+                Control.reset!(p2φ_pid)
                 k_i = p2φ_pid.u.k_i
                 (k_i != 0) && (p2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_ref).φ)
             end
@@ -453,7 +453,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
 
             if mode != mode_prev
                 #our next φ output must match φ reference at φβ2ar input
-                Systems.reset!(χ2φ_pid)
+                Control.reset!(χ2φ_pid)
                 k_i = χ2φ_pid.u.k_i
                 (k_i != 0) && (χ2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_ref).φ)
             end
@@ -472,7 +472,9 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
 
         Control.Discrete.assign!(φβ2ar_lqr, φβ2ar_lookup(EAS, Float64(h_e)))
 
-        (mode != mode_prev) && Systems.reset!(φβ2ar_lqr)
+        if mode != mode_prev
+            Control.reset!(φβ2ar_lqr)
+        end
 
         φβ2ar_lqr.u.x .= XLat(vehicle)
         φβ2ar_lqr.u.z .= ZLat(; φ, β)
@@ -772,7 +774,7 @@ function Systems.init!(sys::System{<:Controller},
     #we need to make Controller inputs consistent with the vehicle status, so
     #trim conditions are preserved upon simulation start when the corresponding
     #control modes are selected
-    Systems.reset!(sys)
+    Control.reset!(sys)
 
     #in a fly-by-wire implementation, it makes more sense to assign the trim
     #values to the inputs rather than the offsets

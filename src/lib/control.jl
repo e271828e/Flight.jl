@@ -2,6 +2,17 @@ module Control
 
 
 ################################################################################
+############################ Common Interfaces #################################
+
+using Flight.FlightCore
+
+function reset!(sys::System)
+    foreach(sys.subsystems) do ss
+        reset!(ss)
+    end
+end
+
+################################################################################
 ################################################################################
 module Continuous ##############################################################
 
@@ -380,7 +391,7 @@ Systems.Y(::Integrator) = IntegratorOutput()
 Systems.U(::Integrator) = IntegratorInput()
 Systems.S(::Integrator) = IntegratorState()
 
-function Systems.reset!(sys::System{<:Integrator}, x0::Real = 0.0)
+function Control.reset!(sys::System{<:Integrator}, x0::Real = 0.0)
     sys.u.input = 0
     sys.u.sat_ext = 0
     sys.s.x0 = x0
@@ -442,7 +453,7 @@ Systems.Y(::IntegratorVector{N}) where {N} = IntegratorVectorOutput{N}()
 Systems.U(::IntegratorVector{N}) where {N} = IntegratorVectorInput{N}()
 Systems.S(::IntegratorVector{N}) where {N} = IntegratorVectorState{N}()
 
-function Systems.reset!(sys::System{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
+function Control.reset!(sys::System{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
     sys.u.input .= 0
     sys.u.sat_ext .= 0
     sys.s.x0 .= x0
@@ -539,7 +550,7 @@ Systems.Y(::LeadLag) = LeadLagOutput()
 Systems.U(::LeadLag) = LeadLagInput()
 Systems.S(::LeadLag) = LeadLagState()
 
-function Systems.reset!(sys::System{<:LeadLag})
+function Control.reset!(sys::System{<:LeadLag})
     sys.u.u1 = 0
     sys.s.u0 = 0
     sys.s.x0 = 0
@@ -668,7 +679,7 @@ Systems.Y(::PID) = PIDOutput()
 Systems.U(::PID) = PIDInput()
 Systems.S(::PID) = PIDState()
 
-function Systems.reset!(sys::System{<:PID})
+function Control.reset!(sys::System{<:PID})
     sys.u.input = 0
     sys.u.sat_ext = 0
     sys.s.x_i0 = 0
@@ -771,7 +782,7 @@ Systems.Y(::PIDVector{N}) where {N} = PIDVectorOutput{N}()
 Systems.U(::PIDVector{N}) where {N} = PIDVectorInput{N}()
 Systems.S(::PIDVector{N}) where {N} = PIDVectorState{N}()
 
-function Systems.reset!(sys::System{<:PIDVector{N}}) where {N}
+function Control.reset!(sys::System{<:PIDVector{N}}) where {N}
     sys.u.input .= 0
     sys.u.sat_ext .= 0
     sys.s.x_i0 .= 0
@@ -1031,7 +1042,7 @@ function Systems.S(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, N
     LQRTrackerState{NX, NU}()
 end
 
-function Systems.reset!(sys::System{<:LQRTracker})
+function Control.reset!(sys::System{<:LQRTracker})
     sys.u.z_ref .= 0
     sys.u.z .= 0
     sys.u.x .= 0

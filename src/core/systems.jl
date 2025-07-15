@@ -201,11 +201,6 @@ struct NoScheduling <: MaybeScheduling end
 
 init!(::System, args...; kwargs...) = nothing
 
-function reset!(sys::System)
-    foreach(sys.subsystems) do ss
-        Systems.reset!(ss)
-    end
-end
 #continuous dynamics, to be extended by Systems
 function f_ode!(sys::System, args...)
     MethodError(f_ode!, (sys, args...)) |> throw
