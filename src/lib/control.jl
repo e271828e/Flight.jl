@@ -1,10 +1,9 @@
 module Control
 
+using Flight.FlightCore
 
 ################################################################################
 ############################ Common Interfaces #################################
-
-using Flight.FlightCore
 
 function reset!(sys::System)
     foreach(sys.subsystems) do ss
@@ -12,7 +11,8 @@ function reset!(sys::System)
     end
 end
 
-################################################################################
+
+############################ Continuous Components #############################
 ################################################################################
 module Continuous ##############################################################
 
@@ -21,6 +21,8 @@ using ControlSystems: ControlSystemsBase, ControlSystems, ss
 using RobustAndOptimalControl
 
 using Flight.FlightCore
+
+using ..Control
 
 ################################################################################
 ########################### LinearizedSS ###################################
@@ -140,7 +142,6 @@ struct PIVector{N} <: SystemDefinition end
     bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
     input::MVector{N,Float64} = zeros(N) #input (reference - feedback)
     sat_ext::MVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
-    reset::MVector{N,Bool} = zeros(Bool, N) #reset PID continuous state
 end
 
 @kwdef struct PIVectorY{N}
@@ -152,7 +153,6 @@ end
     bound_hi::SVector{N,Float64} = fill(Inf, SVector{N}) #higher output bounds
     input::SVector{N,Float64} = zeros(SVector{N})
     sat_ext::SVector{N,Int64} = zeros(SVector{N, Int64}) #external (signed) saturation signal
-    reset::SVector{N,Bool} = zeros(SVector{N, Bool}) #reset PID states and null outputs
     u_p::SVector{N,Float64} = zeros(SVector{N}) #proportional path input
     u_i::SVector{N,Float64} = zeros(SVector{N}) #integral path input
     x_i::SVector{N,Float64} = zeros(SVector{N}) #integrator state
@@ -169,6 +169,7 @@ Systems.Y(::PIVector{N}) where {N} = PIVectorY{N}()
 Systems.U(::PIVector{N}) where {N} = PIVectorU{N}()
 
 @no_disc PIVector
+@no_step PIVector
 
 function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
 
@@ -176,14 +177,14 @@ function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
 
     x_i = SVector{N, Float64}(x)
     k_p, k_i, k_l, β_p = map(SVector, (u.k_p, u.k_i, u.k_l, u.β_p))
-    input, bound_lo, bound_hi, sat_ext, reset = map(SVector, (
-        u.input, u.bound_lo, u.bound_hi, u.sat_ext, u.reset))
+    input, bound_lo, bound_hi, sat_ext = map(SVector, (
+        u.input, u.bound_lo, u.bound_hi, u.sat_ext))
 
     u_p = β_p .* input
     u_i = input
 
-    y_p = k_p .* u_p .* .!reset
-    y_i = x_i .* .!reset
+    y_p = k_p .* u_p
+    y_i = x_i
     out_free = y_p + y_i #raw output
     output = clamp.(out_free, bound_lo, bound_hi) #clamped output
 
@@ -192,20 +193,19 @@ function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
     sat_out = sat_hi - sat_lo
     int_halted = ((sign.(u_i .* sat_out) .> 0) .|| (sign.(u_i .* sat_ext) .> 0))
 
-    ẋ .= (k_i .* u_i .* .!int_halted - k_l .* x_i) .* .!reset
+    ẋ .= k_i .* u_i .* .!int_halted - k_l .* x_i
 
-    sys.y = PIVectorY(; k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext, reset,
+    sys.y = PIVectorY(; k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext,
                      u_p, u_i, x_i, y_p, y_i, out_free, sat_out, output, int_halted)
 
 end
 
-function Systems.f_step!(sys::System{<:PIVector{N}}) where {N}
-
-    x = SVector{N,Float64}(sys.x)
-    x_new = x .* .!sys.u.reset
-    sys.x .= x_new
-
+function Control.reset!(sys::System{<:PIVector})
+    sys.u.input .= 0
+    sys.u.sat_ext .= 0
+    sys.x .= 0
 end
+
 
 
 # ############################## Plotting ########################################
@@ -289,7 +289,7 @@ end
 
 function GUI.draw(sys::System{<:PIVector{N}}, label::String = "PIVector{$N}") where {N}
 
-    @unpack k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext, reset,
+    @unpack k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext,
             u_p, u_i, x_i, y_p, y_i, out_free, sat_out, output, int_halted = sys.y
 
     # CImGui.Begin(label)
@@ -302,7 +302,6 @@ function GUI.draw(sys::System{<:PIVector{N}}, label::String = "PIVector{$N}") wh
         CImGui.Text("Upper Output Bound = $bound_hi")
         CImGui.Text("Input = $input")
         CImGui.Text("External Saturation Input = $sat_ext")
-        CImGui.Text("Reset Input = $reset")
         CImGui.Text("Proportional Path Input = $u_p")
         CImGui.Text("Proportional Path Output = $y_p")
         CImGui.Text("Integrator State = $x_i")
@@ -317,36 +316,10 @@ function GUI.draw(sys::System{<:PIVector{N}}, label::String = "PIVector{$N}") wh
 
 end #function
 
-function GUI.draw!(sys::System{<:PIVector{N}}, label::String = "PIVector{$N}") where {N}
-
-    CImGui.Begin(label)
-
-    if CImGui.TreeNode("Outputs")
-        GUI.draw(sys, label)
-        CImGui.TreePop()
-    end
-    #shows how to get input from widgets without the @cstatic and @c macros
-    if CImGui.TreeNode("Inputs")
-        for i in 1:N
-            if CImGui.TreeNode("[$i]")
-                @unpack reset = sys.u
-                reset_ref = Ref(reset[i])
-                CImGui.Checkbox("Reset", reset_ref) #; CImGui.SameLine()
-                reset[i] = reset_ref[]
-                CImGui.TreePop()
-            end
-        end
-        CImGui.TreePop()
-    end
-
-    CImGui.End()
-
-end
-
 end #submodule
 
 
-################################################################################
+############################## DiscreteComponents ##############################
 ################################################################################
 module Discrete ###############################################################
 

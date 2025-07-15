@@ -112,7 +112,6 @@ function test_landing_gear_unit()
         @unpack steering, braking, strut, contact = ldg
 
         @test length(contact.x) == 2
-        @test length(contact.frc.u.reset) == 2
 
         terrain = HorizontalTerrain() |> System
         loc = NVector()
@@ -127,25 +126,10 @@ function test_landing_gear_unit()
 
         @test ldg.y.strut.wow === false
 
-        #when f_step! executes after the simulation step, the friction
-        #compensator reset input will be set
-        f_step!(ldg)
-        @test contact.frc.u.reset == [true, true]
-
-        #but it will not take effect until the next call to f_ode!
-        @test ldg.y.contact.frc.reset == [false, false]
-        f_ode!(ldg, kin, terrain)
-        @test ldg.y.contact.frc.reset == [true, true]
-
-        #ensure that the friction regulator does reset
-        ldg.x.contact.frc .= 1
+        #now, when f_step! executes the friction compensator should be reset
+        ldg.x.contact.frc .= 1 #force nonzero value
         @test all(ldg.x.contact.frc .== 1)
-        ldg.x.contact.frc .= 0
-        @test all(ldg.x.contact.frc .== 0) #state has not been modified yet
-
-        f_step!(ldg) #x was already 0, not modified
-        ldg.x.contact.frc[1] = 1
-        f_step!(ldg) == true #now it has been
+        f_step!(ldg)
         @test all(ldg.x.contact.frc .== 0)
 
         #normal static load
@@ -156,11 +140,6 @@ function test_landing_gear_unit()
         @test ldg.y.contact.μ_eff == [0, 0] #no motion, no effective friction
         @test ldg.y.contact.f_c[1:2] == [0, 0] #no effective friction, no tangential force
         @test ldg.y.contact.f_c[3] < 0 #ground reaction negative along contact frame z-axis
-
-        #reset input was set in the previous wow==false test, it takes a call to
-        #f_step! to set it back to false
-        f_step!(ldg)
-        @test ldg.contact.frc.u.reset == [false, false]
 
         #oblique static load
         kin = KinInit(; h, q_nb = REuler(0, 0, π/12)) |> KinData

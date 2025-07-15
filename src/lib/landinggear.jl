@@ -490,8 +490,7 @@ end
 #here wow has its final value for the current integration step
 function Systems.f_step!(contact::System{<:Contact}, strut::System{<:Strut})
 
-    contact.frc.u.reset .= !strut.y.wow #if !wow, reset friction regulator
-    f_step!(contact.frc)
+    !strut.y.wow && Control.reset!(contact.frc) #if !wow, reset friction regulator
 
 end
 
