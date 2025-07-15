@@ -211,10 +211,9 @@ function Systems.init!( aircraft::System{<:Aircraft},
                         args...)
 
     @unpack vehicle, avionics = aircraft.subsystems
-    result = Systems.init!(vehicle, condition, args...)
+    Systems.init!(vehicle, condition, args...)
     Systems.init!(avionics, vehicle) #avionics init only relies on vehicle
     update_output!(aircraft)
-    return result
 end
 
 Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.vehicle.kinematics)

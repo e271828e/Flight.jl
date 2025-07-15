@@ -46,11 +46,12 @@ function Systems.f_step!(world::System{<:SimpleWorld})
     f_step!(ac, atm, trn)
 end
 
-function Systems.init!( world::System{<:SimpleWorld}, args...)
+function Systems.init!( world::System{<:SimpleWorld},
+                        condition::Union{KinInit, <:AbstractTrimParameters})
     @unpack ac, atm, trn = world.subsystems
     Systems.init!(atm)
     Systems.init!(trn)
-    Systems.init!(ac, args...)
+    Systems.init!(ac, condition, atm, trn)
     update_output!(world) #!
 end
 
