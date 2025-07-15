@@ -11,29 +11,6 @@ export AbstractTrimParameters, AbstractTrimState
 export trim!, linearize!
 
 
-################################### Trimming ###################################
-################################################################################
-
-abstract type AbstractTrimParameters end
-const AbstractTrimState{N} = FieldVector{N, Float64}
-
-#given the body-axes wind-relative velocity, the wind-relative flight path angle
-#and the bank angle, the pitch angle is unambiguously determined
-function θ_constraint(; v_wb_b, γ_wb_n, φ_nb)
-    TAS = norm(v_wb_b)
-    a = v_wb_b[1] / TAS
-    b = (v_wb_b[2] * sin(φ_nb) + v_wb_b[3] * cos(φ_nb)) / TAS
-    sγ = sin(γ_wb_n)
-
-    return atan((a*b + sγ*√(a^2 + b^2 - sγ^2))/(a^2 - sγ^2))
-    # return asin((a*sγ + b*√(a^2 + b^2 - sγ^2))/(a^2 + b^2)) #equivalent
-
-end
-
-function trim!( ac::System, condition::AbstractTrimParameters, args...)
-    MethodError(trim!, (ac, condition, args...)) |> throw
-end
-
 
 ################################################################################
 ############################## Vehicle ################################
@@ -58,23 +35,42 @@ Systems.Y(ac::Vehicle) = VehicleY(
     DynamicsData(),
     AirflowData())
 
-#this one is vehicle-agnostic
+
+############################ Explicit Initialization ###########################
+
+struct Initializer{C <: AbstractComponentInit}
+    kin::KinInit
+    cmp::C
+end
+
 function Systems.init!( sys::System{<:Vehicle},
-                        condition::KinInit,
+                        init::KinInit,
                         atmosphere::System{<:AbstractAtmosphere} = System(SimpleAtmosphere()),
                         terrain::System{<:AbstractTerrain} = System(HorizontalTerrain()))
 
     @unpack kinematics, dynamics = sys.subsystems
-    Systems.init!(kinematics, condition)
-    dynamics.x .= kinematics.u #!essential
+    Systems.init!(kinematics, init)
+    dynamics.x .= kinematics.u #essential
     f_ode!(sys, atmosphere, terrain) #update vehicle's ẋ and y
 end
 
-#this one must be implemented by each parametric subtype
 function Systems.init!( sys::System{<:Vehicle},
-                        condition::AbstractTrimParameters, args...)
-    MethodError(Systems.init!, (sys, condition, args...)) |> throw
+                        init::Initializer,
+                        atmosphere::System{<:AbstractAtmosphere} = System(SimpleAtmosphere()),
+                        terrain::System{<:AbstractTerrain} = System(HorizontalTerrain()))
+
+    @unpack kinematics, dynamics, components = sys.subsystems
+    Systems.init!(kinematics, init.kin)
+    Systems.init!(components, init.cmp)
+    dynamics.x .= kinematics.u #essential
+    f_ode!(sys, atmosphere, terrain) #update vehicle's ẋ and y
 end
+
+
+################################### Trimming ###################################
+
+abstract type AbstractTrimParameters end
+const AbstractTrimState{N} = FieldVector{N, Float64}
 
 function assign!(vehicle::System{<:Vehicle},
                 params::AbstractTrimParameters,
@@ -82,6 +78,31 @@ function assign!(vehicle::System{<:Vehicle},
                 args...)
     MethodError(assign!, (vehicle, params, state, args...)) |> throw
 end
+
+#to be implemented by each Vehicle subtype
+function Systems.init!( sys::System{<:Vehicle},
+                        condition::AbstractTrimParameters, args...)
+    MethodError(Systems.init!, (sys, condition, args...)) |> throw
+end
+
+function trim!( ac::System, condition::AbstractTrimParameters, args...)
+    MethodError(trim!, (ac, condition, args...)) |> throw
+end
+
+#trim constraint: given the body-axes wind-relative velocity, the wind-relative
+#flight path angle and the bank angle, the pitch angle is unambiguously
+#determined
+function θ_constraint(; v_wb_b, γ_wb_n, φ_nb)
+    TAS = norm(v_wb_b)
+    a = v_wb_b[1] / TAS
+    b = (v_wb_b[2] * sin(φ_nb) + v_wb_b[3] * cos(φ_nb)) / TAS
+    sγ = sin(γ_wb_n)
+
+    return atan((a*b + sγ*√(a^2 + b^2 - sγ^2))/(a^2 - sγ^2))
+    # return asin((a*sγ + b*√(a^2 + b^2 - sγ^2))/(a^2 + b^2)) #equivalent
+end
+
+
 
 ###############################################################################
 ############################# AbstractAvionics #################################
@@ -121,6 +142,7 @@ function Systems.f_ode!(vehicle::System{<:Vehicle},
     f_ode!(dynamics, components, kin_data)
 
     vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, airflow_data)
+    nothing
 
 end
 
@@ -146,6 +168,7 @@ function Systems.f_disc!(::NoScheduling, vehicle::System{<:Vehicle},
 
     # components.y might have changed, so we should update vehicle.y
     vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, vehicle.y.airflow)
+    nothing
 
 end
 
@@ -207,7 +230,7 @@ end
 #atmosphere and terrain Systems as optional arguments. we pass them if provided;
 #otherwise, they will be instantiated ad hoc by the Vehicle's methods
 function Systems.init!( aircraft::System{<:Aircraft},
-                        condition::Union{KinInit, <:AbstractTrimParameters},
+                        condition::Union{<:AircraftBase.Initializer, <:AbstractTrimParameters},
                         args...)
 
     @unpack vehicle, avionics = aircraft.subsystems

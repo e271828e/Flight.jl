@@ -704,6 +704,7 @@ end
 @no_disc Components
 
 
+
 #################################### GUI #######################################
 
 function GUI.draw!( components::System{<:Components}, ::System{A},
@@ -747,6 +748,28 @@ end
 const Vehicle = AircraftBase.Vehicle{<:C172.Components}
 const Aircraft = AircraftBase.Aircraft{<:C172.Vehicle}
 const Cessna172 = C172.Aircraft
+
+
+########################## Explicit Initialization #############################
+################################################################################
+
+@kwdef struct ComponentInit <: AbstractComponentInit
+    engine_state::Piston.EngineState = Piston.eng_off
+    ω_eng::Float64 = 0.0 #engine speed, rad/s
+    mixture::Ranged{Float64, 0., 1.} = 0.5
+    throttle::Ranged{Float64, 0., 1.} = 0
+    elevator::Ranged{Float64, -1., 1.} = 0
+    aileron::Ranged{Float64, -1., 1.} = 0
+    rudder::Ranged{Float64, -1., 1.} = 0
+    flaps::Ranged{Float64, 0., 1.} = 0
+    brake_left::Ranged{Float64, 0., 1.} = 0
+    brake_right::Ranged{Float64, 0., 1.} = 0
+    fuel_load::Ranged{Float64, 0., 1.} = 0.5 #normalized
+    payload::C172.PayloadU = C172.PayloadU()
+end
+
+Init(kin::KinInit, cmp::ComponentInit) = AircraftBase.Initializer(kin, cmp)
+Init(; kin = KinInit(), cmp = ComponentInit()) = Init(kin, cmp)
 
 
 ############################### Trimming #######################################

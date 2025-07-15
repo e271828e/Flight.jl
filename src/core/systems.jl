@@ -233,6 +233,7 @@ end
 
     ys = map(id -> getfield(getfield(getfield(sys, :subsystems), id), :y), L)
     sys.y = NamedTuple{L}(ys)
+    nothing
 end
 
 #any other output type needs custom implementation
