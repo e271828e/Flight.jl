@@ -114,6 +114,8 @@ abstract type AbstractAvionics <: SystemDefinition end
 struct NoAvionics <: AbstractAvionics end
 @no_dynamics NoAvionics
 
+Systems.init!(::System{NoAvionics}, args...) = nothing
+
 ################################################################################
 ######################## Vehicle/Avionics update methods #######################
 

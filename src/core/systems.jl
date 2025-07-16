@@ -199,7 +199,8 @@ struct Scheduling <: MaybeScheduling end
 struct NoScheduling <: MaybeScheduling end
 
 
-init!(::System, args...; kwargs...) = nothing
+#fallback for the single-argument call (used in constructor)
+init!(::System) = nothing
 
 #continuous dynamics, to be extended by Systems
 function f_ode!(sys::System, args...)
@@ -300,7 +301,7 @@ macro ss_step(sd)
             for ss in sys.subsystems
                 f_step!(ss, args...)
             end
-            # update_output!(sys) #output update not essential here
+            # update_output!(sys) #output update not usually required here
             return nothing
         end
     end)
