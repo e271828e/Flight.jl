@@ -520,7 +520,16 @@ end
     m_baggage::Ranged{Float64, 0., 100.} = 50.0
 end
 
+@kwdef struct PayloadY
+    m_pilot::Ranged{Float64, 0., 100.} = 75.0
+    m_copilot::Ranged{Float64, 0., 100.} = 75.0
+    m_lpass::Ranged{Float64, 0., 100.} = 0.0
+    m_rpass::Ranged{Float64, 0., 100.} = 0.0
+    m_baggage::Ranged{Float64, 0., 100.} = 50.0
+end
+
 Systems.U(::Payload) = PayloadU()
+Systems.Y(::Payload) = PayloadY()
 
 function Dynamics.get_mp_b(sys::System{Payload})
     @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = sys.u
@@ -755,7 +764,7 @@ const Cessna172 = C172.Aircraft
 
 @kwdef struct ComponentInit <: AbstractComponentInit
     engine_state::Piston.EngineState = Piston.eng_off
-    ω_eng::Float64 = 0.0 #engine speed, rad/s
+    n_eng::Float64 = 0.0 #normalized engine speed
     mixture::Ranged{Float64, 0., 1.} = 0.5
     throttle::Ranged{Float64, 0., 1.} = 0
     elevator::Ranged{Float64, -1., 1.} = 0
@@ -765,7 +774,10 @@ const Cessna172 = C172.Aircraft
     brake_left::Ranged{Float64, 0., 1.} = 0
     brake_right::Ranged{Float64, 0., 1.} = 0
     fuel_load::Ranged{Float64, 0., 1.} = 0.5 #normalized
-    payload::C172.PayloadU = C172.PayloadU()
+    payload::C172.PayloadY = C172.PayloadY()
+    stall::Bool = false
+    α_a_filt::Float64 = 0 #only needed for trim assignments
+    β_a_filt::Float64 = 0 #only needed for trim assignments
 end
 
 Init(kin::KinInit, cmp::ComponentInit) = AircraftBase.Initializer(kin, cmp)
@@ -797,7 +809,7 @@ end
     x_fuel::Ranged{Float64, 0., 1.} = 0.5 #normalized fuel load
     mixture::Ranged{Float64, 0., 1.} = 0.5 #engine mixture control
     flaps::Ranged{Float64, 0., 1.} = 0.0 #flap setting
-    payload::C172.PayloadU = C172.PayloadU()
+    payload::PayloadY = PayloadY()
 end
 
 function Atmosphere.AtmosphericData(sys::System{<:AbstractAtmosphere},

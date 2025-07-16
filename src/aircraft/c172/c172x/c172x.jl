@@ -262,8 +262,82 @@ end
 ######################### Explicit Initialization ##############################
 ################################################################################
 
+# @kwdef struct ComponentInit <: AbstractComponentInit
+#     engine_state::Piston.EngineState = Piston.eng_off
+#     n_eng::Float64 = 0.0 #normalized engine speed
+#     mixture::Ranged{Float64, 0., 1.} = 0.5
+#     throttle::Ranged{Float64, 0., 1.} = 0
+#     elevator::Ranged{Float64, -1., 1.} = 0
+#     aileron::Ranged{Float64, -1., 1.} = 0
+#     rudder::Ranged{Float64, -1., 1.} = 0
+#     flaps::Ranged{Float64, 0., 1.} = 0
+#     brake_left::Ranged{Float64, 0., 1.} = 0
+#     brake_right::Ranged{Float64, 0., 1.} = 0
+#     fuel_load::Ranged{Float64, 0., 1.} = 0.5 #normalized
+#     payload::C172.PayloadY = C172.PayloadY()
+#     stall::Bool = false
+#     α_a_filt::Float64 = 0 #only needed for trim assignments
+#     β_a_filt::Float64 = 0 #only needed for trim assignments
+# end
+
 function Systems.init!(cmp::System{<:Components}, init::C172.ComponentInit)
-    println("To do")
+
+    @unpack act, pwp, aero, fuel, ldg, pld = cmp
+
+    @unpack engine_state, n_eng, mixture, throttle, elevator, aileron,
+    rudder, flaps, brake_left, brake_right, fuel_load, payload,
+    stall, α_a_filt, β_a_filt = init
+
+    @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = payload
+
+    #assign payload
+    @pack! pld.u = m_pilot, m_copilot, m_lpass, m_rpass, m_baggage
+
+    #engine must be running
+    pwp.engine.s.state = engine_state
+
+    #set engine speed state
+    pwp.x.engine.ω = n_eng * pwp.engine.ω_rated
+
+    #engine idle compensator: as long as the engine remains at normal
+    #operational speeds, well above its nominal idle speed, the idle controller
+    #compensator's output will be saturated at its lower bound by proportional
+    #error. its integrator will be disabled, its state will not change nor have
+    #any effect on the engine. we can simply set it to zero
+    pwp.x.engine.idle .= 0.0
+
+    #engine friction compensator: with the engine running at normal operational
+    #speeds, the engine's friction constraint compensator will be saturated, so
+    #its integrator will be disabled and its state will not change. furthermore,
+    #with the engine running friction is ignored. we can simply set it to zero.
+    pwp.x.engine.frc .= 0.0
+
+    #actuator commands
+    act.throttle.u[] = throttle
+    act.mixture.u[] = mixture
+    act.elevator.u[] = elevator
+    act.aileron.u[] = aileron
+    act.rudder.u[] = rudder
+    act.flaps.u[] = flaps
+    act.brake_left.u[] = brake_left
+    act.brake_right.u[] = brake_right
+
+    #actuator states: in steady state every actuator's position state must be
+    #equal to the actuator command.
+    act.x.throttle.p = throttle
+    act.x.mixture.p = mixture
+    act.x.elevator.p = elevator
+    act.x.aileron.p = aileron
+    act.x.rudder.p = rudder
+    act.x.flaps.p = flaps
+    act.x.brake_left.p = brake_left
+    act.x.brake_right.p = brake_right
+
+    aero.s.stall = stall
+    aero.x.α_filt = α_a_filt #ensures zero state derivative
+    aero.x.β_filt = β_a_filt #ensures zero state derivative
+
+    fuel.x .= Float64(fuel_load)
 end
 
 
@@ -277,7 +351,7 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
                         atmosphere::System{<:AbstractAtmosphere},
                         terrain::System{<:AbstractTerrain})
 
-    @unpack EAS, β_a, x_fuel, flaps, mixture, payload = trim_params
+    @unpack β_a, x_fuel, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
     @unpack act, pwp, aero, fuel, ldg, pld = vehicle.components
 
@@ -323,6 +397,7 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
 
     aero.x.α_filt = α_a #ensures zero state derivative
     aero.x.β_filt = β_a #ensures zero state derivative
+
     fuel.x .= Float64(x_fuel)
 
     kin_init = KinInit(trim_state, trim_params, atmosphere)

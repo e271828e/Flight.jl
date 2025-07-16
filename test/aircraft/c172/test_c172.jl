@@ -37,7 +37,7 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
         flaps = 0.0
         γ_wb_n = 0.0
         x_fuel = 0.5
-        payload = C172.PayloadU(m_pilot = 75, m_copilot = 75, m_baggage = 50)
+        payload = C172.PayloadY(m_pilot = 75, m_copilot = 75, m_baggage = 50)
 
         initializer = C172.TrimParameters(; Ob = Geographic(loc, HEllip(650)), EAS, γ_wb_n, x_fuel, flaps, payload)
     else
