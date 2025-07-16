@@ -30,7 +30,7 @@ function IODevices.assign_input!(sys::System{<:Cessna172Xv0},
                            ::GenericInputMapping, data::T16000MData)
 
     #mixture not assigned
-    @unpack throttle, mixture, aileron, elevator, rudder, steering, flaps,
+    @unpack throttle, mixture, aileron, elevator, rudder, flaps,
             brake_left, brake_right = sys.vehicle.components.act.subsystems
 
     @unpack axes, buttons, hat = data
@@ -39,7 +39,6 @@ function IODevices.assign_input!(sys::System{<:Cessna172Xv0},
     aileron.u[] = axes.stick_x |> roll_curve
     elevator.u[] = axes.stick_y |> pitch_curve
     rudder.u[] = axes.stick_z |> yaw_curve
-    steering.u[] = axes.stick_z |> yaw_curve
     brake_left.u[] = is_pressed(buttons.button_1)
     brake_right.u[] = is_pressed(buttons.button_1)
 

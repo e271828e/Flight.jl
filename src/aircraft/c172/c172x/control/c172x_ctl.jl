@@ -604,7 +604,6 @@ end
     eng_stop::Bool = false #passthrough
     mixture::Ranged{Float64, 0., 1.} = 0.5 #passthrough
     flaps::Ranged{Float64, 0., 1.} = 0.0 #passthrough
-    steering::Ranged{Float64, -1., 1.} = 0.0 #passthrough
     brake_left::Ranged{Float64, 0., 1.} = 0.0 #passthrough
     brake_right::Ranged{Float64, 0., 1.} = 0.0 #passthrough
     throttle_axis::Ranged{Float64, 0., 1.} = 0.0
@@ -653,7 +652,7 @@ Systems.Y(::Controller) = ControllerY()
 function Systems.f_disc!(::NoScheduling, sys::System{<:Controller},
                         vehicle::System{<:C172X.Vehicle})
 
-    @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right,
+    @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right,
             throttle_axis, aileron_axis, elevator_axis, rudder_axis,
             throttle_offset, aileron_offset, elevator_offset, rudder_offset,
             vrt_gdc_mode_req, hor_gdc_mode_req, lon_ctl_mode_req, lat_ctl_mode_req,
@@ -740,7 +739,7 @@ function AircraftBase.assign!(components::System{<:C172X.Components},
                           sys::System{<:Controller})
 
     @unpack act, pwp, ldg = components.subsystems
-    @unpack eng_start, eng_stop, mixture, flaps, steering, brake_left, brake_right = sys.u
+    @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right = sys.u
     @unpack throttle_cmd, elevator_cmd = sys.lon_ctl.y
     @unpack aileron_cmd, rudder_cmd = sys.lat_ctl.y
 
@@ -749,7 +748,6 @@ function AircraftBase.assign!(components::System{<:C172X.Components},
     act.elevator.u[] = elevator_cmd
     act.rudder.u[] = rudder_cmd
     act.flaps.u[] = flaps
-    act.steering.u[] = steering
     act.mixture.u[] = mixture
     act.brake_left.u[] = brake_left
     act.brake_right.u[] = brake_right
@@ -1175,12 +1173,6 @@ function GUI.draw!(ctl::System{<:Controller},
                 CImGui.TableNextColumn();
                 PushItemWidth(-10)
                 u.flaps = safe_slider("Flaps Input", u.flaps, "%.6f")
-                PopItemWidth()
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Steering")
-                CImGui.TableNextColumn();
-                PushItemWidth(-10)
-                u.steering = safe_slider("Steering", u.steering, "%.6f")
                 PopItemWidth()
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); Text("Left Brake")

@@ -103,7 +103,6 @@ function IODevices.assign_input!(sys::System{<:Cessna172Xv1},
     u.p_ref = p_sf * roll_axis
     u.q_ref = q_sf * pitch_axis
 
-    u.steering = yaw_axis
     u.brake_left = is_pressed(buttons.button_1)
     u.brake_right = is_pressed(buttons.button_1)
 

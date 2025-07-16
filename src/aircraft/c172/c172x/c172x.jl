@@ -109,7 +109,6 @@ end
     elevator::Actuator1 = Actuator1(range = (-1.0, 1.0))
     rudder::Actuator1 = Actuator1(range = (-1.0, 1.0))
     flaps::Actuator1 = Actuator1(range = (0.0, 1.0))
-    steering::Actuator1 = Actuator1(range = (-1.0, 1.0))
     brake_left::Actuator1 = Actuator1(range = (0.0, 1.0))
     brake_right::Actuator1 = Actuator1(range = (0.0, 1.0))
 end
@@ -122,7 +121,7 @@ function C172.assign!(aero::System{<:C172.Aero},
                     pwp::System{<:PistonThruster},
                     act::System{<:FlyByWireActuation})
 
-    @unpack throttle, mixture, aileron, elevator, rudder, flaps, steering,
+    @unpack throttle, mixture, aileron, elevator, rudder, flaps,
             brake_left, brake_right = act.y
 
     aero.u.e = -elevator.pos
@@ -131,7 +130,7 @@ function C172.assign!(aero::System{<:C172.Aero},
     aero.u.f = flaps.pos
     pwp.engine.u.throttle = throttle.pos
     pwp.engine.u.mixture = mixture.pos
-    ldg.nose.steering.u.input = steering.pos
+    ldg.nose.steering.u.input = rudder.pos
     ldg.left.braking.u[] = brake_left.pos
     ldg.right.braking.u[] = brake_right.pos
 
@@ -159,14 +158,13 @@ function GUI.draw(sys::System{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true)
         ele_buffer = fill(Cfloat(0),90), ele_offset = Ref(Cint(0)),
         rud_buffer = fill(Cfloat(0),90), rud_offset = Ref(Cint(0)),
         flp_buffer = fill(Cfloat(0),90), flp_offset = Ref(Cint(0)),
-        str_buffer = fill(Cfloat(0),90), str_offset = Ref(Cint(0)),
         bkl_buffer = fill(Cfloat(0),90), bkl_offset = Ref(Cint(0)),
         bkr_buffer = fill(Cfloat(0),90), bkr_offset = Ref(Cint(0)),
 
         begin
 
-            buffers = (thr_buffer, mix_buffer, ail_buffer, ele_buffer, rud_buffer, flp_buffer, str_buffer, bkl_buffer, bkr_buffer)
-            offsets = (thr_offset, mix_offset, ail_offset, ele_offset, rud_offset, flp_offset, str_offset, bkl_offset, bkr_offset)
+            buffers = (thr_buffer, mix_buffer, ail_buffer, ele_buffer, rud_buffer, flp_buffer, bkl_buffer, bkr_buffer)
+            offsets = (thr_offset, mix_offset, ail_offset, ele_offset, rud_offset, flp_offset, bkl_offset, bkr_offset)
 
             foreach(labels, commands, positions, buffers, offsets) do label, command, position, buffer, offset
 
@@ -208,14 +206,13 @@ function GUI.draw!(sys::System{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true
         ele_buffer = fill(Cfloat(0),90), ele_offset = Ref(Cint(0)),
         rud_buffer = fill(Cfloat(0),90), rud_offset = Ref(Cint(0)),
         flp_buffer = fill(Cfloat(0),90), flp_offset = Ref(Cint(0)),
-        str_buffer = fill(Cfloat(0),90), str_offset = Ref(Cint(0)),
         bkl_buffer = fill(Cfloat(0),90), bkl_offset = Ref(Cint(0)),
         bkr_buffer = fill(Cfloat(0),90), bkr_offset = Ref(Cint(0)),
 
         begin
 
-            buffers = (thr_buffer, mix_buffer, ail_buffer, ele_buffer, rud_buffer, flp_buffer, str_buffer, bkl_buffer, bkr_buffer)
-            offsets = (thr_offset, mix_offset, ail_offset, ele_offset, rud_offset, flp_offset, str_offset, bkl_offset, bkr_offset)
+            buffers = (thr_buffer, mix_buffer, ail_buffer, ele_buffer, rud_buffer, flp_buffer, bkl_buffer, bkr_buffer)
+            offsets = (thr_offset, mix_offset, ail_offset, ele_offset, rud_offset, flp_offset, bkl_offset, bkr_offset)
 
             foreach(labels, inputs, commands, positions, buffers, offsets) do label, input, command, position, buffer, offset
 
@@ -359,7 +356,7 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
     @assert abs(aero.ẋ.α_filt) < 1e-10
     @assert abs(aero.ẋ.β_filt) < 1e-10
 
-    @assert all(SVector{9,Float64}(act.ẋ) .== 0)
+    @assert all(SVector{8,Float64}(act.ẋ) .== 0)
 
 end
 
