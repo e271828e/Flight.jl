@@ -28,7 +28,8 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
             h = HOrth(p_LOWS15) + C172.Δh_to_gnd, #altitude
             ω_wb_b = zeros(3), #angular velocity
             v_eb_n = zeros(3), #velocity
-            )
+            ) |> C172.Init
+
     elseif situation === :air
         #initial condition specified by trim parameters
         initializer = C172.TrimParameters(;
@@ -38,7 +39,7 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
             ψ_wb_dot = 0.0, #turn rate
             flaps = 0.0, #flap setting
             γ_wb_n = 0.0, #flight path angle
-            x_fuel = 0.5, #available fuel fraction
+            fuel_load = 0.5, #available fuel fraction
         )
     else
         error("Unknown situation: $situation")

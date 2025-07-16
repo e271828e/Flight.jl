@@ -60,11 +60,11 @@ function test_update_methods()
 
         loc = NVector()
         trn_data = TerrainData(trn, loc)
-        kin_init = KinInit( h = trn_data.altitude + 1.8);
+        vehicle_init = KinInit( h = trn_data.altitude + 1.8) > C172.Init
 
         ac = System(Cessna172Xv0());
 
-        Systems.init!(ac, kin_init, atm, trn)
+        Systems.init!(ac, vehicle_init, atm, trn)
 
         #ensure we are on the ground for full landing gear code coverage
         @test ac.y.vehicle.components.ldg.left.strut.wow == true

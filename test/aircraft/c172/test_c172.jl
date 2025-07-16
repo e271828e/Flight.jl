@@ -30,16 +30,17 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
     world = SimpleWorld(ac, SimpleAtmosphere(), HorizontalTerrain(altitude = h_trn)) |> System
 
     if situation === :ground
-        initializer = KinInit(; loc, q_nb = REuler(ψ, 0, 0), h = h_trn + C172.Δh_to_gnd,
-            ω_wb_b = zeros(3), v_eb_n = zeros(3));
+        initializer = C172.Init(
+            KinInit(; loc, q_nb = REuler(ψ, 0, 0), h = h_trn + C172.Δh_to_gnd,
+                ω_wb_b = zeros(3), v_eb_n = zeros(3)))
     elseif situation === :air
         EAS = 50.0
         flaps = 0.0
         γ_wb_n = 0.0
-        x_fuel = 0.5
+        fuel_load = 0.5
         payload = C172.PayloadY(m_pilot = 75, m_copilot = 75, m_baggage = 50)
 
-        initializer = C172.TrimParameters(; Ob = Geographic(loc, HEllip(650)), EAS, γ_wb_n, x_fuel, flaps, payload)
+        initializer = C172.TrimParameters(; Ob = Geographic(loc, HEllip(650)), EAS, γ_wb_n, fuel_load, flaps, payload)
     else
         error("Unknown situation: $situation")
     end

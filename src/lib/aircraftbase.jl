@@ -36,9 +36,9 @@ Systems.Y(ac::Vehicle) = VehicleY(
     AirflowData())
 
 
-############################ Explicit Initialization ###########################
+################################ Initialization ################################
 
-struct Initializer{C <: AbstractComponentInit}
+struct VehicleInitializer{C <: AbstractComponentInit}
     kin::KinInit
     cmp::C
 end
@@ -55,7 +55,7 @@ function Systems.init!( sys::System{<:Vehicle},
 end
 
 function Systems.init!( sys::System{<:Vehicle},
-                        init::Initializer,
+                        init::VehicleInitializer,
                         atmosphere::System{<:AbstractAtmosphere} = System(SimpleAtmosphere()),
                         terrain::System{<:AbstractTerrain} = System(HorizontalTerrain()))
 
@@ -230,7 +230,7 @@ end
 #atmosphere and terrain Systems as optional arguments. we pass them if provided;
 #otherwise, they will be instantiated ad hoc by the Vehicle's methods
 function Systems.init!( aircraft::System{<:Aircraft},
-                        condition::Union{<:AircraftBase.Initializer, <:AbstractTrimParameters},
+                        condition::Union{<:VehicleInitializer, <:AbstractTrimParameters},
                         args...)
 
     @unpack vehicle, avionics = aircraft.subsystems

@@ -44,7 +44,7 @@ function test_control_modes()
     act = ac.vehicle.components.act
     ctl = ac.avionics.ctl
 
-    init_gnd = KinInit( h = h_trn + 1.9);
+    init_gnd = C172.Init(KinInit( h = h_trn + 1.9))
     init_air = C172.TrimParameters()
 
     dt = Δt = 0.01
@@ -717,7 +717,7 @@ function test_sim(; save::Bool = true)
     # initializer = KinInit(
     #     loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
     #     q_nb = REuler(deg2rad(157), 0, 0),
-    #     h = h_trn + 1.81);
+    #     h = h_trn + 1.81) |> C172.Init
 
     # on air, automatically trimmed
     initializer = C172.TrimParameters(
@@ -743,10 +743,10 @@ function test_sim_interactive(; save::Bool = true)
     h_trn = HOrth(427.2);
 
     # on ground
-    initializer = KinInit(
+    initializer = C172.Init(KinInit(
         loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
         q_nb = REuler(deg2rad(157), 0, 0),
-        h = h_trn + C172.Δh_to_gnd);
+        h = h_trn + C172.Δh_to_gnd))
 
     # # on air, automatically trimmed
     # initializer = C172.TrimParameters(

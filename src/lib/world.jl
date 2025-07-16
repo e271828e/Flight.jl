@@ -47,7 +47,7 @@ function Systems.f_step!(world::System{<:SimpleWorld})
 end
 
 function Systems.init!( world::System{<:SimpleWorld},
-                        init::Union{<:AircraftBase.Initializer,
+                        init::Union{<:AircraftBase.VehicleInitializer,
                                     <:AircraftBase.AbstractTrimParameters})
     @unpack ac, atm, trn = world.subsystems
     Systems.init!(atm)

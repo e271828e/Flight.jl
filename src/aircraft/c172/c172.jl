@@ -780,8 +780,9 @@ const Cessna172 = C172.Aircraft
     β_a_filt::Float64 = 0 #only needed for trim assignments
 end
 
-Init(kin::KinInit, cmp::ComponentInit) = AircraftBase.Initializer(kin, cmp)
-Init(; kin = KinInit(), cmp = ComponentInit()) = Init(kin, cmp)
+function Init(kin::KinInit = KinInit(), cmp::ComponentInit = ComponentInit())
+    AircraftBase.VehicleInitializer(kin, cmp)
+end
 
 
 ############################### Trimming #######################################
@@ -806,7 +807,7 @@ end
     ψ_wb_dot::Float64 = 0.0 #WA-relative turn rate
     θ_wb_dot::Float64 = 0.0 #WA-relative pitch rate
     β_a::Float64 = 0.0 #sideslip angle measured in the aerodynamic reference frame
-    x_fuel::Ranged{Float64, 0., 1.} = 0.5 #normalized fuel load
+    fuel_load::Ranged{Float64, 0., 1.} = 0.5 #normalized fuel load
     mixture::Ranged{Float64, 0., 1.} = 0.5 #engine mixture control
     flaps::Ranged{Float64, 0., 1.} = 0.0 #flap setting
     payload::PayloadY = PayloadY()
