@@ -920,7 +920,7 @@ function GUI.draw!(ctl::System{<:Controller},
 
     ########################## Longitudinal Control ########################
 
-    if CImGui.CollapsingHeader("Longitudinal Control")
+    if CImGui.CollapsingHeader("Longitudinal Control Channel")
 
         if CImGui.BeginTable("LonCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
             CImGui.TableNextRow()
@@ -1024,7 +1024,7 @@ function GUI.draw!(ctl::System{<:Controller},
 
     ############################### Lateral Control ############################
 
-    if CImGui.CollapsingHeader("Lateral Control")
+    if CImGui.CollapsingHeader("Lateral Control Channel")
 
         if CImGui.BeginTable("LatCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
             CImGui.TableNextRow()

@@ -378,8 +378,8 @@ function GUI.draw(sys::System{<:Strut}, window_label::String = "Strut")
 
         if CImGui.TreeNode("Terrain Data")
 
-            @unpack altitude, normal, surface = trn_data
-            CImGui.Text(@sprintf("Altitude (Orthometric): %.7f m", Float64(altitude)))
+            @unpack elevation, normal, surface = trn_data
+            CImGui.Text(@sprintf("Elevation (Orthometric): %.7f m", Float64(elevation)))
             CImGui.Text("Surface Type: $surface")
             GUI.draw(normal, "Surface Normal [NED]")
 

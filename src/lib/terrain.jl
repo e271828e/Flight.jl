@@ -13,12 +13,12 @@ export SurfaceType, DryTarmac, WetTarmac, IcyTarmac
 @enum SurfaceType DryTarmac WetTarmac IcyTarmac
 
 @kwdef struct TerrainData
-    altitude::Altitude{Orthometric} = HOrth(0)
+    elevation::Altitude{Orthometric} = HOrth(0)
     normal::SVector{3,Float64} = @SVector[0.0, 0.0, 1.0] #NED components, inward pointing
     surface::SurfaceType = DryTarmac
 end
 
-Geodesy.HOrth(data::TerrainData) = data.altitude
+Geodesy.HOrth(data::TerrainData) = data.elevation
 
 ############################# AbstractTerrain ##################################
 
@@ -30,9 +30,9 @@ end
 
 ############################# HorizontalTerrain ################################
 
-#flat terrain with constant orthometric altitude
+#flat terrain with constant orthometric elevation
 @kwdef struct HorizontalTerrain <: AbstractTerrain
-    altitude::Altitude{Orthometric} = HOrth(0)
+    elevation::Altitude{Orthometric} = HOrth(0)
 end
 
 Systems.U(::HorizontalTerrain) = Ref(DryTarmac)
@@ -40,7 +40,7 @@ Systems.U(::HorizontalTerrain) = Ref(DryTarmac)
 @no_dynamics HorizontalTerrain
 
 function TerrainData(trn::System{<:HorizontalTerrain}, ::Abstract2DLocation)
-    TerrainData(trn.altitude, SVector{3,Float64}(0,0,1), trn.u[])
+    TerrainData(trn.elevation, SVector{3,Float64}(0,0,1), trn.u[])
 end
 
 function GUI.draw!(sys::System{<:HorizontalTerrain},
@@ -56,7 +56,7 @@ function GUI.draw!(sys::System{<:HorizontalTerrain},
         IsItemActive() && (u[] = WetTarmac); SameLine()
         mode_button("Icy Tarmac", IcyTarmac, IcyTarmac, u[]; HSV_requested = HSV_gray)
         IsItemActive() && (u[] = IcyTarmac)
-        CImGui.Text("Elevation (MSL): $(Float64(sys.altitude)) m")
+        CImGui.Text("Elevation (MSL): $(Float64(sys.elevation)) m")
     End()
 end
 

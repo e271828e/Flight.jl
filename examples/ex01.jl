@@ -11,8 +11,8 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
     p_LOWS15 = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HOrth(427.2))
     ψ_LOWS15 = deg2rad(157)
 
-    #horizontal terrain model with altitude matching LOWS runway 15
-    trn = HorizontalTerrain(altitude = HOrth(p_LOWS15))
+    #horizontal terrain model with elevation matching LOWS runway 15
+    trn = HorizontalTerrain(HOrth(p_LOWS15))
 
     #default atmospheric model
     atm = SimpleAtmosphere()

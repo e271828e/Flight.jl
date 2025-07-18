@@ -752,7 +752,7 @@ function test_sim_interactive(; save::Bool = true)
     # initializer = C172.TrimParameters(
     #     Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
-    trn = HorizontalTerrain(altitude = h_trn)
+    trn = HorizontalTerrain(h_trn)
     ac = Cessna172Xv1(WA(), trn) |> System;
 
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)

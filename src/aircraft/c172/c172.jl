@@ -335,7 +335,7 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     #non-dimensional height above ground
     loc_Oa = n_e #(2D location of aerodynamics frame, Oa = Ob)
     h_a = h_o #orthometric
-    h_trn_a = TerrainData(terrain, loc_Oa).altitude #orthometric
+    h_trn_a = TerrainData(terrain, loc_Oa).elevation #orthometric
     Δh_nd = (h_a - h_trn_a) / b
 
     # T = get_wr_b(pwp).F[1]

@@ -117,7 +117,7 @@ function test_landing_gear_unit()
         loc = NVector()
 
         #set the initial 2D Location
-        h_trn = TerrainData(terrain, loc).altitude
+        h_trn = TerrainData(terrain, loc).elevation
         h = h_trn + 0.9
 
         #wow = false
@@ -219,7 +219,7 @@ function test_harness()
 
     trn = HorizontalTerrain()
     loc = LatLon()
-    h_trn = Terrain.TerrainData(trn, loc).altitude
+    h_trn = Terrain.TerrainData(trn, loc).elevation
 
     damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
     strut = Strut(l_0 = 1.0, damper = damper)

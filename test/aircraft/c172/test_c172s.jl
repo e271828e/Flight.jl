@@ -61,7 +61,7 @@ function test_update_methods()
 
         loc = NVector()
         trn_data = TerrainData(trn, loc)
-        vehicle_init = KinInit( h = trn_data.altitude + 1.8) |> C172.Init
+        vehicle_init = KinInit( h = trn_data.elevation + 1.8) |> C172.Init
 
         ac = System(Cessna172Sv0());
 
