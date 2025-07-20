@@ -259,7 +259,7 @@ end
 ############################# Initialization ###################################
 ################################################################################
 
-function Systems.init!(cmp::System{<:Components}, init::C172.ComponentInit)
+function Systems.init!(cmp::System{<:Components}, init::C172.ComponentInitializer)
 
     @unpack act, pwp, aero, fuel, ldg, pld = cmp
 
@@ -333,7 +333,7 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
 
     kin_init = KinInit(trim_state, trim_params, atmosphere)
 
-    cmp_init = C172.ComponentInit(;
+    cmp_init = C172.ComponentInitializer(;
         engine_state = Piston.eng_running, #obvious
         n_eng, mixture, throttle, elevator, aileron, rudder,
         flaps, brake_left = 0, brake_right = 0, fuel_load, payload,

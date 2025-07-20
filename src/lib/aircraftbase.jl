@@ -38,20 +38,9 @@ Systems.Y(ac::Vehicle) = VehicleY(
 
 ################################ Initialization ################################
 
-struct VehicleInitializer{C <: AbstractComponentInit}
+struct VehicleInitializer{C <: AbstractComponentInitializer}
     kin::KinInit
     cmp::C
-end
-
-function Systems.init!( sys::System{<:Vehicle},
-                        init::KinInit,
-                        atmosphere::System{<:AbstractAtmosphere} = System(SimpleAtmosphere()),
-                        terrain::System{<:AbstractTerrain} = System(HorizontalTerrain()))
-
-    @unpack kinematics, dynamics = sys.subsystems
-    Systems.init!(kinematics, init)
-    dynamics.x .= kinematics.u #essential
-    f_ode!(sys, atmosphere, terrain) #update vehicle's ẋ and y
 end
 
 function Systems.init!( sys::System{<:Vehicle},
@@ -119,7 +108,7 @@ Systems.init!(::System{NoAvionics}, args...) = nothing
 ################################################################################
 ######################## Vehicle/Avionics update methods #######################
 
-#we want to be able to trim the standalone Vehicle without any auxiliary
+#we should be able to trim the standalone Vehicle without any auxiliary
 #Avionics. therefore, the Vehicle's update methods must not require Avionics as
 #an argument. to make this possible, any changes to Vehicle should be done
 #through the joint assign! methods. accordingly, Avionics update methods should
@@ -332,9 +321,9 @@ function ss_matrices(f_main::Function, x0::AbstractVector{Float64},
     f_y(x, u) = f_main(x, u).y
     y0 = f_y(x0, u0)
 
-    #none of these closures will be returned for use in another scope, so we
-    #don't need to capture x0 and u0 with a let block, because they are
-    #guaranteed not be reassigned within the scope of ss_matrices
+    #none of these closures will be returned for use in another scope or
+    #reassigned within ss_matrices, so there is no need to capture x0 and u0
+    #with a let block
     f_A!(ẋ, x) = (ẋ .= f_ẋ(x, u0))
     f_B!(ẋ, u) = (ẋ .= f_ẋ(x0, u))
     f_C!(y, x) = (y .= f_y(x, u0))

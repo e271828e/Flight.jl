@@ -347,9 +347,6 @@ function f_cb_disc!(integrator)
     #increment the discrete iteration counter
     sys.n[] += 1
 
-    #assign the (potentially) modified sys.x back to the integrator (REMOVE)
-    has_x(sys) && (u .= sys.x)
-
 end
 
 #SavingCallback function, gets called at the end of each step after f_disc!

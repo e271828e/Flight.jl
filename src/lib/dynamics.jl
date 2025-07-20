@@ -12,7 +12,7 @@ export FrameTransform, transform
 export Wrench
 export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
 export AbstractComponentSet, NoComponents
-export AbstractComponentInit, NoComponentInit
+export AbstractComponentInitializer, NoComponentInitializer
 export get_mp_b, get_wr_b, get_hr_b
 export VehicleDynamics, DynamicsData
 
@@ -425,11 +425,11 @@ get_mp_b(sys::System{NoComponents}) = MassProperties(sys.mass_distribution)
 
 ############################# Initialization ###################################
 
-abstract type AbstractComponentInit end
+abstract type AbstractComponentInitializer end
 
-struct NoComponentInit <: AbstractComponentInit end
+struct NoComponentInitializer <: AbstractComponentInitializer end
 
-Systems.init!(::System{<:AbstractComponentSet}, init::NoComponentInit) = nothing
+Systems.init!(::System{<:AbstractComponentSet}, init::NoComponentInitializer) = nothing
 
 
 ################################################################################

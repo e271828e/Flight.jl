@@ -762,7 +762,7 @@ const Cessna172 = C172.Aircraft
 ########################## Explicit Initialization #############################
 ################################################################################
 
-@kwdef struct ComponentInit <: AbstractComponentInit
+@kwdef struct ComponentInitializer <: AbstractComponentInitializer
     engine_state::Piston.EngineState = Piston.eng_off
     n_eng::Float64 = 0.0 #normalized engine speed
     mixture::Ranged{Float64, 0., 1.} = 0.5
@@ -780,7 +780,7 @@ const Cessna172 = C172.Aircraft
     β_a_filt::Float64 = 0 #only needed for trim assignments
 end
 
-function Init(kin::KinInit = KinInit(), cmp::ComponentInit = ComponentInit())
+function Init(kin::KinInit = KinInit(), cmp::ComponentInitializer = ComponentInitializer())
     AircraftBase.VehicleInitializer(kin, cmp)
 end
 
