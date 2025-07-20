@@ -105,7 +105,7 @@ function System(sd::D,
 
     if !isbits(y)
         @warn "The output defined for $D is not an isbits type.
-        For performance reasons, it is highly advisable to use a concrete,
+        For performance reasons, it is strongly recommended to use a concrete,
         immutable, stack-allocated type as System output"
     end
 
@@ -315,7 +315,7 @@ end
 ################################################################################
 ############################### Inspection #####################################
 
-#prevent monstrous (nested, parameterized) types from flooding the REPL
+#prevent monstrous type signatures from flooding the REPL
 function Base.show(io::IO, ::MIME"text/plain", x::Union{Type{<:System}, Type{<:SystemDefinition}})
     str = sprint(show, x)
     maxlen = 100
@@ -328,7 +328,7 @@ function Base.show(io::IO, ::MIME"text/plain", x::Union{System, SystemDefinition
     length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
 end
 
-#inspect hierarchy with AbstractTrees.print_tree
+#enable hierarchy inspection with AbstractTrees.print_tree
 AbstractTrees.children(node::System) = node.subsystems
 AbstractTrees.printnode(io::IO, ::System{D}) where {D} = show(io, MIME"text/plain"(), D)
 

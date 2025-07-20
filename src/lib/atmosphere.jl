@@ -164,7 +164,7 @@ Systems.U(::TunableWind) = ComponentVector(N= 0.0, E = 0.0, D = 0.0)
 
 function GUI.draw!(sys::System{<:TunableWind},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Wind")
+                    label::String = "Wind Velocity")
 
     u = sys.u
 

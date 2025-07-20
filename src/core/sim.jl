@@ -45,13 +45,6 @@ function GUI.draw!(control::SimControl)
         mode_button("Pause", true, false, control.paused; HSV_active = HSV_amber)
         CImGui.IsItemClicked() && (control.paused = !control.paused); CImGui.SameLine()
 
-        # dynamic_button("Abort", HSV_red)
-        # if CImGui.IsItemClicked()
-        #     control.paused = false
-        #     control.running = false
-        # end
-        # CImGui.SameLine()
-
         control.pace = safe_slider("Pace", control.pace, 0.1, 20.0, "%.3f",
         ImGuiSliderFlags_Logarithmic; show_label = true)
 
@@ -72,8 +65,8 @@ function GUI.draw!(control::SimControl)
 
 end
 
-#any InputDevice that wants to control the simulation needs to define its own
-#IOMapping subtype and extend this function
+#to control the Simulation, an InputDevice that should define its own IOMapping
+#subtype and use it to extend this function
 IODevices.assign_input!(::SimControl, ::IOMapping, ::Any) = nothing
 
 ################################################################################
@@ -102,15 +95,13 @@ function update!(interface::SimInput)
     data = IODevices.get_data!(device)
 
     #the data we got from the InputDevice might be something we're not able to
-    #assign to the System (for example, an EOT character). we need to handle
-    #that scenario
+    #map to the System (for example, an EOT character)
     try
         lock(io_lock)
         IODevices.assign_input!(sys, mapping, data)
         IODevices.assign_input!(control, mapping, data)
     catch ex
         @warn("Failed to assign input data $data to System")
-        # println(ex)
     finally
         unlock(io_lock)
     end
@@ -140,8 +131,8 @@ function update!(gui::SimGUI)
     #the GUI may modify the System or SimControl, so we need to grab io_lock
     @lock io_lock GUI.render!(device)
 
-    #once io_lock has been released and the simulation thread can proceed, we
-    #sleep for a while to limit GUI framerate and save CPU time
+    #once io_lock has been released and the simulation thread can proceed, put
+    #the GUI thread to sleep for a while to limit framerate and save CPU time
     sleep(0.016)
 end
 
@@ -310,10 +301,10 @@ function f_ode_wrapper!(u̇, u, p, t)
     #assign current integrator solution to System's continuous state
     has_x(sys) && (sys.x .= u)
 
-    #same with time
+    #idem for time
     sys.t[] = t
 
-    f_ode!(sys) #call continuous dynamics, updates sys.ẋ and sys.y
+    f_ode!(sys) #call continuous dynamics (updates sys.ẋ and sys.y)
 
     has_x(sys) && (u̇ .= sys.ẋ) #update the integrator's derivative
 
@@ -356,7 +347,7 @@ function f_cb_disc!(integrator)
     #increment the discrete iteration counter
     sys.n[] += 1
 
-    #assign the (potentially) modified sys.x back to the integrator
+    #assign the (potentially) modified sys.x back to the integrator (REMOVE)
     has_x(sys) && (u .= sys.x)
 
 end
@@ -541,7 +532,7 @@ function start!(sim::Simulation)
                 #wait for wall-clock time to catch up. busy wait is not ideal,
                 #but it is more responsive than sleep(τ_next - τ()). sleep()
                 #only guarantees a minimum sleep duration, and its granularity
-                #is not good
+                #is not great
                 while τ_next > τ() end
 
                 τ_last = τ_next
@@ -688,7 +679,7 @@ TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
 ################################################################################
 ############################### Inspection #####################################
 
-#prevent monstrous (nested, parameterized) types from flooding the REPL
+#prevent monstrous type signatures from flooding the REPL
 function Base.show(io::IO, ::MIME"text/plain", x::Simulation)
     print(io, "Simulation{...}(...)")
     # str = sprint(show, x)
@@ -696,7 +687,7 @@ function Base.show(io::IO, ::MIME"text/plain", x::Simulation)
     # length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
 end
 
-#prevent monstrous (nested, parameterized) types from flooding the REPL
+#prevent monstrous type signatures from flooding the REPL
 function Base.show(io::IO, ::MIME"text/plain", x::Type{<:Simulation})
     print(io, "Simulation{...}")
     # str = sprint(show, x)

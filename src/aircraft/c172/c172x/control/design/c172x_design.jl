@@ -23,11 +23,12 @@ using LinearAlgebra
 using Interpolations
 
 
+#sweeps the envelope in EAS and altitude to generate each control channel's gain
+#scheduling lookup tables
+
 function generate_lookups(
     EAS_range::AbstractRange{Float64} = range(25, 55, length = 7),
     h_range::AbstractRange{Float64} = range(50, 3050, length = 4);
-    # EAS_range::AbstractRange{Float64} = range(25, 55, length = 2),
-    # h_range::AbstractRange{Float64} = range(50, 3050, length = 2);
     channel::Symbol = :lat,
     global_search::Bool = false,
     folder::String = joinpath(dirname(@__DIR__), "data"))
@@ -65,6 +66,9 @@ function generate_lookups(
     return results
 
 end
+
+#automates the design process from c172x_lon.ipynb, generating the parameters
+#for all controllers at the specified design point
 
 function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
                     global_search = false)
@@ -306,7 +310,8 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
 end
 
-
+#automates the design process from c172x_lat.ipynb, generating the parameters
+#for all controllers at the specified design point
 function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
                     global_search::Bool = false)
 

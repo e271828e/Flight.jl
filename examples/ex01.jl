@@ -8,11 +8,12 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
                 )
 
     #3D position and geographic heading for Salzburg airport (LOWS) runway 15
-    p_LOWS15 = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HOrth(427.2))
+    loc_LOWS15 = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997))
+    h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
     #horizontal terrain model with elevation matching LOWS runway 15
-    trn = HorizontalTerrain(HOrth(p_LOWS15))
+    trn = HorizontalTerrain(h_LOWS15)
 
     #default atmospheric model
     atm = SimpleAtmosphere()
@@ -23,9 +24,9 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
     if situation === :ground
         #initial condition specified through aircraft frame kinematics
         initializer = KinInit(;
+            loc = loc_LOWS15, #2D location
+            h = h_LOWS15 + C172.Δh_to_gnd, #altitude
             q_nb = REuler(ψ_LOWS15, 0, 0), #attitude with respect to NED frame
-            loc = LatLon(p_LOWS15), #2D location
-            h = HOrth(p_LOWS15) + C172.Δh_to_gnd, #altitude
             ω_wb_b = zeros(3), #angular velocity
             v_eb_n = zeros(3), #velocity
             ) |> C172.Init
@@ -33,12 +34,12 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
     elseif situation === :air
         #initial condition specified by trim parameters
         initializer = C172.TrimParameters(;
-            Ob = Geographic(LatLon(p_LOWS15), HEllip(650)), #3D position
+            Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above LOWS runway 15
             EAS = 50.0, #equivalent airspeed
             ψ_nb = ψ_LOWS15, #geographic heading
+            γ_wb_n = 0.0, #wind-relative flight path angle
             ψ_wb_dot = 0.0, #turn rate
             flaps = 0.0, #flap setting
-            γ_wb_n = 0.0, #flight path angle
             fuel_load = 0.5, #available fuel fraction
         )
     else

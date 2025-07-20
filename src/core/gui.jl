@@ -198,7 +198,7 @@ function render_loop(renderer::Renderer)
         "for an unsynced Renderer (sync = 0). Use scheduled calls to update!() instead."
         #a Renderer with sync=0 does not wait for monitor sync when
         #glfwSwapBuffers is called within update!(). this means the GUI frame
-        #rate is effectively uncapped, which is generally not good. so the calls
+        #rate is effectively uncapped. this is generally not good, so the calls
         #to update! must be frequency-limited by some other scheduling means
 
         while !IODevices.should_close(renderer)

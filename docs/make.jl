@@ -15,3 +15,5 @@ makedocs(;
         repolink="http://localhost:8000",
     )
 )
+
+deploydocs(; repo = "https://github.com/e271828e/Flight.jl.git")
