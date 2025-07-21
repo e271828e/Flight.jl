@@ -662,9 +662,9 @@ Dynamics.get_hr_b(::Model{<:AbstractActuation}) = zeros(SVector{3})
 
 
 ################################################################################
-################################ Components ######################################
+################################ Systems ######################################
 
-struct Components{P <: PistonThruster, A <: AbstractActuation} <: AbstractComponentSet
+struct Systems{P <: PistonThruster, A <: AbstractActuation} <: AbstractSystems
     afm::Airframe
     aero::Aero
     ldg::Ldg
@@ -674,35 +674,35 @@ struct Components{P <: PistonThruster, A <: AbstractActuation} <: AbstractCompon
     act::A
 end
 
-function Components(pwp::PistonThruster, act::AbstractActuation)
-    Components(Airframe(), Aero(), Ldg(), Fuel(), Payload(), pwp, act)
+function Systems(pwp::PistonThruster, act::AbstractActuation)
+    Systems(Airframe(), Aero(), Ldg(), Fuel(), Payload(), pwp, act)
 end
 
 
 ############################# Update Methods ###################################
 
-function Modeling.f_ode!(components::Model{<:Components},
+function Modeling.f_ode!(systems::Model{<:Systems},
                         kin::KinData,
                         air::AirflowData,
                         trn::Model{<:AbstractTerrain})
 
-    @unpack act, aero, pwp, ldg, fuel, pld = components
+    @unpack act, aero, pwp, ldg, fuel, pld = systems
 
     f_ode!(act) #update actuation system outputs
-    assign!(aero, ldg, pwp, act) #assign actuation system outputs to components submodels
+    assign!(aero, ldg, pwp, act) #assign actuation model outputs to systems submodels
     f_ode!(aero, pwp, air, kin, trn) #update aerodynamics continuous state & outputs
     f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
-    update_output!(components)
+    update_output!(systems)
 
 end
 
-function Modeling.f_step!(components::Model{<:Components},
+function Modeling.f_step!(systems::Model{<:Systems},
                         ::Model{<:AbstractAtmosphere},
                         ::Model{<:AbstractTerrain})
-    @unpack aero, ldg, pwp, fuel = components
+    @unpack aero, ldg, pwp, fuel = systems
 
     f_step!(aero)
     f_step!(ldg)
@@ -710,17 +710,17 @@ function Modeling.f_step!(components::Model{<:Components},
 
 end
 
-@no_disc Components
+@no_disc Systems
 
 
 
 #################################### GUI #######################################
 
-function GUI.draw!( components::Model{<:Components}, ::Model{A},
+function GUI.draw!( systems::Model{<:Systems}, ::Model{A},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 Components") where {A<:AbstractAvionics}
+                    label::String = "Cessna 172 Systems") where {A<:AbstractAvionics}
 
-    @unpack act, pwp, ldg, aero, fuel, pld = components
+    @unpack act, pwp, ldg, aero, fuel, pld = systems
 
     CImGui.Begin(label, p_open)
 
@@ -754,7 +754,7 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Vehicle = AircraftBase.Vehicle{<:C172.Components}
+const Vehicle = AircraftBase.Vehicle{<:C172.Systems}
 const Aircraft = AircraftBase.Aircraft{<:C172.Vehicle}
 const Cessna172 = C172.Aircraft
 
@@ -762,7 +762,7 @@ const Cessna172 = C172.Aircraft
 ########################## Explicit Initialization #############################
 ################################################################################
 
-@kwdef struct ComponentInitializer <: AbstractComponentInitializer
+@kwdef struct SystemsInitializer <: AbstractSystemsInitializer
     engine_state::Piston.EngineState = Piston.eng_off
     n_eng::Float64 = 0.0 #normalized engine speed
     mixture::Ranged{Float64, 0., 1.} = 0.5
@@ -780,8 +780,8 @@ const Cessna172 = C172.Aircraft
     β_a_filt::Float64 = 0 #only needed for trim assignments
 end
 
-function Init(kin::KinInit = KinInit(), cmp::ComponentInitializer = ComponentInitializer())
-    AircraftBase.VehicleInitializer(kin, cmp)
+function Init(kin::KinInit = KinInit(), sys::SystemsInitializer = SystemsInitializer())
+    AircraftBase.VehicleInitializer(kin, sys)
 end
 
 
@@ -856,7 +856,7 @@ function cost(vehicle::Model{<:C172.Vehicle})
 
     v_nd_dot = SVector{3}(ẋ.dynamics.v_eb_b) / norm(y.kinematics.v_eb_b)
     ω_dot = SVector{3}(ẋ.dynamics.ω_eb_b) #ω should already of order 1
-    n_eng_dot = ẋ.components.pwp.engine.ω / vehicle.components.pwp.engine.ω_rated
+    n_eng_dot = ẋ.systems.pwp.engine.ω / vehicle.systems.pwp.engine.ω_rated
 
     sum(v_nd_dot.^2) + sum(ω_dot.^2) + n_eng_dot^2
 
@@ -904,7 +904,7 @@ function Modeling.init!(
         rudder = -1)
 
     upper_bounds[:] .= TrimState(
-        α_a = vehicle.components.aero.α_stall[2], #critical AoA is 0.28 < 0.36
+        α_a = vehicle.systems.aero.α_stall[2], #critical AoA is 0.28 < 0.36
         φ_nb = π/3,
         n_eng = 1.1,
         throttle = 1,
@@ -955,9 +955,9 @@ end
 function IODevices.extract_output(ac::Model{<:Cessna172}, ::XPlane12ControlMapping)
 
     t = ac.t[]
-    @unpack δe, δa, δr, δf = ac.y.vehicle.components.aero
-    ψ_sw = ac.y.vehicle.components.ldg.nose.strut.ψ_sw
-    ω_prop = ac.y.vehicle.components.pwp.propeller.ω
+    @unpack δe, δa, δr, δf = ac.y.vehicle.systems.aero
+    ψ_sw = ac.y.vehicle.systems.ldg.nose.strut.ψ_sw
+    ω_prop = ac.y.vehicle.systems.pwp.propeller.ω
 
     ϕ_prop = mod(ω_prop * t, 2π)
     prop_is_disc = (ω_prop > 10 ? true : false)

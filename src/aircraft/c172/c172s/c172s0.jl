@@ -29,7 +29,7 @@ brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 function IODevices.assign_input!(mdl::Model{<:Cessna172Sv0},
                                 ::GenericInputMapping, data::T16000MData)
 
-    u = mdl.vehicle.components.act.u
+    u = mdl.vehicle.systems.act.u
 
     @unpack axes, buttons, hat = data
 

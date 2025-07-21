@@ -37,7 +37,7 @@ end
 
 Modeling.U(::HorizontalTerrain) = Ref(DryTarmac)
 
-@no_dynamics HorizontalTerrain
+@no_updates HorizontalTerrain
 
 function TerrainData(trn::Model{<:HorizontalTerrain}, ::Abstract2DLocation)
     TerrainData(trn.elevation, SVector{3,Float64}(0,0,1), trn.u[])

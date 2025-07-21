@@ -67,7 +67,7 @@ function test_update_methods()
         Modeling.init!(ac, vehicle_init, atm, trn)
 
         #ensure we are on the ground for full landing gear code coverage
-        @test ac.y.vehicle.components.ldg.left.strut.wow == true
+        @test ac.y.vehicle.systems.ldg.left.strut.wow == true
 
         @test @ballocated(f_ode!($ac, $atm, $trn)) == 0
         @test @ballocated(f_disc!($ac, $atm, $trn)) == 0

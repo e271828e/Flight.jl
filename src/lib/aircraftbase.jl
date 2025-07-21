@@ -6,6 +6,8 @@ using FiniteDiff: finite_difference_jacobian! as jacobian!
 using Flight.FlightCore
 using Flight.FlightLib
 
+export AbstractSystems, NoSystems
+export AbstractSystemsInitializer, NoSystemsInitializer
 export AbstractAvionics, NoAvionics
 export AbstractTrimParameters, AbstractTrimState
 export trim!, linearize!
@@ -13,24 +15,50 @@ export trim!, linearize!
 
 
 ################################################################################
+############################ Vehicle Systems ###################################
+
+abstract type AbstractSystems <: ModelDefinition end
+
+################################## NoSystems ###################################
+
+@kwdef struct NoSystems <: AbstractSystems
+    mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
+end
+
+Dynamics.get_hr_b(::Model{NoSystems}) = zeros(SVector{3})
+Dynamics.get_wr_b(::Model{NoSystems}) = Wrench()
+Dynamics.get_mp_b(mdl::Model{NoSystems}) = MassProperties(mdl.mass_distribution)
+
+@no_updates NoSystems
+
+############################# Initialization ###################################
+
+abstract type AbstractSystemsInitializer end
+
+struct NoSystemsInitializer <: AbstractSystemsInitializer end
+
+Modeling.init!(::Model{<:AbstractSystems}, init::NoSystemsInitializer) = nothing
+
+
+################################################################################
 ############################## Vehicle ################################
 
-@kwdef struct Vehicle{C <: AbstractComponentSet,
+@kwdef struct Vehicle{S <: AbstractSystems,
                       K <: AbstractKinematicDescriptor } <: ModelDefinition
-    components::C = NoComponents()
+    systems::S = NoSystems()
     kinematics::K = WA()
     dynamics::VehicleDynamics = VehicleDynamics()
 end
 
-struct VehicleY{C, K}
-    components::C
+struct VehicleY{S, K}
+    systems::S
     kinematics::K
     dynamics::DynamicsData
     airflow::AirflowData
 end
 
 Modeling.Y(ac::Vehicle) = VehicleY(
-    Modeling.Y(ac.components),
+    Modeling.Y(ac.systems),
     KinData(),
     DynamicsData(),
     AirflowData())
@@ -38,9 +66,9 @@ Modeling.Y(ac::Vehicle) = VehicleY(
 
 ################################ Initialization ################################
 
-struct VehicleInitializer{C <: AbstractComponentInitializer}
+struct VehicleInitializer{S <: AbstractSystemsInitializer}
     kin::KinInit
-    cmp::C
+    sys::S
 end
 
 function Modeling.init!( mdl::Model{<:Vehicle},
@@ -48,9 +76,9 @@ function Modeling.init!( mdl::Model{<:Vehicle},
                         atmosphere::Model{<:AbstractAtmosphere} = Model(SimpleAtmosphere()),
                         terrain::Model{<:AbstractTerrain} = Model(HorizontalTerrain()))
 
-    @unpack kinematics, dynamics, components = mdl.submodels
+    @unpack kinematics, dynamics, systems = mdl.submodels
     Modeling.init!(kinematics, init.kin)
-    Modeling.init!(components, init.cmp)
+    Modeling.init!(systems, init.sys)
     dynamics.x .= kinematics.u #essential
     f_ode!(mdl, atmosphere, terrain) #update vehicle's ẋ and y
 end
@@ -101,7 +129,7 @@ abstract type AbstractAvionics <: ModelDefinition end
 ################################### NoAvionics #################################
 
 struct NoAvionics <: AbstractAvionics end
-@no_dynamics NoAvionics
+@no_updates NoAvionics
 
 Modeling.init!(::Model{NoAvionics}, args...) = nothing
 
@@ -119,20 +147,20 @@ function Modeling.f_ode!(vehicle::Model{<:Vehicle},
                         terrain::Model{<:AbstractTerrain})
 
     @unpack ẋ, x, submodels, constants = vehicle
-    @unpack kinematics, dynamics, components = submodels
+    @unpack kinematics, dynamics, systems = submodels
 
     kinematics.u .= dynamics.x
     f_ode!(kinematics) #update ẋ and y before extracting kinematics data
     kin_data = KinData(kinematics)
     airflow_data = AirflowData(atmosphere, kin_data)
 
-    #update components
-    f_ode!(components, kin_data, airflow_data, terrain)
+    #update vehicle systems
+    f_ode!(systems, kin_data, airflow_data, terrain)
 
     #update vehicle dynamics
-    f_ode!(dynamics, components, kin_data)
+    f_ode!(dynamics, systems, kin_data)
 
-    vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, airflow_data)
+    vehicle.y = VehicleY(systems.y, kinematics.y, dynamics.y, airflow_data)
     nothing
 
 end
@@ -141,41 +169,41 @@ function Modeling.f_step!(vehicle::Model{<:Vehicle},
                          atm::Model{<:AbstractAtmosphere},
                          trn::Model{<:AbstractTerrain})
 
-    @unpack components, kinematics, dynamics = vehicle.submodels
+    @unpack systems, kinematics, dynamics = vehicle.submodels
 
     f_step!(kinematics)
-    f_step!(components, atm, trn)
+    f_step!(systems, atm, trn)
 
 end
 
-#within Vehicle, only the components may be modified by f_disc!
+#within Vehicle, only vehicle systems may be modified by f_disc!
 function Modeling.f_disc!(::NoScheduling, vehicle::Model{<:Vehicle},
                          atmosphere::Model{<:AbstractAtmosphere},
                          terrain::Model{<:AbstractTerrain})
 
-    @unpack components, kinematics, dynamics = vehicle.submodels
+    @unpack systems, kinematics, dynamics = vehicle.submodels
 
-    f_disc!(components, atmosphere, terrain)
+    f_disc!(systems, atmosphere, terrain)
 
-    # components.y might have changed, so we should update vehicle.y
-    vehicle.y = VehicleY(components.y, kinematics.y, dynamics.y, vehicle.y.airflow)
+    # systems.y might have changed, so we should update vehicle.y
+    vehicle.y = VehicleY(systems.y, kinematics.y, dynamics.y, vehicle.y.airflow)
     nothing
 
 end
 
 #these map avionics outputs to the vehicle, and in particular to
-#components inputs. they are called both within the aircraft's f_ode! and
+#systems inputs. they are called both within the aircraft's f_ode! and
 #f_disc! before the vehicle update
 function assign!(vehicle::Model{<:Vehicle}, avionics::Model{<:AbstractAvionics})
-    assign!(vehicle.components, avionics)
+    assign!(vehicle.systems, avionics)
 end
 
-function assign!(components::Model{<:AbstractComponentSet},
+function assign!(systems::Model{<:AbstractSystems},
                 avionics::Model{<:AbstractAvionics})
-    MethodError(assign!, (components, avionics)) |> throw
+    MethodError(assign!, (systems, avionics)) |> throw
 end
 
-assign!(::Model{<:AbstractComponentSet}, ::Model{NoAvionics}) = nothing
+assign!(::Model{<:AbstractSystems}, ::Model{NoAvionics}) = nothing
 
 
 ################################################################################
@@ -355,7 +383,7 @@ end
 function Plotting.make_plots(ts::TimeSeries{<:VehicleY}; kwargs...)
 
     return OrderedDict(
-        :components => make_plots(ts.components; kwargs...),
+        :systems => make_plots(ts.systems; kwargs...),
         :kinematics => make_plots(ts.kinematics; kwargs...),
         :dynamics => make_plots(ts.dynamics; kwargs...),
         :air => make_plots(ts.air; kwargs...),
@@ -389,18 +417,18 @@ function GUI.draw!(vehicle::Model{<:Vehicle},
                    p_open::Ref{Bool} = Ref(true),
                    label::String = "Vehicle")
 
-    @unpack components = vehicle.submodels
+    @unpack systems = vehicle.submodels
     @unpack kinematics, dynamics, airflow = vehicle.y
 
     CImGui.Begin(label, p_open)
 
     @cstatic(c_afm=false, c_kin =false, c_dyn=false, c_air=false,
     begin
-            @c CImGui.Checkbox("Components", &c_afm)
+            @c CImGui.Checkbox("Systems", &c_afm)
             @c CImGui.Checkbox("Kinematics", &c_kin)
             @c CImGui.Checkbox("Dynamics", &c_dyn)
             @c CImGui.Checkbox("Airflow", &c_air)
-            c_afm && @c GUI.draw!(components, avionics, &c_afm)
+            c_afm && @c GUI.draw!(systems, avionics, &c_afm)
             c_kin && @c GUI.draw(kinematics, &c_kin)
             c_dyn && @c GUI.draw(dynamics, &c_dyn)
             c_air && @c GUI.draw(airflow, &c_air)

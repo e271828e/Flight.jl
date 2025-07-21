@@ -72,8 +72,8 @@ end
 #assemble state vector from vehicle
 function XPitch(vehicle::Model{<:C172X.Vehicle})
 
-    @unpack components, airflow, kinematics = vehicle.y
-    @unpack pwp, aero, act = components
+    @unpack systems, airflow, kinematics = vehicle.y
+    @unpack pwp, aero, act = systems
     @unpack e_nb, ω_eb_b = kinematics
 
     q = ω_eb_b[2]
@@ -259,7 +259,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LonControl},
         #e2e is purely proportional, so it doesn't need resetting
 
         e2e_lqr.u.x .= XPitch(vehicle) #state feedback
-        e2e_lqr.u.z .= Float64(vehicle.y.components.act.elevator.cmd) #command variable feedback
+        e2e_lqr.u.z .= Float64(vehicle.y.systems.act.elevator.cmd) #command variable feedback
         e2e_lqr.u.z_ref .= elevator_ref #command variable reference
         f_disc!(e2e_lqr)
         elevator_cmd = e2e_lqr.y.output[1]
@@ -306,8 +306,8 @@ end
 
 function XLat(vehicle::Model{<:C172X.Vehicle})
 
-    @unpack components, airflow, kinematics = vehicle.y
-    @unpack aero, act = components
+    @unpack systems, airflow, kinematics = vehicle.y
+    @unpack aero, act = systems
     @unpack e_nb, ω_eb_b = kinematics
 
     p, _, r = ω_eb_b
@@ -395,14 +395,14 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LatControl},
     @unpack mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref = mdl.u
     @unpack ar2ar_lqr, φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = mdl.submodels
     @unpack ar2ar_lookup, φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = mdl.constants
-    @unpack airflow, kinematics, components = vehicle.y
+    @unpack airflow, kinematics, systems = vehicle.y
 
     EAS = airflow.EAS
     h_e = Float64(kinematics.h_e)
 
     @unpack θ, φ = kinematics.e_nb
     p, _, _ = kinematics.ω_wb_b
-    β = components.aero.β
+    β = systems.aero.β
     mode_prev = mdl.y.mode
 
     aileron_cmd = aileron_ref
@@ -414,8 +414,8 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LatControl},
         Control.Discrete.assign!(ar2ar_lqr, ar2ar_lookup(EAS, Float64(h_e)))
 
         ar2ar_lqr.u.x .= XLat(vehicle)
-        ar2ar_lqr.u.z .= ULat(; aileron_cmd = components.act.aileron.cmd,
-                                rudder_cmd = components.act.rudder.cmd)
+        ar2ar_lqr.u.z .= ULat(; aileron_cmd = systems.act.aileron.cmd,
+                                rudder_cmd = systems.act.rudder.cmd)
         ar2ar_lqr.u.z_ref .= ULat(; aileron_cmd = aileron_ref, rudder_cmd = rudder_ref)
         f_disc!(ar2ar_lqr)
         @unpack aileron_cmd, rudder_cmd = ULat(ar2ar_lqr.y.output)
@@ -665,7 +665,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:Controller},
     aileron_ref = aileron_axis + aileron_offset
     rudder_ref = rudder_axis + rudder_offset
 
-    any_wow = any(SVector{3}(leg.strut.wow for leg in vehicle.y.components.ldg))
+    any_wow = any(SVector{3}(leg.strut.wow for leg in vehicle.y.systems.ldg))
     flight_phase = any_wow ? phase_gnd : phase_air
 
     if flight_phase === phase_gnd
@@ -735,10 +735,10 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:Controller},
 
 end
 
-function AircraftBase.assign!(components::Model{<:C172X.Components},
+function AircraftBase.assign!(systems::Model{<:C172X.Systems},
                           mdl::Model{<:Controller})
 
-    @unpack act, pwp, ldg = components.submodels
+    @unpack act, pwp, ldg = systems.submodels
     @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right = mdl.u
     @unpack throttle_cmd, elevator_cmd = mdl.lon_ctl.y
     @unpack aileron_cmd, rudder_cmd = mdl.lat_ctl.y
@@ -764,10 +764,10 @@ function Modeling.init!(mdl::Model{<:Controller},
 
     #here we assume that the vehicle's y has already been updated to its trim
     #value by init!(vehicle, params)
-    y_act = vehicle.y.components.act
+    y_act = vehicle.y.systems.act
     @unpack ω_wb_b, v_eb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
     @unpack EAS = vehicle.y.airflow
-    @unpack β = vehicle.y.components.aero
+    @unpack β = vehicle.y.systems.aero
 
     #we need to make Controller inputs consistent with the vehicle status, so
     #trim conditions are preserved upon simulation start when the corresponding
@@ -873,8 +873,8 @@ function GUI.draw!(ctl::Model{<:Controller},
     @unpack u, y, Δt, submodels = ctl
     @unpack lon_ctl, lat_ctl, alt_gdc = submodels
 
-    @unpack components, kinematics, dynamics, airflow = vehicle.y
-    @unpack act, pwp, fuel, ldg, aero = components
+    @unpack systems, kinematics, dynamics, airflow = vehicle.y
+    @unpack act, pwp, fuel, ldg, aero = systems
 
     @unpack e_nb, ω_wb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eb_n = kinematics
     @unpack α, β = aero

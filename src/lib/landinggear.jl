@@ -23,7 +23,7 @@ abstract type AbstractSteering <: ModelDefinition end
 ################################ NoSteering ####################################
 
 struct NoSteering <: AbstractSteering end
-@no_dynamics NoSteering
+@no_updates NoSteering
 
 struct NoSteeringY end
 
@@ -80,7 +80,7 @@ abstract type AbstractBraking <: ModelDefinition end
 ############################### NoBraking ######################################
 
 struct NoBraking <: AbstractBraking end
-@no_dynamics NoBraking
+@no_updates NoBraking
 
 struct NoBrakingY end
 

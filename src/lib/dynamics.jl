@@ -11,8 +11,6 @@ using ..Kinematics
 export FrameTransform, transform
 export Wrench
 export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
-export AbstractComponentSet, NoComponents
-export AbstractComponentInitializer, NoComponentInitializer
 export get_mp_b, get_wr_b, get_hr_b
 export VehicleDynamics, DynamicsData
 
@@ -407,32 +405,6 @@ end
 
 
 ################################################################################
-########################### AbstractComponentSet ###################################
-
-abstract type AbstractComponentSet <: ModelDefinition end
-
-################################ NoComponents #################################
-
-@kwdef struct NoComponents <: AbstractComponentSet
-    mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
-end
-
-get_hr_b(::Model{NoComponents}) = zeros(SVector{3})
-get_wr_b(::Model{NoComponents}) = Wrench()
-get_mp_b(mdl::Model{NoComponents}) = MassProperties(mdl.mass_distribution)
-
-@no_dynamics NoComponents
-
-############################# Initialization ###################################
-
-abstract type AbstractComponentInitializer end
-
-struct NoComponentInitializer <: AbstractComponentInitializer end
-
-Modeling.init!(::Model{<:AbstractComponentSet}, init::NoComponentInitializer) = nothing
-
-
-################################################################################
 ########################### VehicleDynamics ####################################
 
 struct VehicleDynamics <: ModelDefinition end
@@ -461,7 +433,7 @@ Modeling.X(::VehicleDynamics) = zero(Kinematics.XVelTemplate)
 Modeling.Y(::VehicleDynamics) = DynamicsData()
 
 function Modeling.f_ode!(mdl::Model{VehicleDynamics},
-                        components::Model{<:AbstractComponentSet},
+                        components::Model,
                         kin_data::KinData)
 
     @unpack q_eb, q_nb, n_e, h_e, r_eb_e = kin_data

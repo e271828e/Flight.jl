@@ -31,7 +31,7 @@ function IODevices.assign_input!(mdl::Model{<:Cessna172Xv0},
 
     #mixture not assigned
     @unpack throttle, mixture, aileron, elevator, rudder, flaps,
-            brake_left, brake_right = mdl.vehicle.components.act.submodels
+            brake_left, brake_right = mdl.vehicle.systems.act.submodels
 
     @unpack axes, buttons, hat = data
 

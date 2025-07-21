@@ -244,14 +244,14 @@ end
 const PowerPlant = C172S.PowerPlant
 
 #needed for dispatching
-const Components = C172.Components{typeof(PowerPlant()), typeof(FlyByWireActuation())}
-const Vehicle{K} = AircraftBase.Vehicle{Components, K} where {K <: AbstractKinematicDescriptor}
+const Systems = C172.Systems{typeof(PowerPlant()), typeof(FlyByWireActuation())}
+const Vehicle{K} = AircraftBase.Vehicle{Systems, K} where {K <: AbstractKinematicDescriptor}
 const Aircraft{K, A} = AircraftBase.Aircraft{Vehicle{K}, A} where {K <: AbstractKinematicDescriptor, A <: AbstractAvionics}
 const Cessna172X{K, A} = Aircraft{K, A}
 
 function Vehicle(kinematics = WA())
     AircraftBase.Vehicle(
-        C172.Components(PowerPlant(), FlyByWireActuation()),
+        C172.Systems(PowerPlant(), FlyByWireActuation()),
         kinematics, VehicleDynamics())
 end
 
@@ -259,7 +259,7 @@ end
 ############################# Initialization ###################################
 ################################################################################
 
-function Modeling.init!(cmp::Model{<:Components}, init::C172.ComponentInitializer)
+function Modeling.init!(cmp::Model{<:Systems}, init::C172.SystemsInitializer)
 
     @unpack act, pwp, aero, fuel, ldg, pld = cmp
 
@@ -329,11 +329,11 @@ function AircraftBase.assign!(vehicle::Model{<:C172X.Vehicle},
 
     @unpack β_a, fuel_load, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
-    @unpack act, pwp, aero, ldg = vehicle.components
+    @unpack act, pwp, aero, ldg = vehicle.systems
 
     kin_init = KinInit(trim_state, trim_params, atmosphere)
 
-    cmp_init = C172.ComponentInitializer(;
+    cmp_init = C172.SystemsInitializer(;
         engine_state = Piston.eng_running, #obvious
         n_eng, mixture, throttle, elevator, aileron, rudder,
         flaps, brake_left = 0, brake_right = 0, fuel_load, payload,
@@ -411,18 +411,18 @@ function XLinear(x_vehicle::ComponentVector)
 
     x_kinematics = x_vehicle.kinematics
     x_dynamics = x_vehicle.dynamics
-    x_components = x_vehicle.components
+    x_systems = x_vehicle.systems
 
     @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics
     p, q, r = x_dynamics.ω_eb_b
     v_x, v_y, v_z = x_dynamics.v_eb_b
-    α_filt, β_filt = x_components.aero
-    ω_eng = x_components.pwp.engine.ω
-    fuel = x_components.fuel[1]
-    thr_p = x_components.act.throttle.p
-    ail_p = x_components.act.aileron.p
-    ele_p = x_components.act.elevator.p
-    rud_p = x_components.act.rudder.p
+    α_filt, β_filt = x_systems.aero
+    ω_eng = x_systems.pwp.engine.ω
+    fuel = x_systems.fuel[1]
+    thr_p = x_systems.act.throttle.p
+    ail_p = x_systems.act.aileron.p
+    ele_p = x_systems.act.elevator.p
+    rud_p = x_systems.act.rudder.p
 
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
@@ -433,7 +433,7 @@ end
 
 function ULinear(vehicle::Model{<:C172X.Vehicle{NED}})
 
-    @unpack throttle, aileron, elevator, rudder = vehicle.components.act.submodels
+    @unpack throttle, aileron, elevator, rudder = vehicle.systems.act.submodels
     throttle_cmd = throttle.u[]
     aileron_cmd = aileron.u[]
     elevator_cmd = elevator.u[]
@@ -444,8 +444,8 @@ end
 
 function YLinear(vehicle::Model{<:C172X.Vehicle{NED}})
 
-    @unpack components, airflow, dynamics, kinematics = vehicle.y
-    @unpack pwp, fuel, aero, act = components
+    @unpack systems, airflow, dynamics, kinematics = vehicle.y
+    @unpack pwp, fuel, aero, act = systems
 
     @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eb_b, v_eb_n, χ_gnd, γ_gnd = kinematics
     @unpack ψ, θ, φ = e_nb
@@ -490,7 +490,7 @@ AircraftBase.y_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = YLinear(vehicle)
 
 function AircraftBase.assign_u!(vehicle::Model{<:C172X.Vehicle{NED}}, u::AbstractVector{Float64})
 
-    @unpack throttle, aileron, elevator, rudder = vehicle.components.act.submodels
+    @unpack throttle, aileron, elevator, rudder = vehicle.systems.act.submodels
     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ULinear(u)
     throttle.u[] = throttle_cmd
     aileron.u[] = aileron_cmd
@@ -507,20 +507,20 @@ function AircraftBase.assign_x!(vehicle::Model{<:C172X.Vehicle{NED}}, x::Abstrac
 
     x_kinematics = vehicle.x.kinematics
     x_dynamics = vehicle.x.dynamics
-    x_components = vehicle.x.components
+    x_systems = vehicle.x.systems
 
     ψ_nb, θ_nb, φ_nb, h_e = ψ, θ, φ, h
 
     @pack! x_kinematics = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
     x_dynamics.ω_eb_b .= p, q, r
     x_dynamics.v_eb_b .= v_x, v_y, v_z
-    x_components.aero .= α_filt, β_filt
-    x_components.pwp.engine.ω = ω_eng
-    x_components.fuel .= fuel
-    x_components.act.throttle.p = thr_p
-    x_components.act.aileron.p = ail_p
-    x_components.act.elevator.p = ele_p
-    x_components.act.rudder.p = rud_p
+    x_systems.aero .= α_filt, β_filt
+    x_systems.pwp.engine.ω = ω_eng
+    x_systems.fuel .= fuel
+    x_systems.act.throttle.p = thr_p
+    x_systems.act.aileron.p = ail_p
+    x_systems.act.elevator.p = ele_p
+    x_systems.act.rudder.p = rud_p
 
 end
 

@@ -26,9 +26,9 @@ end
 @no_step C172Xv1.Avionics
 @ss_disc C172Xv1.Avionics
 
-function AircraftBase.assign!(components::Model{<:C172X.Components},
+function AircraftBase.assign!(systems::Model{<:C172X.Systems},
                           avionics::Model{<:C172Xv1.Avionics})
-    AircraftBase.assign!(components, avionics.ctl)
+    AircraftBase.assign!(systems, avionics.ctl)
 end
 
 ################################# Trimming #####################################

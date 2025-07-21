@@ -9,7 +9,7 @@ using ..IODevices
 export ModelDefinition, Model
 export Subsampled, Scheduling, NoScheduling
 export f_ode!, f_step!, f_disc!, update_output!
-export @no_ode, @no_disc, @no_step, @no_dynamics
+export @no_ode, @no_disc, @no_step, @no_updates
 export @ss_ode, @ss_disc, @ss_step, @ss_dynamics
 
 
@@ -266,7 +266,7 @@ macro no_step(md)
 end
 
 #no dynamics at all
-macro no_dynamics(md)
+macro no_updates(md)
     esc(quote @no_ode $md; @no_step $md; @no_disc $md end)
 end
 

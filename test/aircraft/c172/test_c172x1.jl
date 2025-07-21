@@ -28,7 +28,7 @@ end
 
 y_kin(ac::Model{<:Cessna172Xv1}) = ac.y.vehicle.kinematics
 y_air(ac::Model{<:Cessna172Xv1}) = ac.y.vehicle.airflow
-y_aero(ac::Model{<:Cessna172Xv1}) = ac.y.vehicle.components.aero
+y_aero(ac::Model{<:Cessna172Xv1}) = ac.y.vehicle.systems.aero
 
 function test_control_modes()
 
@@ -41,7 +41,7 @@ function test_control_modes()
     world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
     ac = world.ac
-    act = ac.vehicle.components.act
+    act = ac.vehicle.systems.act
     ctl = ac.avionics.ctl
 
     init_gnd = C172.Init(KinInit( h = h_trn + 1.9))
@@ -343,7 +343,7 @@ function test_control_modes()
 
         @test ctl.lon_ctl.u.q_ref != 0
         @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
-        @test isapprox(Float64(ac.y.vehicle.components.act.throttle.cmd),
+        @test isapprox(Float64(ac.y.vehicle.systems.act.throttle.cmd),
                         Float64(ctl.u.throttle_axis + ctl.u.throttle_offset); atol = 1e-3)
 
         #must reset scheduling counter before standalone calls to f_disc!, but
