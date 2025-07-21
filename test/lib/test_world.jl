@@ -19,7 +19,7 @@ function test_update_methods()
 
     @testset verbose = true "Update Methods" begin
 
-        world = SimpleWorld() |> System;
+        world = SimpleWorld() |> Model;
 
         @test @ballocated(f_ode!($world)) == 0
         @test @ballocated(f_disc!($world)) == 0

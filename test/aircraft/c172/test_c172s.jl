@@ -26,9 +26,9 @@ function test_trimming()
 
     @testset verbose = true "Trimming" begin
 
-        vehicle = System(C172S.Vehicle())
-        atm = System(SimpleAtmosphere())
-        trn = System(HorizontalTerrain())
+        vehicle = Model(C172S.Vehicle())
+        atm = Model(SimpleAtmosphere())
+        trn = Model(HorizontalTerrain())
         trim_params = C172.TrimParameters()
         state = C172.TrimState()
 
@@ -36,7 +36,7 @@ function test_trimming()
 
         @test @ballocated($f_target($state)) === 0
 
-        success, _ = Systems.init!(vehicle, trim_params)
+        success, _ = Modeling.init!(vehicle, trim_params)
 
         @test success
 
@@ -47,7 +47,7 @@ end #function
 function test_linearization()
 
     @testset verbose = true "Linearization" begin
-        ss = Cessna172Sv0(NED()) |> System |> Control.Continuous.LinearizedSS
+        ss = Cessna172Sv0(NED()) |> Model |> Control.Continuous.LinearizedSS
     end #testset
 
 end #function
@@ -56,16 +56,16 @@ function test_update_methods()
 
     @testset verbose = true "Update Methods" begin
 
-        atm = SimpleAtmosphere() |> System
-        trn = HorizontalTerrain() |> System
+        atm = SimpleAtmosphere() |> Model
+        trn = HorizontalTerrain() |> Model
 
         loc = NVector()
         trn_data = TerrainData(trn, loc)
         vehicle_init = KinInit( h = trn_data.elevation + 1.8) |> C172.Init
 
-        ac = System(Cessna172Sv0());
+        ac = Model(Cessna172Sv0());
 
-        Systems.init!(ac, vehicle_init, atm, trn)
+        Modeling.init!(ac, vehicle_init, atm, trn)
 
         #ensure we are on the ground for full landing gear code coverage
         @test ac.y.vehicle.components.ldg.left.strut.wow == true

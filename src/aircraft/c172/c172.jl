@@ -14,7 +14,7 @@ export Cessna172
 ################################################################################
 ################################ Airframe #####################################
 
-struct Airframe <: SystemDefinition end
+struct Airframe <: ModelDefinition end
 
 # This component represents the platform's structure, together with any
 # components rigidly attached to it, such as the power plant or landing gear,
@@ -36,9 +36,9 @@ end
 #the airframe itself receives no external actions nor has any internal angular
 #momentum. these are considered separately in the vehicle's aerodynamics, power
 #plant and landing gear
-Dynamics.get_mp_b(::System{Airframe}) = mp_b_afm
-Dynamics.get_wr_b(::System{Airframe}) = Wrench()
-Dynamics.get_hr_b(::System{Airframe}) = zeros(SVector{3})
+Dynamics.get_mp_b(::Model{Airframe}) = mp_b_afm
+Dynamics.get_wr_b(::Model{Airframe}) = Wrench()
+Dynamics.get_hr_b(::Model{Airframe}) = zeros(SVector{3})
 
 
 ################################################################################
@@ -239,7 +239,7 @@ function get_aero_coeffs(lookup = aero_lookup; α, β, p_nd, q_nd, r_nd, δa, δ
 
 end
 
-@kwdef struct Aero <: SystemDefinition
+@kwdef struct Aero <: ModelDefinition
     S::Float64 = 16.165 #wing area
     b::Float64 = 10.912 #wingspan
     c::Float64 = 1.494 #mean aerodynamic chord
@@ -288,19 +288,19 @@ end
     wr_b::Wrench = Wrench() #aerodynamic Wrench, vehicle frame
 end
 
-Systems.X(::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
-Systems.Y(::Aero) = AeroY()
-Systems.U(::Aero) = AeroU()
-Systems.S(::Aero) = AeroS()
+Modeling.X(::Aero) = ComponentVector(α_filt = 0.0, β_filt = 0.0) #filtered airflow angles
+Modeling.Y(::Aero) = AeroY()
+Modeling.U(::Aero) = AeroU()
+Modeling.S(::Aero) = AeroS()
 
 #*caution: do not confuse the w-frame in kinematics.ω_wb_b, which refers to the
 #wander-azimuth frame (w), with the w in air.v_wb_b, which indicates aerodynamic
 #(wind-relative) velocity
 
-function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
-    air::AirflowData, kinematics::KinData, terrain::System{<:AbstractTerrain})
+function Modeling.f_ode!(mdl::Model{Aero}, ::Model{<:PistonThruster},
+    air::AirflowData, kinematics::KinData, terrain::Model{<:AbstractTerrain})
 
-    @unpack ẋ, x, u, s, constants = sys
+    @unpack ẋ, x, u, s, constants = mdl
     @unpack α_filt, β_filt = x
     @unpack e, a, r, f = u
     @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = constants
@@ -357,7 +357,7 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
     ẋ.α_filt = α_filt_dot
     ẋ.β_filt = β_filt_dot
 
-    sys.y = AeroY(; e, a, r, f, δe, δa, δr, δf,
+    mdl.y = AeroY(; e, a, r, f, δe, δa, δr, δf,
                     α, α_filt, α_filt_dot, β, β_filt, β_filt_dot,
                     stall, coeffs, wr_b)
 
@@ -365,29 +365,29 @@ function Systems.f_ode!(sys::System{Aero}, ::System{<:PistonThruster},
 
 end
 
-function Systems.f_step!(sys::System{Aero})
+function Modeling.f_step!(mdl::Model{Aero})
     #stall hysteresis
-    α = sys.y.α
-    α_stall = sys.α_stall
+    α = mdl.y.α
+    α_stall = mdl.α_stall
     if α > α_stall[2]
-        sys.s.stall = true
+        mdl.s.stall = true
     elseif α < α_stall[1]
-        sys.s.stall = false
+        mdl.s.stall = false
     end
 end
 
-Dynamics.get_mp_b(::System{<:Aero}) = MassProperties()
-Dynamics.get_hr_b(::System{<:Aero}) = zeros(SVector{3})
-Dynamics.get_wr_b(sys::System{Aero}) = sys.y.wr_b
+Dynamics.get_mp_b(::Model{<:Aero}) = MassProperties()
+Dynamics.get_hr_b(::Model{<:Aero}) = zeros(SVector{3})
+Dynamics.get_wr_b(mdl::Model{Aero}) = mdl.y.wr_b
 
 
 ################################# GUI ##########################################
 
 
-function GUI.draw(sys::System{<:Aero}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(mdl::Model{<:Aero}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Cessna 172S Aerodynamics")
 
-    @unpack e, a, r, f, α, β, α_filt, β_filt, stall, coeffs, wr_b = sys.y
+    @unpack e, a, r, f, α, β, α_filt, β_filt, stall, coeffs, wr_b = mdl.y
     @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
 
     CImGui.Begin(window_label, p_open)
@@ -425,7 +425,7 @@ end
 ###############################################################################
 ############################# Landing Gear ####################################
 
-struct Ldg <: SystemDefinition
+struct Ldg <: ModelDefinition
     left::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
     right::LandingGearUnit{NoSteering, DirectBraking, Strut{SimpleDamper}}
     nose::LandingGearUnit{DirectSteering, NoBraking, Strut{SimpleDamper}}
@@ -468,23 +468,23 @@ function Ldg()
 
 end
 
-Dynamics.get_mp_b(::System{Ldg}) = MassProperties()
-Dynamics.get_hr_b(::System{Ldg}) = zeros(SVector{3})
+Dynamics.get_mp_b(::Model{Ldg}) = MassProperties()
+Dynamics.get_hr_b(::Model{Ldg}) = zeros(SVector{3})
 
-#delegate continuous dynamics to subsystems
+#delegate continuous dynamics to submodels
 @ss_ode Ldg
 
-function Systems.f_step!(sys::System{<:Ldg})
-    foreach(f_step!, sys.subsystems)
+function Modeling.f_step!(mdl::Model{<:Ldg})
+    foreach(f_step!, mdl.submodels)
 end
 
 #approximate height of the aircraft frame origin to the ground
 const Δh_to_gnd = 1.81
 
-function GUI.draw(sys::System{<:Ldg}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(mdl::Model{<:Ldg}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Cessna 172S Landing Gear")
 
-    @unpack left, right, nose = sys
+    @unpack left, right, nose = mdl
 
     CImGui.Begin(window_label, p_open)
 
@@ -504,7 +504,7 @@ end
 ################################################################################
 ################################# Payload ######################################
 
-@kwdef struct Payload <: SystemDefinition
+@kwdef struct Payload <: ModelDefinition
     pilot_slot::FrameTransform = FrameTransform(r = SVector{3}(0.183, -0.356, 0.899))
     copilot_slot::FrameTransform = FrameTransform(r = SVector{3}(0.183, 0.356, 0.899))
     lpass_slot::FrameTransform = FrameTransform(r = SVector{3}(-0.681, -0.356, 0.899))
@@ -528,12 +528,12 @@ end
     m_baggage::Ranged{Float64, 0., 100.} = 50.0
 end
 
-Systems.U(::Payload) = PayloadU()
-Systems.Y(::Payload) = PayloadY()
+Modeling.U(::Payload) = PayloadU()
+Modeling.Y(::Payload) = PayloadY()
 
-function Dynamics.get_mp_b(sys::System{Payload})
-    @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = sys.u
-    @unpack pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot = sys.constants
+function Dynamics.get_mp_b(mdl::Model{Payload})
+    @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = mdl.u
+    @unpack pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot = mdl.constants
 
     pilot = MassProperties(PointDistribution(m_pilot), pilot_slot)
     copilot = MassProperties(PointDistribution(m_copilot), copilot_slot)
@@ -545,16 +545,16 @@ function Dynamics.get_mp_b(sys::System{Payload})
     return mp_b
 end
 
-Dynamics.get_wr_b(::System{Payload}) = Wrench()
-Dynamics.get_hr_b(::System{Payload}) = zeros(SVector{3})
+Dynamics.get_wr_b(::Model{Payload}) = Wrench()
+Dynamics.get_hr_b(::Model{Payload}) = zeros(SVector{3})
 
 #################################### GUI #######################################
 
-function GUI.draw!(sys::System{<:Payload},
+function GUI.draw!(mdl::Model{<:Payload},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172S Payload")
 
-    u = sys.u
+    u = mdl.u
 
     CImGui.Begin(label, p_open)
 
@@ -578,7 +578,7 @@ end
 
 #assumes fuel is drawn equally from both tanks, no need to model them
 #individually for now
-@kwdef struct Fuel <: SystemDefinition
+@kwdef struct Fuel <: ModelDefinition
     m_full::Float64 = 114.4 #maximum fuel mass (42 gal * 6 lb/gal * 0.454 kg/lb)
     m_res::Float64 = 1.0 #residual fuel mass
 end
@@ -590,21 +590,21 @@ end
 end
 
 #normalized fuel content (0: residual, 1: full)
-Systems.X(::Fuel) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
-Systems.Y(::Fuel) = FuelY()
+Modeling.X(::Fuel) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
+Modeling.Y(::Fuel) = FuelY()
 
-function Systems.f_ode!(sys::System{Fuel}, pwp::System{<:PistonThruster})
+function Modeling.f_ode!(mdl::Model{Fuel}, pwp::Model{<:PistonThruster})
 
-    @unpack m_full, m_res = sys.constants #no need for subsystems
-    x_avail = sys.x[1]
+    @unpack m_full, m_res = mdl.constants #no need for submodels
+    x_avail = mdl.x[1]
     m_total = m_res + x_avail * (m_full - m_res) #current mass
     m_avail = m_total - m_res
-    sys.ẋ .= -pwp.y.engine.ṁ / (m_full - m_res)
-    sys.y = FuelY(; x_avail, m_total, m_avail)
+    mdl.ẋ .= -pwp.y.engine.ṁ / (m_full - m_res)
+    mdl.y = FuelY(; x_avail, m_total, m_avail)
 
 end
 
-function Dynamics.get_mp_b(fuel::System{Fuel})
+function Dynamics.get_mp_b(fuel::Model{Fuel})
 
     #in case x becomes negative (fuel consumed beyond x=0 before the engine
     #dies)
@@ -624,15 +624,15 @@ function Dynamics.get_mp_b(fuel::System{Fuel})
     return mp_b
 end
 
-Dynamics.get_wr_b(::System{Fuel}) = Wrench()
-Dynamics.get_hr_b(::System{Fuel}) = zeros(SVector{3})
+Dynamics.get_wr_b(::Model{Fuel}) = Wrench()
+Dynamics.get_hr_b(::Model{Fuel}) = zeros(SVector{3})
 
-is_fuel_available(sys::System{<:Fuel}) = (sys.y.m_avail > 0)
+is_fuel_available(mdl::Model{<:Fuel}) = (mdl.y.m_avail > 0)
 
-function GUI.draw(sys::System{Fuel}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(mdl::Model{Fuel}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Cessna 172S Fuel System")
 
-    @unpack m_total, m_avail = sys.y
+    @unpack m_total, m_avail = mdl.y
 
     CImGui.Begin(window_label, p_open)
 
@@ -648,16 +648,16 @@ end
 ############################## AbstractActuation ###############################
 
 #any Actuation system suitable for the C172 platform
-abstract type AbstractActuation <: SystemDefinition end
+abstract type AbstractActuation <: ModelDefinition end
 
-function assign!(aero::System{<:Aero}, ldg::System{<:Ldg},
-                pwp::System{<:PistonThruster}, act::System{<:AbstractActuation})
+function assign!(aero::Model{<:Aero}, ldg::Model{<:Ldg},
+                pwp::Model{<:PistonThruster}, act::Model{<:AbstractActuation})
     throw(MethodError(C172.assign!, (aero, ldg, pwp, act)))
 end
 
-Dynamics.get_mp_b(::System{<:AbstractActuation}) = MassProperties()
-Dynamics.get_wr_b(::System{<:AbstractActuation}) = Wrench()
-Dynamics.get_hr_b(::System{<:AbstractActuation}) = zeros(SVector{3})
+Dynamics.get_mp_b(::Model{<:AbstractActuation}) = MassProperties()
+Dynamics.get_wr_b(::Model{<:AbstractActuation}) = Wrench()
+Dynamics.get_hr_b(::Model{<:AbstractActuation}) = zeros(SVector{3})
 
 
 
@@ -681,15 +681,15 @@ end
 
 ############################# Update Methods ###################################
 
-function Systems.f_ode!(components::System{<:Components},
+function Modeling.f_ode!(components::Model{<:Components},
                         kin::KinData,
                         air::AirflowData,
-                        trn::System{<:AbstractTerrain})
+                        trn::Model{<:AbstractTerrain})
 
     @unpack act, aero, pwp, ldg, fuel, pld = components
 
     f_ode!(act) #update actuation system outputs
-    assign!(aero, ldg, pwp, act) #assign actuation system outputs to components subsystems
+    assign!(aero, ldg, pwp, act) #assign actuation system outputs to components submodels
     f_ode!(aero, pwp, air, kin, trn) #update aerodynamics continuous state & outputs
     f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
@@ -699,9 +699,9 @@ function Systems.f_ode!(components::System{<:Components},
 
 end
 
-function Systems.f_step!(components::System{<:Components},
-                        ::System{<:AbstractAtmosphere},
-                        ::System{<:AbstractTerrain})
+function Modeling.f_step!(components::Model{<:Components},
+                        ::Model{<:AbstractAtmosphere},
+                        ::Model{<:AbstractTerrain})
     @unpack aero, ldg, pwp, fuel = components
 
     f_step!(aero)
@@ -716,7 +716,7 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw!( components::System{<:Components}, ::System{A},
+function GUI.draw!( components::Model{<:Components}, ::Model{A},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172 Components") where {A<:AbstractAvionics}
 
@@ -813,14 +813,14 @@ end
     payload::PayloadY = PayloadY()
 end
 
-function Atmosphere.AtmosphericData(sys::System{<:AbstractAtmosphere},
+function Atmosphere.AtmosphericData(mdl::Model{<:AbstractAtmosphere},
                                     trim_params::TrimParameters)
-    AtmosphericData(sys, trim_params.Ob)
+    AtmosphericData(mdl, trim_params.Ob)
 end
 
 function Kinematics.Initializer(trim_state::TrimState,
                                 trim_params::TrimParameters,
-                                atmosphere::System{<:AbstractAtmosphere})
+                                atmosphere::Model{<:AbstractAtmosphere})
 
     @unpack EAS, β_a, γ_wb_n, ψ_nb, ψ_wb_dot, θ_wb_dot, Ob = trim_params
     @unpack α_a, φ_nb = trim_state
@@ -850,7 +850,7 @@ function Kinematics.Initializer(trim_state::TrimState,
 end
 
 
-function cost(vehicle::System{<:C172.Vehicle})
+function cost(vehicle::Model{<:C172.Vehicle})
 
     @unpack ẋ, y = vehicle
 
@@ -862,10 +862,10 @@ function cost(vehicle::System{<:C172.Vehicle})
 
 end
 
-function get_f_target(vehicle::System{<:C172.Vehicle},
+function get_f_target(vehicle::Model{<:C172.Vehicle},
                       trim_params::TrimParameters,
-                      atmosphere::System{<:AbstractAtmosphere},
-                      terrain::System{<:AbstractTerrain})
+                      atmosphere::Model{<:AbstractAtmosphere},
+                      terrain::Model{<:AbstractTerrain})
 
     let vehicle = vehicle, trim_params = trim_params
         function (x::TrimState)
@@ -876,11 +876,11 @@ function get_f_target(vehicle::System{<:C172.Vehicle},
 
 end
 
-function Systems.init!(
-            vehicle::System{<:C172.Vehicle},
+function Modeling.init!(
+            vehicle::Model{<:C172.Vehicle},
             trim_params::TrimParameters,
-            atmosphere::System{<:AbstractAtmosphere} = System(SimpleAtmosphere()),
-            terrain::System{<:AbstractTerrain} = System(HorizontalTerrain()))
+            atmosphere::Model{<:AbstractAtmosphere} = Model(SimpleAtmosphere()),
+            terrain::Model{<:AbstractTerrain} = Model(HorizontalTerrain()))
 
     trim_state = TrimState() #could provide initial condition as an optional input
 
@@ -939,12 +939,12 @@ function Systems.init!(
 
 end
 
-function AircraftBase.trim!( ac::System{<:Cessna172},
+function AircraftBase.trim!( ac::Model{<:Cessna172},
                             tp::TrimParameters = TrimParameters(), args...)
-    Systems.init!(ac, tp, args...)
+    Modeling.init!(ac, tp, args...)
 end
 
-function AircraftBase.linearize!( ac::System{<:Cessna172},
+function AircraftBase.linearize!( ac::Model{<:Cessna172},
                             tp::TrimParameters = TrimParameters(), args...)
     AircraftBase.linearize!(ac.vehicle, tp, args...)
 end
@@ -952,7 +952,7 @@ end
 ################################################################################
 ############################### XPlane12Control ###################################
 
-function IODevices.extract_output(ac::System{<:Cessna172}, ::XPlane12ControlMapping)
+function IODevices.extract_output(ac::Model{<:Cessna172}, ::XPlane12ControlMapping)
 
     t = ac.t[]
     @unpack δe, δa, δr, δf = ac.y.vehicle.components.aero

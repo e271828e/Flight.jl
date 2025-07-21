@@ -73,7 +73,7 @@ end
 function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
                     global_search = false)
 
-    ac = Cessna172Xv0(NED()) |> System #linearization requires NED kinematics
+    ac = Cessna172Xv0(NED()) |> Model #linearization requires NED kinematics
 
     lss_lon = Control.Continuous.LinearizedSS(ac, design_point; model = :lon);
     P_lon = named_ss(lss_lon)
@@ -315,7 +315,7 @@ end
 function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
                     global_search::Bool = false)
 
-    ac = Cessna172Xv0(NED()) |> System #linearization requires NED kinematics
+    ac = Cessna172Xv0(NED()) |> Model #linearization requires NED kinematics
 
     lss_full = Control.Continuous.LinearizedSS(ac, design_point; model = :lat);
     P_full = named_ss(lss_full)

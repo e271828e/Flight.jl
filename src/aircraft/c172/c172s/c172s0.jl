@@ -26,10 +26,10 @@ aileron_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 rudder_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function IODevices.assign_input!(sys::System{<:Cessna172Sv0},
+function IODevices.assign_input!(mdl::Model{<:Cessna172Sv0},
                                 ::GenericInputMapping, data::T16000MData)
 
-    u = sys.vehicle.components.act.u
+    u = mdl.vehicle.components.act.u
 
     @unpack axes, buttons, hat = data
 

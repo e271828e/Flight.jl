@@ -27,25 +27,25 @@ function test_braking()
 
     @testset verbose = true "Braking" begin
 
-        nb_sys = System(NoBraking())
-        @test isnothing(nb_sys.x)
-        @test isnothing(nb_sys.u)
-        # @test isnothing(nb_sys.y)
-        @test LandingGear.get_braking_factor(nb_sys) == 0
-        @test @ballocated(f_ode!($nb_sys)) == 0
-        @test @ballocated(f_step!($nb_sys)) == 0
+        nb_mdl = Model(NoBraking())
+        @test isnothing(nb_mdl.x)
+        @test isnothing(nb_mdl.u)
+        # @test isnothing(nb_mdl.y)
+        @test LandingGear.get_braking_factor(nb_mdl) == 0
+        @test @ballocated(f_ode!($nb_mdl)) == 0
+        @test @ballocated(f_step!($nb_mdl)) == 0
 
-        db_sys = System(DirectBraking(η_br = 0.8))
-        db_sys.u[] = -2
-        @test db_sys.u[] == 0
-        db_sys.u[] = 1.3
-        @test db_sys.u[] == 1
-        db_sys.u[] = 0.5
-        @test db_sys.u[] == 0.5
-        f_ode!(db_sys)
-        @test LandingGear.get_braking_factor(db_sys) == 0.4
-        @test @ballocated(f_ode!($db_sys)) == 0
-        @test @ballocated(f_step!($db_sys)) == 0
+        db_mdl = Model(DirectBraking(η_br = 0.8))
+        db_mdl.u[] = -2
+        @test db_mdl.u[] == 0
+        db_mdl.u[] = 1.3
+        @test db_mdl.u[] == 1
+        db_mdl.u[] = 0.5
+        @test db_mdl.u[] == 0.5
+        f_ode!(db_mdl)
+        @test LandingGear.get_braking_factor(db_mdl) == 0.4
+        @test @ballocated(f_ode!($db_mdl)) == 0
+        @test @ballocated(f_step!($db_mdl)) == 0
     end
 
 end
@@ -54,29 +54,29 @@ function test_steering()
 
     @testset verbose = true "Steering" begin
 
-        ns_sys = System(NoSteering())
-        @test isnothing(ns_sys.x)
-        @test isnothing(ns_sys.u)
-        # @test isnothing(ns_sys.y)
-        @test LandingGear.get_steering_angle(ns_sys) == 0
-        @test @ballocated(f_ode!($ns_sys)) == 0
-        @test @ballocated(f_step!($ns_sys)) == 0
+        ns_mdl = Model(NoSteering())
+        @test isnothing(ns_mdl.x)
+        @test isnothing(ns_mdl.u)
+        # @test isnothing(ns_mdl.y)
+        @test LandingGear.get_steering_angle(ns_mdl) == 0
+        @test @ballocated(f_ode!($ns_mdl)) == 0
+        @test @ballocated(f_step!($ns_mdl)) == 0
 
-        ds_sys = System(DirectSteering(ψ_max = π/8))
-        ds_sys.u.engaged = true
-        ds_sys.u.input = -2
-        @test ds_sys.u.input == -1
-        ds_sys.u.input = 1.3
-        @test ds_sys.u.input == 1
-        ds_sys.u.input = 0.5
-        @test ds_sys.u.input == 0.5
-        f_ode!(ds_sys)
-        @test LandingGear.get_steering_angle(ds_sys, 0.54) == π/8 * 0.5
-        ds_sys.u.engaged = false
-        f_ode!(ds_sys)
-        @test LandingGear.get_steering_angle(ds_sys, 1.0) == 1.0
-        @test @ballocated(f_ode!($ds_sys)) == 0
-        @test @ballocated(f_step!($ds_sys)) == 0
+        ds_mdl = Model(DirectSteering(ψ_max = π/8))
+        ds_mdl.u.engaged = true
+        ds_mdl.u.input = -2
+        @test ds_mdl.u.input == -1
+        ds_mdl.u.input = 1.3
+        @test ds_mdl.u.input == 1
+        ds_mdl.u.input = 0.5
+        @test ds_mdl.u.input == 0.5
+        f_ode!(ds_mdl)
+        @test LandingGear.get_steering_angle(ds_mdl, 0.54) == π/8 * 0.5
+        ds_mdl.u.engaged = false
+        f_ode!(ds_mdl)
+        @test LandingGear.get_steering_angle(ds_mdl, 1.0) == 1.0
+        @test @ballocated(f_ode!($ds_mdl)) == 0
+        @test @ballocated(f_step!($ds_mdl)) == 0
     end
 
 end
@@ -107,13 +107,13 @@ function test_landing_gear_unit()
             steering = DirectSteering(ψ_max = π/6),
             braking = DirectBraking(),
             strut = Strut(l_0 = 1.0, damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)),
-            contact = Contact()) |> System
+            contact = Contact()) |> Model
 
         @unpack steering, braking, strut, contact = ldg
 
         @test length(contact.x) == 2
 
-        terrain = HorizontalTerrain() |> System
+        terrain = HorizontalTerrain() |> Model
         loc = NVector()
 
         #set the initial 2D Location
@@ -223,7 +223,7 @@ function test_harness()
 
     damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
     strut = Strut(l_0 = 1.0, damper = damper)
-    ldg = LandingGearUnit(; strut) |> System
+    ldg = LandingGearUnit(; strut) |> Model
 
     #by default LandingGearUnit is initialized with r_bs_b = [0,0,0], so
     #h_s=h_b

@@ -16,7 +16,7 @@ export trim!, linearize!
 ############################## Vehicle ################################
 
 @kwdef struct Vehicle{C <: AbstractComponentSet,
-                      K <: AbstractKinematicDescriptor } <: SystemDefinition
+                      K <: AbstractKinematicDescriptor } <: ModelDefinition
     components::C = NoComponents()
     kinematics::K = WA()
     dynamics::VehicleDynamics = VehicleDynamics()
@@ -29,8 +29,8 @@ struct VehicleY{C, K}
     airflow::AirflowData
 end
 
-Systems.Y(ac::Vehicle) = VehicleY(
-    Systems.Y(ac.components),
+Modeling.Y(ac::Vehicle) = VehicleY(
+    Modeling.Y(ac.components),
     KinData(),
     DynamicsData(),
     AirflowData())
@@ -43,16 +43,16 @@ struct VehicleInitializer{C <: AbstractComponentInitializer}
     cmp::C
 end
 
-function Systems.init!( sys::System{<:Vehicle},
+function Modeling.init!( mdl::Model{<:Vehicle},
                         init::VehicleInitializer,
-                        atmosphere::System{<:AbstractAtmosphere} = System(SimpleAtmosphere()),
-                        terrain::System{<:AbstractTerrain} = System(HorizontalTerrain()))
+                        atmosphere::Model{<:AbstractAtmosphere} = Model(SimpleAtmosphere()),
+                        terrain::Model{<:AbstractTerrain} = Model(HorizontalTerrain()))
 
-    @unpack kinematics, dynamics, components = sys.subsystems
-    Systems.init!(kinematics, init.kin)
-    Systems.init!(components, init.cmp)
+    @unpack kinematics, dynamics, components = mdl.submodels
+    Modeling.init!(kinematics, init.kin)
+    Modeling.init!(components, init.cmp)
     dynamics.x .= kinematics.u #essential
-    f_ode!(sys, atmosphere, terrain) #update vehicle's ẋ and y
+    f_ode!(mdl, atmosphere, terrain) #update vehicle's ẋ and y
 end
 
 
@@ -61,7 +61,7 @@ end
 abstract type AbstractTrimParameters end
 const AbstractTrimState{N} = FieldVector{N, Float64}
 
-function assign!(vehicle::System{<:Vehicle},
+function assign!(vehicle::Model{<:Vehicle},
                 params::AbstractTrimParameters,
                 state::AbstractTrimState,
                 args...)
@@ -69,12 +69,12 @@ function assign!(vehicle::System{<:Vehicle},
 end
 
 #to be implemented by each Vehicle subtype
-function Systems.init!( sys::System{<:Vehicle},
+function Modeling.init!( mdl::Model{<:Vehicle},
                         condition::AbstractTrimParameters, args...)
-    MethodError(Systems.init!, (sys, condition, args...)) |> throw
+    MethodError(Modeling.init!, (mdl, condition, args...)) |> throw
 end
 
-function trim!( ac::System, condition::AbstractTrimParameters, args...)
+function trim!( ac::Model, condition::AbstractTrimParameters, args...)
     MethodError(trim!, (ac, condition, args...)) |> throw
 end
 
@@ -96,14 +96,14 @@ end
 ###############################################################################
 ############################# AbstractAvionics #################################
 
-abstract type AbstractAvionics <: SystemDefinition end
+abstract type AbstractAvionics <: ModelDefinition end
 
 ################################### NoAvionics #################################
 
 struct NoAvionics <: AbstractAvionics end
 @no_dynamics NoAvionics
 
-Systems.init!(::System{NoAvionics}, args...) = nothing
+Modeling.init!(::Model{NoAvionics}, args...) = nothing
 
 ################################################################################
 ######################## Vehicle/Avionics update methods #######################
@@ -112,14 +112,14 @@ Systems.init!(::System{NoAvionics}, args...) = nothing
 #Avionics. therefore, the Vehicle's update methods must not require Avionics as
 #an argument. to make this possible, any changes to Vehicle should be done
 #through the joint assign! methods. accordingly, Avionics update methods should
-#only mutate the Avionics System itself, not the Vehicle
+#only mutate the Avionics Model itself, not the Vehicle
 
-function Systems.f_ode!(vehicle::System{<:Vehicle},
-                        atmosphere::System{<:AbstractAtmosphere},
-                        terrain::System{<:AbstractTerrain})
+function Modeling.f_ode!(vehicle::Model{<:Vehicle},
+                        atmosphere::Model{<:AbstractAtmosphere},
+                        terrain::Model{<:AbstractTerrain})
 
-    @unpack ẋ, x, subsystems, constants = vehicle
-    @unpack kinematics, dynamics, components = subsystems
+    @unpack ẋ, x, submodels, constants = vehicle
+    @unpack kinematics, dynamics, components = submodels
 
     kinematics.u .= dynamics.x
     f_ode!(kinematics) #update ẋ and y before extracting kinematics data
@@ -137,11 +137,11 @@ function Systems.f_ode!(vehicle::System{<:Vehicle},
 
 end
 
-function Systems.f_step!(vehicle::System{<:Vehicle},
-                         atm::System{<:AbstractAtmosphere},
-                         trn::System{<:AbstractTerrain})
+function Modeling.f_step!(vehicle::Model{<:Vehicle},
+                         atm::Model{<:AbstractAtmosphere},
+                         trn::Model{<:AbstractTerrain})
 
-    @unpack components, kinematics, dynamics = vehicle.subsystems
+    @unpack components, kinematics, dynamics = vehicle.submodels
 
     f_step!(kinematics)
     f_step!(components, atm, trn)
@@ -149,11 +149,11 @@ function Systems.f_step!(vehicle::System{<:Vehicle},
 end
 
 #within Vehicle, only the components may be modified by f_disc!
-function Systems.f_disc!(::NoScheduling, vehicle::System{<:Vehicle},
-                         atmosphere::System{<:AbstractAtmosphere},
-                         terrain::System{<:AbstractTerrain})
+function Modeling.f_disc!(::NoScheduling, vehicle::Model{<:Vehicle},
+                         atmosphere::Model{<:AbstractAtmosphere},
+                         terrain::Model{<:AbstractTerrain})
 
-    @unpack components, kinematics, dynamics = vehicle.subsystems
+    @unpack components, kinematics, dynamics = vehicle.submodels
 
     f_disc!(components, atmosphere, terrain)
 
@@ -166,77 +166,77 @@ end
 #these map avionics outputs to the vehicle, and in particular to
 #components inputs. they are called both within the aircraft's f_ode! and
 #f_disc! before the vehicle update
-function assign!(vehicle::System{<:Vehicle}, avionics::System{<:AbstractAvionics})
+function assign!(vehicle::Model{<:Vehicle}, avionics::Model{<:AbstractAvionics})
     assign!(vehicle.components, avionics)
 end
 
-function assign!(components::System{<:AbstractComponentSet},
-                avionics::System{<:AbstractAvionics})
+function assign!(components::Model{<:AbstractComponentSet},
+                avionics::Model{<:AbstractAvionics})
     MethodError(assign!, (components, avionics)) |> throw
 end
 
-assign!(::System{<:AbstractComponentSet}, ::System{NoAvionics}) = nothing
+assign!(::Model{<:AbstractComponentSet}, ::Model{NoAvionics}) = nothing
 
 
 ################################################################################
 ################################## Aircraft ####################################
 
-@kwdef struct Aircraft{V <: Vehicle, A <: AbstractAvionics} <: SystemDefinition
+@kwdef struct Aircraft{V <: Vehicle, A <: AbstractAvionics} <: ModelDefinition
     vehicle::V = Vehicle()
     avionics::A = NoAvionics()
 end
 
-function Systems.f_ode!(ac::System{<:Aircraft},
-                        atmosphere::System{<:AbstractAtmosphere},
-                        terrain::System{<:AbstractTerrain})
+function Modeling.f_ode!(ac::Model{<:Aircraft},
+                        atmosphere::Model{<:AbstractAtmosphere},
+                        terrain::Model{<:AbstractTerrain})
 
-    @unpack vehicle, avionics = ac.subsystems
+    @unpack vehicle, avionics = ac.submodels
     f_ode!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_ode!(vehicle, atmosphere, terrain)
     update_output!(ac)
 end
 
-function Systems.f_disc!(::NoScheduling,
-                        ac::System{<:Aircraft},
-                        atmosphere::System{<:AbstractAtmosphere},
-                        terrain::System{<:AbstractTerrain})
+function Modeling.f_disc!(::NoScheduling,
+                        ac::Model{<:Aircraft},
+                        atmosphere::Model{<:AbstractAtmosphere},
+                        terrain::Model{<:AbstractTerrain})
 
-    @unpack vehicle, avionics = ac.subsystems
+    @unpack vehicle, avionics = ac.submodels
     f_disc!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_disc!(vehicle, atmosphere, terrain)
     update_output!(ac)
 end
 
-function Systems.f_step!(ac::System{<:Aircraft},
-                         atmosphere::System{<:AbstractAtmosphere},
-                         terrain::System{<:AbstractTerrain})
+function Modeling.f_step!(ac::Model{<:Aircraft},
+                         atmosphere::Model{<:AbstractAtmosphere},
+                         terrain::Model{<:AbstractTerrain})
 
-    @unpack vehicle, avionics = ac.subsystems
+    @unpack vehicle, avionics = ac.submodels
     f_step!(vehicle, atmosphere, terrain)
 end
 
 #the Vehicle's initialization methods (kinematics and trimming) accept
-#atmosphere and terrain Systems as optional arguments. we pass them if provided;
+#atmosphere and terrain Models as optional arguments. we pass them if provided;
 #otherwise, they will be instantiated ad hoc by the Vehicle's methods
-function Systems.init!( aircraft::System{<:Aircraft},
+function Modeling.init!( aircraft::Model{<:Aircraft},
                         condition::Union{<:VehicleInitializer, <:AbstractTrimParameters},
                         args...)
 
-    @unpack vehicle, avionics = aircraft.subsystems
-    Systems.init!(vehicle, condition, args...)
-    Systems.init!(avionics, vehicle) #avionics init only relies on vehicle
+    @unpack vehicle, avionics = aircraft.submodels
+    Modeling.init!(vehicle, condition, args...)
+    Modeling.init!(avionics, vehicle) #avionics init only relies on vehicle
     update_output!(aircraft)
 end
 
-Kinematics.KinData(ac::System{<:Aircraft}) = KinData(ac.vehicle.kinematics)
+Kinematics.KinData(ac::Model{<:Aircraft}) = KinData(ac.vehicle.kinematics)
 
 
 ################################################################################
 ############################### XPlane12Control #################################
 
-function IODevices.extract_output(ac::System{<:Aircraft}, ::XPlane12ControlMapping)
+function IODevices.extract_output(ac::Model{<:Aircraft}, ::XPlane12ControlMapping)
     return Network.xpmsg_set_pose(XPlanePose(KinData(ac))) #UDP message
 end
 
@@ -244,27 +244,27 @@ end
 ################################################################################
 ################################ Linearization #################################
 
-ẋ_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(ẋ_linear, (vehicle,)))
-x_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(x_linear, (vehicle,)))
-u_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(u_linear, (vehicle,)))
-y_linear(vehicle::System{<:Vehicle})::FieldVector = throw(MethodError(y_linear, (vehicle,)))
+ẋ_linear(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(ẋ_linear, (vehicle,)))
+x_linear(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(x_linear, (vehicle,)))
+u_linear(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(u_linear, (vehicle,)))
+y_linear(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(y_linear, (vehicle,)))
 
-assign_x!(vehicle::System{<:Vehicle}, x::AbstractVector{Float64}) = throw(MethodError(assign_x!, (vehicle, x)))
-assign_u!(vehicle::System{<:Vehicle}, u::AbstractVector{Float64}) = throw(MethodError(assign_u!, (vehicle, u)))
+assign_x!(vehicle::Model{<:Vehicle}, x::AbstractVector{Float64}) = throw(MethodError(assign_x!, (vehicle, x)))
+assign_u!(vehicle::Model{<:Vehicle}, u::AbstractVector{Float64}) = throw(MethodError(assign_u!, (vehicle, u)))
 
-linearize!(ac::System{<:Aircraft}, args...) = linearize!(ac.vehicle, args...)
+linearize!(ac::Model{<:Aircraft}, args...) = linearize!(ac.vehicle, args...)
 
-function linearize!( vehicle::System{<:Vehicle},
+function linearize!( vehicle::Model{<:Vehicle},
                     trim_params::AbstractTrimParameters)
 
     #The velocity states in the linearized model must be aerodynamic so that
     #they can be readily used for flight control design. Since the velocity
     #states in the nonlinear model are Earth-relative, we should always set
     #wind velocity to zero for linearization
-    atmosphere = System(SimpleAtmosphere(; wind = NoWind()))
-    terrain = System(HorizontalTerrain())
+    atmosphere = Model(SimpleAtmosphere(; wind = NoWind()))
+    terrain = Model(HorizontalTerrain())
 
-    (_, trim_state) = Systems.init!(vehicle, trim_params, atmosphere, terrain)
+    (_, trim_state) = Modeling.init!(vehicle, trim_params, atmosphere, terrain)
 
     ẋ0 = ẋ_linear(vehicle)::FieldVector
     x0 = x_linear(vehicle)::FieldVector
@@ -286,7 +286,7 @@ function linearize!( vehicle::System{<:Vehicle},
 
     (A, B, C, D) = ss_matrices(f_main, x0, u0)
 
-    #restore the System to its trimmed condition
+    #restore the Model to its trimmed condition
     assign!(vehicle, trim_params, trim_state, atmosphere, terrain)
 
     #now we need to rebuild vectors and matrices for the LinearizedSS as
@@ -346,7 +346,7 @@ end
 
 
 function Control.Continuous.LinearizedSS(
-            ac::System{<:Aircraft}, args...; kwargs...)
+            ac::Model{<:Aircraft}, args...; kwargs...)
     Control.Continuous.LinearizedSS(ac.vehicle, args...; kwargs...)
 end
 
@@ -367,10 +367,10 @@ end
 ################################### GUI ########################################
 
 
-function GUI.draw!(ac::System{<:Aircraft}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw!(ac::Model{<:Aircraft}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Aircraft")
 
-    @unpack vehicle, avionics = ac.subsystems
+    @unpack vehicle, avionics = ac.submodels
     CImGui.Begin(label, p_open)
 
     @cstatic c_phy=false c_avs=false begin
@@ -384,12 +384,12 @@ function GUI.draw!(ac::System{<:Aircraft}, p_open::Ref{Bool} = Ref(true),
 
 end
 
-function GUI.draw!(vehicle::System{<:Vehicle},
-                   avionics::System{<:AbstractAvionics},
+function GUI.draw!(vehicle::Model{<:Vehicle},
+                   avionics::Model{<:AbstractAvionics},
                    p_open::Ref{Bool} = Ref(true),
                    label::String = "Vehicle")
 
-    @unpack components = vehicle.subsystems
+    @unpack components = vehicle.submodels
     @unpack kinematics, dynamics, airflow = vehicle.y
 
     CImGui.Begin(label, p_open)

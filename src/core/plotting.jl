@@ -76,7 +76,7 @@ end
 
 make_plots(sim::Simulation; kwargs...) = make_plots(TimeSeries(sim); kwargs...)
 
-#complex Systems with NamedTuple outputs will generally require multiple
+#complex Models with NamedTuple outputs will generally require multiple
 #figures, so we cannot use a @recipe for them. we need to handle the TimeSeries
 #recursively
 function make_plots(ts::TimeSeries{<:NamedTuple}; kwargs...)

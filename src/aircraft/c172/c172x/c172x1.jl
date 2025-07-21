@@ -26,26 +26,26 @@ end
 @no_step C172Xv1.Avionics
 @ss_disc C172Xv1.Avionics
 
-function AircraftBase.assign!(components::System{<:C172X.Components},
-                          avionics::System{<:C172Xv1.Avionics})
+function AircraftBase.assign!(components::Model{<:C172X.Components},
+                          avionics::Model{<:C172Xv1.Avionics})
     AircraftBase.assign!(components, avionics.ctl)
 end
 
 ################################# Trimming #####################################
 
-function Systems.init!(avionics::System{<:C172Xv1.Avionics},
-                            vehicle::System{<:C172X.Vehicle})
+function Modeling.init!(avionics::Model{<:C172Xv1.Avionics},
+                            vehicle::Model{<:C172X.Vehicle})
 
     Control.reset!(avionics.ctl)
-    Systems.init!(avionics.ctl, vehicle)
+    Modeling.init!(avionics.ctl, vehicle)
     update_output!(avionics)
 
 end
 
 ################################## GUI #########################################
 
-function GUI.draw!(avionics::System{<:C172Xv1.Avionics},
-                    vehicle::System{<:C172X.Vehicle},
+function GUI.draw!(avionics::Model{<:C172Xv1.Avionics},
+                    vehicle::Model{<:C172X.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna172Xv1 Avionics")
 
@@ -80,10 +80,10 @@ yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
 
-function IODevices.assign_input!(sys::System{<:Cessna172Xv1},
+function IODevices.assign_input!(mdl::Model{<:Cessna172Xv1},
                            ::GenericInputMapping, data::T16000MData)
 
-    u = sys.avionics.ctl.u
+    u = mdl.avionics.ctl.u
 
     p_sf = 0.5 #roll rate sensitivity
     q_sf = 0.5 #pitch rate sensitivity

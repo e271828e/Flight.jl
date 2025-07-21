@@ -19,7 +19,7 @@ export test_piston
 ################################################################################
 ################################################################################
 
-@kwdef struct TestHarness{T <: PistonThruster} <: SystemDefinition
+@kwdef struct TestHarness{T <: PistonThruster} <: ModelDefinition
     thruster::T = PistonThruster()
 end
 
@@ -29,22 +29,22 @@ end
     fuel_available::Bool = true
 end
 
-Systems.U(::TestHarness) = TestHarnessU()
-Systems.Y(sd::TestHarness) = (thruster = Systems.Y(sd.thruster),)
+Modeling.U(::TestHarness) = TestHarnessU()
+Modeling.Y(md::TestHarness) = (thruster = Modeling.Y(md.thruster),)
 
-function Systems.f_ode!(harness::System{<:TestHarness})
+function Modeling.f_ode!(harness::Model{<:TestHarness})
     @unpack air_data, kin_data, fuel_available = harness.u
     f_ode!(harness.thruster, air_data, kin_data)
     update_output!(harness)
     #alternatively, harness.y = (thruster = thruster.y,)
 end
 
-function Systems.f_step!(harness::System{<:TestHarness})
+function Modeling.f_step!(harness::Model{<:TestHarness})
     @unpack fuel_available = harness.u
     f_step!(harness.thruster, fuel_available)
 end
 
-Systems.f_disc!(::NoScheduling, ::System{<:TestHarness}) = nothing
+Modeling.f_disc!(::NoScheduling, ::Model{<:TestHarness}) = nothing
 
 ################################################################################
 
@@ -135,7 +135,7 @@ function test_engine_response()
         kin = KinInit(h = HEllip(), v_eb_n = [50, 0, 0]) |> KinData
         atm = AtmosphericData()
         air = AirflowData(atm, kin)
-        eng = PistonEngine() |> System
+        eng = PistonEngine() |> Model
 
         eng.u.τ_load = -10
         eng.u.J_load = 0.1
@@ -215,7 +215,7 @@ function test_thruster_response()
     @testset verbose = true "Thruster Dynamics" begin
 
         #initialize auxiliary elements
-        hrn = TestHarness() |> System
+        hrn = TestHarness() |> Model
 
         sim = Simulation(hrn, t_end = 100)
 
@@ -233,9 +233,9 @@ function test_thruster_response()
         hrn.thruster.engine.u.start = false
 
         #thruster should be pushing
-        @test get_wr_b(sim.sys.thruster).F[1] > 0
+        @test get_wr_b(sim.mdl.thruster).F[1] > 0
         #and receiving a CCW torque
-        @test get_wr_b(sim.sys.thruster).τ[1] < 0
+        @test get_wr_b(sim.mdl.thruster).τ[1] < 0
 
 
         #give it some throttle and see the RPMs increase
@@ -263,7 +263,7 @@ function test_thruster_response()
         #CCW propeller should be coupled with negative gear ratio transmission
         hrn = PistonThruster(
             propeller = Propeller(VariablePitch(0, 0.2); sense = Propellers.CCW),
-            gear_ratio = -1) |> TestHarness |> System
+            gear_ratio = -1) |> TestHarness |> Model
 
         sim = Simulation(hrn, t_end = 100)
 
@@ -274,8 +274,8 @@ function test_thruster_response()
         @test hrn.y.thruster.engine.state === eng_running
 
         @test hrn.y.thruster.propeller.ω ≈ -sim.y.thruster.engine.ω
-        @test get_wr_b(sim.sys.thruster).F[1] > 0
-        @test get_wr_b(sim.sys.thruster).τ[1] > 0 #CW opposing torque
+        @test get_wr_b(sim.mdl.thruster).F[1] > 0
+        @test get_wr_b(sim.mdl.thruster).τ[1] > 0 #CW opposing torque
 
         #change propeller pitch and check that the idle controller raises the
         #idle manifold pressure to hold the target idle RPMs

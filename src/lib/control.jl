@@ -5,8 +5,8 @@ using Flight.FlightCore
 ################################################################################
 ############################ Common Interfaces #################################
 
-function reset!(sys::System)
-    foreach(sys.subsystems) do ss
+function reset!(mdl::Model)
+    foreach(mdl.submodels) do ss
         reset!(ss)
     end
 end
@@ -32,7 +32,7 @@ const tM = AbstractMatrix{<:Float64}
 
 struct LinearizedSS{ LX, LU, LY, #state, input and output vector lengths
                         tX <: tV, tU <: tV, tY <: tV,
-                        tA <: tM, tB <: tM, tC <: tM, tD <: tM} <: SystemDefinition
+                        tA <: tM, tB <: tM, tC <: tM, tD <: tM} <: ModelDefinition
 
     ẋ0::tX; x0::tX; u0::tU; y0::tY; #reference values (for linearized systems)
     A::tA; B::tB; C::tC; D::tD; #state-space matrices
@@ -63,22 +63,22 @@ function RobustAndOptimalControl.named_ss(lss::LinearizedSS)
     named_ss(ss(lss), x = x_labels, u = u_labels, y = y_labels)
 end
 
-function LinearizedSS(sys::ControlSystemsBase.StateSpace{ControlSystemsBase.Continuous, <:AbstractFloat})
-    @unpack A, B, C, D, nx, nu, ny = sys
+function LinearizedSS(mdl::ControlSystemsBase.StateSpace{ControlSystemsBase.Continuous, <:AbstractFloat})
+    @unpack A, B, C, D, nx, nu, ny = mdl
     ẋ0 = zeros(nx); x0 = zeros(nx); u0 = zeros(nu); y0 = zeros(ny)
     LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 end
 
-Systems.X(cmp::LinearizedSS) = copy(cmp.x0)
-Systems.U(cmp::LinearizedSS) = copy(cmp.u0)
-Systems.Y(cmp::LinearizedSS) = SVector{length(cmp.y0)}(cmp.y0)
+Modeling.X(cmp::LinearizedSS) = copy(cmp.x0)
+Modeling.U(cmp::LinearizedSS) = copy(cmp.u0)
+Modeling.Y(cmp::LinearizedSS) = SVector{length(cmp.y0)}(cmp.y0)
 
 @no_disc LinearizedSS
 @no_step LinearizedSS
 
-function Systems.f_ode!(sys::System{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, LY}
+function Modeling.f_ode!(mdl::Model{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, LY}
 
-    @unpack ẋ, x, u, y, constants = sys
+    @unpack ẋ, x, u, y, constants = mdl
     @unpack ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache = constants
 
     #non-allocating equivalent of:
@@ -100,7 +100,7 @@ function Systems.f_ode!(sys::System{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, 
     mul!(y_cache, D, Δu_cache)
     y_cache_out .+= y_cache
 
-    sys.y = SVector{LY}(y_cache_out)
+    mdl.y = SVector{LY}(y_cache_out)
 
     return nothing
 
@@ -131,7 +131,7 @@ end
 ####################### Proportional-Integral Compensator ######################
 ################################################################################
 
-struct PIVector{N} <: SystemDefinition end
+struct PIVector{N} <: ModelDefinition end
 
 @kwdef struct PIVectorU{N}
     k_p::MVector{N,Float64} = ones(N) #proportional gain
@@ -164,16 +164,16 @@ end
     int_halted::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
-Systems.X(::PIVector{N}) where {N} = zeros(N)
-Systems.Y(::PIVector{N}) where {N} = PIVectorY{N}()
-Systems.U(::PIVector{N}) where {N} = PIVectorU{N}()
+Modeling.X(::PIVector{N}) where {N} = zeros(N)
+Modeling.Y(::PIVector{N}) where {N} = PIVectorY{N}()
+Modeling.U(::PIVector{N}) where {N} = PIVectorU{N}()
 
 @no_disc PIVector
 @no_step PIVector
 
-function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
+function Modeling.f_ode!(mdl::Model{<:PIVector{N}}) where {N}
 
-    @unpack ẋ, x, u = sys
+    @unpack ẋ, x, u = mdl
 
     x_i = SVector{N, Float64}(x)
     k_p, k_i, k_l, β_p = map(SVector, (u.k_p, u.k_i, u.k_l, u.β_p))
@@ -195,15 +195,15 @@ function Systems.f_ode!(sys::System{<:PIVector{N}}) where {N}
 
     ẋ .= k_i .* u_i .* .!int_halted - k_l .* x_i
 
-    sys.y = PIVectorY(; k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext,
+    mdl.y = PIVectorY(; k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext,
                      u_p, u_i, x_i, y_p, y_i, out_free, sat_out, output, int_halted)
 
 end
 
-function Control.reset!(sys::System{<:PIVector})
-    sys.u.input .= 0
-    sys.u.sat_ext .= 0
-    sys.x .= 0
+function Control.reset!(mdl::Model{<:PIVector})
+    mdl.u.input .= 0
+    mdl.u.sat_ext .= 0
+    mdl.x .= 0
 end
 
 
@@ -287,10 +287,10 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(sys::System{<:PIVector{N}}, label::String = "PIVector{$N}") where {N}
+function GUI.draw(mdl::Model{<:PIVector{N}}, label::String = "PIVector{$N}") where {N}
 
     @unpack k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext,
-            u_p, u_i, x_i, y_p, y_i, out_free, sat_out, output, int_halted = sys.y
+            u_p, u_i, x_i, y_p, y_i, out_free, sat_out, output, int_halted = mdl.y
 
     # CImGui.Begin(label)
 
@@ -335,7 +335,7 @@ using ..Control
 ############################# Integrator ###############################
 ################################################################################
 
-struct Integrator <: SystemDefinition end
+struct Integrator <: ModelDefinition end
 
 @kwdef mutable struct IntegratorInput
     input::Float64 = 0 #current input
@@ -360,23 +360,23 @@ end
     halted::Bool = false #integration halted
 end
 
-Systems.Y(::Integrator) = IntegratorOutput()
-Systems.U(::Integrator) = IntegratorInput()
-Systems.S(::Integrator) = IntegratorState()
+Modeling.Y(::Integrator) = IntegratorOutput()
+Modeling.U(::Integrator) = IntegratorInput()
+Modeling.S(::Integrator) = IntegratorState()
 
-function Control.reset!(sys::System{<:Integrator}, x0::Real = 0.0)
-    sys.u.input = 0
-    sys.u.sat_ext = 0
-    sys.s.x0 = x0
-    sys.s.sat_out_0 = 0
+function Control.reset!(mdl::Model{<:Integrator}, x0::Real = 0.0)
+    mdl.u.input = 0
+    mdl.u.sat_ext = 0
+    mdl.s.x0 = x0
+    mdl.s.sat_out_0 = 0
 end
 
 @no_step Integrator
 @no_ode Integrator
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:Integrator})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:Integrator})
 
-    @unpack s, u, Δt = sys
+    @unpack s, u, Δt = mdl
     @unpack input, sat_ext, bound_lo, bound_hi = u
     @unpack x0, sat_out_0 = s
 
@@ -391,13 +391,13 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:Integrator})
     s.x0 = x1
     s.sat_out_0 = sat_out
 
-    sys.y = IntegratorOutput(; input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted)
+    mdl.y = IntegratorOutput(; input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted)
 
 end
 
 ################################################################################
 
-struct IntegratorVector{N} <: SystemDefinition end
+struct IntegratorVector{N} <: ModelDefinition end
 
 @kwdef mutable struct IntegratorVectorInput{N}
     input::MVector{N,Float64} = zeros(Float64, N)
@@ -422,23 +422,23 @@ end
     halted::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
-Systems.Y(::IntegratorVector{N}) where {N} = IntegratorVectorOutput{N}()
-Systems.U(::IntegratorVector{N}) where {N} = IntegratorVectorInput{N}()
-Systems.S(::IntegratorVector{N}) where {N} = IntegratorVectorState{N}()
+Modeling.Y(::IntegratorVector{N}) where {N} = IntegratorVectorOutput{N}()
+Modeling.U(::IntegratorVector{N}) where {N} = IntegratorVectorInput{N}()
+Modeling.S(::IntegratorVector{N}) where {N} = IntegratorVectorState{N}()
 
-function Control.reset!(sys::System{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
-    sys.u.input .= 0
-    sys.u.sat_ext .= 0
-    sys.s.x0 .= x0
-    sys.s.sat_out_0 .= 0
+function Control.reset!(mdl::Model{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
+    mdl.u.input .= 0
+    mdl.u.sat_ext .= 0
+    mdl.s.x0 .= x0
+    mdl.s.sat_out_0 .= 0
 end
 
 @no_ode IntegratorVector
 @no_step IntegratorVector
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:IntegratorVector})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:IntegratorVector})
 
-    @unpack s, u, Δt = sys
+    @unpack s, u, Δt = mdl
 
     input, bound_lo, bound_hi, sat_ext = map(SVector, (
         u.input, u.bound_lo, u.bound_hi, u.sat_ext))
@@ -457,7 +457,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:IntegratorVector})
     s.x0 .= x1
     s.sat_out_0 .= sat_out
 
-    sys.y = IntegratorVectorOutput(; input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted)
+    mdl.y = IntegratorVectorOutput(; input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted)
 
 end
 
@@ -465,11 +465,11 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(sys::Union{System{<:Integrator}, System{<:IntegratorVector}},
+function GUI.draw(mdl::Union{Model{<:Integrator}, Model{<:IntegratorVector}},
                     label::String = "Integrator")
 
-    @unpack x0, sat_out_0 = sys.s
-    @unpack input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted = sys.y
+    @unpack x0, sat_out_0 = mdl.s
+    @unpack input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted = mdl.y
 
     # CImGui.Begin(label)
 
@@ -497,7 +497,7 @@ end #function
 #|p| > |z|: lead
 #|p| < |z|: lag
 
-struct LeadLag <: SystemDefinition end
+struct LeadLag <: ModelDefinition end
 
 @kwdef mutable struct LeadLagInput
     z::Float64 = -1.0 #zero location (z < 0)
@@ -519,22 +519,22 @@ end
     y1::Float64 = 0.0 #current output
 end
 
-Systems.Y(::LeadLag) = LeadLagOutput()
-Systems.U(::LeadLag) = LeadLagInput()
-Systems.S(::LeadLag) = LeadLagState()
+Modeling.Y(::LeadLag) = LeadLagOutput()
+Modeling.U(::LeadLag) = LeadLagInput()
+Modeling.S(::LeadLag) = LeadLagState()
 
-function Control.reset!(sys::System{<:LeadLag})
-    sys.u.u1 = 0
-    sys.s.u0 = 0
-    sys.s.x0 = 0
+function Control.reset!(mdl::Model{<:LeadLag})
+    mdl.u.u1 = 0
+    mdl.s.u0 = 0
+    mdl.s.x0 = 0
 end
 
 @no_ode LeadLag
 @no_step LeadLag
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:LeadLag})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LeadLag})
 
-    @unpack s, u, Δt = sys
+    @unpack s, u, Δt = mdl
     @unpack z, p, k, u1 = u
     @unpack u0, x0 = s
 
@@ -545,7 +545,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LeadLag})
     x1 = a0 * x0 + b1 * u1 + b0 * u0
     y1 = k * x1
 
-    sys.y = LeadLagOutput(; z, p, k, u1, y1)
+    mdl.y = LeadLagOutput(; z, p, k, u1, y1)
 
     s.x0 = x1
     s.u0 = u1
@@ -555,9 +555,9 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw(sys::System{<:LeadLag}, label::String = "Discrete Lead Compensator")
+function GUI.draw(mdl::Model{<:LeadLag}, label::String = "Discrete Lead Compensator")
 
-    @unpack z, p, k, u1, y1 = sys.y
+    @unpack z, p, k, u1, y1 = mdl.y
 
     # CImGui.Begin(label)
 
@@ -604,7 +604,7 @@ end
 
 ################################# Scalar Version ###############################
 
-@kwdef struct PID <: SystemDefinition end
+@kwdef struct PID <: ModelDefinition end
 
 @kwdef mutable struct PIDInput
     k_p::Float64 = 1.0 #proportional gain
@@ -648,31 +648,31 @@ end
     int_halted::Bool = false #integration halted
 end
 
-Systems.Y(::PID) = PIDOutput()
-Systems.U(::PID) = PIDInput()
-Systems.S(::PID) = PIDState()
+Modeling.Y(::PID) = PIDOutput()
+Modeling.U(::PID) = PIDInput()
+Modeling.S(::PID) = PIDState()
 
-function Control.reset!(sys::System{<:PID})
-    sys.u.input = 0
-    sys.u.sat_ext = 0
-    sys.s.x_i0 = 0
-    sys.s.x_d0 = 0
-    sys.s.sat_out_0 = 0
+function Control.reset!(mdl::Model{<:PID})
+    mdl.u.input = 0
+    mdl.u.sat_ext = 0
+    mdl.s.x_i0 = 0
+    mdl.s.x_d0 = 0
+    mdl.s.sat_out_0 = 0
 end
 
-function assign!(sys::System{<:PID}, params::PIDParams{<:Real})
+function assign!(mdl::Model{<:PID}, params::PIDParams{<:Real})
     @unpack k_p, k_i, k_d, τ_f = params
-    @pack! sys.u = k_p, k_i, k_d, τ_f
+    @pack! mdl.u = k_p, k_i, k_d, τ_f
 end
 
 @no_ode PID
 @no_step PID
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:PID})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:PID})
 
-    @unpack Δt = sys
-    @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext = sys.u
-    @unpack x_i0, x_d0, sat_out_0 = sys.s
+    @unpack Δt = mdl
+    @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext = mdl.u
+    @unpack x_i0, x_d0, sat_out_0 = mdl.s
 
     α = 1 / (τ_f + Δt)
 
@@ -696,18 +696,18 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:PID})
 
     output = clamp(out_free, bound_lo, bound_hi)
 
-    sys.y = PIDOutput(; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
+    mdl.y = PIDOutput(; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
                 u_p, u_i, u_d, y_p, y_i, y_d, out_free, sat_out, output, int_halted)
 
-    sys.s.x_i0 = x_i
-    sys.s.x_d0 = x_d
-    sys.s.sat_out_0 = sat_out
+    mdl.s.x_i0 = x_i
+    mdl.s.x_d0 = x_d
+    mdl.s.sat_out_0 = sat_out
 
 end
 
 ############################## Vector Version ##################################
 
-struct PIDVector{N} <: SystemDefinition end
+struct PIDVector{N} <: ModelDefinition end
 
 @kwdef struct PIDVectorInput{N}
     k_p::MVector{N,Float64} = ones(N) #proportional gain
@@ -751,24 +751,24 @@ end
     int_halted::SVector{N,Bool} = zeros(SVector{N, Bool}) #integration halted
 end
 
-Systems.Y(::PIDVector{N}) where {N} = PIDVectorOutput{N}()
-Systems.U(::PIDVector{N}) where {N} = PIDVectorInput{N}()
-Systems.S(::PIDVector{N}) where {N} = PIDVectorState{N}()
+Modeling.Y(::PIDVector{N}) where {N} = PIDVectorOutput{N}()
+Modeling.U(::PIDVector{N}) where {N} = PIDVectorInput{N}()
+Modeling.S(::PIDVector{N}) where {N} = PIDVectorState{N}()
 
-function Control.reset!(sys::System{<:PIDVector{N}}) where {N}
-    sys.u.input .= 0
-    sys.u.sat_ext .= 0
-    sys.s.x_i0 .= 0
-    sys.s.x_d0 .= 0
-    sys.s.sat_out_0 .= 0
+function Control.reset!(mdl::Model{<:PIDVector{N}}) where {N}
+    mdl.u.input .= 0
+    mdl.u.sat_ext .= 0
+    mdl.s.x_i0 .= 0
+    mdl.s.x_d0 .= 0
+    mdl.s.sat_out_0 .= 0
 end
 
 @no_ode PIDVector
 @no_step PIDVector
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:PIDVector{N}}) where {N}
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:PIDVector{N}}) where {N}
 
-    @unpack s, u, Δt = sys
+    @unpack s, u, Δt = mdl
 
     k_p, k_i, k_d, τ_f, β_p, β_d = map(SVector, (
         u.k_p, u.k_i, u.k_d, u.τ_f, u.β_p, u.β_d))
@@ -805,7 +805,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:PIDVector{N}}) where {N}
     s.x_d0 .= x_d
     s.sat_out_0 .= sat_out
 
-    sys.y = PIDVectorOutput(; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
+    mdl.y = PIDVectorOutput(; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
                 u_p, u_i, u_d, y_p, y_i, y_d, out_free, sat_out, output, int_halted)
 
 end
@@ -901,11 +901,11 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(sys::Union{System{<:PID}, System{<:PIDVector}},
+function GUI.draw(mdl::Union{Model{<:PID}, Model{<:PIDVector}},
                             label::String = "Discrete PID")
 
     @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext, u_p, u_i, u_d,
-            y_p, y_i, y_d, out_free, sat_out, output, int_halted = sys.y
+            y_p, y_i, y_d, out_free, sat_out, output, int_halted = mdl.y
 
     # CImGui.Begin(label)
 
@@ -935,13 +935,13 @@ function GUI.draw(sys::Union{System{<:PID}, System{<:PIDVector}},
 end #function
 
 
-GUI.draw!(sys::System{<:PID}, label::String = "Discrete PID") = GUI.draw(sys, label)
+GUI.draw!(mdl::Model{<:PID}, label::String = "Discrete PID") = GUI.draw(mdl, label)
 
 
 ############################## LQRTracker ######################################
 ################################################################################
 
-struct LQRTracker{NX, NU, NZ, NUX, NUZ} <: SystemDefinition end
+struct LQRTracker{NX, NU, NZ, NUX, NUZ} <: ModelDefinition end
 
 function LQRTracker{NX, NU, NZ}() where {NX, NU, NZ}
     @assert NZ <= NU "Can't have more command variables than control inputs"
@@ -1003,33 +1003,33 @@ end
     out_sat_0::MVector{NU,Int64} = zeros(NU) #previous output saturation status
 end
 
-function Systems.Y(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+function Modeling.Y(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
     LQRTrackerOutput{NX, NU, NZ, NUX, NUZ}()
 end
 
-function Systems.U(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+function Modeling.U(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
     LQRTrackerInput{NX, NU, NZ, NUX, NUZ}()
 end
 
-function Systems.S(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+function Modeling.S(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
     LQRTrackerState{NX, NU}()
 end
 
-function Control.reset!(sys::System{<:LQRTracker})
-    sys.u.z_ref .= 0
-    sys.u.z .= 0
-    sys.u.x .= 0
-    sys.u.sat_ext .= 0
-    sys.s.int_out_0 .= 0
-    sys.s.out_sat_0 .= 0
+function Control.reset!(mdl::Model{<:LQRTracker})
+    mdl.u.z_ref .= 0
+    mdl.u.z .= 0
+    mdl.u.x .= 0
+    mdl.u.sat_ext .= 0
+    mdl.s.int_out_0 .= 0
+    mdl.s.out_sat_0 .= 0
 end
 
 @no_ode LQRTracker
 @no_step LQRTracker
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:LQRTracker})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LQRTracker})
 
-    @unpack s, u, Δt = sys
+    @unpack s, u, Δt = mdl
 
     C_fbk, C_fwd, C_int = map(SMatrix, (u.C_fbk, u.C_fwd, u.C_int))
     x_trim, u_trim, z_trim = map(SVector, (u.x_trim, u.u_trim, u.z_trim))
@@ -1051,17 +1051,17 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LQRTracker})
     s.int_out_0 .= int_out
     s.out_sat_0 .= out_sat
 
-    sys.y = LQRTrackerOutput(; C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim,
+    mdl.y = LQRTrackerOutput(; C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim,
         bound_lo, bound_hi, sat_ext, z_ref, z, x,
         int_in, int_out, int_halted, out_free, out_sat, output)
 
 end
 
-function GUI.draw(sys::System{<:LQRTracker})
+function GUI.draw(mdl::Model{<:LQRTracker})
 
     @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim, bound_lo, bound_hi,
             sat_ext, z_ref, z, x, int_in, int_halted, int_out,
-            out_free, out_sat, output = sys.y
+            out_free, out_sat, output = mdl.y
 
         CImGui.Text("Feedback Gain = $C_fbk")
         CImGui.Text("Forward Gain = $C_fwd")
@@ -1102,7 +1102,7 @@ const LQRTrackerPoint = LQRTrackerParams{CB, CF, CI, X, U, Z} where {
     Z <: AbstractVector}
 
 
-function assign!(lqr::System{<:LQRTracker}, params::LQRTrackerPoint)
+function assign!(lqr::Model{<:LQRTracker}, params::LQRTrackerPoint)
     @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = params
     lqr.u.C_fbk .= C_fbk
     lqr.u.C_fwd .= C_fwd

@@ -26,12 +26,12 @@ roll_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 yaw_curve(x) = exp_axis_curve(x, strength = 1.5, deadzone = 0.05)
 brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 
-function IODevices.assign_input!(sys::System{<:Cessna172Xv0},
+function IODevices.assign_input!(mdl::Model{<:Cessna172Xv0},
                            ::GenericInputMapping, data::T16000MData)
 
     #mixture not assigned
     @unpack throttle, mixture, aileron, elevator, rudder, flaps,
-            brake_left, brake_right = sys.vehicle.components.act.subsystems
+            brake_left, brake_right = mdl.vehicle.components.act.submodels
 
     @unpack axes, buttons, hat = data
 

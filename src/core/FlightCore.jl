@@ -3,7 +3,7 @@ module FlightCore
 using Reexport
 
 include("iodevices.jl"); @reexport using .IODevices
-include("systems.jl"); @reexport using .Systems
+include("modeling.jl"); @reexport using .Modeling
 include("gui.jl"); @reexport using .GUI
 include("sim.jl"); @reexport using .Sim
 include("types.jl"); @reexport using .Types

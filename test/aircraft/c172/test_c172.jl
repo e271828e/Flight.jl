@@ -27,7 +27,7 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
                 t_end::Real = 1000,
                 save::Bool = true)
 
-    world = SimpleWorld(ac, SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> System
+    world = SimpleWorld(ac, SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
     if situation === :ground
         initializer = C172.Init(

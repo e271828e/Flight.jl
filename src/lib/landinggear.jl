@@ -18,7 +18,7 @@ const e3 = SVector{3,Float64}(0,0,1)
 ################################################################################
 ################################# Steering #####################################
 
-abstract type AbstractSteering <: SystemDefinition end
+abstract type AbstractSteering <: ModelDefinition end
 
 ################################ NoSteering ####################################
 
@@ -27,9 +27,9 @@ struct NoSteering <: AbstractSteering end
 
 struct NoSteeringY end
 
-Systems.Y(::NoSteering) = NoSteeringY()
+Modeling.Y(::NoSteering) = NoSteeringY()
 
-get_steering_angle(::System{NoSteering}, args...) = 0.0
+get_steering_angle(::Model{NoSteering}, args...) = 0.0
 
 
 ############################### DirectSteering #################################
@@ -48,25 +48,25 @@ end
     input::Float64 = 0.0
 end
 
-Systems.U(::DirectSteering) = DirectSteeringU()
-Systems.Y(::DirectSteering) = DirectSteeringY()
+Modeling.U(::DirectSteering) = DirectSteeringU()
+Modeling.Y(::DirectSteering) = DirectSteeringY()
 
-function Systems.f_ode!(sys::System{DirectSteering})
-    @unpack engaged, input = sys.u
-    sys.y = DirectSteeringY(; engaged, input)
+function Modeling.f_ode!(mdl::Model{DirectSteering})
+    @unpack engaged, input = mdl.u
+    mdl.y = DirectSteeringY(; engaged, input)
 end
 
 @no_step DirectSteering
 
-function get_steering_angle(sys::System{DirectSteering}, ψ_v::Real)
-    @unpack engaged, input = sys.y
-    ψ_sw = engaged ? Float64(input) * sys.ψ_max : ψ_v
+function get_steering_angle(mdl::Model{DirectSteering}, ψ_v::Real)
+    @unpack engaged, input = mdl.y
+    ψ_sw = engaged ? Float64(input) * mdl.ψ_max : ψ_v
     return ψ_sw
 end
 
-function GUI.draw(sys::System{DirectSteering})
+function GUI.draw(mdl::Model{DirectSteering})
 
-    @unpack engaged, input = sys.y
+    @unpack engaged, input = mdl.y
     CImGui.Text("Engaged: $engaged")
     CImGui.Text("Steering Input: $(Float64(input))")
 end
@@ -75,7 +75,7 @@ end
 ################################################################################
 ################################# Braking ######################################
 
-abstract type AbstractBraking <: SystemDefinition end
+abstract type AbstractBraking <: ModelDefinition end
 
 ############################### NoBraking ######################################
 
@@ -84,9 +84,9 @@ struct NoBraking <: AbstractBraking end
 
 struct NoBrakingY end
 
-Systems.Y(::NoBraking) = NoBrakingY()
+Modeling.Y(::NoBraking) = NoBrakingY()
 
-get_braking_factor(::System{NoBraking}) = 0.0
+get_braking_factor(::Model{NoBraking}) = 0.0
 
 
 ############################# DirectBraking ####################################
@@ -99,21 +99,21 @@ end
    κ_br::Float64 = 0.0 #braking coefficient
 end
 
-Systems.U(::DirectBraking) = Ref(Ranged(0.0, 0., 1.))
-Systems.Y(::DirectBraking) = DirectBrakingY()
+Modeling.U(::DirectBraking) = Ref(Ranged(0.0, 0., 1.))
+Modeling.Y(::DirectBraking) = DirectBrakingY()
 
-function Systems.f_ode!(sys::System{DirectBraking})
-    sys.y = DirectBrakingY(Float64(sys.u[]) * sys.η_br)
+function Modeling.f_ode!(mdl::Model{DirectBraking})
+    mdl.y = DirectBrakingY(Float64(mdl.u[]) * mdl.η_br)
 end
 
 @no_step DirectBraking
 
-get_braking_factor(sys::System{DirectBraking}) = sys.y.κ_br
+get_braking_factor(mdl::Model{DirectBraking}) = mdl.y.κ_br
 
-function GUI.draw(sys::System{DirectBraking})
+function GUI.draw(mdl::Model{DirectBraking})
 
-    CImGui.Text("Braking Input: $(Float64(sys.u[]))")
-    CImGui.Text("Braking Coefficient: $(sys.y.κ_br)")
+    CImGui.Text("Braking Input: $(Float64(mdl.u[]))")
+    CImGui.Text("Braking Coefficient: $(mdl.y.κ_br)")
 
 end
 
@@ -122,7 +122,7 @@ end
 
 ################################### Damper #####################################
 
-abstract type AbstractDamper end #not a System!
+abstract type AbstractDamper end #not a Model!
 
 get_force(args...) = throw(MethodError(get_force, args))
 
@@ -190,7 +190,7 @@ end
     msg::String = ""
 end
 
-@kwdef struct Strut{D<:AbstractDamper} <: SystemDefinition
+@kwdef struct Strut{D<:AbstractDamper} <: ModelDefinition
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform
     l_0::Float64 = 0.0 #strut natural length from airframe attachment point to wheel endpoint
     damper::D = SimpleDamper()
@@ -210,14 +210,14 @@ end
     trn_data::TerrainData = TerrainData()
 end
 
-Systems.Y(::Strut) = StrutY()
+Modeling.Y(::Strut) = StrutY()
 
-function Systems.f_ode!(sys::System{<:Strut},
-                        steering::System{<:AbstractSteering},
-                        terrain::System{<:AbstractTerrain},
+function Modeling.f_ode!(mdl::Model{<:Strut},
+                        steering::Model{<:AbstractSteering},
+                        terrain::Model{<:AbstractTerrain},
                         kin::KinData)
 
-    @unpack t_bs, l_0, damper = sys.constants
+    @unpack t_bs, l_0, damper = mdl.constants
     @unpack q_eb, q_nb, q_en, r_eb_e, v_eb_b, ω_eb_b = kin
 
     q_bs = t_bs.q #body frame to strut frame rotation
@@ -240,7 +240,7 @@ function Systems.f_ode!(sys::System{<:Strut},
     wow = Δh <= 0
 
     if !wow #no contact
-        sys.y = StrutY(; Δh, wow) #everything else set to default
+        mdl.y = StrutY(; Δh, wow) #everything else set to default
         return
     end
 
@@ -310,24 +310,24 @@ function Systems.f_ode!(sys::System{<:Strut},
     #extract in-plane components
     v_ec_xy = v_ec_c[SVector(1,2)]
 
-    sys.y = StrutY(; Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, α_ts, t_sc, t_bc, v_ec_xy, trn_data)
+    mdl.y = StrutY(; Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, α_ts, t_sc, t_bc, v_ec_xy, trn_data)
 
 end
 
 #sanity checks for crash detection
-function Systems.f_step!(sys::System{<:Strut})
+function Modeling.f_step!(mdl::Model{<:Strut})
 
-    @unpack wow, α_ts, ξ_dot = sys.y
+    @unpack wow, α_ts, ξ_dot = mdl.y
 
     #we should not be hitting the ground at an angle larger than some threshold
     (wow && rad2deg(α_ts) > 60) && throw(GroundCrash(
         "Terrain normal to strut angle α_ts = $(rad2deg(α_ts)) deg " *
-        "at t = $(sys.t[]) s"))
+        "at t = $(mdl.t[]) s"))
 
     #damper compression rate should not exceed some threshold
     (-ξ_dot > 10) && throw(GroundCrash(
-        "Damper compression rate ξ_dot = $(-sys.y.ξ_dot) m/s " *
-        "at t = $(sys.t[]) s"))
+        "Damper compression rate ξ_dot = $(-mdl.y.ξ_dot) m/s " *
+        "at t = $(mdl.t[]) s"))
 
     return nothing
 
@@ -364,9 +364,9 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw(sys::System{<:Strut}, window_label::String = "Strut")
+function GUI.draw(mdl::Model{<:Strut}, window_label::String = "Strut")
 
-    @unpack Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, v_ec_xy, trn_data = sys.y
+    @unpack Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, v_ec_xy, trn_data = mdl.y
 
         CImGui.Text(@sprintf("Height Above Ground: %.7f m", Δh))
         CImGui.Text("Weight on Wheel: $wow")
@@ -391,7 +391,7 @@ end
 ################################################################################
 ################################### Contact ####################################
 
-@kwdef struct Contact <: SystemDefinition
+@kwdef struct Contact <: ModelDefinition
     frc::PIVector{2} = PIVector{2}() #friction constraint compensator
 end
 
@@ -408,11 +408,11 @@ end
     frc::PIVectorY{2} = PIVectorY{2}() #contact friction regulator
 end
 
-Systems.Y(::Contact) = ContactY()
+Modeling.Y(::Contact) = ContactY()
 
-function Systems.init!(sys::System{Contact})
+function Modeling.init!(mdl::Model{Contact})
     #set up friction constraint compensator
-    frc = sys.frc
+    frc = mdl.frc
     frc.u.k_p .= 5.0
     frc.u.k_i .= 400.0
     frc.u.k_l .= 0.2
@@ -420,18 +420,18 @@ function Systems.init!(sys::System{Contact})
     frc.u.bound_hi .= 1
 end
 
-function Systems.f_ode!(sys::System{Contact},
-                        strut::System{<:Strut},
-                        braking::System{<:AbstractBraking})
+function Modeling.f_ode!(mdl::Model{Contact},
+                        strut::Model{<:Strut},
+                        braking::Model{<:AbstractBraking})
 
     @unpack wow, F_dmp_zs, t_sc, t_bc, v_ec_xy, trn_data = strut.y
 
-    frc = sys.frc
+    frc = mdl.frc
     frc.u.input .= -v_ec_xy #if !wow, v_ec_xy = [0,0]
     f_ode!(frc)
 
     if !wow
-        sys.y = ContactY(; frc = frc.y) #everything else default
+        mdl.y = ContactY(; frc = frc.y) #everything else default
         return
     end
 
@@ -483,12 +483,12 @@ function Systems.f_ode!(sys::System{Contact},
     wr_c = Wrench(F = F_c)
     wr_b = t_bc(wr_c)
 
-    sys.y = ContactY(; μ_roll, μ_skid, κ_br, ψ_cv, μ_max, μ_eff, f_c, F_c, wr_b, frc = frc.y)
+    mdl.y = ContactY(; μ_roll, μ_skid, κ_br, ψ_cv, μ_max, μ_eff, f_c, F_c, wr_b, frc = frc.y)
 
 end
 
 #here wow has its final value for the current integration step
-function Systems.f_step!(contact::System{<:Contact}, strut::System{<:Strut})
+function Modeling.f_step!(contact::Model{<:Contact}, strut::Model{<:Strut})
 
     !strut.y.wow && Control.reset!(contact.frc) #if !wow, reset friction regulator
 
@@ -564,10 +564,10 @@ end
 
 ################################# GUI ##########################################
 
-function GUI.draw(sys::System{<:Contact}, window_label::String = "Contact")
+function GUI.draw(mdl::Model{<:Contact}, window_label::String = "Contact")
 
-    @unpack μ_roll, μ_skid, μ_max, κ_br, ψ_cv, μ_eff, f_c, F_c, wr_b = sys.y
-    frc = sys.frc
+    @unpack μ_roll, μ_skid, μ_max, κ_br, ψ_cv, μ_eff, f_c, F_c, wr_b = mdl.y
+    frc = mdl.frc
 
         CImGui.Text(@sprintf("Rolling Friction Coefficient: %.7f", μ_roll))
         CImGui.Text(@sprintf("Skidding Friction Coefficient: %.7f", μ_skid))
@@ -591,30 +591,30 @@ end
 
 @kwdef struct LandingGearUnit{S <:AbstractSteering,
                                 B <:AbstractBraking,
-                                L <:Strut} <: SystemDefinition
+                                L <:Strut} <: ModelDefinition
     steering::S = NoSteering()
     braking::B = NoBraking()
     strut::L = Strut()
     contact::Contact = Contact()
 end
 
-function Systems.f_ode!(sys::System{<:LandingGearUnit}, kinematics::KinData,
-                        terrain::System{<:AbstractTerrain})
+function Modeling.f_ode!(mdl::Model{<:LandingGearUnit}, kinematics::KinData,
+                        terrain::Model{<:AbstractTerrain})
 
-    @unpack strut, contact, steering, braking = sys
+    @unpack strut, contact, steering, braking = mdl
 
     f_ode!(steering)
     f_ode!(braking)
     f_ode!(strut, steering, terrain, kinematics)
     f_ode!(contact, strut, braking)
 
-    update_output!(sys)
+    update_output!(mdl)
 
 end
 
-function Systems.f_step!(sys::System{<:LandingGearUnit})
+function Modeling.f_step!(mdl::Model{<:LandingGearUnit})
 
-    @unpack strut, contact, steering, braking = sys
+    @unpack strut, contact, steering, braking = mdl
 
     f_step!(steering)
     f_step!(braking)
@@ -623,34 +623,34 @@ function Systems.f_step!(sys::System{<:LandingGearUnit})
 
 end
 
-Dynamics.get_mp_b(::System{<:LandingGearUnit}) = MassProperties()
-Dynamics.get_hr_b(::System{<:LandingGearUnit}) = zeros(SVector{3})
-Dynamics.get_wr_b(sys::System{<:LandingGearUnit}) = sys.y.contact.wr_b
+Dynamics.get_mp_b(::Model{<:LandingGearUnit}) = MassProperties()
+Dynamics.get_hr_b(::Model{<:LandingGearUnit}) = zeros(SVector{3})
+Dynamics.get_wr_b(mdl::Model{<:LandingGearUnit}) = mdl.y.contact.wr_b
 
 
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(sys::System{<:LandingGearUnit}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(mdl::Model{<:LandingGearUnit}, p_open::Ref{Bool} = Ref(true),
                  window_label::String = "Landing Gear Unit")
 
-    @unpack steering, braking, strut = sys
+    @unpack steering, braking, strut = mdl
 
     CImGui.Begin(window_label, p_open)
         if CImGui.TreeNode("Strut")
-            GUI.draw(sys.strut)
+            GUI.draw(mdl.strut)
             CImGui.TreePop()
         end
         if CImGui.TreeNode("Steering")
-            GUI.draw(sys.steering)
+            GUI.draw(mdl.steering)
             CImGui.TreePop()
         end
         if CImGui.TreeNode("Braking")
-            GUI.draw(sys.braking)
+            GUI.draw(mdl.braking)
             CImGui.TreePop()
         end
         if CImGui.TreeNode("Contact")
-            GUI.draw(sys.contact)
+            GUI.draw(mdl.contact)
             CImGui.TreePop()
         end
     CImGui.End()

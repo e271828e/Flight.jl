@@ -130,17 +130,17 @@ end
 ######################### AbstractKinematicDescriptor ##########################
 ################################################################################
 
-abstract type AbstractKinematicDescriptor <: SystemDefinition end
+abstract type AbstractKinematicDescriptor <: ModelDefinition end
 @no_disc AbstractKinematicDescriptor
 
 const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eb_b = zeros(3))
 
-Systems.U(::AbstractKinematicDescriptor) = zero(XVelTemplate)
-Systems.Y(::AbstractKinematicDescriptor) = KinData()
+Modeling.U(::AbstractKinematicDescriptor) = zero(XVelTemplate)
+Modeling.Y(::AbstractKinematicDescriptor) = KinData()
 
-const KinSystem = System{<:AbstractKinematicDescriptor}
+const KinSystem = Model{<:AbstractKinematicDescriptor}
 
-KinData(sys::KinSystem) = sys.y
+KinData(mdl::KinSystem) = mdl.y
 
 ########################### WA-based Kinematics #########################
 ##########################################################################
@@ -150,12 +150,12 @@ KinData(sys::KinSystem) = sys.y
 
 struct WA <: AbstractKinematicDescriptor end
 
-Systems.X(::WA) = ComponentVector(
+Modeling.X(::WA) = ComponentVector(
     q_wb = zeros(4), q_ew = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
 
-function Systems.init!(sys::System{WA}, ic::Initializer = Initializer())
+function Modeling.init!(mdl::Model{WA}, ic::Initializer = Initializer())
 
-    @unpack x, u = sys
+    @unpack x, u = mdl
     @unpack q_nb, Ob, ω_wb_b, v_eb_n, Δx, Δy = ic
 
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
@@ -175,14 +175,14 @@ function Systems.init!(sys::System{WA}, ic::Initializer = Initializer())
     x.Δy = Δy
     x.h_e = h_e
 
-    f_ode!(sys) #update ẋ and y, not strictly necessary
+    f_ode!(mdl) #update ẋ and y, not strictly necessary
 
 end
 
 
-function Systems.f_ode!(sys::System{WA})
+function Modeling.f_ode!(mdl::Model{WA})
 
-    @unpack ẋ, x, u = sys
+    @unpack ẋ, x, u = mdl
 
     q_wb = RQuat(x.q_wb, normalization = false)
     q_ew = RQuat(x.q_ew, normalization = false)
@@ -222,15 +222,15 @@ function Systems.f_ode!(sys::System{WA})
     ẋ.Δy = v_eb_n[2]
     ẋ.h_e = -v_eb_n[3]
 
-    sys.y = KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
+    mdl.y = KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
                  ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
 
 
-function Systems.f_step!(sys::System{WA}, ε = 1e-8)
-    normalize_block!(sys.x.q_wb, ε)
-    normalize_block!(sys.x.q_ew, ε)
+function Modeling.f_step!(mdl::Model{WA}, ε = 1e-8)
+    normalize_block!(mdl.x.q_wb, ε)
+    normalize_block!(mdl.x.q_ew, ε)
 end
 
 
@@ -254,12 +254,12 @@ end
 
 struct ECEF <: AbstractKinematicDescriptor end
 
-Systems.X(::ECEF) = ComponentVector(
+Modeling.X(::ECEF) = ComponentVector(
     q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0)
 
-function Systems.init!(sys::System{ECEF}, ic::Initializer = Initializer())
+function Modeling.init!(mdl::Model{ECEF}, ic::Initializer = Initializer())
 
-    @unpack x, u = sys
+    @unpack x, u = mdl
     @unpack q_nb, Ob, ω_wb_b, v_eb_n, Δx, Δy = ic
 
     n_e = NVector(Ob)
@@ -282,13 +282,13 @@ function Systems.init!(sys::System{ECEF}, ic::Initializer = Initializer())
     x.Δy = Δy
     x.h_e = h_e
 
-    f_ode!(sys) #update ẋ and y, not strictly necessary
+    f_ode!(mdl) #update ẋ and y, not strictly necessary
 
 end
 
-function Systems.f_ode!(sys::System{ECEF})
+function Modeling.f_ode!(mdl::Model{ECEF})
 
-    @unpack ẋ, x, u = sys
+    @unpack ẋ, x, u = mdl
 
     q_eb = RQuat(x.q_eb, normalization = false)
     n_e = NVector(x.n_e, normalization = false)
@@ -320,14 +320,14 @@ function Systems.f_ode!(sys::System{ECEF})
     ẋ.Δy = v_eb_n[2]
     ẋ.h_e = -v_eb_n[3]
 
-    sys.y = KinData(e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
+    mdl.y = KinData(e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
                 ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
 
-function Systems.f_step!(sys::System{ECEF}, ε = 1e-8)
-    normalize_block!(sys.x.q_eb, ε)
-    normalize_block!(sys.x.n_e, ε)
+function Modeling.f_step!(mdl::Model{ECEF}, ε = 1e-8)
+    normalize_block!(mdl.x.q_eb, ε)
+    normalize_block!(mdl.x.n_e, ε)
 end
 
 
@@ -339,13 +339,13 @@ end
 
 struct NED <: AbstractKinematicDescriptor end
 
-Systems.X(::NED) = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
+Modeling.X(::NED) = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
                                 ϕ = 0.0, λ = 0.0, Δx = 0.0, Δy = 0.0, h_e = 0.0)
 
 
-function Systems.init!(sys::System{NED}, ic::Initializer = Initializer())
+function Modeling.init!(mdl::Model{NED}, ic::Initializer = Initializer())
 
-    @unpack x, u = sys
+    @unpack x, u = mdl
     @unpack q_nb, Ob, ω_wb_b, v_eb_n, Δx, Δy = ic
 
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
@@ -369,13 +369,13 @@ function Systems.init!(sys::System{NED}, ic::Initializer = Initializer())
     x.Δy = Δy
     x.h_e = h_e
 
-    f_ode!(sys) #update ẋ and y, not strictly necessary
+    f_ode!(mdl) #update ẋ and y, not strictly necessary
 
 end
 
-function Systems.f_ode!(sys::System{NED})
+function Modeling.f_ode!(mdl::Model{NED})
 
-    @unpack ẋ, x, u = sys
+    @unpack ẋ, x, u = mdl
 
     e_nb = REuler(x.ψ_nb, x.θ_nb, x.φ_nb)
     ϕ_λ = LatLon(x.ϕ, x.λ)
@@ -419,12 +419,12 @@ function Systems.f_ode!(sys::System{NED})
     ẋ.Δy = v_eb_n[2]
     ẋ.h_e = -v_eb_n[3]
 
-    sys.y = KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
+    mdl.y = KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
                  ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
 
-Systems.f_step!(::System{NED}) = nothing
+Modeling.f_step!(::Model{NED}) = nothing
 
 
 @inline function get_ω_en_n(v_eb_n::AbstractVector{<:Real}, Ob::Geographic)
@@ -640,7 +640,7 @@ end
 ################################# GUI ##########################################
 
 
-GUI.draw(dyn::System{<:AbstractKinematicDescriptor}) = GUI.draw(KinData(dyn))
+GUI.draw(dyn::Model{<:AbstractKinematicDescriptor}) = GUI.draw(KinData(dyn))
 
 function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
                     label::String = "Kinematic Data")

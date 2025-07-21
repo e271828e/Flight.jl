@@ -355,7 +355,7 @@ end
 Base.range(pitch::FixedPitch) = range(pitch.value, pitch.value, length = 1)
 Base.range(pitch::VariablePitch) = pitch.range
 
-abstract type AbstractPropeller <: SystemDefinition end
+abstract type AbstractPropeller <: ModelDefinition end
 
 struct Propeller{P <: PitchStyle, L <: Lookup} <: AbstractPropeller
     pitch::P
@@ -391,27 +391,27 @@ end
     η_p::Float64 = 0.0 #propulsive efficiency
 end
 
-Systems.U(::Propeller{FixedPitch}) = nothing
-Systems.U(::Propeller{<:VariablePitch}) = Ref(Ranged(0.0, 0., 1.))
-Systems.Y(::Propeller) = PropellerY()
+Modeling.U(::Propeller{FixedPitch}) = nothing
+Modeling.U(::Propeller{<:VariablePitch}) = Ref(Ranged(0.0, 0., 1.))
+Modeling.Y(::Propeller) = PropellerY()
 
-function get_Δβ(sys::System{<:Propeller{FixedPitch}})
-    Δβ_range = range(sys.pitch)
+function get_Δβ(mdl::Model{<:Propeller{FixedPitch}})
+    Δβ_range = range(mdl.pitch)
     return Δβ_range[1]
 end
 
-function get_Δβ(sys::System{<:Propeller{<:VariablePitch}})
-    Δβ_range = range(sys.pitch)
-    return linear_scaling(sys.u[], Δβ_range)
+function get_Δβ(mdl::Model{<:Propeller{<:VariablePitch}})
+    Δβ_range = range(mdl.pitch)
+    return linear_scaling(mdl.u[], Δβ_range)
 end
 
 @no_step Propeller
 
-function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirflowData, ω::Real)
+function Modeling.f_ode!(mdl::Model{<:Propeller}, kin::KinData, air::AirflowData, ω::Real)
 
-    @unpack d, J_xx, t_bp, sense, lookup = sys.constants
+    @unpack d, J_xx, t_bp, sense, lookup = mdl.constants
     #this may actually happen due to friction constraint overshoot at low RPMs
-    # @assert sign(ω) * Int(sys.sense) >= 0 "Propeller turning in the wrong sense"
+    # @assert sign(ω) * Int(mdl.sense) >= 0 "Propeller turning in the wrong sense"
 
     v_wOp_b = air.v_wb_b + kin.ω_eb_b × t_bp.r
     v_wOp_p = t_bp.q'(v_wOp_b)
@@ -426,7 +426,7 @@ function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirflowData
 
     Mt = abs(ω)*(d/2) / air.a
 
-    Δβ = get_Δβ(sys)
+    Δβ = get_Δβ(mdl)
     coeffs = Coefficients(lookup, J, Mt, Δβ)
 
     @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = coeffs
@@ -452,19 +452,19 @@ function Systems.f_ode!(sys::System{<:Propeller}, kin::KinData, air::AirflowData
     hr_p = SVector(J_xx * ω, 0, 0)
     hr_b = t_bp.q(hr_p)
 
-    sys.y = PropellerY(; v_wOp_p, ω, J, Mt, Δβ, wr_p, wr_b, hr_p, hr_b, P, η_p)
+    mdl.y = PropellerY(; v_wOp_p, ω, J, Mt, Δβ, wr_p, wr_b, hr_p, hr_b, P, η_p)
 
 end
 
-Dynamics.get_mp_b(::System{<:Propeller}) = MassProperties()
-Dynamics.get_wr_b(sys::System{<:Propeller}) = sys.y.wr_b
-Dynamics.get_hr_b(sys::System{<:Propeller}) = sys.y.hr_b
+Dynamics.get_mp_b(::Model{<:Propeller}) = MassProperties()
+Dynamics.get_wr_b(mdl::Model{<:Propeller}) = mdl.y.wr_b
+Dynamics.get_hr_b(mdl::Model{<:Propeller}) = mdl.y.hr_b
 
 
 ################################################################################
 ####################### ConstantSpeedPropeller #################################
 
-# abstract type AbstractGovernor <: SystemDefinition end
+# abstract type AbstractGovernor <: ModelDefinition end
 
 # struct ConstantSpeedPropeller{P <: Propeller{VariablePitch}, G <: AbstractGovernor} <: AbstractPropeller
 #     propeller::P
@@ -608,10 +608,10 @@ function plot_J_M(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
 
 end
 
-function GUI.draw(sys::System{<:Propeller}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(mdl::Model{<:Propeller}, p_open::Ref{Bool} = Ref(true),
                     window_label::String = "Propeller")
 
-    @unpack ω, J, Mt, Δβ, wr_p, hr_p, P, η_p = sys.y
+    @unpack ω, J, Mt, Δβ, wr_p, hr_p, P, η_p = mdl.y
 
     CImGui.Begin(window_label, p_open)
 

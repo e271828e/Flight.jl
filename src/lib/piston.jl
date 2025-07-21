@@ -15,7 +15,7 @@ export PistonEngine, PistonThruster
 ################################################################################
 ########################### AbstractPistonEngine ###############################
 
-abstract type AbstractPistonEngine <: SystemDefinition end
+abstract type AbstractPistonEngine <: ModelDefinition end
 
 const β = ISA_layers[1].β
 
@@ -37,11 +37,11 @@ function h2δ(h)
 end
 
 #by default, engine mass is assumed to be accounted for in the airframe
-Dynamics.get_mp_b(::System{<:AbstractPistonEngine}) = MassProperties()
+Dynamics.get_mp_b(::Model{<:AbstractPistonEngine}) = MassProperties()
 #its internal angular momentum is neglected
-Dynamics.get_wr_b(::System{<:AbstractPistonEngine}) = Wrench()
+Dynamics.get_wr_b(::Model{<:AbstractPistonEngine}) = Wrench()
 #and it receives no direct external wrench
-Dynamics.get_hr_b(::System{<:AbstractPistonEngine}) = zeros(SVector{3})
+Dynamics.get_hr_b(::Model{<:AbstractPistonEngine}) = zeros(SVector{3})
 
 
 ################################################################################
@@ -120,16 +120,16 @@ end
     frc::PIVectorY{1} = PIVectorY{1}()
 end
 
-Systems.X(eng::PistonEngine) = ComponentVector( ω = 0.0,
-                                          idle = Systems.X(eng.idle),
-                                          frc = Systems.X(eng.frc))
-Systems.U(::PistonEngine) = PistonEngineU()
-Systems.Y(::PistonEngine) = PistonEngineY()
-Systems.S(::PistonEngine) = PistonEngineS()
+Modeling.X(eng::PistonEngine) = ComponentVector( ω = 0.0,
+                                          idle = Modeling.X(eng.idle),
+                                          frc = Modeling.X(eng.frc))
+Modeling.U(::PistonEngine) = PistonEngineU()
+Modeling.Y(::PistonEngine) = PistonEngineY()
+Modeling.S(::PistonEngine) = PistonEngineS()
 
-function Systems.init!(sys::System{<:PistonEngine})
+function Modeling.init!(mdl::Model{<:PistonEngine})
     #set up friction constraint compensator
-    @unpack idle, frc = sys.subsystems
+    @unpack idle, frc = mdl.submodels
 
     idle.u.k_p .= 4.0
     idle.u.k_i .= 2.0
@@ -142,10 +142,10 @@ function Systems.init!(sys::System{<:PistonEngine})
     frc.u.bound_hi .= 1
 end
 
-function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirflowData)
+function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirflowData)
 
     @unpack ω_rated, ω_idle, P_rated, J, τ_start, lookup = eng.constants
-    @unpack idle, frc = eng.subsystems
+    @unpack idle, frc = eng.submodels
     @unpack start, stop, τ_load, J_load = eng.u
 
     throttle = Float64(eng.u.throttle)
@@ -231,9 +231,9 @@ function Systems.f_ode!(eng::System{<:PistonEngine}, air_data::AirflowData)
 
 end
 
-function Systems.f_step!(eng::System{<:PistonEngine}, fuel_available::Bool = true)
+function Modeling.f_step!(eng::Model{<:PistonEngine}, fuel_available::Bool = true)
 
-    @unpack idle, frc = eng.subsystems
+    @unpack idle, frc = eng.submodels
     @unpack ω_stall, ω_idle = eng.constants
 
     ω = eng.x.ω
@@ -405,11 +405,11 @@ function compute_π_ISA_pow(lookup, n, μ, δ)
 end
 
 
-function GUI.draw(sys::System{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Engine")
 
-    @unpack u, y, constants = sys
-    @unpack idle, frc = sys
+    @unpack u, y, constants = mdl
+    @unpack idle, frc = mdl
     @unpack start, stop, state, throttle, mixture, MAP, ω, τ_shaft, P_shaft, ṁ, SFC = y
 
     CImGui.Begin(window_label, p_open)
@@ -453,7 +453,7 @@ end
 #with the propeller driving the engine instead of the other way around
 
 @kwdef struct PistonThruster{E <: AbstractPistonEngine,
-                        P <: AbstractPropeller} <: SystemDefinition
+                        P <: AbstractPropeller} <: ModelDefinition
     engine::E = PistonEngine()
     propeller::P = Propeller()
     gear_ratio::Float64 = 1.0
@@ -467,10 +467,10 @@ end
 end
 
 
-function Systems.f_ode!(sys::System{<:PistonThruster}, air_data::AirflowData, kin_data::KinData)
+function Modeling.f_ode!(mdl::Model{<:PistonThruster}, air_data::AirflowData, kin_data::KinData)
 
-    @unpack engine, propeller = sys
-    @unpack gear_ratio = sys.constants
+    @unpack engine, propeller = mdl
+    @unpack gear_ratio = mdl.constants
 
     ω_eng = engine.x.ω
     ω_prop = gear_ratio * ω_eng
@@ -486,36 +486,36 @@ function Systems.f_ode!(sys::System{<:PistonThruster}, air_data::AirflowData, ki
     engine.u.J_load = J_eq
     f_ode!(engine, air_data)
 
-    update_output!(sys)
+    update_output!(mdl)
 
 end
 
-function Systems.f_step!(sys::System{<:PistonThruster}, fuel_available::Bool = true)
+function Modeling.f_step!(mdl::Model{<:PistonThruster}, fuel_available::Bool = true)
 
-    @unpack engine, propeller = sys
+    @unpack engine, propeller = mdl
 
     f_step!(engine, fuel_available)
     f_step!(propeller)
 
 end
 
-Dynamics.get_mp_b(::System{<:PistonThruster}) = MassProperties()
-Dynamics.get_wr_b(sys::System{<:PistonThruster}) = get_wr_b(sys.propeller) #only external
-Dynamics.get_hr_b(sys::System{<:PistonThruster}) = get_hr_b(sys.propeller)
+Dynamics.get_mp_b(::Model{<:PistonThruster}) = MassProperties()
+Dynamics.get_wr_b(mdl::Model{<:PistonThruster}) = get_wr_b(mdl.propeller) #only external
+Dynamics.get_hr_b(mdl::Model{<:PistonThruster}) = get_hr_b(mdl.propeller)
 
 
 ################################################################################
 ################################# GUI ##########################################
 
-function GUI.draw(sys::System{<:PistonThruster}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(mdl::Model{<:PistonThruster}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Thruster")
 
     CImGui.Begin(window_label, p_open) #this should go within pwp's own draw, see components
         @cstatic c_eng=false c_prop=false begin
             @c CImGui.Checkbox("Engine", &c_eng)
             @c CImGui.Checkbox("Propeller", &c_prop)
-            c_eng && @c GUI.draw(sys.engine, &c_eng)
-            c_prop && @c GUI.draw(sys.propeller, &c_prop)
+            c_eng && @c GUI.draw(mdl.engine, &c_eng)
+            c_prop && @c GUI.draw(mdl.propeller, &c_prop)
         end
     CImGui.End()
 

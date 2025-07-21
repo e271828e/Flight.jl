@@ -11,7 +11,7 @@ using Flight.FlightCore
 
 export test_gui
 
-function test_gui(target::System)
+function test_gui(target::Model)
     f_draw = let target = target
         () -> GUI.draw!(target)
         # return () -> GUI.draw!(target)

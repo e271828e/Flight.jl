@@ -9,7 +9,7 @@ using RecursiveArrayTools
 using Logging
 using CImGui.lib: ImGuiSliderFlags_Logarithmic
 
-using ..Systems
+using ..Modeling
 using ..IODevices
 using ..GUI
 
@@ -72,9 +72,9 @@ IODevices.assign_input!(::SimControl, ::IOMapping, ::Any) = nothing
 ################################################################################
 ############################### SimInterface ###################################
 
-struct SimInterface{D <: IODevice, S <: System, M <: IOMapping}
+struct SimInterface{D <: IODevice, S <: Model, M <: IOMapping}
     device::D
-    sys::S
+    mdl::S
     mapping::M
     control::SimControl
     io_start::Base.Event
@@ -91,17 +91,17 @@ const SimGUI{D} = SimInterface{D} where {D <: Renderer}
 #Simulation loop is currently stepping
 function update!(interface::SimInput)
 
-    @unpack device, sys, mapping, control, io_lock = interface
+    @unpack device, mdl, mapping, control, io_lock = interface
     data = IODevices.get_data!(device)
 
     #the data we got from the InputDevice might be something we're not able to
-    #map to the System (for example, an EOT character)
+    #map to the Model (for example, an EOT character)
     try
         lock(io_lock)
-        IODevices.assign_input!(sys, mapping, data)
+        IODevices.assign_input!(mdl, mapping, data)
         IODevices.assign_input!(control, mapping, data)
     catch ex
-        @warn("Failed to assign input data $data to System")
+        @warn("Failed to assign input data $data to Model")
     finally
         unlock(io_lock)
     end
@@ -113,11 +113,11 @@ end
 #Simulation loop is currently stepping
 function update!(interface::SimOutput)
 
-    @unpack device, sys, mapping, io_lock = interface
+    @unpack device, mdl, mapping, io_lock = interface
 
     lock(io_lock)
         #this call should never block and always return some usable output
-        data = IODevices.extract_output(sys, mapping)
+        data = IODevices.extract_output(mdl, mapping)
     unlock(io_lock)
 
     IODevices.handle_data!(device, data)
@@ -128,7 +128,7 @@ function update!(gui::SimGUI)
 
     @unpack device, io_lock = gui
 
-    #the GUI may modify the System or SimControl, so we need to grab io_lock
+    #the GUI may modify the Model or SimControl, so we need to grab io_lock
     @lock io_lock GUI.render!(device)
 
     #once io_lock has been released and the simulation thread can proceed, put
@@ -163,18 +163,18 @@ end
 ################################################################################
 ############################# Simulation #######################################
 
-struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
-    sys::System{D, Y}
+struct Simulation{D <: ModelDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
+    mdl::Model{D, Y}
     integrator::I
     log::SavedValues{Float64, Y}
     gui::G
     control::SimControl
     io_start::Base.Event #to be waited on by IO devices and GUI before entering their update loops
-    io_lock::ReentrantLock #to be acquired before modifying the simulated System or SimControl
+    io_lock::ReentrantLock #to be acquired before modifying the simulated Model or SimControl
     interfaces::Vector{SimInterface}
 
     function Simulation(
-        sys::System{D, Y};
+        mdl::Model{D, Y};
         user_callback!::Function = user_callback!, #user-specified callback
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
@@ -190,22 +190,22 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         t_end - t_start < Δt && @warn(
         "Simulation timespan is shorter than the discrete dynamics update period")
 
-        #need to store a reference to sys and user_callback! in the integrator
+        #need to store a reference to mdl and user_callback! in the integrator
         #params so they can be used within the integrator callbacks
-        params = (sys = sys, user_callback! = user_callback!)
+        params = (mdl = mdl, user_callback! = user_callback!)
 
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
 
         #we don't want to impose a call to f_disc! at t=0, so we set
         #initial_affect=false. if needed, such call can be included in the
-        #user-defined Systems.init!
+        #user-defined Modeling.init!
         cb_disc = PeriodicCallback(f_cb_disc!, Δt; initial_affect = false)
-        sys.Δt_root[] = Δt
+        mdl.Δt_root[] = Δt
 
         #initialize discrete iteration counter in preparation for the first
         #scheduled discrete step
-        sys.n[] = 1
+        mdl.n[] = 1
 
         log = SavedValues(Float64, Y)
         saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
@@ -217,13 +217,13 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
             cb_set = CallbackSet(cb_step, cb_disc, cb_user)
         end
 
-        #the current System's x is used as an initial condition. a copy is
+        #the current Model's x is used as an initial condition. a copy is
         #needed, otherwise x0 will get overwritten during simulation. if the
-        #System has no continuous state, provide a dummy one
-        x0 = (has_x(sys) ? copy(sys.x) : [0.0])
+        #Model has no continuous state, provide a dummy one
+        x0 = (has_x(mdl) ? copy(mdl.x) : [0.0])
 
         #save_on = false because we are not interested in logging the plain
-        #System's state vector; everything we need from the System should be
+        #Model's state vector; everything we need from the Model should be
         #made available at its output, logged via SavingCallback
         problem = ODEProblem{true}(f_ode_wrapper!, x0, (t_start, t_end), params)
         integrator = init_integrator(problem, algorithm; save_on = false,
@@ -233,8 +233,8 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         io_start = Base.Event()
         io_lock = ReentrantLock()
 
-        f_draw = let control = control, sys = sys
-            () -> GUI.draw!(control, sys)
+        f_draw = let control = control, mdl = mdl
+            () -> GUI.draw!(control, mdl)
         end
 
         #sync should be set to 0 to disable VSync. otherwise, the call to
@@ -245,26 +245,26 @@ struct Simulation{D <: SystemDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         #thread. to prevent this, we can send the GUI to sleep for a while
         #within GUI.update! AFTER io_lock has been released
         renderer = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
-        gui = SimInterface(renderer, sys, GenericInputMapping(),
+        gui = SimInterface(renderer, mdl, GenericInputMapping(),
                            control, io_start, io_lock, true)
 
         new{D, Y, typeof(integrator), typeof(gui)}(
-            sys, integrator, log, gui, control, io_start, io_lock, SimInterface[])
+            mdl, integrator, log, gui, control, io_start, io_lock, SimInterface[])
     end
 
 end
 
-function Simulation(sd::SystemDefinition, args...; kwargs...)
-    Simulation(System(sd), args...; kwargs...)
+function Simulation(md::ModelDefinition, args...; kwargs...)
+    Simulation(Model(md), args...; kwargs...)
 end
 
 Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
 
 @generated function Base.getproperty(sim::Simulation, ::Val{S}) where {S}
     if S === :t
-        return :(getproperty(getfield(sim, :sys), $(QuoteNode(S)))[])
-    elseif S ∈ fieldnames(System)
-        return :(getproperty(getfield(sim, :sys), $(QuoteNode(S))))
+        return :(getproperty(getfield(sim, :mdl), $(QuoteNode(S)))[])
+    elseif S ∈ fieldnames(Model)
+        return :(getproperty(getfield(sim, :mdl), $(QuoteNode(S))))
     else
         return :(getfield(sim, $(QuoteNode(S))))
     end
@@ -272,7 +272,7 @@ end
 
 #function signature for a user callback function, called after every integration
 #step.
-user_callback!(::System) = nothing
+user_callback!(::Model) = nothing
 
 
 ################################ I/O ###########################################
@@ -281,7 +281,7 @@ function attach!(sim::Simulation, device::IODevice,
                 mapping::IOMapping = get_default_mapping(device);
                 should_abort = false)
 
-    interface = SimInterface(device, sim.sys, mapping,
+    interface = SimInterface(device, sim.mdl, mapping,
                             sim.control, sim.io_start, sim.io_lock, should_abort)
 
     push!(sim.interfaces, interface)
@@ -291,35 +291,35 @@ end
 
 ############################ Stepping functions ################################
 
-@inline has_x(sys::System) = !isnothing(sys.x)
+@inline has_x(mdl::Model) = !isnothing(mdl.x)
 
-#wrapper around the System's continuous dynamics function
+#wrapper around the Model's continuous dynamics function
 function f_ode_wrapper!(u̇, u, p, t)
 
-    @unpack sys = p
+    @unpack mdl = p
 
-    #assign current integrator solution to System's continuous state
-    has_x(sys) && (sys.x .= u)
+    #assign current integrator solution to Model's continuous state
+    has_x(mdl) && (mdl.x .= u)
 
     #idem for time
-    sys.t[] = t
+    mdl.t[] = t
 
-    f_ode!(sys) #call continuous dynamics (updates sys.ẋ and sys.y)
+    f_ode!(mdl) #call continuous dynamics (updates mdl.ẋ and mdl.y)
 
-    has_x(sys) && (u̇ .= sys.ẋ) #update the integrator's derivative
+    has_x(mdl) && (u̇ .= mdl.ẋ) #update the integrator's derivative
 
 end
 
-#DiscreteCallback wrapper around the System's post-integration step function
+#DiscreteCallback wrapper around the Model's post-integration step function
 function f_cb_step!(integrator)
 
     @unpack u, p = integrator
-    @unpack sys = p
+    @unpack mdl = p
 
-    f_step!(sys) #potentially modifies x, u, s or y
+    f_step!(mdl) #potentially modifies x, u, s or y
 
-    #assign the (potentially) modified sys.x back to the integrator
-    has_x(sys) && (u .= sys.x)
+    #assign the (potentially) modified mdl.x back to the integrator
+    has_x(mdl) && (u .= mdl.x)
 
 end
 
@@ -327,32 +327,32 @@ end
 function f_cb_user!(integrator)
 
     @unpack u, p = integrator
-    @unpack sys, user_callback! = p
+    @unpack mdl, user_callback! = p
 
-    user_callback!(sys) #potentially modifies x, u, s or y
+    user_callback!(mdl) #potentially modifies x, u, s or y
 
-    #assign the (potentially) modified sys.x back to the integrator
-    has_x(sys) && (u .= sys.x)
+    #assign the (potentially) modified mdl.x back to the integrator
+    has_x(mdl) && (u .= mdl.x)
 
 end
 
-#PeriodicCallback wrapper around the System's discrete dynamics function
+#PeriodicCallback wrapper around the Model's discrete dynamics function
 function f_cb_disc!(integrator)
 
     @unpack u, p = integrator
-    @unpack sys = p
+    @unpack mdl = p
 
-    f_disc!(sys) #call discrete dynamics, potentially updates sys.s and sys.y
+    f_disc!(mdl) #call discrete dynamics, potentially updates mdl.s and mdl.y
 
     #increment the discrete iteration counter
-    sys.n[] += 1
+    mdl.n[] += 1
 
 end
 
 #SavingCallback function, gets called at the end of each step after f_disc!
 #and/or f_step!
 function f_cb_save(x, t, integrator)
-    deepcopy(integrator.p.sys.y)
+    deepcopy(integrator.p.mdl.y)
 end
 
 
@@ -366,29 +366,29 @@ OrdinaryDiffEq.add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
 
 function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
 
-    @unpack sys, integrator, log = sim
+    @unpack mdl, integrator, log = sim
 
     #drop the log entries from the last run
     resize!(log.t, 0)
     resize!(log.saveval, 0)
 
     #reset scheduling counter, so f_disc! is guaranteed to execute if called by
-    #Systems.init!
-    sys.n[] = 0
+    #Modeling.init!
+    mdl.n[] = 0
 
-    #initialize the System's x, u and s
-    Systems.init!(sys, init_args...; init_kwargs...)
+    #initialize the Model's x, u and s
+    Modeling.init!(mdl, init_args...; init_kwargs...)
 
-    #initialize the integrator with the System's initial x. within the
+    #initialize the integrator with the Model's initial x. within the
     #integrator's reinit! f_cb_save and f_ode_wrapper! are called, in that order
-    if has_x(sys)
-        OrdinaryDiffEq.reinit!(integrator, sys.x)
+    if has_x(mdl)
+        OrdinaryDiffEq.reinit!(integrator, mdl.x)
     else
         OrdinaryDiffEq.reinit!(integrator)
     end
 
     #prepare scheduling counter for the first integration step
-    sys.n[] = 1
+    mdl.n[] = 1
 
     return nothing
 end
@@ -400,9 +400,9 @@ end
 
 ################################# GUI ##########################################
 
-function GUI.draw!(control::SimControl, sys::System)
+function GUI.draw!(control::SimControl, mdl::Model)
     GUI.draw!(control)
-    GUI.draw!(sys)
+    GUI.draw!(mdl)
 end
 
 
@@ -467,7 +467,7 @@ end
 
 function start!(sim::Simulation)
 
-    @unpack sys, integrator, gui, control, io_start, io_lock, interfaces = sim
+    @unpack mdl, integrator, gui, control, io_start, io_lock, interfaces = sim
 
     try
 

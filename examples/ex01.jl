@@ -18,8 +18,8 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
     #default atmospheric model
     atm = SimpleAtmosphere()
 
-    #define world and build System for simulation
-    world = SimpleWorld(ac, atm, trn) |> System
+    #define world and build Model for simulation
+    world = SimpleWorld(ac, atm, trn) |> Model
 
     if situation === :ground
         #initial condition specified through aircraft frame kinematics

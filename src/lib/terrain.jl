@@ -22,9 +22,9 @@ Geodesy.HOrth(data::TerrainData) = data.elevation
 
 ############################# AbstractTerrain ##################################
 
-abstract type AbstractTerrain <: SystemDefinition end
+abstract type AbstractTerrain <: ModelDefinition end
 
-function TerrainData(trn::System{<:AbstractTerrain}, loc::Abstract2DLocation)
+function TerrainData(trn::Model{<:AbstractTerrain}, loc::Abstract2DLocation)
     throw(MethodError(TerrainData, (trn, loc)))
 end
 
@@ -35,19 +35,19 @@ end
     elevation::Altitude{Orthometric} = HOrth(0)
 end
 
-Systems.U(::HorizontalTerrain) = Ref(DryTarmac)
+Modeling.U(::HorizontalTerrain) = Ref(DryTarmac)
 
 @no_dynamics HorizontalTerrain
 
-function TerrainData(trn::System{<:HorizontalTerrain}, ::Abstract2DLocation)
+function TerrainData(trn::Model{<:HorizontalTerrain}, ::Abstract2DLocation)
     TerrainData(trn.elevation, SVector{3,Float64}(0,0,1), trn.u[])
 end
 
-function GUI.draw!(sys::System{<:HorizontalTerrain},
+function GUI.draw!(mdl::Model{<:HorizontalTerrain},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Horizontal Terrain")
 
-    u = sys.u
+    u = mdl.u
     Begin(label, p_open)
         AlignTextToFramePadding(); Text("Surface Type"); SameLine()
         mode_button("Dry Tarmac", DryTarmac, DryTarmac, u[]; HSV_requested = HSV_gray)
@@ -56,7 +56,7 @@ function GUI.draw!(sys::System{<:HorizontalTerrain},
         IsItemActive() && (u[] = WetTarmac); SameLine()
         mode_button("Icy Tarmac", IcyTarmac, IcyTarmac, u[]; HSV_requested = HSV_gray)
         IsItemActive() && (u[] = IcyTarmac)
-        CImGui.Text("Elevation (MSL): $(Float64(sys.elevation)) m")
+        CImGui.Text("Elevation (MSL): $(Float64(mdl.elevation)) m")
     End()
 end
 

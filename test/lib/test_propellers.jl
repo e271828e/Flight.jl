@@ -132,19 +132,19 @@ function test_propeller()
         @testset verbose = true "FixedPitch" begin
 
             sense = Propellers.CCW
-            fp_sys = Propeller(FixedPitch(); sense, t_bp) |> System
-            @test fp_sys.u |> isnothing
+            fp_mdl = Propeller(FixedPitch(); sense, t_bp) |> Model
+            @test fp_mdl.u |> isnothing
 
-            f_ode!(fp_sys, kin, air, -ω)
+            f_ode!(fp_mdl, kin, air, -ω)
 
-            wr_p = fp_sys.y.wr_p
+            wr_p = fp_mdl.y.wr_p
             @test wr_p.F[1] > 0
             @test wr_p.F[3] < 0
             @test wr_p.τ[1] > 0 #in a CCW propeller should be positive along x
             @test wr_p.τ[3] > 0 #in a CCW propeller should be positive along z
 
-            @test @ballocated(f_ode!($fp_sys, $kin, $air, -$ω)) == 0
-            @test @ballocated(f_step!($fp_sys)) == 0
+            @test @ballocated(f_ode!($fp_mdl, $kin, $air, -$ω)) == 0
+            @test @ballocated(f_step!($fp_mdl)) == 0
 
 
         end #testset
@@ -152,22 +152,22 @@ function test_propeller()
         @testset verbose = true "VariablePitch" begin
 
             sense = Propellers.CW
-            vp_sys = Propeller(VariablePitch(-0.1, 0.2); sense, t_bp) |> System
+            vp_mdl = Propeller(VariablePitch(-0.1, 0.2); sense, t_bp) |> Model
 
-            vp_sys.u[] = 0
-            f_ode!(vp_sys, kin, air, ω)
-            @test vp_sys.y.Δβ ≈ bounds(vp_sys.lookup)[3][1] #lower Δβ bound
-            Fx_0 = vp_sys.y.wr_p.F[1]
+            vp_mdl.u[] = 0
+            f_ode!(vp_mdl, kin, air, ω)
+            @test vp_mdl.y.Δβ ≈ bounds(vp_mdl.lookup)[3][1] #lower Δβ bound
+            Fx_0 = vp_mdl.y.wr_p.F[1]
 
-            vp_sys.u[] = 1
-            f_ode!(vp_sys, kin, air, ω)
-            @test vp_sys.y.Δβ ≈ bounds(vp_sys.lookup)[3][2] #upper Δβ bound
-            Fx_1 = vp_sys.y.wr_p.F[1]
+            vp_mdl.u[] = 1
+            f_ode!(vp_mdl, kin, air, ω)
+            @test vp_mdl.y.Δβ ≈ bounds(vp_mdl.lookup)[3][2] #upper Δβ bound
+            Fx_1 = vp_mdl.y.wr_p.F[1]
 
             @test Fx_1 > Fx_0
 
-            @test @ballocated(f_ode!($vp_sys, $kin, $air, $ω)) == 0
-            @test @ballocated(f_step!($vp_sys)) == 0
+            @test @ballocated(f_ode!($vp_mdl, $kin, $air, $ω)) == 0
+            @test @ballocated(f_step!($vp_mdl)) == 0
 
         end #testset
 

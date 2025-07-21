@@ -20,37 +20,37 @@ end
 ################################################################################
 ############################### Simulation #####################################
 
-@kwdef struct FirstOrder <: SystemDefinition
+@kwdef struct FirstOrder <: ModelDefinition
     τ::Float64 = 1.0
 end
 
-Systems.X(::FirstOrder) = [0.0]
-Systems.U(::FirstOrder) = Ref(0.0)
-Systems.Y(::FirstOrder) = 0.0
+Modeling.X(::FirstOrder) = [0.0]
+Modeling.U(::FirstOrder) = Ref(0.0)
+Modeling.Y(::FirstOrder) = 0.0
 
-function Systems.f_ode!(sys::System{FirstOrder})
-    # @info("Called f_ode! with t = $(sys.t[]), x = $(sys.x[1]) and y = $(sys.y)")
-    sys.ẋ .= 1/sys.τ * (sys.u[] - sys.x[1])
-    sys.y = sys.x[1]
+function Modeling.f_ode!(mdl::Model{FirstOrder})
+    # @info("Called f_ode! with t = $(mdl.t[]), x = $(mdl.x[1]) and y = $(mdl.y)")
+    mdl.ẋ .= 1/mdl.τ * (mdl.u[] - mdl.x[1])
+    mdl.y = mdl.x[1]
 end
 
-function Systems.f_step!(sys::System{FirstOrder})
-    x_new = sys.x[1] + 1
-    # @info("Called f_step! at t = $(sys.t[]) and x = $(sys.x[1]), x updated to $(x_new)")
-    # sys.x .= x_new #if we want the change in x to propagate to y at the end of this step
+function Modeling.f_step!(mdl::Model{FirstOrder})
+    x_new = mdl.x[1] + 1
+    # @info("Called f_step! at t = $(mdl.t[]) and x = $(mdl.x[1]), x updated to $(x_new)")
+    # mdl.x .= x_new #if we want the change in x to propagate to y at the end of this step
 end
 
-function Systems.f_disc!(::NoScheduling, sys::System{FirstOrder})
-    # println("Called f_disc! at t = $(sys.t[]), got y = $(sys.y)")
+function Modeling.f_disc!(::NoScheduling, mdl::Model{FirstOrder})
+    # println("Called f_disc! at t = $(mdl.t[]), got y = $(mdl.y)")
 end
 
-Systems.init!(sys::System{FirstOrder}, x0::Real = 0.0) = (sys.x .= x0)
+Modeling.init!(mdl::Model{FirstOrder}, x0::Real = 0.0) = (mdl.x .= x0)
 
 
 function test_sim_standalone()
 
-    sys = FirstOrder() |> System
-    sim = Simulation(sys; dt = 0.1, Δt = 1.0, t_end = 5)
+    mdl = FirstOrder() |> Model
+    sim = Simulation(mdl; dt = 0.1, Δt = 1.0, t_end = 5)
     x0 = 1.0
     Sim.init!(sim, x0)
     return sim
@@ -73,7 +73,7 @@ end
 #an UDP loopback, in which the UDPOutput may block when calling take! on the
 #SimInterface Channel, but not on its send() call, which is nonblocking.
 
-@kwdef struct TestSystem <: SystemDefinition end
+@kwdef struct TestSystem <: ModelDefinition end
 
 @kwdef mutable struct TestSystemU
     input::Float64 = 0
@@ -83,20 +83,20 @@ end
     input::Float64 = 0
 end
 
-Systems.U(::TestSystem) = TestSystemU()
-Systems.Y(::TestSystem) = TestSystemY()
+Modeling.U(::TestSystem) = TestSystemU()
+Modeling.Y(::TestSystem) = TestSystemY()
 
 @no_ode TestSystem
 @no_step TestSystem
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:TestSystem})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:TestSystem})
     sleep(0.01)
-    sys.y = TestSystemY(; input = sys.u.input)
+    mdl.y = TestSystemY(; input = mdl.u.input)
 end
 
-function GUI.draw(sys::System{TestSystem}, label::String = "TestSystem")
+function GUI.draw(mdl::Model{TestSystem}, label::String = "TestSystem")
 
-    @unpack input = sys.y
+    @unpack input = mdl.y
 
     CImGui.Begin(label)
 
@@ -111,15 +111,15 @@ end #function
 
 struct UDPTestMapping <: IOMapping end
 
-function IODevices.assign_input!(sys::System{TestSystem},
+function IODevices.assign_input!(mdl::Model{TestSystem},
                             ::UDPTestMapping,
                             data::String)
     # @debug "Got $data"
-    sys.u.input = Vector{UInt8}(data)[1]
-    # sys.u.input = "Hi"
+    mdl.u.input = Vector{UInt8}(data)[1]
+    # mdl.u.input = "Hi"
 end
 
-function IODevices.extract_output(::System{TestSystem}, ::UDPTestMapping)
+function IODevices.extract_output(::Model{TestSystem}, ::UDPTestMapping)
     data = UInt8[37] |> String
     # data = String([0x04]) #EOT character
     # @debug "Extracted $data"
@@ -131,8 +131,8 @@ function udp_loopback()
     @testset verbose = true "UDP Loopback" begin
 
         port = 14141
-        sys = TestSystem() |> System
-        sim = Simulation(sys; t_end = 1.0)
+        mdl = TestSystem() |> Model
+        sim = Simulation(mdl; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
         Sim.attach!(sim, UDPOutput(; port), UDPTestMapping())
 
@@ -141,8 +141,8 @@ function udp_loopback()
         # Sim.run_interactive!(sim)
         Sim.run!(sim)
 
-        #sys.y.output must have propagated to sys.u.input via loopback, and then
-        #to sys.y.input within f_disc!
+        #mdl.y.output must have propagated to mdl.u.input via loopback, and then
+        #to mdl.y.input within f_disc!
         @test sim.y.input == 37.0
 
         return sim
@@ -153,7 +153,7 @@ end
 
 ################################ XPC Loopback ##################################
 
-function IODevices.extract_output(::System{TestSystem}, ::XPlane12ControlMapping)
+function IODevices.extract_output(::Model{TestSystem}, ::XPlane12ControlMapping)
     data = KinData() |> XPlanePose |> Network.xpmsg_set_pose
     return data
 end
@@ -163,8 +163,8 @@ function xp12_loopback()
     @testset verbose = true "X-Plane 12 Loopback" begin
 
         port = 14143
-        sys = TestSystem() |> System
-        sim = Simulation(sys; t_end = 1.0)
+        mdl = TestSystem() |> Model
+        sim = Simulation(mdl; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
         Sim.attach!(sim, XPlane12Control(; port))
         Sim.run!(sim)
@@ -173,8 +173,8 @@ function xp12_loopback()
         #extract_output returns an XPlanePose instance, from which extract_output
         #constructs a pose command message, which is sent through UDP by
         #handle_data! and finally reaches assign_input! via loopback. the first
-        #character is converted to Float64 and assigned to sys.u.input, and it
-        #finally propagates to sys.y.input within f_disc!
+        #character is converted to Float64 and assigned to mdl.u.input, and it
+        #finally propagates to mdl.y.input within f_disc!
         @test sim.y.input === Float64(cmd[1])
 
         return sim
@@ -200,19 +200,19 @@ StructTypes.StructType(::Type{TestSystemU}) = StructTypes.Mutable()
 
 struct JSONTestMapping <: IOMapping end
 
-function IODevices.extract_output(::System{TestSystem}, ::JSONTestMapping)
+function IODevices.extract_output(::Model{TestSystem}, ::JSONTestMapping)
     data = (input = 37.0,) |> JSON3.write
     # @info "Extracted $data"
     return data
 end
 
-function IODevices.assign_input!(sys::System{TestSystem},
+function IODevices.assign_input!(mdl::Model{TestSystem},
                             ::JSONTestMapping,
                             data::String)
 
     # @info "Got $data"
-    JSON3.read!(data, sys.u)
-    # @info "Echo is now $(sys.u.input)"
+    JSON3.read!(data, mdl.u)
+    # @info "Echo is now $(mdl.u.input)"
 end
 
 function json_loopback()
@@ -220,13 +220,13 @@ function json_loopback()
     @testset verbose = true "JSON Loopback" begin
 
         port = 14142
-        sys = TestSystem() |> System
-        sim = Simulation(sys; t_end = 1.0)
+        mdl = TestSystem() |> Model
+        sim = Simulation(mdl; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), JSONTestMapping())
         Sim.attach!(sim, UDPOutput(; port), JSONTestMapping())
 
         #trigger method precompilation
-        JSON3.read!(JSON3.write((input = 0.0,)), sys.u)
+        JSON3.read!(JSON3.write((input = 0.0,)), mdl.u)
 
         Sim.run!(sim)
 
@@ -241,18 +241,18 @@ end
 
 ################################## Joystick ####################################
 
-function IODevices.assign_input!(sys::System{TestSystem},
+function IODevices.assign_input!(mdl::Model{TestSystem},
                             ::IOMapping,
                             data::Joysticks.T16000MData)
-    sys.u.input = data.axes.stick_x
+    mdl.u.input = data.axes.stick_x
 end
 
 function joystick_input()
 
     @testset verbose = true "Joystick Input" begin
 
-        sys = TestSystem() |> System
-        sim = Simulation(sys; t_end = 10.0)
+        mdl = TestSystem() |> Model
+        sim = Simulation(mdl; t_end = 10.0)
         joystick = update_connected_joysticks()[1]
         Sim.attach!(sim, joystick)
 

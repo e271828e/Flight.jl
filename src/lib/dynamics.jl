@@ -312,15 +312,15 @@ function transform(t_bc::FrameTransform, mp_c::MassProperties)
 
 end
 
-MassProperties(sys::System) = get_mp_b(sys)
+MassProperties(mdl::Model) = get_mp_b(mdl)
 
 
 ################################################################################
 ############################### RigidBodyData ##################################
 
-#mp_b: Mass properties of the System, translated to the vehicle frame
+#mp_b: Mass properties of the Model, translated to the vehicle frame
 
-#wr_b: Total external wrench contributed to the System, resolved in the
+#wr_b: Total external wrench contributed to the Model, resolved in the
 #vehicle frame
 
 #ho_b: Internal angular momentum relative to the airframe due to rotating
@@ -331,24 +331,24 @@ MassProperties(sys::System) = get_mp_b(sys)
 #non-positive definite
 
 #generated functions are needed here because type inference does not work
-#throughout the whole System hierarchy
+#throughout the whole Model hierarchy
 
 # default implementation tries to compute the aggregate mass properties for all
-# its subsystems. override if possible to reduce compilation time
-@inline @generated function (get_mp_b(sys::System{T, X, Y, U, S, P, B})
-    where {T<:SystemDefinition, X, Y, U, S, P, B})
+# its submodels. override if possible to reduce compilation time
+@inline @generated function (get_mp_b(mdl::Model{T, X, Y, U, S, P, B})
+    where {T, X, Y, U, S, P, B})
 
     ex = Expr(:block)
 
     if isempty(fieldnames(B))
         push!(ex.args,
-            :(error("System{$(T)} is a leaf System "*
+            :(error("Model{$(T)} is a leaf Model "*
                 "but it does not extend the get_mp_b method")))
     else
         push!(ex.args, :(p = MassProperties()))
         for label in fieldnames(B)
             push!(ex.args,
-                :(p += get_mp_b(sys.subsystems[$(QuoteNode(label))])))
+                :(p += get_mp_b(mdl.submodels[$(QuoteNode(label))])))
         end
     end
     return ex
@@ -358,21 +358,21 @@ end
 
 #default implementation tries to sum the angular momentum from its individual
 #components. override if possible to reduce compilation time
-@inline @generated function (get_hr_b(sys::System{T, X, Y, U, S, P, B})
-    where {T<:SystemDefinition, X, Y, U, S, P, B})
+@inline @generated function (get_hr_b(mdl::Model{T, X, Y, U, S, P, B})
+    where {T, X, Y, U, S, P, B})
 
     # Core.print("Generated function called")
     ex = Expr(:block)
 
     if isempty(fieldnames(B))
         push!(ex.args,
-            :(error("System{$(T)} is a leaf System "*
+            :(error("Model{$(T)} is a leaf Model "*
                 "but it does not extend the get_hr_b method")))
     else
         push!(ex.args, :(h = SVector(0., 0., 0.))) #initialize
         for label in fieldnames(B)
             push!(ex.args,
-                :(h += get_hr_b(sys.subsystems[$(QuoteNode(label))])))
+                :(h += get_hr_b(mdl.submodels[$(QuoteNode(label))])))
         end
     end
 
@@ -382,8 +382,8 @@ end
 
 #default implementation tries to sum all the Wrenches from its individual
 #components. override if possible to reduce compilation time
-@inline @generated function (get_wr_b(sys::System{T, X, Y, U, S, P, B})
-    where {T<:SystemDefinition, X, Y, U, S, P, B})
+@inline @generated function (get_wr_b(mdl::Model{T, X, Y, U, S, P, B})
+    where {T, X, Y, U, S, P, B})
 
     # Core.print("Generated function called")
 
@@ -391,13 +391,13 @@ end
 
     if isempty(fieldnames(B))
         push!(ex.args,
-            :(error("System{$(T)} is a leaf System, "*
+            :(error("Model{$(T)} is a leaf Model, "*
                 "but it does not extend the get_wr_b method")))
     else
         push!(ex.args, :(wr = Wrench())) #initialize a zero wrench
         for label in fieldnames(B)
             push!(ex.args,
-                :(wr += get_wr_b(sys.subsystems[$(QuoteNode(label))])))
+                :(wr += get_wr_b(mdl.submodels[$(QuoteNode(label))])))
         end
     end
 
@@ -409,7 +409,7 @@ end
 ################################################################################
 ########################### AbstractComponentSet ###################################
 
-abstract type AbstractComponentSet <: SystemDefinition end
+abstract type AbstractComponentSet <: ModelDefinition end
 
 ################################ NoComponents #################################
 
@@ -417,9 +417,9 @@ abstract type AbstractComponentSet <: SystemDefinition end
     mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
 end
 
-get_hr_b(::System{NoComponents}) = zeros(SVector{3})
-get_wr_b(::System{NoComponents}) = Wrench()
-get_mp_b(sys::System{NoComponents}) = MassProperties(sys.mass_distribution)
+get_hr_b(::Model{NoComponents}) = zeros(SVector{3})
+get_wr_b(::Model{NoComponents}) = Wrench()
+get_mp_b(mdl::Model{NoComponents}) = MassProperties(mdl.mass_distribution)
 
 @no_dynamics NoComponents
 
@@ -429,13 +429,13 @@ abstract type AbstractComponentInitializer end
 
 struct NoComponentInitializer <: AbstractComponentInitializer end
 
-Systems.init!(::System{<:AbstractComponentSet}, init::NoComponentInitializer) = nothing
+Modeling.init!(::Model{<:AbstractComponentSet}, init::NoComponentInitializer) = nothing
 
 
 ################################################################################
 ########################### VehicleDynamics ####################################
 
-struct VehicleDynamics <: SystemDefinition end
+struct VehicleDynamics <: ModelDefinition end
 
 @kwdef struct DynamicsData
     wr_Σ_c::Wrench = Wrench() #total external wrench at CoM
@@ -457,15 +457,15 @@ struct VehicleDynamics <: SystemDefinition end
     a_ib_b::SVector{3,Float64} = zeros(SVector{3}) #ECI-to-Body acceleration
 end
 
-Systems.X(::VehicleDynamics) = zero(Kinematics.XVelTemplate)
-Systems.Y(::VehicleDynamics) = DynamicsData()
+Modeling.X(::VehicleDynamics) = zero(Kinematics.XVelTemplate)
+Modeling.Y(::VehicleDynamics) = DynamicsData()
 
-function Systems.f_ode!(sys::System{VehicleDynamics},
-                        components::System{<:AbstractComponentSet},
+function Modeling.f_ode!(mdl::Model{VehicleDynamics},
+                        components::Model{<:AbstractComponentSet},
                         kin_data::KinData)
 
     @unpack q_eb, q_nb, n_e, h_e, r_eb_e = kin_data
-    @unpack x, ẋ = sys
+    @unpack x, ẋ = mdl
 
     # ω_eb_b = SVector{3, Float64}(x.ω_eb_b) #could also use kin_data.ω_eb_b
     # v_eb_b = SVector{3, Float64}(x.v_eb_b) #could also use kin_data.v_eb_b
@@ -540,12 +540,12 @@ function Systems.f_ode!(sys::System{VehicleDynamics},
     a_ib_b = v̇_eb_b + (ω_eb_b + 2ω_ie_b) × v_eb_b + ω_ie_b × (ω_ie_b × r_eb_b)
 
 
-    ############################## System update ###############################
+    ############################## Model update ###############################
 
     ẋ.ω_eb_b = ω̇_eb_b
     ẋ.v_eb_b = v̇_eb_b
 
-    sys.y = DynamicsData(; wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b,
+    mdl.y = DynamicsData(; wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b,
         ω̇_ec_c, v̇_ec_c, a_ec_c, a_ic_c, g_c_c, γ_c_c, f_c_c,
         ω̇_eb_b, v̇_eb_b, α_ib_b, a_eb_b, a_ib_b)
 
@@ -677,7 +677,7 @@ function GUI.draw(wr::Wrench, label::String)
 
 end
 
-GUI.draw(dyn::System{VehicleDynamics}) = GUI.draw(dyn.y)
+GUI.draw(dyn::Model{VehicleDynamics}) = GUI.draw(dyn.y)
 
 function GUI.draw(dyn::DynamicsData, p_open::Ref{Bool} = Ref(true),
                     label::String = "Vehicle Dynamics")

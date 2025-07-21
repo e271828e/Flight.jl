@@ -19,19 +19,19 @@ struct TestComponent <: AbstractComponentSet end
     ho_Σ_b::SVector{3, Float64} = zeros(3)
 end
 
-Systems.U(::TestComponent) = TestComponentU()
-Dynamics.get_mp_b(cmp::System{TestComponent}) = cmp.u.mp_Σ_b
-Dynamics.get_wr_b(cmp::System{TestComponent}) = cmp.u.wr_Σ_b
-Dynamics.get_hr_b(cmp::System{TestComponent}) = cmp.u.ho_Σ_b
+Modeling.U(::TestComponent) = TestComponentU()
+Dynamics.get_mp_b(cmp::Model{TestComponent}) = cmp.u.mp_Σ_b
+Dynamics.get_wr_b(cmp::Model{TestComponent}) = cmp.u.wr_Σ_b
+Dynamics.get_hr_b(cmp::Model{TestComponent}) = cmp.u.ho_Σ_b
 
 function test_dynamics()
 
 
     @testset verbose = true "Dynamics" begin
 
-        cmp = System(TestComponent())
-        dyn = System(VehicleDynamics())
-        kin = System(WA())
+        cmp = Model(TestComponent())
+        dyn = Model(VehicleDynamics())
+        kin = Model(WA())
 
         kin_init = KinInit(
             loc = LatLon(0, 0),
@@ -40,7 +40,7 @@ function test_dynamics()
             q_nb = REuler(0.0, 0.0, 0.0),
             v_eb_n = [0, 0, 0])
 
-        Systems.init!(kin, kin_init)
+        Modeling.init!(kin, kin_init)
         kin_data = KinData(kin)
 
         #set up a rigid body with unit mass and unit inertia tensor at its

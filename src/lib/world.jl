@@ -12,7 +12,7 @@ export AbstractWorld, SimpleWorld
 ################################################################################
 ################################### World ######################################
 
-abstract type AbstractWorld <: SystemDefinition end
+abstract type AbstractWorld <: ModelDefinition end
 
 ################################################################################
 ############################## SimpleWorld #####################################
@@ -23,43 +23,43 @@ abstract type AbstractWorld <: SystemDefinition end
     trn::T = HorizontalTerrain()
 end
 
-function Systems.f_ode!(world::System{<:SimpleWorld})
-    @unpack ac, atm, trn = world.subsystems
+function Modeling.f_ode!(world::Model{<:SimpleWorld})
+    @unpack ac, atm, trn = world.submodels
     f_ode!(atm)
     f_ode!(trn)
     f_ode!(ac, atm, trn)
     update_output!(world)
 end
 
-function Systems.f_disc!(::NoScheduling, world::System{<:SimpleWorld})
-    @unpack ac, atm, trn = world.subsystems
+function Modeling.f_disc!(::NoScheduling, world::Model{<:SimpleWorld})
+    @unpack ac, atm, trn = world.submodels
     f_disc!(atm)
     f_disc!(trn)
     f_disc!(ac, atm, trn)
     update_output!(world)
 end
 
-function Systems.f_step!(world::System{<:SimpleWorld})
-    @unpack ac, atm, trn = world.subsystems
+function Modeling.f_step!(world::Model{<:SimpleWorld})
+    @unpack ac, atm, trn = world.submodels
     f_step!(atm)
     f_step!(trn)
     f_step!(ac, atm, trn)
 end
 
-function Systems.init!( world::System{<:SimpleWorld},
+function Modeling.init!( world::Model{<:SimpleWorld},
                         init::Union{<:AircraftBase.VehicleInitializer,
                                     <:AircraftBase.AbstractTrimParameters})
-    @unpack ac, atm, trn = world.subsystems
-    Systems.init!(atm)
-    Systems.init!(trn)
-    Systems.init!(ac, init, atm, trn)
+    @unpack ac, atm, trn = world.submodels
+    Modeling.init!(atm)
+    Modeling.init!(trn)
+    Modeling.init!(ac, init, atm, trn)
     update_output!(world) #!
 end
 
 ################################################################################
 ############################### XPlane12Control #################################
 
-function IODevices.extract_output(world::System{<:SimpleWorld},
+function IODevices.extract_output(world::Model{<:SimpleWorld},
                                 mapping::XPlane12ControlMapping)
     IODevices.extract_output(world.ac, mapping)
 end
@@ -68,7 +68,7 @@ end
 ################################################################################
 ############################ Joystick Mappings #################################
 
-function IODevices.assign_input!(world::System{<:SimpleWorld},
+function IODevices.assign_input!(world::Model{<:SimpleWorld},
                                 mapping::IOMapping,
                                 data::AbstractJoystickData)
     IODevices.assign_input!(world.ac, mapping, data)
@@ -77,7 +77,7 @@ end
 ################################################################################
 #################################### GUI #######################################
 
-function GUI.draw!(world::System{<:SimpleWorld};
+function GUI.draw!(world::Model{<:SimpleWorld};
                     p_open::Ref{Bool} = Ref(true), label::String = "Simple World")
 
     CImGui.Begin(label, p_open)

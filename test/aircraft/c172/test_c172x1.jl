@@ -26,9 +26,9 @@ function test_c172x1()
     end
 end
 
-y_kin(ac::System{<:Cessna172Xv1}) = ac.y.vehicle.kinematics
-y_air(ac::System{<:Cessna172Xv1}) = ac.y.vehicle.airflow
-y_aero(ac::System{<:Cessna172Xv1}) = ac.y.vehicle.components.aero
+y_kin(ac::Model{<:Cessna172Xv1}) = ac.y.vehicle.kinematics
+y_air(ac::Model{<:Cessna172Xv1}) = ac.y.vehicle.airflow
+y_aero(ac::Model{<:Cessna172Xv1}) = ac.y.vehicle.components.aero
 
 function test_control_modes()
 
@@ -38,7 +38,7 @@ function test_control_modes()
     @testset verbose = true "Control Modes" begin
 
     h_trn = HOrth(0.0)
-    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> System
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
     ac = world.ac
     act = ac.vehicle.components.act
@@ -547,7 +547,7 @@ function test_guidance_modes()
     @testset verbose = true "Guidance Modes" begin
 
     h_trn = HOrth(0.0)
-    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> System
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
     ac = world.ac
     ctl = ac.avionics.ctl
@@ -624,10 +624,10 @@ end
 
 struct JSONTestMapping <: IOMapping end
 
-function IODevices.extract_output(sys::System{<:SimpleWorld}, ::JSONTestMapping)
+function IODevices.extract_output(mdl::Model{<:SimpleWorld}, ::JSONTestMapping)
     freq = 0.1
     φ_ref_max = π/6
-    φ_ref = φ_ref_max * sin(2π*freq*sys.t[])
+    φ_ref = φ_ref_max * sin(2π*freq*mdl.t[])
 
     #these are all valid empty JSON entities. when passed to JSON3.write, they
     #yield respectively "\"\"", "[]" and "{}", all of length 2
@@ -635,7 +635,7 @@ function IODevices.extract_output(sys::System{<:SimpleWorld}, ::JSONTestMapping)
     # cmd = []
     # cmd = Dict()
 
-    if sys.t[] > 5
+    if mdl.t[] > 5
         #these enums will be automatically cast to Ints per the StructTypes
         #methods defined in C172X.C172XControl
         cmd = (
@@ -655,7 +655,7 @@ function IODevices.extract_output(sys::System{<:SimpleWorld}, ::JSONTestMapping)
     return JSON3.write(cmd)
 end
 
-function IODevices.assign_input!(world::System{<:SimpleWorld}, ::JSONTestMapping, data::String)
+function IODevices.assign_input!(world::Model{<:SimpleWorld}, ::JSONTestMapping, data::String)
     #ControllerU is declared as StructTypes.Mutable() in C172X.C172XControl,
     #so JSON3 can automatically read a JSON string into one or more of its
     #fields
@@ -678,7 +678,7 @@ function test_json_loopback(; save::Bool = true)
 
 
     h_trn = HOrth(427.2);
-    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> System
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
     sim = Simulation(world; dt = 1/60, Δt = 1/60, t_end = 30)
 
@@ -723,7 +723,7 @@ function test_sim(; save::Bool = true)
     initializer = C172.TrimParameters(
         Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
-    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> System
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
     sim = Simulation(world; t_end = 30)
     Sim.init!(sim, initializer)
@@ -753,7 +753,7 @@ function test_sim_interactive(; save::Bool = true)
     #     Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
     trn = HorizontalTerrain(h_trn)
-    ac = Cessna172Xv1(WA(), trn) |> System;
+    ac = Cessna172Xv1(WA(), trn) |> Model;
 
     sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
 

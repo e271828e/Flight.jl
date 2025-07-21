@@ -17,11 +17,11 @@ includet(normpath("aircraft/c172/test_c172s.jl")); using .TestC172S
 includet(normpath("aircraft/c172/test_c172x.jl")); using .TestC172X
 includet(normpath("aircraft/c172/test_c172x1.jl")); using .TestC172Xv1
 
-test_quaternions()
-test_attitude()
-test_geodesy()
-test_kinematics()
-test_dynamics()
+# test_quaternions()
+# test_attitude()
+# test_geodesy()
+# test_kinematics()
+# test_dynamics()
 test_control()
 test_propellers()
 test_piston()

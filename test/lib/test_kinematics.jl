@@ -15,9 +15,9 @@ function test_kinematics()
 
     @testset verbose = true "Kinematics" begin
 
-        sys_ECEF = System(ECEF())
-        sys_WA = System(WA())
-        sys_NED = System(NED())
+        sys_ECEF = Model(ECEF())
+        sys_WA = Model(WA())
+        sys_NED = Model(NED())
 
         @testset verbose = true "Performance" begin
 
@@ -41,9 +41,9 @@ function test_kinematics()
                 ω_wb_b = [0.1, 0.1, -0.2],
                 v_eb_n = [100, 10, -4])
 
-            Systems.init!(sys_ECEF, kin_init)
-            Systems.init!(sys_WA, kin_init)
-            Systems.init!(sys_NED, kin_init)
+            Modeling.init!(sys_ECEF, kin_init)
+            Modeling.init!(sys_WA, kin_init)
+            Modeling.init!(sys_NED, kin_init)
 
             #let the kinematic state propagate to y
             f_ode!(sys_ECEF)

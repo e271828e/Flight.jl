@@ -45,10 +45,10 @@ end
 ########################## Sea Level Conditions ################################
 
 #model the behavior of SL conditions as a function of time and 2D location
-abstract type AbstractSeaLevelConditions <: SystemDefinition end
+abstract type AbstractSeaLevelConditions <: ModelDefinition end
 
-function ISAData(sys::System{<:AbstractSeaLevelConditions}, loc::Abstract2DLocation)
-    MethodError(ISAData, (sys, loc,)) |> throw
+function ISAData(mdl::Model{<:AbstractSeaLevelConditions}, loc::Abstract2DLocation)
+    MethodError(ISAData, (mdl, loc,)) |> throw
 end
 
 ############################## Sea Level Standard ##############################
@@ -56,7 +56,7 @@ end
 struct SeaLevelStandard <: AbstractSeaLevelConditions end
 @no_dynamics SeaLevelStandard
 
-ISAData(::System{<:SeaLevelStandard}, ::Abstract2DLocation) = ISAData(T_std, p_std)
+ISAData(::Model{<:SeaLevelStandard}, ::Abstract2DLocation) = ISAData(T_std, p_std)
 
 
 ############################## Tunable Sea Level ################################
@@ -75,17 +75,17 @@ const p_sl_max = p_std + 10000.0
     p::Ranged{Float64, p_sl_min, p_sl_max} = p_std
 end
 
-Systems.U(::TunableSeaLevel) = TunableSeaLevelU()
+Modeling.U(::TunableSeaLevel) = TunableSeaLevelU()
 
-function ISAData(sys::System{<:TunableSeaLevel}, ::Abstract2DLocation)
-    ISAData(sys.u.T, sys.u.p)
+function ISAData(mdl::Model{<:TunableSeaLevel}, ::Abstract2DLocation)
+    ISAData(mdl.u.T, mdl.u.p)
 end
 
-function GUI.draw!(sys::System{<:TunableSeaLevel},
+function GUI.draw!(mdl::Model{<:TunableSeaLevel},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Sea Level Conditions")
 
-    u = sys.u
+    u = mdl.u
     CImGui.PushItemWidth(-50)
         u.T = GUI.safe_slider("T (K)", u.T, "%.3f"; show_label = true)
         u.p = GUI.safe_slider("p (Pa)", u.p, "%.3f"; show_label = true)
@@ -139,11 +139,11 @@ ISAData(h::Geodesy.AbstractAltitudeDatum, args...) = ISAData(HGeop(h), args...)
 ################################################################################
 #################################### Wind ######################################
 
-abstract type AbstractWind <: SystemDefinition end
+abstract type AbstractWind <: ModelDefinition end
 
-function get_wind(sys::System{<:AbstractWind},
+function get_wind(mdl::Model{<:AbstractWind},
                   pos::Abstract3DPosition)::SVector{3,Float64}
-    MethodError(get_wind, (sys, pos)) |> throw
+    MethodError(get_wind, (mdl, pos)) |> throw
 end
 
 ############################## No Wind Model ###################################
@@ -151,22 +151,22 @@ end
 struct NoWind <: AbstractWind end
 @no_dynamics NoWind
 
-get_wind(::System{NoWind}, ::Abstract3DPosition) = SVector{3,Float64}(0.0, 0.0, 0.0)
+get_wind(::Model{NoWind}, ::Abstract3DPosition) = SVector{3,Float64}(0.0, 0.0, 0.0)
 
 ############################## Tunable Wind ####################################
 
 struct TunableWind <: AbstractWind end
 @no_dynamics TunableWind
 
-get_wind(sys::System{TunableWind}, ::Abstract3DPosition) = SVector{3}(sys.u)
+get_wind(mdl::Model{TunableWind}, ::Abstract3DPosition) = SVector{3}(mdl.u)
 
-Systems.U(::TunableWind) = ComponentVector(N= 0.0, E = 0.0, D = 0.0)
+Modeling.U(::TunableWind) = ComponentVector(N= 0.0, E = 0.0, D = 0.0)
 
-function GUI.draw!(sys::System{<:TunableWind},
+function GUI.draw!(mdl::Model{<:TunableWind},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Wind Velocity")
 
-    u = sys.u
+    u = mdl.u
 
     CImGui.PushItemWidth(-80)
         u.N = GUI.safe_slider("North (m/s)", u.N, -30, 30, "%.3f"; show_label = true)
@@ -174,7 +174,7 @@ function GUI.draw!(sys::System{<:TunableWind},
         u.D = GUI.safe_slider("Down (m/s)", u.D, -30, 30, "%.3f"; show_label = true)
     CImGui.PopItemWidth()
 
-    GUI.draw(sys, label)
+    GUI.draw(mdl, label)
 
 end
 
@@ -244,10 +244,10 @@ end
 ############################ AbstractAtmosphere ################################
 
 #can be static or dynamic, uniform or non-uniform
-abstract type AbstractAtmosphere <: SystemDefinition end
+abstract type AbstractAtmosphere <: ModelDefinition end
 
-function AtmosphericData(sys::System{<:AbstractAtmosphere}, pos::Abstract3DPosition)
-    MethodError(AtmosphericData, (sys, pos,)) |> throw
+function AtmosphericData(mdl::Model{<:AbstractAtmosphere}, pos::Abstract3DPosition)
+    MethodError(AtmosphericData, (mdl, pos,)) |> throw
 end
 
 ################################################################################
@@ -264,32 +264,32 @@ end
 @ss_disc SimpleAtmosphere
 @no_step SimpleAtmosphere
 
-function AtmosphericData(sys::System{<:SimpleAtmosphere},
+function AtmosphericData(mdl::Model{<:SimpleAtmosphere},
                         pos::Abstract3DPosition)
 
-    @unpack T, p = ISAData(HGeop(pos), ISAData(sys.sl, NVector(pos)))
+    @unpack T, p = ISAData(HGeop(pos), ISAData(mdl.sl, NVector(pos)))
     ρ = density(p, T)
     a = speed_of_sound(T)
     μ = dynamic_viscosity(T)
-    v = get_wind(sys.wind, pos)
+    v = get_wind(mdl.wind, pos)
     AtmosphericData(; T, p, ρ, a, μ, v)
 end
 
-function AirflowData(sys::System{<:SimpleAtmosphere}, kin_data::KinData)
+function AirflowData(mdl::Model{<:SimpleAtmosphere}, kin_data::KinData)
     @unpack n_e, h_o = kin_data
-    AirflowData(AtmosphericData(sys, Geographic(n_e, h_o)), kin_data)
+    AirflowData(AtmosphericData(mdl, Geographic(n_e, h_o)), kin_data)
 end
 
-function GUI.draw!(sys::System{<:SimpleAtmosphere},
+function GUI.draw!(mdl::Model{<:SimpleAtmosphere},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Simple Atmosphere")
 
     CImGui.Begin(label, p_open)
         if CImGui.CollapsingHeader("Sea-Level Conditions")
-            GUI.draw!(sys.sl)
+            GUI.draw!(mdl.sl)
         end
         if CImGui.CollapsingHeader("Wind")
-            GUI.draw!(sys.wind)
+            GUI.draw!(mdl.wind)
         end
     CImGui.End()
 

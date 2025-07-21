@@ -16,7 +16,7 @@ export Cessna172X
 #first order linear actuator model
 
 #τ has units of rad/s, not Hz: F(s) = 1/(1+sτ); F(jω) = 1/(1+jωτ).
-struct Actuator1{R <: Ranged} <: SystemDefinition #second order linear actuator model
+struct Actuator1{R <: Ranged} <: ModelDefinition #second order linear actuator model
     τ::Float64 #time constant (default: 0.05s)
     function Actuator1(; τ::Real = 1/20, range::Tuple{Real, Real} = (-1.0, 1.0))
         new{Ranged{Float64, range[1], range[2]}}(τ)
@@ -29,13 +29,13 @@ end
     sat::Int64 = 0
 end
 
-Systems.X(::Actuator1) = ComponentVector(p = 0.0)
-Systems.U(::Actuator1{R}) where {R} = Ref(R(0.0))
-Systems.Y(::Actuator1{R}) where {R} = Actuator1Y{R}()
+Modeling.X(::Actuator1) = ComponentVector(p = 0.0)
+Modeling.U(::Actuator1{R}) where {R} = Ref(R(0.0))
+Modeling.Y(::Actuator1{R}) where {R} = Actuator1Y{R}()
 
-function Systems.f_ode!(sys::System{Actuator1{R}}) where {R}
+function Modeling.f_ode!(mdl::Model{Actuator1{R}}) where {R}
 
-    @unpack ẋ, x, u, constants = sys
+    @unpack ẋ, x, u, constants = mdl
     @unpack τ = constants
 
     cmd = u[]
@@ -44,7 +44,7 @@ function Systems.f_ode!(sys::System{Actuator1{R}}) where {R}
 
     ẋ.p =  1/τ * (Float64(cmd) - x.p)
 
-    sys.y = Actuator1Y(; cmd, pos, sat)
+    mdl.y = Actuator1Y(; cmd, pos, sat)
 
 end
 
@@ -61,7 +61,7 @@ end
 
 #saturate on command, not on position, which only tends asymptotically to cmd!
 
-struct Actuator2{R} <: SystemDefinition #second order linear actuator model
+struct Actuator2{R} <: ModelDefinition #second order linear actuator model
     ω_n::Float64 #natural frequency (default: 10 Hz)
     ζ::Float64 #damping ratio (default: underdamped with minimal resonance)
     function Actuator2(; ω_n::Real = 5*2π, ζ::Real = 0.6,
@@ -77,13 +77,13 @@ end
     sat::Int64 = 0
 end
 
-Systems.X(::Actuator2) = ComponentVector(v = 0.0, p = 0.0)
-Systems.U(::Actuator2{R}) where {R} = Ref(R(0.0))
-Systems.Y(::Actuator2{R}) where {R} = Actuator2Y{R}()
+Modeling.X(::Actuator2) = ComponentVector(v = 0.0, p = 0.0)
+Modeling.U(::Actuator2{R}) where {R} = Ref(R(0.0))
+Modeling.Y(::Actuator2{R}) where {R} = Actuator2Y{R}()
 
-function Systems.f_ode!(sys::System{Actuator2{R}}) where {R}
+function Modeling.f_ode!(mdl::Model{Actuator2{R}}) where {R}
 
-    @unpack ẋ, x, u, constants = sys
+    @unpack ẋ, x, u, constants = mdl
     @unpack ω_n, ζ = constants
 
     cmd = u[]
@@ -94,7 +94,7 @@ function Systems.f_ode!(sys::System{Actuator2{R}}) where {R}
     ẋ.v = ω_n^2 * (Float64(cmd) - x.p) - 2ζ*ω_n*x.v
     ẋ.p = x.v
 
-    sys.y = Actuator2Y(; cmd, pos, vel, sat)
+    mdl.y = Actuator2Y(; cmd, pos, vel, sat)
 
 end
 
@@ -116,10 +116,10 @@ end
 #delegate continuous dynamics to individual actuators
 @ss_ode FlyByWireActuation
 
-function C172.assign!(aero::System{<:C172.Aero},
-                    ldg::System{<:C172.Ldg},
-                    pwp::System{<:PistonThruster},
-                    act::System{<:FlyByWireActuation})
+function C172.assign!(aero::Model{<:C172.Aero},
+                    ldg::Model{<:C172.Ldg},
+                    pwp::Model{<:PistonThruster},
+                    act::Model{<:FlyByWireActuation})
 
     @unpack throttle, mixture, aileron, elevator, rudder, flaps,
             brake_left, brake_right = act.y
@@ -139,15 +139,15 @@ end
 
 ################################### GUI ########################################
 
-function GUI.draw(sys::System{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(mdl::Model{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172 Fly-By-Wire Actuation")
 
     CImGui.Begin(label, p_open)
     CImGui.PushItemWidth(-60)
 
-    labels = uppercasefirst.(string.(keys(sys.subsystems)))
-    commands = map(ss->ss.y.cmd, values(sys.subsystems))
-    positions = map(ss->ss.y.pos, values(sys.subsystems))
+    labels = uppercasefirst.(string.(keys(mdl.submodels)))
+    commands = map(ss->ss.y.cmd, values(mdl.submodels))
+    positions = map(ss->ss.y.pos, values(mdl.submodels))
 
     #@cstatic allocates storage using global variables, so functions using
     #it are not reentrant. no easy way of factoring this block out
@@ -186,16 +186,16 @@ function GUI.draw(sys::System{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true)
 
 end
 
-function GUI.draw!(sys::System{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw!(mdl::Model{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172 Fly-By-Wire Actuation")
 
     CImGui.Begin(label, p_open)
     CImGui.PushItemWidth(-60)
 
-    labels = uppercasefirst.(string.(keys(sys.subsystems)))
-    inputs = map(ss->ss.u, values(sys.subsystems))
-    commands = map(ss->ss.y.cmd, values(sys.subsystems))
-    positions = map(ss->ss.y.pos, values(sys.subsystems))
+    labels = uppercasefirst.(string.(keys(mdl.submodels)))
+    inputs = map(ss->ss.u, values(mdl.submodels))
+    commands = map(ss->ss.y.cmd, values(mdl.submodels))
+    positions = map(ss->ss.y.pos, values(mdl.submodels))
 
     #@cstatic allocates storage using global variables, so functions using
     #it are not reentrant. no easy way of factoring this block out
@@ -259,7 +259,7 @@ end
 ############################# Initialization ###################################
 ################################################################################
 
-function Systems.init!(cmp::System{<:Components}, init::C172.ComponentInitializer)
+function Modeling.init!(cmp::Model{<:Components}, init::C172.ComponentInitializer)
 
     @unpack act, pwp, aero, fuel, ldg, pld = cmp
 
@@ -321,11 +321,11 @@ end
 ################################################################################
 
 #assemble initializer from trim state and parameters, then initialize vehicle
-function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
+function AircraftBase.assign!(vehicle::Model{<:C172X.Vehicle},
                         trim_params::C172.TrimParameters,
                         trim_state::C172.TrimState,
-                        atmosphere::System{<:AbstractAtmosphere},
-                        terrain::System{<:AbstractTerrain})
+                        atmosphere::Model{<:AbstractAtmosphere},
+                        terrain::Model{<:AbstractTerrain})
 
     @unpack β_a, fuel_load, flaps, mixture, payload = trim_params
     @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
@@ -346,7 +346,7 @@ function AircraftBase.assign!(vehicle::System{<:C172X.Vehicle},
 
     #initialize the vehicle with the setup above. this will call f_ode!
     #internally, no need to do it here
-    Systems.init!(vehicle, vehicle_init, atmosphere, terrain)
+    Modeling.init!(vehicle, vehicle_init, atmosphere, terrain)
 
     #sanity checks for component states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))
@@ -431,9 +431,9 @@ function XLinear(x_vehicle::ComponentVector)
 
 end
 
-function ULinear(vehicle::System{<:C172X.Vehicle{NED}})
+function ULinear(vehicle::Model{<:C172X.Vehicle{NED}})
 
-    @unpack throttle, aileron, elevator, rudder = vehicle.components.act.subsystems
+    @unpack throttle, aileron, elevator, rudder = vehicle.components.act.submodels
     throttle_cmd = throttle.u[]
     aileron_cmd = aileron.u[]
     elevator_cmd = elevator.u[]
@@ -442,7 +442,7 @@ function ULinear(vehicle::System{<:C172X.Vehicle{NED}})
 
 end
 
-function YLinear(vehicle::System{<:C172X.Vehicle{NED}})
+function YLinear(vehicle::Model{<:C172X.Vehicle{NED}})
 
     @unpack components, airflow, dynamics, kinematics = vehicle.y
     @unpack pwp, fuel, aero, act = components
@@ -483,14 +483,14 @@ function YLinear(vehicle::System{<:C172X.Vehicle{NED}})
 
 end
 
-AircraftBase.ẋ_linear(vehicle::System{<:C172X.Vehicle{NED}}) = XLinear(vehicle.ẋ)
-AircraftBase.x_linear(vehicle::System{<:C172X.Vehicle{NED}}) = XLinear(vehicle.x)
-AircraftBase.u_linear(vehicle::System{<:C172X.Vehicle{NED}}) = ULinear(vehicle)
-AircraftBase.y_linear(vehicle::System{<:C172X.Vehicle{NED}}) = YLinear(vehicle)
+AircraftBase.ẋ_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = XLinear(vehicle.ẋ)
+AircraftBase.x_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = XLinear(vehicle.x)
+AircraftBase.u_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = ULinear(vehicle)
+AircraftBase.y_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = YLinear(vehicle)
 
-function AircraftBase.assign_u!(vehicle::System{<:C172X.Vehicle{NED}}, u::AbstractVector{Float64})
+function AircraftBase.assign_u!(vehicle::Model{<:C172X.Vehicle{NED}}, u::AbstractVector{Float64})
 
-    @unpack throttle, aileron, elevator, rudder = vehicle.components.act.subsystems
+    @unpack throttle, aileron, elevator, rudder = vehicle.components.act.submodels
     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ULinear(u)
     throttle.u[] = throttle_cmd
     aileron.u[] = aileron_cmd
@@ -500,7 +500,7 @@ function AircraftBase.assign_u!(vehicle::System{<:C172X.Vehicle{NED}}, u::Abstra
 
 end
 
-function AircraftBase.assign_x!(vehicle::System{<:C172X.Vehicle{NED}}, x::AbstractVector{Float64})
+function AircraftBase.assign_x!(vehicle::Model{<:C172X.Vehicle{NED}}, x::AbstractVector{Float64})
 
     @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng,
             fuel, thr_p, ail_p, ele_p, rud_p = XLinear(x)
@@ -525,7 +525,7 @@ function AircraftBase.assign_x!(vehicle::System{<:C172X.Vehicle{NED}}, x::Abstra
 end
 
 function Control.Continuous.LinearizedSS(
-            vehicle::System{<:C172X.Vehicle{NED}},
+            vehicle::Model{<:C172X.Vehicle{NED}},
             trim_params::C172.TrimParameters = C172.TrimParameters();
             model::Symbol = :full)
 

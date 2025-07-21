@@ -20,7 +20,7 @@ wrap_to_π(x) = x + 2π*floor((π-x)/(2π))
 ####################### AbstractControlChannel #################################
 
 #a discrete system implementing a specific longitudinal or lateral control mode
-abstract type AbstractControlChannel <: SystemDefinition end
+abstract type AbstractControlChannel <: ModelDefinition end
 
 
 ################################################################################
@@ -70,7 +70,7 @@ v2θ_enabled(mode::LonControlMode) = (mode === lon_thr_EAS)
 end
 
 #assemble state vector from vehicle
-function XPitch(vehicle::System{<:C172X.Vehicle})
+function XPitch(vehicle::Model{<:C172X.Vehicle})
 
     @unpack components, airflow, kinematics = vehicle.y
     @unpack pwp, aero, act = components
@@ -87,7 +87,7 @@ function XPitch(vehicle::System{<:C172X.Vehicle})
 end
 
 
-################################## System ######################################
+################################## Model ######################################
 
 @kwdef struct LonControl{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
     e2e_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "e2e_lookup.h5"))
@@ -131,33 +131,33 @@ end
     v2t_pid::PIDOutput = PIDOutput()
 end
 
-Systems.U(::LonControl) = LonControlU()
-Systems.Y(::LonControl) = LonControlY()
+Modeling.U(::LonControl) = LonControlU()
+Modeling.Y(::LonControl) = LonControlY()
 
-function Systems.init!(sys::System{<:LonControl})
+function Modeling.init!(mdl::Model{<:LonControl})
     #e2e determines elevator saturation for all pitch control loops (q2e, c2θ,
     #v2θ), so we don't need to set bounds for those
-    sys.e2e_lqr.u.bound_lo .= -1
-    sys.e2e_lqr.u.bound_hi .= 1
+    mdl.e2e_lqr.u.bound_lo .= -1
+    mdl.e2e_lqr.u.bound_hi .= 1
     #we do need to set bounds for v2t, so it can handle throttle saturation
-    sys.v2t_pid.u.bound_lo = 0
-    sys.v2t_pid.u.bound_hi = 1
+    mdl.v2t_pid.u.bound_lo = 0
+    mdl.v2t_pid.u.bound_hi = 1
 end
 
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
-                        vehicle::System{<:C172X.Vehicle})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LonControl},
+                        vehicle::Model{<:C172X.Vehicle})
 
-    @unpack mode, throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref = sys.u
-    @unpack e2e_lqr, q2e_int, q2e_pid, v2θ_pid, c2θ_pid, v2t_pid = sys.subsystems
-    @unpack e2e_lookup, q2e_lookup, v2θ_lookup, c2θ_lookup, v2t_lookup = sys.constants
+    @unpack mode, throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref = mdl.u
+    @unpack e2e_lqr, q2e_int, q2e_pid, v2θ_pid, c2θ_pid, v2t_pid = mdl.submodels
+    @unpack e2e_lookup, q2e_lookup, v2θ_lookup, c2θ_lookup, v2t_lookup = mdl.constants
 
     EAS = vehicle.y.airflow.EAS
     h_e = Float64(vehicle.y.kinematics.h_e)
     _, q, r = vehicle.y.kinematics.ω_wb_b
     @unpack θ, φ = vehicle.y.kinematics.e_nb
     clm = -vehicle.y.kinematics.v_eb_n[3]
-    mode_prev = sys.y.mode
+    mode_prev = mdl.y.mode
 
     #if not overridden by the control modes, actuation commands are simply
     #their respective reference values
@@ -171,7 +171,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
         if mode != mode_prev
             Control.reset!(v2t_pid)
             k_i = v2t_pid.u.k_i
-            (k_i != 0) && (v2t_pid.s.x_i0 = Float64(sys.y.throttle_cmd))
+            (k_i != 0) && (v2t_pid.s.x_i0 = Float64(mdl.y.throttle_cmd))
         end
 
         v2t_pid.u.input = EAS_ref - EAS
@@ -195,7 +195,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
                 k_i = q2e_pid.u.k_i
                 (k_i != 0) && (q2e_pid.s.x_i0 = e2e_lqr.u.z_ref[1])
 
-                # (k_i != 0) && (q2e_pid.s.x_i0 = Float64(sys.y.elevator_cmd))
+                # (k_i != 0) && (q2e_pid.s.x_i0 = Float64(mdl.y.elevator_cmd))
             end
 
             if θ2q_enabled(mode) #q_ref overridden by θ2q
@@ -266,7 +266,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LonControl},
 
     end
 
-    sys.y = LonControlY(; mode, throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref,
+    mdl.y = LonControlY(; mode, throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref,
         throttle_cmd, elevator_cmd, e2e_lqr = e2e_lqr.y,
         q2e_int = q2e_int.y, q2e_pid = q2e_pid.y, v2θ_pid = v2θ_pid.y,
         c2θ_pid = c2θ_pid.y, v2t_pid = v2t_pid.y)
@@ -304,7 +304,7 @@ p2φ_enabled(mode::LatControlMode) = (mode === lat_p_β)
     rud_p::Float64 = 0.0; #rudder actuator states
 end
 
-function XLat(vehicle::System{<:C172X.Vehicle})
+function XLat(vehicle::Model{<:C172X.Vehicle})
 
     @unpack components, airflow, kinematics = vehicle.y
     @unpack aero, act = components
@@ -332,7 +332,7 @@ end
 end
 
 
-################################## System ######################################
+################################## Model ######################################
 
 @kwdef struct LatControl{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
     ar2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "ar2ar_lookup.h5"))
@@ -373,28 +373,28 @@ end
     χ2φ_pid::PIDOutput = PIDOutput()
 end
 
-Systems.U(::LatControl) = LatControlU()
-Systems.Y(::LatControl) = LatControlY()
+Modeling.U(::LatControl) = LatControlU()
+Modeling.Y(::LatControl) = LatControlY()
 
-function Systems.init!(sys::System{<:LatControl})
+function Modeling.init!(mdl::Model{<:LatControl})
 
-    foreach((sys.φβ2ar_lqr, sys.ar2ar_lqr)) do lqr
+    foreach((mdl.φβ2ar_lqr, mdl.ar2ar_lqr)) do lqr
         lqr.u.bound_lo .= ULat(; aileron_cmd = -1, rudder_cmd = -1)
         lqr.u.bound_hi .= ULat(; aileron_cmd = 1, rudder_cmd = 1)
     end
 
     #set φ reference limits for the course angle compensator output
-    sys.χ2φ_pid.u.bound_lo = -π/4
-    sys.χ2φ_pid.u.bound_hi = π/4
+    mdl.χ2φ_pid.u.bound_lo = -π/4
+    mdl.χ2φ_pid.u.bound_hi = π/4
 
 end
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
-                        vehicle::System{<:C172X.Vehicle})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LatControl},
+                        vehicle::Model{<:C172X.Vehicle})
 
-    @unpack mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref = sys.u
-    @unpack ar2ar_lqr, φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = sys.subsystems
-    @unpack ar2ar_lookup, φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = sys.constants
+    @unpack mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref = mdl.u
+    @unpack ar2ar_lqr, φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = mdl.submodels
+    @unpack ar2ar_lookup, φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = mdl.constants
     @unpack airflow, kinematics, components = vehicle.y
 
     EAS = airflow.EAS
@@ -403,7 +403,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
     @unpack θ, φ = kinematics.e_nb
     p, _, _ = kinematics.ω_wb_b
     β = components.aero.β
-    mode_prev = sys.y.mode
+    mode_prev = mdl.y.mode
 
     aileron_cmd = aileron_ref
     rudder_cmd = rudder_ref
@@ -484,7 +484,7 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:LatControl},
 
     end
 
-    sys.y = LatControlY(; mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref,
+    mdl.y = LatControlY(; mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref,
         aileron_cmd, rudder_cmd, ar2ar_lqr = ar2ar_lqr.y, φβ2ar_lqr = φβ2ar_lqr.y,
         p2φ_int = p2φ_int.y, p2φ_pid = p2φ_pid.y, χ2φ_pid = χ2φ_pid.y)
 
@@ -530,44 +530,44 @@ end
     clm_ref::Float64 = 0.0
 end
 
-Systems.U(::AltitudeGuidance) = AltitudeGuidanceU()
-Systems.S(::AltitudeGuidance) = AltitudeGuidanceS()
-Systems.Y(::AltitudeGuidance) = AltitudeGuidanceY()
+Modeling.U(::AltitudeGuidance) = AltitudeGuidanceU()
+Modeling.S(::AltitudeGuidance) = AltitudeGuidanceS()
+Modeling.Y(::AltitudeGuidance) = AltitudeGuidanceY()
 
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:AltitudeGuidance},
-                        vehicle::System{<:C172X.Vehicle})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:AltitudeGuidance},
+                        vehicle::Model{<:C172X.Vehicle})
 
-    @unpack state, h_thr = sys.s
-    @unpack h_ref, h_datum = sys.u
+    @unpack state, h_thr = mdl.s
+    @unpack h_ref, h_datum = mdl.u
     @unpack h_e, h_o, v_eb_n = vehicle.y.kinematics
 
     h = h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o)
     Δh = h_ref - h
-    clm_ref = sys.k_h2c * Δh
+    clm_ref = mdl.k_h2c * Δh
 
     if state === alt_acquire
 
         lon_ctl_mode = lon_thr_EAS
         throttle_ref = Δh > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
-        (abs(Δh) + 1 < h_thr) && (sys.s.state = alt_hold)
-        # sys.s.h_thr = abs(Δh)
+        (abs(Δh) + 1 < h_thr) && (mdl.s.state = alt_hold)
+        # mdl.s.h_thr = abs(Δh)
         # clm = -vehicle.y.kinematics.v_eb_n[3]
-        # (abs(clm_ref) < abs(clm)) && (sys.s.state = alt_hold)
+        # (abs(clm_ref) < abs(clm)) && (mdl.s.state = alt_hold)
 
     else #alt_hold
 
         lon_ctl_mode = lon_EAS_clm
         throttle_ref = 0.0 #no effect, controlled by EAS_clm
-        (abs(Δh) - 1 > h_thr) && (sys.s.state = alt_acquire)
+        (abs(Δh) - 1 > h_thr) && (mdl.s.state = alt_acquire)
 
     end
 
-    sys.y = AltitudeGuidanceY(; state, lon_ctl_mode, Δh, h_thr, throttle_ref, clm_ref)
+    mdl.y = AltitudeGuidanceY(; state, lon_ctl_mode, Δh, h_thr, throttle_ref, clm_ref)
 
 end
 
-@kwdef struct SegmentGuidance <: SystemDefinition end
+@kwdef struct SegmentGuidance <: AbstractControlChannel end
 @kwdef struct SegmentGuidanceY end
 
 
@@ -591,7 +591,7 @@ end
 
 ################################################################################
 
-@kwdef struct Controller{C1 <: LonControl, C2 <: LatControl} <: SystemDefinition
+@kwdef struct Controller{C1 <: LonControl, C2 <: LatControl} <: ModelDefinition
     lon_ctl::C1 = LonControl()
     lat_ctl::C2 = LatControl()
     alt_gdc::AltitudeGuidance = AltitudeGuidance()
@@ -642,23 +642,23 @@ end
     lat_ctl::LatControlY = LatControlY()
 end
 
-Systems.U(::Controller) = ControllerU()
-Systems.Y(::Controller) = ControllerY()
+Modeling.U(::Controller) = ControllerU()
+Modeling.Y(::Controller) = ControllerY()
 
 
 ########################### Update Methods #####################################
 
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:Controller},
-                        vehicle::System{<:C172X.Vehicle})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:Controller},
+                        vehicle::Model{<:C172X.Vehicle})
 
     @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right,
             throttle_axis, aileron_axis, elevator_axis, rudder_axis,
             throttle_offset, aileron_offset, elevator_offset, rudder_offset,
             vrt_gdc_mode_req, hor_gdc_mode_req, lon_ctl_mode_req, lat_ctl_mode_req,
-            q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref, h_ref, h_datum = sys.u
+            q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref, h_ref, h_datum = mdl.u
 
-    @unpack lon_ctl, lat_ctl, alt_gdc, seg_gdc = sys.subsystems
+    @unpack lon_ctl, lat_ctl, alt_gdc, seg_gdc = mdl.submodels
 
     throttle_ref = throttle_axis + throttle_offset
     elevator_ref = elevator_axis + elevator_offset
@@ -728,20 +728,20 @@ function Systems.f_disc!(::NoScheduling, sys::System{<:Controller},
     @pack! lat_ctl.u = aileron_ref, rudder_ref, p_ref, φ_ref, β_ref, χ_ref
     f_disc!(lat_ctl, vehicle)
 
-    sys.y = ControllerY(; flight_phase,
+    mdl.y = ControllerY(; flight_phase,
         vrt_gdc_mode, hor_gdc_mode, lon_ctl_mode, lat_ctl_mode,
         lon_ctl = lon_ctl.y, lat_ctl = lat_ctl.y,
         alt_gdc = alt_gdc.y, seg_gdc = seg_gdc.y)
 
 end
 
-function AircraftBase.assign!(components::System{<:C172X.Components},
-                          sys::System{<:Controller})
+function AircraftBase.assign!(components::Model{<:C172X.Components},
+                          mdl::Model{<:Controller})
 
-    @unpack act, pwp, ldg = components.subsystems
-    @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right = sys.u
-    @unpack throttle_cmd, elevator_cmd = sys.lon_ctl.y
-    @unpack aileron_cmd, rudder_cmd = sys.lat_ctl.y
+    @unpack act, pwp, ldg = components.submodels
+    @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right = mdl.u
+    @unpack throttle_cmd, elevator_cmd = mdl.lon_ctl.y
+    @unpack aileron_cmd, rudder_cmd = mdl.lat_ctl.y
 
     act.throttle.u[] = throttle_cmd
     act.aileron.u[] = aileron_cmd
@@ -759,8 +759,8 @@ end
 
 ##################################### Tools ####################################
 
-function Systems.init!(sys::System{<:Controller},
-                            vehicle::System{<:C172X.Vehicle})
+function Modeling.init!(mdl::Model{<:Controller},
+                            vehicle::Model{<:C172X.Vehicle})
 
     #here we assume that the vehicle's y has already been updated to its trim
     #value by init!(vehicle, params)
@@ -772,11 +772,11 @@ function Systems.init!(sys::System{<:Controller},
     #we need to make Controller inputs consistent with the vehicle status, so
     #trim conditions are preserved upon simulation start when the corresponding
     #control modes are selected
-    Control.reset!(sys)
+    Control.reset!(mdl)
 
     #in a fly-by-wire implementation, it makes more sense to assign the trim
     #values to the inputs rather than the offsets
-    u = sys.u
+    u = mdl.u
     u.throttle_axis = y_act.throttle.pos
     u.aileron_axis = y_act.aileron.pos
     u.elevator_axis = y_act.elevator.pos
@@ -808,12 +808,12 @@ function Systems.init!(sys::System{<:Controller},
     #values
     u.lon_ctl_mode_req = lon_sas
     u.lat_ctl_mode_req = lat_φ_β
-    f_disc!(sys, vehicle)
+    f_disc!(mdl, vehicle)
 
     #restore direct modes
     u.lon_ctl_mode_req = lon_direct
     u.lat_ctl_mode_req = lat_direct
-    f_disc!(sys, vehicle)
+    f_disc!(mdl, vehicle)
 
 end
 
@@ -825,10 +825,10 @@ using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
         Dummy, SameLine, NewLine, IsItemActive, Separator, Text, Checkbox, RadioButton
 
 
-function GUI.draw(sys::System{<:LonControl}, p_open::Ref{Bool} = Ref(true))
+function GUI.draw(mdl::Model{<:LonControl}, p_open::Ref{Bool} = Ref(true))
     Begin("Longitudinal Control", p_open)
-        Text("Mode: $(sys.y.mode)")
-        foreach(keys(sys.subsystems), values(sys.subsystems)) do label, ss
+        Text("Mode: $(mdl.y.mode)")
+        foreach(keys(mdl.submodels), values(mdl.submodels)) do label, ss
             if CImGui.TreeNode(string(label))
                 GUI.draw(ss)
                 CImGui.TreePop()
@@ -837,10 +837,10 @@ function GUI.draw(sys::System{<:LonControl}, p_open::Ref{Bool} = Ref(true))
     End()
 end
 
-function GUI.draw(sys::System{<:LatControl}, p_open::Ref{Bool} = Ref(true))
+function GUI.draw(mdl::Model{<:LatControl}, p_open::Ref{Bool} = Ref(true))
     Begin("Lateral Control", p_open)
-        Text("Mode: $(sys.y.mode)")
-        foreach(keys(sys.subsystems), values(sys.subsystems)) do label, ss
+        Text("Mode: $(mdl.y.mode)")
+        foreach(keys(mdl.submodels), values(mdl.submodels)) do label, ss
             if CImGui.TreeNode(string(label))
                 GUI.draw(ss)
                 CImGui.TreePop()
@@ -849,9 +849,9 @@ function GUI.draw(sys::System{<:LatControl}, p_open::Ref{Bool} = Ref(true))
     End()
 end
 
-function GUI.draw(sys::System{<:AltitudeGuidance}, p_open::Ref{Bool} = Ref(true))
+function GUI.draw(mdl::Model{<:AltitudeGuidance}, p_open::Ref{Bool} = Ref(true))
 
-    @unpack state, lon_ctl_mode, Δh, h_thr, throttle_ref, clm_ref = sys.y
+    @unpack state, lon_ctl_mode, Δh, h_thr, throttle_ref, clm_ref = mdl.y
 
     Begin("Altitude Guidance", p_open)
 
@@ -865,13 +865,13 @@ function GUI.draw(sys::System{<:AltitudeGuidance}, p_open::Ref{Bool} = Ref(true)
 end
 
 
-function GUI.draw!(ctl::System{<:Controller},
-                    vehicle::System{<:C172X.Vehicle},
+function GUI.draw!(ctl::Model{<:Controller},
+                    vehicle::Model{<:C172X.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna172Xv1 Flight Control")
 
-    @unpack u, y, Δt, subsystems = ctl
-    @unpack lon_ctl, lat_ctl, alt_gdc = subsystems
+    @unpack u, y, Δt, submodels = ctl
+    @unpack lon_ctl, lat_ctl, alt_gdc = submodels
 
     @unpack components, kinematics, dynamics, airflow = vehicle.y
     @unpack act, pwp, fuel, ldg, aero = components
