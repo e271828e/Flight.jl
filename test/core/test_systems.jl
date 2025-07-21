@@ -38,7 +38,7 @@ end
     b::Subsampled{FirstOrder} = Subsampled(FirstOrder(), 2)
 end
 
-@ss_dynamics Node
+@ss_updates Node
 
 ################################################################################
 
@@ -48,7 +48,7 @@ end
     c::Subsampled{Node} = Subsampled(Node(), 3)
 end
 
-@ss_dynamics Root
+@ss_updates Root
 
 function Modeling.init!(mdl::Model{Root}, x0::Real = 0.0)
     (mdl.x .= x0)

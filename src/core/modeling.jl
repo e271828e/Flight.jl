@@ -10,7 +10,7 @@ export ModelDefinition, Model
 export Subsampled, Scheduling, NoScheduling
 export f_ode!, f_step!, f_disc!, update_output!
 export @no_ode, @no_disc, @no_step, @no_updates
-export @ss_ode, @ss_disc, @ss_step, @ss_dynamics
+export @ss_ode, @ss_disc, @ss_step, @ss_updates
 
 
 ################################################################################
@@ -307,7 +307,7 @@ macro ss_step(md)
     end)
 end
 
-macro ss_dynamics(md)
+macro ss_updates(md)
     esc(quote @ss_ode $md; @ss_step $md; @ss_disc $md end)
 end
 
