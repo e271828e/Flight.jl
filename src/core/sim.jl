@@ -22,8 +22,8 @@ export take_nonblocking!, put_nonblocking!
 ################################################################################
 ############################ SimControl ########################################
 
-#this struct will be accessed concurrently by the simulation (within the main
-#loop) and GUI (within GUI.update!), so it must be guarded by io_lock
+#this struct is accessed concurrently by the simulation (within the main loop)
+#and GUI (within GUI.update!), so it must be guarded by io_lock
 @kwdef mutable struct SimControl
     running::Bool = false #to be checked on each loop iteration for termination
     paused::Bool = false #to pause or unpause the simulation

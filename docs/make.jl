@@ -7,7 +7,7 @@ makedocs(;
     remotes = nothing,
     pages = [
         "About Flight.jl" => "index.md",
-        "Showcase" => ["examples/ex01.md", "examples/ex02.md"],
+        "Showcase" => ["examples/ex01/ex01.md", "examples/ex02/ex02.md"],
         "API" => "api.md",
     ],
     format = Documenter.HTML(
@@ -16,4 +16,4 @@ makedocs(;
     )
 )
 
-deploydocs(; repo = "https://github.com/e271828e/Flight.jl.git")
+# deploydocs(; repo = "https://github.com/e271828e/Flight.jl.git")
