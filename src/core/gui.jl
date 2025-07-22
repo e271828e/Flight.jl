@@ -181,7 +181,7 @@ function render!(renderer::Renderer)
     GLFW.MakeContextCurrent(_window)
     GLFW.SwapBuffers(_window)
 
-    if (unsafe_load(CImGui.lib.igGetIO().ConfigFlags) & CImGui.lib.ImGuiConfigFlags_ViewportsEnable) == CImGui.lib.ImGuiConfigFlags_ViewportsEnable
+    if (unsafe_load(CImGui.GetIO().ConfigFlags) & CImGui.lib.ImGuiConfigFlags_ViewportsEnable) == CImGui.lib.ImGuiConfigFlags_ViewportsEnable
         backup_current_context = GLFW.GetCurrentContext()
         CImGui.lib.igUpdatePlatformWindows()
         CImGui.lib.igRenderPlatformWindowsDefault(C_NULL, C_NULL)
