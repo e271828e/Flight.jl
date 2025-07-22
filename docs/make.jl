@@ -16,4 +16,4 @@ makedocs(;
     )
 )
 
-# deploydocs(; repo = "https://github.com/e271828e/Flight.jl.git")
+deploydocs(; repo = "https://github.com/e271828e/Flight.jl.git")
