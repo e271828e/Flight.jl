@@ -1,0 +1,59 @@
+# With CImGui as a package dependency, the docs environment instantiation and
+# documentation build steps fail. This issue is due to the CI runner's lack of a
+# graphical display. It is solved by running Julia within a virtual X server
+# environment provided by `xvfb-run`. This requires installing some binary
+# additional dependencies. The solution comes from Makie's documentation YAML.
+
+name: Documentation
+
+on:
+  push:
+    branches:
+      - master
+    tags: '*'
+  pull_request:
+
+jobs:
+  build:
+    # These permissions are needed to:
+    # - Deploy the documentation: https://documenter.juliadocs.org/stable/man/hosting/#Permissions
+    # - Delete old caches: https://github.com/julia-actions/cache#usage
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: read
+      statuses: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11.4'
+
+      - name: Cache Julia artifacts
+        uses: julia-actions/cache@v2
+
+      - name: Install binary dependencies
+        run: > #as a single line
+          sudo apt-get update && sudo apt-get install -y xorg-dev mesa-utils
+          xvfb libgl1 freeglut3-dev libxrandr-dev libxinerama-dev libxcursor-dev
+          libxi-dev libxext-dev xsettingsd x11-xserver-utils
+
+      # when using the single line syntax, we need the semicolon to separate the
+      # change of directory from the next command
+      - name: Instantiate docs environment
+        run: > #as a single line
+          cd docs;
+          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24'
+          julia --color=yes -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+
+      - name: Build and deploy
+        run: > #as a single line
+          cd docs;
+          DISPLAY=:0 xvfb-run -s '-screen 0 1024x768x24'
+          julia --color=yes --project make.jl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # If authenticating with GitHub Actions token
