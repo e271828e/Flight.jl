@@ -32,9 +32,7 @@ abstract type ModelDefinition end
 
 #################### Default ModelTrait Constructors #######################
 
-(::Union{Type{U}, Type{S}})(::ModelDefinition) = nothing
-
-function (Trait::Union{Type{X}, Type{Y}})(md::D) where {D <: ModelDefinition}
+function get_children_traits(Trait::Type{<:ModelTrait}, md::D) where {D <: ModelDefinition}
 
     children_names = filter(fieldnames(D)) do name
         getfield(md, name) isa ModelDefinition
@@ -45,15 +43,22 @@ function (Trait::Union{Type{X}, Type{Y}})(md::D) where {D <: ModelDefinition}
 
     nonempty_names = filter(k -> !isnothing(getproperty(nt, k)), keys(nt))
     nonempty_traits = map(λ -> getproperty(nt, λ), nonempty_names)
-    filtered_nt = NamedTuple{nonempty_names}(nonempty_traits)
+    return NamedTuple{nonempty_names}(nonempty_traits)
 
-    if isempty(filtered_nt)
-        return nothing
-    elseif all(v -> isa(v, AbstractVector), values(filtered_nt)) #x and ẋ
-        return ComponentVector(filtered_nt)
-    else #y
-        return filtered_nt
-    end
+end
+
+(::Union{Type{U}, Type{S}})(::ModelDefinition) = nothing
+
+function (Trait::Type{X})(md::D) where {D <: ModelDefinition}
+
+    # @assert all(v -> isa(v, AbstractVector), values(filtered_nt))
+    filtered_nt = get_children_traits(Trait, md)
+    return (isempty(filtered_nt) ? nothing : ComponentVector(filtered_nt))
+end
+
+function (Trait::Type{Y})(md::D) where {D <: ModelDefinition}
+    filtered_nt = get_children_traits(Trait, md)
+    return (isempty(filtered_nt) ? nothing : filtered_nt)
 end
 
 function Ẋ(md::ModelDefinition)
@@ -72,8 +77,9 @@ end
 Subsampled(md::D) where {D <: ModelDefinition} = Subsampled{D}(md, 1)
 
 (Trait::Union{Type{U}, Type{S}})(ss::Subsampled) = Trait(ss.md)
-(Trait::Union{Type{X}, Type{Y}})(ss::Subsampled) = Trait(ss.md)
-(Trait::Type{Ẋ})(ss::Subsampled) = Ẋ(ss.md)
+(::Type{X})(ss::Subsampled) = X(ss.md)
+(::Type{Ẋ})(ss::Subsampled) = Ẋ(ss.md)
+(::Type{Y})(ss::Subsampled) = Y(ss.md)
 
 ################################################################################
 ################################### Model #####################################
@@ -126,7 +132,12 @@ function Model(md::D,
         child_definition = getproperty(md, child_name)
 
         child_traits = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent_trait, Trait
+            #if the parent trait has an entry with the child's name, use it
             if child_name in propertynames(parent_trait)
+                #when parent_trait is a ComponentVector, getproperty returns a
+                #view, so each component of the parent's ComponentVector is
+                #passed to the children's constructor. which ensures the
+                #complete model hierarchy shares
                 getproperty(parent_trait, child_name)
             else
                 Trait(child_definition)
