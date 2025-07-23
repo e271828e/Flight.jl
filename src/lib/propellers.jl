@@ -1,10 +1,9 @@
 module Propellers
 
-using LinearAlgebra, StaticArrays, StructArrays, Interpolations, UnPack
-using Logging
-using HDF5
+using LinearAlgebra, StaticArrays, StructArrays, Interpolations, UnPack, Logging, HDF5
 using Roots: find_zero
 using Trapz: trapz
+using Plots, LaTeXStrings, DataStructures
 
 using Flight.FlightCore
 using Flight.FlightLib

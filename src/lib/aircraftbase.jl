@@ -2,6 +2,7 @@ module AircraftBase
 
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using FiniteDiff: finite_difference_jacobian! as jacobian!
+using DataStructures: OrderedDict
 
 using Flight.FlightCore
 using Flight.FlightLib

@@ -1,10 +1,11 @@
-# About Flight.jl
-
-## Introduction
-A brief introduction to the package.
+# Flight.jl
+A flight dynamics engine designed for Julia.
 
 ## Installation
-```Flight.jl``` is made up of three modules.
-
-```@contents
+```julia
+using Pkg
+Pkg.add(url="https://github.com/e271828e/Flight.jl.git")
 ```
+
+## Feature Summary
+Someday...

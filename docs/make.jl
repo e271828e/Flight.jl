@@ -3,16 +3,17 @@ using Documenter, Flight
 makedocs(;
     authors="Miguel Alonso <miguel883@gmail.com>",
     sitename="Flight.jl",
+    # repo="https://github.com/e271828e/Flight.jl.git",
     doctest = false,
-    remotes = nothing,
+    # remotes = nothing,
     pages = [
-        "About Flight.jl" => "index.md",
+        "Home" => "index.md",
         "Showcase" => ["examples/ex01/ex01.md", "examples/ex02/ex02.md"],
         "API" => "api.md",
     ],
     format = Documenter.HTML(
         prettyurls = true,
-        repolink="http://localhost:8000",
+        # repolink="https://github.com/e271828e/Flight.jl.git",
     )
 )
 

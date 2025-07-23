@@ -26,8 +26,8 @@ the implemented subtypes.
 """
 module Attitude
 
-using StaticArrays, ComponentArrays, StructArrays
-using LinearAlgebra
+using LinearAlgebra, StaticArrays, ComponentArrays, StructArrays
+using Plots, LaTeXStrings, DataStructures
 
 using Flight.FlightCore
 

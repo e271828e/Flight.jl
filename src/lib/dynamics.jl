@@ -1,6 +1,8 @@
 module Dynamics
 
 using StaticArrays, LinearAlgebra, UnPack
+using Plots: Plots, @recipe, @series, plot
+using LaTeXStrings, DataStructures
 
 using Flight.FlightCore
 
@@ -8,7 +10,7 @@ using ..Attitude
 using ..Geodesy
 using ..Kinematics
 
-export FrameTransform, transform
+export FrameTransform
 export Wrench
 export AbstractMassDistribution, PointDistribution, RigidBodyDistribution, MassProperties
 export get_mp_b, get_wr_b, get_hr_b
@@ -21,32 +23,71 @@ const g₀ = 9.80665
 ################################################################################
 ############################# FrameTransform ###################################
 
-# """
-# Specifies a reference frame `fc(Oc, Ɛc)` with respect to another `fb(Ob, Ɛb)`
-
-# Frame `fc(Oc, Ɛc)` is defined by:
-# - The position vector from fb's origin Ob to fc's origin Oc, projected on fb's
-#   axes Ɛb (``r_{bc}^{b}``)
-# - The rotation quaternion from fb's axes Ɛb to fc's axes Ɛc (``q^b_c``)
-# """
 """
-Specify a reference frame ``c`` with respect to another ``b``
+Specify a reference frame ``c`` with respect to another ``b``.
 
 ``c`` is defined by:
-- ``r_{bc}^{b}``: Position vector from ``b``'s origin ``O_b`` to ``c``'s origin ``O_c``, projected on ``b``'s
-  axes ``Ɛ_b``
-- ``q^b_c``: Rotation quaternion from ``b``'s axes ``Ɛ_b`` to ``c``'s axes ``Ɛ_c``
+- ``r_{bc}^{b}``: Position vector from ``b``'s origin ``O_b`` to ``c``'s origin
+  ``O_c``, projected on ``b``'s axes ``Ɛ_b``
+- ``q^b_c``: Rotation quaternion from ``b``'s axes ``Ɛ_b`` to ``c``'s axes
+  ``Ɛ_c``
+
+`FrameTransform` objects are callable; the syntax `t_bc(x_c)` is equivalent to
+`translate(t_bc, x_c)`.
 """
 @kwdef struct FrameTransform
     r::SVector{3,Float64} = zeros(SVector{3})
     q::RQuat = RQuat()
 end
 
+
+"""
+    translate(t_bc::FrameTransform, r_cP_c::AbstractVector{<:Real})
+
+Translate a 3D position vector from one reference frame to another.
+
+Given the `FrameTransform` `t_bc` from frame ``b`` to frame ``c`` and the
+position vector of some point ``P`` in ``c`` (``r_{cP}^{c}``), return the
+position vector of ``P`` in ``b`` (``r_{bP}^{b}``).
+"""
+function translate(t_bc::FrameTransform, r_cP_c::AbstractVector{<:Real})
+
+    r_bc_b = t_bc.r; q_bc = t_bc.q
+
+    r_bP_b = r_bc_b + q_bc(SVector{3,Float64}(r_cP_c))
+    return r_bP_b
+end
+
+
+"""
+    (t_bc::FrameTransform)(x_c::Any)
+
+Convenience method, equivalent to `translate(t_bc, x_c)`.
+"""
+(t_bc::FrameTransform)(x_c::Any) = translate(t_bc, x_c)
+
+
+"""
+    Base.:adjoint(t_bc::FrameTransform)
+
+Given `t_bc`, return its reciprocal `t_cb`.
+"""
+function Base.:adjoint(t_bc::FrameTransform)
+
+    r_bc_b = t_bc.r; q_bc = t_bc.q
+
+    q_cb = q_bc'
+    r_cb_c = q_cb(-r_bc_b)
+    t_cb = FrameTransform(r_cb_c, q_cb)
+
+    return t_cb
+end
+
+
 """
     Base.:∘(t_bc::FrameTransform, t_cd::FrameTransform)
 
-Concatenate two `FrameTransform` instances `t_bc` and `t_cd` to yield the
-resulting `t_bd`.
+Concatenate `FrameTransform`s `t_bc` and `t_cd` and return the resulting `t_bd`.
 """
 function Base.:∘(t_bc::FrameTransform, t_cd::FrameTransform)
 
@@ -62,52 +103,14 @@ function Base.:∘(t_bc::FrameTransform, t_cd::FrameTransform)
 
 end
 
-"""
-    Base.:adjoint(t_bc::FrameTransform)
-
-Get the reciprocal `FrameTransform`.
-"""
-function Base.:adjoint(t_bc::FrameTransform)
-
-    r_bc_b = t_bc.r; q_bc = t_bc.q
-
-    q_cb = q_bc'
-    r_cb_c = q_cb(-r_bc_b)
-    t_cb = FrameTransform(r_cb_c, q_cb)
-
-    return t_cb
-end
-
-
-"""
-    transform(t_bc::FrameTransform, r_cP_c::AbstractVector{<:Real})
-
-Given the (3D) position vector of some point P in reference frame fc, and the
-`FrameTransform` from fb to fc, compute the position vector of P in fb (r_bP_b)
-"""
-function transform(t_bc::FrameTransform, r_cP_c::AbstractVector{<:Real})
-
-    r_bc_b = t_bc.r; q_bc = t_bc.q
-
-    r_bP_b = r_bc_b + q_bc(SVector{3,Float64}(r_cP_c))
-    return r_bP_b
-end
-
-
-"""Alternative function call notation: `t_bc(mp_c) == transform(t_bc, mp_c)`
-"""
-(t_bc::FrameTransform)(x) = transform(t_bc, x)
-
-
-
 ################################################################################
 ################################## Wrench ######################################
 
 """
-Force and torque combination defined on a concrete reference frame
+Force and torque combination defined in a specific reference frame.
 
-A `Wrench` is defined on reference frame fc(Oc,εc) when it is applied at its
-origin Oc and projected on its axes εc
+A `Wrench` is defined in frame ``c`` when it is applied at ``c``'s origin
+``O_c`` and projected on its axes ``Ɛ_c``
 """
 @kwdef struct Wrench
     F::SVector{3,Float64} = zeros(SVector{3})
@@ -127,16 +130,16 @@ Base.:+(wr1::Wrench, wr2::Wrench) = Wrench(F = wr1.F + wr2.F, τ = wr1.τ + wr2.
 
 
 """
-    transform(t_bc::FrameTransform, wr_c::Wrench)
+    translate(t_bc::FrameTransform, wr_c::Wrench)
 
-Transform a `Wrench` from one reference frame to another.
+Translate a `Wrench` from one reference frame to another.
 
 If `t_bc` is a `FrameTransform` specifying frame fc(Oc, εc) relative to fb(Ob, εb),
-and `wr_c` is a `Wrench` defined on fc, then `wr_b = transform(t_bc,
+and `wr_c` is a `Wrench` defined on fc, then `wr_b = translate(t_bc,
 wr_c)` is the equivalent `Wrench` defined on fb.
 """
 
-function transform(t_bc::FrameTransform, wr_c::Wrench)
+function translate(t_bc::FrameTransform, wr_c::Wrench)
 
     F_c_c = wr_c.F
     τ_c_c = wr_c.τ
@@ -270,16 +273,16 @@ function Base.:+(p1::MassProperties, p2::MassProperties)
 end
 
 """
-    transform(t_bc::FrameTransform, mp_c::MassProperties)
+    translate(t_bc::FrameTransform, mp_c::MassProperties)
 
-Transform a `MassProperties` instance from its current frame fc to another fb.
+Translate a `MassProperties` instance from its current frame fc to another fb.
 
 If `t_bc` is a `FrameTransform` specifying frame fc(Oc, εc) relative to fb(Ob,
 εb), and `mp_c` is a `MassProperties` defined with respect to fc, then `mp_b =
-transform(t_bc, p_c)` is the equivalent `MassProperties` defined with respect to
+translate(t_bc, p_c)` is the equivalent `MassProperties` defined with respect to
 fb.
 """
-function transform(t_bc::FrameTransform, mp_c::MassProperties)
+function translate(t_bc::FrameTransform, mp_c::MassProperties)
 
     r_bc_b = t_bc.r
     q_bc = t_bc.q

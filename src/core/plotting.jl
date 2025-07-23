@@ -6,11 +6,9 @@ using UnPack
 using StructArrays
 using Logging
 using RecursiveArrayTools: VectorOfArray
-@reexport using Plots
-@reexport using LaTeXStrings
-@reexport using DataStructures: OrderedDict
+using Plots, LaTeXStrings, DataStructures
 
-@reexport using ..Sim: Simulation, TimeSeries, get_components, get_time, get_data
+using ..Sim: Simulation, TimeSeries, get_components, get_time, get_data
 using ..Types
 
 export make_plots, save_plots

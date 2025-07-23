@@ -1,6 +1,7 @@
 module LandingGear
 
 using StaticArrays, ComponentArrays, LinearAlgebra, UnPack
+using Plots, LaTeXStrings, DataStructures
 
 using Flight.FlightCore
 using Flight.FlightLib

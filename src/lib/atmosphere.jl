@@ -1,6 +1,7 @@
 module Atmosphere
 
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
+using Plots, LaTeXStrings, DataStructures
 
 using Flight.FlightCore
 

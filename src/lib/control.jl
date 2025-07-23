@@ -1,9 +1,9 @@
 module Control
 
-using Flight.FlightCore
-
 ################################################################################
 ############################ Common Interfaces #################################
+
+using Flight.FlightCore
 
 function reset!(mdl::Model)
     foreach(mdl.submodels) do ss
@@ -19,6 +19,7 @@ module Continuous ##############################################################
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
 using ControlSystems: ControlSystemsBase, ControlSystems, ss
 using RobustAndOptimalControl
+using Plots, LaTeXStrings, DataStructures
 
 using Flight.FlightCore
 
@@ -326,6 +327,7 @@ module Discrete ###############################################################
 using StaticArrays, UnPack, LinearAlgebra
 using StructArrays, Interpolations, HDF5 #for lookups
 using RobustAndOptimalControl
+using Plots, LaTeXStrings, DataStructures
 
 using Flight.FlightCore
 

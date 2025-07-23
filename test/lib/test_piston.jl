@@ -4,6 +4,8 @@ using Test
 using UnPack
 using BenchmarkTools
 using LinearAlgebra
+using Plots
+
 
 using Flight.FlightCore
 using Flight.FlightLib
