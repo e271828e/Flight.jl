@@ -261,8 +261,8 @@ end
     wind::W = TunableWind()
 end
 
-@ss_ode SimpleAtmosphere
-@ss_disc SimpleAtmosphere
+@sm_ode SimpleAtmosphere
+@sm_disc SimpleAtmosphere
 @no_step SimpleAtmosphere
 
 function AtmosphericData(mdl::Model{<:SimpleAtmosphere},

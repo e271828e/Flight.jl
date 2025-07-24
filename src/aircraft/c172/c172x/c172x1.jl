@@ -24,7 +24,7 @@ end
 
 @no_ode C172Xv1.Avionics
 @no_step C172Xv1.Avionics
-@ss_disc C172Xv1.Avionics
+@sm_disc C172Xv1.Avionics
 
 function AircraftBase.assign!(systems::Model{<:C172X.Systems},
                           avionics::Model{<:C172Xv1.Avionics})

@@ -10,7 +10,7 @@ export ModelDefinition, Model
 export Subsampled, Scheduling, NoScheduling
 export f_ode!, f_step!, f_disc!, update_output!
 export @no_ode, @no_disc, @no_step, @no_updates
-export @ss_ode, @ss_disc, @ss_step, @ss_updates
+export @sm_ode, @sm_disc, @sm_step, @sm_updates
 
 
 ################################################################################
@@ -171,8 +171,6 @@ end
 
 ################################################################################
 
-Base.getproperty(mdl::Model, name::Symbol) = getproperty(mdl, Val(name))
-
 function Base.propertynames(mdl::M) where {M <: Model}
     (fieldnames(S)...,
     propertynames(mdl.constants)...,
@@ -180,6 +178,8 @@ function Base.propertynames(mdl::M) where {M <: Model}
     :Δt,
     )
 end
+
+Base.getproperty(mdl::Model, name::Symbol) = getproperty(mdl, Val(name))
 
 #no clashes can occur between constant and submodel names. thus, for
 #convenience we allow direct access to both
@@ -282,7 +282,7 @@ macro no_updates(md)
 end
 
 #recursive fallbacks
-macro ss_ode(md)
+macro sm_ode(md)
     esc(quote
         @inline function Modeling.f_ode!(mdl::Model{<:($md)}, args...)
             for ss in mdl.submodels
@@ -294,7 +294,7 @@ macro ss_ode(md)
     end)
 end
 
-macro ss_disc(md)
+macro sm_disc(md)
     esc(quote
         @inline function Modeling.f_disc!(::NoScheduling, mdl::Model{<:($md)}, args...)
             for ss in mdl.submodels
@@ -306,7 +306,7 @@ macro ss_disc(md)
     end)
 end
 
-macro ss_step(md)
+macro sm_step(md)
     esc(quote
         @inline function Modeling.f_step!(mdl::Model{<:($md)}, args...)
             for ss in mdl.submodels
@@ -319,7 +319,7 @@ macro ss_step(md)
 end
 
 macro ss_updates(md)
-    esc(quote @ss_ode $md; @ss_step $md; @ss_disc $md end)
+    esc(quote @sm_ode $md; @sm_step $md; @sm_disc $md end)
 end
 
 

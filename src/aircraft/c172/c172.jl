@@ -472,7 +472,7 @@ Dynamics.get_mp_b(::Model{Ldg}) = MassProperties()
 Dynamics.get_hr_b(::Model{Ldg}) = zeros(SVector{3})
 
 #delegate continuous dynamics to submodels
-@ss_ode Ldg
+@sm_ode Ldg
 
 function Modeling.f_step!(mdl::Model{<:Ldg})
     foreach(f_step!, mdl.submodels)

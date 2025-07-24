@@ -114,7 +114,7 @@ end
 end
 
 #delegate continuous dynamics to individual actuators
-@ss_ode FlyByWireActuation
+@sm_ode FlyByWireActuation
 
 function C172.assign!(aero::Model{<:C172.Aero},
                     ldg::Model{<:C172.Ldg},

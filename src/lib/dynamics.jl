@@ -406,21 +406,6 @@ end
 
 end
 
-# #default implementation tries to sum all the Wrenches from its individual
-# #components. override if possible to reduce compilation time
-# @inline function (get_wr_b(mdl::Model{T, X, Y, U, S, P, B})
-#     where {T, X, Y, U, S, P, B})
-
-#     isempty(fieldnames(B)) && error("Model{$(T)} is a leaf Model, "*
-#                 "but it does not extend the get_wr_b method")
-#     wr = Wrench()
-#     for submdl in values(mdl.submodels)
-#         wr += get_wr_b(submdl)::Wrench
-#     end
-#     return wr
-
-# end
-
 
 ################################################################################
 ########################### VehicleDynamics ####################################
