@@ -8,7 +8,7 @@ makedocs(;
     # remotes = nothing,
     pages = [
         "Home" => "index.md",
-        "Showcase" => ["examples/ex01/ex01.md", "examples/ex02/ex02.md"],
+        "Showcase" => ["showcase/ex01/ex01.md",],
         "API" => "api.md",
     ],
     format = Documenter.HTML(
