@@ -652,6 +652,8 @@ Modeling.Y(::Controller) = ControllerY()
 function Modeling.f_disc!(::NoScheduling, mdl::Model{<:Controller},
                         vehicle::Model{<:C172X.Vehicle})
 
+    # println("Hi")
+
     @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right,
             throttle_axis, aileron_axis, elevator_axis, rudder_axis,
             throttle_offset, aileron_offset, elevator_offset, rudder_offset,

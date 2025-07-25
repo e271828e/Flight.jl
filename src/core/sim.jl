@@ -197,15 +197,16 @@ struct Simulation{D <: ModelDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
 
-        #we don't want to impose a call to f_disc! at t=0, so we set
+        #we don't want to force a call to f_disc! at t=0, so we set
         #initial_affect=false. if needed, such call can be included in the
         #user-defined Modeling.init!
         cb_disc = PeriodicCallback(f_cb_disc!, Δt; initial_affect = false)
-        mdl.Δt_root[] = Δt
+        mdl._Δt_root[] = Δt
 
-        #initialize discrete iteration counter in preparation for the first
-        #scheduled discrete step
-        mdl.n[] = 1
+        #the optional call to f_disc! at t=0 would correspond to mdl._n[] = 0.
+        #therefore, in preparation for the first scheduled discrete step, we
+        #should set mdl._n[] = 1
+        mdl._n[] = 1
 
         log = SavedValues(Float64, Y)
         saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
@@ -345,7 +346,7 @@ function f_cb_disc!(integrator)
     f_disc!(mdl) #call discrete dynamics, potentially updates mdl.s and mdl.y
 
     #increment the discrete iteration counter
-    mdl.n[] += 1
+    mdl._n[] += 1
 
 end
 
@@ -374,7 +375,7 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
 
     #reset scheduling counter, so f_disc! is guaranteed to execute if called by
     #Modeling.init!
-    mdl.n[] = 0
+    mdl._n[] = 0
 
     #initialize the Model's x, u and s
     Modeling.init!(mdl, init_args...; init_kwargs...)
@@ -388,7 +389,7 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
     end
 
     #prepare scheduling counter for the first integration step
-    mdl.n[] = 1
+    mdl._n[] = 1
 
     return nothing
 end
@@ -489,7 +490,7 @@ function start!(sim::Simulation)
             control.algorithm = sim.integrator.alg |> typeof |> string
             control.t_start = t_start
             control.t_end = t_end
-            control.Δt = sim.Δt_root[]
+            control.Δt = sim._Δt_root[]
         unlock(io_lock)
 
         notify(io_start)

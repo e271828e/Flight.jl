@@ -87,12 +87,10 @@ function test_control_modes()
     @test act.elevator.u[] == 0.3
     @test act.rudder.u[] == 0.4
 
-    #must reset scheduling counter before standalone calls to f_disc!, but
-    #without calling Sim.reinit! so that the controller state is preserved
-    world.n[] = 0
-    # @test @ballocated(f_ode!($world)) == 0
-    # @test @ballocated(f_step!($world)) == 0
-    # @test @ballocated(f_disc!($world)) == 0
+    #test for allocation. f_disc! will need further tests in other control modes
+    @test @ballocated(f_ode!($world)) == 0
+    @test @ballocated(f_step!($world)) == 0
+    @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end #testset
 
@@ -120,10 +118,8 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).ω_wb_b, y_kin_trim.ω_wb_b; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b, y_kin_trim.v_eb_b; atol = 1e-2))
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the controller's current state
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end #testset
 
@@ -149,10 +145,8 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end #testset
 
@@ -176,10 +170,8 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).ω_wb_b[1], y_kin_trim.ω_wb_b[1]; atol = 1e-5))
         @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end
 
@@ -212,10 +204,8 @@ function test_control_modes()
         @test isapprox(ctl.u.φ_ref, y_kin(ac).e_nb.φ; atol = 1e-3)
         @test isapprox(Float64(ctl.u.β_ref), y_aero(ac).β; atol = 1e-3)
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end
 
@@ -255,10 +245,8 @@ function test_control_modes()
         @test isapprox(Float64(ctl.u.p_ref), y_kin(ac).ω_wb_b[1]; atol = 1e-3)
         @test isapprox(ctl.u.β_ref, y_aero(ac).β; atol = 1e-3)
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end
 
@@ -302,10 +290,8 @@ function test_control_modes()
         @test isapprox(ctl.u.χ_ref, y_kin(ac).χ_gnd; atol = 1e-2)
         world.atm.wind.u.N = 0
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end
 
@@ -346,10 +332,8 @@ function test_control_modes()
         @test isapprox(Float64(ac.y.vehicle.systems.act.throttle.cmd),
                         Float64(ctl.u.throttle_axis + ctl.u.throttle_offset); atol = 1e-3)
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end
 
@@ -376,11 +360,8 @@ function test_control_modes()
         step!(sim, 10, true)
         @test isapprox(y_kin(ac).e_nb.θ, ctl.u.θ_ref; atol = 1e-4)
 
-        #must always reset scheduling counter before standalone calls to
-        #f_disc!, but we cannot do it by a simulation reinit, otherwise the
-        #current controller state is lost
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end
 
@@ -413,10 +394,8 @@ function test_control_modes()
         step!(sim, 30, true)
         @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end
 
@@ -454,10 +433,8 @@ function test_control_modes()
         @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end
 
@@ -489,10 +466,8 @@ function test_control_modes()
         @test isapprox(ctl.lon_ctl.u.θ_ref, y_kin(ac).e_nb.θ; atol = 1e-3)
         @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
     end
 
@@ -526,10 +501,8 @@ function test_control_modes()
         @test all(isapprox.(y_kin(ac).v_eb_n[3], -ctl.u.clm_ref; atol = 1e-1))
         @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
         # return sim
 
@@ -602,17 +575,15 @@ function test_guidance_modes()
 
         #must reset scheduling counter before standalone calls to f_disc!, but
         #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
+        world._n[] = 0
         @test @ballocated(f_disc!($world)) == 0
 
         ctl.u.h_ref = y_kin_trim.h_e + 100
         step!(sim, 1, true)
         @test ctl.y.lon_ctl_mode === lon_thr_EAS
 
-        #must reset scheduling counter before standalone calls to f_disc!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world.n[] = 0
-        @test @ballocated(f_disc!($world)) == 0
+        #test for allocations in the current control mode
+        @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
 
         # return TimeSeries(sim)
 

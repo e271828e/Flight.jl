@@ -23,7 +23,7 @@ end
 
 function Modeling.f_disc!(::NoScheduling, mdl::Model{FirstOrder})
     x_new = mdl.x[1] + 0.1
-    @info("Called f_disc! at t = $(mdl.t[]), n = $(mdl.n[]), updating x = $(mdl.x[1]) to x = $(x_new)")
+    @info("Called f_disc! at t = $(mdl.t[]), _n = $(mdl._n[]), _N = $(mdl._N), updating x = $(mdl.x[1]) to x = $(x_new)")
     mdl.x .= x_new
     mdl.y = mdl.x[1]
     # println("Called f_disc! at t = $(mdl.t[]), got y = $(mdl.y)")
@@ -56,6 +56,15 @@ function Modeling.init!(mdl::Model{Root}, x0::Real = 0.0)
 end
 
 ################################################################################
+
+function test_single()
+    mdl = FirstOrder() |> Model;
+    sim = Simulation(mdl; Δt = 1.0, t_end = 30)
+    # Sim.init!(sim)
+    Sim.run!(sim)
+    # return TimeSeries(sim)
+    return sim
+end
 
 function test_multirate()
     mdl = Root() |> Model;

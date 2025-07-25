@@ -88,7 +88,7 @@ Subsampled(md::D) where {D <: ModelDefinition} = Subsampled{D}(md, 1)
 #Model's mutability only required for y updates; reassigning any other field is
 #disallowed to avoid breaking the references in the submodel hierarchy
 
-#storing t, n and Δt_root as RefValues allows implicit propagation of updates
+#storing t, _n and _Δt_root as RefValues allows implicit propagation of updates
 #down the submodel hierarchy
 
 mutable struct Model{D <: ModelDefinition, Y, U, X, S, C, B}
@@ -100,14 +100,14 @@ mutable struct Model{D <: ModelDefinition, Y, U, X, S, C, B}
     const t::Base.RefValue{Float64} #simulation time
     const constants::C
     const submodels::B
-    const Δt_root::Base.RefValue{Float64} #root system discrete sampling period
-    const n::Base.RefValue{Int} #simulation discrete iteration counter
-    const N::Int #discrete sampling period multipler
+    const _Δt_root::Base.RefValue{Float64} #root system discrete sampling period
+    const _n::Base.RefValue{Int} #simulation discrete iteration counter
+    const _N::Int #discrete sampling period multipler
 end
 
 function Model(md::D,
                 y = Y(md), u = U(md), ẋ = Ẋ(md), x = X(md), s = S(md), t = Ref(0.0),
-                Δt_root = Ref(1.0), n = Ref(0), N = 1) where {D <: ModelDefinition}
+                _Δt_root = Ref(1.0), _n = Ref(0), _N = 1) where {D <: ModelDefinition}
 
     if !isbits(y)
         @warn "The output defined for $D is not an isbits type.
@@ -132,30 +132,25 @@ function Model(md::D,
         child_definition = getproperty(md, child_name)
 
         child_traits = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent_trait, Trait
-            #if the parent trait has an entry with the child's name, use it
             if child_name in propertynames(parent_trait)
-                #when parent_trait is a ComponentVector, getproperty returns a
-                #view, so each component of the parent's ComponentVector is
-                #passed to the children's constructor. which ensures the
-                #complete model hierarchy shares
                 getproperty(parent_trait, child_name)
             else
                 Trait(child_definition)
             end
         end
 
-        Model(child_definition, child_traits..., t, Δt_root, n, N)
+        Model(child_definition, child_traits..., t, _Δt_root, _n, _N)
 
     end
 
     submodels = NamedTuple{children_names}(children_models)
 
     #the remaining md fields are stored as constants
-    constants = NamedTuple(n=>getfield(md, n) for n in sd_fieldnames if !(n in children_names))
+    constants = NamedTuple(c=>getfield(md, c) for c in sd_fieldnames if !(c in children_names))
     constants = (!isempty(constants) ? constants : nothing)
 
     mdl = Model{map(typeof, (md, y, u, x, s, constants, submodels))...}(
-                    y, u, ẋ, x, s, t, constants, submodels, Δt_root, n, N)
+                    y, u, ẋ, x, s, t, constants, submodels, _Δt_root, _n, _N)
 
     init!(mdl)
 
@@ -165,8 +160,8 @@ end
 
 function Model(ss::Subsampled,
                 y = Y(ss), u = U(ss), ẋ = Ẋ(ss), x = X(ss), s = S(ss), t = Ref(0.0),
-                Δt_root = Ref(1.0), n = Ref(0), N = 1)
-    Model(ss.md, y, u, ẋ, x, s, t, Δt_root, n, N * ss.K)
+                _Δt_root = Ref(1.0), _n = Ref(0), _N = 1)
+    Model(ss.md, y, u, ẋ, x, s, t, _Δt_root, _n, _N * ss.K)
 end
 
 ################################################################################
@@ -192,7 +187,7 @@ Base.getproperty(mdl::Model, name::Symbol) = getproperty(mdl, Val(name))
     elseif P ∈ fieldnames(C)
         return :(getfield(getfield(mdl, :constants), $(QuoteNode(P))))
     elseif P === :Δt #actual discrete sampling period
-        return :(getfield(mdl, :Δt_root)[] * getfield(mdl, :N))
+        return :(getfield(mdl, :_Δt_root)[] * getfield(mdl, :_N))
     else
         return :(error("Failed to retrieve property $P from Model"))
     end
@@ -232,7 +227,7 @@ end
 @inline f_disc!(mdl::Model, args...) = f_disc!(Scheduling(), mdl, args...)
 
 function f_disc!(::Scheduling, mdl::Model, args...)
-    (mdl.n[] % mdl.N == 0) && f_disc!(NoScheduling(), mdl, args...)
+    (mdl._n[] % mdl._N == 0) && f_disc!(NoScheduling(), mdl, args...)
 end
 
 
@@ -318,7 +313,7 @@ macro sm_step(md)
     end)
 end
 
-macro ss_updates(md)
+macro sm_updates(md)
     esc(quote @sm_ode $md; @sm_step $md; @sm_disc $md end)
 end
 
