@@ -97,17 +97,17 @@ mutable struct Model{D <: ModelDefinition, Y, U, X, S, C, B}
     const ẋ::X #continuous state derivative
     const x::X #continuous state
     const s::S #discrete state
-    const N::Int #discrete sampling period multipler
-    const Δt_root::Base.RefValue{Float64} #root system discrete sampling period
     const t::Base.RefValue{Float64} #simulation time
-    const n::Base.RefValue{Int} #simulation discrete iteration counter
     const constants::C
     const submodels::B
+    const Δt_root::Base.RefValue{Float64} #root system discrete sampling period
+    const n::Base.RefValue{Int} #simulation discrete iteration counter
+    const N::Int #discrete sampling period multipler
 end
 
 function Model(md::D,
-                y = Y(md), u = U(md), ẋ = Ẋ(md), x = X(md), s = S(md),
-                N = 1, Δt_root = Ref(1.0), t = Ref(0.0), n = Ref(0)) where {D <: ModelDefinition}
+                y = Y(md), u = U(md), ẋ = Ẋ(md), x = X(md), s = S(md), t = Ref(0.0),
+                Δt_root = Ref(1.0), n = Ref(0), N = 1) where {D <: ModelDefinition}
 
     if !isbits(y)
         @warn "The output defined for $D is not an isbits type.
@@ -144,7 +144,7 @@ function Model(md::D,
             end
         end
 
-        Model(child_definition, child_traits..., N, Δt_root, t, n)
+        Model(child_definition, child_traits..., t, Δt_root, n, N)
 
     end
 
@@ -155,7 +155,7 @@ function Model(md::D,
     constants = (!isempty(constants) ? constants : nothing)
 
     mdl = Model{map(typeof, (md, y, u, x, s, constants, submodels))...}(
-                    y, u, ẋ, x, s, N, Δt_root, t, n, constants, submodels)
+                    y, u, ẋ, x, s, t, constants, submodels, Δt_root, n, N)
 
     init!(mdl)
 
@@ -164,17 +164,17 @@ function Model(md::D,
 end
 
 function Model(ss::Subsampled,
-                y = Y(ss), u = U(ss), ẋ = Ẋ(ss), x = X(ss), s = S(ss),
-                N = 1, Δt_root = Ref(1.0), t = Ref(0.0), n = Ref(0))
-    Model(ss.md, y, u, ẋ, x, s, N * ss.K, Δt_root, t, n)
+                y = Y(ss), u = U(ss), ẋ = Ẋ(ss), x = X(ss), s = S(ss), t = Ref(0.0),
+                Δt_root = Ref(1.0), n = Ref(0), N = 1)
+    Model(ss.md, y, u, ẋ, x, s, t, Δt_root, n, N * ss.K)
 end
 
 ################################################################################
 
 function Base.propertynames(mdl::M) where {M <: Model}
-    (fieldnames(S)...,
-    propertynames(mdl.constants)...,
+    (propertynames(mdl.constants)...,
     propertynames(mdl.submodels)...,
+    :t,
     :Δt,
     )
 end
