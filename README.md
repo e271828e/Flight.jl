@@ -60,7 +60,7 @@ Pkg.add(url="https://github.com/e271828e/Flight.jl.git")
 ## Documentation
 
 [Documentation](https://e271828e.github.io/Flight.jl/dev/) is still in its infancy, but you can
-check out the [Interactive Simulation](https://e271828e.github.io/Flight.jl/dev/examples/ex01/ex01/)
+check out the [Interactive Simulation](https://e271828e.github.io/Flight.jl/dev/showcase/ex01/ex01/)
 showcase. Tutorials and usage examples are in the works.
 
 ![Flight.jl GUI with X-Plane 12 Visualization](docs/src/showcase/ex01/github.png?raw=true)
