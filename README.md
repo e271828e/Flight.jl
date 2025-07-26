@@ -65,8 +65,6 @@ showcase. Tutorials and usage examples are in the works.
 ![Flight.jl GUI with X-Plane 12 Visualization](docs/src/showcase/ex01/github.png?raw=true)
 
 
-
-
 ## License
 
 `Flight.jl` is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
