@@ -51,7 +51,6 @@ end
 
 function (Trait::Type{X})(md::D) where {D <: ModelDefinition}
 
-    # @assert all(v -> isa(v, AbstractVector), values(filtered_nt))
     filtered_nt = get_children_traits(Trait, md)
     return (isempty(filtered_nt) ? nothing : ComponentVector(filtered_nt))
 end

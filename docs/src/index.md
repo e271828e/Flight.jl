@@ -13,7 +13,7 @@ simulation. Its design fully leverages Julia's expressiveness, extensibility and
 
 It is architected in three distinct layers:
 
-- A lightweight, domain-agnostic engine for modeling and interactive simulation of
+- A lightweight, domain-agnostic engine for modeling and simulation of
   complex systems with hybrid dynamics (`FlightCore`).
 
 - A library of high-fidelity, reusable physics and engineering models (`FlightLib`).
@@ -22,29 +22,28 @@ It is architected in three distinct layers:
 
 ## Feature Summary
 
-Here are some of `Flight.jl`'s highlights:
+Here are some of the package's highlights:
 
-*   **Hierarchical Modeling:** The modeling framework leverages `ComponentArrays.jl` to construct
-    complex systems from simpler, reusable components.
+*   **Hierarchical Modeling:** Enables building complex systems from simpler, reusable components,
+    leveraging `ComponentArrays.jl` for clarity and convenience.
 
-*   **High Performance:** The core simulation loop is built on `DifferentialEquations.jl`. It is
-    designed from the ground up to be allocation-free, enabling extremely fast execution of headless
-    simulations and smooth performance for interactive applications.
+*   **High Performance:** Its core simulation loop is built on `DifferentialEquations.jl` and
+    designed from the ground up to be allocation-free. This enables extremely fast headless execution and smooth performance on interactive runs.
 
-*   **Interactive GUI:** Offers an extensible GUI based on `CImGui.jl` for real-time inspection and
-    manipulation during interactive simulation.
+*   **Interactive GUI:** Offers an extensible GUI based on `CImGui.jl` for live model
+    inspection and manipulation.
 
 *   **External Visualization & I/O:** Features out-of-the-box integration with [X-Plane
     12](https://www.x-plane.com/desktop/try-it/) for high-fidelity 3D visualization,
     joystick support via `SDL2_jll`, and a generic interface layer for custom I/O functionality.
 
-*   **Solid Physics Foundation:** Built-in modules for attitude representation, geodesy, kinematics
-    and rigid body dynamics, providing fast, accurate, robust and ergonomic types and operations.
+*   **Solid Physics Foundation:** Includes built-in modules for attitude representation, geodesy, kinematics
+    and rigid body dynamics, providing fast, accurate and ergonomic types and operations.
 
-*   **Pre-Built Components:** High-fidelity, efficient and customizable models for propellers,
-    piston engines and landing gear.
+*   **Pre-Built Aircraft Components:** Comes with high-fidelity, efficient and customizable models for
+    propellers, piston engines and landing gear.
 
 *   **Integrated Control Design Workflow:** Provides general-purpose trimming and linearization
     functions. Seamlessly import linearized models into the `ControlSystems.jl` ecosystem for
-    controller synthesis. Then, realize your design in a practical, discrete-time implementation,
-    and validate it via nonlinear simulation.
+    controller synthesis. Then, realize your design in a practical, discrete-time implementation, and
+    validate it via nonlinear simulation.
