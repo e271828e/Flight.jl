@@ -3,22 +3,35 @@ module TestGUI
 using Test
 using Revise
 
-using Flight.FlightCore
+using Flight.FlightCore.Modeling
+using Flight.FlightCore.IODevices
+using Flight.FlightCore.GUI
 
-# using Flight.FlightLib
-# using Flight.FlightAircraft
+export test_render_loop, test_gui
 
+struct TestSystem <: ModelDefinition end
 
-export test_gui
+Modeling.X(::TestSystem) = [0.0]
 
-function test_gui(target::Model)
+function GUI.draw!(mdl::Model{TestSystem})
+    x = mdl.x
+    CImGui.PushItemWidth(-50)
+        x[1] = GUI.safe_slider("State", x[1], -10, 10, "%.3f"; show_label = true)
+    CImGui.PopItemWidth()
+end
+
+function test_gui()
+    @testset verbose = true "GUI" begin
+        @test_nowarn test_render_loop()
+    end
+end
+
+function test_render_loop(target::Model = Model(TestSystem()), timeout::Real = 1.0)
     f_draw = let target = target
         () -> GUI.draw!(target)
-        # return () -> GUI.draw!(target)
     end
     r = Renderer(; f_draw)
-    GUI.render_loop(r)
-    # GUI.run(r, GUI.draw!, target)
+    GUI.render_loop(r, timeout)
 end
 
 end

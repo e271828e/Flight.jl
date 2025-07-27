@@ -190,9 +190,16 @@ function render!(renderer::Renderer)
 
 end
 
-function render_loop(renderer::Renderer)
+function render_loop(renderer::Renderer, timeout::Real = Inf64)
 
-    renderer._initialized || IODevices.init!(renderer)
+    try
+        renderer._initialized || IODevices.init!(renderer)
+    catch e
+        @warn "Error while initializing Renderer" exception=e
+    end
+
+    renderer._initialized || return
+
     try
         @assert renderer.sync > 0 "The standalone render_loop() must not be called "*
         "for an unsynced Renderer (sync = 0). Use scheduled calls to update!() instead."
@@ -201,7 +208,8 @@ function render_loop(renderer::Renderer)
         #rate is effectively uncapped. this is generally not good, so the calls
         #to update! must be frequency-limited by some other scheduling means
 
-        while !IODevices.should_close(renderer)
+        t0 = time()
+        while !IODevices.should_close(renderer) && (time() - t0 < timeout)
             render!(renderer)
         end
     catch e
