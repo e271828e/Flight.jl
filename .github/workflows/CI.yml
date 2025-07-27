@@ -1,0 +1,55 @@
+name: CI
+on:
+  push:
+    branches:
+      - master
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  # Skip intermediate builds: always.
+  # Cancel intermediate builds: only if it is a pull request build.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+jobs:
+  test:
+    name: Julia ${{ matrix.julia-version }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions: # needed to allow julia-actions/cache to proactively delete old caches that it has created
+      actions: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        #when julia-arch is not specified, it defaults to x64 or aarch64
+        # os: [ubuntu-latest, windows-latest, macos-latest]
+        #no easy way to test on macos and windows due to missing OpenGL support
+        os: [ubuntu-latest]
+        julia-version: ['1.10', '1.11']
+        include:
+          - os: ubuntu-latest #only ubuntu-latest supports (and requires) xvfb-run
+            prefix: xvfb-run
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.julia-version }}
+
+      - name: Set number of Julia threads
+        run: |
+          echo "JULIA_NUM_THREADS=4" >> "$GITHUB_ENV"
+
+      - name: Cache Julia artifacts
+        uses: julia-actions/cache@v2
+
+      - name: Build package
+        uses: julia-actions/julia-buildpkg@v1
+
+      - name: Run tests
+        uses: julia-actions/julia-runtest@v1
+        with:
+            prefix: ${{ matrix.prefix }}
