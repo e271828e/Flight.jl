@@ -4,6 +4,8 @@
 # environment provided by `xvfb-run`. This requires installing some binary
 # additional dependencies. The solution comes from Makie's documentation YAML.
 
+# NOTE: This workflow is deprecated and replaced by Documenter.yml
+
 name: Documentation
 
 on:

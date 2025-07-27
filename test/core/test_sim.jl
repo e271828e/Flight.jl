@@ -11,7 +11,7 @@ function test_sim()
     @testset verbose = true "Sim" begin
 
         udp_loopback()
-        xpc_loopback()
+        xp12_loopback()
         json_loopback()
 
     end
@@ -53,8 +53,8 @@ function test_sim_standalone()
     sim = Simulation(mdl; dt = 0.1, Δt = 1.0, t_end = 5)
     x0 = 1.0
     Sim.init!(sim, x0)
+    Sim.run!(sim)
     return sim
-    # Sim.run!(sim)
 
 end
 
@@ -90,7 +90,6 @@ Modeling.Y(::TestSystem) = TestSystemY()
 @no_step TestSystem
 
 function Modeling.f_disc!(::NoScheduling, mdl::Model{<:TestSystem})
-    sleep(0.01)
     mdl.y = TestSystemY(; input = mdl.u.input)
 end
 
@@ -136,10 +135,8 @@ function udp_loopback()
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
         Sim.attach!(sim, UDPOutput(; port), UDPTestMapping())
 
-        # return sim
-
-        # Sim.run_interactive!(sim)
-        Sim.run!(sim)
+        #we need to run these paced, otherwise the IO can't keep up
+        Sim.run!(sim; pace = 1)
 
         #mdl.y.output must have propagated to mdl.u.input via loopback, and then
         #to mdl.y.input within f_disc!
@@ -167,7 +164,9 @@ function xp12_loopback()
         sim = Simulation(mdl; t_end = 1.0)
         Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
         Sim.attach!(sim, XPlane12Control(; port))
-        Sim.run!(sim)
+
+        #we need to run these paced, otherwise the IO can't keep up
+        Sim.run!(sim; pace = 1)
 
         cmd = KinData() |> XPlanePose |> Network.xpmsg_set_pose
         #extract_output returns an XPlanePose instance, from which extract_output
@@ -228,7 +227,8 @@ function json_loopback()
         #trigger method precompilation
         JSON3.read!(JSON3.write((input = 0.0,)), mdl.u)
 
-        Sim.run!(sim)
+        #we need to run these paced, otherwise the IO can't keep up
+        Sim.run!(sim; pace = 1)
 
         @test sim.y.input == 37.0
 

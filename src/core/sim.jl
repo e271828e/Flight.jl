@@ -581,9 +581,9 @@ end
 
 #* caution: on non-Windows platforms, CImGui needs to run on the main thread!
 
-function run!(sim::Simulation)
+function run!(sim::Simulation; pace = Inf)
 
-    sim.control.pace = Inf
+    sim.control.pace = pace
 
     @sync begin
         for interface in sim.interfaces

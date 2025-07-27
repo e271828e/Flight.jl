@@ -48,21 +48,13 @@ Here are some of the package's highlights:
     validate it via nonlinear simulation.
 
 
-## Installation
-`Flight.jl` is not registered yet, so it must be installed from its URL:
-
-```julia
-using Pkg
-Pkg.add(url="https://github.com/e271828e/Flight.jl.git")
-```
-
 ## Documentation
 
 [Documentation](https://e271828e.github.io/Flight.jl/dev/) is still in its infancy, but you can
 check out the [Interactive Simulation](https://e271828e.github.io/Flight.jl/dev/showcase/ex01/ex01/)
 showcase. Tutorials and usage examples are in the works.
 
-![Flight.jl GUI with X-Plane 12 Visualization](docs/src/showcase/ex01/github.png?raw=true)
+![Flight.jl GUI with X-Plane 12 Visualization](docs/src/assets/github.png?raw=true)
 
 
 ## License
