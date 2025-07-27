@@ -57,6 +57,12 @@ function test_kinematics()
             @test sys_ECEF.y.v_eb_b ≈ sys_WA.y.v_eb_b
             @test sys_ECEF.y.ω_eb_b ≈ sys_WA.y.ω_eb_b
 
+            @test sys_ECEF.y.q_nb ≈ sys_NED.y.q_nb
+            @test sys_ECEF.y.n_e ≈ sys_NED.y.n_e
+            @test sys_ECEF.y.h_e ≈ sys_NED.y.h_e
+            @test sys_ECEF.y.v_eb_b ≈ sys_NED.y.v_eb_b
+            @test sys_ECEF.y.ω_eb_b ≈ sys_NED.y.ω_eb_b
+
             #check that direct KinData initialization is equivalent
             kin_data = KinData(kin_init)
             @test kin_data.q_nb ≈ sys_WA.y.q_nb

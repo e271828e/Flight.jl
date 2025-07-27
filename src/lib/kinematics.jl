@@ -20,7 +20,8 @@ const v_min_χγ = 0.1 #minimum speed for valid χ, γ
 #user-friendly kinematic conditions for body frame initialization
 struct Initializer
     q_nb::RQuat #attitude with respect to NED frame
-    Ob::Geographic{NVector, Ellipsoidal} #3D position
+    n_e::NVector #2D location, n-vector
+    h_e::Altitude{Ellipsoidal} #ellipsoidal altitude
     ω_wb_b::SVector{3, Float64} #angular velocity with respect to local level frame, body coordinates
     v_eb_n::SVector{3, Float64} #Earth-relative velocity, NED coordinates
     Δx::Float64 #Northward velocity integral
@@ -34,8 +35,10 @@ function Initializer(;
     h::Altitude = HOrth(), ω_wb_b::AbstractVector{<:Real} = zeros(SVector{3}),
     v_eb_n::AbstractVector{<:Real} = zeros(SVector{3}), Δx::Real = 0.0, Δy::Real = 0.0)
 
-    Ob = Geographic(loc, h)
-    Initializer(q_nb, Ob, ω_wb_b, v_eb_n, Δx, Δy)
+    n_e = NVector(loc)
+    h_e = HEllip(h, n_e)
+
+    Initializer(q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy)
 end
 
 
@@ -64,15 +67,14 @@ end
 
 function KinData(ic::KinInit = KinInit())
 
-    @unpack q_nb, Ob, ω_wb_b, v_eb_n, Δx, Δy = ic
+    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy = ic
 
+    Ob = Geographic(n_e, h_e)
     e_nb = REuler(q_nb)
-    q_en = ltf(Ob)
+    q_en = ltf(n_e)
     q_eb = q_en ∘ q_nb
 
-    n_e = NVector(Ob)
-    ϕ_λ = LatLon(Ob)
-    h_e = HEllip(Ob)
+    ϕ_λ = LatLon(n_e)
     h_o = HOrth(h_e, n_e)
     Δxy = SVector(Δx, Δy)
     r_eb_e = Cartesian(Ob)
@@ -157,8 +159,9 @@ Modeling.X(::WA) = ComponentVector(
 function Modeling.init!(mdl::Model{WA}, ic::Initializer = Initializer())
 
     @unpack x, u = mdl
-    @unpack q_nb, Ob, ω_wb_b, v_eb_n, Δx, Δy = ic
+    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy = ic
 
+    Ob = Geographic(n_e, h_e)
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
     ω_ew_b = q_nb'(ω_ew_n)
     ω_eb_b = ω_ew_b + ω_wb_b
@@ -171,7 +174,7 @@ function Modeling.init!(mdl::Model{WA}, ic::Initializer = Initializer())
     u.v_eb_b = v_eb_b
 
     x.q_wb = q_wb[:]
-    x.q_ew = ltf(Ob)[:]
+    x.q_ew = ltf(n_e)[:]
     x.Δx = Δx
     x.Δy = Δy
     x.h_e = h_e
@@ -261,10 +264,9 @@ Modeling.X(::ECEF) = ComponentVector(
 function Modeling.init!(mdl::Model{ECEF}, ic::Initializer = Initializer())
 
     @unpack x, u = mdl
-    @unpack q_nb, Ob, ω_wb_b, v_eb_n, Δx, Δy = ic
+    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy = ic
 
-    n_e = NVector(Ob)
-    h_e = HEllip(Ob)
+    Ob = Geographic(n_e, h_e)
 
     q_en = ltf(n_e)
     q_eb = q_en ∘ q_nb
@@ -347,16 +349,16 @@ Modeling.X(::NED) = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
 function Modeling.init!(mdl::Model{NED}, ic::Initializer = Initializer())
 
     @unpack x, u = mdl
-    @unpack q_nb, Ob, ω_wb_b, v_eb_n, Δx, Δy = ic
+    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy = ic
 
+    Ob = Geographic(n_e, h_e)
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
     ω_ew_b = q_nb'(ω_ew_n)
     ω_eb_b = ω_ew_b + ω_wb_b
     v_eb_b = q_nb'(v_eb_n)
 
     e_nb = REuler(q_nb)
-    ϕ_λ = LatLon(Ob)
-    h_e = HEllip(Ob)
+    ϕ_λ = LatLon(n_e)
 
     u.ω_eb_b = ω_eb_b
     u.v_eb_b = v_eb_b
