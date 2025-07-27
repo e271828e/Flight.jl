@@ -11,7 +11,7 @@ name: Documentation
 on:
   push:
     branches:
-      - master
+      - doc_test
     tags: '*'
   pull_request:
 
