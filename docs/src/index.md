@@ -18,7 +18,7 @@ Pkg.add(url="https://github.com/e271828e/Flight.jl.git")
     ],
     ```
 
-    This should work well for most CPUs and use cases. If you run into issues, you should set the number of threads manually to cover your specific needs.
+    This should work well for most CPUs and use cases. If you run into issues, you can set the number of threads manually to cover your specific needs.
 
 ## Overview
 

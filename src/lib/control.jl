@@ -128,6 +128,31 @@ function submodel(cmp::LinearizedSS; x = keys(cmp.x0), u = keys(cmp.u0), y = key
 
 end
 
+function submodel(nss::RobustAndOptimalControl.NamedStateSpace;
+                  x = nss.x, u = nss.u, y = nss.y)
+
+    #to do: generalize for scalars
+
+    x_axis = Axis(nss.x)
+    u_axis = Axis(nss.u)
+    y_axis = Axis(nss.y)
+
+    A_nss = ComponentMatrix(nss.A, x_axis, x_axis)
+    B_nss = ComponentMatrix(nss.B, x_axis, u_axis)
+    C_nss = ComponentMatrix(nss.C, y_axis, x_axis)
+    D_nss = ComponentMatrix(nss.D, y_axis, u_axis)
+
+    A_sub = A_nss[x, x]
+    B_sub = B_nss[x, u]
+    C_sub = C_nss[y, x]
+    D_sub = D_nss[y, u]
+
+    ss_sub = ss(A_sub, B_sub, C_sub, D_sub)
+
+    named_ss(ss_sub; x, u, y)
+
+end
+
 
 ####################### Proportional-Integral Compensator ######################
 ################################################################################
@@ -1178,7 +1203,7 @@ function save_lookup(params::Union{Array{<:LQRTrackerParams, N}, Array{<:PIDPara
 end
 
 
-function load_pid_lookup(fname::String = joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
+function load_pid_lookup(fname::String)
 
     fid = h5open(fname, "r")
 
@@ -1213,7 +1238,7 @@ function load_pid_lookup(fname::String = joinpath(@__DIR__, "data", "p2φ_lookup
 end
 
 
-function load_lqr_tracker_lookup(fname::String = joinpath(@__DIR__, "data", "φβ_lookup.h5"))
+function load_lqr_tracker_lookup(fname::String)
 
     fid = h5open(fname, "r")
 
@@ -1270,6 +1295,7 @@ end #submodule
 module PIDOpt
 
 using StaticArrays, UnPack, NLopt, ControlSystems
+using RobustAndOptimalControl: hinfnorm2
 using Trapz: trapz
 using ..Control.Discrete: PIDParams
 
@@ -1304,13 +1330,16 @@ end
 function Metrics(plant::AbstractStateSpace, pid::AbstractStateSpace,
                        settings::Settings)
 
-    #hinfnorm appears to be quite brittle, so instead we brute force the
-    #computation of maximum sensitivity transfer function magnitude
     S = sensitivity(plant, pid) #sensitivity function
+
+    #brute force computation of H-∞ norm
     S_tf = tf(S)
     iω_range = ((10^x)*im for x in range(-3, 3, length=1000))
     S_range = [abs(S_tf.(iω)[1]) for iω in iω_range]
     Ms = maximum(S_range)
+
+    #robust computation of H-∞ norm
+    # Ms, ω_Ms = hinfnorm2(S)
 
     T = output_comp_sensitivity(plant, pid) #complementary sensitivity function (AKA closed loop)
     T_step = step(T, settings.t_sim)
