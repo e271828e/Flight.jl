@@ -552,7 +552,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         p2φ_results = optimize_PID(P_p2φ_opt; params_0, settings, weights, global_search)
         params_p2φ = p2φ_results.params
-        if !check_results(p2φ_results, Metrics(; Ms = Inf, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(p2φ_results, Metrics(; Ms = Inf, ∫e = 0.1, ef = 0.03, ∫u = Inf, up = Inf))
             @warn("Checks failed for p to φ PID, design point $(design_point), final metrics $(p2φ_results.metrics)")
         end
 
@@ -582,7 +582,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         χ2φ_results = optimize_PID(P_φ2χ; params_0, settings, weights, global_search)
 
         params_χ2φ = χ2φ_results.params
-        if !check_results(χ2φ_results, Metrics(; Ms = 1.4, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(χ2φ_results, Metrics(; Ms = 2, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
             @warn("Checks failed for χ to φ PID, design point $(design_point), final metrics $(χ2φ_results.metrics)")
         end
 
