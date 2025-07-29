@@ -1332,15 +1332,9 @@ function Metrics(plant::AbstractStateSpace, pid::AbstractStateSpace,
 
     S = sensitivity(plant, pid) #sensitivity function
 
-    #brute force computation of H-∞ norm
-    S_tf = tf(S)
-    iω_range = ((10^x)*im for x in range(-3, 3, length=1000))
-    S_range = [abs(S_tf.(iω)[1]) for iω in iω_range]
-    Ms = maximum(S_range)
-
     #robust computation of H-∞ norm
-    # Ms, ω_Ms = hinfnorm2(S)
-    # Ms = min(Ms, 1e3) #allow response optimization for unstable systems
+    Ms, _ = hinfnorm2(S)
+    Ms = min(Ms, 1e3) #allow optimizing unstable systems
 
     T = output_comp_sensitivity(plant, pid) #complementary sensitivity function (AKA closed loop)
     T_step = step(T, settings.t_sim)
