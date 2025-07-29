@@ -1340,6 +1340,7 @@ function Metrics(plant::AbstractStateSpace, pid::AbstractStateSpace,
 
     #robust computation of H-∞ norm
     # Ms, ω_Ms = hinfnorm2(S)
+    # Ms = min(Ms, 1e3) #allow response optimization for unstable systems
 
     T = output_comp_sensitivity(plant, pid) #complementary sensitivity function (AKA closed loop)
     T_step = step(T, settings.t_sim)
@@ -1431,10 +1432,23 @@ function check_results(results::Results, thresholds::Metrics{Float64})
     @unpack exit_flag, metrics = results
 
     success = true
-    success && (exit_flag === :ROUNDOFF_LIMITED) | (exit_flag === :STOPVAL_REACHED)
-    success && (metrics.Ms < thresholds.Ms) #sensitivity function maximum magnitude
-    success && (metrics.∫e < thresholds.∫e) #normalized absolute integrated error
-    success && (metrics.ef < thresholds.ef) #remaining error after t_sim
+    if !((exit_flag === :ROUNDOFF_LIMITED) | (exit_flag === :STOPVAL_REACHED))
+        @warn "Unexpected exit flag: $exit_flag"
+        success = false
+    end
+    if !(metrics.Ms < thresholds.Ms) #sensitivity function maximum magnitude
+        @warn "Sensitivity function maximum magnitude exceeded: $(metrics.Ms) > $(thresholds.Ms)"
+        success = false
+    end
+    if !(metrics.∫e < thresholds.∫e) #normalized absolute integrated error
+        @warn "Normalized absolute integrated error exceeded: $(metrics.∫e) > $(thresholds.∫e)"
+        success = false
+    end
+    if !(metrics.ef < thresholds.ef) #remaining error after t_sim
+        @warn "Absolute final error exceeded: $(metrics.ef) > $(thresholds.ef)"
+        success = false
+    end
+    return success
 
 end
 

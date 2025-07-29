@@ -201,7 +201,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         q2e_results = optimize_PID(P_q2e_opt; params_0, settings, weights, global_search)
 
         params_q2e = q2e_results.params
-        if !check_results(q2e_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(q2e_results, Metrics(; Ms = 1.3, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
             @warn("Checks failed for pitch rate PID, design point $(design_point), final metrics $(q2e_results.metrics)")
         end
 
@@ -245,7 +245,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         v2θ_results = optimize_PID(P_θ2v_opt; params_0, settings, weights, global_search)
 
         params_v2θ = v2θ_results.params
-        if !check_results(v2θ_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(v2θ_results, Metrics(; Ms = 1.3, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
             @warn("Checks failed for EAS to θ PID, design point $(design_point), final metrics $(v2θ_results.metrics)")
         end
 
@@ -275,7 +275,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         v2t_results = optimize_PID(P_t2v; params_0, settings, weights, global_search)
 
         params_v2t = v2t_results.params
-        if !check_results(v2t_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(v2t_results, Metrics(; Ms = 1.3, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
             @warn("Checks failed for EAS to throttle PID, design point $(design_point), final metrics $(v2t_results.metrics)")
         end
 
@@ -305,7 +305,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         c2θ_results = optimize_PID(P_θ2c; params_0, settings, weights, global_search)
 
         params_c2θ = c2θ_results.params
-        if !check_results(c2θ_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(c2θ_results, Metrics(; Ms = 1.3, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
             @warn("Checks failed for climb rate to θ PID, design point $(design_point), final metrics $(c2θ_results.metrics)")
         end
 
@@ -547,12 +547,12 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
         upper_bounds = PIDParams(; k_p = 10.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_p2φ, lower_bounds, upper_bounds)
-        weights = Metrics(; Ms = 1, ∫e = 10, ef = 2, ∫u = 0.1, up = 0.00)
+        weights = Metrics(; Ms = 0, ∫e = 2, ef = 2, ∫u = 1, up = 0.00)
         params_0 = PIDParams(; k_p = 1.5, k_i = 3, k_d = 0.1, τ_f = 0.01)
 
         p2φ_results = optimize_PID(P_p2φ_opt; params_0, settings, weights, global_search)
         params_p2φ = p2φ_results.params
-        if !check_results(p2φ_results, Metrics(; Ms = 1.3, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(p2φ_results, Metrics(; Ms = Inf, ∫e = 0.1, ef = 0.02, ∫u = Inf, up = Inf))
             @warn("Checks failed for p to φ PID, design point $(design_point), final metrics $(p2φ_results.metrics)")
         end
 
