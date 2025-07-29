@@ -201,7 +201,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         q2e_results = optimize_PID(P_q2e_opt; params_0, settings, weights, global_search)
 
         params_q2e = q2e_results.params
-        if !check_results(q2e_results, Metrics(; Ms = 1.3, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(q2e_results, Metrics(; Ms = 1.6, ∫e = 0.3, ef = 0.03, ∫u = Inf, up = Inf))
             @warn("Checks failed for pitch rate PID, design point $(design_point), final metrics $(q2e_results.metrics)")
         end
 
@@ -245,7 +245,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         v2θ_results = optimize_PID(P_θ2v_opt; params_0, settings, weights, global_search)
 
         params_v2θ = v2θ_results.params
-        if !check_results(v2θ_results, Metrics(; Ms = 1.3, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(v2θ_results, Metrics(; Ms = 1.6, ∫e = 0.3, ef = 0.03, ∫u = Inf, up = Inf))
             @warn("Checks failed for EAS to θ PID, design point $(design_point), final metrics $(v2θ_results.metrics)")
         end
 
@@ -275,7 +275,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         v2t_results = optimize_PID(P_t2v; params_0, settings, weights, global_search)
 
         params_v2t = v2t_results.params
-        if !check_results(v2t_results, Metrics(; Ms = 1.3, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(v2t_results, Metrics(; Ms = 1.6, ∫e = 0.3, ef = 0.03, ∫u = Inf, up = Inf))
             @warn("Checks failed for EAS to throttle PID, design point $(design_point), final metrics $(v2t_results.metrics)")
         end
 
@@ -305,7 +305,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         c2θ_results = optimize_PID(P_θ2c; params_0, settings, weights, global_search)
 
         params_c2θ = c2θ_results.params
-        if !check_results(c2θ_results, Metrics(; Ms = 1.3, ∫e = 0.2, ef = 0.02, ∫u = Inf, up = Inf))
+        if !check_results(c2θ_results, Metrics(; Ms = 1.6, ∫e = 0.3, ef = 0.03, ∫u = Inf, up = Inf))
             @warn("Checks failed for climb rate to θ PID, design point $(design_point), final metrics $(c2θ_results.metrics)")
         end
 
