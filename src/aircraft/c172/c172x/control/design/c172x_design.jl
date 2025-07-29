@@ -3,7 +3,7 @@ module C172XControlDesign
 using Flight
 using Flight.FlightCore
 using Flight.FlightLib
-using Flight.FlightLib.Control.Continuous: LinearizedSS
+using Flight.FlightLib.Control.Continuous: LinearizedSS, submodel
 using Flight.FlightLib.Control.Discrete: PIDParams, LQRTrackerParams, save_lookup
 using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
@@ -75,15 +75,30 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     ac = Cessna172Xv0(NED()) |> Model #linearization requires NED kinematics
 
-    lss_lon = Control.Continuous.LinearizedSS(ac, design_point; model = :lon);
-    P_lon = named_ss(lss_lon)
+    lss_full = LinearizedSS(ac, design_point; model = :lon);
+    P_full = named_ss(lss_full)
 
+    x_labels_full = keys(lss_full.x0) |> collect
+    y_labels_full = keys(lss_full.y0) |> collect
+    u_labels_full = keys(lss_full.u0) |> collect
+
+    #reduced model without h
+    x_labels_red = copy(x_labels_full)
+    y_labels_red = copy(y_labels_full)
+    u_labels_red = copy(u_labels_full)
+
+    x_labels_red = deleteat!(x_labels_red, findfirst(isequal(:h), x_labels_red))
+    y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:h), y_labels_red))
+
+    lss_red = submodel(lss_full; x = x_labels_red, u = u_labels_red, y = y_labels_red)
+    P_red = submodel(P_full; x = x_labels_red, u = u_labels_red, y = y_labels_red)
+
+    #pitch dynamics model
     x_labels_pit = [:q, :θ, :v_x, :v_z, :α_filt, :ele_p]
     y_labels_pit = vcat(x_labels_pit, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :climb_rate, :elevator_cmd])
     u_labels_pit = [:elevator_cmd,]
 
-    #pitch dynamics model
-    lss_pit = Control.Continuous.submodel(lss_lon; x = x_labels_pit, u = u_labels_pit, y = y_labels_pit)
+    lss_pit = Control.Continuous.submodel(lss_full; x = x_labels_pit, u = u_labels_pit, y = y_labels_pit)
     P_pit = named_ss(lss_pit);
 
     # ensure consistency in component selection and ordering between our pitch
@@ -99,7 +114,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     ############################ thr+ele SAS ###################################
 
-    P_te, params_e2e = let
+    P_red_te, params_e2e = let
 
         @unpack v_x, v_z = lss_pit.x0
         v_norm = norm([v_x, v_z])
@@ -153,25 +168,25 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
             )
 
         #connect to the complete longitudinal dynamics (this is the one we'll keep)
-        P_te = connect([P_lon, elevator_sum, C_fbk_ss, C_fwd_ss],
-            connections; w1 = [:throttle_cmd, :elevator_cmd_ref], z1 = P_lon.y)
+        P_red_te = connect([P_red, elevator_sum, C_fbk_ss, C_fwd_ss],
+            connections; w1 = [:throttle_cmd, :elevator_cmd_ref], z1 = P_red.y)
 
         #add dummy system to rename input throttle_cmd to throttle_cmd_ref
         D_thr = named_ss(ss(1), u = [:throttle_cmd_ref,], y = [:throttle_cmd_ref, ])
-        P_te = connect([P_te, D_thr], [:throttle_cmd_ref => :throttle_cmd,];
-            w1 = [:throttle_cmd_ref, :elevator_cmd_ref], z1 = P_te.y)
+        P_red_te = connect([P_red_te, D_thr], [:throttle_cmd_ref => :throttle_cmd,];
+            w1 = [:throttle_cmd_ref, :elevator_cmd_ref], z1 = P_red_te.y)
 
         params_e2e = LQRTrackerParams(; #export everything as plain arrays
             C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
-        (P_te, params_e2e)
+        (P_red_te, params_e2e)
 
     end
 
-    P_tq, params_q2e = let
+    P_red_tq, params_q2e = let
 
-        P_e2q = P_te[:q, :elevator_cmd_ref]
+        P_e2q = P_red_te[:q, :elevator_cmd_ref]
 
         q2e_int = tf(1, [1, 0]) |> ss
         P_q2e_opt = series(q2e_int, ss(P_e2q))
@@ -194,30 +209,30 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         C_q2e = named_ss(series(q2e_int, q2e_pid), :C_q2e; u = :q_err, y = :elevator_cmd_ref);
 
         q2e_sum = sumblock("q_err = q_ref - q")
-        P_tq = connect([P_te, q2e_sum, C_q2e],
+        P_red_tq = connect([P_red_te, q2e_sum, C_q2e],
             [:q_err=>:q_err, :q=>:q, :elevator_cmd_ref=>:elevator_cmd_ref],
-            w1 = [:throttle_cmd_ref, :q_ref], z1 = P_te.y)
+            w1 = [:throttle_cmd_ref, :q_ref], z1 = P_red_te.y)
 
-        (P_tq, params_q2e)
+        (P_red_tq, params_q2e)
 
     end
 
-    P_tθ = let
+    P_red_tθ = let
 
         k_p_θ2q = 1
         C_θ2q = named_ss(ss(k_p_θ2q), :C_θ2q; u = :θ_err, y = :q_ref);
 
         θ2q_sum = sumblock("θ_err = θ_ref - θ")
-        P_tθ = connect([P_tq, θ2q_sum, C_θ2q], [:θ_err=>:θ_err, :θ=>:θ, :q_ref=>:q_ref],
-                        w1 = [:throttle_cmd_ref, :θ_ref], z1 = P_tq.y);
+        P_red_tθ = connect([P_red_tq, θ2q_sum, C_θ2q], [:θ_err=>:θ_err, :θ=>:θ, :q_ref=>:q_ref],
+                        w1 = [:throttle_cmd_ref, :θ_ref], z1 = P_red_tq.y);
 
-        P_tθ
+        P_red_tθ
 
     end
 
-    P_tv, params_v2θ = let
+    P_red_tv, params_v2θ = let
 
-        P_θ2v = P_tθ[:EAS, :θ_ref]
+        P_θ2v = P_red_tθ[:EAS, :θ_ref]
         P_θ2v_opt = -P_θ2v
 
         t_sim_v2θ = 20
@@ -239,16 +254,16 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         C_v2θ = named_ss(ss(C_v2θ), :C_v2θ; u = :EAS_err, y = :θ_ref)
 
         v2θ_sum = sumblock("EAS_err = EAS_ref - EAS")
-        P_tv = connect([P_tθ, v2θ_sum, C_v2θ], [:EAS_err=>:EAS_err, :EAS=>:EAS, :θ_ref=>:θ_ref],
-        w1 = [:throttle_cmd_ref, :EAS_ref], z1 = P_tθ.y)
+        P_red_tv = connect([P_red_tθ, v2θ_sum, C_v2θ], [:EAS_err=>:EAS_err, :EAS=>:EAS, :θ_ref=>:θ_ref],
+        w1 = [:throttle_cmd_ref, :EAS_ref], z1 = P_red_tθ.y)
 
-        (P_tv, params_v2θ)
+        (P_red_tv, params_v2θ)
 
     end
 
-    P_vθ, params_v2t = let
+    P_red_vθ, params_v2t = let
 
-        P_t2v = P_tθ[:EAS, :throttle_cmd]
+        P_t2v = P_red_tθ[:EAS, :throttle_cmd]
 
         t_sim_v2t = 10
         lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
@@ -268,17 +283,17 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         C_v2t = named_ss(ss(v2t_pid), :C_v2t; u = :EAS_err, y = :throttle_cmd_ref)
 
         v2t_sum = sumblock("EAS_err = EAS_ref - EAS")
-        P_vθ = connect([P_tθ, v2t_sum, C_v2t],
+        P_red_vθ = connect([P_red_tθ, v2t_sum, C_v2t],
             [:EAS_err=>:EAS_err, :EAS=>:EAS, :throttle_cmd_ref=>:throttle_cmd_ref],
-            w1 = [:EAS_ref, :θ_ref], z1 = P_tθ.y)
+            w1 = [:EAS_ref, :θ_ref], z1 = P_red_tθ.y)
 
-        (P_vθ, params_v2t)
+        (P_red_vθ, params_v2t)
 
     end
 
-    P_vc, params_c2θ = let
+    P_red_vc, params_c2θ = let
 
-        P_θ2c = P_vθ[:climb_rate, :θ_ref]
+        P_θ2c = P_red_vθ[:climb_rate, :θ_ref]
 
         t_sim_c2θ = 10
         lower_bounds = PIDParams(; k_p = 0.001, k_i = 0.001, k_d = 0.0, τ_f = 0.01)
@@ -298,11 +313,11 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         C_c2θ = named_ss(ss(c2θ_PID), :C_c2θ; u = :climb_rate_err, y = :θ_ref)
 
         c2θ_sum = sumblock("climb_rate_err = climb_rate_ref - climb_rate")
-        P_vc = connect([P_vθ, c2θ_sum, C_c2θ],
+        P_red_vc = connect([P_red_vθ, c2θ_sum, C_c2θ],
             [:climb_rate_err=>:climb_rate_err, :climb_rate=>:climb_rate, :θ_ref=>:θ_ref],
-            w1 = [:EAS_ref, :climb_rate_ref], z1 = P_vθ.y)
+            w1 = [:EAS_ref, :climb_rate_ref], z1 = P_red_vθ.y)
 
-        (P_vc, params_c2θ)
+        (P_red_vc, params_c2θ)
     end
 
     return (e2e = params_e2e, q2e = params_q2e, v2θ = params_v2θ,
