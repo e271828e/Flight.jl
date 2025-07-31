@@ -363,8 +363,6 @@ OrdinaryDiffEq.step!(sim::Simulation, args...) = step!(sim.integrator, args...)
 
 OrdinaryDiffEq.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
 
-OrdinaryDiffEq.add_tstop!(sim::Simulation, t) = add_tstop!(sim.integrator, t)
-
 function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
 
     @unpack mdl, integrator, log = sim
@@ -473,8 +471,7 @@ function start!(sim::Simulation)
     try
 
         if isempty(sim.integrator.opts.tstops)
-            @error("Simulation has hit its end time, call reinit! " *
-                   "or add further tstops using add_tstop!")
+            @error("Simulation has hit its end time, call reinit! to reset it")
         end
 
         τ = let wall_time_ref = time()
@@ -680,17 +677,11 @@ TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
 #prevent monstrous type signatures from flooding the REPL
 function Base.show(io::IO, ::MIME"text/plain", x::Simulation)
     print(io, "Simulation{...}(...)")
-    # str = sprint(show, x)
-    # maxlen = 200
-    # length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
 end
 
 #prevent monstrous type signatures from flooding the REPL
 function Base.show(io::IO, ::MIME"text/plain", x::Type{<:Simulation})
     print(io, "Simulation{...}")
-    # str = sprint(show, x)
-    # maxlen = 200
-    # length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
 end
 
 
