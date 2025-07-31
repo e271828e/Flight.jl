@@ -23,6 +23,69 @@ using LinearAlgebra
 using Interpolations
 
 
+function get_design_model!(ac::Model{<:C172Y.Aircraft{NED}}, args...; kwargs...)
+    get_design_model!(ac.vehicle, args...; kwargs...)
+end
+
+function get_design_model!(
+            vehicle::Model{<:C172Y.Vehicle{NED}},
+            trim_params::C172.TrimParameters = C172.TrimParameters();
+            model::Symbol = :full)
+
+    lss = linearize!(vehicle, trim_params)
+
+    @unpack A, B, C, D, ẋ0, x0, y0 = lss
+
+    #replace v_x, v_y, v_z with TAS, α, β as state variables
+    xp_labels = x_labels = keys(lss.x0) |> collect
+    for (old, new) in zip((:v_x, :v_y, :v_z), (:TAS, :α, :β))
+        xp_labels[findfirst(isequal(old), xp_labels)] = new
+    end
+
+    #define trim values
+    ẋp0 = ComponentVector(copy(getdata(lss.ẋ0)), Axis(xp_labels))
+    ẋp0[(:TAS, :α, :β)] .= 0 #guaranteed by trim condition
+    xp0 = lss.y0[xp_labels]
+    up0 = lss.u0
+    yp0 = lss.y0
+
+    #compute new state-space matrices via similarity transformation
+    T = lss.C[xp_labels, :]
+    T_inv = ComponentMatrix(inv(T), Axis(x_labels), Axis(xp_labels))
+
+    Ap = T * A * T_inv
+    Bp = T * B
+    Cp = C * T_inv
+    Dp = D
+
+    #rebuild the model
+    lss = LinearizedSS(ẋ0 = ẋp0, x0 = xp0, u0 = up0, y0 = yp0,
+                      A = Ap, B = Bp, C = Cp, D = Dp)
+
+    if model === :full
+        return lss
+
+    elseif model === :lon
+        x_labels = [:q, :θ, :TAS, :α, :h, :α_filt, :ω_eng, :thr_p, :ele_p]
+        u_labels = [:throttle_cmd, :elevator_cmd]
+        y_labels = vcat(x_labels, [:f_x, :f_z, :EAS, :γ, :climb_rate, :throttle_cmd, :elevator_cmd])
+        return Control.Continuous.submodel(lss; x = x_labels, u = u_labels, y = y_labels)
+
+    elseif model === :lat
+        x_labels = [:p, :r, :ψ, :φ, :TAS, :β, :β_filt, :ail_p, :rud_p]
+        u_labels = [:aileron_cmd, :rudder_cmd]
+        y_labels = vcat(x_labels, [:f_y, :χ, :aileron_cmd, :rudder_cmd])
+        return Control.Continuous.submodel(lss; x = x_labels, u = u_labels, y = y_labels)
+
+    else
+        error("Valid model keyword values: :full, :lon, :lat")
+
+    end
+
+end
+
+
+
 #sweeps the envelope in EAS and altitude to generate each control channel's gain
 #scheduling lookup tables
 
