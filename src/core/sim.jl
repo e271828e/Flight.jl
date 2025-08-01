@@ -580,6 +580,12 @@ end
 
 function run!(sim::Simulation; pace = Inf)
 
+    req_threads = 1 + length(sim.interfaces) #sim loop + interfaces
+    threads = Threads.nthreads()
+    req_threads <= threads || error(
+        "Running this simulation requires at least $req_threads available
+        threads, the current Julia session only has $threads")
+
     sim.control.pace = pace
 
     @sync begin
@@ -592,6 +598,12 @@ function run!(sim::Simulation; pace = Inf)
 end
 
 function run_interactive!(sim::Simulation; pace = 1.0)
+
+    req_threads = 2 + length(sim.interfaces) + 2 #GUI + sim loop + interfaces
+    threads = Threads.nthreads()
+    req_threads <= threads || error(
+        "Running this simulation requires at least $req_threads available
+        threads, the current Julia session only has $threads")
 
     sim.control.pace = pace
 
