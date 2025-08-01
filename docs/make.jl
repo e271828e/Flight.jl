@@ -9,7 +9,7 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "Showcase" => ["showcase/ex01/ex01.md",],
-        "API" => "api.md",
+        # "API" => "api.md",
     ],
     format = Documenter.HTML(
         prettyurls = true,

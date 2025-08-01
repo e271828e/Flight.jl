@@ -119,6 +119,7 @@ function submodel(cmp::LinearizedSS; x = keys(cmp.x0), u = keys(cmp.u0), y = key
     x0 = cmp.x0[x_ind]
     u0 = cmp.u0[u_ind]
     y0 = cmp.y0[y_ind]
+
     A = cmp.A[x_ind, x_ind]
     B = cmp.B[x_ind, u_ind]
     C = cmp.C[y_ind, x_ind]

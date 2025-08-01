@@ -20,7 +20,6 @@ includet(normpath("aircraft/c172/test_c172x.jl")); using .TestC172X
 includet(normpath("aircraft/c172/test_c172x1.jl")); using .TestC172Xv1
 
 test_gui()
-
 test_quaternions()
 test_attitude()
 test_geodesy()

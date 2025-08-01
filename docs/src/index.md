@@ -1,11 +1,9 @@
 ## Installation
-`Flight.jl` is not registered yet, so you'll need to install it from the repo URL:
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/e271828e/Flight.jl.git")
+Pkg.add("Flight")
 ```
-
 
 !!! warning "Configuring Julia for Multithreading"
 
@@ -25,7 +23,7 @@ Pkg.add(url="https://github.com/e271828e/Flight.jl.git")
 `Flight.jl` offers a powerful and versatile framework for aircraft modeling, analysis and
 simulation. Its design fully leverages Julia's expressiveness, extensibility and performance.
 
-It is architected in three distinct layers:
+It is organized in three distinct layers:
 
 - A lightweight, domain-agnostic engine for modeling and simulation of
   complex systems with hybrid dynamics (`FlightCore`).
@@ -34,9 +32,7 @@ It is architected in three distinct layers:
 
 - A collection of specific aircraft implementations (`FlightAircraft`).
 
-## Feature Summary
-
-Here are some of the package's highlights:
+Key features:
 
 *   **Hierarchical Modeling:** Enables building complex systems from simpler, reusable components,
     leveraging `ComponentArrays.jl` for clarity and convenience.

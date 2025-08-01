@@ -83,12 +83,11 @@ Subsampled(md::D) where {D <: ModelDefinition} = Subsampled{D}(md, 1)
 ################################################################################
 ################################### Model #####################################
 
-#type parameter D is needed for dispatching, the rest for type stability.
-#Model's mutability only required for y updates; reassigning any other field is
-#disallowed to avoid breaking the references in the submodel hierarchy
-
-#storing t, _n and _Δt_root as RefValues allows implicit propagation of updates
-#down the submodel hierarchy
+# type parameter D is needed for dispatching, the rest for type stability.
+# Model's mutability only required for y updates; reassigning any other field is
+# disallowed to avoid breaking the references in the submodel hierarchy. t, _n
+# and _Δt_root are stored as RefValues to allow implicit propagation of updates
+# down the submodel hierarchy
 
 mutable struct Model{D <: ModelDefinition, Y, U, X, S, C, B}
     y::Y #output

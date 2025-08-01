@@ -5,7 +5,7 @@
 We have the nonlinear system:
 $$
 \dot{x} = f(x, u)\\
-y = h(x, u)
+z = h(x, u)
 $$
 
 Here, $z$ represents a vector of output variables to be commanded, rather than the system's complete measurement vector, and our goal is to drive it to a reference value $z^*$.

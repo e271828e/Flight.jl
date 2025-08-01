@@ -447,34 +447,6 @@ function AircraftBase.assign_x!(vehicle::Model{<:C172S.Vehicle{NED}}, x::Abstrac
 
 end
 
-function Control.Continuous.LinearizedSS(
-            vehicle::Model{<:C172S.Vehicle{NED}},
-            trim_params::C172.TrimParameters = C172.TrimParameters();
-            model::Symbol = :full)
-
-    lm = linearize!(vehicle, trim_params)
-
-    if model === :full
-        return lm
-
-    elseif model === :lon
-        x_labels = [:q, :θ, :v_x, :v_z, :h, :α_filt, :ω_eng]
-        u_labels = [:throttle, :elevator]
-        y_labels = vcat(x_labels, [:f_x, :f_z, :α, :EAS, :TAS, :γ, :c, :throttle_out, :elevator_out])
-        return Control.Continuous.submodel(lm; x = x_labels, u = u_labels, y = y_labels)
-
-    elseif model === :lat
-        x_labels = [:p, :r, :ψ, :φ, :v_x, :v_y, :β_filt]
-        u_labels = [:aileron, :rudder]
-        y_labels = vcat(x_labels, [:f_y, :β, :χ, :aileron_out, :rudder_out])
-        return Control.Continuous.submodel(lm; x = x_labels, u = u_labels, y = y_labels)
-
-    else
-        error("Valid model keyword values: :full, :lon, :lat")
-
-    end
-
-end
 
 ################################################################################
 ############################### Versions #######################################

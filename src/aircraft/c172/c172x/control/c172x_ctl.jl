@@ -63,9 +63,9 @@ v2θ_enabled(mode::LonControlMode) = (mode === lon_thr_EAS)
 @kwdef struct XPitch <: FieldVector{6, Float64}
     q::Float64 = 0.0 #pitch rate
     θ::Float64 = 0.0 #pitch angle
-    v_x::Float64 = 0.0 #aerodynamic velocity, x body
-    v_z::Float64 = 0.0 #aerodynamic velocity, z body
-    α_filt::Float64 = 0.0 #filtered AoA
+    EAS::Float64 = 0.0 #equivalent airspeed
+    α::Float64 = 0.0 #AoA
+    α_filt::Float64 = 0.0 #filtered AoA (from aerodynamics model)
     ele_p::Float64 = 0.0 #elevator actuator state
 end
 
@@ -78,11 +78,12 @@ function XPitch(vehicle::Model{<:C172X.Vehicle})
 
     q = ω_eb_b[2]
     θ = e_nb.θ
-    v_x, _, v_z = airflow.v_wb_b
+    EAS = airflow.EAS
+    α = aero.α
     α_filt = aero.α_filt
     ele_p = act.elevator.pos
 
-    XPitch(; q, θ, v_x, v_z, α_filt, ele_p)
+    XPitch(; q, θ, EAS, α, α_filt, ele_p)
 
 end
 
@@ -297,9 +298,9 @@ p2φ_enabled(mode::LatControlMode) = (mode === lat_p_β)
     p::Float64 = 0.0 #roll rate
     r::Float64 = 0.0 #yaw rate
     φ::Float64 = 0.0; #bank angle
-    v_x::Float64 = 0.0 #aerodynamic velocity, x body
-    v_y::Float64 = 0.0 #aerodynamic velocity, y body
-    β_filt::Float64 = 0.0; #filtered AoS
+    EAS::Float64 = 0.0 #equivalent airspeed
+    β::Float64 = 0.0 #AoS
+    β_filt::Float64 = 0.0; #filtered AoS (from aerodynamics model)
     ail_p::Float64 = 0.0; #aileron actuator states
     rud_p::Float64 = 0.0; #rudder actuator states
 end
@@ -312,12 +313,13 @@ function XLat(vehicle::Model{<:C172X.Vehicle})
 
     p, _, r = ω_eb_b
     φ = e_nb.φ
-    v_x, v_y, _ = airflow.v_wb_b
+    EAS = airflow.EAS
+    β = aero.β
     β_filt = aero.β_filt
     ail_p = act.aileron.pos
     rud_p = act.rudder.pos
 
-    XLat(; p, r, φ, v_x, v_y, β_filt, ail_p, rud_p)
+    XLat(; p, r, φ, EAS, β, β_filt, ail_p, rud_p)
 
 end
 

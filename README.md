@@ -1,16 +1,27 @@
 # Flight.jl
 
 [![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://e271828e.github.io/Flight.jl/dev/)
+[![CI](https://github.com/e271828e/Flight.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/e271828e/Flight.jl/actions/workflows/CI.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+
 *A high-performance, extensible flight dynamics framework for Julia.*
+
+![Flight.jl GUI with X-Plane 12 Visualization](docs/src/assets/github.png?raw=true)
+
+## Documentation
+
+[Documentation](https://e271828e.github.io/Flight.jl/dev/) is still in its infancy. For a first
+glance at the package's capabilities, check out the end-to-end [interactive
+simulation](https://e271828e.github.io/Flight.jl/dev/showcase/ex01/ex01/) example.
+
 
 ## Overview
 
 `Flight.jl` offers a powerful and versatile framework for aircraft modeling, analysis and
 simulation. Its design fully leverages Julia's expressiveness, extensibility and performance.
 
-It is architected in three distinct layers:
+It is organized in three distinct layers:
 
 - A lightweight, domain-agnostic engine for modeling and simulation of
   complex systems with hybrid dynamics (`FlightCore`).
@@ -19,9 +30,7 @@ It is architected in three distinct layers:
 
 - A collection of specific aircraft implementations (`FlightAircraft`).
 
-## Feature Summary
-
-Here are some of the package's highlights:
+Key features:
 
 *   **Hierarchical Modeling:** Enables building complex systems from simpler, reusable components,
     leveraging `ComponentArrays.jl` for clarity and convenience.
@@ -46,15 +55,6 @@ Here are some of the package's highlights:
     functions. Seamlessly import linearized models into the `ControlSystems.jl` ecosystem for
     controller synthesis. Then, realize your design in a practical, discrete-time implementation, and
     validate it via nonlinear simulation.
-
-
-## Documentation
-
-[Documentation](https://e271828e.github.io/Flight.jl/dev/) is still in its infancy, but you can
-check out the [Interactive Simulation](https://e271828e.github.io/Flight.jl/dev/showcase/ex01/ex01/)
-showcase. Tutorials and usage examples are in the works.
-
-![Flight.jl GUI with X-Plane 12 Visualization](docs/src/assets/github.png?raw=true)
 
 
 ## License

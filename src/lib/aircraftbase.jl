@@ -326,10 +326,10 @@ function linearize!( vehicle::Model{<:Vehicle},
     u_axis = Axis(propertynames(u0))
     y_axis = Axis(propertynames(y0))
 
-    ẋ0_cv = ComponentVector(ẋ0, x_axis)
-    x0_cv = ComponentVector(x0, x_axis)
-    u0_cv = ComponentVector(u0, u_axis)
-    y0_cv = ComponentVector(y0, y_axis)
+    ẋ0_cv = ComponentVector(Vector(ẋ0), x_axis)
+    x0_cv = ComponentVector(Vector(x0), x_axis)
+    u0_cv = ComponentVector(Vector(u0), u_axis)
+    y0_cv = ComponentVector(Vector(y0), y_axis)
 
     A_cv = ComponentMatrix(A, x_axis, x_axis)
     B_cv = ComponentMatrix(B, x_axis, u_axis)

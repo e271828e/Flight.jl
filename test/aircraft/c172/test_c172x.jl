@@ -44,7 +44,7 @@ function test_linearization()
 
     @testset verbose = true "Linearization" begin
 
-        ss = Cessna172Xv0(NED()) |> Model |> Control.Continuous.LinearizedSS
+        ss = Cessna172Xv0(NED()) |> Model |> linearize!
 
     end #testset
 
