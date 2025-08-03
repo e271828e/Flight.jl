@@ -164,12 +164,8 @@ end
 
 ################################################################################
 
-function Base.propertynames(mdl::M) where {M <: Model}
-    (propertynames(mdl.constants)...,
-    propertynames(mdl.submodels)...,
-    :t,
-    :Δt,
-    )
+function Base.propertynames(::Model)
+    (:ẋ, :x, :u, :y, :s, :t, :Δt, :constants, :submodels)
 end
 
 Base.getproperty(mdl::Model, name::Symbol) = getproperty(mdl, Val(name))
