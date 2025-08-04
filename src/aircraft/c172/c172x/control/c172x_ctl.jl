@@ -569,6 +569,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:AltitudeGuidance},
 
 end
 
+#placeholder
 @kwdef struct SegmentGuidance <: AbstractControlChannel end
 @kwdef struct SegmentGuidanceY end
 

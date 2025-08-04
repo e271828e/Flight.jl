@@ -4,7 +4,7 @@ using StaticArrays, StructArrays, StructTypes
 
 using ..GUI
 
-export shf
+export shf, shp
 export Ranged, saturation, linear_scaling
 
 ################################################################################
@@ -13,6 +13,12 @@ export Ranged, saturation, linear_scaling
 function shf(s::S) where {S}
     for f in fieldnames(S)
         println("$f: $(getfield(s,f))")
+    end
+end
+
+function shp(s)
+    for f in propertynames(s)
+        println("$f: $(getproperty(s,f))")
     end
 end
 
