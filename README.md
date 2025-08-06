@@ -13,7 +13,7 @@
 
 [Documentation](https://e271828e.github.io/Flight.jl/dev/) is still in its infancy. For a first
 glance at the package's capabilities, check out the end-to-end [interactive
-simulation](https://e271828e.github.io/Flight.jl/dev/showcase/ex01/ex01/) example.
+simulation](https://e271828e.github.io/Flight.jl/dev/tutorials/tutorial01/tutorial01/) tutorial.
 
 
 ## Overview

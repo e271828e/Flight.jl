@@ -1,7 +1,7 @@
 using Sockets
 using Flight
 
-function ex01(; ac::Cessna172 = Cessna172Xv1(),
+function tutorial01(; ac::Cessna172 = Cessna172Xv1(),
                 situation::Symbol = :ground,
                 xp12_address = IPv4("127.0.0.1"),
                 xp12_port = 49000,
@@ -59,9 +59,9 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
 
     Sim.run_interactive!(sim)
 
-    save_plots(TimeSeries(sim).ac.vehicle.kinematics, normpath("tmp/plots/ex01/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).ac.vehicle.airflow, normpath("tmp/plots/ex01/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).ac.vehicle.dynamics, normpath("tmp/plots/ex01/dyn"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).ac.vehicle.kinematics, normpath("tmp/plots/tutorial01/kin"); Plotting.defaults..., linewidth = 2,)
+    save_plots(TimeSeries(sim).ac.vehicle.airflow, normpath("tmp/plots/tutorial01/air"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).ac.vehicle.dynamics, normpath("tmp/plots/tutorial01/dyn"); Plotting.defaults...)
     # save_plots(TimeSeries(sim).ac.vehicle.dynamics; Plotting.defaults...)
 
     return sim
