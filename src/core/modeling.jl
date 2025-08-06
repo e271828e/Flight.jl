@@ -315,17 +315,22 @@ end
 ################################################################################
 ############################### Inspection #####################################
 
-#prevent monstrous type signatures from flooding the REPL
-function Base.show(io::IO, ::MIME"text/plain", x::Union{Type{<:Model}, Type{<:ModelDefinition}})
-    str = sprint(show, x)
+#we need to prevent monstrous type signatures from flooding the REPL
+
+#only print the truncated type
+function Base.show(io::IO, ::D) where {D <: ModelDefinition}
     maxlen = 100
-    length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
+    md_str = sprint(show, D)
+    md_str = (length(md_str) < maxlen ? md_str : first(md_str, maxlen) * "...")
+    write(io, md_str * "(...)")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", x::Union{Model, ModelDefinition})
-    str = sprint(show, x)
-    maxlen = 200
-    length(str) > maxlen ? print(io, first(str, maxlen), "...") : print(io, str)
+#only print the truncated ModelDefinition type parameter
+function Base.show(io::IO, ::Model{D}) where {D <: ModelDefinition}
+    maxlen = 100 #maximum length for ModelDefinition type parameter
+    md_str = sprint(show, D)
+    md_str = (length(md_str) < maxlen ? md_str : first(md_str, maxlen) * "...")
+    write(io, "Model{" * md_str * "}(...)")
 end
 
 #enable hierarchy inspection with AbstractTrees.print_tree
