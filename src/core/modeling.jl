@@ -335,6 +335,6 @@ end
 
 #enable hierarchy inspection with AbstractTrees.print_tree
 AbstractTrees.children(node::Model) = node.submodels
-AbstractTrees.printnode(io::IO, ::Model{D}) where {D} = show(io, MIME"text/plain"(), D)
+AbstractTrees.printnode(io::IO, node::Model) = show(io, node)
 
 end #module
