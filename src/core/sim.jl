@@ -687,6 +687,7 @@ TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
 ############################### Inspection #####################################
 
 #prevent monstrous type signatures from flooding the REPL
+
 function Base.show(io::IO, ::Simulation{D}) where {D <: ModelDefinition}
     maxlen = 100 #maximum length for ModelDefinition type parameter
     md_str = sprint(show, D)
@@ -694,5 +695,11 @@ function Base.show(io::IO, ::Simulation{D}) where {D <: ModelDefinition}
     write(io, "Simulation{" * md_str * "}(...)")
 end
 
+function Base.show(io::IO, ::TimeSeries{D}) where {D}
+    maxlen = 200 #maximum length for ModelDefinition type parameter
+    dtype_str = sprint(show, D)
+    dtype_str = (length(dtype_str) < maxlen ? dtype_str : first(dtype_str, maxlen) * "...")
+    write(io, "TimeSeries{" * dtype_str * "}(...)")
+end
 
 end #module
