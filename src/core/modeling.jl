@@ -164,8 +164,10 @@ end
 
 ################################################################################
 
-function Base.propertynames(::Model)
-    (:ẋ, :x, :u, :y, :s, :t, :Δt, :constants, :submodels)
+function Base.propertynames(mdl::Model)
+    constant_names = isnothing(mdl.constants) ? tuple() : keys(mdl.constants)
+    submodel_names = isnothing(mdl.submodels) ? tuple() : keys(mdl.submodels)
+    (:ẋ, :x, :u, :y, :s, :t, :Δt, :constants, constant_names..., :submodels, submodel_names...)
 end
 
 Base.getproperty(mdl::Model, name::Symbol) = getproperty(mdl, Val(name))
