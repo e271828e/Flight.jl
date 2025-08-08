@@ -1,7 +1,7 @@
 using Sockets
 using Flight
 
-function ex01(; ac::Cessna172 = Cessna172Xv1(),
+function tutorial01(; aircraft::Cessna172 = Cessna172Xv1(),
                 situation::Symbol = :ground,
                 xp12_address = IPv4("127.0.0.1"),
                 xp12_port = 49000,
@@ -13,18 +13,18 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
     ψ_LOWS15 = deg2rad(157)
 
     #horizontal terrain model with elevation matching LOWS runway 15
-    trn = HorizontalTerrain(h_LOWS15)
+    terrain = HorizontalTerrain(h_LOWS15)
 
     #default atmospheric model
-    atm = SimpleAtmosphere()
+    atmosphere = SimpleAtmosphere()
 
     #define world and build Model for simulation
-    world = SimpleWorld(ac, atm, trn) |> Model
+    world = SimpleWorld(aircraft, atmosphere, terrain) |> Model
 
     if situation === :ground
         #initial condition specified through aircraft frame kinematics
         initializer = KinInit(;
-            loc = loc_LOWS15, #2D location
+            location = loc_LOWS15, #2D location
             h = h_LOWS15 + C172.Δh_to_gnd, #altitude
             q_nb = REuler(ψ_LOWS15, 0, 0), #attitude with respect to NED frame
             ω_wb_b = zeros(3), #angular velocity
@@ -59,10 +59,10 @@ function ex01(; ac::Cessna172 = Cessna172Xv1(),
 
     Sim.run_interactive!(sim)
 
-    save_plots(TimeSeries(sim).ac.vehicle.kinematics, normpath("tmp/plots/ex01/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).ac.vehicle.airflow, normpath("tmp/plots/ex01/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).ac.vehicle.dynamics, normpath("tmp/plots/ex01/dyn"); Plotting.defaults...)
-    # save_plots(TimeSeries(sim).ac.vehicle.dynamics; Plotting.defaults...)
+    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/tutorial01/kin"); Plotting.defaults..., linewidth = 2,)
+    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/tutorial01/air"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/tutorial01/dyn"); Plotting.defaults...)
+    # save_plots(TimeSeries(sim).aircraft.vehicle.dynamics; Plotting.defaults...)
 
     return sim
 
