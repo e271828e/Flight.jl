@@ -26,9 +26,9 @@ function test_c172x1()
     end
 end
 
-y_kin(ac::Model{<:Cessna172Xv1}) = ac.y.vehicle.kinematics
-y_air(ac::Model{<:Cessna172Xv1}) = ac.y.vehicle.airflow
-y_aero(ac::Model{<:Cessna172Xv1}) = ac.y.vehicle.systems.aero
+y_kin(aircraft::Model{<:Cessna172Xv1}) = aircraft.y.vehicle.kinematics
+y_air(aircraft::Model{<:Cessna172Xv1}) = aircraft.y.vehicle.airflow
+y_aero(aircraft::Model{<:Cessna172Xv1}) = aircraft.y.vehicle.systems.aero
 
 function test_control_modes()
 
@@ -40,9 +40,9 @@ function test_control_modes()
     h_trn = HOrth(0.0)
     world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
-    ac = world.ac
-    act = ac.vehicle.systems.act
-    ctl = ac.avionics.ctl
+    aircraft = world.aircraft
+    act = aircraft.vehicle.systems.act
+    ctl = aircraft.avionics.ctl
 
     init_gnd = C172.Init(KinInit( h = h_trn + 1.9))
     init_air = C172.TrimParameters()
@@ -102,7 +102,7 @@ function test_control_modes()
 
     #put the aircraft in its nominal design point
     Sim.init!(sim, init_air)
-    y_kin_trim = y_kin(ac)
+    y_kin_trim = y_kin(aircraft)
 
     ############################### direct control #############################
 
@@ -115,8 +115,8 @@ function test_control_modes()
 
         #with direct surface control, trim state must be initially preserved
         step!(sim, 10, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b, y_kin_trim.ω_wb_b; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b, y_kin_trim.v_eb_b; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b, y_kin_trim.ω_wb_b; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b, y_kin_trim.v_eb_b; atol = 1e-2))
 
         #test for allocations in the controller's current state
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -136,14 +136,14 @@ function test_control_modes()
 
         #check the correct parameters are loaded and assigned to the controller
         te2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "e2e_lookup.h5"))
-        C_fwd = te2te_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
+        C_fwd = te2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
         @test all(isapprox.(ctl.y.lon_ctl.e2e_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #a small initial transient when engaging the SAS is acceptable
         #once active, trim equilibrium must be preserved for longer
         step!(sim, 30, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #test for allocations in the current control mode
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -162,13 +162,13 @@ function test_control_modes()
 
         #check the correct parameters are loaded and assigned to the controller
         ar2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "ar2ar_lookup.h5"))
-        C_fwd = ar2ar_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
+        C_fwd = ar2ar_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
         @test all(isapprox.(ctl.y.lat_ctl.ar2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #with ail+rud SAS active, trim state must be preserved for longer
         step!(sim, 10, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[1], y_kin_trim.ω_wb_b[1]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[1], y_kin_trim.ω_wb_b[1]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #test for allocations in the current control mode
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -188,21 +188,21 @@ function test_control_modes()
 
         #check the correct parameters are loaded and assigned to the controller
         φβ2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
-        C_fwd = φβ2ar_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).C_fwd
+        C_fwd = φβ2ar_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
         @test all(isapprox.(ctl.y.lat_ctl.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #a small initial transient when engaging the SAS is acceptable
         #once active, trim equilibrium must be preserved
         step!(sim, 10, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[1]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[1]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_ref = π/12
         ctl.u.β_ref = deg2rad(3)
         step!(sim, 10, true)
-        @test isapprox(ctl.u.φ_ref, y_kin(ac).e_nb.φ; atol = 1e-3)
-        @test isapprox(Float64(ctl.u.β_ref), y_aero(ac).β; atol = 1e-3)
+        @test isapprox(ctl.u.φ_ref, y_kin(aircraft).e_nb.φ; atol = 1e-3)
+        @test isapprox(Float64(ctl.u.β_ref), y_aero(aircraft).β; atol = 1e-3)
 
         #test for allocations in the current control mode
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -226,24 +226,24 @@ function test_control_modes()
 
         #check the correct parameters are loaded and assigned to the controller
         p2φ_lookup = load_pid_lookup(joinpath(data_folder, "p2φ_lookup.h5"))
-        k_p = p2φ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
+        k_p = p2φ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lat_ctl.p2φ_pid.k_p, k_p; atol = 1e-6))
 
         #the control mode must activate without transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #the controller must keep trim values in steady state
         step!(sim, 10, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         ctl.u.p_ref = 0.02
         ctl.u.β_ref = deg2rad(3)
         step!(sim, 10, true)
-        @test isapprox(Float64(ctl.u.p_ref), y_kin(ac).ω_wb_b[1]; atol = 1e-3)
-        @test isapprox(ctl.u.β_ref, y_aero(ac).β; atol = 1e-3)
+        @test isapprox(Float64(ctl.u.p_ref), y_kin(aircraft).ω_wb_b[1]; atol = 1e-3)
+        @test isapprox(ctl.u.β_ref, y_aero(aircraft).β; atol = 1e-3)
 
         #test for allocations in the current control mode
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -268,27 +268,27 @@ function test_control_modes()
 
         #check the correct parameters are loaded and assigned to the controller
         χ2φ_lookup = load_pid_lookup(joinpath(data_folder, "χ2φ_lookup.h5"))
-        k_p = χ2φ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
+        k_p = χ2φ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lat_ctl.χ2φ_pid.k_p, k_p; atol = 1e-6))
 
         #with reference values matching their trim values, the control mode must activate
         #without transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking
         ctl.u.χ_ref = π/2
         step!(sim, 29, true)
         @test ctl.lat_ctl.u.χ_ref != 0
-        @test isapprox(ctl.u.χ_ref, y_kin(ac).χ_gnd; atol = 1e-2)
-        # @test isapprox(Float64(ctl.u.yaw_axis), y_aero(ac).β; atol = 1e-3)
+        @test isapprox(ctl.u.χ_ref, y_kin(aircraft).χ_gnd; atol = 1e-2)
+        # @test isapprox(Float64(ctl.u.yaw_axis), y_aero(aircraft).β; atol = 1e-3)
 
         #correct tracking with 10m/s of crosswind (N, current heading is E)
-        world.atm.wind.u.N = 10
+        world.atmosphere.wind.u.N = 10
         step!(sim, 10, true)
-        @test isapprox(ctl.u.χ_ref, y_kin(ac).χ_gnd; atol = 1e-2)
-        world.atm.wind.u.N = 0
+        @test isapprox(ctl.u.χ_ref, y_kin(aircraft).χ_gnd; atol = 1e-2)
+        world.atmosphere.wind.u.N = 0
 
         #test for allocations in the current control mode
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -313,14 +313,14 @@ function test_control_modes()
 
         #check the correct parameters are loaded and assigned to the controller
         q2e_lookup = load_pid_lookup(joinpath(data_folder, "q2e_lookup.h5"))
-        k_p = q2e_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
+        k_p = q2e_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lon_ctl.q2e_pid.k_p, k_p; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_ref = π/12
@@ -328,8 +328,8 @@ function test_control_modes()
         step!(sim, 10, true)
 
         @test ctl.lon_ctl.u.q_ref != 0
-        @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
-        @test isapprox(Float64(ac.y.vehicle.systems.act.throttle.cmd),
+        @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(aircraft).ω_wb_b[2]; atol = 1e-3)
+        @test isapprox(Float64(aircraft.y.vehicle.systems.act.throttle.cmd),
                         Float64(ctl.u.throttle_axis + ctl.u.throttle_offset); atol = 1e-3)
 
         #test for allocations in the current control mode
@@ -351,14 +351,14 @@ function test_control_modes()
         #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_ref = π/6
         ctl.u.θ_ref = deg2rad(5)
         step!(sim, 10, true)
-        @test isapprox(y_kin(ac).e_nb.θ, ctl.u.θ_ref; atol = 1e-4)
+        @test isapprox(y_kin(aircraft).e_nb.θ, ctl.u.θ_ref; atol = 1e-4)
 
         #test for allocations in the current control mode
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -379,20 +379,20 @@ function test_control_modes()
 
         #check the correct parameters are loaded and assigned to the controller
         v2θ_lookup = load_pid_lookup(joinpath(data_folder, "v2θ_lookup.h5"))
-        k_p = v2θ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
+        k_p = v2θ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lon_ctl.v2θ_pid.k_p, k_p; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_ref = π/6
         ctl.u.EAS_ref = 45
         step!(sim, 30, true)
-        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
+        @test all(isapprox.(y_air(aircraft).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -413,14 +413,14 @@ function test_control_modes()
         #check the correct parameters are loaded and assigned to v2t, the q
         #tracker is shared with other modes
         v2t_lookup = load_pid_lookup(joinpath(data_folder, "v2t_lookup.h5"))
-        k_p = v2t_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
+        k_p = v2t_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lon_ctl.v2t_pid.k_p, k_p; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking
         ctl.u.q_ref = -0.01
@@ -430,8 +430,8 @@ function test_control_modes()
         ctl.u.q_ref = 0.0
         step!(sim, 20, true)
 
-        @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(ac).ω_wb_b[2]; atol = 1e-3)
-        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
+        @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(aircraft).ω_wb_b[2]; atol = 1e-3)
+        @test all(isapprox.(y_air(aircraft).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -453,8 +453,8 @@ function test_control_modes()
         #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 0.1, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_ref = π/6
@@ -463,8 +463,8 @@ function test_control_modes()
         ctl.u.θ_ref = -deg2rad(3)
         step!(sim, 60, true)
 
-        @test isapprox(ctl.lon_ctl.u.θ_ref, y_kin(ac).e_nb.θ; atol = 1e-3)
-        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
+        @test isapprox(ctl.lon_ctl.u.θ_ref, y_kin(aircraft).e_nb.θ; atol = 1e-3)
+        @test all(isapprox.(y_air(aircraft).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -484,22 +484,22 @@ function test_control_modes()
 
         #check the correct parameters are loaded and assigned to the controller
         c2θ_lookup = load_pid_lookup(joinpath(data_folder, "c2θ_lookup.h5"))
-        k_p = c2θ_lookup(y_air(ac).EAS, Float64(y_kin(ac).h_e)).k_p
+        k_p = c2θ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lon_ctl.c2θ_pid.k_p, k_p; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #correct tracking while turning
         ctl.u.φ_ref = π/6
         ctl.u.EAS_ref = 45
         ctl.u.clm_ref = 2
         step!(sim, 30, true)
-        @test all(isapprox.(y_kin(ac).v_eb_n[3], -ctl.u.clm_ref; atol = 1e-1))
-        @test all(isapprox.(y_air(ac).EAS, ctl.u.EAS_ref; atol = 1e-1))
+        @test all(isapprox.(y_kin(aircraft).v_eb_n[3], -ctl.u.clm_ref; atol = 1e-1))
+        @test all(isapprox.(y_air(aircraft).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
         @test @ballocated(f_disc!(NoScheduling(), $world)) == 0
@@ -522,8 +522,8 @@ function test_guidance_modes()
     h_trn = HOrth(0.0)
     world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
-    ac = world.ac
-    ctl = ac.avionics.ctl
+    aircraft = world.aircraft
+    ctl = aircraft.avionics.ctl
 
     init_air = C172.TrimParameters()
     dt = Δt = 0.01
@@ -533,7 +533,7 @@ function test_guidance_modes()
     @testset verbose = true "Altitude Guidance" begin
 
         Sim.init!(sim, init_air)
-        y_kin_trim = y_kin(ac)
+        y_kin_trim = y_kin(aircraft)
 
         ctl.u.vrt_gdc_mode_req = vrt_gdc_alt
         ctl.u.lat_ctl_mode_req = lat_φ_β
@@ -544,8 +544,8 @@ function test_guidance_modes()
         #when trim reference values are kept, the guidance mode must activate without
         #transients
         step!(sim, 1, true)
-        @test all(isapprox.(y_kin(ac).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
-        @test all(isapprox.(y_kin(ac).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #all tests while turning
         ctl.u.φ_ref = π/12
@@ -555,21 +555,21 @@ function test_guidance_modes()
         @test ctl.y.lon_ctl_mode === lon_thr_EAS
         step!(sim, 60, true) #altitude is captured
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
-        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
 
         #reference changes within the current threshold do not prompt a mode change
-        ctl.u.h_ref = y_kin(ac).h_e - ctl.alt_gdc.s.h_thr / 2
+        ctl.u.h_ref = y_kin(aircraft).h_e - ctl.alt_gdc.s.h_thr / 2
         step!(sim, 1, true)
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
         step!(sim, 30, true) #altitude is captured
-        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
 
         ctl.u.h_ref = y_kin_trim.h_e - 100
         step!(sim, 1, true)
         @test ctl.y.lon_ctl_mode === lon_thr_EAS
         step!(sim, 80, true) #altitude is captured
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
-        @test isapprox.(y_kin(ac).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
 
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
 
@@ -592,6 +592,9 @@ function test_guidance_modes()
     end #testset
 
 end
+
+
+############################### JSON Loopback Test #############################
 
 struct JSONTestMapping <: IOMapping end
 
@@ -639,7 +642,7 @@ function IODevices.assign_input!(world::Model{<:SimpleWorld}, ::JSONTestMapping,
     #it is an empty JSON entity (either string, object or array). instead of
     #this check we could simply call isempty(JSON3.read(str)) but that would
     #mean parsing the string twice
-    length(str) > 2 && JSON3.read!(str, world.ac.avionics.ctl.u)
+    length(str) > 2 && JSON3.read!(str, world.aircraft.avionics.ctl.u)
 
     # isempty(str) |> println
     # JSON3.read(str) |> isempty |> println
@@ -667,87 +670,17 @@ function test_json_loopback(; save::Bool = true)
 
     #trigger compilation of parsing methods for AvionicsU before launching the
     #simulation
-    JSON3.read!(JSON3.write(world.ac.avionics.ctl.u, allow_inf=true), world.ac.avionics.ctl.u; allow_inf=true)
+    JSON3.read!(JSON3.write(world.aircraft.avionics.ctl.u, allow_inf=true), world.aircraft.avionics.ctl.u; allow_inf=true)
 
     Sim.run_interactive!(sim)
 
-    save && save_plots(TimeSeries(sim).ac.vehicle.kinematics,
+    save && save_plots(TimeSeries(sim).aircraft.vehicle.kinematics,
                         normpath("tmp/plots/test_c172x1/test_json_loopback/kin");
                         Plotting.defaults...)
 
     return nothing
 
 end
-
-
-function test_sim(; save::Bool = true)
-
-    h_trn = HOrth(427.2);
-
-    # on ground
-    # initializer = KinInit(
-    #     loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
-    #     q_nb = REuler(deg2rad(157), 0, 0),
-    #     h = h_trn + 1.81) |> C172.Init
-
-    # on air, automatically trimmed
-    initializer = C172.TrimParameters(
-        Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
-
-    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
-
-    sim = Simulation(world; t_end = 30)
-    Sim.init!(sim, initializer)
-
-    Sim.run!(sim)
-
-    save && save_plots(TimeSeries(sim).ac.vehicle.kinematics,
-                        normpath("tmp/plots/test_c172x1/test_sim/kin");
-                        Plotting.defaults...)
-
-    return nothing
-
-end
-
-function test_sim_interactive(; save::Bool = true)
-
-    h_trn = HOrth(427.2);
-
-    # on ground
-    initializer = C172.Init(KinInit(
-        loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
-        q_nb = REuler(deg2rad(157), 0, 0),
-        h = h_trn + C172.Δh_to_gnd))
-
-    # # on air, automatically trimmed
-    # initializer = C172.TrimParameters(
-    #     Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
-
-    trn = HorizontalTerrain(h_trn)
-    ac = Cessna172Xv1(WA(), trn) |> Model;
-
-    sim = Simulation(ac; dt = 1/60, Δt = 1/60, t_end = 1000)
-
-    Sim.init!(sim, initializer)
-
-    for joystick in update_connected_joysticks()
-        Sim.attach!(sim, joystick)
-    end
-
-    xpc = XPlane12Control()
-    # xpc = XPlane12Control(address = IPv4("192.168.1.2"))
-    Sim.attach!(sim, xpc)
-
-    Sim.run_interactive!(sim; pace = 1)
-
-    save && save_plots(TimeSeries(sim).ac.vehicle.kinematics,
-                        normpath("tmp/plots/test_c172x1/test_sim_interactive/kin");
-                        Plotting.defaults...)
-
-    return nothing
-
-end
-
 
 
 end #module

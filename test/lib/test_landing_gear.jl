@@ -114,10 +114,10 @@ function test_landing_gear_unit()
         @test length(contact.x) == 2
 
         terrain = HorizontalTerrain() |> Model
-        loc = NVector()
+        location = NVector()
 
         #set the initial 2D Location
-        h_trn = TerrainData(terrain, loc).elevation
+        h_trn = TerrainData(terrain, location).elevation
         h = h_trn + 0.9
 
         #wow = false
@@ -217,9 +217,9 @@ end
 
 function test_harness()
 
-    trn = HorizontalTerrain()
-    loc = LatLon()
-    h_trn = Terrain.TerrainData(trn, loc).elevation
+    terrain = HorizontalTerrain()
+    location = LatLon()
+    h_trn = TerrainData(terrain, location).elevation
 
     damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)
     strut = Strut(l_0 = 1.0, damper = damper)
@@ -234,7 +234,7 @@ function test_harness()
     v_eb_n = [0,0,0]
     ω_wb_b = [0,0,0]
     kin = KinInit(; h, v_eb_n, ω_wb_b, q_nb) |> KinData
-    f_ode!(ldg, kin, trn)
+    f_ode!(ldg, kin, terrain)
     f_step!(ldg)
     @show ldg.strut.y.wow
     @show ldg.contact.y.wr_b.F

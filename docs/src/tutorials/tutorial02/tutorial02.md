@@ -101,7 +101,7 @@ mdl.submodels
 
 ```@example tutorial02
 init_gnd = KinInit(;
-    loc = loc_LOWS15,
+    location = loc_LOWS15,
     h = h_LOWS15 + C172.Δh_to_gnd,
     q_nb = REuler(ψ_LOWS15, 0, 0),
     ) |> C172.Init

@@ -150,7 +150,7 @@ that by specifying the aircraft's frame kinematic state:
 
 ```@example tutorial01
 init_gnd = KinInit(;
-    loc = loc_LOWS15, #2D location
+    location = loc_LOWS15, #2D location
     h = h_LOWS15 + C172.Δh_to_gnd, #altitude, as an offset with respect to terrain elevation
     q_nb = REuler(ψ_LOWS15, 0, 0), #attitude with respect to NED frame, as Euler angles
     ω_wb_b = zeros(3), #angular velocity with respect to local tangent frame, aircraft frame coordinates

@@ -15,11 +15,11 @@ function tutorial02a()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    ac = Cessna172Xv1()
-    trn = HorizontalTerrain(h_LOWS15)
-    atm = SimpleAtmosphere()
+    aircraft = Cessna172Xv1()
+    terrain = HorizontalTerrain(h_LOWS15)
+    atmosphere = SimpleAtmosphere()
 
-    mdl = SimpleWorld(ac, atm, trn) |> Model
+    mdl = SimpleWorld(aircraft, atmosphere, terrain) |> Model
 
     initializer = C172.TrimParameters(;
         Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above LOWS runway 15
@@ -37,16 +37,16 @@ function tutorial02a()
     sim = Simulation(mdl; dt = 0.02, t_end = 100)
 
     Sim.step!(sim, 5, true)
-    @show mdl.ac.avionics.ctl.u.elevator_axis += 0.2
+    @show mdl.aircraft.avionics.ctl.u.elevator_axis += 0.2
     Sim.step!(sim, 1, true)
-    @show mdl.ac.avionics.ctl.u.elevator_axis -= 0.4
+    @show mdl.aircraft.avionics.ctl.u.elevator_axis -= 0.4
     Sim.step!(sim, 1, true)
-    @show mdl.ac.avionics.ctl.u.elevator_axis += 0.2
+    @show mdl.aircraft.avionics.ctl.u.elevator_axis += 0.2
     Sim.step!(sim, 30, true)
 
-    save_plots(TimeSeries(sim).ac.vehicle.kinematics, normpath("tmp/plots/tutorial02/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).ac.vehicle.airflow, normpath("tmp/plots/tutorial02/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).ac.vehicle.dynamics, normpath("tmp/plots/tutorial02/dyn"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/tutorial02/kin"); Plotting.defaults..., linewidth = 2,)
+    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/tutorial02/air"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/tutorial02/dyn"); Plotting.defaults...)
 
     return sim
 
@@ -59,14 +59,14 @@ function tutorial02b()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    ac = Cessna172Xv1()
-    trn = HorizontalTerrain(h_LOWS15)
-    atm = SimpleAtmosphere()
+    aircraft = Cessna172Xv1()
+    terrain = HorizontalTerrain(h_LOWS15)
+    atmosphere = SimpleAtmosphere()
 
-    mdl = SimpleWorld(ac, atm, trn) |> Model
+    mdl = SimpleWorld(aircraft, atmosphere, terrain) |> Model
 
     initializer = KinInit(;
-        loc = loc_LOWS15, #2D location
+        location = loc_LOWS15, #2D location
         h = h_LOWS15 + C172.Δh_to_gnd, #altitude
         q_nb = REuler(ψ_LOWS15, 0, 0), #attitude with respect to NED frame
         ω_wb_b = zeros(3), #angular velocity
@@ -76,11 +76,11 @@ function tutorial02b()
     Modeling.init!(mdl, initializer)
 
     phase = Ref(:startup)
-    user_callback! = let phase = phase, u = mdl.ac.avionics.ctl.u
+    user_callback! = let phase = phase, u = mdl.aircraft.avionics.ctl.u
         function (mdl::Model{<:SimpleWorld})
             if phase[] === :startup
                 u.eng_start = true
-                if mdl.y.ac.vehicle.systems.pwp.engine.state === Piston.eng_running
+                if mdl.y.aircraft.vehicle.systems.pwp.engine.state === Piston.eng_running
                     println("Engine started")
                     phase[] = :takeoff
                 end
@@ -93,9 +93,9 @@ function tutorial02b()
 
     Sim.step!(sim, 2, true)
 
-    # save_plots(TimeSeries(sim).ac.vehicle.kinematics, normpath("tmp/plots/tutorial02/kin"); Plotting.defaults..., linewidth = 2,)
-    # save_plots(TimeSeries(sim).ac.vehicle.airflow, normpath("tmp/plots/tutorial02/air"); Plotting.defaults...)
-    # save_plots(TimeSeries(sim).ac.vehicle.dynamics, normpath("tmp/plots/tutorial02/dyn"); Plotting.defaults...)
+    # save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/tutorial02/kin"); Plotting.defaults..., linewidth = 2,)
+    # save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/tutorial02/air"); Plotting.defaults...)
+    # save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/tutorial02/dyn"); Plotting.defaults...)
 
     return sim
 
@@ -108,11 +108,11 @@ function tutorial02c()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    ac = Cessna172Xv1()
-    trn = HorizontalTerrain(h_LOWS15)
-    atm = SimpleAtmosphere()
+    aircraft = Cessna172Xv1()
+    terrain = HorizontalTerrain(h_LOWS15)
+    atmosphere = SimpleAtmosphere()
 
-    mdl = SimpleWorld(ac, atm, trn) |> Model
+    mdl = SimpleWorld(aircraft, atmosphere, terrain) |> Model
 
     initializer = C172.TrimParameters(;
         Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above LOWS runway 15
@@ -130,21 +130,21 @@ function tutorial02c()
     sim = Simulation(mdl; dt = 0.02, t_end = 2000)
 
     Sim.step!(sim, 10, true)
-    @show mdl.ac.avionics.ctl.u.lon_ctl_mode_req = lon_thr_EAS
-    @show mdl.ac.avionics.ctl.u.throttle_axis = 1.0
-    @show mdl.ac.avionics.ctl.u.EAS_ref = 40.0
+    @show mdl.aircraft.avionics.ctl.u.lon_ctl_mode_req = lon_thr_EAS
+    @show mdl.aircraft.avionics.ctl.u.throttle_axis = 1.0
+    @show mdl.aircraft.avionics.ctl.u.EAS_ref = 40.0
 
-    @show mdl.ac.avionics.ctl.u.lat_ctl_mode_req = lat_φ_β
-    @show mdl.ac.avionics.ctl.u.φ_ref = deg2rad(30.0)
-    @show mdl.ac.avionics.ctl.u.β_ref = deg2rad(0.0)
+    @show mdl.aircraft.avionics.ctl.u.lat_ctl_mode_req = lat_φ_β
+    @show mdl.aircraft.avionics.ctl.u.φ_ref = deg2rad(30.0)
+    @show mdl.aircraft.avionics.ctl.u.β_ref = deg2rad(0.0)
 
     # Sim.step!(sim, 60, true)
     Sim.step!(sim, 60)
     # Sim.run!(sim)
 
-    save_plots(TimeSeries(sim).ac.vehicle.kinematics, normpath("tmp/plots/tutorial02/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).ac.vehicle.airflow, normpath("tmp/plots/tutorial02/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).ac.vehicle.dynamics, normpath("tmp/plots/tutorial02/dyn"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/tutorial02/kin"); Plotting.defaults..., linewidth = 2,)
+    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/tutorial02/air"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/tutorial02/dyn"); Plotting.defaults...)
 
     return sim
 

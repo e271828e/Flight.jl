@@ -337,6 +337,15 @@ end
 
 #enable hierarchy inspection with AbstractTrees.print_tree
 AbstractTrees.children(node::Model) = node.submodels
-AbstractTrees.printnode(io::IO, node::Model) = show(io, node)
+
+#print the Model hierarchy showing the Model at each node
+function AbstractTrees.print_tree(mdl::Model, s::Symbol; kw...)
+    print_tree(stdout, mdl, s; kw...)
+end
+
+#print the Model hierarchy showing property s at each node
+function AbstractTrees.print_tree(io::IO, mdl::Model, s::Symbol; kw...)
+    print_tree((io::IO, mdl::Model)->print(io, getproperty(mdl, s)), io, mdl; kw...)
+end
 
 end #module

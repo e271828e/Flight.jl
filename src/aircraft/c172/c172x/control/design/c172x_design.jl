@@ -25,8 +25,8 @@ using Interpolations
 export get_design_model!, generate_lookups
 
 
-function get_design_model!(ac::Model{<:C172X.Aircraft{NED}}, args...; kwargs...)
-    get_design_model!(ac.vehicle, args...; kwargs...)
+function get_design_model!(aircraft::Model{<:C172X.Aircraft{NED}}, args...; kwargs...)
+    get_design_model!(aircraft.vehicle, args...; kwargs...)
 end
 
 function get_design_model!(
@@ -138,9 +138,9 @@ end
 function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
                     global_search = false)
 
-    ac = Cessna172Xv0(NED()) |> Model #linearization requires NED kinematics
+    aircraft = Cessna172Xv0(NED()) |> Model #linearization requires NED kinematics
 
-    lss_lon = get_design_model!(ac, design_point; model = :lon);
+    lss_lon = get_design_model!(aircraft, design_point; model = :lon);
     P_lon = named_ss(lss_lon)
 
     x_labels_lon = keys(lss_lon.x0) |> collect
@@ -391,10 +391,10 @@ end
 function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
                     global_search::Bool = false)
 
-    ac = Cessna172Xv0(NED()) |> Model #linearization requires NED kinematics
+    aircraft = Cessna172Xv0(NED()) |> Model #linearization requires NED kinematics
 
     #complete lateral model
-    lss_lat = get_design_model!(ac, design_point; model = :lat);
+    lss_lat = get_design_model!(aircraft, design_point; model = :lat);
     P_lat = named_ss(lss_lat);
 
     x_labels_lat = keys(lss_lat.x0) |> collect

@@ -34,7 +34,7 @@ function test_dynamics()
         kin = Model(WA())
 
         kin_init = KinInit(
-            loc = LatLon(0, 0),
+            location = LatLon(0, 0),
             h = HOrth(0),
             ω_wb_b = [0.0, 0.0, 0.0],
             q_nb = REuler(0.0, 0.0, 0.0),

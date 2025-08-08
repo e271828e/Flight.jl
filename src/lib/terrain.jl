@@ -24,8 +24,8 @@ Geodesy.HOrth(data::TerrainData) = data.elevation
 
 abstract type AbstractTerrain <: ModelDefinition end
 
-function TerrainData(trn::Model{<:AbstractTerrain}, loc::Abstract2DLocation)
-    throw(MethodError(TerrainData, (trn, loc)))
+function TerrainData(terrain::Model{<:AbstractTerrain}, location::Abstract2DLocation)
+    throw(MethodError(TerrainData, (terrain, location)))
 end
 
 ############################# HorizontalTerrain ################################
@@ -39,12 +39,12 @@ Modeling.U(::HorizontalTerrain) = Ref(DryTarmac)
 
 @no_updates HorizontalTerrain
 
-function TerrainData(trn::Model{<:HorizontalTerrain}, ::Abstract2DLocation)
-    TerrainData(trn)
+function TerrainData(terrain::Model{<:HorizontalTerrain}, ::Abstract2DLocation)
+    TerrainData(terrain)
 end
 
-function TerrainData(trn::Model{<:HorizontalTerrain})
-    TerrainData(trn.elevation, SVector{3,Float64}(0,0,1), trn.u[])
+function TerrainData(terrain::Model{<:HorizontalTerrain})
+    TerrainData(terrain.elevation, SVector{3,Float64}(0,0,1), terrain.u[])
 end
 
 function GUI.draw!(mdl::Model{<:HorizontalTerrain},

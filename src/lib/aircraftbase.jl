@@ -58,8 +58,8 @@ struct VehicleY{S, K}
     airflow::AirflowData
 end
 
-Modeling.Y(ac::Vehicle) = VehicleY(
-    Modeling.Y(ac.systems),
+Modeling.Y(vehicle::Vehicle) = VehicleY(
+    Modeling.Y(vehicle.systems),
     KinData(),
     DynamicsData(),
     AirflowData())
@@ -103,8 +103,8 @@ function Modeling.init!( mdl::Model{<:Vehicle},
     MethodError(Modeling.init!, (mdl, condition, args...)) |> throw
 end
 
-function trim!( ac::Model, condition::AbstractTrimParameters, args...)
-    MethodError(trim!, (ac, condition, args...)) |> throw
+function trim!( aircraft::Model, params::AbstractTrimParameters, args...)
+    MethodError(trim!, (aircraft, params, args...)) |> throw
 end
 
 #trim constraint: given the body-axes wind-relative velocity, the wind-relative
@@ -167,13 +167,13 @@ function Modeling.f_ode!(vehicle::Model{<:Vehicle},
 end
 
 function Modeling.f_step!(vehicle::Model{<:Vehicle},
-                         atm::Model{<:AbstractAtmosphere},
-                         trn::Model{<:AbstractTerrain})
+                         atmosphere::Model{<:AbstractAtmosphere},
+                         terrain::Model{<:AbstractTerrain})
 
     @unpack systems, kinematics, dynamics = vehicle.submodels
 
     f_step!(kinematics)
-    f_step!(systems, atm, trn)
+    f_step!(systems, atmosphere, terrain)
 
 end
 
@@ -215,34 +215,34 @@ assign!(::Model{<:AbstractSystems}, ::Model{NoAvionics}) = nothing
     avionics::A = NoAvionics()
 end
 
-function Modeling.f_ode!(ac::Model{<:Aircraft},
+function Modeling.f_ode!(aircraft::Model{<:Aircraft},
                         atmosphere::Model{<:AbstractAtmosphere},
                         terrain::Model{<:AbstractTerrain})
 
-    @unpack vehicle, avionics = ac.submodels
+    @unpack vehicle, avionics = aircraft
     f_ode!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_ode!(vehicle, atmosphere, terrain)
-    update_output!(ac)
+    update_output!(aircraft)
 end
 
 function Modeling.f_disc!(::NoScheduling,
-                        ac::Model{<:Aircraft},
+                        aircraft::Model{<:Aircraft},
                         atmosphere::Model{<:AbstractAtmosphere},
                         terrain::Model{<:AbstractTerrain})
 
-    @unpack vehicle, avionics = ac.submodels
+    @unpack vehicle, avionics = aircraft
     f_disc!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_disc!(vehicle, atmosphere, terrain)
-    update_output!(ac)
+    update_output!(aircraft)
 end
 
-function Modeling.f_step!(ac::Model{<:Aircraft},
+function Modeling.f_step!(aircraft::Model{<:Aircraft},
                          atmosphere::Model{<:AbstractAtmosphere},
                          terrain::Model{<:AbstractTerrain})
 
-    @unpack vehicle, avionics = ac.submodels
+    @unpack vehicle, avionics = aircraft
     f_step!(vehicle, atmosphere, terrain)
 end
 
@@ -253,20 +253,20 @@ function Modeling.init!( aircraft::Model{<:Aircraft},
                         condition::Union{<:VehicleInitializer, <:AbstractTrimParameters},
                         args...)
 
-    @unpack vehicle, avionics = aircraft.submodels
+    @unpack vehicle, avionics = aircraft
     Modeling.init!(vehicle, condition, args...)
     Modeling.init!(avionics, vehicle) #avionics init only relies on vehicle
     update_output!(aircraft)
 end
 
-Kinematics.KinData(ac::Model{<:Aircraft}) = KinData(ac.vehicle.kinematics)
+Kinematics.KinData(aircraft::Model{<:Aircraft}) = KinData(aircraft.vehicle.kinematics)
 
 
 ################################################################################
 ############################### XPlane12Control #################################
 
-function IODevices.extract_output(ac::Model{<:Aircraft}, ::XPlane12ControlMapping)
-    return Network.xpmsg_set_pose(XPlanePose(KinData(ac))) #UDP message
+function IODevices.extract_output(aircraft::Model{<:Aircraft}, ::XPlane12ControlMapping)
+    return Network.xpmsg_set_pose(XPlanePose(KinData(aircraft))) #UDP message
 end
 
 
@@ -281,7 +281,7 @@ y_linear(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(y_linear, (
 assign_x!(vehicle::Model{<:Vehicle}, x::AbstractVector{Float64}) = throw(MethodError(assign_x!, (vehicle, x)))
 assign_u!(vehicle::Model{<:Vehicle}, u::AbstractVector{Float64}) = throw(MethodError(assign_u!, (vehicle, u)))
 
-linearize!(ac::Model{<:Aircraft}, args...) = linearize!(ac.vehicle, args...)
+linearize!(aircraft::Model{<:Aircraft}, args...) = linearize!(aircraft.vehicle, args...)
 
 function linearize!( vehicle::Model{<:Vehicle},
                     trim_params::AbstractTrimParameters)
@@ -375,8 +375,8 @@ end
 
 
 function Control.Continuous.LinearizedSS(
-            ac::Model{<:Aircraft}, args...; kwargs...)
-    Control.Continuous.LinearizedSS(ac.vehicle, args...; kwargs...)
+            aircraft::Model{<:Aircraft}, args...; kwargs...)
+    Control.Continuous.LinearizedSS(aircraft.vehicle, args...; kwargs...)
 end
 
 ############################### Plotting #######################################
@@ -396,10 +396,10 @@ end
 ################################### GUI ########################################
 
 
-function GUI.draw!(ac::Model{<:Aircraft}, p_open::Ref{Bool} = Ref(true),
+function GUI.draw!(aircraft::Model{<:Aircraft}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Aircraft")
 
-    @unpack vehicle, avionics = ac.submodels
+    @unpack vehicle, avionics = aircraft
     CImGui.Begin(label, p_open)
 
     @cstatic c_phy=false c_avs=false begin

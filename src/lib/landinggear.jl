@@ -542,19 +542,19 @@ function Plotting.make_plots(ts::TimeSeries{<:ContactY}; kwargs...)
 
     pd[:f_c] = plot(ts.f_c;
         plot_title = "Normalized Contact Force",
-        ylabel = [L"$f_{Oc \ (trn)}^{c}$" L"$f_{Oc \ (trn)}^{c}$" L"$f_{Oc \ (trn)}^{c}$"],
+        ylabel = [L"$f_{Oc \ (terrain)}^{c}$" L"$f_{Oc \ (terrain)}^{c}$" L"$f_{Oc \ (terrain)}^{c}$"],
         ts_split = :h, link = :none,
         kwargs...)
 
     pd[:F_c] = plot(ts.F_c;
         plot_title = "Contact Force",
-        ylabel = [L"$F_{Oc \ (trn)}^{c} \ (N)$" L"$F_{Oc \ (trn)}^{c} \ (N)$" L"$F_{Oc \ (trn)}^{c} \ (N)$"],
+        ylabel = [L"$F_{Oc \ (terrain)}^{c} \ (N)$" L"$F_{Oc \ (terrain)}^{c} \ (N)$" L"$F_{Oc \ (terrain)}^{c} \ (N)$"],
         ts_split = :h, link = :none,
         kwargs...)
 
     pd[:wr_b] = plot(ts.wr_b;
         plot_title = "Wrench [Vehicle Axes]",
-        wr_source = "trn", wr_frame = "b",
+        wr_source = "terrain", wr_frame = "b",
         kwargs...)
 
     pd[:frc] = make_plots(ts.frc; kwargs...)

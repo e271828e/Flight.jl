@@ -31,11 +31,11 @@ end
 const KinInit = Initializer
 
 function Initializer(;
-    q_nb::Abstract3DRotation = RQuat(), loc::Abstract2DLocation = LatLon(),
+    q_nb::Abstract3DRotation = RQuat(), location::Abstract2DLocation = LatLon(),
     h::Altitude = HOrth(), ω_wb_b::AbstractVector{<:Real} = zeros(SVector{3}),
     v_eb_n::AbstractVector{<:Real} = zeros(SVector{3}), Δx::Real = 0.0, Δy::Real = 0.0)
 
-    n_e = NVector(loc)
+    n_e = NVector(location)
     h_e = HEllip(h, n_e)
 
     Initializer(q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy)

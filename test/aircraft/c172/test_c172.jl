@@ -18,8 +18,8 @@ function test_c172()
     end
 end
 
-function test_sim(; ac::Cessna172 = Cessna172Sv0(),
-                loc::Abstract2DLocation = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
+function test_sim(; aircraft::Cessna172 = Cessna172Sv0(),
+                location::Abstract2DLocation = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
                 h_trn::HOrth = HOrth(427.2),
                 ψ::Real = deg2rad(157),
                 situation::Symbol = :ground,
@@ -27,11 +27,11 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
                 t_end::Real = 1000,
                 save::Bool = true)
 
-    world = SimpleWorld(ac, SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
+    world = SimpleWorld(aircraft, SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
     if situation === :ground
         initializer = C172.Init(
-            KinInit(; loc, q_nb = REuler(ψ, 0, 0), h = h_trn + C172.Δh_to_gnd,
+            KinInit(; location, q_nb = REuler(ψ, 0, 0), h = h_trn + C172.Δh_to_gnd,
                 ω_wb_b = zeros(3), v_eb_n = zeros(3)))
     elseif situation === :air
         EAS = 50.0
@@ -40,7 +40,7 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
         fuel_load = 0.5
         payload = C172.PayloadY(m_pilot = 75, m_copilot = 75, m_baggage = 50)
 
-        initializer = C172.TrimParameters(; Ob = Geographic(loc, HEllip(650)), EAS, γ_wb_n, fuel_load, flaps, payload)
+        initializer = C172.TrimParameters(; Ob = Geographic(location, HEllip(650)), EAS, γ_wb_n, fuel_load, flaps, payload)
     else
         error("Unknown situation: $situation")
     end
@@ -67,11 +67,11 @@ function test_sim(; ac::Cessna172 = Cessna172Sv0(),
         Sim.run!(sim)
     end
 
-    save && save_plots(TimeSeries(sim).ac.vehicle.kinematics,
+    save && save_plots(TimeSeries(sim).aircraft.vehicle.kinematics,
                         normpath("tmp/plots/test_c172/kin"); Plotting.defaults...)
-    save && save_plots(TimeSeries(sim).ac.vehicle.airflow,
+    save && save_plots(TimeSeries(sim).aircraft.vehicle.airflow,
                         normpath("tmp/plots/test_c172/air"); Plotting.defaults...)
-    save && save_plots(TimeSeries(sim).ac.vehicle.dynamics,
+    save && save_plots(TimeSeries(sim).aircraft.vehicle.dynamics,
                         normpath("tmp/plots/test_c172/dyn"); Plotting.defaults...)
 
 end
@@ -113,7 +113,7 @@ function test_xp12()
 
     h_trn = HOrth(427.2);
     kin_init = KinInit(
-        loc = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
+        location = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)),
         q_nb = REuler(deg2rad(157), 0, 0),
         h = h_trn + C172.Δh_to_gnd + 0.5);
 

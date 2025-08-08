@@ -18,41 +18,41 @@ abstract type AbstractWorld <: ModelDefinition end
 ############################## SimpleWorld #####################################
 
 @kwdef struct SimpleWorld{C <: Aircraft, A <: AbstractAtmosphere, T <: AbstractTerrain} <: AbstractWorld
-    ac::C = Aircraft()
-    atm::A = SimpleAtmosphere()
-    trn::T = HorizontalTerrain()
+    aircraft::C = Aircraft()
+    atmosphere::A = SimpleAtmosphere()
+    terrain::T = HorizontalTerrain()
 end
 
 function Modeling.f_ode!(world::Model{<:SimpleWorld})
-    @unpack ac, atm, trn = world.submodels
-    f_ode!(atm)
-    f_ode!(trn)
-    f_ode!(ac, atm, trn)
+    @unpack aircraft, atmosphere, terrain = world
+    f_ode!(atmosphere)
+    f_ode!(terrain)
+    f_ode!(aircraft, atmosphere, terrain)
     update_output!(world)
 end
 
 function Modeling.f_disc!(::NoScheduling, world::Model{<:SimpleWorld})
-    @unpack ac, atm, trn = world.submodels
-    f_disc!(atm)
-    f_disc!(trn)
-    f_disc!(ac, atm, trn)
+    @unpack aircraft, atmosphere, terrain = world
+    f_disc!(atmosphere)
+    f_disc!(terrain)
+    f_disc!(aircraft, atmosphere, terrain)
     update_output!(world)
 end
 
 function Modeling.f_step!(world::Model{<:SimpleWorld})
-    @unpack ac, atm, trn = world.submodels
-    f_step!(atm)
-    f_step!(trn)
-    f_step!(ac, atm, trn)
+    @unpack aircraft, atmosphere, terrain = world
+    f_step!(atmosphere)
+    f_step!(terrain)
+    f_step!(aircraft, atmosphere, terrain)
 end
 
 function Modeling.init!( world::Model{<:SimpleWorld},
                         init::Union{<:AircraftBase.VehicleInitializer,
                                     <:AircraftBase.AbstractTrimParameters})
-    @unpack ac, atm, trn = world.submodels
-    Modeling.init!(atm)
-    Modeling.init!(trn)
-    Modeling.init!(ac, init, atm, trn)
+    @unpack aircraft, atmosphere, terrain = world
+    Modeling.init!(atmosphere)
+    Modeling.init!(terrain)
+    Modeling.init!(aircraft, init, atmosphere, terrain)
     update_output!(world) #!
 end
 
@@ -61,7 +61,7 @@ end
 
 function IODevices.extract_output(world::Model{<:SimpleWorld},
                                 mapping::XPlane12ControlMapping)
-    IODevices.extract_output(world.ac, mapping)
+    IODevices.extract_output(world.aircraft, mapping)
 end
 
 
@@ -71,7 +71,7 @@ end
 function IODevices.assign_input!(world::Model{<:SimpleWorld},
                                 mapping::IOMapping,
                                 data::AbstractJoystickData)
-    IODevices.assign_input!(world.ac, mapping, data)
+    IODevices.assign_input!(world.aircraft, mapping, data)
 end
 
 ################################################################################
@@ -84,11 +84,11 @@ function GUI.draw!(world::Model{<:SimpleWorld};
 
     @cstatic c_ac=false c_atm=false c_trn=false begin
         @c CImGui.Checkbox("Aircraft", &c_ac)
-        c_ac && @c GUI.draw!(world.ac, &c_ac)
+        c_ac && @c GUI.draw!(world.aircraft, &c_ac)
         @c CImGui.Checkbox("Atmosphere", &c_atm)
-        c_atm && @c GUI.draw!(world.atm, &c_atm)
+        c_atm && @c GUI.draw!(world.atmosphere, &c_atm)
         @c CImGui.Checkbox("Terrain", &c_trn)
-        c_trn && @c GUI.draw!(world.trn, &c_trn)
+        c_trn && @c GUI.draw!(world.terrain, &c_trn)
     end
 
     CImGui.End()

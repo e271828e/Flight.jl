@@ -684,14 +684,14 @@ end
 function Modeling.f_ode!(systems::Model{<:Systems},
                         kin::KinData,
                         air::AirflowData,
-                        trn::Model{<:AbstractTerrain})
+                        terrain::Model{<:AbstractTerrain})
 
     @unpack act, aero, pwp, ldg, fuel, pld = systems
 
     f_ode!(act) #update actuation system outputs
     assign!(aero, ldg, pwp, act) #assign actuation model outputs to systems submodels
-    f_ode!(aero, pwp, air, kin, trn) #update aerodynamics continuous state & outputs
-    f_ode!(ldg, kin, trn) #update landing gear continuous state & outputs
+    f_ode!(aero, pwp, air, kin, terrain) #update aerodynamics continuous state & outputs
+    f_ode!(ldg, kin, terrain) #update landing gear continuous state & outputs
     f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
@@ -838,14 +838,14 @@ function Kinematics.Initializer(trim_state::TrimState,
     ė_wb = SVector(ψ_wb_dot, θ_wb_dot, 0.0)
     ω_wb_b = Attitude.ω(e_wb, ė_wb)
 
-    loc = NVector(Ob)
+    location = NVector(Ob)
     h = HEllip(Ob)
 
     v_ew_n = atm_data.v
     v_wb_n = q_nb(v_wb_b) #wind-relative aircraft velocity, NED frame
     v_eb_n = v_ew_n + v_wb_n
 
-    Kinematics.Initializer(; q_nb, loc, h, ω_wb_b, v_eb_n, Δx = 0.0, Δy = 0.0)
+    Kinematics.Initializer(; q_nb, location, h, ω_wb_b, v_eb_n, Δx = 0.0, Δy = 0.0)
 
 end
 
@@ -939,25 +939,25 @@ function Modeling.init!(
 
 end
 
-function AircraftBase.trim!( ac::Model{<:Cessna172},
-                            tp::TrimParameters = TrimParameters(), args...)
-    Modeling.init!(ac, tp, args...)
+function AircraftBase.trim!( aircraft::Model{<:Cessna172},
+                            params::TrimParameters = TrimParameters(), args...)
+    Modeling.init!(aircraft, params, args...)
 end
 
-function AircraftBase.linearize!( ac::Model{<:Cessna172},
-                            tp::TrimParameters = TrimParameters(), args...)
-    AircraftBase.linearize!(ac.vehicle, tp, args...)
+function AircraftBase.linearize!( aircraft::Model{<:Cessna172},
+                            params::TrimParameters = TrimParameters(), args...)
+    AircraftBase.linearize!(aircraft.vehicle, params, args...)
 end
 
 ################################################################################
 ############################### XPlane12Control ###################################
 
-function IODevices.extract_output(ac::Model{<:Cessna172}, ::XPlane12ControlMapping)
+function IODevices.extract_output(aircraft::Model{<:Cessna172}, ::XPlane12ControlMapping)
 
-    t = ac.t[]
-    @unpack δe, δa, δr, δf = ac.y.vehicle.systems.aero
-    ψ_sw = ac.y.vehicle.systems.ldg.nose.strut.ψ_sw
-    ω_prop = ac.y.vehicle.systems.pwp.propeller.ω
+    t = aircraft.t[]
+    @unpack δe, δa, δr, δf = aircraft.y.vehicle.systems.aero
+    ψ_sw = aircraft.y.vehicle.systems.ldg.nose.strut.ψ_sw
+    ω_prop = aircraft.y.vehicle.systems.pwp.propeller.ω
 
     ϕ_prop = mod(ω_prop * t, 2π)
     prop_is_disc = (ω_prop > 10 ? true : false)
@@ -985,7 +985,7 @@ function IODevices.extract_output(ac::Model{<:Cessna172}, ::XPlane12ControlMappi
         Network.xpmsg_set_dref(drefs.prop_is_disc, prop_is_disc),
         Network.xpmsg_set_dref(drefs.prop_angle, rad2deg(ϕ_prop)),
         Network.xpmsg_set_dref(drefs.nws_angle, rad2deg(ψ_sw)),
-        Network.xpmsg_set_pose(XPlanePose(KinData(ac)))
+        Network.xpmsg_set_pose(XPlanePose(KinData(aircraft)))
     )
 
     return msgs
