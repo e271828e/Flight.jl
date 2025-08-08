@@ -10,7 +10,7 @@ makedocs(;
         "Home" => "index.md",
         "Tutorials" => [
             "tutorials/tutorial01/tutorial01.md",
-            "tutorials/tutorial02/tutorial02.md",
+            # "tutorials/tutorial02/tutorial02.md",
             ],
         # "API" => "api.md",
     ],

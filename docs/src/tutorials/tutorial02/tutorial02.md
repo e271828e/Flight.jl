@@ -25,7 +25,7 @@ supertypes(SimpleWorld)
 ```
 
 A `ModelDefinition` subtype can be thought of as the blueprint for a specific `Model` instance. More
-precisely, it defines that `Model`'s states, inputs, outputs, constants and subcomponents. To
+precisely, it defines a `Model`'s states, inputs, outputs, constants and subcomponents. To
 instantiate a `Model`, we call the `Model` constructor on a `ModelDefinition` subtype:
 ```@repl tutorial02
 mdl = Model(world)
@@ -37,6 +37,17 @@ itself a `Model`. To inspect a `Model`'s hierarchy, you can do the following:
 using AbstractTrees
 print_tree(mdl, maxdepth = 10)
 ```
+
+Recall that during interactive simulation, we used the *Aicraft > Avionics > Flight Control* GUI
+panel to control the aircraft. This panel corresponds to the flight control `Model`, which we can
+retrieve as.
+
+We are particularly
+interested in this model's input structure, which we can access as:
+
+It is the fields of this structure that the GUI panel's inputs actually mapped to. Here, we will be
+assigning them directly.
+shf(mdl.aircraft.avionics.ctl)
 
 You may recognize some of these components from their GUI panels.
 
