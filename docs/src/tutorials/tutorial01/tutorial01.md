@@ -1,6 +1,6 @@
 # Interactive Simulation
 
-This example shows how to set up and run an interactive aircraft simulation. You will be able to
+This tutorial shows how to set up and run an interactive aircraft simulation. You will be able to
 control it through the built-in GUI and, optionally, use the free X-Plane 12 demo for 3D
 visualization.
 
@@ -57,13 +57,13 @@ This concludes our X-Plane setup, now let's move on to Julia.
     To work through this example, you will need to start Julia with [multiple threads enabled](@ref "Installation").
 
 Let's begin by initializing the package:
-```@example ex01
+```@example tutorial01
 using Flight
 ```
 
 Next, we need to define a 2D location and orthometric elevation for the beginning of Salzburg airport's
 runway 15, as well as the runway's geographic heading:
-```@example ex01
+```@example tutorial01
 loc_LOWS15 = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997))
 h_LOWS15 = HOrth(427.2)
 ψ_LOWS15 = deg2rad(157)
@@ -79,7 +79,7 @@ nothing # hide
 
 Our simulated world will consist of an aircraft, an atmospheric model and a terrain model:
 
-```@example ex01
+```@example tutorial01
 aircraft = Cessna172Xv1()
 atmosphere = SimpleAtmosphere()
 terrain = HorizontalTerrain(h_LOWS15)
@@ -90,30 +90,28 @@ nothing # hide
 The ```Cessna172Xv1``` aircraft is a hypothetical customization of a Cessna 172S. It replaces the
 reversible actuation system on the base model with a digital fly-by-wire flight control system,
 which we will leverage in this example. Note that this aircraft does not aim to replicate the
-internals or interface of any specific real-world autopilot. Its main purpose is simply to
-illustrate how the ```Flight.jl``` framework can be used to design, implement and test complex
-control architectures.
-
-```SimpleAtmosphere``` provides a basic,
+internals or interface of any specific real-world autopilot. Its purpose is simply to illustrate how
+the ```Flight.jl``` framework may be used to design, implement and test complex control
+architectures. ```SimpleAtmosphere``` provides a basic,
 [ISA](https://en.wikipedia.org/wiki/International_Standard_Atmosphere)-based atmospheric model with
-customizable sea-level conditions and wind velocity. ```HorizontalTerrain``` is a terrain model with
-constant orthometric elevation, which we have set to our previous value for the beginning of runway
-15\.
+customizable sea-level conditions and wind velocity. ```HorizontalTerrain``` represents a terrain
+model with constant orthometric elevation, which we have set to our previous value for the beginning
+of runway 15\.
 
-Now we can create our simulation:
-```@example ex01
+We can now create our simulation:
+```@example tutorial01
 sim = Simulation(world; dt = 0.01) #specifies a suitable integration step size
 nothing # hide
 ```
 
-Under the hood, this call uses our ```SimpleWorld``` instance as a blueprint to construct a
-```Model```, which is what the ```Simulation``` will actually interact with. The ```Model``` type
-is central to the ```Flight.jl``` framework, and we will look into it further in future examples.
+Under the hood, this call turns our ```SimpleWorld``` instance into a ```Model``` object, which is
+what the ```Simulation``` will actually interact with. The ```Model``` type is central to the
+```Flight.jl``` framework, and we will look into it further in future examples.
 
 Next, we instantiate an X-Plane 12 control interface and attach it to the simulation. This will
 allow the simulation to disable X-Plane's physics engine and periodically send our aircraft's state
 for X-Plane to display:
-```@example ex01
+```@example tutorial01
 xp = XPlane12Control()
 Sim.attach!(sim, xp)
 nothing # hide
@@ -138,7 +136,7 @@ implemented model. Adding support for other joysticks should be relatively strai
 will not get into it here. If you happen to have a T.16000M available, you can plug it in now and do
 the following:
 
-```@example ex01
+```@example tutorial01
 for joystick in update_connected_joysticks()
     isa(joystick, Joysticks.T16000M) && Sim.attach!(sim, joystick)
 end
@@ -150,7 +148,7 @@ the flying for us. This will make it relatively easy to control the aircraft thr
 The last step is to define a suitable initial condition. For on-ground initialization, we can do
 that by specifying the aircraft's frame kinematic state:
 
-```@example ex01
+```@example tutorial01
 init_gnd = KinInit(;
     loc = loc_LOWS15, #2D location
     h = h_LOWS15 + C172.Δh_to_gnd, #altitude, as an offset with respect to terrain elevation
@@ -162,7 +160,7 @@ nothing # hide
 ```
 
 Then, we assign it as:
-```@example ex01
+```@example tutorial01
 Sim.init!(sim, init_gnd)
 ```
 
@@ -306,7 +304,7 @@ maintain the commanded course angle, while also tracking the commanded sideslip 
 One final hint before wrapping up. If the whole take-off sequence starts getting tedious, you can
 skip it entirely by using the trim functionality to initialize the aircraft in flight. Here's how to
 do it:
-```@example ex01
+```@example tutorial01
 init_air = C172.TrimParameters(;
     Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above runway 15
     EAS = 50.0, #equivalent airspeed (m/s)
