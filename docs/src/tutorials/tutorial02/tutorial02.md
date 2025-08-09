@@ -77,24 +77,28 @@ print_tree(mdl; maxdepth = 10)
 ```
 
 You can also inspect a specific property across a `Model`'s hierarchy. For example, to view the
-discrete state `s` of the `avionics` node and every node below, you would do:
+discrete state `s` of the `mdl.aircraft.avionics` node and every node below, you would do:
 ```@repl tutorial02
 print_tree(mdl.aircraft.avionics, :s; maxdepth = 10);
 ```
 
+Recall that, in the [interactive simulation](@ref "Interactive Simulation") tutorial, we used the
+*Aircraft > Avionics > Flight Control* panel to control the aircraft. As you might have guessed,
+that GUI panel belongs to the `mdl.aircraft.avionics.ctl` node. Let's retrieve its input:
+```@repl tutorial02
+u_ctl = mdl.aircraft.avionics.ctl.u
+```
+
+It is the fields of this `struct` that the GUI panel's inputs map to. In this tutorial, we will be
+writing to them directly. Let's first see what they are:
+```@repl tutorial02
+shf(u_ctl)
+```
+
+
 You may recognize some of the `Model`s in the hierarchy from the GUI panels you saw in the
 [interactive simulation](@ref "Interactive Simulation") tutorial.
 
-Recall that we used the *Aicraft > Avionics > Flight Control* GUI
-panel to control the aircraft. This panel belongs to the flight control `Model`, which we can
-retrieve as.
-
-We are particularly interested in the `Controller`'s input struct
-shf(). This is precisely the structure that is written by the `Controller`'s GUI panel
-
-It is the fields of this structure that the GUI panel's inputs actually mapped to. Here, we will be
-assigning them directly.
-shf(mdl.aircraft.avionics.ctl)
 
 -----------------------------------------
 
