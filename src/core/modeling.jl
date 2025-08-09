@@ -145,7 +145,6 @@ function Model(md::D,
 
     #the remaining md fields are stored as constants
     constants = NamedTuple(c=>getfield(md, c) for c in sd_fieldnames if !(c in children_names))
-    constants = (!isempty(constants) ? constants : nothing)
 
     mdl = Model{map(typeof, (md, y, u, x, s, constants, submodels))...}(
                     y, u, ẋ, x, s, t, constants, submodels, _Δt_root, _n, _N)
@@ -167,7 +166,7 @@ end
 function Base.propertynames(mdl::Model)
     constant_names = isnothing(mdl.constants) ? tuple() : keys(mdl.constants)
     submodel_names = isnothing(mdl.submodels) ? tuple() : keys(mdl.submodels)
-    (:ẋ, :x, :u, :y, :s, :t, :Δt, :constants, constant_names..., :submodels, submodel_names...)
+    (:x, :ẋ, :s, :u, :y, :t, :Δt, :constants, constant_names..., :submodels, submodel_names...)
 end
 
 Base.getproperty(mdl::Model, name::Symbol) = getproperty(mdl, Val(name))
