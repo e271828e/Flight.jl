@@ -77,9 +77,9 @@ print_tree(mdl; maxdepth = 10)
 ```
 
 You can also inspect a specific property across a `Model`'s hierarchy. For example, to view the
-discrete state `s` of the `mdl.aircraft.avionics` node and every node below, you would do:
+discrete state `s` of `mdl.aircraft.avionics.ctl` and every node below, you would do:
 ```@repl tutorial02
-print_tree(mdl.aircraft.avionics, :s; maxdepth = 10);
+print_tree(mdl.aircraft.avionics.ctl, :s; maxdepth = 10);
 ```
 
 Recall that, in the [interactive simulation](@ref "Interactive Simulation") tutorial, we used the
@@ -90,15 +90,7 @@ u_ctl = mdl.aircraft.avionics.ctl.u
 ```
 
 It is the fields of this `struct` that the GUI panel's inputs map to. In this tutorial, we will be
-writing to them directly. Let's first see what they are:
-```@repl tutorial02
-shf(u_ctl)
-```
-
-
-You may recognize some of the `Model`s in the hierarchy from the GUI panels you saw in the
-[interactive simulation](@ref "Interactive Simulation") tutorial.
-
+writing to them directly.
 
 -----------------------------------------
 
@@ -121,6 +113,14 @@ we did in the [interactive simulation](@ref "Interactive Simulation") tutorial),
 automatically instantiated under the hood.
 
 --------------------------------------
+### Elevator Doublet
+
+How do we go about doing this?
+
+Let's begin by taking a look at the flight controller `Model`'s input `struct`:
+```@repl tutorial02
+shf(u_ctl)
+```
 
 world.ac.avionics.ctl.u.lon_ctl_mode_req |> typeof
 using .C172X.C172XControl: lon_direct, lon_sas
