@@ -17,7 +17,6 @@ struct IMUErrorsY end
 
 @kwdef struct IMUInputs
     q_eb::RQuat = RQuat() #ECEF to vehicle frame rotation
-    q_nb::RQuat = RQuat() #NED to vehicle frame rotation
     r_eb_e::SVector{3, Float64} = zeros(SVector{3}) #ECEF position vector, ECEF frame
     ω_eb_b::SVector{3, Float64} = zeros(SVector{3}) #ECEF to vehicle frame angular velocity, vehicle frame
     a_ib_b::SVector{3, Float64} = zeros(SVector{3}) #inertial acceleration of vehicle frame
@@ -25,9 +24,9 @@ struct IMUErrorsY end
 end
 
 function IMUInputs(kin::KinData, dyn::Accelerations)
-    @unpack q_eb, q_nb, r_eb_e, ω_eb_b = kin
+    @unpack q_eb, r_eb_e, ω_eb_b = kin
     @unpack a_ib_b, α_ib_b = dyn
-    IMUInputs(; q_eb, q_nb, r_eb_e, ω_eb_b, a_ib_b, α_ib_b)
+    IMUInputs(; q_eb, r_eb_e, ω_eb_b, a_ib_b, α_ib_b)
 end
 
 @kwdef struct IMUSample
@@ -61,10 +60,10 @@ Modeling.X(::IMU) = ComponentVector(
 
 Modeling.Y(::IMU) = IMUOutputs()
 
-function Modeling.f_ode!(sys::System{<:IMU})
+function Modeling.f_ode!(mdl::Model{<:IMU})
 
-    @unpack ẋ, x, u, constants = sys
-    @unpack q_eb, q_nb, r_eb_e, ω_eb_b, a_ib_b, α_ib_b = u[]
+    @unpack ẋ, x, u, constants = mdl
+    @unpack q_eb, r_eb_e, ω_eb_b, a_ib_b, α_ib_b = u[]
     @unpack t_bc = constants
 
     q_bc = t_bc.q
@@ -75,9 +74,12 @@ function Modeling.f_ode!(sys::System{<:IMU})
     #compute geographic position of Oc
     r_bc_e = q_eb(r_bc_b)
     r_ec_e = r_eb_e + r_bc_e
-    Oc = Cartesian(r_ec_e)
+    Oc = Geographic(Cartesian(r_ec_e))
 
-    q_nc = q_nb ∘ q_bc
+    q_en = ltf(Oc) #local-level frame at Oc
+    q_ec = q_eb * q_bc
+    q_nc = q_en' ∘ q_ec
+
     G_c_n = G_n(Oc)
     G_c_c = q_nc'(G_c_n)
 
@@ -97,15 +99,15 @@ function Modeling.f_ode!(sys::System{<:IMU})
     ẋ.q_c_cc = Attitude.dt(q_c_cc, ω_ic_c)
     ẋ.υ_c_sc = q_c_cc(f_c_c)
 
-    #no updating sys.y here, only in f_disc!
+    #no updating mdl.y here, only in f_disc!
 
 end
 
-function Modeling.f_disc!(::NoScheduling, sys::System{<:IMU})
+function Modeling.f_disc!(::NoScheduling, mdl::Model{<:IMU})
 
-    @unpack ẋ, x, u, y, Δt, constants, subsystems = sys
+    @unpack ẋ, x, u, y, Δt, constants, submodels = mdl
     buffer = constants.buffer
-    errors = subsystems.errors
+    errors = submodels.errors
 
     ϑ_c = SVector{3}(x.ϑ_c)
     ϑ_c_cc = RVec(RQuat(x.q_c_cc, normalization = false))[:]
@@ -124,12 +126,12 @@ function Modeling.f_disc!(::NoScheduling, sys::System{<:IMU})
     ω̄_ic_c = ϑ_c / Δt
     f̄_c_c = υ_c / Δt
 
-    #update system outputs
+    #update model outputs
     sample = IMUSample(; ω̄_ic_c, f̄_c_c, ϑ_c, ϑ_c_cc, υ_c, υ_c_sc)
     push!(buffer, sample)
 
     f_disc!(errors)
-    sys.y = IMUOutputs(sample, errors.y)
+    mdl.y = IMUOutputs(sample, errors.y)
 
 end
 
@@ -138,9 +140,9 @@ end
 using Test
 
 function test_navsensors()
-    # imu = IMU() |> System
-    sys = IMUTestHarness() |> System;
-    return sys
+    # imu = IMU() |> Model
+    mdl = IMUTestHarness() |> Model;
+    return mdl
 
     #set up simulation with dt < Δt
 
