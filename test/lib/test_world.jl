@@ -22,8 +22,8 @@ function test_update_methods()
         world = SimpleWorld() |> Model;
 
         @test @ballocated(f_ode!($world)) == 0
-        @test @ballocated(f_periodic!($world)) == 0
         @test @ballocated(f_step!($world)) == 0
+        @test @ballocated(f_periodic!($world)) == 0
 
     end
 

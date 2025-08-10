@@ -31,19 +31,19 @@ function Modeling.f_ode!(world::Model{<:SimpleWorld})
     update_output!(world)
 end
 
+function Modeling.f_step!(world::Model{<:SimpleWorld})
+    @unpack aircraft, atmosphere, terrain = world
+    f_step!(atmosphere)
+    f_step!(terrain)
+    f_step!(aircraft, atmosphere, terrain)
+end
+
 function Modeling.f_periodic!(::NoScheduling, world::Model{<:SimpleWorld})
     @unpack aircraft, atmosphere, terrain = world
     f_periodic!(atmosphere)
     f_periodic!(terrain)
     f_periodic!(aircraft, atmosphere, terrain)
     update_output!(world)
-end
-
-function Modeling.f_step!(world::Model{<:SimpleWorld})
-    @unpack aircraft, atmosphere, terrain = world
-    f_step!(atmosphere)
-    f_step!(terrain)
-    f_step!(aircraft, atmosphere, terrain)
 end
 
 function Modeling.init!( world::Model{<:SimpleWorld},

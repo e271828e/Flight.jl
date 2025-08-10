@@ -142,8 +142,8 @@ function test_continuous_pi(save = false)
         @test mdl.y.output[2] == 0
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
 
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_continuous_pi"); Plotting.defaults...)
 
@@ -215,8 +215,8 @@ function test_discrete_pid(save = false)
         @test !mdl.y.int_halted
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
 
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid"); Plotting.defaults...)
 
@@ -339,8 +339,8 @@ function test_discrete_pid_vector(save = false)
         @test !mdl.y.int_halted[1]
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
 
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid_vector"); Plotting.defaults...)
 
@@ -451,8 +451,8 @@ function test_discrete_integrator()
         @test !mdl.y.halted
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
 
         end #testset
 
@@ -513,8 +513,8 @@ function test_discrete_integrator_vector()
         @test !mdl.y.halted[2]
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
 
         end #testset
 
@@ -555,8 +555,8 @@ function test_discrete_leadlag(save = false)
         @test mdl.y.z != 0
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
 
         end #testset
 

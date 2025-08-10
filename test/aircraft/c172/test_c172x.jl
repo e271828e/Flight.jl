@@ -70,8 +70,8 @@ function test_update_methods()
         @test aircraft.y.vehicle.systems.ldg.left.strut.wow == true
 
         @test @ballocated(f_ode!($aircraft, $atmosphere, $terrain)) == 0
-        @test @ballocated(f_periodic!($aircraft, $atmosphere, $terrain)) == 0
         @test @ballocated(f_step!($aircraft, $atmosphere, $terrain)) == 0
+        @test @ballocated(f_periodic!($aircraft, $atmosphere, $terrain)) == 0
 
     end
 

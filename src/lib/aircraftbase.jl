@@ -51,9 +51,9 @@ Modeling.init!(::Model{<:AbstractSystems}, init::NoSystemsInitializer) = nothing
     dynamics::VehicleDynamics = VehicleDynamics()
 end
 
-struct VehicleY{S, K}
+struct VehicleY{S}
     systems::S
-    kinematics::K
+    kinematics::KinData
     dynamics::DynamicsData
     airflow::AirflowData
 end
