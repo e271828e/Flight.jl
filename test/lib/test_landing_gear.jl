@@ -121,8 +121,8 @@ function test_landing_gear_unit()
         h = h_trn + 0.9
 
         #wow = false
-        kin = KinInit(; h = h_trn + 1.1) |> KinData
-        f_ode!(ldg, kin, terrain)
+        kin_data = KinInit(; h = h_trn + 1.1) |> KinData
+        f_ode!(ldg, terrain, kin_data)
 
         @test ldg.y.strut.wow === false
 
@@ -133,8 +133,8 @@ function test_landing_gear_unit()
         @test all(ldg.x.contact.frc .== 0)
 
         #normal static load
-        kin = KinInit(; h ) |> KinData
-        f_ode!(ldg, kin, terrain)
+        kin_data = KinInit(; h ) |> KinData
+        f_ode!(ldg, terrain, kin_data)
         @test ldg.y.strut.ξ ≈ -0.1 #strut is compressed
         @test ldg.y.strut.F_dmp_zs ≈ 2500 #pure elastic force, positive along the strut's z axis
         @test ldg.y.contact.μ_eff == [0, 0] #no motion, no effective friction
@@ -142,20 +142,20 @@ function test_landing_gear_unit()
         @test ldg.y.contact.f_c[3] < 0 #ground reaction negative along contact frame z-axis
 
         #oblique static load
-        kin = KinInit(; h, q_nb = REuler(0, 0, π/12)) |> KinData
-        f_ode!(ldg, kin, terrain)
+        kin_data = KinInit(; h, q_nb = REuler(0, 0, π/12)) |> KinData
+        f_ode!(ldg, terrain, kin_data)
         @test ldg.y.strut.ξ > -0.1 #strut is less compressed
         @test ldg.y.strut.F_dmp_zs < 2500 #force is smaller
 
         #axial compressing load
-        kin = KinInit(; h, v_eb_n = [0,0,1]) |> KinData
-        f_ode!(ldg, kin, terrain)
+        kin_data = KinInit(; h, v_eb_n = [0,0,1]) |> KinData
+        f_ode!(ldg, terrain, kin_data)
         @test ldg.y.strut.ξ_dot < 0 #strut is compressing
         @test ldg.y.strut.F_dmp_zs ≈ 3500 #damping force is added to elastic force
 
         #low positive longitudinal velocity
-        kin = KinInit(; h, v_eb_n = [1e-4, 0, 0] ) |> KinData
-        f_ode!(ldg, kin, terrain)
+        kin_data = KinInit(; h, v_eb_n = [1e-4, 0, 0] ) |> KinData
+        f_ode!(ldg, terrain, kin_data)
         @test isapprox.(ldg.y.strut.v_ec_xy, [1e-4, 0], atol = 1e-6) |> all
         @test ldg.y.contact.μ_max[1] <= ldg.y.contact.μ_roll
         @test ldg.y.contact.μ_eff[2] == 0 #no lateral motion, no lateral effective friction
@@ -164,50 +164,50 @@ function test_landing_gear_unit()
         @test contact.ẋ[1] < 0 #longitudinal velocity error integral should be increasing
 
         #low positive lateral velocity
-        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eb_n = [0, -1e-4, 0] ) |> KinData
-        f_ode!(ldg, kin, terrain)
+        kin_data = KinInit(; h, q_nb = REuler(φ = 0), v_eb_n = [0, -1e-4, 0] ) |> KinData
+        f_ode!(ldg, terrain, kin_data)
         @test ldg.y.contact.wr_b.F[2] > 0
         @test contact.ẋ[2] > 0 #lateral velocity error integral should be increasing
 
         #large positive lateral velocity
-        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eb_n = [0, -1, 0] ) |> KinData
-        f_ode!(ldg, kin, terrain)
+        kin_data = KinInit(; h, q_nb = REuler(φ = 0), v_eb_n = [0, -1, 0] ) |> KinData
+        f_ode!(ldg, terrain, kin_data)
         @test contact.frc.y.sat_out[2] == 1 #large velocity saturates
         @test contact.ẋ[2] == 0 #lateral velocity integral should be decreasing
 
         #advancing motion with compression
-        kin = KinInit(; h, v_eb_n = [10,0,1]) |> KinData
-        f_ode!(ldg, kin, terrain)
+        kin_data = KinInit(; h, v_eb_n = [10,0,1]) |> KinData
+        f_ode!(ldg, terrain, kin_data)
         @test isapprox.(ldg.y.strut.v_ec_xy, [10, 0], atol = 1e-5) |> all
 
         #lateral motion with compression
-        kin = KinInit(; h, ω_wb_b = [1,0,0]) |> KinData
-        f_ode!(ldg, kin, terrain)
+        kin_data = KinInit(; h, ω_wb_b = [1,0,0]) |> KinData
+        f_ode!(ldg, terrain, kin_data)
         @test isapprox.(ldg.y.strut.v_ec_xy, [0, -0.9], atol = 1e-5) |> all
 
         #off-axis load, forward motion
-        kin = KinInit(; h, q_nb = REuler(φ = π/12), v_eb_n = [1e-4, 0, 0] ) |> KinData
-        f_ode!(ldg, kin, terrain)
+        kin_data = KinInit(; h, q_nb = REuler(φ = π/12), v_eb_n = [1e-4, 0, 0] ) |> KinData
+        f_ode!(ldg, terrain, kin_data)
         @test ldg.y.contact.wr_b.F[2] < 0
 
         #steering
-        kin = KinInit(; h, v_eb_n = [10,0,1]) |> KinData
+        kin_data = KinInit(; h, v_eb_n = [10,0,1]) |> KinData
         steering.u.input = 0.5
-        f_ode!(ldg, kin, terrain)
+        f_ode!(ldg, terrain, kin_data)
         @test ldg.y.strut.v_ec_xy[1] < 10
         @test ldg.y.strut.v_ec_xy[2] < 0
 
         #braking
-        kin = KinInit(; h, q_nb = REuler(φ = 0), v_eb_n = [1e-4, 0, 0] ) |> KinData
+        kin_data = KinInit(; h, q_nb = REuler(φ = 0), v_eb_n = [1e-4, 0, 0] ) |> KinData
         braking.u[] = 1
-        f_ode!(ldg, kin, terrain)
+        f_ode!(ldg, terrain, kin_data)
         @test ldg.y.contact.μ_max[1] > ldg.y.contact.μ_roll
 
         #check for f_ode! allocations with wow = true (wow = false does not
         #cover all the code)
-        f_ode!(ldg, kin, terrain)
+        f_ode!(ldg, terrain, kin_data)
         @test ldg.y.strut.wow == true
-        @test @ballocated(f_ode!($ldg, $kin, $terrain)) == 0
+        @test @ballocated(f_ode!($ldg, $terrain, $kin_data)) == 0
         @test @ballocated(f_step!($ldg)) == 0
 
     end
@@ -233,8 +233,8 @@ function test_harness()
     q_nb = REuler(; θ, φ)
     v_eb_n = [0,0,0]
     ω_wb_b = [0,0,0]
-    kin = KinInit(; h, v_eb_n, ω_wb_b, q_nb) |> KinData
-    f_ode!(ldg, kin, terrain)
+    kin_data = KinInit(; h, v_eb_n, ω_wb_b, q_nb) |> KinData
+    f_ode!(ldg, terrain, kin_data)
     f_step!(ldg)
     @show ldg.strut.y.wow
     @show ldg.contact.y.wr_b.F

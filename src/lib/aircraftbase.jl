@@ -7,8 +7,8 @@ using DataStructures: OrderedDict
 using Flight.FlightCore
 using Flight.FlightLib
 
-export AbstractSystems, NoSystems
-export AbstractSystemsInitializer, NoSystemsInitializer
+export AbstractVehicleSystems, NoVehicleSystems
+export AbstractVehicleSystemsInitializer, NoVehicleSystemsInitializer
 export AbstractAvionics, NoAvionics
 export AbstractTrimParameters, AbstractTrimState
 export trim!, linearize!
@@ -18,35 +18,35 @@ export trim!, linearize!
 ################################################################################
 ############################ Vehicle Systems ###################################
 
-abstract type AbstractSystems <: ModelDefinition end
+abstract type AbstractVehicleSystems <: ModelDefinition end
 
-################################## NoSystems ###################################
+################################## NoVehicleSystems ###################################
 
-@kwdef struct NoSystems <: AbstractSystems
-    mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SA[1.0 0 0; 0 1.0 0; 0 0 1.0])
+@kwdef struct NoVehicleSystems <: AbstractVehicleSystems
+    mass_distribution::RigidBodyDistribution = RigidBodyDistribution(1, SMatrix{3,3,Float64}(I))
 end
 
-Dynamics.get_hr_b(::Model{NoSystems}) = zeros(SVector{3})
-Dynamics.get_wr_b(::Model{NoSystems}) = Wrench()
-Dynamics.get_mp_b(mdl::Model{NoSystems}) = MassProperties(mdl.mass_distribution)
+Dynamics.get_hr_b(::Model{NoVehicleSystems}) = zeros(SVector{3})
+Dynamics.get_wr_b(::Model{NoVehicleSystems}) = Wrench()
+Dynamics.get_mp_b(mdl::Model{NoVehicleSystems}) = MassProperties(mdl.mass_distribution)
 
-@no_updates NoSystems
+@no_updates NoVehicleSystems
 
 ############################# Initialization ###################################
 
-abstract type AbstractSystemsInitializer end
+abstract type AbstractVehicleSystemsInitializer end
 
-struct NoSystemsInitializer <: AbstractSystemsInitializer end
+struct NoVehicleSystemsInitializer <: AbstractVehicleSystemsInitializer end
 
-Modeling.init!(::Model{<:AbstractSystems}, init::NoSystemsInitializer) = nothing
+Modeling.init!(::Model{<:AbstractVehicleSystems}, init::NoVehicleSystemsInitializer) = nothing
 
 
 ################################################################################
 ############################## Vehicle ################################
 
-@kwdef struct Vehicle{S <: AbstractSystems,
+@kwdef struct Vehicle{S <: AbstractVehicleSystems,
                       K <: AbstractKinematicDescriptor } <: ModelDefinition
-    systems::S = NoSystems()
+    systems::S = NoVehicleSystems()
     kinematics::K = WA()
     dynamics::VehicleDynamics = VehicleDynamics()
 end
@@ -67,7 +67,7 @@ Modeling.Y(vehicle::Vehicle) = VehicleY(
 
 ################################ Initialization ################################
 
-struct VehicleInitializer{S <: AbstractSystemsInitializer}
+struct VehicleInitializer{S <: AbstractVehicleSystemsInitializer}
     kin::KinInit
     sys::S
 end
@@ -151,7 +151,7 @@ function Modeling.f_ode!(vehicle::Model{<:Vehicle},
     @unpack kinematics, dynamics, systems = submodels
 
     kinematics.u .= dynamics.x
-    f_ode!(kinematics) #update ẋ and y before extracting kinematics data
+    f_ode!(kinematics) #update ẋ and y before extracting kinematic data
 
     kin_data = KinData(kinematics)
     airflow_data = AirflowData(atmosphere, kin_data)
@@ -160,7 +160,13 @@ function Modeling.f_ode!(vehicle::Model{<:Vehicle},
     f_ode!(systems, terrain, kin_data, airflow_data)
 
     #update vehicle dynamics
-    f_ode!(dynamics, systems, kin_data)
+    mp_Σ_b = get_mp_b(systems)
+    wr_Σ_b = get_wr_b(systems)
+    ho_Σ_b = get_hr_b(systems)
+    @unpack q_eb, r_eb_e = kin_data
+    @pack! dynamics.u = mp_Σ_b, wr_Σ_b, ho_Σ_b, q_eb, r_eb_e
+
+    f_ode!(dynamics)
 
     vehicle.y = VehicleY(systems.y, kin_data, dynamics.y, airflow_data)
     nothing
@@ -200,12 +206,12 @@ function assign!(vehicle::Model{<:Vehicle}, avionics::Model{<:AbstractAvionics})
     assign!(vehicle.systems, avionics)
 end
 
-function assign!(systems::Model{<:AbstractSystems},
+function assign!(systems::Model{<:AbstractVehicleSystems},
                 avionics::Model{<:AbstractAvionics})
     MethodError(assign!, (systems, avionics)) |> throw
 end
 
-assign!(::Model{<:AbstractSystems}, ::Model{NoAvionics}) = nothing
+assign!(::Model{<:AbstractVehicleSystems}, ::Model{NoAvionics}) = nothing
 
 
 ################################################################################

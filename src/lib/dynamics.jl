@@ -284,6 +284,10 @@ fb.
 """
 function translate(t_bc::FrameTransform, mp_c::MassProperties)
 
+    #note: for a given J_b, r_bc_b cannot be arbitrarily large, because moments
+    #of inertia are minimum at G. therefore, at some point J_c would become
+    #non-positive definite
+
     r_bc_b = t_bc.r
     q_bc = t_bc.q
 
@@ -313,27 +317,13 @@ function translate(t_bc::FrameTransform, mp_c::MassProperties)
 
 end
 
-MassProperties(mdl::Model) = get_mp_b(mdl)
 
+############################ Input Gathering ###################################
 
-################################################################################
-############################### RigidBodyData ##################################
+#generated functions are required because type inference does not work
+#throughout the whole Systems hierarchy
 
-#mp_b: Mass properties of the Model, translated to the vehicle frame
-
-#wr_b: Total external wrench contributed to the Model, resolved in the
-#vehicle frame
-
-#ho_b: Internal angular momentum relative to the airframe due to rotating
-#components, resolved in the vehicle frame
-
-#note: for a given J_b, r_bc_b cannot be arbitrarily large, because moments
-#of inertia are minimum at G. therefore, at some point J_c would become
-#non-positive definite
-
-#generated functions are needed here because type inference does not work
-#throughout the whole Model hierarchy
-
+# mp_b: Mass properties translated to body frame.
 # default implementation tries to compute the aggregate mass properties for all
 # its submodels. override if possible to reduce compilation time
 @inline @generated function (get_mp_b(mdl::Model{T, X, Y, U, S, P, B})
@@ -357,6 +347,7 @@ MassProperties(mdl::Model) = get_mp_b(mdl)
 end
 
 
+#wr_b: Total external wrench contributed, resolved in body frame.
 #default implementation tries to sum the angular momentum from its individual
 #components. override if possible to reduce compilation time
 @inline @generated function (get_hr_b(mdl::Model{T, X, Y, U, S, P, B})
@@ -381,6 +372,8 @@ end
 
 end
 
+#ho_b: Internal angular momentum relative to the airframe due to rotating
+#components, resolved in the vehicle frame.
 #default implementation tries to sum all the Wrenches from its individual
 #components. override if possible to reduce compilation time
 @inline @generated function (get_wr_b(mdl::Model{T, X, Y, U, S, P, B})
@@ -406,11 +399,20 @@ end
 
 end
 
+# MassProperties(mdl::Model) = get_mp_b(mdl)
 
 ################################################################################
 ########################### VehicleDynamics ####################################
 
 struct VehicleDynamics <: ModelDefinition end
+
+@kwdef mutable struct DynamicsU
+    mp_Σ_b::MassProperties = MassProperties(RigidBodyDistribution()) #total mass properties, Body frame
+    wr_Σ_b::Wrench = Wrench() #total external wrench, CoM frame
+    ho_Σ_b::SVector{3,Float64} = zeros(SVector{3}) #total internal angular momentum, Body axes
+    q_eb::RQuat = KinData().q_eb #Body frame attitude with respect to ECEF frame
+    r_eb_e::SVector{3, Float64} = KinData().r_eb_e #Cartesian position of Body frame with respecto ECEF frame, ECEF coordinates
+end
 
 @kwdef struct DynamicsData
     wr_Σ_c::Wrench = Wrench() #total external wrench at CoM
@@ -433,25 +435,19 @@ struct VehicleDynamics <: ModelDefinition end
 end
 
 Modeling.X(::VehicleDynamics) = zero(Kinematics.XVelTemplate)
+Modeling.U(::VehicleDynamics) = DynamicsU()
 Modeling.Y(::VehicleDynamics) = DynamicsData()
 
-function Modeling.f_ode!(mdl::Model{VehicleDynamics},
-                        components::Model,
-                        kin_data::KinData)
+function Modeling.f_ode!(mdl::Model{VehicleDynamics})
 
-    @unpack q_eb, q_nb, n_e, h_e, r_eb_e = kin_data
-    @unpack x, ẋ = mdl
+    @unpack x, ẋ, u = mdl
+    @unpack mp_Σ_b, wr_Σ_b, ho_Σ_b, q_eb, r_eb_e = u
 
-    # ω_eb_b = SVector{3, Float64}(x.ω_eb_b) #could also use kin_data.ω_eb_b
-    # v_eb_b = SVector{3, Float64}(x.v_eb_b) #could also use kin_data.v_eb_b
-    @unpack ω_eb_b, v_eb_b = kin_data
+    ω_eb_b = SVector{3, Float64}(x.ω_eb_b) #also available as kin_data.ω_eb_b
+    v_eb_b = SVector{3, Float64}(x.v_eb_b) #also available as kin_data.v_eb_b
 
     ω_ie_e = SVector{3, Float64}(0, 0, ω_ie) #use WGS84 constant
     ω_ie_b = q_eb'(ω_ie_e)
-
-    mp_Σ_b = get_mp_b(components) #mass properties at b projected in b
-    wr_Σ_b = get_wr_b(components) #external wrench at b projected in b
-    ho_Σ_b = get_hr_b(components) #internal angular momentum projected in b
 
     #frame transform from c (CoM) to b (body)
     r_bc_b = mp_Σ_b.r_OG

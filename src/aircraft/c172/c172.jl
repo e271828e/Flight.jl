@@ -664,7 +664,7 @@ Dynamics.get_hr_b(::Model{<:AbstractActuation}) = zeros(SVector{3})
 ################################################################################
 ################################ Systems ######################################
 
-struct Systems{P <: PistonThruster, A <: AbstractActuation} <: AbstractSystems
+struct Systems{P <: PistonThruster, A <: AbstractActuation} <: AbstractVehicleSystems
     afm::Airframe
     aero::Aero
     ldg::Ldg
@@ -762,7 +762,7 @@ const Cessna172 = C172.Aircraft
 ########################## Explicit Initialization #############################
 ################################################################################
 
-@kwdef struct SystemsInitializer <: AbstractSystemsInitializer
+@kwdef struct SystemsInitializer <: AbstractVehicleSystemsInitializer
     engine_state::Piston.EngineState = Piston.eng_off
     n_eng::Float64 = 0.0 #normalized engine speed
     mixture::Ranged{Float64, 0., 1.} = 0.5
