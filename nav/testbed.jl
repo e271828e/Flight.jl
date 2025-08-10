@@ -61,8 +61,8 @@ end
 
 struct DynamicInverter <: AbstractComponentSet end
 
-Systems.U(::DynamicInverter) = DynamicInverterU()
-Systems.Y(::DynamicInverter) = DynamicInverterY()
+Modeling.U(::DynamicInverter) = DynamicInverterU()
+Modeling.Y(::DynamicInverter) = DynamicInverterY()
 
 Dynamics.get_mp_b(::System{DynamicInverter}) = MassProperties(RigidBodyDistribution())
 Dynamics.get_hr_b(::System{DynamicInverter}) = zeros(SVector{3})
@@ -77,7 +77,7 @@ Dynamics.get_wr_b(sys::System{DynamicInverter}) = sys.y.wr_b
 #and exploit this to simplify the computation. however, sticking to the general
 #case keeps the commonality with VehicleDynamics
 
-function Systems.f_ode!(sys::System{DynamicInverter},
+function Modeling.f_ode!(sys::System{DynamicInverter},
                         kin_data::KinData,
                         ::AirflowData,
                         ::System{<:AbstractTerrain})

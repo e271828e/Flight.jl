@@ -12,7 +12,7 @@ using UnPack
 ################################### IMU ########################################
 ################################################################################
 
-struct IMUErrors <: SystemDefinition end
+struct IMUErrors <: ModelDefinition end
 struct IMUErrorsY end
 
 @kwdef struct IMUInputs
@@ -44,24 +44,24 @@ end
     errors::IMUErrorsY = IMUErrorsY()
 end
 
-@kwdef struct IMU <: SystemDefinition
+@kwdef struct IMU <: ModelDefinition
     t_bc::FrameTransform = FrameTransform() #vehicle frame to IMU case frame
     buffer::CircularBuffer{IMUSample} = CircularBuffer{IMUSample}(1)
     errors::IMUErrors = IMUErrors()
 end
 
-Systems.U(::IMU) = Ref(IMUInputs())
+Modeling.U(::IMU) = Ref(IMUInputs())
 
-Systems.X(::IMU) = ComponentVector(
+Modeling.X(::IMU) = ComponentVector(
     ϑ_c = zeros(3), #raw angle increment
     q_c_cc = zeros(4), #coning-corrected inertial attitude increment
     υ_c = zeros(3), #raw velocity increment
     υ_c_sc = zeros(3), #sculling-corrected velocity increment
 )
 
-Systems.Y(::IMU) = IMUOutputs()
+Modeling.Y(::IMU) = IMUOutputs()
 
-function Systems.f_ode!(sys::System{<:IMU})
+function Modeling.f_ode!(sys::System{<:IMU})
 
     @unpack ẋ, x, u, constants = sys
     @unpack q_eb, q_nb, r_eb_e, ω_eb_b, a_ib_b, α_ib_b = u[]
@@ -101,7 +101,7 @@ function Systems.f_ode!(sys::System{<:IMU})
 
 end
 
-function Systems.f_disc!(::NoScheduling, sys::System{<:IMU})
+function Modeling.f_disc!(::NoScheduling, sys::System{<:IMU})
 
     @unpack ẋ, x, u, y, Δt, constants, subsystems = sys
     buffer = constants.buffer

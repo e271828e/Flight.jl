@@ -16,16 +16,16 @@ export Cessna172Xv2
 ################################################################################
 ################################ Sensors #######################################
 
-@kwdef struct Sensors <: SystemDefinition end
+@kwdef struct Sensors <: ModelDefinition end
 
 @no_ode C172Xv2.Sensors
 @no_step C172Xv2.Sensors
 @ss_disc C172Xv2.Sensors
 
-function Systems.init!(sensors::System{<:C172Xv2.Sensors},
+function Modeling.init!(sensors::System{<:C172Xv2.Sensors},
                             vehicle::System{<:C172X.Vehicle})
 
-    Systems.reset!(sensors)
+    Modeling.reset!(sensors)
     @warn "Sensors init! not implemented"
 
 end
@@ -34,16 +34,16 @@ end
 ################################################################################
 ################################## Navigator ###################################
 
-@kwdef struct Navigator <: SystemDefinition end
+@kwdef struct Navigator <: ModelDefinition end
 @no_ode C172Xv2.Navigator
 @no_step C172Xv2.Navigator
 
-function Systems.f_disc!(::NoScheduling, nav::System{<:Navigator},
+function Modeling.f_disc!(::NoScheduling, nav::System{<:Navigator},
                         ::System{<:C172X.Vehicle})
 
 end
 
-function Systems.init!(nav::System{<:Navigator},
+function Modeling.init!(nav::System{<:Navigator},
                             vehicle::System{<:C172X.Vehicle})
 
     @warn "Navigator init! not implemented"
@@ -54,7 +54,7 @@ end
 ################################################################################
 ############################## Computing #######################################
 
-@kwdef struct Computing{C, N} <: SystemDefinition
+@kwdef struct Computing{C, N} <: ModelDefinition
     nav::N = Subsampled(Navigator(), 1)
     ctl::C = Subsampled(Controller(), 2)
 end
@@ -68,15 +68,15 @@ function AircraftBase.assign!(components::System{<:C172X.Components},
     AircraftBase.assign!(components, computing.ctl)
 end
 
-function Systems.init!(computing::System{<:C172Xv2.Computing},
+function Modeling.init!(computing::System{<:C172Xv2.Computing},
                             vehicle::System{<:C172X.Vehicle})
 
     @unpack ctl, nav = computing
 
-    Systems.reset!(computing)
-    Systems.init!(nav, vehicle)
-    Systems.init!(ctl, vehicle)
-    Systems.update_y!(computing)
+    Modeling.reset!(computing)
+    Modeling.init!(nav, vehicle)
+    Modeling.init!(ctl, vehicle)
+    Modeling.update_y!(computing)
 
 end
 
@@ -118,13 +118,13 @@ function AircraftBase.assign!(components::System{<:C172X.Components},
     AircraftBase.assign!(components, avionics.cmp)
 end
 
-function Systems.init!(avionics::System{<:C172Xv2.Avionics},
+function Modeling.init!(avionics::System{<:C172Xv2.Avionics},
                             vehicle::System{<:C172X.Vehicle})
 
-    Systems.init!(avionics.sen, vehicle)
-    Systems.init!(avionics.cmp, vehicle)
+    Modeling.init!(avionics.sen, vehicle)
+    Modeling.init!(avionics.cmp, vehicle)
 
-    Systems.update_y!(avionics)
+    Modeling.update_y!(avionics)
 
 end
 
@@ -164,10 +164,10 @@ end
 ################################################################################
 ############################ Joystick Mappings #################################
 
-function Systems.assign_input!(sys::System{<:Cessna172Xv2},
+function Modeling.assign_input!(sys::System{<:Cessna172Xv2},
                                 data::JoystickData,
                                 mapping::IOMapping)
-    Systems.assign_input!(sys.avionics.cmp.ctl, data, mapping)
+    Modeling.assign_input!(sys.avionics.cmp.ctl, data, mapping)
 end
 
 
