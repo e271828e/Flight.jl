@@ -152,16 +152,17 @@ function Modeling.f_ode!(vehicle::Model{<:Vehicle},
 
     kinematics.u .= dynamics.x
     f_ode!(kinematics) #update ẋ and y before extracting kinematics data
+
     kin_data = KinData(kinematics)
     airflow_data = AirflowData(atmosphere, kin_data)
 
     #update vehicle systems
-    f_ode!(systems, kin_data, airflow_data, terrain)
+    f_ode!(systems, terrain, kin_data, airflow_data)
 
     #update vehicle dynamics
     f_ode!(dynamics, systems, kin_data)
 
-    vehicle.y = VehicleY(systems.y, kinematics.y, dynamics.y, airflow_data)
+    vehicle.y = VehicleY(systems.y, kin_data, dynamics.y, airflow_data)
     nothing
 
 end

@@ -216,11 +216,11 @@ end
 TAS2EAS(TAS::Real; ρ::Real) = TAS * √(ρ / ρ_std)
 EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
 
-function AirflowData(atm::AtmosphericData = AtmosphericData(),
-                    kin::KinData = KinData())
+function AirflowData(atm_data::AtmosphericData = AtmosphericData(),
+                    kin_data::KinData = KinData())
 
-    @unpack v_eb_b, q_nb = kin
-    @unpack T, p, ρ, a, μ, v  = atm
+    @unpack v_eb_b, q_nb = kin_data
+    @unpack T, p, ρ, a, μ, v  = atm_data
 
     v_ew_n = v #ECEF-relative wind velocity, NED axes
     v_ew_b = q_nb'(v_ew_n)

@@ -406,13 +406,13 @@ end
 
 @no_step Propeller
 
-function Modeling.f_ode!(mdl::Model{<:Propeller}, kin::KinData, air::AirflowData, ω::Real)
+function Modeling.f_ode!(mdl::Model{<:Propeller}, kin_data::KinData, air_data::AirflowData, ω::Real)
 
     @unpack d, J_xx, t_bp, sense, lookup = mdl.constants
     #this may actually happen due to friction constraint overshoot at low RPMs
     # @assert sign(ω) * Int(mdl.sense) >= 0 "Propeller turning in the wrong sense"
 
-    v_wOp_b = air.v_wb_b + kin.ω_eb_b × t_bp.r
+    v_wOp_b = air_data.v_wb_b + kin_data.ω_eb_b × t_bp.r
     v_wOp_p = t_bp.q'(v_wOp_b)
 
     #compute advance ratio. here we use the velocity vector magnitude rather
@@ -423,7 +423,7 @@ function Modeling.f_ode!(mdl::Model{<:Propeller}, kin::KinData, air::AirflowData
     ω_J = max(abs(ω), abs_ω_min)
     J = 2π * v_J / (ω_J * d)
 
-    Mt = abs(ω)*(d/2) / air.a
+    Mt = abs(ω)*(d/2) / air_data.a
 
     Δβ = get_Δβ(mdl)
     coeffs = Coefficients(lookup, J, Mt, Δβ)
@@ -437,7 +437,7 @@ function Modeling.f_ode!(mdl::Model{<:Propeller}, kin::KinData, air::AirflowData
     C_F = SVector{3,Float64}(C_Fx, C_Fy_β * β_p, C_Fz_α * α_p)
     C_M = Int(sense) * SVector{3,Float64}(C_Mx, C_My_β * β_p, C_Mz_α * α_p)
 
-    ρ = air.ρ
+    ρ = air_data.ρ
     f = ω/2π; f² = f^2; f³ = f * f²
     d⁴ = d^4; d⁵ = d * d⁴
 

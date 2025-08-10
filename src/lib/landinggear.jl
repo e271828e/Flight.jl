@@ -216,10 +216,10 @@ Modeling.Y(::Strut) = StrutY()
 function Modeling.f_ode!(mdl::Model{<:Strut},
                         steering::Model{<:AbstractSteering},
                         terrain::Model{<:AbstractTerrain},
-                        kin::KinData)
+                        kin_data::KinData)
 
     @unpack t_bs, l_0, damper = mdl.constants
-    @unpack q_eb, q_nb, q_en, r_eb_e, v_eb_b, ω_eb_b = kin
+    @unpack q_eb, q_nb, q_en, r_eb_e, v_eb_b, ω_eb_b = kin_data
 
     q_bs = t_bs.q #body frame to strut frame rotation
     r_bs_b = t_bs.r #strut frame origin
@@ -599,14 +599,15 @@ end
     contact::Contact = Contact()
 end
 
-function Modeling.f_ode!(mdl::Model{<:LandingGearUnit}, kinematics::KinData,
-                        terrain::Model{<:AbstractTerrain})
+function Modeling.f_ode!(mdl::Model{<:LandingGearUnit},
+                        terrain::Model{<:AbstractTerrain},
+                        kin_data::KinData)
 
     @unpack strut, contact, steering, braking = mdl
 
     f_ode!(steering)
     f_ode!(braking)
-    f_ode!(strut, steering, terrain, kinematics)
+    f_ode!(strut, steering, terrain, kin_data)
     f_ode!(contact, strut, braking)
 
     update_output!(mdl)

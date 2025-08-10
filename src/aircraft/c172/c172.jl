@@ -297,15 +297,15 @@ Modeling.S(::Aero) = AeroS()
 #wander-azimuth frame (w), with the w in air.v_wb_b, which indicates aerodynamic
 #(wind-relative) velocity
 
-function Modeling.f_ode!(mdl::Model{Aero}, ::Model{<:PistonThruster},
-    air::AirflowData, kinematics::KinData, terrain::Model{<:AbstractTerrain})
+function Modeling.f_ode!(mdl::Model{Aero}, terrain::Model{<:AbstractTerrain},
+                        air_data::AirflowData, kin_data::KinData)
 
     @unpack ẋ, x, u, s, constants = mdl
     @unpack α_filt, β_filt = x
     @unpack e, a, r, f = u
     @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = constants
-    @unpack TAS, q, v_wb_b = air
-    @unpack ω_wb_b, n_e, h_o = kinematics
+    @unpack TAS, q, v_wb_b = air_data
+    @unpack ω_wb_b, n_e, h_o = kin_data
     stall = s.stall
 
     v_wb_a = f_ba.q'(v_wb_b)
@@ -682,17 +682,17 @@ end
 ############################# Update Methods ###################################
 
 function Modeling.f_ode!(systems::Model{<:Systems},
-                        kin::KinData,
-                        air::AirflowData,
-                        terrain::Model{<:AbstractTerrain})
+                        terrain::Model{<:AbstractTerrain},
+                        kin_data::KinData,
+                        air_data::AirflowData)
 
     @unpack act, aero, pwp, ldg, fuel, pld = systems
 
     f_ode!(act) #update actuation system outputs
     assign!(aero, ldg, pwp, act) #assign actuation model outputs to systems submodels
-    f_ode!(aero, pwp, air, kin, terrain) #update aerodynamics continuous state & outputs
-    f_ode!(ldg, kin, terrain) #update landing gear continuous state & outputs
-    f_ode!(pwp, air, kin) #update powerplant continuous state & outputs
+    f_ode!(aero, terrain, air_data, kin_data) #update aerodynamics continuous state & outputs
+    f_ode!(ldg, terrain, kin_data) #update landing gear continuous state & outputs
+    f_ode!(pwp, air_data, kin_data) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
     update_output!(systems)
