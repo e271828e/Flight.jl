@@ -8,9 +8,9 @@ using ..IODevices
 
 export ModelDefinition, Model
 export Subsampled, Scheduling, NoScheduling
-export f_ode!, f_step!, f_disc!, update_output!
-export @no_ode, @no_disc, @no_step, @no_updates
-export @sm_ode, @sm_disc, @sm_step, @sm_updates
+export f_ode!, f_step!, f_periodic!, update_output!
+export @no_ode, @no_step, @no_periodic, @no_updates
+export @sm_ode, @sm_step, @sm_periodic, @sm_updates
 
 
 ################################################################################
@@ -70,7 +70,7 @@ end
 
 struct Subsampled{D <: ModelDefinition} <: ModelDefinition
     md::D
-    K::Int #parent-relative discrete sampling period multiplier
+    K::Int #parent-relative sampling period multiplier
 end
 
 Subsampled(md::D) where {D <: ModelDefinition} = Subsampled{D}(md, 1)
@@ -98,9 +98,9 @@ mutable struct Model{D <: ModelDefinition, Y, U, X, S, C, B}
     const t::Base.RefValue{Float64} #simulation time
     const constants::C
     const submodels::B
-    const _Δt_root::Base.RefValue{Float64} #root system discrete sampling period
-    const _n::Base.RefValue{Int} #simulation discrete iteration counter
-    const _N::Int #discrete sampling period multipler
+    const _Δt_root::Base.RefValue{Float64} #root model sampling period
+    const _n::Base.RefValue{Int} #simulation periodic update counter
+    const _N::Int #root model-relative sampling period multipler
 end
 
 function Model(md::D,
@@ -181,7 +181,7 @@ Base.getproperty(mdl::Model, name::Symbol) = getproperty(mdl, Val(name))
         return :(getfield(getfield(mdl, :submodels), $(QuoteNode(P))))
     elseif P ∈ fieldnames(C)
         return :(getfield(getfield(mdl, :constants), $(QuoteNode(P))))
-    elseif P === :Δt #actual discrete sampling period
+    elseif P === :Δt #actual sampling period
         return :(getfield(mdl, :_Δt_root)[] * getfield(mdl, :_N))
     else
         return :(error("Failed to retrieve property $P from Model"))
@@ -213,16 +213,16 @@ function f_step!(mdl::Model, args...)
     MethodError(f_step!, (mdl, args...)) |> throw
 end
 
-#unscheduled discrete update, to be extended by Models
-function f_disc!(sch::NoScheduling, mdl::Model, args...)
-    MethodError(f_disc!, (sch, mdl, args...)) |> throw
+#unscheduled periodic update, to be extended by Models
+function f_periodic!(sch::NoScheduling, mdl::Model, args...)
+    MethodError(f_periodic!, (sch, mdl, args...)) |> throw
 end
 
-#scheduled discrete update, to be called (not extended!) by Models
-@inline f_disc!(mdl::Model, args...) = f_disc!(Scheduling(), mdl, args...)
+#scheduled periodic update, to be called (not extended!) by Models
+@inline f_periodic!(mdl::Model, args...) = f_periodic!(Scheduling(), mdl, args...)
 
-function f_disc!(::Scheduling, mdl::Model, args...)
-    (mdl._n[] % mdl._N == 0) && f_disc!(NoScheduling(), mdl, args...)
+function f_periodic!(::Scheduling, mdl::Model, args...)
+    (mdl._n[] % mdl._N == 0) && f_periodic!(NoScheduling(), mdl, args...)
 end
 
 
@@ -256,19 +256,19 @@ macro no_ode(md)
     esc(:(Modeling.f_ode!(::Model{<:($md)}, args...) = nothing))
 end
 
-#no discrete dynamics
-macro no_disc(md)
-    esc(:(Modeling.f_disc!(::NoScheduling, ::Model{<:($md)}, args...) = nothing))
-end
-
 #no post-step update
 macro no_step(md)
     esc(:(Modeling.f_step!(::Model{<:($md)}, args...) = nothing))
 end
 
-#no dynamics at all
+#no periodic dynamics
+macro no_periodic(md)
+    esc(:(Modeling.f_periodic!(::NoScheduling, ::Model{<:($md)}, args...) = nothing))
+end
+
+#no dynamics whatsoever
 macro no_updates(md)
-    esc(quote @no_ode $md; @no_step $md; @no_disc $md end)
+    esc(quote @no_ode $md; @no_step $md; @no_periodic $md end)
 end
 
 #recursive fallbacks
@@ -277,18 +277,6 @@ macro sm_ode(md)
         @inline function Modeling.f_ode!(mdl::Model{<:($md)}, args...)
             for ss in mdl.submodels
                 f_ode!(ss, args...)
-            end
-            update_output!(mdl)
-            return nothing
-        end
-    end)
-end
-
-macro sm_disc(md)
-    esc(quote
-        @inline function Modeling.f_disc!(::NoScheduling, mdl::Model{<:($md)}, args...)
-            for ss in mdl.submodels
-                f_disc!(ss, args...)
             end
             update_output!(mdl)
             return nothing
@@ -308,8 +296,21 @@ macro sm_step(md)
     end)
 end
 
+macro sm_periodic(md)
+    esc(quote
+        @inline function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:($md)}, args...)
+            for ss in mdl.submodels
+                f_periodic!(ss, args...)
+            end
+            update_output!(mdl)
+            return nothing
+        end
+    end)
+end
+
+
 macro sm_updates(md)
-    esc(quote @sm_ode $md; @sm_step $md; @sm_disc $md end)
+    esc(quote @sm_ode $md; @sm_step $md; @sm_periodic $md end)
 end
 
 

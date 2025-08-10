@@ -65,7 +65,7 @@ function test_continuous_lss()
 
         @test @ballocated(f_ode!($mdl)) === 0
         @test @ballocated(f_step!($mdl)) === 0
-        @test @ballocated(f_disc!($mdl)) === 0
+        @test @ballocated(f_periodic!($mdl)) === 0
 
     end
 
@@ -142,7 +142,7 @@ function test_continuous_pi(save = false)
         @test mdl.y.output[2] == 0
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_disc!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
 
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_continuous_pi"); Plotting.defaults...)
@@ -208,14 +208,14 @@ function test_discrete_pid(save = false)
         @test mdl.s.x_d0 == 0
         @test mdl.s.sat_out_0 == 0
 
-        f_disc!(mdl)
+        f_periodic!(mdl)
         @test mdl.y.y_i == 0
         @test mdl.y.y_d == 0
         @test mdl.y.y_p == 0
         @test !mdl.y.int_halted
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_disc!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
 
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid"); Plotting.defaults...)
@@ -332,14 +332,14 @@ function test_discrete_pid_vector(save = false)
         @test mdl.s.x_d0[1] == 0
         @test mdl.s.sat_out_0[1] == 0
 
-        f_disc!(mdl)
+        f_periodic!(mdl)
         @test mdl.y.y_i[1] == 0
         @test mdl.y.y_d[1] == 0
         @test mdl.y.y_p[1] == 0
         @test !mdl.y.int_halted[1]
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_disc!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
 
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid_vector"); Plotting.defaults...)
@@ -444,14 +444,14 @@ function test_discrete_integrator()
         @test mdl.u.bound_lo != 0
         @test mdl.u.bound_hi != 0
 
-        f_disc!(mdl)
+        f_periodic!(mdl)
         @test mdl.y.x1 == 0
         @test mdl.y.output == 0
         @test mdl.y.sat_out == 0
         @test !mdl.y.halted
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_disc!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
 
         end #testset
@@ -506,14 +506,14 @@ function test_discrete_integrator_vector()
         @test mdl.u.bound_lo[2] != 0
         @test mdl.u.bound_hi[2] != 0
 
-        f_disc!(mdl)
+        f_periodic!(mdl)
         @test mdl.y.x1[2] == 0
         @test mdl.y.output[2] == 0
         @test mdl.y.sat_out[2] == 0
         @test !mdl.y.halted[2]
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_disc!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
 
         end #testset
@@ -548,14 +548,14 @@ function test_discrete_leadlag(save = false)
         @test mdl.s.u0 == 0
         @test mdl.s.x0 == 0
 
-        f_disc!(mdl)
+        f_periodic!(mdl)
         @test mdl.y.u1 == 0
         @test mdl.y.y1 == 0
         @test mdl.y.p != 0
         @test mdl.y.z != 0
 
         @test @ballocated($f_ode!($mdl)) == 0
-        @test @ballocated($f_disc!($mdl)) == 0
+        @test @ballocated($f_periodic!($mdl)) == 0
         @test @ballocated($f_step!($mdl)) == 0
 
         end #testset

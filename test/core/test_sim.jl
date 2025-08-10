@@ -40,8 +40,8 @@ function Modeling.f_step!(mdl::Model{FirstOrder})
     # mdl.x .= x_new #if we want the change in x to propagate to y at the end of this step
 end
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{FirstOrder})
-    # println("Called f_disc! at t = $(mdl.t[]), got y = $(mdl.y)")
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{FirstOrder})
+    # println("Called f_periodic! at t = $(mdl.t[]), got y = $(mdl.y)")
 end
 
 Modeling.init!(mdl::Model{FirstOrder}, x0::Real = 0.0) = (mdl.x .= x0)
@@ -89,7 +89,7 @@ Modeling.Y(::TestSystem) = TestSystemY()
 @no_ode TestSystem
 @no_step TestSystem
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:TestSystem})
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:TestSystem})
     mdl.y = TestSystemY(; input = mdl.u.input)
 end
 
@@ -139,7 +139,7 @@ function udp_loopback()
         Sim.run!(sim; pace = 1)
 
         #mdl.y.output must have propagated to mdl.u.input via loopback, and then
-        #to mdl.y.input within f_disc!
+        #to mdl.y.input within f_periodic!
         @test sim.y.input == 37.0
 
         return sim
@@ -173,7 +173,7 @@ function xp12_loopback()
         #constructs a pose command message, which is sent through UDP by
         #handle_data! and finally reaches assign_input! via loopback. the first
         #character is converted to Float64 and assigned to mdl.u.input, and it
-        #finally propagates to mdl.y.input within f_disc!
+        #finally propagates to mdl.y.input within f_periodic!
         @test sim.y.input === Float64(cmd[1])
 
         return sim

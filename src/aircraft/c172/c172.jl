@@ -264,7 +264,7 @@ end
     f::Ranged{Float64, 0., 1.} = 0.0
 end
 
-@kwdef mutable struct AeroS #discrete state
+@kwdef mutable struct AeroS
     stall::Bool = false
 end
 
@@ -710,7 +710,7 @@ function Modeling.f_step!(systems::Model{<:Systems},
 
 end
 
-@no_disc Systems
+@no_periodic Systems
 
 
 

@@ -262,7 +262,7 @@ end
 end
 
 @sm_ode SimpleAtmosphere
-@sm_disc SimpleAtmosphere
+@sm_periodic SimpleAtmosphere
 @no_step SimpleAtmosphere
 
 function AtmosphericData(mdl::Model{<:SimpleAtmosphere},

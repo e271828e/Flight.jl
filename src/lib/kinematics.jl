@@ -134,7 +134,7 @@ end
 ################################################################################
 
 abstract type AbstractKinematicDescriptor <: ModelDefinition end
-@no_disc AbstractKinematicDescriptor
+@no_periodic AbstractKinematicDescriptor
 
 const XVelTemplate = ComponentVector(ω_eb_b = zeros(3), v_eb_b = zeros(3))
 

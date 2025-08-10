@@ -74,7 +74,7 @@ Modeling.X(cmp::LinearizedSS) = copy(cmp.x0)
 Modeling.U(cmp::LinearizedSS) = copy(cmp.u0)
 Modeling.Y(cmp::LinearizedSS) = SVector{length(cmp.y0)}(cmp.y0)
 
-@no_disc LinearizedSS
+@no_periodic LinearizedSS
 @no_step LinearizedSS
 
 function Modeling.f_ode!(mdl::Model{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, LY}
@@ -195,7 +195,7 @@ Modeling.X(::PIVector{N}) where {N} = zeros(N)
 Modeling.Y(::PIVector{N}) where {N} = PIVectorY{N}()
 Modeling.U(::PIVector{N}) where {N} = PIVectorU{N}()
 
-@no_disc PIVector
+@no_periodic PIVector
 @no_step PIVector
 
 function Modeling.f_ode!(mdl::Model{<:PIVector{N}}) where {N}
@@ -402,7 +402,7 @@ end
 @no_step Integrator
 @no_ode Integrator
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:Integrator})
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Integrator})
 
     @unpack s, u, Δt = mdl
     @unpack input, sat_ext, bound_lo, bound_hi = u
@@ -464,7 +464,7 @@ end
 @no_ode IntegratorVector
 @no_step IntegratorVector
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:IntegratorVector})
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:IntegratorVector})
 
     @unpack s, u, Δt = mdl
 
@@ -560,7 +560,7 @@ end
 @no_ode LeadLag
 @no_step LeadLag
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LeadLag})
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LeadLag})
 
     @unpack s, u, Δt = mdl
     @unpack z, p, k, u1 = u
@@ -696,7 +696,7 @@ end
 @no_ode PID
 @no_step PID
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:PID})
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:PID})
 
     @unpack Δt = mdl
     @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext = mdl.u
@@ -794,7 +794,7 @@ end
 @no_ode PIDVector
 @no_step PIDVector
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:PIDVector{N}}) where {N}
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:PIDVector{N}}) where {N}
 
     @unpack s, u, Δt = mdl
 
@@ -1055,7 +1055,7 @@ end
 @no_ode LQRTracker
 @no_step LQRTracker
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LQRTracker})
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LQRTracker})
 
     @unpack s, u, Δt = mdl
 

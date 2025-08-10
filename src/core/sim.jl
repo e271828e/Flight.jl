@@ -31,7 +31,7 @@ export take_nonblocking!, put_nonblocking!
     algorithm::String = ""
     t_start::Float64 = 0.0
     t_end::Float64 = 0.0
-    Δt::Float64 = 0.0 #root system's discrete step size
+    Δt::Float64 = 0.0 #root system's periodic update interval
     dt::Float64 = 0.0 #last continuous integration step size
     iter::Int64 = 0 #total iterations
     t::Float64 = 0.0 #simulation time
@@ -52,7 +52,7 @@ function GUI.draw!(control::SimControl)
 
         CImGui.Text("Algorithm: " * algorithm)
         CImGui.Text("Continuous step size: $dt")
-        CImGui.Text("Discrete step size: $Δt")
+        CImGui.Text("Periodic update interval: $Δt")
         CImGui.Text("Iterations: $iter")
         CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
         CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
@@ -178,8 +178,8 @@ struct Simulation{D <: ModelDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         user_callback!::Function = user_callback!, #user-specified callback
         algorithm::OrdinaryDiffEqAlgorithm = RK4(),
         adaptive::Bool = false,
-        dt::Real = 0.02, #continuous dynamics integration step
-        Δt::Real = dt, #discrete dynamics execution period (do not set to Inf!)
+        dt::Real = 0.02, #continuous dynamics integration step size
+        Δt::Real = dt, #periodic update interval (do not set to Inf!)
         t_start::Real = 0.0,
         t_end::Real = 10000.0,
         save_on::Bool = true,
@@ -188,7 +188,7 @@ struct Simulation{D <: ModelDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         ) where {D, Y}
 
         t_end - t_start < Δt && @warn(
-        "Simulation timespan is shorter than the discrete dynamics update period")
+        "Simulation timespan is shorter than the periodic update interval")
 
         #need to store a reference to mdl and user_callback! in the integrator
         #params so they can be used within the integrator callbacks
@@ -197,14 +197,14 @@ struct Simulation{D <: ModelDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
         cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
 
-        #we don't want to force a call to f_disc! at t=0, so we set
+        #we don't want to force a call to f_periodic! at t=0, so we set
         #initial_affect=false. if needed, such call can be included in the
         #user-defined Modeling.init!
-        cb_disc = PeriodicCallback(f_cb_disc!, Δt; initial_affect = false)
+        cb_periodic = PeriodicCallback(f_cb_periodic!, Δt; initial_affect = false)
         mdl._Δt_root[] = Δt
 
-        #the optional call to f_disc! at t=0 would correspond to mdl._n[] = 0.
-        #therefore, in preparation for the first scheduled discrete step, we
+        #the optional call to f_periodic! at t=0 would correspond to mdl._n[] = 0.
+        #therefore, in preparation for the first scheduled periodic update, we
         #should set mdl._n[] = 1
         mdl._n[] = 1
 
@@ -213,9 +213,9 @@ struct Simulation{D <: ModelDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         cb_save = SavingCallback(f_cb_save, log; saveat, save_everystep)
 
         if save_on
-            cb_set = CallbackSet(cb_step, cb_disc, cb_user, cb_save)
+            cb_set = CallbackSet(cb_step, cb_periodic, cb_user, cb_save)
         else
-            cb_set = CallbackSet(cb_step, cb_disc, cb_user)
+            cb_set = CallbackSet(cb_step, cb_periodic, cb_user)
         end
 
         #the current Model's x is used as an initial condition. a copy is
@@ -294,7 +294,7 @@ end
 
 @inline has_x(mdl::Model) = !isnothing(mdl.x)
 
-#wrapper around the Model's continuous dynamics function
+#wrapper around the root Model's continuous dynamics function
 function f_ode_wrapper!(u̇, u, p, t)
 
     @unpack mdl = p
@@ -311,7 +311,7 @@ function f_ode_wrapper!(u̇, u, p, t)
 
 end
 
-#DiscreteCallback wrapper around the Model's post-integration step function
+#DiscreteCallback wrapper around the root Model's post-integration step function
 function f_cb_step!(integrator)
 
     @unpack u, p = integrator
@@ -337,20 +337,20 @@ function f_cb_user!(integrator)
 
 end
 
-#PeriodicCallback wrapper around the Model's discrete dynamics function
-function f_cb_disc!(integrator)
+#PeriodicCallback wrapper around the root Model's periodic update function
+function f_cb_periodic!(integrator)
 
     @unpack u, p = integrator
     @unpack mdl = p
 
-    f_disc!(mdl) #call discrete dynamics, potentially updates mdl.s and mdl.y
+    f_periodic!(mdl) #call scheduled periodic update, potentially updates mdl.s and mdl.y
 
-    #increment the discrete iteration counter
+    #increment the periodic update counter
     mdl._n[] += 1
 
 end
 
-#SavingCallback function, gets called at the end of each step after f_disc!
+#SavingCallback function, gets called at the end of each step after f_periodic!
 #and/or f_step!
 function f_cb_save(x, t, integrator)
     deepcopy(integrator.p.mdl.y)
@@ -371,7 +371,7 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
     resize!(log.t, 0)
     resize!(log.saveval, 0)
 
-    #reset scheduling counter, so f_disc! is guaranteed to execute if called by
+    #reset scheduling counter, so f_periodic! is guaranteed to execute if called by
     #Modeling.init!
     mdl._n[] = 0
 

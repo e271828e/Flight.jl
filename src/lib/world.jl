@@ -31,11 +31,11 @@ function Modeling.f_ode!(world::Model{<:SimpleWorld})
     update_output!(world)
 end
 
-function Modeling.f_disc!(::NoScheduling, world::Model{<:SimpleWorld})
+function Modeling.f_periodic!(::NoScheduling, world::Model{<:SimpleWorld})
     @unpack aircraft, atmosphere, terrain = world
-    f_disc!(atmosphere)
-    f_disc!(terrain)
-    f_disc!(aircraft, atmosphere, terrain)
+    f_periodic!(atmosphere)
+    f_periodic!(terrain)
+    f_periodic!(aircraft, atmosphere, terrain)
     update_output!(world)
 end
 

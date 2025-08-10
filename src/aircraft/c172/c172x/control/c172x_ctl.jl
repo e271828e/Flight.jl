@@ -19,7 +19,7 @@ wrap_to_π(x) = x + 2π*floor((π-x)/(2π))
 ################################################################################
 ####################### AbstractControlChannel #################################
 
-#a discrete system implementing a specific longitudinal or lateral control mode
+#a discrete model implementing a specific longitudinal or lateral control mode
 abstract type AbstractControlChannel <: ModelDefinition end
 
 
@@ -146,7 +146,7 @@ function Modeling.init!(mdl::Model{<:LonControl})
 end
 
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LonControl},
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LonControl},
                         vehicle::Model{<:C172X.Vehicle})
 
     @unpack mode, throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref = mdl.u
@@ -176,7 +176,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LonControl},
         end
 
         v2t_pid.u.input = EAS_ref - EAS
-        f_disc!(v2t_pid)
+        f_periodic!(v2t_pid)
         throttle_cmd = v2t_pid.y.output
 
     end
@@ -213,7 +213,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LonControl},
 
                     v2θ_pid.u.input = EAS_ref - EAS
                     v2θ_pid.u.sat_ext = -elevator_cmd_sat #sign inversion!
-                    f_disc!(v2θ_pid)
+                    f_periodic!(v2θ_pid)
                     θ_ref = -v2θ_pid.y.output #sign inversion!
 
                 elseif c2θ_enabled(mode) #θ_ref overridden by c2θ
@@ -228,7 +228,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LonControl},
 
                     c2θ_pid.u.input = clm_ref - clm
                     c2θ_pid.u.sat_ext = elevator_cmd_sat
-                    f_disc!(c2θ_pid)
+                    f_periodic!(c2θ_pid)
                     θ_ref = c2θ_pid.y.output
 
                 else #lon_EAS_θ || lon_thr_θ
@@ -246,11 +246,11 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LonControl},
 
             q2e_int.u.input = q_ref - q
             q2e_int.u.sat_ext = elevator_cmd_sat
-            f_disc!(q2e_int)
+            f_periodic!(q2e_int)
 
             q2e_pid.u.input = q2e_int.y.output
             q2e_pid.u.sat_ext = elevator_cmd_sat
-            f_disc!(q2e_pid)
+            f_periodic!(q2e_pid)
             elevator_ref = q2e_pid.y.output
 
         end
@@ -262,7 +262,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LonControl},
         e2e_lqr.u.x .= XPitch(vehicle) #state feedback
         e2e_lqr.u.z .= Float64(vehicle.y.systems.act.elevator.cmd) #command variable feedback
         e2e_lqr.u.z_ref .= elevator_ref #command variable reference
-        f_disc!(e2e_lqr)
+        f_periodic!(e2e_lqr)
         elevator_cmd = e2e_lqr.y.output[1]
 
     end
@@ -391,7 +391,7 @@ function Modeling.init!(mdl::Model{<:LatControl})
 
 end
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LatControl},
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LatControl},
                         vehicle::Model{<:C172X.Vehicle})
 
     @unpack mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref = mdl.u
@@ -419,7 +419,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LatControl},
         ar2ar_lqr.u.z .= ULat(; aileron_cmd = systems.act.aileron.cmd,
                                 rudder_cmd = systems.act.rudder.cmd)
         ar2ar_lqr.u.z_ref .= ULat(; aileron_cmd = aileron_ref, rudder_cmd = rudder_ref)
-        f_disc!(ar2ar_lqr)
+        f_periodic!(ar2ar_lqr)
         @unpack aileron_cmd, rudder_cmd = ULat(ar2ar_lqr.y.output)
 
     end
@@ -442,11 +442,11 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LatControl},
 
             p2φ_int.u.input = p_ref - p
             p2φ_int.u.sat_ext = u_lat_sat.aileron_cmd
-            f_disc!(p2φ_int)
+            f_periodic!(p2φ_int)
 
             p2φ_pid.u.input = p2φ_int.y.output
             p2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
-            f_disc!(p2φ_pid)
+            f_periodic!(p2φ_pid)
             φ_ref = p2φ_pid.y.output
 
         elseif χ2φ_enabled(mode) #φ_ref overridden by course angle tracker
@@ -463,7 +463,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LatControl},
             χ = kinematics.χ_gnd
             χ2φ_pid.u.input = wrap_to_π(χ_ref - χ)
             χ2φ_pid.u.sat_ext = u_lat_sat.aileron_cmd
-            f_disc!(χ2φ_pid)
+            f_periodic!(χ2φ_pid)
             φ_ref = χ2φ_pid.y.output
 
         else #lat_φ_β
@@ -481,7 +481,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:LatControl},
         φβ2ar_lqr.u.x .= XLat(vehicle)
         φβ2ar_lqr.u.z .= ZLat(; φ, β)
         φβ2ar_lqr.u.z_ref .= ZLat(; φ = φ_ref, β = β_ref)
-        f_disc!(φβ2ar_lqr)
+        f_periodic!(φβ2ar_lqr)
         @unpack aileron_cmd, rudder_cmd = ULat(φβ2ar_lqr.y.output)
 
     end
@@ -537,7 +537,7 @@ Modeling.S(::AltitudeGuidance) = AltitudeGuidanceS()
 Modeling.Y(::AltitudeGuidance) = AltitudeGuidanceY()
 
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:AltitudeGuidance},
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:AltitudeGuidance},
                         vehicle::Model{<:C172X.Vehicle})
 
     @unpack state, h_thr = mdl.s
@@ -652,7 +652,7 @@ Modeling.Y(::Controller) = ControllerY()
 ########################### Update Methods #####################################
 
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{<:Controller},
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
                         vehicle::Model{<:C172X.Vehicle})
 
     # println("Hi")
@@ -693,7 +693,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:Controller},
 
             alt_gdc.u.h_ref = h_ref
             alt_gdc.u.h_datum = h_datum
-            f_disc!(alt_gdc, vehicle)
+            f_periodic!(alt_gdc, vehicle)
 
             lon_ctl_mode = alt_gdc.y.lon_ctl_mode
             throttle_ref = alt_gdc.y.throttle_ref
@@ -715,7 +715,7 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:Controller},
             #remove this when implemented
             lat_ctl_mode = lat_ctl_mode_req
             # seg_gdc.u.line_ref = line_ref
-            # f_disc!(seg_gdc, vehicle)
+            # f_periodic!(seg_gdc, vehicle)
 
             # lat_ctl_mode = seg_gdc.y.lat_ctl_mode
             # χ_ref = seg_gdc.y.χ_ref
@@ -727,11 +727,11 @@ function Modeling.f_disc!(::NoScheduling, mdl::Model{<:Controller},
 
     lon_ctl.u.mode = lon_ctl_mode
     @pack! lon_ctl.u = throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref
-    f_disc!(lon_ctl, vehicle)
+    f_periodic!(lon_ctl, vehicle)
 
     lat_ctl.u.mode = lat_ctl_mode
     @pack! lat_ctl.u = aileron_ref, rudder_ref, p_ref, φ_ref, β_ref, χ_ref
-    f_disc!(lat_ctl, vehicle)
+    f_periodic!(lat_ctl, vehicle)
 
     mdl.y = ControllerY(; flight_phase,
         vrt_gdc_mode, hor_gdc_mode, lon_ctl_mode, lat_ctl_mode,
@@ -816,16 +816,16 @@ function Modeling.init!(mdl::Model{<:Controller},
     #controller design points, but it is good enough.
     u.lon_ctl_mode_req = lon_sas
     u.lat_ctl_mode_req = lat_sas
-    f_disc!(mdl, vehicle)
+    f_periodic!(mdl, vehicle)
 
     u.lon_ctl_mode_req = lon_sas
     u.lat_ctl_mode_req = lat_φ_β
-    f_disc!(mdl, vehicle)
+    f_periodic!(mdl, vehicle)
 
     #restore direct modes
     u.lon_ctl_mode_req = lon_direct
     u.lat_ctl_mode_req = lat_direct
-    f_disc!(mdl, vehicle)
+    f_periodic!(mdl, vehicle)
 
 end
 

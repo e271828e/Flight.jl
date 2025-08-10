@@ -1,4 +1,4 @@
-module TestSystems
+module TestModeling
 
 using Test, UnPack, Logging, StructTypes
 
@@ -21,12 +21,12 @@ function Modeling.f_ode!(mdl::Model{FirstOrder})
     mdl.y = mdl.x[1]
 end
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{FirstOrder})
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{FirstOrder})
     x_new = mdl.x[1] + 0.1
-    @info("Called f_disc! at t = $(mdl.t[]), _n = $(mdl._n[]), _N = $(mdl._N), updating x = $(mdl.x[1]) to x = $(x_new)")
+    @info("Called f_periodic! at t = $(mdl.t[]), _n = $(mdl._n[]), _N = $(mdl._N), updating x = $(mdl.x[1]) to x = $(x_new)")
     mdl.x .= x_new
     mdl.y = mdl.x[1]
-    # println("Called f_disc! at t = $(mdl.t[]), got y = $(mdl.y)")
+    # println("Called f_periodic! at t = $(mdl.t[]), got y = $(mdl.y)")
 end
 
 @no_step FirstOrder
@@ -52,7 +52,7 @@ end
 
 function Modeling.init!(mdl::Model{Root}, x0::Real = 0.0)
     (mdl.x .= x0)
-    # f_disc!(mdl)
+    # f_periodic!(mdl)
 end
 
 ################################################################################
@@ -89,16 +89,16 @@ end
 Modeling.X(::DiscreteTestComponent) = ComponentVector(a = 0.0, b = 0.0)
 Modeling.Y(::DiscreteTestComponent) = DiscreteTestComponentY()
 
-function Modeling.f_disc!(::NoScheduling, mdl::Model{DiscreteTestComponent})
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{DiscreteTestComponent})
     mdl.x.a += 1
     mdl.x.b -= 1
     mdl.y = DiscreteTestComponentY(a = x.a, b = x.b)
 end
 
-function test_discrete()
+function test_periodic()
 
     #if we set a fixed dt < Δt and adaptive = false, the integrator may take
-    #multiple unnecessary steps between discrete update epochs
+    #multiple unnecessary steps between periodic updates
     mdl = DiscreteTestComponent() |> Model
     sim = Simulation(mdl, adaptive = false, Δt = 1.0)
     step!(sim, 1, true)
@@ -108,8 +108,8 @@ function test_discrete()
 
     #if we set adaptive = true, it will only take a few intermediate steps
     #before the integrator extends the proposed dt beyond Δt, on account of ẋ
-    #always being 0. from that moment on, it only stops at the discrete update
-    #epochs
+    #always being 0. from that moment on, it only stops at the periodic update
+    #instants
     mdl = DiscreteTestComponent() |> Model
     sim = Simulation(mdl, adaptive = true, Δt = 1.0)
     step!(sim, 1, true)
@@ -117,8 +117,8 @@ function test_discrete()
     @show sim.t
     @show sim.y
 
-    #here, we set dt = Δt directly, so it only stops at discrete update epochs
-    #right from the start
+    #here, we set dt = Δt directly, so it only stops at periodic updates right
+    #from the start
     mdl = DiscreteTestComponent() |> Model
     sim = Simulation(mdl, Δt = 1.0, dt = Δt)
     step!(sim, 1, true)
@@ -126,7 +126,7 @@ function test_discrete()
     @show sim.t
     @show sim.y
 
-    #setting dt > Δt also works: the integrator will still honor the discrete
+    #setting dt > Δt also works: the integrator will still honor the periodic
     #callback
     mdl = DiscreteTestComponent() |> Model
     sim = Simulation(mdl, Δt = 1.0, dt = 2.0)

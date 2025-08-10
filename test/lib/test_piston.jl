@@ -46,7 +46,7 @@ function Modeling.f_step!(harness::Model{<:TestHarness})
     f_step!(harness.thruster, fuel_available)
 end
 
-Modeling.f_disc!(::NoScheduling, ::Model{<:TestHarness}) = nothing
+Modeling.f_periodic!(::NoScheduling, ::Model{<:TestHarness}) = nothing
 
 ################################################################################
 

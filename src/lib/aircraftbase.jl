@@ -177,14 +177,14 @@ function Modeling.f_step!(vehicle::Model{<:Vehicle},
 
 end
 
-#within Vehicle, only vehicle systems may be modified by f_disc!
-function Modeling.f_disc!(::NoScheduling, vehicle::Model{<:Vehicle},
+#within Vehicle, only vehicle systems may be modified by f_periodic!
+function Modeling.f_periodic!(::NoScheduling, vehicle::Model{<:Vehicle},
                          atmosphere::Model{<:AbstractAtmosphere},
                          terrain::Model{<:AbstractTerrain})
 
     @unpack systems, kinematics, dynamics = vehicle.submodels
 
-    f_disc!(systems, atmosphere, terrain)
+    f_periodic!(systems, atmosphere, terrain)
 
     # systems.y might have changed, so we should update vehicle.y
     vehicle.y = VehicleY(systems.y, kinematics.y, dynamics.y, vehicle.y.airflow)
@@ -194,7 +194,7 @@ end
 
 #these map avionics outputs to the vehicle, and in particular to
 #systems inputs. they are called both within the aircraft's f_ode! and
-#f_disc! before the vehicle update
+#f_periodic! before the vehicle update
 function assign!(vehicle::Model{<:Vehicle}, avionics::Model{<:AbstractAvionics})
     assign!(vehicle.systems, avionics)
 end
@@ -226,15 +226,15 @@ function Modeling.f_ode!(aircraft::Model{<:Aircraft},
     update_output!(aircraft)
 end
 
-function Modeling.f_disc!(::NoScheduling,
+function Modeling.f_periodic!(::NoScheduling,
                         aircraft::Model{<:Aircraft},
                         atmosphere::Model{<:AbstractAtmosphere},
                         terrain::Model{<:AbstractTerrain})
 
     @unpack vehicle, avionics = aircraft
-    f_disc!(avionics, vehicle)
+    f_periodic!(avionics, vehicle)
     assign!(vehicle, avionics)
-    f_disc!(vehicle, atmosphere, terrain)
+    f_periodic!(vehicle, atmosphere, terrain)
     update_output!(aircraft)
 end
 
