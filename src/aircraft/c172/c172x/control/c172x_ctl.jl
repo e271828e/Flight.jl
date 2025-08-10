@@ -775,12 +775,10 @@ function Modeling.init!(mdl::Model{<:Controller},
     @unpack β = vehicle.y.systems.aero
 
     #we need to make Controller inputs consistent with the vehicle status, so
-    #trim conditions are preserved upon simulation start when the corresponding
+    #that trim conditions are preserved upon simulation start when different
     #control modes are selected
     Control.reset!(mdl)
 
-    #in a fly-by-wire implementation, it makes more sense to assign the trim
-    #values to the inputs rather than the offsets
     u = mdl.u
     u.throttle_axis = y_act.throttle.pos
     u.aileron_axis = y_act.aileron.pos
@@ -807,10 +805,19 @@ function Modeling.init!(mdl::Model{<:Controller},
     u.vrt_gdc_mode_req = vrt_gdc_off
     u.hor_gdc_mode_req = hor_gdc_off
 
-    #do an update with the inner SAS loops enabled so that their internal
-    #reference values are made consistent with the trim values. this will then make the
-    #actuator commands output by the Controller consistent with the trim state
-    #values
+    #for the trim condition to be preserved when the simulation is started with
+    #sas (rather than direct) modes enabled, we need a post-trim update of the
+    #controller with the inner LQR SAS loops enabled. this loads the z_trim,
+    #u_trim and x_trim values corresponding to the trim state into the LQR
+    #trackers, and runs them once. after this, their outputs will match the
+    #actuator commands required by the trim condition. this match is only
+    #approximate, because in general, the trim values loaded from the lookup
+    #tables will be interpolated, rather than exactly computed at specific
+    #controller design points, but it is good enough.
+    u.lon_ctl_mode_req = lon_sas
+    u.lat_ctl_mode_req = lat_sas
+    f_disc!(mdl, vehicle)
+
     u.lon_ctl_mode_req = lon_sas
     u.lat_ctl_mode_req = lat_φ_β
     f_disc!(mdl, vehicle)
