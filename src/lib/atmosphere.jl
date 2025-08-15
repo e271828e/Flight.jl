@@ -10,7 +10,7 @@ using ..Geodesy
 using ..Kinematics
 
 export p_std, T_std, g_std, ρ_std, ISA_layers
-export ISAData, AtmosphericData, AirflowData
+export ISAData, AtmosphericData, AirData
 
 export SeaLevelStandard, TunableSeaLevel
 export NoWind, TunableWind
@@ -192,9 +192,9 @@ end
 end
 
 ################################################################################
-############################## AirflowData #####################################
+############################## AirData #####################################
 
-struct AirflowData
+struct AirData
     v_ew_n::SVector{3,Float64} #wind velocity, NED axes
     v_ew_b::SVector{3,Float64} #wind velocity, vehicle axes
     v_wb_b::SVector{3,Float64} #vehicle aerodynamic velocity, vehicle axes
@@ -216,7 +216,7 @@ end
 TAS2EAS(TAS::Real; ρ::Real) = TAS * √(ρ / ρ_std)
 EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
 
-function AirflowData(atm_data::AtmosphericData = AtmosphericData(),
+function AirData(atm_data::AtmosphericData = AtmosphericData(),
                     kin_data::KinData = KinData())
 
     @unpack v_eb_b, q_nb = kin_data
@@ -236,7 +236,7 @@ function AirflowData(atm_data::AtmosphericData = AtmosphericData(),
     EAS = TAS2EAS(TAS; ρ)
     CAS = √(2γ/(γ-1) * p_std/ρ_std * ( (1 + Δp/p_std)^((γ-1)/γ) - 1) )
 
-    AirflowData(v_ew_n, v_ew_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
+    AirData(v_ew_n, v_ew_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS)
 
 end
 
@@ -276,9 +276,9 @@ function AtmosphericData(mdl::Model{<:SimpleAtmosphere},
     AtmosphericData(; T, p, ρ, a, μ, v)
 end
 
-function AirflowData(mdl::Model{<:SimpleAtmosphere}, kin_data::KinData)
+function AirData(mdl::Model{<:SimpleAtmosphere}, kin_data::KinData)
     @unpack n_e, h_o = kin_data
-    AirflowData(AtmosphericData(mdl, Geographic(n_e, h_o)), kin_data)
+    AirData(AtmosphericData(mdl, Geographic(n_e, h_o)), kin_data)
 end
 
 function GUI.draw!(mdl::Model{<:SimpleAtmosphere},
@@ -358,7 +358,7 @@ end
 
 ################################## Plotting ####################################
 
-function Plotting.make_plots(ts::TimeSeries{<:AirflowData}; kwargs...)
+function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
@@ -447,7 +447,7 @@ end
 
 ################################# GUI ##########################################
 
-function GUI.draw(air::AirflowData, p_open::Ref{Bool} = Ref(true),
+function GUI.draw(air::AirData, p_open::Ref{Bool} = Ref(true),
                 label::String = "Airflow Data")
 
     @unpack v_ew_n, v_ew_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air

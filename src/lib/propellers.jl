@@ -406,7 +406,7 @@ end
 
 @no_step Propeller
 
-function Modeling.f_ode!(mdl::Model{<:Propeller}, kin_data::KinData, air_data::AirflowData, ω::Real)
+function Modeling.f_ode!(mdl::Model{<:Propeller}, kin_data::KinData, air_data::AirData, ω::Real)
 
     @unpack d, J_xx, t_bp, sense, lookup = mdl.constants
     #this may actually happen due to friction constraint overshoot at low RPMs

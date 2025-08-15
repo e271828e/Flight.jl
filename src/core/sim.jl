@@ -259,12 +259,16 @@ function Simulation(md::ModelDefinition, args...; kwargs...)
     Simulation(Model(md), args...; kwargs...)
 end
 
+function Base.propertynames(::Simulation)
+    (fieldnames(Simulation)..., :x, :ẋ, :s, :u, :y, :t, :Δt)
+end
+
 Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
 
 @generated function Base.getproperty(sim::Simulation, ::Val{S}) where {S}
     if S === :t
         return :(getproperty(getfield(sim, :mdl), $(QuoteNode(S)))[])
-    elseif S ∈ fieldnames(Model)
+    elseif S ∈ (:x, :ẋ, :s, :u, :y, :Δt)
         return :(getproperty(getfield(sim, :mdl), $(QuoteNode(S))))
     else
         return :(getfield(sim, $(QuoteNode(S))))
@@ -487,7 +491,7 @@ function start!(sim::Simulation)
             control.algorithm = sim.integrator.alg |> typeof |> string
             control.t_start = t_start
             control.t_end = t_end
-            control.Δt = sim._Δt_root[]
+            control.Δt = mdl._Δt_root[]
         unlock(io_lock)
 
         notify(io_start)
@@ -652,16 +656,14 @@ function Base.getproperty(ts::TimeSeries, s::Symbol)
 end
 
 get_time(ts::TimeSeries) = getfield(ts, :_t)
+
 get_data(ts::TimeSeries) = getfield(ts, :_data)
 
-function get_components(ts::TimeSeries{<:AbstractVector{T}}) where {T<:Real}
+function get_components(ts::TimeSeries{<:AbstractArray{T}}) where {T<:Real}
     (TimeSeries(ts._t, y) for y in ts._data |> StructArray |> StructArrays.components)
 end
 
-get_child_names(::T) where {T <: TimeSeries} = get_child_names(T)
-get_child_names(::Type{<:TimeSeries{V}}) where {V} = fieldnames(V)
-
-Base.propertynames(ts::TimeSeries) = get_child_names(ts)
+Base.propertynames(ts::TimeSeries) = propertynames(getfield(ts, :_data)[1])
 
 Base.getindex(ts::TimeSeries, i) = TimeSeries(ts._t[i], ts._data[i])
 
@@ -678,6 +680,9 @@ end
 function Base.lastindex(ts::TimeSeries)
     lastindex(ts._t)
 end
+
+Base.eltype(::TimeSeries{V}) where {V} = V
+
 Base.view(ts::TimeSeries, i) = TimeSeries(view(ts._t, i), view(ts._data, i))
 
 TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
@@ -686,7 +691,7 @@ TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
 ################################################################################
 ############################### Inspection #####################################
 
-#prevent monstrous type signatures from flooding the REPL
+# #prevent monstrous type signatures from flooding the REPL
 
 function Base.show(io::IO, ::Simulation{D}) where {D <: ModelDefinition}
     maxlen = 100 #maximum length for ModelDefinition type parameter

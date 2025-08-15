@@ -124,7 +124,7 @@ function test_propeller()
     t_bp = FrameTransform(r = [1.0, 0, 0])
     kin = KinInit(v_eb_n = [50, 0, 0]) |> KinData
     atm = AtmosphericData()
-    air = AirflowData(atm, kin)
+    air = AirData(atm, kin)
     ω = 300
 
     @testset verbose = true "Propeller" begin

@@ -140,7 +140,7 @@ function udp_loopback()
 
         #mdl.y.output must have propagated to mdl.u.input via loopback, and then
         #to mdl.y.input within f_periodic!
-        @test sim.y.input == 37.0
+        @test mdl.y.input == 37.0
 
         return sim
 
@@ -174,7 +174,7 @@ function xp12_loopback()
         #handle_data! and finally reaches assign_input! via loopback. the first
         #character is converted to Float64 and assigned to mdl.u.input, and it
         #finally propagates to mdl.y.input within f_periodic!
-        @test sim.y.input === Float64(cmd[1])
+        @test mdl.y.input === Float64(cmd[1])
 
         return sim
 
@@ -230,7 +230,7 @@ function json_loopback()
         #we need to run these paced, otherwise the IO can't keep up
         Sim.run!(sim; pace = 1)
 
-        @test sim.y.input == 37.0
+        @test mdl.y.input == 37.0
 
         return sim
 

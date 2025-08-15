@@ -298,7 +298,7 @@ Modeling.S(::Aero) = AeroS()
 #(wind-relative) velocity
 
 function Modeling.f_ode!(mdl::Model{Aero}, terrain::Model{<:AbstractTerrain},
-                        air_data::AirflowData, kin_data::KinData)
+                        air_data::AirData, kin_data::KinData)
 
     @unpack ẋ, x, u, s, constants = mdl
     @unpack α_filt, β_filt = x
@@ -684,7 +684,7 @@ end
 function Modeling.f_ode!(systems::Model{<:Systems},
                         terrain::Model{<:AbstractTerrain},
                         kin_data::KinData,
-                        air_data::AirflowData)
+                        air_data::AirData)
 
     @unpack act, aero, pwp, ldg, fuel, pld = systems
 

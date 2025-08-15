@@ -11,7 +11,7 @@ happen to have the full version, you can use it instead. Since we will be using 
 external visualization tool, we only need to set up a few things; for further help, check out the
 [X-Plane 12 manual](https://www.x-plane.com/manuals/desktop/).
 
-!!! note "Without X-Plane"
+!!! note "No X-Plane"
 
     If you can't run X-Plane 12 (which might happen for instance if you have an Intel integrated
     graphics chip), you can skip this section. Your visuals will be limited to the built-in GUI, but

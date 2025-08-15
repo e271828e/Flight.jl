@@ -48,6 +48,9 @@ function Modeling.f_ode!(mdl::Model{Actuator1{R}}) where {R}
 
 end
 
+@no_step Actuator1
+@no_periodic Actuator1
+
 ################################################################################
 ################################## Actuator2 ###################################
 
@@ -97,6 +100,9 @@ function Modeling.f_ode!(mdl::Model{Actuator2{R}}) where {R}
     mdl.y = Actuator2Y(; cmd, pos, vel, sat)
 
 end
+
+@no_step Actuator2
+@no_periodic Actuator2
 
 
 ################################################################################

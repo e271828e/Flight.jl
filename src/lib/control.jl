@@ -243,10 +243,9 @@ function Plotting.make_plots(ts::TimeSeries{<:PIVectorY}; kwargs...)
 
     input = plot(ts.input; title = "Input", ylabel = L"$e$", kwargs...)
     output = plot(ts.output; title = "Output", ylabel = L"$y$", kwargs...)
-    reset = plot(ts.reset; title = "Reset", ylabel = L"$r$", kwargs...)
 
-    pd[:sf] = plot(input, output, reset;
-        plot_title = "Input, Output & Reset",
+    pd[:sf] = plot(input, output;
+        plot_title = "Input & Output",
         layout = (1,3),
         link = :y,
         kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs

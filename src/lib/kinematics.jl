@@ -625,6 +625,7 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
         plot_title = "Velocity (Vehicle/ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
         ts_split = :h,
+        link = :none,
         kwargs...)
 
     # pd[:ω_ew_n] = plot(

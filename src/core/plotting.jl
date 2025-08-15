@@ -41,6 +41,7 @@ end
 
 @recipe function f(ts::TimeSeries{<:Ranged{T}}) where {T}
 
+    xguide --> L"$t \: (s)$"
     return ts._t, T.(ts._data)
 
 end
@@ -89,7 +90,7 @@ function make_plots(ts::TimeSeries{<:NamedTuple}; kwargs...)
 
 end
 
-make_plots(::T; kwargs...) where {T<:TimeSeries} = @warn("make_plots not implemented for $T")
+make_plots(::T; kwargs...) where {T<:TimeSeries} = @info("make_plots not implemented for $T")
 
 #these yield a single figure so they can be directly handled by the Plots
 #pipeline as recipes

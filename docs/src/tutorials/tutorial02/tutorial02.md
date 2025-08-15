@@ -4,17 +4,14 @@ In this tutorial, we revisit our [interactive simulation](@ref "Interactive Simu
 time, we will learn how to run the `Simulation` programmatically and extract results for inspection
 and plotting.
 
-### Peeking Into the Simulation `Model`
+### Peeking Into the `Model`
 
-Let's begin by recreating our `SimpleWorld` instance:
-```@example tutorial02
+Let's start from a new `SimpleWorld` instance. Here, keeping consistency with X-Plane's visuals
+is no longer a concern, so we can stick to the default constructors:
+```@repl tutorial02
 using Flight
 
-loc_LOWS15 = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997))
-h_LOWS15 = HOrth(427.2)
-ψ_LOWS15 = deg2rad(157)
-world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_LOWS15))
-nothing #hide
+world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain())
 ```
 
 Inspecting its type hierarchy reveals that `SimpleWorld` is a concrete subtype of the abstract type
@@ -31,15 +28,12 @@ object to the `Model` constructor:
 mdl = Model(world)
 ```
 
-The `ModelDefinition` subtype is preserved as the `Model`'s first type parameter. It serves as the
-`Model`'s primary identifier, and it is used for dispatch when calling `Model` update functions.
-
 Let's take a look at our `Model`'s properties:
 ```@repl tutorial02
 propertynames(mdl)
 ```
 
-Here's a brief description for each one:
+Here's a brief description of each one:
 - `x` (*continuous state*): A vector containing `Model` states that evolve continuously over time.
   It is updated by the `Simulation`'s ODE integrator.
 - `ẋ` (*continuous state derivative*): A vector containing the time derivative of `x`.
@@ -70,68 +64,175 @@ mdl.atmosphere.sl
 ```
 
 Thus, a complex `Model` can be made up of multiple, hierarchically arranged components, each one of
-them itself a `Model`. To visualize a `Model`'s hierarchy, you can do the following:
+them itself a `Model`. To visualize a `Model`'s hierarchy, you can use the `print_tree` function.
+For example, let's see what's underneath the `mdl.aircraft.vehicle.ctl` node:
 ```@repl tutorial02
 using AbstractTrees
-print_tree(mdl; maxdepth = 10)
+print_tree(mdl.aircraft.avionics.ctl; maxdepth = 10)
 ```
 
-You can also inspect a specific property across a `Model`'s hierarchy. For example, to view the
-discrete state `s` of `mdl.aircraft.avionics.ctl` and every node below, you would do:
+You can also inspect a specific property across a `Model`'s hierarchy. For instance, to view the
+discrete state of `mdl.aircraft.avionics.ctl` and every node underneath:
 ```@repl tutorial02
 print_tree(mdl.aircraft.avionics.ctl, :s; maxdepth = 10);
 ```
 
-Recall that, in the [interactive simulation](@ref "Interactive Simulation") tutorial, we used the
-*Aircraft > Avionics > Flight Control* panel to control the aircraft. As you might have guessed,
-that GUI panel belongs to the `mdl.aircraft.avionics.ctl` node. Let's retrieve its input:
+### Simulating an Elevator Doublet
+
+Our plan in this section is as follows:
+1. Initialize the aircraft in a trimmed state.
+2. Inject an elevator doublet by setting the appropriate inputs and stepping the `Simulation` manually.
+3. Let the `Simulation` run to completion.
+4. Extract and plot some useful variables from the `Simulation`'s log to observe the aircraft's
+   response.
+
+Let's first create a `Simulation` from our `Model`:
+
 ```@repl tutorial02
-u_ctl = mdl.aircraft.avionics.ctl.u
+sim = Simulation(mdl; dt = 0.02, t_end = 60)
 ```
 
-It is the fields of this `struct` that the GUI panel's inputs map to. In this tutorial, we will be
-writing to them directly.
+The `Model` is now stored within the `Simulation`. It can be accesed at any time for inspection
+or manipulation:
 
------------------------------------------
-
-### Simulation
-
-Next now create a `Simulation` for our `Model`:
 ```@repl tutorial02
-sim = Simulation(mdl; dt = 0.02)
+:mdl ∈ propertynames(sim)
+sim.mdl === mdl
 ```
 
-The `Model` is stored within the `Simulation` and can be retrieved at any moment for inspection or
-manipulation:
+We could also pass a `ModelDefinition` object directly to the `Simulation` constructor. In that
+case, a new `Model` would be instantiated automatically.
+
+The initialization step is straightforward:
+
 ```@repl tutorial02
-propertynames(sim)
-mdl === sim.mdl
+init_air = C172.TrimParameters(); #straight and level, default airspeed and altitude
+Sim.init!(sim, init_air)
 ```
 
-If an instance of a `ModelDefinition` subtype is passed directly to the `Simulation` constructor (as
-we did in the [interactive simulation](@ref "Interactive Simulation") tutorial), the `Model` is
-automatically instantiated under the hood.
+What next? You may recall how during [interactive simulation](@ref "Interactive Simulation") we used
+the *Aircraft > Avionics > Flight Control* GUI panel to control the aircraft. That panel belongs to
+the `mdl.aircraft.avionics.ctl` node, which implements the flight control laws for the
+`Cessna172Xv1` aircraft. Let's retrieve its input `struct`:
 
---------------------------------------
-### Elevator Doublet
+```@repl tutorial02
+u_ctl = mdl.aircraft.avionics.ctl.u;
+```
 
-How do we go about doing this?
+It is this `struct` that the control inputs in *Aircraft > Avionics > Flight Control* map to. Here,
+we will be writing to it directly. Let's inspect its fields:
 
-Let's begin by taking a look at the flight controller `Model`'s input `struct`:
 ```@repl tutorial02
 shf(u_ctl)
 ```
 
+Note how the trim function, invoked by the `Sim.init!` call, has already set the primary control
+inputs (`throttle_axis`, `elevator_axis`, `aileron_axis` and `rudder_axis`) to the values required
+by the trimmed flight condition. Also, the longitudinal and lateral control mode inputs
+(`lon_ctl_mode_req` and `lat_ctl_mode_req`) are set to their direct values. This bypasses all
+control loops, preserving the aircraft's natural dynamic response, which is what we want here.
+
+Let's first advance the `Simulation` a few seconds without perturbing the trim equilibrium. To do
+so, we use the `Sim.step!` method, which essentially wraps the one from `DifferentialEquations.jl`'s
+[integrator
+interface](https://docs.sciml.ai/DiffEqDocs/stable/basics/integrator/#CommonSolve.step!).
+
+```@repl tutorial02
+Sim.step!(sim, 5) #advance the simulation 5 seconds
+```
+
+Now, to apply the elevator doublet, we can either modify the `elevator_axis` input directly or, more
+conveniently, use `elevator_offset` instead. Here's how to do it:
+
+```@repl tutorial02
+u_ctl.elevator_offset = 0.1; #10 percent positive offset
+Sim.step!(sim, 2) #advance 2 seconds
+u_ctl.elevator_offset = -0.1; #10 percent negative offset
+Sim.step!(sim, 2) #advance 2 seconds
+u_ctl.elevator_offset = 0.0; #return to trim position
+Sim.run!(sim) #run the Simulation to completion (t_end)
+```
+
+The data logged by a `Simulation` are the values of its root `Model`'s output. By default, these are
+saved at every integration step, but different saving intervals can be specified. The easiest way to
+retrieve and handle this data is through the `TimeSeries` type:
+```@repl tutorial02
+ts = TimeSeries(sim)
+```
+
+A `TimeSeries` object lets you inspect the properties of its underlying data type and generate
+another `TimeSeries` object for any of these properties. This is particularly convenient when
+dealing with large, deeply nested types, as `Model` outputs often are. Let's see a few examples:
+
+```@repl tutorial02
+propertynames(ts)
+propertynames(ts.aircraft)
+propertynames(ts.aircraft.vehicle)
+ts_kin = ts.aircraft.vehicle.kinematics
+ts_sys = ts.aircraft.vehicle.systems
+```
+
+```@repl tutorial02
+ts_ω = ts_kin.ω_wb_b #angular velocity, Wander frame to Body frame (rad/s)
+ts_θ = ts_kin.e_nb.θ #pitch angle, NED frame to Body frame (rad)
+ts_α = ts_sys.aero.α #angle of attack (rad)
+_, ts_q, _ = get_components(ts_ω); #pitch rate (rad/s)
+ts_el_cmd = ts_sys.act.elevator.cmd[4 .<= get_time(ts) .< 10] #elevator command
+ts_el_pos = ts_sys.act.elevator.pos[4 .<= get_time(ts) .< 10] #elevator position
+```
+
+`Plots.jl` recipes are available for many common `TimeSeries` subtypes, so plotting is usually
+straightforward:
+
+```@example tutorial02
+import Plots
+using LaTeXStrings
+
+#TimeSeries{<:Ranged} recipe
+Plots.plot(ts_el_cmd; plot_title="Elevator Response", label = "Command")
+Plots.plot!(ts_el_pos; label = "Position")
+```
+
+```@example tutorial02
+#TimeSeries{<:AbstractVector{<:Real}} recipe
+Plots.plot(ts_ω; plot_title="Angular Velocity", ylabel=L"$\omega \ (rad/s)$")
+```
+
+```@example tutorial02
+#TimeSeries{Real} recipe
+Plots.plot(ts_α; plot_title="AoA vs Pitch Angle", ylabel=L"$\alpha, \ \theta \ (rad)$", label="AoA")
+Plots.plot!(ts_θ; label = "Pitch Angle")
+```
+
+Function `make_plots` generates a batch of useful plots from a specific `TimeSeries` subtype. Out of
+the box, it is implemented for `TimeSeries{KinData}`, `TimeSeries{DynData}` and
+`TimeSeries{AirData}`, so for example you can do:
+
+Plots.default(:size, (900, 600))
+display(t3d)
+
+You can batch save them with save_plots
+
+Don't mention recursive...
+Proceeds recursively down the `Model` hierarchy.
+
+
+-----------------------------------------
+
+### Automating Simulation Control With User Callbacks
+
+Introduce callback for doublet.
+
+Then move on to complex multi-phase flight. Ground init, startup, take-off, spiral climb until h
+condition
+
+
 world.ac.avionics.ctl.u.lon_ctl_mode_req |> typeof
 using .C172X.C172XControl: lon_direct, lon_sas
 
-------------------------------------
 
-Furthermore, all of its fields are themselves `ModelDefinition` subtypes:
-```@repl tutorial02
-fieldtypes(SimpleWorld)
-supertype.(fieldtypes(SimpleWorld))
-```
+
+----------------------------------------
 
 These values come from fields in the `ModelDefinition` subtype that *are not*
   themselves `ModelDefinition`s.
@@ -147,17 +248,6 @@ hierarchy. Therefore, within `submodels` we will find `Model`s created from the 
 mdl.submodels
 ```
 
-```@example tutorial02
-init_gnd = KinInit(;
-    location = loc_LOWS15,
-    h = h_LOWS15 + C172.Δh_to_gnd,
-    q_nb = REuler(ψ_LOWS15, 0, 0),
-    ) |> C172.Init
 
-init_air = C172.TrimParameters(;
-    Ob = Geographic(loc_LOWS15, h_LOWS15 + 500),
-    EAS = 50.0,
-    ψ_nb = ψ_LOWS15,
-)
-nothing #hide
-```
+The `ModelDefinition` subtype is preserved as the `Model`'s first type parameter. It serves both as
+the `Model`'s primary identifier and as a dispatch mechanism when calling `Model` update functions.

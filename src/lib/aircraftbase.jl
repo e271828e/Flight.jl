@@ -55,14 +55,14 @@ struct VehicleY{S}
     systems::S
     kinematics::KinData
     dynamics::DynamicsData
-    airflow::AirflowData
+    airflow::AirData
 end
 
 Modeling.Y(vehicle::Vehicle) = VehicleY(
     Modeling.Y(vehicle.systems),
     KinData(),
     DynamicsData(),
-    AirflowData())
+    AirData())
 
 
 ################################ Initialization ################################
@@ -154,7 +154,7 @@ function Modeling.f_ode!(vehicle::Model{<:Vehicle},
     f_ode!(kinematics) #update ẋ and y before extracting kinematic data
 
     kin_data = KinData(kinematics)
-    airflow_data = AirflowData(atmosphere, kin_data)
+    airflow_data = AirData(atmosphere, kin_data)
 
     #update vehicle systems
     f_ode!(systems, terrain, kin_data, airflow_data)
@@ -394,7 +394,7 @@ function Plotting.make_plots(ts::TimeSeries{<:VehicleY}; kwargs...)
         :systems => make_plots(ts.systems; kwargs...),
         :kinematics => make_plots(ts.kinematics; kwargs...),
         :dynamics => make_plots(ts.dynamics; kwargs...),
-        :air => make_plots(ts.air; kwargs...),
+        :airflow => make_plots(ts.airflow; kwargs...),
     )
 
 end

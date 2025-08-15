@@ -104,7 +104,7 @@ function test_periodic()
     step!(sim, 1, true)
     @show sim.integrator.iter
     @show sim.t
-    @show sim.y
+    @show mdl.y
 
     #if we set adaptive = true, it will only take a few intermediate steps
     #before the integrator extends the proposed dt beyond Δt, on account of ẋ
@@ -115,7 +115,7 @@ function test_periodic()
     step!(sim, 1, true)
     @show sim.integrator.iter
     @show sim.t
-    @show sim.y
+    @show mdl.y
 
     #here, we set dt = Δt directly, so it only stops at periodic updates right
     #from the start
@@ -124,7 +124,7 @@ function test_periodic()
     step!(sim, 1, true)
     @show sim.integrator.iter
     @show sim.t
-    @show sim.y
+    @show mdl.y
 
     #setting dt > Δt also works: the integrator will still honor the periodic
     #callback
@@ -133,7 +133,7 @@ function test_periodic()
     step!(sim, 1, true)
     @show sim.integrator.iter
     @show sim.t
-    @show sim.y
+    @show mdl.y
 
 end
 

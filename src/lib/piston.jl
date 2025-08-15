@@ -142,7 +142,7 @@ function Modeling.init!(mdl::Model{<:PistonEngine})
     frc.u.bound_hi .= 1
 end
 
-function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirflowData)
+function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
 
     @unpack ω_rated, ω_idle, P_rated, J, τ_start, lookup = eng.constants
     @unpack idle, frc = eng.submodels
@@ -467,7 +467,7 @@ end
 end
 
 
-function Modeling.f_ode!(mdl::Model{<:PistonThruster}, air_data::AirflowData, kin_data::KinData)
+function Modeling.f_ode!(mdl::Model{<:PistonThruster}, air_data::AirData, kin_data::KinData)
 
     @unpack engine, propeller = mdl
     @unpack gear_ratio = mdl.constants

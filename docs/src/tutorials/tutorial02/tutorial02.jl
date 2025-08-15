@@ -34,15 +34,15 @@ function tutorial02a()
     #inspect model hierarchy here.
     Modeling.init!(mdl, initializer)
 
-    sim = Simulation(mdl; dt = 0.02, t_end = 100)
+    sim = Simulation(mdl; dt = 0.02, t_end = 60)
 
-    Sim.step!(sim, 5, true)
-    @show mdl.aircraft.avionics.ctl.u.elevator_axis += 0.2
-    Sim.step!(sim, 1, true)
-    @show mdl.aircraft.avionics.ctl.u.elevator_axis -= 0.4
-    Sim.step!(sim, 1, true)
-    @show mdl.aircraft.avionics.ctl.u.elevator_axis += 0.2
-    Sim.step!(sim, 30, true)
+    Sim.step!(sim, 5)
+    @show mdl.aircraft.avionics.ctl.u.elevator_offset = 0.1
+    Sim.step!(sim, 2)
+    @show mdl.aircraft.avionics.ctl.u.elevator_offset = -0.1
+    Sim.step!(sim, 2)
+    @show mdl.aircraft.avionics.ctl.u.elevator_offset = 0
+    Sim.run!(sim)
 
     save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/tutorial02/kin"); Plotting.defaults..., linewidth = 2,)
     save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/tutorial02/air"); Plotting.defaults...)
