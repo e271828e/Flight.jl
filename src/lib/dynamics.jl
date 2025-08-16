@@ -558,7 +558,7 @@ function Plotting.make_plots(ts::TimeSeries{<:DynamicsData}; kwargs...)
             L"$g_{c}^{x_c} \ (m / s^2)$",
             L"$g_{c}^{y_c} \ (m / s^2)$",
             L"$b_{c}^{z_c} \ (m / s^2)$"),
-        ts_split = :h, link = :none,
+        ts_split = :v, link = :none,
         kwargs...)
 
     pd[:wr_ext_c] = plot(ts.wr_Σ_c;
@@ -577,7 +577,7 @@ function Plotting.make_plots(ts::TimeSeries{<:DynamicsData}; kwargs...)
             L"$h_{Ob \ (r)}^{x_b} \ (kg \ m^2 / s)$",
             L"$h_{Ob \ (r)}^{y_b} \ (kg \ m^2 / s)$",
             L"$h_{Ob \ (r)}^{z_b} \ (kg \ m^2 / s)$"),
-        ts_split = :h, link = :none,
+        ts_split = :v, link = :none,
         kwargs...)
 
     pd[:α_eb_b] = plot(ts.ω̇_eb_b;
@@ -586,7 +586,7 @@ function Plotting.make_plots(ts::TimeSeries{<:DynamicsData}; kwargs...)
             L"$\alpha_{eb}^{x_b} \ (rad/s^2)$",
             L"$\alpha_{eb}^{y_b} \ (rad/s^2)$",
             L"$\alpha_{eb}^{z_b} \ (rad/s^2)$"),
-        ts_split = :h,
+        ts_split = :v,
         kwargs...)
 
     pd[:a_eb_b] = plot(ts.a_eb_b;
@@ -595,7 +595,7 @@ function Plotting.make_plots(ts::TimeSeries{<:DynamicsData}; kwargs...)
             L"$a_{eb}^{x_b} \ (m/s^{2})$",
             L"$a_{eb}^{y_b} \ (m/s^{2})$",
             L"$a_{eb}^{z_b} \ (m/s^{2})$"),
-        ts_split = :h,
+        ts_split = :v,
         kwargs...)
 
     pd[:f_c_c] = plot(TimeSeries(ts._t, ts.f_c_c._data / g₀);
@@ -604,7 +604,7 @@ function Plotting.make_plots(ts::TimeSeries{<:DynamicsData}; kwargs...)
             L"$f_{c}^{x_c} \ (g)$",
             L"$f_{c}^{y_c} \ (g)$",
             L"$f_{c}^{z_c} \ (g)$"),
-        ts_split = :h, link = :none,
+        ts_split = :v, link = :none,
         kwargs...)
 
     return pd

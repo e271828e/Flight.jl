@@ -356,7 +356,7 @@ function Plotting.make_plots(ts::TimeSeries{<:StrutY}; kwargs...)
     pd[:dmp] = plot(subplot_ξ, subplot_ξ_dot, subplot_F;
         plot_title = "Damper",
         layout = (1,3), link = :none,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     return pd
 
@@ -514,7 +514,7 @@ function Plotting.make_plots(ts::TimeSeries{<:ContactY}; kwargs...)
     pd[:srf] = plot(subplot_μ_roll, subplot_μ_skid;
         plot_title = "Surface Friction",
         layout = (1,2), link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     subplot_κ_br = plot(ts.κ_br; title = "Braking Coefficient",
         ylabel = L"$\alpha_{br}$", label = "", kwargs...)
@@ -526,7 +526,7 @@ function Plotting.make_plots(ts::TimeSeries{<:ContactY}; kwargs...)
     pd[:μ_x] = plot(subplot_κ_br, subplot_μ_max_x, subplot_μ_eff_x;
         plot_title = "Longitudinal Friction",
         layout = (1,3),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     subplot_ψ_cv = plot(ts._t, rad2deg.(ts.ψ_cv._data); title = "Tire Slip Angle",
         ylabel = L"$\psi_{cv} \ (deg)$", label = "", kwargs...)
@@ -538,7 +538,7 @@ function Plotting.make_plots(ts::TimeSeries{<:ContactY}; kwargs...)
     pd[:μ_y] = plot(subplot_ψ_cv, subplot_μ_max_y, subplot_μ_eff_y;
         plot_title = "Lateral Friction",
         layout = (1,3),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     pd[:f_c] = plot(ts.f_c;
         plot_title = "Normalized Contact Force",

@@ -246,9 +246,9 @@ function Plotting.make_plots(ts::TimeSeries{<:PIVectorY}; kwargs...)
 
     pd[:sf] = plot(input, output;
         plot_title = "Input & Output",
-        layout = (1,3),
+        layout = (2,1),
         link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     k_p = plot(ts.k_p; title = "Proportional Gain", ylabel = L"$k_p$", kwargs...)
     k_i = plot(ts.k_i; title = "Integral Gain", ylabel = L"$k_i$", kwargs...)
@@ -258,7 +258,7 @@ function Plotting.make_plots(ts::TimeSeries{<:PIVectorY}; kwargs...)
         plot_title = "Parameters",
         layout = (3,1),
         link = :none,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     β_p = plot(ts.β_p; title = "Proportional Input Weighting", ylabel = L"$\beta_p$", kwargs...)
     bound_lo = plot(ts.bound_lo; title = "Lower Output Bound", ylabel = L"$y_{min}$", kwargs...)
@@ -268,7 +268,7 @@ function Plotting.make_plots(ts::TimeSeries{<:PIVectorY}; kwargs...)
         plot_title = "Parameters",
         layout = (3,1),
         link = :none,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     sat_ext = plot(ts.sat_ext; title = "External Saturation Input", ylabel = "", kwargs...)
     sat_out = plot(ts.sat_out; title = "Output Saturation", ylabel = "", kwargs...)
@@ -276,35 +276,35 @@ function Plotting.make_plots(ts::TimeSeries{<:PIVectorY}; kwargs...)
 
     pd[:awu] = plot(sat_ext, sat_out, int_halted;
         plot_title = "Anti-Windup",
-        layout = (1,3),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        layout = (3,1),
+        kwargs...)
 
     u_p = plot(ts.u_p; title = "Input", ylabel = L"$u_p$", kwargs...)
     y_p = plot(ts.y_p; title = "Output", ylabel = L"$y_p$", kwargs...)
 
     pd[:prop] = plot(u_p, y_p;
         plot_title = "Proportional Path",
-        layout = (1,2),
+        layout = (2,1),
         link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     u_i = plot(ts.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
     y_i = plot(ts.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
 
     pd[:int] = plot(u_i, y_i, int_halted;
         plot_title = "Integral Path",
-        layout = (1,3),
+        layout = (3,1),
         link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     out_free = plot(ts.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
     output = plot(ts.output; title = "Actual", ylabel = L"$y$", kwargs...)
 
     pd[:output] = plot(out_free, output, sat_out;
         plot_title = "PID Output",
-        layout = (1,3),
+        layout = (3,1),
         link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     return pd
 
@@ -850,9 +850,9 @@ function Plotting.make_plots(ts::Union{TimeSeries{<:PIDOutput},
 
     pd[:sf] = plot(input, output;
         plot_title = "Input & Output",
-        layout = (1,2),
+        layout = (2,1),
         link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     k_p = plot(ts.k_p; title = "Proportional Gain", ylabel = L"$k_p$", kwargs...)
     k_i = plot(ts.k_i; title = "Integral Gain", ylabel = L"$k_i$", kwargs...)
@@ -863,7 +863,7 @@ function Plotting.make_plots(ts::Union{TimeSeries{<:PIDOutput},
         plot_title = "Parameters",
         layout = (4,1),
         link = :none,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     β_p = plot(ts.β_p; title = "Proportional Input Weighting", ylabel = L"$\beta_p$", kwargs...)
     β_d = plot(ts.β_d; title = "Derivative Input Weighting", ylabel = L"$\beta_d$", kwargs...)
@@ -874,7 +874,7 @@ function Plotting.make_plots(ts::Union{TimeSeries{<:PIDOutput},
         plot_title = "Parameters",
         layout = (4,1),
         link = :none,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     sat_ext = plot(ts.sat_ext; title = "External Saturation Input", ylabel = "", kwargs...)
     sat_out = plot(ts.sat_out; title = "Output Saturation", ylabel = "", kwargs...)
@@ -882,44 +882,44 @@ function Plotting.make_plots(ts::Union{TimeSeries{<:PIDOutput},
 
     pd[:awu] = plot(sat_ext, sat_out, int_halted;
         plot_title = "Anti-Windup",
-        layout = (1,3),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        layout = (3,1),
+        kwargs...)
 
     u_p = plot(ts.u_p; title = "Input", ylabel = L"$u_p$", kwargs...)
     y_p = plot(ts.y_p; title = "Output", ylabel = L"$y_p$", kwargs...)
 
     pd[:prop] = plot(u_p, y_p;
         plot_title = "Proportional Path",
-        layout = (1,2),
+        layout = (2,1),
         link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     u_i = plot(ts.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
     y_i = plot(ts.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
 
     pd[:int] = plot(u_i, y_i, int_halted;
         plot_title = "Integral Path",
-        layout = (1,3),
+        layout = (3,1),
         link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     u_d = plot(ts.u_d; title = "Input", ylabel = L"$u_d$", kwargs...)
     y_d = plot(ts.y_d; title = "Output", ylabel = L"$y_d$", kwargs...)
 
     pd[:der] = plot(u_d, y_d;
         plot_title = "Derivative Path",
-        layout = (1,2),
+        layout = (3,1),
         link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     out_free = plot(ts.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
     output = plot(ts.output; title = "Actual", ylabel = L"$y$", kwargs...)
 
     pd[:output] = plot(out_free, output, sat_out;
         plot_title = "PID Output",
-        layout = (1,3),
+        layout = (3,1),
         link = :y,
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...)
 
     return pd
 

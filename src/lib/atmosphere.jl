@@ -366,19 +366,19 @@ function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
         plot_title = "Velocity (Wind / ECEF) [NED Axes]",
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{ew}^{N} \ (m/s)$" L"$v_{ew}^{E} \ (m/s)$" L"$v_{ew}^{D} \ (m/s)$"],
-        ts_split = :h,
+        ts_split = :v,
         kwargs...)
 
     pd[:v_ew_b] = plot(ts.v_ew_b;
         plot_title = "Velocity (Wind / ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{ew}^{x_b} \ (m/s)$" L"$v_{ew}^{y_b} \ (m/s)$" L"$v_{ew}^{z_b} \ (m/s)$"],
-        ts_split = :h,
+        ts_split = :v,
         kwargs...)
 
     pd[:v_wb_b] = plot(ts.v_wb_b;
         plot_title = "Velocity (Vehicle / Wind) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        ts_split = :h,
+        ts_split = :v,
         kwargs...)
 
         subplot_a = plot(ts.a;
@@ -395,8 +395,9 @@ function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
 
     pd[:ρ_a] = plot(subplot_ρ, subplot_a, subplot_μ;
         plot_title = "Freestream Properties",
-        layout = (1,3),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        layout = (3,1),
+        kwargs...,
+        )
 
 
         subplot_T = plot(
@@ -415,8 +416,9 @@ function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
 
     pd[:T_p] = plot(subplot_T, subplot_p;
         plot_title = "Freestream Properties",
-        layout = (1,2),
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        layout = (2,1),
+        kwargs...
+        )
 
         subplot_airspeed = plot(
             TimeSeries(ts._t, hcat(ts.TAS._data, ts.EAS._data, ts.CAS._data)' |> collect);
@@ -429,7 +431,7 @@ function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
             title = "Mach", ylabel = L"M",
             label = "", kwargs...)
 
-        subplot_q = plot(ts._t, ts.q._data/1000;
+        subplot_q = plot(TimeSeries(ts._t, ts.q._data/1000);
             title = "Dynamic Pressure", ylabel = L"$q \ (kPa)$",
             label = "", kwargs...)
 
@@ -439,7 +441,8 @@ function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
         subplot_airspeed, subplot_Mach, subplot_q;
         layout = l3,
         plot_title = "Freestream Properties",
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...,
+        )
 
     return pd
 
