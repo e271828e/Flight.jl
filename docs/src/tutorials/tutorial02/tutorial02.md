@@ -10,7 +10,7 @@ Let's start from a new `SimpleWorld` instance. Here, keeping consistency with X-
 is no longer a concern, so we can stick to the default constructors:
 ```@example tutorial02
 using Flight
-world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain())
+world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) #zero-MSL terrain
 ```
 
 Inspecting its type hierarchy reveals that `SimpleWorld` is a concrete subtype of the abstract type
@@ -50,27 +50,28 @@ Here is a brief description of each one:
 
 The remaining properties are entries from `constants` and `submodels`. These may be accessed
 directly via dot notation:
-```@repl tutorial02
-keys(mdl.constants)
-keys(mdl.submodels)
-mdl.atmosphere
+```@example tutorial02
+@show keys(mdl.constants)
+@show keys(mdl.submodels)
+@show mdl.atmosphere
+nothing #hide
 ```
 
 A submodel can have submodels of its own:
-```@repl tutorial02
-keys(mdl.atmosphere.submodels)
-mdl.atmosphere.sl
+```@example tutorial02
+@show keys(mdl.atmosphere.submodels)
+@show mdl.atmosphere.sl
+nothing #hide
 ```
 
 Thus, a complex `Model` can be made up of multiple, hierarchically arranged components, each one of
-them itself a `Model`. To visualize a `Model`'s hierarchy, you can use the `print_tree` function.
-For example, let's see what's underneath the `mdl.aircraft.vehicle.ctl` node:
+them itself a `Model`. To visualize a `Model`'s hierarchy, you can use the `print_tree` function:
 ```@example tutorial02
 using AbstractTrees
-print_tree(mdl.aircraft.avionics.ctl; maxdepth = 10)
+print_tree(mdl; maxdepth = 10)
 ```
 
-You can also inspect a specific property across a `Model`'s hierarchy. For instance, to view the
+You can also inspect a specific property across a `Model`'s hierarchy. For example, to view the
 discrete state of `mdl.aircraft.avionics.ctl` and every node underneath:
 ```@example tutorial02
 print_tree(mdl.aircraft.avionics.ctl, :s; maxdepth = 10);
@@ -78,7 +79,7 @@ print_tree(mdl.aircraft.avionics.ctl, :s; maxdepth = 10);
 
 ### Simulating an Elevator Doublet
 
-Our plan is as follows:
+Our plan for this section is as follows:
 1. Create a `Simulation`.
 2. Initialize the aircraft in a trimmed state.
 3. Apply an elevator doublet by setting the appropriate inputs and stepping the `Simulation` manually.
@@ -164,6 +165,7 @@ completion:
 
 ```@example tutorial02
 Sim.run!(sim)
+nothing #hide
 ```
 
 Now let's get some results.
@@ -174,7 +176,7 @@ way to retrieve and handle this data is through the `TimeSeries` type:
 ts = TimeSeries(sim)
 ```
 
-!!! tip "Controlling the logging behavior"
+!!! tip "Controlling logging behavior"
 
     By default, the `Model`'s outputs are saved at every integration step. You can use the
     `saveat` keyword argument to control logging behavior:
@@ -188,21 +190,22 @@ A `TimeSeries` object lets you inspect the properties of its underlying data typ
 another `TimeSeries` object for any of these properties. This is particularly convenient when
 dealing with large, deeply nested types, as `Model` outputs often are. Let's see a few examples:
 
-```@repl tutorial02
-propertynames(ts)
-propertynames(ts.aircraft)
-propertynames(ts.aircraft.vehicle)
-ts_kin = ts.aircraft.vehicle.kinematics
-ts_sys = ts.aircraft.vehicle.systems
+```@example tutorial02
+@show propertynames(ts)
+@show propertynames(ts.aircraft)
+@show propertynames(ts.aircraft.vehicle)
+nothing #hide
 ```
 
-```@repl tutorial02
+```@example tutorial02
+ts_kin = ts.aircraft.vehicle.kinematics
+ts_sys = ts.aircraft.vehicle.systems
 ts_ω = ts_kin.ω_wb_b #angular velocity, Wander frame to Body frame (rad/s)
 ts_θ = ts_kin.e_nb.θ #pitch angle, NED frame to Body frame (rad)
 ts_α = ts_sys.aero.α #angle of attack (rad)
-_, ts_q, _ = get_components(ts_ω); #pitch rate (rad/s)
 ts_el_cmd = ts_sys.act.elevator.cmd[4 .<= get_time(ts) .< 10] #elevator command
 ts_el_pos = ts_sys.act.elevator.pos[4 .<= get_time(ts) .< 10] #elevator position
+nothing #hide
 ```
 
 `Plots.jl` [recipes](https://docs.juliaplots.org/stable/recipes/) are available for many common
@@ -233,9 +236,12 @@ Plots.plot(ts_α; plot_title="AoA vs Pitch Angle", ylabel=L"$\alpha, \ \theta \ 
 Plots.plot!(ts_θ; label = "Pitch Angle")
 ```
 
-Additionally, the `make_plots` function generates a batch of typically useful plots from a specific
-`TimeSeries` subtype. It is available out of the box for `TimeSeries{KinData}`,
-`TimeSeries{DynData}` and `TimeSeries{AirData}`. Here are some examples:
+```@raw html
+&nbsp;
+```
+
+In addition to individual `TimeSeries` recipes, you can use the `make_plots` function to generate a
+set of typically useful plots from a specific `TimeSeries` subtype. Here are some examples:
 
 ```@example tutorial02
 plots_kin = make_plots(ts.aircraft.vehicle.kinematics)
@@ -261,18 +267,82 @@ plots_air = make_plots(ts.aircraft.vehicle.airflow)
 plots_air[:airspeed_M_q]
 ```
 
-You can batch save them with save_plots
+```@raw html
+&nbsp;
+```
 
-Proceeds recursively down the `Model` hierarchy? Nope
+To save all the plots in one of these sets you can do:
 
+```@setup tutorial02
+import Logging
+Logging.disable_logging(Logging.Info)
+```
 
------------------------------------------
+```@example tutorial02
+save_plots(plots_kin, normpath("tmp/plots/kin"))
+rm(normpath("tmp/plots/kin"), recursive = true) #hide
+```
+
+Or, directly from the `TimeSeries` object:
+```@example tutorial02
+save_plots(ts.aircraft.vehicle.kinematics, normpath("tmp/plots/kin"))
+rm(normpath("tmp/plots/kin"), recursive = true) #hide
+```
+
+```@setup tutorial02
+Logging.disable_logging(Logging.Debug)
+```
 
 ### Automating Model Control With User Callbacks
 
-Introduce callback for doublet.
+Stepping through the `Simulation` and assigning inputs at each stop is not always the best approach
+for controlling a `Model` during headless `Simulation` runs. In many cases, it is cleaner and more
+convenient to define and encapsulate the control logic in advance, and then let the `Simulation` run
+uninterrupted from start to finish.
 
-----------------------------------------
+This is where user callbacks come in. These are custom functions with the signature
+`user_callback!(::Model)` called by the `Simulation` after every integration step. The main purpose
+of user callbacks is to automate `Model` input management.
+
+!!! warning "Modifying Model State"
+
+    User callbacks should only be used to assign `Model` inputs; do not modify a `Model`'s
+    continuous or discrete states within a user callback unless you really know what you're doing.
+
+Let's define a user callback implementing our elevator doublet logic:
+
+```@example tutorial02
+user_callback! = function(mdl::Model)
+    t = mdl.t[] #mdl.t is a RefValue, we need to dereference it
+    u_ctl = mdl.aircraft.avionics.ctl.u
+    if 5 <= t < 7
+        u_ctl.elevator_offset = 0.1
+    elseif 7 <= t < 9
+        u_ctl.elevator_offset = -0.1
+    else
+        u_ctl.elevator_offset = 0
+    end
+end
+```
+
+All we need to do now is create a new `Simulation` with this function definition as a keyword
+argument, initialize it as before, and run it:
+
+```@example tutorial02
+sim = Simulation(mdl; dt = 0.02, t_end = 60, user_callback!)
+Sim.init!(sim, init_air)
+Sim.run!(sim)
+nothing #hide
+```
+
+As expected, we get exactly the same result:
+
+```@example tutorial02
+ts = TimeSeries(sim)
+ts_el = ts.aircraft.vehicle.systems.act.elevator[4 .<= get_time(ts) .< 10]
+Plots.plot(ts_el.cmd; plot_title="Elevator Response", label = "Command")
+Plots.plot!(ts_el.pos; label = "Position")
+```
 
 ### A More Complex Example
 
@@ -303,3 +373,7 @@ mdl.submodels
 
 The `ModelDefinition` subtype is preserved as the `Model`'s first type parameter. It serves both as
 the `Model`'s primary identifier and as a dispatch mechanism when calling `Model` update functions.
+
+Maybe use user_callbaack to export additional Model information not available in the Sim log
+
+<!-- _, ts_q, _ = get_components(ts_ω); #pitch rate (rad/s) -->
