@@ -500,7 +500,7 @@ end
     yguide --> hcat(L"$\psi_{%$rot_ref %$rot_target} \ (deg)$",
                     L"$\theta_{%$rot_ref %$rot_target} \ (deg)$",
                     L"$\phi_{%$rot_ref %$rot_target} \ (deg)$")
-    ts_split --> :h #custom TimeSeries attribute
+    ts_split --> :v #custom TimeSeries attribute
     link --> :none
 
     data = rad2deg.(hcat(ts.ψ._data, ts.θ._data, ts.φ._data)') #

@@ -18,6 +18,9 @@ makedocs(;
     pagesonly = false,
     format = Documenter.HTML(
         prettyurls = true,
+        size_threshold = 1000*1024,
+        size_threshold_warn = 500*1024,
+        example_size_threshold = 100*1024,
         # repolink="https://github.com/e271828e/Flight.jl.git",
     )
 )

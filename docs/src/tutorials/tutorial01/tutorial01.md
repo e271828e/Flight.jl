@@ -263,10 +263,10 @@ the *Direct* and *Pitch SAS* modes, and compare the aircraft's response to eleva
 do the same with the *Direct* and *Roll/Yaw SAS* modes to compare aileron and rudder responses, but
 mind the spiral mode instability!
 
-!!! tip "If You Crash..."
+!!! tip "If You Crash"
 
     If the landing gear model detects a crash, it will throw an exception and the simulation will
-    abort. Don't worry, just reset it and have another go:
+    abort. No worries, just reset it and have another go:
     ```julia
     Sim.init!(sim, init_gnd)
     Sim.run_interactive!(sim)

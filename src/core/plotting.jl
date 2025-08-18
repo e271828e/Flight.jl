@@ -19,6 +19,7 @@ const defaults = Dict(
     :margin => 10Plots.mm,
     :topmargin => 5Plots.mm,
     :linewidth => 2,
+    :markersize => 8,
     :plot_titlefontfamily => "Computer Modern",
     :titlefontfamily => "Computer Modern",
     :fontfamily_subplot => "Computer Modern", #controls guide, tick and legend font

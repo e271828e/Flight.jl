@@ -471,8 +471,8 @@ end
     path_zp = StructArray((x = path.x, y = path.y, z = fill(z_bounds[1], n)))
 
     #--> sets default values, which can be overridden by each series using :=
-    linewidth --> 3
-    markersize --> 8
+    # linewidth --> 3
+    markersize --> 6
     xguide --> L"$\Delta x\ (m)$"
     yguide --> L"$\Delta y\ (m)$"
     zguide --> L"$h\ (m)$"
@@ -489,17 +489,17 @@ end
     for i in (1,n)
         @series begin
             linestyle := :dashdotdot
-            linewidth := 2
+            # linewidth := 2
             [path.x[i], path_xp.x[1]], [path.y[i], path.y[i]], [path.z[i], path.z[i]]
         end
         @series begin
             linestyle := :dashdotdot
-            linewidth := 2
+            # linewidth := 2
             [path.x[i], path.x[i]], [path.y[i], path_yp.y[1]], [path.z[i], path.z[i]]
         end
         @series begin
             linestyle := :dashdotdot
-            linewidth := 2
+            # linewidth := 2
             [path.x[i], path.x[i]], [path.y[i], path.y[i]], [path.z[i], path_zp.z[1]]
         end
     end
@@ -536,13 +536,6 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
 
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    plot_level = get(kwargs, :plot_level, :full)
-
-    #example of capturing the plot_level keyword to control which plots are generated
-    if plot_level == :simplified
-        return pd #nothing also works
-    end
-
     pd[:e_nb] = plot(
         ts.q_nb; #will automatically be converted to REuler for plotting
         plot_title = "Attitude (Vehicle/NED)",
@@ -551,44 +544,50 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
 
     #will be automatically converted to LatLon for plotting
     #remove the title added by the LatLon TH recipe
-    subplot_latlon = plot(ts.n_e; title = "", ts_split = :v, kwargs...)
-
-    #remove the title added by the Altitude TH recipe
-    subplot_h = plot(ts.h_e; title = "", kwargs...)
-                plot!(ts.h_o; title = "", kwargs...)
+    subplot_latlon = plot(
+        ts.n_e;
+        title = "",
+        ts_split = :v,
+        kwargs...)
 
     subplot_xy = plot(
         ts.Δxy;
         label = [L"$\int v_{eb}^{x_n} dt$" L"$\int v_{eb}^{y_n} dt$"],
         ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$"],
-        ts_split = :h, link = :none, kwargs...)
+        ts_split = :v, link = :none, kwargs...)
+
+    #remove the title added by the Altitude TH recipe
+    subplot_h = plot(ts.h_e; title = "", kwargs...)
+                plot!(ts.h_o; title = "", kwargs...)
 
     pd[:Ob_geo] = plot(
         subplot_latlon, subplot_h;
-        layout = grid(1, 2, widths = [0.67, 0.33]),
+        layout = grid(2, 1, heights = [0.67, 0.33]),
         plot_title = "Position (WGS84)",
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
+        kwargs...
+        )
+
 
     pd[:Ob_xyh] = plot(
         subplot_xy, subplot_h;
-        layout = grid(1, 2, widths = [0.67, 0.33]),
+        layout = grid(2, 1, heights = [0.67, 0.33]),
         plot_title = "Position (Local Cartesian)",
-        kwargs..., plot_titlefontsize = 20) #override titlefontsize after kwargs
-
-    #when a plot is assembled from multiple subplots, the plot_titlefontsize
-    #attribute no longer works, and it is titlefontisze what determines the font
-    #size of the overall figure title (which normally is used for subplots).
+        kwargs...
+        )
 
     ts_Δx, ts_Δy = get_components(ts.Δxy)
     path = StructArray((x = ts_Δx._data, y = ts_Δy._data, z = Float64.(ts.h_e._data)))
 
+    #the Trajectory3D plot should be square (otherwise the lateral margins get
+    #absurdly large). choose the larger dimension from the current size
+    t3d_dim = max(get(kwargs, :size, Plots.default(:size))...)
+
     pd[:Ob_t3d] = plot(
         Trajectory3D(path);
         plot_title = "Trajectory (Local Cartesian, Ellipsoidal Altitude)",
-        titlefontsize = 20,
         camera = (30, 15),
         kwargs...,
-        size = (1920, 1920)
+        size = (t3d_dim, t3d_dim),
         )
 
     pd[:ω_wb_b] = plot(
@@ -596,7 +595,7 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
         plot_title = "Angular Velocity (Vehicle/WA) [Vehicle Axes]",
         label = ["Roll Rate" "Pitch Rate" "Yaw Rate"],
         ylabel = [L"$p \ (rad/s)$" L"$q \ (rad/s)$" L"$r \ (rad/s)$"],
-        ts_split = :h,
+        ts_split = :v,
         kwargs...)
 
     pd[:v_eb_n] = plot(
@@ -604,19 +603,19 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
         plot_title = "Velocity (Vehicle/ECEF) [NED Axes]",
         label = ["North" "East" "Down"],
         ylabel = [L"$v_{eb}^{N} \ (m/s)$" L"$v_{eb}^{E} \ (m/s)$" L"$v_{eb}^{D} \ (m/s)$"],
-        ts_split = :h, link = :none,
+        ts_split = :v, link = :none,
         kwargs...)
 
     subplot_v_gnd = plot(ts.v_gnd; title = "Ground Speed",
         ylabel = L"$v_{gnd} \ (m/s)$", label = "", kwargs...)
-    subplot_χ = plot(ts._t, rad2deg.(ts.χ_gnd._data); title = "Course Angle",
+    subplot_χ = plot(TimeSeries(ts._t, rad2deg.(ts.χ_gnd._data)); title = "Course Angle",
         ylabel = L"$\chi_{gnd} \ (deg)$", label = "", kwargs...)
-    subplot_γ = plot(ts._t, rad2deg.(ts.γ_gnd._data); title = "Flight Path Angle",
+    subplot_γ = plot(TimeSeries(ts._t, rad2deg.(ts.γ_gnd._data)); title = "Flight Path Angle",
         ylabel = L"$\gamma_{cv} \ (deg)$", label = "", kwargs...)
 
     pd[:vχγ] = plot(subplot_v_gnd, subplot_χ, subplot_γ;
         plot_title = "Velocity (Vehicle/ECEF) [NED Axes]",
-        layout = (1,3),
+        layout = (3,1),
         link = :none,
         kwargs...)
 
@@ -624,7 +623,7 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
         ts.v_eb_b;
         plot_title = "Velocity (Vehicle/ECEF) [Vehicle Axes]",
         ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        ts_split = :h,
+        ts_split = :v,
         link = :none,
         kwargs...)
 

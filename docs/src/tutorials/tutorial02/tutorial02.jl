@@ -31,7 +31,6 @@ function tutorial02a()
         fuel_load = 0.5, #available fuel fraction
     )
 
-    #inspect model hierarchy here.
     Modeling.init!(mdl, initializer)
 
     sim = Simulation(mdl; dt = 0.02, t_end = 60)
@@ -53,6 +52,53 @@ function tutorial02a()
 end
 
 function tutorial02b()
+
+    #3D position and geographic heading for Salzburg airport (LOWS) runway 15
+    loc_LOWS15 = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997))
+    h_LOWS15 = HOrth(427.2)
+    ψ_LOWS15 = deg2rad(157)
+
+    aircraft = Cessna172Xv1()
+    terrain = HorizontalTerrain(h_LOWS15)
+    atmosphere = SimpleAtmosphere()
+
+    mdl = SimpleWorld(aircraft, atmosphere, terrain) |> Model
+
+    initializer = C172.TrimParameters(;
+        Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above LOWS runway 15
+        EAS = 50.0, #equivalent airspeed
+        ψ_nb = ψ_LOWS15, #geographic heading
+        γ_wb_n = 0.0, #wind-relative flight path angle
+        ψ_wb_dot = 0.0, #turn rate
+        flaps = 0.0, #flap setting
+        fuel_load = 0.5, #available fuel fraction
+    )
+
+    user_callback! = function(mdl::Model)
+        t = mdl.t[]
+        u_ctl = mdl.aircraft.avionics.ctl.u
+        if 5 <= t < 7
+            u_ctl.elevator_offset = 0.1
+        elseif 7 <= t < 9
+            u_ctl.elevator_offset = -0.1
+        else
+            u_ctl.elevator_offset = 0
+        end
+    end
+
+    sim = Simulation(mdl; dt = 0.02, t_end = 60, user_callback!)
+    Sim.init!(sim, initializer)
+    Sim.run!(sim)
+
+    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/tutorial02/kin"); Plotting.defaults..., linewidth = 2,)
+    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/tutorial02/air"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/tutorial02/dyn"); Plotting.defaults...)
+
+    return sim
+
+end
+
+function tutorial02c()
 
     #3D position and geographic heading for Salzburg airport (LOWS) runway 15
     loc_LOWS15 = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997))
@@ -101,7 +147,7 @@ function tutorial02b()
 
 end
 
-function tutorial02c()
+function tutorial02d()
 
     #3D position and geographic heading for Salzburg airport (LOWS) runway 15
     loc_LOWS15 = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997))

@@ -13,7 +13,7 @@ export Ranged, saturation, linear_scaling
 function shf(s::S) where {S}
     println("$S:")
     for (f, t) in zip(fieldnames(S), fieldtypes(S))
-        println("   $f::$t = $(getfield(s,f))")
+        println("• $f::$t = $(getfield(s,f))")
     end
 end
 
@@ -21,7 +21,7 @@ function shp(s::S) where {S}
     println("$S:")
     for f in propertynames(s)
         p = getproperty(s, f)
-        println("   $f::$(typeof(p)) = $p")
+        println("• $f::$(typeof(p)) = $p")
     end
 end
 
