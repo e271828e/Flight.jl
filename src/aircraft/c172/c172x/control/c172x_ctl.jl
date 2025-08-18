@@ -386,8 +386,8 @@ function Modeling.init!(mdl::Model{<:LatControl})
     end
 
     #set φ reference limits for the course angle compensator output
-    mdl.χ2φ_pid.u.bound_lo = -π/6
-    mdl.χ2φ_pid.u.bound_hi = π/6
+    mdl.χ2φ_pid.u.bound_lo = -π/4
+    mdl.χ2φ_pid.u.bound_hi = π/4
 
 end
 
