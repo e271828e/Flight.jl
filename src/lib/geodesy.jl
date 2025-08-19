@@ -488,10 +488,10 @@ end
 
     title --> ["Latitude" "Longitude"]
     label --> ["Latitude" "Longitude"]
-    yguide --> [L"$\varphi \ (\pi \ rad)$" L"$\lambda \ (\pi \ rad)$"]
+    yguide --> [L"$\varphi \ (deg)$" L"$\lambda \ (deg)$"]
     ts_split --> :v
 
-    data = hcat(ts.ϕ._data, ts.λ._data)'/π |> collect
+    data = hcat(rad2deg.(ts.ϕ._data), rad2deg.(ts.λ._data))' |> collect
     return TimeSeries(ts._t, data)
 
 end

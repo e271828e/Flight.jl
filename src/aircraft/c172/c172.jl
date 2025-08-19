@@ -845,7 +845,7 @@ function Kinematics.Initializer(trim_state::TrimState,
     v_wb_n = q_nb(v_wb_b) #wind-relative aircraft velocity, NED frame
     v_eb_n = v_ew_n + v_wb_n
 
-    Kinematics.Initializer(; q_nb, location, h, ω_wb_b, v_eb_n, Δx = 0.0, Δy = 0.0)
+    Kinematics.Initializer(; q_nb, location, h, ω_wb_b, v_eb_n)
 
 end
 

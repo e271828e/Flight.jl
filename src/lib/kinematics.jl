@@ -1,7 +1,7 @@
 module Kinematics
 
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
-using Plots, LaTeXStrings, DataStructures
+using Plots, LaTeXStrings, DataStructures, RecursiveArrayTools
 
 using Flight.FlightCore
 
@@ -24,8 +24,6 @@ struct Initializer
     h_e::Altitude{Ellipsoidal} #ellipsoidal altitude
     ω_wb_b::SVector{3, Float64} #angular velocity with respect to local level frame, body coordinates
     v_eb_n::SVector{3, Float64} #Earth-relative velocity, NED coordinates
-    Δx::Float64 #Northward velocity integral
-    Δy::Float64 #Eastward velocity integral
 end
 
 const KinInit = Initializer
@@ -33,12 +31,12 @@ const KinInit = Initializer
 function Initializer(;
     q_nb::Abstract3DRotation = RQuat(), location::Abstract2DLocation = LatLon(),
     h::Altitude = HOrth(), ω_wb_b::AbstractVector{<:Real} = zeros(SVector{3}),
-    v_eb_n::AbstractVector{<:Real} = zeros(SVector{3}), Δx::Real = 0.0, Δy::Real = 0.0)
+    v_eb_n::AbstractVector{<:Real} = zeros(SVector{3}))
 
     n_e = NVector(location)
     h_e = HEllip(h, n_e)
 
-    Initializer(q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy)
+    Initializer(q_nb, n_e, h_e, ω_wb_b, v_eb_n)
 end
 
 
@@ -54,7 +52,6 @@ struct KinData
     n_e::NVector #2D location, n-vector
     h_e::Altitude{Ellipsoidal} #ellipsoidal altitude
     h_o::Altitude{Orthometric} #orthometric altitude
-    Δxy::SVector{2,Float64} #horizontal velocity integral
     r_eb_e::SVector{3,Float64} #Cartesian ECEF position
     ω_wb_b::SVector{3,Float64} #angular velocity with respect to local level frame, body coordinates
     ω_eb_b::SVector{3,Float64} #angular velocity with respect to ECEF frame, body coordinates
@@ -67,7 +64,7 @@ end
 
 function KinData(ic::KinInit = KinInit())
 
-    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy = ic
+    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n = ic
 
     Ob = Geographic(n_e, h_e)
     e_nb = REuler(q_nb)
@@ -76,7 +73,6 @@ function KinData(ic::KinInit = KinInit())
 
     ϕ_λ = LatLon(n_e)
     h_o = HOrth(h_e, n_e)
-    Δxy = SVector(Δx, Δy)
     r_eb_e = Cartesian(Ob)
 
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
@@ -89,7 +85,7 @@ function KinData(ic::KinInit = KinInit())
     χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eb_n) : 0.0
     γ_gnd = v_gnd > v_min_χγ ? inclination(v_eb_n) : 0.0
 
-    KinData(   e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
+    KinData(   e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, r_eb_e,
                 ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
@@ -154,12 +150,12 @@ KinData(mdl::KinSystem) = mdl.y
 struct WA <: AbstractKinematicDescriptor end
 
 Modeling.X(::WA) = ComponentVector(
-    q_wb = zeros(4), q_ew = zeros(4), Δx = 0.0, Δy = 0.0, h_e = 0.0)
+    q_wb = zeros(4), q_ew = zeros(4), h_e = 0.0)
 
 function Modeling.init!(mdl::Model{WA}, ic::Initializer = Initializer())
 
     @unpack x, u = mdl
-    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy = ic
+    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n = ic
 
     Ob = Geographic(n_e, h_e)
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
@@ -175,8 +171,6 @@ function Modeling.init!(mdl::Model{WA}, ic::Initializer = Initializer())
 
     x.q_wb = q_wb[:]
     x.q_ew = ltf(n_e)[:]
-    x.Δx = Δx
-    x.Δy = Δy
     x.h_e = h_e
 
     f_ode!(mdl) #update ẋ and y, not strictly necessary
@@ -193,7 +187,6 @@ function Modeling.f_ode!(mdl::Model{WA})
     ω_eb_b = SVector{3}(u.ω_eb_b)
     v_eb_b = SVector{3}(u.v_eb_b)
     h_e = HEllip(x.h_e[1])
-    Δxy = SVector(x.Δx, x.Δy)
 
     ψ_nw = get_ψ_nw(q_ew)
     q_nw = Rz(ψ_nw)
@@ -222,11 +215,9 @@ function Modeling.f_ode!(mdl::Model{WA})
     ẋ.q_wb = Attitude.dt(q_wb, ω_wb_b)
     ẋ.q_ew = Attitude.dt(q_ew, ω_ew_w)
 
-    ẋ.Δx = v_eb_n[1]
-    ẋ.Δy = v_eb_n[2]
     ẋ.h_e = -v_eb_n[3]
 
-    mdl.y = KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
+    mdl.y = KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, r_eb_e,
                  ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
@@ -259,12 +250,12 @@ end
 struct ECEF <: AbstractKinematicDescriptor end
 
 Modeling.X(::ECEF) = ComponentVector(
-    q_eb = zeros(4), n_e = zeros(3), Δx = 0.0, Δy = 0.0, h_e = 0.0)
+    q_eb = zeros(4), n_e = zeros(3), h_e = 0.0)
 
 function Modeling.init!(mdl::Model{ECEF}, ic::Initializer = Initializer())
 
     @unpack x, u = mdl
-    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy = ic
+    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n = ic
 
     Ob = Geographic(n_e, h_e)
 
@@ -281,8 +272,6 @@ function Modeling.init!(mdl::Model{ECEF}, ic::Initializer = Initializer())
 
     x.q_eb = q_eb[:]
     x.n_e = n_e[:]
-    x.Δx = Δx
-    x.Δy = Δy
     x.h_e = h_e
 
     f_ode!(mdl) #update ẋ and y, not strictly necessary
@@ -297,7 +286,6 @@ function Modeling.f_ode!(mdl::Model{ECEF})
     n_e = NVector(x.n_e, normalization = false)
     ω_eb_b = SVector{3}(u.ω_eb_b)
     v_eb_b = SVector{3}(u.v_eb_b)
-    Δxy = SVector(x.Δx, x.Δy)
     h_e = HEllip(x.h_e[1])
     h_o = HOrth(h_e, n_e)
     ϕ_λ = LatLon(n_e)
@@ -319,11 +307,9 @@ function Modeling.f_ode!(mdl::Model{ECEF})
 
     ẋ.q_eb = Attitude.dt(q_eb, ω_eb_b)
     ẋ.n_e = q_en(ω_ew_n × SVector{3,Float64}(0,0,-1))
-    ẋ.Δx = v_eb_n[1]
-    ẋ.Δy = v_eb_n[2]
     ẋ.h_e = -v_eb_n[3]
 
-    mdl.y = KinData(e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
+    mdl.y = KinData(e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, r_eb_e,
                 ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
@@ -343,13 +329,13 @@ end
 struct NED <: AbstractKinematicDescriptor end
 
 Modeling.X(::NED) = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
-                                ϕ = 0.0, λ = 0.0, Δx = 0.0, Δy = 0.0, h_e = 0.0)
+                                ϕ = 0.0, λ = 0.0, h_e = 0.0)
 
 
 function Modeling.init!(mdl::Model{NED}, ic::Initializer = Initializer())
 
     @unpack x, u = mdl
-    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n, Δx, Δy = ic
+    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n = ic
 
     Ob = Geographic(n_e, h_e)
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
@@ -368,8 +354,6 @@ function Modeling.init!(mdl::Model{NED}, ic::Initializer = Initializer())
     x.φ_nb = e_nb.φ
     x.ϕ = ϕ_λ.ϕ
     x.λ = ϕ_λ.λ
-    x.Δx = Δx
-    x.Δy = Δy
     x.h_e = h_e
 
     f_ode!(mdl) #update ẋ and y, not strictly necessary
@@ -383,7 +367,6 @@ function Modeling.f_ode!(mdl::Model{NED})
     e_nb = REuler(x.ψ_nb, x.θ_nb, x.φ_nb)
     ϕ_λ = LatLon(x.ϕ, x.λ)
     h_e = HEllip(x.h_e[1])
-    Δxy = SVector(x.Δx, x.Δy)
     ω_eb_b = SVector{3}(u.ω_eb_b)
     v_eb_b = SVector{3}(u.v_eb_b)
 
@@ -418,11 +401,9 @@ function Modeling.f_ode!(mdl::Model{NED})
     ẋ.φ_nb = ė_nb.φ
     ẋ.ϕ = ϕ_λ_dot.ϕ
     ẋ.λ = ϕ_λ_dot.λ
-    ẋ.Δx = v_eb_n[1]
-    ẋ.Δy = v_eb_n[2]
     ẋ.h_e = -v_eb_n[3]
 
-    mdl.y = KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, Δxy, r_eb_e,
+    mdl.y = KinData( e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, r_eb_e,
                  ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
 
 end
@@ -449,13 +430,19 @@ end
 # #@userplot allows defining a custom plot for a specific dataset without having
 # #to create a custom type for dispatch. we just wrap the data in the userplot
 # #type generated by Plots, and is received inside the recipe in its field "args"
-@userplot Trajectory3D
-@recipe function f(t3d::Trajectory3D)
+@userplot TrajectoryPlot
+@recipe function f(t3d::TrajectoryPlot)
 
     # https://daschw.github.io/recipes/#series_recipes
 
-    path = t3d.args
-    n = length(path)
+    r_eb_e = t3d.args #Vector{SVector{3, Float64}}
+    n = length(r_eb_e)
+
+    q_en0 = ltf(Cartesian(r_eb_e[1])) #ECEF to NED rotation for t=0
+    Δr_eb_e = [x - r_eb_e[1] for x in r_eb_e]
+    Δr_eb_n0 = [q_en0'(x) for x in Δr_eb_e]
+    voa = VectorOfArray(Δr_eb_n0)
+    path = (x = voa[1,:], y = voa[2,:], z = -voa[3,:]) #invert Down coordinate
 
     x_ext, y_ext, z_ext = map(extrema, (path.x, path.y, path.z))
     x_mid, y_mid, z_mid = map(v -> 0.5sum(v), (x_ext, y_ext, z_ext))
@@ -466,6 +453,7 @@ end
     y_bounds = (y_mid - 0.5span, y_mid + 0.5span)
     z_bounds = (z_mid - 0.5span, z_mid + 0.5span)
 
+    #path projections onto the coordinate planes
     path_xp = StructArray((x = fill(x_bounds[1], n), y = path.y, z = path.z))
     path_yp = StructArray((x = path.x, y = fill(y_bounds[1], n), z = path.z))
     path_zp = StructArray((x = path.x, y = path.y, z = fill(z_bounds[1], n)))
@@ -473,34 +461,22 @@ end
     #--> sets default values, which can be overridden by each series using :=
     # linewidth --> 3
     markersize --> 6
-    xguide --> L"$\Delta x\ (m)$"
-    yguide --> L"$\Delta y\ (m)$"
-    zguide --> L"$h\ (m)$"
+    xguide --> L"$\Delta N \ (m)$"
+    yguide --> L"$\Delta E \ (m)$"
+    zguide --> L"$\Delta h\ (m)$"
     legend --> false
 
     xlims --> x_bounds
     ylims --> y_bounds
     zlims --> z_bounds
 
-    yflip --> true #needed for local NED frame
-
-    #marker projection lines
+    #projection lines for start and end points
     linecolor --> :lightgray
-    for i in (1,n)
+    for (path_prj, idx) in Iterators.product((path_xp, path_yp, path_zp), (1, n))
         @series begin
             linestyle := :dashdotdot
             # linewidth := 2
-            [path.x[i], path_xp.x[1]], [path.y[i], path.y[i]], [path.z[i], path.z[i]]
-        end
-        @series begin
-            linestyle := :dashdotdot
-            # linewidth := 2
-            [path.x[i], path.x[i]], [path.y[i], path_yp.y[1]], [path.z[i], path.z[i]]
-        end
-        @series begin
-            linestyle := :dashdotdot
-            # linewidth := 2
-            [path.x[i], path.x[i]], [path.y[i], path.y[i]], [path.z[i], path_zp.z[1]]
+            [path_prj.x[idx], path.x[idx]], [path_prj.y[idx], path.y[idx]], [path_prj.z[idx], path.z[idx]]
         end
     end
 
@@ -550,12 +526,6 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
         ts_split = :v,
         kwargs...)
 
-    subplot_xy = plot(
-        ts.Δxy;
-        label = [L"$\int v_{eb}^{x_n} dt$" L"$\int v_{eb}^{y_n} dt$"],
-        ylabel = [L"$\Delta x\ (m)$" L"$\Delta y \ (m)$"],
-        ts_split = :v, link = :none, kwargs...)
-
     #remove the title added by the Altitude TH recipe
     subplot_h = plot(ts.h_e; title = "", kwargs...)
                 plot!(ts.h_o; title = "", kwargs...)
@@ -567,24 +537,13 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
         kwargs...
         )
 
-
-    pd[:Ob_xyh] = plot(
-        subplot_xy, subplot_h;
-        layout = grid(2, 1, heights = [0.67, 0.33]),
-        plot_title = "Position (Local Cartesian)",
-        kwargs...
-        )
-
-    ts_Δx, ts_Δy = get_components(ts.Δxy)
-    path = StructArray((x = ts_Δx._data, y = ts_Δy._data, z = Float64.(ts.h_e._data)))
-
     #the Trajectory3D plot should be square (otherwise the lateral margins get
     #absurdly large). choose the larger dimension from the current size
     t3d_dim = max(get(kwargs, :size, Plots.default(:size))...)
 
     pd[:Ob_t3d] = plot(
-        Trajectory3D(path);
-        plot_title = "Trajectory (Local Cartesian, Ellipsoidal Altitude)",
+        TrajectoryPlot(get_data(ts.r_eb_e));
+        plot_title = "Trajectory (Initial NED Frame)",
         camera = (30, 15),
         kwargs...,
         size = (t3d_dim, t3d_dim),
@@ -648,7 +607,7 @@ GUI.draw(dyn::Model{<:AbstractKinematicDescriptor}) = GUI.draw(KinData(dyn))
 function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
                     label::String = "Kinematic Data")
 
-    @unpack e_nb, ϕ_λ, h_e, h_o, Δxy, ω_wb_b, ω_eb_b, v_eb_b, v_eb_n  = data
+    @unpack e_nb, ϕ_λ, h_e, h_o, ω_wb_b, ω_eb_b, v_eb_b, v_eb_n  = data
 
     CImGui.Begin(label, p_open)
 
@@ -680,8 +639,6 @@ function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
         @unpack ϕ, λ = ϕ_λ
         CImGui.Text(@sprintf("Latitude: %.7f deg", rad2deg(ϕ)))
         CImGui.Text(@sprintf("Longitude: %.7f deg", rad2deg(λ)))
-        CImGui.Text(@sprintf("Northward Increment: %.7f m", Δxy[1]))
-        CImGui.Text(@sprintf("Eastward Increment: %.7f m", Δxy[2]))
         CImGui.Text(@sprintf("Altitude (Ellipsoidal): %.7f m", Float64(h_e)))
         CImGui.Text(@sprintf("Altitude (Orthometric): %.7f m", Float64(h_o)))
 
