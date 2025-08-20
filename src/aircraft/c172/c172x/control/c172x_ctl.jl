@@ -495,7 +495,7 @@ end
 
 
 ################################################################################
-############################### Guidance Modes #################################
+############################### Vertical Guidance ##############################
 
 @enum AltGuidanceState begin
     alt_acquire = 0
@@ -569,9 +569,98 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:AltitudeGuidance},
 
 end
 
-#placeholder
-@kwdef struct SegmentGuidance <: AbstractControlChannel end
-@kwdef struct SegmentGuidanceY end
+
+################################################################################
+############################# HorizontalGuidance ###############################
+
+@kwdef struct Segment
+    geo1::Geographic{LatLon, Ellipsoidal} = Geographic(LatLon(), HEllip())
+    geo2::Geographic{LatLon, Ellipsoidal} = Geographic(LatLon(), HEllip())
+end
+
+#construct a Segment from
+#1) an initial point p1
+#2) an azimuth χ measured on NED(p1)
+#3) a distance l along χ measured on the horizontal plane of NED(p1)
+#4) an altitude increment Δh
+#l is the straight-line distance from p1 to p2t, NOT from p1 to p2. however, as
+#long as p1 and p2 are relatively close, both their straight-line and geodesic
+#distances will be close to l
+function Segment(p1::Abstract3DPosition; χ::Real, l::Real, Δh::Real = 0.0)
+    geo1 = Geographic{LatLon, Ellipsoidal}(p1)
+    q_en1 = ltf(geo1)
+    r_12_n1 = SVector{3,Float64}(l*cos(χ), l*sin(χ), 0)
+    r_12_e = q_en1(r_12_n1)
+    r_e1_e = Cartesian(p1)
+    r_e2_e = r_e1_e + r_12_e
+    geo2 = Geographic(LatLon(r_e2_e), HEllip(geo1) + Δh)
+    Segment(geo1, geo2)
+end
+
+
+@kwdef struct SegmentGuidance <: AbstractControlChannel
+    Δχ_inf::Ranged{Float64, 0., π/2.} = π/2 #intercept angle for x2d_1p → ∞ (rad)
+    e_sf::Float64 = 1000 #cross-track distance scale factor (m)
+end
+
+@kwdef mutable struct SegmentGuidanceU
+    seg_ref::Segment = Segment()
+end
+
+@kwdef struct SegmentGuidanceY
+    seg_ref::Segment = Segment()
+    l_12::Float64 = 0.0 #segment horizontal length
+    l_1b::Float64 = 0.0 #along-track horizontal distance
+    e_1b::Float64 = 0.0 #cross-track horizontal distance, positive right
+    χ_12::Float64 = 0.0 #segment azimuth
+    χ_ref::Float64 = 0.0 #course angle reference
+end
+
+Modeling.U(::SegmentGuidance) = SegmentGuidanceU()
+Modeling.Y(::SegmentGuidance) = SegmentGuidanceY()
+
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
+                        vehicle::Model{<:C172X.Vehicle})
+
+    @unpack seg_ref = mdl.u
+    @unpack Δχ_inf, e_sf = mdl.constants
+
+    r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
+    r_e1_e = Cartesian(seg_ref.geo1)
+    r_e2_e = Cartesian(seg_ref.geo2)
+
+    r_12_e = r_e2_e - r_e1_e #position vector from p1 to p2
+    r_1b_e = r_eb_e - r_e1_e #position vector from p1 to p
+
+    q_en1 = ltf(r_e1_e) #ECEF-to-NED frame rotation at WP1
+    q_n1e = q_en1'
+    r_12_n1 = q_n1e(r_12_e)
+    r_1b_n1 = q_n1e(r_1b_e)
+
+    r2d_12 = SVector{3,Float64}(r_12_n1[1], r_12_n1[2], 0)
+    r2d_1b = SVector{3,Float64}(r_1b_n1[1], r_1b_n1[2], 0)
+
+    l_12 = norm(r2d_12) #length of r_12's horizontal projection
+
+    min_length = 1
+    if l_12 < min_length
+        χ_ref = vehicle.y.kinematics.χ_gnd
+        mdl.y = SegmentGuidanceY(; seg_ref, l_12, l_1b = 0, e_1b = 0, χ_12 = 0, χ_ref)
+        return
+    end
+
+    u2d_12 = r2d_12 / l_12
+    χ_12 = azimuth(u2d_12)
+
+    l_1b = u2d_12 ⋅ r2d_1b
+    e_1b = (u2d_12 × r2d_1b)[3]
+
+    Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b / e_sf)
+    χ_ref = wrap_to_π(χ_12 + Δχ)
+
+    mdl.y = SegmentGuidanceY(; seg_ref, l_12, l_1b, e_1b, χ_12, χ_ref)
+
+end
 
 
 ################################################################################
@@ -589,7 +678,7 @@ end
 
 @enum HorizontalGuidanceMode begin
     hor_gdc_off = 0
-    hor_gdc_line = 1
+    hor_gdc_seg = 1
 end
 
 ################################################################################
@@ -631,6 +720,7 @@ end
     β_ref::Float64 = 0.0 #sideslip angle reference
     h_ref::Float64 = 0.0 #altitude reference
     h_datum::AltDatum = ellipsoidal #altitude datum
+    seg_ref::Segment = Segment() #reference segment
 end
 
 @kwdef struct ControllerY
@@ -661,7 +751,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
             throttle_axis, aileron_axis, elevator_axis, rudder_axis,
             throttle_offset, aileron_offset, elevator_offset, rudder_offset,
             vrt_gdc_mode_req, hor_gdc_mode_req, lon_ctl_mode_req, lat_ctl_mode_req,
-            q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref, h_ref, h_datum = mdl.u
+            q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref, h_ref, h_datum, seg_ref = mdl.u
 
     @unpack lon_ctl, lat_ctl, alt_gdc, seg_gdc = mdl.submodels
 
@@ -710,16 +800,14 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
                 lat_ctl_mode = lat_φ_β
             end
 
-        else #hor_gdc_mode === hor_gdc_line
+        else #hor_gdc_mode === hor_gdc_seg
 
-            #remove this when implemented
-            lat_ctl_mode = lat_ctl_mode_req
-            # seg_gdc.u.line_ref = line_ref
-            # f_periodic!(seg_gdc, vehicle)
+            println("Hi")
+            seg_gdc.u.seg_ref = seg_ref
+            f_periodic!(seg_gdc, vehicle)
 
-            # lat_ctl_mode = seg_gdc.y.lat_ctl_mode
-            # χ_ref = seg_gdc.y.χ_ref
-            # β_ref = 0.0
+            lat_ctl_mode = lat_χ_β
+            χ_ref = seg_gdc.y.χ_ref
 
         end
 

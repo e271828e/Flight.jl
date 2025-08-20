@@ -11,7 +11,7 @@ happen to have the full version, you can use it instead. Since we will be using 
 external visualization tool, we only need to set up a few things; for further help, check out the
 [X-Plane 12 manual](https://www.x-plane.com/manuals/desktop/).
 
-!!! note "No X-Plane"
+!!! note "No X-Plane?"
 
     If you can't run X-Plane 12 (which might happen for instance if you have an Intel integrated
     graphics chip), you can skip this section. Your visuals will be limited to the built-in GUI, but
@@ -263,7 +263,7 @@ the *Direct* and *Pitch SAS* modes, and compare the aircraft's response to eleva
 do the same with the *Direct* and *Roll/Yaw SAS* modes to compare aileron and rudder responses, but
 mind the spiral mode instability!
 
-!!! tip "If You Crash"
+!!! tip "Crashing"
 
     If the landing gear model detects a crash, it will throw an exception and the simulation will
     abort. No worries, just reset it and have another go:
