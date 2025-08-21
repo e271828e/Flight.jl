@@ -573,19 +573,57 @@ end
 ################################################################################
 ############################# HorizontalGuidance ###############################
 
-#we can construct a Segment from
-#1) an initial point p1
+struct Segment
+    p1::Geographic{LatLon, Ellipsoidal}
+    p2::Geographic{LatLon, Ellipsoidal}
+    q_en::RQuat
+    l_12_h::Float64
+    χ_12::Float64
+    γ_12::Float64
+    u_12_h::SVector{3,Float64}
+
+    function Segment(p1::Abstract3DPosition, p2::Abstract3DPosition)
+
+        p1 = Geographic{NVector,Ellipsoidal}(p1)
+        p2 = Geographic{NVector,Ellipsoidal}(p2)
+
+        r_e1_e = Cartesian(p1)
+        r_e2_e = Cartesian(p2)
+        r_12_e = r_e2_e - r_e1_e
+
+        r_midpoint = (r_e1_e.data + r_e2_e.data)/2 |> Cartesian
+        q_en = ltf(r_midpoint)
+
+        r_12_n = q_en'(r_12_e)
+        r_12_h = SVector{3,Float64}(r_12_n[1], r_12_n[2], 0)
+
+        l_12_h = norm(r_12_h) #length of r_12's horizontal projection
+        Δh_12 = p2.h - p1.h #total altitude increment
+
+        min_length = 1
+        if l_12_h < min_length
+            error("Distance between segment points below threshold")
+        end
+
+        u_12_h = r_12_h / l_12_h
+        χ_12 = azimuth(u_12_h) #azimuth
+        γ_12 = atan(Δh_12, l_12_h) #flight path angle (0 for equal altitude)
+
+        new(p1, p2, q_en, l_12_h, χ_12, γ_12, u_12_h)
+
+    end
+
+end
+
+#construct a Segment from:
+#1) initial point p1
 #2) an azimuth χ measured on NED(p1)
 #3) a distance l along χ measured on the horizontal plane of NED(p1)
 #4) an altitude increment Δh
-#l is the straight-line distance from p1 to p2t, NOT from p1 to p2. however, as
-#long as p1 and p2 are relatively close, both their straight-line and geodesic
-#distances will be close to l
 
-@kwdef struct Segment
-    geo1::Geographic{LatLon, Ellipsoidal} = Geographic(LatLon(), HEllip())
-    geo2::Geographic{LatLon, Ellipsoidal} = Geographic(LatLon(), HEllip())
-end
+#note: l is the straight-line distance from p1 to p2t, NOT from p1 to p2.
+#however, as long as p1 and p2 are relatively close, both their straight-line
+#and geodesic distances will be close to l
 
 function Segment(p1::Abstract3DPosition; χ::Real, l::Real, Δh::Real = 0.0)
     geo1 = Geographic{LatLon, Ellipsoidal}(p1)
@@ -598,6 +636,13 @@ function Segment(p1::Abstract3DPosition; χ::Real, l::Real, Δh::Real = 0.0)
     Segment(geo1, geo2)
 end
 
+
+Segment() = Segment(Geographic(LatLon(), HEllip()),
+                    Geographic(LatLon(0.001, 0), HEllip()))
+
+################################################################################
+
+
 @kwdef struct SegmentGuidance <: AbstractControlChannel
     Δχ_inf::Ranged{Float64, 0., π/2.} = π/2 #intercept angle for x2d_1p → ∞ (rad)
     e_sf::Float64 = 1000 #cross-track distance scale factor (m)
@@ -609,10 +654,8 @@ end
 
 @kwdef struct SegmentGuidanceY
     seg_ref::Segment = Segment()
-    l_12::Float64 = 0.0 #segment horizontal length
-    l_1b::Float64 = 0.0 #along-track horizontal distance
-    e_1b::Float64 = 0.0 #cross-track horizontal distance, positive right
-    χ_12::Float64 = 0.0 #segment azimuth
+    l_1b_h::Float64 = 0.0 #along-track horizontal distance
+    e_1b_h::Float64 = 0.0 #cross-track horizontal distance, positive right
     χ_ref::Float64 = 0.0 #course angle reference
 end
 
@@ -624,41 +667,48 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
 
     @unpack seg_ref = mdl.u
     @unpack Δχ_inf, e_sf = mdl.constants
+    @unpack p1, q_en, χ_12, u_12_h = seg_ref
 
-    #these go in the segment constructor
-    r_e1_e = Cartesian(seg_ref.geo1)
-    r_e2_e = Cartesian(seg_ref.geo2)
-
-    r_12_e = r_e2_e - r_e1_e #position vector from p1 to p2
-
-    q_en1 = ltf(r_e1_e) #ECEF-to-NED frame rotation at WP1
-    q_n1e = q_en1'
-    r_12_n1 = q_n1e(r_12_e)
-    r_12_h = SVector{3,Float64}(r_12_n1[1], r_12_n1[2], 0)
-    l_12_h = norm(r_12_n1h) #length of r_12's horizontal projection
-
-    min_length = 1
-    if l_12_h < min_length #we should check l_12_h
-        error()
-    end
-
-    u_12_h = r_12_h / l_12_h
-    χ_12 = azimuth(u_12_h)
-
-    #these are essentially free, they go in the horizontal guidance law
     r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
-    r_1b_e = r_eb_e - r_e1_e #position vector from p1 to p
-    r_1b_n1 = q_n1e(r_1b_e)
-    r_1b_h = SVector{3,Float64}(r_1b_n1[1], r_1b_n1[2], 0)
-    l_1b_h = u_12_n1h ⋅ r_1b_h
-    e_1b_h = (u_12_n1h × r_1b_h)[3]
-
-    Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b / e_sf)
+    r_e1_e = Cartesian(p1)
+    r_1b_e = r_eb_e - r_e1_e
+    r_1b_n = q_en'(r_1b_e)
+    r_1b_h = SVector{3,Float64}(r_1b_n[1], r_1b_n[2], 0)
+    l_1b_h = u_12_h ⋅ r_1b_h
+    e_1b_h = (u_12_h × r_1b_h)[3]
+    Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b_h / e_sf)
     χ_ref = wrap_to_π(χ_12 + Δχ)
 
-    mdl.y = SegmentGuidanceY(; seg_ref, l_12, l_1b, e_1b, χ_12, χ_ref)
+    mdl.y = SegmentGuidanceY(; seg_ref, l_1b_h, e_1b_h, χ_ref)
 
 end
+    # #these go in the vertical guidance law
+    # r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
+    # r_1b_e = r_eb_e - r_e1_e #position vector from p1 to p
+    # r_1b_n1 = q_n1e(r_1b_e)
+    # r_1b_h = SVector{3,Float64}(r_1b_n1[1], r_1b_n1[2], 0)
+    # l_1b_h = u_12_h ⋅ r_1b_h
+    # h_ref = h1 + l_1b_h * tan(γ_12) #nominal altitude at our location
+    # clm_ff = V_gnd * sin(γ_12) #nominal climb rate at our current V_gnd
+    # clm_ref = clm_ff + mdl.k_h2c * (h_ref - h)
+
+    #we need to compute a normalized parameter p_1b.
+    #If p_1b<0, we're behind p1, and we set clm_ff = 0, h_nom =
+    #if p_1b > 1, we're beyond p2 and we set clm = 0, h_nom = h2.
+
+    #a ver. seguramente para vertical segment guidance deberíamos hacer algo un
+    #poco mas sofisticado que simplemente comandar climb rate.
+    #ojo: y si altitude tracking fuera un modulo mas general, que en vez de ser
+    #capaz solo de altitude hold admitiera un climb rate nominal clm_ff? cuando
+    #tengamos vertical segment tracking activo, lo que hacemos es generar un
+    #clm_ff, que luego se asignara como input a altitude tracking
+    #asi, los guidance modes tambien tendrian su jerarquia: altitude tracking
+    #estaria activo cuando el modo de guiado vertical fuera altitude o
+    #verticalsegmenttracking. cuando verticalsegmentracking este activo, clm_ff
+    #que entra a altitude tracking sera generado por vst, cuando no, sera cero.
+    #el problema de esto es que tenemos que pasarle simultaneamente a
+    #altitudetracking clm_ff y h_ref, y NO son independientes.
+
 
 
 ################################################################################
