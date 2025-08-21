@@ -510,7 +510,7 @@ end
 ################################################################################
 
 @kwdef struct AltitudeGuidance <: AbstractControlChannel
-    k_h2c::Float64 = 0.2 #good margins for the whole envelope
+    k_h2c::Float64 = 0.2 #yields good margins throughout the envelope
 end
 
 @kwdef mutable struct AltitudeGuidanceU
@@ -573,12 +573,7 @@ end
 ################################################################################
 ############################# HorizontalGuidance ###############################
 
-@kwdef struct Segment
-    geo1::Geographic{LatLon, Ellipsoidal} = Geographic(LatLon(), HEllip())
-    geo2::Geographic{LatLon, Ellipsoidal} = Geographic(LatLon(), HEllip())
-end
-
-#construct a Segment from
+#we can construct a Segment from
 #1) an initial point p1
 #2) an azimuth χ measured on NED(p1)
 #3) a distance l along χ measured on the horizontal plane of NED(p1)
@@ -586,6 +581,12 @@ end
 #l is the straight-line distance from p1 to p2t, NOT from p1 to p2. however, as
 #long as p1 and p2 are relatively close, both their straight-line and geodesic
 #distances will be close to l
+
+@kwdef struct Segment
+    geo1::Geographic{LatLon, Ellipsoidal} = Geographic(LatLon(), HEllip())
+    geo2::Geographic{LatLon, Ellipsoidal} = Geographic(LatLon(), HEllip())
+end
+
 function Segment(p1::Abstract3DPosition; χ::Real, l::Real, Δh::Real = 0.0)
     geo1 = Geographic{LatLon, Ellipsoidal}(p1)
     q_en1 = ltf(geo1)
@@ -596,7 +597,6 @@ function Segment(p1::Abstract3DPosition; χ::Real, l::Real, Δh::Real = 0.0)
     geo2 = Geographic(LatLon(r_e2_e), HEllip(geo1) + Δh)
     Segment(geo1, geo2)
 end
-
 
 @kwdef struct SegmentGuidance <: AbstractControlChannel
     Δχ_inf::Ranged{Float64, 0., π/2.} = π/2 #intercept angle for x2d_1p → ∞ (rad)
@@ -625,35 +625,33 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
     @unpack seg_ref = mdl.u
     @unpack Δχ_inf, e_sf = mdl.constants
 
-    r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
+    #these go in the segment constructor
     r_e1_e = Cartesian(seg_ref.geo1)
     r_e2_e = Cartesian(seg_ref.geo2)
 
     r_12_e = r_e2_e - r_e1_e #position vector from p1 to p2
-    r_1b_e = r_eb_e - r_e1_e #position vector from p1 to p
 
     q_en1 = ltf(r_e1_e) #ECEF-to-NED frame rotation at WP1
     q_n1e = q_en1'
     r_12_n1 = q_n1e(r_12_e)
-    r_1b_n1 = q_n1e(r_1b_e)
-
-    r2d_12 = SVector{3,Float64}(r_12_n1[1], r_12_n1[2], 0)
-    r2d_1b = SVector{3,Float64}(r_1b_n1[1], r_1b_n1[2], 0)
-
-    l_12 = norm(r2d_12) #length of r_12's horizontal projection
+    r_12_h = SVector{3,Float64}(r_12_n1[1], r_12_n1[2], 0)
+    l_12_h = norm(r_12_n1h) #length of r_12's horizontal projection
 
     min_length = 1
-    if l_12 < min_length
-        χ_ref = vehicle.y.kinematics.χ_gnd
-        mdl.y = SegmentGuidanceY(; seg_ref, l_12, l_1b = 0, e_1b = 0, χ_12 = 0, χ_ref)
-        return
+    if l_12_h < min_length #we should check l_12_h
+        error()
     end
 
-    u2d_12 = r2d_12 / l_12
-    χ_12 = azimuth(u2d_12)
+    u_12_h = r_12_h / l_12_h
+    χ_12 = azimuth(u_12_h)
 
-    l_1b = u2d_12 ⋅ r2d_1b
-    e_1b = (u2d_12 × r2d_1b)[3]
+    #these are essentially free, they go in the horizontal guidance law
+    r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
+    r_1b_e = r_eb_e - r_e1_e #position vector from p1 to p
+    r_1b_n1 = q_n1e(r_1b_e)
+    r_1b_h = SVector{3,Float64}(r_1b_n1[1], r_1b_n1[2], 0)
+    l_1b_h = u_12_n1h ⋅ r_1b_h
+    e_1b_h = (u_12_n1h × r_1b_h)[3]
 
     Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b / e_sf)
     χ_ref = wrap_to_π(χ_12 + Δχ)
@@ -745,8 +743,6 @@ Modeling.Y(::Controller) = ControllerY()
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
                         vehicle::Model{<:C172X.Vehicle})
 
-    # println("Hi")
-
     @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right,
             throttle_axis, aileron_axis, elevator_axis, rudder_axis,
             throttle_offset, aileron_offset, elevator_offset, rudder_offset,
@@ -802,7 +798,6 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
 
         else #hor_gdc_mode === hor_gdc_seg
 
-            println("Hi")
             seg_gdc.u.seg_ref = seg_ref
             f_periodic!(seg_gdc, vehicle)
 
