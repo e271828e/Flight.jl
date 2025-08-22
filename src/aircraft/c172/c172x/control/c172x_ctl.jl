@@ -510,7 +510,8 @@ end
 ################################################################################
 
 @kwdef struct AltitudeGuidance <: AbstractControlChannel
-    k_h2c::Float64 = 0.2 #yields good margins throughout the envelope
+    k_h2c::Float64 = 0.2 #h_err to climb rate gain
+    h_thr::Float64 = 10.0 #altitude threshold for state switching
 end
 
 @kwdef mutable struct AltitudeGuidanceU
@@ -520,14 +521,12 @@ end
 
 @kwdef mutable struct AltitudeGuidanceS
     state::AltGuidanceState = alt_hold
-    h_thr::Float64 = 10.0 #current a
 end
 
 @kwdef struct AltitudeGuidanceY
     state::AltGuidanceState = alt_hold
     lon_ctl_mode::LonControlMode = lon_EAS_clm
-    Δh::Float64 = 0.0 #current altitude error
-    h_thr::Float64 = 0.0 #current altitude switching threshold
+    h_err::Float64 = 0.0 #current altitude error
     throttle_ref::Float64 = 0.0
     clm_ref::Float64 = 0.0
 end
@@ -540,32 +539,30 @@ Modeling.Y(::AltitudeGuidance) = AltitudeGuidanceY()
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:AltitudeGuidance},
                         vehicle::Model{<:C172X.Vehicle})
 
-    @unpack state, h_thr = mdl.s
+    @unpack state = mdl.s
     @unpack h_ref, h_datum = mdl.u
+    @unpack k_h2c, h_thr = mdl.constants
     @unpack h_e, h_o, v_eb_n = vehicle.y.kinematics
 
     h = h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o)
-    Δh = h_ref - h
-    clm_ref = mdl.k_h2c * Δh
+    h_err = h_ref - h
+    clm_ref = k_h2c * h_err
 
     if state === alt_acquire
 
         lon_ctl_mode = lon_thr_EAS
-        throttle_ref = Δh > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
-        (abs(Δh) + 1 < h_thr) && (mdl.s.state = alt_hold)
-        # mdl.s.h_thr = abs(Δh)
-        # clm = -vehicle.y.kinematics.v_eb_n[3]
-        # (abs(clm_ref) < abs(clm)) && (mdl.s.state = alt_hold)
+        throttle_ref = h_err > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
+        (abs(h_err) < h_thr - 1) && (mdl.s.state = alt_hold)
 
     else #alt_hold
 
         lon_ctl_mode = lon_EAS_clm
         throttle_ref = 0.0 #no effect, controlled by EAS_clm
-        (abs(Δh) - 1 > h_thr) && (mdl.s.state = alt_acquire)
+        (abs(h_err) > h_thr + 1) && (mdl.s.state = alt_acquire)
 
     end
 
-    mdl.y = AltitudeGuidanceY(; state, lon_ctl_mode, Δh, h_thr, throttle_ref, clm_ref)
+    mdl.y = AltitudeGuidanceY(; state, lon_ctl_mode, h_err, throttle_ref, clm_ref)
 
 end
 
@@ -576,11 +573,11 @@ end
 struct Segment
     p1::Geographic{LatLon, Ellipsoidal}
     p2::Geographic{LatLon, Ellipsoidal}
-    q_en::RQuat
+    u_12_h::SVector{3,Float64}
     l_12_h::Float64
     χ_12::Float64
     γ_12::Float64
-    u_12_h::SVector{3,Float64}
+    q_en::RQuat
 
     function Segment(p1::Abstract3DPosition, p2::Abstract3DPosition)
 
@@ -600,16 +597,14 @@ struct Segment
         l_12_h = norm(r_12_h) #length of r_12's horizontal projection
         Δh_12 = p2.h - p1.h #total altitude increment
 
-        min_length = 1
-        if l_12_h < min_length
-            error("Distance between segment points below threshold")
-        end
+        #ensure mininum length
+        @assert l_12_h > 0.1 "Distance between segment points below threshold"
 
         u_12_h = r_12_h / l_12_h
         χ_12 = azimuth(u_12_h) #azimuth
         γ_12 = atan(Δh_12, l_12_h) #flight path angle (0 for equal altitude)
 
-        new(p1, p2, q_en, l_12_h, χ_12, γ_12, u_12_h)
+        new(p1, p2, u_12_h, l_12_h, χ_12, γ_12, q_en)
 
     end
 
@@ -695,20 +690,6 @@ end
     #we need to compute a normalized parameter p_1b.
     #If p_1b<0, we're behind p1, and we set clm_ff = 0, h_nom =
     #if p_1b > 1, we're beyond p2 and we set clm = 0, h_nom = h2.
-
-    #a ver. seguramente para vertical segment guidance deberíamos hacer algo un
-    #poco mas sofisticado que simplemente comandar climb rate.
-    #ojo: y si altitude tracking fuera un modulo mas general, que en vez de ser
-    #capaz solo de altitude hold admitiera un climb rate nominal clm_ff? cuando
-    #tengamos vertical segment tracking activo, lo que hacemos es generar un
-    #clm_ff, que luego se asignara como input a altitude tracking
-    #asi, los guidance modes tambien tendrian su jerarquia: altitude tracking
-    #estaria activo cuando el modo de guiado vertical fuera altitude o
-    #verticalsegmenttracking. cuando verticalsegmentracking este activo, clm_ff
-    #que entra a altitude tracking sera generado por vst, cuando no, sera cero.
-    #el problema de esto es que tenemos que pasarle simultaneamente a
-    #altitudetracking clm_ff y h_ref, y NO son independientes.
-
 
 
 ################################################################################
@@ -1079,9 +1060,9 @@ function GUI.draw!(ctl::Model{<:Controller},
                     mode_button("Throttle + Pitch Rate", lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_ref = 0); SameLine()
                     mode_button("Throttle + Pitch Angle", lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_ref = θ)
-                    mode_button("EAS + Throttle", lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_ref = EAS); SameLine()
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_ref = θ); SameLine()
+                    mode_button("Throttle + EAS", lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_ref = EAS)
                     mode_button("EAS + Pitch Rate", lon_EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_q; u.q_ref = 0; u.EAS_ref = EAS); SameLine()
                     mode_button("EAS + Pitch Angle", lon_EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
