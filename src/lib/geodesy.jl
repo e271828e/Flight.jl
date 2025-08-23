@@ -1,7 +1,7 @@
 module Geodesy
 
 using LinearAlgebra, StaticArrays, ComponentArrays, SHA, UnPack, Interpolations, HDF5
-using Plots, LaTeXStrings, DataStructures
+using Plots, LaTeXStrings, DataStructures, StructTypes
 
 using Flight.FlightCore
 
@@ -488,6 +488,7 @@ function G_n(pos::Abstract3DPosition)
 
 end
 
+################################################################################
 ############################### Plotting #######################################
 
 #if no specific method available, convert to LatLon for plotting
@@ -518,6 +519,21 @@ end
     return TimeSeries(ts._t, Float64.(ts._data))
 
 end
+
+
+################################################################################
+################################## JSON3  ######################################
+
+#replace Greek characters from fields in the JSON string
+StructTypes.names(::Type{LatLon}) = ((:ϕ, :lat), (:λ, :lon))
+
+StructTypes.StructType(::Type{HEllip}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{HEllip}) = Float64
+StructTypes.lower(h::HEllip) = Float64(h)
+
+StructTypes.StructType(::Type{HOrth}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{HOrth}) = Float64
+StructTypes.lower(h::HOrth) = Float64(h)
 
 
 end #module

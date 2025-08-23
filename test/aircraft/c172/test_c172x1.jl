@@ -573,10 +573,7 @@ function test_guidance_modes()
 
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
 
-        #must reset scheduling counter before standalone calls to f_periodic!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world._n[] = 0
-        @test @ballocated(f_periodic!($world)) == 0
+        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
         ctl.u.h_ref = y_kin_trim.h_e + 100
         step!(sim, 1, true)
