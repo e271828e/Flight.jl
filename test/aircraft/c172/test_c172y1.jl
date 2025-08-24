@@ -548,32 +548,32 @@ function test_guidance_modes()
         #all tests while turning
         ctl.u.φ_ref = π/12
 
-        ctl.u.h_ref = y_kin_trim.h_e + 100
+        ctl.u.h_target = y_kin_trim.h_e + 100
         step!(sim, 1, true)
         @test ctl.y.mode_ctl_lon === ModeControlLon.thr_EAS
         step!(sim, 60, true) #altitude is captured
         @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_clm
-        @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_target), 0.0; atol = 1e-1)
 
         #reference changes within the current threshold do not prompt a mode change
-        ctl.u.h_ref = y_kin(aircraft).h_e - ctl.gdc_lon_alt.constants.h_thr / 2
+        ctl.u.h_target = y_kin(aircraft).h_e - ctl.gdc_lon_alt.constants.h_thr / 2
         step!(sim, 1, true)
         @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_clm
         step!(sim, 30, true) #altitude is captured
-        @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_target), 0.0; atol = 1e-1)
 
-        ctl.u.h_ref = y_kin_trim.h_e - 100
+        ctl.u.h_target = y_kin_trim.h_e - 100
         step!(sim, 1, true)
         @test ctl.y.mode_ctl_lon === ModeControlLon.thr_EAS
         step!(sim, 80, true) #altitude is captured
         @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_clm
-        @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
+        @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_target), 0.0; atol = 1e-1)
 
         @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_clm
 
         @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
-        ctl.u.h_ref = y_kin_trim.h_e + 100
+        ctl.u.h_target = y_kin_trim.h_e + 100
         step!(sim, 1, true)
         @test ctl.y.mode_ctl_lon === ModeControlLon.thr_EAS
 

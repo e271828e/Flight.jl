@@ -534,14 +534,6 @@ using .AltTrackingState: AltTrackingStateEnum
     h_thr::Float64 = 10.0 #altitude threshold for state switching
 end
 
-@kwdef mutable struct AltitudeTrackingU
-    h_ref::Union{HEllip, HOrth} = HEllip(0.0) #altitude reference
-end
-
-@kwdef mutable struct AltitudeTrackingS
-    state::AltTrackingStateEnum = AltTrackingState.hold
-end
-
 @kwdef struct AltitudeTrackingY
     state::AltTrackingStateEnum = AltTrackingState.hold
     mode_ctl_lon::ModeControlLonEnum = ModeControlLon.EAS_clm
@@ -550,35 +542,35 @@ end
     clm_ref::Float64 = 0.0
 end
 
-Modeling.U(::AltitudeTracking) = AltitudeTrackingU()
-Modeling.S(::AltitudeTracking) = AltitudeTrackingS()
+Modeling.U(::AltitudeTracking) = Ref{Union{HEllip, HOrth}}(HEllip(0.0))
+Modeling.S(::AltitudeTracking) = Ref{AltTrackingStateEnum}(AltTrackingState.hold)
 Modeling.Y(::AltitudeTracking) = AltitudeTrackingY()
 
-altitude_error(h_ref::HEllip, kin_data::KinData) = h_ref - kin_data.h_e
-altitude_error(h_ref::HOrth, kin_data::KinData) = h_ref - kin_data.h_o
+altitude_error(h_target::HEllip, kin_data::KinData) = h_target - kin_data.h_e
+altitude_error(h_target::HOrth, kin_data::KinData) = h_target - kin_data.h_o
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:AltitudeTracking},
                         vehicle::Model{<:C172Y.Vehicle})
 
-    @unpack state = mdl.s
-    @unpack h_ref = mdl.u
+    state = mdl.s[]
+    h_target = mdl.u[]
     @unpack k_h2c, h_thr = mdl.constants
 
-    h_err = altitude_error(h_ref, vehicle.y.kinematics)
+    h_err = altitude_error(h_target, vehicle.y.kinematics)
 
     if state === AltTrackingState.acquire
 
         mode_ctl_lon = ModeControlLon.thr_EAS
         throttle_ref = h_err > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
         clm_ref = 0.0 #no effect
-        (abs(h_err) < h_thr - 1) && (mdl.s.state = AltTrackingState.hold)
+        (abs(h_err) < h_thr - 1) && (mdl.s[] = AltTrackingState.hold)
 
     else #AltTrackingState.hold
 
         mode_ctl_lon = ModeControlLon.EAS_clm
         throttle_ref = 0.0 #no effect
         clm_ref = k_h2c * h_err
-        (abs(h_err) > h_thr + 1) && (mdl.s.state = AltTrackingState.acquire)
+        (abs(h_err) > h_thr + 1) && (mdl.s[] = AltTrackingState.acquire)
 
     end
 
@@ -662,26 +654,22 @@ Segment() = Segment(Geographic(LatLon(), HEllip()),
     e_sf::Float64 = 1000 #cross-track distance scale factor (m)
 end
 
-@kwdef mutable struct SegmentGuidanceU
-    seg_ref::Segment = Segment()
-end
-
 @kwdef struct SegmentGuidanceY
-    seg_ref::Segment = Segment()
+    target::Segment = Segment()
     l_1b_h::Float64 = 0.0 #along-track horizontal distance
     e_1b_h::Float64 = 0.0 #cross-track horizontal distance, positive right
     χ_ref::Float64 = 0.0 #course angle reference
 end
 
-Modeling.U(::SegmentGuidance) = SegmentGuidanceU()
+Modeling.U(::SegmentGuidance) = Ref(Segment())
 Modeling.Y(::SegmentGuidance) = SegmentGuidanceY()
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
                         vehicle::Model{<:C172Y.Vehicle})
 
-    @unpack seg_ref = mdl.u
+    @unpack target = mdl.u[]
     @unpack Δχ_inf, e_sf = mdl.constants
-    @unpack p1, q_en, χ_12, u_12_h = seg_ref
+    @unpack p1, q_en, χ_12, u_12_h = target
 
     r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
     r_e1_e = Cartesian(p1)
@@ -693,7 +681,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
     Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b_h / e_sf)
     χ_ref = wrap_to_π(χ_12 + Δχ)
 
-    mdl.y = SegmentGuidanceY(; seg_ref, l_1b_h, e_1b_h, χ_ref)
+    mdl.y = SegmentGuidanceY(; target, l_1b_h, e_1b_h, χ_ref)
 
 end
     # #these go in the longitudinal guidance law
@@ -770,8 +758,8 @@ end
     φ_ref::Float64 = 0.0 #bank angle reference
     χ_ref::Float64 = 0.0 #course angle reference
     β_ref::Float64 = 0.0 #sideslip angle reference
-    h_ref::Union{HEllip, HOrth} = HEllip(0.0) #altitude reference
-    seg_ref::Segment = Segment() #reference segment
+    h_target::Union{HEllip, HOrth} = HEllip(0.0) #target altitude
+    seg_target::Segment = Segment() #target segment
 end
 
 @kwdef struct ControllerY
@@ -799,7 +787,8 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
             eng_start, eng_stop, mixture, flaps, brake_left, brake_right,
             throttle_axis, aileron_axis, elevator_axis, rudder_axis,
             throttle_offset, aileron_offset, elevator_offset, rudder_offset,
-            q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref, h_ref, seg_ref = mdl.u
+            q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref,
+            h_target, seg_target = mdl.u
 
     @unpack ctl_lon, ctl_lat, gdc_lon_alt, gdc_lat_seg = mdl.submodels
 
@@ -829,7 +818,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
 
         else #mode_gdc_lon === ModeGuidanceLon.alt
 
-            gdc_lon_alt.u.h_ref = h_ref
+            gdc_lon_alt.u[] = h_target
             f_periodic!(gdc_lon_alt, vehicle)
 
             mode_ctl_lon = gdc_lon_alt.y.mode_ctl_lon
@@ -849,7 +838,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
 
         else #mode_gdc_lat === ModeGuidanceLat.seg
 
-            gdc_lat_seg.u.seg_ref = seg_ref
+            gdc_lat_seg.u[] = seg_target
             f_periodic!(gdc_lat_seg, vehicle)
             mode_ctl_lat = ModeControlLat.χ_β
             χ_ref = gdc_lat_seg.y.χ_ref
@@ -932,8 +921,8 @@ function Modeling.init!(mdl::Model{<:Controller},
     u.φ_ref = e_nb.φ
     u.β_ref = β
     u.χ_ref = χ_gnd
-    u.h_ref = h_e
-    u.seg_ref = Segment(Geographic(ϕ_λ, h_e); χ = χ_gnd, l = 1000)
+    u.h_target = h_e
+    u.seg_target = Segment(Geographic(ϕ_λ, h_e); χ = χ_gnd, l = 1000)
 
     u.mode_gdc_lon_req = ModeGuidanceLon.off
     u.mode_gdc_lat_req = ModeGuidanceLat.off
@@ -998,15 +987,15 @@ end
 function GUI.draw(mdl::Model{<:AltitudeTracking}, p_open::Ref{Bool} = Ref(true))
 
     @unpack state, mode_ctl_lon, h_err, throttle_ref, clm_ref = mdl.y
-    @unpack h_ref = mdl.u
+    @unpack h_target[] = mdl.u
     @unpack h_thr = mdl.constants
 
     Begin("Altitude Guidance", p_open)
 
         Text("State: $state")
         Text("Control Mode: $mode_ctl_lon")
-        Text("Altitude Ref: $(Float64(h_ref))")
-        Text("Altitude Datum: $(typeof(h_ref))")
+        Text("Altitude Ref: $(Float64(h_target))")
+        Text("Altitude Datum: $(typeof(h_target))")
         Text("Altitude Error: $h_err")
         Text("Altitude Threshold: $h_thr")
         Text("Throttle Setpoint: $throttle_ref")
@@ -1285,7 +1274,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                     mode_button("Altitude", ModeGuidanceLon.alt, u.mode_gdc_lon_req, y.mode_gdc_lon)
                     if IsItemActive()
                         u.mode_gdc_lon_req = ModeGuidanceLon.alt
-                        u.h_ref = (h_datum == 0 ? h_e : h_o)
+                        u.h_target = (h_datum == 0 ? h_e : h_o)
                         u.EAS_ref = EAS
                     end
                 CImGui.TableNextColumn();
@@ -1293,8 +1282,8 @@ function GUI.draw!(ctl::Model{<:Controller},
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    h_ref_f64 = safe_input("Altitude Setpoint", Float64(u.h_ref), 1, 1.0, "%.3f")
-                    u.h_ref = (h_datum == 0 ? HEllip(h_ref_f64) : HOrth(h_ref_f64))
+                    h_target_f64 = safe_input("Altitude Setpoint", Float64(u.h_target), 1, 1.0, "%.3f")
+                    u.h_target = (h_datum == 0 ? HEllip(h_target_f64) : HOrth(h_target_f64))
                     PopItemWidth()
                 CImGui.TableNextColumn();
                     h_datum == 0 && Text(@sprintf("%.3f", Float64(h_e)))
@@ -1303,9 +1292,9 @@ function GUI.draw!(ctl::Model{<:Controller},
                 CImGui.TableNextColumn();
                 CImGui.TableNextColumn();
                     @c RadioButton("Ellipsoidal", &h_datum, 0); SameLine()
-                    IsItemActive() && (u.h_ref = h_e)
+                    IsItemActive() && (u.h_target = h_e)
                     @c RadioButton("Orthometric", &h_datum, 1)
-                    IsItemActive() && (u.h_ref = h_o)
+                    IsItemActive() && (u.h_target = h_o)
             CImGui.EndTable()
         end #table
 
