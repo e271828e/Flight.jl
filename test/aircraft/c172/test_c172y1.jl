@@ -8,8 +8,8 @@ using Flight.FlightAircraft
 
 #non-exported stuff
 using Flight.FlightLib.Control.Discrete: load_pid_lookup, load_lqr_tracker_lookup
-using Flight.FlightAircraft.C172Y.C172YControl: LonControlMode, LatControlMode
-using Flight.FlightAircraft.C172Y.C172YControl: LonGuidanceMode, LatGuidanceMode
+using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat
+using Flight.FlightAircraft.C172Y.C172YControl: ModeGuidanceLon, ModeGuidanceLat
 using Flight.FlightAircraft.C172Y.C172YControl: FlightPhase
 
 export test_c172y1
@@ -57,10 +57,10 @@ function test_control_modes()
     Sim.init!(sim, init_gnd)
 
     #set arbitrary control and guidance modes
-    ctl.u.lon_gdc_mode_req = LonGuidanceMode.alt
-    ctl.u.lat_gdc_mode_req = LatGuidanceMode.seg
-    ctl.u.lon_ctl_mode_req = LonControlMode.EAS_clm
-    ctl.u.lat_ctl_mode_req = LatControlMode.p_β
+    ctl.u.mode_gdc_lon_req = ModeGuidanceLon.alt
+    ctl.u.mode_gdc_lat_req = ModeGuidanceLat.seg
+    ctl.u.mode_ctl_lon_req = ModeControlLon.EAS_clm
+    ctl.u.mode_ctl_lat_req = ModeControlLat.p_β
     ctl.u.throttle_axis = 0.1
     ctl.u.aileron_axis = 0.2
     ctl.u.elevator_axis = 0.3
@@ -73,10 +73,10 @@ function test_control_modes()
     @test ctl.y.flight_phase === FlightPhase.gnd
 
     #the mode requests are overridden due to FlightPhase.gnd
-    @test ctl.y.lon_gdc_mode === LonGuidanceMode.off
-    @test ctl.y.lat_gdc_mode === LatGuidanceMode.off
-    @test ctl.y.lon_ctl_mode === LonControlMode.direct
-    @test ctl.y.lat_ctl_mode === LatControlMode.direct
+    @test ctl.y.mode_gdc_lon === ModeGuidanceLon.off
+    @test ctl.y.mode_gdc_lat === ModeGuidanceLat.off
+    @test ctl.y.mode_ctl_lon === ModeControlLon.direct
+    @test ctl.y.mode_ctl_lat === ModeControlLat.direct
 
     #control laws outputs must have propagated to actuator inputs (not yet to
     #their outputs, that requires a subsequent call to f_ode!)
@@ -104,12 +104,12 @@ function test_control_modes()
 
     ############################### direct control #############################
 
-    @testset verbose = true "LonControlMode.direct + LatControlMode.direct" begin
+    @testset verbose = true "ModeControlLon.direct + ModeControlLat.direct" begin
 
         Sim.init!(sim, init_air)
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.direct
-        @test ctl.y.lat_ctl_mode === LatControlMode.direct
+        @test ctl.y.mode_ctl_lon === ModeControlLon.direct
+        @test ctl.y.mode_ctl_lat === ModeControlLat.direct
 
         #with direct surface control, trim state must be initially preserved
         step!(sim, 10, true)
@@ -123,19 +123,19 @@ function test_control_modes()
 
     ############################ thr+ele SAS mode ##############################
 
-    @testset verbose = true "LonControlMode.sas" begin
+    @testset verbose = true "ModeControlLon.sas" begin
 
         #we test the longitudinal SAS first, because we want to test the lateral
         #modes with it enabled
         Sim.init!(sim, init_air)
-        ctl.u.lon_ctl_mode_req = LonControlMode.sas
+        ctl.u.mode_ctl_lon_req = ModeControlLon.sas
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.sas
+        @test ctl.y.mode_ctl_lon === ModeControlLon.sas
 
         #check the correct parameters are loaded and assigned to the controller
         te2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "e2e_lookup.h5"))
         C_fwd = te2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
-        @test all(isapprox.(ctl.y.lon_ctl.e2e_lqr.C_fwd, C_fwd; atol = 1e-6))
+        @test all(isapprox.(ctl.y.ctl_lon.e2e_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #a small initial transient when engaging the SAS is acceptable
         #once active, trim equilibrium must be preserved for longer
@@ -150,18 +150,18 @@ function test_control_modes()
 
     ################################ ail_rud SAS ###############################
 
-    @testset verbose = true "LatControlMode.sas" begin
+    @testset verbose = true "ModeControlLat.sas" begin
 
         Sim.init!(sim, init_air)
-        ctl.u.lon_ctl_mode_req = LonControlMode.sas
-        ctl.u.lat_ctl_mode_req = LatControlMode.sas
+        ctl.u.mode_ctl_lon_req = ModeControlLon.sas
+        ctl.u.mode_ctl_lat_req = ModeControlLat.sas
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lat_ctl_mode === LatControlMode.sas
+        @test ctl.y.mode_ctl_lat === ModeControlLat.sas
 
         #check the correct parameters are loaded and assigned to the controller
         ar2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "ar2ar_lookup.h5"))
         C_fwd = ar2ar_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
-        @test all(isapprox.(ctl.y.lat_ctl.ar2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
+        @test all(isapprox.(ctl.y.ctl_lat.ar2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #with ail+rud SAS active, trim state must be preserved for longer
         step!(sim, 10, true)
@@ -176,18 +176,18 @@ function test_control_modes()
 
     ################################ φ + β #####################################
 
-    @testset verbose = true "LatControlMode.φ_β" begin
+    @testset verbose = true "ModeControlLat.φ_β" begin
 
         Sim.init!(sim, init_air)
-        ctl.u.lon_ctl_mode_req = LonControlMode.sas
-        ctl.u.lat_ctl_mode_req = LatControlMode.φ_β
+        ctl.u.mode_ctl_lon_req = ModeControlLon.sas
+        ctl.u.mode_ctl_lat_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lat_ctl_mode === LatControlMode.φ_β
+        @test ctl.y.mode_ctl_lat === ModeControlLat.φ_β
 
         #check the correct parameters are loaded and assigned to the controller
         φβ2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
         C_fwd = φβ2ar_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
-        @test all(isapprox.(ctl.y.lat_ctl.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
+        @test all(isapprox.(ctl.y.ctl_lat.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #a small initial transient when engaging the SAS is acceptable
         #once active, trim equilibrium must be preserved
@@ -209,23 +209,23 @@ function test_control_modes()
 
     ################################ p + β #####################################
 
-    @testset verbose = true "LatControlMode.p_β" begin
+    @testset verbose = true "ModeControlLat.p_β" begin
 
         Sim.init!(sim, init_air)
 
         #enable SAS first and let the small initial transient die out
-        ctl.u.lon_ctl_mode_req = LonControlMode.sas
-        ctl.u.lat_ctl_mode_req = LatControlMode.sas
+        ctl.u.mode_ctl_lon_req = ModeControlLon.sas
+        ctl.u.mode_ctl_lat_req = ModeControlLat.sas
         step!(sim, 1, true)
 
-        ctl.u.lat_ctl_mode_req = LatControlMode.p_β
+        ctl.u.mode_ctl_lat_req = ModeControlLat.p_β
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lat_ctl_mode === LatControlMode.p_β
+        @test ctl.y.mode_ctl_lat === ModeControlLat.p_β
 
         #check the correct parameters are loaded and assigned to the controller
         p2φ_lookup = load_pid_lookup(joinpath(data_folder, "p2φ_lookup.h5"))
         k_p = p2φ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
-        @test all(isapprox.(ctl.y.lat_ctl.p2φ_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.ctl_lat.p2φ_pid.k_p, k_p; atol = 1e-6))
 
         #the control mode must activate without transients
         step!(sim, 1, true)
@@ -251,23 +251,23 @@ function test_control_modes()
 
     ################################ χ + β #####################################
 
-    @testset verbose = true "LatControlMode.χ_β" begin
+    @testset verbose = true "ModeControlLat.χ_β" begin
 
         Sim.init!(sim, init_air)
 
         #enable SAS first and let the small initial transient die out
-        ctl.u.lon_ctl_mode_req = LonControlMode.sas
-        ctl.u.lat_ctl_mode_req = LatControlMode.sas
+        ctl.u.mode_ctl_lon_req = ModeControlLon.sas
+        ctl.u.mode_ctl_lat_req = ModeControlLat.sas
         step!(sim, 1, true)
 
-        ctl.u.lat_ctl_mode_req = LatControlMode.χ_β
+        ctl.u.mode_ctl_lat_req = ModeControlLat.χ_β
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lat_ctl_mode === LatControlMode.χ_β
+        @test ctl.y.mode_ctl_lat === ModeControlLat.χ_β
 
         #check the correct parameters are loaded and assigned to the controller
         χ2φ_lookup = load_pid_lookup(joinpath(data_folder, "χ2φ_lookup.h5"))
         k_p = χ2φ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
-        @test all(isapprox.(ctl.y.lat_ctl.χ2φ_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.ctl_lat.χ2φ_pid.k_p, k_p; atol = 1e-6))
 
         #with reference values matching their trim values, the control mode must activate
         #without transients
@@ -278,7 +278,7 @@ function test_control_modes()
         #correct tracking
         ctl.u.χ_ref = π/2
         step!(sim, 29, true)
-        @test ctl.lat_ctl.u.χ_ref != 0
+        @test ctl.ctl_lat.u.χ_ref != 0
         @test isapprox(ctl.u.χ_ref, y_kin(aircraft).χ_gnd; atol = 1e-2)
         # @test isapprox(Float64(ctl.u.yaw_axis), y_aero(aircraft).β; atol = 1e-3)
 
@@ -300,19 +300,19 @@ function test_control_modes()
 
     ############################### lon_thr_q ##################################
 
-    @testset verbose = true "LonControlMode.thr_q" begin
+    @testset verbose = true "ModeControlLon.thr_q" begin
 
         Sim.init!(sim, init_air)
 
-        ctl.u.lon_ctl_mode_req = LonControlMode.thr_q
-        ctl.u.lat_ctl_mode_req = LatControlMode.φ_β
+        ctl.u.mode_ctl_lon_req = ModeControlLon.thr_q
+        ctl.u.mode_ctl_lat_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.thr_q
+        @test ctl.y.mode_ctl_lon === ModeControlLon.thr_q
 
         #check the correct parameters are loaded and assigned to the controller
         q2e_lookup = load_pid_lookup(joinpath(data_folder, "q2e_lookup.h5"))
         k_p = q2e_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
-        @test all(isapprox.(ctl.y.lon_ctl.q2e_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.ctl_lon.q2e_pid.k_p, k_p; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
@@ -325,8 +325,8 @@ function test_control_modes()
         ctl.u.q_ref = 0.01
         step!(sim, 10, true)
 
-        @test ctl.lon_ctl.u.q_ref != 0
-        @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(aircraft).ω_wb_b[2]; atol = 1e-3)
+        @test ctl.ctl_lon.u.q_ref != 0
+        @test isapprox(ctl.ctl_lon.u.q_ref, y_kin(aircraft).ω_wb_b[2]; atol = 1e-3)
         @test isapprox(Float64(aircraft.y.vehicle.systems.act.throttle.cmd),
                         Float64(ctl.u.throttle_axis + ctl.u.throttle_offset); atol = 1e-3)
 
@@ -337,14 +337,14 @@ function test_control_modes()
 
     ############################## lon_thr_θ ###################################
 
-    @testset verbose = true "LonControlMode.thr_θ" begin
+    @testset verbose = true "ModeControlLon.thr_θ" begin
 
         Sim.init!(sim, init_air)
 
-        ctl.u.lon_ctl_mode_req = LonControlMode.thr_θ
-        ctl.u.lat_ctl_mode_req = LatControlMode.φ_β
+        ctl.u.mode_ctl_lon_req = ModeControlLon.thr_θ
+        ctl.u.mode_ctl_lat_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.thr_θ
+        @test ctl.y.mode_ctl_lon === ModeControlLon.thr_θ
 
         #when trim reference values are kept, the control mode must activate without
         #transients
@@ -366,19 +366,19 @@ function test_control_modes()
 
     ################################ lon_thr_EAS ###############################
 
-    @testset verbose = true "LonControlMode.thr_EAS" begin
+    @testset verbose = true "ModeControlLon.thr_EAS" begin
 
         Sim.init!(sim, init_air)
 
-        ctl.u.lon_ctl_mode_req = LonControlMode.thr_EAS
-        ctl.u.lat_ctl_mode_req = LatControlMode.φ_β
+        ctl.u.mode_ctl_lon_req = ModeControlLon.thr_EAS
+        ctl.u.mode_ctl_lat_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.thr_EAS
+        @test ctl.y.mode_ctl_lon === ModeControlLon.thr_EAS
 
         #check the correct parameters are loaded and assigned to the controller
         v2θ_lookup = load_pid_lookup(joinpath(data_folder, "v2θ_lookup.h5"))
         k_p = v2θ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
-        @test all(isapprox.(ctl.y.lon_ctl.v2θ_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.ctl_lon.v2θ_pid.k_p, k_p; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
@@ -399,20 +399,20 @@ function test_control_modes()
 
     ################################ lon_EAS_q #################################
 
-    @testset verbose = true "LonControlMode.EAS_q" begin
+    @testset verbose = true "ModeControlLon.EAS_q" begin
 
         Sim.init!(sim, init_air)
 
-        ctl.u.lon_ctl_mode_req = LonControlMode.EAS_q
-        ctl.u.lat_ctl_mode_req = LatControlMode.φ_β
+        ctl.u.mode_ctl_lon_req = ModeControlLon.EAS_q
+        ctl.u.mode_ctl_lat_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.EAS_q
+        @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_q
 
         #check the correct parameters are loaded and assigned to v2t, the q
         #tracker is shared with other modes
         v2t_lookup = load_pid_lookup(joinpath(data_folder, "v2t_lookup.h5"))
         k_p = v2t_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
-        @test all(isapprox.(ctl.y.lon_ctl.v2t_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.ctl_lon.v2t_pid.k_p, k_p; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
@@ -428,7 +428,7 @@ function test_control_modes()
         ctl.u.q_ref = 0.0
         step!(sim, 20, true)
 
-        @test isapprox(ctl.lon_ctl.u.q_ref, y_kin(aircraft).ω_wb_b[2]; atol = 1e-3)
+        @test isapprox(ctl.ctl_lon.u.q_ref, y_kin(aircraft).ω_wb_b[2]; atol = 1e-3)
         @test all(isapprox.(y_air(aircraft).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
@@ -439,14 +439,14 @@ function test_control_modes()
 
     ################################ lon_EAS_q #################################
 
-    @testset verbose = true "LonControlMode.EAS_θ" begin
+    @testset verbose = true "ModeControlLon.EAS_θ" begin
 
         Sim.init!(sim, init_air)
 
-        ctl.u.lon_ctl_mode_req = LonControlMode.EAS_θ
-        ctl.u.lat_ctl_mode_req = LatControlMode.φ_β
+        ctl.u.mode_ctl_lon_req = ModeControlLon.EAS_θ
+        ctl.u.mode_ctl_lat_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.EAS_θ
+        @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_θ
 
         #when trim reference values are kept, the control mode must activate without
         #transients
@@ -461,7 +461,7 @@ function test_control_modes()
         ctl.u.θ_ref = -deg2rad(3)
         step!(sim, 60, true)
 
-        @test isapprox(ctl.lon_ctl.u.θ_ref, y_kin(aircraft).e_nb.θ; atol = 1e-3)
+        @test isapprox(ctl.ctl_lon.u.θ_ref, y_kin(aircraft).e_nb.θ; atol = 1e-3)
         @test all(isapprox.(y_air(aircraft).EAS, ctl.u.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
@@ -471,19 +471,19 @@ function test_control_modes()
 
     ############################## lon_EAS_clm #################################
 
-    @testset verbose = true "LonControlMode.EAS_clm" begin
+    @testset verbose = true "ModeControlLon.EAS_clm" begin
 
         Sim.init!(sim, init_air)
 
-        ctl.u.lon_ctl_mode_req = LonControlMode.EAS_clm
-        ctl.u.lat_ctl_mode_req = LatControlMode.φ_β
+        ctl.u.mode_ctl_lon_req = ModeControlLon.EAS_clm
+        ctl.u.mode_ctl_lat_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.EAS_clm
+        @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_clm
 
         #check the correct parameters are loaded and assigned to the controller
         c2θ_lookup = load_pid_lookup(joinpath(data_folder, "c2θ_lookup.h5"))
         k_p = c2θ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
-        @test all(isapprox.(ctl.y.lon_ctl.c2θ_pid.k_p, k_p; atol = 1e-6))
+        @test all(isapprox.(ctl.y.ctl_lon.c2θ_pid.k_p, k_p; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
@@ -528,16 +528,16 @@ function test_guidance_modes()
 
     sim = Simulation(world; dt, Δt, t_end = 600)
 
-    @testset verbose = true "Altitude Guidance" begin
+    @testset verbose = true "ModeGuidanceLon.alt" begin
 
         Sim.init!(sim, init_air)
         y_kin_trim = y_kin(aircraft)
 
-        ctl.u.lon_gdc_mode_req = LonGuidanceMode.alt
-        ctl.u.lat_ctl_mode_req = LatControlMode.φ_β
+        ctl.u.mode_gdc_lon_req = ModeGuidanceLon.alt
+        ctl.u.mode_ctl_lat_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
-        @test ctl.y.lon_gdc_mode === LonGuidanceMode.alt
-        @test ctl.y.lon_ctl_mode === LonControlMode.EAS_clm
+        @test ctl.y.mode_gdc_lon === ModeGuidanceLon.alt
+        @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_clm
 
         #when trim reference values are kept, the guidance mode must activate without
         #transients
@@ -550,32 +550,32 @@ function test_guidance_modes()
 
         ctl.u.h_ref = y_kin_trim.h_e + 100
         step!(sim, 1, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.thr_EAS
+        @test ctl.y.mode_ctl_lon === ModeControlLon.thr_EAS
         step!(sim, 60, true) #altitude is captured
-        @test ctl.y.lon_ctl_mode === LonControlMode.EAS_clm
+        @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_clm
         @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
 
         #reference changes within the current threshold do not prompt a mode change
-        ctl.u.h_ref = y_kin(aircraft).h_e - ctl.alt_gdc.constants.h_thr / 2
+        ctl.u.h_ref = y_kin(aircraft).h_e - ctl.gdc_lon_alt.constants.h_thr / 2
         step!(sim, 1, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.EAS_clm
+        @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_clm
         step!(sim, 30, true) #altitude is captured
         @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
 
         ctl.u.h_ref = y_kin_trim.h_e - 100
         step!(sim, 1, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.thr_EAS
+        @test ctl.y.mode_ctl_lon === ModeControlLon.thr_EAS
         step!(sim, 80, true) #altitude is captured
-        @test ctl.y.lon_ctl_mode === LonControlMode.EAS_clm
+        @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_clm
         @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
 
-        @test ctl.y.lon_ctl_mode === LonControlMode.EAS_clm
+        @test ctl.y.mode_ctl_lon === ModeControlLon.EAS_clm
 
         @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
         ctl.u.h_ref = y_kin_trim.h_e + 100
         step!(sim, 1, true)
-        @test ctl.y.lon_ctl_mode === LonControlMode.thr_EAS
+        @test ctl.y.mode_ctl_lon === ModeControlLon.thr_EAS
 
         #test for allocations in the current control mode
         @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
@@ -608,15 +608,15 @@ function IODevices.extract_output(mdl::Model{<:SimpleWorld}, ::JSONTestMapping)
         #these enums will be automatically cast to Ints per the StructTypes
         #methods defined in C172Y.C172YControl
         cmd = (
-            lon_gdc_mode_req = LonGuidanceMode.alt,
-            lat_ctl_mode_req = LatControlMode.φ_β,
+            mode_gdc_lon_req = ModeGuidanceLon.alt,
+            mode_ctl_lat_req = ModeControlLat.φ_β,
             φ_ref = φ_ref,
         )
 
         #therefore, these would also work
         # cmd = (
-        #     lon_gdc_mode_req = 1,
-        #     lat_ctl_mode_req = 2,
+        #     mode_gdc_lon_req = 1,
+        #     mode_ctl_lat_req = 2,
         #     φ_ref = φ_ref,
         # )
     end

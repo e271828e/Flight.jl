@@ -32,9 +32,9 @@ abstract type AbstractControlChannel <: ModelDefinition end
 
 
 ################################################################################
-################################## LonControl ##################################
+################################## ControllerLon ##################################
 
-@enumx T=LonControlModeEnum LonControlMode begin
+@enumx T=ModeControlLonEnum ModeControlLon begin
     direct = 0 #direct throttle & elevator
     sas = 1 #direct throttle + pitch SAS
     thr_q = 2 #direct throttle + pitch rate
@@ -45,29 +45,29 @@ abstract type AbstractControlChannel <: ModelDefinition end
     EAS_clm = 7 #EAS + climb rate
 end
 
-using .LonControlMode: LonControlModeEnum
+using .ModeControlLon: ModeControlLonEnum
 
 #elevator pitch SAS always enabled except in direct mode
-e2e_enabled(mode::LonControlModeEnum) = (mode != LonControlMode.direct)
+e2e_enabled(mode::ModeControlLonEnum) = (mode != ModeControlLon.direct)
 
-function q2e_enabled(mode::LonControlModeEnum)
-    mode === LonControlMode.thr_q || mode === LonControlMode.thr_θ ||
-    mode === LonControlMode.thr_EAS || mode === LonControlMode.EAS_q ||
-    mode === LonControlMode.EAS_θ || mode === LonControlMode.EAS_clm
+function q2e_enabled(mode::ModeControlLonEnum)
+    mode === ModeControlLon.thr_q || mode === ModeControlLon.thr_θ ||
+    mode === ModeControlLon.thr_EAS || mode === ModeControlLon.EAS_q ||
+    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm
 end
 
-function θ2q_enabled(mode::LonControlModeEnum)
-    mode === LonControlMode.thr_θ || mode === LonControlMode.thr_EAS ||
-    mode === LonControlMode.EAS_θ || mode === LonControlMode.EAS_clm
+function θ2q_enabled(mode::ModeControlLonEnum)
+    mode === ModeControlLon.thr_θ || mode === ModeControlLon.thr_EAS ||
+    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm
 end
 
-function v2t_enabled(mode::LonControlModeEnum)
-    mode === LonControlMode.EAS_q || mode === LonControlMode.EAS_θ ||
-    mode === LonControlMode.EAS_clm
+function v2t_enabled(mode::ModeControlLonEnum)
+    mode === ModeControlLon.EAS_q || mode === ModeControlLon.EAS_θ ||
+    mode === ModeControlLon.EAS_clm
 end
 
-c2θ_enabled(mode::LonControlModeEnum) = (mode === LonControlMode.EAS_clm)
-v2θ_enabled(mode::LonControlModeEnum) = (mode === LonControlMode.thr_EAS)
+c2θ_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_clm)
+v2θ_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.thr_EAS)
 
 ############################## FieldVectors ####################################
 
@@ -102,7 +102,7 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct LonControl{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
+@kwdef struct ControllerLon{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
     e2e_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "e2e_lookup.h5"))
     q2e_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "q2e_lookup.h5"))
     v2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2θ_lookup.h5"))
@@ -116,8 +116,8 @@ end
     v2t_pid::PID = PID()
 end
 
-@kwdef mutable struct LonControlU
-    mode::LonControlModeEnum = LonControlMode.direct
+@kwdef mutable struct ControllerLonU
+    mode::ModeControlLonEnum = ModeControlLon.direct
     throttle_ref::Float64 = 0.0
     elevator_ref::Float64 = 0.0
     q_ref::Float64 = 0.0
@@ -126,8 +126,8 @@ end
     clm_ref::Float64 = 0.0 #climb rate reference
 end
 
-@kwdef struct LonControlY
-    mode::LonControlModeEnum = LonControlMode.direct
+@kwdef struct ControllerLonY
+    mode::ModeControlLonEnum = ModeControlLon.direct
     throttle_ref::Float64 = 0.0
     elevator_ref::Float64 = 0.0
     q_ref::Float64 = 0.0
@@ -144,10 +144,10 @@ end
     v2t_pid::PIDOutput = PIDOutput()
 end
 
-Modeling.U(::LonControl) = LonControlU()
-Modeling.Y(::LonControl) = LonControlY()
+Modeling.U(::ControllerLon) = ControllerLonU()
+Modeling.Y(::ControllerLon) = ControllerLonY()
 
-function Modeling.init!(mdl::Model{<:LonControl})
+function Modeling.init!(mdl::Model{<:ControllerLon})
     #e2e determines elevator saturation for all pitch control loops (q2e, c2θ,
     #v2θ), so we don't need to set bounds for those
     mdl.e2e_lqr.u.bound_lo .= -1
@@ -158,7 +158,7 @@ function Modeling.init!(mdl::Model{<:LonControl})
 end
 
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LonControl},
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControllerLon},
                         vehicle::Model{<:C172Y.Vehicle})
 
     @unpack mode, throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref = mdl.u
@@ -243,7 +243,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LonControl},
                     f_periodic!(c2θ_pid)
                     θ_ref = c2θ_pid.y.output
 
-                else #LonControlMode.EAS_θ || LonControlMode.thr_θ
+                else #ModeControlLon.EAS_θ || ModeControlLon.thr_θ
 
                     #θ_ref unmodified, input value is kept
 
@@ -279,7 +279,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LonControl},
 
     end
 
-    mdl.y = LonControlY(; mode, throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref,
+    mdl.y = ControllerLonY(; mode, throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref,
         throttle_cmd, elevator_cmd, e2e_lqr = e2e_lqr.y,
         q2e_int = q2e_int.y, q2e_pid = q2e_pid.y, v2θ_pid = v2θ_pid.y,
         c2θ_pid = c2θ_pid.y, v2t_pid = v2t_pid.y)
@@ -288,9 +288,9 @@ end
 
 
 ################################################################################
-################################# LatControl ###################################
+################################# ControllerLat ###################################
 
-@enumx T=LatControlModeEnum LatControlMode begin
+@enumx T=ModeControlLatEnum ModeControlLat begin
     direct = 0 #direct aileron & rudder
     sas = 1 #roll & yaw SAS
     p_β = 2 #roll rate + sideslip
@@ -298,17 +298,17 @@ end
     χ_β = 4 #course angle + sideslip
 end
 
-using .LatControlMode: LatControlModeEnum
+using .ModeControlLat: ModeControlLatEnum
 
-ar2ar_enabled(mode::LatControlModeEnum) = (mode === LatControlMode.sas)
+ar2ar_enabled(mode::ModeControlLatEnum) = (mode === ModeControlLat.sas)
 
-function φβ2ar_enabled(mode::LatControlModeEnum)
-    mode === LatControlMode.p_β || mode === LatControlMode.LatControlMode.φ_β ||
-    mode === LatControlMode.χ_β
+function φβ2ar_enabled(mode::ModeControlLatEnum)
+    mode === ModeControlLat.p_β || mode === ModeControlLat.ModeControlLat.φ_β ||
+    mode === ModeControlLat.χ_β
 end
 
-p2φ_enabled(mode::LatControlModeEnum) = (mode === LatControlMode.p_β)
-χ2φ_enabled(mode::LatControlModeEnum) = (mode === LatControlMode.χ_β)
+p2φ_enabled(mode::ModeControlLatEnum) = (mode === ModeControlLat.p_β)
+χ2φ_enabled(mode::ModeControlLatEnum) = (mode === ModeControlLat.χ_β)
 
 ################################# FieldVectors #################################
 
@@ -355,7 +355,7 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct LatControl{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
+@kwdef struct ControllerLat{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
     ar2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "ar2ar_lookup.h5"))
     φβ2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "φβ2ar_lookup.h5"))
     p2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
@@ -367,8 +367,8 @@ end
     χ2φ_pid::PID = PID()
 end
 
-@kwdef mutable struct LatControlU
-    mode::LatControlModeEnum = LatControlMode.direct #lateral control mode
+@kwdef mutable struct ControllerLatU
+    mode::ModeControlLatEnum = ModeControlLat.direct #lateral control mode
     aileron_ref::Float64 = 0.0 #aileron command reference
     rudder_ref::Float64 = 0.0 #rudder command reference
     p_ref::Float64 = 0.0 #roll rate reference
@@ -377,8 +377,8 @@ end
     χ_ref::Float64 = 0.0 #course angle reference
 end
 
-@kwdef struct LatControlY
-    mode::LatControlModeEnum = LatControlMode.direct
+@kwdef struct ControllerLatY
+    mode::ModeControlLatEnum = ModeControlLat.direct
     aileron_ref::Float64 = 0.0 #aileron command reference
     rudder_ref::Float64 = 0.0 #rudder command reference
     p_ref::Float64 = 0.0 #roll rate reference
@@ -394,10 +394,10 @@ end
     χ2φ_pid::PIDOutput = PIDOutput()
 end
 
-Modeling.U(::LatControl) = LatControlU()
-Modeling.Y(::LatControl) = LatControlY()
+Modeling.U(::ControllerLat) = ControllerLatU()
+Modeling.Y(::ControllerLat) = ControllerLatY()
 
-function Modeling.init!(mdl::Model{<:LatControl})
+function Modeling.init!(mdl::Model{<:ControllerLat})
 
     foreach((mdl.φβ2ar_lqr, mdl.ar2ar_lqr)) do lqr
         lqr.u.bound_lo .= ULat(; aileron_cmd = -1, rudder_cmd = -1)
@@ -410,7 +410,7 @@ function Modeling.init!(mdl::Model{<:LatControl})
 
 end
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LatControl},
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControllerLat},
                         vehicle::Model{<:C172Y.Vehicle})
 
     @unpack mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref = mdl.u
@@ -485,7 +485,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LatControl},
             f_periodic!(χ2φ_pid)
             φ_ref = χ2φ_pid.y.output
 
-        else #LatControlMode.LatControlMode.φ_β
+        else #ModeControlLat.ModeControlLat.φ_β
 
             #φ_ref and β_ref directly set by input values, nothing to do here
 
@@ -505,7 +505,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LatControl},
 
     end
 
-    mdl.y = LatControlY(; mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref,
+    mdl.y = ControllerLatY(; mode, aileron_ref, rudder_ref, p_ref, β_ref, φ_ref, χ_ref,
         aileron_cmd, rudder_cmd, ar2ar_lqr = ar2ar_lqr.y, φβ2ar_lqr = φβ2ar_lqr.y,
         p2φ_int = p2φ_int.y, p2φ_pid = p2φ_pid.y, χ2φ_pid = χ2φ_pid.y)
 
@@ -544,7 +544,7 @@ end
 
 @kwdef struct AltitudeTrackingY
     state::AltTrackingStateEnum = AltTrackingState.hold
-    lon_ctl_mode::LonControlModeEnum = LonControlMode.EAS_clm
+    mode_ctl_lon::ModeControlLonEnum = ModeControlLon.EAS_clm
     h_err::Float64 = 0.0 #current altitude error
     throttle_ref::Float64 = 0.0
     clm_ref::Float64 = 0.0
@@ -568,21 +568,21 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:AltitudeTracking},
 
     if state === AltTrackingState.acquire
 
-        lon_ctl_mode = LonControlMode.thr_EAS
+        mode_ctl_lon = ModeControlLon.thr_EAS
         throttle_ref = h_err > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
         clm_ref = 0.0 #no effect
         (abs(h_err) < h_thr - 1) && (mdl.s.state = AltTrackingState.hold)
 
     else #AltTrackingState.hold
 
-        lon_ctl_mode = LonControlMode.EAS_clm
+        mode_ctl_lon = ModeControlLon.EAS_clm
         throttle_ref = 0.0 #no effect
         clm_ref = k_h2c * h_err
         (abs(h_err) > h_thr + 1) && (mdl.s.state = AltTrackingState.acquire)
 
     end
 
-    mdl.y = AltitudeTrackingY(; state, lon_ctl_mode, h_err, throttle_ref, clm_ref)
+    mdl.y = AltitudeTrackingY(; state, mode_ctl_lon, h_err, throttle_ref, clm_ref)
 
 end
 
@@ -657,26 +657,26 @@ Segment() = Segment(Geographic(LatLon(), HEllip()),
 ################################################################################
 
 
-@kwdef struct LateralSegmentGuidance <: AbstractGuidanceChannel
+@kwdef struct SegmentGuidance <: AbstractGuidanceChannel
     Δχ_inf::Ranged{Float64, 0., π/2.} = π/2 #intercept angle for x2d_1p → ∞ (rad)
     e_sf::Float64 = 1000 #cross-track distance scale factor (m)
 end
 
-@kwdef mutable struct LateralSegmentGuidanceU
+@kwdef mutable struct SegmentGuidanceU
     seg_ref::Segment = Segment()
 end
 
-@kwdef struct LateralSegmentGuidanceY
+@kwdef struct SegmentGuidanceY
     seg_ref::Segment = Segment()
     l_1b_h::Float64 = 0.0 #along-track horizontal distance
     e_1b_h::Float64 = 0.0 #cross-track horizontal distance, positive right
     χ_ref::Float64 = 0.0 #course angle reference
 end
 
-Modeling.U(::LateralSegmentGuidance) = LateralSegmentGuidanceU()
-Modeling.Y(::LateralSegmentGuidance) = LateralSegmentGuidanceY()
+Modeling.U(::SegmentGuidance) = SegmentGuidanceU()
+Modeling.Y(::SegmentGuidance) = SegmentGuidanceY()
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LateralSegmentGuidance},
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
                         vehicle::Model{<:C172Y.Vehicle})
 
     @unpack seg_ref = mdl.u
@@ -693,10 +693,10 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LateralSegmentGuidanc
     Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b_h / e_sf)
     χ_ref = wrap_to_π(χ_12 + Δχ)
 
-    mdl.y = LateralSegmentGuidanceY(; seg_ref, l_1b_h, e_1b_h, χ_ref)
+    mdl.y = SegmentGuidanceY(; seg_ref, l_1b_h, e_1b_h, χ_ref)
 
 end
-    # #these go in the vertical guidance law
+    # #these go in the longitudinal guidance law
     # r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
     # r_1b_e = r_eb_e - r_e1_e #position vector from p1 to p
     # r_1b_n1 = q_n1e(r_1b_e)
@@ -719,31 +719,35 @@ end
     air = 1
 end
 
-@enumx T=LonGuidanceModeEnum LonGuidanceMode begin
+@enumx T=ModeGuidanceLonEnum ModeGuidanceLon begin
     off = 0
     alt = 1
 end
 
-@enumx T=LatGuidanceModeEnum LatGuidanceMode begin
+@enumx T=ModeGuidanceLatEnum ModeGuidanceLat begin
     off = 0
     seg = 1
 end
 
 using .FlightPhase: FlightPhaseEnum
-using .LonGuidanceMode: LonGuidanceModeEnum
-using .LatGuidanceMode: LatGuidanceModeEnum
+using .ModeGuidanceLon: ModeGuidanceLonEnum
+using .ModeGuidanceLat: ModeGuidanceLatEnum
 
 ################################################################################
 
-@kwdef struct Controller{C1 <: LonControl, C2 <: LatControl} <: ModelDefinition
-    lon_ctl::C1 = LonControl()
-    lat_ctl::C2 = LatControl()
-    alt_gdc::AltitudeTracking = AltitudeTracking()
-    lat_seg_gdc::LateralSegmentGuidance = LateralSegmentGuidance()
+@kwdef struct Controller{C1 <: ControllerLon, C2 <: ControllerLat} <: ModelDefinition
+    ctl_lon::C1 = ControllerLon()
+    ctl_lat::C2 = ControllerLat()
+    gdc_lon_alt::AltitudeTracking = AltitudeTracking()
+    gdc_lat_seg::SegmentGuidance = SegmentGuidance()
 end
 
 #CockpitInputs
 @kwdef mutable struct ControllerU
+    mode_gdc_lon_req::ModeGuidanceLonEnum = ModeGuidanceLon.off #requested longitudinal guidance mode
+    mode_gdc_lat_req::ModeGuidanceLatEnum = ModeGuidanceLat.off #requested lateral guidance mode
+    mode_ctl_lon_req::ModeControlLonEnum = ModeControlLon.direct #requested longitudinal control mode
+    mode_ctl_lat_req::ModeControlLatEnum = ModeControlLat.direct #requested lateral control mode
     eng_start::Bool = false #passthrough
     eng_stop::Bool = false #passthrough
     mixture::Ranged{Float64, 0., 1.} = 0.5 #passthrough
@@ -758,10 +762,6 @@ end
     aileron_offset::Ranged{Float64, -1., 1.} = 0.0
     elevator_offset::Ranged{Float64, -1., 1.} = 0.0
     rudder_offset::Ranged{Float64, -1., 1.} = 0.0
-    lon_gdc_mode_req::LonGuidanceModeEnum = LonGuidanceMode.off #requested vertical guidance mode
-    lat_gdc_mode_req::LatGuidanceModeEnum = LatGuidanceMode.off #requested horizontal guidance mode
-    lon_ctl_mode_req::LonControlModeEnum = LonControlMode.direct #requested longitudinal control mode
-    lat_ctl_mode_req::LatControlModeEnum = LatControlMode.direct #requested lateral control mode
     EAS_ref::Float64 = C172.TrimParameters().EAS #equivalent airspeed reference
     q_ref::Float64 = 0.0 #pitch rate reference
     θ_ref::Float64 = 0.0 #pitch angle reference
@@ -776,14 +776,14 @@ end
 
 @kwdef struct ControllerY
     flight_phase::FlightPhaseEnum = FlightPhase.gnd
-    lon_gdc_mode::LonGuidanceModeEnum = LonGuidanceMode.off #active vertical guidance mode
-    lat_gdc_mode::LatGuidanceModeEnum = LatGuidanceMode.off #active horizontal guidance mode
-    lon_ctl_mode::LonControlModeEnum = LonControlMode.direct #active longitudinal control mode
-    lat_ctl_mode::LatControlModeEnum = LatControlMode.direct #active lateral control mode
-    lon_ctl::LonControlY = LonControlY()
-    lat_ctl::LatControlY = LatControlY()
-    alt_gdc::AltitudeTrackingY = AltitudeTrackingY()
-    lat_seg_gdc::LateralSegmentGuidanceY = LateralSegmentGuidanceY()
+    mode_gdc_lon::ModeGuidanceLonEnum = ModeGuidanceLon.off #active longitudinal guidance mode
+    mode_gdc_lat::ModeGuidanceLatEnum = ModeGuidanceLat.off #active lateral guidance mode
+    mode_ctl_lon::ModeControlLonEnum = ModeControlLon.direct #active longitudinal control mode
+    mode_ctl_lat::ModeControlLatEnum = ModeControlLat.direct #active lateral control mode
+    ctl_lon::ControllerLonY = ControllerLonY()
+    ctl_lat::ControllerLatY = ControllerLatY()
+    gdc_lon_alt::AltitudeTrackingY = AltitudeTrackingY()
+    gdc_lat_seg::SegmentGuidanceY = SegmentGuidanceY()
 end
 
 Modeling.U(::Controller) = ControllerU()
@@ -795,14 +795,13 @@ Modeling.Y(::Controller) = ControllerY()
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
                         vehicle::Model{<:C172Y.Vehicle})
-
-    @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right,
+    @unpack mode_gdc_lon_req, mode_gdc_lat_req, mode_ctl_lon_req, mode_ctl_lat_req,
+            eng_start, eng_stop, mixture, flaps, brake_left, brake_right,
             throttle_axis, aileron_axis, elevator_axis, rudder_axis,
             throttle_offset, aileron_offset, elevator_offset, rudder_offset,
-            lon_gdc_mode_req, lat_gdc_mode_req, lon_ctl_mode_req, lat_ctl_mode_req,
             q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref, h_ref, seg_ref = mdl.u
 
-    @unpack lon_ctl, lat_ctl, alt_gdc, lat_seg_gdc = mdl.submodels
+    @unpack ctl_lon, ctl_lat, gdc_lon_alt, gdc_lat_seg = mdl.submodels
 
     throttle_ref = throttle_axis + throttle_offset
     elevator_ref = elevator_axis + elevator_offset
@@ -814,63 +813,63 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
 
     if flight_phase === FlightPhase.gnd
 
-        lon_gdc_mode = LonGuidanceMode.off
-        lat_gdc_mode = LatGuidanceMode.off
-        lon_ctl_mode = LonControlMode.direct
-        lat_ctl_mode = LatControlMode.direct
+        mode_gdc_lon = ModeGuidanceLon.off
+        mode_gdc_lat = ModeGuidanceLat.off
+        mode_ctl_lon = ModeControlLon.direct
+        mode_ctl_lat = ModeControlLat.direct
 
     elseif flight_phase === FlightPhase.air
 
-        lon_gdc_mode = lon_gdc_mode_req
-        lat_gdc_mode = lat_gdc_mode_req
+        mode_gdc_lon = mode_gdc_lon_req
+        mode_gdc_lat = mode_gdc_lat_req
 
-        if lon_gdc_mode === LonGuidanceMode.off
+        if mode_gdc_lon === ModeGuidanceLon.off
 
-            lon_ctl_mode = lon_ctl_mode_req
+            mode_ctl_lon = mode_ctl_lon_req
 
-        else #lon_gdc_mode === LonGuidanceMode.alt
+        else #mode_gdc_lon === ModeGuidanceLon.alt
 
-            alt_gdc.u.h_ref = h_ref
-            f_periodic!(alt_gdc, vehicle)
+            gdc_lon_alt.u.h_ref = h_ref
+            f_periodic!(gdc_lon_alt, vehicle)
 
-            lon_ctl_mode = alt_gdc.y.lon_ctl_mode
-            throttle_ref = alt_gdc.y.throttle_ref
-            clm_ref = alt_gdc.y.clm_ref
+            mode_ctl_lon = gdc_lon_alt.y.mode_ctl_lon
+            throttle_ref = gdc_lon_alt.y.throttle_ref
+            clm_ref = gdc_lon_alt.y.clm_ref
 
         end
 
-        if lat_gdc_mode === LatGuidanceMode.off
+        if mode_gdc_lat === ModeGuidanceLat.off
 
-            lat_ctl_mode = lat_ctl_mode_req
+            mode_ctl_lat = mode_ctl_lat_req
 
             #below a v_gnd threshold, override χ mode and revert to φ
-            if (lat_ctl_mode === LatControlMode.χ_β) && (vehicle.y.kinematics.v_gnd < 10.0)
-                lat_ctl_mode = LatControlMode.LatControlMode.φ_β
+            if (mode_ctl_lat === ModeControlLat.χ_β) && (vehicle.y.kinematics.v_gnd < 10.0)
+                mode_ctl_lat = ModeControlLat.ModeControlLat.φ_β
             end
 
-        else #lat_gdc_mode === LatGuidanceMode.seg
+        else #mode_gdc_lat === ModeGuidanceLat.seg
 
-            lat_seg_gdc.u.seg_ref = seg_ref
-            f_periodic!(lat_seg_gdc, vehicle)
-            lat_ctl_mode = LatControlMode.χ_β
-            χ_ref = lat_seg_gdc.y.χ_ref
+            gdc_lat_seg.u.seg_ref = seg_ref
+            f_periodic!(gdc_lat_seg, vehicle)
+            mode_ctl_lat = ModeControlLat.χ_β
+            χ_ref = gdc_lat_seg.y.χ_ref
 
         end
 
     end
 
-    lon_ctl.u.mode = lon_ctl_mode
-    @pack! lon_ctl.u = throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref
-    f_periodic!(lon_ctl, vehicle)
+    ctl_lon.u.mode = mode_ctl_lon
+    @pack! ctl_lon.u = throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref
+    f_periodic!(ctl_lon, vehicle)
 
-    lat_ctl.u.mode = lat_ctl_mode
-    @pack! lat_ctl.u = aileron_ref, rudder_ref, p_ref, φ_ref, β_ref, χ_ref
-    f_periodic!(lat_ctl, vehicle)
+    ctl_lat.u.mode = mode_ctl_lat
+    @pack! ctl_lat.u = aileron_ref, rudder_ref, p_ref, φ_ref, β_ref, χ_ref
+    f_periodic!(ctl_lat, vehicle)
 
     mdl.y = ControllerY(; flight_phase,
-        lon_gdc_mode, lat_gdc_mode, lon_ctl_mode, lat_ctl_mode,
-        lon_ctl = lon_ctl.y, lat_ctl = lat_ctl.y,
-        alt_gdc = alt_gdc.y, lat_seg_gdc = lat_seg_gdc.y)
+        mode_gdc_lon, mode_gdc_lat, mode_ctl_lon, mode_ctl_lat,
+        ctl_lon = ctl_lon.y, ctl_lat = ctl_lat.y,
+        gdc_lon_alt = gdc_lon_alt.y, gdc_lat_seg = gdc_lat_seg.y)
 
 end
 
@@ -879,8 +878,8 @@ function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
 
     @unpack act, pwp, ldg = systems.submodels
     @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right = mdl.u
-    @unpack throttle_cmd, elevator_cmd = mdl.lon_ctl.y
-    @unpack aileron_cmd, rudder_cmd = mdl.lat_ctl.y
+    @unpack throttle_cmd, elevator_cmd = mdl.ctl_lon.y
+    @unpack aileron_cmd, rudder_cmd = mdl.ctl_lat.y
 
     act.throttle.u[] = throttle_cmd
     act.aileron.u[] = aileron_cmd
@@ -936,8 +935,8 @@ function Modeling.init!(mdl::Model{<:Controller},
     u.h_ref = h_e
     u.seg_ref = Segment(Geographic(ϕ_λ, h_e); χ = χ_gnd, l = 1000)
 
-    u.lon_gdc_mode_req = LonGuidanceMode.off
-    u.lat_gdc_mode_req = LatGuidanceMode.off
+    u.mode_gdc_lon_req = ModeGuidanceLon.off
+    u.mode_gdc_lat_req = ModeGuidanceLat.off
 
     #for the trim condition to be preserved when the simulation is started with
     #sas (rather than direct) modes enabled, we need a post-trim update of the
@@ -948,17 +947,17 @@ function Modeling.init!(mdl::Model{<:Controller},
     #approximate, because in general, the trim values loaded from the lookup
     #tables will be interpolated, rather than exactly computed at specific
     #controller design points, but it is good enough.
-    u.lon_ctl_mode_req = LonControlMode.sas
-    u.lat_ctl_mode_req = LatControlMode.sas
+    u.mode_ctl_lon_req = ModeControlLon.sas
+    u.mode_ctl_lat_req = ModeControlLat.sas
     f_periodic!(mdl, vehicle)
 
-    u.lon_ctl_mode_req = LonControlMode.sas
-    u.lat_ctl_mode_req = LatControlMode.LatControlMode.φ_β
+    u.mode_ctl_lon_req = ModeControlLon.sas
+    u.mode_ctl_lat_req = ModeControlLat.ModeControlLat.φ_β
     f_periodic!(mdl, vehicle)
 
     #restore direct modes
-    u.lon_ctl_mode_req = LonControlMode.direct
-    u.lat_ctl_mode_req = LatControlMode.direct
+    u.mode_ctl_lon_req = ModeControlLon.direct
+    u.mode_ctl_lat_req = ModeControlLat.direct
     f_periodic!(mdl, vehicle)
 
 end
@@ -972,7 +971,7 @@ using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
         Separator, Text, Checkbox, RadioButton
 
 
-function GUI.draw(mdl::Model{<:LonControl}, p_open::Ref{Bool} = Ref(true))
+function GUI.draw(mdl::Model{<:ControllerLon}, p_open::Ref{Bool} = Ref(true))
     Begin("Longitudinal Control", p_open)
         Text("Mode: $(mdl.y.mode)")
         foreach(keys(mdl.submodels), values(mdl.submodels)) do label, ss
@@ -984,7 +983,7 @@ function GUI.draw(mdl::Model{<:LonControl}, p_open::Ref{Bool} = Ref(true))
     End()
 end
 
-function GUI.draw(mdl::Model{<:LatControl}, p_open::Ref{Bool} = Ref(true))
+function GUI.draw(mdl::Model{<:ControllerLat}, p_open::Ref{Bool} = Ref(true))
     Begin("Lateral Control", p_open)
         Text("Mode: $(mdl.y.mode)")
         foreach(keys(mdl.submodels), values(mdl.submodels)) do label, ss
@@ -998,14 +997,14 @@ end
 
 function GUI.draw(mdl::Model{<:AltitudeTracking}, p_open::Ref{Bool} = Ref(true))
 
-    @unpack state, lon_ctl_mode, h_err, throttle_ref, clm_ref = mdl.y
+    @unpack state, mode_ctl_lon, h_err, throttle_ref, clm_ref = mdl.y
     @unpack h_ref = mdl.u
     @unpack h_thr = mdl.constants
 
     Begin("Altitude Guidance", p_open)
 
         Text("State: $state")
-        Text("Control Mode: $lon_ctl_mode")
+        Text("Control Mode: $mode_ctl_lon")
         Text("Altitude Ref: $(Float64(h_ref))")
         Text("Altitude Datum: $(typeof(h_ref))")
         Text("Altitude Error: $h_err")
@@ -1022,7 +1021,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                     label::String = "Cessna172Yv1 Flight Control")
 
     @unpack u, y, Δt, submodels = ctl
-    @unpack lon_ctl, lat_ctl, alt_gdc = submodels
+    @unpack ctl_lon, ctl_lat, gdc_lon_alt = submodels
 
     @unpack systems, kinematics, dynamics, airflow = vehicle.y
     @unpack act, pwp, fuel, ldg, aero = systems
@@ -1078,22 +1077,22 @@ function GUI.draw!(ctl::Model{<:Controller},
                 CImGui.TableNextColumn();
                     Text("Mode")
                 CImGui.TableNextColumn();
-                    mode_button("Direct##Lon", LonControlMode.direct, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = LonControlMode.direct); SameLine()
-                    mode_button("Pitch SAS", LonControlMode.sas, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = LonControlMode.sas); SameLine()
-                    mode_button("Throttle + Pitch Rate", LonControlMode.thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = LonControlMode.thr_q; u.q_ref = 0); SameLine()
-                    mode_button("Throttle + Pitch Angle", LonControlMode.thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = LonControlMode.thr_θ; u.θ_ref = θ); SameLine()
-                    mode_button("Throttle + EAS", LonControlMode.thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = LonControlMode.thr_EAS; u.EAS_ref = EAS)
-                    mode_button("EAS + Pitch Rate", LonControlMode.EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = LonControlMode.EAS_q; u.q_ref = 0; u.EAS_ref = EAS); SameLine()
-                    mode_button("EAS + Pitch Angle", LonControlMode.EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = LonControlMode.EAS_θ; u.EAS_ref = EAS; u.θ_ref = θ); SameLine()
-                    mode_button("EAS + Climb Rate", LonControlMode.EAS_clm, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = LonControlMode.EAS_clm; u.EAS_ref = EAS; u.clm_ref = clm)
+                    mode_button("Direct##Lon", ModeControlLon.direct, u.mode_ctl_lon_req, y.mode_ctl_lon)
+                    IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.direct); SameLine()
+                    mode_button("Pitch SAS", ModeControlLon.sas, u.mode_ctl_lon_req, y.mode_ctl_lon)
+                    IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.sas); SameLine()
+                    mode_button("Throttle + Pitch Rate", ModeControlLon.thr_q, u.mode_ctl_lon_req, y.mode_ctl_lon)
+                    IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.thr_q; u.q_ref = 0); SameLine()
+                    mode_button("Throttle + Pitch Angle", ModeControlLon.thr_θ, u.mode_ctl_lon_req, y.mode_ctl_lon)
+                    IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.thr_θ; u.θ_ref = θ); SameLine()
+                    mode_button("Throttle + EAS", ModeControlLon.thr_EAS, u.mode_ctl_lon_req, y.mode_ctl_lon)
+                    IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.thr_EAS; u.EAS_ref = EAS)
+                    mode_button("EAS + Pitch Rate", ModeControlLon.EAS_q, u.mode_ctl_lon_req, y.mode_ctl_lon)
+                    IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.EAS_q; u.q_ref = 0; u.EAS_ref = EAS); SameLine()
+                    mode_button("EAS + Pitch Angle", ModeControlLon.EAS_θ, u.mode_ctl_lon_req, y.mode_ctl_lon)
+                    IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.EAS_θ; u.EAS_ref = EAS; u.θ_ref = θ); SameLine()
+                    mode_button("EAS + Climb Rate", ModeControlLon.EAS_clm, u.mode_ctl_lon_req, y.mode_ctl_lon)
+                    IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.EAS_clm; u.EAS_ref = EAS; u.clm_ref = clm)
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
@@ -1158,13 +1157,13 @@ function GUI.draw!(ctl::Model{<:Controller},
                 CImGui.TableNextColumn(); Text("Position")
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); Text("Throttle")
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lon_ctl.throttle_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lon_ctl.throttle_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.throttle_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.throttle_cmd)))
                 CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.throttle.pos)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); Text("Elevator")
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lon_ctl.elevator_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lon_ctl.elevator_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.elevator_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.elevator_cmd)))
                 CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.elevator.pos)))
             CImGui.EndTable()
         end
@@ -1182,16 +1181,16 @@ function GUI.draw!(ctl::Model{<:Controller},
                 CImGui.TableNextColumn();
                     Text("Mode")
                 CImGui.TableNextColumn();
-                    mode_button("Direct##Lat", LatControlMode.direct, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = LatControlMode.direct)
-                    mode_button("Roll/Yaw SAS", LatControlMode.sas, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = LatControlMode.sas)
-                    mode_button("Roll Rate + AoS", LatControlMode.p_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = LatControlMode.p_β; u.p_ref = 0; u.β_ref = β)
-                    mode_button("Bank Angle + AoS", LatControlMode.LatControlMode.φ_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = LatControlMode.LatControlMode.φ_β; u.φ_ref = φ; u.β_ref = β)
-                    mode_button("Course Angle + AoS", LatControlMode.χ_β, u.lat_ctl_mode_req, y.lat_ctl_mode); SameLine()
-                    IsItemActive() && (u.lat_ctl_mode_req = LatControlMode.χ_β; u.χ_ref = χ_gnd; u.β_ref = β)
+                    mode_button("Direct##Lat", ModeControlLat.direct, u.mode_ctl_lat_req, y.mode_ctl_lat); SameLine()
+                    IsItemActive() && (u.mode_ctl_lat_req = ModeControlLat.direct)
+                    mode_button("Roll/Yaw SAS", ModeControlLat.sas, u.mode_ctl_lat_req, y.mode_ctl_lat); SameLine()
+                    IsItemActive() && (u.mode_ctl_lat_req = ModeControlLat.sas)
+                    mode_button("Roll Rate + AoS", ModeControlLat.p_β, u.mode_ctl_lat_req, y.mode_ctl_lat); SameLine()
+                    IsItemActive() && (u.mode_ctl_lat_req = ModeControlLat.p_β; u.p_ref = 0; u.β_ref = β)
+                    mode_button("Bank Angle + AoS", ModeControlLat.ModeControlLat.φ_β, u.mode_ctl_lat_req, y.mode_ctl_lat); SameLine()
+                    IsItemActive() && (u.mode_ctl_lat_req = ModeControlLat.ModeControlLat.φ_β; u.φ_ref = φ; u.β_ref = β)
+                    mode_button("Course Angle + AoS", ModeControlLat.χ_β, u.mode_ctl_lat_req, y.mode_ctl_lat); SameLine()
+                    IsItemActive() && (u.mode_ctl_lat_req = ModeControlLat.χ_β; u.χ_ref = χ_gnd; u.β_ref = β)
                 CImGui.TableNextColumn();
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
@@ -1256,13 +1255,13 @@ function GUI.draw!(ctl::Model{<:Controller},
                 CImGui.TableNextColumn(); Text("Position")
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); Text("Aileron")
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lat_ctl.aileron_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lat_ctl.aileron_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.aileron_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.aileron_cmd)))
                 CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.aileron.pos)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn(); Text("Rudder")
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lat_ctl.rudder_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.lat_ctl.rudder_ref)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.rudder_cmd)))
+                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.rudder_ref)))
                 CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.rudder.pos)))
             CImGui.EndTable()
         end
@@ -1281,11 +1280,11 @@ function GUI.draw!(ctl::Model{<:Controller},
                 CImGui.TableNextColumn();
                     Text("Mode")
                 CImGui.TableNextColumn();
-                    mode_button("Off", LonGuidanceMode.off, u.lon_gdc_mode_req, y.lon_gdc_mode)
-                    IsItemActive() && (u.lon_gdc_mode_req = LonGuidanceMode.off); SameLine()
-                    mode_button("Altitude", LonGuidanceMode.alt, u.lon_gdc_mode_req, y.lon_gdc_mode)
+                    mode_button("Off", ModeGuidanceLon.off, u.mode_gdc_lon_req, y.mode_gdc_lon)
+                    IsItemActive() && (u.mode_gdc_lon_req = ModeGuidanceLon.off); SameLine()
+                    mode_button("Altitude", ModeGuidanceLon.alt, u.mode_gdc_lon_req, y.mode_gdc_lon)
                     if IsItemActive()
-                        u.lon_gdc_mode_req = LonGuidanceMode.alt
+                        u.mode_gdc_lon_req = ModeGuidanceLon.alt
                         u.h_ref = (h_datum == 0 ? h_e : h_o)
                         u.EAS_ref = EAS
                     end
@@ -1430,9 +1429,9 @@ function GUI.draw!(ctl::Model{<:Controller},
             @c Checkbox("Lateral Control##Internals", &c_lat)
             SameLine()
             @c Checkbox("Altitude Guidance##Internals", &c_alt)
-            c_lon && @c GUI.draw(lon_ctl, &c_lon)
-            c_lat && @c GUI.draw(lat_ctl, &c_lat)
-            c_alt && @c GUI.draw(alt_gdc, &c_alt)
+            c_lon && @c GUI.draw(ctl_lon, &c_lon)
+            c_lat && @c GUI.draw(ctl_lat, &c_lat)
+            c_alt && @c GUI.draw(gdc_lon_alt, &c_alt)
         end
     end
 
@@ -1449,25 +1448,25 @@ StructTypes.StructType(::Type{ControllerU}) = StructTypes.Mutable()
 StructTypes.names(::Type{ControllerU}) = ((:χ_ref, :chi_ref), (:θ_ref, :theta_ref),
     (:φ_ref, :phi_ref), (:β_ref, :beta_ref))
 
-#enable JSON parsing of integers as LonControlModeEnum
-StructTypes.StructType(::Type{LonControlModeEnum}) = StructTypes.CustomStruct()
-StructTypes.lowertype(::Type{LonControlModeEnum}) = Int32 #default enum type
-StructTypes.lower(x::LonControlModeEnum) = Int32(x)
+#enable JSON parsing of integers as ModeControlLonEnum
+StructTypes.StructType(::Type{ModeControlLonEnum}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{ModeControlLonEnum}) = Int32 #default enum type
+StructTypes.lower(x::ModeControlLonEnum) = Int32(x)
 
-#enable JSON parsing of integers as LatControlModeEnum
-StructTypes.StructType(::Type{LatControlModeEnum}) = StructTypes.CustomStruct()
-StructTypes.lowertype(::Type{LatControlModeEnum}) = Int32 #default enum type
-StructTypes.lower(x::LatControlModeEnum) = Int32(x)
+#enable JSON parsing of integers as ModeControlLatEnum
+StructTypes.StructType(::Type{ModeControlLatEnum}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{ModeControlLatEnum}) = Int32 #default enum type
+StructTypes.lower(x::ModeControlLatEnum) = Int32(x)
 
-#enable JSON parsing of integers as LonGuidanceModeEnum
-StructTypes.StructType(::Type{LonGuidanceModeEnum}) = StructTypes.CustomStruct()
-StructTypes.lowertype(::Type{LonGuidanceModeEnum}) = Int32 #default enum type
-StructTypes.lower(x::LonGuidanceModeEnum) = Int32(x)
+#enable JSON parsing of integers as ModeGuidanceLonEnum
+StructTypes.StructType(::Type{ModeGuidanceLonEnum}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{ModeGuidanceLonEnum}) = Int32 #default enum type
+StructTypes.lower(x::ModeGuidanceLonEnum) = Int32(x)
 
-#enable JSON parsing of integers as LatGuidanceModeEnum
-StructTypes.StructType(::Type{LatGuidanceModeEnum}) = StructTypes.CustomStruct()
-StructTypes.lowertype(::Type{LatGuidanceModeEnum}) = Int32 #default enum type
-StructTypes.lower(x::LatGuidanceModeEnum) = Int32(x)
+#enable JSON parsing of integers as ModeGuidanceLatEnum
+StructTypes.StructType(::Type{ModeGuidanceLatEnum}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{ModeGuidanceLatEnum}) = Int32 #default enum type
+StructTypes.lower(x::ModeGuidanceLatEnum) = Int32(x)
 
 StructTypes.StructType(::Type{Segment}) = StructTypes.CustomStruct()
 StructTypes.lowertype(::Type{Segment}) = NTuple{2, Geographic{LatLon, Ellipsoidal}}
