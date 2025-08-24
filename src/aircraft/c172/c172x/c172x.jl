@@ -534,7 +534,7 @@ end
 ################################################################################
 ################################## Versions ####################################
 
-include(normpath("control/c172x_ctl.jl"))
+include(normpath("control/c172x_ctl.jl")); @reexport using .C172XControl
 
 include(normpath("c172x0.jl")); @reexport using .C172Xv0
 include(normpath("c172x1.jl")); @reexport using .C172Xv1

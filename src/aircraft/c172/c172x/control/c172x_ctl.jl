@@ -495,39 +495,32 @@ end
 
 
 ################################################################################
-############################### Guidance Modes #################################
+############################### Vertical Guidance ##############################
 
 @enum AltGuidanceState begin
     alt_acquire = 0
     alt_hold = 1
 end
 
-@enum AltDatum begin
-    ellipsoidal = 0
-    orthometric = 1
-end
-
 ################################################################################
 
 @kwdef struct AltitudeGuidance <: AbstractControlChannel
-    k_h2c::Float64 = 0.2 #good margins for the whole envelope
+    k_h2c::Float64 = 0.2 #h_err to climb rate gain
+    h_thr::Float64 = 10.0 #altitude threshold for state switching
 end
 
 @kwdef mutable struct AltitudeGuidanceU
-    h_ref::Float64 = 0.0 #altitude reference
-    h_datum::AltDatum = ellipsoidal
+    h_ref::Union{HEllip, HOrth} = HEllip(0.0) #altitude reference
 end
 
 @kwdef mutable struct AltitudeGuidanceS
     state::AltGuidanceState = alt_hold
-    h_thr::Float64 = 10.0 #current a
 end
 
 @kwdef struct AltitudeGuidanceY
     state::AltGuidanceState = alt_hold
     lon_ctl_mode::LonControlMode = lon_EAS_clm
-    Δh::Float64 = 0.0 #current altitude error
-    h_thr::Float64 = 0.0 #current altitude switching threshold
+    h_err::Float64 = 0.0 #current altitude error
     throttle_ref::Float64 = 0.0
     clm_ref::Float64 = 0.0
 end
@@ -536,42 +529,161 @@ Modeling.U(::AltitudeGuidance) = AltitudeGuidanceU()
 Modeling.S(::AltitudeGuidance) = AltitudeGuidanceS()
 Modeling.Y(::AltitudeGuidance) = AltitudeGuidanceY()
 
+altitude_error(h_ref::HEllip, kin_data::KinData) = h_ref - kin_data.h_e
+altitude_error(h_ref::HOrth, kin_data::KinData) = h_ref - kin_data.h_o
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:AltitudeGuidance},
                         vehicle::Model{<:C172X.Vehicle})
 
-    @unpack state, h_thr = mdl.s
-    @unpack h_ref, h_datum = mdl.u
-    @unpack h_e, h_o, v_eb_n = vehicle.y.kinematics
+    @unpack state = mdl.s
+    @unpack h_ref = mdl.u
+    @unpack k_h2c, h_thr = mdl.constants
 
-    h = h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o)
-    Δh = h_ref - h
-    clm_ref = mdl.k_h2c * Δh
+    h_err = altitude_error(h_ref, vehicle.y.kinematics)
 
     if state === alt_acquire
 
         lon_ctl_mode = lon_thr_EAS
-        throttle_ref = Δh > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
-        (abs(Δh) + 1 < h_thr) && (mdl.s.state = alt_hold)
-        # mdl.s.h_thr = abs(Δh)
-        # clm = -vehicle.y.kinematics.v_eb_n[3]
-        # (abs(clm_ref) < abs(clm)) && (mdl.s.state = alt_hold)
+        throttle_ref = h_err > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
+        clm_ref = 0.0 #no effect
+        (abs(h_err) < h_thr - 1) && (mdl.s.state = alt_hold)
 
     else #alt_hold
 
         lon_ctl_mode = lon_EAS_clm
-        throttle_ref = 0.0 #no effect, controlled by EAS_clm
-        (abs(Δh) - 1 > h_thr) && (mdl.s.state = alt_acquire)
+        throttle_ref = 0.0 #no effect
+        clm_ref = k_h2c * h_err
+        (abs(h_err) > h_thr + 1) && (mdl.s.state = alt_acquire)
 
     end
 
-    mdl.y = AltitudeGuidanceY(; state, lon_ctl_mode, Δh, h_thr, throttle_ref, clm_ref)
+    mdl.y = AltitudeGuidanceY(; state, lon_ctl_mode, h_err, throttle_ref, clm_ref)
 
 end
 
-#placeholder
-@kwdef struct SegmentGuidance <: AbstractControlChannel end
-@kwdef struct SegmentGuidanceY end
+
+################################################################################
+############################# HorizontalGuidance ###############################
+
+struct Segment
+    p1::Geographic{LatLon, Ellipsoidal}
+    p2::Geographic{LatLon, Ellipsoidal}
+    u_12_h::SVector{3,Float64}
+    l_12_h::Float64
+    χ_12::Float64
+    γ_12::Float64
+    q_en::RQuat
+
+    function Segment(ap1::Abstract3DPosition, ap2::Abstract3DPosition)
+
+        p1 = Geographic{LatLon,Ellipsoidal}(ap1)
+        p2 = Geographic{LatLon,Ellipsoidal}(ap2)
+
+        r_e1_e = Cartesian(ap1)
+        r_e2_e = Cartesian(ap2)
+        r_12_e = r_e2_e - r_e1_e
+
+        n_e1 = NVector(p1)
+        n_e2 = NVector(p2)
+        n_e = NVector(0.5*(n_e1[:] + n_e2[:]))
+        q_en = ltf(n_e) #LTF at midpoint
+
+        r_12_n = q_en'(r_12_e)
+        r_12_h = SVector{3,Float64}(r_12_n[1], r_12_n[2], 0.0)
+        l_12_h = norm(r_12_h)
+        @assert l_12_h > 0 "Invalid guidance segment" #must not be vertical or degenerate
+
+        Δh_12 = HEllip(p2) - HEllip(p1)
+        u_12_h = r_12_h / l_12_h
+        χ_12 = azimuth(u_12_h) #azimuth
+        γ_12 = atan(Δh_12, l_12_h) #flight path angle (0 for equal altitude)
+
+        new(p1, p2, u_12_h, l_12_h, χ_12, γ_12, q_en)
+
+    end
+
+end
+
+#construct a Segment from:
+#1) initial point p1
+#2) an azimuth χ measured on NED(p1)
+#3) a distance l along χ measured on the horizontal plane of NED(p1)
+#4) an altitude increment Δh
+
+#note: l is the straight-line distance from p1 to p2t, NOT from p1 to p2.
+#however, as long as p1 and p2 are relatively close, both their straight-line
+#and geodesic distances will be close to l
+
+function Segment(p1::Abstract3DPosition; χ::Real, l::Real, Δh::Real = 0.0)
+    geo1 = Geographic{LatLon, Ellipsoidal}(p1)
+    q_en1 = ltf(geo1)
+    r_12_n1 = SVector{3,Float64}(l*cos(χ), l*sin(χ), 0)
+    r_12_e = q_en1(r_12_n1)
+    r_e1_e = Cartesian(p1)
+    r_e2_e = r_e1_e + r_12_e
+    geo2 = Geographic(LatLon(r_e2_e), HEllip(geo1) + Δh)
+    Segment(geo1, geo2)
+end
+
+
+Segment() = Segment(Geographic(LatLon(), HEllip()),
+                    Geographic(LatLon(0.001, 0), HEllip()))
+
+################################################################################
+
+
+@kwdef struct LateralSegmentGuidance <: AbstractControlChannel
+    Δχ_inf::Ranged{Float64, 0., π/2.} = π/2 #intercept angle for x2d_1p → ∞ (rad)
+    e_sf::Float64 = 1000 #cross-track distance scale factor (m)
+end
+
+@kwdef mutable struct LateralSegmentGuidanceU
+    seg_ref::Segment = Segment()
+end
+
+@kwdef struct LateralSegmentGuidanceY
+    seg_ref::Segment = Segment()
+    l_1b_h::Float64 = 0.0 #along-track horizontal distance
+    e_1b_h::Float64 = 0.0 #cross-track horizontal distance, positive right
+    χ_ref::Float64 = 0.0 #course angle reference
+end
+
+Modeling.U(::LateralSegmentGuidance) = LateralSegmentGuidanceU()
+Modeling.Y(::LateralSegmentGuidance) = LateralSegmentGuidanceY()
+
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LateralSegmentGuidance},
+                        vehicle::Model{<:C172X.Vehicle})
+
+    @unpack seg_ref = mdl.u
+    @unpack Δχ_inf, e_sf = mdl.constants
+    @unpack p1, q_en, χ_12, u_12_h = seg_ref
+
+    r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
+    r_e1_e = Cartesian(p1)
+    r_1b_e = r_eb_e - r_e1_e
+    r_1b_n = q_en'(r_1b_e)
+    r_1b_h = SVector{3,Float64}(r_1b_n[1], r_1b_n[2], 0)
+    l_1b_h = u_12_h ⋅ r_1b_h
+    e_1b_h = (u_12_h × r_1b_h)[3]
+    Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b_h / e_sf)
+    χ_ref = wrap_to_π(χ_12 + Δχ)
+
+    mdl.y = LateralSegmentGuidanceY(; seg_ref, l_1b_h, e_1b_h, χ_ref)
+
+end
+    # #these go in the vertical guidance law
+    # r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
+    # r_1b_e = r_eb_e - r_e1_e #position vector from p1 to p
+    # r_1b_n1 = q_n1e(r_1b_e)
+    # r_1b_h = SVector{3,Float64}(r_1b_n1[1], r_1b_n1[2], 0)
+    # l_1b_h = u_12_h ⋅ r_1b_h
+    # h_ref = h1 + l_1b_h * tan(γ_12) #nominal altitude at our location
+    # clm_ff = V_gnd * sin(γ_12) #nominal climb rate at our current V_gnd
+    # clm_ref = clm_ff + mdl.k_h2c * (h_ref - h)
+
+    #we need to compute a normalized parameter p_1b.
+    #If p_1b<0, we're behind p1, and we set clm_ff = 0, h_nom =
+    #if p_1b > 1, we're beyond p2 and we set clm = 0, h_nom = h2.
 
 
 ################################################################################
@@ -589,7 +701,7 @@ end
 
 @enum HorizontalGuidanceMode begin
     hor_gdc_off = 0
-    hor_gdc_line = 1
+    hor_gdc_seg = 1
 end
 
 ################################################################################
@@ -598,7 +710,7 @@ end
     lon_ctl::C1 = LonControl()
     lat_ctl::C2 = LatControl()
     alt_gdc::AltitudeGuidance = AltitudeGuidance()
-    seg_gdc::SegmentGuidance = SegmentGuidance()
+    lat_seg_gdc::LateralSegmentGuidance = LateralSegmentGuidance()
 end
 
 #CockpitInputs
@@ -629,8 +741,8 @@ end
     φ_ref::Float64 = 0.0 #bank angle reference
     χ_ref::Float64 = 0.0 #course angle reference
     β_ref::Float64 = 0.0 #sideslip angle reference
-    h_ref::Float64 = 0.0 #altitude reference
-    h_datum::AltDatum = ellipsoidal #altitude datum
+    h_ref::Union{HEllip, HOrth} = HEllip(0.0) #altitude reference
+    seg_ref::Segment = Segment() #reference segment
 end
 
 @kwdef struct ControllerY
@@ -639,10 +751,10 @@ end
     hor_gdc_mode::HorizontalGuidanceMode = hor_gdc_off #active horizontal guidance mode
     lon_ctl_mode::LonControlMode = lon_direct #active longitudinal control mode
     lat_ctl_mode::LatControlMode = lat_direct #active lateral control mode
-    alt_gdc::AltitudeGuidanceY = AltitudeGuidanceY()
-    seg_gdc::SegmentGuidanceY = SegmentGuidanceY()
     lon_ctl::LonControlY = LonControlY()
     lat_ctl::LatControlY = LatControlY()
+    alt_gdc::AltitudeGuidanceY = AltitudeGuidanceY()
+    lat_seg_gdc::LateralSegmentGuidanceY = LateralSegmentGuidanceY()
 end
 
 Modeling.U(::Controller) = ControllerU()
@@ -655,15 +767,13 @@ Modeling.Y(::Controller) = ControllerY()
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
                         vehicle::Model{<:C172X.Vehicle})
 
-    # println("Hi")
-
     @unpack eng_start, eng_stop, mixture, flaps, brake_left, brake_right,
             throttle_axis, aileron_axis, elevator_axis, rudder_axis,
             throttle_offset, aileron_offset, elevator_offset, rudder_offset,
             vrt_gdc_mode_req, hor_gdc_mode_req, lon_ctl_mode_req, lat_ctl_mode_req,
-            q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref, h_ref, h_datum = mdl.u
+            q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref, h_ref, seg_ref = mdl.u
 
-    @unpack lon_ctl, lat_ctl, alt_gdc, seg_gdc = mdl.submodels
+    @unpack lon_ctl, lat_ctl, alt_gdc, lat_seg_gdc = mdl.submodels
 
     throttle_ref = throttle_axis + throttle_offset
     elevator_ref = elevator_axis + elevator_offset
@@ -692,7 +802,6 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
         else #vrt_gdc_mode === vrt_gdc_alt
 
             alt_gdc.u.h_ref = h_ref
-            alt_gdc.u.h_datum = h_datum
             f_periodic!(alt_gdc, vehicle)
 
             lon_ctl_mode = alt_gdc.y.lon_ctl_mode
@@ -710,16 +819,12 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
                 lat_ctl_mode = lat_φ_β
             end
 
-        else #hor_gdc_mode === hor_gdc_line
+        else #hor_gdc_mode === hor_gdc_seg
 
-            #remove this when implemented
-            lat_ctl_mode = lat_ctl_mode_req
-            # seg_gdc.u.line_ref = line_ref
-            # f_periodic!(seg_gdc, vehicle)
-
-            # lat_ctl_mode = seg_gdc.y.lat_ctl_mode
-            # χ_ref = seg_gdc.y.χ_ref
-            # β_ref = 0.0
+            lat_seg_gdc.u.seg_ref = seg_ref
+            f_periodic!(lat_seg_gdc, vehicle)
+            lat_ctl_mode = lat_χ_β
+            χ_ref = lat_seg_gdc.y.χ_ref
 
         end
 
@@ -736,7 +841,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
     mdl.y = ControllerY(; flight_phase,
         vrt_gdc_mode, hor_gdc_mode, lon_ctl_mode, lat_ctl_mode,
         lon_ctl = lon_ctl.y, lat_ctl = lat_ctl.y,
-        alt_gdc = alt_gdc.y, seg_gdc = seg_gdc.y)
+        alt_gdc = alt_gdc.y, lat_seg_gdc = lat_seg_gdc.y)
 
 end
 
@@ -770,7 +875,7 @@ function Modeling.init!(mdl::Model{<:Controller},
     #here we assume that the vehicle's y has already been updated to its trim
     #value by init!(vehicle, params)
     y_act = vehicle.y.systems.act
-    @unpack ω_wb_b, v_eb_n, e_nb, χ_gnd, h_e = vehicle.y.kinematics
+    @unpack ω_wb_b, v_eb_n, e_nb, χ_gnd, ϕ_λ, h_e = vehicle.y.kinematics
     @unpack EAS = vehicle.y.airflow
     @unpack β = vehicle.y.systems.aero
 
@@ -799,8 +904,8 @@ function Modeling.init!(mdl::Model{<:Controller},
     u.φ_ref = e_nb.φ
     u.β_ref = β
     u.χ_ref = χ_gnd
-    u.h_ref = Float64(h_e)
-    u.h_datum = ellipsoidal
+    u.h_ref = h_e
+    u.seg_ref = Segment(Geographic(ϕ_λ, h_e); χ = χ_gnd, l = 1000)
 
     u.vrt_gdc_mode_req = vrt_gdc_off
     u.hor_gdc_mode_req = hor_gdc_off
@@ -834,7 +939,8 @@ end
 ################################## GUI #########################################
 
 using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
-        Dummy, SameLine, NewLine, IsItemActive, Separator, Text, Checkbox, RadioButton
+        Dummy, SameLine, NewLine, IsItemActive, IsItemActivated,
+        Separator, Text, Checkbox, RadioButton
 
 
 function GUI.draw(mdl::Model{<:LonControl}, p_open::Ref{Bool} = Ref(true))
@@ -863,13 +969,17 @@ end
 
 function GUI.draw(mdl::Model{<:AltitudeGuidance}, p_open::Ref{Bool} = Ref(true))
 
-    @unpack state, lon_ctl_mode, Δh, h_thr, throttle_ref, clm_ref = mdl.y
+    @unpack state, lon_ctl_mode, h_err, throttle_ref, clm_ref = mdl.y
+    @unpack h_ref = mdl.u
+    @unpack h_thr = mdl.constants
 
     Begin("Altitude Guidance", p_open)
 
         Text("State: $state")
         Text("Control Mode: $lon_ctl_mode")
-        Text("Altitude Error: $Δh")
+        Text("Altitude Ref: $(Float64(h_ref))")
+        Text("Altitude Datum: $(typeof(h_ref))")
+        Text("Altitude Error: $h_err")
         Text("Altitude Threshold: $h_thr")
         Text("Throttle Setpoint: $throttle_ref")
         Text("Climb Rate Setpoint: $clm_ref")
@@ -946,9 +1056,9 @@ function GUI.draw!(ctl::Model{<:Controller},
                     mode_button("Throttle + Pitch Rate", lon_thr_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_thr_q; u.q_ref = 0); SameLine()
                     mode_button("Throttle + Pitch Angle", lon_thr_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_ref = θ)
-                    mode_button("EAS + Throttle", lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode)
-                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_ref = EAS); SameLine()
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_θ; u.θ_ref = θ); SameLine()
+                    mode_button("Throttle + EAS", lon_thr_EAS, u.lon_ctl_mode_req, y.lon_ctl_mode)
+                    IsItemActive() && (u.lon_ctl_mode_req = lon_thr_EAS; u.EAS_ref = EAS)
                     mode_button("EAS + Pitch Rate", lon_EAS_q, u.lon_ctl_mode_req, y.lon_ctl_mode)
                     IsItemActive() && (u.lon_ctl_mode_req = lon_EAS_q; u.q_ref = 0; u.EAS_ref = EAS); SameLine()
                     mode_button("EAS + Pitch Angle", lon_EAS_θ, u.lon_ctl_mode_req, y.lon_ctl_mode)
@@ -1134,7 +1244,7 @@ function GUI.draw!(ctl::Model{<:Controller},
 
     ############################### Guidance ###################################
 
-    @cstatic h_datum=Int32(0) begin
+    @cstatic h_datum=Int32(0) begin #ellipsoidal: 0, orthometric: 1
     if CImGui.CollapsingHeader("Vertical Guidance")
 
         if CImGui.BeginTable("VerticalGuidance", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
@@ -1147,7 +1257,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                     mode_button("Altitude", vrt_gdc_alt, u.vrt_gdc_mode_req, y.vrt_gdc_mode)
                     if IsItemActive()
                         u.vrt_gdc_mode_req = vrt_gdc_alt
-                        u.h_ref = (u.h_datum === ellipsoidal ? Float64(h_e) : Float64(h_o))
+                        u.h_ref = (h_datum == 0 ? h_e : h_o)
                         u.EAS_ref = EAS
                     end
                 CImGui.TableNextColumn();
@@ -1155,17 +1265,19 @@ function GUI.draw!(ctl::Model{<:Controller},
                 CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
                 CImGui.TableNextColumn();
                     PushItemWidth(-10)
-                    u.h_ref = safe_input("Altitude Setpoint", Float64(u.h_ref), 1, 1.0, "%.3f")
+                    h_ref_f64 = safe_input("Altitude Setpoint", Float64(u.h_ref), 1, 1.0, "%.3f")
+                    u.h_ref = (h_datum == 0 ? HEllip(h_ref_f64) : HOrth(h_ref_f64))
                     PopItemWidth()
                 CImGui.TableNextColumn();
-                    u.h_datum === ellipsoidal && Text(@sprintf("%.3f", Float64(h_e)))
-                    u.h_datum === orthometric && Text(@sprintf("%.3f", Float64(h_o)))
+                    h_datum == 0 && Text(@sprintf("%.3f", Float64(h_e)))
+                    h_datum == 1 && Text(@sprintf("%.3f", Float64(h_o)))
             CImGui.TableNextRow()
                 CImGui.TableNextColumn();
                 CImGui.TableNextColumn();
                     @c RadioButton("Ellipsoidal", &h_datum, 0); SameLine()
+                    IsItemActive() && (u.h_ref = h_e)
                     @c RadioButton("Orthometric", &h_datum, 1)
-                    u.h_datum = (h_datum == 0 ? ellipsoidal : orthometric)
+                    IsItemActive() && (u.h_ref = h_o)
             CImGui.EndTable()
         end #table
 
@@ -1328,10 +1440,12 @@ StructTypes.StructType(::Type{HorizontalGuidanceMode}) = StructTypes.CustomStruc
 StructTypes.lowertype(::Type{HorizontalGuidanceMode}) = Int32 #default enum type
 StructTypes.lower(x::HorizontalGuidanceMode) = Int32(x)
 
-#enable JSON parsing of integers as HorizontalGuidanceMode
-StructTypes.StructType(::Type{AltDatum}) = StructTypes.CustomStruct()
-StructTypes.lowertype(::Type{AltDatum}) = Int32 #default enum type
-StructTypes.lower(x::AltDatum) = Int32(x)
+StructTypes.StructType(::Type{Segment}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{Segment}) = NTuple{2, Geographic{LatLon, Ellipsoidal}}
+StructTypes.lower(seg::Segment) = (seg.p1, seg.p2)
+function StructTypes.construct(::Type{Segment}, ps::NTuple{2, Geographic{LatLon, Ellipsoidal}})
+    Segment(ps[1], ps[2])
+end
 
 #now we can do:
 # JSON3.read(JSON3.write(ControllerU()), ControllerU)

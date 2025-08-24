@@ -1,7 +1,7 @@
 module Geodesy
 
 using LinearAlgebra, StaticArrays, ComponentArrays, SHA, UnPack, Interpolations, HDF5
-using Plots, LaTeXStrings, DataStructures
+using Plots, LaTeXStrings, DataStructures, StructTypes
 
 using Flight.FlightCore
 
@@ -288,6 +288,16 @@ abstract type Abstract3DPosition end
 #avoid infinite recursion
 Base.convert(::Type{P}, p::P) where {P<:Abstract3DPosition} = p
 
+function Base.:(≈)(pos1::Abstract3DPosition, pos2::Abstract3DPosition; kwargs...)
+    ≈(Cartesian(pos1), Cartesian(pos2); kwargs...)
+end
+
+function Base.:(==)(pos1::Abstract3DPosition, pos2::Abstract3DPosition)
+    throw(ArgumentError("Exact comparison between $(typeof(pos1)) and $(typeof(pos2)) not defined, use ≈ instead"))
+end
+
+Base.:(-)(pos::T) where {T<:Abstract3DPosition} = convert(T, -Cartesian(pos))
+
 ########################### Geographic ###############################
 
 @kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DPosition
@@ -314,15 +324,15 @@ function Base.:(≈)(geo1::Geographic{L,H}, geo2::Geographic{L,H}; kwargs...) wh
     return ≈(geo1.h, geo2.h; kwargs...) && ≈(geo1.loc, geo2.loc; kwargs...)
 end
 
-function Base.:(≈)(pos1::Abstract3DPosition, pos2::Abstract3DPosition; kwargs...)
-    ≈(Cartesian(pos1), Cartesian(pos2); kwargs...)
+#given p1's position in geographic coordinates and the position vector from p1
+#to p2 in NED(p1) coordinates, return p2's position in ECEF cartesian coordinates
+function Base.:(+)(geo1::T, r_12_n1::AbstractVector{<:Real}) where {T <: Geographic}
+    q_en1 = ltf(geo1)
+    r_e1_e = Cartesian(geo1)
+    r_12_e = q_en1(r_12_n1)
+    r_e2_e = r_e1_e + r_12_e
+    return r_e2_e #for efficiency, leave the decision to convert back to Geographic to the user
 end
-
-function Base.:(==)(pos1::Abstract3DPosition, pos2::Abstract3DPosition)
-    throw(ArgumentError("Exact comparison between $(typeof(pos1)) and $(typeof(pos2)) not defined, use ≈ instead"))
-end
-
-Base.:(-)(pos::T) where {T<:Abstract3DPosition} = convert(T, -Cartesian(pos))
 
 
 ############################# Cartesian #############################
@@ -330,6 +340,7 @@ Base.:(-)(pos::T) where {T<:Abstract3DPosition} = convert(T, -Cartesian(pos))
 struct Cartesian <: Abstract3DPosition
     data::SVector{3,Float64}
 end
+
 Cartesian(pos::Abstract3DPosition) = convert(Cartesian, pos)
 Cartesian() = Cartesian(Geographic())
 
@@ -340,8 +351,10 @@ Altitude{D}(r::Cartesian) where {D} = Altitude{D}(Geographic{NVector,D}(r))
 Base.:(==)(r1::Cartesian, r2::Cartesian) = r1.data == r2.data
 Base.:(≈)(r1::Cartesian, r2::Cartesian; kwargs...) = ≈(r1.data, r2.data; kwargs...)
 Base.:(-)(r::Cartesian) = Cartesian(-r.data)
-Base.:(+)(r1::Cartesian, r2::AbstractVector{<:Real}) = Cartesian(r1.data + SVector{3,Float64}(r2))
-Base.:(+)(r1::AbstractVector{<:Real}, r2::Cartesian) = r2 + r1
+Base.:(+)(r_e1_e::Cartesian, r_12_e::AbstractVector{<:Real}) = Cartesian(r_e1_e.data + SVector{3,Float64}(r_12_e))
+Base.:(+)(r_12_e::AbstractVector{<:Real}, r_e1_e::Cartesian) = r_e1_e + r_12_e
+Base.:(-)(r_e2_e::Cartesian, r_e1_e::Cartesian) = r_e2_e.data - r_e1_e.data #r_12_e
+Base.:(-)(r_e2_e::Cartesian, r_12_e::AbstractVector{<:Real}) = Cartesian(r_e2_e.data - SVector{3,Float64}(r_12_e)) #r_e1_e
 
 #### AbstractArray interface
 Base.size(::Cartesian) = (3,)
@@ -475,6 +488,7 @@ function G_n(pos::Abstract3DPosition)
 
 end
 
+################################################################################
 ############################### Plotting #######################################
 
 #if no specific method available, convert to LatLon for plotting
@@ -505,6 +519,21 @@ end
     return TimeSeries(ts._t, Float64.(ts._data))
 
 end
+
+
+################################################################################
+################################## JSON3  ######################################
+
+#replace Greek characters from fields in the JSON string
+StructTypes.names(::Type{LatLon}) = ((:ϕ, :lat), (:λ, :lon))
+
+StructTypes.StructType(::Type{HEllip}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{HEllip}) = Float64
+StructTypes.lower(h::HEllip) = Float64(h)
+
+StructTypes.StructType(::Type{HOrth}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{HOrth}) = Float64
+StructTypes.lower(h::HOrth) = Float64(h)
 
 
 end #module

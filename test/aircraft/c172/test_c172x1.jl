@@ -11,7 +11,7 @@ using Flight.FlightLib.Control.Discrete: load_pid_lookup, load_lqr_tracker_looku
 using Flight.FlightAircraft.C172X.C172XControl: lon_direct, lon_sas, lon_thr_q, lon_thr_θ, lon_thr_EAS, lon_EAS_q, lon_EAS_θ, lon_EAS_clm
 using Flight.FlightAircraft.C172X.C172XControl: lat_direct, lat_sas, lat_p_β, lat_φ_β, lat_χ_β
 using Flight.FlightAircraft.C172X.C172XControl: vrt_gdc_off, vrt_gdc_alt
-using Flight.FlightAircraft.C172X.C172XControl: hor_gdc_off, hor_gdc_line
+using Flight.FlightAircraft.C172X.C172XControl: hor_gdc_off, hor_gdc_seg
 using Flight.FlightAircraft.C172X.C172XControl: phase_gnd, phase_air
 
 export test_c172x1
@@ -60,7 +60,7 @@ function test_control_modes()
 
     #set arbitrary control and guidance modes
     ctl.u.vrt_gdc_mode_req = vrt_gdc_alt
-    ctl.u.hor_gdc_mode_req = hor_gdc_line
+    ctl.u.hor_gdc_mode_req = hor_gdc_seg
     ctl.u.lon_ctl_mode_req = lon_EAS_clm
     ctl.u.lat_ctl_mode_req = lat_p_β
     ctl.u.throttle_axis = 0.1
@@ -558,7 +558,7 @@ function test_guidance_modes()
         @test isapprox.(y_kin(aircraft).h_e - HEllip(ctl.u.h_ref), 0.0; atol = 1e-1)
 
         #reference changes within the current threshold do not prompt a mode change
-        ctl.u.h_ref = y_kin(aircraft).h_e - ctl.alt_gdc.s.h_thr / 2
+        ctl.u.h_ref = y_kin(aircraft).h_e - ctl.alt_gdc.constants.h_thr / 2
         step!(sim, 1, true)
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
         step!(sim, 30, true) #altitude is captured
@@ -573,10 +573,7 @@ function test_guidance_modes()
 
         @test ctl.y.lon_ctl_mode === lon_EAS_clm
 
-        #must reset scheduling counter before standalone calls to f_periodic!, but
-        #without calling Sim.reinit! so that the controller state is preserved
-        world._n[] = 0
-        @test @ballocated(f_periodic!($world)) == 0
+        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
         ctl.u.h_ref = y_kin_trim.h_e + 100
         step!(sim, 1, true)
