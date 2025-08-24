@@ -302,9 +302,9 @@ Base.:(-)(pos::T) where {T<:Abstract3DPosition} = convert(T, -Cartesian(pos))
 
 @kwdef struct Geographic{L <: Abstract2DLocation, H <: AbstractAltitudeDatum} <: Abstract3DPosition
     loc::L = NVector()
-    h::Altitude{H} = HOrth()
+    h::Altitude{H} = HEllip()
 end
-Geographic(loc::Abstract2DLocation) = Geographic(loc, HOrth())
+Geographic(loc::Abstract2DLocation) = Geographic(loc, HEllip())
 Geographic(pos::Abstract3DPosition) = Geographic{NVector,Ellipsoidal}(pos)
 Geographic{L,H}(pos::Abstract3DPosition) where {L,H} = convert(Geographic{L,H}, pos)
 

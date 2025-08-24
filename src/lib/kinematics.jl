@@ -30,7 +30,7 @@ const KinInit = Initializer
 
 function Initializer(;
     q_nb::Abstract3DRotation = RQuat(), location::Abstract2DLocation = LatLon(),
-    h::Altitude = HOrth(), ω_wb_b::AbstractVector{<:Real} = zeros(SVector{3}),
+    h::Altitude = HEllip(), ω_wb_b::AbstractVector{<:Real} = zeros(SVector{3}),
     v_eb_n::AbstractVector{<:Real} = zeros(SVector{3}))
 
     n_e = NVector(location)
