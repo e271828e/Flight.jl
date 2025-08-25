@@ -2,11 +2,8 @@ using Sockets
 using Flight
 using OrdinaryDiffEq: Heun, RK4
 
-using Flight.FlightAircraft.C172X.C172XControl: lon_direct, lon_sas, lon_thr_q, lon_thr_θ, lon_thr_EAS, lon_EAS_q, lon_EAS_θ, lon_EAS_clm
-using Flight.FlightAircraft.C172X.C172XControl: lat_direct, lat_sas, lat_p_β, lat_φ_β, lat_χ_β
-using Flight.FlightAircraft.C172X.C172XControl: vrt_gdc_off, vrt_gdc_alt
-using Flight.FlightAircraft.C172X.C172XControl: hor_gdc_off, hor_gdc_seg
-using Flight.FlightAircraft.C172X.C172XControl: phase_gnd, phase_air
+using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat,
+    ModeGuidanceLon, ModeGuidanceLat, FlightPhase
 
 function tutorial02a()
 
@@ -15,7 +12,7 @@ function tutorial02a()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    aircraft = Cessna172Xv1()
+    aircraft = Cessna172Yv1()
     terrain = HorizontalTerrain(h_LOWS15)
     atmosphere = SimpleAtmosphere()
 
@@ -58,7 +55,7 @@ function tutorial02b()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    aircraft = Cessna172Xv1()
+    aircraft = Cessna172Yv1()
     terrain = HorizontalTerrain(h_LOWS15)
     atmosphere = SimpleAtmosphere()
 
@@ -105,7 +102,7 @@ function tutorial02c()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    aircraft = Cessna172Xv1()
+    aircraft = Cessna172Yv1()
     terrain = HorizontalTerrain(h_LOWS15)
     atmosphere = SimpleAtmosphere()
 
@@ -126,7 +123,7 @@ function tutorial02c()
         function (mdl::Model{<:SimpleWorld})
             if phase[] === :startup
                 u.eng_start = true
-                if mdl.y.aircraft.vehicle.systems.pwp.engine.state === Piston.eng_running
+                if mdl.y.aircraft.vehicle.systems.pwp.engine.state === Piston.EngineState.running
                     println("Engine started")
                     phase[] = :takeoff
                 end
@@ -154,7 +151,7 @@ function tutorial02d()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    aircraft = Cessna172Xv1()
+    aircraft = Cessna172Yv1()
     terrain = HorizontalTerrain(h_LOWS15)
     atmosphere = SimpleAtmosphere()
 
