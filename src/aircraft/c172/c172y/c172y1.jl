@@ -36,7 +36,6 @@ end
 function Modeling.init!(avionics::Model{<:C172Yv1.Avionics},
                             vehicle::Model{<:C172Y.Vehicle})
 
-    Control.reset!(avionics.ctl)
     Modeling.init!(avionics.ctl, vehicle)
     update_output!(avionics)
 

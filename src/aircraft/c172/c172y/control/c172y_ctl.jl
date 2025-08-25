@@ -578,6 +578,11 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:AltitudeTracking},
 
 end
 
+function Control.reset!(mdl::Model{<:AltitudeTracking})
+    mdl.u[] = HEllip(0.0)
+    mdl.s[] = AltTrackingState.hold
+end
+
 
 ################################################################################
 ############################# HorizontalGuidance ###############################
@@ -896,11 +901,12 @@ function Modeling.init!(mdl::Model{<:Controller},
     @unpack EAS = vehicle.y.airflow
     @unpack β = vehicle.y.systems.aero
 
+    #reset all controller submodels
+    Control.reset!(mdl)
+
     #we need to make Controller inputs consistent with the vehicle status, so
     #that trim conditions are preserved upon simulation start when different
     #control modes are selected
-    Control.reset!(mdl)
-
     u = mdl.u
     u.throttle_axis = y_act.throttle.pos
     u.aileron_axis = y_act.aileron.pos
