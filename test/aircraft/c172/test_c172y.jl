@@ -1,4 +1,4 @@
-module TestC172X
+module TestC172Y
 
 using Test
 using UnPack
@@ -9,10 +9,10 @@ using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightAircraft
 
-export test_c172x
+export test_c172y
 
-function test_c172x()
-    @testset verbose = true "Cessna 172X" begin
+function test_c172y()
+    @testset verbose = true "Cessna 172Y" begin
         test_trimming()
         test_linearization()
         test_update_methods()
@@ -24,7 +24,7 @@ function test_trimming()
     @testset verbose = true "Trimming" begin
 
         #test on vehicle
-        vehicle = Model(C172X.Vehicle())
+        vehicle = Model(C172Y.Vehicle())
         atmosphere = SimpleAtmosphere() |> Model
         terrain = HorizontalTerrain() |> Model
         trim_params = C172.TrimParameters()
@@ -44,7 +44,7 @@ function test_linearization()
 
     @testset verbose = true "Linearization" begin
 
-        @test_nowarn Cessna172Xv0(NED()) |> Model |> linearize!
+        @test_nowarn Cessna172Yv0(NED()) |> Model |> linearize!
 
     end #testset
 
@@ -62,7 +62,7 @@ function test_update_methods()
         trn_data = TerrainData(terrain, location)
         vehicle_init = KinInit( h = trn_data.elevation + 1.8) |> C172.Init
 
-        aircraft = Model(Cessna172Xv0());
+        aircraft = Model(Cessna172Yv0());
 
         Modeling.init!(aircraft, vehicle_init, atmosphere, terrain)
 

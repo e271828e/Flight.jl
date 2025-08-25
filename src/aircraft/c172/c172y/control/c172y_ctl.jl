@@ -1030,15 +1030,15 @@ function GUI.draw!(ctl::Model{<:Controller},
     ############################# Engine Control ###############################
 
     if CImGui.CollapsingHeader("Engine")
+        @unpack state, throttle, ω, MAP, τ_shaft, P_shaft, ṁ = pwp.engine
         PushItemWidth(-100)
-        mode_button("Engine Start", true, pwp.engine.state === Piston.eng_starting, pwp.engine.state === Piston.eng_running)
+        mode_button("Engine Start", true, state === Piston.EngineState.starting, state === Piston.EngineState.running)
         u.eng_start = IsItemActive()
         SameLine()
         mode_button("Engine Stop", true, u.eng_stop, false; HSV_requested = HSV_red)
         u.eng_stop = IsItemActive()
         SameLine()
         u.mixture = safe_slider("Mixture", u.mixture, "%.6f"; show_label = true)
-        @unpack state, throttle, ω, MAP, τ_shaft, P_shaft, ṁ = pwp.engine
 
         if CImGui.BeginTable("Engine Data", 4)
             CImGui.TableNextRow()

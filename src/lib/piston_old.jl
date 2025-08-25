@@ -1,6 +1,6 @@
 module Piston
 
-using Interpolations, StaticArrays, StructArrays, ComponentArrays, UnPack, EnumX
+using Interpolations, StaticArrays, StructArrays, ComponentArrays, UnPack
 
 using Flight.FlightCore
 using Flight.FlightLib
@@ -11,17 +11,13 @@ using ..Control.Continuous: PIVector, PIVectorU, PIVectorY
 
 export PistonEngine, PistonThruster
 
+
 ################################################################################
 ########################### AbstractPistonEngine ###############################
 
 abstract type AbstractPistonEngine <: ModelDefinition end
 
 const β = ISA_layers[1].β
-
-#fuel-to-air-ratios
-const f_cutoff = 0.0580 #lean cutoff limit (power drops to zero)
-const f_lean = 0.0625 #full lean (best economy)
-const f_rich = 0.0950 #full rich
 
 inHg2Pa(p) = 3386.389p
 ft2m(h) = 0.3048h
@@ -51,19 +47,6 @@ Dynamics.get_hr_b(::Model{<:AbstractPistonEngine}) = zeros(SVector{3})
 ################################################################################
 ############################## PistonEngine ####################################
 
-@enumx T=EngineStateEnum EngineState begin
-    off = 0
-    starting = 1
-    running = 2
-end
-using .EngineState: EngineStateEnum
-
-@enumx T=MixtureControlEnum MixtureControl begin
-    manual = 0
-    auto = 1
-end
-using .MixtureControl: MixtureControlEnum
-
 #represents a family of naturally aspirated, fuel-injected aviation engines.
 #based on performance data available for the Lycoming IO-360A engine, normalized
 #with rated power and rated speed to allow for arbitrary engine sizing
@@ -71,7 +54,7 @@ struct PistonEngine{L} <: AbstractPistonEngine
     P_rated::Float64
     ω_rated::Float64
     ω_stall::Float64 #speed below which engine shuts down
-    ω_max::Float64 #speed (above ω_rated) at which power drops back to zero
+    ω_max::Float64 #speed above ω_rated for which power output drops back to zero
     ω_idle::Float64 #target idle speed
     τ_start::Float64 #starter torque
     J::Float64 #equivalent axial moment of inertia of the engine shaft
@@ -89,7 +72,8 @@ function PistonEngine(;
     τ_start = 40,
     J = 0.05,
     idle = PIVector{1}(),
-    frc =  PIVector{1}())
+    frc =  PIVector{1}()
+    )
 
     n_stall = ω_stall / ω_rated
     n_max = ω_max / ω_rated
@@ -99,18 +83,22 @@ function PistonEngine(;
         P_rated, ω_rated, ω_stall, ω_max, ω_idle, τ_start, J, idle, frc, lookup)
 end
 
-
-@kwdef mutable struct PistonEngineS
-    state::EngineStateEnum = EngineState.off
+@enum EngineState begin
+    eng_off = 0
+    eng_starting = 1
+    eng_running = 2
 end
 
-#best economy: auto mixture around 0.1
-#best power: auto mixture around 0.45
+@kwdef mutable struct PistonEngineS
+    state::EngineState = eng_off
+end
+
+#best economy: mixture around 0.1
+#best power: mixture around 0.5
 @kwdef mutable struct PistonEngineU
     start::Bool = false
     stop::Bool = false
     throttle::Ranged{Float64, 0., 1.} = 0.0 #throttle setting
-    mixture_ctl::MixtureControlEnum = MixtureControl.auto #mixture control mode
     mixture::Ranged{Float64, 0., 1.} = 0.5 #mixture setting
     τ_load::Float64 = 0.0
     J_load::Float64 = 0.0
@@ -119,29 +107,25 @@ end
 @kwdef struct PistonEngineY
     start::Bool = false #start control
     stop::Bool = false #stop control
-    state::EngineStateEnum = EngineState.off #engine discrete state
     throttle::Float64 = 0.0 #throttle setting
-    MAP::Float64 = 0.0 #manifold air pressure
-    mixture_ctl::MixtureControlEnum = MixtureControl.auto #mixture control mode
     mixture::Float64 = 0.0 #mixture setting
-    mixture_pos::Float64 = 0.0 #mixture valve position
-    f::Float64 = 0.0 #fuel-to-air ratio
-    ṁ::Float64 = 0.0 #fuel flow
+    state::EngineState = eng_off #engine discrete state
+    MAP::Float64 = 0.0 #manifold air pressure
     ω::Float64 = 0.0 #angular velocity (crankshaft)
     τ_shaft::Float64 = 0.0 #shaft output torque
     P_shaft::Float64 = 0.0 #shaft power
     SFC::Float64 = 0.0 #specific fuel consumption
+    ṁ::Float64 = 0.0 #fuel consumption
     idle::PIVectorY{1} = PIVectorY{1}()
     frc::PIVectorY{1} = PIVectorY{1}()
 end
 
-
-Modeling.X(eng::PistonEngine) = ComponentVector(
-    ω = 0.0, idle = Modeling.X(eng.idle), frc = Modeling.X(eng.frc))
-
+Modeling.X(eng::PistonEngine) = ComponentVector( ω = 0.0,
+                                          idle = Modeling.X(eng.idle),
+                                          frc = Modeling.X(eng.frc))
 Modeling.U(::PistonEngine) = PistonEngineU()
 Modeling.Y(::PistonEngine) = PistonEngineY()
-Modeling.S(::PistonEngine) = Ref(EngineState.off)
+Modeling.S(::PistonEngine) = PistonEngineS()
 
 function Modeling.init!(mdl::Model{<:PistonEngine})
     #set up friction constraint compensator
@@ -162,11 +146,11 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
 
     @unpack ω_rated, ω_idle, P_rated, J, τ_start, lookup = eng.constants
     @unpack idle, frc = eng.submodels
-    @unpack start, stop, mixture_ctl, τ_load, J_load = eng.u
+    @unpack start, stop, τ_load, J_load = eng.u
 
     throttle = Float64(eng.u.throttle)
     mixture = Float64(eng.u.mixture)
-    state = eng.s[]
+    state = eng.s.state
     ω = eng.x.ω
 
     #update friction constraint compensator
@@ -192,33 +176,10 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
     #part throttle normalized MAP
     μ = μ_wot * (μ_ratio_idle + throttle * (1 - μ_ratio_idle))
 
-    #for a given throttle setting and engine speed, fuel-to-air ratio scales
-    #roughly with the inverse square root of air density ratio
-    k_f = 1/sqrt(air_data.ρ/ρ_std)
+    @show lookup.π_ratio(mixture)
+    @show lookup.sfc_ratio(mixture)
 
-    if mixture_ctl === MixtureControl.manual
-        #set mixture valve position directly
-        mixture_pos = mixture
-    else #mixture_control === MixtureControl.auto
-        #interpret mixture control input as a desired normalized fuel-to-air
-        #ratio, with 0 corresponding to full_lean and 1 to full rich
-        f_target = f_lean + mixture * (f_rich - f_lean)
-        #compute required mixture valve position
-        mixture_pos = f_target / (k_f * f_rich)
-    end
-
-    #fuel control unit is assumed to be calibrated to provide f = f_rich at SL
-    #for mixture_pos = 1 and zero fuel flow for mixture_pos = 0
-    f_sl = f_rich * mixture_pos
-    #fuel-to-air ratio scales roughly with the square root of the inverse air
-    #density ratio
-    f = k_f * f_sl
-
-    # @show f
-    # @show lookup.π_ratio(f)
-    # @show lookup.sfc_ratio(f)
-
-    if state === EngineState.off
+    if state === eng_off
 
         #with the engine off, introduce a friction constraint to make the
         #propeller actually stop instead of slowing down asymptotically. with
@@ -233,7 +194,7 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
         SFC = 0.0
         ṁ = 0.0
 
-    elseif state === EngineState.starting
+    elseif state === eng_starting
 
         MAP = μ * p_std
         τ_shaft = τ_start
@@ -241,22 +202,22 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
         SFC = 0.0
         ṁ = 0.0
 
-    else #state === EngineState.running
+    else #state === eng_running
 
         #normalized power at part throttle, altitude, ISA conditions and maximum
-        #power fuel-to-air ratio
+        #power mixture
         π_ISA_pow = compute_π_ISA_pow(lookup, n, μ, δ)
 
         #correction for non-ISA conditions
         π_pow = π_ISA_pow * √(T_ISA(air_data.p)/air_data.T)
 
-        #correction for arbitrary fuel-to-air ratio
-        π_actual = π_pow * lookup.π_ratio(f)
+        #correction for arbitrary mixture setting
+        π_actual = π_pow * lookup.π_ratio(mixture)
 
         MAP = μ * p_std
         P_shaft = P_rated * π_actual
         τ_shaft = (ω > 0 ? P_shaft / ω : 0.0) #for ω < ω_stall we should not even be here
-        SFC = lookup.sfc_pow(n, π_actual) * lookup.sfc_ratio(f)
+        SFC = lookup.sfc_pow(n, π_actual) * lookup.sfc_ratio(mixture)
         ṁ = SFC * P_shaft
 
     end
@@ -267,9 +228,9 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
 
     eng.ẋ.ω = ω_dot
 
-    eng.y = PistonEngineY(; start, stop, state, throttle, MAP, mixture_ctl,
-        mixture, mixture_pos, f, ṁ, ω, τ_shaft, P_shaft, SFC,
-        idle = eng.idle.y, frc = eng.frc.y)
+    eng.y = PistonEngineY(; start, stop, throttle, mixture, state,
+                            MAP, ω, τ_shaft, P_shaft, SFC, ṁ,
+                            idle = eng.idle.y, frc = eng.frc.y)
 
 end
 
@@ -280,18 +241,18 @@ function Modeling.f_step!(eng::Model{<:PistonEngine}, fuel_available::Bool = tru
 
     ω = eng.x.ω
 
-    if eng.s[] === EngineState.off
+    if eng.s.state === eng_off
 
-        eng.u.start && (eng.s[] = EngineState.starting)
+        eng.u.start && (eng.s.state = eng_starting)
 
-    elseif eng.s[] === EngineState.starting
+    elseif eng.s.state === eng_starting
 
-        !eng.u.start && (eng.s[] = EngineState.off)
-        (ω > ω_idle && fuel_available) && (eng.s[] = EngineState.running)
+        !eng.u.start && (eng.s.state = eng_off)
+        (ω > ω_idle && fuel_available) && (eng.s.state = eng_running)
 
-    else #EngineState.running
+    else #eng_running
 
-        (eng.u.stop || ω < ω_stall || !fuel_available) && (eng.s[] = EngineState.off)
+        (eng.u.stop || ω < ω_stall || !fuel_available) && (eng.s.state = eng_off)
 
     end
 
@@ -337,8 +298,7 @@ function generate_lookup(; n_stall, n_max)
 
     end
 
-    #part throttle normalized power at sea level for ISA conditions (δ = 1) and
-    #maximum power fuel-to-air ratio
+    #part throttle normalized power at sea level for ISA conditions (δ = 1) and maximum power mixture
     π_std = let
 
         n_data = [n_stall, 0.667, 0.704, 0.741, 0.778, 0.815, 0.852, 0.889, 0.926, 0.963, 1.000, 1.074, n_max]
@@ -367,8 +327,7 @@ function generate_lookup(; n_stall, n_max)
 
     end
 
-    #part throttle normalized power at sea level for ISA conditions (δ = 1) and
-    #maximum power fuel-to-air ratio
+    #wide-open throttle normalized power at altitude for ISA conditions and maximum power mixture
     π_wot = let
 
         n_data = [n_stall, 0.667, 1.000, 1.074, n_max]
@@ -384,30 +343,27 @@ function generate_lookup(; n_stall, n_max)
 
     end
 
-    #actual normalized power over normalized power at maximum power fuel-to-air ratio
+    #actual normalized power over normalized power at maximum power mixture
     π_ratio = let
 
-        #max power at f ≈ 0.0805
-        f_data = [f_cutoff, range(f_lean, f_rich, length = 10)...]
-        π_ratio_data = [0.000, 0.8600, 0.9492, 0.9776, 0.9933, 1.000, 0.9983, 0.9910, 0.9798, 0.9657, 0.9500]
+        m_data = [0.0, 0.071, 0.137, 0.281, 0.402, 0.472, 0.542, 0.637, 0.816, 1.0]
+        π_ratio_data = [0.860, 0.931, 0.961, 0.989, 0.999, 1.000, 0.999, 0.994, 0.976, 0.950]
 
-        linear_interpolation(f_data, π_ratio_data, extrapolation_bc = Flat())
+        linear_interpolation(m_data, π_ratio_data, extrapolation_bc = Flat())
 
     end
 
-
-    #actual sfc over sfc at maximum power fuel-to-air ratio
+    #actual sfc over sfc at maximum power mixture
     sfc_ratio = let
 
-        #min sfc at f = f_lean
-        f_data = [f_cutoff, range(f_lean, f_rich, length = 10)...]
-        sfc_ratio_data = [5, 0.8700, 0.8524, 0.8818, 0.9261, 0.9839, 1.0510, 1.1279, 1.2135, 1.3163, 1.4280 ]
+        m_data = [0.0, 0.071, 0.137, 0.281, 0.402, 0.472, 0.542, 0.637, 0.816, 1.0]
+        sfc_ratio_data = [0.870, 0.850, 0.854, 0.901, 0.959, 1.0, 1.042, 1.105, 1.243, 1.428]
 
-        linear_interpolation(f_data, sfc_ratio_data, extrapolation_bc = Flat())
+        linear_interpolation(m_data, sfc_ratio_data, extrapolation_bc = Flat())
 
     end
 
-    #sfc at maximum power fuel-to-air ratio
+    #sfc at maximum power mixture
     sfc_pow = let
 
         n_data = [2000, 2200, 2400, 2600, 2700] / 2700
@@ -434,11 +390,11 @@ function compute_π_ISA_pow(lookup, n, μ, δ)
         δ_wot = lookup.δ_wot(n, μ) #δ at which our μ would be μ_wot
 
         #normalized power at part throttle, sea level, ISA conditions (δ = 1)
-        #and maximum power fuel-to-air ratio
+        #and maximum power mixture
         π_std = lookup.π_std(n, μ)
 
         #normalized power at full throttle, altitude, ISA conditions and maximum
-        #power fuel-to-air ratio
+        #power mixture
         π_wot = lookup.π_wot(n, δ_wot)
 
         if abs(δ_wot - 1) < 5e-3
@@ -457,8 +413,7 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
 
     @unpack u, y, constants = mdl
     @unpack idle, frc = mdl
-    @unpack start, stop, state, throttle, MAP, mixture_ctl, mixture, mixture_pos,
-            f, ṁ, ω, τ_shaft, P_shaft, SFC = y
+    @unpack start, stop, state, throttle, mixture, MAP, ω, τ_shaft, P_shaft, ṁ, SFC = y
 
     CImGui.Begin(window_label, p_open)
 
@@ -466,15 +421,12 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
         CImGui.Text("Stop: $stop")
         CImGui.Text("State: $state")
         CImGui.Text(@sprintf("Throttle: %.3f", throttle))
+        CImGui.Text(@sprintf("Mixture: %.3f", mixture))
         CImGui.Text(@sprintf("Manifold Pressure: %.3f Pa", MAP))
-        CImGui.Text("Mixture Control: $mixture_ctl")
-        CImGui.Text(@sprintf("Mixture Setting: %.3f", mixture))
-        CImGui.Text(@sprintf("Mixture Valve Position: %.3f", mixture_pos))
-        CImGui.Text(@sprintf("Fuel to Air Ratio: %.3f", f))
-        CImGui.Text(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3))
         CImGui.Text(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
         CImGui.Text(@sprintf("Shaft Torque: %.3f N*m", τ_shaft))
         CImGui.Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
+        CImGui.Text(@sprintf("Fuel Consumption: %.3f g/s", ṁ*1e3))
         CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
 
         if CImGui.TreeNode("Idle RPM Controller")

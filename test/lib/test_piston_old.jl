@@ -6,16 +6,15 @@ using BenchmarkTools
 using LinearAlgebra
 using Plots
 
+
 using Flight.FlightCore
 using Flight.FlightLib
-
-using Flight.FlightLib.Piston
 
 #non-exported stuff
 using Flight.FlightLib.Atmosphere: p_std, T_std
 using Flight.FlightLib.Piston: PistonEngine, PistonThruster
 using Flight.FlightLib.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
-using Flight.FlightLib.Piston: EngineState
+using Flight.FlightLib.Piston: eng_off, eng_starting, eng_running
 
 export test_piston
 
@@ -149,23 +148,23 @@ function test_engine_response()
         @test eng.y != y_init #y must have been updated
 
         eng.x.ω = 0.0
-        eng.s[] = EngineState.off
+        eng.s.state = eng_off
         f_ode!(eng, air)
         @test eng.y.τ_shaft == 0
 
         eng.u.start = true
         f_step!(eng)
-        @test eng.s[] == EngineState.starting
+        @test eng.s.state == eng_starting
 
         eng.x.ω = 0.9eng.ω_idle
         f_step!(eng) #with ω <= ω_idle, engine won't leave the starting state
-        @test eng.s[] == EngineState.starting
+        @test eng.s.state == eng_starting
         f_ode!(eng, air)
         @test eng.y.τ_shaft > 0 #it should output the starter torque
 
         eng.x.ω = 1.1eng.ω_idle
         f_step!(eng) #engine should start now
-        @test eng.s[] == EngineState.running
+        @test eng.s.state == eng_running
         f_ode!(eng, air)
 
         #if we give it some throttle, we should get output power
@@ -174,34 +173,34 @@ function test_engine_response()
         @test eng.y.τ_shaft > 0
 
         #commanded stop
-        eng.s[] = EngineState.running
+        eng.s.state = eng_running
         eng.u.stop = true
         f_step!(eng) #engine should start now
         eng.u.stop = false
-        @test eng.s[] == EngineState.off
+        @test eng.s.state == eng_off
 
         #stall stop
-        eng.s[] = EngineState.running
+        eng.s.state = eng_running
         eng.x.ω = 0.95eng.ω_stall
         f_step!(eng)
-        @test eng.s[] == EngineState.off
+        @test eng.s.state == eng_off
         eng.x.ω = 1.1eng.ω_idle
-        eng.s[] = EngineState.running
+        eng.s.state = eng_running
 
         #without fuel, the engine should shut down
         f_step!(eng, false)
-        @test eng.s[] == EngineState.off
+        @test eng.s.state == eng_off
 
         #and then fail to start, even above the required speed
         eng.u.start = true
         f_step!(eng, false)
-        @test eng.s[] == EngineState.starting
+        @test eng.s.state == eng_starting
         f_step!(eng, false)
-        @test eng.s[] != EngineState.running
+        @test eng.s.state != eng_running
 
         #when fuel is available, the engine starts
         f_step!(eng)
-        @test eng.s[] == EngineState.running
+        @test eng.s.state == eng_running
 
         @test @ballocated(f_ode!($eng, $air)) == 0
         @test @ballocated(f_step!($eng, true)) == 0
@@ -227,11 +226,11 @@ function test_thruster_response()
         #take two steps for the start command to take effect
         step!(sim)
         step!(sim)
-        @test mdl.y.thruster.engine.state === EngineState.starting
+        @test mdl.y.thruster.engine.state === eng_starting
 
         #give it a few seconds to get to stable idle RPMs
         step!(sim, 10, true)
-        @test mdl.y.thruster.engine.state === EngineState.running
+        @test mdl.y.thruster.engine.state === eng_running
         @test mdl.y.thruster.engine.ω ≈ mdl.thruster.engine.ω_idle atol = 1
         mdl.thruster.engine.u.start = false
 
@@ -274,7 +273,7 @@ function test_thruster_response()
         mdl.thruster.engine.u.start = true
         step!(sim, 5, true) #give it a few seconds to get to stable idle RPMs
         mdl.thruster.engine.u.start = false
-        @test mdl.y.thruster.engine.state === EngineState.running
+        @test mdl.y.thruster.engine.state === eng_running
 
         @test mdl.y.thruster.propeller.ω ≈ -mdl.y.thruster.engine.ω
         @test get_wr_b(sim.mdl.thruster).F[1] > 0
@@ -303,7 +302,7 @@ function test_thruster_response()
         #starved engine shuts down
         mdl.u.fuel_available = false
         step!(sim, 1, true)
-        @test mdl.y.thruster.engine.state == EngineState.off
+        @test mdl.y.thruster.engine.state == eng_off
         step!(sim, 5, true)
 
         #after a few seconds the engine should have stopped completely due to
@@ -316,7 +315,7 @@ function test_thruster_response()
         step!(sim, 5, true)
         mdl.thruster.engine.u.start = false
 
-        @test mdl.y.thruster.engine.state === EngineState.running
+        @test mdl.y.thruster.engine.state === eng_running
 
         @test @ballocated(f_ode!($mdl)) == 0
         @test @ballocated(f_step!($mdl)) == 0

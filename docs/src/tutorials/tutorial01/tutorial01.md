@@ -80,14 +80,14 @@ nothing # hide
 Our simulated world will consist of an aircraft, an atmospheric model and a terrain model:
 
 ```@example tutorial01
-aircraft = Cessna172Xv1()
+aircraft = Cessna172Yv1()
 atmosphere = SimpleAtmosphere()
 terrain = HorizontalTerrain(h_LOWS15)
 world = SimpleWorld(aircraft, atmosphere, terrain)
 nothing # hide
 ```
 
-The ```Cessna172Xv1``` aircraft is a hypothetical customization of a Cessna 172S. It replaces the
+The ```Cessna172Yv1``` aircraft is a hypothetical customization of a Cessna 172S. It replaces the
 reversible actuation system on the base model with a digital fly-by-wire flight control system,
 which we will leverage in this example. Note that this aircraft does not aim to replicate the
 internals or interface of any specific real-world autopilot. Its purpose is simply to illustrate how
@@ -209,7 +209,7 @@ simulation has taken control of the visuals.
     ```
 
 Now return to the GUI and navigate to *Aircraft > Avionics > Flight Control*. This panel contains
-all the flight control inputs and instrumentation for the ```Cessna172Xv1``` model.
+all the flight control inputs and instrumentation for the ```Cessna172Yv1``` model.
 
 First, locate the *Engine Start* button under the *Engine* section. Press and hold it for a couple
 of seconds to start the engine.
@@ -318,10 +318,10 @@ Sim.init!(sim, init_air)
 ```
 
 Feel free to explore the remaining control modes and the altitude guidance function on your own. For
-more information on ```Cessna172Xv1```'s flight controller, check out the [source
-code](https://github.com/e271828e/Flight.jl/blob/master/src/aircraft/c172/c172x/control/c172x_ctl.jl)
+more information on ```Cessna172Yv1```'s flight controller, check out the [source
+code](https://github.com/e271828e/Flight.jl/blob/master/src/aircraft/c172/c172y/control/c172y_ctl.jl)
 and the design notebooks for the
-[longitudinal](https://github.com/e271828e/Flight.jl/blob/master/src/aircraft/c172/c172x/control/design/c172x_lon.ipynb)
+[longitudinal](https://github.com/e271828e/Flight.jl/blob/master/src/aircraft/c172/c172y/control/design/c172y_lon.ipynb)
 and
-[lateral](https://github.com/e271828e/Flight.jl/blob/master/src/aircraft/c172/c172x/control/design/c172x_lat.ipynb)
+[lateral](https://github.com/e271828e/Flight.jl/blob/master/src/aircraft/c172/c172y/control/design/c172y_lat.ipynb)
 control channels.

@@ -10,7 +10,7 @@ Let's start from a new `SimpleWorld` instance. Here, keeping consistency with X-
 is no longer a concern, so we can stick to the default constructors:
 ```@example tutorial02
 using Flight
-world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) #zero-MSL terrain
+world = SimpleWorld(Cessna172Yv1(), SimpleAtmosphere(), HorizontalTerrain()) #zero-MSL terrain
 ```
 
 Inspecting its type hierarchy reveals that `SimpleWorld` is a concrete subtype of the abstract type
@@ -116,7 +116,7 @@ Sim.init!(sim, init_air)
 
 You may recall how during [interactive simulation](@ref "Interactive Simulation") we used the
 *Aircraft > Avionics > Flight Control* GUI panel to control the aircraft. That panel belongs to the
-`mdl.aircraft.avionics.ctl` node, which implements the flight control laws for the `Cessna172Xv1`
+`mdl.aircraft.avionics.ctl` node, which implements the flight control laws for the `Cessna172Yv1`
 aircraft. Let's retrieve its input `struct`:
 
 ```@example tutorial02
@@ -351,7 +351,7 @@ condition
 
 
 world.ac.avionics.ctl.u.lon_ctl_mode_req |> typeof
-using .C172X.C172XControl: lon_direct, lon_sas
+using .C172Y.C172YControl: lon_direct, lon_sas
 
 
 --------------------------------------------
@@ -364,7 +364,7 @@ These values come from fields in the `ModelDefinition` subtype that *are not*
 
 When the `Model` constructor is called on a `ModelDefinition`, those fields that are themselves
 `ModelDefinition`s are also turned into `Model`s, and they become children in the parent `Model`'s
-hierarchy. Therefore, within `submodels` we will find `Model`s created from the `Cessna172Xv1`,
+hierarchy. Therefore, within `submodels` we will find `Model`s created from the `Cessna172Yv1`,
 `SimpleAtmosphere` and `HorizontalTerrain` objects we passed to the `SimpleWorld` constructor.
 ```@repl tutorial02
 mdl.submodels

@@ -763,7 +763,7 @@ const Cessna172 = C172.Aircraft
 ################################################################################
 
 @kwdef struct SystemsInitializer <: AbstractVehicleSystemsInitializer
-    engine_state::Piston.EngineState = Piston.eng_off
+    engine_state::Piston.EngineStateEnum = Piston.EngineState.off
     n_eng::Float64 = 0.0 #normalized engine speed
     mixture::Ranged{Float64, 0., 1.} = 0.5
     throttle::Ranged{Float64, 0., 1.} = 0
@@ -997,7 +997,7 @@ end
 ############################### C172 Variants ##################################
 
 include(normpath("c172s/c172s.jl")); @reexport using .C172S
-# include(normpath("c172x/c172x.jl")); @reexport using .C172X
+# include(normpath("c172y/c172y.jl")); @reexport using .C172Y
 include(normpath("c172y/c172y.jl")); @reexport using .C172Y
 
 end

@@ -278,7 +278,7 @@ function Modeling.init!(cmp::Model{<:Systems}, init::C172.SystemsInitializer)
     #assign payload
     @pack! pld.u = m_pilot, m_copilot, m_lpass, m_rpass, m_baggage
 
-    pwp.engine.s.state = engine_state
+    pwp.engine.s[] = engine_state
     pwp.x.engine.ω = n_eng * pwp.engine.ω_rated
 
     #engine idle compensator: as long as the engine remains at normal
@@ -340,7 +340,7 @@ function AircraftBase.assign!(vehicle::Model{<:C172Y.Vehicle},
     kin_init = KinInit(trim_state, trim_params, atmosphere)
 
     cmp_init = C172.SystemsInitializer(;
-        engine_state = Piston.eng_running, #obvious
+        engine_state = Piston.EngineState.running, #obvious
         n_eng, mixture, throttle, elevator, aileron, rudder,
         flaps, brake_left = 0, brake_right = 0, fuel_load, payload,
         stall = false, #obvious
