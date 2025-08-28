@@ -197,8 +197,8 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
     k_f = 1/sqrt(air_data.ρ/ρ_std)
 
     if mixture_ctl === MixtureControl.manual
-        #set mixture valve position directly
-        mixture_pos = mixture
+        #set mixture valve position directly from mixture lever position
+        mixture_pos = 0.5 * (mixture + 1)
     else #mixture_control === MixtureControl.auto
         #interpret mixture control input as a desired normalized fuel-to-air
         #ratio, with 0 corresponding to full_lean and 1 to full rich
@@ -206,17 +206,6 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
         #compute required mixture valve position
         mixture_pos = f_target / (k_f * f_rich)
     end
-
-    #fuel control unit is assumed to be calibrated to provide f = f_rich at SL
-    #for mixture_pos = 1 and zero fuel flow for mixture_pos = 0
-    f_sl = f_rich * mixture_pos
-    #fuel-to-air ratio scales roughly with the square root of the inverse air
-    #density ratio
-    f = k_f * f_sl
-
-    # @show f
-    # @show lookup.π_ratio(f)
-    # @show lookup.sfc_ratio(f)
 
     if state === EngineState.off
 
@@ -228,6 +217,7 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
         τ_fr = frc.y.output[1] .* τ_fr_max #scale τ_fr_max with compensator output
 
         MAP = air_data.p
+        f = 0
         τ_shaft = τ_fr
         P_shaft = 0.0
         SFC = 0.0
@@ -236,6 +226,7 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
     elseif state === EngineState.starting
 
         MAP = μ * p_std
+        f = 0
         τ_shaft = τ_start
         P_shaft = τ_shaft * ω
         SFC = 0.0
@@ -243,14 +234,22 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
 
     else #state === EngineState.running
 
-        #normalized power at part throttle, altitude, ISA conditions and maximum
-        #power fuel-to-air ratio
+        #fuel control unit is assumed to be calibrated to provide f = f_rich at
+        #SL with mixture_pos = 1, and zero fuel flow with mixture_pos = 0
+        f_sl = f_rich * mixture_pos
+
+        #fuel-to-air ratio scales roughly with the square root of the inverse
+        #air density ratio
+        f = k_f * f_sl
+
+        #compute normalized power at part throttle, altitude, ISA conditions and
+        #maximum power fuel-to-air ratio
         π_ISA_pow = compute_π_ISA_pow(lookup, n, μ, δ)
 
-        #correction for non-ISA conditions
+        #apply correction for non-ISA conditions
         π_pow = π_ISA_pow * √(T_ISA(air_data.p)/air_data.T)
 
-        #correction for arbitrary fuel-to-air ratio
+        #apply correction for arbitrary fuel-to-air ratio
         π_actual = π_pow * lookup.π_ratio(f)
 
         MAP = μ * p_std
@@ -452,42 +451,68 @@ function compute_π_ISA_pow(lookup, n, μ, δ)
 end
 
 
+using CImGui: CollapsingHeader, PushItemWidth, PopItemWidth, SameLine, Text,
+              TreeNode, TreePop, Begin, End, IsItemActive, RadioButton,
+            AlignTextToFramePadding
+
 function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Engine")
 
     @unpack u, y, constants = mdl
     @unpack idle, frc = mdl
-    @unpack start, stop, state, throttle, MAP, mixture_ctl, mixture, mixture_pos,
+
+    Begin(window_label, p_open)
+
+    if CollapsingHeader("Control")
+        mode_button("Engine Start", true, y.state === EngineState.starting, y.state === EngineState.running)
+        u.start = IsItemActive()
+        SameLine()
+        mode_button("Engine Stop", true, u.stop, false; HSV_requested = HSV_red)
+        u.stop = IsItemActive()
+        SameLine()
+        AlignTextToFramePadding(); Text("Mixture Control"); SameLine()
+        RadioButton("Auto", u.mixture_ctl === MixtureControl.auto);
+        IsItemActive() && (u.mixture_ctl = MixtureControl.auto)
+        SameLine()
+        RadioButton("Manual", u.mixture_ctl === MixtureControl.manual)
+        IsItemActive() && (u.mixture_ctl = MixtureControl.manual)
+
+        u.throttle = safe_slider("Throttle", u.throttle, "%.6f"; show_label = true)
+        u.mixture = safe_slider("Mixture", u.mixture, "%.6f"; show_label = true)
+    end
+
+    if CollapsingHeader("Data")
+        @unpack start, stop, state, throttle, MAP, mixture_ctl, mixture, mixture_pos,
             f, ṁ, ω, τ_shaft, P_shaft, SFC = y
 
-    CImGui.Begin(window_label, p_open)
+        Text("Start: $start")
+        Text("Stop: $stop")
+        Text("State: $state")
+        Text(@sprintf("Throttle: %.3f", throttle))
+        Text(@sprintf("Manifold Pressure: %.3f Pa", MAP))
+        Text("Mixture Control: $mixture_ctl")
+        Text(@sprintf("Mixture Setting: %.3f", mixture))
+        Text(@sprintf("Mixture Valve Position: %.3f", mixture_pos))
+        Text(@sprintf("Fuel to Air Ratio: %.3f", f))
+        Text(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3))
+        Text(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
+        Text(@sprintf("Shaft Torque: %.3f N*m", τ_shaft))
+        Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
+        Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
 
-        CImGui.Text("Start: $start")
-        CImGui.Text("Stop: $stop")
-        CImGui.Text("State: $state")
-        CImGui.Text(@sprintf("Throttle: %.3f", throttle))
-        CImGui.Text(@sprintf("Manifold Pressure: %.3f Pa", MAP))
-        CImGui.Text("Mixture Control: $mixture_ctl")
-        CImGui.Text(@sprintf("Mixture Setting: %.3f", mixture))
-        CImGui.Text(@sprintf("Mixture Valve Position: %.3f", mixture_pos))
-        CImGui.Text(@sprintf("Fuel to Air Ratio: %.3f", f))
-        CImGui.Text(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3))
-        CImGui.Text(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
-        CImGui.Text(@sprintf("Shaft Torque: %.3f N*m", τ_shaft))
-        CImGui.Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
-        CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
-
-        if CImGui.TreeNode("Idle RPM Controller")
+        if TreeNode("Idle RPM Controller")
             GUI.draw(idle, window_label)
-            CImGui.TreePop()
+            TreePop()
         end
 
-        if CImGui.TreeNode("Friction Regulator")
+        if TreeNode("Friction Regulator")
             GUI.draw(frc, window_label)
-            CImGui.TreePop()
+            TreePop()
         end
 
-    CImGui.End()
+    end
+
+    End()
 
 end
 

@@ -963,7 +963,8 @@ end
 
 using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
         Dummy, SameLine, NewLine, IsItemActive, IsItemActivated,
-        Separator, Text, Checkbox, RadioButton
+        Separator, Text, Checkbox, RadioButton, TableNextColumn, TableNextRow,
+        BeginTable, EndTable
 
 
 function GUI.draw(mdl::Model{<:ControllerLon}, p_open::Ref{Bool} = Ref(true))
@@ -997,7 +998,6 @@ function GUI.draw(mdl::Model{<:AltitudeTracking}, p_open::Ref{Bool} = Ref(true))
     @unpack h_thr = mdl.constants
 
     Begin("Altitude Guidance", p_open)
-
         Text("State: $state")
         Text("Control Mode: $mode_ctl_lon")
         Text("Altitude Ref: $(Float64(h_target))")
@@ -1046,18 +1046,18 @@ function GUI.draw!(ctl::Model{<:Controller},
         SameLine()
         u.mixture = safe_slider("Mixture", u.mixture, "%.6f"; show_label = true)
 
-        if CImGui.BeginTable("Engine Data", 4)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("State: $(state)")
-                CImGui.TableNextColumn(); Text(@sprintf("Throttle: %.3f %%", 100*throttle))
-                CImGui.TableNextColumn(); Text(@sprintf("Speed: %.3f RPM", Piston.radpersec2RPM(ω)))
-                CImGui.TableNextColumn(); Text(@sprintf("Manifold Pressure: %.0f Pa", MAP))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text(@sprintf("Shaft Torque: %.3f Nm", τ_shaft))
-                CImGui.TableNextColumn(); Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
-                CImGui.TableNextColumn(); Text(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3)); SameLine(250)
-                CImGui.TableNextColumn(); Text(@sprintf("Remaining Fuel: %.3f kg", fuel.m_avail))
-            CImGui.EndTable()
+        if BeginTable("Engine Data", 4)
+            TableNextRow()
+                TableNextColumn(); Text("State: $(state)")
+                TableNextColumn(); Text(@sprintf("Throttle: %.3f %%", 100*throttle))
+                TableNextColumn(); Text(@sprintf("Speed: %.3f RPM", Piston.radpersec2RPM(ω)))
+                TableNextColumn(); Text(@sprintf("Manifold Pressure: %.0f Pa", MAP))
+            TableNextRow()
+                TableNextColumn(); Text(@sprintf("Shaft Torque: %.3f Nm", τ_shaft))
+                TableNextColumn(); Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
+                TableNextColumn(); Text(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3)); SameLine(250)
+                TableNextColumn(); Text(@sprintf("Remaining Fuel: %.3f kg", fuel.m_avail))
+            EndTable()
         end
         Separator()
         PopItemWidth()
@@ -1067,11 +1067,11 @@ function GUI.draw!(ctl::Model{<:Controller},
 
     if CImGui.CollapsingHeader("Longitudinal Control Channel")
 
-        if CImGui.BeginTable("LonCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
+        if BeginTable("LonCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+            TableNextRow()
+                TableNextColumn();
                     Text("Mode")
-                CImGui.TableNextColumn();
+                TableNextColumn();
                     mode_button("Direct##Lon", ModeControlLon.direct, u.mode_ctl_lon_req, y.mode_ctl_lon)
                     IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.direct); SameLine()
                     mode_button("Pitch SAS", ModeControlLon.sas, u.mode_ctl_lon_req, y.mode_ctl_lon)
@@ -1088,79 +1088,79 @@ function GUI.draw!(ctl::Model{<:Controller},
                     IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.EAS_θ; u.EAS_ref = EAS; u.θ_ref = θ); SameLine()
                     mode_button("EAS + Climb Rate", ModeControlLon.EAS_clm, u.mode_ctl_lon_req, y.mode_ctl_lon)
                     IsItemActive() && (u.mode_ctl_lon_req = ModeControlLon.EAS_clm; u.EAS_ref = EAS; u.clm_ref = clm)
-                CImGui.TableNextColumn();
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
+                TableNextColumn();
+            TableNextRow()
+                TableNextColumn();
                     AlignTextToFramePadding(); Text("Throttle Axis")
                     AlignTextToFramePadding(); Text("Throttle Offset")
-                CImGui.TableNextColumn();
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.throttle_axis = safe_slider("Throttle Axis", u.throttle_axis, "%.6f")
                     u.throttle_offset = safe_input("Throttle_Offset", u.throttle_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
-                # CImGui.TableNextColumn();
+                # TableNextColumn();
                 #     Text(@sprintf("%.3f", Float64(u.throttle_axis)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
+            TableNextRow()
+                TableNextColumn();
                     AlignTextToFramePadding(); Text("Elevator Axis")
                     AlignTextToFramePadding(); Text("Elevator Offset")
-                CImGui.TableNextColumn();
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.elevator_axis = safe_slider("Elevator Axis", u.elevator_axis, "%.6f")
                     u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
-                # CImGui.TableNextColumn();
+                # TableNextColumn();
                 #     Text(@sprintf("%.3f", Float64(u.elevator_axis)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Rate (deg/s)")
-                CImGui.TableNextColumn();
+            TableNextRow()
+                TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Rate (deg/s)")
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.q_ref = safe_slider("Pitch Rate", rad2deg(u.q_ref), -10, 10, "%.3f") |> deg2rad
                     PopItemWidth()
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(q)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Angle (deg)")
-                CImGui.TableNextColumn();
+                TableNextColumn(); Text(@sprintf("%.3f", rad2deg(q)))
+            TableNextRow()
+                TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Angle (deg)")
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.θ_ref = safe_slider("Pitch Angle", rad2deg(u.θ_ref), -15, 15, "%.3f") |> deg2rad
                     PopItemWidth()
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(θ)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("EAS (m/s)")
-                CImGui.TableNextColumn();
+                TableNextColumn(); Text(@sprintf("%.3f", rad2deg(θ)))
+            TableNextRow()
+                TableNextColumn(); AlignTextToFramePadding(); Text("EAS (m/s)")
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.EAS_ref = safe_input("EAS", u.EAS_ref, 0.1, 1.0, "%.3f")
                     PopItemWidth()
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", EAS))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Climb Rate (m/s)")
-                CImGui.TableNextColumn();
+                TableNextColumn(); Text(@sprintf("%.3f", EAS))
+            TableNextRow()
+                TableNextColumn(); AlignTextToFramePadding(); Text("Climb Rate (m/s)")
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.clm_ref = safe_input("Climb Rate", u.clm_ref, 0.1, 1.0, "%.3f")
                     PopItemWidth()
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", clm))
-            CImGui.EndTable()
+                TableNextColumn(); Text(@sprintf("%.3f", clm))
+            EndTable()
         end
 
         Separator()
 
-        if CImGui.BeginTable("Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                CImGui.TableNextColumn(); Text("Input")
-                CImGui.TableNextColumn(); Text("Command")
-                CImGui.TableNextColumn(); Text("Position")
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Throttle")
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.throttle_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.throttle_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.throttle.pos)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Elevator")
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.elevator_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.elevator_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.elevator.pos)))
-            CImGui.EndTable()
+        if BeginTable("Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
+            TableNextRow()
+                TableNextColumn();
+                TableNextColumn(); Text("Input")
+                TableNextColumn(); Text("Command")
+                TableNextColumn(); Text("Position")
+            TableNextRow()
+                TableNextColumn(); Text("Throttle")
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.throttle_ref)))
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.throttle_cmd)))
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(act.throttle.pos)))
+            TableNextRow()
+                TableNextColumn(); Text("Elevator")
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.elevator_ref)))
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lon.elevator_cmd)))
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(act.elevator.pos)))
+            EndTable()
         end
 
         Separator()
@@ -1171,11 +1171,11 @@ function GUI.draw!(ctl::Model{<:Controller},
 
     if CImGui.CollapsingHeader("Lateral Control Channel")
 
-        if CImGui.BeginTable("LatCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
+        if BeginTable("LatCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+            TableNextRow()
+                TableNextColumn();
                     Text("Mode")
-                CImGui.TableNextColumn();
+                TableNextColumn();
                     mode_button("Direct##Lat", ModeControlLat.direct, u.mode_ctl_lat_req, y.mode_ctl_lat); SameLine()
                     IsItemActive() && (u.mode_ctl_lat_req = ModeControlLat.direct)
                     mode_button("Roll/Yaw SAS", ModeControlLat.sas, u.mode_ctl_lat_req, y.mode_ctl_lat); SameLine()
@@ -1186,79 +1186,79 @@ function GUI.draw!(ctl::Model{<:Controller},
                     IsItemActive() && (u.mode_ctl_lat_req = ModeControlLat.ModeControlLat.φ_β; u.φ_ref = φ; u.β_ref = β)
                     mode_button("Course Angle + AoS", ModeControlLat.χ_β, u.mode_ctl_lat_req, y.mode_ctl_lat); SameLine()
                     IsItemActive() && (u.mode_ctl_lat_req = ModeControlLat.χ_β; u.χ_ref = χ_gnd; u.β_ref = β)
-                CImGui.TableNextColumn();
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
+                TableNextColumn();
+            TableNextRow()
+                TableNextColumn();
                     AlignTextToFramePadding(); Text("Aileron Axis")
                     AlignTextToFramePadding(); Text("Aileron Offset")
-                CImGui.TableNextColumn();
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.aileron_axis = safe_slider("Aileron Axis", u.aileron_axis, "%.6f")
                     u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
-                # CImGui.TableNextColumn();
+                # TableNextColumn();
                 #     Text(@sprintf("%.3f", Float64(u.aileron_axis)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
+            TableNextRow()
+                TableNextColumn();
                     AlignTextToFramePadding(); Text("Rudder Axis")
                     AlignTextToFramePadding(); Text("Rudder Offset")
-                CImGui.TableNextColumn();
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.rudder_axis = safe_slider("Rudder Axis", u.rudder_axis, "%.6f")
                     u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
-                # CImGui.TableNextColumn();
+                # TableNextColumn();
                 #     Text(@sprintf("%.3f", Float64(u.rudder_axis)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Roll Rate (deg/s)")
-                CImGui.TableNextColumn();
+            TableNextRow()
+                TableNextColumn(); AlignTextToFramePadding(); Text("Roll Rate (deg/s)")
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.p_ref = safe_slider("Roll Rate", rad2deg(u.p_ref), -30, 30, "%.3f") |> deg2rad
                     PopItemWidth()
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(p)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Bank Angle (deg)")
-                CImGui.TableNextColumn();
+                TableNextColumn(); Text(@sprintf("%.3f", rad2deg(p)))
+            TableNextRow()
+                TableNextColumn(); AlignTextToFramePadding(); Text("Bank Angle (deg)")
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.φ_ref = safe_slider("Bank Angle", rad2deg(u.φ_ref), -60, 60, "%.3f") |> deg2rad
                     PopItemWidth()
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(φ)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Course Angle (deg)")
-                CImGui.TableNextColumn();
+                TableNextColumn(); Text(@sprintf("%.3f", rad2deg(φ)))
+            TableNextRow()
+                TableNextColumn(); AlignTextToFramePadding(); Text("Course Angle (deg)")
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.χ_ref = safe_slider("Course Angle", rad2deg(u.χ_ref), -180, 180, "%.3f") |> deg2rad
                     PopItemWidth()
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(χ_gnd)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Sideslip Angle (deg)")
-                CImGui.TableNextColumn();
+                TableNextColumn(); Text(@sprintf("%.3f", rad2deg(χ_gnd)))
+            TableNextRow()
+                TableNextColumn(); AlignTextToFramePadding(); Text("Sideslip Angle (deg)")
+                TableNextColumn();
                     PushItemWidth(-10)
                     u.β_ref = safe_slider("Sideslip Angle", rad2deg(u.β_ref), -10, 10, "%.3f") |> deg2rad
                     PopItemWidth()
-                CImGui.TableNextColumn(); Text(@sprintf("%.3f", rad2deg(β)))
-            CImGui.EndTable()
+                TableNextColumn(); Text(@sprintf("%.3f", rad2deg(β)))
+            EndTable()
         end
 
         Separator()
 
-        if CImGui.BeginTable("Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                CImGui.TableNextColumn(); Text("Input")
-                CImGui.TableNextColumn(); Text("Command")
-                CImGui.TableNextColumn(); Text("Position")
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Aileron")
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.aileron_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.aileron_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.aileron.pos)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Rudder")
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.rudder_cmd)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.rudder_ref)))
-                CImGui.TableNextColumn(); Text(@sprintf("%.6f", Float64(act.rudder.pos)))
-            CImGui.EndTable()
+        if BeginTable("Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
+            TableNextRow()
+                TableNextColumn();
+                TableNextColumn(); Text("Input")
+                TableNextColumn(); Text("Command")
+                TableNextColumn(); Text("Position")
+            TableNextRow()
+                TableNextColumn(); Text("Aileron")
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.aileron_ref)))
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.aileron_cmd)))
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(act.aileron.pos)))
+            TableNextRow()
+                TableNextColumn(); Text("Rudder")
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.rudder_cmd)))
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(y.ctl_lat.rudder_ref)))
+                TableNextColumn(); Text(@sprintf("%.6f", Float64(act.rudder.pos)))
+            EndTable()
         end
 
         Separator()
@@ -1270,11 +1270,11 @@ function GUI.draw!(ctl::Model{<:Controller},
     @cstatic h_datum=Int32(0) begin #ellipsoidal: 0, orthometric: 1
     if CImGui.CollapsingHeader("Vertical Guidance")
 
-        if CImGui.BeginTable("Longitudinal Guidance", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
+        if BeginTable("Longitudinal Guidance", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+            TableNextRow()
+                TableNextColumn();
                     Text("Mode")
-                CImGui.TableNextColumn();
+                TableNextColumn();
                     mode_button("Off", ModeGuidanceLon.off, u.mode_gdc_lon_req, y.mode_gdc_lon)
                     IsItemActive() && (u.mode_gdc_lon_req = ModeGuidanceLon.off); SameLine()
                     mode_button("Altitude", ModeGuidanceLon.alt, u.mode_gdc_lon_req, y.mode_gdc_lon)
@@ -1283,25 +1283,25 @@ function GUI.draw!(ctl::Model{<:Controller},
                         u.h_target = (h_datum == 0 ? h_e : h_o)
                         u.EAS_ref = EAS
                     end
-                CImGui.TableNextColumn();
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
-                CImGui.TableNextColumn();
+                TableNextColumn();
+            TableNextRow()
+                TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
+                TableNextColumn();
                     PushItemWidth(-10)
                     h_target_f64 = safe_input("Altitude Setpoint", Float64(u.h_target), 1, 1.0, "%.3f")
                     u.h_target = (h_datum == 0 ? HEllip(h_target_f64) : HOrth(h_target_f64))
                     PopItemWidth()
-                CImGui.TableNextColumn();
+                TableNextColumn();
                     h_datum == 0 && Text(@sprintf("%.3f", Float64(h_e)))
                     h_datum == 1 && Text(@sprintf("%.3f", Float64(h_o)))
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
-                CImGui.TableNextColumn();
+            TableNextRow()
+                TableNextColumn();
+                TableNextColumn();
                     @c RadioButton("Ellipsoidal", &h_datum, 0); SameLine()
                     IsItemActive() && (u.h_target = h_e)
                     @c RadioButton("Orthometric", &h_datum, 1)
                     IsItemActive() && (u.h_target = h_o)
-            CImGui.EndTable()
+            EndTable()
         end #table
 
         Separator()
@@ -1314,26 +1314,26 @@ function GUI.draw!(ctl::Model{<:Controller},
 
     if CImGui.CollapsingHeader("Secondary Actuation")
 
-        if CImGui.BeginTable("SecondaryActuation", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Flaps")
-                CImGui.TableNextColumn();
+        if BeginTable("SecondaryActuation", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+            TableNextRow()
+                TableNextColumn(); Text("Flaps")
+                TableNextColumn();
                 PushItemWidth(-10)
                 u.flaps = safe_slider("Flaps Input", u.flaps, "%.6f")
                 PopItemWidth()
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Left Brake")
-                CImGui.TableNextColumn();
+            TableNextRow()
+                TableNextColumn(); Text("Left Brake")
+                TableNextColumn();
                 PushItemWidth(-10)
                 u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
                 PopItemWidth()
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn(); Text("Right Brake")
-                CImGui.TableNextColumn();
+            TableNextRow()
+                TableNextColumn(); Text("Right Brake")
+                TableNextColumn();
                 PushItemWidth(-10)
                 u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
                 PopItemWidth()
-            CImGui.EndTable()
+            EndTable()
         end
 
         Separator()
@@ -1346,9 +1346,9 @@ function GUI.draw!(ctl::Model{<:Controller},
 
     if CImGui.CollapsingHeader("Flight Data")
 
-        if CImGui.BeginTable("Flight Data", 2, CImGui.ImGuiTableFlags_SizingStretchSame | CImGui.ImGuiTableFlags_BordersInner)
-            CImGui.TableNextRow()
-                CImGui.TableNextColumn();
+        if BeginTable("Flight Data", 2, CImGui.ImGuiTableFlags_SizingStretchSame | CImGui.ImGuiTableFlags_BordersInner)
+            TableNextRow()
+                TableNextColumn();
 
                 # Text("Flight Phase"); SameLine(240)
                 # Text("$(y.flight_phase)")
@@ -1371,7 +1371,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                 Text("Climb Rate"); SameLine(240)
                 Text(@sprintf("%.3f m/s", clm))
 
-            CImGui.TableNextColumn();
+            TableNextColumn();
 
                 Text("Latitude"); SameLine(240)
                 Text(@sprintf("%.6f deg", rad2deg(ϕ)))
@@ -1392,8 +1392,8 @@ function GUI.draw!(ctl::Model{<:Controller},
                 Text("Bank"); SameLine(240)
                 Text(@sprintf("%.3f deg", rad2deg(φ)))
 
-        CImGui.TableNextRow()
-            CImGui.TableNextColumn();
+        TableNextRow()
+            TableNextColumn();
 
                 Text("Roll Rate"); SameLine(240)
                 Text(@sprintf("%.3f deg/s", rad2deg(p)))
@@ -1402,7 +1402,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                 Text("Yaw Rate"); SameLine(240)
                 Text(@sprintf("%.3f deg/s", rad2deg(r)))
 
-            CImGui.TableNextColumn();
+            TableNextColumn();
                 Text("Specific Force (x)"); SameLine(240)
                 Text(@sprintf("%.3f g", dynamics.f_c_c[1]/Dynamics.g₀))
                 Text("Specific Force (y)"); SameLine(240)
@@ -1410,7 +1410,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                 Text("Specific Force (z)"); SameLine(240)
                 Text(@sprintf("%.3f g", dynamics.f_c_c[3]/Dynamics.g₀))
 
-            CImGui.EndTable()
+            EndTable()
         end
 
         Separator()

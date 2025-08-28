@@ -732,13 +732,7 @@ function GUI.draw!( systems::Model{<:Systems}, ::Model{A},
             @c CImGui.Checkbox("Power Plant", &c_pwp)
             @c CImGui.Checkbox("Fuel", &c_fuel)
             @c CImGui.Checkbox("Payload", &c_pld)
-            if c_act
-                if A === NoAvionics
-                    @c GUI.draw!(act, &c_act)
-                else
-                    @c GUI.draw(act, &c_act)
-                end
-            end
+            c_act && @c GUI.draw!(act, &c_act)
             c_aero && @c GUI.draw(aero, &c_aero)
             c_ldg && @c GUI.draw(ldg, &c_ldg)
             c_pwp && @c GUI.draw(pwp, &c_pwp)
@@ -764,9 +758,10 @@ const Cessna172 = C172.Aircraft
 
 @kwdef struct SystemsInitializer <: AbstractVehicleSystemsInitializer
     engine_state::Piston.EngineStateEnum = Piston.EngineState.off
+    mixture_ctl::Piston.MixtureControlEnum = Piston.MixtureControl.auto
     n_eng::Float64 = 0.0 #normalized engine speed
-    mixture::Ranged{Float64, 0., 1.} = 0.5
     throttle::Ranged{Float64, 0., 1.} = 0
+    mixture::Ranged{Float64, 0., 1.} = 0.5
     elevator::Ranged{Float64, -1., 1.} = 0
     aileron::Ranged{Float64, -1., 1.} = 0
     rudder::Ranged{Float64, -1., 1.} = 0

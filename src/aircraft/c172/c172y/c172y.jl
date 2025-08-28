@@ -145,52 +145,6 @@ end
 
 ################################### GUI ########################################
 
-function GUI.draw(mdl::Model{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 Fly-By-Wire Actuation")
-
-    CImGui.Begin(label, p_open)
-    CImGui.PushItemWidth(-60)
-
-    labels = uppercasefirst.(string.(keys(mdl.submodels)))
-    commands = map(ss->ss.y.cmd, values(mdl.submodels))
-    positions = map(ss->ss.y.pos, values(mdl.submodels))
-
-    #@cstatic allocates storage using global variables, so functions using
-    #it are not reentrant. no easy way of factoring this block out
-    @cstatic(
-        thr_buffer = fill(Cfloat(0),90), thr_offset = Ref(Cint(0)),
-        mix_buffer = fill(Cfloat(0),90), mix_offset = Ref(Cint(0)),
-        ail_buffer = fill(Cfloat(0),90), ail_offset = Ref(Cint(0)),
-        ele_buffer = fill(Cfloat(0),90), ele_offset = Ref(Cint(0)),
-        rud_buffer = fill(Cfloat(0),90), rud_offset = Ref(Cint(0)),
-        flp_buffer = fill(Cfloat(0),90), flp_offset = Ref(Cint(0)),
-        bkl_buffer = fill(Cfloat(0),90), bkl_offset = Ref(Cint(0)),
-        bkr_buffer = fill(Cfloat(0),90), bkr_offset = Ref(Cint(0)),
-
-        begin
-
-            buffers = (thr_buffer, mix_buffer, ail_buffer, ele_buffer, rud_buffer, flp_buffer, bkl_buffer, bkr_buffer)
-            offsets = (thr_offset, mix_offset, ail_offset, ele_offset, rud_offset, flp_offset, bkl_offset, bkr_offset)
-
-            foreach(labels, commands, positions, buffers, offsets) do label, command, position, buffer, offset
-
-                if CImGui.CollapsingHeader(label)
-                    CImGui.Text("$label Command"); CImGui.SameLine(200); display_bar("", command)
-                    CImGui.Text("$label Position"); CImGui.SameLine(200); display_bar("", position)
-                    buffer[offset[]+1] = Cfloat(position)
-                    offset[] = (offset[]+1) % length(buffer)
-                    CImGui.PlotLines("$label Position", buffer, length(buffer), offset[], "$label Position",
-                                    Cfloat(typemin(position)), Cfloat(typemax(position)),
-                                    (Cint(0), Cint(120)))
-                end
-            end
-
-        end)
-
-    CImGui.PopItemWidth()
-    CImGui.End()
-
-end
 
 function GUI.draw!(mdl::Model{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172 Fly-By-Wire Actuation")
@@ -269,14 +223,16 @@ function Modeling.init!(cmp::Model{<:Systems}, init::C172.SystemsInitializer)
 
     @unpack act, pwp, aero, fuel, ldg, pld = cmp
 
-    @unpack engine_state, n_eng, mixture, throttle, elevator, aileron,
-    rudder, flaps, brake_left, brake_right, fuel_load, payload,
+    @unpack engine_state, mixture_ctl, n_eng, throttle, mixture, elevator,
+    aileron, rudder, flaps, brake_left, brake_right, fuel_load, payload,
     stall, α_a_filt, β_a_filt = init
 
     @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = payload
 
     #assign payload
     @pack! pld.u = m_pilot, m_copilot, m_lpass, m_rpass, m_baggage
+
+    pwp.engine.u.mixture_ctl = mixture_ctl
 
     pwp.engine.s[] = engine_state
     pwp.x.engine.ω = n_eng * pwp.engine.ω_rated
@@ -340,10 +296,11 @@ function AircraftBase.assign!(vehicle::Model{<:C172Y.Vehicle},
     kin_init = KinInit(trim_state, trim_params, atmosphere)
 
     cmp_init = C172.SystemsInitializer(;
-        engine_state = Piston.EngineState.running, #obvious
+        engine_state = Piston.EngineState.running,
+        mixture_ctl = Piston.MixtureControl.auto,
         n_eng, mixture, throttle, elevator, aileron, rudder,
         flaps, brake_left = 0, brake_right = 0, fuel_load, payload,
-        stall = false, #obvious
+        stall = false,
         α_a_filt = α_a, #ensure zero α_a_filt state derivative
         β_a_filt = β_a #ensure zero β_a_filt state derivative
         )

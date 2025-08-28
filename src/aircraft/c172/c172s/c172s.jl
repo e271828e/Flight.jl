@@ -62,10 +62,6 @@ end
 struct MechanicalActuation <: C172.AbstractActuation end
 
 @kwdef mutable struct MechanicalActuationU
-    eng_start::Bool = false
-    eng_stop::Bool = false
-    throttle::Ranged{Float64, 0., 1.} = 0.0
-    mixture::Ranged{Float64, 0., 1.} = 0.5
     aileron::Ranged{Float64, -1., 1.} = 0.0
     elevator::Ranged{Float64, -1., 1.} = 0.0
     rudder::Ranged{Float64, -1., 1.} = 0.0
@@ -78,10 +74,6 @@ struct MechanicalActuation <: C172.AbstractActuation end
 end
 
 @kwdef struct MechanicalActuationY
-    eng_start::Bool = false
-    eng_stop::Bool = false
-    throttle::Float64 = 0.0
-    mixture::Float64 = 0.5
     aileron::Float64 = 0.0
     elevator::Float64 = 0.0
     rudder::Float64 = 0.0
@@ -98,13 +90,11 @@ Modeling.Y(::MechanicalActuation) = MechanicalActuationY()
 
 function Modeling.f_ode!(act::Model{<:MechanicalActuation})
 
-    @unpack eng_start, eng_stop,
-            throttle, mixture, aileron, elevator, rudder,
+    @unpack aileron, elevator, rudder,
             aileron_offset, elevator_offset, rudder_offset,
             flaps, brake_left, brake_right= act.u
 
-    act.y = MechanicalActuationY(; eng_start, eng_stop,
-            throttle, mixture, aileron, elevator, rudder,
+    act.y = MechanicalActuationY(; aileron, elevator, rudder,
             aileron_offset, elevator_offset, rudder_offset,
             flaps, brake_left, brake_right)
 
@@ -115,15 +105,10 @@ function C172.assign!(aero::Model{<:C172.Aero},
                 pwp::Model{<:PistonThruster},
                 act::Model{<:MechanicalActuation})
 
-    @unpack eng_start, eng_stop,
-            throttle, mixture, aileron, elevator, rudder,
+    @unpack aileron, elevator, rudder,
             aileron_offset, elevator_offset, rudder_offset,
             brake_left, brake_right, flaps = act.y
 
-    pwp.engine.u.start = eng_start
-    pwp.engine.u.stop = eng_stop
-    pwp.engine.u.throttle = throttle
-    pwp.engine.u.mixture = mixture
     ldg.nose.steering.u.input = (rudder_offset + rudder)
     ldg.left.braking.u[] = brake_left
     ldg.right.braking.u[] = brake_right
@@ -136,37 +121,6 @@ function C172.assign!(aero::Model{<:C172.Aero},
 end
 
 
-function GUI.draw(mdl::Model{<:MechanicalActuation}, p_open::Ref{Bool} = Ref(true),
-                label::String = "Cessna 172S Actuation")
-
-    y = mdl.y
-
-    CImGui.Begin(label, p_open)
-
-    CImGui.PushItemWidth(-60)
-
-    CImGui.Text("Engine Start: $(y.eng_start)")
-    CImGui.Text("Engine Stop: $(y.eng_stop)")
-
-    display_bar("Throttle", y.throttle, 0, 1)
-    display_bar("Aileron", y.aileron, -1, 1)
-    display_bar("Elevator", y.elevator, -1, 1)
-    display_bar("Rudder", y.rudder, -1, 1)
-
-    display_bar("Aileron Offset", y.aileron_offset, -1, 1)
-    display_bar("Elevator Offset", y.elevator_offset, -1, 1)
-    display_bar("Rudder Offset", y.rudder_offset, -1, 1)
-    display_bar("Flaps", y.flaps, 0, 1)
-    display_bar("Mixture", y.mixture, 0, 1)
-    display_bar("Left Brake", y.brake_left, 0, 1)
-    display_bar("Right Brake", y.brake_right, 0, 1)
-
-    CImGui.PopItemWidth()
-
-    CImGui.End()
-
-end
-
 function GUI.draw!(mdl::Model{<:MechanicalActuation}, p_open::Ref{Bool} = Ref(true),
                 label::String = "Cessna 172S Actuation")
 
@@ -176,22 +130,13 @@ function GUI.draw!(mdl::Model{<:MechanicalActuation}, p_open::Ref{Bool} = Ref(tr
 
     CImGui.PushItemWidth(-150)
 
-    mode_button("Engine Start", true, u.eng_start, false; HSV_requested = HSV_green)
-    u.eng_start = CImGui.IsItemActive()
-    CImGui.SameLine()
-    mode_button("Engine Stop", true, u.eng_stop, false; HSV_requested = HSV_red)
-    u.eng_stop = CImGui.IsItemActive()
-
-    u.throttle = safe_slider("Throttle", u.throttle, "%.6f"; show_label = true)
     u.aileron = safe_slider("Aileron", u.aileron, "%.6f"; show_label = true)
     u.elevator = safe_slider("Elevator", u.elevator, "%.6f"; show_label = true)
     u.rudder = safe_slider("Rudder", u.rudder, "%.6f"; show_label = true)
-
     u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.001, 0.1, "%.6f"; show_label = true)
     u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.001, 0.1, "%.6f"; show_label = true)
     u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.001, 0.1, "%.6f"; show_label = true)
     u.flaps = safe_slider("Flaps", u.flaps, "%.6f"; show_label = true)
-    u.mixture = safe_slider("Mixture", u.mixture, "%.6f"; show_label = true)
     u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f"; show_label = true)
     u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f"; show_label = true)
 
@@ -225,8 +170,8 @@ function Modeling.init!(sys::Model{<:Systems}, init::C172.SystemsInitializer)
 
     @unpack act, pwp, aero, fuel, ldg, pld = sys
 
-    @unpack engine_state, n_eng, mixture, throttle, elevator, aileron,
-    rudder, flaps, brake_left, brake_right, fuel_load, payload,
+    @unpack engine_state, mixture_ctl, n_eng, throttle, mixture, elevator,
+    aileron, rudder, flaps, brake_left, brake_right, fuel_load, payload,
     stall, α_a_filt, β_a_filt = init
 
     @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = payload
@@ -234,16 +179,16 @@ function Modeling.init!(sys::Model{<:Systems}, init::C172.SystemsInitializer)
     #assign payload
     @pack! pld.u = m_pilot, m_copilot, m_lpass, m_rpass, m_baggage
 
-    #all control surface offsets set to zero
-    act.u.throttle = throttle
-    act.u.mixture = mixture
+    pwp.engine.u.throttle = throttle
+    pwp.engine.u.mixture = mixture
+    pwp.engine.u.mixture_ctl = mixture_ctl
     act.u.elevator = elevator
     act.u.aileron = aileron
     act.u.rudder = rudder
+    act.u.flaps = flaps
     act.u.aileron_offset = 0
     act.u.elevator_offset = 0
     act.u.rudder_offset = 0
-    act.u.flaps = flaps
     act.u.brake_left = brake_left
     act.u.brake_right = brake_right
 
@@ -289,10 +234,11 @@ function AircraftBase.assign!(vehicle::Model{<:C172S.Vehicle},
     kin_init = KinInit(trim_state, trim_params, atmosphere)
 
     sys_init = C172.SystemsInitializer(;
-        engine_state = Piston.EngineState.running, #obvious
-        n_eng, mixture, throttle, elevator, aileron, rudder,
+        engine_state = Piston.EngineState.running,
+        mixture_ctl = Piston.MixtureControl.auto,
+        n_eng, throttle, mixture, elevator, aileron, rudder,
         flaps, brake_left = 0, brake_right = 0, fuel_load, payload,
-        stall = false, #obvious
+        stall = false,
         α_a_filt = α_a, #ensure zero α_a_filt state derivative
         β_a_filt = β_a #ensure zero β_a_filt state derivative
         )
@@ -371,14 +317,16 @@ end
 
 function ULinear(vehicle::Model{<:C172S.Vehicle{NED}})
 
-    @unpack throttle, aileron, elevator, rudder = vehicle.systems.act.u
+    @unpack aileron, elevator, rudder = vehicle.systems.act.u
+    @unpack throttle = vehicle.systems.pwp.engine.u
     ULinear(; throttle, aileron, elevator, rudder)
 
 end
 
 function YLinear(vehicle::Model{<:C172S.Vehicle{NED}})
 
-    @unpack throttle, aileron, elevator, rudder = vehicle.systems.act.u
+    @unpack aileron, elevator, rudder = vehicle.systems.act.u
+    @unpack throttle = vehicle.systems.pwp.engine.u
     @unpack systems, airflow, dynamics, kinematics = vehicle.y
     @unpack pwp, fuel, aero, act = systems
 
@@ -424,7 +372,8 @@ AircraftBase.y_linear(vehicle::Model{<:C172S.Vehicle{NED}}) = YLinear(vehicle)
 function AircraftBase.assign_u!(vehicle::Model{<:C172S.Vehicle{NED}}, u::AbstractVector{Float64})
 
     @unpack throttle, aileron, elevator, rudder = ULinear(u)
-    @pack! vehicle.systems.act.u = throttle, aileron, elevator, rudder
+    @pack! vehicle.systems.act.u = aileron, elevator, rudder
+    @pack! vehicle.systems.pwp.engine.u = throttle
 
 end
 
