@@ -1,8 +1,9 @@
 module Sim
 
 using UnPack, Reexport, StructArrays
-using OrdinaryDiffEq: OrdinaryDiffEq, OrdinaryDiffEqAlgorithm, ODEProblem,
-                      ODEIntegrator, Heun, RK4, u_modified!, init as init_integrator
+using OrdinaryDiffEq: OrdinaryDiffEq, OrdinaryDiffEqCore, ODEProblem,
+                      Heun, RK4, init as init_integrator
+using OrdinaryDiffEq.OrdinaryDiffEqCore: OrdinaryDiffEqAlgorithm, ODEIntegrator
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback,
                        CallbackSet, SavedValues
 using RecursiveArrayTools
