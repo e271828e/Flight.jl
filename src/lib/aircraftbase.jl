@@ -250,6 +250,8 @@ function Modeling.f_step!(aircraft::Model{<:Aircraft},
                          terrain::Model{<:AbstractTerrain})
 
     @unpack vehicle, avionics = aircraft
+    f_step!(avionics, vehicle)
+    assign!(vehicle, avionics)
     f_step!(vehicle, atmosphere, terrain)
 end
 

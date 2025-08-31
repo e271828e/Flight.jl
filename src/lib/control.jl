@@ -5,7 +5,10 @@ module Control
 
 using Flight.FlightCore
 
-function reset!(mdl::Model)
+function reset!(mdl::T) where {T <: Model}
+    #prevent inadvertent dispatching for leaf Models
+    @assert !isempty(mdl.submodels) "$T is a leaf Model, so it must extend the
+                                    Control.reset! method"
     foreach(mdl.submodels) do ss
         reset!(ss)
     end

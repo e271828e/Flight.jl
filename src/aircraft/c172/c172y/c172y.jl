@@ -110,7 +110,6 @@ end
 
 @kwdef struct FlyByWireActuation <: C172.AbstractActuation
     throttle::Actuator1 = Actuator1(range = (0.0, 1.0))
-    mixture::Actuator1 = Actuator1(range = (0.0, 1.0))
     aileron::Actuator1 = Actuator1(range = (-1.0, 1.0))
     elevator::Actuator1 = Actuator1(range = (-1.0, 1.0))
     rudder::Actuator1 = Actuator1(range = (-1.0, 1.0))
@@ -127,7 +126,7 @@ function C172.assign!(aero::Model{<:C172.Aero},
                     pwp::Model{<:PistonThruster},
                     act::Model{<:FlyByWireActuation})
 
-    @unpack throttle, mixture, aileron, elevator, rudder, flaps,
+    @unpack throttle, aileron, elevator, rudder, flaps,
             brake_left, brake_right = act.y
 
     aero.u.e = -elevator.pos
@@ -135,7 +134,6 @@ function C172.assign!(aero::Model{<:C172.Aero},
     aero.u.r = -rudder.pos
     aero.u.f = flaps.pos
     pwp.engine.u.throttle = throttle.pos
-    pwp.engine.u.mixture = mixture.pos
     ldg.nose.steering.u.input = rudder.pos
     ldg.left.braking.u[] = brake_left.pos
     ldg.right.braking.u[] = brake_right.pos
@@ -252,7 +250,6 @@ function Modeling.init!(cmp::Model{<:Systems}, init::C172.SystemsInitializer)
 
     #actuator commands
     act.throttle.u[] = throttle
-    act.mixture.u[] = mixture
     act.elevator.u[] = elevator
     act.aileron.u[] = aileron
     act.rudder.u[] = rudder
@@ -263,7 +260,6 @@ function Modeling.init!(cmp::Model{<:Systems}, init::C172.SystemsInitializer)
     #actuator states: in steady state every actuator's position state must be
     #equal to the actuator command.
     act.x.throttle.p = throttle
-    act.x.mixture.p = mixture
     act.x.elevator.p = elevator
     act.x.aileron.p = aileron
     act.x.rudder.p = rudder
@@ -319,7 +315,7 @@ function AircraftBase.assign!(vehicle::Model{<:C172Y.Vehicle},
     @assert abs(aero.ẋ.α_filt) < 1e-10
     @assert abs(aero.ẋ.β_filt) < 1e-10
 
-    @assert all(SVector{8,Float64}(act.ẋ) .== 0)
+    @assert all(SVector{7,Float64}(act.ẋ) .== 0)
 
 end
 

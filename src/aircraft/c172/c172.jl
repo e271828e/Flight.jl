@@ -716,9 +716,9 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw!( systems::Model{<:Systems}, ::Model{A},
+function GUI.draw!( systems::Model{<:Systems}, ::Model{<:AbstractAvionics},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 Systems") where {A<:AbstractAvionics}
+                    label::String = "Cessna 172 Systems")
 
     @unpack act, pwp, ldg, aero, fuel, pld = systems
 
