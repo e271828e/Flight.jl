@@ -26,7 +26,7 @@ function test_gui()
     end
 end
 
-function test_render_loop(target::Model = Model(TestSystem()), timeout::Real = 1.0, args...)
+function test_render_loop(target = Model(TestSystem()), timeout::Real = 1.0, args...)
     f_draw = let target = target
         () -> GUI.draw!(target, args...)
     end

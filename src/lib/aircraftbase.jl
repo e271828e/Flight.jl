@@ -3,6 +3,8 @@ module AircraftBase
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 using DataStructures: OrderedDict
+using CImGui: Begin, End, BeginTable, EndTable, TableNextColumn, TableNextRow,
+              Text, CollapsingHeader, Separator, SameLine
 
 using Flight.FlightCore
 using Flight.FlightLib
@@ -422,6 +424,7 @@ function GUI.draw!(aircraft::Model{<:Aircraft}, p_open::Ref{Bool} = Ref(true),
 
 end
 
+
 function GUI.draw!(vehicle::Model{<:Vehicle},
                    avionics::Model{<:AbstractAvionics},
                    p_open::Ref{Bool} = Ref(true),
@@ -447,5 +450,115 @@ function GUI.draw!(vehicle::Model{<:Vehicle},
     CImGui.End()
 
 end
+
+
+function GUI.draw( vehicle::VehicleY, label::String = "Flight Data")
+
+    @unpack kinematics, dynamics, airflow = vehicle
+
+    @unpack e_nb, ω_wb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eb_n = kinematics
+    @unpack CAS, EAS, TAS, M, T, p, ρ, Δp, v_wb_b = airflow
+    @unpack ψ, θ, φ = e_nb
+    @unpack ϕ, λ = ϕ_λ
+
+    α, β = Atmosphere.get_airflow_angles(v_wb_b)
+    p, q, r = ω_wb_b
+    clm = -v_eb_n[3]
+
+    if CollapsingHeader(label)
+
+        if BeginTable("Flight Data", 2, CImGui.ImGuiTableFlags_SizingStretchSame | CImGui.ImGuiTableFlags_BordersInner)
+            TableNextRow()
+                TableNextColumn()
+
+                Text("Airspeed (Calibrated)"); SameLine(240)
+                Text(@sprintf("%.3f m/s | %.3f kts", CAS, Atmosphere.SI2kts(CAS)))
+                Text("Airspeed (Equivalent)"); SameLine(240)
+                Text(@sprintf("%.3f m/s | %.3f kts", EAS, Atmosphere.SI2kts(EAS)))
+                Text("Airspeed (True)"); SameLine(240)
+                Text(@sprintf("%.3f m/s | %.3f kts", TAS, Atmosphere.SI2kts(TAS)))
+                Text("Angle of Attack"); SameLine(240)
+                Text(@sprintf("%.3f deg", rad2deg(α)))
+                Text("Sideslip Angle"); SameLine(240)
+                Text(@sprintf("%.3f deg", rad2deg(β)))
+
+                Separator()
+
+                Text("Dynamic Pressure"); SameLine(240)
+                Text(@sprintf("%.3f Pa", Δp))
+                Text("Impact Pressure"); SameLine(240)
+                Text(@sprintf("%.3f Pa", Δp))
+                Text("Mach"); SameLine(240)
+                Text(@sprintf("%.3f", M))
+
+                Separator()
+
+                Text("Static Temperature"); SameLine(240)
+                Text(@sprintf("%.3f K", T))
+                Text("Static Pressure"); SameLine(240)
+                Text(@sprintf("%.3f Pa", p))
+                Text("Density"); SameLine(240)
+                Text(@sprintf("%.3f Pa", ρ))
+
+                Separator()
+
+                Text("Specific Force (x)"); SameLine(240)
+                Text(@sprintf("%.3f g", dynamics.f_c_c[1]/Dynamics.g₀))
+                Text("Specific Force (y)"); SameLine(240)
+                Text(@sprintf("%.3f g", dynamics.f_c_c[2]/Dynamics.g₀))
+                Text("Specific Force (z)"); SameLine(240)
+                Text(@sprintf("%.3f g", dynamics.f_c_c[3]/Dynamics.g₀))
+
+
+            TableNextColumn()
+
+                Text("Roll Rate"); SameLine(240)
+                Text(@sprintf("%.3f deg/s", rad2deg(p)))
+                Text("Pitch Rate"); SameLine(240)
+                Text(@sprintf("%.3f deg/s", rad2deg(q)))
+                Text("Yaw Rate"); SameLine(240)
+                Text(@sprintf("%.3f deg/s", rad2deg(r)))
+
+                Separator()
+
+                Text("Heading"); SameLine(240);
+                Text(@sprintf("%.3f deg", rad2deg(ψ)))
+                Text("Inclination"); SameLine(240)
+                Text(@sprintf("%.3f deg", rad2deg(θ)))
+                Text("Bank"); SameLine(240)
+                Text(@sprintf("%.3f deg", rad2deg(φ)))
+
+                Separator()
+
+                Text("Latitude"); SameLine(240)
+                Text(@sprintf("%.6f deg", rad2deg(ϕ)))
+                Text("Longitude"); SameLine(240)
+                Text(@sprintf("%.6f deg", rad2deg(λ)))
+                Text("Altitude (Ellipsoidal)"); SameLine(240)
+                Text(@sprintf("%.3f m | %.3f ft", Float64(h_e), Float64(h_e)/0.3048))
+                Text("Altitude (Orthometric)"); SameLine(240)
+                Text(@sprintf("%.3f m | %.3f ft", Float64(h_o), Float64(h_o)/0.3048))
+                # Text("Height Over Ground"); SameLine(240)
+                # Text(@sprintf("%.3f m | %.3f ft", hog, hog/0.3048))
+
+                Separator()
+
+                Text("Ground Speed"); SameLine(240)
+                Text(@sprintf("%.3f m/s | %.3f kts", v_gnd, Atmosphere.SI2kts(v_gnd)))
+                Text("Course Angle"); SameLine(240)
+                Text(@sprintf("%.3f deg", rad2deg(χ_gnd)))
+                Text("Flight Path Angle"); SameLine(240)
+                Text(@sprintf("%.3f deg", rad2deg(γ_gnd)))
+                Text("Climb Rate"); SameLine(240)
+                Text(@sprintf("%.3f m/s", clm))
+
+
+            EndTable()
+        end
+
+    end
+
+end
+
 
 end #module

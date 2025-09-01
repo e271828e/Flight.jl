@@ -357,6 +357,22 @@ function Modeling.init!(lon::Model{<:ControllerLon},
 
 end
 
+
+################################# JSON3 ########################################
+
+#declare ControllerLonU as mutable
+StructTypes.StructType(::Type{ControllerLonU}) = StructTypes.Mutable()
+#replace Greek characters from ControllerU fields in the JSON string
+StructTypes.names(::Type{ControllerLonU}) = ((:θ_ref, :theta_ref),)
+
+#enable JSON parsing of integers as ModeControlLonEnum
+StructTypes.StructType(::Type{ModeControlLonEnum}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{ModeControlLonEnum}) = Int32 #default enum type
+StructTypes.lower(x::ModeControlLonEnum) = Int32(x)
+
+
+################################### GUI ########################################
+
 function GUI.draw!(lon::Model{<:ControllerLon},
                     vehicle::Model{<:C172Y.Vehicle})
 
@@ -776,6 +792,26 @@ function Modeling.init!(lat::Model{<:ControllerLat},
 end
 
 
+################################# JSON3 ########################################
+
+#declare ControllerLatU as mutable
+StructTypes.StructType(::Type{ControllerLatU}) = StructTypes.Mutable()
+#replace Greek characters from ControllerU fields in the JSON string
+StructTypes.names(::Type{ControllerLatU}) = ((:χ_ref, :chi_ref),
+    (:φ_ref, :phi_ref), (:β_ref, :beta_ref))
+
+#enable JSON parsing of integers as ModeControlLatEnum
+StructTypes.StructType(::Type{ModeControlLatEnum}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{ModeControlLatEnum}) = Int32 #default enum type
+StructTypes.lower(x::ModeControlLatEnum) = Int32(x)
+
+#now we can do:
+# JSON3.read(JSON3.write(ControllerLatU()), ControllerLatU)
+# JSON3.read!(JSON3.write(ControllerLatU()), ControllerLatU())
+
+
+################################### GUI ########################################
+
 function GUI.draw!(lat::Model{<:ControllerLat},
                     vehicle::Model{<:C172Y.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
@@ -913,9 +949,9 @@ end
 end
 
 #define fields with submodel's names to create parent-child input linkage
-@kwdef mutable struct ControllerU
-    lon = ControllerLonU()
-    lat = ControllerLatU()
+@kwdef struct ControllerU
+    lon::ControllerLonU = ControllerLonU()
+    lat::ControllerLatU = ControllerLatU()
 end
 
 Modeling.U(::Controller) = ControllerU()
@@ -939,137 +975,20 @@ function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:C172Y.Vehicle
     Modeling.init!(mdl.lat, vehicle)
 end
 
-
-################################################################################
-################################## JSON3  ######################################
-
-#declare ControllerU as mutable
-StructTypes.StructType(::Type{ControllerU}) = StructTypes.Mutable()
-#replace Greek characters from ControllerU fields in the JSON string
-StructTypes.names(::Type{ControllerU}) = ((:χ_ref, :chi_ref), (:θ_ref, :theta_ref),
-    (:φ_ref, :phi_ref), (:β_ref, :beta_ref))
-
-#enable JSON parsing of integers as ModeControlLonEnum
-StructTypes.StructType(::Type{ModeControlLonEnum}) = StructTypes.CustomStruct()
-StructTypes.lowertype(::Type{ModeControlLonEnum}) = Int32 #default enum type
-StructTypes.lower(x::ModeControlLonEnum) = Int32(x)
-
-#enable JSON parsing of integers as ModeControlLatEnum
-StructTypes.StructType(::Type{ModeControlLatEnum}) = StructTypes.CustomStruct()
-StructTypes.lowertype(::Type{ModeControlLatEnum}) = Int32 #default enum type
-StructTypes.lower(x::ModeControlLatEnum) = Int32(x)
-
-#now we can do:
-# JSON3.read(JSON3.write(ControllerU()), ControllerU)
-# JSON3.read!(JSON3.write(ControllerU()), ControllerU())
-
-
-################################################################################
 ################################## GUI #########################################
-
-
 
 function GUI.draw!(ctl::Model{<:Controller},
                     vehicle::Model{<:C172Y.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna172Y Control Laws")
 
-    @unpack u, y, Δt, submodels = ctl
-    @unpack lon, lat = submodels
-
-    @unpack systems, kinematics, dynamics, airflow = vehicle.y
-    @unpack act, pwp, fuel, ldg, aero = systems
-
-    @unpack e_nb, ω_wb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eb_n = kinematics
-    @unpack α, β = aero
-    @unpack CAS, EAS, TAS, T, p, pt = airflow
-    @unpack ψ, θ, φ = e_nb
-    @unpack ϕ, λ = ϕ_λ
-
-    p, q, r = ω_wb_b
-    clm = -v_eb_n[3]
-    hog = (ldg.left.strut.Δh + ldg.right.strut.Δh + ldg.nose.strut.Δh) / 3
+    @unpack lon, lat = ctl.submodels
 
     Begin(label, p_open)
 
     GUI.draw!(lon, vehicle)
     GUI.draw!(lat, vehicle)
-
-
-    if CImGui.CollapsingHeader("Flight Data")
-
-        if BeginTable("Flight Data", 2, CImGui.ImGuiTableFlags_SizingStretchSame | CImGui.ImGuiTableFlags_BordersInner)
-            TableNextRow()
-                TableNextColumn();
-
-                Text("Airspeed (Calibrated)"); SameLine(240)
-                Text(@sprintf("%.3f m/s | %.3f kts", CAS, Atmosphere.SI2kts(CAS)))
-                Text("Airspeed (Equivalent)"); SameLine(240)
-                Text(@sprintf("%.3f m/s | %.3f kts", EAS, Atmosphere.SI2kts(EAS)))
-                Text("Airspeed (True)"); SameLine(240)
-                Text(@sprintf("%.3f m/s | %.3f kts", TAS, Atmosphere.SI2kts(TAS)))
-                Text("Angle of Attack"); SameLine(240)
-                Text(@sprintf("%.3f deg", rad2deg(α)))
-                Text("Sideslip Angle"); SameLine(240)
-                Text(@sprintf("%.3f deg", rad2deg(β)))
-
-                Separator()
-
-                Text("Heading"); SameLine(240);
-                Text(@sprintf("%.3f deg", rad2deg(ψ)))
-                Text("Inclination"); SameLine(240)
-                Text(@sprintf("%.3f deg", rad2deg(θ)))
-                Text("Bank"); SameLine(240)
-                Text(@sprintf("%.3f deg", rad2deg(φ)))
-
-                Separator()
-
-                Text("Roll Rate"); SameLine(240)
-                Text(@sprintf("%.3f deg/s", rad2deg(p)))
-                Text("Pitch Rate"); SameLine(240)
-                Text(@sprintf("%.3f deg/s", rad2deg(q)))
-                Text("Yaw Rate"); SameLine(240)
-                Text(@sprintf("%.3f deg/s", rad2deg(r)))
-
-
-            TableNextColumn();
-
-                Text("Latitude"); SameLine(240)
-                Text(@sprintf("%.6f deg", rad2deg(ϕ)))
-                Text("Longitude"); SameLine(240)
-                Text(@sprintf("%.6f deg", rad2deg(λ)))
-                Text("Altitude (Ellipsoidal)"); SameLine(240)
-                Text(@sprintf("%.3f m | %.3f ft", Float64(h_e), Float64(h_e)/0.3048))
-                Text("Altitude (Orthometric)"); SameLine(240)
-                Text(@sprintf("%.3f m | %.3f ft", Float64(h_o), Float64(h_o)/0.3048))
-                # Text("Height Over Ground"); SameLine(240)
-                # Text(@sprintf("%.3f m | %.3f ft", hog, hog/0.3048))
-
-                Separator()
-
-                Text("Ground Speed"); SameLine(240)
-                Text(@sprintf("%.3f m/s | %.3f kts", v_gnd, Atmosphere.SI2kts(v_gnd)))
-                Text("Course Angle"); SameLine(240)
-                Text(@sprintf("%.3f deg", rad2deg(χ_gnd)))
-                Text("Flight Path Angle"); SameLine(240)
-                Text(@sprintf("%.3f deg", rad2deg(γ_gnd)))
-                Text("Climb Rate"); SameLine(240)
-                Text(@sprintf("%.3f m/s", clm))
-
-                Separator()
-
-                Text("Specific Force (x)"); SameLine(240)
-                Text(@sprintf("%.3f g", dynamics.f_c_c[1]/Dynamics.g₀))
-                Text("Specific Force (y)"); SameLine(240)
-                Text(@sprintf("%.3f g", dynamics.f_c_c[2]/Dynamics.g₀))
-                Text("Specific Force (z)"); SameLine(240)
-                Text(@sprintf("%.3f g", dynamics.f_c_c[3]/Dynamics.g₀))
-
-            EndTable()
-        end
-
-        Separator()
-    end
+    GUI.draw(vehicle.y)
 
     if CImGui.CollapsingHeader("Internals")
         @cstatic c_lon=false c_lat=false c_alt=false begin
