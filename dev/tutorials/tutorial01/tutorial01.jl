@@ -1,7 +1,7 @@
 using Sockets
 using Flight
 
-function tutorial01(; aircraft::Cessna172 = Cessna172Yv1(),
+function tutorial01(; aircraft::Cessna172 = Cessna172Xv1(),
                 situation::Symbol = :ground,
                 xp12_address = IPv4("127.0.0.1"),
                 xp12_port = 49000,

@@ -2,7 +2,7 @@ using Sockets
 using Flight
 using OrdinaryDiffEq: Heun, RK4
 
-using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat,
+using Flight.FlightAircraft.C172X.C172XControl: ModeControlLon, ModeControlLat,
     ModeGuidanceLon, ModeGuidanceLat, FlightPhase
 
 function tutorial02a()
@@ -12,7 +12,7 @@ function tutorial02a()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    aircraft = Cessna172Yv1()
+    aircraft = Cessna172Xv1()
     terrain = HorizontalTerrain(h_LOWS15)
     atmosphere = SimpleAtmosphere()
 
@@ -55,7 +55,7 @@ function tutorial02b()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    aircraft = Cessna172Yv1()
+    aircraft = Cessna172Xv1()
     terrain = HorizontalTerrain(h_LOWS15)
     atmosphere = SimpleAtmosphere()
 
@@ -102,7 +102,7 @@ function tutorial02c()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    aircraft = Cessna172Yv1()
+    aircraft = Cessna172Xv1()
     terrain = HorizontalTerrain(h_LOWS15)
     atmosphere = SimpleAtmosphere()
 
@@ -151,7 +151,7 @@ function tutorial02d()
     h_LOWS15 = HOrth(427.2)
     ψ_LOWS15 = deg2rad(157)
 
-    aircraft = Cessna172Yv1()
+    aircraft = Cessna172Xv1()
     terrain = HorizontalTerrain(h_LOWS15)
     atmosphere = SimpleAtmosphere()
 
