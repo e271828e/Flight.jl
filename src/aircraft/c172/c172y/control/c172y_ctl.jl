@@ -39,7 +39,7 @@ abstract type AbstractControlChannel <: ModelDefinition end
 
 
 ################################################################################
-################################## ControllerLon ##################################
+################################## ControlLawsLon ##################################
 
 @enumx T=ModeControlLonEnum ModeControlLon begin
     direct = 0 #direct throttle & elevator
@@ -109,7 +109,7 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct ControllerLon{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
+@kwdef struct ControlLawsLon{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
     e2e_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "e2e_lookup.h5"))
     q2e_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "q2e_lookup.h5"))
     v2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2θ_lookup.h5"))
@@ -123,7 +123,7 @@ end
     v2t_pid::PID = PID()
 end
 
-@kwdef mutable struct ControllerLonU
+@kwdef mutable struct ControlLawsLonU
     mode_req::ModeControlLonEnum = ModeControlLon.direct
     throttle_axis::Ranged{Float64, 0., 1.} = 0.0
     throttle_offset::Ranged{Float64, 0., 1.} = 0.0
@@ -135,7 +135,7 @@ end
     clm_ref::Float64 = 0.0 #climb rate reference
 end
 
-@kwdef struct ControllerLonY
+@kwdef struct ControlLawsLonY
     mode::ModeControlLonEnum = ModeControlLon.direct
     throttle_ref::Ranged{Float64, 0., 1.} = 0.0
     elevator_ref::Ranged{Float64, -1., 1.} = 0.0
@@ -153,10 +153,10 @@ end
     v2t_pid::PIDOutput = PIDOutput()
 end
 
-Modeling.U(::ControllerLon) = ControllerLonU()
-Modeling.Y(::ControllerLon) = ControllerLonY()
+Modeling.U(::ControlLawsLon) = ControlLawsLonU()
+Modeling.Y(::ControlLawsLon) = ControlLawsLonY()
 
-function Modeling.init!(mdl::Model{<:ControllerLon})
+function Modeling.init!(mdl::Model{<:ControlLawsLon})
     #e2e determines elevator saturation for all pitch control loops (q2e, c2θ,
     #v2θ), so we don't need to set bounds for those
     mdl.e2e_lqr.u.bound_lo .= -1
@@ -167,7 +167,7 @@ function Modeling.init!(mdl::Model{<:ControllerLon})
 end
 
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControllerLon},
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
                         vehicle::Model{<:C172Y.Vehicle})
 
     @unpack mode_req, throttle_axis, throttle_offset, elevator_axis,
@@ -294,7 +294,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControllerLon},
 
     end
 
-    mdl.y = ControllerLonY(; mode, throttle_ref, elevator_ref,
+    mdl.y = ControlLawsLonY(; mode, throttle_ref, elevator_ref,
         q_ref, θ_ref, EAS_ref, clm_ref, throttle_cmd, elevator_cmd,
         e2e_lqr = e2e_lqr.y, q2e_int = q2e_int.y, q2e_pid = q2e_pid.y,
         v2θ_pid = v2θ_pid.y, c2θ_pid = c2θ_pid.y, v2t_pid = v2t_pid.y)
@@ -303,7 +303,7 @@ end
 
 
 function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
-                          mdl::Model{<:ControllerLon})
+                          mdl::Model{<:ControlLawsLon})
 
     @unpack act = systems.submodels
     @unpack throttle_cmd, elevator_cmd = mdl.y
@@ -316,7 +316,7 @@ end
 
 ############################# Initialization ###################################
 
-function Modeling.init!(lon::Model{<:ControllerLon},
+function Modeling.init!(lon::Model{<:ControlLawsLon},
                         vehicle::Model{<:C172Y.Vehicle})
 
     #we assume that the vehicle's y has already been updated to its trim
@@ -339,19 +339,27 @@ function Modeling.init!(lon::Model{<:ControllerLon},
     lon.u.clm_ref = -v_eb_n[3]
 
     #for the trim condition to be preserved when the simulation is started with
-    #sas (rather than direct) modes enabled, we need a post-trim update of the
-    #controller with the inner LQR SAS loops enabled. this loads the z_trim,
-    #u_trim and x_trim values corresponding to the trim state into the LQR
-    #trackers, and runs them once. after this, their outputs will match the
-    #actuator commands required by the trim condition. this match is only
-    #approximate, because in general, the trim values loaded from the lookup
-    #tables will be interpolated, rather than exactly computed at specific
-    #controller design points, but it is good enough. without this step, all
-    #modes that build upon the SAS will break the trim equilibrium when selected
+    #SAS-based modes enabled, we need a post-trim update of the control laws
+    #with the inner LQR SAS loops enabled. this loads the z_trim, u_trim and
+    #x_trim values corresponding to the trim state into the LQR trackers, and
+    #runs them once.
+
+    #after this, their outputs will match the actuator commands required by the
+    #trim condition. this match is only approximate, because in general, the
+    #trim values loaded from the lookup tables will be interpolated, rather than
+    #exactly computed at specific controller design points. however, it is close
+    #enough.
+
+    #without this step, on the first call to f_ode!(::Model{<:Aircraft},...),
+    #the outputs from the uninitialized SAS would be assigned to the vehicle,
+    #overwriting the actuator commands set by the trim function with the
+    #incorrect default values
+
+    #initialize SAS outputs
     lon.u.mode_req = ModeControlLon.sas
     f_periodic!(lon, vehicle)
 
-    #restore direct modes
+    #restore direct mode
     lon.u.mode_req = ModeControlLon.direct
     f_periodic!(lon, vehicle)
 
@@ -360,10 +368,10 @@ end
 
 ################################# JSON3 ########################################
 
-#declare ControllerLonU as mutable
-StructTypes.StructType(::Type{ControllerLonU}) = StructTypes.Mutable()
-#replace Greek characters from ControllerU fields in the JSON string
-StructTypes.names(::Type{ControllerLonU}) = ((:θ_ref, :theta_ref),)
+#declare ControlLawsLonU as mutable
+StructTypes.StructType(::Type{ControlLawsLonU}) = StructTypes.Mutable()
+#replace Greek characters from ControlLawsU fields in the JSON string
+StructTypes.names(::Type{ControlLawsLonU}) = ((:θ_ref, :theta_ref),)
 
 #enable JSON parsing of integers as ModeControlLonEnum
 StructTypes.StructType(::Type{ModeControlLonEnum}) = StructTypes.CustomStruct()
@@ -373,7 +381,7 @@ StructTypes.lower(x::ModeControlLonEnum) = Int32(x)
 
 ################################### GUI ########################################
 
-function GUI.draw!(lon::Model{<:ControllerLon},
+function GUI.draw!(lon::Model{<:ControlLawsLon},
                     vehicle::Model{<:C172Y.Vehicle})
 
     @unpack u, y, Δt = lon
@@ -486,7 +494,7 @@ function GUI.draw!(lon::Model{<:ControllerLon},
 
 end
 
-function draw_internals(lon::Model{<:ControllerLon}, p_open::Ref{Bool} = Ref(true))
+function draw_internals(lon::Model{<:ControlLawsLon}, p_open::Ref{Bool} = Ref(true))
     Begin("Lateral Control", p_open)
         Text("Sampling Period: $(lon.Δt)")
         Text("Mode: $(lon.y.mode)")
@@ -502,7 +510,7 @@ end
 
 
 ################################################################################
-################################# ControllerLat ###################################
+################################# ControlLawsLat ###################################
 
 @enumx T=ModeControlLatEnum ModeControlLat begin
     direct = 0 #direct aileron & rudder
@@ -569,7 +577,7 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct ControllerLat{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
+@kwdef struct ControlLawsLat{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
     ar2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "ar2ar_lookup.h5"))
     φβ2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "φβ2ar_lookup.h5"))
     p2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
@@ -581,7 +589,7 @@ end
     χ2φ_pid::PID = PID()
 end
 
-@kwdef mutable struct ControllerLatU
+@kwdef mutable struct ControlLawsLatU
     mode_req::ModeControlLatEnum = ModeControlLat.direct #lateral control mode
     aileron_axis::Ranged{Float64, -1., 1.} = 0.0
     aileron_offset::Ranged{Float64, -1., 1.} = 0.0
@@ -593,7 +601,7 @@ end
     χ_ref::Float64 = 0.0 #course angle reference
 end
 
-@kwdef struct ControllerLatY
+@kwdef struct ControlLawsLatY
     mode::ModeControlLatEnum = ModeControlLat.direct
     aileron_ref::Ranged{Float64, -1., 1.} = 0.0
     rudder_ref::Ranged{Float64, -1., 1.} = 0.0
@@ -610,10 +618,10 @@ end
     χ2φ_pid::PIDOutput = PIDOutput()
 end
 
-Modeling.U(::ControllerLat) = ControllerLatU()
-Modeling.Y(::ControllerLat) = ControllerLatY()
+Modeling.U(::ControlLawsLat) = ControlLawsLatU()
+Modeling.Y(::ControlLawsLat) = ControlLawsLatY()
 
-function Modeling.init!(mdl::Model{<:ControllerLat})
+function Modeling.init!(mdl::Model{<:ControlLawsLat})
 
     foreach((mdl.φβ2ar_lqr, mdl.ar2ar_lqr)) do lqr
         lqr.u.bound_lo .= ULat(; aileron_cmd = -1, rudder_cmd = -1)
@@ -626,7 +634,7 @@ function Modeling.init!(mdl::Model{<:ControllerLat})
 
 end
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControllerLat},
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
                         vehicle::Model{<:C172Y.Vehicle})
 
     @unpack mode_req, aileron_axis, aileron_offset, rudder_axis, rudder_offset,
@@ -727,7 +735,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControllerLat},
 
     end
 
-    mdl.y = ControllerLatY(; mode, aileron_ref, rudder_ref,
+    mdl.y = ControlLawsLatY(; mode, aileron_ref, rudder_ref,
         p_ref, β_ref, φ_ref, χ_ref, aileron_cmd, rudder_cmd,
         ar2ar_lqr = ar2ar_lqr.y, φβ2ar_lqr = φβ2ar_lqr.y,
         p2φ_int = p2φ_int.y, p2φ_pid = p2φ_pid.y, χ2φ_pid = χ2φ_pid.y)
@@ -736,7 +744,7 @@ end
 
 
 function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
-                          mdl::Model{<:ControllerLat})
+                          mdl::Model{<:ControlLawsLat})
 
     @unpack act = systems.submodels
     @unpack aileron_cmd, rudder_cmd = mdl.y
@@ -747,7 +755,7 @@ function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
 end
 
 
-function Modeling.init!(lat::Model{<:ControllerLat},
+function Modeling.init!(lat::Model{<:ControlLawsLat},
                         vehicle::Model{<:C172Y.Vehicle})
 
     #we assume that the vehicle's y has already been updated to its trim value
@@ -760,7 +768,7 @@ function Modeling.init!(lat::Model{<:ControllerLat},
     #reset all controller submodels
     Control.reset!(lat)
 
-    #make Controller inputs consistent with vehicle status
+    #make ControlLaws inputs consistent with vehicle status
     lat.u.aileron_axis = y_act.aileron.pos
     lat.u.rudder_axis = y_act.rudder.pos
     lat.u.aileron_offset = 0
@@ -770,18 +778,11 @@ function Modeling.init!(lat::Model{<:ControllerLat},
     lat.u.β_ref = β
     lat.u.χ_ref = χ_gnd
 
-    #for the trim condition to be preserved when the simulation is started with
-    #sas (rather than direct) modes enabled, we need a post-trim update of the
-    #controller with the inner LQR SAS loops enabled. this loads the z_trim,
-    #u_trim and x_trim values corresponding to the trim state into the LQR
-    #trackers, and runs them once. after this, their outputs will match the
-    #actuator commands required by the trim condition. this match is only
-    #approximate, because in general, the trim values loaded from the lookup
-    #tables will be interpolated, rather than exactly computed at specific
-    #controller design points, but it is good enough.
+    #initialize ar2ar outputs
     lat.u.mode_req = ModeControlLat.sas
     f_periodic!(lat, vehicle)
 
+    #initialize φβ2ar outputs
     lat.u.mode_req = ModeControlLat.ModeControlLat.φ_β
     f_periodic!(lat, vehicle)
 
@@ -794,10 +795,10 @@ end
 
 ################################# JSON3 ########################################
 
-#declare ControllerLatU as mutable
-StructTypes.StructType(::Type{ControllerLatU}) = StructTypes.Mutable()
-#replace Greek characters from ControllerU fields in the JSON string
-StructTypes.names(::Type{ControllerLatU}) = ((:χ_ref, :chi_ref),
+#declare ControlLawsLatU as mutable
+StructTypes.StructType(::Type{ControlLawsLatU}) = StructTypes.Mutable()
+#replace Greek characters from ControlLawsU fields in the JSON string
+StructTypes.names(::Type{ControlLawsLatU}) = ((:χ_ref, :chi_ref),
     (:φ_ref, :phi_ref), (:β_ref, :beta_ref))
 
 #enable JSON parsing of integers as ModeControlLatEnum
@@ -806,13 +807,13 @@ StructTypes.lowertype(::Type{ModeControlLatEnum}) = Int32 #default enum type
 StructTypes.lower(x::ModeControlLatEnum) = Int32(x)
 
 #now we can do:
-# JSON3.read(JSON3.write(ControllerLatU()), ControllerLatU)
-# JSON3.read!(JSON3.write(ControllerLatU()), ControllerLatU())
+# JSON3.read(JSON3.write(ControlLawsLatU()), ControlLawsLatU)
+# JSON3.read!(JSON3.write(ControlLawsLatU()), ControlLawsLatU())
 
 
 ################################### GUI ########################################
 
-function GUI.draw!(lat::Model{<:ControllerLat},
+function GUI.draw!(lat::Model{<:ControlLawsLat},
                     vehicle::Model{<:C172Y.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna172Y Control Laws")
@@ -925,7 +926,7 @@ function GUI.draw!(lat::Model{<:ControllerLat},
 end
 
 
-function draw_internals(lat::Model{<:ControllerLat}, p_open::Ref{Bool} = Ref(true))
+function draw_internals(lat::Model{<:ControlLawsLat}, p_open::Ref{Bool} = Ref(true))
     Begin("Lateral Control", p_open)
         Text("Sampling Period: $(lat.Δt)")
         Text("Mode: $(lat.y.mode)")
@@ -941,43 +942,43 @@ end
 
 
 ################################################################################
-################################# Controller ##################################
+################################# ControlLaws ##################################
 
-@kwdef struct Controller{C1 <: ControllerLon, C2 <: ControllerLat} <: AbstractAvionics
-    lon::C1 = ControllerLon()
-    lat::C2 = ControllerLat()
+@kwdef struct ControlLaws{C1 <: ControlLawsLon, C2 <: ControlLawsLat} <: AbstractAvionics
+    lon::C1 = ControlLawsLon()
+    lat::C2 = ControlLawsLat()
 end
 
 #define fields with submodel's names to create parent-child input linkage
-@kwdef struct ControllerU
-    lon::ControllerLonU = ControllerLonU()
-    lat::ControllerLatU = ControllerLatU()
+@kwdef struct ControlLawsU
+    lon::ControlLawsLonU = ControlLawsLonU()
+    lat::ControlLawsLatU = ControlLawsLatU()
 end
 
-Modeling.U(::Controller) = ControllerU()
+Modeling.U(::ControlLaws) = ControlLawsU()
 
-@no_ode Controller
-@no_step Controller
-@sm_periodic Controller
+@no_ode ControlLaws
+@no_step ControlLaws
+@sm_periodic ControlLaws
 
 
 ########################### Update Methods #####################################
 
-function AircraftBase.assign!(systems::Model{<:C172Y.Systems}, mdl::Model{<:Controller})
+function AircraftBase.assign!(systems::Model{<:C172Y.Systems}, mdl::Model{<:ControlLaws})
     AircraftBase.assign!(systems, mdl.lon)
     AircraftBase.assign!(systems, mdl.lat)
 end
 
 ############################# Initialization ###################################
 
-function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:C172Y.Vehicle})
+function Modeling.init!(mdl::Model{<:ControlLaws}, vehicle::Model{<:C172Y.Vehicle})
     Modeling.init!(mdl.lon, vehicle)
     Modeling.init!(mdl.lat, vehicle)
 end
 
 ################################## GUI #########################################
 
-function GUI.draw!(ctl::Model{<:Controller},
+function GUI.draw!(ctl::Model{<:ControlLaws},
                     vehicle::Model{<:C172Y.Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna172Y Control Laws")

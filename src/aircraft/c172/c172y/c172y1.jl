@@ -8,7 +8,7 @@ using Flight.FlightLib
 
 using ...C172
 using ..C172Y
-using ..C172Y.C172YControl: Controller
+using ..C172Y.C172YControl: ControlLaws
 
 export Cessna172Yv1
 
@@ -17,10 +17,10 @@ export Cessna172Yv1
 ############################# Cessna172Yv1 ###################################
 
 const Cessna172Yv1{K, A} = Cessna172Y{K, A} where {
-    K <: AbstractKinematicDescriptor, A <: Controller}
+    K <: AbstractKinematicDescriptor, A <: ControlLaws}
 
 function Cessna172Yv1(kinematics = WA())
-    AircraftBase.Aircraft(C172Y.Vehicle(kinematics), Controller())
+    AircraftBase.Aircraft(C172Y.Vehicle(kinematics), ControlLaws())
 end
 
 

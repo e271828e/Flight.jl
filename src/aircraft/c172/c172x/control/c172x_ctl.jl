@@ -704,6 +704,9 @@ end
     #if p_1b > 1, we're beyond p2 and we set clm = 0, h_nom = h2.
 
 
+Control.reset!(::Model{<:SegmentGuidance}) = nothing
+
+
 ################################################################################
 ################################# Controller ##################################
 

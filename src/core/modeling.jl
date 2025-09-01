@@ -192,8 +192,10 @@ end
 ################################################################################
 ########################## Model Update Methods ###############################
 
-#note: for a root Model, these methods must be implemented without additional
-#arguments
+#notes:
+# for a root Model these must be implemented without additional arguments
+# all implementations MUST return nothing to ensure type stability
+
 
 abstract type MaybeScheduling end
 struct Scheduling <: MaybeScheduling end
@@ -219,10 +221,14 @@ function f_periodic!(sch::NoScheduling, mdl::Model, args...)
 end
 
 #scheduled periodic update, to be called (not extended!) by Models
-@inline f_periodic!(mdl::Model, args...) = f_periodic!(Scheduling(), mdl, args...)
+@inline function f_periodic!(mdl::Model, args...)
+    f_periodic!(Scheduling(), mdl, args...)
+    return nothing #needed for type stability
+end
 
 function f_periodic!(::Scheduling, mdl::Model, args...)
     (mdl._n[] % mdl._N == 0) && f_periodic!(NoScheduling(), mdl, args...)
+    return nothing #needed for type stability
 end
 
 
@@ -290,7 +296,7 @@ macro sm_step(md)
             for ss in mdl.submodels
                 f_step!(ss, args...)
             end
-            update_output!(mdl) #output update not usually required here
+            update_output!(mdl) #output update not usually required, consider removal
             return nothing
         end
     end)

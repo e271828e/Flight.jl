@@ -254,7 +254,7 @@ end
 ################################################################################
 ################################################################################
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLaws},
                         vehicle::Model{<:C172Y.Vehicle})
     @unpack mode_gdc_lon_req, mode_gdc_lat_req, mode_ctl_lon_req, mode_ctl_lat_req,
             eng_start, eng_stop, mixture, flaps, brake_left, brake_right,
@@ -328,7 +328,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller},
     @pack! ctl_lat.u = aileron_ref, rudder_ref, p_ref, φ_ref, β_ref, χ_ref
     f_periodic!(ctl_lat, vehicle)
 
-    mdl.y = ControllerY(; flight_phase,
+    mdl.y = ControlLawsY(; flight_phase,
         mode_gdc_lon, mode_gdc_lat, mode_ctl_lon, mode_ctl_lat,
         ctl_lon = ctl_lon.y, ctl_lat = ctl_lat.y,
         gdc_lon_alt = gdc_lon_alt.y, gdc_lat_seg = gdc_lat_seg.y)
@@ -388,7 +388,7 @@ end
 
 
 @kwdef struct Avionics{C} <: AbstractAvionics
-    ctl::C = Subsampled(Controller(), 2)
+    ctl::C = Subsampled(ControlLaws(), 2)
 end
 
 @sm_updates Avionics
