@@ -8,7 +8,8 @@ using Flight.FlightAircraft
 
 #non-exported stuff
 using Flight.FlightLib.Control.Discrete: load_pid_lookup, load_lqr_tracker_lookup
-using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat, is_on_gnd
+using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat,
+        AltTrackingState, is_on_gnd
 
 export test_c172y1
 
@@ -502,6 +503,57 @@ function test_control_modes()
         # return sim
 
     end #testset
+
+    @testset verbose = true "ModeControlLon.alt" begin
+
+        Sim.init!(sim, init_air)
+
+        ctl.u.lon.mode_req = ModeControlLon.EAS_alt
+        ctl.u.lat.mode_req = ModeControlLat.φ_β
+        step!(sim, ctl.Δt, true)
+
+        #h_ref should have been initialized at its trim value, so the initial
+        #altitude tracking state should be hold
+        @test ctl.y.lon.h_state === AltTrackingState.hold
+        @test ctl.y.lon.mode === ModeControlLon.EAS_alt
+
+        #when trim reference values are kept, the guidance mode must activate without
+        #transients
+        step!(sim, 1, true)
+        @test all(isapprox.(y_kin(aircraft).ω_wb_b[2], y_kin_trim.ω_wb_b[2]; atol = 1e-5))
+        @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
+
+        #all tests while turning
+        ctl.u.lat.φ_ref = π/12
+
+        ctl.u.lon.h_ref = y_kin_trim.h_e + 100
+        step!(sim, 1, true)
+        @test ctl.y.lon.h_state === AltTrackingState.acquire
+        @test ctl.y.lon.mode === ModeControlLon.thr_EAS
+
+        step!(sim, 60, true) #altitude is captured
+        @test ctl.y.lon.h_state === AltTrackingState.hold
+        @test isapprox.(y_kin(aircraft).h_e - ctl.u.lon.h_ref, 0.0; atol = 1e-1)
+
+        #reference changes within the current threshold do not prompt a mode change
+        ctl.u.lon.h_ref = y_kin(aircraft).h_e - ctl.lon.constants.h_thr / 2
+        step!(sim, 1, true)
+        @test ctl.y.lon.h_state === AltTrackingState.hold
+        step!(sim, 30, true) #altitude is captured
+        @test isapprox.(y_kin(aircraft).h_e - ctl.u.lon.h_ref, 0.0; atol = 1e-1)
+
+        ctl.u.lon.h_ref = y_kin_trim.h_e - 100
+        step!(sim, 1, true)
+        @test ctl.y.lon.h_state === AltTrackingState.acquire
+        step!(sim, 80, true) #altitude is captured
+        @test ctl.y.lon.h_state === AltTrackingState.hold
+        @test isapprox.(y_kin(aircraft).h_e - ctl.u.lon.h_ref, 0.0; atol = 1e-1)
+
+        #test for allocations in EAS_alt mode
+        @test ctl.y.lon.mode === ModeControlLon.EAS_alt
+        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+
+    end
 
     end #testset
 

@@ -31,15 +31,9 @@ function is_on_gnd(mdl::Model{<:C172.Vehicle})
     any(SVector{3}(leg.strut.wow for leg in mdl.y.systems.ldg))
 end
 
-################################################################################
-############################### Control ########################################
-
-#a discrete model implementing a specific longitudinal or lateral control mode
-abstract type AbstractControlChannel <: ModelDefinition end
-
 
 ################################################################################
-################################## ControlLawsLon ##################################
+############################## ControlLawsLon ##################################
 
 @enumx T=ModeControlLonEnum ModeControlLon begin
     direct = 0 #direct throttle & elevator
@@ -50,9 +44,19 @@ abstract type AbstractControlChannel <: ModelDefinition end
     EAS_q = 5 #EAS + pitch rate
     EAS_θ = 6 #EAS + pitch angle
     EAS_clm = 7 #EAS + climb rate
+    EAS_alt = 8 #EAS + altitude hold
+end
+
+@enumx T=AltTrackingStateEnum AltTrackingState begin
+    acquire = 0
+    hold = 1
 end
 
 using .ModeControlLon: ModeControlLonEnum
+using .AltTrackingState: AltTrackingStateEnum
+
+altitude_error(h_ref::HEllip, kin_data::KinData) = h_ref - kin_data.h_e
+altitude_error(h_ref::HOrth, kin_data::KinData) = h_ref - kin_data.h_o
 
 #elevator pitch SAS always enabled except in direct mode
 e2e_enabled(mode::ModeControlLonEnum) = (mode != ModeControlLon.direct)
@@ -60,20 +64,27 @@ e2e_enabled(mode::ModeControlLonEnum) = (mode != ModeControlLon.direct)
 function q2e_enabled(mode::ModeControlLonEnum)
     mode === ModeControlLon.thr_q || mode === ModeControlLon.thr_θ ||
     mode === ModeControlLon.thr_EAS || mode === ModeControlLon.EAS_q ||
-    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm
+    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm ||
+    mode === ModeControlLon.EAS_alt
 end
 
 function θ2q_enabled(mode::ModeControlLonEnum)
     mode === ModeControlLon.thr_θ || mode === ModeControlLon.thr_EAS ||
-    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm
+    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm ||
+    mode === ModeControlLon.EAS_alt
 end
 
 function v2t_enabled(mode::ModeControlLonEnum)
     mode === ModeControlLon.EAS_q || mode === ModeControlLon.EAS_θ ||
-    mode === ModeControlLon.EAS_clm
+    mode === ModeControlLon.EAS_clm || mode === ModeControlLon.EAS_alt
 end
 
-c2θ_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_clm)
+function c2θ_enabled(mode::ModeControlLonEnum)
+    mode === ModeControlLon.EAS_clm || mode === ModeControlLon.EAS_alt
+end
+
+h2c_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_alt)
+
 v2θ_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.thr_EAS)
 
 ############################## FieldVectors ####################################
@@ -109,7 +120,7 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct ControlLawsLon{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
+@kwdef struct ControlLawsLon{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: ModelDefinition
     e2e_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "e2e_lookup.h5"))
     q2e_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "q2e_lookup.h5"))
     v2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2θ_lookup.h5"))
@@ -121,6 +132,14 @@ end
     v2θ_pid::PID = PID()
     c2θ_pid::PID = PID()
     v2t_pid::PID = PID()
+    k_p_clm::Float64 = 0.2
+    k_p_θ::Float64 = 1.0
+    h_thr::Float64 = 15.0 #error threshold for altitude tracking mode switch
+    h_hys::Float64 = 1.0 #hysteresis for altitude tracking mode switch (h_hys < h_thr)
+end
+
+@kwdef mutable struct ControlLawsLonS
+    h_state::AltTrackingStateEnum = AltTrackingState.hold
 end
 
 @kwdef mutable struct ControlLawsLonU
@@ -133,6 +152,7 @@ end
     θ_ref::Float64 = 0.0 #pitch angle reference
     EAS_ref::Float64 = C172.TrimParameters().EAS #equivalent airspeed reference
     clm_ref::Float64 = 0.0 #climb rate reference
+    h_ref::Union{HEllip, HOrth} = HEllip(0.0)
 end
 
 @kwdef struct ControlLawsLonY
@@ -143,6 +163,8 @@ end
     θ_ref::Float64 = 0.0
     EAS_ref::Float64 = C172.TrimParameters().EAS
     clm_ref::Float64 = 0.0
+    h_err::Float64 = 0.0 #avoid h_ref in output to keep output type isbits
+    h_state::AltTrackingStateEnum = AltTrackingState.hold
     throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
     e2e_lqr::LQRTrackerOutput{6, 1, 1, 6, 1} = LQRTrackerOutput{6, 1, 1}()
@@ -153,6 +175,7 @@ end
     v2t_pid::PIDOutput = PIDOutput()
 end
 
+Modeling.S(::ControlLawsLon) = ControlLawsLonS()
 Modeling.U(::ControlLawsLon) = ControlLawsLonU()
 Modeling.Y(::ControlLawsLon) = ControlLawsLonY()
 
@@ -171,18 +194,19 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
                         vehicle::Model{<:C172Y.Vehicle})
 
     @unpack mode_req, throttle_axis, throttle_offset, elevator_axis,
-            elevator_offset, q_ref, θ_ref, EAS_ref, clm_ref = mdl.u
+            elevator_offset, q_ref, θ_ref, EAS_ref, clm_ref, h_ref = mdl.u
     @unpack e2e_lqr, q2e_int, q2e_pid, v2θ_pid, c2θ_pid, v2t_pid = mdl.submodels
-    @unpack e2e_lookup, q2e_lookup, v2θ_lookup, c2θ_lookup, v2t_lookup = mdl.constants
+    @unpack e2e_lookup, q2e_lookup, v2θ_lookup, c2θ_lookup, v2t_lookup,
+            k_p_θ, k_p_clm, h_thr, h_hys = mdl.constants
 
     EAS = vehicle.y.airflow.EAS
     h_e = Float64(vehicle.y.kinematics.h_e)
     _, q, r = vehicle.y.kinematics.ω_wb_b
     @unpack θ, φ = vehicle.y.kinematics.e_nb
     clm = -vehicle.y.kinematics.v_eb_n[3]
+    h_err = altitude_error(h_ref, vehicle.y.kinematics)
+    h_state = mdl.s.h_state
     mode_prev = mdl.y.mode
-
-    mode = (is_on_gnd(vehicle) ? ModeControlLon.direct : mode_req)
 
     throttle_ref = Float64(throttle_axis + throttle_offset)
     elevator_ref = Float64(elevator_axis + elevator_offset)
@@ -191,6 +215,23 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
     #their respective reference values
     throttle_cmd = throttle_ref
     elevator_cmd = elevator_ref
+
+    if is_on_gnd(vehicle)
+        mode = ModeControlLon.direct
+    else #air
+        if mode_req === ModeControlLon.EAS_alt
+            if h_state === AltTrackingState.acquire
+                mode = ModeControlLon.thr_EAS
+                throttle_cmd = h_err > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
+                (abs(h_err) < h_thr - h_hys) && (mdl.s.h_state = AltTrackingState.hold)
+            else #AltTrackingState.hold
+                mode = ModeControlLon.EAS_alt
+                (abs(h_err) > h_thr + h_hys) && (mdl.s.h_state = AltTrackingState.acquire)
+            end
+        else #mode_req != EAS_alt
+            mode = mode_req
+        end
+    end
 
     if v2t_enabled(mode) #throttle_cmd overridden by v2t
 
@@ -245,6 +286,10 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
                 elseif c2θ_enabled(mode) #θ_ref overridden by c2θ
 
+                    if h2c_enabled(mode) #clm_ref overridden by h2c
+                        clm_ref = k_p_clm * h_err
+                    end
+
                     Control.Discrete.assign!(c2θ_pid, c2θ_lookup(EAS, h_e))
 
                     if mode != mode_prev
@@ -264,7 +309,6 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
                 end
 
-                k_p_θ = 1.0
                 θ_dot_ref = k_p_θ * (θ_ref - θ)
                 φ_bnd = clamp(φ, -π/3, π/3)
                 q_ref = 1/cos(φ_bnd) * θ_dot_ref + r * tan(φ_bnd)
@@ -294,8 +338,8 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
     end
 
-    mdl.y = ControlLawsLonY(; mode, throttle_ref, elevator_ref,
-        q_ref, θ_ref, EAS_ref, clm_ref, throttle_cmd, elevator_cmd,
+    mdl.y = ControlLawsLonY(; mode, throttle_ref, elevator_ref, q_ref, θ_ref,
+        EAS_ref, clm_ref, h_err, h_state, throttle_cmd, elevator_cmd,
         e2e_lqr = e2e_lqr.y, q2e_int = q2e_int.y, q2e_pid = q2e_pid.y,
         v2θ_pid = v2θ_pid.y, c2θ_pid = c2θ_pid.y, v2t_pid = v2t_pid.y)
 
@@ -321,22 +365,24 @@ function Modeling.init!(lon::Model{<:ControlLawsLon},
 
     #we assume that the vehicle's y has already been updated to its trim
     #value by init!(vehicle, params)
-    y_act = vehicle.y.systems.act
-    @unpack ω_wb_b, v_eb_n, e_nb = vehicle.y.kinematics
+    @unpack u = lon
+    @unpack throttle, elevator = vehicle.y.systems.act
+    @unpack ω_wb_b, v_eb_n, e_nb, h_e = vehicle.y.kinematics
     @unpack EAS = vehicle.y.airflow
 
     #reset all controller submodels
     Control.reset!(lon)
 
     #make inputs consistent with the vehicle status, so
-    lon.u.throttle_axis = y_act.throttle.pos
-    lon.u.elevator_axis = y_act.elevator.pos
-    lon.u.throttle_offset = 0
-    lon.u.elevator_offset = 0
-    lon.u.q_ref = ω_wb_b[2]
-    lon.u.θ_ref = e_nb.θ
-    lon.u.EAS_ref = EAS
-    lon.u.clm_ref = -v_eb_n[3]
+    u.throttle_axis = throttle.pos
+    u.elevator_axis = elevator.pos
+    u.throttle_offset = 0
+    u.elevator_offset = 0
+    u.q_ref = ω_wb_b[2]
+    u.θ_ref = e_nb.θ
+    u.EAS_ref = EAS
+    u.clm_ref = -v_eb_n[3]
+    u.h_ref = h_e
 
     #for the trim condition to be preserved when the simulation is started with
     #SAS-based modes enabled, we need a post-trim update of the control laws
@@ -356,11 +402,11 @@ function Modeling.init!(lon::Model{<:ControlLawsLon},
     #incorrect default values
 
     #initialize SAS outputs
-    lon.u.mode_req = ModeControlLon.sas
+    u.mode_req = ModeControlLon.sas
     f_periodic!(lon, vehicle)
 
     #restore direct mode
-    lon.u.mode_req = ModeControlLon.direct
+    u.mode_req = ModeControlLon.direct
     f_periodic!(lon, vehicle)
 
 end
@@ -368,9 +414,9 @@ end
 
 ################################# JSON3 ########################################
 
-#declare ControlLawsLonU as mutable
 StructTypes.StructType(::Type{ControlLawsLonU}) = StructTypes.Mutable()
-#replace Greek characters from ControlLawsU fields in the JSON string
+
+#replace Unicode characters from struct fields in the JSON string
 StructTypes.names(::Type{ControlLawsLonU}) = ((:θ_ref, :theta_ref),)
 
 #enable JSON parsing of integers as ModeControlLonEnum
@@ -387,7 +433,7 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
     @unpack u, y, Δt = lon
 
     @unpack systems, kinematics, dynamics, airflow = vehicle.y
-    @unpack e_nb, ω_wb_b, v_eb_n = kinematics
+    @unpack e_nb, ω_wb_b, v_eb_n, h_e, h_o = kinematics
     @unpack EAS = airflow
     @unpack θ = e_nb
 
@@ -403,7 +449,7 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
                 TableNextColumn();
                     mode_button("Direct##Lon", ModeControlLon.direct, lon.u.mode_req, y.mode)
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.direct); SameLine()
-                    mode_button("Pitch SAS", ModeControlLon.sas, lon.u.mode_req, y.mode)
+                    mode_button("Throttle + Pitch SAS", ModeControlLon.sas, lon.u.mode_req, y.mode)
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.sas); SameLine()
                     mode_button("Throttle + Pitch Rate", ModeControlLon.thr_q, lon.u.mode_req, y.mode)
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.thr_q; lon.u.q_ref = 0); SameLine()
@@ -416,7 +462,9 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
                     mode_button("EAS + Pitch Angle", ModeControlLon.EAS_θ, lon.u.mode_req, y.mode)
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_θ; lon.u.EAS_ref = EAS; lon.u.θ_ref = θ); SameLine()
                     mode_button("EAS + Climb Rate", ModeControlLon.EAS_clm, lon.u.mode_req, y.mode)
-                    IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_clm; lon.u.EAS_ref = EAS; lon.u.clm_ref = clm)
+                    IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_clm; lon.u.EAS_ref = EAS; lon.u.clm_ref = clm); SameLine()
+                    mode_button("EAS + Altitude Hold", ModeControlLon.EAS_alt, lon.u.mode_req, y.mode)
+                    IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_alt; lon.u.EAS_ref = EAS; lon.u.h_ref = h_e)
                 TableNextColumn();
             TableNextRow()
                 TableNextColumn();
@@ -464,6 +512,24 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
                     lon.u.clm_ref = safe_input("Climb Rate", lon.u.clm_ref, 0.1, 1.0, "%.3f")
                     PopItemWidth()
                 TableNextColumn(); Text(@sprintf("%.3f", clm))
+            TableNextRow()
+                TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
+                TableNextColumn();
+                    RadioButton("Ellipsoidal", isa(u.h_ref, HEllip)); SameLine()
+                    IsItemActive() && (u.h_ref = h_e)
+                    RadioButton("Orthometric", isa(u.h_ref, HOrth))
+                    IsItemActive() && (u.h_ref = h_o)
+                    SameLine()
+                    PushItemWidth(-10)
+                    h_ref_f64 = safe_input("Altitude Setpoint", Float64(lon.u.h_ref), 1, 1.0, "%.3f")
+                    lon.u.h_ref = (isa(u.h_ref, HEllip) ? HEllip(h_ref_f64) : HOrth(h_ref_f64))
+                    PopItemWidth()
+                TableNextColumn();
+                    isa(u.h_ref, HEllip) && Text(@sprintf("%.3f", Float64(h_e)))
+                    isa(u.h_ref, HOrth) && Text(@sprintf("%.3f", Float64(h_o)))
+            TableNextRow()
+                TableNextColumn();
+                TableNextColumn();
             EndTable()
         end
 
@@ -510,7 +576,7 @@ end
 
 
 ################################################################################
-################################# ControlLawsLat ###################################
+############################# ControlLawsLat ###################################
 
 @enumx T=ModeControlLatEnum ModeControlLat begin
     direct = 0 #direct aileron & rudder
@@ -577,7 +643,7 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct ControlLawsLat{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: AbstractControlChannel
+@kwdef struct ControlLawsLat{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: ModelDefinition
     ar2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "ar2ar_lookup.h5"))
     φβ2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "φβ2ar_lookup.h5"))
     p2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
@@ -760,8 +826,9 @@ function Modeling.init!(lat::Model{<:ControlLawsLat},
 
     #we assume that the vehicle's y has already been updated to its trim value
     #by init!(vehicle, params)
-    y_act = vehicle.y.systems.act
+    @unpack u = lat
     @unpack ω_wb_b, v_eb_n, e_nb, χ_gnd, ϕ_λ, h_e = vehicle.y.kinematics
+    @unpack aileron, rudder = vehicle.y.systems.act
     @unpack EAS = vehicle.y.airflow
     @unpack β = vehicle.y.systems.aero
 
@@ -769,25 +836,25 @@ function Modeling.init!(lat::Model{<:ControlLawsLat},
     Control.reset!(lat)
 
     #make ControlLaws inputs consistent with vehicle status
-    lat.u.aileron_axis = y_act.aileron.pos
-    lat.u.rudder_axis = y_act.rudder.pos
-    lat.u.aileron_offset = 0
-    lat.u.rudder_offset = 0
-    lat.u.p_ref = ω_wb_b[1]
-    lat.u.φ_ref = e_nb.φ
-    lat.u.β_ref = β
-    lat.u.χ_ref = χ_gnd
+    u.aileron_axis = aileron.pos
+    u.rudder_axis = rudder.pos
+    u.aileron_offset = 0
+    u.rudder_offset = 0
+    u.p_ref = ω_wb_b[1]
+    u.φ_ref = e_nb.φ
+    u.β_ref = β
+    u.χ_ref = χ_gnd
 
     #initialize ar2ar outputs
-    lat.u.mode_req = ModeControlLat.sas
+    u.mode_req = ModeControlLat.sas
     f_periodic!(lat, vehicle)
 
     #initialize φβ2ar outputs
-    lat.u.mode_req = ModeControlLat.ModeControlLat.φ_β
+    u.mode_req = ModeControlLat.ModeControlLat.φ_β
     f_periodic!(lat, vehicle)
 
     #restore direct mode
-    lat.u.mode_req = ModeControlLat.direct
+    u.mode_req = ModeControlLat.direct
     f_periodic!(lat, vehicle)
 
 end
@@ -795,9 +862,9 @@ end
 
 ################################# JSON3 ########################################
 
-#declare ControlLawsLatU as mutable
 StructTypes.StructType(::Type{ControlLawsLatU}) = StructTypes.Mutable()
-#replace Greek characters from ControlLawsU fields in the JSON string
+
+#replace Unicode characters from struct fields in the JSON string
 StructTypes.names(::Type{ControlLawsLatU}) = ((:χ_ref, :chi_ref),
     (:φ_ref, :phi_ref), (:β_ref, :beta_ref))
 
@@ -809,7 +876,6 @@ StructTypes.lower(x::ModeControlLatEnum) = Int32(x)
 #now we can do:
 # JSON3.read(JSON3.write(ControlLawsLatU()), ControlLawsLatU)
 # JSON3.read!(JSON3.write(ControlLawsLatU()), ControlLawsLatU())
-
 
 ################################### GUI ########################################
 
@@ -925,7 +991,6 @@ function GUI.draw!(lat::Model{<:ControlLawsLat},
 
 end
 
-
 function draw_internals(lat::Model{<:ControlLawsLat}, p_open::Ref{Bool} = Ref(true))
     Begin("Lateral Control", p_open)
         Text("Sampling Period: $(lat.Δt)")
@@ -938,7 +1003,6 @@ function draw_internals(lat::Model{<:ControlLawsLat}, p_open::Ref{Bool} = Ref(tr
         end
     End()
 end
-
 
 
 ################################################################################
@@ -1004,6 +1068,5 @@ function GUI.draw!(ctl::Model{<:ControlLaws},
     End()
 
 end
-
 
 end #module
