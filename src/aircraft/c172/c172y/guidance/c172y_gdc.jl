@@ -1,14 +1,14 @@
 
 
-
 @enumx T=ModeGuidanceLonEnum ModeGuidanceLon begin
     off = 0
-    alt = 1
+    seg = 1
 end
 
 @enumx T=ModeGuidanceLatEnum ModeGuidanceLat begin
     off = 0
     seg = 1
+    crc = 2
 end
 
 @enumx T=FlightPhaseEnum FlightPhase begin
@@ -30,97 +30,6 @@ StructTypes.lower(x::ModeGuidanceLonEnum) = Int32(x)
 StructTypes.StructType(::Type{ModeGuidanceLatEnum}) = StructTypes.CustomStruct()
 StructTypes.lowertype(::Type{ModeGuidanceLatEnum}) = Int32 #default enum type
 StructTypes.lower(x::ModeGuidanceLatEnum) = Int32(x)
-
-
-################################################################################
-############################### Guidance #######################################
-
-#a discrete model implementing a specific longitudinal or lateral guidance mode
-abstract type AbstractGuidanceChannel <: ModelDefinition end
-
-
-################################################################################
-############################### Vertical Guidance ##############################
-
-@enumx T=AltTrackingStateEnum AltTrackingState begin
-    acquire = 0
-    hold = 1
-end
-
-using .AltTrackingState: AltTrackingStateEnum
-
-@kwdef struct AltitudeTracking <: AbstractGuidanceChannel
-    k_h2c::Float64 = 0.2 #h_err to climb rate gain
-    h_thr::Float64 = 10.0 #altitude threshold for state switching
-end
-
-@kwdef struct AltitudeTrackingY
-    state::AltTrackingStateEnum = AltTrackingState.hold
-    mode_ctl_lon::ModeControlLonEnum = ModeControlLon.EAS_clm
-    h_err::Float64 = 0.0 #current altitude error
-    throttle_ref::Float64 = 0.0
-    clm_ref::Float64 = 0.0
-end
-
-Modeling.U(::AltitudeTracking) = Ref{Union{HEllip, HOrth}}(HEllip(0.0))
-Modeling.S(::AltitudeTracking) = Ref{AltTrackingStateEnum}(AltTrackingState.hold)
-Modeling.Y(::AltitudeTracking) = AltitudeTrackingY()
-
-altitude_error(h_target::HEllip, kin_data::KinData) = h_target - kin_data.h_e
-altitude_error(h_target::HOrth, kin_data::KinData) = h_target - kin_data.h_o
-
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:AltitudeTracking},
-                        vehicle::Model{<:C172Y.Vehicle})
-
-    state = mdl.s[]
-    h_target = mdl.u[]
-    @unpack k_h2c, h_thr = mdl.constants
-
-    h_err = altitude_error(h_target, vehicle.y.kinematics)
-
-    if state === AltTrackingState.acquire
-
-        mode_ctl_lon = ModeControlLon.thr_EAS
-        throttle_ref = h_err > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
-        clm_ref = 0.0 #no effect
-        (abs(h_err) < h_thr - 1) && (mdl.s[] = AltTrackingState.hold)
-
-    else #AltTrackingState.hold
-
-        mode_ctl_lon = ModeControlLon.EAS_clm
-        throttle_ref = 0.0 #no effect
-        clm_ref = k_h2c * h_err
-        (abs(h_err) > h_thr + 1) && (mdl.s[] = AltTrackingState.acquire)
-
-    end
-
-    mdl.y = AltitudeTrackingY(; state, mode_ctl_lon, h_err, throttle_ref, clm_ref)
-
-end
-
-function Control.reset!(mdl::Model{<:AltitudeTracking})
-    mdl.u[] = HEllip(0.0)
-    mdl.s[] = AltTrackingState.hold
-end
-
-function GUI.draw(mdl::Model{<:AltitudeTracking}, p_open::Ref{Bool} = Ref(true))
-
-    @unpack state, mode_ctl_lon, h_err, throttle_ref, clm_ref = mdl.y
-    @unpack h_target[] = mdl.u
-    @unpack h_thr = mdl.constants
-
-    Begin("Altitude Guidance", p_open)
-        Text("State: $state")
-        Text("Control Mode: $mode_ctl_lon")
-        Text("Altitude Ref: $(Float64(h_target))")
-        Text("Altitude Datum: $(typeof(h_target))")
-        Text("Altitude Error: $h_err")
-        Text("Altitude Threshold: $h_thr")
-        Text("Throttle Setpoint: $throttle_ref")
-        Text("Climb Rate Setpoint: $clm_ref")
-    End()
-end
-
 
 
 ################################################################################
@@ -334,52 +243,6 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLaws},
         gdc_lon_alt = gdc_lon_alt.y, gdc_lat_seg = gdc_lat_seg.y)
 
 end
-
-
-    ############################### Guidance ###################################
-
-    @cstatic h_datum=Int32(0) begin #ellipsoidal: 0, orthometric: 1
-    if CImGui.CollapsingHeader("Vertical Guidance")
-
-        if BeginTable("Longitudinal Guidance", 3, CImGui.ImGuiTableFlags_SizingStretchProp )#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
-            TableNextRow()
-                TableNextColumn();
-                    Text("Mode")
-                TableNextColumn();
-                    mode_button("Off", ModeGuidanceLon.off, u.mode_gdc_lon_req, y.mode_gdc_lon)
-                    IsItemActive() && (u.mode_gdc_lon_req = ModeGuidanceLon.off); SameLine()
-                    mode_button("Altitude", ModeGuidanceLon.alt, u.mode_gdc_lon_req, y.mode_gdc_lon)
-                    if IsItemActive()
-                        u.mode_gdc_lon_req = ModeGuidanceLon.alt
-                        u.h_target = (h_datum == 0 ? h_e : h_o)
-                        u.EAS_ref = EAS
-                    end
-                TableNextColumn();
-            TableNextRow()
-                TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
-                TableNextColumn();
-                    PushItemWidth(-10)
-                    h_target_f64 = safe_input("Altitude Setpoint", Float64(u.h_target), 1, 1.0, "%.3f")
-                    u.h_target = (h_datum == 0 ? HEllip(h_target_f64) : HOrth(h_target_f64))
-                    PopItemWidth()
-                TableNextColumn();
-                    h_datum == 0 && Text(@sprintf("%.3f", Float64(h_e)))
-                    h_datum == 1 && Text(@sprintf("%.3f", Float64(h_o)))
-            TableNextRow()
-                TableNextColumn();
-                TableNextColumn();
-                    @c RadioButton("Ellipsoidal", &h_datum, 0); SameLine()
-                    IsItemActive() && (u.h_target = h_e)
-                    @c RadioButton("Orthometric", &h_datum, 1)
-                    IsItemActive() && (u.h_target = h_o)
-            EndTable()
-        end #table
-
-        Separator()
-
-    end #header
-    end #cstatic
-
 
 #original C172X1 Avionics, reference for multi-component Avionics
 

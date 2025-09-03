@@ -128,6 +128,7 @@ end
     f::Float64 = 0.0 #fuel-to-air ratio
     ṁ::Float64 = 0.0 #fuel flow
     ω::Float64 = 0.0 #angular velocity (crankshaft)
+    n::Float64 = 0.0 #normalized angular velocity (crankshaft)
     τ_shaft::Float64 = 0.0 #shaft output torque
     P_shaft::Float64 = 0.0 #shaft power
     SFC::Float64 = 0.0 #specific fuel consumption
@@ -267,7 +268,7 @@ function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
     eng.ẋ.ω = ω_dot
 
     eng.y = PistonEngineY(; start, stop, state, throttle, MAP, mixture_ctl,
-        mixture, mixture_pos, f, ṁ, ω, τ_shaft, P_shaft, SFC,
+        mixture, mixture_pos, f, ṁ, ω, n, τ_shaft, P_shaft, SFC,
         idle = eng.idle.y, frc = eng.frc.y)
 
 end
