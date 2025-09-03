@@ -45,7 +45,6 @@ end
     EAS_θ = 6 #EAS + pitch angle
     EAS_clm = 7 #EAS + climb rate
     EAS_alt = 8 #EAS + altitude hold
-    EAS_alt_MIMO = 9 #EAS + altitude hold with MIMO LQR
 end
 
 @enumx T=AltTrackingStateEnum AltTrackingState begin
@@ -62,30 +61,26 @@ e2e_enabled(mode::ModeControlLonEnum) = (mode != ModeControlLon.direct)
 function q2e_enabled(mode::ModeControlLonEnum)
     mode === ModeControlLon.thr_q || mode === ModeControlLon.thr_θ ||
     mode === ModeControlLon.thr_EAS || mode === ModeControlLon.EAS_q ||
-    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm ||
-    mode === ModeControlLon.EAS_alt
+    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm
 end
 
 function θ2q_enabled(mode::ModeControlLonEnum)
     mode === ModeControlLon.thr_θ || mode === ModeControlLon.thr_EAS ||
-    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm ||
-    mode === ModeControlLon.EAS_alt
+    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm
 end
 
 function v2t_enabled(mode::ModeControlLonEnum)
     mode === ModeControlLon.EAS_q || mode === ModeControlLon.EAS_θ ||
-    mode === ModeControlLon.EAS_clm || mode === ModeControlLon.EAS_alt
+    mode === ModeControlLon.EAS_clm
 end
 
 function c2θ_enabled(mode::ModeControlLonEnum)
-    mode === ModeControlLon.EAS_clm || mode === ModeControlLon.EAS_alt
+    mode === ModeControlLon.EAS_clm
 end
-
-h2c_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_alt)
 
 v2θ_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.thr_EAS)
 
-vh2te_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_alt_MIMO)
+vh2te_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_alt)
 
 ############################## FieldVectors ####################################
 
@@ -178,7 +173,6 @@ end
     v2θ_pid::PID = PID()
     c2θ_pid::PID = PID()
     v2t_pid::PID = PID()
-    k_p_clm::Float64 = 0.2
     k_p_θ::Float64 = 1.0
     h_thr::Float64 = 10.0 #error threshold for altitude tracking mode switch
     h_hys::Float64 = 1.0 #hysteresis for altitude tracking mode switch (h_hys < h_thr)
@@ -250,7 +244,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
             v2θ_pid, c2θ_pid, v2t_pid = mdl.submodels
     @unpack e2e_lookup, vh2te_lookup, q2e_lookup,
             v2θ_lookup, c2θ_lookup, v2t_lookup,
-            k_p_θ, k_p_clm, h_thr, h_hys = mdl.constants
+            k_p_θ, h_thr, h_hys = mdl.constants
 
     EAS = vehicle.y.airflow.EAS
     h_e = vehicle.y.kinematics.h_e
@@ -279,15 +273,6 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
                 (abs(h_err) < h_thr - h_hys) && (mdl.s.h_state = AltTrackingState.hold)
             else #AltTrackingState.hold
                 mode = ModeControlLon.EAS_alt
-                (abs(h_err) > h_thr + h_hys) && (mdl.s.h_state = AltTrackingState.acquire)
-            end
-        elseif mode_req === ModeControlLon.EAS_alt_MIMO
-            if h_state === AltTrackingState.acquire
-                mode = ModeControlLon.thr_EAS
-                throttle_cmd = h_err > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
-                (abs(h_err) < h_thr - h_hys) && (mdl.s.h_state = AltTrackingState.hold)
-            else #AltTrackingState.hold
-                mode = ModeControlLon.EAS_alt_MIMO
                 (abs(h_err) > h_thr + h_hys) && (mdl.s.h_state = AltTrackingState.acquire)
             end
         else #mode_req != EAS_alt
@@ -347,10 +332,6 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
                     θ_ref = -v2θ_pid.y.output #sign inversion!
 
                 elseif c2θ_enabled(mode) #θ_ref overridden by c2θ
-
-                    if h2c_enabled(mode) #clm_ref overridden by h2c
-                        clm_ref = k_p_clm * h_err
-                    end
 
                     Control.Discrete.assign!(c2θ_pid, c2θ_lookup(EAS, Float64(h_e)))
 
@@ -481,8 +462,8 @@ function Modeling.init!(lon::Model{<:ControlLawsLon},
     u.mode_req = ModeControlLon.sas
     f_periodic!(lon, vehicle)
 
-    #initialize EAS + h LQR outputs
-    u.mode_req = ModeControlLon.EAS_alt_MIMO
+    #initialize altitude hold outputs
+    u.mode_req = ModeControlLon.EAS_alt
     f_periodic!(lon, vehicle)
 
     #restore direct mode
@@ -545,8 +526,6 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_clm; lon.u.EAS_ref = EAS; lon.u.clm_ref = clm); SameLine()
                     mode_button("EAS + Altitude Hold", ModeControlLon.EAS_alt, lon.u.mode_req, y.mode)
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_alt; lon.u.EAS_ref = EAS; lon.u.h_ref = h_e); SameLine()
-                    mode_button("EAS + Altitude Hold MIMO", ModeControlLon.EAS_alt_MIMO, lon.u.mode_req, y.mode)
-                    IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_alt_MIMO; lon.u.EAS_ref = EAS; lon.u.h_ref = h_e)
                 TableNextColumn();
             TableNextRow()
                 TableNextColumn();
