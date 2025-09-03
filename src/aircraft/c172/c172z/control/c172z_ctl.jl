@@ -45,6 +45,7 @@ end
     EAS_θ = 6 #EAS + pitch angle
     EAS_clm = 7 #EAS + climb rate
     EAS_alt = 8 #EAS + altitude hold
+    EAS_alt_MIMO = 9 #EAS + altitude hold with MIMO LQR
 end
 
 @enumx T=AltTrackingStateEnum AltTrackingState begin
@@ -54,9 +55,6 @@ end
 
 using .ModeControlLon: ModeControlLonEnum
 using .AltTrackingState: AltTrackingStateEnum
-
-altitude_error(h_ref::HEllip, kin_data::KinData) = h_ref - kin_data.h_e
-altitude_error(h_ref::HOrth, kin_data::KinData) = h_ref - kin_data.h_o
 
 #elevator pitch SAS always enabled except in direct mode
 e2e_enabled(mode::ModeControlLonEnum) = (mode != ModeControlLon.direct)
@@ -86,6 +84,8 @@ end
 h2c_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_alt)
 
 v2θ_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.thr_EAS)
+
+vh2te_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_alt_MIMO)
 
 ############################## FieldVectors ####################################
 
@@ -164,13 +164,15 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct ControlLawsLon{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: ModelDefinition
-    e2e_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "e2e_lookup.h5"))
+@kwdef struct ControlLawsLon{LQ1 <: LQRTrackerLookup, LQ2 <: LQRTrackerLookup, LP <: PIDLookup} <: ModelDefinition
+    e2e_lookup::LQ1 = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "e2e_lookup.h5"))
+    vh2te_lookup::LQ2 = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "vh2te_lookup.h5"))
     q2e_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "q2e_lookup.h5"))
     v2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2θ_lookup.h5"))
     c2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "c2θ_lookup.h5"))
     v2t_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2t_lookup.h5"))
     e2e_lqr::LQRTracker{6, 1, 1, 6, 1} = LQRTracker{6, 1, 1}()
+    vh2te_lqr::LQRTracker{9, 2, 2, 18, 4} = LQRTracker{9, 2, 2}()
     q2e_int::Integrator = Integrator()
     q2e_pid::PID = PID()
     v2θ_pid::PID = PID()
@@ -178,7 +180,7 @@ end
     v2t_pid::PID = PID()
     k_p_clm::Float64 = 0.2
     k_p_θ::Float64 = 1.0
-    h_thr::Float64 = 15.0 #error threshold for altitude tracking mode switch
+    h_thr::Float64 = 10.0 #error threshold for altitude tracking mode switch
     h_hys::Float64 = 1.0 #hysteresis for altitude tracking mode switch (h_hys < h_thr)
 end
 
@@ -196,7 +198,7 @@ end
     θ_ref::Float64 = 0.0 #pitch angle reference
     EAS_ref::Float64 = C172.TrimParameters().EAS #equivalent airspeed reference
     clm_ref::Float64 = 0.0 #climb rate reference
-    h_ref::Union{HEllip, HOrth} = HEllip(0.0)
+    h_ref::HEllip = HEllip(0.0)
 end
 
 @kwdef struct ControlLawsLonY
@@ -207,11 +209,12 @@ end
     θ_ref::Float64 = 0.0
     EAS_ref::Float64 = C172.TrimParameters().EAS
     clm_ref::Float64 = 0.0
-    h_err::Float64 = 0.0 #avoid h_ref in output to keep output type isbits
+    h_ref::HEllip = HEllip(0.0) #avoid h_ref in output to keep output type isbits
     h_state::AltTrackingStateEnum = AltTrackingState.hold
     throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
     e2e_lqr::LQRTrackerOutput{6, 1, 1, 6, 1} = LQRTrackerOutput{6, 1, 1}()
+    vh2te_lqr::LQRTrackerOutput{9, 2, 2, 18, 4} = LQRTrackerOutput{9, 2, 2}()
     q2e_int::IntegratorOutput = IntegratorOutput()
     q2e_pid::PIDOutput = PIDOutput()
     v2θ_pid::PIDOutput = PIDOutput()
@@ -228,6 +231,10 @@ function Modeling.init!(mdl::Model{<:ControlLawsLon})
     #v2θ), so we don't need to set bounds for those
     mdl.e2e_lqr.u.bound_lo .= -1
     mdl.e2e_lqr.u.bound_hi .= 1
+
+    mdl.vh2te_lqr.u.bound_lo .= ULonFull(; throttle_cmd = 0, elevator_cmd = -1)
+    mdl.vh2te_lqr.u.bound_hi .= ULonFull(; throttle_cmd = 1, elevator_cmd = 1)
+
     #we do need to set bounds for v2t, so it can handle throttle saturation
     mdl.v2t_pid.u.bound_lo = 0
     mdl.v2t_pid.u.bound_hi = 1
@@ -239,16 +246,18 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
     @unpack mode_req, throttle_axis, throttle_offset, elevator_axis,
             elevator_offset, q_ref, θ_ref, EAS_ref, clm_ref, h_ref = mdl.u
-    @unpack e2e_lqr, q2e_int, q2e_pid, v2θ_pid, c2θ_pid, v2t_pid = mdl.submodels
-    @unpack e2e_lookup, q2e_lookup, v2θ_lookup, c2θ_lookup, v2t_lookup,
+    @unpack e2e_lqr, vh2te_lqr, q2e_int, q2e_pid,
+            v2θ_pid, c2θ_pid, v2t_pid = mdl.submodels
+    @unpack e2e_lookup, vh2te_lookup, q2e_lookup,
+            v2θ_lookup, c2θ_lookup, v2t_lookup,
             k_p_θ, k_p_clm, h_thr, h_hys = mdl.constants
 
     EAS = vehicle.y.airflow.EAS
-    h_e = Float64(vehicle.y.kinematics.h_e)
+    h_e = vehicle.y.kinematics.h_e
     _, q, r = vehicle.y.kinematics.ω_wb_b
     @unpack θ, φ = vehicle.y.kinematics.e_nb
     clm = -vehicle.y.kinematics.v_eb_n[3]
-    h_err = altitude_error(h_ref, vehicle.y.kinematics)
+    h_err = h_ref - h_e
     h_state = mdl.s.h_state
     mode_prev = mdl.y.mode
 
@@ -272,6 +281,15 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
                 mode = ModeControlLon.EAS_alt
                 (abs(h_err) > h_thr + h_hys) && (mdl.s.h_state = AltTrackingState.acquire)
             end
+        elseif mode_req === ModeControlLon.EAS_alt_MIMO
+            if h_state === AltTrackingState.acquire
+                mode = ModeControlLon.thr_EAS
+                throttle_cmd = h_err > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
+                (abs(h_err) < h_thr - h_hys) && (mdl.s.h_state = AltTrackingState.hold)
+            else #AltTrackingState.hold
+                mode = ModeControlLon.EAS_alt_MIMO
+                (abs(h_err) > h_thr + h_hys) && (mdl.s.h_state = AltTrackingState.acquire)
+            end
         else #mode_req != EAS_alt
             mode = mode_req
         end
@@ -279,7 +297,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
     if v2t_enabled(mode) #throttle_cmd overridden by v2t
 
-        Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, h_e))
+        Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, Float64(h_e)))
 
         if mode != mode_prev
             Control.reset!(v2t_pid)
@@ -299,7 +317,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
         if q2e_enabled(mode) #elevator_ref overridden by q2e
 
-            Control.Discrete.assign!(q2e_pid, q2e_lookup(EAS, h_e))
+            Control.Discrete.assign!(q2e_pid, q2e_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
 
@@ -315,7 +333,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
                 if v2θ_enabled(mode) #θ_ref overridden by v2θ
 
-                    Control.Discrete.assign!(v2θ_pid, v2θ_lookup(EAS, h_e))
+                    Control.Discrete.assign!(v2θ_pid, v2θ_lookup(EAS, Float64(h_e)))
 
                     if mode != mode_prev
                         Control.reset!(v2θ_pid)
@@ -334,7 +352,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
                         clm_ref = k_p_clm * h_err
                     end
 
-                    Control.Discrete.assign!(c2θ_pid, c2θ_lookup(EAS, h_e))
+                    Control.Discrete.assign!(c2θ_pid, c2θ_lookup(EAS, Float64(h_e)))
 
                     if mode != mode_prev
                         Control.reset!(c2θ_pid)
@@ -370,10 +388,9 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
         end
 
-        Control.Discrete.assign!(e2e_lqr, e2e_lookup(EAS, h_e))
+        Control.Discrete.assign!(e2e_lqr, e2e_lookup(EAS, Float64(h_e)))
 
         #e2e is purely proportional, so it doesn't need resetting
-
         e2e_lqr.u.x .= XLonPitch(vehicle) #state feedback
         e2e_lqr.u.z .= Float64(vehicle.y.systems.act.elevator.cmd) #command variable feedback
         e2e_lqr.u.z_ref .= elevator_ref #command variable reference
@@ -382,9 +399,24 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
     end
 
+    if vh2te_enabled(mode) #throttle_cmd and elevator_cmd overridden by vh2te
+
+        Control.Discrete.assign!(vh2te_lqr, vh2te_lookup(EAS, Float64(h_e)))
+
+        (mode != mode_prev) && Control.reset!(vh2te_lqr)
+
+        vh2te_lqr.u.x .= XLonFull(vehicle)
+        vh2te_lqr.u.z .= Zvh(; EAS, h = h_e)
+        vh2te_lqr.u.z_ref .= Zvh(; EAS = EAS_ref, h = h_ref)
+        f_periodic!(vh2te_lqr)
+        @unpack throttle_cmd, elevator_cmd = ULonFull(vh2te_lqr.y.output)
+
+    end
+
     mdl.y = ControlLawsLonY(; mode, throttle_ref, elevator_ref, q_ref, θ_ref,
-        EAS_ref, clm_ref, h_err, h_state, throttle_cmd, elevator_cmd,
-        e2e_lqr = e2e_lqr.y, q2e_int = q2e_int.y, q2e_pid = q2e_pid.y,
+        EAS_ref, clm_ref, h_ref, h_state, throttle_cmd, elevator_cmd,
+        e2e_lqr = e2e_lqr.y, vh2te_lqr = vh2te_lqr.y,
+        q2e_int = q2e_int.y, q2e_pid = q2e_pid.y,
         v2θ_pid = v2θ_pid.y, c2θ_pid = c2θ_pid.y, v2t_pid = v2t_pid.y)
 
 end
@@ -449,6 +481,10 @@ function Modeling.init!(lon::Model{<:ControlLawsLon},
     u.mode_req = ModeControlLon.sas
     f_periodic!(lon, vehicle)
 
+    #initialize EAS + h LQR outputs
+    u.mode_req = ModeControlLon.EAS_alt_MIMO
+    f_periodic!(lon, vehicle)
+
     #restore direct mode
     u.mode_req = ModeControlLon.direct
     f_periodic!(lon, vehicle)
@@ -477,7 +513,7 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
     @unpack u, y, Δt = lon
 
     @unpack systems, kinematics, dynamics, airflow = vehicle.y
-    @unpack e_nb, ω_wb_b, v_eb_n, h_e, h_o = kinematics
+    @unpack e_nb, ω_wb_b, v_eb_n, h_e, h_o, n_e = kinematics
     @unpack EAS = airflow
     @unpack θ = e_nb
 
@@ -508,7 +544,9 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
                     mode_button("EAS + Climb Rate", ModeControlLon.EAS_clm, lon.u.mode_req, y.mode)
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_clm; lon.u.EAS_ref = EAS; lon.u.clm_ref = clm); SameLine()
                     mode_button("EAS + Altitude Hold", ModeControlLon.EAS_alt, lon.u.mode_req, y.mode)
-                    IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_alt; lon.u.EAS_ref = EAS; lon.u.h_ref = h_e)
+                    IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_alt; lon.u.EAS_ref = EAS; lon.u.h_ref = h_e); SameLine()
+                    mode_button("EAS + Altitude Hold MIMO", ModeControlLon.EAS_alt_MIMO, lon.u.mode_req, y.mode)
+                    IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_alt_MIMO; lon.u.EAS_ref = EAS; lon.u.h_ref = h_e)
                 TableNextColumn();
             TableNextRow()
                 TableNextColumn();
@@ -559,18 +597,23 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
             TableNextRow()
                 TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
                 TableNextColumn();
-                    RadioButton("Ellipsoidal", isa(u.h_ref, HEllip)); SameLine()
-                    IsItemActive() && (u.h_ref = h_e)
-                    RadioButton("Orthometric", isa(u.h_ref, HOrth))
-                    IsItemActive() && (u.h_ref = h_o)
+                @cstatic h_datum = :ellip begin
+                    RadioButton("Ellipsoidal", h_datum === :ellip); SameLine()
+                    IsItemActive() && (h_datum = :ellip)
+                    RadioButton("Orthometric", h_datum === :orth)
+                    IsItemActive() && (h_datum = :orth)
                     SameLine()
                     PushItemWidth(-10)
-                    h_ref_f64 = safe_input("Altitude Setpoint", Float64(lon.u.h_ref), 1, 1.0, "%.3f")
-                    lon.u.h_ref = (isa(u.h_ref, HEllip) ? HEllip(h_ref_f64) : HOrth(h_ref_f64))
+                    h_ref_ellip = lon.u.h_ref
+                    h_ref_orth = HOrth(h_ref_ellip, n_e)
+                    h_ref_f64 = (h_datum === :ellip ? Float64(h_ref_ellip) : Float64(h_ref_orth))
+                    h_ref_f64 = safe_input("Altitude Setpoint", h_ref_f64, 1, 1.0, "%.3f")
+                    lon.u.h_ref = (h_datum === :ellip ? HEllip(h_ref_f64) : HEllip(HOrth(h_ref_f64), n_e))
                     PopItemWidth()
                 TableNextColumn();
-                    isa(u.h_ref, HEllip) && Text(@sprintf("%.3f", Float64(h_e)))
-                    isa(u.h_ref, HOrth) && Text(@sprintf("%.3f", Float64(h_o)))
+                    (h_datum === :ellip) && Text(@sprintf("%.3f", Float64(h_e)))
+                    (h_datum === :orth) && Text(@sprintf("%.3f", Float64(h_o)))
+                end
             TableNextRow()
                 TableNextColumn();
                 TableNextColumn();
