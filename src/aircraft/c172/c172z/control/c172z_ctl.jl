@@ -56,10 +56,10 @@ using .ModeControlLon: ModeControlLonEnum
 using .AltTrackingState: AltTrackingStateEnum
 
 function te2te_enabled(mode::ModeControlLonEnum)
-    mode === ModeControlLon.sas ||
-    mode === ModeControlLon.thr_q || mode === ModeControlLon.thr_θ ||
-    mode === ModeControlLon.thr_EAS || mode === ModeControlLon.EAS_q ||
-    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm
+    mode === ModeControlLon.sas || mode === ModeControlLon.thr_q ||
+    mode === ModeControlLon.thr_θ || mode === ModeControlLon.thr_EAS ||
+    mode === ModeControlLon.EAS_q || mode === ModeControlLon.EAS_θ ||
+    mode === ModeControlLon.EAS_clm
 end
 
 function q2e_enabled(mode::ModeControlLonEnum)
@@ -275,18 +275,14 @@ Modeling.U(::ControlLawsLon) = ControlLawsLonU()
 Modeling.Y(::ControlLawsLon) = ControlLawsLonY()
 
 function Modeling.init!(mdl::Model{<:ControlLawsLon})
-    #te2te determines throttle and pitch saturation for all pitch control loops
-    #(q2e, c2θ, v2θ), so we don't need to set bounds for those. they will be
-    #provided with te2te's saturation state as an external saturation input
+    #te2te determines throttle and pitch saturation for all non-LQR control
+    #loops (q2e, c2θ, v2θ), so we don't need to set bounds for those. they will
+    #be provided with te2te's saturation state as an external saturation input
     mdl.te2te_lqr.u.bound_lo .= ULonFull(; throttle_cmd = 0, elevator_cmd = -1)
     mdl.te2te_lqr.u.bound_hi .= ULonFull(; throttle_cmd = 1, elevator_cmd = 1)
 
     mdl.vh2te_lqr.u.bound_lo .= ULonFull(; throttle_cmd = 0, elevator_cmd = -1)
     mdl.vh2te_lqr.u.bound_hi .= ULonFull(; throttle_cmd = 1, elevator_cmd = 1)
-
-    #we do need to set bounds for v2t
-    mdl.v2t_pid.u.bound_lo = 0
-    mdl.v2t_pid.u.bound_hi = 1
 end
 
 
