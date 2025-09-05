@@ -123,7 +123,7 @@ end
 ################################################################################
 
 #state vector for reduced longitudinal dynamics
-@kwdef struct XLonRed <: FieldVector{9, Float64}
+@kwdef struct XLonRed <: FieldVector{8, Float64}
     q::Float64 = 0.0 #pitch rate
     θ::Float64 = 0.0 #pitch angle
     EAS::Float64 = 0.0 #equivalent airspeed

@@ -169,35 +169,39 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     ############################ thr+ele SAS ###################################
 
-    P_red_te, params_e2e = let
+    P_te2te, params_te2te = let lss = lss_red
 
-        x_labels = keys(lss_pit.x0) |> collect
-        x_trim = lss_pit.x0
+        x_trim = lss.x0
         n_x = length(x_trim)
-        # ensure consistency in component selection and ordering between design
-        # model and implementation
-        @assert tuple(x_labels...) === propertynames(C172ZControl.XLonPitch())
+        x_labels = collect(keys(x_trim))
+        @assert tuple(x_labels...) === propertynames(C172ZControl.XLonRed())
 
-        u_labels = keys(lss_pit.u0) |> collect
-        u_trim = lss_pit.u0
+        u_trim = lss.u0
         n_u = length(u_trim)
+        u_labels = collect(keys(u_trim))
+        @assert tuple(u_labels...) === propertynames(C172ZControl.ULonRed())
 
-        z_labels = [:elevator_cmd,]
-        z_trim = lss_pit.y0[z_labels]
-        n_z = length(z_trim)
+        z_labels = [:throttle_cmd, :elevator_cmd,]
+        z_trim = lss.y0[z_labels]
+        n_z = length(z_labels)
+        @assert tuple(z_labels...) === propertynames(C172ZControl.ULonRed())
 
-        F = lss_pit.A
-        G = lss_pit.B
-        Hx = lss_pit.C[z_labels, :]
-        Hu = lss_pit.D[z_labels, :]
+        F = lss.A
+        G = lss.B
+        Hx = lss.C[z_labels, :]
+        Hu = lss.D[z_labels, :]
 
-        #weight matrices
+        #cost matrices
         #trade-off between q, θ and EAS vs elevator_cmd
-        Q = C172ZControl.XLonPitch(q = 1, θ = 20, EAS = 0.01, α = 0, α_filt = 0, ele_p = 0) |> diagm
-        R = [3.0] |> diagm #elevator_cmd weight
+        Q = C172ZControl.XLonRed(; q = 1, θ = 20, EAS = 0.02, α = 0, α_filt = 0, n_eng = 0,
+                                thr_p = 0, ele_p = 0) |> diagm
+        #penalizing throttle activity heavily to prevent elevator_cmd_ref inputs
+        #from coupling into throttle_cmd; throttle_cmd_ref
+        R = C172ZControl.ULonRed(throttle_cmd = 100, elevator_cmd = 5) |> diagm
 
         #feedback gain matrix
-        C_fbk = lqr(P_pit, Q, R)
+        P = named_ss(lss)
+        C_fbk = lqr(P, Q, R)
 
         #forward gain matrix
         A = [F G; Hx Hu]
@@ -219,6 +223,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_ref, y = u_labels_fwd)
 
         #summing junctions
+        throttle_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd - throttle_cmd_fbk")
         elevator_sum = sumblock("elevator_cmd_sum = elevator_cmd_fwd - elevator_cmd_fbk")
 
         connections = vcat(
@@ -228,26 +233,20 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
             Pair.(u_labels_fwd, u_labels_fwd)
             )
 
-        #connect to the reduced longitudinal dynamics (this is the one we'll keep)
-        P_red_te = connect([P_red, elevator_sum, C_fbk_ss, C_fwd_ss],
-            connections; w1 = [:throttle_cmd, :elevator_cmd_ref], z1 = P_red.y)
+        P_te2te = connect([P_red, throttle_sum, elevator_sum, C_fbk_ss, C_fwd_ss],
+            connections; w1 = [:throttle_cmd_ref, :elevator_cmd_ref], z1 = P_red.y)
 
-        #add dummy system to rename input throttle_cmd to throttle_cmd_ref
-        D_thr = named_ss(ss(1), u = [:throttle_cmd_ref,], y = [:throttle_cmd_ref, ])
-        P_red_te = connect([P_red_te, D_thr], [:throttle_cmd_ref => :throttle_cmd,];
-            w1 = [:throttle_cmd_ref, :elevator_cmd_ref], z1 = P_red_te.y)
-
-        params_e2e = LQRTrackerParams(; #export everything as plain arrays
+        params_te2te = LQRTrackerParams(; #export everything as plain arrays
             C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
-        (P_red_te, params_e2e)
+        (P_te2te, params_te2te)
 
     end
 
     P_red_tq, params_q2e = let
 
-        P_e2q = P_red_te[:q, :elevator_cmd_ref]
+        P_e2q = P_te2te[:q, :elevator_cmd_ref]
 
         q2e_int = tf(1, [1, 0]) |> ss
         P_q2e_opt = series(q2e_int, ss(P_e2q))
@@ -270,9 +269,9 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         C_q2e = named_ss(series(q2e_int, q2e_pid), :C_q2e; u = :q_err, y = :elevator_cmd_ref);
 
         q2e_sum = sumblock("q_err = q_ref - q")
-        P_red_tq = connect([P_red_te, q2e_sum, C_q2e],
+        P_red_tq = connect([P_te2te, q2e_sum, C_q2e],
             [:q_err=>:q_err, :q=>:q, :elevator_cmd_ref=>:elevator_cmd_ref],
-            w1 = [:throttle_cmd_ref, :q_ref], z1 = P_red_te.y)
+            w1 = [:throttle_cmd_ref, :q_ref], z1 = P_te2te.y)
 
         (P_red_tq, params_q2e)
 
@@ -430,11 +429,6 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         #compute gain matrix
         C_aug = lqr(P_aug, Q, R)
 
-        # quickly construct the closed-loop augmented system to check the resulting
-        # eigenvalues, we'll do the connections properly later
-        F_aug_cl = F_aug - G_aug * C_aug
-        P_aug_cl = ss(F_aug_cl, G_aug, Hx_aug, Hu_aug)
-
         A = [F G; Hx Hu]
         B = inv(A)
         B_12 = B[1:n_x, n_x+1:end]
@@ -517,7 +511,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     end
 
-    return (e2e = params_e2e, q2e = params_q2e, v2θ = params_v2θ,
+    return (te2te = params_te2te, q2e = params_q2e, v2θ = params_v2θ,
             v2t = params_v2t, c2θ = params_c2θ, vh2te = params_vh2te)
 
 end
