@@ -41,6 +41,12 @@ function test_control_modes()
     ctl = aircraft.avionics
 
     init_gnd = C172.Init(KinInit( h = h_trn + 1.9))
+
+    #using the default TrimParameters() is crucial for these tests. this ensures
+    #we are exactly at one of the design points, with exactly computed
+    #controller parameters, rather than ones interpolated from the lookup
+    #tables. this of course would not be a problem performance-wise, but it is
+    #when assessing whether the SAS loops exactly respect the trim condition
     init_air = C172.TrimParameters()
 
     dt = Δt = 0.01
@@ -93,9 +99,9 @@ function test_control_modes()
     # ############################################################################
     # ################################# Air ######################################
 
-    @testset verbose = true "Air" begin
+    # @testset verbose = true "Air" begin
 
-    #put the aircraft in its nominal design point
+    #put the aircraft at its nominal design point and save its output for later
     Sim.init!(sim, init_air)
     y_kin_trim = y_kin(aircraft)
 
@@ -130,9 +136,9 @@ function test_control_modes()
         @test ctl.y.lon.mode === ModeControlLon.sas
 
         #check the correct parameters are loaded and assigned to the controller
-        te2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "e2e_lookup.h5"))
+        te2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "te2te_lookup.h5"))
         C_fwd = te2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
-        @test all(isapprox.(ctl.y.lon.e2e_lqr.C_fwd, C_fwd; atol = 1e-6))
+        @test all(isapprox.(ctl.y.lon.te2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #a small initial transient when engaging the SAS is acceptable
         #once active, trim equilibrium must be preserved for longer
@@ -557,7 +563,7 @@ function test_control_modes()
 
     end #testset
 
-    end #testset
+    # end #testset
 
 end #function
 
