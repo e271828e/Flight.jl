@@ -180,7 +180,7 @@ function GUI.draw!(mdl::Model{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true)
                     CImGui.Text("$label Position"); CImGui.SameLine(200); display_bar("", position)
                     buffer[offset[]+1] = Cfloat(position)
                     offset[] = (offset[]+1) % length(buffer)
-                    CImGui.PlotLines("$label Position", buffer, length(buffer), offset[], "$label Position",
+                    CImGui.PlotLines("##$label Position", buffer, length(buffer), offset[], "$label Position",
                                     Cfloat(typemin(position)), Cfloat(typemax(position)),
                                     (Cint(0), Cint(120)))
                 end

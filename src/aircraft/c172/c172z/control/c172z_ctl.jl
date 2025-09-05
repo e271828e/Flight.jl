@@ -82,37 +82,11 @@ v2θ_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.thr_EAS)
 
 vh2te_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_alt)
 
-############################## FieldVectors ####################################
 
-#state vector for pitch LQR SAS
-@kwdef struct XLonPitch <: FieldVector{6, Float64}
-    q::Float64 = 0.0 #pitch rate
-    θ::Float64 = 0.0 #pitch angle
-    EAS::Float64 = 0.0 #equivalent airspeed
-    α::Float64 = 0.0 #AoA
-    α_filt::Float64 = 0.0 #filtered AoA (from aerodynamics model)
-    ele_p::Float64 = 0.0 #elevator actuator state
-end
+################################################################################
+############################### LQR Vectors ####################################
 
-#assemble state vector from vehicle
-function XLonPitch(vehicle::Model{<:C172Z.Vehicle})
-
-    @unpack systems, airflow, kinematics = vehicle.y
-    @unpack pwp, aero, act = systems
-    @unpack e_nb, ω_eb_b = kinematics
-
-    q = ω_eb_b[2]
-    θ = e_nb.θ
-    EAS = airflow.EAS
-    α = aero.α
-    α_filt = aero.α_filt
-    ele_p = act.elevator.pos
-
-    XLonPitch(; q, θ, EAS, α, α_filt, ele_p)
-
-end
-
-#state vector for pitch LQR SAS
+#state vector for complete longitudinal dynamics
 @kwdef struct XLonFull <: FieldVector{9, Float64}
     q::Float64 = 0.0 #pitch rate
     θ::Float64 = 0.0 #pitch angle
@@ -146,14 +120,93 @@ function XLonFull(vehicle::Model{<:C172Z.Vehicle})
 
 end
 
+################################################################################
+
+#state vector for reduced longitudinal dynamics
+@kwdef struct XLonRed <: FieldVector{9, Float64}
+    q::Float64 = 0.0 #pitch rate
+    θ::Float64 = 0.0 #pitch angle
+    EAS::Float64 = 0.0 #equivalent airspeed
+    α::Float64 = 0.0 #AoA
+    α_filt::Float64 = 0.0 #filtered AoA (from aerodynamics model)
+    n_eng::Float64 = 0.0 #engine speed (rad/s)
+    thr_p::Float64 = 0.0 #throttle actuator state
+    ele_p::Float64 = 0.0 #elevator actuator state
+end
+
+#assemble state vector from vehicle
+function XLonRed(vehicle::Model{<:C172Z.Vehicle})
+
+    @unpack systems, airflow, kinematics = vehicle.y
+    @unpack pwp, aero, act = systems
+    @unpack e_nb, ω_eb_b, h_e = kinematics
+
+    q = ω_eb_b[2]
+    θ = e_nb.θ
+    EAS = airflow.EAS
+    α = aero.α
+    α_filt = aero.α_filt
+    n_eng = pwp.engine.n
+    thr_p = act.throttle.pos
+    ele_p = act.elevator.pos
+
+    XLonRed(; q, θ, EAS, α, α_filt, n_eng, thr_p, ele_p)
+
+end
+
+################################################################################
+
+#state vector for pitch dynamics
+@kwdef struct XLonPitch <: FieldVector{6, Float64}
+    q::Float64 = 0.0 #pitch rate
+    θ::Float64 = 0.0 #pitch angle
+    EAS::Float64 = 0.0 #equivalent airspeed
+    α::Float64 = 0.0 #AoA
+    α_filt::Float64 = 0.0 #filtered AoA (from aerodynamics model)
+    ele_p::Float64 = 0.0 #elevator actuator state
+end
+
+#assemble state vector from vehicle
+function XLonPitch(vehicle::Model{<:C172Z.Vehicle})
+
+    @unpack systems, airflow, kinematics = vehicle.y
+    @unpack pwp, aero, act = systems
+    @unpack e_nb, ω_eb_b = kinematics
+
+    q = ω_eb_b[2]
+    θ = e_nb.θ
+    EAS = airflow.EAS
+    α = aero.α
+    α_filt = aero.α_filt
+    ele_p = act.elevator.pos
+
+    XLonPitch(; q, θ, EAS, α, α_filt, ele_p)
+
+end
+
+################################################################################
+
+#control vector for full longitudinal dynamics
 @kwdef struct ULonFull{T} <: FieldVector{2, T}
     throttle_cmd::T = 0.0
     elevator_cmd::T = 0.0
 end
 
+#control vector for reduced longitudinal dynamics
+const ULonRed = ULonFull
+
+################################################################################
+
+#command vector for EAS + altitude LQR tracker
 @kwdef struct Zvh <: FieldVector{2, Float64}
     EAS::Float64 = 0.0
     h::Float64 = 0.0
+end
+
+#command vector for throttle + EAS LQR tracker
+@kwdef struct Ztv <: FieldVector{2, Float64}
+    throttle_cmd::Float64 = 0.0
+    EAS::Float64 = 0.0
 end
 
 
