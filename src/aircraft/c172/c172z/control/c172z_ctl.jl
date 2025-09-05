@@ -160,36 +160,6 @@ end
 
 ################################################################################
 
-#state vector for pitch dynamics
-@kwdef struct XLonPitch <: FieldVector{6, Float64}
-    q::Float64 = 0.0 #pitch rate
-    θ::Float64 = 0.0 #pitch angle
-    EAS::Float64 = 0.0 #equivalent airspeed
-    α::Float64 = 0.0 #AoA
-    α_filt::Float64 = 0.0 #filtered AoA (from aerodynamics model)
-    ele_p::Float64 = 0.0 #elevator actuator state
-end
-
-#assemble state vector from vehicle
-function XLonPitch(vehicle::Model{<:C172Z.Vehicle})
-
-    @unpack systems, airflow, kinematics = vehicle.y
-    @unpack pwp, aero, act = systems
-    @unpack e_nb, ω_eb_b = kinematics
-
-    q = ω_eb_b[2]
-    θ = e_nb.θ
-    EAS = airflow.EAS
-    α = aero.α
-    α_filt = aero.α_filt
-    ele_p = act.elevator.pos
-
-    XLonPitch(; q, θ, EAS, α, α_filt, ele_p)
-
-end
-
-################################################################################
-
 #control vector for full longitudinal dynamics
 @kwdef struct ULonFull{T} <: FieldVector{2, T}
     throttle_cmd::T = 0.0
