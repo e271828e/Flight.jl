@@ -667,7 +667,7 @@ function test_json_loopback(; save::Bool = true)
     #simulation
     JSON3.read!(JSON3.write(world.aircraft.avionics.ctl.u, allow_inf=true), world.aircraft.avionics.ctl.u; allow_inf=true)
 
-    Sim.run_interactive!(sim)
+    Sim.run!(sim; gui = true)
 
     save && save_plots(TimeSeries(sim).aircraft.vehicle.kinematics,
                         normpath("tmp/plots/test_c172x1/test_json_loopback/kin");

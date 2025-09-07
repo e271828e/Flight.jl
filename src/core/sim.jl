@@ -583,9 +583,10 @@ end
 
 #* caution: on non-Windows platforms, CImGui needs to run on the main thread!
 
-function run!(sim::Simulation; pace = Inf)
+function run!(sim::Simulation; gui::Bool = false, pace::Real = (gui ? 1.0 : Inf))
 
-    req_threads = 1 + length(sim.interfaces) #sim loop + interfaces
+    req_threads = 1 + Int(gui) + length(sim.interfaces) #sim loop + interfaces
+    @show req_threads
     threads = Threads.nthreads()
     req_threads <= threads || error(
         "Running this simulation requires at least $req_threads available
@@ -598,26 +599,7 @@ function run!(sim::Simulation; pace = Inf)
             Threads.@spawn start!(interface)
         end
         Threads.@spawn start!(sim)
-    end
-
-end
-
-function run_interactive!(sim::Simulation; pace = 1.0)
-
-    req_threads = 2 + length(sim.interfaces) #GUI + sim loop + interfaces
-    threads = Threads.nthreads()
-    req_threads <= threads || error(
-        "Running this simulation requires at least $req_threads available
-        threads, the current Julia session only has $threads")
-
-    sim.control.pace = pace
-
-    @sync begin
-        for interface in sim.interfaces
-            Threads.@spawn start!(interface)
-        end
-        Threads.@spawn start!(sim)
-        start!(sim.gui) #CImGui must run on the main thread
+        gui && start!(sim.gui) #CImGui must run on the main thread
     end
 
 end

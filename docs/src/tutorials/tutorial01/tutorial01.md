@@ -168,7 +168,7 @@ Sim.init!(sim, init_gnd)
 
 Now we can finally start the simulation:
 ```julia
-Sim.run_interactive!(sim)
+Sim.run!(sim; gui = true)
 ```
 
 After a few seconds, the simulation will launch, and a new OS window containing the built-in GUI
@@ -205,7 +205,7 @@ simulation has taken control of the visuals.
 
     ```julia
     Sim.init!(sim, init_gnd)
-    Sim.run_interactive!(sim)
+    Sim.run!(sim; gui = true)
     ```
 
 Now return to the GUI and navigate to *Aircraft > Avionics > Flight Control*. This panel contains
@@ -269,7 +269,7 @@ mind the spiral mode instability!
     abort. No worries, just reset it and have another go:
     ```julia
     Sim.init!(sim, init_gnd)
-    Sim.run_interactive!(sim)
+    Sim.run!(sim; gui = true)
     ```
 
 Next, try the *EAS + Pitch Rate* mode. This mode combines an autothrottle loop with a pitch rate

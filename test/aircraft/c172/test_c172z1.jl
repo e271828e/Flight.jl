@@ -1,6 +1,6 @@
 module TestC172Zv1
 
-using Test, UnPack, BenchmarkTools, Sockets, JSON3
+using Test, UnPack, BenchmarkTools, Sockets, JSON3, Logging
 
 using Flight.FlightCore
 using Flight.FlightLib
@@ -511,6 +511,11 @@ function test_c172z1(; alloc::Bool = true)
         ctl.u.lat.mode_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
 
+        #check the correct parameters are loaded and assigned to the controller
+        vh2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "vh2te_lookup.h5"))
+        C_fwd = vh2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
+        @test all(isapprox.(ctl.y.lon.vh2te_lqr.C_fwd, C_fwd; atol = 1e-6))
+
         #h_ref should have been initialized at its trim value, so the initial
         #altitude tracking state should be hold
         @test ctl.y.lon.h_state === AltTrackingState.hold
@@ -553,6 +558,13 @@ function test_c172z1(; alloc::Bool = true)
         alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
+
+    # @testset verbose = true "JSON3 loopback" begin
+    #     #prevent @info messages from the simulation from failing the test
+    #     Logging.disable_logging(Logging.Info)
+    #     @test_nowarn test_json_loopback(; gui = false, save = false)
+    #     Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
+    # end
 
     end #testset
 
@@ -605,13 +617,13 @@ function IODevices.assign_input!(world::Model{<:SimpleWorld}, ::JSONTestMapping,
     end
 end
 
-function test_json_loopback(; save::Bool = true)
+function test_json_loopback(; gui::Bool = true, xp12 = false, save::Bool = true)
 
 
     h_trn = HOrth(427.2);
     world = SimpleWorld(Cessna172Zv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
-    sim = Simulation(world; dt = 1/60, Δt = 1/60, t_end = 30)
+    sim = Simulation(world; t_end = 30)
 
     #on air, automatically trimmed by reinit!
     initializer = C172.TrimParameters(
@@ -620,8 +632,9 @@ function test_json_loopback(; save::Bool = true)
     #initialize simulated system
     Sim.init!(sim, initializer)
 
-    #the loopback interface must not share its port with the XPlane12Control!
-    # Sim.attach!(sim, XPlane12Control(; port = 49000))
+    xp12 && Sim.attach!(sim, XPlane12Control(; port = 49000))
+
+    #the loopback interface must not share its port with XPlane12Control!
     Sim.attach!(sim, UDPInput(; port = 49017), JSONTestMapping())
     Sim.attach!(sim, UDPOutput(; port = 49017), JSONTestMapping())
 
@@ -631,7 +644,9 @@ function test_json_loopback(; save::Bool = true)
     JSON3.read!(JSON3.write(world.aircraft.avionics.u.lat, allow_inf=true),
                             world.aircraft.avionics.u.lat; allow_inf=true)
 
-    Sim.run_interactive!(sim)
+    #set non-Inf pace for headless runs to allow the UDP interface to keep up
+    pace = (gui ? 1.0 : 30)
+    Sim.run!(sim; gui, pace)
 
     save && save_plots(TimeSeries(sim).aircraft.vehicle.kinematics,
                         normpath("tmp/plots/test_c172z1/test_json_loopback/kin");
@@ -640,5 +655,24 @@ function test_json_loopback(; save::Bool = true)
     return nothing
 
 end
+
+
+#for interactive ControlLaws validation
+function test_interactive(init::C172.TrimParameters = C172.TrimParameters())
+
+    world = SimpleWorld(Cessna172Zv1(), SimpleAtmosphere(), HorizontalTerrain()) |> Model
+    sim = Simulation(world; dt = 0.01, t_end = 1000)
+    Sim.init!(sim, init)
+    Sim.run!(sim; gui = true)
+
+    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/test_c172z1/kin"); Plotting.defaults..., linewidth = 2,)
+    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/test_c172z1/air"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/test_c172z1/dyn"); Plotting.defaults...)
+    # save_plots(TimeSeries(sim).aircraft.vehicle.dynamics; Plotting.defaults...)
+
+    return sim
+
+end
+
 
 end #module

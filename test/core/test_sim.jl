@@ -256,9 +256,7 @@ function joystick_input()
         joystick = update_connected_joysticks()[1]
         Sim.attach!(sim, joystick)
 
-        Sim.run_interactive!(sim)
-
-        # return sim
+        Sim.run!(sim; gui = true)
 
     end
 
