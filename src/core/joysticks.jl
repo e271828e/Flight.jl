@@ -9,7 +9,7 @@ using ..IODevices
 using ..Types
 
 export AbstractJoystickData, Joystick
-export T16000MData
+export T16000MData, TWCSData, GladiatorNXTEvoData
 
 export connected_joysticks, update_connected_joysticks
 export is_pressed, was_pressed, was_released
@@ -348,6 +348,90 @@ end
 const TWCS = Joystick{TWCSData}
 
 
+
+################################################################################
+######################## VKBSim Gladiator NXT Evo ##############################
+
+@kwdef struct GladiatorNXTEvoAxes{T} <: AbstractAxisSet{6, T}
+    stick_x::T = 0.0
+    stick_y::T = 0.0
+    throttle::T = 0.0
+    analog_hat_x::T = 0.0
+    analog_hat_y::T = 0.0
+    stick_z::T = 0.0
+end
+
+#when queried with GetJoystickButtons, Gladiator NXT Evo returns an array of
+#132 values, from which the first 29 actually correspond to physical buttons. we
+#only keep those here
+@kwdef struct GladiatorNXTEvoButtons{T} <: AbstractButtonSet{29, T}
+    fire_half::T = 0
+    fire_full::T = 0
+    A2::T = 0
+    B1::T = 0
+    D1::T = 0
+    A3_up::T = 0
+    A3_right::T = 0
+    A3_down::T = 0
+    A3_left::T = 0
+    A3_press::T = 0
+    A4_up::T = 0
+    A4_right::T = 0
+    A4_down::T = 0
+    A4_left::T = 0
+    A4_press::T = 0
+    C1_up::T = 0
+    C1_right::T = 0
+    C1_down::T = 0
+    C1_left::T = 0
+    C1_press::T = 0
+    black_trigger_up::T = 0
+    black_trigger_down::T = 0
+    encoder_up::T = 0
+    encoder_down::T = 0
+    switch_up::T = 0
+    switch_down::T = 0
+    F1::T = 0
+    F2::T = 0
+    F3::T = 0
+end
+
+
+@kwdef struct GladiatorNXTEvoData <: AbstractJoystickData
+    axes::GladiatorNXTEvoAxes{Float64} = zeros(GladiatorNXTEvoAxes{Float64})
+    buttons::GladiatorNXTEvoButtons{ButtonData} = zeros(GladiatorNXTEvoButtons{ButtonData})
+    hat::HatButtons{ButtonData} = zeros(HatButtons{ButtonData})
+end
+
+function GladiatorNXTEvoData(joystick::Joystick{GladiatorNXTEvoData})
+
+    @unpack ptr, cache = joystick
+
+    axes_data = sacollect(GladiatorNXTEvoAxes{Float64}, get_axis(ptr, i)/32768.0 for i in 0:5) |> rescale
+
+    button_state = sacollect(GladiatorNXTEvoButtons{Bool}, get_button(ptr, i) for i in 0:28)
+    button_state_last = sacollect(GladiatorNXTEvoButtons{Bool}, b.state for b in cache.buttons)
+    button_change = get_change.(button_state, button_state_last) |> GladiatorNXTEvoButtons
+    button_data = sacollect(GladiatorNXTEvoButtons, ButtonData(state, change) for (state, change) in zip(button_state, button_change))
+
+    hat_state = HatButtons(get_hat(ptr, 0) .& SDL_HAT_4POS .!= 0)
+    hat_state_last = sacollect(HatButtons{Bool}, b.state for b in cache.hat)
+    hat_change = get_change.(hat_state, hat_state_last) |> HatButtons
+    hat_data = sacollect(HatButtons, ButtonData(state, change) for (state, change) in zip(hat_state, hat_change))
+
+    return GladiatorNXTEvoData(axes_data, button_data, hat_data)
+
+end
+
+function rescale(data::GladiatorNXTEvoAxes{T}) where {T<:AbstractFloat}
+    @unpack stick_x, stick_y, throttle, analog_hat_x, analog_hat_y, stick_z = data
+    GladiatorNXTEvoAxes{T}(; stick_x, stick_y, throttle = 0.5*(1 - throttle),
+                            analog_hat_x, analog_hat_y, stick_z)
+end
+
+const GladiatorNXTEvo = Joystick{GladiatorNXTEvoData}
+
+
 ################################################################################
 ############################# Supported Joysticks ##############################
 
@@ -356,56 +440,9 @@ const supported_joysticks = Dict{SDL_JoystickGUID, Type}(
         0x00, 0x0a, 0xb1, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00)) => T16000MData,
     SDL_JoystickGUID((0x03, 0x00, 0x00, 0x00, 0x4f, 0x04, 0x00,
         0x00, 0x87, 0xb6, 0x00, 0x00, 0x10, 0x01, 0x00, 0x00)) => TWCSData,
+    SDL_JoystickGUID((0x03, 0x00, 0x00, 0x00, 0x1d, 0x23, 0x00,
+        0x00, 0x00, 0x02, 0x00, 0x00, 0x4a, 0x21, 0x00, 0x00)) => GladiatorNXTEvoData,
 )
-
-
-# ################################################################################
-# ######################## VKBSim Gladiator NXT Evo ##############################
-
-# @kwdef struct GladiatorNXTEvoAxes <: AbstractAxisSet{6}
-#     stick_x::Float32 = 0.0
-#     stick_y::Float32 = 0.0
-#     throttle::Float32 = 0.0
-#     analog_hat_x::Float32 = 0.0
-#     analog_hat_y::Float32 = 0.0
-#     stick_z::Float32 = 0.0
-# end
-
-# #when queried with GetJoystickButtons, Gladiator NXT Evo returns an array of
-# #132 values, from which the first 29 actually correspond to physical buttons. we
-# #only keep those here
-# @kwdef struct GladiatorNXTEvoButtons{T} <: AbstractButtonSet{29, T}
-#     red_trigger_half::T = 0
-#     red_trigger_full::T = 0
-#     A2::T = 0
-#     B1::T = 0
-#     D1::T = 0
-#     A3_up::T = 0
-#     A3_right::T = 0
-#     A3_down::T = 0
-#     A3_left::T = 0
-#     A3_press::T = 0
-#     A4_up::T = 0
-#     A4_right::T = 0
-#     A4_down::T = 0
-#     A4_left::T = 0
-#     A4_press::T = 0
-#     C1_up::T = 0
-#     C1_right::T = 0
-#     C1_down::T = 0
-#     C1_left::T = 0
-#     C1_press::T = 0
-#     black_trigger_up::T = 0
-#     black_trigger_down::T = 0
-#     encoder_up::T = 0
-#     encoder_down::T = 0
-#     switch_up::T = 0
-#     switch_down::T = 0
-#     F1::T = 0
-#     F2::T = 0
-#     F3::T = 0
-# end
-
 
 
 ################################################################################

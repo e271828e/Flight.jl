@@ -586,7 +586,6 @@ end
 function run!(sim::Simulation; gui::Bool = false, pace::Real = (gui ? 1.0 : Inf))
 
     req_threads = 1 + Int(gui) + length(sim.interfaces) #sim loop + interfaces
-    @show req_threads
     threads = Threads.nthreads()
     req_threads <= threads || error(
         "Running this simulation requires at least $req_threads available

@@ -55,7 +55,8 @@ function tutorial01(; aircraft::Cessna172 = Cessna172Xv1(),
     xp = XPlane12Control(address = xp12_address, port = xp12_port)
     Sim.attach!(sim, xp)
     for joystick in update_connected_joysticks()
-        isa(joystick, Joysticks.T16000M) && Sim.attach!(sim, joystick)
+        # isa(joystick, Joysticks.T16000M) && Sim.attach!(sim, joystick)
+        Sim.attach!(sim, joystick)
     end
 
     Sim.run!(sim; gui = true)
