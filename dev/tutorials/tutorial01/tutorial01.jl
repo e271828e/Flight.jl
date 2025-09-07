@@ -33,6 +33,7 @@ function tutorial01(; aircraft::Cessna172 = Cessna172Xv1(),
 
     elseif situation === :air
         #initial condition specified by trim parameters
+        # initializer = C172.TrimParameters()
         initializer = C172.TrimParameters(;
             Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above LOWS runway 15
             EAS = 50.0, #equivalent airspeed
@@ -54,10 +55,11 @@ function tutorial01(; aircraft::Cessna172 = Cessna172Xv1(),
     xp = XPlane12Control(address = xp12_address, port = xp12_port)
     Sim.attach!(sim, xp)
     for joystick in update_connected_joysticks()
-        isa(joystick, Joysticks.T16000M) && Sim.attach!(sim, joystick)
+        # isa(joystick, Joysticks.T16000M) && Sim.attach!(sim, joystick)
+        Sim.attach!(sim, joystick)
     end
 
-    Sim.run_interactive!(sim)
+    Sim.run!(sim; gui = true)
 
     save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/tutorial01/kin"); Plotting.defaults..., linewidth = 2,)
     save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/tutorial01/air"); Plotting.defaults...)
