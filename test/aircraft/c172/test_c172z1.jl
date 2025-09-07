@@ -13,25 +13,17 @@ using Flight.FlightAircraft.C172Z.C172ZControl: ModeControlLon, ModeControlLat,
 
 export test_c172z1
 
-
-function test_c172z1()
-    @testset verbose = true "Cessna 172Zv1" begin
-
-        test_control_modes()
-
-    end
-end
-
 y_kin(aircraft::Model{<:Cessna172Zv1}) = aircraft.y.vehicle.kinematics
 y_air(aircraft::Model{<:Cessna172Zv1}) = aircraft.y.vehicle.airflow
 y_aero(aircraft::Model{<:Cessna172Zv1}) = aircraft.y.vehicle.systems.aero
 
-function test_control_modes()
+
+function test_c172z1(; alloc::Bool = true)
+
+    @testset verbose = true "Cessna 172Zv1" begin
 
     data_folder = joinpath(dirname(dirname(dirname(@__DIR__))),
         normpath("src/aircraft/c172/c172z/control/data"))
-
-    @testset verbose = true "Control Modes" begin
 
     h_trn = HOrth(0.0)
     world = SimpleWorld(Cessna172Zv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
@@ -78,7 +70,7 @@ function test_control_modes()
     #make sure we're on the ground
     @test is_on_gnd(aircraft.vehicle)
 
-    #the mode requests are overridden due to FlightPhase.gnd
+    #the mode requests are overridden due to wow = gnd
     @test ctl.y.lon.mode === ModeControlLon.direct
     @test ctl.y.lat.mode === ModeControlLat.direct
 
@@ -89,10 +81,11 @@ function test_control_modes()
     @test act.rudder.u[] == 0.4
     @test act.aileron.u[] == 0.2
 
-    # #test for allocation. f_periodic! will need further tests in other control modes
-    @test @ballocated(f_ode!($world)) == 0
-    @test @ballocated(f_step!($world)) == 0
-    @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+    if alloc
+        @test @ballocated(f_ode!($world)) == 0
+        @test @ballocated(f_step!($world)) == 0
+        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+    end
 
     end #testset
 
@@ -120,7 +113,7 @@ function test_control_modes()
         @test all(isapprox.(y_kin(aircraft).v_eb_b, y_kin_trim.v_eb_b; atol = 1e-2))
 
         #test for allocations in the controller's current state
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end #testset
 
@@ -147,7 +140,7 @@ function test_control_modes()
         @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end #testset
 
@@ -172,7 +165,7 @@ function test_control_modes()
         @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -205,7 +198,7 @@ function test_control_modes()
         @test isapprox(Float64(ctl.u.lat.β_ref), y_aero(aircraft).β; atol = 1e-3)
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -246,7 +239,7 @@ function test_control_modes()
         @test isapprox(ctl.u.lat.β_ref, y_aero(aircraft).β; atol = 1e-3)
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -290,7 +283,7 @@ function test_control_modes()
         world.atmosphere.wind.u.N = 0
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -331,7 +324,7 @@ function test_control_modes()
                         Float64(ctl.u.lon.throttle_axis + ctl.u.lon.throttle_offset); atol = 1e-3)
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -359,7 +352,7 @@ function test_control_modes()
         @test isapprox(y_kin(aircraft).e_nb.θ, ctl.u.lon.θ_ref; atol = 1e-4)
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -376,9 +369,9 @@ function test_control_modes()
         @test ctl.y.lon.mode === ModeControlLon.thr_EAS
 
         #check the correct parameters are loaded and assigned to the controller
-        v2θ_lookup = load_pid_lookup(joinpath(data_folder, "v2θ_lookup.h5"))
-        k_p = v2θ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
-        @test all(isapprox.(ctl.y.lon.v2θ_pid.k_p, k_p; atol = 1e-6))
+        tv2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "tv2te_lookup.h5"))
+        C_fwd = tv2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
+        @test all(isapprox.(ctl.y.lon.tv2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
@@ -393,7 +386,7 @@ function test_control_modes()
         @test all(isapprox.(y_air(aircraft).EAS, ctl.u.lon.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -437,7 +430,7 @@ function test_control_modes()
         @test all(isapprox.(y_air(aircraft).EAS, ctl.u.lon.EAS_ref; atol = 1)) #allow 1m/s error
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -469,7 +462,7 @@ function test_control_modes()
         @test all(isapprox.(y_air(aircraft).EAS, ctl.u.lon.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -504,7 +497,7 @@ function test_control_modes()
         @test all(isapprox.(y_air(aircraft).EAS, ctl.u.lon.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
         # return sim
 
@@ -557,13 +550,11 @@ function test_control_modes()
 
         #test for allocations in EAS_alt mode
         @test ctl.y.lon.mode === ModeControlLon.EAS_alt
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
     end #testset
-
-    # end #testset
 
 end #function
 

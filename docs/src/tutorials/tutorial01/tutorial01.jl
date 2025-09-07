@@ -33,15 +33,16 @@ function tutorial01(; aircraft::Cessna172 = Cessna172Xv1(),
 
     elseif situation === :air
         #initial condition specified by trim parameters
-        initializer = C172.TrimParameters(;
-            Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above LOWS runway 15
-            EAS = 50.0, #equivalent airspeed
-            ψ_nb = ψ_LOWS15, #geographic heading
-            γ_wb_n = 0.0, #wind-relative flight path angle
-            ψ_wb_dot = 0.0, #turn rate
-            flaps = 0.0, #flap setting
-            fuel_load = 0.5, #available fuel fraction
-        )
+        initializer = C172.TrimParameters()
+        # initializer = C172.TrimParameters(;
+        #     Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above LOWS runway 15
+        #     EAS = 50.0, #equivalent airspeed
+        #     ψ_nb = ψ_LOWS15, #geographic heading
+        #     γ_wb_n = 0.0, #wind-relative flight path angle
+        #     ψ_wb_dot = 0.0, #turn rate
+        #     flaps = 0.0, #flap setting
+        #     fuel_load = 0.5, #available fuel fraction
+        # )
     else
         error("Unknown situation: $situation")
     end
