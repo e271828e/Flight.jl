@@ -1,6 +1,6 @@
 module TestC172Yv1
 
-using Test, UnPack, BenchmarkTools, Sockets, JSON3
+using Test, UnPack, BenchmarkTools, Sockets, JSON3, Logging
 
 using Flight.FlightCore
 using Flight.FlightLib
@@ -13,25 +13,17 @@ using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat,
 
 export test_c172y1
 
-
-function test_c172y1()
-    @testset verbose = true "Cessna 172Yv1" begin
-
-        test_control_modes()
-
-    end
-end
-
 y_kin(aircraft::Model{<:Cessna172Yv1}) = aircraft.y.vehicle.kinematics
 y_air(aircraft::Model{<:Cessna172Yv1}) = aircraft.y.vehicle.airflow
 y_aero(aircraft::Model{<:Cessna172Yv1}) = aircraft.y.vehicle.systems.aero
 
-function test_control_modes()
+
+function test_c172y1(; alloc::Bool = true)
+
+    @testset verbose = true "Cessna 172Yv1" begin
 
     data_folder = joinpath(dirname(dirname(dirname(@__DIR__))),
         normpath("src/aircraft/c172/c172y/control/data"))
-
-    @testset verbose = true "Control Modes" begin
 
     h_trn = HOrth(0.0)
     world = SimpleWorld(Cessna172Yv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
@@ -41,6 +33,12 @@ function test_control_modes()
     ctl = aircraft.avionics
 
     init_gnd = C172.Init(KinInit( h = h_trn + 1.9))
+
+    #using the default TrimParameters() is crucial for these tests. this ensures
+    #we are exactly at one of the design points, with exactly computed
+    #controller parameters, rather than ones interpolated from the lookup
+    #tables. this of course would not be a problem performance-wise, but it is
+    #when assessing whether the SAS loops exactly respect the trim condition
     init_air = C172.TrimParameters()
 
     dt = Δt = 0.01
@@ -72,7 +70,7 @@ function test_control_modes()
     #make sure we're on the ground
     @test is_on_gnd(aircraft.vehicle)
 
-    #the mode requests are overridden due to FlightPhase.gnd
+    #the mode requests are overridden due to wow = gnd
     @test ctl.y.lon.mode === ModeControlLon.direct
     @test ctl.y.lat.mode === ModeControlLat.direct
 
@@ -83,19 +81,20 @@ function test_control_modes()
     @test act.rudder.u[] == 0.4
     @test act.aileron.u[] == 0.2
 
-    # #test for allocation. f_periodic! will need further tests in other control modes
-    @test @ballocated(f_ode!($world)) == 0
-    @test @ballocated(f_step!($world)) == 0
-    @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+    if alloc
+        @test @ballocated(f_ode!($world)) == 0
+        @test @ballocated(f_step!($world)) == 0
+        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+    end
 
     end #testset
 
     # ############################################################################
     # ################################# Air ######################################
 
-    @testset verbose = true "Air" begin
+    # @testset verbose = true "Air" begin
 
-    #put the aircraft in its nominal design point
+    #put the aircraft at its nominal design point and save its output for later
     Sim.init!(sim, init_air)
     y_kin_trim = y_kin(aircraft)
 
@@ -114,7 +113,7 @@ function test_control_modes()
         @test all(isapprox.(y_kin(aircraft).v_eb_b, y_kin_trim.v_eb_b; atol = 1e-2))
 
         #test for allocations in the controller's current state
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end #testset
 
@@ -130,9 +129,9 @@ function test_control_modes()
         @test ctl.y.lon.mode === ModeControlLon.sas
 
         #check the correct parameters are loaded and assigned to the controller
-        te2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "e2e_lookup.h5"))
+        te2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "te2te_lookup.h5"))
         C_fwd = te2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
-        @test all(isapprox.(ctl.y.lon.e2e_lqr.C_fwd, C_fwd; atol = 1e-6))
+        @test all(isapprox.(ctl.y.lon.te2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #a small initial transient when engaging the SAS is acceptable
         #once active, trim equilibrium must be preserved for longer
@@ -141,7 +140,7 @@ function test_control_modes()
         @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end #testset
 
@@ -166,7 +165,7 @@ function test_control_modes()
         @test all(isapprox.(y_kin(aircraft).v_eb_b[1], y_kin_trim.v_eb_b[1]; atol = 1e-2))
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -199,7 +198,7 @@ function test_control_modes()
         @test isapprox(Float64(ctl.u.lat.β_ref), y_aero(aircraft).β; atol = 1e-3)
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -240,7 +239,7 @@ function test_control_modes()
         @test isapprox(ctl.u.lat.β_ref, y_aero(aircraft).β; atol = 1e-3)
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -284,7 +283,7 @@ function test_control_modes()
         world.atmosphere.wind.u.N = 0
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -325,7 +324,7 @@ function test_control_modes()
                         Float64(ctl.u.lon.throttle_axis + ctl.u.lon.throttle_offset); atol = 1e-3)
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -353,7 +352,7 @@ function test_control_modes()
         @test isapprox(y_kin(aircraft).e_nb.θ, ctl.u.lon.θ_ref; atol = 1e-4)
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -370,9 +369,9 @@ function test_control_modes()
         @test ctl.y.lon.mode === ModeControlLon.thr_EAS
 
         #check the correct parameters are loaded and assigned to the controller
-        v2θ_lookup = load_pid_lookup(joinpath(data_folder, "v2θ_lookup.h5"))
-        k_p = v2θ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
-        @test all(isapprox.(ctl.y.lon.v2θ_pid.k_p, k_p; atol = 1e-6))
+        tv2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "tv2te_lookup.h5"))
+        C_fwd = tv2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
+        @test all(isapprox.(ctl.y.lon.tv2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
@@ -387,7 +386,7 @@ function test_control_modes()
         @test all(isapprox.(y_air(aircraft).EAS, ctl.u.lon.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -431,7 +430,7 @@ function test_control_modes()
         @test all(isapprox.(y_air(aircraft).EAS, ctl.u.lon.EAS_ref; atol = 1)) #allow 1m/s error
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -463,7 +462,7 @@ function test_control_modes()
         @test all(isapprox.(y_air(aircraft).EAS, ctl.u.lon.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
@@ -498,7 +497,7 @@ function test_control_modes()
         @test all(isapprox.(y_air(aircraft).EAS, ctl.u.lon.EAS_ref; atol = 1e-1))
 
         #test for allocations in the current control mode
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
         # return sim
 
@@ -511,6 +510,11 @@ function test_control_modes()
         ctl.u.lon.mode_req = ModeControlLon.EAS_alt
         ctl.u.lat.mode_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
+
+        #check the correct parameters are loaded and assigned to the controller
+        vh2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "vh2te_lookup.h5"))
+        C_fwd = vh2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
+        @test all(isapprox.(ctl.y.lon.vh2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 
         #h_ref should have been initialized at its trim value, so the initial
         #altitude tracking state should be hold
@@ -551,11 +555,16 @@ function test_control_modes()
 
         #test for allocations in EAS_alt mode
         @test ctl.y.lon.mode === ModeControlLon.EAS_alt
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
 
     end
 
-    end #testset
+    # @testset verbose = true "JSON3 loopback" begin
+    #     #prevent @info messages from the simulation from failing the test
+    #     Logging.disable_logging(Logging.Info)
+    #     @test_nowarn test_json_loopback(; gui = false, save = false)
+    #     Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
+    # end
 
     end #testset
 
@@ -608,13 +617,13 @@ function IODevices.assign_input!(world::Model{<:SimpleWorld}, ::JSONTestMapping,
     end
 end
 
-function test_json_loopback(; save::Bool = true)
+function test_json_loopback(; gui::Bool = true, xp12 = false, save::Bool = true)
 
 
     h_trn = HOrth(427.2);
     world = SimpleWorld(Cessna172Yv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
-    sim = Simulation(world; dt = 1/60, Δt = 1/60, t_end = 30)
+    sim = Simulation(world; t_end = 30)
 
     #on air, automatically trimmed by reinit!
     initializer = C172.TrimParameters(
@@ -623,8 +632,9 @@ function test_json_loopback(; save::Bool = true)
     #initialize simulated system
     Sim.init!(sim, initializer)
 
-    #the loopback interface must not share its port with the XPlane12Control!
-    # Sim.attach!(sim, XPlane12Control(; port = 49000))
+    xp12 && Sim.attach!(sim, XPlane12Control(; port = 49000))
+
+    #the loopback interface must not share its port with XPlane12Control!
     Sim.attach!(sim, UDPInput(; port = 49017), JSONTestMapping())
     Sim.attach!(sim, UDPOutput(; port = 49017), JSONTestMapping())
 
@@ -634,7 +644,9 @@ function test_json_loopback(; save::Bool = true)
     JSON3.read!(JSON3.write(world.aircraft.avionics.u.lat, allow_inf=true),
                             world.aircraft.avionics.u.lat; allow_inf=true)
 
-    Sim.run!(sim; gui = true)
+    #set non-Inf pace for headless runs to allow the UDP interface to keep up
+    pace = (gui ? 1.0 : 30)
+    Sim.run!(sim; gui, pace)
 
     save && save_plots(TimeSeries(sim).aircraft.vehicle.kinematics,
                         normpath("tmp/plots/test_c172y1/test_json_loopback/kin");
@@ -643,5 +655,24 @@ function test_json_loopback(; save::Bool = true)
     return nothing
 
 end
+
+
+#for interactive ControlLaws validation
+function test_interactive(init::C172.TrimParameters = C172.TrimParameters())
+
+    world = SimpleWorld(Cessna172Yv1(), SimpleAtmosphere(), HorizontalTerrain()) |> Model
+    sim = Simulation(world; dt = 0.01, t_end = 1000)
+    Sim.init!(sim, init)
+    Sim.run!(sim; gui = true)
+
+    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/test_c172y1/kin"); Plotting.defaults..., linewidth = 2,)
+    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/test_c172y1/air"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/test_c172y1/dyn"); Plotting.defaults...)
+    # save_plots(TimeSeries(sim).aircraft.vehicle.dynamics; Plotting.defaults...)
+
+    return sim
+
+end
+
 
 end #module

@@ -55,86 +55,176 @@ end
 using .ModeControlLon: ModeControlLonEnum
 using .AltTrackingState: AltTrackingStateEnum
 
-altitude_error(h_ref::HEllip, kin_data::KinData) = h_ref - kin_data.h_e
-altitude_error(h_ref::HOrth, kin_data::KinData) = h_ref - kin_data.h_o
-
-#elevator pitch SAS always enabled except in direct mode
-e2e_enabled(mode::ModeControlLonEnum) = (mode != ModeControlLon.direct)
+function te2te_enabled(mode::ModeControlLonEnum)
+    mode === ModeControlLon.sas || mode === ModeControlLon.thr_q ||
+    mode === ModeControlLon.thr_θ || mode === ModeControlLon.EAS_q ||
+    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm
+end
 
 function q2e_enabled(mode::ModeControlLonEnum)
     mode === ModeControlLon.thr_q || mode === ModeControlLon.thr_θ ||
-    mode === ModeControlLon.thr_EAS || mode === ModeControlLon.EAS_q ||
-    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm ||
-    mode === ModeControlLon.EAS_alt
+    mode === ModeControlLon.EAS_q || mode === ModeControlLon.EAS_θ ||
+    mode === ModeControlLon.EAS_clm
 end
 
 function θ2q_enabled(mode::ModeControlLonEnum)
-    mode === ModeControlLon.thr_θ || mode === ModeControlLon.thr_EAS ||
-    mode === ModeControlLon.EAS_θ || mode === ModeControlLon.EAS_clm ||
-    mode === ModeControlLon.EAS_alt
+    mode === ModeControlLon.thr_θ || mode === ModeControlLon.EAS_θ ||
+    mode === ModeControlLon.EAS_clm
 end
 
 function v2t_enabled(mode::ModeControlLonEnum)
     mode === ModeControlLon.EAS_q || mode === ModeControlLon.EAS_θ ||
-    mode === ModeControlLon.EAS_clm || mode === ModeControlLon.EAS_alt
+    mode === ModeControlLon.EAS_clm
 end
 
 function c2θ_enabled(mode::ModeControlLonEnum)
-    mode === ModeControlLon.EAS_clm || mode === ModeControlLon.EAS_alt
+    mode === ModeControlLon.EAS_clm
 end
 
-h2c_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_alt)
+tv2te_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.thr_EAS)
 
-v2θ_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.thr_EAS)
+vh2te_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_alt)
 
-############################## FieldVectors ####################################
 
-#state vector for pitch LQR SAS
-@kwdef struct XPitch <: FieldVector{6, Float64}
+################################################################################
+############################### LQR Vectors ####################################
+
+#state vector for complete longitudinal dynamics
+@kwdef struct XLonFull <: FieldVector{9, Float64}
+    q::Float64 = 0.0 #pitch rate
+    θ::Float64 = 0.0 #pitch angle
+    EAS::Float64 = 0.0 #equivalent airspeed
+    α::Float64 = 0.0 #AoA
+    h::Float64 = 0.0 #altitude
+    α_filt::Float64 = 0.0 #filtered AoA (from aerodynamics model)
+    n_eng::Float64 = 0.0 #engine speed (rad/s)
+    thr_p::Float64 = 0.0 #throttle actuator state
+    ele_p::Float64 = 0.0 #elevator actuator state
+end
+
+#assemble state vector from vehicle
+function XLonFull(vehicle::Model{<:C172Y.Vehicle})
+
+    @unpack systems, airflow, kinematics = vehicle.y
+    @unpack pwp, aero, act = systems
+    @unpack e_nb, ω_eb_b, h_e = kinematics
+
+    q = ω_eb_b[2]
+    θ = e_nb.θ
+    EAS = airflow.EAS
+    α = aero.α
+    h = h_e
+    α_filt = aero.α_filt
+    n_eng = pwp.engine.n
+    thr_p = act.throttle.pos
+    ele_p = act.elevator.pos
+
+    XLonFull(; q, θ, EAS, α, h, α_filt, n_eng, thr_p, ele_p)
+
+end
+
+################################################################################
+
+#state vector for reduced longitudinal dynamics
+@kwdef struct XLonRed <: FieldVector{8, Float64}
     q::Float64 = 0.0 #pitch rate
     θ::Float64 = 0.0 #pitch angle
     EAS::Float64 = 0.0 #equivalent airspeed
     α::Float64 = 0.0 #AoA
     α_filt::Float64 = 0.0 #filtered AoA (from aerodynamics model)
+    n_eng::Float64 = 0.0 #engine speed (rad/s)
+    thr_p::Float64 = 0.0 #throttle actuator state
     ele_p::Float64 = 0.0 #elevator actuator state
 end
 
 #assemble state vector from vehicle
-function XPitch(vehicle::Model{<:C172Y.Vehicle})
+function XLonRed(vehicle::Model{<:C172Y.Vehicle})
 
     @unpack systems, airflow, kinematics = vehicle.y
     @unpack pwp, aero, act = systems
-    @unpack e_nb, ω_eb_b = kinematics
+    @unpack e_nb, ω_eb_b, h_e = kinematics
 
     q = ω_eb_b[2]
     θ = e_nb.θ
     EAS = airflow.EAS
     α = aero.α
     α_filt = aero.α_filt
+    n_eng = pwp.engine.n
+    thr_p = act.throttle.pos
     ele_p = act.elevator.pos
 
-    XPitch(; q, θ, EAS, α, α_filt, ele_p)
+    XLonRed(; q, θ, EAS, α, α_filt, n_eng, thr_p, ele_p)
 
 end
 
+################################################################################
+
+#control vector for reduced and full longitudinal dynamics
+@kwdef struct ULon{T} <: FieldVector{2, T}
+    throttle_cmd::T = 0.0
+    elevator_cmd::T = 0.0
+end
+
+################################################################################
+
+#command vector for throttle + elevator SAS LQR tracker
+@kwdef struct Zte <: FieldVector{2, Float64}
+    throttle_cmd::Float64 = 0.0
+    elevator_cmd::Float64 = 0.0
+end
+
+function Zte(vehicle::Model{<:C172Y.Vehicle})
+    throttle_cmd = vehicle.y.systems.act.throttle.cmd
+    elevator_cmd = vehicle.y.systems.act.elevator.cmd
+    Zte(; throttle_cmd, elevator_cmd)
+end
+
+################################################################################
+
+#command vector for EAS + altitude LQR tracker
+@kwdef struct Zvh <: FieldVector{2, Float64}
+    EAS::Float64 = 0.0
+    h::Float64 = 0.0
+end
+
+function Zvh(vehicle::Model{<:C172Y.Vehicle})
+    EAS = vehicle.y.airflow.EAS
+    h = vehicle.y.kinematics.h_e
+    Zvh(; EAS, h)
+end
+
+################################################################################
+
+#command vector for throttle + EAS LQR tracker
+@kwdef struct Ztv <: FieldVector{2, Float64}
+    throttle_cmd::Float64 = 0.0
+    EAS::Float64 = 0.0
+end
+
+function Ztv(vehicle::Model{<:C172Y.Vehicle})
+    throttle_cmd = vehicle.y.systems.act.throttle.cmd
+    EAS = vehicle.y.airflow.EAS
+    Ztv(; throttle_cmd, EAS)
+end
 
 ################################## Model ######################################
 
-@kwdef struct ControlLawsLon{LQ <: LQRTrackerLookup, LP <: PIDLookup} <: ModelDefinition
-    e2e_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "e2e_lookup.h5"))
+@kwdef struct ControlLawsLon{LQ1 <: LQRTrackerLookup, LQ2 <: LQRTrackerLookup, LP <: PIDLookup} <: ModelDefinition
+    te2te_lookup::LQ1 = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "te2te_lookup.h5"))
+    tv2te_lookup::LQ1 = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "tv2te_lookup.h5"))
+    vh2te_lookup::LQ2 = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "vh2te_lookup.h5"))
     q2e_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "q2e_lookup.h5"))
-    v2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2θ_lookup.h5"))
     c2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "c2θ_lookup.h5"))
     v2t_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2t_lookup.h5"))
-    e2e_lqr::LQRTracker{6, 1, 1, 6, 1} = LQRTracker{6, 1, 1}()
+    te2te_lqr::LQRTracker{8, 2, 2, 16, 4} = LQRTracker{8, 2, 2}()
+    tv2te_lqr::LQRTracker{8, 2, 2, 16, 4} = LQRTracker{8, 2, 2}()
+    vh2te_lqr::LQRTracker{9, 2, 2, 18, 4} = LQRTracker{9, 2, 2}()
     q2e_int::Integrator = Integrator()
     q2e_pid::PID = PID()
-    v2θ_pid::PID = PID()
     c2θ_pid::PID = PID()
     v2t_pid::PID = PID()
-    k_p_clm::Float64 = 0.2
     k_p_θ::Float64 = 1.0
-    h_thr::Float64 = 15.0 #error threshold for altitude tracking mode switch
+    h_thr::Float64 = 10.0 #error threshold for altitude tracking mode switch
     h_hys::Float64 = 1.0 #hysteresis for altitude tracking mode switch (h_hys < h_thr)
 end
 
@@ -152,7 +242,7 @@ end
     θ_ref::Float64 = 0.0 #pitch angle reference
     EAS_ref::Float64 = C172.TrimParameters().EAS #equivalent airspeed reference
     clm_ref::Float64 = 0.0 #climb rate reference
-    h_ref::Union{HEllip, HOrth} = HEllip(0.0)
+    h_ref::HEllip = HEllip(0.0)
 end
 
 @kwdef struct ControlLawsLonY
@@ -163,14 +253,15 @@ end
     θ_ref::Float64 = 0.0
     EAS_ref::Float64 = C172.TrimParameters().EAS
     clm_ref::Float64 = 0.0
-    h_err::Float64 = 0.0 #avoid h_ref in output to keep output type isbits
+    h_ref::HEllip = HEllip(0.0) #avoid h_ref in output to keep output type isbits
     h_state::AltTrackingStateEnum = AltTrackingState.hold
     throttle_cmd::Ranged{Float64, 0., 1.} = 0.0
     elevator_cmd::Ranged{Float64, -1., 1.} = 0.0
-    e2e_lqr::LQRTrackerOutput{6, 1, 1, 6, 1} = LQRTrackerOutput{6, 1, 1}()
+    te2te_lqr::LQRTrackerOutput{8, 2, 2, 16, 4} = LQRTrackerOutput{8, 2, 2}()
+    tv2te_lqr::LQRTrackerOutput{8, 2, 2, 16, 4} = LQRTrackerOutput{8, 2, 2}()
+    vh2te_lqr::LQRTrackerOutput{9, 2, 2, 18, 4} = LQRTrackerOutput{9, 2, 2}()
     q2e_int::IntegratorOutput = IntegratorOutput()
     q2e_pid::PIDOutput = PIDOutput()
-    v2θ_pid::PIDOutput = PIDOutput()
     c2θ_pid::PIDOutput = PIDOutput()
     v2t_pid::PIDOutput = PIDOutput()
 end
@@ -180,13 +271,15 @@ Modeling.U(::ControlLawsLon) = ControlLawsLonU()
 Modeling.Y(::ControlLawsLon) = ControlLawsLonY()
 
 function Modeling.init!(mdl::Model{<:ControlLawsLon})
-    #e2e determines elevator saturation for all pitch control loops (q2e, c2θ,
-    #v2θ), so we don't need to set bounds for those
-    mdl.e2e_lqr.u.bound_lo .= -1
-    mdl.e2e_lqr.u.bound_hi .= 1
-    #we do need to set bounds for v2t, so it can handle throttle saturation
-    mdl.v2t_pid.u.bound_lo = 0
-    mdl.v2t_pid.u.bound_hi = 1
+    #when te2te_lqr is active, the actual throttle and elevator saturation
+    #states are observed at its output. every non-LQR compensator built upon
+    #te2te_lqr (q2e_int, q2e_pid, c2θ_pid) will receive these saturation states
+    #as external saturation inputs to halt integration. therefore, we don't need
+    #to set explicit output bounds for these compensators.
+    foreach((mdl.te2te_lqr, mdl.tv2te_lqr, mdl.vh2te_lqr)) do lqr
+        lqr.u.bound_lo .= ULon(; throttle_cmd = 0, elevator_cmd = -1)
+        lqr.u.bound_hi .= ULon(; throttle_cmd = 1, elevator_cmd = 1)
+    end
 end
 
 
@@ -195,23 +288,24 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
     @unpack mode_req, throttle_axis, throttle_offset, elevator_axis,
             elevator_offset, q_ref, θ_ref, EAS_ref, clm_ref, h_ref = mdl.u
-    @unpack e2e_lqr, q2e_int, q2e_pid, v2θ_pid, c2θ_pid, v2t_pid = mdl.submodels
-    @unpack e2e_lookup, q2e_lookup, v2θ_lookup, c2θ_lookup, v2t_lookup,
-            k_p_θ, k_p_clm, h_thr, h_hys = mdl.constants
+    @unpack te2te_lqr, tv2te_lqr, vh2te_lqr, q2e_int, q2e_pid,
+            c2θ_pid, v2t_pid = mdl.submodels
+    @unpack te2te_lookup, tv2te_lookup, vh2te_lookup, q2e_lookup,
+            c2θ_lookup, v2t_lookup, k_p_θ, h_thr, h_hys = mdl.constants
 
     EAS = vehicle.y.airflow.EAS
-    h_e = Float64(vehicle.y.kinematics.h_e)
+    h_e = vehicle.y.kinematics.h_e
     _, q, r = vehicle.y.kinematics.ω_wb_b
     @unpack θ, φ = vehicle.y.kinematics.e_nb
     clm = -vehicle.y.kinematics.v_eb_n[3]
-    h_err = altitude_error(h_ref, vehicle.y.kinematics)
+    h_err = h_ref - h_e
     h_state = mdl.s.h_state
     mode_prev = mdl.y.mode
 
     throttle_ref = Float64(throttle_axis + throttle_offset)
     elevator_ref = Float64(elevator_axis + elevator_offset)
 
-    #if not overridden by the control modes, actuation commands are simply
+    #if not overridden by te2te, vh2te or tv2te, actuation commands are simply
     #their respective reference values
     throttle_cmd = throttle_ref
     elevator_cmd = elevator_ref
@@ -222,7 +316,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
         if mode_req === ModeControlLon.EAS_alt
             if h_state === AltTrackingState.acquire
                 mode = ModeControlLon.thr_EAS
-                throttle_cmd = h_err > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
+                throttle_ref = h_err > 0 ? 1.0 : 0.0 #full throttle to climb, idle to descend
                 (abs(h_err) < h_thr - h_hys) && (mdl.s.h_state = AltTrackingState.hold)
             else #AltTrackingState.hold
                 mode = ModeControlLon.EAS_alt
@@ -233,64 +327,45 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
         end
     end
 
-    if v2t_enabled(mode) #throttle_cmd overridden by v2t
+    if te2te_enabled(mode) #throttle_cmd and elevator_cmd overridden by te2te SAS
 
-        Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, h_e))
+        u_lon_sat = ULon(te2te_lqr.y.out_sat)
 
-        if mode != mode_prev
-            Control.reset!(v2t_pid)
-            k_i = v2t_pid.u.k_i
-            (k_i != 0) && (v2t_pid.s.x_i0 = Float64(mdl.y.throttle_cmd))
+        if v2t_enabled(mode) #throttle_ref overridden by v2t
+
+            Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, Float64(h_e)))
+
+            if mode != mode_prev
+                Control.reset!(v2t_pid)
+                k_i = v2t_pid.u.k_i
+                (k_i != 0) && (v2t_pid.s.x_i0 = Float64(mdl.y.throttle_cmd))
+            end
+
+            v2t_pid.u.input = EAS_ref - EAS
+            v2t_pid.u.sat_ext = u_lon_sat.throttle_cmd
+            f_periodic!(v2t_pid)
+            throttle_ref = v2t_pid.y.output
+
         end
-
-        v2t_pid.u.input = EAS_ref - EAS
-        f_periodic!(v2t_pid)
-        throttle_cmd = v2t_pid.y.output
-
-    end
-
-    if e2e_enabled(mode) #elevator_cmd overridden by e2e SAS
-
-        elevator_cmd_sat = e2e_lqr.y.out_sat[1]
 
         if q2e_enabled(mode) #elevator_ref overridden by q2e
 
-            Control.Discrete.assign!(q2e_pid, q2e_lookup(EAS, h_e))
+            Control.Discrete.assign!(q2e_pid, q2e_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
 
                 Control.reset!(q2e_int)
                 Control.reset!(q2e_pid)
                 k_i = q2e_pid.u.k_i
-                (k_i != 0) && (q2e_pid.s.x_i0 = e2e_lqr.u.z_ref[1])
+                (k_i != 0) && (q2e_pid.s.x_i0 = Zte(te2te_lqr.u.z_ref).elevator_cmd)
 
-                # (k_i != 0) && (q2e_pid.s.x_i0 = Float64(mdl.y.elevator_cmd))
             end
 
             if θ2q_enabled(mode) #q_ref overridden by θ2q
 
-                if v2θ_enabled(mode) #θ_ref overridden by v2θ
+                if c2θ_enabled(mode) #θ_ref overridden by c2θ
 
-                    Control.Discrete.assign!(v2θ_pid, v2θ_lookup(EAS, h_e))
-
-                    if mode != mode_prev
-                        Control.reset!(v2θ_pid)
-                        k_i = v2θ_pid.u.k_i
-                        (k_i != 0) && (v2θ_pid.s.x_i0 = -θ) #sign inversion!
-                    end
-
-                    v2θ_pid.u.input = EAS_ref - EAS
-                    v2θ_pid.u.sat_ext = -elevator_cmd_sat #sign inversion!
-                    f_periodic!(v2θ_pid)
-                    θ_ref = -v2θ_pid.y.output #sign inversion!
-
-                elseif c2θ_enabled(mode) #θ_ref overridden by c2θ
-
-                    if h2c_enabled(mode) #clm_ref overridden by h2c
-                        clm_ref = k_p_clm * h_err
-                    end
-
-                    Control.Discrete.assign!(c2θ_pid, c2θ_lookup(EAS, h_e))
+                    Control.Discrete.assign!(c2θ_pid, c2θ_lookup(EAS, Float64(h_e)))
 
                     if mode != mode_prev
                         Control.reset!(c2θ_pid)
@@ -299,13 +374,9 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
                     end
 
                     c2θ_pid.u.input = clm_ref - clm
-                    c2θ_pid.u.sat_ext = elevator_cmd_sat
+                    c2θ_pid.u.sat_ext = u_lon_sat.elevator_cmd
                     f_periodic!(c2θ_pid)
                     θ_ref = c2θ_pid.y.output
-
-                else #ModeControlLon.EAS_θ || ModeControlLon.thr_θ
-
-                    #θ_ref unmodified, input value is kept
 
                 end
 
@@ -316,32 +387,61 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
             end
 
             q2e_int.u.input = q_ref - q
-            q2e_int.u.sat_ext = elevator_cmd_sat
+            q2e_int.u.sat_ext = u_lon_sat.elevator_cmd
             f_periodic!(q2e_int)
 
             q2e_pid.u.input = q2e_int.y.output
-            q2e_pid.u.sat_ext = elevator_cmd_sat
+            q2e_pid.u.sat_ext = u_lon_sat.elevator_cmd
             f_periodic!(q2e_pid)
             elevator_ref = q2e_pid.y.output
 
         end
 
-        Control.Discrete.assign!(e2e_lqr, e2e_lookup(EAS, h_e))
+        Control.Discrete.assign!(te2te_lqr, te2te_lookup(EAS, Float64(h_e)))
 
-        #e2e is purely proportional, so it doesn't need resetting
+        #te2te is purely proportional, so it doesn't need resetting
+        te2te_lqr.u.x .= XLonRed(vehicle) #state feedback
+        te2te_lqr.u.z .= Zte(vehicle) #command variable feedback
+        te2te_lqr.u.z_ref .= Zte(; throttle_cmd = throttle_ref,
+            elevator_cmd = elevator_ref) #command variable reference
+        f_periodic!(te2te_lqr)
+        @unpack throttle_cmd, elevator_cmd = ULon(te2te_lqr.y.output)
 
-        e2e_lqr.u.x .= XPitch(vehicle) #state feedback
-        e2e_lqr.u.z .= Float64(vehicle.y.systems.act.elevator.cmd) #command variable feedback
-        e2e_lqr.u.z_ref .= elevator_ref #command variable reference
-        f_periodic!(e2e_lqr)
-        elevator_cmd = e2e_lqr.y.output[1]
+    end
+
+    if tv2te_enabled(mode) #throttle_cmd and elevator_cmd overridden by tv2te
+
+        Control.Discrete.assign!(tv2te_lqr, tv2te_lookup(EAS, Float64(h_e)))
+
+        (mode != mode_prev) && Control.reset!(tv2te_lqr)
+
+        tv2te_lqr.u.x .= XLonRed(vehicle)
+        tv2te_lqr.u.z .= Ztv(vehicle)
+        tv2te_lqr.u.z_ref .= Ztv(; throttle_cmd = throttle_ref, EAS = EAS_ref)
+        f_periodic!(tv2te_lqr)
+        @unpack throttle_cmd, elevator_cmd = ULon(tv2te_lqr.y.output)
+
+    end
+
+    if vh2te_enabled(mode) #throttle_cmd and elevator_cmd overridden by vh2te
+
+        Control.Discrete.assign!(vh2te_lqr, vh2te_lookup(EAS, Float64(h_e)))
+
+        (mode != mode_prev) && Control.reset!(vh2te_lqr)
+
+        vh2te_lqr.u.x .= XLonFull(vehicle)
+        vh2te_lqr.u.z .= Zvh(vehicle)
+        vh2te_lqr.u.z_ref .= Zvh(; EAS = EAS_ref, h = h_ref)
+        f_periodic!(vh2te_lqr)
+        @unpack throttle_cmd, elevator_cmd = ULon(vh2te_lqr.y.output)
 
     end
 
     mdl.y = ControlLawsLonY(; mode, throttle_ref, elevator_ref, q_ref, θ_ref,
-        EAS_ref, clm_ref, h_err, h_state, throttle_cmd, elevator_cmd,
-        e2e_lqr = e2e_lqr.y, q2e_int = q2e_int.y, q2e_pid = q2e_pid.y,
-        v2θ_pid = v2θ_pid.y, c2θ_pid = c2θ_pid.y, v2t_pid = v2t_pid.y)
+        EAS_ref, clm_ref, h_ref, h_state, throttle_cmd, elevator_cmd,
+        te2te_lqr = te2te_lqr.y, tv2te_lqr = tv2te_lqr.y, vh2te_lqr = vh2te_lqr.y,
+        q2e_int = q2e_int.y, q2e_pid = q2e_pid.y,
+        c2θ_pid = c2θ_pid.y, v2t_pid = v2t_pid.y)
 
 end
 
@@ -401,8 +501,16 @@ function Modeling.init!(lon::Model{<:ControlLawsLon},
     #overwriting the actuator commands set by the trim function with the
     #incorrect default values
 
-    #initialize SAS outputs
+    #initialize te2te outputs
     u.mode_req = ModeControlLon.sas
+    f_periodic!(lon, vehicle)
+
+    #initialize tv2te outputs
+    u.mode_req = ModeControlLon.thr_EAS
+    f_periodic!(lon, vehicle)
+
+    #initialize vh2te outputs
+    u.mode_req = ModeControlLon.EAS_alt
     f_periodic!(lon, vehicle)
 
     #restore direct mode
@@ -433,7 +541,7 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
     @unpack u, y, Δt = lon
 
     @unpack systems, kinematics, dynamics, airflow = vehicle.y
-    @unpack e_nb, ω_wb_b, v_eb_n, h_e, h_o = kinematics
+    @unpack e_nb, ω_wb_b, v_eb_n, h_e, h_o, n_e = kinematics
     @unpack EAS = airflow
     @unpack θ = e_nb
 
@@ -449,7 +557,7 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
                 TableNextColumn();
                     mode_button("Direct##Lon", ModeControlLon.direct, lon.u.mode_req, y.mode)
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.direct); SameLine()
-                    mode_button("Throttle + Pitch SAS", ModeControlLon.sas, lon.u.mode_req, y.mode)
+                    mode_button("Throttle/Pitch SAS", ModeControlLon.sas, lon.u.mode_req, y.mode)
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.sas); SameLine()
                     mode_button("Throttle + Pitch Rate", ModeControlLon.thr_q, lon.u.mode_req, y.mode)
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.thr_q; lon.u.q_ref = 0); SameLine()
@@ -464,7 +572,7 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
                     mode_button("EAS + Climb Rate", ModeControlLon.EAS_clm, lon.u.mode_req, y.mode)
                     IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_clm; lon.u.EAS_ref = EAS; lon.u.clm_ref = clm); SameLine()
                     mode_button("EAS + Altitude Hold", ModeControlLon.EAS_alt, lon.u.mode_req, y.mode)
-                    IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_alt; lon.u.EAS_ref = EAS; lon.u.h_ref = h_e)
+                    IsItemActive() && (lon.u.mode_req = ModeControlLon.EAS_alt; lon.u.EAS_ref = EAS; lon.u.h_ref = h_e); SameLine()
                 TableNextColumn();
             TableNextRow()
                 TableNextColumn();
@@ -515,18 +623,23 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
             TableNextRow()
                 TableNextColumn(); AlignTextToFramePadding(); Text("Altitude (m)")
                 TableNextColumn();
-                    RadioButton("Ellipsoidal", isa(u.h_ref, HEllip)); SameLine()
-                    IsItemActive() && (u.h_ref = h_e)
-                    RadioButton("Orthometric", isa(u.h_ref, HOrth))
-                    IsItemActive() && (u.h_ref = h_o)
+                @cstatic h_datum = :ellip begin
+                    RadioButton("Ellipsoidal", h_datum === :ellip); SameLine()
+                    IsItemActive() && (h_datum = :ellip)
+                    RadioButton("Orthometric", h_datum === :orth)
+                    IsItemActive() && (h_datum = :orth)
                     SameLine()
                     PushItemWidth(-10)
-                    h_ref_f64 = safe_input("Altitude Setpoint", Float64(lon.u.h_ref), 1, 1.0, "%.3f")
-                    lon.u.h_ref = (isa(u.h_ref, HEllip) ? HEllip(h_ref_f64) : HOrth(h_ref_f64))
+                    h_ref_ellip = lon.u.h_ref
+                    h_ref_orth = HOrth(h_ref_ellip, n_e)
+                    h_ref_f64 = (h_datum === :ellip ? Float64(h_ref_ellip) : Float64(h_ref_orth))
+                    h_ref_f64 = safe_input("Altitude Setpoint", h_ref_f64, 1, 1.0, "%.3f")
+                    lon.u.h_ref = (h_datum === :ellip ? HEllip(h_ref_f64) : HEllip(HOrth(h_ref_f64), n_e))
                     PopItemWidth()
                 TableNextColumn();
-                    isa(u.h_ref, HEllip) && Text(@sprintf("%.3f", Float64(h_e)))
-                    isa(u.h_ref, HOrth) && Text(@sprintf("%.3f", Float64(h_o)))
+                    (h_datum === :ellip) && Text(@sprintf("%.3f", Float64(h_e)))
+                    (h_datum === :orth) && Text(@sprintf("%.3f", Float64(h_o)))
+                end
             TableNextRow()
                 TableNextColumn();
                 TableNextColumn();
@@ -601,7 +714,7 @@ p2φ_enabled(mode::ModeControlLatEnum) = (mode === ModeControlLat.p_β)
 ################################# FieldVectors #################################
 
 #state vector for φβ LQR tracker
-@kwdef struct XLat <: FieldVector{8, Float64}
+@kwdef struct XLatRed <: FieldVector{8, Float64}
     p::Float64 = 0.0 #roll rate
     r::Float64 = 0.0 #yaw rate
     φ::Float64 = 0.0; #bank angle
@@ -612,7 +725,7 @@ p2φ_enabled(mode::ModeControlLatEnum) = (mode === ModeControlLat.p_β)
     rud_p::Float64 = 0.0; #rudder actuator states
 end
 
-function XLat(vehicle::Model{<:C172Y.Vehicle})
+function XLatRed(vehicle::Model{<:C172Y.Vehicle})
 
     @unpack systems, airflow, kinematics = vehicle.y
     @unpack aero, act = systems
@@ -626,20 +739,36 @@ function XLat(vehicle::Model{<:C172Y.Vehicle})
     ail_p = act.aileron.pos
     rud_p = act.rudder.pos
 
-    XLat(; p, r, φ, EAS, β, β_filt, ail_p, rud_p)
+    XLatRed(; p, r, φ, EAS, β, β_filt, ail_p, rud_p)
 
 end
 
-@kwdef struct ULat{T} <: FieldVector{2, T}
+@kwdef struct ULatRed{T} <: FieldVector{2, T}
     aileron_cmd::T = 0.0
     rudder_cmd::T = 0.0
 end
 
-@kwdef struct ZLat <: FieldVector{2, Float64}
+@kwdef struct Zφβ <: FieldVector{2, Float64}
     φ::Float64 = 0.0
     β::Float64 = 0.0
 end
 
+function Zφβ(vehicle::Model{<:C172Y.Vehicle})
+    φ = vehicle.y.kinematics.e_nb.φ
+    β = vehicle.y.systems.aero.β
+    Zφβ(; φ, β)
+end
+
+@kwdef struct Zar <: FieldVector{2, Float64}
+    aileron_cmd::Float64 = 0.0
+    rudder_cmd::Float64 = 0.0
+end
+
+function Zar(vehicle::Model{<:C172Y.Vehicle})
+    aileron_cmd = vehicle.y.systems.act.aileron.cmd
+    rudder_cmd = vehicle.y.systems.act.rudder.cmd
+    Zar(; aileron_cmd, rudder_cmd)
+end
 
 ################################## Model ######################################
 
@@ -690,8 +819,8 @@ Modeling.Y(::ControlLawsLat) = ControlLawsLatY()
 function Modeling.init!(mdl::Model{<:ControlLawsLat})
 
     foreach((mdl.φβ2ar_lqr, mdl.ar2ar_lqr)) do lqr
-        lqr.u.bound_lo .= ULat(; aileron_cmd = -1, rudder_cmd = -1)
-        lqr.u.bound_hi .= ULat(; aileron_cmd = 1, rudder_cmd = 1)
+        lqr.u.bound_lo .= ULatRed(; aileron_cmd = -1, rudder_cmd = -1)
+        lqr.u.bound_hi .= ULatRed(; aileron_cmd = 1, rudder_cmd = 1)
     end
 
     #set φ reference limits for the course angle compensator output
@@ -730,18 +859,17 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
         #no integral control, so no need for reset on mode change
         Control.Discrete.assign!(ar2ar_lqr, ar2ar_lookup(EAS, Float64(h_e)))
 
-        ar2ar_lqr.u.x .= XLat(vehicle)
-        ar2ar_lqr.u.z .= ULat(; aileron_cmd = systems.act.aileron.cmd,
-                                rudder_cmd = systems.act.rudder.cmd)
-        ar2ar_lqr.u.z_ref .= ULat(; aileron_cmd, rudder_cmd)
+        ar2ar_lqr.u.x .= XLatRed(vehicle)
+        ar2ar_lqr.u.z .= Zar(vehicle)
+        ar2ar_lqr.u.z_ref .= Zar(; aileron_cmd = aileron_ref, rudder_cmd = rudder_ref)
         f_periodic!(ar2ar_lqr)
-        @unpack aileron_cmd, rudder_cmd = ULat(ar2ar_lqr.y.output)
+        @unpack aileron_cmd, rudder_cmd = ULatRed(ar2ar_lqr.y.output)
 
     end
 
     if φβ2ar_enabled(mode) #aileron_cmd and #rudder_cmd overridden by φβ2ar
 
-        u_lat_sat = ULat(φβ2ar_lqr.y.out_sat)
+        u_lat_sat = ULatRed(φβ2ar_lqr.y.out_sat)
 
         if p2φ_enabled(mode) #φ_ref overridden by roll rate tracker
 
@@ -752,7 +880,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
                 Control.reset!(p2φ_int)
                 Control.reset!(p2φ_pid)
                 k_i = p2φ_pid.u.k_i
-                (k_i != 0) && (p2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_ref).φ)
+                (k_i != 0) && (p2φ_pid.s.x_i0 = Zφβ(φβ2ar_lqr.u.z_ref).φ)
             end
 
             p2φ_int.u.input = p_ref - p
@@ -772,7 +900,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
                 #our next φ output must match φ reference at φβ2ar input
                 Control.reset!(χ2φ_pid)
                 k_i = χ2φ_pid.u.k_i
-                (k_i != 0) && (χ2φ_pid.s.x_i0 = ZLat(φβ2ar_lqr.u.z_ref).φ)
+                (k_i != 0) && (χ2φ_pid.s.x_i0 = Zφβ(φβ2ar_lqr.u.z_ref).φ)
             end
 
             χ = kinematics.χ_gnd
@@ -793,11 +921,11 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
             Control.reset!(φβ2ar_lqr)
         end
 
-        φβ2ar_lqr.u.x .= XLat(vehicle)
-        φβ2ar_lqr.u.z .= ZLat(; φ, β)
-        φβ2ar_lqr.u.z_ref .= ZLat(; φ = φ_ref, β = β_ref)
+        φβ2ar_lqr.u.x .= XLatRed(vehicle)
+        φβ2ar_lqr.u.z .= Zφβ(vehicle)
+        φβ2ar_lqr.u.z_ref .= Zφβ(; φ = φ_ref, β = β_ref)
         f_periodic!(φβ2ar_lqr)
-        @unpack aileron_cmd, rudder_cmd = ULat(φβ2ar_lqr.y.output)
+        @unpack aileron_cmd, rudder_cmd = ULatRed(φβ2ar_lqr.y.output)
 
     end
 
