@@ -1155,9 +1155,9 @@ end
 Modeling.U(::ControlLaws) = ControlLawsU()
 Modeling.Y(::ControlLaws) = ControlLawsY()
 
-function Modeling.f_output!(mdl::Model{<:ControlLaws})
-    mdl.y = ControlLawsY(mdl.lon.y, mdl.lat.y)
-end
+# function Modeling.f_output!(mdl::Model{<:ControlLaws})
+#     mdl.y = ControlLawsY(mdl.lon.y, mdl.lat.y)
+# end
 
 @no_ode ControlLaws
 @no_step ControlLaws
@@ -1178,6 +1178,7 @@ function Modeling.init!(avionics::Model{<:ControlLaws},
                         vehicle::Model{<:C172Y.Vehicle})
     Modeling.init!(avionics.lon, vehicle)
     Modeling.init!(avionics.lat, vehicle)
+    f_output!(avionics)
 end
 
 ################################## GUI #########################################

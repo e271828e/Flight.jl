@@ -196,7 +196,6 @@ end
 # for a root Model these must be implemented without additional arguments
 # all implementations MUST return nothing to ensure type stability
 
-
 abstract type MaybeScheduling end
 struct Scheduling <: MaybeScheduling end
 struct NoScheduling <: MaybeScheduling end
@@ -223,19 +222,25 @@ end
 #scheduled periodic update, to be called (not extended!) by Models
 @inline function f_periodic!(mdl::Model, args...)
     f_periodic!(Scheduling(), mdl, args...)
-    return nothing #needed for type stability
+    return nothing
 end
 
+#scheduled periodic update
 function f_periodic!(::Scheduling, mdl::Model, args...)
     (mdl._n[] % mdl._N == 0) && f_periodic!(NoScheduling(), mdl, args...)
-    return nothing #needed for type stability
+    return nothing
 end
 
+#generic output update fallback
+@inline function (f_output!(mdl::Model{D, Y}) where {D <: ModelDefinition, Y})
 
-########################## Convenience Methods #################################
+    submodels = mdl.submodels
+    ys = map(id -> getfield(getfield(submodels, id), :y), keys(submodels))
+    mdl.y = Y(ys...)
+    nothing
+end
 
-#output update fallback, may be used by node Models with NamedTuple output (the
-#default for node Models)
+#output update fallback for node Models with NamedTuple output (the default)
 @inline function (f_output!(mdl::Model{D, Y})
     where {D <: ModelDefinition, Y <: NamedTuple{L, M}} where {L, M})
 
@@ -244,14 +249,7 @@ end
     nothing
 end
 
-#any other output type needs custom implementation
-@inline function f_output!(mdl::Model{D}) where {D}
-    if !isempty(getfield(mdl, :submodels))
-        error("An f_output! method must be explicitly implemented for node "*
-        "Models with an output type other than NamedTuple; $D doesn't have one")
-    end
-end
-
+#output update fallback for node Models with Nothing output
 f_output!(::Model{<:ModelDefinition, Nothing}) = nothing
 
 

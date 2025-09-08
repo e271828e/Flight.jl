@@ -601,6 +601,8 @@ function run!(sim::Simulation; gui::Bool = false, pace::Real = (gui ? 1.0 : Inf)
         gui && start!(sim.gui) #CImGui must run on the main thread
     end
 
+    nothing
+
 end
 
 
