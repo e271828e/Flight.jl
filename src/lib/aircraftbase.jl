@@ -232,7 +232,7 @@ function Modeling.f_ode!(aircraft::Model{<:Aircraft},
     f_ode!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_ode!(vehicle, atmosphere, terrain)
-    update_output!(aircraft)
+    f_output!(aircraft)
 end
 
 function Modeling.f_periodic!(::NoScheduling,
@@ -244,7 +244,7 @@ function Modeling.f_periodic!(::NoScheduling,
     f_periodic!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_periodic!(vehicle, atmosphere, terrain)
-    update_output!(aircraft)
+    f_output!(aircraft)
 end
 
 function Modeling.f_step!(aircraft::Model{<:Aircraft},
@@ -267,7 +267,7 @@ function Modeling.init!( aircraft::Model{<:Aircraft},
     @unpack vehicle, avionics = aircraft
     Modeling.init!(vehicle, condition, args...)
     Modeling.init!(avionics, vehicle) #avionics init only relies on vehicle
-    update_output!(aircraft)
+    f_output!(aircraft)
 end
 
 Kinematics.KinData(aircraft::Model{<:Aircraft}) = KinData(aircraft.vehicle.kinematics)

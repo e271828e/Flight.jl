@@ -37,7 +37,7 @@ Modeling.Y(md::TestHarness) = (thruster = Modeling.Y(md.thruster),)
 function Modeling.f_ode!(harness::Model{<:TestHarness})
     @unpack air_data, kin_data, fuel_available = harness.u
     f_ode!(harness.thruster, air_data, kin_data)
-    update_output!(harness)
+    f_output!(harness)
     #alternatively, harness.y = (thruster = thruster.y,)
 end
 

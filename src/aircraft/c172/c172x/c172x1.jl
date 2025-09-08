@@ -37,7 +37,7 @@ function Modeling.init!(avionics::Model{<:C172Xv1.Avionics},
                             vehicle::Model{<:C172X.Vehicle})
 
     Modeling.init!(avionics.ctl, vehicle)
-    update_output!(avionics)
+    f_output!(avionics)
 
 end
 

@@ -610,7 +610,7 @@ function Modeling.f_ode!(mdl::Model{<:LandingGearUnit},
     f_ode!(strut, steering, terrain, kin_data)
     f_ode!(contact, strut, braking)
 
-    update_output!(mdl)
+    f_output!(mdl)
 
 end
 

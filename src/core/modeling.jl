@@ -8,7 +8,7 @@ using ..IODevices
 
 export ModelDefinition, Model
 export Subsampled, Scheduling, NoScheduling
-export f_ode!, f_step!, f_periodic!, update_output!
+export f_ode!, f_step!, f_periodic!, f_output!
 export @no_ode, @no_step, @no_periodic, @no_updates
 export @sm_ode, @sm_step, @sm_periodic, @sm_updates
 
@@ -236,7 +236,7 @@ end
 
 #output update fallback, may be used by node Models with NamedTuple output (the
 #default for node Models)
-@inline function (update_output!(mdl::Model{D, Y})
+@inline function (f_output!(mdl::Model{D, Y})
     where {D <: ModelDefinition, Y <: NamedTuple{L, M}} where {L, M})
 
     ys = map(id -> getfield(getfield(getfield(mdl, :submodels), id), :y), L)
@@ -245,14 +245,14 @@ end
 end
 
 #any other output type needs custom implementation
-@inline function update_output!(mdl::Model{D}) where {D}
+@inline function f_output!(mdl::Model{D}) where {D}
     if !isempty(getfield(mdl, :submodels))
-        error("An update_output! method must be explicitly implemented for node "*
+        error("An f_output! method must be explicitly implemented for node "*
         "Models with an output type other than NamedTuple; $D doesn't have one")
     end
 end
 
-update_output!(::Model{<:ModelDefinition, Nothing}) = nothing
+f_output!(::Model{<:ModelDefinition, Nothing}) = nothing
 
 
 ########################## Convenience Macros ##################################
@@ -284,7 +284,7 @@ macro sm_ode(md)
             for ss in mdl.submodels
                 f_ode!(ss, args...)
             end
-            update_output!(mdl)
+            f_output!(mdl)
             return nothing
         end
     end)
@@ -296,7 +296,7 @@ macro sm_step(md)
             for ss in mdl.submodels
                 f_step!(ss, args...)
             end
-            update_output!(mdl) #output update not usually required, consider removal
+            f_output!(mdl) #output update not usually required, consider removal
             return nothing
         end
     end)
@@ -308,7 +308,7 @@ macro sm_periodic(md)
             for ss in mdl.submodels
                 f_periodic!(ss, args...)
             end
-            update_output!(mdl)
+            f_output!(mdl)
             return nothing
         end
     end)

@@ -1,35 +1,33 @@
+module C172YGuidance
 
+using UnPack, StaticArrays
+using StructTypes
+using EnumX
 
-@enumx T=ModeGuidanceLonEnum ModeGuidanceLon begin
-    off = 0
-    seg = 1
+# using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
+#     Dummy, SameLine, NewLine, IsItemActive, IsItemActivated, Separator, Text,
+#     Checkbox, RadioButton, TableNextColumn, TableNextRow, BeginTable, EndTable
+
+using Flight.FlightCore
+using Flight.FlightLib
+
+using ...AircraftBase
+using ...C172
+using ..C172Y
+using ..C172Y.C172YControl: ControlLaws, ModeControlLat, ModeControlLon, is_on_gnd
+
+@enumx T=ModeGuidanceEnum ModeGuidance begin
+    direct = 0
+    segment = 1
+    circle = 2
 end
 
-@enumx T=ModeGuidanceLatEnum ModeGuidanceLat begin
-    off = 0
-    seg = 1
-    crc = 2
-end
+using .ModeGuidance: ModeGuidanceEnum
 
-@enumx T=FlightPhaseEnum FlightPhase begin
-    gnd = 0
-    air = 1
-end
-
-using .FlightPhase: FlightPhaseEnum
-using .ModeGuidanceLon: ModeGuidanceLonEnum
-using .ModeGuidanceLat: ModeGuidanceLatEnum
-
-
-#enable JSON parsing of integers as ModeGuidanceLonEnum
-StructTypes.StructType(::Type{ModeGuidanceLonEnum}) = StructTypes.CustomStruct()
-StructTypes.lowertype(::Type{ModeGuidanceLonEnum}) = Int32 #default enum type
-StructTypes.lower(x::ModeGuidanceLonEnum) = Int32(x)
-
-#enable JSON parsing of integers as ModeGuidanceLatEnum
-StructTypes.StructType(::Type{ModeGuidanceLatEnum}) = StructTypes.CustomStruct()
-StructTypes.lowertype(::Type{ModeGuidanceLatEnum}) = Int32 #default enum type
-StructTypes.lower(x::ModeGuidanceLatEnum) = Int32(x)
+#enable JSON parsing of integers as ModeGuidanceEnum
+StructTypes.StructType(::Type{ModeGuidanceEnum}) = StructTypes.CustomStruct()
+StructTypes.lowertype(::Type{ModeGuidanceEnum}) = Int32 #default enum type
+StructTypes.lower(x::ModeGuidanceEnum) = Int32(x)
 
 
 ################################################################################
@@ -74,16 +72,18 @@ struct Segment
 
 end
 
-#construct a Segment from:
-#1) initial point p1
-#2) an azimuth χ measured on NED(p1)
-#3) a distance l along χ measured on the horizontal plane of NED(p1)
-#4) an altitude increment Δh
+Segment() = Segment(Geographic(LatLon()), Geographic(LatLon(1e-3, 0)))
 
-#note: l is the straight-line distance from p1 to p2t, NOT from p1 to p2.
-#however, as long as p1 and p2 are relatively close, both their straight-line
-#and geodesic distances will be close to l
-
+"""
+construct a Segment from:
+1) initial point p1
+2) an azimuth χ measured on NED(p1)
+3) a distance l along χ measured on the horizontal plane of NED(p1)
+4) an altitude increment Δh
+note: l is the straight-line distance from p1 to p2t, NOT from p1 to p2.
+however, as long as p1 and p2 are relatively close, both their straight-line
+and geodesic distances will be close to l
+"""
 function Segment(p1::Abstract3DPosition; χ::Real, l::Real, Δh::Real = 0.0)
     geo1 = Geographic{LatLon, Ellipsoidal}(p1)
     q_en1 = ltf(geo1)
@@ -95,10 +95,6 @@ function Segment(p1::Abstract3DPosition; χ::Real, l::Real, Δh::Real = 0.0)
     Segment(geo1, geo2)
 end
 
-
-Segment() = Segment(Geographic(LatLon(), HEllip()),
-                    Geographic(LatLon(0.001, 0), HEllip()))
-
 StructTypes.StructType(::Type{Segment}) = StructTypes.CustomStruct()
 StructTypes.lowertype(::Type{Segment}) = NTuple{2, Geographic{LatLon, Ellipsoidal}}
 StructTypes.lower(seg::Segment) = (seg.p1, seg.p2)
@@ -106,13 +102,36 @@ function StructTypes.construct(::Type{Segment}, ps::NTuple{2, Geographic{LatLon,
     Segment(ps[1], ps[2])
 end
 
+function get_guidance_inputs(s::Segment, r_eb_e::Cartesian)
+
+    @unpack p1, q_en, χ_12, u_12_h = s
+
+    r_e1_e = Cartesian(p1) #ECEF position of Segment's origin p1
+    r_1b_e = r_eb_e - r_e1_e #3D vector from p1 to b, ECEF coordinates
+    r_1b_n = q_en'(r_1b_e) #3D vector from p1 to b, Segment's NED coordinates
+    r_1b_h = SVector{3,Float64}(r_1b_n[1], r_1b_n[2], 0) #horizontal components
+    l_1b_h = u_12_h ⋅ r_1b_h #along-track signed distance
+    e_1b_h = (u_12_h × r_1b_h)[3] #cross-track signed distance
+    h_ref = h1 + l_1b_h * tan(γ_12) #nominal altitude at l_1b_h
+
+    return (e_1b_h = e_1b_h, h_ref = h_ref)
+
+end
+
 
 ################################################################################
 
-
+#e_sf: cross-track error for which intercept angle is Δχ_inf / 2
 @kwdef struct SegmentGuidance <: AbstractGuidanceChannel
     Δχ_inf::Ranged{Float64, 0., π/2.} = π/2 #intercept angle for x2d_1p → ∞ (rad)
-    e_sf::Float64 = 1000 #cross-track distance scale factor (m)
+    e_sf::Float64 = 1000 #cross-track error scaling parameter for lateral guidance (m)
+    e_thr = 100 #cross-track error threshold for vertical guidance (m)
+end
+
+@kwdef mutable struct SegmentGuidanceU
+    target::Segment = Segment()
+    horizontal_req::Bool = true #request horizontal guidance
+    vertical_req::Bool = false #request vertical guidance
 end
 
 @kwdef struct SegmentGuidanceY
@@ -120,173 +139,121 @@ end
     l_1b_h::Float64 = 0.0 #along-track horizontal distance
     e_1b_h::Float64 = 0.0 #cross-track horizontal distance, positive right
     χ_ref::Float64 = 0.0 #course angle reference
+    h_ref::Float64 = 0.0 #altitude reference
+    horizontal::Bool = true #horizontal guidance active
+    vertical::Bool = true # guidance active
 end
 
-Modeling.U(::SegmentGuidance) = Ref(Segment())
+Modeling.U(::SegmentGuidance) = SegmentGuidanceU()
 Modeling.Y(::SegmentGuidance) = SegmentGuidanceY()
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
-                        vehicle::Model{<:C172Y.Vehicle})
+                            ctl::ControlLaws, vehicle::Model{<:C172Y.Vehicle})
 
-    @unpack target = mdl.u[]
+    @unpack target, horizontal_req, vertical_req = mdl
     @unpack Δχ_inf, e_sf = mdl.constants
-    @unpack p1, q_en, χ_12, u_12_h = target
 
-    r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
-    r_e1_e = Cartesian(p1)
-    r_1b_e = r_eb_e - r_e1_e
-    r_1b_n = q_en'(r_1b_e)
-    r_1b_h = SVector{3,Float64}(r_1b_n[1], r_1b_n[2], 0)
-    l_1b_h = u_12_h ⋅ r_1b_h
-    e_1b_h = (u_12_h × r_1b_h)[3]
+    @unpack e_1b_h, h_ref = get_guidance_inputs(target, vehicle.y.kinematics.r_eb_e)
     Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b_h / e_sf)
     χ_ref = wrap_to_π(χ_12 + Δχ)
 
-    mdl.y = SegmentGuidanceY(; target, l_1b_h, e_1b_h, χ_ref)
+    horizontal = horizontal_req
+    vertical = (e_1b_h < e_thr ? vertical_req : false)
 
-end
-    # #these go in the longitudinal guidance law
-    # r_eb_e = Cartesian(vehicle.y.kinematics.r_eb_e)
-    # r_1b_e = r_eb_e - r_e1_e #position vector from p1 to p
-    # r_1b_n1 = q_n1e(r_1b_e)
-    # r_1b_h = SVector{3,Float64}(r_1b_n1[1], r_1b_n1[2], 0)
-    # l_1b_h = u_12_h ⋅ r_1b_h
-    # h_ref = h1 + l_1b_h * tan(γ_12) #nominal altitude at our location
-    # clm_ff = V_gnd * sin(γ_12) #nominal climb rate at our current V_gnd
-    # clm_ref = clm_ff + mdl.k_h2c * (h_ref - h)
-
-    #we need to compute a normalized parameter p_1b.
-    #If p_1b<0, we're behind p1, and we set clm_ff = 0, h_nom =
-    #if p_1b > 1, we're beyond p2 and we set clm = 0, h_nom = h2.
-
-################################################################################
-################################################################################
-################################################################################
-
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLaws},
-                        vehicle::Model{<:C172Y.Vehicle})
-    @unpack mode_gdc_lon_req, mode_gdc_lat_req, mode_ctl_lon_req, mode_ctl_lat_req,
-            eng_start, eng_stop, mixture, flaps, brake_left, brake_right,
-            throttle_axis, aileron_axis, elevator_axis, rudder_axis,
-            throttle_offset, aileron_offset, elevator_offset, rudder_offset,
-            q_ref, EAS_ref, θ_ref, clm_ref, p_ref, φ_ref, χ_ref, β_ref,
-            h_target, seg_target = mdl.u
-
-    @unpack ctl_lon, ctl_lat, gdc_lon_alt, gdc_lat_seg = mdl.submodels
-
-    throttle_ref = throttle_axis + throttle_offset
-    elevator_ref = elevator_axis + elevator_offset
-    aileron_ref = aileron_axis + aileron_offset
-    rudder_ref = rudder_axis + rudder_offset
-
-    any_wow = any(SVector{3}(leg.strut.wow for leg in vehicle.y.systems.ldg))
-    flight_phase = any_wow ? FlightPhase.gnd : FlightPhase.air
-
-    if flight_phase === FlightPhase.gnd
-
-        mode_gdc_lon = ModeGuidanceLon.off
-        mode_gdc_lat = ModeGuidanceLat.off
-        mode_ctl_lon = ModeControlLon.direct
-        mode_ctl_lat = ModeControlLat.direct
-
-    elseif flight_phase === FlightPhase.air
-
-        mode_gdc_lon = mode_gdc_lon_req
-        mode_gdc_lat = mode_gdc_lat_req
-
-        if mode_gdc_lon === ModeGuidanceLon.off
-
-            mode_ctl_lon = mode_ctl_lon_req
-
-        else #mode_gdc_lon === ModeGuidanceLon.alt
-
-            gdc_lon_alt.u[] = h_target
-            f_periodic!(gdc_lon_alt, vehicle)
-
-            mode_ctl_lon = gdc_lon_alt.y.mode_ctl_lon
-            throttle_ref = gdc_lon_alt.y.throttle_ref
-            clm_ref = gdc_lon_alt.y.clm_ref
-
-        end
-
-        if mode_gdc_lat === ModeGuidanceLat.off
-
-            mode_ctl_lat = mode_ctl_lat_req
-
-            #below a v_gnd threshold, override χ mode and revert to φ
-            if (mode_ctl_lat === ModeControlLat.χ_β) && (vehicle.y.kinematics.v_gnd < 10.0)
-                mode_ctl_lat = ModeControlLat.ModeControlLat.φ_β
-            end
-
-        else #mode_gdc_lat === ModeGuidanceLat.seg
-
-            gdc_lat_seg.u[] = seg_target
-            f_periodic!(gdc_lat_seg, vehicle)
-            mode_ctl_lat = ModeControlLat.χ_β
-            χ_ref = gdc_lat_seg.y.χ_ref
-
-        end
-
+    if horizontal
+        ctl.lat.u.mode_req = ModeControlLat.χ_β
+        ctl.lat.u.χ_ref = χ_ref
+        #β_ref unchanged
     end
 
-    ctl_lon.u.mode = mode_ctl_lon
-    @pack! ctl_lon.u = throttle_ref, elevator_ref, q_ref, θ_ref, EAS_ref, clm_ref
-    f_periodic!(ctl_lon, vehicle)
+    if vertical
+        ctl.lon.u.mode_req = ModeControlLat.EAS_alt
+        ctl.lon.u.h_ref = h_ref
+        #EAS_ref unchanged
+    end
 
-    ctl_lat.u.mode = mode_ctl_lat
-    @pack! ctl_lat.u = aileron_ref, rudder_ref, p_ref, φ_ref, β_ref, χ_ref
-    f_periodic!(ctl_lat, vehicle)
-
-    mdl.y = ControlLawsY(; flight_phase,
-        mode_gdc_lon, mode_gdc_lat, mode_ctl_lon, mode_ctl_lat,
-        ctl_lon = ctl_lon.y, ctl_lat = ctl_lat.y,
-        gdc_lon_alt = gdc_lon_alt.y, gdc_lat_seg = gdc_lat_seg.y)
+    mdl.y = SegmentGuidanceY(; target, l_1b_h, e_1b_h, χ_ref, h_ref,
+                               horizontal, vertical)
 
 end
-
-#original C172X1 Avionics, reference for multi-component Avionics
 
 ################################################################################
-############################### Avionics #######################################
+############################# GuidanceLaws #####################################
 
-
-@kwdef struct Avionics{C} <: AbstractAvionics
-    ctl::C = Subsampled(ControlLaws(), 2)
+@kwdef struct GuidanceLaws{C <: ControlLaws} <: AbstractAvionics
+    ctl::C = ControlLaws()
+    seg::SegmentGuidance = SegmentGuidance()
 end
 
-@sm_updates Avionics
+@no_ode GuidanceLaws
+@no_step GuidanceLaws
+@sm_periodic GuidanceLaws
 
-############################### Update methods #################################
+@kwdef mutable struct GuidanceLawsU
+    mode_req::ModeGuidanceEnum = ModeGuidance.direct
+end
+
+@kwdef struct GuidanceLawsY
+    mode::ModeGuidanceEnum = ModeGuidance.direct
+    ctl::ControlLawsY = ControlLawsY()
+    seg::SegmentGuidanceY = SegmentGuidanceY()
+end
+
+
+Modeling.U(::SegmentGuidance) = GuidanceLawsU()
+Modeling.Y(::SegmentGuidance) = GuidanceLawsY()
+
+########################### Update Methods #####################################
 
 function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
-                          avionics::Model{<:C172Yv1.Avionics})
+                              avionics::Model{<:GuidanceLaws})
     AircraftBase.assign!(systems, avionics.ctl)
 end
 
-################################# Trimming #####################################
+############################# Initialization ###################################
 
-function Modeling.init!(avionics::Model{<:C172Yv1.Avionics},
-                            vehicle::Model{<:C172Y.Vehicle})
+function Modeling.init!(avionics::Model{<:GuidanceLaws},
+                        vehicle::Model{<:C172Y.Vehicle})
+    Modeling.init!(mdl.ctl, vehicle)
+    f_output!(avionics)
+end
 
-    Modeling.init!(avionics.ctl, vehicle)
-    update_output!(avionics)
+################################################################################
+################################################################################
+
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:GuidanceLaws},
+                        vehicle::Model{<:C172Y.Vehicle})
+
+    @unpack mode_req = mdl.u
+    @unpack ctl, seg = mdl.submodels
+
+    mode = (is_on_gnd(vehicle) ? ModeGuidance.direct : mode_req)
+
+    mode === ModeGuidance.segment && f_periodic!(seg, ctl, vehicle.y)
+    # mode === ModeGuidance.circle && f_periodic!(crc, ctl, vehicle.y)
+
+    #mode_req not overwritten
+    f_periodic!(ctl, vehicle.y)
 
 end
 
 ################################## GUI #########################################
 
-function GUI.draw!(avionics::Model{<:C172Yv1.Avionics},
-                    vehicle::Model{<:C172Y.Vehicle},
-                    p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna172Yv1 Avionics")
+# function GUI.draw!(avionics::Model{<:C172Yv1.Avionics},
+#                     vehicle::Model{<:C172Y.Vehicle},
+#                     p_open::Ref{Bool} = Ref(true),
+#                     label::String = "Cessna172Yv1 Avionics")
 
-    CImGui.Begin(label, p_open)
+#     CImGui.Begin(label, p_open)
 
-    @cstatic c_ctl=false begin
-        @c CImGui.Checkbox("Flight Control", &c_ctl)
-        c_ctl && @c GUI.draw!(avionics.ctl, vehicle, &c_ctl)
-    end
+#     @cstatic c_ctl=false begin
+#         @c CImGui.Checkbox("Flight Control", &c_ctl)
+#         c_ctl && @c GUI.draw!(avionics.ctl, vehicle, &c_ctl)
+#     end
 
-    CImGui.End()
+#     CImGui.End()
 
-end
+# end
+
+
+end #module

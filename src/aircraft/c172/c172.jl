@@ -695,7 +695,7 @@ function Modeling.f_ode!(systems::Model{<:Systems},
     f_ode!(pwp, air_data, kin_data) #update powerplant continuous state & outputs
     f_ode!(fuel, pwp) #update fuel system
 
-    update_output!(systems)
+    f_output!(systems)
 
 end
 

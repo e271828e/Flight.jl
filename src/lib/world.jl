@@ -28,7 +28,7 @@ function Modeling.f_ode!(world::Model{<:SimpleWorld})
     f_ode!(atmosphere)
     f_ode!(terrain)
     f_ode!(aircraft, atmosphere, terrain)
-    update_output!(world)
+    f_output!(world)
 end
 
 function Modeling.f_step!(world::Model{<:SimpleWorld})
@@ -43,7 +43,7 @@ function Modeling.f_periodic!(::NoScheduling, world::Model{<:SimpleWorld})
     f_periodic!(atmosphere)
     f_periodic!(terrain)
     f_periodic!(aircraft, atmosphere, terrain)
-    update_output!(world)
+    f_output!(world)
 end
 
 function Modeling.init!( world::Model{<:SimpleWorld},
@@ -53,7 +53,7 @@ function Modeling.init!( world::Model{<:SimpleWorld},
     Modeling.init!(atmosphere)
     Modeling.init!(terrain)
     Modeling.init!(aircraft, init, atmosphere, terrain)
-    update_output!(world) #!
+    f_output!(world) #!
 end
 
 ################################################################################

@@ -1147,7 +1147,17 @@ end
     lat::ControlLawsLatU = ControlLawsLatU()
 end
 
+@kwdef struct ControlLawsY
+    lon::ControlLawsLonY = ControlLawsLonY()
+    lat::ControlLawsLatY = ControlLawsLatY()
+end
+
 Modeling.U(::ControlLaws) = ControlLawsU()
+Modeling.Y(::ControlLaws) = ControlLawsY()
+
+function Modeling.f_output!(mdl::Model{<:ControlLaws})
+    mdl.y = ControlLawsY(mdl.lon.y, mdl.lat.y)
+end
 
 @no_ode ControlLaws
 @no_step ControlLaws
@@ -1156,16 +1166,18 @@ Modeling.U(::ControlLaws) = ControlLawsU()
 
 ########################### Update Methods #####################################
 
-function AircraftBase.assign!(systems::Model{<:C172Y.Systems}, mdl::Model{<:ControlLaws})
-    AircraftBase.assign!(systems, mdl.lon)
-    AircraftBase.assign!(systems, mdl.lat)
+function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
+                                avionics::Model{<:ControlLaws})
+    AircraftBase.assign!(systems, avionics.lon)
+    AircraftBase.assign!(systems, avionics.lat)
 end
 
 ############################# Initialization ###################################
 
-function Modeling.init!(mdl::Model{<:ControlLaws}, vehicle::Model{<:C172Y.Vehicle})
-    Modeling.init!(mdl.lon, vehicle)
-    Modeling.init!(mdl.lat, vehicle)
+function Modeling.init!(avionics::Model{<:ControlLaws},
+                        vehicle::Model{<:C172Y.Vehicle})
+    Modeling.init!(avionics.lon, vehicle)
+    Modeling.init!(avionics.lat, vehicle)
 end
 
 ################################## GUI #########################################

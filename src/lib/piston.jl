@@ -563,7 +563,7 @@ function Modeling.f_ode!(mdl::Model{<:PistonThruster}, air_data::AirData, kin_da
     engine.u.J_load = J_eq
     f_ode!(engine, air_data)
 
-    update_output!(mdl)
+    f_output!(mdl)
 
 end
 
