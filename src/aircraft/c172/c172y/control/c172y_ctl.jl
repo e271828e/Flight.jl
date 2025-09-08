@@ -16,7 +16,7 @@ using Flight.FlightLib.Control.Discrete: Integrator, IntegratorOutput,
 
 using ...AircraftBase
 using ...C172
-using ..C172Y
+using ..C172Y: Vehicle, Systems
 
 wrap_to_π(x) = x + 2π*floor((π-x)/(2π))
 
@@ -27,7 +27,7 @@ function flaps_schedule(EAS::Real)
     return 1 - (EAS - EAS_lo)/(EAS_hi - EAS_lo)
 end
 
-function is_on_gnd(mdl::Model{<:C172.Vehicle})
+function is_on_gnd(mdl::Model{<:Vehicle})
     any(SVector{3}(leg.strut.wow for leg in mdl.y.systems.ldg))
 end
 
@@ -103,7 +103,7 @@ vh2te_enabled(mode::ModeControlLonEnum) = (mode === ModeControlLon.EAS_alt)
 end
 
 #assemble state vector from vehicle
-function XLonFull(vehicle::Model{<:C172Y.Vehicle})
+function XLonFull(vehicle::Model{<:Vehicle})
 
     @unpack systems, airflow, kinematics = vehicle.y
     @unpack pwp, aero, act = systems
@@ -138,7 +138,7 @@ end
 end
 
 #assemble state vector from vehicle
-function XLonRed(vehicle::Model{<:C172Y.Vehicle})
+function XLonRed(vehicle::Model{<:Vehicle})
 
     @unpack systems, airflow, kinematics = vehicle.y
     @unpack pwp, aero, act = systems
@@ -173,7 +173,7 @@ end
     elevator_cmd::Float64 = 0.0
 end
 
-function Zte(vehicle::Model{<:C172Y.Vehicle})
+function Zte(vehicle::Model{<:Vehicle})
     throttle_cmd = vehicle.y.systems.act.throttle.cmd
     elevator_cmd = vehicle.y.systems.act.elevator.cmd
     Zte(; throttle_cmd, elevator_cmd)
@@ -187,7 +187,7 @@ end
     h::Float64 = 0.0
 end
 
-function Zvh(vehicle::Model{<:C172Y.Vehicle})
+function Zvh(vehicle::Model{<:Vehicle})
     EAS = vehicle.y.airflow.EAS
     h = vehicle.y.kinematics.h_e
     Zvh(; EAS, h)
@@ -201,7 +201,7 @@ end
     EAS::Float64 = 0.0
 end
 
-function Ztv(vehicle::Model{<:C172Y.Vehicle})
+function Ztv(vehicle::Model{<:Vehicle})
     throttle_cmd = vehicle.y.systems.act.throttle.cmd
     EAS = vehicle.y.airflow.EAS
     Ztv(; throttle_cmd, EAS)
@@ -284,7 +284,7 @@ end
 
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
-                        vehicle::Model{<:C172Y.Vehicle})
+                                vehicle::Model{<:Vehicle})
 
     @unpack mode_req, throttle_axis, throttle_offset, elevator_axis,
             elevator_offset, q_ref, θ_ref, EAS_ref, clm_ref, h_ref = mdl.u
@@ -446,7 +446,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 end
 
 
-function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
+function AircraftBase.assign!(systems::Model{<:Systems},
                           mdl::Model{<:ControlLawsLon})
 
     @unpack act = systems.submodels
@@ -460,8 +460,7 @@ end
 
 ############################# Initialization ###################################
 
-function Modeling.init!(lon::Model{<:ControlLawsLon},
-                        vehicle::Model{<:C172Y.Vehicle})
+function Modeling.init!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
 
     #we assume that the vehicle's y has already been updated to its trim
     #value by init!(vehicle, params)
@@ -535,8 +534,7 @@ StructTypes.lower(x::ModeControlLonEnum) = Int32(x)
 
 ################################### GUI ########################################
 
-function GUI.draw!(lon::Model{<:ControlLawsLon},
-                    vehicle::Model{<:C172Y.Vehicle})
+function GUI.draw!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
 
     @unpack u, y, Δt = lon
 
@@ -730,7 +728,7 @@ p2φ_enabled(mode::ModeControlLatEnum) = (mode === ModeControlLat.p_β)
     rud_p::Float64 = 0.0; #rudder actuator states
 end
 
-function XLatRed(vehicle::Model{<:C172Y.Vehicle})
+function XLatRed(vehicle::Model{<:Vehicle})
 
     @unpack systems, airflow, kinematics = vehicle.y
     @unpack aero, act = systems
@@ -758,7 +756,7 @@ end
     β::Float64 = 0.0
 end
 
-function Zφβ(vehicle::Model{<:C172Y.Vehicle})
+function Zφβ(vehicle::Model{<:Vehicle})
     φ = vehicle.y.kinematics.e_nb.φ
     β = vehicle.y.systems.aero.β
     Zφβ(; φ, β)
@@ -769,7 +767,7 @@ end
     rudder_cmd::Float64 = 0.0
 end
 
-function Zar(vehicle::Model{<:C172Y.Vehicle})
+function Zar(vehicle::Model{<:Vehicle})
     aileron_cmd = vehicle.y.systems.act.aileron.cmd
     rudder_cmd = vehicle.y.systems.act.rudder.cmd
     Zar(; aileron_cmd, rudder_cmd)
@@ -835,7 +833,7 @@ function Modeling.init!(mdl::Model{<:ControlLawsLat})
 end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
-                        vehicle::Model{<:C172Y.Vehicle})
+                                vehicle::Model{<:Vehicle})
 
     @unpack mode_req, aileron_axis, aileron_offset, rudder_axis, rudder_offset,
             p_ref, β_ref, φ_ref, χ_ref = mdl.u
@@ -942,7 +940,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
 end
 
 
-function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
+function AircraftBase.assign!(systems::Model{<:Systems},
                           mdl::Model{<:ControlLawsLat})
 
     @unpack act = systems.submodels
@@ -954,8 +952,7 @@ function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
 end
 
 
-function Modeling.init!(lat::Model{<:ControlLawsLat},
-                        vehicle::Model{<:C172Y.Vehicle})
+function Modeling.init!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
 
     #we assume that the vehicle's y has already been updated to its trim value
     #by init!(vehicle, params)
@@ -1012,8 +1009,7 @@ StructTypes.lower(x::ModeControlLatEnum) = Int32(x)
 
 ################################### GUI ########################################
 
-function GUI.draw!(lat::Model{<:ControlLawsLat},
-                    vehicle::Model{<:C172Y.Vehicle},
+function GUI.draw!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna172Y Control Laws")
 
@@ -1165,10 +1161,6 @@ end
 Modeling.U(::ControlLaws) = ControlLawsU()
 Modeling.Y(::ControlLaws) = ControlLawsY()
 
-# function Modeling.f_output!(mdl::Model{<:ControlLaws})
-#     mdl.y = ControlLawsY(mdl.lon.y, mdl.lat.y)
-# end
-
 @no_ode ControlLaws
 @no_step ControlLaws
 @sm_periodic ControlLaws
@@ -1176,16 +1168,14 @@ Modeling.Y(::ControlLaws) = ControlLawsY()
 
 ########################### Update Methods #####################################
 
-function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
-                                avionics::Model{<:ControlLaws})
+function AircraftBase.assign!(systems::Model{<:Systems}, avionics::Model{<:ControlLaws})
     AircraftBase.assign!(systems, avionics.lon)
     AircraftBase.assign!(systems, avionics.lat)
 end
 
 ############################# Initialization ###################################
 
-function Modeling.init!(avionics::Model{<:ControlLaws},
-                        vehicle::Model{<:C172Y.Vehicle})
+function Modeling.init!(avionics::Model{<:ControlLaws}, vehicle::Model{<:Vehicle})
     Modeling.init!(avionics.lon, vehicle)
     Modeling.init!(avionics.lat, vehicle)
     f_output!(avionics)
@@ -1193,8 +1183,7 @@ end
 
 ################################## GUI #########################################
 
-function GUI.draw!(ctl::Model{<:ControlLaws},
-                    vehicle::Model{<:C172Y.Vehicle},
+function GUI.draw!(ctl::Model{<:ControlLaws}, vehicle::Model{<:Vehicle},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna172Y Control Laws")
 

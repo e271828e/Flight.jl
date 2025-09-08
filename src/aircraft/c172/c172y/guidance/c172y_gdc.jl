@@ -13,7 +13,7 @@ using Flight.FlightLib
 
 using ...AircraftBase
 using ...C172
-using ..C172Y
+using ..C172Y: Vehicle, Systems
 using ..C172Y.C172YControl: ControlLaws, ControlLawsY, ModeControlLat, ModeControlLon, is_on_gnd
 
 @enumx T=ModeGuidanceEnum ModeGuidance begin
@@ -79,12 +79,27 @@ construct a Segment from:
 1) initial point p1
 2) an azimuth χ measured on NED(p1)
 3) a distance l along χ measured on the horizontal plane of NED(p1)
-4) an altitude increment Δh
+4) a flight path angle γ or altitude increment Δh
 note: l is the straight-line distance from p1 to p2t, NOT from p1 to p2.
 however, as long as p1 and p2 are relatively close, both their straight-line
 and geodesic distances will be close to l
 """
-function Segment(p1::Abstract3DPosition; χ::Real, l::Real, Δh::Real = 0.0)
+function Segment(p1::Abstract3DPosition; l::Real, χ::Real, kw...)
+
+    if :γ ∈ keys(kw) && :Δh ∈ keys(kw)
+        error("Can only provide either γ (flight path angle) or Δh
+              (altitude increment) as keyword arguments")
+    elseif :γ ∈ keys(kw)
+        γ = kw[:γ]
+        @assert abs(γ) < π/2
+        Δh = l * tan(γ)
+    elseif :Δh ∈ keys(kw)
+        Δh = kw[:Δh]
+    else
+        error("Must provide either γ (flight path angle) or Δh
+              (altitude increment) as keyword arguments")
+    end
+
     geo1 = Geographic{LatLon, Ellipsoidal}(p1)
     q_en1 = ltf(geo1)
     r_12_n1 = SVector{3,Float64}(l*cos(χ), l*sin(χ), 0)
@@ -95,27 +110,13 @@ function Segment(p1::Abstract3DPosition; χ::Real, l::Real, Δh::Real = 0.0)
     Segment(geo1, geo2)
 end
 
+Base.:-(seg::Segment) = Segment(seg.p2, seg.p1)
+
 StructTypes.StructType(::Type{Segment}) = StructTypes.CustomStruct()
 StructTypes.lowertype(::Type{Segment}) = NTuple{2, Geographic{LatLon, Ellipsoidal}}
 StructTypes.lower(seg::Segment) = (seg.p1, seg.p2)
 function StructTypes.construct(::Type{Segment}, ps::NTuple{2, Geographic{LatLon, Ellipsoidal}})
     Segment(ps[1], ps[2])
-end
-
-function get_guidance_inputs(s::Segment, r_eb_e::Cartesian)
-
-    @unpack p1, q_en, χ_12, γ_12, u_12_h = s
-
-    r_e1_e = Cartesian(p1) #ECEF position of Segment's origin p1
-    r_1b_e = r_eb_e - r_e1_e #3D vector from p1 to b, ECEF coordinates
-    r_1b_n = q_en'(r_1b_e) #3D vector from p1 to b, Segment's NED coordinates
-    r_1b_h = SVector{3,Float64}(r_1b_n[1], r_1b_n[2], 0) #horizontal components
-    l_1b_h = u_12_h ⋅ r_1b_h #along-track signed distance
-    e_1b_h = (u_12_h × r_1b_h)[3] #cross-track signed distance
-    h_ref = p1.h + l_1b_h * tan(γ_12) #nominal altitude at l_1b_h
-
-    return (e_1b_h = e_1b_h, h_ref = h_ref)
-
 end
 
 
@@ -148,7 +149,8 @@ Modeling.U(::SegmentGuidance) = SegmentGuidanceU()
 Modeling.Y(::SegmentGuidance) = SegmentGuidanceY()
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
-                            ctl::ControlLaws, vehicle::Model{<:C172Y.Vehicle})
+                                ctl::Model{<:ControlLaws},
+                                vehicle::Model{<:Vehicle})
 
     @unpack target, horizontal_req, vertical_req = mdl
     @unpack Δχ_inf, e_sf = mdl.constants
@@ -174,6 +176,22 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
 
     mdl.y = SegmentGuidanceY(; target, l_1b_h, e_1b_h, χ_ref, h_ref,
                                horizontal, vertical)
+
+end
+
+function get_guidance_inputs(s::Segment, r_eb_e::Cartesian)
+
+    @unpack p1, q_en, χ_12, γ_12, u_12_h = s
+
+    r_e1_e = Cartesian(p1) #ECEF position of Segment's origin p1
+    r_1b_e = r_eb_e - r_e1_e #3D vector from p1 to b, ECEF coordinates
+    r_1b_n = q_en'(r_1b_e) #3D vector from p1 to b, Segment's NED coordinates
+    r_1b_h = SVector{3,Float64}(r_1b_n[1], r_1b_n[2], 0) #horizontal components
+    l_1b_h = u_12_h ⋅ r_1b_h #along-track signed distance
+    e_1b_h = (u_12_h × r_1b_h)[3] #cross-track signed distance
+    h_ref = p1.h + l_1b_h * tan(γ_12) #nominal altitude at l_1b_h
+
+    return (e_1b_h = e_1b_h, h_ref = h_ref)
 
 end
 
@@ -206,15 +224,15 @@ Modeling.Y(::GuidanceLaws) = GuidanceLawsY()
 ########################### Update Methods #####################################
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:GuidanceLaws},
-                        vehicle::Model{<:C172Y.Vehicle})
+                                vehicle::Model{<:Vehicle})
 
     @unpack mode_req = mdl.u
     @unpack ctl, seg = mdl.submodels
 
     mode = (is_on_gnd(vehicle) ? ModeGuidance.direct : mode_req)
-    mode === ModeGuidance.segment && f_periodic!(seg, ctl, vehicle.y)
+    mode === ModeGuidance.segment && f_periodic!(seg, ctl, vehicle)
 
-    f_periodic!(ctl, vehicle.y)
+    f_periodic!(ctl, vehicle)
     f_output!(mdl)
 
 end
@@ -225,17 +243,14 @@ function Modeling.f_output!(mdl::Model{<:GuidanceLaws})
 end
 
 
-function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
-                              avionics::Model{<:GuidanceLaws})
+function AircraftBase.assign!(systems::Model{<:Systems}, avionics::Model{<:GuidanceLaws})
     AircraftBase.assign!(systems, avionics.ctl)
 end
 
 
 ############################# Initialization ###################################
 
-function Modeling.init!(avionics::Model{<:GuidanceLaws},
-                        vehicle::Model{<:C172Y.Vehicle})
-
+function Modeling.init!(avionics::Model{<:GuidanceLaws}, vehicle::Model{<:Vehicle})
     @unpack ctl, seg = avionics
     Modeling.init!(ctl, vehicle)
     f_output!(avionics)
@@ -243,10 +258,10 @@ end
 
 ################################## GUI #########################################
 
-# function GUI.draw!(avionics::Model{<:C172Yv1.Avionics},
-#                     vehicle::Model{<:C172Y.Vehicle},
+# function GUI.draw!(gdc::Model{<:GuidanceLaws},
+#                     vehicle::Model{<:Vehicle},
 #                     p_open::Ref{Bool} = Ref(true),
-#                     label::String = "Cessna172Yv1 Avionics")
+#                     label::String = "Cessna172Y Guidance Laws")
 
 #     CImGui.Begin(label, p_open)
 
