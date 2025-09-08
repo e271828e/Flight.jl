@@ -669,12 +669,17 @@ function GUI.draw!(lon::Model{<:ControlLawsLon},
 
         Separator()
 
+        @cstatic c_lon=false begin
+            @c Checkbox("Debug##Longitudinal Control", &c_lon)
+            c_lon && @c draw_internals(lon, &c_lon)
+        end
+
     end
 
 end
 
 function draw_internals(lon::Model{<:ControlLawsLon}, p_open::Ref{Bool} = Ref(true))
-    Begin("Lateral Control", p_open)
+    Begin("Longitudinal Control", p_open)
         Text("Sampling Period: $(lon.Δt)")
         Text("Mode: $(lon.y.mode)")
         foreach(keys(lon.submodels), values(lon.submodels)) do label, ss
@@ -1113,6 +1118,11 @@ function GUI.draw!(lat::Model{<:ControlLawsLat},
 
         Separator()
 
+        @cstatic c_lat=false begin
+            @c Checkbox("Debug##Lateral Control", &c_lat)
+            c_lat && @c draw_internals(lat, &c_lat)
+        end
+
     end
 
     End()
@@ -1195,16 +1205,6 @@ function GUI.draw!(ctl::Model{<:ControlLaws},
     GUI.draw!(lon, vehicle)
     GUI.draw!(lat, vehicle)
     GUI.draw(vehicle.y)
-
-    if CImGui.CollapsingHeader("Internals")
-        @cstatic c_lon=false c_lat=false c_alt=false begin
-            @c Checkbox("Longitudinal Control##Internals", &c_lon)
-            SameLine()
-            @c Checkbox("Lateral Control##Internals", &c_lat)
-            c_lon && @c draw_internals(lon, &c_lon)
-            c_lat && @c draw_internals(lon, &c_lat)
-        end
-    end
 
     End()
 

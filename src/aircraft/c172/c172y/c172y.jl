@@ -490,8 +490,10 @@ end
 ################################## Versions ####################################
 
 include(normpath("control/c172y_ctl.jl")); @reexport using .C172YControl
+include(normpath("guidance/c172y_gdc.jl")); @reexport using .C172YGuidance
 
 include(normpath("c172y0.jl")); @reexport using .C172Yv0
 include(normpath("c172y1.jl")); @reexport using .C172Yv1
+include(normpath("c172y2.jl")); @reexport using .C172Yv2
 
 end

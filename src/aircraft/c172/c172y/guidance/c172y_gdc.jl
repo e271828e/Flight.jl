@@ -1,6 +1,6 @@
 module C172YGuidance
 
-using UnPack, StaticArrays
+using UnPack, StaticArrays, LinearAlgebra
 using StructTypes
 using EnumX
 
@@ -14,7 +14,7 @@ using Flight.FlightLib
 using ...AircraftBase
 using ...C172
 using ..C172Y
-using ..C172Y.C172YControl: ControlLaws, ModeControlLat, ModeControlLon, is_on_gnd
+using ..C172Y.C172YControl: ControlLaws, ControlLawsY, ModeControlLat, ModeControlLon, is_on_gnd
 
 @enumx T=ModeGuidanceEnum ModeGuidance begin
     direct = 0
@@ -104,7 +104,7 @@ end
 
 function get_guidance_inputs(s::Segment, r_eb_e::Cartesian)
 
-    @unpack p1, q_en, χ_12, u_12_h = s
+    @unpack p1, q_en, χ_12, γ_12, u_12_h = s
 
     r_e1_e = Cartesian(p1) #ECEF position of Segment's origin p1
     r_1b_e = r_eb_e - r_e1_e #3D vector from p1 to b, ECEF coordinates
@@ -112,7 +112,7 @@ function get_guidance_inputs(s::Segment, r_eb_e::Cartesian)
     r_1b_h = SVector{3,Float64}(r_1b_n[1], r_1b_n[2], 0) #horizontal components
     l_1b_h = u_12_h ⋅ r_1b_h #along-track signed distance
     e_1b_h = (u_12_h × r_1b_h)[3] #cross-track signed distance
-    h_ref = h1 + l_1b_h * tan(γ_12) #nominal altitude at l_1b_h
+    h_ref = p1.h + l_1b_h * tan(γ_12) #nominal altitude at l_1b_h
 
     return (e_1b_h = e_1b_h, h_ref = h_ref)
 
@@ -122,7 +122,7 @@ end
 ################################################################################
 
 #e_sf: cross-track error for which intercept angle is Δχ_inf / 2
-@kwdef struct SegmentGuidance <: AbstractGuidanceChannel
+@kwdef struct SegmentGuidance <: ModelDefinition
     Δχ_inf::Ranged{Float64, 0., π/2.} = π/2 #intercept angle for x2d_1p → ∞ (rad)
     e_sf::Float64 = 1000 #cross-track error scaling parameter for lateral guidance (m)
     e_thr = 100 #cross-track error threshold for vertical guidance (m)
@@ -131,7 +131,7 @@ end
 @kwdef mutable struct SegmentGuidanceU
     target::Segment = Segment()
     horizontal_req::Bool = true #request horizontal guidance
-    vertical_req::Bool = false #request vertical guidance
+    vertical_req::Bool = true #request vertical guidance
 end
 
 @kwdef struct SegmentGuidanceY
@@ -199,27 +199,11 @@ end
     seg::SegmentGuidanceY = SegmentGuidanceY()
 end
 
+Modeling.U(::GuidanceLaws) = GuidanceLawsU()
+Modeling.Y(::GuidanceLaws) = GuidanceLawsY()
 
-Modeling.U(::SegmentGuidance) = GuidanceLawsU()
-Modeling.Y(::SegmentGuidance) = GuidanceLawsY()
 
 ########################### Update Methods #####################################
-
-function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
-                              avionics::Model{<:GuidanceLaws})
-    AircraftBase.assign!(systems, avionics.ctl)
-end
-
-############################# Initialization ###################################
-
-function Modeling.init!(avionics::Model{<:GuidanceLaws},
-                        vehicle::Model{<:C172Y.Vehicle})
-    Modeling.init!(mdl.ctl, vehicle)
-    f_output!(avionics)
-end
-
-################################################################################
-################################################################################
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:GuidanceLaws},
                         vehicle::Model{<:C172Y.Vehicle})
@@ -228,13 +212,33 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:GuidanceLaws},
     @unpack ctl, seg = mdl.submodels
 
     mode = (is_on_gnd(vehicle) ? ModeGuidance.direct : mode_req)
-
     mode === ModeGuidance.segment && f_periodic!(seg, ctl, vehicle.y)
-    # mode === ModeGuidance.circle && f_periodic!(crc, ctl, vehicle.y)
 
-    #mode_req not overwritten
     f_periodic!(ctl, vehicle.y)
+    f_output!(mdl)
 
+end
+
+function Modeling.f_output!(mdl::Model{<:GuidanceLaws})
+    @unpack ctl, seg = mdl.submodels
+    mdl.y = GuidanceLawsY(mode = mdl.y.mode, ctl = ctl.y, seg = seg.y)
+end
+
+
+function AircraftBase.assign!(systems::Model{<:C172Y.Systems},
+                              avionics::Model{<:GuidanceLaws})
+    AircraftBase.assign!(systems, avionics.ctl)
+end
+
+
+############################# Initialization ###################################
+
+function Modeling.init!(avionics::Model{<:GuidanceLaws},
+                        vehicle::Model{<:C172Y.Vehicle})
+
+    @unpack ctl, seg = avionics
+    Modeling.init!(ctl, vehicle)
+    f_output!(avionics)
 end
 
 ################################## GUI #########################################
