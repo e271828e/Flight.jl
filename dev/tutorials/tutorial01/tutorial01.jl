@@ -48,7 +48,7 @@ function tutorial01(; aircraft::Cessna172 = Cessna172Xv1(),
     end
 
     #create a Simulation with specified integration step size and stop time
-    sim = Simulation(world; dt = 0.01, t_end = 1000)
+    sim = Simulation(world; dt = 0.02, t_end = 1000)
 
     Sim.init!(sim, initializer)
 
