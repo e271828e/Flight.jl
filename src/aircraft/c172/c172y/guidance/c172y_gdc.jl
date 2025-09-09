@@ -16,6 +16,10 @@ using ...C172
 using ..C172Y: Vehicle, Systems
 using ..C172Y.C172YControl: ControlLaws, ControlLawsY, ModeControlLat, ModeControlLon, is_on_gnd
 
+
+################################################################################
+#################################### Modes #####################################
+
 @enumx T=ModeGuidanceEnum ModeGuidance begin
     direct = 0
     segment = 1
@@ -31,7 +35,7 @@ StructTypes.lower(x::ModeGuidanceEnum) = Int32(x)
 
 
 ################################################################################
-############################# HorizontalGuidance ###############################
+################################## Segment #####################################
 
 struct Segment
     p1::Geographic{LatLon, Ellipsoidal}
@@ -176,19 +180,19 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
                                 ctl::Model{<:ControlLaws},
                                 vehicle::Model{<:Vehicle})
 
-    @unpack target, horizontal_req, vertical_req = mdl
+    @unpack target, horizontal_req, vertical_req = mdl.u
     @unpack Δχ_inf, e_sf, e_thr = mdl.constants
-    @unpack r_eb_b = vehicle.kinematics.y
+    @unpack r_eb_e = vehicle.kinematics.y
 
-    coords = SegmentCoords(target, r_eb_b)
+    coords = SegmentCoords(target, Cartesian(r_eb_e))
     @unpack l_1b, e_1b, h_1b = coords
 
-    Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b_h / e_sf)
+    Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b / e_sf)
     χ_ref = wrap_to_π(χ_12 + Δχ)
     h_ref = h_1b
 
     horizontal = horizontal_req
-    vertical = (e_1b_h < e_thr ? vertical_req : false)
+    vertical = (e_1b < e_thr ? vertical_req : false)
 
     if horizontal
         ctl.lat.u.mode_req = ModeControlLat.χ_β
@@ -245,6 +249,8 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:GuidanceLaws},
 
     f_periodic!(ctl, vehicle)
     f_output!(mdl)
+
+    @show mode
 
 end
 

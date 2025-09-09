@@ -34,7 +34,7 @@ using Flight.FlightCore
 using ..Quaternions
 
 export Abstract3DRotation, RQuat, RAxAng, RVec, REuler, RMatrix, Rx, Ry, Rz
-export azimuth, inclination
+export azimuth, inclination, wrap_to_π
 
 const half_π = π/2
 
@@ -483,6 +483,7 @@ end
 
 azimuth(v::AbstractVector{<:Real}) = atan(v[2], v[1])
 inclination(v::AbstractVector{<:Real}) = atan(-v[3], √(v[1]^2 + v[2]^2))
+wrap_to_π(x) = x + 2π*floor((π-x)/(2π))
 
 
 ################################# Plotting #####################################

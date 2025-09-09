@@ -18,7 +18,6 @@ using ...AircraftBase
 using ...C172
 using ..C172Y: Vehicle, Systems
 
-wrap_to_π(x) = x + 2π*floor((π-x)/(2π))
 
 function flaps_schedule(EAS::Real)
     EAS_lo = 30; EAS_hi = 35
