@@ -36,8 +36,8 @@ StructTypes.lower(x::ModeGuidanceEnum) = Int32(x)
 struct Segment
     p1::Geographic{LatLon, Ellipsoidal}
     p2::Geographic{LatLon, Ellipsoidal}
-    u_12_h::SVector{3,Float64}
-    l_12_h::Float64
+    u_12::SVector{2,Float64}
+    l_12::Float64
     χ_12::Float64
     γ_12::Float64
     q_en::RQuat
@@ -57,16 +57,17 @@ struct Segment
         q_en = ltf(n_e) #LTF at midpoint
 
         r_12_n = q_en'(r_12_e)
-        r_12_h = SVector{3,Float64}(r_12_n[1], r_12_n[2], 0.0)
-        l_12_h = norm(r_12_h)
-        @assert l_12_h > 0 "Invalid guidance segment" #must not be vertical or degenerate
+        r_12_h = SVector{2,Float64}(r_12_n[1], r_12_n[2])
+        l_12 = norm(r_12_h)
+        l_12_min = 1e-6 #minimum horizontal length
+        @assert l_12 > l_12_min "Invalid guidance segment" #must not be vertical or degenerate
 
         Δh_12 = HEllip(p2) - HEllip(p1)
-        u_12_h = r_12_h / l_12_h
-        χ_12 = azimuth(u_12_h) #azimuth
-        γ_12 = atan(Δh_12, l_12_h) #flight path angle (0 for equal altitude)
+        u_12 = r_12_h / l_12
+        χ_12 = azimuth(u_12) #azimuth
+        γ_12 = atan(Δh_12, l_12) #flight path angle (0 for equal altitude)
 
-        new(p1, p2, u_12_h, l_12_h, χ_12, γ_12, q_en)
+        new(p1, p2, u_12, l_12, χ_12, γ_12, q_en)
 
     end
 
@@ -78,7 +79,7 @@ Segment() = Segment(Geographic(LatLon()), Geographic(LatLon(1e-3, 0)))
 construct a Segment from:
 1) initial point p1
 2) an azimuth χ measured on NED(p1)
-3) a distance l along χ measured on the horizontal plane of NED(p1)
+3) a length l along χ measured on the horizontal plane of NED(p1)
 4) a flight path angle γ or altitude increment Δh
 note: l is the straight-line distance from p1 to p2t, NOT from p1 to p2.
 however, as long as p1 and p2 are relatively close, both their straight-line
@@ -91,7 +92,6 @@ function Segment(p1::Abstract3DPosition; l::Real, χ::Real, kw...)
               (altitude increment) as keyword arguments")
     elseif :γ ∈ keys(kw)
         γ = kw[:γ]
-        @assert abs(γ) < π/2
         Δh = l * tan(γ)
     elseif :Δh ∈ keys(kw)
         Δh = kw[:Δh]
@@ -119,6 +119,31 @@ function StructTypes.construct(::Type{Segment}, ps::NTuple{2, Geographic{LatLon,
     Segment(ps[1], ps[2])
 end
 
+#segment-relative coordinates
+@kwdef struct SegmentCoords
+    l_1b::Float64 = 0.0 #signed along-track horizontal distance
+    e_1b::Float64 = 0.0 #signed cross-track horizontal distance, positive right
+    h_1b::HEllip = HEllip(0.0) #nominal segment altitude at l_1b
+end
+
+function SegmentCoords(s::Segment, p::Abstract3DPosition)
+
+    @unpack p1, q_en, χ_12, γ_12, u_12 = s
+
+    r_eb_e = Cartesian(p)
+    r_e1_e = Cartesian(p1) #ECEF position of Segment's origin p1
+    r_1b_e = r_eb_e - r_e1_e #3D vector from p1 to b, ECEF coordinates
+    r_1b_n = q_en'(r_1b_e) #3D vector from p1 to b, Segment's NED coordinates
+    r_1b_h = SVector{3,Float64}(r_1b_n[1], r_1b_n[2], 0.0) #horizontal components
+    u_12_h = SVector{3, Float64}(u_12[1], u_12[2], 0.0)
+    l_1b = u_12_h ⋅ r_1b_h #signed along-track horizontal distance
+    e_1b = (u_12_h × r_1b_h)[3] #signed cross-track signed horizontal distance
+    h_1b = HEllip(p1) + l_1b * tan(γ_12) #vertical distance l_1b_h
+
+    return SegmentCoords(; l_1b, e_1b, h_1b)
+
+end
+
 
 ################################################################################
 
@@ -137,8 +162,7 @@ end
 
 @kwdef struct SegmentGuidanceY
     target::Segment = Segment()
-    l_1b_h::Float64 = 0.0 #along-track horizontal distance
-    e_1b_h::Float64 = 0.0 #cross-track horizontal distance, positive right
+    coords::SegmentCoords = SegmentCoords()
     χ_ref::Float64 = 0.0 #course angle reference
     h_ref::Float64 = 0.0 #altitude reference
     horizontal::Bool = true #horizontal guidance active
@@ -153,11 +177,15 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
                                 vehicle::Model{<:Vehicle})
 
     @unpack target, horizontal_req, vertical_req = mdl
-    @unpack Δχ_inf, e_sf = mdl.constants
+    @unpack Δχ_inf, e_sf, e_thr = mdl.constants
+    @unpack r_eb_b = vehicle.kinematics.y
 
-    @unpack e_1b_h, h_ref = get_guidance_inputs(target, vehicle.y.kinematics.r_eb_e)
+    coords = SegmentCoords(target, r_eb_b)
+    @unpack l_1b, e_1b, h_1b = coords
+
     Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b_h / e_sf)
     χ_ref = wrap_to_π(χ_12 + Δχ)
+    h_ref = h_1b
 
     horizontal = horizontal_req
     vertical = (e_1b_h < e_thr ? vertical_req : false)
@@ -174,24 +202,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
         #EAS_ref unchanged
     end
 
-    mdl.y = SegmentGuidanceY(; target, l_1b_h, e_1b_h, χ_ref, h_ref,
-                               horizontal, vertical)
-
-end
-
-function get_guidance_inputs(s::Segment, r_eb_e::Cartesian)
-
-    @unpack p1, q_en, χ_12, γ_12, u_12_h = s
-
-    r_e1_e = Cartesian(p1) #ECEF position of Segment's origin p1
-    r_1b_e = r_eb_e - r_e1_e #3D vector from p1 to b, ECEF coordinates
-    r_1b_n = q_en'(r_1b_e) #3D vector from p1 to b, Segment's NED coordinates
-    r_1b_h = SVector{3,Float64}(r_1b_n[1], r_1b_n[2], 0) #horizontal components
-    l_1b_h = u_12_h ⋅ r_1b_h #along-track signed distance
-    e_1b_h = (u_12_h × r_1b_h)[3] #cross-track signed distance
-    h_ref = p1.h + l_1b_h * tan(γ_12) #nominal altitude at l_1b_h
-
-    return (e_1b_h = e_1b_h, h_ref = h_ref)
+    mdl.y = SegmentGuidanceY(; target, coords, χ_ref, h_ref, horizontal, vertical)
 
 end
 

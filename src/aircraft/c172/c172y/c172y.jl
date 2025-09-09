@@ -16,7 +16,7 @@ export Cessna172Y
 #first order linear actuator model
 
 #τ has units of rad/s, not Hz: F(s) = 1/(1+sτ); F(jω) = 1/(1+jωτ).
-struct Actuator1{R <: Ranged} <: ModelDefinition #second order linear actuator model
+struct Actuator1{R <: Ranged} <: ModelDefinition
     τ::Float64 #time constant (default: 0.05s)
     function Actuator1(; τ::Real = 1/20, range::Tuple{Real, Real} = (-1.0, 1.0))
         new{Ranged{Float64, range[1], range[2]}}(τ)
@@ -64,7 +64,7 @@ end
 
 #saturate on command, not on position, which only tends asymptotically to cmd!
 
-struct Actuator2{R} <: ModelDefinition #second order linear actuator model
+struct Actuator2{R} <: ModelDefinition
     ω_n::Float64 #natural frequency (default: 10 Hz)
     ζ::Float64 #damping ratio (default: underdamped with minimal resonance)
     function Actuator2(; ω_n::Real = 5*2π, ζ::Real = 0.6,

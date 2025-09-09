@@ -13,7 +13,7 @@ using Flight
 world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) #zero-MSL terrain
 ```
 
-Inspecting its type hierarchy reveals that `SimpleWorld` is a concrete subtype of the abstract type
+Inspecting `SimpleWorld`'s type hierarchy reveals that it is a concrete subtype of the abstract type
 `ModelDefinition`:
 ```@example tutorial02
 using InteractiveUtils
