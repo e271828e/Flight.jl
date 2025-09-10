@@ -12,6 +12,12 @@ using Flight.FlightAircraft.C172Y.C172YGuidance: Segment, SegmentCoords, ModeGui
 
 export test_c172y2
 
+
+y_kin(aircraft::Model{<:Cessna172Yv2}) = aircraft.y.vehicle.kinematics
+y_air(aircraft::Model{<:Cessna172Yv2}) = aircraft.y.vehicle.airflow
+y_aero(aircraft::Model{<:Cessna172Yv2}) = aircraft.y.vehicle.systems.aero
+
+
 function test_c172y2(; alloc::Bool = true)
 
     @testset verbose = true "Cessna 172Yv2" begin
@@ -26,8 +32,8 @@ function test_c172y2(; alloc::Bool = true)
 
             χ = π/3 #test segment's azimuth
             Δχ = π/4 #test point's segment-relative azimuth
-            l = 1000 #test point's distance along its azimuth
-            seg = Segment(Geographic(); χ, l = 10000, γ = deg2rad(5))
+            l = 1e3 #test point's distance along its azimuth
+            seg = Segment(Geographic(); χ, l = 1e4, γ = deg2rad(5))
             p = Segment(Geographic(); χ = χ + Δχ, l, γ = 0).p2
             coords = SegmentCoords(seg, p)
 
@@ -40,7 +46,7 @@ function test_c172y2(; alloc::Bool = true)
             @test seg_inv.p2 ≈ seg.p1
 
             if alloc
-                @test @ballocated(Segment(Geographic(); χ = 0, l = 10000, γ = deg2rad(5))) == 0
+                @test @ballocated(Segment(Geographic(); χ = 0, l = 1e4, γ = deg2rad(5))) == 0
                 @test @ballocated(SegmentCoords($seg, $p)) == 0
             end
 
@@ -52,30 +58,120 @@ function test_c172y2(; alloc::Bool = true)
             world = SimpleWorld(Cessna172Yv2(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
             aircraft = world.aircraft
-            gdc = aircraft.avionics
-            init_air = C172.TrimParameters()
+            @unpack ctl, gdc = aircraft.avionics
+            e_thr = gdc.seg.constants.e_thr
+
+            init_air = C172.TrimParameters(; ψ_nb = 0)
             init_gnd = C172.Init(KinInit( h = h_trn + C172.Δh_to_gnd))
 
             dt = Δt = 0.01
             sim = Simulation(world; dt, Δt, t_end = 100)
 
+            ############################## Gnd #################################
+
             Sim.init!(sim, init_gnd)
             @test is_on_gnd(aircraft.vehicle)
 
-            #request segment guidance
+            #request segment guidance mode and enable horizontal and vertical guidance
             gdc.u.mode_req = ModeGuidance.segment
+            gdc.seg.u.horizontal_req = true
+            gdc.seg.u.vertical_req = true
 
-            #step for one controller sample period
-            step!(sim, Δt, true)
+            #step for one guidance sample period
+            step!(sim, gdc.Δt, true)
 
             #the mode request should have been ignored due to wow = gnd
             @test gdc.y.mode === ModeGuidance.direct
 
-            # if alloc
-            #     @test @ballocated(f_ode!($world)) == 0
-            #     @test @ballocated(f_step!($world)) == 0
-            #     @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
-            # end
+            ############################## Air #################################
+
+            Sim.init!(sim, init_air)
+
+            kin_data = y_kin(aircraft)
+            @unpack n_e, h_e, χ_gnd = kin_data
+            Ob = Geographic(n_e, h_e)
+            χ_ac = χ_gnd
+            Δh = 100
+
+            #construct and assign a segment roughly perpendicular to the current
+            #course, e_thr/2 to the right and 100m above the current altitude
+            aux_seg = Segment(Ob; χ = χ_ac + π/2, l = e_thr/2, Δh)
+            gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, l = 1e4, γ = deg2rad(5))
+
+            #step for one guidance sample period
+            Sim.step!(sim, gdc.Δt, true)
+
+            #the guidance mode request should now have been honored
+            @test gdc.y.mode === ModeGuidance.segment
+
+            #horizontal guidance request is always honored
+            @test gdc.seg.y.horizontal === true
+            @test ctl.lat.y.mode === ModeControlLat.χ_β
+            @test ctl.lat.y.χ_ref === gdc.seg.y.χ_ref
+
+            #since we are within the vertical guidance threshold e_thr, vertical
+            #guidance must have engaged as requested
+            @test gdc.seg.y.vertical === true
+            @test (ctl.lon.y.mode === ModeControlLon.EAS_alt ||
+                   ctl.lon.y.mode === ModeControlLon.thr_EAS)
+            @test ctl.lon.y.h_ref === gdc.seg.y.h_ref
+            @test ctl.lon.y.h_ref ≈ h_e + Δh atol = 1
+
+            #intercept angle should be positive
+            @test gdc.seg.y.Δχ > 0
+
+            #test with both horizontal and vertical guidance enabled
+            if alloc
+                @test @ballocated(f_ode!($world)) == 0
+                @test @ballocated(f_step!($world)) == 0
+                @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+            end
+
+            #now place the segment to the left of the aircraft, e_thr/2 away
+            aux_seg = Segment(Ob; χ = χ_ac - π/2, l = e_thr/2, γ = 0)
+            gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, l = 1e4, γ = deg2rad(5))
+
+            Sim.step!(sim, gdc.Δt, true)
+
+            #intercept angle should be negative
+            @test gdc.seg.y.Δχ < 0
+
+            aux_seg = Segment(Ob; χ = χ_ac + π/2, l = 2e_thr, γ = 0)
+            gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, l = 1e4, γ = deg2rad(5))
+
+            Sim.step!(sim, gdc.Δt, true)
+
+            #since we are outside the vertical guidance threshold e_thr,
+            #vertical guidance must have disengaged
+            @test gdc.seg.y.vertical === false
+
+            #disable vertical guidance, longitudinal control mode should remain
+            #unchanged
+            lon_mode_prev = ctl.lon.y.mode
+            gdc.seg.u.vertical_req = false
+            Sim.step!(sim, gdc.Δt, true)
+            @test gdc.seg.y.vertical === false
+            @test ctl.lon.y.mode === lon_mode_prev
+
+            #once vertical guidance is disabled, we can once again set the
+            #longitudinal control modes
+            ctl.lon.u.mode_req = ModeControlLon.sas
+            Sim.step!(sim, gdc.Δt, true)
+            @test ctl.lon.y.mode === ModeControlLon.sas
+
+            #disable horizontal guidance, lateral control mode should remain
+            #unchanged
+            lat_mode_prev = ctl.lat.y.mode
+            gdc.seg.u.horizontal_req = false
+            Sim.step!(sim, gdc.Δt, true)
+            @test gdc.seg.y.horizontal === false
+            @test ctl.lat.y.mode === lat_mode_prev
+
+            #once horizontal guidance is disabled, we can once again set the
+            #lateral control modes
+            ctl.lat.u.mode_req = ModeControlLat.sas
+            Sim.step!(sim, gdc.Δt, true)
+            @test ctl.lat.y.mode === ModeControlLat.sas
 
         end #testset
 
@@ -83,10 +179,5 @@ function test_c172y2(; alloc::Bool = true)
 
 
 end
-
-y_kin(aircraft::Model{<:Cessna172Yv2}) = aircraft.y.vehicle.kinematics
-y_air(aircraft::Model{<:Cessna172Yv2}) = aircraft.y.vehicle.airflow
-y_aero(aircraft::Model{<:Cessna172Yv2}) = aircraft.y.vehicle.systems.aero
-
 
 end #module

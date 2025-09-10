@@ -4,9 +4,9 @@ using UnPack, StaticArrays, LinearAlgebra
 using StructTypes
 using EnumX
 
-# using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
-#     Dummy, SameLine, NewLine, IsItemActive, IsItemActivated, Separator, Text,
-#     Checkbox, RadioButton, TableNextColumn, TableNextRow, BeginTable, EndTable
+using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
+    Dummy, SameLine, NewLine, IsItemActive, IsItemActivated, Separator, Text,
+    Checkbox, RadioButton, TableNextColumn, TableNextRow, BeginTable, EndTable
 
 using Flight.FlightCore
 using Flight.FlightLib
@@ -14,7 +14,7 @@ using Flight.FlightLib
 using ...AircraftBase
 using ...C172
 using ..C172Y: Vehicle, Systems
-using ..C172Y.C172YControl: ControlLaws, ControlLawsY, ModeControlLat, ModeControlLon, is_on_gnd
+using ..C172Y.C172YControl: ControlLaws, ModeControlLat, ModeControlLon, is_on_gnd
 
 
 ################################################################################
@@ -23,7 +23,7 @@ using ..C172Y.C172YControl: ControlLaws, ControlLawsY, ModeControlLat, ModeContr
 @enumx T=ModeGuidanceEnum ModeGuidance begin
     direct = 0
     segment = 1
-    circle = 2
+    circular = 2
 end
 
 using .ModeGuidance: ModeGuidanceEnum
@@ -82,7 +82,7 @@ Segment() = Segment(Geographic(LatLon()), Geographic(LatLon(1e-3, 0)))
 """
 construct a Segment from:
 1) initial point p1
-2) an azimuth χ measured on NED(p1)
+2) an azimuth χ on NED(p1)
 3) a length l along χ measured on the horizontal plane of NED(p1)
 4) a flight path angle γ or altitude increment Δh
 note: l is the straight-line distance from p1 to p2t, NOT from p1 to p2.
@@ -155,22 +155,23 @@ end
 @kwdef struct SegmentGuidance <: ModelDefinition
     Δχ_inf::Ranged{Float64, 0., π/2.} = π/2 #intercept angle for x2d_1p → ∞ (rad)
     e_sf::Float64 = 1000 #cross-track error scaling parameter for lateral guidance (m)
-    e_thr = 100 #cross-track error threshold for vertical guidance (m)
+    e_thr = 500 #cross-track error threshold for vertical guidance (m)
 end
 
 @kwdef mutable struct SegmentGuidanceU
     target::Segment = Segment()
-    horizontal_req::Bool = true #request horizontal guidance
-    vertical_req::Bool = true #request vertical guidance
+    horizontal_req::Bool = false #request horizontal guidance
+    vertical_req::Bool = false #request vertical guidance
 end
 
 @kwdef struct SegmentGuidanceY
     target::Segment = Segment()
     coords::SegmentCoords = SegmentCoords()
-    χ_ref::Float64 = 0.0 #course angle reference
-    h_ref::Float64 = 0.0 #altitude reference
-    horizontal::Bool = true #horizontal guidance active
-    vertical::Bool = true # guidance active
+    Δχ::Float64 = 0.0 #intercept angle (rad)
+    χ_ref::Float64 = 0.0 #course angle reference (rad)
+    h_ref::HEllip = 0.0 #altitude reference (m)
+    horizontal::Bool = false #horizontal guidance active
+    vertical::Bool = false # guidance active
 end
 
 Modeling.U(::SegmentGuidance) = SegmentGuidanceU()
@@ -188,11 +189,11 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
     @unpack l_1b, e_1b, h_1b = coords
 
     Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_1b / e_sf)
-    χ_ref = wrap_to_π(χ_12 + Δχ)
+    χ_ref = wrap_to_π(target.χ_12 + Δχ)
     h_ref = h_1b
 
     horizontal = horizontal_req
-    vertical = (e_1b < e_thr ? vertical_req : false)
+    vertical = (abs(e_1b) < e_thr ? vertical_req : false)
 
     if horizontal
         ctl.lat.u.mode_req = ModeControlLat.χ_β
@@ -201,21 +202,32 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
     end
 
     if vertical
-        ctl.lon.u.mode_req = ModeControlLat.EAS_alt
+        ctl.lon.u.mode_req = ModeControlLon.EAS_alt
         ctl.lon.u.h_ref = h_ref
         #EAS_ref unchanged
     end
 
-    mdl.y = SegmentGuidanceY(; target, coords, χ_ref, h_ref, horizontal, vertical)
+    mdl.y = SegmentGuidanceY(; target, coords, Δχ, χ_ref, h_ref, horizontal, vertical)
 
 end
 
+
 ################################################################################
+########################### CircularGuidance ###################################
+
+@kwdef struct CircularGuidance <: ModelDefinition end
+@kwdef struct CircularGuidanceY end
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:CircularGuidance},
+                                ctl::Model{<:ControlLaws},
+                                vehicle::Model{<:Vehicle})
+end
+
+###############################################################################
 ############################# GuidanceLaws #####################################
 
-@kwdef struct GuidanceLaws{C <: ControlLaws} <: AbstractAvionics
-    ctl::C = ControlLaws()
+@kwdef struct GuidanceLaws <: ModelDefinition
     seg::SegmentGuidance = SegmentGuidance()
+    crc::CircularGuidance = CircularGuidance()
 end
 
 @no_ode GuidanceLaws
@@ -228,8 +240,8 @@ end
 
 @kwdef struct GuidanceLawsY
     mode::ModeGuidanceEnum = ModeGuidance.direct
-    ctl::ControlLawsY = ControlLawsY()
     seg::SegmentGuidanceY = SegmentGuidanceY()
+    crc::CircularGuidanceY = CircularGuidanceY()
 end
 
 Modeling.U(::GuidanceLaws) = GuidanceLawsU()
@@ -239,57 +251,60 @@ Modeling.Y(::GuidanceLaws) = GuidanceLawsY()
 ########################### Update Methods #####################################
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:GuidanceLaws},
+                                ctl::Model{<:ControlLaws},
                                 vehicle::Model{<:Vehicle})
 
     @unpack mode_req = mdl.u
-    @unpack ctl, seg = mdl.submodels
+    @unpack seg, crc = mdl.submodels
 
     mode = (is_on_gnd(vehicle) ? ModeGuidance.direct : mode_req)
     mode === ModeGuidance.segment && f_periodic!(seg, ctl, vehicle)
+    mode === ModeGuidance.circular && f_periodic!(crc, ctl, vehicle)
 
-    f_periodic!(ctl, vehicle)
-    f_output!(mdl)
-
-    @show mode
+    mdl.y = GuidanceLawsY(; mode, seg = seg.y, crc = crc.y)
 
 end
 
-function Modeling.f_output!(mdl::Model{<:GuidanceLaws})
-    @unpack ctl, seg = mdl.submodels
-    mdl.y = GuidanceLawsY(mode = mdl.y.mode, ctl = ctl.y, seg = seg.y)
-end
-
-
-function AircraftBase.assign!(systems::Model{<:Systems}, avionics::Model{<:GuidanceLaws})
-    AircraftBase.assign!(systems, avionics.ctl)
-end
-
-
-############################# Initialization ###################################
-
-function Modeling.init!(avionics::Model{<:GuidanceLaws}, vehicle::Model{<:Vehicle})
-    @unpack ctl, seg = avionics
-    Modeling.init!(ctl, vehicle)
-    f_output!(avionics)
-end
 
 ################################## GUI #########################################
 
-# function GUI.draw!(gdc::Model{<:GuidanceLaws},
-#                     vehicle::Model{<:Vehicle},
-#                     p_open::Ref{Bool} = Ref(true),
-#                     label::String = "Cessna172Y Guidance Laws")
+function GUI.draw!(gdc::Model{<:GuidanceLaws}, vehicle::Model{<:Vehicle},
+                    p_open::Ref{Bool} = Ref(true))
 
-#     CImGui.Begin(label, p_open)
+    @unpack u, y = gdc
 
-#     @cstatic c_ctl=false begin
-#         @c CImGui.Checkbox("Flight Control", &c_ctl)
-#         c_ctl && @c GUI.draw!(avionics.ctl, vehicle, &c_ctl)
-#     end
+    Begin("Cessna172Y Guidance", p_open)
 
-#     CImGui.End()
+    if BeginTable("Mode", 3, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+        TableNextRow()
+            TableNextColumn();
+                Text("Mode")
+            TableNextColumn();
+                mode_button("Direct", ModeGuidance.direct, u.mode_req, y.mode); SameLine()
+                IsItemActive() && (u.mode_req = ModeGuidance.direct)
+                mode_button("Segment", ModeGuidance.segment, u.mode_req, y.mode); SameLine()
+                IsItemActive() && (u.mode_req = ModeGuidance.segment)
+                mode_button("Circular", ModeGuidance.circular, u.mode_req, y.mode); SameLine()
+                IsItemActive() && (u.mode_req = ModeGuidance.circular)
+            TableNextColumn();
+        EndTable()
+    end
 
-# end
+    CImGui.CollapsingHeader("Segment Guidance") && GUI.draw!(gdc.seg, vehicle)
+    CImGui.CollapsingHeader("Circular Guidance") && GUI.draw!(gdc.crc, vehicle)
+
+    End()
+
+end
+
+function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
+
+    @unpack u, constants, y = gdc
+
+    Text("Hi")
+    Text(string(u.horizontal_req))
+
+end
 
 
 end #module

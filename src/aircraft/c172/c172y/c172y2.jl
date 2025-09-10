@@ -3,11 +3,16 @@ module C172Yv2
 using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
 using StructTypes
 
+using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
+    Dummy, SameLine, NewLine, IsItemActive, IsItemActivated, Separator, Text,
+    Checkbox, RadioButton, TableNextColumn, TableNextRow, BeginTable, EndTable
+
 using Flight.FlightCore
 using Flight.FlightLib
 
 using ...C172
-using ..C172Y
+using ..C172Y: Cessna172Y, Vehicle, Systems
+using ..C172Y.C172YControl: ControlLaws
 using ..C172Y.C172YGuidance: GuidanceLaws
 
 export Cessna172Yv2
@@ -16,13 +21,68 @@ export Cessna172Yv2
 ################################################################################
 ############################# Cessna172Yv2 ###################################
 
-const Cessna172Yv2{K, A} = Cessna172Y{K, A} where {
-    K <: AbstractKinematicDescriptor, A <: GuidanceLaws}
-
-function Cessna172Yv2(kinematics = WA())
-    AircraftBase.Aircraft(C172Y.Vehicle(kinematics), GuidanceLaws())
+@kwdef struct Avionics{C <: ControlLaws} <: AbstractAvionics
+    ctl::C = ControlLaws()
+    gdc::GuidanceLaws = GuidanceLaws()
 end
 
+@no_ode Avionics
+@no_step Avionics
+
+########################### Update Methods #####################################
+
+function Modeling.f_periodic!(::NoScheduling, avionics::Model{<:Avionics},
+                                vehicle::Model{<:Vehicle})
+
+    @unpack ctl, gdc = avionics
+
+    f_periodic!(gdc, ctl, vehicle)
+    f_periodic!(ctl, vehicle)
+    f_output!(avionics)
+
+end
+
+function AircraftBase.assign!(systems::Model{<:Systems}, avionics::Model{<:Avionics})
+    AircraftBase.assign!(systems, avionics.ctl)
+end
+
+
+############################# Initialization ###################################
+
+function Modeling.init!(avionics::Model{<:Avionics}, vehicle::Model{<:Vehicle})
+    @unpack ctl, gdc = avionics
+    Modeling.init!(ctl, vehicle)
+    f_output!(avionics)
+end
+
+
+############################# ParametricTypes ##################################
+
+const Cessna172Yv2{K, A} = Cessna172Y{K, A} where {
+    K <: AbstractKinematicDescriptor, A <: Avionics}
+
+function Cessna172Yv2(kinematics = WA())
+    AircraftBase.Aircraft(Vehicle(kinematics), Avionics())
+end
+
+
+################################################################################
+
+function GUI.draw!(avionics::Model{<:Avionics}, vehicle::Model{<:Vehicle},
+                    p_open::Ref{Bool} = Ref(true))
+
+    Begin("Cessna172Yv2 Avionics", p_open)
+
+    @cstatic c_gdc=false c_ctl=false begin
+        @c CImGui.Checkbox("Guidance", &c_gdc)
+        c_gdc && @c GUI.draw!(avionics.gdc, vehicle, &c_gdc)
+        @c CImGui.Checkbox("Control", &c_ctl)
+        c_ctl && @c GUI.draw!(avionics.ctl, vehicle, &c_ctl)
+    end
+
+    End()
+
+end
 
 ############################ Joystick Mappings #################################
 
