@@ -325,30 +325,28 @@ function mode_button(label::String,
 
 end
 
-function display_bar(label::String, source::Real, lower_bound::Real, upper_bound::Real, size_arg = (0, 0))
+function display_bar(label::String, current_value::Real, lower_bound::Real, upper_bound::Real, size_arg = (0, 0))
     CImGui.Text(label)
     CImGui.SameLine()
-    CImGui.ProgressBar((source - lower_bound)/(upper_bound - lower_bound), size_arg, "$source")
+    CImGui.ProgressBar((current_value - lower_bound)/(upper_bound - lower_bound), size_arg, "$current_value")
 end
 
 #the string after ## is not shown, but is part of the widget's ID, which must be
 #unique to avoid conflicts. an alternative solution is to use PushID and PopID.
 #See DearImGui FAQ
-function safe_slider(label::String, source::AbstractFloat, args...; show_label = false)
-    ref = Ref(Cfloat(source))
-    slider_label = show_label ? label : "##"*label
-    CImGui.SliderFloat(slider_label, ref, args...)
+function safe_slider(label::String, current_value::AbstractFloat, args...)
+    ref = Ref(Cfloat(current_value))
+    CImGui.SliderFloat(label, ref, args...)
     # CImGui.SameLine()
     # show_help_marker("Ctrl+Click for keyboard input")
     return ref[]
 end
 
 #ref is a stack-allocated variable. we return the value it points to, not the
-#Ref itself. no memory leaks here.
-function safe_input(label::String, source::AbstractFloat, args...; show_label = false)
-    ref = Ref(Cdouble(source))
-    input_label = show_label ? label : "##"*label
-    CImGui.InputDouble(input_label, ref, args...)
+#Ref itself, so no leftover memory
+function safe_input(label::String, current_value::AbstractFloat, args...)
+    ref = Ref(Cdouble(current_value))
+    CImGui.InputDouble(label, ref, args...)
     return ref[]
 end
 

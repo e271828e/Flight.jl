@@ -47,7 +47,7 @@ function GUI.draw!(control::SimControl)
         CImGui.IsItemClicked() && (control.paused = !control.paused); CImGui.SameLine()
 
         control.pace = safe_slider("Pace", control.pace, 0.1, 20.0, "%.3f",
-        ImGuiSliderFlags_Logarithmic; show_label = true)
+        ImGuiSliderFlags_Logarithmic)
 
         @unpack algorithm, t_start, t_end, Δt, dt, iter, t, τ = control
 

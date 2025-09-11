@@ -88,8 +88,8 @@ function GUI.draw!(mdl::Model{<:TunableSeaLevel},
 
     u = mdl.u
     CImGui.PushItemWidth(-50)
-        u.T = GUI.safe_slider("T (K)", u.T, "%.3f"; show_label = true)
-        u.p = GUI.safe_slider("p (Pa)", u.p, "%.3f"; show_label = true)
+        u.T = GUI.safe_slider("T (K)", u.T, "%.3f")
+        u.p = GUI.safe_slider("p (Pa)", u.p, "%.3f")
     CImGui.PopItemWidth()
 end
 
@@ -170,9 +170,9 @@ function GUI.draw!(mdl::Model{<:TunableWind},
     u = mdl.u
 
     CImGui.PushItemWidth(-80)
-        u.N = GUI.safe_slider("North (m/s)", u.N, -30, 30, "%.3f"; show_label = true)
-        u.E = GUI.safe_slider("East (m/s)", u.E, -30, 30, "%.3f"; show_label = true)
-        u.D = GUI.safe_slider("Down (m/s)", u.D, -30, 30, "%.3f"; show_label = true)
+        u.N = GUI.safe_slider("North (m/s)", u.N, -30, 30, "%.3f")
+        u.E = GUI.safe_slider("East (m/s)", u.E, -30, 30, "%.3f")
+        u.D = GUI.safe_slider("Down (m/s)", u.D, -30, 30, "%.3f")
     CImGui.PopItemWidth()
 
     GUI.draw(mdl, label)

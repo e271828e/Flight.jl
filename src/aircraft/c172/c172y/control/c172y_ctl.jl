@@ -575,8 +575,8 @@ function GUI.draw!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
                 AlignTextToFramePadding(); Text("Throttle Offset")
             TableNextColumn();
                 PushItemWidth(-10)
-                lon.u.throttle_axis = safe_slider("Throttle Axis", lon.u.throttle_axis, "%.6f")
-                lon.u.throttle_offset = safe_input("Throttle_Offset", lon.u.throttle_offset, 0.01, 0.1, "%.3f")
+                lon.u.throttle_axis = safe_slider("##Throttle Axis", lon.u.throttle_axis, "%.6f")
+                lon.u.throttle_offset = safe_input("##Throttle_Offset", lon.u.throttle_offset, 0.01, 0.1, "%.3f")
                 PopItemWidth()
         TableNextRow()
             TableNextColumn();
@@ -584,35 +584,35 @@ function GUI.draw!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
                 AlignTextToFramePadding(); Text("Elevator Offset")
             TableNextColumn();
                 PushItemWidth(-10)
-                lon.u.elevator_axis = safe_slider("Elevator Axis", lon.u.elevator_axis, "%.6f")
-                lon.u.elevator_offset = safe_input("Elevator Offset", lon.u.elevator_offset, 0.01, 0.1, "%.3f")
+                lon.u.elevator_axis = safe_slider("##Elevator Axis", lon.u.elevator_axis, "%.6f")
+                lon.u.elevator_offset = safe_input("##Elevator Offset", lon.u.elevator_offset, 0.01, 0.1, "%.3f")
                 PopItemWidth()
         TableNextRow()
             TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Rate (deg/s)")
             TableNextColumn();
                 PushItemWidth(-10)
-                lon.u.q_ref = safe_slider("Pitch Rate", rad2deg(lon.u.q_ref), -10, 10, "%.3f") |> deg2rad
+                lon.u.q_ref = safe_slider("##Pitch Rate", rad2deg(lon.u.q_ref), -10, 10, "%.3f") |> deg2rad
                 PopItemWidth()
             TableNextColumn(); Text(@sprintf("%.3f", rad2deg(q)))
         TableNextRow()
             TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Angle (deg)")
             TableNextColumn();
                 PushItemWidth(-10)
-                lon.u.θ_ref = safe_slider("Pitch Angle", rad2deg(lon.u.θ_ref), -15, 15, "%.3f") |> deg2rad
+                lon.u.θ_ref = safe_slider("##Pitch Angle", rad2deg(lon.u.θ_ref), -15, 15, "%.3f") |> deg2rad
                 PopItemWidth()
             TableNextColumn(); Text(@sprintf("%.3f", rad2deg(θ)))
         TableNextRow()
             TableNextColumn(); AlignTextToFramePadding(); Text("EAS (m/s)")
             TableNextColumn();
                 PushItemWidth(-10)
-                lon.u.EAS_ref = safe_input("EAS", lon.u.EAS_ref, 0.1, 1.0, "%.3f")
+                lon.u.EAS_ref = safe_input("##EAS", lon.u.EAS_ref, 0.1, 1.0, "%.3f")
                 PopItemWidth()
             TableNextColumn(); Text(@sprintf("%.3f", EAS))
         TableNextRow()
             TableNextColumn(); AlignTextToFramePadding(); Text("Climb Rate (m/s)")
             TableNextColumn();
                 PushItemWidth(-10)
-                lon.u.clm_ref = safe_input("Climb Rate", lon.u.clm_ref, 0.1, 1.0, "%.3f")
+                lon.u.clm_ref = safe_input("##Climb Rate", lon.u.clm_ref, 0.1, 1.0, "%.3f")
                 PopItemWidth()
             TableNextColumn(); Text(@sprintf("%.3f", clm))
         TableNextRow()
@@ -628,7 +628,7 @@ function GUI.draw!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
                 h_ref_ellip = lon.u.h_ref
                 h_ref_orth = HOrth(h_ref_ellip, n_e)
                 h_ref_f64 = (h_datum === :ellip ? Float64(h_ref_ellip) : Float64(h_ref_orth))
-                h_ref_f64 = safe_input("Altitude Setpoint", h_ref_f64, 1, 1.0, "%.3f")
+                h_ref_f64 = safe_input("##Altitude Setpoint", h_ref_f64, 1, 1.0, "%.3f")
                 lon.u.h_ref = (h_datum === :ellip ? HEllip(h_ref_f64) : HEllip(HOrth(h_ref_f64), n_e))
                 PopItemWidth()
             TableNextColumn();
@@ -1038,8 +1038,8 @@ function GUI.draw!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
                 AlignTextToFramePadding(); Text("Aileron Offset")
             TableNextColumn();
                 PushItemWidth(-10)
-                lat.u.aileron_axis = safe_slider("Aileron Axis", lat.u.aileron_axis, "%.6f")
-                lat.u.aileron_offset = safe_input("Aileron Offset", lat.u.aileron_offset, 0.01, 0.1, "%.3f")
+                lat.u.aileron_axis = safe_slider("##Aileron Axis", lat.u.aileron_axis, "%.6f")
+                lat.u.aileron_offset = safe_input("##Aileron Offset", lat.u.aileron_offset, 0.01, 0.1, "%.3f")
                 PopItemWidth()
         TableNextRow()
             TableNextColumn();
@@ -1047,35 +1047,35 @@ function GUI.draw!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
                 AlignTextToFramePadding(); Text("Rudder Offset")
             TableNextColumn();
                 PushItemWidth(-10)
-                lat.u.rudder_axis = safe_slider("Rudder Axis", lat.u.rudder_axis, "%.6f")
-                lat.u.rudder_offset = safe_input("Rudder Offset", lat.u.rudder_offset, 0.01, 0.1, "%.3f")
+                lat.u.rudder_axis = safe_slider("##Rudder Axis", lat.u.rudder_axis, "%.6f")
+                lat.u.rudder_offset = safe_input("##Rudder Offset", lat.u.rudder_offset, 0.01, 0.1, "%.3f")
                 PopItemWidth()
         TableNextRow()
             TableNextColumn(); AlignTextToFramePadding(); Text("Roll Rate (deg/s)")
             TableNextColumn();
                 PushItemWidth(-10)
-                lat.u.p_ref = safe_slider("Roll Rate", rad2deg(lat.u.p_ref), -30, 30, "%.3f") |> deg2rad
+                lat.u.p_ref = safe_slider("##Roll Rate", rad2deg(lat.u.p_ref), -30, 30, "%.3f") |> deg2rad
                 PopItemWidth()
             TableNextColumn(); Text(@sprintf("%.3f", rad2deg(p)))
         TableNextRow()
             TableNextColumn(); AlignTextToFramePadding(); Text("Bank Angle (deg)")
             TableNextColumn();
                 PushItemWidth(-10)
-                lat.u.φ_ref = safe_slider("Bank Angle", rad2deg(lat.u.φ_ref), -60, 60, "%.3f") |> deg2rad
+                lat.u.φ_ref = safe_slider("##Bank Angle", rad2deg(lat.u.φ_ref), -60, 60, "%.3f") |> deg2rad
                 PopItemWidth()
             TableNextColumn(); Text(@sprintf("%.3f", rad2deg(φ)))
         TableNextRow()
             TableNextColumn(); AlignTextToFramePadding(); Text("Course Angle (deg)")
             TableNextColumn();
                 PushItemWidth(-10)
-                lat.u.χ_ref = safe_slider("Course Angle", rad2deg(lat.u.χ_ref), -180, 180, "%.3f") |> deg2rad
+                lat.u.χ_ref = safe_slider("##Course Angle", rad2deg(lat.u.χ_ref), -180, 180, "%.3f") |> deg2rad
                 PopItemWidth()
             TableNextColumn(); Text(@sprintf("%.3f", rad2deg(χ_gnd)))
         TableNextRow()
             TableNextColumn(); AlignTextToFramePadding(); Text("Sideslip Angle (deg)")
             TableNextColumn();
                 PushItemWidth(-10)
-                lat.u.β_ref = safe_slider("Sideslip Angle", rad2deg(lat.u.β_ref), -10, 10, "%.3f") |> deg2rad
+                lat.u.β_ref = safe_slider("##Sideslip Angle", rad2deg(lat.u.β_ref), -10, 10, "%.3f") |> deg2rad
                 PopItemWidth()
             TableNextColumn(); Text(@sprintf("%.3f", rad2deg(β)))
         EndTable()

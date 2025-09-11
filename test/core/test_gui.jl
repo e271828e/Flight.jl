@@ -16,7 +16,7 @@ Modeling.X(::TestSystem) = [0.0]
 function GUI.draw!(mdl::Model{TestSystem})
     x = mdl.x
     CImGui.PushItemWidth(-50)
-        x[1] = GUI.safe_slider("State", x[1], -10, 10, "%.3f"; show_label = true)
+        x[1] = GUI.safe_slider("State", x[1], -10, 10, "%.3f")
     CImGui.PopItemWidth()
 end
 

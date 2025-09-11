@@ -478,8 +478,8 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
         RadioButton("Manual", u.mixture_ctl === MixtureControl.manual)
         IsItemActive() && (u.mixture_ctl = MixtureControl.manual)
 
-        u.throttle = safe_slider("Throttle", u.throttle, "%.6f"; show_label = true)
-        u.mixture = safe_slider("Mixture", u.mixture, "%.6f"; show_label = true)
+        u.throttle = safe_slider("Throttle", u.throttle, "%.6f")
+        u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
     end
 
     if CollapsingHeader("Data")

@@ -1047,7 +1047,7 @@ function GUI.draw!(ctl::Model{<:Controller},
         mode_button("Engine Stop", true, u.eng_stop, false; HSV_requested = HSV_red)
         u.eng_stop = IsItemActive()
         SameLine()
-        u.mixture = safe_slider("Mixture", u.mixture, "%.6f"; show_label = true)
+        u.mixture = safe_slider("Mixture", u.mixture, "%.6f")
 
         if BeginTable("Engine Data", 4)
             TableNextRow()
@@ -1098,8 +1098,8 @@ function GUI.draw!(ctl::Model{<:Controller},
                     AlignTextToFramePadding(); Text("Throttle Offset")
                 TableNextColumn();
                     PushItemWidth(-10)
-                    u.throttle_axis = safe_slider("Throttle Axis", u.throttle_axis, "%.6f")
-                    u.throttle_offset = safe_input("Throttle_Offset", u.throttle_offset, 0.01, 0.1, "%.3f")
+                    u.throttle_axis = safe_slider("##Throttle Axis", u.throttle_axis, "%.6f")
+                    u.throttle_offset = safe_input("##Throttle_Offset", u.throttle_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
                 # TableNextColumn();
                 #     Text(@sprintf("%.3f", Float64(u.throttle_axis)))
@@ -1109,7 +1109,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                     AlignTextToFramePadding(); Text("Elevator Offset")
                 TableNextColumn();
                     PushItemWidth(-10)
-                    u.elevator_axis = safe_slider("Elevator Axis", u.elevator_axis, "%.6f")
+                    u.elevator_axis = safe_slider("##Elevator Axis", u.elevator_axis, "%.6f")
                     u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
                 # TableNextColumn();
@@ -1118,14 +1118,14 @@ function GUI.draw!(ctl::Model{<:Controller},
                 TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Rate (deg/s)")
                 TableNextColumn();
                     PushItemWidth(-10)
-                    u.q_ref = safe_slider("Pitch Rate", rad2deg(u.q_ref), -10, 10, "%.3f") |> deg2rad
+                    u.q_ref = safe_slider("##Pitch Rate", rad2deg(u.q_ref), -10, 10, "%.3f") |> deg2rad
                     PopItemWidth()
                 TableNextColumn(); Text(@sprintf("%.3f", rad2deg(q)))
             TableNextRow()
                 TableNextColumn(); AlignTextToFramePadding(); Text("Pitch Angle (deg)")
                 TableNextColumn();
                     PushItemWidth(-10)
-                    u.θ_ref = safe_slider("Pitch Angle", rad2deg(u.θ_ref), -15, 15, "%.3f") |> deg2rad
+                    u.θ_ref = safe_slider("##Pitch Angle", rad2deg(u.θ_ref), -15, 15, "%.3f") |> deg2rad
                     PopItemWidth()
                 TableNextColumn(); Text(@sprintf("%.3f", rad2deg(θ)))
             TableNextRow()
@@ -1196,7 +1196,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                     AlignTextToFramePadding(); Text("Aileron Offset")
                 TableNextColumn();
                     PushItemWidth(-10)
-                    u.aileron_axis = safe_slider("Aileron Axis", u.aileron_axis, "%.6f")
+                    u.aileron_axis = safe_slider("##Aileron Axis", u.aileron_axis, "%.6f")
                     u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
                 # TableNextColumn();
@@ -1207,7 +1207,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                     AlignTextToFramePadding(); Text("Rudder Offset")
                 TableNextColumn();
                     PushItemWidth(-10)
-                    u.rudder_axis = safe_slider("Rudder Axis", u.rudder_axis, "%.6f")
+                    u.rudder_axis = safe_slider("##Rudder Axis", u.rudder_axis, "%.6f")
                     u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.01, 0.1, "%.3f")
                     PopItemWidth()
                 # TableNextColumn();
@@ -1216,28 +1216,28 @@ function GUI.draw!(ctl::Model{<:Controller},
                 TableNextColumn(); AlignTextToFramePadding(); Text("Roll Rate (deg/s)")
                 TableNextColumn();
                     PushItemWidth(-10)
-                    u.p_ref = safe_slider("Roll Rate", rad2deg(u.p_ref), -30, 30, "%.3f") |> deg2rad
+                    u.p_ref = safe_slider("##Roll Rate", rad2deg(u.p_ref), -30, 30, "%.3f") |> deg2rad
                     PopItemWidth()
                 TableNextColumn(); Text(@sprintf("%.3f", rad2deg(p)))
             TableNextRow()
                 TableNextColumn(); AlignTextToFramePadding(); Text("Bank Angle (deg)")
                 TableNextColumn();
                     PushItemWidth(-10)
-                    u.φ_ref = safe_slider("Bank Angle", rad2deg(u.φ_ref), -60, 60, "%.3f") |> deg2rad
+                    u.φ_ref = safe_slider("##Bank Angle", rad2deg(u.φ_ref), -60, 60, "%.3f") |> deg2rad
                     PopItemWidth()
                 TableNextColumn(); Text(@sprintf("%.3f", rad2deg(φ)))
             TableNextRow()
                 TableNextColumn(); AlignTextToFramePadding(); Text("Course Angle (deg)")
                 TableNextColumn();
                     PushItemWidth(-10)
-                    u.χ_ref = safe_slider("Course Angle", rad2deg(u.χ_ref), -180, 180, "%.3f") |> deg2rad
+                    u.χ_ref = safe_slider("##Course Angle", rad2deg(u.χ_ref), -180, 180, "%.3f") |> deg2rad
                     PopItemWidth()
                 TableNextColumn(); Text(@sprintf("%.3f", rad2deg(χ_gnd)))
             TableNextRow()
                 TableNextColumn(); AlignTextToFramePadding(); Text("Sideslip Angle (deg)")
                 TableNextColumn();
                     PushItemWidth(-10)
-                    u.β_ref = safe_slider("Sideslip Angle", rad2deg(u.β_ref), -10, 10, "%.3f") |> deg2rad
+                    u.β_ref = safe_slider("##Sideslip Angle", rad2deg(u.β_ref), -10, 10, "%.3f") |> deg2rad
                     PopItemWidth()
                 TableNextColumn(); Text(@sprintf("%.3f", rad2deg(β)))
             EndTable()
@@ -1322,7 +1322,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                 TableNextColumn(); Text("Flaps")
                 TableNextColumn();
                 PushItemWidth(-10)
-                u.flaps = safe_slider("Flaps Input", u.flaps, "%.6f")
+                u.flaps = safe_slider("##Flaps Input", u.flaps, "%.6f")
                 PopItemWidth()
             TableNextRow()
                 TableNextColumn(); Text("Left Brake")
@@ -1334,7 +1334,7 @@ function GUI.draw!(ctl::Model{<:Controller},
                 TableNextColumn(); Text("Right Brake")
                 TableNextColumn();
                 PushItemWidth(-10)
-                u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
+                u.brake_right = safe_slider("##Right Brake", u.brake_right, "%.6f")
                 PopItemWidth()
             EndTable()
         end

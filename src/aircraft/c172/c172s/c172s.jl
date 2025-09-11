@@ -130,15 +130,15 @@ function GUI.draw!(mdl::Model{<:MechanicalActuation}, p_open::Ref{Bool} = Ref(tr
 
     CImGui.PushItemWidth(-150)
 
-    u.aileron = safe_slider("Aileron", u.aileron, "%.6f"; show_label = true)
-    u.elevator = safe_slider("Elevator", u.elevator, "%.6f"; show_label = true)
-    u.rudder = safe_slider("Rudder", u.rudder, "%.6f"; show_label = true)
-    u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.001, 0.1, "%.6f"; show_label = true)
-    u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.001, 0.1, "%.6f"; show_label = true)
-    u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.001, 0.1, "%.6f"; show_label = true)
-    u.flaps = safe_slider("Flaps", u.flaps, "%.6f"; show_label = true)
-    u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f"; show_label = true)
-    u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f"; show_label = true)
+    u.aileron = safe_slider("Aileron", u.aileron, "%.6f")
+    u.elevator = safe_slider("Elevator", u.elevator, "%.6f")
+    u.rudder = safe_slider("Rudder", u.rudder, "%.6f")
+    u.aileron_offset = safe_input("Aileron Offset", u.aileron_offset, 0.001, 0.1, "%.6f")
+    u.elevator_offset = safe_input("Elevator Offset", u.elevator_offset, 0.001, 0.1, "%.6f")
+    u.rudder_offset = safe_input("Rudder Offset", u.rudder_offset, 0.001, 0.1, "%.6f")
+    u.flaps = safe_slider("Flaps", u.flaps, "%.6f")
+    u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
+    u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
 
     CImGui.PopItemWidth()
 
