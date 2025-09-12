@@ -442,7 +442,11 @@ end
     Δr_eb_e = [x - r_eb_e[1] for x in r_eb_e]
     Δr_eb_n0 = [q_en0'(x) for x in Δr_eb_e]
     voa = VectorOfArray(Δr_eb_n0)
-    path = (x = voa[1,:], y = voa[2,:], z = -voa[3,:]) #invert Down coordinate
+    #switch from NED to ENU
+    North = voa[1,:]
+    East = voa[2,:]
+    Down = voa[3,:]
+    path = (x = East, y = North, z = -Down)
 
     x_ext, y_ext, z_ext = map(extrema, (path.x, path.y, path.z))
     x_mid, y_mid, z_mid = map(v -> 0.5sum(v), (x_ext, y_ext, z_ext))
@@ -461,9 +465,9 @@ end
     #--> sets default values, which can be overridden by each series using :=
     # linewidth --> 3
     markersize --> 6
-    xguide --> L"$\Delta N \ (m)$"
-    yguide --> L"$\Delta E \ (m)$"
-    zguide --> L"$\Delta h\ (m)$"
+    xguide --> L"$\Delta E \ (m)$"
+    yguide --> L"$\Delta N \ (m)$"
+    zguide --> L"$\Delta U\ (m)$"
     legend --> false
 
     xlims --> x_bounds
@@ -543,8 +547,8 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
 
     pd[:Ob_t3d] = plot(
         TrajectoryPlot(get_data(ts.r_eb_e));
-        plot_title = "Trajectory (Initial NED Frame)",
-        camera = (30, 15),
+        plot_title = "Trajectory (Initial ENU Frame)",
+        camera = (30, 20),
         kwargs...,
         size = (t3d_dim, t3d_dim),
         )

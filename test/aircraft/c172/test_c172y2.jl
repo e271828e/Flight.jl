@@ -8,7 +8,7 @@ using Flight.FlightAircraft
 
 using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat,
         AltTrackingState, is_on_gnd
-using Flight.FlightAircraft.C172Y.C172YGuidance: Segment, SegmentCoords, ModeGuidance
+using Flight.FlightAircraft.C172Y.C172YGuidance: Segment, SegmentGuidanceData, ModeGuidance
 
 export test_c172y2
 
@@ -27,27 +27,27 @@ function test_c172y2(; alloc::Bool = true)
             #default constructor should return a valid segment
             @test_nowarn Segment()
             #segments with zero horizontal length are invalid
-            @test_throws AssertionError Segment(Geographic(), Geographic())
-            @test_throws AssertionError Segment(Geographic(), Geographic(h = HEllip(100)))
+            @test_throws ArgumentError Segment(Geographic(), Geographic())
+            @test_throws ArgumentError Segment(Geographic(), Geographic(h = HEllip(100)))
 
             χ = π/3 #test segment's azimuth
             Δχ = π/4 #test point's segment-relative azimuth
-            l = 1e3 #test point's distance along its azimuth
-            seg = Segment(Geographic(); χ, l = 1e4, γ = deg2rad(5))
-            p = Segment(Geographic(); χ = χ + Δχ, l, γ = 0).p2
-            coords = SegmentCoords(seg, p)
+            s = 1e3 #test point's distance along its azimuth
+            seg = Segment(Geographic(); χ, s = 1e4, γ = deg2rad(5))
+            p = Segment(Geographic(); χ = χ + Δχ, s, γ = 0).p2
+            data = SegmentGuidanceData(seg, p)
 
-            @test coords.l_1b ≈ l * cos(Δχ) atol = 1e-2
-            @test coords.e_1b ≈ l * sin(Δχ) atol = 1e-2
-            @test coords.h_1b ≈ coords.l_1b * tand(5) atol = 1e-2
+            @test data.s_1b ≈ s * cos(Δχ) atol = 1e-2
+            @test data.e_sb ≈ s * sin(Δχ) atol = 1e-2
+            @test data.h_s ≈ data.s_1b * tand(5) atol = 1e-2
 
             seg_inv = -seg
             @test seg_inv.p1 ≈ seg.p2
             @test seg_inv.p2 ≈ seg.p1
 
             if alloc
-                @test @ballocated(Segment(Geographic(); χ = 0, l = 1e4, γ = deg2rad(5))) == 0
-                @test @ballocated(SegmentCoords($seg, $p)) == 0
+                @test @ballocated(Segment(Geographic(); χ = 0, s = 1e4, γ = deg2rad(5))) == 0
+                @test @ballocated(SegmentGuidanceData($seg, $p)) == 0
             end
 
         end #testset
@@ -95,8 +95,8 @@ function test_c172y2(; alloc::Bool = true)
 
             #construct and assign a segment roughly perpendicular to the current
             #course, e_thr/2 to the right and 100m above the current altitude
-            aux_seg = Segment(Ob; χ = χ_ac + π/2, l = e_thr/2, Δh)
-            gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, l = 1e4, γ = deg2rad(5))
+            aux_seg = Segment(Ob; χ = χ_ac + π/2, s = e_thr/2, Δh)
+            gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, s = 1e4, γ = deg2rad(5))
 
             #step for one guidance sample period
             Sim.step!(sim, gdc.Δt, true)
@@ -128,16 +128,16 @@ function test_c172y2(; alloc::Bool = true)
             end
 
             #now place the segment to the left of the aircraft, e_thr/2 away
-            aux_seg = Segment(Ob; χ = χ_ac - π/2, l = e_thr/2, γ = 0)
-            gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, l = 1e4, γ = deg2rad(5))
+            aux_seg = Segment(Ob; χ = χ_ac - π/2, s = e_thr/2, γ = 0)
+            gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, s = 1e4, γ = deg2rad(5))
 
             Sim.step!(sim, gdc.Δt, true)
 
             #intercept angle should be negative
             @test gdc.seg.y.Δχ < 0
 
-            aux_seg = Segment(Ob; χ = χ_ac + π/2, l = 2e_thr, γ = 0)
-            gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, l = 1e4, γ = deg2rad(5))
+            aux_seg = Segment(Ob; χ = χ_ac + π/2, s = 2e_thr, γ = 0)
+            gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, s = 1e4, γ = deg2rad(5))
 
             Sim.step!(sim, gdc.Δt, true)
 
