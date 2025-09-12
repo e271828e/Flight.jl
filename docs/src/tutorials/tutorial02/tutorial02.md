@@ -32,7 +32,7 @@ Let's take a look at this `Model`'s properties:
 propertynames(mdl)
 ```
 
-Here is a brief description of each one:
+To follow the next steps, it is useful to understand what each of these represents:
 - `x` (*continuous state*): A vector containing `Model` states that evolve continuously over time.
   It is updated by the `Simulation`'s ODE integrator.
 - `ẋ` (*continuous state derivative*): A vector containing the time derivative of `x`.

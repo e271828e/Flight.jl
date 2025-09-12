@@ -177,6 +177,64 @@ function test_c172y2(; alloc::Bool = true)
 
     end #testset
 
+end #function
+
+function test_flight(; gui::Bool = false)
+
+    #3D position and geographic heading for Salzburg airport (LOWS) runway 15
+    loc_LOWS15 = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997))
+    h_LOWS15 = HOrth(427.2)
+    ψ_LOWS15 = deg2rad(157)
+    p_LOWS15 = Geographic(loc_LOWS15, h_LOWS15)
+
+    aircraft = Cessna172Yv2()
+    terrain = HorizontalTerrain(h_LOWS15)
+    atmosphere = SimpleAtmosphere()
+
+    mdl = SimpleWorld(aircraft, atmosphere, terrain) |> Model
+
+    initializer = KinInit(;
+        location = loc_LOWS15, #2D location
+        h = h_LOWS15 + C172.Δh_to_gnd, #altitude
+        q_nb = REuler(ψ_LOWS15, 0, 0), #attitude with respect to NED frame
+        ω_wb_b = zeros(3), #angular velocity
+        v_eb_n = zeros(3), #velocity
+        ) |> C172.Init
+
+    #build a standard traffic pattern around runway 15
+    final_leg = -Segment(p_LOWS15, χ = ψ_LOWS15 + π, s = 4e3, γ = deg2rad(3))
+    base_leg = -Segment(final_leg.p1, χ = ψ_LOWS15 - π/2, s = 2e3, γ = 0)
+    downwind_leg = -Segment(base_leg.p1, χ = ψ_LOWS15, s = 8e3, γ = 0)
+    crosswind_leg = -Segment(downwind_leg.p1, χ = ψ_LOWS15 + π/2, s = 2e3, γ = 0)
+    departure_leg = Segment(p_LOWS15, crosswind_leg.p1)
+
+    user_callback! = let phase = Ref(:standby)
+        function(mdl::Model)
+            @unpack aircraft = mdl
+            @unpack vehicle, avionics = aircraft
+            @unpack act, pwp = vehicle.systems
+            t = mdl.t[]
+            if phase[] === :standby
+                t >= 5 && (phase[] = :startup)
+            elseif phase[] === :startup
+                pwp.engine.u.start = true
+                if pwp.engine.y.state === Piston.EngineState.running
+                    pwp.engine.u.start = false
+                    phase[] = :takeoff
+                end
+            end
+        end #function
+    end
+
+    sim = Simulation(mdl; dt = 0.02, t_end = 60, user_callback!)
+    Sim.init!(sim, initializer)
+    Sim.run!(sim; gui)
+
+    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/tutorial02/kin"); Plotting.defaults..., linewidth = 2,)
+    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/tutorial02/air"); Plotting.defaults...)
+    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/tutorial02/dyn"); Plotting.defaults...)
+
+    return sim
 
 end
 

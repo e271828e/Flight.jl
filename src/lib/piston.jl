@@ -454,7 +454,7 @@ end
 
 using CImGui: CollapsingHeader, PushItemWidth, PopItemWidth, SameLine, Text,
               TreeNode, TreePop, Begin, End, IsItemActive, RadioButton,
-            AlignTextToFramePadding
+            AlignTextToFramePadding, IsItemActivated
 
 function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Engine")
@@ -465,11 +465,16 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
     Begin(window_label, p_open)
 
     if CollapsingHeader("Control")
-        mode_button("Engine Start", true, y.state === EngineState.starting, y.state === EngineState.running)
-        u.start = IsItemActive()
+        # mode_button("Engine Start", true, y.state === EngineState.starting, y.state === EngineState.running)
+        # u.start = IsItemActive()
+        # mode_button("Engine Stop", true, u.stop, false; HSV_requested = HSV_red)
+        # u.stop = IsItemActive()
+        dynamic_button("Engine Start", u.start ? HSV_green : HSV_gray)
+        IsItemActivated() && (u.start = !u.start)
         SameLine()
         mode_button("Engine Stop", true, u.stop, false; HSV_requested = HSV_red)
         u.stop = IsItemActive()
+        u.stop && (u.start = false)
         SameLine()
         AlignTextToFramePadding(); Text("Mixture Control"); SameLine()
         RadioButton("Auto", u.mixture_ctl === MixtureControl.auto);
