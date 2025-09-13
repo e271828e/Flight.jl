@@ -7,8 +7,8 @@ visualization.
 ### Setting Up X-Plane 12
 
 Download, install and run the [X-Plane 12 demo](https://www.x-plane.com/desktop/try-it/). If you
-happen to have the full version, you can use it instead. Since we will be using X-Plane simply as an
-external visualization tool, we only need to set up a few things; for further help, check out the
+happen to have the full version, you can use it instead. Since we will be running X-Plane simply as
+an external visualization tool, we only need to set up a few things; for further help, check out the
 [X-Plane 12 manual](https://www.x-plane.com/manuals/desktop/).
 
 !!! note "No X-Plane?"
@@ -87,16 +87,16 @@ world = SimpleWorld(aircraft, atmosphere, terrain)
 nothing # hide
 ```
 
-The ```Cessna172Xv1``` aircraft is a hypothetical customization of a Cessna 172S. It replaces the
-reversible actuation system on the base model with a digital fly-by-wire flight control system,
+ ```SimpleAtmosphere``` provides a basic,
+[ISA](https://en.wikipedia.org/wiki/International_Standard_Atmosphere)-based atmosphere with
+customizable sea-level conditions and wind velocity. ```HorizontalTerrain``` represents a surface
+with constant orthometric elevation, which we have set to our previous value for the beginning of
+runway 15. Finally, ```Cessna172Xv1``` is a hypothetical customization of a Cessna 172S. It replaces
+the reversible actuation system on the base model with a digital fly-by-wire flight control system,
 which we will leverage in this example. Note that this aircraft does not aim to replicate the
 internals or interface of any specific real-world autopilot. Its purpose is simply to illustrate how
 the ```Flight.jl``` framework may be used to design, implement and test complex control
-architectures. ```SimpleAtmosphere``` provides a basic,
-[ISA](https://en.wikipedia.org/wiki/International_Standard_Atmosphere)-based atmospheric model with
-customizable sea-level conditions and wind velocity. ```HorizontalTerrain``` represents a terrain
-model with constant orthometric elevation, which we have set to our previous value for the beginning
-of runway 15\.
+architectures\.
 
 We can now create our simulation:
 ```@example tutorial01

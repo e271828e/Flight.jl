@@ -559,102 +559,10 @@ function test_c172y1(; alloc::Bool = true)
 
     end
 
-    # @testset verbose = true "JSON3 loopback" begin
-    #     #prevent @info messages from the simulation from failing the test
-    #     Logging.disable_logging(Logging.Info)
-    #     @test_nowarn test_json_loopback(; gui = false, save = false)
-    #     Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
-    # end
-
     end #testset
 
 end #function
 
-
-############################### JSON Loopback Test #############################
-
-struct JSONTestMapping <: IOMapping end
-
-function IODevices.extract_output(mdl::Model{<:SimpleWorld}, ::JSONTestMapping)
-    freq = 0.1
-    φ_ref_max = π/6
-    φ_ref = φ_ref_max * sin(2π*freq*mdl.t[])
-    clm_ref = 0.0
-
-    #these are all valid empty JSON entities. when passed to JSON3.write, they
-    #yield respectively "\"\"", "[]" and "{}", all of length 2
-    cmd = ""
-    # cmd = []
-    # cmd = Dict()
-
-    if mdl.t[] > 5
-        #enums will be automatically cast to Ints per the StructTypes methods
-        #defined in C172Y.C172YControl
-        cmd = (
-            lon = (
-                mode_req = ModeControlLon.EAS_clm, #7 would also work
-                clm_ref = clm_ref,
-            ),
-            lat = (
-                mode_req = ModeControlLat.φ_β,
-                φ_ref = φ_ref,
-            )
-        )
-    end
-
-    return JSON3.write(cmd)
-end
-
-function IODevices.assign_input!(world::Model{<:SimpleWorld}, ::JSONTestMapping, data::String)
-    #caution: String(data) empties the original data::Vector{UInt8}, so
-    #additional calls would return an empty string
-    str = String(data)
-    u = JSON3.read(str)
-
-    if !isempty(u)
-        JSON3.read!(JSON3.write(u.lon), world.aircraft.avionics.u.lon)
-        JSON3.read!(JSON3.write(u.lat), world.aircraft.avionics.u.lat)
-    end
-end
-
-function test_json_loopback(; gui::Bool = true, xp12 = false, save::Bool = true)
-
-
-    h_trn = HOrth(427.2);
-    world = SimpleWorld(Cessna172Yv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
-
-    sim = Simulation(world; t_end = 30)
-
-    #on air, automatically trimmed by reinit!
-    initializer = C172.TrimParameters(
-        Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
-
-    #initialize simulated system
-    Sim.init!(sim, initializer)
-
-    xp12 && Sim.attach!(sim, XPlane12Control(; port = 49000))
-
-    #the loopback interface must not share its port with XPlane12Control!
-    Sim.attach!(sim, UDPInput(; port = 49017), JSONTestMapping())
-    Sim.attach!(sim, UDPOutput(; port = 49017), JSONTestMapping())
-
-    #trigger compilation of parsing methods before launching the simulation
-    JSON3.read!(JSON3.write(world.aircraft.avionics.u.lon, allow_inf=true),
-                            world.aircraft.avionics.u.lon; allow_inf=true)
-    JSON3.read!(JSON3.write(world.aircraft.avionics.u.lat, allow_inf=true),
-                            world.aircraft.avionics.u.lat; allow_inf=true)
-
-    #set non-Inf pace for headless runs to allow the UDP interface to keep up
-    pace = (gui ? 1.0 : 30)
-    Sim.run!(sim; gui, pace)
-
-    save && save_plots(TimeSeries(sim).aircraft.vehicle.kinematics,
-                        normpath("tmp/plots/test_c172y1/test_json_loopback/kin");
-                        Plotting.defaults...)
-
-    return nothing
-
-end
 
 
 #for interactive ControlLaws validation
