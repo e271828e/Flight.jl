@@ -156,7 +156,7 @@ function GUI.draw(seg::Segment)
     @unpack p1, p2 = seg
 
     if BeginTable("OriginEnd", 4, CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersH)
-        TableSetupColumn("Point");
+        TableSetupColumn("");
         TableSetupColumn("Latitude (deg)");
         TableSetupColumn("Longitude (deg)");
         TableSetupColumn("Ellipsoidal Altitude (m)");
@@ -180,15 +180,25 @@ function GUI.draw(data::SegmentGuidanceData)
 
     @unpack χ_12, γ_12, s_12, s_1b, s_2b, e_sb, v_sb, h_s = data
 
-    CImGui.ProgressBar(max(s_1b/s_12, 0.0), (0, 0), @sprintf("%.3f / %.3f", s_1b, s_12))
-    Bullet(); Text(@sprintf("Azimuth: %.6f deg", rad2deg(χ_12)))
-    Bullet(); Text(@sprintf("Inclination: %.6f deg", rad2deg(γ_12)))
-    Bullet(); Text(@sprintf("Horizontal length: %.3f m", s_12))
-    Bullet(); Text(@sprintf("Along-track distance from origin: %.3f m", s_1b))
-    Bullet(); Text(@sprintf("Along-track distance from end: %.3f m", s_2b))
-    Bullet(); Text(@sprintf("Cross-track distance: %.3f m", e_sb))
-    Bullet(); Text(@sprintf("Vertical distance: %.3f m", v_sb))
-    Bullet(); Text(@sprintf("Nominal altitude: %.3f m", Float64(h_s)))
+    if BeginTable("GuidanceData", 3, CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersH)
+        # TableSetupColumn("");
+        TableSetupColumn("Azimuth (deg)");
+        TableSetupColumn("Inclination (deg)");
+        TableSetupColumn("Local Ellipsoidal Altitude (m)");
+        CImGui.TableHeadersRow()
+        TableNextRow()
+            # TableNextColumn()
+            TableNextColumn(); Text(@sprintf("%.6f deg", rad2deg(χ_12)))
+            TableNextColumn(); Text(@sprintf("%.6f deg", rad2deg(γ_12)))
+            TableNextColumn(); Text(@sprintf("%.3f m", Float64(h_s)))
+        EndTable()
+    end
+    AlignTextToFramePadding(); TextUnformatted("Along-track distance"); SameLine(200);
+    CImGui.ProgressBar(max(s_1b/s_12, 0.0), (0, 0), @sprintf("%.3f / %.3f m", s_1b, s_12))
+    AlignTextToFramePadding(); TextUnformatted("Cross-track error"); SameLine(200);
+    CImGui.ProgressBar(max(0.5 + e_sb/1000, 0.0), (0, 0), @sprintf("%.3f m", e_sb))
+    AlignTextToFramePadding(); TextUnformatted("Vertical error"); SameLine(200);
+    CImGui.ProgressBar(max(0.5 + v_sb/100, 0.0), (0, 0), @sprintf("%.3f m", v_sb))
 
 end
 
@@ -203,8 +213,8 @@ end
 
 @kwdef mutable struct SegmentGuidanceU
     target::Segment = Segment()
-    horizontal_req::Bool = false #request horizontal guidance
-    vertical_req::Bool = false #request vertical guidance
+    hor_gdc_req::Bool = false #request horizontal guidance
+    vrt_gdc_req::Bool = false #request vertical guidance
 end
 
 @kwdef struct SegmentGuidanceY
@@ -213,18 +223,17 @@ end
     Δχ::Float64 = 0.0 #intercept angle (rad)
     χ_ref::Float64 = 0.0 #course angle reference (rad)
     h_ref::HEllip = 0.0 #altitude reference (m)
-    horizontal::Bool = false #horizontal guidance active
-    vertical::Bool = false #vertical guidance active
+    hor_gdc::Bool = false #horizontal guidance active
+    vrt_gdc::Bool = false #vertical guidance active
 end
 
 Modeling.U(::SegmentGuidance) = SegmentGuidanceU()
 Modeling.Y(::SegmentGuidance) = SegmentGuidanceY()
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
-                                ctl::Model{<:ControlLaws},
                                 vehicle::Model{<:Vehicle})
 
-    @unpack target, horizontal_req, vertical_req = mdl.u
+    @unpack target, hor_gdc_req, vrt_gdc_req = mdl.u
     @unpack Δχ_inf, e_sf, e_thr = mdl.constants
     @unpack ϕ_λ, h_e = vehicle.kinematics.y
 
@@ -236,22 +245,10 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
     χ_ref = wrap_to_π(χ_12 + Δχ)
     h_ref = h_s
 
-    horizontal = horizontal_req
-    vertical = (abs(e_sb) < e_thr ? vertical_req : false)
+    hor_gdc = hor_gdc_req
+    vrt_gdc = (abs(e_sb) < e_thr ? vrt_gdc_req : false)
 
-    if horizontal
-        ctl.lat.u.mode_req = ModeControlLat.χ_β
-        ctl.lat.u.χ_ref = χ_ref
-        #β_ref unchanged
-    end
-
-    if vertical
-        ctl.lon.u.mode_req = ModeControlLon.EAS_alt
-        ctl.lon.u.h_ref = h_ref
-        #EAS_ref unchanged
-    end
-
-    mdl.y = SegmentGuidanceY(; target, data, Δχ, χ_ref, h_ref, horizontal, vertical)
+    mdl.y = SegmentGuidanceY(; target, data, Δχ, χ_ref, h_ref, hor_gdc, vrt_gdc)
 
 end
 
@@ -262,7 +259,6 @@ end
 @kwdef struct CircularGuidance <: ModelDefinition end
 @kwdef struct CircularGuidanceY end
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:CircularGuidance},
-                                ctl::Model{<:ControlLaws},
                                 vehicle::Model{<:Vehicle})
 end
 
@@ -302,8 +298,23 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:GuidanceLaws},
     @unpack seg, crc = mdl.submodels
 
     mode = (is_on_gnd(vehicle) ? ModeGuidance.direct : mode_req)
-    mode === ModeGuidance.segment && f_periodic!(seg, ctl, vehicle)
-    mode === ModeGuidance.circular && f_periodic!(crc, ctl, vehicle)
+
+    #guidance computations execute even when not active
+    f_periodic!(seg, vehicle)
+    f_periodic!(crc, vehicle)
+
+    if mode === ModeGuidance.segment
+        @unpack hor_gdc, vrt_gdc, χ_ref, h_ref = seg.y
+        #EAS_ref and β_ref unchanged
+        if seg.y.hor_gdc
+            ctl.lat.u.χ_ref = χ_ref
+            ctl.lat.u.mode_req = ModeControlLat.χ_β
+        end
+        if seg.y.vrt_gdc
+            ctl.lon.u.h_ref = h_ref
+            ctl.lon.u.mode_req = ModeControlLon.EAS_alt
+        end
+    end
 
     mdl.y = GuidanceLawsY(; mode, seg = seg.y, crc = crc.y)
 
@@ -312,10 +323,12 @@ end
 
 ################################## GUI #########################################
 
-function GUI.draw!(gdc::Model{<:GuidanceLaws}, vehicle::Model{<:Vehicle},
+function GUI.draw!(mdl::Model{<:GuidanceLaws},
+                    ctl::Model{<:ControlLaws},
+                    vehicle::Model{<:Vehicle},
                     p_open::Ref{Bool} = Ref(true))
 
-    @unpack u, y = gdc
+    @unpack u, y = mdl
 
     Begin("Cessna172Y Guidance", p_open)
 
@@ -323,16 +336,24 @@ function GUI.draw!(gdc::Model{<:GuidanceLaws}, vehicle::Model{<:Vehicle},
     mode_button("Direct", ModeGuidance.direct, u.mode_req, y.mode); SameLine()
     IsItemActive() && (u.mode_req = ModeGuidance.direct)
     mode_button("Segment", ModeGuidance.segment, u.mode_req, y.mode); SameLine()
-    IsItemActive() && (u.mode_req = ModeGuidance.segment)
+    if IsItemActive()
+        u.mode_req = ModeGuidance.segment
+        ctl.u.lon.EAS_ref = vehicle.y.airflow.EAS
+        ctl.u.lat.β_ref = vehicle.y.systems.aero.β
+    end
     mode_button("Circular", ModeGuidance.circular, u.mode_req, y.mode)
-    IsItemActive() && (u.mode_req = ModeGuidance.circular)
+    if IsItemActive()
+        u.mode_req = ModeGuidance.circular
+        ctl.u.lon.EAS_ref = vehicle.y.airflow.EAS
+        ctl.u.lat.β_ref = vehicle.y.systems.aero.β
+    end
 
     Separator()
-    CImGui.CollapsingHeader("Segment Guidance") && GUI.draw!(gdc.seg, vehicle)
-    # CImGui.CollapsingHeader("Circular Guidance") && GUI.draw!(gdc.crc, vehicle)
-    # GUI.draw!(gdc.seg, vehicle)
-    # gdc.y.mode === ModeGuidance.segment && GUI.draw!(gdc.seg, vehicle)
-    gdc.y.mode === ModeGuidance.circular && GUI.draw!(gdc.crc, vehicle)
+    CImGui.CollapsingHeader("Segment Guidance") && GUI.draw!(mdl.seg, vehicle)
+    # CImGui.CollapsingHeader("Circular Guidance") && GUI.draw!(mdl.crc, vehicle)
+    # GUI.draw!(mdl.seg, vehicle)
+    # mdl.y.mode === ModeGuidance.segment && GUI.draw!(mdl.seg, vehicle)
+    mdl.y.mode === ModeGuidance.circular && GUI.draw!(mdl.crc, vehicle)
 
     End()
 
@@ -343,7 +364,7 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
     @unpack u, constants, y = gdc
     @unpack ϕ_λ, h_e = vehicle.y.kinematics
     @unpack ϕ, λ = ϕ_λ
-    @unpack target, data, Δχ, χ_ref, h_ref, horizontal, vertical = y
+    @unpack target, data, Δχ, χ_ref, h_ref, hor_gdc, vrt_gdc = y
 
     @cstatic(
         spec_from = Cint(1),
@@ -451,10 +472,10 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
             "Segment construction failed"
         end
     end
-    mode_button("Horizontal Guidance", true, u.horizontal_req, y.horizontal); SameLine()
-    IsItemActivated() && (u.horizontal_req = !u.horizontal_req)
-    mode_button("Vertical Guidance", true, u.vertical_req, y.vertical)
-    IsItemActivated() && (u.vertical_req = !u.vertical_req)
+    mode_button("Horizontal Guidance", true, u.hor_gdc_req, y.hor_gdc); SameLine()
+    IsItemActivated() && (u.hor_gdc_req = !u.hor_gdc_req)
+    mode_button("Vertical Guidance", true, u.vrt_gdc_req, y.vrt_gdc)
+    IsItemActivated() && (u.vrt_gdc_req = !u.vrt_gdc_req)
 
     end #cstatic block
     ) #cstatic call
@@ -462,31 +483,28 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
     Separator()
 
     GUI.draw(y.target)
+    Separator()
+    GUI.draw(y.data)
 
-    if BeginTable("Guidance Data & Commands", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
-        TableSetupColumn("Guidance Data");
-        TableSetupColumn("Guidance Commands");
-        CImGui.TableHeadersRow()
-        TableNextRow()
-            TableNextColumn()
-            GUI.draw(y.data)
-            TableNextColumn()
-            Bullet(); Text("Horizontal guidance active: $horizontal")
-            Bullet(); Text("Vertical guidance active: $vertical")
-            Bullet(); Text(@sprintf("Intercept angle: %.3f deg", rad2deg(Δχ)))
-            Bullet(); Text(@sprintf("Course angle reference: %.3f deg", rad2deg(χ_ref)))
-            Bullet(); Text(@sprintf("Altitude reference: %.3f m", Float64(h_ref)))
-        EndTable()
-    end #table
+    Text("Horizontal guidance active: $hor_gdc")
+    Text("Vertical guidance active: $vrt_gdc")
+    Text(@sprintf("Intercept angle: %.3f deg", rad2deg(Δχ)))
+    Text(@sprintf("Course angle reference: %.3f deg", rad2deg(χ_ref)))
+    Text(@sprintf("Altitude reference: %.3f m", Float64(h_ref)))
 
-    # if CImGui.TreeNode("Guidance Data")
-    #     GUI.draw(y.data)
-    #     CImGui.TreePop()
-    # end
-
-    # if CImGui.TreeNode("Guidance Commands")
-    #     CImGui.TreePop()
-    # end
+    # if BeginTable("Guidance Data & Commands", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+    #     TableSetupColumn("Guidance Data");
+    #     TableSetupColumn("Guidance Commands");
+    #     CImGui.TableHeadersRow()
+    #     TableNextRow()
+    #         TableNextColumn()
+    #         Bullet(); Text("Horizontal guidance active: $hor_gdc")
+    #         Bullet(); Text("Vertical guidance active: $vrt_gdc")
+    #         Bullet(); Text(@sprintf("Intercept angle: %.3f deg", rad2deg(Δχ)))
+    #         Bullet(); Text(@sprintf("Course angle reference: %.3f deg", rad2deg(χ_ref)))
+    #         Bullet(); Text(@sprintf("Altitude reference: %.3f m", Float64(h_ref)))
+    #     EndTable()
+    # end #table
 
 
 end

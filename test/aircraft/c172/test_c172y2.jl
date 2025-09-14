@@ -74,8 +74,8 @@ function test_c172y2(; alloc::Bool = true)
 
             #request segment guidance mode and enable horizontal and vertical guidance
             gdc.u.mode_req = ModeGuidance.segment
-            gdc.seg.u.horizontal_req = true
-            gdc.seg.u.vertical_req = true
+            gdc.seg.u.hor_gdc_req = true
+            gdc.seg.u.vrt_gdc_req = true
 
             #step for one guidance sample period
             step!(sim, gdc.Δt, true)
@@ -105,13 +105,13 @@ function test_c172y2(; alloc::Bool = true)
             @test gdc.y.mode === ModeGuidance.segment
 
             #horizontal guidance request is always honored
-            @test gdc.seg.y.horizontal === true
+            @test gdc.seg.y.hor_gdc === true
             @test ctl.lat.y.mode === ModeControlLat.χ_β
             @test ctl.lat.y.χ_ref === gdc.seg.y.χ_ref
 
             #since we are within the vertical guidance threshold e_thr, vertical
             #guidance must have engaged as requested
-            @test gdc.seg.y.vertical === true
+            @test gdc.seg.y.vrt_gdc === true
             @test (ctl.lon.y.mode === ModeControlLon.EAS_alt ||
                    ctl.lon.y.mode === ModeControlLon.thr_EAS)
             @test ctl.lon.y.h_ref === gdc.seg.y.h_ref
@@ -143,14 +143,14 @@ function test_c172y2(; alloc::Bool = true)
 
             #since we are outside the vertical guidance threshold e_thr,
             #vertical guidance must have disengaged
-            @test gdc.seg.y.vertical === false
+            @test gdc.seg.y.vrt_gdc === false
 
             #disable vertical guidance, longitudinal control mode should remain
             #unchanged
             lon_mode_prev = ctl.lon.y.mode
-            gdc.seg.u.vertical_req = false
+            gdc.seg.u.vrt_gdc_req = false
             Sim.step!(sim, gdc.Δt, true)
-            @test gdc.seg.y.vertical === false
+            @test gdc.seg.y.vrt_gdc === false
             @test ctl.lon.y.mode === lon_mode_prev
 
             #once vertical guidance is disabled, we can once again set the
@@ -162,9 +162,9 @@ function test_c172y2(; alloc::Bool = true)
             #disable horizontal guidance, lateral control mode should remain
             #unchanged
             lat_mode_prev = ctl.lat.y.mode
-            gdc.seg.u.horizontal_req = false
+            gdc.seg.u.hor_gdc_req = false
             Sim.step!(sim, gdc.Δt, true)
-            @test gdc.seg.y.horizontal === false
+            @test gdc.seg.y.hor_gdc === false
             @test ctl.lat.y.mode === lat_mode_prev
 
             #once horizontal guidance is disabled, we can once again set the
