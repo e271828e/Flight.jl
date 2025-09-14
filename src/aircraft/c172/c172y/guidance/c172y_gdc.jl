@@ -180,6 +180,7 @@ function GUI.draw(data::SegmentGuidanceData)
 
     @unpack χ_12, γ_12, s_12, s_1b, s_2b, e_sb, v_sb, h_s = data
 
+    CImGui.ProgressBar(max(s_1b/s_12, 0.0), (0, 0), @sprintf("%.3f / %.3f", s_1b, s_12))
     Bullet(); Text(@sprintf("Azimuth: %.6f deg", rad2deg(χ_12)))
     Bullet(); Text(@sprintf("Inclination: %.6f deg", rad2deg(γ_12)))
     Bullet(); Text(@sprintf("Horizontal length: %.3f m", s_12))
@@ -326,11 +327,11 @@ function GUI.draw!(gdc::Model{<:GuidanceLaws}, vehicle::Model{<:Vehicle},
     mode_button("Circular", ModeGuidance.circular, u.mode_req, y.mode)
     IsItemActive() && (u.mode_req = ModeGuidance.circular)
 
-    # CImGui.CollapsingHeader("Segment Guidance") && GUI.draw!(gdc.seg, vehicle)
-    # CImGui.CollapsingHeader("Circular Guidance") && GUI.draw!(gdc.crc, vehicle)
     Separator()
+    CImGui.CollapsingHeader("Segment Guidance") && GUI.draw!(gdc.seg, vehicle)
+    # CImGui.CollapsingHeader("Circular Guidance") && GUI.draw!(gdc.crc, vehicle)
     # GUI.draw!(gdc.seg, vehicle)
-    gdc.y.mode === ModeGuidance.segment && GUI.draw!(gdc.seg, vehicle)
+    # gdc.y.mode === ModeGuidance.segment && GUI.draw!(gdc.seg, vehicle)
     gdc.y.mode === ModeGuidance.circular && GUI.draw!(gdc.crc, vehicle)
 
     End()
@@ -461,19 +462,31 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
     Separator()
 
     GUI.draw(y.target)
-    if CImGui.TreeNode("Guidance Data")
-        GUI.draw(y.data)
-        CImGui.TreePop()
-    end
 
-    if CImGui.TreeNode("Guidance Commands")
-        Bullet(); Text("Horizontal guidance active: $horizontal")
-        Bullet(); Text("Vertical guidance active: $vertical")
-        Bullet(); Text(@sprintf("Intercept angle: %.3f deg", rad2deg(Δχ)))
-        Bullet(); Text(@sprintf("Course angle reference: %.3f deg", rad2deg(χ_ref)))
-        Bullet(); Text(@sprintf("Altitude reference: %.3f m", Float64(h_ref)))
-        CImGui.TreePop()
-    end
+    if BeginTable("Guidance Data & Commands", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+        TableSetupColumn("Guidance Data");
+        TableSetupColumn("Guidance Commands");
+        CImGui.TableHeadersRow()
+        TableNextRow()
+            TableNextColumn()
+            GUI.draw(y.data)
+            TableNextColumn()
+            Bullet(); Text("Horizontal guidance active: $horizontal")
+            Bullet(); Text("Vertical guidance active: $vertical")
+            Bullet(); Text(@sprintf("Intercept angle: %.3f deg", rad2deg(Δχ)))
+            Bullet(); Text(@sprintf("Course angle reference: %.3f deg", rad2deg(χ_ref)))
+            Bullet(); Text(@sprintf("Altitude reference: %.3f m", Float64(h_ref)))
+        EndTable()
+    end #table
+
+    # if CImGui.TreeNode("Guidance Data")
+    #     GUI.draw(y.data)
+    #     CImGui.TreePop()
+    # end
+
+    # if CImGui.TreeNode("Guidance Commands")
+    #     CImGui.TreePop()
+    # end
 
 
 end
