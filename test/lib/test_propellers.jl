@@ -9,7 +9,6 @@ using FiniteDiff: finite_difference_derivative
 using Flight.FlightCore
 using Flight.FlightLib
 
-#non-exported stuff
 using Flight.FlightLib.Propellers: DefaultAirfoil, cL, cD, cL_α
 using Flight.FlightLib.Propellers: Blade, Coefficients, Lookup
 

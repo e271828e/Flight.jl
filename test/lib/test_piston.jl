@@ -9,10 +9,9 @@ using Plots
 using Flight.FlightCore
 using Flight.FlightLib
 
-using Flight.FlightLib.Piston
-
-#non-exported stuff
 using Flight.FlightLib.Atmosphere: p_std, T_std
+
+using Flight.FlightLib.Piston
 using Flight.FlightLib.Piston: PistonEngine, PistonThruster
 using Flight.FlightLib.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
 using Flight.FlightLib.Piston: EngineState

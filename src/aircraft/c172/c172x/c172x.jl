@@ -16,7 +16,7 @@ export Cessna172X
 #first order linear actuator model
 
 #τ has units of rad/s, not Hz: F(s) = 1/(1+sτ); F(jω) = 1/(1+jωτ).
-struct Actuator1{R <: Ranged} <: ModelDefinition #second order linear actuator model
+struct Actuator1{R <: Ranged} <: ModelDefinition
     τ::Float64 #time constant (default: 0.05s)
     function Actuator1(; τ::Real = 1/20, range::Tuple{Real, Real} = (-1.0, 1.0))
         new{Ranged{Float64, range[1], range[2]}}(τ)
@@ -64,7 +64,7 @@ end
 
 #saturate on command, not on position, which only tends asymptotically to cmd!
 
-struct Actuator2{R} <: ModelDefinition #second order linear actuator model
+struct Actuator2{R} <: ModelDefinition
     ω_n::Float64 #natural frequency (default: 10 Hz)
     ζ::Float64 #damping ratio (default: underdamped with minimal resonance)
     function Actuator2(; ω_n::Real = 5*2π, ζ::Real = 0.6,
@@ -110,7 +110,6 @@ end
 
 @kwdef struct FlyByWireActuation <: C172.AbstractActuation
     throttle::Actuator1 = Actuator1(range = (0.0, 1.0))
-    mixture::Actuator1 = Actuator1(range = (0.0, 1.0))
     aileron::Actuator1 = Actuator1(range = (-1.0, 1.0))
     elevator::Actuator1 = Actuator1(range = (-1.0, 1.0))
     rudder::Actuator1 = Actuator1(range = (-1.0, 1.0))
@@ -127,7 +126,7 @@ function C172.assign!(aero::Model{<:C172.Aero},
                     pwp::Model{<:PistonThruster},
                     act::Model{<:FlyByWireActuation})
 
-    @unpack throttle, mixture, aileron, elevator, rudder, flaps,
+    @unpack throttle, aileron, elevator, rudder, flaps,
             brake_left, brake_right = act.y
 
     aero.u.e = -elevator.pos
@@ -135,7 +134,6 @@ function C172.assign!(aero::Model{<:C172.Aero},
     aero.u.r = -rudder.pos
     aero.u.f = flaps.pos
     pwp.engine.u.throttle = throttle.pos
-    pwp.engine.u.mixture = mixture.pos
     ldg.nose.steering.u.input = rudder.pos
     ldg.left.braking.u[] = brake_left.pos
     ldg.right.braking.u[] = brake_right.pos
@@ -182,7 +180,7 @@ function GUI.draw!(mdl::Model{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true)
                     CImGui.Text("$label Position"); CImGui.SameLine(200); display_bar("", position)
                     buffer[offset[]+1] = Cfloat(position)
                     offset[] = (offset[]+1) % length(buffer)
-                    CImGui.PlotLines("$label Position", buffer, length(buffer), offset[], "$label Position",
+                    CImGui.PlotLines("##$label Position", buffer, length(buffer), offset[], "$label Position",
                                     Cfloat(typemin(position)), Cfloat(typemax(position)),
                                     (Cint(0), Cint(120)))
                 end
@@ -252,7 +250,6 @@ function Modeling.init!(cmp::Model{<:Systems}, init::C172.SystemsInitializer)
 
     #actuator commands
     act.throttle.u[] = throttle
-    act.mixture.u[] = mixture
     act.elevator.u[] = elevator
     act.aileron.u[] = aileron
     act.rudder.u[] = rudder
@@ -263,7 +260,6 @@ function Modeling.init!(cmp::Model{<:Systems}, init::C172.SystemsInitializer)
     #actuator states: in steady state every actuator's position state must be
     #equal to the actuator command.
     act.x.throttle.p = throttle
-    act.x.mixture.p = mixture
     act.x.elevator.p = elevator
     act.x.aileron.p = aileron
     act.x.rudder.p = rudder
@@ -319,7 +315,7 @@ function AircraftBase.assign!(vehicle::Model{<:C172X.Vehicle},
     @assert abs(aero.ẋ.α_filt) < 1e-10
     @assert abs(aero.ẋ.β_filt) < 1e-10
 
-    @assert all(SVector{8,Float64}(act.ẋ) .== 0)
+    @assert all(SVector{7,Float64}(act.ẋ) .== 0)
 
 end
 
@@ -349,13 +345,14 @@ end
 end
 
 #all states (for full-state feedback), plus other useful stuff, plus control inputs
-@kwdef struct YLinear <: FieldVector{37, Float64}
+@kwdef struct YLinear <: FieldVector{38, Float64}
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
     ϕ::Float64 = 0.0; λ::Float64 = 0.0; h::Float64 = 0.0; #latitude, longitude, ellipsoidal altitude
     α_filt::Float64 = 0.0; β_filt::Float64 = 0.0; #filtered airflow angles
-    ω_eng::Float64 = 0.0; fuel::Float64 = 0.0; #engine speed, available fuel fraction
+    ω_eng::Float64 = 0.0; n_eng::Float64 = 0.0; #engine speed, normalized engine speed
+    fuel::Float64 = 0.0; #available fuel fraction
     thr_p::Float64 = 0.0; #throttle actuator position
     ail_p::Float64 = 0.0; #aileron actuator position
     ele_p::Float64 = 0.0; #elevator actuator position
@@ -372,20 +369,20 @@ end
 
 function XLinear(x_vehicle::ComponentVector)
 
-    x_kinematics = x_vehicle.kinematics
-    x_dynamics = x_vehicle.dynamics
-    x_systems = x_vehicle.systems
+    x_kin = x_vehicle.kinematics
+    x_dyn = x_vehicle.dynamics
+    x_sys = x_vehicle.systems
 
-    @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics
-    p, q, r = x_dynamics.ω_eb_b
-    v_x, v_y, v_z = x_dynamics.v_eb_b
-    α_filt, β_filt = x_systems.aero
-    ω_eng = x_systems.pwp.engine.ω
-    fuel = x_systems.fuel[1]
-    thr_p = x_systems.act.throttle.p
-    ail_p = x_systems.act.aileron.p
-    ele_p = x_systems.act.elevator.p
-    rud_p = x_systems.act.rudder.p
+    @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kin
+    p, q, r = x_dyn.ω_eb_b
+    v_x, v_y, v_z = x_dyn.v_eb_b
+    α_filt, β_filt = x_sys.aero
+    ω_eng = x_sys.pwp.engine.ω
+    fuel = x_sys.fuel[1]
+    thr_p = x_sys.act.throttle.p
+    ail_p = x_sys.act.aileron.p
+    ele_p = x_sys.act.elevator.p
+    rud_p = x_sys.act.rudder.p
 
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
@@ -419,6 +416,7 @@ function YLinear(vehicle::Model{<:C172X.Vehicle{NED}})
     v_x, v_y, v_z = v_eb_b
     v_N, v_E, v_D = v_eb_n
     ω_eng = pwp.engine.ω
+    n_eng = pwp.engine.n
     fuel = fuel.x_avail
     α = aero.α
     β = aero.β
@@ -440,7 +438,7 @@ function YLinear(vehicle::Model{<:C172X.Vehicle{NED}})
     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ULinear(vehicle)
 
     YLinear(; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt,
-            ω_eng, fuel, thr_p, ail_p, ele_p, rud_p,
+            ω_eng, n_eng, fuel, thr_p, ail_p, ele_p, rud_p,
             f_x, f_y, f_z, EAS, TAS, α, β, v_N, v_E, v_D, χ, γ, climb_rate,
             throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd)
 
@@ -468,22 +466,22 @@ function AircraftBase.assign_x!(vehicle::Model{<:C172X.Vehicle{NED}}, x::Abstrac
     @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng,
             fuel, thr_p, ail_p, ele_p, rud_p = XLinear(x)
 
-    x_kinematics = vehicle.x.kinematics
-    x_dynamics = vehicle.x.dynamics
-    x_systems = vehicle.x.systems
+    x_kin = vehicle.x.kinematics
+    x_dyn = vehicle.x.dynamics
+    x_sys = vehicle.x.systems
 
     ψ_nb, θ_nb, φ_nb, h_e = ψ, θ, φ, h
 
-    @pack! x_kinematics = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
-    x_dynamics.ω_eb_b .= p, q, r
-    x_dynamics.v_eb_b .= v_x, v_y, v_z
-    x_systems.aero .= α_filt, β_filt
-    x_systems.pwp.engine.ω = ω_eng
-    x_systems.fuel .= fuel
-    x_systems.act.throttle.p = thr_p
-    x_systems.act.aileron.p = ail_p
-    x_systems.act.elevator.p = ele_p
-    x_systems.act.rudder.p = rud_p
+    @pack! x_kin = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
+    x_dyn.ω_eb_b .= p, q, r
+    x_dyn.v_eb_b .= v_x, v_y, v_z
+    x_sys.aero .= α_filt, β_filt
+    x_sys.pwp.engine.ω = ω_eng
+    x_sys.fuel .= fuel
+    x_sys.act.throttle.p = thr_p
+    x_sys.act.aileron.p = ail_p
+    x_sys.act.elevator.p = ele_p
+    x_sys.act.rudder.p = rud_p
 
 end
 
@@ -492,8 +490,10 @@ end
 ################################## Versions ####################################
 
 include(normpath("control/c172x_ctl.jl")); @reexport using .C172XControl
+include(normpath("guidance/c172x_gdc.jl")); @reexport using .C172XGuidance
 
 include(normpath("c172x0.jl")); @reexport using .C172Xv0
 include(normpath("c172x1.jl")); @reexport using .C172Xv1
+include(normpath("c172x2.jl")); @reexport using .C172Xv2
 
 end

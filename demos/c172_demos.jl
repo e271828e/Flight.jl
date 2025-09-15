@@ -5,8 +5,8 @@ using UnPack, JSON3
 
 using Flight
 using Flight.FlightAircraft.C172: is_on_gnd
-using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat
-using Flight.FlightAircraft.C172Y.C172YGuidance: ModeGuidance, Segment, SegmentGuidanceData
+using Flight.FlightAircraft.C172X.C172XControl: ModeControlLon, ModeControlLat
+using Flight.FlightAircraft.C172X.C172XGuidance: ModeGuidance, Segment, SegmentGuidanceData
 
 #position and geographic heading for Salzburg airport (LOWS) runway 15
 const loc_LOWS15 = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997))
@@ -215,7 +215,7 @@ function crosswind_landing(; gui::Bool = false,
 
     end
 
-    mdl = SimpleWorld(Cessna172Yv2(), SimpleAtmosphere(), HorizontalTerrain(h_LOWS15)) |> Model
+    mdl = SimpleWorld(Cessna172Xv2(), SimpleAtmosphere(), HorizontalTerrain(h_LOWS15)) |> Model
 
     sim = Simulation(mdl; dt = 0.02, t_end = 1000, user_callback!)
 
@@ -368,7 +368,7 @@ function traffic_pattern(; gui::Bool = false,
         v_eb_n = zeros(3), #velocity
         ) |> C172.Init
 
-    mdl = SimpleWorld(Cessna172Yv2(), SimpleAtmosphere(), HorizontalTerrain(h_LOWS15)) |> Model
+    mdl = SimpleWorld(Cessna172Xv2(), SimpleAtmosphere(), HorizontalTerrain(h_LOWS15)) |> Model
 
     sim = Simulation(mdl; dt = 0.02, t_end = 1000, user_callback!)
 
@@ -405,7 +405,7 @@ function IODevices.extract_output(mdl::Model{<:SimpleWorld}, ::JSONTestMapping)
 
     if mdl.t[] > 5
         #enums will be automatically cast to Ints per the StructTypes methods
-        #defined in C172Y.C172YControl
+        #defined in C172X.C172XControl
         cmd = (
             lon = (
                 mode_req = ModeControlLon.EAS_clm, #7 would also work
@@ -437,7 +437,7 @@ function json_loopback(; gui::Bool = true, xp12 = false, save::Bool = true)
 
 
     h_trn = HOrth(427.2);
-    world = SimpleWorld(Cessna172Yv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
     sim = Simulation(world; t_end = 30)
 
@@ -465,7 +465,7 @@ function json_loopback(; gui::Bool = true, xp12 = false, save::Bool = true)
     Sim.run!(sim; gui, pace)
 
     save && save_plots(TimeSeries(sim).aircraft.vehicle.kinematics,
-                        normpath("tmp/plots/test_c172y1/test_json_loopback/kin");
+                        normpath("tmp/plots/test_c172x1/test_json_loopback/kin");
                         Plotting.defaults...)
 
     return nothing

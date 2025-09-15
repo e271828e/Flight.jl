@@ -21,18 +21,18 @@ supertypes(SimpleWorld)
 ```
 
 An instance of a `ModelDefinition` subtype can be thought of as a blueprint specifying how
-a particular `Model` should be built. To instantiate this `Model`, we pass the `ModelDefinition`
+a particular `Model` should be built. To instantiate that `Model`, we pass the `ModelDefinition`
 object to the `Model` constructor:
 ```@example tutorial02
 mdl = Model(world)
 ```
 
-Let's take a look at this `Model`'s properties:
+Let's take a look at our `Model`'s properties:
 ```@example tutorial02
 propertynames(mdl)
 ```
 
-To follow the next steps, it is useful to understand what each of these represents:
+To follow the upcoming steps, it is useful to understand what each one represents:
 - `x` (*continuous state*): A vector containing `Model` states that evolve continuously over time.
   It is updated by the `Simulation`'s ODE integrator.
 - `ẋ` (*continuous state derivative*): A vector containing the time derivative of `x`.

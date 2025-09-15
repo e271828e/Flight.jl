@@ -9,7 +9,6 @@ using UnPack
 using Flight.FlightCore
 using Flight.FlightLib
 
-#non-exported stuff
 using Flight.FlightLib.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
 
 export test_landing_gear

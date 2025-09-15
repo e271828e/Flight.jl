@@ -18,8 +18,7 @@ includet(normpath("lib/test_world.jl")); using .TestWorld
 includet(normpath("aircraft/c172/test_c172s.jl")); using .TestC172S
 includet(normpath("aircraft/c172/test_c172x.jl")); using .TestC172X
 includet(normpath("aircraft/c172/test_c172x1.jl")); using .TestC172Xv1
-includet(normpath("aircraft/c172/test_c172y.jl")); using .TestC172Y
-includet(normpath("aircraft/c172/test_c172y1.jl")); using .TestC172Yv1
+includet(normpath("aircraft/c172/test_c172x2.jl")); using .TestC172Xv2
 
 test_gui()
 test_quaternions()
@@ -37,5 +36,4 @@ test_world()
 test_c172s()
 test_c172x()
 test_c172x1()
-test_c172y()
-test_c172y1()
+test_c172x2()
