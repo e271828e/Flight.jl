@@ -474,9 +474,8 @@ Dynamics.get_hr_b(::Model{Ldg}) = zeros(SVector{3})
 #delegate continuous dynamics to submodels
 @sm_ode Ldg
 
-function Modeling.f_step!(mdl::Model{<:Ldg})
-    foreach(f_step!, mdl.submodels)
-end
+#skip output update
+Modeling.f_step!(mdl::Model{<:Ldg}) = foreach(f_step!, mdl.submodels)
 
 #approximate height of the aircraft frame origin to the ground
 const Δh_to_gnd = 1.81
@@ -752,7 +751,6 @@ const Vehicle = AircraftBase.Vehicle{<:C172.Systems}
 const Aircraft = AircraftBase.Aircraft{<:C172.Vehicle}
 const Cessna172 = C172.Aircraft
 
-
 ########################## Explicit Initialization #############################
 ################################################################################
 
@@ -987,6 +985,14 @@ function IODevices.extract_output(aircraft::Model{<:Cessna172}, ::XPlane12Contro
 
 end
 
+
+################################################################################
+############################# Utility Functions ################################
+
+function is_on_gnd(mdl::Model{<:Vehicle}; all::Bool = false)
+    wow = SVector{3}(leg.strut.wow for leg in mdl.y.systems.ldg)
+    all ? all(wow) : any(wow)
+end
 
 ################################################################################
 ############################### C172 Variants ##################################

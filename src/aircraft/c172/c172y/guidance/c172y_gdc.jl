@@ -13,9 +13,9 @@ using Flight.FlightCore
 using Flight.FlightLib
 
 using ...AircraftBase
-using ...C172
+using ...C172: is_on_gnd
 using ..C172Y: Vehicle, Systems
-using ..C172Y.C172YControl: ControlLaws, ModeControlLat, ModeControlLon, is_on_gnd
+using ..C172Y.C172YControl: ControlLaws, ModeControlLat, ModeControlLon
 
 
 ################################################################################

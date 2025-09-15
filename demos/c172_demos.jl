@@ -4,7 +4,8 @@ using Sockets
 using UnPack, JSON3
 
 using Flight
-using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat, is_on_gnd
+using Flight.FlightAircraft.C172: is_on_gnd
+using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat
 using Flight.FlightAircraft.C172Y.C172YGuidance: ModeGuidance, Segment, SegmentGuidanceData
 
 #position and geographic heading for Salzburg airport (LOWS) runway 15
@@ -13,9 +14,9 @@ const h_LOWS15 = HOrth(427.2)
 const ψ_LOWS15 = deg2rad(157)
 
 
-############################# Tutorial 01 ######################################
+################################################################################
 
-function tutorial01(; aircraft::Cessna172 = Cessna172Xv1(),
+function interactive_simulation(; aircraft::Cessna172 = Cessna172Xv1(),
                 situation::Symbol = :ground,
                 xp12_address = IPv4("127.0.0.1"),
                 xp12_port = 49000,
@@ -80,9 +81,9 @@ function tutorial01(; aircraft::Cessna172 = Cessna172Xv1(),
 end
 
 
-############################# Tutorial 02 ######################################
+################################################################################
 
-function tutorial02a()
+function elevator_doublet()
 
     mdl = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) |> Model
     sim = Simulation(mdl; dt = 0.02, t_end = 60)
@@ -104,7 +105,7 @@ function tutorial02a()
 
 end
 
-function tutorial02b()
+function elevator_doublet_callback()
 
     mdl = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) |> Model
 
@@ -132,7 +133,8 @@ function tutorial02b()
 
 end
 
-#############################
+
+################################################################################
 
 function crosswind_landing(; gui::Bool = false,
                             xp12_address = IPv4("127.0.0.1"),
@@ -150,7 +152,7 @@ function crosswind_landing(; gui::Bool = false,
         fuel_load = 0.5, #available fuel fraction
     )
 
-    user_callback! = let phase = Ref(:final)
+    user_callback! = let phase = Ref(:init)
 
         function(mdl::Model)
 
@@ -162,8 +164,8 @@ function crosswind_landing(; gui::Bool = false,
 
             atmosphere.wind.u.E = 6
 
-            if phase[] === :final
-                #preselect modes and command references
+            if phase[] === :init
+
                 gdc.u.mode_req = ModeGuidance.segment
                 seg.u.target = final_leg
                 seg.u.hor_gdc_req = true
@@ -171,31 +173,42 @@ function crosswind_landing(; gui::Bool = false,
                 ctl.lon.u.EAS_ref = 30
                 vehicle.systems.act.flaps.u[] = 1.0
 
-                if vehicle.y.kinematics.h_e - final_leg.p2.h < 4
-                    println("Entering flare")
-                    phase[] = :flare
-                    # gdc.u.mode_req = ModeGuidance.direct
-                    # ctl.lon.u.mode_req = ModeControlLon.thr_EAS
-                    # ctl.lon.u.throttle_axis = 0
-                    ctl.lon.u.EAS_ref = 25
+                println("Entering final")
+                phase[] = :final
+
+            elseif phase[] === :final
+
+                if vehicle.y.kinematics.h_e - final_leg.p2.h < 6
+                    seg.u.vrt_gdc_req = false
+                    ctl.lon.u.mode_req = ModeControlLon.EAS_clm
+                    ctl.lon.u.clm_ref = -0.3
+
                     ctl.lat.u.mode_req = ModeControlLat.φ_β
                     ψ_current = vehicle.y.kinematics.e_nb.ψ
                     ψ_seg = seg.y.data.χ_12
                     ctl.lat.u.β_ref = Attitude.wrap_to_π(ψ_current - ψ_seg)
                     ctl.lat.u.φ_ref = 0
-                    #set neutral NWS for touchdown
-                    ctl.lat.u.rudder_axis = 0
+
+                    println("Entering flare")
+                    phase[] = :flare
                 end
+
             elseif phase[] === :flare
+
                 if is_on_gnd(vehicle)
+                    ctl.lon.u.throttle_axis = 0
+                    ctl.lat.u.rudder_axis = -0.04
+                    vehicle.systems.act.flaps.u[] = 0.0
                     println("Touchdown ")
                     phase[] = :ground
                 end
+
             elseif phase[] === :ground
+
                 ctl.lon.u.throttle_axis = 0
-                # ctl.lon.u.elevator_axis = -1
                 act.brake_left.u[] = 1
                 act.brake_right.u[] = 1
+
             end
 
         end #function
@@ -221,9 +234,7 @@ function crosswind_landing(; gui::Bool = false,
 end
 
 
-
-
-#############################
+################################################################################
 
 function traffic_pattern(; gui::Bool = false,
                             xp12_address = IPv4("127.0.0.1"),
@@ -250,15 +261,21 @@ function traffic_pattern(; gui::Bool = false,
             @unpack act, pwp = vehicle.systems
 
             t = mdl.t[]
+
             if phase[] === :standby
+
                 t >= 5 && (phase[] = :startup)
+
             elseif phase[] === :startup
+
                 pwp.engine.u.start = true
                 if pwp.engine.y.state === Piston.EngineState.running
                     pwp.engine.u.start = false
                     phase[] = :takeoff
                 end
+
             elseif phase[] === :takeoff
+
                 #preselect modes and command references
                 gdc.u.mode_req = ModeGuidance.segment
                 seg.u.target = departure_leg
@@ -270,26 +287,34 @@ function traffic_pattern(; gui::Bool = false,
                     println("Lift-off")
                     phase[] = :departure
                 end
+
             elseif phase[] === :departure
+
                 if avionics.y.gdc.seg.data.s_2b > capture_threshold
                     seg.u.target = crosswind_leg
                     println("Entering crosswind")
                     phase[] = :crosswind
                 end
+
             elseif phase[] === :crosswind
+
                 if avionics.y.gdc.seg.data.s_2b > capture_threshold
                     seg.u.target = downwind_leg
                     println("Entering downwind")
                     phase[] = :downwind
                 end
+
             elseif phase[] === :downwind
+
                 avionics.ctl.lon.u.EAS_ref = 50
                 if avionics.y.gdc.seg.data.s_2b > capture_threshold
                     seg.u.target = base_leg
                     println("Entering base")
                     phase[] = :base
                 end
+
             elseif phase[] === :base
+
                 avionics.ctl.lon.u.EAS_ref = 30
                 vehicle.systems.act.flaps.u[] = 1.0
                 if avionics.y.gdc.seg.data.s_2b > capture_threshold
@@ -297,32 +322,40 @@ function traffic_pattern(; gui::Bool = false,
                     println("Entering final")
                     phase[] = :final
                 end
+
             elseif phase[] === :final
-                if vehicle.y.kinematics.h_e - final_leg.p2.h < 4
-                    println("Entering flare")
-                    phase[] = :flare
-                    # gdc.u.mode_req = ModeGuidance.direct
-                    # ctl.lon.u.mode_req = ModeControlLon.thr_EAS
-                    # ctl.lon.u.throttle_axis = 0
-                    ctl.lon.u.EAS_ref = 25
+
+                if vehicle.y.kinematics.h_e - final_leg.p2.h < 6
+                    seg.u.vrt_gdc_req = false
+                    ctl.lon.u.mode_req = ModeControlLon.EAS_clm
+                    ctl.lon.u.clm_ref = -0.3
+
                     ctl.lat.u.mode_req = ModeControlLat.φ_β
                     ψ_current = vehicle.y.kinematics.e_nb.ψ
                     ψ_seg = seg.y.data.χ_12
                     ctl.lat.u.β_ref = Attitude.wrap_to_π(ψ_current - ψ_seg)
                     ctl.lat.u.φ_ref = 0
-                    #set neutral NWS for touchdown
-                    ctl.lat.u.rudder_axis = 0
+
+                    println("Entering flare")
+                    phase[] = :flare
                 end
+
             elseif phase[] === :flare
+
                 if is_on_gnd(vehicle)
-                    println("Touchdown ")
+                    ctl.lon.u.throttle_axis = 0
+                    ctl.lat.u.rudder_axis = -0.04
+                    vehicle.systems.act.flaps.u[] = 0.0
+                    println("Touchdown")
                     phase[] = :ground
                 end
+
             elseif phase[] === :ground
+
                 ctl.lon.u.throttle_axis = 0
-                # ctl.lon.u.elevator_axis = -1
                 act.brake_left.u[] = 1
                 act.brake_right.u[] = 1
+
             end
         end #function
     end

@@ -6,10 +6,9 @@ using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightAircraft
 
-#non-exported stuff
+using Flight.FlightAircraft.C172: is_on_gnd
 using Flight.FlightLib.Control.Discrete: load_pid_lookup, load_lqr_tracker_lookup
-using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat,
-        AltTrackingState, is_on_gnd
+using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat, AltTrackingState
 
 export test_c172y1
 

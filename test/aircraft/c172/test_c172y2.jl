@@ -6,8 +6,8 @@ using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightAircraft
 
-using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat,
-        AltTrackingState, is_on_gnd
+using Flight.FlightAircraft.C172: is_on_gnd
+using Flight.FlightAircraft.C172Y.C172YControl: ModeControlLon, ModeControlLat
 using Flight.FlightAircraft.C172Y.C172YGuidance: Segment, SegmentGuidanceData, ModeGuidance
 
 export test_c172y2
