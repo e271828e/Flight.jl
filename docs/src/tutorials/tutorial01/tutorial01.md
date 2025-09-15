@@ -22,16 +22,11 @@ From the main menu, click on *New Flight*. Select the Cessna Skyhawk as your air
 
 ![X-Plane 12 New Flight Screen](assets/xp12_new_flight.png)
 
-To switch to an external camera, press Shift+4. Right click and drag to rotate the view and
-use the mouse wheel to zoom in and out. To return to the cockpit camera, press Shift+0.
-
-![X-Plane 12 Settings Icon](assets/xp12_settings_icon.png)
-
-Move the mouse to the top of the screen to bring up the menu bar. Click on the *Settings* icon and
-go the *Network* tab. Make sure *Accept incoming connections* is enabled. Then, under the *UDP
-Ports* section, check the *Port we receive on (legacy)* value. The default is 49000, but you can use
-a different one if you need to. Finally, if you are running X-Plane on a different machine than your
-Julia session, note its IP address.
+Once X-Plane is done loading, move the mouse to the top of the screen to bring up the menu bar.
+Click on the *Settings* icon and go the *Network* tab. Make sure *Accept incoming connections* is
+enabled. Then, under the *UDP Ports* section, check the *Port we receive on (legacy)* value. The
+default is 49000, but you can use a different one if you need to. Finally, if you are running
+X-Plane on a different machine than your Julia session, note its IP address.
 
 ![X-Plane 12 Network Settings](assets/xp12_network_settings.png)
 
@@ -46,6 +41,11 @@ framerate. To display the framerate on screen, go to the *Data Output* tab, find
 entry in the table and enable the *Show in cockpit* option.
 
 ![X-Plane 12 Data Output](assets/xp12_data_output.png)
+
+To switch to an external camera, press Shift+4. You can right click and drag to rotate the view and
+use the mouse wheel to zoom in and out. To return to the cockpit camera, press Shift+0.
+
+![X-Plane 12 External](assets/xp12_external.png)
 
 This concludes our X-Plane setup, now let's move on to Julia.
 
@@ -77,7 +77,7 @@ nothing # hide
     since our simulation's physics are totally independent from X-Plane's terrain mesh. This disconnect will
     become apparent as soon as the aircraft starts rolling down the runway.
 
-Our simulated world will consist of an aircraft, an atmospheric model and a terrain model:
+Now, let's create our simulated world:
 
 ```@example tutorial01
 aircraft = Cessna172Xv1()
@@ -90,15 +90,15 @@ nothing # hide
  ```SimpleAtmosphere``` provides a basic,
 [ISA](https://en.wikipedia.org/wiki/International_Standard_Atmosphere)-based atmosphere with
 customizable sea-level conditions and wind velocity. ```HorizontalTerrain``` represents a surface
-with constant orthometric elevation, which we have set to our previous value for the beginning of
-runway 15. Finally, ```Cessna172Xv1``` is a hypothetical customization of a Cessna 172S. It replaces
-the reversible actuation system on the base model with a digital fly-by-wire flight control system,
+with constant orthometric elevation, which we have set to our value for the beginning of runway 15.
+Finally, ```Cessna172Xv1``` is a hypothetical customization of a Cessna 172S. It replaces the
+reversible actuation system on the base model with a digital fly-by-wire flight control system,
 which we will leverage in this example. Note that this aircraft does not aim to replicate the
 internals or interface of any specific real-world autopilot. Its purpose is simply to illustrate how
 the ```Flight.jl``` framework may be used to design, implement and test complex control
 architectures\.
 
-We can now create our simulation:
+We can now build our simulation:
 ```@example tutorial01
 sim = Simulation(world; dt = 0.01) #specifies a suitable integration step size
 nothing # hide
@@ -130,15 +130,14 @@ nothing # hide
     nothing # hide
     ```
 
-```Flight.jl``` provides basic joystick support via [SDL2_jll]
-(https://github.com/JuliaBinaryWrappers/SDL2_jll.jl). Currently, Thrustmaster's T.16000M is the only
-implemented model. Adding support for other joysticks should be relatively straightforward, but we
-will not get into it here. If you happen to have a T.16000M available, you can plug it in now and do
-the following:
+```Flight.jl``` provides a generic joystick interface built on [SDL2_jll]
+(https://github.com/JuliaBinaryWrappers/SDL2_jll.jl). Currently, Thrustmaster's T.16000M and
+VKBSim's Gladiator Evo NXT are the only supported models. If you happen to have one of them, you
+can plug it in now and do the following:
 
 ```@example tutorial01
 for joystick in update_connected_joysticks()
-    isa(joystick, Joysticks.T16000M) && Sim.attach!(sim, joystick)
+    Sim.attach!(sim, joystick)
 end
 ```
 
@@ -179,7 +178,7 @@ will open:
 The *Simulation Control* panel lets you pause or resume the simulation, and set its pace relative to
 wall clock time. To abort the simulation, simply close the GUI window.
 
-The other panel is specific to our simulated ```Model```. A complex ```Model``` like ours
+The other panel is specific to the simulated ```Model```. A complex ```Model``` like ours
 comprises a hierarchy of components. Each component is itself a ```Model```, and it typically
 defines its own GUI panel, which can be accessed from that of its parent. Feel free to explore the
 GUI to get a picture of the underlying component hierarchy and discover different ways of
@@ -199,25 +198,26 @@ simulation has taken control of the visuals.
 
 !!! note "X-Plane 12 Demo Time Limit"
 
-    The X-Plane 12 demo is time-limited to 15 minutes. After that, an on-screen pop-up will appear. To
-    get rid of it, you can restart X-Plane and click on *Resume Last Flight*. You will then need to
-    abort the simulation, reset it and run it again:
+    As of this writing, the X-Plane 12 demo is time-limited to 60 minutes. After that, an on-screen
+    pop-up will appear. To get rid of it, you can simply restart X-Plane and click on *Resume Last
+    Flight*. Then, reset the simulation and run it again:
 
     ```julia
     Sim.init!(sim, init_gnd)
     Sim.run!(sim; gui = true)
     ```
 
-Now return to the GUI and navigate to *Aircraft > Avionics > Flight Control*. This panel contains
-all the flight control inputs and instrumentation for the ```Cessna172Xv1``` model.
+Now return to the GUI and navigate to the *Aircraft > Vehicle > Systems > Power Plant > Engine*
+panel. Expand the *Control* header and press the *Engine Start* button. You can check the engine
+parameters under the *Data* header to confirm it is running. If you try to move the *Throttle*
+slider, you will notice it does not work. The reason is that, in this aircraft, throttle is not
+controlled directly, but through the fly-by-wire flight control system.
 
-First, locate the *Engine Start* button under the *Engine* section. Press and hold it for a couple
-of seconds to start the engine.
-
-Next, expand the *Longitudinal Control Channel* and *Lateral Control Channel* sections. The first
-one computes throttle and elevator commands. The second one computes aileron and rudder commands.
-Both are initialized in *Direct* mode, wherein each actuator command is set directly to the sum of
-its corresponding *Axis* and *Offset* values. With *Direct* mode active on both channels, you are
+Let's check out the flight control system's interface. Navigate to *Aircraft > Avionics* and expand
+the *Longitudinal Control Channel* and *Lateral Control Channel* sections. The first one computes
+throttle and elevator commands. The second one computes aileron and rudder commands. Both are
+initialized in *Direct* mode, wherein each actuator command is set directly to the sum of its
+corresponding *Axis* and *Offset* values. With *Direct* mode active on both channels, you are
 essentially flying the base Cessna 172S model, except for the additional actuator dynamics.
 
 Try moving the control surfaces using the *Axis* and *Offset* inputs, and observe the result on the
@@ -234,16 +234,15 @@ zero.
     To assign a precise value to a control slider, use Ctrl+Click (on Windows)
     or Cmd+click (on Mac) to enable keyboard input.
 
-Under *Longitudinal Control*, select the *Pitch SAS* mode. In this mode, direct throttle
-control is preserved, but elevator inputs are fed to a pitch compensator, which computes the actual
-elevator actuator commands. The pitch compensator modifies the natural short-period and phugoid
-modes, providing a smoother, more stable pitch response. When clicked, the button will turn amber,
-indicating the mode is now on standby; it will engage automatically upon lift off.
+Under *Longitudinal Control*, select the *Throttle/Pitch SAS* mode. In this mode, throttle and
+elevator inputs are fed to a longitudinal stability compensator, which computes the actual throttle
+and elevator actuator commands. This modifies the natural short-period and phugoid modes, providing
+a smoother, more stable pitch response. When clicked, the button will turn amber, indicating the
+mode is now on standby; it will engage automatically upon lift off.
 
-Under *Lateral Control*, select the *Roll/Yaw SAS* mode. In this mode, both aileron and rudder
-inputs are fed to a lateral compensator, which simultaneously computes aileron and rudder actuator
-commands. This improves the aircraft's Dutch roll response and stabilizes its naturally unstable
-spiral mode.
+Under *Lateral Control*, select the *Roll/Yaw SAS* mode. In this mode, aileron and rudder inputs are
+fed to a lateral stability compensator, which computes aileron and rudder actuator commands. This
+improves the aircraft's Dutch roll response and stabilizes its naturally unstable spiral mode.
 
 Currently, the GUI does not have a graphical instrument panel. Instead, the *Flight Data* section
 provides readouts for all essential variables. This will be particularly useful if you're running
@@ -259,25 +258,21 @@ the aircraft accelerate and lift off on its own.
 Once airborne, you will see the previously selected SAS modes turn from amber to green. Let the
 aircraft climb for a while to give yourself some clearance. Then, spend some time flying with the
 SAS modes enabled. When you feel comfortable with the controls, try switching back and forth between
-the *Direct* and *Pitch SAS* modes, and compare the aircraft's response to elevator input. You can
-do the same with the *Direct* and *Roll/Yaw SAS* modes to compare aileron and rudder responses, but
-mind the spiral mode instability!
+the *Direct* and *SAS* longitudinal modes, and compare the aircraft's response to elevator input.
+You can do the same with the *Direct* and *SAS* lateral modes to compare aileron and rudder
+responses, but mind the spiral mode instability!
 
 !!! tip "Crashing"
 
     If the landing gear model detects a crash, it will throw an exception and the simulation will
-    abort. No worries, just reset it and have another go:
-    ```julia
-    Sim.init!(sim, init_gnd)
-    Sim.run!(sim; gui = true)
-    ```
+    abort. No worries, just reset it and have another go.
 
 Next, try the *EAS + Pitch Rate* mode. This mode combines an autothrottle loop with a pitch rate
-loop built on top of the pitch SAS. Activating this mode will disable all *Throttle* and *Elevator*
-inputs and enable the *EAS* and *Pitch Rate* commands. The numerical readout to the right of each
-command slider shows the current value of its target variable. Try changing the *EAS* command and
-observe the response. Then, experiment with the *Pitch Rate* command. While doing so, keep in mind
-that an arbitrary pitch rate cannot be sustained indefinitely!
+loop built on top of the longitudinal SAS. Activating this mode will disable all *Throttle* and
+*Elevator* inputs and enable the *EAS* and *Pitch Rate* commands. The numerical readout to the right
+of each command slider shows the current value of its target variable. Try changing the *EAS*
+command and observe the response. Then, experiment with the *Pitch Rate* command. While doing so,
+keep in mind that an arbitrary pitch rate cannot be sustained indefinitely!
 
 !!! note "Mode Transitions"
 
@@ -301,9 +296,9 @@ maintain the commanded course angle, while also tracking the commanded sideslip 
 
 ![Course Tracking GUI](assets/gui_course.png)
 
-One final hint before wrapping up. If the whole take-off sequence starts getting tedious, you can
-skip it entirely by using the trim functionality to initialize the aircraft in flight. Here's how to
-do it:
+Feel free to explore the remaining control modes on your own. One final hint before wrapping up: if
+the whole take-off sequence starts getting tedious, you can skip it entirely by using the trim
+functionality to initialize the aircraft in flight. Here's how to do it:
 ```@example tutorial01
 init_air = C172.TrimParameters(;
     Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above runway 15
@@ -316,12 +311,3 @@ init_air = C172.TrimParameters(;
 )
 Sim.init!(sim, init_air)
 ```
-
-Feel free to explore the remaining control modes and the altitude guidance function on your own. For
-more information on ```Cessna172Xv1```'s flight controller, check out the [source
-code](https://github.com/e271828e/Flight.jl/blob/master/src/aircraft/c172/c172x/control/c172x_ctl.jl)
-and the design notebooks for the
-[longitudinal](https://github.com/e271828e/Flight.jl/blob/master/src/aircraft/c172/c172x/control/design/c172x_lon.ipynb)
-and
-[lateral](https://github.com/e271828e/Flight.jl/blob/master/src/aircraft/c172/c172x/control/design/c172x_lat.ipynb)
-control channels.
