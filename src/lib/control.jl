@@ -1142,14 +1142,6 @@ function assign!(lqr::Model{<:LQRTracker}, params::LQRTrackerPoint)
     lqr.u.z_trim .= z_trim
 end
 
-# const LQRTrackerParamsStatic{NX, NU, NZ, NUX, NUZ} = LQRTrackerParams{
-#     SMatrix{NU, NX, Float64, NUX},
-#     SMatrix{NU, NZ, Float64, NUZ},
-#     SMatrix{NU, NZ, Float64, NUZ},
-#     SVector{NX, Float64},
-#     SVector{NU, Float64},
-#     SVector{NZ, Float64}}
-
 
 ############################# Lookups ##########################################
 ################################################################################
@@ -1164,28 +1156,28 @@ const LQRTrackerLookup = LQRTrackerParams{CB, CF, CI, X, U, Z} where {
     U <: AbstractInterpolation,
     Z <: AbstractInterpolation}
 
-function (lookup::PIDLookup)(EAS::Real, h::Real)
+function (lookup::PIDLookup)(args::Vararg{Real, N}) where {N}
     @unpack k_p, k_i, k_d, τ_f = lookup
-    PIDParams(; k_p = k_p(EAS, h),
-                k_i = k_i(EAS, h),
-                k_d = k_d(EAS, h),
-                τ_f = τ_f(EAS, h)
+    PIDParams(; k_p = k_p(args...),
+                k_i = k_i(args...),
+                k_d = k_d(args...),
+                τ_f = τ_f(args...)
                 )
 end
 
-function (lookup::LQRTrackerLookup)(EAS::Real, h::Real)
+function (lookup::LQRTrackerLookup)(args::Vararg{Real, N}) where {N}
     @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = lookup
     LQRTrackerParams(;
-        C_fbk = C_fbk(EAS, h),
-        C_fwd = C_fwd(EAS, h),
-        C_int = C_int(EAS, h),
-        x_trim = x_trim(EAS, h),
-        u_trim = u_trim(EAS, h),
-        z_trim = z_trim(EAS, h),
+        C_fbk = C_fbk(args...),
+        C_fwd = C_fwd(args...),
+        C_int = C_int(args...),
+        x_trim = x_trim(args...),
+        u_trim = u_trim(args...),
+        z_trim = z_trim(args...),
         )
 end
 
-#save and load functions are agnostic about the number and lengths of
+#save and load functions are agnostic regarding the number and lengths of
 #interpolation dimensions
 function save_lookup(params::Union{Array{<:LQRTrackerParams, N}, Array{<:PIDParams, N}},
                     bounds::NTuple{N, Tuple{Real, Real}},
