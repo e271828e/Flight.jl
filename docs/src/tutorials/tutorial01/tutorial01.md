@@ -131,9 +131,10 @@ nothing # hide
     ```
 
 ```Flight.jl``` provides a generic joystick interface built on [SDL2_jll]
-(https://github.com/JuliaBinaryWrappers/SDL2_jll.jl). Currently, Thrustmaster's T.16000M and
-VKBSim's Gladiator Evo NXT are the only supported models. If you happen to have one of them, you
-can plug it in now and do the following:
+(https://github.com/JuliaBinaryWrappers/SDL2_jll.jl). Currently, Thrustmaster's
+[T.16000M](https://www.thrustmaster.com/products/t-16000m-fcs/) and VKBSim's [Gladiator NXT
+Evo](https://flightsimcontrols.com/product/gladiator-evo-space-combat-edition/) are the only
+supported models. If you happen to own one of these, you can plug it in now and do the following:
 
 ```@example tutorial01
 for joystick in update_connected_joysticks()
@@ -165,12 +166,12 @@ Sim.init!(sim, init_gnd)
 
 ### Running the Simulation
 
-Now we can finally start the simulation:
+Now we can finally run the simulation:
 ```julia
 Sim.run!(sim; gui = true)
 ```
 
-After a few seconds, the simulation will launch, and a new OS window containing the built-in GUI
+After a few seconds, the simulation will start, and a new OS window containing the built-in GUI
 will open:
 
 ![Default GUI](assets/gui_default.png)
@@ -207,16 +208,19 @@ simulation has taken control of the visuals.
     Sim.run!(sim; gui = true)
     ```
 
-Now return to the GUI and navigate to the *Aircraft > Vehicle > Systems > Power Plant > Engine*
-panel. Expand the *Control* header and press the *Engine Start* button. You can check the engine
-parameters under the *Data* header to confirm it is running. If you try to move the *Throttle*
-slider, you will notice it does not work. The reason is that, in this aircraft, throttle is not
-controlled directly, but through the fly-by-wire flight control system.
+Now return to the GUI and navigate to *Aircraft > Vehicle > Systems > Power Plant > Engine*. Expand
+the *Control* header and press the *Engine Start* button. To confirm the engine is running, you can
+check the engine parameters under the *Data* header.
 
-Let's check out the flight control system's interface. Navigate to *Aircraft > Avionics* and expand
-the *Longitudinal Control Channel* and *Lateral Control Channel* sections. The first one computes
-throttle and elevator commands. The second one computes aileron and rudder commands. Both are
-initialized in *Direct* mode, wherein each actuator command is set directly to the sum of its
+![GUI Engine Start](assets/gui_engine_start.png)
+
+If you now try to drag the *Throttle* slider, you will notice it does not move. The reason is that,
+on this aircraft, throttle is controlled through the fly-by-wire flight control system.
+
+You can find the flight control system's interface under *Aircraft > Avionics*. Expand its
+*Longitudinal Control* and *Lateral Control* sections. The longitudinal control channel computes
+throttle and elevator commands. The lateral control channel computes aileron and rudder commands.
+Both are initialized in *Direct* mode, wherein each actuator command is simply the sum of its
 corresponding *Axis* and *Offset* values. With *Direct* mode active on both channels, you are
 essentially flying the base Cessna 172S model, except for the additional actuator dynamics.
 
@@ -234,14 +238,14 @@ zero.
     To assign a precise value to a control slider, use Ctrl+Click (on Windows)
     or Cmd+click (on Mac) to enable keyboard input.
 
-Under *Longitudinal Control*, select the *Throttle/Pitch SAS* mode. In this mode, throttle and
-elevator inputs are fed to a longitudinal stability compensator, which computes the actual throttle
-and elevator actuator commands. This modifies the natural short-period and phugoid modes, providing
-a smoother, more stable pitch response. When clicked, the button will turn amber, indicating the
-mode is now on standby; it will engage automatically upon lift off.
+Under *Longitudinal Control*, select the *SAS* mode. In this mode, throttle and elevator inputs are
+fed to a longitudinal stability compensator, which computes the actual throttle and elevator
+actuator commands. This modifies the natural short-period and phugoid modes, providing a smoother,
+more stable pitch response. When clicked, the button will turn amber, indicating the mode is now on
+standby; it will engage automatically upon lift off.
 
-Under *Lateral Control*, select the *Roll/Yaw SAS* mode. In this mode, aileron and rudder inputs are
-fed to a lateral stability compensator, which computes aileron and rudder actuator commands. This
+Under *Lateral Control*, select the *SAS* mode. In this mode, aileron and rudder inputs are fed to a
+lateral stability compensator, which computes the actual aileron and rudder actuator commands. This
 improves the aircraft's Dutch roll response and stabilizes its naturally unstable spiral mode.
 
 Currently, the GUI does not have a graphical instrument panel. Instead, the *Flight Data* section
@@ -280,8 +284,8 @@ keep in mind that an arbitrary pitch rate cannot be sustained indefinitely!
     values to provide a smooth transition. The exception are *Pitch Rate* and *Roll Rate* commands,
     which are always initialized to zero.
 
-When you are done, enable the *EAS + Climb Rate* mode. Set the *EAS* command to 50 m/s and the
-*Climb Rate* command to zero. This will hold your altitude throughout the next steps.
+When you are done, enable the *EAS + Altitude Hold* mode and set the *EAS* command to 50 m/s. This
+will hold your altitude throughout the next steps.
 
 If you have attempted any turns so far, you may have noticed that the *Roll/Yaw SAS* mode does not
 provide automatic turn coordination. For this, you can use one of the higher level lateral modes,
@@ -297,7 +301,7 @@ maintain the commanded course angle, while also tracking the commanded sideslip 
 ![Course Tracking GUI](assets/gui_course.png)
 
 Feel free to explore the remaining control modes on your own. One final hint before wrapping up: if
-the whole take-off sequence starts getting tedious, you can skip it entirely by using the trim
+the take-off sequence starts getting tedious, you can skip it entirely by using the trim
 functionality to initialize the aircraft in flight. Here's how to do it:
 ```@example tutorial01
 init_air = C172.TrimParameters(;

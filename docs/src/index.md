@@ -52,8 +52,3 @@ Key features:
 
 *   **Pre-Built Aircraft Components:** Comes with high-fidelity, efficient and customizable models for
     propellers, piston engines and landing gear.
-
-*   **Integrated Control Design Workflow:** Provides general-purpose trimming and linearization
-    functions. Seamlessly import linearized models into the `ControlSystems.jl` ecosystem for
-    controller synthesis. Then, realize your design in a practical, discrete-time implementation, and
-    validate it via nonlinear simulation.

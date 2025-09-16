@@ -717,7 +717,7 @@ end
 
 function GUI.draw!( systems::Model{<:Systems}, ::Model{<:AbstractAvionics},
                     p_open::Ref{Bool} = Ref(true),
-                    label::String = "Cessna 172 Systems")
+                    label::String = "Systems")
 
     @unpack act, pwp, ldg, aero, fuel, pld = systems
 
@@ -734,7 +734,7 @@ function GUI.draw!( systems::Model{<:Systems}, ::Model{<:AbstractAvionics},
             c_act && @c GUI.draw!(act, &c_act)
             c_aero && @c GUI.draw(aero, &c_aero)
             c_ldg && @c GUI.draw(ldg, &c_ldg)
-            c_pwp && @c GUI.draw(pwp, &c_pwp)
+            c_pwp && @c GUI.draw(pwp, &c_pwp, "Power Plant")
             c_fuel && @c GUI.draw(fuel, &c_fuel)
             c_pld && @c GUI.draw!(pld, &c_pld)
         end)
