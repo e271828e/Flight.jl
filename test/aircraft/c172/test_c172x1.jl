@@ -7,7 +7,7 @@ using Flight.FlightLib
 using Flight.FlightAircraft
 
 using Flight.FlightAircraft.C172: is_on_gnd
-using Flight.FlightLib.Control.Discrete: load_pid_lookup, load_lqr_tracker_lookup
+using Flight.FlightLib.Control.Discrete: build_lookup_pid, build_lookup_lqr
 using Flight.FlightAircraft.C172X.C172XControl: ModeControlLon, ModeControlLat, AltTrackingState
 
 export test_c172x1
@@ -128,7 +128,7 @@ function test_c172x1(; alloc::Bool = true)
         @test ctl.y.lon.mode === ModeControlLon.sas
 
         #check the correct parameters are loaded and assigned to the controller
-        te2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "te2te_lookup.h5"))
+        te2te_lookup = build_lookup_lqr(joinpath(data_folder, "te2te.h5"))
         C_fwd = te2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
         @test all(isapprox.(ctl.y.lon.te2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 
@@ -154,7 +154,7 @@ function test_c172x1(; alloc::Bool = true)
         @test ctl.y.lat.mode === ModeControlLat.sas
 
         #check the correct parameters are loaded and assigned to the controller
-        ar2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "ar2ar_lookup.h5"))
+        ar2ar_lookup = build_lookup_lqr(joinpath(data_folder, "ar2ar.h5"))
         C_fwd = ar2ar_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
         @test all(isapprox.(ctl.y.lat.ar2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
 
@@ -179,7 +179,7 @@ function test_c172x1(; alloc::Bool = true)
         @test ctl.y.lat.mode === ModeControlLat.φ_β
 
         #check the correct parameters are loaded and assigned to the controller
-        φβ2ar_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "φβ2ar_lookup.h5"))
+        φβ2ar_lookup = build_lookup_lqr(joinpath(data_folder, "φβ2ar.h5"))
         C_fwd = φβ2ar_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
         @test all(isapprox.(ctl.y.lat.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
 
@@ -217,7 +217,7 @@ function test_c172x1(; alloc::Bool = true)
         @test ctl.y.lat.mode === ModeControlLat.p_β
 
         #check the correct parameters are loaded and assigned to the controller
-        p2φ_lookup = load_pid_lookup(joinpath(data_folder, "p2φ_lookup.h5"))
+        p2φ_lookup = build_lookup_pid(joinpath(data_folder, "p2φ.h5"))
         k_p = p2φ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lat.p2φ_pid.k_p, k_p; atol = 1e-6))
 
@@ -258,7 +258,7 @@ function test_c172x1(; alloc::Bool = true)
         @test ctl.y.lat.mode === ModeControlLat.χ_β
 
         #check the correct parameters are loaded and assigned to the controller
-        χ2φ_lookup = load_pid_lookup(joinpath(data_folder, "χ2φ_lookup.h5"))
+        χ2φ_lookup = build_lookup_pid(joinpath(data_folder, "χ2φ.h5"))
         k_p = χ2φ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lat.χ2φ_pid.k_p, k_p; atol = 1e-6))
 
@@ -302,7 +302,7 @@ function test_c172x1(; alloc::Bool = true)
         @test ctl.y.lon.mode === ModeControlLon.thr_q
 
         #check the correct parameters are loaded and assigned to the controller
-        q2e_lookup = load_pid_lookup(joinpath(data_folder, "q2e_lookup.h5"))
+        q2e_lookup = build_lookup_pid(joinpath(data_folder, "q2e.h5"))
         k_p = q2e_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lon.q2e_pid.k_p, k_p; atol = 1e-6))
 
@@ -368,7 +368,7 @@ function test_c172x1(; alloc::Bool = true)
         @test ctl.y.lon.mode === ModeControlLon.thr_EAS
 
         #check the correct parameters are loaded and assigned to the controller
-        tv2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "tv2te_lookup.h5"))
+        tv2te_lookup = build_lookup_lqr(joinpath(data_folder, "tv2te.h5"))
         C_fwd = tv2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
         @test all(isapprox.(ctl.y.lon.tv2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 
@@ -402,7 +402,7 @@ function test_c172x1(; alloc::Bool = true)
 
         #check the correct parameters are loaded and assigned to v2t, the q
         #tracker is shared with other modes
-        v2t_lookup = load_pid_lookup(joinpath(data_folder, "v2t_lookup.h5"))
+        v2t_lookup = build_lookup_pid(joinpath(data_folder, "v2t.h5"))
         k_p = v2t_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lon.v2t_pid.k_p, k_p; atol = 1e-6))
 
@@ -477,7 +477,7 @@ function test_c172x1(; alloc::Bool = true)
         @test ctl.y.lon.mode === ModeControlLon.EAS_clm
 
         #check the correct parameters are loaded and assigned to the controller
-        c2θ_lookup = load_pid_lookup(joinpath(data_folder, "c2θ_lookup.h5"))
+        c2θ_lookup = build_lookup_pid(joinpath(data_folder, "c2θ.h5"))
         k_p = c2θ_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).k_p
         @test all(isapprox.(ctl.y.lon.c2θ_pid.k_p, k_p; atol = 1e-6))
 
@@ -511,7 +511,7 @@ function test_c172x1(; alloc::Bool = true)
         step!(sim, ctl.Δt, true)
 
         #check the correct parameters are loaded and assigned to the controller
-        vh2te_lookup = load_lqr_tracker_lookup(joinpath(data_folder, "vh2te_lookup.h5"))
+        vh2te_lookup = build_lookup_lqr(joinpath(data_folder, "vh2te.h5"))
         C_fwd = vh2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
         @test all(isapprox.(ctl.y.lon.vh2te_lqr.C_fwd, C_fwd; atol = 1e-6))
 

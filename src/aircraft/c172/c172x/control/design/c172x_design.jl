@@ -4,7 +4,7 @@ using Flight
 using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightLib.Control.Continuous: LinearizedSS, submodel
-using Flight.FlightLib.Control.Discrete: PIDParams, LQRTrackerParams, save_lookup
+using Flight.FlightLib.Control.Discrete: PIDParams, LQRParams, save_data
 using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
 using Flight.FlightAircraft.C172
@@ -86,14 +86,12 @@ function get_design_model!(
 
 end
 
-
-
-#sweeps the envelope in EAS and altitude to generate each control channel's gain
+#sweep the envelope in EAS and altitude to generate each control channel's gain
 #scheduling lookup tables
 
 function generate_lookups(
-    EAS_range::AbstractRange{Float64} = range(25, 55, length = 7),
-    h_range::AbstractRange{Float64} = range(50, 3050, length = 4);
+    EAS_range::AbstractRange{Float64} = range(25, 55, length = 7), #7
+    h_range::AbstractRange{Float64} = range(50, 3050, length = 4); #4
     channel::Symbol = :lon,
     global_search::Bool = false,
     folder::String = joinpath(dirname(@__DIR__), "data"))
@@ -120,19 +118,19 @@ function generate_lookups(
 
     end |> StructArray |> StructArrays.components
 
-    filenames = joinpath.(folder, string.(keys(results)) .* "_lookup.h5")
+    filenames = joinpath.(folder, string.(keys(results)) .* ".h5")
 
     bounds = ((EAS_range[1], EAS_range[end]), (h_range[1], h_range[end]))
 
     foreach(values(results), filenames) do data, fname
-        save_lookup(data, bounds, joinpath(folder, fname))
+        save_data(data, bounds, joinpath(folder, fname))
     end
 
     return results
 
 end
 
-#automates the design process from c172x_lon.ipynb, generating the parameters
+#automate the design process from c172x_lon.ipynb, generating the parameters
 #for all controllers at the specified design point
 
 function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
@@ -236,7 +234,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_te2te = connect([P_red, throttle_sum, elevator_sum, C_fbk_ss, C_fwd_ss],
             connections; w1 = [:throttle_cmd_ref, :elevator_cmd_ref], z1 = P_red.y)
 
-        params_te2te = LQRTrackerParams(; #export everything as plain arrays
+        params_te2te = LQRParams(; #export everything as plain arrays
             C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -287,37 +285,6 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
                         w1 = [:throttle_cmd_ref, :θ_ref], z1 = P_tq.y);
 
         P_tθ
-
-    end
-
-    P_tv, params_v2θ = let
-
-        P_θ2v = P_tθ[:EAS, :θ_ref]
-        P_θ2v_opt = -P_θ2v
-
-        t_sim_v2θ = 20
-        lower_bounds = PIDParams(; k_p = 0.01, k_i = 0.000, k_d = 0.0, τ_f = 0.01)
-        upper_bounds = PIDParams(; k_p = 0.2, k_i = 0.05, k_d = 0.0, τ_f = 0.01)
-        settings = Settings(; t_sim = t_sim_v2θ, lower_bounds, upper_bounds)
-        weights = Metrics(; Ms = 2.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.0)
-        params_0 = PIDParams(; k_p = 0.05, k_i = 0.01, k_d = 0.0, τ_f = 0.01)
-
-        v2θ_results = optimize_PID(P_θ2v_opt; params_0, settings, weights, global_search)
-
-        params_v2θ = v2θ_results.params
-        if !check_results(v2θ_results, Metrics(; Ms = 1.6, ∫e = 0.3, ef = 0.04, ∫u = Inf, up = Inf))
-            @warn("Checks failed for EAS to θ PID, design point $(design_point), final metrics $(v2θ_results.metrics)")
-        end
-
-        v2θ_pid = build_PID(v2θ_results.params)
-        C_v2θ = -v2θ_pid
-        C_v2θ = named_ss(ss(C_v2θ), :C_v2θ; u = :EAS_err, y = :θ_ref)
-
-        v2θ_sum = sumblock("EAS_err = EAS_ref - EAS")
-        P_tv = connect([P_tθ, v2θ_sum, C_v2θ], [:EAS_err=>:EAS_err, :EAS=>:EAS, :θ_ref=>:θ_ref],
-        w1 = [:throttle_cmd_ref, :EAS_ref], z1 = P_tθ.y)
-
-        (P_tv, params_v2θ)
 
     end
 
@@ -493,7 +460,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
-        params_tv2te = LQRTrackerParams(;
+        params_tv2te = LQRParams(;
             C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -617,7 +584,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
-        params_vh2te = LQRTrackerParams(;
+        params_vh2te = LQRParams(;
             C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -625,13 +592,12 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     end
 
-    return (te2te = params_te2te, q2e = params_q2e, v2θ = params_v2θ,
-            v2t = params_v2t, c2θ = params_c2θ, tv2te = params_tv2te,
-            vh2te = params_vh2te)
+    return (te2te = params_te2te, q2e = params_q2e, v2t = params_v2t,
+            c2θ = params_c2θ, tv2te = params_tv2te, vh2te = params_vh2te)
 
 end
 
-#automates the design process from c172x_lat.ipynb, generating the parameters
+#automate the design process from c172x_lat.ipynb, generating the parameters
 #for all controllers at the specified design point
 function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
                     global_search::Bool = false)
@@ -714,7 +680,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_ar = connect([P_lat, aileron_sum, rudder_sum, C_fbk_ss, C_fwd_ss],
                         connections_fbk; w1 = z_labels_ref, z1 = P_lat.y)
 
-        params_ar2ar = LQRTrackerParams(;
+        params_ar2ar = LQRParams(;
             C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -794,7 +760,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
 
         #convert everything to plain arrays
-        params_φβar = LQRTrackerParams(;
+        params_φβar = LQRParams(;
             C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 

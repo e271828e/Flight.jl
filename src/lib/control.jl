@@ -690,10 +690,6 @@ function Control.reset!(mdl::Model{<:PID})
     mdl.s.sat_out_0 = 0
 end
 
-function assign!(mdl::Model{<:PID}, params::PIDParams{<:Real})
-    @unpack k_p, k_i, k_d, τ_f = params
-    @pack! mdl.u = k_p, k_i, k_d, τ_f
-end
 
 @no_ode PID
 @no_step PID
@@ -968,19 +964,19 @@ end #function
 GUI.draw!(mdl::Model{<:PID}, label::String = "Discrete PID") = GUI.draw(mdl, label)
 
 
-############################## LQRTracker ######################################
+############################## LQR ######################################
 ################################################################################
 
-struct LQRTracker{NX, NU, NZ, NUX, NUZ} <: ModelDefinition end
+struct LQR{NX, NU, NZ, NUX, NUZ} <: ModelDefinition end
 
-function LQRTracker{NX, NU, NZ}() where {NX, NU, NZ}
+function LQR{NX, NU, NZ}() where {NX, NU, NZ}
     @assert NZ <= NU "Can't have more command variables than control inputs"
     NUX = NU * NX
     NUZ = NU * NZ
-    LQRTracker{NX, NU, NZ, NUX, NUZ}()
+    LQR{NX, NU, NZ, NUX, NUZ}()
 end
 
-@kwdef struct LQRTrackerInput{NX, NU, NZ, NUX, NUZ}
+@kwdef struct LQRInput{NX, NU, NZ, NUX, NUZ}
     C_fbk::MMatrix{NU, NX, Float64, NUX} = zeros(NU, NX) #state feedback matrix
     C_fwd::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #feedforward matrix
     C_int::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #integrator gain matrix
@@ -995,13 +991,13 @@ end
     x::MVector{NX, Float64} = zeros(NX) #current state vector value
 end
 
-function LQRTrackerInput{NX, NU, NZ}(args...; kwargs...) where {NX, NU, NZ}
+function LQRInput{NX, NU, NZ}(args...; kwargs...) where {NX, NU, NZ}
     NUX = NU * NX
     NUZ = NU * NZ
-    LQRTrackerInput{NX, NU, NZ, NUX, NUZ}(args...; kwargs...)
+    LQRInput{NX, NU, NZ, NUX, NUZ}(args...; kwargs...)
 end
 
-@kwdef struct LQRTrackerOutput{NX, NU, NZ, NUX, NUZ}
+@kwdef struct LQROutput{NX, NU, NZ, NUX, NUZ}
     C_fbk::SMatrix{NU, NX, Float64, NUX} = zeros(SMatrix{NU, NX}) #state feedback matrix
     C_fwd::SMatrix{NU, NZ, Float64, NUZ} = zeros(SMatrix{NU, NZ}) #feedforward matrix
     C_int::SMatrix{NU, NZ, Float64, NUZ} = zeros(SMatrix{NU, NZ}) #integrator gain matrix
@@ -1022,30 +1018,30 @@ end
     output::SVector{NU,Float64} = zeros(SVector{NU}) #actual output
 end
 
-function LQRTrackerOutput{NX, NU, NZ}(args...; kwargs...) where {NX, NU, NZ}
+function LQROutput{NX, NU, NZ}(args...; kwargs...) where {NX, NU, NZ}
     NUX = NU * NX
     NUZ = NU * NZ
-    LQRTrackerOutput{NX, NU, NZ, NUX, NUZ}(args...; kwargs...)
+    LQROutput{NX, NU, NZ, NUX, NUZ}(args...; kwargs...)
 end
 
-@kwdef struct LQRTrackerState{NX, NU}
+@kwdef struct LQRState{NX, NU}
     int_out_0::MVector{NU,Float64} = zeros(NU) #previous integrator path state
     out_sat_0::MVector{NU,Int64} = zeros(NU) #previous output saturation status
 end
 
-function Modeling.Y(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
-    LQRTrackerOutput{NX, NU, NZ, NUX, NUZ}()
+function Modeling.Y(::LQR{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+    LQROutput{NX, NU, NZ, NUX, NUZ}()
 end
 
-function Modeling.U(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
-    LQRTrackerInput{NX, NU, NZ, NUX, NUZ}()
+function Modeling.U(::LQR{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+    LQRInput{NX, NU, NZ, NUX, NUZ}()
 end
 
-function Modeling.S(::LQRTracker{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
-    LQRTrackerState{NX, NU}()
+function Modeling.S(::LQR{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
+    LQRState{NX, NU}()
 end
 
-function Control.reset!(mdl::Model{<:LQRTracker})
+function Control.reset!(mdl::Model{<:LQR})
     mdl.u.z_ref .= 0
     mdl.u.z .= 0
     mdl.u.x .= 0
@@ -1054,10 +1050,10 @@ function Control.reset!(mdl::Model{<:LQRTracker})
     mdl.s.out_sat_0 .= 0
 end
 
-@no_ode LQRTracker
-@no_step LQRTracker
+@no_ode LQR
+@no_step LQR
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LQRTracker})
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LQR})
 
     @unpack s, u, Δt = mdl
 
@@ -1081,13 +1077,13 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LQRTracker})
     s.int_out_0 .= int_out
     s.out_sat_0 .= out_sat
 
-    mdl.y = LQRTrackerOutput(; C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim,
+    mdl.y = LQROutput(; C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim,
         bound_lo, bound_hi, sat_ext, z_ref, z, x,
         int_in, int_out, int_halted, out_free, out_sat, output)
 
 end
 
-function GUI.draw(mdl::Model{<:LQRTracker})
+function GUI.draw(mdl::Model{<:LQR})
 
     @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim, bound_lo, bound_hi,
             sat_ext, z_ref, z, x, int_in, int_halted, int_out,
@@ -1114,7 +1110,7 @@ function GUI.draw(mdl::Model{<:LQRTracker})
 
 end #function
 
-@kwdef struct LQRTrackerParams{CB, CF, CI, X, U, Z}
+@kwdef struct LQRParams{CB, CF, CI, X, U, Z}
     C_fbk::CB
     C_fwd::CF
     C_int::CI
@@ -1123,16 +1119,31 @@ end #function
     z_trim::Z
 end
 
-const LQRTrackerPoint = LQRTrackerParams{CB, CF, CI, X, U, Z} where {
-    CB <: AbstractMatrix,
-    CF <: AbstractMatrix,
-    CI <: AbstractMatrix,
-    X <: AbstractVector,
-    U <: AbstractVector,
-    Z <: AbstractVector}
+
+############################### Gain Scheduling ################################
+################################################################################
+
+const LookupBounds{N} = NTuple{N, NTuple{2, Real}}
+
+############################## Data Points #####################################
+
+const PIDPoint = PIDParams{<:Real}
+
+const LQRPoint = LQRParams{CB, CF, CI, X, U, Z} where {
+    CB <: AbstractMatrix{<:Real},
+    CF <: AbstractMatrix{<:Real},
+    CI <: AbstractMatrix{<:Real},
+    X <: AbstractVector{<:Real},
+    U <: AbstractVector{<:Real},
+    Z <: AbstractVector{<:Real}}
 
 
-function assign!(lqr::Model{<:LQRTracker}, params::LQRTrackerPoint)
+function assign!(mdl::Model{<:PID}, params::PIDPoint)
+    @unpack k_p, k_i, k_d, τ_f = params
+    @pack! mdl.u = k_p, k_i, k_d, τ_f
+end
+
+function assign!(lqr::Model{<:LQR}, params::LQRPoint)
     @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = params
     lqr.u.C_fbk .= C_fbk
     lqr.u.C_fwd .= C_fwd
@@ -1143,66 +1154,54 @@ function assign!(lqr::Model{<:LQRTracker}, params::LQRTrackerPoint)
 end
 
 
-############################# Lookups ##########################################
-################################################################################
+############################# Data Arrays ######################################
 
-const PIDLookup = PIDParams{T} where {T <: AbstractInterpolation}
+const PIDData{N} = PIDParams{<:AbstractArray{<:Real, N}}
 
-const LQRTrackerLookup = LQRTrackerParams{CB, CF, CI, X, U, Z} where {
-    CB <: AbstractInterpolation,
-    CF <: AbstractInterpolation,
-    CI <: AbstractInterpolation,
-    X <: AbstractInterpolation,
-    U <: AbstractInterpolation,
-    Z <: AbstractInterpolation}
+const LQRData{N} = LQRParams{CB, CF, CI, X, U, Z} where {
+    CB <: AbstractArray{<:AbstractMatrix{<:Real}, N},
+    CF <: AbstractArray{<:AbstractMatrix{<:Real}, N},
+    CI <: AbstractArray{<:AbstractMatrix{<:Real}, N},
+    X <: AbstractArray{<:AbstractVector{<:Real}, N},
+    U <: AbstractArray{<:AbstractVector{<:Real}, N},
+    Z <: AbstractArray{<:AbstractVector{<:Real}, N}}
 
-function (lookup::PIDLookup)(args::Vararg{Real, N}) where {N}
-    @unpack k_p, k_i, k_d, τ_f = lookup
-    PIDParams(; k_p = k_p(args...),
-                k_i = k_i(args...),
-                k_d = k_d(args...),
-                τ_f = τ_f(args...)
-                )
-end
-
-function (lookup::LQRTrackerLookup)(args::Vararg{Real, N}) where {N}
-    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = lookup
-    LQRTrackerParams(;
-        C_fbk = C_fbk(args...),
-        C_fwd = C_fwd(args...),
-        C_int = C_int(args...),
-        x_trim = x_trim(args...),
-        u_trim = u_trim(args...),
-        z_trim = z_trim(args...),
-        )
-end
-
-#save and load functions are agnostic regarding the number and lengths of
-#interpolation dimensions
-function save_lookup(params::Union{Array{<:LQRTrackerParams, N}, Array{<:PIDParams, N}},
-                    bounds::NTuple{N, Tuple{Real, Real}},
-                    fname::String = joinpath(@__DIR__, "test.h5")) where {N}
-
+function PIDData(params::Array{<:PIDPoint})
     params_nt = StructArrays.components(StructArray(params))
+    PIDParams(values(params_nt)...)
+end
+
+function LQRData(params::Array{<:LQRPoint})
+    params_nt = StructArrays.components(StructArray(params))
+    LQRParams(values(params_nt)...)
+end
+
+function save_data(params::Union{PIDData{N}, LQRData{N}}, bounds::LookupBounds{N},
+                    fname::String = joinpath(@__DIR__, "test.h5")) where {N}
 
     fid = h5open(fname, "w")
 
     create_group(fid, "params")
-    foreach(keys(params_nt), values(params_nt)) do k, v
-        fid["params"][string(k)] = stack(v)
+    foreach(propertynames(params)) do name
+        array = getproperty(params, name)
+        fid["params"][string(name)] = stack(array)
     end
 
     fid["bounds"] = stack(bounds) #2xN matrix
 
     close(fid)
+
 end
 
+save_data(params::Array{<:PIDPoint}, args...) = save_data(PIDData(params), args...)
+save_data(params::Array{<:LQRPoint}, args...) = save_data(LQRData(params), args...)
 
-function load_pid_lookup(fname::String)
+
+function load_data_pid(fname::String)
 
     fid = h5open(fname, "r")
 
-    #read fieldnames as ordered in LQRTrackerParams and into an instance
+    #read fieldnames as ordered in PIDParams and into an instance
     params_stacked = map(name -> read(fid["params"][string(name)]), fieldnames(PIDParams))
     bounds_stacked = read(fid["bounds"])
 
@@ -1213,32 +1212,19 @@ function load_pid_lookup(fname::String)
     N = length(bounds) #number of interpolation dimensions
 
     #PID parameters are scalars, so these are already N-dimensional arrays
-    params = params_stacked
-    @assert allequal(size.(params))
-    itp_lengths = size(params[1])
+    params_tuple = params_stacked
 
-    #define interpolation mode and ranges, handling singleton dimensions
-    itp_args = map(bounds, itp_lengths) do b, l
-        r = range(b..., length = l)
-        (mode, scaling) = length(r) > 1 ? (BSpline(Linear()), r) : (NoInterp(), 1:1)
-        return (mode = mode, scaling = scaling)
-    end |> collect |> StructArray
-
-    @unpack mode, scaling = itp_args
-    interps = [extrapolate(scale(interpolate(p, tuple(mode...)), scaling...), Flat())
-                for p in params]
-
-    return PIDParams(interps...)
+    return (params = PIDParams(params_tuple...), bounds = bounds)
 
 end
 
 
-function load_lqr_tracker_lookup(fname::String)
+function load_data_lqr(fname::String)
 
     fid = h5open(fname, "r")
 
-    #read fieldnames as ordered in LQRTrackerParams and into an instance
-    params_stacked = map(name -> read(fid["params"][string(name)]), fieldnames(LQRTrackerParams))
+    #read fieldnames as ordered in LQRParams and into an instance
+    params_stacked = map(name -> read(fid["params"][string(name)]), fieldnames(LQRParams))
     bounds_stacked = read(fid["bounds"])
 
     close(fid)
@@ -1247,9 +1233,9 @@ function load_lqr_tracker_lookup(fname::String)
     bounds = mapslices(x->tuple(x...), bounds_stacked, dims = 1) |> vec |> Tuple
     N = length(bounds) #number of interpolation dimensions
 
-    #generate N-dimensional arrays of either SVectors (for x_trim, u_trim and
-    #z_trim) or SMatrices (for C_fbk, C_fwd and C_int)
-    params_static = map(params_stacked) do p_stacked
+    #generate Tuple of N-dimensional arrays of either SVectors (for x_trim,
+    #u_trim and z_trim) or SMatrices (for C_fbk, C_fwd and C_int)
+    params_tuple = map(params_stacked) do p_stacked
         if ndims(p_stacked) == N+1 #vector parameter
             return map(SVector{size(p_stacked)[1]}, eachslice(p_stacked; dims = Tuple(2:N+1)))
         elseif ndims(p_stacked) == N+2 #matrix parameter
@@ -1262,9 +1248,28 @@ function load_lqr_tracker_lookup(fname::String)
         end
     end
 
-    #lengths of N interpolation dimensions must be consistent among params
-    @assert allequal(size.(params_static))
-    itp_lengths = size(params_static[1])
+    return (params = LQRParams(params_tuple...), bounds = bounds)
+
+end
+
+
+############################### Lookups ########################################
+
+const PIDLookup = PIDParams{T} where {T <: AbstractInterpolation}
+
+const LQRLookup = LQRParams{CB, CF, CI, X, U, Z} where {
+    CB <: AbstractInterpolation,
+    CF <: AbstractInterpolation,
+    CI <: AbstractInterpolation,
+    X <: AbstractInterpolation,
+    U <: AbstractInterpolation,
+    Z <: AbstractInterpolation}
+
+
+function build_lookup_pid(params::PIDData{N}, bounds::LookupBounds{N}) where {N}
+
+    @assert allequal(size.(params))
+    itp_lengths = size(params.k_p)
 
     #define interpolation mode and ranges, handling singleton dimensions
     itp_args = map(bounds, itp_lengths) do b, l
@@ -1274,12 +1279,61 @@ function load_lqr_tracker_lookup(fname::String)
     end |> collect |> StructArray
 
     @unpack mode, scaling = itp_args
-    interps = [extrapolate(scale(interpolate(p, tuple(mode...)), scaling...), Flat())
-                for p in params_static]
+    interps = [extrapolate(scale(interpolate(getproperty(params, p), tuple(mode...)), scaling...), Flat())
+                for p in propertynames(params)]
 
-    return LQRTrackerParams(interps...)
+    return PIDParams(interps...)
 
 end
+
+function build_lookup_lqr(params::LQRData{N}, bounds::LookupBounds{N}) where {N}
+
+    #lengths of N interpolation dimensions must be consistent among params
+    sizes = map(n -> size(getproperty(params, n)), propertynames(params))
+    @assert allequal(sizes)
+    itp_lengths = sizes[1]
+
+    #define interpolation mode and ranges, handling singleton dimensions
+    itp_args = map(bounds, itp_lengths) do b, l
+        r = range(b..., length = l)
+        (mode, scaling) = length(r) > 1 ? (BSpline(Linear()), r) : (NoInterp(), 1:1)
+        return (mode = mode, scaling = scaling)
+    end |> collect |> StructArray
+
+    @unpack mode, scaling = itp_args
+    interps = [extrapolate(scale(interpolate(getproperty(params, p), tuple(mode...)), scaling...), Flat())
+                for p in propertynames(params)]
+
+    return LQRParams(interps...)
+
+end
+
+
+build_lookup_pid(fname::String) = build_lookup_pid(load_data_pid(fname)...)
+build_lookup_lqr(fname::String) = build_lookup_lqr(load_data_lqr(fname)...)
+
+
+function (lookup::PIDLookup)(args::Vararg{Real, N}) where {N}
+    @unpack k_p, k_i, k_d, τ_f = lookup
+    PIDParams(; k_p = k_p(args...),
+                k_i = k_i(args...),
+                k_d = k_d(args...),
+                τ_f = τ_f(args...)
+                )
+end
+
+function (lookup::LQRLookup)(args::Vararg{Real, N}) where {N}
+    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = lookup
+    LQRParams(;
+        C_fbk = C_fbk(args...),
+        C_fwd = C_fwd(args...),
+        C_int = C_int(args...),
+        x_trim = x_trim(args...),
+        u_trim = u_trim(args...),
+        z_trim = z_trim(args...),
+        )
+end
+
 
 end #submodule
 

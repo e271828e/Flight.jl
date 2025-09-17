@@ -11,8 +11,8 @@ using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
 using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightLib.Control.Discrete: Integrator, IntegratorOutput,
-    PID, PIDOutput, PIDParams, LQRTracker, LQRTrackerOutput, LQRTrackerParams,
-    PIDLookup, LQRTrackerLookup, load_pid_lookup, load_lqr_tracker_lookup
+    PID, PIDOutput, PIDParams, LQR, LQROutput, LQRParams,
+    PIDLookup, LQRLookup, build_lookup_pid, build_lookup_lqr
 
 using ...AircraftBase
 using ...C172: TrimParameters, is_on_gnd
@@ -204,16 +204,16 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct ControlLawsLon{LQ1<:LQRTrackerLookup,LQ2<:LQRTrackerLookup,LP<:PIDLookup} <: ModelDefinition
-    te2te_lookup::LQ1 = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "te2te_lookup.h5"))
-    tv2te_lookup::LQ1 = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "tv2te_lookup.h5"))
-    vh2te_lookup::LQ2 = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "vh2te_lookup.h5"))
-    q2e_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "q2e_lookup.h5"))
-    c2θ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "c2θ_lookup.h5"))
-    v2t_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "v2t_lookup.h5"))
-    te2te_lqr::LQRTracker{8,2,2,16,4} = LQRTracker{8,2,2}()
-    tv2te_lqr::LQRTracker{8,2,2,16,4} = LQRTracker{8,2,2}()
-    vh2te_lqr::LQRTracker{9,2,2,18,4} = LQRTracker{9,2,2}()
+@kwdef struct ControlLawsLon{LQ1<:LQRLookup,LQ2<:LQRLookup,LP<:PIDLookup} <: ModelDefinition
+    te2te_lookup::LQ1 = build_lookup_lqr(joinpath(@__DIR__, "data", "te2te.h5"))
+    tv2te_lookup::LQ1 = build_lookup_lqr(joinpath(@__DIR__, "data", "tv2te.h5"))
+    vh2te_lookup::LQ2 = build_lookup_lqr(joinpath(@__DIR__, "data", "vh2te.h5"))
+    q2e_lookup::LP = build_lookup_pid(joinpath(@__DIR__, "data", "q2e.h5"))
+    c2θ_lookup::LP = build_lookup_pid(joinpath(@__DIR__, "data", "c2θ.h5"))
+    v2t_lookup::LP = build_lookup_pid(joinpath(@__DIR__, "data", "v2t.h5"))
+    te2te_lqr::LQR{8,2,2,16,4} = LQR{8,2,2}()
+    tv2te_lqr::LQR{8,2,2,16,4} = LQR{8,2,2}()
+    vh2te_lqr::LQR{9,2,2,18,4} = LQR{9,2,2}()
     q2e_int::Integrator = Integrator()
     q2e_pid::PID = PID()
     c2θ_pid::PID = PID()
@@ -252,9 +252,9 @@ end
     h_state::AltTrackingStateEnum = AltTrackingState.hold
     throttle_cmd::Ranged{Float64,0.,1.} = 0.0
     elevator_cmd::Ranged{Float64,-1.,1.} = 0.0
-    te2te_lqr::LQRTrackerOutput{8,2,2,16,4} = LQRTrackerOutput{8,2,2}()
-    tv2te_lqr::LQRTrackerOutput{8,2,2,16,4} = LQRTrackerOutput{8,2,2}()
-    vh2te_lqr::LQRTrackerOutput{9,2,2,18,4} = LQRTrackerOutput{9,2,2}()
+    te2te_lqr::LQROutput{8,2,2,16,4} = LQROutput{8,2,2}()
+    tv2te_lqr::LQROutput{8,2,2,16,4} = LQROutput{8,2,2}()
+    vh2te_lqr::LQROutput{9,2,2,18,4} = LQROutput{9,2,2}()
     q2e_int::IntegratorOutput = IntegratorOutput()
     q2e_pid::PIDOutput = PIDOutput()
     c2θ_pid::PIDOutput = PIDOutput()
@@ -808,13 +808,13 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct ControlLawsLat{LQ<:LQRTrackerLookup,LP<:PIDLookup} <: ModelDefinition
-    ar2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "ar2ar_lookup.h5"))
-    φβ2ar_lookup::LQ = load_lqr_tracker_lookup(joinpath(@__DIR__, "data", "φβ2ar_lookup.h5"))
-    p2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "p2φ_lookup.h5"))
-    χ2φ_lookup::LP = load_pid_lookup(joinpath(@__DIR__, "data", "χ2φ_lookup.h5"))
-    ar2ar_lqr::LQRTracker{8,2,2,16,4} = LQRTracker{8,2,2}()
-    φβ2ar_lqr::LQRTracker{8,2,2,16,4} = LQRTracker{8,2,2}()
+@kwdef struct ControlLawsLat{LQ<:LQRLookup,LP<:PIDLookup} <: ModelDefinition
+    ar2ar_lookup::LQ = build_lookup_lqr(joinpath(@__DIR__, "data", "ar2ar.h5"))
+    φβ2ar_lookup::LQ = build_lookup_lqr(joinpath(@__DIR__, "data", "φβ2ar.h5"))
+    p2φ_lookup::LP = build_lookup_pid(joinpath(@__DIR__, "data", "p2φ.h5"))
+    χ2φ_lookup::LP = build_lookup_pid(joinpath(@__DIR__, "data", "χ2φ.h5"))
+    ar2ar_lqr::LQR{8,2,2,16,4} = LQR{8,2,2}()
+    φβ2ar_lqr::LQR{8,2,2,16,4} = LQR{8,2,2}()
     p2φ_int::Integrator = Integrator()
     p2φ_pid::PID = PID()
     χ2φ_pid::PID = PID()
@@ -842,8 +842,8 @@ end
     χ_ref::Float64 = 0.0 #course angle reference
     aileron_cmd::Ranged{Float64,-1.,1.} = 0.0
     rudder_cmd::Ranged{Float64,-1.,1.} = 0.0
-    ar2ar_lqr::LQRTrackerOutput{8,2,2,16,4} = LQRTrackerOutput{8,2,2}()
-    φβ2ar_lqr::LQRTrackerOutput{8,2,2,16,4} = LQRTrackerOutput{8,2,2}()
+    ar2ar_lqr::LQROutput{8,2,2,16,4} = LQROutput{8,2,2}()
+    φβ2ar_lqr::LQROutput{8,2,2,16,4} = LQROutput{8,2,2}()
     p2φ_int::IntegratorOutput = IntegratorOutput()
     p2φ_pid::PIDOutput = PIDOutput()
     χ2φ_pid::PIDOutput = PIDOutput()
