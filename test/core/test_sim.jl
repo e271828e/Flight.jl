@@ -52,7 +52,7 @@ function test_sim_standalone()
     mdl = FirstOrder() |> Model
     sim = Simulation(mdl; dt = 0.1, Δt = 1.0, t_end = 5)
     x0 = 1.0
-    Sim.init!(sim, x0)
+    init!(sim, x0)
     Sim.run!(sim)
     return sim
 

@@ -8,7 +8,7 @@ using ..IODevices
 
 export ModelDefinition, Model
 export Subsampled, Scheduling, NoScheduling
-export f_ode!, f_step!, f_periodic!, f_output!
+export f_ode!, f_step!, f_periodic!, f_output!, init!
 export @no_ode, @no_step, @no_periodic, @no_updates
 export @sm_ode, @sm_step, @sm_periodic, @sm_updates
 

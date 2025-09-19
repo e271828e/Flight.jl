@@ -111,7 +111,7 @@ Next, let's define a trim condition and use it to initialize the `Simulation`:
 
 ```@example tutorial02
 init_air = C172.TrimParameters(); #straight and level, default airspeed and altitude
-Sim.init!(sim, init_air)
+init!(sim, init_air)
 ```
 
 You may recall how during [interactive simulation](@ref "Interactive Simulation") we used the
@@ -136,11 +136,11 @@ To inspect its fields, we can use the `shf` helper function:
 shf(u_lon)
 ```
 
-Notice how the trim function, invoked by the `Sim.init!` call, has already set the primary control
-inputs (`throttle_axis` and `elevator_axis`) to the values required by the trimmed flight condition.
-Also, the longitudinal control mode input (`lon_ctl_mode_req`) is set to its *direct* value. This
-bypasses all control loops, preserving the aircraft's natural dynamic response, which is what we
-want in this case.
+Notice how the trim function, invoked within the previous `init!` call, has already set the primary
+control inputs (`throttle_axis` and `elevator_axis`) to the values required by the trimmed flight
+condition. Also, the longitudinal control mode input (`lon_ctl_mode_req`) is set to its *direct*
+value. This bypasses all control loops, preserving the aircraft's natural dynamic response, which is
+what we want in this case.
 
 Let's first advance the `Simulation` a few seconds without perturbing the trim equilibrium. To do
 so, we use the `Sim.step!` method, which essentially wraps the one from `DifferentialEquations.jl`'s
@@ -333,7 +333,7 @@ argument, initialize it as before, and run it:
 
 ```@example tutorial02
 sim = Simulation(mdl; dt = 0.02, t_end = 60, user_callback!)
-Sim.init!(sim, init_air)
+init!(sim, init_air)
 Sim.run!(sim)
 nothing #hide
 ```

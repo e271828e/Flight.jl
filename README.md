@@ -11,7 +11,7 @@
 
 ## Documentation
 
-[Documentation](https://e271828e.github.io/Flight.jl/dev/) is still in its infancy, but you can
+Documentation is still in its infancy, but you can
 check out the [tutorials](https://e271828e.github.io/Flight.jl/dev/tutorials/tutorial01/tutorial01/)
 for a first glance at the package's capabilities.
 

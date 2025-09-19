@@ -161,7 +161,7 @@ nothing # hide
 
 Then, we assign it as:
 ```@example tutorial01
-Sim.init!(sim, init_gnd)
+init!(sim, init_gnd)
 ```
 
 ### Running the Simulation
@@ -204,7 +204,7 @@ simulation has taken control of the visuals.
     Flight*. Then, reset the simulation and run it again:
 
     ```julia
-    Sim.init!(sim, init_gnd)
+    init!(sim, init_gnd)
     Sim.run!(sim; gui = true)
     ```
 
@@ -313,5 +313,5 @@ init_air = C172.TrimParameters(;
     flaps = 0.0, #flaps position (0 to 1)
     fuel_load = 0.5, #normalized fuel load (0 to 1)
 )
-Sim.init!(sim, init_air)
+init!(sim, init_air)
 ```

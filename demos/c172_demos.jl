@@ -60,7 +60,7 @@ function interactive_simulation(; aircraft::Cessna172 = Cessna172Xv1(),
     #create a Simulation with specified integration step size and stop time
     sim = Simulation(world; dt = 0.02, t_end = 1000)
 
-    Sim.init!(sim, initializer)
+    init!(sim, initializer)
 
     xp = XPlane12Control(address = xp12_address, port = xp12_port)
     Sim.attach!(sim, xp)
@@ -87,7 +87,7 @@ function elevator_doublet()
 
     mdl = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) |> Model
     sim = Simulation(mdl; dt = 0.02, t_end = 60)
-    Sim.init!(sim, C172.TrimParameters())
+    init!(sim, C172.TrimParameters())
 
     Sim.step!(sim, 5)
     mdl.aircraft.avionics.ctl.u.elevator_offset = 0.1
@@ -122,7 +122,7 @@ function elevator_doublet_callback()
     end
 
     sim = Simulation(mdl; dt = 0.02, t_end = 60, user_callback!)
-    Sim.init!(sim, C172.TrimParameters())
+    init!(sim, C172.TrimParameters())
     Sim.run!(sim)
 
     save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); Plotting.defaults..., linewidth = 2,)
@@ -222,7 +222,7 @@ function crosswind_landing(; gui::Bool = false,
     xp = XPlane12Control(address = xp12_address, port = xp12_port)
     Sim.attach!(sim, xp)
 
-    Sim.init!(sim, initializer)
+    init!(sim, initializer)
     Sim.run!(sim; gui)
 
     save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/crosswind_landing/kin"); Plotting.defaults..., linewidth = 2,)
@@ -375,7 +375,7 @@ function traffic_pattern(; gui::Bool = false,
     xp = XPlane12Control(address = xp12_address, port = xp12_port)
     Sim.attach!(sim, xp)
 
-    Sim.init!(sim, initializer)
+    init!(sim, initializer)
     Sim.run!(sim; gui)
 
     save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/traffic_pattern/kin"); Plotting.defaults..., linewidth = 2,)
@@ -441,12 +441,12 @@ function json_loopback(; gui::Bool = true, xp12 = false, save::Bool = true)
 
     sim = Simulation(world; t_end = 30)
 
-    #on air, automatically trimmed by reinit!
+    #on air, automatically trimmed by init!
     initializer = C172.TrimParameters(
         Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
 
     #initialize simulated system
-    Sim.init!(sim, initializer)
+    init!(sim, initializer)
 
     xp12 && Sim.attach!(sim, XPlane12Control(; port = 49000))
 

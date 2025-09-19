@@ -60,7 +60,7 @@ end
 function test_single()
     mdl = FirstOrder() |> Model;
     sim = Simulation(mdl; Δt = 1.0, t_end = 30)
-    # Sim.init!(sim)
+    # init!(sim)
     Sim.run!(sim)
     # return TimeSeries(sim)
     return sim
@@ -69,7 +69,7 @@ end
 function test_multirate()
     mdl = Root() |> Model;
     sim = Simulation(mdl; Δt = 1.0, t_end = 30)
-    # Sim.init!(sim)
+    # init!(sim)
     Sim.run!(sim)
     # return TimeSeries(sim)
     return sim

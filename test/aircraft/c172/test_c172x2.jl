@@ -69,7 +69,7 @@ function test_c172x2(; alloc::Bool = true)
 
             ############################## Gnd #################################
 
-            Sim.init!(sim, init_gnd)
+            init!(sim, init_gnd)
             @test is_on_gnd(aircraft.vehicle)
 
             #request segment guidance mode and enable horizontal and vertical guidance
@@ -85,7 +85,7 @@ function test_c172x2(; alloc::Bool = true)
 
             ############################## Air #################################
 
-            Sim.init!(sim, init_air)
+            init!(sim, init_air)
 
             kin_data = y_kin(aircraft)
             @unpack n_e, h_e, χ_gnd = kin_data

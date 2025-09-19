@@ -15,7 +15,7 @@ using ..IODevices
 using ..GUI
 
 @reexport using OrdinaryDiffEq: step!, reinit!, add_tstop!, get_proposed_dt
-export Simulation, enable_gui!, disable_gui!, attach!
+export Simulation, attach!, run!
 export TimeSeries, get_time, get_data, get_components
 export take_nonblocking!, put_nonblocking!
 
@@ -368,7 +368,7 @@ OrdinaryDiffEq.step!(sim::Simulation, args...) = step!(sim.integrator, args...)
 
 OrdinaryDiffEq.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
 
-function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
+function Modeling.init!(sim::Simulation, init_args...; init_kwargs...)
 
     @unpack mdl, integrator, log = sim
 
@@ -395,10 +395,6 @@ function OrdinaryDiffEq.reinit!(sim::Simulation, init_args...; init_kwargs...)
     mdl._n[] = 1
 
     return nothing
-end
-
-function init!(sim::Simulation, args...; kwargs...)
-    OrdinaryDiffEq.reinit!(sim, args...; kwargs...)
 end
 
 

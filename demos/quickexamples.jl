@@ -4,30 +4,29 @@ using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings
 
 function quickexample1()
 
-    #create nonlinear simulation model
-    world = SimpleWorld(aircraft = Cessna172Sv0(NED())) |> Model;
+    #set up nonlinear simulation
+    world = Model(SimpleWorld(aircraft = Cessna172Sv0(NED())))
     sim = Simulation(world; t_end = 10)
 
-    #define trim condition
+    #initialize at default trim condition
     trim_params = C172.TrimParameters()
+    init!(sim, trim_params)
 
-    #initialize simulation at trim condition
-    Sim.init!(sim, trim_params)
-
-    #advance the simulation for one second from trimmed condition
-    Sim.step!(sim, 1, true)
+    #advance simulation for one second from trim condition
+    step!(sim, 1, true)
     #apply 10% elevator increment
     world.aircraft.vehicle.systems.act.u.elevator += 0.1
     #run to completion
-    Sim.run!(sim)
-
+    run!(sim)
     #extract pitch rate from simulation results
     ts = TimeSeries(sim);
     _, q_nonlinear, _ = get_components(ts.aircraft.vehicle.kinematics.ω_wb_b)
 
-    #linearize aircraft around trim condition and convert to NamedStateSpace
-    nss = linearize!(world.aircraft, trim_params) |> named_ss
-    #extract elevator to pitch rate SISO system
+    #extract aircraft submodel and linearize it around the trim condition
+    lss = linearize!(world.aircraft, trim_params)
+    #convert to NamedStateSpace
+    nss = named_ss(lss)
+    #extract elevator to pitch rate linear SISO system
     e2q = nss[:q, :elevator]
     #simulate a 0.1 step input at t=1
     y, t, _, _ = lsim(e2q, (x, t)->[0.1]*(t>=1), 0:0.01:10)
@@ -41,23 +40,34 @@ end
 
 function quickexample2()
 
-    world = SimpleWorld(aircraft = Cessna172Sv0(NED())) |> Model;
+    #set up nonlinear simulation
+    world = SimpleWorld(aircraft = Cessna172Sv0(NED())) |> Model
     sim = Simulation(world; t_end = 10)
-    trim_params = C172.TrimParameters()
-    Sim.init!(sim, trim_params)
 
-    Sim.step!(sim, 1, true)
+    #initialize at default trim condition
+    trim_params = C172.TrimParameters()
+    init!(sim, trim_params)
+
+    #advance simulation 1 second from trim condition
+    step!(sim, 1, true)
+    #apply 10% elevator increment
     world.aircraft.vehicle.systems.act.u.elevator += 0.1
-    Sim.run!(sim)
+    #run to completion
+    run!(sim)
+    #extract pitch angle TimeSeries from simulation results
     ts = TimeSeries(sim);
     θ_nonlinear = ts.aircraft.vehicle.kinematics.e_nb.θ
 
+    #extract aircraft submodel and linearize it around the trim condition
     lss = linearize!(world.aircraft, trim_params)
+    #convert to NamedStateSpace
     nss = named_ss(lss)
+    #extract elevator to pitch angle linear SISO system
     e2θ = nss[:θ, :elevator]
+    #simulate a 0.1 step input at t=1
     y, t, _, _ = lsim(e2θ, (x, t)->[0.1]*(t>=1), 0:0.01:10)
 
-    #linear model simulation returns the perturbation Δθ around trim condition
+    #get perturbation Δθ around trim condition from linear simulation results
     Δθ_linear = vec(y)
     #retrieve trim θ value from linearized system
     θ_trim = lss.y0[:θ]
@@ -76,9 +86,9 @@ function quickexample3()
     sim = Simulation(world; t_end = 600)
     trim_params = C172.TrimParameters()
 
-    Sim.init!(sim, trim_params)
+    init!(sim, trim_params)
 
-    #set longitudinal control mode to EAS + climb rate
+    #set longitudinal control mode to airspeed + climb rate
     world.aircraft.avionics.ctl.lon.u.mode_req = C172XControl.ModeControlLon.EAS_clm
     #set lateral control mode to bank angle + sideslip
     world.aircraft.avionics.ctl.lat.u.mode_req = C172XControl.ModeControlLat.φ_β
@@ -89,7 +99,7 @@ function quickexample3()
     #set wind to 1 m/s North
     world.atmosphere.wind.u.N = 1.0
 
-    Sim.run!(sim)
+    run!(sim)
     ts = TimeSeries(sim)
     #generate kinematics data plots
     kin_plots = make_plots(ts.aircraft.vehicle.kinematics)

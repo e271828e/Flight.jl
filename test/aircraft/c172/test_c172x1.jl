@@ -53,7 +53,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "Ground" begin
 
-    Sim.init!(sim, init_gnd)
+    init!(sim, init_gnd)
 
     #set arbitrary control modes
     ctl.u.lon.mode_req = ModeControlLon.EAS_clm
@@ -94,14 +94,14 @@ function test_c172x1(; alloc::Bool = true)
     # @testset verbose = true "Air" begin
 
     #put the aircraft at its nominal design point and save its output for later
-    Sim.init!(sim, init_air)
+    init!(sim, init_air)
     y_kin_trim = y_kin(aircraft)
 
     ############################### direct control #############################
 
     @testset verbose = true "ModeControlLon.direct + ModeControlLat.direct" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
         step!(sim, ctl.Δt, true)
         @test ctl.y.lon.mode === ModeControlLon.direct
         @test ctl.y.lat.mode === ModeControlLat.direct
@@ -122,7 +122,7 @@ function test_c172x1(; alloc::Bool = true)
 
         #we test the longitudinal SAS first, because we want to test the lateral
         #modes with it enabled
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
         ctl.u.lon.mode_req = ModeControlLon.sas
         step!(sim, ctl.Δt, true)
         @test ctl.y.lon.mode === ModeControlLon.sas
@@ -147,7 +147,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLat.sas" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
         ctl.u.lon.mode_req = ModeControlLon.sas
         ctl.u.lat.mode_req = ModeControlLat.sas
         step!(sim, ctl.Δt, true)
@@ -172,7 +172,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLat.φ_β" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
         ctl.u.lon.mode_req = ModeControlLon.sas
         ctl.u.lat.mode_req = ModeControlLat.φ_β
         step!(sim, ctl.Δt, true)
@@ -205,7 +205,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLat.p_β" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
 
         #enable SAS first and let the small initial transient die out
         ctl.u.lon.mode_req = ModeControlLon.sas
@@ -246,7 +246,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLat.χ_β" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
 
         #enable SAS first and let the small initial transient die out
         ctl.u.lon.mode_req = ModeControlLon.sas
@@ -294,7 +294,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLon.thr_q" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
 
         ctl.u.lon.mode_req = ModeControlLon.thr_q
         ctl.u.lat.mode_req = ModeControlLat.φ_β
@@ -331,7 +331,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLon.thr_θ" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
 
         ctl.u.lon.mode_req = ModeControlLon.thr_θ
         ctl.u.lat.mode_req = ModeControlLat.φ_β
@@ -360,7 +360,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLon.thr_EAS" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
 
         ctl.u.lon.mode_req = ModeControlLon.thr_EAS
         ctl.u.lat.mode_req = ModeControlLat.φ_β
@@ -393,7 +393,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLon.EAS_q" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
 
         ctl.u.lon.mode_req = ModeControlLon.EAS_q
         ctl.u.lat.mode_req = ModeControlLat.φ_β
@@ -437,7 +437,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLon.EAS_θ" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
 
         ctl.u.lon.mode_req = ModeControlLon.EAS_θ
         ctl.u.lat.mode_req = ModeControlLat.φ_β
@@ -469,7 +469,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLon.EAS_clm" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
 
         ctl.u.lon.mode_req = ModeControlLon.EAS_clm
         ctl.u.lat.mode_req = ModeControlLat.φ_β
@@ -504,7 +504,7 @@ function test_c172x1(; alloc::Bool = true)
 
     @testset verbose = true "ModeControlLon.alt" begin
 
-        Sim.init!(sim, init_air)
+        init!(sim, init_air)
 
         ctl.u.lon.mode_req = ModeControlLon.EAS_alt
         ctl.u.lat.mode_req = ModeControlLat.φ_β
@@ -569,7 +569,7 @@ function test_interactive(init::C172.TrimParameters = C172.TrimParameters())
 
     world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) |> Model
     sim = Simulation(world; dt = 0.01, t_end = 1000)
-    Sim.init!(sim, init)
+    init!(sim, init)
     Sim.run!(sim; gui = true)
 
     save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/test_c172x1/kin"); Plotting.defaults..., linewidth = 2,)

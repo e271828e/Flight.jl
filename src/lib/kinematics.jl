@@ -547,7 +547,7 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
 
     pd[:Ob_t3d] = plot(
         TrajectoryPlot(get_data(ts.r_eb_e));
-        plot_title = "Trajectory (Initial ENU Frame)",
+        plot_title = "Trajectory (Local ENU Frame)",
         camera = (30, 20),
         kwargs...,
         size = (t3d_dim, t3d_dim),
