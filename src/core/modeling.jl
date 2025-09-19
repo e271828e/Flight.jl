@@ -14,49 +14,48 @@ export @sm_ode, @sm_step, @sm_periodic, @sm_updates
 
 
 ################################################################################
-############################## ModelTrait #####################################
+############################## ModelDescriptor #################################
 
-abstract type ModelTrait end
+abstract type ModelDescriptor end
 
-struct Ẋ <: ModelTrait end #continuous state derivative
-struct X <: ModelTrait end #continuous state
-struct Y <: ModelTrait end #output
-struct U <: ModelTrait end #input
-struct S <: ModelTrait end #discrete state
+struct Ẋ <: ModelDescriptor end #continuous state derivative
+struct X <: ModelDescriptor end #continuous state
+struct Y <: ModelDescriptor end #output
+struct U <: ModelDescriptor end #input
+struct S <: ModelDescriptor end #discrete state
 
 
 ################################################################################
-############################## ModelDefinition ################################
+############################## ModelDefinition #################################
 
 abstract type ModelDefinition end
 
-#################### Default ModelTrait Constructors #######################
+#################### Default ModelDescriptor Constructors ######################
 
-function get_children_traits(Trait::Type{<:ModelTrait}, md::D) where {D <: ModelDefinition}
+function get_children_properties(T::Type{<:ModelDescriptor}, md::D) where {D <: ModelDefinition}
 
     children_names = filter(fieldnames(D)) do name
         getfield(md, name) isa ModelDefinition
     end
-    children_fields = map(λ -> getfield(md, λ), children_names)
-    children_traits = map(child-> Trait(child), children_fields)
-    nt = NamedTuple{children_names}(children_traits)
+    children_definitions = map(λ -> getfield(md, λ), children_names)
+    children_properties = map(child-> T(child), children_definitions)
+    nt = NamedTuple{children_names}(children_properties)
 
-    nonempty_names = filter(k -> !isnothing(getproperty(nt, k)), keys(nt))
-    nonempty_traits = map(λ -> getproperty(nt, λ), nonempty_names)
-    return NamedTuple{nonempty_names}(nonempty_traits)
+    something_names = filter(k -> !isnothing(getproperty(nt, k)), keys(nt))
+    something_properties = map(λ -> getproperty(nt, λ), something_names)
+    return NamedTuple{something_names}(something_properties)
 
 end
 
 (::Union{Type{U}, Type{S}})(::ModelDefinition) = nothing
 
-function (Trait::Type{X})(md::D) where {D <: ModelDefinition}
-
-    filtered_nt = get_children_traits(Trait, md)
+function (T::Type{X})(md::D) where {D <: ModelDefinition}
+    filtered_nt = get_children_properties(T, md)
     return (isempty(filtered_nt) ? nothing : ComponentVector(filtered_nt))
 end
 
-function (Trait::Type{Y})(md::D) where {D <: ModelDefinition}
-    filtered_nt = get_children_traits(Trait, md)
+function (T::Type{Y})(md::D) where {D <: ModelDefinition}
+    filtered_nt = get_children_properties(T, md)
     return (isempty(filtered_nt) ? nothing : filtered_nt)
 end
 
@@ -75,7 +74,7 @@ end
 
 Subsampled(md::D) where {D <: ModelDefinition} = Subsampled{D}(md, 1)
 
-(Trait::Union{Type{U}, Type{S}})(ss::Subsampled) = Trait(ss.md)
+(T::Union{Type{U}, Type{S}})(ss::Subsampled) = T(ss.md)
 (::Type{X})(ss::Subsampled) = X(ss.md)
 (::Type{Ẋ})(ss::Subsampled) = Ẋ(ss.md)
 (::Type{Y})(ss::Subsampled) = Y(ss.md)
@@ -129,15 +128,15 @@ function Model(md::D,
 
         child_definition = getproperty(md, child_name)
 
-        child_traits = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent_trait, Trait
-            if child_name in propertynames(parent_trait)
-                getproperty(parent_trait, child_name)
+        child_properties = map((y, u, ẋ, x, s), (Y, U, Ẋ, X, S)) do parent_property, T
+            if child_name in propertynames(parent_property)
+                getproperty(parent_property, child_name)
             else
-                Trait(child_definition)
+                T(child_definition)
             end
         end
 
-        Model(child_definition, child_traits..., t, _Δt_root, _n, _N)
+        Model(child_definition, child_properties..., t, _Δt_root, _n, _N)
 
     end
 
