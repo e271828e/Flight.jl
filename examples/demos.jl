@@ -1,12 +1,11 @@
-module C172Demos
-
-using Sockets
-using UnPack, JSON3
+using UnPack, JSON3, Sockets
 
 using Flight
 using Flight.FlightAircraft.C172: is_on_gnd
 using Flight.FlightAircraft.C172X.C172XControl: ModeControlLon, ModeControlLat
 using Flight.FlightAircraft.C172X.C172XGuidance: ModeGuidance, Segment, SegmentGuidanceData
+
+export interactive_simulation, crosswind_landing, traffic_pattern, json_loopback
 
 #position and geographic heading for Salzburg airport (LOWS) runway 15
 const loc_LOWS15 = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997))
@@ -75,59 +74,6 @@ function interactive_simulation(; aircraft::Cessna172 = Cessna172Xv1(),
     save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/interactive_sim/air"); Plotting.defaults...)
     save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/interactive_sim/dyn"); Plotting.defaults...)
     # save_plots(TimeSeries(sim).aircraft.vehicle.dynamics; Plotting.defaults...)
-
-    return sim
-
-end
-
-
-################################################################################
-
-function elevator_doublet()
-
-    mdl = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) |> Model
-    sim = Simulation(mdl; dt = 0.02, t_end = 60)
-    init!(sim, C172.TrimParameters())
-
-    Sim.step!(sim, 5)
-    mdl.aircraft.avionics.ctl.u.elevator_offset = 0.1
-    Sim.step!(sim, 2)
-    mdl.aircraft.avionics.ctl.u.elevator_offset = -0.1
-    Sim.step!(sim, 2)
-    mdl.aircraft.avionics.ctl.u.elevator_offset = 0
-    Sim.run!(sim)
-
-    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/elevator_doublet/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/elevator_doublet/dyn"); Plotting.defaults...)
-
-    return sim
-
-end
-
-function elevator_doublet_callback()
-
-    mdl = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) |> Model
-
-    user_callback! = function(mdl::Model)
-        t = mdl.t[]
-        u_ctl = mdl.aircraft.avionics.lon.u
-        if 5 <= t < 7
-            u_ctl.elevator_offset = 0.1
-        elseif 7 <= t < 9
-            u_ctl.elevator_offset = -0.1
-        else
-            u_ctl.elevator_offset = 0
-        end
-    end
-
-    sim = Simulation(mdl; dt = 0.02, t_end = 60, user_callback!)
-    init!(sim, C172.TrimParameters())
-    Sim.run!(sim)
-
-    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/elevator_doublet/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/elevator_doublet/dyn"); Plotting.defaults...)
 
     return sim
 
@@ -471,7 +417,3 @@ function json_loopback(; gui::Bool = true, xp12 = false, save::Bool = true)
     return nothing
 
 end
-
-
-
-end #module

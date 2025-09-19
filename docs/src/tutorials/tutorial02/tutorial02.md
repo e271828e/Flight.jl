@@ -143,12 +143,12 @@ value. This bypasses all control loops, preserving the aircraft's natural dynami
 what we want in this case.
 
 Let's first advance the `Simulation` a few seconds without perturbing the trim equilibrium. To do
-so, we use the `Sim.step!` method, which essentially wraps the one from `DifferentialEquations.jl`'s
+so, we use the `step!` method, which essentially wraps the one from `DifferentialEquations.jl`'s
 [integrator
 interface](https://docs.sciml.ai/DiffEqDocs/stable/basics/integrator/#CommonSolve.step!).
 
 ```@example tutorial02
-Sim.step!(sim, 5) #advance the simulation 5 seconds
+step!(sim, 5) #advance the simulation 5 seconds
 ```
 
 To apply the elevator doublet, we can either modify the `elevator_axis` input or, more conveniently,
@@ -156,9 +156,9 @@ use `elevator_offset` instead. Here's how to do it:
 
 ```@example tutorial02
 u_lon.elevator_offset = 0.1 #10 percent positive offset
-Sim.step!(sim, 2) #advance 2 seconds
+step!(sim, 2) #advance 2 seconds
 u_lon.elevator_offset = -0.1 #10 percent negative offset
-Sim.step!(sim, 2) #advance 2 seconds
+step!(sim, 2) #advance 2 seconds
 u_lon.elevator_offset = 0.0 #return to trim position
 nothing #hide
 ```

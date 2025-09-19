@@ -99,7 +99,7 @@ function test_c172x2(; alloc::Bool = true)
             gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, s = 1e4, γ = deg2rad(5))
 
             #step for one guidance sample period
-            Sim.step!(sim, gdc.Δt, true)
+            step!(sim, gdc.Δt, true)
 
             #the guidance mode request should now have been honored
             @test gdc.y.mode === ModeGuidance.segment
@@ -131,7 +131,7 @@ function test_c172x2(; alloc::Bool = true)
             aux_seg = Segment(Ob; χ = χ_ac - π/2, s = e_thr/2, γ = 0)
             gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, s = 1e4, γ = deg2rad(5))
 
-            Sim.step!(sim, gdc.Δt, true)
+            step!(sim, gdc.Δt, true)
 
             #intercept angle should be negative
             @test gdc.seg.y.Δχ < 0
@@ -139,7 +139,7 @@ function test_c172x2(; alloc::Bool = true)
             aux_seg = Segment(Ob; χ = χ_ac + π/2, s = 2e_thr, γ = 0)
             gdc.seg.u.target = Segment(aux_seg.p2; χ = 0, s = 1e4, γ = deg2rad(5))
 
-            Sim.step!(sim, gdc.Δt, true)
+            step!(sim, gdc.Δt, true)
 
             #since we are outside the vertical guidance threshold e_thr,
             #vertical guidance must have disengaged
@@ -149,28 +149,28 @@ function test_c172x2(; alloc::Bool = true)
             #unchanged
             lon_mode_prev = ctl.lon.y.mode
             gdc.seg.u.vrt_gdc_req = false
-            Sim.step!(sim, gdc.Δt, true)
+            step!(sim, gdc.Δt, true)
             @test gdc.seg.y.vrt_gdc === false
             @test ctl.lon.y.mode === lon_mode_prev
 
             #once vertical guidance is disabled, we can once again set the
             #longitudinal control modes
             ctl.lon.u.mode_req = ModeControlLon.sas
-            Sim.step!(sim, gdc.Δt, true)
+            step!(sim, gdc.Δt, true)
             @test ctl.lon.y.mode === ModeControlLon.sas
 
             #disable horizontal guidance, lateral control mode should remain
             #unchanged
             lat_mode_prev = ctl.lat.y.mode
             gdc.seg.u.hor_gdc_req = false
-            Sim.step!(sim, gdc.Δt, true)
+            step!(sim, gdc.Δt, true)
             @test gdc.seg.y.hor_gdc === false
             @test ctl.lat.y.mode === lat_mode_prev
 
             #once horizontal guidance is disabled, we can once again set the
             #lateral control modes
             ctl.lat.u.mode_req = ModeControlLat.sas
-            Sim.step!(sim, gdc.Δt, true)
+            step!(sim, gdc.Δt, true)
             @test ctl.lat.y.mode === ModeControlLat.sas
 
         end #testset
