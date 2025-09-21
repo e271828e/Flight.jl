@@ -118,7 +118,7 @@ A `Wrench` is defined in frame ``c`` when it is applied at ``c``'s origin
  end
 
 
- """
+"""
     Base.:+(wr1::Wrench, wr2::Wrench)
 
 Add two compatible `Wrench` instances.

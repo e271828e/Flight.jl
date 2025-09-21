@@ -12,9 +12,13 @@ makedocs(;
             "tutorials/tutorial01/tutorial01.md",
             "tutorials/tutorial02/tutorial02.md",
             ],
-        # "API" => "api.md",
+        "Reference" => [
+            "Core" => [
+                "reference/core/modeling.md",
+            ]
+        ]
     ],
-    draft = false,
+    draft = true,
     pagesonly = false,
     format = Documenter.HTML(
         prettyurls = true,
