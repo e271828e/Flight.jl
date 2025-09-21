@@ -251,7 +251,7 @@ plots_kin = make_plots(ts.aircraft.vehicle.kinematics)
 ```
 
 ```@example tutorial02
-plots_kin[:Ob_t3d]
+plots_kin[:vχγ]
 ```
 
 ```@example tutorial02

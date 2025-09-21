@@ -17,38 +17,3 @@ Pkg.add("Flight")
     ```
 
     This should work well for most CPUs and use cases. If you run into issues, you can set the number of threads manually to cover your specific needs.
-
-## Overview
-
-`Flight.jl` offers a powerful and versatile framework for aircraft modeling, analysis and
-simulation. Its design fully leverages Julia's expressiveness, extensibility and performance.
-
-It is organized in three distinct layers:
-
-- A lightweight, domain-agnostic engine for modeling and simulation of
-  complex systems with hybrid dynamics (`FlightCore`).
-
-- A library of high-fidelity, reusable physics and engineering models (`FlightLib`).
-
-- A collection of specific aircraft implementations (`FlightAircraft`).
-
-Key features:
-
-*   **Hierarchical Modeling:** Enables building complex systems from simpler, reusable components,
-    leveraging `ComponentArrays.jl` for clarity and convenience.
-
-*   **High Performance:** Its core simulation loop is built on `DifferentialEquations.jl` and
-    designed from the ground up to be allocation-free. This enables extremely fast headless execution and smooth performance on interactive runs.
-
-*   **Interactive GUI:** Offers an extensible GUI based on `CImGui.jl` for live model
-    inspection and manipulation.
-
-*   **External Visualization & I/O:** Features out-of-the-box integration with [X-Plane
-    12](https://www.x-plane.com/desktop/try-it/) for high-fidelity 3D visualization,
-    joystick support via `SDL2_jll`, and a generic interface layer for custom I/O functionality.
-
-*   **Solid Physics Foundation:** Includes built-in modules for attitude representation, geodesy, kinematics
-    and rigid body dynamics, providing fast, accurate and ergonomic types and operations.
-
-*   **Pre-Built Aircraft Components:** Comes with high-fidelity, efficient and customizable models for
-    propellers, piston engines and landing gear.

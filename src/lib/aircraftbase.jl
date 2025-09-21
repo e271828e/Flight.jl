@@ -461,7 +461,6 @@ function GUI.draw( vehicle::VehicleY)
     @unpack ϕ, λ = ϕ_λ
 
     α, β = Atmosphere.get_airflow_angles(v_wb_b)
-    p, q, r = ω_wb_b
     clm = -v_eb_n[3]
 
     if BeginTable("Flight Data", 2, CImGui.ImGuiTableFlags_SizingStretchSame | CImGui.ImGuiTableFlags_BordersInner)
@@ -495,7 +494,7 @@ function GUI.draw( vehicle::VehicleY)
             Text("Static Pressure"); SameLine(240)
             Text(@sprintf("%.3f Pa", p))
             Text("Density"); SameLine(240)
-            Text(@sprintf("%.3f Pa", ρ))
+            Text(@sprintf("%.3f kg/m^3", ρ))
 
             Separator()
 
@@ -510,11 +509,11 @@ function GUI.draw( vehicle::VehicleY)
         TableNextColumn()
 
             Text("Roll Rate"); SameLine(240)
-            Text(@sprintf("%.3f deg/s", rad2deg(p)))
+            Text(@sprintf("%.3f deg/s", rad2deg(ω_wb_b[1])))
             Text("Pitch Rate"); SameLine(240)
-            Text(@sprintf("%.3f deg/s", rad2deg(q)))
+            Text(@sprintf("%.3f deg/s", rad2deg(ω_wb_b[2])))
             Text("Yaw Rate"); SameLine(240)
-            Text(@sprintf("%.3f deg/s", rad2deg(r)))
+            Text(@sprintf("%.3f deg/s", rad2deg(ω_wb_b[3])))
 
             Separator()
 

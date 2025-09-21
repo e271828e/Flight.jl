@@ -574,7 +574,7 @@ function Plotting.make_plots(ts::TimeSeries{<:KinData}; kwargs...)
     subplot_χ = plot(TimeSeries(ts._t, rad2deg.(ts.χ_gnd._data)); title = "Course Angle",
         ylabel = L"$\chi_{gnd} \ (deg)$", label = "", kwargs...)
     subplot_γ = plot(TimeSeries(ts._t, rad2deg.(ts.γ_gnd._data)); title = "Flight Path Angle",
-        ylabel = L"$\gamma_{cv} \ (deg)$", label = "", kwargs...)
+        ylabel = L"$\gamma_{gnd} \ (deg)$", label = "", kwargs...)
 
     pd[:vχγ] = plot(subplot_v_gnd, subplot_χ, subplot_γ;
         plot_title = "Velocity (Vehicle/ECEF) [NED Axes]",
