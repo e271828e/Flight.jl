@@ -32,7 +32,7 @@ Let's take a look at our `Model`'s properties:
 propertynames(mdl)
 ```
 
-To make sense of what comes next, we need a brief explanation for each one:
+To make sense of what comes next, it is useful to understand what each one of these represents:
 - `x` (*continuous state*): A vector containing `Model` states that evolve continuously over time.
   It is updated by the `Simulation`'s ODE integrator.
 - `ẋ` (*continuous state derivative*): A vector containing the time derivative of `x`.
@@ -107,10 +107,10 @@ or manipulation:
 @assert mdl === sim.mdl
 ```
 
-Next, let's define a trim condition and use it to initialize the `Simulation`:
+Next, let's define a default trim condition and use it to initialize the `Simulation`:
 
 ```@example tutorial02
-init_air = C172.TrimParameters(); #straight and level, default airspeed and altitude
+init_air = C172.TrimParameters()
 init!(sim, init_air)
 ```
 
@@ -123,9 +123,9 @@ print_tree(mdl.aircraft.avionics)
 ```
 
 As you might guess, these implement respectively the aircraft's longitudinal and lateral control
-laws. The control inputs under the *Longitudinal Control* section of the *Avionics* panel mapped to
-`mdl.aircraft.avionics.lon`'s input `struct`. Here, we will be writing to this `struct` ourselves.
-Let's retrieve it from the model hierarchy:
+laws. The control inputs under the *Longitudinal Control* section of the *Avionics* GUI panel mapped
+to `mdl.aircraft.avionics.lon`'s input `struct`. Here, we will be writing to this `struct`
+directly. Let's retrieve it from the model hierarchy:
 ```@example tutorial02
 u_lon = mdl.aircraft.avionics.lon.u
 nothing #hide

@@ -32,22 +32,22 @@ Key features:
     designed from the ground up to be allocation-free. This enables extremely fast headless
     execution and smooth performance on interactive runs.
 
-*   **Interactive GUI:** Offers an extensible GUI based on `CImGui.jl` for live model
+*   **Interactive GUI:** Integrates an extensible GUI based on `CImGui.jl` for live model
     inspection and manipulation.
 
-*   **External Visualization & I/O:** Features out-of-the-box integration with [X-Plane
+*   **External Visualization & I/O:** Offers out-of-the-box integration with [X-Plane
     12](https://www.x-plane.com/desktop/try-it/) for high-fidelity 3D visualization, joystick
     support via SDL2, and a generic interface layer for custom I/O functionality.
 
-*   **Solid Physics Foundation:** Built-in attitude, geodesy, kinematics and rigid body
-    dynamics modules provide fast, accurate and ergonomic types and operations.
+*   **Solid Physics Foundation:** Features built-in modules for attitude representation, geodesy,
+    kinematics and rigid body dynamics, providing efficient and ergonomic types and operations.
 
-*   **Pre-Built Aircraft Components:** Comes with high-fidelity, customizable models for
-    propellers, piston engines and landing gear.
+*   **Pre-Built Aircraft Components:** Includes high-fidelity, customizable models for propellers,
+    piston engines and landing gear.
 
-*   **Case Study:** Includes a custom fly-by-wire Cessna 172 variant, demonstrating the complete
-    workflow from vehicle modeling and linearization to the design and implementation of a
-    complete gain-scheduled autopilot.
+*   **Case Study:** A custom fly-by-wire Cessna 172 model is used to demonstrate an end-to-end
+    design workflow, from vehicle systems modeling to the implementation and testing of a complex,
+    gain-scheduled autopilot.
 
 
 ## Documentation
@@ -106,7 +106,7 @@ using Flight
 ![Turning climb 3D trajectory](docs/src/assets/turning_climb_3d.png?raw=true)
 
 
-Elevator step response in nonlinear and linearized Cessna172S models:
+Comparing elevator step response between nonlinear and linearized Cessna172S models:
 ```julia
 using Flight
 using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings
