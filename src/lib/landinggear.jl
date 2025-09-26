@@ -218,7 +218,7 @@ function Modeling.f_ode!(mdl::Model{<:Strut},
                         terrain::Model{<:AbstractTerrain},
                         kin_data::KinData)
 
-    @unpack t_bs, l_0, damper = mdl.constants
+    @unpack t_bs, l_0, damper = mdl.parameters
     @unpack q_eb, q_nb, q_en, r_eb_e, v_eb_b, ω_eb_b = kin_data
 
     q_bs = t_bs.q #body frame to strut frame rotation

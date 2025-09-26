@@ -149,7 +149,7 @@ function Modeling.f_ode!(vehicle::Model{<:Vehicle},
                         atmosphere::Model{<:AbstractAtmosphere},
                         terrain::Model{<:AbstractTerrain})
 
-    @unpack ẋ, x, submodels, constants = vehicle
+    @unpack ẋ, x, submodels, parameters = vehicle
     @unpack kinematics, dynamics, systems = submodels
 
     kinematics.u .= dynamics.x

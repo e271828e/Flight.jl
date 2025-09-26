@@ -234,7 +234,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
                                 vehicle::Model{<:Vehicle})
 
     @unpack target, hor_gdc_req, vrt_gdc_req = mdl.u
-    @unpack Δχ_inf, e_sf, e_thr = mdl.constants
+    @unpack Δχ_inf, e_sf, e_thr = mdl.parameters
     @unpack ϕ_λ, h_e = vehicle.kinematics.y
 
     data = SegmentGuidanceData(target, Geographic(ϕ_λ, h_e))
@@ -361,7 +361,7 @@ end
 
 function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
 
-    @unpack u, constants, y = gdc
+    @unpack u, parameters, y = gdc
     @unpack ϕ_λ, h_e = vehicle.y.kinematics
     @unpack ϕ, λ = ϕ_λ
     @unpack target, data, Δχ, χ_ref, h_ref, hor_gdc, vrt_gdc = y

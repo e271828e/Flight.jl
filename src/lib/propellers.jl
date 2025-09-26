@@ -408,7 +408,7 @@ end
 
 function Modeling.f_ode!(mdl::Model{<:Propeller}, kin_data::KinData, air_data::AirData, ω::Real)
 
-    @unpack d, J_xx, t_bp, sense, lookup = mdl.constants
+    @unpack d, J_xx, t_bp, sense, lookup = mdl.parameters
     #this may actually happen due to friction constraint overshoot at low RPMs
     # @assert sign(ω) * Int(mdl.sense) >= 0 "Propeller turning in the wrong sense"
 

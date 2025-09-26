@@ -539,7 +539,7 @@ function test_c172x1(; alloc::Bool = true)
         @test isapprox.(y_kin(aircraft).h_e - ctl.u.lon.h_ref, 0.0; atol = 1e-1)
 
         #reference changes within the current threshold do not prompt a mode change
-        ctl.u.lon.h_ref = y_kin(aircraft).h_e - ctl.lon.constants.h_thr / 2
+        ctl.u.lon.h_ref = y_kin(aircraft).h_e - ctl.lon.parameters.h_thr / 2
         step!(sim, 1, true)
         @test ctl.y.lon.h_state === AltTrackingState.hold
         step!(sim, 30, true) #altitude is captured

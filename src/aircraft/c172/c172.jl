@@ -300,10 +300,10 @@ Modeling.S(::Aero) = AeroS()
 function Modeling.f_ode!(mdl::Model{Aero}, terrain::Model{<:AbstractTerrain},
                         air_data::AirData, kin_data::KinData)
 
-    @unpack ẋ, x, u, s, constants = mdl
+    @unpack ẋ, x, u, s, parameters = mdl
     @unpack α_filt, β_filt = x
     @unpack e, a, r, f = u
-    @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = constants
+    @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = parameters
     @unpack TAS, q, v_wb_b = air_data
     @unpack ω_wb_b, n_e, h_o = kin_data
     stall = s.stall
@@ -532,7 +532,7 @@ Modeling.Y(::Payload) = PayloadY()
 
 function Dynamics.get_mp_b(mdl::Model{Payload})
     @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = mdl.u
-    @unpack pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot = mdl.constants
+    @unpack pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot = mdl.parameters
 
     pilot = MassProperties(PointDistribution(m_pilot), pilot_slot)
     copilot = MassProperties(PointDistribution(m_copilot), copilot_slot)
@@ -589,12 +589,12 @@ end
 end
 
 #normalized fuel content (0: residual, 1: full)
-Modeling.X(::Fuel) = [0.5] #cannot be a scalar, need an AbstractVector{<:Real}
+Modeling.X(::Fuel) = [0.5]
 Modeling.Y(::Fuel) = FuelY()
 
 function Modeling.f_ode!(mdl::Model{Fuel}, pwp::Model{<:PistonThruster})
 
-    @unpack m_full, m_res = mdl.constants #no need for submodels
+    @unpack m_full, m_res = mdl.parameters
     x_avail = mdl.x[1]
     m_total = m_res + x_avail * (m_full - m_res) #current mass
     m_avail = m_total - m_res

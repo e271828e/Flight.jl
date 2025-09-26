@@ -35,8 +35,8 @@ Modeling.Y(::Actuator1{R}) where {R} = Actuator1Y{R}()
 
 function Modeling.f_ode!(mdl::Model{Actuator1{R}}) where {R}
 
-    @unpack ẋ, x, u, constants = mdl
-    @unpack τ = constants
+    @unpack ẋ, x, u, parameters = mdl
+    @unpack τ = parameters
 
     cmd = u[]
     pos = R(x.p)
@@ -86,8 +86,8 @@ Modeling.Y(::Actuator2{R}) where {R} = Actuator2Y{R}()
 
 function Modeling.f_ode!(mdl::Model{Actuator2{R}}) where {R}
 
-    @unpack ẋ, x, u, constants = mdl
-    @unpack ω_n, ζ = constants
+    @unpack ẋ, x, u, parameters = mdl
+    @unpack ω_n, ζ = parameters
 
     cmd = u[]
     pos = R(x.p)

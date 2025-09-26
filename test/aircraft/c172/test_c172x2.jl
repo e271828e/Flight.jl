@@ -59,7 +59,7 @@ function test_c172x2(; alloc::Bool = true)
 
             aircraft = world.aircraft
             @unpack ctl, gdc = aircraft.avionics
-            e_thr = gdc.seg.constants.e_thr
+            e_thr = gdc.seg.parameters.e_thr
 
             init_air = C172.TrimParameters(; ψ_nb = 0)
             init_gnd = C172.Init(KinInit( h = h_trn + C172.Δh_to_gnd))

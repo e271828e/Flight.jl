@@ -161,7 +161,7 @@ end
 
 function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
 
-    @unpack ω_rated, ω_idle, P_rated, J, τ_start, lookup = eng.constants
+    @unpack ω_rated, ω_idle, P_rated, J, τ_start, lookup = eng.parameters
     @unpack idle, frc = eng.submodels
     @unpack start, stop, mixture_ctl, τ_load, J_load = eng.u
 
@@ -276,7 +276,7 @@ end
 function Modeling.f_step!(eng::Model{<:PistonEngine}, fuel_available::Bool = true)
 
     @unpack idle, frc = eng.submodels
-    @unpack ω_stall, ω_idle = eng.constants
+    @unpack ω_stall, ω_idle = eng.parameters
 
     ω = eng.x.ω
 
@@ -459,7 +459,7 @@ using CImGui: CollapsingHeader, PushItemWidth, PopItemWidth, SameLine, Text,
 function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Engine")
 
-    @unpack u, y, constants = mdl
+    @unpack u, y, parameters = mdl
     @unpack idle, frc = mdl
 
     Begin(window_label, p_open)
@@ -552,7 +552,7 @@ end
 function Modeling.f_ode!(mdl::Model{<:PistonThruster}, air_data::AirData, kin_data::KinData)
 
     @unpack engine, propeller = mdl
-    @unpack gear_ratio = mdl.constants
+    @unpack gear_ratio = mdl.parameters
 
     ω_eng = engine.x.ω
     ω_prop = gear_ratio * ω_eng

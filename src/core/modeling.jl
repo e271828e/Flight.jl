@@ -82,20 +82,20 @@ Subsampled(md::D) where {D <: ModelDefinition} = Subsampled{D}(md, 1)
 ################################################################################
 ################################### Model #####################################
 
-# type parameter D is needed for dispatching, the rest for type stability.
-# Model's mutability only required for y updates; reassigning any other field is
-# disallowed to avoid breaking the references in the submodel hierarchy. t, _n
-# and _Δt_root are stored as RefValues to allow implicit propagation of updates
-# down the submodel hierarchy
+# - type parameter D is needed for dispatching, the rest for type stability.
+# - Model's mutability only required for y updates; reassigning any other field
+# is disallowed to avoid breaking the references in the submodel hierarchy.
+# - t, _n and _Δt_root are stored as RefValues to allow implicit propagation of
+# updates down the submodel hierarchy
 
-mutable struct Model{D <: ModelDefinition, Y, U, X, S, C, B}
+mutable struct Model{D <: ModelDefinition, Y, U, X, S, P, B}
     y::Y #output
     const u::U #input
     const ẋ::X #continuous state derivative
     const x::X #continuous state
     const s::S #discrete state
     const t::Base.RefValue{Float64} #simulation time
-    const constants::C
+    const parameters::P
     const submodels::B
     const _Δt_root::Base.RefValue{Float64} #root model sampling period
     const _n::Base.RefValue{Int} #simulation periodic update counter
@@ -142,11 +142,11 @@ function Model(md::D,
 
     submodels = NamedTuple{children_names}(children_models)
 
-    #the remaining md fields are stored as constants
-    constants = NamedTuple(c=>getfield(md, c) for c in sd_fieldnames if !(c in children_names))
+    #the remaining md fields are stored as parameters
+    parameters = NamedTuple(c=>getfield(md, c) for c in sd_fieldnames if !(c in children_names))
 
-    mdl = Model{map(typeof, (md, y, u, x, s, constants, submodels))...}(
-                    y, u, ẋ, x, s, t, constants, submodels, _Δt_root, _n, _N)
+    mdl = Model{map(typeof, (md, y, u, x, s, parameters, submodels))...}(
+                    y, u, ẋ, x, s, t, parameters, submodels, _Δt_root, _n, _N)
 
     init!(mdl)
 
@@ -163,27 +163,27 @@ end
 ################################################################################
 
 function Base.propertynames(mdl::Model)
-    constant_names = isnothing(mdl.constants) ? tuple() : keys(mdl.constants)
+    parameter_names = isnothing(mdl.parameters) ? tuple() : keys(mdl.parameters)
     submodel_names = isnothing(mdl.submodels) ? tuple() : keys(mdl.submodels)
-    (:x, :ẋ, :s, :u, :y, :t, :Δt, :constants, constant_names..., :submodels, submodel_names...)
+    (:x, :ẋ, :s, :u, :y, :t, :Δt, :parameters, parameter_names..., :submodels, submodel_names...)
 end
 
 Base.getproperty(mdl::Model, name::Symbol) = getproperty(mdl, Val(name))
 
 #no clashes can occur between constant and submodel names. thus, for
 #convenience we allow direct access to both
-@generated function Base.getproperty(mdl::Model{D, Y, U, X, S, C, B}, ::Val{P}
-        ) where {D, Y, U, X, S, C, B, P}
-    if P ∈ fieldnames(Model)
-        return :(getfield(mdl, $(QuoteNode(P))))
-    elseif P ∈ fieldnames(B)
-        return :(getfield(getfield(mdl, :submodels), $(QuoteNode(P))))
-    elseif P ∈ fieldnames(C)
-        return :(getfield(getfield(mdl, :constants), $(QuoteNode(P))))
-    elseif P === :Δt #actual sampling period
+@generated function Base.getproperty(mdl::Model{D, Y, U, X, S, P, B}, ::Val{Property}
+        ) where {D, Y, U, X, S, P, B, Property}
+    if Property ∈ fieldnames(Model)
+        return :(getfield(mdl, $(QuoteNode(Property))))
+    elseif Property ∈ fieldnames(B)
+        return :(getfield(getfield(mdl, :submodels), $(QuoteNode(Property))))
+    elseif Property ∈ fieldnames(P)
+        return :(getfield(getfield(mdl, :parameters), $(QuoteNode(Property))))
+    elseif Property === :Δt #actual sampling period
         return :(getfield(mdl, :_Δt_root)[] * getfield(mdl, :_N))
     else
-        return :(error("Failed to retrieve property $P from Model"))
+        return :(error("Failed to retrieve property $Property from Model"))
     end
 end
 
@@ -192,8 +192,8 @@ end
 ########################## Model Update Methods ###############################
 
 #notes:
-# for a root Model these must be implemented without additional arguments
-# all implementations MUST return nothing to ensure type stability
+#-a root Model these must implement these without additional arguments
+#-all method implementations MUST return nothing to avoid type instability
 
 abstract type MaybeScheduling end
 struct Scheduling <: MaybeScheduling end

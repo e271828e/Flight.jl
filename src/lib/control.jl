@@ -82,8 +82,8 @@ Modeling.Y(cmp::LinearizedSS) = SVector{length(cmp.y0)}(cmp.y0)
 
 function Modeling.f_ode!(mdl::Model{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, LY}
 
-    @unpack ẋ, x, u, y, constants = mdl
-    @unpack ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache = constants
+    @unpack ẋ, x, u, y, parameters = mdl
+    @unpack ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache = parameters
 
     #non-allocating equivalent of:
     #ẋ = ẋ0 + A * (x - x0) + B * (u - u0)

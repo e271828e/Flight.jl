@@ -286,7 +286,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
     @unpack te2te_lqr, tv2te_lqr, vh2te_lqr, q2e_int, q2e_pid,
     c2θ_pid, v2t_pid = mdl.submodels
     @unpack te2te_lookup, tv2te_lookup, vh2te_lookup, q2e_lookup,
-    c2θ_lookup, v2t_lookup, k_p_θ, h_thr, h_hys = mdl.constants
+    c2θ_lookup, v2t_lookup, k_p_θ, h_thr, h_hys = mdl.parameters
 
     EAS = vehicle.y.airflow.EAS
     h_e = vehicle.y.kinematics.h_e
@@ -871,7 +871,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
     @unpack mode_req, aileron_axis, aileron_offset, rudder_axis, rudder_offset,
     p_ref, β_ref, φ_ref, χ_ref = mdl.u
     @unpack ar2ar_lqr, φβ2ar_lqr, p2φ_int, p2φ_pid, χ2φ_pid = mdl.submodels
-    @unpack ar2ar_lookup, φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = mdl.constants
+    @unpack ar2ar_lookup, φβ2ar_lookup, p2φ_lookup, χ2φ_lookup = mdl.parameters
     @unpack airflow, kinematics, systems = vehicle.y
 
     EAS = airflow.EAS
