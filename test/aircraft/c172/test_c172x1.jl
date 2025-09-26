@@ -355,7 +355,6 @@ function test_c172x1(; alloc::Bool = true)
 
     end
 
-
     ################################ lon_thr_EAS ###############################
 
     @testset verbose = true "ModeControlLon.thr_EAS" begin

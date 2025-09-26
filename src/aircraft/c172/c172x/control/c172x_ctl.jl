@@ -272,8 +272,8 @@ function Modeling.init!(mdl::Model{<:ControlLawsLon})
     #as external saturation inputs to halt integration. therefore, we don't need
     #to set explicit output bounds for these compensators.
     foreach((mdl.te2te_lqr, mdl.tv2te_lqr, mdl.vh2te_lqr)) do lqr
-        lqr.u.bound_lo .= ULon(; throttle_cmd=0, elevator_cmd=-1)
-        lqr.u.bound_hi .= ULon(; throttle_cmd=1, elevator_cmd=1)
+        lqr.parameters.bound_lo .= ULon(; throttle_cmd=0, elevator_cmd=-1)
+        lqr.parameters.bound_hi .= ULon(; throttle_cmd=1, elevator_cmd=1)
     end
 end
 
@@ -332,7 +332,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
             if mode != mode_prev
                 Control.reset!(v2t_pid)
-                k_i = v2t_pid.u.k_i
+                k_i = v2t_pid.parameters.k_i[]
                 (k_i != 0) && (v2t_pid.s.x_i0 = Float64(mdl.y.throttle_cmd))
             end
 
@@ -351,7 +351,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
                 Control.reset!(q2e_int)
                 Control.reset!(q2e_pid)
-                k_i = q2e_pid.u.k_i
+                k_i = q2e_pid.parameters.k_i[]
                 (k_i != 0) && (q2e_pid.s.x_i0 = Zte(te2te_lqr.u.z_ref).elevator_cmd)
 
             end
@@ -364,7 +364,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
                     if mode != mode_prev
                         Control.reset!(c2θ_pid)
-                        k_i = c2θ_pid.u.k_i
+                        k_i = c2θ_pid.parameters.k_i[]
                         (k_i != 0) && (c2θ_pid.s.x_i0 = θ)
                     end
 
@@ -855,13 +855,13 @@ Modeling.Y(::ControlLawsLat) = ControlLawsLatY()
 function Modeling.init!(mdl::Model{<:ControlLawsLat})
 
     foreach((mdl.φβ2ar_lqr, mdl.ar2ar_lqr)) do lqr
-        lqr.u.bound_lo .= ULatRed(; aileron_cmd=-1, rudder_cmd=-1)
-        lqr.u.bound_hi .= ULatRed(; aileron_cmd=1, rudder_cmd=1)
+        lqr.parameters.bound_lo .= ULatRed(; aileron_cmd=-1, rudder_cmd=-1)
+        lqr.parameters.bound_hi .= ULatRed(; aileron_cmd=1, rudder_cmd=1)
     end
 
     #set φ reference limits for the course angle compensator output
-    mdl.χ2φ_pid.u.bound_lo = -π / 4
-    mdl.χ2φ_pid.u.bound_hi = π / 4
+    mdl.χ2φ_pid.parameters.bound_lo[] = -π / 4
+    mdl.χ2φ_pid.parameters.bound_hi[] = π / 4
 
 end
 
@@ -915,7 +915,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
                 #our next φ output must match φ reference at φβ2ar input
                 Control.reset!(p2φ_int)
                 Control.reset!(p2φ_pid)
-                k_i = p2φ_pid.u.k_i
+                k_i = p2φ_pid.parameters.k_i[]
                 (k_i != 0) && (p2φ_pid.s.x_i0 = Zφβ(φβ2ar_lqr.u.z_ref).φ)
             end
 
@@ -935,7 +935,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
             if mode != mode_prev
                 #our next φ output must match φ reference at φβ2ar input
                 Control.reset!(χ2φ_pid)
-                k_i = χ2φ_pid.u.k_i
+                k_i = χ2φ_pid.parameters.k_i[]
                 (k_i != 0) && (χ2φ_pid.s.x_i0 = Zφβ(φβ2ar_lqr.u.z_ref).φ)
             end
 

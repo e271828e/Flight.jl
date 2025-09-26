@@ -148,15 +148,15 @@ function Modeling.init!(mdl::Model{<:PistonEngine})
     #set up friction constraint compensator
     @unpack idle, frc = mdl.submodels
 
-    idle.u.k_p .= 4.0
-    idle.u.k_i .= 2.0
-    idle.u.bound_lo .= -0.5
-    idle.u.bound_hi .= 0.5
+    idle.parameters.k_p .= 4.0
+    idle.parameters.k_i .= 2.0
+    idle.parameters.bound_lo .= -0.5
+    idle.parameters.bound_hi .= 0.5
 
-    frc.u.k_p .= 5.0
-    frc.u.k_i .= 200.0
-    frc.u.bound_lo .= -1
-    frc.u.bound_hi .= 1
+    frc.parameters.k_p .= 5.0
+    frc.parameters.k_i .= 200.0
+    frc.parameters.bound_lo .= -1
+    frc.parameters.bound_hi .= 1
 end
 
 function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)

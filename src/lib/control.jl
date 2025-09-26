@@ -161,15 +161,16 @@ end
 ####################### Proportional-Integral Compensator ######################
 ################################################################################
 
-struct PIVector{N} <: ModelDefinition end
-
-@kwdef struct PIVectorU{N}
+@kwdef struct PIVector{N} <: ModelDefinition
     k_p::MVector{N,Float64} = ones(N) #proportional gain
     k_i::MVector{N,Float64} = zeros(N) #integral gain
     k_l::MVector{N,Float64} = zeros(N) #integrator leak factor
     β_p::MVector{N,Float64} = ones(N) #proportional path reference weighting factor
     bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
     bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
+end
+
+@kwdef struct PIVectorU{N}
     input::MVector{N,Float64} = zeros(N) #input (reference - feedback)
     sat_ext::MVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
 end
@@ -203,12 +204,14 @@ Modeling.U(::PIVector{N}) where {N} = PIVectorU{N}()
 
 function Modeling.f_ode!(mdl::Model{<:PIVector{N}}) where {N}
 
-    @unpack ẋ, x, u = mdl
+    @unpack ẋ, x, u, parameters = mdl
+    @unpack input, sat_ext = u
+    @unpack k_p, k_i, k_l, β_p, bound_lo, bound_hi = parameters
+
+    input, sat_ext, k_p, k_i, k_l, β_p, bound_lo, bound_hi = map(SVector, (
+    input, sat_ext, k_p, k_i, k_l, β_p, bound_lo, bound_hi))
 
     x_i = SVector{N, Float64}(x)
-    k_p, k_i, k_l, β_p = map(SVector, (u.k_p, u.k_i, u.k_l, u.β_p))
-    input, bound_lo, bound_hi, sat_ext = map(SVector, (
-        u.input, u.bound_lo, u.bound_hi, u.sat_ext))
 
     u_p = β_p .* input
     u_i = input
@@ -365,13 +368,14 @@ using ..Control
 ############################# Integrator ###############################
 ################################################################################
 
-struct Integrator <: ModelDefinition end
+@kwdef struct Integrator <: ModelDefinition
+    bound_lo::Ref{Float64} = Ref(-Inf) #lower output bound
+    bound_hi::Ref{Float64} = Ref(Inf) #higher output bound
+end
 
 @kwdef mutable struct IntegratorInput
     input::Float64 = 0 #current input
     sat_ext::Int64 = 0 #external (signed) saturation signal
-    bound_lo::Float64 = -Inf #lower output bound
-    bound_hi::Float64 = Inf #higher output bound
 end
 
 @kwdef mutable struct IntegratorState
@@ -406,9 +410,11 @@ end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Integrator})
 
-    @unpack s, u, Δt = mdl
-    @unpack input, sat_ext, bound_lo, bound_hi = u
+    @unpack s, u, Δt, parameters = mdl
+    @unpack input, sat_ext = u
     @unpack x0, sat_out_0 = s
+    bound_lo = parameters.bound_lo[]
+    bound_hi = parameters.bound_hi[]
 
     halted = ((sign(input * sat_out_0) > 0) || (sign(input * sat_ext) > 0))
     x1 = x0 + Δt * input * !halted
@@ -427,13 +433,14 @@ end
 
 ################################################################################
 
-struct IntegratorVector{N} <: ModelDefinition end
+@kwdef struct IntegratorVector{N} <: ModelDefinition
+    bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
+    bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
+end
 
 @kwdef mutable struct IntegratorVectorInput{N}
     input::MVector{N,Float64} = zeros(Float64, N)
     sat_ext::MVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
-    bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
-    bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
 end
 
 @kwdef mutable struct IntegratorVectorState{N}
@@ -468,10 +475,12 @@ end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:IntegratorVector})
 
-    @unpack s, u, Δt = mdl
+    @unpack s, u, Δt, parameters = mdl
+    @unpack input, sat_ext = u
+    @unpack bound_lo, bound_hi = parameters
 
-    input, bound_lo, bound_hi, sat_ext = map(SVector, (
-        u.input, u.bound_lo, u.bound_hi, u.sat_ext))
+    input, sat_ext, bound_lo, bound_hi = map(SVector, (
+    input, sat_ext, bound_lo, bound_hi))
 
     x0 = SVector(s.x0)
     sat_out_0 = SVector(s.sat_out_0)
@@ -527,12 +536,13 @@ end #function
 #|p| > |z|: lead
 #|p| < |z|: lag
 
-struct LeadLag <: ModelDefinition end
+@kwdef struct LeadLag <: ModelDefinition
+    z::Ref{Float64} = Ref(-1.0) #zero location (z < 0)
+    p::Ref{Float64} = Ref(-10.0) #pole location (p < 0)
+    k::Ref{Float64} = Ref(1.0) #gain
+end
 
 @kwdef mutable struct LeadLagInput
-    z::Float64 = -1.0 #zero location (z < 0)
-    p::Float64 = -10.0 #pole location (p < 0)
-    k::Float64 = 1.0 #gain
     u1::Float64 = 0.0 #input
 end
 
@@ -545,13 +555,13 @@ end
     z::Float64 = -1.0
     p::Float64 = -10.0
     k::Float64 = 1.0
-    u1::Float64 = 0.0
+    u1::Float64 = 0.0 #current input
     y1::Float64 = 0.0 #current output
 end
 
-Modeling.Y(::LeadLag) = LeadLagOutput()
 Modeling.U(::LeadLag) = LeadLagInput()
 Modeling.S(::LeadLag) = LeadLagState()
+Modeling.Y(::LeadLag) = LeadLagOutput()
 
 function Control.reset!(mdl::Model{<:LeadLag})
     mdl.u.u1 = 0
@@ -564,9 +574,12 @@ end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LeadLag})
 
-    @unpack s, u, Δt = mdl
-    @unpack z, p, k, u1 = u
+    @unpack parameters, s, u, Δt = mdl
+    @unpack u1 = u
     @unpack u0, x0 = s
+    z = parameters.z[]
+    p = parameters.p[]
+    k = parameters.k[]
 
     a0 = (2+p*Δt)/(2-p*Δt)
     b1 = (2-z*Δt)/(2-p*Δt)
@@ -634,17 +647,18 @@ end
 
 ################################# Scalar Version ###############################
 
-@kwdef struct PID <: ModelDefinition end
+@kwdef struct PID <: ModelDefinition
+    k_p::Ref{Float64} = Ref(1.0) #proportional gain
+    k_i::Ref{Float64} = Ref(0.1) #integral gain
+    k_d::Ref{Float64} = Ref(0.1) #derivative gain
+    τ_f::Ref{Float64} = Ref(0.01) #derivative filter time constant
+    β_p::Ref{Float64} = Ref(1.0) #proportional path reference weighting factor
+    β_d::Ref{Float64} = Ref(1.0) #derivative path reference weighting factor
+    bound_lo::Ref{Float64} = Ref(-Inf) #lower output bound
+    bound_hi::Ref{Float64} = Ref(Inf) #higher output bound
+end
 
 @kwdef mutable struct PIDInput
-    k_p::Float64 = 1.0 #proportional gain
-    k_i::Float64 = 0.1 #integral gain
-    k_d::Float64 = 0.1 #derivative gain
-    τ_f::Float64 = 0.01 #derivative filter time constant
-    β_p::Float64 = 1.0 #proportional path reference weighting factor
-    β_d::Float64 = 1.0 #derivative path reference weighting factor
-    bound_lo::Float64 = -Inf #lower output bound
-    bound_hi::Float64 = Inf #higher output bound
     input::Float64 = 0.0 #current input signal
     sat_ext::Int64 = 0 #external (signed) saturation input signal
 end
@@ -690,15 +704,19 @@ function Control.reset!(mdl::Model{<:PID})
     mdl.s.sat_out_0 = 0
 end
 
-
 @no_ode PID
 @no_step PID
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:PID})
 
-    @unpack Δt = mdl
-    @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext = mdl.u
-    @unpack x_i0, x_d0, sat_out_0 = mdl.s
+    @unpack parameters, u, s, Δt = mdl
+    @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi = parameters
+    @unpack input, sat_ext = u
+    @unpack x_i0, x_d0, sat_out_0 = s
+
+    #extract parameter values from Refs
+    k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi = map(r->getproperty(r, :x), (
+    k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi))
 
     α = 1 / (τ_f + Δt)
 
@@ -733,9 +751,7 @@ end
 
 ############################## Vector Version ##################################
 
-struct PIDVector{N} <: ModelDefinition end
-
-@kwdef struct PIDVectorInput{N}
+@kwdef struct PIDVector{N} <: ModelDefinition
     k_p::MVector{N,Float64} = ones(N) #proportional gain
     k_i::MVector{N,Float64} = zeros(N) #integral gain
     k_d::MVector{N,Float64} = zeros(N) #derivative gain
@@ -744,6 +760,9 @@ struct PIDVector{N} <: ModelDefinition end
     β_d::MVector{N,Float64} = ones(N) #derivative path reference weighting factor
     bound_lo::MVector{N,Float64} = fill(-Inf, N) #lower output bounds
     bound_hi::MVector{N,Float64} = fill(Inf, N) #higher output bounds
+end
+
+@kwdef struct PIDVectorInput{N}
     input::MVector{N,Float64} = zeros(Float64, N) #input
     sat_ext::MVector{N,Int64} = zeros(Int64, N) #external (signed) saturation signal
 end
@@ -792,18 +811,19 @@ end
 @no_ode PIDVector
 @no_step PIDVector
 
+
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:PIDVector{N}}) where {N}
 
-    @unpack s, u, Δt = mdl
+    @unpack parameters, s, u, Δt = mdl
+    @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi = parameters
+    @unpack x_i0, x_d0, sat_out_0 = s
+    @unpack input, sat_ext = u
 
-    k_p, k_i, k_d, τ_f, β_p, β_d = map(SVector, (
-        u.k_p, u.k_i, u.k_d, u.τ_f, u.β_p, u.β_d))
+    k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi = map(SVector, (
+    k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi))
 
-    input, bound_lo, bound_hi, sat_ext = map(SVector, (
-        u.input, u.bound_lo, u.bound_hi, u.sat_ext))
-
-    x_i0, x_d0, sat_out_0 = map(SVector, (
-        s.x_i0, s.x_d0, s.sat_out_0))
+    input, sat_ext, x_i0, x_d0, sat_out_0 = map(SVector, (
+    input, sat_ext, x_i0, x_d0, sat_out_0))
 
     α = 1 ./ (τ_f .+ Δt)
 
@@ -967,7 +987,16 @@ GUI.draw!(mdl::Model{<:PID}, label::String = "Discrete PID") = GUI.draw(mdl, lab
 ############################## LQR ######################################
 ################################################################################
 
-struct LQR{NX, NU, NZ, NUX, NUZ} <: ModelDefinition end
+@kwdef struct LQR{NX, NU, NZ, NUX, NUZ} <: ModelDefinition
+    C_fbk::MMatrix{NU, NX, Float64, NUX} = zeros(NU, NX) #state feedback matrix
+    C_fwd::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #feedforward matrix
+    C_int::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #integrator gain matrix
+    x_trim::MVector{NX, Float64} = zeros(NX) #trim point state
+    u_trim::MVector{NU, Float64} = zeros(NU) #trim point control input
+    z_trim::MVector{NZ, Float64} = zeros(NZ) #trim point command vector
+    bound_lo::MVector{NU,Float64} = fill(-Inf, NU) #lower output bounds
+    bound_hi::MVector{NU,Float64} = fill(Inf, NU) #upper output bounds
+end
 
 function LQR{NX, NU, NZ}() where {NX, NU, NZ}
     @assert NZ <= NU "Can't have more command variables than control inputs"
@@ -977,14 +1006,6 @@ function LQR{NX, NU, NZ}() where {NX, NU, NZ}
 end
 
 @kwdef struct LQRInput{NX, NU, NZ, NUX, NUZ}
-    C_fbk::MMatrix{NU, NX, Float64, NUX} = zeros(NU, NX) #state feedback matrix
-    C_fwd::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #feedforward matrix
-    C_int::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #integrator gain matrix
-    x_trim::MVector{NX, Float64} = zeros(NX) #trim point state
-    u_trim::MVector{NU, Float64} = zeros(NU) #trim point control input
-    z_trim::MVector{NZ, Float64} = zeros(NZ) #trim point command vector
-    bound_lo::MVector{NU,Float64} = fill(-Inf, NU) #lower output bounds
-    bound_hi::MVector{NU,Float64} = fill(Inf, NU) #upper output bounds
     sat_ext::MVector{NU,Int64} = zeros(Int64, NU) #saturation input signal
     z_ref::MVector{NZ, Float64} = zeros(NZ) #command vector reference
     z::MVector{NZ, Float64} = zeros(NZ) #current command vector value
@@ -1055,15 +1076,22 @@ end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LQR})
 
-    @unpack s, u, Δt = mdl
+    @unpack parameters, s, u, Δt = mdl
+    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim, bound_lo, bound_hi = parameters
+    @unpack int_out_0, out_sat_0 = s
+    @unpack sat_ext, z_ref, z, x = u
 
-    C_fbk, C_fwd, C_int = map(SMatrix, (u.C_fbk, u.C_fwd, u.C_int))
-    x_trim, u_trim, z_trim = map(SVector, (u.x_trim, u.u_trim, u.z_trim))
-    bound_lo, bound_hi, sat_ext = map(SVector, (u.bound_lo, u.bound_hi, u.sat_ext))
-    z_ref, z, x = map(SVector, (u.z_ref, u.z, u.x))
+    C_fbk, C_fwd, C_int = map(SMatrix, (
+    C_fbk, C_fwd, C_int))
 
-    int_out_0 = SVector(s.int_out_0)
-    out_sat_0 = SVector(s.out_sat_0)
+    x_trim, u_trim, z_trim, bound_lo, bound_hi = map(SVector, (
+    x_trim, u_trim, z_trim, bound_lo, bound_hi))
+
+    sat_ext, z_ref, z, x = map(SVector, (
+    sat_ext, z_ref, z, x))
+
+    int_out_0, out_sat_0 = map(SVector, (
+    int_out_0, out_sat_0))
 
     int_in = C_int * (z_ref - z)
     int_halted = ((sign.(int_in .* out_sat_0) .> 0) .|| (sign.(int_in .* sat_ext) .> 0))
@@ -1138,19 +1166,22 @@ const LQRPoint = LQRParams{CB, CF, CI, X, U, Z} where {
     Z <: AbstractVector{<:Real}}
 
 
-function assign!(mdl::Model{<:PID}, params::PIDPoint)
-    @unpack k_p, k_i, k_d, τ_f = params
-    @pack! mdl.u = k_p, k_i, k_d, τ_f
+function assign!(mdl::Model{<:PID}, point::PIDPoint)
+    @unpack k_p, k_i, k_d, τ_f = point
+    mdl.parameters.k_p[] = k_p
+    mdl.parameters.k_i[] = k_i
+    mdl.parameters.k_d[] = k_d
+    mdl.parameters.τ_f[] = τ_f
 end
 
-function assign!(lqr::Model{<:LQR}, params::LQRPoint)
-    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = params
-    lqr.u.C_fbk .= C_fbk
-    lqr.u.C_fwd .= C_fwd
-    lqr.u.C_int .= C_int
-    lqr.u.x_trim .= x_trim
-    lqr.u.u_trim .= u_trim
-    lqr.u.z_trim .= z_trim
+function assign!(mdl::Model{<:LQR}, point::LQRPoint)
+    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = point
+    mdl.parameters.C_fbk .= C_fbk
+    mdl.parameters.C_fwd .= C_fwd
+    mdl.parameters.C_int .= C_int
+    mdl.parameters.x_trim .= x_trim
+    mdl.parameters.u_trim .= u_trim
+    mdl.parameters.z_trim .= z_trim
 end
 
 

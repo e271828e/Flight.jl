@@ -119,7 +119,7 @@ function crosswind_landing(; gui::Bool = false,
                 ctl.lon.u.EAS_ref = 30
                 vehicle.systems.act.flaps.u[] = 1.0
 
-                println("Entering final")
+                # println("Entering final")
                 phase[] = :final
 
             elseif phase[] === :final
@@ -135,7 +135,7 @@ function crosswind_landing(; gui::Bool = false,
                     ctl.lat.u.β_ref = Attitude.wrap_to_π(ψ_current - ψ_seg)
                     ctl.lat.u.φ_ref = 0
 
-                    println("Entering flare")
+                    # println("Entering flare")
                     phase[] = :flare
                 end
 
@@ -145,7 +145,7 @@ function crosswind_landing(; gui::Bool = false,
                     ctl.lon.u.throttle_axis = 0
                     ctl.lat.u.rudder_axis = -0.04
                     vehicle.systems.act.flaps.u[] = 0.0
-                    println("Touchdown ")
+                    # println("Touchdown ")
                     phase[] = :ground
                 end
 
@@ -230,7 +230,7 @@ function traffic_pattern(; gui::Bool = false,
                 ctl.lon.u.EAS_ref = 35
                 ctl.lon.u.throttle_axis = 1
                 if !is_on_gnd(vehicle)
-                    println("Lift-off")
+                    # println("Lift-off")
                     phase[] = :departure
                 end
 
@@ -238,7 +238,7 @@ function traffic_pattern(; gui::Bool = false,
 
                 if avionics.y.gdc.seg.data.s_2b > capture_threshold
                     seg.u.target = crosswind_leg
-                    println("Entering crosswind")
+                    # println("Entering crosswind")
                     phase[] = :crosswind
                 end
 
@@ -246,7 +246,7 @@ function traffic_pattern(; gui::Bool = false,
 
                 if avionics.y.gdc.seg.data.s_2b > capture_threshold
                     seg.u.target = downwind_leg
-                    println("Entering downwind")
+                    # println("Entering downwind")
                     phase[] = :downwind
                 end
 
@@ -255,7 +255,7 @@ function traffic_pattern(; gui::Bool = false,
                 avionics.ctl.lon.u.EAS_ref = 50
                 if avionics.y.gdc.seg.data.s_2b > capture_threshold
                     seg.u.target = base_leg
-                    println("Entering base")
+                    # println("Entering base")
                     phase[] = :base
                 end
 
@@ -265,7 +265,7 @@ function traffic_pattern(; gui::Bool = false,
                 vehicle.systems.act.flaps.u[] = 1.0
                 if avionics.y.gdc.seg.data.s_2b > capture_threshold
                     seg.u.target = final_leg
-                    println("Entering final")
+                    # println("Entering final")
                     phase[] = :final
                 end
 
@@ -282,7 +282,7 @@ function traffic_pattern(; gui::Bool = false,
                     ctl.lat.u.β_ref = Attitude.wrap_to_π(ψ_current - ψ_seg)
                     ctl.lat.u.φ_ref = 0
 
-                    println("Entering flare")
+                    # println("Entering flare")
                     phase[] = :flare
                 end
 
@@ -292,7 +292,7 @@ function traffic_pattern(; gui::Bool = false,
                     ctl.lon.u.throttle_axis = 0
                     ctl.lat.u.rudder_axis = -0.04
                     vehicle.systems.act.flaps.u[] = 0.0
-                    println("Touchdown")
+                    # println("Touchdown")
                     phase[] = :ground
                 end
 
