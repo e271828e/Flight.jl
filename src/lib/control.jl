@@ -1,21 +1,8 @@
 module Control
 
-################################################################################
-############################ Common Interfaces #################################
-
 using Flight.FlightCore
 
-function reset!(mdl::T) where {T <: Model}
-    #prevent inadvertent dispatching for leaf Models
-    @assert !isempty(mdl.submodels) "$T is a leaf Model, so it must extend the
-                                    Control.reset! method"
-    foreach(mdl.submodels) do ss
-        reset!(ss)
-    end
-end
-
-
-############################ Continuous Components #############################
+############################## Continuous Models ###############################
 ################################################################################
 module Continuous ##############################################################
 
@@ -233,7 +220,7 @@ function Modeling.f_ode!(mdl::Model{<:PIVector{N}}) where {N}
 
 end
 
-function Control.reset!(mdl::Model{<:PIVector})
+function Modeling.init!(mdl::Model{<:PIVector})
     mdl.u.input .= 0
     mdl.u.sat_ext .= 0
     mdl.x .= 0
@@ -351,7 +338,7 @@ end #function
 end #submodule
 
 
-############################## DiscreteComponents ##############################
+################################ Discrete Models ###############################
 ################################################################################
 module Discrete ###############################################################
 
@@ -398,7 +385,7 @@ Modeling.Y(::Integrator) = IntegratorOutput()
 Modeling.U(::Integrator) = IntegratorInput()
 Modeling.S(::Integrator) = IntegratorState()
 
-function Control.reset!(mdl::Model{<:Integrator}, x0::Real = 0.0)
+function Modeling.init!(mdl::Model{<:Integrator}, x0::Real = 0.0)
     mdl.u.input = 0
     mdl.u.sat_ext = 0
     mdl.s.x0 = x0
@@ -463,7 +450,7 @@ Modeling.Y(::IntegratorVector{N}) where {N} = IntegratorVectorOutput{N}()
 Modeling.U(::IntegratorVector{N}) where {N} = IntegratorVectorInput{N}()
 Modeling.S(::IntegratorVector{N}) where {N} = IntegratorVectorState{N}()
 
-function Control.reset!(mdl::Model{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
+function Modeling.init!(mdl::Model{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
     mdl.u.input .= 0
     mdl.u.sat_ext .= 0
     mdl.s.x0 .= x0
@@ -563,7 +550,7 @@ Modeling.U(::LeadLag) = LeadLagInput()
 Modeling.S(::LeadLag) = LeadLagState()
 Modeling.Y(::LeadLag) = LeadLagOutput()
 
-function Control.reset!(mdl::Model{<:LeadLag})
+function Modeling.init!(mdl::Model{<:LeadLag})
     mdl.u.u1 = 0
     mdl.s.u0 = 0
     mdl.s.x0 = 0
@@ -696,7 +683,7 @@ Modeling.Y(::PID) = PIDOutput()
 Modeling.U(::PID) = PIDInput()
 Modeling.S(::PID) = PIDState()
 
-function Control.reset!(mdl::Model{<:PID})
+function Modeling.init!(mdl::Model{<:PID})
     mdl.u.input = 0
     mdl.u.sat_ext = 0
     mdl.s.x_i0 = 0
@@ -800,7 +787,7 @@ Modeling.Y(::PIDVector{N}) where {N} = PIDVectorOutput{N}()
 Modeling.U(::PIDVector{N}) where {N} = PIDVectorInput{N}()
 Modeling.S(::PIDVector{N}) where {N} = PIDVectorState{N}()
 
-function Control.reset!(mdl::Model{<:PIDVector{N}}) where {N}
+function Modeling.init!(mdl::Model{<:PIDVector{N}}) where {N}
     mdl.u.input .= 0
     mdl.u.sat_ext .= 0
     mdl.s.x_i0 .= 0
@@ -1062,7 +1049,7 @@ function Modeling.S(::LQR{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
     LQRState{NX, NU}()
 end
 
-function Control.reset!(mdl::Model{<:LQR})
+function Modeling.init!(mdl::Model{<:LQR})
     mdl.u.z_ref .= 0
     mdl.u.z .= 0
     mdl.u.x .= 0

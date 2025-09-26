@@ -266,6 +266,11 @@ Modeling.U(::ControlLawsLon) = ControlLawsLonU()
 Modeling.Y(::ControlLawsLon) = ControlLawsLonY()
 
 function Modeling.init!(mdl::Model{<:ControlLawsLon})
+
+    foreach(values(mdl.submodels)) do ss
+        init!(ss)
+    end
+
     #when te2te_lqr is active, the actual throttle and elevator saturation
     #states are observed at its output. every non-LQR compensator built upon
     #te2te_lqr (q2e_int, q2e_pid, c2θ_pid) will receive these saturation states
@@ -275,6 +280,7 @@ function Modeling.init!(mdl::Model{<:ControlLawsLon})
         lqr.parameters.bound_lo .= ULon(; throttle_cmd=0, elevator_cmd=-1)
         lqr.parameters.bound_hi .= ULon(; throttle_cmd=1, elevator_cmd=1)
     end
+
 end
 
 
@@ -331,7 +337,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
             Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
-                Control.reset!(v2t_pid)
+                init!(v2t_pid)
                 k_i = v2t_pid.parameters.k_i[]
                 (k_i != 0) && (v2t_pid.s.x_i0 = Float64(mdl.y.throttle_cmd))
             end
@@ -349,8 +355,8 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
             if mode != mode_prev
 
-                Control.reset!(q2e_int)
-                Control.reset!(q2e_pid)
+                init!(q2e_int)
+                init!(q2e_pid)
                 k_i = q2e_pid.parameters.k_i[]
                 (k_i != 0) && (q2e_pid.s.x_i0 = Zte(te2te_lqr.u.z_ref).elevator_cmd)
 
@@ -363,7 +369,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
                     Control.Discrete.assign!(c2θ_pid, c2θ_lookup(EAS, Float64(h_e)))
 
                     if mode != mode_prev
-                        Control.reset!(c2θ_pid)
+                        init!(c2θ_pid)
                         k_i = c2θ_pid.parameters.k_i[]
                         (k_i != 0) && (c2θ_pid.s.x_i0 = θ)
                     end
@@ -408,7 +414,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
         Control.Discrete.assign!(tv2te_lqr, tv2te_lookup(EAS, Float64(h_e)))
 
-        (mode != mode_prev) && Control.reset!(tv2te_lqr)
+        (mode != mode_prev) && init!(tv2te_lqr)
 
         tv2te_lqr.u.x .= XLonRed(vehicle)
         tv2te_lqr.u.z .= Ztv(vehicle)
@@ -422,7 +428,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
         Control.Discrete.assign!(vh2te_lqr, vh2te_lookup(EAS, Float64(h_e)))
 
-        (mode != mode_prev) && Control.reset!(vh2te_lqr)
+        (mode != mode_prev) && init!(vh2te_lqr)
 
         vh2te_lqr.u.x .= XLonFull(vehicle)
         vh2te_lqr.u.z .= Zvh(vehicle)
@@ -465,7 +471,7 @@ function Modeling.init!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
     @unpack EAS = vehicle.y.airflow
 
     #reset all controller submodels
-    Control.reset!(lon)
+    init!(lon)
 
     #make inputs consistent with the vehicle status, so
     u.throttle_axis = throttle.pos
@@ -854,6 +860,10 @@ Modeling.Y(::ControlLawsLat) = ControlLawsLatY()
 
 function Modeling.init!(mdl::Model{<:ControlLawsLat})
 
+    foreach(values(mdl.submodels)) do ss
+        init!(ss)
+    end
+
     foreach((mdl.φβ2ar_lqr, mdl.ar2ar_lqr)) do lqr
         lqr.parameters.bound_lo .= ULatRed(; aileron_cmd=-1, rudder_cmd=-1)
         lqr.parameters.bound_hi .= ULatRed(; aileron_cmd=1, rudder_cmd=1)
@@ -862,6 +872,8 @@ function Modeling.init!(mdl::Model{<:ControlLawsLat})
     #set φ reference limits for the course angle compensator output
     mdl.χ2φ_pid.parameters.bound_lo[] = -π / 4
     mdl.χ2φ_pid.parameters.bound_hi[] = π / 4
+
+    nothing
 
 end
 
@@ -913,8 +925,8 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
 
             if mode != mode_prev
                 #our next φ output must match φ reference at φβ2ar input
-                Control.reset!(p2φ_int)
-                Control.reset!(p2φ_pid)
+                init!(p2φ_int) #reset
+                init!(p2φ_pid)
                 k_i = p2φ_pid.parameters.k_i[]
                 (k_i != 0) && (p2φ_pid.s.x_i0 = Zφβ(φβ2ar_lqr.u.z_ref).φ)
             end
@@ -934,7 +946,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
 
             if mode != mode_prev
                 #our next φ output must match φ reference at φβ2ar input
-                Control.reset!(χ2φ_pid)
+                init!(χ2φ_pid)
                 k_i = χ2φ_pid.parameters.k_i[]
                 (k_i != 0) && (χ2φ_pid.s.x_i0 = Zφβ(φβ2ar_lqr.u.z_ref).φ)
             end
@@ -954,7 +966,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
         Control.Discrete.assign!(φβ2ar_lqr, φβ2ar_lookup(EAS, Float64(h_e)))
 
         if mode != mode_prev
-            Control.reset!(φβ2ar_lqr)
+            init!(φβ2ar_lqr)
         end
 
         φβ2ar_lqr.u.x .= XLatRed(vehicle)
@@ -996,7 +1008,7 @@ function Modeling.init!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
     @unpack β = vehicle.y.systems.aero
 
     #reset all controller submodels
-    Control.reset!(lat)
+    init!(lat)
 
     #make ControlLaws inputs consistent with vehicle status
     u.aileron_axis = aileron.pos
