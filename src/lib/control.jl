@@ -7,6 +7,7 @@ using Flight.FlightCore
 module Continuous ##############################################################
 
 using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
+using FiniteDiff: finite_difference_jacobian! as jacobian!
 using ControlSystems: ControlSystemsBase, ControlSystems, ss
 using RobustAndOptimalControl
 using Plots, LaTeXStrings, DataStructures
@@ -45,13 +46,74 @@ struct LinearizedSS{ LX, LU, LY, #state, input and output vector lengths
 
 end
 
+
+################################ Constructors ##################################
+
 LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D) = LinearizedSS(ẋ0, x0, u0, y0, A, B, C, D)
 
-ControlSystems.ss(cmp::LinearizedSS) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
+function LinearizedSS(f::Function, g::Function,
+                    x0::AbstractVector{Float64}, u0::AbstractVector{Float64})
+    ẋ0 = f(x0, u0)
+    y0 = g(x0, u0)
+    A, B, C, D = ss_matrices(f, g, x0, u0)
+    LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 
-function RobustAndOptimalControl.named_ss(lss::LinearizedSS)
-    x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lss.x0, lss.u0, lss.y0))
-    named_ss(ss(lss), x = x_labels, u = u_labels, y = y_labels)
+end
+
+function LinearizedSS(f::Function, g::Function,
+                    x0::FieldVector{NX, Float64}, u0::FieldVector{NU, Float64}) where {NX, NU}
+
+    ẋ0 = f(x0, u0)::FieldVector
+    y0 = g(x0, u0)::FieldVector
+    A, B, C, D = ss_matrices(f, g, x0, u0)
+
+    x_axis = Axis(propertynames(x0))
+    u_axis = Axis(propertynames(u0))
+    y_axis = Axis(propertynames(y0))
+
+    ẋ0_cv = ComponentVector(Vector(ẋ0), x_axis)
+    x0_cv = ComponentVector(Vector(x0), x_axis)
+    u0_cv = ComponentVector(Vector(u0), u_axis)
+    y0_cv = ComponentVector(Vector(y0), y_axis)
+
+    A_cm = ComponentMatrix(A, x_axis, x_axis)
+    B_cm = ComponentMatrix(B, x_axis, u_axis)
+    C_cm = ComponentMatrix(C, y_axis, x_axis)
+    D_cm = ComponentMatrix(D, y_axis, u_axis)
+
+    LinearizedSS(ẋ0_cv, x0_cv, u0_cv, y0_cv, A_cm, B_cm, C_cm, D_cm)
+
+end
+
+#given a trim point (x0, u0) for the nonlinear system ẋ = f(x,u); y = g(x,u),
+#compute the state space matrices (A, B, C, D) for the system's linearization
+#around (x0, u0), given by: Δẋ = AΔx + BΔu; Δy = CΔx + DΔu
+function ss_matrices(f::Function, g::Function,
+                    x0::AbstractVector{Float64}, u0::AbstractVector{Float64})
+
+    y0 = g(x0, u0)
+
+    #none of these closures will be returned for use in another scope or
+    #reassigned within ss_matrices, so there is no need to capture x0 and u0
+    #with a let block
+    f_A!(ẋ, x) = (ẋ .= f(x, u0))
+    f_B!(ẋ, u) = (ẋ .= f(x0, u))
+    f_C!(y, x) = (y .= g(x, u0))
+    f_D!(y, u) = (y .= g(x0, u))
+
+    #preallocate mutable arrays
+    A = (x0 * x0') |> Matrix
+    B = (x0 * u0') |> Matrix
+    C = (y0 * x0') |> Matrix
+    D = (y0 * u0') |> Matrix
+
+    jacobian!(A, f_A!, Vector(x0))
+    jacobian!(B, f_B!, Vector(u0))
+    jacobian!(C, f_C!, Vector(x0))
+    jacobian!(D, f_D!, Vector(u0))
+
+    return (A, B, C, D)
+
 end
 
 function LinearizedSS(mdl::ControlSystemsBase.StateSpace{ControlSystemsBase.Continuous, <:AbstractFloat})
@@ -59,6 +121,9 @@ function LinearizedSS(mdl::ControlSystemsBase.StateSpace{ControlSystemsBase.Cont
     ẋ0 = zeros(nx); x0 = zeros(nx); u0 = zeros(nu); y0 = zeros(ny)
     LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 end
+
+
+############################# Update Functions #################################
 
 Modeling.X(cmp::LinearizedSS) = copy(cmp.x0)
 Modeling.U(cmp::LinearizedSS) = copy(cmp.u0)
@@ -118,6 +183,17 @@ function submodel(cmp::LinearizedSS; x = keys(cmp.x0), u = keys(cmp.u0), y = key
     return LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 
 end
+
+
+############################### ControlSystems #################################
+
+ControlSystems.ss(cmp::LinearizedSS) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
+
+function RobustAndOptimalControl.named_ss(lss::LinearizedSS)
+    x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lss.x0, lss.u0, lss.y0))
+    named_ss(ss(lss), x = x_labels, u = u_labels, y = y_labels)
+end
+
 
 function submodel(nss::RobustAndOptimalControl.NamedStateSpace;
                   x = nss.x, u = nss.u, y = nss.y)

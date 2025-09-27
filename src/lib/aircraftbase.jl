@@ -294,8 +294,7 @@ assign_u!(vehicle::Model{<:Vehicle}, u::AbstractVector{Float64}) = throw(MethodE
 
 linearize!(aircraft::Model{<:Aircraft}, args...) = linearize!(aircraft.vehicle, args...)
 
-function linearize!( vehicle::Model{<:Vehicle},
-                    trim_params::AbstractTrimParameters)
+function linearize!( vehicle::Model{<:Vehicle}, trim_params::AbstractTrimParameters)
 
     #The velocity states in the linearized model must be aerodynamic so that
     #they can be readily used for flight control design. Since the velocity
@@ -306,89 +305,33 @@ function linearize!( vehicle::Model{<:Vehicle},
 
     (_, trim_state) = Modeling.init!(vehicle, trim_params, atmosphere, terrain)
 
-    ẋ0 = ẋ_linear(vehicle)::FieldVector
     x0 = x_linear(vehicle)::FieldVector
     u0 = u_linear(vehicle)::FieldVector
-    y0 = y_linear(vehicle)::FieldVector
 
-    #f_main will not be returned for use in another scope, so we don't need to
+    #f and g will not be returned for use in another scope, so we don't need to
     #capture vehicle with a let block, because they are guaranteed not be
     #reassigned within the scope of linearize!
-    function f_main(x, u)
-
+    function f(x, u)
         assign_x!(vehicle, x)
         assign_u!(vehicle, u)
         f_ode!(vehicle, atmosphere, terrain)
-
-        return (ẋ = ẋ_linear(vehicle), y = y_linear(vehicle))
-
+        return ẋ_linear(vehicle)
     end
 
-    (A, B, C, D) = ss_matrices(f_main, x0, u0)
+    function g(x, u)
+        assign_x!(vehicle, x)
+        assign_u!(vehicle, u)
+        f_ode!(vehicle, atmosphere, terrain)
+        y_linear(vehicle)
+    end
 
     #restore the Model to its trimmed condition
     assign!(vehicle, trim_params, trim_state, atmosphere, terrain)
 
-    #now we need to rebuild vectors and matrices for the LinearizedSS as
-    #ComponentArrays, because we want matrix components to remain labelled,
-    #which cannot be achieved with FieldVectors
-
-    x_axis = Axis(propertynames(x0))
-    u_axis = Axis(propertynames(u0))
-    y_axis = Axis(propertynames(y0))
-
-    ẋ0_cv = ComponentVector(Vector(ẋ0), x_axis)
-    x0_cv = ComponentVector(Vector(x0), x_axis)
-    u0_cv = ComponentVector(Vector(u0), u_axis)
-    y0_cv = ComponentVector(Vector(y0), y_axis)
-
-    A_cv = ComponentMatrix(A, x_axis, x_axis)
-    B_cv = ComponentMatrix(B, x_axis, u_axis)
-    C_cv = ComponentMatrix(C, y_axis, x_axis)
-    D_cv = ComponentMatrix(D, y_axis, u_axis)
-
-    return Control.Continuous.LinearizedSS(ẋ0_cv, x0_cv, u0_cv, y0_cv, A_cv, B_cv, C_cv, D_cv)
+    return Control.Continuous.LinearizedSS(f, g, x0, u0)
 
 end
 
-#given a trim point (x0, u0) for the nonlinear system (ẋ, y) = f(x,u), compute
-#the state space matrices (A, B, C, D) for the system's linearization around
-#(x0, u0), given by: Δẋ = AΔx + BΔu; Δy = CΔx + DΔu
-function ss_matrices(f_main::Function, x0::AbstractVector{Float64},
-                                       u0::AbstractVector{Float64})
-
-    f_ẋ(x, u) = f_main(x, u).ẋ
-    f_y(x, u) = f_main(x, u).y
-    y0 = f_y(x0, u0)
-
-    #none of these closures will be returned for use in another scope or
-    #reassigned within ss_matrices, so there is no need to capture x0 and u0
-    #with a let block
-    f_A!(ẋ, x) = (ẋ .= f_ẋ(x, u0))
-    f_B!(ẋ, u) = (ẋ .= f_ẋ(x0, u))
-    f_C!(y, x) = (y .= f_y(x, u0))
-    f_D!(y, u) = (y .= f_y(x0, u))
-
-    #preallocate mutable arrays
-    A = (x0 * x0') |> Matrix
-    B = (x0 * u0') |> Matrix
-    C = (y0 * x0') |> Matrix
-    D = (y0 * u0') |> Matrix
-
-    jacobian!(A, f_A!, Vector(x0))
-    jacobian!(B, f_B!, Vector(u0))
-    jacobian!(C, f_C!, Vector(x0))
-    jacobian!(D, f_D!, Vector(u0))
-
-    return (A, B, C, D)
-
-end
-
-
-function Control.Continuous.LinearizedSS(
-            aircraft::Model{<:Aircraft}, args...; kwargs...)
-    Control.Continuous.LinearizedSS(aircraft.vehicle, args...; kwargs...)
-end
 
 ############################### Plotting #######################################
 

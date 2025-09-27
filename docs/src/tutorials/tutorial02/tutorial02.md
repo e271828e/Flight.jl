@@ -44,8 +44,7 @@ To make sense of what comes next, it is useful to understand what each one of th
   computations. These may be used by a parent `Model` or saved in the `Simulation`'s log.
 - `t` (*time*): A reference to the current simulation time.
 - `Δt` (*sampling period*): The time interval for the `Model`'s periodic updates.
-- `parameters`: A `NamedTuple` containing values that characterize that specific `Model` instance
-  and are not states, inputs or outputs.
+- `parameters`: A `NamedTuple` containing values that characterize a specific `Model` instance.
 - `submodels`: A `NamedTuple` of child `Model`s that represent components of the parent `Model`.
 
 The remaining properties are entries from `parameters` and `submodels`. These may be accessed

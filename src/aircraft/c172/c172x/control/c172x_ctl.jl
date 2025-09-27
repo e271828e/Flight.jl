@@ -5,8 +5,8 @@ using StructTypes
 using EnumX
 
 using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
-    Dummy, SameLine, NewLine, IsItemActive, IsItemActivated, Separator, Text,
-    Checkbox, RadioButton, TableNextColumn, TableNextRow, BeginTable, EndTable
+    SameLine, IsItemActive, Separator, Text, Checkbox, RadioButton,
+    TableNextColumn, TableNextRow, BeginTable, EndTable
 
 using Flight.FlightCore
 using Flight.FlightLib
