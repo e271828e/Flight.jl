@@ -323,7 +323,7 @@ end
 ################################################################################
 ############################### Linearization ##################################
 
-@kwdef struct XLinear <: FieldVector{20, Float64}
+@kwdef struct XStateSpace <: FieldVector{20, Float64}
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
@@ -337,7 +337,7 @@ end
 end
 
 #flaps and mixture are trim parameters and thus omitted from the control vector
-@kwdef struct ULinear <: FieldVector{4, Float64}
+@kwdef struct UStateSpace <: FieldVector{4, Float64}
     throttle_cmd::Float64 = 0.0
     aileron_cmd::Float64 = 0.0
     elevator_cmd::Float64 = 0.0
@@ -345,7 +345,7 @@ end
 end
 
 #all states (for full-state feedback), plus other useful stuff, plus control inputs
-@kwdef struct YLinear <: FieldVector{38, Float64}
+@kwdef struct YStateSpace <: FieldVector{38, Float64}
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
     v_x::Float64 = 0.0; v_y::Float64 = 0.0; v_z::Float64 = 0.0; #aerodynamic velocity, body axes
@@ -367,7 +367,7 @@ end
 end
 
 
-function XLinear(x_vehicle::ComponentVector)
+function XStateSpace(x_vehicle::ComponentVector)
 
     x_kin = x_vehicle.kinematics
     x_dyn = x_vehicle.dynamics
@@ -386,23 +386,23 @@ function XLinear(x_vehicle::ComponentVector)
 
     ψ, θ, φ, h = ψ_nb, θ_nb, φ_nb, h_e
 
-    XLinear(;  p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt,
+    XStateSpace(;  p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt,
         ω_eng, fuel, thr_p, ail_p, ele_p, rud_p)
 
 end
 
-function ULinear(vehicle::Model{<:C172X.Vehicle{NED}})
+function UStateSpace(vehicle::Model{<:C172X.Vehicle{NED}})
 
     @unpack throttle, aileron, elevator, rudder = vehicle.systems.act.submodels
     throttle_cmd = throttle.u[]
     aileron_cmd = aileron.u[]
     elevator_cmd = elevator.u[]
     rudder_cmd = rudder.u[]
-    ULinear(; throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd)
+    UStateSpace(; throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd)
 
 end
 
-function YLinear(vehicle::Model{<:C172X.Vehicle{NED}})
+function YStateSpace(vehicle::Model{<:C172X.Vehicle{NED}})
 
     @unpack systems, airflow, dynamics, kinematics = vehicle.y
     @unpack pwp, fuel, aero, act = systems
@@ -435,24 +435,24 @@ function YLinear(vehicle::Model{<:C172X.Vehicle{NED}})
     γ = γ_gnd
     climb_rate = -v_D
 
-    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ULinear(vehicle)
+    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = UStateSpace(vehicle)
 
-    YLinear(; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt,
+    YStateSpace(; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt,
             ω_eng, n_eng, fuel, thr_p, ail_p, ele_p, rud_p,
             f_x, f_y, f_z, EAS, TAS, α, β, v_N, v_E, v_D, χ, γ, climb_rate,
             throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd)
 
 end
 
-AircraftBase.ẋ_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = XLinear(vehicle.ẋ)
-AircraftBase.x_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = XLinear(vehicle.x)
-AircraftBase.u_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = ULinear(vehicle)
-AircraftBase.y_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = YLinear(vehicle)
+AircraftBase.ẋ_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = XStateSpace(vehicle.ẋ)
+AircraftBase.x_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = XStateSpace(vehicle.x)
+AircraftBase.u_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = UStateSpace(vehicle)
+AircraftBase.y_linear(vehicle::Model{<:C172X.Vehicle{NED}}) = YStateSpace(vehicle)
 
 function AircraftBase.assign_u!(vehicle::Model{<:C172X.Vehicle{NED}}, u::AbstractVector{Float64})
 
     @unpack throttle, aileron, elevator, rudder = vehicle.systems.act.submodels
-    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = ULinear(u)
+    @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = UStateSpace(u)
     throttle.u[] = throttle_cmd
     aileron.u[] = aileron_cmd
     elevator.u[] = elevator_cmd
@@ -464,7 +464,7 @@ end
 function AircraftBase.assign_x!(vehicle::Model{<:C172X.Vehicle{NED}}, x::AbstractVector{Float64})
 
     @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng,
-            fuel, thr_p, ail_p, ele_p, rud_p = XLinear(x)
+            fuel, thr_p, ail_p, ele_p, rud_p = XStateSpace(x)
 
     x_kin = vehicle.x.kinematics
     x_dyn = vehicle.x.dynamics
