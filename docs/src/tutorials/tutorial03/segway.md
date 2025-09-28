@@ -1,0 +1,437 @@
+Notes:
+- Rod assembly includes the rigidly attached motor case
+- Wheel assembly includes the rigidly attached motor shaft
+
+## Rod Assembly Linear Momentum Equation
+$$
+F_{ext,b_1}^i + m_1 g^i = m_1 \dot{v}_{ic_1}^i
+$$
+
+Where
+- $F_{ext,b_1}^i$: External force applied on $b_1$ expressed in $i$ coordinates
+- $g^{i}$: Gravity vector expressed in $i$ coordinates
+- ${v}_{ic_1}^i$: Velocity of frame $c_1$ with respect to $i$, expressed in $i$coordinates
+
+Let's develop the terms:
+$$
+r_{ic_1}^{i} = \begin{bmatrix}
+p + \dfrac{L}{2} \sin \theta &&
+0 &&
+R + \dfrac{L}{2} \cos \theta
+\end{bmatrix} ^T
+$$
+
+$$
+v_{ic_1}^{i} = \begin{bmatrix}
+\dot{p} + \dfrac{L}{2} \dot{\theta} \cos \theta &&
+0 &&
+- \dfrac{L}{2} \dot{\theta} \sin \theta
+\end{bmatrix} ^T
+$$
+
+$$
+\dot{v}_{ic_1}^{i} = \begin{bmatrix}
+\ddot{p} + \dfrac{L}{2} \left( \ddot{\theta} \cos \theta - \dot{\theta}^2 \sin \theta \right) &&
+0 &&
+- \dfrac{L}{2} \left( \ddot{\theta} \sin \theta + \dot{\theta}^2 \cos \theta\right)
+\end{bmatrix} ^T
+$$
+
+$$
+\dot{v}_{ic_1}^{i} = \begin{bmatrix}
+\dot{v} + \dfrac{L}{2} \left( \dot{\omega}_{1} \cos \theta - \omega_{1}^2 \sin \theta \right) &&
+0 &&
+- \dfrac{L}{2} \left( \dot{\omega}_{1} \sin \theta + \omega_{1}^2 \cos \theta\right)
+\end{bmatrix} ^T
+$$
+
+$$
+m_1g^i = \begin{bmatrix} 0 && 0 && -m_1 g \end{bmatrix}^T
+$$
+
+$$
+F_{ext,b_1}^i = \begin{bmatrix} F_{21x} && 0 && F_{21z} \end{bmatrix}^T
+$$
+
+Finally:
+
+$$
+F_{21x} = m_1 \dot{v} + \dfrac{m_1 L}{2} \left(\dot{\omega}_1 \cos \theta - \omega_{1}^2 \sin \theta \right)
+$$
+
+$$
+F_{21z} - m_1 g = \dfrac{m_1 L}{2}  \left( -\dot{\omega}_{1} \sin \theta -\omega_{1}^2 \cos \theta\right)
+$$
+
+
+## Rod Assembly Angular Momentum Equation
+
+$$
+\tau_{ext,b_1[c_1]}^{c_1} = \dot{h}_{b_1[c_1]}^{c_1} + \omega_{ib_1}^{c_1}\times h_{b_1[c_1]}^{c_1}
+$$
+$$
+h_{b_1[c_1]}^{c_1} = J_{b_1[c_1]}^{c_1} \omega_{ib_1}^{c_1}
+$$
+$$
+\tau_{ext,b_1[c_1]}^{c_1} = J_{b_1[c_1]}^{c_1} \dot{\omega}_{ib_1}^{c_1} + \Omega_{ib_1}^{c_1}J_{b_1[c_1]}^{c_1} \omega_{ib_1}^{c_1}
+$$
+
+Where
+- $\tau_{ext,b_1[c_1]}^{c_1}$: External torque applied on $b_1$ with respect to the origin of frame
+  $c_1$ expressed in $c_1$ coordinates.
+- $h_{b_1[c_1]}^{c_1}$: Angular momentum of $b_1$ with respect to the origin of $c_1$, expressed in
+  $c_1$ coordinates.
+- $J_{b_1[c_1]}^{c_1}$: Inertia tensor of $b_1$ with respect to the origin of $c_1$, expressed in
+  $c_1$ coordinates.
+
+$$
+\tau_{ext,b_1[c_1]}^{c_1} = \begin{bmatrix}
+0 &&
+\tau_{21} + \dfrac{L}{2} \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right)   &&
+0
+\end{bmatrix}^T
+$$
+
+$$
+\omega_{ib_1}^{c_1} = \begin{bmatrix} 0 && \omega_{1} && 0 \end{bmatrix}^T
+$$
+
+$$
+h_{b_1[c_1]}^{c_1} = J_{b_1[c_1]}^{c_1} \omega_{ib_1}^{c_1} = \begin{bmatrix}
+J_{1xx} && 0 && 0 \\
+0 && J_{1yy} && 0 \\
+0 && 0 && J_{1zz} \\
+\end{bmatrix}
+\begin{bmatrix}
+0 \\ \omega_{1} \\ 0
+\end{bmatrix} =
+\begin{bmatrix}
+0 && J_{1yy} \omega_{1} && 0
+\end{bmatrix}^T =
+\begin{bmatrix}
+0 && \dfrac{1}{12} m_1 L^2 \omega_{1} && 0
+\end{bmatrix}^T
+$$
+
+$$
+\omega_{ib_1}^{c_1} \times h_{b_1[c_1]}^{c_1} = \begin{bmatrix} 0 && 0 && 0 \end{bmatrix}^T
+$$
+
+$$
+\dot{h}_{b_1[c_1]}^{c_1} = \begin{bmatrix} 0 && \dfrac{1}{12} m_1 L^2 \dot{\omega}_{1} && 0
+\end{bmatrix}
+$$
+
+$$
+\tau_{21} + \dfrac{L}{2} \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right) = \dfrac{1}{12} m_1 L^2 \dot{\omega}_{1}
+$$
+
+The torque exerted by $b_1$ on $b_2$ is the torque produced by the motor:
+$$
+\tau_{12} = \tau_{m}
+$$
+
+Therefore
+$$
+\tau_{21} = -\tau{12} = -\tau_{m}
+$$
+
+$$
+-\tau_{m} + \dfrac{L}{2} \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right) = \dfrac{1}{12} m_1 L^2 \dot{\omega}_{1}
+$$
+
+
+## Wheel Assembly Linear Momentum Equation
+
+$$
+F_{ext,b_2}^i + m_2 g^i = m_2 \dot{v}_{ic_2}^i
+$$
+
+Where
+- $F_{ext,b_2}^i$: External force applied on $b_2$ expressed in $i$ coordinates
+- $g^{i}$: Gravity vector expressed in $i$ coordinates
+- ${v}_{ic_2}^i$: Velocity of frame $c_2$ with respect to $i$, expressed in $i$coordinates
+
+$$
+r_{ic_2}^{i} = \begin{bmatrix} p && 0 && R \end{bmatrix} ^T
+$$
+
+$$
+v_{ic_2}^{i} = \begin{bmatrix} \dot{p} && 0 && 0 \end{bmatrix} ^T
+$$
+
+$$
+\dot{v}_{ic_2}^{i} = \begin{bmatrix}
+\dot{v} && 0 && 0\end{bmatrix} ^T
+$$
+
+$$
+m_2g^i = \begin{bmatrix} 0 && 0 && -m_2 g \end{bmatrix}^T
+$$
+
+$$
+F_{ext,b_2}^i = \begin{bmatrix} F_{i2x} + F_{12x} && 0 && F_{i2z} + F_{12z} \end{bmatrix}^T
+$$
+$$
+F_{ext,b_2}^i = \begin{bmatrix} F_{i2x} - F_{21x} && 0 && F_{i2z} - F_{21z} \end{bmatrix}^T
+$$
+
+Equating components gives
+$$
+F_{i2x} - F_{21x} = m_2 \dot{v}
+$$
+$$
+F_{i2z} - F_{21z} - m_2 g = 0
+$$
+
+
+## Wheel Assembly Angular Momentum Equation
+
+$$
+\tau_{ext,b_2[c_2]}^{c_2} = \dot{h}_{b_2[c_2]}^{c_2} + \omega_{ib_2}^{c_2}\times h_{b_2[c_2]}^{c_2}
+$$
+$$
+h_{b_2[c_2]}^{c_2} = J_{b_2[c_2]}^{c_2} \omega_{ib_2}^{c_2}
+$$
+$$
+\tau_{ext,b_2[c_2]}^{c_2} = J_{b_2[c_2]}^{c_2} \dot{\omega}_{ib_2}^{c_2} + \Omega_{ib_2}^{c_2}J_{b_2[c_2]}^{c_2} \omega_{ib_2}^{c_2}
+$$
+
+Where
+- $\tau_{ext,b_2[c_2]}^{c_2}$: External torque applied on $b_2$ with respect to the origin of frame
+  $c_2$ expressed in $c_2$ coordinates.
+- $h_{b_2[c_2]}^{c_2}$: Angular momentum of $b_2$ with respect to the origin of $c_2$, expressed in
+  $c_2$ coordinates.
+- $J_{b_2[c_2]}^{c_2}$: Inertia tensor of $b_2$ with respect to the origin of $c_2$, expressed in
+  $c_2$ coordinates.
+
+$$
+\tau_{ext,b_2[c_2]}^{c_2} = \begin{bmatrix}
+0 &&
+\tau_{12} - RF_{i2x}    &&
+0
+\end{bmatrix}^T
+$$
+
+$$
+\omega_{ib_2}^{c_2} = \begin{bmatrix} 0 && \omega_{2} && 0 \end{bmatrix}^T
+$$
+
+$$
+h_{b_2[c_1]}^{c_1} = J_{b_1[c_1]}^{c_1} \omega_{ib_1}^{c_1} =
+\begin{bmatrix}
+0 && J_{2yy} \omega_{2} && 0
+\end{bmatrix}^T =
+\begin{bmatrix}
+0 && J_{m} + \dfrac{1}{2} m_2 R^2 \omega_{2} && 0
+\end{bmatrix}^T
+$$
+
+$$
+\omega_{ib_2}^{c_2} \times h_{b_2[c_2]}^{c_2} = \begin{bmatrix} 0 && 0 && 0 \end{bmatrix}^T
+$$
+
+$$
+\dot{h}_{b_2[c_2]}^{c_2} = \begin{bmatrix} 0 && \left(J_{m} + \dfrac{1}{2} m_2 R^2\right) \dot{\omega}_{2} && 0
+\end{bmatrix}
+$$
+
+$$
+\tau_{12} - RF_{i2x} = \left(J_{m} + \dfrac{1}{2} m_2 R^2\right) \dot{\omega}_{2}
+$$
+
+$$
+\tau_{m} - RF_{i2x} = \left(J_{m} + \dfrac{1}{2} m_2 R^2\right) \dot{\omega}_{2}
+$$
+
+## DC Motor Model
+$$
+\tau_{m} = K_V  u_{m} - b_{m} \omega_{m}
+$$
+
+$$
+\tau_{m} = K_V  u_{m} - b_{m} (\omega_{2} - \omega_{1})
+$$
+
+Parameters:
+- Effective moment of inertia at motor shaft: $J_{m} = 0.0014 \ kg\cdot m^2$
+- Effective damping coefficient: $b_{m} = 0.0189 \ N \cdot m / (rad /s)$
+- Torque constant: $K_V = 0.32 \ N \cdot m$
+
+Variables:
+- Angular velocity of motor shaft: $\omega_{m}$
+- Voltage ratio: $u_{m} \in [-1, 1]$
+
+## No-Slip Condition
+
+$$
+v_{iQ}^{i} = v_{ib_2}^{i} + \omega_{ib_2}^{i} \times r_{O_2Q}^{i} =
+\begin{bmatrix}
+v - \omega_{2} R &&
+0 &&
+0
+\end{bmatrix}^T = 0
+$$
+
+$$
+\dot{v} = \dot{\omega}_{2} R
+$$
+
+## Kinematics
+
+$$
+\dot{\theta} = \omega_{1}
+$$
+$$
+\dot{p} = v
+$$
+
+## System Equations
+
+$$
+F_{21x} = m_1 \dot{v} + \dfrac{m_1 L}{2} \left(\dot{\omega}_1 \cos \theta - \omega_{1}^2 \sin \theta \right)
+$$
+
+$$
+F_{21z} - m_1 g = \dfrac{m_1 L}{2}  \left( -\dot{\omega}_{1} \sin \theta -\omega_{1}^2 \cos \theta\right)
+$$
+
+$$
+-\tau_{m} + \dfrac{L}{2} \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right) = \dfrac{1}{12} m_1 L^2 \dot{\omega}_{1}
+$$
+
+$$
+F_{i2x} - F_{21x} = m_2 \dot{v}
+$$
+
+$$
+F_{i2z} - F_{21z} - m_2 g = 0
+$$
+
+$$
+\tau_{m} - RF_{i2x} = \left(J_{m} + \dfrac{1}{2} m_2 R^2\right) \dot{\omega}_{2}
+$$
+
+$$
+\tau_{m} = K_V u_{m} - b_{m} (\omega_{2} - \omega_{1})
+$$
+
+$$
+\dot{v} = \dot{\omega}_{2} R
+$$
+
+$$
+\dot{\theta} = \omega_{1}
+$$
+
+$$
+\dot{p} = v
+$$
+
+Setting aside $\dot{p}$ and $\dot{\theta}$, and the decoupled kinematic equations, we have the
+following unknowns:
+
+$\dot{\omega}_{1}$, $\dot{\omega}_{2}$, $\dot{v}$, $F_{21x}$, $F_{21z}$, $F_{i2x}$, $F_{i2z}$, $\tau_{m}$
+
+---
+Reorder terms:
+
+$$
+\left(\dfrac{m_1 L}{2} \cos \theta \right) \dot{\omega}_1+ m_1 \dot{v} - F_{21x} = \dfrac{m_1 L}{2} \omega_{1}^2 \sin \theta
+$$
+
+$$
+\left(\dfrac{m_1 L}{2} \sin \theta \right) \dot{\omega}_{1} + F_{21z} = m_1 g -\dfrac{m_1 L}{2} \omega_{1}^2 \cos \theta
+$$
+
+$$
+\left(\dfrac{m_1 L^2}{12} \right) \dot{\omega}_{1} + \left(\dfrac{L}{2} \cos \theta
+\right)F_{21x} + \left( -\dfrac{L}{2}\sin \theta \right)F_{21z} + \tau_{m} = 0
+$$
+
+$$
+m_2 \dot{v} + F_{21x} - F_{i2x} = 0
+$$
+
+$$
+- F_{21z} + F_{i2z} = m_2 g
+$$
+
+$$
+\left(J_{m} + \dfrac{1}{2} m_2 R^2\right) \dot{\omega}_{2} + RF_{i2x} - \tau_{m} = 0
+$$
+
+$$
+\tau_{m} = K_V u_{m} - b_{m} (\omega_{2} - \omega_{1})
+$$
+
+$$
+R \dot{\omega}_{2} - \dot{v} = 0
+$$
+
+---
+Substitute the no-slip condition
+
+$$
+\left(\dfrac{m_1 L}{2} \cos \theta \right) \dot{\omega}_1+ m_1 R \dot{\omega}_{2} - F_{21x} = \dfrac{m_1 L}{2} \omega_{1}^2 \sin \theta
+$$
+
+$$
+\left(\dfrac{m_1 L}{2} \sin \theta \right) \dot{\omega}_{1} + F_{21z} = m_1 g -\dfrac{m_1 L}{2} \omega_{1}^2 \cos \theta
+$$
+
+$$
+\left(\dfrac{m_1 L^2}{12} \right) \dot{\omega}_{1} + \left(\dfrac{L}{2} \cos \theta
+\right)F_{21x} + \left( -\dfrac{L}{2}\sin \theta \right)F_{21z} + \tau_{m} = 0
+$$
+
+$$
+m_2 R \dot{\omega}_{2} + F_{21x} - F_{i2x} = 0
+$$
+
+$$
+- F_{21z} + F_{i2z} = m_2 g
+$$
+
+$$
+\left(J_{m} + \dfrac{1}{2} m_2 R^2\right) \dot{\omega}_{2} + RF_{i2x} - \tau_{m} = 0
+$$
+
+$$
+\tau_{m} = K_V u_{m} - b_{m} (\omega_{2} - \omega_{1})
+$$
+
+---
+
+Matrix form:
+$$
+
+\begin{bmatrix}
+\dfrac{m_1 L}{2} \cos \theta && m_1 R && -1 && 0 && 0 && 0 && 0 \\
+\dfrac{m_1 L}{2} \sin \theta && 0 && 0 && 1 && 0 && 0 && 0 \\
+\dfrac{m_1 L^2 }{12} && 0 && \dfrac{L}{2} \cos \theta && -\dfrac{L}{2} \sin \theta && 0 && 0 && 1 \\
+0 && m_2R && 1 && 0 && -1 && 0 && 0 \\
+0 && 0 && 0 && -1 && 0 && 1 && 0 \\
+0 && J_{m} + \dfrac{m_2 R^2}{2} && 0 && 0 && R && 0 && -1 \\
+0 && 0 && 0 && 0 && 0 && 0 && 1 \\
+\end{bmatrix}
+
+\begin{bmatrix}
+\dot{\omega}_{1} \\
+\dot{\omega}_{2} \\
+F_{21x} \\
+F_{21z} \\
+F_{i2x} \\
+F_{i2z} \\
+\tau_{m} \\
+\end{bmatrix}
+=
+\begin{bmatrix}
+\dfrac{m_1 L}{2} \omega_{1}^2 \sin \theta \\
+m_1 g -\dfrac{m_1 L}{2} \omega_{1}^2 \cos \theta \\
+0 \\
+0 \\
+m_2 g \\
+0 \\
+K_V u_{m} - b_{m} (\omega_{2} - \omega_{1})
+\end{bmatrix}
