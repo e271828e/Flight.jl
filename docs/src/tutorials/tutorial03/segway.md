@@ -1,8 +1,13 @@
 Notes:
-- Rod assembly includes the rigidly attached motor case
+- Main body assembly includes the rigidly attached motor case
 - Wheel assembly includes the rigidly attached motor shaft
 
-## Rod Assembly Linear Momentum Equation
+Parameters:
+- $L$: Distance from $O_{b1}$ to $O_{c1}$ (CoM) along $z_{b1}$
+
+Caution: Need to revise J1
+
+## Main Body Linear Momentum Equation
 $$
 F_{ext,b_1}^i + m_1 g^i = m_1 \dot{v}_{ic_1}^i
 $$
@@ -15,33 +20,33 @@ Where
 Let's develop the terms:
 $$
 r_{ic_1}^{i} = \begin{bmatrix}
-p + \dfrac{L}{2} \sin \theta &&
+p + L \sin \theta &&
 0 &&
-R + \dfrac{L}{2} \cos \theta
+R + L \cos \theta
 \end{bmatrix} ^T
 $$
 
 $$
 v_{ic_1}^{i} = \begin{bmatrix}
-\dot{p} + \dfrac{L}{2} \dot{\theta} \cos \theta &&
+\dot{p} + L \dot{\theta} \cos \theta &&
 0 &&
-- \dfrac{L}{2} \dot{\theta} \sin \theta
+- L \dot{\theta} \sin \theta
 \end{bmatrix} ^T
 $$
 
 $$
 \dot{v}_{ic_1}^{i} = \begin{bmatrix}
-\ddot{p} + \dfrac{L}{2} \left( \ddot{\theta} \cos \theta - \dot{\theta}^2 \sin \theta \right) &&
+\ddot{p} + L \left( \ddot{\theta} \cos \theta - \dot{\theta}^2 \sin \theta \right) &&
 0 &&
-- \dfrac{L}{2} \left( \ddot{\theta} \sin \theta + \dot{\theta}^2 \cos \theta\right)
+- L \left( \ddot{\theta} \sin \theta + \dot{\theta}^2 \cos \theta\right)
 \end{bmatrix} ^T
 $$
 
 $$
 \dot{v}_{ic_1}^{i} = \begin{bmatrix}
-\dot{v} + \dfrac{L}{2} \left( \dot{\omega}_{1} \cos \theta - \omega_{1}^2 \sin \theta \right) &&
+\dot{v} + L \left( \dot{\omega}_{1} \cos \theta - \omega_{1}^2 \sin \theta \right) &&
 0 &&
-- \dfrac{L}{2} \left( \dot{\omega}_{1} \sin \theta + \omega_{1}^2 \cos \theta\right)
+- L \left( \dot{\omega}_{1} \sin \theta + \omega_{1}^2 \cos \theta\right)
 \end{bmatrix} ^T
 $$
 
@@ -56,11 +61,11 @@ $$
 Finally:
 
 $$
-F_{21x} = m_1 \dot{v} + \dfrac{m_1 L}{2} \left(\dot{\omega}_1 \cos \theta - \omega_{1}^2 \sin \theta \right)
+F_{21x} = m_1 \dot{v} + m_1 L \left(\dot{\omega}_1 \cos \theta - \omega_{1}^2 \sin \theta \right)
 $$
 
 $$
-F_{21z} - m_1 g = \dfrac{m_1 L}{2}  \left( -\dot{\omega}_{1} \sin \theta -\omega_{1}^2 \cos \theta\right)
+F_{21z} - m_1 g = m_1 L  \left( -\dot{\omega}_{1} \sin \theta -\omega_{1}^2 \cos \theta\right)
 $$
 
 
@@ -87,7 +92,7 @@ Where
 $$
 \tau_{ext,b_1[c_1]}^{c_1} = \begin{bmatrix}
 0 &&
-\tau_{21} + \dfrac{L}{2} \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right)   &&
+\tau_{21} + L \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right)   &&
 0
 \end{bmatrix}^T
 $$
@@ -120,7 +125,7 @@ $$
 $$
 
 $$
-\tau_{21} + \dfrac{L}{2} \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right) = J_{1yy} \dot{\omega}_{1}
+\tau_{21} + L \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right) = J_{1yy} \dot{\omega}_{1}
 $$
 
 The torque exerted by $b_1$ on $b_2$ is the torque produced by the motor:
@@ -134,13 +139,12 @@ $$
 $$
 
 $$
--\tau_{m} + \dfrac{L}{2} \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right) = J_{1yy} \dot{\omega}_{1}
+-\tau_{m} + L \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right) = J_{1yy} \dot{\omega}_{1}
 $$
 
-Where the rod assembly's moment of inertia about its center of mass is that of a thin rod:
-$$
-J_{1yy} = \dfrac{1}{12} m_1 L^2 \omega_{1}
-$$
+The rod assembly's moment of inertia about its center of mass might be approximated as that of a
+thin rod:
+$$ J_{1yy} = \dfrac{1}{12} m_1 (2L)^2 \omega_{1} $$
 
 ## Wheel Assembly Linear Momentum Equation
 
@@ -293,15 +297,15 @@ $$
 ## System Equations
 ### Dynamics
 $$
-F_{21x} = m_1 \dot{v} + \dfrac{m_1 L}{2} \left(\dot{\omega}_1 \cos \theta - \omega_{1}^2 \sin \theta \right)
+F_{21x} = m_1 \dot{v} + m_1 L \left(\dot{\omega}_1 \cos \theta - \omega_{1}^2 \sin \theta \right)
 $$
 
 $$
-F_{21z} - m_1 g = \dfrac{m_1 L}{2}  \left( -\dot{\omega}_{1} \sin \theta -\omega_{1}^2 \cos \theta\right)
+F_{21z} - m_1 g = m_1 L  \left( -\dot{\omega}_{1} \sin \theta -\omega_{1}^2 \cos \theta\right)
 $$
 
 $$
--\tau_{m} + \dfrac{L}{2} \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right) = J_{1yy} \dot{\omega}_{1}
+-\tau_{m} + L \left(F_{21z} \sin \theta - F_{21x} \cos \theta \right) = J_{1yy} \dot{\omega}_{1}
 $$
 
 $$
@@ -349,16 +353,16 @@ Reorder terms:
 
 ### Dynamics
 $$
-\left(\dfrac{m_1 L}{2} \cos \theta \right) \dot{\omega}_1+ m_1 \dot{v} - F_{21x} = \dfrac{m_1 L}{2} \omega_{1}^2 \sin \theta
+\left(m_1 L \cos \theta \right) \dot{\omega}_1+ m_1 \dot{v} - F_{21x} = m_1 L \omega_{1}^2 \sin \theta
 $$
 
 $$
-\left(\dfrac{m_1 L}{2} \sin \theta \right) \dot{\omega}_{1} + F_{21z} = m_1 g -\dfrac{m_1 L}{2} \omega_{1}^2 \cos \theta
+\left(m_1 L \sin \theta \right) \dot{\omega}_{1} + F_{21z} = m_1 g -m_1 L \omega_{1}^2 \cos \theta
 $$
 
 $$
-J_{1yy} \dot{\omega}_{1} + \left(\dfrac{L}{2} \cos \theta
-\right)F_{21x} + \left( -\dfrac{L}{2}\sin \theta \right)F_{21z} + \tau_{m} = 0
+J_{1yy} \dot{\omega}_{1} + \left(L \cos \theta
+\right)F_{21x} + \left( -L \theta \right)F_{21z} + \tau_{m} = 0
 $$
 
 $$
@@ -391,16 +395,16 @@ no-slip rolling constraint on the wheel:
 
 ### Dynamics
 $$
-\left(\dfrac{m_1 L}{2} \cos \theta \right) \dot{\omega}_1+ m_1 R \dot{\omega}_{2} - F_{21x} = \dfrac{m_1 L}{2} \omega_{1}^2 \sin \theta
+\left(m_1 L \cos \theta \right) \dot{\omega}_1+ m_1 R \dot{\omega}_{2} - F_{21x} = m_1 L \omega_{1}^2 \sin \theta
 $$
 
 $$
-\left(\dfrac{m_1 L}{2} \sin \theta \right) \dot{\omega}_{1} + F_{21z} = m_1 g -\dfrac{m_1 L}{2} \omega_{1}^2 \cos \theta
+\left(m_1 L \sin \theta \right) \dot{\omega}_{1} + F_{21z} = m_1 g -m_1 L \omega_{1}^2 \cos \theta
 $$
 
 $$
-J_{1yy} \dot{\omega}_{1} + \left(\dfrac{L}{2} \cos \theta
-\right)F_{21x} + \left( -\dfrac{L}{2}\sin \theta \right)F_{21z} + \tau_{m} = 0
+J_{1yy} \dot{\omega}_{1} + \left(L \cos \theta
+\right)F_{21x} + \left( -L \theta \right)F_{21z} + \tau_{m} = 0
 $$
 
 $$
@@ -426,9 +430,9 @@ Matrix form:
 $$
 
 \begin{bmatrix}
-\dfrac{m_1 L}{2} \cos \theta && m_1 R && -1 && 0 && 0 && 0 && 0 \\
-\dfrac{m_1 L}{2} \sin \theta && 0 && 0 && 1 && 0 && 0 && 0 \\
-J_{1yy} && 0 && \dfrac{L}{2} \cos \theta && -\dfrac{L}{2} \sin \theta && 0 && 0 && 1 \\
+m_1 L \cos \theta && m_1 R && -1 && 0 && 0 && 0 && 0 \\
+m_1 L \sin \theta && 0 && 0 && 1 && 0 && 0 && 0 \\
+J_{1yy} && 0 && L \cos \theta && -L \sin \theta && 0 && 0 && 1 \\
 0 && m_2R && 1 && 0 && -1 && 0 && 0 \\
 0 && 0 && 0 && -1 && 0 && 1 && 0 \\
 0 && J_{2yy} && 0 && 0 && R && 0 && -1 \\
@@ -446,8 +450,8 @@ F_{i2z} \\
 \end{bmatrix}
 =
 \begin{bmatrix}
-\dfrac{m_1 L}{2} \omega_{1}^2 \sin \theta \\
-m_1 g -\dfrac{m_1 L}{2} \omega_{1}^2 \cos \theta \\
+m_1 L \omega_{1}^2 \sin \theta \\
+m_1 g -m_1 L \omega_{1}^2 \cos \theta \\
 0 \\
 0 \\
 m_2 g \\
