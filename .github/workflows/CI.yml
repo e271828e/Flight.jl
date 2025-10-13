@@ -26,7 +26,7 @@ jobs:
         # os: [ubuntu-latest, windows-latest, macos-latest]
         #no easy way to test on macos and windows due to missing OpenGL support
         os: [ubuntu-latest]
-        julia-version: ['1.10', '1.11']
+        julia-version: ['1.10', '1.11', '1.12']
         include:
           - os: ubuntu-latest #only ubuntu-latest supports (and requires) xvfb-run
             prefix: xvfb-run
