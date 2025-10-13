@@ -15,10 +15,10 @@ includet(normpath("lib/test_landing_gear.jl")); using .TestLandingGear
 includet(normpath("lib/test_aircraft_base.jl")); using .TestAircraftBase
 includet(normpath("lib/test_world.jl")); using .TestWorld
 
-includet(normpath("aircraft/c172/test_c172s.jl")); using .TestC172S
-includet(normpath("aircraft/c172/test_c172x.jl")); using .TestC172X
-includet(normpath("aircraft/c172/test_c172x1.jl")); using .TestC172Xv1
-includet(normpath("aircraft/c172/test_c172x2.jl")); using .TestC172Xv2
+includet(normpath("examples/c172/test_c172s.jl")); using .TestC172S
+includet(normpath("examples/c172/test_c172x.jl")); using .TestC172X
+includet(normpath("examples/c172/test_c172x1.jl")); using .TestC172Xv1
+includet(normpath("examples/c172/test_c172x2.jl")); using .TestC172Xv2
 
 test_gui()
 test_quaternions()

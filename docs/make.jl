@@ -15,7 +15,7 @@ makedocs(;
         # "API" => "api.md",
     ],
     draft = false,
-    pagesonly = false,
+    pagesonly = true,
     format = Documenter.HTML(
         prettyurls = true,
         size_threshold = 1000*1024,

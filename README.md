@@ -14,14 +14,14 @@
 `Flight.jl` offers a powerful and versatile toolkit for aircraft GNC modeling, design and simulation
 tasks. It fully leverages Julia's expressiveness, extensibility and performance.
 
-It is organized in three distinct layers:
+It is organized in three layers:
 
 - A lightweight, domain-agnostic engine for causal modeling and simulation of
   complex systems with hybrid dynamics (`FlightCore`).
 
 - A library of high-fidelity, reusable physics and engineering models (`FlightLib`).
 
-- A collection of specific aircraft implementations (`FlightAircraft`).
+- A collection of application examples (`FlightExamples`).
 
 Key features:
 
@@ -45,9 +45,9 @@ Key features:
 *   **Pre-Built Aircraft Components:** Includes high-fidelity, customizable models for propellers,
     piston engines and landing gear.
 
-*   **Case Study:** A custom fly-by-wire Cessna 172 model is used to demonstrate an end-to-end
-    design workflow, from vehicle systems modeling to the implementation and testing of a complex,
-    gain-scheduled autopilot.
+*   **Case Study:** A custom fly-by-wire Cessna 172 model is provided as an example demonstrating a
+    complete design workflow, from vehicle systems modeling to the implementation and testing of a
+    complex, gain-scheduled autopilot.
 
 
 ## Documentation
