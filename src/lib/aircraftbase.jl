@@ -284,10 +284,10 @@ end
 ################################################################################
 ################################ Linearization #################################
 
-ẋ_linear(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(ẋ_linear, (vehicle,)))
-x_linear(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(x_linear, (vehicle,)))
-u_linear(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(u_linear, (vehicle,)))
-y_linear(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(y_linear, (vehicle,)))
+ẋ_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(ẋ_ss, (vehicle,)))
+x_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(x_ss, (vehicle,)))
+u_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(u_ss, (vehicle,)))
+y_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(y_ss, (vehicle,)))
 
 assign_x!(vehicle::Model{<:Vehicle}, x::AbstractVector{Float64}) = throw(MethodError(assign_x!, (vehicle, x)))
 assign_u!(vehicle::Model{<:Vehicle}, u::AbstractVector{Float64}) = throw(MethodError(assign_u!, (vehicle, u)))
@@ -305,30 +305,36 @@ function linearize!( vehicle::Model{<:Vehicle}, trim_params::AbstractTrimParamet
 
     (_, trim_state) = Modeling.init!(vehicle, trim_params, atmosphere, terrain)
 
-    x0 = x_linear(vehicle)::FieldVector
-    u0 = u_linear(vehicle)::FieldVector
+    x0 = x_ss(vehicle)::FieldVector
+    u0 = u_ss(vehicle)::FieldVector
 
     #f and g will not be returned for use in another scope, so we don't need to
     #capture vehicle with a let block, because they are guaranteed not be
     #reassigned within the scope of linearize!
-    function f(x, u)
-        assign_x!(vehicle, x)
-        assign_u!(vehicle, u)
-        f_ode!(vehicle, atmosphere, terrain)
-        return ẋ_linear(vehicle)
+    f = let vehicle = vehicle, atmosphere = atmosphere, terrain = terrain
+        function (x, u)
+            assign_x!(vehicle, x)
+            assign_u!(vehicle, u)
+            f_ode!(vehicle, atmosphere, terrain)
+            ẋ_ss(vehicle)
+        end
     end
 
-    function g(x, u)
-        assign_x!(vehicle, x)
-        assign_u!(vehicle, u)
-        f_ode!(vehicle, atmosphere, terrain)
-        y_linear(vehicle)
+    g = let vehicle = vehicle, atmosphere = atmosphere, terrain = terrain
+        function g(x, u)
+            assign_x!(vehicle, x)
+            assign_u!(vehicle, u)
+            f_ode!(vehicle, atmosphere, terrain)
+            y_ss(vehicle)
+        end
     end
+
+    lss = Control.Continuous.LinearizedSS(f, g, x0, u0)
 
     #restore the Model to its trimmed condition
     assign!(vehicle, trim_params, trim_state, atmosphere, terrain)
 
-    return Control.Continuous.LinearizedSS(f, g, x0, u0)
+    return lss
 
 end
 

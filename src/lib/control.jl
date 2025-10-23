@@ -1,7 +1,5 @@
 module Control
 
-using Flight.FlightCore
-
 ############################## Continuous Models ###############################
 ################################################################################
 module Continuous ##############################################################
@@ -13,8 +11,6 @@ using RobustAndOptimalControl
 using Plots, LaTeXStrings, DataStructures
 
 using Flight.FlightCore
-
-using ..Control
 
 ################################################################################
 ########################### LinearizedSS ###################################
@@ -51,17 +47,14 @@ end
 
 LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D) = LinearizedSS(ẋ0, x0, u0, y0, A, B, C, D)
 
-function LinearizedSS(f::Function, g::Function,
-                    x0::AbstractVector{Float64}, u0::AbstractVector{Float64})
+function LinearizedSS(f::Function, g::Function, x0::AbstractVector{<:Real}, u0::AbstractVector{<:Real})
     ẋ0 = f(x0, u0)
     y0 = g(x0, u0)
     A, B, C, D = ss_matrices(f, g, x0, u0)
     LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
-
 end
 
-function LinearizedSS(f::Function, g::Function,
-                    x0::FieldVector{NX, Float64}, u0::FieldVector{NU, Float64}) where {NX, NU}
+function LinearizedSS(f::Function, g::Function, x0::FieldVector, u0::FieldVector)
 
     ẋ0 = f(x0, u0)::FieldVector
     y0 = g(x0, u0)::FieldVector
@@ -88,8 +81,7 @@ end
 #given a trim point (x0, u0) for the nonlinear system ẋ = f(x,u); y = g(x,u),
 #compute the state space matrices (A, B, C, D) for the system's linearization
 #around (x0, u0), given by: Δẋ = AΔx + BΔu; Δy = CΔx + DΔu
-function ss_matrices(f::Function, g::Function,
-                    x0::AbstractVector{Float64}, u0::AbstractVector{Float64})
+function ss_matrices(f::Function, g::Function, x0::AbstractVector{<:Real}, u0::AbstractVector{<:Real})
 
     y0 = g(x0, u0)
 
@@ -424,9 +416,6 @@ using RobustAndOptimalControl
 using Plots, LaTeXStrings, DataStructures
 
 using Flight.FlightCore
-
-using ..Control
-
 
 ############################# Integrator ###############################
 ################################################################################

@@ -364,10 +364,10 @@ function YStateSpace(vehicle::Model{<:C172S.Vehicle{NED}})
 
 end
 
-AircraftBase.ẋ_linear(vehicle::Model{<:C172S.Vehicle{NED}}) = XStateSpace(vehicle.ẋ)
-AircraftBase.x_linear(vehicle::Model{<:C172S.Vehicle{NED}}) = XStateSpace(vehicle.x)
-AircraftBase.u_linear(vehicle::Model{<:C172S.Vehicle{NED}}) = UStateSpace(vehicle)
-AircraftBase.y_linear(vehicle::Model{<:C172S.Vehicle{NED}}) = YStateSpace(vehicle)
+AircraftBase.ẋ_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = XStateSpace(vehicle.ẋ)
+AircraftBase.x_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = XStateSpace(vehicle.x)
+AircraftBase.u_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = UStateSpace(vehicle)
+AircraftBase.y_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = YStateSpace(vehicle)
 
 function AircraftBase.assign_u!(vehicle::Model{<:C172S.Vehicle{NED}}, u::AbstractVector{Float64})
 
