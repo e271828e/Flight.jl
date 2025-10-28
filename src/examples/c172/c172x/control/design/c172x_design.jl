@@ -34,7 +34,7 @@ function get_design_model!(
             trim_params::C172.TrimParameters = C172.TrimParameters();
             model::Symbol = :full)
 
-    lss = linearize!(vehicle, trim_params)
+    lss = LinearizedSS(vehicle, trim_params)
 
     @unpack A, B, C, D, ẋ0, x0, y0 = lss
 

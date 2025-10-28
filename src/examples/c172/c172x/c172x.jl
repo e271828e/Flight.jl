@@ -444,12 +444,14 @@ function YStateSpace(vehicle::Model{<:C172X.Vehicle{NED}})
 
 end
 
-AircraftBase.ẋ_ss(vehicle::Model{<:C172X.Vehicle{NED}}) = XStateSpace(vehicle.ẋ)
-AircraftBase.x_ss(vehicle::Model{<:C172X.Vehicle{NED}}) = XStateSpace(vehicle.x)
-AircraftBase.u_ss(vehicle::Model{<:C172X.Vehicle{NED}}) = UStateSpace(vehicle)
-AircraftBase.y_ss(vehicle::Model{<:C172X.Vehicle{NED}}) = YStateSpace(vehicle)
+########################### Linearization interface #############################
 
-function AircraftBase.assign_u!(vehicle::Model{<:C172X.Vehicle{NED}}, u::AbstractVector{Float64})
+AircraftBase.get_ẋ_ss(vehicle::Model{<:C172X.Vehicle{NED}}) = XStateSpace(vehicle.ẋ)
+AircraftBase.get_x_ss(vehicle::Model{<:C172X.Vehicle{NED}}) = XStateSpace(vehicle.x)
+AircraftBase.get_u_ss(vehicle::Model{<:C172X.Vehicle{NED}}) = UStateSpace(vehicle)
+AircraftBase.get_y_ss(vehicle::Model{<:C172X.Vehicle{NED}}) = YStateSpace(vehicle)
+
+function AircraftBase.assign_u_ss!(vehicle::Model{<:C172X.Vehicle{NED}}, u::AbstractVector{Float64})
 
     @unpack throttle, aileron, elevator, rudder = vehicle.systems.act.submodels
     @unpack throttle_cmd, aileron_cmd, elevator_cmd, rudder_cmd = UStateSpace(u)
@@ -461,7 +463,7 @@ function AircraftBase.assign_u!(vehicle::Model{<:C172X.Vehicle{NED}}, u::Abstrac
 
 end
 
-function AircraftBase.assign_x!(vehicle::Model{<:C172X.Vehicle{NED}}, x::AbstractVector{Float64})
+function AircraftBase.assign_x_ss!(vehicle::Model{<:C172X.Vehicle{NED}}, x::AbstractVector{Float64})
 
     @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng,
             fuel, thr_p, ail_p, ele_p, rud_p = XStateSpace(x)

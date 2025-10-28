@@ -260,8 +260,9 @@ function AircraftBase.assign!(vehicle::Model{<:C172S.Vehicle},
 end
 
 ################################################################################
-############################### Linearization ##################################
+################################# StateSpace ###################################
 
+#define state, input, and output vectors for state-space model
 @kwdef struct XStateSpace <: FieldVector{16, Float64}
     p::Float64 = 0.0; q::Float64 = 0.0; r::Float64 = 0.0; #angular rates (ω_eb_b)
     ψ::Float64 = 0.0; θ::Float64 = 0.0; φ::Float64 = 0.0; #heading, inclination, bank (body/NED)
@@ -364,12 +365,13 @@ function YStateSpace(vehicle::Model{<:C172S.Vehicle{NED}})
 
 end
 
-AircraftBase.ẋ_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = XStateSpace(vehicle.ẋ)
-AircraftBase.x_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = XStateSpace(vehicle.x)
-AircraftBase.u_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = UStateSpace(vehicle)
-AircraftBase.y_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = YStateSpace(vehicle)
 
-function AircraftBase.assign_u!(vehicle::Model{<:C172S.Vehicle{NED}}, u::AbstractVector{Float64})
+AircraftBase.get_ẋ_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = XStateSpace(vehicle.ẋ)
+AircraftBase.get_x_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = XStateSpace(vehicle.x)
+AircraftBase.get_u_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = UStateSpace(vehicle)
+AircraftBase.get_y_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = YStateSpace(vehicle)
+
+function AircraftBase.assign_u_ss!(vehicle::Model{<:C172S.Vehicle{NED}}, u::AbstractVector{Float64})
 
     @unpack throttle, aileron, elevator, rudder = UStateSpace(u)
     @pack! vehicle.systems.act.u = aileron, elevator, rudder
@@ -377,7 +379,7 @@ function AircraftBase.assign_u!(vehicle::Model{<:C172S.Vehicle{NED}}, u::Abstrac
 
 end
 
-function AircraftBase.assign_x!(vehicle::Model{<:C172S.Vehicle{NED}}, x::AbstractVector{Float64})
+function AircraftBase.assign_x_ss!(vehicle::Model{<:C172S.Vehicle{NED}}, x::AbstractVector{Float64})
 
     @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng, fuel = XStateSpace(x)
 

@@ -44,7 +44,7 @@ function test_linearization()
 
     @testset verbose = true "Linearization" begin
 
-        @test_nowarn Cessna172Xv0(NED()) |> Model |> linearize!
+        @test_nowarn Cessna172Xv0(NED()) |> Model |> LinearizedSS
 
     end #testset
 

@@ -651,7 +651,7 @@ abstract type AbstractActuation <: ModelDefinition end
 
 function assign!(aero::Model{<:Aero}, ldg::Model{<:Ldg},
                 pwp::Model{<:PistonThruster}, act::Model{<:AbstractActuation})
-    throw(MethodError(C172.assign!, (aero, ldg, pwp, act)))
+    throw(MethodError(assign!, (aero, ldg, pwp, act)))
 end
 
 Dynamics.get_mp_b(::Model{<:AbstractActuation}) = MassProperties()
@@ -747,9 +747,9 @@ end
 ################################################################################
 ################################# Templates ####################################
 
-const Vehicle = AircraftBase.Vehicle{<:C172.Systems}
-const Aircraft = AircraftBase.Aircraft{<:C172.Vehicle}
-const Cessna172 = C172.Aircraft
+const Vehicle = AircraftBase.Vehicle{<:Systems}
+const Aircraft = AircraftBase.Aircraft{<:Vehicle}
+const Cessna172 = Aircraft
 
 ########################## Explicit Initialization #############################
 ################################################################################
@@ -767,7 +767,7 @@ const Cessna172 = C172.Aircraft
     brake_left::Ranged{Float64, 0., 1.} = 0
     brake_right::Ranged{Float64, 0., 1.} = 0
     fuel_load::Ranged{Float64, 0., 1.} = 0.5 #normalized
-    payload::C172.PayloadY = C172.PayloadY()
+    payload::PayloadY = PayloadY()
     stall::Bool = false
     α_a_filt::Float64 = 0 #only needed for trim assignments
     β_a_filt::Float64 = 0 #only needed for trim assignments
@@ -821,7 +821,7 @@ function Kinematics.Initializer(trim_state::TrimState,
     atm_data = AtmosphericData(atmosphere, Ob)
     TAS = Atmosphere.EAS2TAS(EAS; ρ = atm_data.ρ)
     v_wb_a = Atmosphere.get_velocity_vector(TAS, α_a, β_a)
-    v_wb_b = C172.f_ba.q(v_wb_a) #wind-relative aircraft velocity, body frame
+    v_wb_b = f_ba.q(v_wb_a) #wind-relative aircraft velocity, body frame
 
     θ_nb = AircraftBase.θ_constraint(; v_wb_b, γ_wb_n, φ_nb)
     e_nb = REuler(ψ_nb, θ_nb, φ_nb)
@@ -843,7 +843,7 @@ function Kinematics.Initializer(trim_state::TrimState,
 end
 
 
-function cost(vehicle::Model{<:C172.Vehicle})
+function cost(vehicle::Model{<:Vehicle})
 
     @unpack ẋ, y = vehicle
 
@@ -855,7 +855,7 @@ function cost(vehicle::Model{<:C172.Vehicle})
 
 end
 
-function get_f_target(vehicle::Model{<:C172.Vehicle},
+function get_f_target(vehicle::Model{<:Vehicle},
                       trim_params::TrimParameters,
                       atmosphere::Model{<:AbstractAtmosphere},
                       terrain::Model{<:AbstractTerrain})
@@ -870,7 +870,7 @@ function get_f_target(vehicle::Model{<:C172.Vehicle},
 end
 
 function Modeling.init!(
-            vehicle::Model{<:C172.Vehicle},
+            vehicle::Model{<:Vehicle},
             trim_params::TrimParameters,
             atmosphere::Model{<:AbstractAtmosphere} = Model(SimpleAtmosphere()),
             terrain::Model{<:AbstractTerrain} = Model(HorizontalTerrain()))
@@ -932,14 +932,11 @@ function Modeling.init!(
 
 end
 
-function AircraftBase.trim!( aircraft::Model{<:Cessna172},
-                            params::TrimParameters = TrimParameters(), args...)
-    Modeling.init!(aircraft, params, args...)
-end
 
-function AircraftBase.linearize!( aircraft::Model{<:Cessna172},
-                            params::TrimParameters = TrimParameters(), args...)
-    AircraftBase.linearize!(aircraft.vehicle, params, args...)
+function Control.Continuous.LinearizedSS(aircraft::Model{<:Cessna172},
+                                         params::TrimParameters = TrimParameters(),
+                                         args...)
+    LinearizedSS(aircraft.vehicle, params, args...)
 end
 
 ################################################################################

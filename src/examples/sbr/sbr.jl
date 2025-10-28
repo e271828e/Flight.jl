@@ -108,13 +108,22 @@ end
 @no_periodic Vehicle
 
 
-################################ StateSpace ####################################
+################################################################################
+################################ State Space ###################################
+
+#TODO: find the maximum steady-state velocity for abs(u) = 1
+#TODO: keep τ_m in YStateSpace to check for saturation during controller design,
+#we need to leave some margin for stabilization
 
 @kwdef struct XStateSpace <: FieldVector{4, Float64}
     ω1::Float64 = 0.0
     ω2::Float64 = 0.0
     θ::Float64 = 0.0
     η::Float64 = 0.0
+end
+
+@kwdef struct UStateSpace <: FieldVector{1, Float64}
+    motor::Float64 = 0.0
 end
 
 @kwdef struct YStateSpace <: FieldVector{6, Float64}
@@ -126,39 +135,41 @@ end
     τ_m::Float64 = 0.0
 end
 
-@kwdef struct UStateSpace <: FieldVector{1, Float64}
-    motor::Float64 = 0.0
-end
-
-function ẋ_ss(mdl::Model{Vehicle})
+function get_ẋ_ss(mdl::Model{Vehicle})
     @unpack ω1, ω2, θ, η = mdl.ẋ
     XStateSpace(; ω1, ω2, θ, η)
 end
 
-function x_ss(mdl::Model{Vehicle})
+function get_x_ss(mdl::Model{Vehicle})
     @unpack ω1, ω2, θ, η = mdl.x
     XStateSpace(; ω1, ω2, θ, η)
 end
 
-function u_ss(mdl::Model{Vehicle})
+function get_u_ss(mdl::Model{Vehicle})
     UStateSpace(mdl.u[])
 end
 
-function y_ss(mdl::Model{Vehicle})
+function get_y_ss(mdl::Model{Vehicle})
     @unpack ω1, ω2, θ, η, v, τ_m = mdl.y
     YStateSpace(; ω1, ω2, θ, η, v, τ_m)
 end
 
-assign_x!(mdl::Model{Vehicle}, x::AbstractVector{<:Real}) = assign_x!(mdl, XStateSpace(x))
-function assign_x!(mdl::Model{Vehicle}, x::XStateSpace)
+assign_x_ss!(mdl::Model{Vehicle}, x::AbstractVector{<:Real}) = assign_x_ss!(mdl, XStateSpace(x))
+
+function assign_x_ss!(mdl::Model{Vehicle}, x::XStateSpace)
     @unpack ω1, ω2, θ, η = x
     @pack! mdl.x = ω1, ω2, θ, η
 end
 
-assign_u!(mdl::Model{Vehicle}, u::AbstractVector{<:Real}) = assign_u!(mdl, UStateSpace(u[1]))
-assign_u!(mdl::Model{Vehicle}, u::UStateSpace) = (mdl.u[] = u.motor)
+assign_u_ss!(mdl::Model{Vehicle}, u::AbstractVector{<:Real}) = assign_u_ss!(mdl, UStateSpace(u[1]))
 
-# f y g passed to LinearizedSS must have the following signatures:
+assign_u_ss!(mdl::Model{Vehicle}, u::UStateSpace) = (mdl.u[] = u.motor)
+
+
+################################################################################
+################################ Linearization #################################
+
+# f and g must have the following signatures:
 # ẋ = f(x::AbstractVector{<:Real}, u::AbstractVector{<:Real})::FieldVector
 # y = g(x::AbstractVector{<:Real}, u::AbstractVector{<:Real})::FieldVector
 
@@ -166,26 +177,29 @@ assign_u!(mdl::Model{Vehicle}, u::UStateSpace) = (mdl.u[] = u.motor)
 
 function Control.Continuous.LinearizedSS(mdl::Model{Vehicle})
 
+    #define state space system's update function
     f = let mdl = mdl
         function (x, u)
-            assign_x!(mdl, x)
-            assign_u!(mdl, u)
+            assign_x_ss!(mdl, x)
+            assign_u_ss!(mdl, u)
             f_ode!(mdl)
-            ẋ_ss(mdl)
+            get_ẋ_ss(mdl)
         end
     end
 
+    #define state space system's output function
     g = let mdl = mdl
         function (x, u)
-            assign_x!(mdl, x)
-            assign_u!(mdl, u)
+            assign_x_ss!(mdl, x)
+            assign_u_ss!(mdl, u)
             f_ode!(mdl)
-            y_ss(mdl)
+            get_y_ss(mdl)
         end
     end
 
-    x0 = x_ss(mdl)
-    u0 = u_ss(mdl)
+    #define linearization point
+    x0 = get_x_ss(mdl)
+    u0 = get_u_ss(mdl)
 
     Control.Continuous.LinearizedSS(f, g, x0, u0)
 

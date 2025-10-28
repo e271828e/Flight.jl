@@ -1,5 +1,7 @@
 module Control
 
+export LinearizedSS
+
 ############################## Continuous Models ###############################
 ################################################################################
 module Continuous ##############################################################
@@ -12,11 +14,22 @@ using Plots, LaTeXStrings, DataStructures
 
 using Flight.FlightCore
 
+export LinearizedSS
+
 ################################################################################
 ########################### LinearizedSS ###################################
 
 const tV = AbstractVector{<:Float64}
 const tM = AbstractMatrix{<:Float64}
+
+#represents a linearization of a nonlinear state-space system of the form
+#ẋ = f(x,u)
+#y = g(x,u)
+#around a point (x0, u0)
+
+#the linearized system is given by
+#ẋ = ẋ0 + A(x-x0) + B(u-u0)
+#y = y0 + C(x-x0) + D(u-u0)
 
 struct LinearizedSS{ LX, LU, LY, #state, input and output vector lengths
                         tX <: tV, tU <: tV, tY <: tV,
@@ -78,16 +91,10 @@ function LinearizedSS(f::Function, g::Function, x0::FieldVector, u0::FieldVector
 
 end
 
-#given a trim point (x0, u0) for the nonlinear system ẋ = f(x,u); y = g(x,u),
-#compute the state space matrices (A, B, C, D) for the system's linearization
-#around (x0, u0), given by: Δẋ = AΔx + BΔu; Δy = CΔx + DΔu
 function ss_matrices(f::Function, g::Function, x0::AbstractVector{<:Real}, u0::AbstractVector{<:Real})
 
     y0 = g(x0, u0)
 
-    #none of these closures will be returned for use in another scope or
-    #reassigned within ss_matrices, so there is no need to capture x0 and u0
-    #with a let block
     f_A!(ẋ, x) = (ẋ .= f(x, u0))
     f_B!(ẋ, u) = (ẋ .= f(x0, u))
     f_C!(y, x) = (y .= g(x, u0))

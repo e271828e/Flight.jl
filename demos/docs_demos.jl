@@ -22,7 +22,7 @@ function nlsim_q()
     _, q_nonlinear, _ = get_components(ts.aircraft.vehicle.kinematics.ω_wb_b)
 
     #extract aircraft submodel and linearize it around the trim condition
-    lss = linearize!(world.aircraft, trim_params)
+    lss = LinearizedSS(world.aircraft, trim_params)
     #convert to NamedStateSpace
     nss = named_ss(lss)
     #extract elevator to pitch rate SISO system
@@ -64,8 +64,8 @@ function nlsim_θ()
 
     #2. Obtain linear SISO system
 
-        #get aircraft submodel and linearize it around the trim condition
-        lss = linearize!(world.aircraft, trim_params)
+        #extract aircraft submodel and linearize it around the trim condition
+        lss = LinearizedSS(world.aircraft, trim_params)
 
         #convert to NamedStateSpace
         nss = named_ss(lss)

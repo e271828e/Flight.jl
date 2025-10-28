@@ -13,8 +13,6 @@ export AbstractVehicleSystems, NoVehicleSystems
 export AbstractVehicleSystemsInitializer, NoVehicleSystemsInitializer
 export AbstractAvionics, NoAvionics
 export AbstractTrimParameters, AbstractTrimState
-export trim!, linearize!
-
 
 
 ################################################################################
@@ -103,10 +101,6 @@ end
 function Modeling.init!( mdl::Model{<:Vehicle},
                         condition::AbstractTrimParameters, args...)
     MethodError(Modeling.init!, (mdl, condition, args...)) |> throw
-end
-
-function trim!( aircraft::Model, params::AbstractTrimParameters, args...)
-    MethodError(trim!, (aircraft, params, args...)) |> throw
 end
 
 #trim constraint: given the body-axes wind-relative velocity, the wind-relative
@@ -282,54 +276,55 @@ end
 
 
 ################################################################################
-################################ Linearization #################################
+################################# StateSpace ###################################
 
-ẋ_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(ẋ_ss, (vehicle,)))
-x_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(x_ss, (vehicle,)))
-u_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(u_ss, (vehicle,)))
-y_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(y_ss, (vehicle,)))
+get_ẋ_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(get_ẋ_ss, (vehicle,)))
+get_x_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(get_x_ss, (vehicle,)))
+get_u_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(get_u_ss, (vehicle,)))
+get_y_ss(vehicle::Model{<:Vehicle})::FieldVector = throw(MethodError(get_y_ss, (vehicle,)))
 
-assign_x!(vehicle::Model{<:Vehicle}, x::AbstractVector{Float64}) = throw(MethodError(assign_x!, (vehicle, x)))
-assign_u!(vehicle::Model{<:Vehicle}, u::AbstractVector{Float64}) = throw(MethodError(assign_u!, (vehicle, u)))
+assign_x_ss!(vehicle::Model{<:Vehicle}, x::AbstractVector{Float64}) = throw(MethodError(assign_x_ss!, (vehicle, x)))
+assign_u_ss!(vehicle::Model{<:Vehicle}, u::AbstractVector{Float64}) = throw(MethodError(assign_u_ss!, (vehicle, u)))
 
-linearize!(aircraft::Model{<:Aircraft}, args...) = linearize!(aircraft.vehicle, args...)
+################################################################################
+############################### Linearization ##################################
 
-function linearize!( vehicle::Model{<:Vehicle}, trim_params::AbstractTrimParameters)
+function Control.Continuous.LinearizedSS( vehicle::Model{<:Vehicle}, trim_params::AbstractTrimParameters)
 
-    #The velocity states in the linearized model must be aerodynamic so that
-    #they can be readily used for flight control design. Since the velocity
-    #states in the nonlinear model are Earth-relative, we should always set
-    #wind velocity to zero for linearization
+    #velocity states in the linearized model must be aerodynamic so that they
+    #can be readily used for flight control design. Since the velocity states in
+    #the nonlinear model are Earth-relative, we should set wind velocity to zero
+    #for linearization
     atmosphere = Model(SimpleAtmosphere(; wind = NoWind()))
     terrain = Model(HorizontalTerrain())
 
     (_, trim_state) = Modeling.init!(vehicle, trim_params, atmosphere, terrain)
 
-    x0 = x_ss(vehicle)::FieldVector
-    u0 = u_ss(vehicle)::FieldVector
-
-    #f and g will not be returned for use in another scope, so we don't need to
-    #capture vehicle with a let block, because they are guaranteed not be
-    #reassigned within the scope of linearize!
+    #define state space system's update function
     f = let vehicle = vehicle, atmosphere = atmosphere, terrain = terrain
-        function (x, u)
-            assign_x!(vehicle, x)
-            assign_u!(vehicle, u)
+        function (x_linear, u_linear)
+            assign_x_ss!(vehicle, x_linear)
+            assign_u_ss!(vehicle, u_linear)
             f_ode!(vehicle, atmosphere, terrain)
-            ẋ_ss(vehicle)
+            get_ẋ_ss(vehicle)
         end
     end
 
+    #define state space system's update function
     g = let vehicle = vehicle, atmosphere = atmosphere, terrain = terrain
-        function g(x, u)
-            assign_x!(vehicle, x)
-            assign_u!(vehicle, u)
+        function g(x_linear, u_linear)
+            assign_x_ss!(vehicle, x_linear)
+            assign_u_ss!(vehicle, u_linear)
             f_ode!(vehicle, atmosphere, terrain)
-            y_ss(vehicle)
+            get_y_ss(vehicle)
         end
     end
 
-    lss = Control.Continuous.LinearizedSS(f, g, x0, u0)
+    #define linearization point for state-space system
+    x0 = get_x_ss(vehicle)::FieldVector
+    u0 = get_u_ss(vehicle)::FieldVector
+
+    lss = LinearizedSS(f, g, x0, u0)
 
     #restore the Model to its trimmed condition
     assign!(vehicle, trim_params, trim_state, atmosphere, terrain)
