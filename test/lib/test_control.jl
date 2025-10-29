@@ -11,8 +11,8 @@ using Flight.FlightCore
 using Flight.FlightLib.Control
 
 #import individual components to avoid potential namespace conflicts with ControlSystems
+import Flight.FlightLib.Linearization: LinearizedSS
 import Flight.FlightLib.Control.Continuous: PIVector as PIContinuous
-import Flight.FlightLib.Control.Continuous: LinearizedSS
 import Flight.FlightLib.Control.Discrete: PID as PIDDiscrete
 import Flight.FlightLib.Control.Discrete: PIDVector as PIDDiscreteVector
 import Flight.FlightLib.Control.Discrete: LeadLag as LeadLagDiscrete
@@ -24,7 +24,6 @@ export test_control
 
 function test_control()
     @testset verbose = true "Control" begin
-        test_continuous_lss()
         test_continuous_pi()
         test_discrete_integrator()
         test_discrete_integrator_vector()
@@ -35,72 +34,6 @@ function test_control()
     end
 end
 
-function test_continuous_lss()
-
-    function build_ss(x0, u0, y0)
-
-        ẋ0 = copy(x0)
-
-        A = x0 * x0'
-        B = x0 * u0'
-        C = y0 * x0'
-        D = y0 * u0'
-
-        return LinearizedSS(ẋ0, x0, u0, y0, A, B, C, D)
-
-    end
-
-    function test_system(ss)
-
-        @unpack ẋ0, x0, u0, y0, A, B, C, D = ss
-
-        mdl = Model(ss)
-
-        x = 2mdl.x0
-        u = 3mdl.u0
-        mdl.x .= x
-        mdl.u .= u
-        f_ode!(mdl)
-
-        @test all(mdl.ẋ .== ẋ0 + A * (x - x0) + B * (u - u0))
-        @test all(mdl.y .== y0 + C * (x - x0) + D * (u - u0))
-
-        @test @ballocated(f_ode!($mdl)) === 0
-        @test @ballocated(f_step!($mdl)) === 0
-        @test @ballocated(f_periodic!(NoScheduling(), $mdl)) === 0
-
-    end
-
-    @testset verbose = true "LinearizedSS" begin
-
-        x0 = ComponentVector(V = 1.0, q = 0.5, θ = 0.3, α = 5.0)
-        u0 = ComponentVector(e = 0.1, a = 0.2)
-        y0 = ComponentVector(V = 0.3, q = 0.8, θ = 2.0, α = 3.0, f_z = -9.8)
-
-        @testset verbose = true "Model" begin
-            build_ss(x0, u0, y0) |> test_system #with ComponentVectors
-            build_ss(x0[:], u0[:], y0[:]) |> test_system #with plain Vectors
-        end
-
-        @testset verbose = true "Submodel" begin
-
-            #with ComponentVectors
-            cmp = build_ss(x0, u0, y0)
-            cmp = Control.Continuous.submodel(cmp; x = (:V, :q), y = (:V, :q, :f_z))
-            @test (length(cmp.x0) == 2 && length(cmp.y0) == 3 && size(cmp.A) == (2,2) &&
-                size(cmp.B) == (2, 2) && size(cmp.C) == (3, 2) && size(cmp.D) == (3,2))
-
-            #with plain Vectors
-            cmp = build_ss(x0[:], u0[:], y0[:])
-            cmp = Control.Continuous.submodel(cmp; x = [1, 3], u = [1], y = [1, 3, 5])
-            @test (length(cmp.x0) == 2 && length(cmp.u0) == 1 && length(cmp.y0) == 3 &&
-            size(cmp.A) == (2,2) && size(cmp.B) == (2, 1) && size(cmp.C) == (3, 2) && size(cmp.D) == (3,1))
-
-        end
-
-    end
-
-end
 
 function test_continuous_pi(save = false)
 

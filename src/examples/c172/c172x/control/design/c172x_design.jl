@@ -3,7 +3,7 @@ module C172XControlDesign
 using Flight
 using Flight.FlightCore
 using Flight.FlightLib
-using Flight.FlightLib.Control.Continuous: LinearizedSS, submodel
+using Flight.FlightLib.Linearization: LinearizedSS, subsystem
 using Flight.FlightLib.Control.Discrete: PIDParams, LQRParams, save_data
 using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
@@ -34,7 +34,7 @@ function get_design_model!(
             trim_params::C172.TrimParameters = C172.TrimParameters();
             model::Symbol = :full)
 
-    lss = LinearizedSS(vehicle, trim_params)
+    lss = linearize(vehicle, trim_params)
 
     @unpack A, B, C, D, ẋ0, x0, y0 = lss
 
@@ -71,13 +71,13 @@ function get_design_model!(
         x_labels = [:q, :θ, :EAS, :α, :h, :α_filt, :n_eng, :thr_p, :ele_p]
         u_labels = [:throttle_cmd, :elevator_cmd]
         y_labels = vcat(x_labels, [:f_x, :f_z, :TAS, :γ, :climb_rate, :throttle_cmd, :elevator_cmd])
-        return submodel(lss; x = x_labels, u = u_labels, y = y_labels)
+        return subsystem(lss; x = x_labels, u = u_labels, y = y_labels)
 
     elseif model === :lat
         x_labels = [:p, :r, :ψ, :φ, :EAS, :β, :β_filt, :ail_p, :rud_p]
         u_labels = [:aileron_cmd, :rudder_cmd]
         y_labels = vcat(x_labels, [:f_y, :χ, :aileron_cmd, :rudder_cmd])
-        return submodel(lss; x = x_labels, u = u_labels, y = y_labels)
+        return subsystem(lss; x = x_labels, u = u_labels, y = y_labels)
 
     else
         error("Valid model keyword values: :full, :lon, :lat")
@@ -154,15 +154,15 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
     x_labels_red = deleteat!(x_labels_red, findfirst(isequal(:h), x_labels_red))
     y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:h), y_labels_red))
 
-    lss_red = submodel(lss_lon; x = x_labels_red, u = u_labels_red, y = y_labels_red)
-    P_red = submodel(P_lon; x = x_labels_red, u = u_labels_red, y = y_labels_red)
+    lss_red = subsystem(lss_lon; x = x_labels_red, u = u_labels_red, y = y_labels_red)
+    P_red = subsystem(P_lon; x = x_labels_red, u = u_labels_red, y = y_labels_red)
 
     #pitch dynamics model
     x_labels_pit = [:q, :θ, :EAS, :α, :α_filt, :ele_p]
     y_labels_pit = vcat(x_labels_pit, [:f_x, :f_z, :TAS, :γ, :climb_rate, :elevator_cmd])
     u_labels_pit = [:elevator_cmd,]
 
-    lss_pit = submodel(lss_red; x = x_labels_pit, u = u_labels_pit, y = y_labels_pit)
+    lss_pit = subsystem(lss_red; x = x_labels_pit, u = u_labels_pit, y = y_labels_pit)
     P_pit = named_ss(lss_pit)
 
     ############################ thr+ele SAS ###################################
@@ -621,7 +621,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
     y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:ψ), y_labels_red))
     y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:χ), y_labels_red))
 
-    lss_red = submodel(lss_lat; x = x_labels_red, u = u_labels_red, y = y_labels_red)
+    lss_red = subsystem(lss_lat; x = x_labels_red, u = u_labels_red, y = y_labels_red)
     P_red = named_ss(lss_red);
 
     ################################ SAS #######################################

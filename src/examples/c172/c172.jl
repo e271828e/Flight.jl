@@ -933,10 +933,10 @@ function Modeling.init!(
 end
 
 
-function Control.Continuous.LinearizedSS(aircraft::Model{<:Cessna172},
+function Linearization.linearize(aircraft::Model{<:Cessna172},
                                          params::TrimParameters = TrimParameters(),
                                          args...)
-    LinearizedSS(aircraft.vehicle, params, args...)
+    linearize(aircraft.vehicle, params, args...)
 end
 
 ################################################################################

@@ -8,6 +8,7 @@ includet(normpath("lib/test_attitude.jl")); using .TestAttitude
 includet(normpath("lib/test_geodesy.jl")); using .TestGeodesy
 includet(normpath("lib/test_kinematics.jl")); using .TestKinematics
 includet(normpath("lib/test_dynamics.jl")); using .TestDynamics
+includet(normpath("lib/test_linearization.jl")); using .TestLinearization
 includet(normpath("lib/test_control.jl")); using .TestControl
 includet(normpath("lib/test_propellers.jl")); using .TestPropellers
 includet(normpath("lib/test_piston.jl")); using .TestPiston
@@ -26,6 +27,7 @@ test_attitude()
 test_geodesy()
 test_kinematics()
 test_dynamics()
+test_linearization()
 test_control()
 test_propellers()
 test_piston()

@@ -289,7 +289,7 @@ assign_u_ss!(vehicle::Model{<:Vehicle}, u::AbstractVector{Float64}) = throw(Meth
 ################################################################################
 ############################### Linearization ##################################
 
-function Control.Continuous.LinearizedSS( vehicle::Model{<:Vehicle}, trim_params::AbstractTrimParameters)
+function Linearization.linearize( vehicle::Model{<:Vehicle}, trim_params::AbstractTrimParameters)
 
     #velocity states in the linearized model must be aerodynamic so that they
     #can be readily used for flight control design. Since the velocity states in
@@ -324,7 +324,7 @@ function Control.Continuous.LinearizedSS( vehicle::Model{<:Vehicle}, trim_params
     x0 = get_x_ss(vehicle)::FieldVector
     u0 = get_u_ss(vehicle)::FieldVector
 
-    lss = LinearizedSS(f, g, x0, u0)
+    lss = linearize(f, g, x0, u0)
 
     #restore the Model to its trimmed condition
     assign!(vehicle, trim_params, trim_state, atmosphere, terrain)

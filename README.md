@@ -137,7 +137,7 @@ using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings
     #2. Obtain linear SISO system
 
         #extract aircraft submodel and linearize it around the trim condition
-        lss = LinearizedSS(world.aircraft, trim_params)
+        lss = linearize(world.aircraft, trim_params)
 
         #convert to NamedStateSpace
         nss = named_ss(lss)

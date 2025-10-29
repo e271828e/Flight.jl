@@ -6,8 +6,6 @@ using FiniteDiff: finite_difference_jacobian! as jacobian!
 using Flight.FlightCore
 using Flight.FlightLib
 
-import Flight.FlightLib.Control.Continuous: LinearizedSS
-
 const g = 9.80665 #m/s^2, standard gravity
 
 ################################################################################
@@ -169,13 +167,7 @@ assign_u_ss!(mdl::Model{Vehicle}, u::UStateSpace) = (mdl.u[] = u.motor)
 ################################################################################
 ################################ Linearization #################################
 
-# f and g must have the following signatures:
-# ẋ = f(x::AbstractVector{<:Real}, u::AbstractVector{<:Real})::FieldVector
-# y = g(x::AbstractVector{<:Real}, u::AbstractVector{<:Real})::FieldVector
-
-#x0::FieldVector, u0::FieldVector
-
-function Control.Continuous.LinearizedSS(mdl::Model{Vehicle})
+function Linearization.linearize(mdl::Model{Vehicle})
 
     #define state space system's update function
     f = let mdl = mdl
@@ -201,7 +193,7 @@ function Control.Continuous.LinearizedSS(mdl::Model{Vehicle})
     x0 = get_x_ss(mdl)
     u0 = get_u_ss(mdl)
 
-    Control.Continuous.LinearizedSS(f, g, x0, u0)
+    linearize(f, g, x0, u0)
 
 end
 
