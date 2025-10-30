@@ -102,6 +102,110 @@ function Modeling.f_ode!(mdl::Model{Vehicle})
 
 end
 
+function Modeling.f_ode!(mdl::Model{Vehicle})
+
+    @unpack ẋ, x, u, parameters = mdl
+    @unpack L, R, k_m, b_m, J_m, m1, m2 = parameters
+
+    @unpack ω1, ω2, θ, η = x
+    u_m = u[]
+
+    #approximate main body's moment of inertia with respect to its CoM as
+    #that of a thin rod of length 2L
+    J1 = 1/12 * m1 * (2L)^2
+
+    #approximate rolling body's moment of inertia with respect to its CoM as the
+    #motor's effective moment of inertia plus the contribution from the body's
+    #mass, assuming a solid disk distribution
+    J2 = J_m + 1/2 * m2 * R^2
+
+    A = @SMatrix[
+        m1*L*cos(θ)  m1*R    -1         0           0     0     0
+        m1*L*sin(θ)  0       0          1           0     0     0
+        J1           0       L*cos(θ)   -L*sin(θ)   0     0     1
+        0            m2*R    1          0           -1    0     0
+        0            0       0          -1          0     1     0
+        0            J2      0          0           R     0     -1
+        0            0       0          0           0     0     1
+    ]
+
+    b = @SVector[
+        m1*L*ω1^2*sin(θ),
+        m1*g - m1*L*ω1^2*cos(θ),
+        0,
+        0,
+        m2*g,
+        0,
+        k_m * u_m - b_m * (ω2 - ω1)
+    ]
+
+    ω1_dot, ω2_dot, F_21x, F_21z, F_i2x, F_i2z, τ_m = A\b
+    v = ω2 * R
+
+    θ_dot = ω1
+    η_dot = v
+
+    ẋ.ω1 = ω1_dot
+    ẋ.ω2 = ω2_dot
+    ẋ.θ = θ_dot
+    ẋ.η = η_dot
+
+    mdl.y = VehicleY(; ω1, ω2, θ, η, v, ω1_dot, ω2_dot, F_21x, F_21z, F_i2x, F_i2z, τ_m)
+
+end
+
+function Modeling.f_ode!(mdl::Model{Vehicle})
+
+    @unpack ẋ, x, u, parameters = mdl
+    @unpack L, R, k_m, b_m, J_m, m1, m2 = parameters
+
+    @unpack ω1, ω2, θ, η = x
+    u_m = u[]
+
+    #approximate main body's moment of inertia with respect to its CoM as
+    #that of a thin rod of length 2L
+    J1 = 1/12 * m1 * (2L)^2
+
+    #approximate rolling body's moment of inertia with respect to its CoM as the
+    #motor's effective moment of inertia plus the contribution from the body's
+    #mass, assuming a solid disk distribution
+    J2 = J_m + 1/2 * m2 * R^2
+
+    A = @SMatrix[
+        m1*L*cos(θ)  m1*R    -1         0           0     0     0
+        m1*L*sin(θ)  0       0          1           0     0     0
+        J1           0       L*cos(θ)   -L*sin(θ)   0     0     1
+        0            m2*R    1          0           -1    0     0
+        0            0       0          -1          0     1     0
+        0            J2      0          0           R     0     -1
+        0            0       0          0           0     0     1
+    ]
+
+    b = @SVector[
+        m1*L*ω1^2*sin(θ),
+        m1*g - m1*L*ω1^2*cos(θ),
+        0,
+        0,
+        m2*g,
+        0,
+        k_m * u_m - b_m * (ω2 - ω1)
+    ]
+
+    ω1_dot, ω2_dot, F_21x, F_21z, F_i2x, F_i2z, τ_m = A\b
+    v = ω2 * R
+
+    θ_dot = ω1
+    η_dot = v
+
+    ẋ.ω1 = ω1_dot
+    ẋ.ω2 = ω2_dot
+    ẋ.θ = θ_dot
+    ẋ.η = η_dot
+
+    mdl.y = VehicleY(; ω1, ω2, θ, η, v, ω1_dot, ω2_dot, F_21x, F_21z, F_i2x, F_i2z, τ_m)
+
+end
+
 @no_step Vehicle
 @no_periodic Vehicle
 
