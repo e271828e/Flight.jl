@@ -50,6 +50,13 @@ Key features:
     complex, gain-scheduled autopilot.
 
 
+## Installation
+
+```julia
+using Pkg
+Pkg.add("Flight")
+```
+
 ## Documentation
 
 Documentation is still in its infancy. Please check out the [tutorials](https://e271828e.github.io/Flight.jl/dev/tutorials/tutorial01/tutorial01/)
