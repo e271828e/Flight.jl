@@ -50,18 +50,17 @@ Key features:
     complex, gain-scheduled autopilot.
 
 
+## Documentation
+
+Documentation is still in its infancy. Please check out the [tutorials](https://e271828e.github.io/Flight.jl/dev/tutorials/tutorial01/tutorial01/)
+for a first glance at the package's capabilities. If you're in a hurry, you can try the self-contained examples below.
+
 ## Installation
 
 ```julia
 using Pkg
 Pkg.add("Flight")
 ```
-
-## Documentation
-
-Documentation is still in its infancy. Please check out the [tutorials](https://e271828e.github.io/Flight.jl/dev/tutorials/tutorial01/tutorial01/)
-for a first glance at the package's capabilities. If you're in a hurry, you can try the self-contained examples below.
-
 
 ## Examples
 Automated turning climb under constant wind conditions:
