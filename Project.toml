@@ -1,7 +1,7 @@
 name = "Flight"
 uuid = "e329eb8f-69f3-4234-a468-5e3889a58643"
 authors = ["Miguel Alonso <miguel883@gmail.com> and contributors"]
-version = "0.1.4"
+version = "0.1.5"
 
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
@@ -45,9 +45,9 @@ UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 AbstractTrees = "0.4.5"
 CImGui = "6"
 ComponentArrays = "0.15.29"
-ControlSystems = "1.14"
+ControlSystems = "1.15"
 DataStructures = "0.19"
-DiffEqCallbacks = "4.9"
+DiffEqCallbacks = "4.10"
 EnumX = "1.0.5"
 FiniteDiff = "2.28.1"
 GLFW = "3.4.5"
