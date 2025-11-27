@@ -102,113 +102,255 @@ function Modeling.f_ode!(mdl::Model{Vehicle})
 
 end
 
-function Modeling.f_ode!(mdl::Model{Vehicle})
 
-    @unpack ẋ, x, u, parameters = mdl
-    @unpack L, R, k_m, b_m, J_m, m1, m2 = parameters
+# function Modeling.f_ode!(mdl::Model{Vehicle})
 
-    @unpack ω1, ω2, θ, η = x
-    u_m = u[]
+#     @unpack ẋ, x, u, parameters = mdl
+#     @unpack L, R, k_m, b_m, J_m, m1, m2 = parameters
 
-    #approximate main body's moment of inertia with respect to its CoM as
-    #that of a thin rod of length 2L
-    J1 = 1/12 * m1 * (2L)^2
+#     @unpack ω1, ω2, θ, η = x
+#     u_m = u[]
 
-    #approximate rolling body's moment of inertia with respect to its CoM as the
-    #motor's effective moment of inertia plus the contribution from the body's
-    #mass, assuming a solid disk distribution
-    J2 = J_m + 1/2 * m2 * R^2
+#     #approximate main body's moment of inertia with respect to its CoM as
+#     #that of a thin rod of length 2L
+#     J1 = 1/12 * m1 * (2L)^2
 
-    A = @SMatrix[
-        m1*L*cos(θ)  m1*R    -1         0           0     0     0
-        m1*L*sin(θ)  0       0          1           0     0     0
-        J1           0       L*cos(θ)   -L*sin(θ)   0     0     1
-        0            m2*R    1          0           -1    0     0
-        0            0       0          -1          0     1     0
-        0            J2      0          0           R     0     -1
-        0            0       0          0           0     0     1
-    ]
+#     #approximate rolling body's moment of inertia with respect to its CoM as the
+#     #motor's effective moment of inertia plus the contribution from the body's
+#     #mass, assuming a solid disk distribution
+#     J2 = J_m + 1/2 * m2 * R^2
 
-    b = @SVector[
-        m1*L*ω1^2*sin(θ),
-        m1*g - m1*L*ω1^2*cos(θ),
-        0,
-        0,
-        m2*g,
-        0,
-        k_m * u_m - b_m * (ω2 - ω1)
-    ]
+#     A = @SMatrix[
+#         m1*L*cos(θ)  m1*R    -1         0           0     0     0
+#         m1*L*sin(θ)  0       0          1           0     0     0
+#         J1           0       L*cos(θ)   -L*sin(θ)   0     0     1
+#         0            m2*R    1          0           -1    0     0
+#         0            0       0          -1          0     1     0
+#         0            J2      0          0           R     0     -1
+#         0            0       0          0           0     0     1
+#     ]
 
-    ω1_dot, ω2_dot, F_21x, F_21z, F_i2x, F_i2z, τ_m = A\b
-    v = ω2 * R
+#     b = @SVector[
+#         m1*L*ω1^2*sin(θ),
+#         m1*g - m1*L*ω1^2*cos(θ),
+#         0,
+#         0,
+#         m2*g,
+#         0,
+#         k_m * u_m - b_m * (ω2 - ω1)
+#     ]
 
-    θ_dot = ω1
-    η_dot = v
+#     ω1_dot, ω2_dot, F_21x, F_21z, F_i2x, F_i2z, τ_m = A\b
+#     v = ω2 * R
 
-    ẋ.ω1 = ω1_dot
-    ẋ.ω2 = ω2_dot
-    ẋ.θ = θ_dot
-    ẋ.η = η_dot
+#     θ_dot = ω1
+#     η_dot = v
 
-    mdl.y = VehicleY(; ω1, ω2, θ, η, v, ω1_dot, ω2_dot, F_21x, F_21z, F_i2x, F_i2z, τ_m)
+#     ẋ.ω1 = ω1_dot
+#     ẋ.ω2 = ω2_dot
+#     ẋ.θ = θ_dot
+#     ẋ.η = η_dot
 
-end
+#     mdl.y = VehicleY(; ω1, ω2, θ, η, v, ω1_dot, ω2_dot, F_21x, F_21z, F_i2x, F_i2z, τ_m)
 
-function Modeling.f_ode!(mdl::Model{Vehicle})
-
-    @unpack ẋ, x, u, parameters = mdl
-    @unpack L, R, k_m, b_m, J_m, m1, m2 = parameters
-
-    @unpack ω1, ω2, θ, η = x
-    u_m = u[]
-
-    #approximate main body's moment of inertia with respect to its CoM as
-    #that of a thin rod of length 2L
-    J1 = 1/12 * m1 * (2L)^2
-
-    #approximate rolling body's moment of inertia with respect to its CoM as the
-    #motor's effective moment of inertia plus the contribution from the body's
-    #mass, assuming a solid disk distribution
-    J2 = J_m + 1/2 * m2 * R^2
-
-    A = @SMatrix[
-        m1*L*cos(θ)  m1*R    -1         0           0     0     0
-        m1*L*sin(θ)  0       0          1           0     0     0
-        J1           0       L*cos(θ)   -L*sin(θ)   0     0     1
-        0            m2*R    1          0           -1    0     0
-        0            0       0          -1          0     1     0
-        0            J2      0          0           R     0     -1
-        0            0       0          0           0     0     1
-    ]
-
-    b = @SVector[
-        m1*L*ω1^2*sin(θ),
-        m1*g - m1*L*ω1^2*cos(θ),
-        0,
-        0,
-        m2*g,
-        0,
-        k_m * u_m - b_m * (ω2 - ω1)
-    ]
-
-    ω1_dot, ω2_dot, F_21x, F_21z, F_i2x, F_i2z, τ_m = A\b
-    v = ω2 * R
-
-    θ_dot = ω1
-    η_dot = v
-
-    ẋ.ω1 = ω1_dot
-    ẋ.ω2 = ω2_dot
-    ẋ.θ = θ_dot
-    ẋ.η = η_dot
-
-    mdl.y = VehicleY(; ω1, ω2, θ, η, v, ω1_dot, ω2_dot, F_21x, F_21z, F_i2x, F_i2z, τ_m)
-
-end
+# end
 
 @no_step Vehicle
 @no_periodic Vehicle
 
+
+
+################################################################################
+################################## Vehicle2 #####################################
+
+#body 1: main body, comprising the vehicle chassis and the DC motor's case and stator
+#body 2: rolling body, comprising the wheel, axle, and the DC motor's rotor.
+
+@kwdef struct Vehicle2 <: ModelDefinition
+    L::Float64 = 0.15 #distance from main body's origin to its CoM (m)
+    R::Float64 = 0.05 #wheel radius (m)
+    m1::Float64 = 0.5 #mass of main body (kg)
+    m2::Float64 = 0.1 #mass of rolling body (kg)
+    k_m::Float64 = 0.32 #motor's torque constant (N*m)
+    b_m::Float64 = 0.0189 #motor's effective damping coefficient (N*m*s/rad)
+    J_m::Float64 = 0.0014 #motor's effective moment of inertia (kg*m^2)
+end
+
+@kwdef struct Vehicle2Y
+    ω::Float64 = 0.0 #angular velocity of main body (rad/s)
+    v::Float64 = 0.0 #horizontal velocity of the system's origin (m/s)
+    θ::Float64 = 0.0 #angle of main body with respect to vertical (rad)
+    η::Float64 = 0.0 #horizontal position of the system's origin (m)
+    τ_m::Float64 = 0.0 #motor torque exerted by body 1 on body 2 (N*m)
+    ω_dot::Float64 = 0.0 #angular acceleration of main body (rad/s^2)
+    v_dot::Float64 = 0.0 #linear acceleration of the system's origin (m/s^2)
+end
+
+Modeling.X(::Vehicle2) = ComponentVector( ω = 0.0, v = 0.0, θ = 0.0, η = 0.0)
+Modeling.U(::Vehicle2) = Ref{Float64}(0.0)
+Modeling.Y(::Vehicle2) = Vehicle2Y()
+
+#initialize vehicle at static vertical equilibrium
+function Modeling.init!(mdl::Model{Vehicle2})
+    mdl.x .= 0
+    mdl.u[] = 0
+    f_ode!(mdl)
+end
+
+function Modeling.f_ode!(mdl::Model{Vehicle2})
+
+    @unpack ẋ, x, u, parameters = mdl
+    @unpack L, R, k_m, b_m, J_m, m1, m2 = parameters
+
+    @unpack ω, v, θ, η = x
+    u_m = u[]
+
+    #approximate main body's moment of inertia with respect to its CoM as
+    #that of a thin rod of length 2L
+    @show J1 = 1/12 * m1 * (2L)^2
+
+    #approximate rolling body's moment of inertia with respect to its CoM as the
+    #motor's effective moment of inertia plus the contribution from the body's
+    #mass, assuming a solid disk distribution
+    @show J2 = J_m + 1/2 * m2 * R^2
+
+    τ_m = u_m*k_m - b_m*(v/R - ω)
+
+    A = @SMatrix[
+        m1*L^2 + J1     m1*L*cos(θ)
+        m1*L*cos(θ)     m1 + m2 + J2/R^2
+    ]
+
+    b = @SVector[
+        -τ_m + m1*g*L*sin(θ)
+        τ_m/R + m1*L*ω^2*sin(θ)
+    ]
+
+    ω_dot, v_dot = A\b
+
+    θ_dot = ω
+    η_dot = v
+
+    ẋ.ω = ω_dot
+    ẋ.v = v_dot
+    ẋ.θ = θ_dot
+    ẋ.η = η_dot
+
+    mdl.y = Vehicle2Y(; ω, v, θ, η, τ_m, ω_dot, v_dot)
+
+end
+
+@no_step Vehicle2
+@no_periodic Vehicle2
+
+function test_vehicle()
+
+    mdl = Vehicle() |> Model
+
+    mdl.u[] = 0
+    mdl.x.ω1 = 0.0
+    mdl.x.ω2 = 0
+    mdl.x.θ = 0.0
+    f_ode!(mdl)
+    @show mdl.y
+
+    mdl.u[] = 0.118125
+    mdl.x.ω1 = 0.0
+    mdl.x.ω2 = 2.0
+    mdl.x.θ = 0.0
+    f_ode!(mdl)
+    @show mdl.y
+
+    mdl.u[] = 1.0
+    mdl.x.ω1 = 0.0
+    mdl.x.ω2 = 17.0
+    mdl.x.θ = 0.0
+    f_ode!(mdl)
+    @show mdl.y
+
+    mdl.u[] = 0.2
+    mdl.x.ω1 = 0.1
+    mdl.x.ω2 = 2.0
+    mdl.x.θ = 0.05
+    f_ode!(mdl)
+    @show mdl.y
+
+    nothing
+
+end
+
+function test_vehicle2()
+
+    mdl = Vehicle2() |> Model
+
+    mdl.u[] = 0
+    mdl.x.ω = 0.0
+    mdl.x.v = 0
+    mdl.x.θ = 0.0
+    f_ode!(mdl)
+    @show mdl.y
+
+    ω2 = 2.0
+    v = ω2 * mdl.parameters.R
+    mdl.u[] = 0.118125
+    mdl.x.ω = 0.0
+    mdl.x.v = v
+    mdl.x.θ = 0.0
+    f_ode!(mdl)
+    @show mdl.y
+
+    ω2 = 17.0
+    v = ω2 * mdl.parameters.R
+    mdl.u[] = 1.0
+    mdl.x.ω = 0.0
+    mdl.x.v = v
+    mdl.x.θ = 0.0
+    f_ode!(mdl)
+    @show mdl.y
+
+    mdl.u[] = 0.2
+    mdl.x.ω = 0.1
+    mdl.x.v = 2.0 * mdl.parameters.R
+    mdl.x.θ = 0.05
+    f_ode!(mdl)
+    @show mdl.y
+
+    nothing
+end
+
+#unknowns:
+#omega1, omega2, theta, eta
+#omega1_dot, omega2_dot, theta_dot, eta_dot
+#F21x, F21z, Fi2x, Fi2z, tau_m
+#u
+#total: 14
+
+#equations:
+#6 dynamic equations
+#1 motor model
+#2 kinematic equations for theta_dot = omega1, eta_dot = omega2*R
+
+#total: 9
+
+#we need 5 constraints:
+#1: η, which is decoupled and we can set arbitrarily
+#2: ω2, which basically determines u
+#345: ω1, ω1_dot, θ
+
+#once we set ω1, ω1_dot and θ, ω2_dot is not free, because keeping the
+#vehicle at a constant tilt away from the vertical requires linear acceleration
+
+#how would we do this? set omega1, omega2, omega1_dot, theta as parameters.
+#then, we should try to eliminate the four internal forces from the dynamic
+#equations. this would leave us with 2 dynamic equations and 1 motor model,
+#which contain theta, omega1, omega2, omega1dot, omega2dot, tau_m, u (7
+#variables) theta, omega1, omega2, omega1dot are trim parameters omega2dot,
+#tau_m and u are unknowns basically the cost function involves the squared error
+#from these equations for some omega2dot, tau_m and u guesses with an extra step
+#we can substitute the motor model for tau_m, and we have omega2dot and u as
+#trim_state
+
+#try Lagrangian dynamics derivation and compare results. it's more useful.
 
 ################################################################################
 ################################ State Space ###################################
@@ -302,69 +444,6 @@ function Linearization.linearize(mdl::Model{Vehicle})
 end
 
 
-function test_vehicle()
-
-    mdl = Vehicle() |> Model
-
-    mdl.u[] = 0
-    mdl.x.ω1 = 0.0
-    mdl.x.ω2 = 0
-    mdl.x.θ = 0.0
-    f_ode!(mdl)
-    @show mdl.ẋ
-    @show mdl.y
-
-    mdl.u[] = 0.118125
-    mdl.x.ω1 = 0.0
-    mdl.x.ω2 = 2.0
-    mdl.x.θ = 0.0
-    f_ode!(mdl)
-    @show mdl.ẋ
-    @show mdl.y
-
-    mdl.u[] = 1.0
-    mdl.x.ω1 = 0.0
-    mdl.x.ω2 = 17.0
-    mdl.x.θ = 0.0
-    f_ode!(mdl)
-    @show mdl.ẋ
-    @show mdl.y
-
-end
-
-#unknowns:
-#omega1, omega2, theta, eta
-#omega1_dot, omega2_dot, theta_dot, eta_dot
-#F21x, F21z, Fi2x, Fi2z, tau_m
-#u
-#total: 14
-
-#equations:
-#6 dynamic equations
-#1 motor model
-#2 kinematic equations for theta_dot = omega1, eta_dot = omega2*R
-
-#total: 9
-
-#we need 5 constraints:
-#1: η, which is decoupled and we can set arbitrarily
-#2: ω2, which basically determines u
-#345: ω1, ω1_dot, θ
-
-#once we set ω1, ω1_dot and θ, ω2_dot is not free, because keeping the
-#vehicle at a constant tilt away from the vertical requires linear acceleration
-
-#how would we do this? set omega1, omega2, omega1_dot, theta as parameters.
-#then, we should try to eliminate the four internal forces from the dynamic
-#equations. this would leave us with 2 dynamic equations and 1 motor model,
-#which contain theta, omega1, omega2, omega1dot, omega2dot, tau_m, u (7
-#variables) theta, omega1, omega2, omega1dot are trim parameters omega2dot,
-#tau_m and u are unknowns basically the cost function involves the squared error
-#from these equations for some omega2dot, tau_m and u guesses with an extra step
-#we can substitute the motor model for tau_m, and we have omega2dot and u as
-#trim_state
-
-#try Lagrangian dynamics derivation and compare results. it's more useful.
 
 ################################################################################
 
