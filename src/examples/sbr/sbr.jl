@@ -210,12 +210,12 @@ end
 
 assign_x_ss!(mdl::Model{Vehicle}, x::AbstractVector{<:Real}) = assign_x_ss!(mdl, XStateSpace(x))
 
+assign_u_ss!(mdl::Model{Vehicle}, u::AbstractVector{<:Real}) = assign_u_ss!(mdl, UStateSpace(u[1]))
+
 function assign_x_ss!(mdl::Model{Vehicle}, x::XStateSpace)
     @unpack ω, v, θ, η = x
     @pack! mdl.x = ω, v, θ, η
 end
-
-assign_u_ss!(mdl::Model{Vehicle}, u::AbstractVector{<:Real}) = assign_u_ss!(mdl, UStateSpace(u[1]))
 
 assign_u_ss!(mdl::Model{Vehicle}, u::UStateSpace) = (mdl.u[] = u.motor)
 
