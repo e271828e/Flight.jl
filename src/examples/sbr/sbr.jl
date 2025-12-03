@@ -56,7 +56,7 @@ function Modeling.f_ode!(mdl::Model{Vehicle})
     @unpack ω, v, θ, η = x
     u_m = u[]
     ω_m = v / R - ω
-    τ_m_ss = k_m * u_m - b_m * ω_m
+    τ_m_ss = k_m * u_m - b_m * ω_m #steady-state motor torque
 
     J = m_1 * L^2 + J_1 + J_m
     M = m_1 + m_2 + (J_2 + J_m) / R^2
@@ -178,7 +178,7 @@ end
 end
 
 @kwdef struct UStateSpace <: FieldVector{1, Float64}
-    motor::Float64 = 0.0
+    m::Float64 = 0.0
 end
 
 @kwdef struct YStateSpace <: FieldVector{5, Float64}
@@ -217,7 +217,7 @@ function assign_x_ss!(mdl::Model{Vehicle}, x::XStateSpace)
     @pack! mdl.x = ω, v, θ, η
 end
 
-assign_u_ss!(mdl::Model{Vehicle}, u::UStateSpace) = (mdl.u[] = u.motor)
+assign_u_ss!(mdl::Model{Vehicle}, u::UStateSpace) = (mdl.u[] = u.m)
 
 
 ################################################################################
