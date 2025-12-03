@@ -3,7 +3,7 @@ module C172XControlDesign
 using Flight
 using Flight.FlightCore
 using Flight.FlightLib
-using Flight.FlightLib.Linearization: LinearizedSS, subsystem
+using Flight.FlightLib.Linearization: LinearizedSS, subsystem, delete_vars
 using Flight.FlightLib.Control.Discrete: PIDParams, LQRParams, save_data
 using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
@@ -142,28 +142,9 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
     lss_lon = get_design_model!(aircraft, design_point; model = :lon);
     P_lon = named_ss(lss_lon)
 
-    x_labels_lon = keys(lss_lon.x0) |> collect
-    y_labels_lon = keys(lss_lon.y0) |> collect
-    u_labels_lon = keys(lss_lon.u0) |> collect
-
-    #reduced model
-    x_labels_red = copy(x_labels_lon)
-    y_labels_red = copy(y_labels_lon)
-    u_labels_red = copy(u_labels_lon)
-
-    x_labels_red = deleteat!(x_labels_red, findfirst(isequal(:h), x_labels_red))
-    y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:h), y_labels_red))
-
-    lss_red = subsystem(lss_lon; x = x_labels_red, u = u_labels_red, y = y_labels_red)
-    P_red = subsystem(P_lon; x = x_labels_red, u = u_labels_red, y = y_labels_red)
-
-    #pitch dynamics model
-    x_labels_pit = [:q, :θ, :EAS, :α, :α_filt, :ele_p]
-    y_labels_pit = vcat(x_labels_pit, [:f_x, :f_z, :TAS, :γ, :climb_rate, :elevator_cmd])
-    u_labels_pit = [:elevator_cmd,]
-
-    lss_pit = subsystem(lss_red; x = x_labels_pit, u = u_labels_pit, y = y_labels_pit)
-    P_pit = named_ss(lss_pit)
+    #reduced longitudinal model
+    lss_red = delete_vars(lss_lon, :h)
+    P_red = named_ss(lss_red)
 
     ############################ thr+ele SAS ###################################
 
@@ -456,7 +437,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
                         throttle_cmd_err_sum, EAS_err_sum,
                         throttle_cmd_sum, elevator_cmd_sum,
                         throttle_cmd_ref_splitter, EAS_ref_splitter], connections;
-                        w1 = z_labels_ref, z1 = y_labels_red)
+                        w1 = z_labels_ref, z1 = P_red.y)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
@@ -580,7 +561,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
                         EAS_err_sum, h_err_sum,
                         throttle_cmd_sum, elevator_cmd_sum,
                         EAS_ref_splitter, h_ref_splitter], connections;
-                        w1 = z_labels_ref, z1 = y_labels_lon)
+                        w1 = z_labels_ref, z1 = P_lon.y)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
@@ -608,20 +589,8 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
     lss_lat = get_design_model!(aircraft, design_point; model = :lat);
     P_lat = named_ss(lss_lat);
 
-    x_labels_lat = keys(lss_lat.x0) |> collect
-    y_labels_lat = keys(lss_lat.y0) |> collect
-    u_labels_lat = keys(lss_lat.u0) |> collect
-
-    #reduced design model
-    x_labels_red = copy(x_labels_lat)
-    y_labels_red = copy(y_labels_lat)
-    u_labels_red = copy(u_labels_lat)
-
-    x_labels_red = deleteat!(x_labels_red, findfirst(isequal(:ψ), x_labels_red))
-    y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:ψ), y_labels_red))
-    y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:χ), y_labels_red))
-
-    lss_red = subsystem(lss_lat; x = x_labels_red, u = u_labels_red, y = y_labels_red)
+    #reduced lateral model
+    lss_red = delete_vars(lss_lat, (:ψ, :χ))
     P_red = named_ss(lss_red);
 
     ################################ SAS #######################################
