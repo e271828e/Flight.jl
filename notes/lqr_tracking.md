@@ -20,42 +20,42 @@ $$
 $$
 z_{trim}  \approx \left. \frac{\partial h}{\partial x} \right \rvert_{trim}(x-x_{trim}) + \left. \frac{\partial h}{\partial u} \right \rvert_{trim}(u-u_{trim})
 $$
-$$ \Delta \dot{x} = F \Delta x + G \Delta u $$
-$$ \Delta z = H_x \Delta x + H_u \Delta u $$
+$$ \Delta \dot{x} = A \Delta x + B \Delta u $$
+$$ \Delta z = C \Delta x + D \Delta u $$
 
 To achieve $z = z^*$, we need to drive $\Delta z$ to $\Delta z^* = z^* - z_{trim}$ in the linearized system.
 
 Now we seek an equilibrium reference $(\Delta x^*, \Delta u^*)$ such that:
-$$ 0 = F \Delta x^* + G \Delta u^* $$
-$$ \Delta z^* = H_x \Delta x^* + H_u \Delta u^* $$
+$$ 0 = A \Delta x^* + B \Delta u^* $$
+$$ \Delta z^* = C \Delta x^* + D \Delta u^* $$
 
 In matrix form:
 $$
-A \begin{pmatrix} \Delta x^* \\ \Delta u^* \end{pmatrix} = \begin{pmatrix} 0 \\ \Delta z^* \end{pmatrix}
+L \begin{pmatrix} \Delta x^* \\ \Delta u^* \end{pmatrix} = \begin{pmatrix} 0 \\ \Delta z^* \end{pmatrix}
 $$
 $$
-\begin{pmatrix} \Delta x^* \\ \Delta u^* \end{pmatrix} = B \begin{pmatrix} 0 \\ \Delta z^* \end{pmatrix}
+\begin{pmatrix} \Delta x^* \\ \Delta u^* \end{pmatrix} = M \begin{pmatrix} 0 \\ \Delta z^* \end{pmatrix}
 $$
 
 Where:
 $$
-A \triangleq \begin{pmatrix} F & G\\ H_x & H_u \end{pmatrix}
+L \triangleq \begin{pmatrix} A & B\\ C & D \end{pmatrix}
 $$
 $$
-B \triangleq A^{-1} = \begin{pmatrix} B_{11} & B_{12}\\ B_{21} & B_{22} \end{pmatrix}
+M \triangleq L^{-1} = \begin{pmatrix} M_{11} & M_{12}\\ M_{21} & M_{22} \end{pmatrix}
 $$
-$$ B_{22} = (-H_x F^{-1}G + H_u)^{-1}$$
-$$ B_{21} = -B_{22} H_x F^{-1}$$
-$$ B_{11} = F^{-1}(-GB_{21} + I)$$
-$$ B_{12} = F^{-1}GB_{22}$$
+$$ M_{22} = (-C A^{-1}B + D)^{-1}$$
+$$ M_{21} = -M_{22} C A^{-1}$$
+$$ M_{11} = A^{-1}(-BM_{21} + I)$$
+$$ M_{12} = A^{-1}BM_{22}$$
 
-For $A$ to be invertible and $B$ to exist, both $F$ and $(-H_x F^{-1}G + H_u)$ must be invertible. If this is so:
-$$ \Delta x^* = B_{12} \Delta z^*$$
-$$ \Delta u^* = B_{22} \Delta z^*$$
+For $L$ to be invertible and $M$ to exist, both $A$ and $(-C A^{-1}B + D)$ must be invertible. If this is so:
+$$ \Delta x^* = M_{12} \Delta z^*$$
+$$ \Delta u^* = M_{22} \Delta z^*$$
 
 Subtracting equations:
-$$ \Delta \dot{x} = F (\Delta x - \Delta x^*) + G (\Delta u - \Delta u^*)$$
-$$ \Delta z - \Delta z^{*} = H_x (\Delta x - \Delta x^*) + H_u (\Delta u - \Delta u^*)$$
+$$ \Delta \dot{x} = A (\Delta x - \Delta x^*) + B (\Delta u - \Delta u^*)$$
+$$ \Delta z - \Delta z^{*} = C (\Delta x - \Delta x^*) + D (\Delta u - \Delta u^*)$$
 
 If we define:
 $$\Delta \tilde{x} \triangleq \Delta x - \Delta x^*$$
@@ -63,64 +63,66 @@ $$\Delta \tilde{u} \triangleq \Delta u - \Delta u^*$$
 $$\Delta \tilde{z} \triangleq \Delta z - \Delta z^*$$
 
 Then we have:
-$$ \Delta \dot{\tilde{x}} = F \Delta \tilde{x} + G \Delta \tilde{u}$$
-$$ \Delta \tilde{z} = H_x \Delta \tilde{x} + H_u \Delta \tilde{u}$$
+$$ \Delta \dot{\tilde{x}} = A \Delta \tilde{x} + B \Delta \tilde{u}$$
+$$ \Delta \tilde{z} = C \Delta \tilde{x} + D \Delta \tilde{u}$$
 
 ## LQR Tracker
 
 If we design a LQR for this dynamic system, our optimal control law will be:
-$$ \Delta \tilde{u} = - C \Delta \tilde{x} $$
+$$ \Delta \tilde{u} = - K \Delta \tilde{x} $$
 
 The resulting closed-loop is:
-$$ \Delta \dot{\tilde{x}} = (F - G C) \Delta \tilde{x}$$
+$$ \Delta \dot{\tilde{x}} = (A - B K) \Delta \tilde{x}$$
 
 Since this homogeneous system is guaranteed to be asymptotically stable by the LQR, in the steady-state:
 $$\Delta \dot{\tilde{x}} = 0$$
 $$\Delta \tilde{x} = 0$$
-$$\Delta \tilde{u} = - C \Delta \tilde{x} = 0$$
+$$\Delta \tilde{u} = - K \Delta \tilde{x} = 0$$
 
 Which means:
 $$\dot{x} = 0$$
 $$\Delta x = \Delta x^*$$
 $$\Delta u = \Delta u^*$$
-$$\Delta z = H_x \Delta x^* + H_u \Delta u^* = \Delta z^*$$
+$$\Delta z = C \Delta x^* + D \Delta u^* = \Delta z^*$$
 
 The optimal control law is implemented as:
-$$\Delta u = \Delta u^* - C\Delta x + \Delta x^*= (B_{22} + CB_{12}) \Delta z^* - C\Delta x = C_{fwd}\Delta z^* - C_{fbk} \Delta x$$
-$$u = u_{trim} + C_{fwd}(z^* - z_{trim}) - C_{fbk} (x - x_{trim})$$
+$$\Delta u = \Delta u^* - K\Delta x + \Delta x^*= (M_{22} + KM_{12}) \Delta z^* - K\Delta x = K_{fwd}\Delta z^* - K_{fbk} \Delta x$$
+$$u = u_{trim} + K_{fwd}(z^* - z_{trim}) - K_{fbk} (x - x_{trim})$$
 
 ## LQR Tracker With Integral Compensation
-We choose the subset $z_{i}$ of the command variables for which we want to include integral compensation.
+We choose the subset $z_{i}$ of command variables for which we want to include integral compensation.
 We augment the system dynamics with an integral state vector $\xi$ such that:
-$$ \dot{\xi} = \Delta \tilde{z}_{i} = H_{x,i} \Delta \tilde{x} + H_{u,i} \Delta \tilde{u}$$
+$$ \dot{\xi} = \Delta \tilde{z}_{i} = C_{i} \Delta \tilde{x} + D_{i} \Delta \tilde{u}$$
 
-Where $H_{x,i}$ and $H_{u,i}$ are respectively the row blocks of $H_x$ and $H_u$ corresponding to $z_i$.
+Where $C_{i}$ and $D_{i}$ are respectively the row blocks of $C$ and $D$ corresponding to $z_i$.
 
 This integral state is computed as:
 $$ \xi = \xi(0) + \int^t_{0} \Delta \tilde{z}_{i} d\tau = \xi(0) + \int_0^t (\Delta z_i - \Delta z_i^*) d\tau = \xi(0) + \int_0^t (z_i - z_i^*) d\tau $$
 
 The augmented system is
 $$
-\begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} F & 0\\ H_{x,i} & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} G \\ H_{u,i} \end{pmatrix} \Delta \tilde{u}
+\begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} A & 0\\ C_{i} & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} B \\ D_{i} \end{pmatrix} \Delta \tilde{u}
 $$
 $$
- \Delta {\tilde{z}} = \begin{pmatrix} H_x & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + H_u \Delta \tilde{u}
+ \Delta {\tilde{z}} = \begin{pmatrix} C & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + D \Delta \tilde{u}
 $$
 
 Defining:
-$$ F_{aug} \triangleq \begin{pmatrix} F & 0\\ H_{x,i} & 0 \end{pmatrix}$$
-$$ G_{aug} \triangleq \begin{pmatrix} G \\ H_{u,i} \end{pmatrix} $$
+$$ A_{aug} \triangleq \begin{pmatrix} A & 0\\ C_{i} & 0 \end{pmatrix}$$
+$$ B_{aug} \triangleq \begin{pmatrix} B \\ D_{i} \end{pmatrix} $$
 $$ x_{aug} \triangleq \begin{pmatrix} \Delta \tilde{x} \\ \xi \end{pmatrix} $$
 
 We can write:
-$$\dot{x}_{aug} = F_{aug} x_{aug} + G_{aug} \Delta \tilde{u}$$
+$$\dot{x}_{aug} = A_{aug} x_{aug} + B_{aug} \Delta \tilde{u}$$
 $$
- \Delta {\tilde{z}} = \begin{pmatrix} H_x & 0 \end{pmatrix} x_{aug} + H_u \Delta \tilde{u}
+ \Delta {\tilde{z}} = \begin{pmatrix} C & 0 \end{pmatrix} x_{aug} + D \Delta \tilde{u}
 $$
 
-Now, if we design a LQR for the augmented system:
-$$\Delta \tilde{u} = -C_{aug} x_{aug} = \begin{pmatrix} C_x & C_{\xi}\end{pmatrix} x_{aug}$$
-$$\dot{x}_{aug} = (F_{aug} - G_{aug}C)x_{aug}$$
+Now, if we design a LQR for the augmented system, we have the control law:
+$$\Delta \tilde{u} = -K_{aug} x_{aug} = \begin{pmatrix} K_x & K_{\xi}\end{pmatrix} x_{aug}$$
+
+And the resulting closed-loop system is:
+$$\dot{x}_{aug} = (A_{aug} - B_{aug}K)x_{aug}$$
 
 This system is guaranteed to be stable by the LQR, so in the steady-state we have:
 $$\dot{x}_{aug}=0$$
@@ -131,28 +133,34 @@ $$\dot{\xi} = \Delta \tilde{z}_i =0 = z_i - z_i^*$$
 
 Let's assume we have an external disturbance such that the actual system dynamics are instead:
 $$
-\begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} F & 0\\ H_{x,i} & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} G \\ H_{u,i} \end{pmatrix} \Delta \tilde{u} + \begin{pmatrix} L w \\ 0 \end{pmatrix}
+\begin{pmatrix} \Delta \dot{\tilde{x}} \\ \dot{\xi} \end{pmatrix} = \begin{pmatrix} A & 0\\ C_{i} & 0 \end{pmatrix} \begin{pmatrix} \Delta \tilde{x} \\ \xi\end{pmatrix} + \begin{pmatrix} B \\ D_{i} \end{pmatrix} \Delta \tilde{u} + \begin{pmatrix} L w \\ 0 \end{pmatrix}
 $$
 
 The closed-loop system is now:
-$$\dot{x}_{aug} = (F_{aug} - G_{aug}C_{aug})x_{aug} + \begin{pmatrix} L w \\ 0 \end{pmatrix}$$
+$$\dot{x}_{aug} = (A_{aug} - B_{aug}K_{aug})x_{aug} + \begin{pmatrix} L w \\ 0 \end{pmatrix}$$
 
-Stability depends only on the dynamics matrix $F_{aug} - G_{aug}C_{aug}$, so this system will still be asymptotically stable. This means that in the steady state $\dot{x}_{aug} = 0$, so $\dot{\xi} = 0$, and therefore necessarily $z = z*$. Because the system is no longer homogeneous, in general we will have $x_{aug} \neq 0$. In particular, $\xi$ will converge to the values required by $\Delta \tilde{z}_i = 0$.
+Stability depends only on the dynamics matrix $A_{aug} - B_{aug}K_{aug}$, so this system will still be asymptotically stable. This means that in the steady state $\dot{x}_{aug} = 0$, so $\dot{\xi} = 0$, and therefore necessarily $z = z*$. Because the system is no longer homogeneous, in general we will have $x_{aug} \neq 0$. In particular, $\xi$ will converge to the values required by $\Delta \tilde{z}_i = 0$.
 
 The optimal control law is implemented as:
-$$\Delta u = \Delta u^* - C_{aug}x_{aug} = \Delta u^* - C_x \Delta \tilde{x} - C_{\xi} \xi = \Delta u^* - C_x \Delta x + C_x \Delta x^* - C_{\xi} \xi = (B_{22} + C_x B_{12}) \Delta z^* - C_x \Delta x - C_{\xi} \xi$$
-$$\Delta u = C_{fwd} \Delta z^* - C_{fbk} \Delta x - C_{\xi} \xi$$
-$$u = u_{trim} + C_{fwd}(z^* - z_{trim}) - C_{fbk} (x - x_{trim}) - C_{\xi} \xi$$
+$$\Delta u = \Delta u^* - K_{aug}x_{aug} = \Delta u^* - K_x \Delta \tilde{x} - K_{\xi} \xi = \Delta u^* - K_x \Delta x + K_x \Delta x^* - K_{\xi} \xi = (M_{22} + K_x M_{12}) \Delta z^* - K_x \Delta x - K_{\xi} \xi$$
+$$\Delta u = K_{fwd} \Delta z^* - K_{fbk} \Delta x - K_{\xi} \xi$$
+$$u = u_{trim} + K_{fwd}(z^* - z_{trim}) - K_{fbk} (x - x_{trim}) - K_{\xi} \xi$$
 
 With:
-$$C_{fwd} = B_{22} + C_x B_{12}$$
-$$C_{fbk} = C_x$$
+$$K_{fwd} = M_{22} + K_x M_{12}$$
+$$K_{fbk} = K_x$$
 $$ \xi = \xi(0) + \int_0^t (z_i - z_i^*) d\tau $$
 
 For a practical implementation, we write:
-$$u = u_{trim} + C_{fwd}(z^* - z_{trim}) - C_{fbk} (x - x_{trim}) + u_{int}$$
+$$u = u_{trim} + K_{fwd}(z^* - z_{trim}) - K_{fbk} (x - x_{trim}) + u_{int}$$
 
 Where:
-$$u_{int} = -C_{\xi} \xi(0) - \int_0^t C_{\xi} (z_i - z_i^*) d\tau = u_{int}(0)  - \int_0^t C_{\xi} (z_i - z_i^*) d\tau = u_{int}(0) - \int_0^t C_{int} (z - z^*) d\tau$$
+$$u_{int} = -K_{\xi} \xi(0) - \int_0^t K_{\xi} (z_i - z_i^*) d\tau = u_{int}(0)  - \int_0^t K_{\xi} (z_i - z_i^*) d\tau = u_{int}(0) - \int_0^t K_{int} (z - z^*) d\tau$$
 
-That is, we move $C_\xi$ inside the integrator, which will now have dimension $n_u$ instead of $n_i$. The practical advantage is that having an integration path per control input allows to handle saturation of each control input independently. We also define a $C_{int}$ is a $n_u \times n_z$ matrix with all rows set to zero except for those $n_i$ rows corresponding to the integrated command variables, which will be taken from $C_{\xi}$. This allows for a more general LQR tracker implementation in which the integral gain matrix always has size $n_u \times n_z$ and always multiplies the complete command vector.
+That is, we have moved the $n_u \times n_i$ gain matrix $K_\xi$ inside the integrator, which will
+now have dimension $n_u$ instead of $n_i$. Having an integration path per control input allows us to
+handle saturation independently on each control input by halting its specific integration path.
+Finally, we have defined $K_{int}$ as a $n_u \times n_z$ matrix with all columns set to zero, except
+for those $n_i$ columns corresponding to the integrated command variables, which are taken from
+$K_{\xi}$. This allows for a more general implementation wherein the integral gain matrix always
+has size $n_u \times n_z$ and multiplies the complete command vector.
