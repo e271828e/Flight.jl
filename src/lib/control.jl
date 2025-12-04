@@ -837,9 +837,9 @@ GUI.draw!(mdl::Model{<:PID}, label::String = "Discrete PID") = GUI.draw(mdl, lab
 ################################################################################
 
 @kwdef struct LQR{NX, NU, NZ, NUX, NUZ} <: ModelDefinition
-    C_fbk::MMatrix{NU, NX, Float64, NUX} = zeros(NU, NX) #state feedback matrix
-    C_fwd::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #feedforward matrix
-    C_int::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #integrator gain matrix
+    K_fbk::MMatrix{NU, NX, Float64, NUX} = zeros(NU, NX) #state feedback matrix
+    K_fwd::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #feedforward matrix
+    K_int::MMatrix{NU, NZ, Float64, NUZ} = zeros(NU, NZ) #integrator gain matrix
     x_trim::MVector{NX, Float64} = zeros(NX) #trim point state
     u_trim::MVector{NU, Float64} = zeros(NU) #trim point control input
     z_trim::MVector{NZ, Float64} = zeros(NZ) #trim point command vector
@@ -868,9 +868,9 @@ function LQRInput{NX, NU, NZ}(args...; kwargs...) where {NX, NU, NZ}
 end
 
 @kwdef struct LQROutput{NX, NU, NZ, NUX, NUZ}
-    C_fbk::SMatrix{NU, NX, Float64, NUX} = zeros(SMatrix{NU, NX}) #state feedback matrix
-    C_fwd::SMatrix{NU, NZ, Float64, NUZ} = zeros(SMatrix{NU, NZ}) #feedforward matrix
-    C_int::SMatrix{NU, NZ, Float64, NUZ} = zeros(SMatrix{NU, NZ}) #integrator gain matrix
+    K_fbk::SMatrix{NU, NX, Float64, NUX} = zeros(SMatrix{NU, NX}) #state feedback matrix
+    K_fwd::SMatrix{NU, NZ, Float64, NUZ} = zeros(SMatrix{NU, NZ}) #feedforward matrix
+    K_int::SMatrix{NU, NZ, Float64, NUZ} = zeros(SMatrix{NU, NZ}) #integrator gain matrix
     x_trim::SVector{NX, Float64} = zeros(SVector{NX}) #trim point state
     u_trim::SVector{NU, Float64} = zeros(SVector{NU}) #trim point control input
     z_trim::SVector{NZ, Float64} = zeros(SVector{NZ}) #trim point command variable
@@ -926,12 +926,12 @@ end
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LQR})
 
     @unpack parameters, s, u, Δt = mdl
-    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim, bound_lo, bound_hi = parameters
+    @unpack K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim, bound_lo, bound_hi = parameters
     @unpack int_out_0, out_sat_0 = s
     @unpack sat_ext, z_ref, z, x = u
 
-    C_fbk, C_fwd, C_int = map(SMatrix, (
-    C_fbk, C_fwd, C_int))
+    K_fbk, K_fwd, K_int = map(SMatrix, (
+    K_fbk, K_fwd, K_int))
 
     x_trim, u_trim, z_trim, bound_lo, bound_hi = map(SVector, (
     x_trim, u_trim, z_trim, bound_lo, bound_hi))
@@ -942,11 +942,11 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LQR})
     int_out_0, out_sat_0 = map(SVector, (
     int_out_0, out_sat_0))
 
-    int_in = C_int * (z_ref - z)
+    int_in = K_int * (z_ref - z)
     int_halted = ((sign.(int_in .* out_sat_0) .> 0) .|| (sign.(int_in .* sat_ext) .> 0))
     int_out = int_out_0 + Δt * int_in .* .!int_halted
 
-    out_free = u_trim + int_out + C_fwd * (z_ref - z_trim) - C_fbk * (x - x_trim)
+    out_free = u_trim + int_out + K_fwd * (z_ref - z_trim) - K_fbk * (x - x_trim)
 
     out_sat = (out_free .>= bound_hi) - (out_free .<= bound_lo)
     output = clamp.(out_free, bound_lo, bound_hi)
@@ -954,7 +954,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LQR})
     s.int_out_0 .= int_out
     s.out_sat_0 .= out_sat
 
-    mdl.y = LQROutput(; C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim,
+    mdl.y = LQROutput(; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim,
         bound_lo, bound_hi, sat_ext, z_ref, z, x,
         int_in, int_out, int_halted, out_free, out_sat, output)
 
@@ -962,13 +962,13 @@ end
 
 function GUI.draw(mdl::Model{<:LQR})
 
-    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim, bound_lo, bound_hi,
+    @unpack K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim, bound_lo, bound_hi,
             sat_ext, z_ref, z, x, int_in, int_halted, int_out,
             out_free, out_sat, output = mdl.y
 
-        CImGui.Text("Feedback Gain = $C_fbk")
-        CImGui.Text("Forward Gain = $C_fwd")
-        CImGui.Text("Integral Gain = $C_int")
+        CImGui.Text("Feedback Gain = $K_fbk")
+        CImGui.Text("Forward Gain = $K_fwd")
+        CImGui.Text("Integral Gain = $K_int")
         CImGui.Text("Trim State Vector = $x_trim")
         CImGui.Text("Trim Control Vector = $u_trim")
         CImGui.Text("Trim Command Vector = $z_trim")
@@ -988,9 +988,9 @@ function GUI.draw(mdl::Model{<:LQR})
 end #function
 
 @kwdef struct LQRParams{CB, CF, CI, X, U, Z}
-    C_fbk::CB
-    C_fwd::CF
-    C_int::CI
+    K_fbk::CB
+    K_fwd::CF
+    K_int::CI
     x_trim::X
     u_trim::U
     z_trim::Z
@@ -1024,10 +1024,10 @@ function assign!(mdl::Model{<:PID}, point::PIDPoint)
 end
 
 function assign!(mdl::Model{<:LQR}, point::LQRPoint)
-    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = point
-    mdl.parameters.C_fbk .= C_fbk
-    mdl.parameters.C_fwd .= C_fwd
-    mdl.parameters.C_int .= C_int
+    @unpack K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim = point
+    mdl.parameters.K_fbk .= K_fbk
+    mdl.parameters.K_fwd .= K_fwd
+    mdl.parameters.K_int .= K_int
     mdl.parameters.x_trim .= x_trim
     mdl.parameters.u_trim .= u_trim
     mdl.parameters.z_trim .= z_trim
@@ -1114,7 +1114,7 @@ function load_data_lqr(fname::String)
     N = length(bounds) #number of interpolation dimensions
 
     #generate Tuple of N-dimensional arrays of either SVectors (for x_trim,
-    #u_trim and z_trim) or SMatrices (for C_fbk, C_fwd and C_int)
+    #u_trim and z_trim) or SMatrices (for K_fbk, K_fwd and K_int)
     params_tuple = map(params_stacked) do p_stacked
         if ndims(p_stacked) == N+1 #vector parameter
             return map(SVector{size(p_stacked)[1]}, eachslice(p_stacked; dims = Tuple(2:N+1)))
@@ -1203,11 +1203,11 @@ function (lookup::PIDLookup)(args::Vararg{Real, N}) where {N}
 end
 
 function (lookup::LQRLookup)(args::Vararg{Real, N}) where {N}
-    @unpack C_fbk, C_fwd, C_int, x_trim, u_trim, z_trim = lookup
+    @unpack K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim = lookup
     LQRParams(;
-        C_fbk = C_fbk(args...),
-        C_fwd = C_fwd(args...),
-        C_int = C_int(args...),
+        K_fbk = K_fbk(args...),
+        K_fwd = K_fwd(args...),
+        K_int = K_int(args...),
         x_trim = x_trim(args...),
         u_trim = u_trim(args...),
         z_trim = z_trim(args...),

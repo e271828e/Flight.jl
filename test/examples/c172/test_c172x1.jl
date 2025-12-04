@@ -129,8 +129,8 @@ function test_c172x1(; alloc::Bool = true)
 
         #check the correct parameters are loaded and assigned to the controller
         te2te_lookup = build_lookup_lqr(joinpath(data_folder, "te2te.h5"))
-        C_fwd = te2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
-        @test all(isapprox.(ctl.y.lon.te2te_lqr.C_fwd, C_fwd; atol = 1e-6))
+        K_fwd = te2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).K_fwd
+        @test all(isapprox.(ctl.y.lon.te2te_lqr.K_fwd, K_fwd; atol = 1e-6))
 
         #a small initial transient when engaging the SAS is acceptable
         #once active, trim equilibrium must be preserved for longer
@@ -155,8 +155,8 @@ function test_c172x1(; alloc::Bool = true)
 
         #check the correct parameters are loaded and assigned to the controller
         ar2ar_lookup = build_lookup_lqr(joinpath(data_folder, "ar2ar.h5"))
-        C_fwd = ar2ar_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
-        @test all(isapprox.(ctl.y.lat.ar2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
+        K_fwd = ar2ar_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).K_fwd
+        @test all(isapprox.(ctl.y.lat.ar2ar_lqr.K_fwd, K_fwd; atol = 1e-6))
 
         #with ail+rud SAS active, trim state must be preserved for longer
         step!(sim, 10, true)
@@ -180,8 +180,8 @@ function test_c172x1(; alloc::Bool = true)
 
         #check the correct parameters are loaded and assigned to the controller
         φβ2ar_lookup = build_lookup_lqr(joinpath(data_folder, "φβ2ar.h5"))
-        C_fwd = φβ2ar_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
-        @test all(isapprox.(ctl.y.lat.φβ2ar_lqr.C_fwd, C_fwd; atol = 1e-6))
+        K_fwd = φβ2ar_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).K_fwd
+        @test all(isapprox.(ctl.y.lat.φβ2ar_lqr.K_fwd, K_fwd; atol = 1e-6))
 
         #a small initial transient when engaging the SAS is acceptable
         #once active, trim equilibrium must be preserved
@@ -368,8 +368,8 @@ function test_c172x1(; alloc::Bool = true)
 
         #check the correct parameters are loaded and assigned to the controller
         tv2te_lookup = build_lookup_lqr(joinpath(data_folder, "tv2te.h5"))
-        C_fwd = tv2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
-        @test all(isapprox.(ctl.y.lon.tv2te_lqr.C_fwd, C_fwd; atol = 1e-6))
+        K_fwd = tv2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).K_fwd
+        @test all(isapprox.(ctl.y.lon.tv2te_lqr.K_fwd, K_fwd; atol = 1e-6))
 
         #when trim reference values are kept, the control mode must activate without
         #transients
@@ -511,8 +511,8 @@ function test_c172x1(; alloc::Bool = true)
 
         #check the correct parameters are loaded and assigned to the controller
         vh2te_lookup = build_lookup_lqr(joinpath(data_folder, "vh2te.h5"))
-        C_fwd = vh2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).C_fwd
-        @test all(isapprox.(ctl.y.lon.vh2te_lqr.C_fwd, C_fwd; atol = 1e-6))
+        K_fwd = vh2te_lookup(y_air(aircraft).EAS, Float64(y_kin(aircraft).h_e)).K_fwd
+        @test all(isapprox.(ctl.y.lon.vh2te_lqr.K_fwd, K_fwd; atol = 1e-6))
 
         #h_ref should have been initialized at its trim value, so the initial
         #altitude tracking state should be hold
