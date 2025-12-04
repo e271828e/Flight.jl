@@ -86,7 +86,10 @@ $$\Delta u = \Delta u^*$$
 $$\Delta z = C \Delta x^* + D \Delta u^* = \Delta z^*$$
 
 The optimal control law is implemented as:
-$$\Delta u = \Delta u^* - K\Delta x + \Delta x^*= (M_{22} + KM_{12}) \Delta z^* - K\Delta x = K_{fwd}\Delta z^* - K_{fbk} \Delta x$$
+$$\Delta u = \Delta u^* + \Delta \tilde{u} = \Delta u^* - K\Delta \tilde{x} = \Delta u^* - K \Delta
+x + K \Delta x^* = M_{22} \Delta z^* - K \Delta x + K M_{12} \Delta z^* = (M_{22} + KM_{12}) \Delta z^* - K\Delta x$$
+$$\Delta u = (M_{22} + KM_{12}) \Delta z^* - K\Delta x
+= K_{fwd}\Delta z^* - K_{fbk} \Delta x$$
 $$u = u_{trim} + K_{fwd}(z^* - z_{trim}) - K_{fbk} (x - x_{trim})$$
 
 ## LQR Tracker With Integral Compensation
@@ -110,22 +113,22 @@ $$
 Defining:
 $$ A_{aug} \triangleq \begin{pmatrix} A & 0\\ C_{i} & 0 \end{pmatrix}$$
 $$ B_{aug} \triangleq \begin{pmatrix} B \\ D_{i} \end{pmatrix} $$
-$$ x_{aug} \triangleq \begin{pmatrix} \Delta \tilde{x} \\ \xi \end{pmatrix} $$
+$$ \Delta \tilde{x}_{aug} \triangleq \begin{pmatrix} \Delta \tilde{x} \\ \xi \end{pmatrix} $$
 
 We can write:
-$$\dot{x}_{aug} = A_{aug} x_{aug} + B_{aug} \Delta \tilde{u}$$
+$$\Delta \dot{\tilde{x}}_{aug} = A_{aug} \Delta{\tilde{x}}_{aug} + B_{aug} \Delta \tilde{u}$$
 $$
- \Delta {\tilde{z}} = \begin{pmatrix} C & 0 \end{pmatrix} x_{aug} + D \Delta \tilde{u}
+ \Delta {\tilde{z}} = \begin{pmatrix} C & 0 \end{pmatrix} \Delta{\tilde{x}}_{aug} + D \Delta \tilde{u}
 $$
 
 Now, if we design a LQR for the augmented system, we have the control law:
-$$\Delta \tilde{u} = -K_{aug} x_{aug} = \begin{pmatrix} K_x & K_{\xi}\end{pmatrix} x_{aug}$$
+$$\Delta \tilde{u} = -K_{aug} \Delta{\tilde{x}}_{aug} = \begin{pmatrix} K_x & K_{\xi}\end{pmatrix} \Delta{\tilde{x}}_{aug}$$
 
 And the resulting closed-loop system is:
-$$\dot{x}_{aug} = (A_{aug} - B_{aug}K)x_{aug}$$
+$$\Delta \dot{\tilde{x}}_{aug} = (A_{aug} - B_{aug}K)\Delta{\tilde{x}}_{aug}$$
 
 This system is guaranteed to be stable by the LQR, so in the steady-state we have:
-$$\dot{x}_{aug}=0$$
+$$\Delta \dot{\tilde{x}}_{aug}=0$$
 
 Which means:
 $$\Delta \dot{\tilde{x}} = 0$$
@@ -137,12 +140,18 @@ $$
 $$
 
 The closed-loop system is now:
-$$\dot{x}_{aug} = (A_{aug} - B_{aug}K_{aug})x_{aug} + \begin{pmatrix} L w \\ 0 \end{pmatrix}$$
+$$\Delta \dot{\tilde{x}}_{aug} = (A_{aug} - B_{aug}K_{aug}) \Delta \tilde{x}_{aug} + \begin{pmatrix} L w \\ 0 \end{pmatrix}$$
 
-Stability depends only on the dynamics matrix $A_{aug} - B_{aug}K_{aug}$, so this system will still be asymptotically stable. This means that in the steady state $\dot{x}_{aug} = 0$, so $\dot{\xi} = 0$, and therefore necessarily $z = z*$. Because the system is no longer homogeneous, in general we will have $x_{aug} \neq 0$. In particular, $\xi$ will converge to the values required by $\Delta \tilde{z}_i = 0$.
+Stability depends only on the dynamics matrix $A_{aug} - B_{aug}K_{aug}$, so this system will still
+be asymptotically stable. This means that in the steady state $\Delta \dot{\tilde{x}}_{aug} = 0$, so $\dot{\xi} =
+0$, and therefore necessarily $z_i = z_i^*$. Because the system is no longer homogeneous, in general we
+will have $\Delta \tilde{x}_{aug} \neq 0$. In particular, $\xi$ will converge to the values required by $\Delta
+\tilde{z}_i = 0$.
 
 The optimal control law is implemented as:
-$$\Delta u = \Delta u^* - K_{aug}x_{aug} = \Delta u^* - K_x \Delta \tilde{x} - K_{\xi} \xi = \Delta u^* - K_x \Delta x + K_x \Delta x^* - K_{\xi} \xi = (M_{22} + K_x M_{12}) \Delta z^* - K_x \Delta x - K_{\xi} \xi$$
+$$\Delta u = \Delta u^* + \Delta \tilde{u}= \Delta u^* - K_{aug}\Delta \tilde{x}_{aug} = \Delta u^*
+- K_x \Delta \tilde{x} - K_{\xi} \xi = \Delta u^* - K_x \Delta x + K_x \Delta x^* - K_{\xi} \xi $$
+$$\Delta u = M_{22} \Delta z^* - K_x \Delta x + K_x M_{12} \Delta z^* - K_{\xi} \xi= (M_{22} + K_x M_{12}) \Delta z^* - K_x \Delta x - K_{\xi} \xi$$$
 $$\Delta u = K_{fwd} \Delta z^* - K_{fbk} \Delta x - K_{\xi} \xi$$
 $$u = u_{trim} + K_{fwd}(z^* - z_{trim}) - K_{fbk} (x - x_{trim}) - K_{\xi} \xi$$
 
@@ -159,8 +168,8 @@ $$u_{int} = -K_{\xi} \xi(0) - \int_0^t K_{\xi} (z_i - z_i^*) d\tau = u_{int}(0) 
 
 That is, we have moved the $n_u \times n_i$ gain matrix $K_\xi$ inside the integrator, which will
 now have dimension $n_u$ instead of $n_i$. Having an integration path per control input allows us to
-handle saturation independently on each control input by halting its specific integration path.
-Finally, we have defined $K_{int}$ as a $n_u \times n_z$ matrix with all columns set to zero, except
-for those $n_i$ columns corresponding to the integrated command variables, which are taken from
-$K_{\xi}$. This allows for a more general implementation wherein the integral gain matrix always
-has size $n_u \times n_z$ and multiplies the complete command vector.
+handle saturation independently on each control input by halting its specific integrator. Finally,
+we have defined $K_{int}$ as a $n_u \times n_z$ matrix with all columns set to zero, except for
+those $n_i$ columns corresponding to the integrated command variables, which are taken from
+$K_{\xi}$. This allows for a more general implementation wherein the integral gain matrix always has
+size $n_u \times n_z$ and multiplies the complete command vector.
