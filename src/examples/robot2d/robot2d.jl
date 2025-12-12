@@ -181,11 +181,12 @@ end
     m::Float64 = 0.0
 end
 
-@kwdef struct YStateSpace <: FieldVector{5, Float64}
+@kwdef struct YStateSpace <: FieldVector{6, Float64}
     ω::Float64 = 0.0
     v::Float64 = 0.0
     θ::Float64 = 0.0
     η::Float64 = 0.0
+    u_m::Float64 = 0.0
     τ_m::Float64 = 0.0
 end
 
@@ -204,8 +205,8 @@ function get_u_ss(mdl::Model{Vehicle})
 end
 
 function get_y_ss(mdl::Model{Vehicle})
-    @unpack ω, v, θ, η, τ_m = mdl.y
-    YStateSpace(; ω, v, θ, η, τ_m)
+    @unpack ω, v, θ, η, u_m, τ_m = mdl.y
+    YStateSpace(; ω, v, θ, η, u_m, τ_m)
 end
 
 assign_x_ss!(mdl::Model{Vehicle}, x_ss::AbstractVector{<:Real}) = assign_x_ss!(mdl, XStateSpace(x_ss))
@@ -256,8 +257,25 @@ end
 
 
 ################################################################################
+################################ Linearization #################################
+
+@kwdef struct XController <: FieldVector{3, Float64}
+    ω::Float64 = 0.0
+    v::Float64 = 0.0
+    θ::Float64 = 0.0
+end
+
+@kwdef struct UController <: FieldVector{1, Float64}
+    m::Float64 = 0.0
+end
+
+@kwdef struct ZController <: FieldVector{1, Float64}
+    v::Float64 = 0.0
+end
 
 struct Controller <: ModelDefinition end
+
+
 
 #InvertedPendulum
 @kwdef struct Robot{C} <: ModelDefinition
