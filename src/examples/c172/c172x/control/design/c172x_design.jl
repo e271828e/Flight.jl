@@ -389,55 +389,43 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk")
         u_labels_fwd = Symbol.(string.(u_labels) .* "_fwd")
         u_labels_sum = Symbol.(string.(u_labels) .* "_sum")
-        u_labels_int_u = Symbol.(string.(u_labels) .* "_int_u")
-        u_labels_int = Symbol.(string.(u_labels) .* "_int")
+        u_labels_int_in = Symbol.(string.(u_labels) .* "_int_in")
+        u_labels_int_out = Symbol.(string.(u_labels) .* "_int_out")
         u_labels_ξ = Symbol.(string.(u_labels) .* "_ξ")
 
         z_labels_ref = Symbol.(string.(z_labels) .* "_ref")
-        z_labels_ref1 = Symbol.(string.(z_labels) .* "_ref1")
-        z_labels_ref2 = Symbol.(string.(z_labels) .* "_ref2")
         z_labels_err = Symbol.(string.(z_labels) .* "_err")
-        z_labels_sum = Symbol.(string.(z_labels) .* "_sum")
-        z_labels_ref_fwd = Symbol.(string.(z_labels) .* "_ref_fwd")
-        z_labels_ref_sum = Symbol.(string.(z_labels) .* "_ref_sum")
 
         K_fbk_ss = named_ss(ss(K_fbk), u = x_labels, y = u_labels_fbk)
-        K_fwd_ss = named_ss(ss(K_fwd), u = z_labels_ref_fwd, y = u_labels_fwd)
-        K_int_ss = named_ss(ss(K_int), u = z_labels_err, y = u_labels_int_u)
+        K_fwd_ss = named_ss(ss(K_fwd), u = z_labels_ref, y = u_labels_fwd)
+        K_int_ss = named_ss(ss(K_int), u = z_labels_err, y = u_labels_int_in)
 
         int_ss = named_ss(ss(tf(1, [1,0])) .* I(2),
                             x = u_labels_ξ,
-                            u = u_labels_int_u,
-                            y = u_labels_int);
+                            u = u_labels_int_in,
+                            y = u_labels_int_out);
 
         throttle_cmd_err_sum = sumblock("throttle_cmd_err = throttle_cmd_sum - throttle_cmd_ref_sum")
         EAS_err_sum = sumblock("EAS_err = EAS_sum - EAS_ref_sum")
 
-        throttle_cmd_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd - throttle_cmd_fbk - throttle_cmd_int")
-        elevator_cmd_sum = sumblock("elevator_cmd_sum = elevator_cmd_fwd - elevator_cmd_fbk - elevator_cmd_int")
-
-        throttle_cmd_ref_splitter = splitter(:throttle_cmd_ref, 2)
-        EAS_ref_splitter = splitter(:EAS_ref, 2)
+        throttle_cmd_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd - throttle_cmd_fbk - throttle_cmd_int_out")
+        elevator_cmd_sum = sumblock("elevator_cmd_sum = elevator_cmd_fwd - elevator_cmd_fbk - elevator_cmd_int_out")
 
         connections = vcat(
             Pair.(x_labels, x_labels),
-            Pair.(z_labels, z_labels_sum),
-            Pair.(z_labels_ref1, z_labels_ref_sum),
-            Pair.(z_labels_ref2, z_labels_ref_fwd),
             Pair.(z_labels_err, z_labels_err),
-            Pair.(u_labels_sum, u_labels),
             Pair.(u_labels_fwd, u_labels_fwd),
             Pair.(u_labels_fbk, u_labels_fbk),
-            Pair.(u_labels_int, u_labels_int),
-            Pair.(u_labels_int_u, u_labels_int_u),
+            Pair.(u_labels_int_out, u_labels_int_out),
+            Pair.(u_labels_int_in, u_labels_int_in),
+            Pair.(u_labels_sum, u_labels),
             )
 
         Logging.disable_logging(Logging.Warn)
         P_tv = connect([P_red, int_ss, K_fwd_ss, K_fbk_ss, K_int_ss,
                         throttle_cmd_err_sum, EAS_err_sum,
-                        throttle_cmd_sum, elevator_cmd_sum,
-                        throttle_cmd_ref_splitter, EAS_ref_splitter], connections;
-                        w1 = z_labels_ref, z1 = P_red.y)
+                        throttle_cmd_sum, elevator_cmd_sum], connections;
+                        w1 = z_labels_ref, z1 = P_red.y, unique = false)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
@@ -510,47 +498,36 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk")
         u_labels_fwd = Symbol.(string.(u_labels) .* "_fwd")
         u_labels_sum = Symbol.(string.(u_labels) .* "_sum")
-        u_labels_int_u = Symbol.(string.(u_labels) .* "_int_u")
-        u_labels_int = Symbol.(string.(u_labels) .* "_int")
+        u_labels_int_in = Symbol.(string.(u_labels) .* "_int_in")
+        u_labels_int_out = Symbol.(string.(u_labels) .* "_int_out")
         u_labels_ξ = Symbol.(string.(u_labels) .* "_ξ")
 
         z_labels_ref = Symbol.(string.(z_labels) .* "_ref")
-        z_labels_ref1 = Symbol.(string.(z_labels) .* "_ref1")
-        z_labels_ref2 = Symbol.(string.(z_labels) .* "_ref2")
         z_labels_err = Symbol.(string.(z_labels) .* "_err")
-        z_labels_sum = Symbol.(string.(z_labels) .* "_sum")
-        z_labels_ref_fwd = Symbol.(string.(z_labels) .* "_ref_fwd")
-        z_labels_ref_sum = Symbol.(string.(z_labels) .* "_ref_sum")
 
         K_fbk_ss = named_ss(ss(K_fbk), u = x_labels, y = u_labels_fbk)
-        K_fwd_ss = named_ss(ss(K_fwd), u = z_labels_ref_fwd, y = u_labels_fwd)
-        K_int_ss = named_ss(ss(K_int), u = z_labels_err, y = u_labels_int_u)
+        K_fwd_ss = named_ss(ss(K_fwd), u = z_labels_ref, y = u_labels_fwd)
+        K_int_ss = named_ss(ss(K_int), u = z_labels_err, y = u_labels_int_in)
 
         int_ss = named_ss(ss(tf(1, [1,0])) .* I(2),
                             x = u_labels_ξ,
-                            u = u_labels_int_u,
-                            y = u_labels_int);
+                            u = u_labels_int_in,
+                            y = u_labels_int_out);
 
-        EAS_err_sum = sumblock("EAS_err = EAS_sum - EAS_ref_sum")
-        h_err_sum = sumblock("h_err = h_sum - h_ref_sum")
+        EAS_err_sum = sumblock("EAS_err = EAS - EAS_ref")
+        h_err_sum = sumblock("h_err = h - h_ref")
 
-        throttle_cmd_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd - throttle_cmd_fbk - throttle_cmd_int")
-        elevator_cmd_sum = sumblock("elevator_cmd_sum = elevator_cmd_fwd - elevator_cmd_fbk - elevator_cmd_int")
-
-        EAS_ref_splitter = splitter(:EAS_ref, 2)
-        h_ref_splitter = splitter(:h_ref, 2)
+        throttle_cmd_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd - throttle_cmd_fbk - throttle_cmd_int_out")
+        elevator_cmd_sum = sumblock("elevator_cmd_sum = elevator_cmd_fwd - elevator_cmd_fbk - elevator_cmd_int_out")
 
         connections = vcat(
             Pair.(x_labels, x_labels),
-            Pair.(z_labels, z_labels_sum),
-            Pair.(z_labels_ref1, z_labels_ref_sum),
-            Pair.(z_labels_ref2, z_labels_ref_fwd),
             Pair.(z_labels_err, z_labels_err),
-            Pair.(u_labels_sum, u_labels),
             Pair.(u_labels_fwd, u_labels_fwd),
             Pair.(u_labels_fbk, u_labels_fbk),
-            Pair.(u_labels_int, u_labels_int),
-            Pair.(u_labels_int_u, u_labels_int_u),
+            Pair.(u_labels_int_out, u_labels_int_out),
+            Pair.(u_labels_int_in, u_labels_int_in),
+            Pair.(u_labels_sum, u_labels),
             )
 
         #disable warning about connecting single output to multiple inputs
@@ -559,9 +536,8 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         Logging.disable_logging(Logging.Warn)
         P_vh = connect([P_lon, int_ss, K_fwd_ss, K_fbk_ss, K_int_ss,
                         EAS_err_sum, h_err_sum,
-                        throttle_cmd_sum, elevator_cmd_sum,
-                        EAS_ref_splitter, h_ref_splitter], connections;
-                        w1 = z_labels_ref, z1 = P_lon.y)
+                        throttle_cmd_sum, elevator_cmd_sum], connections;
+                        w1 = z_labels_ref, z1 = P_lon.y, unique = false)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
