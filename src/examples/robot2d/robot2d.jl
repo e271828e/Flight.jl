@@ -120,55 +120,11 @@ function test_vehicle()
     f_ode!(mdl)
     @show mdl.y
 
-    # mdl.u[] = 0.2
-    # mdl.x.ω = 0.1
-    # mdl.x.v = 0.1
-    # mdl.x.θ = 0.05
-    # f_ode!(mdl)
-    # @show mdl.y
-
     nothing
 end
 
-#unknowns:
-#omega1, omega2, theta, eta
-#omega1_dot, omega2_dot, theta_dot, eta_dot
-#F21x, F21z, Fi2x, Fi2z, tau_m
-#u
-#total: 14
-
-#equations:
-#6 dynamic equations
-#1 motor model
-#2 kinematic equations for theta_dot = omega1, eta_dot = omega2*R
-
-#total: 9
-
-#we need 5 constraints:
-#1: η, which is decoupled and we can set arbitrarily
-#2: ω2, which basically determines u
-#345: ω1, ω1_dot, θ
-
-#once we set ω1, ω1_dot and θ, ω2_dot is not free, because keeping the
-#vehicle at a constant tilt away from the vertical requires linear acceleration
-
-#how would we do this? set omega1, omega2, omega1_dot, theta as parameters.
-#then, we should try to eliminate the four internal forces from the dynamic
-#equations. this would leave us with 2 dynamic equations and 1 motor model,
-#which contain theta, omega1, omega2, omega1dot, omega2dot, tau_m, u (7
-#variables) theta, omega1, omega2, omega1dot are trim parameters omega2dot,
-#tau_m and u are unknowns basically the cost function involves the squared error
-#from these equations for some omega2dot, tau_m and u guesses with an extra step
-#we can substitute the motor model for tau_m, and we have omega2dot and u as
-#trim_state
-
-#try Lagrangian dynamics derivation and compare results. it's more useful.
-
 ################################################################################
 ################################ State Space ###################################
-
-#TODO: find the maximum steady-state velocity for abs(u) = 1
-#we need to leave some margin for stabilization
 
 @kwdef struct XStateSpace <: FieldVector{4, Float64}
     ω::Float64 = 0.0
@@ -209,10 +165,6 @@ function get_y_ss(mdl::Model{Vehicle})
     YStateSpace(; ω, v, θ, η, u_m, τ_m)
 end
 
-assign_x_ss!(mdl::Model{Vehicle}, x_ss::AbstractVector{<:Real}) = assign_x_ss!(mdl, XStateSpace(x_ss))
-
-assign_u_ss!(mdl::Model{Vehicle}, u_ss::AbstractVector{<:Real}) = assign_u_ss!(mdl, UStateSpace(u_ss[1]))
-
 function assign_x_ss!(mdl::Model{Vehicle}, x_ss::XStateSpace)
     @unpack ω, v, θ, η = x_ss
     @pack! mdl.x = ω, v, θ, η
@@ -223,6 +175,10 @@ assign_u_ss!(mdl::Model{Vehicle}, u_ss::UStateSpace) = (mdl.u[] = u_ss.m)
 
 ################################################################################
 ################################ Linearization #################################
+
+assign_x_ss!(mdl::Model{Vehicle}, x_ss::AbstractVector{<:Real}) = assign_x_ss!(mdl, XStateSpace(x_ss))
+
+assign_u_ss!(mdl::Model{Vehicle}, u_ss::AbstractVector{<:Real}) = assign_u_ss!(mdl, UStateSpace(u_ss[1]))
 
 function Linearization.linearize(mdl::Model{Vehicle})
 
@@ -276,8 +232,6 @@ end
 struct Controller <: ModelDefinition end
 
 
-
-#InvertedPendulum
 @kwdef struct Robot{C} <: ModelDefinition
     vehicle::Vehicle = Vehicle()
     controller::C = Controller()
