@@ -52,9 +52,9 @@ This concludes our X-Plane setup, now let's move on to Julia.
 
 ### Setting Up the ```Flight.jl``` Simulation
 
-!!! warning "On Multithreading"
+!!! warning "Multithreading"
 
-    To work through this example, you will need to start Julia with [multiple threads enabled](@ref "Installation").
+    To work through this tutorial, you will need to start Julia with [multiple threads enabled](@ref "Installation").
 
 Let's begin by initializing the package:
 ```@example tutorial01
@@ -93,7 +93,7 @@ customizable sea-level conditions and wind velocity. ```HorizontalTerrain``` rep
 with constant orthometric elevation, which we have set to our value for the beginning of runway 15.
 Finally, ```Cessna172Xv1``` is a hypothetical customization of a Cessna 172S. It replaces the
 reversible actuation system on the base model with a digital fly-by-wire flight control system,
-which we will leverage in this example. Note that this aircraft does not aim to replicate the
+which we will leverage in this tutorial. Note that this aircraft does not aim to replicate the
 internals or interface of any specific real-world autopilot. Its purpose is simply to illustrate how
 the ```Flight.jl``` framework may be used to design, implement and test complex control
 architectures\.
@@ -106,7 +106,7 @@ nothing # hide
 
 Under the hood, this call turns our ```SimpleWorld``` instance into a ```Model``` object, which is
 what the ```Simulation``` will actually interact with. The ```Model``` type is central to the
-```Flight.jl``` framework, and we will look into it further in future examples.
+```Flight.jl``` framework, and we will look into it further in future tutorials.
 
 Next, we instantiate an X-Plane 12 control interface and attach it to the simulation. This will
 allow the simulation to disable X-Plane's physics engine and periodically send our aircraft's state
@@ -130,8 +130,8 @@ nothing # hide
     nothing # hide
     ```
 
-```Flight.jl``` provides a generic joystick interface built on [SDL2_jll]
-(https://github.com/JuliaBinaryWrappers/SDL2_jll.jl). Currently, Thrustmaster's
+```Flight.jl``` provides a generic joystick interface built on
+[SDL2_jll](https://github.com/JuliaBinaryWrappers/SDL2_jll.jl). Currently, Thrustmaster's
 [T.16000M](https://www.thrustmaster.com/products/t-16000m-fcs/) and VKBSim's [Gladiator NXT
 Evo](https://flightsimcontrols.com/product/gladiator-evo-space-combat-edition/) are the only
 supported models. If you happen to own one of these, you can plug it in now and do the following:
@@ -142,7 +142,7 @@ for joystick in update_connected_joysticks()
 end
 ```
 
-Otherwise, don't worry; in this example, we will let the SAS and autopilot modes handle most of
+Otherwise, don't worry; in this tutorial we will let the SAS and autopilot modes handle most of
 the flying for us. This will make it relatively easy to control the aircraft through the GUI.
 
 The last step is to define a suitable initial condition. For on-ground initialization, we can do
@@ -250,7 +250,7 @@ improves the aircraft's Dutch roll response and stabilizes its naturally unstabl
 
 Currently, the GUI does not have a graphical instrument panel. Instead, the *Flight Data* section
 provides readouts for all essential variables. This will be particularly useful if you're running
-this example without X-Plane.
+this tutorial without X-Plane.
 
 ![Take-Off GUI](assets/gui_take_off.png)
 
