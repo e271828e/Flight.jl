@@ -19,7 +19,7 @@ export LinearizedSS, linearize
 
 #of a nonlinear state-space system
 #ẋ = f(x,u)
-#y = g(x,u)
+#y = h(x,u)
 
 #around (x0, u0)
 
@@ -55,21 +55,21 @@ LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D) = LinearizedSS(ẋ0, x0, u0, y0, A,
 
 ################################## linearize ###################################
 
-function linearize(f::Function, g::Function, x0::AbstractVector{<:Real}, u0::AbstractVector{<:Real})
+function linearize(f::Function, h::Function, x0::AbstractVector{<:Real}, u0::AbstractVector{<:Real})
     ẋ0 = f(x0, u0)
-    y0 = g(x0, u0)
-    A, B, C, D = ss_matrices(f, g, x0, u0)
+    y0 = h(x0, u0)
+    A, B, C, D = ss_matrices(f, h, x0, u0)
     LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 end
 
-# f and g should have the following signatures:
+# f and h must have the following signatures:
 # ẋ = f(x::AbstractVector{<:Real}, u::AbstractVector{<:Real})::FieldVector
-# y = g(x::AbstractVector{<:Real}, u::AbstractVector{<:Real})::FieldVector
-function linearize(f::Function, g::Function, x0::FieldVector, u0::FieldVector)
+# y = h(x::AbstractVector{<:Real}, u::AbstractVector{<:Real})::FieldVector
+function linearize(f::Function, h::Function, x0::FieldVector, u0::FieldVector)
 
     ẋ0 = f(x0, u0)::FieldVector
-    y0 = g(x0, u0)::FieldVector
-    A, B, C, D = ss_matrices(f, g, x0, u0)
+    y0 = h(x0, u0)::FieldVector
+    A, B, C, D = ss_matrices(f, h, x0, u0)
 
     x_axis = Axis(propertynames(x0))
     u_axis = Axis(propertynames(u0))
@@ -89,14 +89,14 @@ function linearize(f::Function, g::Function, x0::FieldVector, u0::FieldVector)
 
 end
 
-function ss_matrices(f::Function, g::Function, x0::AbstractVector{<:Real}, u0::AbstractVector{<:Real})
+function ss_matrices(f::Function, h::Function, x0::AbstractVector{<:Real}, u0::AbstractVector{<:Real})
 
-    y0 = g(x0, u0)
+    y0 = h(x0, u0)
 
     f_A!(ẋ, x) = (ẋ .= f(x, u0))
     f_B!(ẋ, u) = (ẋ .= f(x0, u))
-    f_C!(y, x) = (y .= g(x, u0))
-    f_D!(y, u) = (y .= g(x0, u))
+    f_C!(y, x) = (y .= h(x, u0))
+    f_D!(y, u) = (y .= h(x0, u))
 
     #preallocate mutable arrays
     A = (x0 * x0') |> Matrix
