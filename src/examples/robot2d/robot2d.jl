@@ -2,6 +2,7 @@ module Robot2D
 
 using LinearAlgebra, StaticArrays, ComponentArrays, UnPack
 using FiniteDiff: finite_difference_jacobian! as jacobian!
+using FiniteDiff: finite_difference_jacobian as jacobian
 
 using Flight.FlightCore
 using Flight.FlightLib
@@ -146,74 +147,86 @@ end
     τ_m::Float64 = 0.0
 end
 
+#get state space system's state vector derivative from Model
 function get_ẋ_ss(mdl::Model{Vehicle})
-    @unpack ω, v, θ, η = mdl.ẋ
+    (; ω, v, θ, η) = mdl.ẋ
     XStateSpace(; ω, v, θ, η)
 end
 
+#get state space system's state vector from Model
 function get_x_ss(mdl::Model{Vehicle})
-    @unpack ω, v, θ, η = mdl.x
+    (; ω, v, θ, η) = mdl.x
     XStateSpace(; ω, v, θ, η)
 end
 
+#get state space system's input vector from Model
 function get_u_ss(mdl::Model{Vehicle})
     UStateSpace(mdl.u[])
 end
 
+#get state space system's output vector from Model
 function get_y_ss(mdl::Model{Vehicle})
-    @unpack ω, v, θ, η, u_m, τ_m = mdl.y
+    (; ω, v, θ, η, u_m, τ_m) = mdl.y
     YStateSpace(; ω, v, θ, η, u_m, τ_m)
 end
 
-function assign_x_ss!(mdl::Model{Vehicle}, x_ss::XStateSpace)
-    @unpack ω, v, θ, η = x_ss
+#assign state space system's state vector to Model
+function assign_x_ss!(mdl::Model{Vehicle}, x_ss::AbstractVector{<:Real})
+    (; ω, v, θ, η) = XStateSpace(x_ss)
     @pack! mdl.x = ω, v, θ, η
 end
 
-assign_u_ss!(mdl::Model{Vehicle}, u_ss::UStateSpace) = (mdl.u[] = u_ss.m)
+#assign state space system's input vector to Model
+function assign_u_ss!(mdl::Model{Vehicle}, u_ss::AbstractVector{<:Real})
+    mdl.u[] = UStateSpace(u_ss[1])[1]
+end
 
-
-################################################################################
-################################ Linearization #################################
-
-assign_x_ss!(mdl::Model{Vehicle}, x_ss::AbstractVector{<:Real}) = assign_x_ss!(mdl, XStateSpace(x_ss))
-
-assign_u_ss!(mdl::Model{Vehicle}, u_ss::AbstractVector{<:Real}) = assign_u_ss!(mdl, UStateSpace(u_ss[1]))
-
-function Linearization.linearize(mdl::Model{Vehicle})
-
-    #define state space system's update function
-    f = let mdl = mdl
-        function (x, u)
+#build state space system's update function
+function get_f_ss(mdl::Model{Vehicle})
+    let mdl = mdl
+        function (x::AbstractVector{<:Real}, u::AbstractVector{<:Real})
             assign_x_ss!(mdl, x)
             assign_u_ss!(mdl, u)
             f_ode!(mdl)
             get_ẋ_ss(mdl)
         end
     end
+end
 
-    #define state space system's output function
-    g = let mdl = mdl
-        function (x, u)
+#build state space system's output function
+function get_h_ss(mdl::Model{Vehicle})
+    let mdl = mdl
+        function (x::AbstractVector{<:Real}, u::AbstractVector{<:Real})
             assign_x_ss!(mdl, x)
             assign_u_ss!(mdl, u)
             f_ode!(mdl)
             get_y_ss(mdl)
         end
     end
-
-    #define linearization point
-    x0 = get_x_ss(mdl)
-    u0 = get_u_ss(mdl)
-
-    linearize(f, g, x0, u0)
-
 end
-
 
 
 ################################################################################
 ################################ Linearization #################################
+
+function Linearization.linearize(mdl::Model{Vehicle})
+
+    #state space system's functions
+    f = get_f_ss(mdl)
+    h = get_h_ss(mdl)
+
+    #linearization point
+    x0 = get_x_ss(mdl)
+    u0 = get_u_ss(mdl)
+
+    linearize(f, h, x0, u0)
+
+end
+
+
+################################################################################
+################################# Controller ###################################
+
 
 @kwdef struct XController <: FieldVector{3, Float64}
     ω::Float64 = 0.0
