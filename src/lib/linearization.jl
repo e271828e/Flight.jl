@@ -113,7 +113,7 @@ function ss_matrices(f::Function, g::Function, x0::AbstractVector{<:Real}, u0::A
 
 end
 
-function subsystem(cmp::LinearizedSS; x = keys(cmp.x0), u = keys(cmp.u0), y = keys(cmp.y0))
+function subsystem(lss::LinearizedSS; x = keys(lss.x0), u = keys(lss.u0), y = keys(lss.y0))
 
     #to do: generalize for scalars
 
@@ -121,26 +121,45 @@ function subsystem(cmp::LinearizedSS; x = keys(cmp.x0), u = keys(cmp.u0), y = ke
     u_ind = u
     y_ind = y
 
-    ẋ0 = cmp.ẋ0[x_ind]
-    x0 = cmp.x0[x_ind]
-    u0 = cmp.u0[u_ind]
-    y0 = cmp.y0[y_ind]
+    ẋ0 = lss.ẋ0[x_ind]
+    x0 = lss.x0[x_ind]
+    u0 = lss.u0[u_ind]
+    y0 = lss.y0[y_ind]
 
-    A = cmp.A[x_ind, x_ind]
-    B = cmp.B[x_ind, u_ind]
-    C = cmp.C[y_ind, x_ind]
-    D = cmp.D[y_ind, u_ind]
+    A = lss.A[x_ind, x_ind]
+    B = lss.B[x_ind, u_ind]
+    C = lss.C[y_ind, x_ind]
+    D = lss.D[y_ind, u_ind]
 
     return LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 
 end
 
+function delete_vars(lss::LinearizedSS, s::AbstractVector{<:Symbol})
+
+    x_labels, u_labels, y_labels = map(collect ∘ keys, (lss.x0, lss.u0, lss.y0))
+
+    foreach(s) do s
+        foreach((x_labels, u_labels, y_labels)) do labels
+            index = findfirst(isequal(s), labels)
+            !isnothing(index) && deleteat!(labels, index)
+        end
+    end
+
+    subsystem(lss; x = x_labels, u = u_labels, y = y_labels)
+
+end
+
+delete_vars(lss::LinearizedSS, s::NTuple{N, Symbol}) where {N} = delete_vars(lss, collect(s))
+
+delete_vars(lss::LinearizedSS, s::Symbol) = delete_vars(lss, (s, ))
+
 
 ############################# Update Functions #################################
 
-Modeling.X(cmp::LinearizedSS) = copy(cmp.x0)
-Modeling.U(cmp::LinearizedSS) = copy(cmp.u0)
-Modeling.Y(cmp::LinearizedSS) = SVector{length(cmp.y0)}(cmp.y0)
+Modeling.X(lss::LinearizedSS) = copy(lss.x0)
+Modeling.U(lss::LinearizedSS) = copy(lss.u0)
+Modeling.Y(lss::LinearizedSS) = SVector{length(lss.y0)}(lss.y0)
 
 @no_periodic LinearizedSS
 @no_step LinearizedSS
@@ -178,7 +197,7 @@ end
 
 ############################### ControlSystems #################################
 
-ControlSystems.ss(cmp::LinearizedSS) = ControlSystems.ss(cmp.A, cmp.B, cmp.C, cmp.D)
+ControlSystems.ss(lss::LinearizedSS) = ControlSystems.ss(lss.A, lss.B, lss.C, lss.D)
 
 function RobustAndOptimalControl.named_ss(lss::LinearizedSS)
     x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lss.x0, lss.u0, lss.y0))

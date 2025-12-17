@@ -3,7 +3,7 @@ module C172XControlDesign
 using Flight
 using Flight.FlightCore
 using Flight.FlightLib
-using Flight.FlightLib.Linearization: LinearizedSS, subsystem
+using Flight.FlightLib.Linearization: LinearizedSS, subsystem, delete_vars
 using Flight.FlightLib.Control.Discrete: PIDParams, LQRParams, save_data
 using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
@@ -142,28 +142,9 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
     lss_lon = get_design_model!(aircraft, design_point; model = :lon);
     P_lon = named_ss(lss_lon)
 
-    x_labels_lon = keys(lss_lon.x0) |> collect
-    y_labels_lon = keys(lss_lon.y0) |> collect
-    u_labels_lon = keys(lss_lon.u0) |> collect
-
-    #reduced model
-    x_labels_red = copy(x_labels_lon)
-    y_labels_red = copy(y_labels_lon)
-    u_labels_red = copy(u_labels_lon)
-
-    x_labels_red = deleteat!(x_labels_red, findfirst(isequal(:h), x_labels_red))
-    y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:h), y_labels_red))
-
-    lss_red = subsystem(lss_lon; x = x_labels_red, u = u_labels_red, y = y_labels_red)
-    P_red = subsystem(P_lon; x = x_labels_red, u = u_labels_red, y = y_labels_red)
-
-    #pitch dynamics model
-    x_labels_pit = [:q, :θ, :EAS, :α, :α_filt, :ele_p]
-    y_labels_pit = vcat(x_labels_pit, [:f_x, :f_z, :TAS, :γ, :climb_rate, :elevator_cmd])
-    u_labels_pit = [:elevator_cmd,]
-
-    lss_pit = subsystem(lss_red; x = x_labels_pit, u = u_labels_pit, y = y_labels_pit)
-    P_pit = named_ss(lss_pit)
+    #reduced longitudinal model
+    lss_red = delete_vars(lss_lon, :h)
+    P_red = named_ss(lss_red)
 
     ############################ thr+ele SAS ###################################
 
@@ -184,10 +165,10 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         n_z = length(z_labels)
         @assert tuple(z_labels...) === propertynames(C172XControl.ULon())
 
-        F = lss.A
-        G = lss.B
-        Hx = lss.C[z_labels, :]
-        Hu = lss.D[z_labels, :]
+        A = lss.A
+        B = lss.B
+        C = lss.C[z_labels, :]
+        D = lss.D[z_labels, :]
 
         #cost matrices
         #trade-off between q, θ and EAS vs elevator_cmd
@@ -199,17 +180,17 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         #feedback gain matrix
         P = named_ss(lss)
-        C_fbk = lqr(P, Q, R)
+        K_fbk = lqr(P, Q, R)
 
         #forward gain matrix
-        A = [F G; Hx Hu]
-        B = inv(A)
-        B_12 = B[1:n_x, n_x+1:end]
-        B_22 = B[n_x+1:end, n_x+1:end]
-        C_fwd = B_22 + C_fbk * B_12
+        L =[A B; C D]
+        M = inv(L)
+        M_12 = M[1:n_x, n_x+1:end]
+        M_22 = M[n_x+1:end, n_x+1:end]
+        K_fwd = M_22 + K_fbk * M_12
 
         #no integral control
-        C_int = zeros(n_u, n_z)
+        K_int = zeros(n_u, n_z)
 
         #useful signal labels
         u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk")
@@ -217,8 +198,8 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         u_labels_sum = Symbol.(string.(u_labels) .* "_sum")
         z_labels_ref = Symbol.(string.(z_labels) .* "_ref")
 
-        C_fbk_ss = named_ss(ss(C_fbk), u = x_labels, y = u_labels_fbk)
-        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_ref, y = u_labels_fwd)
+        K_fbk_ss = named_ss(ss(K_fbk), u = x_labels, y = u_labels_fbk)
+        K_fwd_ss = named_ss(ss(K_fwd), u = z_labels_ref, y = u_labels_fwd)
 
         #summing junctions
         throttle_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd - throttle_cmd_fbk")
@@ -231,11 +212,11 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
             Pair.(u_labels_fwd, u_labels_fwd)
             )
 
-        P_te2te = connect([P_red, throttle_sum, elevator_sum, C_fbk_ss, C_fwd_ss],
+        P_te2te = connect([P_red, throttle_sum, elevator_sum, K_fbk_ss, K_fwd_ss],
             connections; w1 = [:throttle_cmd_ref, :elevator_cmd_ref], z1 = P_red.y)
 
         params_te2te = LQRParams(; #export everything as plain arrays
-            C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
+            K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
         (P_te2te, params_te2te)
@@ -365,21 +346,21 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         n_z = length(z_labels)
         @assert tuple(z_labels...) === propertynames(C172XControl.Ztv())
 
-        F = lss.A
-        G = lss.B
-        Hx = lss.C[z_labels, :]
-        Hu = lss.D[z_labels, :]
+        A = lss.A
+        B = lss.B
+        C = lss.C[z_labels, :]
+        D = lss.D[z_labels, :]
 
-        Hx_int = Hx[z_labels, :]
-        Hu_int = Hu[z_labels, :]
-        n_int, _ = size(Hx_int)
+        C_int = C[z_labels, :]
+        D_int = D[z_labels, :]
+        n_int, _ = size(C_int)
 
-        F_aug = [F zeros(n_x, n_int); Hx_int zeros(n_int, n_int)]
-        G_aug = [G; Hu_int]
-        Hx_aug = [Hx zeros(n_z, n_int)]
-        Hu_aug = Hu
+        A_aug = [A zeros(n_x, n_int); C_int zeros(n_int, n_int)]
+        B_aug = [B; D_int]
+        C_aug = [C zeros(n_z, n_int)]
+        D_aug = D
 
-        P_aug = ss(F_aug, G_aug, Hx_aug, Hu_aug)
+        P_aug = ss(A_aug, B_aug, C_aug, D_aug)
 
         #do not penalize θ, it will be needed to drive the change in EAS
          Q = ComponentVector(q = 20, θ = 0, EAS = 0.3, α = 0, α_filt = 0,
@@ -389,79 +370,67 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         R = C172XControl.ULon(throttle_cmd = 1, elevator_cmd = 0.1) |> diagm
 
         #compute gain matrix
-        C_aug = lqr(P_aug, Q, R)
+        K_aug = lqr(P_aug, Q, R)
 
-        A = [F G; Hx Hu]
-        B = inv(A)
-        B_12 = B[1:n_x, n_x+1:end]
-        B_22 = B[n_x+1:end, n_x+1:end]
+        L =[A B; C D]
+        M = inv(L)
+        M_12 = M[1:n_x, n_x+1:end]
+        M_22 = M[n_x+1:end, n_x+1:end]
 
         #extract system state and integrator blocks from the feedback matrix
-        C_x = C_aug[:, 1:n_x]
-        C_ξ = C_aug[:, n_x+1:end]
+        K_x = K_aug[:, 1:n_x]
+        K_ξ = K_aug[:, n_x+1:end]
 
-        C_fbk = C_x
-        C_fwd = B_22 + C_x * B_12
-        C_int = C_ξ
+        K_fbk = K_x
+        K_fwd = M_22 + K_x * M_12
+        K_int = K_ξ
 
         #some useful signal labels
         u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk")
         u_labels_fwd = Symbol.(string.(u_labels) .* "_fwd")
         u_labels_sum = Symbol.(string.(u_labels) .* "_sum")
-        u_labels_int_u = Symbol.(string.(u_labels) .* "_int_u")
-        u_labels_int = Symbol.(string.(u_labels) .* "_int")
+        u_labels_int_in = Symbol.(string.(u_labels) .* "_int_in")
+        u_labels_int_out = Symbol.(string.(u_labels) .* "_int_out")
         u_labels_ξ = Symbol.(string.(u_labels) .* "_ξ")
 
         z_labels_ref = Symbol.(string.(z_labels) .* "_ref")
-        z_labels_ref1 = Symbol.(string.(z_labels) .* "_ref1")
-        z_labels_ref2 = Symbol.(string.(z_labels) .* "_ref2")
         z_labels_err = Symbol.(string.(z_labels) .* "_err")
-        z_labels_sum = Symbol.(string.(z_labels) .* "_sum")
-        z_labels_ref_fwd = Symbol.(string.(z_labels) .* "_ref_fwd")
-        z_labels_ref_sum = Symbol.(string.(z_labels) .* "_ref_sum")
 
-        C_fbk_ss = named_ss(ss(C_fbk), u = x_labels, y = u_labels_fbk)
-        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_ref_fwd, y = u_labels_fwd)
-        C_int_ss = named_ss(ss(C_int), u = z_labels_err, y = u_labels_int_u)
+        K_fbk_ss = named_ss(ss(K_fbk), u = x_labels, y = u_labels_fbk)
+        K_fwd_ss = named_ss(ss(K_fwd), u = z_labels_ref, y = u_labels_fwd)
+        K_int_ss = named_ss(ss(K_int), u = z_labels_err, y = u_labels_int_in)
 
         int_ss = named_ss(ss(tf(1, [1,0])) .* I(2),
                             x = u_labels_ξ,
-                            u = u_labels_int_u,
-                            y = u_labels_int);
+                            u = u_labels_int_in,
+                            y = u_labels_int_out);
 
         throttle_cmd_err_sum = sumblock("throttle_cmd_err = throttle_cmd_sum - throttle_cmd_ref_sum")
         EAS_err_sum = sumblock("EAS_err = EAS_sum - EAS_ref_sum")
 
-        throttle_cmd_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd - throttle_cmd_fbk - throttle_cmd_int")
-        elevator_cmd_sum = sumblock("elevator_cmd_sum = elevator_cmd_fwd - elevator_cmd_fbk - elevator_cmd_int")
-
-        throttle_cmd_ref_splitter = splitter(:throttle_cmd_ref, 2)
-        EAS_ref_splitter = splitter(:EAS_ref, 2)
+        throttle_cmd_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd - throttle_cmd_fbk - throttle_cmd_int_out")
+        elevator_cmd_sum = sumblock("elevator_cmd_sum = elevator_cmd_fwd - elevator_cmd_fbk - elevator_cmd_int_out")
 
         connections = vcat(
             Pair.(x_labels, x_labels),
-            Pair.(z_labels, z_labels_sum),
-            Pair.(z_labels_ref1, z_labels_ref_sum),
-            Pair.(z_labels_ref2, z_labels_ref_fwd),
             Pair.(z_labels_err, z_labels_err),
-            Pair.(u_labels_sum, u_labels),
             Pair.(u_labels_fwd, u_labels_fwd),
             Pair.(u_labels_fbk, u_labels_fbk),
-            Pair.(u_labels_int, u_labels_int),
-            Pair.(u_labels_int_u, u_labels_int_u),
+            Pair.(u_labels_int_out, u_labels_int_out),
+            Pair.(u_labels_int_in, u_labels_int_in),
+            Pair.(u_labels_sum, u_labels),
             )
 
         Logging.disable_logging(Logging.Warn)
-        P_tv = connect([P_red, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
+        P_tv = connect([P_red, int_ss, K_fwd_ss, K_fbk_ss, K_int_ss,
                         throttle_cmd_err_sum, EAS_err_sum,
-                        throttle_cmd_sum, elevator_cmd_sum,
-                        throttle_cmd_ref_splitter, EAS_ref_splitter], connections;
-                        w1 = z_labels_ref, z1 = y_labels_red)
+                        throttle_cmd_sum, elevator_cmd_sum], connections;
+                        w1 = z_labels_ref, z1 = P_red.y, unique = false)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
         params_tv2te = LQRParams(;
-            C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
+            K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
         (P_tv, params_tv2te)
@@ -485,23 +454,23 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         n_z = length(z_labels)
         @assert tuple(z_labels...) === propertynames(C172XControl.Zvh())
 
-        F = lss.A
-        G = lss.B
-        Hx = lss.C[z_labels, :]
-        Hu = lss.D[z_labels, :]
+        A = lss.A
+        B = lss.B
+        C = lss.C[z_labels, :]
+        D = lss.D[z_labels, :]
 
         #define the blocks corresponding to the subset of the command variables for
         #which integral compensation is required
-        Hx_int = Hx[z_labels, :]
-        Hu_int = Hu[z_labels, :]
-        n_int, _ = size(Hx_int)
+        C_int = C[z_labels, :]
+        D_int = D[z_labels, :]
+        n_int, _ = size(C_int)
 
-        F_aug = [F zeros(n_x, n_int); Hx_int zeros(n_int, n_int)]
-        G_aug = [G; Hu_int]
-        Hx_aug = [Hx zeros(n_z, n_int)]
-        Hu_aug = Hu
+        A_aug = [A zeros(n_x, n_int); C_int zeros(n_int, n_int)]
+        B_aug = [B; D_int]
+        C_aug = [C zeros(n_z, n_int)]
+        D_aug = D
 
-        P_aug = ss(F_aug, G_aug, Hx_aug, Hu_aug)
+        P_aug = ss(A_aug, B_aug, C_aug, D_aug)
 
         #weight matrices
         Q = ComponentVector(q = 20, θ = 100, EAS = 0.06, α = 0, h = 0.04, α_filt = 0,
@@ -510,82 +479,70 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         R = C172XControl.ULon(throttle_cmd = 0.1, elevator_cmd = 0.05) |> diagm
 
         #compute gain matrix
-        C_aug = lqr(P_aug, Q, R)
+        K_aug = lqr(P_aug, Q, R)
 
-        A = [F G; Hx Hu]
-        B = inv(A)
-        B_12 = B[1:n_x, n_x+1:end]
-        B_22 = B[n_x+1:end, n_x+1:end]
+        L =[A B; C D]
+        M = inv(L)
+        M_12 = M[1:n_x, n_x+1:end]
+        M_22 = M[n_x+1:end, n_x+1:end]
 
         #extract system state and integrator blocks from the feedback matrix
-        C_x = C_aug[:, 1:n_x]
-        C_ξ = C_aug[:, n_x+1:end]
+        K_x = K_aug[:, 1:n_x]
+        K_ξ = K_aug[:, n_x+1:end]
 
-        C_fbk = C_x
-        C_fwd = B_22 + C_x * B_12
-        C_int = C_ξ
+        K_fbk = K_x
+        K_fwd = M_22 + K_x * M_12
+        K_int = K_ξ
 
         #some useful signal labels
         u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk")
         u_labels_fwd = Symbol.(string.(u_labels) .* "_fwd")
         u_labels_sum = Symbol.(string.(u_labels) .* "_sum")
-        u_labels_int_u = Symbol.(string.(u_labels) .* "_int_u")
-        u_labels_int = Symbol.(string.(u_labels) .* "_int")
+        u_labels_int_in = Symbol.(string.(u_labels) .* "_int_in")
+        u_labels_int_out = Symbol.(string.(u_labels) .* "_int_out")
         u_labels_ξ = Symbol.(string.(u_labels) .* "_ξ")
 
         z_labels_ref = Symbol.(string.(z_labels) .* "_ref")
-        z_labels_ref1 = Symbol.(string.(z_labels) .* "_ref1")
-        z_labels_ref2 = Symbol.(string.(z_labels) .* "_ref2")
         z_labels_err = Symbol.(string.(z_labels) .* "_err")
-        z_labels_sum = Symbol.(string.(z_labels) .* "_sum")
-        z_labels_ref_fwd = Symbol.(string.(z_labels) .* "_ref_fwd")
-        z_labels_ref_sum = Symbol.(string.(z_labels) .* "_ref_sum")
 
-        C_fbk_ss = named_ss(ss(C_fbk), u = x_labels, y = u_labels_fbk)
-        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_ref_fwd, y = u_labels_fwd)
-        C_int_ss = named_ss(ss(C_int), u = z_labels_err, y = u_labels_int_u)
+        K_fbk_ss = named_ss(ss(K_fbk), u = x_labels, y = u_labels_fbk)
+        K_fwd_ss = named_ss(ss(K_fwd), u = z_labels_ref, y = u_labels_fwd)
+        K_int_ss = named_ss(ss(K_int), u = z_labels_err, y = u_labels_int_in)
 
         int_ss = named_ss(ss(tf(1, [1,0])) .* I(2),
                             x = u_labels_ξ,
-                            u = u_labels_int_u,
-                            y = u_labels_int);
+                            u = u_labels_int_in,
+                            y = u_labels_int_out);
 
-        EAS_err_sum = sumblock("EAS_err = EAS_sum - EAS_ref_sum")
-        h_err_sum = sumblock("h_err = h_sum - h_ref_sum")
+        EAS_err_sum = sumblock("EAS_err = EAS - EAS_ref")
+        h_err_sum = sumblock("h_err = h - h_ref")
 
-        throttle_cmd_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd - throttle_cmd_fbk - throttle_cmd_int")
-        elevator_cmd_sum = sumblock("elevator_cmd_sum = elevator_cmd_fwd - elevator_cmd_fbk - elevator_cmd_int")
-
-        EAS_ref_splitter = splitter(:EAS_ref, 2)
-        h_ref_splitter = splitter(:h_ref, 2)
+        throttle_cmd_sum = sumblock("throttle_cmd_sum = throttle_cmd_fwd - throttle_cmd_fbk - throttle_cmd_int_out")
+        elevator_cmd_sum = sumblock("elevator_cmd_sum = elevator_cmd_fwd - elevator_cmd_fbk - elevator_cmd_int_out")
 
         connections = vcat(
             Pair.(x_labels, x_labels),
-            Pair.(z_labels, z_labels_sum),
-            Pair.(z_labels_ref1, z_labels_ref_sum),
-            Pair.(z_labels_ref2, z_labels_ref_fwd),
             Pair.(z_labels_err, z_labels_err),
-            Pair.(u_labels_sum, u_labels),
             Pair.(u_labels_fwd, u_labels_fwd),
             Pair.(u_labels_fbk, u_labels_fbk),
-            Pair.(u_labels_int, u_labels_int),
-            Pair.(u_labels_int_u, u_labels_int_u),
+            Pair.(u_labels_int_out, u_labels_int_out),
+            Pair.(u_labels_int_in, u_labels_int_in),
+            Pair.(u_labels_sum, u_labels),
             )
 
         #disable warning about connecting single output to multiple inputs
         #(here, EAS and h go both to state feedback and command variable error
         #junction)
         Logging.disable_logging(Logging.Warn)
-        P_vh = connect([P_lon, int_ss, C_fwd_ss, C_fbk_ss, C_int_ss,
+        P_vh = connect([P_lon, int_ss, K_fwd_ss, K_fbk_ss, K_int_ss,
                         EAS_err_sum, h_err_sum,
-                        throttle_cmd_sum, elevator_cmd_sum,
-                        EAS_ref_splitter, h_ref_splitter], connections;
-                        w1 = z_labels_ref, z1 = y_labels_lon)
+                        throttle_cmd_sum, elevator_cmd_sum], connections;
+                        w1 = z_labels_ref, z1 = P_lon.y, unique = false)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
         params_vh2te = LQRParams(;
-            C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
+            K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
         (P_vh, params_vh2te)
@@ -608,20 +565,8 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
     lss_lat = get_design_model!(aircraft, design_point; model = :lat);
     P_lat = named_ss(lss_lat);
 
-    x_labels_lat = keys(lss_lat.x0) |> collect
-    y_labels_lat = keys(lss_lat.y0) |> collect
-    u_labels_lat = keys(lss_lat.u0) |> collect
-
-    #reduced design model
-    x_labels_red = copy(x_labels_lat)
-    y_labels_red = copy(y_labels_lat)
-    u_labels_red = copy(u_labels_lat)
-
-    x_labels_red = deleteat!(x_labels_red, findfirst(isequal(:ψ), x_labels_red))
-    y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:ψ), y_labels_red))
-    y_labels_red = deleteat!(y_labels_red, findfirst(isequal(:χ), y_labels_red))
-
-    lss_red = subsystem(lss_lat; x = x_labels_red, u = u_labels_red, y = y_labels_red)
+    #reduced lateral model
+    lss_red = delete_vars(lss_lat, (:ψ, :χ))
     P_red = named_ss(lss_red);
 
     ################################ SAS #######################################
@@ -650,21 +595,21 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         R = C172XControl.ULatRed(aileron_cmd = 0.1, rudder_cmd = 0.01) |> diagm
 
         #feedback gain matrix
-        C_fbk = lqr(P_red, Q, R)
+        K_fbk = lqr(P_red, Q, R)
 
         #passthrough feedforward
-        C_fwd = Matrix{Float64}(I, n_z, n_z)
+        K_fwd = Matrix{Float64}(I, n_z, n_z)
 
         #no integral control
-        C_int = zeros(n_u, n_z)
+        K_int = zeros(n_u, n_z)
 
         u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk")
         u_labels_fwd = Symbol.(string.(u_labels) .* "_fwd")
         u_labels_sum = Symbol.(string.(u_labels) .* "_sum")
         z_labels_ref = Symbol.(string.(z_labels) .* "_ref")
 
-        C_fbk_ss = named_ss(ss(C_fbk); u = x_labels, y = u_labels_fbk)
-        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_ref, y = u_labels_fwd)
+        K_fbk_ss = named_ss(ss(K_fbk); u = x_labels, y = u_labels_fbk)
+        K_fwd_ss = named_ss(ss(K_fwd), u = z_labels_ref, y = u_labels_fwd)
 
         #summing junctions
         aileron_sum = sumblock("aileron_cmd_sum = aileron_cmd_fwd- aileron_cmd_fbk")
@@ -677,11 +622,11 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
             Pair.(u_labels_sum, u_labels),
             )
 
-        P_ar = connect([P_lat, aileron_sum, rudder_sum, C_fbk_ss, C_fwd_ss],
+        P_ar = connect([P_lat, aileron_sum, rudder_sum, K_fbk_ss, K_fwd_ss],
                         connections_fbk; w1 = z_labels_ref, z1 = P_lat.y)
 
         params_ar2ar = LQRParams(;
-            C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
+            K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
         (P_ar, params_ar2ar)
@@ -715,14 +660,14 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
         #feedback gain matrix
         P = named_ss(lss)
-        C_fbk = lqr(P, Q, R)
+        K_fbk = lqr(P, Q, R)
 
         ################################ feedforward ###########################
 
-        F = lss.A
-        G = lss.B
-        Hx = lss.C[z_labels, :]
-        Hu = lss.D[z_labels, :]
+        A = lss.A
+        B = lss.B
+        C = lss.C[z_labels, :]
+        D = lss.D[z_labels, :]
 
         #useful signal labels for connections
         u_labels_fbk = Symbol.(string.(u_labels) .* "_fbk") #outputs from feedback block
@@ -731,18 +676,18 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         u_labels_ref = Symbol.(string.(u_labels) .* "_ref") #references, inputs to P
         z_labels_ref = Symbol.(string.(z_labels) .* "_ref")
 
-        A = [F G; Hx Hu]
-        B = inv(A)
-        B_12 = B[1:n_x, n_x+1:end]
-        B_22 = B[n_x+1:end, n_x+1:end]
-        C_fwd = B_22 + C_fbk * B_12
-        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_ref, y = u_labels_fwd)
+        L =[A B; C D]
+        M = inv(L)
+        M_12 = M[1:n_x, n_x+1:end]
+        M_22 = M[n_x+1:end, n_x+1:end]
+        K_fwd = M_22 + K_fbk * M_12
+        K_fwd_ss = named_ss(ss(K_fwd), u = z_labels_ref, y = u_labels_fwd)
 
         #no integral control
-        C_int = zeros(n_u, n_z)
+        K_int = zeros(n_u, n_z)
 
-        C_fbk_ss = named_ss(ss(C_fbk); u = x_labels, y = u_labels_fbk)
-        C_fwd_ss = named_ss(ss(C_fwd), u = z_labels_ref, y = u_labels_fwd)
+        K_fbk_ss = named_ss(ss(K_fbk); u = x_labels, y = u_labels_fbk)
+        K_fwd_ss = named_ss(ss(K_fwd), u = z_labels_ref, y = u_labels_fwd)
 
         #summing junctions
         aileron_sum = sumblock("aileron_cmd_sum = aileron_cmd_fwd- aileron_cmd_fbk")
@@ -755,13 +700,13 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
             Pair.(u_labels_sum, u_labels),
             )
 
-        P_φβ = connect([P_lat, aileron_sum, rudder_sum, C_fbk_ss, C_fwd_ss],
+        P_φβ = connect([P_lat, aileron_sum, rudder_sum, K_fbk_ss, K_fwd_ss],
                         connections_fbk; external_inputs = z_labels_ref, external_outputs = P_lat.y);
 
 
         #convert everything to plain arrays
         params_φβar = LQRParams(;
-            C_fbk = Matrix(C_fbk), C_fwd = Matrix(C_fwd), C_int = Matrix(C_int),
+            K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
         (P_φβ, params_φβar)
@@ -812,7 +757,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         upper_bounds = PIDParams(; k_p = 10.0, k_i = 0.4, k_d = 1.5, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_χ2φ, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 3, ∫e = 10, ef = 1, ∫u = 0.00, up = 0.01)
-        params_0 = PIDParams(; k_p = 3., k_i = 0.3, k_d = 0.1, τ_f = 0.01)
+        params_0 = PIDParams(; k_p = 3., k_i = 0.4, k_d = 0.0, τ_f = 0.01)
 
         χ2φ_results = optimize_PID(P_φ2χ; params_0, settings, weights, global_search)
 

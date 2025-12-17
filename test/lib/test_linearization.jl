@@ -8,7 +8,7 @@ using ComponentArrays
 using Flight.FlightCore
 using Flight.FlightLib
 
-import Flight.FlightLib.Linearization: LinearizedSS, subsystem
+import Flight.FlightLib.Linearization: LinearizedSS, subsystem, delete_vars
 
 export test_linearization
 
@@ -59,19 +59,41 @@ function test_linearization()
             build_ss(x0[:], u0[:], y0[:]) |> test_system #with plain Vectors
         end
 
-        @testset verbose = true "Submodel" begin
+        @testset verbose = true "Subsystem" begin
 
             #with ComponentVectors
-            cmp = build_ss(x0, u0, y0)
-            cmp = subsystem(cmp; x = (:V, :q), y = (:V, :q, :f_z))
-            @test (length(cmp.x0) == 2 && length(cmp.y0) == 3 && size(cmp.A) == (2,2) &&
-                size(cmp.B) == (2, 2) && size(cmp.C) == (3, 2) && size(cmp.D) == (3,2))
+            lss = build_ss(x0, u0, y0)
+            lss_sub = subsystem(lss; x = (:V, :q), u = (:e,), y = (:V, :q, :f_z))
+            @test keys(lss_sub.x0) == (:V, :q)
+            @test keys(lss_sub.u0) == (:e,)
+            @test keys(lss_sub.y0) == (:V, :q, :f_z)
+            @test (
+                size(lss_sub.A) == (2, 2) &&
+                size(lss_sub.B) == (2, 1) &&
+                size(lss_sub.C) == (3, 2) &&
+                size(lss_sub.D) == (3, 1)
+                )
+
+            lss_sub2 = delete_vars(lss, (:θ, :α, :a))
+            @test keys(lss_sub2.x0) == (:V, :q)
+            @test keys(lss_sub2.u0) == (:e,)
+            @test keys(lss_sub2.y0) == (:V, :q, :f_z)
+            @test lss_sub.A == lss_sub2.A
+            @test lss_sub.B == lss_sub2.B
+            @test lss_sub.C == lss_sub2.C
+            @test lss_sub.D == lss_sub2.D
 
             #with plain Vectors
-            cmp = build_ss(x0[:], u0[:], y0[:])
-            cmp = subsystem(cmp; x = [1, 3], u = [1], y = [1, 3, 5])
-            @test (length(cmp.x0) == 2 && length(cmp.u0) == 1 && length(cmp.y0) == 3 &&
-            size(cmp.A) == (2,2) && size(cmp.B) == (2, 1) && size(cmp.C) == (3, 2) && size(cmp.D) == (3,1))
+            lss = build_ss(x0[:], u0[:], y0[:])
+            lss_sub = subsystem(lss; x = [1, 3], u = [1], y = [1, 3, 5])
+            @test (
+                length(lss_sub.x0) == 2 &&
+                length(lss_sub.u0) == 1 &&
+                length(lss_sub.y0) == 3 &&
+                size(lss_sub.A) == (2,2) &&
+                size(lss_sub.B) == (2, 1) &&
+                size(lss_sub.C) == (3, 2) &&
+                size(lss_sub.D) == (3, 1))
 
         end
 
