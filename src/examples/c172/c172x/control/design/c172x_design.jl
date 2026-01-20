@@ -36,7 +36,7 @@ function get_design_model!(
 
     lss = linearize(vehicle, trim_params)
 
-    @unpack A, B, C, D, ẋ0, x0, y0 = lss
+    (; A, B, C, D, ẋ0, x0, y0) = lss
 
     #replace v_x, v_y, v_z, ω_eng with TAS, α, β, n_eng as state variables
     xp_labels = x_labels = keys(lss.x0) |> collect

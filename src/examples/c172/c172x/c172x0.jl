@@ -30,10 +30,9 @@ function IODevices.assign_input!(mdl::Model{<:Cessna172Xv0},
                            ::GenericInputMapping, data::T16000MData)
 
     #mixture not assigned
-    @unpack throttle, mixture, aileron, elevator, rudder, flaps,
-            brake_left, brake_right = mdl.vehicle.systems.act.submodels
+    (; throttle, aileron, elevator, rudder, flaps, brake_left, brake_right) = mdl.vehicle.systems.act.submodels
 
-    @unpack axes, buttons, hat = data
+    (; axes, buttons) = data
 
     throttle.u[] = axes.throttle
     aileron.u[] = axes.stick_x |> roll_curve

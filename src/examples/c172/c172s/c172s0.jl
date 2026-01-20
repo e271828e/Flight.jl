@@ -31,7 +31,7 @@ function IODevices.assign_input!(mdl::Model{<:Cessna172Sv0},
 
     u = mdl.vehicle.systems.act.u
 
-    @unpack axes, buttons, hat = data
+    (; axes, buttons, hat) = data
 
     u.throttle = axes.throttle
     u.aileron = axes.stick_x |> aileron_curve

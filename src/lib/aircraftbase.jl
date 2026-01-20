@@ -77,7 +77,7 @@ function Modeling.init!( mdl::Model{<:Vehicle},
                         atmosphere::Model{<:AbstractAtmosphere} = Model(SimpleAtmosphere()),
                         terrain::Model{<:AbstractTerrain} = Model(HorizontalTerrain()))
 
-    @unpack kinematics, dynamics, systems = mdl.submodels
+    (; kinematics, dynamics, systems) = mdl.submodels
     Modeling.init!(kinematics, init.kin)
     Modeling.init!(systems, init.sys)
     dynamics.x .= kinematics.u #essential
@@ -143,8 +143,8 @@ function Modeling.f_ode!(vehicle::Model{<:Vehicle},
                         atmosphere::Model{<:AbstractAtmosphere},
                         terrain::Model{<:AbstractTerrain})
 
-    @unpack ẋ, x, submodels, parameters = vehicle
-    @unpack kinematics, dynamics, systems = submodels
+    (; submodels) = vehicle
+    (; kinematics, dynamics, systems) = submodels
 
     kinematics.u .= dynamics.x
     f_ode!(kinematics) #update ẋ and y before extracting kinematic data
@@ -159,7 +159,7 @@ function Modeling.f_ode!(vehicle::Model{<:Vehicle},
     mp_Σ_b = get_mp_b(systems)
     wr_Σ_b = get_wr_b(systems)
     ho_Σ_b = get_hr_b(systems)
-    @unpack q_eb, r_eb_e = kin_data
+    (; q_eb, r_eb_e) = kin_data
     @pack! dynamics.u = mp_Σ_b, wr_Σ_b, ho_Σ_b, q_eb, r_eb_e
 
     f_ode!(dynamics)
@@ -173,7 +173,7 @@ function Modeling.f_step!(vehicle::Model{<:Vehicle},
                          atmosphere::Model{<:AbstractAtmosphere},
                          terrain::Model{<:AbstractTerrain})
 
-    @unpack systems, kinematics, dynamics = vehicle.submodels
+    (; systems, kinematics) = vehicle.submodels
 
     f_step!(kinematics)
     f_step!(systems, atmosphere, terrain)
@@ -185,7 +185,7 @@ function Modeling.f_periodic!(::NoScheduling, vehicle::Model{<:Vehicle},
                          atmosphere::Model{<:AbstractAtmosphere},
                          terrain::Model{<:AbstractTerrain})
 
-    @unpack systems, kinematics, dynamics = vehicle.submodels
+    (; systems, kinematics, dynamics) = vehicle.submodels
 
     f_periodic!(systems, atmosphere, terrain)
 
@@ -222,7 +222,7 @@ function Modeling.f_ode!(aircraft::Model{<:Aircraft},
                         atmosphere::Model{<:AbstractAtmosphere},
                         terrain::Model{<:AbstractTerrain})
 
-    @unpack vehicle, avionics = aircraft
+    (; vehicle, avionics) = aircraft
     f_ode!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_ode!(vehicle, atmosphere, terrain)
@@ -234,7 +234,7 @@ function Modeling.f_periodic!(::NoScheduling,
                         atmosphere::Model{<:AbstractAtmosphere},
                         terrain::Model{<:AbstractTerrain})
 
-    @unpack vehicle, avionics = aircraft
+    (; vehicle, avionics) = aircraft
     f_periodic!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_periodic!(vehicle, atmosphere, terrain)
@@ -245,7 +245,7 @@ function Modeling.f_step!(aircraft::Model{<:Aircraft},
                          atmosphere::Model{<:AbstractAtmosphere},
                          terrain::Model{<:AbstractTerrain})
 
-    @unpack vehicle, avionics = aircraft
+    (; vehicle, avionics) = aircraft
     f_step!(avionics, vehicle)
     assign!(vehicle, avionics)
     f_step!(vehicle, atmosphere, terrain)
@@ -258,7 +258,7 @@ function Modeling.init!( aircraft::Model{<:Aircraft},
                         condition::Union{<:VehicleInitializer, <:AbstractTrimParameters},
                         args...)
 
-    @unpack vehicle, avionics = aircraft
+    (; vehicle, avionics) = aircraft
     Modeling.init!(vehicle, condition, args...)
     Modeling.init!(avionics, vehicle) #avionics init only relies on vehicle
     f_output!(aircraft)
@@ -354,7 +354,7 @@ end
 function GUI.draw!(aircraft::Model{<:Aircraft}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Aircraft")
 
-    @unpack vehicle, avionics = aircraft
+    (; vehicle, avionics) = aircraft
     CImGui.Begin(label, p_open)
 
     @cstatic c_veh=false c_avs=false begin
@@ -373,8 +373,8 @@ function GUI.draw!(vehicle::Model{<:Vehicle},
                    avionics::Model{<:AbstractAvionics},
                    p_open::Ref{Bool} = Ref(true))
 
-    @unpack systems = vehicle.submodels
-    @unpack kinematics, dynamics, airflow = vehicle.y
+    (; systems) = vehicle.submodels
+    (; kinematics, dynamics, airflow) = vehicle.y
 
     CImGui.Begin("Vehicle", p_open)
 
@@ -397,12 +397,12 @@ end
 
 function GUI.draw( vehicle::VehicleY)
 
-    @unpack kinematics, dynamics, airflow = vehicle
+    (; kinematics, dynamics, airflow) = vehicle
 
-    @unpack e_nb, ω_wb_b, n_e, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eb_n = kinematics
-    @unpack CAS, EAS, TAS, M, T, p, ρ, Δp, v_wb_b = airflow
-    @unpack ψ, θ, φ = e_nb
-    @unpack ϕ, λ = ϕ_λ
+    (; e_nb, ω_wb_b, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eb_n) = kinematics
+    (; CAS, EAS, TAS, M, T, p, ρ, Δp, v_wb_b) = airflow
+    (; ψ, θ, φ) = e_nb
+    (; ϕ, λ) = ϕ_λ
 
     α, β = Atmosphere.get_airflow_angles(v_wb_b)
     clm = -v_eb_n[3]

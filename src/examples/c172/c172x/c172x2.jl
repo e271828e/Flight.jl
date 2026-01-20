@@ -34,7 +34,7 @@ end
 function Modeling.f_periodic!(::NoScheduling, avionics::Model{<:Avionics},
                                 vehicle::Model{<:Vehicle})
 
-    @unpack ctl, gdc = avionics
+    (; ctl, gdc) = avionics
 
     f_periodic!(gdc, ctl, vehicle)
     f_periodic!(ctl, vehicle)
@@ -50,7 +50,7 @@ end
 ############################# Initialization ###################################
 
 function Modeling.init!(avionics::Model{<:Avionics}, vehicle::Model{<:Vehicle})
-    @unpack ctl, gdc = avionics
+    (; ctl, gdc) = avionics
     Modeling.init!(ctl, vehicle)
     f_output!(avionics)
 end
@@ -94,13 +94,13 @@ brake_curve(x) = exp_axis_curve(x, strength = 1, deadzone = 0.05)
 function IODevices.assign_input!(mdl::Model{<:Cessna172Xv2},
                            ::GenericInputMapping, data::T16000MData)
 
-    @unpack act = mdl.vehicle.systems
+    (; act) = mdl.vehicle.systems
     u_ctl = mdl.avionics.u
 
     q_sf = 0.5 #pitch rate sensitivity
     p_sf = 0.5 #roll rate sensitivity
 
-    @unpack axes, buttons, hat = data
+    (; axes, buttons, hat) = data
 
     throttle_axis = axes.throttle
     roll_axis = roll_curve(axes.stick_x)
@@ -131,13 +131,13 @@ end
 function IODevices.assign_input!(mdl::Model{<:Cessna172Xv2},
                            ::GenericInputMapping, data::GladiatorNXTEvoData)
 
-    @unpack act = mdl.vehicle.systems
+    (; act) = mdl.vehicle.systems
     u_ctl = mdl.avionics.u
 
     q_sf = 0.5 #pitch rate sensitivity
     p_sf = 0.5 #roll rate sensitivity
 
-    @unpack axes, buttons, hat = data
+    (; axes, buttons) = data
 
     throttle_axis = axes.throttle
     roll_axis = roll_curve(axes.stick_x)

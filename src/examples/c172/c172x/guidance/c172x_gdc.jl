@@ -116,7 +116,7 @@ end
 
 function SegmentGuidanceData(seg::Segment, Ob::Abstract3DPosition)
 
-    @unpack p1, p2 = seg
+    (; p1, p2) = seg
 
     r_e1_e = Cartesian(p1)
     r_e2_e = Cartesian(p2)
@@ -153,7 +153,7 @@ end
 
 function GUI.draw(seg::Segment)
 
-    @unpack p1, p2 = seg
+    (; p1, p2) = seg
 
     if BeginTable("OriginEnd", 4, CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersH)
         TableSetupColumn("");
@@ -178,7 +178,7 @@ end
 
 function GUI.draw(data::SegmentGuidanceData)
 
-    @unpack χ_12, γ_12, s_12, s_1b, s_2b, e_sb, v_sb, h_s = data
+    (; χ_12, γ_12, s_12, s_1b, e_sb, v_sb, h_s) = data
 
     if BeginTable("GuidanceData", 3, CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersH)
         # TableSetupColumn("");
@@ -233,13 +233,13 @@ Modeling.Y(::SegmentGuidance) = SegmentGuidanceY()
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
                                 vehicle::Model{<:Vehicle})
 
-    @unpack target, hor_gdc_req, vrt_gdc_req = mdl.u
-    @unpack Δχ_inf, e_sf, e_thr = mdl.parameters
-    @unpack ϕ_λ, h_e = vehicle.kinematics.y
+    (; target, hor_gdc_req, vrt_gdc_req) = mdl.u
+    (; Δχ_inf, e_sf, e_thr) = mdl.parameters
+    (; ϕ_λ, h_e) = vehicle.kinematics.y
 
     data = SegmentGuidanceData(target, Geographic(ϕ_λ, h_e))
 
-    @unpack χ_12, s_1b, e_sb, h_s = data
+    (; χ_12, e_sb, h_s) = data
 
     Δχ = -Float64(Δχ_inf)/(π/2) * atan(e_sb / e_sf)
     χ_ref = wrap_to_π(χ_12 + Δχ)
@@ -294,8 +294,8 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:GuidanceLaws},
                                 ctl::Model{<:ControlLaws},
                                 vehicle::Model{<:Vehicle})
 
-    @unpack mode_req = mdl.u
-    @unpack seg, crc = mdl.submodels
+    (; mode_req) = mdl.u
+    (; seg, crc) = mdl.submodels
 
     mode = (is_on_gnd(vehicle) ? ModeGuidance.direct : mode_req)
 
@@ -304,7 +304,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:GuidanceLaws},
     f_periodic!(crc, vehicle)
 
     if mode === ModeGuidance.segment
-        @unpack hor_gdc, vrt_gdc, χ_ref, h_ref = seg.y
+        (; χ_ref, h_ref) = seg.y
         #EAS_ref and β_ref unchanged
         if seg.y.hor_gdc
             ctl.lat.u.χ_ref = χ_ref
@@ -328,7 +328,7 @@ function GUI.draw!(mdl::Model{<:GuidanceLaws},
                     vehicle::Model{<:Vehicle},
                     p_open::Ref{Bool} = Ref(true))
 
-    @unpack u, y = mdl
+    (; u, y) = mdl
 
     Begin("Cessna172X Guidance", p_open)
 
@@ -361,10 +361,9 @@ end
 
 function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
 
-    @unpack u, parameters, y = gdc
-    @unpack ϕ_λ, h_e = vehicle.y.kinematics
-    @unpack ϕ, λ = ϕ_λ
-    @unpack target, data, Δχ, χ_ref, h_ref, hor_gdc, vrt_gdc = y
+    (; u, y) = gdc
+    (; ϕ_λ, h_e) = vehicle.y.kinematics
+    (; Δχ, χ_ref, h_ref, hor_gdc, vrt_gdc) = y
 
     @cstatic(
         spec_from = Cint(1),

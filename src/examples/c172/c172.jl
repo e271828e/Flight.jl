@@ -226,7 +226,7 @@ function get_aero_coeffs(lookup = aero_lookup; α, β, p_nd, q_nd, r_nd, δa, δ
     α_dot_nd = clamp(α_dot_nd, -0.04, 0.04)
     β_dot_nd = clamp(β_dot_nd, -0.2, 0.2)
 
-    @unpack C_D, C_Y, C_L, C_l, C_m, C_n = lookup
+    (; C_D, C_Y, C_L, C_l, C_m, C_n) = lookup
 
     AeroCoeffs(
         C_D = C_D.z + C_D.ge(Δh_nd) * (C_D.α_δf(α,δf) + C_D.δf(δf)) + C_D.δe(δe) + C_D.β(β),
@@ -300,12 +300,12 @@ Modeling.S(::Aero) = AeroS()
 function Modeling.f_ode!(mdl::Model{Aero}, terrain::Model{<:AbstractTerrain},
                         air_data::AirData, kin_data::KinData)
 
-    @unpack ẋ, x, u, s, parameters = mdl
-    @unpack α_filt, β_filt = x
-    @unpack e, a, r, f = u
-    @unpack S, b, c, δe_range, δa_range, δr_range, δf_range, α_stall, V_min, τ = parameters
-    @unpack TAS, q, v_wb_b = air_data
-    @unpack ω_wb_b, n_e, h_o = kin_data
+    (; ẋ, x, u, s, parameters) = mdl
+    (; α_filt, β_filt) = x
+    (; e, a, r, f) = u
+    (; S, b, c, δe_range, δa_range, δr_range, δf_range, V_min, τ) = parameters
+    (; TAS, q, v_wb_b) = air_data
+    (; ω_wb_b, n_e, h_o) = kin_data
     stall = s.stall
 
     v_wb_a = f_ba.q'(v_wb_b)
@@ -344,7 +344,7 @@ function Modeling.f_ode!(mdl::Model{Aero}, terrain::Model{<:AbstractTerrain},
     coeffs = get_aero_coeffs(;
         α, β, p_nd, q_nd, r_nd, δa, δr, δe, δf, α_dot_nd, β_dot_nd, Δh_nd, stall)
 
-    @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
+    (; C_D, C_Y, C_L, C_l, C_m, C_n) = coeffs
 
     q_as = Atmosphere.get_stability_axes(α)
     F_aero_s = q * S * SVector{3,Float64}(-C_D, C_Y, -C_L)
@@ -387,8 +387,8 @@ Dynamics.get_wr_b(mdl::Model{Aero}) = mdl.y.wr_b
 function GUI.draw(mdl::Model{<:Aero}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Cessna 172S Aerodynamics")
 
-    @unpack e, a, r, f, α, β, α_filt, β_filt, stall, coeffs, wr_b = mdl.y
-    @unpack C_D, C_Y, C_L, C_l, C_m, C_n = coeffs
+    (; e, a, r, f, α, β, α_filt, β_filt, stall, coeffs, wr_b) = mdl.y
+    (; C_D, C_Y, C_L, C_l, C_m, C_n) = coeffs
 
     CImGui.Begin(window_label, p_open)
 
@@ -483,7 +483,7 @@ const Δh_to_gnd = 1.81
 function GUI.draw(mdl::Model{<:Ldg}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Cessna 172S Landing Gear")
 
-    @unpack left, right, nose = mdl
+    (; left, right, nose) = mdl
 
     CImGui.Begin(window_label, p_open)
 
@@ -531,8 +531,8 @@ Modeling.U(::Payload) = PayloadU()
 Modeling.Y(::Payload) = PayloadY()
 
 function Dynamics.get_mp_b(mdl::Model{Payload})
-    @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = mdl.u
-    @unpack pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot = mdl.parameters
+    (; m_pilot, m_copilot, m_lpass, m_rpass, m_baggage) = mdl.u
+    (; pilot_slot, copilot_slot, lpass_slot, rpass_slot, baggage_slot) = mdl.parameters
 
     pilot = MassProperties(PointDistribution(m_pilot), pilot_slot)
     copilot = MassProperties(PointDistribution(m_copilot), copilot_slot)
@@ -594,7 +594,7 @@ Modeling.Y(::Fuel) = FuelY()
 
 function Modeling.f_ode!(mdl::Model{Fuel}, pwp::Model{<:PistonThruster})
 
-    @unpack m_full, m_res = mdl.parameters
+    (; m_full, m_res) = mdl.parameters
     x_avail = mdl.x[1]
     m_total = m_res + x_avail * (m_full - m_res) #current mass
     m_avail = m_total - m_res
@@ -631,7 +631,7 @@ is_fuel_available(mdl::Model{<:Fuel}) = (mdl.y.m_avail > 0)
 function GUI.draw(mdl::Model{Fuel}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Cessna 172S Fuel System")
 
-    @unpack m_total, m_avail = mdl.y
+    (; m_total, m_avail) = mdl.y
 
     CImGui.Begin(window_label, p_open)
 
@@ -685,7 +685,7 @@ function Modeling.f_ode!(systems::Model{<:Systems},
                         kin_data::KinData,
                         air_data::AirData)
 
-    @unpack act, aero, pwp, ldg, fuel, pld = systems
+    (; act, aero, pwp, ldg, fuel, pld) = systems
 
     f_ode!(act) #update actuation system outputs
     assign!(aero, ldg, pwp, act) #assign actuation model outputs to systems submodels
@@ -701,7 +701,7 @@ end
 function Modeling.f_step!(systems::Model{<:Systems},
                         ::Model{<:AbstractAtmosphere},
                         ::Model{<:AbstractTerrain})
-    @unpack aero, ldg, pwp, fuel = systems
+    (; aero, ldg, pwp, fuel) = systems
 
     f_step!(aero)
     f_step!(ldg)
@@ -719,7 +719,7 @@ function GUI.draw!( systems::Model{<:Systems}, ::Model{<:AbstractAvionics},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Systems")
 
-    @unpack act, pwp, ldg, aero, fuel, pld = systems
+    (; act, pwp, ldg, aero, fuel, pld) = systems
 
     CImGui.Begin(label, p_open)
 
@@ -815,8 +815,8 @@ function Kinematics.Initializer(trim_state::TrimState,
                                 trim_params::TrimParameters,
                                 atmosphere::Model{<:AbstractAtmosphere})
 
-    @unpack EAS, β_a, γ_wb_n, ψ_nb, ψ_wb_dot, θ_wb_dot, Ob = trim_params
-    @unpack α_a, φ_nb = trim_state
+    (; EAS, β_a, γ_wb_n, ψ_nb, ψ_wb_dot, θ_wb_dot, Ob) = trim_params
+    (; α_a, φ_nb) = trim_state
 
     atm_data = AtmosphericData(atmosphere, Ob)
     TAS = Atmosphere.EAS2TAS(EAS; ρ = atm_data.ρ)
@@ -845,7 +845,7 @@ end
 
 function cost(vehicle::Model{<:Vehicle})
 
-    @unpack ẋ, y = vehicle
+    (; ẋ, y) = vehicle
 
     v_nd_dot = SVector{3}(ẋ.dynamics.v_eb_b) / norm(y.kinematics.v_eb_b)
     ω_dot = SVector{3}(ẋ.dynamics.ω_eb_b) #ω should already of order 1
@@ -945,7 +945,7 @@ end
 function IODevices.extract_output(aircraft::Model{<:Cessna172}, ::XPlane12ControlMapping)
 
     t = aircraft.t[]
-    @unpack δe, δa, δr, δf = aircraft.y.vehicle.systems.aero
+    (; δe, δa, δr, δf) = aircraft.y.vehicle.systems.aero
     ψ_sw = aircraft.y.vehicle.systems.ldg.nose.strut.ψ_sw
     ω_prop = aircraft.y.vehicle.systems.pwp.propeller.ω
 

@@ -90,9 +90,8 @@ Modeling.Y(::MechanicalActuation) = MechanicalActuationY()
 
 function Modeling.f_ode!(act::Model{<:MechanicalActuation})
 
-    @unpack aileron, elevator, rudder,
-            aileron_offset, elevator_offset, rudder_offset,
-            flaps, brake_left, brake_right= act.u
+    (; aileron, elevator, rudder, aileron_offset, elevator_offset, rudder_offset,
+    flaps, brake_left, brake_right) = act.u
 
     act.y = MechanicalActuationY(; aileron, elevator, rudder,
             aileron_offset, elevator_offset, rudder_offset,
@@ -105,9 +104,8 @@ function C172.assign!(aero::Model{<:C172.Aero},
                 pwp::Model{<:PistonThruster},
                 act::Model{<:MechanicalActuation})
 
-    @unpack aileron, elevator, rudder,
-            aileron_offset, elevator_offset, rudder_offset,
-            brake_left, brake_right, flaps = act.y
+    (; aileron, elevator, rudder, aileron_offset, elevator_offset, rudder_offset,
+    flaps, brake_left, brake_right) = act.y
 
     ldg.nose.steering.u.input = (rudder_offset + rudder)
     ldg.left.braking.u[] = brake_left
@@ -168,13 +166,13 @@ end
 
 function Modeling.init!(sys::Model{<:Systems}, init::C172.SystemsInitializer)
 
-    @unpack act, pwp, aero, fuel, ldg, pld = sys
+    (; act, pwp, aero, fuel, pld) = sys
 
-    @unpack engine_state, mixture_ctl, n_eng, throttle, mixture, elevator,
+    (; engine_state, mixture_ctl, n_eng, throttle, mixture, elevator,
     aileron, rudder, flaps, brake_left, brake_right, fuel_load, payload,
-    stall, α_a_filt, β_a_filt = init
+    stall, α_a_filt, β_a_filt) = init
 
-    @unpack m_pilot, m_copilot, m_lpass, m_rpass, m_baggage = payload
+    (; m_pilot, m_copilot, m_lpass, m_rpass, m_baggage) = payload
 
     #assign payload
     @pack! pld.u = m_pilot, m_copilot, m_lpass, m_rpass, m_baggage
@@ -182,6 +180,7 @@ function Modeling.init!(sys::Model{<:Systems}, init::C172.SystemsInitializer)
     pwp.engine.u.throttle = throttle
     pwp.engine.u.mixture = mixture
     pwp.engine.u.mixture_ctl = mixture_ctl
+
     act.u.elevator = elevator
     act.u.aileron = aileron
     act.u.rudder = rudder
@@ -227,9 +226,9 @@ function AircraftBase.assign!(vehicle::Model{<:C172S.Vehicle},
                         atmosphere::Model{<:AbstractAtmosphere},
                         terrain::Model{<:AbstractTerrain})
 
-    @unpack β_a, fuel_load, flaps, mixture, payload = trim_params
-    @unpack n_eng, α_a, throttle, aileron, elevator, rudder = trim_state
-    @unpack pwp, aero, ldg = vehicle.systems
+    (; β_a, fuel_load, flaps, mixture, payload) = trim_params
+    (; n_eng, α_a, throttle, aileron, elevator, rudder) = trim_state
+    (; pwp, aero, ldg) = vehicle.systems
 
     kin_init = KinInit(trim_state, trim_params, atmosphere)
 
@@ -304,7 +303,7 @@ function XStateSpace(x_vehicle::ComponentVector)
     x_dynamics = x_vehicle.dynamics
     x_systems = x_vehicle.systems
 
-    @unpack ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e = x_kinematics
+    (; ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e) = x_kinematics
     p, q, r = x_dynamics.ω_eb_b
     v_x, v_y, v_z = x_dynamics.v_eb_b
     α_filt, β_filt = x_systems.aero
@@ -318,22 +317,22 @@ end
 
 function UStateSpace(vehicle::Model{<:C172S.Vehicle{NED}})
 
-    @unpack aileron, elevator, rudder = vehicle.systems.act.u
-    @unpack throttle = vehicle.systems.pwp.engine.u
+    (; aileron, elevator, rudder) = vehicle.systems.act.u
+    (; throttle) = vehicle.systems.pwp.engine.u
     UStateSpace(; throttle, aileron, elevator, rudder)
 
 end
 
 function YStateSpace(vehicle::Model{<:C172S.Vehicle{NED}})
 
-    @unpack aileron, elevator, rudder = vehicle.systems.act.u
-    @unpack throttle = vehicle.systems.pwp.engine.u
-    @unpack systems, airflow, dynamics, kinematics = vehicle.y
-    @unpack pwp, fuel, aero, act = systems
+    (; aileron, elevator, rudder) = vehicle.systems.act.u
+    (; throttle) = vehicle.systems.pwp.engine.u
+    (; systems, airflow, dynamics, kinematics) = vehicle.y
+    (; pwp, fuel, aero, act) = systems
 
-    @unpack e_nb, ϕ_λ, h_e, ω_eb_b, v_eb_b, v_eb_n, χ_gnd, γ_gnd = kinematics
-    @unpack ψ, θ, φ = e_nb
-    @unpack ϕ, λ = ϕ_λ
+    (; e_nb, ϕ_λ, h_e, ω_eb_b, v_eb_b, v_eb_n, χ_gnd, γ_gnd) = kinematics
+    (; ψ, θ, φ) = e_nb
+    (; ϕ, λ) = ϕ_λ
 
     h = h_e
     p, q, r = ω_eb_b
@@ -373,7 +372,7 @@ AircraftBase.get_y_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = YStateSpace(vehicl
 
 function AircraftBase.assign_u_ss!(vehicle::Model{<:C172S.Vehicle{NED}}, u::AbstractVector{Float64})
 
-    @unpack throttle, aileron, elevator, rudder = UStateSpace(u)
+    (; throttle, aileron, elevator, rudder) = UStateSpace(u)
     @pack! vehicle.systems.act.u = aileron, elevator, rudder
     @pack! vehicle.systems.pwp.engine.u = throttle
 
@@ -381,7 +380,7 @@ end
 
 function AircraftBase.assign_x_ss!(vehicle::Model{<:C172S.Vehicle{NED}}, x::AbstractVector{Float64})
 
-    @unpack p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng, fuel = XStateSpace(x)
+    (; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng, fuel) = XStateSpace(x)
 
     x_kinematics = vehicle.x.kinematics
     x_dynamics = vehicle.x.dynamics
