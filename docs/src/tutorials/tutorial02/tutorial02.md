@@ -269,37 +269,10 @@ plots_air = make_plots(ts.aircraft.vehicle.airflow)
 plots_air[:airspeed_M_q]
 ```
 
-```@raw html
-&nbsp;
-```
-
-To save all the plots in one of these sets you can do:
-
-```@setup tutorial02
-import Logging
-Logging.disable_logging(Logging.Info)
-```
-
-```@example tutorial02
-save_plots(plots_kin, normpath("tmp/plots/kin"))
-rm(normpath("tmp/plots/kin"), recursive = true) #hide
-```
-
-Or, directly from the `TimeSeries` object:
-```@example tutorial02
-save_plots(ts.aircraft.vehicle.kinematics, normpath("tmp/plots/kin"))
-rm(normpath("tmp/plots/kin"), recursive = true) #hide
-```
-
-```@setup tutorial02
-Logging.disable_logging(Logging.Debug)
-```
-
 ### Automating Model Control With User Callbacks
 
-Sometimes, stepping through the `Simulation` and assigning inputs at each stop is not the best
-approach for controlling a `Model` during headless `Simulation` runs. In many cases, it is cleaner
-and more convenient to define and encapsulate the control logic in advance, and then let the
+In some cases, rather than stepping through the `Simulation` and assigning `Model` inputs at each
+stop, you might want to define and encapsulate the control logic in advance, and then let the
 `Simulation` run uninterrupted from start to finish.
 
 This is where user callbacks come in. These are custom functions with the signature
