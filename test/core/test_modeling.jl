@@ -1,6 +1,6 @@
 module TestModeling
 
-using Test, UnPack, Logging, StructTypes
+using Test, Logging, StructTypes
 
 using Flight.FlightCore
 

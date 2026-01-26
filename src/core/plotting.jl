@@ -2,7 +2,6 @@ module Plotting
 
 using Reexport
 using Dates
-using UnPack
 using StructArrays
 using Logging
 using RecursiveArrayTools: VectorOfArray

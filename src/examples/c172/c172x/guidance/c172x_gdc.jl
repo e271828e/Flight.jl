@@ -1,6 +1,6 @@
 module C172XGuidance
 
-using UnPack, StaticArrays, LinearAlgebra
+using StaticArrays, LinearAlgebra
 using StructTypes
 using EnumX
 

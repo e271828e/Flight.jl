@@ -1,6 +1,6 @@
 module C172Xv1
 
-using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
+using LinearAlgebra, StaticArrays, ComponentArrays
 using StructTypes
 
 using Flight.FlightCore

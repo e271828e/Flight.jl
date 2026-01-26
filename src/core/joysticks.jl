@@ -2,7 +2,6 @@ module Joysticks
 
 using StaticArrays
 using StaticArrays: sacollect
-using UnPack
 using SDL2_jll
 
 using ..IODevices

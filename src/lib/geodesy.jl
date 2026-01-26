@@ -1,6 +1,6 @@
 module Geodesy
 
-using LinearAlgebra, StaticArrays, ComponentArrays, SHA, UnPack, Interpolations, HDF5
+using LinearAlgebra, StaticArrays, ComponentArrays, SHA, Interpolations, HDF5
 using Plots, LaTeXStrings, DataStructures, StructTypes
 
 using Flight.FlightCore

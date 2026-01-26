@@ -1,7 +1,6 @@
 module Network
 
 using Sockets
-using UnPack
 using GLFW
 using JSON3
 

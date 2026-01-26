@@ -13,7 +13,6 @@ using Flight.FlightExamples.C172X.C172XControl
 
 using HDF5
 using Logging
-using UnPack
 using ControlSystems
 using RobustAndOptimalControl
 using StaticArrays

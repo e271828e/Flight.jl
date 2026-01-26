@@ -1,6 +1,6 @@
 module Linearization
 
-using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
+using ComponentArrays, StaticArrays, LinearAlgebra
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 using ControlSystems: ControlSystemsBase, ControlSystems, ss
 using RobustAndOptimalControl

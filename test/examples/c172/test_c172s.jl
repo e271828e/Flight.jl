@@ -1,7 +1,6 @@
 module TestC172S
 
 using Test
-using UnPack
 using BenchmarkTools
 using Sockets
 

@@ -1,6 +1,6 @@
 module C172S
 
-using LinearAlgebra, StaticArrays, ComponentArrays, UnPack, Reexport
+using LinearAlgebra, StaticArrays, ComponentArrays, Reexport
 using ControlSystems, RobustAndOptimalControl
 using NLopt
 using FiniteDiff: finite_difference_jacobian! as jacobian!

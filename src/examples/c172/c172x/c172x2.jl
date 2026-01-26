@@ -1,6 +1,6 @@
 module C172Xv2
 
-using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
+using LinearAlgebra, StaticArrays, ComponentArrays
 using StructTypes
 
 using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,

@@ -2,7 +2,6 @@ module TestControl
 
 using Test
 using BenchmarkTools
-using UnPack
 using ComponentArrays
 using ControlSystems
 using StaticArrays

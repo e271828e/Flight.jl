@@ -2,7 +2,6 @@ module TestLinearization
 
 using Test
 using BenchmarkTools
-using UnPack
 using ComponentArrays
 
 using Flight.FlightCore

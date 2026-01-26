@@ -1,7 +1,5 @@
 module C172Xv0
 
-using UnPack
-
 using Flight.FlightCore
 using Flight.FlightLib
 

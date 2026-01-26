@@ -1,7 +1,6 @@
 module TestAircraftBase
 
 using Test
-using UnPack
 using BenchmarkTools
 
 using Flight.FlightLib

@@ -1,6 +1,6 @@
 module AircraftBase
 
-using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
+using LinearAlgebra, StaticArrays, ComponentArrays
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 using DataStructures: OrderedDict
 using CImGui: Begin, End, BeginTable, EndTable, TableNextColumn, TableNextRow,

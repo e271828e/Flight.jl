@@ -1,6 +1,6 @@
 module C172XControl
 
-using LinearAlgebra, UnPack, StaticArrays, ComponentArrays
+using LinearAlgebra, StaticArrays, ComponentArrays
 using StructTypes
 using EnumX
 

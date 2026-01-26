@@ -1,6 +1,6 @@
 module Kinematics
 
-using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra, UnPack
+using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra
 using Plots, LaTeXStrings, DataStructures, RecursiveArrayTools
 
 using Flight.FlightCore

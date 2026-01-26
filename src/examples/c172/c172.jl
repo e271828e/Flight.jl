@@ -1,6 +1,6 @@
 module C172
 
-using LinearAlgebra, StaticArrays, ComponentArrays, UnPack, HDF5, Interpolations
+using LinearAlgebra, StaticArrays, ComponentArrays, HDF5, Interpolations
 using Logging
 using Reexport
 using NLopt

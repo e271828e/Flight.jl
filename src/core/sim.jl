@@ -1,6 +1,6 @@
 module Sim
 
-using UnPack, Reexport, StructArrays
+using Reexport, StructArrays
 using OrdinaryDiffEq: OrdinaryDiffEq, OrdinaryDiffEqCore, ODEProblem,
                       Heun, RK4, init as init_integrator
 using OrdinaryDiffEq.OrdinaryDiffEqCore: OrdinaryDiffEqAlgorithm, ODEIntegrator

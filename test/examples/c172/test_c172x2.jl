@@ -1,6 +1,6 @@
 module TestC172Xv2
 
-using Test, UnPack, BenchmarkTools, Sockets, JSON3, Logging
+using Test, BenchmarkTools, Sockets, JSON3, Logging
 
 using Flight.FlightCore
 using Flight.FlightLib

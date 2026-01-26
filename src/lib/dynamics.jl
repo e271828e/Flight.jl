@@ -1,6 +1,6 @@
 module Dynamics
 
-using StaticArrays, LinearAlgebra, UnPack
+using StaticArrays, LinearAlgebra
 using Plots: Plots, @recipe, @series, plot
 using LaTeXStrings, DataStructures
 

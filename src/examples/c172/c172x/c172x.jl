@@ -1,6 +1,6 @@
 module C172X
 
-using LinearAlgebra, StaticArrays, ComponentArrays, UnPack, Reexport
+using LinearAlgebra, StaticArrays, ComponentArrays, Reexport
 using ControlSystems, RobustAndOptimalControl
 
 using Flight.FlightCore

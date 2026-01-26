@@ -4,7 +4,7 @@ module Control
 ################################################################################
 module Continuous ##############################################################
 
-using ComponentArrays, StaticArrays, UnPack, LinearAlgebra
+using ComponentArrays, StaticArrays, LinearAlgebra
 using ControlSystems: ControlSystemsBase, ControlSystems, ss
 using Plots, LaTeXStrings, DataStructures
 
@@ -207,7 +207,7 @@ end #submodule
 ################################################################################
 module Discrete ###############################################################
 
-using StaticArrays, UnPack, LinearAlgebra
+using StaticArrays, LinearAlgebra
 using StructArrays, Interpolations, HDF5 #for lookups
 using RobustAndOptimalControl
 using Plots, LaTeXStrings, DataStructures
@@ -1223,7 +1223,7 @@ end #submodule
 
 module PIDOpt
 
-using StaticArrays, UnPack, NLopt, ControlSystems
+using StaticArrays, NLopt, ControlSystems
 using RobustAndOptimalControl: hinfnorm2
 using Trapz: trapz
 using ..Control.Discrete: PIDParams

@@ -1,6 +1,6 @@
 module TestSim
 
-using Test, UnPack, Logging, StructTypes, JSON3
+using Test, Logging, StructTypes, JSON3
 
 using Flight.FlightCore
 using Flight.FlightLib

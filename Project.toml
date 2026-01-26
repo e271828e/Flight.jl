@@ -1,7 +1,7 @@
 name = "Flight"
 uuid = "e329eb8f-69f3-4234-a468-5e3889a58643"
-authors = ["Miguel Alonso <miguel883@gmail.com> and contributors"]
 version = "0.1.5"
+authors = ["Miguel Alonso <miguel883@gmail.com> and contributors"]
 
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
@@ -39,7 +39,6 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 Trapz = "592b5752-818d-11e9-1e9a-2b8ca4a44cd1"
-UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
 AbstractTrees = "0.4.5"
@@ -70,5 +69,4 @@ StaticArrays = "1.9.14"
 StructArrays = "0.7"
 StructTypes = "1.11.0"
 Trapz = "2.0.3"
-UnPack = "1.0.2"
 julia = "1.10"
