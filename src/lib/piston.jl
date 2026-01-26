@@ -36,7 +36,7 @@ p2δ(p) = (p/p_std) * (T_ISA(p)/T_std)^(-0.5)
 
 #inlet parameter from altitude, assuming ISA conditions
 function h2δ(h)
-    @unpack p, T = ISAData(HGeop(h))
+    (; p, T) = ISAData(HGeop(h))
     p / p_std / √(T / T_std)
 end
 
@@ -146,7 +146,7 @@ Modeling.S(::PistonEngine) = Ref(EngineState.off)
 
 function Modeling.init!(mdl::Model{<:PistonEngine})
     #set up friction constraint compensator
-    @unpack idle, frc = mdl.submodels
+    (; idle, frc) = mdl.submodels
 
     idle.parameters.k_p .= 4.0
     idle.parameters.k_i .= 2.0
@@ -161,9 +161,9 @@ end
 
 function Modeling.f_ode!(eng::Model{<:PistonEngine}, air_data::AirData)
 
-    @unpack ω_rated, ω_idle, P_rated, J, τ_start, lookup = eng.parameters
-    @unpack idle, frc = eng.submodels
-    @unpack start, stop, mixture_ctl, τ_load, J_load = eng.u
+    (; ω_rated, ω_idle, P_rated, J, τ_start, lookup) = eng.parameters
+    (; idle, frc) = eng.submodels
+    (; start, stop, mixture_ctl, τ_load, J_load) = eng.u
 
     throttle = Float64(eng.u.throttle)
     mixture = Float64(eng.u.mixture)
@@ -275,8 +275,8 @@ end
 
 function Modeling.f_step!(eng::Model{<:PistonEngine}, fuel_available::Bool = true)
 
-    @unpack idle, frc = eng.submodels
-    @unpack ω_stall, ω_idle = eng.parameters
+    (; idle, frc) = eng.submodels
+    (; ω_stall, ω_idle) = eng.parameters
 
     ω = eng.x.ω
 
@@ -459,8 +459,8 @@ using CImGui: CollapsingHeader, PushItemWidth, PopItemWidth, SameLine, Text,
 function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Engine")
 
-    @unpack u, y, parameters = mdl
-    @unpack idle, frc = mdl
+    (; u, y) = mdl
+    (; idle, frc) = mdl
 
     Begin(window_label, p_open)
 
@@ -488,8 +488,8 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
     end
 
     if CollapsingHeader("Data")
-        @unpack start, stop, state, throttle, MAP, mixture_ctl, mixture, mixture_pos,
-            f, ṁ, ω, τ_shaft, P_shaft, SFC = y
+        (; start, stop, state, throttle, MAP, mixture_ctl, mixture, mixture_pos,
+            f, ṁ, ω, τ_shaft, P_shaft, SFC) = y
 
         Text("Start: $start")
         Text("Stop: $stop")
@@ -550,9 +550,8 @@ end
 
 
 function Modeling.f_ode!(mdl::Model{<:PistonThruster}, air_data::AirData, kin_data::KinData)
-
-    @unpack engine, propeller = mdl
-    @unpack gear_ratio = mdl.parameters
+    (; engine, propeller) = mdl
+    (; gear_ratio) = mdl.parameters
 
     ω_eng = engine.x.ω
     ω_prop = gear_ratio * ω_eng
@@ -573,8 +572,7 @@ function Modeling.f_ode!(mdl::Model{<:PistonThruster}, air_data::AirData, kin_da
 end
 
 function Modeling.f_step!(mdl::Model{<:PistonThruster}, fuel_available::Bool = true)
-
-    @unpack engine, propeller = mdl
+    (; engine, propeller) = mdl
 
     f_step!(engine, fuel_available)
     f_step!(propeller)

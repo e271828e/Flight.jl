@@ -53,21 +53,21 @@ Modeling.U(::DirectSteering) = DirectSteeringU()
 Modeling.Y(::DirectSteering) = DirectSteeringY()
 
 function Modeling.f_ode!(mdl::Model{DirectSteering})
-    @unpack engaged, input = mdl.u
+    (; engaged, input) = mdl.u
     mdl.y = DirectSteeringY(; engaged, input)
 end
 
 @no_step DirectSteering
 
 function get_steering_angle(mdl::Model{DirectSteering}, ψ_v::Real)
-    @unpack engaged, input = mdl.y
+    (; engaged, input) = mdl.y
     ψ_sw = engaged ? Float64(input) * mdl.ψ_max : ψ_v
     return ψ_sw
 end
 
 function GUI.draw(mdl::Model{DirectSteering})
 
-    @unpack engaged, input = mdl.y
+    (; engaged, input) = mdl.y
     CImGui.Text("Engaged: $engaged")
     CImGui.Text("Steering Input: $(Float64(input))")
 end
@@ -160,7 +160,7 @@ struct FrictionCoefficients
 end
 
 function get_μ(fr::FrictionCoefficients, v::Real)
-    @unpack v_s, v_d, μ_s, μ_d = fr
+    (; v_s, v_d, μ_s, μ_d) = fr
     κ_sd = clamp((norm(v) - v_s) / (v_d - v_s), 0, 1)
     return κ_sd * μ_d + (1 - κ_sd) * μ_s
 end
@@ -218,8 +218,8 @@ function Modeling.f_ode!(mdl::Model{<:Strut},
                         terrain::Model{<:AbstractTerrain},
                         kin_data::KinData)
 
-    @unpack t_bs, l_0, damper = mdl.parameters
-    @unpack q_eb, q_nb, q_en, r_eb_e, v_eb_b, ω_eb_b = kin_data
+    (; t_bs, l_0, damper) = mdl.parameters
+    (; q_eb, q_nb, q_en, r_eb_e, v_eb_b, ω_eb_b) = kin_data
 
     q_bs = t_bs.q #body frame to strut frame rotation
     r_bs_b = t_bs.r #strut frame origin
@@ -318,7 +318,7 @@ end
 #sanity checks for crash detection
 function Modeling.f_step!(mdl::Model{<:Strut})
 
-    @unpack wow, α_ts, ξ_dot = mdl.y
+    (; wow, α_ts, ξ_dot) = mdl.y
 
     #we should not be hitting the ground at an angle larger than some threshold
     (wow && rad2deg(α_ts) > 60) && throw(GroundCrash(
@@ -367,7 +367,7 @@ end
 
 function GUI.draw(mdl::Model{<:Strut}, window_label::String = "Strut")
 
-    @unpack Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, v_ec_xy, trn_data = mdl.y
+    (; Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, v_ec_xy, trn_data) = mdl.y
 
         CImGui.Text(@sprintf("Height Above Ground: %.7f m", Δh))
         CImGui.Text("Weight on Wheel: $wow")
@@ -379,7 +379,7 @@ function GUI.draw(mdl::Model{<:Strut}, window_label::String = "Strut")
 
         if CImGui.TreeNode("Terrain Data")
 
-            @unpack elevation, normal, surface = trn_data
+            (; elevation, normal, surface) = trn_data
             CImGui.Text(@sprintf("Elevation (Orthometric): %.7f m", Float64(elevation)))
             CImGui.Text("Surface Type: $surface")
             GUI.draw(normal, "Surface Normal [NED]")
@@ -413,7 +413,7 @@ Modeling.Y(::Contact) = ContactY()
 
 function Modeling.init!(mdl::Model{Contact})
     #set up friction constraint compensator
-    @unpack k_p, k_i, k_l, bound_lo, bound_hi = mdl.frc.parameters
+    (; k_p, k_i, k_l, bound_lo, bound_hi) = mdl.frc.parameters
     k_p .= 5.0
     k_i .= 400.0
     k_l .= 0.2
@@ -425,7 +425,7 @@ function Modeling.f_ode!(mdl::Model{Contact},
                         strut::Model{<:Strut},
                         braking::Model{<:AbstractBraking})
 
-    @unpack wow, F_dmp_zs, t_sc, t_bc, v_ec_xy, trn_data = strut.y
+    (; wow, F_dmp_zs, t_sc, t_bc, v_ec_xy, trn_data) = strut.y
 
     frc = mdl.frc
     frc.u.input .= -v_ec_xy #if !wow, v_ec_xy = [0,0]
@@ -567,7 +567,7 @@ end
 
 function GUI.draw(mdl::Model{<:Contact}, window_label::String = "Contact")
 
-    @unpack μ_roll, μ_skid, μ_max, κ_br, ψ_cv, μ_eff, f_c, F_c, wr_b = mdl.y
+    (; μ_roll, μ_skid, μ_max, κ_br, ψ_cv, μ_eff, f_c, F_c, wr_b) = mdl.y
     frc = mdl.frc
 
         CImGui.Text(@sprintf("Rolling Friction Coefficient: %.7f", μ_roll))
@@ -603,7 +603,7 @@ function Modeling.f_ode!(mdl::Model{<:LandingGearUnit},
                         terrain::Model{<:AbstractTerrain},
                         kin_data::KinData)
 
-    @unpack strut, contact, steering, braking = mdl
+    (; strut, contact, steering, braking) = mdl
 
     f_ode!(steering)
     f_ode!(braking)
@@ -616,7 +616,7 @@ end
 
 function Modeling.f_step!(mdl::Model{<:LandingGearUnit})
 
-    @unpack strut, contact, steering, braking = mdl
+    (; strut, contact, steering, braking) = mdl
 
     f_step!(steering)
     f_step!(braking)
@@ -635,8 +635,6 @@ Dynamics.get_wr_b(mdl::Model{<:LandingGearUnit}) = mdl.y.contact.wr_b
 
 function GUI.draw(mdl::Model{<:LandingGearUnit}, p_open::Ref{Bool} = Ref(true),
                  window_label::String = "Landing Gear Unit")
-
-    @unpack steering, braking, strut = mdl
 
     CImGui.Begin(window_label, p_open)
         if CImGui.TreeNode("Strut")

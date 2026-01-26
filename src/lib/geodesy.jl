@@ -97,7 +97,7 @@ end
 LatLon(loc::Abstract2DLocation) = convert(LatLon, loc)
 
 function Base.convert(::Type{NVector}, loc::LatLon)
-    @unpack ϕ, λ = loc
+    (; ϕ, λ) = loc
     cos_ϕ = cos(ϕ)
     NVector(SVector{3,Float64}(cos_ϕ * cos(λ), cos_ϕ * sin(λ), sin(ϕ)), normalization = false)
 end
@@ -132,7 +132,7 @@ end
 
 #wander-azimuth from Abstract2DLocation
 function ltf(loc::Abstract2DLocation, ψ_nw::Real = 0.)
-    @unpack ϕ, λ = LatLon(loc)
+    (; ϕ, λ) = LatLon(loc)
     Rz(λ) ∘ Ry(-(ϕ + 0.5π)) ∘ Rz(ψ_nw)
 end
 

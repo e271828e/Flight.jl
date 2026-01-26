@@ -283,7 +283,7 @@ end
 
 function Coefficients(lookup::Lookup, J::Real, Mt::Real, Δβ::Real)
 
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = lookup
+    (; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p) = lookup
 
     Coefficients(   C_Fx = C_Fx(J, Mt, Δβ),
                     C_Mx = C_Mx(J, Mt, Δβ),
@@ -408,7 +408,7 @@ end
 
 function Modeling.f_ode!(mdl::Model{<:Propeller}, kin_data::KinData, air_data::AirData, ω::Real)
 
-    @unpack d, J_xx, t_bp, sense, lookup = mdl.parameters
+    (; d, J_xx, t_bp, sense, lookup) = mdl.parameters
     #this may actually happen due to friction constraint overshoot at low RPMs
     # @assert sign(ω) * Int(mdl.sense) >= 0 "Propeller turning in the wrong sense"
 
@@ -428,7 +428,7 @@ function Modeling.f_ode!(mdl::Model{<:Propeller}, kin_data::KinData, air_data::A
     Δβ = get_Δβ(mdl)
     coeffs = Coefficients(lookup, J, Mt, Δβ)
 
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = coeffs
+    (; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p) = coeffs
     C_Fy_β = C_Fz_α #by y/z symmetry
     C_My_β = C_Mz_α #by y/z symmetry
 
@@ -514,7 +514,7 @@ function plot_J_Δβ(lookup::Propellers.Lookup, Mt::Real = 0.0; plot_settings...
     data = [lookup(J, Mt, Δβ) for (J, Δβ) in Iterators.product(J, Δβ)]
     data = data |> StructArray |> StructArrays.components
 
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
+    (; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p) = data
 
     label = latexstring.("\$ \\Delta \\beta = " .* string.(rad2deg.(Δβ')) .* "\\degree \$")
     label_pos = [:bottomleft, :topleft, :bottomleft, :bottomleft, :topright, :topleft]
@@ -551,7 +551,7 @@ function plot_M_J(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
     data = [lookup(J, Mt, Δβ) for (Mt, J) in Iterators.product(Mt, J)]
     data = data |> StructArray |> StructArrays.components
 
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
+    (; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p) = data
 
     label = latexstring.("J = ".*string.(J'))
     label_pos = [:bottomleft, :topleft, :bottomleft, :bottomleft, :topright, :topleft]
@@ -575,7 +575,7 @@ end
 
 function plot_J_M(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
 
-    @unpack J_bounds, Mt_bounds, Δβ_bounds = lookup._data
+    (; J_bounds, Mt_bounds, Δβ_bounds) = lookup._data
 
     @assert Δβ_bounds[1] <= Δβ <= Δβ_bounds[2]
 
@@ -585,7 +585,7 @@ function plot_J_M(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
     data = [lookup(J, Mt, Δβ) for (J, Mt) in Iterators.product(J, Mt)]
     data = data |> StructArray |> StructArrays.components
 
-    @unpack C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p = data
+    (; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p) = data
 
     label = latexstring.("M_{tip} = ".*string.(Mt'))
     label_pos = [:bottomleft, :topleft, :bottomleft, :bottomleft, :topright, :topleft]
@@ -610,7 +610,7 @@ end
 function GUI.draw(mdl::Model{<:Propeller}, p_open::Ref{Bool} = Ref(true),
                     window_label::String = "Propeller")
 
-    @unpack ω, J, Mt, Δβ, wr_p, hr_p, P, η_p = mdl.y
+    (; ω, J, Mt, Δβ, wr_p, hr_p, P, η_p) = mdl.y
 
     CImGui.Begin(window_label, p_open)
 

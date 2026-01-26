@@ -29,7 +29,7 @@ function test_linearization()
 
     function test_system(ss)
 
-        @unpack ẋ0, x0, u0, y0, A, B, C, D = ss
+        (; ẋ0, x0, u0, y0, A, B, C, D) = ss
 
         mdl = Model(ss)
 

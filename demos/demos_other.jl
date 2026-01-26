@@ -102,11 +102,11 @@ function crosswind_landing(; gui::Bool = false,
 
         function(mdl::Model)
 
-            @unpack aircraft, atmosphere = mdl
-            @unpack vehicle, avionics = aircraft
-            @unpack gdc, ctl = avionics
-            @unpack seg = gdc
-            @unpack act, pwp = vehicle.systems
+            (; aircraft, atmosphere) = mdl
+            (; vehicle, avionics) = aircraft
+            (; gdc, ctl) = avionics
+            (; seg) = gdc
+            (; act) = vehicle.systems
 
             atmosphere.wind.u.E = 6
 
@@ -200,11 +200,11 @@ function traffic_pattern(; gui::Bool = false,
     user_callback! = let phase = Ref(:standby)
         function(mdl::Model)
 
-            @unpack aircraft, atmosphere = mdl
-            @unpack vehicle, avionics = aircraft
-            @unpack gdc, ctl = avionics
-            @unpack seg = gdc
-            @unpack act, pwp = vehicle.systems
+            (; aircraft) = mdl
+            (; vehicle, avionics) = aircraft
+            (; gdc, ctl) = avionics
+            (; seg) = gdc
+            (; act, pwp) = vehicle.systems
 
             t = mdl.t[]
 

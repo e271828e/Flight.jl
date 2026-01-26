@@ -56,9 +56,9 @@ Modeling.U(::PIVector{N}) where {N} = PIVectorU{N}()
 
 function Modeling.f_ode!(mdl::Model{<:PIVector{N}}) where {N}
 
-    @unpack ẋ, x, u, parameters = mdl
-    @unpack input, sat_ext = u
-    @unpack k_p, k_i, k_l, β_p, bound_lo, bound_hi = parameters
+    (; ẋ, x, u, parameters) = mdl
+    (; input, sat_ext) = u
+    (; k_p, k_i, k_l, β_p, bound_lo, bound_hi) = parameters
 
     input, sat_ext, k_p, k_i, k_l, β_p, bound_lo, bound_hi = map(SVector, (
     input, sat_ext, k_p, k_i, k_l, β_p, bound_lo, bound_hi))
@@ -173,8 +173,8 @@ end
 
 function GUI.draw(mdl::Model{<:PIVector{N}}, label::String = "PIVector{$N}") where {N}
 
-    @unpack k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext,
-            u_p, u_i, x_i, y_p, y_i, out_free, sat_out, output, int_halted = mdl.y
+    (; k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext,
+        u_p, u_i, x_i, y_p, y_i, out_free, sat_out, output, int_halted) = mdl.y
 
     # CImGui.Begin(label)
 
@@ -259,9 +259,9 @@ end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Integrator})
 
-    @unpack s, u, Δt, parameters = mdl
-    @unpack input, sat_ext = u
-    @unpack x0, sat_out_0 = s
+    (; s, u, Δt, parameters) = mdl
+    (; input, sat_ext) = u
+    (; x0, sat_out_0) = s
     bound_lo = parameters.bound_lo[]
     bound_hi = parameters.bound_hi[]
 
@@ -324,9 +324,9 @@ end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:IntegratorVector})
 
-    @unpack s, u, Δt, parameters = mdl
-    @unpack input, sat_ext = u
-    @unpack bound_lo, bound_hi = parameters
+    (; s, u, Δt, parameters) = mdl
+    (; input, sat_ext) = u
+    (; bound_lo, bound_hi) = parameters
 
     input, sat_ext, bound_lo, bound_hi = map(SVector, (
     input, sat_ext, bound_lo, bound_hi))
@@ -356,8 +356,8 @@ end
 function GUI.draw(mdl::Union{Model{<:Integrator}, Model{<:IntegratorVector}},
                     label::String = "Integrator")
 
-    @unpack x0, sat_out_0 = mdl.s
-    @unpack input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted = mdl.y
+    (; x0, sat_out_0) = mdl.s
+    (; input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted) = mdl.y
 
     # CImGui.Begin(label)
 
@@ -423,9 +423,9 @@ end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LeadLag})
 
-    @unpack parameters, s, u, Δt = mdl
-    @unpack u1 = u
-    @unpack u0, x0 = s
+    (; parameters, s, u, Δt) = mdl
+    (; u1) = u
+    (; u0, x0) = s
     z = parameters.z[]
     p = parameters.p[]
     k = parameters.k[]
@@ -449,7 +449,7 @@ end
 
 function GUI.draw(mdl::Model{<:LeadLag}, label::String = "Discrete Lead Compensator")
 
-    @unpack z, p, k, u1, y1 = mdl.y
+    (; z, p, k, u1, y1) = mdl.y
 
     # CImGui.Begin(label)
 
@@ -558,10 +558,10 @@ end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:PID})
 
-    @unpack parameters, u, s, Δt = mdl
-    @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi = parameters
-    @unpack input, sat_ext = u
-    @unpack x_i0, x_d0, sat_out_0 = s
+    (; parameters, u, s, Δt) = mdl
+    (; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi) = parameters
+    (; input, sat_ext) = u
+    (; x_i0, x_d0, sat_out_0) = s
 
     #extract parameter values from Refs
     k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi = map(r->getproperty(r, :x), (
@@ -663,10 +663,10 @@ end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:PIDVector{N}}) where {N}
 
-    @unpack parameters, s, u, Δt = mdl
-    @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi = parameters
-    @unpack x_i0, x_d0, sat_out_0 = s
-    @unpack input, sat_ext = u
+    (; parameters, s, u, Δt) = mdl
+    (; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi) = parameters
+    (; x_i0, x_d0, sat_out_0) = s
+    (; input, sat_ext) = u
 
     k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi = map(SVector, (
     k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi))
@@ -799,31 +799,31 @@ end
 function GUI.draw(mdl::Union{Model{<:PID}, Model{<:PIDVector}},
                             label::String = "Discrete PID")
 
-    @unpack k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext, u_p, u_i, u_d,
-            y_p, y_i, y_d, out_free, sat_out, output, int_halted = mdl.y
+    (; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
+        u_p, u_i, u_d, y_p, y_i, y_d, out_free, sat_out, output, int_halted) = mdl.y
 
     # CImGui.Begin(label)
 
-        CImGui.Text("Proportional Gain = $k_p")
-        CImGui.Text("Integral Gain = $k_i")
-        CImGui.Text("Derivative Gain = $k_d")
-        CImGui.Text("Derivative Filter Time Constant = $τ_f")
-        CImGui.Text("Proportional Input Weighting = $β_p")
-        CImGui.Text("Derivative Input Weighting = $β_d")
-        CImGui.Text("Lower Output Bound = $bound_lo")
-        CImGui.Text("Upper Output Bound = $bound_hi")
-        CImGui.Text("Input = $input")
-        CImGui.Text("External Saturation Input = $sat_ext")
-        CImGui.Text("Proportional Path Input = $u_p")
-        CImGui.Text("Proportional Path Output = $y_p")
-        CImGui.Text("Integral Path Input = $u_i")
-        CImGui.Text("Integral Path Output = $y_i")
-        CImGui.Text("Derivative Path Input = $u_d")
-        CImGui.Text("Derivative Path Output = $y_d")
-        CImGui.Text("Free Output = $out_free")
-        CImGui.Text("Actual Output = $output")
-        CImGui.Text("Output Saturation = $sat_out")
-        CImGui.Text("Integrator Halted = $int_halted")
+    CImGui.Text("Proportional Gain = $k_p")
+    CImGui.Text("Integral Gain = $k_i")
+    CImGui.Text("Derivative Gain = $k_d")
+    CImGui.Text("Derivative Filter Time Constant = $τ_f")
+    CImGui.Text("Proportional Input Weighting = $β_p")
+    CImGui.Text("Derivative Input Weighting = $β_d")
+    CImGui.Text("Lower Output Bound = $bound_lo")
+    CImGui.Text("Upper Output Bound = $bound_hi")
+    CImGui.Text("Input = $input")
+    CImGui.Text("External Saturation Input = $sat_ext")
+    CImGui.Text("Proportional Path Input = $u_p")
+    CImGui.Text("Proportional Path Output = $y_p")
+    CImGui.Text("Integral Path Input = $u_i")
+    CImGui.Text("Integral Path Output = $y_i")
+    CImGui.Text("Derivative Path Input = $u_d")
+    CImGui.Text("Derivative Path Output = $y_d")
+    CImGui.Text("Free Output = $out_free")
+    CImGui.Text("Actual Output = $output")
+    CImGui.Text("Output Saturation = $sat_out")
+    CImGui.Text("Integrator Halted = $int_halted")
 
     # CImGui.End()
 
@@ -925,10 +925,10 @@ end
 
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LQR})
 
-    @unpack parameters, s, u, Δt = mdl
-    @unpack K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim, bound_lo, bound_hi = parameters
-    @unpack int_out_0, out_sat_0 = s
-    @unpack sat_ext, z_ref, z, x = u
+    (; parameters, s, u, Δt) = mdl
+    (; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim, bound_lo, bound_hi) = parameters
+    (; int_out_0, out_sat_0) = s
+    (; sat_ext, z_ref, z, x) = u
 
     K_fbk, K_fwd, K_int = map(SMatrix, (
     K_fbk, K_fwd, K_int))
@@ -962,28 +962,28 @@ end
 
 function GUI.draw(mdl::Model{<:LQR})
 
-    @unpack K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim, bound_lo, bound_hi,
-            sat_ext, z_ref, z, x, int_in, int_halted, int_out,
-            out_free, out_sat, output = mdl.y
+    (; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim, bound_lo, bound_hi,
+        sat_ext, z_ref, z, x, int_in, int_halted, int_out,
+        out_free, out_sat, output) = mdl.y
 
-        CImGui.Text("Feedback Gain = $K_fbk")
-        CImGui.Text("Forward Gain = $K_fwd")
-        CImGui.Text("Integral Gain = $K_int")
-        CImGui.Text("Trim State Vector = $x_trim")
-        CImGui.Text("Trim Control Vector = $u_trim")
-        CImGui.Text("Trim Command Vector = $z_trim")
-        CImGui.Text("Lower Output Bound = $bound_lo")
-        CImGui.Text("Upper Output Bound = $bound_hi")
-        CImGui.Text("External Saturation Input = $sat_ext")
-        CImGui.Text("Reference Command Vector = $z_ref")
-        CImGui.Text("Current Command Vector = $z")
-        CImGui.Text("Current State Vector = $x")
-        CImGui.Text("Integrator Input = $int_in")
-        CImGui.Text("Integrator Halted = $int_halted")
-        CImGui.Text("Integrator Output = $int_out")
-        CImGui.Text("Free Output = $out_free")
-        CImGui.Text("Output Saturation = $out_sat")
-        CImGui.Text("Actual Output = $output")
+    CImGui.Text("Feedback Gain = $K_fbk")
+    CImGui.Text("Forward Gain = $K_fwd")
+    CImGui.Text("Integral Gain = $K_int")
+    CImGui.Text("Trim State Vector = $x_trim")
+    CImGui.Text("Trim Control Vector = $u_trim")
+    CImGui.Text("Trim Command Vector = $z_trim")
+    CImGui.Text("Lower Output Bound = $bound_lo")
+    CImGui.Text("Upper Output Bound = $bound_hi")
+    CImGui.Text("External Saturation Input = $sat_ext")
+    CImGui.Text("Reference Command Vector = $z_ref")
+    CImGui.Text("Current Command Vector = $z")
+    CImGui.Text("Current State Vector = $x")
+    CImGui.Text("Integrator Input = $int_in")
+    CImGui.Text("Integrator Halted = $int_halted")
+    CImGui.Text("Integrator Output = $int_out")
+    CImGui.Text("Free Output = $out_free")
+    CImGui.Text("Output Saturation = $out_sat")
+    CImGui.Text("Actual Output = $output")
 
 end #function
 
@@ -1016,7 +1016,7 @@ const LQRPoint = LQRParams{CB, CF, CI, X, U, Z} where {
 
 
 function assign!(mdl::Model{<:PID}, point::PIDPoint)
-    @unpack k_p, k_i, k_d, τ_f = point
+    (; k_p, k_i, k_d, τ_f) = point
     mdl.parameters.k_p[] = k_p
     mdl.parameters.k_i[] = k_i
     mdl.parameters.k_d[] = k_d
@@ -1024,7 +1024,7 @@ function assign!(mdl::Model{<:PID}, point::PIDPoint)
 end
 
 function assign!(mdl::Model{<:LQR}, point::LQRPoint)
-    @unpack K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim = point
+    (; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim) = point
     mdl.parameters.K_fbk .= K_fbk
     mdl.parameters.K_fwd .= K_fwd
     mdl.parameters.K_int .= K_int
@@ -1158,7 +1158,7 @@ function build_lookup_pid(params::PIDData{N}, bounds::LookupBounds{N}) where {N}
         return (mode = mode, scaling = scaling)
     end |> collect |> StructArray
 
-    @unpack mode, scaling = itp_args
+    (; mode, scaling) = itp_args
     interps = [extrapolate(scale(interpolate(getproperty(params, p), tuple(mode...)), scaling...), Flat())
                 for p in propertynames(params)]
 
@@ -1180,7 +1180,7 @@ function build_lookup_lqr(params::LQRData{N}, bounds::LookupBounds{N}) where {N}
         return (mode = mode, scaling = scaling)
     end |> collect |> StructArray
 
-    @unpack mode, scaling = itp_args
+    (; mode, scaling) = itp_args
     interps = [extrapolate(scale(interpolate(getproperty(params, p), tuple(mode...)), scaling...), Flat())
                 for p in propertynames(params)]
 
@@ -1194,7 +1194,7 @@ build_lookup_lqr(fname::String) = build_lookup_lqr(load_data_lqr(fname)...)
 
 
 function (lookup::PIDLookup)(args::Vararg{Real, N}) where {N}
-    @unpack k_p, k_i, k_d, τ_f = lookup
+    (; k_p, k_i, k_d, τ_f) = lookup
     PIDParams(; k_p = k_p(args...),
                 k_i = k_i(args...),
                 k_d = k_d(args...),
@@ -1203,7 +1203,7 @@ function (lookup::PIDLookup)(args::Vararg{Real, N}) where {N}
 end
 
 function (lookup::LQRLookup)(args::Vararg{Real, N}) where {N}
-    @unpack K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim = lookup
+    (; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim) = lookup
     LQRParams(;
         K_fbk = K_fbk(args...),
         K_fwd = K_fwd(args...),
@@ -1252,7 +1252,7 @@ end
 end
 
 function build_PID(params::PIDParams{<:Real})
-    @unpack k_p, k_i, k_d, τ_f = params
+    (; k_p, k_i, k_d, τ_f) = params
     (k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])) |> ss
 end
 
@@ -1352,7 +1352,7 @@ end
 
 function check_results(results::Results, thresholds::Metrics{Float64})
 
-    @unpack exit_flag, metrics = results
+    (; exit_flag, metrics) = results
 
     success = true
     if !((exit_flag === :ROUNDOFF_LIMITED) | (exit_flag === :STOPVAL_REACHED))

@@ -219,8 +219,8 @@ EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
 function AirData(atm_data::AtmosphericData = AtmosphericData(),
                     kin_data::KinData = KinData())
 
-    @unpack v_eb_b, q_nb = kin_data
-    @unpack T, p, ρ, a, μ, v  = atm_data
+    (; v_eb_b, q_nb) = kin_data
+    (; T, p, ρ, a, μ, v) = atm_data
 
     v_ew_n = v #ECEF-relative wind velocity, NED axes
     v_ew_b = q_nb'(v_ew_n)
@@ -268,7 +268,7 @@ end
 function AtmosphericData(mdl::Model{<:SimpleAtmosphere},
                         pos::Abstract3DPosition)
 
-    @unpack T, p = ISAData(HGeop(pos), ISAData(mdl.sl, NVector(pos)))
+    (; T, p) = ISAData(HGeop(pos), ISAData(mdl.sl, NVector(pos)))
     ρ = density(p, T)
     a = speed_of_sound(T)
     μ = dynamic_viscosity(T)
@@ -277,7 +277,7 @@ function AtmosphericData(mdl::Model{<:SimpleAtmosphere},
 end
 
 function AirData(mdl::Model{<:SimpleAtmosphere}, kin_data::KinData)
-    @unpack n_e, h_o = kin_data
+    (; n_e, h_o) = kin_data
     AirData(AtmosphericData(mdl, Geographic(n_e, h_o)), kin_data)
 end
 
@@ -453,7 +453,7 @@ end
 function GUI.draw(air::AirData, p_open::Ref{Bool} = Ref(true),
                 label::String = "Airflow Data")
 
-    @unpack v_ew_n, v_ew_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS = air
+    (; v_ew_n, v_ew_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS) = air
 
     CImGui.Begin(label, p_open)
 

@@ -226,8 +226,11 @@ function Modeling.init!(cmp::Model{<:Systems}, init::C172.SystemsInitializer)
 
     (; m_pilot, m_copilot, m_lpass, m_rpass, m_baggage) = payload
 
-    #assign payload
-    @pack! pld.u = m_pilot, m_copilot, m_lpass, m_rpass, m_baggage
+    pld.u.m_pilot = m_pilot
+    pld.u.m_copilot = m_copilot
+    pld.u.m_lpass = m_lpass
+    pld.u.m_rpass = m_rpass
+    pld.u.m_baggage = m_baggage
 
     pwp.engine.u.mixture = mixture
     pwp.engine.u.mixture_ctl = mixture_ctl
@@ -472,9 +475,13 @@ function AircraftBase.assign_x_ss!(vehicle::Model{<:C172X.Vehicle{NED}}, x::Abst
     x_dyn = vehicle.x.dynamics
     x_sys = vehicle.x.systems
 
-    ψ_nb, θ_nb, φ_nb, h_e = ψ, θ, φ, h
+    x_kin.ψ_nb = ψ
+    x_kin.θ_nb = θ
+    x_kin.φ_nb = φ
+    x_kin.ϕ = ϕ
+    x_kin.λ = λ
+    x_kin.h_e = h
 
-    @pack! x_kin = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
     x_dyn.ω_eb_b .= p, q, r
     x_dyn.v_eb_b .= v_x, v_y, v_z
     x_sys.aero .= α_filt, β_filt

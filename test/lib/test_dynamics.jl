@@ -26,7 +26,7 @@ function test_dynamics()
             v_eb_n = [100, 0, 0])
 
         kin_data = KinData(kin_init)
-        @unpack q_eb, r_eb_e, q_nb = kin_data
+        (; q_eb, r_eb_e, q_nb) = kin_data
 
         #set up a rigid body distribution with unit mass and unit inertia tensor
         #at its center of mass c
@@ -37,7 +37,8 @@ function test_dynamics()
             #start with Ob=Oc
             dyn.u.mp_Σ_b = mp_Σ_c
             dyn.u.wr_Σ_b = Wrench(F = [1, 2, 1])
-            @pack! dyn.u = q_eb, r_eb_e
+            dyn.u.q_eb = q_eb
+            dyn.u.r_eb_e = r_eb_e
 
             f_ode!(dyn)
             @test all(dyn.ẋ.ω_eb_b .≈ 0)
@@ -51,7 +52,8 @@ function test_dynamics()
 
             dyn.u.mp_Σ_b = t_bc(mp_Σ_c)
             dyn.u.wr_Σ_b = Wrench(F = [0, 0, 1], τ = zeros(3))
-            @pack! dyn.u = q_eb, r_eb_e
+            dyn.u.q_eb = q_eb
+            dyn.u.r_eb_e = r_eb_e
 
             #expect a positive unit angular acceleration around y_b
             f_ode!(dyn)

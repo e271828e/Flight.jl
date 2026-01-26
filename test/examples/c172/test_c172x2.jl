@@ -58,7 +58,7 @@ function test_c172x2(; alloc::Bool = true)
             world = SimpleWorld(Cessna172Xv2(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
 
             aircraft = world.aircraft
-            @unpack ctl, gdc = aircraft.avionics
+            (; ctl, gdc) = aircraft.avionics
             e_thr = gdc.seg.parameters.e_thr
 
             init_air = C172.TrimParameters(; ψ_nb = 0)
@@ -88,7 +88,7 @@ function test_c172x2(; alloc::Bool = true)
             init!(sim, init_air)
 
             kin_data = y_kin(aircraft)
-            @unpack n_e, h_e, χ_gnd = kin_data
+            (; n_e, h_e, χ_gnd) = kin_data
             Ob = Geographic(n_e, h_e)
             χ_ac = χ_gnd
             Δh = 100

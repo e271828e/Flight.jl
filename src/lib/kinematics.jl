@@ -64,7 +64,7 @@ end
 
 function KinData(ic::KinInit = KinInit())
 
-    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n = ic
+    (; q_nb, n_e, h_e, ω_wb_b, v_eb_n) = ic
 
     Ob = Geographic(n_e, h_e)
     e_nb = REuler(q_nb)
@@ -154,8 +154,8 @@ Modeling.X(::WA) = ComponentVector(
 
 function Modeling.init!(mdl::Model{WA}, ic::Initializer = Initializer())
 
-    @unpack x, u = mdl
-    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n = ic
+    (; x, u) = mdl
+    (; q_nb, n_e, h_e, ω_wb_b, v_eb_n) = ic
 
     Ob = Geographic(n_e, h_e)
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
@@ -180,7 +180,7 @@ end
 
 function Modeling.f_ode!(mdl::Model{WA})
 
-    @unpack ẋ, x, u = mdl
+    (; ẋ, x, u) = mdl
 
     q_wb = RQuat(x.q_wb, normalization = false)
     q_ew = RQuat(x.q_ew, normalization = false)
@@ -254,8 +254,8 @@ Modeling.X(::ECEF) = ComponentVector(
 
 function Modeling.init!(mdl::Model{ECEF}, ic::Initializer = Initializer())
 
-    @unpack x, u = mdl
-    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n = ic
+    (; x, u) = mdl
+    (; q_nb, n_e, h_e, ω_wb_b, v_eb_n) = ic
 
     Ob = Geographic(n_e, h_e)
 
@@ -280,7 +280,7 @@ end
 
 function Modeling.f_ode!(mdl::Model{ECEF})
 
-    @unpack ẋ, x, u = mdl
+    (; ẋ, x, u) = mdl
 
     q_eb = RQuat(x.q_eb, normalization = false)
     n_e = NVector(x.n_e, normalization = false)
@@ -334,8 +334,8 @@ Modeling.X(::NED) = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
 
 function Modeling.init!(mdl::Model{NED}, ic::Initializer = Initializer())
 
-    @unpack x, u = mdl
-    @unpack q_nb, n_e, h_e, ω_wb_b, v_eb_n = ic
+    (; x, u) = mdl
+    (; q_nb, n_e, h_e, ω_wb_b, v_eb_n) = ic
 
     Ob = Geographic(n_e, h_e)
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
@@ -362,7 +362,7 @@ end
 
 function Modeling.f_ode!(mdl::Model{NED})
 
-    @unpack ẋ, x, u = mdl
+    (; ẋ, x, u) = mdl
 
     e_nb = REuler(x.ψ_nb, x.θ_nb, x.φ_nb)
     ϕ_λ = LatLon(x.ϕ, x.λ)
@@ -611,7 +611,7 @@ GUI.draw(dyn::Model{<:AbstractKinematicDescriptor}) = GUI.draw(KinData(dyn))
 function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
                     label::String = "Kinematic Data")
 
-    @unpack e_nb, ϕ_λ, h_e, h_o, ω_wb_b, ω_eb_b, v_eb_b, v_eb_n  = data
+    (; e_nb, ϕ_λ, h_e, h_o, ω_wb_b, ω_eb_b, v_eb_b, v_eb_n) = data
 
     CImGui.Begin(label, p_open)
 
@@ -630,7 +630,7 @@ function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
 
     if CImGui.TreeNode("Attitude (Body / NED)")
 
-        @unpack ψ, θ, φ = e_nb
+        (; ψ, θ, φ) = e_nb
         CImGui.Text(@sprintf("Heading: %.7f deg", rad2deg(ψ)))
         CImGui.Text(@sprintf("Inclination: %.7f deg", rad2deg(θ)))
         CImGui.Text(@sprintf("Bank: %.7f deg", rad2deg(φ)))
@@ -640,7 +640,7 @@ function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
 
     if CImGui.TreeNode("Position (O / ECEF)")
 
-        @unpack ϕ, λ = ϕ_λ
+        (; ϕ, λ) = ϕ_λ
         CImGui.Text(@sprintf("Latitude: %.7f deg", rad2deg(ϕ)))
         CImGui.Text(@sprintf("Longitude: %.7f deg", rad2deg(λ)))
         CImGui.Text(@sprintf("Altitude (Ellipsoidal): %.7f m", Float64(h_e)))
@@ -659,7 +659,7 @@ end
 
 function Network.XPlanePose(kin_data::KinData)
 
-    @unpack ϕ_λ, e_nb, h_o = kin_data
+    (; ϕ_λ, e_nb, h_o) = kin_data
 
     ϕ = rad2deg(ϕ_λ.ϕ)
     λ = rad2deg(ϕ_λ.λ)

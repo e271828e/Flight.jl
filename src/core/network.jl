@@ -32,7 +32,7 @@ end
 
 function IODevices.init!(device::UDPInput)
     device.socket = UDPSocket() #create a new socket on each initialization
-    @unpack socket, address, port = device
+    (; socket, address, port) = device
     if !bind(socket, address, port; reuseaddr=true)
         @error( "Failed to bind socket to address $address, port $port")
     end
@@ -73,7 +73,7 @@ function IODevices.shutdown!(device::UDPOutput)
 end
 
 function IODevices.handle_data!(device::UDPOutput, data::String)
-    @unpack socket, address, port = device
+    (; socket, address, port) = device
     # @info "UDPOutput: Sending $(length(data)) bytes"
     # @info "UDPOutput: Sending $data"
     !isempty(data) && send(socket, address, port, data)
@@ -174,7 +174,7 @@ end
 #construct the UDP message to set aircraft position and attitude
 function xpmsg_set_pose(pose::XPlanePose)
 
-    @unpack ϕ, λ, h, ψ, θ, φ = pose
+    (; ϕ, λ, h, ψ, θ, φ) = pose
     aircraft = Int32(0) #aircraft index, we only support one for now
 
     buffer = IOBuffer()

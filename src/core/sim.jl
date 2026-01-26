@@ -49,7 +49,7 @@ function GUI.draw!(control::SimControl)
         control.pace = safe_slider("Pace", control.pace, 0.1, 20.0, "%.3f",
         ImGuiSliderFlags_Logarithmic)
 
-        @unpack algorithm, t_start, t_end, Δt, dt, iter, t, τ = control
+        (; algorithm, t_start, t_end, Δt, dt, iter, t, τ) = control
 
         CImGui.Text("Algorithm: " * algorithm)
         CImGui.Text("Continuous step size: $dt")
@@ -92,7 +92,7 @@ const SimGUI{D} = SimInterface{D} where {D <: Renderer}
 #Simulation loop is currently stepping
 function update!(interface::SimInput)
 
-    @unpack device, mdl, mapping, control, io_lock = interface
+    (; device, mdl, mapping, control, io_lock) = interface
     data = IODevices.get_data!(device)
 
     #the data we got from the InputDevice might be something we're not able to
@@ -114,7 +114,7 @@ end
 #Simulation loop is currently stepping
 function update!(interface::SimOutput)
 
-    @unpack device, mdl, mapping, io_lock = interface
+    (; device, mdl, mapping, io_lock) = interface
 
     lock(io_lock)
         #this call should never block and always return some usable output
@@ -127,7 +127,7 @@ end
 
 function update!(gui::SimGUI)
 
-    @unpack device, io_lock = gui
+    (; device, io_lock) = gui
 
     #the GUI may modify the Model or SimControl, so we need to grab io_lock
     @lock io_lock GUI.render!(device)
@@ -302,7 +302,7 @@ end
 #wrapper around the root Model's continuous dynamics function
 function f_ode_wrapper!(u̇, u, p, t)
 
-    @unpack mdl = p
+    (; mdl) = p
 
     #assign current integrator solution to Model's continuous state
     has_x(mdl) && (mdl.x .= u)
@@ -319,8 +319,8 @@ end
 #DiscreteCallback wrapper around the root Model's post-integration step function
 function f_cb_step!(integrator)
 
-    @unpack u, p = integrator
-    @unpack mdl = p
+    (; u, p) = integrator
+    (; mdl) = p
 
     f_step!(mdl) #potentially modifies x, u, s or y
 
@@ -332,8 +332,8 @@ end
 #DiscreteCallback wrapper around the user-defined post-integration step callback
 function f_cb_user!(integrator)
 
-    @unpack u, p = integrator
-    @unpack mdl, user_callback! = p
+    (; u, p) = integrator
+    (; mdl, user_callback!) = p
 
     user_callback!(mdl) #potentially modifies x, u, s or y
 
@@ -345,8 +345,8 @@ end
 #PeriodicCallback wrapper around the root Model's periodic update function
 function f_cb_periodic!(integrator)
 
-    @unpack u, p = integrator
-    @unpack mdl = p
+    (; u, p) = integrator
+    (; mdl) = p
 
     f_periodic!(mdl) #call scheduled periodic update, potentially updates mdl.s and mdl.y
 
@@ -370,7 +370,7 @@ OrdinaryDiffEq.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator
 
 function Modeling.init!(sim::Simulation, init_args...; init_kwargs...)
 
-    @unpack mdl, integrator, log = sim
+    (; mdl, integrator, log) = sim
 
     #drop the log entries from the last run
     resize!(log.t, 0)
@@ -413,7 +413,7 @@ end
 
 function start!(interface::SimInterface{D}) where {D <: IODevice}
 
-    @unpack device, control, io_start, io_lock, should_abort = interface
+    (; device, control, io_start, io_lock, should_abort) = interface
 
     @info("$D: Starting on thread $(Threads.threadid())...")
 
@@ -467,7 +467,7 @@ end
 
 function start!(sim::Simulation)
 
-    @unpack mdl, integrator, gui, control, io_start, io_lock, interfaces = sim
+    (; mdl, integrator, control, io_start, io_lock) = sim
 
     try
 
@@ -502,14 +502,13 @@ function start!(sim::Simulation)
             while sim.t[] < t_end
 
                 lock(io_lock)
-                    @unpack running, paused, pace = control
                     control.dt = integrator.dt
                     control.iter = integrator.iter
                     control.t = sim.t[]
                     control.τ = τ()
                 unlock(io_lock)
 
-                if !running
+                if !control.running
                     @info("Simulation: Aborted at t = $(sim.t[])")
                     break
                 end
@@ -520,7 +519,7 @@ function start!(sim::Simulation)
                 end
 
                 #compute wall-clock time at the end of next simulation step
-                τ_next = τ_last + get_proposed_dt(sim) / pace
+                τ_next = τ_last + get_proposed_dt(sim) / control.pace
 
                 #update simulation
                 @lock io_lock step!(sim)
@@ -554,7 +553,7 @@ end
 
 function sim_cleanup!(sim::Simulation)
 
-    @unpack control, io_start, io_lock = sim
+    (; control, io_start, io_lock) = sim
 
     #if the simulation ran to conclusion, signal IO threads to shut down
     @lock io_lock begin

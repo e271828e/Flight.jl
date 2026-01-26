@@ -440,8 +440,8 @@ Modeling.Y(::VehicleDynamics) = DynamicsData()
 
 function Modeling.f_ode!(mdl::Model{VehicleDynamics})
 
-    @unpack x, ẋ, u = mdl
-    @unpack mp_Σ_b, wr_Σ_b, ho_Σ_b, q_eb, r_eb_e = u
+    (; x, ẋ, u) = mdl
+    (; mp_Σ_b, wr_Σ_b, ho_Σ_b, q_eb, r_eb_e) = u
 
     ω_eb_b = SVector{3, Float64}(x.ω_eb_b) #also available as kin_data.ω_eb_b
     v_eb_b = SVector{3, Float64}(x.v_eb_b) #also available as kin_data.v_eb_b
@@ -639,7 +639,7 @@ end
 
 function GUI.draw(wr::Wrench, label::String)
 
-    @unpack F, τ = wr
+    (; F, τ) = wr
     if CImGui.TreeNode(label)
         GUI.draw(F, "Force", "N")
         GUI.draw(τ, "Torque", "N*m")
@@ -653,9 +653,8 @@ GUI.draw(dyn::Model{VehicleDynamics}) = GUI.draw(dyn.y)
 function GUI.draw(dyn::DynamicsData, p_open::Ref{Bool} = Ref(true),
                     label::String = "Vehicle Dynamics")
 
-    @unpack wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b,
-            a_ec_c, a_ic_c, g_c_c, γ_c_c, f_c_c, ω̇_eb_b, α_ib_b,
-            a_eb_b, a_ib_b = dyn
+    (; wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b,
+        a_ec_c, a_ic_c, g_c_c, γ_c_c, f_c_c, ω̇_eb_b, α_ib_b, a_eb_b, a_ib_b) = dyn
 
     CImGui.Begin(label, p_open)
 

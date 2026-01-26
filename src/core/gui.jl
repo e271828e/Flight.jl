@@ -64,7 +64,7 @@ end
 
 function IODevices.init!(renderer::Renderer)
 
-    @unpack label, monitor_pref, font_size, sync = renderer
+    (; label, monitor_pref, font_size, sync) = renderer
 
     # setup Dear ImGui context
     _ctx = CImGui.CreateContext()
@@ -154,7 +154,7 @@ end
 
 function render!(renderer::Renderer)
 
-    @unpack f_draw, _initialized, _window = renderer
+    (; f_draw, _initialized, _window) = renderer
 
     @assert _initialized "Renderer not initialized, call init! before update!"
 

@@ -108,7 +108,7 @@ function test_landing_gear_unit()
             strut = Strut(l_0 = 1.0, damper = SimpleDamper(k_s = 25000, k_d_ext = 1000, k_d_cmp = 1000)),
             contact = Contact()) |> Model
 
-        @unpack steering, braking, strut, contact = ldg
+        (; steering, braking, strut, contact) = ldg
 
         @test length(contact.x) == 2
 

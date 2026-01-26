@@ -166,8 +166,8 @@ Modeling.Y(lss::LinearizedSS) = SVector{length(lss.y0)}(lss.y0)
 
 function Modeling.f_ode!(mdl::Model{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, LY}
 
-    @unpack ẋ, x, u, y, parameters = mdl
-    @unpack ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache = parameters
+    (; ẋ, x, u, y, parameters) = mdl
+    (; ẋ0, x0, u0, y0, A, B, C, D, x_cache, y_cache, y_cache_out, Δx_cache, Δu_cache) = parameters
 
     #non-allocating equivalent of:
     #ẋ = ẋ0 + A * (x - x0) + B * (u - u0)
@@ -231,7 +231,7 @@ function subsystem(nss::RobustAndOptimalControl.NamedStateSpace;
 end
 
 function LinearizedSS(mdl::ControlSystemsBase.StateSpace{ControlSystemsBase.Continuous, <:AbstractFloat})
-    @unpack A, B, C, D, nx, nu, ny = mdl
+    (; A, B, C, D, nx, nu, ny) = mdl
     ẋ0 = zeros(nx); x0 = zeros(nx); u0 = zeros(nu); y0 = zeros(ny)
     LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 end

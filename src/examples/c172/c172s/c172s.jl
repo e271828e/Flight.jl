@@ -174,8 +174,11 @@ function Modeling.init!(sys::Model{<:Systems}, init::C172.SystemsInitializer)
 
     (; m_pilot, m_copilot, m_lpass, m_rpass, m_baggage) = payload
 
-    #assign payload
-    @pack! pld.u = m_pilot, m_copilot, m_lpass, m_rpass, m_baggage
+    pld.u.m_pilot = m_pilot
+    pld.u.m_copilot = m_copilot
+    pld.u.m_lpass = m_lpass
+    pld.u.m_rpass = m_rpass
+    pld.u.m_baggage = m_baggage
 
     pwp.engine.u.throttle = throttle
     pwp.engine.u.mixture = mixture
@@ -372,9 +375,14 @@ AircraftBase.get_y_ss(vehicle::Model{<:C172S.Vehicle{NED}}) = YStateSpace(vehicl
 
 function AircraftBase.assign_u_ss!(vehicle::Model{<:C172S.Vehicle{NED}}, u::AbstractVector{Float64})
 
-    (; throttle, aileron, elevator, rudder) = UStateSpace(u)
-    @pack! vehicle.systems.act.u = aileron, elevator, rudder
-    @pack! vehicle.systems.pwp.engine.u = throttle
+    u_ss = UStateSpace(u)
+
+    u_act = vehicle.systems.act.u
+    u_eng = vehicle.systems.pwp.engine.u
+    u_act.aileron = u_ss.aileron
+    u_act.elevator = u_ss.elevator
+    u_act.rudder = u_ss.rudder
+    u_eng.throttle = u_ss.throttle
 
 end
 
@@ -382,18 +390,23 @@ function AircraftBase.assign_x_ss!(vehicle::Model{<:C172S.Vehicle{NED}}, x::Abst
 
     (; p, q, r, ψ, θ, φ, v_x, v_y, v_z, ϕ, λ, h, α_filt, β_filt, ω_eng, fuel) = XStateSpace(x)
 
-    x_kinematics = vehicle.x.kinematics
-    x_dynamics = vehicle.x.dynamics
-    x_systems = vehicle.x.systems
+    x_kin = vehicle.x.kinematics
+    x_dyn = vehicle.x.dynamics
+    x_sys = vehicle.x.systems
 
-    ψ_nb, θ_nb, φ_nb, h_e = ψ, θ, φ, h
+    x_kin.ψ_nb = ψ
+    x_kin.θ_nb = θ
+    x_kin.φ_nb = φ
+    x_kin.ϕ = ϕ
+    x_kin.λ = λ
+    x_kin.h_e = h
 
-    @pack! x_kinematics = ψ_nb, θ_nb, φ_nb, ϕ, λ, h_e
-    x_dynamics.ω_eb_b .= p, q, r
-    x_dynamics.v_eb_b .= v_x, v_y, v_z
-    x_systems.aero .= α_filt, β_filt
-    x_systems.pwp.engine.ω = ω_eng
-    x_systems.fuel .= fuel
+    x_dyn.ω_eb_b .= p, q, r
+    x_dyn.v_eb_b .= v_x, v_y, v_z
+
+    x_sys.aero .= α_filt, β_filt
+    x_sys.pwp.engine.ω = ω_eng
+    x_sys.fuel .= fuel
 
 end
 

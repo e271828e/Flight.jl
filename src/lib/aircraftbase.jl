@@ -156,11 +156,11 @@ function Modeling.f_ode!(vehicle::Model{<:Vehicle},
     f_ode!(systems, terrain, kin_data, airflow_data)
 
     #update vehicle dynamics
-    mp_Σ_b = get_mp_b(systems)
-    wr_Σ_b = get_wr_b(systems)
-    ho_Σ_b = get_hr_b(systems)
-    (; q_eb, r_eb_e) = kin_data
-    @pack! dynamics.u = mp_Σ_b, wr_Σ_b, ho_Σ_b, q_eb, r_eb_e
+    dynamics.u.mp_Σ_b = get_mp_b(systems)
+    dynamics.u.wr_Σ_b = get_wr_b(systems)
+    dynamics.u.ho_Σ_b = get_hr_b(systems)
+    dynamics.u.q_eb = kin_data.q_eb
+    dynamics.u.r_eb_e = kin_data.r_eb_e
 
     f_ode!(dynamics)
 

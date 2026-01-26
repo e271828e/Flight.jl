@@ -24,7 +24,7 @@ abstract type AbstractWorld <: ModelDefinition end
 end
 
 function Modeling.f_ode!(world::Model{<:SimpleWorld})
-    @unpack aircraft, atmosphere, terrain = world
+    (; aircraft, atmosphere, terrain) = world
     f_ode!(atmosphere)
     f_ode!(terrain)
     f_ode!(aircraft, atmosphere, terrain)
@@ -32,14 +32,14 @@ function Modeling.f_ode!(world::Model{<:SimpleWorld})
 end
 
 function Modeling.f_step!(world::Model{<:SimpleWorld})
-    @unpack aircraft, atmosphere, terrain = world
+    (; aircraft, atmosphere, terrain) = world
     f_step!(atmosphere)
     f_step!(terrain)
     f_step!(aircraft, atmosphere, terrain)
 end
 
 function Modeling.f_periodic!(::NoScheduling, world::Model{<:SimpleWorld})
-    @unpack aircraft, atmosphere, terrain = world
+    (; aircraft, atmosphere, terrain) = world
     f_periodic!(atmosphere)
     f_periodic!(terrain)
     f_periodic!(aircraft, atmosphere, terrain)
@@ -49,7 +49,7 @@ end
 function Modeling.init!( world::Model{<:SimpleWorld},
                         init::Union{<:AircraftBase.VehicleInitializer,
                                     <:AircraftBase.AbstractTrimParameters})
-    @unpack aircraft, atmosphere, terrain = world
+    (; aircraft, atmosphere, terrain) = world
     Modeling.init!(atmosphere)
     Modeling.init!(terrain)
     Modeling.init!(aircraft, init, atmosphere, terrain)

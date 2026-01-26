@@ -95,7 +95,7 @@ end
 
 function GUI.draw(mdl::Model{TestSystem}, label::String = "TestSystem")
 
-    @unpack input = mdl.y
+    (; input) = mdl.y
 
     CImGui.Begin(label)
 
