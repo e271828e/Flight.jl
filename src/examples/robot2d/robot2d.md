@@ -1,8 +1,8 @@
 ## Problem Statement
 
 The figure shows a simplified 2D model for a Segway-like self-balancing vehicle. The model consists
-of two rigid bodies and a DC motor. The Main Body (1) represents the vehicle's chassis, to which the
-motor's casing is attached. The Rolling Body (2) comprises the motor's rotor, the axle and the
+of two rigid bodies and a DC motor. The main body (1) represents the vehicle's chassis, to which the
+motor's casing is attached. The rolling body (2) comprises the motor's rotor, the axle and the
 wheels.
 
 The system's motion with respect to an inertial reference frame (i) is described by the following kinematic variables:
@@ -43,15 +43,15 @@ a constant angular rate $\omega_m$.
 
 
 Notes:
-- Positive angles are clockwise and y axes point inwards.
+- Positive angles are clockwise and $y$ axes point inwards.
 - The rolling body has axial symmetry, so it's CoM is coincident with origins $O_{b1}$ and $O_{b2}$
 
 
 ## Equations of Motion
 
 To obtain the system's equations of motion we apply Lagrangian mechanics, using $\eta$ and
-$\theta$ as generalized coordinates, and treating $\tau_m$ as a non-conservative internal torque
-exerted by the Main Body on the Rolling body through the DC motor.
+$\theta$ as generalized coordinates, and treating $\tau_m$ as a non-conservative internal torque,
+exerted by the main body on the rolling body through the DC motor.
 
 The resulting equations of motion are:
 $$ (m_1 L^2 + J_1)\ddot{\theta} + \left(m_1 L \cos\theta\right)\ddot{\eta} = m_1 L g \sin\theta - \tau_{m} $$
@@ -123,7 +123,9 @@ $$ -\frac{1}{R} \tau_{ss} + M_{22} \dot{v} = m_1 L \omega^2 \sin\theta - M_{12}(
 \dot{\omega}$$
 
 With $\theta$, $\omega$ and $\dot{\omega}$ as parameters, we can solve for $\tau_{ss}$ and
-$\dot{v}$. Then, we find $v$ as:
+$\dot{v}$.
+
+Then, we find $v$ as:
 $$ \omega_m = (k_m u_m - \tau_{ss}) / b_m $$
 $$ v = (\omega + \omega_m ) * R $$
 
