@@ -4,6 +4,7 @@ using LinearAlgebra, StaticArrays, ComponentArrays
 
 using Flight.FlightCore
 using Flight.FlightLib
+using Flight.FlightLib.Control.Discrete: LQR, PID, LQROutput, PIDOutput
 
 const g = 9.80665 #m/s^2, standard gravity
 
@@ -40,13 +41,6 @@ Modeling.X(::Vehicle) = ComponentVector( ω = 0.0, v = 0.0, θ = 0.0, η = 0.0)
 Modeling.U(::Vehicle) = Ref(Ranged(0.0, 0., 1.))
 Modeling.Y(::Vehicle) = VehicleY()
 
-#initialize vehicle at static vertical equilibrium
-function Modeling.init!(mdl::Model{Vehicle})
-    mdl.x .= 0
-    mdl.u[] = 0
-    f_ode!(mdl)
-end
-
 function Modeling.f_ode!(mdl::Model{Vehicle})
 
     (; ẋ, x, u, parameters) = mdl
@@ -55,7 +49,7 @@ function Modeling.f_ode!(mdl::Model{Vehicle})
 
     u_m = Float64(u[])
     ω_m = v / R - ω
-    τ_m_ss = k_m * u_m - b_m * ω_m #steady-state motor torque
+    τ_ss = k_m * u_m - b_m * ω_m #steady-state motor torque
 
     sθ = sin(θ)
     cθ = cos(θ)
@@ -70,8 +64,8 @@ function Modeling.f_ode!(mdl::Model{Vehicle})
     ]
 
     b = @SVector[
-        -τ_m_ss + m_1 * L * g * sθ
-        τ_m_ss / R + m_1 * L * ω^2 * sθ
+        -τ_ss + m_1 * L * g * sθ
+        τ_ss / R + m_1 * L * ω^2 * sθ
     ]
 
     ω_dot, v_dot = M\b
@@ -80,7 +74,7 @@ function Modeling.f_ode!(mdl::Model{Vehicle})
     θ_dot = ω
     η_dot = v
 
-    τ_m = τ_m_ss - J_m * ω_m_dot
+    τ_m = τ_ss - J_m * ω_m_dot
 
     ẋ.ω = ω_dot
     ẋ.v = v_dot
@@ -96,9 +90,9 @@ end
 
 
 ################################################################################
-################################ Trim #################################
+################################ Initialization ################################
 
-@kwdef struct TrimParameters <: FieldVector{5, Float64}
+@kwdef struct InitParameters <: FieldVector{5, Float64}
     u_m::Float64 = 0.0
     ω_dot::Float64 = 0.0
     ω::Float64 = 0.0
@@ -106,10 +100,9 @@ end
     η::Float64 = 0.0
 end
 
+function Modeling.init!( mdl::Model{Vehicle}, ip::InitParameters = InitParameters())
 
-function Modeling.init!( mdl::Model{Vehicle}, tp::TrimParameters = TrimParameters())
-
-    (; u_m, ω_dot, ω, θ, η) = tp
+    (; u_m, ω_dot, ω, θ, η) = ip
     (; x, u, parameters) = mdl
     (; L, R, m_1, m_2, J_1, J_2, k_m, b_m, J_m) = parameters
 
@@ -227,9 +220,9 @@ end
 ################################################################################
 ################################ Linearization #################################
 
-function Linearization.linearize(mdl::Model{Vehicle}, tp::TrimParameters = TrimParameters())
+function Linearization.linearize(mdl::Model{Vehicle}, ip::InitParameters = InitParameters())
 
-    init!(mdl, tp)
+    init!(mdl, ip)
 
     #state space system's functions
     f = get_f_ss(mdl)
@@ -253,15 +246,50 @@ end
     θ::Float64 = 0.0
 end
 
-@kwdef struct UController <: FieldVector{1, Float64}
-    m::Float64 = 0.0
-end
-
 @kwdef struct ZController <: FieldVector{1, Float64}
     v::Float64 = 0.0
 end
 
-struct Controller <: ModelDefinition end
+@kwdef struct UController <: FieldVector{1, Float64}
+    m::Float64 = 0.0
+end
+
+function XController(vehicle::Model{<:Vehicle})
+    (; ω, v, θ) = vehicle.x
+    XController(; ω, v, θ)
+end
+
+ZController(vehicle::Model{<:Vehicle}) = ZController(vehicle.x.v)
+
+################################################################################
+
+@enum ControlMode mode_v = 1 mode_η = 2
+
+@kwdef struct Controller{C} <: ModelDefinition
+    v2m::C = LQR{3,1,1}()
+    η2v::Float64 = 0.0
+end
+
+@kwdef mutable struct ControllerU
+    mode::ControlMode = mode_v
+    v_ref::Float64 = 0.0 #velocity reference
+    η_ref::Float64 = 0.0 #position reference
+end
+
+@kwdef struct ControllerY{C}
+    mode::ControlMode = mode_η
+    v_ref::Float64 = 0.0 #velocity reference
+    η_ref::Float64 = 0.0 #position reference
+    v2m::C = LQROutput{3,1,1}()
+end
+
+Modeling.U(::Controller) = ControllerU()
+Modeling.Y(::Controller) = ControllerY()
+
+#implement init! to load gains and assign PID Output bounds. But careful, we
+#also need to limit input to the LQR even when in velocity mode. So maybe we
+#don't need the PID after all
+
 
 
 @kwdef struct Robot{C} <: ModelDefinition
@@ -269,44 +297,5 @@ struct Controller <: ModelDefinition end
     controller::C = Controller()
 end
 
-
-################################################################################
-################################################################################
-
-function test_vehicle()
-
-    mdl = Vehicle() |> Model
-
-    mdl.u[] = 0
-    mdl.x.ω = 0.0
-    mdl.x.v = 0
-    mdl.x.θ = 0.0
-    f_ode!(mdl)
-    @show mdl.y
-end
-
-
-function test_vehicle_sim()
-
-    mdl = Model(Vehicle())
-    sim = Simulation(mdl; t_end = 10, dt = 0.01)
-    init!(sim, TrimParameters(; u_m = 0.1, θ = 0.01))
-    run!(sim)
-    ts = TimeSeries(sim)
-    return ts
-
-end
-
-function test_trim()
-
-    mdl = Model(Vehicle())
-
-    tp = TrimParameters(; u_m = 0.18, ω_dot = 0.1, ω = 0.3, θ = 0.1, η = 2.0)
-    tp = TrimParameters(; u_m = 1)
-    init!(mdl, tp)
-
-    mdl.y
-
-end
 
 end #module
