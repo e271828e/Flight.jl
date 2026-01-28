@@ -120,6 +120,10 @@ function design_velocity_tracker(vehicle::Vehicle = Vehicle())
 
     end
 
+    #save params_v2m
+    #no need to save eta loop output bounds, cause we know v max from the model's
+    #parameters, so we can saturate the
+
     error("Add η PID output bounds and save together with LQR and PID design parameters")
 
 end

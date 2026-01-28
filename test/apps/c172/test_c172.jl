@@ -3,7 +3,6 @@ module TestC172
 using Test
 using BenchmarkTools
 using Sockets
-using OrdinaryDiffEq: Heun, RK4, Tsit5
 
 using Flight.FlightCore
 using Flight.FlightLib
