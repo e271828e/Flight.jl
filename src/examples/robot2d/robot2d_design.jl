@@ -5,7 +5,7 @@ using Flight.FlightLib
 
 using Flight.FlightLib.Linearization: delete_vars
 using Flight.FlightLib.Control.Discrete: LQRParams
-using ControlSystems, RobustAndOptimalControl, Plots, UnPack, ComponentArrays, LinearAlgebra
+using ControlSystems, RobustAndOptimalControl, Plots, ComponentArrays, LinearAlgebra, HDF5
 
 include("robot2d.jl")
 using .Robot2D
@@ -116,16 +116,38 @@ function design_velocity_tracker(vehicle::Vehicle = Vehicle())
 
     end
 
-    P_η, params_η2v = let
+    k_η2v = 0.6
 
+    fname = joinpath(@__DIR__, "robot2d.h5")
+    fid = h5open(fname, "w")
+    try
+        create_group(fid, "v2m")
+        foreach(propertynames(params_v2m)) do name
+            fid["v2m"][string(name)] = getproperty(params_v2m, name)
+        end
+        create_group(fid, "η2v")
+        fid["η2v"]["k"] = k_η2v
+    finally
+        close(fid)
     end
 
-    #save params_v2m
+    return params_v2m
+
+    # P_η, params_η2v = let
+
+    #save params_v2m and k_η
     #no need to save eta loop output bounds, cause we know v max from the model's
     #parameters, so we can saturate the
 
-    error("Add η PID output bounds and save together with LQR and PID design parameters")
+    # error("Add η PID output bounds and save together with LQR and PID design parameters")
 
+end
+
+function test_load()
+    fname = joinpath(@__DIR__, "robot2d.h5")
+    fid = h5open(fname, "r")
+    params_v2m = map(name -> read(fid["v2m"][string(name)]), fieldnames(LQRParams))
+    return LQRParams(params_v2m...)
 end
 
 end #module
