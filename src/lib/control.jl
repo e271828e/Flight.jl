@@ -467,32 +467,6 @@ end #function
 ####################### Gain-Schedulable PID Compensator #######################
 ################################################################################
 
-@kwdef struct PIDParams{T} <: FieldVector{4, T} #parallel form
-    k_p::T = 1.0
-    k_i::T = 0.0
-    k_d::T = 0.1
-    τ_f::T = 0.01
-end
-
-function Base.NamedTuple(params::PIDParams)
-    names = fieldnames(typeof(params))
-    fields = map(n -> getfield(params, n), names)
-    NamedTuple{names}(fields)
-end
-
-Base.getproperty(params::PIDParams, name::Symbol) = getproperty(params, Val(name))
-
-@generated function Base.getproperty(params::PIDParams, ::Val{S}) where {S}
-    if S ∈ fieldnames(PIDParams)
-        return :(getfield(params, $(QuoteNode(S))))
-    elseif S === :T_i
-        return :(params.k_p / params.k_i)
-    elseif S === :T_d
-        return :(params.k_d / params.k_p)
-    else
-        return :(error("PIDParams has no property $S"))
-    end
-end
 
 ################################# Scalar Version ###############################
 
@@ -987,7 +961,18 @@ function GUI.draw(mdl::Model{<:LQR})
 
 end #function
 
-@kwdef struct LQRParams{CB, CF, CI, X, U, Z}
+
+####################### Controller Data Management #############################
+################################################################################
+
+@kwdef struct PIDData{T} <: FieldVector{4, T} #parallel form
+    k_p::T = 1.0
+    k_i::T = 0.0
+    k_d::T = 0.1
+    τ_f::T = 0.01
+end
+
+@kwdef struct LQRData{CB, CF, CI, X, U, Z}
     K_fbk::CB
     K_fwd::CF
     K_int::CI
@@ -996,26 +981,40 @@ end #function
     z_trim::Z
 end
 
+function Base.NamedTuple(data::PIDData)
+    names = fieldnames(typeof(data))
+    fields = map(n -> getfield(data, n), names)
+    NamedTuple{names}(fields)
+end
 
-############################### Gain Scheduling ################################
-################################################################################
+Base.getproperty(data::PIDData, name::Symbol) = getproperty(data, Val(name))
 
-const LookupBounds{N} = NTuple{N, NTuple{2, Real}}
+@generated function Base.getproperty(data::PIDData, ::Val{S}) where {S}
+    if S ∈ fieldnames(PIDData)
+        return :(getfield(data, $(QuoteNode(S))))
+    elseif S === :T_i
+        return :(data.k_p / data.k_i)
+    elseif S === :T_d
+        return :(data.k_d / data.k_p)
+    else
+        return :(error("PIDData has no property $S"))
+    end
+end
 
 ############################## Data Points #####################################
 
-const PIDPoint = PIDParams{<:Real}
+const PIDDataPoint = PIDData{Float64}
 
-const LQRPoint = LQRParams{CB, CF, CI, X, U, Z} where {
-    CB <: AbstractMatrix{<:Real},
-    CF <: AbstractMatrix{<:Real},
-    CI <: AbstractMatrix{<:Real},
-    X <: AbstractVector{<:Real},
-    U <: AbstractVector{<:Real},
-    Z <: AbstractVector{<:Real}}
+const LQRDataPoint{NX, NU, NZ, NUX, NUZ} = LQRData{
+    SMatrix{NU, NX, Float64, NUX},
+    SMatrix{NU, NZ, Float64, NUZ},
+    SMatrix{NU, NZ, Float64, NUZ},
+    SVector{NX, Float64},
+    SVector{NU, Float64},
+    SVector{NZ, Float64}}
 
 
-function assign!(mdl::Model{<:PID}, point::PIDPoint)
+function assign!(mdl::Model{<:PID}, point::PIDDataPoint)
     (; k_p, k_i, k_d, τ_f) = point
     mdl.parameters.k_p[] = k_p
     mdl.parameters.k_i[] = k_i
@@ -1023,7 +1022,7 @@ function assign!(mdl::Model{<:PID}, point::PIDPoint)
     mdl.parameters.τ_f[] = τ_f
 end
 
-function assign!(mdl::Model{<:LQR}, point::LQRPoint)
+function assign!(mdl::Model{<:LQR}, point::LQRDataPoint)
     (; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim) = point
     mdl.parameters.K_fbk .= K_fbk
     mdl.parameters.K_fwd .= K_fwd
@@ -1034,36 +1033,23 @@ function assign!(mdl::Model{<:LQR}, point::LQRPoint)
 end
 
 
-############################# Data Arrays ######################################
+############################### Scheduling #####################################
 
-const PIDData{N} = PIDParams{<:AbstractArray{<:Real, N}}
+const LookupBounds = Vector{NTuple{2, Float64}}
 
-const LQRData{N} = LQRParams{CB, CF, CI, X, U, Z} where {
-    CB <: AbstractArray{<:AbstractMatrix{<:Real}, N},
-    CF <: AbstractArray{<:AbstractMatrix{<:Real}, N},
-    CI <: AbstractArray{<:AbstractMatrix{<:Real}, N},
-    X <: AbstractArray{<:AbstractVector{<:Real}, N},
-    U <: AbstractArray{<:AbstractVector{<:Real}, N},
-    Z <: AbstractArray{<:AbstractVector{<:Real}, N}}
+function save_lookup_data(points::Union{Array{<:PIDDataPoint}, Array{<:LQRDataPoint}},
+                        bounds::LookupBounds, fname::String = joinpath(@__DIR__, "test.h5"))
 
-function PIDData(params::Array{<:PIDPoint})
-    params_nt = StructArrays.components(StructArray(params))
-    PIDParams(values(params_nt)...)
-end
+    @assert ndims(points) == length(bounds)
 
-function LQRData(params::Array{<:LQRPoint})
-    params_nt = StructArrays.components(StructArray(params))
-    LQRParams(values(params_nt)...)
-end
-
-function save_data(params::Union{PIDData{N}, LQRData{N}}, bounds::LookupBounds{N},
-                    fname::String = joinpath(@__DIR__, "test.h5")) where {N}
+    #convert to NamedTuple of Arrays
+    nt = StructArrays.components(StructArray(points))
 
     fid = h5open(fname, "w")
 
     create_group(fid, "params")
-    foreach(propertynames(params)) do name
-        array = getproperty(params, name)
+    foreach(propertynames(nt)) do name
+        array = getproperty(nt, name)
         fid["params"][string(name)] = stack(array)
     end
 
@@ -1073,71 +1059,75 @@ function save_data(params::Union{PIDData{N}, LQRData{N}}, bounds::LookupBounds{N
 
 end
 
-save_data(params::Array{<:PIDPoint}, args...) = save_data(PIDData(params), args...)
-save_data(params::Array{<:LQRPoint}, args...) = save_data(LQRData(params), args...)
 
-
-function load_data_pid(fname::String)
+#returns (Array{PIDDataPoint}, LookupBounds)
+function load_lookup_data_pid(fname::String)
 
     fid = h5open(fname, "r")
-
-    #read fieldnames as ordered in PIDParams and into an instance
-    params_stacked = map(name -> read(fid["params"][string(name)]), fieldnames(PIDParams))
+    #read entries as ordered in PIDData
+    points_tuple = map(name -> read(fid["params"][string(name)]), fieldnames(PIDData))
     bounds_stacked = read(fid["bounds"])
-
     close(fid)
 
-    #arrange bounds back into a Tuple of 2-Tuples
-    bounds = mapslices(x->tuple(x...), bounds_stacked, dims = 1) |> vec |> Tuple
-    N = length(bounds) #number of interpolation dimensions
+    #convert to Array{PIDDataPoint}
+    points =  StructArray{PIDDataPoint}(points_tuple) |> Array
 
-    #PID parameters are scalars, so these are already N-dimensional arrays
-    params_tuple = params_stacked
+    #rearrange stacked bounds into LookupBounds
+    bounds = mapslices(x->tuple(x...), bounds_stacked, dims = 1) |> vec
 
-    return (params = PIDParams(params_tuple...), bounds = bounds)
+    #number of interpolation dimensions must match bounds vector length
+    @assert ndims(points) == length(bounds)
+
+    return (points = points, bounds = bounds)
 
 end
 
 
-function load_data_lqr(fname::String)
+#returns (Array{<:LQRDataPoint}, LookupBounds)
+function load_lookup_data_lqr(fname::String)
 
     fid = h5open(fname, "r")
-
-    #read fieldnames as ordered in LQRParams and into an instance
-    params_stacked = map(name -> read(fid["params"][string(name)]), fieldnames(LQRParams))
+    #read entries as ordered in LQRData
+    points_stacked = LQRData(map(name -> read(fid["params"][string(name)]), fieldnames(LQRData))...)
     bounds_stacked = read(fid["bounds"])
-
     close(fid)
 
-    #arrange bounds back into a Tuple of 2-Tuples
-    bounds = mapslices(x->tuple(x...), bounds_stacked, dims = 1) |> vec |> Tuple
-    N = length(bounds) #number of interpolation dimensions
+    #determine number of interpolation dimensions
+    D = ndims(points_stacked.x_trim) - 1
 
-    #generate Tuple of N-dimensional arrays of either SVectors (for x_trim,
-    #u_trim and z_trim) or SMatrices (for K_fbk, K_fwd and K_int)
-    params_tuple = map(params_stacked) do p_stacked
-        if ndims(p_stacked) == N+1 #vector parameter
-            return map(SVector{size(p_stacked)[1]}, eachslice(p_stacked; dims = Tuple(2:N+1)))
-        elseif ndims(p_stacked) == N+2 #matrix parameter
-            return map(SMatrix{size(p_stacked)[1:2]...}, eachslice(p_stacked; dims = Tuple(3:N+2)))
+    #generate tuple of N-dimensional arrays from stacked LQRData fields
+    points_tuple = map(fieldnames(LQRData)) do name
+        stacked_field = getproperty(points_stacked, name)
+        if name ∈ (:x_trim, :u_trim, :z_trim) #vector parameter
+            return map(SVector{size(stacked_field)[1]}, eachslice(stacked_field; dims = Tuple(2:D+1)))
+        elseif name ∈ (:K_fbk, :K_fwd, :K_int) #matrix parameter
+            return map(SMatrix{size(stacked_field)[1:2]...}, eachslice(stacked_field; dims = Tuple(3:D+2)))
         else
-            error("Number of interpolation dimensions was determined as $N, "*
-                "so stacked arrays must be either either $(N+1)-dimensional "*
-                "for vector parameters or $(N+2)-dimensional for matrix parameters. "*
-                "Stacked array is $(ndims(p_stacked))-dimensional for $p_name")
+            error("Unknown field")
         end
     end
 
-    return (params = LQRParams(params_tuple...), bounds = bounds)
+    #convert to Array{<:LQRDataPoint}
+    NX = size(points_stacked.x_trim, 1)
+    NU = size(points_stacked.u_trim, 1)
+    NZ = size(points_stacked.z_trim, 1)
+    NUX = NU * NX
+    NUZ = NU * NZ
+    points = StructArray{LQRDataPoint{NX, NU, NZ, NUX, NUZ}}(points_tuple) |> Array
+
+    #rearrange stacked bounds into LookupBounds
+    bounds = mapslices(x->tuple(x...), bounds_stacked, dims = 1) |> vec
+    @assert length(bounds) == D
+
+    return (points = points, bounds = bounds)
 
 end
 
-
 ############################### Lookups ########################################
 
-const PIDLookup = PIDParams{T} where {T <: AbstractInterpolation}
+const PIDDataLookup = PIDData{T} where {T <: AbstractInterpolation}
 
-const LQRLookup = LQRParams{CB, CF, CI, X, U, Z} where {
+const LQRDataLookup = LQRData{CB, CF, CI, X, U, Z} where {
     CB <: AbstractInterpolation,
     CF <: AbstractInterpolation,
     CI <: AbstractInterpolation,
@@ -1146,12 +1136,14 @@ const LQRLookup = LQRParams{CB, CF, CI, X, U, Z} where {
     Z <: AbstractInterpolation}
 
 
-function build_lookup_pid(params::PIDData{N}, bounds::LookupBounds{N}) where {N}
+function build_interps(points::Union{Array{<:PIDDataPoint}, Array{<:LQRDataPoint}}, bounds::LookupBounds)
 
-    @assert allequal(size.(params))
-    itp_lengths = size(params.k_p)
+    #convert array of points to a NamedTuple of arrays
+    @assert ndims(points) == length(bounds)
+    itp_lengths = size(points)
+    nt_points = StructArrays.components(StructArray(points))
 
-    #define interpolation mode and ranges, handling singleton dimensions
+    #define interpolation mode and scaling, handling singleton dimensions
     itp_args = map(bounds, itp_lengths) do b, l
         r = range(b..., length = l)
         (mode, scaling) = length(r) > 1 ? (BSpline(Linear()), r) : (NoInterp(), 1:1)
@@ -1159,52 +1151,28 @@ function build_lookup_pid(params::PIDData{N}, bounds::LookupBounds{N}) where {N}
     end |> collect |> StructArray
 
     (; mode, scaling) = itp_args
-    interps = [extrapolate(scale(interpolate(getproperty(params, p), tuple(mode...)), scaling...), Flat())
-                for p in propertynames(params)]
+    interps = [extrapolate(scale(interpolate(getproperty(nt_points, p), tuple(mode...)), scaling...), Flat())
+                for p in propertynames(nt_points)]
 
-    return PIDParams(interps...)
-
-end
-
-function build_lookup_lqr(params::LQRData{N}, bounds::LookupBounds{N}) where {N}
-
-    #lengths of N interpolation dimensions must be consistent among params
-    sizes = map(n -> size(getproperty(params, n)), propertynames(params))
-    @assert allequal(sizes)
-    itp_lengths = sizes[1]
-
-    #define interpolation mode and ranges, handling singleton dimensions
-    itp_args = map(bounds, itp_lengths) do b, l
-        r = range(b..., length = l)
-        (mode, scaling) = length(r) > 1 ? (BSpline(Linear()), r) : (NoInterp(), 1:1)
-        return (mode = mode, scaling = scaling)
-    end |> collect |> StructArray
-
-    (; mode, scaling) = itp_args
-    interps = [extrapolate(scale(interpolate(getproperty(params, p), tuple(mode...)), scaling...), Flat())
-                for p in propertynames(params)]
-
-    return LQRParams(interps...)
+    return interps
 
 end
 
+build_lookup_pid(fname::String) = PIDData(build_interps(load_lookup_data_pid(fname)...)...)
+build_lookup_lqr(fname::String) = LQRData(build_interps(load_lookup_data_lqr(fname)...)...)
 
-build_lookup_pid(fname::String) = build_lookup_pid(load_data_pid(fname)...)
-build_lookup_lqr(fname::String) = build_lookup_lqr(load_data_lqr(fname)...)
-
-
-function (lookup::PIDLookup)(args::Vararg{Real, N}) where {N}
+function (lookup::PIDDataLookup)(args::Vararg{Real, N}) where {N}
     (; k_p, k_i, k_d, τ_f) = lookup
-    PIDParams(; k_p = k_p(args...),
+    PIDData(; k_p = k_p(args...),
                 k_i = k_i(args...),
                 k_d = k_d(args...),
                 τ_f = τ_f(args...)
                 )
 end
 
-function (lookup::LQRLookup)(args::Vararg{Real, N}) where {N}
+function (lookup::LQRDataLookup)(args::Vararg{Real, N}) where {N}
     (; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim) = lookup
-    LQRParams(;
+    LQRData(;
         K_fbk = K_fbk(args...),
         K_fwd = K_fwd(args...),
         K_int = K_int(args...),
@@ -1226,7 +1194,7 @@ module PIDOpt
 using StaticArrays, NLopt, ControlSystems
 using RobustAndOptimalControl: hinfnorm2
 using Trapz: trapz
-using ..Control.Discrete: PIDParams
+using ..Control.Discrete: PIDData
 
 @kwdef struct Metrics{T} <: FieldVector{5, T}
     Ms::T #maximum sensitivity
@@ -1239,20 +1207,20 @@ end
 @kwdef struct Settings
     t_sim::Float64 = 5.0
     maxeval::Int64 = 5000
-    lower_bounds::PIDParams = PIDParams(; k_p = 0.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-    upper_bounds::PIDParams = PIDParams(; k_p = 50.0, k_i = 50.0, k_d = 10.0, τ_f = 0.01)
-    initial_step::PIDParams = PIDParams(; k_p = 0.01, k_i = 0.01, k_d = 0.01, τ_f = 0.01)
+    lower_bounds::PIDData = PIDData(; k_p = 0.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+    upper_bounds::PIDData = PIDData(; k_p = 50.0, k_i = 50.0, k_d = 10.0, τ_f = 0.01)
+    initial_step::PIDData = PIDData(; k_p = 0.01, k_i = 0.01, k_d = 0.01, τ_f = 0.01)
 end
 
 @kwdef struct Results
     exit_flag::Symbol
     cost::Float64
     metrics::Metrics{Float64}
-    params::PIDParams{Float64}
+    data::PIDData{Float64}
 end
 
-function build_PID(params::PIDParams{<:Real})
-    (; k_p, k_i, k_d, τ_f) = params
+function build_PID(data::PIDData{<:Real})
+    (; k_p, k_i, k_d, τ_f) = data
     (k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])) |> ss
 end
 
@@ -1294,7 +1262,7 @@ end
 
 
 function optimize_PID(  plant::LTISystem;
-                    params_0::PIDParams = PIDParams(), #initial condition
+                    params_0::PIDData = PIDData(), #initial condition
                     settings::Settings = Settings(),
                     weights::Metrics{<:Real} = Metrics(ones(5)),
                     global_search::Bool = true)
@@ -1310,7 +1278,7 @@ function optimize_PID(  plant::LTISystem;
     plant = ss(plant)
     f_opt = let plant = plant, settings = settings, weights = weights
         function (x::Vector{Float64}, ::Vector{Float64})
-            pid = build_PID(PIDParams(x...))
+            pid = build_PID(PIDData(x...))
             cost(plant, pid, settings, weights)
         end
     end
@@ -1341,7 +1309,7 @@ function optimize_PID(  plant::LTISystem;
 
     (minf, minx, exit_flag) = optimize(opt_loc, minx)
 
-    params_opt = PIDParams(minx...)
+    params_opt = PIDData(minx...)
     pid_opt = build_PID(params_opt)
     metrics_opt = Metrics(plant, pid_opt, settings)
 

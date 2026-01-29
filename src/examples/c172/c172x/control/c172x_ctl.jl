@@ -11,8 +11,8 @@ using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
 using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightLib.Control.Discrete: Integrator, IntegratorOutput,
-    PID, PIDOutput, PIDParams, LQR, LQROutput, LQRParams,
-    PIDLookup, LQRLookup, build_lookup_pid, build_lookup_lqr
+    PID, PIDOutput, LQR, LQROutput, PIDDataLookup, LQRDataLookup,
+    build_lookup_pid, build_lookup_lqr
 
 using ...AircraftBase
 using ...C172: TrimParameters, is_on_gnd
@@ -204,7 +204,7 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct ControlLawsLon{LQ1<:LQRLookup,LQ2<:LQRLookup,LP<:PIDLookup} <: ModelDefinition
+@kwdef struct ControlLawsLon{LQ1<:LQRDataLookup,LQ2<:LQRDataLookup,LP<:PIDDataLookup} <: ModelDefinition
     te2te_lookup::LQ1 = build_lookup_lqr(joinpath(@__DIR__, "data", "te2te.h5"))
     tv2te_lookup::LQ1 = build_lookup_lqr(joinpath(@__DIR__, "data", "tv2te.h5"))
     vh2te_lookup::LQ2 = build_lookup_lqr(joinpath(@__DIR__, "data", "vh2te.h5"))
@@ -812,7 +812,7 @@ end
 
 ################################## Model ######################################
 
-@kwdef struct ControlLawsLat{LQ<:LQRLookup,LP<:PIDLookup} <: ModelDefinition
+@kwdef struct ControlLawsLat{LQ<:LQRDataLookup,LP<:PIDDataLookup} <: ModelDefinition
     ar2ar_lookup::LQ = build_lookup_lqr(joinpath(@__DIR__, "data", "ar2ar.h5"))
     φβ2ar_lookup::LQ = build_lookup_lqr(joinpath(@__DIR__, "data", "φβ2ar.h5"))
     p2φ_lookup::LP = build_lookup_pid(joinpath(@__DIR__, "data", "p2φ.h5"))

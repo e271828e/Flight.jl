@@ -4,7 +4,7 @@ using Flight
 using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightLib.Linearization: LinearizedSS, subsystem, delete_vars
-using Flight.FlightLib.Control.Discrete: PIDParams, LQRParams, save_data
+using Flight.FlightLib.Control.Discrete: PIDData, LQRData, save_data
 using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
 using Flight.FlightExamples.C172
@@ -214,7 +214,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_te2te = connect([P_red, throttle_sum, elevator_sum, K_fbk_ss, K_fwd_ss],
             connections; w1 = [:throttle_cmd_ref, :elevator_cmd_ref], z1 = P_red.y)
 
-        params_te2te = LQRParams(; #export everything as plain arrays
+        params_te2te = LQRData(; #export everything as plain arrays
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -230,11 +230,11 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_q2e_opt = series(q2e_int, ss(P_e2q))
 
         t_sim_q2e = 10
-        lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-        upper_bounds = PIDParams(; k_p = 10.0, k_i = 50.0, k_d = 2.0, τ_f = 0.01)
+        lower_bounds = PIDData(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+        upper_bounds = PIDData(; k_p = 10.0, k_i = 50.0, k_d = 2.0, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_q2e, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 1, ∫e = 15, ef = 2, ∫u = 0.1, up = 0.00)
-        params_0 = PIDParams(; k_p = 2.0, k_i = 15, k_d = 0.4, τ_f = 0.01)
+        params_0 = PIDData(; k_p = 2.0, k_i = 15, k_d = 0.4, τ_f = 0.01)
 
         q2e_results = optimize_PID(P_q2e_opt; params_0, settings, weights, global_search)
 
@@ -273,11 +273,11 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_t2v = P_tθ[:EAS, :throttle_cmd]
 
         t_sim_v2t = 10
-        lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-        upper_bounds = PIDParams(; k_p = 1.5, k_i = 0.5, k_d = 0.0, τ_f = 0.01)
+        lower_bounds = PIDData(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+        upper_bounds = PIDData(; k_p = 1.5, k_i = 0.5, k_d = 0.0, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_v2t, maxeval = 5000, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 2.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.0)
-        params_0 = PIDParams(; k_p = 0.2, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
+        params_0 = PIDData(; k_p = 0.2, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
 
         v2t_results = optimize_PID(P_t2v; params_0, settings, weights, global_search)
 
@@ -303,11 +303,11 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_θ2c = P_vθ[:climb_rate, :θ_ref]
 
         t_sim_c2θ = 20
-        lower_bounds = PIDParams(; k_p = 0.001, k_i = 0.001, k_d = 0.0, τ_f = 0.01)
-        upper_bounds = PIDParams(; k_p = 0.05, k_i = 0.03, k_d = 0.0, τ_f = 0.01)
+        lower_bounds = PIDData(; k_p = 0.001, k_i = 0.001, k_d = 0.0, τ_f = 0.01)
+        upper_bounds = PIDData(; k_p = 0.05, k_i = 0.03, k_d = 0.0, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_c2θ, maxeval = 5000, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 2.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.1)
-        params_0 = PIDParams(; k_p = 0.02, k_i = 0.01, k_d = 0.0, τ_f = 0.01)
+        params_0 = PIDData(; k_p = 0.02, k_i = 0.01, k_d = 0.0, τ_f = 0.01)
 
         c2θ_results = optimize_PID(P_θ2c; params_0, settings, weights, global_search)
 
@@ -428,7 +428,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
-        params_tv2te = LQRParams(;
+        params_tv2te = LQRData(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -540,7 +540,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
-        params_vh2te = LQRParams(;
+        params_vh2te = LQRData(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -624,7 +624,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_ar = connect([P_lat, aileron_sum, rudder_sum, K_fbk_ss, K_fwd_ss],
                         connections_fbk; w1 = z_labels_ref, z1 = P_lat.y)
 
-        params_ar2ar = LQRParams(;
+        params_ar2ar = LQRData(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -704,7 +704,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
 
         #convert everything to plain arrays
-        params_φβar = LQRParams(;
+        params_φβar = LQRData(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -723,11 +723,11 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_p2φ_opt = series(p2φ_int, ss(P_φ2p))
 
         t_sim_p2φ = 10
-        lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-        upper_bounds = PIDParams(; k_p = 10.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
+        lower_bounds = PIDData(; k_p = 0.1, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+        upper_bounds = PIDData(; k_p = 10.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_p2φ, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 0, ∫e = 2, ef = 2, ∫u = 1, up = 0.00)
-        params_0 = PIDParams(; k_p = 1.5, k_i = 3, k_d = 0.1, τ_f = 0.01)
+        params_0 = PIDData(; k_p = 1.5, k_i = 3, k_d = 0.1, τ_f = 0.01)
 
         p2φ_results = optimize_PID(P_p2φ_opt; params_0, settings, weights, global_search)
         params_p2φ = p2φ_results.params
@@ -752,11 +752,11 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_φ2χ = P_φβ[:χ, :φ_ref];
 
         t_sim_χ2φ = 30
-        lower_bounds = PIDParams(; k_p = 0.1, k_i = 0.4, k_d = 0.0, τ_f = 0.01)
-        upper_bounds = PIDParams(; k_p = 10.0, k_i = 0.4, k_d = 1.5, τ_f = 0.01)
+        lower_bounds = PIDData(; k_p = 0.1, k_i = 0.4, k_d = 0.0, τ_f = 0.01)
+        upper_bounds = PIDData(; k_p = 10.0, k_i = 0.4, k_d = 1.5, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_χ2φ, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 3, ∫e = 10, ef = 1, ∫u = 0.00, up = 0.01)
-        params_0 = PIDParams(; k_p = 3., k_i = 0.4, k_d = 0.0, τ_f = 0.01)
+        params_0 = PIDData(; k_p = 3., k_i = 0.4, k_d = 0.0, τ_f = 0.01)
 
         χ2φ_results = optimize_PID(P_φ2χ; params_0, settings, weights, global_search)
 
