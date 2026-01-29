@@ -4,7 +4,7 @@ using Flight
 using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightLib.Linearization: LinearizedSS, subsystem, delete_vars
-using Flight.FlightLib.Control.Discrete: PIDData, LQRData, save_data
+using Flight.FlightLib.Control.Discrete: PIDData, LQRData, save_lookup_data
 using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
 using Flight.FlightExamples.C172
@@ -119,10 +119,10 @@ function generate_lookups(
 
     filenames = joinpath.(folder, string.(keys(results)) .* ".h5")
 
-    bounds = ((EAS_range[1], EAS_range[end]), (h_range[1], h_range[end]))
+    bounds = [(EAS_range[1], EAS_range[end]), (h_range[1], h_range[end])]
 
     foreach(values(results), filenames) do data, fname
-        save_data(data, bounds, joinpath(folder, fname))
+        save_lookup_data(data, bounds, joinpath(folder, fname))
     end
 
     return results
@@ -147,7 +147,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     ############################ thr+ele SAS ###################################
 
-    P_te2te, params_te2te = let lss = lss_red
+    P_te2te, data_te2te = let lss = lss_red
 
         x_trim = lss.x0
         n_x = length(x_trim)
@@ -214,15 +214,15 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_te2te = connect([P_red, throttle_sum, elevator_sum, K_fbk_ss, K_fwd_ss],
             connections; w1 = [:throttle_cmd_ref, :elevator_cmd_ref], z1 = P_red.y)
 
-        params_te2te = LQRData(; #export everything as plain arrays
+        data_te2te = LQRData(; #export everything as plain arrays
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
-        (P_te2te, params_te2te)
+        (P_te2te, data_te2te)
 
     end
 
-    P_tq, params_q2e = let
+    P_tq, data_q2e = let
 
         P_e2q = P_te2te[:q, :elevator_cmd_ref]
 
@@ -234,16 +234,16 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         upper_bounds = PIDData(; k_p = 10.0, k_i = 50.0, k_d = 2.0, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_q2e, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 1, ∫e = 15, ef = 2, ∫u = 0.1, up = 0.00)
-        params_0 = PIDData(; k_p = 2.0, k_i = 15, k_d = 0.4, τ_f = 0.01)
+        data_0 = PIDData(; k_p = 2.0, k_i = 15, k_d = 0.4, τ_f = 0.01)
 
-        q2e_results = optimize_PID(P_q2e_opt; params_0, settings, weights, global_search)
+        q2e_results = optimize_PID(P_q2e_opt; data_0, settings, weights, global_search)
 
-        params_q2e = q2e_results.params
+        data_q2e = q2e_results.data
         if !check_results(q2e_results, Metrics(; Ms = 1.6, ∫e = 0.3, ef = 0.04, ∫u = Inf, up = Inf))
             @warn("Checks failed for pitch rate PID, design point $(design_point), final metrics $(q2e_results.metrics)")
         end
 
-        q2e_pid = build_PID(q2e_results.params)
+        q2e_pid = build_PID(q2e_results.data)
         C_q2e = named_ss(series(q2e_int, q2e_pid), :C_q2e; u = :q_err, y = :elevator_cmd_ref);
 
         q2e_sum = sumblock("q_err = q_ref - q")
@@ -251,7 +251,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
             [:q_err=>:q_err, :q=>:q, :elevator_cmd_ref=>:elevator_cmd_ref],
             w1 = [:throttle_cmd_ref, :q_ref], z1 = P_te2te.y)
 
-        (P_tq, params_q2e)
+        (P_tq, data_q2e)
 
     end
 
@@ -268,7 +268,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     end
 
-    P_vθ, params_v2t = let
+    P_vθ, data_v2t = let
 
         P_t2v = P_tθ[:EAS, :throttle_cmd]
 
@@ -277,16 +277,16 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         upper_bounds = PIDData(; k_p = 1.5, k_i = 0.5, k_d = 0.0, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_v2t, maxeval = 5000, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 2.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.0)
-        params_0 = PIDData(; k_p = 0.2, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
+        data_0 = PIDData(; k_p = 0.2, k_i = 0.1, k_d = 0.0, τ_f = 0.01)
 
-        v2t_results = optimize_PID(P_t2v; params_0, settings, weights, global_search)
+        v2t_results = optimize_PID(P_t2v; data_0, settings, weights, global_search)
 
-        params_v2t = v2t_results.params
+        data_v2t = v2t_results.data
         if !check_results(v2t_results, Metrics(; Ms = 1.6, ∫e = 0.3, ef = 0.04, ∫u = Inf, up = Inf))
             @warn("Checks failed for EAS to throttle PID, design point $(design_point), final metrics $(v2t_results.metrics)")
         end
 
-        v2t_pid = build_PID(v2t_results.params)
+        v2t_pid = build_PID(v2t_results.data)
         C_v2t = named_ss(ss(v2t_pid), :C_v2t; u = :EAS_err, y = :throttle_cmd_ref)
 
         v2t_sum = sumblock("EAS_err = EAS_ref - EAS")
@@ -294,11 +294,11 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
             [:EAS_err=>:EAS_err, :EAS=>:EAS, :throttle_cmd_ref=>:throttle_cmd_ref],
             w1 = [:EAS_ref, :θ_ref], z1 = P_tθ.y)
 
-        (P_vθ, params_v2t)
+        (P_vθ, data_v2t)
 
     end
 
-    P_vc, params_c2θ = let
+    P_vc, data_c2θ = let
 
         P_θ2c = P_vθ[:climb_rate, :θ_ref]
 
@@ -307,16 +307,16 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         upper_bounds = PIDData(; k_p = 0.05, k_i = 0.03, k_d = 0.0, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_c2θ, maxeval = 5000, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 2.0, ∫e = 5.0, ef = 1.0, ∫u = 0.0, up = 0.1)
-        params_0 = PIDData(; k_p = 0.02, k_i = 0.01, k_d = 0.0, τ_f = 0.01)
+        data_0 = PIDData(; k_p = 0.02, k_i = 0.01, k_d = 0.0, τ_f = 0.01)
 
-        c2θ_results = optimize_PID(P_θ2c; params_0, settings, weights, global_search)
+        c2θ_results = optimize_PID(P_θ2c; data_0, settings, weights, global_search)
 
-        params_c2θ = c2θ_results.params
+        data_c2θ = c2θ_results.data
         if !check_results(c2θ_results, Metrics(; Ms = 1.6, ∫e = 0.3, ef = 0.04, ∫u = Inf, up = Inf))
             @warn("Checks failed for climb rate to θ PID, design point $(design_point), final metrics $(c2θ_results.metrics)")
         end
 
-        c2θ_PID = build_PID(c2θ_results.params)
+        c2θ_PID = build_PID(c2θ_results.data)
         C_c2θ = named_ss(ss(c2θ_PID), :C_c2θ; u = :climb_rate_err, y = :θ_ref)
 
         c2θ_sum = sumblock("climb_rate_err = climb_rate_ref - climb_rate")
@@ -324,11 +324,11 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
             [:climb_rate_err=>:climb_rate_err, :climb_rate=>:climb_rate, :θ_ref=>:θ_ref],
             w1 = [:EAS_ref, :climb_rate_ref], z1 = P_vθ.y)
 
-        (P_vc, params_c2θ)
+        (P_vc, data_c2θ)
     end
 
 
-    P_tv, params_tv2te = let lss = lss_red
+    P_tv, data_tv2te = let lss = lss_red
 
         x_trim = lss.x0
         n_x = length(x_trim)
@@ -428,15 +428,15 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
-        params_tv2te = LQRData(;
+        data_tv2te = LQRData(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
-        (P_tv, params_tv2te)
+        (P_tv, data_tv2te)
 
     end
 
-    P_vh, params_vh2te = let lss = lss_lon
+    P_vh, data_vh2te = let lss = lss_lon
 
         x_trim = lss.x0
         n_x = length(x_trim)
@@ -540,16 +540,16 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
         #convert everything to plain arrays
-        params_vh2te = LQRData(;
+        data_vh2te = LQRData(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
-        (P_vh, params_vh2te)
+        (P_vh, data_vh2te)
 
     end
 
-    return (te2te = params_te2te, q2e = params_q2e, v2t = params_v2t,
-            c2θ = params_c2θ, tv2te = params_tv2te, vh2te = params_vh2te)
+    return (te2te = data_te2te, q2e = data_q2e, v2t = data_v2t,
+            c2θ = data_c2θ, tv2te = data_tv2te, vh2te = data_vh2te)
 
 end
 
@@ -570,7 +570,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
     ################################ SAS #######################################
 
-    P_ar, params_ar2ar = let
+    P_ar, data_ar2ar = let
 
         x_trim = lss_red.x0
         n_x = length(x_trim)
@@ -624,17 +624,17 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_ar = connect([P_lat, aileron_sum, rudder_sum, K_fbk_ss, K_fwd_ss],
                         connections_fbk; w1 = z_labels_ref, z1 = P_lat.y)
 
-        params_ar2ar = LQRData(;
+        data_ar2ar = LQRData(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
-        (P_ar, params_ar2ar)
+        (P_ar, data_ar2ar)
 
     end
 
     ############################### φ + β ######################################
 
-    P_φβ, params_φβ2ar = let lss = lss_red
+    P_φβ, data_φβ2ar = let lss = lss_red
 
         x_trim = lss.x0
         n_x = length(x_trim)
@@ -704,18 +704,18 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
 
 
         #convert everything to plain arrays
-        params_φβar = LQRData(;
+        data_φβar = LQRData(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
-        (P_φβ, params_φβar)
+        (P_φβ, data_φβar)
 
     end
 
 
     ############################### p + β ######################################
 
-    P_pβ, params_p2φ = let
+    P_pβ, data_p2φ = let
 
         P_φ2p = P_φβ[:p, :φ_ref];
 
@@ -727,27 +727,27 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         upper_bounds = PIDData(; k_p = 10.0, k_i = 35.0, k_d = 1.5, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_p2φ, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 0, ∫e = 2, ef = 2, ∫u = 1, up = 0.00)
-        params_0 = PIDData(; k_p = 1.5, k_i = 3, k_d = 0.1, τ_f = 0.01)
+        data_0 = PIDData(; k_p = 1.5, k_i = 3, k_d = 0.1, τ_f = 0.01)
 
-        p2φ_results = optimize_PID(P_p2φ_opt; params_0, settings, weights, global_search)
-        params_p2φ = p2φ_results.params
+        p2φ_results = optimize_PID(P_p2φ_opt; data_0, settings, weights, global_search)
+        data_p2φ = p2φ_results.data
         if !check_results(p2φ_results, Metrics(; Ms = Inf, ∫e = 0.1, ef = 0.04, ∫u = Inf, up = Inf))
             @warn("Checks failed for p to φ PID, design point $(design_point), final metrics $(p2φ_results.metrics)")
         end
 
-        p2φ_PID = build_PID(p2φ_results.params)
+        p2φ_PID = build_PID(p2φ_results.data)
         C_p2φ = named_ss(series(p2φ_int, p2φ_PID), :C_p2φ; u = :p_err, y = :φ_ref)
 
         p2φ_sum = sumblock("p_err = p_ref - p")
         P_pβ = connect([P_φβ, p2φ_sum, C_p2φ], [:p_err=>:p_err, :p=>:p, :φ_ref=>:φ_ref], w1 = [:p_ref, :β_ref], z1 = P_φβ.y)
 
-        (P_pβ, params_p2φ)
+        (P_pβ, data_p2φ)
 
     end
 
     ############################### χ + β ######################################
 
-    P_χβ, params_χ2φ = let
+    P_χβ, data_χ2φ = let
 
         P_φ2χ = P_φβ[:χ, :φ_ref];
 
@@ -756,26 +756,26 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         upper_bounds = PIDData(; k_p = 10.0, k_i = 0.4, k_d = 1.5, τ_f = 0.01)
         settings = Settings(; t_sim = t_sim_χ2φ, lower_bounds, upper_bounds)
         weights = Metrics(; Ms = 3, ∫e = 10, ef = 1, ∫u = 0.00, up = 0.01)
-        params_0 = PIDData(; k_p = 3., k_i = 0.4, k_d = 0.0, τ_f = 0.01)
+        data_0 = PIDData(; k_p = 3., k_i = 0.4, k_d = 0.0, τ_f = 0.01)
 
-        χ2φ_results = optimize_PID(P_φ2χ; params_0, settings, weights, global_search)
+        χ2φ_results = optimize_PID(P_φ2χ; data_0, settings, weights, global_search)
 
-        params_χ2φ = χ2φ_results.params
+        data_χ2φ = χ2φ_results.data
         if !check_results(χ2φ_results, Metrics(; Ms = 2, ∫e = 0.2, ef = 0.04, ∫u = Inf, up = Inf))
             @warn("Checks failed for χ to φ PID, design point $(design_point), final metrics $(χ2φ_results.metrics)")
         end
 
-        χ2φ_PID = build_PID(χ2φ_results.params)
+        χ2φ_PID = build_PID(χ2φ_results.data)
         C_χ2φ = named_ss(χ2φ_PID, :C_χ2φ; u = :χ_err, y = :φ_ref);
 
         χ2φ_sum = sumblock("χ_err = χ_ref - χ")
         P_χβ = connect([P_φβ, χ2φ_sum, C_χ2φ], [:χ_err=>:χ_err, :χ=>:χ, :φ_ref=>:φ_ref], w1 = [:χ_ref, :β_ref], z1 = P_φβ.y)
 
-        (P_χβ, params_χ2φ)
+        (P_χβ, data_χ2φ)
 
     end
 
-    return (ar2ar = params_ar2ar, φβ2ar = params_φβ2ar, p2φ = params_p2φ, χ2φ = params_χ2φ)
+    return (ar2ar = data_ar2ar, φβ2ar = data_φβ2ar, p2φ = data_p2φ, χ2φ = data_χ2φ)
 
 end
 

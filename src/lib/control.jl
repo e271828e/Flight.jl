@@ -1005,7 +1005,18 @@ end
 
 const PIDDataPoint = PIDData{Float64}
 
-const LQRDataPoint{NX, NU, NZ, NUX, NUZ} = LQRData{
+
+const LQRDataPoint{CB, CF, CI, X, U, Z} = LQRData{CB, CF, CI, X, U, Z} where {
+    CB <: AbstractMatrix{Float64},
+    CF <: AbstractMatrix{Float64},
+    CI <: AbstractMatrix{Float64},
+    X <: AbstractVector{Float64},
+    U <: AbstractVector{Float64},
+    Z <: AbstractVector{Float64}}
+
+
+#avoids allocations on lookup interpolation
+const LQRDataPointStatic{NX, NU, NZ, NUX, NUZ} = LQRDataPoint{
     SMatrix{NU, NX, Float64, NUX},
     SMatrix{NU, NZ, Float64, NUZ},
     SMatrix{NU, NZ, Float64, NUZ},
@@ -1047,10 +1058,10 @@ function save_lookup_data(points::Union{Array{<:PIDDataPoint}, Array{<:LQRDataPo
 
     fid = h5open(fname, "w")
 
-    create_group(fid, "params")
+    create_group(fid, "data")
     foreach(propertynames(nt)) do name
         array = getproperty(nt, name)
-        fid["params"][string(name)] = stack(array)
+        fid["data"][string(name)] = stack(array)
     end
 
     fid["bounds"] = stack(bounds) #2xN matrix
@@ -1065,7 +1076,7 @@ function load_lookup_data_pid(fname::String)
 
     fid = h5open(fname, "r")
     #read entries as ordered in PIDData
-    points_tuple = map(name -> read(fid["params"][string(name)]), fieldnames(PIDData))
+    points_tuple = map(name -> read(fid["data"][string(name)]), fieldnames(PIDData))
     bounds_stacked = read(fid["bounds"])
     close(fid)
 
@@ -1083,12 +1094,12 @@ function load_lookup_data_pid(fname::String)
 end
 
 
-#returns (Array{<:LQRDataPoint}, LookupBounds)
+#returns (Array{<:LQRDataPointStatic}, LookupBounds)
 function load_lookup_data_lqr(fname::String)
 
     fid = h5open(fname, "r")
     #read entries as ordered in LQRData
-    points_stacked = LQRData(map(name -> read(fid["params"][string(name)]), fieldnames(LQRData))...)
+    points_stacked = LQRData(map(name -> read(fid["data"][string(name)]), fieldnames(LQRData))...)
     bounds_stacked = read(fid["bounds"])
     close(fid)
 
@@ -1107,13 +1118,13 @@ function load_lookup_data_lqr(fname::String)
         end
     end
 
-    #convert to Array{<:LQRDataPoint}
+    #convert to Array{<:LQRDataPointStatic}
     NX = size(points_stacked.x_trim, 1)
     NU = size(points_stacked.u_trim, 1)
     NZ = size(points_stacked.z_trim, 1)
     NUX = NU * NX
     NUZ = NU * NZ
-    points = StructArray{LQRDataPoint{NX, NU, NZ, NUX, NUZ}}(points_tuple) |> Array
+    points = StructArray{LQRDataPointStatic{NX, NU, NZ, NUX, NUZ}}(points_tuple) |> Array
 
     #rearrange stacked bounds into LookupBounds
     bounds = mapslices(x->tuple(x...), bounds_stacked, dims = 1) |> vec
@@ -1136,7 +1147,7 @@ const LQRDataLookup = LQRData{CB, CF, CI, X, U, Z} where {
     Z <: AbstractInterpolation}
 
 
-function build_interps(points::Union{Array{<:PIDDataPoint}, Array{<:LQRDataPoint}}, bounds::LookupBounds)
+function build_interps(points::Union{Array{<:PIDDataPoint}, Array{<:LQRDataPointStatic}}, bounds::LookupBounds)
 
     #convert array of points to a NamedTuple of arrays
     @assert ndims(points) == length(bounds)
@@ -1262,12 +1273,12 @@ end
 
 
 function optimize_PID(  plant::LTISystem;
-                    params_0::PIDData = PIDData(), #initial condition
+                    data_0::PIDData = PIDData(), #initial condition
                     settings::Settings = Settings(),
                     weights::Metrics{<:Real} = Metrics(ones(5)),
                     global_search::Bool = true)
 
-    x0 = params_0 |> Vector
+    x0 = data_0 |> Vector
     lower_bounds = settings.lower_bounds |> Vector
     upper_bounds = settings.upper_bounds |> Vector
     initial_step = settings.initial_step |> Vector
@@ -1309,11 +1320,11 @@ function optimize_PID(  plant::LTISystem;
 
     (minf, minx, exit_flag) = optimize(opt_loc, minx)
 
-    params_opt = PIDData(minx...)
-    pid_opt = build_PID(params_opt)
+    data_opt = PIDData(minx...)
+    pid_opt = build_PID(data_opt)
     metrics_opt = Metrics(plant, pid_opt, settings)
 
-    return Results(exit_flag, minf, metrics_opt, params_opt)
+    return Results(exit_flag, minf, metrics_opt, data_opt)
 
 
 end

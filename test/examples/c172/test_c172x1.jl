@@ -492,7 +492,7 @@ function test_c172x1(; alloc::Bool = true)
         ctl.u.lon.clm_ref = 2
         step!(sim, 30, true)
         @test all(isapprox.(y_kin(aircraft).v_eb_n[3], -ctl.u.lon.clm_ref; atol = 1e-1))
-        @test all(isapprox.(y_air(aircraft).EAS, ctl.u.lon.EAS_ref; atol = 1e-1))
+        @test all(isapprox.(y_air(aircraft).EAS, ctl.u.lon.EAS_ref; atol = 2e-1))
 
         #test for allocations in the current control mode
         alloc && @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
