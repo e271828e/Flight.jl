@@ -286,10 +286,17 @@ end
 Modeling.U(::Controller) = ControllerU()
 Modeling.Y(::Controller) = ControllerY()
 
+function Modeling.init!(mdl::Model{<:Controller})
+
+end
+
 #implement init! to load gains and assign PID Output bounds. But careful, we
 #also need to limit input to the LQR even when in velocity mode. So maybe we
 #don't need the PID after all
 
+
+################################################################################
+################################# Robot ########################################
 
 
 @kwdef struct Robot{C} <: ModelDefinition
