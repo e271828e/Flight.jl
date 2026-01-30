@@ -244,34 +244,18 @@ end
 ################################################################################
 ################################# Controller ###################################
 
+#state vector for velocity LQR
 @kwdef struct XController <: FieldVector{3, Float64}
     ω::Float64 = 0.0
     v::Float64 = 0.0
     θ::Float64 = 0.0
 end
 
-@kwdef struct ZController <: FieldVector{1, Float64}
-    v::Float64 = 0.0
-end
-
-@kwdef struct UController <: FieldVector{1, Float64}
-    m::Float64 = 0.0
-end
-
-function XController(vehicle::Model{<:Vehicle})
-    (; ω, v, θ) = vehicle.x
-    XController(; ω, v, θ)
-end
-
-ZController(vehicle::Model{<:Vehicle}) = ZController(vehicle.x.v)
-
-################################################################################
-
 @enum ControlMode mode_v = 1 mode_η = 2
 
 @kwdef struct Controller{C} <: ModelDefinition
-    v2m::C = LQR{3,1,1}()
-    η2v::Float64 = 0.0
+    v2m::C = LQR{3,1,1}() #velocity controller
+    η2v::PID = PID() #position controller
 end
 
 @kwdef mutable struct ControllerU
@@ -284,39 +268,81 @@ end
     mode::ControlMode = mode_η
     v_ref::Float64 = 0.0 #velocity reference
     η_ref::Float64 = 0.0 #position reference
+    m_cmd::Float64 = 0.0 #motor command
     v2m::C = LQROutput{3,1,1}()
+    η2v::PIDOutput = PIDOutput()
 end
 
 Modeling.U(::Controller) = ControllerU()
 Modeling.Y(::Controller) = ControllerY()
 
-function Modeling.init!(ctl::Model{<:Controller}, vehicle::Model{<:Vehicle} = Model(Vehicle()))
+
+function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle} = Model(Vehicle()))
+
+    (; v2m, η2v) = mdl.submodels
+    (; k_m, b_m, R) = vehicle.parameters
+
+    #position controller gains
+    η2v.parameters.k_p[] = 0.6
+    η2v.parameters.k_i[] = 0.0
+    η2v.parameters.k_d[] = 0.0
+
+    #position controller output bounds
+    v_max = k_m * R / b_m #maximum steady-state velocity
+    v_ref_max = 0.5v_max #maximum velocity command
+    η2v.parameters.bound_lo[] = -v_ref_max
+    η2v.parameters.bound_hi[] = v_ref_max
+
+    #velocity controller gains
+    Control.Discrete.assign!(v2m, design_v2m_lqr(vehicle))
+
+    #velocity controller output bounds
+    v2m.parameters.bound_lo .= -1 #minimum motor command
+    v2m.parameters.bound_hi .= 1 #maximum motor command
 
 end
 
-#implement init! to load gains and assign PID Output bounds. But careful, we
-#also need to limit input to the LQR even when in velocity mode. So maybe we
-#don't need the PID after all
 
-function design_velocity_tracker(mdl::Model{<:Vehicle} = Model(Vehicle()))
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
+
+    (; v2m, η2v) = mdl.submodels
+    (; mode, v_ref, η_ref) = mdl.u
+    (; ω, v, θ) = vehicle.y
+
+    #position control
+    if mode === mode_η
+        η2v.u.input = η_ref
+        f_periodic!(η2v)
+        v_ref = η2v.y.output #override external velocity reference input
+    end
+
+    #velocity control
+    v2m.u.x .= XController(; ω, v, θ) #state vector value
+    v2m.u.z .= v #command vector value
+    v2m.u.z_ref .= v_ref #command vector reference
+    f_periodic!(v2m)
+    m_cmd = v2m.y.output[1]
+
+    mdl.y = ControllerY(; mode, v_ref, η_ref, m_cmd, v2m = v2m.y, η2v = η2v.y)
+
+end
+
+
+function design_v2m_lqr(mdl::Model{<:Vehicle} = Model(Vehicle()))
 
     lss = linearize(mdl)
-    lss = delete_vars(lss, :η) #get reduced design model
+    lss = delete_vars(lss, :η) #build reduced design model
 
     x_trim = lss.x0
     n_x = length(x_trim)
     x_labels = collect(keys(x_trim))
     @assert tuple(x_labels...) === propertynames(Robot2D.XController())
 
-    u_trim = lss.u0
-    n_u = length(u_trim)
-    u_labels = collect(keys(u_trim))
-    @assert tuple(u_labels...) === propertynames(Robot2D.UController())
+    u_labels = [:m, ]
+    u_trim = lss.u0[u_labels]
 
     z_labels = [:v, ]
     z_trim = lss.y0[z_labels]
-    n_z = length(z_labels)
-    @assert tuple(z_labels...) === propertynames(Robot2D.ZController())
 
     A = lss.A
     B = lss.B
@@ -325,11 +351,11 @@ function design_velocity_tracker(mdl::Model{<:Vehicle} = Model(Vehicle()))
 
     C_int = C[z_labels, :]
     D_int = D[z_labels, :]
-    n_int, _ = size(C_int)
+    n_int = size(C_int, 1)
 
-    A_aug = [A zeros(n_x, n_int); C_int zeros(n_int, n_int)]
+    A_aug = [A zeros(size(A, 1), n_int); C_int zeros(n_int, n_int)]
     B_aug = [B; D_int]
-    C_aug = [C zeros(n_z, n_int)]
+    C_aug = [C zeros(size(C, 1), n_int)]
     D_aug = D
 
     P_aug = ss(A_aug, B_aug, C_aug, D_aug)
@@ -348,7 +374,7 @@ function design_velocity_tracker(mdl::Model{<:Vehicle} = Model(Vehicle()))
     Q = diagm(Q_diag)
     R = diagm(R_diag)
 
-    #compute gain matrix
+    #compute augmented feedback matrix
     K_aug = lqr(P_aug, Q, R)
 
     L = [A B; C D]
@@ -367,6 +393,9 @@ function design_velocity_tracker(mdl::Model{<:Vehicle} = Model(Vehicle()))
     return LQRDataPoint(; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim)
 
 end
+
+@no_ode Controller
+@no_step Controller
 
 
 ################################################################################
