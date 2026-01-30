@@ -472,8 +472,8 @@ end #function
 
 @kwdef struct PID <: ModelDefinition
     k_p::Ref{Float64} = Ref(1.0) #proportional gain
-    k_i::Ref{Float64} = Ref(0.1) #integral gain
-    k_d::Ref{Float64} = Ref(0.1) #derivative gain
+    k_i::Ref{Float64} = Ref(0.0) #integral gain
+    k_d::Ref{Float64} = Ref(0.0) #derivative gain
     τ_f::Ref{Float64} = Ref(0.01) #derivative filter time constant
     β_p::Ref{Float64} = Ref(1.0) #proportional path reference weighting factor
     β_d::Ref{Float64} = Ref(1.0) #derivative path reference weighting factor
@@ -494,8 +494,8 @@ end
 
 @kwdef struct PIDOutput
     k_p::Float64 = 1.0 #proportional gain
-    k_i::Float64 = 0.1 #integral gain
-    k_d::Float64 = 0.1 #derivative gain
+    k_i::Float64 = 0.0 #integral gain
+    k_d::Float64 = 0.0 #derivative gain
     τ_f::Float64 = 0.01 #derivative filter time constant
     β_p::Float64 = 1.0 #proportional path reference weighting factor
     β_d::Float64 = 1.0 #derivative path reference weighting factor
