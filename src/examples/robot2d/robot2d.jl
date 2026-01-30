@@ -1,10 +1,14 @@
 module Robot2D
 
 using LinearAlgebra, StaticArrays, ComponentArrays
+using ControlSystems, RobustAndOptimalControl, ComponentArrays, LinearAlgebra
 
 using Flight.FlightCore
 using Flight.FlightLib
+using Flight.FlightLib.Linearization: delete_vars
 using Flight.FlightLib.Control.Discrete: LQR, PID, LQROutput, PIDOutput
+using Flight.FlightLib.Control.Discrete: LQRDataPoint
+
 
 const g = 9.80665 #m/s^2, standard gravity
 
@@ -286,13 +290,83 @@ end
 Modeling.U(::Controller) = ControllerU()
 Modeling.Y(::Controller) = ControllerY()
 
-function Modeling.init!(mdl::Model{<:Controller})
+function Modeling.init!(ctl::Model{<:Controller}, vehicle::Model{<:Vehicle} = Model(Vehicle()))
 
 end
 
 #implement init! to load gains and assign PID Output bounds. But careful, we
 #also need to limit input to the LQR even when in velocity mode. So maybe we
 #don't need the PID after all
+
+function design_velocity_tracker(mdl::Model{<:Vehicle} = Model(Vehicle()))
+
+    lss = linearize(mdl)
+    lss = delete_vars(lss, :η) #get reduced design model
+
+    x_trim = lss.x0
+    n_x = length(x_trim)
+    x_labels = collect(keys(x_trim))
+    @assert tuple(x_labels...) === propertynames(Robot2D.XController())
+
+    u_trim = lss.u0
+    n_u = length(u_trim)
+    u_labels = collect(keys(u_trim))
+    @assert tuple(u_labels...) === propertynames(Robot2D.UController())
+
+    z_labels = [:v, ]
+    z_trim = lss.y0[z_labels]
+    n_z = length(z_labels)
+    @assert tuple(z_labels...) === propertynames(Robot2D.ZController())
+
+    A = lss.A
+    B = lss.B
+    C = lss.C[z_labels, :]
+    D = lss.D[z_labels, :]
+
+    C_int = C[z_labels, :]
+    D_int = D[z_labels, :]
+    n_int, _ = size(C_int)
+
+    A_aug = [A zeros(n_x, n_int); C_int zeros(n_int, n_int)]
+    B_aug = [B; D_int]
+    C_aug = [C zeros(n_z, n_int)]
+    D_aug = D
+
+    P_aug = ss(A_aug, B_aug, C_aug, D_aug)
+
+    x_aug_labels = push!(copy(x_labels), :ξ_v)
+    Q_diag = ComponentVector(zeros(length(x_aug_labels)), Axis(x_aug_labels))
+    R_diag = ComponentVector(zeros(length(u_labels)), Axis(u_labels))
+
+    Q_diag.ω = 1e-3
+    Q_diag.v = 1e-2
+    Q_diag.θ = 0
+    Q_diag.ξ_v = 5e-2
+
+    R_diag.m = 1e-1
+
+    Q = diagm(Q_diag)
+    R = diagm(R_diag)
+
+    #compute gain matrix
+    K_aug = lqr(P_aug, Q, R)
+
+    L = [A B; C D]
+    M = inv(L)
+    M_12 = M[1:n_x, n_x+1:end]
+    M_22 = M[n_x+1:end, n_x+1:end]
+
+    #extract system state and integrator blocks from the feedback matrix
+    K_x = K_aug[:, 1:n_x]
+    K_ξ = K_aug[:, n_x+1:end]
+
+    K_fbk = K_x
+    K_fwd = M_22 + K_x * M_12
+    K_int = K_ξ
+
+    return LQRDataPoint(; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim)
+
+end
 
 
 ################################################################################
