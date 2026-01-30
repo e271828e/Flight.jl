@@ -965,7 +965,7 @@ end #function
 ########################## Controller Data Handling ############################
 ################################################################################
 
-@kwdef struct PIDData{T} <: FieldVector{4, T} #parallel form
+@kwdef struct PIDData{T} <: FieldVector{4, T}
     k_p::T = 1.0
     k_i::T = 0.0
     k_d::T = 0.1
@@ -981,15 +981,13 @@ end
     z_trim::Z
 end
 
-function Base.NamedTuple(data::PIDData)
-    names = fieldnames(typeof(data))
-    fields = map(n -> getfield(data, n), names)
-    NamedTuple{names}(fields)
-end
+############################## Data Points #####################################
 
-Base.getproperty(data::PIDData, name::Symbol) = getproperty(data, Val(name))
+const PIDDataPoint = PIDData{Float64}
 
-@generated function Base.getproperty(data::PIDData, ::Val{S}) where {S}
+Base.getproperty(data::PIDDataPoint, name::Symbol) = getproperty(data, Val(name))
+
+@generated function Base.getproperty(data::PIDDataPoint, ::Val{S}) where {S}
     if S ∈ fieldnames(PIDData)
         return :(getfield(data, $(QuoteNode(S))))
     elseif S === :T_i
@@ -1001,9 +999,6 @@ Base.getproperty(data::PIDData, name::Symbol) = getproperty(data, Val(name))
     end
 end
 
-############################## Data Points #####################################
-
-const PIDDataPoint = PIDData{Float64}
 
 const LQRDataPoint{NX, NU, NZ, NUX, NUZ} = LQRData{
     SMatrix{NU, NX, Float64, NUX},
@@ -1199,7 +1194,7 @@ module PIDOpt
 using StaticArrays, NLopt, ControlSystems
 using RobustAndOptimalControl: hinfnorm2
 using Trapz: trapz
-using ..Control.Discrete: PIDData
+using ..Control.Discrete: PIDData, PIDDataPoint
 
 @kwdef struct Metrics{T} <: FieldVector{5, T}
     Ms::T #maximum sensitivity
@@ -1212,19 +1207,19 @@ end
 @kwdef struct Settings
     t_sim::Float64 = 5.0
     maxeval::Int64 = 5000
-    lower_bounds::PIDData = PIDData(; k_p = 0.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
-    upper_bounds::PIDData = PIDData(; k_p = 50.0, k_i = 50.0, k_d = 10.0, τ_f = 0.01)
-    initial_step::PIDData = PIDData(; k_p = 0.01, k_i = 0.01, k_d = 0.01, τ_f = 0.01)
+    lower_bounds::PIDDataPoint = PIDDataPoint(; k_p = 0.0, k_i = 0.0, k_d = 0.0, τ_f = 0.01)
+    upper_bounds::PIDDataPoint = PIDDataPoint(; k_p = 50.0, k_i = 50.0, k_d = 10.0, τ_f = 0.01)
+    initial_step::PIDDataPoint = PIDDataPoint(; k_p = 0.01, k_i = 0.01, k_d = 0.01, τ_f = 0.01)
 end
 
 @kwdef struct Results
     exit_flag::Symbol
     cost::Float64
     metrics::Metrics{Float64}
-    data::PIDData{Float64}
+    data::PIDDataPoint
 end
 
-function build_PID(data::PIDData{<:Real})
+function build_PID(data::PIDDataPoint)
     (; k_p, k_i, k_d, τ_f) = data
     (k_p + k_i * tf(1, [1,0]) + k_d * tf([1, 0], [τ_f, 1])) |> ss
 end
@@ -1267,7 +1262,7 @@ end
 
 
 function optimize_PID(  plant::LTISystem;
-                    data_0::PIDData = PIDData(), #initial condition
+                    data_0::PIDDataPoint = PIDDataPoint(), #initial condition
                     settings::Settings = Settings(),
                     weights::Metrics{<:Real} = Metrics(ones(5)),
                     global_search::Bool = true)
@@ -1283,7 +1278,7 @@ function optimize_PID(  plant::LTISystem;
     plant = ss(plant)
     f_opt = let plant = plant, settings = settings, weights = weights
         function (x::Vector{Float64}, ::Vector{Float64})
-            pid = build_PID(PIDData(x...))
+            pid = build_PID(PIDDataPoint(x...))
             cost(plant, pid, settings, weights)
         end
     end
@@ -1314,7 +1309,7 @@ function optimize_PID(  plant::LTISystem;
 
     (minf, minx, exit_flag) = optimize(opt_loc, minx)
 
-    data_opt = PIDData(minx...)
+    data_opt = PIDDataPoint(minx...)
     pid_opt = build_PID(data_opt)
     metrics_opt = Metrics(plant, pid_opt, settings)
 
