@@ -1015,7 +1015,9 @@ function LQRDataPoint(; K_fbk::AbstractMatrix{<:Real},
 
     NX, NU, NZ = map(length, (x_trim, u_trim, z_trim))
 
-    LQRDataPoint{NX, NU, NZ, NU * NX, NU * NZ}( K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim)
+    #extract data to avoid issues with custom Array types
+    LQRDataPoint{NX, NU, NZ, NU * NX, NU * NZ}(
+        K_fbk[:, :], K_fwd[:, :], K_int[:, :], x_trim[:], u_trim[:], z_trim[:])
 
 end
 
