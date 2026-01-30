@@ -4,7 +4,7 @@ using Flight
 using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightLib.Linearization: LinearizedSS, subsystem, delete_vars
-using Flight.FlightLib.Control.Discrete: PIDData, LQRData, save_lookup_data
+using Flight.FlightLib.Control.Discrete: PIDData, LQRDataPoint, save_lookup_data
 using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
 using Flight.FlightExamples.C172
@@ -214,7 +214,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_te2te = connect([P_red, throttle_sum, elevator_sum, K_fbk_ss, K_fwd_ss],
             connections; w1 = [:throttle_cmd_ref, :elevator_cmd_ref], z1 = P_red.y)
 
-        data_te2te = LQRData(; #export everything as plain arrays
+        data_te2te = LQRDataPoint(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -427,8 +427,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
                         w1 = z_labels_ref, z1 = P_red.y, unique = false)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
-        #convert everything to plain arrays
-        data_tv2te = LQRData(;
+        data_tv2te = LQRDataPoint(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -539,8 +538,7 @@ function design_lon(; design_point::C172.TrimParameters = C172.TrimParameters(),
                         w1 = z_labels_ref, z1 = P_lon.y, unique = false)
         Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
-        #convert everything to plain arrays
-        data_vh2te = LQRData(;
+        data_vh2te = LQRDataPoint(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -624,7 +622,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_ar = connect([P_lat, aileron_sum, rudder_sum, K_fbk_ss, K_fwd_ss],
                         connections_fbk; w1 = z_labels_ref, z1 = P_lat.y)
 
-        data_ar2ar = LQRData(;
+        data_ar2ar = LQRDataPoint(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 
@@ -702,9 +700,7 @@ function design_lat(; design_point::C172.TrimParameters = C172.TrimParameters(),
         P_φβ = connect([P_lat, aileron_sum, rudder_sum, K_fbk_ss, K_fwd_ss],
                         connections_fbk; external_inputs = z_labels_ref, external_outputs = P_lat.y);
 
-
-        #convert everything to plain arrays
-        data_φβar = LQRData(;
+        data_φβar = LQRDataPoint(;
             K_fbk = Matrix(K_fbk), K_fwd = Matrix(K_fwd), K_int = Matrix(K_int),
             x_trim = Vector(x_trim), u_trim = Vector(u_trim), z_trim = Vector(z_trim))
 

@@ -962,7 +962,7 @@ function GUI.draw(mdl::Model{<:LQR})
 end #function
 
 
-####################### Controller Data Management #############################
+########################## Controller Data Handling ############################
 ################################################################################
 
 @kwdef struct PIDData{T} <: FieldVector{4, T} #parallel form
@@ -1005,18 +1005,7 @@ end
 
 const PIDDataPoint = PIDData{Float64}
 
-
-const LQRDataPoint{CB, CF, CI, X, U, Z} = LQRData{CB, CF, CI, X, U, Z} where {
-    CB <: AbstractMatrix{Float64},
-    CF <: AbstractMatrix{Float64},
-    CI <: AbstractMatrix{Float64},
-    X <: AbstractVector{Float64},
-    U <: AbstractVector{Float64},
-    Z <: AbstractVector{Float64}}
-
-
-#avoids allocations on lookup interpolation
-const LQRDataPointStatic{NX, NU, NZ, NUX, NUZ} = LQRDataPoint{
+const LQRDataPoint{NX, NU, NZ, NUX, NUZ} = LQRData{
     SMatrix{NU, NX, Float64, NUX},
     SMatrix{NU, NZ, Float64, NUZ},
     SMatrix{NU, NZ, Float64, NUZ},
@@ -1024,6 +1013,16 @@ const LQRDataPointStatic{NX, NU, NZ, NUX, NUZ} = LQRDataPoint{
     SVector{NU, Float64},
     SVector{NZ, Float64}}
 
+function LQRDataPoint(; K_fbk::AbstractMatrix{<:Real},
+    K_fwd::AbstractMatrix{<:Real}, K_int::AbstractMatrix{<:Real},
+    x_trim::AbstractVector{<:Real}, u_trim::AbstractVector{<:Real},
+    z_trim::AbstractVector{<:Real})
+
+    NX, NU, NZ = map(length, (x_trim, u_trim, z_trim))
+
+    LQRDataPoint{NX, NU, NZ, NU * NX, NU * NZ}( K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim)
+
+end
 
 function assign!(mdl::Model{<:PID}, point::PIDDataPoint)
     (; k_p, k_i, k_d, τ_f) = point
@@ -1044,7 +1043,7 @@ function assign!(mdl::Model{<:LQR}, point::LQRDataPoint)
 end
 
 
-############################### Scheduling #####################################
+############################### Lookup Data ####################################
 
 const LookupBounds = Vector{NTuple{2, Float64}}
 
@@ -1094,7 +1093,7 @@ function load_lookup_data_pid(fname::String)
 end
 
 
-#returns (Array{<:LQRDataPointStatic}, LookupBounds)
+#returns (Array{<:LQRDataPoint}, LookupBounds)
 function load_lookup_data_lqr(fname::String)
 
     fid = h5open(fname, "r")
@@ -1118,13 +1117,9 @@ function load_lookup_data_lqr(fname::String)
         end
     end
 
-    #convert to Array{<:LQRDataPointStatic}
-    NX = size(points_stacked.x_trim, 1)
-    NU = size(points_stacked.u_trim, 1)
-    NZ = size(points_stacked.z_trim, 1)
-    NUX = NU * NX
-    NUZ = NU * NZ
-    points = StructArray{LQRDataPointStatic{NX, NU, NZ, NUX, NUZ}}(points_tuple) |> Array
+    #convert tuple of Arrays to Array{<:LQRDataPoint}
+    NX, NU, NZ = map(name -> size(getproperty(points_stacked, name), 1), (:x_trim, :u_trim, :z_trim))
+    points = StructArray{LQRDataPoint{NX, NU, NZ, NU*NX, NU*NZ}}(points_tuple) |> Array
 
     #rearrange stacked bounds into LookupBounds
     bounds = mapslices(x->tuple(x...), bounds_stacked, dims = 1) |> vec
@@ -1147,7 +1142,7 @@ const LQRDataLookup = LQRData{CB, CF, CI, X, U, Z} where {
     Z <: AbstractInterpolation}
 
 
-function build_interps(points::Union{Array{<:PIDDataPoint}, Array{<:LQRDataPointStatic}}, bounds::LookupBounds)
+function build_interps(points::Union{Array{<:PIDDataPoint}, Array{<:LQRDataPoint}}, bounds::LookupBounds)
 
     #convert array of points to a NamedTuple of arrays
     @assert ndims(points) == length(bounds)
@@ -1196,7 +1191,6 @@ end
 
 end #submodule
 
-################################################################################
 ############################ PID Optimization ##################################
 ################################################################################
 
