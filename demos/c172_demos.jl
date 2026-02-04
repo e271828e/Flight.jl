@@ -4,9 +4,9 @@ using JSON3, Sockets
 using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings
 
 using Flight
-using Flight.FlightExamples.C172: is_on_gnd
-using Flight.FlightExamples.C172X.C172XControl: ModeControlLon, ModeControlLat
-using Flight.FlightExamples.C172X.C172XGuidance: ModeGuidance, Segment, SegmentGuidanceData
+using Flight.FlightApps.C172: is_on_gnd
+using Flight.FlightApps.C172X.C172XControl: ModeControlLon, ModeControlLat
+using Flight.FlightApps.C172X.C172XGuidance: ModeGuidance, Segment, SegmentGuidanceData
 
 export interactive_simulation, crosswind_landing, traffic_pattern, json_loopback
 

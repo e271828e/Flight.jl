@@ -21,7 +21,7 @@ It is organized in three layers:
 
 - A library of high-fidelity, reusable physics and engineering models (`FlightLib`).
 
-- A collection of application examples (`FlightExamples`).
+- A collection of application examples (`FlightApps`).
 
 Key features:
 
