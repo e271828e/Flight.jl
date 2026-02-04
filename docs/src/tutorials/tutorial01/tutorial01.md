@@ -1,6 +1,6 @@
 # Interactive Flight Simulation
 
-This tutorial shows how to set up and run an interactive aircraft simulation. You will be able to
+This tutorial shows how to set up and run an interactive flight simulation. You will be able to
 control it through the built-in GUI and, optionally, use the free X-Plane 12 demo for 3D
 visualization.
 

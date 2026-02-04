@@ -1,6 +1,6 @@
 # Headless Flight Simulation
 
-In this tutorial, we revisit our [interactive simulation](@ref "Interactive Flight Simulation") setup. This
+In this tutorial, we revisit our [interactive flight simulation](@ref "Interactive Flight Simulation") setup. This
 time, we will learn how to run the `Simulation` programmatically and extract results for inspection
 and plotting.
 
@@ -113,7 +113,7 @@ init_air = C172.TrimParameters()
 init!(sim, init_air)
 ```
 
-You may recall how during [interactive simulation](@ref "Interactive Simulation") we used the
+You may recall how during [interactive simulation](@ref "Interactive Flight Simulation") we used the
 *Aircraft > Avionics* GUI panel to control the aircraft. That panel belongs to the
 `mdl.aircraft.avionics` node, which provides the flight control laws for the `Cessna172Xv1`
 aircraft. This node has two children:
