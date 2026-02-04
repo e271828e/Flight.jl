@@ -1,6 +1,6 @@
-# Headless Simulation
+# Headless Flight Simulation
 
-In this tutorial, we revisit our [interactive simulation](@ref "Interactive Simulation") setup. This
+In this tutorial, we revisit our [interactive simulation](@ref "Interactive Flight Simulation") setup. This
 time, we will learn how to run the `Simulation` programmatically and extract results for inspection
 and plotting.
 
