@@ -93,6 +93,27 @@ end
 @no_periodic Vehicle
 
 
+function GUI.draw!(mdl::Model{<:Vehicle}, p_open::Ref{Bool} = Ref(true))
+
+    u = mdl.u
+
+    CImGui.Begin("Vehicle", p_open)
+
+    CImGui.PushItemWidth(-250)
+
+    u[] = GUI.safe_slider("Pilot Mass (kg)", u[], "%.3f")
+    # u.m_copilot = GUI.safe_slider("Copilot Mass (kg)", u.m_copilot, "%.3f")
+    # u.m_lpass = GUI.safe_slider("Left Passenger Mass (kg)", u.m_lpass, "%.3f")
+    # u.m_rpass = GUI.safe_slider("Right Passenger Mass (kg)", u.m_rpass, "%.3f")
+    # u.m_baggage = GUI.safe_slider("Baggage Mass (kg)", u.m_baggage, "%.3f")
+
+    CImGui.PopItemWidth()
+
+    CImGui.End()
+
+end
+
+
 ################################################################################
 ################################ Initialization ################################
 
