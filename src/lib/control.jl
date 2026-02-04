@@ -89,6 +89,7 @@ function Modeling.init!(mdl::Model{<:PIVector})
     mdl.u.input .= 0
     mdl.u.sat_ext .= 0
     mdl.x .= 0
+    f_ode!(mdl) #propagate input and state to output
 end
 
 
@@ -252,6 +253,7 @@ function Modeling.init!(mdl::Model{<:Integrator}, x0::Real = 0.0)
     mdl.u.sat_ext = 0
     mdl.s.x0 = x0
     mdl.s.sat_out_0 = 0
+    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
 end
 
 @no_step Integrator
@@ -317,6 +319,7 @@ function Modeling.init!(mdl::Model{<:IntegratorVector{N}}, x0::AbstractVector{<:
     mdl.u.sat_ext .= 0
     mdl.s.x0 .= x0
     mdl.s.sat_out_0 .= 0
+    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
 end
 
 @no_ode IntegratorVector
@@ -416,6 +419,7 @@ function Modeling.init!(mdl::Model{<:LeadLag})
     mdl.u.u1 = 0
     mdl.s.u0 = 0
     mdl.s.x0 = 0
+    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
 end
 
 @no_ode LeadLag
@@ -525,6 +529,7 @@ function Modeling.init!(mdl::Model{<:PID})
     mdl.s.x_i0 = 0
     mdl.s.x_d0 = 0
     mdl.s.sat_out_0 = 0
+    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
 end
 
 @no_ode PID
@@ -629,6 +634,7 @@ function Modeling.init!(mdl::Model{<:PIDVector{N}}) where {N}
     mdl.s.x_i0 .= 0
     mdl.s.x_d0 .= 0
     mdl.s.sat_out_0 .= 0
+    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
 end
 
 @no_ode PIDVector
@@ -892,6 +898,7 @@ function Modeling.init!(mdl::Model{<:LQR})
     mdl.u.sat_ext .= 0
     mdl.s.int_out_0 .= 0
     mdl.s.out_sat_0 .= 0
+    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
 end
 
 @no_ode LQR

@@ -334,6 +334,13 @@ function Linearization.linearize( vehicle::Model{<:Vehicle}, trim_params::Abstra
 end
 
 
+function Linearization.linearize(aircraft::Model{<:Aircraft},
+                                params::AbstractTrimParameters,
+                                args...)
+    linearize(aircraft.vehicle, params, args...)
+end
+
+
 ############################### Plotting #######################################
 
 function Plotting.make_plots(ts::TimeSeries{<:VehicleY}; kwargs...)
