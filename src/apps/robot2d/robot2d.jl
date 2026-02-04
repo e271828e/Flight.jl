@@ -42,7 +42,7 @@ end
 end
 
 Modeling.X(::Vehicle) = ComponentVector( ω = 0.0, v = 0.0, θ = 0.0, η = 0.0)
-Modeling.U(::Vehicle) = Ref(Ranged(0.0, 0., 1.))
+Modeling.U(::Vehicle) = Ref(Ranged(0.0, -1., 1.))
 Modeling.Y(::Vehicle) = VehicleY()
 
 function Modeling.f_ode!(mdl::Model{Vehicle})
@@ -95,17 +95,18 @@ end
 
 function GUI.draw!(mdl::Model{<:Vehicle}, p_open::Ref{Bool} = Ref(true))
 
-    u = mdl.u
+    (; u, y) = mdl
+    (; ω, v, θ, η) = y
 
     CImGui.Begin("Vehicle", p_open)
 
     CImGui.PushItemWidth(-250)
 
-    u[] = GUI.safe_slider("Pilot Mass (kg)", u[], "%.3f")
-    # u.m_copilot = GUI.safe_slider("Copilot Mass (kg)", u.m_copilot, "%.3f")
-    # u.m_lpass = GUI.safe_slider("Left Passenger Mass (kg)", u.m_lpass, "%.3f")
-    # u.m_rpass = GUI.safe_slider("Right Passenger Mass (kg)", u.m_rpass, "%.3f")
-    # u.m_baggage = GUI.safe_slider("Baggage Mass (kg)", u.m_baggage, "%.3f")
+    u[] = GUI.safe_slider("Motor Command (Normalized)", u[], "%.3f")
+    CImGui.Text(@sprintf("Angular Rate: %.3f deg/s", rad2deg(ω)))
+    CImGui.Text(@sprintf("Angle: %.3f deg", rad2deg(θ)))
+    CImGui.Text(@sprintf("Velocity: %.3f deg/s", v))
+    CImGui.Text(@sprintf("Position: %.3f deg/s", η))
 
     CImGui.PopItemWidth()
 
@@ -257,7 +258,12 @@ function Linearization.linearize(mdl::Model{Vehicle}, ip::InitParameters = InitP
     x0 = get_x_ss(mdl)
     u0 = get_u_ss(mdl)
 
-    linearize(f, h, x0, u0)
+    lss = linearize(f, h, x0, u0)
+
+    #restore Vehicle state
+    init!(mdl, ip)
+
+    return lss
 
 end
 
@@ -298,42 +304,16 @@ Modeling.U(::Controller) = ControllerU()
 Modeling.Y(::Controller) = ControllerY()
 
 
-function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle} = Model(Vehicle()))
-
-    (; v2m, η2v) = mdl.submodels
-    (; k_m, b_m, R) = vehicle.parameters
-
-    #position controller gains
-    η2v.parameters.k_p[] = 0.6
-    η2v.parameters.k_i[] = 0.0
-    η2v.parameters.k_d[] = 0.0
-
-    #position controller output bounds
-    v_max = k_m * R / b_m #maximum steady-state velocity
-    v_ref_max = 0.5v_max #maximum velocity command
-    η2v.parameters.bound_lo[] = -v_ref_max
-    η2v.parameters.bound_hi[] = v_ref_max
-
-    #velocity controller gains
-    Control.Discrete.assign!(v2m, design_v2m_lqr(vehicle))
-
-    #velocity controller output bounds
-    v2m.parameters.bound_lo .= -1 #minimum motor command
-    v2m.parameters.bound_hi .= 1 #maximum motor command
-
-end
-
-
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
 
     (; v2m, η2v) = mdl.submodels
     (; mode, v_ref, η_ref) = mdl.u
-    (; ω, v, θ) = vehicle.y
+    (; ω, v, θ, η) = vehicle.y
 
     #position control
+    η2v.u.input = η_ref - η #assign position error
+    f_periodic!(η2v) #update position control submodel
     if mode === mode_η
-        η2v.u.input = η_ref
-        f_periodic!(η2v)
         v_ref = η2v.y.output #override external velocity reference input
     end
 
@@ -341,15 +321,51 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller}, vehicle:
     v2m.u.x .= XController(; ω, v, θ) #state vector value
     v2m.u.z .= v #command vector value
     v2m.u.z_ref .= v_ref #command vector reference
-    f_periodic!(v2m)
-    m_cmd = v2m.y.output[1]
+    f_periodic!(v2m) #update velocity control submodel
+    m_cmd = v2m.y.output[1] #assign motor command
 
     mdl.y = ControllerY(; mode, v_ref, η_ref, m_cmd, v2m = v2m.y, η2v = η2v.y)
 
 end
 
 
-function design_v2m_lqr(mdl::Model{<:Vehicle} = Model(Vehicle()))
+function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
+
+    (; v2m, η2v) = mdl.submodels
+    (; k_m, b_m, R) = vehicle.parameters
+
+    #reset all controller submodels
+    foreach(values(mdl.submodels)) do ss
+        init!(ss)
+    end
+
+    #assign position controller gains
+    η2v.parameters.k_p[] = 0.6
+    η2v.parameters.k_i[] = 0.0
+    η2v.parameters.k_d[] = 0.0
+
+    #set position controller output bounds
+    v_max = k_m * R / b_m #maximum steady-state velocity
+    v_ref_max = 0.5v_max #maximum velocity command
+    η2v.parameters.bound_lo[] = -v_ref_max
+    η2v.parameters.bound_hi[] = v_ref_max
+
+    #compute and assign velocity controller gains
+    Control.Discrete.assign!(v2m, design_v2m_lqr(vehicle))
+
+    #set velocity controller output bounds
+    v2m.parameters.bound_lo .= -1 #minimum motor command
+    v2m.parameters.bound_hi .= 1 #maximum motor command
+
+    #reset parent controller inputs
+    mdl.u.mode = mode_v
+    mdl.u.v_ref = 0
+    mdl.u.η_ref = 0
+
+end
+
+
+function design_v2m_lqr(mdl::Model{<:Vehicle})
 
     lss = linearize(mdl)
     lss = delete_vars(lss, :η) #build reduced design model
@@ -422,11 +438,48 @@ end
 ################################################################################
 ################################# Robot ########################################
 
-
 @kwdef struct Robot{C} <: ModelDefinition
     vehicle::Vehicle = Vehicle()
     controller::C = Controller()
 end
 
+@kwdef struct LostBalance <: Exception
+    msg::String = ""
+end
+
+function Modeling.f_ode!( mdl::Model{<:Robot})
+
+    f_ode!(mdl.vehicle)
+    f_output!(mdl)
+
+end
+
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Robot})
+
+    (; vehicle, controller) = mdl.submodels
+    f_periodic!(controller, vehicle)
+    vehicle.u[] = controller.y.m_cmd
+    f_output!(mdl)
+
+end
+
+function Modeling.f_step!(mdl::Model{<:Robot})
+
+    (; θ) = mdl.vehicle.y
+    θ_max = deg2rad(10)
+    (abs(θ) > θ_max) && throw(LostBalance(
+        "Chassis tilt θ = $(rad2deg(θ)) deg exceeded allowable limit (θ = $(rad2deg(θ_max)))" *
+        "at t = $(mdl.t[]) s"))
+
+end
+
+function Modeling.init!( mdl::Model{<:Robot}, ip::InitParameters = InitParameters())
+
+    (; vehicle, controller) = mdl.submodels
+    init!(vehicle, ip)
+    init!(controller, vehicle) #run controller design and assign gains
+    f_output!(mdl) #update parent model output
+
+end
 
 end #module

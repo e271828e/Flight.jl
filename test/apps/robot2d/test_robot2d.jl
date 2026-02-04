@@ -5,9 +5,9 @@ using Revise
 
 using Flight.FlightCore
 using Flight.FlightLib
-using Flight.FlightExamples
+using Flight.FlightApps
 
-includet(joinpath(dirname(@__FILE__), "../../../src/examples/robot2d/robot2d.jl")); using ..Robot2D
+includet(joinpath(dirname(@__FILE__), "../../../src/apps/robot2d/robot2d.jl")); using ..Robot2D
 using ..Robot2D: Vehicle, Robot, InitParameters
 
 function test_robot2d(; alloc::Bool = true)
@@ -69,13 +69,26 @@ function test_vehicle(; alloc::Bool = true)
 
 end
 
-function test_sim()
+function sim_vehicle()
 
     mdl = Model(Vehicle())
     sim = Simulation(mdl; t_end = 20, dt = 0.01)
     init!(sim, InitParameters(; u_m = 1, θ = 0))
     step!(sim, 0.1, true)
     run!(sim)
+    ts = TimeSeries(sim)
+    return ts
+
+end
+
+function sim_robot(gui::Bool = false)
+
+    mdl = Model(Robot())
+    sim = Simulation(mdl; t_end = 20, dt = 0.01)
+    init!(sim)
+    mdl.controller.u.mode = Robot2D.mode_η
+    mdl.controller.u.η_ref = 5
+    run!(sim; gui)
     ts = TimeSeries(sim)
     return ts
 
