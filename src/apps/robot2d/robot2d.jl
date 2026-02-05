@@ -4,7 +4,8 @@ using LinearAlgebra, StaticArrays, ComponentArrays
 using ControlSystems, RobustAndOptimalControl, ComponentArrays, LinearAlgebra
 using CImGui: Begin, End, Text, IsItemActive, Checkbox, CollapsingHeader,
             SameLine, PushItemWidth, PopItemWidth, BeginTable, EndTable,
-            TableNextRow, TableNextColumn, AlignTextToFramePadding, Separator
+            TableNextRow, TableNextColumn, AlignTextToFramePadding, Separator,
+            ImVec2
 
 using Flight.FlightCore
 using Flight.FlightLib
@@ -16,7 +17,7 @@ using Flight.FlightLib.Control.Discrete: LQRDataPoint
 const g = 9.80665 #m/s^2, standard gravity
 
 ################################################################################
-################################## Vehicle2 #####################################
+################################## Vehicle #####################################
 
 #body 1: main body, comprising the vehicle chassis and the DC motor's case and stator
 #body 2: rolling body, comprising the wheels, axle, and the DC motor's rotor.
@@ -98,20 +99,110 @@ end
 
 function GUI.draw!(mdl::Model{<:Vehicle}, p_open::Ref{Bool} = Ref(true))
 
-    (; u, y) = mdl
+    (; u, y, parameters) = mdl
     (; ω, v, θ, η) = y
+    (; R, L) = parameters
 
     Begin("Vehicle", p_open)
 
-    PushItemWidth(-250)
+    if BeginTable("Text Data", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
 
-    u[] = GUI.safe_slider("Motor Command", u[], "%.6f")
-    Text(@sprintf("Angular Rate: %.6f deg/s", rad2deg(ω)))
-    Text(@sprintf("Angle: %.6f deg", rad2deg(θ)))
-    Text(@sprintf("Velocity: %.6f m/s", v))
-    Text(@sprintf("Position: %.6f m", η))
+        TableNextRow()
+        TableNextColumn()
+        AlignTextToFramePadding()
+        Text("Motor Command")
+        TableNextColumn()
+        PushItemWidth(-10)
+        u[] = GUI.safe_slider("##Motor Command", u[], "%.6f")
+        PopItemWidth()
 
-    PopItemWidth()
+        TableNextRow()
+        TableNextColumn()
+        Text("Angular Rate")
+        TableNextColumn()
+        Text(@sprintf("%.6f deg/s", rad2deg(ω)))
+
+        TableNextRow()
+        TableNextColumn()
+        Text("Angle")
+        TableNextColumn()
+        Text(@sprintf("%.6f deg", rad2deg(θ)))
+
+        TableNextRow()
+        TableNextColumn()
+        Text("Velocity")
+        TableNextColumn()
+        Text(@sprintf("%.6f m/s", v))
+
+        TableNextRow()
+        TableNextColumn()
+        Text("Position")
+        TableNextColumn()
+        Text(@sprintf("%.6f m", η))
+
+        EndTable()
+    end
+
+    # 1. Define canvas dimensions and reserve space
+    window_sz = CImGui.GetWindowSize()
+    canvas_p0 = CImGui.GetCursorScreenPos() #Top-left of drawing area
+    canvas_sz = ImVec2(0.95window_sz.x, 0.8window_sz.x)
+    CImGui.Dummy(canvas_sz) #Reserve space in the layout
+
+    # 2. Get the DrawList for the current window
+    draw_list = CImGui.GetWindowDrawList()
+
+    # 3. Calculate geometry
+    # Colors (ABGR packed format for ImGui: 0xAABBGGRR)
+    col_bg     = 0xFF202020 # Dark Gray Background
+    col_wheel  = 0xFFFFFFFF # White
+    col_chassis= 0xFF00FFFF # Yellow
+    col_ground = 0xFF808080 # Gray
+    col_spoke  = 0xFF0000FF # Red
+    col_com  = 0xFF000000 # Black
+
+    #for ImGui, θ=0 is upwards, CW is positive, y-axis points downwards
+    scale = 0.6canvas_sz.y / 2L #total chassis length spans 60% of canvas height
+    R_px = R * scale # Wheel radius in pixels (approx)
+    L_px = L * scale # Distance to CoM
+
+    #origin position
+    cx = canvas_p0.x + canvas_sz.x * 0.5
+    cy = canvas_p0.y + canvas_sz.y * 0.8  # Wheel sits near the bottom
+
+    #CoM position
+    gx = cx + L_px * sin(θ)
+    gy = cy - L_px * cos(θ)
+
+    #chassis end point
+    ex = cx + 2L_px * sin(θ)
+    ey = cy - 2L_px * cos(θ)
+
+    #wheel radius line end point
+    φ = η/R
+    wx = cx + R_px * sin(φ)
+    wy = cy - R_px * cos(φ)
+
+    # 4. Draw commands
+    # Background rectangle
+    CImGui.AddRectFilled(draw_list, canvas_p0,
+        ImVec2(canvas_p0.x + canvas_sz.x, canvas_p0.y + canvas_sz.y), col_bg)
+
+    # Ground
+    CImGui.AddLine(draw_list, ImVec2(canvas_p0.x, cy + R_px),
+        ImVec2(canvas_p0.x + canvas_sz.x, cy + R_px), col_ground, 2.0)
+
+    # Wheel Body
+    CImGui.AddCircle(draw_list, ImVec2(cx, cy), R_px, col_wheel, 36, 2.0)
+
+    # Wheel Radius
+    CImGui.AddLine(draw_list, ImVec2(cx, cy), ImVec2(wx, wy), col_spoke, 2.0)
+
+    # Chassis
+    CImGui.AddLine(draw_list, ImVec2(cx, cy), ImVec2(ex, ey), col_chassis, 8.0)
+
+    # CoM (Small Circle at tip)
+    CImGui.AddCircleFilled(draw_list, ImVec2(gx, gy), 3.0, col_com)
 
     End()
 
@@ -464,7 +555,7 @@ function GUI.draw!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle}, p_open::
         TableNextRow()
         TableNextColumn()
         AlignTextToFramePadding()
-        Text("Mode")
+        Text("Control Mode")
         TableNextColumn()
         mode_button("Direct", mode_m, u.mode, y.mode)
         IsItemActive() && (u.mode = mode_m; u.m_ref = u_m)
@@ -478,7 +569,7 @@ function GUI.draw!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle}, p_open::
         TableNextRow()
         TableNextColumn()
         AlignTextToFramePadding()
-        Text("Motor")
+        Text("Motor Command")
         TableNextColumn()
         PushItemWidth(-10)
         u.m_ref = safe_slider("##Motor Reference", u.m_ref, "%.6f")
@@ -489,24 +580,24 @@ function GUI.draw!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle}, p_open::
         TableNextRow()
         TableNextColumn()
         AlignTextToFramePadding()
-        Text("Velocity")
+        Text("Velocity (m/s)")
         TableNextColumn()
         PushItemWidth(-10)
         u.v_ref = safe_slider("##Velocity Reference", u.v_ref, -v_lim[], v_lim[], "%.6f")
         PopItemWidth()
         TableNextColumn()
-        Text(@sprintf("%.6f m/s", v))
+        Text(@sprintf("%.6f", v))
 
         TableNextRow()
         TableNextColumn()
         AlignTextToFramePadding()
-        Text("Position")
+        Text("Position (m)")
         TableNextColumn()
         PushItemWidth(-10)
-        u.η_ref = safe_slider("##Position Reference", u.η_ref, -10, 10, "%.6f")
+        u.η_ref = safe_slider("##Position Reference", u.η_ref, -5, 5, "%.6f")
         PopItemWidth()
         TableNextColumn()
-        Text(@sprintf("%.6f m", η))
+        Text(@sprintf("%.6f", η))
 
         EndTable()
 
