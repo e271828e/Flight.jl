@@ -75,6 +75,8 @@ Base.:-(x::Ranged{T1,Min,Max}, y::Ranged{T2,Min,Max}) where {T1,T2,Min,Max} = Ra
 
 #basic equality
 Base.:(==)(x::Ranged{T1}, y::Real) where {T1} = (==)(promote(x.val, y)...)
+Base.isless(x::Ranged{T1}, y::Real) where {T1} = isless(promote(x.val, y)...)
+Base.isless(y::Real, x::Ranged{T1}) where {T1} = isless(promote(y, x.val)...)
 
 saturation(x::Ranged)::Int64 = (x == typemax(x)) - (x == typemin(x))
 
