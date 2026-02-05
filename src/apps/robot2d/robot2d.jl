@@ -2,6 +2,9 @@ module Robot2D
 
 using LinearAlgebra, StaticArrays, ComponentArrays
 using ControlSystems, RobustAndOptimalControl, ComponentArrays, LinearAlgebra
+using CImGui: Begin, End, Text, IsItemActive, Checkbox, CollapsingHeader,
+            SameLine, PushItemWidth, PopItemWidth, BeginTable, EndTable,
+            TableNextRow, TableNextColumn, AlignTextToFramePadding, Separator
 
 using Flight.FlightCore
 using Flight.FlightLib
@@ -98,19 +101,19 @@ function GUI.draw!(mdl::Model{<:Vehicle}, p_open::Ref{Bool} = Ref(true))
     (; u, y) = mdl
     (; ω, v, θ, η) = y
 
-    CImGui.Begin("Vehicle", p_open)
+    Begin("Vehicle", p_open)
 
-    CImGui.PushItemWidth(-250)
+    PushItemWidth(-250)
 
-    u[] = GUI.safe_slider("Motor Command (Normalized)", u[], "%.3f")
-    CImGui.Text(@sprintf("Angular Rate: %.3f deg/s", rad2deg(ω)))
-    CImGui.Text(@sprintf("Angle: %.3f deg", rad2deg(θ)))
-    CImGui.Text(@sprintf("Velocity: %.3f deg/s", v))
-    CImGui.Text(@sprintf("Position: %.3f deg/s", η))
+    u[] = GUI.safe_slider("Motor Command", u[], "%.6f")
+    Text(@sprintf("Angular Rate: %.6f deg/s", rad2deg(ω)))
+    Text(@sprintf("Angle: %.6f deg", rad2deg(θ)))
+    Text(@sprintf("Velocity: %.6f m/s", v))
+    Text(@sprintf("Position: %.6f m", η))
 
-    CImGui.PopItemWidth()
+    PopItemWidth()
 
-    CImGui.End()
+    End()
 
 end
 
@@ -278,25 +281,28 @@ end
     θ::Float64 = 0.0
 end
 
-@enum ControlMode mode_v = 1 mode_η = 2
+@enum ControlMode mode_m = 0 mode_v = 1 mode_η = 2
 
-@kwdef struct Controller{C} <: ModelDefinition
-    v2m::C = LQR{3,1,1}() #velocity controller
+@kwdef struct Controller <: ModelDefinition
+    v2m::LQR{3,1,1,3,1} = LQR{3,1,1}() #velocity controller
     η2v::PID = PID() #position controller
+    v_lim::Ref{Float64} = Ref(0.0)
 end
 
 @kwdef mutable struct ControllerU
     mode::ControlMode = mode_v
+    m_ref::Ranged{Float64, -1., 1.} = 0.0 #motor command reference
     v_ref::Float64 = 0.0 #velocity reference
     η_ref::Float64 = 0.0 #position reference
 end
 
-@kwdef struct ControllerY{C}
-    mode::ControlMode = mode_η
+@kwdef struct ControllerY
+    mode::ControlMode = mode_v
+    m_ref::Ranged{Float64,-1.,1.} = 0.0 #motor command reference
     v_ref::Float64 = 0.0 #velocity reference
     η_ref::Float64 = 0.0 #position reference
-    m_cmd::Float64 = 0.0 #motor command
-    v2m::C = LQROutput{3,1,1}()
+    m_cmd::Ranged{Float64,-1.,1.} = 0.0 #motor command output
+    v2m::LQROutput{3,1,1,3,1} = LQROutput{3,1,1}()
     η2v::PIDOutput = PIDOutput()
 end
 
@@ -307,24 +313,30 @@ Modeling.Y(::Controller) = ControllerY()
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
 
     (; v2m, η2v) = mdl.submodels
-    (; mode, v_ref, η_ref) = mdl.u
+    (; v_lim) = mdl.parameters
+    (; mode, m_ref, v_ref, η_ref) = mdl.u
     (; ω, v, θ, η) = vehicle.y
 
-    #position control
-    η2v.u.input = η_ref - η #assign position error
-    f_periodic!(η2v) #update position control submodel
+    #external motor command
+    m_cmd = m_ref
+
+    #position mode active
     if mode === mode_η
-        v_ref = η2v.y.output #override external velocity reference input
+        η2v.u.input = η_ref - η #assign position error
+        f_periodic!(η2v) #update position control submodel
+        v_ref = η2v.y.output #override external velocity reference
     end
 
-    #velocity control
-    v2m.u.x .= XController(; ω, v, θ) #state vector value
-    v2m.u.z .= v #command vector value
-    v2m.u.z_ref .= v_ref #command vector reference
-    f_periodic!(v2m) #update velocity control submodel
-    m_cmd = v2m.y.output[1] #assign motor command
+    #position or velocity mode active
+    if (mode === mode_v) || (mode === mode_η)
+        v2m.u.x .= XController(; ω, v, θ) #state vector value
+        v2m.u.z .= v #command vector value
+        v2m.u.z_ref .= clamp(v_ref, -v_lim[], v_lim[]) #command vector reference
+        f_periodic!(v2m) #update velocity control submodel
+        m_cmd = v2m.y.output[1] #override external motor command reference
+    end
 
-    mdl.y = ControllerY(; mode, v_ref, η_ref, m_cmd, v2m = v2m.y, η2v = η2v.y)
+    mdl.y = ControllerY(; mode, m_ref, v_ref, η_ref, m_cmd, v2m = v2m.y, η2v = η2v.y)
 
 end
 
@@ -334,21 +346,8 @@ function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
     (; v2m, η2v) = mdl.submodels
     (; k_m, b_m, R) = vehicle.parameters
 
-    #reset all controller submodels
-    foreach(values(mdl.submodels)) do ss
-        init!(ss)
-    end
-
-    #assign position controller gains
-    η2v.parameters.k_p[] = 0.6
-    η2v.parameters.k_i[] = 0.0
-    η2v.parameters.k_d[] = 0.0
-
-    #set position controller output bounds
     v_max = k_m * R / b_m #maximum steady-state velocity
-    v_ref_max = 0.5v_max #maximum velocity command
-    η2v.parameters.bound_lo[] = -v_ref_max
-    η2v.parameters.bound_hi[] = v_ref_max
+    mdl.parameters.v_lim[] = 0.4v_max #maximum velocity reference
 
     #compute and assign velocity controller gains
     Control.Discrete.assign!(v2m, design_v2m_lqr(vehicle))
@@ -357,10 +356,26 @@ function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
     v2m.parameters.bound_lo .= -1 #minimum motor command
     v2m.parameters.bound_hi .= 1 #maximum motor command
 
-    #reset parent controller inputs
+    #assign position controller gains
+    η2v.parameters.k_p[] = 0.6
+    η2v.parameters.k_i[] = 0.0
+    η2v.parameters.k_d[] = 0.0
+
+    #set position controller output bounds
+    η2v.parameters.bound_lo[] = -mdl.parameters.v_lim[]
+    η2v.parameters.bound_hi[] = mdl.parameters.v_lim[]
+
+    #reset model inputs
     mdl.u.mode = mode_v
+    mdl.u.m_ref = 0
     mdl.u.v_ref = 0
     mdl.u.η_ref = 0
+
+    #reset submodels
+    foreach(values(mdl.submodels)) do ss
+        init!(ss)
+    end
+
 
 end
 
@@ -435,6 +450,77 @@ end
 @no_step Controller
 
 
+function GUI.draw!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle}, p_open::Ref{Bool} = Ref(true))
+
+    (; u, y) = mdl
+    (; v2m, η2v) = mdl.submodels
+    (; v_lim) = mdl.parameters
+    (; v, η, u_m) = vehicle.y
+
+
+    Begin("Controller", p_open)
+    if BeginTable("Controller", 3, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+
+        TableNextRow()
+        TableNextColumn()
+        AlignTextToFramePadding()
+        Text("Mode")
+        TableNextColumn()
+        mode_button("Direct", mode_m, u.mode, y.mode)
+        IsItemActive() && (u.mode = mode_m; u.m_ref = u_m)
+        SameLine()
+        mode_button("Velocity", mode_v, u.mode, y.mode)
+        IsItemActive() && (u.mode = mode_v; u.v_ref = v)
+        SameLine()
+        mode_button("Position", mode_η, u.mode, y.mode)
+        IsItemActive() && (u.mode = mode_η; u.η_ref = η)
+
+        TableNextRow()
+        TableNextColumn()
+        AlignTextToFramePadding()
+        Text("Motor")
+        TableNextColumn()
+        PushItemWidth(-10)
+        u.m_ref = safe_slider("##Motor Reference", u.m_ref, "%.6f")
+        PopItemWidth()
+        TableNextColumn()
+        Text(@sprintf("%.6f", u_m))
+
+        TableNextRow()
+        TableNextColumn()
+        AlignTextToFramePadding()
+        Text("Velocity")
+        TableNextColumn()
+        PushItemWidth(-10)
+        u.v_ref = safe_slider("##Velocity Reference", u.v_ref, -v_lim[], v_lim[], "%.6f")
+        PopItemWidth()
+        TableNextColumn()
+        Text(@sprintf("%.6f m/s", v))
+
+        TableNextRow()
+        TableNextColumn()
+        AlignTextToFramePadding()
+        Text("Position")
+        TableNextColumn()
+        PushItemWidth(-10)
+        u.η_ref = safe_slider("##Position Reference", u.η_ref, -10, 10, "%.6f")
+        PopItemWidth()
+        TableNextColumn()
+        Text(@sprintf("%.6f m", η))
+
+        EndTable()
+
+        Separator()
+
+        CollapsingHeader("Velocity Controller") && GUI.draw(v2m)
+        CollapsingHeader("Position Controller") && GUI.draw(η2v)
+    end
+
+    End()
+
+end
+
+
 ################################################################################
 ################################# Robot ########################################
 
@@ -465,8 +551,8 @@ end
 
 function Modeling.f_step!(mdl::Model{<:Robot})
 
+    θ_max = deg2rad(45)
     (; θ) = mdl.vehicle.y
-    θ_max = deg2rad(10)
     (abs(θ) > θ_max) && throw(LostBalance(
         "Chassis tilt θ = $(rad2deg(θ)) deg exceeded allowable limit (θ = $(rad2deg(θ_max)))" *
         "at t = $(mdl.t[]) s"))
@@ -479,6 +565,21 @@ function Modeling.init!( mdl::Model{<:Robot}, ip::InitParameters = InitParameter
     init!(vehicle, ip)
     init!(controller, vehicle) #run controller design and assign gains
     f_output!(mdl) #update parent model output
+
+end
+
+function GUI.draw!(mdl::Model{<:Robot}, p_open::Ref{Bool} = Ref(true))
+
+    (; vehicle, controller) = mdl
+
+    Begin("Robot", p_open)
+    @cstatic c_veh=false c_ctl=false begin
+        @c Checkbox("Vehicle", &c_veh)
+        c_veh && @c GUI.draw!(vehicle, &c_veh)
+        @c Checkbox("Controller", &c_ctl)
+        c_ctl && @c GUI.draw!(controller, vehicle, &c_ctl)
+    end
+    End()
 
 end
 
