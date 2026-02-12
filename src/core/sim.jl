@@ -132,9 +132,10 @@ function update!(gui::SimGUI)
     #the GUI may modify the Model or SimControl, so we need to grab io_lock
     @lock io_lock GUI.render!(device)
 
-    #once io_lock has been released and the simulation thread can proceed, put
-    #the GUI thread to sleep for a while to limit framerate and save CPU time
-    sleep(0.016)
+    #once io_lock has been released, the simulation thread can proceed, so we
+    #may put the GUI thread to sleep for a while to limit framerate and save CPU
+    #time
+    sleep(0.001)
 end
 
 
@@ -415,7 +416,7 @@ function start!(interface::SimInterface{D}) where {D <: IODevice}
 
     (; device, control, io_start, io_lock, should_abort) = interface
 
-    @info("$D: Starting on thread $(Threads.threadid())...")
+    @info("$D: Starting on $(Threads.threadpool()) thread $(Threads.threadid())...")
 
     try
 
@@ -495,7 +496,7 @@ function start!(sim::Simulation)
 
         τ_last = τ()
 
-        @info("Simulation: Starting on thread $(Threads.threadid())...")
+        @info("Simulation: Starting on $(Threads.threadpool()) thread $(Threads.threadid())...")
 
         Δτ = @elapsed begin
 

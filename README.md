@@ -47,7 +47,7 @@ Key features:
 
 *   **Case Study:** A custom fly-by-wire Cessna 172 model is provided as an example demonstrating a
     complete design workflow, from vehicle systems modeling to the implementation and testing of a
-    complex, gain-scheduled autopilot.
+    multimodal, gain-scheduled autopilot.
 
 
 ## Documentation
