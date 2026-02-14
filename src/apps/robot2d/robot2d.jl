@@ -25,10 +25,10 @@ const g = 9.80665 #m/s^2, standard gravity
 @kwdef struct Vehicle <: ModelDefinition
     L::Float64 = 0.15 #distance from main body's origin to its CoM (m)
     R::Float64 = 0.05 #wheel radius (m)
-    m_1::Float64 = 1.0 #mass of main body (kg)
-    m_2::Float64 = 0.1 #mass of rolling body (kg)
-    J_1::Float64 = 1/12 * m_1 * (2L)^2 #main body's moment of inertia with respect to its CoM (kg*m^2)
-    J_2::Float64 = 1/2 * m_2 * R^2 #rolling body's moment of inertia with respect to its CoM (kg*m^2)
+    m_b::Float64 = 1.0 #mass of main body (kg)
+    m_r::Float64 = 0.1 #mass of rolling body (kg)
+    J_b::Float64 = 1/12 * m_b * (2L)^2 #main body's moment of inertia with respect to its CoM (kg*m^2)
+    J_r::Float64 = 1/2 * m_r * R^2 #rolling body's moment of inertia with respect to its CoM (kg*m^2)
     k_m::Float64 = 0.32 #motor's torque constant (N*m)
     b_m::Float64 = 0.0189 #motor's effective damping coefficient (N*m*s/rad)
     J_m::Float64 = 0.0014 #motor's effective moment of inertia (kg*m^2)
@@ -53,7 +53,7 @@ function Modeling.f_ode!(mdl::Model{Vehicle})
 
     (; ẋ, x, u, parameters) = mdl
     (; ω, v, θ, η) = x
-    (; L, R, m_1, m_2, J_1, J_2, k_m, b_m, J_m) = parameters
+    (; L, R, m_b, m_r, J_b, J_r, k_m, b_m, J_m) = parameters
 
     u_m = Float64(u[])
     ω_m = v / R - ω
@@ -62,9 +62,9 @@ function Modeling.f_ode!(mdl::Model{Vehicle})
     sθ = sin(θ)
     cθ = cos(θ)
 
-    M_11 = m_1 * L^2 + J_1 + J_m
-    M_22 = m_1 + m_2 + (J_2 + J_m) / R^2
-    M_12 = m_1 * L * cθ - J_m / R
+    M_11 = m_b * L^2 + J_b + J_m
+    M_22 = m_b + m_r + (J_r + J_m) / R^2
+    M_12 = m_b * L * cθ - J_m / R
 
     M = @SMatrix[
         M_11    M_12
@@ -72,8 +72,8 @@ function Modeling.f_ode!(mdl::Model{Vehicle})
     ]
 
     b = @SVector[
-        -τ_ss + m_1 * L * g * sθ
-        τ_ss / R + m_1 * L * ω^2 * sθ
+        -τ_ss + m_b * L * g * sθ
+        τ_ss / R + m_b * L * ω^2 * sθ
     ]
 
     ω_dot, v_dot = M\b
@@ -212,41 +212,20 @@ end
 ################################################################################
 ################################ Initialization ################################
 
-@kwdef struct InitParameters <: FieldVector{5, Float64}
+@kwdef struct InitParameters <: FieldVector{3, Float64}
     u_m::Float64 = 0.0
-    ω_dot::Float64 = 0.0
     ω::Float64 = 0.0
-    θ::Float64 = 0.0
     η::Float64 = 0.0
 end
 
 function Modeling.init!( mdl::Model{Vehicle}, ip::InitParameters = InitParameters())
 
-    (; u_m, ω_dot, ω, θ, η) = ip
+    (; u_m, ω, η) = ip
     (; x, u, parameters) = mdl
-    (; L, R, m_1, m_2, J_1, J_2, k_m, b_m, J_m) = parameters
+    (; R, k_m, b_m) = parameters
 
-    sθ = sin(θ)
-    cθ = cos(θ)
-
-    M_11 = m_1 * L^2 + J_1 + J_m
-    M_22 = m_1 + m_2 + (J_2 + J_m) / R^2
-    M_12 = m_1 * L * cθ - J_m / R
-
-    A = @SMatrix[
-        1       M_12
-        -1/R    M_22
-    ]
-
-    b = @SVector[
-        m_1 * L * g * sθ - M_11 * ω_dot
-        m_1 * L * ω^2 * sθ - M_12 * ω_dot
-    ]
-
-    τ_ss, _ = A\b
-
-    ω_m = (k_m * u_m - τ_ss) / b_m
-    v = (ω + ω_m) * R
+    θ = 0
+    v = (ω + (k_m * u_m) / b_m) * R
 
     (x.ω, x.v, x.θ, x.η)  = (ω, v, θ, η)
     u[] = u_m

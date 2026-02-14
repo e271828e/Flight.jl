@@ -41,11 +41,9 @@ function test_vehicle(; alloc::Bool = true)
     @test isapprox(mdl.x.θ, 0; atol = 1e-3)
     @test mdl.x.η > 0
 
-    #initialization with zero motor input and forward tilt, must converge at θ = π
-    ip = InitParameters(; θ = 0.1)
+    #initialization with zero motor input and forward angular velocity, must converge at θ = π
+    ip = InitParameters(; ω = 1e-3)
     init!(sim, ip)
-    step!(sim, 0.1, true)
-    @test mdl.x.ω > 0 #body must be falling forward
     run!(sim)
     @test isapprox(mdl.x.ω, 0; atol = 1e-3)
     @test isapprox(mdl.x.v, 0; atol = 1e-3)
@@ -54,7 +52,7 @@ function test_vehicle(; alloc::Bool = true)
 
     #initialization with zero motor input and backward angular velocity, must
     #converge at θ = -π
-    ip = InitParameters(; ω = -0.1)
+    ip = InitParameters(; ω = -1e-3)
     init!(sim, ip)
     run!(sim)
     @test isapprox(mdl.x.ω, 0; atol = 1e-3)
@@ -75,7 +73,7 @@ function test_controller(; alloc::Bool = true)
     @testset verbose = true "Controller" begin
 
     # mdl = Robot() |> Model
-    mdl = Robot(vehicle = Vehicle(; L = 0.1, R = 0.08, m_1 = 0.5)) |> Model
+    mdl = Robot(vehicle = Vehicle(; L = 0.1, R = 0.08, m_b = 0.5)) |> Model
     sim = Simulation(mdl; t_end = 60, dt = 0.01)
     init!(sim)
 

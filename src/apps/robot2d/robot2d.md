@@ -26,10 +26,10 @@ $$\dot{\phi} = \dot{\eta} / R$$
 
 The net output torque $\tau_m$ produced by the DC motor is given by the following [model](https://thingsdaq.org/2022/07/05/dc-motor-characterization-1-of-2/):
 $$
-\tau_{m} = k_m u - b_m \omega_m - J_m \dot{\omega}_m
+\tau_{m} = k_m u_m - b_m \omega_m - J_m \dot{\omega}_m
 $$
 
-Where $u \in [-1, 1]$ is the motor's control input, $\omega_m$ is the angular rate of the motor's
+Where $u_m \in [-1, 1]$ is the motor's control input, $\omega_m$ is the angular rate of the motor's
 axis
 with respect to its casing, and the following are known parameters:
 - $k_m$: Motor's torque constant
@@ -41,7 +41,7 @@ $$
 \tau_{m} = \tau_{ss} - J_m \dot{\omega}_m
 $$
 
-Where the steady-state torque $\tau_{ss} = k_m u - b_m \omega_m$ is that produced by the motor for
+Where the steady-state torque $\tau_{ss} = k_m u_m - b_m \omega_m$ is that produced by the motor for
 a constant angular rate $\omega_m$.
 
 Note: Clockwise angles are positive and $y$ axes point inwards.
@@ -94,12 +94,12 @@ $$ \boldsymbol{b}(\boldsymbol{x}) = \begin{bmatrix} m_b L g \sin\theta - \tau_{s
 
 With:
 $$
-\tau_{ss} = k_m u - b_m \omega_m = k_m u - b_m \left( v / R - \omega \right) \tag{5}
+\tau_{ss} = k_m u - b_m \omega_m = k_m u_m - b_m \left( v / R - \omega \right) \tag{5}
 $$
 
 ## Initialization and Steady State Solution
 To initialize the system, a total of 10 unknowns ($\dot{\omega}$, $\dot{v}$, $\omega$, $v$,
-$\dot{\theta}$, $\dot{\eta}$, $\theta$, $\eta$, $u$, $\tau_{ss}$) must be determined for $t=0$. We have 5
+$\dot{\theta}$, $\dot{\eta}$, $\theta$, $\eta$, $u_m$, $\tau_{ss}$) must be determined for $t=0$. We have 5
 equations, so we need to impose 5 constraints.
 
 First, we'd like the vehicle to start with zero angular acceleration and zero linear acceleration. Eliminating $\tau_{ss}$ from $(1)$ and $(2)$ yields: $$ (M_{11} +R M_{12}(\theta))
@@ -109,8 +109,10 @@ This shows that $\dot{\omega}(0) = \dot{v}(0)=0$ requires the chassis to be perf
 $\theta(0) = \pi$). We'd like the vehicle to be initially upright, so we choose $\theta(0) = 0$.
 
 With $\dot{\omega}(0) = \dot{v}(0) = \theta(0) = 0$, $(1)$ yields $\tau_{ss}(0) = 0$.  Then, if we choose an
-arbitrary $u(0) = u_0$, linear velocity can be found from $(5)$ as:
-$$v(0) = \frac{k_m u_0}{b_m} R$$
+arbitrary $u_m(0) = u_{m0}$, linear velocity can be found from $(5)$ as:
+$$
+v = R \left(\frac{k_m u_{m0}}{b_m} + \omega_0\right)
+$$
 
 In principle, $\omega(0)$ can also be set arbitrarily to some $\omega_0$. Then, $\dot{\theta}(0)$ is
 given by $(3)$. For the initial $\theta(0) = 0$ to be maintained, we must obviously choose $\omega_0 = 0$.
@@ -123,7 +125,7 @@ To recap, our constraints are:
 - $\dot{v}(0) = 0$
 - $\omega(0)=\omega_0$
 - $\eta(0) = \eta_0$
-- $u(0) = u_0$
+- $u_m(0) = u_{m0}$
 
 And, from the system's equations, we find:
 - $\theta(0) = 0$
