@@ -1,12 +1,13 @@
 module C172Demos
 
-using JSON3, Sockets
-using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings
+using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings, JSON3
 
-using Flight
-using Flight.FlightApps.C172: is_on_gnd
-using Flight.FlightApps.C172X.C172XControl: ModeControlLon, ModeControlLat
-using Flight.FlightApps.C172X.C172XGuidance: ModeGuidance, Segment, SegmentGuidanceData
+using FlightCore
+using FlightLib
+using FlightApps
+using FlightApps.C172: is_on_gnd
+using FlightApps.C172X.C172XControl: ModeControlLon, ModeControlLat
+using FlightApps.C172X.C172XGuidance: ModeGuidance, Segment, SegmentGuidanceData
 
 export interactive_simulation, crosswind_landing, traffic_pattern, json_loopback
 
