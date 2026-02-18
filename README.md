@@ -7,7 +7,7 @@
 
 *A high-performance, extensible aircraft GNC framework for Julia.*
 
-![Flight.jl GUI with X-Plane 12 Visualization](docs/src/assets/front.png?raw=true)
+![Flight.jl GUI with X-Plane 12 Visualization](/assets/front.png?raw=true)
 
 ## Overview
 
@@ -109,7 +109,7 @@ using Flight
     kin_plots = make_plots(ts.aircraft.vehicle.kinematics; size = (900, 600))
     display(kin_plots[:Ob_t3d])
 ```
-![Turning climb 3D trajectory](docs/src/assets/turning_climb_3d.png?raw=true)
+![Turning climb 3D trajectory](/assets/turning_climb_3d.png?raw=true)
 
 
 Comparing elevator step response between nonlinear and linearized Cessna172S models:
@@ -170,7 +170,7 @@ using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings
         plot(θ_nonlinear; plot_title = "Pitch Angle", label = "Nonlinear", ylabel=L"$\theta \ (rad)$") |> display
         plot!(t, θ_linear; label = "Linear")
 ```
-![Elevator step responses](docs/src/assets/elevator_step_response.png?raw=true)
+![Elevator step responses](/assets/elevator_step_response.png?raw=true)
 
 ## License
 

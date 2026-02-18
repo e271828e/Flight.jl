@@ -1,5 +1,7 @@
 ## Problem Statement
 
+![Robot2D Figure](robot2d.png?raw=true)
+
 The figure shows a simplified 2D model for a Segway-like self-balancing vehicle. The model consists
 of two rigid bodies. The main body ($b$) represents the vehicle's chassis, and the rolling body ($r$) represents the axle and the
 wheels. The rolling body is driven by a DC motor attached to the main body.
