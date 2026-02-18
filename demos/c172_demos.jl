@@ -1,6 +1,6 @@
 module C172Demos
 
-using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings, JSON3
+using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings, JSON3, Sockets
 
 using FlightCore
 using FlightLib
