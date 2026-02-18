@@ -7,8 +7,9 @@ using Flight.FlightCore
 using Flight.FlightLib
 using Flight.FlightApps
 
-includet(joinpath(dirname(@__FILE__), "../../../src/apps/robot2d/robot2d.jl")); using ..Robot2D
 using ..Robot2D: Vehicle, Robot, InitParameters, mode_m, mode_v, mode_η
+
+export test_robot2d
 
 function test_robot2d(; alloc::Bool = true)
     @testset verbose = true "Robot2D" begin
