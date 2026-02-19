@@ -3,28 +3,15 @@ uuid = "e329eb8f-69f3-4234-a468-5e3889a58643"
 version = "0.1.5"
 authors = ["Miguel Alonso <miguel883@gmail.com> and contributors"]
 
+[workspace]
+projects = ["packages/FlightCore", "packages/FlightLib", "packages/FlightApps", "test", "docs"]
+
 [deps]
-ControlSystems = "a6e380b2-a6ca-5380-bf3e-84a91bcd477e"
 FlightApps = "c94c8c3d-2ef7-4940-9544-b98dae328d9f"
 FlightCore = "e3cc1ee6-15ac-4fef-96b3-1947582bf537"
 FlightLib = "217868e0-669b-4069-89f9-42760bf46690"
-JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
-LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
-Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
-RobustAndOptimalControl = "21fd56a4-db03-40ee-82ee-a87907bee541"
-Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
-
-[sources]
-FlightApps = {path = "packages/FlightApps"}
-FlightCore = {path = "packages/FlightCore"}
-FlightLib = {path = "packages/FlightLib"}
 
 [compat]
-ControlSystems = "1.15.2"
-JSON3 = "1.14.3"
-LaTeXStrings = "1.4.0"
-Plots = "1.41.5"
 Reexport = "1.2.2"
-RobustAndOptimalControl = "0.4.49"
-Sockets = "1.11.0"
+julia = "1.12"

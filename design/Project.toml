@@ -1,8 +1,3 @@
-name = "FlightDesign"
-uuid = "f0790872-85e1-4f6d-a32c-46d55985dfbe"
-version = "0.1.0"
-authors = ["Miguel Alonso <miguel883@gmail.com>"]
-
 [deps]
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 ControlSystems = "a6e380b2-a6ca-5380-bf3e-84a91bcd477e"

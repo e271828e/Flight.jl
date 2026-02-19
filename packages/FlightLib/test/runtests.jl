@@ -1,4 +1,5 @@
 using Revise
+using Test
 
 includet(normpath("test_quaternions.jl")); using .TestQuaternions
 includet(normpath("test_attitude.jl")); using .TestAttitude
@@ -13,15 +14,17 @@ includet(normpath("test_landing_gear.jl")); using .TestLandingGear
 includet(normpath("test_aircraft_base.jl")); using .TestAircraftBase
 includet(normpath("test_world.jl")); using .TestWorld
 
-test_quaternions()
-test_attitude()
-test_geodesy()
-test_kinematics()
-test_dynamics()
-test_linearization()
-test_control()
-test_propellers()
-test_piston()
-test_landing_gear()
-test_aircraft_base()
-test_world()
+# @testset verbose = true "FlightLib" begin
+    test_quaternions()
+    test_attitude()
+    test_geodesy()
+    test_kinematics()
+    test_dynamics()
+    test_linearization()
+    test_control()
+    test_propellers()
+    test_piston()
+    test_landing_gear()
+    test_aircraft_base()
+    test_world()
+# end

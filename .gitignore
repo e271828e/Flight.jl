@@ -1,4 +1,4 @@
-/old
+tmp/
 /precompile
 /CImGui*
 /.vscode
@@ -9,7 +9,6 @@
 *Manifest.toml*
 /LocalPreferences.toml
 /*.tar.gz
-/tmp
 /dist
 /dist-extras
 /julia
@@ -25,6 +24,7 @@
 #Documenter.jl
 /docs/build
 /docs/site
+
 
 *.exe
 *.dll

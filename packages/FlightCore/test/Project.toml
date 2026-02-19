@@ -1,5 +1,6 @@
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+FlightCore = "e3cc1ee6-15ac-4fef-96b3-1947582bf537"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
@@ -7,4 +8,4 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 BenchmarkTools = "1.6.0"
-julia = "1.10"
+julia = "1.12"
