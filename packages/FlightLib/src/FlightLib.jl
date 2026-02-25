@@ -2,6 +2,7 @@ module FlightLib
 
 using Reexport
 
+include("types.jl"); @reexport using .Types
 include("quaternions.jl"); @reexport using .Quaternions
 include("attitude.jl"); @reexport using .Attitude
 include("geodesy.jl"); @reexport using .Geodesy

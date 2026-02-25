@@ -8,7 +8,6 @@ using RecursiveArrayTools: VectorOfArray
 using Plots, LaTeXStrings, DataStructures
 
 using ..Sim: Simulation, TimeSeries, get_components, get_time, get_data
-using ..Types
 
 export make_plots, save_plots
 
@@ -27,7 +26,7 @@ const defaults = Dict(
     :guidefontsize => 12,
     :tickfontsize => 10,
     :legendfontsize => 12,
-    )
+)
 
 ################################################################################
 ################################# Recipes ######################################
@@ -39,14 +38,7 @@ const defaults = Dict(
 
 end
 
-@recipe function f(ts::TimeSeries{<:Ranged{T}}) where {T}
-
-    xguide --> L"$t \: (s)$"
-    return ts._t, T.(ts._data)
-
-end
-
-@recipe function f(ts::TimeSeries{<:AbstractVector{<:Real}}; ts_split = :none)
+@recipe function f(ts::TimeSeries{<:AbstractVector{<:Real}}; ts_split=:none)
 
     #ts._data is a Vector{AbstractVector{<:Real}}; convert it to a matrix
     data = Array(VectorOfArray(ts._data))'
@@ -56,7 +48,7 @@ end
 
     xguide --> L"$t \ (s)$"
 
-    label --> (vlength <= 3 ?  ["x" "y" "z"][:, 1:vlength] : (1:vlength)')
+    label --> (vlength <= 3 ? ["x" "y" "z"][:, 1:vlength] : (1:vlength)')
     if ts_split === :h
         layout --> (1, vlength)
         link --> :y #alternative: :none
@@ -80,9 +72,9 @@ make_plots(sim::Simulation; kwargs...) = make_plots(TimeSeries(sim); kwargs...)
 #recursively
 function make_plots(ts::TimeSeries{<:NamedTuple}; kwargs...)
 
-    pd = OrderedDict{Symbol, Any}()
+    pd = OrderedDict{Symbol,Any}()
     for name in propertynames(ts)
-        child_plots = make_plots(getproperty(ts, name); kwargs...)::Union{Nothing, OrderedDict, Plots.Plot}
+        child_plots = make_plots(getproperty(ts, name); kwargs...)::Union{Nothing,OrderedDict,Plots.Plot}
         !isnothing(child_plots) && (pd[name] = child_plots)
     end
 
@@ -108,10 +100,10 @@ function save_plots(ts::TimeSeries, args...; kwargs...)
     save_plots(pd, args...; kwargs...)
 end
 
-function save_plots(dict::OrderedDict{Symbol, T} where {T},
-                    folder::Union{String, Nothing} = nothing,
-                    format::Symbol = :png;
-                    kwargs...)
+function save_plots(dict::OrderedDict{Symbol,T} where {T},
+    folder::Union{String,Nothing}=nothing,
+    format::Symbol=:png;
+    kwargs...)
 
     folder = mkpath(!isnothing(folder) ? folder : joinpath("tmp", Dates.format(now(), "yyyy_mm_dd_HHMMSS")))
 
@@ -122,7 +114,7 @@ function save_plots(dict::OrderedDict{Symbol, T} where {T},
             save_plots(dict[label], subfolder, format; kwargs...)
 
         elseif isa(child, Plots.Plot)
-            plot_filename = joinpath(folder, string(index, pad = 2)*"_"*String(label)*"."*String(format))
+            plot_filename = joinpath(folder, string(index, pad=2) * "_" * String(label) * "." * String(format))
             savefig(child, plot_filename)
             @info("Saved figure $plot_filename")
 

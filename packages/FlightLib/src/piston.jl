@@ -4,6 +4,7 @@ using Interpolations, StaticArrays, StructArrays, ComponentArrays, EnumX
 
 using FlightCore
 
+using ..Types
 using ..Geodesy
 using ..Kinematics
 using ..Dynamics

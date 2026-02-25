@@ -5,6 +5,7 @@ using Plots, LaTeXStrings, DataStructures
 
 using FlightCore
 
+using ..Types
 using ..Attitude
 using ..Geodesy
 using ..Kinematics

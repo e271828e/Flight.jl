@@ -63,10 +63,11 @@ A submodel can have submodels of its own:
 nothing #hide
 ```
 
-Thus, a complex `Model` may be made up of multiple, hierarchically arranged components, each one of
-them itself a `Model`. To visualize a `Model`'s hierarchy, you can use the `print_tree` function:
+Thus, a complex `Model` may be made up of multiple, hierarchically arranged
+components, each one of them itself a `Model`. To visualize a `Model`'s
+hierarchy, you can use the `print_tree` function from `AbstractTrees.jl`:
+
 ```@example tutorial02
-using AbstractTrees
 print_tree(mdl; maxdepth = 10)
 ```
 
@@ -130,9 +131,15 @@ u_lon = mdl.aircraft.avionics.lon.u
 nothing #hide
 ```
 
-To inspect its fields, we can use the `shf` helper function:
+To inspect its fields, we can use the `about` helper function, provided by `About.jl`:
 ```@example tutorial02
-shf(u_lon)
+about(u_lon)
+```
+
+```@example tutorial02
+@show u_lon.throttle_axis
+@show u_lon.elevator_axis
+nothing #hide
 ```
 
 Notice how the trim function, invoked within the previous `init!` call, has already set the primary

@@ -6,6 +6,7 @@ using Trapz: trapz
 using Plots, LaTeXStrings, DataStructures
 
 using FlightCore
+using ..Types
 using ..Kinematics
 using ..Dynamics
 using ..Atmosphere

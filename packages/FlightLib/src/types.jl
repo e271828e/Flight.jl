@@ -1,39 +1,21 @@
 module Types
 
 using StaticArrays, StructArrays, StructTypes
+using Plots, LaTeXStrings
 
-using ..GUI
+using FlightCore
 
-export shf, shp
 export Ranged, saturation, linear_scaling
 
-
-################################################################################
-################################################################################
-
-function shf(s::S) where {S}
-    println("$S:")
-    for (f, t) in zip(fieldnames(S), fieldtypes(S))
-        println("• $f::$t = $(getfield(s,f))")
-    end
-end
-
-function shp(s::S) where {S}
-    println("$S:")
-    for f in propertynames(s)
-        p = getproperty(s, f)
-        println("• $f::$(typeof(p)) = $p")
-    end
-end
 
 ################################################################################
 ################################ Ranged ########################################
 
 #needs unit tests
-struct Ranged{T<:Real, Min, Max}
+struct Ranged{T<:Real,Min,Max}
     val::T
-    function Ranged(val::T, min_val::T, max_val::T) where {T <: Real}
-        new{T, min_val, max_val}(min(max(val, min_val), max_val))
+    function Ranged(val::T, min_val::T, max_val::T) where {T<:Real}
+        new{T,min_val,max_val}(min(max(val, min_val), max_val))
     end
 end
 
@@ -43,30 +25,30 @@ Ranged{T,Min,Max}(x::Ranged) where {T,Min,Max} = convert(Ranged{T,Min,Max}, x)
 Ranged{T,Min,Max}(x::Real) where {T,Min,Max} = Ranged(x, Min, Max)
 (T::Type{<:Real})(x::Ranged) = convert(T, x)
 
-Base.typemin(::Type{Ranged{T,Min,Max}}) where {T, Min, Max} = Min
-Base.typemin(::T) where {T <: Ranged} = typemin(T)
-Base.typemax(::Type{Ranged{T,Min,Max}}) where {T, Min, Max} = Max
-Base.typemax(::T) where {T <: Ranged} = typemax(T)
+Base.typemin(::Type{Ranged{T,Min,Max}}) where {T,Min,Max} = Min
+Base.typemin(::T) where {T<:Ranged} = typemin(T)
+Base.typemax(::Type{Ranged{T,Min,Max}}) where {T,Min,Max} = Max
+Base.typemax(::T) where {T<:Ranged} = typemax(T)
 Base.convert(::Type{T}, x::Ranged) where {T<:Real} = T(x.val)
-Base.convert(::Type{Ranged{T,Min,Max}}, x::Real) where {T, Min, Max} = Ranged(T(x), Min, Max)
+Base.convert(::Type{Ranged{T,Min,Max}}, x::Real) where {T,Min,Max} = Ranged(T(x), Min, Max)
 
-function Base.convert(::Type{Ranged{T1,Min,Max}}, x::Ranged{T2}) where {T1, T2, Min, Max}
+function Base.convert(::Type{Ranged{T1,Min,Max}}, x::Ranged{T2}) where {T1,T2,Min,Max}
     Ranged(T1(x.val), Min, Max)
 end
 
 #if the conversion target does not specify bounds, take them from the source
-function Base.convert(::Type{Ranged{T1}}, x::Ranged{T2,Min,Max}) where {T1, T2, Min, Max}
+function Base.convert(::Type{Ranged{T1}}, x::Ranged{T2,Min,Max}) where {T1,T2,Min,Max}
     Ranged(T1(x.val), Min, Max)
 end
 
-function Base.promote_rule(::Type{Ranged{T1,Min,Max}}, ::Type{T2}) where {T1, T2, Min, Max}
-    Ranged{promote_type(T1,T2),Min,Max}
+function Base.promote_rule(::Type{Ranged{T1,Min,Max}}, ::Type{T2}) where {T1,T2,Min,Max}
+    Ranged{promote_type(T1, T2),Min,Max}
 end
 
 #basic addition and subtraction
-Base.:+(x::Ranged{T1,Min,Max}, y::Real) where {T1, Min, Max} = Ranged(x.val + y, Min, Max)
-Base.:-(x::Ranged{T1,Min,Max}, y::Real) where {T1, Min, Max} = Ranged(x.val - y, Min, Max)
-Base.:-(x::Ranged{T1,Min,Max}) where {T1, Min, Max} = Ranged(-x.val, Min, Max)
+Base.:+(x::Ranged{T1,Min,Max}, y::Real) where {T1,Min,Max} = Ranged(x.val + y, Min, Max)
+Base.:-(x::Ranged{T1,Min,Max}, y::Real) where {T1,Min,Max} = Ranged(x.val - y, Min, Max)
+Base.:-(x::Ranged{T1,Min,Max}) where {T1,Min,Max} = Ranged(-x.val, Min, Max)
 
 #bounds must be identical, since there is no easy way of deciding whose bounds
 #should win
@@ -84,29 +66,46 @@ function linear_scaling(u::Ranged, range::AbstractRange)
     linear_scaling(u, (range[1], range[end]))
 end
 
-function linear_scaling(u::Ranged{T, UMin, UMax}, range::NTuple{2,Real}) where {T, UMin, UMax}
+function linear_scaling(u::Ranged{T,UMin,UMax}, range::NTuple{2,Real}) where {T,UMin,UMax}
     @assert UMin != UMax
-    return range[1] + (range[2] - range[1])/(UMax - UMin) * (T(u) - UMin)
+    return range[1] + (range[2] - range[1]) / (UMax - UMin) * (T(u) - UMin)
 end
 
+############################### Plotting #################################
+
+@recipe function f(ts::TimeSeries{<:Ranged{T}}) where {T}
+
+    xguide --> L"$t \: (s)$"
+    return ts._t, T.(ts._data)
+
+end
+
+################################# GUI #####################################
 
 function GUI.display_bar(label::String, source::Ranged{T,Min,Max}, args...; kwargs...) where {T<:AbstractFloat,Min,Max}
     display_bar(label, Float64(source), Min, Max, args...; kwargs...)
 end
 
-function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, args...; sf::Real = 1, kwargs...) where {T<:AbstractFloat,Min,Max}
+function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, args...; sf::Real=1, kwargs...) where {T<:AbstractFloat,Min,Max}
     safe_slider(label, Float64(source) * sf, Min * sf, Max * sf, args...; kwargs...)
 end
 
-function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, args...; sf::Real = 1, kwargs...) where {T<:AbstractFloat,Min,Max}
+function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, args...; sf::Real=1, kwargs...) where {T<:AbstractFloat,Min,Max}
     safe_input(label, Float64(source) * sf, args...; kwargs...)
 end
+
+############################# Joysticks ##############################
+
+function Joysticks.exp_axis_curve(x::Ranged{T}, args...; kwargs...) where {T}
+    exp_axis_curve(T(x), args...; kwargs...)
+end
+
 
 #enable JSON3 parsing
 StructTypes.StructType(::Type{<:Ranged}) = StructTypes.CustomStruct()
 StructTypes.lowertype(::Type{Ranged{T,Min,Max}}) where {T,Min,Max} = T
 StructTypes.lower(x::Ranged) = x.val
-StructTypes.construct(::Type{Ranged{T,Min,Max}}, x::Real) where {T, Min, Max} = Ranged(x,Min,Max)
+StructTypes.construct(::Type{Ranged{T,Min,Max}}, x::Real) where {T,Min,Max} = Ranged(x, Min, Max)
 
 #Example 1: reading a numeric value into a Ranged field of a mutable struct
 # @kwdef mutable struct MyMutableStruct
@@ -134,7 +133,5 @@ StructTypes.construct(::Type{Ranged{T,Min,Max}}, x::Real) where {T, Min, Max} = 
 
 #     C .= A .+ B #no allocations
 # end
-
-
 
 end #module

@@ -3,7 +3,11 @@ uuid = "e3cc1ee6-15ac-4fef-96b3-1947582bf537"
 version = "0.1.0"
 authors = ["Miguel Alonso <miguel883@gmail.com>"]
 
+[workspace]
+projects = ["test"]
+
 [deps]
+About = "69d22d85-9f48-4c46-bbbe-7ad8341ff72a"
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
 CImGui = "5d785b6c-b76f-510e-a07c-3070796c7e87"
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
@@ -29,6 +33,7 @@ StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 
 [compat]
+About = "1.0.4"
 AbstractTrees = "0.4.5"
 CImGui = "6"
 ComponentArrays = "0.15.29"
@@ -48,6 +53,3 @@ StaticArrays = "1.9.14"
 StructArrays = "0.7"
 StructTypes = "1.11.0"
 julia = "1.12"
-
-[workspace]
-projects = ["test"]

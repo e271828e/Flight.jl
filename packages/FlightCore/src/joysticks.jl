@@ -5,7 +5,6 @@ using StaticArrays: sacollect
 using SDL2_jll
 
 using ..IODevices
-using ..Types
 
 export AbstractJoystickData, Joystick
 export T16000MData, TWCSData, GladiatorNXTEvoData
@@ -446,10 +445,6 @@ const supported_joysticks = Dict{SDL_JoystickGUID, Type}(
 
 ################################################################################
 ############################ Misc Stuff ########################################
-
-function exp_axis_curve(x::Ranged{T}, args...; kwargs...) where {T}
-    exp_axis_curve(T(x), args...; kwargs...)
-end
 
 function exp_axis_curve(x::Real; strength::Real = 0.0, deadzone::Real = 0.0)
 
