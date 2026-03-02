@@ -4,7 +4,7 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays, Reexport, ControlSystems, RobustAndOptimalControl
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 
 using ..C172
 

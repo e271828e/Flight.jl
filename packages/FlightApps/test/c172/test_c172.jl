@@ -3,7 +3,7 @@ module TestC172
 using Test, BenchmarkTools
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 using FlightApps
 
 

@@ -9,7 +9,7 @@ using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
     TableNextRow, BeginTable, EndTable, TableSetupColumn
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 
 using ...AircraftBase
 using ...C172: is_on_gnd

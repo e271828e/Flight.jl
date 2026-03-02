@@ -6,12 +6,12 @@ using LinearAlgebra
 using Plots
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 
-using FlightLib.Atmosphere: p_std, T_std
-using FlightLib.Piston: PistonEngine, PistonThruster
-using FlightLib.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
-using FlightLib.Piston: EngineState
+using FlightPhysics.Atmosphere: p_std, T_std
+using FlightPhysics.Piston: PistonEngine, PistonThruster
+using FlightPhysics.Piston: inHg2Pa, ft2m, h2δ, p2δ, ft2m, compute_π_ISA_pow
+using FlightPhysics.Piston: EngineState
 
 export test_piston
 

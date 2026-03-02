@@ -6,9 +6,9 @@ using BenchmarkTools
 using StaticArrays
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 
-using FlightLib.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
+using FlightPhysics.LandingGear: Rolling, Skidding, FrictionCoefficients, get_μ
 
 export test_landing_gear
 

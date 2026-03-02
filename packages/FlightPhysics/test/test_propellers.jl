@@ -7,9 +7,9 @@ using Interpolations: bounds
 using FiniteDiff: finite_difference_derivative
 
 using FlightCore
-using FlightLib
-using FlightLib.Propellers: DefaultAirfoil, cL, cD, cL_α
-using FlightLib.Propellers: Blade, Coefficients, Lookup
+using FlightPhysics
+using FlightPhysics.Propellers: DefaultAirfoil, cL, cD, cL_α
+using FlightPhysics.Propellers: Blade, Coefficients, Lookup
 
 export test_propellers
 

@@ -14,7 +14,7 @@ includet(normpath("test_landing_gear.jl")); using .TestLandingGear
 includet(normpath("test_aircraft_base.jl")); using .TestAircraftBase
 includet(normpath("test_world.jl")); using .TestWorld
 
-# @testset verbose = true "FlightLib" begin
+# @testset verbose = true "FlightPhysics" begin
     test_quaternions()
     test_attitude()
     test_geodesy()

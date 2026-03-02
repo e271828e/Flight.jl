@@ -19,7 +19,7 @@ It is organized in three layers:
 - A lightweight, domain-agnostic engine for causal modeling and simulation of
   complex systems with hybrid dynamics (`FlightCore`).
 
-- A library of high-fidelity, reusable physics and engineering models (`FlightLib`).
+- A library of high-fidelity, reusable physics and engineering models (`FlightPhysics`).
 
 - A collection of application examples (`FlightApps`).
 

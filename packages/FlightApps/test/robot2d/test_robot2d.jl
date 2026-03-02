@@ -3,7 +3,7 @@ module TestRobot2D
 using Test, BenchmarkTools, Revise
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 using FlightApps
 using FlightApps.Robot2D: Vehicle, Robot, InitParameters, mode_m, mode_v, mode_η
 

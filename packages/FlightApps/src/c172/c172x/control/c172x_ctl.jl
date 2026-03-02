@@ -7,8 +7,8 @@ using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
     TableNextColumn, TableNextRow, BeginTable, EndTable
 
 using FlightCore
-using FlightLib
-using FlightLib.Control.Discrete: Integrator, IntegratorOutput,
+using FlightPhysics
+using FlightPhysics.Control.Discrete: Integrator, IntegratorOutput,
     PID, PIDOutput, LQR, LQROutput, PIDDataLookup, LQRDataLookup,
     build_lookup_pid, build_lookup_lqr
 

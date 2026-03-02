@@ -5,8 +5,8 @@ using LinearAlgebra
 using BenchmarkTools
 
 using FlightCore
-using FlightLib.Geodesy
-using FlightLib.Kinematics
+using FlightPhysics.Geodesy
+using FlightPhysics.Kinematics
 
 export test_kinematics
 

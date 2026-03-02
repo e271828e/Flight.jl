@@ -3,7 +3,7 @@ module Flight
 using Reexport
 
 @reexport using FlightCore
-@reexport using FlightLib
+@reexport using FlightPhysics
 @reexport using FlightApps
 
 end

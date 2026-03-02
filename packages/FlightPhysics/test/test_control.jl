@@ -6,17 +6,17 @@ using ControlSystems
 using StaticArrays
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 
 #import individual components to avoid potential namespace conflicts with ControlSystems
-import FlightLib.Linearization: LinearizedSS
-import FlightLib.Control.Continuous: PIVector as PIContinuous
-import FlightLib.Control.Discrete: PID as PIDDiscrete
-import FlightLib.Control.Discrete: PIDVector as PIDDiscreteVector
-import FlightLib.Control.Discrete: LeadLag as LeadLagDiscrete
-import FlightLib.Control.Discrete: Integrator as IntegratorDiscrete
-import FlightLib.Control.Discrete: IntegratorVector as IntegratorDiscreteVector
-import FlightLib.Control.Discrete: LQR as DiscreteLQR
+import FlightPhysics.Linearization: LinearizedSS
+import FlightPhysics.Control.Continuous: PIVector as PIContinuous
+import FlightPhysics.Control.Discrete: PID as PIDDiscrete
+import FlightPhysics.Control.Discrete: PIDVector as PIDDiscreteVector
+import FlightPhysics.Control.Discrete: LeadLag as LeadLagDiscrete
+import FlightPhysics.Control.Discrete: Integrator as IntegratorDiscrete
+import FlightPhysics.Control.Discrete: IntegratorVector as IntegratorDiscreteVector
+import FlightPhysics.Control.Discrete: LQR as DiscreteLQR
 
 export test_control
 

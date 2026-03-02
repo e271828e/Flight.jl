@@ -6,7 +6,7 @@ using Reexport
 using NLopt
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 
 export Cessna172
 

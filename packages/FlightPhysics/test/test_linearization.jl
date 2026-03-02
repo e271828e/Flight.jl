@@ -5,8 +5,8 @@ using BenchmarkTools
 using ComponentArrays
 
 using FlightCore
-using FlightLib
-import FlightLib.Linearization: LinearizedSS, subsystem, delete_vars
+using FlightPhysics
+import FlightPhysics.Linearization: LinearizedSS, subsystem, delete_vars
 
 export test_linearization
 

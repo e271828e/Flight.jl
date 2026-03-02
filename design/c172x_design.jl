@@ -2,9 +2,9 @@ module C172XControlDesign
 
 using Flight
 
-using Flight.FlightLib.Linearization: LinearizedSS, subsystem, delete_vars
-using Flight.FlightLib.Control.Discrete: PIDData, LQRDataPoint, save_lookup_data
-using Flight.FlightLib.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
+using Flight.FlightPhysics.Linearization: LinearizedSS, subsystem, delete_vars
+using Flight.FlightPhysics.Control.Discrete: PIDData, LQRDataPoint, save_lookup_data
+using Flight.FlightPhysics.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
 using Flight.FlightApps.C172
 using Flight.FlightApps.C172X

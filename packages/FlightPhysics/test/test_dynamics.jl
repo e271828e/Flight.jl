@@ -6,10 +6,10 @@ using BenchmarkTools
 using StaticArrays
 
 using FlightCore
-using FlightLib.Attitude
-using FlightLib.Geodesy
-using FlightLib.Kinematics
-using FlightLib.Dynamics
+using FlightPhysics.Attitude
+using FlightPhysics.Geodesy
+using FlightPhysics.Kinematics
+using FlightPhysics.Dynamics
 
 export test_dynamics
 

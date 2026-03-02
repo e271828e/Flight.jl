@@ -1,4 +1,4 @@
-module FlightLib
+module FlightPhysics
 
 using Reexport
 

@@ -1,7 +1,7 @@
 [deps]
 FlightApps = "c94c8c3d-2ef7-4940-9544-b98dae328d9f"
 FlightCore = "e3cc1ee6-15ac-4fef-96b3-1947582bf537"
-FlightLib = "217868e0-669b-4069-89f9-42760bf46690"
+FlightPhysics = "217868e0-669b-4069-89f9-42760bf46690"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 

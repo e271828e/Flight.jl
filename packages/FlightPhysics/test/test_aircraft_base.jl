@@ -3,7 +3,7 @@ module TestAircraftBase
 using Test
 using BenchmarkTools
 
-using FlightLib
+using FlightPhysics
 
 export test_aircraft_base
 

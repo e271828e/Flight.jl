@@ -4,12 +4,12 @@ version = "0.1.5"
 authors = ["Miguel Alonso <miguel883@gmail.com> and contributors"]
 
 [workspace]
-projects = ["packages/FlightCore", "packages/FlightLib", "packages/FlightApps", "test", "docs"]
+projects = ["packages/FlightCore", "packages/FlightPhysics", "packages/FlightApps", "test", "docs"]
 
 [deps]
 FlightApps = "c94c8c3d-2ef7-4940-9544-b98dae328d9f"
 FlightCore = "e3cc1ee6-15ac-4fef-96b3-1947582bf537"
-FlightLib = "217868e0-669b-4069-89f9-42760bf46690"
+FlightPhysics = "217868e0-669b-4069-89f9-42760bf46690"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 
 [compat]

@@ -8,7 +8,7 @@ using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
     Checkbox, RadioButton, TableNextColumn, TableNextRow, BeginTable, EndTable
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 
 using ...C172
 using ..C172X: Cessna172X, Vehicle, Systems

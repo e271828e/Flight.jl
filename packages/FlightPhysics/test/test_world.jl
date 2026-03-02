@@ -4,7 +4,7 @@ using Test
 using BenchmarkTools
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 
 export test_world
 

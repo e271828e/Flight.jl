@@ -8,10 +8,10 @@ using CImGui: Begin, End, Text, IsItemActive, Checkbox, CollapsingHeader,
             ImVec2
 
 using FlightCore
-using FlightLib
-using FlightLib.Linearization: delete_vars
-using FlightLib.Control.Discrete: LQR, PID, LQROutput, PIDOutput
-using FlightLib.Control.Discrete: LQRDataPoint
+using FlightPhysics
+using FlightPhysics.Linearization: delete_vars
+using FlightPhysics.Control.Discrete: LQR, PID, LQROutput, PIDOutput
+using FlightPhysics.Control.Discrete: LQRDataPoint
 
 
 const g = 9.80665 #m/s^2, standard gravity

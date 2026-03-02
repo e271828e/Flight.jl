@@ -13,7 +13,7 @@ ControlSystems = "a6e380b2-a6ca-5380-bf3e-84a91bcd477e"
 EnumX = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
 FiniteDiff = "6a86dc24-6348-571c-b903-95158fe2bd41"
 FlightCore = "e3cc1ee6-15ac-4fef-96b3-1947582bf537"
-FlightLib = "217868e0-669b-4069-89f9-42760bf46690"
+FlightPhysics = "217868e0-669b-4069-89f9-42760bf46690"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
@@ -31,7 +31,7 @@ StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 
 [sources]
 FlightCore = {path = "../FlightCore"}
-FlightLib = {path = "../FlightLib"}
+FlightPhysics = {path = "../FlightPhysics"}
 
 [compat]
 CImGui = "6"

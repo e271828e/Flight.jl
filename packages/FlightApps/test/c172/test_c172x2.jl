@@ -3,7 +3,7 @@ module TestC172Xv2
 using Test, BenchmarkTools, Logging
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 using FlightApps
 
 using FlightApps.C172: is_on_gnd

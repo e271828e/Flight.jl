@@ -1,7 +1,7 @@
 module C172Sv0
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 
 using ...C172
 using ..C172S

@@ -4,7 +4,7 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays, StructTypes
 
 using FlightCore
-using FlightLib
+using FlightPhysics
 
 using ...C172
 using ..C172X
