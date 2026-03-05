@@ -1,7 +1,7 @@
 module Robot2D
 
 using LinearAlgebra
-using ControlSystems, RobustAndOptimalControl, ComponentArrays, StaticArrays
+using ControlSystems, RobustAndOptimalControl, ComponentArrays, StaticArrays, HDF5
 using CImGui: Begin, End, Text, IsItemActive, Checkbox, CollapsingHeader,
             SameLine, PushItemWidth, PopItemWidth, BeginTable, EndTable,
             TableNextRow, TableNextColumn, AlignTextToFramePadding, Separator,
@@ -9,10 +9,7 @@ using CImGui: Begin, End, Text, IsItemActive, Checkbox, CollapsingHeader,
 
 using FlightCore
 using FlightPhysics
-using FlightPhysics.Linearization: delete_vars
-using FlightPhysics.Control.Discrete: LQR, PID, LQROutput, PIDOutput
-using FlightPhysics.Control.Discrete: LQRDataPoint
-
+using FlightPhysics.Control: LQR, PID, LQROutput, PIDOutput, LQRDataPoint
 
 const g = 9.80665 #m/s^2, standard gravity
 
@@ -410,6 +407,9 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller}, vehicle:
 
 end
 
+function test_load()
+    return point
+end
 
 function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
 
@@ -419,8 +419,11 @@ function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
     v_max = k_m * R / b_m #maximum steady-state velocity
     mdl.parameters.v_lim[] = 0.4v_max #maximum velocity reference
 
-    #compute and assign velocity controller gains
-    Control.Discrete.assign!(v2m, design_v2m_lqr(vehicle))
+    #load and assign velocity controller gains
+    point = h5open(joinpath(@__DIR__, "robot2d.h5"), "r") do fid
+        LQRDataPoint(; NamedTuple(name => read(fid[string(name)]) for name in fieldnames(LQRDataPoint))...)
+    end
+    Control.assign!(v2m, point)
 
     #set velocity controller output bounds
     v2m.parameters.bound_lo .= -1 #minimum motor command
@@ -446,73 +449,6 @@ function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
         init!(ss)
     end
 
-
-end
-
-
-function design_v2m_lqr(mdl::Model{<:Vehicle})
-
-    lss = linearize(mdl)
-    lss = delete_vars(lss, :η) #build reduced design model
-
-    x_trim = lss.x0
-    n_x = length(x_trim)
-    x_labels = collect(keys(x_trim))
-    @assert tuple(x_labels...) === propertynames(Robot2D.XController())
-
-    u_labels = [:m, ]
-    u_trim = lss.u0[u_labels]
-
-    z_labels = [:v, ]
-    z_trim = lss.y0[z_labels]
-
-    A = lss.A
-    B = lss.B
-    C = lss.C[z_labels, :]
-    D = lss.D[z_labels, :]
-
-    C_int = C[z_labels, :]
-    D_int = D[z_labels, :]
-    n_int = size(C_int, 1)
-
-    A_aug = [A zeros(size(A, 1), n_int); C_int zeros(n_int, n_int)]
-    B_aug = [B; D_int]
-    C_aug = [C zeros(size(C, 1), n_int)]
-    D_aug = D
-
-    P_aug = ss(A_aug, B_aug, C_aug, D_aug)
-
-    x_aug_labels = push!(copy(x_labels), :ξ_v)
-    Q_diag = ComponentVector(zeros(length(x_aug_labels)), Axis(x_aug_labels))
-    R_diag = ComponentVector(zeros(length(u_labels)), Axis(u_labels))
-
-    Q_diag.ω = 1e-3
-    Q_diag.v = 1e-2
-    Q_diag.θ = 0
-    Q_diag.ξ_v = 5e-2
-
-    R_diag.m = 1e-1
-
-    Q = diagm(Q_diag)
-    R = diagm(R_diag)
-
-    #compute augmented feedback matrix
-    K_aug = lqr(P_aug, Q, R)
-
-    L = [A B; C D]
-    M = inv(L)
-    M_12 = M[1:n_x, n_x+1:end]
-    M_22 = M[n_x+1:end, n_x+1:end]
-
-    #extract system state and integrator blocks from the feedback matrix
-    K_x = K_aug[:, 1:n_x]
-    K_ξ = K_aug[:, n_x+1:end]
-
-    K_fbk = K_x
-    K_fwd = M_22 + K_x * M_12
-    K_int = K_ξ
-
-    return LQRDataPoint(; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim)
 
 end
 

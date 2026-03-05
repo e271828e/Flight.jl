@@ -12,7 +12,7 @@ using ..Atmosphere
 
 using ..Atmosphere: R, ISA_layers
 using ..Propellers: AbstractPropeller, Propeller
-using ..Control.Continuous: PIVector, PIVectorU, PIVectorY
+using ..Control: PIVector, PIVectorU, PIVectorY
 
 export PistonEngine, PistonThruster
 

@@ -6,7 +6,6 @@ using ComponentArrays
 
 using FlightCore
 using FlightPhysics
-import FlightPhysics.Linearization: LinearizedSS, subsystem, delete_vars
 
 export test_linearization
 

@@ -10,7 +10,7 @@ using ..Geodesy
 using ..Kinematics
 using ..Dynamics
 using ..Terrain
-using ..Control.Continuous: PIVector, PIVectorY
+using ..Control: PIVector, PIVectorY
 
 export LandingGearUnit, Strut, Contact, SimpleDamper
 export NoSteering, NoBraking, FreeSteering, DirectSteering, DirectBraking

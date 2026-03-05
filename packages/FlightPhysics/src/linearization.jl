@@ -8,7 +8,7 @@ using DataStructures
 
 using FlightCore
 
-export LinearizedSS, linearize
+export LinearizedSS, linearize, subsystem, delete_vars
 
 ################################################################################
 ########################### LinearizedSS ###################################

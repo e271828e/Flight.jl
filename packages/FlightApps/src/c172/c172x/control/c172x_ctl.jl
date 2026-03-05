@@ -8,7 +8,7 @@ using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
 
 using FlightCore
 using FlightPhysics
-using FlightPhysics.Control.Discrete: Integrator, IntegratorOutput,
+using FlightPhysics.Control: Integrator, IntegratorOutput,
     PID, PIDOutput, LQR, LQROutput, PIDDataLookup, LQRDataLookup,
     build_lookup_pid, build_lookup_lqr
 
@@ -332,7 +332,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
         if v2t_enabled(mode) #throttle_ref overridden by v2t
 
-            Control.Discrete.assign!(v2t_pid, v2t_lookup(EAS, Float64(h_e)))
+            Control.assign!(v2t_pid, v2t_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
                 init!(v2t_pid)
@@ -349,7 +349,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
         if q2e_enabled(mode) #elevator_ref overridden by q2e
 
-            Control.Discrete.assign!(q2e_pid, q2e_lookup(EAS, Float64(h_e)))
+            Control.assign!(q2e_pid, q2e_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
 
@@ -364,7 +364,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
                 if c2θ_enabled(mode) #θ_ref overridden by c2θ
 
-                    Control.Discrete.assign!(c2θ_pid, c2θ_lookup(EAS, Float64(h_e)))
+                    Control.assign!(c2θ_pid, c2θ_lookup(EAS, Float64(h_e)))
 
                     if mode != mode_prev
                         init!(c2θ_pid)
@@ -396,7 +396,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
         end
 
-        Control.Discrete.assign!(te2te_lqr, te2te_lookup(EAS, Float64(h_e)))
+        Control.assign!(te2te_lqr, te2te_lookup(EAS, Float64(h_e)))
 
         #te2te is purely proportional, so it doesn't need resetting
         te2te_lqr.u.x .= XLonRed(vehicle) #state feedback
@@ -410,7 +410,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
     if tv2te_enabled(mode) #throttle_cmd and elevator_cmd overridden by tv2te
 
-        Control.Discrete.assign!(tv2te_lqr, tv2te_lookup(EAS, Float64(h_e)))
+        Control.assign!(tv2te_lqr, tv2te_lookup(EAS, Float64(h_e)))
 
         (mode != mode_prev) && init!(tv2te_lqr)
 
@@ -424,7 +424,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
 
     if vh2te_enabled(mode) #throttle_cmd and elevator_cmd overridden by vh2te
 
-        Control.Discrete.assign!(vh2te_lqr, vh2te_lookup(EAS, Float64(h_e)))
+        Control.assign!(vh2te_lqr, vh2te_lookup(EAS, Float64(h_e)))
 
         (mode != mode_prev) && init!(vh2te_lqr)
 
@@ -899,7 +899,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
     if ar2ar_enabled(mode) #aileron_cmd and #rudder_cmd overridden by ar2ar
 
         #no integral control, so no need for reset on mode change
-        Control.Discrete.assign!(ar2ar_lqr, ar2ar_lookup(EAS, Float64(h_e)))
+        Control.assign!(ar2ar_lqr, ar2ar_lookup(EAS, Float64(h_e)))
 
         ar2ar_lqr.u.x .= XLatRed(vehicle)
         ar2ar_lqr.u.z .= Zar(vehicle)
@@ -915,7 +915,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
 
         if p2φ_enabled(mode) #φ_ref overridden by roll rate tracker
 
-            Control.Discrete.assign!(p2φ_pid, p2φ_lookup(EAS, Float64(h_e)))
+            Control.assign!(p2φ_pid, p2φ_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
                 #our next φ output must match φ reference at φβ2ar input
@@ -936,7 +936,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
 
         elseif χ2φ_enabled(mode) #φ_ref overridden by course angle tracker
 
-            Control.Discrete.assign!(χ2φ_pid, χ2φ_lookup(EAS, Float64(h_e)))
+            Control.assign!(χ2φ_pid, χ2φ_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
                 #our next φ output must match φ reference at φβ2ar input
@@ -957,7 +957,7 @@ function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
 
         end
 
-        Control.Discrete.assign!(φβ2ar_lqr, φβ2ar_lookup(EAS, Float64(h_e)))
+        Control.assign!(φβ2ar_lqr, φβ2ar_lookup(EAS, Float64(h_e)))
 
         if mode != mode_prev
             init!(φβ2ar_lqr)

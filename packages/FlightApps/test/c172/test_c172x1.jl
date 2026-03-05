@@ -7,7 +7,7 @@ using FlightPhysics
 using FlightApps
 
 using FlightApps.C172: is_on_gnd
-using FlightPhysics.Control.Discrete: build_lookup_pid, build_lookup_lqr
+using FlightPhysics.Control: build_lookup_pid, build_lookup_lqr
 using FlightApps.C172X.C172XControl: ModeControlLon, ModeControlLat, AltTrackingState
 
 export test_c172x1

@@ -1,11 +1,8 @@
-module C172XControlDesign
+module C172XDesign
 
 using Flight
 
-using Flight.FlightPhysics.Linearization: LinearizedSS, subsystem, delete_vars
-using Flight.FlightPhysics.Control.Discrete: PIDData, LQRDataPoint, save_lookup_data
-using Flight.FlightPhysics.Control.PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
-
+using Flight.FlightPhysics.Control: PIDData, LQRDataPoint, save_lookup_data
 using Flight.FlightApps.C172
 using Flight.FlightApps.C172X
 using Flight.FlightApps.C172X.C172XControl
@@ -19,6 +16,9 @@ using StructArrays
 using ComponentArrays
 using LinearAlgebra
 using Interpolations
+
+include("pidopt.jl")
+using .PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
 
 export get_design_model!, generate_lookups
 
@@ -88,11 +88,14 @@ end
 #scheduling lookup tables
 
 function generate_lookups(
-    EAS_range::AbstractRange{Float64} = range(25, 55, length = 7), #7
-    h_range::AbstractRange{Float64} = range(50, 3050, length = 4); #4
+    EAS_range::AbstractRange{Float64} = range(25, 55, length = 2), #7
+    h_range::AbstractRange{Float64} = range(50, 3050, length = 2); #4
     channel::Symbol = :lon,
     global_search::Bool = false,
-    folder::String = joinpath(dirname(@__DIR__), "data"))
+    folder::String = joinpath(dirname(@__DIR__), normpath("packages/FlightApps/src/c172/c172x/control/data")))
+
+    # @show folder
+    # return
 
     if channel === :lon
         f_design = design_lon

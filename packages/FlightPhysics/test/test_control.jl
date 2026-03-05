@@ -10,13 +10,13 @@ using FlightPhysics
 
 #import individual components to avoid potential namespace conflicts with ControlSystems
 import FlightPhysics.Linearization: LinearizedSS
-import FlightPhysics.Control.Continuous: PIVector as PIContinuous
-import FlightPhysics.Control.Discrete: PID as PIDDiscrete
-import FlightPhysics.Control.Discrete: PIDVector as PIDDiscreteVector
-import FlightPhysics.Control.Discrete: LeadLag as LeadLagDiscrete
-import FlightPhysics.Control.Discrete: Integrator as IntegratorDiscrete
-import FlightPhysics.Control.Discrete: IntegratorVector as IntegratorDiscreteVector
-import FlightPhysics.Control.Discrete: LQR as DiscreteLQR
+import FlightPhysics.Control: PIVector as PIContinuous
+import FlightPhysics.Control: PID as PIDDiscrete
+import FlightPhysics.Control: PIDVector as PIDDiscreteVector
+import FlightPhysics.Control: LeadLag as LeadLagDiscrete
+import FlightPhysics.Control: Integrator as IntegratorDiscrete
+import FlightPhysics.Control: IntegratorVector as IntegratorDiscreteVector
+import FlightPhysics.Control: LQR as DiscreteLQR
 
 export test_control
 
