@@ -1,7 +1,7 @@
 module Robot2D
 
 using LinearAlgebra
-using ControlSystems, RobustAndOptimalControl, ComponentArrays, StaticArrays, HDF5
+using ComponentArrays, StaticArrays, HDF5
 using CImGui: Begin, End, Text, IsItemActive, Checkbox, CollapsingHeader,
             SameLine, PushItemWidth, PopItemWidth, BeginTable, EndTable,
             TableNextRow, TableNextColumn, AlignTextToFramePadding, Separator,

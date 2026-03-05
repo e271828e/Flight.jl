@@ -2,7 +2,7 @@ module Linearization
 
 using ComponentArrays, StaticArrays, LinearAlgebra
 using FiniteDiff: finite_difference_jacobian! as jacobian!
-using ControlSystems: ControlSystemsBase, ControlSystems, ss
+using ControlSystemsBase: ControlSystemsBase, ss
 using RobustAndOptimalControl
 using DataStructures
 
@@ -197,7 +197,7 @@ end
 
 ############################### ControlSystems #################################
 
-ControlSystems.ss(lss::LinearizedSS) = ControlSystems.ss(lss.A, lss.B, lss.C, lss.D)
+ControlSystemsBase.ss(lss::LinearizedSS) = ControlSystemsBase.ss(lss.A, lss.B, lss.C, lss.D)
 
 function RobustAndOptimalControl.named_ss(lss::LinearizedSS)
     x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lss.x0, lss.u0, lss.y0))
