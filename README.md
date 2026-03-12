@@ -4,7 +4,6 @@
 [![CI](https://github.com/e271828e/Flight.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/e271828e/Flight.jl/actions/workflows/CI.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-
 *A high-performance, extensible aircraft GNC framework for Julia.*
 
 ![Flight.jl GUI with X-Plane 12 Visualization](/assets/front.png?raw=true)
