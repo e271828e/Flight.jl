@@ -1,6 +1,7 @@
 module TestSim
 
-using Test, Logging, StructTypes, JSON3
+using Test
+using Logging
 
 using FlightCore
 
@@ -9,15 +10,75 @@ export test_sim
 function test_sim()
     @testset verbose = true "Sim" begin
 
-        udp_loopback()
-        xp12_loopback()
-        json_loopback()
+        Logging.disable_logging(Logging.Warn)
+        @test_nowarn test_periodic()
+        @test_nowarn test_single()
+        @test_nowarn test_multirate()
+        Logging.disable_logging(Logging.LogLevel(typemin(Int32)))
 
     end
 end
 
 ################################################################################
-############################### Simulation #####################################
+########################### Periodic Dynamics ##################################
+
+struct Periodic <: ModelDefinition end
+
+Modeling.X(::Periodic) = [0.0]
+Modeling.Y(::Periodic) = 0.0
+
+@no_ode Periodic
+@no_step Periodic
+
+function Modeling.f_periodic!(::NoScheduling, mdl::Model{Periodic})
+    mdl.x[1] += 1
+    mdl.y = mdl.x[1]
+end
+
+function test_periodic()
+
+    #if we set a fixed dt < Δt and adaptive = false, the integrator will take
+    #multiple unnecessary steps between periodic updates
+    mdl = Periodic() |> Model
+    sim = Simulation(mdl; adaptive = false, dt = 0.02, Δt = 1.0)
+    step!(sim, 2, true)
+    @info sim.integrator.iter
+    @info sim.t
+    @info mdl.y
+
+    #if we set adaptive = true, it will only take a few intermediate steps
+    #for the integrator to extend the proposed dt beyond Δt, on account of ẋ
+    #always being 0. from that moment on, it only stops at the periodic update
+    #instants
+    mdl = Periodic() |> Model
+    sim = Simulation(mdl; adaptive = true, dt = 0.02, Δt = 1.0)
+    step!(sim, 2, true)
+    @info sim.integrator.iter
+    @info sim.t
+    @info mdl.y
+
+    #here, we set dt = Δt directly, so it only stops at periodic updates right
+    #from the start
+    mdl = Periodic() |> Model
+    sim = Simulation(mdl; dt = 1.0, Δt = 1.0)
+    step!(sim, 2, true)
+    @info sim.integrator.iter
+    @info sim.t
+    @info mdl.y
+
+    #setting dt > Δt also works: the integrator will still honor the periodic
+    #callback
+    mdl = Periodic() |> Model
+    sim = Simulation(mdl; Δt = 1.0, dt = 2.0)
+    step!(sim, 2, true)
+    @info sim.integrator.iter
+    @info sim.t
+    @info mdl.y
+
+end
+
+################################################################################
+################################ Hybrid, Multi-rate ############################
 
 @kwdef struct FirstOrder <: ModelDefinition
     τ::Float64 = 1.0
@@ -33,232 +94,58 @@ function Modeling.f_ode!(mdl::Model{FirstOrder})
     mdl.y = mdl.x[1]
 end
 
-function Modeling.f_step!(mdl::Model{FirstOrder})
-    x_new = mdl.x[1] + 1
-    # @info("Called f_step! at t = $(mdl.t[]) and x = $(mdl.x[1]), x updated to $(x_new)")
-    # mdl.x .= x_new #if we want the change in x to propagate to y at the end of this step
-end
-
 function Modeling.f_periodic!(::NoScheduling, mdl::Model{FirstOrder})
+    x_new = mdl.x[1] + 0.1
+    @info("Called f_periodic! at t = $(mdl.t[]), _n = $(mdl._n[]), _N = $(mdl._N), updating x = $(mdl.x[1]) to x = $(x_new)")
+    mdl.x .= x_new
+    mdl.y = mdl.x[1]
     # println("Called f_periodic! at t = $(mdl.t[]), got y = $(mdl.y)")
 end
 
-Modeling.init!(mdl::Model{FirstOrder}, x0::Real = 0.0) = (mdl.x .= x0)
-
-
-function test_sim_standalone()
-
-    mdl = FirstOrder() |> Model
-    sim = Simulation(mdl; dt = 0.1, Δt = 1.0, t_end = 5)
-    x0 = 1.0
-    init!(sim, x0)
-    Sim.run!(sim)
-    return sim
-
-end
-
-
+@no_step FirstOrder
 
 ################################################################################
-############################### IO Loopback ####################################
 
-#input and output devices must not be mutually locking. otherwise, at least one
-#of them may block irrecoverably when the simulation terminates. this coupling
-#may happen for example if input and output share a loopback Channel and they
-#make blocking put! and take! calls on it.
-
-#to avoid this, at least one of them should only block when waiting on its
-#SimInterface, but not on its external/loopback interface. this is the case with
-#an UDP loopback, in which the UDPOutput may block when calling take! on the
-#SimInterface Channel, but not on its send() call, which is nonblocking.
-
-@kwdef struct TestSystem <: ModelDefinition end
-
-@kwdef mutable struct TestSystemU
-    input::Float64 = 0
+@kwdef struct Node <: ModelDefinition
+    a::FirstOrder = FirstOrder()
+    b::Subsampled{FirstOrder} = Subsampled(FirstOrder(), 2)
 end
 
-@kwdef struct TestSystemY
-    input::Float64 = 0
+@sm_updates Node
+
+################################################################################
+
+@kwdef struct Root <: ModelDefinition
+    a::FirstOrder = FirstOrder()
+    b::Subsampled{FirstOrder} = Subsampled(FirstOrder(), 2)
+    c::Subsampled{Node} = Subsampled(Node(), 3)
 end
 
-Modeling.U(::TestSystem) = TestSystemU()
-Modeling.Y(::TestSystem) = TestSystemY()
+@sm_updates Root
 
-@no_ode TestSystem
-@no_step TestSystem
-
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:TestSystem})
-    mdl.y = TestSystemY(; input = mdl.u.input)
+function Modeling.init!(mdl::Model{Root}, x0::Real = 0.0)
+    (mdl.x .= x0)
+    # f_periodic!(mdl)
 end
 
-function GUI.draw(mdl::Model{TestSystem}, label::String = "TestSystem")
+################################################################################
 
-    (; input) = mdl.y
-
-    CImGui.Begin(label)
-
-        CImGui.Text("input = $input")
-
-    CImGui.End()
-
-end #function
-
-
-################################ UDP Loopback ##################################
-
-struct UDPTestMapping <: IOMapping end
-
-function IODevices.assign_input!(mdl::Model{TestSystem},
-                            ::UDPTestMapping,
-                            data::String)
-    # @debug "Got $data"
-    mdl.u.input = Vector{UInt8}(data)[1]
-    # mdl.u.input = "Hi"
+function test_single()
+    mdl = FirstOrder() |> Model;
+    sim = Simulation(mdl; Δt = 1.0, t_end = 30)
+    # init!(sim)
+    Sim.run!(sim)
+    # return TimeSeries(sim)
+    return sim
 end
 
-function IODevices.extract_output(::Model{TestSystem}, ::UDPTestMapping)
-    data = UInt8[37] |> String
-    # data = String([0x04]) #EOT character
-    # @debug "Extracted $data"
-    return data
-end
-
-function udp_loopback()
-
-    @testset verbose = true "UDP Loopback" begin
-
-        port = 14141
-        mdl = TestSystem() |> Model
-        sim = Simulation(mdl; t_end = 1.0)
-        Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
-        Sim.attach!(sim, UDPOutput(; port), UDPTestMapping())
-
-        #we need to run these paced, otherwise the IO can't keep up
-        Sim.run!(sim; pace = 1)
-
-        #mdl.y.output must have propagated to mdl.u.input via loopback, and then
-        #to mdl.y.input within f_periodic!
-        @test mdl.y.input == 37.0
-
-        return sim
-
-    end
-
-end
-
-################################ XPC Loopback ##################################
-
-function IODevices.extract_output(::Model{TestSystem}, ::XPlane12ControlMapping)
-    data = XPlanePose() |> Network.xpmsg_set_pose
-    return data
-end
-
-function xp12_loopback()
-
-    @testset verbose = true "X-Plane 12 Loopback" begin
-
-        port = 14143
-        mdl = TestSystem() |> Model
-        sim = Simulation(mdl; t_end = 1.0)
-        Sim.attach!(sim, UDPInput(; port), UDPTestMapping())
-        Sim.attach!(sim, XPlane12Control(; port))
-
-        #we need to run these paced, otherwise the IO can't keep up
-        Sim.run!(sim; pace = 1)
-
-        cmd = XPlanePose() |> Network.xpmsg_set_pose
-        #extract_output returns a pose command message, which is sent through
-        #UDP by XPlaneControl's handle_data! method, and is passed to the
-        #assign_input! method via loopback. here, the first character
-        #is converted to Float64 and assigned to mdl.u.input, and it finally
-        #propagates to mdl.y.input within f_periodic!
-        @test mdl.y.input === Float64(cmd[1])
-
-        return sim
-
-    end
-
-end
-
-
-################################ JSON Loopback #################################
-
-#declare TestSystemY as immutable for JSON3 parsing
-StructTypes.StructType(::Type{TestSystemY}) = StructTypes.Struct()
-StructTypes.excludes(::Type{TestSystemY}) = (:input,) #only extract :output
-
-#declare TestSystemU as mutable so that JSON3 can read into it
-StructTypes.StructType(::Type{TestSystemU}) = StructTypes.Mutable()
-
-#this doesn't work for switching field values via loopback, because the
-#inversion applies both to serializing and deserializing, so it cancels out
-
-# StructTypes.names(::Type{TestSystemU}) = ((:input, :output), (:output,  :input))
-
-struct JSONTestMapping <: IOMapping end
-
-function IODevices.extract_output(::Model{TestSystem}, ::JSONTestMapping)
-    data = (input = 37.0,) |> JSON3.write
-    # @info "Extracted $data"
-    return data
-end
-
-function IODevices.assign_input!(mdl::Model{TestSystem},
-                            ::JSONTestMapping,
-                            data::String)
-
-    # @info "Got $data"
-    JSON3.read!(data, mdl.u)
-    # @info "Echo is now $(mdl.u.input)"
-end
-
-function json_loopback()
-
-    @testset verbose = true "JSON Loopback" begin
-
-        port = 14142
-        mdl = TestSystem() |> Model
-        sim = Simulation(mdl; t_end = 1.0)
-        Sim.attach!(sim, UDPInput(; port), JSONTestMapping())
-        Sim.attach!(sim, UDPOutput(; port), JSONTestMapping())
-
-        #trigger method precompilation
-        JSON3.read!(JSON3.write((input = 0.0,)), mdl.u)
-
-        #we need to run these paced, otherwise the IO can't keep up
-        Sim.run!(sim; pace = 1)
-
-        @test mdl.y.input == 37.0
-
-        return sim
-
-    end
-
-end
-
-
-################################## Joystick ####################################
-
-function IODevices.assign_input!(mdl::Model{TestSystem},
-                            ::IOMapping,
-                            data::Joysticks.T16000MData)
-    mdl.u.input = data.axes.stick_x
-end
-
-function joystick_input()
-
-    @testset verbose = true "Joystick Input" begin
-
-        mdl = TestSystem() |> Model
-        sim = Simulation(mdl; t_end = 10.0)
-        joystick = update_connected_joysticks()[1]
-        Sim.attach!(sim, joystick)
-
-        Sim.run!(sim; gui = true)
-
-    end
-
+function test_multirate()
+    mdl = Root() |> Model;
+    sim = Simulation(mdl; Δt = 1.0, t_end = 30)
+    # init!(sim)
+    Sim.run!(sim)
+    # return TimeSeries(sim)
+    return sim
 end
 
 ################################################################################
@@ -302,7 +189,5 @@ function threading_sketch()
 
     end
 end
-
-
 
 end #module

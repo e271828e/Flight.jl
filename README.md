@@ -70,7 +70,7 @@ using Flight
 #1. Set up simulation
 
     #custom fly-by-wire Cessna172 variant with default environment
-    world = SimpleWorld(; aircraft = Cessna172Xv2()) |> Model
+    world = SimpleWorld(; aircraft = Cessna172Xv1()) |> Model
     sim = Simulation(world; t_end = 600)
 
     #initialize using default trim conditions
@@ -84,7 +84,7 @@ using Flight
 #3. Configure autopilot for turning climb
 
     #extract control laws submodel
-    ctl = world.aircraft.avionics.ctl
+    ctl = world.aircraft.avionics
 
     #set longitudinal control laws to track airspeed and climb rate
     ctl.lon.u.mode_req = C172XControl.ModeControlLon.EAS_clm
@@ -166,8 +166,9 @@ using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings
 
     #4. Compare responses
 
-        plot(θ_nonlinear; plot_title = "Pitch Angle", label = "Nonlinear", ylabel=L"$\theta \ (rad)$") |> display
+        p = plot(θ_nonlinear; plot_title = "Pitch Angle", label = "Nonlinear", ylabel=L"$\theta \ (rad)$") |> display
         plot!(t, θ_linear; label = "Linear")
+        display(p)
 ```
 ![Elevator step responses](/assets/elevator_step_response.png?raw=true)
 

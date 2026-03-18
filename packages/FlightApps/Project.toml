@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Miguel Alonso <miguel883@gmail.com>"]
 
 [workspace]
-projects = ["test"]
+projects = ["demos", "design", "test"]
 
 [deps]
 CImGui = "5d785b6c-b76f-510e-a07c-3070796c7e87"

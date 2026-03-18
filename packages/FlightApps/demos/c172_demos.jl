@@ -1,23 +1,111 @@
 module C172Demos
 
-using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings, JSON3, Sockets
+using OrdinaryDiffEq,ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings, JSON3, Sockets
+using OrdinaryDiffEq: Heun, RK4
 
-using Flight
-using Flight.FlightApps.C172: is_on_gnd
-using Flight.FlightApps.C172X.C172XControl: ModeControlLon, ModeControlLat
-using Flight.FlightApps.C172X.C172XGuidance: ModeGuidance, Segment, SegmentGuidanceData
+using FlightCore, FlightPhysics, FlightApps
+using FlightApps.C172: is_on_gnd
+using FlightApps.C172X.C172XControl: ModeControlLon, ModeControlLat
+using FlightApps.C172X.C172XGuidance: ModeGuidance, Segment, SegmentGuidanceData
 
-export interactive_simulation, crosswind_landing, traffic_pattern, json_loopback
+export generic_simulation #C172
+export nlsim_q, nlsim_θ #C172S
+export turning_climb, elevator_doublet, elevator_doublet_callback, json_loopback #C172Xv1
+export crosswind_landing, traffic_pattern #C172Xv2
 
 #position and geographic heading for Salzburg airport (LOWS) runway 15
 const loc_LOWS15 = LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997))
 const h_LOWS15 = HOrth(427.2)
 const ψ_LOWS15 = deg2rad(157)
 
+function run_demos()
+    generic_simulation()
+    nlsim_q()
+    nlsim_θ()
+    turning_climb()
+    elevator_doublet()
+    elevator_doublet_callback()
+    json_loopback()
+    crosswind_landing()
+    traffic_pattern()
+end
 
-######################### Documentation Demos ##################################
+##########################################################################
+############################## C172 ######################################
 
-function nlsim_q()
+function generic_simulation(; aircraft::Cessna172 = Cessna172Xv1(),
+                gui::Bool = false,
+                save::Bool = false,
+                situation::Symbol = :ground,
+                xp12_address = IPv4("127.0.0.1"),
+                xp12_port = 49000,
+                )
+
+    #default atmospheric model
+    atmosphere = SimpleAtmosphere()
+
+    #horizontal terrain model with elevation matching LOWS runway 15
+    terrain = HorizontalTerrain(h_LOWS15)
+
+    #define world and build Model for simulation
+    world = SimpleWorld(aircraft, atmosphere, terrain) |> Model
+
+    if situation === :ground
+        #initial condition specified through aircraft frame kinematics
+        initializer = KinInit(;
+            location = loc_LOWS15, #2D location
+            h = h_LOWS15 + C172.Δh_to_gnd, #altitude
+            q_nb = REuler(ψ_LOWS15, 0, 0), #attitude with respect to NED frame
+            ω_wb_b = zeros(3), #angular velocity
+            v_eb_n = zeros(3), #velocity
+            ) |> C172.Init
+
+    elseif situation === :air
+        #initial condition specified by trim parameters
+        # initializer = C172.TrimParameters()
+        initializer = C172.TrimParameters(;
+            Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above LOWS runway 15
+            EAS = 50.0, #equivalent airspeed
+            ψ_nb = ψ_LOWS15, #geographic heading
+            γ_wb_n = 0.0, #wind-relative flight path angle
+            ψ_wb_dot = 0.0, #turn rate
+            flaps = 0.0, #flap setting
+            fuel_load = 0.5, #available fuel fraction
+        )
+    else
+        error("Unknown situation: $situation")
+    end
+
+    #create a Simulation with specified integration step size and stop time
+    sim = Simulation(world; algorithm = Heun(), dt = 0.02, t_end = 1000)
+
+    init!(sim, initializer)
+
+    xp = XPlane12Control(address = xp12_address, port = xp12_port)
+    Sim.attach!(sim, xp)
+    for joystick in update_connected_joysticks()
+        # isa(joystick, Joysticks.T16000M) && Sim.attach!(sim, joystick)
+        Sim.attach!(sim, joystick)
+    end
+
+    Sim.run!(sim; gui)
+
+    if save
+        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/interactive_sim/kin"); Plotting.defaults..., linewidth = 2,)
+        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/interactive_sim/air"); Plotting.defaults...)
+        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/interactive_sim/dyn"); Plotting.defaults...)
+        # save_plots(TimeSeries(sim).aircraft.vehicle.dynamics; Plotting.defaults...)
+    end
+
+    return sim
+
+end
+
+
+##########################################################################
+################################# C172S ##################################
+
+function nlsim_q(; save::Bool = false)
 
     #set up nonlinear simulation
     world = Model(SimpleWorld(aircraft = Cessna172Sv0(NED())))
@@ -47,13 +135,16 @@ function nlsim_q()
     y, t, _, _ = lsim(e2q, (x, t)->[0.1]*(t>=1), 0:0.01:10)
     q_linear = vec(y)
 
-    plot(q_nonlinear; plot_title = "Pitch Rate", label = "Nonlinear", ylabel=L"$q \ (rad/s)$") |> display
+    p = plot(q_nonlinear; plot_title = "Pitch Rate", label = "Nonlinear", ylabel=L"$q \ (rad/s)$")
     plot!(t, q_linear, label = "Linear")
+
+    # display(p)
+    save && savefig("nlsim_q.png")
 
 end
 
 # Elevator step response in nonlinear and linearized Cessna172S models
-function nlsim_θ()
+function nlsim_θ(; save::Bool = false)
 
 #1. Set up and run nonlinear simulation
 
@@ -105,22 +196,27 @@ function nlsim_θ()
 
     #4. Compare responses
 
-        plot(θ_nonlinear; plot_title = "Pitch Angle", label = "Nonlinear", ylabel=L"$\theta \ (rad)$", size = (900, 600)) |> display
+        p = plot(θ_nonlinear; plot_title = "Pitch Angle", label = "Nonlinear", ylabel=L"$\theta \ (rad)$", size = (900, 600))
         plot!(t, θ_linear; label = "Linear")
 
-    # savefig("step_response.png")
+        # display(p)
+
+    save && savefig("nlsim_theta.png")
 
 end
+
+##########################################################################
+################################ C172Xv1 ###################################################
 
 #Simulate an automated turning climb under constant wind conditions on the
 #fly-by-wire Cessna172X model
 
-function turning_climb()
+function turning_climb(; save::Bool = false)
 
     #1. Set up simulation
 
         #custom fly-by-wire Cessna172 variant with default environment
-        world = SimpleWorld(; aircraft = Cessna172Xv2()) |> Model
+        world = SimpleWorld(; aircraft = Cessna172Xv1()) |> Model
         sim = Simulation(world; t_end = 600)
 
         #initialize using default trim conditions
@@ -134,7 +230,7 @@ function turning_climb()
     #3. Configure autopilot for turning climb
 
         #extract control laws submodel
-        ctl = world.aircraft.avionics.ctl
+        ctl = world.aircraft.avionics
 
         #set longitudinal control laws to track airspeed and climb rate
         ctl.lon.u.mode_req = C172XControl.ModeControlLon.EAS_clm
@@ -156,36 +252,38 @@ function turning_climb()
     #5. Plot 3D trajectory
 
         kin_plots = make_plots(ts.aircraft.vehicle.kinematics; size = (900, 600))
-        display(kin_plots[:Ob_t3d])
+        # display(kin_plots[:Ob_t3d])
 
-        # savefig(kin_plots[:Ob_t3d],"turning_climb_3d.png")
+    save && savefig(kin_plots[:Ob_t3d],"turning_climb_3d.png")
 
 end
 
 
-function elevator_doublet()
+function elevator_doublet(; save::Bool = false)
 
     world = SimpleWorld(aircraft = Cessna172Xv1()) |> Model
     sim = Simulation(world; dt = 0.02, t_end = 60)
     init!(sim, C172.TrimParameters())
 
     step!(sim, 5)
-    world.aircraft.avionics.ctl.u.elevator_offset = 0.1
+    world.aircraft.avionics.lon.u.elevator_offset = 0.1
     step!(sim, 2)
-    world.aircraft.avionics.ctl.u.elevator_offset = -0.1
+    world.aircraft.avionics.lon.u.elevator_offset = -0.1
     step!(sim, 2)
-    world.aircraft.avionics.ctl.u.elevator_offset = 0
+    world.aircraft.avionics.lon.u.elevator_offset = 0
     Sim.run!(sim)
 
-    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/elevator_doublet/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/elevator_doublet/dyn"); Plotting.defaults...)
+    if save
+        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); Plotting.defaults..., linewidth = 2,)
+        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/elevator_doublet/air"); Plotting.defaults...)
+        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/elevator_doublet/dyn"); Plotting.defaults...)
+    end
 
     return sim
 
 end
 
-function elevator_doublet_callback()
+function elevator_doublet_callback(; save::Bool = false)
 
     world = SimpleWorld(aircraft = Cessna172Xv1()) |> Model
 
@@ -205,85 +303,107 @@ function elevator_doublet_callback()
     init!(sim, C172.TrimParameters())
     Sim.run!(sim)
 
-    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/elevator_doublet/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/elevator_doublet/dyn"); Plotting.defaults...)
+    if save
+        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); Plotting.defaults..., linewidth = 2,)
+        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/elevator_doublet/air"); Plotting.defaults...)
+        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/elevator_doublet/dyn"); Plotting.defaults...)
+    end
 
     return sim
 
 end
 
+############################# UDP/JSON Loopback Test ###########################
 
-############################## Misc Demos ######################################
+struct JSONTestMapping <: IOMapping end
 
-function interactive_simulation(; aircraft::Cessna172 = Cessna172Xv1(),
-                situation::Symbol = :ground,
-                xp12_address = IPv4("127.0.0.1"),
-                xp12_port = 49000,
-                )
+function IODevices.extract_output(mdl::Model{<:SimpleWorld}, ::JSONTestMapping)
+    freq = 0.1
+    φ_ref_max = π/6
+    φ_ref = φ_ref_max * sin(2π*freq*mdl.t[])
+    clm_ref = 0.0
 
-    #default atmospheric model
-    atmosphere = SimpleAtmosphere()
+    #these are all valid empty JSON entities. when passed to JSON3.write, they
+    #yield respectively "\"\"", "[]" and "{}", all of length 2
+    cmd = ""
+    # cmd = []
+    # cmd = Dict()
 
-    #horizontal terrain model with elevation matching LOWS runway 15
-    terrain = HorizontalTerrain(h_LOWS15)
-
-    #define world and build Model for simulation
-    world = SimpleWorld(aircraft, atmosphere, terrain) |> Model
-
-    if situation === :ground
-        #initial condition specified through aircraft frame kinematics
-        initializer = KinInit(;
-            location = loc_LOWS15, #2D location
-            h = h_LOWS15 + C172.Δh_to_gnd, #altitude
-            q_nb = REuler(ψ_LOWS15, 0, 0), #attitude with respect to NED frame
-            ω_wb_b = zeros(3), #angular velocity
-            v_eb_n = zeros(3), #velocity
-            ) |> C172.Init
-
-    elseif situation === :air
-        #initial condition specified by trim parameters
-        # initializer = C172.TrimParameters()
-        initializer = C172.TrimParameters(;
-            Ob = Geographic(loc_LOWS15, h_LOWS15 + 500), #500 m above LOWS runway 15
-            EAS = 50.0, #equivalent airspeed
-            ψ_nb = ψ_LOWS15, #geographic heading
-            γ_wb_n = 0.0, #wind-relative flight path angle
-            ψ_wb_dot = 0.0, #turn rate
-            flaps = 0.0, #flap setting
-            fuel_load = 0.5, #available fuel fraction
+    if mdl.t[] > 5
+        #enums will be automatically cast to Ints per the StructTypes methods
+        #defined in C172X.C172XControl
+        cmd = (
+            lon = (
+                mode_req = ModeControlLon.EAS_clm, #7 would also work
+                clm_ref = clm_ref,
+            ),
+            lat = (
+                mode_req = ModeControlLat.φ_β,
+                φ_ref = φ_ref,
+            )
         )
-    else
-        error("Unknown situation: $situation")
     end
 
-    #create a Simulation with specified integration step size and stop time
-    sim = Simulation(world; dt = 0.02, t_end = 1000)
+    return JSON3.write(cmd)
+end
 
+function IODevices.assign_input!(world::Model{<:SimpleWorld}, ::JSONTestMapping, data::String)
+    #caution: String(data) empties the original data::Vector{UInt8}, so
+    #additional calls would return an empty string
+    str = String(data)
+    u = JSON3.read(str)
+
+    if !isempty(u)
+        JSON3.read!(JSON3.write(u.lon), world.aircraft.avionics.u.lon)
+        JSON3.read!(JSON3.write(u.lat), world.aircraft.avionics.u.lat)
+    end
+end
+
+function json_loopback(; gui::Bool = false, xp12 = false, save::Bool = false)
+
+
+    h_trn = HOrth(427.2);
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
+
+    sim = Simulation(world; t_end = 30)
+
+    #on air, automatically trimmed by init!
+    initializer = C172.TrimParameters(
+        Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
+
+    #initialize simulated system
     init!(sim, initializer)
 
-    xp = XPlane12Control(address = xp12_address, port = xp12_port)
-    Sim.attach!(sim, xp)
-    for joystick in update_connected_joysticks()
-        # isa(joystick, Joysticks.T16000M) && Sim.attach!(sim, joystick)
-        Sim.attach!(sim, joystick)
-    end
+    xp12 && Sim.attach!(sim, XPlane12Control(; port = 49000))
 
-    Sim.run!(sim; gui = true)
+    #the loopback interface must not share its port with XPlane12Control!
+    Sim.attach!(sim, UDPInput(; port = 49017), JSONTestMapping())
+    Sim.attach!(sim, UDPOutput(; port = 49017), JSONTestMapping())
 
-    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/interactive_sim/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/interactive_sim/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/interactive_sim/dyn"); Plotting.defaults...)
-    # save_plots(TimeSeries(sim).aircraft.vehicle.dynamics; Plotting.defaults...)
+    #trigger compilation of parsing methods before launching the simulation
+    JSON3.read!(JSON3.write(world.aircraft.avionics.u.lon, allow_inf=true),
+                            world.aircraft.avionics.u.lon; allow_inf=true)
+    JSON3.read!(JSON3.write(world.aircraft.avionics.u.lat, allow_inf=true),
+                            world.aircraft.avionics.u.lat; allow_inf=true)
 
-    return sim
+    #set non-Inf pace for headless runs to allow the UDP interface to keep up
+    pace = (gui ? 1.0 : 30)
+    Sim.run!(sim; gui, pace)
+
+    save && save_plots(TimeSeries(sim).aircraft.vehicle.kinematics,
+                        normpath("tmp/plots/udp_loopback/kin");
+                        Plotting.defaults...)
+
+    return nothing
 
 end
 
 
-################################################################################
+##########################################################################
+################################## C172Xv2 #####################################
 
 function crosswind_landing(; gui::Bool = false,
+                            save::Bool = false,
                             xp12_address = IPv4("127.0.0.1"),
                             xp12_port = 49000,)
 
@@ -372,9 +492,11 @@ function crosswind_landing(; gui::Bool = false,
     init!(sim, initializer)
     Sim.run!(sim; gui)
 
-    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/crosswind_landing/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/crosswind_landing/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/crosswind_landing/dyn"); Plotting.defaults...)
+    if save
+        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/crosswind_landing/kin"); Plotting.defaults..., linewidth = 2,)
+        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/crosswind_landing/air"); Plotting.defaults...)
+        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/crosswind_landing/dyn"); Plotting.defaults...)
+    end
 
     return sim
 
@@ -384,6 +506,7 @@ end
 ################################################################################
 
 function traffic_pattern(; gui::Bool = false,
+                            save::Bool = false,
                             xp12_address = IPv4("127.0.0.1"),
                             xp12_port = 49000,)
 
@@ -525,98 +648,16 @@ function traffic_pattern(; gui::Bool = false,
     init!(sim, initializer)
     Sim.run!(sim; gui)
 
-    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/traffic_pattern/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/traffic_pattern/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/traffic_pattern/dyn"); Plotting.defaults...)
+    if save
+        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/traffic_pattern/kin"); Plotting.defaults..., linewidth = 2,)
+        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/traffic_pattern/air"); Plotting.defaults...)
+        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/traffic_pattern/dyn"); Plotting.defaults...)
+    end
 
     return sim
 
 end
 
 
-############################# UDP/JSON Loopback Test ###########################
-
-struct JSONTestMapping <: IOMapping end
-
-function IODevices.extract_output(mdl::Model{<:SimpleWorld}, ::JSONTestMapping)
-    freq = 0.1
-    φ_ref_max = π/6
-    φ_ref = φ_ref_max * sin(2π*freq*mdl.t[])
-    clm_ref = 0.0
-
-    #these are all valid empty JSON entities. when passed to JSON3.write, they
-    #yield respectively "\"\"", "[]" and "{}", all of length 2
-    cmd = ""
-    # cmd = []
-    # cmd = Dict()
-
-    if mdl.t[] > 5
-        #enums will be automatically cast to Ints per the StructTypes methods
-        #defined in C172X.C172XControl
-        cmd = (
-            lon = (
-                mode_req = ModeControlLon.EAS_clm, #7 would also work
-                clm_ref = clm_ref,
-            ),
-            lat = (
-                mode_req = ModeControlLat.φ_β,
-                φ_ref = φ_ref,
-            )
-        )
-    end
-
-    return JSON3.write(cmd)
-end
-
-function IODevices.assign_input!(world::Model{<:SimpleWorld}, ::JSONTestMapping, data::String)
-    #caution: String(data) empties the original data::Vector{UInt8}, so
-    #additional calls would return an empty string
-    str = String(data)
-    u = JSON3.read(str)
-
-    if !isempty(u)
-        JSON3.read!(JSON3.write(u.lon), world.aircraft.avionics.u.lon)
-        JSON3.read!(JSON3.write(u.lat), world.aircraft.avionics.u.lat)
-    end
-end
-
-function json_loopback(; gui::Bool = true, xp12 = false, save::Bool = true)
-
-
-    h_trn = HOrth(427.2);
-    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
-
-    sim = Simulation(world; t_end = 30)
-
-    #on air, automatically trimmed by init!
-    initializer = C172.TrimParameters(
-        Ob = Geographic(LatLon(ϕ = deg2rad(47.80433), λ = deg2rad(12.997)), HEllip(650)))
-
-    #initialize simulated system
-    init!(sim, initializer)
-
-    xp12 && Sim.attach!(sim, XPlane12Control(; port = 49000))
-
-    #the loopback interface must not share its port with XPlane12Control!
-    Sim.attach!(sim, UDPInput(; port = 49017), JSONTestMapping())
-    Sim.attach!(sim, UDPOutput(; port = 49017), JSONTestMapping())
-
-    #trigger compilation of parsing methods before launching the simulation
-    JSON3.read!(JSON3.write(world.aircraft.avionics.u.lon, allow_inf=true),
-                            world.aircraft.avionics.u.lon; allow_inf=true)
-    JSON3.read!(JSON3.write(world.aircraft.avionics.u.lat, allow_inf=true),
-                            world.aircraft.avionics.u.lat; allow_inf=true)
-
-    #set non-Inf pace for headless runs to allow the UDP interface to keep up
-    pace = (gui ? 1.0 : 30)
-    Sim.run!(sim; gui, pace)
-
-    save && save_plots(TimeSeries(sim).aircraft.vehicle.kinematics,
-                        normpath("tmp/plots/udp_loopback/kin");
-                        Plotting.defaults...)
-
-    return nothing
-
-end
 
 end #module

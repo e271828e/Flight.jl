@@ -1,45 +1,29 @@
-tmp/
-/precompile
-/CImGui*
-/.vscode
-/.VSCodeCounter
-.DS_Store
+# Manifest files
+Manifest.toml
 
-#Julia
-*Manifest.toml*
-/LocalPreferences.toml
-/*.tar.gz
-/dist
-/dist-extras
-/julia
-/julia.bat
-/usr
-/oprofile_data
-/usr-staging
-/Make.user
-/julia-*
-/source-dist.tmp
-/source-dist.tmp1
-
-#Documenter.jl
-/docs/build
-/docs/site
-
-
-*.exe
-*.dll
-*.dwo
-*.do
-*.o
-*.o.tmp
-*.obj
-*.so
-*.dylib
-*.dSYM
+# Compiled cache, coverage, and memory allocation files
 *.jl.cov
 *.jl.*.cov
 *.jl.mem
 *.jl.*.mem
 *.ji
 
+# Documenter.jl
+docs/build/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editors (VS Code, Zed, Vim)
+.vscode/
+.zed/
+
+# Misc
 imgui.ini
+tmp/
+/CImGui*

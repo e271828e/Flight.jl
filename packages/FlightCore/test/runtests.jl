@@ -2,7 +2,9 @@ using Revise
 using Test
 
 includet(normpath("test_gui.jl")); using .TestGUI
+includet(normpath("test_sim.jl")); using .TestSim
+includet(normpath("test_network.jl")); using .TestNetwork
 
-# @testset verbose = true "FlightCore" begin
-    test_gui()
-# end
+test_gui()
+test_sim()
+test_network()

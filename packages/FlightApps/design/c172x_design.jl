@@ -1,11 +1,11 @@
 module C172XDesign
 
-using Flight
+using FlightCore, FlightPhysics, FlightApps
 
-using Flight.FlightPhysics.Control: PIDData, LQRDataPoint, save_lookup_data
-using Flight.FlightApps.C172
-using Flight.FlightApps.C172X
-using Flight.FlightApps.C172X.C172XControl
+using FlightPhysics.Control: PIDData, LQRDataPoint, save_lookup_data
+using FlightApps.C172
+using FlightApps.C172X
+using FlightApps.C172X.C172XControl
 
 using HDF5
 using Logging
