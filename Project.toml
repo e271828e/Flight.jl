@@ -4,7 +4,7 @@ version = "0.1.5"
 authors = ["Miguel Alonso <miguel883@gmail.com> and contributors"]
 
 [workspace]
-projects = ["packages/FlightCore", "packages/FlightPhysics", "packages/FlightApps", "test", "docs"]
+projects = ["lib/FlightCore", "lib/FlightPhysics", "lib/FlightApps", "test", "docs"]
 
 [deps]
 FlightApps = "c94c8c3d-2ef7-4940-9544-b98dae328d9f"
