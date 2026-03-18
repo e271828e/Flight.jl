@@ -1,14 +1,14 @@
 module Robot2DDesign
 
-using Flight
-using Flight.FlightPhysics.Control: LQRDataPoint
-using Flight.FlightApps.Robot2D: Vehicle
+using FlightCore, FlightPhysics, FlightApps
+using FlightPhysics.Control: LQRDataPoint
+using FlightApps.Robot2D: Vehicle
 
 using LinearAlgebra
 using ControlSystems, RobustAndOptimalControl, ComponentArrays, HDF5
 
 function design_v2m_lqr(mdl::Model{<:Vehicle} = Model(Vehicle()); save = true,
-    file::String = joinpath(dirname(@__DIR__), normpath("packages/FlightApps/src/robot2d/robot2d.h5")))
+    file::String = joinpath(dirname(@__DIR__), normpath("src/robot2d/robot2d.h5")))
 
     lss = linearize(mdl)
     lss = delete_vars(lss, :η) #build reduced design model
