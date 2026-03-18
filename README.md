@@ -4,13 +4,14 @@
 [![CI](https://github.com/e271828e/Flight.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/e271828e/Flight.jl/actions/workflows/CI.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+
 *A high-performance, extensible aircraft GNC framework for Julia.*
 
 ![Flight.jl GUI with X-Plane 12 Visualization](/assets/front.png?raw=true)
 
 ## Overview
 
-`Flight.jl` offers a powerful and versatile toolkit for aircraft GNC modeling, design and simulation
+`Flight.jl` is a powerful and versatile toolkit for aircraft GNC modeling, design and simulation
 tasks. It fully leverages Julia's expressiveness, extensibility and performance.
 
 It is organized in three layers:
@@ -27,9 +28,15 @@ Key features:
 *   **Hierarchical Modeling:** Enables building complex systems from simpler, reusable components,
     leveraging `ComponentArrays.jl` for clarity and convenience.
 
-*   **High Performance:** Its core simulation loop is built on `DifferentialEquations.jl` and
+*   **High Performance:** The core simulation loop is built on `DifferentialEquations.jl` and
     designed from the ground up to be allocation-free. This enables extremely fast headless
     execution and smooth performance on interactive runs.
+
+*   **Solid Physics Foundation:** Features built-in modules for attitude representation, geodesy,
+    kinematics and rigid body dynamics, providing efficient and ergonomic types and operations.
+
+*   **Pre-Built Aircraft Components:** Includes high-fidelity, customizable models for propellers,
+    piston engines and landing gear.
 
 *   **Interactive GUI:** Integrates an extensible GUI based on `CImGui.jl` for live model
     inspection and manipulation.
@@ -37,12 +44,6 @@ Key features:
 *   **External Visualization & I/O:** Offers out-of-the-box integration with [X-Plane
     12](https://www.x-plane.com/desktop/try-it/) for high-fidelity 3D visualization, joystick
     support via SDL2, and a generic interface layer for custom I/O functionality.
-
-*   **Solid Physics Foundation:** Features built-in modules for attitude representation, geodesy,
-    kinematics and rigid body dynamics, providing efficient and ergonomic types and operations.
-
-*   **Pre-Built Aircraft Components:** Includes high-fidelity, customizable models for propellers,
-    piston engines and landing gear.
 
 *   **Case Study:** A custom fly-by-wire Cessna 172 model is provided as an example demonstrating a
     complete design workflow, from vehicle systems modeling to the implementation and testing of a
@@ -70,7 +71,7 @@ using Flight
 #1. Set up simulation
 
     #custom fly-by-wire Cessna172 variant with default environment
-    world = SimpleWorld(; aircraft = Cessna172Xv1()) |> Model
+    world = SimpleWorld(; aircraft = Cessna172Xv2()) |> Model
     sim = Simulation(world; t_end = 600)
 
     #initialize using default trim conditions
@@ -84,7 +85,7 @@ using Flight
 #3. Configure autopilot for turning climb
 
     #extract control laws submodel
-    ctl = world.aircraft.avionics
+    ctl = world.aircraft.avionics.ctl
 
     #set longitudinal control laws to track airspeed and climb rate
     ctl.lon.u.mode_req = C172XControl.ModeControlLon.EAS_clm
@@ -166,9 +167,8 @@ using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings
 
     #4. Compare responses
 
-        p = plot(θ_nonlinear; plot_title = "Pitch Angle", label = "Nonlinear", ylabel=L"$\theta \ (rad)$") |> display
+        plot(θ_nonlinear; plot_title = "Pitch Angle", label = "Nonlinear", ylabel=L"$\theta \ (rad)$") |> display
         plot!(t, θ_linear; label = "Linear")
-        display(p)
 ```
 ![Elevator step responses](/assets/elevator_step_response.png?raw=true)
 
