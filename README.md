@@ -115,7 +115,12 @@ using Flight
 Comparing elevator step response between nonlinear and linearized Cessna172S models:
 ```julia
 using Flight
-using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings
+
+using Pkg
+Pkg.add(["ControlSystems", "RobustAndOptimalControl", "Plots", "LaTeXStrings"])
+using ControlSystems: lsim
+using RobustAndOptimalControl: named_ss
+using Plots, LaTeXStrings
 
 #1. Set up and run nonlinear simulation
 
