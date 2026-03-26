@@ -1,7 +1,7 @@
 module C172Demos
 
-using OrdinaryDiffEq,ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings, JSON3, Sockets
-using OrdinaryDiffEq: Heun, RK4
+using ControlSystems, RobustAndOptimalControl, Plots, LaTeXStrings, JSON3, Sockets
+using OrdinaryDiffEqLowOrderRK: Heun, RK4
 
 using FlightCore, FlightPhysics, FlightApps
 using FlightApps.C172: is_on_gnd

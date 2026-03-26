@@ -1,9 +1,8 @@
 module Sim
 
 using Reexport, StructArrays
-using OrdinaryDiffEq: OrdinaryDiffEq, OrdinaryDiffEqCore, ODEProblem,
-                      Heun, RK4, init as init_integrator
-using OrdinaryDiffEq.OrdinaryDiffEqCore: OrdinaryDiffEqAlgorithm, ODEIntegrator
+using OrdinaryDiffEqCore: OrdinaryDiffEqCore, OrdinaryDiffEqAlgorithm, ODEProblem, ODEIntegrator, init as init_integrator
+using OrdinaryDiffEqLowOrderRK: Heun, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback,
                        CallbackSet, SavedValues
 using RecursiveArrayTools
@@ -14,7 +13,7 @@ using ..Modeling
 using ..IODevices
 using ..GUI
 
-@reexport using OrdinaryDiffEq: step!, reinit!, add_tstop!, get_proposed_dt
+@reexport using OrdinaryDiffEqCore: step!, reinit!, add_tstop!, get_proposed_dt
 export Simulation, attach!, run!
 export TimeSeries, get_time, get_data, get_components
 export take_nonblocking!, put_nonblocking!
@@ -363,11 +362,11 @@ function f_cb_save(x, t, integrator)
 end
 
 
-####################### OrdinaryDiffEq extensions ##############################
+####################### OrdinaryDiffEqCore extensions ##############################
 
-OrdinaryDiffEq.step!(sim::Simulation, args...) = step!(sim.integrator, args...)
+OrdinaryDiffEqCore.step!(sim::Simulation, args...) = step!(sim.integrator, args...)
 
-OrdinaryDiffEq.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
+OrdinaryDiffEqCore.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
 
 function Modeling.init!(sim::Simulation, init_args...; init_kwargs...)
 
@@ -387,9 +386,9 @@ function Modeling.init!(sim::Simulation, init_args...; init_kwargs...)
     #initialize the integrator with the Model's initial x. within the
     #integrator's reinit! f_cb_save and f_ode_wrapper! are called, in that order
     if has_x(mdl)
-        OrdinaryDiffEq.reinit!(integrator, mdl.x)
+        OrdinaryDiffEqCore.reinit!(integrator, mdl.x)
     else
-        OrdinaryDiffEq.reinit!(integrator)
+        OrdinaryDiffEqCore.reinit!(integrator)
     end
 
     #prepare scheduling counter for the first integration step
