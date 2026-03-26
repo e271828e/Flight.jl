@@ -2,8 +2,6 @@ module Linearization
 
 using ComponentArrays, StaticArrays, LinearAlgebra
 using FiniteDiff: finite_difference_jacobian! as jacobian!
-using ControlSystemsBase: ControlSystemsBase, ss
-using RobustAndOptimalControl
 using DataStructures
 
 using FlightCore
@@ -192,48 +190,6 @@ function Modeling.f_ode!(mdl::Model{<:LinearizedSS{LX, LU, LY}}) where {LX, LU, 
 
     return nothing
 
-end
-
-
-############################### ControlSystems #################################
-
-ControlSystemsBase.ss(lss::LinearizedSS) = ControlSystemsBase.ss(lss.A, lss.B, lss.C, lss.D)
-
-function RobustAndOptimalControl.named_ss(lss::LinearizedSS)
-    x_labels, u_labels, y_labels = map(collect ∘ propertynames, (lss.x0, lss.u0, lss.y0))
-    named_ss(ss(lss), x = x_labels, u = u_labels, y = y_labels)
-end
-
-
-function subsystem(nss::RobustAndOptimalControl.NamedStateSpace;
-                  x = nss.x, u = nss.u, y = nss.y)
-
-    #to do: generalize for scalars
-
-    x_axis = Axis(nss.x)
-    u_axis = Axis(nss.u)
-    y_axis = Axis(nss.y)
-
-    A_nss = ComponentMatrix(nss.A, x_axis, x_axis)
-    B_nss = ComponentMatrix(nss.B, x_axis, u_axis)
-    C_nss = ComponentMatrix(nss.C, y_axis, x_axis)
-    D_nss = ComponentMatrix(nss.D, y_axis, u_axis)
-
-    A_sub = A_nss[x, x]
-    B_sub = B_nss[x, u]
-    C_sub = C_nss[y, x]
-    D_sub = D_nss[y, u]
-
-    ss_sub = ss(A_sub, B_sub, C_sub, D_sub)
-
-    named_ss(ss_sub; x, u, y)
-
-end
-
-function LinearizedSS(mdl::ControlSystemsBase.StateSpace{ControlSystemsBase.Continuous, <:AbstractFloat})
-    (; A, B, C, D, nx, nu, ny) = mdl
-    ẋ0 = zeros(nx); x0 = zeros(nx); u0 = zeros(nu); y0 = zeros(ny)
-    LinearizedSS(; ẋ0, x0, u0, y0, A, B, C, D)
 end
 
 
