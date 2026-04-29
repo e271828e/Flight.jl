@@ -1,7 +1,7 @@
 module Kinematics
 
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra
-using Plots, LaTeXStrings, DataStructures, RecursiveArrayTools
+using Plots, LaTeXStrings, DataStructures
 
 using FlightCore
 

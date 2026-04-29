@@ -5,7 +5,6 @@ using OrdinaryDiffEqCore: OrdinaryDiffEqCore, OrdinaryDiffEqAlgorithm, ODEProble
 using OrdinaryDiffEqLowOrderRK: Heun, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback,
                        CallbackSet, SavedValues
-using RecursiveArrayTools
 using Logging
 using CImGui.lib: ImGuiSliderFlags_Logarithmic
 
