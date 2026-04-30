@@ -89,7 +89,7 @@ Modeling.U(::FirstOrder) = Ref(0.0)
 Modeling.Y(::FirstOrder) = 0.0
 
 function Modeling.f_ode!(mdl::Model{FirstOrder})
-    # @info("Called f_ode! with t = $(mdl.t[]), x = $(mdl.x[1]) and y = $(mdl.y)")
+    @info("Called f_ode! with t = $(mdl.t[]), x = $(mdl.x[1]) and y = $(mdl.y)")
     mdl.ẋ .= 1/mdl.τ * (mdl.u[] - mdl.x[1])
     mdl.y = mdl.x[1]
 end

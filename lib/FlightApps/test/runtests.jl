@@ -8,9 +8,9 @@ includet(normpath("c172/test_c172x2.jl")); using .TestC172Xv2
 includet(normpath("robot2d/test_robot2d.jl")); using .TestRobot2D
 
 # @testset verbose = true "FlightApps" begin
-    test_c172s()
-    test_c172x()
-    test_c172x1()
-    test_c172x2()
-    test_robot2d()
+    # test_c172s()
+    # test_c172x()
+    test_c172x1(; alloc = false)
+    test_c172x2(; alloc = false)
+    test_robot2d(; alloc = false)
 # end

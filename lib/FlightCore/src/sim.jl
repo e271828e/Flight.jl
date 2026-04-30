@@ -187,30 +187,21 @@ struct Simulation{D <: ModelDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         save_everystep::Bool = isempty(saveat),
         ) where {D, Y}
 
-        t_end - t_start < Δt && @warn(
-        "Simulation timespan is shorter than the periodic update interval")
-
-        #need to store a reference to mdl and user_callback! in the integrator
-        #params so they can be used within the integrator callbacks
-        params = (mdl = mdl, user_callback! = user_callback!)
-
-        cb_step = DiscreteCallback((u, t, integrator)->true, f_cb_step!)
-        cb_user = DiscreteCallback((u, t, integrator)->true, f_cb_user!)
-
-        #we don't want to force a call to f_periodic! at t=0, so we set
-        #initial_affect=false. if needed, such call can be included in the
-        #user-defined Modeling.init!
-        cb_periodic = PeriodicCallback(f_cb_periodic!, Δt; initial_affect = false)
         mdl._Δt_root[] = Δt
 
-        #the optional call to f_periodic! at t=0 would correspond to mdl._n[] = 0.
-        #therefore, in preparation for the first scheduled periodic update, we
-        #should set mdl._n[] = 1
-        mdl._n[] = 1
+        #need to store a reference to mdl and user_callback! in the integrator's
+        #params so they can be used within the callbacks
+        params = (mdl = mdl, user_callback! = user_callback!)
+
+        cb_step = DiscreteCallback((u, t, integrator)->true, cb_step_affect!)
+        cb_user = DiscreteCallback((u, t, integrator)->true, cb_user_affect!)
+        cb_periodic = DiscreteCallback(cb_periodic_condition, cb_periodic_affect!;
+                                       initialize = cb_periodic_init!,
+                                       save_positions = (false, false))
 
         log = SavedValues(Float64, Y)
         saveat = (saveat isa Real ? (t_start:saveat:t_end) : saveat)
-        cb_save = SavingCallback(f_cb_save, log; saveat, save_everystep)
+        cb_save = SavingCallback(cb_save_function, log; saveat, save_everystep)
 
         if save_on
             cb_set = CallbackSet(cb_step, cb_periodic, cb_user, cb_save)
@@ -316,7 +307,7 @@ function f_ode_wrapper!(u̇, u, p, t)
 end
 
 #DiscreteCallback wrapper around the root Model's post-integration step function
-function f_cb_step!(integrator)
+function cb_step_affect!(integrator)
 
     (; u, p) = integrator
     (; mdl) = p
@@ -329,7 +320,7 @@ function f_cb_step!(integrator)
 end
 
 #DiscreteCallback wrapper around the user-defined post-integration step callback
-function f_cb_user!(integrator)
+function cb_user_affect!(integrator)
 
     (; u, p) = integrator
     (; mdl, user_callback!) = p
@@ -341,23 +332,42 @@ function f_cb_user!(integrator)
 
 end
 
-#PeriodicCallback wrapper around the root Model's periodic update function
-function f_cb_periodic!(integrator)
-
-    (; u, p) = integrator
-    (; mdl) = p
-
-    f_periodic!(mdl) #call scheduled periodic update, potentially updates mdl.s and mdl.y
-
-    #increment the periodic update counter
-    mdl._n[] += 1
-
-end
-
 #SavingCallback function, gets called at the end of each step after f_periodic!
 #and/or f_step!
-function f_cb_save(x, t, integrator)
+function cb_save_function(x, t, integrator)
     deepcopy(integrator.p.mdl.y)
+end
+
+#DiscreteCallback functions for periodic dynamics execution
+
+# NOTE: this used to be implemented with a PeriodicCallback until DiffEqCallbacks 4.15, where
+# PeriodicCallback was updated to use task_local_storage. as a result, whenever the
+# integrator is initialized from one task and and later on stepped from another (which
+# happens within calls to Sim.run!), PeriodicCallback fails because its cache is bound to
+# the initialization task
+
+function cb_periodic_init!(cb, u, t, integrator)
+    (; mdl) = integrator.p
+    mdl._n[] = 0
+    add_tstop!(integrator, get_next_periodic_tstop(integrator))
+end
+
+function cb_periodic_condition(u, t, integrator)
+    t == get_next_periodic_tstop(integrator)
+end
+
+function cb_periodic_affect!(integrator)
+    (; mdl) = integrator.p
+    f_periodic!(mdl)
+    mdl._n[] += 1
+    add_tstop!(integrator, get_next_periodic_tstop(integrator))
+end
+
+function get_next_periodic_tstop(integrator)
+    (; _n, _Δt_root) = integrator.p.mdl
+    t_start = integrator.sol.prob.tspan[1]
+    return t_start + _n[] * _Δt_root[] #executes at t_start
+    # return t_start + (_n[] + 1) * _Δt_root[] #does not execute at t_start
 end
 
 
@@ -389,9 +399,6 @@ function Modeling.init!(sim::Simulation, init_args...; init_kwargs...)
     else
         OrdinaryDiffEqCore.reinit!(integrator)
     end
-
-    #prepare scheduling counter for the first integration step
-    mdl._n[] = 1
 
     return nothing
 end

@@ -99,7 +99,7 @@ mutable struct Model{D <: ModelDefinition, Y, U, X, S, P, B}
     const parameters::P
     const submodels::B
     const _Δt_root::Base.RefValue{Float64} #root model sampling period
-    const _n::Base.RefValue{Int} #simulation periodic update counter
+    const _n::Base.RefValue{Int} #root model periodic update counter
     const _N::Int #root model-relative sampling period multipler
 end
 
