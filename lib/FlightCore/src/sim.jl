@@ -366,8 +366,8 @@ end
 function get_next_periodic_tstop(integrator)
     (; _n, _Δt_root) = integrator.p.mdl
     t_start = integrator.sol.prob.tspan[1]
-    return t_start + _n[] * _Δt_root[] #executes at t_start
-    # return t_start + (_n[] + 1) * _Δt_root[] #does not execute at t_start
+    # return t_start + _n[] * _Δt_root[] #executes at t_start, trouble because it creates a tstop at tstart
+    return t_start + (_n[] + 1) * _Δt_root[] #does not execute at t_start
 end
 
 
