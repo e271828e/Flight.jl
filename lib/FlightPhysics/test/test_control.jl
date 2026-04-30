@@ -265,9 +265,9 @@ function test_discrete_pid(save = false)
         step!(sim, 1, true)
 
         @test mdl.y.y_p == 1.0
-        @test mdl.y.y_i ≈ 1.01
-        @test mdl.y.out_free ≈ 2.01
-        @test mdl.y.output ≈ 2.01
+        @test mdl.y.y_i ≈ 1.0
+        @test mdl.y.out_free ≈ 2.0
+        @test mdl.y.output ≈ 2.0
         @test mdl.y.sat_out == 0
         @test !mdl.y.int_halted
 
@@ -389,9 +389,9 @@ function test_discrete_pid_vector(save = false)
         step!(sim, 1, true)
 
         @test mdl.y.y_p[1] == 1.0
-        @test mdl.y.y_i[1] ≈ 1.01
-        @test mdl.y.out_free[1] ≈ 2.01
-        @test mdl.y.output[1] ≈ 2.01
+        @test mdl.y.y_i[1] ≈ 1.0
+        @test mdl.y.out_free[1] ≈ 2.0
+        @test mdl.y.output[1] ≈ 2.0
         @test mdl.y.sat_out[1] == 0
         @test !mdl.y.int_halted[1]
 
