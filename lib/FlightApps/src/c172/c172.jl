@@ -869,7 +869,7 @@ function get_f_target(vehicle::Model{<:Vehicle},
 
 end
 
-function Modeling.init!(
+function Modeling.f_init!(
             vehicle::Model{<:Vehicle},
             trim_params::TrimParameters,
             atmosphere::Model{<:AbstractAtmosphere} = Model(SimpleAtmosphere()),

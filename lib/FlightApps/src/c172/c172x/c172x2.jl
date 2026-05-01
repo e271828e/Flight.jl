@@ -49,9 +49,9 @@ end
 
 ############################# Initialization ###################################
 
-function Modeling.init!(avionics::Model{<:Avionics}, vehicle::Model{<:Vehicle})
+function Modeling.f_init!(avionics::Model{<:Avionics}, vehicle::Model{<:Vehicle})
     (; ctl, gdc) = avionics
-    Modeling.init!(ctl, vehicle)
+    init!(ctl, vehicle)
     f_output!(avionics)
 end
 

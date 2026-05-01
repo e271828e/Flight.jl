@@ -215,7 +215,7 @@ end
     η::Float64 = 0.0
 end
 
-function Modeling.init!( mdl::Model{Vehicle}, ip::InitParameters = InitParameters())
+function Modeling.f_init!( mdl::Model{Vehicle}, ip::InitParameters = InitParameters())
 
     (; u_m, ω, η) = ip
     (; x, u, parameters) = mdl
@@ -411,7 +411,7 @@ function test_load()
     return point
 end
 
-function Modeling.init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
+function Modeling.f_init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
 
     (; v2m, η2v) = mdl.submodels
     (; k_m, b_m, R) = vehicle.parameters
@@ -565,7 +565,7 @@ function Modeling.f_step!(mdl::Model{<:Robot})
 
 end
 
-function Modeling.init!( mdl::Model{<:Robot}, ip::InitParameters = InitParameters())
+function Modeling.f_init!( mdl::Model{<:Robot}, ip::InitParameters = InitParameters())
 
     (; vehicle, controller) = mdl.submodels
     init!(vehicle, ip)

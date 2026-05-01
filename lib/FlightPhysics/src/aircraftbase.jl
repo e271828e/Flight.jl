@@ -42,7 +42,7 @@ abstract type AbstractVehicleSystemsInitializer end
 
 struct NoVehicleSystemsInitializer <: AbstractVehicleSystemsInitializer end
 
-Modeling.init!(::Model{<:AbstractVehicleSystems}, init::NoVehicleSystemsInitializer) = nothing
+Modeling.f_init!(::Model{<:AbstractVehicleSystems}, init::NoVehicleSystemsInitializer) = nothing
 
 
 ################################################################################
@@ -76,14 +76,14 @@ struct VehicleInitializer{S <: AbstractVehicleSystemsInitializer}
     sys::S
 end
 
-function Modeling.init!( mdl::Model{<:Vehicle},
+function Modeling.f_init!( mdl::Model{<:Vehicle},
                         init::VehicleInitializer,
                         atmosphere::Model{<:AbstractAtmosphere} = Model(SimpleAtmosphere()),
                         terrain::Model{<:AbstractTerrain} = Model(HorizontalTerrain()))
 
     (; kinematics, dynamics, systems) = mdl.submodels
-    Modeling.init!(kinematics, init.kin)
-    Modeling.init!(systems, init.sys)
+    init!(kinematics, init.kin)
+    init!(systems, init.sys)
     dynamics.x .= kinematics.u #essential
     f_ode!(mdl, atmosphere, terrain) #update vehicle's ẋ and y
 end
@@ -102,9 +102,9 @@ function assign!(vehicle::Model{<:Vehicle},
 end
 
 #to be implemented by each Vehicle subtype
-function Modeling.init!( mdl::Model{<:Vehicle},
+function Modeling.f_init!( mdl::Model{<:Vehicle},
                         condition::AbstractTrimParameters, args...)
-    MethodError(Modeling.init!, (mdl, condition, args...)) |> throw
+    MethodError(Modeling.f_init!, (mdl, condition, args...)) |> throw
 end
 
 #trim constraint: given the body-axes wind-relative velocity, the wind-relative
@@ -132,7 +132,7 @@ abstract type AbstractAvionics <: ModelDefinition end
 struct NoAvionics <: AbstractAvionics end
 @no_updates NoAvionics
 
-Modeling.init!(::Model{NoAvionics}, args...) = nothing
+Modeling.f_init!(::Model{NoAvionics}, args...) = nothing
 
 ################################################################################
 ######################## Vehicle/Avionics update methods #######################
@@ -258,13 +258,13 @@ end
 #the Vehicle's initialization methods (kinematics and trimming) accept
 #atmosphere and terrain Models as optional arguments. we pass them if provided;
 #otherwise, they will be instantiated ad hoc by the Vehicle's methods
-function Modeling.init!( aircraft::Model{<:Aircraft},
+function Modeling.f_init!( aircraft::Model{<:Aircraft},
                         condition::Union{<:VehicleInitializer, <:AbstractTrimParameters},
                         args...)
 
     (; vehicle, avionics) = aircraft
-    Modeling.init!(vehicle, condition, args...)
-    Modeling.init!(avionics, vehicle) #avionics init only relies on vehicle
+    init!(vehicle, condition, args...)
+    init!(avionics, vehicle) #avionics init only relies on vehicle
     f_output!(aircraft)
 end
 
@@ -302,7 +302,7 @@ function Linearization.linearize( vehicle::Model{<:Vehicle}, trim_params::Abstra
     atmosphere = Model(SimpleAtmosphere(; wind = NoWind()))
     terrain = Model(HorizontalTerrain())
 
-    (_, trim_state) = Modeling.init!(vehicle, trim_params, atmosphere, terrain)
+    (_, trim_state) = init!(vehicle, trim_params, atmosphere, terrain)
 
     #define state space system's update function
     f = let vehicle = vehicle, atmosphere = atmosphere, terrain = terrain

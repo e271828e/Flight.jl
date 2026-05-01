@@ -47,13 +47,13 @@ function Modeling.f_periodic!(::NoScheduling, world::Model{<:SimpleWorld})
     f_output!(world)
 end
 
-function Modeling.init!( world::Model{<:SimpleWorld},
+function Modeling.f_init!( world::Model{<:SimpleWorld},
                         init::Union{<:AircraftBase.VehicleInitializer,
                                     <:AircraftBase.AbstractTrimParameters})
     (; aircraft, atmosphere, terrain) = world
-    Modeling.init!(atmosphere)
-    Modeling.init!(terrain)
-    Modeling.init!(aircraft, init, atmosphere, terrain)
+    init!(atmosphere)
+    init!(terrain)
+    init!(aircraft, init, atmosphere, terrain)
     f_output!(world) #!
 end
 

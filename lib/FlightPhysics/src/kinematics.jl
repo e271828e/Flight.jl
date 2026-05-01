@@ -152,7 +152,7 @@ struct WA <: AbstractKinematicDescriptor end
 Modeling.X(::WA) = ComponentVector(
     q_wb = zeros(4), q_ew = zeros(4), h_e = 0.0)
 
-function Modeling.init!(mdl::Model{WA}, ic::Initializer = Initializer())
+function Modeling.f_init!(mdl::Model{WA}, ic::Initializer = Initializer())
 
     (; x, u) = mdl
     (; q_nb, n_e, h_e, ω_wb_b, v_eb_n) = ic
@@ -252,7 +252,7 @@ struct ECEF <: AbstractKinematicDescriptor end
 Modeling.X(::ECEF) = ComponentVector(
     q_eb = zeros(4), n_e = zeros(3), h_e = 0.0)
 
-function Modeling.init!(mdl::Model{ECEF}, ic::Initializer = Initializer())
+function Modeling.f_init!(mdl::Model{ECEF}, ic::Initializer = Initializer())
 
     (; x, u) = mdl
     (; q_nb, n_e, h_e, ω_wb_b, v_eb_n) = ic
@@ -332,7 +332,7 @@ Modeling.X(::NED) = ComponentVector(ψ_nb = 0.0, θ_nb = 0.0, φ_nb = 0.0,
                                 ϕ = 0.0, λ = 0.0, h_e = 0.0)
 
 
-function Modeling.init!(mdl::Model{NED}, ic::Initializer = Initializer())
+function Modeling.f_init!(mdl::Model{NED}, ic::Initializer = Initializer())
 
     (; x, u) = mdl
     (; q_nb, n_e, h_e, ω_wb_b, v_eb_n) = ic

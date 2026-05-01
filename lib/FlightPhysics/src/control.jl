@@ -81,7 +81,7 @@ function Modeling.f_ode!(mdl::Model{<:PIVector{N}}) where {N}
 
 end
 
-function Modeling.init!(mdl::Model{<:PIVector})
+function Modeling.f_init!(mdl::Model{<:PIVector})
     mdl.u.input .= 0
     mdl.u.sat_ext .= 0
     mdl.x .= 0
@@ -231,7 +231,7 @@ Modeling.Y(::Integrator) = IntegratorOutput()
 Modeling.U(::Integrator) = IntegratorInput()
 Modeling.S(::Integrator) = IntegratorState()
 
-function Modeling.init!(mdl::Model{<:Integrator}, x0::Real = 0.0)
+function Modeling.f_init!(mdl::Model{<:Integrator}, x0::Real = 0.0)
     mdl.u.input = 0
     mdl.u.sat_ext = 0
     mdl.s.x0 = x0
@@ -297,7 +297,7 @@ Modeling.Y(::IntegratorVector{N}) where {N} = IntegratorVectorOutput{N}()
 Modeling.U(::IntegratorVector{N}) where {N} = IntegratorVectorInput{N}()
 Modeling.S(::IntegratorVector{N}) where {N} = IntegratorVectorState{N}()
 
-function Modeling.init!(mdl::Model{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
+function Modeling.f_init!(mdl::Model{<:IntegratorVector{N}}, x0::AbstractVector{<:Real} = zeros(SVector{N})) where {N}
     mdl.u.input .= 0
     mdl.u.sat_ext .= 0
     mdl.s.x0 .= x0
@@ -398,7 +398,7 @@ Modeling.U(::LeadLag) = LeadLagInput()
 Modeling.S(::LeadLag) = LeadLagState()
 Modeling.Y(::LeadLag) = LeadLagOutput()
 
-function Modeling.init!(mdl::Model{<:LeadLag})
+function Modeling.f_init!(mdl::Model{<:LeadLag})
     mdl.u.u1 = 0
     mdl.s.u0 = 0
     mdl.s.x0 = 0
@@ -506,7 +506,7 @@ Modeling.Y(::PID) = PIDOutput()
 Modeling.U(::PID) = PIDInput()
 Modeling.S(::PID) = PIDState()
 
-function Modeling.init!(mdl::Model{<:PID})
+function Modeling.f_init!(mdl::Model{<:PID})
     mdl.u.input = 0
     mdl.u.sat_ext = 0
     mdl.s.x_i0 = 0
@@ -611,7 +611,7 @@ Modeling.Y(::PIDVector{N}) where {N} = PIDVectorOutput{N}()
 Modeling.U(::PIDVector{N}) where {N} = PIDVectorInput{N}()
 Modeling.S(::PIDVector{N}) where {N} = PIDVectorState{N}()
 
-function Modeling.init!(mdl::Model{<:PIDVector{N}}) where {N}
+function Modeling.f_init!(mdl::Model{<:PIDVector{N}}) where {N}
     mdl.u.input .= 0
     mdl.u.sat_ext .= 0
     mdl.s.x_i0 .= 0
@@ -874,7 +874,7 @@ function Modeling.S(::LQR{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
     LQRState{NX, NU}()
 end
 
-function Modeling.init!(mdl::Model{<:LQR})
+function Modeling.f_init!(mdl::Model{<:LQR})
     mdl.u.z_ref .= 0
     mdl.u.z .= 0
     mdl.u.x .= 0

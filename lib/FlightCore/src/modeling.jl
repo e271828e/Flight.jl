@@ -149,7 +149,7 @@ function Model(md::D,
     mdl = Model{map(typeof, (md, y, u, x, s, parameters, submodels))...}(
                     y, u, ẋ, x, s, t, parameters, submodels, _Δt_root, _n, _N)
 
-    init!(mdl)
+    f_init!(mdl)
 
     return mdl
 
@@ -200,9 +200,17 @@ abstract type MaybeScheduling end
 struct Scheduling <: MaybeScheduling end
 struct NoScheduling <: MaybeScheduling end
 
+#reset the periodic scheduling counter, then call the user-extendable initialization method
+function init!(mdl::Model, args...; kwargs...)
+    # mdl._n[] = 0
+    f_init!(mdl, args...; kwargs...)
+    # return nothing
+end
 
-#fallback for the single-argument call (used in constructor)
-init!(::Model) = nothing
+#fallback method for user-extendable initialization function, called within the Model constructor
+function f_init!(::Model)
+    nothing
+end
 
 #continuous dynamics, to be extended by Models
 function f_ode!(mdl::Model, args...)

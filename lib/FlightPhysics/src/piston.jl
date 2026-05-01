@@ -149,7 +149,7 @@ Modeling.U(::PistonEngine) = PistonEngineU()
 Modeling.Y(::PistonEngine) = PistonEngineY()
 Modeling.S(::PistonEngine) = Ref(EngineState.off)
 
-function Modeling.init!(mdl::Model{<:PistonEngine})
+function Modeling.f_init!(mdl::Model{<:PistonEngine})
     #set up friction constraint compensator
     (; idle, frc) = mdl.submodels
 

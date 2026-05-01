@@ -390,7 +390,7 @@ function Modeling.init!(sim::Simulation, init_args...; init_kwargs...)
     mdl._n[] = 0
 
     #initialize the Model's x, u and s
-    Modeling.init!(mdl, init_args...; init_kwargs...)
+    init!(mdl, init_args...; init_kwargs...)
 
     #initialize the integrator with the Model's initial x. within the
     #integrator's reinit! f_cb_save and f_ode_wrapper! are called, in that order
@@ -478,7 +478,7 @@ function start!(sim::Simulation)
     try
 
         if isempty(sim.integrator.opts.tstops)
-            @error("Simulation has hit its end time, call reinit! to reset it")
+            @error("Simulation has hit its end time, call init! to reset it")
         end
 
         τ = let wall_time_ref = time()

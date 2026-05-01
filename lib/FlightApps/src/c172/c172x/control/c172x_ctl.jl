@@ -263,7 +263,7 @@ Modeling.S(::ControlLawsLon) = ControlLawsLonS()
 Modeling.U(::ControlLawsLon) = ControlLawsLonU()
 Modeling.Y(::ControlLawsLon) = ControlLawsLonY()
 
-function Modeling.init!(mdl::Model{<:ControlLawsLon})
+function Modeling.f_init!(mdl::Model{<:ControlLawsLon})
 
     foreach(values(mdl.submodels)) do ss
         init!(ss)
@@ -459,7 +459,7 @@ end
 
 ############################# Initialization ###################################
 
-function Modeling.init!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
+function Modeling.f_init!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
 
     #we assume that the vehicle's y has already been updated to its trim
     #value by init!(vehicle, params)
@@ -854,7 +854,7 @@ end
 Modeling.U(::ControlLawsLat) = ControlLawsLatU()
 Modeling.Y(::ControlLawsLat) = ControlLawsLatY()
 
-function Modeling.init!(mdl::Model{<:ControlLawsLat})
+function Modeling.f_init!(mdl::Model{<:ControlLawsLat})
 
     foreach(values(mdl.submodels)) do ss
         init!(ss)
@@ -991,7 +991,7 @@ function AircraftBase.assign!(systems::Model{<:Systems},
 end
 
 
-function Modeling.init!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
+function Modeling.f_init!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
 
     #we assume that the vehicle's y has already been updated to its trim value
     #by init!(vehicle, params)
@@ -1239,9 +1239,9 @@ end
 
 ############################# Initialization ###################################
 
-function Modeling.init!(avionics::Model{<:ControlLaws}, vehicle::Model{<:Vehicle})
-    Modeling.init!(avionics.lon, vehicle)
-    Modeling.init!(avionics.lat, vehicle)
+function Modeling.f_init!(avionics::Model{<:ControlLaws}, vehicle::Model{<:Vehicle})
+    init!(avionics.lon, vehicle)
+    init!(avionics.lat, vehicle)
     f_output!(avionics)
 end
 

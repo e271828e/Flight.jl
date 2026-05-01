@@ -162,7 +162,7 @@ end
 ############################## Initialization ##################################
 ################################################################################
 
-function Modeling.init!(sys::Model{<:Systems}, init::C172.SystemsInitializer)
+function Modeling.f_init!(sys::Model{<:Systems}, init::C172.SystemsInitializer)
 
     (; act, pwp, aero, fuel, pld) = sys
 
@@ -247,7 +247,7 @@ function AircraftBase.assign!(vehicle::Model{<:C172S.Vehicle},
 
     #initialize the vehicle with the setup above. this will call f_ode!
     #internally, no need to do it here
-    Modeling.init!(vehicle, vehicle_init, atmosphere, terrain)
+    init!(vehicle, vehicle_init, atmosphere, terrain)
 
     #sanity checks for component states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))

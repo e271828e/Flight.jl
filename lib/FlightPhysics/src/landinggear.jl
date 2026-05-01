@@ -415,7 +415,7 @@ end
 
 Modeling.Y(::Contact) = ContactY()
 
-function Modeling.init!(mdl::Model{Contact})
+function Modeling.f_init!(mdl::Model{Contact})
     #set up friction constraint compensator
     (; k_p, k_i, k_l, bound_lo, bound_hi) = mdl.frc.parameters
     k_p .= 5.0

@@ -155,7 +155,7 @@ function render!(renderer::Renderer)
 
     (; f_draw, _initialized, _window) = renderer
 
-    @assert _initialized "Renderer not initialized, call init! before update!"
+    @assert _initialized "Renderer not initialized, call IODevices.init! before update!"
 
     GLFW.PollEvents()
 
