@@ -202,6 +202,8 @@ struct NoScheduling <: MaybeScheduling end
 
 #reset the periodic scheduling counter, then call the user-extendable initialization method
 function init!(mdl::Model, args...; kwargs...)
+    # println("Called init! indirection for Model $(typeof(mdl)) with args $args")
+    # println("Called init! indirection")
     # mdl._n[] = 0
     f_init!(mdl, args...; kwargs...)
     # return nothing

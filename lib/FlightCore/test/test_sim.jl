@@ -125,7 +125,7 @@ end
 
 function Modeling.f_init!(mdl::Model{Root}, x0::Real = 0.0)
     (mdl.x .= x0)
-    # f_periodic!(mdl)
+    # f_periodic!(NoScheduling(), mdl)
 end
 
 ################################################################################

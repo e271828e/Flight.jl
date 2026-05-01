@@ -501,19 +501,19 @@ function Modeling.f_init!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle
 
     #initialize te2te outputs
     u.mode_req = ModeControlLon.sas
-    f_periodic!(lon, vehicle)
+    f_periodic!(NoScheduling(), lon, vehicle)
 
     #initialize tv2te outputs
     u.mode_req = ModeControlLon.thr_EAS
-    f_periodic!(lon, vehicle)
+    f_periodic!(NoScheduling(), lon, vehicle)
 
     #initialize vh2te outputs
     u.mode_req = ModeControlLon.EAS_alt
-    f_periodic!(lon, vehicle)
+    f_periodic!(NoScheduling(), lon, vehicle)
 
     #restore direct mode
     u.mode_req = ModeControlLon.direct
-    f_periodic!(lon, vehicle)
+    f_periodic!(NoScheduling(), lon, vehicle)
 
 end
 
@@ -1015,15 +1015,15 @@ function Modeling.f_init!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle
 
     #initialize ar2ar outputs
     u.mode_req = ModeControlLat.sas
-    f_periodic!(lat, vehicle)
+    f_periodic!(NoScheduling(), lat, vehicle)
 
     #initialize φβ2ar outputs
     u.mode_req = ModeControlLat.ModeControlLat.φ_β
-    f_periodic!(lat, vehicle)
+    f_periodic!(NoScheduling(), lat, vehicle)
 
     #restore direct mode
     u.mode_req = ModeControlLat.direct
-    f_periodic!(lat, vehicle)
+    f_periodic!(NoScheduling(), lat, vehicle)
 
 end
 

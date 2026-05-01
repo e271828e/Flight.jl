@@ -340,12 +340,13 @@ end
 
 #DiscreteCallback functions for periodic dynamics execution
 
-# NOTE: this used to be implemented with a PeriodicCallback until DiffEqCallbacks 4.15, where
+# this used to be implemented with a PeriodicCallback until DiffEqCallbacks 4.15, where
 # PeriodicCallback was updated to use task_local_storage. as a result, whenever the
 # integrator is initialized from one task and and later on stepped from another (which
 # happens within calls to Sim.run!), PeriodicCallback fails because its cache is bound to
 # the initialization task
 
+#we don't impose the execution of f_periodic! at tstart, if needed it can be done in f_init!
 function cb_periodic_init!(cb, u, t, integrator)
     (; mdl) = integrator.p
     mdl._n[] = 0
@@ -366,8 +367,7 @@ end
 function get_next_periodic_tstop(integrator)
     (; _n, _Δt_root) = integrator.p.mdl
     t_start = integrator.sol.prob.tspan[1]
-    # return t_start + _n[] * _Δt_root[] #executes at t_start, trouble because it creates a tstop at tstart
-    return t_start + (_n[] + 1) * _Δt_root[] #does not execute at t_start
+    return t_start + (_n[] + 1) * _Δt_root[]
 end
 
 
@@ -385,11 +385,11 @@ function Modeling.init!(sim::Simulation, init_args...; init_kwargs...)
     resize!(log.t, 0)
     resize!(log.saveval, 0)
 
-    #reset scheduling counter, so f_periodic! is guaranteed to execute if called by
-    #Modeling.init!
-    mdl._n[] = 0
-
     #initialize the Model's x, u and s
+    #note: the periodic iteration counter is reset later on by the integrator's reinit!
+    # at this point there are no guarantees regarding its value. if a Model intends to
+    # execute its f_periodic! or that of its children as part of its f_init!, it should do
+    # so unconditionally by calling the NoScheduling() version
     init!(mdl, init_args...; init_kwargs...)
 
     #initialize the integrator with the Model's initial x. within the
