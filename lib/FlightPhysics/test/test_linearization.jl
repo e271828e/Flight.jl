@@ -41,7 +41,7 @@ function test_linearization()
 
         @test @ballocated(f_ode!($mdl)) === 0
         @test @ballocated(f_step!($mdl)) === 0
-        @test @ballocated(f_periodic!(NoScheduling(), $mdl)) === 0
+        @test @ballocated(f_periodic!(Unconditional(), $mdl)) === 0
 
     end
 

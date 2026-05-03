@@ -30,7 +30,7 @@ Modeling.Y(::Periodic) = 0.0
 @no_ode Periodic
 @no_step Periodic
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{Periodic})
+function Modeling.f_periodic!(::Unconditional, mdl::Model{Periodic})
     mdl.x[1] += 1
     mdl.y = mdl.x[1]
 end
@@ -94,7 +94,7 @@ function Modeling.f_ode!(mdl::Model{FirstOrder})
     mdl.y = mdl.x[1]
 end
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{FirstOrder})
+function Modeling.f_periodic!(::Unconditional, mdl::Model{FirstOrder})
     x_new = mdl.x[1] + 0.1
     @info("Called f_periodic! at t = $(mdl.t[]), _n = $(mdl._n[]), _N = $(mdl._N), updating x = $(mdl.x[1]) to x = $(x_new)")
     mdl.x .= x_new
@@ -125,7 +125,7 @@ end
 
 function Modeling.f_init!(mdl::Model{Root}, x0::Real = 0.0)
     (mdl.x .= x0)
-    # f_periodic!(NoScheduling(), mdl)
+    # f_periodic!(Unconditional(), mdl)
 end
 
 ################################################################################

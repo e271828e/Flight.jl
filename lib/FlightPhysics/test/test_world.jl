@@ -22,7 +22,7 @@ function test_update_methods()
 
         @test @ballocated(f_ode!($world)) == 0
         @test @ballocated(f_step!($world)) == 0
-        @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+        @test @ballocated(f_periodic!(Unconditional(), $world)) == 0
 
     end
 

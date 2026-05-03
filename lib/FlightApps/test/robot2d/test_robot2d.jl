@@ -60,7 +60,7 @@ function test_vehicle(; alloc::Bool = true)
     @test mdl.x.η < 0
 
     alloc && @test @ballocated(f_ode!($mdl)) == 0
-    alloc && @test @ballocated(f_periodic!(NoScheduling(), $mdl)) == 0
+    alloc && @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
     alloc && @test @ballocated(f_step!($mdl)) == 0
 
     end #testset
@@ -98,7 +98,7 @@ function test_controller(; alloc::Bool = true)
 
     #test in position mode, wherein both controllers are active
     alloc && @test @ballocated(f_ode!($mdl)) == 0
-    alloc && @test @ballocated(f_periodic!(NoScheduling(), $mdl)) == 0
+    alloc && @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
     alloc && @test @ballocated(f_step!($mdl)) == 0
 
     end #testset

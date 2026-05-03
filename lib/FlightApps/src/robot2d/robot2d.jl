@@ -377,7 +377,7 @@ Modeling.U(::Controller) = ControllerU()
 Modeling.Y(::Controller) = ControllerY()
 
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
 
     (; v2m, η2v) = mdl.submodels
     (; v_lim) = mdl.parameters
@@ -546,7 +546,7 @@ function Modeling.f_ode!( mdl::Model{<:Robot})
 
 end
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Robot})
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:Robot})
 
     (; vehicle, controller) = mdl.submodels
     f_periodic!(controller, vehicle)

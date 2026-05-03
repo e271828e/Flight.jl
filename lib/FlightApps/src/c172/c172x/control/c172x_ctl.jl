@@ -282,7 +282,7 @@ function Modeling.f_init!(mdl::Model{<:ControlLawsLon})
 end
 
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLon},
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLon},
     vehicle::Model{<:Vehicle})
 
     (; mode_req, throttle_axis, throttle_offset, elevator_axis,
@@ -501,19 +501,19 @@ function Modeling.f_init!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle
 
     #initialize te2te outputs
     u.mode_req = ModeControlLon.sas
-    f_periodic!(NoScheduling(), lon, vehicle)
+    f_periodic!(Unconditional(), lon, vehicle)
 
     #initialize tv2te outputs
     u.mode_req = ModeControlLon.thr_EAS
-    f_periodic!(NoScheduling(), lon, vehicle)
+    f_periodic!(Unconditional(), lon, vehicle)
 
     #initialize vh2te outputs
     u.mode_req = ModeControlLon.EAS_alt
-    f_periodic!(NoScheduling(), lon, vehicle)
+    f_periodic!(Unconditional(), lon, vehicle)
 
     #restore direct mode
     u.mode_req = ModeControlLon.direct
-    f_periodic!(NoScheduling(), lon, vehicle)
+    f_periodic!(Unconditional(), lon, vehicle)
 
 end
 
@@ -873,7 +873,7 @@ function Modeling.f_init!(mdl::Model{<:ControlLawsLat})
 
 end
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:ControlLawsLat},
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLat},
     vehicle::Model{<:Vehicle})
 
     (; mode_req, aileron_axis, aileron_offset, rudder_axis, rudder_offset,
@@ -1015,15 +1015,15 @@ function Modeling.f_init!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle
 
     #initialize ar2ar outputs
     u.mode_req = ModeControlLat.sas
-    f_periodic!(NoScheduling(), lat, vehicle)
+    f_periodic!(Unconditional(), lat, vehicle)
 
     #initialize φβ2ar outputs
     u.mode_req = ModeControlLat.ModeControlLat.φ_β
-    f_periodic!(NoScheduling(), lat, vehicle)
+    f_periodic!(Unconditional(), lat, vehicle)
 
     #restore direct mode
     u.mode_req = ModeControlLat.direct
-    f_periodic!(NoScheduling(), lat, vehicle)
+    f_periodic!(Unconditional(), lat, vehicle)
 
 end
 

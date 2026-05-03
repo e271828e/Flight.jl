@@ -39,7 +39,7 @@ function Modeling.f_step!(world::Model{<:SimpleWorld})
     f_step!(aircraft, atmosphere, terrain)
 end
 
-function Modeling.f_periodic!(::NoScheduling, world::Model{<:SimpleWorld})
+function Modeling.f_periodic!(::Unconditional, world::Model{<:SimpleWorld})
     (; aircraft, atmosphere, terrain) = world
     f_periodic!(atmosphere)
     f_periodic!(terrain)

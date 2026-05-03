@@ -31,7 +31,7 @@ end
 
 ########################### Update Methods #####################################
 
-function Modeling.f_periodic!(::NoScheduling, avionics::Model{<:Avionics},
+function Modeling.f_periodic!(::Unconditional, avionics::Model{<:Avionics},
                                 vehicle::Model{<:Vehicle})
 
     (; ctl, gdc) = avionics

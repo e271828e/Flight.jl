@@ -30,7 +30,7 @@ Modeling.Y(::TestSystem) = TestSystemY()
 @no_ode TestSystem
 @no_step TestSystem
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:TestSystem})
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:TestSystem})
     mdl.y = TestSystemY(; input = mdl.u.input)
 end
 

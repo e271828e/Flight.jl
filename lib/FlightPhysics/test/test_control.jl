@@ -76,7 +76,7 @@ function test_continuous_pi(save = false)
 
         @test @ballocated(f_ode!($mdl)) == 0
         @test @ballocated(f_step!($mdl)) == 0
-        @test @ballocated(f_periodic!(NoScheduling(), $mdl)) == 0
+        @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
 
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_continuous_pi"); Plotting.defaults...)
 
@@ -139,7 +139,7 @@ function test_discrete_integrator()
 
         @test @ballocated(f_ode!($mdl)) == 0
         @test @ballocated(f_step!($mdl)) == 0
-        @test @ballocated(f_periodic!(NoScheduling(), $mdl)) == 0
+        @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
 
         end #testset
 
@@ -201,7 +201,7 @@ function test_discrete_integrator_vector()
 
         @test @ballocated(f_ode!($mdl)) == 0
         @test @ballocated(f_step!($mdl)) == 0
-        @test @ballocated(f_periodic!(NoScheduling(), $mdl)) == 0
+        @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
 
         end #testset
 
@@ -245,7 +245,7 @@ function test_discrete_leadlag(save = false)
 
         @test @ballocated(f_ode!($mdl)) == 0
         @test @ballocated(f_step!($mdl)) == 0
-        @test @ballocated(f_periodic!(NoScheduling(), $mdl)) == 0
+        @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
 
         end #testset
 
@@ -315,7 +315,7 @@ function test_discrete_pid(save = false)
 
         @test @ballocated(f_ode!($mdl)) == 0
         @test @ballocated(f_step!($mdl)) == 0
-        @test @ballocated(f_periodic!(NoScheduling(), $mdl)) == 0
+        @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
 
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid"); Plotting.defaults...)
 
@@ -439,7 +439,7 @@ function test_discrete_pid_vector(save = false)
 
         @test @ballocated(f_ode!($mdl)) == 0
         @test @ballocated(f_step!($mdl)) == 0
-        @test @ballocated(f_periodic!(NoScheduling(), $mdl)) == 0
+        @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
 
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid_vector"); Plotting.defaults...)
 
@@ -504,7 +504,7 @@ function test_discrete_lqr()
 
         @test @ballocated(f_ode!($mdl)) === 0
         @test @ballocated(f_step!($mdl)) === 0
-        @test @ballocated(f_periodic!(NoScheduling(), $mdl)) === 0
+        @test @ballocated(f_periodic!(Unconditional(), $mdl)) === 0
 
         #functionality verified via C172Xv1 integration tests
     end

@@ -229,7 +229,7 @@ end
 Modeling.U(::SegmentGuidance) = SegmentGuidanceU()
 Modeling.Y(::SegmentGuidance) = SegmentGuidanceY()
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:SegmentGuidance},
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:SegmentGuidance},
                                 vehicle::Model{<:Vehicle})
 
     (; target, hor_gdc_req, vrt_gdc_req) = mdl.u
@@ -257,7 +257,7 @@ end
 
 @kwdef struct CircularGuidance <: ModelDefinition end
 @kwdef struct CircularGuidanceY end
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:CircularGuidance},
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:CircularGuidance},
                                 vehicle::Model{<:Vehicle})
 end
 
@@ -289,7 +289,7 @@ Modeling.Y(::GuidanceLaws) = GuidanceLawsY()
 
 ########################### Update Methods #####################################
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:GuidanceLaws},
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:GuidanceLaws},
                                 ctl::Model{<:ControlLaws},
                                 vehicle::Model{<:Vehicle})
 

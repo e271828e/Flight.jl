@@ -185,7 +185,7 @@ function Modeling.f_step!(vehicle::Model{<:Vehicle},
 end
 
 #within Vehicle, only vehicle systems may be modified by f_periodic!
-function Modeling.f_periodic!(::NoScheduling, vehicle::Model{<:Vehicle},
+function Modeling.f_periodic!(::Unconditional, vehicle::Model{<:Vehicle},
                          atmosphere::Model{<:AbstractAtmosphere},
                          terrain::Model{<:AbstractTerrain})
 
@@ -233,7 +233,7 @@ function Modeling.f_ode!(aircraft::Model{<:Aircraft},
     f_output!(aircraft)
 end
 
-function Modeling.f_periodic!(::NoScheduling,
+function Modeling.f_periodic!(::Unconditional,
                         aircraft::Model{<:Aircraft},
                         atmosphere::Model{<:AbstractAtmosphere},
                         terrain::Model{<:AbstractTerrain})

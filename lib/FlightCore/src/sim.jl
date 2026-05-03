@@ -389,7 +389,7 @@ function Modeling.init!(sim::Simulation, init_args...; init_kwargs...)
     #note: the periodic iteration counter is reset later on by the integrator's reinit!
     # at this point there are no guarantees regarding its value. if a Model intends to
     # execute its f_periodic! or that of its children as part of its f_init!, it should do
-    # so unconditionally by calling the NoScheduling() version
+    # so unconditionally by calling the Unconditional() version
     init!(mdl, init_args...; init_kwargs...)
 
     #initialize the integrator with the Model's initial x. within the

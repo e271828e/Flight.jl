@@ -124,7 +124,7 @@ function test_c172x2(; alloc::Bool = true)
             if alloc
                 @test @ballocated(f_ode!($world)) == 0
                 @test @ballocated(f_step!($world)) == 0
-                @test @ballocated(f_periodic!(NoScheduling(), $world)) == 0
+                @test @ballocated(f_periodic!(Unconditional(), $world)) == 0
             end
 
             #now place the segment to the left of the aircraft, e_thr/2 away

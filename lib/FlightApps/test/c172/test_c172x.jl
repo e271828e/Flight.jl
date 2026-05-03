@@ -68,7 +68,7 @@ function test_update_methods()
 
         @test @ballocated(f_ode!($aircraft, $atmosphere, $terrain)) == 0
         @test @ballocated(f_step!($aircraft, $atmosphere, $terrain)) == 0
-        @test @ballocated(f_periodic!(NoScheduling(), $aircraft, $atmosphere, $terrain)) == 0
+        @test @ballocated(f_periodic!(Unconditional(), $aircraft, $atmosphere, $terrain)) == 0
 
     end
 

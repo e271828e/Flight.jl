@@ -7,7 +7,7 @@ using AbstractTrees
 using ..IODevices
 
 export ModelDefinition, Model
-export Subsampled, Scheduling, NoScheduling
+export Subsampled, Conditional, Unconditional
 export f_ode!, f_step!, f_periodic!, f_output!, init!
 export @no_ode, @no_step, @no_periodic, @no_updates
 export @sm_ode, @sm_step, @sm_periodic, @sm_updates
@@ -196,9 +196,9 @@ end
 #-a root Model these must implement these without additional arguments
 #-all method implementations MUST return nothing to avoid type instability
 
-abstract type MaybeScheduling end
-struct Scheduling <: MaybeScheduling end
-struct NoScheduling <: MaybeScheduling end
+abstract type PeriodicExecutionType end
+struct Conditional <: PeriodicExecutionType end
+struct Unconditional <: PeriodicExecutionType end
 
 #reset the periodic scheduling counter, then call the user-extendable initialization method
 function init!(mdl::Model, args...; kwargs...)
@@ -224,21 +224,21 @@ function f_step!(mdl::Model, args...)
     MethodError(f_step!, (mdl, args...)) |> throw
 end
 
-#unscheduled periodic update, to be extended by Models
-function f_periodic!(sch::NoScheduling, mdl::Model, args...)
-    MethodError(f_periodic!, (sch, mdl, args...)) |> throw
-end
-
 #scheduled periodic update, to be called (not extended!) by Models
 @inline function f_periodic!(mdl::Model, args...)
-    f_periodic!(Scheduling(), mdl, args...)
+    f_periodic!(Conditional(), mdl, args...)
     return nothing
 end
 
 #scheduled periodic update
-function f_periodic!(::Scheduling, mdl::Model, args...)
-    (mdl._n[] % mdl._N == 0) && f_periodic!(NoScheduling(), mdl, args...)
+function f_periodic!(::Conditional, mdl::Model, args...)
+    (mdl._n[] % mdl._N == 0) && f_periodic!(Unconditional(), mdl, args...)
     return nothing
+end
+
+#non-scheduled periodic update, to be extended by Models
+function f_periodic!(sch::Unconditional, mdl::Model, args...)
+    MethodError(f_periodic!, (sch, mdl, args...)) |> throw
 end
 
 #generic output update fallback
@@ -277,7 +277,7 @@ end
 
 #no periodic dynamics
 macro no_periodic(md)
-    esc(:(Modeling.f_periodic!(::NoScheduling, ::Model{<:($md)}, args...) = nothing))
+    esc(:(Modeling.f_periodic!(::Unconditional, ::Model{<:($md)}, args...) = nothing))
 end
 
 #no dynamics whatsoever
@@ -312,7 +312,7 @@ end
 
 macro sm_periodic(md)
     esc(quote
-        @inline function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:($md)}, args...)
+        @inline function Modeling.f_periodic!(::Unconditional, mdl::Model{<:($md)}, args...)
             for ss in mdl.submodels
                 f_periodic!(ss, args...)
             end

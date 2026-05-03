@@ -236,13 +236,13 @@ function Modeling.f_init!(mdl::Model{<:Integrator}, x0::Real = 0.0)
     mdl.u.sat_ext = 0
     mdl.s.x0 = x0
     mdl.s.sat_out_0 = 0
-    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
+    f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
 @no_step Integrator
 @no_ode Integrator
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:Integrator})
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:Integrator})
 
     (; s, u, Δt, parameters) = mdl
     (; input, sat_ext) = u
@@ -302,13 +302,13 @@ function Modeling.f_init!(mdl::Model{<:IntegratorVector{N}}, x0::AbstractVector{
     mdl.u.sat_ext .= 0
     mdl.s.x0 .= x0
     mdl.s.sat_out_0 .= 0
-    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
+    f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
 @no_ode IntegratorVector
 @no_step IntegratorVector
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:IntegratorVector})
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:IntegratorVector})
 
     (; s, u, Δt, parameters) = mdl
     (; input, sat_ext) = u
@@ -402,13 +402,13 @@ function Modeling.f_init!(mdl::Model{<:LeadLag})
     mdl.u.u1 = 0
     mdl.s.u0 = 0
     mdl.s.x0 = 0
-    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
+    f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
 @no_ode LeadLag
 @no_step LeadLag
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LeadLag})
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:LeadLag})
 
     (; parameters, s, u, Δt) = mdl
     (; u1) = u
@@ -512,13 +512,13 @@ function Modeling.f_init!(mdl::Model{<:PID})
     mdl.s.x_i0 = 0
     mdl.s.x_d0 = 0
     mdl.s.sat_out_0 = 0
-    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
+    f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
 @no_ode PID
 @no_step PID
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:PID})
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:PID})
 
     (; parameters, u, s, Δt) = mdl
     (; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi) = parameters
@@ -617,14 +617,14 @@ function Modeling.f_init!(mdl::Model{<:PIDVector{N}}) where {N}
     mdl.s.x_i0 .= 0
     mdl.s.x_d0 .= 0
     mdl.s.sat_out_0 .= 0
-    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
+    f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
 @no_ode PIDVector
 @no_step PIDVector
 
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:PIDVector{N}}) where {N}
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:PIDVector{N}}) where {N}
 
     (; parameters, s, u, Δt) = mdl
     (; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi) = parameters
@@ -881,13 +881,13 @@ function Modeling.f_init!(mdl::Model{<:LQR})
     mdl.u.sat_ext .= 0
     mdl.s.int_out_0 .= 0
     mdl.s.out_sat_0 .= 0
-    f_periodic!(NoScheduling(), mdl) #propagate input and state to output
+    f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
 @no_ode LQR
 @no_step LQR
 
-function Modeling.f_periodic!(::NoScheduling, mdl::Model{<:LQR})
+function Modeling.f_periodic!(::Unconditional, mdl::Model{<:LQR})
 
     (; parameters, s, u, Δt) = mdl
     (; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim, bound_lo, bound_hi) = parameters
