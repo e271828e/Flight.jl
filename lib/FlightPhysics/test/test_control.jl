@@ -68,7 +68,7 @@ function test_continuous_pi(save = false)
         @test mdl.x[2] != 0
         @test mdl.u.sat_ext[2] != 0
         @test mdl.y.output[2] != 0
-        init!(mdl)
+        f_init!(mdl)
         @test mdl.x[2] == 0
         @test mdl.u.sat_ext[2] == 0
         f_ode!(mdl) #but output takes one call to f_ode! to update
@@ -124,7 +124,7 @@ function test_discrete_integrator()
         step!(sim, 1, true)
         @test mdl.y.halted
 
-        init!(mdl)
+        f_init!(mdl)
 
         @test mdl.s.x0 == 0
         @test mdl.s.sat_out_0 == 0
@@ -186,7 +186,7 @@ function test_discrete_integrator_vector()
         step!(sim, 1, true)
         @test mdl.y.halted[1]
 
-        init!(mdl)
+        f_init!(mdl)
 
         @test mdl.s.x0[2] == 0
         @test mdl.s.sat_out_0[2] == 0
@@ -233,7 +233,7 @@ function test_discrete_leadlag(save = false)
         step_result = lsim(lead_cont, (x,t)->SVector(sin(t),), 0:0.001:10)
         @test Sim.get_data(ts.y1[end])[1] ≈ step_result.y[end] atol = 1e-3
 
-        init!(mdl)
+        f_init!(mdl)
         @test mdl.s.u0 == 0
         @test mdl.s.x0 == 0
 
@@ -297,7 +297,7 @@ function test_discrete_pid(save = false)
         step!(sim)
         @test mdl.y.int_halted #integrator 2 should have halted
 
-        init!(mdl)
+        f_init!(mdl)
 
         @test mdl.u.input == 0
         @test mdl.u.sat_ext == 0
@@ -320,7 +320,7 @@ function test_discrete_pid(save = false)
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid"); Plotting.defaults...)
 
         #operate PID as a filtered derivative
-        init!(mdl)
+        f_init!(mdl)
         mdl.parameters.k_p[] = 0.0
         mdl.parameters.k_i[] = 0.0
         mdl.parameters.k_d[] = 1.0
@@ -355,7 +355,7 @@ function test_discrete_pid(save = false)
         y_lss_last = Sim.get_data(ts_y_lss)[end]
 
         #define the equivalent discrete PID and simulate it for a unit step input
-        init!(mdl)
+        f_init!(mdl)
         mdl.parameters.k_p[] = k_p
         mdl.parameters.k_i[] = k_i
         mdl.parameters.k_d[] = k_d
@@ -421,7 +421,7 @@ function test_discrete_pid_vector(save = false)
         step!(sim)
         @test mdl.y.int_halted[1] #integrator 2 should have halted
 
-        init!(mdl)
+        f_init!(mdl)
 
         @test mdl.u.input[1] == 0
         @test mdl.u.sat_ext[1] == 0
@@ -444,7 +444,7 @@ function test_discrete_pid_vector(save = false)
         save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid_vector"); Plotting.defaults...)
 
         #operate PID as a filtered derivative
-        init!(mdl)
+        f_init!(mdl)
         mdl.u.input .= 1.0
         mdl.parameters.k_p .= 0.0
         mdl.parameters.k_i .= 0.0

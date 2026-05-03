@@ -495,7 +495,7 @@ end
 #here wow has its final value for the current integration step
 function Modeling.f_step!(contact::Model{<:Contact}, strut::Model{<:Strut})
 
-    !strut.y.wow && init!(contact.frc) #if !wow, reset friction regulator
+    !strut.y.wow && f_init!(contact.frc) #if !wow, reset friction regulator
 
 end
 

@@ -82,8 +82,8 @@ function Modeling.f_init!( mdl::Model{<:Vehicle},
                         terrain::Model{<:AbstractTerrain} = Model(HorizontalTerrain()))
 
     (; kinematics, dynamics, systems) = mdl.submodels
-    init!(kinematics, init.kin)
-    init!(systems, init.sys)
+    f_init!(kinematics, init.kin)
+    f_init!(systems, init.sys)
     dynamics.x .= kinematics.u #essential
     f_ode!(mdl, atmosphere, terrain) #update vehicle's ẋ and y
 end
@@ -263,8 +263,8 @@ function Modeling.f_init!( aircraft::Model{<:Aircraft},
                         args...)
 
     (; vehicle, avionics) = aircraft
-    init!(vehicle, condition, args...)
-    init!(avionics, vehicle) #avionics init only relies on vehicle
+    f_init!(vehicle, condition, args...)
+    f_init!(avionics, vehicle) #avionics init only relies on vehicle
     f_output!(aircraft)
 end
 
@@ -302,7 +302,7 @@ function Linearization.linearize( vehicle::Model{<:Vehicle}, trim_params::Abstra
     atmosphere = Model(SimpleAtmosphere(; wind = NoWind()))
     terrain = Model(HorizontalTerrain())
 
-    (_, trim_state) = init!(vehicle, trim_params, atmosphere, terrain)
+    (_, trim_state) = f_init!(vehicle, trim_params, atmosphere, terrain)
 
     #define state space system's update function
     f = let vehicle = vehicle, atmosphere = atmosphere, terrain = terrain

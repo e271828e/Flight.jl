@@ -40,9 +40,9 @@ function test_kinematics()
                 ω_wb_b = [0.1, 0.1, -0.2],
                 v_eb_n = [100, 10, -4])
 
-            init!(sys_ECEF, kin_init)
-            init!(sys_WA, kin_init)
-            init!(sys_NED, kin_init)
+            f_init!(sys_ECEF, kin_init)
+            f_init!(sys_WA, kin_init)
+            f_init!(sys_NED, kin_init)
 
             #let the kinematic state propagate to y
             f_ode!(sys_ECEF)

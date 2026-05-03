@@ -1,10 +1,10 @@
 module Sim
 
 using Reexport, StructArrays
-using OrdinaryDiffEqCore: OrdinaryDiffEqCore, OrdinaryDiffEqAlgorithm, ODEProblem, ODEIntegrator, init as init_integrator
+using OrdinaryDiffEqCore: OrdinaryDiffEqCore, OrdinaryDiffEqAlgorithm, ODEProblem, ODEIntegrator
+using OrdinaryDiffEqCore: step!, reinit!, add_tstop!, get_proposed_dt, init as init_integrator
 using OrdinaryDiffEqLowOrderRK: Heun, RK4
-using DiffEqCallbacks: SavingCallback, DiscreteCallback, PeriodicCallback,
-                       CallbackSet, SavedValues
+using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
 using Logging
 using CImGui.lib: ImGuiSliderFlags_Logarithmic
 
@@ -12,8 +12,7 @@ using ..Modeling
 using ..IODevices
 using ..GUI
 
-@reexport using OrdinaryDiffEqCore: step!, reinit!, add_tstop!, get_proposed_dt
-export Simulation, attach!, run!
+export Simulation, attach!, init!, step!, run!
 export TimeSeries, get_time, get_data, get_components
 export take_nonblocking!, put_nonblocking!
 
@@ -377,7 +376,7 @@ OrdinaryDiffEqCore.step!(sim::Simulation, args...) = step!(sim.integrator, args.
 
 OrdinaryDiffEqCore.get_proposed_dt(sim::Simulation) = get_proposed_dt(sim.integrator)
 
-function Modeling.init!(sim::Simulation, init_args...; init_kwargs...)
+function init!(sim::Simulation, init_args...; init_kwargs...)
 
     (; mdl, integrator, log) = sim
 
@@ -390,7 +389,7 @@ function Modeling.init!(sim::Simulation, init_args...; init_kwargs...)
     # at this point there are no guarantees regarding its value. if a Model intends to
     # execute its f_periodic! or that of its children as part of its f_init!, it should do
     # so unconditionally by calling the Unconditional() version
-    init!(mdl, init_args...; init_kwargs...)
+    f_init!(mdl, init_args...; init_kwargs...)
 
     #initialize the integrator with the Model's initial x. within the
     #integrator's reinit! f_cb_save and f_ode_wrapper! are called, in that order

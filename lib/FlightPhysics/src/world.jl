@@ -51,9 +51,9 @@ function Modeling.f_init!( world::Model{<:SimpleWorld},
                         init::Union{<:AircraftBase.VehicleInitializer,
                                     <:AircraftBase.AbstractTrimParameters})
     (; aircraft, atmosphere, terrain) = world
-    init!(atmosphere)
-    init!(terrain)
-    init!(aircraft, init, atmosphere, terrain)
+    f_init!(atmosphere)
+    f_init!(terrain)
+    f_init!(aircraft, init, atmosphere, terrain)
     f_output!(world) #!
 end
 

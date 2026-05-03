@@ -318,7 +318,7 @@ end
 
 function Linearization.linearize(mdl::Model{Vehicle}, ip::InitParameters = InitParameters())
 
-    init!(mdl, ip)
+    f_init!(mdl, ip)
 
     #state space system's functions
     f = get_f_ss(mdl)
@@ -331,7 +331,7 @@ function Linearization.linearize(mdl::Model{Vehicle}, ip::InitParameters = InitP
     lss = linearize(f, h, x0, u0)
 
     #restore Vehicle state
-    init!(mdl, ip)
+    f_init!(mdl, ip)
 
     return lss
 
@@ -446,7 +446,7 @@ function Modeling.f_init!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle})
 
     #reset submodels
     foreach(values(mdl.submodels)) do ss
-        init!(ss)
+        f_init!(ss)
     end
 
 
@@ -568,8 +568,8 @@ end
 function Modeling.f_init!( mdl::Model{<:Robot}, ip::InitParameters = InitParameters())
 
     (; vehicle, controller) = mdl.submodels
-    init!(vehicle, ip)
-    init!(controller, vehicle) #run controller design and assign gains
+    f_init!(vehicle, ip)
+    f_init!(controller, vehicle) #run controller design and assign gains
     f_output!(mdl) #update parent model output
 
 end

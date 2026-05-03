@@ -308,7 +308,7 @@ function AircraftBase.assign!(vehicle::Model{<:C172X.Vehicle},
 
     #initialize the vehicle with the setup above. this will call f_ode!
     #internally, no need to do it here
-    init!(vehicle, vehicle_init, atmosphere, terrain)
+    f_init!(vehicle, vehicle_init, atmosphere, terrain)
 
     #sanity checks for component states & derivatives
     @assert !any(SVector{3}(leg.strut.wow for leg in ldg.y))

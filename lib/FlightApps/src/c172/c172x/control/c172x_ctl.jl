@@ -266,7 +266,7 @@ Modeling.Y(::ControlLawsLon) = ControlLawsLonY()
 function Modeling.f_init!(mdl::Model{<:ControlLawsLon})
 
     foreach(values(mdl.submodels)) do ss
-        init!(ss)
+        f_init!(ss)
     end
 
     #when te2te_lqr is active, the actual throttle and elevator saturation
@@ -335,7 +335,7 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLon},
             Control.assign!(v2t_pid, v2t_lookup(EAS, Float64(h_e)))
 
             if mode != mode_prev
-                init!(v2t_pid)
+                f_init!(v2t_pid)
                 k_i = v2t_pid.parameters.k_i[]
                 (k_i != 0) && (v2t_pid.s.x_i0 = Float64(mdl.y.throttle_cmd))
             end
@@ -353,8 +353,8 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLon},
 
             if mode != mode_prev
 
-                init!(q2e_int)
-                init!(q2e_pid)
+                f_init!(q2e_int)
+                f_init!(q2e_pid)
                 k_i = q2e_pid.parameters.k_i[]
                 (k_i != 0) && (q2e_pid.s.x_i0 = Zte(te2te_lqr.u.z_ref).elevator_cmd)
 
@@ -367,7 +367,7 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLon},
                     Control.assign!(c2θ_pid, c2θ_lookup(EAS, Float64(h_e)))
 
                     if mode != mode_prev
-                        init!(c2θ_pid)
+                        f_init!(c2θ_pid)
                         k_i = c2θ_pid.parameters.k_i[]
                         (k_i != 0) && (c2θ_pid.s.x_i0 = θ)
                     end
@@ -412,7 +412,7 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLon},
 
         Control.assign!(tv2te_lqr, tv2te_lookup(EAS, Float64(h_e)))
 
-        (mode != mode_prev) && init!(tv2te_lqr)
+        (mode != mode_prev) && f_init!(tv2te_lqr)
 
         tv2te_lqr.u.x .= XLonRed(vehicle)
         tv2te_lqr.u.z .= Ztv(vehicle)
@@ -426,7 +426,7 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLon},
 
         Control.assign!(vh2te_lqr, vh2te_lookup(EAS, Float64(h_e)))
 
-        (mode != mode_prev) && init!(vh2te_lqr)
+        (mode != mode_prev) && f_init!(vh2te_lqr)
 
         vh2te_lqr.u.x .= XLonFull(vehicle)
         vh2te_lqr.u.z .= Zvh(vehicle)
@@ -462,14 +462,14 @@ end
 function Modeling.f_init!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
 
     #we assume that the vehicle's y has already been updated to its trim
-    #value by init!(vehicle, params)
+    #value by f_init!(vehicle, params)
     (; u) = lon
     (; throttle, elevator) = vehicle.y.systems.act
     (; ω_wb_b, v_eb_n, e_nb, h_e) = vehicle.y.kinematics
     (; EAS) = vehicle.y.airflow
 
     #reset all controller submodels
-    init!(lon)
+    f_init!(lon)
 
     #make inputs consistent with the vehicle status, so
     u.throttle_axis = throttle.pos
@@ -857,7 +857,7 @@ Modeling.Y(::ControlLawsLat) = ControlLawsLatY()
 function Modeling.f_init!(mdl::Model{<:ControlLawsLat})
 
     foreach(values(mdl.submodels)) do ss
-        init!(ss)
+        f_init!(ss)
     end
 
     foreach((mdl.φβ2ar_lqr, mdl.ar2ar_lqr)) do lqr
@@ -919,8 +919,8 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLat},
 
             if mode != mode_prev
                 #our next φ output must match φ reference at φβ2ar input
-                init!(p2φ_int) #reset
-                init!(p2φ_pid)
+                f_init!(p2φ_int) #reset
+                f_init!(p2φ_pid)
                 k_i = p2φ_pid.parameters.k_i[]
                 (k_i != 0) && (p2φ_pid.s.x_i0 = Zφβ(φβ2ar_lqr.u.z_ref).φ)
             end
@@ -940,7 +940,7 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLat},
 
             if mode != mode_prev
                 #our next φ output must match φ reference at φβ2ar input
-                init!(χ2φ_pid)
+                f_init!(χ2φ_pid)
                 k_i = χ2φ_pid.parameters.k_i[]
                 (k_i != 0) && (χ2φ_pid.s.x_i0 = Zφβ(φβ2ar_lqr.u.z_ref).φ)
             end
@@ -960,7 +960,7 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLat},
         Control.assign!(φβ2ar_lqr, φβ2ar_lookup(EAS, Float64(h_e)))
 
         if mode != mode_prev
-            init!(φβ2ar_lqr)
+            f_init!(φβ2ar_lqr)
         end
 
         φβ2ar_lqr.u.x .= XLatRed(vehicle)
@@ -994,14 +994,14 @@ end
 function Modeling.f_init!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
 
     #we assume that the vehicle's y has already been updated to its trim value
-    #by init!(vehicle, params)
+    #by f_init!(vehicle, params)
     (; u) = lat
     (; ω_wb_b, e_nb, χ_gnd) = vehicle.y.kinematics
     (; aileron, rudder) = vehicle.y.systems.act
     (; β) = vehicle.y.systems.aero
 
     #reset all controller submodels
-    init!(lat)
+    f_init!(lat)
 
     #make ControlLaws inputs consistent with vehicle status
     u.aileron_axis = aileron.pos
@@ -1240,8 +1240,8 @@ end
 ############################# Initialization ###################################
 
 function Modeling.f_init!(avionics::Model{<:ControlLaws}, vehicle::Model{<:Vehicle})
-    init!(avionics.lon, vehicle)
-    init!(avionics.lat, vehicle)
+    f_init!(avionics.lon, vehicle)
+    f_init!(avionics.lat, vehicle)
     f_output!(avionics)
 end
 

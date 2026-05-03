@@ -30,7 +30,7 @@ function test_trimming()
         f_target = C172.get_f_target(vehicle, trim_params, atmosphere, terrain)
 
         @test @ballocated($f_target($state)) === 0
-        success, _ = init!(vehicle, trim_params)
+        success, _ = f_init!(vehicle, trim_params)
         @test success
 
     end #testset
@@ -61,7 +61,7 @@ function test_update_methods()
 
         aircraft = Model(Cessna172Xv0());
 
-        init!(aircraft, vehicle_init, atmosphere, terrain)
+        f_init!(aircraft, vehicle_init, atmosphere, terrain)
 
         #ensure we are on the ground for full landing gear code coverage
         @test aircraft.y.vehicle.systems.ldg.left.strut.wow == true

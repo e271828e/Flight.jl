@@ -51,7 +51,7 @@ end
 
 function Modeling.f_init!(avionics::Model{<:Avionics}, vehicle::Model{<:Vehicle})
     (; ctl, gdc) = avionics
-    init!(ctl, vehicle)
+    f_init!(ctl, vehicle)
     f_output!(avionics)
 end
 

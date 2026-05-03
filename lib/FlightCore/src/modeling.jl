@@ -8,7 +8,7 @@ using ..IODevices
 
 export ModelDefinition, Model
 export Subsampled, Conditional, Unconditional
-export f_ode!, f_step!, f_periodic!, f_output!, init!
+export f_init!, f_ode!, f_step!, f_periodic!, f_output!
 export @no_ode, @no_step, @no_periodic, @no_updates
 export @sm_ode, @sm_step, @sm_periodic, @sm_updates
 export print_tree
@@ -199,15 +199,6 @@ end
 abstract type PeriodicExecutionType end
 struct Conditional <: PeriodicExecutionType end
 struct Unconditional <: PeriodicExecutionType end
-
-#reset the periodic scheduling counter, then call the user-extendable initialization method
-function init!(mdl::Model, args...; kwargs...)
-    # println("Called init! indirection for Model $(typeof(mdl)) with args $args")
-    # println("Called init! indirection")
-    # mdl._n[] = 0
-    f_init!(mdl, args...; kwargs...)
-    # return nothing
-end
 
 #fallback method for user-extendable initialization function, called within the Model constructor
 function f_init!(::Model)
