@@ -31,6 +31,8 @@ end
 Modeling.U(::TestHarness) = TestHarnessU()
 Modeling.Y(md::TestHarness) = (thruster = Modeling.Y(md.thruster),)
 
+@no_init TestHarness
+
 function Modeling.f_ode!(harness::Model{<:TestHarness})
     (; air_data, kin_data) = harness.u
     f_ode!(harness.thruster, air_data, kin_data)

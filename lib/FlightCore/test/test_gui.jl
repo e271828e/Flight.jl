@@ -15,6 +15,8 @@ end
 
 struct TestSystem <: ModelDefinition end
 
+@no_init TestSystem
+
 Modeling.X(::TestSystem) = [0.0]
 
 function GUI.draw!(mdl::Model{TestSystem})

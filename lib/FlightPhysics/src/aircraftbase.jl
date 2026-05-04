@@ -34,6 +34,7 @@ Dynamics.get_hr_b(::Model{NoVehicleSystems}) = zeros(SVector{3})
 Dynamics.get_wr_b(::Model{NoVehicleSystems}) = Wrench()
 Dynamics.get_mp_b(mdl::Model{NoVehicleSystems}) = MassProperties(mdl.mass_distribution)
 
+@no_init NoVehicleSystems
 @no_updates NoVehicleSystems
 
 ############################# Initialization ###################################
@@ -68,8 +69,9 @@ Modeling.Y(vehicle::Vehicle) = VehicleY(
     DynamicsData(),
     AirData())
 
-
 ################################ Initialization ################################
+
+@no_init Vehicle #generic single-argument initialization method should do nothing
 
 struct VehicleInitializer{S <: AbstractVehicleSystemsInitializer}
     kin::KinInit
@@ -130,9 +132,8 @@ abstract type AbstractAvionics <: ModelDefinition end
 ################################### NoAvionics #################################
 
 struct NoAvionics <: AbstractAvionics end
+@no_init NoAvionics
 @no_updates NoAvionics
-
-Modeling.f_init!(::Model{NoAvionics}, args...) = nothing
 
 ################################################################################
 ######################## Vehicle/Avionics update methods #######################
@@ -221,6 +222,8 @@ assign!(::Model{<:AbstractVehicleSystems}, ::Model{NoAvionics}) = nothing
     vehicle::V = Vehicle()
     avionics::A = NoAvionics()
 end
+
+@no_init Aircraft #specialized f_init! methods defined later
 
 function Modeling.f_ode!(aircraft::Model{<:Aircraft},
                         atmosphere::Model{<:AbstractAtmosphere},

@@ -26,6 +26,7 @@ export Cessna172Xv2
     gdc::GuidanceLaws = GuidanceLaws()
 end
 
+@no_init Avionics
 @no_ode Avionics
 @no_step Avionics
 

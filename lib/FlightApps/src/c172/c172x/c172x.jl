@@ -33,6 +33,10 @@ Modeling.X(::Actuator1) = ComponentVector(p = 0.0)
 Modeling.U(::Actuator1{R}) where {R} = Ref(R(0.0))
 Modeling.Y(::Actuator1{R}) where {R} = Actuator1Y{R}()
 
+@no_init Actuator1
+@no_periodic Actuator1
+@no_step Actuator1
+
 function Modeling.f_ode!(mdl::Model{Actuator1{R}}) where {R}
 
     (; ẋ, x, u, parameters) = mdl
@@ -48,8 +52,6 @@ function Modeling.f_ode!(mdl::Model{Actuator1{R}}) where {R}
 
 end
 
-@no_step Actuator1
-@no_periodic Actuator1
 
 ################################################################################
 ################################## Actuator2 ###################################
@@ -84,6 +86,10 @@ Modeling.X(::Actuator2) = ComponentVector(v = 0.0, p = 0.0)
 Modeling.U(::Actuator2{R}) where {R} = Ref(R(0.0))
 Modeling.Y(::Actuator2{R}) where {R} = Actuator2Y{R}()
 
+@no_init Actuator2
+@no_step Actuator2
+@no_periodic Actuator2
+
 function Modeling.f_ode!(mdl::Model{Actuator2{R}}) where {R}
 
     (; ẋ, x, u, parameters) = mdl
@@ -101,9 +107,6 @@ function Modeling.f_ode!(mdl::Model{Actuator2{R}}) where {R}
 
 end
 
-@no_step Actuator2
-@no_periodic Actuator2
-
 
 ################################################################################
 ############################# FlyByWireActuation ###############################
@@ -119,6 +122,9 @@ end
 end
 
 #delegate continuous dynamics to individual actuators
+@no_init FlyByWireActuation
+@no_periodic FlyByWireActuation
+@no_step FlyByWireActuation
 @sm_ode FlyByWireActuation
 
 function C172.assign!(aero::Model{<:C172.Aero},

@@ -9,7 +9,7 @@ using ..IODevices
 export ModelDefinition, Model
 export Subsampled, Conditional, Unconditional
 export f_init!, f_ode!, f_step!, f_periodic!, f_output!
-export @no_ode, @no_step, @no_periodic, @no_updates
+export @no_init, @no_ode, @no_step, @no_periodic, @no_updates
 export @sm_ode, @sm_step, @sm_periodic, @sm_updates
 export print_tree
 
@@ -200,9 +200,9 @@ abstract type PeriodicExecutionType end
 struct Conditional <: PeriodicExecutionType end
 struct Unconditional <: PeriodicExecutionType end
 
-#fallback method for user-extendable initialization function, called within the Model constructor
-function f_init!(::Model)
-    nothing
+#fallback for single-argument method called by the constructor
+function f_init!(mdl::Model, args...)
+    return nothing
 end
 
 #continuous dynamics, to be extended by Models
@@ -256,6 +256,12 @@ f_output!(::Model{<:ModelDefinition, Nothing}) = nothing
 
 ########################## Convenience Macros ##################################
 
+#no initialization (note that the single-argument f_init! method will still be
+# called for each submodel by its constructor)
+macro no_init(md)
+    esc(:(Modeling.f_init!(::Model{<:($md)}, args...) = nothing))
+end
+
 #no continuous dynamics
 macro no_ode(md)
     esc(:(Modeling.f_ode!(::Model{<:($md)}, args...) = nothing))
@@ -276,12 +282,13 @@ macro no_updates(md)
     esc(quote @no_ode $md; @no_step $md; @no_periodic $md end)
 end
 
+
 #recursive fallbacks
 macro sm_ode(md)
     esc(quote
-        @inline function Modeling.f_ode!(mdl::Model{<:($md)}, args...)
+        @inline function Modeling.f_ode!(mdl::Model{<:($md)}, args...; kwargs...)
             for ss in mdl.submodels
-                f_ode!(ss, args...)
+                f_ode!(ss, args...; kwargs...)
             end
             f_output!(mdl)
             return nothing
@@ -291,11 +298,11 @@ end
 
 macro sm_step(md)
     esc(quote
-        @inline function Modeling.f_step!(mdl::Model{<:($md)}, args...)
+        @inline function Modeling.f_step!(mdl::Model{<:($md)}, args...; kwargs...)
             for ss in mdl.submodels
-                f_step!(ss, args...)
+                f_step!(ss, args...; kwargs...)
             end
-            f_output!(mdl) #output update not usually required, consider removal
+            f_output!(mdl)
             return nothing
         end
     end)
@@ -303,9 +310,9 @@ end
 
 macro sm_periodic(md)
     esc(quote
-        @inline function Modeling.f_periodic!(::Unconditional, mdl::Model{<:($md)}, args...)
+        @inline function Modeling.f_periodic!(::Unconditional, mdl::Model{<:($md)}, args...; kwargs...)
             for ss in mdl.submodels
-                f_periodic!(ss, args...)
+                f_periodic!(ss, args...; kwargs...)
             end
             f_output!(mdl)
             return nothing
@@ -322,7 +329,7 @@ end
 ################################################################################
 ############################### Inspection #####################################
 
-#we need to prevent monstrous type signatures from flooding the REPL
+#prevent monstrous type signatures from flooding the REPL
 
 #only print the truncated type
 function Base.show(io::IO, ::D) where {D <: ModelDefinition}

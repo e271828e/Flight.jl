@@ -407,6 +407,8 @@ function get_Δβ(mdl::Model{<:Propeller{<:VariablePitch}})
     return linear_scaling(mdl.u[], Δβ_range)
 end
 
+@no_init Propeller
+@no_periodic Propeller
 @no_step Propeller
 
 function Modeling.f_ode!(mdl::Model{<:Propeller}, kin_data::KinData, air_data::AirData, ω::Real)

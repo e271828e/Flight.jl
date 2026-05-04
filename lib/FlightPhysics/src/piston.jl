@@ -149,6 +149,8 @@ Modeling.U(::PistonEngine) = PistonEngineU()
 Modeling.Y(::PistonEngine) = PistonEngineY()
 Modeling.S(::PistonEngine) = Ref(EngineState.off)
 
+@no_periodic PistonEngine
+
 function Modeling.f_init!(mdl::Model{<:PistonEngine})
     #set up friction constraint compensator
     (; idle, frc) = mdl.submodels
@@ -553,6 +555,8 @@ end
 
 end
 
+@no_init PistonThruster
+@no_periodic PistonThruster
 
 function Modeling.f_ode!(mdl::Model{<:PistonThruster}, air_data::AirData, kin_data::KinData)
     (; engine, propeller) = mdl

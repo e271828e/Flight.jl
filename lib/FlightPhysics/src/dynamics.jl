@@ -438,6 +438,10 @@ Modeling.X(::VehicleDynamics) = zero(Kinematics.XVelTemplate)
 Modeling.U(::VehicleDynamics) = DynamicsU()
 Modeling.Y(::VehicleDynamics) = DynamicsData()
 
+@no_init VehicleDynamics
+@no_periodic VehicleDynamics
+@no_step VehicleDynamics
+
 function Modeling.f_ode!(mdl::Model{VehicleDynamics})
 
     (; x, ẋ, u) = mdl

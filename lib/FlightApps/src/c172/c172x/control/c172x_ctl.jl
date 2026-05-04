@@ -263,6 +263,9 @@ Modeling.S(::ControlLawsLon) = ControlLawsLonS()
 Modeling.U(::ControlLawsLon) = ControlLawsLonU()
 Modeling.Y(::ControlLawsLon) = ControlLawsLonY()
 
+@no_ode ControlLawsLon
+@no_step ControlLawsLon
+
 function Modeling.f_init!(mdl::Model{<:ControlLawsLon})
 
     foreach(values(mdl.submodels)) do ss
@@ -854,6 +857,9 @@ end
 Modeling.U(::ControlLawsLat) = ControlLawsLatU()
 Modeling.Y(::ControlLawsLat) = ControlLawsLatY()
 
+@no_ode ControlLawsLat
+@no_step ControlLawsLat
+
 function Modeling.f_init!(mdl::Model{<:ControlLawsLat})
 
     foreach(values(mdl.submodels)) do ss
@@ -1225,6 +1231,7 @@ end
 Modeling.U(::ControlLaws) = ControlLawsU()
 Modeling.Y(::ControlLaws) = ControlLawsY()
 
+@no_init ControlLaws
 @no_ode ControlLaws
 @no_step ControlLaws
 @sm_periodic ControlLaws

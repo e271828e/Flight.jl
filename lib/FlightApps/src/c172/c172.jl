@@ -33,6 +33,9 @@ const mp_b_afm = let
     MassProperties(airframe_c, t_bc)
 end
 
+@no_init Airframe
+@no_updates Airframe
+
 #the airframe itself receives no external actions nor has any internal angular
 #momentum. these are considered separately in the vehicle's aerodynamics, power
 #plant and landing gear
@@ -293,6 +296,9 @@ Modeling.Y(::Aero) = AeroY()
 Modeling.U(::Aero) = AeroU()
 Modeling.S(::Aero) = AeroS()
 
+@no_init Aero
+@no_periodic Aero
+
 #*caution: do not confuse the w-frame in kinematics.ω_wb_b, which refers to the
 #wander-azimuth frame (w), with the w in air.v_wb_b, which indicates aerodynamic
 #(wind-relative) velocity
@@ -471,8 +477,9 @@ end
 Dynamics.get_mp_b(::Model{Ldg}) = MassProperties()
 Dynamics.get_hr_b(::Model{Ldg}) = zeros(SVector{3})
 
-#delegate continuous dynamics to submodels
-@sm_ode Ldg
+@no_init Ldg #each submodel will still be initialized individually
+@no_periodic Ldg
+@sm_ode Ldg #delegate continuous dynamics to submodels
 
 #skip output update
 Modeling.f_step!(mdl::Model{<:Ldg}) = foreach(f_step!, mdl.submodels)
@@ -529,6 +536,9 @@ end
 
 Modeling.U(::Payload) = PayloadU()
 Modeling.Y(::Payload) = PayloadY()
+
+@no_init Payload
+@no_updates Payload
 
 function Dynamics.get_mp_b(mdl::Model{Payload})
     (; m_pilot, m_copilot, m_lpass, m_rpass, m_baggage) = mdl.u
@@ -591,6 +601,10 @@ end
 #normalized fuel content (0: residual, 1: full)
 Modeling.X(::Fuel) = [0.5]
 Modeling.Y(::Fuel) = FuelY()
+
+@no_init Fuel
+@no_periodic Fuel
+@no_step Fuel
 
 function Modeling.f_ode!(mdl::Model{Fuel}, pwp::Model{<:PistonThruster})
 
@@ -680,6 +694,9 @@ end
 
 ############################# Update Methods ###################################
 
+@no_init Systems
+@no_periodic Systems
+
 function Modeling.f_ode!(systems::Model{<:Systems},
                         terrain::Model{<:AbstractTerrain},
                         kin_data::KinData,
@@ -708,9 +725,6 @@ function Modeling.f_step!(systems::Model{<:Systems},
     f_step!(pwp, is_fuel_available(fuel))
 
 end
-
-@no_periodic Systems
-
 
 
 #################################### GUI #######################################

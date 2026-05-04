@@ -86,6 +86,10 @@ end
 Modeling.U(::MechanicalActuation) = MechanicalActuationU()
 Modeling.Y(::MechanicalActuation) = MechanicalActuationY()
 
+@no_init MechanicalActuation
+@no_periodic MechanicalActuation
+@no_step MechanicalActuation
+
 function Modeling.f_ode!(act::Model{<:MechanicalActuation})
 
     (; aileron, elevator, rudder, aileron_offset, elevator_offset, rudder_offset,

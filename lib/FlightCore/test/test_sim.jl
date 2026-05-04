@@ -88,6 +88,9 @@ Modeling.X(::FirstOrder) = [0.0]
 Modeling.U(::FirstOrder) = Ref(0.0)
 Modeling.Y(::FirstOrder) = 0.0
 
+@no_init FirstOrder
+@no_step FirstOrder
+
 function Modeling.f_ode!(mdl::Model{FirstOrder})
     @info("Called f_ode! with t = $(mdl.t[]), x = $(mdl.x[1]) and y = $(mdl.y)")
     mdl.ẋ .= 1/mdl.τ * (mdl.u[] - mdl.x[1])
@@ -102,8 +105,6 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{FirstOrder})
     # println("Called f_periodic! at t = $(mdl.t[]), got y = $(mdl.y)")
 end
 
-@no_step FirstOrder
-
 ################################################################################
 
 @kwdef struct Node <: ModelDefinition
@@ -111,6 +112,7 @@ end
     b::Subsampled{FirstOrder} = Subsampled(FirstOrder(), 2)
 end
 
+@no_init Node
 @sm_updates Node
 
 ################################################################################

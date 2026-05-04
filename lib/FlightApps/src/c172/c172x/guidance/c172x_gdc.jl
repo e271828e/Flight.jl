@@ -229,6 +229,10 @@ end
 Modeling.U(::SegmentGuidance) = SegmentGuidanceU()
 Modeling.Y(::SegmentGuidance) = SegmentGuidanceY()
 
+@no_init SegmentGuidance
+@no_ode SegmentGuidance
+@no_step SegmentGuidance
+
 function Modeling.f_periodic!(::Unconditional, mdl::Model{<:SegmentGuidance},
                                 vehicle::Model{<:Vehicle})
 
@@ -257,6 +261,11 @@ end
 
 @kwdef struct CircularGuidance <: ModelDefinition end
 @kwdef struct CircularGuidanceY end
+
+@no_init CircularGuidance
+@no_ode CircularGuidance
+@no_step CircularGuidance
+
 function Modeling.f_periodic!(::Unconditional, mdl::Model{<:CircularGuidance},
                                 vehicle::Model{<:Vehicle})
 end
@@ -269,6 +278,7 @@ end
     crc::CircularGuidance = CircularGuidance()
 end
 
+@no_init GuidanceLaws
 @no_ode GuidanceLaws
 @no_step GuidanceLaws
 @sm_periodic GuidanceLaws

@@ -28,11 +28,13 @@ abstract type AbstractSteering <: ModelDefinition end
 ################################ NoSteering ####################################
 
 struct NoSteering <: AbstractSteering end
-@no_updates NoSteering
 
 struct NoSteeringY end
 
 Modeling.Y(::NoSteering) = NoSteeringY()
+
+@no_init NoSteering
+@no_updates NoSteering
 
 get_steering_angle(::Model{NoSteering}, args...) = 0.0
 
@@ -56,12 +58,14 @@ end
 Modeling.U(::DirectSteering) = DirectSteeringU()
 Modeling.Y(::DirectSteering) = DirectSteeringY()
 
+@no_init DirectSteering
+@no_periodic DirectSteering
+@no_step DirectSteering
+
 function Modeling.f_ode!(mdl::Model{DirectSteering})
     (; engaged, input) = mdl.u
     mdl.y = DirectSteeringY(; engaged, input)
 end
-
-@no_step DirectSteering
 
 function get_steering_angle(mdl::Model{DirectSteering}, ψ_v::Real)
     (; engaged, input) = mdl.y
@@ -85,11 +89,13 @@ abstract type AbstractBraking <: ModelDefinition end
 ############################### NoBraking ######################################
 
 struct NoBraking <: AbstractBraking end
-@no_updates NoBraking
 
 struct NoBrakingY end
 
 Modeling.Y(::NoBraking) = NoBrakingY()
+
+@no_init NoBraking
+@no_updates NoBraking
 
 get_braking_factor(::Model{NoBraking}) = 0.0
 
@@ -107,11 +113,13 @@ end
 Modeling.U(::DirectBraking) = Ref(Ranged(0.0, 0., 1.))
 Modeling.Y(::DirectBraking) = DirectBrakingY()
 
+@no_init DirectBraking
+@no_periodic DirectBraking
+@no_step DirectBraking
+
 function Modeling.f_ode!(mdl::Model{DirectBraking})
     mdl.y = DirectBrakingY(Float64(mdl.u[]) * mdl.η_br)
 end
-
-@no_step DirectBraking
 
 get_braking_factor(mdl::Model{DirectBraking}) = mdl.y.κ_br
 
@@ -216,6 +224,9 @@ end
 end
 
 Modeling.Y(::Strut) = StrutY()
+
+@no_init Strut
+@no_periodic Strut
 
 function Modeling.f_ode!(mdl::Model{<:Strut},
                         steering::Model{<:AbstractSteering},
@@ -415,6 +426,8 @@ end
 
 Modeling.Y(::Contact) = ContactY()
 
+@no_periodic Contact
+
 function Modeling.f_init!(mdl::Model{Contact})
     #set up friction constraint compensator
     (; k_p, k_i, k_l, bound_lo, bound_hi) = mdl.frc.parameters
@@ -602,6 +615,9 @@ end
     strut::L = Strut()
     contact::Contact = Contact()
 end
+
+@no_init LandingGearUnit
+@no_periodic LandingGearUnit
 
 function Modeling.f_ode!(mdl::Model{<:LandingGearUnit},
                         terrain::Model{<:AbstractTerrain},
