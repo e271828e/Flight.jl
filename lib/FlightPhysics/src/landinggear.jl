@@ -33,7 +33,6 @@ struct NoSteeringY end
 
 Modeling.Y(::NoSteering) = NoSteeringY()
 
-@no_init NoSteering
 @no_updates NoSteering
 
 get_steering_angle(::Model{NoSteering}, args...) = 0.0
@@ -58,7 +57,6 @@ end
 Modeling.U(::DirectSteering) = DirectSteeringU()
 Modeling.Y(::DirectSteering) = DirectSteeringY()
 
-@no_init DirectSteering
 @no_periodic DirectSteering
 @no_step DirectSteering
 
@@ -94,7 +92,6 @@ struct NoBrakingY end
 
 Modeling.Y(::NoBraking) = NoBrakingY()
 
-@no_init NoBraking
 @no_updates NoBraking
 
 get_braking_factor(::Model{NoBraking}) = 0.0
@@ -113,7 +110,6 @@ end
 Modeling.U(::DirectBraking) = Ref(Ranged(0.0, 0., 1.))
 Modeling.Y(::DirectBraking) = DirectBrakingY()
 
-@no_init DirectBraking
 @no_periodic DirectBraking
 @no_step DirectBraking
 
@@ -225,7 +221,6 @@ end
 
 Modeling.Y(::Strut) = StrutY()
 
-@no_init Strut
 @no_periodic Strut
 
 function Modeling.f_ode!(mdl::Model{<:Strut},
@@ -616,7 +611,6 @@ end
     contact::Contact = Contact()
 end
 
-@no_init LandingGearUnit
 @no_periodic LandingGearUnit
 
 function Modeling.f_ode!(mdl::Model{<:LandingGearUnit},

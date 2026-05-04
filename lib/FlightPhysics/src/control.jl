@@ -47,7 +47,6 @@ Modeling.X(::PIVector{N}) where {N} = zeros(N)
 Modeling.Y(::PIVector{N}) where {N} = PIVectorY{N}()
 Modeling.U(::PIVector{N}) where {N} = PIVectorU{N}()
 
-@no_init PIVector
 @no_periodic PIVector
 @no_step PIVector
 
@@ -240,7 +239,6 @@ function Modeling.f_init!(mdl::Model{<:Integrator}, x0::Real = 0.0)
     f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
-@no_init Integrator
 @no_step Integrator
 @no_ode Integrator
 
@@ -307,7 +305,6 @@ function Modeling.f_init!(mdl::Model{<:IntegratorVector{N}}, x0::AbstractVector{
     f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
-@no_init IntegratorVector
 @no_ode IntegratorVector
 @no_step IntegratorVector
 
@@ -408,7 +405,6 @@ function Modeling.f_init!(mdl::Model{<:LeadLag})
     f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
-@no_init LeadLag
 @no_ode LeadLag
 @no_step LeadLag
 
@@ -519,7 +515,6 @@ function Modeling.f_init!(mdl::Model{<:PID})
     f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
-@no_init PID
 @no_ode PID
 @no_step PID
 
@@ -625,7 +620,6 @@ function Modeling.f_init!(mdl::Model{<:PIDVector{N}}) where {N}
     f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
-@no_init PIDVector
 @no_ode PIDVector
 @no_step PIDVector
 
@@ -890,7 +884,6 @@ function Modeling.f_init!(mdl::Model{<:LQR})
     f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
-@no_init LQR
 @no_ode LQR
 @no_step LQR
 

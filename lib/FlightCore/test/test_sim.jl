@@ -88,7 +88,6 @@ Modeling.X(::FirstOrder) = [0.0]
 Modeling.U(::FirstOrder) = Ref(0.0)
 Modeling.Y(::FirstOrder) = 0.0
 
-@no_init FirstOrder
 @no_step FirstOrder
 
 function Modeling.f_ode!(mdl::Model{FirstOrder})
@@ -112,7 +111,6 @@ end
     b::Subsampled{FirstOrder} = Subsampled(FirstOrder(), 2)
 end
 
-@no_init Node
 @sm_updates Node
 
 ################################################################################

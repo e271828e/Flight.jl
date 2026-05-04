@@ -24,8 +24,6 @@ abstract type AbstractWorld <: ModelDefinition end
     terrain::T = HorizontalTerrain()
 end
 
-@no_init SimpleWorld
-
 function Modeling.f_ode!(world::Model{<:SimpleWorld})
     (; aircraft, atmosphere, terrain) = world
     f_ode!(atmosphere)

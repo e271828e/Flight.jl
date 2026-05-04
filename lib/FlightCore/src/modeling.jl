@@ -9,7 +9,7 @@ using ..IODevices
 export ModelDefinition, Model
 export Subsampled, Conditional, Unconditional
 export f_init!, f_ode!, f_step!, f_periodic!, f_output!
-export @no_init, @no_ode, @no_step, @no_periodic, @no_updates
+export @no_ode, @no_step, @no_periodic, @no_updates
 export @sm_ode, @sm_step, @sm_periodic, @sm_updates
 export print_tree
 
@@ -255,12 +255,6 @@ f_output!(::Model{<:ModelDefinition, Nothing}) = nothing
 
 
 ########################## Convenience Macros ##################################
-
-#no initialization (note that the single-argument f_init! method will still be
-# called for each submodel by its constructor)
-macro no_init(md)
-    esc(:(Modeling.f_init!(::Model{<:($md)}, args...) = nothing))
-end
 
 #no continuous dynamics
 macro no_ode(md)

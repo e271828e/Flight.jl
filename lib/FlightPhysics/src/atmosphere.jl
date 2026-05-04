@@ -56,7 +56,6 @@ end
 ############################## Sea Level Standard ##############################
 
 struct SeaLevelStandard <: AbstractSeaLevelConditions end
-@no_init SeaLevelStandard
 @no_updates SeaLevelStandard
 
 ISAData(::Model{<:SeaLevelStandard}, ::Abstract2DLocation) = ISAData(T_std, p_std)
@@ -66,7 +65,6 @@ ISAData(::Model{<:SeaLevelStandard}, ::Abstract2DLocation) = ISAData(T_std, p_st
 
 #simple model providing direct control over SL conditions
 struct TunableSeaLevel <: AbstractSeaLevelConditions end
-@no_init TunableSeaLevel
 @no_updates TunableSeaLevel
 
 const T_sl_min = T_std - 50.0
@@ -153,7 +151,6 @@ end
 ############################## No Wind Model ###################################
 
 struct NoWind <: AbstractWind end
-@no_init NoWind
 @no_updates NoWind
 
 get_wind(::Model{NoWind}, ::Abstract3DPosition) = SVector{3,Float64}(0.0, 0.0, 0.0)
@@ -161,7 +158,6 @@ get_wind(::Model{NoWind}, ::Abstract3DPosition) = SVector{3,Float64}(0.0, 0.0, 0
 ############################## Tunable Wind ####################################
 
 struct TunableWind <: AbstractWind end
-@no_init TunableWind
 @no_updates TunableWind
 
 get_wind(mdl::Model{TunableWind}, ::Abstract3DPosition) = SVector{3}(mdl.u)
@@ -266,7 +262,6 @@ end
     wind::W = TunableWind()
 end
 
-@no_init SimpleAtmosphere
 @no_step SimpleAtmosphere
 @sm_ode SimpleAtmosphere
 @sm_periodic SimpleAtmosphere

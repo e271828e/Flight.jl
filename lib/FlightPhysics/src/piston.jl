@@ -555,7 +555,6 @@ end
 
 end
 
-@no_init PistonThruster
 @no_periodic PistonThruster
 
 function Modeling.f_ode!(mdl::Model{<:PistonThruster}, air_data::AirData, kin_data::KinData)

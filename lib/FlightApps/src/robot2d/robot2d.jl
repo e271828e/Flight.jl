@@ -46,7 +46,6 @@ Modeling.X(::Vehicle) = ComponentVector( ω = 0.0, v = 0.0, θ = 0.0, η = 0.0)
 Modeling.U(::Vehicle) = Ref(Ranged(0.0, -1., 1.))
 Modeling.Y(::Vehicle) = VehicleY()
 
-@no_init Vehicle
 @no_periodic Vehicle
 @no_step Vehicle
 
@@ -377,7 +376,6 @@ end
 Modeling.U(::Controller) = ControllerU()
 Modeling.Y(::Controller) = ControllerY()
 
-@no_init Controller
 @no_ode Controller
 @no_step Controller
 

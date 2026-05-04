@@ -33,7 +33,6 @@ const mp_b_afm = let
     MassProperties(airframe_c, t_bc)
 end
 
-@no_init Airframe
 @no_updates Airframe
 
 #the airframe itself receives no external actions nor has any internal angular
@@ -296,7 +295,6 @@ Modeling.Y(::Aero) = AeroY()
 Modeling.U(::Aero) = AeroU()
 Modeling.S(::Aero) = AeroS()
 
-@no_init Aero
 @no_periodic Aero
 
 #*caution: do not confuse the w-frame in kinematics.ω_wb_b, which refers to the
@@ -477,7 +475,6 @@ end
 Dynamics.get_mp_b(::Model{Ldg}) = MassProperties()
 Dynamics.get_hr_b(::Model{Ldg}) = zeros(SVector{3})
 
-@no_init Ldg #each submodel will still be initialized individually
 @no_periodic Ldg
 @sm_ode Ldg #delegate continuous dynamics to submodels
 
@@ -537,7 +534,6 @@ end
 Modeling.U(::Payload) = PayloadU()
 Modeling.Y(::Payload) = PayloadY()
 
-@no_init Payload
 @no_updates Payload
 
 function Dynamics.get_mp_b(mdl::Model{Payload})
@@ -602,7 +598,6 @@ end
 Modeling.X(::Fuel) = [0.5]
 Modeling.Y(::Fuel) = FuelY()
 
-@no_init Fuel
 @no_periodic Fuel
 @no_step Fuel
 
@@ -694,7 +689,6 @@ end
 
 ############################# Update Methods ###################################
 
-@no_init Systems
 @no_periodic Systems
 
 function Modeling.f_ode!(systems::Model{<:Systems},

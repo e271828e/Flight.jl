@@ -229,7 +229,6 @@ end
 Modeling.U(::SegmentGuidance) = SegmentGuidanceU()
 Modeling.Y(::SegmentGuidance) = SegmentGuidanceY()
 
-@no_init SegmentGuidance
 @no_ode SegmentGuidance
 @no_step SegmentGuidance
 
@@ -262,7 +261,6 @@ end
 @kwdef struct CircularGuidance <: ModelDefinition end
 @kwdef struct CircularGuidanceY end
 
-@no_init CircularGuidance
 @no_ode CircularGuidance
 @no_step CircularGuidance
 
@@ -278,7 +276,6 @@ end
     crc::CircularGuidance = CircularGuidance()
 end
 
-@no_init GuidanceLaws
 @no_ode GuidanceLaws
 @no_step GuidanceLaws
 @sm_periodic GuidanceLaws

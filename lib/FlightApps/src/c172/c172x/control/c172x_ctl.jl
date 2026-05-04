@@ -1231,7 +1231,6 @@ end
 Modeling.U(::ControlLaws) = ControlLawsU()
 Modeling.Y(::ControlLaws) = ControlLawsY()
 
-@no_init ControlLaws
 @no_ode ControlLaws
 @no_step ControlLaws
 @sm_periodic ControlLaws

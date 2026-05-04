@@ -159,7 +159,6 @@ Modeling.X(lss::LinearizedSS) = copy(lss.x0)
 Modeling.U(lss::LinearizedSS) = copy(lss.u0)
 Modeling.Y(lss::LinearizedSS) = SVector{length(lss.y0)}(lss.y0)
 
-@no_init LinearizedSS
 @no_periodic LinearizedSS
 @no_step LinearizedSS
 

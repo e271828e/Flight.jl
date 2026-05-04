@@ -37,7 +37,6 @@ end
 
 Modeling.U(::HorizontalTerrain) = Ref(DryTarmac)
 
-@no_init HorizontalTerrain
 @no_updates HorizontalTerrain
 
 function TerrainData(terrain::Model{<:HorizontalTerrain}, ::Abstract2DLocation)
