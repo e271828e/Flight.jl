@@ -1,7 +1,6 @@
 module LandingGear
 
 using StaticArrays, ComponentArrays, LinearAlgebra
-using Plots, LaTeXStrings, DataStructures
 
 using FlightCore
 using ..Types
@@ -345,33 +344,6 @@ function Modeling.f_step!(mdl::Model{<:Strut})
 end
 
 
-################################## Plots #######################################
-
-function Plotting.make_plots(ts::TimeSeries{<:StrutY}; kwargs...)
-
-    pd = OrderedDict{Symbol, Any}()
-
-    subplot_ξ = plot(ts.ξ;
-        title = "Elongation", ylabel = L"$\xi \ (m)$",
-        label = "", kwargs...)
-
-    subplot_ξ_dot = plot(ts.ξ_dot;
-        title = "Elongation Rate", ylabel = L"$\dot{\xi} \ (m/s)$",
-        label = "", kwargs...)
-
-    subplot_F = plot(ts.F_dmp_zs;
-        title = "Force", ylabel = L"$F \ (N)$",
-        label = "", kwargs...)
-
-    pd[:dmp] = plot(subplot_ξ, subplot_ξ_dot, subplot_F;
-        plot_title = "Damper",
-        layout = (1,3), link = :none,
-        kwargs...)
-
-    return pd
-
-end
-
 
 #################################### GUI #######################################
 
@@ -507,73 +479,6 @@ function Modeling.f_step!(contact::Model{<:Contact}, strut::Model{<:Strut})
 
 end
 
-
-################################ Plotting ######################################
-
-
-function Plotting.make_plots(ts::TimeSeries{<:ContactY}; kwargs...)
-
-    pd = OrderedDict{Symbol, Any}()
-
-    (μ_max_x, μ_max_y) = get_components(ts.μ_max)
-    (μ_eff_x, μ_eff_y) = get_components(ts.μ_eff)
-
-    subplot_μ_roll = plot(ts.μ_roll; title = "Rolling Friction Coefficient",
-        ylabel = L"$\mu_{roll}$", label = "", kwargs...)
-    subplot_μ_skid = plot(ts.μ_skid; title = "Skidding Friction Coefficient",
-        ylabel = L"$\mu_{skid}$", label = "", kwargs...)
-
-    pd[:srf] = plot(subplot_μ_roll, subplot_μ_skid;
-        plot_title = "Surface Friction",
-        layout = (1,2), link = :y,
-        kwargs...)
-
-    subplot_κ_br = plot(ts.κ_br; title = "Braking Coefficient",
-        ylabel = L"$\alpha_{br}$", label = "", kwargs...)
-    subplot_μ_max_x = plot(μ_max_x; title = "Maximum Friction Coefficient",
-        ylabel = L"$\mu_{max}^{x}$", label = "", kwargs...)
-    subplot_μ_eff_x = plot(μ_eff_x; title = "Effective Friction Coefficient",
-        ylabel = L"$\mu^{x}$", label = "", kwargs...)
-
-    pd[:μ_x] = plot(subplot_κ_br, subplot_μ_max_x, subplot_μ_eff_x;
-        plot_title = "Longitudinal Friction",
-        layout = (1,3),
-        kwargs...)
-
-    subplot_ψ_cv = plot(ts._t, rad2deg.(ts.ψ_cv._data); title = "Tire Slip Angle",
-        ylabel = L"$\psi_{cv} \ (deg)$", label = "", kwargs...)
-    subplot_μ_max_y = plot(μ_max_y; title = "Maximum Friction Coefficient",
-        ylabel = L"$\mu_{max}^{y}$", label = "", kwargs...)
-    subplot_μ_eff_y = plot(μ_eff_y; title = "Effective Friction Coefficient",
-        ylabel = L"$\mu^{y}$", label = "", kwargs...)
-
-    pd[:μ_y] = plot(subplot_ψ_cv, subplot_μ_max_y, subplot_μ_eff_y;
-        plot_title = "Lateral Friction",
-        layout = (1,3),
-        kwargs...)
-
-    pd[:f_c] = plot(ts.f_c;
-        plot_title = "Normalized Contact Force",
-        ylabel = [L"$f_{Oc \ (terrain)}^{c}$" L"$f_{Oc \ (terrain)}^{c}$" L"$f_{Oc \ (terrain)}^{c}$"],
-        ts_split = :h, link = :none,
-        kwargs...)
-
-    pd[:F_c] = plot(ts.F_c;
-        plot_title = "Contact Force",
-        ylabel = [L"$F_{Oc \ (terrain)}^{c} \ (N)$" L"$F_{Oc \ (terrain)}^{c} \ (N)$" L"$F_{Oc \ (terrain)}^{c} \ (N)$"],
-        ts_split = :h, link = :none,
-        kwargs...)
-
-    pd[:wr_b] = plot(ts.wr_b;
-        plot_title = "Wrench [Vehicle Axes]",
-        wr_source = "terrain", wr_frame = "b",
-        kwargs...)
-
-    pd[:frc] = make_plots(ts.frc; kwargs...)
-
-    return pd
-
-end
 
 ################################# GUI ##########################################
 

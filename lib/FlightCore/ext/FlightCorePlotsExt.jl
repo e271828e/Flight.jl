@@ -7,6 +7,7 @@ using RecursiveArrayTools: VectorOfArray
 using FlightCore.Sim: Simulation, TimeSeries
 using FlightCore.Plotting
 
+
 function __init__()
     # Populate the defaults dict when Plots is loaded
     merge!(Plotting.defaults, Dict(

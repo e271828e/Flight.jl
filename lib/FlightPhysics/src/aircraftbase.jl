@@ -342,19 +342,6 @@ function Linearization.linearize(aircraft::Model{<:Aircraft},
 end
 
 
-############################### Plotting #######################################
-
-function Plotting.make_plots(ts::TimeSeries{<:VehicleY}; kwargs...)
-
-    return OrderedDict(
-        :systems => make_plots(ts.systems; kwargs...),
-        :kinematics => make_plots(ts.kinematics; kwargs...),
-        :dynamics => make_plots(ts.dynamics; kwargs...),
-        :airflow => make_plots(ts.airflow; kwargs...),
-    )
-
-end
-
 
 ################################### GUI ########################################
 

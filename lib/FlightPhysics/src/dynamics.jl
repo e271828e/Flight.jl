@@ -1,8 +1,6 @@
 module Dynamics
 
 using StaticArrays, LinearAlgebra
-using Plots: Plots, @recipe, @series, plot
-using LaTeXStrings, DataStructures
 
 using FlightCore
 
@@ -525,94 +523,6 @@ function Modeling.f_ode!(mdl::Model{VehicleDynamics})
 
 end
 
-
-################################# Dynamics #####################################
-
-@recipe function f(ts::TimeSeries{<:Wrench}; wr_frame = "", wr_source = "")
-
-    layout := (1, 2)
-    seriestype --> :path
-
-    @series begin
-        subplot := 1
-        title --> "Force"
-        yguide --> L"$F_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N)$"
-        ts_split --> :none
-        ts.F
-    end
-
-    @series begin
-        subplot := 2
-        title --> "Torque"
-        yguide --> L"$\tau_{O%$wr_frame \ (%$wr_source)}^{%$wr_frame} \ (N \ m)$"
-        ts_split --> :none
-        ts.τ
-    end
-
-end
-
-function Plotting.make_plots(ts::TimeSeries{<:DynamicsData}; kwargs...)
-
-    pd = OrderedDict{Symbol, Plots.Plot}()
-
-    pd[:g_c] = plot(ts.g_c_c;
-        plot_title = "Gravity at CoM [CoM Axes]",
-        ylabel = hcat(
-            L"$g_{c}^{x_c} \ (m / s^2)$",
-            L"$g_{c}^{y_c} \ (m / s^2)$",
-            L"$b_{c}^{z_c} \ (m / s^2)$"),
-        ts_split = :v, link = :none,
-        kwargs...)
-
-    pd[:wr_ext_c] = plot(ts.wr_Σ_c;
-        plot_title = "External Wrench at CoM [CoM Axes]",
-        wr_source = "ext", wr_frame = "c",
-        kwargs...)
-
-    pd[:wr_ext_b] = plot(ts.wr_Σ_b;
-        plot_title = "External Wrench at Ob [Body Axes]",
-        wr_source = "ext", wr_frame = "b",
-        kwargs...)
-
-    pd[:hr_b] = plot(ts.ho_Σ_b;
-        plot_title = "Internal Angular Momentum [Body Axes]",
-        ylabel = hcat(
-            L"$h_{Ob \ (r)}^{x_b} \ (kg \ m^2 / s)$",
-            L"$h_{Ob \ (r)}^{y_b} \ (kg \ m^2 / s)$",
-            L"$h_{Ob \ (r)}^{z_b} \ (kg \ m^2 / s)$"),
-        ts_split = :v, link = :none,
-        kwargs...)
-
-    pd[:α_eb_b] = plot(ts.ω̇_eb_b;
-        plot_title = "Angular Acceleration (Body/ECEF) [Body Axes]",
-        ylabel = hcat(
-            L"$\alpha_{eb}^{x_b} \ (rad/s^2)$",
-            L"$\alpha_{eb}^{y_b} \ (rad/s^2)$",
-            L"$\alpha_{eb}^{z_b} \ (rad/s^2)$"),
-        ts_split = :v,
-        kwargs...)
-
-    pd[:a_eb_b] = plot(ts.a_eb_b;
-        plot_title = "Linear Acceleration (Body/ECEF) [Body Axes]",
-        ylabel = hcat(
-            L"$a_{eb}^{x_b} \ (m/s^{2})$",
-            L"$a_{eb}^{y_b} \ (m/s^{2})$",
-            L"$a_{eb}^{z_b} \ (m/s^{2})$"),
-        ts_split = :v,
-        kwargs...)
-
-    pd[:f_c_c] = plot(TimeSeries(ts._t, ts.f_c_c._data / g₀);
-        plot_title = "Specific Force at CoM [CoM Axes]",
-        ylabel = hcat(
-            L"$f_{c}^{x_c} \ (g)$",
-            L"$f_{c}^{y_c} \ (g)$",
-            L"$f_{c}^{z_c} \ (g)$"),
-        ts_split = :v, link = :none,
-        kwargs...)
-
-    return pd
-
-end
 
 ################################################################################
 ################################# GUI ##########################################

@@ -1,8 +1,6 @@
 module Control
 
-using LinearAlgebra
-using ComponentArrays, StaticArrays, StructArrays, Interpolations, HDF5
-using Plots, LaTeXStrings, DataStructures
+using LinearAlgebra, ComponentArrays, StaticArrays, StructArrays, Interpolations, HDF5
 
 using FlightCore
 
@@ -89,82 +87,6 @@ function Modeling.f_init!(mdl::Model{<:PIVector})
 end
 
 
-
-# ############################## Plotting ########################################
-
-function Plotting.make_plots(ts::TimeSeries{<:PIVectorY}; kwargs...)
-
-    pd = OrderedDict{Symbol, Plots.Plot}()
-
-    input = plot(ts.input; title = "Input", ylabel = L"$e$", kwargs...)
-    output = plot(ts.output; title = "Output", ylabel = L"$y$", kwargs...)
-
-    pd[:sf] = plot(input, output;
-        plot_title = "Input & Output",
-        layout = (2,1),
-        link = :y,
-        kwargs...)
-
-    k_p = plot(ts.k_p; title = "Proportional Gain", ylabel = L"$k_p$", kwargs...)
-    k_i = plot(ts.k_i; title = "Integral Gain", ylabel = L"$k_i$", kwargs...)
-    k_l = plot(ts.k_l; title = "Leak Factor", ylabel = L"$k_d$", kwargs...)
-
-    pd[:p1] = plot(k_p, k_i, k_l;
-        plot_title = "Parameters",
-        layout = (3,1),
-        link = :none,
-        kwargs...)
-
-    β_p = plot(ts.β_p; title = "Proportional Input Weighting", ylabel = L"$\beta_p$", kwargs...)
-    bound_lo = plot(ts.bound_lo; title = "Lower Output Bound", ylabel = L"$y_{min}$", kwargs...)
-    bound_hi = plot(ts.bound_hi; title = "Upper Output Bound", ylabel = L"$y_{max}$", kwargs...)
-
-    pd[:p2] = plot(β_p, bound_lo, bound_hi;
-        plot_title = "Parameters",
-        layout = (3,1),
-        link = :none,
-        kwargs...)
-
-    sat_ext = plot(ts.sat_ext; title = "External Saturation Input", ylabel = "", kwargs...)
-    sat_out = plot(ts.sat_out; title = "Output Saturation", ylabel = "", kwargs...)
-    int_halted = plot(ts.int_halted; title = "Integrator Halted", ylabel = "", kwargs...)
-
-    pd[:awu] = plot(sat_ext, sat_out, int_halted;
-        plot_title = "Anti-Windup",
-        layout = (3,1),
-        kwargs...)
-
-    u_p = plot(ts.u_p; title = "Input", ylabel = L"$u_p$", kwargs...)
-    y_p = plot(ts.y_p; title = "Output", ylabel = L"$y_p$", kwargs...)
-
-    pd[:prop] = plot(u_p, y_p;
-        plot_title = "Proportional Path",
-        layout = (2,1),
-        link = :y,
-        kwargs...)
-
-    u_i = plot(ts.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
-    y_i = plot(ts.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
-
-    pd[:int] = plot(u_i, y_i, int_halted;
-        plot_title = "Integral Path",
-        layout = (3,1),
-        link = :y,
-        kwargs...)
-
-    out_free = plot(ts.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
-    output = plot(ts.output; title = "Actual", ylabel = L"$y$", kwargs...)
-
-    pd[:output] = plot(out_free, output, sat_out;
-        plot_title = "PID Output",
-        layout = (3,1),
-        link = :y,
-        kwargs...)
-
-    return pd
-
-end
-
 #################################### GUI #######################################
 
 
@@ -199,7 +121,7 @@ end #function
 
 
 ############################# Integrator ###############################
-################################################################################
+#########################################################################
 
 @kwdef struct Integrator <: ModelDefinition
     bound_lo::Ref{Float64} = Ref(-Inf) #lower output bound
@@ -668,93 +590,6 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:PIDVector{N}}) where
 
 end
 
-
-################################### Plots ######################################
-
-function Plotting.make_plots(ts::Union{TimeSeries{<:PIDOutput},
-                                       TimeSeries{<:PIDVectorOutput}}; kwargs...)
-
-    pd = OrderedDict{Symbol, Plots.Plot}()
-
-    input = plot(ts.input; title = "Input", ylabel = L"$e$", kwargs...)
-    output = plot(ts.output; title = "Output", ylabel = L"$y$", kwargs...)
-
-    pd[:sf] = plot(input, output;
-        plot_title = "Input & Output",
-        layout = (2,1),
-        link = :y,
-        kwargs...)
-
-    k_p = plot(ts.k_p; title = "Proportional Gain", ylabel = L"$k_p$", kwargs...)
-    k_i = plot(ts.k_i; title = "Integral Gain", ylabel = L"$k_i$", kwargs...)
-    k_d = plot(ts.k_d; title = "Derivative Gain", ylabel = L"$k_d$", kwargs...)
-    τ_f = plot(ts.τ_f; title = "Derivative Filter Time Constant", ylabel = L"$\tau_f$", kwargs...)
-
-    pd[:p1] = plot(k_p, k_i, k_d, τ_f;
-        plot_title = "Parameters",
-        layout = (4,1),
-        link = :none,
-        kwargs...)
-
-    β_p = plot(ts.β_p; title = "Proportional Input Weighting", ylabel = L"$\beta_p$", kwargs...)
-    β_d = plot(ts.β_d; title = "Derivative Input Weighting", ylabel = L"$\beta_d$", kwargs...)
-    bound_lo = plot(ts.bound_lo; title = "Lower Output Bound", ylabel = L"$y_{min}$", kwargs...)
-    bound_hi = plot(ts.bound_hi; title = "Upper Output Bound", ylabel = L"$y_{max}$", kwargs...)
-
-    pd[:p2] = plot(β_p, β_d, bound_lo, bound_hi;
-        plot_title = "Parameters",
-        layout = (4,1),
-        link = :none,
-        kwargs...)
-
-    sat_ext = plot(ts.sat_ext; title = "External Saturation Input", ylabel = "", kwargs...)
-    sat_out = plot(ts.sat_out; title = "Output Saturation", ylabel = "", kwargs...)
-    int_halted = plot(ts.int_halted; title = "Integrator Halted", ylabel = "", kwargs...)
-
-    pd[:awu] = plot(sat_ext, sat_out, int_halted;
-        plot_title = "Anti-Windup",
-        layout = (3,1),
-        kwargs...)
-
-    u_p = plot(ts.u_p; title = "Input", ylabel = L"$u_p$", kwargs...)
-    y_p = plot(ts.y_p; title = "Output", ylabel = L"$y_p$", kwargs...)
-
-    pd[:prop] = plot(u_p, y_p;
-        plot_title = "Proportional Path",
-        layout = (2,1),
-        link = :y,
-        kwargs...)
-
-    u_i = plot(ts.u_i; title = "Input", ylabel = L"$u_i$", kwargs...)
-    y_i = plot(ts.y_i; title = "Output", ylabel = L"$y_i$", kwargs...)
-
-    pd[:int] = plot(u_i, y_i, int_halted;
-        plot_title = "Integral Path",
-        layout = (3,1),
-        link = :y,
-        kwargs...)
-
-    u_d = plot(ts.u_d; title = "Input", ylabel = L"$u_d$", kwargs...)
-    y_d = plot(ts.y_d; title = "Output", ylabel = L"$y_d$", kwargs...)
-
-    pd[:der] = plot(u_d, y_d;
-        plot_title = "Derivative Path",
-        layout = (3,1),
-        link = :y,
-        kwargs...)
-
-    out_free = plot(ts.out_free; title = "Free", ylabel = L"$y_{free}$", kwargs...)
-    output = plot(ts.output; title = "Actual", ylabel = L"$y$", kwargs...)
-
-    pd[:output] = plot(out_free, output, sat_out;
-        plot_title = "PID Output",
-        layout = (3,1),
-        link = :y,
-        kwargs...)
-
-    return pd
-
-end
 
 #################################### GUI #######################################
 

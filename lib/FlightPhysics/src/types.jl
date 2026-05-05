@@ -1,7 +1,6 @@
 module Types
 
 using StaticArrays, StructArrays, StructTypes
-using Plots, LaTeXStrings
 
 using FlightCore
 
@@ -71,14 +70,6 @@ function linear_scaling(u::Ranged{T,UMin,UMax}, range::NTuple{2,Real}) where {T,
     return range[1] + (range[2] - range[1]) / (UMax - UMin) * (T(u) - UMin)
 end
 
-############################### Plotting #################################
-
-@recipe function f(ts::TimeSeries{<:Ranged{T}}) where {T}
-
-    xguide --> L"$t \: (s)$"
-    return ts._t, T.(ts._data)
-
-end
 
 ################################# GUI #####################################
 

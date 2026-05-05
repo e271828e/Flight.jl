@@ -1,7 +1,6 @@
 module Atmosphere
 
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra
-using Plots, LaTeXStrings, DataStructures
 
 using FlightCore
 
@@ -355,99 +354,6 @@ end
     return q_as
 end
 
-
-
-################################## Plotting ####################################
-
-function Plotting.make_plots(ts::TimeSeries{<:AirData}; kwargs...)
-
-    pd = OrderedDict{Symbol, Plots.Plot}()
-
-    pd[:v_ew_n] = plot(ts.v_ew_n;
-        plot_title = "Velocity (Wind / ECEF) [NED Axes]",
-        label = ["North" "East" "Down"],
-        ylabel = [L"$v_{ew}^{N} \ (m/s)$" L"$v_{ew}^{E} \ (m/s)$" L"$v_{ew}^{D} \ (m/s)$"],
-        ts_split = :v,
-        kwargs...)
-
-    pd[:v_ew_b] = plot(ts.v_ew_b;
-        plot_title = "Velocity (Wind / ECEF) [Vehicle Axes]",
-        ylabel = [L"$v_{ew}^{x_b} \ (m/s)$" L"$v_{ew}^{y_b} \ (m/s)$" L"$v_{ew}^{z_b} \ (m/s)$"],
-        ts_split = :v,
-        kwargs...)
-
-    pd[:v_wb_b] = plot(ts.v_wb_b;
-        plot_title = "Velocity (Vehicle / Wind) [Vehicle Axes]",
-        ylabel = [L"$v_{eb}^{x_b} \ (m/s)$" L"$v_{eb}^{y_b} \ (m/s)$" L"$v_{eb}^{z_b} \ (m/s)$"],
-        ts_split = :v,
-        kwargs...)
-
-        subplot_a = plot(ts.a;
-            title = "Speed of Sound", ylabel = L"$a \ (m/s)$",
-            label = "", kwargs...)
-
-        subplot_ρ = plot(ts.ρ;
-            title = "Density", ylabel = L"$\rho \ (kg/m^3)$",
-            label = "", kwargs...)
-
-        subplot_μ = plot(ts.μ;
-            title = "Dynamic Viscosity", ylabel = L"$\mu \ (Pa \ s)$",
-            label = "", kwargs...)
-
-    pd[:ρ_a] = plot(subplot_ρ, subplot_a, subplot_μ;
-        plot_title = "Freestream Properties",
-        layout = (3,1),
-        kwargs...,
-        )
-
-
-        subplot_T = plot(
-            TimeSeries(ts._t, hcat(ts.T._data, ts.Tt._data)' |> collect);
-            title = "Temperature",
-            label = ["Static"  "Total"],
-            ylabel = L"$T \ (K)$",
-            ts_split = :none, kwargs...)
-
-        subplot_p = plot(
-            TimeSeries(ts._t, 1e-3*hcat(ts.p._data, ts.pt._data)' |> collect);
-            title = "Pressure",
-            label = ["Static"  "Total"],
-            ylabel = L"$p \ (kPa)$",
-            ts_split = :none, kwargs...)
-
-    pd[:T_p] = plot(subplot_T, subplot_p;
-        plot_title = "Freestream Properties",
-        layout = (2,1),
-        kwargs...
-        )
-
-        subplot_airspeed = plot(
-            TimeSeries(ts._t, hcat(ts.TAS._data, ts.EAS._data, ts.CAS._data)' |> collect);
-            title = "Airspeed",
-            label = ["True" "Equivalent" "Calibrated"],
-            ylabel = L"$v \ (m/s)$",
-            ts_split = :none, kwargs...)
-
-        subplot_Mach = plot(ts.M;
-            title = "Mach", ylabel = L"M",
-            label = "", kwargs...)
-
-        subplot_q = plot(TimeSeries(ts._t, ts.q._data/1000);
-            title = "Dynamic Pressure", ylabel = L"$q \ (kPa)$",
-            label = "", kwargs...)
-
-    l3 = @layout [a{0.5w} [b; c{0.5h}]]
-
-    pd[:airspeed_M_q] = plot(
-        subplot_airspeed, subplot_Mach, subplot_q;
-        layout = l3,
-        plot_title = "Freestream Properties",
-        kwargs...,
-        )
-
-    return pd
-
-end
 
 ################################# GUI ##########################################
 

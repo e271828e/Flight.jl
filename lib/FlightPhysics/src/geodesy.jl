@@ -1,7 +1,6 @@
 module Geodesy
 
-using LinearAlgebra, StaticArrays, ComponentArrays, SHA, Interpolations, HDF5
-using Plots, LaTeXStrings, DataStructures, StructTypes
+using LinearAlgebra, StaticArrays, ComponentArrays, SHA, Interpolations, HDF5, StructTypes
 
 using FlightCore
 
@@ -488,37 +487,6 @@ function G_n(pos::Abstract3DPosition)
 
 end
 
-################################################################################
-############################### Plotting #######################################
-
-#if no specific method available, convert to LatLon for plotting
-@recipe function fp(ts::TimeSeries{<:Abstract2DLocation})
-
-    return TimeSeries(ts._t, [LatLon(v) for v in ts._data])
-
-end
-
-@recipe function fp(ts::TimeSeries{<:LatLon})
-
-    title --> ["Latitude" "Longitude"]
-    label --> ["Latitude" "Longitude"]
-    yguide --> [L"$\varphi \ (deg)$" L"$\lambda \ (deg)$"]
-    ts_split --> :v
-
-    data = hcat(rad2deg.(ts.ϕ._data), rad2deg.(ts.λ._data))' |> collect
-    return TimeSeries(ts._t, data)
-
-end
-
-@recipe function fp(ts::TimeSeries{<:Altitude{D}}) where {D}
-
-    title --> "Altitude ($(string(D)))"
-    label --> "Altitude ($(string(D)))"
-    yguide --> L"$h \ (m)$"
-
-    return TimeSeries(ts._t, Float64.(ts._data))
-
-end
 
 
 ################################################################################

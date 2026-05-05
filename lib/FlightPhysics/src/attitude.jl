@@ -27,7 +27,6 @@ the implemented subtypes.
 module Attitude
 
 using LinearAlgebra, StaticArrays, ComponentArrays, StructArrays
-using Plots, LaTeXStrings, DataStructures
 
 using FlightCore
 
@@ -485,29 +484,6 @@ azimuth(v::AbstractVector{<:Real}) = atan(v[2], v[1])
 inclination(v::AbstractVector{<:Real}) = atan(-v[3], √(v[1]^2 + v[2]^2))
 wrap_to_π(x) = x + 2π*floor((π-x)/(2π))
 
-
-################################# Plotting #####################################
-
-#if no specific method available, convert to REuler for plotting
-@recipe function f(ts::TimeSeries{<:Abstract3DRotation}; rot_ref = "", rot_target = "")
-
-    return TimeSeries(ts._t, [REuler(v) for v in ts._data])
-
-end
-
-@recipe function f(ts::TimeSeries{<:REuler}; rot_ref = "", rot_target = "")
-
-    label --> ["Heading" "Inclination" "Bank"]
-    yguide --> hcat(L"$\psi_{%$rot_ref %$rot_target} \ (deg)$",
-                    L"$\theta_{%$rot_ref %$rot_target} \ (deg)$",
-                    L"$\phi_{%$rot_ref %$rot_target} \ (deg)$")
-    ts_split --> :v #custom TimeSeries attribute
-    link --> :none
-
-    data = rad2deg.(hcat(ts.ψ._data, ts.θ._data, ts.φ._data)') #
-    return TimeSeries(ts._t, data)
-
-end
 
 
 end
