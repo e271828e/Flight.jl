@@ -3,7 +3,6 @@ module TestPiston
 using Test
 using BenchmarkTools
 using LinearAlgebra
-using Plots
 
 using FlightCore
 using FlightPhysics

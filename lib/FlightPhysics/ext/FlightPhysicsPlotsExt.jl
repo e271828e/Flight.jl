@@ -1,6 +1,7 @@
 module FlightPhysicsPlotsExt
 
-using Plots, LaTeXStrings, DataStructures, StructArrays, StaticArrays, Interpolations, LinearAlgebra
+using Plots, LaTeXStrings
+using DataStructures, StructArrays, StaticArrays, Interpolations, LinearAlgebra
 using RecursiveArrayTools: VectorOfArray
 
 using FlightCore.Sim: TimeSeries, get_data, get_components

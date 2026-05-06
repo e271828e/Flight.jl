@@ -562,22 +562,4 @@ end #function
 
 
 
-#for interactive ControlLaws validation
-function test_interactive(init::C172.TrimParameters = C172.TrimParameters())
-
-    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) |> Model
-    sim = Simulation(world; dt = 0.01, t_end = 1000)
-    init!(sim, init)
-    Sim.run!(sim; gui = true)
-
-    save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/test_c172x1/kin"); Plotting.defaults..., linewidth = 2,)
-    save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/test_c172x1/air"); Plotting.defaults...)
-    save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/test_c172x1/dyn"); Plotting.defaults...)
-    # save_plots(TimeSeries(sim).aircraft.vehicle.dynamics; Plotting.defaults...)
-
-    return sim
-
-end
-
-
 end #module
