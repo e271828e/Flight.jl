@@ -1,7 +1,7 @@
 module FlightPhysicsPlotsExt
 
 using Plots, LaTeXStrings
-using DataStructures, StructArrays, StaticArrays, Interpolations, LinearAlgebra
+using DataStructures, StructArrays, StaticArrays, LinearAlgebra
 using RecursiveArrayTools: VectorOfArray
 
 using FlightCore.Sim: TimeSeries, get_data, get_components
@@ -669,7 +669,7 @@ end
 function Plotting.make_plots(lookup::Propellers.Lookup; Mt_ref = 0.0, Δβ_ref = 0.0, kwargs...)
     pd = OrderedDict{Symbol, Plots.Plot}()
 
-    J_bounds, Mt_bounds, Δβ_bounds = bounds(lookup)
+    (; J_bounds, Mt_bounds, Δβ_bounds) = lookup
 
     y_labels =[L"C_{Fx}", L"C_{Mx}", L"C_{Fz, \alpha}", L"C_{Mz, \alpha}", L"C_P", L"\eta_p"]
     titles =["Traction Coefficient", "Torque Coefficient", "Off-Axis Force Coefficient Derivative",

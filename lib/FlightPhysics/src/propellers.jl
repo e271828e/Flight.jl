@@ -214,6 +214,9 @@ end
 struct Lookup{T <: Interpolations.Extrapolation}
     interps::Coefficients{T}
     data::Coefficients{Array{Float64,3}}
+    J_bounds::NTuple{2, Float64}
+    Mt_bounds::NTuple{2, Float64}
+    Δβ_bounds::NTuple{2, Float64}
 end
 
 Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
@@ -227,15 +230,6 @@ Base.getproperty(lookup::Lookup, s::Symbol) = getproperty(lookup, Val(s))
     end
 end
 
-# * CAUTION
-# Interpolation.bounds always returns (1,1) for singleton dimensions. Therefore,
-# once the Lookup is generated for a singleton Δβ_range (which happens for a
-# FixedPitch propeller), the original Δβ be no longer retrieved from the Lookup
-# itself. However, this doesn’t really matter, because when evaluated, the
-# Lookup will still return the correct coefficients for that Δβ (regardless of
-# the third argument we call it with). In a FixedPitch propeller, we could
-# retrieve this Δβ from the FixedPitch struct itself, but it is not necessary.
-Interpolations.bounds(lookup::Lookup) = bounds(lookup.interps.C_Fx.itp)
 
 function Lookup(n_blades::Int = 2, blade::Blade = Blade();
                 J_range::AbstractRange{Float64} = range(0, 1.5, length = 21),
@@ -277,9 +271,9 @@ function Lookup(data::Coefficients{Array{Float64, 3}},
                                  J.scaling, Mt.scaling, Δβ.scaling),
                            (Flat(), Flat(), Flat())) for coef in NamedTuple(data)]
 
-    Lookup(Coefficients(interps...), data)
-
+    Lookup(Coefficients(interps...), data, J_bounds, Mt_bounds, Δβ_bounds)
 end
+
 
 (d::Lookup)(J::Real, Mt::Real, Δβ::Real) = Coefficients(d, J, Mt, Δβ)
 
@@ -303,11 +297,9 @@ function save_lookup(lookup::Lookup, fname::String)
         fid[string(name)] = data
     end
 
-    J_bounds, Mt_bounds, Δβ_bounds = bounds(lookup)
-
-    fid["J_start"], fid["J_end"] = J_bounds
-    fid["Mt_start"], fid["Mt_end"] = Mt_bounds
-    fid["Δβ_start"], fid["Δβ_end"] = Δβ_bounds
+    fid["J_start"], fid["J_end"] = lookup.J_bounds
+    fid["Mt_start"], fid["Mt_end"] = lookup.Mt_bounds
+    fid["Δβ_start"], fid["Δβ_end"] = lookup.Δβ_bounds
 
     close(fid)
 end

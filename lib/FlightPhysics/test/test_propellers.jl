@@ -3,7 +3,6 @@ module TestPropellers
 using Test
 using BenchmarkTools
 using LinearAlgebra
-using Interpolations: bounds
 using FiniteDiff: finite_difference_derivative
 
 using FlightCore
@@ -154,12 +153,12 @@ function test_propeller()
 
             vp_mdl.u[] = 0
             f_ode!(vp_mdl, kin, air, ω)
-            @test vp_mdl.y.Δβ ≈ bounds(vp_mdl.lookup)[3][1] #lower Δβ bound
+            @test vp_mdl.y.Δβ ≈ vp_mdl.lookup.Δβ_bounds[1] #lower Δβ bound
             Fx_0 = vp_mdl.y.wr_p.F[1]
 
             vp_mdl.u[] = 1
             f_ode!(vp_mdl, kin, air, ω)
-            @test vp_mdl.y.Δβ ≈ bounds(vp_mdl.lookup)[3][2] #upper Δβ bound
+            @test vp_mdl.y.Δβ ≈ vp_mdl.lookup.Δβ_bounds[2] #upper Δβ bound
             Fx_1 = vp_mdl.y.wr_p.F[1]
 
             @test Fx_1 > Fx_0
