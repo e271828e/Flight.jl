@@ -7,11 +7,11 @@ const defaults = Dict{Symbol, Any}()
 
 #stubs
 function make_plots(args...; kwargs...)
-    error("Plotting functionality is not loaded. Please run `using Plots` to enable `make_plots`.")
+    MethodError(make_plots, args) |> throw
 end
 
 function save_plots(args...; kwargs...)
-    error("Plotting functionality is not loaded. Please run `using Plots` to enable `save_plots`.")
+    MethodError(save_plots, args) |> throw
 end
 
 end #module

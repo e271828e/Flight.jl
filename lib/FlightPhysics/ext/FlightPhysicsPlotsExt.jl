@@ -1,6 +1,6 @@
 module FlightPhysicsPlotsExt
 
-using Plots, LaTeXStrings, DataStructures, StructArrays, StaticArrays, LinearAlgebra
+using Plots, LaTeXStrings, DataStructures, StructArrays, StaticArrays, Interpolations, LinearAlgebra
 using RecursiveArrayTools: VectorOfArray
 
 using FlightCore.Sim: TimeSeries, get_data, get_components
@@ -18,6 +18,7 @@ using FlightPhysics.Types: Ranged
     return ts._t, T.(ts._data)
 
 end
+
 
 
 ######################################################
@@ -618,10 +619,10 @@ end
 ######################################################
 ################## Propellers ########################
 
-using FlightPhysics.Propellers: Propellers, AbstractAirfoil
+using FlightPhysics.Propellers
 
 
-@recipe function f(airfoil::AbstractAirfoil)
+@recipe function f(airfoil::Propellers.AbstractAirfoil)
 
     α = range(-π/6, π/3, length = 100)
     M = range(0, 1.5, length = 6)
@@ -657,121 +658,134 @@ using FlightPhysics.Propellers: Propellers, AbstractAirfoil
 end
 
 
-function Plotting.make_plots(airfoil::AbstractAirfoil; kwargs...)
+function Plotting.make_plots(airfoil::Propellers.AbstractAirfoil; kwargs...)
     pd = OrderedDict{Symbol, Plots.Plot}()
     pd[:aerodynamics] = plot(airfoil; kwargs...)
     return pd
 end
 
 
-# #for a singleton Δβ_range, Interpolations.bounds always returns (1,1), so we
-# #cannot retrieve the Δβ value for which the Lookup was generated. therefore, for
-# #this function we require a non-singleton Δβ_range Lookup
-# function plot_J_Δβ(lookup::Propellers.Lookup, Mt::Real = 0.0; plot_settings...)
+function Plotting.make_plots(lookup::Propellers.Lookup; Mt_ref = 0.0, Δβ_ref = 0.0, kwargs...)
+    pd = OrderedDict{Symbol, Plots.Plot}()
 
-#     J_bounds, Mt_bounds, Δβ_bounds = bounds(lookup)
-#     @assert Δβ_bounds[1] < Δβ_bounds[2] "Δβ_range must be non-singleton"
+    J_bounds, Mt_bounds, Δβ_bounds = bounds(lookup)
 
-#     @assert Mt_bounds[1] <= Mt <= Mt_bounds[2]
+    y_labels =[L"C_{Fx}", L"C_{Mx}", L"C_{Fz, \alpha}", L"C_{Mz, \alpha}", L"C_P", L"\eta_p"]
+    titles =["Traction Coefficient", "Torque Coefficient", "Off-Axis Force Coefficient Derivative",
+              "Off-Axis Moment Coefficient Derivative", "Power Coefficient", "Propulsive Efficiency"]
 
-#     J = range(J_bounds..., length = 50)
-#     Δβ = range(Δβ_bounds..., length = 5)
+    #sweep J, parametric in Δβ
+    if Δβ_bounds[1] < Δβ_bounds[2] #only if Δβ dimension is non-singleton (variable pitch)
+        J = range(J_bounds..., length = 50)
+        Δβ_vec = range(Δβ_bounds..., length = 5)
 
-#     data = [lookup(J, Mt, Δβ) for (J, Δβ) in Iterators.product(J, Δβ)]
-#     data = data |> StructArray |> StructArrays.components
+        data =[lookup(J, Mt_ref, Δβ) for (J, Δβ) in Iterators.product(J, Δβ_vec)]
+        (; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p) = data |> StructArray |> StructArrays.components
 
-#     (; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p) = data
+        label = latexstring.("\\Delta \\beta = " .* string.(rad2deg.(Δβ_vec')) .* "^\\circ")
 
-#     label = latexstring.("\$ \\Delta \\beta = " .* string.(rad2deg.(Δβ')) .* "\\degree \$")
-#     label_pos = [:bottomleft, :topleft, :bottomleft, :bottomleft, :topright, :topleft]
-#     x_label = L"J"
-#     y_labels = [L"C_{Fx}", L"C_{Mx}", L"C_{Fz, \alpha}", L"C_{Mz, \alpha}", L"M_{tip}", L"\eta_p"]
-#     titles = ["Traction Coefficient ", "Torque Coefficient", "Off-Axis Force Coefficient Derivative",
-#                 "Off-Axis Moment Coefficient Derivative", "Power Coefficient", "Propulsive Efficiency"] .*
-#                 " (Blade Tip Mach Number = $Mt)"
+        subplots = [plot(J, c; title = titles[i], label = label, xlabel = L"J", ylabel = y_labels[i], kwargs...)
+                    for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))]
 
-#     p = Vector{Plots.Plot}()
-#     for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))
-#         push!(p, plot( J, c;
-#                         title = titles[i], label = label, legend = label_pos[i],
-#                         xlabel = x_label, ylabel = y_labels[i], plot_settings...))
-#     end
+        pd[:J_Δβ] = plot(subplots...;
+            layout = (2, 3),
+            plot_title = "Propeller Coefficients (Mt = $Mt_ref)",
+        )
+    end
 
-#     return p
+    #sweep J, parametric in Mt
+    if Mt_bounds[1] < Mt_bounds[2] #only if Mt dimension is non-singleton
+        J = range(J_bounds..., length = 50)
+        Mt = range(Mt_bounds..., length = 5)
 
-# end
+        data =[lookup(J, Mt, Δβ_ref) for (J, Mt) in Iterators.product(J, Mt)]
+        (; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p) = data |> StructArray |> StructArrays.components
 
-# #for a singleton Δβ_range, Interpolations.bounds always returns (1,1), so we
-# #cannot retrieve the Δβ value for which the Lookup was generated. therefore, for
-# #this function we require a non-singleton Δβ_range Lookup
-# function plot_M_J(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
+        label = latexstring.("M_{tip} = ".*string.(Mt'))
 
-#     J_bounds, Mt_bounds, Δβ_bounds = bounds(lookup)
-#     @assert Δβ_bounds[1] < Δβ_bounds[2] "Δβ_range must be non-singleton"
+        subplots = [plot(J, c; title = titles[i], label = label, xlabel = L"J", ylabel = y_labels[i], kwargs...)
+                    for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))]
 
-#     @assert Δβ_bounds[1] <= Δβ <= Δβ_bounds[2]
+        pd[:J_Mt] = plot(subplots...;
+            layout = (2, 3),
+            plot_title = "Propeller Coefficients (Δβ = $(rad2deg(Δβ_ref))°)",
+        )
+    end
 
-#     Mt = range(Mt_bounds..., length = 50)
-#     J = range(J_bounds..., length = 5)
+    return pd
+end
 
-#     data = [lookup(J, Mt, Δβ) for (Mt, J) in Iterators.product(Mt, J)]
-#     data = data |> StructArray |> StructArrays.components
 
-#     (; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p) = data
+######################################################
+###################### Piston ########################
 
-#     label = latexstring.("J = ".*string.(J'))
-#     label_pos = [:bottomleft, :topleft, :bottomleft, :bottomleft, :topright, :topleft]
-#     x_label = L"M_{tip}"
-#     y_labels = [L"C_{Fx}", L"C_{Mx}", L"C_{Fz, \alpha}", L"C_{Mz, \alpha}", L"M_{tip}", L"\eta_p"]
-#     titles = ["Traction Coefficient ", "Torque Coefficient", "Off-Axis Force Coefficient Derivative",
-#                 "Off-Axis Moment Coefficient Derivative", "Power Coefficient", "Propulsive Efficiency"] .*
-#                 " (Blade Pitch Offset = $(rad2deg(Δβ))°)"
+using FlightPhysics.Piston
 
-#     p = Vector{Plots.Plot}()
-#     for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))
-#         push!(p, plot(Mt, c;
-#                         title = titles[i], label = label, legend = label_pos[i],
-#                         xlabel = x_label, ylabel = y_labels[i],
-#                         plot_settings...))
-#     end
 
-#     return p
+function Plotting.make_plots(engine::PistonEngine; kwargs...)
+    lookup = engine.lookup
+    pd = OrderedDict{Symbol, Plots.Plot}()
 
-# end
+    n_cont = range(0.0, 1.2, length = 100)
+    μ_cont = range(0.1, 1.0, length = 100)
+    δ_cont = range(1.0, 0.0, length = 100)
 
-# function plot_J_M(lookup::Propellers.Lookup, Δβ::Real = 0.0; plot_settings...)
+    n_param =[0, 0.2, 0.4, 0.6, 0.7, 0.8, 0.9, 1.0]
+    μ_param =[0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    δ_param = [1.0, 0.8, 0.6, 0.4, 0.2, 0]
 
-#     (; J_bounds, Mt_bounds, Δβ_bounds) = lookup._data
 
-#     @assert Δβ_bounds[1] <= Δβ <= Δβ_bounds[2]
+    π_std_1 =[lookup.π_std(n, μ) for n in n_cont, μ in μ_param]
+    p_std_1 = plot(n_cont, π_std_1;
+        title = "Normalized Power (Sea Level, Part Throttle) vs Normalized RPM",
+        xlabel = L"$n$",
+        ylabel = L"$\pi_{std}$",
+        label = latexstring.("\\mu = " .* string.(μ_param')),
+        legend = :topleft,
+        kwargs...
+    )
 
-#     J = range(J_bounds..., length = 100)
-#     Mt = range(Mt_bounds..., length = 5)
+    #Lycoming O-360 Operator's Manual, Fig. 3-21 Left
+    π_std_2 =[lookup.π_std(n, μ) for μ in μ_cont, n in n_param]
+    p_std_2 = plot(μ_cont, π_std_2;
+        title = "Normalized Power (Sea Level, Part Throttle) vs Normalized MAP",
+        xlabel = L"$\mu$",
+        ylabel = L"$\pi_{std}$",
+        label = latexstring.("n = " .* string.(n_param')),
+        legend = :topleft,
+        kwargs...
+    )
 
-#     data = [lookup(J, Mt, Δβ) for (J, Mt) in Iterators.product(J, Mt)]
-#     data = data |> StructArray |> StructArrays.components
+    π_wot_1 =[lookup.π_wot(n, δ) for n in n_cont, δ in δ_param]
+    p_wot_1 = plot(n_cont, π_wot_1;
+        title = "Normalized Power (Altitude, Full Throttle) vs Normalized RPM",
+        xlabel = L"$n$",
+        ylabel = L"$\pi_{wot}$",
+        label = latexstring.("\\delta = " .* string.(δ_param')),
+        legend = :topleft,
+        kwargs...
+    )
 
-#     (; C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p) = data
+    #Lycoming O-360 Operator's Manual, Fig. 3-21 Right
+    π_wot_2 =[lookup.π_wot(n, δ) for δ in δ_cont, n in n_param]
+    p_wot_2 = plot(δ_cont, π_wot_2;
+        title = "Normalized Power (Altitude, Full Throttle) vs Normalized Ambient Pressure",
+        xlabel = L"$\delta$",
+        ylabel = L"$\pi_{wot}$",
+        xflip = true, # Flip X-axis so altitude goes UP to the right
+        label = latexstring.("n = " .* string.(n_param')),
+        legend = :bottomleft,
+        kwargs...
+    )
 
-#     label = latexstring.("M_{tip} = ".*string.(Mt'))
-#     label_pos = [:bottomleft, :topleft, :bottomleft, :bottomleft, :topright, :topleft]
-#     x_label = L"J"
-#     y_labels = [L"C_{Fx}", L"C_{Mx}", L"C_{Fz, \alpha}", L"C_{Mz, \alpha}", L"M_{tip}", L"\eta_p"]
-#     titles = ["Traction Coefficient ", "Torque Coefficient", "Off-Axis Force Coefficient Derivative",
-#                 "Off-Axis Moment Coefficient Derivative", "Power Coefficient", "Propulsive Efficiency"] .*
-#                 " (Blade Pitch Offset = $(rad2deg(Δβ))°)"
+    pd[:performance_map] = plot(p_std_1, p_std_2, p_wot_1, p_wot_2;
+        layout = (2, 2),
+        plot_title = "Engine Maps",
+        kwargs...
+    )
 
-#     p = Vector{Plots.Plot}()
-#     for (i, c) in enumerate((C_Fx, C_Mx, C_Fz_α, C_Mz_α, C_P, η_p))
-#         push!(p, plot(J, c;
-#                         title = titles[i], label = label, legend = label_pos[i],
-#                         xlabel = x_label, ylabel = y_labels[i],
-#                         plot_settings...))
-#     end
-
-#     return p
-
-# end
+    return pd
+end
 
 
 ######################################################

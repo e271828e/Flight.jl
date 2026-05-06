@@ -328,23 +328,4 @@ function test_thruster_response()
 
 end #function
 
-function plot_lookup(; plot_settings...)
-
-    lookup = PistonEngine().lookup
-
-    n_plot = range(0, 1.5, length = 100)
-    δ_plot = range(1, 0, length = 100)
-    @show μ_plot = range(0.1p_std, inHg2Pa(30), length = 10)/p_std
-
-    π_std_plot = [lookup.π_std(n, μ) for (n, μ) in Iterators.product(n_plot, μ_plot)]
-    # plot(μ_plot, π_std_plot'; plot_settings...)
-    plot(n_plot, π_std_plot; plot_settings...)
-
-    # π_wot_plot = [lookup.π_wot(n,p) for (n,p) in Iterators.product(n_plot, δ_plot)]
-    # plot(δ_plot, π_wot_plot'; plot_settings...)
-    # plot(n_plot, π_wot_plot; plot_settings...)
-
-
-end #function
-
 end #module
