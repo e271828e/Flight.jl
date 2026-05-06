@@ -722,8 +722,8 @@ end
 using FlightPhysics.Piston
 
 
-function Plotting.make_plots(engine::PistonEngine; kwargs...)
-    lookup = engine.lookup
+function Plotting.make_plots(lookup::Piston.PistonEngineLookup; kwargs...)
+
     pd = OrderedDict{Symbol, Plots.Plot}()
 
     n_cont = range(0.0, 1.2, length = 100)

@@ -58,7 +58,7 @@ end
 function test_engine_lookup()
     n_stall = 0.15
     n_max = 1.4
-    lookup = Piston.generate_lookup(; n_stall, n_max)
+    lookup = Piston.PistonEngineLookup(n_stall, n_max)
     ω_rated = 2700
     P_rated = 200
 
