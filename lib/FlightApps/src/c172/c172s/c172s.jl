@@ -4,6 +4,7 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays, Reexport
 
 using FlightCore
+using FlightCore.GUI.Essentials
 using FlightPhysics
 
 using ..C172

@@ -2,12 +2,10 @@ module Robot2D
 
 using LinearAlgebra
 using ComponentArrays, StaticArrays, HDF5
-using CImGui: Begin, End, Text, IsItemActive, Checkbox, CollapsingHeader,
-            SameLine, PushItemWidth, PopItemWidth, BeginTable, EndTable,
-            TableNextRow, TableNextColumn, AlignTextToFramePadding, Separator,
-            ImVec2
 
 using FlightCore
+using FlightCore.GUI.Essentials
+using FlightCore.GUI.Essentials.CImGui: Text
 using FlightPhysics
 using FlightPhysics.Control: LQR, PID, LQROutput, PIDOutput, LQRDataPoint
 

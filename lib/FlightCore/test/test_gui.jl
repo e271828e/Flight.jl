@@ -4,6 +4,7 @@ using Test
 using Revise
 
 using FlightCore
+using FlightCore.GUI.Essentials
 
 export test_render_loop, test_gui
 

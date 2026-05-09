@@ -3,19 +3,33 @@ module GUI
 using Reexport
 using StaticArrays
 using Logging
-
-@reexport using CImGui, CImGui.CSyntax, CImGui.CSyntax.CStatic
-@reexport using Printf
-
 using GLFW
 using ModernGL
+using CImGui
 using CImGui.lib
+using Printf
 
 using ..IODevices
 
-export CImGuiStyle, Renderer
-export mode_button, dynamic_button, toggle_switch, display_bar, safe_slider, safe_input
+export Renderer
 export HSV_amber, HSV_gray, HSV_green, HSV_red
+export mode_button, dynamic_button, toggle_switch, display_bar, safe_slider, safe_input
+
+module Essentials
+    using Reexport
+    @reexport using CImGui.CSyntax, CImGui.CSyntax.CStatic #@c, @cstatic
+    @reexport using Printf #@sprintf
+    @reexport using CImGui #enable additional CImGui imports
+    @reexport using CImGui:
+    GetIO, #system
+    Begin, End, #windows & logic
+    TreeNode, TreePop, CollapsingHeader, #trees & menus
+    IsItemActive, IsItemActivated, IsItemClicked, #interaction
+    Text as TextFormatted, TextUnformatted, Bullet, RadioButton, Checkbox, Combo, ProgressBar, PlotLines, #widgets
+    BeginTable, EndTable, TableNextRow, TableNextColumn, TableSetupColumn, TableHeadersRow,#tables
+    SameLine, NewLine, Separator, Dummy, AlignTextToFramePadding, PushItemWidth, PopItemWidth, #layout & formatting
+    GetWindowDrawList, GetWindowSize, GetCursorScreenPos, AddRectFilled, AddLine, AddCircle, AddCircleFilled, ImVec2 #drawing
+end
 
 
 ################################################################################
@@ -74,7 +88,7 @@ function IODevices.init!(renderer::Renderer)
     io.ConfigFlags = unsafe_load(io.ConfigFlags) | CImGui.ImGuiConfigFlags_ViewportsEnable
 
     # When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
-    style = Ptr{ImGuiStyle}(CImGui.GetStyle())
+    style = Ptr{CImGui.lib.ImGuiStyle}(CImGui.GetStyle())
     if unsafe_load(io.ConfigFlags) & ImGuiConfigFlags_ViewportsEnable == ImGuiConfigFlags_ViewportsEnable
         style.WindowRounding = 5.0f0
         col = CImGui.c_get(style.Colors, CImGui.ImGuiCol_WindowBg)

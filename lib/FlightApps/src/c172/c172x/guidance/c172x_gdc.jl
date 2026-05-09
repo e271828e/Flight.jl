@@ -3,12 +3,9 @@ module C172XGuidance
 using LinearAlgebra
 using StructTypes, StaticArrays, EnumX
 
-using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
-    Dummy, SameLine, NewLine, IsItemActive, IsItemActivated, Separator, Text,
-    Bullet, TextUnformatted, Checkbox, Combo, RadioButton, TableNextColumn,
-    TableNextRow, BeginTable, EndTable, TableSetupColumn
-
 using FlightCore
+using FlightCore.GUI.Essentials
+using FlightCore.GUI.Essentials.CImGui: Text
 using FlightPhysics
 
 using ...AircraftBase

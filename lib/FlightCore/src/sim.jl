@@ -6,11 +6,12 @@ using OrdinaryDiffEqCore: step!, reinit!, add_tstop!, get_proposed_dt, init as i
 using OrdinaryDiffEqLowOrderRK: Heun, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
 using Logging
-using CImGui.lib: ImGuiSliderFlags_Logarithmic
+# using CImGui.lib: ImGuiSliderFlags_Logarithmic
 
 using ..Modeling
 using ..IODevices
 using ..GUI
+using ..GUI.Essentials
 
 export Simulation, attach!, init!, step!, run!
 export TimeSeries, get_time, get_data, get_components
@@ -44,11 +45,11 @@ function GUI.draw!(control::SimControl)
         CImGui.IsItemClicked() && (control.paused = !control.paused); CImGui.SameLine()
 
         control.pace = safe_slider("Pace", control.pace, 0.1, 20.0, "%.3f",
-        ImGuiSliderFlags_Logarithmic)
+        CImGui.lib.ImGuiSliderFlags_Logarithmic)
 
         (; algorithm, t_start, t_end, Δt, dt, iter, t, τ) = control
 
-        CImGui.Text("Algorithm: " * algorithm)
+        TextFormatted("Algorithm: " * algorithm)
         CImGui.Text("Continuous step size: $dt")
         CImGui.Text("Periodic update interval: $Δt")
         CImGui.Text("Iterations: $iter")

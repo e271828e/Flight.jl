@@ -3,10 +3,10 @@ module AircraftBase
 using LinearAlgebra, StaticArrays, ComponentArrays
 using FiniteDiff: finite_difference_jacobian! as jacobian!
 using DataStructures: OrderedDict
-using CImGui: Begin, End, BeginTable, EndTable, TableNextColumn, TableNextRow,
-              Text, CollapsingHeader, Separator, SameLine
 
 using FlightCore
+using FlightCore.GUI.Essentials
+using FlightCore.GUI.Essentials.CImGui: Text
 using ..Kinematics
 using ..Dynamics
 using ..Atmosphere

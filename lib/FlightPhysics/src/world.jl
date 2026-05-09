@@ -3,6 +3,7 @@ module World
 using LinearAlgebra, StaticArrays, ComponentArrays
 
 using FlightCore
+using FlightCore.GUI.Essentials
 using ..Atmosphere
 using ..Terrain
 using ..AircraftBase: AircraftBase, Aircraft

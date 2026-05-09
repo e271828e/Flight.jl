@@ -3,6 +3,7 @@ module Control
 using LinearAlgebra, ComponentArrays, StaticArrays, StructArrays, Interpolations, HDF5
 
 using FlightCore
+using FlightCore.GUI.Essentials
 
 ################# Continuous Proportional-Integral Compensator #################
 ################################################################################

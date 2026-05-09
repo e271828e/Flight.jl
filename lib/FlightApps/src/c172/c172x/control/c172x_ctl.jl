@@ -2,11 +2,10 @@ module C172XControl
 
 using LinearAlgebra
 using StaticArrays, ComponentArrays, StructTypes, EnumX
-using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
-    SameLine, IsItemActive, Separator, Text, Checkbox, RadioButton,
-    TableNextColumn, TableNextRow, BeginTable, EndTable
 
 using FlightCore
+using FlightCore.GUI.Essentials
+using FlightCore.GUI.Essentials.CImGui: Text
 using FlightPhysics
 using FlightPhysics.Control: Integrator, IntegratorOutput,
     PID, PIDOutput, LQR, LQROutput, PIDDataLookup, LQRDataLookup,

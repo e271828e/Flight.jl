@@ -3,6 +3,8 @@ module Piston
 using Interpolations, StaticArrays, StructArrays, ComponentArrays, EnumX
 
 using FlightCore
+using FlightCore.GUI.Essentials
+using FlightCore.GUI.Essentials.CImGui: Text
 
 using ..Types
 using ..Geodesy

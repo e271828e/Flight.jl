@@ -5,6 +5,7 @@ using Roots: find_zero
 using Trapz: trapz
 
 using FlightCore
+using FlightCore.GUI.Essentials
 using ..Types
 using ..Kinematics
 using ..Dynamics

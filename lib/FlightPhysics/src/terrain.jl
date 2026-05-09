@@ -1,9 +1,9 @@
 module Terrain
 
 using StaticArrays
-using CImGui: IsItemActive, SameLine, Text, Begin, End, AlignTextToFramePadding
 
 using FlightCore
+using FlightCore.GUI.Essentials
 using ..Geodesy
 
 export AbstractTerrain, NoTerrain, HorizontalTerrain
@@ -53,7 +53,7 @@ function GUI.draw!(mdl::Model{<:HorizontalTerrain},
 
     u = mdl.u
     Begin(label, p_open)
-        AlignTextToFramePadding(); Text("Surface Type"); SameLine()
+        AlignTextToFramePadding(); CImGui.Text("Surface Type"); SameLine()
         mode_button("Dry Tarmac", DryTarmac, DryTarmac, u[]; HSV_requested = HSV_gray)
         IsItemActive() && (u[] = DryTarmac); SameLine()
         mode_button("Wet Tarmac", WetTarmac, WetTarmac, u[]; HSV_requested = HSV_gray)

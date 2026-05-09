@@ -3,6 +3,7 @@ module Atmosphere
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra
 
 using FlightCore
+using FlightCore.GUI.Essentials
 
 using ..Types
 using ..Attitude

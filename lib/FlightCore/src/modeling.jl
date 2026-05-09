@@ -4,8 +4,6 @@ using ComponentArrays
 using DataStructures
 using AbstractTrees
 
-using ..IODevices
-
 export ModelDefinition, Model
 export Subsampled, Conditional, Unconditional
 export f_init!, f_ode!, f_step!, f_periodic!, f_output!

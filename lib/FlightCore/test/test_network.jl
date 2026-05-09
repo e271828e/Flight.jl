@@ -3,6 +3,7 @@ module TestNetwork
 using Test, Logging, StructTypes, JSON3
 
 using FlightCore
+using FlightCore.GUI.Essentials
 
 export test_network
 

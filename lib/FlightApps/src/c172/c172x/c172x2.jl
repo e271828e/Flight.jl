@@ -3,11 +3,8 @@ module C172Xv2
 using LinearAlgebra
 using StaticArrays, ComponentArrays, StructTypes
 
-using CImGui: Begin, End, PushItemWidth, PopItemWidth, AlignTextToFramePadding,
-    Dummy, SameLine, NewLine, IsItemActive, IsItemActivated, Separator, Text,
-    Checkbox, RadioButton, TableNextColumn, TableNextRow, BeginTable, EndTable
-
 using FlightCore
+using FlightCore.GUI.Essentials
 using FlightPhysics
 
 using ...C172
