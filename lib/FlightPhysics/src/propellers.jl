@@ -474,20 +474,20 @@ function GUI.draw(mdl::Model{<:Propeller}, p_open::Ref{Bool} = Ref(true),
 
     (; ω, J, Mt, Δβ, wr_p, hr_p, P, η_p) = mdl.y
 
-    CImGui.Begin(window_label, p_open)
+    BeginWindow(window_label, p_open)
 
-        CImGui.Text(@sprintf("Angular Rate (Propeller/Body): %.7f RPM", radpersec2RPM(ω)))
-        CImGui.Text(@sprintf("Advance Ratio: %.7f", J))
-        CImGui.Text(@sprintf("Blade Tip Mach Number: %.7f", Mt))
-        CImGui.Text(@sprintf("Blade Pitch Offset: %.7f deg", rad2deg(Δβ)))
-        CImGui.Text(@sprintf("Axial Angular Momentum: %.7f kg*(m^2)/s", hr_p[1]))
-        CImGui.Text(@sprintf("Power: %.7f kW", 1e-3*P))
-        CImGui.Text(@sprintf("Propulsive Efficiency: %.7f", η_p))
+        TextFormatted(@sprintf("Angular Rate (Propeller/Body): %.7f RPM", radpersec2RPM(ω)))
+        TextFormatted(@sprintf("Advance Ratio: %.7f", J))
+        TextFormatted(@sprintf("Blade Tip Mach Number: %.7f", Mt))
+        TextFormatted(@sprintf("Blade Pitch Offset: %.7f deg", rad2deg(Δβ)))
+        TextFormatted(@sprintf("Axial Angular Momentum: %.7f kg*(m^2)/s", hr_p[1]))
+        TextFormatted(@sprintf("Power: %.7f kW", 1e-3*P))
+        TextFormatted(@sprintf("Propulsive Efficiency: %.7f", η_p))
         GUI.draw(wr_p.F, "Aerodynamic Force (Op) [Propeller]", "N")
         GUI.draw(wr_p.τ, "Aerodynamic Torque (Op) [Propeller]", "N*m")
         GUI.draw(hr_p, "Axial Angular Momentum [Propeller]", "N*m")
 
-    CImGui.End()
+    EndWindow()
 
 end
 

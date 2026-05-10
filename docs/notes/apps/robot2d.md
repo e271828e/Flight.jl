@@ -24,9 +24,11 @@ The following quantities are known parameters:
 - $J_r$: Rolling body's moment of inertia with respect to $G_r$
 
 The wheels roll without slipping, from which we have the kinematic constraint
+
 $$\dot{\phi} = \dot{\eta} / R$$
 
 The net output torque $\tau_m$ produced by the DC motor is given by the following [model](https://thingsdaq.org/2022/07/05/dc-motor-characterization-1-of-2/):
+
 $$
 \tau_{m} = k_m u_m - b_m \omega_m - J_m \dot{\omega}_m
 $$
@@ -39,6 +41,7 @@ with respect to its casing, and the following are known parameters:
 - $b_m$: Motor's effective damping coefficient
 
 The motor's output torque can also be written as:
+
 $$
 \tau_{m} = \tau_{ss} - J_m \dot{\omega}_m
 $$
@@ -56,22 +59,28 @@ $\theta$ as generalized coordinates, and treating $\tau_m$ as a non-conservative
 exerted by the main body on the rolling body through the DC motor.
 
 The resulting equations of motion are:
+
 $$ (m_b L^2 + J_b)\ddot{\theta} + \left(m_b L \cos\theta\right)\ddot{\eta} = m_b L g \sin\theta - \tau_{m} $$
 
 $$ \left(m_b L \cos\theta \right)\ddot{\theta} + \left(m_b + m_r + \frac{J_r}{R^2}\right)\ddot{\eta} = m_b L \omega^2 \sin\theta + \frac{\tau_{m}}{R} $$
 
 Introducing the motor model:
+
 $$ (m_b L^2 + J_b + J_m)\ddot{\theta} + \left(m_b L \cos\theta - \frac{J_m}{R}\right)\ddot{\eta} = m_b L g \sin\theta - \tau_{ss} $$
 
 $$ \left(m_b L \cos\theta - \frac{J_m}{R}\right)\ddot{\theta} + \left(m_b + m_r + \frac{J_r +
 J_m}{R^2}\right)\ddot{\eta} = m_b L \omega^2 \sin\theta + \frac{\tau_{ss}}{R} $$
 
 For convenience, we define:
+
 $$ M_{11} = m_b L^2 + J_b + J_m $$
+
 $$ M_{22} = m_b + m_r + \frac{J_r + J_m}{R^2} $$
+
 $$ M_{12}(\theta) = m_b L \cos\theta - \frac{J_m}{R} $$
 
 So that:
+
 $$ M_{11} \ddot{\theta} + M_{12}(\theta) \ddot{\eta} = m_b L g \sin\theta - \tau_{ss} $$
 
 $$ M_{12}(\theta) \ddot{\theta} + M_{22} \ddot{\eta} = m_b L \omega^2 \sin\theta + \frac{\tau_{ss}}{R} $$
@@ -87,14 +96,17 @@ $$ \dot{\theta} = \omega $$
 $$ \dot{\eta} = v $$
 
 Or, in matrix form:
+
 $$ \boldsymbol{M}(\boldsymbol{x}) \dot{\boldsymbol{x}} = \boldsymbol{b}(\boldsymbol{x}) $$
 
 $$ \boldsymbol{x} = \begin{bmatrix} \omega \\ v \\ \theta \\ \eta \end{bmatrix} $$
+
 $$ \boldsymbol{M}(\boldsymbol{x}) = \begin{pmatrix} M_{11} & M_{12}(\theta) & 0 & 0 \\ M_{12}(\theta) & M_{22} & 0 & 0 \\ 0 & 0 & 1 & 0 \\ 0 & 0 & 0 & 1 \end{pmatrix} $$
 
 $$ \boldsymbol{b}(\boldsymbol{x}) = \begin{bmatrix} m_b L g \sin\theta - \tau_{ss} \\ m_b L \omega^2 \sin\theta + \frac{\tau_{ss}}{R} \\ \omega \\ v \end{bmatrix} $$
 
 With:
+
 $$
 \tau_{ss} = k_m u - b_m \omega_m = k_m u_m - b_m \left( v / R - \omega \right) \tag{5}
 $$
@@ -104,14 +116,18 @@ To initialize the system, a total of 10 unknowns ($\dot{\omega}$, $\dot{v}$, $\o
 $\dot{\theta}$, $\dot{\eta}$, $\theta$, $\eta$, $u_m$, $\tau_{ss}$) must be determined for $t=0$. We have 5
 equations, so we need to impose 5 constraints.
 
-First, we'd like the vehicle to start with zero angular acceleration and zero linear acceleration. Eliminating $\tau_{ss}$ from $(1)$ and $(2)$ yields: $$ (M_{11} +R M_{12}(\theta))
-\dot{\omega} + (M_{12}(\theta) + R M_{22}) \dot{v} = (m_b L g + m_b L R \omega^2) \sin\theta$$
+First, we'd like the vehicle to start with zero angular acceleration and zero linear acceleration. Eliminating $\tau_{ss}$ from $(1)$ and $(2)$ yields:
+
+$$
+(M_{11} +R M_{12}(\theta)) \dot{\omega} + (M_{12}(\theta) + R M_{22}) \dot{v} = (m_b L g + m_b L R \omega^2) \sin\theta
+$$
 
 This shows that $\dot{\omega}(0) = \dot{v}(0)=0$ requires the chassis to be perfectly vertical ($\theta(0) = 0$ or
 $\theta(0) = \pi$). We'd like the vehicle to be initially upright, so we choose $\theta(0) = 0$.
 
 With $\dot{\omega}(0) = \dot{v}(0) = \theta(0) = 0$, $(1)$ yields $\tau_{ss}(0) = 0$.  Then, if we choose an
 arbitrary $u_m(0) = u_{m0}$, linear velocity can be found from $(5)$ as:
+
 $$
 v = R \left(\frac{k_m u_{m0}}{b_m} + \omega_0\right)
 $$

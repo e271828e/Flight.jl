@@ -52,7 +52,7 @@ Key features:
 ## Documentation
 
 Documentation is still in its infancy. Please check out the [tutorials](https://e271828e.github.io/Flight.jl/dev/tutorials/tutorial01/tutorial01/)
-for a first glance at the package's capabilities. If you're in a hurry, you can try the self-contained examples below.
+and the examples below for a first glance at the package's capabilities.
 
 ## Installation
 
@@ -73,7 +73,7 @@ using Flight
     world = SimpleWorld(; aircraft = Cessna172Xv2()) |> Model
     sim = Simulation(world; t_end = 600)
 
-    #initialize using default trim conditions
+    #initialize Simulation from default trim parameters
     init!(sim, C172.TrimParameters())
 
 #3. Set wind conditions
@@ -123,58 +123,93 @@ using Plots, LaTeXStrings
 
 #1. Set up and run nonlinear simulation
 
-        #instantiate the aircraft with NED kinematics (required for linearization)
-        world = SimpleWorld(aircraft = Cessna172Sv0(NED())) |> Model
-        sim = Simulation(world; t_end = 10)
+    #instantiate the aircraft with NED kinematics (required for linearization)
+    world = SimpleWorld(aircraft = Cessna172Sv0(NED())) |> Model
+    sim = Simulation(world; t_end = 10)
 
-        #define trim conditions and initialize Simulation
-        trim_params = C172.TrimParameters()
-        init!(sim, trim_params)
+    #define trim conditions and initialize Simulation
+    trim_params = C172.TrimParameters()
+    init!(sim, trim_params)
 
-        #advance 1 second from trim condition
-        step!(sim, 1, true)
+    #advance 1 second from trim condition
+    step!(sim, 1, true)
 
-        #apply 10% elevator increment
-        world.aircraft.vehicle.systems.act.u.elevator += 0.1
+    #apply 10% elevator increment
+    world.aircraft.vehicle.systems.act.u.elevator += 0.1
 
-        #run to completion
-        run!(sim)
+    #run to completion
+    run!(sim)
 
-        #extract pitch angle TimeSeries from simulation results
-        ts = TimeSeries(sim)
-        θ_nonlinear = ts.aircraft.vehicle.kinematics.e_nb.θ
+    #extract pitch angle TimeSeries from simulation results
+    ts = TimeSeries(sim)
+    θ_nonlinear = ts.aircraft.vehicle.kinematics.e_nb.θ
 
-    #2. Obtain linear SISO system
+#2. Obtain linear SISO system
 
-        #extract aircraft submodel and linearize it around the trim condition
-        lss = linearize(world.aircraft, trim_params)
+    #extract aircraft submodel and linearize it around the trim condition
+    lss = linearize(world.aircraft, trim_params)
 
-        #convert to NamedStateSpace
-        nss = named_ss(lss)
+    #convert to NamedStateSpace
+    nss = named_ss(lss)
 
-        #extract elevator-to-pitch angle SISO system
-        e2θ = nss[:θ, :elevator]
+    #extract elevator-to-pitch angle SISO system
+    e2θ = nss[:θ, :elevator]
 
-    #3. Compute linear response to elevator step input
+#3. Compute linear response to elevator step input
 
-        #simulate a 0.1 step input applied at t=1
-        y, t, _, _ = lsim(e2θ, (x, t)->[0.1]*(t>=1), 0:0.01:10)
+    #simulate a 0.1 step input applied at t=1
+    y, t, _, _ = lsim(e2θ, (x, t)->[0.1]*(t>=1), 0:0.01:10)
 
-        #get perturbation Δθ around trim condition
-        Δθ_linear = vec(y)
+    #get perturbation Δθ around trim condition
+    Δθ_linear = vec(y)
 
-        #retrieve trim θ value from linearized aircraft model
-        θ_trim = lss.y0[:θ]
+    #retrieve trim θ value from linearized aircraft model
+    θ_trim = lss.y0[:θ]
 
-        #compute total linear θ response
-        θ_linear = θ_trim .+ Δθ_linear
+    #compute total linear θ response
+    θ_linear = θ_trim .+ Δθ_linear
 
-    #4. Compare responses
+#4. Compare responses
 
-        plot(θ_nonlinear; plot_title = "Pitch Angle", label = "Nonlinear", ylabel=L"$\theta \ (rad)$") |> display
-        plot!(t, θ_linear; label = "Linear")
+    plot(θ_nonlinear; plot_title = "Pitch Angle", label = "Nonlinear", ylabel=L"$\theta \ (rad)$") |> display
+    plot!(t, θ_linear; label = "Linear")
 ```
 ![Elevator step responses](/assets/elevator_step_response.png?raw=true)
+
+Interactive self-balancing robot simulation:
+```julia
+using Pkg
+Pkg.add(["Plots", "LaTeXStrings"])
+
+using Flight
+using Plots, LaTeXStrings
+
+#1. Set up simulation
+
+    #the complete Robot model combines the continuous vehicle dynamics and a discrete controller
+    mdl = Model(Robot2D.Robot())
+
+    #specify integration step sizes for continuous and discrete dynamics
+    sim = Simulation(mdl; t_end = 100, dt = 0.01, Δt = 0.02)
+
+    #use default Model initialization
+    init!(sim)
+
+#2. Run simulation in interactive mode
+
+    #this should open the interactive GUI window, closing it aborts the Simulation
+    run!(sim; gui = true)
+    
+#3. Retrieve and inspect results
+
+    #extract simulation data
+    ts = TimeSeries(sim)
+    
+    #compare velocity command and response 
+    plot(ts.controller.v_ref; plot_title = "Velocity", label = "Command", ylabel=L"$v \ (m / s)$") |> display
+    plot!(ts.vehicle.v; label = "Response")
+```
+![Interactive robot sim](/assets/robot2d_sim.png?raw=true)
 
 ## License
 

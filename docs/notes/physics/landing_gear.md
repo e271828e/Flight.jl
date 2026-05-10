@@ -40,15 +40,15 @@ We define a maximum force $F_{max}$ such that if $F(\xi, \dot{\xi}) > F_{max}$, 
 
 We start by computing the position of $O_{w0} = O_w(\xi = 0)$, that is, the wheel's endpoint when the strut is at its natural length:
 
-$$ r_{O_eO_{w0}}^e = r_{O_eO_b}^e + r_{O_bO_s}^e + r_{O_sO_{w0}}^e $$
+$$r_{O_eO_{w0}}^e = r_{O_eO_b}^e + r_{O_bO_s}^e + r_{O_sO_{w0}}^e$$
 
 Where:
 
 $$R^e_s = R^e_b R^b_s$$
 
-$$ r_{O_bO_s}^e = R^e_b r_{O_bO_s}^b $$
+$$r_{O_bO_s}^e = R^e_b r_{O_bO_s}^b$$
 
-$$ r_{O_sO_{w0}}^e = R^e_s r_{O_sO_{w0}}^s = R^e_s {\begin{pmatrix} 0 & 0 & l_0 \end{pmatrix}}^T = R^e_s e_3 l_0 =  k^e_s l_0 $$
+$$r_{O_sO_{w0}}^e = R^e_s r_{O_sO_{w0}}^s = R^e_s {\begin{pmatrix} 0 & 0 & l_0 \end{pmatrix}}^T = R^e_s e_3 l_0 =  k^e_s l_0$$
 
 Then we construct the local ground tangent plane. We define it as follows:
 - Its origin $O_t$ is the projection of $O_{w0}$ onto the terrain along the local vertical. Therefore, the geographic 2D location of $O_t$, given by its n-Vector $n^e(O_t)$, is simply that of $O_{w0}$. The altitude $h(O_t)$ is obtained by querying the terrain model at $n^e(O_t)$. From $n^e(O_t)$ and $h(O_t)$ we compute the Cartesian position $r_{O_eO_t}^e$.
@@ -56,35 +56,36 @@ Then we construct the local ground tangent plane. We define it as follows:
 
 In order to avoid unnecessary computations when the aircraft is too far from the ground for contact to be even potentially possible, we first compute $h(O_{w0})$ and check the condition:
 
-$$ h(O_{w0}) - h(O_t) < \Delta h_{max} $$
+$$h(O_{w0}) - h(O_t) < \Delta h_{max}$$
 
 Where $\Delta h_{max}$ is a suitable chosen threshold. If this doesn't hold, we are done. Otherwise, we continue with the exact ground contact test.
 
 The equation satisfied by a point $P$ contained in the local ground tangent plane is:
 
-$$ (u_t^e)^T r_{O_tP}^e  = (u_t^e)^T (r_{O_eP}^e - r_{O_eO_t}^e) = 0 $$
+$$(u_t^e)^T r_{O_tP}^e  = (u_t^e)^T (r_{O_eP}^e - r_{O_eO_t}^e) = 0$$
 
 Now, we find $l$ by imposing that $O_c$ be contained in this plane:
 
-$$ (u_t^e)^T r_{O_tO_c}^e = 0 $$
+$$(u_t^e)^T r_{O_tO_c}^e = 0$$
 
 With:
 
-$$ r_{O_tO_c}^e = r_{O_tO_s}^e + r_{O_sO_c}^e $$
+$$r_{O_tO_c}^e = r_{O_tO_s}^e + r_{O_sO_c}^e$$
 
-$$ r_{O_sO_c}^e = R^e_s r_{O_sO_c}^s = R^e_s {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T = R^e_s e_3 l=  k^e_s l $$
+$$r_{O_sO_c}^e = R^e_s r_{O_sO_c}^s = R^e_s {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T = R^e_s e_3 l=  k^e_s l$$
 
-$$ r_{O_tO_s}^e = r_{O_eO_s}^e - r_{O_eO_t}^e = r_{O_eO_b}^e + r_{O_bO_s}^e - r_{O_eO_t}^e $$
+$$r_{O_tO_s}^e = r_{O_eO_s}^e - r_{O_eO_t}^e = r_{O_eO_b}^e + r_{O_bO_s}^e - r_{O_eO_t}^e$$
 
 With this:
 
-$$ (u_t^e)^T (r_{O_tO_s}^e + k^e_s l) = 0 $$
+$$(u_t^e)^T (r_{O_tO_s}^e + k^e_s l) = 0$$
 
-$$ l = - \dfrac{(u_t^e)^T r_{O_tO_s}^e}{(u_t^e)^T k^e_s }  $$
+$$l = - \dfrac{(u_t^e)^T r_{O_tO_s}^e}{(u_t^e)^T k^e_s }$$
 
 If $\Delta l = l - l_0 \geq 0$, there is no contact and we are done. Otherwise, $\xi = \Delta l$ and we proceed.
 
 Note that if the aircraft is inverted above the ground, imposing the above constraint will result in a large negative $l$ without physical validity (the wheel would crash through the airframe to attach itself to the ground). In order to avoid such situations, to declare ground contact we also require that the projection of $z_s$ onto the terrain (inward pointing) normal $u_t$ be positive, that is:
+
 $$
 (k_s^e)^T u_t^e > 0
 $$
@@ -108,14 +109,19 @@ normal $k_t$, and then normalizing:
 $$i_c^n = \dfrac{i_w^n - (i_w^n \cdot k_t^n) k_t^n}{\left|i_w^n - (i_w^n \cdot k_t^n) k_t^n\right|}$$
 
 The $z_c$ axis is parallel to $k_t$, and $y_c$ can be constructed from $z_c$ and $x_c$:
+
 $$k_c^n = k_t^n$$
+
 $$j_c^n = k_c^n \times i_c^n$$
 
 Then:
+
 $$R^n_c = {\begin{bmatrix} i_c^n & k_c^n & k_c^n \end{bmatrix}}$$
+
 $$R^b_c = (R^n_b)^T R^n_c$$
 
 The position of $O_c$ is given by:
+
 $${r}_{O_sO_c}^s = {\begin{pmatrix} 0 & 0 & l \end{pmatrix}}^T$$
 
 $$r_{O_bO_c}^b = r_{O_bO_s}^b + R^b_s r_{O_sO_c}^s$$
@@ -161,11 +167,11 @@ $${v}_{eO_c}^c = {v}_{eO_c(b)}^c + R^c_s e_3 \dot{\xi} = {v}_{eO_c(b)}^c + k^c_s
 
 The non-penetration constraint requires that:
 
-$$e_3^T {v}_{eO_c}^c = 0 = e_3^T {v}_{eO_c(b)}^c + e_3^T k^c_s \dot{\xi} = {v}_{eO_c(b)}^c[3] + \dot{\xi} k^c_s[3] $$
+$$e_3^T {v}_{eO_c}^c = 0 = e_3^T {v}_{eO_c(b)}^c + e_3^T k^c_s \dot{\xi} = {v}_{eO_c(b)}^c[3] + \dot{\xi} k^c_s[3]$$
 
 From which:
 
-$$\dot{\xi} = \dfrac{-{v}_{eO_c(b)}^c [3]}{k^c_s[3]} $$
+$$\dot{\xi} = \dfrac{-{v}_{eO_c(b)}^c [3]}{k^c_s[3]}$$
 
 Once $\dot{\xi}$ is known, we can compute:
 
@@ -235,6 +241,7 @@ $$\mu_{y(max)}:= \mu_{y(max)} \, \min \left( 1, \mu_{skid} / \mu_{mag} \right)$$
 ### $\mu$ Scaling
 
 In our friction model, the force exerted by the ground on the tire at the contact point is given by:
+
 $$F_{gnd,P}^c = F_N \begin{pmatrix} \mu_x & \mu_y & -1 \end{pmatrix}$$
 
 Where $F_N \ge 0$ is the magnitude of the force along the outward terrain normal, and $\mu_x$ and $\mu_y$ are signed friction coefficients.
@@ -346,22 +353,26 @@ $$e_3^T R^s_c F_{gnd,P}^c(F_N) + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = m \ddot{\xi}
 
 Then we have the following scalar equation:
 
-$$e_3^T R^s_c
+$$
+e_3^T R^s_c
 \begin{pmatrix}
 \mu_x \alpha_x \\
 \mu_y \alpha_y \\
 -1
 \end{pmatrix}
-F_N + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = 0$$
+F_N + F_{oleo,P}^{z_s}(\xi, \dot{\xi}) = 0
+$$
 
 Let us define the non-dimensional contact force as:
 
-$$f_{gnd,P}^c =
+$$
+f_{gnd,P}^c =
 \begin{pmatrix}
 \mu_x \alpha_x \\
 \mu_y \alpha_y \\
 -1
-\end{pmatrix} $$
+\end{pmatrix}
+$$
 
 We can then write the previous equation as:
 

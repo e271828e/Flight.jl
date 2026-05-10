@@ -150,8 +150,8 @@ end
 function GUI.draw!(mdl::Model{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Cessna 172 Fly-By-Wire Actuation")
 
-    CImGui.Begin(label, p_open)
-    CImGui.PushItemWidth(-60)
+    BeginWindow(label, p_open)
+    PushItemWidth(-60)
 
     labels = uppercasefirst.(string.(keys(mdl.submodels)))
     inputs = map(ss->ss.u, values(mdl.submodels))
@@ -177,10 +177,10 @@ function GUI.draw!(mdl::Model{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true)
 
             foreach(labels, inputs, commands, positions, buffers, offsets) do label, input, command, position, buffer, offset
 
-                if CImGui.CollapsingHeader(label)
+                if CollapsingHeader(label)
                     input[] = safe_slider("$label Command", input[], "%.6f")
-                    CImGui.Text("$label Command"); CImGui.SameLine(200); display_bar("", command)
-                    CImGui.Text("$label Position"); CImGui.SameLine(200); display_bar("", position)
+                    TextFormatted("$label Command"); SameLine(200); display_bar("", command)
+                    TextFormatted("$label Position"); SameLine(200); display_bar("", position)
                     buffer[offset[]+1] = Cfloat(position)
                     offset[] = (offset[]+1) % length(buffer)
                     CImGui.PlotLines("##$label Position", buffer, length(buffer), offset[], "$label Position",
@@ -191,8 +191,8 @@ function GUI.draw!(mdl::Model{FlyByWireActuation}, p_open::Ref{Bool} = Ref(true)
 
         end)
 
-    CImGui.PopItemWidth()
-    CImGui.End()
+    PopItemWidth()
+    EndWindow()
 
 end
 

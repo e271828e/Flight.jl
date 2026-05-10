@@ -74,8 +74,8 @@ end
 function GUI.draw(mdl::Model{DirectSteering})
 
     (; engaged, input) = mdl.y
-    CImGui.Text("Engaged: $engaged")
-    CImGui.Text("Steering Input: $(Float64(input))")
+    TextFormatted("Engaged: $engaged")
+    TextFormatted("Steering Input: $(Float64(input))")
 end
 
 
@@ -121,8 +121,8 @@ get_braking_factor(mdl::Model{DirectBraking}) = mdl.y.κ_br
 
 function GUI.draw(mdl::Model{DirectBraking})
 
-    CImGui.Text("Braking Input: $(Float64(mdl.u[]))")
-    CImGui.Text("Braking Coefficient: $(mdl.y.κ_br)")
+    TextFormatted("Braking Input: $(Float64(mdl.u[]))")
+    TextFormatted("Braking Coefficient: $(mdl.y.κ_br)")
 
 end
 
@@ -352,22 +352,22 @@ function GUI.draw(mdl::Model{<:Strut}, window_label::String = "Strut")
 
     (; Δh, wow, ξ, ξ_dot, F_dmp_zs, ψ_sw, v_ec_xy, trn_data) = mdl.y
 
-        CImGui.Text(@sprintf("Height Above Ground: %.7f m", Δh))
-        CImGui.Text("Weight on Wheel: $wow")
-        CImGui.Text(@sprintf("Damper Elongation: %.7f m", ξ))
-        CImGui.Text(@sprintf("Damper Elongation Rate: %.7f m/s", ξ_dot))
-        CImGui.Text(@sprintf("Axial Damper Force: %.7f N", F_dmp_zs))
-        CImGui.Text(@sprintf("Wheel Steering Angle: %.7f deg", rad2deg(ψ_sw)))
+        TextFormatted(@sprintf("Height Above Ground: %.7f m", Δh))
+        TextFormatted("Weight on Wheel: $wow")
+        TextFormatted(@sprintf("Damper Elongation: %.7f m", ξ))
+        TextFormatted(@sprintf("Damper Elongation Rate: %.7f m/s", ξ_dot))
+        TextFormatted(@sprintf("Axial Damper Force: %.7f N", F_dmp_zs))
+        TextFormatted(@sprintf("Wheel Steering Angle: %.7f deg", rad2deg(ψ_sw)))
         GUI.draw(v_ec_xy, "Contact Point Velocity (Oc / ECEF) [Contact]", "m/s")
 
-        if CImGui.TreeNode("Terrain Data")
+        if TreeNode("Terrain Data")
 
             (; elevation, normal, surface) = trn_data
-            CImGui.Text(@sprintf("Elevation (Orthometric): %.7f m", Float64(elevation)))
-            CImGui.Text("Surface Type: $surface")
+            TextFormatted(@sprintf("Elevation (Orthometric): %.7f m", Float64(elevation)))
+            TextFormatted("Surface Type: $surface")
             GUI.draw(normal, "Surface Normal [NED]")
 
-            CImGui.TreePop()
+            TreePop()
         end
 
 end
@@ -488,18 +488,18 @@ function GUI.draw(mdl::Model{<:Contact}, window_label::String = "Contact")
     (; μ_roll, μ_skid, μ_max, κ_br, ψ_cv, μ_eff, f_c, F_c, wr_b) = mdl.y
     frc = mdl.frc
 
-        CImGui.Text(@sprintf("Rolling Friction Coefficient: %.7f", μ_roll))
-        CImGui.Text(@sprintf("Skidding Friction Coefficient: %.7f", μ_skid))
-        CImGui.Text(@sprintf("Braking Factor: %.7f", κ_br))
-        CImGui.Text(@sprintf("Tire Slip Angle: %.7f deg", rad2deg(ψ_cv)))
+        TextFormatted(@sprintf("Rolling Friction Coefficient: %.7f", μ_roll))
+        TextFormatted(@sprintf("Skidding Friction Coefficient: %.7f", μ_skid))
+        TextFormatted(@sprintf("Braking Factor: %.7f", κ_br))
+        TextFormatted(@sprintf("Tire Slip Angle: %.7f deg", rad2deg(ψ_cv)))
         GUI.draw(μ_max, "Maximum Friction Coefficient")
         GUI.draw(μ_eff, "Effective Friction Coefficient")
         GUI.draw(f_c, "Normalized Contact Force [Contact]")
         GUI.draw(F_c, "Contact Force [Contact]", "N")
 
-        if CImGui.TreeNode("Friction Regulator")
+        if TreeNode("Friction Regulator")
             GUI.draw(frc, window_label)
-            CImGui.TreePop()
+            TreePop()
         end
 
 end
@@ -556,24 +556,24 @@ Dynamics.get_wr_b(mdl::Model{<:LandingGearUnit}) = mdl.y.contact.wr_b
 function GUI.draw(mdl::Model{<:LandingGearUnit}, p_open::Ref{Bool} = Ref(true),
                  window_label::String = "Landing Gear Unit")
 
-    CImGui.Begin(window_label, p_open)
-        if CImGui.TreeNode("Strut")
+    BeginWindow(window_label, p_open)
+        if TreeNode("Strut")
             GUI.draw(mdl.strut)
-            CImGui.TreePop()
+            TreePop()
         end
-        if CImGui.TreeNode("Steering")
+        if TreeNode("Steering")
             GUI.draw(mdl.steering)
-            CImGui.TreePop()
+            TreePop()
         end
-        if CImGui.TreeNode("Braking")
+        if TreeNode("Braking")
             GUI.draw(mdl.braking)
-            CImGui.TreePop()
+            TreePop()
         end
-        if CImGui.TreeNode("Contact")
+        if TreeNode("Contact")
             GUI.draw(mdl.contact)
-            CImGui.TreePop()
+            TreePop()
         end
-    CImGui.End()
+    EndWindow()
 
 end
 

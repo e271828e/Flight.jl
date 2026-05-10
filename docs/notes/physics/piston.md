@@ -75,6 +75,7 @@ $$\dfrac{P(n,MAP,\delta,T)}{P(n,MAP,\delta,T_{ISA})} \propto
 \dfrac{\delta \sqrt{\dfrac{T_{ISA}}{T}}}{\delta \sqrt{\dfrac{T_{ISA}}{T_{ISA}}}} = \sqrt{\dfrac{T_{ISA}}{T}}$$
 
 All power values in Figure 3-21 are valid for $T_{ISA}$, and therefore so will be the result of any calculation using it. The actual $P(n,MAP,\delta,T)$ for an arbitrary $T$ is then computed as
+
 $$P(\omega,MAP,\delta,T) = P_{ISA}(\omega,MAP,\delta)\sqrt{\dfrac{T_{ISA}}{T}}$$
 
 Where

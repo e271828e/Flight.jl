@@ -545,7 +545,7 @@ function GUI.draw!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
     q = ω_wb_b[2]
     clm = -v_eb_n[3]
 
-    if BeginTable("LonCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp)#| CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+    if BeginTable("LonCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp)
         TableNextRow()
         TableNextColumn()
         Text("Mode")
@@ -673,7 +673,7 @@ function GUI.draw!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
 
     Separator()
 
-    if BeginTable("Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
+    if BeginTable("Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)
         TableNextRow()
         TableNextColumn()
         TableNextColumn()
@@ -714,16 +714,16 @@ function GUI.draw!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
 end
 
 function draw_internals(lon::Model{<:ControlLawsLon}, p_open::Ref{Bool}=Ref(true))
-    CImGui.Begin("Longitudinal Control", p_open)
+    BeginWindow("Longitudinal Control", p_open)
     Text("Sampling Period: $(lon.Δt)")
     Text("Mode: $(lon.y.mode)")
     foreach(keys(lon.submodels), values(lon.submodels)) do label, ss
-        if CImGui.TreeNode(string(label))
+        if TreeNode(string(label))
             GUI.draw(ss)
-            CImGui.TreePop()
+            TreePop()
         end
     end
-    CImGui.End()
+    EndWindow()
 end
 
 
@@ -1061,7 +1061,7 @@ function GUI.draw!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
 
     p = ω_wb_b[1]
 
-    if BeginTable("LatCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+    if BeginTable("LatCtlModes", 3, CImGui.ImGuiTableFlags_SizingStretchProp)
         TableNextRow()
         TableNextColumn()
         Text("Mode")
@@ -1155,7 +1155,7 @@ function GUI.draw!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
 
     Separator()
 
-    if BeginTable("Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)# | CImGui.ImGuiTableFlags_BordersInner)
+    if BeginTable("Actuator Data", 5, CImGui.ImGuiTableFlags_SizingStretchSame)
         TableNextRow()
         TableNextColumn()
         TableNextColumn()
@@ -1195,16 +1195,16 @@ function GUI.draw!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
 end
 
 function draw_internals(lat::Model{<:ControlLawsLat}, p_open::Ref{Bool}=Ref(true))
-    CImGui.Begin("Lateral Control", p_open)
+    BeginWindow("Lateral Control", p_open)
     Text("Sampling Period: $(lat.Δt)")
     Text("Mode: $(lat.y.mode)")
     foreach(keys(lat.submodels), values(lat.submodels)) do label, ss
-        if CImGui.TreeNode(string(label))
+        if TreeNode(string(label))
             GUI.draw(ss)
-            CImGui.TreePop()
+            TreePop()
         end
     end
-    CImGui.End()
+    EndWindow()
 end
 
 
@@ -1254,11 +1254,11 @@ end
 
 function GUI.draw!(ctl::Model{<:ControlLaws}, vehicle::Model{<:Vehicle},
     p_open::Ref{Bool}=Ref(true); window::Bool=true)
-    CImGui.Begin("Cessna172X Control Laws", p_open)
-    CImGui.CollapsingHeader("Longitudinal Control") && GUI.draw!(ctl.lon, vehicle)
-    CImGui.CollapsingHeader("Lateral Control") && GUI.draw!(ctl.lat, vehicle)
-    CImGui.CollapsingHeader("Flight Data") && GUI.draw(vehicle.y)
-    CImGui.End()
+    BeginWindow("Cessna172X Control Laws", p_open)
+    CollapsingHeader("Longitudinal Control") && GUI.draw!(ctl.lon, vehicle)
+    CollapsingHeader("Lateral Control") && GUI.draw!(ctl.lat, vehicle)
+    CollapsingHeader("Flight Data") && GUI.draw(vehicle.y)
+    EndWindow()
 end
 
 

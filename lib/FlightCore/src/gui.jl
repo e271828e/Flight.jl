@@ -14,14 +14,13 @@ using ..IODevices
 @reexport using CImGui.CSyntax, CImGui.CSyntax.CStatic #@c, @cstatic
 @reexport using CImGui:
     CImGui, #enable additional CImGui imports
-    GetIO, #system
-    Begin as WindowBegin, End as WindowEnd, #windows & logic
+    Begin as BeginWindow, End as EndWindow, #windows & logic
     TreeNode, TreePop, CollapsingHeader, #trees & menus
     IsItemActive, IsItemActivated, IsItemClicked, #interaction
-    Text as TextFormatted, TextUnformatted, Bullet, RadioButton, Checkbox, Combo, ProgressBar, PlotLines, #widgets
+    Text as TextFormatted, TextUnformatted, Bullet, RadioButton, Button, Checkbox, Combo, ProgressBar, PlotLines, #widgets
     BeginTable, EndTable, TableNextRow, TableNextColumn, TableSetupColumn, TableHeadersRow,#tables
     SameLine, NewLine, Separator, AlignTextToFramePadding, PushItemWidth, PopItemWidth, #layout & formatting
-    GetWindowDrawList, GetWindowSize, GetCursorScreenPos, AddRectFilled, AddLine, AddCircle, AddCircleFilled, ImVec2 #drawing
+    ImVec2, GetWindowDrawList, GetWindowSize, GetCursorScreenPos, AddLine, AddCircle, AddCircleFilled, AddRectFilled #drawing
 
 export Renderer
 export HSV_amber, HSV_gray, HSV_green, HSV_red
@@ -241,15 +240,15 @@ function draw(v::AbstractVector{<:Real}, label::String, units::String = "")
     N = length(v)
     clabels = (N <= 3 ? ("X", "Y", "Z") : Tuple(1:N))
 
-    if CImGui.TreeNode(label)
+    if TreeNode(label)
         for i in 1:N
-            CImGui.Text("$(clabels[i]): ")
-            CImGui.SameLine()
-            CImGui.Text(@sprintf("%.7f", v[i]))
-            CImGui.SameLine()
-            CImGui.Text(units)
+            TextFormatted("$(clabels[i]): ")
+            SameLine()
+            TextFormatted(@sprintf("%.7f", v[i]))
+            SameLine()
+            TextFormatted(units)
         end
-        CImGui.TreePop()
+        TreePop()
     end
 
 end
@@ -265,7 +264,7 @@ const HSV_red = (0.0, 0.7, 0.7)
 
 function show_help_marker(desc::String)
     CImGui.TextDisabled("(?)")
-    if CImGui.IsItemHovered()
+    if IsItemHovered()
         CImGui.BeginTooltip()
         CImGui.PushTextWrapPos(CImGui.GetFontSize() * 35.0)
         CImGui.TextUnformatted(desc)
@@ -280,9 +279,9 @@ function toggle_switch(label::String, hue::AbstractFloat, enabled::Bool)
     else
         CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(hue, 0.2, 0.2))
     end
-    CImGui.Button(label)
+    Button(label)
     CImGui.PopStyleColor(1)
-    enable = CImGui.IsItemActive()
+    enable = IsItemActive()
     return enable
 end
 
@@ -297,7 +296,7 @@ function dynamic_button(label::String,
     CImGui.PushStyleColor(CImGui.ImGuiCol_Button, CImGui.HSV(idle_HSV_bnd...))
     CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonHovered, CImGui.HSV(hover_HSV_bnd...))
     CImGui.PushStyleColor(CImGui.ImGuiCol_ButtonActive, CImGui.HSV(push_HSV_bnd...))
-    CImGui.Button(label)
+    Button(label)
     CImGui.PopStyleColor(3)
     return nothing
 end
@@ -334,9 +333,9 @@ function mode_button(label::String,
 end
 
 function display_bar(label::String, current_value::Real, lower_bound::Real, upper_bound::Real, size_arg = (0, 0))
-    CImGui.Text(label)
-    CImGui.SameLine()
-    CImGui.ProgressBar((current_value - lower_bound)/(upper_bound - lower_bound), size_arg, "$current_value")
+    TextFormatted(label)
+    SameLine()
+    ProgressBar((current_value - lower_bound)/(upper_bound - lower_bound), size_arg, "$current_value")
 end
 
 #the string after ## is not shown, but is part of the widget's ID, which must be
@@ -345,7 +344,7 @@ end
 function safe_slider(label::String, current_value::AbstractFloat, args...)
     ref = Ref(Cfloat(current_value))
     CImGui.SliderFloat(label, ref, args...)
-    # CImGui.SameLine()
+    # SameLine()
     # show_help_marker("Ctrl+Click for keyboard input")
     return ref[]
 end

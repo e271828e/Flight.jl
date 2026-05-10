@@ -484,7 +484,7 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
     (; u, y) = mdl
     (; idle, frc) = mdl
 
-    CImGui.Begin(window_label, p_open)
+    BeginWindow(window_label, p_open)
 
     if CollapsingHeader("Control")
         # mode_button("Engine Start", true, y.state === EngineState.starting, y.state === EngineState.running)
@@ -513,20 +513,20 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
         (; start, stop, state, throttle, MAP, mixture_ctl, mixture, mixture_pos,
             f, ṁ, ω, τ_shaft, P_shaft, SFC) = y
 
-        CImGui.Text("Start: $start")
-        CImGui.Text("Stop: $stop")
-        CImGui.Text("State: $state")
-        CImGui.Text(@sprintf("Throttle: %.3f", throttle))
-        CImGui.Text(@sprintf("Manifold Pressure: %.3f Pa", MAP))
-        CImGui.Text("Mixture Control: $mixture_ctl")
-        CImGui.Text(@sprintf("Mixture Setting: %.3f", mixture))
-        CImGui.Text(@sprintf("Mixture Valve Position: %.3f", mixture_pos))
-        CImGui.Text(@sprintf("Fuel to Air Ratio: %.3f", f))
-        CImGui.Text(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3))
-        CImGui.Text(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
-        CImGui.Text(@sprintf("Shaft Torque: %.3f N*m", τ_shaft))
-        CImGui.Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
-        CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
+        TextFormatted("Start: $start")
+        TextFormatted("Stop: $stop")
+        TextFormatted("State: $state")
+        TextFormatted(@sprintf("Throttle: %.3f", throttle))
+        TextFormatted(@sprintf("Manifold Pressure: %.3f Pa", MAP))
+        TextFormatted("Mixture Control: $mixture_ctl")
+        TextFormatted(@sprintf("Mixture Setting: %.3f", mixture))
+        TextFormatted(@sprintf("Mixture Valve Position: %.3f", mixture_pos))
+        TextFormatted(@sprintf("Fuel to Air Ratio: %.3f", f))
+        TextFormatted(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3))
+        TextFormatted(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
+        TextFormatted(@sprintf("Shaft Torque: %.3f N*m", τ_shaft))
+        TextFormatted(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
+        TextFormatted(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
 
         if TreeNode("Idle RPM Controller")
             GUI.draw(idle, window_label)
@@ -540,7 +540,7 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
 
     end
 
-    CImGui.End()
+    EndWindow()
 
 end
 
@@ -613,14 +613,14 @@ Dynamics.get_hr_b(mdl::Model{<:PistonThruster}) = get_hr_b(mdl.propeller)
 function GUI.draw(mdl::Model{<:PistonThruster}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Thruster")
 
-    CImGui.Begin(window_label, p_open)
+    BeginWindow(window_label, p_open)
         @cstatic c_eng=false c_prop=false begin
-            @c CImGui.Checkbox("Engine", &c_eng)
-            @c CImGui.Checkbox("Propeller", &c_prop)
+            @c Checkbox("Engine", &c_eng)
+            @c Checkbox("Propeller", &c_prop)
             c_eng && @c GUI.draw(mdl.engine, &c_eng)
             c_prop && @c GUI.draw(mdl.propeller, &c_prop)
         end
-    CImGui.End()
+    EndWindow()
 
 end
 

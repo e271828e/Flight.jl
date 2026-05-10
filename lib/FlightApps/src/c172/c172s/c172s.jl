@@ -126,9 +126,9 @@ function GUI.draw!(mdl::Model{<:MechanicalActuation}, p_open::Ref{Bool} = Ref(tr
 
     u = mdl.u
 
-    CImGui.Begin(label, p_open)
+    BeginWindow(label, p_open)
 
-    CImGui.PushItemWidth(-150)
+    PushItemWidth(-150)
 
     u.aileron = safe_slider("Aileron", u.aileron, "%.6f")
     u.elevator = safe_slider("Elevator", u.elevator, "%.6f")
@@ -140,9 +140,9 @@ function GUI.draw!(mdl::Model{<:MechanicalActuation}, p_open::Ref{Bool} = Ref(tr
     u.brake_left = safe_slider("Left Brake", u.brake_left, "%.6f")
     u.brake_right = safe_slider("Right Brake", u.brake_right, "%.6f")
 
-    CImGui.PopItemWidth()
+    PopItemWidth()
 
-    CImGui.End()
+    EndWindow()
 
 end
 

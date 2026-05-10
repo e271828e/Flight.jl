@@ -98,7 +98,7 @@ function GUI.draw!(mdl::Model{<:Vehicle}, p_open::Ref{Bool} = Ref(true))
     (; ω, v, θ, η) = y
     (; R, L) = parameters
 
-    CImGui.Begin("Vehicle", p_open)
+    BeginWindow("Vehicle", p_open)
 
     if BeginTable("Text Data", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
 
@@ -139,16 +139,16 @@ function GUI.draw!(mdl::Model{<:Vehicle}, p_open::Ref{Bool} = Ref(true))
     end
 
     # 1. Define canvas dimensions and reserve space
-    window_sz = CImGui.GetWindowSize()
-    canvas_p0 = CImGui.GetCursorScreenPos() #Top-left of drawing area
+    window_sz = GetWindowSize()
+    canvas_p0 = GetCursorScreenPos() #Top-left of drawing area
     canvas_sz = ImVec2(0.95window_sz.x, 0.8window_sz.x)
     CImGui.Dummy(canvas_sz) #Reserve space in the layout
 
     # 2. Get the DrawList for the current window
-    draw_list = CImGui.GetWindowDrawList()
+    draw_list = GetWindowDrawList()
 
     # 3. Calculate geometry
-    # Colors (ABGR packed format for ImGui: 0xAABBGGRR)
+    # colors (ABGR packed format for ImGui: 0xAABBGGRR)
     col_bg     = 0xFF202020 # Dark Gray Background
     col_wheel  = 0xFFFFFFFF # White
     col_chassis= 0xFF00FFFF # Yellow
@@ -179,27 +179,25 @@ function GUI.draw!(mdl::Model{<:Vehicle}, p_open::Ref{Bool} = Ref(true))
     wy = cy - R_px * cos(φ)
 
     # 4. Draw commands
-    # Background rectangle
-    CImGui.AddRectFilled(draw_list, canvas_p0,
-        ImVec2(canvas_p0.x + canvas_sz.x, canvas_p0.y + canvas_sz.y), col_bg)
+    # background
+    AddRectFilled(draw_list, canvas_p0, ImVec2(canvas_p0.x + canvas_sz.x, canvas_p0.y + canvas_sz.y), col_bg)
 
-    # Ground
-    CImGui.AddLine(draw_list, ImVec2(canvas_p0.x, cy + R_px),
-        ImVec2(canvas_p0.x + canvas_sz.x, cy + R_px), col_ground, 2.0)
+    # ground
+    AddLine(draw_list, ImVec2(canvas_p0.x, cy + R_px), ImVec2(canvas_p0.x + canvas_sz.x, cy + R_px), col_ground, 2.0)
 
-    # Wheel Body
-    CImGui.AddCircle(draw_list, ImVec2(cx, cy), R_px, col_wheel, 36, 2.0)
+    # wheel body
+    AddCircle(draw_list, ImVec2(cx, cy), R_px, col_wheel, 36, 2.0)
 
-    # Wheel Radius
-    CImGui.AddLine(draw_list, ImVec2(cx, cy), ImVec2(wx, wy), col_spoke, 2.0)
+    # wheel radius
+    AddLine(draw_list, ImVec2(cx, cy), ImVec2(wx, wy), col_spoke, 2.0)
 
     # Chassis
-    CImGui.AddLine(draw_list, ImVec2(cx, cy), ImVec2(ex, ey), col_chassis, 8.0)
+    AddLine(draw_list, ImVec2(cx, cy), ImVec2(ex, ey), col_chassis, 8.0)
 
     # CoM (Small Circle at tip)
-    CImGui.AddCircleFilled(draw_list, ImVec2(gx, gy), 3.0, col_com)
+    AddCircleFilled(draw_list, ImVec2(gx, gy), 3.0, col_com)
 
-    CImGui.End()
+    EndWindow()
 
 end
 
@@ -459,7 +457,7 @@ function GUI.draw!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle}, p_open::
     (; v, η, u_m) = vehicle.y
 
 
-    CImGui.Begin("Controller", p_open)
+    BeginWindow("Controller", p_open)
     if BeginTable("Controller", 3, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
 
         TableNextRow()
@@ -517,7 +515,7 @@ function GUI.draw!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle}, p_open::
         CollapsingHeader("Position Controller") && GUI.draw(η2v)
     end
 
-    CImGui.End()
+    EndWindow()
 
 end
 
@@ -573,14 +571,14 @@ function GUI.draw!(mdl::Model{<:Robot}, p_open::Ref{Bool} = Ref(true))
 
     (; vehicle, controller) = mdl
 
-    CImGui.Begin("Robot", p_open)
+    BeginWindow("Robot", p_open)
     @cstatic c_veh=false c_ctl=false begin
         @c Checkbox("Vehicle", &c_veh)
         c_veh && @c GUI.draw!(vehicle, &c_veh)
         @c Checkbox("Controller", &c_ctl)
         c_ctl && @c GUI.draw!(controller, vehicle, &c_ctl)
     end
-    CImGui.End()
+    EndWindow()
 
 end
 

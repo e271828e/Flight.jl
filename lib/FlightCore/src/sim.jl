@@ -6,7 +6,6 @@ using OrdinaryDiffEqCore: step!, reinit!, add_tstop!, get_proposed_dt, init as i
 using OrdinaryDiffEqLowOrderRK: Heun, RK4
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
 using Logging
-# using CImGui.lib: ImGuiSliderFlags_Logarithmic
 
 using ..Modeling
 using ..IODevices
@@ -38,10 +37,10 @@ end
 
 function GUI.draw!(control::SimControl)
 
-    CImGui.Begin("Simulation Control")
+    BeginWindow("Simulation Control")
 
         mode_button("Pause", true, false, control.paused; HSV_active = HSV_amber)
-        CImGui.IsItemClicked() && (control.paused = !control.paused); CImGui.SameLine()
+        IsItemClicked() && (control.paused = !control.paused); SameLine()
 
         control.pace = safe_slider("Pace", control.pace, 0.1, 20.0, "%.3f",
         CImGui.lib.ImGuiSliderFlags_Logarithmic)
@@ -49,17 +48,17 @@ function GUI.draw!(control::SimControl)
         (; algorithm, t_start, t_end, Δt, dt, iter, t, τ) = control
 
         TextFormatted("Algorithm: " * algorithm)
-        CImGui.Text("Continuous step size: $dt")
-        CImGui.Text("Periodic update interval: $Δt")
-        CImGui.Text("Iterations: $iter")
-        CImGui.Text(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
-        CImGui.Text(@sprintf("Wall-clock time: %.3f s", τ))
-        CImGui.Text(@sprintf("GUI framerate: %.3f ms/frame (%.1f FPS)",
+        TextFormatted("Continuous step size: $dt")
+        TextFormatted("Periodic update interval: $Δt")
+        TextFormatted("Iterations: $iter")
+        TextFormatted(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
+        TextFormatted(@sprintf("Wall-clock time: %.3f s", τ))
+        TextFormatted(@sprintf("GUI framerate: %.3f ms/frame (%.1f FPS)",
                             1000 / unsafe_load(CImGui.GetIO().Framerate),
                             unsafe_load(CImGui.GetIO().Framerate)))
 
 
-    CImGui.End()
+    EndWindow()
 
 end
 

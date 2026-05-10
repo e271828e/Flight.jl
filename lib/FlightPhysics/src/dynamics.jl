@@ -533,20 +533,20 @@ function GUI.draw(mp::MassProperties,
 
     m = mp.m; r_bc_b = mp.r_OG
 
-    if CImGui.TreeNode(label)
-        CImGui.Text(@sprintf("Mass: %.3f kg", m))
+    if TreeNode(label)
+        TextFormatted(@sprintf("Mass: %.3f kg", m))
         GUI.draw(r_bc_b, "CoM Position", "m")
 
-        if CImGui.TreeNode("Inertia Tensor")
-            CImGui.Text(@sprintf("XX: %.3f kg*m2", mp.J[1,1]))
-            CImGui.Text(@sprintf("YY: %.3f kg*m2", mp.J[2,2]))
-            CImGui.Text(@sprintf("ZZ: %.3f kg*m2", mp.J[3,3]))
-            CImGui.Text(@sprintf("XY: %.3f kg*m2", mp.J[1,2]))
-            CImGui.Text(@sprintf("XZ: %.3f kg*m2", mp.J[1,3]))
-            CImGui.Text(@sprintf("YZ: %.3f kg*m2", mp.J[2,3]))
-            CImGui.TreePop()
+        if TreeNode("Inertia Tensor")
+            TextFormatted(@sprintf("XX: %.3f kg*m2", mp.J[1,1]))
+            TextFormatted(@sprintf("YY: %.3f kg*m2", mp.J[2,2]))
+            TextFormatted(@sprintf("ZZ: %.3f kg*m2", mp.J[3,3]))
+            TextFormatted(@sprintf("XY: %.3f kg*m2", mp.J[1,2]))
+            TextFormatted(@sprintf("XZ: %.3f kg*m2", mp.J[1,3]))
+            TextFormatted(@sprintf("YZ: %.3f kg*m2", mp.J[2,3]))
+            TreePop()
         end
-        CImGui.TreePop()
+        TreePop()
     end
 
 end
@@ -554,10 +554,10 @@ end
 function GUI.draw(wr::Wrench, label::String)
 
     (; F, τ) = wr
-    if CImGui.TreeNode(label)
+    if TreeNode(label)
         GUI.draw(F, "Force", "N")
         GUI.draw(τ, "Torque", "N*m")
-        CImGui.TreePop()
+        TreePop()
     end
 
 end
@@ -570,7 +570,7 @@ function GUI.draw(dyn::DynamicsData, p_open::Ref{Bool} = Ref(true),
     (; wr_Σ_c, wr_Σ_b, mp_Σ_c, mp_Σ_b, ho_Σ_b,
         a_ec_c, a_ic_c, g_c_c, γ_c_c, f_c_c, ω̇_eb_b, α_ib_b, a_eb_b, a_ib_b) = dyn
 
-    CImGui.Begin(label, p_open)
+    BeginWindow(label, p_open)
 
         GUI.draw(mp_Σ_b, "Mass Properties (Body)")
         GUI.draw(mp_Σ_c, "Mass Properties (CoM)")
@@ -587,7 +587,7 @@ function GUI.draw(dyn::DynamicsData, p_open::Ref{Bool} = Ref(true),
         GUI.draw(γ_c_c, "Gravitational Attraction (CoM) [CoM Axes]", "m/s^2")
         GUI.draw(f_c_c/g₀, "Specific Force (CoM) [CoM Axes]", "g")
 
-    CImGui.End()
+    EndWindow()
 
 end
 

@@ -52,16 +52,16 @@ function GUI.draw!(mdl::Model{<:HorizontalTerrain},
                     label::String = "Horizontal Terrain")
 
     u = mdl.u
-    CImGui.Begin(label, p_open)
-        AlignTextToFramePadding(); CImGui.Text("Surface Type"); SameLine()
+    BeginWindow(label, p_open)
+        AlignTextToFramePadding(); TextFormatted("Surface Type"); SameLine()
         mode_button("Dry Tarmac", DryTarmac, DryTarmac, u[]; HSV_requested = HSV_gray)
         IsItemActive() && (u[] = DryTarmac); SameLine()
         mode_button("Wet Tarmac", WetTarmac, WetTarmac, u[]; HSV_requested = HSV_gray)
         IsItemActive() && (u[] = WetTarmac); SameLine()
         mode_button("Icy Tarmac", IcyTarmac, IcyTarmac, u[]; HSV_requested = HSV_gray)
         IsItemActive() && (u[] = IcyTarmac)
-        CImGui.Text("Elevation (MSL): $(Float64(mdl.elevation)) m")
-    CImGui.End()
+        TextFormatted("Elevation (MSL): $(Float64(mdl.elevation)) m")
+    EndWindow()
 end
 
 end #module

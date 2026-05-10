@@ -151,12 +151,12 @@ function GUI.draw(seg::Segment)
 
     (; p1, p2) = seg
 
-    if BeginTable("OriginEnd", 4, CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersH)
+    if BeginTable("OriginEnd", 4, CImGui.ImGuiTableFlags_Resizable)
         TableSetupColumn("");
         TableSetupColumn("Latitude (deg)");
         TableSetupColumn("Longitude (deg)");
         TableSetupColumn("Ellipsoidal Altitude (m)");
-        CImGui.TableHeadersRow()
+        TableHeadersRow()
         TableNextRow()
             TableNextColumn(); Text("Origin")
             TableNextColumn(); Text(@sprintf("%.6f deg", rad2deg(p1.loc.ϕ)))
@@ -176,12 +176,12 @@ function GUI.draw(data::SegmentGuidanceData)
 
     (; χ_12, γ_12, s_12, s_1b, e_sb, v_sb, h_s) = data
 
-    if BeginTable("GuidanceData", 3, CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersH)
+    if BeginTable("GuidanceData", 3, CImGui.ImGuiTableFlags_Resizable)
         # TableSetupColumn("");
         TableSetupColumn("Azimuth (deg)");
         TableSetupColumn("Inclination (deg)");
         TableSetupColumn("Local Ellipsoidal Altitude (m)");
-        CImGui.TableHeadersRow()
+        TableHeadersRow()
         TableNextRow()
             # TableNextColumn()
             TableNextColumn(); Text(@sprintf("%.6f deg", rad2deg(χ_12)))
@@ -190,11 +190,11 @@ function GUI.draw(data::SegmentGuidanceData)
         EndTable()
     end
     AlignTextToFramePadding(); TextUnformatted("Along-track distance"); SameLine(200);
-    CImGui.ProgressBar(max(s_1b/s_12, 0.0), (0, 0), @sprintf("%.3f / %.3f m", s_1b, s_12))
+    ProgressBar(max(s_1b/s_12, 0.0), (0, 0), @sprintf("%.3f / %.3f m", s_1b, s_12))
     AlignTextToFramePadding(); TextUnformatted("Cross-track error"); SameLine(200);
-    CImGui.ProgressBar(max(0.5 + e_sb/1000, 0.0), (0, 0), @sprintf("%.3f m", e_sb))
+    ProgressBar(max(0.5 + e_sb/1000, 0.0), (0, 0), @sprintf("%.3f m", e_sb))
     AlignTextToFramePadding(); TextUnformatted("Vertical error"); SameLine(200);
-    CImGui.ProgressBar(max(0.5 + v_sb/100, 0.0), (0, 0), @sprintf("%.3f m", v_sb))
+    ProgressBar(max(0.5 + v_sb/100, 0.0), (0, 0), @sprintf("%.3f m", v_sb))
 
 end
 
@@ -333,7 +333,7 @@ function GUI.draw!(mdl::Model{<:GuidanceLaws},
 
     (; u, y) = mdl
 
-    CImGui.Begin("Cessna172X Guidance", p_open)
+    BeginWindow("Cessna172X Guidance", p_open)
 
     AlignTextToFramePadding(); Text("Guidance Mode"); SameLine()
     mode_button("Direct", ModeGuidance.direct, u.mode_req, y.mode); SameLine()
@@ -352,13 +352,13 @@ function GUI.draw!(mdl::Model{<:GuidanceLaws},
     end
 
     Separator()
-    CImGui.CollapsingHeader("Segment Guidance") && GUI.draw!(mdl.seg, vehicle)
-    # CImGui.CollapsingHeader("Circular Guidance") && GUI.draw!(mdl.crc, vehicle)
+    CollapsingHeader("Segment Guidance") && GUI.draw!(mdl.seg, vehicle)
+    # CollapsingHeader("Circular Guidance") && GUI.draw!(mdl.crc, vehicle)
     # GUI.draw!(mdl.seg, vehicle)
     # mdl.y.mode === ModeGuidance.segment && GUI.draw!(mdl.seg, vehicle)
     mdl.y.mode === ModeGuidance.circular && GUI.draw!(mdl.crc, vehicle)
 
-    CImGui.End()
+    EndWindow()
 
 end
 
@@ -378,7 +378,7 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
         s_12 = 1e4,
     begin #cstatic block
 
-    if BeginTable("Segment Builder", 2) #, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+    if BeginTable("Segment Builder", 2)
 
         TableNextRow()
             TableNextColumn()
@@ -390,7 +390,7 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
 
         TableNextRow()
             TableNextColumn();
-            if BeginTable("Build From", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+            if BeginTable("Build From", 2, CImGui.ImGuiTableFlags_SizingStretchProp)
                 TableNextRow()
                     TableNextColumn(); AlignTextToFramePadding(); TextUnformatted("Latitude (deg)")
                     TableNextColumn()
@@ -416,7 +416,7 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
 
             TableNextColumn();
             if spec_to == 0 #coordinates
-                if BeginTable("To Coordinates", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+                if BeginTable("To Coordinates", 2, CImGui.ImGuiTableFlags_SizingStretchProp)
                     TableNextRow()
                         TableNextColumn(); AlignTextToFramePadding(); TextUnformatted("Latitude (deg)")
                         TableNextColumn()
@@ -439,7 +439,7 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
                     p2 = Geographic(LatLon(ϕ2, λ2), HEllip(h2))
                 end #table
             elseif spec_to == 1 #vector
-                if BeginTable("To NED Coordinates", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
+                if BeginTable("To NED Coordinates", 2, CImGui.ImGuiTableFlags_SizingStretchProp)
                     TableNextRow()
                         TableNextColumn(); AlignTextToFramePadding(); TextUnformatted("Azimuth (deg)")
                         TableNextColumn()
@@ -465,7 +465,7 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
         EndTable()
     end #table
 
-    CImGui.Button("Set Target"); SameLine()
+    Button("Set Target"); SameLine()
     if IsItemActivated()
         try
             spec_to == 0 && (u.target = Segment(p1, p2))
@@ -493,20 +493,6 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
     Text(@sprintf("Intercept angle: %.3f deg", rad2deg(Δχ)))
     Text(@sprintf("Course angle reference: %.3f deg", rad2deg(χ_ref)))
     Text(@sprintf("Altitude reference: %.3f m", Float64(h_ref)))
-
-    # if BeginTable("Guidance Data & Commands", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
-    #     TableSetupColumn("Guidance Data");
-    #     TableSetupColumn("Guidance Commands");
-    #     CImGui.TableHeadersRow()
-    #     TableNextRow()
-    #         TableNextColumn()
-    #         Bullet(); Text("Horizontal guidance active: $hor_gdc")
-    #         Bullet(); Text("Vertical guidance active: $vrt_gdc")
-    #         Bullet(); Text(@sprintf("Intercept angle: %.3f deg", rad2deg(Δχ)))
-    #         Bullet(); Text(@sprintf("Course angle reference: %.3f deg", rad2deg(χ_ref)))
-    #         Bullet(); Text(@sprintf("Altitude reference: %.3f m", Float64(h_ref)))
-    #     EndTable()
-    # end #table
 
 
 end

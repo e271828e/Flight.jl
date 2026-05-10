@@ -88,10 +88,10 @@ function GUI.draw!(mdl::Model{<:TunableSeaLevel},
                     label::String = "Sea Level Conditions")
 
     u = mdl.u
-    CImGui.PushItemWidth(-50)
+    PushItemWidth(-50)
         u.T = GUI.safe_slider("T (K)", u.T, "%.3f")
         u.p = GUI.safe_slider("p (Pa)", u.p, "%.3f")
-    CImGui.PopItemWidth()
+    PopItemWidth()
 end
 
 ############################## ISA Computation #################################
@@ -170,11 +170,11 @@ function GUI.draw!(mdl::Model{<:TunableWind},
 
     u = mdl.u
 
-    CImGui.PushItemWidth(-80)
+    PushItemWidth(-80)
         u.N = GUI.safe_slider("North (m/s)", u.N, -30, 30, "%.3f")
         u.E = GUI.safe_slider("East (m/s)", u.E, -30, 30, "%.3f")
         u.D = GUI.safe_slider("Down (m/s)", u.D, -30, 30, "%.3f")
-    CImGui.PopItemWidth()
+    PopItemWidth()
 
     GUI.draw(mdl, label)
 
@@ -286,14 +286,14 @@ function GUI.draw!(mdl::Model{<:SimpleAtmosphere},
                     p_open::Ref{Bool} = Ref(true),
                     label::String = "Simple Atmosphere")
 
-    CImGui.Begin(label, p_open)
-        if CImGui.CollapsingHeader("Sea-Level Conditions")
+    BeginWindow(label, p_open)
+        if CollapsingHeader("Sea-Level Conditions")
             GUI.draw!(mdl.sl)
         end
-        if CImGui.CollapsingHeader("Wind")
+        if CollapsingHeader("Wind")
             GUI.draw!(mdl.wind)
         end
-    CImGui.End()
+    EndWindow()
 
 end
 
@@ -363,29 +363,29 @@ function GUI.draw(air::AirData, p_open::Ref{Bool} = Ref(true),
 
     (; v_ew_n, v_ew_b, v_wb_b, T, p, ρ, a, μ, M, Tt, pt, Δp, q, TAS, EAS, CAS) = air
 
-    CImGui.Begin(label, p_open)
+    BeginWindow(label, p_open)
 
     GUI.draw(v_ew_n, "Velocity (Wind/ECEF) [NED]", "m/s")
     GUI.draw(v_ew_b, "Velocity (Wind/ECEF) [Body]", "m/s")
     GUI.draw(v_wb_b, "Velocity (Body/Wind) [Body]", "m/s")
 
-    CImGui.Text(@sprintf("Static Temperature: %.3f K", T))
-    CImGui.Text(@sprintf("Total Temperature: %.3f K", Tt))
-    CImGui.Text(@sprintf("Static Pressure: %.3f Pa", p))
-    CImGui.Text(@sprintf("Total Pressure: %.3f Pa", pt))
-    CImGui.Text(@sprintf("Impact Pressure: %.3f Pa", Δp))
-    CImGui.Text(@sprintf("Dynamic Pressure: %.3f Pa", q))
-    CImGui.Text(@sprintf("Density: %.3f kg/m3", ρ))
-    CImGui.Text(@sprintf("Speed of Sound: %.3f m/s", a))
-    CImGui.Text(@sprintf("Mach: %.3f", M))
-    CImGui.Text(@sprintf("CAS: %.3f m/s", CAS))
-    CImGui.Text(@sprintf("EAS: %.3f m/s", EAS))
-    CImGui.Text(@sprintf("TAS: %.3f m/s", TAS))
-    CImGui.Text(@sprintf("CAS: %.3f kts", SI2kts(CAS)))
-    CImGui.Text(@sprintf("EAS: %.3f kts", SI2kts(EAS)))
-    CImGui.Text(@sprintf("TAS: %.3f kts", SI2kts(TAS)))
+    TextFormatted(@sprintf("Static Temperature: %.3f K", T))
+    TextFormatted(@sprintf("Total Temperature: %.3f K", Tt))
+    TextFormatted(@sprintf("Static Pressure: %.3f Pa", p))
+    TextFormatted(@sprintf("Total Pressure: %.3f Pa", pt))
+    TextFormatted(@sprintf("Impact Pressure: %.3f Pa", Δp))
+    TextFormatted(@sprintf("Dynamic Pressure: %.3f Pa", q))
+    TextFormatted(@sprintf("Density: %.3f kg/m3", ρ))
+    TextFormatted(@sprintf("Speed of Sound: %.3f m/s", a))
+    TextFormatted(@sprintf("Mach: %.3f", M))
+    TextFormatted(@sprintf("CAS: %.3f m/s", CAS))
+    TextFormatted(@sprintf("EAS: %.3f m/s", EAS))
+    TextFormatted(@sprintf("TAS: %.3f m/s", TAS))
+    TextFormatted(@sprintf("CAS: %.3f kts", SI2kts(CAS)))
+    TextFormatted(@sprintf("EAS: %.3f kts", SI2kts(EAS)))
+    TextFormatted(@sprintf("TAS: %.3f kts", SI2kts(TAS)))
 
-    CImGui.End()
+    EndWindow()
 
 end
 

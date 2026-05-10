@@ -68,16 +68,16 @@ end
 function GUI.draw!(avionics::Model{<:Avionics}, vehicle::Model{<:Vehicle},
                     p_open::Ref{Bool} = Ref(true))
 
-    CImGui.Begin("Cessna172Xv2 Avionics", p_open)
+    BeginWindow("Cessna172Xv2 Avionics", p_open)
 
     @cstatic c_gdc=false c_ctl=false begin
-        @c CImGui.Checkbox("Guidance", &c_gdc)
+        @c Checkbox("Guidance", &c_gdc)
         c_gdc && @c GUI.draw!(avionics.gdc, avionics.ctl, vehicle, &c_gdc)
-        @c CImGui.Checkbox("Control", &c_ctl)
+        @c Checkbox("Control", &c_ctl)
         c_ctl && @c GUI.draw!(avionics.ctl, vehicle, &c_ctl)
     end
 
-    CImGui.End()
+    EndWindow()
 
 end
 

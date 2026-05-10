@@ -395,34 +395,34 @@ function GUI.draw(mdl::Model{<:Aero}, p_open::Ref{Bool} = Ref(true),
     (; e, a, r, f, α, β, α_filt, β_filt, stall, coeffs, wr_b) = mdl.y
     (; C_D, C_Y, C_L, C_l, C_m, C_n) = coeffs
 
-    CImGui.Begin(window_label, p_open)
+    BeginWindow(window_label, p_open)
 
-        CImGui.Text(@sprintf("Elevator Input: %.7f", e))
-        CImGui.Text(@sprintf("Aileron Input: %.7f", a))
-        CImGui.Text(@sprintf("Rudder Input: %.7f", r))
-        CImGui.Text(@sprintf("Flap Setting: %.7f", f))
-        CImGui.Text(@sprintf("AoA [Aero]: %.7f deg", rad2deg(α)))
-        CImGui.Text(@sprintf("Filtered AoA [Aero]: %.7f deg", rad2deg(α_filt)))
-        CImGui.Text(@sprintf("AoS [Aero]: %.7f deg", rad2deg(β)))
-        CImGui.Text(@sprintf("Filtered AoS [Aero]: %.7f deg", rad2deg(β_filt)))
-        CImGui.Text("Stall Status: $stall")
+        TextFormatted(@sprintf("Elevator Input: %.7f", e))
+        TextFormatted(@sprintf("Aileron Input: %.7f", a))
+        TextFormatted(@sprintf("Rudder Input: %.7f", r))
+        TextFormatted(@sprintf("Flap Setting: %.7f", f))
+        TextFormatted(@sprintf("AoA [Aero]: %.7f deg", rad2deg(α)))
+        TextFormatted(@sprintf("Filtered AoA [Aero]: %.7f deg", rad2deg(α_filt)))
+        TextFormatted(@sprintf("AoS [Aero]: %.7f deg", rad2deg(β)))
+        TextFormatted(@sprintf("Filtered AoS [Aero]: %.7f deg", rad2deg(β_filt)))
+        TextFormatted("Stall Status: $stall")
 
-        if CImGui.TreeNode("Aerodynamic Coefficients")
+        if TreeNode("Aerodynamic Coefficients")
 
-            CImGui.Text(@sprintf("C_D: %.7f", C_D))
-            CImGui.Text(@sprintf("C_Y: %.7f", C_Y))
-            CImGui.Text(@sprintf("C_L: %.7f", C_L))
-            CImGui.Text(@sprintf("C_l: %.7f", C_l))
-            CImGui.Text(@sprintf("C_m: %.7f", C_m))
-            CImGui.Text(@sprintf("C_n: %.7f", C_n))
+            TextFormatted(@sprintf("C_D: %.7f", C_D))
+            TextFormatted(@sprintf("C_Y: %.7f", C_Y))
+            TextFormatted(@sprintf("C_L: %.7f", C_L))
+            TextFormatted(@sprintf("C_l: %.7f", C_l))
+            TextFormatted(@sprintf("C_m: %.7f", C_m))
+            TextFormatted(@sprintf("C_n: %.7f", C_n))
 
-            CImGui.TreePop()
+            TreePop()
         end
 
         GUI.draw(wr_b.F, "Aerodynamic Force (O) [Body]", "N")
         GUI.draw(wr_b.τ, "Aerodynamic Torque (O) [Body]", "N*m")
 
-    CImGui.End()
+    EndWindow()
 
 end
 
@@ -490,18 +490,18 @@ function GUI.draw(mdl::Model{<:Ldg}, p_open::Ref{Bool} = Ref(true),
 
     (; left, right, nose) = mdl
 
-    CImGui.Begin(window_label, p_open)
+    BeginWindow(window_label, p_open)
 
         @cstatic(c_left=false, c_right=false, c_nose = false, begin
-            @c CImGui.Checkbox("Left Main", &c_left)
-            @c CImGui.Checkbox("Right Main", &c_right)
-            @c CImGui.Checkbox("Nose", &c_nose)
+            @c Checkbox("Left Main", &c_left)
+            @c Checkbox("Right Main", &c_right)
+            @c Checkbox("Nose", &c_nose)
             c_left && @c GUI.draw(left, &c_left, "Left Landing Gear Unit")
             c_right && @c GUI.draw(right, &c_right, "Right Landing Gear Unit")
             c_nose && @c GUI.draw(nose, &c_nose, "Nose Landing Gear Unit")
         end)
 
-    CImGui.End()
+    EndWindow()
 
 end
 
@@ -562,9 +562,9 @@ function GUI.draw!(mdl::Model{<:Payload},
 
     u = mdl.u
 
-    CImGui.Begin(label, p_open)
+    BeginWindow(label, p_open)
 
-    CImGui.PushItemWidth(-250)
+    PushItemWidth(-250)
 
     u.m_pilot = GUI.safe_slider("Pilot Mass (kg)", u.m_pilot, "%.3f")
     u.m_copilot = GUI.safe_slider("Copilot Mass (kg)", u.m_copilot, "%.3f")
@@ -572,9 +572,9 @@ function GUI.draw!(mdl::Model{<:Payload},
     u.m_rpass = GUI.safe_slider("Right Passenger Mass (kg)", u.m_rpass, "%.3f")
     u.m_baggage = GUI.safe_slider("Baggage Mass (kg)", u.m_baggage, "%.3f")
 
-    CImGui.PopItemWidth()
+    PopItemWidth()
 
-    CImGui.End()
+    EndWindow()
 
 end
 
@@ -643,12 +643,12 @@ function GUI.draw(mdl::Model{Fuel}, p_open::Ref{Bool} = Ref(true),
 
     (; m_total, m_avail) = mdl.y
 
-    CImGui.Begin(window_label, p_open)
+    BeginWindow(window_label, p_open)
 
-        CImGui.Text(@sprintf("Total Fuel: %.6f kg", m_total))
-        CImGui.Text(@sprintf("Available Fuel: %.6f kg", m_avail))
+        TextFormatted(@sprintf("Total Fuel: %.6f kg", m_total))
+        TextFormatted(@sprintf("Available Fuel: %.6f kg", m_avail))
 
-    CImGui.End()
+    EndWindow()
 
 end
 
@@ -730,16 +730,16 @@ function GUI.draw!( systems::Model{<:Systems}, ::Model{<:AbstractAvionics},
 
     (; act, pwp, ldg, aero, fuel, pld) = systems
 
-    CImGui.Begin(label, p_open)
+    BeginWindow(label, p_open)
 
         @cstatic(c_act=false, c_aero=false, c_ldg=false, c_pwp=false, c_fuel=false, c_pld=false,
         begin
-            @c CImGui.Checkbox("Actuation", &c_act)
-            @c CImGui.Checkbox("Aerodynamics", &c_aero)
-            @c CImGui.Checkbox("Landing Gear", &c_ldg)
-            @c CImGui.Checkbox("Power Plant", &c_pwp)
-            @c CImGui.Checkbox("Fuel", &c_fuel)
-            @c CImGui.Checkbox("Payload", &c_pld)
+            @c Checkbox("Actuation", &c_act)
+            @c Checkbox("Aerodynamics", &c_aero)
+            @c Checkbox("Landing Gear", &c_ldg)
+            @c Checkbox("Power Plant", &c_pwp)
+            @c Checkbox("Fuel", &c_fuel)
+            @c Checkbox("Payload", &c_pld)
             c_act && @c GUI.draw!(act, &c_act)
             c_aero && @c GUI.draw(aero, &c_aero)
             c_ldg && @c GUI.draw(ldg, &c_ldg)
@@ -748,7 +748,7 @@ function GUI.draw!( systems::Model{<:Systems}, ::Model{<:AbstractAvionics},
             c_pld && @c GUI.draw!(pld, &c_pld)
         end)
 
-    CImGui.End()
+    EndWindow()
 
 end
 

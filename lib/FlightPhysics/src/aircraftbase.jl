@@ -350,16 +350,16 @@ function GUI.draw!(aircraft::Model{<:Aircraft}, p_open::Ref{Bool} = Ref(true),
                     label::String = "Aircraft")
 
     (; vehicle, avionics) = aircraft
-    CImGui.Begin(label, p_open)
+    BeginWindow(label, p_open)
 
     @cstatic c_veh=false c_avs=false begin
-        @c CImGui.Checkbox("Vehicle", &c_veh)
+        @c Checkbox("Vehicle", &c_veh)
         c_veh && @c GUI.draw!(vehicle, avionics, &c_veh)
-        @c CImGui.Checkbox("Avionics", &c_avs)
+        @c Checkbox("Avionics", &c_avs)
         c_avs && @c GUI.draw!(avionics, vehicle, &c_avs)
     end
 
-    CImGui.End()
+    EndWindow()
 
 end
 
@@ -371,21 +371,21 @@ function GUI.draw!(vehicle::Model{<:Vehicle},
     (; systems) = vehicle.submodels
     (; kinematics, dynamics, airflow) = vehicle.y
 
-    CImGui.Begin("Vehicle", p_open)
+    BeginWindow("Vehicle", p_open)
 
     @cstatic(c_afm=false, c_kin =false, c_dyn=false, c_air=false,
     begin
-            @c CImGui.Checkbox("Systems", &c_afm)
-            @c CImGui.Checkbox("Kinematics", &c_kin)
-            @c CImGui.Checkbox("Dynamics", &c_dyn)
-            @c CImGui.Checkbox("Airflow", &c_air)
+            @c Checkbox("Systems", &c_afm)
+            @c Checkbox("Kinematics", &c_kin)
+            @c Checkbox("Dynamics", &c_dyn)
+            @c Checkbox("Airflow", &c_air)
             c_afm && @c GUI.draw!(systems, avionics, &c_afm)
             c_kin && @c GUI.draw(kinematics, &c_kin)
             c_dyn && @c GUI.draw(dynamics, &c_dyn)
             c_air && @c GUI.draw(airflow, &c_air)
     end)
 
-    CImGui.End()
+    EndWindow()
 
 end
 

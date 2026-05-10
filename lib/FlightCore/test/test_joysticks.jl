@@ -38,11 +38,11 @@ function GUI.draw(mdl::Model{TestSystem}, label::String = "TestSystem")
 
     (; input) = mdl.y
 
-    CImGui.Begin(label)
+    BeginWindow(label)
 
-        CImGui.Text("input = $input")
+        TextFormatted("input = $input")
 
-    CImGui.End()
+    EndWindow()
 
 end #function
 

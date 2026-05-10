@@ -82,18 +82,18 @@ end
 function GUI.draw!(world::Model{<:SimpleWorld};
                     p_open::Ref{Bool} = Ref(true), label::String = "Simple World")
 
-    CImGui.Begin(label, p_open)
+    BeginWindow(label, p_open)
 
     @cstatic c_ac=false c_atm=false c_trn=false begin
-        @c CImGui.Checkbox("Aircraft", &c_ac)
+        @c Checkbox("Aircraft", &c_ac)
         c_ac && @c GUI.draw!(world.aircraft, &c_ac)
-        @c CImGui.Checkbox("Atmosphere", &c_atm)
+        @c Checkbox("Atmosphere", &c_atm)
         c_atm && @c GUI.draw!(world.atmosphere, &c_atm)
-        @c CImGui.Checkbox("Terrain", &c_trn)
+        @c Checkbox("Terrain", &c_trn)
         c_trn && @c GUI.draw!(world.terrain, &c_trn)
     end
 
-    CImGui.End()
+    EndWindow()
 
 end
 

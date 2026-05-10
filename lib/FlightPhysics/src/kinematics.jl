@@ -436,43 +436,43 @@ function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
 
     (; e_nb, ϕ_λ, h_e, h_o, ω_wb_b, ω_eb_b, v_eb_b, v_eb_n) = data
 
-    CImGui.Begin(label, p_open)
+    BeginWindow(label, p_open)
 
-    if CImGui.TreeNode("Angular Velocity (Body / WA) [Body]")
+    if TreeNode("Angular Velocity (Body / WA) [Body]")
 
-        CImGui.Text(@sprintf("Yaw Rate: %.7f deg/s", rad2deg(ω_wb_b[1])))
-        CImGui.Text(@sprintf("Pitch Rate: %.7f deg/s", rad2deg(ω_wb_b[2])))
-        CImGui.Text(@sprintf("Roll Rate: %.7f deg/s", rad2deg(ω_wb_b[3])))
+        TextFormatted(@sprintf("Yaw Rate: %.7f deg/s", rad2deg(ω_wb_b[1])))
+        TextFormatted(@sprintf("Pitch Rate: %.7f deg/s", rad2deg(ω_wb_b[2])))
+        TextFormatted(@sprintf("Roll Rate: %.7f deg/s", rad2deg(ω_wb_b[3])))
 
-        CImGui.TreePop()
+        TreePop()
     end
 
     GUI.draw(rad2deg.(ω_eb_b - ω_wb_b), "Transport Rate (WA / ECEF) [Body]", "deg/s")
     GUI.draw(v_eb_n, "Velocity (Ob / ECEF) [NED]", "m/s")
     GUI.draw(v_eb_b, "Velocity (Ob / ECEF) [Body]", "m/s")
 
-    if CImGui.TreeNode("Attitude (Body / NED)")
+    if TreeNode("Attitude (Body / NED)")
 
         (; ψ, θ, φ) = e_nb
-        CImGui.Text(@sprintf("Heading: %.7f deg", rad2deg(ψ)))
-        CImGui.Text(@sprintf("Inclination: %.7f deg", rad2deg(θ)))
-        CImGui.Text(@sprintf("Bank: %.7f deg", rad2deg(φ)))
+        TextFormatted(@sprintf("Heading: %.7f deg", rad2deg(ψ)))
+        TextFormatted(@sprintf("Inclination: %.7f deg", rad2deg(θ)))
+        TextFormatted(@sprintf("Bank: %.7f deg", rad2deg(φ)))
 
-        CImGui.TreePop()
+        TreePop()
     end
 
-    if CImGui.TreeNode("Position (O / ECEF)")
+    if TreeNode("Position (O / ECEF)")
 
         (; ϕ, λ) = ϕ_λ
-        CImGui.Text(@sprintf("Latitude: %.7f deg", rad2deg(ϕ)))
-        CImGui.Text(@sprintf("Longitude: %.7f deg", rad2deg(λ)))
-        CImGui.Text(@sprintf("Altitude (Ellipsoidal): %.7f m", Float64(h_e)))
-        CImGui.Text(@sprintf("Altitude (Orthometric): %.7f m", Float64(h_o)))
+        TextFormatted(@sprintf("Latitude: %.7f deg", rad2deg(ϕ)))
+        TextFormatted(@sprintf("Longitude: %.7f deg", rad2deg(λ)))
+        TextFormatted(@sprintf("Altitude (Ellipsoidal): %.7f m", Float64(h_e)))
+        TextFormatted(@sprintf("Altitude (Orthometric): %.7f m", Float64(h_o)))
 
-        CImGui.TreePop()
+        TreePop()
     end
 
-    CImGui.End()
+    EndWindow()
 
 end
 
