@@ -11,7 +11,6 @@ using Logging
 using ..Modeling
 using ..IODevices
 using ..GUI
-using ..GUI.Essentials
 
 export Simulation, attach!, init!, step!, run!
 export TimeSeries, get_time, get_data, get_components

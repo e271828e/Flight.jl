@@ -4,8 +4,8 @@ using LinearAlgebra
 using ComponentArrays, StaticArrays, HDF5
 
 using FlightCore
-using FlightCore.GUI.Essentials
-using FlightCore.GUI.Essentials.CImGui: Text
+using FlightCore.GUI
+using FlightCore.GUI.CImGui: Text
 using FlightPhysics
 using FlightPhysics.Control: LQR, PID, LQROutput, PIDOutput, LQRDataPoint
 
@@ -98,7 +98,7 @@ function GUI.draw!(mdl::Model{<:Vehicle}, p_open::Ref{Bool} = Ref(true))
     (; ω, v, θ, η) = y
     (; R, L) = parameters
 
-    Begin("Vehicle", p_open)
+    CImGui.Begin("Vehicle", p_open)
 
     if BeginTable("Text Data", 2, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
 
@@ -199,7 +199,7 @@ function GUI.draw!(mdl::Model{<:Vehicle}, p_open::Ref{Bool} = Ref(true))
     # CoM (Small Circle at tip)
     CImGui.AddCircleFilled(draw_list, ImVec2(gx, gy), 3.0, col_com)
 
-    End()
+    CImGui.End()
 
 end
 
@@ -459,7 +459,7 @@ function GUI.draw!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle}, p_open::
     (; v, η, u_m) = vehicle.y
 
 
-    Begin("Controller", p_open)
+    CImGui.Begin("Controller", p_open)
     if BeginTable("Controller", 3, CImGui.ImGuiTableFlags_SizingStretchProp)# | CImGui.ImGuiTableFlags_Resizable)# | CImGui.ImGuiTableFlags_BordersInner)
 
         TableNextRow()
@@ -517,7 +517,7 @@ function GUI.draw!(mdl::Model{<:Controller}, vehicle::Model{<:Vehicle}, p_open::
         CollapsingHeader("Position Controller") && GUI.draw(η2v)
     end
 
-    End()
+    CImGui.End()
 
 end
 
@@ -573,14 +573,14 @@ function GUI.draw!(mdl::Model{<:Robot}, p_open::Ref{Bool} = Ref(true))
 
     (; vehicle, controller) = mdl
 
-    Begin("Robot", p_open)
+    CImGui.Begin("Robot", p_open)
     @cstatic c_veh=false c_ctl=false begin
         @c Checkbox("Vehicle", &c_veh)
         c_veh && @c GUI.draw!(vehicle, &c_veh)
         @c Checkbox("Controller", &c_ctl)
         c_ctl && @c GUI.draw!(controller, vehicle, &c_ctl)
     end
-    End()
+    CImGui.End()
 
 end
 

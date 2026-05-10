@@ -3,8 +3,7 @@ module Piston
 using Interpolations, StaticArrays, StructArrays, ComponentArrays, EnumX
 
 using FlightCore
-using FlightCore.GUI.Essentials
-using FlightCore.GUI.Essentials.CImGui: Text
+using FlightCore.GUI
 
 using ..Types
 using ..Geodesy
@@ -478,9 +477,6 @@ function compute_π_ISA_pow(lookup, n, μ, δ)
 end
 
 
-using CImGui: CollapsingHeader, PushItemWidth, PopItemWidth, SameLine, Text,
-              TreeNode, TreePop, Begin, End, IsItemActive, RadioButton,
-            AlignTextToFramePadding, IsItemActivated
 
 function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
                 window_label::String = "Piston Engine")
@@ -488,7 +484,7 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
     (; u, y) = mdl
     (; idle, frc) = mdl
 
-    Begin(window_label, p_open)
+    CImGui.Begin(window_label, p_open)
 
     if CollapsingHeader("Control")
         # mode_button("Engine Start", true, y.state === EngineState.starting, y.state === EngineState.running)
@@ -517,20 +513,20 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
         (; start, stop, state, throttle, MAP, mixture_ctl, mixture, mixture_pos,
             f, ṁ, ω, τ_shaft, P_shaft, SFC) = y
 
-        Text("Start: $start")
-        Text("Stop: $stop")
-        Text("State: $state")
-        Text(@sprintf("Throttle: %.3f", throttle))
-        Text(@sprintf("Manifold Pressure: %.3f Pa", MAP))
-        Text("Mixture Control: $mixture_ctl")
-        Text(@sprintf("Mixture Setting: %.3f", mixture))
-        Text(@sprintf("Mixture Valve Position: %.3f", mixture_pos))
-        Text(@sprintf("Fuel to Air Ratio: %.3f", f))
-        Text(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3))
-        Text(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
-        Text(@sprintf("Shaft Torque: %.3f N*m", τ_shaft))
-        Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
-        Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
+        CImGui.Text("Start: $start")
+        CImGui.Text("Stop: $stop")
+        CImGui.Text("State: $state")
+        CImGui.Text(@sprintf("Throttle: %.3f", throttle))
+        CImGui.Text(@sprintf("Manifold Pressure: %.3f Pa", MAP))
+        CImGui.Text("Mixture Control: $mixture_ctl")
+        CImGui.Text(@sprintf("Mixture Setting: %.3f", mixture))
+        CImGui.Text(@sprintf("Mixture Valve Position: %.3f", mixture_pos))
+        CImGui.Text(@sprintf("Fuel to Air Ratio: %.3f", f))
+        CImGui.Text(@sprintf("Fuel Flow: %.3f g/s", ṁ*1e3))
+        CImGui.Text(@sprintf("Speed: %.3f RPM", radpersec2RPM(ω)))
+        CImGui.Text(@sprintf("Shaft Torque: %.3f N*m", τ_shaft))
+        CImGui.Text(@sprintf("Shaft Power: %.3f kW", P_shaft/1e3))
+        CImGui.Text(@sprintf("Specific Fuel Consumption: %.3f g/(s*kW)", SFC*1e6))
 
         if TreeNode("Idle RPM Controller")
             GUI.draw(idle, window_label)
@@ -544,7 +540,7 @@ function GUI.draw(mdl::Model{<:PistonEngine}, p_open::Ref{Bool} = Ref(true),
 
     end
 
-    End()
+    CImGui.End()
 
 end
 

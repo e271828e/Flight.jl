@@ -4,7 +4,7 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays, StructTypes
 
 using FlightCore
-using FlightCore.GUI.Essentials
+using FlightCore.GUI
 using FlightPhysics
 
 using ...C172
@@ -68,7 +68,7 @@ end
 function GUI.draw!(avionics::Model{<:Avionics}, vehicle::Model{<:Vehicle},
                     p_open::Ref{Bool} = Ref(true))
 
-    Begin("Cessna172Xv2 Avionics", p_open)
+    CImGui.Begin("Cessna172Xv2 Avionics", p_open)
 
     @cstatic c_gdc=false c_ctl=false begin
         @c CImGui.Checkbox("Guidance", &c_gdc)
@@ -77,7 +77,7 @@ function GUI.draw!(avionics::Model{<:Avionics}, vehicle::Model{<:Vehicle},
         c_ctl && @c GUI.draw!(avionics.ctl, vehicle, &c_ctl)
     end
 
-    End()
+    CImGui.End()
 
 end
 

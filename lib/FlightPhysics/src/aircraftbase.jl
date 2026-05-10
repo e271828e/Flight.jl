@@ -5,8 +5,8 @@ using FiniteDiff: finite_difference_jacobian! as jacobian!
 using DataStructures: OrderedDict
 
 using FlightCore
-using FlightCore.GUI.Essentials
-using FlightCore.GUI.Essentials.CImGui: Text
+using FlightCore.GUI
+using FlightCore.GUI.CImGui: Text
 using ..Kinematics
 using ..Dynamics
 using ..Atmosphere

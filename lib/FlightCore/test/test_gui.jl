@@ -4,7 +4,7 @@ using Test
 using Revise
 
 using FlightCore
-using FlightCore.GUI.Essentials
+using FlightCore.GUI
 
 export test_render_loop, test_gui
 
@@ -20,9 +20,9 @@ Modeling.X(::TestSystem) = [0.0]
 
 function GUI.draw!(mdl::Model{TestSystem})
     x = mdl.x
-    CImGui.PushItemWidth(-50)
-        x[1] = GUI.safe_slider("State", x[1], -10, 10, "%.3f")
-    CImGui.PopItemWidth()
+    PushItemWidth(-50)
+        x[1] = safe_slider("State", x[1], -10, 10, "%.3f")
+    PopItemWidth()
 end
 
 function test_render_loop(target = Model(TestSystem()), timeout::Real = 1.0, args...)

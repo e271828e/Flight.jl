@@ -3,7 +3,7 @@ module Kinematics
 using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra
 
 using FlightCore
-using FlightCore.GUI.Essentials
+using FlightCore.GUI
 
 using ..Attitude
 using ..Geodesy

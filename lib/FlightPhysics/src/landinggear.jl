@@ -3,7 +3,7 @@ module LandingGear
 using StaticArrays, ComponentArrays, LinearAlgebra
 
 using FlightCore
-using FlightCore.GUI.Essentials
+using FlightCore.GUI
 using ..Types
 using ..Attitude
 using ..Geodesy

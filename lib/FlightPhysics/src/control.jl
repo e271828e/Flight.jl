@@ -3,7 +3,7 @@ module Control
 using LinearAlgebra, ComponentArrays, StaticArrays, StructArrays, Interpolations, HDF5
 
 using FlightCore
-using FlightCore.GUI.Essentials
+using FlightCore.GUI
 
 ################# Continuous Proportional-Integral Compensator #################
 ################################################################################
@@ -91,12 +91,10 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(mdl::Model{<:PIVector{N}}, label::String = "PIVector{$N}") where {N}
+function GUI.draw(mdl::Model{<:PIVector{N}}, args...) where {N}
 
     (; k_p, k_i, k_l, β_p, bound_lo, bound_hi, input, sat_ext,
         u_p, u_i, x_i, y_p, y_i, out_free, sat_out, output, int_halted) = mdl.y
-
-    # CImGui.Begin(label)
 
         CImGui.Text("Proportional Gain = $k_p")
         CImGui.Text("Integral Gain = $k_i")
@@ -115,8 +113,6 @@ function GUI.draw(mdl::Model{<:PIVector{N}}, label::String = "PIVector{$N}") whe
         CImGui.Text("Output Saturation = $sat_out")
         CImGui.Text("Actual Output = $output")
         CImGui.Text("Integrator Halted = $int_halted")
-
-    # CImGui.End()
 
 end #function
 
@@ -262,13 +258,10 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(mdl::Union{Model{<:Integrator}, Model{<:IntegratorVector}},
-                    label::String = "Integrator")
+function GUI.draw(mdl::Union{Model{<:Integrator}, Model{<:IntegratorVector}}, args...)
 
     (; x0, sat_out_0) = mdl.s
     (; input, sat_ext, bound_lo, bound_hi, x1, output, sat_out, halted) = mdl.y
-
-    # CImGui.Begin(label)
 
         CImGui.Text("input = $input")
         CImGui.Text("sat_ext = $sat_ext")
@@ -280,8 +273,6 @@ function GUI.draw(mdl::Union{Model{<:Integrator}, Model{<:IntegratorVector}},
         CImGui.Text("output = $output")
         CImGui.Text("sat_out = $sat_out")
         CImGui.Text("halted = $halted")
-
-    # CImGui.End()
 
 end #function
 
@@ -357,19 +348,15 @@ end
 
 #################################### GUI #######################################
 
-function GUI.draw(mdl::Model{<:LeadLag}, label::String = "Discrete Lead Compensator")
+function GUI.draw(mdl::Model{<:LeadLag}, args...)
 
     (; z, p, k, u1, y1) = mdl.y
-
-    # CImGui.Begin(label)
 
         CImGui.Text("z = $z")
         CImGui.Text("p = $p")
         CImGui.Text("k = $k")
         CImGui.Text("u1 = $u1")
         CImGui.Text("y1 = $y1")
-
-    # CImGui.End()
 
 end #function
 
@@ -595,13 +582,10 @@ end
 #################################### GUI #######################################
 
 
-function GUI.draw(mdl::Union{Model{<:PID}, Model{<:PIDVector}},
-                            label::String = "Discrete PID")
+function GUI.draw(mdl::Union{Model{<:PID}, Model{<:PIDVector}}, args...)
 
     (; k_p, k_i, k_d, τ_f, β_p, β_d, bound_lo, bound_hi, input, sat_ext,
         u_p, u_i, u_d, y_p, y_i, y_d, out_free, sat_out, output, int_halted) = mdl.y
-
-    # CImGui.Begin(label)
 
     CImGui.Text("Proportional Gain = $k_p")
     CImGui.Text("Integral Gain = $k_i")
@@ -623,8 +607,6 @@ function GUI.draw(mdl::Union{Model{<:PID}, Model{<:PIDVector}},
     CImGui.Text("Actual Output = $output")
     CImGui.Text("Output Saturation = $sat_out")
     CImGui.Text("Integrator Halted = $int_halted")
-
-    # CImGui.End()
 
 end #function
 

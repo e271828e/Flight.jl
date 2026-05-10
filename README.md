@@ -17,7 +17,7 @@ tasks. It fully leverages Julia's expressiveness, extensibility and performance.
 It is organized in three layers:
 
 - A lightweight, domain-agnostic engine for causal modeling and simulation of
-  complex systems with hybrid dynamics (`FlightCore`).
+  complex systems with continous and discrete dynamics (`FlightCore`).
 
 - A library of high-fidelity, reusable physics and engineering models (`FlightPhysics`).
 
@@ -25,29 +25,28 @@ It is organized in three layers:
 
 Key features:
 
-*   **Hierarchical Modeling:** Enables building complex systems from simpler, reusable components,
+*   **Hierarchical Modeling:** Create complex systems from simpler, reusable components,
     leveraging `ComponentArrays.jl` for clarity and convenience.
 
-*   **High Performance:** The core simulation loop is built on `DifferentialEquations.jl` and
-    designed from the ground up to be allocation-free. This enables extremely fast headless
-    execution and smooth performance on interactive runs.
-
-*   **Solid Physics Foundation:** Features built-in modules for attitude representation, geodesy,
-    kinematics and rigid body dynamics, providing efficient and ergonomic types and operations.
-
-*   **Pre-Built Aircraft Components:** Includes high-fidelity, customizable models for propellers,
-    piston engines and landing gear.
+*   **High Performance:** The modeling and simulation framework is built on `DifferentialEquations.jl` and
+    designed from the ground up to be allocation-free, enabling smooth and extremely fast simulation runs.
 
 *   **Interactive GUI:** Integrates an extensible GUI based on `CImGui.jl` for live model
     inspection and manipulation.
 
-*   **External Visualization & I/O:** Offers out-of-the-box integration with [X-Plane
+*   **External Visualization & I/O:** Provides out-of-the-box integration with [X-Plane
     12](https://www.x-plane.com/desktop/try-it/) for high-fidelity 3D visualization, joystick
     support via SDL2, and a generic interface layer for custom I/O functionality.
 
-*   **Case Study:** A custom fly-by-wire Cessna 172 model is provided as an example demonstrating a
-    complete design workflow, from vehicle systems modeling to the implementation and testing of a
-    multimodal, gain-scheduled autopilot.
+*   **High-Fidelity Physics:** Rigorous, efficient and ergonomic libraries for attitude representation,
+    geodesy, kinematics and rigid body dynamics, with a clear focus on flight physics applications.
+
+*   **Pre-Built Aircraft Components:** Advanced, customizable models for propellers, piston engines
+    and landing gear.
+
+*   **Application Examples:** Two applications are included as design workflow examples:
+    a 2D self-balancing robot and a custom fly-by-wire Cessna 172 model featuring a multimodal,
+    gain-scheduled autopilot.
 
 
 ## Documentation
@@ -62,7 +61,7 @@ using Pkg
 Pkg.add("Flight")
 ```
 
-## Examples
+## Quick Examples
 Automated turning climb under constant wind conditions:
 
 ```julia

@@ -4,8 +4,8 @@ using LinearAlgebra
 using StructTypes, StaticArrays, EnumX
 
 using FlightCore
-using FlightCore.GUI.Essentials
-using FlightCore.GUI.Essentials.CImGui: Text
+using FlightCore.GUI
+using FlightCore.GUI.CImGui: Text
 using FlightPhysics
 
 using ...AircraftBase
@@ -333,7 +333,7 @@ function GUI.draw!(mdl::Model{<:GuidanceLaws},
 
     (; u, y) = mdl
 
-    Begin("Cessna172X Guidance", p_open)
+    CImGui.Begin("Cessna172X Guidance", p_open)
 
     AlignTextToFramePadding(); Text("Guidance Mode"); SameLine()
     mode_button("Direct", ModeGuidance.direct, u.mode_req, y.mode); SameLine()
@@ -358,7 +358,7 @@ function GUI.draw!(mdl::Model{<:GuidanceLaws},
     # mdl.y.mode === ModeGuidance.segment && GUI.draw!(mdl.seg, vehicle)
     mdl.y.mode === ModeGuidance.circular && GUI.draw!(mdl.crc, vehicle)
 
-    End()
+    CImGui.End()
 
 end
 

@@ -4,6 +4,7 @@ on:
     branches:
       - master
       - "refactor/**"
+      - "release/**"
       - "docs/**"
       - "fix/**"
     tags: ["*"]

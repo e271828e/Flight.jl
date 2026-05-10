@@ -3,7 +3,7 @@ module Types
 using StaticArrays, StructArrays, StructTypes
 
 using FlightCore
-using FlightCore.GUI.Essentials
+using FlightCore.GUI
 
 export Ranged, saturation, linear_scaling
 

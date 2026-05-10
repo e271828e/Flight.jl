@@ -3,7 +3,7 @@ module Dynamics
 using StaticArrays, LinearAlgebra
 
 using FlightCore
-using FlightCore.GUI.Essentials
+using FlightCore.GUI
 
 using ..Attitude
 using ..Geodesy

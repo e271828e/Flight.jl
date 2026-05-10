@@ -7,30 +7,25 @@ using GLFW
 using ModernGL
 using CImGui
 using CImGui.lib
-using Printf
 
 using ..IODevices
 
-export Renderer
-export HSV_amber, HSV_gray, HSV_green, HSV_red
-export mode_button, dynamic_button, toggle_switch, display_bar, safe_slider, safe_input
-
-module Essentials
-    using Reexport
-    @reexport using CImGui.CSyntax, CImGui.CSyntax.CStatic #@c, @cstatic
-    @reexport using Printf #@sprintf
-    @reexport using CImGui #enable additional CImGui imports
-    @reexport using CImGui:
+@reexport using Printf #@sprintf
+@reexport using CImGui.CSyntax, CImGui.CSyntax.CStatic #@c, @cstatic
+@reexport using CImGui:
+    CImGui, #enable additional CImGui imports
     GetIO, #system
-    Begin, End, #windows & logic
+    Begin as WindowBegin, End as WindowEnd, #windows & logic
     TreeNode, TreePop, CollapsingHeader, #trees & menus
     IsItemActive, IsItemActivated, IsItemClicked, #interaction
     Text as TextFormatted, TextUnformatted, Bullet, RadioButton, Checkbox, Combo, ProgressBar, PlotLines, #widgets
     BeginTable, EndTable, TableNextRow, TableNextColumn, TableSetupColumn, TableHeadersRow,#tables
-    SameLine, NewLine, Separator, Dummy, AlignTextToFramePadding, PushItemWidth, PopItemWidth, #layout & formatting
+    SameLine, NewLine, Separator, AlignTextToFramePadding, PushItemWidth, PopItemWidth, #layout & formatting
     GetWindowDrawList, GetWindowSize, GetCursorScreenPos, AddRectFilled, AddLine, AddCircle, AddCircleFilled, ImVec2 #drawing
-end
 
+export Renderer
+export HSV_amber, HSV_gray, HSV_green, HSV_red
+export mode_button, dynamic_button, toggle_switch, display_bar, safe_slider, safe_input
 
 ################################################################################
 ############################### Renderer #######################################

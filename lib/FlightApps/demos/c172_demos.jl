@@ -429,16 +429,16 @@ function crosswind_landing(; gui::Bool = false,
             (; seg) = gdc
             (; act) = vehicle.systems
 
-            atmosphere.wind.u.E = 6
+            atmosphere.wind.u.E = 6 #set crosswind velocity
 
             if phase[] === :init
 
                 gdc.u.mode_req = ModeGuidance.segment
-                seg.u.target = final_leg
-                seg.u.hor_gdc_req = true
-                seg.u.vrt_gdc_req = true
-                ctl.lon.u.EAS_ref = 30
-                vehicle.systems.act.flaps.u[] = 1.0
+                seg.u.target = final_leg #assign final leg Segment as guidance target
+                seg.u.hor_gdc_req = true #request horizontal guidance
+                seg.u.vrt_gdc_req = true #request vertical guidance
+                ctl.lon.u.EAS_ref = 30 #set airspeed
+                vehicle.systems.act.flaps.u[] = 1.0 #set flaps to landing position
 
                 # println("Entering final")
                 phase[] = :final

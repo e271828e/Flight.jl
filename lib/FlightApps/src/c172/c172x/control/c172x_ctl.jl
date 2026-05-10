@@ -4,8 +4,8 @@ using LinearAlgebra
 using StaticArrays, ComponentArrays, StructTypes, EnumX
 
 using FlightCore
-using FlightCore.GUI.Essentials
-using FlightCore.GUI.Essentials.CImGui: Text
+using FlightCore.GUI
+using FlightCore.GUI.CImGui: Text
 using FlightPhysics
 using FlightPhysics.Control: Integrator, IntegratorOutput,
     PID, PIDOutput, LQR, LQROutput, PIDDataLookup, LQRDataLookup,
@@ -714,7 +714,7 @@ function GUI.draw!(lon::Model{<:ControlLawsLon}, vehicle::Model{<:Vehicle})
 end
 
 function draw_internals(lon::Model{<:ControlLawsLon}, p_open::Ref{Bool}=Ref(true))
-    Begin("Longitudinal Control", p_open)
+    CImGui.Begin("Longitudinal Control", p_open)
     Text("Sampling Period: $(lon.Δt)")
     Text("Mode: $(lon.y.mode)")
     foreach(keys(lon.submodels), values(lon.submodels)) do label, ss
@@ -723,7 +723,7 @@ function draw_internals(lon::Model{<:ControlLawsLon}, p_open::Ref{Bool}=Ref(true
             CImGui.TreePop()
         end
     end
-    End()
+    CImGui.End()
 end
 
 
@@ -1195,7 +1195,7 @@ function GUI.draw!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
 end
 
 function draw_internals(lat::Model{<:ControlLawsLat}, p_open::Ref{Bool}=Ref(true))
-    Begin("Lateral Control", p_open)
+    CImGui.Begin("Lateral Control", p_open)
     Text("Sampling Period: $(lat.Δt)")
     Text("Mode: $(lat.y.mode)")
     foreach(keys(lat.submodels), values(lat.submodels)) do label, ss
@@ -1204,7 +1204,7 @@ function draw_internals(lat::Model{<:ControlLawsLat}, p_open::Ref{Bool}=Ref(true
             CImGui.TreePop()
         end
     end
-    End()
+    CImGui.End()
 end
 
 
@@ -1254,11 +1254,11 @@ end
 
 function GUI.draw!(ctl::Model{<:ControlLaws}, vehicle::Model{<:Vehicle},
     p_open::Ref{Bool}=Ref(true); window::Bool=true)
-    Begin("Cessna172X Control Laws", p_open)
+    CImGui.Begin("Cessna172X Control Laws", p_open)
     CImGui.CollapsingHeader("Longitudinal Control") && GUI.draw!(ctl.lon, vehicle)
     CImGui.CollapsingHeader("Lateral Control") && GUI.draw!(ctl.lat, vehicle)
     CImGui.CollapsingHeader("Flight Data") && GUI.draw(vehicle.y)
-    End()
+    CImGui.End()
 end
 
 

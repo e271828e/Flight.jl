@@ -3,7 +3,7 @@ module Terrain
 using StaticArrays
 
 using FlightCore
-using FlightCore.GUI.Essentials
+using FlightCore.GUI
 using ..Geodesy
 
 export AbstractTerrain, NoTerrain, HorizontalTerrain
@@ -52,7 +52,7 @@ function GUI.draw!(mdl::Model{<:HorizontalTerrain},
                     label::String = "Horizontal Terrain")
 
     u = mdl.u
-    Begin(label, p_open)
+    CImGui.Begin(label, p_open)
         AlignTextToFramePadding(); CImGui.Text("Surface Type"); SameLine()
         mode_button("Dry Tarmac", DryTarmac, DryTarmac, u[]; HSV_requested = HSV_gray)
         IsItemActive() && (u[] = DryTarmac); SameLine()
@@ -61,7 +61,7 @@ function GUI.draw!(mdl::Model{<:HorizontalTerrain},
         mode_button("Icy Tarmac", IcyTarmac, IcyTarmac, u[]; HSV_requested = HSV_gray)
         IsItemActive() && (u[] = IcyTarmac)
         CImGui.Text("Elevation (MSL): $(Float64(mdl.elevation)) m")
-    End()
+    CImGui.End()
 end
 
 end #module
