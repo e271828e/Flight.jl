@@ -28,7 +28,7 @@ Key features:
 *   **Hierarchical Modeling:** Create complex systems from simpler, reusable components,
     leveraging `ComponentArrays.jl` for clarity and convenience.
 
-*   **High Performance:** The simulation framework is built on `DifferentialEquations.jl` and 
+*   **High Performance:** The simulation engine is built on `DifferentialEquations.jl` and 
     designed from the ground up to be allocation-free, enabling smooth and extremely fast simulation runs.
 
 *   **Interactive GUI:** Extensible GUI based on `CImGui.jl` for live model
@@ -44,7 +44,7 @@ Key features:
 *   **Pre-Built Aircraft Components:** Advanced, customizable models for propellers, piston engines
     and landing gear.
 
-*   **Application Examples:** Two applications are included as workflow examples:
+*   **Application Examples:** Two applications are provided as design workflow examples:
     a 2D self-balancing robot and a custom fly-by-wire Cessna 172 model featuring a multimodal,
     gain-scheduled autopilot.
 
@@ -62,7 +62,7 @@ Pkg.add("Flight")
 ```
 
 ## Quick Examples
-Automated turning climb under constant wind conditions:
+**1. Simulating an automated turning climb under constant wind conditions**
 
 ```julia
 using Flight
@@ -111,7 +111,7 @@ using Flight
 ![Turning climb 3D trajectory](/assets/turning_climb_3d.png?raw=true)
 
 
-Comparing elevator step response between nonlinear and linearized Cessna172S models:
+**2. Comparing elevator step response between nonlinear and linearized Cessna 172S models**
 ```julia
 using Pkg
 Pkg.add(["ControlSystems", "RobustAndOptimalControl", "Plots", "LaTeXStrings"])
@@ -176,7 +176,7 @@ using Plots, LaTeXStrings
 ```
 ![Elevator step responses](/assets/elevator_step_response.png?raw=true)
 
-Interactive self-balancing robot simulation:
+**3. Interactive self-balancing robot simulation**
 ```julia
 using Pkg
 Pkg.add(["Plots", "LaTeXStrings"])
