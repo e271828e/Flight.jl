@@ -28,23 +28,23 @@ Key features:
 *   **Hierarchical Modeling:** Create complex systems from simpler, reusable components,
     leveraging `ComponentArrays.jl` for clarity and convenience.
 
-*   **High Performance:** The modeling and simulation framework is built on `DifferentialEquations.jl` and
+*   **High Performance:** The simulation framework is built on `DifferentialEquations.jl` and 
     designed from the ground up to be allocation-free, enabling smooth and extremely fast simulation runs.
 
-*   **Interactive GUI:** Integrates an extensible GUI based on `CImGui.jl` for live model
+*   **Interactive GUI:** Extensible GUI based on `CImGui.jl` for live model
     inspection and manipulation.
 
-*   **External Visualization & I/O:** Provides out-of-the-box integration with [X-Plane
+*   **External Visualization & I/O:** Out-of-the-box integration with [X-Plane
     12](https://www.x-plane.com/desktop/try-it/) for high-fidelity 3D visualization, joystick
     support via SDL2, and a generic interface layer for custom I/O functionality.
 
 *   **High-Fidelity Physics:** Rigorous, efficient and ergonomic libraries for attitude representation,
-    geodesy, kinematics and rigid body dynamics, with a clear focus on flight physics applications.
+    geodesy, kinematics and rigid body dynamics, with a focus on flight physics applications.
 
 *   **Pre-Built Aircraft Components:** Advanced, customizable models for propellers, piston engines
     and landing gear.
 
-*   **Application Examples:** Two applications are included as design workflow examples:
+*   **Application Examples:** Two applications are included as workflow examples:
     a 2D self-balancing robot and a custom fly-by-wire Cessna 172 model featuring a multimodal,
     gain-scheduled autopilot.
 
