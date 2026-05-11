@@ -1,6 +1,6 @@
 name = "FlightCore"
 uuid = "e3cc1ee6-15ac-4fef-96b3-1947582bf537"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Miguel Alonso <miguel883@gmail.com>"]
 
 [workspace]

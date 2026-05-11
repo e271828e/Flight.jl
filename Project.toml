@@ -1,6 +1,6 @@
 name = "Flight"
 uuid = "e329eb8f-69f3-4234-a468-5e3889a58643"
-version = "0.1.5"
+version = "0.2.0"
 authors = ["Miguel Alonso <miguel883@gmail.com> and contributors"]
 
 [workspace]

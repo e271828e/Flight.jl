@@ -1,6 +1,6 @@
 name = "FlightPhysics"
 uuid = "217868e0-669b-4069-89f9-42760bf46690"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Miguel Alonso <miguel883@gmail.com>"]
 
 [workspace]

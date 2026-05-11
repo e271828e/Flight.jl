@@ -1,6 +1,6 @@
 name = "FlightApps"
 uuid = "c94c8c3d-2ef7-4940-9544-b98dae328d9f"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Miguel Alonso <miguel883@gmail.com>"]
 
 [workspace]
