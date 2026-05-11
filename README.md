@@ -186,10 +186,11 @@ using Plots, LaTeXStrings
 
 #1. Set up simulation
 
-    #the complete Robot model combines the continuous vehicle dynamics and a discrete controller
+    #instantiate the complete Robot model, which couples 
+    #continuous vehicle dynamics with a discrete controller
     mdl = Model(Robot2D.Robot())
 
-    #specify integration step sizes for continuous and discrete dynamics
+    #specify custom continuous and discrete step sizes
     sim = Simulation(mdl; t_end = 100, dt = 0.01, Δt = 0.02)
 
     #use default Model initialization
@@ -197,8 +198,7 @@ using Plots, LaTeXStrings
 
 #2. Run simulation in interactive mode
 
-    #this should open the interactive GUI window, closing it aborts the Simulation
-    run!(sim; gui = true)
+    run!(sim; gui = true) #the interactive GUI should now open
     
 #3. Retrieve and inspect results
 
