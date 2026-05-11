@@ -44,6 +44,7 @@ FlightPhysicsPlotsExt = "Plots"
 FlightPhysicsRobustAndOptimalControlExt = "RobustAndOptimalControl"
 
 [compat]
+FlightCore = "0.2"
 CImGui = "7"
 ComponentArrays = "0.15.29"
 ControlSystemsBase = "1.20.3"

@@ -31,6 +31,8 @@ FlightCore = {path = "../FlightCore"}
 FlightPhysics = {path = "../FlightPhysics"}
 
 [compat]
+FlightCore = "0.2"
+FlightPhysics = "0.2"
 CImGui = "7"
 ComponentArrays = "0.15.29"
 EnumX = "1.0.5"

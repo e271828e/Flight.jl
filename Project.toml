@@ -13,5 +13,8 @@ FlightPhysics = "217868e0-669b-4069-89f9-42760bf46690"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 
 [compat]
+FlightCore = "0.2"
+FlightPhysics = "0.2"
+FlightApps = "0.2"
 Reexport = "1.2.2"
 julia = "1.12"
