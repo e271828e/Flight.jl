@@ -183,6 +183,7 @@ struct Simulation{D <: ModelDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         save_on::Bool = true,
         saveat::Union{Real, AbstractVector{<:Real}} = Float64[], #defers to save_everystep
         save_everystep::Bool = isempty(saveat),
+        gui_settings::GUI.Settings = GUI.Settings()
         ) where {D, Y}
 
         mdl._Δt_root[] = Δt
@@ -234,7 +235,7 @@ struct Simulation{D <: ModelDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         #uncapped, which unnecessarily taxes the CPU core running the main
         #thread. to prevent this, we can send the GUI to sleep for a while
         #within GUI.update! AFTER io_lock has been released
-        renderer = Renderer(; label = "Simulation", sync = UInt8(0), f_draw)
+        renderer = Renderer(; f_draw, settings = gui_settings, sync = 0)
         gui = SimInterface(renderer, mdl, GenericInputMapping(),
                            control, io_start, io_lock, true)
 

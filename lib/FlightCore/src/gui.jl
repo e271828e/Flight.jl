@@ -1,12 +1,8 @@
 module GUI
 
-using Reexport
-using StaticArrays
-using Logging
-using GLFW
-using ModernGL
-using CImGui
-using CImGui.lib
+using Reexport, StaticArrays, Logging, EnumX
+using GLFW, ModernGL
+using CImGui, CImGui.lib
 
 using ..IODevices
 
@@ -26,6 +22,25 @@ export Renderer
 export HSV_amber, HSV_gray, HSV_green, HSV_red
 export mode_button, dynamic_button, toggle_switch, display_bar, safe_slider, safe_input
 
+
+################################################################################
+##############################$ Settings #######################################
+
+@enumx T=ColorThemeEnum ColorTheme begin
+    dark = 0
+    classic = 1
+    light = 2
+end
+
+using .ColorTheme: ColorThemeEnum
+
+@kwdef struct Settings
+    label::String = "Renderer"
+    scale::Float64 = 1.0
+    theme::ColorThemeEnum = ColorTheme.dark
+end
+
+
 ################################################################################
 ############################### Renderer #######################################
 
@@ -36,24 +51,21 @@ export mode_button, dynamic_button, toggle_switch, display_bar, safe_slider, saf
 #scheduled calls to render())
 
 mutable struct Renderer <: IODevice
-    label::String #window label
-    monitor_pref::UInt8 #preferred monitor when multiple monitors available
-    font_size::UInt8 #will be scaled by the display's content scale
-    sync::UInt8 #see above
     f_draw::Function #GUI IO function to be called
+    settings::Settings #GUI graphics settings
+    sync::UInt8 #see above
     _initialized::Bool
     _ctx::Ptr{CImGui.lib.ImGuiContext}
     _window::GLFW.Window
 
-    function Renderer(; label = "Renderer", monitor_pref = 2, font_size = 16,
-        sync = 1, f_draw = ()->nothing)
+    function Renderer(; f_draw = ()->nothing, settings = Settings(), sync = 1)
         _initialized = false
-        new(label, monitor_pref, font_size, sync, f_draw, _initialized)
+        new(f_draw, settings, sync, _initialized)
     end
 
 end
 
-Base.propertynames(::Renderer) = (:label, :monitor_pref, :font_size, :sync, :f_draw)
+Base.propertynames(::Renderer) = (:f_draw, :settings, :sync)
 
 function Base.setproperty!(renderer::Renderer, name::Symbol, value)
     if name ∈ propertynames(renderer)
@@ -71,7 +83,8 @@ end
 
 function IODevices.init!(renderer::Renderer)
 
-    (; label, monitor_pref, font_size, sync) = renderer
+    (; settings, sync) = renderer
+    (; label, scale, theme) = settings
 
     # setup Dear ImGui context
     _ctx = CImGui.CreateContext()
@@ -89,18 +102,15 @@ function IODevices.init!(renderer::Renderer)
         CImGui.c_set!(style.Colors, CImGui.ImGuiCol_WindowBg, ImVec4(col.x, col.y, col.z, 1.0f0))
     end
 
-    # setup Dear ImGui style
-    CImGui.StyleColorsDark()
-    # CImGui.StyleColorsClassic()
-    # CImGui.StyleColorsLight()
+    # setup Dear ImGui color style
+    theme === ColorTheme.dark && CImGui.StyleColorsDark()
+    theme === ColorTheme.classic && CImGui.StyleColorsClassic()
+    theme === ColorTheme.light && CImGui.StyleColorsLight()
 
-    available_monitors = GLFW.GetMonitors()
-    monitor_pref = min(monitor_pref, length(available_monitors))
-    monitor = available_monitors[monitor_pref]
-    vmode = GLFW.GetVideoMode(monitor)
-    window_size=(vmode.width, vmode.height)
+    primary_monitor = GLFW.GetMonitors()[1]
+    vmode = GLFW.GetVideoMode(primary_monitor)
 
-    font_size = 12 * vmode.height / 1080
+    font_size = 12 * scale * vmode.height / 1080
     fonts_dir = joinpath(@__DIR__, "gui", "fonts")
     fonts = unsafe_load(CImGui.GetIO().Fonts)
     @assert (CImGui.AddFontFromFileTTF(fonts, joinpath(fonts_dir, "Recursive Sans Linear-Regular.ttf"), font_size) != C_NULL)
@@ -123,7 +133,7 @@ function IODevices.init!(renderer::Renderer)
         GLFW.WindowHint(GLFW.OPENGL_FORWARD_COMPAT, ModernGL.GL_TRUE)
     end
 
-    _window = GLFW.CreateWindow(window_size[1], window_size[2], label)
+    _window = GLFW.CreateWindow(vmode.width, vmode.height, label)
     @assert _window != C_NULL
 
     GLFW.MakeContextCurrent(_window)

@@ -209,7 +209,7 @@ using Plots, LaTeXStrings
     plot(ts.controller.v_ref; plot_title = "Velocity", label = "Command", ylabel=L"$v \ (m / s)$") |> display
     plot!(ts.vehicle.v; label = "Response")
 ```
-![Interactive robot sim](/assets/robot2d_sim.png?raw=true)
+![Interactive robot sim](/assets/robot2d_sim_light.png?raw=true)
 
 ## License
 
