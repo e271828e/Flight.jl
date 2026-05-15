@@ -1,7 +1,6 @@
 module Modeling
 
 using ComponentArrays
-using DataStructures
 using AbstractTrees
 
 export ModelDefinition, Model

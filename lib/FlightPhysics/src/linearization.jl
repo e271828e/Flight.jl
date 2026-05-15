@@ -2,7 +2,6 @@ module Linearization
 
 using ComponentArrays, StaticArrays, LinearAlgebra
 using FiniteDiff: finite_difference_jacobian! as jacobian!
-using DataStructures
 
 using FlightCore
 

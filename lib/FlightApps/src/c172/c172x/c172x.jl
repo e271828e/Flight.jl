@@ -1,6 +1,5 @@
 module C172X
 
-using LinearAlgebra
 using StaticArrays, ComponentArrays, Reexport
 
 using FlightCore

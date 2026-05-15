@@ -1,6 +1,6 @@
 module Types
 
-using StaticArrays, StructArrays, StructTypes
+using StructTypes
 
 using FlightCore
 using FlightCore.GUI

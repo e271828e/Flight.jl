@@ -1,6 +1,6 @@
 module LandingGear
 
-using StaticArrays, ComponentArrays, LinearAlgebra
+using LinearAlgebra, StaticArrays
 
 using FlightCore
 using FlightCore.GUI

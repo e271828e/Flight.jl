@@ -1,7 +1,6 @@
 module C172XControl
 
-using LinearAlgebra
-using StaticArrays, ComponentArrays, StructTypes, EnumX
+using StaticArrays, StructTypes, EnumX
 
 using FlightCore
 using FlightCore.GUI

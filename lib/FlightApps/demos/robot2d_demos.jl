@@ -5,7 +5,7 @@ using Plots, LaTeXStrings
 using FlightCore
 using FlightPhysics
 using FlightApps
-using FlightApps.Robot2D: Robot, InitParameters, mode_m, mode_v, mode_η
+using FlightApps.Robot2D: Robot, InitParameters
 
 using FlightCore.GUI
 
@@ -21,8 +21,6 @@ function robot2d_sim(gui::Bool = false)
     #use the default initialization
     init_params = InitParameters()
     init!(sim, init_params)
-    # mdl.controller.u.mode = Robot2D.mode_η
-    # mdl.controller.u.η_ref = 5
     run!(sim; gui)
     ts = TimeSeries(sim)
     plot(ts.controller.v_ref; plot_title = "Velocity", label = "Command", ylabel=L"$v \ (m / s)$") |> display

@@ -1,6 +1,6 @@
 module Kinematics
 
-using StaticArrays, StructArrays, ComponentArrays, LinearAlgebra
+using StaticArrays, ComponentArrays, LinearAlgebra
 
 using FlightCore
 using FlightCore.GUI

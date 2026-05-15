@@ -1,7 +1,5 @@
 module World
 
-using LinearAlgebra, StaticArrays, ComponentArrays
-
 using FlightCore
 using FlightCore.GUI
 using ..Atmosphere

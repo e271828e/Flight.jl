@@ -1,8 +1,5 @@
 module C172Xv2
 
-using LinearAlgebra
-using StaticArrays, ComponentArrays, StructTypes
-
 using FlightCore
 using FlightCore.GUI
 using FlightPhysics

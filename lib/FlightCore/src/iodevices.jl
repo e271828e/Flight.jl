@@ -1,7 +1,5 @@
 module IODevices
 
-using StaticArrays
-
 using Logging
 
 export IODevice, InputDevice, OutputDevice

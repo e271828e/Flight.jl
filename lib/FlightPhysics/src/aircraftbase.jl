@@ -1,8 +1,6 @@
 module AircraftBase
 
 using LinearAlgebra, StaticArrays, ComponentArrays
-using FiniteDiff: finite_difference_jacobian! as jacobian!
-using DataStructures: OrderedDict
 
 using FlightCore
 using FlightCore.GUI

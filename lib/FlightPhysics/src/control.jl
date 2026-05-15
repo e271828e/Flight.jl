@@ -1,6 +1,6 @@
 module Control
 
-using LinearAlgebra, ComponentArrays, StaticArrays, StructArrays, Interpolations, HDF5
+using LinearAlgebra, StaticArrays, StructArrays, Interpolations, HDF5
 
 using FlightCore
 using FlightCore.GUI

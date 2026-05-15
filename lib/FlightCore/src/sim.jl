@@ -3,7 +3,7 @@ module Sim
 using Reexport, StructArrays
 using OrdinaryDiffEqCore: OrdinaryDiffEqCore, OrdinaryDiffEqAlgorithm, ODEProblem, ODEIntegrator
 using OrdinaryDiffEqCore: step!, reinit!, add_tstop!, get_proposed_dt, init as init_integrator
-using OrdinaryDiffEqLowOrderRK: Heun, RK4
+using OrdinaryDiffEqLowOrderRK: RK4, Heun
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
 using Logging
 

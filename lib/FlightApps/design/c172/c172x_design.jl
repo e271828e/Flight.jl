@@ -1,21 +1,18 @@
 module C172XDesign
 
+using Logging
+using ControlSystems
+using RobustAndOptimalControl
+using StructArrays
+using ComponentArrays
+using LinearAlgebra
+
 using FlightCore, FlightPhysics, FlightApps
 
 using FlightPhysics.Control: PIDData, LQRDataPoint, save_lookup_data
 using FlightApps.C172
 using FlightApps.C172X
 using FlightApps.C172X.C172XControl
-
-using HDF5
-using Logging
-using ControlSystems
-using RobustAndOptimalControl
-using StaticArrays
-using StructArrays
-using ComponentArrays
-using LinearAlgebra
-using Interpolations
 
 include("../pidopt.jl")
 using .PIDOpt: Settings, Metrics, optimize_PID, build_PID, check_results
