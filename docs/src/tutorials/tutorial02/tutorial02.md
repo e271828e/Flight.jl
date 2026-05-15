@@ -221,8 +221,7 @@ nothing #hide
 `TimeSeries` subtypes, so plotting is usually straightforward:
 
 ```@example tutorial02
-import Plots
-using LaTeXStrings
+using Plots, LaTeXStrings
 Plots.default(:size, (900, 600))
 Plots.default(:left_margin, 16Plots.px)
 nothing #hide
@@ -230,19 +229,19 @@ nothing #hide
 
 ```@example tutorial02
 #TimeSeries{<:Ranged} recipe
-Plots.plot(ts_el_cmd; plot_title="Elevator Response", label = "Command")
-Plots.plot!(ts_el_pos; label = "Position")
+plot(ts_el_cmd; plot_title="Elevator Response", label = "Command")
+plot!(ts_el_pos; label = "Position")
 ```
 
 ```@example tutorial02
 #TimeSeries{<:AbstractVector{<:Real}} recipe
-Plots.plot(ts_ω; plot_title="Angular Velocity", ylabel=L"$\omega \ (rad/s)$")
+plot(ts_ω; plot_title="Angular Velocity", ylabel=L"$\omega \ (rad/s)$")
 ```
 
 ```@example tutorial02
 #TimeSeries{Real} recipe
-Plots.plot(ts_α; plot_title="AoA vs Pitch Angle", ylabel=L"$\alpha, \ \theta \ (rad)$", label="AoA")
-Plots.plot!(ts_θ; label = "Pitch Angle")
+plot(ts_α; plot_title="AoA vs Pitch Angle", ylabel=L"$\alpha, \ \theta \ (rad)$", label="AoA")
+plot!(ts_θ; label = "Pitch Angle")
 ```
 
 ```@raw html
@@ -322,6 +321,6 @@ As expected, we get exactly the same result:
 ```@example tutorial02
 ts = TimeSeries(sim)
 ts_el = ts.aircraft.vehicle.systems.act.elevator[4 .<= get_time(ts) .< 10]
-Plots.plot(ts_el.cmd; plot_title="Elevator Response", label = "Command")
-Plots.plot!(ts_el.pos; label = "Position")
+plot(ts_el.cmd; plot_title="Elevator Response", label = "Command")
+plot!(ts_el.pos; label = "Position")
 ```
