@@ -62,10 +62,38 @@ Pkg.add("Flight")
 ```
 
 ## Quick Examples
-**1. Simulating an automated turning climb under constant wind conditions**
 
+### 1. Interactive simulation: Self-balancing robot
 ```julia
 using Flight
+
+#1. Set up simulation
+
+    #instantiate the complete Robot model (vehicle dynamics plus discrete controller)
+    mdl = Robot2D.Robot() |> Model
+
+    #create simulation specifying integration step size and discrete sampling period
+    sim = Simulation(mdl; t_end = 100, dt = 0.01, Δt = 0.02)
+
+    #use default Model initialization
+    init!(sim)
+
+#2. Run simulation in interactive mode
+
+    #this should open the GUI window; close it to terminate the simulation
+    run!(sim; gui = true) 
+    
+```
+![Interactive robot sim](/assets/robot2d_sim_light.png?raw=true)
+
+### 2. Headless simulation: Automated turning climb with constant wind
+
+```julia
+using Pkg
+Pkg.add("Plots")
+
+using Flight
+using Plots
 
 #1. Set up simulation
 
@@ -76,7 +104,7 @@ using Flight
     #initialize Simulation from default trim parameters
     init!(sim, C172.TrimParameters())
 
-#3. Set wind conditions
+#2. Set wind conditions
 
     world.atmosphere.wind.u.N = 1.0 #1 m/s North
     world.atmosphere.wind.u.E = 0.5 #0.5 m/s East
@@ -111,7 +139,7 @@ using Flight
 ![Turning climb 3D trajectory](/assets/turning_climb_3d.png?raw=true)
 
 
-**2. Comparing elevator step response between nonlinear and linearized Cessna 172S models**
+### 3. Comparing elevator step response between nonlinear and linearized Cessna 172S models
 ```julia
 using Pkg
 Pkg.add(["ControlSystems", "RobustAndOptimalControl", "Plots", "LaTeXStrings"])
@@ -175,41 +203,6 @@ using Plots, LaTeXStrings
     plot!(t, θ_linear; label = "Linear")
 ```
 ![Elevator step responses](/assets/elevator_step_response.png?raw=true)
-
-**3. Interactive self-balancing robot simulation**
-```julia
-using Pkg
-Pkg.add(["Plots", "LaTeXStrings"])
-
-using Flight
-using Plots, LaTeXStrings
-
-#1. Set up simulation
-
-    #instantiate the complete Robot model, which couples 
-    #continuous vehicle dynamics with a discrete controller
-    mdl = Model(Robot2D.Robot())
-
-    #specify custom continuous and discrete step sizes
-    sim = Simulation(mdl; t_end = 100, dt = 0.01, Δt = 0.02)
-
-    #use default Model initialization
-    init!(sim)
-
-#2. Run simulation in interactive mode
-
-    run!(sim; gui = true) #the interactive GUI should now open
-    
-#3. Retrieve and inspect results
-
-    #extract simulation data
-    ts = TimeSeries(sim)
-    
-    #compare velocity command and response 
-    plot(ts.controller.v_ref; plot_title = "Velocity", label = "Command", ylabel=L"$v \ (m / s)$") |> display
-    plot!(ts.vehicle.v; label = "Response")
-```
-![Interactive robot sim](/assets/robot2d_sim_light.png?raw=true)
 
 ## License
 
