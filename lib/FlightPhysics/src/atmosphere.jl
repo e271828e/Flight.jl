@@ -215,7 +215,7 @@ struct AirData
 end
 
 TAS2EAS(TAS::Real; ρ::Real) = TAS * √(ρ / ρ_std)
-EAS2TAS(TAS::Real; ρ::Real) = TAS * √(ρ_std / ρ)
+EAS2TAS(EAS::Real; ρ::Real) = EAS * √(ρ_std / ρ)
 
 function AirData(atm_data::AtmosphericData = AtmosphericData(),
                     kin_data::KinData = KinData())

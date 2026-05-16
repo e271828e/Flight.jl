@@ -50,6 +50,8 @@ Dynamics.get_hr_b(::Model{Airframe}) = zeros(SVector{3})
 
 function generate_aero_lookup()
 
+    #from JSBSim's C172R model
+
     ################################ C_D data ##################################
     C_D = (
         zero = 0.027,
@@ -918,16 +920,14 @@ function Modeling.f_init!(
 
     #any of these three algorithms works
     # opt = Opt(:LN_NELDERMEAD, length(x0))
-    opt = Opt(:LN_BOBYQA, length(x0))
     # opt = Opt(:GN_CRS2_LM, length(x0))
+    opt = Opt(:LN_BOBYQA, length(x0))
     opt.min_objective = f_opt
     opt.maxeval = 100000
     opt.stopval = 1e-16
     opt.lower_bounds = lower_bounds
     opt.upper_bounds = upper_bounds
     opt.initial_step = initial_step
-
-    # @btime optimize($opt, $x0)
 
     (minf, minx, exit_flag) = optimize(opt, x0)
 

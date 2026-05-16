@@ -263,6 +263,7 @@ end
 
 function Modeling.f_periodic!(::Unconditional, mdl::Model{<:CircularGuidance},
                                 vehicle::Model{<:Vehicle})
+    #TODO
 end
 
 ###############################################################################

@@ -72,13 +72,12 @@ Base.:(==)(n1::NVector, n2::NVector) = n1.data == n2.data
 Base.:(≈)(n1::NVector, n2::NVector; kwargs...) = ≈(n1.data, n2.data; kwargs...)
 Base.:(-)(n::NVector) = NVector(-n.data)
 
-#### AbstractArray interface
+#### AbstractVector interface
 Base.size(::NVector) = (3,)
 Base.length(::NVector) = 3
 Base.getindex(n::NVector, i) = getindex(n.data, i)
+Base.iterate(n::NVector, args...) = iterate(n.data, args...)
 
-#? why does this allocate?
-# Base.iterate(n::NVector, state = 1) = (state > 3 ? nothing : (n.data[state], state + 1))
 LinearAlgebra.norm(n::NVector) = norm(getfield(n, :data)) #uses StaticArrays implementation
 LinearAlgebra.normalize(n::NVector) = NVector(getfield(n, :data)) #let the constructor normalize
 
@@ -355,9 +354,11 @@ Base.:(+)(r_12_e::AbstractVector{<:Real}, r_e1_e::Cartesian) = r_e1_e + r_12_e
 Base.:(-)(r_e2_e::Cartesian, r_e1_e::Cartesian) = r_e2_e.data - r_e1_e.data #r_12_e
 Base.:(-)(r_e2_e::Cartesian, r_12_e::AbstractVector{<:Real}) = Cartesian(r_e2_e.data - SVector{3,Float64}(r_12_e)) #r_e1_e
 
-#### AbstractArray interface
+#### AbstractVector interface
 Base.size(::Cartesian) = (3,)
+Base.length(::Cartesian) = 3
 Base.getindex(n::Cartesian, i) = getindex(n.data, i)
+Base.iterate(n::Cartesian, args...) = iterate(n.data, args...)
 
 function Base.convert(::Type{Geographic{L,H}}, r::Cartesian) where {L,H}
     convert(Geographic{L,H}, convert(Geographic{NVector,Ellipsoidal}, r))

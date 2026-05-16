@@ -13,7 +13,7 @@ using ..Terrain
 using ..Control: PIVector, PIVectorY
 
 export LandingGearUnit, Strut, Contact, SimpleDamper
-export NoSteering, NoBraking, FreeSteering, DirectSteering, DirectBraking
+export NoSteering, NoBraking, DirectSteering, DirectBraking
 
 #basis elements, for convenience
 const e1 = SVector{3,Float64}(1,0,0)

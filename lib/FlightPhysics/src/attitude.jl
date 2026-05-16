@@ -365,21 +365,14 @@ Base.adjoint(ρ::RVec) = RVec(-ρ._data)
 Euler angle representation. Rotation order is ZYX, so angles follow the ordering
 ψ (heading), θ (inclination), φ (bank).
 """
-struct REuler <: Abstract3DRotation
-    ψ::Float64 #heading
-    θ::Float64 #inclination
-    φ::Float64 #bank
-    function REuler(ψ, θ, φ)
-        @assert abs(ψ<=π) "Heading must be within [-π, π]"
-        @assert abs(θ<=half_π) "Inclination must be within [-π/2, π/2]"
-        @assert abs(φ<=π) "Bank must be within [-π, π]"
-        new(ψ, θ, φ)
-    end
+@kwdef struct REuler <: Abstract3DRotation
+    ψ::Float64 = 0.0 #heading [-π, π]
+    θ::Float64 = 0.0 #inclination [-π/2, π/2]
+    φ::Float64 = 0.0 #bank within [-π, π]
 end
 
 REuler(r::Abstract3DRotation) = convert(REuler, r)
 REuler(input::Tuple{Real, Real, Real}) = REuler(input...)
-REuler(; ψ = 0, θ = 0, φ = 0) = REuler(ψ, θ, φ)
 function REuler(v::AbstractVector{<:Real})
     @assert length(v) == 3
     REuler(v[1], v[2], v[3])

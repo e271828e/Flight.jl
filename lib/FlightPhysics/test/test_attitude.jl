@@ -177,10 +177,6 @@ function test_REuler()
         @test r4.θ == θ && r4.ψ == r4.φ == 0
         @test r5.ψ == r5.θ == r5.φ == 0
 
-        @test_throws AssertionError REuler(θ = 1.7)
-        @test_throws AssertionError REuler(ψ = 1.65π)
-        @test_throws AssertionError REuler(φ = 1.65π)
-
     end
 
     @testset "Operators" begin
