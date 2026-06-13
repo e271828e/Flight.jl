@@ -352,6 +352,8 @@ function cb_periodic_init!(cb, u, t, integrator)
     add_tstop!(integrator, get_next_periodic_tstop(integrator))
 end
 
+#exact float comparison is justified here; the LHS is guaranteed to be hit exactly
+#at some point due to the previous call to add_tstop!
 function cb_periodic_condition(u, t, integrator)
     t == get_next_periodic_tstop(integrator)
 end
@@ -520,6 +522,7 @@ function start!(sim::Simulation)
 
                 if control.paused
                     τ_last = τ()
+                    sleep(0.05)
                     continue #skips next Simulation step
                 end
 
@@ -635,7 +638,7 @@ function Base.getproperty(ts::TimeSeries, s::Symbol)
     elseif s === :_data
         return data
     else
-        return TimeSeries(t, getproperty(StructArray(data), s))
+        return TimeSeries(t, map(d -> getproperty(d, s), data))
     end
 end
 

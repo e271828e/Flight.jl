@@ -128,6 +128,7 @@ abstract type AbstractAvionics <: ModelDefinition end
 
 struct NoAvionics <: AbstractAvionics end
 @no_updates NoAvionics
+Modeling.f_init!(::Model{NoAvionics}, args...) = nothing
 
 ################################################################################
 ######################## Vehicle/Avionics update methods #######################
@@ -309,7 +310,7 @@ function Linearization.linearize( vehicle::Model{<:Vehicle}, trim_params::Abstra
         end
     end
 
-    #define state space system's update function
+    #define state space system's output function
     g = let vehicle = vehicle, atmosphere = atmosphere, terrain = terrain
         function g(x_linear, u_linear)
             assign_x_ss!(vehicle, x_linear)
@@ -393,7 +394,7 @@ function GUI.draw( vehicle::VehicleY)
     (; kinematics, dynamics, airflow) = vehicle
 
     (; e_nb, ω_wb_b, ϕ_λ, h_e, h_o, v_gnd, χ_gnd, γ_gnd, v_eb_n) = kinematics
-    (; CAS, EAS, TAS, M, T, p, ρ, Δp, v_wb_b) = airflow
+    (; CAS, EAS, TAS, M, T, p, ρ, q, Δp, v_wb_b) = airflow
     (; ψ, θ, φ) = e_nb
     (; ϕ, λ) = ϕ_λ
 
@@ -418,7 +419,7 @@ function GUI.draw( vehicle::VehicleY)
             Separator()
 
             Text("Dynamic Pressure"); SameLine(240)
-            Text(@sprintf("%.3f Pa", Δp))
+            Text(@sprintf("%.3f Pa", q))
             Text("Impact Pressure"); SameLine(240)
             Text(@sprintf("%.3f Pa", Δp))
             Text("Mach"); SameLine(240)

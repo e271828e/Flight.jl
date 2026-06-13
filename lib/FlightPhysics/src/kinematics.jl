@@ -164,7 +164,7 @@ function Modeling.f_init!(mdl::Model{WA}, ic::Initializer = Initializer())
     v_eb_b = q_nb'(v_eb_n)
     h_e = HEllip(Ob)
 
-    q_wb = q_nb #arbitrarily initializes wander angle ψ_nw to 1
+    q_wb = q_nb #arbitrarily initializes wander angle ψ_nw to 0
 
     u.ω_eb_b = ω_eb_b
     u.v_eb_b = v_eb_b

@@ -197,9 +197,12 @@ abstract type PeriodicExecutionType end
 struct Conditional <: PeriodicExecutionType end
 struct Unconditional <: PeriodicExecutionType end
 
-#fallback for single-argument method called by the constructor
-function f_init!(mdl::Model, args...)
-    return nothing
+#nothing to initialize by default
+f_init!(::Model) = nothing
+
+#but unconsumed initializer arguments should error
+function f_init!(mdl::Model{D}, args...; kwargs...) where {D}
+    throw(MethodError(f_init!, (mdl, args...)))
 end
 
 #continuous dynamics, to be extended by Models

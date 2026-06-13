@@ -743,7 +743,7 @@ using .ModeControlLat: ModeControlLatEnum
 ar2ar_enabled(mode::ModeControlLatEnum) = (mode === ModeControlLat.sas)
 
 function φβ2ar_enabled(mode::ModeControlLatEnum)
-    mode === ModeControlLat.p_β || mode === ModeControlLat.ModeControlLat.φ_β ||
+    mode === ModeControlLat.p_β || mode === ModeControlLat.φ_β ||
         mode === ModeControlLat.χ_β
 end
 
@@ -955,7 +955,7 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLat},
             f_periodic!(χ2φ_pid)
             φ_ref = χ2φ_pid.y.output
 
-        else #ModeControlLat.ModeControlLat.φ_β
+        else #ModeControlLat.φ_β
 
             #φ_ref and β_ref directly set by input values, nothing to do here
 
@@ -1022,7 +1022,7 @@ function Modeling.f_init!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle
     f_periodic!(Unconditional(), lat, vehicle)
 
     #initialize φβ2ar outputs
-    u.mode_req = ModeControlLat.ModeControlLat.φ_β
+    u.mode_req = ModeControlLat.φ_β
     f_periodic!(Unconditional(), lat, vehicle)
 
     #restore direct mode
@@ -1076,9 +1076,9 @@ function GUI.draw!(lat::Model{<:ControlLawsLat}, vehicle::Model{<:Vehicle})
         IsItemActive() && (lat.u.mode_req = ModeControlLat.p_β;
         lat.u.p_ref = 0;
         lat.u.β_ref = β)
-        mode_button("Bank Angle + AoS", ModeControlLat.ModeControlLat.φ_β, lat.u.mode_req, lat.y.mode)
+        mode_button("Bank Angle + AoS", ModeControlLat.φ_β, lat.u.mode_req, lat.y.mode)
         SameLine()
-        IsItemActive() && (lat.u.mode_req = ModeControlLat.ModeControlLat.φ_β;
+        IsItemActive() && (lat.u.mode_req = ModeControlLat.φ_β;
         lat.u.φ_ref = φ;
         lat.u.β_ref = β)
         mode_button("Course Angle + AoS", ModeControlLat.χ_β, lat.u.mode_req, lat.y.mode)
