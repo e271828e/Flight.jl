@@ -91,16 +91,19 @@ function update!(interface::SimInput)
     (; device, mdl, mapping, control, io_lock) = interface
     data = IODevices.get_data!(device)
 
-    #the data we got from the InputDevice might be something we're not able to
-    #map to the Model (for example, an EOT character)
-    try
-        lock(io_lock)
-        IODevices.assign_input!(mdl, mapping, data)
-        IODevices.assign_input!(control, mapping, data)
-    catch ex
-        @warn("Failed to assign input data $data to Model")
-    finally
-        unlock(io_lock)
+    #the device might have received a shutdown request within the call to get_data!
+    #instead of trying to assign to the model, which would likely fail,
+    #we return here and let the interface loop terminate on the next iteration
+    IODevices.should_close(device) && return
+
+    @lock io_lock begin
+        try
+            IODevices.assign_input!(mdl, mapping, data)
+            IODevices.assign_input!(control, mapping, data)
+        catch ex
+            ex isa InputMappingError || rethrow()
+            @warn "Failed to assign input data" data exception=ex maxlog = 25
+        end
     end
 
 end

@@ -348,14 +348,16 @@ function IODevices.extract_output(mdl::Model{<:SimpleWorld}, ::JSONTestMapping)
 end
 
 function IODevices.assign_input!(world::Model{<:SimpleWorld}, ::JSONTestMapping, data::String)
-    #caution: String(data) empties the original data::Vector{UInt8}, so
-    #additional calls would return an empty string
-    str = String(data)
-    u = JSON3.read(str)
-
-    if !isempty(u)
-        JSON3.read!(JSON3.write(u.lon), world.aircraft.avionics.u.lon)
-        JSON3.read!(JSON3.write(u.lat), world.aircraft.avionics.u.lat)
+    try
+        u = JSON3.read(data)
+        if !isempty(u)
+            JSON3.read!(JSON3.write(u.lon), world.aircraft.avionics.u.lon)
+            JSON3.read!(JSON3.write(u.lat), world.aircraft.avionics.u.lat)
+        end
+    catch e
+        #tolerate malformed/incomplete telecommand packets; a genuine bug here
+        #would surface as some other exception type via update!'s rethrow
+        throw(InputMappingError(e))
     end
 end
 

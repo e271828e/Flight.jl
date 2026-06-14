@@ -5,6 +5,7 @@ using Logging
 export IODevice, InputDevice, OutputDevice
 export IOMapping, GenericInputMapping
 export get_default_mapping
+export InputMappingError
 
 
 ################################################################################
@@ -41,6 +42,24 @@ end
 function assign_input!(target::Any, mapping::IOMapping, data::Any)
     MethodError(assign_input!, (target, mapping, data)) |> throw
 end
+
+"""
+    InputMappingError(cause)
+
+Signals that an incoming datum could not be mapped onto its target for a reason
+that is *not* a programming error (e.g. a malformed or out-of-range network
+packet). An `assign_input!` implementation that wants such a datum tolerated
+—logged and skipped, leaving the input interface alive— should catch the
+underlying parsing/conversion exception and rethrow it as an `InputMappingError`.
+Any other exception propagates, terminating the input interface (and the
+Simulation, if its `should_abort` flag is set).
+"""
+struct InputMappingError <: Exception
+    cause::Exception
+end
+
+Base.showerror(io::IO, e::InputMappingError) =
+    (print(io, "InputMappingError caused by: "); showerror(io, e.cause))
 
 ################################################################################
 ############################## OutputDevice ####################################

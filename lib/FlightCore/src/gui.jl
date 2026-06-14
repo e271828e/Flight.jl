@@ -212,7 +212,7 @@ function render_loop(renderer::Renderer, timeout::Real = Inf64)
     try
         renderer._initialized || IODevices.init!(renderer)
     catch e
-        @warn "Error while initializing Renderer" exception=e
+        @warn "Error while initializing Renderer" exception=(e, catch_backtrace())
     end
 
     renderer._initialized || return
@@ -230,8 +230,7 @@ function render_loop(renderer::Renderer, timeout::Real = Inf64)
             render!(renderer)
         end
     catch e
-        @warn "Error while updating window" exception=e
-        # Base.show_backtrace(stderr, catch_backtrace())
+        @warn "Error while updating window" exception=(e, catch_backtrace())
     finally
         IODevices.shutdown!(renderer)
     end

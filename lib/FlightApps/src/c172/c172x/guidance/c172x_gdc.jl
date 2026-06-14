@@ -263,7 +263,7 @@ end
 
 function Modeling.f_periodic!(::Unconditional, mdl::Model{<:CircularGuidance},
                                 vehicle::Model{<:Vehicle})
-    #TODO
+    @warn "CircularGuidance not implemented" maxlog = 1
 end
 
 ###############################################################################
@@ -303,12 +303,11 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:GuidanceLaws},
 
     mode = (is_on_gnd(vehicle) ? ModeGuidance.direct : mode_req)
 
-    #guidance computations execute even when not active
-    f_periodic!(seg, vehicle)
-    f_periodic!(crc, vehicle)
-
     if mode === ModeGuidance.segment
+
+        f_periodic!(seg, vehicle)
         (; χ_ref, h_ref) = seg.y
+
         #EAS_ref and β_ref unchanged
         if seg.y.hor_gdc
             ctl.lat.u.χ_ref = χ_ref
@@ -318,6 +317,11 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:GuidanceLaws},
             ctl.lon.u.h_ref = h_ref
             ctl.lon.u.mode_req = ModeControlLon.EAS_alt
         end
+
+    elseif mode === ModeGuidance.circular
+
+        f_periodic!(crc, vehicle)
+
     end
 
     mdl.y = GuidanceLawsY(; mode, seg = seg.y, crc = crc.y)
@@ -471,8 +475,10 @@ function GUI.draw!(gdc::Model{<:SegmentGuidance}, vehicle::Model{<:Vehicle})
         try
             spec_to == 0 && (u.target = Segment(p1, p2))
             spec_to == 1 && (u.target = Segment(p1; χ = χ_12, s = s_12, γ = γ_12))
-        catch
-            "Segment construction failed"
+        catch e
+            #tolerate degenerate user-entered coordinates; surface anything else
+            e isa ArgumentError || rethrow()
+            @warn "Segment construction failed" exception=e maxlog=25
         end
     end
     mode_button("Horizontal Guidance", true, u.hor_gdc_req, y.hor_gdc); SameLine()
