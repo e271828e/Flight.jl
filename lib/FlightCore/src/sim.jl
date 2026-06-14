@@ -112,10 +112,10 @@ function update!(interface::SimOutput)
 
     (; device, mdl, mapping, io_lock) = interface
 
-    lock(io_lock)
-        #this call should never block and always return some usable output
-        data = IODevices.extract_output(mdl, mapping)
-    unlock(io_lock)
+    #this call should never block and always return some usable output. @lock
+    #guarantees io_lock is released even if extract_output throws; otherwise the
+    #simulation loop would deadlock on its next step! under io_lock
+    data = @lock io_lock IODevices.extract_output(mdl, mapping)
 
     IODevices.handle_data!(device, data)
 end
@@ -480,6 +480,7 @@ function start!(sim::Simulation)
 
         if isempty(sim.integrator.opts.tstops)
             @error("Simulation has hit its end time, call init! to reset it")
+            return
         end
 
         τ = let wall_time_ref = time()
@@ -489,14 +490,14 @@ function start!(sim::Simulation)
         t_start = integrator.sol.prob.tspan[1]
         t_end = integrator.sol.prob.tspan[2]
 
-        lock(io_lock)
+        @lock io_lock begin
             control.running = true
             control.paused = false
             control.algorithm = sim.integrator.alg |> typeof |> string
             control.t_start = t_start
             control.t_end = t_end
             control.Δt = mdl._Δt_root[]
-        unlock(io_lock)
+        end
 
         notify(io_start)
 
@@ -508,26 +509,28 @@ function start!(sim::Simulation)
 
             while sim.t[] < t_end
 
-                lock(io_lock)
+                local running, paused, pace #hoist these outside the @lock block's scope
+                @lock io_lock begin
+                    (; running, paused, pace) = control
                     control.dt = integrator.dt
                     control.iter = integrator.iter
                     control.t = sim.t[]
                     control.τ = τ()
-                unlock(io_lock)
+                end
 
-                if !control.running
+                if !running
                     @info("Simulation: Aborted at t = $(sim.t[])")
                     break
                 end
 
-                if control.paused
+                if paused
                     τ_last = τ()
                     sleep(0.05)
                     continue #skips next Simulation step
                 end
 
                 #compute wall-clock time at the end of next simulation step
-                τ_next = τ_last + get_proposed_dt(sim) / control.pace
+                τ_next = τ_last + get_proposed_dt(sim) / pace
 
                 #update simulation
                 @lock io_lock step!(sim)

@@ -148,8 +148,7 @@ function xpmsg_cmd(cmd_id::AbstractString)
     buffer = IOBuffer()
     write(buffer,
         b"CMND\0",
-        ascii(cmd_id) * "\0", #zero-terminated pure ASCII string
-        zeros(UInt8, 499-length(cmd_id))) #pad the message to 509 bytes
+        ascii(cmd_id))
 
     return String(take!(buffer))
 end

@@ -137,7 +137,7 @@ end
 
 @kwdef struct IntegratorOutput
     input::Float64 = 0
-    sat_ext::Float64 = 0
+    sat_ext::Int64 = 0
     bound_lo::Float64 = -Inf
     bound_hi::Float64 = Inf
     x1::Float64 = 0 #current state
@@ -399,7 +399,7 @@ end
     bound_lo::Float64 = -Inf
     bound_hi::Float64 = Inf
     input::Float64 = 0.0
-    sat_ext::Float64 = 0.0
+    sat_ext::Int64 = 0
     u_p::Float64 = 0.0 #proportional path input
     u_i::Float64 = 0.0 #integral path input
     u_d::Float64 = 0.0 #derivative path input

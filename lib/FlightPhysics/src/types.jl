@@ -21,8 +21,7 @@ end
 
 Ranged(val::T, vmin::Real, vmax::Real) where {T} = Ranged(val, T(vmin), T(vmax))
 Ranged{T}(x::Ranged) where {T} = convert(Ranged{T}, x)
-Ranged{T,Min,Max}(x::Ranged) where {T,Min,Max} = convert(Ranged{T,Min,Max}, x)
-Ranged{T,Min,Max}(x::Real) where {T,Min,Max} = Ranged(x, Min, Max)
+Ranged{T,Min,Max}(x::Union{Real, Ranged}) where {T,Min,Max} = convert(Ranged{T,Min,Max}, x)
 (T::Type{<:Real})(x::Ranged) = convert(T, x)
 
 Base.typemin(::Type{Ranged{T,Min,Max}}) where {T,Min,Max} = Min
@@ -41,10 +40,6 @@ function Base.convert(::Type{Ranged{T1}}, x::Ranged{T2,Min,Max}) where {T1,T2,Mi
     Ranged(T1(x.val), Min, Max)
 end
 
-function Base.promote_rule(::Type{Ranged{T1,Min,Max}}, ::Type{T2}) where {T1,T2,Min,Max}
-    Ranged{promote_type(T1, T2),Min,Max}
-end
-
 #basic addition and subtraction
 Base.:+(x::Ranged{T1,Min,Max}, y::Real) where {T1,Min,Max} = Ranged(x.val + y, Min, Max)
 Base.:-(x::Ranged{T1,Min,Max}, y::Real) where {T1,Min,Max} = Ranged(x.val - y, Min, Max)
@@ -55,8 +50,14 @@ Base.:-(x::Ranged{T1,Min,Max}) where {T1,Min,Max} = Ranged(-x.val, Min, Max)
 Base.:+(x::Ranged{T1,Min,Max}, y::Ranged{T2,Min,Max}) where {T1,T2,Min,Max} = Ranged(x.val + y.val, Min, Max)
 Base.:-(x::Ranged{T1,Min,Max}, y::Ranged{T2,Min,Max}) where {T1,T2,Min,Max} = Ranged(x.val - y.val, Min, Max)
 
-#basic equality
+Base.:(==)(x::R, y::R) where {R <: Ranged} = (==)(x.val, y.val)
+Base.:(≈)(x::R, y::R; kwargs...) where {R <: Ranged} = (≈)(x.val, y.val; kwargs...)
+Base.isless(x::R, y::R) where {R <: Ranged} = isless(x.val, y.val)
+
 Base.:(==)(x::Ranged{T1}, y::Real) where {T1} = (==)(promote(x.val, y)...)
+Base.:(==)(y::Real, x::Ranged{T1}) where {T1} = (==)(x,y)
+Base.:(≈)(x::Ranged{T1}, y::Real; kwargs...) where {T1} = (≈)(promote(x.val, y)...; kwargs...)
+Base.:(≈)(y::Real, x::Ranged{T1}; kwargs...) where {T1} = (≈)(x, y; kwargs...)
 Base.isless(x::Ranged{T1}, y::Real) where {T1} = isless(promote(x.val, y)...)
 Base.isless(y::Real, x::Ranged{T1}) where {T1} = isless(promote(y, x.val)...)
 
