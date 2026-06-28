@@ -89,7 +89,7 @@ function IODevices.assign_input!(mdl::Model{<:Cessna172Xv2},
                            ::GenericInputMapping, data::T16000MData)
 
     (; act) = mdl.vehicle.systems
-    u_ctl = mdl.avionics.u
+    u_ctl = mdl.avionics.ctl.u
 
     q_sf = 0.5 #pitch rate sensitivity
     p_sf = 0.5 #roll rate sensitivity
@@ -126,7 +126,7 @@ function IODevices.assign_input!(mdl::Model{<:Cessna172Xv2},
                            ::GenericInputMapping, data::GladiatorNXTEvoData)
 
     (; act) = mdl.vehicle.systems
-    u_ctl = mdl.avionics.u
+    u_ctl = mdl.avionics.ctl.u
 
     q_sf = 0.5 #pitch rate sensitivity
     p_sf = 0.5 #roll rate sensitivity

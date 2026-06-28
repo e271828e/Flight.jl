@@ -59,6 +59,12 @@ get_instance_id(idx::Integer) = ccall(
 get_guid(idx::Integer) = ccall(
     (:SDL_JoystickGetDeviceGUID, libsdl2), SDL_JoystickGUID, (Cint,), idx)
 
+get_vendor(idx::Integer) = ccall(
+    (:SDL_JoystickGetDeviceVendor, libsdl2), UInt16, (Cint,), idx)
+
+get_product(idx::Integer) = ccall(
+    (:SDL_JoystickGetDeviceProduct, libsdl2), UInt16, (Cint,), idx)
+
 get_name(idx::Integer) = unsafe_string(ccall(
     (:SDL_JoystickNameForIndex, libsdl2), Ptr{Cchar}, (Cint,), idx))
 
@@ -171,6 +177,8 @@ mutable struct Joystick{D <: AbstractJoystickData} <: InputDevice
     cache::D
 end
 
+Joystick{D}(ptr::Ptr{SDL_Joystick}) where {D <: AbstractJoystickData} = Joystick{D}(ptr, D())
+
 IODevices.get_default_mapping(::Joystick) = GenericInputMapping()
 
 is_connected(joy::Joystick) = is_connected(joy.ptr)
@@ -197,11 +205,9 @@ function update_connected_joysticks()
                 @warn "Can't add $name, an identical device is already connected"
                 continue
             end
-            if haskey(supported_joysticks, guid)
-                ptr = open(idx)
-                cache = supported_joysticks[guid]()
-                joy = Joystick(ptr, cache)
-                push!(connected_joysticks, joy)
+            J = joystick_type(get_vendor(idx), get_product(idx))
+            if J !== nothing
+                push!(connected_joysticks, J(open(idx)))
             else
                 @warn "Can't add $name, device not supported"
                 continue
@@ -271,6 +277,7 @@ function rescale(data::T16000MAxes{T}) where {T<:AbstractFloat}
 end
 
 const T16000M = Joystick{T16000MData}
+usb_id(::Type{T16000M}) = (0x044f, 0xb10a) #Thrustmaster T16000M
 
 
 ################################################################################
@@ -344,6 +351,7 @@ function rescale(data::TWCSAxes{T}) where {T<:AbstractFloat}
 end
 
 const TWCS = Joystick{TWCSData}
+usb_id(::Type{TWCS}) = (0x044f, 0xb687) #Thrustmaster TWCS
 
 
 
@@ -428,19 +436,20 @@ function rescale(data::GladiatorNXTEvoAxes{T}) where {T<:AbstractFloat}
 end
 
 const GladiatorNXTEvo = Joystick{GladiatorNXTEvoData}
+usb_id(::Type{GladiatorNXTEvo}) = (0x231d, 0x0200) #VKBSim Gladiator NXT Evo
 
 
 ################################################################################
 ############################# Supported Joysticks ##############################
 
-const supported_joysticks = Dict{SDL_JoystickGUID, Type}(
-    SDL_JoystickGUID((0x03, 0x00, 0x00, 0x00, 0x4f, 0x04, 0x00, 0x00, 0x0a, 0xb1, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00)) => T16000MData, #macOS
-    SDL_JoystickGUID((0x03, 0x00, 0x00, 0x00, 0x4f, 0x04, 0x00, 0x00, 0x0a, 0xb1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)) => T16000MData, #Windows
-    SDL_JoystickGUID((0x03, 0x00, 0x00, 0x00, 0x4f, 0x04, 0x00, 0x00, 0x87, 0xb6, 0x00, 0x00, 0x10, 0x01, 0x00, 0x00)) => TWCSData, #macOS
-    SDL_JoystickGUID((0x03, 0x00, 0x00, 0x00, 0x4f, 0x04, 0x00, 0x00, 0x87, 0xb6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)) => TWCSData, #Windows
-    SDL_JoystickGUID((0x03, 0x00, 0x00, 0x00, 0x1d, 0x23, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x4a, 0x21, 0x00, 0x00)) => GladiatorNXTEvoData, #macOS
-    SDL_JoystickGUID((0x03, 0x00, 0x00, 0x00, 0x1d, 0x23, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)) => GladiatorNXTEvoData, #Windows
-)
+const supported_joysticks = (T16000M, TWCS, GladiatorNXTEvo)
+
+function joystick_type(vendor::UInt16, product::UInt16)
+    for J in supported_joysticks
+        usb_id(J) == (vendor, product) && return J
+    end
+    return nothing
+end
 
 
 ################################################################################
