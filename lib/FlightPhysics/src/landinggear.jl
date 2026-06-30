@@ -195,9 +195,11 @@ end
 
 ################################## Strut #######################################
 
-@kwdef struct GroundCrash <: Exception
+@kwdef struct GroundCrash <: SimulationTermination
     msg::String = ""
 end
+
+Base.showerror(io::IO, e::GroundCrash) = print(io, "GroundCrash: ", e.msg)
 
 @kwdef struct Strut{D<:AbstractDamper} <: ModelDefinition
     t_bs::FrameTransform = FrameTransform() #vehicle to strut frame transform

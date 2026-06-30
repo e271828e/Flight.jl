@@ -14,6 +14,34 @@ using ..GUI
 export Simulation, attach!, init!, step!, run!
 export TimeSeries, get_time, get_data, get_components
 export take_nonblocking!, put_nonblocking!
+export SimulationTermination
+
+
+################################################################################
+######################## SimulationTermination #################################
+
+"""
+    SimulationTermination <: Exception
+
+Abstract supertype for exceptions that signal a *graceful* end to a Simulation
+(e.g. a vehicle crash or loss of balance) rather than a programming error.
+Domain code above `FlightCore` subtypes this to have the simulation loop log the
+termination as informational rather than as an unexpected error with a full
+backtrace.
+"""
+abstract type SimulationTermination <: Exception end
+
+#format a backtrace as one "func @ file:line" line per frame, deliberately
+#reading only these scalar fields so the heavily-parameterized argument types
+#held in each frame's linfo are never rendered (those are what make stack traces
+#unreadable here). stacktrace() already drops C frames by default.
+function compact_backtrace(bt)
+    io = IOBuffer()
+    for sf in stacktrace(bt)
+        println(io, "  ", sf.func, " @ ", sf.file, ":", sf.line)
+    end
+    String(take!(io))
+end
 
 
 ################################################################################
@@ -554,8 +582,14 @@ function start!(sim::Simulation)
 
     catch ex
 
-        st = stacktrace(catch_backtrace())
-        @error("Simulation: Terminated with $ex in $(st[1])")
+        if ex isa SimulationTermination
+            @info("Simulation: Terminated: $ex")
+        else
+            @error("Simulation: Terminated with unexpected error:\n" *
+                   sprint(showerror, ex) * "\n" *
+                   compact_backtrace(catch_backtrace()))
+            @debug("Full backtrace", exception=(ex, catch_backtrace()))
+        end
 
     finally
 

@@ -528,9 +528,11 @@ end
     controller::C = Controller()
 end
 
-@kwdef struct LostBalance <: Exception
+@kwdef struct LostBalance <: SimulationTermination
     msg::String = ""
 end
+
+Base.showerror(io::IO, e::LostBalance) = print(io, "LostBalance: ", e.msg)
 
 function Modeling.f_ode!( mdl::Model{<:Robot})
 
