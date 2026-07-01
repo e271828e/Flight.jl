@@ -325,21 +325,20 @@ end
 
 #prevent monstrous type signatures from flooding the REPL
 
-#only print the truncated type
-function Base.show(io::IO, ::D) where {D <: ModelDefinition}
-    maxlen = 100
-    md_str = sprint(show, D)
-    md_str = (length(md_str) < maxlen ? md_str : first(md_str, maxlen) * "...")
-    write(io, md_str * "(...)")
-end
+#truncate a typ's printed form so monstrous parametric signatures don't flood output
+truncated_type(@nospecialize(T::Type), maxlen::Int = 100) =
+    (s = sprint(show, T); length(s) > maxlen ? first(s, maxlen) * "..." : s)
 
-#only print the truncated ModelDefinition type parameter
-function Base.show(io::IO, ::Model{D}) where {D <: ModelDefinition}
-    maxlen = 100 #maximum length for ModelDefinition type parameter
-    md_str = sprint(show, D)
-    md_str = (length(md_str) < maxlen ? md_str : first(md_str, maxlen) * "...")
-    write(io, "Model{" * md_str * "}(...)")
-end
+#compact 2-arg show: only the length-capped ModelDefinition type
+Base.show(io::IO, ::D) where {D <: ModelDefinition} =
+    print(io, truncated_type(D), "(...)")
+
+Base.show(io::IO, ::Model{D}) where {D <: ModelDefinition} =
+    print(io, "Model{", truncated_type(D), "}(...)")
+
+#rich 3-arg (REPL/display) show: render the submodel tree, each node labelled
+#by the 2-arg show above
+Base.show(io::IO, ::MIME"text/plain", mdl::Model) = AbstractTrees.print_tree(io, mdl)
 
 #enable hierarchy inspection with AbstractTrees.print_tree
 AbstractTrees.children(node::Model) = node.submodels

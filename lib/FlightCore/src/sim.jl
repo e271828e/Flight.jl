@@ -718,20 +718,29 @@ TimeSeries(sim::Simulation) = TimeSeries(sim.log.t, sim.log.saveval)
 ################################################################################
 ############################### Inspection #####################################
 
-# #prevent monstrous type signatures from flooding the REPL
+#prevent monstrous type signatures from flooding the REPL (see Modeling.truncated_type)
 
-function Base.show(io::IO, ::Simulation{D}) where {D <: ModelDefinition}
-    maxlen = 100 #maximum length for ModelDefinition type parameter
-    md_str = sprint(show, D)
-    md_str = (length(md_str) < maxlen ? md_str : first(md_str, maxlen) * "...")
-    write(io, "Simulation{" * md_str * "}(...)")
+Base.show(io::IO, ::Simulation{D}) where {D <: ModelDefinition} =
+    print(io, "Simulation{", Modeling.truncated_type(D), "}(...)")
+
+Base.show(io::IO, ::TimeSeries{D}) where {D} =
+    print(io, "TimeSeries{", Modeling.truncated_type(D, 200), "}(...)")
+
+#rich 3-arg (REPL/display) show
+function Base.show(io::IO, ::MIME"text/plain", sim::Simulation{D}) where {D <: ModelDefinition}
+    (t0, tf) = sim.integrator.sol.prob.tspan
+    n = length(sim.log.t)
+    print(io, "Simulation{", Modeling.truncated_type(D), "}\n",
+          "  model: ", sprint(show, sim.mdl), "\n",
+          "  t = ", sim.integrator.t, " ∈ [", t0, ", ", tf, "], dt = ", sim.integrator.dt, "\n",
+          "  log: ", n, n == 1 ? " sample" : " samples")
 end
 
-function Base.show(io::IO, ::TimeSeries{D}) where {D}
-    maxlen = 200 #maximum length for ModelDefinition type parameter
-    dtype_str = sprint(show, D)
-    dtype_str = (length(dtype_str) < maxlen ? dtype_str : first(dtype_str, maxlen) * "...")
-    write(io, "TimeSeries{" * dtype_str * "}(...)")
+function Base.show(io::IO, ::MIME"text/plain", ts::TimeSeries{V}) where {V}
+    n = length(ts)
+    span = n == 0 ? "empty" : "t ∈ [$(first(ts._t)), $(last(ts._t))]"
+    print(io, "TimeSeries{", Modeling.truncated_type(V), "}: \n",
+          n, n == 1 ? " sample, " : " samples, ", span)
 end
 
 end #module
