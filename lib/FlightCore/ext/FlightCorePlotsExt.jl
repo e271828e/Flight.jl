@@ -92,8 +92,13 @@ end
 
 Plotting.save_plots(sim::Simulation, args...; kwargs...) = save_plots(TimeSeries(sim), args...; kwargs...)
 
+#Plotting.defaults is a save-time concern: it is spliced before user kwargs
+#here, and only here. make_plots always returns vanilla figures (splice
+#Plotting.defaults manually to opt in). the rightmost occurrence of a keyword
+#wins, so callers override any default by simply passing the corresponding
+#kwarg; global changes can be made by mutating the Plotting.defaults Dict
 function Plotting.save_plots(ts::TimeSeries, args...; kwargs...)
-    pd = make_plots(ts; kwargs...)
+    pd = make_plots(ts; Plotting.defaults..., kwargs...)
     save_plots(pd, args...; kwargs...)
 end
 

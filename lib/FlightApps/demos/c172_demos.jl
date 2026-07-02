@@ -91,10 +91,10 @@ function generic_simulation(; aircraft::Cessna172 = Cessna172Xv1(),
     Sim.run!(sim; gui)
 
     if save
-        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/interactive_sim/kin"); Plotting.defaults..., linewidth = 2,)
-        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/interactive_sim/air"); Plotting.defaults...)
-        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/interactive_sim/dyn"); Plotting.defaults...)
-        # save_plots(TimeSeries(sim).aircraft.vehicle.dynamics; Plotting.defaults...)
+        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/interactive_sim/kin"); linewidth = 2)
+        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/interactive_sim/air"))
+        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/interactive_sim/dyn"))
+        # save_plots(TimeSeries(sim).aircraft.vehicle.dynamics)
     end
 
     return sim
@@ -274,9 +274,9 @@ function elevator_doublet(; save::Bool = false)
     Sim.run!(sim)
 
     if save
-        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); Plotting.defaults..., linewidth = 2,)
-        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/elevator_doublet/air"); Plotting.defaults...)
-        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/elevator_doublet/dyn"); Plotting.defaults...)
+        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); linewidth = 2)
+        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/elevator_doublet/air"))
+        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/elevator_doublet/dyn"))
     end
 
     return sim
@@ -304,9 +304,9 @@ function elevator_doublet_callback(; save::Bool = false)
     Sim.run!(sim)
 
     if save
-        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); Plotting.defaults..., linewidth = 2,)
-        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/elevator_doublet/air"); Plotting.defaults...)
-        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/elevator_doublet/dyn"); Plotting.defaults...)
+        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/elevator_doublet/kin"); linewidth = 2)
+        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/elevator_doublet/air"))
+        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/elevator_doublet/dyn"))
     end
 
     return sim
@@ -393,8 +393,7 @@ function json_loopback(; gui::Bool = false, xp12 = false, save::Bool = false)
     Sim.run!(sim; gui, pace)
 
     save && save_plots(TimeSeries(sim).aircraft.vehicle.kinematics,
-                        normpath("tmp/plots/udp_loopback/kin");
-                        Plotting.defaults...)
+                        normpath("tmp/plots/udp_loopback/kin"))
 
     return nothing
 
@@ -495,9 +494,9 @@ function crosswind_landing(; gui::Bool = false,
     Sim.run!(sim; gui)
 
     if save
-        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/crosswind_landing/kin"); Plotting.defaults..., linewidth = 2,)
-        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/crosswind_landing/air"); Plotting.defaults...)
-        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/crosswind_landing/dyn"); Plotting.defaults...)
+        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/crosswind_landing/kin"); linewidth = 2)
+        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/crosswind_landing/air"))
+        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/crosswind_landing/dyn"))
     end
 
     return sim
@@ -651,9 +650,9 @@ function traffic_pattern(; gui::Bool = false,
     Sim.run!(sim; gui)
 
     if save
-        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/traffic_pattern/kin"); Plotting.defaults..., linewidth = 2,)
-        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/traffic_pattern/air"); Plotting.defaults...)
-        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/traffic_pattern/dyn"); Plotting.defaults...)
+        save_plots(TimeSeries(sim).aircraft.vehicle.kinematics, normpath("tmp/plots/traffic_pattern/kin"); linewidth = 2)
+        save_plots(TimeSeries(sim).aircraft.vehicle.airflow, normpath("tmp/plots/traffic_pattern/air"))
+        save_plots(TimeSeries(sim).aircraft.vehicle.dynamics, normpath("tmp/plots/traffic_pattern/dyn"))
     end
 
     return sim

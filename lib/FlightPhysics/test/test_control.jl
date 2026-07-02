@@ -78,7 +78,7 @@ function test_continuous_pi(save = false)
         @test @ballocated(f_step!($mdl)) == 0
         @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
 
-        save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_continuous_pi"); Plotting.defaults...)
+        save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_continuous_pi"))
 
     end #testset
 
@@ -317,7 +317,7 @@ function test_discrete_pid(save = false)
         @test @ballocated(f_step!($mdl)) == 0
         @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
 
-        save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid"); Plotting.defaults...)
+        save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid"))
 
         #operate PID as a filtered derivative
         f_init!(mdl)
@@ -441,7 +441,7 @@ function test_discrete_pid_vector(save = false)
         @test @ballocated(f_step!($mdl)) == 0
         @test @ballocated(f_periodic!(Unconditional(), $mdl)) == 0
 
-        save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid_vector"); Plotting.defaults...)
+        save && save_plots(TimeSeries(sim), normpath("tmp/test_control/test_discrete_pid_vector"))
 
         #operate PID as a filtered derivative
         f_init!(mdl)
