@@ -53,41 +53,7 @@ end
     running::Bool = false #to be checked on each loop iteration for termination
     paused::Bool = false #to pause or unpause the simulation
     pace::Float64 = 1.0 #to be set by the SimControl GUI
-    algorithm::String = ""
-    t_start::Float64 = 0.0
-    t_end::Float64 = 0.0
-    Δt::Float64 = 0.0 #root system's periodic update interval
-    dt::Float64 = 0.0 #last continuous integration step size
-    iter::Int64 = 0 #total iterations
-    t::Float64 = 0.0 #simulation time
-    τ::Float64 = 0.0 #wall-clock time
-end
-
-function GUI.draw!(control::SimControl)
-
-    BeginWindow("Simulation Control")
-
-        mode_button("Pause", true, false, control.paused; HSV_active = HSV_amber)
-        IsItemClicked() && (control.paused = !control.paused); SameLine()
-
-        control.pace = safe_slider("Pace", control.pace, 0.1, 20.0, "%.3f",
-        CImGui.lib.ImGuiSliderFlags_Logarithmic)
-
-        (; algorithm, t_start, t_end, Δt, dt, iter, t, τ) = control
-
-        TextFormatted("Algorithm: " * algorithm)
-        TextFormatted("Continuous step size: $dt")
-        TextFormatted("Periodic update interval: $Δt")
-        TextFormatted("Iterations: $iter")
-        TextFormatted(@sprintf("Simulation time: %.3f s", t) * " [$t_start, $t_end]")
-        TextFormatted(@sprintf("Wall-clock time: %.3f s", τ))
-        TextFormatted(@sprintf("GUI framerate: %.3f ms/frame (%.1f FPS)",
-                            1000 / unsafe_load(CImGui.GetIO().Framerate),
-                            unsafe_load(CImGui.GetIO().Framerate)))
-
-
-    EndWindow()
-
+    τ_start::Float64 = 0.0 #value of time() at simulation start
 end
 
 #to control the Simulation, an InputDevice that should define its own IOMapping
@@ -233,8 +199,8 @@ struct Simulation{D <: ModelDefinition, Y, I <: ODEIntegrator, G <: SimGUI}
         io_start = Base.Event()
         io_lock = ReentrantLock()
 
-        f_draw = let control = control, mdl = mdl
-            () -> GUI.draw!(control, mdl)
+        f_draw = let control = control, mdl = mdl, integrator = integrator
+            () -> GUI.draw!(control, mdl, integrator)
         end
 
         #sync should be set to 0 to disable VSync. otherwise, the call to
@@ -259,16 +225,20 @@ function Simulation(md::ModelDefinition, args...; kwargs...)
 end
 
 function Base.propertynames(::Simulation)
-    (fieldnames(Simulation)..., :x, :ẋ, :s, :u, :y, :t, :Δt)
+    (fieldnames(Simulation)..., :t, :dt, :iter, :alg, :t_start, :t_end, :x, :ẋ, :s, :u, :y, :Δt)
 end
 
 Base.getproperty(sim::Simulation, s::Symbol) = getproperty(sim, Val(s))
 
 @generated function Base.getproperty(sim::Simulation, ::Val{S}) where {S}
-    if S === :t
-        return :(getproperty(getfield(sim, :mdl), $(QuoteNode(S)))[])
-    elseif S ∈ (:x, :ẋ, :s, :u, :y, :Δt)
+    if S ∈ (:x, :ẋ, :s, :u, :y, :Δt)
         return :(getproperty(getfield(sim, :mdl), $(QuoteNode(S))))
+    elseif S ∈ (:t, :dt, :iter, :alg)
+        return :(getproperty(getfield(sim, :integrator), $(QuoteNode(S))))
+    elseif S === :t_start
+        return :(getfield(sim, :integrator).sol.prob.tspan[1])
+    elseif S === :t_end
+        return :(getfield(sim, :integrator).sol.prob.tspan[2])
     else
         return :(getfield(sim, $(QuoteNode(S))))
     end
@@ -416,9 +386,42 @@ end
 
 ################################# GUI ##########################################
 
-function GUI.draw!(control::SimControl, mdl::Model)
-    GUI.draw!(control)
+function GUI.draw!(control::SimControl, mdl::Model, integrator::ODEIntegrator)
+
+    BeginWindow("Simulation Control")
+
+        mode_button("Pause", true, false, control.paused; HSV_active = HSV_amber)
+        IsItemClicked() && (control.paused = !control.paused); SameLine()
+
+        control.pace = safe_slider("Pace", control.pace, 0.1, 20.0, "%.3f",
+        CImGui.lib.ImGuiSliderFlags_Logarithmic)
+
+        Separator()
+
+        (t_start, t_end) = integrator.sol.prob.tspan
+        framerate = unsafe_load(CImGui.GetIO().Framerate)
+
+        if BeginTable("Info", 2, CImGui.ImGuiTableFlags_SizingStretchProp)
+            for (label, value) in (
+                "Algorithm" => integrator.alg |> typeof |> nameof |> string,
+                "Continuous step size" => "$(integrator.dt)",
+                "Periodic update interval" => "$(mdl.Δt)",
+                "Iterations" => "$(integrator.iter)",
+                "Simulation time" => @sprintf("%.3f s", integrator.t) * " [$t_start, $t_end]",
+                "Wall-clock time" => @sprintf("%.3f s", time() - control.τ_start),
+                "GUI framerate" => @sprintf("%.3f ms/frame (%.1f FPS)", 1000 / framerate, framerate),
+                )
+                TableNextRow()
+                TableNextColumn(); TextFormatted(label)
+                TableNextColumn(); TextFormatted(value)
+            end
+            EndTable()
+        end
+
+    EndWindow()
+
     GUI.draw!(mdl)
+
 end
 
 
@@ -483,7 +486,7 @@ end
 
 function start!(sim::Simulation)
 
-    (; mdl, integrator, control, io_start, io_lock) = sim
+    (; control, io_start, io_lock) = sim
 
     try
 
@@ -492,39 +495,28 @@ function start!(sim::Simulation)
             return
         end
 
-        τ = let wall_time_ref = time()
-            ()-> time() - wall_time_ref
-        end
+        τ_start = time()
+        τ = () -> time() - τ_start #wall-clock time elapsed since simulation start
 
-        t_start = integrator.sol.prob.tspan[1]
-        t_end = integrator.sol.prob.tspan[2]
-
+        #io_lock not strictly needed here, since interface threads can't touch control until they pass wait(io_start)
         @lock io_lock begin
             control.running = true
             control.paused = false
-            control.algorithm = sim.integrator.alg |> typeof |> string
-            control.t_start = t_start
-            control.t_end = t_end
-            control.Δt = mdl.Δt
+            control.τ_start = τ_start
         end
+
+        @info("Simulation: Starting on $(Threads.threadpool()) thread $(Threads.threadid())...")
 
         notify(io_start)
 
         τ_last = τ()
 
-        @info("Simulation: Starting on $(Threads.threadpool()) thread $(Threads.threadid())...")
-
         Δτ = @elapsed begin
 
-            while sim.t < t_end
+            while sim.t < sim.t_end
 
-                local running, paused, pace #hoist these outside the @lock block's scope
-                @lock io_lock begin
-                    (; running, paused, pace) = control
-                    control.dt = integrator.dt
-                    control.iter = integrator.iter
-                    control.t = sim.t
-                    control.τ = τ()
+                (; running, paused, pace) = @lock io_lock begin
+                    (; control.running, control.paused, control.pace)
                 end
 
                 if !running
@@ -610,23 +602,25 @@ end
 
 function run!(sim::Simulation; gui::Bool = false, pace::Real = (gui ? 1.0 : Inf))
 
-    req_threads = 1 + Int(gui) + length(sim.interfaces) #sim loop + interfaces
+    (; control, interfaces, io_start) = sim
+
+    req_threads = 1 + Int(gui) + length(interfaces) #sim loop + interfaces
     threads = Threads.nthreads()
     req_threads <= threads || error(
         "Running this simulation requires at least $req_threads available
         threads, the current Julia session only has $threads")
 
-    sim.control.pace = pace
+    control.pace = pace
 
     #reset io_start here, before any threads are spawned, rather than within
     #start!(::Simulation) or sim_cleanup!: those run concurrently with the
     #interface threads, so a reset there can race with an interface's
     #wait(io_start), either blocking it forever (reset before a late wait) or
     #letting it through prematurely on the still-set event from a previous run
-    reset(sim.io_start)
+    reset(io_start)
 
     @sync begin
-        for interface in sim.interfaces
+        for interface in interfaces
             Threads.@spawn start!(interface)
         end
         Threads.@spawn start!(sim)
@@ -717,11 +711,10 @@ Base.show(io::IO, ::TimeSeries{D}) where {D} =
 
 #rich 3-arg (REPL/display) show
 function Base.show(io::IO, ::MIME"text/plain", sim::Simulation{D}) where {D <: ModelDefinition}
-    (t0, tf) = sim.integrator.sol.prob.tspan
     n = length(sim.log.t)
     print(io, "Simulation{", Modeling.truncated_type(D), "}\n",
           "  model: ", sprint(show, sim.mdl), "\n",
-          "  t = ", sim.integrator.t, " ∈ [", t0, ", ", tf, "], dt = ", sim.integrator.dt, "\n",
+          "  t = ", sim.t, " ∈ [", sim.t_start, ", ", sim.t_end, "], dt = ", sim.dt, "\n",
           "  log: ", n, n == 1 ? " sample" : " samples")
 end
 
