@@ -14,7 +14,6 @@ using ..GUI
 
 export Simulation, attach!, init!, step!, run!
 export TimeSeries, get_time, get_data, get_components
-export take_nonblocking!, put_nonblocking!
 export SimulationTermination
 
 
@@ -166,28 +165,6 @@ function update!(gui::SimGUI)
     sleep(0.001)
 end
 
-
-########################## Currently unused ####################################
-
-#unlike lock, trylock does not block if the Channel is already locked, while
-#also ensuring it is not modified while we're checking its state
-
-function take_nonblocking!(channel::Channel)
-    if trylock(channel)
-        data = (isready(channel) ? take!(channel) : nothing)
-        unlock(channel)
-        return data
-    else
-        return nothing
-    end
-end
-
-function put_nonblocking!(channel::Channel{T}, data::T) where {T}
-    if trylock(channel)
-        (isopen(channel) && !isready(channel)) && put!(channel, data)
-        unlock(channel)
-    end
-end
 
 
 ################################################################################
@@ -528,7 +505,7 @@ function start!(sim::Simulation)
             control.algorithm = sim.integrator.alg |> typeof |> string
             control.t_start = t_start
             control.t_end = t_end
-            control.Δt = mdl._Δt_root[]
+            control.Δt = mdl.Δt
         end
 
         notify(io_start)
@@ -539,19 +516,19 @@ function start!(sim::Simulation)
 
         Δτ = @elapsed begin
 
-            while sim.t[] < t_end
+            while sim.t < t_end
 
                 local running, paused, pace #hoist these outside the @lock block's scope
                 @lock io_lock begin
                     (; running, paused, pace) = control
                     control.dt = integrator.dt
                     control.iter = integrator.iter
-                    control.t = sim.t[]
+                    control.t = sim.t
                     control.τ = τ()
                 end
 
                 if !running
-                    @info("Simulation: Aborted at t = $(sim.t[])")
+                    @info("Simulation: Aborted at t = $(sim.t)")
                     break
                 end
 
@@ -664,7 +641,7 @@ end
 ################################################################################
 ############################### TimeSeries ####################################
 
-mutable struct TimeSeries{V, T <: AbstractVector{Float64}, D <: AbstractVector{V}}
+struct TimeSeries{V, T <: AbstractVector{Float64}, D <: AbstractVector{V}}
     _t::T
     _data::D
     function TimeSeries(t::T, data::D) where {T <: AbstractVector{<:AbstractFloat}, D <: AbstractVector{V}} where {V}
