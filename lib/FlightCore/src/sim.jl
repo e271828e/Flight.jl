@@ -610,15 +610,15 @@ function sim_cleanup!(sim::Simulation)
         control.running = false
     end
 
-    #unblock any IO threads still waiting for Simulation start
+    #unblock any IO threads still waiting for Simulation start. the event is
+    #deliberately left set: interface threads reaching wait(io_start) after
+    #this point must also pass through and observe running == false. it is
+    #reset by the next call to run!, before interface threads are spawned
     notify(io_start)
 
     #unblock any IO threads stuck in a blocking get_data!/handle_data! call
     #(e.g. a UDPInput waiting on recv from a source that no longer sends)
     foreach(interface -> IODevices.interrupt!(interface.device), sim.interfaces)
-
-    #prepare for another run
-    reset(io_start)
 
 end
 
@@ -640,6 +640,13 @@ function run!(sim::Simulation; gui::Bool = false, pace::Real = (gui ? 1.0 : Inf)
         threads, the current Julia session only has $threads")
 
     sim.control.pace = pace
+
+    #reset io_start here, before any threads are spawned, rather than within
+    #start!(::Simulation) or sim_cleanup!: those run concurrently with the
+    #interface threads, so a reset there can race with an interface's
+    #wait(io_start), either blocking it forever (reset before a late wait) or
+    #letting it through prematurely on the still-set event from a previous run
+    reset(sim.io_start)
 
     @sync begin
         for interface in sim.interfaces
