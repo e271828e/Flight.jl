@@ -70,8 +70,9 @@ Base.propertynames(::Renderer) = (:f_draw, :settings, :sync)
 function Base.setproperty!(renderer::Renderer, name::Symbol, value)
     if name ∈ propertynames(renderer)
         if renderer._initialized
-            @error("Cannot set property $name for an initialized Renderer, ",
-            "call shutdown! first")
+            throw(InvalidStateException(
+                "Cannot set property $name for an initialized Renderer, call shutdown! first",
+                :initialized))
         else
             setfield!(renderer, name, value)
         end
@@ -153,7 +154,7 @@ end
 
 function IODevices.shutdown!(renderer::Renderer)
 
-    @assert renderer._initialized "Cannot shutdown an uninitialized renderer"
+    renderer._initialized || return
 
     CImGui.lib.ImGui_ImplOpenGL3_Shutdown()
     CImGui.lib.ImGui_ImplGlfw_Shutdown()
@@ -337,7 +338,7 @@ function mode_button(label::String,
         HSV_button = HSV_none
     end
 
-    dynamic_button(label, HSV_button, kwargs...)
+    dynamic_button(label, HSV_button; kwargs...)
 
 end
 

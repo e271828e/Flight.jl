@@ -5,6 +5,7 @@ using OrdinaryDiffEqCore: OrdinaryDiffEqCore, OrdinaryDiffEqAlgorithm, ODEProble
 using OrdinaryDiffEqCore: step!, reinit!, add_tstop!, get_proposed_dt, init as init_integrator
 using OrdinaryDiffEqLowOrderRK: RK4, Heun
 using DiffEqCallbacks: SavingCallback, DiscreteCallback, CallbackSet, SavedValues
+using RecursiveArrayTools: VectorOfArray
 using Logging
 
 using ..Modeling
@@ -690,7 +691,7 @@ function get_components(ts::TimeSeries{<:AbstractArray{T}}) where {T<:Real}
     (TimeSeries(ts._t, y) for y in ts._data |> StructArray |> StructArrays.components)
 end
 
-Base.propertynames(ts::TimeSeries) = propertynames(getfield(ts, :_data)[1])
+Base.propertynames(::TimeSeries{V}) where {V} = fieldnames(V)
 
 Base.getindex(ts::TimeSeries, i) = TimeSeries(ts._t[i], ts._data[i])
 

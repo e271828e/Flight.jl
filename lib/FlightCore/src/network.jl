@@ -31,7 +31,7 @@ function IODevices.init!(device::UDPInput)
     device.socket = UDPSocket() #create a new socket on each initialization
     (; socket, address, port) = device
     if !bind(socket, address, port; reuseaddr=true)
-        @error( "Failed to bind socket to address $address, port $port")
+        error( "Failed to bind socket to address $address, port $port")
     end
 end
 
