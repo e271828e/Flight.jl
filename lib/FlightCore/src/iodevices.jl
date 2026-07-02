@@ -28,6 +28,13 @@ init!(::D) where {D<:IODevice} = nothing
 shutdown!(::D) where {D<:IODevice} = nothing
 should_close(::D) where {D<:IODevice} = false
 
+#request that any blocking call within get_data!/handle_data! return promptly,
+#so the interface loop can observe termination. called from the simulation
+#thread when the simulation ends; must therefore be safe to call concurrently
+#with the interface thread's use of the device. devices whose calls cannot
+#block indefinitely may keep this default no-op
+interrupt!(::D) where {D<:IODevice} = nothing
+
 ################################################################################
 ############################### InputDevice ####################################
 

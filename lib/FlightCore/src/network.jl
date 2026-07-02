@@ -29,6 +29,7 @@ end
 
 function IODevices.init!(device::UDPInput)
     device.socket = UDPSocket() #create a new socket on each initialization
+    device.should_close = false #it may still be set from a previous run
     (; socket, address, port) = device
     if !bind(socket, address, port; reuseaddr=true)
         error( "Failed to bind socket to address $address, port $port")
@@ -38,8 +39,21 @@ end
 IODevices.should_close(device::UDPInput) = device.should_close
 IODevices.shutdown!(device::UDPInput) = close(device.socket)
 
+#closing the socket from another thread makes a blocking recv return promptly
+#by throwing; should_close is set beforehand so get_data! can tell this
+#deliberate interrupt from an actual error
+function IODevices.interrupt!(device::UDPInput)
+    device.should_close = true
+    close(device.socket)
+end
+
 function IODevices.get_data!(device::UDPInput)
-    data = recv(device.socket) |> String
+    data = try
+        recv(device.socket) |> String
+    catch ex
+        device.should_close && return "" #deliberate interrupt, not an error
+        rethrow()
+    end
     (data === "\x04") && (device.should_close = true) #received EOT character
     return data
 end

@@ -613,6 +613,10 @@ function sim_cleanup!(sim::Simulation)
     #unblock any IO threads still waiting for Simulation start
     notify(io_start)
 
+    #unblock any IO threads stuck in a blocking get_data!/handle_data! call
+    #(e.g. a UDPInput waiting on recv from a source that no longer sends)
+    foreach(interface -> IODevices.interrupt!(interface.device), sim.interfaces)
+
     #prepare for another run
     reset(io_start)
 

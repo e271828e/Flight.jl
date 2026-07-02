@@ -228,6 +228,8 @@ function IODevices.get_data!(joystick::Joystick{D}) where {D}
     return data
 end
 
+IODevices.should_close(joystick::Joystick) = !is_connected(joystick)
+
 ################################################################################
 ########################### Thrustmaster T16000M ###############################
 
