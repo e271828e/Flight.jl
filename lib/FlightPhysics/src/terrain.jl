@@ -7,7 +7,7 @@ using FlightCore.GUI
 using ..Geodesy
 
 export AbstractTerrain, HorizontalTerrain
-export TerrainData, SurfaceType
+export TerrainData
 export SurfaceType, DryTarmac, WetTarmac, IcyTarmac
 
 @enum SurfaceType DryTarmac WetTarmac IcyTarmac

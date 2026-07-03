@@ -307,7 +307,6 @@ function Modeling.f_ode!(mdl::Model{<:Strut},
 
     #compute the damper elongation rate required to cancel the rigid body
     #contribution to the contact point velocity along the contact frame z axis
-    q_sc = q_bs' ∘ q_bc
     ks_c = q_sc'(e3)
     ξ_dot = -v_ec_c_body[3] / ks_c[3]
 

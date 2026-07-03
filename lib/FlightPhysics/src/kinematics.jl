@@ -390,8 +390,8 @@ function Modeling.f_ode!(mdl::Model{NED})
     ω_wb_b = ω_eb_b - ω_ew_b
 
     v_gnd = norm(v_eb_n)
-    χ_gnd = azimuth(v_eb_n)
-    γ_gnd = inclination(v_eb_n)
+    χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eb_n) : 0.0
+    γ_gnd = v_gnd > v_min_χγ ? inclination(v_eb_n) : 0.0
 
     ė_nb = Attitude.dt(e_nb, ω_nb_b)
     ϕ_λ_dot = Geodesy.dt(ϕ_λ, ω_en_n)

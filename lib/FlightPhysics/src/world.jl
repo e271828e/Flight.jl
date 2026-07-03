@@ -77,7 +77,7 @@ end
 ################################################################################
 #################################### GUI #######################################
 
-function GUI.draw!(world::Model{<:SimpleWorld};
+function GUI.draw!(world::Model{<:SimpleWorld},
                     p_open::Ref{Bool} = Ref(true), label::String = "Simple World")
 
     BeginWindow(label, p_open)

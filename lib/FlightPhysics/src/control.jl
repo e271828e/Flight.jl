@@ -675,7 +675,7 @@ function LQROutput{NX, NU, NZ}(args...; kwargs...) where {NX, NU, NZ}
     LQROutput{NX, NU, NZ, NUX, NUZ}(args...; kwargs...)
 end
 
-@kwdef struct LQRState{NX, NU}
+@kwdef struct LQRState{NU}
     int_out_0::MVector{NU,Float64} = zeros(NU) #previous integrator path state
     out_sat_0::MVector{NU,Int64} = zeros(NU) #previous output saturation status
 end
@@ -689,7 +689,7 @@ function Modeling.U(::LQR{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
 end
 
 function Modeling.S(::LQR{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
-    LQRState{NX, NU}()
+    LQRState{NU}()
 end
 
 function Modeling.f_init!(mdl::Model{<:LQR})
@@ -860,17 +860,14 @@ function save_lookup_data(points::Union{Array{<:PIDDataPoint}, Array{<:LQRDataPo
     #convert to NamedTuple of Arrays
     nt = StructArrays.components(StructArray(points))
 
-    fid = h5open(fname, "w")
-
-    create_group(fid, "data")
-    foreach(propertynames(nt)) do name
-        array = getproperty(nt, name)
-        fid["data"][string(name)] = stack(array)
+    h5open(fname, "w") do fid
+        create_group(fid, "data")
+        foreach(propertynames(nt)) do name
+            array = getproperty(nt, name)
+            fid["data"][string(name)] = stack(array)
+        end
+        fid["bounds"] = stack(bounds) #2xN matrix
     end
-
-    fid["bounds"] = stack(bounds) #2xN matrix
-
-    close(fid)
 
 end
 
@@ -878,11 +875,11 @@ end
 #returns (Array{PIDDataPoint}, LookupBounds)
 function load_lookup_data_pid(fname::String)
 
-    fid = h5open(fname, "r")
-    #read entries as ordered in PIDData
-    points_tuple = map(name -> read(fid["data"][string(name)]), fieldnames(PIDData))
-    bounds_stacked = read(fid["bounds"])
-    close(fid)
+    points_tuple, bounds_stacked = h5open(fname, "r") do fid
+        #read entries as ordered in PIDData
+        (map(name -> read(fid["data"][string(name)]), fieldnames(PIDData)),
+        read(fid["bounds"]))
+    end
 
     #convert to Array{PIDDataPoint}
     points =  StructArray{PIDDataPoint}(points_tuple) |> Array
@@ -901,11 +898,11 @@ end
 #returns (Array{<:LQRDataPoint}, LookupBounds)
 function load_lookup_data_lqr(fname::String)
 
-    fid = h5open(fname, "r")
-    #read entries as ordered in LQRData
-    points_stacked = LQRData(map(name -> read(fid["data"][string(name)]), fieldnames(LQRData))...)
-    bounds_stacked = read(fid["bounds"])
-    close(fid)
+    points_stacked, bounds_stacked = h5open(fname, "r") do fid
+        #read entries as ordered in LQRData
+        (LQRData(map(name -> read(fid["data"][string(name)]), fieldnames(LQRData))...),
+        read(fid["bounds"]))
+    end
 
     #determine number of interpolation dimensions
     D = ndims(points_stacked.x_trim) - 1

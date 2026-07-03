@@ -197,17 +197,13 @@ end
 
 const egm96_interp = egm96_interp_from_hdf5() #geoid height interpolator
 
-#need to pass geoid interpolator as an input, because since Julia 1.9 accessing
-#the fields of a global const allocates, see:
-#https://github.com/JuliaLang/julia/issues/49241
-#https://github.com/JuliaLang/julia/issues/50317
-function get_geoid_height(loc::Abstract2DLocation, geoid_height_interp = egm96_interp)
+function get_geoid_height(loc::Abstract2DLocation)
     #our longitude interval is [-π,π], but the table uses [0,2π], so we need to
     #correct for that
     latlon = LatLon(loc)
     ϕ = latlon.ϕ
     λ = mod(latlon.λ + 2π, 2π)
-    geoid_height_interp(ϕ, λ)
+    egm96_interp(ϕ, λ)
 end
 
 @kwdef struct Altitude{D<:AbstractAltitudeDatum}

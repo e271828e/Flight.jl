@@ -250,10 +250,6 @@ function PistonEngine(;
 end
 
 
-@kwdef mutable struct PistonEngineS
-    state::EngineStateEnum = EngineState.off
-end
-
 #best economy: auto mixture around 0.1
 #best power: auto mixture around 0.45
 @kwdef mutable struct PistonEngineU

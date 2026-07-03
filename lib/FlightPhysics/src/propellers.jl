@@ -292,33 +292,34 @@ end
 
 function save_lookup(lookup::Lookup, fname::String)
 
-    fid = h5open(fname, "w")
+    h5open(fname, "w") do fid
 
-    foreach(pairs(NamedTuple(lookup.data))) do (name, data)
-        fid[string(name)] = data
+        foreach(pairs(NamedTuple(lookup.data))) do (name, data)
+            fid[string(name)] = data
+        end
+
+        fid["J_start"], fid["J_end"] = lookup.J_bounds
+        fid["Mt_start"], fid["Mt_end"] = lookup.Mt_bounds
+        fid["Δβ_start"], fid["Δβ_end"] = lookup.Δβ_bounds
+
     end
-
-    fid["J_start"], fid["J_end"] = lookup.J_bounds
-    fid["Mt_start"], fid["Mt_end"] = lookup.Mt_bounds
-    fid["Δβ_start"], fid["Δβ_end"] = lookup.Δβ_bounds
-
-    close(fid)
 end
 
 function load_lookup(fname::String)
 
-    fid = h5open(fname, "r")
+    data, J_bounds, Mt_bounds, Δβ_bounds = h5open(fname, "r") do fid
 
-    coef_data = map(fieldnames(Coefficients)) do name
-        read(fid, string(name))
+        coef_data = map(fieldnames(Coefficients)) do name
+            read(fid, string(name))
+        end
+        data = Coefficients(coef_data...)
+
+        J_bounds = Float64.((read(fid["J_start"]), read(fid["J_end"])))
+        Mt_bounds = Float64.((read(fid["Mt_start"]), read(fid["Mt_end"])))
+        Δβ_bounds = Float64.((read(fid["Δβ_start"]), read(fid["Δβ_end"])))
+
+        (data, J_bounds, Mt_bounds, Δβ_bounds)
     end
-    data = Coefficients(coef_data...)
-
-    J_bounds = Float64.((read(fid["J_start"]), read(fid["J_end"])))
-    Mt_bounds = Float64.((read(fid["Mt_start"]), read(fid["Mt_end"])))
-    Δβ_bounds = Float64.((read(fid["Δβ_start"]), read(fid["Δβ_end"])))
-
-    close(fid)
 
     return Lookup(data, J_bounds, Mt_bounds, Δβ_bounds)
 
@@ -485,7 +486,7 @@ function GUI.draw(mdl::Model{<:Propeller}, p_open::Ref{Bool} = Ref(true),
         TextFormatted(@sprintf("Propulsive Efficiency: %.7f", η_p))
         GUI.draw(wr_p.F, "Aerodynamic Force (Op) [Propeller]", "N")
         GUI.draw(wr_p.τ, "Aerodynamic Torque (Op) [Propeller]", "N*m")
-        GUI.draw(hr_p, "Axial Angular Momentum [Propeller]", "N*m")
+        GUI.draw(hr_p, "Axial Angular Momentum [Propeller]", "kg*(m^2)/s")
 
     EndWindow()
 

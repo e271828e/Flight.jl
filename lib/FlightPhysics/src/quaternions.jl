@@ -18,7 +18,13 @@ struct Quaternion{N <: NormConstraint} <: AbstractVector{Float64}
     _sv::SVector{4, Float64}
     function Quaternion{N}(v::AbstractVector, normalization::Bool) where {N}
         sv = SVector{4,Float64}(v) #faster normalization method
-        return normalization ? new{N}(normalize(sv)) : new{N}(sv)
+        if normalization
+            norm_sv = norm(sv)
+            norm_sv > 0 || throw(ArgumentError(
+                "Cannot normalize a quaternion with zero norm"))
+            sv /= norm_sv
+        end
+        return new{N}(sv)
     end
 end
 
@@ -37,7 +43,7 @@ end
 function Quaternion{UnitNorm}(; real = 0.0, imag = zeros(SVector{3}), normalization::Bool = true)
     sv = vcat(real, SVector{3,Float64}(imag))
     any(sv .!= 0) || throw(ArgumentError("UnitQuat requires a non-zero real or imaginary part"))
-    UnitQuat(vcat(real, SVector{3,Float64}(imag)); normalization)
+    UnitQuat(sv; normalization)
 end
 
 
@@ -117,12 +123,12 @@ end
 Base.:*(q::Quaternion, a::Real) = a * q
 Base.:*(a::Real, q::Quaternion) = FreeQuat(a * getfield(q, :_sv))
 
-Base.:/(q1::Quaternion{N}, q2::Quaternion{N}) where {N} = Quaternion{N}(q1 * inv(q2))
+Base.:/(q1::Quaternion{N}, q2::Quaternion{N}) where {N} = q1 * inv(q2) #already Quaternion{N}, no renormalization needed
 Base.:/(q1::Quaternion{N1}, q2::Quaternion{N2}) where {N1,N2} = /(promote(q1,q2)...)
 Base.:/(q::Quaternion, a::Real) = FreeQuat(getfield(q, :_sv)/ a)
 Base.:/(a::Real, q::Quaternion) = /(promote(a, q)...)
 
-Base.:\(q1::Quaternion{N}, q2::Quaternion{N}) where {N} = Quaternion{N}(inv(q1) * q2) #!= /(q2, q1) == q2 * inv(q1)
+Base.:\(q1::Quaternion{N}, q2::Quaternion{N}) where {N} = inv(q1) * q2 #!= /(q2, q1) == q2 * inv(q1)
 Base.:\(q1::Quaternion{N1}, q2::Quaternion{N2}) where {N1,N2} = \(promote(q1,q2)...)
 Base.:\(q::Quaternion, a::Real) = \(promote(q, a)...)
 Base.:\(a::Real, q::Quaternion) = q / a
