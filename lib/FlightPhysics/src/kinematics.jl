@@ -13,6 +13,14 @@ export KinInit, KinData, KinSystem
 
 const v_min_χγ = 0.1 #minimum speed for valid χ, γ
 
+#Earth-relative speed, course and flight path angles from NED velocity
+@inline function get_vχγ(v_eb_n::AbstractVector{<:Real})
+    v_gnd = norm(v_eb_n)
+    χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eb_n) : 0.0
+    γ_gnd = v_gnd > v_min_χγ ? inclination(v_eb_n) : 0.0
+    return v_gnd, χ_gnd, γ_gnd
+end
+
 
 ############################## Initialization ##################################
 ################################################################################
@@ -81,9 +89,7 @@ function KinData(ic::KinInit = KinInit())
 
     v_eb_b = q_nb'(v_eb_n)
 
-    v_gnd = norm(v_eb_n)
-    χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eb_n) : 0.0
-    γ_gnd = v_gnd > v_min_χγ ? inclination(v_eb_n) : 0.0
+    v_gnd, χ_gnd, γ_gnd = get_vχγ(v_eb_n)
 
     KinData(   e_nb, q_nb, q_eb, q_en, ϕ_λ, n_e, h_e, h_o, r_eb_e,
                 ω_wb_b, ω_eb_b, v_eb_b, v_eb_n, v_gnd, χ_gnd, γ_gnd)
@@ -208,9 +214,7 @@ function Modeling.f_ode!(mdl::Model{WA})
     ω_ew_b = q_wb'(ω_ew_w)
     ω_wb_b = ω_eb_b - ω_ew_b
 
-    v_gnd = norm(v_eb_n)
-    χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eb_n) : 0.0
-    γ_gnd = v_gnd > v_min_χγ ? inclination(v_eb_n) : 0.0
+    v_gnd, χ_gnd, γ_gnd = get_vχγ(v_eb_n)
 
     ẋ.q_wb = Attitude.dt(q_wb, ω_wb_b)
     ẋ.q_ew = Attitude.dt(q_ew, ω_ew_w)
@@ -301,9 +305,7 @@ function Modeling.f_ode!(mdl::Model{ECEF})
     ω_ew_b = q_nb'(ω_ew_n)
     ω_wb_b = ω_eb_b - ω_ew_b
 
-    v_gnd = norm(v_eb_n)
-    χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eb_n) : 0.0
-    γ_gnd = v_gnd > v_min_χγ ? inclination(v_eb_n) : 0.0
+    v_gnd, χ_gnd, γ_gnd = get_vχγ(v_eb_n)
 
     ẋ.q_eb = Attitude.dt(q_eb, ω_eb_b)
     ẋ.n_e = q_en(ω_ew_n × SVector{3,Float64}(0,0,-1))
@@ -389,9 +391,7 @@ function Modeling.f_ode!(mdl::Model{NED})
     ω_ew_b = q_nb'(ω_ew_n)
     ω_wb_b = ω_eb_b - ω_ew_b
 
-    v_gnd = norm(v_eb_n)
-    χ_gnd = v_gnd > v_min_χγ ? azimuth(v_eb_n) : 0.0
-    γ_gnd = v_gnd > v_min_χγ ? inclination(v_eb_n) : 0.0
+    v_gnd, χ_gnd, γ_gnd = get_vχγ(v_eb_n)
 
     ė_nb = Attitude.dt(e_nb, ω_nb_b)
     ϕ_λ_dot = Geodesy.dt(ϕ_λ, ω_en_n)
