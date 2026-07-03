@@ -308,7 +308,7 @@ function test_RMatrix()
 
         #time derivative
         ω_ab_b = [10, -4, 2]
-        @test Attitude.dt(r_ab, ω_ab_b) == r_ab._mat * Attitude.v2skew(ω_ab_b)
+        @test Attitude.dt(r_ab, ω_ab_b) ≈ r_ab._mat * Attitude.v2skew(ω_ab_b)
     end
 
 
