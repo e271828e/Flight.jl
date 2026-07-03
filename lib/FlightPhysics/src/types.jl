@@ -50,9 +50,15 @@ Base.:-(x::Ranged{T1,Min,Max}) where {T1,Min,Max} = Ranged(-x.val, Min, Max)
 Base.:+(x::Ranged{T1,Min,Max}, y::Ranged{T2,Min,Max}) where {T1,T2,Min,Max} = Ranged(x.val + y.val, Min, Max)
 Base.:-(x::Ranged{T1,Min,Max}, y::Ranged{T2,Min,Max}) where {T1,T2,Min,Max} = Ranged(x.val - y.val, Min, Max)
 
-Base.:(==)(x::R, y::R) where {R <: Ranged} = (==)(x.val, y.val)
-Base.:(≈)(x::R, y::R; kwargs...) where {R <: Ranged} = (≈)(x.val, y.val; kwargs...)
-Base.isless(x::R, y::R) where {R <: Ranged} = isless(x.val, y.val)
+#unlike arithmetic, comparisons do not require identical bounds: they are
+#value-based, like the Ranged vs Real comparisons below. otherwise, two Ranged
+#instances comparing equal to the same Real could compare unequal to each other
+Base.:(==)(x::Ranged, y::Ranged) = (==)(x.val, y.val)
+Base.:(≈)(x::Ranged, y::Ranged; kwargs...) = (≈)(x.val, y.val; kwargs...)
+Base.isless(x::Ranged, y::Ranged) = isless(x.val, y.val)
+
+#hash must be consistent with value-based equality against Reals
+Base.hash(x::Ranged, h::UInt) = hash(x.val, h)
 
 Base.:(==)(x::Ranged{T1}, y::Real) where {T1} = (==)(promote(x.val, y)...)
 Base.:(==)(y::Real, x::Ranged{T1}) where {T1} = (==)(x,y)
@@ -79,12 +85,12 @@ function GUI.display_bar(label::String, source::Ranged{T,Min,Max}, args...; kwar
     display_bar(label, Float64(source), Min, Max, args...; kwargs...)
 end
 
-function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, args...; sf::Real=1, kwargs...) where {T<:AbstractFloat,Min,Max}
-    safe_slider(label, Float64(source) * sf, Min * sf, Max * sf, args...; kwargs...)
+function GUI.safe_slider(label::String, source::Ranged{T,Min,Max}, args...; kwargs...) where {T<:AbstractFloat,Min,Max}
+    Ranged{T,Min,Max}(safe_slider(label, Float64(source), Min, Max, args...; kwargs...))
 end
 
-function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, args...; sf::Real=1, kwargs...) where {T<:AbstractFloat,Min,Max}
-    safe_input(label, Float64(source) * sf, args...; kwargs...)
+function GUI.safe_input(label::String, source::Ranged{T,Min,Max}, args...; kwargs...) where {T<:AbstractFloat,Min,Max}
+    Ranged{T,Min,Max}(safe_input(label, Float64(source), args...; kwargs...))
 end
 
 ############################# Joysticks ##############################
