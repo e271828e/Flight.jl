@@ -135,7 +135,7 @@ function ISAData(h_geo::HGeop, sl::ISAData = ISAData())
 end
 
 ISAData(h::Real, args...) = ISAData(HGeop(h), args...)
-ISAData(h::Geodesy.AbstractAltitudeDatum, args...) = ISAData(HGeop(h), args...)
+ISAData(h::HOrth, args...) = ISAData(HGeop(h), args...)
 
 
 ################################################################################

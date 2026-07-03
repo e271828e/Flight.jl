@@ -159,7 +159,15 @@ struct RMatrix <: Abstract3DRotation
     _mat::SMatrix{3, 3, Float64, 9}
     function RMatrix(input::AbstractArray{<:Real, 2}; normalization::Bool = true)
         sm = SMatrix{3,3}(input)
-        return normalization ? new(qr(sm).Q) : new(sm)
+        if normalization
+            #closest rotation matrix in the Frobenius norm, given by the
+            #orthogonal polar factor U = WV'; det(U) = sign(det(input)), so a
+            #right-handed input is required
+            det(sm) > 0 || throw(ArgumentError("Cannot normalize a matrix with non-positive determinant"))
+            F = svd(sm)
+            sm = F.U * F.Vt
+        end
+        return new(sm)
     end
 end
 

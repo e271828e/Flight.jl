@@ -255,33 +255,39 @@ end
 
 function test_RMatrix()
 
-    A = [0.590969 0.288519 0.902137;
-        0.657604 0.927693 0.218535;
-        0.370707  0.481724  0.10268]
-
-    A_orth = qr(A).Q |> Matrix
-    r_ab = RMatrix(A_orth)
-    r_bc = RMatrix(sin.(A_orth)) #generate a different matrix and let the constructor normalize
+    #exact rotation matrices built from Euler angles; unlike a qr(A).Q output,
+    #these are not fixed points of any factorization sign convention, so they
+    #exercise normalization for real
+    r_ab = RMatrix(REuler(0.3, -0.2, 0.5))
+    r_bc = RMatrix(REuler(-1.2, 0.7, -2.5))
+    M_ab = r_ab._mat
     x_c = [-1, 2, 3]
 
     @testset "Constructors" begin
 
-        A_dist = A_orth + 1e-6*sin.(A)
-        r_orth = RMatrix(A_orth, normalization = false)
-        r_dist = RMatrix(A_dist, normalization = false)
-        @test det(r_orth) ≈ 1
+        #normalization must recover a valid rotation matrix exactly, not just
+        #with the correct determinant (pairwise column sign flips preserve it)
+        @test RMatrix(M_ab)._mat ≈ M_ab
+        @test RMatrix(Matrix(1.0I, 3, 3))._mat ≈ Matrix(1.0I, 3, 3)
+
+        #a slightly distorted rotation matrix must be restored to a nearby
+        #orthogonal matrix
+        M_dist = M_ab + 1e-6 * sin.(M_ab) #arbitrary O(1e-6) distortion
+        r_dist = RMatrix(M_dist, normalization = false)
         @test !(det(r_dist) ≈ 1)
-        @test det(RMatrix(A_dist)) ≈ 1 #automatic normalization on construction
-
-        r_norm = normalize(r_dist)
+        r_norm = RMatrix(M_dist) #automatic normalization on construction
         @test det(r_norm) ≈ 1
-        # r_norm_copy = RMatrix(A_dist, normalization = false)
-        # normalize!(r_norm_copy)
-        # @test det(r_norm_copy) ≈ 1
+        @test r_norm._mat' * r_norm._mat ≈ Matrix(1.0I, 3, 3)
+        @test maximum(abs.(r_norm._mat - M_ab)) < 1e-5 #close to the original
 
-        #error after renormalization
-        r_err = r_orth ∘ r_norm'
-        @test RAxAng(r_err).angle < 1e-7
+        #same through normalize, checking the residual rotation angle
+        r_err = r_ab ∘ normalize(r_dist)'
+        @test RAxAng(r_err).angle < 1e-5
+
+        #a left-handed (non-positive determinant) input must be rejected
+        M_refl = Matrix(1.0I, 3, 3)
+        M_refl[3, 3] = -1
+        @test_throws ArgumentError RMatrix(M_refl)
 
     end
 

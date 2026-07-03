@@ -440,9 +440,9 @@ function GUI.draw(data::KinData, p_open::Ref{Bool} = Ref(true),
 
     if TreeNode("Angular Velocity (Body / WA) [Body]")
 
-        TextFormatted(@sprintf("Yaw Rate: %.7f deg/s", rad2deg(ω_wb_b[1])))
+        TextFormatted(@sprintf("Roll Rate: %.7f deg/s", rad2deg(ω_wb_b[1])))
         TextFormatted(@sprintf("Pitch Rate: %.7f deg/s", rad2deg(ω_wb_b[2])))
-        TextFormatted(@sprintf("Roll Rate: %.7f deg/s", rad2deg(ω_wb_b[3])))
+        TextFormatted(@sprintf("Yaw Rate: %.7f deg/s", rad2deg(ω_wb_b[3])))
 
         TreePop()
     end

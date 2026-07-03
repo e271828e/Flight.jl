@@ -6,7 +6,7 @@ using FlightCore
 using FlightCore.GUI
 using ..Geodesy
 
-export AbstractTerrain, NoTerrain, HorizontalTerrain
+export AbstractTerrain, HorizontalTerrain
 export TerrainData, SurfaceType
 export SurfaceType, DryTarmac, WetTarmac, IcyTarmac
 

@@ -346,7 +346,8 @@ end
 end
 
 
-#wr_b: Total external wrench contributed, resolved in body frame.
+#hr_b: Internal angular momentum relative to the airframe due to rotating
+#components, resolved in the vehicle frame.
 #default implementation tries to sum the angular momentum from its individual
 #components. override if possible to reduce compilation time
 @inline @generated function (get_hr_b(mdl::Model{T, X, Y, U, S, P, B})
@@ -371,8 +372,7 @@ end
 
 end
 
-#ho_b: Internal angular momentum relative to the airframe due to rotating
-#components, resolved in the vehicle frame.
+#wr_b: Total external wrench contributed, resolved in body frame.
 #default implementation tries to sum all the Wrenches from its individual
 #components. override if possible to reduce compilation time
 @inline @generated function (get_wr_b(mdl::Model{T, X, Y, U, S, P, B})
