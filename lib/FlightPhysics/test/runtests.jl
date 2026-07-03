@@ -1,6 +1,7 @@
 using Revise
 using Test
 
+includet(normpath("test_types.jl")); using .TestTypes
 includet(normpath("test_quaternions.jl")); using .TestQuaternions
 includet(normpath("test_attitude.jl")); using .TestAttitude
 includet(normpath("test_geodesy.jl")); using .TestGeodesy
@@ -15,6 +16,7 @@ includet(normpath("test_aircraft_base.jl")); using .TestAircraftBase
 includet(normpath("test_world.jl")); using .TestWorld
 
 # @testset verbose = true "FlightPhysics" begin
+    test_types()
     test_quaternions()
     test_attitude()
     test_geodesy()

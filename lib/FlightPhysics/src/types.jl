@@ -11,7 +11,6 @@ export Ranged, saturation, linear_scaling
 ################################################################################
 ################################ Ranged ########################################
 
-#needs unit tests
 struct Ranged{T<:Real,Min,Max}
     val::T
     function Ranged(val::T, min_val::T, max_val::T) where {T<:Real}
@@ -106,31 +105,5 @@ StructTypes.lowertype(::Type{Ranged{T,Min,Max}}) where {T,Min,Max} = T
 StructTypes.lower(x::Ranged) = x.val
 StructTypes.construct(::Type{Ranged{T,Min,Max}}, x::Real) where {T,Min,Max} = Ranged(x, Min, Max)
 
-#Example 1: reading a numeric value into a Ranged field of a mutable struct
-# @kwdef mutable struct MyMutableStruct
-#     a::Ranged{Float64, 0.0, 1.0} = Ranged(0.5, 0.0, 0.1)
-#     b::Bool = false
-# end
-# u = MyMutableStruct()
-# JSON3.read!("""{"a": 0.1209}""", u)
-
-#Example 2: constructing an immutable struct containing a Ranged field
-# @kwdef struct MyStruct
-#     a::Ranged{Float64, 0.0, 1.0} = Ranged(0.5, 0.0, 0.1)
-#     b::Bool = false
-# end
-# StructTypes.StructType(::Type{MyStruct}) = StructTypes.Struct()
-# y = JSON3.read("""{"a": 0.1209, "b": true}""", MyStruct)
-
-
-# function test()
-#     a = Ranged(1, 0, 2)
-#     b = Ranged(2.0, 0, 2)
-#     A = fill(a, 100)
-#     B = fill(b, 100)
-#     C = copy(B)
-
-#     C .= A .+ B #no allocations
-# end
 
 end #module
