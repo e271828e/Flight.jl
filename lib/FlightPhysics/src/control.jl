@@ -665,7 +665,7 @@ end
     int_halted::SVector{NU,Bool} = zeros(SVector{NU, Bool}) #integration halted
     int_out::SVector{NU,Float64} = zeros(SVector{NU}) #integrator output
     out_free::SVector{NU,Float64} = zeros(SVector{NU}) #total output, free
-    out_sat::SVector{NU,Int64} = zeros(SVector{NU, Int64}) #current output saturation status
+    sat_out::SVector{NU,Int64} = zeros(SVector{NU, Int64}) #current output saturation status
     output::SVector{NU,Float64} = zeros(SVector{NU}) #actual output
 end
 
@@ -677,7 +677,7 @@ end
 
 @kwdef struct LQRState{NU}
     int_out_0::MVector{NU,Float64} = zeros(NU) #previous integrator path state
-    out_sat_0::MVector{NU,Int64} = zeros(NU) #previous output saturation status
+    sat_out_0::MVector{NU,Int64} = zeros(NU) #previous output saturation status
 end
 
 function Modeling.Y(::LQR{NX, NU, NZ, NUX, NUZ}) where {NX, NU, NZ, NUX, NUZ}
@@ -698,7 +698,7 @@ function Modeling.f_init!(mdl::Model{<:LQR})
     mdl.u.x .= 0
     mdl.u.sat_ext .= 0
     mdl.s.int_out_0 .= 0
-    mdl.s.out_sat_0 .= 0
+    mdl.s.sat_out_0 .= 0
     f_periodic!(Unconditional(), mdl) #propagate input and state to output
 end
 
@@ -709,7 +709,7 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:LQR})
 
     (; parameters, s, u, Δt) = mdl
     (; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim, bound_lo, bound_hi) = parameters
-    (; int_out_0, out_sat_0) = s
+    (; int_out_0, sat_out_0) = s
     (; sat_ext, z_ref, z, x) = u
 
     K_fbk, K_fwd, K_int = map(SMatrix, (
@@ -721,24 +721,24 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:LQR})
     sat_ext, z_ref, z, x = map(SVector, (
     sat_ext, z_ref, z, x))
 
-    int_out_0, out_sat_0 = map(SVector, (
-    int_out_0, out_sat_0))
+    int_out_0, sat_out_0 = map(SVector, (
+    int_out_0, sat_out_0))
 
     int_in = K_int * (z_ref - z)
-    int_halted = ((sign.(int_in .* out_sat_0) .> 0) .|| (sign.(int_in .* sat_ext) .> 0))
+    int_halted = ((sign.(int_in .* sat_out_0) .> 0) .|| (sign.(int_in .* sat_ext) .> 0))
     int_out = int_out_0 + Δt * int_in .* .!int_halted
 
     out_free = u_trim + int_out + K_fwd * (z_ref - z_trim) - K_fbk * (x - x_trim)
 
-    out_sat = (out_free .>= bound_hi) - (out_free .<= bound_lo)
+    sat_out = (out_free .>= bound_hi) - (out_free .<= bound_lo)
     output = clamp.(out_free, bound_lo, bound_hi)
 
     s.int_out_0 .= int_out
-    s.out_sat_0 .= out_sat
+    s.sat_out_0 .= sat_out
 
     mdl.y = LQROutput(; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim,
         bound_lo, bound_hi, sat_ext, z_ref, z, x,
-        int_in, int_out, int_halted, out_free, out_sat, output)
+        int_in, int_out, int_halted, out_free, sat_out, output)
 
 end
 
@@ -746,7 +746,7 @@ function GUI.draw(mdl::Model{<:LQR})
 
     (; K_fbk, K_fwd, K_int, x_trim, u_trim, z_trim, bound_lo, bound_hi,
         sat_ext, z_ref, z, x, int_in, int_halted, int_out,
-        out_free, out_sat, output) = mdl.y
+        out_free, sat_out, output) = mdl.y
 
     TextFormatted("Feedback Gain = $K_fbk")
     TextFormatted("Forward Gain = $K_fwd")
@@ -764,7 +764,7 @@ function GUI.draw(mdl::Model{<:LQR})
     TextFormatted("Integrator Halted = $int_halted")
     TextFormatted("Integrator Output = $int_out")
     TextFormatted("Free Output = $out_free")
-    TextFormatted("Output Saturation = $out_sat")
+    TextFormatted("Output Saturation = $sat_out")
     TextFormatted("Actual Output = $output")
 
 end #function

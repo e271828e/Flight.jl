@@ -329,7 +329,7 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLon},
 
     if te2te_enabled(mode) #throttle_cmd and elevator_cmd overridden by te2te SAS
 
-        u_lon_sat = ULon(te2te_lqr.y.out_sat)
+        u_lon_sat = ULon(te2te_lqr.y.sat_out)
 
         if v2t_enabled(mode) #throttle_ref overridden by v2t
 
@@ -915,7 +915,7 @@ function Modeling.f_periodic!(::Unconditional, mdl::Model{<:ControlLawsLat},
 
     if φβ2ar_enabled(mode) #aileron_cmd and #rudder_cmd overridden by φβ2ar
 
-        u_lat_sat = ULatRed(φβ2ar_lqr.y.out_sat)
+        u_lat_sat = ULatRed(φβ2ar_lqr.y.sat_out)
 
         if p2φ_enabled(mode) #φ_ref overridden by roll rate tracker
 
