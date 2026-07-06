@@ -475,7 +475,7 @@ function Modeling.f_ode!(mdl::Model{VehicleDynamics})
     #compute geographic position of Oc
     r_bc_e = q_eb(r_bc_b)
     r_ec_e = r_eb_e + r_bc_e
-    Oc = Cartesian(r_ec_e)
+    Oc = Geocentric(r_ec_e)
 
     #define auxiliary local-level frame l with Ol = Oc
     q_el = ltf(Oc)

@@ -87,7 +87,7 @@ end
 ######################################################
 ##################### Kinematics #####################
 
-using FlightPhysics.Geodesy: Cartesian, ltf
+using FlightPhysics.Geodesy: Geocentric, ltf
 using FlightPhysics.Kinematics: KinData
 
 # #@userplot allows defining a custom plot for a specific dataset without having
@@ -101,7 +101,7 @@ using FlightPhysics.Kinematics: KinData
     r_eb_e = t3d.args #Vector{SVector{3, Float64}}
     n = length(r_eb_e)
 
-    q_en0 = ltf(Cartesian(r_eb_e[1])) #ECEF to NED rotation for t=0
+    q_en0 = ltf(Geocentric(r_eb_e[1])) #ECEF to NED rotation for t=0
     Δr_eb_e = [x - r_eb_e[1] for x in r_eb_e]
     Δr_eb_n0 = [q_en0'(x) for x in Δr_eb_e]
     voa = VectorOfArray(Δr_eb_n0)

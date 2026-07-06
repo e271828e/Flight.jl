@@ -81,7 +81,7 @@ function KinData(ic::KinInit = KinInit())
 
     ϕ_λ = LatLon(n_e)
     h_o = HOrth(h_e, n_e)
-    r_eb_e = Cartesian(Ob)
+    r_eb_e = Geocentric(Ob)
 
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
     ω_ew_b = q_nb'(ω_ew_n)
@@ -207,7 +207,7 @@ function Modeling.f_ode!(mdl::Model{WA})
 
     v_eb_n = q_nb(v_eb_b)
     Ob = Geographic(n_e, h_e)
-    r_eb_e = Cartesian(Ob)
+    r_eb_e = Geocentric(Ob)
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
 
     ω_ew_w = q_nw'(ω_ew_n)
@@ -299,7 +299,7 @@ function Modeling.f_ode!(mdl::Model{ECEF})
     e_nb = REuler(q_nb)
 
     Ob = Geographic(n_e, h_e)
-    r_eb_e = Cartesian(Ob)
+    r_eb_e = Geocentric(Ob)
     v_eb_n = q_nb(v_eb_b)
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
     ω_ew_b = q_nb'(ω_ew_n)
@@ -381,7 +381,7 @@ function Modeling.f_ode!(mdl::Model{NED})
 
     v_eb_n = q_nb(v_eb_b)
     Ob = Geographic(n_e, h_e)
-    r_eb_e = Cartesian(Ob)
+    r_eb_e = Geocentric(Ob)
 
     ω_en_n = get_ω_en_n(v_eb_n, Ob)
     ω_en_b = q_nb'(ω_en_n)

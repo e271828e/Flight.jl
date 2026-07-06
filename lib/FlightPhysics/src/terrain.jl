@@ -86,12 +86,12 @@ function SurfaceIntersection(terrain::Model{<:UniformTerrain},
                             u_e::AbstractVector{<:Real},
                             l_max::Real)
 
-    r_eO_e = Cartesian(O)
+    r_eO_e = Geocentric(O)
     u_e = SVector{3,Float64}(u_e)
 
     #tangent plane anchor point P0 and inward surface normal
     n_P0_e = NVector(O)
-    r_eP0_e = Cartesian(Geographic(n_P0_e, terrain.elevation))
+    r_eP0_e = Geocentric(Geographic(n_P0_e, terrain.elevation))
     kt_P0_e = -n_P0_e[:] #inward surface normal is the reversed n-Vector
 
     #ray-plane intersection

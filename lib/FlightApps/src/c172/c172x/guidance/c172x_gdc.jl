@@ -44,8 +44,8 @@ struct Segment
         p2 = Geographic{LatLon,Ellipsoidal}(ap2)
 
         #make sure segment is not vertical or degenerate
-        r_e1_e = Cartesian(ap1)
-        r_e2_e = Cartesian(ap2)
+        r_e1_e = Geocentric(ap1)
+        r_e2_e = Geocentric(ap2)
         r_12_e = r_e2_e - r_e1_e
 
         q_en = ltf(p1)
@@ -81,7 +81,7 @@ function Segment(p1::Abstract3DPosition; s::Real, χ::Real, kw...)
     q_en1 = ltf(geo1)
     r_12_n1 = SVector{3,Float64}(s*cos(χ), s*sin(χ), 0)
     r_12_e = q_en1(r_12_n1)
-    r_e1_e = Cartesian(p1)
+    r_e1_e = Geocentric(p1)
     r_e2_e = r_e1_e + r_12_e
     geo2 = Geographic(LatLon(r_e2_e), HEllip(geo1) + Δh)
     Segment(geo1, geo2)
@@ -114,9 +114,9 @@ function SegmentGuidanceData(seg::Segment, Ob::Abstract3DPosition)
 
     (; p1, p2) = seg
 
-    r_e1_e = Cartesian(p1)
-    r_e2_e = Cartesian(p2)
-    r_eb_e = Cartesian(Ob)
+    r_e1_e = Geocentric(p1)
+    r_e2_e = Geocentric(p2)
+    r_eb_e = Geocentric(Ob)
     q_en = ltf(Ob)
 
     r_1b_e = r_eb_e - r_e1_e #3D vector from p1 to Ob, ECEF coordinates

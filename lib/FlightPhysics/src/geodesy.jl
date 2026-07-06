@@ -8,7 +8,7 @@ using ..Attitude
 
 export Abstract2DLocation, NVector, LatLon
 export Altitude, Ellipsoidal, Orthometric, Geopotential, HEllip, HOrth, HGeop
-export Abstract3DPosition, Geographic, Cartesian
+export Abstract3DPosition, Geographic, Geocentric
 export ω_ie, gravity, g_n, G_n, ltf, radii, get_ψ_nw, get_geoid_height
 
 #WGS84 fundamental constants, SI units
@@ -283,14 +283,14 @@ abstract type Abstract3DPosition end
 Base.convert(::Type{P}, p::P) where {P<:Abstract3DPosition} = p
 
 function Base.:(≈)(pos1::Abstract3DPosition, pos2::Abstract3DPosition; kwargs...)
-    ≈(Cartesian(pos1), Cartesian(pos2); kwargs...)
+    ≈(Geocentric(pos1), Geocentric(pos2); kwargs...)
 end
 
 function Base.:(==)(pos1::Abstract3DPosition, pos2::Abstract3DPosition)
     throw(ArgumentError("Exact comparison between $(typeof(pos1)) and $(typeof(pos2)) not defined, use ≈ instead"))
 end
 
-Base.:(-)(pos::T) where {T<:Abstract3DPosition} = convert(T, -Cartesian(pos))
+Base.:(-)(pos::T) where {T<:Abstract3DPosition} = convert(T, -Geocentric(pos))
 
 ########################### Geographic ###############################
 
@@ -322,45 +322,46 @@ end
 #to p2 in NED(p1) coordinates, return p2's position in ECEF cartesian coordinates
 function Base.:(+)(geo1::T, r_12_n1::AbstractVector{<:Real}) where {T <: Geographic}
     q_en1 = ltf(geo1)
-    r_e1_e = Cartesian(geo1)
+    r_e1_e = Geocentric(geo1)
     r_12_e = q_en1(r_12_n1)
     r_e2_e = r_e1_e + r_12_e
     return r_e2_e #for efficiency, leave the decision to convert back to Geographic to the user
 end
 
 
-############################# Cartesian #############################
+############################# Geocentric #############################
 
-struct Cartesian <: Abstract3DPosition
+struct Geocentric <: Abstract3DPosition
+    #geocentric Cartesian position vector, ECEF axes
     data::SVector{3,Float64}
 end
 
-Cartesian(pos::Abstract3DPosition) = convert(Cartesian, pos)
-Cartesian() = Cartesian(Geographic())
+Geocentric(pos::Abstract3DPosition) = convert(Geocentric, pos)
+Geocentric() = Geocentric(Geographic())
 
-NVector(r::Cartesian) = Geographic{NVector, Ellipsoidal}(r).loc
-LatLon(r::Cartesian) = Geographic{LatLon, Ellipsoidal}(r).loc
-Altitude{D}(r::Cartesian) where {D} = Altitude{D}(Geographic{NVector,D}(r))
+NVector(r::Geocentric) = Geographic{NVector, Ellipsoidal}(r).loc
+LatLon(r::Geocentric) = Geographic{LatLon, Ellipsoidal}(r).loc
+Altitude{D}(r::Geocentric) where {D} = Altitude{D}(Geographic{NVector,D}(r))
 
-Base.:(==)(r1::Cartesian, r2::Cartesian) = r1.data == r2.data
-Base.:(≈)(r1::Cartesian, r2::Cartesian; kwargs...) = ≈(r1.data, r2.data; kwargs...)
-Base.:(-)(r::Cartesian) = Cartesian(-r.data)
-Base.:(+)(r_e1_e::Cartesian, r_12_e::AbstractVector{<:Real}) = Cartesian(r_e1_e.data + SVector{3,Float64}(r_12_e))
-Base.:(+)(r_12_e::AbstractVector{<:Real}, r_e1_e::Cartesian) = r_e1_e + r_12_e
-Base.:(-)(r_e2_e::Cartesian, r_e1_e::Cartesian) = r_e2_e.data - r_e1_e.data #r_12_e
-Base.:(-)(r_e2_e::Cartesian, r_12_e::AbstractVector{<:Real}) = Cartesian(r_e2_e.data - SVector{3,Float64}(r_12_e)) #r_e1_e
+Base.:(==)(r1::Geocentric, r2::Geocentric) = r1.data == r2.data
+Base.:(≈)(r1::Geocentric, r2::Geocentric; kwargs...) = ≈(r1.data, r2.data; kwargs...)
+Base.:(-)(r::Geocentric) = Geocentric(-r.data)
+Base.:(+)(r_e1_e::Geocentric, r_12_e::AbstractVector{<:Real}) = Geocentric(r_e1_e.data + SVector{3,Float64}(r_12_e))
+Base.:(+)(r_12_e::AbstractVector{<:Real}, r_e1_e::Geocentric) = r_e1_e + r_12_e
+Base.:(-)(r_e2_e::Geocentric, r_e1_e::Geocentric) = r_e2_e.data - r_e1_e.data #r_12_e
+Base.:(-)(r_e2_e::Geocentric, r_12_e::AbstractVector{<:Real}) = Geocentric(r_e2_e.data - SVector{3,Float64}(r_12_e)) #r_e1_e
 
 #### AbstractVector interface
-Base.size(::Cartesian) = (3,)
-Base.length(::Cartesian) = 3
-Base.getindex(n::Cartesian, i) = getindex(n.data, i)
-Base.iterate(n::Cartesian, args...) = iterate(n.data, args...)
+Base.size(::Geocentric) = (3,)
+Base.length(::Geocentric) = 3
+Base.getindex(n::Geocentric, i) = getindex(n.data, i)
+Base.iterate(n::Geocentric, args...) = iterate(n.data, args...)
 
-function Base.convert(::Type{Geographic{L,H}}, r::Cartesian) where {L,H}
+function Base.convert(::Type{Geographic{L,H}}, r::Geocentric) where {L,H}
     convert(Geographic{L,H}, convert(Geographic{NVector,Ellipsoidal}, r))
 end
 
-function Base.convert(::Type{Geographic{NVector,Ellipsoidal}}, r::Cartesian)
+function Base.convert(::Type{Geographic{NVector,Ellipsoidal}}, r::Geocentric)
 
     #NVector + Alt from ECEF Cartesian position vector. See Fukushima:
     #Transformation_from_Cartesian_to_Geodetic_Coordinates_Accelerated_by_Halley's_Method
@@ -407,23 +408,23 @@ function Base.convert(::Type{Geographic{NVector,Ellipsoidal}}, r::Cartesian)
 
 end
 
-function Base.convert(::Type{Cartesian}, geo::Geographic)
-    convert(Cartesian, convert(Geographic{NVector,Ellipsoidal}, geo))
+function Base.convert(::Type{Geocentric}, geo::Geographic)
+    convert(Geocentric, convert(Geographic{NVector,Ellipsoidal}, geo))
 end
 
-function Base.convert(::Type{Cartesian}, geo::Geographic{NVector, Ellipsoidal})
+function Base.convert(::Type{Geocentric}, geo::Geographic{NVector, Ellipsoidal})
 
     n_e = geo.loc; h = Float64(geo.h)
     _, N = radii(n_e)
 
-    return Cartesian(SVector{3, Float64}(
+    return Geocentric(SVector{3, Float64}(
         (N + h) * n_e[1],
         (N + h) * n_e[2],
         (N * (1 - e²) + h) * n_e[3]))
 
 end
 
-Base.convert(::Type{SVector{3,Float64}}, r::Cartesian) = r.data
+Base.convert(::Type{SVector{3,Float64}}, r::Geocentric) = r.data
 
 ##### Generic Abstract3DPosition methods ####
 
@@ -478,7 +479,7 @@ function G_n(pos::Abstract3DPosition)
 
     q_en = ltf(pos)
     ω_ie_e = SVector{3, Float64}(0,0,ω_ie) #use WGS84 constant
-    r_eP_e = Cartesian(pos)[:]
+    r_eP_e = Geocentric(pos)[:]
     G_n = g_n(pos) + q_en'(ω_ie_e × (ω_ie_e × r_eP_e))
     return G_n
 

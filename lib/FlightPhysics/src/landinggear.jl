@@ -242,7 +242,7 @@ function Modeling.f_ode!(mdl::Model{<:Strut},
     r_bs_e = q_eb(r_bs_b) #position of strut frame with respect to body frame
     r_sw0_e = l_0 * ks_e #position of natural-length wheel endpoint with respect to strut frame
     r_ew0_e = r_eb_e + r_bs_e + r_sw0_e #position of natural length wheel endpoint with respect to ECEF frame
-    Ow0 = r_ew0_e |> Cartesian |> Geographic
+    Ow0 = r_ew0_e |> Geocentric |> Geographic
     he_Ow0 = HEllip(Ow0)
 
     loc_Ot = NVector(Ow0)
@@ -258,7 +258,7 @@ function Modeling.f_ode!(mdl::Model{<:Strut},
     end
 
     Ot = Geographic(loc_Ot, he_Ot)
-    r_et_e = Cartesian(Ot)[:]
+    r_et_e = Geocentric(Ot)[:]
 
     r_es_e = r_eb_e + r_bs_e #position of strut frame with respect to ECEF frame
     r_st_e = r_et_e - r_es_e #position of terrain frame with respect to strut frame

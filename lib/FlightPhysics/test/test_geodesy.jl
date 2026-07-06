@@ -14,7 +14,7 @@ function test_geodesy()
         @testset verbose = true "LatLon" begin test_LatLon() end
         @testset verbose = true "Altitude" begin test_Altitude() end
         @testset verbose = true "Geographic" begin test_GeographicLocation() end
-        @testset verbose = true "Cartesian" begin test_CartesianLocation() end
+        @testset verbose = true "Geocentric" begin test_GeocentricLocation() end
     end
 end
 
@@ -153,8 +153,8 @@ function test_GeographicLocation()
     @test p_nve == p_nve #strict equality only defined for Geographic{NVector}
     @test p_llo ≈ p_llo
     @test p_llo ≈ p_nve
-    @test -(-p_llo) ≈ p_llo #requires Cartesian
-    @test -(-p_nve) ≈ p_nve #requires Cartesian
+    @test -(-p_llo) ≈ p_llo #requires Geocentric
+    @test -(-p_nve) ≈ p_nve #requires Geocentric
 
     @test ltf(p_nve, π/3) == ltf(p_nve.loc, π/3)
     @test radii(p_nve) == radii(p_nve.loc)
@@ -164,13 +164,13 @@ function test_GeographicLocation()
 
 end
 
-function test_CartesianLocation()
+function test_GeocentricLocation()
 
     #construction from Geographic
     p_nvo = Geographic(NVector([3,1,-3]), HOrth(10000))
     p_lle = Geographic{LatLon,Ellipsoidal}(p_nvo)
-    r = Cartesian(p_nvo)
-    @test r ≈ Cartesian(p_lle)
+    r = Geocentric(p_nvo)
+    @test r ≈ Geocentric(p_lle)
 
     @test r == r
     @test -(-r) == r
@@ -178,8 +178,8 @@ function test_CartesianLocation()
     @test r ≈ r
 
     #conversion torture test
-    ftest(p) = p |> Cartesian |> Geographic{NVector,Ellipsoidal} |> Cartesian |>
-                Geographic{NVector,Orthometric} |> Cartesian |>
+    ftest(p) = p |> Geocentric |> Geographic{NVector,Ellipsoidal} |> Geocentric |>
+                Geographic{NVector,Orthometric} |> Geocentric |>
                 Geographic{LatLon, Ellipsoidal} |> Geographic{LatLon, Geopotential} |>
                 Geographic{LatLon, Ellipsoidal}
 

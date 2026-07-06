@@ -62,12 +62,12 @@ function test_uniform_terrain()
             h_trn = HOrth(500)
             terrain = UniformTerrain(; elevation = h_trn) |> Model
 
-            P_srf = Cartesian(Geographic(loc, h_trn)) #expected surface point
-            O = Cartesian(Geographic(loc, h_trn + Δh))
+            P_srf = Geocentric(Geographic(loc, h_trn)) #expected surface point
+            O = Geocentric(Geographic(loc, h_trn + Δh))
 
             #2D query must return the surface point at loc
             data = TerrainData(terrain, loc)
-            @test norm(Cartesian(data.P) - P_srf) < 1e-6
+            @test norm(Geocentric(data.P) - P_srf) < 1e-6
             @test data.kt_P_e ≈ dn_e
 
             #vertical ray: hits the surface point right below
@@ -95,7 +95,7 @@ function test_uniform_terrain()
 
             #origin below the surface, ray pointing down: intersection lies behind
             #the origin, so it must be rejected
-            O_low = Cartesian(Geographic(loc, h_trn - Δh))
+            O_low = Geocentric(Geographic(loc, h_trn - Δh))
             @test !SurfaceIntersection(terrain, O_low, dn_e, 3.0).valid
 
             #unbounded ray length must not break the query
@@ -120,8 +120,8 @@ function test_uniform_terrain()
             h_trn = HEllip(500)
             terrain = UniformTerrain(; elevation = h_trn) |> Model
 
-            P_srf = Cartesian(Geographic(loc, h_trn)) #expected surface point
-            O = Cartesian(Geographic(loc, h_trn + Δh))
+            P_srf = Geocentric(Geographic(loc, h_trn)) #expected surface point
+            O = Geocentric(Geographic(loc, h_trn + Δh))
 
             @test HEllip(TerrainData(terrain, loc).P) ≈ h_trn
 

@@ -44,9 +44,9 @@ function test_dynamics()
 
             f_ode!(dyn)
             @test all(dyn.ẋ.ω_eb_b .≈ 0)
-            @test all(dyn.ẋ.v_eb_b .≈ [1, 2, 1] +  q_nb'(g_n(Cartesian(r_eb_e))))
+            @test all(dyn.ẋ.v_eb_b .≈ [1, 2, 1] +  q_nb'(g_n(Geocentric(r_eb_e))))
             @test all(dyn.y.a_eb_b .≈ dyn.ẋ.v_eb_b)
-            @test all(dyn.y.a_ib_b .≈ [1, 2, 1] + q_nb'(G_n(Cartesian(r_eb_e))))
+            @test all(dyn.y.a_ib_b .≈ [1, 2, 1] + q_nb'(G_n(Geocentric(r_eb_e))))
 
             #now let Oc be located 1 meter ahead from Ob along the x axis
             r_bc_b = [1,0,0]
@@ -60,7 +60,7 @@ function test_dynamics()
             #expect a positive unit angular acceleration around y_b
             f_ode!(dyn)
             @test dyn.ẋ.ω_eb_b[2] .≈ 1
-            # @test dyn.ẋ.v_eb_b[3] ≈ 2 + q_nb'(g_n(Cartesian(r_eb_e)))[3]
+            # @test dyn.ẋ.v_eb_b[3] ≈ 2 + q_nb'(g_n(Geocentric(r_eb_e)))[3]
 
         end
 
