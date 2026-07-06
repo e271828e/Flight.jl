@@ -55,7 +55,7 @@ function test_c172x2(; alloc::Bool = true)
         @testset verbose = true "SegmentGuidance" begin
 
             h_trn = HOrth(0.0)
-            world = SimpleWorld(Cessna172Xv2(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
+            world = SimpleWorld(Cessna172Xv2(), SimpleAtmosphere(), UniformTerrain(h_trn)) |> Model
 
             aircraft = world.aircraft
             (; ctl, gdc) = aircraft.avionics

@@ -20,7 +20,7 @@ abstract type AbstractWorld <: ModelDefinition end
 @kwdef struct SimpleWorld{C <: Aircraft, A <: AbstractAtmosphere, T <: AbstractTerrain} <: AbstractWorld
     aircraft::C = Aircraft()
     atmosphere::A = SimpleAtmosphere()
-    terrain::T = HorizontalTerrain()
+    terrain::T = UniformTerrain()
 end
 
 function Modeling.f_ode!(world::Model{<:SimpleWorld})

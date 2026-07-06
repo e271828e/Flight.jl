@@ -342,7 +342,7 @@ function Modeling.f_ode!(mdl::Model{Aero}, terrain::Model{<:AbstractTerrain},
     #non-dimensional height above ground
     loc_Oa = n_e #(2D location of aerodynamics frame, Oa = Ob)
     h_a = h_o #orthometric
-    h_trn_a = TerrainData(terrain, loc_Oa).elevation #orthometric
+    h_trn_a = HOrth(TerrainData(terrain, loc_Oa)) #orthometric
     Δh_nd = (h_a - h_trn_a) / b
 
     # T = get_wr_b(pwp).F[1]
@@ -884,7 +884,7 @@ function Modeling.f_init!(
             vehicle::Model{<:Vehicle},
             trim_params::TrimParameters,
             atmosphere::Model{<:AbstractAtmosphere} = Model(SimpleAtmosphere()),
-            terrain::Model{<:AbstractTerrain} = Model(HorizontalTerrain()))
+            terrain::Model{<:AbstractTerrain} = Model(UniformTerrain()))
 
     trim_state = TrimState() #could provide initial condition as an optional input
 

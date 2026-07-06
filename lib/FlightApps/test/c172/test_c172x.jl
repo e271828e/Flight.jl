@@ -23,7 +23,7 @@ function test_trimming()
         #test on vehicle
         vehicle = Model(C172X.Vehicle())
         atmosphere = SimpleAtmosphere() |> Model
-        terrain = HorizontalTerrain() |> Model
+        terrain = UniformTerrain() |> Model
         trim_params = C172.TrimParameters()
         state = C172.TrimState()
 
@@ -53,11 +53,11 @@ function test_update_methods()
     @testset verbose = true "Update Methods" begin
 
         atmosphere = SimpleAtmosphere() |> Model
-        terrain = HorizontalTerrain() |> Model
+        terrain = UniformTerrain() |> Model
 
         location = NVector()
         trn_data = TerrainData(terrain, location)
-        vehicle_init = KinInit( h = trn_data.elevation + 1.8) |> C172.Init
+        vehicle_init = KinInit( h = HOrth(trn_data) + 1.8) |> C172.Init
 
         aircraft = Model(Cessna172Xv0());
 

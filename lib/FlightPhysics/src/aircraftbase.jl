@@ -76,7 +76,7 @@ end
 function Modeling.f_init!( mdl::Model{<:Vehicle},
                         init::VehicleInitializer,
                         atmosphere::Model{<:AbstractAtmosphere} = Model(SimpleAtmosphere()),
-                        terrain::Model{<:AbstractTerrain} = Model(HorizontalTerrain()))
+                        terrain::Model{<:AbstractTerrain} = Model(UniformTerrain()))
 
     (; kinematics, dynamics, systems) = mdl.submodels
     f_init!(kinematics, init.kin)
@@ -296,7 +296,7 @@ function Linearization.linearize( vehicle::Model{<:Vehicle}, trim_params::Abstra
     #the nonlinear model are Earth-relative, we should set wind velocity to zero
     #for linearization
     atmosphere = Model(SimpleAtmosphere(; wind = NoWind()))
-    terrain = Model(HorizontalTerrain())
+    terrain = Model(UniformTerrain())
 
     (_, trim_state) = f_init!(vehicle, trim_params, atmosphere, terrain)
 

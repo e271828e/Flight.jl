@@ -82,14 +82,14 @@ Now, let's create our simulated world:
 ```@example tutorial01
 aircraft = Cessna172Xv1()
 atmosphere = SimpleAtmosphere()
-terrain = HorizontalTerrain(h_LOWS15)
+terrain = UniformTerrain(h_LOWS15)
 world = SimpleWorld(aircraft, atmosphere, terrain)
 nothing # hide
 ```
 
  ```SimpleAtmosphere``` provides a basic,
 [ISA](https://en.wikipedia.org/wiki/International_Standard_Atmosphere)-based atmosphere with
-customizable sea-level conditions and wind velocity. ```HorizontalTerrain``` represents a surface
+customizable sea-level conditions and wind velocity. ```UniformTerrain``` represents a surface
 with constant orthometric elevation, which we have set to our value for the beginning of runway 15.
 Finally, ```Cessna172Xv1``` is a hypothetical customization of a Cessna 172S. It replaces the
 reversible actuation system on the base model with a digital fly-by-wire flight control system,

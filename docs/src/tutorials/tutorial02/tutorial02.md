@@ -10,7 +10,7 @@ Let's start from a new `SimpleWorld` instance. Here, keeping consistency with X-
 is no longer a concern, so we can stick to the default constructors:
 ```@example tutorial02
 using Flight
-world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain()) #zero-MSL terrain
+world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), UniformTerrain()) #zero-MSL terrain
 ```
 
 Inspecting `SimpleWorld`'s type hierarchy reveals that it is a concrete subtype of the abstract type

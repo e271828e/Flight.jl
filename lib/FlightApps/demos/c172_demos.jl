@@ -45,7 +45,7 @@ function generic_simulation(; aircraft::Cessna172 = Cessna172Xv1(),
     atmosphere = SimpleAtmosphere()
 
     #horizontal terrain model with elevation matching LOWS runway 15
-    terrain = HorizontalTerrain(h_LOWS15)
+    terrain = UniformTerrain(h_LOWS15)
 
     #define world and build Model for simulation
     world = SimpleWorld(aircraft, atmosphere, terrain) |> Model
@@ -365,7 +365,7 @@ function json_loopback(; gui::Bool = false, xp12 = false, save::Bool = false)
 
 
     h_trn = HOrth(427.2);
-    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), UniformTerrain(h_trn)) |> Model
 
     sim = Simulation(world; t_end = 30)
 
@@ -483,7 +483,7 @@ function crosswind_landing(; gui::Bool = false,
 
     end
 
-    mdl = SimpleWorld(Cessna172Xv2(), SimpleAtmosphere(), HorizontalTerrain(h_LOWS15)) |> Model
+    mdl = SimpleWorld(Cessna172Xv2(), SimpleAtmosphere(), UniformTerrain(h_LOWS15)) |> Model
 
     sim = Simulation(mdl; dt = 0.02, t_end = 1000, user_callback!)
 
@@ -639,7 +639,7 @@ function traffic_pattern(; gui::Bool = false,
         v_eb_n = zeros(3), #velocity
         ) |> C172.Init
 
-    mdl = SimpleWorld(Cessna172Xv2(), SimpleAtmosphere(), HorizontalTerrain(h_LOWS15)) |> Model
+    mdl = SimpleWorld(Cessna172Xv2(), SimpleAtmosphere(), UniformTerrain(h_LOWS15)) |> Model
 
     sim = Simulation(mdl; dt = 0.02, t_end = 1000, user_callback!)
 

@@ -24,7 +24,7 @@ function test_c172x1(; alloc::Bool = true)
         normpath("src/c172/c172x/control/data"))
 
     h_trn = HOrth(0.0)
-    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_trn)) |> Model
+    world = SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), UniformTerrain(h_trn)) |> Model
 
     aircraft = world.aircraft
     act = aircraft.vehicle.systems.act
