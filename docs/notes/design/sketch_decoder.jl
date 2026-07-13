@@ -1,13 +1,20 @@
-#Alternative to sketch.jl using derivative binding instead of the explicit
-#computer/integrator component split. Same illustrative, non-committed syntax.
+#Alternative to sketch.jl using the two-stage decoder interfaces of
+#framework_design.md §5.2 instead of the explicit computer/integrator component
+#split. Same illustrative, non-committed syntax.
 #
-#The feature: a component may declare that some (or all) fields of its ẋ are
-#bound to designated output ports of its own, instead of computing them in an
-#f method. Bindings are applied by the framework after the output sweep, when
-#the component's own outputs are guaranteed fresh. Mixing is allowed: bind some
-#fields, compute the rest in f. Here, neither component needs an f at all, and
-#each derivative-producing computation runs exactly once.
+#Interfaces (continuous component), in evaluation order:
 #
+#   y_s1 = g_s1(comp, x, m)     #state decoder; default = identity publication
+#   y_s2 = g_s2(comp, u, y_s1)  #all wired inputs + own stage-1 results
+#   ẋ    = f(comp, y, u, t)     #post-sweep; y complete and fresh, own y_s2 included
+#
+#at step boundaries (none used in this sketch):
+#
+#   guard(comp, y, u, t)
+#   (x⁺, m⁺) = handler(comp, y, u, t)   #then: project → re-run g_s1, g_s2
+#   x⁺ = project(comp, x)               #sole raw-state function (runs pre-decode)
+#
+#Every derivative-producing computation runs exactly once, in g_s2; f is a copy.
 #Compared with sketch.jl: two components instead of four, eight connections
 #instead of thirteen, and everything derivable from pose alone migrates from
 #stage 2 to stage 1 (pose is now WA's own state, not an input), so ne's g_s2
@@ -20,12 +27,13 @@ struct NewtonEuler <: AbstractComponent end
 init_x(::NewtonEuler) = (ω_eb_b = zeros(SVector{3}), v_eb_b = zeros(SVector{3}))
 init_z(::NewtonEuler) = nothing
 
-g_s1(::NewtonEuler, x, m) = x   #ω_eb_b, v_eb_b published as stage-1 outputs
+#no g_s1 method: default identity publication applies, so the state fields
+#ω_eb_b and v_eb_b appear as stage-1 output ports
 
-function g_s2(::NewtonEuler, x, u, m)
+function g_s2(::NewtonEuler, u, y_s1)
 
-    (; mp_Σ_b, wr_Σ_b, ho_Σ_b, q_eb, r_eb_e) = u   #velocities no longer inputs:
-    (; ω_eb_b, v_eb_b) = x                          #read own state directly
+    (; mp_Σ_b, wr_Σ_b, ho_Σ_b, q_eb, r_eb_e) = u
+    (; ω_eb_b, v_eb_b) = y_s1     #own state, via the decoder
 
     ω_ie_e = SVector{3}(0, 0, ω_ie) #use WGS84 constant
     ω_ie_b = q_eb'(ω_ie_e)
@@ -71,14 +79,14 @@ function g_s2(::NewtonEuler, x, u, m)
     ω̇_eb_b = ω̇_ec_c
     v̇_eb_b = v̇_ec_c - ω̇_ec_c × r_bc_b
 
-    return NewtonEulerOutput(; ω̇_eb_b, v̇_eb_b)
+    return (; ω̇_eb_b, v̇_eb_b)
     #plus the remaining acceleration-like quantities (a_eb_b, f_c_c, ...),
     #published as ports for accelerometer-style consumers
 
 end
 
-#no f method — Newton-Euler is solved exactly once, in g_s2:
-ẋ_bindings(::NewtonEuler) = (ω_eb_b = :ω̇_eb_b, v_eb_b = :v̇_eb_b)
+#Newton-Euler is solved exactly once, in g_s2; f copies from the fresh table:
+f(::NewtonEuler, y, u, t) = (ω_eb_b = y.ω̇_eb_b, v_eb_b = y.v̇_eb_b)
 
 
 ########################### WA (merged) ########################################
@@ -88,7 +96,7 @@ struct WA <: AbstractComponent end
 init_x(::WA) = (q_wb = RQuat(), q_ew = RQuat(), h_e = HEllip())
 init_z(::WA) = nothing
 
-function g_s1(::WA, x, m)   #everything derivable from pose alone: now stage 1
+function g_s1(::WA, x, m)   #everything derivable from pose alone: stage 1
 
     (; q_wb, q_ew, h_e) = x
 
@@ -104,23 +112,14 @@ function g_s1(::WA, x, m)   #everything derivable from pose alone: now stage 1
     Ob = Geographic(n_e, h_e)
     r_eb_e = Cartesian(Ob)
 
-    return KinPose(; q_wb, q_ew, q_nb, q_eb, e_nb, n_e, ϕ_λ, h_e, h_o, r_eb_e)
+    return (; q_wb, q_ew, q_nw, q_nb, q_eb, e_nb, n_e, ϕ_λ, h_e, h_o, Ob, r_eb_e)
 
 end
 
-function g_s2(::WA, x, u, m)
+function g_s2(::WA, u, y_s1)
 
-    (; ω_eb_b, v_eb_b) = u          #from NewtonEuler's stage-1 outputs
-    (; q_wb, q_ew, h_e) = x
-
-    #cheap pose recomputation (shared intermediates across groups are either
-    #recomputed, as here, or hoisted; see framework_design.md §5.2)
-    ψ_nw = get_ψ_nw(q_ew)
-    q_nw = Rz(ψ_nw)
-    q_nb = q_nw ∘ q_wb
-
-    n_e = NVector(q_ew)
-    Ob = Geographic(n_e, h_e)
+    (; ω_eb_b, v_eb_b) = u                    #from NewtonEuler's stage-1 outputs
+    (; q_wb, q_ew, q_nw, q_nb, Ob) = y_s1     #own stage-1 results — nothing recomputed
 
     v_eb_n = q_nb(v_eb_b)
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
@@ -134,11 +133,11 @@ function g_s2(::WA, x, u, m)
     q̇_ew = Attitude.dt(q_ew, ω_ew_w)
     ḣ_e = -v_eb_n[3]
 
-    return KinVel(; v_eb_n, ω_wb_b, ω_ew_b, v_gnd, χ_gnd, γ_gnd, q̇_wb, q̇_ew, ḣ_e)
+    return (; v_eb_n, ω_wb_b, ω_ew_b, v_gnd, χ_gnd, γ_gnd, q̇_wb, q̇_ew, ḣ_e)
 
 end
 
-ẋ_bindings(::WA) = (q_wb = :q̇_wb, q_ew = :q̇_ew, h_e = :ḣ_e)
+f(::WA, y, u, t) = (q_wb = y.q̇_wb, q_ew = y.q̇_ew, h_e = y.ḣ_e)
 
 #projection follows the state: quaternion renormalization lives here
 project(::WA, x) = (q_wb = normalize(x.q_wb), q_ew = normalize(x.q_ew), h_e = x.h_e)
@@ -165,6 +164,6 @@ connect!(asm, (:ne, :u, :ho_Σ_b), (:sys, :y, :ho_Σ_b))     #reduce-port (+)
 connect!(asm, (:sys, :u, :v_eb_n), (:wa, :y, :v_eb_n))
 
 #derived schedule:
-#  s1: ne.g_s1, wa.g_s1, sys stage-1        (any order)
-#  s2: wa.g_s2 → sys.g_s2 → ne.g_s2         (topological)
-#  post-sweep: ẋ bindings, projection on wa
+#  s1: ne.g_s1 (default identity), wa.g_s1, sys stage-1     (any order)
+#  s2: wa.g_s2 → sys.g_s2 → ne.g_s2                         (topological)
+#  post-sweep: all f against the complete signal table; projection on wa

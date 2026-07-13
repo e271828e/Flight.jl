@@ -64,6 +64,12 @@ differs:
 This gives step-boundary logic *well-defined semantics*: the transition is defined by
 the crossing; detection resolution is an execution-policy detail.
 
+Guards may be **boolean predicates** (checked for becoming true at step boundaries) or
+continuous sign-crossing functions. Tier 1 handles both; Tier 2 localization requires
+the continuous form. This matters in practice: most transitions in FlightPhysics mix
+input predicates with state thresholds (e.g. the piston engine's `starting → running`
+fires on `ω > ω_idle && fuel_available`).
+
 ### 2.2 Exclusions (deliberate)
 
 - **No DAEs / algebraic constraints.** Projection covers the actual need (state
@@ -88,13 +94,13 @@ Three kinds, two of them leaves with crisp, closed semantics, one pure compositi
 
 A classical hybrid automaton:
 
-- **continuous state** `x` (isbits struct of real scalars — see §8),
+- **continuous state** `x` (isbits struct of real scalars — see §9),
 - **mode variables** `m`: piecewise-constant values (enums, integers, flags) that
   parametrize the flow and change *only* through event handlers,
 - **flow** `ẋ = f(x, m, u, t)`,
-- **output groups** (see §5),
-- **events**: guards (may read own state, modes, inputs, time) + handlers (update `m`,
-  may reset own `x`),
+- **two output stages** (see §5.2),
+- **events**: guards + handlers (update `m`, may reset own `x`); both read the fresh
+  boundary signal table (§5.2),
 - optional **projection**.
 
 Any facet may be empty. In particular, a component with *no* continuous state — only
@@ -114,8 +120,8 @@ no overlap.
 
 - **discrete state** `z`: any immutable value (see §9),
 - **update** `z⁺ = h(z, u, t)` at a declared rate,
-- **output groups** (feedthrough applies at update instants: a proportional path is
-  direct feedthrough; a state-only output is not).
+- **two output stages** (feedthrough applies at update instants: a proportional path
+  is direct feedthrough; a state-only output is not).
 
 `z` influences continuous dynamics only **through signals** (outputs held zero-order
 between ticks); no component ever reads another's state.
@@ -135,7 +141,7 @@ the navigation/introspection hierarchy (GUI, logging, paths).
 
 Ports exchange **immutable values** — typically isbits structs (floats, `SVector`s,
 enums, nested immutables). The framework owns a **signal table**: one concretely-typed
-slot per output port in the flattened model. A producer's output-group function returns
+slot per output port in the flattened model. A producer's output-stage function returns
 a named tuple of fresh values; the framework writes each into its slot; consumers read
 slots.
 
@@ -152,12 +158,18 @@ The signal requirement, stated precisely, is **immutability plus frozen referenc
 signals may reference bulk data (see §7) provided that data is read-only for the
 duration of the run. `isbits` is the common case, not the rule.
 
-### 4.2 Consumers see ports, not groups
+### 4.2 Consumers see ports, not stages
 
 The port is the addressable unit. A component's outputs appear to consumers, GUI and
-logs as one flat namespace (`dyn.vel`, `dyn.accel.f_c_c`, materializable lazily as a
-view); which output group computes which port is a scheduling annotation, invisible
-outside the component. Regrouping outputs is a non-breaking change.
+logs as one flat namespace (`dyn.vel`, `dyn.f_c_c`, materializable lazily as a view);
+which output stage computes which port is a scheduling annotation, invisible outside
+the component. Moving an output between stages is a non-breaking change.
+
+**Unlisted ports.** A port may be marked *unlisted* (surface syntax TBD, axis 7):
+skipped by default in logging and GUI panels, and exempt from unconnected-output
+warnings. Purely presentational — unlisted ports remain connectable and inspectable on
+request. Intended for state published only to feed the component's own dynamics (§5.2),
+e.g. RNG state.
 
 ---
 
@@ -169,36 +181,97 @@ At every evaluation instant, all signals must be computed consistently: every co
 reads values already produced at that instant. Build the directed graph of (a) wiring
 edges and (b) intra-component feedthrough relations; if acyclic, a topological sort
 yields a **static evaluation schedule**, computed once at build time. The hot loop runs
-a flat list of `(component, group)` entries — zero runtime graph logic.
+a flat list of `(component, stage)` entries — zero runtime graph logic.
 
-### 5.2 Output groups (structural feedthrough)
+### 5.2 Two-stage outputs and the state decoder (structural feedthrough)
 
-Feedthrough is declared **structurally, by function signature**:
+Every component provides exactly **two output stages**, and feedthrough is declared
+**structurally, by function signature** — there are no dependency annotations anywhere
+in the design:
 
-- Each component partitions its outputs into **output groups**. Each group is a pure
-  function receiving *only its declared inputs*; the **stage-1** group receives no
-  inputs at all (`g_state(x, m)`), so "no feedthrough" is unfalsifiable — the function
-  cannot read what it is not passed.
-- **Default factoring is two-stage**: one state-only group, one direct group receiving
-  all wired inputs. Finer factorings (more groups) are introduced only when needed
-  (§5.3), and are invisible to consumers (§4.2).
-- Group functions must be pure (read state/modes/declared inputs, return values, no
-  side effects).
+```julia
+# continuous component                      # discrete component
+y_s1 = g_s1(comp, x, m)                     y_s1 = g_s1(comp, z)
+y_s2 = g_s2(comp, u, y_s1)                  y_s2 = g_s2(comp, u, y_s1)
+ẋ    = f(comp, y, u, t)                     z⁺   = h(comp, y, u, t)
 
-The schedule: all stage-1 groups first (any order), then direct groups in topological
-order, then all derivative functions against the now-consistent signal table.
-Derivative functions, guards, handlers and projections consume signals but impose no
-ordering constraints — they run after the sweep.
+# event system (continuous side only) — readers of the same fresh table:
+guard(comp, y, u, t)
+(x⁺, m⁺) = handler(comp, y, u, t)           # constructs successors from y; may reset x
 
-**Shared expensive computations.** When a derivative function and an output group need
-the same expensive result (the canonical case: Newton–Euler must be solved both for
-`ẋ` and for the acceleration-like outputs), the framework offers two cache-free
-resolutions: **derivative binding** (§9.4 — publish the derivative as an output port
-and bind `ẋ` to it; the default idiom for cohesive components) and the
-**computer/integrator split** (§9.4 — factor the math into a stateless component whose
-outputs feed a trivial state-holding component; the Simulink-diagram idiom, useful when
-the factoring earns reuse). Purity rules forbid the third classic resolution, mutable
-caching, by design.
+# the sole raw-state function:
+x⁺ = project(comp, x)                        # manifold projection
+```
+
+- **`g_s1` is the state decoder** — the *only* place where raw state becomes
+  information. It receives no inputs, so "no feedthrough" is unfalsifiable: the
+  function cannot read what it is not passed. **Default `g_s1` is identity
+  publication**: absent an explicit method, state fields *and mode fields* (`x`, `m`
+  for continuous components; `z` for discrete) are published as ports named after
+  them. The commitment this creates: `y_s1` must carry whatever the component's own
+  downstream functions need — satisfied automatically by the default, and violated
+  *loudly* (missing-field error on first evaluation) otherwise.
+- **`g_s2` receives all wired inputs plus `y_s1`** — its own stage-1 results, so
+  state-derived intermediates are computed once, not re-derived. It has no direct
+  state access; conservatively, every stage-2 output is presumed dependent on every
+  wired input.
+- **`f` and `h` are pure signal consumers.** They run after the sweep, when the full
+  signal table — including the component's own `y_s2` — is complete and fresh. `ẋ` and
+  `z⁺` are computed from the same published values every other consumer sees:
+  single-source-of-truth is mechanical, and the duplicated-math drift class (edit the
+  torque law in `f`, forget the copy in `g`) cannot exist.
+- **Guards and handlers are readers too.** At a step boundary, the order is
+  *integrate → project → boundary sweep → guards*, so by guard/handler time `y` is a
+  fresh decode of exactly the state being transformed; handlers construct `(x⁺, m⁺)`
+  from it under the same commitment as `h`. **`project` is the sole raw-state
+  function**, structurally: it runs *between* a state write and its decode (after
+  integration, and after any handler `x`-reset), i.e. at the only positions in the
+  schedule where no fresh `y` of the new state can exist yet.
+- All of `g_s1`, `g_s2` must be pure (no side effects); state types make mutation
+  impossible anyway (§9).
+
+The schedule: all `g_s1` (any order), then `g_s2` in topological order, then all `f`
+against the now-consistent signal table. Note the systemic consequence: *evaluating
+the RHS means running the sweep* — there is no incremental `f`-only re-evaluation.
+Implicit solvers, linearization and trim already work this way (seed `x`, run the
+composite), so nothing is lost; axis 5 should restate it as a property of the
+execution model.
+
+**Step-boundary semantics.** At each boundary: integrate → project → boundary sweep →
+evaluate **all guards once** against that sweep → for each fired event, in declaration
+order: `handler → project → re-run the component's g_s1 and g_s2`. The per-event
+re-decode keeps `y` fully fresh for any subsequent handler of the *same* component
+(sequential composition, no lost updates) and leaves the signal table
+post-transition-consistent for whatever else the boundary does (discrete ticks,
+logging). Events are rare and the re-run touches one component, so the cost is noise.
+Across components, all guards and handlers read the same boundary snapshot (plus their
+own component's refreshed ports); one component's transition reaches others through
+the next sweep. Whether newly-enabled guards may fire within the same boundary
+(iterate-to-quiescence) is deferred to axis 5; in this revision they fire at the next
+boundary, consistent with Tier-1 detection granularity.
+
+**Departure from the orthodox formalism, stated openly.** The textbook form is
+`ẋ = f(x, u)`, `y = g(x, u)`; this design's is `y = g(x, u)`, `ẋ = f(y, u)`. The
+composite map `x ↦ ẋ` is mathematically identical (linearization, trim and AD are
+untouched), but the spelling is heterodox and every literate newcomer will pause at
+it once. The teaching line: *"stage 1 publishes what you know from state alone — by
+default, the state itself; stage 2 adds what needs inputs; your dynamics then read the
+same table everyone else does."* The decision was grounded in a component-by-component
+survey of FlightPhysics/FlightApps (§11.2): derivative/output overlap is the *norm*
+in this domain (Newton–Euler, kinematics, piston engine, gear friction, every discrete
+compensator), so the orthodox split would force either systematic duplicated math (with
+its silent-drift bug class), systematic component atomization, or a cache mechanism —
+all rejected. FlightCore's fused `f_ode!` already embodied the same economics; this
+design keeps them while adding checked scheduling.
+
+**Shared expensive computations** are thereby solved uniformly: compute once in
+`g_s2`, publish, and let `f`/`h` (and external consumers, e.g. an accelerometer model
+reading `f_c_c`) consume the ports. The **computer/integrator split** — a stateless
+component computing derivatives as outputs, wired into a trivial state-holding
+component — remains fully expressible without framework support and is the idiom of
+choice when the factoring earns reuse (one Newton–Euler solver shared across vehicle
+variants; swappable kinematic descriptors against a common integrator shape). Purity
+rules forbid the third classic resolution, mutable caching, by design.
 
 ### 5.3 Artificial loops and the escape hatch
 
@@ -206,10 +279,14 @@ A component that bundles a no-feedthrough output with a feedthrough output in on
 atomic evaluation unit can be **port-level acyclic yet unschedulable** (Simulink's
 "artificial algebraic loop"). The canonical instance in this domain is rigid-body
 dynamics: velocity out (pure state) + acceleration out (feedthrough from total force).
-The two-stage default resolves it. If a component's direct group itself cross-couples
-through a neighbor (rare), the author splits it into further groups; the build
-diagnostic says so explicitly ("cycle through X.g_direct is artificial at port level —
-split the group").
+The two-stage split resolves it. In the rare case where a single component's stage-2
+outputs cross-couple through a neighbor (port-level acyclic, stage-level cyclic), the
+remedy is **splitting the component** — which documents real structure — and the build
+diagnostic says so explicitly ("cycle through X.g_s2 is artificial at port level —
+split the component"). One consequence of stage-2 conservatism worth recording: an
+input consumed only by `f` (never by `g_s2`) still creates a scheduling edge if the
+component has stage-2 outputs; in practice such components are integrator-shaped and
+have none, and the remedy, if ever needed, is the same split.
 
 ### 5.4 Algebraic loop policy: reject at build time
 
@@ -264,7 +341,7 @@ their own choosing (each gear strut at its own contact point; airflow at the veh
 pose). They are therefore carried by ordinary ports as **immutable query objects**
 ("field handles"):
 
-- An environment component's output group emits a field value (`ISAField(T_sl, p_sl,
+- An environment component emits a field value (`ISAField(T_sl, p_sl,
   wind)`, `TerrainField(...)`); consumers receive it through ordinary input ports and
   call query functions on it (`airdata(field, pos, vel)`, `ray_intersect(field, p, u)`)
   inside their own group functions.
@@ -319,7 +396,8 @@ ultimately reals; `Int`s/enums/`Bool`s belong in modes). The framework:
 - computes a **flat layout** at build time (compile-time offsets over one contiguous
   `Vector{T}` buffer it owns);
 - **reconstructs** the typed immutable state value for a component at each evaluation
-  (field loads at known offsets — register-level, zero cost);
+  and passes it to the state readers/writers (`g_s1`, handlers, projection — field
+  loads at known offsets, register-level, zero cost);
 - receives immutable results back: derivative functions return an `Ẋ`-typed value
   (scatter-stored into the flat `ẋ` buffer); event handlers and projection return a new
   `X` (written back).
@@ -412,47 +490,43 @@ live example pattern).
   It reintroduces aliasing/publication questions (GUI reads vs. buffer flips) that the
   first cut deliberately avoids, and nothing in the plausible workload needs it.
 
-### 9.4 Derivative binding
+### 9.4 The fused-evaluation lineage (prior art and how we got here)
 
-A continuous component may declare that some or all fields of its `ẋ` are **bound to
-designated output ports of its own**, instead of being computed by a derivative
-function:
+The §5.2 interfaces are the end point of a three-step simplification arc, recorded
+here because each step replaced a mechanism with something smaller:
 
-```julia
-ẋ_bindings(::NewtonEuler) = (ω_eb_b = :ω̇_eb_b, v_eb_b = :v̇_eb_b)   # sketch syntax
-```
+1. **N output groups → exactly two.** General output groups (each declaring its input
+   subset) handled a cross-coupling case that never materialized in the domain; strict
+   two-stage eliminates all dependency declarations, at the price of an occasional
+   component split (§5.3).
+2. **Derivative binding → own-output access.** An earlier revision had a declaration
+   feature binding `ẋ` fields to output ports (`ẋ_bindings(::C) = (ω = :ω̇,)`). Passing
+   the fresh signal table to `f`/`h` subsumes it: the "binding" is a one-line function
+   body, no validation machinery, strictly more general (an `f` may combine published
+   values with extra terms).
+3. **Separate state arguments → the `g_s1` decoder.** With `y` in hand, passing `x` to
+   `f` duplicated information (FlightPhysics culturally publishes state in `y` anyway);
+   removing it produced the uniform continuous/discrete shapes and the
+   single-computation-site guarantee.
 
-Semantics and rules:
-
-- Bindings are applied by the framework **after the output sweep**, when the
-  component's own outputs are guaranteed fresh (the same freshness argument that
-  orders derivative functions after the sweep).
-- **Mixing is allowed**: bind some state fields, compute the rest in `f`. A component
-  whose fields are all bound needs no `f` at all.
-- Build-time validation: every state field is covered by exactly one binding or by
-  `f`; every referenced port exists and is type-compatible.
-
-Motivation: derivatives and outputs often share expensive intermediates — rigid-body
-dynamics must solve Newton–Euler both for `ẋ` and for the acceleration outputs
-(`DynamicsData`). With separate `f` and output groups, the solve would run twice.
-Binding publishes the derivative *as a port* (so accelerometer-style consumers can
-wire to it) and reduces `f` to a framework-performed copy.
-
-Prior art, for orientation: every causal framework meets this problem and resolves it
-per its architecture — Simulink diagrams make integrators explicit blocks (derivatives
-are ordinary wires into `1/s`); S-functions and FMUs use sanctioned **mutable caches**
-(DWork vectors; FMI's lazy-evaluation caching); Modelica/MTK have `der(x) = expr`
-natively with symbolic CSE. Derivative binding is the cache-free formulation that fits
-this design's purity rules — Modelica's convenience brought to a causal component API.
+Prior art, for orientation — every causal framework meets the shared-computation
+problem and resolves it per its architecture: **Simulink diagrams** make integrators
+explicit blocks (derivatives are ordinary wires into `1/s` — the computer/integrator
+split is their native idiom); **S-functions and FMUs** use sanctioned *mutable caches*
+(DWork vectors; FMI's lazy-evaluation caching) between their `mdlDerivatives`/
+`mdlOutputs`-style callback pairs; **Modelica/MTK** write `der(x) = expr` natively
+with symbolic CSE. The fused sweep + signal-consuming `f`/`h` is the cache-free
+formulation that fits this design's purity rules — and it is also what FlightCore's
+fused `f_ode!` did economically, minus the checked scheduling.
 
 The **computer/integrator split** remains fully expressible without any framework
 support (a stateless component computing derivatives as outputs, wired into a trivial
-state-holding component whose `f` copies them) and is the idiom of choice when the
-factoring earns reuse — e.g. one Newton–Euler solver shared across vehicle variants,
-or swappable kinematic descriptors against a common integrator shape. See
-`sketch.jl` (split form) and `sketch_binding.jl` (merged form with bindings) for the
-worked example; the merged form has half the components and wiring, and everything
-derivable from pose alone migrates to stage 1, shortening the stage-2 chain.
+state-holding component) and is the idiom of choice when the factoring earns reuse —
+e.g. one Newton–Euler solver shared across vehicle variants, or swappable kinematic
+descriptors against a common integrator shape. See `sketch.jl` (split form) and
+`sketch_decoder.jl` (merged form under the §5.2 interfaces) for the worked example;
+the merged form has half the components and wiring, and everything derivable from
+pose alone migrates to stage 1, shortening the stage-2 chain.
 
 ### 9.5 Allocation policy: a scoped invariant
 
@@ -477,9 +551,9 @@ offending commit.
 ## 10. Diagnostics: feedthrough tracing
 
 Tracing is **diagnostic only, never load-bearing**: scheduling correctness comes
-exclusively from structural output groups; tracing improves error messages and
+exclusively from the structural two-stage split; tracing improves error messages and
 verification. Triggered when the scheduler finds a cycle, to classify it (genuine →
-"insert a state"; artificial → "split this group").
+"insert a state"; artificial → "split this component").
 
 Two modes, degrading gracefully:
 
@@ -495,8 +569,10 @@ Two modes, degrading gracefully:
   (no derivative-zero blind spot; only untaken-branch misses).
 
 Boundaries: only *inputs* are seeded, so branching on state/modes/parameters/time never
-interferes. Stage-1 groups are never traced (nothing to seed). Derivatives, guards,
-handlers, projections are outside tracing's jurisdiction entirely. Known tracer blind
+interferes (under the §5.2 decoder, state-derived values arrive through `y_s1`, which
+is never seeded — same conclusion). Stage-1 functions are never traced (nothing to
+seed). Derivatives, guards, handlers, projections are outside tracing's jurisdiction
+entirely. Known tracer blind
 spot: value-severing operations (dependence passed through a bare `Int` index, e.g.
 nearest-neighbor lookup) — documented; linear/cubic interpolation is immune (dependence
 flows through the fractional weights).
@@ -506,14 +582,16 @@ effectively guarantees traceability.
 
 ---
 
-## 11. Case study: `Vehicle` today → this framework
+## 11. Case studies
+
+### 11.1 `Vehicle` today → this framework
 
 The grounding exercise that validated §5. Current `Vehicle.f_ode!`
 (`aircraftbase.jl:142-170`) is a hand-woven instance of the machinery specified here:
 
 | Today (convention) | This design (checked structure) |
 |---|---|
-| `kinematics.u .= dynamics.x` — velocity extracted directly from the state vector because `f_ode!(dynamics)` can't run yet | `dyn`'s stage-1 output group, scheduled first by construction; the artificial loop in `VehicleDynamics` (velocity state-only, accelerations feedthrough) dissolves |
+| `kinematics.u .= dynamics.x` — velocity extracted directly from the state vector because `f_ode!(dynamics)` can't run yet | `dyn`'s stage-1 output, scheduled first by construction; the artificial loop in `VehicleDynamics` (velocity state-only, accelerations feedthrough) dissolves |
 | Hand-ordered `f_ode!` body (kinematics → airdata → systems → route five `dynamics.u` assignments → dynamics last) | Build-time topological sort; wrong wiring = build error naming the cycle or dangling port |
 | Velocity state duplicated (`dynamics.x` and `kinematics.u`) with manual sync, incl. `dynamics.x .= kinematics.u  #essential` in `f_init!` | One state, one owner; consumers wire to `dyn.vel` |
 | `get_wr_b`/`get_mp_b`/`get_hr_b` generated tree-walk sums | Reduce-ports: one explicit wire per contributor, canonical fold |
@@ -532,6 +610,51 @@ The genuine algebraic loop in the domain — α̇-dependent aerodynamics — is 
 broken in the current C172 model by a filter state, exactly the explicit break §5.4
 prescribes. Evidence that reject-loops matches domain practice rather than fighting it.
 
+### 11.2 Torture tests for the §5.2 interfaces: `PistonEngine` and the FCS PID cascade
+
+Two components were transliterated to validate the decoder interfaces before adoption.
+
+**`PistonEngine`** (piston.jl:310-449) — mode enum with three flow regimes, four table
+lookups, two embedded continuous PI compensators, boolean transitions, argument-threaded
+`fuel_available`:
+
+- The compensator paths (`idle`, `frc`) are pure functions of the engine's own state
+  (`ω`), so their complete PI laws — outputs *and* state derivatives — evaluate in
+  `g_s1`. (The alternative factoring, compensators as child components of an engine
+  assembly, also schedules cleanly from the core's stage-1 ports.)
+- `g_s2` runs the lookup chain and the mode branch once; `f` is a three-field copy
+  (`ω̇`, `ẋ_idle`, `ẋ_frc`). Under the orthodox split, `f` would reproduce essentially
+  the whole `f_ode!` body — four lookups and the mode branch — ×4 RK stages per step.
+- `f_step!`'s transitions become Tier-1 events with mixed predicate/threshold guards
+  (§2.1); `fuel_available` becomes an ordinary port (state-derived at the fuel system,
+  hence stage-1 — no loop).
+- Forced publications: none — everything `f` reads was already in `PistonEngineY`.
+
+**`PID`** (control.jl:431-471) and the C172X FCS — the discrete side's representative:
+
+- The current update entangles outputs and next state by construction (`y_i = x_i`:
+  this tick's integral-path output *is* the updated integrator state). Under §5.2 the
+  law runs once in `g_s2`, publishing paths, saturation and the updated states;
+  `h` is a three-field copy. Under the orthodox split, `h(z, u, t)` would reproduce
+  the entire law per compensator per tick.
+- **Discovered latent delay.** The FCS chains anti-windup: outer compensators take
+  `sat_ext` from the inner LQR's `sat_out` (c172x_ctl.jl:332,345,...). Wired naively,
+  this is a *genuine* tick-domain algebraic loop
+  (`outer.output → inner.input → inner.sat_out → outer.sat_ext → outer.int_halted →
+  outer.y_i → outer.output`), which the build correctly rejects. Today's code escapes
+  it only through hand-managed call order: the outer loops read the LQR's `sat_out`
+  *before* the LQR updates, silently consuming the **previous tick's** value — a unit
+  delay that exists nowhere in the code, only in statement ordering. Under this design
+  the fix is one visible wire: connect `outer.sat_ext` to the inner compensator's
+  stage-1 port for the previous saturation (`sat_out_0`, published by the identity
+  decoder). The delay becomes an explicit property of the wiring. (The loop and its
+  fix are formalism-independent; the framework's contribution is refusing to let the
+  ambiguity through, and the decoder's is having the delayed value already on a port.)
+
+Both components passed without blockers, with zero publications forced beyond current
+practice — the empirical basis for §5.2's claim that derivative/output overlap is the
+domain norm and the decoder matches the codebase's grain.
+
 ---
 
 ## 12. Decision log (condensed)
@@ -543,7 +666,7 @@ prescribes. Evidence that reject-loops matches domain practice rather than fight
 | 3 | Taxonomy: hybrid continuous primitive + periodic discrete + assemblies; both mode factorings | Strict purity/no modes (loses reset maps; latch logic becomes wiring ceremony); uniform hybrid kind (intra-component ordering semantics murky) |
 | 4 | Immutable value signals in a typed signal table | Shared mutable buffers (aliasing/staleness, concurrent-read hazards); mixed semantics (second thing to document/test) |
 | 5 | Reject algebraic loops at build, explicit breaks | Implicit delays (silent math changes); per-step numerical solving (jitter, runtime failures) |
-| 6 | Structural output groups, two-stage default | Per-output declarations + tracer verification (under-declaration = silent wrongness); traced multi-pass (hot-path cost, branch unsoundness); component-atomic conservative (false loops everywhere) |
+| 6 | Strict two-stage structural feedthrough (state decoder `g_s1` + all-inputs `g_s2`); component split as the refinement | N output groups with declared input subsets (declaration/validation surface for a case that never materialized); per-output declarations + tracer verification (under-declaration = silent wrongness); traced multi-pass (hot-path cost, branch unsoundness); component-atomic conservative (false loops everywhere) |
 | 7 | Reduce-ports with canonical fold | Σ-junctions as default (arity/positional ceremony); contribution buses (invisible dataflow) |
 | 8 | Function-valued environment signals + handle pattern | Resource injection (second composition mechanism, invisible); pre-sampling as mechanism (dependency inversion at struts) |
 | 9 | Deep paths within owned assembly types only | Unrestricted deep wiring (breaks substitutability across generic boundaries); strict one-level (re-export ceremony) |
@@ -552,7 +675,8 @@ prescribes. Evidence that reject-loops matches domain practice rather than fight
 | 12 | Set-propagation tracers (global + sampled-local), diagnostic-only | Dual-based tracing (derivative-zero blind spot); tracing as scheduling input (soundness) |
 | 13 | Immutable `z` in cells + workspace + snapshot idiom | Mutable discrete state (aliasing, snapshot cost); double-buffering (deferred; publication races) |
 | 14 | Scoped allocation invariant, CI-enforced on the hot path | Blanket dogma (fights logging reality); no policy (loses the type-instability canary) |
-| 15 | Derivative binding (ẋ fields bound to own output ports, applied post-sweep); computer/integrator split as reuse idiom | Mutable caches between `f` and outputs (S-function/FMI style — hidden state, purity violation); accepting duplicate computation (Newton–Euler solved twice) |
+| 15 | Fused evaluation: `f`/`h` are pure signal consumers reading the fresh table (own `y` included); single computation site for derivatives and outputs | Mutable caches between `f` and outputs (S-function/FMI style — hidden state, purity violation); accepting duplicate computation (drift bug class: edited law in `f`, stale copy in `g`); derivative binding (superseded — a declaration feature subsumed by `y`-access); orthodox `f(x,u)` + atomization as standard idiom (2× components/wiring for the domain-normal overlap case) |
+| 16 | Uniform component interfaces via the `g_s1` state decoder (default identity publication of state and modes); guards and handlers read the fresh boundary table, with per-event re-decode (`handler → project → g_s1 → g_s2`); `project` is the sole raw-state function (schedule-structural); unlisted-port convention for interface noise | Passing state alongside `y` (double-passing; two idioms in the wild); fully private discrete state (breaks uniformity; the codebase culturally publishes state anyway); one-handler-per-component-per-boundary restriction (superseded by the cheap per-event re-decode); exposing z *without* an unlisted convention (RNG/log noise) |
 
 ---
 
