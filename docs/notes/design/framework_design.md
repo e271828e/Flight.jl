@@ -190,6 +190,16 @@ order, then all derivative functions against the now-consistent signal table.
 Derivative functions, guards, handlers and projections consume signals but impose no
 ordering constraints — they run after the sweep.
 
+**Shared expensive computations.** When a derivative function and an output group need
+the same expensive result (the canonical case: Newton–Euler must be solved both for
+`ẋ` and for the acceleration-like outputs), the framework offers two cache-free
+resolutions: **derivative binding** (§9.4 — publish the derivative as an output port
+and bind `ẋ` to it; the default idiom for cohesive components) and the
+**computer/integrator split** (§9.4 — factor the math into a stateless component whose
+outputs feed a trivial state-holding component; the Simulink-diagram idiom, useful when
+the factoring earns reuse). Purity rules forbid the third classic resolution, mutable
+caching, by design.
+
 ### 5.3 Artificial loops and the escape hatch
 
 A component that bundles a no-feedthrough output with a feedthrough output in one
@@ -402,7 +412,49 @@ live example pattern).
   It reintroduces aliasing/publication questions (GUI reads vs. buffer flips) that the
   first cut deliberately avoids, and nothing in the plausible workload needs it.
 
-### 9.4 Allocation policy: a scoped invariant
+### 9.4 Derivative binding
+
+A continuous component may declare that some or all fields of its `ẋ` are **bound to
+designated output ports of its own**, instead of being computed by a derivative
+function:
+
+```julia
+ẋ_bindings(::NewtonEuler) = (ω_eb_b = :ω̇_eb_b, v_eb_b = :v̇_eb_b)   # sketch syntax
+```
+
+Semantics and rules:
+
+- Bindings are applied by the framework **after the output sweep**, when the
+  component's own outputs are guaranteed fresh (the same freshness argument that
+  orders derivative functions after the sweep).
+- **Mixing is allowed**: bind some state fields, compute the rest in `f`. A component
+  whose fields are all bound needs no `f` at all.
+- Build-time validation: every state field is covered by exactly one binding or by
+  `f`; every referenced port exists and is type-compatible.
+
+Motivation: derivatives and outputs often share expensive intermediates — rigid-body
+dynamics must solve Newton–Euler both for `ẋ` and for the acceleration outputs
+(`DynamicsData`). With separate `f` and output groups, the solve would run twice.
+Binding publishes the derivative *as a port* (so accelerometer-style consumers can
+wire to it) and reduces `f` to a framework-performed copy.
+
+Prior art, for orientation: every causal framework meets this problem and resolves it
+per its architecture — Simulink diagrams make integrators explicit blocks (derivatives
+are ordinary wires into `1/s`); S-functions and FMUs use sanctioned **mutable caches**
+(DWork vectors; FMI's lazy-evaluation caching); Modelica/MTK have `der(x) = expr`
+natively with symbolic CSE. Derivative binding is the cache-free formulation that fits
+this design's purity rules — Modelica's convenience brought to a causal component API.
+
+The **computer/integrator split** remains fully expressible without any framework
+support (a stateless component computing derivatives as outputs, wired into a trivial
+state-holding component whose `f` copies them) and is the idiom of choice when the
+factoring earns reuse — e.g. one Newton–Euler solver shared across vehicle variants,
+or swappable kinematic descriptors against a common integrator shape. See
+`sketch.jl` (split form) and `sketch_binding.jl` (merged form with bindings) for the
+worked example; the merged form has half the components and wiring, and everything
+derivable from pose alone migrates to stage 1, shortening the stage-2 chain.
+
+### 9.5 Allocation policy: a scoped invariant
 
 Not dogma — three reasons, only one about speed: (1) GC-pause jitter control for
 real-time; (2) throughput for batch runs; (3) **the canary**: an unexpected allocation
@@ -500,6 +552,7 @@ prescribes. Evidence that reject-loops matches domain practice rather than fight
 | 12 | Set-propagation tracers (global + sampled-local), diagnostic-only | Dual-based tracing (derivative-zero blind spot); tracing as scheduling input (soundness) |
 | 13 | Immutable `z` in cells + workspace + snapshot idiom | Mutable discrete state (aliasing, snapshot cost); double-buffering (deferred; publication races) |
 | 14 | Scoped allocation invariant, CI-enforced on the hot path | Blanket dogma (fights logging reality); no policy (loses the type-instability canary) |
+| 15 | Derivative binding (ẋ fields bound to own output ports, applied post-sweep); computer/integrator split as reuse idiom | Mutable caches between `f` and outputs (S-function/FMI style — hidden state, purity violation); accepting duplicate computation (Newton–Euler solved twice) |
 
 ---
 
