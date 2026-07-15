@@ -1,6 +1,6 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** first checkpoint (v0.1). Axes 1–4 settled; axes 5–7 and the migration
+**Status:** second checkpoint (v0.2). Axes 1–5 settled; axes 6–7 and the migration
 outline pending (see [Open axes](#open-axes)).
 
 ---
@@ -57,9 +57,9 @@ differs:
   which the crossing occurred. Cost: one guard evaluation per event per step. Fully
   compatible with fixed-step real-time execution.
 - **Tier 2 (opt-in, per event):** localization of the crossing instant by root-finding,
-  for events where timing precision genuinely matters. Available in offline/adaptive
-  runs; degrades gracefully to Tier 1 in real-time fixed-step mode rather than blowing
-  the frame budget.
+  for events where timing precision genuinely matters (mechanics in §11.4). Available
+  in offline runs regardless of stepping mode; degrades gracefully to Tier 1 in
+  real-time mode rather than blowing the frame budget.
 
 This gives step-boundary logic *well-defined semantics*: the transition is defined by
 the crossing; detection resolution is an execution-policy detail.
@@ -131,7 +131,8 @@ between ticks); no component ever reads another's state.
 Pure composition: submodels + connections + exported ports. **No dynamics of its own.**
 Hybridness emerges at the assembly level (an aircraft = continuous vehicle parts +
 discrete avionics parts). Assemblies are flattened away for scheduling but retained as
-the navigation/introspection hierarchy (GUI, logging, paths).
+the navigation/introspection hierarchy (GUI, logging, paths) and as declaration-level
+rate scopes (§11.5).
 
 ---
 
@@ -246,9 +247,9 @@ post-transition-consistent for whatever else the boundary does (discrete ticks,
 logging). Events are rare and the re-run touches one component, so the cost is noise.
 Across components, all guards and handlers read the same boundary snapshot (plus their
 own component's refreshed ports); one component's transition reaches others through
-the next sweep. Whether newly-enabled guards may fire within the same boundary
-(iterate-to-quiescence) is deferred to axis 5; in this revision they fire at the next
-boundary, consistent with Tier-1 detection granularity.
+the next sweep. Newly-enabled guards fire within the *same* boundary: the
+sweep → guards → handlers phase iterates to quiescence, with each event firing at
+most once per boundary (settled in §11.6).
 
 **Departure from the orthodox formalism, stated openly.** The textbook form is
 `ẋ = f(x, u)`, `y = g(x, u)`; this design's is `y = g(x, u)`, `ẋ = f(y, u)`. The
@@ -257,7 +258,7 @@ untouched), but the spelling is heterodox and every literate newcomer will pause
 it once. The teaching line: *"stage 1 publishes what you know from state alone — by
 default, the state itself; stage 2 adds what needs inputs; your dynamics then read the
 same table everyone else does."* The decision was grounded in a component-by-component
-survey of FlightPhysics/FlightApps (§11.2): derivative/output overlap is the *norm*
+survey of FlightPhysics/FlightApps (§12.2): derivative/output overlap is the *norm*
 in this domain (Newton–Euler, kinematics, piston engine, gear friction, every discrete
 compensator), so the orthodox split would force either systematic duplicated math (with
 its silent-drift bug class), systematic component atomization, or a cache mechanism —
@@ -582,9 +583,316 @@ effectively guarantees traceability.
 
 ---
 
-## 11. Case studies
+## 11. Time and execution (axis 5)
 
-### 11.1 `Vehicle` today → this framework
+### 11.1 Loop ownership: the framework owns the simulation loop
+
+The simulation loop — the §5.2 boundary sequence, tick dispatch, event handling,
+logging, input staging, pacing — is **framework code, unconditionally**. The step-
+boundary contract is this design's central invariant; expressing it as an ordered
+`CallbackSet` inside a third-party solver would put the framework's semantics back
+into convention territory, enforced by callback-registration order in a foreign event
+loop. That is the same "rigor by convention" failure mode the redesign exists to
+eliminate.
+
+The evidence that this is not hypothetical comes from FlightCore's own `sim.jl`: the
+periodic callback is hand-rolled with explicit `add_tstop!` bookkeeping because a
+DiffEqCallbacks release moved `PeriodicCallback` onto `task_local_storage`, breaking
+the init-on-one-task/step-from-another pattern that interactive operation requires;
+the RHS wrapper copies state in and out of the integrator per evaluation; stateless
+models integrate a dummy `[0.0]`; log saving detours through `deepcopy` in a
+`SavingCallback`. Each is a tax paid to express our semantics in someone else's loop —
+and `run!` already drives the integrator interface manually anyway.
+
+`OrdinaryDiffEq` is therefore **dropped as a dependency** of the new core.
+
+### 11.2 The stepper seam
+
+The one delegated operation is *advance the continuous state from `t` by `h`*, behind
+a narrow internal interface (the **stepper seam**). Its contract:
+
+- **advance by arbitrary `h`** — required anyway to land on tick boundaries and to
+  resume from a localized event time;
+- **dense output on demand over the last completed step** — required only by Tier-2
+  localization (§11.4), constructed lazily;
+- **one-step methods only** — event handlers reset state discontinuously, and a
+  one-step method restarts from a new state for free; multistep methods would need
+  history-rebuild machinery after every handler and are excluded.
+
+First cut ships **in-house fixed-step RK4 and Heun** over the flat state buffer:
+~a hundred lines, trivially zero-allocation (auditable for the §9.5 CI invariant),
+trivially `T`-generic — though genericity is not even required of the stepper, since
+linearization and the tracer drive the *sweep*, never the integrator. An
+`OrdinaryDiffEq`-backed stepper can exist later as a package extension if an offline
+study genuinely demands adaptive or stiff methods; per the guarded-additions rule it
+is not built until then.
+
+**Why fixed-step low-order suffices** (the domain argument, recorded because it is
+load-bearing for the whole axis):
+
+1. **The closed-loop tick cap.** Every application beyond bare propagation runs
+   periodic avionics (50 Hz today), whose commands are zero-order-held signals:
+   integrating past a tick with stale commands is wrong, so the integrator must land
+   on every tick boundary regardless of method. Adaptive and high-order methods pay
+   off exactly when steps can stretch; the execution model forbids the stretch by
+   construction.
+2. **A piecewise-smooth RHS starves high order.** Linearly-interpolated lookup tables
+   (C¹-kinked at every knot), clamps, friction blends and mode branches deny
+   high-order error estimators and implicit-solver Newton iterations the smoothness
+   they assume. RK4 at 50 Hz already puts integration error orders of magnitude below
+   the model uncertainty of a coefficient-table aircraft model.
+3. **Stiffness has a remedy ladder.** The fastest continuous dynamics in the current
+   codebase (actuator poles ~31 rad/s, gear damper decay, friction compensators) sit
+   inside RK4's stability region at `h = 0.02` — the crosswind-landing demo is the
+   empirical proof. If a future model exceeds it: first shrink `h` (the RHS costs
+   microseconds; 500 Hz real-time is unremarkable), then subcycle the stepper against
+   the tick grid, and only then reach for an implicit method through the adapter.
+   If that day comes, §9.2 genericity supplies exact ForwardDiff Jacobians through
+   the sweep for free.
+
+### 11.3 Signal-table consistency is a boundary property
+
+During a step, RK stages evaluate the sweep at internal stage states — the signal
+table is transiently **integrator scratch**. The boundary sweep in the §5.2 sequence
+is what restores consistency at each accepted boundary. The rule, binding for axis 6:
+**external readers (GUI, logging, network output) observe the signal table only at
+step boundaries.** Mid-step contents carry no meaning.
+
+### 11.4 Tier-2 localization mechanics
+
+Trigger: a Tier-2 guard changed sign across an accepted step `[tₙ, tₙ₊₁]`.
+
+- **Interpolant (lazy).** Build the cubic Hermite continuous extension `x̂(θ)`,
+  `θ = (t − tₙ)/h ∈ [0,1]`, from `(xₙ, ẋₙ, xₙ₊₁, ẋₙ₊₁)`; `ẋₙ` is the step's first
+  stage, `ẋₙ₊₁` costs one sweep, paid only on trigger. Uniform accuracy O(h⁴) — one
+  order below the discrete solution, the standard pairing, and the event time can
+  only ever be as accurate as the interpolant, so nothing more expensive is worth
+  probing.
+- **Probes run the sweep.** Guards read `y`, so evaluating a guard at an interpolated
+  state means writing `x̂(θ)` into the state buffer and running the sweep — the same
+  rule as the RHS. One sweep per probe.
+- **Root-finding: bracketed and derivative-free** (ITP or Brent; bisection is an
+  acceptable fallback). The observed sign change *is* an unconditional convergence
+  certificate. Newton/AD localization is rejected: guards are guaranteed C⁰, not C¹
+  (clamps, table knots, saturated stretches where σ′ = 0), Newton discards the
+  bracket for merely local guarantees, and its superlinear convergence saves a
+  handful of microsecond probes per rare event. AD earns its keep in Jacobians, not
+  in root-polishing a possibly-kinked bracketed scalar.
+- **Post-event.** Handler at `t*` → project → re-decode (per §5.2) → **interpolant
+  invalidated** (the handler made it a lie for `t > t*`) → resume integration from
+  `t*` with the remainder step `h′ = tₙ₊₁ − t*` → re-check guards on the remainder,
+  under a bounded per-step event budget with a chattering diagnostic.
+- **Shared blind spot, documented:** an even number of crossings within one step
+  defeats sign-change detection in both tiers; the mitigation is step size, not
+  machinery.
+
+### 11.5 Multi-rate tick scheduling
+
+**Harmonic grid.** Every discrete component's period is an integer multiple of a base
+tick period `Δt_base`, itself an integer multiple of the continuous step
+(`Δt_base = n·h`, `n ≥ 1`). Ticks therefore land on step boundaries — the only place
+anything discrete ever happens. Rejected: arbitrary periods via a time-ordered tick
+queue, which forces variable-length steps and irregular real-time frames for a
+generality nothing demonstrated wants.
+
+**Discrete stages are gated to tick instants.** A discrete component's `g_s1`/`g_s2`
+run only at its own ticks; its slots hold in between (ZOH, stated in sweep terms). The
+alternative — re-running its stages at every boundary — would let outputs drift
+between ticks as fresh continuous inputs flow in, silently un-sampling a sampled-data
+controller. Implementation consequence, recorded: the boundary sweep is not one fixed
+list — discrete stage entries are gated by tick counters, so different boundaries run
+different subsets of the schedule.
+
+**Simultaneous ticks are already well-defined** by settled machinery: all due
+components run their `g` stages in topological order within the sweep, then all due
+`h` updates run after it, in any order — each `h` reads the table and writes only its
+own `z` cell. The FCS cascade's intra-tick ordering is a sweep property, not an
+update-order property.
+
+**Assemblies: virtual for execution, rate scopes for declaration.** There are no
+atomic assemblies, and no opt-in variant. Execution atomicity coarsens the schedulable
+unit, which is exactly how artificial algebraic loops are manufactured — §5.3 at
+assembly scale, a hazard Simulink documents for its Atomic Subsystems — while the
+thing it protects, non-interleaved execution, protects nothing here: the signal table
+makes interleaving semantically invisible (consumers read slots whose freshness is
+guaranteed by topological order, not contiguity). Its other Simulink roles — code
+generation units, enabled/triggered execution — have no counterpart in the consumers;
+conditional behavior ("on ground, force `direct`") is mode logic. FlightCore's
+whole-tree atomicity (children's `f_periodic!` called from the parent's, hence
+`Subsampled`'s parent-relative multipliers) was an artifact of call-tree execution,
+not a design requirement; the signal table dissolves it.
+
+**Rate declaration is relative, at composition.** A discrete component or sub-assembly
+is instantiated with an integer multiplier `K ≥ 1` (default 1) relative to its
+enclosing scope; multipliers compose multiplicatively down the tree; the root fixes
+`Δt_base` in seconds. Rationale: in a layered control architecture the *ratios* are
+intrinsic to the design and travel with the assembly type (inner loop at `K = 1`,
+outer loops at `K = 5`, whatever the deployment), while absolute rates are deployment
+decisions made once at the root. Absolute-first declaration was rejected: it welds
+deployment rates into reusable definitions, and replicating relative structure with a
+shared base-period variable does not compose across independently authored assemblies
+(parameter-threading ceremony, cf. §7). At build, all scoping compiles away to **one
+absolute tick divisor per discrete component**; the executor gates entries by counter
+modulo. Recorded limitations: a child cannot tick faster than its scope (`K ≥ 1`) —
+soft, since assembly multipliers are declaration sugar and factors can be refactored
+onto siblings; and no phase offsets in the first cut (no demonstrated use).
+
+**`Δt` has a single source of truth: the compiled schedule.** Each discrete
+component's effective period is exposed read-only through the component handle
+(`comp.Δt` — the same virtual-property move as FlightCore's `mdl.Δt`), available in
+`g_s1`/`g_s2`/`h` and an error to touch on a continuous component. It must be readable
+in the *stages*, not just `h`: per §12.2, the discretized laws that actually consume
+`Δt` — a PID's backward-difference coefficients, a LeadLag's Tustin transform — run in
+`g_s2`; `h` is a copy. Author rule: **never store `Δt`, or any `Δt`-derived
+coefficient, as a component parameter** — recomputing derived coefficients per tick is
+a few arithmetic ops, and a cached copy is a second thing for gain-scheduled
+`assign!`-style updates to chase. Relative declaration structurally enforces the rule
+for the period itself: under scoped multipliers a component author *cannot* know their
+absolute rate — it does not exist until composition.
+
+### 11.6 Event iteration at boundaries: to quiescence, once per event
+
+Resolves the question deferred in §5.2. At each boundary, the event phase **iterates**:
+rounds of *(re-run the boundary sweep → evaluate guards → fire newly-fired events in
+declaration order, each with its per-event re-decode)* until a round fires nothing,
+under the rule that **each declared event fires at most once per boundary**.
+
+**Why iterate.** Under a single pass, a cascade of N logically-simultaneous
+transitions (supervisor FSM → subordinate FSM → …) completes in N steps: latency N·h,
+with h an execution parameter. That is model semantics depending on the integrator's
+step size — the same footgun class §2.2 cited when killing `f_step!` — and §3.1's
+blessing of externalized FSM components makes cross-component cascades the expected
+idiom, not a corner case. Orthodoxy concurs: hybrid automata take sequences of
+instantaneous transitions at one time point; Modelica iterates events to quiescence;
+Stateflow runs charts to completion within a tick. (Tier-1 detection timing remains
+h-dependent — that is the *resolution* at which a physical crossing is noticed; the
+cascade delay would have been structure the framework inserts between transitions the
+model declares simultaneous.)
+
+**Why a full re-sweep per round.** The per-event re-decode refreshes only the
+transitioning component's own ports; downstream stage-2 chains reading them stay
+stale. A round therefore re-runs the whole gated schedule. Sweeps are microseconds
+and rounds beyond the first require an actual cascade, so the cost is noise.
+
+**Why once-per-event rather than a round cap.** Termination becomes structural —
+rounds are bounded by the number of declared events, with no arbitrary K knob — and a
+livelock (two FSMs toggling each other) resolves deterministically into "each fired
+once, quiescence, re-fire next boundary," i.e. degrades to Tier-1 granularity instead
+of burning a budget and erroring. The cost: an event legitimately re-enabled within
+the same boundary waits one step — accepted at the same granularity Tier 1 accepts
+physical re-crossings, and flagged by a diagnostic when it occurs.
+
+**Ticks stay outside the iteration, after quiescence.** The two possible couplings
+resolve asymmetrically:
+
+- *Events → ticks: handled by machinery already in place.* Due discrete components'
+  `g` stages are gated *into* the sweep (§11.5), so every iteration round refreshes
+  them for free — same `z` (their `h` has not run), post-transition inputs. At
+  quiescence, their published outputs reflect the settled boundary instant, which is
+  exactly what "sampling at t" should mean for a logically-instantaneous cascade.
+  Earlier rounds' tentative values are internal scratch, like RK stage evaluations;
+  §11.3 extends naturally: external readers observe the table only after the boundary
+  sequence *completes*.
+- *Ticks → events: structurally impossible.* A tick's `g` stages contribute nothing
+  guards have not already seen (they run inside the sweep, from current `z`); its `h`
+  update writes `z⁺`, which is invisible until the component's *next* tick decodes it
+  (`g_s1(comp, z)` is the sole reader of `z`) — the standard one-sample `z⁻¹` delay of
+  sampled-data control, here enforced by construction. Nothing that happens after
+  quiescence can flip a guard, so no combined event/tick fixed point exists to
+  iterate.
+
+The boundary macro-sequence, final form:
+
+> integrate → project → **[sweep → guards → handlers]** iterated to quiescence
+> (once per event) → all due `h` updates → logging / I/O staging.
+
+The mixed case — a continuous component's handler and its discrete observers' ticks
+landing on one boundary (engine `starting → running` under a 50 Hz FCS) — is decided
+by the sequence: the transition fires in the iteration segment, the re-sweep re-runs
+the FCS's stages against `running`-mode ports, and its `h` then updates from
+post-transition values.
+
+### 11.7 Real-time pacing
+
+**The invariant: pacing is outside the semantics.** The pacer inserts waits between
+completed boundaries and never reorders, skips or alters the boundary sequence. A
+paced and an unpaced run with identical input traces produce bit-identical
+trajectories — deterministic replay (§2.2) extends over pace. Interactive runs differ
+only because their *inputs* differ.
+
+**Wall-clock mapping: piecewise affine, re-anchored at every knee.** The map is
+`τ(t) = τ_anchor + (t − t_anchor)/p`, with the anchor pair as its reference point. A
+live pace change re-establishes the anchor at the current `(t, τ)` so the new slope
+applies only forward; keeping the old anchor would retroactively reinterpret the
+entire elapsed run at the new pace (deadlines minutes in the past or future after a
+long session). Un-pause re-anchors for the same reason. Debt is cleared at re-anchor:
+a deliberate user action is a natural sync point, and the counters record what was
+forgiven.
+
+**Deadline law: absolute schedule with bounded debt.** Boundary deadlines come from
+the map; a frame exceeding its wall budget `h/p` leaves debt that subsequent frames
+repay by running short or waitless — the long-run rate is exact and ms-scale hiccups
+(GC, scheduler) are invisible. Debt beyond a threshold (a few frames' worth) is
+forgiven by re-anchor plus warning, so long stalls (debugger, laptop sleep) do not
+trigger catch-up bursts. Rejected: relative deadlines (next = last completion +
+budget), under which every overrun permanently slips sim time against wall time.
+
+**`p = ∞` is pacer-off, not a limit value.** FlightCore's arithmetic trick
+(`τ_next = τ_last + dt/∞` collapses the wait predicate) does not survive debt
+accounting: every deadline would sit perpetually in the past and the diagnostics
+would faithfully report garbage. Unpaced mode is the explicit *absence* of deadlines —
+no waits, no debt, no warnings; by the invariant, the same execution with the waits
+deleted.
+
+**Wait mechanism: hybrid sleep-then-spin, one knob.** Non-realtime OSes guarantee
+only a lower bound on sleep: the thread becomes runnable no earlier than requested;
+the wake-up is best-effort (timer granularity, scheduler load, macOS timer
+coalescing), with no hard upper bound. Measured on the dev machine (idle, 2 ms
+requests, 2026-07): Julia `sleep` overshoots ≈ 1.4 ms median — libuv's
+millisecond-granularity timers; sub-ms requests are accepted and rounded up —
+and `Libc.systemsleep` ≈ 0.5 ms; spikes under load are unbounded. The pacer therefore
+sleeps toward `deadline − margin` and spins the remainder:
+
+```julia
+remaining = deadline - margin - τ()
+remaining > 0 && sleep(remaining)   # coarse phase: cheap, lower-bound-only (runs at most once)
+while τ() < deadline end            # spin phase: µs-precise, CPU cost bounded by margin
+```
+
+`margin` is a single constant calibrated to cover the primitive's granularity *plus*
+typical overshoot (no second threshold — the resolution floor is absorbed into the
+calibration, and a margin below the primitive's granularity defeats the spin phase's
+purpose). It spans the whole design space:
+
+- **`margin = 0` — pure sleep:** cheapest CPU; bursty boundary spacing, but the
+  absolute schedule still delivers the exact *average* rate through debt repayment.
+  The spin phase buys regularity, never rate correctness.
+- **`margin` = a few ms — hybrid (default):** sleeps ~90% of a 20 ms budget, lands
+  within µs of the deadline at a few percent of one core.
+- **`margin = ∞` — pure busy-wait:** FlightCore's behavior, maximum boundary
+  regularity at one pinned core; the "best attempt at real time" mode is the knob's
+  endpoint, not a separate mechanism.
+
+When the frame budget is at or below the margin (e.g. `h = 0.01` at `p = 5` → 2 ms),
+the hybrid degenerates to pure spin per frame by construction. Rare wake-ups past the
+deadline are overruns, absorbed as debt. Which primitive the coarse phase uses —
+task-yielding `sleep` vs. thread-blocking `Libc.systemsleep` — is an axis-6
+concurrency decision.
+
+**Diagnostics.** Overrun count, current and peak debt, forgiven-debt events, wait
+statistics — published as framework status for GUI and logs (today's `SimControl`
+fields are the precedent).
+
+**Forward pointers.** The wait interval is the natural staging slot for externally
+injected inputs, applied at the next boundary; the staging rules — and the
+concurrency model generally, which §11.3 constrains but does not decide — belong to
+axis 6.
+
+---
+
+## 12. Case studies
+
+### 12.1 `Vehicle` today → this framework
 
 The grounding exercise that validated §5. Current `Vehicle.f_ode!`
 (`aircraftbase.jl:142-170`) is a hand-woven instance of the machinery specified here:
@@ -610,7 +918,7 @@ The genuine algebraic loop in the domain — α̇-dependent aerodynamics — is 
 broken in the current C172 model by a filter state, exactly the explicit break §5.4
 prescribes. Evidence that reject-loops matches domain practice rather than fighting it.
 
-### 11.2 Torture tests for the §5.2 interfaces: `PistonEngine` and the FCS PID cascade
+### 12.2 Torture tests for the §5.2 interfaces: `PistonEngine` and the FCS PID cascade
 
 Two components were transliterated to validate the decoder interfaces before adoption.
 
@@ -657,7 +965,7 @@ domain norm and the decoder matches the codebase's grain.
 
 ---
 
-## 12. Decision log (condensed)
+## 13. Decision log (condensed)
 
 | # | Decision | Rejected alternatives (why) |
 |---|---|---|
@@ -677,19 +985,19 @@ domain norm and the decoder matches the codebase's grain.
 | 14 | Scoped allocation invariant, CI-enforced on the hot path | Blanket dogma (fights logging reality); no policy (loses the type-instability canary) |
 | 15 | Fused evaluation: `f`/`h` are pure signal consumers reading the fresh table (own `y` included); single computation site for derivatives and outputs | Mutable caches between `f` and outputs (S-function/FMI style — hidden state, purity violation); accepting duplicate computation (drift bug class: edited law in `f`, stale copy in `g`); derivative binding (superseded — a declaration feature subsumed by `y`-access); orthodox `f(x,u)` + atomization as standard idiom (2× components/wiring for the domain-normal overlap case) |
 | 16 | Uniform component interfaces via the `g_s1` state decoder (default identity publication of state and modes); guards and handlers read the fresh boundary table, with per-event re-decode (`handler → project → g_s1 → g_s2`); `project` is the sole raw-state function (schedule-structural); unlisted-port convention for interface noise | Passing state alongside `y` (double-passing; two idioms in the wild); fully private discrete state (breaks uniformity; the codebase culturally publishes state anyway); one-handler-per-component-per-boundary restriction (superseded by the cheap per-event re-decode); exposing z *without* an unlisted convention (RNG/log noise) |
+| 17 | Framework-owned simulation loop; stepper seam (advance by arbitrary `h` + on-demand dense output over the last step; one-step methods only); in-house fixed-step RK4/Heun as the sole first-cut backends; `OrdinaryDiffEq` dropped from dependency to possible future extension adapter | `OrdinaryDiffEq` as substrate with `CallbackSet` choreography (semantics by convention in a foreign event loop; demonstrated churn — the `task_local_storage` regression — in exactly the interactive multi-task usage); fused loop without the seam (loses the adaptive/stiff escape hatch for ~zero savings); multistep methods (history rebuild after every handler) |
+| 18 | Tier-2 localization: lazy cubic Hermite dense output + bracketed derivative-free root-finding (ITP/Brent) on guard probes that run the sweep; post-event interpolant invalidation + remainder step + bounded event budget | Newton/AD localization (guards C⁰ not C¹ — kinks and σ′ = 0 stretches; discards the bracket certificate for local guarantees; negligible savings on rare microsecond probes); re-integration probes (4× cost; σ becomes trial-h-dependent); solver-matched high-order interpolants (only matter above order 4) |
+| 19 | Harmonic tick grid on step boundaries; discrete stages gated to own tick instants (ZOH by construction); assemblies virtual for execution, rate scopes for declaration (integer multipliers `K ≥ 1` composing down the tree, compiled to absolute divisors); `comp.Δt` as single source of truth, no stored `Δt`-derived parameters | Atomic assemblies, incl. opt-in (coarsened schedulable unit → §5.3 artificial loops at assembly scale; interleaving protection meaningless under the signal table; FlightCore's whole-tree atomicity was a call-tree artifact); arbitrary tick periods via time queue (variable `h`, irregular frames, no demonstrated need); absolute-period declaration as default (welds deployment rates into reusable designs; base-period variables don't compose across independently authored assemblies); re-running discrete stages every boundary (un-samples sampled-data semantics); phase offsets (no demonstrated use); `Δt` via `h`-argument only (discretized laws live in `g_s2`) |
+| 20 | Boundary event phase iterates to quiescence — rounds of full re-sweep → guards → handlers (declaration order, per-event re-decode) — each event firing at most once per boundary; due `h` updates run after quiescence, outside the iteration | Single pass per boundary (cascade latency N·h — step-size-dependent semantics, the §2.2 `f_step!` footgun class, made common by §3.1 externalized FSMs); bounded-rounds cap (arbitrary K knob; livelock burns the budget then errors instead of degrading to Tier-1 granularity); event/tick fixed-point iteration (structurally unnecessary — `z⁺` is invisible until the next tick decode) |
+| 21 | Pacing outside the semantics (bit-identical paced/unpaced trajectories); piecewise-affine wall-clock map, anchor re-established at pace change and un-pause (debt cleared, counted); absolute deadlines with bounded debt + re-anchor on excess; `p = ∞` as explicit pacer-off; hybrid sleep-then-spin toward `deadline − margin`, with `margin` the single knob (0 = pure sleep, ∞ = pure busy-wait = FlightCore) | Relative deadlines (permanent sim-vs-wall slip); unbounded catch-up (burst after long stalls); keeping the anchor across pace changes (retroactively reinterprets elapsed history at the new pace); `p = ∞` as arithmetic limit (perpetual-overrun diagnostics under debt accounting); dedicated busy-wait mode flag (subsumed by `margin = ∞`); separate primitive-resolution threshold (absorbed into `margin` calibration) |
 
 ---
 
-## 13. Open axes
+## 14. Open axes
 
 To be settled in subsequent sessions:
 
-- **Time & execution (axis 5) — next up.** Integrator ownership (build on
-  OrdinaryDiffEq vs. purpose-built fixed/adaptive stepping core); multi-rate tick
-  scheduling against integrator steps; event-iteration semantics at step boundaries
-  (single pass vs. iterate-to-quiescence, bounded — externalized FSMs make cascades
-  more common); real-time pacing.
-- **Runtime periphery (axis 6).** GUI, input devices, network I/O, logging; the
+- **Runtime periphery (axis 6) — next up.** GUI, input devices, network I/O, logging; the
   concurrency model binding them to the sim loop; when the runtime may write
   externally-driven input slots (staging vs. step boundaries) to preserve determinism.
 - **User-facing surface (axis 7).** Declaration layer (macros vs. plain
