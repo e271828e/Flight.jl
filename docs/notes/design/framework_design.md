@@ -1,8 +1,7 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** third checkpoint (v0.3). Axes 1–5 settled; axis 6 settled in
-architecture (§12) with residuals pending; axis 7 and the migration outline pending
-(see [Open axes](#open-axes)).
+**Status:** fourth checkpoint (v0.4). Axes 1–6 settled; axis 7 and the migration
+outline pending (see [Open axes](#open-axes)).
 
 ---
 
@@ -894,8 +893,9 @@ axis 6 (§12).
 ## 12. Runtime periphery (axis 6)
 
 GUI, input devices, network I/O and logging, and the concurrency model binding them
-to the §11 loop. The architecture and data-exchange machinery below are settled;
-residual sub-questions are listed in §15.
+to the §11 loop. Settled in full: architecture and data exchange (§12.1–§12.6), loop
+scheduling and thread policy (§12.7), the next-snapshot wait (§12.8), shutdown
+(§12.9), and the mid-run mutation doctrine (§12.10).
 
 ### 12.1 No shared mutable model: staged writes, snapshot reads
 
@@ -1010,6 +1010,16 @@ extends §11.7's determinism end-to-end: replaying a recorded interactive sessio
 staging fed from the recording, no devices or mappings present — reproduces the
 trajectory bit-identically.
 
+**Trace recording is on by default** (cleared at `init!`, retrievable after the run,
+plain kill switch for memory-constrained marathon sessions). The asymmetry that
+decides the default: the trace is *primary* data and the log *derived* — given the
+initial state and the trace, the log is recomputable (that is what bit-identical
+replay means), while an untraced interactive session is unreproducible, permanently.
+The cost supports it: the trace retains batches the devices already allocated, at
+drain-rate × device-count — tens of MB per hour worst case, two orders of magnitude
+below the snapshot log. No sampling, no rolling window (complexity without a
+customer).
+
 Rejected shapes (both torture-tested in §13.3): **per-slot atomic cells** — the
 simplest (no merge machinery, and a per-slot layout cannot lose independent writes)
 but same-slot conflicts resolve by hardware store order, i.e. sub-frame wall-clock
@@ -1028,7 +1038,8 @@ because it runs inside; the GUI breaks both rules at once and gets a third inter
 sleep). With no lock, the protocol the taxonomy encoded has no referent.
 
 **Every attached device receives the same handle**, carrying the two primitive
-capabilities — read (latest snapshot; optionally wait-for-next-boundary) and stage —
+capabilities — read (latest snapshot; optionally wait-for-next-boundary, §12.8) and
+stage —
 plus control access (observe running, request shutdown; `should_abort` stays a
 per-attachment flag). Input-only and output-only devices are degenerate uses, not
 framework kinds; a bidirectional network peer is *one* device with one socket and one
@@ -1084,6 +1095,156 @@ the drain/trace path is safe for determinism precisely because §11.7 put pacing
 outside the semantics: control changes *when* frames execute, never what they
 compute (stop merely truncates the trajectory). While paused the loop blocks on a
 condition (notified on un-pause and stop), not a spin.
+
+### 12.7 Loop scheduling: wait primitive, yields, thread budget
+
+**Coarse phase = task-yielding `sleep`; no `systemsleep` variant.** The precision
+argument for `Libc.systemsleep` (≈0.5 ms vs ≈1.4 ms median overshoot, §11.7) is
+worth ~1.5 ms of `margin` — a few percent of one core at 50 Hz. Against it: `sleep`
+releases the loop's thread, making the pacer's wait slot the natural scheduling
+window for co-resident device tasks (the design already spends that slot twice:
+§11.7's staging slot, §12.3's drain source); `systemsleep` turns the slot into dead
+time and makes the periphery correct only when every device task has its own
+thread — resurrecting FlightCore's hard `nthreads` check as a correctness
+precondition. The failure asymmetry decides: `sleep`'s worst case is a late
+wake-up → an overrun → absorbed as debt and *diagnosed*; `systemsleep`'s is starved
+device tasks → silent functional degradation. And §11.7 committed to `margin` as
+the single knob; a primitive selector is a second knob hiding inside the first (its
+two settings differ by a margin recalibration). A `systemsleep` variant for
+dedicated-thread hard-RT deployments is a guarded addition.
+
+**Yield rule: with devices attached, every frame yields at least once** —
+implicitly via the coarse-phase `sleep` when it runs, via an explicit `yield()`
+otherwise (unpaced runs; pure-spin frames with budget ≤ margin). Zero semantic
+cost: pacing, hence yielding, is outside the semantics (§11.7). The spin phase
+itself never yields — that would trade its µs precision for scheduler noise.
+Consequence: the loop occupies a thread for at most one frame before the scheduler
+can run anyone else, so the thread-monopolist precondition for Julia's
+cooperative-scheduler freeze (a never-yielding task holds its thread forever) is
+structurally absent from framework tasks.
+
+**Thread budget: a documented sizing rule and a startup warning, not a hard
+error.** FlightCore's `nthreads` error was honest for its architecture: under-lock
+blocking plus a busy-wait pacer wedges *totally* when tasks share threads — the GUI
+queues on the lock behind the stall, the window freezes, no escape and no message.
+Here the freeze cannot reproduce: the loop yields every frame, nothing couples a
+stall to anyone else (the GUI waits on nothing, ever — snapshot acquire-load, own
+staging cell, atomic control), and the GUI runs on the *calling* task, so it cannot
+fail to be scheduled: under any starvation the window keeps rendering and the stop
+button keeps working. Undersized sessions degrade to laggy inputs and stale
+snapshots — visible, recoverable states. `run!` warns when `Threads.nthreads()` is
+tight for the attached population, naming the `julia -t` remedy; sizing guidance:
+one thread for the loop, the main thread for the GUI, headroom for compute-heavy or
+blocking-ccall devices (libuv-backed I/O yields; raw blocking ccalls pin their
+thread for the duration). No pinning, no sticky tasks.
+
+**Liveness heartbeat.** Since starvation is survivable it must be diagnosable: the
+published framework status includes per-device liveness (last-staged / last-read
+wall time, task state) next to the pacer diagnostics. A starved, blocked or crashed
+device task shows in the GUI as a stale heartbeat with a name on it, not as
+mysteriously frozen physics.
+
+### 12.8 The next-snapshot wait
+
+Rate-matched output devices (telemetry, disk streaming) act once per boundary
+without polling: a monotonic frame counter published with the snapshot, plus one
+`Threads.Condition`. The loop's publication is `lock; counter += 1; notify;
+unlock` — nanoseconds of framework-only code, never blocked by waiters (a waiter
+parked in `wait` has released the lock as part of parking). The device-side
+`wait_next_snapshot(handle)` blocks until `counter > last_seen && running` under
+the canonical predicate-loop idiom, which handles waiters at different paces,
+frames skipped while transmitting, and shutdown (§12.9 wakes all waiters; each
+predicate routes its owner out) with no per-frame reset. An `Event` latch is the
+wrong primitive here: recurring signals require un-latching, and the reset has no
+correct placement under asynchronously arriving waiters (the `io_start` reset
+comments in FlightCore's sim.jl document the once-per-run version of exactly this
+race). Conditions carry no facts, only "look again"; the facts (counter, running)
+live in state each waiter tests privately.
+
+**Semantics: newest-wins, no queues.** A slow consumer skips frames and always
+receives the current world. This mirrors the inbound side: coalescing to the
+newest batch (in) and to the newest snapshot (out) are the same ZOH decision; no
+backpressure exists in either direction, and the loop never waits on anyone.
+Rejected: per-consumer every-boundary queues (unbounded under a slow consumer —
+the batch stack's pause pathology again; complete history *is* the log). The GUI
+does not use the wait (VSync-paced, it reads `latest` each render).
+
+### 12.9 Shutdown protocol
+
+1. **Initiation:** `t_end` reached, or a control-plane stop (GUI, device handle,
+   code). The loop always completes the current boundary sequence — never stops
+   mid-frame — publishes the final snapshot, then sets the sticky stopped status.
+   Publishing first guarantees output devices can flush the true final state.
+2. **Wake all framework waits** (next-snapshot, pause): waiters observe the
+   stopped status and unwind — a stop while paused therefore works.
+3. **Unblock device-specific blocking calls** via an `unblock!(device)` hook,
+   default no-op; a network input's override closes its own socket, raising in
+   the blocked task (caught by the framework device loop, treated as shutdown).
+   This demotes FlightCore's EOT convention from load-bearing shutdown mechanism
+   to an optional wire-protocol courtesy between remote peers.
+4. **Device loops exit:** `while running(handle)` with all blocking points
+   interruptible per (2)–(3); `finally shutdown!(device)` guaranteed.
+5. **Join with a timeout:** a device task exceeding it is reported *by name*
+   (§12.7 heartbeat) and abandoned with a warning rather than hanging `run!`.
+6. **Device-initiated paths:** `should_close` (window ✕, peer EOT) exits the
+   device's own loop; with `should_abort` set it also requests a sim stop,
+   otherwise the sim continues with the device absent (its cell stops filling —
+   the loop is structurally indifferent). A crashing device task is caught by the
+   framework wrapper and follows the same path, logged with the device's name.
+7. **Loop-side failure** runs (1)–(5) from the catch path (the
+   `SimulationTermination` machinery is the precedent), so devices unwind cleanly
+   regardless of who died.
+
+### 12.10 Scripts and the mid-run mutation doctrine
+
+What the consumers demonstrably mutate mid-run, surveyed: FlightCore's
+`user_callback!` has exactly two archetypes — the timetable script
+(c172_demos.jl:290: `elevator_offset` as a function of `t`) and the synthetic
+pilot (c172_demos.jl:423, 525: a phase FSM reading `y` and writing mode requests,
+references, flaps, wind). Both write only `u` fields; no demo, test or GUI path
+pokes `x`/`z`/`s` mid-run, and `init!`/trim appear only between construction and
+`run!` (c172_demos.jl:303).
+
+**Sim-time scripts are model behavior: scenario components.** Both archetypes are
+clocked by *sim time* (`t`, the trajectory). Mapping them to devices fails
+outright unpaced — the demos run at `pace = Inf`, where frames take microseconds
+and a wall-clock task's staging lands at scheduler-determined sim times,
+differently every run. The clock is the criterion: **sim-time scripts →
+source/supervisor components** (periodic discrete, `K = 1` for today's
+`dt = 0.02` callbacks), executed synchronously in the loop, deterministic paced or
+unpaced, replayed by recomputation with no trace; **wall-clock interactions →
+devices**, traced and replayed from the trace. The component mapping is strictly
+richer than the callback it replaces: the `Ref(:init)` phase closure becomes
+honest `z` (visible in snapshots, logs and plots); inputs arrive same-boundary
+fresh by topological order (the callback ran post-step, one boundary staler); and
+in a scenario configuration the script drives the avionics' input ports, so §12.5
+renders the corresponding GUI widgets read-only with provenance — today's
+demo-vs-GUI dead-slider fight, resolved by the port-resolution rule.
+
+**`user_callback!` is eliminated.** It is the periphery's `f_step!`: arbitrary
+unrecorded mutation, ordered by convention, invisible to replay (§2.2). Its
+historical justification was FlightCore's composition cost — a supervisor required
+a full `System` declaration against a ten-line closure; this framework prices a
+component at roughly the closure's weight, removing the pressure. Its call sites
+migrate to scenario components, not devices.
+
+**Manual event triggering needs no mechanism:** a root input slot plus a Tier-1
+guard reading it (levels doctrine: latched commands or counters), already
+expressible in settled machinery — the demos' engine start/stop buttons are
+`u`-writes today.
+
+**Mid-run re-initialization is not built, because it is not demonstrated.**
+Initialization and trim are stopped-sim workflows (axis 7's first-class services),
+where no concurrency perimeter exists — no loop, no devices, plain single-task
+code. The guarded-addition shape is on record should demand appear: a traced,
+boundary-executed intervention command applied through project → sweep → publish,
+so no consumer ever observes un-decoded state.
+
+**The doctrine, final form:** while a simulation runs, the periphery stages
+root-input writes and issues control commands — nothing else, structurally.
+Anything that wants to poke the model mid-run is an *input* in disguise (wire a
+slot and guard), *model behavior* in disguise (add a scenario component), or a
+*wall-clock interaction* (attach a device).
 
 ---
 
@@ -1234,6 +1395,11 @@ concrete interleaving did:
 | 24 | Inbound staging: one atomic batch cell per device; complete writers overwrite, sparse writers CAS-merge own cell (retry bounded by drain interception); drain by `atomicswap` in attachment order (conflict precedence a documented policy); levels-never-deltas doctrine; mappings pure, on the device task; device-tagged replayable input trace | Per-slot cells (conflicts by hardware store order — run-to-run behavioral variance; cross-device peek; no trace provenance; atomic-width fallback on wide slots); shared batch stack (temporal conflict order; unbounded pending under pause, taxing peeks); ordered write queue (preserves intra-frame order nothing downstream can observe) |
 | 25 | One device kind: uniform handle with read (snapshot / next-boundary) + stage + control capabilities; input-only/output-only as degenerate uses; bidirectional peer = one device; GUI an ordinary device (main-thread affinity and RMW widgets its only peculiarities) | Input/output/GUI taxonomy (lock choreography artifact — blocking rules of `get_data!`/`extract_output` under `io_lock`; forces bidirectional peers into two devices sharing a socket and shutdown); special-cased GUI interface (`sync = 0` + render-under-lock ceremony, obsolete without the lock) |
 | 26 | GUI write path: per-component panels name own ports; build-time resolution to root input slots; live vs first-class read-only rendering (with wiring provenance); own-pending-else-snapshot peek; active widgets stage every render pass | Slot-naming panels (kills reuse across configurations); always-hot widgets (FlightCore's dead slider — visually live, silently overwritten); cross-device peek (re-couples devices for sub-perceptual benefit); stage-on-change only (streaming device reasserts control mid-grab) |
+| 27 | Pacer coarse phase = task-yielding `sleep` (`margin` covers its overshoot); with devices attached every frame yields at least once (explicit `yield()` in unpaced/pure-spin frames); spin never yields; thread budget = sizing rule + startup warning; per-device liveness heartbeat in framework status | `Libc.systemsleep` (second knob inside `margin`; correctness re-hinges on a hard thread requirement; starves co-resident tasks silently — worse failure mode than diagnosed overruns); hard `nthreads` error (the freeze it prevented cannot reproduce: no framework thread monopolist, no stall coupling, GUI on the calling task); yielding spin (µs precision traded for scheduler noise) |
+| 28 | Next-snapshot wait: monotonic frame counter + `Threads.Condition`, per-waiter predicate (`counter > last_seen && running`); newest-wins, no queues — outbound coalescing mirrors inbound ZOH; shutdown-interruptible via the predicate | `Event`-based per-frame gate (recurring signal on a latch — the reset has no correct placement under asynchronous waiters; cf. FlightCore's `io_start` reset comments); per-consumer every-boundary queues (unbounded under slow consumers; complete history is the log); polling `latest` on a timer (wasted wakeups, aliasing against the boundary rate) |
+| 29 | Input trace on by default, cleared at `init!`, plain kill switch | Opt-in (the trace is primary data — the log is recomputable from it, never the reverse; the session you need replayed is the one you didn't plan to record); tying trace to the log switch (conflates primary and derived recording); rolling window/sampling (complexity without a customer) |
+| 30 | Shutdown: complete the boundary → publish final snapshot → sticky stopped status → wake framework waits → `unblock!` hook (close-own-socket idiom; EOT demoted to wire courtesy) → join with named timeout; device crash = `should_close` path; loop failure runs the same protocol from the catch path | EOT as the load-bearing unblock mechanism (protocol detail doing framework work); unbounded join (one wedged device hangs `run!`); mid-frame abort (torn final snapshot; consumers observe un-swept state) |
+| 31 | Mid-run mutation doctrine: root-input staging + control commands, nothing else; sim-time scripts = scenario components (clock criterion), wall-clock interaction = devices; `user_callback!` eliminated (cheap composition removed its reason to exist); manual events = slot + guard; init/trim = stopped-sim axis-7 services; mid-run intervention command = guarded addition with shape on record | Scripts as input devices (breaks unpaced — wall-clock staging against µs frames lands at scheduler-determined sim times; both demo archetypes run at `pace = Inf`); retaining `user_callback!` (the periphery's `f_step!`: unrecorded mutation, ordering by convention, invisible to replay); a raw poke API (nothing demonstrated needs it; every mid-run mutation in the codebase is a `u`-write in disguise) |
 
 ---
 
@@ -1241,14 +1407,6 @@ concrete interleaving did:
 
 To be settled in subsequent sessions:
 
-- **Runtime periphery (axis 6) — residuals.** Wait primitive for the pacer's coarse
-  phase (task-yielding `sleep` vs `Libc.systemsleep`) and the thread budget/affinity
-  policy (FlightCore's hard `nthreads` check → a documented sizing rule); the
-  per-boundary "next snapshot" event for once-per-frame output devices; input-trace
-  recording always-on vs opt-in; shutdown protocol details (blocked-`recv` devices,
-  the EOT convention); the mutation surface beyond root inputs (debug pokes,
-  re-initialization, manual event triggering) — the unresolved half of the
-  sanctioned-mutation question.
 - **User-facing surface (axis 7).** Declaration layer (macros vs. plain
   constructors — all syntax in this document is illustrative sketch, not committed);
   build/verification tooling and error-message quality; initialization, trim and
