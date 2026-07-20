@@ -1,7 +1,8 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** second checkpoint (v0.2). Axes 1–5 settled; axes 6–7 and the migration
-outline pending (see [Open axes](#open-axes)).
+**Status:** third checkpoint (v0.3). Axes 1–5 settled; axis 6 settled in
+architecture (§12) with residuals pending; axis 7 and the migration outline pending
+(see [Open axes](#open-axes)).
 
 ---
 
@@ -258,7 +259,7 @@ untouched), but the spelling is heterodox and every literate newcomer will pause
 it once. The teaching line: *"stage 1 publishes what you know from state alone — by
 default, the state itself; stage 2 adds what needs inputs; your dynamics then read the
 same table everyone else does."* The decision was grounded in a component-by-component
-survey of FlightPhysics/FlightApps (§12.2): derivative/output overlap is the *norm*
+survey of FlightPhysics/FlightApps (§13.2): derivative/output overlap is the *norm*
 in this domain (Newton–Euler, kinematics, piston engine, gear friction, every discrete
 compensator), so the orthodox split would force either systematic duplicated math (with
 its silent-drift bug class), systematic component atomization, or a cache mechanism —
@@ -741,7 +742,7 @@ onto siblings; and no phase offsets in the first cut (no demonstrated use).
 component's effective period is exposed read-only through the component handle
 (`comp.Δt` — the same virtual-property move as FlightCore's `mdl.Δt`), available in
 `g_s1`/`g_s2`/`h` and an error to touch on a continuous component. It must be readable
-in the *stages*, not just `h`: per §12.2, the discretized laws that actually consume
+in the *stages*, not just `h`: per §13.2, the discretized laws that actually consume
 `Δt` — a PID's backward-difference coefficients, a LeadLag's Tustin transform — run in
 `g_s2`; `h` is a copy. Author rule: **never store `Δt`, or any `Δt`-derived
 coefficient, as a component parameter** — recomputing derived coefficients per tick is
@@ -886,13 +887,209 @@ fields are the precedent).
 **Forward pointers.** The wait interval is the natural staging slot for externally
 injected inputs, applied at the next boundary; the staging rules — and the
 concurrency model generally, which §11.3 constrains but does not decide — belong to
-axis 6.
+axis 6 (§12).
 
 ---
 
-## 12. Case studies
+## 12. Runtime periphery (axis 6)
 
-### 12.1 `Vehicle` today → this framework
+GUI, input devices, network I/O and logging, and the concurrency model binding them
+to the §11 loop. The architecture and data-exchange machinery below are settled;
+residual sub-questions are listed in §15.
+
+### 12.1 No shared mutable model: staged writes, snapshot reads
+
+FlightCore's periphery is one big lock: `SimControl` and the live `Model`, guarded by
+`io_lock`, with one task per attached interface reading or mutating the model under it
+(sim.jl). The lock does enforce §11.3's boundary-visibility rule — it is only ever
+free between steps — but its costs are structural:
+
+- **The loop's frame budget is hostage to its readers.** A slow GUI frame or a stalled
+  `extract_output` holds the lock and the sim cannot step; blocking time is
+  indistinguishable from overrun in any accounting.
+- **Input timing is scheduler-determined and unrecorded.** Writes land between
+  whichever boundaries the OS interleaving produced; there is no defined input trace,
+  so §11.7's bit-identical replay is unachievable *in principle* for interactive runs.
+- **It protects an idiom that no longer exists.** `assign_input!` and GUI widgets poke
+  the live model; under the immutable signal table there is nothing to poke — the
+  periphery needs a defined write path regardless.
+
+The replacement has five planes:
+
+1. **Staging (inbound):** devices submit pending input writes at any wall-clock
+   moment, never touching live slots (§12.3).
+2. **The drain:** exactly one point, at the top of each boundary sequence, where the
+   loop takes the staged batches and applies them to the root input slots. Between
+   drains the loop owns its data exclusively — no lock is held during stepping, ever.
+3. **Publication (outbound):** at the end of each boundary sequence the loop publishes
+   an immutable snapshot; readers observe it without coordinating with the loop
+   (§12.2).
+4. **Control:** pause/pace/stop on a separate few-word atomic surface (§12.6).
+5. **Task topology:** one loop task, one task per attached device (the GUI's on the
+   main thread — CImGui's constraint), start gate and shutdown protocol as today.
+
+Two rules bind the implementation:
+
+- **Every handoff is one atomic reference operation.** Both shared structures reduce
+  their mutable surface to single words (release/acquire `@atomic` fields), and the
+  GC is the reclamation mechanism: an object a reader still holds is reachable and
+  therefore never recycled, which dissolves the reclamation problem (hazard pointers,
+  epochs, RCU grace periods) that makes these patterns hard in non-GC languages.
+  Deep immutability of the exchanged objects is what makes this sound.
+- **No user code, no unbounded work, ever, inside a framework critical section.**
+  FlightCore's pathologies are all "arbitrary code under a shared lock"; here
+  mappings run on device tasks, rendering runs against snapshots, and the loop's
+  frame contains framework and model code only. A stalled device produces stale
+  snapshots and late staging; it cannot stall the loop. (Residual, pre-existing
+  exposures: GC pauses and OS scheduling — the pacer's debt absorption is the
+  mitigation.)
+
+Consequence, recorded because it collapses an API axis: interactive and batch
+simulation stop being different execution modes. A batch run is the same loop with
+empty staging and no snapshot readers; a replayed interactive session is the same
+loop with staging fed from a recording (§12.3).
+
+### 12.2 Outbound: snapshot publication
+
+The loop builds each snapshot — boundary-consistent signal table, `t`, framework
+status (§11.7 diagnostics) — in private memory, then publishes it with a single
+release-store to an `@atomic latest` reference; readers acquire-load and then work
+with an immutable, coherent world for as long as they like. Wait-free in both
+directions: a wedged reader cannot delay publication by a nanosecond; the loop cannot
+tear a reader's view. Publication happens only after the boundary sequence completes
+(§11.3 as extended by §11.6).
+
+**Binding rule: nothing reachable from a published snapshot is ever written again.**
+The table's immutable values (§4.1, §9) make the compiler enforce most of it; the
+rule is what the soundness of lock-free reading rests on.
+
+Logging dissolves into publication: the log is a vector of retained snapshot
+references — same objects, zero extra copies; the per-step `deepcopy` detour of the
+`SavingCallback` disappears. Cost: one snapshot allocation per boundary, on the
+framework side of the §9.5 scope (which already carved out logging); logged snapshots
+are not garbage at all, unlogged ones die young. Rejected: preallocated snapshot
+buffers (double/triple ring) — reuse reintroduces exactly the reader-liveness proof
+the GC provides for free, to save an allocation profiling has not indicted.
+
+### 12.3 Inbound: root input slots and per-device staging
+
+**The write surface is root input slots** — slots declared at the assembly
+(`add_input!` in the sketches) that no component publishes: sources to the build-time
+scheduler, constants within a frame, and the *only* thing the periphery may write
+(the GUI reaches them through §12.5's resolution; control commands are not writes,
+§12.6).
+
+**Staging: one atomic cell per attached device**, in attachment order fixed at build.
+Each cell has a single writer — its own device task — and holds that device's latest
+pending batch of slot writes:
+
+- a *complete* writer (a joystick: full write-set every poll) overwrites its cell;
+  coalescing between drains is ZOH-correct at boundary granularity;
+- a *sparse* writer (the GUI: only what the user touched) accumulates via CAS merge
+  on its own cell; the CAS can fail only because a drain intercepted the old batch,
+  so the retry is bounded and the failure case is precisely correct — intercepted
+  writes are already applied and must not be re-staged.
+
+**Doctrine: staged values are levels, never deltas** (`press_count = 17`, never
+`presses += 1`) — levels are idempotent and survive coalescing; button edges ride as
+monotonic counters.
+
+**The drain** (frame top): one `atomicswap(cell, nothing)` per device — an
+indivisible take, no lost-write window — applied **in attachment order**, so
+cross-device writes to one slot resolve by fixed, documented policy (later-attached
+wins), not by sub-frame timing. Which *frame* a write lands in remains wall-clock
+reality; what the drain guarantees is that the frame's outcome is a pure function of
+the drained batches.
+
+**Mappings run on the device task**: today's `assign_input!(mdl, mapping, data)`
+becomes pure `map_input(data, mapping) → batch`. User-extensible code thereby never
+executes inside the loop's frame, and the trace consists of slot-level batches.
+
+**The input trace** is the sequence of drained, device-tagged batches per frame. It
+extends §11.7's determinism end-to-end: replaying a recorded interactive session —
+staging fed from the recording, no devices or mappings present — reproduces the
+trajectory bit-identically.
+
+Rejected shapes (both torture-tested in §13.3): **per-slot atomic cells** — the
+simplest (no merge machinery, and a per-slot layout cannot lose independent writes)
+but same-slot conflicts resolve by hardware store order, i.e. sub-frame wall-clock
+phase (run-to-run behavioral variance, §13.3), peeks are cross-device, the trace
+loses provenance, and wide slot types hit Julia's atomic-width lock fallback; **a
+shared lock-free batch stack** (CAS-push, swap-drain) — whole-batch atomicity and
+the richest trace, but conflict order is still temporal (push order), and pending
+memory is unbounded while paused, taxing every peek that must walk the chain.
+
+### 12.4 Device taxonomy: one kind
+
+FlightCore's input/output/GUI trichotomy is lock choreography, not modeling:
+`get_data!` may block, so it runs outside the lock; `extract_output` must not block,
+because it runs inside; the GUI breaks both rules at once and gets a third interface
+(`render!` under lock, `sync = 0` so VSync cannot stall the sim, a manual framerate
+sleep). With no lock, the protocol the taxonomy encoded has no referent.
+
+**Every attached device receives the same handle**, carrying the two primitive
+capabilities — read (latest snapshot; optionally wait-for-next-boundary) and stage —
+plus control access (observe running, request shutdown; `should_abort` stays a
+per-attachment flag). Input-only and output-only devices are degenerate uses, not
+framework kinds; a bidirectional network peer is *one* device with one socket and one
+lifecycle, not two framework devices sharing state. The GUI is an ordinary device —
+the paradigm one, using every capability — with exactly two genuine peculiarities,
+neither taxonomic: main-thread affinity (a launch concern) and read-modify-write
+widgets (§12.5).
+
+### 12.5 The GUI write path: port resolution, peek, active widgets
+
+Panels remain per-component extensions in FlightCore's style — `GUI.draw!(ctx,
+::LowPassFilter)`, discovered by walking the assembly — but widgets name **the
+component's own ports**, never root slots. The build-time wiring answers, statically
+and exactly: *is this port transitively driven by a root input slot, and which one?*
+Every input port has exactly one source (§5), so the resolution is total:
+
+- **root-driven → live widget**: peeks and stages the resolved slot through the
+  GUI's own cell;
+- **component-driven → read-only rendering**: displays the driven value from the
+  snapshot, visually distinct, with the source as provenance ("driven by
+  `avionics.throttle_cmd`").
+
+This retires FlightCore's dead-slider convention (the `Cessna172Xv1` throttle: the
+engine panel's slider visually live, silently overwritten by the avionics every
+cycle — who commands what living in the user's head) and replaces it with checked
+structure: **a widget is live exactly when the underlying input is yours to command
+in this configuration.** User-commandability is a wiring decision made where
+configurations are made; command-plus-manual-override is a mux component with a
+root-wired select — explicit structure, not two writers racing (the same race as
+§13.3's drag phase, retired by the same rule). The obligation this places on the
+GUI: read-only rendering is first-class, not an error state — the author of
+`input_slider!` cannot know at authoring time whether it will be live.
+
+**Peek rule:** a widget displays its **own pending write if any, else the snapshot
+value**. Own-cell only: another device's pending write is invisible by design (its
+applied value arrives via the snapshot one frame later); cross-device peek would
+re-couple devices for sub-perceptual benefit. While paused, staged edits display
+indefinitely and apply at the un-pause drain. Fan-out is consistent for free:
+widgets on ports resolving to the same slot peek the same pending value.
+
+**Active-widget contract:** a grabbed widget stages **every render pass**, not only
+on value change — widget activity is the user's claim to the slot. (Stage-on-change
+would let a streaming device reassert control while the user's finger holds the knob
+still; found in §13.3.)
+
+### 12.6 Control plane
+
+Pause, un-pause, pace changes, stop: a few scalar fields on a separate atomic
+surface, consulted by the loop at frame top and inside its wait and pause states.
+**Not staging, structurally:** staged writes apply at drains, and a paused loop
+drains nothing — un-pause via staging would deadlock by construction. Riding outside
+the drain/trace path is safe for determinism precisely because §11.7 put pacing
+outside the semantics: control changes *when* frames execute, never what they
+compute (stop merely truncates the trajectory). While paused the loop blocks on a
+condition (notified on un-pause and stop), not a spin.
+
+---
+
+## 13. Case studies
+
+### 13.1 `Vehicle` today → this framework
 
 The grounding exercise that validated §5. Current `Vehicle.f_ode!`
 (`aircraftbase.jl:142-170`) is a hand-woven instance of the machinery specified here:
@@ -918,7 +1115,7 @@ The genuine algebraic loop in the domain — α̇-dependent aerodynamics — is 
 broken in the current C172 model by a filter state, exactly the explicit break §5.4
 prescribes. Evidence that reject-loops matches domain practice rather than fighting it.
 
-### 12.2 Torture tests for the §5.2 interfaces: `PistonEngine` and the FCS PID cascade
+### 13.2 Torture tests for the §5.2 interfaces: `PistonEngine` and the FCS PID cascade
 
 Two components were transliterated to validate the decoder interfaces before adoption.
 
@@ -963,9 +1160,51 @@ Both components passed without blockers, with zero publications forced beyond cu
 practice — the empirical basis for §5.2's claim that derivative/output overlap is the
 domain norm and the decoder matches the codebase's grain.
 
+### 13.3 Torture test for the §12 staging shapes: filter, joystick and GUI
+
+The exercise that selected per-device cells (§12.3) and produced the §12.5
+contracts. Setup (user-level listing: `sketch_io.jl`): a first-order filter with
+root inputs `u_cmd` and `τ`; a fictitious 100 Hz single-axis joystick streaming a
+slow ramp onto `u_cmd` (complete writer); a 60 Hz GUI with sliders for both slots
+(sparse writer); 50 Hz boundaries; pace 1. The interference on `u_cmd` is the
+point. The user-level listing came out identical across the three candidate
+staging shapes — ergonomics cannot discriminate between them; behavior under a
+concrete interleaving did:
+
+- **Drag against the stream** (the user grabs the `u_cmd` slider while the
+  joystick streams): under per-slot cells and the batch stack, each frame's
+  conflict resolves by last-store/last-push wall-clock order — with 16.7 ms
+  renders against 10 ms polls, the applied input alternates between drag value
+  and ramp on the cadence beat, the filter visibly wobbles, and the pattern
+  differs run to run (the trace replays any given run exactly; the behavior is
+  still a timing artifact). Under per-device cells the GUI stages in every drag
+  frame (≥ one render per 20 ms frame, plus the active-widget contract), so it
+  wins every drain by attachment order: a clean, deterministic override for
+  exactly the grab duration. Same user code, qualitatively different physics.
+- **Edits while paused**: per-slot cell — the user's `u_cmd` edit is overwritten
+  by the still-polling joystick ~10 ms later; the knob visibly snaps back and
+  the edit never applies. Batch stack — the edit is buried under newer pushes,
+  and the pending chain grows at the polling rate (~10³ nodes per 10 s pause)
+  with every peek walking it. Per-device cell — the edit holds in the GUI's own
+  cell across the pause (the knob keeps it, §12.5 peek rule), merges with the
+  `τ` edit (the sparse-accumulation case), and applies at the un-pause drain —
+  for one deterministic frame before the joystick reclaims the slot, which is
+  the honest semantics of one-shot editing a streamed input. The uncontested
+  `τ` edit works under all three shapes.
+- **Corrections the exercise forced**: the sparse-writer lost-write hazard is
+  specific to one-cell-per-device layouts (per-slot cells cannot lose
+  independent-slot writes — the CAS merge is per-device cells' antidote, not a
+  general need); and the batch stack's conflict order is temporal, not an
+  attachment-order policy — only per-device cells make precedence a rule rather
+  than a race.
+- **Discoveries**: the active-widget contract, and the port-resolution answer to
+  panel reuse (§12.5) — prompted by asking how the filter's panel survives the
+  filter becoming an embedded component with `u_cmd` driven by another component
+  (the `Cessna172Xv0` → `Xv1` throttle situation).
+
 ---
 
-## 13. Decision log (condensed)
+## 14. Decision log (condensed)
 
 | # | Decision | Rejected alternatives (why) |
 |---|---|---|
@@ -990,16 +1229,26 @@ domain norm and the decoder matches the codebase's grain.
 | 19 | Harmonic tick grid on step boundaries; discrete stages gated to own tick instants (ZOH by construction); assemblies virtual for execution, rate scopes for declaration (integer multipliers `K ≥ 1` composing down the tree, compiled to absolute divisors); `comp.Δt` as single source of truth, no stored `Δt`-derived parameters | Atomic assemblies, incl. opt-in (coarsened schedulable unit → §5.3 artificial loops at assembly scale; interleaving protection meaningless under the signal table; FlightCore's whole-tree atomicity was a call-tree artifact); arbitrary tick periods via time queue (variable `h`, irregular frames, no demonstrated need); absolute-period declaration as default (welds deployment rates into reusable designs; base-period variables don't compose across independently authored assemblies); re-running discrete stages every boundary (un-samples sampled-data semantics); phase offsets (no demonstrated use); `Δt` via `h`-argument only (discretized laws live in `g_s2`) |
 | 20 | Boundary event phase iterates to quiescence — rounds of full re-sweep → guards → handlers (declaration order, per-event re-decode) — each event firing at most once per boundary; due `h` updates run after quiescence, outside the iteration | Single pass per boundary (cascade latency N·h — step-size-dependent semantics, the §2.2 `f_step!` footgun class, made common by §3.1 externalized FSMs); bounded-rounds cap (arbitrary K knob; livelock burns the budget then errors instead of degrading to Tier-1 granularity); event/tick fixed-point iteration (structurally unnecessary — `z⁺` is invisible until the next tick decode) |
 | 21 | Pacing outside the semantics (bit-identical paced/unpaced trajectories); piecewise-affine wall-clock map, anchor re-established at pace change and un-pause (debt cleared, counted); absolute deadlines with bounded debt + re-anchor on excess; `p = ∞` as explicit pacer-off; hybrid sleep-then-spin toward `deadline − margin`, with `margin` the single knob (0 = pure sleep, ∞ = pure busy-wait = FlightCore) | Relative deadlines (permanent sim-vs-wall slip); unbounded catch-up (burst after long stalls); keeping the anchor across pace changes (retroactively reinterprets elapsed history at the new pace); `p = ∞` as arithmetic limit (perpetual-overrun diagnostics under debt accounting); dedicated busy-wait mode flag (subsumed by `margin = ∞`); separate primitive-resolution threshold (absorbed into `margin` calibration) |
+| 22 | Periphery architecture: no shared mutable model — staged inputs drained at frame top + immutable snapshot published per boundary; every handoff one atomic reference op, GC as reclamation; no user code or unbounded work in framework critical sections; control on a separate atomic surface (staging cannot un-pause a drainless loop); interactive = batch + devices | Transplanted `io_lock` (loop budget hostage to arbitrary code under the lock; input timing scheduler-determined and unrecorded — replay undefinable in principle; protects a live-mutation idiom the immutable table removed); full message-passing periphery (per-device typed channels — same design with heavier ceremony) |
+| 23 | Snapshot publication: build private → release-store `@atomic latest`; readers acquire-load; wait-free both ways; nothing reachable from a published snapshot ever written again; allocate per boundary; log = retained snapshot references | Preallocated snapshot rings (reintroduce the reader-liveness reclamation proof the GC already provides); `deepcopy` `SavingCallback` logging (the capture *is* the publication mechanism); mid-step publication (§11.3) |
+| 24 | Inbound staging: one atomic batch cell per device; complete writers overwrite, sparse writers CAS-merge own cell (retry bounded by drain interception); drain by `atomicswap` in attachment order (conflict precedence a documented policy); levels-never-deltas doctrine; mappings pure, on the device task; device-tagged replayable input trace | Per-slot cells (conflicts by hardware store order — run-to-run behavioral variance; cross-device peek; no trace provenance; atomic-width fallback on wide slots); shared batch stack (temporal conflict order; unbounded pending under pause, taxing peeks); ordered write queue (preserves intra-frame order nothing downstream can observe) |
+| 25 | One device kind: uniform handle with read (snapshot / next-boundary) + stage + control capabilities; input-only/output-only as degenerate uses; bidirectional peer = one device; GUI an ordinary device (main-thread affinity and RMW widgets its only peculiarities) | Input/output/GUI taxonomy (lock choreography artifact — blocking rules of `get_data!`/`extract_output` under `io_lock`; forces bidirectional peers into two devices sharing a socket and shutdown); special-cased GUI interface (`sync = 0` + render-under-lock ceremony, obsolete without the lock) |
+| 26 | GUI write path: per-component panels name own ports; build-time resolution to root input slots; live vs first-class read-only rendering (with wiring provenance); own-pending-else-snapshot peek; active widgets stage every render pass | Slot-naming panels (kills reuse across configurations); always-hot widgets (FlightCore's dead slider — visually live, silently overwritten); cross-device peek (re-couples devices for sub-perceptual benefit); stage-on-change only (streaming device reasserts control mid-grab) |
 
 ---
 
-## 14. Open axes
+## 15. Open axes
 
 To be settled in subsequent sessions:
 
-- **Runtime periphery (axis 6) — next up.** GUI, input devices, network I/O, logging; the
-  concurrency model binding them to the sim loop; when the runtime may write
-  externally-driven input slots (staging vs. step boundaries) to preserve determinism.
+- **Runtime periphery (axis 6) — residuals.** Wait primitive for the pacer's coarse
+  phase (task-yielding `sleep` vs `Libc.systemsleep`) and the thread budget/affinity
+  policy (FlightCore's hard `nthreads` check → a documented sizing rule); the
+  per-boundary "next snapshot" event for once-per-frame output devices; input-trace
+  recording always-on vs opt-in; shutdown protocol details (blocked-`recv` devices,
+  the EOT convention); the mutation surface beyond root inputs (debug pokes,
+  re-initialization, manual event triggering) — the unresolved half of the
+  sanctioned-mutation question.
 - **User-facing surface (axis 7).** Declaration layer (macros vs. plain
   constructors — all syntax in this document is illustrative sketch, not committed);
   build/verification tooling and error-message quality; initialization, trim and
