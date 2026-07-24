@@ -1,10 +1,12 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** fifth checkpoint (v0.5). Axes 1–6 settled; axis 7 part 1 — the
-component declaration layer (§13) — settled, with amendments to §4–§6, §9 and §12
-(argument prototypes, contract visibility, summing junctions, snapshot contents);
-assembly declaration, build tooling, stopped-sim services and the migration outline
-pending (see [Open axes](#open-axes)).
+**Status:** sixth checkpoint (v0.6). Axes 1–6 settled; axis 7 parts 1 and 2 — the
+component declaration layer (§13.1–§13.4) and the assembly declaration layer
+(§13.5–§13.8) — settled, with periphery amendments to §4, §8 and §12 (write-side
+granularity, root slots as exported faces, slot exclusivity, GUI liveness as a
+derived property) grounded in the interactive C172X case study (§14.4); build
+tooling, stopped-sim services and the migration outline pending (see [Open
+axes](#open-axes)).
 
 ---
 
@@ -204,6 +206,17 @@ once the v0.5 prototypes let `h` read `z` directly.)
   pose is stage 1, velocity-derived quantities are stage 2 — it must split). Fan-out
   is free, so publishing both a bundle and a hot loose field (`pose` *and* `q_eb`)
   is legitimate — one extra isbits cell.
+- **Write-side corollary** (v0.6, from §14.4): **bundle what is written
+  together.** The port is the atomic unit of the entire periphery — one cell, one
+  root slot, one staged write, one device claim (§12.3), one trace address, one
+  GUI liveness verdict (§12.5). Data written by different external writers, or at
+  different cadences, must not share a port: pilot commands are scalar faces under
+  a namespace prefix, and the convenient bundle is assembled *downstream*, inside
+  the graph, by an ordinary component (single producer, consumed together — legal
+  by the read-side rule). The two guidelines compose into one principle: a port's
+  granularity is set by the finest-grained party owning either end — producers on
+  the read side, external writers on the write side. Field-addressed staging (a
+  lens into struct slots) stays a recorded guarded addition, unbuilt.
 
 ---
 
@@ -472,18 +485,34 @@ redesign.
 - **Deep connection paths** are allowed, with one structural rule: both endpoints must
   resolve **within the assembly type being defined**. You may deep-route into structure
   you declared (`Cessna172` routing its single `trn` input to
-  `systems.ldg.{left,right,nose}.trn_field` in one visible block — no per-level
+  `systems/ldg/{left,right,nose}/trn_field` in one visible block — no per-level
   re-exports); you may only connect port-level into submodels held **generically**
-  (`World` connects `terrain.field => aircraft.trn` and knows nothing more). This kills
+  (`World` connects `terrain/field => aircraft/trn` and knows nothing more). This kills
   the re-export ceremony where it is ceremony, and preserves substitutability where the
-  boundary is load-bearing.
+  boundary is load-bearing. Operationally: a path may traverse any chain of
+  concretely-typed fields and stops at the first generically-held child, whose
+  exported faces are the only things addressable beyond that point — a rule about
+  the *declaration's* knowledge, not the build's (a deep path into a generic child
+  is forbidden even where the concrete instantiation would resolve it, because it
+  hard-codes one implementation and breaks on substitution).
 - Paths are validated at build time; renames break loudly.
 - Fan-out is free (one producer, many consumers). The converse is strict: every
   input port takes **exactly one** connection, no exceptions (aggregation is
-  junctions, §6).
-- No auto-bubbling of unconnected inputs in the first cut (implicit interface growth).
+  junctions, §6). The rule spans levels: an input fed both inside a sub-assembly
+  and by an ancestor's deep route is a two-producers build error — deep routing
+  cannot silently double-feed.
+- No auto-bubbling of unconnected inputs (implicit interface growth — and worse:
+  the forgotten-wire error, §13.4 walkthrough 2, would be silently *promoted to
+  interface*, climbing level by level into a live root slot nobody feeds, instead
+  of failing at build).
 - Unconnected output ports: build-time warning. Unconnected input ports: build error
-  (no silent defaults).
+  (no silent defaults). **The check is a whole-tree property, not a
+  per-declaration one**: within a single assembly declaration an unfed child input
+  is simply *awaiting a claim from above* — a sibling wire, an ancestor's deep
+  route, or an `exports` entry handing the obligation up one level (§13.6). The
+  error fires at the root build for any input whose obligation chain never
+  terminates. The one legitimate terminus fed by no component is the root
+  assembly's own exported input face — a root slot (§12.3).
 
 ---
 
@@ -1119,11 +1148,31 @@ the GC provides for free, to save an allocation profiling has not indicted.
 
 ### 12.3 Inbound: root input slots and per-device staging
 
-**The write surface is root input slots** — slots declared at the assembly
-(`add_input!` in the sketches) that no component publishes: sources to the build-time
-scheduler, constants within a frame, and the *only* thing the periphery may write
-(the GUI reaches them through §12.5's resolution; control commands are not writes,
-§12.6).
+**The write surface is root input slots** — and a root slot *is* the root
+assembly's exported input face (§13.6): routed inward to consumers, produced by no
+component, fed by the parent's wire at every non-root level — and at the root
+there is no parent. No dedicated vocabulary survives (`add_input!` in the early
+sketches is dead). Slots are sources to the build-time scheduler, constants within
+a frame, and the *only* thing the periphery may write (the GUI reaches them
+through §12.5's resolution; control commands are not writes, §12.6); they are
+addressed by the same slash paths declarations use, which is also how devices,
+mappings and the trace name them.
+
+**Slot exclusivity: one writer per slot at any time** (v0.6, from §14.4). A
+device claims its slots at attach; claiming an already-claimed slot is an
+attach-time error, and detaching releases the claims (a released slot's GUI
+widgets re-enable, §12.5). This supersedes the cross-device conflict *policy* —
+attachment-order precedence at drain — which resolved races the case study shows
+nobody wants: every dual-writer field in the C172X demo is a joystick stream
+shadowed by a GUI mirror, where simultaneous live writing is a bug. Per-device
+cells, the CAS merge and the atomicswap drain all stay — they serve atomicity and
+coalescing, not arbitration.
+
+**Open (v0.6): slot initial values.** Input declarations are bare types (§13.2)
+and carry no defaults, but a slot unfed by any device must hold a defined value
+from the first frame (today's `U()` constructors provide these: `mixture = 0.5`).
+Candidate owners: a default on the export entry, the init service, or optional
+defaults in input declarations — to settle with the stopped-sim services (§16).
 
 **Staging: one atomic cell per attached device**, in attachment order fixed at build.
 Each cell has a single writer — its own device task — and holds that device's latest
@@ -1141,15 +1190,31 @@ pending batch of slot writes:
 monotonic counters.
 
 **The drain** (frame top): one `atomicswap(cell, nothing)` per device — an
-indivisible take, no lost-write window — applied **in attachment order**, so
-cross-device writes to one slot resolve by fixed, documented policy (later-attached
-wins), not by sub-frame timing. Which *frame* a write lands in remains wall-clock
-reality; what the drain guarantees is that the frame's outcome is a pure function of
-the drained batches.
+indivisible take, no lost-write window — applied **in attachment order**, retained
+as a deterministic application order (under slot exclusivity, cross-device writes
+to one slot no longer arise; the order matters only for diagnostics). Which
+*frame* a write lands in remains wall-clock reality; what the drain guarantees is
+that the frame's outcome is a pure function of the drained batches.
 
 **Mappings run on the device task**: today's `assign_input!(mdl, mapping, data)`
 becomes pure `map_input(data, mapping) → batch`. User-extensible code thereby never
 executes inside the loop's frame, and the trace consists of slot-level batches.
+
+**Mappings are binding data, not shaping code** (v0.6, from §14.4). A mapping is
+a declarative table — axis/button → slot path, plus per-axis conditioning
+parameters (deadzone, expo strength) applied by a shared pure helper on the
+device task. The boundary is set by the face contract: **a face's meaning is
+writer-independent**, so faces carry *post-conditioning* semantics — a GUI slider
+or a script writes the same command a curved stick delivers (running a mouse drag
+through a deadzone would be absurd); this GUI-parity test is what places
+conditioning upstream. Aircraft-semantic derivation (the C172X `q_ref = q_sf ·
+axis` fan-out) must *not* ride along: it is FCS design and lives in-model — in
+the avionics, or accepted as a small per-aircraft×device mapping entry (an
+aircraft-design fork, §14.4). The trace records post-conditioning levels —
+exactly what the model consumed, so replay is exact; raw-stick provenance (re-run
+a session through *different* curves) is the known, accepted loss. Edge logic
+follows the levels doctrine: devices stage monotonic press counters; accumulators
+(trim offsets, flap detents) are model state, not mapping state (§14.4).
 
 **The input trace** is the sequence of drained, device-tagged batches per frame. It
 extends §11.7's determinism end-to-end: replaying a recorded interactive session —
@@ -1224,6 +1289,25 @@ root-wired select — explicit structure, not two writers racing (the same race 
 §14.3's drag phase, retired by the same rule). The obligation this places on the
 GUI: read-only rendering is first-class, not an error state — the author of
 `input_slider!` cannot know at authoring time whether it will be live.
+
+**Liveness is a derived property, and resolution is transitive** (v0.6). A widget
+is live iff its port's feed chain — walked through wires and exports across *all*
+levels, not just the local assembly — terminates in a root slot, *and* that slot
+is currently unclaimed by a device (§12.3 exclusivity). There is no per-port
+"GUI-controlled" marking anywhere: the export chain is the marking, written by
+the one author entitled to write it (a component's ports become GUI-commandable
+exactly when the assemblies above surface them). The switch between "driven by
+its own panel" and "driven by an external provider" is therefore automatic — at
+build time by wiring archetype (a scripted `World` wires a scenario component
+into the same faces the interactive `World` exports to root), at run time by
+device claim state. Rejected (v0.6): nominally-connected ports with a GUI
+*override* channel — a second write path that breaks the
+pure-function-of-drained-batches frame semantics, needs a parallel trace and
+replay mechanism, and cannot resolve the producer conflict (either a dead widget
+or a silently discarded wire); made safe — staged, frame-top, traced, exclusive —
+it collapses into the root-slot mechanism it tried to bypass. The honest cost
+stands: **unexported ports are unpokeable** — FlightCore's poke-any-`u` workflow
+does not survive contract visibility (§13.3), deliberately.
 
 **Peek rule:** a widget displays its **own pending write if any, else the snapshot
 value**. Own-cell only: another device's pending write is invisible by design (its
@@ -1400,16 +1484,16 @@ slot and guard), *model behavior* in disguise (add a scenario component), or a
 
 ---
 
-## 13. Component declaration layer (axis 7, part 1)
+## 13. The declaration layer (axis 7): components and assemblies
 
 How an author spells a component: where the structural facts live, what the build
-takes as authoritative, and what is checked against what. This section settles the
-component side; the assembly/composition side (`add!`/`connect!`/exports, root
-slots, rate scopes), the build pipeline itself and the stopped-sim services remain
-open (§16). Concrete syntax below is near-final in shape but still illustrative in
-spelling. The sketches (`sketch.jl`, `sketch_decoder.jl`, `sketch_io.jl`) predate
-this section — they still show reduce-ports, identity publication and the stateless
-prototypes — and will be refreshed with the assembly pass.
+takes as authoritative, and what is checked against what. §13.1–§13.4 settle the
+component side (v0.5); §13.5–§13.8 settle the assembly side (v0.6); the build
+pipeline itself and the stopped-sim services remain open (§16). Concrete syntax
+below is near-final in shape but still illustrative in spelling. The sketches
+(`sketch.jl`, `sketch_decoder.jl`, `sketch_io.jl`) predate this section — they
+still show reduce-ports, identity publication, the stateless prototypes and the
+builder-style assembly — and will be refreshed after the §14.4 walkthroughs.
 
 ### 13.1 Position: a declarative trait layer — plain Julia, no macros
 
@@ -1572,6 +1656,125 @@ the failure surfaced inside *correct* code, later, or never):
    error naming both endpoints and both faces — vs. a `MethodError` deep inside
    user math.
 
+### 13.5 Assembly declaration: type-based, kind by declaration shape
+
+An assembly is a plain struct: fields whose type is `<: AbstractComponent` are its
+children (field names = path segments), all other fields are inert parameters;
+substitutability and variants use ordinary parametric fields — exactly today's
+`Cessna172X{K, A}` shape. Alongside it, well-known declarations:
+`connections(::A)` (mandatory, even when empty), `exports(::A)`, `rates(::A)`.
+
+**The builder is rejected** (`Assembly()` + `add!`/`connect!`, the early-sketch
+spelling): the type you dispatch on and the recipe that defines its structure
+become two artifacts with nothing tying them together — §13.1's drift disease at
+assembly scale; it threads mutable state through declaration code; and it does not
+even buy source-location capture (a called function cannot see its caller's line
+any more than a returned value can). Its one real advantage, programmatic
+generation, survives intact in the type-based form: a declaration is an ordinary
+function body — loops and comprehensions build the returned tuple.
+
+**No `AbstractAssembly`; one root `AbstractComponent`.** Two facts kill a kind
+supertype: Julia's single inheritance is already spoken for by the domain
+hierarchies (`AbstractAircraft`, engine families — a slot `E <: AbstractEngine`
+must accept a primitive `PistonEngine` and a composite turbofan assembly alike),
+and §13.3 says kind is an implementation detail behind the contract — encoding it
+in public type identity is exactly what contract visibility exists to prevent.
+Kind is instead declared by *which* well-known declarations a type defines:
+`connections` (the marker, mandatory-even-if-empty — the `LowPassFilter`
+precedent) makes an assembly; `outputs` + stage functions make a primitive.
+Reading which declarations exist is reading declarations — the same move as the
+tier-in-signature split, not §13.1's banned inference-by-evaluation. Error
+taxonomy: `connections` plus `init_x`/stages on one type is a build error
+(assemblies have no state of their own — §11.5's no-atomic-assemblies at
+declaration time); neither marker plus component-typed fields earns a did-you-mean
+("holds components but declares no `connections`").
+
+### 13.6 Paths, wiring and exports
+
+**Paths are slash-separated strings** — `"systems/ldg/left/trn"` — relative to the
+assembly being declared, no leading slash; one canonical form, shared verbatim by
+declarations, error messages, device/trace addressing (§12.3) and the HDF5 log
+tree. Rejected: instance navigation (`a.ldg.left` cannot yield a *path* —
+symmetric immutable siblings are `===`-identical, so path-from-instance is
+unrecoverable by construction; a path-tracking proxy remains addable sugar);
+tuples of symbols (structure without readability); dotted paths (a false
+Julia-property affordance — the last segment is a contract port, not a field;
+slashes say "named tree", which is the true model).
+
+**`connections(::A)`** is an ordered collection of `"src/port" => "dst/port"`
+pairs, strictly child-port → child-port; §8's rules apply (one wire per input,
+deep paths through concretely-typed fields only, stopping at a generic child's
+faces). **`exports(::A)`** is the assembly's face declaration: face name =>
+internal endpoint path — or a tuple of paths for an input face fanning inward
+(`trn = ("systems/ldg/left/trn", …)`). Direction is derived from the endpoints
+(wired-to-inputs = input face, wired-from-one-output = output face; mixed or
+multi-source entries are build errors). Face *types and tiers* are derived from
+the internal endpoints — §13.2's blessed derivation-from-declarations — and the
+derivation is forced, not merely convenient: an assembly is tier-neutral (it
+exports continuous-sourced and discrete-sourced ports side by side), so neither
+leaf `outputs` signature fits, and author-declared face types would need per-face
+tier annotations. Rejected spellings: routing values under the leaf names
+`inputs`/`outputs` (a name-level pun — a discrete leaf's exact signature with
+alien value semantics, killing §13.5's name-level kind split); leaf-style *typed*
+faces plus face wires inside `connections` (the tier problem above, plus
+face/child namespace collisions and the weakest kind marker); routing-as-wires
+with derived types and no face list (facehood implicit in wiring — publicity is
+never implicit, §13.3).
+
+**Root slots fall out with no vocabulary**: at every non-root level an exported
+input face is fed by the parent's wire; at the root there is no parent, and the
+face *is* the write surface (§12.3). §8's whole-tree obligation model states the
+complementary error rule. An assembly never declares its external connections —
+those live in the parent that instantiates it, exactly as a leaf's do.
+
+### 13.7 Rate scopes
+
+`rates(::A) = (fcs = 1, nav = 5)` — child name => integer multiplier `K ≥ 1`,
+optional, unlisted children default to 1; §11.5 semantics unchanged (relative,
+composing multiplicatively down the tree, compiled to absolute divisors). Keys are
+**immediate child names only** — a deep key would edit another type's design from
+outside, and the composition rule guarantees you never need to. `K` on a
+continuous child is a build error (§11.5's Δt-on-continuous error at declaration
+time). `Δt_base`, `h` and `n` appear in no declaration — they are deployment
+decisions fixed at `Simulation` construction. Rejected: `K` carried on the child
+instance, FlightCore-`Subsampled`-style — it wraps the field type (polluting
+paths, dispatch and the child's contract as seen by wiring) and makes a
+per-instance value of what §11.5's own rationale calls intrinsic to the design,
+i.e. a fact about the assembly type.
+
+### 13.8 Computed exports and generic boundaries
+
+`exports` is an ordinary function evaluated at build against the concrete
+instance, so it may *compute* entries from child contracts — derivation from
+declarations, §13.2-blessed. The framework helper:
+
+```julia
+exports(w::World) = (;
+    faces(w, "aircraft"; except = ("trn",))...,   # bulk re-export, prefixed
+    view_pose = "aircraft/pose",                  # explicit entries coexist
+)
+```
+
+`faces(asm, child_path; prefix = child_path, except = (), only = ())` expands the
+named child's **input** faces into prefixed export entries (the child is named by
+path, never passed as an instance — §13.6's `===` problem again). Every error
+stays first-class: an `except` face the assembly then fails to wire is an ordinary
+unconnected input; a face both wired and re-exported is a two-producers error;
+`except`/`only` naming a nonexistent face errors with the child's face list in
+hand. The effective export list is plain printable data — the inspectable contract
+of this instantiation. What computation does *not* do is auto-bubble: the author
+wrote down "every input face of this child that I don't feed, I expose under this
+prefix" — explicit at the type level, evaluated at build.
+
+**Generic holding = imposed contract.** A parent holding a child generically
+constrains it exactly through the faces its wires and exports reference: build a
+`World` whose concrete aircraft lacks a referenced face and the error names the
+`World` entry — build-time structural typing, no new vocabulary (a formal
+required-faces declaration on domain abstract types remains possible sugar).
+Scalar faces make partial scripting compose: a guidance scenario component wires
+`mode_req` and `EAS_ref` while the remaining faces stay exported for GUI or
+defaults — impossible with a bundled face (§4.3 write-side corollary).
+
 ---
 
 ## 14. Case studies
@@ -1689,6 +1892,91 @@ concrete interleaving did:
   panel reuse (§12.5) — prompted by asking how the filter's panel survives the
   filter becoming an embedded component with `u_cmd` driven by another component
   (the `Cessna172Xv0` → `Xv1` throttle situation).
+- **v0.6 note**: under slot exclusivity (§12.3) the contested-`u_cmd` scenario
+  itself becomes an attach-time error — the drag-against-the-stream phase can no
+  longer arise. The test's verdicts on cell *shapes* (atomicity, coalescing,
+  pause behavior, the peek rule) stand; only the conflict-precedence findings are
+  superseded.
+
+### 14.4 The interactive C172X demo: the periphery under load (v0.6)
+
+The full-fidelity successor to §14.3, against the real deployment:
+`generic_simulation()` (`FlightApps/demos/c172_demos.jl`) —
+`SimpleWorld(Cessna172Xv1, SimpleAtmosphere, HorizontalTerrain)`, GUI, joysticks,
+an XPlane12 output device, ground/trim init, paced run, post-run plots. Method:
+FlightCore's mechanisms are reference *behavior*, not requirements — the question
+is whether the new machinery expresses the experience (move stick, plane banks),
+never how to reproduce `assign_input!`. Inventory of the complete interactive
+surface, with each item's home:
+
+- **Streamed commands** (`throttle_axis`, `elevator/aileron/rudder_axis`): today
+  written by joystick mappings after shaping *and* by GUI sliders on the same
+  fields. Every dual-writer field in the demo is this pattern — a stream shadowed
+  by a mirror, where simultaneous live writing is a bug. This adjudicated slot
+  exclusivity (§12.3): claim/disable covers every case found; none needs two
+  concurrent writers.
+- **Edge-driven increments** (trim offsets ±5e-3 per hat release, flaps ±⅓ per
+  button release): today `+=` deltas executed *inside the mappings*, accumulating
+  in model `u` — the levels-never-deltas violation, live in the codebase.
+  Becomes: devices stage monotonic press counters; accumulator state lives in the
+  model (avionics discrete state).
+- **The shaping stack**: exp curves and deadzones (defined in the aircraft
+  variant module, duplicated *verbatim* across the T16000M and Gladiator
+  mappings — the duplication smell), plus the `q_ref = q_sf · axis` fan-out. It
+  decomposes into device conditioning (device truth), feel curves (deployment
+  preference) and command semantics (FCS design); the face contract splits it —
+  conditioning upstream as mapping data, semantics in-model (§12.3).
+- **Mode engage** (`mode_req` + setpoint capture from current measurements — the
+  GUI handler does `u.EAS_ref = EAS` read from `vehicle.y`): the one place the
+  GUI composes writes from model state. Open fork: GUI peek-batch (§12.5 supports
+  it as-is) vs. capture-on-engage latched inside the control laws (uniform across
+  all writers, but moves behavior into the FCS).
+- **Vehicle-direct and environment tunables** (engine start/stop/mixture, payload
+  masses, terrain surface enum, sea-level T/p, wind NED): ordinary component
+  inputs exported to root faces; GUI as sole unclaimed writer via §12.5; no
+  machinery. The interactive surface is *not* one thing: pilot commands cluster
+  under a prefix; environment knobs stay with their components' panels.
+- **The Xv1 actuator sliders**: FlightCore's dead sliders; resolved read-only by
+  §12.5. No action.
+- **Outbound** (XPlane12: control-surface angles, nose-wheel steering, prop
+  speed/phase, pose, `t`): a snapshot-consuming device, pure `map_output` on the
+  device task (§12.2). No friction found.
+- **Init/trim, pause/pace, post-run plots**: stopped-sim services (§16), control
+  plane (§12.6), log/trace (§12.2–§12.3).
+
+**Architectures examined here and rejected** (the v0.6 periphery decisions were
+forced by this cast):
+
+- **Devices as components** (a `T16000M` component wrapping SDL): replay stops
+  being same-build (the trace doctrine's strongest property — same type, same
+  schedule, staging fed from the recording); the GUI is irreducibly a staging
+  device, so inbound uniformity is unreachable anyway (two mechanisms instead of
+  one); device lifecycle would duplicate §12.9 in component vocabulary; and the
+  drain stops being the single audit point for external data. The salvage: the
+  *knowledge* half (a device model's semantics) is expressible as an ordinary
+  in-model component wherever wanted; only the wall-clock pump stays outside. In
+  an interactive, paced world the scheme is internally consistent (frame-top
+  hardware sampling is well-defined) — the rejection rests on the invariants
+  above, not on the §12.10 clock criterion.
+- **A root-level `PilotInterface` cockpit component** assembling `pilot_commands`
+  beside the physical models: its claimed jobs dissolved one by one — struct
+  assembly happens in-model downstream of scalar faces (any component can gather
+  and bundle), curves became mapping data, widget arbitration is §12.5 +
+  exclusivity, and the stateful residue (accumulators, capture-on-engage) fits
+  the avionics, where FBW stick shaping arguably belongs. What remained was a
+  component with no natural place — a cockpit artifact sitting beside
+  aircraft/terrain/atmosphere in `World` misstates the composition.
+- **Bundled command faces** (`pilot_inputs` as one struct port): kills per-field
+  claiming, liveness and trace provenance — the port is the periphery's atomic
+  unit (§4.3 write-side corollary). The routing convenience the bundle bought in
+  FlightCore's argument-threading world is provided here by the namespace prefix
+  and `faces` (§13.8); the struct reappears legitimately downstream, assembled
+  in-model by a single producer.
+
+Open items feeding the next pass: the capture-on-engage home; root-slot initial
+values (§12.3); the `q_sf` home (mapping entry vs. avionics-internal). The demo
+walkthroughs (script line by line; one frame each for stick motion, GUI edits,
+mode engage, pause, shutdown, post-run extraction) follow in the next revision.
 
 ---
 
@@ -1734,6 +2022,13 @@ concrete interleaving did:
 | 36 | Table mechanics: stage returns are NamedTuples of port values; aggregate `y` = virtual merge, gathered per call, never stored; custom structs are port values — one port, one cell, atomic in wiring; granularity guideline: bundle what shares a stage and is consumed together | Bare-struct returns with field-splatting (ambiguous, type-lossy merge, reflection-hungry); sub-field wiring (the port stops being the atomic unit; field-projection connector kept as guarded addition); per-field cells for struct internals (nested display is a lazy view, not storage) |
 | 37 | Aggregation by explicit summing junctions (generic positional or named site-specific — plain components); hierarchical idiom: junctions at ownership boundaries, totals exported across generic boundaries; fold order author-visible; helper/macro sugar guarded | Reduce-ports (row 7 reversed: the declaration vocabulary's last wrapper; three-site census, all Newton–Euler, one library file; canonical-fold, multi-connection legality and identity-element machinery all retired for free; the aggregate wasn't even observable); FlightCore tree walks (silent omission — the zero-edit convenience *is* the hazard); bundled wrench/mass/momentum contribution structs (ragged contributors → identity-element noise) |
 | 38 | Snapshot = boundary table (private cells included, presentation-filtered) + `t` + status — no state stores; trace header = full `(x, m, z)` at `init!` (primary data); state trajectory = derived (replay-to-inspect); checkpointing = opt-in log policy, guarded; post-run continuation reads live stores | Per-boundary full-state capture (systematically records derived data — row 29's asymmetry reversed); state wanted in logs via capture rather than declaration (publicity is the honest remedy, priced at one auto-published cell per sweep); dev auto-publish-all-state as default (a diagnostic mode, kin to workspace NaN-poisoning, not semantics) |
+| 39 | Assembly declaration is type-based: plain struct, children = component-typed fields, parameters = the rest; `connections` mandatory-even-empty as the kind marker; one root `AbstractComponent`, kind by declaration shape | Builder (`add!`/`connect!`: dispatch type and structure recipe drift apart — §13.1's disease at assembly scale; mutable declaration state; doesn't even capture source locations); `AbstractAssembly` kind supertype (single inheritance is spoken for by domain hierarchies; kind is an implementation detail per §13.3); kind inferred from field types (heuristic where a declaration is wanted) |
+| 40 | Slash-string paths, relative to the declaring assembly, one canonical form shared by declarations, diagnostics, devices and logs | Instance navigation (`===`-identical symmetric siblings make path-from-instance unrecoverable — proxies remain sugar); symbol tuples (structure without readability); dotted paths (false Julia-property affordance — the last segment is a port, not a field) |
+| 41 | Dedicated `exports(::A)`: face => internal path(s), direction and face types/tiers derived from endpoints (assemblies are tier-neutral — derivation is forced); `connections` strictly child-to-child | Routing values under leaf `inputs`/`outputs` names (name-level pun — discrete-leaf signature with alien value semantics, kills the kind split); leaf-style typed faces + face wires in `connections` (no `outputs` signature fits a tier-neutral assembly; face/child namespace collisions; weakest kind marker); wires-only with implicit facehood (publicity never implicit) |
+| 42 | `rates(::A)` optional declaration, immediate children only, `K` on a continuous child = error; `Δt_base`/`h` fixed only at `Simulation` construction | Instance wrappers (`Subsampled`-style: wraps the field type, pollutes paths/dispatch/contract; makes the type-intrinsic ratio a per-instance value); deep rate keys (edit another type's design from outside) |
+| 43 | Computed exports as ordinary code + `faces(asm, path; prefix, except, only)`; root slots = the root's exported input faces; generic holding = imposed contract checked per instantiation | Auto-bubbling (forgotten wire silently promoted to a live root slot — §13.4 walkthrough 2 inverted); wildcard-export vocabulary (ordinary code suffices); `add_input!`-style root-slot declarations (second vocabulary for what exports already are) |
+| 44 | Slot exclusivity: one writer per root slot at a time; device claims at attach, conflict = attach-time error, release on detach; per-device cells/CAS/drain retained for atomicity and coalescing | Cross-device attachment-order precedence as conflict *policy* (resolves races the §14.4 cast shows nobody wants — every dual writer is a stream shadowed by a mirror); FlightCore-style concurrent multi-device writing of one input (a bug surface, not a feature) |
+| 45 | GUI liveness fully derived (transitive root-slot resolution ∧ slot unclaimed); faces carry writer-independent post-conditioning semantics (GUI-parity test); mappings = declarative binding data with per-axis conditioning params, on the device task; edge logic = staged counters + model-state accumulators; unexported ports unpokeable | Per-port "GUI-controlled" markings (the export chain is the marking, owned by the right author); nominally-connected + GUI override channel (second write path; breaks frame purity and trace; done right it collapses into root slots); conditioning in-model (fails GUI-parity — sliders and scripts would be deadzoned); shaping as per-device mapping code (aircraft semantics duplicated per device — today's demonstrated smell); joystick-as-component and root-level `PilotInterface` (§14.4 — replay same-build, single audit point, no natural home in `World`) |
 
 ---
 
@@ -1741,15 +2036,20 @@ concrete interleaving did:
 
 To be settled in subsequent sessions:
 
-- **Axis 7, remainder.** Assembly/composition declaration (builder vs. type-based
-  declaration; `connect!`/export/root-slot/rate-scope spelling; source-location
-  capture so wiring diagnostics point at the offending line); the build pipeline
-  and error-message quality (probe orchestration, cycle diagnostics, §13.4's
-  walkthroughs as acceptance tests); initialization, trim and linearization as
-  first-class stopped-sim services (§12.10), deleting the hand-written
-  state-space mapping layer (§9.1) and replacing the per-aircraft NLopt trim
-  plumbing; residual small forks noted in place (symmetric `T` on input
-  declarations; `Private(T)` fallback; sketch refresh).
+- **Axis 7, remainder.** The build pipeline and error-message quality (probe
+  orchestration, cycle diagnostics, §13.4's walkthroughs as acceptance tests;
+  wiring diagnostics name endpoint paths — the destination path uniquely
+  identifies a wire, and a source-location-capturing `@wire` remains addable
+  sugar); initialization, trim and linearization as first-class stopped-sim
+  services (§12.10), deleting the hand-written state-space mapping layer (§9.1)
+  and replacing the per-aircraft NLopt trim plumbing; root-slot initial values
+  (§12.3 — settle with the services). Residual small forks noted in place:
+  symmetric `T` on input declarations; `Private(T)` fallback; capture-on-engage
+  home and `q_sf` home (§14.4); sketch refresh (sketches predate v0.5 and the
+  v0.6 assembly layer).
+- **Case study completion.** §14.4's walkthroughs: the demo script line by line
+  in new-framework terms, and one frame anatomy each for stick motion, GUI
+  edits, mode engage, pause/un-pause, shutdown and post-run extraction.
 - **Migration.** Outline for FlightPhysics/FlightApps (the Tier-1 parametrization
   pass, the `KinData`-style output splits, the contributor survey feeding §6's
   aggregation chains — mechanical to extract from today's trait implementations);
