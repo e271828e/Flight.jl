@@ -1,12 +1,13 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** sixth checkpoint (v0.6). Axes 1–6 settled; axis 7 parts 1 and 2 — the
-component declaration layer (§13.1–§13.4) and the assembly declaration layer
+**Status:** seventh checkpoint (v0.7). Axes 1–6 settled; axis 7 parts 1 and 2 —
+the component declaration layer (§13.1–§13.4) and the assembly declaration layer
 (§13.5–§13.8) — settled, with periphery amendments to §4, §8 and §12 (write-side
 granularity, root slots as exported faces, slot exclusivity, GUI liveness as a
-derived property) grounded in the interactive C172X case study (§14.4); build
-tooling, stopped-sim services and the migration outline pending (see [Open
-axes](#open-axes)).
+derived property, stage-on-interaction, face-name/path notation split) grounded in
+the completed interactive C172X case study (§14.4: inventory, surface walkthrough,
+frame anatomies); build tooling, stopped-sim services and the migration outline
+pending (see [Open axes](#open-axes)).
 
 ---
 
@@ -1125,7 +1126,14 @@ rule is what the soundness of lock-free reading rests on.
 
 The captured table includes private intermediate cells (§13.3) — the copy is
 mechanical, and they serve the author's own debug panels; presentation layers (log
-export, GUI listings) filter to the public contract by default. The snapshot
+export, GUI listings) filter to the public contract by default. **It also includes
+the root slots** (v0.7, made explicit by §14.4): slots are source cells of the
+table, not state stores, so they ride along — and this is load-bearing, not
+incidental: the §12.5 peek's else-snapshot fallback is what an idle live widget
+displays, and read-only mirrors of claimed slots (the axis sliders under joystick
+claim) show the applied slot value from the snapshot. Slot values in the log are
+derived data (recomputable from the trace), which is consistent — snapshots are
+derived wholesale. The snapshot
 deliberately does **not** carry the state stores (`x`, `m`, `z`): the state
 trajectory is *derived* data — recomputable from the trace header plus the batches
 (§12.3) by bit-identical replay — and per-boundary capture would systematically
@@ -1154,9 +1162,10 @@ component, fed by the parent's wire at every non-root level — and at the root
 there is no parent. No dedicated vocabulary survives (`add_input!` in the early
 sketches is dead). Slots are sources to the build-time scheduler, constants within
 a frame, and the *only* thing the periphery may write (the GUI reaches them
-through §12.5's resolution; control commands are not writes, §12.6); they are
-addressed by the same slash paths declarations use, which is also how devices,
-mappings and the trace name them.
+through §12.5's resolution; control commands are not writes, §12.6); devices,
+mappings, the trace and the GUI write path address them by **face name** (§13.6):
+structural slash paths never cross the periphery boundary — the periphery speaks
+the root contract's names only.
 
 **Slot exclusivity: one writer per slot at any time** (v0.6, from §14.4). A
 device claims its slots at attach; claiming an already-claimed slot is an
@@ -1168,11 +1177,13 @@ shadowed by a GUI mirror, where simultaneous live writing is a bug. Per-device
 cells, the CAS merge and the atomicswap drain all stay — they serve atomicity and
 coalescing, not arbitration.
 
-**Open (v0.6): slot initial values.** Input declarations are bare types (§13.2)
-and carry no defaults, but a slot unfed by any device must hold a defined value
-from the first frame (today's `U()` constructors provide these: `mixture = 0.5`).
-Candidate owners: a default on the export entry, the init service, or optional
-defaults in input declarations — to settle with the stopped-sim services (§16).
+**Slot initial values are owned by the init/trim services** (v0.7, resolved by
+§14.4). Input declarations are bare types (§13.2) and carry no defaults, but a
+slot unfed by any device must hold a defined value from the first frame (today's
+`U()` constructors provide these: `mixture = 0.5`). Export-entry defaults were
+rejected: the trim service writes slot values it *solved for* (throttle,
+elevator) — not declaration constants. `init!` establishes every slot and the
+trace header captures the result; the concrete service spelling remains with §16.
 
 **Staging: one atomic cell per attached device**, in attachment order fixed at build.
 Each cell has a single writer — its own device task — and holds that device's latest
@@ -1221,8 +1232,11 @@ extends §11.7's determinism end-to-end: replaying a recorded interactive sessio
 staging fed from the recording, no devices or mappings present — reproduces the
 trajectory bit-identically.
 
-**The trace header captures the full initial state** `(x, m, z)` at `init!` — the
-one full-state capture in a normal run, and the other half of what "given the
+**The trace header captures the full initial state** `(x, m, z)` **plus the
+initial root-slot values** at `init!` (v0.7 — an unfed `mixture = 0.5` never
+appears in any batch, so replay is broken without them; the init/trim services own
+slot initialization, §16, and the header capture extends naturally) — the one
+full-state capture in a normal run, and the other half of what "given the
 initial state and the trace, the log is recomputable" requires. Header plus batches
 are the *primary* record; everything else, the state trajectory included, is
 derived (§12.2).
@@ -1316,10 +1330,31 @@ re-couple devices for sub-perceptual benefit. While paused, staged edits display
 indefinitely and apply at the un-pause drain. Fan-out is consistent for free:
 widgets on ports resolving to the same slot peek the same pending value.
 
-**Active-widget contract:** a grabbed widget stages **every render pass**, not only
-on value change — widget activity is the user's claim to the slot. (Stage-on-change
-would let a streaming device reassert control while the user's finger holds the knob
-still; found in §14.3.)
+**Staging contract: widgets stage on interaction events only** (v0.7, superseding
+the active-widget stage-every-pass contract). Value widgets (sliders, drags) stage
+the new absolute level on edit; edge widgets (buttons) stage on activation, as a
+level computed from the peek — a flaps button peeks the current counter `k` and
+stages `k+1`. The levels doctrine makes this safe by construction: repeated staging
+of the same level within a drain window is idempotent (no repeat-increment hazard),
+and multi-click within one window counts correctly through the own-pending-first
+peek (`k` → stage `k+1`; second click peeks pending `k+1` → stages `k+2`). Held
+buttons do not re-stage — after the drain applies and the snapshot catches up,
+re-staging from the peek would auto-repeat at frame rate; the activation edge is
+the intent.
+
+The superseded contract's motivation died with slot exclusivity (§12.3): stage-
+every-pass existed to win every drain against a streaming device sharing the slot
+for the grab's duration (§14.3's drag phase) — but a slot the GUI can write is now
+by definition unclaimed, so once staged and drained a value simply *stays*; there
+is nothing to reassert against. Nor is it worth keeping as insurance: if an
+anomalous writer ever touched an unclaimed slot through a framework defect, the
+slot visibly fighting is a diagnosable anomaly — continuous re-staging would mask
+the invariant violation at render rate. Side benefit: staging traffic (and trace
+noise) drops from render-rate-while-grabbed to actual edits. **Claim-transition
+policy:** if a device claims a slot mid-interaction (attach during a drag — a
+deliberate act concurrent with a held grab, vanishingly rare), the widget flips
+read-only at the next render and the drain discards stale GUI entries to
+newly-claimed slots with a warning.
 
 ### 12.6 Control plane
 
@@ -1704,9 +1739,20 @@ slashes say "named tree", which is the true model).
 **`connections(::A)`** is an ordered collection of `"src/port" => "dst/port"`
 pairs, strictly child-port → child-port; §8's rules apply (one wire per input,
 deep paths through concretely-typed fields only, stopping at a generic child's
-faces). **`exports(::A)`** is the assembly's face declaration: face name =>
-internal endpoint path — or a tuple of paths for an input face fanning inward
-(`trn = ("systems/ldg/left/trn", …)`). Direction is derived from the endpoints
+faces). **`exports(::A)`** is the assembly's face declaration, spelled exactly
+like `connections` — an ordered collection of pairs, face name => internal
+endpoint path — or a tuple of paths for an input face fanning inward
+(`"trn" => ("systems/ldg/left/trn", …)`). **Face names are arbitrary strings with
+two build-checked invariants: no `/` (reserved for structural paths) and
+uniqueness within the assembly's face set** — every other naming choice
+(separators, grouping prefixes like `"pilot.throttle_axis"`) is author
+convention, not framework law; the `faces` helper's defaults (§13.8) document the
+house style without legislating it. The two-notation rule this rests on: **slash
+is structure** (endpoint paths walking real children and ports; snapshot and log
+addressing), **face names are opaque contract tokens** — and the periphery
+(devices, mappings, trace, GUI write path) speaks face names only (§12.3).
+Pairs-of-strings rather than a NamedTuple also removes the `var"..."` noise that
+non-identifier names would force. Direction is derived from the endpoints
 (wired-to-inputs = input face, wired-from-one-output = output face; mixed or
 multi-source entries are build errors). Face *types and tiers* are derived from
 the internal endpoints — §13.2's blessed derivation-from-declarations — and the
@@ -1746,25 +1792,46 @@ i.e. a fact about the assembly type.
 
 `exports` is an ordinary function evaluated at build against the concrete
 instance, so it may *compute* entries from child contracts — derivation from
-declarations, §13.2-blessed. The framework helper:
+declarations, §13.2-blessed. The framework helper, sketched:
 
 ```julia
-exports(w::World) = (;
-    faces(w, "aircraft"; except = ("trn",))...,   # bulk re-export, prefixed
-    view_pose = "aircraft/pose",                  # explicit entries coexist
+function faces(asm, child_path::AbstractString;
+               prefix::AbstractString = child_path,   # "" → no prefixing
+               sep::AbstractString = ".",
+               except::Tuple = (), only::Tuple = ())  # mutually exclusive
+
+    child = resolve(asm, child_path)      # getfield walk along "/" segments
+    names = input_faces(child)            # keys(inputs(c)) for a leaf,
+                                          # input entries of exports(c) for an assembly
+    unknown = setdiff((except..., only...), names)
+    isempty(unknown) || declaration_error(child_path, unknown, names)  # list in hand
+    wanted = isempty(only) ? setdiff(names, except) : only
+    label(n) = isempty(prefix) ? n : string(prefix, sep, n)
+    return Tuple(label(n) => string(child_path, "/", n) for n in wanted)
+end
+
+exports(w::World) = (
+    faces(w, "aircraft"; except = ("atm", "trn"))...,   # "aircraft.pilot.throttle_axis"
+    faces(w, "atmosphere"; prefix = "env", sep = "_")..., # "env_wind_N"
+    "view_pose" => "aircraft/pose",                      # explicit entries mix freely
 )
 ```
 
-`faces(asm, child_path; prefix = child_path, except = (), only = ())` expands the
-named child's **input** faces into prefixed export entries (the child is named by
-path, never passed as an instance — §13.6's `===` problem again). Every error
-stays first-class: an `except` face the assembly then fails to wire is an ordinary
+The child is named by path, never passed as an instance (§13.6's `===` problem);
+a face name containing dots is a legal final path segment on the right side
+precisely because slash is the only structural separator. `resolve` and
+`input_faces` are build-pipeline primitives needed anyway — `faces` is a thin
+composition, which is what keeps it sugar rather than machinery; no `rename` hook
+because `exports` is ordinary code (map over the pairs). Every error stays
+first-class: an `except` face the assembly then fails to wire is an ordinary
 unconnected input; a face both wired and re-exported is a two-producers error;
 `except`/`only` naming a nonexistent face errors with the child's face list in
-hand. The effective export list is plain printable data — the inspectable contract
-of this instantiation. What computation does *not* do is auto-bubble: the author
-wrote down "every input face of this child that I don't feed, I expose under this
-prefix" — explicit at the type level, evaluated at build.
+hand; a `prefix = ""` collision is caught by the build's uniqueness check like any
+hand-written duplicate. The effective export list is plain printable data — the
+inspectable contract of this instantiation. What computation does *not* do is
+auto-bubble: the author wrote down "every input face of this child that I don't
+feed, I expose under this prefix" — explicit at the type level, evaluated at
+build.
 
 **Generic holding = imposed contract.** A parent holding a child generically
 constrains it exactly through the faces its wires and exports reference: build a
@@ -1892,11 +1959,13 @@ concrete interleaving did:
   panel reuse (§12.5) — prompted by asking how the filter's panel survives the
   filter becoming an embedded component with `u_cmd` driven by another component
   (the `Cessna172Xv0` → `Xv1` throttle situation).
-- **v0.6 note**: under slot exclusivity (§12.3) the contested-`u_cmd` scenario
-  itself becomes an attach-time error — the drag-against-the-stream phase can no
-  longer arise. The test's verdicts on cell *shapes* (atomicity, coalescing,
-  pause behavior, the peek rule) stand; only the conflict-precedence findings are
-  superseded.
+- **v0.6/v0.7 note**: under slot exclusivity (§12.3) the contested-`u_cmd`
+  scenario itself becomes an attach-time error — the drag-against-the-stream
+  phase can no longer arise. The test's verdicts on cell *shapes* (atomicity,
+  coalescing, pause behavior, the peek rule) stand; superseded are the
+  conflict-precedence findings and the active-widget stage-every-pass contract
+  (§12.5) — both correct patches for the contested-slot world this test
+  examined, retired with that world.
 
 ### 14.4 The interactive C172X demo: the periphery under load (v0.6)
 
@@ -1973,10 +2042,75 @@ forced by this cast):
   and `faces` (§13.8); the struct reappears legitimately downstream, assembled
   in-model by a single producer.
 
-Open items feeding the next pass: the capture-on-engage home; root-slot initial
-values (§12.3); the `q_sf` home (mapping entry vs. avionics-internal). The demo
-walkthroughs (script line by line; one frame each for stick motion, GUI edits,
-mode engage, pause, shutdown, post-run extraction) follow in the next revision.
+**Surface walkthrough (v0.7).** The demo line by line, on settled machinery:
+
+- `SimpleWorld(Cessna172Xv1(), SimpleAtmosphere(), HorizontalTerrain(h_LOWS15))` —
+  pure value construction; no `Model` wrapper (its jobs move into the build).
+  `HorizontalTerrain`'s elevation is a plain field (parameter), its surface type
+  an input port: the parameter/port split FlightCore kept implicit in
+  `U()`-vs-field convention is now the declaration itself. The aircraft's
+  `exports` block carries the `pilot.*` face group in one place, deep routes
+  spanning avionics *and* systems — today's mapping writes flaps/brakes directly
+  into `act`, bypassing avionics; that bypass becomes a declared route.
+- `Simulation(world; algorithm = Heun(), h = 0.02, t_end = 1000)` — the entire
+  build pipeline runs here: kind resolution, path validation, face derivation
+  (computed exports expanded, printable), two-producers/unconnected checks,
+  topological sort, probe passes, rate compilation, flat layout, slot table.
+- `init!(sim, KinInit(...) | TrimParameters(...))` — stopped-sim services (§16);
+  what is settled: they write `(x, m, z)`, **establish every root slot's initial
+  value**, and capture the trace header. Slot initialization decisively belongs
+  here, not in declarations: the trim service writes slot values it *solved for*
+  (throttle, elevator) — not declaration constants.
+- `attach!(sim, XPlane12Control(...), binding)` — output device: claims nothing,
+  consumes snapshots via §12.8, pure `map_output` on its task. Its binding names
+  snapshot paths, **validated at attach against the actual contract** — an
+  aircraft substitution that breaks the binding fails at attach, not with silent
+  garbage UDP (a new, cheap §12.2 obligation).
+- `attach!(sim, joystick, T16000MBinding())` — the binding is a declarative
+  table: axis/button → face name + conditioning params
+  (`stick_y = (face = "aircraft.pilot.elevator_axis", expo = 1.0, deadzone =
+  0.05)`, `button_3 = (face = "aircraft.pilot.flaps_up_count", as = :count)`).
+  At attach: faces resolved against the root contract (typo → did-you-mean),
+  claim set registered (second joystick on the same faces errors here). The
+  Gladiator variant is the same table with different keys, zero shaping code —
+  the duplication smell structurally gone.
+- `run!(sim; gui = true, pace = 1)` — derived liveness with zero configuration:
+  axis mirrors read-only (claimed, with provenance), mode/setpoint/mixture/
+  payload/environment widgets live, actuator sliders read-only (component-fed).
+  Unplug the joystick → claims release → mirrors go live at the last-held slot
+  values. Post-run: `TimeSeries` over retained snapshots; the trace can re-drive
+  a fresh `Simulation(world)` bit-identically — which is also the state-trajectory
+  inspector (row 38 paying its way).
+
+**Frame anatomies (v0.7).** One frame each, all on settled machinery — no
+decision broke:
+
+- *Stick motion*: device task polls, conditioning helper applies binding params,
+  complete batch overwrites the cell (inter-frame polls coalesce, ZOH-correct);
+  drain applies + traces; avionics tick reads the slot fresh; worst-case
+  stick-to-physics latency = poll interval + frame, now by stated semantics.
+- *Flaps click*: button peeks counter `k` (own-pending-else-snapshot), stages
+  level `k+1` on activation; drain applies; avionics compares slot counter to its
+  `z` counter, moves the detent, stores. Multi-click in one window counts via
+  own-pending-first peek; repeated staging idempotent (§12.5).
+- *Mode engage*: the GUI stages `mode_req` (plus optionally peek-captured
+  setpoint slots); **bumpless-engage semantics live in the FCS already** — the
+  current `ControlLaws` latches each controller's reference from the present
+  command vector on mode transitions, so the fork dissolved: semantic capture is
+  aircraft design (status quo, uniform across writers — a script engages sanely
+  staging one value); the GUI peek-batch survives as display/slot-sync sugar
+  only. Residual check for migration: order-sensitivity of latch vs. sync-write
+  on the same boundary (believed none — both derive from the same measurements).
+- *Wind slider*: sparse CAS-merge, §14.3's uncontested-`τ` case, live in the
+  real cast.
+- *Pause/un-pause*: control plane; GUI edits hold in its cell (peek displays),
+  joystick cell coalesces bounded; un-pause drain applies both (disjoint slots —
+  exclusivity makes the contested question unaskable), pacer re-anchors.
+- *Window close*: §12.9 verbatim — complete boundary, final snapshot, sticky
+  stopped, wake waits, unblock hooks, named-timeout joins.
+
+Remaining open (feeding §16): the `q_sf` home (thin mapping entry vs.
+avionics-internal derivation — aircraft design, not framework design).
 
 ---
 
@@ -2009,7 +2143,7 @@ mode engage, pause, shutdown, post-run extraction) follow in the next revision.
 | 23 | Snapshot publication: build private → release-store `@atomic latest`; readers acquire-load; wait-free both ways; nothing reachable from a published snapshot ever written again; allocate per boundary; log = retained snapshot references | Preallocated snapshot rings (reintroduce the reader-liveness reclamation proof the GC already provides); `deepcopy` `SavingCallback` logging (the capture *is* the publication mechanism); mid-step publication (§11.3) |
 | 24 | Inbound staging: one atomic batch cell per device; complete writers overwrite, sparse writers CAS-merge own cell (retry bounded by drain interception); drain by `atomicswap` in attachment order (conflict precedence a documented policy); levels-never-deltas doctrine; mappings pure, on the device task; device-tagged replayable input trace | Per-slot cells (conflicts by hardware store order — run-to-run behavioral variance; cross-device peek; no trace provenance; atomic-width fallback on wide slots); shared batch stack (temporal conflict order; unbounded pending under pause, taxing peeks); ordered write queue (preserves intra-frame order nothing downstream can observe) |
 | 25 | One device kind: uniform handle with read (snapshot / next-boundary) + stage + control capabilities; input-only/output-only as degenerate uses; bidirectional peer = one device; GUI an ordinary device (main-thread affinity and RMW widgets its only peculiarities) | Input/output/GUI taxonomy (lock choreography artifact — blocking rules of `get_data!`/`extract_output` under `io_lock`; forces bidirectional peers into two devices sharing a socket and shutdown); special-cased GUI interface (`sync = 0` + render-under-lock ceremony, obsolete without the lock) |
-| 26 | GUI write path: per-component panels name own ports; build-time resolution to root input slots; live vs first-class read-only rendering (with wiring provenance); own-pending-else-snapshot peek; active widgets stage every render pass | Slot-naming panels (kills reuse across configurations); always-hot widgets (FlightCore's dead slider — visually live, silently overwritten); cross-device peek (re-couples devices for sub-perceptual benefit); stage-on-change only (streaming device reasserts control mid-grab) |
+| 26 | GUI write path: per-component panels name own ports; build-time resolution to root input slots; live vs first-class read-only rendering (with wiring provenance); own-pending-else-snapshot peek; active widgets stage every render pass. **Amended in v0.7 → row 47**: stage-every-pass superseded by stage-on-interaction (its motivating contest died with slot exclusivity) | Slot-naming panels (kills reuse across configurations); always-hot widgets (FlightCore's dead slider — visually live, silently overwritten); cross-device peek (re-couples devices for sub-perceptual benefit); stage-on-change only (streaming device reasserts control mid-grab) |
 | 27 | Pacer coarse phase = task-yielding `sleep` (`margin` covers its overshoot); with devices attached every frame yields at least once (explicit `yield()` in unpaced/pure-spin frames); spin never yields; thread budget = sizing rule + startup warning; per-device liveness heartbeat in framework status | `Libc.systemsleep` (second knob inside `margin`; correctness re-hinges on a hard thread requirement; starves co-resident tasks silently — worse failure mode than diagnosed overruns); hard `nthreads` error (the freeze it prevented cannot reproduce: no framework thread monopolist, no stall coupling, GUI on the calling task); yielding spin (µs precision traded for scheduler noise) |
 | 28 | Next-snapshot wait: monotonic frame counter + `Threads.Condition`, per-waiter predicate (`counter > last_seen && running`); newest-wins, no queues — outbound coalescing mirrors inbound ZOH; shutdown-interruptible via the predicate | `Event`-based per-frame gate (recurring signal on a latch — the reset has no correct placement under asynchronous waiters; cf. FlightCore's `io_start` reset comments); per-consumer every-boundary queues (unbounded under slow consumers; complete history is the log); polling `latest` on a timer (wasted wakeups, aliasing against the boundary rate) |
 | 29 | Input trace on by default, cleared at `init!`, plain kill switch | Opt-in (the trace is primary data — the log is recomputable from it, never the reverse; the session you need replayed is the one you didn't plan to record); tying trace to the log switch (conflates primary and derived recording); rolling window/sampling (complexity without a customer) |
@@ -2029,6 +2163,8 @@ mode engage, pause, shutdown, post-run extraction) follow in the next revision.
 | 43 | Computed exports as ordinary code + `faces(asm, path; prefix, except, only)`; root slots = the root's exported input faces; generic holding = imposed contract checked per instantiation | Auto-bubbling (forgotten wire silently promoted to a live root slot — §13.4 walkthrough 2 inverted); wildcard-export vocabulary (ordinary code suffices); `add_input!`-style root-slot declarations (second vocabulary for what exports already are) |
 | 44 | Slot exclusivity: one writer per root slot at a time; device claims at attach, conflict = attach-time error, release on detach; per-device cells/CAS/drain retained for atomicity and coalescing | Cross-device attachment-order precedence as conflict *policy* (resolves races the §14.4 cast shows nobody wants — every dual writer is a stream shadowed by a mirror); FlightCore-style concurrent multi-device writing of one input (a bug surface, not a feature) |
 | 45 | GUI liveness fully derived (transitive root-slot resolution ∧ slot unclaimed); faces carry writer-independent post-conditioning semantics (GUI-parity test); mappings = declarative binding data with per-axis conditioning params, on the device task; edge logic = staged counters + model-state accumulators; unexported ports unpokeable | Per-port "GUI-controlled" markings (the export chain is the marking, owned by the right author); nominally-connected + GUI override channel (second write path; breaks frame purity and trace; done right it collapses into root slots); conditioning in-model (fails GUI-parity — sliders and scripts would be deadzoned); shaping as per-device mapping code (aircraft semantics duplicated per device — today's demonstrated smell); joystick-as-component and root-level `PilotInterface` (§14.4 — replay same-build, single audit point, no natural home in `World`) |
+| 46 | Face names = arbitrary strings; build invariants only no-`/` + per-assembly uniqueness; slash = structure, face names = opaque contract tokens, periphery speaks face names only; `exports` returns pairs like `connections`; `faces(asm, path; prefix, sep, except, only)` with dot-prefix *defaults* (convention, not law) | Mandated dot convention (a naming law where two invariants suffice); NamedTuple-returning `exports` (`var"..."` noise for non-identifier names; asymmetric with `connections`); slash-composed prefixes (face names would collide with structural path notation); `rename` hooks in `faces` (`exports` is ordinary code — map over the pairs) |
+| 47 | Widgets stage on interaction events only (value widgets on edit, edge widgets on activation with peek-computed counter levels); levels × own-pending-first peek give idempotent repeat and correct multi-click; drain discards stale GUI entries to newly-claimed slots (warning); snapshot includes root slots (peek fallback + read-only mirrors); trace header extends to initial slot values; engage semantics stay in the FCS (the existing `ControlLaws` transition latch — uniform across writers), GUI peek-batch demoted to display-sync sugar | Stage-every-pass (motivating contest died with exclusivity; as insurance it masks invariant violations at render rate — anti-diagnostic; render-rate trace noise); held-button re-staging (auto-repeat at frame rate once the snapshot catches up); capture-on-engage as a GUI/framework obligation (already aircraft design, shipped in `ControlLaws`); slot-initial-values as export-entry defaults (trim writes slot values it *solved for* — services own initialization) |
 
 ---
 
@@ -2040,16 +2176,14 @@ To be settled in subsequent sessions:
   orchestration, cycle diagnostics, §13.4's walkthroughs as acceptance tests;
   wiring diagnostics name endpoint paths — the destination path uniquely
   identifies a wire, and a source-location-capturing `@wire` remains addable
-  sugar); initialization, trim and linearization as first-class stopped-sim
-  services (§12.10), deleting the hand-written state-space mapping layer (§9.1)
-  and replacing the per-aircraft NLopt trim plumbing; root-slot initial values
-  (§12.3 — settle with the services). Residual small forks noted in place:
-  symmetric `T` on input declarations; `Private(T)` fallback; capture-on-engage
-  home and `q_sf` home (§14.4); sketch refresh (sketches predate v0.5 and the
-  v0.6 assembly layer).
-- **Case study completion.** §14.4's walkthroughs: the demo script line by line
-  in new-framework terms, and one frame anatomy each for stick motion, GUI
-  edits, mode engage, pause/un-pause, shutdown and post-run extraction.
+  sugar; `resolve`/`input_faces` primitives per §13.8); initialization, trim and
+  linearization as first-class stopped-sim services (§12.10), deleting the
+  hand-written state-space mapping layer (§9.1) and replacing the per-aircraft
+  NLopt trim plumbing; the services own root-slot initialization and the trace
+  header's slot capture (§12.3, §14.4). Residual small forks noted in place:
+  symmetric `T` on input declarations; `Private(T)` fallback; `q_sf` home
+  (§14.4 — aircraft design); sketch refresh (sketches predate v0.5 and the
+  v0.6–v0.7 assembly/periphery layers).
 - **Migration.** Outline for FlightPhysics/FlightApps (the Tier-1 parametrization
   pass, the `KinData`-style output splits, the contributor survey feeding §6's
   aggregation chains — mechanical to extract from today's trait implementations);
