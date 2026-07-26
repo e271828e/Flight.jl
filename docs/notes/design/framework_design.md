@@ -1,15 +1,17 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** eighth checkpoint (v0.8). Axes 1–6 settled; axis 7 parts 1–3 —
+**Status:** ninth checkpoint (v0.9). Axes 1–6 settled; axis 7 parts 1–3 —
 the component declaration layer (§13.1–§13.4), the assembly declaration layer
 (§13.5–§13.8) and the build pipeline (§14: three strata, standalone `Build`,
 probe scope and input synthesis, per-activity activations, always-on exact-match
 conformance) — settled, with the two residual declaration forks closed (symmetric
 `T` rejected as impossible-by-wiring; probe-observed private cells replaced by
-the strict `locals` declaration, amending §13.2–§13.4). Error-reporting policy,
-stopped-sim service spellings and the migration outline pending (see [Open
-axes](#open-axes)). Sections renumbered: case studies §15, decision log §16,
-open axes §17.
+the strict `locals` declaration, amending §13.2–§13.4). The §3 kind split
+stress-tested and upheld against the integrate-and-dump counterexample (strapdown
+IMU), with the integrate-and-difference idiom and its exactness condition
+recorded (§15.5, row 56). Error-reporting policy, stopped-sim service spellings
+and the migration outline pending (see [Open axes](#open-axes)). Sections
+renumbered: case studies §15, decision log §16, open axes §17.
 
 ---
 
@@ -138,7 +140,9 @@ between ticks); no component ever reads another's state.
 
 Pure composition: submodels + connections + exported ports. **No dynamics of its own.**
 Hybridness emerges at the assembly level (an aircraft = continuous vehicle parts +
-discrete avionics parts). Assemblies are flattened away for scheduling but retained as
+discrete avionics parts). The two-leaf split held under its strongest
+counterexample — a strapdown IMU's periodically-reset integrators land on two
+leaves with less code than the fused original (§15.5, row 56). Assemblies are flattened away for scheduling but retained as
 the navigation/introspection hierarchy (GUI, logging, paths) and as declaration-level
 rate scopes (§11.5).
 
@@ -2374,6 +2378,172 @@ decision broke:
 Remaining open (feeding §17): the `q_sf` home (thin mapping entry vs.
 avionics-internal derivation — aircraft design, not framework design).
 
+### 15.5 The strapdown IMU: integrate-and-dump across the tier boundary (v0.9)
+
+The strongest challenge yet mounted against the §3 kind split, and its resolution.
+The general question first: why two leaf kinds at all — why not one all-in-one
+primitive carrying `x`, `m` *and* `z`, with `f`, events *and* `h`, purely
+continuous or discrete components falling out by whichever facets an author
+declares? (Kind is already read off declaration shape, §13.5 — the question is
+whether the two declaration sets should be exclusive.)
+
+**Why the merge buys nothing.** The split is between *time bases*, not state
+kinds — the continuous primitive is already hybrid (`m`, guards, handlers, §3.1);
+what separates the kinds is sweep-driven versus tick-driven execution. And the
+settled rules force a merged component's two halves to communicate exactly as two
+siblings do: one home per datum (§5.2), `f` has no `z` view, `h` has no `x` view,
+and `g_s1(comp, z)` is `z`'s sole reader — the very fact that makes ticks→events
+structurally impossible and terminates the boundary iteration (§11.6). Cross-tier
+influence inside the merged kind still routes through published table cells, so
+the all-in-one component is an assembly of two primitives in a trench coat. Its
+costs, meanwhile, are real: a stage cannot run both every sweep *and* only at
+ticks, so the merged kind needs four tier-disambiguated stage functions; tier
+stops being a component property readable off one `outputs` signature (§13.2) and
+becomes per-port vocabulary; every kind-implied obligation (rate required,
+`K`-on-continuous error, `comp.Δt` access, `Dual` activation membership) becomes a
+facet-conditional web; and the sampling seam — ZOH and the `z⁻¹` delay, the most
+bug-prone boundary in a flight-control stack — disappears into a monolith where
+the split keeps it a visible wire. (Simulink and FMI allow the fused block;
+sample-time propagation confusion is the documented price.)
+
+**The counterexample** (`docs/notes/design/navsensors.jl`, a pre-design sketch): a
+strapdown IMU integrates raw increments continuously — `ẋ.ϑ_c = ω_ic_c`,
+`ẋ.υ_c = f_c_c`, the coning attitude increment `q_c_cc` and the sculling integral
+`ẋ.υ_c_sc = q_c_cc(f_c_c)` — and `f_disc!`, at the IMU's own `Δt`, reads the
+integrals, publishes the sample, and **zeroes them**. The reset is periodic, not
+condition-triggered, so events are the wrong tier; and it is a discrete-tier write
+into continuous state, exactly the operation this design forbids (`h` writes only
+its own `z`; handlers are the sole `x`-resetters, and they are guard-driven).
+Integrate-and-dump falls squarely into the crack between the kinds:
+tightly-coupled continuous and periodic dynamics in one physical device.
+
+**The idiom: integrate-and-difference.** The reset is eliminable by algebra, not
+approximation. Every interval-relative integral becomes a *cumulative* one; the
+sampler differences against the previous sample, held in its `z` — the textbook
+sampled-data latch, and the only new store (the memory the reset used to erase):
+
+- *Raw increments* (linear): `Θ(t) = ∫ω_ic_c dt`, `Υ(t) = ∫f_c_c dt`, never
+  reset; `ϑ_c = Θ(t_k) − Θ(t_{k-1})`, `υ_c = Υ(t_k) − Υ(t_{k-1})`.
+- *Coning*: cumulative `q(t) = q_{c₀→c(t)}` with `q̇ = ½ q ⊗ ω_ic_c` from
+  identity at `t₀`; the interval rotation is `Δq = q(t_{k-1})' ∘ q(t_k)`, exact by
+  right-invariance (`Δq` satisfies the same ODE with the same body rate).
+- *Sculling*: `∫ R_c^{c_{k-1}} f^c dt = q(t_{k-1})'( V(t_k) − V(t_{k-1}) )` with
+  `V̇ = q(t)(f_c_c)`. The factor leaving the integral is the **anchor change
+  between two inertially-fixed frames** — constant because `t_{k-1}` is in the
+  past and latched. The physical intra-interval rotation, the thing sculling
+  corrections are *about*, stays inside the integrand via `q(t)`: every RHS
+  evaluation, RK stages included, applies the current cumulative attitude,
+  exactly as the sketch applies the current `q_c_cc`.
+
+**Exactness condition, stated once**: interval-relative integrals factor into
+cumulative ones whenever the interval-dependence enters through a *left action by
+the interval-start value of a cumulatively-integrable quantity* — the identity
+action for linear integrals, right-invariance for attitude increments, constancy
+of the anchor change for sculling. Two provisos: the cumulative attitude must be
+integrated with the **inertial** rate, so the anchor frame is inertially fixed and
+the pulled factor rigorously constant (anchoring to a rotating reference breaks
+the factorization); and the equivalence survives discretization — quaternion
+kinematics is linear in `q`, every RK stage composes on the right, and left
+multiplication by the constant anchor commutes through, so the formulations agree
+to machine precision, not merely in the continuous-time limit. Numerics of never
+resetting: `q` stays unit under `project` (better conditioned than the sketch's
+`normalization = false` + reset); `Θ`/`Υ`/`V` grow linearly, so differencing
+loses relative precision — after an hour of flight, order `1e-11 m/s` per sample
+against `1e4 m/s` totals, six-plus orders below any error model worth simulating.
+
+```julia
+struct IMUIntegrals <: AbstractComponent
+    t_bc::FrameTransform
+end
+init_x(::IMUIntegrals) = (Θ = zeros(SVector{3}), q = RQuat(),
+                          Υ = zeros(SVector{3}), V = zeros(SVector{3}))
+inputs(::IMUIntegrals) = (q_eb = RQuat, r_eb_e = SVector{3,Float64},
+                          ω_eb_b = SVector{3,Float64}, a_ib_b = SVector{3,Float64},
+                          α_ib_b = SVector{3,Float64})
+outputs(::IMUIntegrals, ::Type{T}) where {T<:Real} =
+    (Θ = SVector{3,T}, q = RQuat{T}, Υ = SVector{3,T}, V = SVector{3,T},  # auto-published state
+     ω_ic_c = SVector{3,T}, f_c_c = SVector{3,T})                          # instantaneous truth
+
+# g_s2: the sketch's f_ode! math verbatim (lever arm, gravity, Earth rate) → (; ω_ic_c, f_c_c)
+f(imu::IMUIntegrals, x, m, y, u, t) =
+    (Θ = y.ω_ic_c, q = Attitude.dt(x.q, y.ω_ic_c), Υ = y.f_c_c, V = x.q(y.f_c_c))
+project(imu::IMUIntegrals, x) = (; x..., q = normalize(x.q))
+
+struct IMUSampler <: AbstractComponent end
+init_z(::IMUSampler) = (Θ = zeros(SVector{3}), q = RQuat(),
+                        Υ = zeros(SVector{3}), V = zeros(SVector{3}))
+inputs(::IMUSampler)  = (Θ = SVector{3,Float64}, q = RQuat,
+                         Υ = SVector{3,Float64}, V = SVector{3,Float64})
+outputs(::IMUSampler) = (sample = IMUSample,)          # plain signature: discrete tier
+
+function g_s2(s::IMUSampler, z, u, y_s1)
+    ϑ_c = u.Θ - z.Θ;  υ_c = u.Υ - z.Υ
+    Δq  = z.q' ∘ u.q                                   # interval rotation, exact
+    υ_c_sc = z.q'(u.V - z.V)                           # constant anchor change pulled out
+    (; sample = IMUSample(; ω̄_ic_c = ϑ_c / s.Δt, f̄_c_c = υ_c / s.Δt,
+                            ϑ_c, ϑ_c_cc = RVec(Δq)[:], υ_c, υ_c_sc))
+end
+h(s::IMUSampler, z, y, u, t) = (Θ = u.Θ, q = u.q, Υ = u.Υ, V = u.V)   # the latch
+```
+
+The `IMU` assembly wires the four integral ports across, holds the error model as
+a discrete sibling consuming `sample`, and leaves the sampler at `K = 1` in its
+own scope — the parent sets the IMU's rate (§13.7). `s.Δt` in the stage is the
+§11.5 handle, put there for exactly this kind of discretized law. (Initialization
+consistency — sampler `z` must equal the initial integrals or the first sample is
+wrong — holds by default at zeros/identity and becomes a stopped-sim-services
+obligation under trim, §14.6.)
+
+**Why `u.V` is fresh — the line that would silently zero.** The sculling line is
+correct only because a due tick samples the *completed* boundary: if `u.V` still
+held the previous boundary's decode it would equal `z.V` exactly (that is the
+value `h` latched), and sculling would vanish without an error anywhere. The
+guarantee is the §11.6 macro-sequence, not a scheduling accident: integrate →
+project → sweep, with the due sampler's stages gated *into* that sweep (§11.5) and
+the integrals arriving at stage-1 position (auto-published state, §5.2) — before
+any `g_s2` runs, regardless of topological placement. The rest of the timeline
+closes consistently: the sampler's `g_s1` decodes `z` (the `t_{k-1}` latch)
+*before* `h` runs — the `z⁻¹` semantics — and after event quiescence `h` latches
+the `t_k` values for the next tick; same-boundary events re-run the gated stages
+in their re-sweeps, so `h` and external readers see the settled boundary.
+
+**Author-knowledge note** (user observation, recorded as a documentation
+obligation): the clean implementation leans on the author *knowing* that "sampling
+at `t_k`" means post-integration, post-projection, stage-1-fresh state. That
+knowledge must be part of the framework's taught contract — §11.5/§11.6 semantics
+stated in component-author documentation with this IMU as the worked example — not
+internal lore. The failure mode of not knowing it is instructive: an author who
+distrusts the sweep order adds a defensive one-tick delay or re-derives the
+integrals in the sampler, silently degrading the model.
+
+**When the coupling is genuinely two-way: the latch-back wire.** The IMU's
+coupling is one-directional (integrals → sampler). If the flow itself needed the
+interval-relative value — integrator saturation within the sampling interval,
+say — the latch becomes a wire back: the sampler publishes the sample-instant
+values from its *feedthrough* stage (`g_s2` reads `u`, so the latch port carries
+the current tick's values, ZOH until the next; a `g_s1`-published latch would be
+one period stale), and the continuous `f` computes `x − u.latch`. Both cross-wires
+consume the other side's ports and the schedule stays acyclic (integrals stage 1 →
+sampler `g_s2`; sampler `g_s2` → the integrals' `f`-edge, §5.3). The "reset"
+becomes a visible tier-crossing feedback loop — which is what it always was,
+physically.
+
+**Verdict.** The strongest counterexample landed on the two-kind taxonomy with
+*less* code than the fused original — same thirteen integral scalars, same math,
+minus the reset block — and three structural gains. The sampling seam became a
+wire. The sketch's incidental violations became visible structure: the
+`CircularBuffer` mutated inside the component struct (constants) moves to the
+consumer's `z` or falls out of the log; the parent-called `f_disc!(errors)`
+becomes a discrete sibling, making the truth/corrupted sample pair separately
+loggable. And linearization got sane: under a `Dual` activation the discrete tier
+is held (§13.2), and "integrators that never reset" *is* the cumulative
+formulation — the framework's rules pushed the model into the only form its own
+linearization semantics could coherently handle. Residual escape hatch, recorded
+unbuilt: if interval-relative dynamics ever neither factor algebraically nor
+tolerate the latch-back wire, the guarded addition is a **tick-triggered handler**
+on continuous components (periodic events). Nothing surveyed needs it, and it
+would be the camel's nose for the merged kind.
+
 ---
 
 ## 16. Decision log (condensed)
@@ -2435,6 +2605,7 @@ avionics-internal derivation — aircraft design, not framework design).
 | 53 | Always-on conformance = one baked expected-`NamedTuple` type test at the table-write point, exact match, no convert-on-write; folds away when inferrable; uniform across `f` (state-field completeness), guards (`Bool`), `h`, handlers (partial-`m` subset predicate); failure = path + stage + field diff + `t`, reproducible by trace replay | Field-assignment `convert` semantics (`Float64 → Dual` silently zeroes partials — wrong Jacobian, no error; `Int` sloppiness passing at nominal but detonating under `Dual` makes "it runs" activity-dependent); per-field checks (one whole-type test suffices and folds); branch identification in the error (values carry no provenance — the diff + replay suffice) |
 | 54 | Symmetric `T` on `inputs` rejected as impossible-by-construction: an input's activation-time type depends on the producer's tier through the wiring (continuous → `Dual`, gated discrete → held `Float64`; consumers promote); producers determine activation types, consumers accept — consumer obligation is genericity, checked by the `Dual` probe | `inputs(::C, ::Type{T})` (forces the consumer to declare its producer's tier; breaks on discrete-for-continuous substitution behind the same face; row 33's exact-`Float64`-face check was already the only coherent consumer statement) |
 | 55 | Strict `locals(::C, ::Type{T})` declaration (discrete: plain `locals(::C)`): every non-`outputs` return field declared; empty framework default; no auto-publication; component-scoped cross-stage cells ≠ workspace; schema authority total — declared eltype is the participation statement under `Dual` (supersedes row 34's observation exception; adds §13.4 walkthrough 5) | `Private(T)` wrapper inside `outputs` (breaks "declared = public"; the layer's first wrapper type); opt-in `locals` + `Float64`-under-`Dual` diagnostic (legislates an ambiguity strictness dissolves); observation-authority status quo (pinned intermediates drop partials that flow out through `f` in conformant types — blast radius never was local for values; return typos silently define new cells) |
+| 56 | Two-kind taxonomy upheld under the integrate-and-dump challenge (§15.5): the kinds are time bases (sweep-driven vs. tick-driven), and cross-tier coupling always routes through table cells; idiom = integrate-and-difference — cumulative integrals in `x`, previous-sample latch in the sampler's `z`; exact whenever interval-dependence is a left action by the interval-start value of a cumulatively-integrable quantity (inertial-rate anchoring required; RK-exact by linearity of the kinematics); latch-back wire (feedthrough-stage ZOH latch) for interval-relative flow terms; tick-triggered continuous handlers = the recorded, unbuilt escape hatch; boundary-sampling semantics promoted to taught contract | All-in-one component kind (an assembly in a trench coat: the halves still communicate through cells — one home per datum, sole-reader `z`, no cross-tier state views — so zero expressiveness gained; costs stage doubling with tier-tagged names, per-port tier vocabulary, facet-conditional obligations; hides the sampling seam — Simulink/FMI's documented sample-time confusion); `z` view in `f` / discrete writes into `x` (un-samples the sampled-data semantics, breaks held-`z` linearization exactness, coupling invisible to table, trace and feedthrough graph); periodic reset via time-guard events (hand-rolls the tick scheduler, forfeits the harmonic grid and `comp.Δt`) |
 
 ---
 
