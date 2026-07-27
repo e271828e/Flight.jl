@@ -1,10 +1,10 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** fifteenth checkpoint (v0.15). Axes 1–6 settled; axis 7 (the
+**Status:** sixteenth checkpoint (v0.16). Axes 1–6 settled; axis 7 (the
 declaration layers, §13, and the build pipeline, §14) settled; error
 discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
-upheld (§17.5, row 56). New in v0.11–v0.15: **the stopped-sim init
-substrate and the complete trim service settled** (§16, rows 63–71) —
+upheld (§17.5, row 56). New in v0.11–v0.16: **the stopped-sim services
+axis (axis 8) settled and closed** (§16, rows 63–72) —
 conditions as path-addressed sparse
 overlays on the declared `init_*` defaults (slots by face,
 capture-for-warm-restart); `initialize`-as-schema rejected for the
@@ -27,13 +27,17 @@ exact AD Jacobians via the Dual activation; FlightCore's scalar-BOBYQA as
 the derivative-free degenerate case); the trim service (§16.8) — in-house
 LM behind a backend seam, per-invocation scratch stores with the
 one-writer commit invariant, the no-throw `TrimReport`, and the scoped,
-build-checked AD obligation; and mounting (§16.9) — `TrimProblem` as an
+build-checked AD obligation; mounting (§16.9) — `TrimProblem` as an
 implicitly specified condition, relocated whole by `at(prefix, problem)`,
 with the world-init wrapper dissolved into baselines, `design_world` rigs,
-and the one-problem-per-solve swarm doctrine. The linearization client,
-`capture` spelling and the migration outline pending (see
-[Open axes](#open-axes)). Sections renumbered: services §16, case studies
-§17, decision log §18, open axes §19.
+and the one-problem-per-solve swarm doctrine; and linearization + `capture`
+(§16.10) — surface selector lists with control-design labels replacing the
+hand-written `get_*_ss` shuttle layer, one exact seeded Dual pass on
+scratch, linearize-as-pure-query defaulting to the captured current state,
+`LinearizedSS` demoted to an ordinary component. Only the migration
+outline and the sketch refresh remain (see [Open axes](#open-axes)).
+Sections renumbered: services §16, case studies §17, decision log §18,
+open axes §19.
 
 ---
 
@@ -2120,8 +2124,8 @@ which adds the loop-level nonfinite-state check as its divergence sibling.
 
 ### 14.6 Stopped-sim services as Stratum-C clients
 
-Settled here because it grounds the strata; the condition substrate is now
-settled (§16), the client loops remain open (§19). The C172 trim problem (`c172.jl`: `TrimState`, `TrimParameters`,
+Settled here because it grounds the strata; the services axis is now
+settled in full (§16). The C172 trim problem (`c172.jl`: `TrimState`, `TrimParameters`,
 `θ_constraint`, the `ẋ`-reading cost) transfers near-verbatim:
 
 - **Trim** is a write-condition → sweep → read-cost loop on the *nominal*
@@ -2457,10 +2461,11 @@ commitments plus a library follow:
 
 §14.6 previewed the services — initialization, trim, linearization, capture —
 as Stratum-C clients. Everything they share reduces to one artifact: the
-**condition value**, the datum that says "set this build to this state." This
-section settles its representation, composition and application; the
-boundary-zero sequence, slot-initialization enforcement and the
-trim/linearization client loops remain open (§19).
+**condition value**, the datum that says "set this build to this state."
+§16.1–§16.4 settle its representation, composition and application;
+§16.5–§16.6 the boundary-zero sequence and slot totality; §16.7–§16.9 the
+trim service in full; §16.10 linearization and `capture`. The axis is
+closed.
 
 ### 16.1 Conditions are path-addressed overlays on the declared defaults
 
@@ -2902,6 +2907,58 @@ composition — concatenate decision NamedTuples under prefixed names, merge
 the scoped condition trees, stack the residuals. If joint trims become
 routine, a `product(p₁ => "lead", p₂ => "wing")` helper belongs in the
 §15.7 library; recorded, not built.
+
+### 16.10 Linearization: surface selectors, one seeded pass, a pure query (axis closed)
+
+**The surface declaration.** Today's per-aircraft `XStateSpace`/
+`UStateSpace`/`YStateSpace` structs plus the `get_*_ss`/`assign_*_ss!`
+shuttle methods (~150 lines of bookkeeping per variant) become three
+selector lists in the §16.7 vocabulary, extended with an optional
+component index so a vector leaf yields *named scalars* — the NamedTuple
+key is the label control design slices by:
+`x = (p = state("vehicle/dynamics", :ω_eb_b, 1), θ = state("vehicle/kinematics", :θ_nb), …)`,
+`u = (throttle_cmd = slot("throttle"), …)`,
+`y = (EAS = output("vehicle/airflow", :EAS), …)`. Validated at resolution
+against `init_x`/faces/`outputs` with did-you-mean errors, compiled to
+offsets once, relocatable whole via `at(prefix, surface)` — the shuttle
+layer's successor is the compiled writer/reader pair, and §9.1's promised
+`get_x_ss` deletion is discharged.
+
+**The evaluation.** Instantiate a per-invocation scratch store set
+(§16.8's mechanism verbatim), apply the operating-point condition, run
+**one** Dual evaluation with a seed direction per `x`- and `u`-surface
+entry (chunked internally). Value parts give `ẋ₀`, `y₀`; partials give
+`A`, `B`, `C`, `D` simultaneously, exact to machine precision — replacing
+four `FiniteDiff` jacobians, their step-size heuristics and ~4n perturbed
+evaluations. Unseeded states sit constant at the operating point; the
+discrete tier is frozen with zero partials — precisely "linearize with `z`
+held" (§13.2).
+
+**A pure query, and `capture` settled.** Linearization is the first
+service with no commit and no boundary zero: scratch buffers only, nothing
+becomes authoritative, and today's restore-the-trim dance (re-`assign!`
+after `FiniteDiff` dirtied the model) has no successor. Default operating
+point = the sim's current committed state via `capture(sim) → (condition,
+t)` — the full-store gather owed since §16.1, settled here: after a
+`trim!` commit, `linearize(sim, surface)` is about the trim point with
+nothing re-specified; an `about = <condition>` keyword linearizes anywhere
+else without touching the sim.
+
+**The returned object and `LinearizedSS`.** `linearize` returns labeled
+data — `(ẋ₀, x₀, u₀, y₀, A, B, C, D)` with the surface's label sets — on
+which `subsystem`/`delete_vars` survive as pure label-indexed matrix
+slicing (no model involvement); the `c172x_ctl` LQR pipeline consumes it
+with cosmetic changes. `LinearizedSS` the *component* survives separately
+as an ordinary continuous component in the migrated library (`init_x` =
+the state vector, labeled faces, the affine update in `g_s2`/`f`) — no
+privileges, schema like everyone else.
+
+**Recorded guidance.** Linearization surfaces should select
+minimal-coordinate mechanizations — perturbing Euler-angle states is
+meaningful where seeding quaternion components steps off the unit-norm
+manifold. This is why today's code linearizes the `{NED}` variant;
+`design_world(ac)` rigs it, promoting implicit practice to stated rule.
+The coordinate choice belongs to the surface author, not the framework.
 
 ---
 
@@ -3416,6 +3473,7 @@ would be the camel's nose for the merged kind.
 | 69 | Trim problem spelling: decisions/guess/bounds as same-shaped all-`Float64` NamedTuples (service packs/unpacks by field order); `TrimParameters` a plain user struct; assignment = the pure `trim_condition` fragment function; reads declared via `deriv`/`output` selectors compiled to a stack NamedTuple reader; user returns a residual *vector* (physically scaled NamedTuple) — trim = nonlinear least squares on `r(d)` with exact AD Jacobians (Dual activation seeded through the `T`-generic assignment math; §14.6's open option promoted to default), per-residual tolerances, unbalanced-equation failure reports, graceful non-squareness, `∂r/∂d` as free control-effectiveness data; analytic-elimination doctrine (`θ_constraint`, by-construction filter/actuator equilibria) preserved verbatim as user math; derivative-free scalar fallback = service squares the residuals (today's BOBYQA as degenerate case); recorded-unbuilt: closed-loop trim via `h(z) − z` scratch residuals, ground static equilibrium as another problem value | Framework decision-variable supertype (`AbstractTrimState`/`FieldVector` — vocabulary whose only job was vectorization); scalar cost as the primary formulation (flat `‖r‖²` valley for derivative-free search, absolute `stopval` brittleness, per-equation diagnostics discarded — FlightCore's rational choice only because Jacobians through mutating `f_ode!` were unreachable); `locals`-addressable readers (private intermediates; a cost needing one is an export signal) |
 | 70 | Trim service: in-house dense LM default behind a value-passed backend contract (`NLoptBackend` extension = squared residuals, today's algorithm one keyword away; core carries zero optimizer deps); box bounds by step projection with saturated-at-solution flagged in the report; per-invocation scratch store sets instantiated from activation layouts (layout reusable, buffers die with the call; Dual un-aliasability = defense in depth, not the mechanism) — authoritative stores have exactly one writer, the commit through boundary zero; no-throw structured `TrimReport` (non-convergence = expected envelope-sweep outcome; malformed problem = `BuildError` at setup); AD obligation scoped to continuous `g`/`f` + user assignment/residual math (discrete tier frozen-exact), identical to linearization's activation, build-checked by the Dual probe; C172 audit = Interpolations tables (prefer cubic knots), saturation rank-deficiency (LM-tolerated, reported), gear zero airborne | External NLS packages (heavy dep for ~100 lines; §11.2 stepper precedent; per-residual tolerance test not natively spelled); NLopt as core dependency (no LM; fallback-only role); iterating on the nominal activation's singleton buffers (aliases the sim's authoritative stores — warn-but-assign reborn; caught in review); throw-on-non-convergence (an expected outcome, not broken machinery) |
 | 71 | Mounting: `TrimProblem` = implicitly specified condition (condition-valued function over decisions + pinning equations; solving makes it explicit; commit = init with the solved condition — services unified as condition-algebra clients); `at(prefix, problem)` lifts in five lines (condition post-composed, reads wrapped — inert selector data reuse the `Scoped` node; guess/bounds/residuals path-free pass-through); slots resolve through export chains from the mount point (unexported face = untrimmable from outside, correctly — a model-driven input, named by the build); the world-level `f_init!` wrapper dissolves into the `baseline` condition (method nesting → value layering); `design_world(ac)` = today's ad-hoc linearize models promoted to a shipped rig ("root" = shallowest world, one register); swarm: one problem per solve — sequential commits or user-side joint composition (concatenated decisions, merged trees, stacked residuals); `product()` helper recorded for the §15.7 library, unbuilt | World-level trim wrapper methods (call-tree reuse: one method per container, ad-hoc plumbing per multi-aircraft case); literal aircraft-as-root register (environment inputs must be wired from providers; a second register to maintain); framework-side joint-trim machinery now (user-side value composition suffices until routine) |
+| 72 | Linearization: surface = three selector lists (`state`/`slot`/`output` with optional component index; NamedTuple key = the control-design label), validated against schema, compiled to offsets, relocatable via `at` — the `get_*_ss`/`assign_*_ss!` shuttle layer deleted (§9.1 discharged); evaluation = one chunked Dual pass on per-invocation scratch at the operating point (exact `A`/`B`/`C`/`D` + `ẋ₀`/`y₀` simultaneously; unseeded states constant, discrete tier frozen-exact); linearization = pure query (no commit, no boundary zero, no restore dance), default operating point = `capture(sim)` — `capture` settled as the full-store gather returning `(condition, t)`; returns labeled data with `subsystem`/`delete_vars` as pure label-indexed slicing; `LinearizedSS` survives as an ordinary continuous component; guidance: surfaces select minimal-coordinate mechanizations (the `{NED}` rig practice, now stated) | Four `FiniteDiff` jacobians (step-size heuristics, ~4n evaluations, exactness lost); hand-written per-variant gather/scatter structs (~150 lines of bookkeeping each); linearize-as-committing-service (nothing becomes authoritative); post-linearization trim restoration (an artifact of probing the live model); naive quaternion-component seeding (off-manifold; the coordinate choice is the surface author's) |
 
 ---
 
@@ -3423,10 +3481,6 @@ would be the camel's nose for the merged kind.
 
 To be settled in subsequent sessions:
 
-- **Stopped-sim services, remainder.** The condition substrate and the full
-  trim service are settled (§16, rows 63–71). Remaining: the linearization
-  client (surface selectors replacing `get_x_ss`/`assign_x_ss!`, labels for
-  control design, the `LinearizedSS` fate); the `capture` spelling.
 - **Migration.** Outline for FlightPhysics/FlightApps (the Tier-1 parametrization
   pass, the `KinData`-style output splits, the contributor survey feeding §6's
   aggregation chains — mechanical to extract from today's trait implementations);
