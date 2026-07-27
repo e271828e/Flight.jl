@@ -90,8 +90,8 @@ Ground rules adopted for this design effort:
 
 The framework simulates **hybrid causal systems**, composed of:
 
-- **Continuous dynamics**: `ẋ = f(x, m, u, t)` with algebraic outputs.
-- **Multi-rate periodic discrete dynamics**: `z⁺ = h(z, u, t)` at declared rates, with
+- **Continuous dynamics**: $\dot{x} = f(x, m, u, t)$ with algebraic outputs.
+- **Multi-rate periodic discrete dynamics**: $z^{+} = h(z, u, t)$ at declared rates, with
   outputs held zero-order between ticks.
 - **Zero-crossing events**: guard functions with handlers, in two tiers (below).
 - **Post-step manifold projection**: an optional per-component hook `x ← project(x)`
@@ -151,7 +151,7 @@ A classical hybrid automaton:
 - **continuous state** `x` (isbits struct of real scalars — see §9),
 - **mode variables** `m`: piecewise-constant values (enums, integers, flags) that
   parametrize the flow and change *only* through event handlers,
-- **flow** `ẋ = f(x, m, u, t)`,
+- **flow** $\dot{x} = f(x, m, u, t)$,
 - **two output stages** (see §5.2),
 - **events**: guards + handlers (update `m`, may reset own `x`); both read the fresh
   boundary signal table (§5.2),
@@ -173,7 +173,7 @@ no overlap.
 ### 3.2 Periodic discrete component
 
 - **discrete state** `z`: any immutable value (see §9),
-- **update** `z⁺ = h(z, u, t)` at a declared rate,
+- **update** $z^{+} = h(z, u, t)$ at a declared rate,
 - **two output stages** (feedthrough applies at update instants: a proportional path
   is direct feedthrough; a state-only output is not).
 
@@ -363,8 +363,8 @@ sweep → guards → handlers phase iterates to quiescence, with each event firi
 most once per boundary (settled in §11.6).
 
 **Departure from the orthodox formalism, stated openly.** The textbook form is
-`ẋ = f(x, u)`, `y = g(x, u)`; this design's `f` receives the orthodox arguments
-*plus* the published table: `ẋ = f(x, m, y, u, t)`. The composite map `x ↦ ẋ` is
+$\dot{x} = f(x, u)$, $y = g(x, u)$; this design's `f` receives the orthodox arguments
+*plus* the published table: $\dot{x} = f(x, m, y, u, t)$. The composite map $x \mapsto \dot{x}$ is
 mathematically identical (linearization, trim and AD are untouched); the heterodox
 element is only that derivatives may read outputs. The teaching line: *"stage 1
 publishes what you know from state alone; stage 2 adds what needs inputs; your
@@ -781,7 +781,7 @@ Two modes, degrading gracefully:
 
 - **Global (value-blind) set-tracer** — a `Real` subtype carrying a set of input
   indices, unioned by every operation. **May-depend semantics**: sound
-  over-approximation (saturated `clamp` still reports; `u²` at `u = 0` still reports).
+  over-approximation (saturated `clamp` still reports; $u^2$ at $u = 0$ still reports).
   Exact, one evaluation. Requires the traced stage-2 code to be free of
   branches/lookups on *input-tainted* values.
 - **Local (primal-carrying) set-tracer at sampled states** — the fallback whenever the
@@ -881,16 +881,17 @@ step boundaries.** Mid-step contents carry no meaning.
 
 ### 11.4 Tier-2 localization mechanics
 
-Trigger: a Tier-2 guard changed sign across an accepted step `[tₙ, tₙ₊₁]`.
+Trigger: a Tier-2 guard changed sign across an accepted step $[t_n, t_{n+1}]$.
 
-- **Interpolant (lazy).** Build the cubic Hermite continuous extension `x̂(θ)`,
-  `θ = (t − tₙ)/h ∈ [0,1]`, from `(xₙ, ẋₙ, xₙ₊₁, ẋₙ₊₁)`; `ẋₙ` is the step's first
-  stage, `ẋₙ₊₁` costs one sweep, paid only on trigger. Uniform accuracy O(h⁴) — one
+- **Interpolant (lazy).** Build the cubic Hermite continuous extension $\hat{x}(\theta)$,
+  $\theta = (t - t_n)/h \in [0, 1]$, from $(x_n, \dot{x}_n, x_{n+1}, \dot{x}_{n+1})$;
+  $\dot{x}_n$ is the step's first
+  stage, $\dot{x}_{n+1}$ costs one sweep, paid only on trigger. Uniform accuracy $O(h^4)$ — one
   order below the discrete solution, the standard pairing, and the event time can
   only ever be as accurate as the interpolant, so nothing more expensive is worth
   probing.
 - **Probes run the sweep.** Guards read `y`, so evaluating a guard at an interpolated
-  state means writing `x̂(θ)` into the state buffer and running the sweep — the same
+  state means writing $\hat{x}(\theta)$ into the state buffer and running the sweep — the same
   rule as the RHS. One sweep per probe.
 - **Root-finding: bracketed and derivative-free** (ITP or Brent; bisection is an
   acceptable fallback). The observed sign change *is* an unconditional convergence
@@ -911,7 +912,7 @@ Trigger: a Tier-2 guard changed sign across an accepted step `[tₙ, tₙ₊₁]
 
 **Harmonic grid.** Every discrete component's period is an integer multiple of a base
 tick period `Δt_base`, itself an integer multiple of the continuous step
-(`Δt_base = n·h`, `n ≥ 1`). Ticks therefore land on step boundaries — the only place
+($\Delta t_{\mathrm{base}} = n \cdot h$, $n \ge 1$). Ticks therefore land on step boundaries — the only place
 anything discrete ever happens. Rejected: arbitrary periods via a time-ordered tick
 queue, which forces variable-length steps and irregular real-time frames for a
 generality nothing demonstrated wants.
@@ -944,7 +945,7 @@ whole-tree atomicity (children's `f_periodic!` called from the parent's, hence
 not a design requirement; the signal table dissolves it.
 
 **Rate declaration is relative, at composition.** A discrete component or sub-assembly
-is instantiated with an integer multiplier `K ≥ 1` (default 1) relative to its
+is instantiated with an integer multiplier $K \ge 1$ (default 1) relative to its
 enclosing scope; multipliers compose multiplicatively down the tree; the root fixes
 `Δt_base` in seconds. Rationale: in a layered control architecture the *ratios* are
 intrinsic to the design and travel with the assembly type (inner loop at `K = 1`,
@@ -954,7 +955,7 @@ deployment rates into reusable definitions, and replicating relative structure w
 shared base-period variable does not compose across independently authored assemblies
 (parameter-threading ceremony, cf. §7). At build, all scoping compiles away to **one
 absolute tick divisor per discrete component**; the executor gates entries by counter
-modulo. Recorded limitations: a child cannot tick faster than its scope (`K ≥ 1`) —
+modulo. Recorded limitations: a child cannot tick faster than its scope ($K \ge 1$) —
 soft, since assembly multipliers are declaration sugar and factors can be refactored
 onto siblings; and no phase offsets in the first cut (no demonstrated use).
 
@@ -1043,7 +1044,7 @@ trajectories — deterministic replay (§2.2) extends over pace. Interactive run
 only because their *inputs* differ.
 
 **Wall-clock mapping: piecewise affine, re-anchored at every knee.** The map is
-`τ(t) = τ_anchor + (t − t_anchor)/p`, with the anchor pair as its reference point. A
+$\tau(t) = \tau_{\mathrm{anchor}} + (t - t_{\mathrm{anchor}})/p$, with the anchor pair as its reference point. A
 live pace change re-establishes the anchor at the current `(t, τ)` so the new slope
 applies only forward; keeping the old anchor would retroactively reinterpret the
 entire elapsed run at the new pace (deadlines minutes in the past or future after a
@@ -1915,7 +1916,7 @@ those live in the parent that instantiates it, exactly as a leaf's do.
 
 ### 13.7 Rate scopes
 
-`rates(::A) = (fcs = 1, nav = 5)` — child name => integer multiplier `K ≥ 1`,
+`rates(::A) = (fcs = 1, nav = 5)` — child name => integer multiplier $K \ge 1$,
 optional, unlisted children default to 1; §11.5 semantics unchanged (relative,
 composing multiplicatively down the tree, compiled to absolute divisors). Keys are
 **immediate child names only** — a deep key would edit another type's design from
@@ -2714,10 +2715,10 @@ parity is exact, not approximate. Piece by piece:
   boundary zero would not preserve the authored `z(0)` — that is already
   preserved, published in the `t₀` snapshot — it would *delete the `t₀`
   sample from the discrete dynamics*: an accumulator
-  `z_{k+1} = z_k + Δt·e_k` authored with `z₀ = 0` under nonzero `e(t₀)`
-  would first integrate `e(t₁)`, the whole sampled-data lattice one period
+  $z_{k+1} = z_k + \Delta t \, e_k$ authored with $z_0 = 0$ under nonzero $e(t_0)$
+  would first integrate $e(t_1)$, the whole sampled-data lattice one period
   late. (The `x`-analogue of `h`-at-`t₀` is not the empty incoming
-  integrate but the first *outgoing* one, `t₀ → t₀+h`: both authored values
+  integrate but the first *outgoing* one, $t_0 \to t_0 + h$: both authored values
   are the published initial conditions of their outgoing transitions.)
 - **`t₀` is an init-service argument** (default `0.0`), never a condition
   entry — time is not a store of any component, and the harmonic grid
@@ -2807,24 +2808,24 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
   by construction, the minimal 7-variable search) — is correct and survives
   verbatim as user math. What changes is the numerics: trim is a square
   root-find that FlightCore had to pose as derivative-free scalar
-  minimization (BOBYQA over `‖r‖²` — a flat quadratic valley near the
+  minimization (BOBYQA over $\|r\|^2$ — a flat quadratic valley near the
   solution, `stopval = 1e-16` as a hand-scaled absolute threshold,
   thousands of evaluations, no per-equation diagnostics) because Jacobians
   through the mutating `f_ode!` chain and the assignment math were out of
   reach. Here the `Dual` activation seeds the decision variables through
   the `T`-generic assignment, sweep and `f` — §14.6's "open option," now
-  the *default*: nonlinear least squares on `r(d)` with exact AD Jacobians
+  the *default*: nonlinear least squares on $r(d)$ with exact AD Jacobians
   (trust-region/Levenberg–Marquardt register), quadratic convergence
   (~5–15 evaluations), per-residual physical tolerances, and failure
   reports naming the unbalanced equations with magnitudes. Non-squareness
   degrades gracefully (redundant actuation → weighted/minimum-norm LS;
   infeasible demands → converged nonzero residual identifying the
-  impossible balance), and `∂r/∂d` at the solution is free flight-physics
+  impossible balance), and $\partial r / \partial d$ at the solution is free flight-physics
   data (control effectiveness) cross-checking linearization. The
   derivative-free scalar path survives as the fallback: the service squares
   the residuals — today's algorithm as the degenerate case.
 - **Recorded, not built**: closed-loop sampled-data trim (append
-  `h(z) − z = 0` residuals via a nondestructive scratch evaluation of `h` —
+  $h(z) - z = 0$ residuals via a nondestructive scratch evaluation of `h` —
   structurally impossible under FlightCore's mutating `f_disc!`), and
   on-ground static equilibrium (strut compressions and attitude against
   gear forces) as simply another problem value over the same service.
@@ -3006,7 +3007,7 @@ services differentiate the continuous dynamics with `z` held, for which a
 frozen discrete output — a ZOH constant with zero partials — is the exact
 answer, enforced by the type system (§13.2). Differentiating "through" the
 discrete side means differentiating a *different object*: the sampled-data
-step map Φ : (x_k, z_k, slots) → (x_{k+1}, z_{k+1}) (integrate one period,
+step map $\Phi : (x_k, z_k, \mathrm{slots}) \to (x_{k+1}, z_{k+1})$ (integrate one period,
 then run the due ticks). The extension is additive along existing seams:
 Tier-1 parametrization of `z`'s real-scalar leaves (counters/enums stay
 pinned, like `m`); opt-in `T`-signatures on participating discrete
@@ -3015,12 +3016,12 @@ components (plain `outputs(::C)` = frozen-exact always, `outputs(::C,
 migration, no flag day); one new §14.4 activity ("continuous chain + `f` +
 discrete `g` + `h`"); and forward sensitivities through the in-house
 RK steppers for free, a payoff of owning the loop (§11.1). The honest
-boundary: Φ is differentiable only where the event pattern is locally
+boundary: $\Phi$ is differentiable only where the event pattern is locally
 constant — exactness across a firing needs saltation corrections — so the
 scope is event-quiescent operating points (which §16.5's guards-at-commit
 already makes trim points) plus a loud diagnostic if an event fires inside
 a differentiated step. Consumers waiting: §16.7's closed-loop trim door
-(`h(z) − z = 0` residuals currently imply the derivative-free fallback,
+($h(z) - z = 0$ residuals currently imply the derivative-free fallback,
 since frozen `h` has no Jacobian columns) and exact discrete-time
 linearization of the full loop (digital design on the exact discretized
 plant instead of continuous linearization + Tustin).
@@ -3332,10 +3333,12 @@ strapdown IMU integrates raw increments continuously — `ẋ.ϑ_c = ω_ic_c`,
 `ẋ.υ_c = f_c_c`, the coning attitude increment `q_c_cc` and the sculling integral
 `ẋ.υ_c_sc = q_c_cc(f_c_c)` — and `f_disc!`, at the IMU's own `Δt`, reads the
 integrals, publishes the sample, and **zeroes them**. In interval terms, the
-sketch's piecewise quantities are integrals over `[t_{k-1}, t_k]` with their
-weights re-anchored at each reset: `ϑ_c = ∫ ω_ic_c dt` and `υ_c = ∫ f_c_c dt`
-from zero, `q_c_cc = q_{c_{k-1}→c(t)}` from identity, and
-`υ_c_sc = ∫ R^{c_{k-1}}_c f_c_c dt` with the rotation anchored at the interval
+sketch's piecewise quantities are integrals over $[t_{k-1}, t_k]$ with their
+weights re-anchored at each reset: `ϑ_c` $= \int_{t_{k-1}}^{t_k} \omega^{c}_{ic} \, dt$
+and `υ_c` $= \int_{t_{k-1}}^{t_k} f^{c} \, dt$ from zero,
+`q_c_cc` $= q_{c_{k-1} \to c(t)}$ from identity, and
+`υ_c_sc` $= \int_{t_{k-1}}^{t_k} R^{c_{k-1}}_{c} f^{c} \, dt$ with the rotation
+anchored at the interval
 start — exactly the forms the differencing bullets below recover from the
 cumulative stores, term by term. The reset is periodic, not
 condition-triggered, so events are the wrong tier; and it is a discrete-tier write
@@ -3349,25 +3352,33 @@ approximation. Every interval-relative integral becomes a *cumulative* one; the
 sampler differences against the previous sample, held in its `z` — the textbook
 sampled-data latch, and the only new store (the memory the reset used to erase):
 
-- *Raw increments* (linear): `Θ(t) = ∫ω_ic_c dt`, `Υ(t) = ∫f_c_c dt`, never
-  reset; `ϑ_c = Θ(t_k) − Θ(t_{k-1})`, `υ_c = Υ(t_k) − Υ(t_{k-1})`.
-- *Coning*: cumulative `q(t) = q_{c₀→c(t)}` with `q̇ = ½ q ⊗ ω_ic_c` from
-  identity at `t₀`; the interval rotation is `Δq = q(t_{k-1})' ∘ q(t_k)`, exact by
-  right-invariance (`Δq` satisfies the same ODE with the same body rate).
-- *Sculling*: `∫ R_c^{c_{k-1}} f^c dt = q(t_{k-1})'( V(t_k) − V(t_{k-1}) )` with
-  `V̇ = q(t)(f_c_c)`. The derivation, in two steps (absorbed from the retired
-  companion note `imu.md`): re-anchor the rotation through the fixed `c₀` frame,
-  `R^{c_{k-1}}_c = (R^{c₀}_{c_{k-1}})ᵀ R^{c₀}_c`, so the `c_{k-1}`-dependent
+- *Raw increments* (linear): $\Theta(t) = \int_{t_0}^{t} \omega^{c}_{ic} \, dt$,
+  $\Upsilon(t) = \int_{t_0}^{t} f^{c} \, dt$, never reset;
+  $\vartheta_c = \Theta(t_k) - \Theta(t_{k-1})$,
+  $\upsilon_c = \Upsilon(t_k) - \Upsilon(t_{k-1})$.
+- *Coning*: cumulative $q(t) = q_{c_0 \to c(t)}$ with
+  $\dot{q} = \tfrac{1}{2} \, q \otimes \omega^{c}_{ic}$ from
+  identity at $t_0$; the interval rotation is $\Delta q = q(t_{k-1})' \circ q(t_k)$, exact by
+  right-invariance ($\Delta q$ satisfies the same ODE with the same body rate).
+- *Sculling*:
+  $\int_{t_{k-1}}^{t_k} R^{c_{k-1}}_{c} f^{c} \, dt = q(t_{k-1})' \, ( V(t_k) - V(t_{k-1}) )$
+  with $\dot{V} = q(t)(f^{c})$. The derivation, in two steps (absorbed from the retired
+  companion note `imu.md`): re-anchor the rotation through the fixed $c_0$ frame,
+  $R^{c_{k-1}}_{c} = (R^{c_0}_{c_{k-1}})^{\mathsf{T}} R^{c_0}_{c}$, so the $c_{k-1}$-dependent
   factor — constant over the interval — exits the integral; what remains is the
-  cumulative integrand, and splitting its range at `t_{k-1}` gives the
+  cumulative integrand, and splitting its range at $t_{k-1}$ gives the
   difference of the running store:
-  `∫_{t_{k-1}}^{t_k} R^{c_{k-1}}_c f^c dt = (R^{c₀}_{c_{k-1}})ᵀ (
-  ∫_{t₀}^{t_k} R^{c₀}_c f^c dt − ∫_{t₀}^{t_{k-1}} R^{c₀}_c f^c dt )
-  = q(t_{k-1})'( V(t_k) − V(t_{k-1}) )` — in code, the sampler line
+
+  $$\int_{t_{k-1}}^{t_k} R^{c_{k-1}}_{c} f^{c} \, dt
+  = (R^{c_0}_{c_{k-1}})^{\mathsf{T}} \left( \int_{t_0}^{t_k} R^{c_0}_{c} f^{c} \, dt
+  - \int_{t_0}^{t_{k-1}} R^{c_0}_{c} f^{c} \, dt \right)
+  = q(t_{k-1})' \, \big( V(t_k) - V(t_{k-1}) \big)$$
+
+  — in code, the sampler line
   `υ_c_sc = z.q'(u.V - z.V)`. The factor leaving the integral is the **anchor
-  change between two inertially-fixed frames** — constant because `t_{k-1}` is
+  change between two inertially-fixed frames** — constant because $t_{k-1}$ is
   in the past and latched. The physical intra-interval rotation, the thing
-  sculling corrections are *about*, stays inside the integrand via `q(t)`: every
+  sculling corrections are *about*, stays inside the integrand via $q(t)$: every
   RHS evaluation, RK stages included, applies the current cumulative attitude,
   exactly as the sketch applies the current `q_c_cc`.
 
@@ -3384,8 +3395,8 @@ multiplication by the constant anchor commutes through, so the formulations agre
 to machine precision, not merely in the continuous-time limit. Numerics of never
 resetting: `q` stays unit under `project` (better conditioned than the sketch's
 `normalization = false` + reset); `Θ`/`Υ`/`V` grow linearly, so differencing
-loses relative precision — after an hour of flight, order `1e-11 m/s` per sample
-against `1e4 m/s` totals, six-plus orders below any error model worth simulating.
+loses relative precision — after an hour of flight, order $10^{-11}\ \mathrm{m/s}$ per sample
+against $10^{4}\ \mathrm{m/s}$ totals, six-plus orders below any error model worth simulating.
 
 ```julia
 struct IMUIntegrals <: AbstractComponent
@@ -3504,7 +3515,7 @@ would be the camel's nose for the merged kind.
 | 16 | Uniform component interfaces via the `g_s1` state decoder (default identity publication of state and modes); guards and handlers read the fresh boundary table, with per-event re-decode (`handler → project → g_s1 → g_s2`); `project` is the sole raw-state function (schedule-structural); unlisted-port convention for interface noise. **Amended in v0.5 → rows 34/35**: identity default and unlisted retired; `g_s1` redefined as the no-feedthrough stage; per-event re-decode unchanged | Passing state alongside `y` (double-passing; two idioms in the wild); fully private discrete state (breaks uniformity; the codebase culturally publishes state anyway); one-handler-per-component-per-boundary restriction (superseded by the cheap per-event re-decode); exposing z *without* an unlisted convention (RNG/log noise) |
 | 17 | Framework-owned simulation loop; stepper seam (advance by arbitrary `h` + on-demand dense output over the last step; one-step methods only); in-house fixed-step RK4/Heun as the sole first-cut backends; `OrdinaryDiffEq` dropped from dependency to possible future extension adapter | `OrdinaryDiffEq` as substrate with `CallbackSet` choreography (semantics by convention in a foreign event loop; demonstrated churn — the `task_local_storage` regression — in exactly the interactive multi-task usage); fused loop without the seam (loses the adaptive/stiff escape hatch for ~zero savings); multistep methods (history rebuild after every handler) |
 | 18 | Tier-2 localization: lazy cubic Hermite dense output + bracketed derivative-free root-finding (ITP/Brent) on guard probes that run the sweep; post-event interpolant invalidation + remainder step + bounded event budget | Newton/AD localization (guards C⁰ not C¹ — kinks and σ′ = 0 stretches; discards the bracket certificate for local guarantees; negligible savings on rare microsecond probes); re-integration probes (4× cost; σ becomes trial-h-dependent); solver-matched high-order interpolants (only matter above order 4) |
-| 19 | Harmonic tick grid on step boundaries; discrete stages gated to own tick instants (ZOH by construction); assemblies virtual for execution, rate scopes for declaration (integer multipliers `K ≥ 1` composing down the tree, compiled to absolute divisors); `comp.Δt` as single source of truth, no stored `Δt`-derived parameters | Atomic assemblies, incl. opt-in (coarsened schedulable unit → §5.3 artificial loops at assembly scale; interleaving protection meaningless under the signal table; FlightCore's whole-tree atomicity was a call-tree artifact); arbitrary tick periods via time queue (variable `h`, irregular frames, no demonstrated need); absolute-period declaration as default (welds deployment rates into reusable designs; base-period variables don't compose across independently authored assemblies); re-running discrete stages every boundary (un-samples sampled-data semantics); phase offsets (no demonstrated use); `Δt` via `h`-argument only (discretized laws live in `g_s2`) |
+| 19 | Harmonic tick grid on step boundaries; discrete stages gated to own tick instants (ZOH by construction); assemblies virtual for execution, rate scopes for declaration (integer multipliers $K \ge 1$ composing down the tree, compiled to absolute divisors); `comp.Δt` as single source of truth, no stored `Δt`-derived parameters | Atomic assemblies, incl. opt-in (coarsened schedulable unit → §5.3 artificial loops at assembly scale; interleaving protection meaningless under the signal table; FlightCore's whole-tree atomicity was a call-tree artifact); arbitrary tick periods via time queue (variable `h`, irregular frames, no demonstrated need); absolute-period declaration as default (welds deployment rates into reusable designs; base-period variables don't compose across independently authored assemblies); re-running discrete stages every boundary (un-samples sampled-data semantics); phase offsets (no demonstrated use); `Δt` via `h`-argument only (discretized laws live in `g_s2`) |
 | 20 | Boundary event phase iterates to quiescence — rounds of full re-sweep → guards → handlers (declaration order, per-event re-decode) — each event firing at most once per boundary; due `h` updates run after quiescence, outside the iteration | Single pass per boundary (cascade latency N·h — step-size-dependent semantics, the §2.2 `f_step!` footgun class, made common by §3.1 externalized FSMs); bounded-rounds cap (arbitrary K knob; livelock burns the budget then errors instead of degrading to Tier-1 granularity); event/tick fixed-point iteration (structurally unnecessary — `z⁺` is invisible until the next tick decode) |
 | 21 | Pacing outside the semantics (bit-identical paced/unpaced trajectories); piecewise-affine wall-clock map, anchor re-established at pace change and un-pause (debt cleared, counted); absolute deadlines with bounded debt + re-anchor on excess; `p = ∞` as explicit pacer-off; hybrid sleep-then-spin toward `deadline − margin`, with `margin` the single knob (0 = pure sleep, ∞ = pure busy-wait = FlightCore) | Relative deadlines (permanent sim-vs-wall slip); unbounded catch-up (burst after long stalls); keeping the anchor across pace changes (retroactively reinterprets elapsed history at the new pace); `p = ∞` as arithmetic limit (perpetual-overrun diagnostics under debt accounting); dedicated busy-wait mode flag (subsumed by `margin = ∞`); separate primitive-resolution threshold (absorbed into `margin` calibration) |
 | 22 | Periphery architecture: no shared mutable model — staged inputs drained at frame top + immutable snapshot published per boundary; every handoff one atomic reference op, GC as reclamation; no user code or unbounded work in framework critical sections; control on a separate atomic surface (staging cannot un-pause a drainless loop); interactive = batch + devices | Transplanted `io_lock` (loop budget hostage to arbitrary code under the lock; input timing scheduler-determined and unrecorded — replay undefinable in principle; protects a live-mutation idiom the immutable table removed); full message-passing periphery (per-device typed channels — same design with heavier ceremony) |
@@ -3554,11 +3565,11 @@ would be the camel's nose for the merged kind.
 | 66 | Two application registers over one compiled plan: specialized `apply!` (`Getter{P}` lenses, unrolled baked stores, zero-alloc; §14.5-style shape check via tree type + literal `===` sweep; ~10–50 ms codegen once per shape) for iterating services; dynamic entry-list walk (microseconds, no per-shape codegen, allocation fine per §9.5) for one-shot init; compiled readers as the gather twin (cost reads, linearization gather, `capture`) — one primitive family in the `Build`'s client kit | Single always-specialized register (per-shape codegen tax on scripted one-shot conditions); single always-dynamic register (forfeits the zero-alloc trim loop); per-write convert decisions (the converter is a resolution-time fact; §14.5's no-convert-on-write stands for table cells) |
 | 67 | Boundary zero = the §11.6 macro-sequence with an empty integrate: project → sweep (every tick due; discrete stages publish from the authored `z`) → events to quiescence → due `h` updates → header capture + first snapshot; interval-alignment taught contract (sibling of §17.5's boundary-sampling line): a boundary's `h` is the *outgoing* transition — `z_{k+1}` from `t_k`'s samples — so boundary zero's incoming transitions on both tiers are replaced by authorship, and `h` at `t₀` is the `t₀` sample's only chance; `t₀` an init-service argument anchoring the harmonic grid (conditions time-free; `capture` returns condition and time separately); trim iterations bypass boundaries entirely (raw write→sweep→read on the activation), only the commit runs boundary zero — a guard firing at commit replaces today's hand-written trim asserts | Condition-authoritative boundary zero (no events/`h`: delays the identical firings one step while hiding non-quiescence — §17.4's insurance-masking-invariants pattern; skipping `h` deletes the `t₀` sample and starts the sampled-data lattice one period late — the authored `z(0)` needs no protection, it is published at `t₀` regardless); `h` before the sweep or republish-from-`z⁺` (stale-table sampling or Mealy update-feedthrough: same-boundary circularity, kills §11.6's structural termination); `t₀` as a condition entry (time is not a store) |
 | 68 | Slot totality enforced at the service: `init!`/commit compare resolved slot coverage against `input_faces` before writing anything — shortfall = one batched declaration-ordered `UninitializedSlots` diagnostic, all-or-nothing (rejected init leaves the sim untouched); `probe_value` structurally unreachable from the services path (condition value or error, no third branch; replay applies header-recorded slots, never synthesizes — header slot capture complete by construction); baselines = aircraft-shipped full-coverage condition functions (`ready_for_taxi(ac)` — `SystemsInitializer` defaults reborn as user math, one home); `override(base, patch)` admitted as the fourth node kind (ordered/asymmetric vs. `merge`'s symmetric collision-intolerance; patch wins with dual provenance; within-layer collisions still error; variadic layering; trim commits `override(baseline, solution)`) | Face-declaration defaults (condition data inside the wiring contract; reopens §12.3 bare-types and the competing-defaults problem); silent zero-fill of uncovered slots (the §14.3 probe-value leak — a fabricated zero is a fine probe input and a terrible flight condition); totality as a condition-value property (conditions are legitimately partial; totality belongs to boundary-zero application); service-level base keyword (hard-codes two layers; composition semantics in a service signature instead of the condition algebra) |
-| 69 | Trim problem spelling: decisions/guess/bounds as same-shaped all-`Float64` NamedTuples (service packs/unpacks by field order); `TrimParameters` a plain user struct; assignment = the pure `trim_condition` fragment function; reads declared via `deriv`/`output` selectors compiled to a stack NamedTuple reader; user returns a residual *vector* (physically scaled NamedTuple) — trim = nonlinear least squares on `r(d)` with exact AD Jacobians (Dual activation seeded through the `T`-generic assignment math; §14.6's open option promoted to default), per-residual tolerances, unbalanced-equation failure reports, graceful non-squareness, `∂r/∂d` as free control-effectiveness data; analytic-elimination doctrine (`θ_constraint`, by-construction filter/actuator equilibria) preserved verbatim as user math; derivative-free scalar fallback = service squares the residuals (today's BOBYQA as degenerate case); recorded-unbuilt: closed-loop trim via `h(z) − z` scratch residuals, ground static equilibrium as another problem value | Framework decision-variable supertype (`AbstractTrimState`/`FieldVector` — vocabulary whose only job was vectorization); scalar cost as the primary formulation (flat `‖r‖²` valley for derivative-free search, absolute `stopval` brittleness, per-equation diagnostics discarded — FlightCore's rational choice only because Jacobians through mutating `f_ode!` were unreachable); `locals`-addressable readers (private intermediates; a cost needing one is an export signal) |
+| 69 | Trim problem spelling: decisions/guess/bounds as same-shaped all-`Float64` NamedTuples (service packs/unpacks by field order); `TrimParameters` a plain user struct; assignment = the pure `trim_condition` fragment function; reads declared via `deriv`/`output` selectors compiled to a stack NamedTuple reader; user returns a residual *vector* (physically scaled NamedTuple) — trim = nonlinear least squares on $r(d)$ with exact AD Jacobians (Dual activation seeded through the `T`-generic assignment math; §14.6's open option promoted to default), per-residual tolerances, unbalanced-equation failure reports, graceful non-squareness, $\partial r / \partial d$ as free control-effectiveness data; analytic-elimination doctrine (`θ_constraint`, by-construction filter/actuator equilibria) preserved verbatim as user math; derivative-free scalar fallback = service squares the residuals (today's BOBYQA as degenerate case); recorded-unbuilt: closed-loop trim via $h(z) - z$ scratch residuals, ground static equilibrium as another problem value | Framework decision-variable supertype (`AbstractTrimState`/`FieldVector` — vocabulary whose only job was vectorization); scalar cost as the primary formulation (flat $\|r\|^2$ valley for derivative-free search, absolute `stopval` brittleness, per-equation diagnostics discarded — FlightCore's rational choice only because Jacobians through mutating `f_ode!` were unreachable); `locals`-addressable readers (private intermediates; a cost needing one is an export signal) |
 | 70 | Trim service: in-house dense LM default behind a value-passed backend contract (`NLoptBackend` extension = squared residuals, today's algorithm one keyword away; core carries zero optimizer deps); box bounds by step projection with saturated-at-solution flagged in the report; per-invocation scratch store sets instantiated from activation layouts (layout reusable, buffers die with the call; Dual un-aliasability = defense in depth, not the mechanism) — authoritative stores have exactly one writer, the commit through boundary zero; no-throw structured `TrimReport` (non-convergence = expected envelope-sweep outcome; malformed problem = `BuildError` at setup); AD obligation scoped to continuous `g`/`f` + user assignment/residual math (discrete tier frozen-exact), identical to linearization's activation, build-checked by the Dual probe; C172 audit = Interpolations tables (prefer cubic knots), saturation rank-deficiency (LM-tolerated, reported), gear zero airborne | External NLS packages (heavy dep for ~100 lines; §11.2 stepper precedent; per-residual tolerance test not natively spelled); NLopt as core dependency (no LM; fallback-only role); iterating on the nominal activation's singleton buffers (aliases the sim's authoritative stores — warn-but-assign reborn; caught in review); throw-on-non-convergence (an expected outcome, not broken machinery) |
 | 71 | Mounting: `TrimProblem` = implicitly specified condition (condition-valued function over decisions + pinning equations; solving makes it explicit; commit = init with the solved condition — services unified as condition-algebra clients); `at(prefix, problem)` lifts in five lines (condition post-composed, reads wrapped — inert selector data reuse the `Scoped` node; guess/bounds/residuals path-free pass-through); slots resolve through export chains from the mount point (unexported face = untrimmable from outside, correctly — a model-driven input, named by the build); the world-level `f_init!` wrapper dissolves into the `baseline` condition (method nesting → value layering); `design_world(ac)` = today's ad-hoc linearize models promoted to a shipped rig ("root" = shallowest world, one register); swarm: one problem per solve — sequential commits or user-side joint composition (concatenated decisions, merged trees, stacked residuals); `product()` helper recorded for the §15.7 library, unbuilt | World-level trim wrapper methods (call-tree reuse: one method per container, ad-hoc plumbing per multi-aircraft case); literal aircraft-as-root register (environment inputs must be wired from providers; a second register to maintain); framework-side joint-trim machinery now (user-side value composition suffices until routine) |
 | 72 | Linearization: surface = three selector lists (`state`/`slot`/`output` with optional component index; NamedTuple key = the control-design label), validated against schema, compiled to offsets, relocatable via `at` — the `get_*_ss`/`assign_*_ss!` shuttle layer deleted (§9.1 discharged); evaluation = one chunked Dual pass on per-invocation scratch at the operating point (exact `A`/`B`/`C`/`D` + `ẋ₀`/`y₀` simultaneously; unseeded states constant, discrete tier frozen-exact); linearization = pure query (no commit, no boundary zero, no restore dance), default operating point = `capture(sim)` — `capture` settled as the full-store gather returning `(condition, t)`; returns labeled data with `subsystem`/`delete_vars` as pure label-indexed slicing; `LinearizedSS` survives as an ordinary continuous component; guidance: surfaces select minimal-coordinate mechanizations (the `{NED}` rig practice, now stated) | Four `FiniteDiff` jacobians (step-size heuristics, ~4n evaluations, exactness lost); hand-written per-variant gather/scatter structs (~150 lines of bookkeeping each); linearize-as-committing-service (nothing becomes authoritative); post-linearization trim restoration (an artifact of probing the live model); naive quaternion-component seeding (off-manifold; the coordinate choice is the surface author's) |
-| 73 | Sketch refresh (v0.17): `sketch_decoder.jl`/`sketch_io.jl` rewritten to the settled design; split-form `sketch.jl` retired, `navsensors.jl`/`imu.md` retired with content absorbed into §17.5; runnable dependency-free `condition_demo.jl` added (§16 algebra + §16.9 mounting, printed trees and flattened entry lists); declaration-by-initial-value upheld (§13.2); sampled-data Dual activation recorded unbuilt (§16.10); §6 `SumJunction` on its unparametrized type constructor | `init_*` as types + `probe_value` synthesis (defaults are the §16.1 overlay base; the §16.6 probe-value barrier; a per-field two-register protocol, §16.2); extending differentiation through the discrete tier now (frozen-`z` is exact for every built consumer; Φ differentiability breaks at events — kept as an opt-in door); deferring the demo to the framework prototype (the algebra is freestanding — strings, NamedTuples, four structs) |
+| 73 | Sketch refresh (v0.17): `sketch_decoder.jl`/`sketch_io.jl` rewritten to the settled design; split-form `sketch.jl` retired, `navsensors.jl`/`imu.md` retired with content absorbed into §17.5; runnable dependency-free `condition_demo.jl` added (§16 algebra + §16.9 mounting, printed trees and flattened entry lists); declaration-by-initial-value upheld (§13.2); sampled-data Dual activation recorded unbuilt (§16.10); §6 `SumJunction` on its unparametrized type constructor | `init_*` as types + `probe_value` synthesis (defaults are the §16.1 overlay base; the §16.6 probe-value barrier; a per-field two-register protocol, §16.2); extending differentiation through the discrete tier now (frozen-`z` is exact for every built consumer; $\Phi$ differentiability breaks at events — kept as an opt-in door); deferring the demo to the framework prototype (the algebra is freestanding — strings, NamedTuples, four structs) |
 
 ---
 
