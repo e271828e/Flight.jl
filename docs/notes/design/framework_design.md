@@ -1,20 +1,21 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** tenth checkpoint (v0.10). Axes 1–6 settled; axis 7 parts 1–3 —
-the component declaration layer (§13.1–§13.4), the assembly declaration layer
-(§13.5–§13.8) and the build pipeline (§14) — settled, residual declaration
-forks closed; the §3 kind split stress-tested and upheld (§16.5, row 56). New
-in this revision: **error discipline settled** (§15, rows 57–62) — split
-reporting policy (batched declarative checks, fail-fast user-code evaluation,
-stratum barriers), structured diagnostics under a single `BuildError` carrier,
-runtime `StepError` with the single catch site + execution cursor and the
-nonfinite-state check, `SimulationTermination` retired in favor of the event
-idiom + `stop_on` faces (observation-by-path rejected on the
-load-bearing/diagnostic line), the two-entry shutdown tail, normative
-`resolve`/`input_faces` signatures, and the tooling/component-library
-commitments. Stopped-sim service spellings and the migration outline pending
-(see [Open axes](#open-axes)). Sections renumbered: error discipline §15, case
-studies §16, decision log §17, open axes §18.
+**Status:** eleventh checkpoint (v0.11). Axes 1–6 settled; axis 7 (the
+declaration layers, §13, and the build pipeline, §14) settled; error
+discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
+upheld (§17.5, row 56). New in this revision: **the stopped-sim condition
+substrate settled** (§16, rows 63–66) — conditions as path-addressed sparse
+overlays on the declared `init_*` defaults (slots by face,
+capture-for-warm-restart); `initialize`-as-schema rejected for the
+fragment-function idiom (`fragment`/`at`/`merge` lazy tree, §8's locality law
+in its third instance, the pre-sweep doctrine); resolution-time
+flatten/validate/compile with baked converters and dual-provenance duplicate
+errors; and two application registers over one plan (specialized zero-alloc
+`apply!` for iterating services, dynamic walk for one-shot init), with
+compiled readers as the gather twin. Boundary-zero sequence, slot-init
+enforcement, the trim/linearization client loops and the migration outline
+pending (see [Open axes](#open-axes)). Sections renumbered: services §16,
+case studies §17, decision log §18, open axes §19.
 
 ---
 
@@ -145,7 +146,7 @@ Pure composition: submodels + connections + exported ports. **No dynamics of its
 Hybridness emerges at the assembly level (an aircraft = continuous vehicle parts +
 discrete avionics parts). The two-leaf split held under its strongest
 counterexample — a strapdown IMU's periodically-reset integrators land on two
-leaves with less code than the fused original (§16.5, row 56). Assemblies are flattened away for scheduling but retained as
+leaves with less code than the fused original (§17.5, row 56). Assemblies are flattened away for scheduling but retained as
 the navigation/introspection hierarchy (GUI, logging, paths) and as declaration-level
 rate scopes (§11.5).
 
@@ -212,11 +213,11 @@ once the v0.5 prototypes let `h` read `z` directly.)
   shape, not built.
 - **Granularity guideline** for authors: bundle what *shares a stage* (trivially
   enforced — each port has exactly one producing function) *and is consumed
-  together*. Bundling across dependency footprints is the `KinData` mistake (§16.1:
+  together*. Bundling across dependency footprints is the `KinData` mistake (§17.1:
   pose is stage 1, velocity-derived quantities are stage 2 — it must split). Fan-out
   is free, so publishing both a bundle and a hot loose field (`pose` *and* `q_eb`)
   is legitimate — one extra isbits cell.
-- **Write-side corollary** (v0.6, from §16.4): **bundle what is written
+- **Write-side corollary** (v0.6, from §17.4): **bundle what is written
   together.** The port is the atomic unit of the entire periphery — one cell, one
   root slot, one staged write, one device claim (§12.3), one trace address, one
   GUI liveness verdict (§12.5). Data written by different external writers, or at
@@ -328,7 +329,7 @@ mathematically identical (linearization, trim and AD are untouched); the heterod
 element is only that derivatives may read outputs. The teaching line: *"stage 1
 publishes what you know from state alone; stage 2 adds what needs inputs; your
 dynamics read your own published results instead of recomputing them."* The decision
-was grounded in a component-by-component survey of FlightPhysics/FlightApps (§16.2):
+was grounded in a component-by-component survey of FlightPhysics/FlightApps (§17.2):
 derivative/output overlap is the *norm* in this domain (Newton–Euler, kinematics,
 piston engine, gear friction, every discrete compensator), so the orthodox split
 would force either systematic duplicated math (with its silent-drift bug class),
@@ -916,7 +917,7 @@ onto siblings; and no phase offsets in the first cut (no demonstrated use).
 component's effective period is exposed read-only through the component handle
 (`comp.Δt` — the same virtual-property move as FlightCore's `mdl.Δt`), available in
 `g_s1`/`g_s2`/`h` and an error to touch on a continuous component. It must be readable
-in the *stages*, not just `h`: per §16.2, the discretized laws that actually consume
+in the *stages*, not just `h`: per §17.2, the discretized laws that actually consume
 `Δt` — a PID's backward-difference coefficients, a LeadLag's Tustin transform — run in
 `g_s2`; `h` is a copy. Author rule: **never store `Δt`, or any `Δt`-derived
 coefficient, as a component parameter** — recomputing derived coefficients per tick is
@@ -1141,7 +1142,7 @@ rule is what the soundness of lock-free reading rests on.
 The captured table includes `locals` cells (§13.3) — the copy is
 mechanical, and they serve the author's own debug panels; presentation layers (log
 export, GUI listings) filter to the public contract by default. **It also includes
-the root slots** (v0.7, made explicit by §16.4): slots are source cells of the
+the root slots** (v0.7, made explicit by §17.4): slots are source cells of the
 table, not state stores, so they ride along — and this is load-bearing, not
 incidental: the §12.5 peek's else-snapshot fallback is what an idle live widget
 displays, and read-only mirrors of claimed slots (the axis sliders under joystick
@@ -1181,7 +1182,7 @@ mappings, the trace and the GUI write path address them by **face name** (§13.6
 structural slash paths never cross the periphery boundary — the periphery speaks
 the root contract's names only.
 
-**Slot exclusivity: one writer per slot at any time** (v0.6, from §16.4). A
+**Slot exclusivity: one writer per slot at any time** (v0.6, from §17.4). A
 device claims its slots at attach; claiming an already-claimed slot is an
 attach-time error, and detaching releases the claims (a released slot's GUI
 widgets re-enable, §12.5). This supersedes the cross-device conflict *policy* —
@@ -1192,12 +1193,12 @@ cells, the CAS merge and the atomicswap drain all stay — they serve atomicity 
 coalescing, not arbitration.
 
 **Slot initial values are owned by the init/trim services** (v0.7, resolved by
-§16.4). Input declarations are bare types (§13.2) and carry no defaults, but a
+§17.4). Input declarations are bare types (§13.2) and carry no defaults, but a
 slot unfed by any device must hold a defined value from the first frame (today's
 `U()` constructors provide these: `mixture = 0.5`). Export-entry defaults were
 rejected: the trim service writes slot values it *solved for* (throttle,
 elevator) — not declaration constants. `init!` establishes every slot and the
-trace header captures the result; the concrete service spelling remains with §18.
+trace header captures the result; the concrete service spelling remains with §19.
 
 **Staging: one atomic cell per attached device**, in attachment order fixed at build.
 Each cell has a single writer — its own device task — and holds that device's latest
@@ -1225,7 +1226,7 @@ that the frame's outcome is a pure function of the drained batches.
 becomes pure `map_input(data, mapping) → batch`. User-extensible code thereby never
 executes inside the loop's frame, and the trace consists of slot-level batches.
 
-**Mappings are binding data, not shaping code** (v0.6, from §16.4). A mapping is
+**Mappings are binding data, not shaping code** (v0.6, from §17.4). A mapping is
 a declarative table — axis/button → slot path, plus per-axis conditioning
 parameters (deadzone, expo strength) applied by a shared pure helper on the
 device task. The boundary is set by the face contract: **a face's meaning is
@@ -1235,11 +1236,11 @@ through a deadzone would be absurd); this GUI-parity test is what places
 conditioning upstream. Aircraft-semantic derivation (the C172X `q_ref = q_sf ·
 axis` fan-out) must *not* ride along: it is FCS design and lives in-model — in
 the avionics, or accepted as a small per-aircraft×device mapping entry (an
-aircraft-design fork, §16.4). The trace records post-conditioning levels —
+aircraft-design fork, §17.4). The trace records post-conditioning levels —
 exactly what the model consumed, so replay is exact; raw-stick provenance (re-run
 a session through *different* curves) is the known, accepted loss. Edge logic
 follows the levels doctrine: devices stage monotonic press counters; accumulators
-(trim offsets, flap detents) are model state, not mapping state (§16.4).
+(trim offsets, flap detents) are model state, not mapping state (§17.4).
 
 **The input trace** is the sequence of drained, device-tagged batches per frame. It
 extends §11.7's determinism end-to-end: replaying a recorded interactive session —
@@ -1249,7 +1250,7 @@ trajectory bit-identically.
 **The trace header captures the full initial state** `(x, m, z)` **plus the
 initial root-slot values** at `init!` (v0.7 — an unfed `mixture = 0.5` never
 appears in any batch, so replay is broken without them; the init/trim services own
-slot initialization, §18, and the header capture extends naturally) — the one
+slot initialization, §19, and the header capture extends naturally) — the one
 full-state capture in a normal run, and the other half of what "given the
 initial state and the trace, the log is recomputable" requires. Header plus batches
 are the *primary* record; everything else, the state trajectory included, is
@@ -1265,10 +1266,10 @@ drain-rate × device-count — tens of MB per hour worst case, two orders of mag
 below the snapshot log. No sampling, no rolling window (complexity without a
 customer).
 
-Rejected shapes (both torture-tested in §16.3): **per-slot atomic cells** — the
+Rejected shapes (both torture-tested in §17.3): **per-slot atomic cells** — the
 simplest (no merge machinery, and a per-slot layout cannot lose independent writes)
 but same-slot conflicts resolve by hardware store order, i.e. sub-frame wall-clock
-phase (run-to-run behavioral variance, §16.3), peeks are cross-device, the trace
+phase (run-to-run behavioral variance, §17.3), peeks are cross-device, the trace
 loses provenance, and wide slot types hit Julia's atomic-width lock fallback; **a
 shared lock-free batch stack** (CAS-push, swap-drain) — whole-batch atomicity and
 the richest trace, but conflict order is still temporal (push order), and pending
@@ -1314,7 +1315,7 @@ structure: **a widget is live exactly when the underlying input is yours to comm
 in this configuration.** User-commandability is a wiring decision made where
 configurations are made; command-plus-manual-override is a mux component with a
 root-wired select — explicit structure, not two writers racing (the same race as
-§16.3's drag phase, retired by the same rule). The obligation this places on the
+§17.3's drag phase, retired by the same rule). The obligation this places on the
 GUI: read-only rendering is first-class, not an error state — the author of
 `input_slider!` cannot know at authoring time whether it will be live.
 
@@ -1358,7 +1359,7 @@ the intent.
 
 The superseded contract's motivation died with slot exclusivity (§12.3): stage-
 every-pass existed to win every drain against a streaming device sharing the slot
-for the grab's duration (§16.3's drag phase) — but a slot the GUI can write is now
+for the grab's duration (§17.3's drag phase) — but a slot the GUI can write is now
 by definition unclaimed, so once staged and drained a value simply *stays*; there
 is nothing to reassert against. Nor is it worth keeping as insurance: if an
 anomalous writer ever touched an unclaimed slot through a framework defect, the
@@ -1545,11 +1546,11 @@ How an author spells a component: where the structural facts live, what the buil
 takes as authoritative, and what is checked against what. §13.1–§13.4 settle the
 component side (v0.5, amended v0.8: strict `locals`); §13.5–§13.8 settle the
 assembly side (v0.6); the build pipeline is §14 (v0.8); the stopped-sim service
-spellings remain open (§18). Concrete syntax
+spellings remain open (§19). Concrete syntax
 below is near-final in shape but still illustrative in spelling. The sketches
 (`sketch.jl`, `sketch_decoder.jl`, `sketch_io.jl`) predate this section — they
 still show reduce-ports, identity publication, the stateless prototypes and the
-builder-style assembly — and will be refreshed after the §16.4 walkthroughs.
+builder-style assembly — and will be refreshed after the §17.4 walkthroughs.
 
 ### 13.1 Position: a declarative trait layer — plain Julia, no macros
 
@@ -1976,7 +1977,7 @@ construction — nothing in A–C depends on it.
 ### 14.2 The `Build` artifact
 
 `build(world) → Build` is a standalone entry point; `Simulation(world; ...)`
-(§16.4's spelling, unchanged) is the convenience that calls it and adds
+(§17.4's spelling, unchanged) is the convenience that calls it and adds
 deployment binding, buffers and the stopped-sim services. The `Build` is the
 inspectable contract of the instantiation §13.8 gestures at — wire list, face
 table, schedule, root slots as plain printable data. CI checks a model by
@@ -2021,7 +2022,7 @@ standalone; services post-date it).
 garbage once the build finishes; probe values never double as initial slot
 values — that would smuggle in the default semantics rejected above.
 `Simulation` must not reach its first boundary with uninitialized slots; the
-enforcement spelling belongs to the init/trim services (§18).
+enforcement spelling belongs to the init/trim services (§19).
 
 ### 14.4 Activations: executable sets, laziness, caching
 
@@ -2100,8 +2101,8 @@ which adds the loop-level nonfinite-state check as its divergence sibling.
 
 ### 14.6 Stopped-sim services as Stratum-C clients
 
-Settled here because it grounds the strata; concrete service spellings remain
-open (§18). The C172 trim problem (`c172.jl`: `TrimState`, `TrimParameters`,
+Settled here because it grounds the strata; the condition substrate is now
+settled (§16), the client loops remain open (§19). The C172 trim problem (`c172.jl`: `TrimState`, `TrimParameters`,
 `θ_constraint`, the `ẋ`-reading cost) transfers near-verbatim:
 
 - **Trim** is a write-condition → sweep → read-cost loop on the *nominal*
@@ -2356,7 +2357,7 @@ Rejected mechanisms:
   the concrete instantiation would resolve them*), brittle under substitution
   for reasons the aircraft's contract never promised anything about, and it
   leaves the root face list lying about what can halt a run. This also
-  confirms the output-device face-binding precedent (§16.4) rather than
+  confirms the output-device face-binding precedent (§17.4) rather than
   leaving it on a slope.
 
 The wall-clock channel — GUI stop button, device handle, code — is orthogonal
@@ -2433,9 +2434,188 @@ commitments plus a library follow:
 
 ---
 
-## 16. Case studies
+## 16. Stopped-sim services (axis 8), part 1: the condition substrate
 
-### 16.1 `Vehicle` today → this framework
+§14.6 previewed the services — initialization, trim, linearization, capture —
+as Stratum-C clients. Everything they share reduces to one artifact: the
+**condition value**, the datum that says "set this build to this state." This
+section settles its representation, composition and application; the
+boundary-zero sequence, slot-initialization enforcement and the
+trim/linearization client loops remain open (§19).
+
+### 16.1 Conditions are path-addressed overlays on the declared defaults
+
+A condition may specify: continuous state fields (`x`), modes and discrete
+state (`m`, `z`) — addressed by §13.6 slash path plus field name — and root
+input slots, addressed by face. Never outputs (derived data) and never
+workspace (scratch). Entries are validated in the §15.1 batch register: full
+list, violations collected, one `BuildError`.
+
+**Overlay base = the declared defaults, always.** Every store has a declared
+initial value (declaration-by-initial-value, §13.2), so conditions are
+naturally sparse: applying one means "fresh run from the `init_*` defaults,
+with these overrides." The alternative base — the stopped sim's current
+stores — was rejected: it makes the result depend on run history, exactly the
+hidden input the trace-header discipline exists to kill. Warm restart needs no
+second semantics: a `capture` service reads the current stores back *as a
+condition value* (capture → tweak → apply), the same gather the trace header
+already needs. One mechanism, two uses.
+
+**The mirror-tree spelling was rejected** (nested NamedTuples shaped like the
+assembly): the same information, but a second spelling of structure that must
+be zipped against the real one, ragged under partial specification, and
+outside the path vocabulary that `connections`, diagnostics and the `Build`'s
+provenance tables already speak.
+
+**Doctrine.** This does not reopen §15.5's observation-by-path rejection:
+that was *runtime* coupling — a root-authored predicate reaching through
+generic seams it does not own, breaking on substitution. A condition is a
+*design-time statement about a concrete build*, authored in the same register
+as `connections` (which also speaks paths, about children its author owns).
+§16.2's composition law makes the parallel exact.
+
+**Pre-sweep doctrine.** Condition writes precede the first sweep by
+definition; a would-be init value that depends on swept outputs is either
+analytically known to the caller (trim's `α_filt = α_a`: α is a *decision
+variable* — the value is known above, not computable below) or an equilibrium
+constraint, i.e. a job for the trim service, not for init.
+
+### 16.2 Fragment composition: locality without schema
+
+The rejected alternative deserves its argument, because it names a real need.
+`initialize(::C, spec)` as a schema entry — today's `f_init!` reborn
+declaratively, with an assembly-level rule routing sub-specs to children —
+would keep init knowledge component-local (the engine knows
+`n_eng → ω = n_eng·ω_rated`). Rejected on three counts: the routing rule
+makes specs a tree that must mirror the assembly tree — the two-artifact
+drift that killed the assembly builder (row 39), and call-tree composition
+where this design uses data composition everywhere else; spec types with
+`@kwdef` defaults are a *second home* for every store's default, competing
+with `init_x`; and partial overlays would need a per-field "unspecified"
+protocol, while slots (root-face vocabulary) would still need the path layer
+beside it — two mechanisms where one suffices. The kill shot on its
+motivating example: the aero filter's "`α_filt` must equal `α`" is knowledge
+about a *swept output* — a component-local `initialize` computing it would
+need its inputs already swept, turning init into a third scheduled sweep.
+Today's code doesn't do that either: the value is passed down from where it
+is known (§16.1's pre-sweep doctrine).
+
+What preserves the locality is an idiom, not schema: **fragment functions** —
+ordinary functions, shipped beside the component, dispatched on it:
+
+```julia
+condition(eng::PistonEngine; n_eng) =
+    fragment(x = (ω = n_eng * eng.ω_rated,), m = (phase = Phase.running,))
+```
+
+composed by *pull* from the structure's owner —
+
+```julia
+condition(sys::C172XSystems; n_eng, α_a, β_a) = merge(
+    at("pwp/engine", condition(sys.pwp.engine; n_eng)),
+    at("aero",       fragment(x = (α_filt = α_a, β_filt = β_a))))
+```
+
+— with dispatch selecting variant-specific methods (the c172s/c172x actuation
+split costs no upstream edits). The three combinators are constructors of an
+**inert, lazy tree** — no path arithmetic at composition:
+
+```julia
+struct Fragment{X,M,Z,S}  x::X; m::M; z::Z; slots::S  end  #self-vocabulary payloads; no paths
+struct Scoped{N}  prefix::String; node::N  end             #at(prefix, node): stores, never applies
+struct Merged{T<:Tuple}  nodes::T  end                     #merge(ns...): collects; order = diagnostics only
+```
+
+Every node is isbits except the interned literal prefixes, so **rebuilding
+the tree per trim iteration is stack-only construction** — the zero-alloc
+property of today's `assign!` loop, preserved structurally. `fragment`'s
+payloads speak only about the component at the authoring point; addressing
+children is exclusively `at`'s job (one way to say everything). A `slots`
+payload names faces *of the authoring level's contract*; resolution walks the
+export chain to the root slot and errors if the face never surfaces — an
+internally-wired input has no slot and writing it is meaningless (the first
+sweep overwrites), and unexported stays unpokeable for init exactly as for
+the GUI (§12.5, §17.4).
+
+**The locality law** is §8's, third instance (connections, computed exports,
+now conditions): each level speaks its own fields, its declared children's
+names, and its own faces; delegation by dispatch at every genericity seam;
+deep `at` paths legitimate exactly where deep connections are — within an
+owned concrete subtree. Absolute paths exist only in the flattened entry
+list, a *compiled derivative* of the composition, as slot offsets are of
+`connections`. Substituting a component invalidates precisely the fragments
+its owner shipped, nothing else. Enforcement status is also §8's: convention
+(ownership is a fact about who maintains the code, not build-visible),
+available and idiomatic rather than machine-checked. `fragment`/`at`/`merge`
+are §15.7 standard-library material — ordinary artifacts, no privileges.
+Merge collisions — two entries on one leaf — are errors at resolution
+reporting *both* provenance chains; last-writer-wins was rejected in the same
+spirit as slot exclusivity (a silent merge is almost certainly a bug), with
+an explicit override spelling deferred until a use case materializes.
+
+### 16.3 Resolution: flatten, validate, compile once
+
+Resolution takes the root node plus a `Build`. Flattening is the only place
+path strings are ever concatenated — a trivial recursion with a path
+accumulator that also records each entry's **tree position** (its
+`getfield`/`getindex` step tuple). The batch pass then checks each flat
+entry: path resolves (did-you-mean over children), field declared in the
+target's `init_x`/`init_m`/`init_z`, value type convertible to the declared
+leaf type, slot faces reach root slots, no duplicate
+`(path, store, field)`. The `Build` supplies two lookup families: **schema**
+(the evaluated declarations: may you write this field, at what leaf type —
+the authority) and **layout** (`x` backing ranges, `m`/`z` cell indices, slot
+indices from the activation; face chains from Stratum A — the destination).
+
+A valid list compiles to a plan: per leaf, a `Getter{P}` lens (the position
+tuple lifted to a type parameter — type-stable navigation of the fixed tree
+type), a destination offset, and a **converter baked now** (e.g. `RQuat` →
+the 4-scalar backing block) — a one-time boundary decision that leaves
+§14.5's no-convert-on-write doctrine for table cells untouched. Overlay
+partiality for `m`/`z` cells is baked the same way: the writer holds
+`merge(init_m_defaults, overlay)` with the base resolved at compile time
+(§16.1's fork).
+
+### 16.4 Two application registers over one plan
+
+Execution is where the paradigm-change tax was feared, and where it
+vanishes: all string work, validation and addressing are functions of the
+condition's *shape*, and every hot path holds the shape fixed while varying
+values. Hence resolve-once/execute-many, with two registers over one plan:
+
+- **Specialized `apply!`** — for services that iterate (trim's per-evaluation
+  write, linearization's seeding). Unrolled stores through the baked lenses
+  and converters: the same machine operations as today's in-place writes,
+  zero-alloc, no strings, no dispatch. The per-iteration shape check is
+  §14.5's mechanism transferred: the tree type (which carries the full
+  nesting, every field name and leaf type) is proven by dispatch, and a `===`
+  sweep over the interned path literals closes the remainder — pointer
+  compares that fold to nothing in the all-literal case, with shape drift a
+  structured error, not silent corruption. Cost: Julia codegen of ~10–50 ms
+  *once per condition shape* — noise against the model's own first-sweep
+  warmup (seconds) and the 10³–10⁴ optimizer evaluations it amortizes over.
+- **Dynamic walk** — for one-shot init. The same validated entry list,
+  executed by runtime dispatch per write: microseconds total, allocation
+  permitted (§9.5 — the stopped-sim path was never under the zero-alloc
+  regime), and no per-shape codegen: fifty structurally different scripted
+  conditions cost fifty walks, not fifty compiles.
+
+Which register a service uses is internal, never user-facing API.
+**Compiled readers are the gather twin** over the same selector vocabulary
+and layout tables: trim's cost read (`ẋ` and output fields), linearization's
+Jacobian gather, and `capture`'s full-store readback are one primitive run in
+reverse — one machinery, both directions, in the `Build`'s client kit. The
+per-iteration ledger for trim: user fragment math (stack-only, the domain
+computations unchanged from today) + leaf stores + folded shape check +
+sweep — the sweep dominates, exactly as `f_ode!` does today. `apply!` ends at
+established stores; making the model *coherent* (project → sweep → publish)
+is the boundary-zero sequence, open in §19.
+
+---
+
+## 17. Case studies
+
+### 17.1 `Vehicle` today → this framework
 
 The grounding exercise that validated §5. Current `Vehicle.f_ode!`
 (`aircraftbase.jl:142-170`) is a hand-woven instance of the machinery specified here:
@@ -2461,7 +2641,7 @@ The genuine algebraic loop in the domain — α̇-dependent aerodynamics — is 
 broken in the current C172 model by a filter state, exactly the explicit break §5.4
 prescribes. Evidence that reject-loops matches domain practice rather than fighting it.
 
-### 16.2 Torture tests for the §5.2 interfaces: `PistonEngine` and the FCS PID cascade
+### 17.2 Torture tests for the §5.2 interfaces: `PistonEngine` and the FCS PID cascade
 
 Two components were transliterated to validate the decoder interfaces before adoption.
 
@@ -2507,7 +2687,7 @@ Both components passed without blockers, with zero publications forced beyond cu
 practice — the empirical basis for §5.2's claim that derivative/output overlap is the
 domain norm and the decoder matches the codebase's grain.
 
-### 16.3 Torture test for the §12 staging shapes: filter, joystick and GUI
+### 17.3 Torture test for the §12 staging shapes: filter, joystick and GUI
 
 The exercise that selected per-device cells (§12.3) and produced the §12.5
 contracts. Setup (user-level listing: `sketch_io.jl`): a first-order filter with
@@ -2556,9 +2736,9 @@ concrete interleaving did:
   (§12.5) — both correct patches for the contested-slot world this test
   examined, retired with that world.
 
-### 16.4 The interactive C172X demo: the periphery under load (v0.6)
+### 17.4 The interactive C172X demo: the periphery under load (v0.6)
 
-The full-fidelity successor to §16.3, against the real deployment:
+The full-fidelity successor to §17.3, against the real deployment:
 `generic_simulation()` (`FlightApps/demos/c172_demos.jl`) —
 `SimpleWorld(Cessna172Xv1, SimpleAtmosphere, HorizontalTerrain)`, GUI, joysticks,
 an XPlane12 output device, ground/trim init, paced run, post-run plots. Method:
@@ -2599,7 +2779,7 @@ surface, with each item's home:
 - **Outbound** (XPlane12: control-surface angles, nose-wheel steering, prop
   speed/phase, pose, `t`): a snapshot-consuming device, pure `map_output` on the
   device task (§12.2). No friction found.
-- **Init/trim, pause/pace, post-run plots**: stopped-sim services (§18), control
+- **Init/trim, pause/pace, post-run plots**: stopped-sim services (§19), control
   plane (§12.6), log/trace (§12.2–§12.3).
 
 **Architectures examined here and rejected** (the v0.6 periphery decisions were
@@ -2645,7 +2825,7 @@ forced by this cast):
   build pipeline runs here: kind resolution, path validation, face derivation
   (computed exports expanded, printable), two-producers/unconnected checks,
   topological sort, probe passes, rate compilation, flat layout, slot table.
-- `init!(sim, KinInit(...) | TrimParameters(...))` — stopped-sim services (§18);
+- `init!(sim, KinInit(...) | TrimParameters(...))` — stopped-sim services (§19);
   what is settled: they write `(x, m, z)`, **establish every root slot's initial
   value**, and capture the trace header. Slot initialization decisively belongs
   here, not in declarations: the trim service writes slot values it *solved for*
@@ -2690,7 +2870,7 @@ decision broke:
   staging one value); the GUI peek-batch survives as display/slot-sync sugar
   only. Residual check for migration: order-sensitivity of latch vs. sync-write
   on the same boundary (believed none — both derive from the same measurements).
-- *Wind slider*: sparse CAS-merge, §16.3's uncontested-`τ` case, live in the
+- *Wind slider*: sparse CAS-merge, §17.3's uncontested-`τ` case, live in the
   real cast.
 - *Pause/un-pause*: control plane; GUI edits hold in its cell (peek displays),
   joystick cell coalesces bounded; un-pause drain applies both (disjoint slots —
@@ -2698,10 +2878,10 @@ decision broke:
 - *Window close*: §12.9 verbatim — complete boundary, final snapshot, sticky
   stopped, wake waits, unblock hooks, named-timeout joins.
 
-Remaining open (feeding §18): the `q_sf` home (thin mapping entry vs.
+Remaining open (feeding §19): the `q_sf` home (thin mapping entry vs.
 avionics-internal derivation — aircraft design, not framework design).
 
-### 16.5 The strapdown IMU: integrate-and-dump across the tier boundary (v0.9)
+### 17.5 The strapdown IMU: integrate-and-dump across the tier boundary (v0.9)
 
 The strongest challenge yet mounted against the §3 kind split, and its resolution.
 The general question first: why two leaf kinds at all — why not one all-in-one
@@ -2869,7 +3049,7 @@ would be the camel's nose for the merged kind.
 
 ---
 
-## 17. Decision log (condensed)
+## 18. Decision log (condensed)
 
 | # | Decision | Rejected alternatives (why) |
 |---|---|---|
@@ -2916,8 +3096,8 @@ would be the camel's nose for the merged kind.
 | 41 | Dedicated `exports(::A)`: face => internal path(s), direction and face types/tiers derived from endpoints (assemblies are tier-neutral — derivation is forced); `connections` strictly child-to-child | Routing values under leaf `inputs`/`outputs` names (name-level pun — discrete-leaf signature with alien value semantics, kills the kind split); leaf-style typed faces + face wires in `connections` (no `outputs` signature fits a tier-neutral assembly; face/child namespace collisions; weakest kind marker); wires-only with implicit facehood (publicity never implicit) |
 | 42 | `rates(::A)` optional declaration, immediate children only, `K` on a continuous child = error; `Δt_base`/`h` fixed only at `Simulation` construction | Instance wrappers (`Subsampled`-style: wraps the field type, pollutes paths/dispatch/contract; makes the type-intrinsic ratio a per-instance value); deep rate keys (edit another type's design from outside) |
 | 43 | Computed exports as ordinary code + `faces(asm, path; prefix, except, only)`; root slots = the root's exported input faces; generic holding = imposed contract checked per instantiation | Auto-bubbling (forgotten wire silently promoted to a live root slot — §13.4 walkthrough 2 inverted); wildcard-export vocabulary (ordinary code suffices); `add_input!`-style root-slot declarations (second vocabulary for what exports already are) |
-| 44 | Slot exclusivity: one writer per root slot at a time; device claims at attach, conflict = attach-time error, release on detach; per-device cells/CAS/drain retained for atomicity and coalescing | Cross-device attachment-order precedence as conflict *policy* (resolves races the §16.4 cast shows nobody wants — every dual writer is a stream shadowed by a mirror); FlightCore-style concurrent multi-device writing of one input (a bug surface, not a feature) |
-| 45 | GUI liveness fully derived (transitive root-slot resolution ∧ slot unclaimed); faces carry writer-independent post-conditioning semantics (GUI-parity test); mappings = declarative binding data with per-axis conditioning params, on the device task; edge logic = staged counters + model-state accumulators; unexported ports unpokeable | Per-port "GUI-controlled" markings (the export chain is the marking, owned by the right author); nominally-connected + GUI override channel (second write path; breaks frame purity and trace; done right it collapses into root slots); conditioning in-model (fails GUI-parity — sliders and scripts would be deadzoned); shaping as per-device mapping code (aircraft semantics duplicated per device — today's demonstrated smell); joystick-as-component and root-level `PilotInterface` (§16.4 — replay same-build, single audit point, no natural home in `World`) |
+| 44 | Slot exclusivity: one writer per root slot at a time; device claims at attach, conflict = attach-time error, release on detach; per-device cells/CAS/drain retained for atomicity and coalescing | Cross-device attachment-order precedence as conflict *policy* (resolves races the §17.4 cast shows nobody wants — every dual writer is a stream shadowed by a mirror); FlightCore-style concurrent multi-device writing of one input (a bug surface, not a feature) |
+| 45 | GUI liveness fully derived (transitive root-slot resolution ∧ slot unclaimed); faces carry writer-independent post-conditioning semantics (GUI-parity test); mappings = declarative binding data with per-axis conditioning params, on the device task; edge logic = staged counters + model-state accumulators; unexported ports unpokeable | Per-port "GUI-controlled" markings (the export chain is the marking, owned by the right author); nominally-connected + GUI override channel (second write path; breaks frame purity and trace; done right it collapses into root slots); conditioning in-model (fails GUI-parity — sliders and scripts would be deadzoned); shaping as per-device mapping code (aircraft semantics duplicated per device — today's demonstrated smell); joystick-as-component and root-level `PilotInterface` (§17.4 — replay same-build, single audit point, no natural home in `World`) |
 | 46 | Face names = arbitrary strings; build invariants only no-`/` + per-assembly uniqueness; slash = structure, face names = opaque contract tokens, periphery speaks face names only; `exports` returns pairs like `connections`; `faces(asm, path; prefix, sep, except, only)` with dot-prefix *defaults* (convention, not law) | Mandated dot convention (a naming law where two invariants suffice); NamedTuple-returning `exports` (`var"..."` noise for non-identifier names; asymmetric with `connections`); slash-composed prefixes (face names would collide with structural path notation); `rename` hooks in `faces` (`exports` is ordinary code — map over the pairs) |
 | 47 | Widgets stage on interaction events only (value widgets on edit, edge widgets on activation with peek-computed counter levels); levels × own-pending-first peek give idempotent repeat and correct multi-click; drain discards stale GUI entries to newly-claimed slots (warning); snapshot includes root slots (peek fallback + read-only mirrors); trace header extends to initial slot values; engage semantics stay in the FCS (the existing `ControlLaws` transition latch — uniform across writers), GUI peek-batch demoted to display-sync sugar | Stage-every-pass (motivating contest died with exclusivity; as insurance it masks invariant violations at render rate — anti-diagnostic; render-rate trace noise); held-button re-staging (auto-repeat at frame rate once the snapshot catches up); capture-on-engage as a GUI/framework obligation (already aircraft design, shipped in `ControlLaws`); slot-initial-values as export-entry defaults (trim writes slot values it *solved for* — services own initialization) |
 | 48 | Build pipeline as three strata: A structure (pure declaration reading — tree/kinds/contracts, bottom-up faces, global wiring + obligations, rate compilation), B schedule (`g_s1` probe → port classification → feedthrough graph → topo/cycle), C activation (per-`T` slot typing + probe chain + layouts); deployment binding at `Simulation` construction only | Single-pass tree walk with per-level validation (obligation/two-producers undecidable below the root); pure collect-then-validate (stage membership requires the `g_s1` probe — evaluation feeds structure exactly once, at the blessed spot) |
@@ -2928,33 +3108,40 @@ would be the camel's nose for the merged kind.
 | 53 | Always-on conformance = one baked expected-`NamedTuple` type test at the table-write point, exact match, no convert-on-write; folds away when inferrable; uniform across `f` (state-field completeness), guards (`Bool`), `h`, handlers (partial-`m` subset predicate); failure = path + stage + field diff + `t`, reproducible by trace replay | Field-assignment `convert` semantics (`Float64 → Dual` silently zeroes partials — wrong Jacobian, no error; `Int` sloppiness passing at nominal but detonating under `Dual` makes "it runs" activity-dependent); per-field checks (one whole-type test suffices and folds); branch identification in the error (values carry no provenance — the diff + replay suffice) |
 | 54 | Symmetric `T` on `inputs` rejected as impossible-by-construction: an input's activation-time type depends on the producer's tier through the wiring (continuous → `Dual`, gated discrete → held `Float64`; consumers promote); producers determine activation types, consumers accept — consumer obligation is genericity, checked by the `Dual` probe | `inputs(::C, ::Type{T})` (forces the consumer to declare its producer's tier; breaks on discrete-for-continuous substitution behind the same face; row 33's exact-`Float64`-face check was already the only coherent consumer statement) |
 | 55 | Strict `locals(::C, ::Type{T})` declaration (discrete: plain `locals(::C)`): every non-`outputs` return field declared; empty framework default; no auto-publication; component-scoped cross-stage cells ≠ workspace; schema authority total — declared eltype is the participation statement under `Dual` (supersedes row 34's observation exception; adds §13.4 walkthrough 5) | `Private(T)` wrapper inside `outputs` (breaks "declared = public"; the layer's first wrapper type); opt-in `locals` + `Float64`-under-`Dual` diagnostic (legislates an ambiguity strictness dissolves); observation-authority status quo (pinned intermediates drop partials that flow out through `f` in conformant types — blast radius never was local for values; return typos silently define new cells) |
-| 56 | Two-kind taxonomy upheld under the integrate-and-dump challenge (§16.5): the kinds are time bases (sweep-driven vs. tick-driven), and cross-tier coupling always routes through table cells; idiom = integrate-and-difference — cumulative integrals in `x`, previous-sample latch in the sampler's `z`; exact whenever interval-dependence is a left action by the interval-start value of a cumulatively-integrable quantity (inertial-rate anchoring required; RK-exact by linearity of the kinematics); latch-back wire (feedthrough-stage ZOH latch) for interval-relative flow terms; tick-triggered continuous handlers = the recorded, unbuilt escape hatch; boundary-sampling semantics promoted to taught contract | All-in-one component kind (an assembly in a trench coat: the halves still communicate through cells — one home per datum, sole-reader `z`, no cross-tier state views — so zero expressiveness gained; costs stage doubling with tier-tagged names, per-port tier vocabulary, facet-conditional obligations; hides the sampling seam — Simulink/FMI's documented sample-time confusion); `z` view in `f` / discrete writes into `x` (un-samples the sampled-data semantics, breaks held-`z` linearization exactness, coupling invisible to table, trace and feedthrough graph); periodic reset via time-guard events (hand-rolls the tick scheduler, forfeits the harmonic grid and `comp.Δt`) |
+| 56 | Two-kind taxonomy upheld under the integrate-and-dump challenge (§17.5): the kinds are time bases (sweep-driven vs. tick-driven), and cross-tier coupling always routes through table cells; idiom = integrate-and-difference — cumulative integrals in `x`, previous-sample latch in the sampler's `z`; exact whenever interval-dependence is a left action by the interval-start value of a cumulatively-integrable quantity (inertial-rate anchoring required; RK-exact by linearity of the kinematics); latch-back wire (feedthrough-stage ZOH latch) for interval-relative flow terms; tick-triggered continuous handlers = the recorded, unbuilt escape hatch; boundary-sampling semantics promoted to taught contract | All-in-one component kind (an assembly in a trench coat: the halves still communicate through cells — one home per datum, sole-reader `z`, no cross-tier state views — so zero expressiveness gained; costs stage doubling with tier-tagged names, per-port tier vocabulary, facet-conditional obligations; hides the sampling seam — Simulink/FMI's documented sample-time confusion); `z` view in `f` / discrete writes into `x` (un-samples the sampled-data semantics, breaks held-`z` linearization exactness, coupling invisible to table, trace and feedthrough graph); periodic reset via time-guard events (hand-rolls the tick scheduler, forfeits the harmonic grid and `comp.Δt`) |
 | 57 | Reporting policy split: declarative checking passes batch (the full violation list is the pass's natural output); the first user-code exception (`exports` bodies, probes) aborts the phase; strata are barriers; no cascade suppression within a stratum | Uniform fail-fast (N build cycles for N clustered wiring errors); full compiler-style batching (poisoned nodes, cascade suppression, dependent-check skipping — machinery for failures that are singular in practice); suppression heuristics (adjacent path-sorted pairs are self-explanatory) |
 | 58 | Diagnostics = plain structured values from a closed kind set (paths and names as strings, expected/observed port types, lists-in-hand, severity); single `BuildError` carrier thrown at the stratum barrier, compiler-style rendering; user-code exceptions wrapped in framing diagnostics with the original as `cause`; warnings ride the same stream and never throw; didactic register as policy; tests match kind + payload, never message text | `error()` strings (acceptance tests pinned to message text; no batch carrier); one exception type per failure class (throw vehicles for data that is collected, not thrown); instances/model types in diagnostics (the `compact_backtrace` lesson); a separate warning channel (two pipelines; blocks a warnings-as-errors switch) |
 | 59 | Runtime failures: one catch site around the boundary macro-sequence + execution cursor (schedule index, function kind, boundary phase — one plain store per dispatch); `StepError` carrying cursor frame, boundary time, replay pointer, `cause`; §14.5's conformance failure a species; loop-level nonfinite-`x` boundary check; terminal `stopped`/`errored` status, synchronous runs rethrow after the tail | Per-call try/catch (exception frames in the hot path to gather what a cursor store provides); naked task death (unframed exception, hanging devices); resumable-after-error simulations (stores may be mid-boundary; reproduction is trace replay, not resurrection) |
 | 60 | Graceful termination is model state, never an exception: detection by ordinary guard/handler machinery (Tier-2 event where the stop must be localized), publication as an exported `Bool` face, policy as `stop_on` root faces at `Simulation` construction (OR-combined, `Build`-validated, metadata-recorded, sampled at completed boundaries); exceptions from model code always abnormal; `SimulationTermination` retired | Termination-by-exception (aborts a boundary §12.9 is built on completing; models never state their terminal dynamics); `stop_when` predicate closures (opaque, unserializable, a public snapshot API — `user_callback!` redux); root-type-declared policy (stopping is run policy; absolutes bind at deployment — overridable default the one variant on record); scanned terminal types / `terminal` event flags (action at a distance: deep declarations halt the world, root contract silent, disabling needs masking; the localization they promise is the event idiom under `stop_on` anyway); control-plane capability components (§12.6 — components live inside boundary semantics); observation-by-path (load-bearing observation must speak the contract; diagnostic observation sees everything — §8's knowledge rule applied to reads) |
 | 61 | `resolve(asm, path)` walks declared field types alongside instances, enforcing §8's generic-boundary rule at the primitive (past-generic segment = diagnostic even where the instance resolves); `input_faces`/`output_faces` return declaration-ordered face-name strings; the wiring resolver splits a terminal path's final segment (slash the only structural separator) | Instance-only walk (blind to generic holding — §8 unenforceable where paths are actually resolved); set-valued face lists (nondeterministic printouts and unstable diagnostics) |
 | 62 | Tooling commitments: `faces` gains predicate selection; the `Build` printer renders face provenance (root face → producing terminal chain); standard component library (summing junctions, Bool gates) as ordinary components, demand-driven, arity by type parameter (`Or{N}` — computed contracts), stateless-continuous hence tier-transparent | Framework-privileged library blocks (schema authority no longer total; the library stops testing the declaration layer's ergonomics); upfront Simulink-scale inventory (a language, not a toolbox); per-site hand-written junctions (prices §6's explicit-junction doctrine dishonestly) |
+| 63 | Conditions are path-addressed values: sparse overlays of `x`/`m`/`z` fields (§13.6 path + field) and root slots (by face) on the declared `init_*` defaults; never outputs or workspace; warm restart = `capture` reads current stores back as a condition value (capture → tweak → apply) | Mirror-tree spelling (a second structure artifact, ragged under partiality, outside the path vocabulary); current-stores overlay base (run-history dependence breaks header reproducibility); condition-by-contract-only (forfeits the concrete-build authoring register that `connections` already occupies) |
+| 64 | Per-component init knowledge = fragment-returning user functions dispatched on component types, composed by pull (`at`/`merge` invoked by the structure's owner); pre-sweep doctrine: a condition value needing swept outputs is caller-computable (trim's `α_filt = α_a` — a decision variable) or an equilibrium constraint for the trim service | `initialize(::C, spec)` schema + assembly routing (call-tree composition reborn: spec tree mirrors assembly tree = row-39 two-artifact drift; spec defaults = second home competing with `init_x`; per-field partiality protocol; slots still need the path layer — two mechanisms); init as a third scheduled sweep (what "component-local `α_filt = α`" actually requires) |
+| 65 | Fragments form a lazy inert tree (`Fragment`/`Scoped`/`Merged`; `at`/`merge` store, never apply — stack-only rebuild per iteration); all flattening/validation/addressing at resolution against the `Build`; duplicate leaf = error with both provenances; converters and `m`/`z` overlay bases baked at compile; slots resolve through export chains (unexported = unwritable, init included); locality law = §8's, third instance (own fields, declared children, own faces; deep `at` only within owned concrete subtrees) — absolute paths are compiled derivatives, so §15.5's observation-by-path rejection is untouched | Eager path concatenation in `at` (strings and allocation on the hot path); eager duplicate checks in `merge` (requires flattening at composition); last-writer-wins merge (silent near-certain bug — slot-exclusivity spirit); machine-enforced ownership (not build-visible; same convention status as §8) |
+| 66 | Two application registers over one compiled plan: specialized `apply!` (`Getter{P}` lenses, unrolled baked stores, zero-alloc; §14.5-style shape check via tree type + literal `===` sweep; ~10–50 ms codegen once per shape) for iterating services; dynamic entry-list walk (microseconds, no per-shape codegen, allocation fine per §9.5) for one-shot init; compiled readers as the gather twin (cost reads, linearization gather, `capture`) — one primitive family in the `Build`'s client kit | Single always-specialized register (per-shape codegen tax on scripted one-shot conditions); single always-dynamic register (forfeits the zero-alloc trim loop); per-write convert decisions (the converter is a resolution-time fact; §14.5's no-convert-on-write stands for table cells) |
 
 ---
 
-## 18. Open axes
+## 19. Open axes
 
 To be settled in subsequent sessions:
 
-- **Stopped-sim services.** Concrete spellings for initialization, trim and
-  linearization as §14.6 clients: the condition-value representation (state by
-  path, modes, slots by face), the optimizer seam (NLopt or a replaceable
-  backend), the boundary-completion sequence after a service writes (project →
-  sweep → publish), and slot-initialization enforcement before the first
-  boundary (§14.3's probe-scoping hook; the services own the trace header's
-  slot capture, §12.3, §16.4).
+- **Stopped-sim services, remainder.** The condition substrate is settled
+  (§16, rows 63–66). Remaining: the boundary-zero application sequence (what
+  runs between `apply!` and the first published snapshot — project → sweep →
+  events? → `h` updates? — the parity question); slot-initialization totality
+  enforcement before the first boundary (§14.3's probe-value leak barrier;
+  the services own the trace header's slot capture, §12.3, §17.4); the trim
+  client loop (decision-variable spelling, the optimizer seam — NLopt or a
+  replaceable backend — commit/failure semantics); the linearization client
+  (surface selectors replacing `get_x_ss`/`assign_x_ss!`, labels for control
+  design, the `LinearizedSS` fate); the `capture` spelling.
 - **Migration.** Outline for FlightPhysics/FlightApps (the Tier-1 parametrization
   pass, the `KinData`-style output splits, the contributor survey feeding §6's
   aggregation chains — mechanical to extract from today's trait implementations);
   comparison criteria against FlightCore's demonstrated strengths (zero-alloc
   stepping, flexibility, interactive operation); the §15.7 component library's
-  starting inventory. Residuals: the `q_sf` home (§16.4 — aircraft design,
+  starting inventory. Residuals: the `q_sf` home (§17.4 — aircraft design,
   belongs here); whether `stop_on` needs a root-declared overridable default
   (§15.5 — reopen only if the ctor argument proves chronically forgotten).
 - **Sketch refresh.** The sketches predate v0.5 and the v0.6–v0.10
