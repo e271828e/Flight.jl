@@ -1,21 +1,25 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** eleventh checkpoint (v0.11). Axes 1–6 settled; axis 7 (the
+**Status:** twelfth checkpoint (v0.12). Axes 1–6 settled; axis 7 (the
 declaration layers, §13, and the build pipeline, §14) settled; error
 discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
-upheld (§17.5, row 56). New in this revision: **the stopped-sim condition
-substrate settled** (§16, rows 63–66) — conditions as path-addressed sparse
-overlays on the declared `init_*` defaults (slots by face,
-capture-for-warm-restart); `initialize`-as-schema rejected for the
+upheld (§17.5, row 56). New in v0.11–v0.12: **the stopped-sim condition
+substrate and boundary zero settled** (§16, rows 63–67) — conditions as
+path-addressed sparse overlays on the declared `init_*` defaults (slots by
+face, capture-for-warm-restart); `initialize`-as-schema rejected for the
 fragment-function idiom (`fragment`/`at`/`merge` lazy tree, §8's locality law
 in its third instance, the pre-sweep doctrine); resolution-time
 flatten/validate/compile with baked converters and dual-provenance duplicate
-errors; and two application registers over one plan (specialized zero-alloc
+errors; two application registers over one plan (specialized zero-alloc
 `apply!` for iterating services, dynamic walk for one-shot init), with
-compiled readers as the gather twin. Boundary-zero sequence, slot-init
-enforcement, the trim/linearization client loops and the migration outline
-pending (see [Open axes](#open-axes)). Sections renumbered: services §16,
-case studies §17, decision log §18, open axes §19.
+compiled readers as the gather twin; and boundary zero as the §11.6
+macro-sequence with an empty integrate (§16.5) — events and due `h` updates
+run, under the interval-alignment taught contract (a boundary's `h` is the
+outgoing transition; authorship replaces both incoming transitions), with
+`t₀` an init-service argument anchoring the grid. Slot-init enforcement, the
+trim/linearization client loops and the migration outline pending (see
+[Open axes](#open-axes)). Sections renumbered: services §16, case studies
+§17, decision log §18, open axes §19.
 
 ---
 
@@ -977,7 +981,8 @@ resolve asymmetrically:
   quiescence can flip a guard, so no combined event/tick fixed point exists to
   iterate.
 
-The boundary macro-sequence, final form:
+The boundary macro-sequence, final form (boundary zero — initialization — is
+the same sequence with an empty integrate, §16.5):
 
 > integrate → project → **[sweep → guards → handlers]** iterated to quiescence
 > (once per event) → all due `h` updates → logging / I/O staging.
@@ -2608,8 +2613,61 @@ reverse — one machinery, both directions, in the `Build`'s client kit. The
 per-iteration ledger for trim: user fragment math (stack-only, the domain
 computations unchanged from today) + leaf stores + folded shape check +
 sweep — the sweep dominates, exactly as `f_ode!` does today. `apply!` ends at
-established stores; making the model *coherent* (project → sweep → publish)
-is the boundary-zero sequence, open in §19.
+established stores; making the model *coherent* is boundary zero, §16.5.
+
+### 16.5 Boundary zero: an ordinary boundary with authored incoming transitions
+
+After `apply!` establishes stores at `t₀`, the init service completes the
+§11.6 macro-sequence with an empty integrate — project → [sweep → guards →
+handlers]\* → due `h` updates → header capture + first snapshot — and that
+parity is exact, not approximate. Piece by piece:
+
+- **Project runs.** Authored `x` can sit off-manifold (a hand-assembled
+  quaternion ulps off unit norm; a condition writing part of a constrained
+  block against fresh defaults). Projection after condition writes is the
+  same position it holds after any other `x` mutation, and costs nothing
+  when the state is already clean.
+- **The sweep runs with every tick due.** `t₀` is a grid point of every
+  divisor, so all discrete `g` stages are gated in, publishing from the
+  authored `z` — necessarily, since no earlier tick exists for a ZOH to
+  hold. The `t₀` snapshot carries a fully populated table.
+- **Events run.** A condition landing in guard-true territory (an authored
+  stall flag, a strut authored into contact, a `stop_on` face already true)
+  fires visibly at `t₀` rather than one step later. Suppression would delay
+  the identical firings while hiding the diagnostic that the authored
+  condition was not quiescent — §17.4's stage-on-interaction lesson
+  (insurance that masks invariant violations is anti-diagnostic). The header
+  records the *authored* condition; whatever fires at boundary zero is
+  deterministic under replay.
+- **Due `h` updates run.** This follows from an interval-alignment fact that
+  is easy to mis-picture and is hereby a taught contract, sibling to §17.5's
+  boundary-sampling line: **a boundary's `h` is the *outgoing* transition** —
+  at tick `t_k` it consumes the completed boundary's samples and produces
+  `z_{k+1}`, the value the next tick reads; the transition that carried `z`
+  *into* `t_k` ran at `t_{k-1}`. Boundary zero is missing its incoming
+  transitions on *both* tiers, and both are replaced by authorship: no
+  integration over `[t_{-1}, t_0]` produced `x(0)` and no `h` at `t_{-1}`
+  produced `z(0)` — the condition did. The outgoing work all runs: `h` at
+  `t₀` computes `z(1)` from `t₀` samples, its only opportunity — `z(1)` must
+  sit in the store before `t₁`'s gated stages read it. Skipping `h` at
+  boundary zero would not preserve the authored `z(0)` — that is already
+  preserved, published in the `t₀` snapshot — it would *delete the `t₀`
+  sample from the discrete dynamics*: an accumulator
+  `z_{k+1} = z_k + Δt·e_k` authored with `z₀ = 0` under nonzero `e(t₀)`
+  would first integrate `e(t₁)`, the whole sampled-data lattice one period
+  late. (The `x`-analogue of `h`-at-`t₀` is not the empty incoming
+  integrate but the first *outgoing* one, `t₀ → t₀+h`: both authored values
+  are the published initial conditions of their outgoing transitions.)
+- **`t₀` is an init-service argument** (default `0.0`), never a condition
+  entry — time is not a store of any component, and the harmonic grid
+  anchors at whatever `t₀` boundary zero runs at. Conditions are time-free;
+  `capture` returns condition and time separately for resume-at-time.
+- **Trim is untouched by all of this.** Optimizer iterations are raw
+  write → sweep → read cycles on the activation — no boundaries, no events,
+  no `h`; only the committed solution executes boundary zero. A guard firing
+  at commit is a wanted failure signal: today's hand-written trim asserts
+  (`!stall`, no weight-on-wheels, `ω > ω_idle`) become the model's own event
+  logic, surfaced through the ordinary machinery instead of `@assert`.
 
 ---
 
@@ -3119,6 +3177,7 @@ would be the camel's nose for the merged kind.
 | 64 | Per-component init knowledge = fragment-returning user functions dispatched on component types, composed by pull (`at`/`merge` invoked by the structure's owner); pre-sweep doctrine: a condition value needing swept outputs is caller-computable (trim's `α_filt = α_a` — a decision variable) or an equilibrium constraint for the trim service | `initialize(::C, spec)` schema + assembly routing (call-tree composition reborn: spec tree mirrors assembly tree = row-39 two-artifact drift; spec defaults = second home competing with `init_x`; per-field partiality protocol; slots still need the path layer — two mechanisms); init as a third scheduled sweep (what "component-local `α_filt = α`" actually requires) |
 | 65 | Fragments form a lazy inert tree (`Fragment`/`Scoped`/`Merged`; `at`/`merge` store, never apply — stack-only rebuild per iteration); all flattening/validation/addressing at resolution against the `Build`; duplicate leaf = error with both provenances; converters and `m`/`z` overlay bases baked at compile; slots resolve through export chains (unexported = unwritable, init included); locality law = §8's, third instance (own fields, declared children, own faces; deep `at` only within owned concrete subtrees) — absolute paths are compiled derivatives, so §15.5's observation-by-path rejection is untouched | Eager path concatenation in `at` (strings and allocation on the hot path); eager duplicate checks in `merge` (requires flattening at composition); last-writer-wins merge (silent near-certain bug — slot-exclusivity spirit); machine-enforced ownership (not build-visible; same convention status as §8) |
 | 66 | Two application registers over one compiled plan: specialized `apply!` (`Getter{P}` lenses, unrolled baked stores, zero-alloc; §14.5-style shape check via tree type + literal `===` sweep; ~10–50 ms codegen once per shape) for iterating services; dynamic entry-list walk (microseconds, no per-shape codegen, allocation fine per §9.5) for one-shot init; compiled readers as the gather twin (cost reads, linearization gather, `capture`) — one primitive family in the `Build`'s client kit | Single always-specialized register (per-shape codegen tax on scripted one-shot conditions); single always-dynamic register (forfeits the zero-alloc trim loop); per-write convert decisions (the converter is a resolution-time fact; §14.5's no-convert-on-write stands for table cells) |
+| 67 | Boundary zero = the §11.6 macro-sequence with an empty integrate: project → sweep (every tick due; discrete stages publish from the authored `z`) → events to quiescence → due `h` updates → header capture + first snapshot; interval-alignment taught contract (sibling of §17.5's boundary-sampling line): a boundary's `h` is the *outgoing* transition — `z_{k+1}` from `t_k`'s samples — so boundary zero's incoming transitions on both tiers are replaced by authorship, and `h` at `t₀` is the `t₀` sample's only chance; `t₀` an init-service argument anchoring the harmonic grid (conditions time-free; `capture` returns condition and time separately); trim iterations bypass boundaries entirely (raw write→sweep→read on the activation), only the commit runs boundary zero — a guard firing at commit replaces today's hand-written trim asserts | Condition-authoritative boundary zero (no events/`h`: delays the identical firings one step while hiding non-quiescence — §17.4's insurance-masking-invariants pattern; skipping `h` deletes the `t₀` sample and starts the sampled-data lattice one period late — the authored `z(0)` needs no protection, it is published at `t₀` regardless); `h` before the sweep or republish-from-`z⁺` (stale-table sampling or Mealy update-feedthrough: same-boundary circularity, kills §11.6's structural termination); `t₀` as a condition entry (time is not a store) |
 
 ---
 
@@ -3126,10 +3185,8 @@ would be the camel's nose for the merged kind.
 
 To be settled in subsequent sessions:
 
-- **Stopped-sim services, remainder.** The condition substrate is settled
-  (§16, rows 63–66). Remaining: the boundary-zero application sequence (what
-  runs between `apply!` and the first published snapshot — project → sweep →
-  events? → `h` updates? — the parity question); slot-initialization totality
+- **Stopped-sim services, remainder.** The condition substrate and boundary
+  zero are settled (§16, rows 63–67). Remaining: slot-initialization totality
   enforcement before the first boundary (§14.3's probe-value leak barrier;
   the services own the trace header's slot capture, §12.3, §17.4); the trim
   client loop (decision-variable spelling, the optimizer seam — NLopt or a
