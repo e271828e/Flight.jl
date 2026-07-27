@@ -1,10 +1,11 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** thirteenth checkpoint (v0.13). Axes 1–6 settled; axis 7 (the
+**Status:** fourteenth checkpoint (v0.14). Axes 1–6 settled; axis 7 (the
 declaration layers, §13, and the build pipeline, §14) settled; error
 discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
-upheld (§17.5, row 56). New in v0.11–v0.13: **the stopped-sim init
-substrate settled** (§16, rows 63–68) — conditions as path-addressed sparse
+upheld (§17.5, row 56). New in v0.11–v0.14: **the stopped-sim init
+substrate and the trim problem spelling settled** (§16, rows 63–69) —
+conditions as path-addressed sparse
 overlays on the declared `init_*` defaults (slots by face,
 capture-for-warm-restart); `initialize`-as-schema rejected for the
 fragment-function idiom (`fragment`/`at`/`merge` lazy tree, §8's locality law
@@ -16,11 +17,15 @@ compiled readers as the gather twin; boundary zero as the §11.6
 macro-sequence with an empty integrate (§16.5) — events and due `h` updates
 run, under the interval-alignment taught contract (a boundary's `h` is the
 outgoing transition; authorship replaces both incoming transitions), with
-`t₀` an init-service argument anchoring the grid; and slot totality (§16.6)
+`t₀` an init-service argument anchoring the grid; slot totality (§16.6)
 enforced pre-write at `init!`/commit (`UninitializedSlots`, all-or-nothing,
 `probe_value` structurally unreachable), with aircraft-shipped baseline
-conditions layered by the new ordered `override` combinator. The
-trim/linearization client loops and the migration outline pending (see
+conditions layered by the new ordered `override` combinator; and the trim
+problem spelling (§16.7) — NamedTuple decisions, declared `deriv`/`output`
+reads, and the residual-vector reformulation (nonlinear least squares with
+exact AD Jacobians via the Dual activation; FlightCore's scalar-BOBYQA as
+the derivative-free degenerate case). The trim solver seam, the mounting
+record, the linearization client and the migration outline pending (see
 [Open axes](#open-axes)). Sections renumbered: services §16, case studies
 §17, decision log §18, open axes §19.
 
@@ -2724,6 +2729,55 @@ but it hard-codes exactly two layers and moves a composition decision out
 of the condition algebra, the one place every other composition decision
 lives.
 
+### 16.7 The trim problem: NamedTuple decisions, declared reads, residual vectors
+
+What the aircraft author ships, piece by piece against today's `c172.jl`:
+
+- **Decision variables, initial guess and box bounds are plain, same-shaped,
+  all-`Float64` NamedTuples.** The `AbstractTrimState{N}`/`FieldVector`
+  supertype dies — its only job was vectorization, which is the service's
+  (pack/unpack by field order, shapes checked at setup). Guess, bounds and
+  the returned solution share one spelling; `Base.merge(guess, (throttle =
+  0.3,))` is free warm-start tweaking; an author who wants a documented
+  `@kwdef` struct keeps it privately and converts.
+- **`TrimParameters` stays a plain user struct** the framework never sees;
+  the assignment is the pure `trim_condition(ac, params, d)` fragment-tree
+  function (§16.2), applied per iteration by the compiled plan (§16.4).
+- **The read side is declared, then compiled**: `reads(name = deriv(path,
+  field) | output(path, field), ...)` — `deriv` addresses a declared state
+  field's derivative (validated against `init_x`), `output` a declared
+  output port (validated against `outputs`); `locals` are not addressable —
+  a trim evaluation needing one is a signal the component should export it.
+  The compiled reader (§16.4's gather twin) fills a stack-only NamedTuple
+  per evaluation.
+- **The user supplies a residual *vector*, not a scalar cost.** The
+  FlightCore formulation's core — analytic elimination (`θ_constraint`
+  substituting the pitch constraint, filter and actuator equilibria imposed
+  by construction, the minimal 7-variable search) — is correct and survives
+  verbatim as user math. What changes is the numerics: trim is a square
+  root-find that FlightCore had to pose as derivative-free scalar
+  minimization (BOBYQA over `‖r‖²` — a flat quadratic valley near the
+  solution, `stopval = 1e-16` as a hand-scaled absolute threshold,
+  thousands of evaluations, no per-equation diagnostics) because Jacobians
+  through the mutating `f_ode!` chain and the assignment math were out of
+  reach. Here the `Dual` activation seeds the decision variables through
+  the `T`-generic assignment, sweep and `f` — §14.6's "open option," now
+  the *default*: nonlinear least squares on `r(d)` with exact AD Jacobians
+  (trust-region/Levenberg–Marquardt register), quadratic convergence
+  (~5–15 evaluations), per-residual physical tolerances, and failure
+  reports naming the unbalanced equations with magnitudes. Non-squareness
+  degrades gracefully (redundant actuation → weighted/minimum-norm LS;
+  infeasible demands → converged nonzero residual identifying the
+  impossible balance), and `∂r/∂d` at the solution is free flight-physics
+  data (control effectiveness) cross-checking linearization. The
+  derivative-free scalar path survives as the fallback: the service squares
+  the residuals — today's algorithm as the degenerate case.
+- **Recorded, not built**: closed-loop sampled-data trim (append
+  `h(z) − z = 0` residuals via a nondestructive scratch evaluation of `h` —
+  structurally impossible under FlightCore's mutating `f_disc!`), and
+  on-ground static equilibrium (strut compressions and attitude against
+  gear forces) as simply another problem value over the same service.
+
 ---
 
 ## 17. Case studies
@@ -3234,6 +3288,7 @@ would be the camel's nose for the merged kind.
 | 66 | Two application registers over one compiled plan: specialized `apply!` (`Getter{P}` lenses, unrolled baked stores, zero-alloc; §14.5-style shape check via tree type + literal `===` sweep; ~10–50 ms codegen once per shape) for iterating services; dynamic entry-list walk (microseconds, no per-shape codegen, allocation fine per §9.5) for one-shot init; compiled readers as the gather twin (cost reads, linearization gather, `capture`) — one primitive family in the `Build`'s client kit | Single always-specialized register (per-shape codegen tax on scripted one-shot conditions); single always-dynamic register (forfeits the zero-alloc trim loop); per-write convert decisions (the converter is a resolution-time fact; §14.5's no-convert-on-write stands for table cells) |
 | 67 | Boundary zero = the §11.6 macro-sequence with an empty integrate: project → sweep (every tick due; discrete stages publish from the authored `z`) → events to quiescence → due `h` updates → header capture + first snapshot; interval-alignment taught contract (sibling of §17.5's boundary-sampling line): a boundary's `h` is the *outgoing* transition — `z_{k+1}` from `t_k`'s samples — so boundary zero's incoming transitions on both tiers are replaced by authorship, and `h` at `t₀` is the `t₀` sample's only chance; `t₀` an init-service argument anchoring the harmonic grid (conditions time-free; `capture` returns condition and time separately); trim iterations bypass boundaries entirely (raw write→sweep→read on the activation), only the commit runs boundary zero — a guard firing at commit replaces today's hand-written trim asserts | Condition-authoritative boundary zero (no events/`h`: delays the identical firings one step while hiding non-quiescence — §17.4's insurance-masking-invariants pattern; skipping `h` deletes the `t₀` sample and starts the sampled-data lattice one period late — the authored `z(0)` needs no protection, it is published at `t₀` regardless); `h` before the sweep or republish-from-`z⁺` (stale-table sampling or Mealy update-feedthrough: same-boundary circularity, kills §11.6's structural termination); `t₀` as a condition entry (time is not a store) |
 | 68 | Slot totality enforced at the service: `init!`/commit compare resolved slot coverage against `input_faces` before writing anything — shortfall = one batched declaration-ordered `UninitializedSlots` diagnostic, all-or-nothing (rejected init leaves the sim untouched); `probe_value` structurally unreachable from the services path (condition value or error, no third branch; replay applies header-recorded slots, never synthesizes — header slot capture complete by construction); baselines = aircraft-shipped full-coverage condition functions (`ready_for_taxi(ac)` — `SystemsInitializer` defaults reborn as user math, one home); `override(base, patch)` admitted as the fourth node kind (ordered/asymmetric vs. `merge`'s symmetric collision-intolerance; patch wins with dual provenance; within-layer collisions still error; variadic layering; trim commits `override(baseline, solution)`) | Face-declaration defaults (condition data inside the wiring contract; reopens §12.3 bare-types and the competing-defaults problem); silent zero-fill of uncovered slots (the §14.3 probe-value leak — a fabricated zero is a fine probe input and a terrible flight condition); totality as a condition-value property (conditions are legitimately partial; totality belongs to boundary-zero application); service-level base keyword (hard-codes two layers; composition semantics in a service signature instead of the condition algebra) |
+| 69 | Trim problem spelling: decisions/guess/bounds as same-shaped all-`Float64` NamedTuples (service packs/unpacks by field order); `TrimParameters` a plain user struct; assignment = the pure `trim_condition` fragment function; reads declared via `deriv`/`output` selectors compiled to a stack NamedTuple reader; user returns a residual *vector* (physically scaled NamedTuple) — trim = nonlinear least squares on `r(d)` with exact AD Jacobians (Dual activation seeded through the `T`-generic assignment math; §14.6's open option promoted to default), per-residual tolerances, unbalanced-equation failure reports, graceful non-squareness, `∂r/∂d` as free control-effectiveness data; analytic-elimination doctrine (`θ_constraint`, by-construction filter/actuator equilibria) preserved verbatim as user math; derivative-free scalar fallback = service squares the residuals (today's BOBYQA as degenerate case); recorded-unbuilt: closed-loop trim via `h(z) − z` scratch residuals, ground static equilibrium as another problem value | Framework decision-variable supertype (`AbstractTrimState`/`FieldVector` — vocabulary whose only job was vectorization); scalar cost as the primary formulation (flat `‖r‖²` valley for derivative-free search, absolute `stopval` brittleness, per-equation diagnostics discarded — FlightCore's rational choice only because Jacobians through mutating `f_ode!` were unreachable); `locals`-addressable readers (private intermediates; a cost needing one is an export signal) |
 
 ---
 
@@ -3242,11 +3297,14 @@ would be the camel's nose for the merged kind.
 To be settled in subsequent sessions:
 
 - **Stopped-sim services, remainder.** The condition substrate, boundary
-  zero and slot totality are settled (§16, rows 63–68). Remaining: the trim
-  client loop (decision-variable spelling, the optimizer seam — NLopt or a
-  replaceable backend — commit/failure semantics); the linearization client
-  (surface selectors replacing `get_x_ss`/`assign_x_ss!`, labels for control
-  design, the `LinearizedSS` fate); the `capture` spelling.
+  zero, slot totality and the trim problem spelling are settled (§16, rows
+  63–69). Remaining: the trim solver seam and commit/failure semantics
+  (in-house LM vs. backend adapters, bounds handling, iteration-store
+  scratchness, the structured report); the mounting record (`at(path,
+  problem)`, `design_world`, baselines — discussed 2026-07-27, to be
+  recorded when B closes); the linearization client (surface selectors
+  replacing `get_x_ss`/`assign_x_ss!`, labels for control design, the
+  `LinearizedSS` fate); the `capture` spelling.
 - **Migration.** Outline for FlightPhysics/FlightApps (the Tier-1 parametrization
   pass, the `KinData`-style output splits, the contributor survey feeding §6's
   aggregation chains — mechanical to extract from today's trait implementations);
