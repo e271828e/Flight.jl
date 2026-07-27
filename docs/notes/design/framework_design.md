@@ -1,22 +1,25 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** twelfth checkpoint (v0.12). Axes 1–6 settled; axis 7 (the
+**Status:** thirteenth checkpoint (v0.13). Axes 1–6 settled; axis 7 (the
 declaration layers, §13, and the build pipeline, §14) settled; error
 discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
-upheld (§17.5, row 56). New in v0.11–v0.12: **the stopped-sim condition
-substrate and boundary zero settled** (§16, rows 63–67) — conditions as
-path-addressed sparse overlays on the declared `init_*` defaults (slots by
-face, capture-for-warm-restart); `initialize`-as-schema rejected for the
+upheld (§17.5, row 56). New in v0.11–v0.13: **the stopped-sim init
+substrate settled** (§16, rows 63–68) — conditions as path-addressed sparse
+overlays on the declared `init_*` defaults (slots by face,
+capture-for-warm-restart); `initialize`-as-schema rejected for the
 fragment-function idiom (`fragment`/`at`/`merge` lazy tree, §8's locality law
 in its third instance, the pre-sweep doctrine); resolution-time
 flatten/validate/compile with baked converters and dual-provenance duplicate
 errors; two application registers over one plan (specialized zero-alloc
 `apply!` for iterating services, dynamic walk for one-shot init), with
-compiled readers as the gather twin; and boundary zero as the §11.6
+compiled readers as the gather twin; boundary zero as the §11.6
 macro-sequence with an empty integrate (§16.5) — events and due `h` updates
 run, under the interval-alignment taught contract (a boundary's `h` is the
 outgoing transition; authorship replaces both incoming transitions), with
-`t₀` an init-service argument anchoring the grid. Slot-init enforcement, the
+`t₀` an init-service argument anchoring the grid; and slot totality (§16.6)
+enforced pre-write at `init!`/commit (`UninitializedSlots`, all-or-nothing,
+`probe_value` structurally unreachable), with aircraft-shipped baseline
+conditions layered by the new ordered `override` combinator. The
 trim/linearization client loops and the migration outline pending (see
 [Open axes](#open-axes)). Sections renumbered: services §16, case studies
 §17, decision log §18, open axes §19.
@@ -2555,8 +2558,10 @@ available and idiomatic rather than machine-checked. `fragment`/`at`/`merge`
 are §15.7 standard-library material — ordinary artifacts, no privileges.
 Merge collisions — two entries on one leaf — are errors at resolution
 reporting *both* provenance chains; last-writer-wins was rejected in the same
-spirit as slot exclusivity (a silent merge is almost certainly a bug), with
-an explicit override spelling deferred until a use case materializes.
+spirit as slot exclusivity (a silent merge is almost certainly a bug). The
+explicit, *ordered* layering spelling — `override` — was deferred here and
+admitted one sub-topic later, when slot totality produced its use case
+(§16.6).
 
 ### 16.3 Resolution: flatten, validate, compile once
 
@@ -2668,6 +2673,56 @@ parity is exact, not approximate. Piece by piece:
   at commit is a wanted failure signal: today's hand-written trim asserts
   (`!stall`, no weight-on-wheels, `ω > ω_idle`) become the model's own event
   logic, surfaced through the ordinary machinery instead of `@assert`.
+
+### 16.6 Slot totality: the missing-value error and the `override` combinator
+
+Slots are the one store family without declared defaults — §12.3's
+bare-types decision, upheld here: a default inside a face declaration would
+scatter condition data into the wiring contract and recreate the
+competing-defaults problem that §16.2 killed for `initialize` specs. So a
+slot's only source before boundary zero is the condition, and three
+consequences follow.
+
+**Totality is a precondition of starting, checked by the service.** A
+condition value is legitimately partial (fragments compose; trim iterations
+write subsets; capture-then-tweak patches leaves) — "every root slot
+covered" is not a property of conditions but of *application at boundary
+zero*. `init!` (and trim's commit, which runs the same boundary) compares
+the resolved plan's slot coverage against the `Build`'s `input_faces`
+before writing anything; a shortfall is one batched, declaration-ordered
+diagnostic (`UninitializedSlots`, a §15.2 kind) naming every uncovered
+face. Pre-write means all-or-nothing: a rejected init leaves the sim
+exactly as it was, the same posture as failed trim.
+
+**The probe-value barrier is structural.** §14.3's `probe_value` synthesis
+(zero/false/first-enum/`T()`) exists so build-time probes can exercise code
+with fabricated inputs; a fabricated zero is a fine probe input and a
+terrible flight condition (a silently zeroed `mixture` kills the engine and
+sends the user debugging aerodynamics). The services path simply contains
+no call to it: a slot gets a condition value or the application errors —
+no third branch. Replay likewise never synthesizes: the trace header
+records every slot value, and with totality enforced its slot capture is
+complete by construction (§12.3's requirement discharged).
+
+**Baselines are aircraft-shipped condition functions, layered by
+`override`.** Nobody hand-writes ~20 slot values per script; today
+`SystemsInitializer`'s `@kwdef` defaults carry that load, and their
+successor is ordinary user math in one authoritative home —
+`ready_for_taxi(ac)`, `cold_and_dark(ac)` — returning full-coverage
+conditions. But "baseline plus tweaks" collides with §16.2's
+duplicate-leaf error by design: the collision *is* the intent. Hence the
+fourth node kind, **`override(base, patch)`** — ordered and asymmetric
+where `merge` is symmetric and collision-intolerant. At resolution a leaf
+present in both takes the patch's value, with provenance recording both
+sources ("patch overrode base's `throttle`"); collisions *within* one
+layer remain errors; variadic layering
+(`override(campaign, aircraft, todays_case)`) composes. Trim uses it on
+day one: the committed condition is `override(baseline, solution)` — the
+solver's handful of values over full coverage. Rejected alternative: a
+service-level base keyword (`init!(sim, patch; base = ...)`) — flatter,
+but it hard-codes exactly two layers and moves a composition decision out
+of the condition algebra, the one place every other composition decision
+lives.
 
 ---
 
@@ -3178,6 +3233,7 @@ would be the camel's nose for the merged kind.
 | 65 | Fragments form a lazy inert tree (`Fragment`/`Scoped`/`Merged`; `at`/`merge` store, never apply — stack-only rebuild per iteration); all flattening/validation/addressing at resolution against the `Build`; duplicate leaf = error with both provenances; converters and `m`/`z` overlay bases baked at compile; slots resolve through export chains (unexported = unwritable, init included); locality law = §8's, third instance (own fields, declared children, own faces; deep `at` only within owned concrete subtrees) — absolute paths are compiled derivatives, so §15.5's observation-by-path rejection is untouched | Eager path concatenation in `at` (strings and allocation on the hot path); eager duplicate checks in `merge` (requires flattening at composition); last-writer-wins merge (silent near-certain bug — slot-exclusivity spirit); machine-enforced ownership (not build-visible; same convention status as §8) |
 | 66 | Two application registers over one compiled plan: specialized `apply!` (`Getter{P}` lenses, unrolled baked stores, zero-alloc; §14.5-style shape check via tree type + literal `===` sweep; ~10–50 ms codegen once per shape) for iterating services; dynamic entry-list walk (microseconds, no per-shape codegen, allocation fine per §9.5) for one-shot init; compiled readers as the gather twin (cost reads, linearization gather, `capture`) — one primitive family in the `Build`'s client kit | Single always-specialized register (per-shape codegen tax on scripted one-shot conditions); single always-dynamic register (forfeits the zero-alloc trim loop); per-write convert decisions (the converter is a resolution-time fact; §14.5's no-convert-on-write stands for table cells) |
 | 67 | Boundary zero = the §11.6 macro-sequence with an empty integrate: project → sweep (every tick due; discrete stages publish from the authored `z`) → events to quiescence → due `h` updates → header capture + first snapshot; interval-alignment taught contract (sibling of §17.5's boundary-sampling line): a boundary's `h` is the *outgoing* transition — `z_{k+1}` from `t_k`'s samples — so boundary zero's incoming transitions on both tiers are replaced by authorship, and `h` at `t₀` is the `t₀` sample's only chance; `t₀` an init-service argument anchoring the harmonic grid (conditions time-free; `capture` returns condition and time separately); trim iterations bypass boundaries entirely (raw write→sweep→read on the activation), only the commit runs boundary zero — a guard firing at commit replaces today's hand-written trim asserts | Condition-authoritative boundary zero (no events/`h`: delays the identical firings one step while hiding non-quiescence — §17.4's insurance-masking-invariants pattern; skipping `h` deletes the `t₀` sample and starts the sampled-data lattice one period late — the authored `z(0)` needs no protection, it is published at `t₀` regardless); `h` before the sweep or republish-from-`z⁺` (stale-table sampling or Mealy update-feedthrough: same-boundary circularity, kills §11.6's structural termination); `t₀` as a condition entry (time is not a store) |
+| 68 | Slot totality enforced at the service: `init!`/commit compare resolved slot coverage against `input_faces` before writing anything — shortfall = one batched declaration-ordered `UninitializedSlots` diagnostic, all-or-nothing (rejected init leaves the sim untouched); `probe_value` structurally unreachable from the services path (condition value or error, no third branch; replay applies header-recorded slots, never synthesizes — header slot capture complete by construction); baselines = aircraft-shipped full-coverage condition functions (`ready_for_taxi(ac)` — `SystemsInitializer` defaults reborn as user math, one home); `override(base, patch)` admitted as the fourth node kind (ordered/asymmetric vs. `merge`'s symmetric collision-intolerance; patch wins with dual provenance; within-layer collisions still error; variadic layering; trim commits `override(baseline, solution)`) | Face-declaration defaults (condition data inside the wiring contract; reopens §12.3 bare-types and the competing-defaults problem); silent zero-fill of uncovered slots (the §14.3 probe-value leak — a fabricated zero is a fine probe input and a terrible flight condition); totality as a condition-value property (conditions are legitimately partial; totality belongs to boundary-zero application); service-level base keyword (hard-codes two layers; composition semantics in a service signature instead of the condition algebra) |
 
 ---
 
@@ -3185,10 +3241,8 @@ would be the camel's nose for the merged kind.
 
 To be settled in subsequent sessions:
 
-- **Stopped-sim services, remainder.** The condition substrate and boundary
-  zero are settled (§16, rows 63–67). Remaining: slot-initialization totality
-  enforcement before the first boundary (§14.3's probe-value leak barrier;
-  the services own the trace header's slot capture, §12.3, §17.4); the trim
+- **Stopped-sim services, remainder.** The condition substrate, boundary
+  zero and slot totality are settled (§16, rows 63–68). Remaining: the trim
   client loop (decision-variable spelling, the optimizer seam — NLopt or a
   replaceable backend — commit/failure semantics); the linearization client
   (surface selectors replacing `get_x_ss`/`assign_x_ss!`, labels for control
