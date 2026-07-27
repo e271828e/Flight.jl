@@ -1,39 +1,64 @@
-#Alternative to sketch.jl using the two-stage decoder interfaces of
-#framework_design.md §5.2 instead of the explicit computer/integrator component
-#split. Same illustrative, non-committed syntax.
+#Model-side sketch: the rigid-body kinematics/dynamics core spelled against the
+#settled design (framework_design.md v0.16) — two-stage interfaces (§5.2), the
+#declaration layer (§13), explicit summing junctions (§6) and type-based
+#assemblies (§13.5-§13.8). Illustrative, non-committed syntax; not runnable.
 #
-#Interfaces (continuous component), in evaluation order:
+#Interfaces (continuous component), in evaluation order — arguments are views
+#of the distinct stores each function reads (§5.2, stores and views):
 #
-#   y_s1 = g_s1(comp, x, m)     #state decoder; default = identity publication
-#   y_s2 = g_s2(comp, u, y_s1)  #all wired inputs + own stage-1 results
-#   ẋ    = f(comp, y, u, t)     #post-sweep; y complete and fresh, own y_s2 included
+#   y_s1     = g_s1(comp, x, m)             #no-feedthrough stage (sees no inputs)
+#   y_s2     = g_s2(comp, x, m, u, y_s1)    #all wired inputs + own stage-1 results
+#   ẋ        = f(comp, x, m, y, u, t)       #post-sweep; y complete and fresh
 #
 #at step boundaries (none used in this sketch):
 #
-#   guard(comp, y, u, t)
-#   (x⁺, m⁺) = handler(comp, y, u, t)   #then: project → re-run g_s1, g_s2
-#   x⁺ = project(comp, x)               #sole raw-state function (runs pre-decode)
+#   fired    = guard(comp, x, m, y, u, t)
+#   (x⁺, m⁺) = handler(comp, x, m, y, u, t)  #then: project → re-run g_s1, g_s2
+#   x⁺       = project(comp, x)              #manifold projection
 #
-#Every derivative-producing computation runs exactly once, in g_s2; f is a copy.
-#Compared with sketch.jl: two components instead of four, eight connections
-#instead of thirteen, and everything derivable from pose alone migrates from
-#stage 2 to stage 1 (pose is now WA's own state, not an input), so ne's g_s2
-#only waits on the wrench chain.
+#A declared output that names a state field no stage produces is auto-published
+#at stage-1 position (§5.2) — no identity-decoder boilerplate anywhere below.
+#Every derivative-producing computation runs exactly once, in g_s2; f is a copy
+#from the fresh table. The explicit computer/integrator split (a stateless
+#derivative-computing component wired into a trivial state holder — the earlier
+#sketch.jl form, now retired) remains expressible without framework support and
+#is the idiom of choice when the factoring earns reuse (§5.2, §9.4).
+#
+#Types are spelled parametrically (Wrench{T}, RQuat{T}, ...) anticipating the
+#migration's Tier-1 parametrization pass (§9.2); today's Float64-backed
+#FlightPhysics types are the T = Float64 case.
 
-######################## NewtonEuler (merged) ##################################
+######################## NewtonEuler ###########################################
 
 struct NewtonEuler <: AbstractComponent end
 
 init_x(::NewtonEuler) = (ω_eb_b = zeros(SVector{3}), v_eb_b = zeros(SVector{3}))
-init_z(::NewtonEuler) = nothing
 
-#no g_s1 method: default identity publication applies, so the state fields
-#ω_eb_b and v_eb_b appear as stage-1 output ports
+#input contract: bare types at their Float64 faces (§13.2)
+inputs(::NewtonEuler) = (
+    mp_Σ_b = MassProperties{Float64},   #total mass properties, body frame
+    wr_Σ_b = Wrench{Float64},           #total external wrench, body frame
+    ho_Σ_b = SVector{3, Float64},       #total internal angular momentum, body frame
+    q_eb   = RQuat{Float64},
+    r_eb_e = SVector{3, Float64},
+)
 
-function g_s2(::NewtonEuler, u, y_s1)
+#output contract = the public interface, as a function of the sweep scalar.
+#ω_eb_b / v_eb_b name state fields no stage produces → auto-published (stage 1).
+#The accelerations are genuine interface — accelerometer-style consumers read
+#them — so they live in outputs, not locals.
+outputs(::NewtonEuler, ::Type{T}) where {T<:Real} = (
+    ω_eb_b = SVector{3, T},
+    v_eb_b = SVector{3, T},
+    ω̇_eb_b = SVector{3, T},
+    v̇_eb_b = SVector{3, T},
+    #plus the remaining acceleration-like quantities (a_eb_b, f_c_c, ...)
+)
+
+function g_s2(::NewtonEuler, x, m, u, y_s1)
 
     (; mp_Σ_b, wr_Σ_b, ho_Σ_b, q_eb, r_eb_e) = u
-    (; ω_eb_b, v_eb_b) = y_s1     #own state, via the decoder
+    (; ω_eb_b, v_eb_b) = x          #own state, direct view (§5.2)
 
     ω_ie_e = SVector{3}(0, 0, ω_ie) #use WGS84 constant
     ω_ie_b = q_eb'(ω_ie_e)
@@ -80,21 +105,38 @@ function g_s2(::NewtonEuler, u, y_s1)
     v̇_eb_b = v̇_ec_c - ω̇_ec_c × r_bc_b
 
     return (; ω̇_eb_b, v̇_eb_b)
-    #plus the remaining acceleration-like quantities (a_eb_b, f_c_c, ...),
-    #published as ports for accelerometer-style consumers
 
 end
 
 #Newton-Euler is solved exactly once, in g_s2; f copies from the fresh table:
-f(::NewtonEuler, y, u, t) = (ω_eb_b = y.ω̇_eb_b, v_eb_b = y.v̇_eb_b)
+f(::NewtonEuler, x, m, y, u, t) = (ω_eb_b = y.ω̇_eb_b, v_eb_b = y.v̇_eb_b)
 
 
-########################### WA (merged) ########################################
+########################### WA #################################################
 
 struct WA <: AbstractComponent end
 
 init_x(::WA) = (q_wb = RQuat(), q_ew = RQuat(), h_e = HEllip())
-init_z(::WA) = nothing
+
+inputs(::WA) = (ω_eb_b = SVector{3, Float64}, v_eb_b = SVector{3, Float64})
+
+#q_wb / q_ew / h_e: state fields no stage produces → auto-published (stage 1);
+#the rest of stage-1 membership (pose-derived vs velocity-dependent) is derived
+#by the build, invisible in the contract (§13.2 — no stage tags)
+outputs(::WA, ::Type{T}) where {T<:Real} = (
+    q_wb = RQuat{T}, q_ew = RQuat{T}, q_nw = RQuat{T}, q_nb = RQuat{T},
+    q_eb = RQuat{T}, e_nb = REuler{T},
+    n_e = NVector{T}, ϕ_λ = LatLon{T}, h_e = HEllip{T}, h_o = HOrth{T},
+    Ob = Geographic{T}, r_eb_e = SVector{3, T},
+    v_eb_n = SVector{3, T}, ω_wb_b = SVector{3, T}, ω_ew_b = SVector{3, T},
+    v_gnd = T, χ_gnd = T, γ_gnd = T,
+)
+
+#consumed only by WA's own f — component-local cross-stage cells, not
+#interface (§13.2). q̇'s are quaternion-backing derivatives (4 scalars).
+locals(::WA, ::Type{T}) where {T<:Real} = (
+    q̇_wb = SVector{4, T}, q̇_ew = SVector{4, T}, ḣ_e = T,
+)
 
 function g_s1(::WA, x, m)   #everything derivable from pose alone: stage 1
 
@@ -112,14 +154,15 @@ function g_s1(::WA, x, m)   #everything derivable from pose alone: stage 1
     Ob = Geographic(n_e, h_e)
     r_eb_e = Cartesian(Ob)
 
-    return (; q_wb, q_ew, q_nw, q_nb, q_eb, e_nb, n_e, ϕ_λ, h_e, h_o, Ob, r_eb_e)
+    return (; q_nw, q_nb, q_eb, e_nb, n_e, ϕ_λ, h_o, Ob, r_eb_e)
 
 end
 
-function g_s2(::WA, u, y_s1)
+function g_s2(::WA, x, m, u, y_s1)
 
-    (; ω_eb_b, v_eb_b) = u                    #from NewtonEuler's stage-1 outputs
-    (; q_wb, q_ew, q_nw, q_nb, Ob) = y_s1     #own stage-1 results — nothing recomputed
+    (; ω_eb_b, v_eb_b) = u              #from NewtonEuler's auto-published state
+    (; q_nw, q_nb, Ob) = y_s1           #own stage-1 results — nothing recomputed
+    (; q_wb, q_ew) = x                  #own state, direct view
 
     v_eb_n = q_nb(v_eb_b)
     ω_ew_n = get_ω_ew_n(v_eb_n, Ob)
@@ -137,33 +180,102 @@ function g_s2(::WA, u, y_s1)
 
 end
 
-f(::WA, y, u, t) = (q_wb = y.q̇_wb, q_ew = y.q̇_ew, h_e = y.ḣ_e)
+f(::WA, x, m, y, u, t) = (q_wb = y.q̇_wb, q_ew = y.q̇_ew, h_e = y.ḣ_e)
 
 #projection follows the state: quaternion renormalization lives here
 project(::WA, x) = (q_wb = normalize(x.q_wb), q_ew = normalize(x.q_ew), h_e = x.h_e)
 
 
-############################## Assembly ########################################
+########################### Systems ############################################
+#Toy force contributors — declarations shown, bodies elided. Contributors are
+#ragged by design (§6): Aero has wrench but no mass, only PWP has angular
+#momentum; nobody publishes zero-filled identity noise.
 
-asm = Assembly()
-add!(asm, :ne,  NewtonEuler())
-add!(asm, :wa,  WA())
-add!(asm, :sys, Systems())
+struct Aero <: AbstractComponent end
 
-#connect!(assembly, destination path, origin path)
-connect!(asm, (:wa, :u, :ω_eb_b), (:ne, :y, :ω_eb_b))      #stage 1 → stage 2
-connect!(asm, (:wa, :u, :v_eb_b), (:ne, :y, :v_eb_b))      #stage 1 → stage 2
+inputs(::Aero) = (v_eb_n = SVector{3, Float64},)
+outputs(::Aero, ::Type{T}) where {T<:Real} = (wr_b = Wrench{T},)
+#g_s2 body elided
 
-connect!(asm, (:ne, :u, :q_eb),   (:wa, :y, :q_eb))        #stage 1 → stage 2
-connect!(asm, (:ne, :u, :r_eb_e), (:wa, :y, :r_eb_e))      #stage 1 → stage 2
+struct PWP <: AbstractComponent end
 
-connect!(asm, (:ne, :u, :wr_Σ_b), (:sys, :y, :wr_Σ_b))     #reduce-port (+)
-connect!(asm, (:ne, :u, :mp_Σ_b), (:sys, :y, :mp_Σ_b))     #reduce-port (+)
-connect!(asm, (:ne, :u, :ho_Σ_b), (:sys, :y, :ho_Σ_b))     #reduce-port (+)
+init_x(::PWP) = (ω_prop = 0.0,)
+inputs(::PWP) = (throttle = Float64,)
+outputs(::PWP, ::Type{T}) where {T<:Real} = (wr_b = Wrench{T}, ho_b = SVector{3, T})
+#g_s2, f bodies elided
 
-connect!(asm, (:sys, :u, :v_eb_n), (:wa, :y, :v_eb_n))
+struct MassStore <: AbstractComponent end   #placeholder for airframe/fuel mass
 
-#derived schedule:
-#  s1: ne.g_s1 (default identity), wa.g_s1, sys stage-1     (any order)
-#  s2: wa.g_s2 → sys.g_s2 → ne.g_s2                         (topological)
+outputs(::MassStore, ::Type{T}) where {T<:Real} = (mp_b = MassProperties{T},)
+#g_s1 body elided (no inputs, no feedthrough: stage 1)
+
+#Named site-specific summing junction (§6): the contributor set documented in
+#the contract; an ordinary component, no framework privileges. The generic
+#positional SumJunction{V, N} is the library tool for configuration-variable
+#sites.
+struct WrenchSum <: AbstractComponent end
+
+inputs(::WrenchSum) = (aero = Wrench{Float64}, pwp = Wrench{Float64})
+outputs(::WrenchSum, ::Type{T}) where {T<:Real} = (; Σ = Wrench{T})
+g_s2(::WrenchSum, x, m, u, y_s1) = (; Σ = u.aero + u.pwp)
+
+#Assembly = plain struct; component-typed fields are the children (field names
+#= path segments), connections is the kind marker (§13.5). Where two children
+#contribute, a junction sums them; where one does, the export is a direct
+#wire — the hierarchical aggregation idiom (§6).
+struct Systems <: AbstractComponent
+    aero::Aero
+    pwp::PWP
+    mass::MassStore
+    wr_sum::WrenchSum
+end
+
+connections(::Systems) = (
+    "aero/wr_b" => "wr_sum/aero",
+    "pwp/wr_b"  => "wr_sum/pwp",
+)
+
+exports(::Systems) = (
+    "wr_Σ_b"  => "wr_sum/Σ",            #aggregate: a first-class signal
+    "mp_Σ_b"  => "mass/mp_b",           #single contributor: direct export
+    "ho_Σ_b"  => "pwp/ho_b",            #single contributor: direct export
+    "v_eb_n"  => "aero/v_eb_n",         #input face: fed by the parent's wire
+    "throttle" => "pwp/throttle",       #input face
+)
+
+
+########################### Vehicle (root) #####################################
+#A parametric child slot (sys::S, today's Cessna172X{K, A} shape) is the
+#substitutability idiom (§13.5); concrete here for brevity.
+
+struct Vehicle <: AbstractComponent
+    ne::NewtonEuler
+    wa::WA
+    sys::Systems
+end
+
+connections(::Vehicle) = (
+    #"src/port" => "dst/port", child-port → child-port (§13.6)
+    "ne/ω_eb_b"   => "wa/ω_eb_b",       #stage 1 → stage 2
+    "ne/v_eb_b"   => "wa/v_eb_b",       #stage 1 → stage 2
+    "wa/q_eb"     => "ne/q_eb",         #stage 1 → stage 2
+    "wa/r_eb_e"   => "ne/r_eb_e",       #stage 1 → stage 2
+    "wa/v_eb_n"   => "sys/v_eb_n",
+    "sys/wr_Σ_b"  => "ne/wr_Σ_b",
+    "sys/mp_Σ_b"  => "ne/mp_Σ_b",
+    "sys/ho_Σ_b"  => "ne/ho_Σ_b",
+)
+
+#At the root, an exported input face IS the write surface: "throttle" becomes
+#a root slot with no extra vocabulary (§13.6). Face names are contract tokens
+#(no slash); bulk re-export with prefixing is the faces(...) helper (§13.8).
+exports(::Vehicle) = (
+    "throttle" => "sys/throttle",       #input face → root slot
+    "pose"     => "wa/Ob",              #output faces: the observation contract
+    "v_gnd"    => "wa/v_gnd",
+)
+
+#derived schedule (§5.2):
+#  s1: auto-publications (ne, wa state) + wa.g_s1, mass.g_s1        (any order)
+#  s2: wa.g_s2 → {aero.g_s2, pwp.g_s2} → wr_sum.g_s2 → ne.g_s2     (topological)
 #  post-sweep: all f against the complete signal table; projection on wa

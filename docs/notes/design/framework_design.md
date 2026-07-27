@@ -1,9 +1,27 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** sixteenth checkpoint (v0.16). Axes 1–6 settled; axis 7 (the
+**Status:** seventeenth checkpoint (v0.17). Axes 1–6 settled; axis 7 (the
 declaration layers, §13, and the build pipeline, §14) settled; error
 discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
-upheld (§17.5, row 56). New in v0.11–v0.16: **the stopped-sim services
+upheld (§17.5, row 56). New in v0.17: **the sketch refresh** (row 73) —
+`sketch_decoder.jl` rewritten to the settled design (stores-and-views
+signatures, the full declaration inventory with `locals` and
+auto-publication, a named summing junction, type-based assemblies with
+`connections`/`exports`) and `sketch_io.jl` likewise (root slots as
+exported faces, slot exclusivity and derived liveness superseding the
+two-writer scenario, declarative bindings, slot totality at `init!`, trace
+replay); the pre-v0.5 split-form `sketch.jl` retired, and
+`navsensors.jl`/`imu.md` retired with their operative content absorbed
+into §17.5 (the piecewise formulation stated in interval terms, the
+sculling factorization derivation inlined); **`condition_demo.jl` added** —
+a runnable, dependency-free demo of the §16 condition algebra (lazy trees,
+provenance-carrying flattening, the duplicate-leaf error, `override`
+layering, a `TrimProblem` mounted by `at` — the §16.9 inspection aid).
+Also recorded: declaration-by-initial-value upheld against
+types-plus-`probe_value` (§13.2); the sampled-data Dual activation as a
+recorded-unbuilt door (§16.10); the §6 `SumJunction` re-spelled on its
+unparametrized type constructor with an `outputs` declaration. Earlier,
+v0.11–v0.16: **the stopped-sim services
 axis (axis 8) settled and closed** (§16, rows 63–72) —
 conditions as path-addressed sparse
 overlays on the declared `init_*` defaults (slots by face,
@@ -35,7 +53,7 @@ and the one-problem-per-solve swarm doctrine; and linearization + `capture`
 hand-written `get_*_ss` shuttle layer, one exact seeded Dual pass on
 scratch, linearize-as-pure-query defaulting to the captured current state,
 `LinearizedSS` demoted to an ordinary component. Only the migration
-outline and the sketch refresh remain (see [Open axes](#open-axes)).
+outline remains (see [Open axes](#open-axes)).
 Sections renumbered: services §16, case studies §17, decision log §18,
 open axes §19.
 
@@ -412,12 +430,18 @@ framework aggregation mechanism: no multi-connection ports, no declared fold ops
 identity-element opt-outs. Every input port takes exactly one connection, everywhere.
 
 ```julia
-struct SumJunction{V, N} end        #value type, arity; library-provided
+struct SumJunction{W, N} end        #type constructor, arity; library-provided
 
-inputs(::SumJunction{V, N}) where {V, N} =
-    NamedTuple{ntuple(i -> Symbol(:in, i), N)}(ntuple(_ -> V, N))
-g_s2(::SumJunction, u, y_s1) = (; Σ = +(u...))
+inputs(::SumJunction{W, N}) where {W, N} =
+    NamedTuple{ntuple(i -> Symbol(:in, i), N)}(ntuple(_ -> W{Float64}, N))
+outputs(::SumJunction{W, N}, ::Type{T}) where {W, N, T<:Real} = (; Σ = W{T})
+g_s2(::SumJunction, x, m, u, y_s1) = (; Σ = +(u...))
 ```
+
+(The parameter is the *unparametrized* type constructor — `SumJunction{Wrench, 3}`;
+UnionAlls are legal type parameters — so both declarations derive from it: inputs
+at the `Float64` face, the output re-scalared at the sweep `T`. This is the same
+arity-via-computed-contracts pattern §15.7 commits to for `Or{N}`.)
 
 - **Every mistake is loud** under the declaration layer: a forgotten contributor is
   an unconnected-input error naming `in4`; a double-wired slot violates
@@ -720,12 +744,11 @@ The **computer/integrator split** remains fully expressible without any framewor
 support (a stateless component computing derivatives as outputs, wired into a trivial
 state-holding component) and is the idiom of choice when the factoring earns reuse —
 e.g. one Newton–Euler solver shared across vehicle variants, or swappable kinematic
-descriptors against a common integrator shape. See `sketch.jl` (split form) and
-`sketch_decoder.jl` (merged form; both predate the v0.5 revisions — reduce-ports,
-identity publication and the stateless prototypes appear in them) for the worked
-example;
-the merged form has half the components and wiring, and everything derivable from
-pose alone migrates to stage 1, shortening the stage-2 chain.
+descriptors against a common integrator shape. See `sketch_decoder.jl` (refreshed
+v0.17 to the settled declaration layer) for the worked example; against the
+retired split-form spelling of the same model (four components, thirteen
+connections), the merged form has half the components and wiring, and everything
+derivable from pose alone migrates to stage 1, shortening the stage-2 chain.
 
 ### 9.5 Allocation policy: a scoped invariant
 
@@ -1571,9 +1594,10 @@ component side (v0.5, amended v0.8: strict `locals`); §13.5–§13.8 settle the
 assembly side (v0.6); the build pipeline is §14 (v0.8); the stopped-sim service
 spellings remain open (§19). Concrete syntax
 below is near-final in shape but still illustrative in spelling. The sketches
-(`sketch.jl`, `sketch_decoder.jl`, `sketch_io.jl`) predate this section — they
-still show reduce-ports, identity publication, the stateless prototypes and the
-builder-style assembly — and will be refreshed after the §17.4 walkthroughs.
+(`sketch_decoder.jl`, `sketch_io.jl`) are refreshed to this layer and the
+services spellings (v0.17); the pre-v0.5 split-form sketch (`sketch.jl`), which
+still showed reduce-ports, identity publication, the stateless prototypes and
+the builder-style assembly, was retired in the same pass.
 
 ### 13.1 Position: a declarative trait layer — plain Julia, no macros
 
@@ -1638,7 +1662,23 @@ The inventory, and where each schema fact gets its authority:
   `init_workspace`): declaration *by initial value* — the type is derived from the
   value, so there is no second artifact to drift and no separate type declaration to
   check. This is the boundary of legitimate derivation: deriving from another
-  declaration is sound; deriving from evaluated user code is not.
+  declaration is sound; deriving from evaluated user code is not. Rejected
+  (v0.17): declaring types here too, `inputs`-style, with §14.3's
+  `probe_value` synthesizing the initial values. The declared values are the
+  condition substrate's base layer (§16.1's overlays fall back to them leaf
+  by leaf, and the compiled `m`/`z` writers bake `merge(defaults, overlay)`),
+  so there must be an authored value under every leaf; synthesized initial
+  state would cross the probe-value barrier §16.6 makes structural (a
+  fabricated zero is a fine probe input and a terrible flight condition —
+  states no less than slots); and every field where synthesis picks wrong
+  (modes, `Ranged` values excluding zero, trim-sensitive states) would need
+  an authored default *beside* its type — the per-field two-register
+  protocol §16.2 kills for `initialize` specs, aggravated by types being
+  first-class values in Julia (the two registers distinguishable only by
+  `isa Type`). The asymmetry against `inputs`/`outputs` is one of kind, not
+  style: contracts describe table cells, recomputed from scratch every
+  sweep, needing only types; `init_*` describe stores — the model's memory,
+  which must have contents before the first sweep can run.
 - **`inputs(::C)`**: a bare `NamedTuple` of types — zero framework vocabulary, no
   wrapper types (the last candidate, `Reduce`, died with reduce-ports, §6). Input
   declarations state the `Float64` face only: their sole job is the build-time
@@ -2960,6 +3000,31 @@ manifold. This is why today's code linearizes the `{NED}` variant;
 `design_world(ac)` rigs it, promoting implicit practice to stated rule.
 The coordinate choice belongs to the surface author, not the framework.
 
+**Recorded, not built (v0.17): the sampled-data Dual activation.** The
+frozen-exact doctrine is consumer-scoped, not a capability wall: today's
+services differentiate the continuous dynamics with `z` held, for which a
+frozen discrete output — a ZOH constant with zero partials — is the exact
+answer, enforced by the type system (§13.2). Differentiating "through" the
+discrete side means differentiating a *different object*: the sampled-data
+step map Φ : (x_k, z_k, slots) → (x_{k+1}, z_{k+1}) (integrate one period,
+then run the due ticks). The extension is additive along existing seams:
+Tier-1 parametrization of `z`'s real-scalar leaves (counters/enums stay
+pinned, like `m`); opt-in `T`-signatures on participating discrete
+components (plain `outputs(::C)` = frozen-exact always, `outputs(::C,
+::Type{T})` = participates — the tier-in-signature mechanism as graceful
+migration, no flag day); one new §14.4 activity ("continuous chain + `f` +
+discrete `g` + `h`"); and forward sensitivities through the in-house
+RK steppers for free, a payoff of owning the loop (§11.1). The honest
+boundary: Φ is differentiable only where the event pattern is locally
+constant — exactness across a firing needs saltation corrections — so the
+scope is event-quiescent operating points (which §16.5's guards-at-commit
+already makes trim points) plus a loud diagnostic if an event fires inside
+a differentiated step. Consumers waiting: §16.7's closed-loop trim door
+(`h(z) − z = 0` residuals currently imply the derivative-free fallback,
+since frozen `h` has no Jacobian columns) and exact discrete-time
+linearization of the full loop (digital design on the exact discretized
+plant instead of continuous linearization + Tustin).
+
 ---
 
 ## 17. Case studies
@@ -3039,7 +3104,9 @@ domain norm and the decoder matches the codebase's grain.
 ### 17.3 Torture test for the §12 staging shapes: filter, joystick and GUI
 
 The exercise that selected per-device cells (§12.3) and produced the §12.5
-contracts. Setup (user-level listing: `sketch_io.jl`): a first-order filter with
+contracts. Setup (originally the `sketch_io.jl` listing; the file has since been
+refreshed to the settled machinery, its header recording this lineage): a
+first-order filter with
 root inputs `u_cmd` and `τ`; a fictitious 100 Hz single-axis joystick streaming a
 slow ramp onto `u_cmd` (complete writer); a 60 Hz GUI with sliders for both slots
 (sparse writer); 50 Hz boundaries; pace 1. The interference on `u_cmd` is the
@@ -3258,11 +3325,19 @@ bug-prone boundary in a flight-control stack — disappears into a monolith wher
 the split keeps it a visible wire. (Simulink and FMI allow the fused block;
 sample-time propagation confusion is the documented price.)
 
-**The counterexample** (`docs/notes/design/navsensors.jl`, a pre-design sketch): a
+**The counterexample** (the pre-design FlightCore sketch `navsensors.jl`, retired
+v0.17 — its operative content, and the companion derivation note `imu.md`, are
+recorded here in full): a
 strapdown IMU integrates raw increments continuously — `ẋ.ϑ_c = ω_ic_c`,
 `ẋ.υ_c = f_c_c`, the coning attitude increment `q_c_cc` and the sculling integral
 `ẋ.υ_c_sc = q_c_cc(f_c_c)` — and `f_disc!`, at the IMU's own `Δt`, reads the
-integrals, publishes the sample, and **zeroes them**. The reset is periodic, not
+integrals, publishes the sample, and **zeroes them**. In interval terms, the
+sketch's piecewise quantities are integrals over `[t_{k-1}, t_k]` with their
+weights re-anchored at each reset: `ϑ_c = ∫ ω_ic_c dt` and `υ_c = ∫ f_c_c dt`
+from zero, `q_c_cc = q_{c_{k-1}→c(t)}` from identity, and
+`υ_c_sc = ∫ R^{c_{k-1}}_c f_c_c dt` with the rotation anchored at the interval
+start — exactly the forms the differencing bullets below recover from the
+cumulative stores, term by term. The reset is periodic, not
 condition-triggered, so events are the wrong tier; and it is a discrete-tier write
 into continuous state, exactly the operation this design forbids (`h` writes only
 its own `z`; handlers are the sole `x`-resetters, and they are guard-driven).
@@ -3280,11 +3355,20 @@ sampled-data latch, and the only new store (the memory the reset used to erase):
   identity at `t₀`; the interval rotation is `Δq = q(t_{k-1})' ∘ q(t_k)`, exact by
   right-invariance (`Δq` satisfies the same ODE with the same body rate).
 - *Sculling*: `∫ R_c^{c_{k-1}} f^c dt = q(t_{k-1})'( V(t_k) − V(t_{k-1}) )` with
-  `V̇ = q(t)(f_c_c)`. The factor leaving the integral is the **anchor change
-  between two inertially-fixed frames** — constant because `t_{k-1}` is in the
-  past and latched. The physical intra-interval rotation, the thing sculling
-  corrections are *about*, stays inside the integrand via `q(t)`: every RHS
-  evaluation, RK stages included, applies the current cumulative attitude,
+  `V̇ = q(t)(f_c_c)`. The derivation, in two steps (absorbed from the retired
+  companion note `imu.md`): re-anchor the rotation through the fixed `c₀` frame,
+  `R^{c_{k-1}}_c = (R^{c₀}_{c_{k-1}})ᵀ R^{c₀}_c`, so the `c_{k-1}`-dependent
+  factor — constant over the interval — exits the integral; what remains is the
+  cumulative integrand, and splitting its range at `t_{k-1}` gives the
+  difference of the running store:
+  `∫_{t_{k-1}}^{t_k} R^{c_{k-1}}_c f^c dt = (R^{c₀}_{c_{k-1}})ᵀ (
+  ∫_{t₀}^{t_k} R^{c₀}_c f^c dt − ∫_{t₀}^{t_{k-1}} R^{c₀}_c f^c dt )
+  = q(t_{k-1})'( V(t_k) − V(t_{k-1}) )` — in code, the sampler line
+  `υ_c_sc = z.q'(u.V - z.V)`. The factor leaving the integral is the **anchor
+  change between two inertially-fixed frames** — constant because `t_{k-1}` is
+  in the past and latched. The physical intra-interval rotation, the thing
+  sculling corrections are *about*, stays inside the integrand via `q(t)`: every
+  RHS evaluation, RK stages included, applies the current cumulative attitude,
   exactly as the sketch applies the current `q_c_cc`.
 
 **Exactness condition, stated once**: interval-relative integrals factor into
@@ -3474,6 +3558,7 @@ would be the camel's nose for the merged kind.
 | 70 | Trim service: in-house dense LM default behind a value-passed backend contract (`NLoptBackend` extension = squared residuals, today's algorithm one keyword away; core carries zero optimizer deps); box bounds by step projection with saturated-at-solution flagged in the report; per-invocation scratch store sets instantiated from activation layouts (layout reusable, buffers die with the call; Dual un-aliasability = defense in depth, not the mechanism) — authoritative stores have exactly one writer, the commit through boundary zero; no-throw structured `TrimReport` (non-convergence = expected envelope-sweep outcome; malformed problem = `BuildError` at setup); AD obligation scoped to continuous `g`/`f` + user assignment/residual math (discrete tier frozen-exact), identical to linearization's activation, build-checked by the Dual probe; C172 audit = Interpolations tables (prefer cubic knots), saturation rank-deficiency (LM-tolerated, reported), gear zero airborne | External NLS packages (heavy dep for ~100 lines; §11.2 stepper precedent; per-residual tolerance test not natively spelled); NLopt as core dependency (no LM; fallback-only role); iterating on the nominal activation's singleton buffers (aliases the sim's authoritative stores — warn-but-assign reborn; caught in review); throw-on-non-convergence (an expected outcome, not broken machinery) |
 | 71 | Mounting: `TrimProblem` = implicitly specified condition (condition-valued function over decisions + pinning equations; solving makes it explicit; commit = init with the solved condition — services unified as condition-algebra clients); `at(prefix, problem)` lifts in five lines (condition post-composed, reads wrapped — inert selector data reuse the `Scoped` node; guess/bounds/residuals path-free pass-through); slots resolve through export chains from the mount point (unexported face = untrimmable from outside, correctly — a model-driven input, named by the build); the world-level `f_init!` wrapper dissolves into the `baseline` condition (method nesting → value layering); `design_world(ac)` = today's ad-hoc linearize models promoted to a shipped rig ("root" = shallowest world, one register); swarm: one problem per solve — sequential commits or user-side joint composition (concatenated decisions, merged trees, stacked residuals); `product()` helper recorded for the §15.7 library, unbuilt | World-level trim wrapper methods (call-tree reuse: one method per container, ad-hoc plumbing per multi-aircraft case); literal aircraft-as-root register (environment inputs must be wired from providers; a second register to maintain); framework-side joint-trim machinery now (user-side value composition suffices until routine) |
 | 72 | Linearization: surface = three selector lists (`state`/`slot`/`output` with optional component index; NamedTuple key = the control-design label), validated against schema, compiled to offsets, relocatable via `at` — the `get_*_ss`/`assign_*_ss!` shuttle layer deleted (§9.1 discharged); evaluation = one chunked Dual pass on per-invocation scratch at the operating point (exact `A`/`B`/`C`/`D` + `ẋ₀`/`y₀` simultaneously; unseeded states constant, discrete tier frozen-exact); linearization = pure query (no commit, no boundary zero, no restore dance), default operating point = `capture(sim)` — `capture` settled as the full-store gather returning `(condition, t)`; returns labeled data with `subsystem`/`delete_vars` as pure label-indexed slicing; `LinearizedSS` survives as an ordinary continuous component; guidance: surfaces select minimal-coordinate mechanizations (the `{NED}` rig practice, now stated) | Four `FiniteDiff` jacobians (step-size heuristics, ~4n evaluations, exactness lost); hand-written per-variant gather/scatter structs (~150 lines of bookkeeping each); linearize-as-committing-service (nothing becomes authoritative); post-linearization trim restoration (an artifact of probing the live model); naive quaternion-component seeding (off-manifold; the coordinate choice is the surface author's) |
+| 73 | Sketch refresh (v0.17): `sketch_decoder.jl`/`sketch_io.jl` rewritten to the settled design; split-form `sketch.jl` retired, `navsensors.jl`/`imu.md` retired with content absorbed into §17.5; runnable dependency-free `condition_demo.jl` added (§16 algebra + §16.9 mounting, printed trees and flattened entry lists); declaration-by-initial-value upheld (§13.2); sampled-data Dual activation recorded unbuilt (§16.10); §6 `SumJunction` on its unparametrized type constructor | `init_*` as types + `probe_value` synthesis (defaults are the §16.1 overlay base; the §16.6 probe-value barrier; a per-field two-register protocol, §16.2); extending differentiation through the discrete tier now (frozen-`z` is exact for every built consumer; Φ differentiability breaks at events — kept as an opt-in door); deferring the demo to the framework prototype (the algebra is freestanding — strings, NamedTuples, four structs) |
 
 ---
 
@@ -3489,10 +3574,3 @@ To be settled in subsequent sessions:
   starting inventory. Residuals: the `q_sf` home (§17.4 — aircraft design,
   belongs here); whether `stop_on` needs a root-declared overridable default
   (§15.5 — reopen only if the ctor argument proves chronically forgotten).
-- **Sketch refresh.** The sketches predate v0.5 and the v0.6–v0.15
-  assembly/periphery/pipeline/error-discipline/services layers; must
-  include a small runnable condition-algebra demo — fragments, `at`,
-  `merge`/`override`, a mounted `TrimProblem`, printed trees and flattened
-  entry lists — as the inspection aid for the §16.9 mounting semantics
-  (flagged tough to visualize on paper, 2026-07-27); one refresh, now
-  unblocked, doing double duty as a validation pass.
