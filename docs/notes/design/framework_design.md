@@ -3435,6 +3435,10 @@ To be settled in subsequent sessions:
   starting inventory. Residuals: the `q_sf` home (§17.4 — aircraft design,
   belongs here); whether `stop_on` needs a root-declared overridable default
   (§15.5 — reopen only if the ctor argument proves chronically forgotten).
-- **Sketch refresh.** The sketches predate v0.5 and the v0.6–v0.10
-  assembly/periphery/pipeline/error-discipline layers; one refresh, now
+- **Sketch refresh.** The sketches predate v0.5 and the v0.6–v0.15
+  assembly/periphery/pipeline/error-discipline/services layers; must
+  include a small runnable condition-algebra demo — fragments, `at`,
+  `merge`/`override`, a mounted `TrimProblem`, printed trees and flattened
+  entry lists — as the inspection aid for the §16.9 mounting semantics
+  (flagged tough to visualize on paper, 2026-07-27); one refresh, now
   unblocked, doing double duty as a validation pass.
