@@ -8,8 +8,8 @@
 #author names only what the body reads (§5.2, the bundle law). Maximal legal
 #sets, ambient t (and ws where declared) riding unnamed in the suffix:
 #
-#   y_xm     = h_xm(comp, args)     # ⊆ (; x, m, t, ws) — no-feedthrough stage
-#   y_xmu    = h_xmu(comp, args)    # + u, y_xm — all wired inputs
+#   y_x      = h_x(comp, args)      # ⊆ (; x, m, t, ws) — no-feedthrough stage
+#   y_xu     = h_xu(comp, args)     # + u, y_x — all wired inputs
 #   ẋ        = f(comp, args)        # ⊆ (; x, m, y, u, t, ws); y complete, fresh
 #
 #at step boundaries (none used in this sketch):
@@ -20,7 +20,7 @@
 #
 #A declared output that names a state field no stage produces is auto-published
 #at stage-1 position (§5.2) — no identity-decoder boilerplate anywhere below.
-#Every derivative-producing computation runs exactly once, in h_xmu; f is a copy
+#Every derivative-producing computation runs exactly once, in h_xu; f is a copy
 #from the fresh table. The explicit computer/integrator split (a stateless
 #derivative-computing component wired into a trivial state holder — the earlier
 #sketch.jl form, now retired) remains expressible without framework support and
@@ -57,7 +57,7 @@ output_types(::NewtonEuler, ::Type{T}) where {T<:Real} = (
     #plus the remaining acceleration-like quantities (a_eb_b, f_c_c, ...)
 )
 
-function h_xmu(::NewtonEuler, (; x, u))
+function h_xu(::NewtonEuler, (; x, u))
 
     (; mp_Σ_b, wr_Σ_b, ho_Σ_b, q_eb, r_eb_e) = u
     (; ω_eb_b, v_eb_b) = x          #own state, direct view (§5.2)
@@ -110,7 +110,7 @@ function h_xmu(::NewtonEuler, (; x, u))
 
 end
 
-#Newton-Euler is solved exactly once, in h_xmu; f copies from the fresh table:
+#Newton-Euler is solved exactly once, in h_xu; f copies from the fresh table:
 f(::NewtonEuler, (; y)) = (ω_eb_b = y.ω̇_eb_b, v_eb_b = y.v̇_eb_b)
 
 
@@ -140,7 +140,7 @@ local_types(::WA, ::Type{T}) where {T<:Real} = (
     q̇_wb = SVector{4, T}, q̇_ew = SVector{4, T}, ḣ_e = T,
 )
 
-function h_xm(::WA, (; x))   #everything derivable from pose alone: stage 1
+function h_x(::WA, (; x))   #everything derivable from pose alone: stage 1
 
     (; q_wb, q_ew, h_e) = x
 
@@ -160,10 +160,10 @@ function h_xm(::WA, (; x))   #everything derivable from pose alone: stage 1
 
 end
 
-function h_xmu(::WA, (; x, u, y_xm))
+function h_xu(::WA, (; x, u, y_x))
 
     (; ω_eb_b, v_eb_b) = u              #from NewtonEuler's auto-published state
-    (; q_nw, q_nb, Ob) = y_xm           #own stage-1 results — nothing recomputed
+    (; q_nw, q_nb, Ob) = y_x           #own stage-1 results — nothing recomputed
     (; q_wb, q_ew) = x                  #own state, direct view
 
     v_eb_n = q_nb(v_eb_b)
@@ -197,19 +197,19 @@ struct Aero <: AbstractComponent end
 
 input_types(::Aero) = (v_eb_n = SVector{3, Float64},)
 output_types(::Aero, ::Type{T}) where {T<:Real} = (wr_b = Wrench{T},)
-#h_xmu body elided
+#h_xu body elided
 
 struct PWP <: AbstractComponent end
 
 init_x(::PWP) = (ω_prop = 0.0,)
 input_types(::PWP) = (throttle = Float64,)
 output_types(::PWP, ::Type{T}) where {T<:Real} = (wr_b = Wrench{T}, ho_b = SVector{3, T})
-#h_xmu, f bodies elided
+#h_xu, f bodies elided
 
 struct MassStore <: AbstractComponent end   #placeholder for airframe/fuel mass
 
 output_types(::MassStore, ::Type{T}) where {T<:Real} = (mp_b = MassProperties{T},)
-#h_xm body elided (no inputs, no feedthrough: stage 1)
+#h_x body elided (no inputs, no feedthrough: stage 1)
 
 #Named site-specific summing junction (§6): the contributor set documented in
 #the contract; an ordinary component, no framework privileges. The generic
@@ -219,7 +219,7 @@ struct WrenchSum <: AbstractComponent end
 
 input_types(::WrenchSum) = (aero = Wrench{Float64}, pwp = Wrench{Float64})
 output_types(::WrenchSum, ::Type{T}) where {T<:Real} = (; Σ = Wrench{T})
-h_xmu(::WrenchSum, (; u)) = (; Σ = u.aero + u.pwp)
+h_xu(::WrenchSum, (; u)) = (; Σ = u.aero + u.pwp)
 
 #Assembly = plain struct; component-typed fields are the children (field names
 #= path segments), connections is the kind marker (§13.5). Where two children
@@ -278,6 +278,6 @@ exports(::Vehicle) = (
 )
 
 #derived schedule (§5.2):
-#  s1: auto-publications (ne, wa state) + wa.h_xm, mass.h_xm        (any order)
-#  s2: wa.h_xmu → {aero.h_xmu, pwp.h_xmu} → wr_sum.h_xmu → ne.h_xmu (topological)
+#  s1: auto-publications (ne, wa state) + wa.h_x, mass.h_x        (any order)
+#  s2: wa.h_xu → {aero.h_xu, pwp.h_xu} → wr_sum.h_xu → ne.h_xu (topological)
 #  post-sweep: all f against the complete signal table; projection on wa

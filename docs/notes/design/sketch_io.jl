@@ -26,7 +26,7 @@ input_types(::LowPassFilter) = (u_cmd = Float64, τ = Float64)
 #produces → auto-published at stage-1 position
 output_types(::LowPassFilter, ::Type{T}) where {T<:Real} = (x = T,)
 
-#no h_xm/h_xmu: no published intermediates → the law lives directly in f
+#no h_x/h_xu: no published intermediates → the law lives directly in f
 #(no duplicate computation site to drift, §9.4)
 f(::LowPassFilter, (; x, u)) = (x = (u.u_cmd - x.x) / u.τ,)
 

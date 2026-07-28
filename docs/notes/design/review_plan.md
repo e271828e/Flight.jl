@@ -49,7 +49,7 @@ Settled as the named-bundle hand-off (C′) after discussion, plus renames:
       `project` stays positional. Rejected: positional+clock view, kwargs
       (both `kwarg_decl` and slurp variants), full context object, Clock
       component. (Rows 74.)
-- [x] Stage/letter renaming: `f` flow / `g` jump / `h_xm`/`h_xmu`/`h_z`/
+- [x] Stage/letter renaming: `f` flow / `g` jump / `h_x`/`h_xu`/`h_z`/
       `h_zu` stages, `y_*` products; bare `h` = step size only;
       wrong-tier stage name = build error. (Row 75.)
 - [x] `inputs`/`outputs`/`locals` → `input_types`/`output_types`/
