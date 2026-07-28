@@ -39,28 +39,27 @@ Tags: **[M]** mechanical (apply, then review diff) · **[D]** decision
 Excluded on purpose: §16.5's `stop_on`-in-guard-list mislabel (`:2698`) —
 fixed once, in WP4.
 
-## WP2 — Signature cluster: what do stage functions receive? [D]
+## WP2 — Signature cluster [D] — DONE (v0.19)
 
-One joint decision; three gaps that must land coherently:
+Settled as the named-bundle hand-off (C′) after discussion, plus renames:
 
-- [ ] Time in stages: outputs cannot depend on `t` (capability gap, not a
-      contradiction). Lean: add `t` to `g_s1`/`g_s2` — time is already
-      ambient in `f`/`h`/guards/handlers; the Clock-component alternative
-      makes stages treat time as a signal while everything else doesn't.
-      Either way, qualify §12.10's freshness claim (the anticipatory-`h`
-      idiom is exact for timetable scripts but undiscoverable).
-- [ ] `Δt` mechanism: instance-carried `Δt` impossible in principle
-      (§13.6's `===`-identical-siblings argument — two fields, same
-      immutable value, different `rates` keys). Row 19 rejected
-      `h`-argument-*only*; forced move is passing it to discrete stages
-      and `h`; spelling open.
-- [ ] Workspace hand-off: §9.3 promises it is "handed to the update
-      function"; no signature shows it. Rides the same decision.
-- [ ] Fork to settle: three separate arguments vs. one small context
-      argument carrying `t`/`Δt`/workspace.
-
-Edit sites: §5.2, §9.3, §11.5, §13.2 example, §17.5 sampler, row 19
-amendment + new row, `sketch_decoder.jl`, `sketch_io.jl`.
+- [x] Every function `fn(comp, args)`, destructured by name; bundle law
+      (field iff store/tier fact exists; undeclared absent, never
+      `nothing`); `t` everywhere, `Δt` discrete-only, `ws` by declaration;
+      `project` stays positional. Rejected: positional+clock view, kwargs
+      (both `kwarg_decl` and slurp variants), full context object, Clock
+      component. (Rows 74.)
+- [x] Stage/letter renaming: `f` flow / `g` jump / `h_xm`/`h_xmu`/`h_z`/
+      `h_zu` stages, `y_*` products; bare `h` = step size only;
+      wrong-tier stage name = build error. (Row 75.)
+- [x] `inputs`/`outputs`/`locals` → `input_types`/`output_types`/
+      `local_types` (three-register inventory). (Row 76.)
+- [x] Workspace: `init_workspace` → `workspace(::C[, ::Type{T}])`
+      allocator, both tiers, `undef` idiom, `T`-generic scratch. (Row 77.)
+- [x] Consequentials: §11.5 `comp.Δt` → bundle field (row 19 amended);
+      §12.10 claim strengthened; §14.3 probe placeholder period; §14.4
+      workspace re-typing; rows 33/35 amendment markers; both sketches
+      updated.
 
 ## WP3 — Input-face typing: abstract faces as constraints [D]
 

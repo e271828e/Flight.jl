@@ -1,5 +1,5 @@
 #User-level listing for the §12 runtime periphery on the settled machinery
-#(framework_design.md v0.16): root slots as exported input faces (§13.6), slot
+#(framework_design.md v0.19): root slots as exported input faces (§13.6), slot
 #exclusivity and declarative bindings (§12.3, §17.4), derived GUI liveness and
 #stage-on-interaction (§12.5), slot totality at init (§16.6), always-on trace
 #and same-build replay (§12.3). Illustrative, non-committed syntax; not
@@ -20,15 +20,15 @@ struct LowPassFilter <: AbstractComponent end
 init_x(::LowPassFilter) = (x = 0.0,)
 #no z, no modes, no events — the minimal continuous primitive
 
-inputs(::LowPassFilter) = (u_cmd = Float64, τ = Float64)
+input_types(::LowPassFilter) = (u_cmd = Float64, τ = Float64)
 
 #outputs is mandatory even here (§13.2): x names a state field no stage
 #produces → auto-published at stage-1 position
-outputs(::LowPassFilter, ::Type{T}) where {T<:Real} = (x = T,)
+output_types(::LowPassFilter, ::Type{T}) where {T<:Real} = (x = T,)
 
-#no g_s1/g_s2: no published intermediates → the law lives directly in f
+#no h_xm/h_xmu: no published intermediates → the law lives directly in f
 #(no duplicate computation site to drift, §9.4)
-f(::LowPassFilter, x, m, y, u, t) = (x = (u.u_cmd - x.x) / u.τ,)
+f(::LowPassFilter, (; x, u)) = (x = (u.u_cmd - x.x) / u.τ,)
 
 ######################## Root assembly #########################################
 
