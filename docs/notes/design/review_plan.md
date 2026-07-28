@@ -11,27 +11,28 @@ Tags: **[M]** mechanical (apply, then review diff) · **[D]** decision
 
 ---
 
-## WP1 — Editorial batch → v0.18 [M]
+## WP1 — Editorial batch → v0.18 [M] — DONE (v0.18)
 
-- [ ] §13.2 (~1734): restore the lost `**events(::C)**:` bullet header
+- [x] §13.2 (~1734): restore the lost `**events(::C)**:` bullet header
       (content grafted onto the `locals` bullet by the v0.8 edit).
-- [ ] Stale §19 pointers → §16: `:1248`, `:1301` (§12.3 slot init / trace
+- [x] Stale §19 pointers → §16: `:1248`, `:1301` (§12.3 slot init / trace
       header → §16.6), `:1596` (§13 intro — services settled), `:2088`
       (§14.3 enforcement → §16.6 `UninitializedSlots`), `:3199`, `:3245`
       (§17.4).
-- [ ] §14.6 body refresh (`:2173`, `:2186`): BOBYQA-as-register and
+- [x] §14.6 body refresh (`:2173`, `:2186`): BOBYQA-as-register and
       gradient-trim-as-"open option" superseded by rows 69–70 (NLS + AD
-      default, BOBYQA an extension fallback).
-- [ ] Axis numbering: "axis-7 services" → axis 8 at `:1574` (§12.10) and
+      default, BOBYQA an extension fallback); "cost normalizations" →
+      per-residual scalings.
+- [x] Axis numbering: "axis-7 services" → axis 8 at `:1574` (§12.10) and
       row 31 (`:3530`).
-- [ ] §16 title (`:2501`): drop "part 1: the condition substrate".
-- [ ] §17.1 (`:3044`): `@project` → `project`.
-- [ ] §2 (`:101`): "under rules to be fixed in the execution/periphery
+- [x] §16 title (`:2501`): drop "part 1: the condition substrate".
+- [x] §17.1 (`:3044`): `@project` → `project`.
+- [x] §2 (`:101`): "under rules to be fixed in the execution/periphery
       axes" → settled pointer to §12.
-- [ ] §5.2 (`:349`): "axis 5 should restate it" → points at §11.3/§11.4.
-- [ ] Row 24 (`:3523`): add missing "Amended in v0.6 → row 44" marker.
-- [ ] §12.5 title (`:1344`): drop "active widgets" (retired contract).
-- [ ] §17.5 (`:3440`): init-consistency parenthetical → §16.5, noting
+- [x] §5.2 (`:349`): "axis 5 should restate it" → points at §11.3/§11.4.
+- [x] Row 24 (`:3523`): add missing "Amended in v0.6 → row 44" marker.
+- [x] §12.5 title (`:1344`): "active widgets" → "staging contract".
+- [x] §17.5 (`:3440`): init-consistency parenthetical → §16.5, noting
       boundary-zero's due `h` discharges most of it (only the `t₀` sample
       depends on authored `z`).
 
