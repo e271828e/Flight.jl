@@ -24,7 +24,7 @@ input_types(::LowPassFilter) = (u_cmd = Float64, τ = Float64)
 
 #outputs is mandatory even here (§13.2): x names a state field no stage
 #produces → auto-published at stage-1 position
-output_types(::LowPassFilter, ::Type{T}) where {T<:Real} = (x = T,)
+output_types(::LowPassFilter) = (x = Float64,)
 
 #no h_x/h_xu: no published intermediates → the law lives directly in f
 #(no duplicate computation site to drift, §9.4)

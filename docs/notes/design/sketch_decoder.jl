@@ -26,9 +26,10 @@
 #sketch.jl form, now retired) remains expressible without framework support and
 #is the idiom of choice when the factoring earns reuse (§5.2, §9.4).
 #
-#Types are spelled parametrically (Wrench{T}, RQuat{T}, ...) anticipating the
-#migration's Tier-1 parametrization pass (§9.2); today's Float64-backed
-#FlightPhysics types are the T = Float64 case.
+#Port types are spelled at their Float64 nominal faces (§13.2). The migration's
+#Tier-1 parametrization pass (§9.2) makes the underlying structs parametric so
+#the activation leaf walk can re-scalar them (Wrench{Float64} → Wrench{Dual});
+#the declarations themselves never mention the activation scalar (v0.20).
 
 ######################## NewtonEuler ###########################################
 
@@ -45,15 +46,15 @@ input_types(::NewtonEuler) = (
     r_eb_e = SVector{3, Float64},
 )
 
-#output contract = the public interface, as a function of the sweep scalar.
+#output contract = the public interface, at concrete nominal types (§13.2).
 #ω_eb_b / v_eb_b name state fields no stage produces → auto-published (stage 1).
 #The accelerations are genuine interface — accelerometer-style consumers read
 #them — so they live in outputs, not locals.
-output_types(::NewtonEuler, ::Type{T}) where {T<:Real} = (
-    ω_eb_b = SVector{3, T},
-    v_eb_b = SVector{3, T},
-    ω̇_eb_b = SVector{3, T},
-    v̇_eb_b = SVector{3, T},
+output_types(::NewtonEuler) = (
+    ω_eb_b = SVector{3, Float64},
+    v_eb_b = SVector{3, Float64},
+    ω̇_eb_b = SVector{3, Float64},
+    v̇_eb_b = SVector{3, Float64},
     #plus the remaining acceleration-like quantities (a_eb_b, f_c_c, ...)
 )
 
@@ -125,19 +126,20 @@ input_types(::WA) = (ω_eb_b = SVector{3, Float64}, v_eb_b = SVector{3, Float64}
 #q_wb / q_ew / h_e: state fields no stage produces → auto-published (stage 1);
 #the rest of stage-1 membership (pose-derived vs velocity-dependent) is derived
 #by the build, invisible in the contract (§13.2 — no stage tags)
-output_types(::WA, ::Type{T}) where {T<:Real} = (
-    q_wb = RQuat{T}, q_ew = RQuat{T}, q_nw = RQuat{T}, q_nb = RQuat{T},
-    q_eb = RQuat{T}, e_nb = REuler{T},
-    n_e = NVector{T}, ϕ_λ = LatLon{T}, h_e = HEllip{T}, h_o = HOrth{T},
-    Ob = Geographic{T}, r_eb_e = SVector{3, T},
-    v_eb_n = SVector{3, T}, ω_wb_b = SVector{3, T}, ω_ew_b = SVector{3, T},
-    v_gnd = T, χ_gnd = T, γ_gnd = T,
+output_types(::WA) = (
+    q_wb = RQuat{Float64}, q_ew = RQuat{Float64}, q_nw = RQuat{Float64},
+    q_nb = RQuat{Float64}, q_eb = RQuat{Float64}, e_nb = REuler{Float64},
+    n_e = NVector{Float64}, ϕ_λ = LatLon{Float64}, h_e = HEllip{Float64},
+    h_o = HOrth{Float64}, Ob = Geographic{Float64}, r_eb_e = SVector{3, Float64},
+    v_eb_n = SVector{3, Float64}, ω_wb_b = SVector{3, Float64},
+    ω_ew_b = SVector{3, Float64},
+    v_gnd = Float64, χ_gnd = Float64, γ_gnd = Float64,
 )
 
 #consumed only by WA's own f — component-local cross-stage cells, not
 #interface (§13.2). q̇'s are quaternion-backing derivatives (4 scalars).
-local_types(::WA, ::Type{T}) where {T<:Real} = (
-    q̇_wb = SVector{4, T}, q̇_ew = SVector{4, T}, ḣ_e = T,
+local_types(::WA) = (
+    q̇_wb = SVector{4, Float64}, q̇_ew = SVector{4, Float64}, ḣ_e = Float64,
 )
 
 function h_x(::WA, (; x))   #everything derivable from pose alone: stage 1
@@ -196,19 +198,19 @@ project(::WA, x) = (q_wb = normalize(x.q_wb), q_ew = normalize(x.q_ew), h_e = x.
 struct Aero <: AbstractComponent end
 
 input_types(::Aero) = (v_eb_n = SVector{3, Float64},)
-output_types(::Aero, ::Type{T}) where {T<:Real} = (wr_b = Wrench{T},)
+output_types(::Aero) = (wr_b = Wrench{Float64},)
 #h_xu body elided
 
 struct PWP <: AbstractComponent end
 
 init_x(::PWP) = (ω_prop = 0.0,)
 input_types(::PWP) = (throttle = Float64,)
-output_types(::PWP, ::Type{T}) where {T<:Real} = (wr_b = Wrench{T}, ho_b = SVector{3, T})
+output_types(::PWP) = (wr_b = Wrench{Float64}, ho_b = SVector{3, Float64})
 #h_xu, f bodies elided
 
 struct MassStore <: AbstractComponent end   #placeholder for airframe/fuel mass
 
-output_types(::MassStore, ::Type{T}) where {T<:Real} = (mp_b = MassProperties{T},)
+output_types(::MassStore) = (mp_b = MassProperties{Float64},)
 #h_x body elided (no inputs, no feedthrough: stage 1)
 
 #Named site-specific summing junction (§6): the contributor set documented in
@@ -218,7 +220,7 @@ output_types(::MassStore, ::Type{T}) where {T<:Real} = (mp_b = MassProperties{T}
 struct WrenchSum <: AbstractComponent end
 
 input_types(::WrenchSum) = (aero = Wrench{Float64}, pwp = Wrench{Float64})
-output_types(::WrenchSum, ::Type{T}) where {T<:Real} = (; Σ = Wrench{T})
+output_types(::WrenchSum) = (; Σ = Wrench{Float64})
 h_xu(::WrenchSum, (; u)) = (; Σ = u.aero + u.pwp)
 
 #Assembly = plain struct; component-typed fields are the children (field names

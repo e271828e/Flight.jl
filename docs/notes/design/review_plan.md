@@ -61,23 +61,31 @@ Settled as the named-bundle hand-off (C′) after discussion, plus renames:
       workspace re-typing; rows 33/35 amendment markers; both sketches
       updated.
 
-## WP3 — Input-face typing: abstract faces as constraints [D]
+## WP3 — Input-face typing: abstract faces as constraints [D] — DONE (v0.20)
 
-- [ ] Re-open row 33's subtype rejection under row 54's
-      producer-determines insight; consumer abstract `inputs` entries as
-      constraints (`producer_face <: declared`), exact equality the rule
-      for concrete declarations. Demonstrated consumer: §7 field handles
-      (strut ↔ terrain substitutability).
-- [ ] Root-slot carve-out: faces surfacing as root slots take their type
-      from the consumer declaration (no producer) — staging cells,
-      `probe_value`, trace typing need them concrete; abstract entries
-      legal only on component-fed inputs.
-- [ ] Resolve §17.5 sketch faces (`q = RQuat` bare UnionAll): legalized
-      under the new rule, or corrected to `RQuat{Float64}` under status
-      quo.
+Scope grew in discussion far beyond the original three boxes; settled as
+the **port-typing cluster** (rows 78–79 + amendments to 33/53/54/55/76):
 
-Edit sites: §13.2 inputs bullet, §7 cross-ref, row 33 amendment + new
-row, §17.5, `sketch_decoder.jl` if affected.
+- [x] Subtype rule `producer_face <: entry` at nominal faces; entries =
+      face constraints, not cell types; abstract = structural
+      substitutability (§7 handles), never needed for eltype genericity.
+- [x] Root-slot carve-out (tight bound determines the type; abstract at
+      root = build error) + fan-out sub-rule (unique concrete declaration
+      among consumers). `probe_value` never meets an abstract type —
+      structural, no new obligation.
+- [x] **`T`-signature retired** (user re-opened): `output_types(::C)` /
+      `local_types(::C)` concrete nominal, both tiers; activation leaf
+      walk (continuous parametrizes `Float64` leaves/`Real` type params,
+      `Int`/`Bool`/enum/reference fields pin, discrete pins wholesale);
+      §14.5 conformance split — exact at nominal, `{T, Float64}` +
+      zero-partial embedding at parametrized leaves (embedding guarantee:
+      promotion airtight, no lossy `Dual → Float64` cast).
+- [x] Root slots re-typed by the same leaf walk (the §14.1 gap); seeding
+      register stated in §16.10; phantom-producer pedagogy in §12.3;
+      declarative non-participation recorded as §16.10 door.
+- [x] §17.5 tightened to `RQuat{Float64}`; both sketches de-`T`'d;
+      consequentials in §6, §9.2, §13.3, §13.5, §13.8, §14.1, §14.3,
+      §14.4; header v0.20.
 
 ## WP4 — Boundary cluster: Tier-2, baselines, boundary zero [D]
 

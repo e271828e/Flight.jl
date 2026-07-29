@@ -1,9 +1,29 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** nineteenth checkpoint (v0.19). Axes 1–6 settled; axis 7 (the
+**Status:** twentieth checkpoint (v0.20). Axes 1–6 settled; axis 7 (the
 declaration layers, §13, and the build pipeline, §14) settled; error
 discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
-upheld (§17.5, row 56). New in v0.19: **the signature cluster** (WP2 of the
+upheld (§17.5, row 56). New in v0.20: **the port-typing cluster** (WP3 of
+the 2026-07 review, rows 78–79 + amendments to rows 33/53/54/55/76) —
+`input_types` entries re-read as **face constraints, not cell types**
+(wiring check `producer_face <: entry` at nominal faces, exact equality the
+concrete degenerate; abstract entries = structural substitutability, §7's
+field handles; root-slot carve-out — only a tight bound determines a
+producerless cell's type; fan-out sub-rule); the **`T`-signature retired**
+(`output_types(::C)`/`local_types(::C)` concrete nominal on both tiers,
+reversing row 33's output side) in favor of the **activation leaf walk**
+(continuous producers' `Float64` leaves and `Real` type parameters follow
+the activation scalar; `Int`/`Bool`/enum and reference-typed fields pin;
+discrete producers pin wholesale — frozen-exact by typing rule, tier from
+declaration shape) under the **embedding guarantee** (§14.5: exact match at
+nominal unchanged; parametrized leaves accept exactly `{T, Float64}`,
+`Float64` embedded as a zero-partial constant — exact because promotion is
+airtight and there is no lossy `Dual → Float64` cast); differentiation
+participation = per-invocation seeding, never typing (§16.10, one register
+for `x` and slots); root slots read as the phantom producer's faces
+(§12.3); declarative non-participation (pinned faces, stop-gradient
+visibility, forbid-seeding markers) recorded as a §16.10 door; both
+sketches updated. In v0.19: **the signature cluster** (WP2 of the
 2026-07 review, rows 74–77 + row 19 amendment) — the named-bundle hand-off
 (`fn(comp, args)`, destructuring by name, the bundle law: undeclared stores
 absent, `t` everywhere, `Δt` discrete-only, `ws` by declaration); the letter
@@ -517,13 +537,14 @@ struct SumJunction{W, N} end        #type constructor, arity; library-provided
 
 input_types(::SumJunction{W, N}) where {W, N} =
     NamedTuple{ntuple(i -> Symbol(:in, i), N)}(ntuple(_ -> W{Float64}, N))
-output_types(::SumJunction{W, N}, ::Type{T}) where {W, N, T<:Real} = (; Σ = W{T})
+output_types(::SumJunction{W, N}) where {W, N} = (; Σ = W{Float64})
 h_xu(::SumJunction, (; u)) = (; Σ = +(u...))
 ```
 
 (The parameter is the *unparametrized* type constructor — `SumJunction{Wrench, 3}`;
-UnionAlls are legal type parameters — so both declarations derive from it: inputs
-at the `Float64` face, the output re-scalared at the sweep `T`. This is the same
+UnionAlls are legal type parameters — so both declarations derive from it at the
+`Float64` nominal face; the activation leaf walk (§13.2) re-scalars the output
+cell per activity. This is the same
 arity-via-computed-contracts pattern §15.7 commits to for `Or{N}`.)
 
 - **Every mistake is loud** under the declaration layer: a forgotten contributor is
@@ -619,7 +640,11 @@ composition mechanism, invisible in the graph — today's argument-threading, au
 
 This replaces threading `atmosphere`/`terrain` as arguments through every update
 signature, and dovetails with the terrain ray-query direction of the landing-gear
-redesign.
+redesign. Substitutability behind a stable face is declared with an abstract
+input entry (`terrain = AbstractTerrainField` — §13.2's structural
+substitutability): the consumer wires to any concrete field type below the
+bound, preserving today's `AbstractTerrain` polymorphism at the declaration
+layer.
 
 ---
 
@@ -716,10 +741,12 @@ are generic over `T <: Real`. One design property, four consumers:
 4. a trivially checkable **CI invariant**: one evaluation sweep with `T = Dual` fails
    loudly (`MethodError`/`InexactError` at the offending line) on any Float64-pinning.
 
-The declaration layer makes this scoping visible per port: continuous components
-declare outputs as *functions of the sweep scalar* (`output_types(::C, ::Type{T})`,
-§13.2), so slot types per activity come from evaluating declarations at that `T` —
-never from substitution machinery or from inference through user code.
+The declaration layer keeps this scoping out of the author's way: declarations
+are concrete nominal types (§13.2), and slot types per activity come from the
+framework's leaf walk over them — `Float64` leaves and `Real` type parameters
+follow the activation scalar on the continuous side, the discrete side pins —
+never from inference through user code. (Safety of the substitution rests on
+the §14.5 embedding guarantee, v0.20.)
 
 Scoping (what actually needs genericity — roughly half the type inventory):
 
@@ -1338,7 +1365,10 @@ the GC provides for free, to save an allocation profiling has not indicted.
 **The write surface is root input slots** — and a root slot *is* the root
 assembly's exported input face (§13.6): routed inward to consumers, produced by no
 component, fed by the parent's wire at every non-root level — and at the root
-there is no parent. No dedicated vocabulary survives (`add_input!` in the early
+there is no parent. (A root slot is usefully read as the output face of the
+one producer the build never sees — the periphery and the services: slot
+exclusivity below is a producer's one-writer right, and §16.6's totality is
+its completeness obligation.) No dedicated vocabulary survives (`add_input!` in the early
 sketches is dead). Slots are sources to the build-time scheduler, constants within
 a frame, and the *only* thing the periphery may write (the GUI reaches them
 through §12.5's resolution; control commands are not writes, §12.6); devices,
@@ -1760,8 +1790,8 @@ init_m(::Engine) = (phase = off,)                    # off | starting | running
 #input contract: bare NamedTuple of types at their Float64 faces
 input_types(::Engine) = (throttle = Float64, fuel_available = Bool, M_load = Float64)
 
-#output contract = the public interface, as a function of the sweep scalar
-output_types(::Engine, ::Type{T}) where {T<:Real} = (M_shaft = T, P = T, ω = T)
+#output contract = the public interface, at concrete nominal types (§13.2)
+output_types(::Engine) = (M_shaft = Float64, P = Float64, ω = Float64)
 #ω names a state field no stage produces → auto-published at stage 1 (§5.2)
 
 #stage and update functions destructure their bundle by name (§5.2)
@@ -1806,48 +1836,76 @@ The inventory, and where each schema fact gets its authority:
   sweep, needing only types; `init_*` describe stores — the model's memory,
   which must have contents before the first sweep can run.
 - **`input_types(::C)`**: a bare `NamedTuple` of types — zero framework vocabulary, no
-  wrapper types (the last candidate, `Reduce`, died with reduce-ports, §6). Input
-  declarations state the `Float64` face only: their sole job is the build-time
-  wiring check, by **exact type equality** against the producer's face. (Names-only
+  wrapper types (the last candidate, `Reduce`, died with reduce-ports, §6). Entries
+  are **face constraints, not cell types** (v0.20): each states a bound on the
+  producer's *nominal* face, checked at wiring time as `producer_face <: entry` —
+  one uniform rule, which for a concrete entry degenerates to exact equality,
+  concrete types being final. Abstract entries state **structural
+  substitutability** — several concrete producer types admissible behind one
+  stable face, §7's field handles being the demonstrated client
+  (`terrain = AbstractTerrainField`). They are never needed for eltype
+  genericity: an eltype-generic producer's nominal face is concrete by
+  construction, so `SVector{3, Float64}` wires to it as-is. (Names-only
   contracts were rejected — they lose the wiring-time type error and standalone
-  checkability; subtype/pattern matching was rejected because its motivating case,
-  genuinely generic consumers, is handled by `T`-parametrization below.) Inputs are
-  the component's *requirements*: §8's unconnected-input error, over-wiring
-  detection and did-you-mean typo messages are only definable against them.
-  **Symmetric `T`-parametrization of `input_types` is rejected as impossible, not
-  merely unnecessary** (v0.8): an input's activation-time type depends on *who
-  feeds it* — wired from a continuous producer it holds `Dual` under a `Dual`
-  activation, wired from a gated-off discrete producer it holds `Float64`, and
-  the consumer's math promotes the mixture. The type is a fact about the wiring,
-  not the consumer; a symmetric declaration would force the consumer to state
-  its producer's tier and would break on substitution behind the same face.
-  Producers determine activation types; consumers accept what the wiring
-  delivers — their obligation is genericity, checked by the `Dual` probe, never
-  by declaration. Per-activation input types are derived facts.
-- **`output_types(::C, ::Type{T})`** on continuous components: the declaration is a
-  *function of the sweep scalar*, read literally as "this port carries whatever
-  scalar this evaluation runs on" — `Float64` nominally, a `Dual` under
-  linearization/trim, a tracer under §10. No substitution engine, no sentinel
-  types: the author's parameter placement answers exactly the question a rewriter
-  would have to guess at (which `Float64`s are the eltype and which are honest),
-  and a literal `Float64`/`Bool`/enum inside a `T`-taking declaration is a visible,
-  deliberate statement of non-participation. Discrete components declare plain
-  `output_types(::C)` — the Tier-3 exemption (§9.2) made visible in a signature. Per
-  activity, the build evaluates producer declarations at that activity's `T` to
-  type the slots; during a generic sweep, gated-off discrete producers hold their
-  `Float64` values, consumers gather mixed tuples, and promotion does the rest —
-  semantically exact, since a frozen discrete output is a constant with zero
-  partials, which is precisely what "linearize the continuous dynamics with `z`
-  held" means. The tier exemption enforces itself through the type system.
-- **`local_types(::C, ::Type{T})`** (v0.8; discrete components: plain `local_types(::C)`,
-  the same tier-in-signature split as `output_types`): the component-local
+  checkability.) Inputs are the component's *requirements*: §8's
+  unconnected-input error, over-wiring detection and did-you-mean typo messages
+  are only definable against them. Because entries are bounds, nothing is ever
+  "overwritten": cell types are single-sourced from the producer side per
+  activation (§14.1), and a `Dual`-carrying cell behind a `Float64` entry is
+  the design working, not a promise broken. The code-level complement is the
+  **genericity obligation** — whatever scalars the wiring delivers, the
+  consumer's math promotes — checked by the `Dual` probe, never declared:
+  **declarations record choices; obligations are checked.** A per-leaf
+  genericity marking would be a constant function across components — zero
+  information (killing the envelope reading of symmetric `T`; the *predictive*
+  reading was already impossible, v0.8: an input's activation type depends on
+  who feeds it — a continuous producer delivers `Dual` under a `Dual`
+  activation, a gated-off discrete producer `Float64` — so a symmetric
+  declaration would force the consumer to state its producer's tier and break
+  substitution behind the same face). **Root slots are the one place an entry
+  types a cell**: produced by no component, a slot has only the consumer
+  declaration to take a type from, and only a *tight* bound determines one — a
+  face surfacing as a root slot must resolve to a concrete declaration (staging
+  cells, the trace header and `probe_value` all need it; abstract-at-root is a
+  build error). Under fan-out the slot type is the unique concrete declaration
+  among its consumers — two different concrete declarations remain an error —
+  and abstract co-consumers are checked against it.
+- **`output_types(::C)`**: a concrete `NamedTuple` of *nominal* types, both
+  tiers — same species as `input_types` (v0.20; the `::Type{T}` signature is
+  retired, reversing row 33's output side). Cell types per activation are
+  derived by the framework's **leaf walk** over the declared type (§14.1): on
+  continuous producers, `Float64` leaves — including type parameters,
+  `RQuat{Float64}` → `RQuat{Dual}` — follow the activation scalar;
+  `Int`/`Bool`/enum leaves pin; reference-typed fields pin (a §7 bulk-data
+  handle's grid is frozen build-time data, never activation-dependent). On
+  discrete producers the walk pins wholesale — the Tier-3 exemption (§9.2),
+  now enforced by the typing rule rather than spelled in a signature (tier is
+  known from declaration shape, §13.5). During a generic sweep, gated-off
+  discrete producers hold their `Float64` values, consumers gather mixed
+  tuples, and promotion does the rest — semantically exact, since a frozen
+  discrete output is a constant with zero partials, which is precisely what
+  "linearize the continuous dynamics with `z` held" means. What makes
+  under-the-hood substitution safe now — row 33 rejected it as unable to
+  distinguish honest `Float64`s from eltype `Float64`s — is the **embedding
+  guarantee** (§14.5): a `Float64` observed at a parametrized leaf under a
+  non-nominal activation implies no `Dual` entered its computation (promotion
+  is airtight; there is no lossy cast), so its true derivative along every
+  seeded direction is zero and embedding it as a zero-partial constant is
+  exact. The honest/eltype distinction no longer needs declaring because both
+  cases get correct treatment automatically. Author-side payoffs: no
+  `where {T}` ceremony, no per-leaf placement decisions, the forgotten-`T` bug
+  class gone, and piecewise branches returning literal constants
+  (`flow > 0 ? f(x) : 0.0`) legal as written — zero partials is the derivative
+  of a locally-constant branch. Differentiation participation is selected per
+  invocation by seeding (§16.10), never by typing.
+- **`local_types(::C)`** (v0.8; concrete nominal types since v0.20, same
+  species and leaf walk as `output_types`): the component-local
   intermediates — fields a stage returns for the component's *own* later
   consumption (`f`, guards, the author's debug panels) that are not interface.
-  `local_types(::C, ::Type{T}) where {T} = (q_dyn = T,)` reads exactly like
-  `output_types` and carries the same authority: under a `Dual` activation a `T`
-  entry must carry partials (a pinned intermediate detonates at the probe,
-  §14.5), while a literal `Float64` entry is §13.2's visible, deliberate
-  statement of non-participation — extended to intermediates. **Strict**: a
+  `local_types(::C) = (q_dyn = Float64,)` reads exactly like `output_types`,
+  and its cells follow the same tier-dependent leaf walk under non-nominal
+  activations, with the same embedding guarantee (§14.5) at parametrized
+  leaves. **Strict**: a
   returned field declared in neither `output_types` nor `local_types` is a build error
   with did-you-mean (§13.4 walkthrough 5). Unlike `output_types` (mandatory), an
   empty `local_types` is the framework default — absence hides nothing, because
@@ -1869,25 +1927,27 @@ The inventory, and where each schema fact gets its authority:
   values. The settled "decoder takes no inputs" property is exactly what makes
   the derivation well-founded. A stage name on the wrong tier (`h_zu` on a
   continuous component) is a build error in the §13.5 family.
-- **Custom structs as port types** (`contact = GearContact{T}`) are first-class
-  under the existing §9.2 Tier-1 rules: parametric in their real-scalar leaves,
-  constructors inferring `T`, no pinned fields on the continuous path. A pinned
-  field wired into the continuous path detonates at the Dual-sweep probe with an
-  `InexactError` naming the offending constructor — the §9.2 CI invariant reached
-  through the declaration layer with no extra machinery.
+- **Custom structs as port types** (`contact = GearContact{Float64}`) are
+  first-class under the existing §9.2 Tier-1 rules: parametric in their
+  real-scalar leaves, constructors inferring the scalar, no pinned fields on
+  the continuous path. The leaf walk parametrizes `Real` *type parameters*
+  (recursively); a struct with a hardcoded `Float64` field offers none, so its
+  cell pins and any `Dual`-carrying construction detonates inside the stage
+  with an `InexactError` naming the offending constructor — the §9.2 CI
+  invariant reached through the declaration layer with no extra machinery.
 
 ### 13.3 Visibility: the contract is the interface
 
 **Declared in `output_types` = public; declared in `local_types` = private intermediate;
 declared in neither = build error; absent `output_types()` = no outputs** (v0.8 —
-visibility by declaration *site*, the same move as kind-by-declaration-shape and
-tier-in-signature). Ports in the contract are connectable, GUI-listed and
+visibility by declaration *site*, the same move as
+kind-by-declaration-shape). Ports in the contract are connectable, GUI-listed and
 log-exported. `local_types` entries occupy table cells (they must survive from their
 computing stage to `f`/guards, and they serve the author's own debug panels via
 the snapshot, §12.2), but they are non-connectable — a build error, not a
 discouraged convention — and presentation-filtered by default. Publicity is
 never implicit: even the minimal component writes
-`output_types(::LowPassFilter, ::Type{T}) where {T} = (x = T,)`, one line, in
+`output_types(::LowPassFilter) = (x = Float64,)`, one line, in
 exchange for "public" always meaning someone wrote it down.
 
 - **Conformance**: a declared port or local must be produced — by exactly one
@@ -1909,18 +1969,15 @@ exchange for "public" always meaning someone wrote it down.
   performance; the framework merely makes it a stated rule with a good error.
 - **Schema authority is total** (v0.8, superseding the probe-observed exception):
   every field a stage returns is declared somewhere, and the always-on check's
-  expected type is fully declaration-derived. The original acceptance rationale
-  for observation-authority ("blast radius structurally local — a private field
-  cannot cross the component boundary") held for *shape* errors only: under a
-  `Dual` activation, an accidentally pinned private intermediate would be
-  probe-observed as `Float64`, enshrined as the expected type, and its dropped
-  partials would flow out through `f` in perfectly conformant types — a
-  silently wrong Jacobian. Declared ports are protected against exactly this by
-  the exact-match check (§14.5); observation-authority made privates the one
-  unprotected surface. Strict `local_types` closes the hole by dissolution: the
-  declared eltype *is* the participation statement, so there is nothing left to
-  diagnose heuristically (a `Float64`-under-`Dual` local is declared, deliberate
-  and visible).
+  expected type is fully declaration-derived — return typos cannot silently
+  define new cells, and every table cell traces to an authored fact. (The v0.8
+  argument additionally leaned on declared eltypes as protection against
+  silently dropped partials; v0.20 relocated that duty to the embedding
+  guarantee — promotion is airtight, so an observed `Float64` is a true
+  constant, §14.5 — when participation left the schema with the
+  `T`-signature. Probe-observed expected types stay rejected on the surviving
+  grounds: authority inversion, and one probe point cannot speak for
+  branch-dependent types.)
 - **What died here**: the `unlisted` flag (§4.2 revision note) — presentational
   hiding of connectable ports — and its satellite-function representation; the
   RNG-state case that motivated it needs *nothing* now (`g` reads `z` directly,
@@ -1986,8 +2043,11 @@ in public type identity is exactly what contract visibility exists to prevent.
 Kind is instead declared by *which* well-known declarations a type defines:
 `connections` (the marker, mandatory-even-if-empty — the `LowPassFilter`
 precedent) makes an assembly; `output_types` + stage functions make a primitive.
-Reading which declarations exist is reading declarations — the same move as the
-tier-in-signature split, not §13.1's banned inference-by-evaluation. Error
+Reading which declarations exist is reading declarations — the same move as
+§13.3's visibility-by-declaration-site, not §13.1's banned
+inference-by-evaluation. Kind also settles the tier fact the retired
+`T`-signature used to spell (v0.20): the leaf walk pins or parametrizes a
+producer's cells by the kind its declaration shape announces. Error
 taxonomy: `connections` plus `init_x`/stages on one type is a build error
 (assemblies have no state of their own — §11.5's no-atomic-assemblies at
 declaration time); neither marker plus component-typed fields earns a did-you-mean
@@ -2026,9 +2086,10 @@ non-identifier names would force. Direction is derived from the endpoints
 multi-source entries are build errors). Face *types and tiers* are derived from
 the internal endpoints — §13.2's blessed derivation-from-declarations — and the
 derivation is forced, not merely convenient: an assembly is tier-neutral (it
-exports continuous-sourced and discrete-sourced ports side by side), so neither
-leaf `output_types` signature fits, and author-declared face types would need per-face
-tier annotations. Rejected spellings: routing values under the leaf names
+exports continuous-sourced and discrete-sourced ports side by side), so
+author-declared face types would need per-face tier annotations restating what
+each producer's kind already fixes (§13.5; the leaf walk reads the tier from
+the producer, v0.20). Rejected spellings: routing values under the leaf names
 `input_types`/`output_types` (a name-level pun — a discrete leaf's exact signature with
 alien value semantics, killing §13.5's name-level kind split); leaf-style *typed*
 faces plus face wires inside `connections` (the tier problem above, plus
@@ -2143,7 +2204,9 @@ organized as three strata:
   nominal `Float64`, `init_*` values, `events`, `local_types`), bottom-up face
   derivation, then global wiring resolution to absolute leaf terminals:
   one-writer-per-input, typo did-you-mean against the destination's input
-  list, wire type equality at `Float64` faces, the whole-tree obligation
+  list, the wiring bound check at nominal faces (`producer_face <: entry`,
+  §13.2 — equality the concrete degenerate; abstract-at-root detected here),
+  the whole-tree obligation
   check, root slots falling out as the root's exported input faces. Also
   here: `rates` validation and compilation of relative multipliers into
   absolute divisors — everything except binding `Δt_base`, which is
@@ -2199,7 +2262,10 @@ framework methods for `Real` (`zero(T)`), `Bool` (`false`), enums (first
 instance), ultimate fallback the zero-argument constructor `T()` — which is
 where well-behaved constrained types already put their valid default (`RQuat()`
 = identity; the `@kwdef` convention supplies it broadly). No method → build
-error naming the face and the type. Physically silly values are acceptable by
+error naming the face and the type. Synthesis never meets an abstract type:
+root slots are concrete by §13.2's tight-bound rule, and abstract entries only
+occur on component-fed inputs, which the probe sources from upstream products.
+Physically silly values are acceptable by
 construction: the probe checks types, and return types that depend on input
 *values* are type instabilities (banned by the branch-shape rule); the §4.3
 write-side granularity corollary keeps root slots predominantly scalar, so the
@@ -2225,10 +2291,11 @@ enforcement is the pre-write `UninitializedSlots` check at `init!`/commit
 ### 14.4 Activations: executable sets, laziness, caching
 
 An **activation at `T`** re-runs Stratum C with a different scalar: slots
-re-typed by evaluating producer declarations at `T`, table and state buffers
-re-laid-out, workspace allocators re-invoked at `T` (a continuous
-component's scratch carries the activation's scalar, §9.3), probe chain
-re-run. Structure and schedule are `T`-independent by construction.
+re-typed by the leaf walk over the declared types (§13.2 — tier-dependent on
+producer-fed cells, over the consumer declaration on root slots), table and
+state buffers re-laid-out, workspace allocators re-invoked at `T` (a
+continuous component's scratch carries the activation's scalar, §9.3), probe
+chain re-run. Structure and schedule are `T`-independent by construction.
 
 **Each activation probes exactly the function set it can execute.** A `Dual`
 activation (linearization, gradient trim) evaluates the model at a frozen
@@ -2274,15 +2341,32 @@ as a runtime check, nanoseconds on conformant branches, a loud located error
 on the divergent one at its first execution. (Type-unstable-but-conformant
 code pays nanoseconds on top of the dynamic dispatch it already bought.)
 
-**Exact type match — no convert-on-write.** Field-assignment `convert`
-semantics are rejected: a branch that drops its partials (an intermediate
-pinned to `Float64`) would be silently converted `Float64 → Dual` as a
-constant with zero partials — a wrong Jacobian with no error anywhere. Exact
-match turns precisely this bug into an immediate located failure; and once
-non-nominal activations demand strictness, nominal must too (`Int` sloppiness
-passing at `Float64` but detonating under `Dual` would make "it runs"
-activity-dependent). The error can afford to be didactic: "field `M_shaft`:
-expected `Float64`, got `Int64` — return `zero(x.ω)`, not `0`".
+**Exact match at nominal; embed-accept at parametrized leaves (v0.20).** At
+the nominal activation — the only one that ever runs in real time — the check
+is unchanged: exact type match, no convert-on-write, one baked `isa` that
+folds away (`Int` sloppiness must fail at `Float64`, not lurk until a `Dual`
+activation makes "it runs" activity-dependent). The error can afford to be
+didactic: "field `M_shaft`: expected `Float64`, got `Int64` — return
+`zero(x.ω)`, not `0`". Under a non-nominal activation, a parametrized leaf
+accepts exactly two types: the activation scalar (the fast path — the baked
+`isa` unchanged) or `Float64`, which the executor **embeds** as a
+zero-partial constant (`convert` through the leaf; struct-valued ports use
+the standard cross-eltype constructor, a missing one failing loudly with
+both types named). Nothing else is accepted. The embedding is exact, not
+lenient: promotion is airtight and there is no lossy `Dual → Float64` cast,
+so a `Float64` observed at a parametrized leaf means no `Dual` entered its
+computation — its true derivative along every seeded direction is zero,
+which is precisely what the embedded constant says. This scopes v0.8's
+blanket convert-on-write rejection to the nominal check (row 53 amended):
+the bug that rejection guarded against — silently zeroed partials — cannot
+arise from honest code, because accidental `Float64`s from `Dual` operands
+are impossible (`MethodError` at the operation site). The residual is
+**deliberate stripping** (`ForwardDiff.value`): a stated intent to discard
+partials, producing a silent zero in the Jacobian — the stop-gradient idiom,
+occasionally legitimate (deliberately frozen couplings, opaque non-Julia
+wrappers), invisible to the schema, and equally invisible to the old
+exact-match rule when applied mid-expression, so nothing is lost against the
+status quo. Schema-visible freezing is a recorded door (§16.10).
 
 **Uniform across all probed functions.** `f` checks against the state field
 set at the activation's `T` (§9.1's structural derivative completeness made
@@ -2774,8 +2858,11 @@ indices from the activation; face chains from Stratum A — the destination).
 A valid list compiles to a plan: per leaf, a `Getter{P}` lens (the position
 tuple lifted to a type parameter — type-stable navigation of the fixed tree
 type), a destination offset, and a **converter baked now** (e.g. `RQuat` →
-the 4-scalar backing block) — a one-time boundary decision that leaves
-§14.5's no-convert-on-write doctrine for table cells untouched. Overlay
+the 4-scalar backing block; against a non-nominal activation's scratch, the
+`Float64 → Dual` zero-partial embedding — semantically exact for condition
+writes: "held at the operating point" *is* zero partials, §16.10) — a
+one-time boundary decision that leaves §14.5's nominal exact-match doctrine
+for table cells untouched. Overlay
 partiality for `m`/`z` cells is baked the same way: the writer holds
 `merge(init_m_defaults, overlay)` with the base resolved at compile time
 (§16.1's fork).
@@ -3108,9 +3195,13 @@ layer's successor is the compiled writer/reader pair, and §9.1's promised
 entry (chunked internally). Value parts give `ẋ₀`, `y₀`; partials give
 `A`, `B`, `C`, `D` simultaneously, exact to machine precision — replacing
 four `FiniteDiff` jacobians, their step-size heuristics and ~4n perturbed
-evaluations. Unseeded states sit constant at the operating point; the
-discrete tier is frozen with zero partials — precisely "linearize with `z`
-held" (§13.2).
+evaluations. Unseeded states sit constant at the operating point, and so do
+unseeded slots (root-slot cells follow the activation scalar via §13.2's
+leaf walk over their concrete declarations; the condition apply embeds
+their `Float64` values as zero-partial constants); the discrete tier is
+frozen with zero partials — precisely "linearize with `z` held" (§13.2).
+Differentiation participation is a per-invocation *seeding* fact, never a
+typing fact — one register for `x` and slots alike.
 
 **A pure query, and `capture` settled.** Linearization is the first
 service with no commit and no boundary zero: scratch buffers only, nothing
@@ -3147,10 +3238,11 @@ discrete side means differentiating a *different object*: the sampled-data
 step map $\Phi : (x_k, z_k, \mathrm{slots}) \to (x_{k+1}, z_{k+1})$ (integrate one period,
 then run the due ticks). The extension is additive along existing seams:
 Tier-1 parametrization of `z`'s real-scalar leaves (counters/enums stay
-pinned, like `m`); opt-in `T`-signatures on participating discrete
-components (plain `output_types(::C)` = frozen-exact always, `output_types(::C,
-::Type{T})` = participates — the tier-in-signature mechanism as graceful
-migration, no flag day); one new §14.4 activity ("continuous chain + `f` +
+pinned, like `m`); opt-in participation on discrete components (frozen-exact
+stays the default; a participating component opts in through an explicit
+trait, the leaf walk then parametrizing its cells instead of pinning them —
+graceful migration, no flag day; the pre-v0.20 spelling via the
+`T`-signature retired with it); one new §14.4 activity ("continuous chain + `f` +
 discrete `h_z`/`h_zu` + `g`"); and forward sensitivities through the in-house
 RK steppers for free, a payoff of owning the loop (§11.1). The honest
 boundary: $\Phi$ is differentiable only where the event pattern is locally
@@ -3162,6 +3254,20 @@ a differentiated step. Consumers waiting: §16.7's closed-loop trim door
 since frozen `g` has no Jacobian columns) and exact discrete-time
 linearization of the full loop (digital design on the exact discretized
 plant instead of continuous linearization + Tustin).
+
+**Recorded, not built (v0.20): declarative non-participation.** The uniform
+concrete-declaration rule leaves no schema spelling for "this face is frozen
+under differentiation": an opaque wrapper (an FMU, a C aerodynamic table)
+strips partials deliberately (`ForwardDiff.value`, §14.5) and shows up in
+Jacobians as silent zero rows; a stop-gradient coupling likewise; and no
+slot can be marked never-differentiable — an unseeded slot already *is* a
+held parameter, so such a marking would be pure protection, not semantics.
+If these ever earn schema visibility, the vocabulary is additive, no flag
+day: pinned-face declarations validated by the linearization surface
+(selecting a declared-frozen output = warning), a feedthrough-graph lint
+(a frozen output fed by participating inputs names the severed coupling),
+forbid-seeding slot markers rejected at surface resolution. Until a real
+consumer shows up, the sharp tool and the visible zero row suffice.
 
 ---
 
@@ -3541,12 +3647,13 @@ struct IMUIntegrals <: AbstractComponent
 end
 init_x(::IMUIntegrals) = (Θ = zeros(SVector{3}), q = RQuat(),
                           Υ = zeros(SVector{3}), V = zeros(SVector{3}))
-input_types(::IMUIntegrals) = (q_eb = RQuat, r_eb_e = SVector{3,Float64},
+input_types(::IMUIntegrals) = (q_eb = RQuat{Float64}, r_eb_e = SVector{3,Float64},
                           ω_eb_b = SVector{3,Float64}, a_ib_b = SVector{3,Float64},
                           α_ib_b = SVector{3,Float64})
-output_types(::IMUIntegrals, ::Type{T}) where {T<:Real} =
-    (Θ = SVector{3,T}, q = RQuat{T}, Υ = SVector{3,T}, V = SVector{3,T},  # auto-published state
-     ω_ic_c = SVector{3,T}, f_c_c = SVector{3,T})                          # instantaneous truth
+output_types(::IMUIntegrals) =
+    (Θ = SVector{3,Float64}, q = RQuat{Float64},                # auto-published state
+     Υ = SVector{3,Float64}, V = SVector{3,Float64},
+     ω_ic_c = SVector{3,Float64}, f_c_c = SVector{3,Float64})   # instantaneous truth
 
 # h_xu: the sketch's f_ode! math verbatim (lever arm, gravity, Earth rate) → (; ω_ic_c, f_c_c)
 f(imu::IMUIntegrals, (; x, y)) =
@@ -3556,9 +3663,9 @@ project(imu::IMUIntegrals, x) = (; x..., q = normalize(x.q))
 struct IMUSampler <: AbstractComponent end
 init_z(::IMUSampler) = (Θ = zeros(SVector{3}), q = RQuat(),
                         Υ = zeros(SVector{3}), V = zeros(SVector{3}))
-input_types(::IMUSampler)  = (Θ = SVector{3,Float64}, q = RQuat,
+input_types(::IMUSampler)  = (Θ = SVector{3,Float64}, q = RQuat{Float64},
                          Υ = SVector{3,Float64}, V = SVector{3,Float64})
-output_types(::IMUSampler) = (sample = IMUSample,)          # plain signature: discrete tier
+output_types(::IMUSampler) = (sample = IMUSample,)   # discrete kind: cells pin (frozen-exact)
 
 function h_zu(s::IMUSampler, (; z, u, Δt))
     ϑ_c = u.Θ - z.Θ;  υ_c = u.Υ - z.Υ
@@ -3669,7 +3776,7 @@ would be the camel's nose for the merged kind.
 | 30 | Shutdown: complete the boundary → publish final snapshot → sticky stopped status → wake framework waits → `unblock!` hook (close-own-socket idiom; EOT demoted to wire courtesy) → join with named timeout; device crash = `should_close` path; loop failure runs the same protocol from the catch path | EOT as the load-bearing unblock mechanism (protocol detail doing framework work); unbounded join (one wedged device hangs `run!`); mid-frame abort (torn final snapshot; consumers observe un-swept state) |
 | 31 | Mid-run mutation doctrine: root-input staging + control commands, nothing else; sim-time scripts = scenario components (clock criterion), wall-clock interaction = devices; `user_callback!` eliminated (cheap composition removed its reason to exist); manual events = slot + guard; init/trim = stopped-sim axis-8 services; mid-run intervention command = guarded addition with shape on record | Scripts as input devices (breaks unpaced — wall-clock staging against µs frames lands at scheduler-determined sim times; both demo archetypes run at `pace = Inf`); retaining `user_callback!` (the periphery's `f_step!`: unrecorded mutation, ordering by convention, invisible to replay); a raw poke API (nothing demonstrated needs it; every mid-run mutation in the codebase is a `u`-write in disguise) |
 | 32 | Component declaration: declarative trait layer in plain Julia (well-known functions returning plain values; stage functions ordinary methods); schema authority — declarations define, probe evaluation checks (build probe with real values + free always-on conformance); convenience macros addable a posteriori, never load-bearing | Inference-by-evaluation as schema authority (error locality inverts — failures inside correct code; schemas sample/branch-dependent; annotations homeless); macro DSL as substrate (opaque codegen, tooling/stack-trace tax, only ever lowers to the trait layer); optional declarations with inference fallback (two idioms; the quick hacks most likely to skip are most likely to harbor branch bugs) |
-| 33 | Declaration inventory: `init_*` by value (type derived — nothing to drift); `inputs(::C)` bare NamedTuple of types at `Float64` faces, exact-equality wiring check; `outputs(::C, ::Type{T})` on continuous components (functions of the sweep scalar; literal `Float64` = deliberate non-participation), plain `outputs(::C)` on discrete (Tier-3 exemption as signature); `events(::C)` ordered + per-event tier; stage membership derived (inputless `g_s1` probes first, remainder is stage 2), no stage tags. **Amended in v0.19 → rows 76/77**: `inputs`/`outputs`/`locals` renamed `input_types`/`output_types`/`local_types`; the workspace re-registered by allocation | Under-the-hood `Float64→T` substitution (reflection-heavy; cannot distinguish honest `Float64`s); sentinel eltype tokens (same machinery, worse spelling); subtype/pattern matching (motivating case dissolved by `T`; abstract slots break concrete typing); names-only input contracts (lose wiring-time type errors and standalone checkability); per-stage output lists (stage membership is internal, §4.2) |
+| 33 | Declaration inventory: `init_*` by value (type derived — nothing to drift); `inputs(::C)` bare NamedTuple of types at `Float64` faces, exact-equality wiring check; `outputs(::C, ::Type{T})` on continuous components (functions of the sweep scalar; literal `Float64` = deliberate non-participation), plain `outputs(::C)` on discrete (Tier-3 exemption as signature); `events(::C)` ordered + per-event tier; stage membership derived (inputless `g_s1` probes first, remainder is stage 2), no stage tags. **Amended in v0.19 → rows 76/77**: `inputs`/`outputs`/`locals` renamed `input_types`/`output_types`/`local_types`; the workspace re-registered by allocation. **Amended in v0.20 → rows 78/79**: the wiring check relaxed to subtype (equality the concrete degenerate) and the output-side `T`-signature retired for concrete nominal declarations plus the activation leaf walk | Under-the-hood `Float64→T` substitution (reflection-heavy; cannot distinguish honest `Float64`s); sentinel eltype tokens (same machinery, worse spelling); subtype/pattern matching (motivating case dissolved by `T`; abstract slots break concrete typing); names-only input contracts (lose wiring-time type errors and standalone checkability); per-stage output lists (stage membership is internal, §4.2) |
 | 34 | Contract visibility: declared = public; absent `outputs()` = no outputs; undeclared stage-return fields = private intermediates (table cells, non-connectable, snapshot-visible, presentation-filtered); branch-shape-stable returns; private cell types probe-observed (blast radius structurally local). **Amended in v0.8 → row 55**: probe-observation and the `Private(T)` fallback retired; intermediates declared via strict `locals`; undeclared returns = build error | `unlisted` presentational flag (hidden but connectable — pretends privacy without enforcing it; retired); identity-public on missing `outputs()` (implicit publicity); `Private(T)` contract entries (ceremony without a demonstrated customer — fallback on record) |
 | 35 | Stores-and-views prototypes: every component function receives zero-copy views of the stores it genuinely reads — `g_s2(comp, x, m, u, y_s1)`, `f(comp, x, m, y, u, t)`, `h(comp, z, y, u, t)`, guards/handlers alike; the table holds produced signals only, never transported ones (one home per datum); identity default dies; selective auto-publication of declared state/mode fields; `g_s1` = the no-feedthrough stage. **Amended in v0.19 → rows 74/75**: the same views arrive as one named bundle destructured in the signature, and the functions are renamed (`h_x`/`h_xu`/`h_z`/`h_zu`, update `g`); view semantics unchanged | State-free evaluation prototypes with identity transport (rows 15/16 as argued: the "published anyway" camouflage fell with contract visibility; the drift-unwritability claim was overstated — `f` always had `u` plus published state); packing `u` into `y_s2` / `f(comp, y, t)` (the reductio: republishing foreign cells under local names); transition-functions-only middle position (fixes handlers but keeps hidden state transport for `f`/`h`); state cells mirroring the buffer (dead stores — no own-function reader remains) |
 | 36 | Table mechanics: stage returns are NamedTuples of port values; aggregate `y` = virtual merge, gathered per call, never stored; custom structs are port values — one port, one cell, atomic in wiring; granularity guideline: bundle what shares a stage and is consumed together | Bare-struct returns with field-splatting (ambiguous, type-lossy merge, reflection-hungry); sub-field wiring (the port stops being the atomic unit; field-projection connector kept as guarded addition); per-field cells for struct internals (nested display is a lazy view, not storage) |
@@ -3689,9 +3796,9 @@ would be the camel's nose for the merged kind.
 | 50 | Probe-everything scope: all user functions (`g` stages, `f`, `h`, guards, handlers, `project`) probed once at the initial state, nominal `T` | Schema-critical-only probing (a malformed `f` return waits for the first integrator step; probing buys earliness on the happy path at one pure evaluation each — the always-on check is the completeness backstop either way) |
 | 51 | Probe input synthesis via `probe_value(::Type)`: `zero(T)`/`false`/first enum instance/`T()` fallback chain, overridable, missing-method error names face + type; probe values strictly probe-scoped (never initial slot values) | Inputs declared by value à la `init_x` (reads as an unwired-input default — §8 contradiction; every leaf pays for a root-slot-only need; fan-in faces need an agreement rule; reopens row 33); NaN poison probes (`Bool`/enums unpoisonable; probe values are meant to be read); init-service values (build is standalone; services post-date it) |
 | 52 | Each activation probes exactly its executable set (`Dual` = continuous `g` chain + `f`; guards/handlers/`h` never see `Dual`); activations lazy at first request, opt-in exhaustive `activities` for CI; caching = implementation detail (layouts + buffers + validated flag keyed by concrete scalar type; Julia caches the compilation) | Full-set probing at every activation (checks code against number types it cannot receive); eager `Dual` at every build (doubles compile latency for a CI-only guarantee); treating "builds" as "linearizable" (weakening accepted and priced openly) |
-| 53 | Always-on conformance = one baked expected-`NamedTuple` type test at the table-write point, exact match, no convert-on-write; folds away when inferrable; uniform across `f` (state-field completeness), guards (`Bool`), `h`, handlers (partial-`m` subset predicate); failure = path + stage + field diff + `t`, reproducible by trace replay | Field-assignment `convert` semantics (`Float64 → Dual` silently zeroes partials — wrong Jacobian, no error; `Int` sloppiness passing at nominal but detonating under `Dual` makes "it runs" activity-dependent); per-field checks (one whole-type test suffices and folds); branch identification in the error (values carry no provenance — the diff + replay suffice) |
-| 54 | Symmetric `T` on `inputs` rejected as impossible-by-construction: an input's activation-time type depends on the producer's tier through the wiring (continuous → `Dual`, gated discrete → held `Float64`; consumers promote); producers determine activation types, consumers accept — consumer obligation is genericity, checked by the `Dual` probe | `inputs(::C, ::Type{T})` (forces the consumer to declare its producer's tier; breaks on discrete-for-continuous substitution behind the same face; row 33's exact-`Float64`-face check was already the only coherent consumer statement) |
-| 55 | Strict `locals(::C, ::Type{T})` declaration (discrete: plain `locals(::C)`): every non-`outputs` return field declared; empty framework default; no auto-publication; component-scoped cross-stage cells ≠ workspace; schema authority total — declared eltype is the participation statement under `Dual` (supersedes row 34's observation exception; adds §13.4 walkthrough 5) | `Private(T)` wrapper inside `outputs` (breaks "declared = public"; the layer's first wrapper type); opt-in `locals` + `Float64`-under-`Dual` diagnostic (legislates an ambiguity strictness dissolves); observation-authority status quo (pinned intermediates drop partials that flow out through `f` in conformant types — blast radius never was local for values; return typos silently define new cells) |
+| 53 | Always-on conformance = one baked expected-`NamedTuple` type test at the table-write point, exact match, no convert-on-write; folds away when inferrable; uniform across `f` (state-field completeness), guards (`Bool`), `h`, handlers (partial-`m` subset predicate); failure = path + stage + field diff + `t`, reproducible by trace replay. **Amended in v0.20 → row 79**: exact match scoped to the nominal activation; parametrized leaves under non-nominal activations accept `{T, Float64}` with zero-partial embedding | Field-assignment `convert` semantics (`Float64 → Dual` silently zeroes partials — wrong Jacobian, no error; `Int` sloppiness passing at nominal but detonating under `Dual` makes "it runs" activity-dependent); per-field checks (one whole-type test suffices and folds); branch identification in the error (values carry no provenance — the diff + replay suffice) |
+| 54 | Symmetric `T` on `inputs` rejected as impossible-by-construction: an input's activation-time type depends on the producer's tier through the wiring (continuous → `Dual`, gated discrete → held `Float64`; consumers promote); producers determine activation types, consumers accept — consumer obligation is genericity, checked by the `Dual` probe. **Complemented in v0.20 → row 78**: the envelope reading (per-leaf genericity marking) also rejected — zero information | `inputs(::C, ::Type{T})` (forces the consumer to declare its producer's tier; breaks on discrete-for-continuous substitution behind the same face; row 33's exact-`Float64`-face check was already the only coherent consumer statement) |
+| 55 | Strict `locals(::C, ::Type{T})` declaration (discrete: plain `locals(::C)`): every non-`outputs` return field declared; empty framework default; no auto-publication; component-scoped cross-stage cells ≠ workspace; schema authority total — declared eltype is the participation statement under `Dual` (supersedes row 34's observation exception; adds §13.4 walkthrough 5). **Amended in v0.20 → row 79**: `local_types(::C)` concrete nominal on both tiers, same leaf walk as `output_types`; the declared-eltype participation statement retired with the `T`-signature | `Private(T)` wrapper inside `outputs` (breaks "declared = public"; the layer's first wrapper type); opt-in `locals` + `Float64`-under-`Dual` diagnostic (legislates an ambiguity strictness dissolves); observation-authority status quo (pinned intermediates drop partials that flow out through `f` in conformant types — blast radius never was local for values; return typos silently define new cells) |
 | 56 | Two-kind taxonomy upheld under the integrate-and-dump challenge (§17.5): the kinds are time bases (sweep-driven vs. tick-driven), and cross-tier coupling always routes through table cells; idiom = integrate-and-difference — cumulative integrals in `x`, previous-sample latch in the sampler's `z`; exact whenever interval-dependence is a left action by the interval-start value of a cumulatively-integrable quantity (inertial-rate anchoring required; RK-exact by linearity of the kinematics); latch-back wire (feedthrough-stage ZOH latch) for interval-relative flow terms; tick-triggered continuous handlers = the recorded, unbuilt escape hatch; boundary-sampling semantics promoted to taught contract | All-in-one component kind (an assembly in a trench coat: the halves still communicate through cells — one home per datum, sole-reader `z`, no cross-tier state views — so zero expressiveness gained; costs stage doubling with tier-tagged names, per-port tier vocabulary, facet-conditional obligations; hides the sampling seam — Simulink/FMI's documented sample-time confusion); `z` view in `f` / discrete writes into `x` (un-samples the sampled-data semantics, breaks held-`z` linearization exactness, coupling invisible to table, trace and feedthrough graph); periodic reset via time-guard events (hand-rolls the tick scheduler, forfeits the harmonic grid and `comp.Δt`) |
 | 57 | Reporting policy split: declarative checking passes batch (the full violation list is the pass's natural output); the first user-code exception (`exports` bodies, probes) aborts the phase; strata are barriers; no cascade suppression within a stratum | Uniform fail-fast (N build cycles for N clustered wiring errors); full compiler-style batching (poisoned nodes, cascade suppression, dependent-check skipping — machinery for failures that are singular in practice); suppression heuristics (adjacent path-sorted pairs are self-explanatory) |
 | 58 | Diagnostics = plain structured values from a closed kind set (paths and names as strings, expected/observed port types, lists-in-hand, severity); single `BuildError` carrier thrown at the stratum barrier, compiler-style rendering; user-code exceptions wrapped in framing diagnostics with the original as `cause`; warnings ride the same stream and never throw; didactic register as policy; tests match kind + payload, never message text | `error()` strings (acceptance tests pinned to message text; no batch carrier); one exception type per failure class (throw vehicles for data that is collected, not thrown); instances/model types in diagnostics (the `compact_backtrace` lesson); a separate warning channel (two pipelines; blocks a warnings-as-errors switch) |
@@ -3712,8 +3819,10 @@ would be the camel's nose for the merged kind.
 | 73 | Sketch refresh (v0.17): `sketch_decoder.jl`/`sketch_io.jl` rewritten to the settled design; split-form `sketch.jl` retired, `navsensors.jl`/`imu.md` retired with content absorbed into §17.5; runnable dependency-free `condition_demo.jl` added (§16 algebra + §16.9 mounting, printed trees and flattened entry lists); declaration-by-initial-value upheld (§13.2); sampled-data Dual activation recorded unbuilt (§16.10); §6 `SumJunction` on its unparametrized type constructor | `init_*` as types + `probe_value` synthesis (defaults are the §16.1 overlay base; the §16.6 probe-value barrier; a per-field two-register protocol, §16.2); extending differentiation through the discrete tier now (frozen-`z` is exact for every built consumer; $\Phi$ differentiability breaks at events — kept as an opt-in door); deferring the demo to the framework prototype (the algebra is freestanding — strings, NamedTuples, four structs) |
 | 74 | Named-bundle hand-off (v0.19): every component function is `fn(comp, args)` — one NamedTuple bundle of zero-copy views, destructured by name in the signature; the bundle law (a field exists iff the store or tier fact exists: undeclared stores absent, never `nothing`-filled; `t` everywhere, `Δt` discrete-only, `ws` iff `workspace` declared); closed per-function-kind name sets, growth = a log event; probe failures carry did-you-mean against the legal set; `project(comp, x)` alone stays positional | Positional signatures + a clock-view type (dead slots written unread, un-droppable mid-list holes; the view type subsumed by naming); keyword arguments via `Base.kwarg_decl` reflection (load-bearing seam on an internal binding — the §11.1 `task_local_storage` lesson); keyword + `_...` slurp (permanent noise; "signature = read-set" weakens to "at least"); one context object carrying workspace too (grab-bag accretion; mutable member muddies the immutable-views teaching); time as a wired `Clock` component (time is ambient in `f`/`g`/guards/handlers — two access idioms for one quantity); `nothing`/`(;)` padding for undeclared stores (defers the error from destructuring to first field access, with a worse message) |
 | 75 | Letters and stage names (v0.19): `f` = continuous flow, `g` = discrete update, `h_x`/`h_xu` (continuous) and `h_z`/`h_zu` (discrete) = output stages with products `y_x`/`y_xu`/`y_z`/`y_zu` — the hybrid-systems flow/jump pair (Goebel–Sanfelice–Teel) joined to the control/estimation `y = h(x, u)` convention; bare `h` = step size only (double booking retired); suffix = the *dependence class* (state-only vs state-plus-input — `y = h(x)` vs `y = h(x, u)` in the name; modes fold under the state letter, ambient `t`/`Δt`/`ws` unnamed); the tier pairs mirror exactly (`x`/`xu` ↔ `z`/`zu`); stage name on the wrong tier = build error; three-level narrowing taught (stage name ⊇ bundle ⊇ destructured reads) | `h` for the discrete update (collides with the step size; forfeits the jump-map alignment); `g` for outputs (the complementary collision); `h_xm`/`h_xmu` letter-exhaustive suffixes (traded for tier symmetry and the textbook mirror — the suffix's job is the feedthrough split, not an argument inventory); verb names (`decode`/`compute` — encode nothing); `Moore`/`Mealy` (exact, opaque); a tier-neutral stage pair (no honest neutral state letter; tier-distinct names double as cheap drift checks) |
-| 76 | Declaration renames (v0.19): `inputs`/`outputs`/`locals` → `input_types`/`output_types`/`local_types` — the inventory becomes self-classifying by register (by value `init_*`, by type `*_types`, by allocation `workspace`), and the `input_types`-vs-`input_faces` types/names near-collision dissolves; tier-in-signature split unchanged | `*_ports` (the methods type ports, not just enumerate them); `*_schema` (vaguer than what it replaces); status quo (two unmarked registers in one inventory; `inputs(c)` vs `input_faces(c)` ambiguity) |
+| 76 | Declaration renames (v0.19): `inputs`/`outputs`/`locals` → `input_types`/`output_types`/`local_types` — the inventory becomes self-classifying by register (by value `init_*`, by type `*_types`, by allocation `workspace`), and the `input_types`-vs-`input_faces` types/names near-collision dissolves; tier-in-signature split unchanged at the time. **Amended in v0.20 → row 79**: the tier-in-signature split retired | `*_ports` (the methods type ports, not just enumerate them); `*_schema` (vaguer than what it replaces); status quo (two unmarked registers in one inventory; `inputs(c)` vs `input_faces(c)` ambiguity) |
 | 77 | Workspace by allocation (v0.19): `init_workspace` retired for `workspace(::C, ::Type{T})` (continuous) / `workspace(::C)` (discrete) — the method *is* the allocator, called per activation and per scratch-store set; sizes from the instance, eltypes from the activation; `undef` construction the recommended idiom; availability generalized to both tiers (continuous scratch joins the `T`-generic surface, generic in-place fallbacks under `Dual`); NaN-poison and no-information-between-calls contract unchanged; mis-registration argument recorded — a workspace is not memory, and no §13.2 by-value argument (condition overlay base, probe-value barrier) covers a store conditions exclude and the poison overwrites | `workspace_type` returning types with framework instantiation (array types carry no dimensions; runtime sizes like `kf.n` invisible to any zero-arg constructor; size-in-type-parameters lands on the `MMatrix` codegen catastrophe); keeping the discrete-only restriction (an asymmetry without a principle; the multiplicity of continuous calls is the poison check's case, not prohibition's) |
+| 78 | Input entries are face constraints (v0.20): wiring check `producer_face <: entry` at nominal faces — one uniform rule, exact equality the concrete degenerate; abstract entries = structural substitutability (§7 field handles), never needed for eltype genericity (an eltype-generic producer's nominal face is concrete by construction); root-slot carve-out — only a tight (concrete) bound determines a producerless cell's type, abstract-at-root a build error; under fan-out the slot type is the unique concrete declaration among consumers, abstract co-consumers checked against it; doctrine: declarations record choices, obligations are checked | Exact-equality-only status quo (welds §7 consumers to one concrete producer type, or leaks wiring facts into component type parameters — `Strut{H}` cascading through every owning assembly); symmetric `T` as genericity *envelope* (a per-leaf marking that is a constant function across components — zero information, wrong granularity, false-affordance pins; the predictive reading remains impossible per row 54); phantom root producer with `output_types`-style slot declarations (re-enumerates what exports already are — row 43's `add_input!` reborn; two-artifact drift; root-ness is deployment, not type; its pin bit is policy wearing a description's syntax — pinned ≡ unseeded to every derivative) |
+| 79 | Concrete nominal declarations + activation leaf walk (v0.20, reversing row 33's output side): `output_types(::C)`/`local_types(::C)` plain on both tiers; per-activation cell types from the framework leaf walk — on continuous producers `Float64` leaves and `Real` type parameters follow the activation scalar, `Int`/`Bool`/enum and reference-typed fields pin; discrete producers pin wholesale (frozen-exact by typing rule; tier from declaration shape, §13.5); root slots walk the consumer declaration; conformance split: exact match at nominal unchanged, parametrized leaves accept exactly `{T, Float64}` with zero-partial embedding — exact because promotion is airtight and there is no lossy `Dual → Float64` cast (an observed `Float64` means no `Dual` entered the computation; true derivative zero); differentiation participation = per-invocation seeding, never typing; deliberate `value()` stripping = stop-gradient, deliberate-lie class, schema-visible freezing a recorded §16.10 door | `T`-signature status quo (participation ceremony on every continuous component; the forgotten-`T` bug class; piecewise `0.0` branches detonating state-dependently under `Dual`; its two real losses — schema-visible participation and whole-leaf stripping detection — are tooling niceties, both equally blind to mid-expression stripping); probe-inferred participation (inverts declarations-define-probes-check; one probe point cannot speak for branch-dependent participation); per-surface slot typing (layouts keyed by seed set defeat activation caching) |
 
 ---
 
