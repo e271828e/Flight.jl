@@ -1,9 +1,23 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** twenty-second checkpoint (v0.22). Axes 1–6 settled; axis 7 (the
+**Status:** twenty-third checkpoint (v0.23). Axes 1–6 settled; axis 7 (the
 declaration layers, §13, and the build pipeline, §14) settled; error
 discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
-upheld (§17.5, row 56). New in v0.22: **output-device read addressing**
+upheld (§17.5, row 56). New in v0.23: **the WP6 spackle batch** (rows 84–85
++ [M] fixes) — the **unconnected-output warning retired** (undecidable
+post-row-83, poisons the sole warning stream; the consumer-side
+unconnected-input error owns the real hazard); **container children
+admitted** (§13.5: `Tuple`/`NamedTuple` all-component fields unpack as
+children, `"field/1"`/`"field/key"` segments; containers = transparent
+grouping, never assemblies; parametric rosters via generic holding — the
+§16.9 swarm enabler; user extended the original homogeneous-`NTuple` lean
+to arbitrary components in both container kinds); [M] fixes: `n` bound in
+the `Simulation` ctor (`Δt_base = n·h`, default 1), `capture` explicitly
+gathers root slots (totality for capture → apply), the handler
+`x⁺`-complete/`m⁺`-partial asymmetry grounded in storage shape (§5.2/§14.5),
+§4.2's stage-move claim scoped to consumers, and `m` stated flatly as
+continuous-only (§3.2; discrete FSM enums are ordinary `z` fields; §16.1
+phrasing aligned). In v0.22: **output-device read addressing**
 (WP5 of the 2026-07 review, row 83 + amendments to §12.2/§12.3/§13.6/§15.5
 and row 46) — **writes speak the root contract, reads see the whole snapshot
 table**: output-device bindings are attach-validated snapshot-path bindings
@@ -262,6 +276,13 @@ no overlap.
 `z` influences continuous dynamics only **through signals** (outputs held zero-order
 between ticks); no component ever reads another's state.
 
+**`m` is continuous-only** (v0.23, stated flatly): a discrete component has no
+mode store — its FSM enums, flags and counters are ordinary `z` fields. `m`
+exists on the continuous side because modes must change *between* flow
+evaluations through handlers; on the discrete side `g` already runs at the
+only instants anything may change, so a second store would duplicate `z`'s
+semantics under another name.
+
 ### 3.3 Assembly
 
 Pure composition: submodels + connections + exported ports. **No dynamics of its own.**
@@ -302,7 +323,9 @@ duration of the run. `isbits` is the common case, not the rule.
 The port is the addressable unit. A component's outputs appear to consumers, GUI and
 logs as one flat namespace (`dyn.vel`, `dyn.f_c_c`, materializable lazily as a view);
 which output stage computes which port is a scheduling annotation, invisible outside
-the component. Moving an output between stages is a non-breaking change.
+the component. Moving an output between stages is non-breaking *for consumers* —
+no wire, log or panel sees it; the scheduler does (the feedthrough graph and
+stage membership change, §14.1).
 
 **Visibility.** Which ports exist at all is a declaration-layer decision: the output
 contract *is* the public interface, and stage-function results outside it are private
@@ -383,7 +406,7 @@ z⁺       = g(comp, args)            # z, y, u, t, Δt [, ws]
 
 # event system (continuous side only) — same fresh table, same state views:
 fired    = guard(comp, args)        # x, m, y, u, t
-(x⁺, m⁺) = handler(comp, args)      # x, m, y, u, t — may reset x
+(x⁺, m⁺) = handler(comp, args)      # x, m, y, u, t — x⁺ complete, m⁺ partial (§14.5)
 x⁺       = project(comp, x)         # manifold projection; positional (below)
 ```
 
@@ -714,7 +737,14 @@ layer.
   the forgotten-wire error, §13.4 walkthrough 2, would be silently *promoted to
   interface*, climbing level by level into a live root slot nobody feeds, instead
   of failing at build).
-- Unconnected output ports: build-time warning. Unconnected input ports: build error
+- Unconnected output ports: legal, silently (v0.23; the build-time warning is
+  retired — under mandatory `output_types` most models carry many
+  observation-oriented ports no wire consumes, §12.2 blesses exactly that,
+  and §12.2's path-bound readers attach after the build, so "unused" is not
+  even decidable; a warning firing on every honest port poisons the sole
+  warning stream, §17.4's anti-diagnostic lesson. The hazard it nominally
+  guarded — a wire someone meant to draw — is caught from the consumer side,
+  where the information actually lives). Unconnected input ports: build error
   (no silent defaults). **The check is a whole-tree property, not a
   per-declaration one**: within a single assembly declaration an unfed child input
   is simply *awaiting a claim from above* — a sibling wire, an ancestor's deep
@@ -2053,7 +2083,8 @@ The inventory, and where each schema fact gets its authority:
   Tier-2 flag as per-event annotation (§2.1). Order is semantics (§5.2 declaration
   order, §11.6 once-per-event); nothing here is inferrable.
 - **No stage tags anywhere.** Which stage produces which port stays invisible in
-  the contract, preserving §4.2 (moving a port between stages is non-breaking).
+  the contract, preserving §4.2 (moving a port between stages is non-breaking
+  for consumers).
   Membership is *derived* with no chicken-and-egg: stage-1 functions
   (`h_x`/`h_z`) structurally receive no inputs, so the build probes them first,
   observes their contract ports, assigns the remainder to stage 2, builds the
@@ -2159,6 +2190,31 @@ substitutability and variants use ordinary parametric fields — exactly today's
 `Cessna172X{K, A}` shape. Alongside it, well-known declarations:
 `connections(::A)` (mandatory, even when empty), `exports(::A)`, `rates(::A)`.
 
+**Container children (v0.23).** A field whose type is a `Tuple` or
+`NamedTuple` with *every* element `<: AbstractComponent` contributes its
+elements as children, path-named `"field/1"…"field/N"` (tuples) or
+`"field/key"` (NamedTuples), declaration order governing layout. Containers
+are **transparent grouping, not assemblies**: no contract, no `connections`,
+no rate scope, no existence beyond the path segment — the elements are
+children *of the parent*, whose `connections`/`exports`/`rates` address them
+by element name; anything wanting its own wiring or faces declares itself an
+assembly. The payoff is parametric composition: `struct Formation{NT <:
+NamedTuple}; aircraft::NT; … end` holds any roster — size, names, mixed
+aircraft types — per instantiation, with the declaration bodies generating
+wires by comprehension over the keys (the arity-via-computed-contracts
+pattern, §6's `SumJunction{W, N}`, at structure scale); §16.9's swarm worlds
+and `at("aircraft/red", problem)` mounting consume it directly. Rules: a
+container mixing component and non-component elements is a build error in
+this section's did-you-mean family (all-component = children;
+zero-component = inert parameter data); containers of containers are
+rejected in the first cut (deeper grouping is what assemblies are for);
+empty containers are legal (zero children — parametric code needs no special
+case); abstract element types follow the same concreteness discipline as
+plain fields (directly concrete or via type-parameter bounds, §13.8's
+generic holding). `rates` needs no rule change: element names are immediate
+child names, hence legal keys; the bare field name is sugar for a uniform
+`K` across all elements.
+
 **The builder is rejected** (`Assembly()` + `add!`/`connect!`, the early-sketch
 spelling): the type you dispatch on and the recipe that defines its structure
 become two artifacts with nothing tying them together — §13.1's drift disease at
@@ -2192,7 +2248,8 @@ declaration time); neither marker plus component-typed fields earns a did-you-me
 **Paths are slash-separated strings** — `"systems/ldg/left/trn"` — relative to the
 assembly being declared, no leading slash; one canonical form, shared verbatim by
 declarations, error messages, device/trace addressing (§12.3) and the HDF5 log
-tree. Rejected: instance navigation (`a.ldg.left` cannot yield a *path* —
+tree. Container children (§13.5) add index and key segments — `"aircraft/2"`,
+`"aircraft/red"` — ordinary segments, resolved against the container field. Rejected: instance navigation (`a.ldg.left` cannot yield a *path* —
 symmetric immutable siblings are `===`-identical, so path-from-instance is
 unrecoverable by construction; a path-tracking proxy remains addable sugar);
 tuples of symbols (structure without readability); dotted paths (a false
@@ -2245,7 +2302,9 @@ those live in the parent that instantiates it, exactly as a leaf's do.
 optional, unlisted children default to 1; §11.5 semantics unchanged (relative,
 composing multiplicatively down the tree, compiled to absolute divisors). Keys are
 **immediate child names only** — a deep key would edit another type's design from
-outside, and the composition rule guarantees you never need to. `K` on a
+outside, and the composition rule guarantees you never need to. Container
+elements (§13.5) are immediate children, so `"aircraft/red"` is a legal key;
+the bare field name applies one `K` to every element. `K` on a
 continuous child is a build error (§11.5's Δt-on-continuous error at declaration
 time). `Δt_base`, `h` and `n` appear in no declaration — they are deployment
 decisions fixed at `Simulation` construction. Rejected: `K` carried on the child
@@ -2508,7 +2567,10 @@ status quo. Schema-visible freezing is a recorded door (§16.10).
 set at the activation's `T` (§9.1's structural derivative completeness made
 operational); guards `isa Bool`; `g` against the `z` shape; handlers' partial
 `m`-updates against a names-subset-with-matching-types predicate — still a
-type-level computation that folds when inferred.
+type-level computation that folds when inferred. The handler completeness
+asymmetry is storage-shaped (v0.23): `x⁺` must be complete because `x` lives
+in a flat buffer written back wholesale, while `m⁺` may be partial because
+`m` lives in per-field cells where a partial merge is the natural write.
 
 **Failure payload:** component path, stage, field-level diff (missing /
 unexpected / per-field expected-vs-observed), simulation time. Deliberately
@@ -2626,9 +2688,11 @@ Two rendering rules are doctrine, not style:
   input `throtle`; did you mean `throttle`?"; the child's face list alongside
   the unknown `except` entry.
 
-Warnings — unconnected outputs are the sole current member — ride the same
-diagnostic stream with warning severity, render with the batch, and never
-trigger the throw. A warnings-as-errors CI switch is addable, not built.
+Warnings — currently an empty set: the unconnected-output warning, the sole
+member, was retired in v0.23 (§8, row 84) — ride the same diagnostic stream
+with warning severity, render with the batch, and never trigger the throw.
+Better an empty, trusted stream than a noisy one. A warnings-as-errors CI
+switch is addable, not built.
 
 ### 15.3 Build primitives: `resolve` and the face-list accessors
 
@@ -2873,8 +2937,9 @@ closed.
 
 ### 16.1 Conditions are path-addressed overlays on the declared defaults
 
-A condition may specify: continuous state fields (`x`), modes and discrete
-state (`m`, `z`) — addressed by §13.6 slash path plus field name — and root
+A condition may specify: continuous state fields (`x`), modes (`m`,
+continuous components only, §3.2) and discrete state (`z`) — addressed by
+§13.6 slash path plus field name — and root
 input slots, addressed by face. Never outputs (derived data) and never
 workspace (scratch). Entries are validated in the §15.1 batch register: full
 list, violations collected, one `BuildError`.
@@ -2885,9 +2950,10 @@ naturally sparse: applying one means "fresh run from the `init_*` defaults,
 with these overrides." The alternative base — the stopped sim's current
 stores — was rejected: it makes the result depend on run history, exactly the
 hidden input the trace-header discipline exists to kill. Warm restart needs no
-second semantics: a `capture` service reads the current stores back *as a
-condition value* (capture → tweak → apply), the same gather the trace header
-already needs. One mechanism, two uses.
+second semantics: a `capture` service reads the current stores **and root
+slots** back *as a condition value* (capture → tweak → apply) — slot coverage
+is what makes the captured condition total, hence re-applicable under §16.6 —
+the same gather the trace header already needs. One mechanism, two uses.
 
 **The mirror-tree spelling was rejected** (nested NamedTuples shaped like the
 assembly): the same information, but a second spelling of structure that must
@@ -3353,7 +3419,8 @@ service with no commit and no boundary zero: scratch buffers only, nothing
 becomes authoritative, and today's restore-the-trim dance (re-`assign!`
 after `FiniteDiff` dirtied the model) has no successor. Default operating
 point = the sim's current committed state via `capture(sim) → (condition,
-t)` — the full-store gather owed since §16.1, settled here: after a
+t)` — the full gather of stores *and root slots* (§16.6's totality makes slot
+coverage mandatory for capture → apply) owed since §16.1, settled here: after a
 `trim!` commit, `linearize(sim, surface)` is about the trim point with
 nothing re-specified; an `about = <condition>` keyword linearizes anywhere
 else without touching the sim.
@@ -3626,7 +3693,8 @@ forced by this cast):
   `exports` block carries the `pilot.*` face group in one place, deep routes
   spanning avionics *and* systems — today's mapping writes flaps/brakes directly
   into `act`, bypassing avionics; that bypass becomes a declared route.
-- `Simulation(world; algorithm = Heun(), h = 0.02, t_end = 1000)` — the entire
+- `Simulation(world; algorithm = Heun(), h = 0.02, n = 1, t_end = 1000)` — `n`
+  binds `Δt_base = n·h` (§11.5; default 1: base tick every step). The entire
   build pipeline runs here: kind resolution, path validation, face derivation
   (computed exports expanded, printable), two-producers/unconnected checks,
   topological sort, probe passes, rate compilation, flat layout, slot table.
@@ -3972,6 +4040,8 @@ would be the camel's nose for the merged kind.
 | 81 | `t*` is a boundary, not a frame (v0.21): frames = grid steps, the scheduling unit (input drain, pacer deadlines, tick eligibility); boundaries = published consistency points (grid, `t*`, boundary zero); at `t*` the full §11.6 iteration runs with once-per-event scoped per boundary, snapshot published, §12.8 boundary counter incremented, `stop_on` checked (a crash localized at `t*` ends the run from that snapshot; boundary zero likewise checked before the first step); ticks never due at `t*`, staged inputs not drained, publication not separately paced; replay pointers = monotonic boundary counter + recorded `t`, trace stays frame-indexed | Frame-only publication (contradicts §15.5's snapshot-at-the-crossing promise); drain at `t*` (input timing dependent on localization arithmetic — replay indeterminism); per-`t*` pacing (wall placement below pacer resolution; the §11.7 invariant concerns trajectories); a frame counter in §12.8 (devices assuming fixed-`h` wake spacing — nothing settled does) |
 | 82 | Guard conditions and baselines (v0.21): a guard defines a condition (`Bool` predicate, or continuous with positive = holding, `g ≥ 0`); events fire on not-holding → holding edges against a per-event baseline held in loop state (previous boundary's quiescent sample, updated at quiescence — detection bookkeeping, not model memory: not in `z`, not captured, reconstructed on warm restart); boundary-zero baseline = nothing-holds (authored guard-true conditions fire at `t₀`, §16.5 derived); opposite direction = second event with negated guard; localization returns the holding endpoint of the final bracket — `t* = tₙ` structurally impossible (left end strictly not-holding; published boundaries immutable), guard observably holds at `t*`, `t* = tₙ₊₁` degenerates to the grid boundary (Tier-1-coincident, one snapshot); grid times indexed, never accumulated (remainder step targets the grid point) | Direction-agnostic sign-change firing (no coherent boundary-zero behavior; hysteresis wants two events anyway); baseline in `z` (detection policy leaking into model state, wrongly captured and replayed); level-triggered per-boundary firing (sticky flags re-fire every boundary); midpoint or not-holding-end `t*` return (handler fires where its own condition reads false; baseline records an assumption); suppressing `t₀` firings (§16.5's anti-diagnostic insurance); accumulated time `t ← t* + h′` (ulp drift into every tick comparison and deadline) |
 | 83 | Output-device reads are snapshot-path bindings (v0.22, resolving the §12.3/§17.4/§15.5 drift): writes speak the root contract (faces, claims, exclusivity — load-bearing by definition), reads see the whole table (diagnostic observation, the log/GUI/replay register; local cells accessible — presentation filters are defaults, not walls); attach validation against the `Build` makes structural drift loud; two-register guidance — deep path = inspection (zero promises, right for this build), exported output face = integration (curated writer-independent meaning, the only shield against silent semantic drift under same-path/same-type substitution); generic consumers bind faces, aircraft families export conventional surfaces with wrapper types (`VelocityData` — field meaning defined at the type; wrong quantity = deliberate lie, not drift) as the checkable fraction of semantics; §15.5's observation-by-path rejection re-derived from load-bearing/diagnostic alone (its "face-binding precedent" citation was drift — §17.4 always bound paths) | Faces-only reads (export bloat: the root contract as a peripheral dumping ground; no decoupling gained: diagnostic consumers are build-specific by nature; unenforceable: the log and GUI already see everything; and restricting reads does not create meaning-stability — exporting curated surfaces does); semantic validation machinery (meaning is not in the schema; the wrapper-type idiom is the checkable fraction) |
+| 84 | Unconnected-output warning retired (v0.23): under mandatory `output_types` models carry many observation-oriented ports no wire consumes (§12.2 blesses exactly that), and row 83's path-bound readers attach post-build, so "unused" is undecidable at build — the warning fires on every honest port and poisons the sole warning stream (§17.4's anti-diagnostic lesson); the hazard it guarded (a wire someone meant to draw) is the consumer side's unconnected-*input* error, where the information actually lives; the warning stream survives, empty | Keeping it (a stream of false positives trains users to skip it); narrowing (no principled subset exists — "should have been wired" is not decidable from structure, and every candidate predicate still hits honest diagnostic ports) |
+| 85 | Container children (v0.23): `Tuple`/`NamedTuple` fields with all-component elements unpack as children (`"field/1"`/`"field/key"` path segments, declaration-order layout); containers are transparent grouping — no contract, no `connections`, no rate scope; elements are the *parent's* children, wired/exported/rated by element name; parametric rosters (`Formation{NT <: NamedTuple}`) compose per instantiation via §13.8 generic holding, wires generated by comprehension (arity-via-computed-contracts at structure scale; §16.9 swarms and `at`-mounting consume directly); mixed component/non-component elements = build error, zero-component containers = inert data, no container nesting (first cut), empty containers legal, `rates` keys = element names with bare-field-name uniform-`K` sugar | One-field-per-child + programmatic struct generation (roster frozen in source text; fights the no-macros stance); homogeneous-`NTuple`-only (the per-element complexity objection was hollow — element types are static either way; named and mixed rosters are the §16.9 case, user call); `Vector{C}` children (runtime-sized, mutable — breaks the immutable tree and the type-stable layout); containers as anonymous assemblies (a second composition boundary without a type — wiring must stay with the parent) |
 
 ---
 

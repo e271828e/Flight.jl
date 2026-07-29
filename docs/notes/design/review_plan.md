@@ -128,28 +128,29 @@ Settled as row 83 + row 46 marker; user signed off:
       (`VelocityData` idiom, user's example) as §19 migration
       deliverable.
 
-## WP6 — Spackle
+## WP6 — Spackle — DONE (v0.23)
 
-- [ ] [M] `Δt_base`/`n` in the `Simulation` ctor spelling (§13.7, §14.1,
-      §17.4; default `n = 1`).
-- [ ] [M] `capture` explicitly includes root slots (§16.1, §16.10) —
-      required by §16.6 totality for capture → apply.
-- [ ] [M] Handler asymmetry rationale: `x⁺` complete (flat-buffer
-      writeback), `m⁺` partial (per-field cells) — one sentence at
-      §5.2/§14.5.
-- [ ] [D-small] Unconnected-output warning: retire (lean — fires on every
-      observation-oriented port under mandatory `outputs`, poisons the
-      sole warning stream) or narrow. §8, §15.2, decision log.
-- [ ] [M] §4.2: "non-breaking change" → "non-breaking for consumers;
-      visible to the scheduler".
-- [ ] [M] `m` is continuous-only: state flatly in §3.2; fix §16.1's
-      "modes and discrete state (`m`, `z`)" phrasing; discrete FSM enums
-      live in `z`.
-- [ ] [D] Collections of children: `NTuple{N, C}` fields as children
-      (path segments `"aircraft/1"`; `rates`/`connections` addressing to
-      settle) vs. one-field-per-child + programmatic generation. Lean:
-      admit homogeneous tuples (§16.9 swarm worlds are a named use case).
-      Alternative: park as a migration-outline entry.
+- [x] [M] `n = 1` keyword in the §17.4 `Simulation` ctor (`Δt_base = n·h`);
+      §13.7/§14.1 already correct.
+- [x] [M] `capture` gathers stores *and root slots* (§16.1, §16.10) —
+      §16.6 totality for capture → apply.
+- [x] [M] Handler asymmetry grounded: `x⁺` complete (flat buffer,
+      wholesale writeback), `m⁺` partial (per-field cells) — §5.2 comment
+      + §14.5 sentence.
+- [x] [D-small] Unconnected-output warning RETIRED (row 84): undecidable
+      post-WP5, poisons the sole warning stream; consumer-side input
+      error owns the hazard. §8 + §15.2; stream survives, empty.
+- [x] [M] §4.2 scoped: non-breaking for consumers, visible to the
+      scheduler (+ §13.2 paraphrase).
+- [x] [M] `m` continuous-only stated flatly in §3.2 (discrete FSM state
+      is ordinary `z`); §16.1 phrasing fixed.
+- [x] [D] Container children ADMITTED, generalized by user beyond the
+      homogeneous-`NTuple` lean (row 85): `Tuple`/`NamedTuple`
+      all-component fields unpack as children (`"field/1"`/`"field/key"`);
+      transparent grouping doctrine (no contract/connections/rate scope);
+      parametric rosters via generic holding; mixed elements = error, no
+      nesting, empty legal; `rates` bare-field-name = uniform `K`.
+      §13.5 + §13.6 + §13.7.
 
 ## WP7 — Additions (last, in this order)
 
