@@ -1,9 +1,22 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** twenty-first checkpoint (v0.21). Axes 1–6 settled; axis 7 (the
+**Status:** twenty-second checkpoint (v0.22). Axes 1–6 settled; axis 7 (the
 declaration layers, §13, and the build pipeline, §14) settled; error
 discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
-upheld (§17.5, row 56). New in v0.21: **the boundary cluster** (WP4 of the
+upheld (§17.5, row 56). New in v0.22: **output-device read addressing**
+(WP5 of the 2026-07 review, row 83 + amendments to §12.2/§12.3/§13.6/§15.5
+and row 46) — **writes speak the root contract, reads see the whole snapshot
+table**: output-device bindings are attach-validated snapshot-path bindings
+(§17.4 confirmed; §12.3's faces-only law scoped to the write side),
+classified as diagnostic observation under §15.5's own doctrine, whose
+observation-by-path rejection for `stop_on` is re-derived from the
+load-bearing/diagnostic distinction alone (the "face-binding precedent"
+citation was drift); **two-register guidance** — deep path = inspection
+(zero promises), exported output face = integration (curated
+writer-independent meaning, the only shield against silent semantic drift
+under same-path/same-type substitution); conventional exported aircraft
+surfaces with wrapper types (`VelocityData` idiom) recorded as a §19
+migration deliverable. In v0.21: **the boundary cluster** (WP4 of the
 2026-07 review, rows 80–82 + amendments to §2.1/§11.4/§11.6/§11.7/§12.8/
 §15.5/§16.5) — the **frame-vs-boundary distinction** (frames = grid steps,
 the scheduling unit: input drain, pacer deadlines, tick eligibility;
@@ -1451,6 +1464,32 @@ are not garbage at all, unlogged ones die young. Rejected: preallocated snapshot
 buffers (double/triple ring) — reuse reintroduces exactly the reader-liveness proof
 the GC provides for free, to save an allocation profiling has not indicted.
 
+**Output-device bindings are snapshot-path bindings (v0.22, settling the
+§17.4/§12.3 drift).** An output device (telemetry, the XPlane visualizer, disk
+streaming) consumes snapshots via §12.8 and addresses what it reads by *table
+path* — any cell, validated at attach against the `Build` with did-you-mean
+(§17.4's obligation: a substitution that breaks a binding fails at attach, not
+with silent garbage UDP). This is **diagnostic observation** (§15.5):
+human-facing, no effect on run semantics — the same register as the log
+retaining the full table and the GUI's deep-reading panels; local cells are
+accessible (the §13.3 presentation filter is a default, not a wall — explicit
+naming is intent). **A binding chooses its register**: a deep path is the
+*inspection* register — zero promises, free access, right for looking at
+*this* build; an exported output face is the *integration* register — named,
+curated, meaning-stable under substitution (§17.4's writer-independent
+semantics), right for consumers that outlive the build they were configured
+against. Attach validation converts *structural* drift to loud errors in both
+registers; only faces protect against *semantic* drift — a substituted
+aircraft publishing the same path at the same type with a different meaning, a
+CG velocity under a name read as body-origin velocity — and nothing else can:
+meaning is not in the schema. Semantically generic consumers (a visualizer
+needs pose; every aircraft has one) should therefore bind faces, and aircraft
+families should export the conventional surface such consumers need — a
+library/migration deliverable (§19) — with wrapper types making face semantics
+structurally checkable (`VelocityData`, its `v_eb_b` defined *at the type* as
+body-origin velocity: a bare vector doesn't wire, and wrapping the wrong
+quantity is a deliberate lie, not a drift).
+
 ### 12.3 Inbound: root input slots and per-device staging
 
 **The write surface is root input slots** — and a root slot *is* the root
@@ -1464,8 +1503,10 @@ sketches is dead). Slots are sources to the build-time scheduler, constants with
 a frame, and the *only* thing the periphery may write (the GUI reaches them
 through §12.5's resolution; control commands are not writes, §12.6); devices,
 mappings, the trace and the GUI write path address them by **face name** (§13.6):
-structural slash paths never cross the periphery boundary — the periphery speaks
-the root contract's names only.
+structural slash paths never cross the periphery's *write* boundary — the write
+side speaks the root contract's names only. (The read side is diagnostic
+observation: snapshot consumers, output devices included, address table cells
+by path — §12.2/§15.5, v0.22.)
 
 **Slot exclusivity: one writer per slot at any time** (v0.6, from §17.4). A
 device claims its slots at attach; claiming an already-claimed slot is an
@@ -2171,8 +2212,10 @@ uniqueness within the assembly's face set** — every other naming choice
 convention, not framework law; the `faces` helper's defaults (§13.8) document the
 house style without legislating it. The two-notation rule this rests on: **slash
 is structure** (endpoint paths walking real children and ports; snapshot and log
-addressing), **face names are opaque contract tokens** — and the periphery
-(devices, mappings, trace, GUI write path) speaks face names only (§12.3).
+addressing), **face names are opaque contract tokens** — and the periphery's
+write side (input devices, mappings, the trace, the GUI write path) speaks face
+names only (§12.3); the read side addresses snapshot cells by slash path
+(§12.2, v0.22).
 Pairs-of-strings rather than a NamedTuple also removes the `var"..."` noise that
 non-identifier names would force. Direction is derived from the endpoints
 (wired-to-inputs = input face, wired-from-one-output = output face; mixed or
@@ -2738,9 +2781,11 @@ Rejected mechanisms:
   forbids for wires (which bans deep paths into generic children *even where
   the concrete instantiation would resolve them*), brittle under substitution
   for reasons the aircraft's contract never promised anything about, and it
-  leaves the root face list lying about what can halt a run. This also
-  confirms the output-device face-binding precedent (§17.4) rather than
-  leaving it on a slope.
+  leaves the root face list lying about what can halt a run. Output devices
+  are not a counterexample but the other half of the same doctrine (v0.22):
+  their reads are diagnostic — snapshot-path bindings, §12.2/§17.4 — while
+  `stop_on` is the one read that changes what the run does, which is exactly
+  why it alone must speak the contract.
 
 The wall-clock channel — GUI stop button, device handle, code — is orthogonal
 and untouched: that is the control plane's operator path. The sim-time,
@@ -3889,7 +3934,7 @@ would be the camel's nose for the merged kind.
 | 43 | Computed exports as ordinary code + `faces(asm, path; prefix, except, only)`; root slots = the root's exported input faces; generic holding = imposed contract checked per instantiation | Auto-bubbling (forgotten wire silently promoted to a live root slot — §13.4 walkthrough 2 inverted); wildcard-export vocabulary (ordinary code suffices); `add_input!`-style root-slot declarations (second vocabulary for what exports already are) |
 | 44 | Slot exclusivity: one writer per root slot at a time; device claims at attach, conflict = attach-time error, release on detach; per-device cells/CAS/drain retained for atomicity and coalescing | Cross-device attachment-order precedence as conflict *policy* (resolves races the §17.4 cast shows nobody wants — every dual writer is a stream shadowed by a mirror); FlightCore-style concurrent multi-device writing of one input (a bug surface, not a feature) |
 | 45 | GUI liveness fully derived (transitive root-slot resolution ∧ slot unclaimed); faces carry writer-independent post-conditioning semantics (GUI-parity test); mappings = declarative binding data with per-axis conditioning params, on the device task; edge logic = staged counters + model-state accumulators; unexported ports unpokeable | Per-port "GUI-controlled" markings (the export chain is the marking, owned by the right author); nominally-connected + GUI override channel (second write path; breaks frame purity and trace; done right it collapses into root slots); conditioning in-model (fails GUI-parity — sliders and scripts would be deadzoned); shaping as per-device mapping code (aircraft semantics duplicated per device — today's demonstrated smell); joystick-as-component and root-level `PilotInterface` (§17.4 — replay same-build, single audit point, no natural home in `World`) |
-| 46 | Face names = arbitrary strings; build invariants only no-`/` + per-assembly uniqueness; slash = structure, face names = opaque contract tokens, periphery speaks face names only; `exports` returns pairs like `connections`; `faces(asm, path; prefix, sep, except, only)` with dot-prefix *defaults* (convention, not law) | Mandated dot convention (a naming law where two invariants suffice); NamedTuple-returning `exports` (`var"..."` noise for non-identifier names; asymmetric with `connections`); slash-composed prefixes (face names would collide with structural path notation); `rename` hooks in `faces` (`exports` is ordinary code — map over the pairs) |
+| 46 | Face names = arbitrary strings; build invariants only no-`/` + per-assembly uniqueness; slash = structure, face names = opaque contract tokens, periphery speaks face names only (**amended in v0.22 → row 83**: scoped to the write side); `exports` returns pairs like `connections`; `faces(asm, path; prefix, sep, except, only)` with dot-prefix *defaults* (convention, not law) | Mandated dot convention (a naming law where two invariants suffice); NamedTuple-returning `exports` (`var"..."` noise for non-identifier names; asymmetric with `connections`); slash-composed prefixes (face names would collide with structural path notation); `rename` hooks in `faces` (`exports` is ordinary code — map over the pairs) |
 | 47 | Widgets stage on interaction events only (value widgets on edit, edge widgets on activation with peek-computed counter levels); levels × own-pending-first peek give idempotent repeat and correct multi-click; drain discards stale GUI entries to newly-claimed slots (warning); snapshot includes root slots (peek fallback + read-only mirrors); trace header extends to initial slot values; engage semantics stay in the FCS (the existing `ControlLaws` transition latch — uniform across writers), GUI peek-batch demoted to display-sync sugar | Stage-every-pass (motivating contest died with exclusivity; as insurance it masks invariant violations at render rate — anti-diagnostic; render-rate trace noise); held-button re-staging (auto-repeat at frame rate once the snapshot catches up); capture-on-engage as a GUI/framework obligation (already aircraft design, shipped in `ControlLaws`); slot-initial-values as export-entry defaults (trim writes slot values it *solved for* — services own initialization) |
 | 48 | Build pipeline as three strata: A structure (pure declaration reading — tree/kinds/contracts, bottom-up faces, global wiring + obligations, rate compilation), B schedule (`g_s1` probe → port classification → feedthrough graph → topo/cycle), C activation (per-`T` slot typing + probe chain + layouts); deployment binding at `Simulation` construction only | Single-pass tree walk with per-level validation (obligation/two-producers undecidable below the root); pure collect-then-validate (stage membership requires the `g_s1` probe — evaluation feeds structure exactly once, at the blessed spot) |
 | 49 | Standalone `build(world) → Build` artifact — inspectable wire list/face table/schedule/root slots; `Simulation(world; ...)` wraps it | Build inside the `Simulation` ctor only (CI forced through dummy deployment params; acceptance tests and `attach!` want the contract artifact; the phase outputs exist anyway — the artifact just names them) |
@@ -3926,6 +3971,7 @@ would be the camel's nose for the merged kind.
 | 80 | Tier-2 detection is pace-independent (v0.21, §2.1 fossil corrected): localization runs identically in every execution mode, its sweep cost absorbed as §11.7 pacer debt like any other expensive frame; events are rare by nature | Degrade-to-Tier-1 under real-time pacing (the v0.1 wording — moves `t*`, diverges paced from unpaced trajectories, violating §11.7's bit-identical invariant; "blowing the frame budget" dissolved by absolute deadlines + debt) |
 | 81 | `t*` is a boundary, not a frame (v0.21): frames = grid steps, the scheduling unit (input drain, pacer deadlines, tick eligibility); boundaries = published consistency points (grid, `t*`, boundary zero); at `t*` the full §11.6 iteration runs with once-per-event scoped per boundary, snapshot published, §12.8 boundary counter incremented, `stop_on` checked (a crash localized at `t*` ends the run from that snapshot; boundary zero likewise checked before the first step); ticks never due at `t*`, staged inputs not drained, publication not separately paced; replay pointers = monotonic boundary counter + recorded `t`, trace stays frame-indexed | Frame-only publication (contradicts §15.5's snapshot-at-the-crossing promise); drain at `t*` (input timing dependent on localization arithmetic — replay indeterminism); per-`t*` pacing (wall placement below pacer resolution; the §11.7 invariant concerns trajectories); a frame counter in §12.8 (devices assuming fixed-`h` wake spacing — nothing settled does) |
 | 82 | Guard conditions and baselines (v0.21): a guard defines a condition (`Bool` predicate, or continuous with positive = holding, `g ≥ 0`); events fire on not-holding → holding edges against a per-event baseline held in loop state (previous boundary's quiescent sample, updated at quiescence — detection bookkeeping, not model memory: not in `z`, not captured, reconstructed on warm restart); boundary-zero baseline = nothing-holds (authored guard-true conditions fire at `t₀`, §16.5 derived); opposite direction = second event with negated guard; localization returns the holding endpoint of the final bracket — `t* = tₙ` structurally impossible (left end strictly not-holding; published boundaries immutable), guard observably holds at `t*`, `t* = tₙ₊₁` degenerates to the grid boundary (Tier-1-coincident, one snapshot); grid times indexed, never accumulated (remainder step targets the grid point) | Direction-agnostic sign-change firing (no coherent boundary-zero behavior; hysteresis wants two events anyway); baseline in `z` (detection policy leaking into model state, wrongly captured and replayed); level-triggered per-boundary firing (sticky flags re-fire every boundary); midpoint or not-holding-end `t*` return (handler fires where its own condition reads false; baseline records an assumption); suppressing `t₀` firings (§16.5's anti-diagnostic insurance); accumulated time `t ← t* + h′` (ulp drift into every tick comparison and deadline) |
+| 83 | Output-device reads are snapshot-path bindings (v0.22, resolving the §12.3/§17.4/§15.5 drift): writes speak the root contract (faces, claims, exclusivity — load-bearing by definition), reads see the whole table (diagnostic observation, the log/GUI/replay register; local cells accessible — presentation filters are defaults, not walls); attach validation against the `Build` makes structural drift loud; two-register guidance — deep path = inspection (zero promises, right for this build), exported output face = integration (curated writer-independent meaning, the only shield against silent semantic drift under same-path/same-type substitution); generic consumers bind faces, aircraft families export conventional surfaces with wrapper types (`VelocityData` — field meaning defined at the type; wrong quantity = deliberate lie, not drift) as the checkable fraction of semantics; §15.5's observation-by-path rejection re-derived from load-bearing/diagnostic alone (its "face-binding precedent" citation was drift — §17.4 always bound paths) | Faces-only reads (export bloat: the root contract as a peripheral dumping ground; no decoupling gained: diagnostic consumers are build-specific by nature; unenforceable: the log and GUI already see everything; and restricting reads does not create meaning-stability — exporting curated surfaces does); semantic validation machinery (meaning is not in the schema; the wrapper-type idiom is the checkable fraction) |
 
 ---
 
@@ -3938,6 +3984,9 @@ To be settled in subsequent sessions:
   aggregation chains — mechanical to extract from today's trait implementations);
   comparison criteria against FlightCore's demonstrated strengths (zero-alloc
   stepping, flexibility, interactive operation); the §15.7 component library's
-  starting inventory. Residuals: the `q_sf` home (§17.4 — aircraft design,
+  starting inventory; the **conventional exported aircraft surface** for
+  generic periphery consumers (§12.2's integration register, v0.22): pose and
+  velocity faces with wrapper types — `VelocityData`, field meaning defined at
+  the type — as the `KinData` successor's periphery-facing half. Residuals: the `q_sf` home (§17.4 — aircraft design,
   belongs here); whether `stop_on` needs a root-declared overridable default
   (§15.5 — reopen only if the ctor argument proves chronically forgotten).

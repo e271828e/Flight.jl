@@ -111,17 +111,22 @@ Settled as rows 80–82 + amendments to rows 1/20/28:
 - [x] `stop_on` checked at every published boundary from `t₀`; §16.5
       parenthetical fixed (`stop_on` ≠ event firing).
 
-## WP5 — Output-device read addressing [D]
+## WP5 — Output-device read addressing [D] — DONE (v0.22)
 
-- [ ] Resolve the three-way inconsistency (§12.3 `:1228` faces-only /
-      §17.4 `:3252` snapshot paths / §15.5 `:2424` citing a "face-binding
-      precedent" §17.4 doesn't contain). Proposal: writes speak the root
-      contract; reads see the whole public table (output devices =
-      diagnostic observation; GUI deep-reading panels as precedent).
-- [ ] Rewrite §15.5's observation-by-path rejection to derive purely from
-      the load-bearing/diagnostic distinction (drop the citation); scope
-      §12.3's "periphery speaks face names only" to the write surface.
-      Explicit sign-off required — this rewrites settled argumentation.
+Settled as row 83 + row 46 marker; user signed off:
+
+- [x] Writes speak the root contract; reads see the whole snapshot table
+      (diagnostic observation; §17.4 confirmed — it always bound paths;
+      §12.3 and §13.6 scoped to the write side; §12.2 gains the
+      affirmative paragraph; locals accessible, filters are defaults).
+- [x] §15.5 rejection re-derived from load-bearing/diagnostic alone; the
+      false "face-binding precedent" citation replaced.
+- [x] Discussion additions (brittleness question): two-register guidance
+      (deep path = inspection, zero promises; exported face = integration,
+      curated meaning — only shield against silent semantic drift);
+      conventional exported aircraft surface w/ wrapper types
+      (`VelocityData` idiom, user's example) as §19 migration
+      deliverable.
 
 ## WP6 — Spackle
 
