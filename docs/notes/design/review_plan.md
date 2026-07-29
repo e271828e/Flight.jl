@@ -87,30 +87,29 @@ the **port-typing cluster** (rows 78–79 + amendments to 33/53/54/55/76):
       consequentials in §6, §9.2, §13.3, §13.5, §13.8, §14.1, §14.3,
       §14.4; header v0.20.
 
-## WP4 — Boundary cluster: Tier-2, baselines, boundary zero [D]
+## WP4 — Boundary cluster: Tier-2, baselines, boundary zero [D] — DONE (v0.21)
 
-One discussion; one new paragraph (§11.4 or §11.6) plus corrections:
+Settled as rows 80–82 + amendments to rows 1/20/28:
 
-- [ ] §2.1 fossil (`:114`), the direct contradiction: "degrades
-      gracefully to Tier 1 in real-time mode" vs. §11.7's bit-identical
-      invariant. Lean: Tier-2 always runs; the cost is pacer debt.
-- [ ] `t*` boundary status: state the frame-vs-boundary distinction —
-      frames are grid steps (drain, pacing, tick eligibility); boundaries
-      are published consistency points, of which `t*` is one. At `t*`:
-      snapshot yes, event iteration + once-per-event accounting yes,
-      ticks never due, drain no (input timing must not depend on
-      localization). To decide: frame counter / §12.8 waiters at `t*`;
-      trace replay-pointer indexing.
-- [ ] Guard baseline convention: previous sample lives in loop state;
-      boundary zero establishes the baseline (fires on true/positive at
-      `t₀`, made normative incl. sign convention for continuous guards);
-      "newly-fired" semantics within §11.6 rounds; re-baseline on warm
-      restart (guard memory correctly not in `z`).
-- [ ] `stop_on` at boundary zero: `run!` checks the boundary-zero
-      snapshot before the first step; fix §16.5's parenthetical
-      mislabeling `stop_on` faces as guard firings (`:2698`).
-
-Edit sites: §2.1, §11.4, §11.6, §12.9, §15.5, §16.5, new rows.
+- [x] §2.1 fossil corrected: Tier-2 pace-independent, localization cost =
+      §11.7 pacer debt (row 80).
+- [x] `t*` = boundary, not frame (§11.4 new paragraph): full §11.6
+      iteration w/ per-boundary once-per-event, snapshot + §12.8 counter
+      (re-spelled as *boundary* counter) + `stop_on` check; ticks never
+      due, no drain, no separate pacing; replay pointers = boundary
+      counter, trace frame-indexed (row 81).
+- [x] Guard conditions normative (§2.1 + §11.6): positive = holding
+      (`g ≥ 0`), not-holding → holding edges vs per-event baselines in
+      loop state; boundary-zero baseline = nothing-holds (§16.5 derived);
+      warm-restart re-baseline; negated-guard second event for the
+      opposite direction (row 82).
+- [x] Endpoint policy (user question): holding-endpoint bracket return —
+      `t* = tₙ` structurally impossible, `t* = tₙ₊₁` degenerates to the
+      grid boundary; earliest-`t*` for multiple guards; grid times
+      indexed, never accumulated (remainder targets the grid point)
+      (row 82).
+- [x] `stop_on` checked at every published boundary from `t₀`; §16.5
+      parenthetical fixed (`stop_on` ≠ event firing).
 
 ## WP5 — Output-device read addressing [D]
 

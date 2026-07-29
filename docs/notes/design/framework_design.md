@@ -1,9 +1,27 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** twentieth checkpoint (v0.20). Axes 1–6 settled; axis 7 (the
+**Status:** twenty-first checkpoint (v0.21). Axes 1–6 settled; axis 7 (the
 declaration layers, §13, and the build pipeline, §14) settled; error
 discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
-upheld (§17.5, row 56). New in v0.20: **the port-typing cluster** (WP3 of
+upheld (§17.5, row 56). New in v0.21: **the boundary cluster** (WP4 of the
+2026-07 review, rows 80–82 + amendments to §2.1/§11.4/§11.6/§11.7/§12.8/
+§15.5/§16.5) — the **frame-vs-boundary distinction** (frames = grid steps,
+the scheduling unit: input drain, pacer deadlines, tick eligibility;
+boundaries = published consistency points: grid, `t*`, boundary zero);
+Tier-2 detection **pace-independent** (the §2.1 degrade-to-Tier-1 fossil
+retired — localization cost is pacer debt); `t*` boundary status settled
+(full §11.6 iteration with per-boundary once-per-event accounting, snapshot +
+§12.8 boundary counter + `stop_on` check; ticks never due, no drain, no
+separate pacing); **guard conditions normative** (positive = holding,
+`g ≥ 0`; not-holding → holding edge semantics against per-event baselines in
+loop state; boundary-zero baseline = nothing-holds, deriving §16.5's
+fires-at-`t₀`; warm restart re-baselines; opposite direction = negated-guard
+second event); **localization endpoint policy** (holding-endpoint return —
+`t* = tₙ` structurally impossible, `t* = tₙ₊₁` degenerates to the grid
+boundary; earliest-`t*` rule for multiple guards) and **indexed grid times**
+(never accumulated; remainder steps target the grid point); `stop_on`
+checked at every published boundary from `t₀` onward. In v0.20: **the
+port-typing cluster** (WP3 of
 the 2026-07 review, rows 78–79 + amendments to rows 33/53/54/55/76) —
 `input_types` entries re-read as **face constraints, not cell types**
 (wiring check `producer_face <: entry` at nominal faces, exact equality the
@@ -154,16 +172,24 @@ differs:
   which the crossing occurred. Cost: one guard evaluation per event per step. Fully
   compatible with fixed-step real-time execution.
 - **Tier 2 (opt-in, per event):** localization of the crossing instant by root-finding,
-  for events where timing precision genuinely matters (mechanics in §11.4). Available
-  in offline runs regardless of stepping mode; degrades gracefully to Tier 1 in
-  real-time mode rather than blowing the frame budget.
+  for events where timing precision genuinely matters (mechanics in §11.4). Runs
+  identically in every execution mode (v0.21): under real-time pacing the
+  localization cost is absorbed as pacer debt like any other expensive frame
+  (§11.7) — detection policy never depends on pacing, as the §11.7 invariant
+  requires. (The v0.1 degrade-to-Tier-1-under-pacing idea is retired: it would
+  move `t*` and diverge paced from unpaced trajectories.)
 
 This gives step-boundary logic *well-defined semantics*: the transition is defined by
 the crossing; detection resolution is an execution-policy detail.
 
-Guards may be **boolean predicates** (checked for becoming true at step boundaries) or
-continuous sign-crossing functions. Tier 1 handles both; Tier 2 localization requires
-the continuous form. This matters in practice: most transitions in FlightPhysics mix
+A guard defines a **condition**: a boolean predicate, or the sign of a
+continuous function with **positive = condition holds** (normative, v0.21;
+holding = `g ≥ 0`). An event fires when its condition transitions from
+not-holding to holding — edge semantics, uniform across both forms, with the
+baseline bookkeeping stated in §11.6; the opposite crossing direction is
+declared as a second event with the negated guard (stall entry/exit as a
+pair). Tier 1 handles both forms; Tier 2 localization requires the continuous
+form. This matters in practice: most transitions in FlightPhysics mix
 input predicates with state thresholds (e.g. the piston engine's `starting → running`
 fires on `ω > ω_idle && fuel_available`).
 
@@ -1035,13 +1061,60 @@ Trigger: a Tier-2 guard changed sign across an accepted step $[t_n, t_{n+1}]$.
   bracket for merely local guarantees, and its superlinear convergence saves a
   handful of microsecond probes per rare event. AD earns its keep in Jacobians, not
   in root-polishing a possibly-kinked bracketed scalar.
-- **Post-event.** Handler at `t*` → project → re-decode (per §5.2) → **interpolant
-  invalidated** (the handler made it a lie for `t > t*`) → resume integration from
-  `t*` with the remainder step `h′ = tₙ₊₁ − t*` → re-check guards on the remainder,
-  under a bounded per-step event budget with a chattering diagnostic.
+- **Post-event.** The boundary sequence runs at `t*` (below) → **interpolant
+  invalidated** (the handlers made it a lie for `t > t*`) → resume integration from
+  `t*` with the remainder step targeting `tₙ₊₁` → re-check guards on the remainder,
+  under a bounded per-step event budget with a chattering diagnostic. Multiple
+  Tier-2 guards localizing in one step fire at the *earliest* `t*` (ties fire
+  together at that boundary, declaration order within the iteration, §11.6);
+  later crossings re-localize on the remainder.
 - **Shared blind spot, documented:** an even number of crossings within one step
   defeats sign-change detection in both tiers; the mitigation is step size, not
   machinery.
+
+**`t*` is a boundary, not a frame (v0.21).** A *frame* is a grid step
+`[tₙ, tₙ₊₁]` — the unit of scheduling: input drain at frame top (§12.3), pacer
+deadlines (§11.7), tick eligibility (§11.5). A *boundary* is a published
+consistency point — where the §11.6 macro-sequence completes and a snapshot
+goes out. Every grid point is a boundary; `t*` and boundary zero (§16.5) are
+boundaries that are not frame tops. At `t*` the full §11.6 event phase runs —
+[sweep → guards → handlers] iterated to quiescence, **once-per-event
+accounting scoped to this boundary** (fresh again at `tₙ₊₁`, and at a second
+`t*` on the remainder) — and the settled state is **published**: snapshot,
+§12.8 boundary-counter increment, `stop_on` check (§15.5) — a crash localized
+at `t*` ends the run from that snapshot. What does *not* happen at `t*`:
+ticks are never due (`t*` is off the harmonic grid by construction; discrete
+slots ZOH-hold through the sweep), and staged inputs are not drained — input
+timing is a frame fact, and replay determinism must not depend on
+localization arithmetic. The publication is not separately paced: the pacer
+paces frame deadlines, and a `t*` snapshot publishes when computed, mid-frame
+(wall-side placement below pacer resolution; the §11.7 invariant concerns
+trajectories, which are identical). Replay pointers and error messages index
+boundaries by a monotonic counter with recorded `t`; the trace stays
+frame-indexed — `t*` boundaries consume no inputs.
+
+**Endpoint policy and grid integrity (v0.21).** The root-finder returns the
+**holding endpoint of its final bracket** — the smallest probed point where
+the condition holds. Consequences: **`t* = tₙ` is structurally impossible**,
+not clamped away — localization only triggers when the condition was
+not-holding at `tₙ`'s quiescence (§11.6 baselines), and the interpolant
+reproduces the endpoint exactly (`x̂(0) = xₙ`, probe sweeps deterministic), so
+the bracket's left end stays strictly not-holding and the returned point is
+strictly later than the published, immutable `tₙ` (worst rounding:
+`nextfloat(tₙ)`). And the guard observably *holds* at `t*`: handlers fire in
+states where their own condition is true, and the post-fire baseline records
+an actual observation rather than an assumption. **`t* = tₙ₊₁` exactly is
+legitimate** (a crossing at the grid point: `g(tₙ₊₁) = 0` both triggers
+detection and is the root) and **degenerates to the grid boundary**: the
+localization result is discarded and the event fires inside `tₙ₊₁`'s ordinary
+iteration — bitwise the Tier-1 outcome, one boundary, one snapshot, no
+zero-length remainder. A near-degenerate `t*` leaves a tiny remainder step,
+numerically harmless (increments are `h′`-scaled); the real hazard is
+bookkeeping, killed by rule: **grid times are indexed, never accumulated** —
+`tₖ = t₀ + k·h` computed from the frame index (tick gating is already
+counter-modulo, §11.5), and the remainder step *targets the grid point*, with
+`h′` derived at use. `t*` is a float inside a frame, never an anchor anything
+else is computed from.
 
 ### 11.5 Multi-rate tick scheduling
 
@@ -1148,6 +1221,22 @@ of burning a budget and erroring. The cost: an event legitimately re-enabled wit
 the same boundary waits one step — accepted at the same granularity Tier 1 accepts
 physical re-crossings, and flagged by a diagnostic when it occurs.
 
+**Guard baselines and firing semantics (v0.21).** "Newly-fired" made precise:
+an event fires at a boundary iff its condition (§2.1: predicate true, or
+`g ≥ 0`) is observed holding in some iteration round, its **baseline** — the
+previous boundary's quiescent sample — was not-holding, and it has not yet
+fired this boundary. The baseline lives in **loop state, per event**, updated
+at each boundary's quiescence from the final post-iteration samples. It is
+detection bookkeeping, not model memory — correctly *not* in `z`: not
+captured, not traced, reconstructed deterministically. A condition that holds
+and *keeps* holding fires once, at the boundary where it first held — sticky
+flags do not re-fire every boundary. **Boundary zero establishes the baseline
+as nothing-holds**, so an authored condition already in holding territory
+fires at `t₀` — §16.5's settled behavior, now derived rather than asserted —
+and a warm restart (`init!` re-runs boundary zero, §16.5) re-baselines from
+scratch: conditions true in the newly applied state fire again at the new
+`t₀`.
+
 **Ticks stay outside the iteration, after quiescence.** The two possible couplings
 resolve asymmetrically:
 
@@ -1185,7 +1274,9 @@ post-transition values.
 completed boundaries and never reorders, skips or alters the boundary sequence. A
 paced and an unpaced run with identical input traces produce bit-identical
 trajectories — deterministic replay (§2.2) extends over pace. Interactive runs differ
-only because their *inputs* differ.
+only because their *inputs* differ. Detection policy is inside the semantics:
+Tier-2 localization runs identically paced or unpaced, its sweep cost
+absorbed as debt like any other expensive frame (§2.1, v0.21).
 
 **Wall-clock mapping: piecewise affine, re-anchored at every knee.** The map is
 $\tau(t) = \tau_{\mathrm{anchor}} + (t - t_{\mathrm{anchor}})/p$, with the anchor pair as its reference point. A
@@ -1628,7 +1719,9 @@ mysteriously frozen physics.
 ### 12.8 The next-snapshot wait
 
 Rate-matched output devices (telemetry, disk streaming) act once per boundary
-without polling: a monotonic frame counter published with the snapshot, plus one
+without polling: a monotonic **boundary counter** published with the
+snapshot — counting *published boundaries* (grid, `t*`, boundary zero; §11.4),
+not frames, so consecutive wakes are not necessarily `h` apart — plus one
 `Threads.Condition`. The loop's publication is `lock; counter += 1; notify;
 unlock` — nanoseconds of framework-only code, never blocked by waiters (a waiter
 parked in `wait` has released the lock as part of parking). The device-side
@@ -2583,12 +2676,16 @@ declared machinery:
   not plumbing (§13.8's imposed contract).
 - **Policy** binds at deployment: `Simulation(world; ..., stop_on = (...))`
   names root-exported `Bool` output faces, OR-combined, validated against the
-  `Build`, recorded in the run metadata. After each completed boundary the
+  `Build`, recorded in the run metadata. After *every* published boundary —
+  grid, `t*` (§11.4) and boundary zero (§16.5) alike — the
   loop reads the named faces in the snapshot it just published; the first
   `true` initiates §12.9 shutdown with *this* snapshot as the final one — the
   terminal snapshot is the terminal state, no roll-back, nothing §12.9 doesn't
-  already do. Default: no stop faces, run to `t_end` — `stop_on` is `t_end`'s
-  model-condition sibling at the same declaration site.
+  already do. `run!` therefore checks the boundary-zero snapshot before the
+  first step: an authored condition already terminal ends the run at `t₀`
+  with that snapshot final, integrating nothing. Default: no stop faces, run
+  to `t_end` — `stop_on` is `t_end`'s model-condition sibling at the same
+  declaration site.
 
 Taught contract: **stop faces are sampled at completed boundaries; declare an
 event if you need the stop localized.** Both condition shapes work without
@@ -2662,8 +2759,8 @@ the previous snapshot to final, and rejoin the ordinary tail.** The protocol
 becomes one tail with two entry points — graceful entry after a *completed*
 final boundary, abnormal entry after a *discarded* one — and everything
 downstream of "final snapshot" runs identically: sticky stopped, waiters
-woken through the frame-counter + `Condition` path (they observe stopped
-rather than a new frame — no device task hangs), `unblock!`/close hooks,
+woken through the boundary-counter + `Condition` path (they observe stopped
+rather than a new boundary — no device task hangs), `unblock!`/close hooks,
 named joins with timeout. This fills the seat §12.9's "loop failure runs the
 same protocol from the catch path" reserved.
 
@@ -2918,13 +3015,16 @@ parity is exact, not approximate. Piece by piece:
   authored `z` — necessarily, since no earlier tick exists for a ZOH to
   hold. The `t₀` snapshot carries a fully populated table.
 - **Events run.** A condition landing in guard-true territory (an authored
-  stall flag, a strut authored into contact, a `stop_on` face already true)
-  fires visibly at `t₀` rather than one step later. Suppression would delay
-  the identical firings while hiding the diagnostic that the authored
-  condition was not quiescent — §17.4's stage-on-interaction lesson
+  stall flag, a strut authored into contact) fires visibly at `t₀` rather
+  than one step later — grounded by the baseline rule (§11.6, v0.21):
+  boundary zero establishes the guard baseline as nothing-holds. Suppression
+  would delay the identical firings while hiding the diagnostic that the
+  authored condition was not quiescent — §17.4's stage-on-interaction lesson
   (insurance that masks invariant violations is anti-diagnostic). The header
   records the *authored* condition; whatever fires at boundary zero is
-  deterministic under replay.
+  deterministic under replay. (A `stop_on` face already `true` is a
+  different category: nothing *fires* — the face simply reads `true` in the
+  published `t₀` snapshot and the loop reacts, §15.5.)
 - **Due `g` updates run.** This follows from an interval-alignment fact that
   is easy to mis-picture and is hereby a taught contract, sibling to §17.5's
   boundary-sampling line: **a boundary's `g` is the *outgoing* transition** —
@@ -3744,7 +3844,7 @@ would be the camel's nose for the merged kind.
 
 | # | Decision | Rejected alternatives (why) |
 |---|---|---|
-| 1 | Hybrid causal formalism; two-tier events; projection; no DAE/SDE/per-step hook | DAEs (projection suffices), SDEs (shaping filters suffice), `f_step!` (step-size-dependent semantics) |
+| 1 | Hybrid causal formalism; two-tier events; projection; no DAE/SDE/per-step hook. **Amended in v0.21 → rows 80/82**: Tier-2 pace-independent (degrade-to-Tier-1 retired); guard conditions normative (positive = holding, edge semantics) | DAEs (projection suffices), SDEs (shaping filters suffice), `f_step!` (step-size-dependent semantics) |
 | 2 | Causal port-based paradigm | Acausal/MTK (fights interactivity, discrete logic, live introspection); hierarchical callables (rigor by convention — today's footguns); thin SciML library (nothing for GUI/logging/hierarchy to hang onto) |
 | 3 | Taxonomy: hybrid continuous primitive + periodic discrete + assemblies; both mode factorings | Strict purity/no modes (loses reset maps; latch logic becomes wiring ceremony); uniform hybrid kind (intra-component ordering semantics murky) |
 | 4 | Immutable value signals in a typed signal table | Shared mutable buffers (aliasing/staleness, concurrent-read hazards); mixed semantics (second thing to document/test) |
@@ -3763,7 +3863,7 @@ would be the camel's nose for the merged kind.
 | 17 | Framework-owned simulation loop; stepper seam (advance by arbitrary `h` + on-demand dense output over the last step; one-step methods only); in-house fixed-step RK4/Heun as the sole first-cut backends; `OrdinaryDiffEq` dropped from dependency to possible future extension adapter | `OrdinaryDiffEq` as substrate with `CallbackSet` choreography (semantics by convention in a foreign event loop; demonstrated churn — the `task_local_storage` regression — in exactly the interactive multi-task usage); fused loop without the seam (loses the adaptive/stiff escape hatch for ~zero savings); multistep methods (history rebuild after every handler) |
 | 18 | Tier-2 localization: lazy cubic Hermite dense output + bracketed derivative-free root-finding (ITP/Brent) on guard probes that run the sweep; post-event interpolant invalidation + remainder step + bounded event budget | Newton/AD localization (guards C⁰ not C¹ — kinks and σ′ = 0 stretches; discards the bracket certificate for local guarantees; negligible savings on rare microsecond probes); re-integration probes (4× cost; σ becomes trial-h-dependent); solver-matched high-order interpolants (only matter above order 4) |
 | 19 | Harmonic tick grid on step boundaries; discrete stages gated to own tick instants (ZOH by construction); assemblies virtual for execution, rate scopes for declaration (integer multipliers $K \ge 1$ composing down the tree, compiled to absolute divisors); `comp.Δt` as single source of truth, no stored `Δt`-derived parameters. **Amended in v0.19 → row 74**: the `comp.Δt` virtual property is impossible (`===`-identical siblings under different `rates` keys — the period is a schedule-position fact); `Δt` arrives as a discrete-bundle field, single-source and never-store rules unchanged | Atomic assemblies, incl. opt-in (coarsened schedulable unit → §5.3 artificial loops at assembly scale; interleaving protection meaningless under the signal table; FlightCore's whole-tree atomicity was a call-tree artifact); arbitrary tick periods via time queue (variable `h`, irregular frames, no demonstrated need); absolute-period declaration as default (welds deployment rates into reusable designs; base-period variables don't compose across independently authored assemblies); re-running discrete stages every boundary (un-samples sampled-data semantics); phase offsets (no demonstrated use); `Δt` via `h`-argument only (discretized laws live in `g_s2`) |
-| 20 | Boundary event phase iterates to quiescence — rounds of full re-sweep → guards → handlers (declaration order, per-event re-decode) — each event firing at most once per boundary; due `h` updates run after quiescence, outside the iteration | Single pass per boundary (cascade latency N·h — step-size-dependent semantics, the §2.2 `f_step!` footgun class, made common by §3.1 externalized FSMs); bounded-rounds cap (arbitrary K knob; livelock burns the budget then errors instead of degrading to Tier-1 granularity); event/tick fixed-point iteration (structurally unnecessary — `z⁺` is invisible until the next tick decode) |
+| 20 | Boundary event phase iterates to quiescence — rounds of full re-sweep → guards → handlers (declaration order, per-event re-decode) — each event firing at most once per boundary; due `h` updates run after quiescence, outside the iteration. **Amended in v0.21 → row 82**: "newly-fired" made precise via per-event baselines in loop state | Single pass per boundary (cascade latency N·h — step-size-dependent semantics, the §2.2 `f_step!` footgun class, made common by §3.1 externalized FSMs); bounded-rounds cap (arbitrary K knob; livelock burns the budget then errors instead of degrading to Tier-1 granularity); event/tick fixed-point iteration (structurally unnecessary — `z⁺` is invisible until the next tick decode) |
 | 21 | Pacing outside the semantics (bit-identical paced/unpaced trajectories); piecewise-affine wall-clock map, anchor re-established at pace change and un-pause (debt cleared, counted); absolute deadlines with bounded debt + re-anchor on excess; `p = ∞` as explicit pacer-off; hybrid sleep-then-spin toward `deadline − margin`, with `margin` the single knob (0 = pure sleep, ∞ = pure busy-wait = FlightCore) | Relative deadlines (permanent sim-vs-wall slip); unbounded catch-up (burst after long stalls); keeping the anchor across pace changes (retroactively reinterprets elapsed history at the new pace); `p = ∞` as arithmetic limit (perpetual-overrun diagnostics under debt accounting); dedicated busy-wait mode flag (subsumed by `margin = ∞`); separate primitive-resolution threshold (absorbed into `margin` calibration) |
 | 22 | Periphery architecture: no shared mutable model — staged inputs drained at frame top + immutable snapshot published per boundary; every handoff one atomic reference op, GC as reclamation; no user code or unbounded work in framework critical sections; control on a separate atomic surface (staging cannot un-pause a drainless loop); interactive = batch + devices | Transplanted `io_lock` (loop budget hostage to arbitrary code under the lock; input timing scheduler-determined and unrecorded — replay undefinable in principle; protects a live-mutation idiom the immutable table removed); full message-passing periphery (per-device typed channels — same design with heavier ceremony) |
 | 23 | Snapshot publication: build private → release-store `@atomic latest`; readers acquire-load; wait-free both ways; nothing reachable from a published snapshot ever written again; allocate per boundary; log = retained snapshot references | Preallocated snapshot rings (reintroduce the reader-liveness reclamation proof the GC already provides); `deepcopy` `SavingCallback` logging (the capture *is* the publication mechanism); mid-step publication (§11.3) |
@@ -3771,7 +3871,7 @@ would be the camel's nose for the merged kind.
 | 25 | One device kind: uniform handle with read (snapshot / next-boundary) + stage + control capabilities; input-only/output-only as degenerate uses; bidirectional peer = one device; GUI an ordinary device (main-thread affinity and RMW widgets its only peculiarities) | Input/output/GUI taxonomy (lock choreography artifact — blocking rules of `get_data!`/`extract_output` under `io_lock`; forces bidirectional peers into two devices sharing a socket and shutdown); special-cased GUI interface (`sync = 0` + render-under-lock ceremony, obsolete without the lock) |
 | 26 | GUI write path: per-component panels name own ports; build-time resolution to root input slots; live vs first-class read-only rendering (with wiring provenance); own-pending-else-snapshot peek; active widgets stage every render pass. **Amended in v0.7 → row 47**: stage-every-pass superseded by stage-on-interaction (its motivating contest died with slot exclusivity) | Slot-naming panels (kills reuse across configurations); always-hot widgets (FlightCore's dead slider — visually live, silently overwritten); cross-device peek (re-couples devices for sub-perceptual benefit); stage-on-change only (streaming device reasserts control mid-grab) |
 | 27 | Pacer coarse phase = task-yielding `sleep` (`margin` covers its overshoot); with devices attached every frame yields at least once (explicit `yield()` in unpaced/pure-spin frames); spin never yields; thread budget = sizing rule + startup warning; per-device liveness heartbeat in framework status | `Libc.systemsleep` (second knob inside `margin`; correctness re-hinges on a hard thread requirement; starves co-resident tasks silently — worse failure mode than diagnosed overruns); hard `nthreads` error (the freeze it prevented cannot reproduce: no framework thread monopolist, no stall coupling, GUI on the calling task); yielding spin (µs precision traded for scheduler noise) |
-| 28 | Next-snapshot wait: monotonic frame counter + `Threads.Condition`, per-waiter predicate (`counter > last_seen && running`); newest-wins, no queues — outbound coalescing mirrors inbound ZOH; shutdown-interruptible via the predicate | `Event`-based per-frame gate (recurring signal on a latch — the reset has no correct placement under asynchronous waiters; cf. FlightCore's `io_start` reset comments); per-consumer every-boundary queues (unbounded under slow consumers; complete history is the log); polling `latest` on a timer (wasted wakeups, aliasing against the boundary rate) |
+| 28 | Next-snapshot wait: monotonic frame counter + `Threads.Condition`, per-waiter predicate (`counter > last_seen && running`); newest-wins, no queues — outbound coalescing mirrors inbound ZOH; shutdown-interruptible via the predicate. **Amended in v0.21 → row 81**: the counter counts published boundaries, not frames | `Event`-based per-frame gate (recurring signal on a latch — the reset has no correct placement under asynchronous waiters; cf. FlightCore's `io_start` reset comments); per-consumer every-boundary queues (unbounded under slow consumers; complete history is the log); polling `latest` on a timer (wasted wakeups, aliasing against the boundary rate) |
 | 29 | Input trace on by default, cleared at `init!`, plain kill switch | Opt-in (the trace is primary data — the log is recomputable from it, never the reverse; the session you need replayed is the one you didn't plan to record); tying trace to the log switch (conflates primary and derived recording); rolling window/sampling (complexity without a customer) |
 | 30 | Shutdown: complete the boundary → publish final snapshot → sticky stopped status → wake framework waits → `unblock!` hook (close-own-socket idiom; EOT demoted to wire courtesy) → join with named timeout; device crash = `should_close` path; loop failure runs the same protocol from the catch path | EOT as the load-bearing unblock mechanism (protocol detail doing framework work); unbounded join (one wedged device hangs `run!`); mid-frame abort (torn final snapshot; consumers observe un-swept state) |
 | 31 | Mid-run mutation doctrine: root-input staging + control commands, nothing else; sim-time scripts = scenario components (clock criterion), wall-clock interaction = devices; `user_callback!` eliminated (cheap composition removed its reason to exist); manual events = slot + guard; init/trim = stopped-sim axis-8 services; mid-run intervention command = guarded addition with shape on record | Scripts as input devices (breaks unpaced — wall-clock staging against µs frames lands at scheduler-determined sim times; both demo archetypes run at `pace = Inf`); retaining `user_callback!` (the periphery's `f_step!`: unrecorded mutation, ordering by convention, invisible to replay); a raw poke API (nothing demonstrated needs it; every mid-run mutation in the codebase is a `u`-write in disguise) |
@@ -3823,6 +3923,9 @@ would be the camel's nose for the merged kind.
 | 77 | Workspace by allocation (v0.19): `init_workspace` retired for `workspace(::C, ::Type{T})` (continuous) / `workspace(::C)` (discrete) — the method *is* the allocator, called per activation and per scratch-store set; sizes from the instance, eltypes from the activation; `undef` construction the recommended idiom; availability generalized to both tiers (continuous scratch joins the `T`-generic surface, generic in-place fallbacks under `Dual`); NaN-poison and no-information-between-calls contract unchanged; mis-registration argument recorded — a workspace is not memory, and no §13.2 by-value argument (condition overlay base, probe-value barrier) covers a store conditions exclude and the poison overwrites | `workspace_type` returning types with framework instantiation (array types carry no dimensions; runtime sizes like `kf.n` invisible to any zero-arg constructor; size-in-type-parameters lands on the `MMatrix` codegen catastrophe); keeping the discrete-only restriction (an asymmetry without a principle; the multiplicity of continuous calls is the poison check's case, not prohibition's) |
 | 78 | Input entries are face constraints (v0.20): wiring check `producer_face <: entry` at nominal faces — one uniform rule, exact equality the concrete degenerate; abstract entries = structural substitutability (§7 field handles), never needed for eltype genericity (an eltype-generic producer's nominal face is concrete by construction); root-slot carve-out — only a tight (concrete) bound determines a producerless cell's type, abstract-at-root a build error; under fan-out the slot type is the unique concrete declaration among consumers, abstract co-consumers checked against it; doctrine: declarations record choices, obligations are checked | Exact-equality-only status quo (welds §7 consumers to one concrete producer type, or leaks wiring facts into component type parameters — `Strut{H}` cascading through every owning assembly); symmetric `T` as genericity *envelope* (a per-leaf marking that is a constant function across components — zero information, wrong granularity, false-affordance pins; the predictive reading remains impossible per row 54); phantom root producer with `output_types`-style slot declarations (re-enumerates what exports already are — row 43's `add_input!` reborn; two-artifact drift; root-ness is deployment, not type; its pin bit is policy wearing a description's syntax — pinned ≡ unseeded to every derivative) |
 | 79 | Concrete nominal declarations + activation leaf walk (v0.20, reversing row 33's output side): `output_types(::C)`/`local_types(::C)` plain on both tiers; per-activation cell types from the framework leaf walk — on continuous producers `Float64` leaves and `Real` type parameters follow the activation scalar, `Int`/`Bool`/enum and reference-typed fields pin; discrete producers pin wholesale (frozen-exact by typing rule; tier from declaration shape, §13.5); root slots walk the consumer declaration; conformance split: exact match at nominal unchanged, parametrized leaves accept exactly `{T, Float64}` with zero-partial embedding — exact because promotion is airtight and there is no lossy `Dual → Float64` cast (an observed `Float64` means no `Dual` entered the computation; true derivative zero); differentiation participation = per-invocation seeding, never typing; deliberate `value()` stripping = stop-gradient, deliberate-lie class, schema-visible freezing a recorded §16.10 door | `T`-signature status quo (participation ceremony on every continuous component; the forgotten-`T` bug class; piecewise `0.0` branches detonating state-dependently under `Dual`; its two real losses — schema-visible participation and whole-leaf stripping detection — are tooling niceties, both equally blind to mid-expression stripping); probe-inferred participation (inverts declarations-define-probes-check; one probe point cannot speak for branch-dependent participation); per-surface slot typing (layouts keyed by seed set defeat activation caching) |
+| 80 | Tier-2 detection is pace-independent (v0.21, §2.1 fossil corrected): localization runs identically in every execution mode, its sweep cost absorbed as §11.7 pacer debt like any other expensive frame; events are rare by nature | Degrade-to-Tier-1 under real-time pacing (the v0.1 wording — moves `t*`, diverges paced from unpaced trajectories, violating §11.7's bit-identical invariant; "blowing the frame budget" dissolved by absolute deadlines + debt) |
+| 81 | `t*` is a boundary, not a frame (v0.21): frames = grid steps, the scheduling unit (input drain, pacer deadlines, tick eligibility); boundaries = published consistency points (grid, `t*`, boundary zero); at `t*` the full §11.6 iteration runs with once-per-event scoped per boundary, snapshot published, §12.8 boundary counter incremented, `stop_on` checked (a crash localized at `t*` ends the run from that snapshot; boundary zero likewise checked before the first step); ticks never due at `t*`, staged inputs not drained, publication not separately paced; replay pointers = monotonic boundary counter + recorded `t`, trace stays frame-indexed | Frame-only publication (contradicts §15.5's snapshot-at-the-crossing promise); drain at `t*` (input timing dependent on localization arithmetic — replay indeterminism); per-`t*` pacing (wall placement below pacer resolution; the §11.7 invariant concerns trajectories); a frame counter in §12.8 (devices assuming fixed-`h` wake spacing — nothing settled does) |
+| 82 | Guard conditions and baselines (v0.21): a guard defines a condition (`Bool` predicate, or continuous with positive = holding, `g ≥ 0`); events fire on not-holding → holding edges against a per-event baseline held in loop state (previous boundary's quiescent sample, updated at quiescence — detection bookkeeping, not model memory: not in `z`, not captured, reconstructed on warm restart); boundary-zero baseline = nothing-holds (authored guard-true conditions fire at `t₀`, §16.5 derived); opposite direction = second event with negated guard; localization returns the holding endpoint of the final bracket — `t* = tₙ` structurally impossible (left end strictly not-holding; published boundaries immutable), guard observably holds at `t*`, `t* = tₙ₊₁` degenerates to the grid boundary (Tier-1-coincident, one snapshot); grid times indexed, never accumulated (remainder step targets the grid point) | Direction-agnostic sign-change firing (no coherent boundary-zero behavior; hysteresis wants two events anyway); baseline in `z` (detection policy leaking into model state, wrongly captured and replayed); level-triggered per-boundary firing (sticky flags re-fire every boundary); midpoint or not-holding-end `t*` return (handler fires where its own condition reads false; baseline records an assumption); suppressing `t₀` firings (§16.5's anti-diagnostic insurance); accumulated time `t ← t* + h′` (ulp drift into every tick comparison and deadline) |
 
 ---
 
