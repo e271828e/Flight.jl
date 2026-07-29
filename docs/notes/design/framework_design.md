@@ -1,9 +1,26 @@
 # A Modeling & Simulation Framework for Flight.jl — Design Document
 
-**Status:** twenty-third checkpoint (v0.23). Axes 1–6 settled; axis 7 (the
+**Status:** twenty-fourth checkpoint (v0.24). Axes 1–6 settled; axis 7 (the
 declaration layers, §13, and the build pipeline, §14) settled; error
 discipline settled (§15, rows 57–62); the §3 kind split stress-tested and
-upheld (§17.5, row 56). New in v0.23: **the WP6 spackle batch** (rows 84–85
+upheld (§17.5, row 56). New in v0.24: **the WP7 additions closing the
+2026-07 review** (`review_plan.md` retired; no new decision rows) —
+**Appendix A, taught contracts**: the nine-entry author-facing index
+(§5.2's stage funnel, one home per datum, boundary sampling, interval
+alignment, guard baselines, stop-face sampling; levels-never-deltas,
+derived liveness, the two observation registers), discharging §17.5's
+author-knowledge documentation obligation; **Appendix B, API synopsis**:
+the entry points on one page (build, deployment, condition algebra,
+stopped-sim services, running), written last as the closing coherence
+check — which caught and fixed §17.4's stale
+`init!(sim, KinInit | TrimParameters)` spelling (now
+`init!(sim, condition; t0)` with `trim!` its own service); the §15.7
+**component test-rig idiom** (a one-child assembly exporting the child's
+input faces via `faces(rig, "child")` — `design_world`'s little sibling,
+ordinary machinery as a standing ergonomics test); and the §19 **log/trace
+persistence deferral** made explicit (HDF5 export scope, field-handle
+summarization over retained snapshots, the trace file format — settled at
+migration, where the consumers exist). In v0.23: **the WP6 spackle batch** (rows 84–85
 + [M] fixes) — the **unconnected-output warning retired** (undecidable
 post-row-83, poisons the sole warning stream; the consumer-side
 unconnected-input error owns the real hazard); **container children
@@ -2890,7 +2907,7 @@ boundary.
 
 Computed exports gain protagonism under this section — termination chains are
 their second structural customer after generic-boundary contracts — and two
-commitments plus a library follow:
+commitments, a library and an idiom follow:
 
 - **The `faces` helper family grows deliberately.** Predicate-based selection
   (an `endswith`-style filter alongside `except`/`only`) is a natural
@@ -2922,6 +2939,17 @@ commitments plus a library follow:
   continuous `h_xu` recomputes every sweep, so fed ZOH-held discrete signals
   its output changes only at ticks — no tier-neutral kind needed. A
   migration-phase deliverable.
+- **The component test rig** is the library's companion idiom: a one-child
+  assembly whose `exports` surface the child's entire input face set —
+  `faces(rig, "child")` verbatim (§13.8) — so any component can be built
+  and simulated in isolation: every input becomes a root slot fed by
+  ordinary conditions and devices, and every output is observable in the
+  snapshot table. `design_world`'s little sibling (§16.9): where
+  `design_world(ac)` mounts an aircraft in a minimal world for trim and
+  linearization, the rig mounts one component behind a root contract for
+  unit tests and open-loop probing. Deliberately ordinary machinery end to
+  end — no framework support, which makes it, like the library blocks, a
+  standing ergonomics test of the declaration rules.
 
 ---
 
@@ -3698,11 +3726,12 @@ forced by this cast):
   build pipeline runs here: kind resolution, path validation, face derivation
   (computed exports expanded, printable), two-producers/unconnected checks,
   topological sort, probe passes, rate compilation, flat layout, slot table.
-- `init!(sim, KinInit(...) | TrimParameters(...))` — stopped-sim services (§16);
-  what is settled: they write `(x, m, z)`, **establish every root slot's initial
-  value**, and capture the trace header. Slot initialization decisively belongs
-  here, not in declarations: the trim service writes slot values it *solved for*
-  (throttle, elevator) — not declaration constants.
+- `init!(sim, ready_for_taxi(ac); t0 = 0.0)` — stopped-sim services (§16;
+  trim is its own service, `trim!(sim, problem; baseline, ...)`, whose commit
+  runs the same boundary): they write `(x, m, z)`, **establish every root
+  slot's initial value**, and capture the trace header. Slot initialization
+  decisively belongs here, not in declarations: the trim service writes slot
+  values it *solved for* (throttle, elevator) — not declaration constants.
 - `attach!(sim, XPlane12Control(...), binding)` — output device: claims nothing,
   consumes snapshots via §12.8, pure `map_output` on its task. Its binding names
   snapshot paths, **validated at attach against the actual contract** — an
@@ -4060,3 +4089,157 @@ To be settled in subsequent sessions:
   the type — as the `KinData` successor's periphery-facing half. Residuals: the `q_sf` home (§17.4 — aircraft design,
   belongs here); whether `stop_on` needs a root-declared overridable default
   (§15.5 — reopen only if the ctor argument proves chronically forgotten).
+
+- **Log and trace persistence** (recorded deferral). The in-memory artifacts
+  are settled — the log as retained boundary snapshots (§12.2), the
+  always-on device-tagged input trace with its header of initial stores and
+  slot values (§12.3, §16.5, §16.6), and the primary/derived rule (the log
+  is recomputable from the trace, never the reverse) — but nothing on-disk
+  is. Deferred to migration, where the consumers exist to ground the
+  choices: the HDF5 export scope (whole snapshot log vs. selected
+  subtrees), field-handle summarization over retained snapshots (the
+  successor to `TimeSeries`'s `getproperty` navigation — today's
+  post-processing entry point), and the trace file format, which doubles as
+  the reproducibility carrier (§15.4's replay pointers name positions in
+  it).
+
+---
+
+## Appendix A. Taught contracts: the author-facing index
+
+The build pipeline enforces structure — declarations, wiring, types,
+conformance. A residue of *semantic* facts is unenforceable by any check:
+knowing them is what makes component and periphery code come out right, and
+not knowing them produces defensive delays, duplicated math or mistimed
+samples with no diagnostic firing anywhere (§17.5's author-knowledge note is
+the archetype, and made this index an explicit documentation obligation).
+This appendix is an **index, not a second home** — one recall line per
+contract, with the normative statement staying in the owning section (one
+home per datum, applied to the document itself).
+
+For component authors:
+
+- **The stage funnel** (§5.2). Stage name ⊇ bundle ⊇ destructured reads:
+  the stage name fixes the maximal legal view set, the component's
+  declarations narrow it to the bundle, and the signature's destructuring
+  narrows it to actual reads — so "no `u` in the name" *is* the
+  no-feedthrough property. The teaching line: stage 1 publishes what you
+  know from state alone; stage 2 adds what needs inputs; your dynamics
+  read your own published results instead of recomputing them.
+- **One home per datum** (§5.2, §4.3). The signal table holds *produced*
+  signals only, never transported ones: buffer for `x`, cells for `z`/`m`,
+  table for signals — no store mirrors another.
+- **Boundary sampling** (§11.5/§11.6; worked example §17.5). "Sampling at
+  `t_k`" means post-integration, post-projection, stage-1-fresh state: a
+  due tick's gated stages run inside the boundary sweep and sample the
+  *completed* boundary. Distrusting this — a defensive one-tick delay, a
+  re-derivation inside the sampler — silently degrades the model.
+- **Interval alignment** (§16.5). A boundary's `g` is the *outgoing*
+  transition: at tick `t_k` it consumes the completed boundary's samples
+  and produces `z_{k+1}` — the value the component's *next* tick decodes
+  (the sampled-data `z⁻¹` delay, by construction). Hence `g` runs at
+  boundary zero: it is the `t₀` sample's only chance.
+- **Guard conditions, edges and baselines** (§2.1, §11.6). A guard defines
+  a condition — a predicate, or a continuous function with positive =
+  holding. Events fire on not-holding → holding *edges* against per-event
+  baselines (the previous boundary's quiescent sample): a condition that
+  keeps holding fires once, at the boundary where it first held. Boundary
+  zero baselines as nothing-holds, so a condition authored already-holding
+  fires at `t₀`. The opposite crossing direction is a second event with
+  the negated guard.
+- **Stop-face sampling** (§15.5). Stop faces are read in completed-boundary
+  snapshots; declare a Tier-2 event if the stop needs localizing.
+
+For periphery authors and consumers:
+
+- **Levels, never deltas** (§12.3). Staged input values are levels
+  (`press_count = 17`, never `presses += 1`) — idempotent under
+  coalescing; button edges ride as monotonic counters.
+- **Derived liveness** (§12.5). A widget is live iff its port's feed chain
+  terminates in a root slot currently unclaimed by a device; there is no
+  per-port marking, and unexported ports are unpokeable.
+- **The two observation registers** (§12.2, §15.5). A deep snapshot path is
+  the *inspection* register: it sees everything and promises nothing
+  across builds. An exported output face is the *integration* register:
+  curated, writer-independent meaning — the only shield against silent
+  semantic drift. Bind faces in anything meant to outlive the current
+  build.
+
+---
+
+## Appendix B. API synopsis: the entry points
+
+The user-facing surface on one page, written as the closing coherence check
+over the settled sections — same rule as Appendix A: an index, not a second
+home; every signature is normative only where it was settled. Grouped by
+lifecycle:
+
+**Build.**
+
+- `build(world) → Build` — standalone; the inspectable contract artifact:
+  wire list, face table with provenance, schedule, root slots (§14.2).
+  `build(world; activities = (Float64, Dual))` additionally pins activation
+  invariants for CI (§14.4).
+- `resolve(asm, path) → AbstractComponent` — the getfield walk along `/`
+  segments, enforcing §8's generic-boundary rule at the primitive (§15.3).
+- `input_faces(c)` / `output_faces(c) → Vector{String}` — declaration-ordered
+  face names (§15.3).
+- `faces(asm, path; prefix, sep, except, only)` — the declaration-site helper
+  for computed exports (§13.8).
+
+**Deployment.**
+
+- `Simulation(world; algorithm = Heun(), h = 0.02, n = 1, t_end = 1000,
+  stop_on = ())` — wraps the build; `n` binds `Δt_base = n·h` (§11.5);
+  `stop_on` names root-exported `Bool` output faces, OR-combined, recorded in
+  run metadata (§15.5; walkthrough §17.4).
+- `attach!(sim, device, binding)` — write side speaks face names through a
+  declarative binding table (axis/button → face + conditioning params;
+  claims registered, exclusivity enforced); read side binds snapshot paths,
+  validated at attach (§12.3, §12.2, §17.4).
+- The device handle — one kind, capabilities not taxonomy: read latest
+  snapshot, wait-for-next-boundary (§12.8), stage, control access (§12.4).
+
+**Condition algebra** (§16.1–§16.6).
+
+- `fragment(; x, m, z, slots)` — self-vocabulary payloads at the authoring
+  level; `slots` names faces of that level's contract.
+- `at(prefix, node)` — scoping; stores, never applies. Also lifts whole
+  `TrimProblem`s and linearization surfaces (§16.9, §16.10).
+- `merge(nodes...)` — symmetric collection; duplicate leaves error with dual
+  provenance.
+- `override(base, patches...)` — ordered layering; patch wins, provenance
+  keeps both (§16.6).
+- `condition(comp; kw)` — the shipped fragment-function idiom; aircraft
+  baselines (`ready_for_taxi(ac)`, `cold_and_dark(ac)`) are its
+  full-coverage instances.
+
+**Stopped-sim services** (§16).
+
+- `init!(sim, condition; t0 = 0.0)` — slot totality checked pre-write
+  (§16.6), then boundary zero: project → sweep → events → due `g` updates →
+  header + first snapshot (§16.5).
+- `trim!(sim, problem; baseline, backend) → TrimReport` — nonlinear least
+  squares on the residual vector with exact Dual Jacobians; commit =
+  `init!` with `override(baseline, solution)`; non-convergence reports, never
+  throws (§16.7, §16.8).
+- `capture(sim) → (condition, t)` — full-store gather including root slots;
+  warm restart = capture → tweak → apply (§16.1, §16.10).
+- `linearize(sim, surface) → labeled (A, B, C, D, ẋ₀, y₀)` — pure query, one
+  seeded Dual pass on scratch; operating point defaults to `capture(sim)`;
+  surface = `state`/`slot`/`output` selector lists with control-design
+  labels (§16.10).
+
+**Running.**
+
+- `run!(sim; gui = true, pace = 1)` — paced and unpaced runs bit-identical
+  (§11.7); the GUI an ordinary device on the calling task (§12.4, §12.5).
+- Control plane — pause/un-pause, pace changes, stop on a separate atomic
+  surface, never staged (§12.6).
+- Termination — model state via `stop_on` faces read at every published
+  boundary (§15.5); shutdown completes a boundary, publishes the final
+  snapshot, then joins (§12.9).
+- Post-run — the log is retained snapshots; the always-on input trace
+  re-drives a fresh `Simulation(world)` bit-identically and is the
+  state-trajectory inspector (§12.2, §12.3; on-disk persistence deferred,
+  §19).
