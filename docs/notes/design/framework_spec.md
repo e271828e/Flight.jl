@@ -1480,11 +1480,19 @@ The replacement has five planes:
    an immutable snapshot; readers observe it without coordinating with the loop
    (§12.2).
 4. **Control:** pause/pace/stop on a separate few-word atomic surface (§12.6).
-5. **Task topology:** one loop task, plus one task per rostered device,
-   spawned **per run** (the GUI's on the main thread — CImGui's constraint):
-   `run!` spawns one task per roster entry after device `init!`, a mid-run
-   `attach!` spawns immediately, and §12.9 joins them all at every stop
-   (§12.11). Spawn-inside-`run!` *is* the start gate — a task exists only
+5. **Task topology:** one loop, one task per rostered device except the
+   GUI, all run-scoped: `run!` spawns one task per non-GUI roster entry
+   after device `init!`, a mid-run `attach!` spawns immediately, and §12.9
+   joins them all at every stop (§12.11). **The GUI is pinned; the loop is
+   the movable piece.** CImGui ties rendering to the calling (main) task,
+   so the GUI is the one rostered device *without* a spawned task: with
+   `gui = true` the loop moves to a spawned task for the duration of the
+   run and the calling task renders; otherwise the loop runs on the
+   calling task — the batch register, what §15.4's synchronous rethrow
+   presupposes, and what lets parallel batch sweeps thread `run!` inline
+   with no nested task fan-out. Either way `run!` blocks its caller until
+   the run ends; what varies is what the calling task spends the run
+   doing. Spawn-inside-`run!` *is* the start gate — a task exists only
    once the run it serves exists — and any first-boundary synchronization a
    device needs is §12.8's counter-plus-condition predicate wait, never an
    `Event` latch: FlightCore's `io_start` gate is the once-per-run version of
@@ -1517,7 +1525,9 @@ loop with staging fed from a recording (§12.3).
 The loop builds each snapshot — boundary-consistent signal table, `t`, framework
 status (§11.7 diagnostics) — in private memory, then publishes it with a single
 release-store to an `@atomic latest` reference; readers acquire-load and then work
-with an immutable, coherent world for as long as they like. Wait-free in both
+with an immutable, coherent world for as long as they like. `latest(sim)`
+hands the same value to the calling task — §12.11's inspection register.
+Wait-free in both
 directions: a wedged reader cannot delay publication by a nanosecond; the loop cannot
 tear a reader's view. Publication happens only after the boundary sequence completes
 (§11.3 as extended by §11.6).
@@ -1642,7 +1652,10 @@ have no exclusive writer, so an opportunistic write is legal for any device, not
 a GUI privilege — the one-kind doctrine of §12.4 holds, capabilities are not a
 taxonomy. What that register buys is availability, not arbitration: two
 unclaimed writers to one slot resolve by attachment order at drain, which is why
-anything meant to own a face claims it.
+anything meant to own a face claims it. The register also has a **task-free
+entry point**: `stage!(sim, "face" => value, ...)` stages a batch from the
+calling task itself — the harness/REPL write path (§12.11) — drained, traced
+and claim-checked exactly as a device batch.
 
 **Slot initial values are owned by the init/trim services** (§17.4). Input declarations are bare types (§13.2) and carry no defaults, but a
 slot unfed by any device must hold a defined value from the first frame (today's
@@ -1956,6 +1969,10 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    interruptible per (2)–(3); `finally shutdown!(device)` guaranteed.
 5. **Join with a timeout:** a device task exceeding it is reported *by name*
    (§12.7 heartbeat) and abandoned with a warning rather than hanging `run!`.
+   The GUI, having no spawned task (§12.1), is outside the join: its render
+   loop is the calling task's own occupation of `run!`, exits by the same
+   `running(handle)` predicate as any device loop, and `run!` returns after
+   the joins.
 6. **Device-initiated paths:** `should_close` (window ✕, peer EOT) exits the
    device's own loop; with `should_abort` set it also requests a sim stop,
    otherwise the sim continues with the device absent (its cell stops filling —
@@ -2041,19 +2058,37 @@ nothing authored), **initialized** (`init!` completed boundary zero, §16.5),
 **running**, and terminally **stopped** or **errored** (§15.4). `init!` is
 mandatory: `run!` or `step!` on a simulation whose boundary zero has not
 completed is an error in §15.2's kind set naming `init!` — distinct from
-`UninitializedSlots`, which fires *inside* `init!` (§16.6). With no devices
-attached, `run!` executes synchronously on the calling task — the batch
+`UninitializedSlots`, which fires *inside* `init!` (§16.6). The loop runs on
+the calling task unless a GUI claims it (`gui = true` moves the loop to a
+spawned task, §12.1); deviceless, `run!` is fully synchronous — the batch
 register (§12.1: a batch run is the same loop with empty staging), and what
 §15.4's synchronous rethrow presupposes.
 
 **Partial advance.** `step!(sim; frames = 1)` advances whole frames
 synchronously through the ordinary frame sequence — drain, integrate,
 boundaries, publication — and returns; a stepped simulation is bit-identical
-to the same frames under `run!`. This is the test-harness register (advance,
+to the same frames under `run!`. `step!(sim; t_plus = 10.0)` is the duration
+spelling, mutually exclusive with `frames`: whole frames until the boundary
+time first covers the duration — the migration suite's advance-by-duration
+idiom. This is the test-harness register (advance,
 assert, advance) and the REPL register (fly a while, inspect, continue);
 neither is a script, so §12.10's scenario-component doctrine does not absorb
-them. Devices may be attached while stepping: their staged writes drain at
-each stepped frame top, exactly as under `run!`.
+them.
+
+A stepping session is **deviceless by construction**: device tasks are
+per-`run!` artifacts (§12.1) and a device loop's `while running(handle)` is
+false outside a run, so `attach!` while stepping only registers, exactly as
+while stopped. The frame-top drain still runs — `step!` frames stay
+bit-identical to `run!` frames — and what it drains is the **harness
+register**: `stage!(sim, "face" => value, ...)`, §12.3's unclaimed-slot
+register with the calling task as writer. Staged batches are ordinary
+batches — traced, so replay and bit-identity hold; applied at the next frame
+top; subject to claim exclusivity like any device's. The read half is
+`latest(sim)`: the same immutable snapshot value a device handle acquires
+(§12.2), navigated directly for assertions. Advance-assert-advance is
+`stage!` → `step!` → `latest`. Both entry points work under `run!` too — the
+harness register is not step-scoped — and an inspection accessor leaves
+§15.5's rejection of closure-based termination untouched.
 
 **Status, termination and the `run!` seam.** Between `step!` calls a simulation
 reports **initialized**: no loop task exists, so `running` would lie, and
@@ -2070,8 +2105,9 @@ truncation without inspecting the clock.
 
 **Re-running.** `stopped → init! → run!` is the supported cycle: `init!`
 re-runs boundary zero from its condition (warm restart = `capture` → tweak →
-`init!`, §16.1) and clears the trace *and* the log — both recording registers
-restart with the run they record. Device attachments persist across
+`init!`, §16.1) and clears the trace, the log, *and* any batches still in
+staging cells — the recording registers restart with the run they record, and
+no stale batch survives to clobber the boundary zero it predates. Device attachments persist across
 re-initialization — attachment is orthogonal to the run lifecycle (§12.3) —
 and persistence means *roster* persistence: binding, claims and device id
 survive; tasks and OS resources do not (§12.1's per-run topology, §12.9's
@@ -4791,20 +4827,32 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
 
 - `run!(sim; gui = false, pace = 1, margin = <default>, t_end = <ctor value>,
   stop_on = <ctor value>)` — paced and unpaced runs bit-identical
-  (§11.7); the GUI an ordinary device on the calling task (§12.4, §12.5), and
-  `gui = true` is sugar for attaching the standard GUI device — sugar never
-  activates by default. Synchronous on the calling task with no devices
-  attached; `init!` required first (§12.11). `margin` is the single pacing
+  (§11.7); the GUI an ordinary rostered device rendered on the calling task
+  (§12.4, §12.5), and `gui = true` is sugar for attaching the standard GUI
+  device — it moves the loop to a spawned task for the run (§12.1); sugar
+  never activates by default. `run!` blocks until the run ends; deviceless
+  it is fully synchronous on the calling task; `init!` required first
+  (§12.11). `margin` is the single pacing
   knob (§11.7), `0` / a few ms / `∞` spanning the design space. `t_end` and
   `stop_on` override the constructor's defaults **for this run only**, with
   `stop_on` validated against the `Build` here exactly as at construction, and
   the effective pair recorded in the run metadata (§15.5).
 - `step!(sim; frames = 1) → frames_advanced` — synchronous partial advance
   through the ordinary frame sequence, bit-identical to the same frames under
-  `run!`; returns the frames *actually* advanced, fewer than requested when
+  `run!`; `t_plus = <duration>` is the mutually-exclusive duration spelling
+  (whole frames until the boundary time covers it); returns the frames
+  *actually* advanced, fewer than requested when
   `t_end` or a `stop_on` face ended the run inside the call. Between calls the
   simulation reports `initialized`; `run!` may follow and continues from the
-  current boundary (§12.11).
+  current boundary; a stepping session is deviceless — write via `stage!`,
+  read via `latest` (§12.11).
+- `stage!(sim, "face" => value, ...)` — task-free staging from the calling
+  task into §12.3's unclaimed-slot register: traced, drained at the next
+  frame top, claim-checked exactly as a device batch (§12.11's harness
+  register; legal under `run!` and `step!` alike).
+- `latest(sim) → snapshot` — the current published snapshot, the same
+  immutable value device handles read (§12.2); the assertion/inspection
+  accessor of the harness and REPL registers (§12.11).
 - Control plane — pause/un-pause, pace and `margin` changes, stop on a
   separate atomic surface, never staged (§12.6; pacing sits outside the
   semantics, so both are safe to change live).
