@@ -10,7 +10,8 @@ reached.
 All design axes are settled — the formalism, the component taxonomy, the
 signal and scheduling model, time and execution, the runtime periphery, the
 declaration layer, the build pipeline, error discipline and the stopped-sim
-services. Only the migration outline (§19) remains open.
+services. Only §19's items — the migration outline and the log/trace
+persistence deferral it records — remain open.
 
 Decision rationale, including the alternatives considered and the reasons
 they were rejected, lives in `framework_decisions.md`, cited throughout as
@@ -81,8 +82,9 @@ This gives step-boundary logic *well-defined semantics*: the transition is defin
 the crossing; detection resolution is an execution-policy detail.
 
 A guard defines a **condition**: a boolean predicate, or the sign of a
-continuous function with **positive = condition holds** (normative;
-holding = `g ≥ 0`). An event fires when its condition transitions from
+continuous function with **positive = condition holds** (normative; writing the
+guard's condition value `σ`, holding = `σ ≥ 0`). An event fires when its
+condition transitions from
 not-holding to holding — edge semantics, uniform across both forms, with the
 baseline bookkeeping stated in §11.6; the opposite crossing direction is
 declared as a second event with the negated guard (stall entry/exit as a
@@ -212,7 +214,8 @@ directly. Row 16.)
   the framework scatters each field into that port's concretely-typed cell. Every
   reader — the next stage, `f`/`g`, guards, wired consumers, snapshot capture —
   gathers views from cells. The component's aggregate `y` is the merge of its
-  stage products (`merge(y_x, y_xu)`; `merge(y_z, y_zu)` on the discrete tier)
+  stage products (`merge(y_x, y_xu)`; `merge(y_z, y_zu)` on the discrete tier) —
+  declared ports and `local_types` cells alike, since both are stage products —
   *semantically* but virtual *physically*: reconstructed per call from cells (field
   loads, register-level, zero cost for isbits), never stored as an object. Name
   collisions across a component's stages are a build error.
@@ -276,8 +279,8 @@ y_zu     = h_zu(comp, args)         # z, u, y_z, t, Δt [, ws]
 z⁺       = g(comp, args)            # z, y, u, t, Δt [, ws]
 
 # event system (continuous side only) — same fresh table, same state views:
-fired    = guard(comp, args)        # x, m, y, u, t
-(x⁺, m⁺) = handler(comp, args)      # x, m, y, u, t — x⁺ complete, m⁺ partial (§14.5)
+σ        = guard(comp, args)        # x, m, y, u, t [, ws] — Bool or scalar condition value (§2.1)
+(x⁺, m⁺) = handler(comp, args)      # x, m, y, u, t [, ws] — x⁺ complete, m⁺ partial (§14.5)
 x⁺       = project(comp, x)         # manifold projection; positional (below)
 ```
 
@@ -304,7 +307,15 @@ discrete tier only. Undeclared stores are *absent*, never `nothing`-filled:
 destructuring a field that is not a thing for you fails at the probe inside the
 §15.2 framing diagnostic, with did-you-mean against the legal field set ("`f`
 of `Foo` destructures `m`, but `Foo` declares no `init_m`") — one law covering
-tier facts, stage legality and declarations alike. The per-function name sets
+tier facts, stage legality and declarations alike. The mechanism is structured,
+not textual: destructuring an absent field throws a `FieldError` carrying the
+type and the field name as data (Julia ≥ 1.12), the probe catches it *matched
+against the bundle's own NamedTuple type*, and synthesizes the framing
+diagnostic from the legal set — classifying the field as an undeclared store, a
+wrong-tier fact, or a name illegal for this function kind. No message text is
+scraped, and the bundle stays a bare NamedTuple (row 74); a getproperty-wrapper
+spelling is the recorded fallback should type-matched interception prove
+insufficient. The per-function name sets
 are **closed**: adding one is a decision-log entry, not a convenience. The
 comment in the signature block above states each function's maximal legal set;
 a given component's bundle narrows it to declared reality, and the
@@ -314,7 +325,9 @@ legitimately writes `h_xu` while owning neither `x` nor `m`.
 
 The views themselves are unchanged in meaning: own state (`x`, `m` from the
 flat buffer and mode cells; `z` from its cell), own published signals (`y`,
-gathered from own table cells), inputs (`u`, gathered from foreign cells
+gathered from own table cells — `local_types` cells included alongside declared
+ports, locals existing precisely for this own-later-consumption read, §13.2),
+inputs (`u`, gathered from foreign cells
 through the wiring's name binding), the clock (`t`, and `Δt` — see §11.5), and
 scratch (`ws`, §9.3). The signal table holds only *produced* signals, never
 transported ones: each datum has exactly one home — buffer for `x`, cells for
@@ -477,7 +490,7 @@ h_xu(::SumJunction, (; u)) = (; Σ = +(u...))
 (The parameter is the *unparametrized* type constructor — `SumJunction{Wrench, 3}`;
 UnionAlls are legal type parameters — so both declarations derive from it at the
 `Float64` nominal face; the activation leaf walk (§13.2) re-scalars the output
-cell per activity. This is the same
+cell per activation. This is the same
 arity-via-computed-contracts pattern §15.7 commits to for `Or{N}`.)
 
 - **Every mistake is loud** under the declaration layer: a forgotten contributor is
@@ -682,7 +695,7 @@ are generic over `T <: Real`. One design property, four consumers:
    loudly (`MethodError`/`InexactError` at the offending line) on any Float64-pinning.
 
 The declaration layer keeps this scoping out of the author's way: declarations
-are concrete nominal types (§13.2), and slot types per activity come from the
+are concrete nominal types (§13.2), and slot types per activation come from the
 framework's leaf walk over them — `Float64` leaves and `Real` type parameters
 follow the activation scalar on the continuous side, the discrete side pins —
 never from inference through user code. (Safety of the substitution rests on
@@ -729,17 +742,30 @@ live example pattern).
   checkpoint/replay of the entire discrete side is "copy the cell values."
 - **Workspace** (for heavy algorithms, e.g. an n≈20 Kalman filter):
   component-declared mutable scratch, instantiated by the framework and arriving
-  as the `ws` bundle field (§5.2) in every function of the declaring component,
+  as the `ws` bundle field (§5.2) in every bundle-receiving function of the
+  declaring component (`project` is positional and receives none),
   and **excluded from state semantics** — not snapshotted, not replayed, never a
   condition target (§16.1), must carry no information between calls. Checkable:
-  in debug mode the framework **NaN-poisons the workspace before every call**,
-  so read-before-write of stale scratch detonates immediately. Declared **by
+  in debug mode the framework **poisons the workspace before every call**, so
+  read-before-write of stale scratch detonates immediately. The poison is scoped
+  to what a store can carry: float-eltype stores get `NaN`, integer-eltype
+  stores get `typemin` (which detonates on first use as an index), and element
+  types with no sentinel — `Bool` flags, enums, opaque handles — are skipped,
+  the skip reported once per activation. Naming the skipped stores is the point:
+  a guarantee that is silently partial is exactly the anti-diagnostic pattern
+  §17.4 rejects. Declared **by
   allocation**: the well-known method *is*
-  the allocator — `workspace(c::KF, ::Type{T}) where {T} = (P_ws = Matrix{T}(undef,
-  c.n, c.n), x̂_ws = Vector{T}(undef, c.n))` on the continuous tier, plain
+  the allocator — `workspace(c::KF, ::Type{T}) where {T} = (P = Matrix{T}(undef,
+  c.n, c.n), x̂ = Vector{T}(undef, c.n))` on the continuous tier, plain
   `workspace(::C)` on the discrete (the `output_types` tier split) — called
   once per activation and once per scratch-store set (§16.8), sizes from the
-  instance, eltypes from the activation. The `undef` spelling is the
+  instance, eltypes from the activation. The `T`-signature survives here after
+  row 79 retired it on the output side because the two registers ask different
+  things of it: `workspace` is the by-allocation register, so the method is an
+  allocator the framework *calls*, not a schema the framework *walks*. Nothing
+  downstream derives from its type, and mistyped scratch detonates loudly at the
+  `Dual` probe — the opposite of the silent zero-partial embedding that killed
+  the output-side `T`-signature. The `undef` spelling is the
   recommended idiom: it makes "contents are meaningless" visible in the
   declaration, which is the register this store actually lives in — a
   workspace is *not* memory, so declaration-by-initial-value (§13.2) never
@@ -760,7 +786,7 @@ live example pattern).
   `MMatrix` codegen catastrophe below.)
 - **Blessed idiom — zero-allocation ticks with immutable `z`:** do the in-place math
   (`mul!`, `cholesky!`, BLAS) on the workspace; at the end, snapshot into an isbits
-  container (`z = KFState(SVector{20}(x̂_ws), SMatrix{20,20}(P_ws))`) and return it.
+  container (`z = KFState(SVector{20}(ws.x̂), SMatrix{20,20}(ws.P))`) and return it.
   Construction and storage of large `SArray`s are cheap and compile fine — the
   StaticArrays "codegen catastrophe" lives in its *operations* (unrolled matmuls),
   which are never called on snapshots. Discipline: snapshot values are for storage,
@@ -850,6 +876,35 @@ Tracing is **diagnostic only, never load-bearing**: scheduling correctness comes
 exclusively from the structural two-stage split; tracing improves error messages and
 verification. Triggered when the scheduler finds a cycle, to classify it (genuine →
 "insert a state"; artificial → "split this component").
+
+**Detection and naming.** A cycle surfaces as a topological-sort stall in
+Stratum B. The stall's residue is not the diagnostic: it also holds the innocent
+downstream cone, so it over-reports, while a single DFS back edge under-reports —
+one edge of a possibly large tangle. The stalled subgraph is instead decomposed
+into **strongly connected components**, and each nontrivial SCC names one cyclic
+cluster exactly: one diagnostic, its members and the wires among them, presented
+as one readable loop (`aero.F → dyn.a → aero.α̇ → aero.F`).
+
+**Classification is schedule-free.** It runs inside Stratum B's failure path,
+where no schedule exists — and needs none, because each SCC member is evaluated
+*once, in isolation*, at the probe point: state views from `init_*`,
+out-of-cycle cells from the acyclic prefix's probe values, in-cycle cells
+synthesized through §14.3's `probe_value` under tracer tags. The tracer's
+product is a per-member dependence set rather than a value, so no ordering has
+to be valid for the labels to come out right. The loop is **real** iff every hop
+of the structural cycle survives in the traced per-member maps; **artificial**
+(§5.3) iff some hop dies — the component whose stage-2 function does not in fact
+route that input to that output. No Stratum C machinery is touched: no
+activation, no layouts, no table.
+
+**Caveats, carried in the diagnostic rather than assumed away.** The trace
+speaks for the branch taken at the probe state (row 12's diagnostic-only
+doctrine). Discrete members trace *structurally* — row 79's pinned signatures
+admit no tracer scalar — which is sound as a may-depend answer but never sharp,
+so the "split this component" hint is offered only for continuous members. And
+if a member's evaluation itself throws, the diagnostic ships with the member
+list alone: classification is a bonus on the cycle error, never its
+precondition.
 
 Two modes, degrading gracefully:
 
@@ -985,6 +1040,30 @@ Trigger: a Tier-2 guard changed sign across an accepted step $[t_n, t_{n+1}]$.
   defeats sign-change detection in both tiers; the mitigation is step size, not
   machinery.
 
+**Budget exhaustion degrades; it does not throw.** When a step spends its event
+budget, localization stops for the remainder of that frame: the remainder step
+completes, and any further crossings fire in the next boundary's ordinary
+iteration — Tier-1 granularity for that frame — under a warning naming the
+chattering event and the localization count. The degradation is a function of
+the trajectory alone, never of wall clock, so row 80's pace-independence stands
+untouched and the run replays identically. A `StepError` would misclassify an
+expected modeling outcome as broken machinery (§16.8's doctrine). This also
+makes the asymmetry with §11.6 principled: the once-per-event bound *there* is
+structural — quiescence terminates because each event fires at most once per
+boundary — whereas re-localization across a frame has no structural bound, so it
+takes a budget, whose exhaustion degrades exactly as that section's would.
+
+**Projection's reach is the boundary, not the probe.** Guard probes evaluate the
+raw interpolated state — the same rule RK-stage RHS evaluations already live
+under, being equally off-manifold, so sweeps must tolerate near-manifold states
+and already do. Authority rests with the `t*` boundary: projection runs there,
+and the §11.6 iteration's edge checks read the *projected* state. If projection
+moves the state back across a guard, the event does not fire and the run has
+published one extra boundary — harmless, and deterministic and pace-independent
+like any other localization outcome (row 80). Per-probe projection is rejected:
+it puts projection cost inside the root-finder's loop to correct an interpolant
+drift far below the localization tolerance.
+
 **`t*` is a boundary, not a frame.** A *frame* is a grid step
 `[tₙ, tₙ₊₁]` — the unit of scheduling: input drain at frame top (§12.3), pacer
 deadlines (§11.7), tick eligibility (§11.5). A *boundary* is a published
@@ -1017,7 +1096,7 @@ strictly later than the published, immutable `tₙ` (worst rounding:
 `nextfloat(tₙ)`). And the guard observably *holds* at `t*`: handlers fire in
 states where their own condition is true, and the post-fire baseline records
 an actual observation rather than an assumption. **`t* = tₙ₊₁` exactly is
-legitimate** (a crossing at the grid point: `g(tₙ₊₁) = 0` both triggers
+legitimate** (a crossing at the grid point: `σ(tₙ₊₁) = 0` both triggers
 detection and is the root) and **degenerates to the grid boundary**: the
 localization result is discarded and the event fires inside `tₙ₊₁`'s ordinary
 iteration — bitwise the Tier-1 outcome, one boundary, one snapshot, no
@@ -1047,7 +1126,7 @@ list — discrete stage entries are gated by tick counters, so different boundar
 different subsets of the schedule.
 
 **Simultaneous ticks are already well-defined** by settled machinery: all due
-components run their `g` stages in topological order within the sweep, then all due
+components run their output stages in topological order within the sweep, then all due
 `g` updates run after it, in any order — each `g` reads the table and writes only its
 own `z` cell. The FCS cascade's intra-tick ordering is a sweep property, not an
 update-order property.
@@ -1097,8 +1176,8 @@ position*, with nothing on the instance to hang a property on. The value must
 arrive through the call; the bundle field is where.) Author rule: **never
 store `Δt`, or any `Δt`-derived coefficient, as a component parameter** —
 recomputing derived coefficients per tick is a few arithmetic ops, and a
-cached copy is a second thing for gain-scheduled `assign!`-style updates to
-chase. Relative declaration structurally enforces the rule for the period
+cached copy is a second thing for gain-scheduling machinery to chase.
+Relative declaration structurally enforces the rule for the period
 itself: under scoped multipliers a component author *cannot* know their
 absolute rate — it does not exist until composition.
 
@@ -1136,7 +1215,7 @@ physical re-crossings, and flagged by a diagnostic when it occurs.
 
 **Guard baselines and firing semantics.** "Newly-fired" means precisely this:
 an event fires at a boundary iff its condition (§2.1: predicate true, or
-`g ≥ 0`) is observed holding in some iteration round, its **baseline** — the
+`σ ≥ 0`) is observed holding in some iteration round, its **baseline** — the
 previous boundary's quiescent sample — was not-holding, and it has not yet
 fired this boundary. The baseline lives in **loop state, per event**, updated
 at each boundary's quiescence from the final post-iteration samples. It is
@@ -1154,19 +1233,19 @@ scratch: conditions true in the newly applied state fire again at the new
 resolve asymmetrically:
 
 - *Events → ticks: handled by machinery already in place.* Due discrete components'
-  `g` stages are gated *into* the sweep (§11.5), so every iteration round refreshes
-  them for free — same `z` (their `g` has not run), post-transition inputs. At
+  output stages (`h_z`/`h_zu`) are gated *into* the sweep (§11.5), so every
+  iteration round refreshes them for free — same `z` (their `g` has not run), post-transition inputs. At
   quiescence, their published outputs reflect the settled boundary instant, which is
   exactly what "sampling at t" should mean for a logically-instantaneous cascade.
   Earlier rounds' tentative values are internal scratch, like RK stage evaluations;
   §11.3 extends naturally: external readers observe the table only after the boundary
   sequence *completes*.
-- *Ticks → events: structurally impossible.* A tick's `g` stages contribute nothing
+- *Ticks → events: structurally impossible.* A tick's output stages contribute nothing
   guards have not already seen (they run inside the sweep, from current `z`); its `g`
-  update writes `z⁺`, which is invisible until the component's *next* tick decodes it
-  (`h_z` is the sole reader of `z`) — the standard one-sample `z⁻¹` delay of
-  sampled-data control, here enforced by construction. Nothing that happens after
-  quiescence can flip a guard, so no combined event/tick fixed point exists to
+  update writes `z⁺` after the sweep, and `z⁺` is first decoded at the owner's *next*
+  tick, so it is invisible to every reader within the boundary — the standard
+  one-sample `z⁻¹` delay of sampled-data control, here enforced by
+  construction. Nothing that happens after quiescence can flip a guard, so no combined event/tick fixed point exists to
   iterate.
 
 The boundary macro-sequence, final form (boundary zero — initialization — is
@@ -1184,7 +1263,7 @@ post-transition values.
 ### 11.7 Real-time pacing
 
 **The invariant: pacing is outside the semantics.** The pacer inserts waits between
-completed boundaries and never reorders, skips or alters the boundary sequence. A
+completed frames and never reorders, skips or alters the boundary sequence. A
 paced and an unpaced run with identical input traces produce bit-identical
 trajectories — deterministic replay (§2.2) extends over pace. Interactive runs differ
 only because their *inputs* differ. Detection policy is inside the semantics:
@@ -1200,7 +1279,7 @@ long session). Un-pause re-anchors for the same reason. Debt is cleared at re-an
 a deliberate user action is a natural sync point, and the counters record what was
 forgiven.
 
-**Deadline law: absolute schedule with bounded debt.** Boundary deadlines come from
+**Deadline law: absolute schedule with bounded debt.** Frame deadlines come from
 the map; a frame exceeding its wall budget `h/p` leaves debt that subsequent frames
 repay by running short or waitless — the long-run rate is exact and ms-scale hiccups
 (GC, scheduler) are invisible. Debt beyond a threshold (a few frames' worth) is
@@ -1235,20 +1314,20 @@ typical overshoot (no second threshold — the resolution floor is absorbed into
 calibration, and a margin below the primitive's granularity defeats the spin phase's
 purpose). It spans the whole design space:
 
-- **`margin = 0` — pure sleep:** cheapest CPU; bursty boundary spacing, but the
+- **`margin = 0` — pure sleep:** cheapest CPU; bursty frame spacing, but the
   absolute schedule still delivers the exact *average* rate through debt repayment.
   The spin phase buys regularity, never rate correctness.
 - **`margin` = a few ms — hybrid (default):** sleeps ~90% of a 20 ms budget, lands
   within µs of the deadline at a few percent of one core.
-- **`margin = ∞` — pure busy-wait:** FlightCore's behavior, maximum boundary
+- **`margin = ∞` — pure busy-wait:** FlightCore's behavior, maximum frame
   regularity at one pinned core; the "best attempt at real time" mode is the knob's
   endpoint, not a separate mechanism.
 
 When the frame budget is at or below the margin (e.g. `h = 0.01` at `p = 5` → 2 ms),
 the hybrid degenerates to pure spin per frame by construction. Rare wake-ups past the
 deadline are overruns, absorbed as debt. Which primitive the coarse phase uses —
-task-yielding `sleep` vs. thread-blocking `Libc.systemsleep` — is an axis-6
-concurrency decision.
+task-yielding `sleep` vs. thread-blocking `Libc.systemsleep` — is settled in §12.7:
+the coarse phase uses task-yielding `sleep`, with `margin` absorbing its overshoot.
 
 **Diagnostics.** Overrun count, current and peak debt, forgiven-debt events, wait
 statistics — published as framework status for GUI and logs (today's `SimControl`
@@ -1289,7 +1368,8 @@ The replacement has five planes:
 
 1. **Staging (inbound):** devices submit pending input writes at any wall-clock
    moment, never touching live slots (§12.3).
-2. **The drain:** exactly one point, at the top of each boundary sequence, where the
+2. **The drain:** exactly one point, at the top of each frame — never at a `t*`
+   boundary (§11.4) — where the
    loop takes the staged batches and applies them to the root input slots. Between
    drains the loop owns its data exclusively — no lock is held during stepping, ever.
 3. **Publication (outbound):** at the end of each boundary sequence the loop publishes
@@ -1363,6 +1443,15 @@ framework side of the §9.5 scope (which already carved out logging); logged sna
 are not garbage at all, unlogged ones die young. Rejected: preallocated snapshot
 buffers (double/triple ring) — reuse reintroduces exactly the reader-liveness proof
 the GC provides for free, to save an allocation profiling has not indicted.
+
+**Retention: the trace's kill switch, plus decimation.** The log takes the same
+plain on/off switch the trace has (§12.3), and additionally a keep-every-kth
+policy as a guarded addition. What makes decimation admissible here and not
+there is the derived/primary split (row 38): the log is recomputable from the
+trace by replay, so a thinned log costs resolution in a *view*, never a record —
+whereas thinning the trace would destroy the only primary account of a session
+(row 29). Decimation is a retention policy only: every boundary still runs, is
+still published to live readers, and still enters the trace.
 
 **Output-device bindings are snapshot-path bindings.** An output device (telemetry, the XPlane visualizer, disk
 streaming) consumes snapshots via §12.8 and addresses what it reads by *table
@@ -1818,7 +1907,7 @@ init_m(::Engine) = (phase = off,)                    # off | starting | running
 #input contract: bare NamedTuple of types at their Float64 faces
 input_types(::Engine) = (throttle = Float64, fuel_available = Bool, M_load = Float64)
 
-#output contract = the public interface, at concrete nominal types (§13.2)
+#output contract = the public interface, at concrete nominal types (§13.3)
 output_types(::Engine) = (M_shaft = Float64, P = Float64, ω = Float64)
 #ω names a state field no stage produces → auto-published at stage 1 (§5.2)
 
@@ -1830,11 +1919,15 @@ end
 
 f(eng::Engine, (; x, y, u)) = (ω = (y.M_shaft - u.M_load) / eng.J,)
 
-#events: ordered and named — order is load-bearing (§5.2, §11.6); tier is per-event
-events(::Engine) = (ignition = Event(ignition_guard, ignition_handler),)
-ignition_guard(eng::Engine, (; x, m, u)) =
+#events: ordered and named — order is load-bearing (§5.2, §11.6); tier by the `localize` flag
+events(::Engine) = (
+    ignition = Event(ignition_guard, ignition_handler),                         # Tier 1 (default)
+    flameout = Event(flameout_guard, flameout_handler; localize = true))        # Tier 2
+ignition_guard(eng::Engine, (; x, m, u)) =                #predicate form
     m.phase === starting && x.ω > eng.ω_idle && u.fuel_available
 ignition_handler(eng::Engine, (; x)) = (x, (; phase = running))
+flameout_guard(eng::Engine, (; x)) = eng.ω_min - x.ω      #continuous form: localizable
+flameout_handler(eng::Engine, (; x)) = (x, (; phase = off))
 ```
 
 The inventory, and where each schema fact gets its authority:
@@ -1906,7 +1999,14 @@ The inventory, and where each schema fact gets its authority:
   continuous producers, `Float64` leaves — including type parameters,
   `RQuat{Float64}` → `RQuat{Dual}` — follow the activation scalar;
   `Int`/`Bool`/enum leaves pin; reference-typed fields pin (a §7 bulk-data
-  handle's grid is frozen build-time data, never activation-dependent). On
+  handle's grid is frozen build-time data, never activation-dependent). Only
+  `Real` *type* parameters follow the scalar: value parameters pin, being
+  structure rather than number (`Ranged{Float64, -1, 1}` walks to
+  `Ranged{Dual, -1, 1}`; the bounds are not scalars to re-type). The companion
+  obligation is **constructibility at the walked type** — a Tier-1 type must be
+  buildable at the activation scalar — and the `Dual` probe enforces it by
+  construction: it builds real values, so a type whose constructor cannot
+  accept them detonates at the probe with its own name in the message. On
   discrete producers the walk pins wholesale — the Tier-3 exemption (§9.2),
   now enforced by the typing rule rather than spelled in a signature (tier is
   known from declaration shape, §13.5). During a generic sweep, gated-off
@@ -1927,6 +2027,16 @@ The inventory, and where each schema fact gets its authority:
   (`flow > 0 ? f(x) : 0.0`) legal as written — zero partials is the derivative
   of a locally-constant branch. Differentiation participation is selected per
   invocation by seeding (§16.10), never by typing.
+  The stores walk by the same rule: the type derived from `init_x` is walked
+  like a continuous producer's — real leaves and `Real` type parameters follow
+  the activation scalar — while `init_m` and `init_z` pin wholesale, mirroring
+  the discrete-producer rule. Declared `Float64` initial values embed as
+  zero-partial constants under non-nominal activations, which is §16.3's rule
+  for condition writes applied to the defaults those conditions overlay.
+  `init_x`'s walk presupposes §9.1's all-real-leaves rule, so Stratum A checks
+  it (§14.1) and reports a failure in the didactic register: "`init_x` field
+  `gear_count::Int` is not a continuous state — integers, `Bool`s and enums
+  belong in `init_m`".
 - **`local_types(::C)`** (concrete nominal types, same species and leaf walk as
   `output_types`): the component-local
   intermediates — fields a stage returns for the component's *own* later
@@ -1936,7 +2046,8 @@ The inventory, and where each schema fact gets its authority:
   activations, with the same embedding guarantee (§14.5) at parametrized
   leaves. **Strict**: a
   returned field declared in neither `output_types` nor `local_types` is a build error
-  with did-you-mean (§13.4 walkthrough 5). Unlike `output_types` (mandatory), an
+  with did-you-mean (§13.4 walkthrough 5). Unlike `output_types` — which any
+  component that publishes must declare, publicity never being implicit — an
   empty `local_types` is the framework default — absence hides nothing, because
   strictness catches every undeclared return. No auto-publication: a `local`
   naming a state field that no stage produces is simply an error (auto-pub is
@@ -1944,8 +2055,9 @@ The inventory, and where each schema fact gets its authority:
   *to* is the component, not a function: computed in one stage, read by the
   component's own consumers, invisible outside — cross-stage table cells, not
   the workspace (`workspace` remains the within-call scratch, §9.3).
-- **`events(::C)`**: an ordered, named collection of guard/handler pairs with the
-  Tier-2 flag as per-event annotation (§2.1). Order is semantics (§5.2 declaration
+- **`events(::C)`**: an ordered, named collection of guard/handler pairs, tier set
+  per event by the `localize` flag — `Event(guard, handler; localize = true)` is
+  Tier 2, and the default `false` is Tier 1 (§2.1). Order is semantics (§5.2 declaration
   order, §11.6 once-per-event); nothing here is inferrable.
 - **No stage tags anywhere.** Which stage produces which port stays invisible in
   the contract, preserving §4.2 (moving a port between stages is non-breaking
@@ -2093,7 +2205,12 @@ and §13.3 says kind is an implementation detail behind the contract — encodin
 in public type identity is exactly what contract visibility exists to prevent.
 Kind is instead declared by *which* well-known declarations a type defines:
 `connections` (the marker, mandatory-even-if-empty — the `LowPassFilter`
-precedent) makes an assembly; `output_types` + stage functions make a primitive.
+precedent) makes an **assembly**; any leaf declaration makes a **primitive** —
+`init_x`/`init_m`/`init_z`, `workspace`,
+`input_types`/`output_types`/`local_types`, `events`, or any stage, `f`, `g` or
+`project` method. The rule is total: a `<: AbstractComponent` type declaring
+neither family has no kind to read, and is a build error naming both families
+rather than a silence that fails later and elsewhere.
 Reading which declarations exist is reading declarations — the same move as
 §13.3's visibility-by-declaration-site, not §13.1's banned
 inference-by-evaluation. Kind also settles the tier fact the `T`-signature
@@ -2101,8 +2218,9 @@ used to spell (row 79): the leaf walk pins or parametrizes a
 producer's cells by the kind its declaration shape announces. Error
 taxonomy: `connections` plus `init_x`/stages on one type is a build error
 (assemblies have no state of their own — §11.5's no-atomic-assemblies at
-declaration time); neither marker plus component-typed fields earns a did-you-mean
-("holds components but declares no `connections`").
+declaration time); the neither-family error sharpens into a did-you-mean when the
+type has component-typed fields ("holds components but declares no
+`connections`").
 
 ### 13.6 Paths, wiring and exports
 
@@ -2122,7 +2240,8 @@ pairs, strictly child-port → child-port; §8's rules apply (one wire per input
 deep paths through concretely-typed fields only, stopping at a generic child's
 faces). **`exports(::A)`** is the assembly's face declaration, spelled exactly
 like `connections` — an ordered collection of pairs, face name => internal
-endpoint path — or a tuple of paths for an input face fanning inward
+endpoint path — or a tuple of paths for an input face routed to several
+internal endpoints (fan-out through the boundary)
 (`"trn" => ("systems/ldg/left/trn", …)`). **Face names are arbitrary strings with
 two build-checked invariants: no `/` (reserved for structural paths) and
 uniqueness within the assembly's face set** — every other naming choice
@@ -2263,22 +2382,24 @@ organized as three strata:
   list, the wiring bound check at nominal faces (`producer_face <: entry`,
   §13.2 — equality the concrete degenerate; abstract-at-root detected here),
   the whole-tree obligation
-  check, root slots falling out as the root's exported input faces. Also
+  check, root slots falling out as the root's exported input faces, and §9.1's
+  all-real-leaves rule checked on every `init_x` (the walk in §13.2 rests on
+  it). Also
   here: `rates` validation and compilation of relative multipliers into
   absolute divisors — everything except binding `Δt_base`, which is
   deployment.
 - **Stratum B — schedule.** The single evaluation-feeds-structure step:
-  stage-1 probes at `Float64` on `init_x`/`init_m` values (well-founded — the
+  stage-1 probes at `Float64` on `init_x`/`init_m`/`init_z` values (well-founded — the
   no-feedthrough stage takes no inputs), port classification (stage-1 /
   auto-published / stage-2 remainder), feedthrough graph from wires carrying
   stage-2 ports, topological order, §5.4 cycle rejection. The output is
   structural: names only, `T`-independent, branch-protected by the
   branch-shape rule plus the always-on check (§14.5).
 - **Stratum C — activation, parametric in `T`.** Everything type-shaped:
-  producer `output_types`/`local_types` declarations evaluated at the activity's `T` to
+  producer `output_types`/`local_types` declarations evaluated at the activation's `T` to
   type the slots, the probe chain run in topo order, observed compared against
   declared, flat `x` buffer and table laid out. The nominal `Float64`
-  activation runs at build; other activities re-run *only this stratum*
+  activation runs at build; other activations re-run *only this stratum*
   (§14.4).
 
 Deployment binding (`Δt_base`, `h`, `n`, `t_end`, algorithm, harmonic-grid
@@ -2317,8 +2438,14 @@ slots**. The build synthesizes their values via `probe_value(::Type)`:
 framework methods for `Real` (`zero(T)`), `Bool` (`false`), enums (first
 instance), ultimate fallback the zero-argument constructor `T()` — which is
 where well-behaved constrained types already put their valid default (`RQuat()`
-= identity; the `@kwdef` convention supplies it broadly). No method → build
-error naming the face and the type. Synthesis never meets an abstract type:
+= identity; the `@kwdef` convention supplies it broadly). `probe_value` is
+**overridable**: a type whose valid default is not reachable that way declares
+its own method, which is also the seam a Tier-1 type uses to state a
+constrained default. No method → build error, in the didactic register: it
+names the face and the type, and asks for one of the two fixes ("no
+`probe_value` for `Ranged{Float64, -1, 1}` at face `pilot.elevator_axis` —
+define `probe_value(::Type{Ranged{Float64, -1, 1}})` or a zero-argument
+constructor"). Synthesis never meets an abstract type:
 root slots are concrete by §13.2's tight-bound rule, and abstract entries only
 occur on component-fed inputs, which the probe sources from upstream products.
 Physically silly values are acceptable by
@@ -2327,7 +2454,9 @@ construction: the probe checks types, and return types that depend on input
 write-side granularity corollary keeps root slots predominantly scalar, so the
 surface is small. Rejected: inputs declared by value à la `init_x` (reads as
 an unwired-input default, §8's banned concept; every leaf pays for a
-root-only need; fan-in exports would need an agreement rule); NaN poison
+root-only need; and it would need its own agreement rule for fan-out through an
+exported face, where the slot type already follows §13.2's rule — the unique
+concrete declaration among the consumers); NaN poison
 values (`Bool`/enums unpoisonable; probe values are meant to be read — poison
 guards illegitimate reads, §9.3); init-service values (the build is
 standalone; services post-date it).
@@ -2357,8 +2486,9 @@ chain re-run. Structure and schedule are `T`-independent by construction.
 activation (linearization, gradient trim) evaluates the model at a frozen
 instant: discrete stages are gated off holding `Float64` values (the §13.2
 frozen-constant semantics), guards and handlers never run (event localization
-is `Float64` sweeps by design, §11.4). Only the continuous `g` chain and `f`
-ever see a `Dual` — so only they are probed. Probing `g` or guards at `Dual`
+is `Float64` sweeps by design, §11.4). Only the continuous output stages
+(`h_x`/`h_xu`) and `f`
+ever see a `Dual` — so only they are probed. Probing the discrete stages, `g`, or guards at `Dual`
 would check code against a number type it cannot receive. One rule, no
 special cases; the §10 tracer activation follows it identically.
 
@@ -2368,7 +2498,7 @@ second time at `Dual`, pure waste for interactive fly-around use. The price,
 stated openly: `build` succeeding does **not** certify the model linearizable —
 a pinned `Float64` (§9.2) lurks until the first `Dual` activation detonates it
 at the probe, naming the offending constructor. The repository's test suite
-pins the invariant instead: `build(world; activities = (Float64, Dual))` (or a
+pins the invariant instead: `build(world; activations = (Float64, Dual))` (or a
 `check` entry) runs the exhaustive set in CI, catching Tier-1 genericity
 violations at PR time.
 
@@ -2388,9 +2518,12 @@ The probe validates each function *once*, on the initial state's branch; the
 schema-authority bargain's second clause ("at first execution otherwise",
 §13.1) is discharged by leaving the probe's comparison permanently in place.
 At the point where the executor stores a stage return into the table, it holds
-the complete expected return type at this activation — declared `output_types`
-plus declared `local_types`, one concrete `NamedTuple` type — and performs a single
-type test against it (conceptually `y2 isa Expected`). Type-stable conformant
+the complete expected return type at this activation — the declared types of the
+names *this stage* produces, as fixed by Stratum B's stage classification: one
+concrete `NamedTuple` type per (component, stage), drawn from `output_types` and
+`local_types` alike. Auto-published names belong to no stage's expected type;
+the framework writes those cells itself. The executor performs a single
+type test against that type (conceptually `y2 isa Expected`). Type-stable conformant
 code: the compiler proves the return type, decides the test at compile time,
 and deletes it — zero instructions. Branch-divergent code: the test survives
 as a runtime check, nanoseconds on conformant branches, a loud located error
@@ -2401,7 +2534,7 @@ code pays nanoseconds on top of the dynamic dispatch it already bought.)
 the nominal activation — the only one that ever runs in real time — the check
 is unchanged: exact type match, no convert-on-write, one baked `isa` that
 folds away (`Int` sloppiness must fail at `Float64`, not lurk until a `Dual`
-activation makes "it runs" activity-dependent). The error can afford to be
+activation makes "it runs" activation-dependent). The error can afford to be
 didactic: "field `M_shaft`: expected `Float64`, got `Int64` — return
 `zero(x.ω)`, not `0`". Under a non-nominal activation, a parametrized leaf
 accepts exactly two types: the activation scalar (the fast path — the baked
@@ -2426,12 +2559,21 @@ Schema-visible freezing is a recorded door (§16.10).
 
 **Uniform across all probed functions.** `f` checks against the state field
 set at the activation's `T` (§9.1's structural derivative completeness made
-operational); guards `isa Bool`; `g` against the `z` shape; handlers' partial
+operational); guards against their probe-derived condition form (below); `g`
+against the `z` shape; handlers' partial
 `m`-updates against a names-subset-with-matching-types predicate — still a
 type-level computation that folds when inferred. The handler completeness
 asymmetry is storage-shaped: `x⁺` must be complete because `x` lives
 in a flat buffer written back wholesale, while `m⁺` may be partial because
 `m` lives in per-field cells where a partial merge is the natural write.
+
+**Guards have two admissible forms** (§2.1), so their check is form-aware
+rather than a flat `isa Bool`: a predicate guard's probed return is `Bool`, a
+continuous guard's is the nominal scalar — guards run only at the nominal
+activation (row 52), so no parametrized-leaf case arises here. Any other probed
+return type is a build error naming both admissible forms. So is a Tier-2 event
+whose guard probes `Bool`: localization brackets a root, and the predicate form
+offers none — return `x.ω - eng.ω_idle`, not `x.ω > eng.ω_idle`.
 
 **Failure payload:** component path, stage, field-level diff (missing /
 unexpected / per-field expected-vs-observed), simulation time. Deliberately
@@ -2524,7 +2666,9 @@ and suppression heuristics are exactly the fussy machinery this split avoids.
 A diagnostic is a plain value from a small closed set of kinds — roughly one
 per §8 rule and §13.4 walkthrough: unconnected input, two producers, unknown
 port with did-you-mean, wire type mismatch, face collision, undeclared or
-unproduced return field, missing `probe_value` method, algebraic cycle, `rates`
+unproduced return field, missing `probe_value` method, algebraic cycle (with an
+optional classification field, §10),
+non-real `init_x` leaf, `rates`
 violation — each carrying its structured payload: endpoint paths, face names,
 expected/observed types, the *list-in-hand* for did-you-mean rendering, and a
 severity. Checking passes return diagnostics; the stratum barrier throws a
@@ -2532,7 +2676,12 @@ single `BuildError` wrapping the batch; `showerror` renders it compiler-style,
 grouped by kind and sorted by path. A user-code exception is wrapped in a
 framing diagnostic — component path, which function, the probe context
 including synthesized inputs — with the original exception as `cause`, so the
-didactic frame renders first and the raw throw second.
+didactic frame renders first and the raw throw second. One class is recognized
+rather than merely framed: a `FieldError` — type and field carried as data —
+matched against the bundle's own NamedTuple type becomes §5.2's bundle-law
+did-you-mean, with the legal set and the undeclared-store / wrong-tier /
+illegal-for-this-function classification. Nothing is recovered by reading
+message text.
 
 The §13.4 walkthroughs as acceptance tests target diagnostics: tests match on
 kind plus payload fields, never on message text. Messages become pure
@@ -2914,8 +3063,13 @@ its owner shipped, nothing else. Enforcement status is also §8's: convention
 available and idiomatic rather than machine-checked. `fragment`/`at`/`merge`
 are §15.7 standard-library material — ordinary artifacts, no privileges.
 Merge collisions — two entries on one leaf — are errors at resolution
-reporting *both* provenance chains; last-writer-wins was rejected in the same
-spirit as slot exclusivity (a silent merge is almost certainly a bug). The
+reporting *both* provenance chains, and the message names the layering
+combinator: "`merge` is collision-intolerant by design — use
+`override(base, patch)` to layer." Last-writer-wins was rejected in the same
+spirit as slot exclusivity (a silent merge is almost certainly a bug) — which
+is exactly where this `merge` parts company with `Base.merge`, last-wins on
+NamedTuples; the two share a name and not a semantics, and dispatch on the node
+types keeps them apart mechanically. The
 explicit, *ordered* layering spelling — `override` — was deferred here and
 admitted one sub-topic later, when slot totality produced its use case
 (§16.6).
@@ -2993,7 +3147,7 @@ parity is exact, not approximate. Piece by piece:
   same position it holds after any other `x` mutation, and costs nothing
   when the state is already clean.
 - **The sweep runs with every tick due.** `t₀` is a grid point of every
-  divisor, so all discrete `g` stages are gated in, publishing from the
+  divisor, so all discrete output stages are gated in, publishing from the
   authored `z` — necessarily, since no earlier tick exists for a ZOH to
   hold. The `t₀` snapshot carries a fully populated table.
 - **Events run.** A condition landing in guard-true territory (an authored
@@ -3180,13 +3334,13 @@ information), per §15's exceptions-are-broken-machinery line; a malformed
 problem is a `BuildError`-class failure at setup.
 
 **The AD obligation, scoped.** The default formulation requires `Dual`
-genericity of exactly: the continuous `g` chains and `f`, plus the user's
-assignment and residual math. The discrete tier (`g`, guards, handlers)
-never sees a `Dual` — frozen constants with zero partials, semantically
-exact (§13.2). This is *not a new obligation*: it is the same activation
+genericity of exactly: the continuous output-stage chains and `f`, plus the
+user's assignment and residual math. The discrete tier's stages and `g`, and the
+event system's guards and handlers, never see a `Dual` — frozen constants with
+zero partials, semantically exact (§13.2). This is *not a new obligation*: it is the same activation
 linearization is defined on, and AD-readiness is a build-checked property
 (the Dual probe detonates pinned intermediates with a culprit-naming
-`InexactError`; `build(world; activities)` puts it in CI) — robustness by
+`InexactError`; `build(world; activations)` puts it in CI) — robustness by
 enforcement, not hope. C172 migration audit (one afternoon, one genuine
 item): `Interpolations.jl` tables (propeller coefficient maps, engine
 maps) must accept generic scalars — they do, but prefer cubic knots over
@@ -3210,7 +3364,7 @@ condition, `capture` produces one, `trim!` searches a family for the member
 satisfying its equations.
 
 **`at` lifts to problems in five lines.** Every field of a problem is
-either condition-producing (path-relative) or path-free — B1's insistence
+either condition-producing (path-relative) or path-free — §16.7's rule
 that residual math sees only the gathered NamedTuple pays off here:
 
 ```julia
@@ -3324,7 +3478,7 @@ Tier-1 parametrization of `z`'s real-scalar leaves (counters/enums stay
 pinned, like `m`); opt-in participation on discrete components (frozen-exact
 stays the default; a participating component opts in through an explicit
 trait, the leaf walk then parametrizing its cells instead of pinning them —
-graceful migration, no flag day); one new §14.4 activity ("continuous chain + `f` +
+graceful migration, no flag day); one new §14.4 activation ("continuous chain + `f` +
 discrete `h_z`/`h_zu` + `g`"); and forward sensitivities through the in-house
 RK steppers for free, a payoff of owning the loop (§11.1). The honest
 boundary: $\Phi$ is differentiable only where the event pattern is locally
@@ -3561,7 +3715,7 @@ forced by this cast):
   `exports` block carries the `pilot.*` face group in one place, deep routes
   spanning avionics *and* systems — today's mapping writes flaps/brakes directly
   into `act`, bypassing avionics; that bypass becomes a declared route.
-- `Simulation(world; algorithm = Heun(), h = 0.02, n = 1, t_end = 1000)` — `n`
+- `Simulation(world; algorithm = RK4(), h = 0.02, n = 1, t_end = 1000)` — `n`
   binds `Δt_base = n·h` (§11.5; default 1: base tick every step). The entire
   build pipeline runs here: kind resolution, path validation, face derivation
   (computed exports expanded, printable), two-producers/unconnected checks,
@@ -3636,8 +3790,8 @@ kinds — the continuous primitive is already hybrid (`m`, guards, handlers, §3
 what separates the kinds is sweep-driven versus tick-driven execution. And the
 settled rules force a merged component's two halves to communicate exactly as two
 siblings do: one home per datum (§5.2), `f` has no `z` view, `g` has no `x` view,
-and `h_z` is `z`'s sole reader — the very fact that makes ticks→events
-structurally impossible and terminates the boundary iteration (§11.6). Cross-tier
+and `z⁺` is decoded only at the owner's next tick (`g` runs last) — the very
+fact that makes ticks→events structurally impossible and terminates the boundary iteration (§11.6). Cross-tier
 influence inside the merged kind still routes through published table cells, so
 the all-in-one component is an assembly of two primitives in a trench coat. Its
 costs, meanwhile, are real: a stage cannot run both every sweep *and* only at
@@ -3776,7 +3930,7 @@ guarantee is the §11.6 macro-sequence, not a scheduling accident: integrate →
 project → sweep, with the due sampler's stages gated *into* that sweep (§11.5) and
 the integrals arriving at stage-1 position (auto-published state, §5.2) — before
 any stage-2 function runs, regardless of topological placement. The rest of the
-timeline closes consistently: the sampler's `h_z` decodes `z` (the `t_{k-1}` latch)
+timeline closes consistently: the sampler's `h_zu` decodes `z` (the `t_{k-1}` latch)
 *before* `g` runs — the `z⁻¹` semantics — and after event quiescence `g` latches
 the `t_k` values for the next tick; same-boundary events re-run the gated stages
 in their re-sweeps, so `g` and external readers see the settled boundary.
@@ -3834,7 +3988,10 @@ Row numbers are stable, so a citation here always names the same row there.
 Still to be settled:
 
 - **Migration.** Outline for FlightPhysics/FlightApps (the Tier-1 parametrization
-  pass, the `KinData`-style output splits, the contributor survey feeding §6's
+  pass — whose `Ranged` rewrite must target §13.2's walk rule: constructor
+  discipline admitting the walked scalar with the value parameters left alone,
+  plus a `probe_value` method — the `KinData`-style output splits, the
+  contributor survey feeding §6's
   aggregation chains — mechanical to extract from today's trait implementations);
   comparison criteria against FlightCore's demonstrated strengths (zero-alloc
   stepping, flexibility, interactive operation); the §15.7 component library's
@@ -3895,8 +4052,8 @@ For component authors:
   (the sampled-data `z⁻¹` delay, by construction). Hence `g` runs at
   boundary zero: it is the `t₀` sample's only chance.
 - **Guard conditions, edges and baselines** (§2.1, §11.6). A guard defines
-  a condition — a predicate, or a continuous function with positive =
-  holding. Events fire on not-holding → holding *edges* against per-event
+  a condition — a predicate, or a continuous condition value `σ` with
+  positive = holding. Events fire on not-holding → holding *edges* against per-event
   baselines (the previous boundary's quiescent sample): a condition that
   keeps holding fires once, at the boundary where it first held. Boundary
   zero baselines as nothing-holds, so a condition authored already-holding
@@ -3932,7 +4089,7 @@ it. Grouped by lifecycle:
 
 - `build(world) → Build` — standalone; the inspectable contract artifact:
   wire list, face table with provenance, schedule, root slots (§14.2).
-  `build(world; activities = (Float64, Dual))` additionally pins activation
+  `build(world; activations = (Float64, Dual))` additionally pins activation
   invariants for CI (§14.4).
 - `resolve(asm, path) → AbstractComponent` — the getfield walk along `/`
   segments, enforcing §8's generic-boundary rule at the primitive (§15.3).
@@ -3943,9 +4100,13 @@ it. Grouped by lifecycle:
 
 **Deployment.**
 
-- `Simulation(world; algorithm = Heun(), h = 0.02, n = 1, t_end = 1000,
-  stop_on = ())` — wraps the build; `n` binds `Δt_base = n·h` (§11.5);
-  `stop_on` names root-exported `Bool` output faces, OR-combined, recorded in
+- `Simulation(world; algorithm = RK4(), h, n = 1, t_end = Inf,
+  stop_on = ())` — wraps the build; `h` is required (a domain rate is not a
+  framework default) and `RK4` is the default stepper (§11.2); `n` binds
+  `Δt_base = n·h` (§11.5); `t_end = Inf` is the honest interactive default, and
+  a run with no finite `t_end`, no `stop_on` faces and `pace = Inf` warns at
+  start (an unbounded batch run is almost always an oversight); `stop_on` names
+  root-exported `Bool` output faces, OR-combined, recorded in
   run metadata (§15.5; walkthrough §17.4).
 - `attach!(sim, device, binding)` — write side speaks face names through a
   declarative binding table (axis/button → face + conditioning params;
@@ -3979,15 +4140,17 @@ it. Grouped by lifecycle:
   throws (§16.7, §16.8).
 - `capture(sim) → (condition, t)` — full-store gather including root slots;
   warm restart = capture → tweak → apply (§16.1, §16.10).
-- `linearize(sim, surface) → labeled (A, B, C, D, ẋ₀, y₀)` — pure query, one
+- `linearize(sim, surface) → labeled (ẋ₀, x₀, u₀, y₀, A, B, C, D)` — pure query, one
   seeded Dual pass on scratch; operating point defaults to `capture(sim)`;
   surface = `state`/`slot`/`output` selector lists with control-design
   labels (§16.10).
 
 **Running.**
 
-- `run!(sim; gui = true, pace = 1)` — paced and unpaced runs bit-identical
-  (§11.7); the GUI an ordinary device on the calling task (§12.4, §12.5).
+- `run!(sim; gui = false, pace = 1)` — paced and unpaced runs bit-identical
+  (§11.7); the GUI an ordinary device on the calling task (§12.4, §12.5), and
+  `gui = true` is sugar for attaching the standard GUI device — sugar never
+  activates by default.
 - Control plane — pause/un-pause, pace changes, stop on a separate atomic
   surface, never staged (§12.6).
 - Termination — model state via `stop_on` faces read at every published
