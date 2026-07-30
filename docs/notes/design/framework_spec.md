@@ -684,9 +684,13 @@ layer.
 
 ### 9.1 Continuous state: structured immutable, flat backing
 
-Each continuous component declares its state as an **isbits struct whose leaves are all
-real scalars of a common eltype `T`** (`SVector`s, quaternions, `Ranged` values —
-ultimately reals; `Int`s/enums/`Bool`s belong in modes). The framework:
+Each continuous component declares its state by value (`init_x`, §13.2): a
+NamedTuple whose leaves are drawn from a **deliberately closed vocabulary —
+plain real scalars and `SArray`s (static vectors and matrices) of a common
+eltype `T`** — and nothing else. `Int`s/enums/`Bool`s belong in modes, and
+domain wrapper types (`RQuat`, `Ranged`) are not state leaves — an attitude
+state is an `SVector{4,T}`, cast where rotation semantics are wanted (below).
+The framework:
 
 - computes a **flat layout** at build time (compile-time offsets over one contiguous
   `Vector{T}` buffer it owns);
@@ -697,21 +701,18 @@ ultimately reals; `Int`s/enums/`Bool`s belong in modes). The framework:
   (scatter-stored into the flat `ẋ` buffer); event handlers and projection return a new
   `X` (written back).
 
-**What `Ẋ` is.** The derivative type is not `X` — a unit quaternion's
-derivative is not a unit quaternion, and a `Ranged` state leaf's derivative is
-a plain rate. `Ẋ` is derived from the **flat layout image** of `X`: per field
-name, the shape of the backing block that field occupies, at the activation
-scalar. `RQuat` backs a 4-wide real block, so its derivative field is four
-reals at `T` (an `SVector{4,T}`, a `FreeQuat{T}`, any value that scatters into
-those four buffer positions); `Ranged{T,a,b}` backs a single scalar, so its
-derivative field is a `T`; `SVector{3,T}` backs three, so it is itself. The
-conformance predicate is therefore structural — *each field of `f`'s return
-scatters into its block at `T`* — which is exactly what the flat-buffer rule
-above already implies, and what makes derivative completeness a property of
-the layout rather than of author discipline (§14.5 states the check). There is
-deliberately **no `derivative_type` hook**: a per-leaf override would be a
-second register for a fact the layout already knows, and the two could
-disagree.
+**What `Ẋ` is.** With the leaf vocabulary closed, the answer takes one line:
+`Ẋ` has exactly `X`'s shape at the activation scalar — a scalar leaf's
+derivative is a `T`, an `SArray` leaf's is the same `SArray` at `T`. (This is
+the vocabulary rule paying rent: an invariant-carrying leaf like a unit
+quaternion has a derivative off its own type, and `Ẋ` would need a separate
+derivation; here the attitude leaf is an `SVector{4,T}` and so is its rate.)
+The conformance predicate is structural — *each field of `f`'s return
+scatters into its field's block at `T`* (§14.5 states the check) — which
+makes derivative completeness a property of the layout rather than of author
+discipline. There is deliberately **no `derivative_type` hook**: a per-leaf
+override would be a second register for a fact the layout already knows, and
+the two could disagree.
 
 **The buffer is authoritative; typed values are ephemeral reconstructions.** Nobody
 outside the framework ever holds a mutable reference to state. "Ephemeral" is
@@ -727,13 +728,40 @@ buffer for `x`, cells for `z`/`m`, table for produced signals — and no store e
 mirrors another; in particular there are no state cells in the table beyond
 contract-driven auto-published ports, which are interface, not transport.
 
+**Why the vocabulary is closed: views must materialize without running
+anyone's invariants.** Scalars and `SArray`s have invariant-free
+constructors — `SVector`'s stores its tuple, `NamedTuple` construction runs
+no user code, nothing normalizes or clamps — so building a view through
+ordinary public construction is bit-faithful automatically:
+`reconstruct(flatten(x)) == x` identically, with no constructor bypass, no
+`reinterpret`, and no reliance on a custom struct's memory layout mirroring
+the buffer's. Admitting invariant-carrying leaves would force one of two
+readings, both rejected (row 94): run the constructor on read, and every
+consumer sees a silently projected value over a buffer accumulating the raw
+one — a `Ranged` leaf integrating past its bound while the clamped view hides
+it and the derivative keeps pushing, `project` (§2) redundant on views yet
+necessary on the buffer, §11.4's off-manifold probes (which must see the raw
+interpolated state, RK-stage-like) impossible; or bypass the constructor,
+which is safe under the common-eltype rule and build-time verifiable, but
+plants layout-coincidence cleverness in the executor's core to save a cast
+line. Domain semantics are instead an **explicit, invariant-free cast at the
+point of use** — `q = RQuat(x.q, normalization = false)` — the conversion
+today's `f_ode!` code performs on its raw views, now visible and chosen.
+Invariants live where the design already put them: in `project` at
+boundaries, and in writers — handlers build their returned values through
+ordinary constructors, and the condition apply converts authored values
+through ordinary `convert` methods (§16.3). Constructors run on the write
+paths, never on views.
+
 What this buys, against today's flat-`Vector` + `ComponentArrays`-views pattern:
 
 - no aliased mutable views (who-writes-what by convention);
 - derivative completeness is **structural** — the returned `Ẋ` has every field by
   construction; a forgotten `ẋ` entry is impossible rather than silently stale;
-- the `SVector{3,Float64}(x.ω_eb_b)` conversion boilerplate disappears — state fields
-  already are the types the math wants;
+- state fields arrive as the declared scalars and `SArray`s, immutable; the domain
+  wrapper, where wanted, is one explicit invariant-free cast
+  (`RQuat(x.q, normalization = false)`) — the conversion the mutable-views
+  pattern performed implicitly, now visible and chosen;
 - the flat vector still exists: integrator compatibility (OrdinaryDiffEq or custom),
   trim solvers, HDF5 logging, and linearization all get their arrays;
 - the hand-written per-aircraft state-space mapping layer
@@ -1286,7 +1314,7 @@ livelock (two FSMs toggling each other) resolves deterministically into "each fi
 once, quiescence, re-fire next boundary," i.e. degrades to Tier-1 granularity instead
 of burning a budget and erroring. The cost: an event legitimately re-enabled within
 the same boundary waits one step — accepted at the same granularity Tier 1 accepts
-physical re-crossings, and flagged by a diagnostic when it occurs.
+physical re-crossings, and flagged when it occurs (a runtime warning, §15.2).
 
 **Guard baselines and firing semantics.** "Newly-fired" means precisely this:
 an event fires at a boundary iff its condition (§2.1: predicate true, or
@@ -1452,8 +1480,16 @@ The replacement has five planes:
    an immutable snapshot; readers observe it without coordinating with the loop
    (§12.2).
 4. **Control:** pause/pace/stop on a separate few-word atomic surface (§12.6).
-5. **Task topology:** one loop task, one task per attached device (the GUI's on the
-   main thread — CImGui's constraint), start gate and shutdown protocol as today.
+5. **Task topology:** one loop task, plus one task per rostered device,
+   spawned **per run** (the GUI's on the main thread — CImGui's constraint):
+   `run!` spawns one task per roster entry after device `init!`, a mid-run
+   `attach!` spawns immediately, and §12.9 joins them all at every stop
+   (§12.11). Spawn-inside-`run!` *is* the start gate — a task exists only
+   once the run it serves exists — and any first-boundary synchronization a
+   device needs is §12.8's counter-plus-condition predicate wait, never an
+   `Event` latch: FlightCore's `io_start` gate is the once-per-run version of
+   exactly the race §12.8 rejects, and inheriting it would re-import that
+   race for §12.11's re-run cycle.
 
 Two rules bind the implementation:
 
@@ -1531,7 +1567,7 @@ still published to live readers, and still enters the trace.
 
 **Output-device bindings are snapshot-path bindings.** An output device (telemetry, the XPlane visualizer, disk
 streaming) consumes snapshots via §12.8 and addresses what it reads with
-§16.4's selectors — any cell, the diagnostic register admitting `local`
+§16.4's selectors — any cell, the diagnostic register admitting `get_local`
 entries and deep paths — resolved at attach against the `Build` with
 did-you-mean and compiled to one gather, so `map_output` receives a labeled
 NamedTuple rather than performing its own path lookups (§17.4's obligation: a
@@ -1542,7 +1578,8 @@ retaining the full table and the GUI's deep-reading panels; local cells are
 accessible (the §13.3 presentation filter is a default, not a wall — explicit
 naming is intent). **A binding chooses its register**: a deep path is the
 *inspection* register — zero promises, free access, right for looking at
-*this* build; an exported output face is the *integration* register — named,
+*this* build; an exported output face (spelled `get_face(name)`, §16.4) is
+the *integration* register — named,
 curated, meaning-stable under substitution (§17.4's writer-independent
 semantics), right for consumers that outlive the build they were configured
 against. Attach validation converts *structural* drift to loud errors in both
@@ -1930,6 +1967,17 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    the exception-based termination idiom itself has no place here, §15.5) — so devices
    unwind cleanly regardless of who died.
 
+After (5) the task set is empty — device tasks are per-run artifacts
+(§12.1) — and `shutdown!` has released each device's OS resources. What
+survives a stop is the roster entry: binding, claims, stable device id
+(§12.3); never a task, never a live resource. The next `run!` re-runs device
+`init!` — resource acquisition is per-run; FlightCore's
+create-a-new-socket-each-`init!` in network.jl is the precedent — and spawns
+fresh tasks against the re-armed §12.8 counter. While stopped there are no
+device tasks, so `should_close` and the §12.7 liveness heartbeat are
+run-scoped observables; a device unplugged while stopped surfaces as the next
+run's `init!` failure, reported by name through (6)'s crash path.
+
 ### 12.10 Scripts and the mid-run mutation doctrine
 
 What the consumers demonstrably mutate mid-run, surveyed: FlightCore's
@@ -2024,8 +2072,12 @@ truncation without inspecting the clock.
 re-runs boundary zero from its condition (warm restart = `capture` → tweak →
 `init!`, §16.1) and clears the trace *and* the log — both recording registers
 restart with the run they record. Device attachments persist across
-re-initialization; attachment is orthogonal to the run lifecycle (§12.3).
-Run policy is re-bindable per cycle: `t_end` and `stop_on` are `Simulation`
+re-initialization — attachment is orthogonal to the run lifecycle (§12.3) —
+and persistence means *roster* persistence: binding, claims and device id
+survive; tasks and OS resources do not (§12.1's per-run topology, §12.9's
+teardown). Each `run!` re-initializes every rostered device and spawns its
+task; `attach!` while stopped only registers — the task appears at the next
+`run!`. Run policy is re-bindable per cycle: `t_end` and `stop_on` are `Simulation`
 defaults that `run!` may override for the run it starts (§15.5), so a second
 run — or a `step!` register between two runs — can stop on a different clock
 or a different face set without a rebuild. `errored` is terminal (row 59):
@@ -2235,10 +2287,12 @@ The inventory, and where each schema fact gets its authority:
   the discrete-producer rule. Declared `Float64` initial values embed as
   zero-partial constants under non-nominal activations, which is §16.3's rule
   for condition writes applied to the defaults those conditions overlay.
-  `init_x`'s walk presupposes §9.1's all-real-leaves rule, so Stratum A checks
-  it (§14.1) and reports a failure in the didactic register: "`init_x` field
-  `gear_count::Int` is not a continuous state — integers, `Bool`s and enums
-  belong in `init_m`".
+  `init_x`'s walk presupposes §9.1's closed leaf vocabulary (scalars and
+  `SArray`s at the common eltype), so Stratum A checks it (§14.1) and reports
+  a failure in the didactic register: "`init_x` field `gear_count::Int` is not
+  a continuous state — integers, `Bool`s and enums belong in `init_m`";
+  "`init_x` field `q_nb::RQuat` is not a state leaf — declare the
+  `SVector{4}` backing and cast where rotation semantics are wanted (§9.1)".
 - **`local_types(::C)`** (concrete nominal types, same species and leaf walk as
   `output_types`): the component-local
   intermediates — fields a stage returns for the component's *own* later
@@ -2662,7 +2716,7 @@ organized as three strata:
   §13.2 — equality the concrete degenerate; abstract-at-root detected here),
   the whole-tree obligation
   check, root slots falling out as the root's exported input faces, and §9.1's
-  all-real-leaves rule checked on every `init_x` (the walk in §13.2 rests on
+  closed leaf vocabulary checked on every `init_x` (the walk in §13.2 rests on
   it). Also here: §13.2's declaration-completeness rules (a store without its
   update, an event missing a guard or handler method, a leaf mixing tier
   families, a primitive at the root), and
@@ -2842,11 +2896,10 @@ wrappers), invisible to the schema, and equally invisible to a strict
 exact-match rule when applied mid-expression, so the leniency costs nothing.
 Schema-visible freezing is a recorded door (§16.10).
 
-**Uniform across all probed functions.** `f` checks against the **flat layout
-image** of the state field set at the activation's `T` — per field, the shape
-of the backing block that field occupies (§9.1: `RQuat` → four reals at `T`,
-`Ranged{T,a,b}` → `T`, `SVector{3,T}` → itself), the predicate being "every
-field scatters into its block at `T`", which is what makes derivative
+**Uniform across all probed functions.** `f` checks against `X`'s own shape
+at the activation's `T` (§9.1: a scalar leaf expects a `T`, an `SArray` leaf
+the same `SArray` at `T`), the predicate being "every
+field scatters into its field's block at `T`", which is what makes derivative
 completeness structural rather than a matter of author discipline; guards
 against their probe-derived condition form (below); `g`
 against the `z` shape; handlers against the §5.2 return law, key by key.
@@ -3089,6 +3142,8 @@ about what the *build* warns on. The committed runtime warnings, in one place:
 
 - **chattering / localization-budget exhaustion** (§11.4) — a Tier-2 event
   whose bracketing budget runs out at a boundary;
+- **event re-enabled within a boundary** (§11.6) — deferred to the next
+  boundary by the once-per-event rule;
 - **forgiven-debt re-anchor** (§11.7) — the pacer abandoning accumulated debt
   and re-anchoring its schedule;
 - **stale GUI entries to newly-claimed slots** (§12.5) and **out-of-claim drain
@@ -3520,12 +3575,15 @@ indices from the activation; face chains from Stratum A — the destination).
 
 A valid list compiles to a plan: per leaf, a `Getter{P}` lens (the position
 tuple lifted to a type parameter — type-stable navigation of the fixed tree
-type), a destination offset, and a **converter baked now** (e.g. `RQuat` →
-the 4-scalar backing block; against a non-nominal activation's scratch, the
-`Float64 → Dual` zero-partial embedding — semantically exact for condition
-writes: "held at the operating point" *is* zero partials, §16.10) — a
-one-time boundary decision that leaves §14.5's nominal exact-match doctrine
-for table cells untouched. Overlay
+type), a destination offset, and a **converter baked now** (e.g. an authored
+`RQuat` value → the `SVector{4}` state leaf it initializes, through the
+type's ordinary `convert`/constructor methods; against a non-nominal
+activation's scratch, the `Float64 → Dual` zero-partial embedding —
+semantically exact for condition writes: "held at the operating point" *is*
+zero partials, §16.10) — a one-time boundary decision that leaves §14.5's
+nominal exact-match doctrine for table cells untouched. Converters run here
+and in `capture`'s gather (§16.10) — the write paths — never on state views
+(§9.1). Overlay
 partiality for `m`/`z` cells is baked the same way: the writer holds
 `merge(init_m_defaults, overlay)` with the base resolved at compile time
 (§16.1's fork).
@@ -3556,14 +3614,31 @@ values. Hence resolve-once/execute-many, with two registers over one plan:
 
 Which register a service uses is internal, never user-facing API.
 
-**The read-selector family is closed**: `state(path, field[, i])`,
-`deriv(path, field[, i])`, `output(path, field[, i])`,
-`local(path, field[, i])`, `slot(face)` — one address space for every reader
-of the model. Two validation policies split it, row 83's registers restated
-as a resolver property: *load-bearing* clients (trim's `reads`, `stop_on`)
-must speak the contract, so `local` selectors are rejected at resolution;
-*diagnostic* clients (output-device bindings, GUI, log inspection) admit the
-whole table.
+**The read-selector family is closed**: `get_state(path, field[, i])`,
+`get_deriv(path, field[, i])`, `get_output(path, field[, i])`,
+`get_local(path, field[, i])`, `get_slot(face)`, `get_face(name)` — one
+address space for every reader of the model. The names carry a deliberate
+`get_` prefix: a selector is a *deferred read* — a value describing the read
+the compiled gather will perform — and the prefix both names that action and
+keeps six short common nouns out of the namespace user declarations share
+with domain code (a bare `local(path, field)` would not even parse — `local`
+is a reserved word). `get_local` addresses the component-local cells
+(`local_types`, §13.3); `get_face` addresses a root-exported output face —
+§12.2's *integration* register, previously recommended but unspellable in
+the family. Validation splits by client, row 83's registers restated as a
+resolver property:
+
+- **Load-bearing services** (trim's `reads`, linearization's surfaces) speak
+  the contract: `get_state`/`get_deriv`/`get_output`/`get_slot`, within the
+  scopes §8's locality law and §16.2's fragment scoping own; `get_local` is
+  rejected at resolution — a service evaluation needing a private
+  intermediate is the signal to export it (§16.7).
+- **Diagnostic readers** (output-device bindings, GUI panels, log
+  inspection) admit the whole family: deep paths, `get_local` cells and
+  `get_face` names alike.
+- **`stop_on` is not a family client.** It names root-exported `Bool`
+  output faces, period (§15.5, row 60): termination is run policy against
+  the root contract, and no path selector reaches it.
 
 **Compiled readers are the gather twin** over this family
 and the layout tables: trim's cost read (`ẋ` and output fields), linearization's
@@ -3695,10 +3770,11 @@ What the aircraft author ships, piece by piece against today's `c172.jl`:
 - **`TrimParameters` stays a plain user struct** the framework never sees;
   the assignment is the pure `trim_condition(ac, params, d)` fragment-tree
   function (§16.2), applied per iteration by the compiled plan (§16.4).
-- **The read side is declared, then compiled**: `reads(name = deriv(path,
-  field) | output(path, field), ...)` — `deriv` addresses a declared state
-  field's derivative (validated against `init_x`), `output` a declared
-  output port (validated against `output_types`); `local_types` are not addressable —
+- **The read side is declared, then compiled**: `reads(name = get_deriv(path,
+  field) | get_output(path, field), ...)` — `get_deriv` addresses a declared
+  state field's derivative (validated against `init_x`), `get_output` a
+  declared output port (validated against `output_types`); `local_types` are
+  not addressable (no `get_local` in `reads`, §16.4) —
   a trim evaluation needing one is a signal the component should export it.
   The compiled reader (§16.4's gather twin) fills a stack-only NamedTuple
   per evaluation.
@@ -3854,12 +3930,12 @@ routine, a `product(p₁ => "lead", p₂ => "wing")` helper belongs in the
 **The surface declaration.** Today's per-aircraft `XStateSpace`/
 `UStateSpace`/`YStateSpace` structs plus the `get_*_ss`/`assign_*_ss!`
 shuttle methods (~150 lines of bookkeeping per variant) become three
-selector lists drawn from §16.4's family (`state`/`slot`/`output`), with the
+selector lists drawn from §16.4's family (`get_state`/`get_slot`/`get_output`), with the
 optional component index so a vector leaf yields *named scalars* — the NamedTuple
 key is the label control design slices by:
-`x = (p = state("vehicle/dynamics", :ω_eb_b, 1), θ = state("vehicle/kinematics", :θ_nb), …)`,
-`u = (throttle_cmd = slot("throttle"), …)`,
-`y = (EAS = output("vehicle/airflow", :EAS), …)`. Validated at resolution
+`x = (p = get_state("vehicle/dynamics", :ω_eb_b, 1), θ = get_state("vehicle/kinematics", :θ_nb), …)`,
+`u = (throttle_cmd = get_slot("throttle"), …)`,
+`y = (EAS = get_output("vehicle/airflow", :EAS), …)`. Validated at resolution
 against `init_x`/faces/`output_types` with did-you-mean errors, compiled to
 offsets once, relocatable whole via `at(prefix, surface)` — the shuttle
 layer's successor is the compiled writer/reader pair, and §9.1's promised
@@ -4363,32 +4439,35 @@ against $10^{4}\ \mathrm{m/s}$ totals, six-plus orders below any error model wor
 struct IMUIntegrals <: AbstractComponent
     t_bc::FrameTransform
 end
-init_x(::IMUIntegrals) = (Θ = zeros(SVector{3}), q = RQuat(),
+init_x(::IMUIntegrals) = (Θ = zeros(SVector{3}), q = SVector{4}(1.0, 0, 0, 0),
                           Υ = zeros(SVector{3}), V = zeros(SVector{3}))
 input_types(::IMUIntegrals) = (q_eb = RQuat{Float64}, r_eb_e = SVector{3,Float64},
                           ω_eb_b = SVector{3,Float64}, a_ib_b = SVector{3,Float64},
                           α_ib_b = SVector{3,Float64})
 output_types(::IMUIntegrals) =
-    (Θ = SVector{3,Float64}, q = RQuat{Float64},                # auto-published state
+    (Θ = SVector{3,Float64}, q = SVector{4,Float64},            # auto-published state
      Υ = SVector{3,Float64}, V = SVector{3,Float64},
      ω_ic_c = SVector{3,Float64}, f_c_c = SVector{3,Float64})   # instantaneous truth
 
 # h_xu: the sketch's f_ode! math verbatim (lever arm, gravity, Earth rate) → (; ω_ic_c, f_c_c)
-f(imu::IMUIntegrals, (; x, y)) =
-    (Θ = y.ω_ic_c, q = Attitude.dt(x.q, y.ω_ic_c), Υ = y.f_c_c, V = x.q(y.f_c_c))
-project(imu::IMUIntegrals, x) = (; x..., q = normalize(x.q))
+function f(imu::IMUIntegrals, (; x, y))
+    q = RQuat(x.q, normalization = false)              # §9.1's explicit cast
+    (Θ = y.ω_ic_c, q = SVector{4}(Attitude.dt(q, y.ω_ic_c)), Υ = y.f_c_c, V = q(y.f_c_c))
+end
+project(imu::IMUIntegrals, x) = (; x..., q = normalize(x.q))   # SVector normalize
 
 struct IMUSampler <: AbstractComponent end
-init_z(::IMUSampler) = (Θ = zeros(SVector{3}), q = RQuat(),
+init_z(::IMUSampler) = (Θ = zeros(SVector{3}), q = SVector{4}(1.0, 0, 0, 0),
                         Υ = zeros(SVector{3}), V = zeros(SVector{3}))
-input_types(::IMUSampler)  = (Θ = SVector{3,Float64}, q = RQuat{Float64},
+input_types(::IMUSampler)  = (Θ = SVector{3,Float64}, q = SVector{4,Float64},
                          Υ = SVector{3,Float64}, V = SVector{3,Float64})
 output_types(::IMUSampler) = (sample = IMUSample,)   # discrete kind: cells pin (frozen-exact)
 
 function h_zu(s::IMUSampler, (; z, u, Δt))
+    q_z = RQuat(z.q, normalization = false);  q_u = RQuat(u.q, normalization = false)
     ϑ_c = u.Θ - z.Θ;  υ_c = u.Υ - z.Υ
-    Δq  = z.q' ∘ u.q                                   # interval rotation, exact
-    υ_c_sc = z.q'(u.V - z.V)                           # constant anchor change pulled out
+    Δq  = q_z' ∘ q_u                                   # interval rotation, exact
+    υ_c_sc = q_z'(u.V - z.V)                           # constant anchor change pulled out
     (; sample = IMUSample(; ω̄_ic_c = ϑ_c / Δt, f̄_c_c = υ_c / Δt,
                             ϑ_c, ϑ_c_cc = RVec(Δq)[:], υ_c, υ_c_sc))
 end
@@ -4472,7 +4551,8 @@ Row numbers are stable, so a citation here always names the same row there.
 Still to be settled:
 
 - **Migration.** Outline for FlightPhysics/FlightApps (the Tier-1 parametrization
-  pass — whose `Ranged` rewrite must target §13.2's walk rule: constructor
+  pass — whose `Ranged` rewrite targets §13.2's walk rule where `Ranged`
+  survives, at ports and parameters: constructor
   discipline admitting the walked scalar with the value parameters left alone,
   plus a `probe_value` method — the `KinData`-style output splits, the
   contributor survey feeding §6's
@@ -4486,17 +4566,18 @@ Still to be settled:
   **supervisor seam** (§17.2): compensator gain ports plus scheduler
   components (~7 for the C172X), the same-tick reset respelling of every
   mode-transition latch, and the gear's level-triggered reset converted to
-  an edge event; the **derivative spellings the layout image implies** for
-  constrained Tier-1 state types (§9.1: a `RQuat` state field's `f` return is
-  the 4-wide real block — today's `Attitude.dt` already delivers it — and a
-  `Ranged` state field's is a bare rate, so no derivative may be spelled
-  `Ranged`; the pass that rewrites `Ranged` for the walk rule covers this
-  half too); the **exported-name surface**, decided deliberately rather than
-  by accident: `state`, `output`, `condition`, `fragment`, `at`, `capture`
+  an edge event; the **state-declaration conversion to §9.1's closed
+  vocabulary** (each `RQuat` state field becomes its `SVector{4}` backing
+  with the explicit `normalization = false` cast at its use sites — today's
+  `Attitude.dt` already delivers the 4-wide rate — and each `Ranged` state
+  field a plain scalar, its clamp respelled as dynamics or projection, never
+  construction); the **exported-name surface**, decided deliberately rather than
+  by accident: `condition`, `fragment`, `at`, `capture`
   and the `merge` overload (§16.2) are generic names sharing a namespace with
   FlightPhysics domain code, and `merge` in particular is a piracy surface
-  whose mixed-argument methods must stay error methods — whether the selector
-  family and the condition algebra ship behind a submodule is the packaging
+  whose mixed-argument methods must stay error methods — the selector
+  family's `get_` prefix (§16.4) already settles this for the readers, and
+  whether the condition algebra ships behind a submodule is the packaging
   question; and the **§14.7 executor compile-cost re-measurement** on
   the real vehicle skeleton — early, before the executor's shape hardens.
   Residuals: the `q_sf` home (§17.4 — aircraft design,
@@ -4703,7 +4784,7 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   warm restart = capture → tweak → apply (§16.1, §16.10).
 - `linearize(sim, surface) → labeled (ẋ₀, x₀, u₀, y₀, A, B, C, D)` — pure query, one
   seeded Dual pass on scratch; operating point defaults to `capture(sim)`;
-  surface = `state`/`slot`/`output` selector lists with control-design
+  surface = `get_state`/`get_slot`/`get_output` selector lists with control-design
   labels (§16.10).
 
 **Running.**
@@ -4774,7 +4855,7 @@ Severities, in the vocabulary §15 fixes:
 | `PathResolution` | path, offending segment, sibling field list; for a traversal past a generically-held field, that field's declared type | §8, §15.3 | build (batch) |
 | `AbstractAtRoot` | face name, consuming leaf path, the abstract entry | §13.2 | build (batch) |
 | `RootSlotTypeConflict` | face name, the consuming paths, their conflicting concrete declarations | §13.2 | build (batch) |
-| `NonRealStateLeaf` | component path, `init_x` field name, leaf type | §9.1, §13.2 | build (batch) |
+| `IllegalStateLeaf` | component path, `init_x` field name, leaf type, the closed vocabulary (scalar / `SArray` at the common eltype) | §9.1, §13.2 | build (batch) |
 | `StoreWithoutUpdate` | component path, store (`x`/`z`), the missing function (`f`/`g`) | §13.2 | build (batch) |
 | `EventHalfMissing` | component path, event name, which half, the function that has no method | §13.2 | build (batch) |
 | `PrimitiveAtRoot` | root path, component type | §13.2 | build (batch) |
@@ -4827,6 +4908,7 @@ Severities, in the vocabulary §15 fixes:
 | `StepError` | the carrier: cursor frame (component path, function, boundary phase — RK stage, event round, localization probe, tick), boundary time, trace boundary index (replay pointer), original exception as `cause` | §15.4 | runtime |
 | `NonfiniteState` | component path, the offending state block, boundary time and index | §15.4 | runtime |
 | `ChatteringBudget` | component path, event name, boundary time, the exhausted localization budget | §11.4 | warning (runtime) |
+| `EventDeferred` | component path, event name, boundary time — re-enabled within the boundary, deferred by the once-per-event rule | §11.6 | warning (runtime) |
 | `DebtReanchor` | forgiven debt, the new schedule anchor, boundary time | §11.7 | warning (runtime) |
 | `StaleGuiEntry` | face name, the claiming device id, the discarded value | §12.5 | warning (runtime) |
 | `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set | §12.3 | warning (runtime) |
