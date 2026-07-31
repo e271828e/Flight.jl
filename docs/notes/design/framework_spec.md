@@ -430,7 +430,8 @@ post-transition-consistent for whatever else the boundary does (discrete ticks,
 logging). Events are rare and the re-run touches one component, so the cost is noise.
 Across components, all guards and handlers read the same boundary snapshot (plus their
 own component's refreshed ports); one component's transition reaches others through
-the next sweep. Newly-enabled guards fire within the *same* boundary: the
+the next sweep (delivered by binding time — handler-phase `u` gathers materialize at
+round start, `y` binds live; mechanism and order in §11.6). Newly-enabled guards fire within the *same* boundary: the
 sweep → guards → handlers phase iterates to quiescence, with each event firing at
 most once per boundary (settled in §11.6).
 
@@ -1307,6 +1308,41 @@ model declares simultaneous.)
 transitioning component's own ports; downstream stage-2 chains reading them stay
 stale. A round therefore re-runs the whole gated schedule. Sweeps are microseconds
 and rounds beyond the first require an actual cascade, so the cost is noise.
+
+**Within-round visibility: round-start `u`, live `y`, order inert.** §5.2's
+cross-component claim — all guards and handlers read the same boundary
+snapshot, plus their own component's refreshed ports — is delivered by
+*binding time*, not by copying. After a round's guards are evaluated, the
+framework materializes the `u` gathers of every fired component **before any
+handler runs** (the executor builds the same args bundle it always builds,
+merely earlier), and the per-event re-decode reuses that same round-start
+`u`. Because cells hold references to immutable values, loading the
+references early *is* the capture — the only mid-round table writers are the
+re-decodes, confined to the firing components' own cells, and the
+pre-materialized bundles are beyond their reach: no shadow table, no
+allocation. `y` stays bound live: it gathers own cells only, disjoint from
+`u`'s foreign set, so a later event of the same component sees its own
+refreshed ports (handler returns are latched per-event, before `project` and
+before the next fired event runs) while foreign transitions stay invisible
+until the next round's re-sweep. `u` binds round-start uniformly — even for
+a port contrived to be wired from the component's own stage-1 output; the
+freshness rule is about `y` only. Consequence: cross-component handler order
+within a round is **semantically unobservable** (bundles carry no foreign
+state, and foreign reads are round-start), so the execution order — executor
+component order, declaration order within a component — is fixed only to
+keep the §15.4 cursor and the diagnostics stream deterministic, never
+something a trajectory depends on. Rejected: live-table reads under that
+canonical order (deterministic, but model semantics would then depend on the
+executor's schedule order — a rewiring that permutes it silently changes
+trajectories, the same structure-the-framework-inserts class this section
+already rejects); a table copy per firing round (identical semantics, paying
+an allocation the pre-materialization makes unnecessary). The trade,
+recorded openly: a handler cannot opt into seeing a same-round foreign
+transition — same-instant sequential coupling across components is a
+cascade, one round per link, deterministic; coupling tighter than that
+belongs inside one component, where declaration order gives exact sequencing
+(the synchronous-languages position: a micro-step sees the pre-state,
+effects appear at the next micro-step).
 
 **Why once-per-event rather than a round cap.** Termination becomes structural —
 rounds are bounded by the number of declared events, with no arbitrary K knob — and a
@@ -4738,6 +4774,12 @@ For component authors:
   zero baselines as nothing-holds, so a condition authored already-holding
   fires at `t₀`. The opposite crossing direction is a second event with
   the negated guard.
+- **Handler-phase visibility** (§5.2, §11.6). Your `u` is the boundary's
+  world, materialized at round start: same-round foreign transitions are
+  invisible and arrive through the next round's re-sweep, one round per
+  causal link. Your `y` is your own fresh decode, and your `x`/`m` reflect
+  earlier events of your own component in declaration order. Coupling
+  tighter than one round belongs inside one component.
 - **Stop-face sampling** (§15.5). Stop faces are read in completed-boundary
   snapshots; declare a Tier-2 event if the stop needs localizing.
 
