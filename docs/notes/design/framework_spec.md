@@ -1568,7 +1568,7 @@ the GC provides for free, to save an allocation profiling has not indicted.
 
 **Retention: the trace's kill switch, plus decimation.** The log takes the same
 plain on/off switch the trace has (§12.3), and additionally a keep-every-kth
-policy as a guarded addition. What makes decimation admissible here and not
+policy (`log_every`, Appendix B). What makes decimation admissible here and not
 there is the derived/primary split (row 38): the log is recomputable from the
 trace by replay, so a thinned log costs resolution in a *view*, never a record —
 whereas thinning the trace would destroy the only primary account of a session
@@ -1989,7 +1989,8 @@ does not use the wait (VSync-paced, it reads `latest` each render).
 4. **Device loops exit:** `while running(handle)` with all blocking points
    interruptible per (2)–(3); `finally shutdown!(device)` guaranteed.
 5. **Join with a timeout:** a device task exceeding it is reported *by name*
-   (§12.7 heartbeat) and abandoned with a warning rather than hanging `run!`.
+   (§12.7 heartbeat) and abandoned with a warning (`DeviceJoinTimeout`,
+   Appendix C) rather than hanging `run!`.
    The GUI, having no spawned task (§12.1), is outside the join: its render
    loop is the calling task's own occupation of `run!`, exits by the same
    `running(handle)` predicate as any device loop, and `run!` returns after
@@ -1998,7 +1999,8 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    device's own loop; with `should_abort` set it also requests a sim stop,
    otherwise the sim continues with the device absent (its cell stops filling —
    the loop is structurally indifferent). A crashing device task is caught by the
-   framework wrapper and follows the same path, logged with the device's name.
+   framework wrapper and follows the same path, logged with the device's name
+   (`DeviceCrash`, Appendix C).
 7. **Loop-side failure** runs (1)–(5) from the catch path — specified in
    §15.6: the failed boundary is discarded and the previous snapshot promoted
    to final (FlightCore's `SimulationTermination` catch path was the precedent;
@@ -2634,7 +2636,7 @@ exports(imu::IMU) = (
     "sample"      => "sampler/sample",            # ideal increments
     "sample_meas" => "errors/sample_meas",        # measured increments (the error
                                                   # model's output port)
-    faces(imu, "integrals")...,                   # ω, f inputs pass through
+    faces(imu, "integrals")...,                   # kinematic-truth inputs pass through
 )
 
 rates(::IMU) = (sampler = 1, errors = 1)
@@ -2642,7 +2644,8 @@ rates(::IMU) = (sampler = 1, errors = 1)
 
 Two spellings worth reading closely: `faces` enumerates the child's **input**
 faces and nothing else (§13.8 — it is inputs-only by definition, so the
-pass-through of the integrals' `ω`/`f` inputs takes no direction argument);
+pass-through of the integrals' kinematic-truth inputs (`q_eb`, `r_eb_e`,
+`ω_eb_b`, `a_ib_b`, `α_ib_b`, §17.5) takes no direction argument);
 and the measured-increment face re-exports `errors/sample_meas`, the error
 model's *output* port, not the `errors/sample` input the sampler already
 feeds — re-exporting a wired input face would be the two-producers error of
@@ -2894,9 +2897,14 @@ second time at `Dual`, pure waste for interactive fly-around use. The price,
 stated openly: `build` succeeding does **not** certify the model linearizable —
 a pinned `Float64` (§9.2) lurks until the first `Dual` activation detonates it
 at the probe, naming the offending constructor. The repository's test suite
-pins the invariant instead: `build(world; activations = (Float64, Dual))` (or a
-`check` entry) runs the exhaustive set in CI, catching Tier-1 genericity
-violations at PR time.
+pins the invariant instead: `build(world; activations = (Float64, ProbeDual))`
+(or a `check` entry) runs the exhaustive set in CI, catching Tier-1 genericity
+violations at PR time. `ProbeDual` is the framework's exported canonical probe
+scalar — `const ProbeDual = ForwardDiff.Dual{ProbeTag, Float64, 1}` — because
+an activation is keyed by a *concrete* scalar type and the bare `Dual`
+`UnionAll` cannot key one, be walked to, or answer `zero(T)`. Its width is
+arbitrary: what CI pins is genericity, not any particular Jacobian, so one
+canonical width suffices even though §16.10 chunks at whatever widths it needs.
 
 **Caching is implementation detail, not semantics.** An activation is a pure
 function of the build and the concrete scalar type; the `Build`/`Simulation`
@@ -3208,6 +3216,10 @@ about what the *build* warns on. The committed runtime warnings, in one place:
   surface moved between staging and drain, §12.5);
 - **thread-budget tightness** (§12.7) — at `run!` and on each attach, as the
   roster grows;
+- **device join timeout** (§12.9) — a device task exceeding the shutdown
+  join timeout, abandoned by name rather than hanging `run!`;
+- **device crash** (§12.9, §15.4) — a device task's failure caught by the
+  framework wrapper, the sim continuing with the device absent;
 - **workspace poison skip** (§9.3) — once per activation, naming the stores
   with no usable sentinel;
 - **unbounded run** (Appendix B) — no finite `t_end`, no `stop_on` faces,
@@ -3278,8 +3290,8 @@ diverging models generally, not just post-terminal ones.
 
 **Domain separation.** Device-side user code — mappings run on the device
 task (§12.3) — fails in the device's own domain and takes the settled
-per-device crash path (`should_close`, liveness heartbeat); the sim keeps
-running. The two failure domains never mix — exactly what the
+per-device crash path (`should_close`, liveness heartbeat, `DeviceCrash`);
+the sim keeps running. The two failure domains never mix — exactly what the
 no-shared-mutable-model decision bought.
 
 ### 15.5 Termination is a state, not an exception
@@ -3683,8 +3695,20 @@ with domain code (a bare `local(path, field)` would not even parse — `local`
 is a reserved word). `get_local` addresses the component-local cells
 (`local_types`, §13.3); `get_face` addresses a root-exported output face —
 §12.2's *integration* register, previously recommended but unspellable in
-the family. Validation splits by client, row 83's registers restated as a
-resolver property:
+the family.
+
+**A selector resolves against a source, before any client policy applies.**
+The table selectors — `get_output`, `get_local`, `get_slot`, `get_face` —
+resolve against a boundary snapshot. The store selectors — `get_state`,
+`get_deriv` — resolve only against live stores, which only stopped-sim
+service evaluations, `capture`, and post-run inspection of the live stores
+(§12.2's replay-to-inspect) ever hold: the snapshot deliberately carries no
+state stores (§12.2), and `ẋ` buffers are integrator scratch, not
+boundary-consistent objects outside a service evaluation. A snapshot-bound
+reader naming a store selector is therefore a resolution error at attach
+(`ReadBindingUnresolved`), in the didactic register, with §12.2's honest
+remedy: declare the field public and read the auto-published port. Client
+policy rides on top — row 83's registers restated as a resolver property:
 
 - **Load-bearing services** (trim's `reads`, linearization's surfaces) speak
   the contract: `get_state`/`get_deriv`/`get_output`/`get_slot`, within the
@@ -3692,8 +3716,11 @@ resolver property:
   rejected at resolution — a service evaluation needing a private
   intermediate is the signal to export it (§16.7).
 - **Diagnostic readers** (output-device bindings, GUI panels, log
-  inspection) admit the whole family: deep paths, `get_local` cells and
-  `get_face` names alike.
+  inspection) admit the whole family, within the source rule: deep paths,
+  `get_local` cells and `get_face` names alike, with the store selectors
+  reaching only the diagnostic clients that actually hold stores (`capture`,
+  post-run inspection) — a snapshot-bound reader is barred from them by
+  source, not by client.
 - **`stop_on` is not a family client.** It names root-exported `Bool`
   output faces, period (§15.5, row 60): termination is run policy against
   the root contract, and no path selector reaches it.
@@ -4727,7 +4754,8 @@ For periphery authors and consumers:
   across builds. An exported output face is the *integration* register:
   curated, writer-independent meaning — the only shield against silent
   semantic drift. Bind faces in anything meant to outlive the current
-  build.
+  build. The store selectors (`get_state`/`get_deriv`) belong to neither:
+  they read live stores, never snapshots (§16.4's source rule).
 
 ---
 
@@ -4777,8 +4805,9 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
 
 - `build(world) → Build` — standalone; the inspectable contract artifact:
   wire list, face table with provenance, schedule, root slots (§14.2).
-  `build(world; activations = (Float64, Dual))` additionally pins activation
-  invariants for CI (§14.4).
+  `build(world; activations = (Float64, ProbeDual))` additionally pins
+  activation invariants for CI (`ProbeDual` the exported canonical concrete
+  probe scalar, §14.4).
 - `resolve(asm, path) → AbstractComponent` — the getfield walk along `/`
   segments, enforcing §8's generic-boundary rule at the primitive (§15.3).
 - `input_faces(c)` / `output_faces(c) → Vector{String}` — declaration-ordered
@@ -4966,7 +4995,7 @@ Severities, in the vocabulary §15 fixes:
 | `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | §15.5 | service |
 | `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | §12.3 | service |
 | `ClaimConflict` | face name, claiming device id, incumbent device id | §12.3 | service |
-| `ReadBindingUnresolved` | device id, the selector, path and field, candidates | §12.2 | service |
+| `ReadBindingUnresolved` | device id, the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding (§16.4's source rule) | §12.2, §16.4 | service |
 | `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported slot face | §16.2, §16.3 | service (batch) |
 | `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | §16.2 | service (batch) |
 | `UninitializedSlots` | every uncovered root face, in declaration order | §16.6 | service (batch), pre-write |
@@ -4984,5 +5013,7 @@ Severities, in the vocabulary §15 fixes:
 | `StaleInteractiveEntry` | face name, the incumbent (claiming) device id, the discarded value, which interactive writer (GUI / harness) | §12.3, §12.5 | warning (runtime) |
 | `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | §12.3 | warning (runtime) |
 | `ThreadBudget` | thread count, device-task count, the site (`run!` or an `attach!`) | §12.7 | warning (runtime) |
+| `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | §12.9 | warning (runtime) |
+| `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set | §12.9, §15.4 | warning (runtime) |
 | `PoisonSkip` | component path, the skipped workspace stores and their element types | §9.3 | warning (runtime), once per activation |
 | `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace` | Appendix B, §15.5 | warning (runtime), at run start |
