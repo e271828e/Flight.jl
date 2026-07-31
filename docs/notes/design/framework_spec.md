@@ -1638,24 +1638,44 @@ incoming message names, and `map_input` is arbitrary user code the framework
 never inspects. Such a device therefore claims the **binding's enumerated
 allowed set** — the faces the binding table lists, whether or not any given
 batch touches them — and the claim is registered at attach exactly as a
-joystick's is. Two consequences, priced openly. First, the drain **discards
-any batch entry naming a face outside the claim** and warns (a runtime warning,
-§15.2), the mirror of §12.5's rule for stale GUI entries to newly-claimed
-slots: the drain applies only writes the roster authorizes, and a mapping that
-has drifted from its binding is a diagnosable anomaly rather than a silent
-write. Second, a broad claim costs liveness: every enumerated face is claimed
+joystick's is. A broad claim costs liveness: every enumerated face is claimed
 for the device's whole attachment, so §12.5's derived-liveness rule renders its
 GUI widget read-only even on faces the peer never writes. Narrow the binding to
-narrow the claim — the enumeration *is* the interface. A device may also stage
-to slots it has not claimed, the register the GUI uses (§12.5): unclaimed slots
-have no exclusive writer, so an opportunistic write is legal for any device, not
-a GUI privilege — the one-kind doctrine of §12.4 holds, capabilities are not a
-taxonomy. What that register buys is availability, not arbitration: two
-unclaimed writers to one slot resolve by attachment order at drain, which is why
-anything meant to own a face claims it. The register also has a **task-free
-entry point**: `stage!(sim, "face" => value, ...)` stages a batch from the
-calling task itself — the harness/REPL write path (§12.11) — drained, traced
-and claim-checked exactly as a device batch.
+narrow the claim — the enumeration *is* the interface.
+
+**Every writer has a write surface, and the drain enforces it.** The drain
+applies a batch entry **iff the named face is inside the writer's surface at
+drain time**; anything else is discarded with a runtime warning (§15.2). A
+surface arises in one of two ways:
+
+- **Enumerated** — an ordinary device's surface is its claim set: static for
+  the attachment, exclusively its own (claims are disjoint by construction),
+  and binding-bounded even where no one else is involved — a mapping that has
+  drifted onto an unenumerated face is a diagnosable anomaly
+  (`OutOfClaimEntry`), never a silent write, claimed or not.
+- **Derived** — the **interactive register**'s surface (the GUI, §12.5, and
+  `stage!` below) is the currently-unclaimed face set: the complement of the
+  union of all claims, computed rather than staked. It is shared among the
+  interactive writers and guaranteed to nobody — a mid-session `attach!`
+  shrinks it, and a batch staged before the claim and drained after it is
+  `StaleInteractiveEntry`: no one's bug, the surface moved between staging
+  and drain. §12.5's widget liveness is this surface made visible.
+
+One rule, two surface kinds, two warning kinds. The GUI is not an exception
+but the resident of the second kind — one device kind (§12.4), two *binding*
+kinds (enumerated vs. derived), one drain rule — and opportunistic writing by
+autonomous devices does not exist: a device that wants a face enumerates it.
+Cross-writer races on one slot therefore cannot arise structurally (claimed
+faces have exclusivity; unclaimed faces admit only the interactive register),
+which is what keeps drain order a diagnostic fact (below) and lets a drained
+GUI value simply stay (§12.5). The interactive register also has a
+**task-free entry point**: `stage!(sim, "face" => value, ...)` stages a batch
+from the calling task itself — the harness/REPL write path (§12.11) —
+drained, traced and surface-checked exactly as the GUI's. Among interactive
+writers the harness cell drains **last** — the explicit hand of code beats a
+widget interaction — sequencing within one register, not the cross-device
+conflict policy row 44 rejects; in practice the two rarely coexist, since
+during a GUI run the calling task renders (§12.1).
 
 **Slot initial values are owned by the init/trim services** (§17.4). Input declarations are bare types (§13.2) and carry no defaults, but a
 slot unfed by any device must hold a defined value from the first frame (today's
@@ -1847,8 +1867,9 @@ the invariant violation at render rate. Side benefit: staging traffic (and trace
 noise) drops from render-rate-while-grabbed to actual edits. **Claim-transition
 policy:** if a device claims a slot mid-interaction (attach during a drag — a
 deliberate act concurrent with a held grab, vanishingly rare), the widget flips
-read-only at the next render and the drain discards stale GUI entries to
-newly-claimed slots with a warning.
+read-only at the next render and the drain discards the stale entry —
+`StaleInteractiveEntry`, §12.3's derived surface moving between staging and
+drain — with a warning.
 
 The panel-authoring calling convention — what the drawing context carries,
 how widgets name their component's ports, how an assembly's panel composes
@@ -2080,10 +2101,10 @@ per-`run!` artifacts (§12.1) and a device loop's `while running(handle)` is
 false outside a run, so `attach!` while stepping only registers, exactly as
 while stopped. The frame-top drain still runs — `step!` frames stay
 bit-identical to `run!` frames — and what it drains is the **harness
-register**: `stage!(sim, "face" => value, ...)`, §12.3's unclaimed-slot
+register**: `stage!(sim, "face" => value, ...)`, §12.3's interactive
 register with the calling task as writer. Staged batches are ordinary
 batches — traced, so replay and bit-identity hold; applied at the next frame
-top; subject to claim exclusivity like any device's. The read half is
+top; surface-checked like any writer's (§12.3). The read half is
 `latest(sim)`: the same immutable snapshot value a device handle acquires
 (§12.2), navigated directly for assertions. Advance-assert-advance is
 `stage!` → `step!` → `latest`. Both entry points work under `run!` too — the
@@ -3182,8 +3203,9 @@ about what the *build* warns on. The committed runtime warnings, in one place:
   boundary by the once-per-event rule;
 - **forgiven-debt re-anchor** (§11.7) — the pacer abandoning accumulated debt
   and re-anchoring its schedule;
-- **stale GUI entries to newly-claimed slots** (§12.5) and **out-of-claim drain
-  entries** (§12.3) — the two drain-side discards, same shape;
+- **the two surface violations at the drain** (§12.3): `OutOfClaimEntry` (an
+  enumerated surface's binding drift) and `StaleInteractiveEntry` (the derived
+  surface moved between staging and drain, §12.5);
 - **thread-budget tightness** (§12.7) — at `run!` and on each attach, as the
   roster grows;
 - **workspace poison skip** (§9.3) — once per activation, naming the stores
@@ -4261,8 +4283,8 @@ surface, with each item's home:
   all writers, but moves behavior into the FCS).
 - **Vehicle-direct and environment tunables** (engine start/stop/mixture, payload
   masses, terrain surface enum, sea-level T/p, wind NED): ordinary component
-  inputs exported to root faces; GUI as sole unclaimed writer via §12.5; no
-  machinery. The interactive surface is *not* one thing: pilot commands cluster
+  inputs exported to root faces; GUI as the interactive register's writer via
+  §12.5; no machinery. The interactive surface is *not* one thing: pilot commands cluster
   under a prefix; environment knobs stay with their components' panels.
 - **The Xv1 actuator sliders**: FlightCore's dead sliders; resolved read-only by
   §12.5. No action.
@@ -4847,9 +4869,10 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   current boundary; a stepping session is deviceless — write via `stage!`,
   read via `latest` (§12.11).
 - `stage!(sim, "face" => value, ...)` — task-free staging from the calling
-  task into §12.3's unclaimed-slot register: traced, drained at the next
-  frame top, claim-checked exactly as a device batch (§12.11's harness
-  register; legal under `run!` and `step!` alike).
+  task into §12.3's interactive register (surface = the currently-unclaimed
+  faces): traced, drained last at the next frame top, surface-checked exactly
+  as the GUI's writes (§12.11's harness register; legal under `run!` and
+  `step!` alike).
 - `latest(sim) → snapshot` — the current published snapshot, the same
   immutable value device handles read (§12.2); the assertion/inspection
   accessor of the harness and REPL registers (§12.11).
@@ -4958,8 +4981,8 @@ Severities, in the vocabulary §15 fixes:
 | `ChatteringBudget` | component path, event name, boundary time, the exhausted localization budget | §11.4 | warning (runtime) |
 | `EventDeferred` | component path, event name, boundary time — re-enabled within the boundary, deferred by the once-per-event rule | §11.6 | warning (runtime) |
 | `DebtReanchor` | forgiven debt, the new schedule anchor, boundary time | §11.7 | warning (runtime) |
-| `StaleGuiEntry` | face name, the claiming device id, the discarded value | §12.5 | warning (runtime) |
-| `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set | §12.3 | warning (runtime) |
+| `StaleInteractiveEntry` | face name, the incumbent (claiming) device id, the discarded value, which interactive writer (GUI / harness) | §12.3, §12.5 | warning (runtime) |
+| `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | §12.3 | warning (runtime) |
 | `ThreadBudget` | thread count, device-task count, the site (`run!` or an `attach!`) | §12.7 | warning (runtime) |
 | `PoisonSkip` | component path, the skipped workspace stores and their element types | §9.3 | warning (runtime), once per activation |
 | `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace` | Appendix B, §15.5 | warning (runtime), at run start |
