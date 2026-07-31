@@ -1554,7 +1554,7 @@ Two rules bind the implementation:
 Consequence, recorded because it collapses an API axis: interactive and batch
 simulation stop being different execution modes. A batch run is the same loop with
 empty staging and no snapshot readers; a replayed interactive session is the same
-loop with staging fed from a recording (§12.3).
+loop with staging fed from a recording (§12.3, §12.12).
 
 ### 12.2 Outbound: snapshot publication
 
@@ -1783,9 +1783,16 @@ staging fed from the recording, no devices or mappings present — reproduces th
 trajectory bit-identically.
 
 **The trace header captures the full initial state** `(x, m, z)` **plus the
-initial root-slot values** at `init!` (an unfed `mixture = 0.5` never
-appears in any batch, so replay is broken without them; the init/trim services own
-slot initialization (§16.6), and the header capture extends naturally) — the one
+initial root-slot values** at `init!` — captured **after `apply!` and the slot
+writes, before the boundary-zero sequence runs** (§16.5). Both halves of that
+placement are load-bearing: the header holds the *resolved* stores and slots
+as values, never the sparse authored overlay (replay must survive edits to
+declared defaults — row 38's primary-data doctrine), and never the
+post-transition result — boundary zero is re-executed under replay (§12.12),
+so a post-sequence capture would re-fire authored-condition events on top of
+already-latched state. (An unfed `mixture = 0.5` never appears in any batch,
+so replay is broken without the slots; the init/trim services own slot
+initialization (§16.6), and the header capture extends naturally.) This is the one
 full-state capture in a normal run, and the other half of what "given the
 initial state and the trace, the log is recomputable" requires. Header plus batches
 are the *primary* record; everything else, the state trajectory included, is
@@ -2117,7 +2124,9 @@ nothing authored), **initialized** (`init!` completed boundary zero, §16.5),
 **running**, and terminally **stopped** or **errored** (§15.4). `init!` is
 mandatory: `run!` or `step!` on a simulation whose boundary zero has not
 completed is an error in §15.2's kind set naming `init!` — distinct from
-`UninitializedSlots`, which fires *inside* `init!` (§16.6). The loop runs on
+`UninitializedSlots`, which fires *inside* `init!` (§16.6). (`replay!` is
+the one alternative entry: it runs boundary zero from a trace header,
+§12.12.) The loop runs on
 the calling task unless a GUI claims it (`gui = true` moves the loop to a
 spawned task, §12.1); deviceless, `run!` is fully synchronous — the batch
 register (§12.1: a batch run is the same loop with empty staging), and what
@@ -2176,7 +2185,87 @@ task; `attach!` while stopped only registers — the task appears at the next
 defaults that `run!` may override for the run it starts (§15.5), so a second
 run — or a `step!` register between two runs — can stop on a different clock
 or a different face set without a rebuild. `errored` is terminal (row 59):
-reproduction is trace replay, not resurrection.
+reproduction is trace replay (§12.12), not resurrection.
+
+### 12.12 Replay: the trace re-drives the ordinary loop
+
+The entry point the §12.3 trace exists for:
+
+```julia
+trc  = trace(sim)                     # the recorded session: header + per-frame batches
+sim2 = Simulation(world)              # the same build
+replay!(sim2, trc)                    # header-init, then re-drive every recorded frame
+replay!(sim2, trc; to_boundary = k)   # partial: the §15.4 replay-pointer register
+```
+
+`replay!` is **the ordinary loop with exactly two substitutions** — not a
+separate execution mode, which is what keeps every property proved of the
+loop true of replay:
+
+- **Boundary zero from the header.** `replay!` stands in the `init!`
+  position of §12.11's lifecycle: it applies the header's resolved stores
+  and slot values directly — no condition resolution; §16.6's totality holds
+  by capture — and then executes the ordinary boundary-zero sequence
+  (§16.5). Authored-condition events re-fire identically: the header
+  predates the sequence (§12.3's capture placement), so nothing is applied
+  twice and nothing is skipped.
+- **The drain reads the trace.** Each frame top applies the recording's
+  batches for that **frame ordinal** instead of swapping the roster's
+  staging cells. Ordinal keying is exact because the frame sequence is
+  itself deterministic under replay (`t*` boundaries derive from state,
+  §11.4): frame *k* of the replay *is* frame *k* of the recording. Recorded
+  batches apply **verbatim, with no surface re-check** — the write-surface
+  rule (§12.3) ran at recording time, and claims are a live-roster fact of
+  the recorded session that replay does not reconstruct.
+
+Everything else is the loop as already specified:
+
+- **Termination and partial replay.** Replay ends at the recording's final
+  frame, or earlier at `to_boundary = k` — the consumer of §15.4's replay
+  pointer — or earlier still under the ordinary policies: `t_end` and
+  `stop_on` overrides bind for this replay exactly as at `run!` (§12.11); a
+  termination the recorded session hit through `stop_on` reproduces itself
+  anyway, deterministically.
+- **Replay ends `initialized`, never `stopped`** — boundary-consistent and
+  ready to advance, the same state `step!` leaves (§12.11). This is what
+  makes three promised workflows real: §12.2's state-trajectory inspection
+  ("what was the private state at t = 37.2?" — replay there, read the live
+  stores), §15.4's error reproduction (replay to `k − 1`, then `step!` the
+  failing frame under instrumentation), and continuation (`run!` after
+  `replay!` is a live session from the replayed boundary).
+- **Replay re-records.** The trace register runs normally: the new trace
+  inherits the old header and accumulates the re-drained batches — a
+  bit-identical prefix — so a replayed-then-continued session leaves behind
+  a complete, valid trace of *itself*, with no special stitching.
+- **Pacing and the control plane are unchanged** (§11.7, §12.6): pacing sits
+  outside the semantics, so paused, slow-motion or real-time replay is free —
+  paced replay with an attached visualizer *is* session playback. Stop
+  truncates, as anywhere.
+- **Devices are readers.** Rostered devices init and spawn normally (§12.1)
+  and consume snapshots (§12.2, §12.8) — the visualizer case — but no live
+  staging cell is drained while the trace feeds the loop: a batch found
+  staged is discarded with a rate-limited warning
+  (`ReplayDiscardedStaging`, Appendix C). Mixing live writes into a replay
+  would destroy the property replay exists to provide; a session that wants
+  live input is a continuation (`run!` after replay), not a replay.
+- **Validation is loud and up front.** Before the first frame, the header is
+  validated against the `Build` (store layout, slot faces) and the trace's
+  batch entries against the root input-face list — attach-style, with
+  did-you-mean (`ReplayHeaderMismatch`, `ReplayUnknownFace`, Appendix C).
+  *Structural* mismatch is an error; *parametric* difference is not:
+  replaying against the same structure with changed parameters is the
+  **what-if register** — deterministic re-driving of the recorded inputs
+  through a modified model. Bit-identity is promised only against the
+  identical build; the what-if register promises determinism, never
+  reproduction.
+
+Rejected shapes, for the record: a `run!(sim; replay = trc)` flag (replay
+replaces `init!` and swaps the drain source — it is a lifecycle *entry*, not
+a run option, and folding it into `run!` muddies §12.11's mandatory-`init!`
+rule); a synthetic playback device staging the recorded batches (wall-clock
+staging cannot hit recorded frame ordinals — it would reintroduce exactly the
+scheduler-determined input timing that §12.1 indicts and replay exists to
+remove); replay ending `stopped` (kills all three workflows above).
 
 ---
 
@@ -3030,7 +3119,8 @@ offers none — return `x.ω - eng.ω_idle`, not `x.ω > eng.ω_idle`.
 unexpected / per-field expected-vs-observed), simulation time. Deliberately
 absent: the source branch (values carry no provenance; the diff identifies
 it). The always-on input trace makes every such failure **reproducible by
-replay** — the error names the boundary to replay to. At run time the failure
+replay** — the error names the boundary to replay to (§12.12's
+`to_boundary`). At run time the failure
 travels as a species of `StepError` through the single catch site (§15.4),
 which adds the loop-level nonfinite-state check as its divergence sibling.
 
@@ -3309,7 +3399,8 @@ species of `StepError` with the field-diff payload. Reproducibility holds by
 construction: staged inputs are drained and recorded to the trace at the frame
 top, *before* the boundary executes, so the failing boundary's inputs are
 already in the trace when it fails — the error names the boundary to replay
-to.
+to, and `replay!(sim2, trc; to_boundary = k - 1)` then `step!` re-executes
+the failure under instrumentation (§12.12).
 
 **Disposition.** The `Simulation` ends in a terminal status — `stopped` vs.
 `errored` — with the exception retrievable. A synchronous batch run rethrows
@@ -3772,9 +3863,12 @@ established stores; making the model *coherent* is boundary zero, §16.5.
 
 ### 16.5 Boundary zero: an ordinary boundary with authored incoming transitions
 
-After `apply!` establishes stores at `t₀`, the init service completes the
+After `apply!` establishes stores at `t₀` — and the trace header captures
+them, together with the slot values, *before anything below runs* (§12.3's
+capture placement; a post-sequence capture would hand replay
+already-transitioned state) — the init service completes the
 §11.6 macro-sequence with an empty integrate — project → [sweep → guards →
-handlers]\* → due `g` updates → header capture + first snapshot — and that
+handlers]\* → due `g` updates → first snapshot — and that
 parity is exact, not approximate. Piece by piece:
 
 - **Project runs.** Authored `x` can sit off-manifold (a hand-assembled
@@ -3793,8 +3887,10 @@ parity is exact, not approximate. Piece by piece:
   would delay the identical firings while hiding the diagnostic that the
   authored condition was not quiescent — §12.5's stage-on-interaction lesson
   (insurance that masks invariant violations is anti-diagnostic). The header
-  records the *authored* condition; whatever fires at boundary zero is
-  deterministic under replay. (A `stop_on` face already `true` is a
+  records the *resolved pre-sequence* stores and slots (§12.3), so replay
+  re-executes boundary zero from the same starting point and whatever fires
+  at `t₀` fires again identically (§12.12) — the firings are recomputed,
+  never recorded. (A `stop_on` face already `true` is a
   different category: nothing *fires* — the face simply reads `true` in the
   published `t₀` snapshot and the loop reacts, §15.5.)
 - **Due `g` updates run.** This follows from an interval-alignment fact that
@@ -4953,9 +5049,13 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
 - Termination — model state via `stop_on` faces read at every published
   boundary (§15.5); shutdown completes a boundary, publishes the final
   snapshot, then joins (§12.9).
-- Post-run — the log is retained snapshots; the always-on input trace
-  re-drives a fresh `Simulation(world)` bit-identically and is the
-  state-trajectory inspector (§12.2, §12.3; on-disk persistence deferred,
+- Post-run — the log is retained snapshots; `trace(sim) → trc` retrieves the
+  always-on input trace, and `replay!(sim2, trc; to_boundary = k)` re-drives
+  a fresh `Simulation(world)` bit-identically through the ordinary loop
+  (boundary zero from the trace header, drain fed by frame ordinal), ending
+  `initialized` — inspect via `latest`/live stores, advance via `step!`,
+  continue via `run!`; the state-trajectory inspector and the `StepError`
+  reproduction tool (§12.2, §12.3, §12.12; on-disk persistence deferred,
   §19).
 
 ---
@@ -5042,6 +5142,8 @@ Severities, in the vocabulary §15 fixes:
 | `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | §16.2 | service (batch) |
 | `UninitializedSlots` | every uncovered root face, in declaration order | §16.6 | service (batch), pre-write |
 | `SurfaceResolution` | surface (`x`/`u`/`y`), selector kind, path, field, optional index, candidates | §16.10 | service (batch) |
+| `ReplayHeaderMismatch` | the mismatched store or slot: component path, store, expected vs. found layout/type; the build's and the trace's provenance | §12.12 | service |
+| `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | §12.12 | service (batch) |
 
 **Runtime:**
 
@@ -5057,5 +5159,6 @@ Severities, in the vocabulary §15 fixes:
 | `ThreadBudget` | thread count, device-task count, the site (`run!` or an `attach!`) | §12.7 | warning (runtime) |
 | `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | §12.9 | warning (runtime) |
 | `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set | §12.9, §15.4 | warning (runtime) |
+| `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | §12.12 | warning (runtime), rate-limited per device |
 | `PoisonSkip` | component path, the skipped workspace stores and their element types | §9.3 | warning (runtime), once per activation |
 | `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace` | Appendix B, §15.5 | warning (runtime), at run start |
