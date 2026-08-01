@@ -1615,7 +1615,8 @@ still published to live readers, and still enters the trace.
 streaming) consumes snapshots via §12.8 and addresses what it reads with
 §16.4's selectors — any cell, the diagnostic register admitting `get_local`
 entries and deep paths — resolved at attach against the `Build` with
-did-you-mean and compiled to one gather, so `map_output` receives a labeled
+did-you-mean and compiled to one gather (the output half of §12.4's binding
+interface), so `map_output` receives a labeled
 NamedTuple rather than performing its own path lookups (§17.4's obligation: a
 substitution that breaks a binding fails at attach, not with silent garbage
 UDP). This is **diagnostic observation** (§15.5):
@@ -1679,9 +1680,12 @@ for the device's whole attachment, so §12.5's derived-liveness rule renders its
 GUI widget read-only even on faces the peer never writes. Narrow the binding to
 narrow the claim — the enumeration *is* the interface.
 
-**Every writer has a write surface, and the drain enforces it.** The drain
-applies a batch entry **iff the named face is inside the writer's surface at
-drain time**; anything else is discarded with a runtime warning (§15.2). A
+**Every writer has a write surface, and the periphery enforces it.** A batch
+entry reaches a slot **iff the named face is inside the writer's surface at
+drain time**; anything else is discarded with a runtime warning (§15.2).
+(Enforcement runs at the earliest site that can know — under the compiled
+staging shapes below, static checks run at staging and only the derived
+surface's membership check remains at the drain; the *rule* is unchanged.) A
 surface arises in one of two ways:
 
 - **Enumerated** — an ordinary device's surface is its claim set: static for
@@ -1731,27 +1735,78 @@ same granularity its staged writes already have. Attachment order is the
 order within the currently published roster, carried by per-device sequence
 numbers (stable across detaches). The trace tags entries with a stable device
 id, never a roster index — replay provenance survives roster churn. Detaching
-releases the device's claims (§12.5's widgets re-enable), and a device task
-exiting through `should_close` runs the same detach path: an unplugged
+releases the device's claims (§12.5's widgets re-enable), and a loop body's
+voluntary exit (§12.4) runs the same detach path: an unplugged
 joystick's claims release without any explicit call (§17.4). The §12.7
 thread-budget warning re-evaluates as the roster grows.
 
-**Staging: one atomic cell per attached device.** Each cell has a single writer — its own device task — and holds that device's latest
-pending batch of slot writes:
+**Staging: one atomic cell per attached device, one coalescing policy — CAS
+merge, newest wins per face.** Each cell has a single writer — its own
+device task — and holds that device's latest pending batch of slot writes.
+Staging merges the incoming batch into the pending one: untouched faces
+survive, re-staged faces take the newest level — the per-face ZOH. The CAS
+can fail only because a drain intercepted the old batch, so the retry is
+bounded and the failure case is precisely correct — intercepted writes are
+already applied and must not be re-staged. Merge is the *only* policy
+because it is always correct: for a **complete** writer (a joystick: full
+write-set every poll) every incoming batch covers every face, so merge and
+overwrite are provably the same operation — overwrite is a degenerate fast
+path, not a second semantics — while for a **sparse** writer (the GUI, a
+JSON peer: only what was touched) overwrite is a silent lost-write bug
+(§17.3's hazard: a pending `flaps` edit clobbered by an unrelated `gear`
+message, undrained, undiagnosable). A user-facing overwrite opt-in
+(`complete(binding)`, a declared promise of batch totality) was drafted and
+dropped: under the fixed-shape representation below the fast path saves a
+pending-read and a small tuple rebuild per staging, on the device task —
+not worth a declarable promise whose false direction loses writes.
 
-- a *complete* writer (a joystick: full write-set every poll) overwrites its cell;
-  coalescing between drains is ZOH-correct at boundary granularity;
-- a *sparse* writer (the GUI: only what the user touched) accumulates via CAS merge
-  on its own cell; the CAS can fail only because a drain intercepted the old batch,
-  so the retry is bounded and the failure case is precisely correct — intercepted
-  writes are already applied and must not be re-staged.
+**The staged representation is fixed per attachment, compiled at attach.**
+An enumerated writer's claim set and slot types are both known at attach
+(`faces(binding)`, §12.4, against the root contract), so the framework
+fixes the cell's content type there: a positional tuple over the claim
+set, `Union{Nothing, T}` per face (isbits unions — pointer-free), with
+`nothing` meaning *not touched this time*, never "reset" — the levels
+doctrine is untouched, slots only ever receive the non-`nothing`
+positions, and the `Union` never reaches the model. The face-name →
+position schema lives in the roster entry. The consequences are each
+mechanical: the merge is positional (`incoming[i] === nothing ? pending[i]
+: incoming[i]`) — straight-line, union-split; the drain applies each cell
+through an attach-compiled **scatter** (position → slot store, statically
+typed, `nothing` skips) — the exact mirror of §12.2's compiled output
+gather; and authors never build the shape by hand — `map_input` returns
+face ⇒ value pairs for whatever the datum touched, and `stage!` normalizes
+through an attach-compiled shim (name → position, convert to the slot's
+declared type, fill `nothing`), confining the residual name-shaped
+dynamism to one framework-owned conversion on the device task, at the
+boundary where wire-shaped data becomes system-shaped data. (Author-built
+total tuples were rejected as a padding form — ten explicit `nothing`s to
+say "one face touched" — the same disease row 74 and the handler return
+law refuse.) The **interactive register keeps name-keyed batches**: its
+surface is the derived one, mutable mid-session, so no static shape exists
+to compile; its writers are human-rate and its drain application stays the
+dynamic path — two representations matching the two surface kinds.
+
+**Diagnostic sites follow the compilation.** Face-name validity and value
+convertibility are static facts of the root contract, so both are checked
+at *staging* for every writer: an enumerated writer's out-of-claim face
+has no position in the schema and is rejected in `stage!`'s normalization
+(`OutOfClaimEntry` — an earlier, better-attributed site than the drain;
+same kind, same payload), and a value that cannot convert to its slot's
+declared type is discarded with `EntryTypeMismatch` (Appendix C) at the
+same spot — for the interactive register too, whose *surface* is dynamic
+but whose face types are not. What remains at the drain is exactly what
+only the drain can know: the interactive register's surface membership at
+drain time (`StaleInteractiveEntry` — the surface moved between staging
+and drain).
 
 **Doctrine: staged values are levels, never deltas** (`press_count = 17`, never
 `presses += 1`) — levels are idempotent and survive coalescing; button edges ride as
 monotonic counters.
 
 **The drain** (frame top): one `atomicswap(cell, nothing)` per device — an
-indivisible take, no lost-write window — applied **in attachment order**, retained
+indivisible take, no lost-write window — applied **in attachment order**
+(enumerated cells through their attach-compiled scatter, interactive cells
+through the name-keyed path), retained
 as a deterministic application order (under slot exclusivity, cross-device writes
 to one slot no longer arise; the order matters only for diagnostics). Which
 *frame* a write lands in remains wall-clock reality; what the drain guarantees is
@@ -1763,8 +1818,9 @@ executes inside the loop's frame, and the trace consists of slot-level batches.
 
 **Mappings are binding data, not shaping code** (§17.4). A mapping is
 a declarative table — axis/button → slot path, plus per-axis conditioning
-parameters (deadzone, expo strength) applied by a shared pure helper on the
-device task. The boundary is set by the face contract: **a face's meaning is
+parameters (deadzone, expo strength) applied by the shipped `TableBinding`'s
+generic `map_input` on the
+device task (§12.4 — the shared pure helper, with an owner). The boundary is set by the face contract: **a face's meaning is
 writer-independent**, so faces carry *post-conditioning* semantics — a GUI slider
 or a script writes the same command a curved stick delivers (running a mouse drag
 through a deadzone would be absurd); this GUI-parity test is what places
@@ -1817,7 +1873,7 @@ shared lock-free batch stack** (CAS-push, swap-drain) — whole-batch atomicity 
 the richest trace, but conflict order is still temporal (push order), and pending
 memory is unbounded while paused, taxing every peek that must walk the chain.
 
-### 12.4 Device taxonomy: one kind
+### 12.4 Devices: one kind, one authoring contract
 
 FlightCore's input/output/GUI trichotomy is lock choreography, not modeling:
 `get_data!` may block, so it runs outside the lock; `extract_output` must not block,
@@ -1835,6 +1891,158 @@ lifecycle, not two framework devices sharing state. The GUI is an ordinary devic
 the paradigm one, using every capability — with exactly two genuine peculiarities,
 neither taxonomic: main-thread affinity (a launch concern) and read-modify-write
 widgets (§12.5).
+
+**The authoring contract: four functions, one optional.** A device is a plain
+user type; the framework asks for
+
+```julia
+init!(dev)          # per-run resource acquisition — calling task, before spawn (§12.9)
+loop(dev, handle)   # the task body: owns its own wait structure
+shutdown!(dev)      # per-run resource release — guaranteed on every exit path
+unblock!(dev)       # optional hook, default no-op: make a blocked loop return (§12.9)
+```
+
+and owns everything around them — the wrapper is the §12.9 protocol made
+structural:
+
+```julia
+init!(dev)                                   # failure surfaces by name, pre-spawn (§12.9)
+task = Threads.@spawn try
+    loop(dev, handle)
+catch e
+    report(DeviceCrash, dev, e)              # §12.9(6): sim continues, device absent
+finally
+    shutdown!(dev)                           # any exit path
+    release_claims_and_detach!(...)          # voluntary exit and crash share the path
+end
+```
+
+**The author owns the loop body; the framework owns the bracket.** The fork
+is decided by FlightCore's own history: its eight device hooks were never
+sufficient alone — the framework loop calling them came in three flavors,
+and the *taxonomy* carried the loop-shape information. One device kind
+therefore means author-owned loop bodies. A framework-owned hook loop must
+ask each device what it waits on — a poll timer, a blocking socket, the
+§12.8 boundary counter — and that declaration is the taxonomy resurrected
+as a trait; the bidirectional peer (one socket, one lifecycle — the
+one-kind headline case) needs two waits at once, which a hook loop cannot
+serve without a select engine; and the GUI's render loop fits no hook set
+at all. Under the author-owned body, every wait structure is ordinary user
+code composed from handle primitives:
+
+```julia
+function loop(dev::T16000M, handle)              # timer-driven, full write-set
+    while running(handle)
+        sleep(dev.Δt_poll)
+        stage!(handle, map_input(poll_axes(dev), binding(handle)))
+    end
+end
+
+function loop(dev::UDPInput, handle)             # source-driven, data-dependent
+    while running(handle)
+        datum = recv(dev.socket)                 # blocks; unblock! closes the socket
+        is_eot(datum) && return                  # voluntary exit
+        try
+            stage!(handle, map_input(datum, binding(handle)))
+        catch e
+            is_datum_error(dev, e) || rethrow()  # a bug → wrapper → DeviceCrash
+            report(handle, MalformedDatum(e))    # garbage → visible, bounded, alive
+        end
+    end
+end
+
+function loop(dev::Telemetry, handle)            # boundary-driven output
+    while running(handle)
+        snap = wait_next_snapshot(handle)        # §12.8; returns on stop
+        send(dev.socket, map_output(gather(handle, snap), binding(handle)))
+    end
+end
+```
+
+A bidirectional peer composes both halves itself — an inner reader task
+inside its own domain — rather than forcing a select engine into the
+framework. Two idioms are author obligations the framework can only teach
+and diagnose, never force (Appendix A): loop on `running(handle)`, and make
+blocking calls interruptible (`unblock!`, or timeouts) — a forgotten
+predicate check surfaces as `DeviceJoinTimeout` with the device's name, a
+stall as a stale §12.7 heartbeat (liveness timestamps ride *inside* the
+handle primitives, so the framework observes activity without owning the
+loop). **`should_close` dissolves**: a window ✕ or peer EOT is the loop
+body returning; the wrapper's exit path releases claims, detaches and
+consults `should_abort` — §12.9(6) is now literally "the task body
+returned." The GUI implements the same contract; the framework calls its
+`loop` inline on the calling task instead of spawning (§12.1's pinning,
+unchanged).
+
+**The binding: framework-legible by enumeration, opaque in its mappings.**
+A binding is a value whose type implements a small interface. The legible
+half is explicit methods returning data, called once at attach on the
+calling task; the opaque half is called per datum on the device task by the
+author's own loop:
+
+```julia
+faces(b)               # input half:  the enumerated face set → the claim (§12.3)
+map_input(datum, b)    #              datum → face ⇒ value pairs — arbitrary user code
+selectors(b)           # output half: §16.4 selectors → validated, compiled to one gather
+map_output(nt, b)      #              the gather's labeled NamedTuple → wire datum
+```
+
+The framework needs no contract on the datum's shape: the datum travels
+only between `loop` and `map_input`, written by the same author, and the
+framework's structural knowledge comes entirely from the enumeration
+methods — everything enumerable validates at attach, everything opaque is
+bounded at its runtime enforcement point (`map_input` by the staging
+checks, §12.3; `map_output` receives exactly the compiled gather's
+NamedTuple, and what it puts on the wire is the peer's business). Sides are
+detected by declaration shape — method presence, the §13.5 idiom, probed
+once at attach: `faces` defined ⇒ input side, claims staked; `selectors`
+defined ⇒ output side, gather compiled; both ⇒ bidirectional; neither ⇒
+attach-time error naming both halves. (`hasmethod` here is public, stable
+API at a stopped-sim service point — not row 74's internal-reflection
+seam.) The binding stays an `attach!` argument, never a device field: the
+same `T16000M` binds differently per aircraft, and narrowing the binding
+narrows the claim (§12.3). Rejected: an abstract binding-type taxonomy
+(resurrects the kill one level down, and a bidirectional binding cannot be
+two types at once); a declared `sides(b)` trait (redundant with the methods
+that must exist anyway, one more thing to drift).
+
+**One shipped binding type; conditioning has an owner.** `TableBinding` is
+*data-driven* — the framework writes its `map_input` once, and a table
+value (axis/button entry → face, deadzone/expo parameters) is constructed
+per device × aircraft pairing, where configurations are made:
+
+```julia
+TableBinding(stick_y  = (face = "elevator", deadzone = 0.05, expo = 0.6),
+             throttle = (face = "throttle",),
+             trigger  = (face = "brake_count",))       # levels doctrine: a counter
+```
+
+Its generic `map_input` *is* §12.3's shared pure conditioning helper, now
+with an owner; the entry tuple rides in the type, so the mapping
+specializes per table with no dynamic dispatch. A *code-driven* binding (a
+JSON telecommand peer: `faces` returns the vocabulary, `map_input` parses
+bytes) looks identical to the framework. Purity note, taught in Appendix A:
+cross-datum state — press counters, edge detection — lives in the device
+struct, maintained by the loop, arriving *inside* the datum; `map_input`
+stays pure.
+
+**Bad datum versus bug: two classes, two fates.** A datum that cannot be
+mapped for environmental reasons — a truncated datagram, malformed JSON, an
+out-of-range field — is tolerated *in the loop body*: catch, stage nothing,
+`report(handle, MalformedDatum(cause))`, continue — rate-limited per device
+(§15.2), visible next to a live heartbeat. Any other exception propagates,
+and the wrapper turns it into `DeviceCrash` (§12.9). The classification is
+the author's — only they know their parser — exactly as FlightCore's
+`InputMappingError` docstring assigned it; what changes under the
+author-owned loop is that no framework per-iteration catch site exists, so
+the framework's contribution is the diagnostic channel, not the catch (a
+marked exception type with no framework consumer would be vestigial and is
+not provided). `report(handle, ...)` emits device-attributed runtime
+warnings into the §15.2 stream — nothing more; it is not a general
+user-diagnostics channel. Tolerating everything hides bugs as "device
+attached, nothing happens"; tolerating nothing kills a live telemetry link
+on its first truncated datagram — and since tasks are per-run artifacts
+(row 93), kills it for the rest of the run.
 
 ### 12.5 The GUI write path: port resolution, peek, staging contract
 
@@ -2026,11 +2234,14 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    stopped status and unwind — a stop while paused therefore works.
 3. **Unblock device-specific blocking calls** via an `unblock!(device)` hook,
    default no-op; a network input's override closes its own socket, raising in
-   the blocked task (caught by the framework device loop, treated as shutdown).
+   the blocked task (caught by the framework wrapper, treated as shutdown).
    This demotes FlightCore's EOT convention from load-bearing shutdown mechanism
    to an optional wire-protocol courtesy between remote peers.
-4. **Device loops exit:** `while running(handle)` with all blocking points
-   interruptible per (2)–(3); `finally shutdown!(device)` guaranteed.
+4. **Loop bodies exit:** the author's `while running(handle)` (§12.4's
+   contract — the predicate check and interruptible blocking are the two
+   taught obligations) with all blocking points
+   interruptible per (2)–(3); the wrapper's `finally shutdown!(device)` is
+   guaranteed on every exit path.
 5. **Join with a timeout:** a device task exceeding it is reported *by name*
    (§12.7 heartbeat) and abandoned with a warning (`DeviceJoinTimeout`,
    Appendix C) rather than hanging `run!`.
@@ -2038,8 +2249,9 @@ does not use the wait (VSync-paced, it reads `latest` each render).
    loop is the calling task's own occupation of `run!`, exits by the same
    `running(handle)` predicate as any device loop, and `run!` returns after
    the joins.
-6. **Device-initiated paths:** `should_close` (window ✕, peer EOT) exits the
-   device's own loop; with `should_abort` set it also requests a sim stop,
+6. **Device-initiated paths:** voluntary exit — the loop body returns
+   (window ✕, peer EOT; no `should_close` hook exists, §12.4); with
+   `should_abort` set the wrapper's exit path also requests a sim stop,
    otherwise the sim continues with the device absent (its cell stops filling —
    the loop is structurally indifferent). A crashing device task is caught by the
    framework wrapper and follows the same path, logged with the device's name
@@ -2057,7 +2269,7 @@ survives a stop is the roster entry: binding, claims, stable device id
 `init!` — resource acquisition is per-run; FlightCore's
 create-a-new-socket-each-`init!` in network.jl is the precedent — and spawns
 fresh tasks against the re-armed §12.8 counter. While stopped there are no
-device tasks, so `should_close` and the §12.7 liveness heartbeat are
+device tasks, so voluntary exit and the §12.7 liveness heartbeat are
 run-scoped observables; a device unplugged while stopped surfaces as the next
 run's `init!` failure, reported by name through (6)'s crash path.
 
@@ -3337,9 +3549,17 @@ about what the *build* warns on. The committed runtime warnings, in one place:
   boundary by the once-per-event rule;
 - **forgiven-debt re-anchor** (§11.7) — the pacer abandoning accumulated debt
   and re-anchoring its schedule;
-- **the two surface violations at the drain** (§12.3): `OutOfClaimEntry` (an
-  enumerated surface's binding drift) and `StaleInteractiveEntry` (the derived
-  surface moved between staging and drain, §12.5);
+- **the write-surface and entry violations** (§12.3): `OutOfClaimEntry` (an
+  enumerated surface's binding drift, rejected at staging — no position in
+  the attach-compiled schema), `StaleInteractiveEntry` (the derived
+  surface moved between staging and drain, §12.5 — the one check only the
+  drain can run) and `EntryTypeMismatch` (a value unconvertible to its
+  slot's declared type, rejected at staging for every writer);
+- **a tolerated device-side datum failure** (§12.4, §15.4):
+  `MalformedDatum` — emitted by the author's loop via `report(handle, …)`,
+  rate-limited per device, the `InputMappingError` successor;
+- **staging discarded during replay** (§12.12): `ReplayDiscardedStaging` —
+  a live batch found staged while the trace feeds the drain;
 - **thread-budget tightness** (§12.7) — at `run!` and on each attach, as the
   roster grows;
 - **device join timeout** (§12.9) — a device task exceeding the shutdown
@@ -3415,11 +3635,13 @@ comparisons are false — so no declared condition will catch them. A loop-level
 naming the offending component's state block and the boundary. It catches
 diverging models generally, not just post-terminal ones.
 
-**Domain separation.** Device-side user code — mappings run on the device
-task (§12.3) — fails in the device's own domain and takes the settled
-per-device crash path (`should_close`, liveness heartbeat, `DeviceCrash`);
-the sim keeps running. The two failure domains never mix — exactly what the
-no-shared-mutable-model decision bought.
+**Domain separation.** Device-side user code — loop bodies and mappings run
+on the device task (§12.3, §12.4) — fails in the device's own domain, and in
+two classes: a genuine bug takes the per-device crash path (liveness
+heartbeat, `DeviceCrash`) while the sim keeps running; an unmappable datum
+is not a failure at all — the loop body tolerates and reports it
+(`MalformedDatum`, §12.4). The two failure domains never mix — exactly what
+the no-shared-mutable-model decision bought.
 
 ### 15.5 Termination is a state, not an exception
 
@@ -4795,7 +5017,13 @@ Still to be settled:
   whose mixed-argument methods must stay error methods — the selector
   family's `get_` prefix (§16.4) already settles this for the readers, and
   whether the condition algebra ships behind a submodule is the packaging
-  question; and the **§14.7 executor compile-cost re-measurement** on
+  question. The audit is a full-surface sweep (per user, 2026-08-01): every
+  API method name is either specific enough to export or gets renamed or
+  left unexported — with *unexported* the preferred disposition for
+  extension-only surface (the §12.4 binding interface `faces`/`map_input`/
+  `selectors`/`map_output`, the device contract `init!`/`loop`/`shutdown!`/
+  `unblock!`), which authors extend by qualified name, `Base.show`-style,
+  rather than call every day; and the **§14.7 executor compile-cost re-measurement** on
   the real vehicle skeleton — early, before the executor's shape hardens.
   Residuals: the `q_sf` home (§17.4 — aircraft design,
   belongs here); whether `stop_on` needs a root-declared overridable default
@@ -4883,7 +5111,21 @@ For periphery authors and consumers:
 
 - **Levels, never deltas** (§12.3). Staged input values are levels
   (`press_count = 17`, never `presses += 1`) — idempotent under
-  coalescing; button edges ride as monotonic counters.
+  coalescing; button edges ride as monotonic counters. Cross-datum state
+  (press counters, edge detection) lives in the device struct, maintained
+  by the loop, arriving *inside* the datum — `map_input` is pure (§12.4).
+- **The device loop idioms** (§12.4, §12.9). Loop on `running(handle)`;
+  make every blocking call interruptible (an `unblock!` override, or
+  timeouts); voluntary exit is returning. Three canonical shapes:
+  timer-poll (sleep, poll, stage), source-driven (block on your socket;
+  `unblock!` closes it), boundary-driven (`wait_next_snapshot`, gather,
+  send). A forgotten predicate check surfaces as `DeviceJoinTimeout` with
+  your device's name; a stall as a stale heartbeat.
+- **Bad datum vs. bug** (§12.4, §15.4). Catch what your parser can throw,
+  `report(handle, MalformedDatum(cause))`, stage nothing, continue; let
+  everything else propagate — the wrapper makes it `DeviceCrash`.
+  Tolerating everything hides bugs as "device attached, nothing happens";
+  tolerating nothing kills a live link on its first truncated datagram.
 - **Derived liveness** (§12.5). A widget is live iff its port's feed chain
   terminates in a root slot currently unclaimed by a device; there is no
   per-port marking, and unexported ports are unpokeable.
@@ -4969,17 +5211,24 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   with `log_every` the log's keep-every-kth decimation — admissible on the
   derived artifact only, never on the trace (§12.2, §12.3, row 29). `debug`
   gates the workspace poison (§9.3).
-- `attach!(sim, device, binding)` — write side speaks face names through a
-  declarative binding table (axis/button → face + conditioning params; the
-  binding's enumerated face set *is* the claim — what the device may write,
-  not what it will — registered at attach with exclusivity enforced, §12.3);
-  read side binds §16.4 selectors,
-  validated at attach (§12.3, §12.2, §17.4). Legal at any time, running or
+- `attach!(sim, device, binding)` — sides by method presence (§12.4):
+  `faces(b)`/`map_input(datum, b)` is the input half (the enumerated face
+  set *is* the claim — what the device may write,
+  not what it will — registered with exclusivity enforced, the staged
+  shape and normalization shim compiled, §12.3); `selectors(b)`/
+  `map_output(nt, b)` is the output half (§16.4 selectors validated and
+  compiled to one gather, §12.2); `TableBinding` is the shipped
+  data-driven binding (§12.4). Legal at any time, running or
   stopped (§12.3).
 - `detach!(sim, device)` — releases the device's claims and republishes the
-  roster; the `should_close` exit path runs the same release (§12.3).
-- The device handle — one kind, capabilities not taxonomy: read latest
-  snapshot, wait-for-next-boundary (§12.8), stage, control access (§12.4).
+  roster; a loop body's voluntary exit runs the same release (§12.3, §12.4).
+- The device contract — `init!(dev)` / `loop(dev, handle)` /
+  `shutdown!(dev)` / optional `unblock!(dev)`: per-run `init!` on the
+  calling task, the author-owned task body inside the framework's
+  try/catch/finally wrapper, voluntary exit = return (§12.4, §12.9).
+- The device handle — one kind, capabilities not taxonomy: `running`,
+  `latest`, `wait_next_snapshot` (§12.8), `stage!`, `binding`, `gather`,
+  `report` (§12.4).
 
 **Condition algebra** (§16.1–§16.6).
 
@@ -5160,5 +5409,7 @@ Severities, in the vocabulary §15 fixes:
 | `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | §12.9 | warning (runtime) |
 | `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set | §12.9, §15.4 | warning (runtime) |
 | `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | §12.12 | warning (runtime), rate-limited per device |
+| `MalformedDatum` | device id, the cause exception; emitted by the author's loop body via `report(handle, …)` | §12.4, §15.4 | warning (runtime), rate-limited per device |
+| `EntryTypeMismatch` | writer id, face name, the offending value's type, the slot's declared type, the discarded value | §12.3 | warning (runtime) |
 | `PoisonSkip` | component path, the skipped workspace stores and their element types | §9.3 | warning (runtime), once per activation |
 | `UnboundedRun` | the effective `t_end`, `stop_on` set and `pace` | Appendix B, §15.5 | warning (runtime), at run start |
