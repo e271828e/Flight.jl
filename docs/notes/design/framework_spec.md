@@ -1518,9 +1518,10 @@ The replacement has five planes:
 4. **Control:** pause/pace/stop on a separate few-word atomic surface (§12.6).
 5. **Task topology:** one loop, one task per rostered device except the
    GUI, all run-scoped: `run!` spawns one task per non-GUI roster entry
-   after device `init!`, a mid-run `attach!` spawns immediately, and §12.9
-   joins them all at every stop (§12.11). **The GUI is pinned; the loop is
-   the movable piece.** CImGui ties rendering to the calling (main) task,
+   after device `init!`, and §12.9 joins them all at every stop (§12.11).
+   `attach!` never spawns — it registers, in a stopped-sim state only
+   (§12.3), and the task appears at the next `run!`. **The GUI is pinned;
+   the loop is the movable piece.** CImGui ties rendering to the calling (main) task,
    so the GUI is the one rostered device *without* a spawned task: with
    `gui = true` the loop moves to a spawned task for the duration of the
    run and the calling task renders; otherwise the loop runs on the
@@ -1662,7 +1663,7 @@ by path — §12.2/§15.5.)
 **Slot exclusivity: one writer per slot at any time** (§17.4). A
 device claims its slots at attach; claiming an already-claimed slot is an
 attach-time error, and detaching releases the claims (a released slot's GUI
-widgets re-enable, §12.5). Exclusivity replaces any cross-device conflict *policy* —
+widgets are live again from the next run, §12.5). Exclusivity replaces any cross-device conflict *policy* —
 attachment-order precedence at drain, say — because such a policy resolves races the
 case study shows nobody wants: every dual-writer field in the C172X demo is a joystick stream
 shadowed by a GUI mirror, where simultaneous live writing is a bug. Per-device
@@ -1681,12 +1682,11 @@ GUI widget read-only even on faces the peer never writes. Narrow the binding to
 narrow the claim — the enumeration *is* the interface.
 
 **Every writer has a write surface, and the periphery enforces it.** A batch
-entry reaches a slot **iff the named face is inside the writer's surface at
-drain time**; anything else is discarded with a runtime warning (§15.2).
-(Enforcement runs at the earliest site that can know — under the compiled
-staging shapes below, static checks run at staging and only the derived
-surface's membership check remains at the drain; the *rule* is unchanged.) A
-surface arises in one of two ways:
+entry reaches a slot **iff the named face is inside the writer's surface**;
+anything else is discarded with a runtime warning (§15.2). Because surfaces
+are static per run (the roster freeze below), enforcement runs entirely at
+*staging* — the earliest site, on the writer's own task — and the drain
+performs no checks at all. A surface arises in one of two ways:
 
 - **Enumerated** — an ordinary device's surface is its claim set: static for
   the attachment, exclusively its own (claims are disjoint by construction),
@@ -1694,14 +1694,16 @@ surface arises in one of two ways:
   drifted onto an unenumerated face is a diagnosable anomaly
   (`OutOfClaimEntry`), never a silent write, claimed or not.
 - **Derived** — the **interactive register**'s surface (the GUI, §12.5, and
-  `stage!` below) is the currently-unclaimed face set: the complement of the
-  union of all claims, computed rather than staked. It is shared among the
-  interactive writers and guaranteed to nobody — a mid-session `attach!`
-  shrinks it, and a batch staged before the claim and drained after it is
-  `StaleInteractiveEntry`: no one's bug, the surface moved between staging
-  and drain. §12.5's widget liveness is this surface made visible.
+  `stage!` below) is the unclaimed face set: the complement of the union of
+  all claims, computed rather than staked. Shared among the interactive
+  writers, it is re-derived only when the roster changes — a stopped-sim
+  event — so within any run it is as fixed as a claim set: an interactive
+  write to a claimed face is rejected at staging (`ClaimedFaceEntry`, naming
+  the incumbent), and the one seam — a batch staged while stopped whose face
+  a subsequent `attach!` claims — is renormalized away at the attach itself
+  (below). §12.5's widget liveness is this surface made visible.
 
-One rule, two surface kinds, two warning kinds. The GUI is not an exception
+One rule, two surface kinds. The GUI is not an exception
 but the resident of the second kind — one device kind (§12.4), two *binding*
 kinds (enumerated vs. derived), one drain rule — and opportunistic writing by
 autonomous devices does not exist: a device that wants a face enumerates it.
@@ -1725,20 +1727,46 @@ elevator) — not declaration constants. `init!` establishes every slot and the
 trace header captures the result; totality is enforced pre-write at
 `init!`/commit (§16.6).
 
-**The roster is itself a handoff.** Devices attach and detach at any time,
-running or stopped. The attached-device roster — cells, claims, attachment
-order — is an immutable array republished by `attach!`/`detach!` through one
-atomic reference operation (§12.1's rule applied to the periphery's own
-bookkeeping); the loop acquire-loads it once at frame top and drains that
-snapshot, so a device attached mid-frame is drained from the next frame — the
-same granularity its staged writes already have. Attachment order is the
-order within the currently published roster, carried by per-device sequence
-numbers (stable across detaches). The trace tags entries with a stable device
-id, never a roster index — replay provenance survives roster churn. Detaching
-releases the device's claims (§12.5's widgets re-enable), and a loop body's
-voluntary exit (§12.4) runs the same detach path: an unplugged
-joystick's claims release without any explicit call (§17.4). The §12.7
-thread-budget warning re-evaluates as the roster grows.
+**The roster is frozen per run: attach and detach are stopped-sim
+operations.** `attach!`/`detach!` are legal in the `built`, `initialized`
+and `stopped` states (§12.11) and an error while `running` — pause
+included: pause is a control-plane state *inside* a run (§12.6), and a
+surface that could move while paused would move mid-run. The roster —
+entries, claims, attachment order — is therefore a plain immutable value
+the loop reads once at `run!`, and the partition of the root face set into
+per-writer surfaces plus the interactive remainder is a static,
+inspectable fact of the run — printable before it starts, valid until it
+ends (§15.7's provenance register). No republication machinery exists:
+no atomic roster reference, no per-frame acquire-load, no next-frame
+attachment granularity, no sequence numbers — attachment order is the
+roster's own order. The trace still tags entries with a stable device id,
+never a roster index — ids read across runs, where the roster does change.
+Attach validation, claim registration and the staging-shape compilation
+(below) all run at the attach point, making `attach!`/`detach!`
+stopped-sim configuration operations beside `init!` and trim (§16): while
+a simulation runs, its configuration — build, roster, claims, surfaces — is
+immutable, and §12.10's doctrine extends to its final form — the running
+periphery stages writes and issues control commands, *and nothing else
+changes*.
+
+**Device death does not detach.** A mid-run crash, voluntary exit or unplug
+(§12.4, §12.9) ends the device's *task*: the cell stops filling, the §12.7
+heartbeat shows the death by name, and the roster entry — claims included —
+persists to the end of the run. The orphaned claims are the accepted cost of
+the freeze: the device's slots hold their last-drained values and no other
+writer inherits them; §12.5's read-only widgets render the orphan visibly
+("claimed by `T16000M` — task dead"), never mysteriously. Recovery is
+between runs — stop, `detach!`, and either `init!` (fresh trajectory) or
+`replay!`-to-end then `run!` (continuation from the interrupted boundary,
+§12.12) — and the anomaly is exactly that: an anomaly, not a surface event.
+One deliberate asymmetry is on record as a **guarded addition**: a pure
+reader (a binding with no input half, §12.4 — a visualizer, a telemetry
+tap) claims nothing, so attaching one mid-run would move no writer's
+surface; a dynamic reader list (touching only §12.8 wakeups, the heartbeat
+and the shutdown join — never the drain) is cleanly severable from the
+freeze should the join-a-running-session workflow find a customer. The
+§12.7 thread-budget warning runs once per `run!`, against the frozen
+population.
 
 **Staging: one atomic cell per attached device, one coalescing policy — CAS
 merge, newest wins per face.** Each cell has a single writer — its own
@@ -1781,36 +1809,50 @@ dynamism to one framework-owned conversion on the device task, at the
 boundary where wire-shaped data becomes system-shaped data. (Author-built
 total tuples were rejected as a padding form — ten explicit `nothing`s to
 say "one face touched" — the same disease row 74 and the handler return
-law refuse.) The **interactive register keeps name-keyed batches**: its
-surface is the derived one, mutable mid-session, so no static shape exists
-to compile; its writers are human-rate and its drain application stays the
-dynamic path — two representations matching the two surface kinds.
+law refuse.) The **interactive register gets the same treatment**: under
+the roster freeze its derived surface is as static as any claim set, so it
+too is compiled to a positional shape — over the unclaimed face set,
+recompiled at each `attach!`/`detach!` (a stopped-sim point) — with the
+same shim, merge and scatter. One representation, one mechanism; the
+name-keyed dynamic path the mutable surface used to force does not exist,
+and no face name is ever resolved inside the loop's frame. The
+recompilation has one seam: a pending interactive batch staged *before* a
+stopped-sim `attach!` may hold the old shape, or name a face the new claim
+covers — the attach renormalizes it (reshape, discard newly-claimed faces
+with `ClaimedFaceEntry`), so the run always starts with cells matching the
+run's schemas.
 
-**Diagnostic sites follow the compilation.** Face-name validity and value
-convertibility are static facts of the root contract, so both are checked
-at *staging* for every writer: an enumerated writer's out-of-claim face
-has no position in the schema and is rejected in `stage!`'s normalization
-(`OutOfClaimEntry` — an earlier, better-attributed site than the drain;
-same kind, same payload), and a value that cannot convert to its slot's
-declared type is discarded with `EntryTypeMismatch` (Appendix C) at the
-same spot — for the interactive register too, whose *surface* is dynamic
-but whose face types are not. What remains at the drain is exactly what
-only the drain can know: the interactive register's surface membership at
-drain time (`StaleInteractiveEntry` — the surface moved between staging
-and drain).
+**Diagnostic sites follow the compilation — all of them to staging.**
+Face-name validity, surface membership and value convertibility are all
+static facts of the run, so every check runs in `stage!`'s normalization,
+on the writer's own task: an enumerated writer's out-of-claim face has no
+position in the schema and is rejected (`OutOfClaimEntry` — an earlier,
+better-attributed site than the drain; same kind, same payload); an
+interactive write to a claimed face is rejected the same way
+(`ClaimedFaceEntry`, naming the incumbent device); and a value that cannot
+convert to its slot's declared type is discarded with `EntryTypeMismatch`
+(Appendix C) at the same spot. Nothing remains at the drain: with surfaces
+frozen for the run, there is no fact only the drain can know, and the
+drain is pure application.
 
 **Doctrine: staged values are levels, never deltas** (`press_count = 17`, never
 `presses += 1`) — levels are idempotent and survive coalescing; button edges ride as
 monotonic counters.
 
 **The drain** (frame top): one `atomicswap(cell, nothing)` per device — an
-indivisible take, no lost-write window — applied **in attachment order**
-(enumerated cells through their attach-compiled scatter, interactive cells
-through the name-keyed path), retained
+indivisible take, no lost-write window — every cell applied through its
+compiled scatter, **in attachment order**, retained
 as a deterministic application order (under slot exclusivity, cross-device writes
 to one slot no longer arise; the order matters only for diagnostics). Which
 *frame* a write lands in remains wall-clock reality; what the drain guarantees is
-that the frame's outcome is a pure function of the drained batches.
+that the frame's outcome is a pure function of the drained batches. Because
+the roster is a fixed value at `run!`, the drain is fully compilable: the
+cells and their scatters form a heterogeneous but *known* tuple the frame
+function can specialize on — zero dynamic dispatch at frame top — the same
+per-configuration compile trade §14.7's executor already makes, now incurred
+only at stopped-sim attach points. (The specialization is an implementation
+freedom the freeze creates, not an obligation; iterating a roster array
+costs a handful of dispatches per frame and remains acceptable.)
 
 **Mappings run on the device task**: today's `assign_input!(mdl, mapping, data)`
 becomes pure `map_input(data, mapping) → batch`. User-extensible code thereby never
@@ -1838,6 +1880,28 @@ extends §11.7's determinism end-to-end: replaying a recorded interactive sessio
 staging fed from the recording, no devices or mappings present — reproduces the
 trajectory bit-identically.
 
+**Trace records match each batch's natural density.** An enumerated
+writer's positional batch is dense by nature — a complete writer's tuple
+has no `nothing`s, and even a sparse peer's is claim-narrow — so the trace
+retains it verbatim, zero-copy. The interactive register's batch is the
+opposite: a tuple as wide as the unclaimed surface carrying, typically,
+one edit — retained verbatim, its size would track surface width rather
+than information (at hundreds of unclaimed faces, render-rate dragging
+would inflate the trace past the two-orders-below-the-log budget that
+justifies trace-on-by-default, row 29). The drain therefore converts it on
+retention: scan the drained tuple, record (position ⇒ value) pairs for the
+non-`nothing` entries — an O(surface-width) scan and one small allocation,
+at most once per frame and only on interactive-active frames, inside the
+retention carve-out of §9.5 that the log's per-boundary snapshot already
+occupies (the one qualified exception to retains-what-was-already-
+allocated, bought deliberately: trace size proportional to information at
+every world scale). The conversion site is the drain and not the staging
+shim because the drained tuple is the *coalesced* truth — a shim-side
+sparse log would need its own merge. Sparse records are also
+self-describing against the header's schemas, which serves the what-if
+register, disk serialization and human inspection; replay pays the inverse
+conversion once, up front (§12.12).
+
 **The trace header captures the full initial state** `(x, m, z)` **plus the
 initial root-slot values** at `init!` — captured **after `apply!` and the slot
 writes, before the boundary-zero sequence runs** (§16.5). Both halves of that
@@ -1848,7 +1912,10 @@ post-transition result — boundary zero is re-executed under replay (§12.12),
 so a post-sequence capture would re-fire authored-condition events on top of
 already-latched state. (An unfed `mixture = 0.5` never appears in any batch,
 so replay is broken without the slots; the init/trim services own slot
-initialization (§16.6), and the header capture extends naturally.) This is the one
+initialization (§16.6), and the header capture extends naturally.) The header
+also carries **each writer's face-name → position schema** — the run's frozen
+surface partition — since positional records are meaningless without it and
+replay does not reconstruct claims (§12.12). This is the one
 full-state capture in a normal run, and the other half of what "given the
 initial state and the trace, the log is recomputable" requires. Header plus batches
 are the *primary* record; everything else, the state trajectory included, is
@@ -1859,7 +1926,8 @@ plain kill switch for memory-constrained marathon sessions). The asymmetry that
 decides the default: the trace is *primary* data and the log *derived* — given the
 initial state and the trace, the log is recomputable (that is what bit-identical
 replay means), while an untraced interactive session is unreproducible, permanently.
-The cost supports it: the trace retains batches the devices already allocated, at
+The cost supports it: the trace retains batches the devices already allocated
+(plus the interactive register's small sparse records, above), at
 drain-rate × device-count — tens of MB per hour worst case, two orders of magnitude
 below the snapshot log. No sampling, no rolling window (complexity without a
 customer).
@@ -1912,8 +1980,8 @@ task = Threads.@spawn try
 catch e
     report(DeviceCrash, dev, e)              # §12.9(6): sim continues, device absent
 finally
-    shutdown!(dev)                           # any exit path
-    release_claims_and_detach!(...)          # voluntary exit and crash share the path
+    shutdown!(dev)                           # any exit path: OS resources released
+    mark_dead!(...)                          # heartbeat only — claims stay, §12.3
 end
 ```
 
@@ -1968,9 +2036,10 @@ predicate check surfaces as `DeviceJoinTimeout` with the device's name, a
 stall as a stale §12.7 heartbeat (liveness timestamps ride *inside* the
 handle primitives, so the framework observes activity without owning the
 loop). **`should_close` dissolves**: a window ✕ or peer EOT is the loop
-body returning; the wrapper's exit path releases claims, detaches and
-consults `should_abort` — §12.9(6) is now literally "the task body
-returned." The GUI implements the same contract; the framework calls its
+body returning; the wrapper's exit path releases the device's OS resources,
+marks it dead for the heartbeat and consults `should_abort` — claims and
+roster entry persist to run end (§12.3's freeze) — §12.9(6) is now
+literally "the task body returned." The GUI implements the same contract; the framework calls its
 `loop` inline on the calling task instead of spawning (§12.1's pinning,
 unchanged).
 
@@ -2072,14 +2141,17 @@ GUI: read-only rendering is first-class, not an error state — the author of
 **Liveness is a derived property, and resolution is transitive.** A widget
 is live iff its port's feed chain — walked through wires and exports across *all*
 levels, not just the local assembly — terminates in a root slot, *and* that slot
-is currently unclaimed by a device (§12.3 exclusivity). There is no per-port
+is unclaimed in the run's frozen surface partition (§12.3 exclusivity). Under
+the roster freeze, liveness is a static fact of the run: baked once, with the
+port resolution, when the run starts — never consulted against mutable claim
+state at render. There is no per-port
 "GUI-controlled" marking anywhere: the export chain is the marking, written by
 the one author entitled to write it (a component's ports become GUI-commandable
 exactly when the assemblies above surface them). The switch between "driven by
 its own panel" and "driven by an external provider" is therefore automatic — at
 build time by wiring archetype (a scripted `World` wires a scenario component
-into the same faces the interactive `World` exports to root), at run time by
-device claim state. Rejected: nominally-connected ports with a GUI
+into the same faces the interactive `World` exports to root), at run start by
+roster claim state. Rejected: nominally-connected ports with a GUI
 *override* channel — a second write path that breaks the
 pure-function-of-drained-batches frame semantics, needs a parallel trace and
 replay mechanism, and cannot resolve the producer conflict (either a dead widget
@@ -2115,12 +2187,13 @@ worth keeping as insurance: if an
 anomalous writer ever touched an unclaimed slot through a framework defect, the
 slot visibly fighting is a diagnosable anomaly — continuous re-staging would mask
 the invariant violation at render rate. Side benefit: staging traffic (and trace
-noise) drops from render-rate-while-grabbed to actual edits. **Claim-transition
-policy:** if a device claims a slot mid-interaction (attach during a drag — a
-deliberate act concurrent with a held grab, vanishingly rare), the widget flips
-read-only at the next render and the drain discards the stale entry —
-`StaleInteractiveEntry`, §12.3's derived surface moving between staging and
-drain — with a warning.
+noise) drops from render-rate-while-grabbed to actual edits. No
+claim-transition policy exists, because no claim transition can occur
+mid-run (§12.3's freeze); the one liveness-adjacent display rule is the
+orphan case — a read-only widget whose claiming device's task has died
+renders the fact in its provenance ("claimed by `T16000M` — task dead",
+§12.7's heartbeat surfaced in place), so an orphaned slot is visible where
+the user is looking, not only in the status panel.
 
 The panel-authoring calling convention — what the drawing context carries,
 how widgets name their component's ports, how an assembly's panel composes
@@ -2183,8 +2256,8 @@ staging cell, atomic control), and the GUI runs on the *calling* task, so it can
 fail to be scheduled: under any starvation the window keeps rendering and the stop
 button keeps working. Undersized sessions degrade to laggy inputs and stale
 snapshots — visible, recoverable states. `run!` warns when `Threads.nthreads()` is
-tight for the attached population — re-checked as devices attach mid-run
-(§12.3) — naming the `julia -t` remedy; sizing guidance:
+tight for the attached population — one check per run, against the frozen
+roster (§12.3) — naming the `julia -t` remedy; sizing guidance:
 one thread for the loop, the main thread for the GUI, headroom for compute-heavy or
 blocking-ccall devices (libuv-backed I/O yields; raw blocking ccalls pin their
 thread for the duration). No pinning, no sticky tasks.
@@ -2252,8 +2325,11 @@ does not use the wait (VSync-paced, it reads `latest` each render).
 6. **Device-initiated paths:** voluntary exit — the loop body returns
    (window ✕, peer EOT; no `should_close` hook exists, §12.4); with
    `should_abort` set the wrapper's exit path also requests a sim stop,
-   otherwise the sim continues with the device absent (its cell stops filling —
-   the loop is structurally indifferent). A crashing device task is caught by the
+   otherwise the sim continues with the device's *task* absent: its cell
+   stops filling — the loop is structurally indifferent — while its roster
+   entry and claims persist to run end (§12.3's freeze: death is not
+   detach; the orphaned slots hold their last-drained values, visibly,
+   §12.5). A crashing device task is caught by the
    framework wrapper and follows the same path, logged with the device's name
    (`DeviceCrash`, Appendix C).
 7. **Loop-side failure** runs (1)–(5) from the catch path — specified in
@@ -2265,7 +2341,10 @@ does not use the wait (VSync-paced, it reads `latest` each render).
 After (5) the task set is empty — device tasks are per-run artifacts
 (§12.1) — and `shutdown!` has released each device's OS resources. What
 survives a stop is the roster entry: binding, claims, stable device id
-(§12.3); never a task, never a live resource. The next `run!` re-runs device
+(§12.3); never a task, never a live resource — a device whose task died
+mid-run included, its entry indistinguishable at this point from any
+other's; `stopped` is where `detach!` removes it and releases its claims.
+The next `run!` re-runs device
 `init!` — resource acquisition is per-run; FlightCore's
 create-a-new-socket-each-`init!` in network.jl is the precedent — and spawns
 fresh tasks against the re-armed §12.8 counter. While stopped there are no
@@ -2357,8 +2436,10 @@ them.
 
 A stepping session is **deviceless by construction**: device tasks are
 per-`run!` artifacts (§12.1) and a device loop's `while running(handle)` is
-false outside a run, so `attach!` while stepping only registers, exactly as
-while stopped. The frame-top drain still runs — `step!` frames stay
+false outside a run. Between `step!` calls the simulation is in a
+stopped-sim state (`initialized`, below), so `attach!` is legal there and
+does what it always does — registers (§12.3); the task appears at the next
+`run!`. The frame-top drain still runs — `step!` frames stay
 bit-identical to `run!` frames — and what it drains is the **harness
 register**: `stage!(sim, "face" => value, ...)`, §12.3's interactive
 register with the calling task as writer. Staged batches are ordinary
@@ -2464,6 +2545,12 @@ Everything else is the loop as already specified:
   validated against the `Build` (store layout, slot faces) and the trace's
   batch entries against the root input-face list — attach-style, with
   did-you-mean (`ReplayHeaderMismatch`, `ReplayUnknownFace`, Appendix C).
+  The same pass pays the trace-record conversion in reverse: the interactive
+  register's sparse records (§12.3) are normalized to positional batches
+  against the header's schemas, once, off the loop — replay has the whole
+  trace in hand before frame 1 — so the replay drain applies compiled
+  scatters exactly as the live drain does, and no face name is resolved
+  per frame under replay either.
   *Structural* mismatch is an error; *parametric* difference is not:
   replaying against the same structure with changed parameters is the
   **what-if register** — deterministic re-driving of the recorded inputs
@@ -3549,19 +3636,21 @@ about what the *build* warns on. The committed runtime warnings, in one place:
   boundary by the once-per-event rule;
 - **forgiven-debt re-anchor** (§11.7) — the pacer abandoning accumulated debt
   and re-anchoring its schedule;
-- **the write-surface and entry violations** (§12.3): `OutOfClaimEntry` (an
-  enumerated surface's binding drift, rejected at staging — no position in
-  the attach-compiled schema), `StaleInteractiveEntry` (the derived
-  surface moved between staging and drain, §12.5 — the one check only the
-  drain can run) and `EntryTypeMismatch` (a value unconvertible to its
+- **the write-surface and entry violations** (§12.3), all at staging — the
+  drain checks nothing: `OutOfClaimEntry` (an
+  enumerated surface's binding drift — no position in
+  the attach-compiled schema), `ClaimedFaceEntry` (an interactive write to
+  a face claimed in the run's frozen partition, naming the incumbent; also
+  fired by the stopped-sim attach renormalizing a pending batch) and
+  `EntryTypeMismatch` (a value unconvertible to its
   slot's declared type, rejected at staging for every writer);
 - **a tolerated device-side datum failure** (§12.4, §15.4):
   `MalformedDatum` — emitted by the author's loop via `report(handle, …)`,
   rate-limited per device, the `InputMappingError` successor;
 - **staging discarded during replay** (§12.12): `ReplayDiscardedStaging` —
   a live batch found staged while the trace feeds the drain;
-- **thread-budget tightness** (§12.7) — at `run!` and on each attach, as the
-  roster grows;
+- **thread-budget tightness** (§12.7) — once per `run!`, against the frozen
+  roster;
 - **device join timeout** (§12.9) — a device task exceeding the shutdown
   join timeout, abandoned by name rather than hanging `run!`;
 - **device crash** (§12.9, §15.4) — a device task's failure caught by the
@@ -4738,11 +4827,16 @@ forced by this cast):
   claim set registered (second joystick on the same faces errors here). The
   Gladiator variant is the same table with different keys, zero shaping code —
   the duplication smell structurally gone.
-- `run!(sim; gui = true, pace = 1)` — derived liveness with zero configuration:
+- `run!(sim; gui = true, pace = 1)` — derived liveness with zero configuration,
+  baked at run start against the frozen roster (§12.3):
   axis mirrors read-only (claimed, with provenance), mode/setpoint/mixture/
   payload/environment widgets live, actuator sliders read-only (component-fed).
-  Unplug the joystick → claims release → mirrors go live at the last-held slot
-  values. Post-run: `TimeSeries` over retained snapshots; the trace can re-drive
+  Unplug the joystick → its task exits, the mirrors stay read-only with the
+  death in their provenance ("claimed by `T16000M` — task dead") and the axes
+  hold their last-drained values — the accepted orphan anomaly (§12.3);
+  recovery is between runs: stop, `detach!`, then `init!` for a fresh
+  trajectory or `replay!`-to-end + `run!` to continue the interrupted one
+  (§12.12). Post-run: `TimeSeries` over retained snapshots; the trace can re-drive
   a fresh `Simulation(world)` bit-identically — which is also the state-trajectory
   inspector (row 38 paying its way).
 
@@ -5127,8 +5221,8 @@ For periphery authors and consumers:
   Tolerating everything hides bugs as "device attached, nothing happens";
   tolerating nothing kills a live link on its first truncated datagram.
 - **Derived liveness** (§12.5). A widget is live iff its port's feed chain
-  terminates in a root slot currently unclaimed by a device; there is no
-  per-port marking, and unexported ports are unpokeable.
+  terminates in a root slot unclaimed in the run's frozen partition; there
+  is no per-port marking, and unexported ports are unpokeable.
 - **The two observation registers** (§12.2, §15.5). A deep snapshot path is
   the *inspection* register: it sees everything and promises nothing
   across builds. An exported output face is the *integration* register:
@@ -5218,10 +5312,13 @@ updates it** (§5.2's return law — no padding, `x` complete, `m` partial).
   shape and normalization shim compiled, §12.3); `selectors(b)`/
   `map_output(nt, b)` is the output half (§16.4 selectors validated and
   compiled to one gather, §12.2); `TableBinding` is the shipped
-  data-driven binding (§12.4). Legal at any time, running or
-  stopped (§12.3).
-- `detach!(sim, device)` — releases the device's claims and republishes the
-  roster; a loop body's voluntary exit runs the same release (§12.3, §12.4).
+  data-driven binding (§12.4). A stopped-sim operation — legal in `built`,
+  `initialized` and `stopped`, an error while `running` (§12.3's roster
+  freeze); registers only, the task appears at the next `run!`.
+- `detach!(sim, device)` — removes the roster entry and releases the
+  device's claims; stopped-sim only, like `attach!`. A loop body's
+  voluntary exit or crash mid-run does *not* detach: the task dies, the
+  claims persist to run end (§12.3, §12.4, §12.9).
 - The device contract — `init!(dev)` / `loop(dev, handle)` /
   `shutdown!(dev)` / optional `unblock!(dev)`: per-run `init!` on the
   calling task, the author-owned task body inside the framework's
@@ -5403,9 +5500,9 @@ Severities, in the vocabulary §15 fixes:
 | `ChatteringBudget` | component path, event name, boundary time, the exhausted localization budget | §11.4 | warning (runtime) |
 | `EventDeferred` | component path, event name, boundary time — re-enabled within the boundary, deferred by the once-per-event rule | §11.6 | warning (runtime) |
 | `DebtReanchor` | forgiven debt, the new schedule anchor, boundary time | §11.7 | warning (runtime) |
-| `StaleInteractiveEntry` | face name, the incumbent (claiming) device id, the discarded value, which interactive writer (GUI / harness) | §12.3, §12.5 | warning (runtime) |
+| `ClaimedFaceEntry` | face name, the incumbent (claiming) device id, the discarded value, which interactive writer (GUI / harness); the site (staging, or a stopped-sim attach's renormalization) | §12.3, §12.5 | warning (runtime) |
 | `OutOfClaimEntry` | device id, face name, the discarded value, the device's claim set; the incumbent's device id when the face is claimed elsewhere | §12.3 | warning (runtime) |
-| `ThreadBudget` | thread count, device-task count, the site (`run!` or an `attach!`) | §12.7 | warning (runtime) |
+| `ThreadBudget` | thread count, device-task count | §12.7 | warning (runtime), at `run!` |
 | `DeviceJoinTimeout` | device id, the join timeout, boundary time and index at shutdown | §12.9 | warning (runtime) |
 | `DeviceCrash` | device id, the original exception as `cause`, whether `should_abort` was set | §12.9, §15.4 | warning (runtime) |
 | `ReplayDiscardedStaging` | device id, the discarded batch's face names, frame ordinal | §12.12 | warning (runtime), rate-limited per device |

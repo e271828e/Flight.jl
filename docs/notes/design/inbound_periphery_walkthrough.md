@@ -2,16 +2,19 @@
 
 *A companion explainer, not normative text. The ground truth is
 `framework_spec.md` §12.3 (staging, claims, drain), §12.5 (GUI write path),
-§12.11 (harness register) and decision rows 44, 93, 96. Written 2026-07-31,
-after the round-3 write-surface settlement; if this document and the spec ever
+§12.11 (harness register) and decision rows 44, 93, 96, 106, 107. Written
+2026-07-31 after the round-3 write-surface settlement; rewritten 2026-08-01
+for the roster freeze (rows 106–107). If this document and the spec ever
 disagree, the spec wins.*
 
 Everything in §12.3 answers one question: **how do things outside the loop
 feed values into a simulation that owns its data exclusively?** FlightCore's
 answer was a lock around the live model. This design's answer is a small
-pipeline of immutable handoffs. Each concept below names one station of that
-pipeline; they are introduced in dependency order, each with a code shape,
-then one frame runs end to end, and the write-surface rule closes the story.
+pipeline of immutable handoffs, configured entirely while the simulation is
+stopped and frozen for the duration of each run. Each concept below names one
+station of that pipeline; they are introduced in dependency order, each with a
+code shape, then one frame runs end to end, and the write-surface rule closes
+the story.
 
 ## 1. Slots and faces: *what* can be written
 
@@ -39,56 +42,32 @@ side addresses them by face *name* (`"throttle"`), never by structural path —
 the root contract is the vocabulary. (The read side is different: snapshot
 consumers address table cells by path or face, §12.2/§16.4.)
 
-## 2. Batches and staging cells: *how* a write is proposed
+## 2. The roster, attaching, claiming: *who* may write
 
-Nobody outside the loop ever assigns a slot. Instead, a writer produces a
-**batch** — an immutable set of face ⇒ value pairs:
-
-```julia
-batch = (throttle = 0.70, elevator = -0.05)   # a joystick poll, conditioned
-```
-
-and deposits it in a **staging cell**: a one-element atomic mailbox, one per
-attached device, written by exactly one device task:
-
-```julia
-mutable struct StagingCell
-    @atomic pending::Union{Nothing, Batch}    # the latest not-yet-applied batch
-end
-```
-
-**Staging** is depositing a batch into your own cell. It happens at any
-wall-clock moment, on the device's own task, and touches nothing the loop is
-using. Staging three times between frames leaves one batch: a *complete*
-writer (a joystick: full write-set every poll) overwrites its cell —
-coalescing to newest is the same zero-order-hold decision the loop makes
-everywhere — while a *sparse* writer (the GUI: only what the user touched)
-CAS-merges into its own cell, so an untouched slider never clobbers anything.
-Staged values are **levels, never deltas** (`press_count = 17`, never
-`presses += 1`): levels are idempotent and survive coalescing.
-
-## 3. The roster, attaching, claiming: *who* may write
-
-The **roster** is the framework's registry of currently attached devices — an
-immutable array, republished by one atomic reference operation whenever it
-changes. One entry per device:
+The **roster** is the registry of attached devices, and the first thing to
+know about it is *when* it can change: **only while the simulation is
+stopped** (`built`, `initialized` or `stopped` — never `running`, and pause
+is inside a run). `attach!` and `detach!` are configuration operations in
+the same family as `init!` and trim; a run begins by reading the roster
+once, as a plain immutable value, and nothing about it moves until the run
+ends. One entry per device:
 
 ```julia
 struct RosterEntry
-    id::DeviceId              # stable across sessions — trace provenance
-    cell::StagingCell         # this device's mailbox
+    id::DeviceId              # stable across runs — trace provenance
+    cell::StagingCell         # this device's mailbox (§3)
     claims::NTuple{N,String}  # face names this device owns
-    seq::Int                  # attachment order
+    schema::Schema            # face name → position, compiled at attach (§3)
 end
 ```
 
 **Attaching** (`attach!(sim, device, binding)`) is: validate the binding's
 face names against the root contract (unknown face → `AttachUnknownFace`),
-register the **claims**, allocate the cell, republish the roster. A **claim**
-is exclusive ownership of a face: one writer per slot at any time, a second
-claimant is a `ClaimConflict` at attach, and detaching releases the claims.
-The claim set is derived from the **binding** — the declarative table that
-also drives the mapping:
+register the **claims**, compile the staging shape (§3), add the entry.
+A **claim** is exclusive ownership of a face: one writer per slot at any
+time, a second claimant is a `ClaimConflict` at attach, and `detach!`
+releases the claims. The claim set is derived from the **binding** — the
+declarative table that also drives the mapping:
 
 ```julia
 joystick_binding = (stick_y  = (face = "elevator", expo = 0.6),
@@ -96,35 +75,91 @@ joystick_binding = (stick_y  = (face = "elevator", expo = 0.6),
 # ⇒ claims = ("elevator", "throttle")
 ```
 
-Note what a claim is *for*: it is not access control on staging (any task can
-put anything in its own cell — it's a private mailbox), it is an
-**arbitration promise** checked where writes become real: at the drain.
+Because the roster is frozen per run, so is the **partition of the face set**
+it induces: every face is either claimed by exactly one device or belongs to
+the shared interactive remainder (§5), and that partition is a static,
+printable fact of the run — who writes what, decided before the first frame.
+
+One consequence is deliberate and worth stating early: **device death is not
+detach**. A task that crashes, returns voluntarily, or loses its hardware
+mid-run simply stops filling its cell; the §12.7 heartbeat reports the death
+by name, and the entry — claims included — persists to run end. The orphaned
+slots hold their last-drained values, and the GUI renders the fact where the
+user is looking ("claimed by `T16000M` — task dead", §12.5). Recovery is
+between runs: stop, `detach!`, then `init!` for a fresh trajectory or
+`replay!`-to-end + `run!` to continue the interrupted one (§12.12).
+
+## 3. Batches and staging cells: *how* a write is proposed
+
+Nobody outside the loop ever assigns a slot. Instead, a writer produces a
+**batch** and deposits it in its **staging cell**: a one-element atomic
+mailbox, one per attached device, written by exactly one device task:
+
+```julia
+mutable struct StagingCell
+    @atomic pending::Union{Nothing, Batch}    # the latest not-yet-applied batch
+end
+```
+
+The batch's shape is **fixed at attach**: a positional tuple over the
+writer's surface, `Union{Nothing, T}` per face, `nothing` meaning *not
+touched this time*. Authors never build it by hand — `map_input` returns
+sparse face ⇒ value pairs, and `stage!` normalizes them through the entry's
+attach-compiled schema:
+
+```julia
+map_input(datum, binding)      # ⇒ (throttle = 0.70, elevator = -0.05)
+# stage! normalizes against the schema ("elevator" ⇒ 1, "throttle" ⇒ 2):
+(-0.05, 0.70)                  # positional over the claim set; nothing = untouched
+```
+
+**Staging** is depositing that tuple into your own cell. It happens at any
+wall-clock moment, on the device's own task, and touches nothing the loop is
+using. Staging three times between frames leaves one batch: the incoming
+tuple **CAS-merges** into the pending one, positionally — `nothing` keeps
+the pending value, anything else wins as newest. Merge is the only policy
+because it is always correct: for a *complete* writer (a joystick: full
+write-set every poll) merge and overwrite are provably the same operation,
+while for a *sparse* writer (the GUI: only what the user touched) overwrite
+would silently lose the untouched pending edits. Staged values are **levels,
+never deltas** (`press_count = 17`, never `presses += 1`): levels are
+idempotent and survive coalescing.
 
 ## 4. The drain: *when* proposals become slot values
 
-At the top of each frame — and only there — the loop acquire-loads the
-current roster once and, in attachment order (the harness cell last, §6
-below), atomically takes each cell's contents:
+At the top of each frame — and only there — the loop takes each cell's
+contents atomically and applies it through the entry's attach-compiled
+**scatter** (position → slot store, statically typed, `nothing` skips — the
+mirror of §12.2's output gather), in attachment order (the harness cell
+last, §5):
 
 ```julia
 for entry in roster                                    # frame top, loop task
     batch = @atomicswap entry.cell.pending = nothing   # indivisible take
     batch === nothing && continue                      # nothing staged: fine
-    for (face, value) in pairs(batch)
-        face_in_surface(face, entry, roster) ?         # the write-surface rule, §7
-            (slots[face] = value) : warn_and_discard(...)
-    end
-    record_in_trace!(frame, entry.id => batch)
+    scatter!(slots, entry, batch)                      # no checks — see §6
+    record_in_trace!(frame, entry.id, batch)
 end
 ```
+
+Note what is *absent*: the drain validates nothing. Every check ran at
+staging (§6), so the drain is pure application — and since the roster is a
+fixed value at `run!`, the whole thing is compilable: the cells and their
+scatters form a known tuple the frame function can specialize on, with no
+name resolved and no dynamic dispatch at frame top.
 
 **Draining** is that swap-and-apply. It is the single point where the
 periphery's proposals become the frame's slot constants, and everything after
 it — the sweep, the boundaries, the published snapshot — is a pure function
 of the drained batches. That purity is what makes the **input trace** (the
 per-frame sequence of device-tagged drained batches, plus the header's
-initial state and slot values) a complete record: replay feeds the same
-batches to the same drain and gets a bit-identical trajectory.
+initial state, slot values and per-writer schemas) a complete record: replay
+feeds the same batches to the same drain and gets a bit-identical trajectory.
+One retention detail (row 107): an enumerated writer's batch enters the trace
+verbatim — claim-narrow, dense by nature — while the interactive register's
+wide, mostly-`nothing` tuple is converted on retention to sparse
+(position ⇒ value) pairs, so trace size tracks information, not surface
+width; replay converts back once, up front, off the loop (§12.12).
 
 ## 5. "Registers": modes of use, not more machinery
 
@@ -136,71 +171,79 @@ register). There are two:
   attach, own them exclusively. The joystick. Autonomous devices live here.
 - **The interactive register**: the GUI (§12.5) and the harness/REPL's
   task-free entry point `stage!(sim, "face" => value, ...)` (§12.11). Its
-  writers stage to currently-unclaimed faces without owning them.
+  writers share the **unclaimed remainder** of the run's partition — the
+  complement of the union of all claims, computed rather than staked, and
+  every bit as static for the run as a claim set. It has its own compiled
+  positional shape and scatter, over the unclaimed set, recompiled at each
+  stopped-sim `attach!`/`detach!`.
 
-## 6. One frame, end to end
+The one sequencing rule: among interactive writers the harness cell drains
+**last** — the explicit hand of code beats a widget interaction. Sequencing
+within one register, not cross-device arbitration; in practice the two
+rarely coexist, since during a GUI run the calling task renders.
 
-Joystick attached (claims `throttle`, `elevator`); GUI attached (claims
-nothing); slots as above.
+## 6. The write-surface rule (rows 44 and 106)
 
-1. *Between frames*: the joystick task polls at its own rate, runs
-   `map_input` (deadzone, expo — pure, on the device task), stages
-   `(throttle = 0.70, elevator = -0.05)`; three polls happen before the next
-   frame, so the cell holds only the newest. You drag the flaps slider; the
-   GUI stages `(flaps = 1.0)` into *its* cell. The throttle slider renders
-   read-only — its face is claimed.
-2. *Frame top*: drain. Joystick batch: both faces are its claims → applied.
-   GUI batch: `flaps` is unclaimed → applied. Slots are now
-   `(throttle = 0.70, elevator = -0.05, flaps = 1.0, brake = 0.0)`, frozen
-   for the frame. Both batches enter the trace, tagged.
-3. The sweep runs against those constants; the boundary completes; the
-   snapshot publishes; the GUI's next render reads the snapshot and shows
-   flaps at 1.0 — its own write, round-tripped, no model poking anywhere.
+**Every writer has a write surface, and staging enforces it**: a batch entry
+reaches a slot iff the named face is inside the writer's surface; anything
+else is rejected in `stage!`'s normalization, on the writer's own task, with
+a runtime warning. A surface arises in one of two ways — enumerated (a
+device's claim set) or derived (the interactive remainder) — and under the
+roster freeze both are static per run, which is why staging can be the
+*only* enforcement point: there is no fact left that only the drain could
+know. Two warning kinds cover the violations:
 
-## 7. The write-surface rule (the settled arbitration story, row 44)
-
-**Every writer has a write surface, and the drain enforces it**: a batch
-entry is applied iff the named face is inside the writer's surface at drain
-time; anything else is discarded with a runtime warning. A surface arises in
-one of two ways:
-
-- **Enumerated** — an ordinary device's surface is its claim set. Static for
-  the attachment, exclusively its own (claims are disjoint by construction),
-  and binding-bounded even where nobody else is involved.
-- **Derived** — the interactive register's surface is the currently-unclaimed
-  face set: the complement of the union of all claims, computed rather than
-  staked.
-
-The GUI is therefore not an exception: one device kind (§12.4), two *binding*
-kinds (enumerated vs. derived), one drain rule. Opportunistic writing by
-autonomous devices does not exist — a device that wants a face enumerates
-it — so cross-writer races on one slot structurally cannot arise: claimed
-faces have exclusivity, unclaimed faces admit only the interactive register.
-Drain order is a diagnostic fact, not an arbitration policy; the one
-sequencing rule is that the harness cell drains **last** (the explicit hand
-of code beats a widget interaction — sequencing within one register, and in
-practice the two rarely coexist, since during a GUI run the calling task
-renders).
-
-The two surface kinds come with a **guarantee asymmetry**. An enumerated
-surface is stable: nothing can take `throttle` from the joystick
-mid-attachment. The derived surface is shared and precarious: any face in it
-can vanish the moment a device claims it, and a batch staged before the claim
-and drained after it is discarded — no one's bug, the surface moved.
+- `OutOfClaimEntry` — an enumerated-surface violation: the face has no
+  position in the writer's schema. Writer id, face, discarded value, the
+  claim set (plus the incumbent's id when the face is claimed elsewhere).
+  "Your peer drifted from your binding."
+- `ClaimedFaceEntry` — an interactive-register violation: the GUI or
+  `stage!` named a face some device claims in this run's partition. Face,
+  incumbent device id, discarded value, which interactive writer.
 
 Worked illustration: attach a UDP telecommand peer whose binding enumerates
 `("brake",)`; its remote peer sends `{"flaps": 0.5}` — a face it never
 enumerated, currently unclaimed. `map_input` dutifully produces
-`(flaps = 0.5,)`, and the drain discards it: `flaps` is outside the writer's
-enumerated surface. The discard warns with the drifted mapping named —
+`(flaps = 0.5,)`, and `stage!`'s normalization rejects it on the spot:
+`flaps` has no position in the peer's schema → `OutOfClaimEntry`, attributed
+to the device whose mapping drifted, before the value ever nears the loop.
 
-- `OutOfClaimEntry` — an enumerated-surface violation: writer id, face,
-  discarded value, the claim set (plus the incumbent's id when the face is
-  claimed elsewhere). "Your peer drifted from your binding."
-- `StaleInteractiveEntry` — a derived-surface violation: the GUI or `stage!`
-  staged to a face a device has claimed since (or holds). "The surface moved
-  between staging and drain."
+The GUI is therefore not an exception: one device kind (§12.4), two
+*binding* kinds (enumerated vs. derived), one staging rule, one checkless
+drain. Opportunistic writing by autonomous devices does not exist — a device
+that wants a face enumerates it — so cross-writer races on one slot
+structurally cannot arise: claimed faces have exclusivity, unclaimed faces
+admit only the interactive register, and drain order is a diagnostic fact,
+not an arbitration policy.
 
-The enumeration's other enforcement point is `attach!` itself
-(`AttachUnknownFace`, `ClaimConflict`); the drain's surface check is what
-extends the roster's authority to every frame thereafter.
+One seam remains, and it lives at the attach, not the drain: `stage!` works
+while stopped, so a pending interactive batch may predate a stopped-sim
+`attach!` that reshapes the unclaimed set. The attach renormalizes it —
+reshape to the new schema, discard entries on newly-claimed faces with
+`ClaimedFaceEntry` — so every run starts with cells matching the run's
+schemas. The enumeration's other enforcement point is `attach!` itself
+(`AttachUnknownFace`, `ClaimConflict`); the frozen roster is what extends
+its authority, unchanged, to every frame of the run.
+
+## 7. One frame, end to end
+
+Joystick attached while stopped (claims `throttle`, `elevator`); GUI
+attached (claims nothing); `run!` reads the roster, bakes widget liveness
+(§12.5) and specializes the drain; slots as above.
+
+1. *Between frames*: the joystick task polls at its own rate, runs
+   `map_input` (deadzone, expo — pure, on the device task), stages
+   `(throttle = 0.70, elevator = -0.05)` — normalized to its two-position
+   tuple; three polls happen before the next frame, so the cell holds only
+   the newest. You drag the flaps slider; the GUI stages `flaps = 1.0` into
+   *its* cell, at the flaps position of the interactive shape. The throttle
+   slider renders read-only — its face is claimed, a fact baked at run
+   start.
+2. *Frame top*: drain. Both cells swap and scatter — no checks, both
+   surfaces were enforced at staging. Slots are now
+   `(throttle = 0.70, elevator = -0.05, flaps = 1.0, brake = 0.0)`, frozen
+   for the frame. The joystick's batch enters the trace verbatim; the GUI's
+   is retained as the sparse pair `(flaps ⇒ 1.0)`.
+3. The sweep runs against those constants; the boundary completes; the
+   snapshot publishes; the GUI's next render reads the snapshot and shows
+   flaps at 1.0 — its own write, round-tripped, no model poking anywhere.
