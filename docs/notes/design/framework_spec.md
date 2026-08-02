@@ -2875,8 +2875,12 @@ The inventory, and where each schema fact gets its authority:
   envelope would otherwise hide the omission indefinitely. **Tier is read off the
   declaration shape:** the stage names defined (`h_x`/`h_xu`/`f` versus
   `h_z`/`h_zu`/`g`), the `init_*` family declared (`init_x`/`init_m` versus
-  `init_z`), and `workspace`'s arity (`(::C, ::Type{T})` versus `(::C)`) must all
-  name the same tier; a stateless leaf declares no store, so its stage names
+  `init_z`), `workspace`'s arity (`(::C, ::Type{T})` versus `(::C)`), and —
+  when declared — `events`, a continuous-tier marker (the event system is
+  continuous-side only: §5.2, §3.2, §16.1), must all
+  name the same tier (`DeclarationOnWrongTier`, Appendix C — the offending
+  declaration, stage name or `events`, with the tier the leaf's other
+  declarations announce); a stateless leaf declares no store, so its stage names
   alone decide — which is what makes a stateless `h_xu` component tier-
   transparent library material (§15.7). Members of both families, or of neither,
   are the §13.5 kind errors. **The root of a build is an assembly:** root slots
@@ -3158,6 +3162,8 @@ function faces(asm, child_path::AbstractString;
     child = resolve(asm, child_path)      # getfield walk along "/" segments
     names = input_faces(child)            # keys(input_types(c)) for a leaf,
                                           # input entries of exports(c) for an assembly
+    isempty(except) || isempty(only) ||
+        declaration_error(child_path, :both_selectors)  # exclusivity enforced, not documented
     unknown = setdiff((except..., only...), names)
     isempty(unknown) || declaration_error(child_path, unknown, names)  # list in hand
     wanted = isempty(only) ? setdiff(names, except) : only
@@ -3266,7 +3272,11 @@ organized as three strata:
 
 Deployment binding (`Δt_base`, `h`, `n`, `t_end`, algorithm, harmonic-grid
 validation, tick schedule instantiation) sits after all three, at `Simulation`
-construction — nothing in A–C depends on it.
+construction — nothing in A–C depends on it. Its validation is batched like
+its declarative siblings (§15.1): a nonpositive `h`, an `n < 1`, a
+harmonic-grid violation, an algorithm the stepper seam does not know are
+collected and reported as `DeploymentInvalid` (Appendix C — parameter,
+value, the violated constraint).
 
 ### 14.2 The `Build` artifact
 
@@ -3434,7 +3444,12 @@ the same `SArray` at `T`), the predicate being "every
 field scatters into its field's block at `T`", which is what makes derivative
 completeness structural rather than a matter of author discipline; guards
 against their probe-derived condition form (below); `g`
-against the `z` shape; handlers against the §5.2 return law, key by key.
+against the `z` shape; handlers against the §5.2 return law, key by key;
+`project` against `X`'s own shape at `T`, **complete** — the same
+predicate as a handler's `x` key, since its result is written back to the
+buffer wholesale at both of §9.1's schedule positions, and a projection
+with a mode-dependent branch first executes its second branch at run
+time.
 
 **Handler returns, key by key.** The returned NamedTuple's key set is checked
 first: an unknown key, or a key naming a store the component does not declare,
@@ -4130,7 +4145,12 @@ types keeps them apart mechanically. The mixed call is closed explicitly: a
 a bare NamedTuple — is an **error method**, defined so the call cannot fall
 through to `Base.merge`'s last-wins semantics on a payload that looks
 plausible, and its message is directive: wrap the NamedTuple in `fragment(...)`
-(or `at(prefix, fragment(...))`) and merge nodes with nodes. The
+(or `at(prefix, fragment(...))`) and merge nodes with nodes. The rejection
+carries a kind like every other (`ConditionNodeMisuse`, Appendix C — the
+offending argument's type, the node kinds in hand): it is raised at
+composition time, before any resolution pass or provenance chain exists,
+which is why it is its own kind and not a `ConditionResolution` sub-kind
+(§16.3). The
 explicit, *ordered* layering spelling — `override` — was deferred here and
 admitted one sub-topic later, when slot totality produced its use case
 (§16.6).
@@ -4459,7 +4479,10 @@ warm-startable), final residuals with tolerances, iteration/evaluation
 counts, saturated-bounds list. Non-convergence never throws — it is an
 expected *outcome* (envelope-sweep data: hitting the infeasible edge is
 information), per §15's exceptions-are-broken-machinery line; a malformed
-problem is a `BuildError`-class failure at setup.
+problem is a `BuildError`-class failure at setup (`TrimProblemInvalid`,
+Appendix C — guess/bounds shape disagreement, an unknown `reads` selector:
+the offending field with the shapes or names in hand, batched, mirroring
+linearization's `SurfaceResolution`).
 
 **The AD obligation, scoped.** The default formulation requires `Dual`
 genericity of exactly: the continuous output-stage chains and `f`, plus the
@@ -5531,7 +5554,7 @@ Severities, in the vocabulary §15 fixes:
 
 | kind | payload | owner | severity |
 |---|---|---|---|
-| `UnknownPort` | destination path, unknown port name, the destination's port list (did-you-mean) | §8, §13.4 w1 | build (batch) |
+| `UnknownPort` | the wire end (`source`/`destination`), that end's path, the unknown port name, that end's port list (did-you-mean) | §8, §13.4 w1 | build (batch) |
 | `UnconnectedInput` | leaf path, input name, declared entry type, the obligation chain's last level | §8, §13.4 w2 | build (batch) |
 | `TwoProducers` | destination terminal, both producer terminals with provenance (sibling wire / ancestor deep route / export entry) | §8, §13.8 | build (batch) |
 | `WireTypeMismatch` | both endpoint paths, both face names, declared entry type, producer face type | §8, §13.2, §13.4 w4 | build (batch) |
@@ -5545,11 +5568,11 @@ Severities, in the vocabulary §15 fixes:
 | `KindUnreadable` | component path, type, declarations found, both family lists; did-you-mean when the type holds component-typed fields | §13.5 | build (batch) |
 | `KindMixed` | component path, the `connections` declaration and the offending leaf declarations | §13.5 | build (batch) |
 | `ContainerMixed` | container field path, offending element keys/indices, their types | §13.5 | build (batch) |
-| `StageOnWrongTier` | component path, stage name, the tier its declaration shape announces | §5.2, §13.5 | build (batch) |
+| `DeclarationOnWrongTier` | component path, the offending declaration (a stage name or `events`), the tier the leaf's other declarations announce | §5.2, §13.2, §13.5 | build (batch) |
 | `FaceNameIllegal` | assembly path, face name, the violated invariant (contains `/`) | §13.6 | build (batch) |
 | `FaceNameCollision` | assembly path, face name, both entries' provenance (hand-written / computed) | §13.6 | build (batch) |
 | `FaceDirectionConflict` | assembly path, face name, its internal endpoints, derived directions | §13.6 | build (batch) |
-| `UnknownFaceSelection` | child path, the unknown `except`/`only` names, the child's face list | §13.8 | build (batch) |
+| `UnknownFaceSelection` | child path, reason (unknown names / both `except` and `only` given), the offending names, the child's face list | §13.8 | build (batch) |
 | `RatesViolation` | assembly path, offending key, reason (deep key / unknown child / `K` on a continuous child) | §11.5, §13.7 | build (batch) |
 | `MissingProbeValue` | face name, type | §14.3 | build (batch) |
 
@@ -5563,7 +5586,7 @@ Severities, in the vocabulary §15 fixes:
 | `DeclaredNotProduced` | component path, declared name, the stage-product list and the state-field list | §13.3 | build (batch) |
 | `LocalConnected` | wire endpoints, the local cell named | §13.3 | build (batch) |
 | `UndeclaredReturnField` | component path, stage, returned field name, candidates (`output_types` ∪ `local_types`) | §13.3, §13.4 w5 | build (fail-fast) |
-| `ConformanceFailure` | component path, stage, field-level diff (missing / unexpected / per-field expected-vs-observed), simulation time | §14.5 | build (fail-fast) at probe; **runtime** as a `StepError` species |
+| `ConformanceFailure` | component path, function, field-level diff (missing / unexpected / per-field expected-vs-observed), simulation time | §14.5 | build (fail-fast) at probe; **runtime** as a `StepError` species |
 | `GuardForm` | component path, event name, observed probe return type, both admissible forms | §14.5 | build (fail-fast) |
 | `Tier2GuardPredicate` | component path, event name — a localizing event whose guard probes `Bool` | §14.5 | build (fail-fast) |
 | `BundleFieldError` | component path, function kind, requested field, the legal field set, classification (undeclared store / wrong-tier fact / illegal for this function kind) | §5.2, §15.2 | build (fail-fast) at probe; **runtime** thereafter |
@@ -5577,6 +5600,7 @@ Severities, in the vocabulary §15 fixes:
 | `MissingInit` | the simulation's status, the entry point called (`run!`/`step!`) | §12.11 | service |
 | `ServiceLifecycle` | the operation (`attach!`/`detach!`/`init!`/`trim!`/`capture`/`linearize`), the current status, the legal statuses | §12.3, §16 | service |
 | `StopFaceInvalid` | face name, reason (unknown / not root-exported / not `Bool`), the root output-face list; the binding site (constructor or `run!`) | §15.5 | service |
+| `DeploymentInvalid` | the deployment parameter, the value in hand, the violated constraint | §14.1 | service (batch) |
 | `AttachUnknownFace` | device id, binding entry, face name, the root input-face list | §12.3 | service |
 | `AlreadyAttached` | the device id of the existing roster entry, its binding | §12.3 | service |
 | `CallerTaskConflict` | both device ids — the rostered `needs_calling_task` holder and the candidate | §12.1, §12.3 | service |
@@ -5584,8 +5608,10 @@ Severities, in the vocabulary §15 fixes:
 | `ReadBindingUnresolved` | device id, the selector, path and field, candidates; a `reason` distinguishing an unresolved path from a store selector in a snapshot binding (§16.4's source rule) | §12.2, §16.4 | service |
 | `ConditionResolution` | entry path, store, field, offending value type and declared leaf type, provenance chain; sub-kinds: unknown path, undeclared field, unconvertible value, unexported slot face | §16.2, §16.3 | service (batch) |
 | `DuplicateConditionLeaf` | the leaf `(path, store, field)`, both provenance chains, the `override` advice | §16.2 | service (batch) |
+| `ConditionNodeMisuse` | the offending argument's type, the node kinds in hand | §16.2 | service |
 | `UninitializedSlots` | every uncovered root face, in declaration order | §16.6 | service (batch), pre-write |
 | `SurfaceResolution` | surface (`x`/`u`/`y`), selector kind, path, field, optional index, candidates | §16.10 | service (batch) |
+| `TrimProblemInvalid` | the offending `TrimProblem` field, the shapes or names in hand | §16.7, §16.8 | service (batch) |
 | `ReplayHeaderMismatch` | the mismatched store or slot: component path, store, expected vs. found layout/type; the build's and the trace's provenance | §12.12 | service |
 | `ReplayUnknownFace` | face name, frame ordinal, the trace's device tag, the root input-face list | §12.12 | service (batch) |
 
